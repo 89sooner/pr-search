@@ -175,14 +175,16 @@ Gate 7이 이 제품 고유의 게이트다. 다른 모든 지표가 통과해�
 
 | 항목 | 담당 | 상태 |
 | --- | --- | --- |
-| `srs_final.md` 상태가 `baseline` (사용자 승인) | Product | 미완 (현재 `review`) |
-| `validate_srs_prd_env.py --strict` 통과 | 에이전트 | 확인 필요 |
-| OD-003 (원본 보존 기간) 결정 | Platform + Legal | open |
-| OD-006 (ES 클러스터 형태) 결정 | Platform | open |
-| OD-007 (저장소·PR 규모 실측) | Platform | open |
+| `srs_final.md` 상태가 `baseline` (사용자 승인) | Product | **완료** (2026-08-19, v1.0, CR-003) |
+| `validate_srs_prd_env.py --strict` 통과 | 에이전트 | **완료** (오류 0, 경고 0) |
+| OD-003 (원본 보존 기간) 결정 | Platform + Legal | open — REL-001 착수 전 필요 |
+| OD-006 (ES 클러스터 형태) 결정 | Platform | open — REL-001 착수 전 필요 |
+| OD-007 (저장소·PR 규모 실측) | Platform | open — REL-001 착수 전 필요 |
 | GitHub App 발급 (읽기 전용) | Security | 미완 |
 | 웹훅 엔드포인트 등록 | Platform | 미완 |
 | OIDC 클라이언트 등록 | Security | 미완 |
 | Conductor 패키지 접근 | Design | 확인 필요 |
+
+`srs_final.md`가 baseline이므로 이제 그 문서의 모든 변경은 `../00_governance/change_control.md`에 CR을 먼저 등록해야 한다. 구현 중 발견한 불일치는 원장에 `DEV-###`를 등록하고 CR로 연결한다.
 
 OD-001(미러 허용), OD-002(권한 소스), OD-004(릴리스 앵커), OD-005(nori)는 두 경로 모두 구현하거나 대체 경로가 있어 착수를 막지 않는다. 다만 결정이 늦으면 두 경로를 유지하는 비용이 계속 든다.
