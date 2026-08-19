@@ -22,7 +22,7 @@
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | done | 에이전트 | `f36ab06` / PR #2 | typecheck·lint·lint:deps·test(20건)·build 통과. 헬스 4종 HTTP 200 (6.1장) | `docker compose up`은 환경 제약으로 미검증 (DEV-001) |
+| WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | done | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | `docker compose up`은 환경 제약으로 미검증 (DEV-001) |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | todo | - | - | - | - |
 | WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | todo | - | - | - | - |
 | WP-004 | 웹훅 수신 게이트웨이 | REL-001 | todo | - | - | - | - |
@@ -173,6 +173,7 @@
 | `docker compose config` | 성공 (종료 코드 0) — compose 정의 유효 |
 | `docker compose up -d` | **실패** — 이미지 pull이 이그레스 정책에 막힘 (DEV-001) |
 | `docker compose ps` | 컨테이너 0개 (위 실패의 결과) |
+| GitHub Actions `verify` | 성공 — 커밋 `44c1772`, run 32313150545. typecheck → lint → lint:deps → test → build 전 단계 통과 |
 
 `lint:deps` 실패 동작 검증 (DoD 2번):
 
@@ -192,6 +193,8 @@
 | `ingest-gateway` | `GET http://127.0.0.1:3001/healthz` | 200 `{"status":"ok","service":"ingest-gateway",...}` |
 | `search-api` | `GET http://127.0.0.1:3002/healthz` | 200 `{"status":"ok","service":"search-api",...}` |
 | `pipeline-worker` | `GET http://127.0.0.1:3003/healthz` | 200 `{"status":"ok","service":"pipeline-worker",...}` |
+
+CI 첫 실행은 `pnpm/action-setup`의 `version` 입력과 `package.json`의 `packageManager`가 중복 지정되어 실패했다. `packageManager`를 단일 출처로 두고 워크플로의 `version` 입력을 제거해 해결했다 (`44c1772`).
 
 WP-001의 헬스체크는 프로세스 기동만 확인한다. 백킹 서비스 연결 확인은 각 연결을 실제로 여는 WP가 더한다.
 
