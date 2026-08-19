@@ -23,7 +23,7 @@
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
-| WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | PR #2 | DoD 6항 전부 통과. 통합 테스트 26건 (6.2장) | 네이티브 PostgreSQL 16.13으로 검증 (DEV-006) |
+| WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | `96d4e2f` / PR #2 | DoD 6항 전부 통과. 통합 26건, CI `verify`·`integration` 모두 성공 (6.2장) | 로컬은 네이티브 PostgreSQL 16.13, CI는 서비스 컨테이너 (DEV-006) |
 | WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | todo | - | - | - | - |
 | WP-004 | 웹훅 수신 게이트웨이 | REL-001 | todo | - | - | - | - |
 | WP-005 | EventBus 포트와 Redis Streams 어댑터 | REL-001 | todo | - | - | - | - |
@@ -219,6 +219,12 @@ WP-001의 헬스체크는 프로세스 기동만 확인한다. 백킹 서비스 
 | --- | --- |
 | `pnpm test:integration` | 성공 — 테스트 파일 6개, 테스트 26건 |
 | `pnpm typecheck` / `lint` / `lint:deps` / `test` / `build` | 전부 종료 코드 0 (단위 테스트 20건) |
+| GitHub Actions `verify` | 성공 — 커밋 `96d4e2f`, run 32314753316 |
+| GitHub Actions `integration` | 성공 — 같은 run. `postgres:16-alpine` **서비스 컨테이너**에서 통합 테스트 26건 통과 |
+
+CI의 `integration` 잡이 컨테이너 PostgreSQL에서 같은 테스트를 통과했다는 점이
+DEV-006의 근거다. 로컬 검증이 네이티브 인스턴스였던 것은 이 실행 환경의 제약이지
+테스트가 컨테이너에서 못 도는 것이 아니다.
 
 테스트가 실제로 제약을 검증하는지 역으로 확인했다. 제약을 일부러 제거하면 해당 테스트만 실패하고, 원복하면 다시 통과한다.
 
