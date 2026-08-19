@@ -1,0 +1,31 @@
+{
+  "name": "pr-search",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "dev": "docker compose up -d && pnpm -r --parallel --filter \"./apps/*\" run dev",
+    "dev:web": "pnpm --filter @prs/web run dev",
+    "dev:api": "pnpm --filter @prs/search-api run dev",
+    "dev:worker": "pnpm --filter @prs/pipeline-worker run dev",
+    "typecheck": "tsc --build tsconfig.json && pnpm --filter @prs/web run typecheck",
+    "lint": "eslint .",
+    "lint:deps": "node scripts/lint-deps.mjs",
+    "test": "vitest run",
+    "build": "pnpm -r run build",
+    "clean": "tsc --build tsconfig.json --clean && pnpm -r exec rm -rf dist .next *.tsbuildinfo"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "22.20.1",
+    "eslint": "9.39.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.67.0",
+    "vitest": "4.1.11"
+  }
+}

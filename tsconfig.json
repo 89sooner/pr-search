@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/domain" },
+    { "path": "packages/contracts" },
+    { "path": "packages/query" },
+    { "path": "packages/es" },
+    { "path": "packages/db" },
+    { "path": "packages/github" },
+    { "path": "packages/bus" },
+    { "path": "apps/ingest-gateway" },
+    { "path": "apps/search-api" },
+    { "path": "apps/pipeline-worker" }
+  ]
+}
