@@ -177,9 +177,10 @@ Gate 7이 이 제품 고유의 게이트다. 다른 모든 지표가 통과해�
 | --- | --- | --- |
 | `srs_final.md` 상태가 `baseline` (사용자 승인) | Product | **완료** (2026-08-19, v1.0, CR-003) |
 | `validate_srs_prd_env.py --strict` 통과 | 에이전트 | **완료** (오류 0, 경고 0) |
-| OD-003 (원본 보존 기간) 결정 | Platform + Legal | open — REL-001 착수 전 필요 |
-| OD-006 (ES 클러스터 형태) 결정 | Platform | open — REL-001 착수 전 필요 |
-| OD-007 (저장소·PR 규모 실측) | Platform | open — REL-001 착수 전 필요 |
+| OD-003 (원본 보존 기간) 결정 | Platform + Legal | **완료** (2026-08-19, CR-004) — 3년. `raw_event` 계획 용량 4TB, 월별 파티션 드롭 |
+| OD-006 (ES 클러스터 형태) 결정 | Platform | **완료** (2026-08-19, CR-004) — 전용 클러스터 3노드, 노드당 Docker 컨테이너 1개(총 3개), 복제본 1 |
+| OD-007 (PR 규모 기준선) | Platform | **완료** (2026-08-19, CR-004) — 워크로드 기준선 1,000 PR/일. NFR-003의 5년 500만 PR은 설계 상한으로 유지, ADR-003 샤드 수 불변 |
+| ES 컨테이너 3개의 Docker host 배치 확정 | Platform | 미완 — 마스터 자격 노드 3개의 호스트 분리 확인 필요 (인프라 4.1장). CPU·RAM·디스크와 호스트 수는 CR-004 결정 범위 밖 |
 | GitHub App 발급 (읽기 전용) | Security | 미완 |
 | 웹훅 엔드포인트 등록 | Platform | 미완 |
 | OIDC 클라이언트 등록 | Security | 미완 |

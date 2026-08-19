@@ -576,12 +576,14 @@ CREATE INDEX audit_action_idx ON audit_record (action, occurred_at DESC);
 
 | 데이터 | 보존 | 삭제 방식 | 백업 |
 | --- | --- | --- | --- |
-| `raw_event` | 기본 3년 (OD-003) | 월별 파티션 드롭 | 일 1회 전체 + WAL 연속 아카이브 |
-| `prs-raw-events` (ES 아카이브) | ILM: hot 7일 → warm 90일 → delete (보존 기간 동기화) | ILM 자동 | 백업 안 함. `raw_event`에서 재구성 |
+| `raw_event` | 3년 (OD-003 결정값, CR-004) | 월별 파티션 드롭 | 일 1회 전체 + WAL 연속 아카이브 |
+| `prs-raw-events` (ES 아카이브) | ILM: hot 7일 → warm 90일 → delete (창 약 97일). `raw_event` 보존과 **별개 값** | ILM 자동 | 백업 안 함. `raw_event`에서 재구성 |
 | `merge_sequence`, `sequence_space` | 영구 | 저장소 폐기 시에만 | PostgreSQL 백업에 포함 |
 | `audit_record` | 1년 (NFR-006) | 월별 파티션 드롭 (관리 롤만) | PostgreSQL 백업에 포함 |
 | 엔티티 ES 인덱스 | 영구 | 저장소 폐기 시 문서 삭제 | 백업 안 함. PostgreSQL에서 재구성 |
 | `saved_search`, `safe_marker`, `bisect_session` | 영구 (사용자 삭제 시 제거) | 하드 삭제 | PostgreSQL 백업에 포함 |
+
+원본 이벤트의 3년 보존 보증은 `raw_event`(PostgreSQL)가 진다. ES 아카이브 인덱스의 ILM 창은 FR-ING-010 AC-1이 요구하는 대로 분리된 값이며, 아카이브는 백업 대상이 아니라 `raw_event`에서 재구성한다. 두 값을 같게 맞출 의무는 없다 — ILM 창을 줄여도 보존 보증은 영향받지 않는다.
 | `job`, `dead_letter` | 90일 | 배치 삭제 | PostgreSQL 백업에 포함 |
 | git 미러 | 캐시 | 재클론 가능 | 백업 안 함 |
 

@@ -1,6 +1,6 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+> 상태: review | 버전: v0.3 | 갱신일: 2026-08-19
 
 ## 1. 목적
 
@@ -78,6 +78,18 @@ GitHub Enterprise의 PR·커밋을 웹훅으로 수집해 Elasticsearch에 색�
 | 페이지네이션 | `search_after` 커서 전용. 오프셋 파라미터 미제공 | ADR-010 |
 | 축약 SHA | `keyword` + `prefix` 질의, 최소 7자 | ADR-012 |
 | 테스트 | Vitest (단위·통합), testcontainers (PG·ES), Playwright (E2E), axe (접근성) | 백엔드 11장 |
+
+아래는 ADR이 아니라 사용자 결정(CR-004)으로 확정된 값이다. 역시 재결정하지 않는다.
+
+| 항목 | 결정 | 근거 |
+| --- | --- | --- |
+| ES 클러스터 | PR Search 전용 클러스터 3노드. 노드당 Docker 컨테이너 1개(총 3개), 복제본 1. 사내 공용 클러스터 미사용 | OD-006 / 인프라 4.1장 |
+| 원본 보존 | `raw_event` 3년, 계획 용량 4TB. 월별 파티션 유지, 만료분은 파티션 드롭 | OD-003 / 데이터 모델 8장 |
+| ES 아카이브 수명 | `prs-raw-events` ILM 창 약 97일. `raw_event` 보존과 **별개 값**이며 아카이브는 재구성 가능 | FR-ING-010 AC-1 / ADR-003 |
+| 워크로드 기준선 | 1,000 PR/일 = 연 365,000건 = 5년 1,825,000건. NFR-003의 5년 500만 PR은 용량 설계 상한 | OD-007 / NFR-003 |
+| 샤드 수 | ADR-003 초기값 그대로 (`prs-pull-requests` 6, `prs-commits` 12, `prs-links` 12, `prs-releases` 2) | OD-007 결정 후에도 불변 |
+
+노드당 CPU·RAM·디스크와 Docker host 수는 확정되지 않았다. 이 값이 필요한 작업을 만나면 임의로 정하지 말고 `DEV-###`로 올린다 (인프라 4.1장).
 
 ## 5. 실행 명령
 

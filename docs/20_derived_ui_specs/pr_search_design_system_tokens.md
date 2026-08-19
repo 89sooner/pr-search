@@ -209,5 +209,5 @@ Conductor `Status` 어휘(`queued` / `running` / `waiting` / `success` / `partia
 | 제한 | 영향 | 대응 |
 | --- | --- | --- |
 | Conductor에 차트 프리미티브가 없다 | C-033, C-034를 제품에서 구현해야 한다 | Conductor semantic 토큰만 사용해 구현하고, 안정화 후 design-system 기여를 제안한다 |
-| Conductor에 그래프 캔버스 프리미티브가 없다 | C-036을 제품에서 구현해야 한다 | W-007은 조건부 범위(OD-007)이므로 착수 시점에 재검토한다 |
+| Conductor에 그래프 캔버스 프리미티브가 없다 | C-036을 제품에서 구현해야 한다 | W-007은 조건부 범위(REL-004 ACC-06)이므로 착수 시점에 재검토한다 |
 | Conductor `Severity` 어휘는 관계 신뢰도와 의미 축이 다르다 | 신뢰도에 `SeverityTag`를 쓸 수 없다 | `Badge`의 `Tone`으로 매핑한다 (5.4장) |
