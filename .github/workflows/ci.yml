@@ -40,3 +40,41 @@ jobs:
 
       - name: build
         run: pnpm build
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: prs_test
+          POSTGRES_USER: prs
+          POSTGRES_PASSWORD: prs
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prs"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: prs
+      POSTGRES_PASSWORD: prs
+      POSTGRES_TEST_DB: prs_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # 통합 테스트는 소스를 직접 읽으므로 빌드가 필요 없다 (vitest 별칭).
+      - name: test:integration
+        run: pnpm test:integration

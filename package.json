@@ -13,12 +13,16 @@
     "dev:web": "pnpm --filter @prs/web run dev",
     "dev:api": "pnpm --filter @prs/search-api run dev",
     "dev:worker": "pnpm --filter @prs/pipeline-worker run dev",
-    "typecheck": "tsc --build tsconfig.json && pnpm --filter @prs/web run typecheck",
+    "typecheck": "tsc --build tsconfig.json && tsc -p tsconfig.tests.json && pnpm --filter @prs/web run typecheck",
     "lint": "eslint .",
     "lint:deps": "node scripts/lint-deps.mjs",
     "test": "vitest run",
     "build": "pnpm -r run build",
-    "clean": "tsc --build tsconfig.json --clean && pnpm -r exec rm -rf dist .next *.tsbuildinfo"
+    "clean": "tsc --build tsconfig.json --clean && pnpm -r exec rm -rf dist .next *.tsbuildinfo",
+    "db:migrate": "pnpm --filter @prs/db exec node dist/cli.js migrate",
+    "db:seed": "pnpm --filter @prs/db exec node dist/cli.js seed",
+    "db:partitions": "pnpm --filter @prs/db exec node dist/cli.js partitions",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

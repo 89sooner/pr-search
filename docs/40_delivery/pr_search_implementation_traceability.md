@@ -6,7 +6,7 @@
 
 구현이 시작된 후 문서와 코드의 정합성을 유지하는 살아있는 원장이다. 코딩 에이전트는 WP를 완료할 때마다 이 문서를 갱신한다. 이 문서는 기록용이며 범위를 결정하지 않는다.
 
-**현재 상태: WP-001 구현 완료, DoD 1항 검증 보류.** 워크스페이스 골격이 서 있고 `pnpm typecheck / lint / lint:deps / test / build`와 CI가 통과한다. `docker compose up` 기동 확인만 남았다(DEV-001). 도메인 로직·API·화면은 아직 없다.
+**현재 상태: WP-002까지 완료.** 워크스페이스 골격과 PostgreSQL 스키마·마이그레이션·리포지터리 계층이 서 있다. 단위 20건·통합 26건이 통과한다. WP-001의 `docker compose up` 기동 확인만 환경 제약으로 남아 있다(DEV-001). Elasticsearch·API·화면은 아직 없다.
 
 ## 2. 기록 규칙
 
@@ -23,7 +23,7 @@
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
-| WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | todo | - | - | - | - |
+| WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | PR #2 | DoD 6항 전부 통과. 통합 테스트 26건 (6.2장) | 네이티브 PostgreSQL 16.13으로 검증 (DEV-006) |
 | WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | todo | - | - | - | - |
 | WP-004 | 웹훅 수신 게이트웨이 | REL-001 | todo | - | - | - | - |
 | WP-005 | EventBus 포트와 Redis Streams 어댑터 | REL-001 | todo | - | - | - | - |
@@ -85,12 +85,12 @@
 | FR-SRCH-010 | WP-033 | - | - | not_started |
 | FR-SRCH-011 | WP-032 | - | - | not_started |
 | FR-SRCH-012 | WP-044 | - | - | not_started |
-| FR-SEQ-001 | WP-020, WP-021 | - | - | not_started |
+| FR-SEQ-001 | WP-002, WP-020, WP-021 | `packages/db/migrations/002_sequence.up.sql`, `packages/db/src/advisory-lock.ts`, `packages/db/src/repositories/merge-sequence.ts`, `packages/db/src/repositories/sequence-space.ts` | `packages/db/integration/advisory-lock.test.ts` (AC-6), `packages/db/integration/seed.test.ts` (AC-3) | partial (스키마·채번 동시성 제어. 실제 채번 로직은 WP-020) |
 | FR-SEQ-002 | WP-023, WP-025 | - | - | not_started |
 | FR-SEQ-003 | WP-023, WP-025 | - | - | not_started |
 | FR-SEQ-004 | WP-024, WP-026 | - | - | not_started |
 | FR-SEQ-005 | WP-022 | - | - | not_started |
-| FR-SEQ-006 | WP-041 | - | - | not_started |
+| FR-SEQ-006 | WP-002, WP-041 | `packages/db/migrations/002_sequence.up.sql` (`safe_marker_current_uk`) | `packages/db/integration/constraints.test.ts` (AC-1) | partial (스키마만. 화면·API는 WP-041) |
 | FR-SEQ-007 | WP-042 | - | - | not_started |
 | FR-REL-001 | WP-027 | - | - | not_started |
 | FR-REL-002 | WP-024 | - | - | not_started |
@@ -101,12 +101,12 @@
 | FR-REL-007 | WP-031 | - | - | not_started |
 | FR-REL-008 | WP-043 | - | - | not_started |
 | FR-ING-001 | WP-004 | - | - | not_started |
-| FR-ING-002 | WP-004, WP-008 | - | - | not_started |
-| FR-ING-003 | WP-002, WP-004 | - | - | not_started |
+| FR-ING-002 | WP-002, WP-004, WP-008 | `packages/db/migrations/001_ingestion.up.sql`, `packages/db/src/repositories/raw-event.ts` | `packages/db/integration/constraints.test.ts` (AC-1) | partial (멱등 키 제약. 수신 경로는 WP-004) |
+| FR-ING-003 | WP-002, WP-004 | `packages/db/migrations/001_ingestion.up.sql`, `packages/db/src/partitions.ts`, `packages/db/src/repositories/raw-event.ts` | `packages/db/integration/partitions.test.ts`, `packages/db/integration/constraints.test.ts` | partial (원본 테이블·월별 파티션·보존 드롭 경로. 실제 보관 경로는 WP-004) |
 | FR-ING-004 | WP-006, WP-007 | - | - | not_started |
 | FR-ING-005 | WP-008 | - | - | not_started |
 | FR-ING-006 | WP-019 | - | - | not_started |
-| FR-ING-007 | WP-009 | - | - | not_started |
+| FR-ING-007 | WP-002, WP-009 | `packages/db/migrations/001_ingestion.up.sql`, `packages/db/src/repositories/dead-letter.ts` | - | partial (격리 테이블과 리포지터리. 재처리 흐름은 WP-009) |
 | FR-ING-008 | WP-035 | - | - | not_started |
 | FR-ING-009 | WP-010, WP-040 | - | - | not_started |
 | FR-ING-010 | WP-036 | - | - | not_started |
@@ -120,13 +120,13 @@
 | FR-AUTH-001 | WP-012, WP-015 | - | - | not_started |
 | FR-AUTH-002 | WP-012 | - | - | not_started |
 | FR-AUTH-003 | WP-012 | - | - | not_started |
-| FR-AUTH-004 | WP-039 | - | - | not_started |
+| FR-AUTH-004 | WP-002, WP-039 | `packages/db/migrations/004_app_state.up.sql`, `packages/db/migrations/005_roles.up.sql` | `packages/db/integration/audit-grants.test.ts` (AC-3) | partial (감사 테이블과 롤 권한. 기록·조회는 WP-039) |
 | FR-ADMIN-001 | WP-010, WP-040 | - | - | not_started |
-| FR-ADMIN-002 | WP-019, WP-040 | - | - | not_started |
+| FR-ADMIN-002 | WP-002, WP-019, WP-040 | `packages/db/migrations/004_app_state.up.sql` (`job_active_uk`), `packages/db/src/repositories/job.ts` | `packages/db/integration/constraints.test.ts` (AC-4) | partial (동시 실행 제약. 콘솔은 WP-040) |
 | FR-ADMIN-003 | WP-028, WP-040 | - | - | not_started |
 | NFR-001 | WP-013, WP-014, WP-023, WP-037 | - | - | not_started |
 | NFR-002 | WP-004, WP-008 | - | - | not_started |
-| NFR-003 | WP-002, WP-003 | - | - | not_started |
+| NFR-003 | WP-002, WP-003 | `packages/db/migrations/*`, `packages/db/src/partitions.ts` | `packages/db/integration/partitions.test.ts` | partial (PostgreSQL 측 파티션 전략. ES 샤드는 WP-003) |
 | NFR-004 | WP-010 (인프라) | - | - | not_started |
 | NFR-005 | WP-004, WP-012 | - | - | not_started |
 | NFR-006 | WP-039 | - | - | not_started |
@@ -141,6 +141,9 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | DEV-001 | 2026-08-19 | `docker compose up -d`를 WP-001 환경에서 실행 검증하지 못했다. 컨테이너 레지스트리 블롭 호스트(`production.cloudfront.docker.com`)와 `docker.elastic.co`가 실행 환경의 이그레스 정책에서 403으로 차단된다. `docker compose config`는 통과하고 compose 정의 자체는 인프라 4장·8장과 일치한다. 우회하지 않았고 이미지 태그도 바꾸지 않았다 | WP-001 | 기술 제약 | 불필요 (설계 변경 없음) | open — 레지스트리 접근이 되는 환경에서 재검증 필요 |
 | DEV-002 | 2026-08-19 | 인프라 3장은 `pipeline-worker`의 health check를 "하트비트"로 적었으나 WP-001 DoD는 "각 앱 헬스체크가 200을 반환한다"를 요구한다. 워커에 `node:http` 기반 `GET /healthz`를 두어 둘을 모두 만족시켰다. ADR-001의 "워커는 순수 Node 프로세스" 결정을 지키려고 Fastify를 넣지 않았다 | WP-001 | 문서 오류 | 불필요 (인프라 8장에 표기 반영) | resolved |
+| DEV-004 | 2026-08-19 | 데이터 모델 3.1의 `raw_event_delivery_uk`는 `PRIMARY KEY (delivery_id, received_at)`와 컬럼·순서가 같은 중복 인덱스다. 5억 행·초당 2000 이벤트(NFR-002) 규모에서 중복 인덱스는 삽입 비용을 그대로 두 배로 만든다. 마이그레이션 001에서 생성하지 않았다 — 조용히 뺀 것이 아니라 여기 기록해 CR 판단에 올린다 | WP-002 / FR-ING-002 | 문서 오류 | 미등록 — 데이터 모델 3.1 정정 CR 필요 | open |
+| DEV-005 | 2026-08-19 | 데이터 모델 3.4의 `audit_record`는 `PRIMARY KEY (audit_id)` + `PARTITION BY RANGE (occurred_at)`인데, PostgreSQL은 파티션 테이블의 유니크 제약이 파티션 키를 포함하도록 요구한다. 그대로 쓰면 마이그레이션이 실행되지 않는다. `PRIMARY KEY (audit_id, occurred_at)`으로 구현했다 | WP-002 / FR-AUTH-004 | 문서 오류 | 미등록 — 데이터 모델 3.4 정정 CR 필요 | open |
+| DEV-006 | 2026-08-19 | WP-002의 검증 방법은 testcontainers PostgreSQL이지만 이 환경은 컨테이너 이미지를 받을 수 없다(DEV-001). 통합 테스트가 접속 정보를 환경 변수(`DATABASE_URL` 또는 `POSTGRES_*`)에서 읽도록 만들고 네이티브 PostgreSQL 16.13으로 검증했다. CI는 서비스 컨테이너로 같은 테스트를 돌린다. testcontainers 래퍼 자체는 아직 도입하지 않았다 | WP-002 | 기술 제약 | 불필요 (검증 수단만 다름) | open — testcontainers 도입은 ES가 함께 필요한 WP-003에서 재검토 |
 | DEV-003 | 2026-08-19 | `../00_governance/change_control.md` 4장 아키텍처 게이트 기록이 "오류 코드 30종"으로 적혀 있으나 API 계약 6장의 실제 코드는 29종이다. `@prs/contracts`는 문서 표를 파싱해 29종과 대조하는 테스트를 둔다 | WP-001 | 문서 오류 | 미등록 — 게이트 기록 정정은 별도 CR | open |
 
 **등록이 필요한 대표 상황** (사전에 예상되는 것):
@@ -198,7 +201,33 @@ CI 첫 실행은 `pnpm/action-setup`의 `version` 입력과 `package.json`의 `p
 
 WP-001의 헬스체크는 프로세스 기동만 확인한다. 백킹 서비스 연결 확인은 각 연결을 실제로 여는 WP가 더한다.
 
-### 6.2 릴리스 게이트
+### 6.2 WP-002 검증 실행 기록
+
+2026-08-19, PostgreSQL 16.13 (네이티브 설치본. 레지스트리 차단으로 컨테이너를 쓸 수 없어 같은 메이저 버전의 로컬 인스턴스를 사용했다 — DEV-001).
+
+| DoD | 명령 / 확인 | 결과 |
+| --- | --- | --- |
+| 1 | `pnpm db:migrate` | 성공 — 001~005 적용, 테이블 14종 생성 |
+| 1 | `pnpm db:migrate --down` | 성공 — 005~001 회수, `schema_migration` 외 잔여 테이블 0 |
+| 2 | `pnpm db:seed` | 성공 — 저장소 3, PR 200, 커밋 500, 릴리스 10, 원본 이벤트 510 |
+| 3 | 같은 `delivery_id` 재삽입 | SQLSTATE 23505 유니크 위반 (FR-ING-002 AC-1) |
+| 4 | 같은 `(type, target)` 활성 잡 2건 | SQLSTATE 23505 유니크 위반 (FR-ADMIN-002 AC-4) |
+| 5 | 동시 `pg_try_advisory_xact_lock` | 하나만 `true`, 다른 하나는 대기 없이 `false`. 커밋 후 재시도 성공 (FR-SEQ-001 AC-6) |
+| 6 | `has_table_privilege('prs_app','audit_record', …)` | INSERT/SELECT `true`, UPDATE/DELETE `false` (FR-AUTH-004 AC-3) |
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm test:integration` | 성공 — 테스트 파일 6개, 테스트 26건 |
+| `pnpm typecheck` / `lint` / `lint:deps` / `test` / `build` | 전부 종료 코드 0 (단위 테스트 20건) |
+
+테스트가 실제로 제약을 검증하는지 역으로 확인했다. 제약을 일부러 제거하면 해당 테스트만 실패하고, 원복하면 다시 통과한다.
+
+| 조작 | 결과 |
+| --- | --- |
+| `GRANT UPDATE ON audit_record TO prs_app` | 감사 권한 테스트 1건 실패 → 원복 후 통과 |
+| `DROP INDEX job_active_uk` | 활성 잡 유니크 테스트 1건 실패 → 원복 후 통과 |
+
+### 6.3 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -231,7 +260,9 @@ WP-001의 헬스체크는 프로세스 기동만 확인한다. 백킹 서비스 
 | `docker compose up`이 이 실행 환경에서 검증되지 않음 | 인프라 8장 / DEV-001 | 실제 제약 (레지스트리 이그레스 차단) | 레지스트리 접근 가능한 환경에서 재검증 |
 | 워크스페이스 패키지 5종(`query`·`es`·`db`·`github`·`bus`)이 식별 정보만 내보냄 | WP-001 구현 범위 | 실제 상태 (의도된 골격) | WP-002·WP-003·WP-005·WP-006·WP-025 |
 | `web`이 Conductor 디자인 시스템을 아직 쓰지 않음 | WP-001 제외 목록 (화면 제외) | 실제 상태 | WP-019 (셸과 Conductor 연동) |
-| 각 앱 헬스체크가 백킹 서비스 연결을 확인하지 않음 | WP-001 구현 범위 (프로세스 기동만) | 실제 상태 | 연결을 여는 WP-002·WP-003·WP-005가 각각 추가 |
+| 각 앱 헬스체크가 백킹 서비스 연결을 확인하지 않음 | WP-001 구현 범위 (프로세스 기동만) | 실제 상태 | 연결을 여는 WP-004·WP-008이 각각 추가 |
+| 통합 테스트가 testcontainers가 아니라 외부 PostgreSQL에 붙음 | WP-002 검증 방법 / DEV-006 | 실제 상태 (환경 변수로 접속 정보 주입) | WP-003에서 ES와 함께 재검토 |
+| `saved_search`·`bisect_session`·`permission_cache`·`team`에 리포지터리 계층이 없음 | WP-002 구현 범위 (6종만 명시) | 실제 상태 (스키마는 존재) | 각각을 쓰는 WP-012·WP-024·WP-042 |
 
 ## 8. 다음 작업
 
@@ -252,7 +283,8 @@ WP-001의 헬스체크는 프로세스 기동만 확인한다. 백킹 서비스 
 
 다음 WP:
 
-8. **WP-002 PostgreSQL 스키마와 마이그레이션** (선행 WP-001 충족). 이후 WP-003·WP-005·WP-006은 WP-001만 선행이므로 병렬 착수 가능하다
+8. ~~WP-002 PostgreSQL 스키마와 마이그레이션~~ → 완료 (2026-08-19). 검증 결과는 6.2장
+9. **WP-003 Elasticsearch 매핑과 인덱스 부트스트랩** (선행 WP-001 충족). WP-005·WP-006도 WP-001만 선행이라 병렬 착수 가능하다. WP-004는 WP-002가 끝났으므로 착수 가능하다
 
 `srs_final.md`가 baseline이므로 이제 그 문서의 변경은 `../00_governance/change_control.md`에 CR을 먼저 등록해야 한다. 구현 중 문서와 현실이 어긋나면 위 5장에 `DEV-###`를 등록하고 CR로 연결한다. 조용한 범위 변경은 금지다.
 

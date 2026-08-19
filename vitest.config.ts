@@ -18,6 +18,7 @@ export default defineConfig({
     },
   },
   test: {
+    // 통합 테스트는 vitest.integration.config.ts가 따로 돌린다.
     include: ['packages/*/src/**/*.test.ts', 'apps/*/src/**/*.test.ts', 'scripts/**/*.test.ts'],
     environment: 'node',
     reporters: ['default'],

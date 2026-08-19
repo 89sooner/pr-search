@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS audit_record;
+DROP TABLE IF EXISTS job;
+DROP TABLE IF EXISTS saved_search;

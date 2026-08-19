@@ -1,11 +1,26 @@
 /**
  * @prs/db — PostgreSQL 리포지터리 계층 (ADR-004).
  *
- * WP-001은 워크스페이스 골격만 세운다. 이 패키지의 실제 구현은 WP-002가 채운다.
- * 지금 내보내는 것은 패키지 식별 정보뿐이며, 여기에 도메인 로직을 두지 않는다.
+ * PostgreSQL이 시스템 오브 레코드다. Elasticsearch는 여기서 전량 재구성 가능한
+ * 파생 뷰이며, 어떤 데이터도 검색 인덱스에만 존재해서는 안 된다.
  */
 
 export const PACKAGE_NAME = '@prs/db' as const;
 
-/** 이 패키지를 채우는 작업 패키지 ID. */
-export const IMPLEMENTED_BY = 'WP-002' as const;
+export { resolvePoolConfig } from './config.js';
+export type { DatabaseEnv } from './config.js';
+
+export { createPool, withTransaction } from './pool.js';
+
+export { sequenceLockKey, tryAdvisoryXactLock, trySequenceSpaceLock } from './advisory-lock.js';
+
+export { appliedVersions, loadMigrations, migrateDown, migrateUp, MIGRATIONS_DIR } from './migrate.js';
+export type { Migration } from './migrate.js';
+
+export { ensureAllPartitions, ensureMonthlyPartitions, partitionName, PARTITIONED_TABLES } from './partitions.js';
+export type { PartitionedTable } from './partitions.js';
+
+export { seed, SEED_TARGET } from './seed.js';
+export type { SeedCounts } from './seed.js';
+
+export * from './repositories/index.js';

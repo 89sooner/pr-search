@@ -39,6 +39,8 @@ apps/
 ```bash
 pnpm install
 docker compose up -d     # PostgreSQL 16 / Elasticsearch 8.x / Redis 7
+pnpm db:migrate          # 스키마 적용
+pnpm db:seed             # 개발용 합성 시드
 pnpm dev                 # 전 앱 개발 서버
 ```
 
@@ -48,7 +50,10 @@ pnpm dev                 # 전 앱 개발 서버
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm lint:deps && pnpm test && pnpm build
+pnpm test:integration    # 실제 PostgreSQL 필요
 ```
+
+`pnpm test`는 백킹 서비스 없이 돌고, `pnpm test:integration`은 실제 PostgreSQL에 붙는다. 접속 정보는 `DATABASE_URL` 또는 `POSTGRES_*` 환경 변수에서 읽으며 테스트는 `POSTGRES_TEST_DB`(기본 `prs_test`)를 쓴다.
 
 CI(`.github/workflows/ci.yml`)가 같은 순서로 돈다.
 
