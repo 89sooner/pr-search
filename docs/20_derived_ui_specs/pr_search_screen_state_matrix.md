@@ -1,0 +1,226 @@
+# PR Search 화면 상태 매트릭스
+
+> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+
+## 1. 상태 설계 원칙
+
+1. 상태는 문구가 아니라 사용자가 다음 행동을 결정할 수 있는 UI로 표현한다.
+2. "결과 없음"과 "권한 없음"과 "아직 수집되지 않음"은 서로 다른 상태다. 하나로 뭉뚱그리지 않는다. 이 구분이 무너지면 사용자는 데이터가 없는 것인지 시스템이 고장난 것인지 판단할 수 없다.
+3. 부분 실패는 전체 실패로 승격하지 않는다. 패싯 실패가 목록을 비우지 않고, 관계 조회 실패가 PR 개요를 지우지 않는다.
+4. 수집 파이프라인의 중간 상태(`enrichment_pending`, `links_pending`)는 오류가 아니다. 진행 중임을 알리고 수동 재조회 경로를 제공한다. 자동 폴링은 하지 않는다.
+5. 시퀀스 관련 상태(`sequence_stale`, `sequence_reassigning`, `epoch_stale`)는 데이터의 신뢰도에 직결된다. 값을 감추지 말고 값과 함께 신뢰도 경고를 표시한다.
+
+## 2. 공통 상태 분류
+
+| 상태 | 의미 | 필수 UI | Conductor 표현 |
+| --- | --- | --- | --- |
+| `loading_initial` | 최초 데이터 로딩 | skeleton 또는 진행 표시 | `Spinner`, skeleton 블록 |
+| `loading_more` | 추가 페이지 로딩 | 하단 진행 표시, 기존 결과 유지 | `Spinner` (인라인) |
+| `ready` | 정상 표시 | - | - |
+| `empty_no_query` | 질의 미입력 | 시작 안내와 예시 질의 | `EmptyState` |
+| `empty_no_result` | 조건에 맞는 데이터 없음 | 원인 후보(오타/미수집/권한)와 필터 완화 제안 | `EmptyState` |
+| `not_indexed` | 미등록 저장소 | 저장소 개요 경로 | `EmptyState` + 링크 |
+| `stale` | 최신성이 낮음 | 마지막 갱신 시각과 재조회 액션 | `Banner` tone `info` |
+| `no_permission` | 역할 부족 | 필요 역할명과 요청 경로 | `EmptyState` |
+| `not_found` | 대상 없음 또는 접근 범위 밖 | 통합 검색 복귀 경로 | `EmptyState` |
+| `auth_expired` | 인증 만료 | 재인증 액션(현재 경로 보존) | `Banner` tone `warning` |
+| `permission_unavailable` | 접근 범위 조회 실패 | 부분 결과 없이 재시도 안내 | `Banner` tone `danger` |
+| `offline` | 연결 없음 | 사용 가능 범위와 재시도 | `Banner` tone `warning` |
+| `partial_failure` | 일부 섹션·패널 실패 | 성공/실패 분리 표시와 섹션별 재시도 | 섹션별 `ErrorBanner` |
+| `recoverable_error` | 복구 가능 오류 | 재시도 또는 대체 경로 | `Banner` tone `danger` + `Button` |
+| `unrecoverable_error` | 복구 불가 오류 | 영향과 지원 경로, 상관 ID | `Banner` tone `danger` |
+| `operation_pending` | 작업 진행 중 | 진행률과 취소/백그라운드 처리 | `Meter`, `ProgressRing` |
+| `enrichment_pending` | 보강 미완료 | 수집 중 표시와 수동 재조회 | `Badge` tone `info` + 재조회 |
+| `links_pending` | 관계 파생 미완료 | 관계 분석 중 표시 | `Badge` tone `info` |
+| `sequence_stale` | 채번 실패로 시퀀스 갱신 중단 | 마지막 확정 값과 경고 | `Banner` tone `warning` |
+| `sequence_reassigning` | 재채번 진행 중 | 마지막 확정 값과 갱신 중 표시 | `Banner` tone `info` |
+| `epoch_stale` | 인용 에폭과 현재 에폭 불일치 | 무효 경고와 현재 에폭 재조회 액션 | `Banner` tone `warning` |
+| `approximate` | 근사 집계 결과 | 근사값 배지 | `Badge` tone `warning` |
+| `low_sample` | 표본 부족 | 백분위 대신 원값 목록 | `Badge` tone `neutral` |
+| `truncated` | 결과 절삭 | 절삭 사실과 조건 추가 안내 | `Banner` tone `info` |
+| `degraded` | 저하 모드(검색 불가·수집 계속) | 영향 범위 명시 | `Banner` tone `danger` |
+
+## 3. 화면별 상태 매트릭스
+
+### W-001 통합 검색
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `empty_no_query` | 질의 없이 진입 | 예시 질의 3종(`seq:` 범위, SHA, `merged:` 기간)과 최근 검색 | 질의 입력 | FR-SRCH-005 |
+| `loading_initial` | 최초 조회 | 결과 테이블 skeleton 8행, 패싯 레일 skeleton | - | NFR-001 |
+| `loading_more` | 커서 페이지 요청 | 기존 결과 유지, 하단 진행 표시 | - | FR-SRCH-008 |
+| `ready` | 결과 1건 이상 | 결과 테이블 + 패싯 | - | FR-SRCH-006 |
+| `ambiguous` | 해석 후보 2건 이상 | 후보 카드 목록, 자동 이동 금지 | 후보 선택 | FR-SRCH-001 |
+| `empty_no_result` | 결과 0건 | 원인 후보 3종과 제거 시 결과가 생기는 필터 목록 | 필터 완화 / W-009 | FR-SRCH-006 |
+| `error_query_syntax` | 미지원 키·파싱 실패 | 입력창의 오류 구간 강조와 지원 키 목록 | 질의 수정 | FR-SRCH-005 |
+| `error_prefix_too_short` | 7자 미만 hex | 클라이언트 즉시 안내, 서버 호출 없음 | 입력 보강 | FR-SRCH-004 |
+| `error_search_timeout` | 3초 초과 | 저장소 조건 추가 안내 | 조건 추가 | FR-SRCH-004 |
+| `truncated` | 접두 결과 50건 초과 | 앞 50건 + 조건 추가 안내 | 조건 추가 | FR-SRCH-004 |
+| `partial_failure` | 패싯만 실패 | 목록 정상, 레일에 실패 표시 | 레일 재시도 | FR-SRCH-009 |
+| `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | FR-AUTH-001 |
+
+### W-002 PR 상세
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `loading_initial` | 진입 | 헤더·개요·커밋 skeleton | - | NFR-001 |
+| `ready` | 정상 | 전체 섹션 | - | - |
+| `enrichment_pending` | 원본 커밋·변경 파일 미보강 | 커밋 섹션에 수집 중 배지와 재조회 버튼, 머지 커밋은 표시 | 재조회 | FR-ING-004, FR-SRCH-003 |
+| `links_pending` | 관계 파생 미완료 | 관계 섹션에 분석 중 배지 | 재조회 | FR-REL-003 |
+| `no_sequence` | 미머지 PR | 선행·후행 섹션 비활성 + 사유 표시(섹션 숨김 금지) | 머지 후 자동 활성 | FR-REL-001 |
+| `epoch_stale` | 표시 중 에폭 변경 | 헤더 하단 경고 배너 | 재조회 | FR-SEQ-005 |
+| `truncated` | 원본 커밋 250건 초과 | 앞 250건과 전체 건수 표시 | GHE 링크 | FR-SRCH-003 |
+| `partial_failure` | 관계·릴리스 섹션만 실패 | 해당 섹션만 오류, 개요는 유지 | 섹션 재시도 | - |
+| `not_found` | 미존재 또는 접근 범위 밖 | 존재 여부 미노출, 검색 복귀 | W-001 | FR-AUTH-002 |
+| `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+### W-003 커밋 상세
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `loading_initial` | 진입 | skeleton | - | - |
+| `ready` | 정상 | 전체 섹션 | - | - |
+| `enrichment_pending` | PR 연결 미완료 | 소속 PR 섹션에 수집 중 배지 | 재조회 | FR-SRCH-002 |
+| `multi_pr` | 동일 SHA가 2개 이상 PR에 속함 | 모든 PR을 목록으로 표시 | 사용자 선택 | FR-SRCH-002 |
+| `no_pr` | 직접 푸시 커밋 | "PR 없음(직접 푸시)" 표시, 시퀀스는 정상 표시 | - | FR-SRCH-002 |
+| `no_sequence` | first-parent 체인 밖(원본 커밋) | 오류 아님. 머지 커밋 링크와 설명 표시 | 머지 커밋 이동 | FR-SEQ-001 |
+| `not_found` / `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+### W-004 범위 조사
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `empty_no_anchor` | 앵커 미지정 | 앵커 입력 안내와 최근 릴리스 제안 | 앵커 입력 | FR-SEQ-003 |
+| `loading_initial` | 조회 중 | 요약 카드·결과 skeleton | - | - |
+| `ready` | 정상 | 요약 + 결과 + 패싯 + 이분 탐색 | - | FR-SEQ-002 |
+| `error_range_inverted` | from > to | 앵커 교환 제안 | 앵커 수정 | FR-SEQ-002 |
+| `error_range_too_large` | 5만 건 초과 | 예상 건수 표시와 축소 안내 | 앵커 조정 | FR-SEQ-002 |
+| `error_space_mismatch` | 두 앵커의 시퀀스 공간 불일치 | 조회 버튼 비활성 + 즉시 사유 표시 | 브랜치 선택 | FR-SEQ-004 |
+| `error_anchor_not_on_branch` | 앵커가 first-parent 체인 밖 | 머지 커밋을 대체 앵커로 제안 | 앵커 교체 | FR-SEQ-003 |
+| `error_anchor_not_merged` | 미머지 PR 앵커 | 사유 표시 | 앵커 교체 | FR-SEQ-003 |
+| `sequence_reassigning` | 재채번 중 | 마지막 확정 값 + 갱신 중 배너 | 완료 후 재조회 | FR-SEQ-005 |
+| `sequence_stale` | 채번 중단 | 마지막 확정 값 + 경고 배너 | 운영자 문의 | FR-SEQ-001 |
+| `epoch_stale` | URL 에폭 ≠ 현재 에폭 | 무효 경고 + 현재 에폭 재조회 액션(자동 재조회 금지) | 재조회 | FR-SEQ-005 |
+| `bisect_contradiction` | good > bad 표시 | 모순 지점 표시 | 탐색 초기화 | FR-SEQ-007 |
+| `no_permission` (표식 쓰기) | `release_manager` 아님 | 표식 버튼 비활성 + `blockedReason` | - | FR-SEQ-006 |
+| `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+### W-005 릴리스·빌드
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `loading_initial` | 진입 | 타임라인 skeleton | - | - |
+| `ready` | 정상 | 릴리스 목록 + 상세 | - | FR-SEQ-004 |
+| `empty_no_release` | 릴리스 0건 | 태그 생성 안내(외부 GHE 경로) | - | FR-SEQ-004 |
+| `not_indexed` | 릴리스 미수집 저장소 | 저장소 개요 경로 | W-009 | FR-SEQ-004 |
+| `error_space_mismatch` | 비교 대상 2건이 다른 브랜치 | 비교 버튼 비활성 + 사유 | 선택 변경 | FR-SEQ-004 |
+| `not_found` / `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+### W-006 통계 대시보드
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `loading_initial` | 진입 | 패널별 skeleton | - | - |
+| `ready` | 정상 | 전 패널 | - | FR-STAT-001 |
+| `empty_no_data` | 대상 0건 | 기간 확대 제안 | 조건 변경 | FR-STAT-005 |
+| `low_sample` | 표본 20건 미만 | 백분위 대신 원값 목록 + 배지 | - | FR-STAT-003 |
+| `approximate` | 100만 건 초과 | 근사값 배지 | - | FR-STAT-006 |
+| `error_too_many_buckets` | 400개 초과 | 간격 확대 제안 | 간격 변경 | FR-STAT-002 |
+| `error_aggregation_timeout` | 5초 초과 | 기간 축소 제안 | 기간 변경 | FR-STAT-001 |
+| `partial_failure` | 일부 패널 실패 | 실패 패널만 오류 표시 | 패널 재시도 | - |
+| `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+### W-007 관계 그래프
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `loading_initial` | 진입 | 캔버스 skeleton | - | - |
+| `ready` | 정상 | 그래프 + 노드 표(키보드 대체) | - | FR-REL-008 |
+| `empty_no_link` | 간선 0건 | 관계 없음 안내 | 깊이 확대 | FR-REL-008 |
+| `truncated` | 노드 300개 초과 | 신뢰도 우선 포함 + 절삭 배너 | 유형 필터 | FR-REL-008 |
+| `error_graph_timeout` | 2초 초과 | 부분 그래프 + 절삭 표시 | 깊이 축소 | FR-REL-008 |
+| `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+### W-008 저장된 검색
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `loading_initial` | 진입 | 목록 skeleton | - | - |
+| `ready` | 정상 | 내 검색 / 팀 공유 구분 목록 | - | FR-SRCH-010 |
+| `empty_no_saved` | 0건 | W-001에서 저장하는 방법 안내 | W-001 | FR-SRCH-010 |
+| `error_query_syntax` | 저장 질의 파싱 실패 | 실행 버튼 비활성 + 오류 구간 | 편집 | FR-SRCH-010 |
+| `error_limit_exceeded` | 100건 상한 | 삭제 후 재시도 안내 | 삭제 | FR-SRCH-010 |
+| `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+### W-009 저장소 개요
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `loading_initial` | 진입 | 카드 skeleton | - | - |
+| `ready` | 정상 | 저장소 카드 + 시퀀스 공간 상태 | - | FR-ING-009 |
+| `empty_no_repository` | 접근 범위 내 등록 저장소 0건 | 등록 요청 경로 | 요청 | FR-ING-009 |
+| `operation_pending` | 백필 진행 중 | 진행률 표시 | - | FR-ING-006 |
+| `sequence_stale` / `sequence_reassigning` | 시퀀스 공간 이상 | 공간별 상태 배지 | 운영자 문의 | FR-SEQ-005 |
+| `partial_failure` | 일부 저장소 상태 조회 실패 | 해당 카드만 오류 | 카드 재시도 | - |
+| `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+### A-001 수집 파이프라인 콘솔
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `loading_initial` | 진입 | 지표 그리드 skeleton | - | - |
+| `ready` | 정상 | 지표 + 실패 대기열 + 스캔 결과 | - | FR-ADMIN-001 |
+| `stale` | 지표 신선도 30초 초과 | 마지막 갱신 시각 표시 | 수동 갱신 | FR-ADMIN-001 |
+| `degraded` | 검색 엔진 장애 | "검색 실패·수집 계속" 명시 배너 | 상태 페이지 | NFR-004 |
+| `partial_failure` | 일부 지표 조회 실패 | 해당 항목만 미확인 표시 | 재시도 | FR-ADMIN-001 |
+| `operation_pending` | 일괄 재처리 진행 중 | 진행률 + 취소 | 취소 | FR-ING-007 |
+| `no_permission` | `operator` 아님 | 필요 역할 표시 | - | FR-ADMIN-001 |
+| `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+### A-002 저장소 등록 관리
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `loading_initial` / `ready` | - | 목록 + 폼 | - | FR-ING-009 |
+| `empty_no_repository` | 등록 0건 | 첫 등록 안내 | 등록 | FR-ING-009 |
+| `error_no_access` | 대상 저장소 접근 권한 없음 | 필요 권한 표시 | 권한 요청 | FR-ING-009 |
+| `error_branch_limit` | 브랜치 10개 초과 | 상한 명시 | 브랜치 축소 | FR-ING-009 |
+| `operation_pending` | 등록 후 백필 진행 | 진행률 | - | FR-ING-006 |
+| `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+### A-003 인덱스·잡 운영
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `loading_initial` / `ready` | - | 잡 목록 + 실행 폼 + 인덱스 상태 | - | FR-ADMIN-002 |
+| `job_running` | 실행 중 잡 존재 | 진행률 30초 갱신 + 중단 버튼 | 중단 | FR-ADMIN-002 |
+| `error_job_conflict` | 동일 대상 잡 중복 | 실행 중 잡 ID 표시 | 기존 잡 확인 | FR-ADMIN-002 |
+| `error_job_failed` | 잡 실패 | 실패 사유와 재실행 경로 | 재실행 | FR-ADMIN-002 |
+| `reindex_dual_write` | 재색인 이중 쓰기 중 | 인덱스 패널에 상시 표시 | - | FR-ING-008 |
+| `operation_pending` | 재채번 진행 | 진행률 + 영향 범위 | - | FR-SEQ-005 |
+| `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+### A-004 감사 로그
+
+| 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| `loading_initial` / `loading_more` / `ready` | - | 필터 + 목록 + 커서 페이저 | - | FR-AUTH-004 |
+| `empty_no_result` | 조건 결과 0건 | 필터 완화 제안 | 필터 변경 | FR-AUTH-004 |
+| `no_permission` | `security_officer` 아님 | 필요 역할 표시(HTTP 403) | - | NFR-006 |
+| `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+## 4. 상태 전이 규칙
+
+1. `loading_initial` → `ready` | `empty_*` | `error_*`. `loading_initial`에서 직접 `partial_failure`로 가지 않는다. 최소 1개 섹션은 결정되어야 한다.
+2. `ready` → `loading_more` → `ready`. 추가 로딩은 기존 결과를 비우지 않는다.
+3. `enrichment_pending` → `ready`는 사용자의 명시적 재조회로만 전이한다. 자동 폴링으로 화면이 갑자기 바뀌지 않는다.
+4. `sequence_reassigning` → `ready` 전이 시 표시 중인 시퀀스 값이 바뀔 수 있다. 전이 시점에 배너로 갱신 사실을 알린다.
+5. `auth_expired`는 모든 상태에서 진입 가능하며, 재인증 후 직전 상태와 URL로 복귀한다.
+6. `offline` → 온라인 복귀 시 자동 재조회하지 않는다. 재조회 액션을 제시한다. 자동 재조회는 조사 중이던 화면을 사용자 동의 없이 갱신한다.
+
+## 5. 상태별 문구 원칙
+
+- 원인을 먼저 쓰고 행동을 뒤에 쓴다. "결과가 없습니다" 대신 "이 조건에 맞는 PR이 없습니다. `author:` 조건을 제거하면 42건이 표시됩니다."
+- 시스템 내부 용어를 노출하지 않는다. "shard failure" 대신 "일부 결과를 가져오지 못했습니다".
+- 복구 불가 오류에는 상관 ID를 표시해 운영자 문의에 사용하게 한다.
+- 권한 부족 문구에는 필요한 역할명을 그대로 적는다. "권한이 없습니다" 대신 "이 화면은 운영자(`operator`) 역할이 필요합니다".
