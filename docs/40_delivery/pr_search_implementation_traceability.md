@@ -22,7 +22,7 @@
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | done | 에이전트 | `claude/pr-commit-search-dashboard-9f6r86` | typecheck·lint·lint:deps·test(20건)·build 통과. 헬스 4종 HTTP 200 (6.1장) | `docker compose up`은 환경 제약으로 미검증 (DEV-001) |
+| WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | done | 에이전트 | `f36ab06` / PR #2 | typecheck·lint·lint:deps·test(20건)·build 통과. 헬스 4종 HTTP 200 (6.1장) | `docker compose up`은 환경 제약으로 미검증 (DEV-001) |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | todo | - | - | - | - |
 | WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | todo | - | - | - | - |
 | WP-004 | 웹훅 수신 게이트웨이 | REL-001 | todo | - | - | - | - |
@@ -160,7 +160,7 @@
 
 실제로 실행한 명령과 결과만 적는다. 실행하지 않은 검증은 실행하지 않았다고 적는다.
 
-**WP-001** (2026-08-19, Node v22.22.2 / pnpm 10.33.0)
+**WP-001** (2026-08-19, Node v22.22.2 / pnpm 10.33.0, 커밋 `f36ab06`, PR #2)
 
 | 명령 | 결과 |
 | --- | --- |
