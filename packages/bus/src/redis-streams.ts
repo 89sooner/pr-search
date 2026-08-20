@@ -18,12 +18,14 @@
 
 import { Redis } from 'ioredis';
 import { allPartitions, partitionFor } from './partition.js';
+import { retryDelayMs } from './backoff.js';
 import { partitionCount, partitionStream } from './topics.js';
 import type {
   DeliveredEvent,
   EventBus,
   EventEnvelope,
   EventHandler,
+  HandlerDisposition,
   SubscribeOptions,
   Subscription,
 } from './types.js';
@@ -195,10 +197,40 @@ async function ensureGroup(redis: Redis, stream: string, group: string): Promise
   }
 }
 
+/**
+ * 재시도·유예 상태 (CR-010, DEV-014).
+ *
+ * Redis의 전달 횟수는 물리적이라 `defer`로 미룬 것까지 센다. 논리적 재시도만
+ * 세려면 따로 기록해야 한다.
+ *
+ * 이 상태는 프로세스 메모리에만 있다. 재기동하면 논리 횟수가 0으로 돌아가
+ * 이벤트가 5회보다 많이 재시도될 수 있다 — at-least-once 범위 안의 동작이며,
+ * 실패 대기열은 정확성 경계가 아니라 운영 분류 도구다.
+ */
+interface AttemptState {
+  /** 논리적 재시도 횟수. `defer`는 올리지 않는다. */
+  retries: number;
+  /** 이 시각 전에는 다시 전달하지 않는다. */
+  nextAttemptAt: number;
+}
+
+/**
+ * 재시도 상태를 찾는 열쇠.
+ *
+ * **스트림 엔트리 ID는 스트림 안에서만 유일하다.** `<밀리초>-<일련번호>` 형식이라
+ * 같은 밀리초에 서로 다른 파티션 스트림에 하나씩 들어가면 둘 다 `…-0`이 된다.
+ * ID만으로 상태를 찾으면 한 파티션에서 미룬 이벤트가 다른 파티션의 무관한
+ * 이벤트를 함께 묶어 버린다 — 파티션 격리가 조용히 무너진다.
+ */
+function attemptKey(stream: string, messageId: string): string {
+  return `${stream}\u0000${messageId}`;
+}
+
 class RedisSubscription {
   #running = false;
   #stopped = false;
   #loop: Promise<void> = Promise.resolve();
+  readonly #attempts = new Map<string, AttemptState>();
 
   constructor(
     private readonly redis: Redis,
@@ -241,8 +273,12 @@ class RedisSubscription {
 
         if (this.#stopped) return;
         if (fresh.length === 0) {
-          // 전 파티션이 재시도 대기 중이다. 블로킹 읽기가 없으니 잠깐 쉰다.
-          await sleep(DEFAULTS.idleSleepMs);
+          // 전 파티션이 재시도·유예 대기 중이다. 블로킹 읽기가 없으니 쉰다.
+          // 다음 시도 시각까지 쉬되 blockMs로 잘라 종료 응답성을 지킨다 —
+          // 10분 유예 때문에 10분 동안 종료 신호를 못 보면 안 된다.
+          const earliest = this.#earliestAttemptAt();
+          const waitMs = earliest === undefined ? DEFAULTS.idleSleepMs : earliest - Date.now();
+          await sleep(Math.max(DEFAULTS.idleSleepMs, Math.min(waitMs, blockMs)));
           continue;
         }
         await this.#readFresh(fresh, batchSize, blockMs);
@@ -272,14 +308,17 @@ class RedisSubscription {
     const stale = await this.redis.xpending(stream, this.group, 'IDLE', claimIdleMs, '-', '+', batchSize);
     if (!Array.isArray(stale) || stale.length === 0) return true;
 
-    const deliveryCounts = new Map<string, number>();
     const ids: string[] = [];
     for (const row of stale) {
       if (!Array.isArray(row) || typeof row[0] !== 'string') continue;
       ids.push(row[0]);
-      // XPENDING이 주는 값은 "지금까지" 전달된 횟수다. 바로 아래 XCLAIM이
-      // 카운터를 하나 올리고, 그 전달이 곧 이번 전달이다.
-      deliveryCounts.set(row[0], Number(row[3] ?? 1) + 1);
+      // 이 구독이 처음 보는 메시지라면 Redis의 물리적 전달 횟수를 논리 횟수의
+      // 하한으로 삼는다. 죽은 소비자에게서 넘겨받은 이벤트가 "처음 전달"로
+      // 보이면 재시도 예산이 그때마다 되살아난다.
+      const key = attemptKey(stream, row[0]);
+      if (!this.#attempts.has(key)) {
+        this.#attempts.set(key, { retries: Math.max(0, Number(row[3] ?? 1)), nextAttemptAt: 0 });
+      }
     }
     if (ids.length === 0) return true;
 
@@ -289,10 +328,9 @@ class RedisSubscription {
     for (const entry of claimed) {
       if (this.#stopped) return true;
       if (!isStreamEntry(entry)) continue;
-      const ok = await this.#deliver(stream, entry, partition, deliveryCounts.get(entry[0]) ?? 1);
-      // 재시도가 또 실패했다. 이 파티션은 여기서 멈춘다 — 다음 것을 처리하면
-      // 순서가 깨진다.
-      if (!ok) return true;
+      // 재시도가 또 실패했거나 아직 때가 아니다. 이 파티션은 여기서 멈춘다 —
+      // 다음 것을 처리하면 순서가 깨진다.
+      if (!(await this.#deliver(stream, entry, partition))) return true;
     }
 
     const remaining = await this.redis.xpending(stream, this.group);
@@ -326,32 +364,74 @@ class RedisSubscription {
         if (this.#stopped) return;
         if (!isStreamEntry(entry)) continue;
         // 실패하면 그 파티션의 남은 이벤트는 이번 회차에서 건드리지 않는다.
-        if (!(await this.#deliver(stream, entry, partition, 1))) break;
+        if (!(await this.#deliver(stream, entry, partition))) break;
       }
     }
   }
 
-  /** @returns 처리에 성공해 ack했으면 `true`. */
-  async #deliver(
-    stream: string,
-    entry: StreamEntry,
-    partition: number,
-    deliveryCount: number,
-  ): Promise<boolean> {
-    const event = toDelivered(entry, partition, deliveryCount);
+  /**
+   * @returns ack해서 파티션을 진행시켰으면 `true`. 미ack로 남겼으면 `false`.
+   */
+  async #deliver(stream: string, entry: StreamEntry, partition: number): Promise<boolean> {
+    const messageId = entry[0];
+    const key = attemptKey(stream, messageId);
+    const state = this.#attempts.get(key);
+    const now = Date.now();
+
+    // 아직 때가 아니다. 핸들러를 부르지 않는다 — retryAt 이전에 다시
+    // 나가지 않는다는 계약이 여기서 지켜진다.
+    if (state !== undefined && state.nextAttemptAt > now) return false;
+
+    const event = toDelivered(entry, partition, (state?.retries ?? 0) + 1);
     if (event === null) {
-      await this.redis.xack(stream, this.group, entry[0]);
+      await this.redis.xack(stream, this.group, messageId);
+      this.#attempts.delete(key);
       return true;
     }
 
+    let disposition: HandlerDisposition;
     try {
-      await this.handler(event);
+      disposition = (await this.handler(event)) ?? { kind: 'ack' };
     } catch (error) {
       this.options.onError?.(error, event);
-      return false;
+      disposition = { kind: 'retry' };
     }
-    await this.redis.xack(stream, this.group, entry[0]);
-    return true;
+
+    switch (disposition.kind) {
+      case 'ack':
+      case 'dead_letter': {
+        // 종료 상태다. ack해서 파티션을 푼다 — 실패 대기열 기록은 호출 측 몫이고,
+        // 여기서 계속 미ack로 두면 그 파티션이 영영 막힌다.
+        await this.redis.xack(stream, this.group, messageId);
+        this.#attempts.delete(key);
+        return true;
+      }
+      case 'defer': {
+        // 재시도 횟수를 올리지 않는다. 한도 대기는 실패가 아니다.
+        this.#attempts.set(key, {
+          retries: state?.retries ?? 0,
+          nextAttemptAt: disposition.until.getTime(),
+        });
+        return false;
+      }
+      case 'retry': {
+        const retries = (state?.retries ?? 0) + 1;
+        this.#attempts.set(key, {
+          retries,
+          nextAttemptAt: Date.now() + retryDelayMs(retries, this.options.random ?? Math.random),
+        });
+        return false;
+      }
+    }
+  }
+
+  /** 이 파티션에서 다음 전달이 가능해지는 시각. 없으면 `undefined`. */
+  #earliestAttemptAt(): number | undefined {
+    let earliest: number | undefined;
+    for (const state of this.#attempts.values()) {
+      if (earliest === undefined || state.nextAttemptAt < earliest) earliest = state.nextAttemptAt;
+    }
+    return earliest;
   }
 }
 

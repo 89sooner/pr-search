@@ -275,3 +275,45 @@ describe('DoD 5: 토큰 값이 로그에 남지 않는다 (THR-009)', () => {
     expect(serialized).not.toContain('authorization');
   });
 });
+
+describe('절삭 판정 (FR-ING-004 AC-4, FR-SRCH-003 AC-4)', () => {
+  it('상한을 정확히 채운 것은 잘린 것이 아니다', async () => {
+    await build({ resources: { files: 3000, commits: 250 } });
+    const { client } = harness!;
+
+    const files = await client.listPullRequestFilesPaged(REPO, 1234);
+    expect(files.items).toHaveLength(3000);
+    expect(files.truncated).toBe(false);
+
+    const commits = await client.listPullRequestCommitsPaged(REPO, 1234);
+    expect(commits.items).toHaveLength(250);
+    expect(commits.truncated).toBe(false);
+  });
+
+  it('상한을 넘으면 잘라 내고 잘렸다고 말한다', async () => {
+    await build({ resources: { files: 3001, commits: 251 } });
+    const { client } = harness!;
+
+    const files = await client.listPullRequestFilesPaged(REPO, 1234);
+    expect(files.items).toHaveLength(3000);
+    expect(files.truncated).toBe(true);
+    expect(files.maxItems).toBe(3000);
+
+    const commits = await client.listPullRequestCommitsPaged(REPO, 1234);
+    expect(commits.items).toHaveLength(250);
+    expect(commits.truncated).toBe(true);
+  });
+
+  it('길이만 보는 판정과 실제 판정이 갈리는 지점을 고정한다', async () => {
+    // 이 시험이 지키는 것: `items.length === 3000`은 절삭의 증거가 아니다.
+    await build({ resources: { files: 3000 } });
+    const exact = await harness!.client.listPullRequestFilesPaged(REPO, 1234);
+    await harness?.ghe.close();
+
+    await build({ resources: { files: 3001 } });
+    const cut = await harness!.client.listPullRequestFilesPaged(REPO, 1234);
+
+    expect(exact.items.length).toBe(cut.items.length);
+    expect(exact.truncated).not.toBe(cut.truncated);
+  });
+});

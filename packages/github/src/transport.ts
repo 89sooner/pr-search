@@ -140,12 +140,28 @@ export class GitHubTransport {
     });
   }
 
-  /** 페이지네이션. `per_page` 상한과 최대 페이지 수로 폭주를 막는다. */
+  /** 페이지네이션. `per_page` 상한과 최대 항목 수로 폭주를 막는다. */
   async getAll<T>(options: RequestOptions & { perPage?: number; maxItems?: number }): Promise<T[]> {
+    // 얕은 복사 한 번. 호출 측이 계속 가변 배열을 받도록 계약을 유지한다.
+    return [...(await this.getAllPaged<T>(options)).items];
+  }
+
+  /**
+   * 절삭 여부까지 알려 주는 페이지네이션 (FR-ING-004 AC-4).
+   *
+   * **배열 길이만으로는 절삭을 알 수 없다.** 파일이 정확히 3000개인 PR과
+   * 3000개에서 잘린 PR은 둘 다 길이 3000이다. 그래서 상한을 **넘겨** 한 번 더
+   * 읽어 보고, 더 있으면 그때 `truncated`를 세운다. 여분 요청은 자원이 상한에
+   * 닿았을 때만 나가므로 흔한 경로에는 비용이 없다.
+   */
+  async getAllPaged<T>(
+    options: RequestOptions & { perPage?: number; maxItems?: number },
+  ): Promise<PagedResult<T>> {
     const perPage = options.perPage ?? 100;
     const maxItems = options.maxItems ?? 3000;
     const collected: T[] = [];
-    for (let page = 1; collected.length < maxItems; page += 1) {
+    // `<=`가 핵심이다. `<`면 정확히 상한에서 멈춰 "더 있는지"를 영영 모른다.
+    for (let page = 1; collected.length <= maxItems; page += 1) {
       const batch = await this.get<T[]>({
         ...options,
         query: { ...options.query, per_page: perPage, page },
@@ -154,6 +170,15 @@ export class GitHubTransport {
       collected.push(...batch);
       if (batch.length < perPage) break;
     }
-    return collected.slice(0, maxItems);
+    return { items: collected.slice(0, maxItems), truncated: collected.length > maxItems, maxItems };
   }
+}
+
+/** 상한에 걸려 잘렸는지를 호출 측이 추측하지 않도록 함께 돌려준다. */
+export interface PagedResult<T> {
+  readonly items: readonly T[];
+  /** 상한을 넘는 항목이 실제로 더 있었다. */
+  readonly truncated: boolean;
+  /** 적용된 상한. 표식의 근거를 로그에 남길 때 쓴다. */
+  readonly maxItems: number;
 }

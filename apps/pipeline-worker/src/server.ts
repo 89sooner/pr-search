@@ -3,16 +3,22 @@
  *
  * ADR-001에 따라 워커는 Fastify가 아닌 순수 Node 프로세스다. 다만 인프라 3장의
  * 하트비트와 WP-001 DoD("각 앱 헬스체크가 200을 반환한다")를 만족시키기 위해
- * `node:http`로 최소 헬스 엔드포인트만 노출한다. 처리 루프는 WP-007 이후가 채운다.
+ * `node:http`로 최소 엔드포인트만 노출한다 — 헬스체크와 지표 스크레이프.
  */
 
 import { createServer, type Server } from 'node:http';
 import type { HealthResponse } from '@prs/contracts';
+import { METRICS_CONTENT_TYPE } from './metrics.js';
 
 export const SERVICE_NAME = 'pipeline-worker' as const;
 export const DEFAULT_PORT = 3003;
 
-export function buildServer(): Server {
+export interface ServerOptions {
+  /** 지표 렌더러. 주지 않으면 `/metrics`는 404다 — 없는 것을 있는 척하지 않는다. */
+  readonly metrics?: { render(): string };
+}
+
+export function buildServer(options: ServerOptions = {}): Server {
   return createServer((request, response) => {
     if (request.method === 'GET' && request.url === '/healthz') {
       const body: HealthResponse = {
@@ -22,6 +28,12 @@ export function buildServer(): Server {
       };
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       response.end(JSON.stringify(body));
+      return;
+    }
+
+    if (request.method === 'GET' && request.url === '/metrics' && options.metrics !== undefined) {
+      response.writeHead(200, { 'content-type': METRICS_CONTENT_TYPE });
+      response.end(options.metrics.render());
       return;
     }
 

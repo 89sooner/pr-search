@@ -5,6 +5,8 @@
  * 남기지 않는다 (보안 문서 6장, THR-009).
  */
 
+import type { InstallationBinding } from './token-pool.js';
+
 export interface GitHubEnv {
   readonly [key: string]: string | undefined;
 }
@@ -47,4 +49,46 @@ export function resolveGitHubConfig(env: GitHubEnv = process.env): GitHubAppConf
 
 export function hasAppCredentials(config: GitHubAppConfig): boolean {
   return config.appId !== '' && config.privateKey !== '';
+}
+
+/**
+ * `org -> installationId` binding의 출처 (CR-010, DEV-015).
+ *
+ * `GHE_INSTALLATIONS="acme:12345,contoso:67890"` 한 곳에서만 읽는다. 조직마다
+ * 설치가 다르고 설치마다 rate limit이 따로 걸리므로, 이 표가 곧 "어느 한도를
+ * 쓰는가"의 정의다. **임의의 고정 installation ID를 코드에 넣지 않는다** —
+ * 그러면 다른 조직 저장소의 이벤트가 조용히 처리되지 않는다.
+ *
+ * 형식이 깨지면 기동 시점에 던진다. 잘못된 항목을 조용히 건너뛰면 그 조직의
+ * 이벤트만 영문 모르게 실패 대기열로 간다.
+ *
+ * 장래에 저장소 등록(FR-ING-009) 기반 조회로 옮기더라도 호출 측은 이 함수
+ * 하나만 바라보므로 교체 지점이 한 곳이다.
+ */
+export function parseInstallations(env: GitHubEnv = process.env): InstallationBinding[] {
+  const raw = (env['GHE_INSTALLATIONS'] ?? '').trim();
+  if (raw === '') return [];
+
+  const bindings: InstallationBinding[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw.split(',')) {
+    const item = entry.trim();
+    if (item === '') continue;
+
+    const separator = item.lastIndexOf(':');
+    const org = separator === -1 ? '' : item.slice(0, separator).trim();
+    const idText = separator === -1 ? '' : item.slice(separator + 1).trim();
+    const installationId = Number(idText);
+    if (org === '' || !/^[0-9]+$/.test(idText) || !Number.isSafeInteger(installationId) || installationId <= 0) {
+      throw new Error(`GHE_INSTALLATIONS 항목 형식이 잘못됐다: ${item} (org:installationId)`);
+    }
+
+    const key = org.toLowerCase();
+    if (seen.has(key)) {
+      throw new Error(`GHE_INSTALLATIONS에 조직이 두 번 나온다: ${org}`);
+    }
+    seen.add(key);
+    bindings.push({ org, installationId });
+  }
+  return bindings;
 }

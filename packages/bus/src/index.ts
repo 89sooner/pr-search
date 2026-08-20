@@ -12,9 +12,13 @@ export type {
   EventBus,
   EventEnvelope,
   EventHandler,
+  HandlerDisposition,
   SubscribeOptions,
   Subscription,
 } from './types.js';
+export { ack, retry, deferUntil, deadLetter } from './types.js';
+
+export { MAX_RETRIES, RETRY_DELAYS_MS, retryDelayMs } from './backoff.js';
 
 export {
   CONSUMER_GROUPS,
