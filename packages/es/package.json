@@ -11,12 +11,18 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --build"
   },
   "dependencies": {
-    "@prs/domain": "workspace:*"
+    "@prs/domain": "workspace:*",
+    "@elastic/elasticsearch": "8.19.2"
+  },
+  "bin": {
+    "prs-es": "./dist/cli.js"
   }
 }

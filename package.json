@@ -22,7 +22,8 @@
     "db:migrate": "pnpm --filter @prs/db exec node dist/cli.js migrate",
     "db:seed": "pnpm --filter @prs/db exec node dist/cli.js seed",
     "db:partitions": "pnpm --filter @prs/db exec node dist/cli.js partitions",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "es:apply-mappings": "pnpm --filter @prs/es exec node dist/cli.js apply-mappings"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

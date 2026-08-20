@@ -17,7 +17,7 @@ packages/
   domain/                 도메인 타입, 관계 어휘, 상수        @prs/domain
   contracts/              API DTO와 오류 코드                 @prs/contracts
   query/                  구조화 질의 파서와 AST              @prs/query   (WP-025)
-  es/                     Elasticsearch 매핑과 질의 빌더      @prs/es      (WP-003)
+  es/                     Elasticsearch 매핑과 접근 범위 경계  @prs/es
   db/                     PostgreSQL 리포지터리 계층          @prs/db      (WP-002)
   github/                 GHE REST 클라이언트                 @prs/github  (WP-006)
   bus/                    EventBus 포트와 Redis Streams       @prs/bus     (WP-005)
@@ -48,6 +48,7 @@ pnpm install
 docker compose up -d     # PostgreSQL 16 / Elasticsearch 8.x / Redis 7
 pnpm db:migrate          # 스키마 적용
 pnpm db:seed             # 개발용 합성 시드
+pnpm es:apply-mappings   # ES 인덱스 4종 + 별칭
 pnpm dev                 # 전 앱 개발 서버
 ```
 
@@ -57,10 +58,10 @@ pnpm dev                 # 전 앱 개발 서버
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm lint:deps && pnpm test && pnpm build
-pnpm test:integration    # 실제 PostgreSQL 필요
+pnpm test:integration    # 실제 PostgreSQL·Elasticsearch 필요
 ```
 
-`pnpm test`는 백킹 서비스 없이 돌고, `pnpm test:integration`은 실제 PostgreSQL에 붙는다. 접속 정보는 `DATABASE_URL` 또는 `POSTGRES_*` 환경 변수에서 읽으며 테스트는 `POSTGRES_TEST_DB`(기본 `prs_test`)를 쓴다.
+`pnpm test`는 백킹 서비스 없이 돌고, `pnpm test:integration`은 실제 PostgreSQL·Elasticsearch에 붙는다. 접속 정보는 `DATABASE_URL`/`POSTGRES_*`와 `ELASTICSEARCH_NODE` 환경 변수에서 읽으며 DB 테스트는 `POSTGRES_TEST_DB`(기본 `prs_test`)를 쓴다.
 
 CI(`.github/workflows/ci.yml`)가 같은 순서로 돈다.
 
