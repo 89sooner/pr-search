@@ -189,3 +189,29 @@ Gate 7이 이 제품 고유의 게이트다. 다른 모든 지표가 통과해�
 `srs_final.md`가 baseline이므로 이제 그 문서의 모든 변경은 `../00_governance/change_control.md`에 CR을 먼저 등록해야 한다. 구현 중 발견한 불일치는 원장에 `DEV-###`를 등록하고 CR로 연결한다.
 
 OD-001(미러 허용), OD-002(권한 소스), OD-004(릴리스 앵커), OD-005(nori)는 두 경로 모두 구현하거나 대체 경로가 있어 착수를 막지 않는다. 다만 결정이 늦으면 두 경로를 유지하는 비용이 계속 든다.
+
+## GitHub Operations Plane 착수 조건 (CR-005 신규)
+
+REL-007 착수 전에 아래가 준비되어야 한다. Search/Data Plane(REL-001~006)이 end-to-end로 닫히기 전에는 시작하지 않는다.
+
+| 항목 | 담당 | 상태 |
+| --- | --- | --- |
+| GitHub Operations App 발급 (수집용과 별개, 명시적으로 필요한 권한만) | Security | 미완 |
+| Operations App 사용자 인가 흐름 승인 | Security | 미완 |
+| 비밀 저장소 연동 (위임 토큰 보관) | Platform | 미완 |
+| `gh` 버전 고정과 실행기 이미지 빌드 파이프라인 | Platform | 미완 |
+| `gh-executor` 런타임 프로비저닝 (CPU·메모리·임시 디스크·동시 실행 상한) | Platform | 미완 |
+| capability 의미 오버라이드 초안 (위험도·필요 권한·비밀 여부) | Product + Security | 미완 |
+
+**금지 지름길 (추가)**
+
+16. `search-api`나 `pipeline-worker`에서 `gh`를 직접 실행하는 것
+17. shell을 경유해 `gh`를 실행하는 것 (`shell: true`, `bash -c`, `sh -c`, `eval`)
+18. 사용자 입력 문자열을 명령 문자열로 연결하는 것
+19. 수집용 설치 토큰으로 사용자 요청 작업을 실행하는 것
+20. 감사 기록 없이 쓰기 작업을 실행하는 것
+21. 위험도 확인을 생략하고 쓰기 작업을 실행하는 것
+22. capability를 목록에서 조용히 숨기는 것 — 미지원·차단도 사유와 함께 노출한다
+23. `gh api`로 command 경로의 정책을 우회하는 것
+24. 토큰·비밀을 argv·로그·이력·감사에 남기는 것
+25. 쓰기 작업을 자동 재시도하는 것

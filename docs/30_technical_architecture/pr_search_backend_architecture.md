@@ -356,3 +356,45 @@ Elasticsearch와 PostgreSQL 사이에는 분산 트랜잭션을 쓰지 않는다
 | 회귀(정확성) | 시퀀스 값 안정성, SHA↔PR 매핑, `git log --first-parent` 대조 | QA 6장 회귀 검수 자동화 |
 
 **시퀀스 회귀 테스트가 이 제품의 가장 중요한 테스트다.** 합성 저장소에 강제 푸시·리베이스·직접 푸시·병합 커밋을 섞은 히스토리를 만들고, 채번 결과가 `git rev-list --first-parent --reverse`와 정확히 일치하는지 검증한다.
+
+## 12. GitHub Operations 모듈 (CR-005 신규)
+
+### 12.1 모듈
+
+| 모듈 | 배포 단위 | 책임 | 관련 FR |
+| --- | --- | --- | --- |
+| `gh-registry` | `search-api` | capability manifest 로드·검색·버전 대조 | FR-GH-001, FR-GH-011 |
+| `gh-command` | `search-api` + `@prs/gh-cli` | 구조화 명령 모델, 제약 검증, argv 조립 | FR-GH-002, FR-GH-003 |
+| `gh-policy` | `search-api` | 위험도 판정, 정책 평가, 확인·승인 게이트 | FR-GH-009, FR-GH-013 |
+| `gh-identity` | `search-api` | Operations App 인가, 위임 토큰 수명주기, 권한 교집합 판정 | FR-GH-008 |
+| `gh-exec` | `gh-executor` | 프로세스 실행, workspace, 스트리밍, 취소, 타임아웃 | FR-GH-002, FR-GH-006, FR-GH-007 |
+| `gh-recipe` | `search-api` + `gh-executor` | Recipe 정의 검증, 단계 진행, 출력 바인딩 | FR-GH-005 |
+| `gh-audit` | `search-api` | 실행 감사 선기록, 이력 조회, 재실행 | FR-GH-012 |
+
+### 12.2 실행 처리 경로
+
+```text
+1. 요청 수신          중복 방지 키 확인 → 기존 실행이면 그것을 반환
+2. capability 해석    manifest에 없으면 GH_CAPABILITY_UNKNOWN
+3. 버전 대조          실행기 gh ≠ manifest → GH_REGISTRY_STALE
+4. 제약 검증          conflicts/requires/oneOf → GH_CONSTRAINT_VIOLATION
+5. 신원 확인          위임 연결 없음/만료 → GH_IDENTITY_REQUIRED
+6. 권한 판정          App 권한 ∩ 사용자 권한 → GH_PERMISSION_DENIED
+7. 정책 평가          차단 → GH_POLICY_BLOCKED
+8. 위험도 게이트      R2+ 확인 미수행 → GH_CONFIRMATION_REQUIRED
+                     R3 승인 필요 → GH_APPROVAL_REQUIRED
+9. 대상 재조회        R2+ 상태 변화 → GH_TARGET_CHANGED
+10. 자원 잠금         상충 작업 진행 중 → GH_RESOURCE_LOCKED
+11. 감사 선기록       실패 시 실행하지 않는다
+12. 큐 적재           prs:gh:executions
+13. 실행기 처리       토큰 주입 → spawn → 스트리밍 → 종료 → 토큰 폐기
+14. 결과 기록         종료 코드, 출력 해시, 아티팩트
+```
+
+11번이 12번보다 앞선다. 감사 없이 시작된 쓰기 실행은 존재할 수 없다 (FR-GH-012 AC-6, NFR-012).
+
+### 12.3 실패 처리
+
+- **쓰기 작업은 자동 재시도하지 않는다.** 타임아웃된 `pr merge`가 실제로 머지되었는지 실행기는 알 수 없다. 재시도 판단은 결과를 본 사용자가 한다.
+- 실행기 장애로 남은 `running` 행은 JOB-GH-007이 `failed`로 회수한다.
+- 스트리밍 연결이 끊겨도 실행은 계속된다. 재접속 시 현재 상태와 누적 출력을 다시 전달한다.

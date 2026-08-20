@@ -37,12 +37,32 @@ Product Surface
 │  ├─ W-007 관계 그래프        (조건부 범위, REL-004 ACC-06)
 │  ├─ W-008 저장된 검색
 │  └─ W-009 저장소 개요
+├─ GitHub Operations (CR-005 신규)
+│  ├─ W-010 GitHub Command Center      (전 capability 진입점)
+│  ├─ W-011 PR 작업
+│  ├─ W-012 Issue·Discussion 작업
+│  ├─ W-013 저장소 작업
+│  ├─ W-014 Actions·워크플로·실행
+│  ├─ W-015 릴리스 작업
+│  ├─ W-016 프로젝트 작업
+│  ├─ W-017 Codespace·원격 작업 공간
+│  ├─ W-018 저장소 설정·보안 작업
+│  ├─ W-019 GitHub 검색·조직·상태
+│  ├─ W-020 gh API 탐색기
+│  ├─ W-021 실행 이력·저장된 Recipe
+│  ├─ W-022 고급 GitHub 도구
+│  └─ W-023 Recipe 빌더
 └─ Admin Console (운영·보안)
    ├─ A-001 수집 파이프라인 콘솔
    ├─ A-002 저장소 등록 관리
    ├─ A-003 인덱스·잡 운영
-   └─ A-004 감사 로그
+   ├─ A-004 감사 로그
+   ├─ A-005 GitHub 실행 정책        (CR-005 신규)
+   ├─ A-006 gh capability·버전 레지스트리 (CR-005 신규)
+   └─ A-007 GitHub 작업 감사·승인    (CR-005 신규)
 ```
+
+두 Plane은 셸에서 분리된 영역으로 표현한다. Search Workspace의 화면은 읽기 전용 파생 데이터를 보여주고, GitHub Operations의 화면은 실제 GitHub 상태를 바꾼다. 사용자가 지금 어느 쪽에 있는지 헷갈리면 안 되므로, Operations 영역은 인증된 GitHub 신원과 대상 호스트를 항상 표시한다.
 
 전역 셸 구조 (`AppShell`):
 
@@ -83,6 +103,31 @@ Product Surface
 | A-002 | 저장소 등록 관리 | 저장소 등록·해제, 시퀀스 대상 브랜치, 미러 설정 | FR-ING-009 | P1 |
 | A-003 | 인덱스·잡 운영 | 백필·재색인·채번·정합성 점검 실행과 진행률 | FR-ING-006, FR-ING-008, FR-ADMIN-002, FR-ADMIN-003, FR-SEQ-005 | P1 |
 | A-004 | 감사 로그 | 감사 기록 조회·필터·내보내기 이력 | FR-AUTH-004 | P1 |
+
+### 4.1 GitHub Operations 화면 (CR-005 신규)
+
+| 화면 ID | 화면명 | 목적 | 관련 요구사항 | 우선순위 |
+| --- | --- | --- | --- | --- |
+| W-010 | GitHub Command Center | capability 검색, 생성형 command 폼, 실행 미리보기·실행·결과. 전 capability의 진입점 | FR-GH-001, FR-GH-002, FR-GH-003, FR-GH-006, FR-GH-007, FR-GH-008, FR-GH-009, FR-GH-011 | P0 |
+| W-011 | PR 작업 | PR 대상 작업(생성·목록·조회·상태·체크·차이·편집·코멘트·리뷰·준비/초안·브랜치 갱신·닫기·재개·머지·되돌리기·잠금·체크아웃) | FR-GH-004, FR-GH-009 | P0 |
+| W-012 | Issue·Discussion 작업 | Issue와 Discussion의 생성·조회·편집·상태 변경·코멘트·이관·개발 브랜치·하위 이슈 | FR-GH-004 | P1 |
+| W-013 | 저장소 작업 | 저장소 조회·생성·포크·동기화·편집·이름 변경·보관·삭제·배포 키·오토링크·파일 읽기 | FR-GH-004, FR-GH-009 | P1 |
+| W-014 | Actions·워크플로·실행 | 워크플로 목록·활성화·수동 실행, 실행 조회·감시·재실행·취소·삭제, 아티팩트, 캐시 | FR-GH-004, FR-GH-006 | P1 |
+| W-015 | 릴리스 작업 | 릴리스 생성·조회·편집·삭제, 자산 업로드·내려받기·삭제·검증 | FR-GH-004, FR-GH-007 | P1 |
+| W-016 | 프로젝트 작업 | 프로젝트 생성·조회·편집·복사·닫기, 필드·항목 관리, 연결/해제 | FR-GH-004 | P2 |
+| W-017 | Codespace·원격 작업 공간 | Codespace 생성·목록·중지·삭제·재빌드·포트·로그. 대화형 기능은 분류에 따라 표시 | FR-GH-004, FR-GH-013 | P2 |
+| W-018 | 저장소 설정·보안 작업 | 시크릿·변수·레이블·룰셋·GPG/SSH 키. 별도 보안 정책 적용 | FR-GH-004, FR-GH-009 | P2 |
+| W-019 | GitHub 검색·조직·상태 | `gh search`, `gh org`, `gh status`의 웹 표현 | FR-GH-004 | P2 |
+| W-020 | gh API 탐색기 | REST·GraphQL 요청 구성과 실행. 헤더·호스트 제한과 위험도 정책 적용 | FR-GH-010 | P1 |
+| W-021 | 실행 이력·저장된 Recipe | 실행 이력 조회·필터·재실행, 아티팩트 내려받기, 저장된 Recipe 목록 | FR-GH-012, FR-GH-005, FR-GH-006, FR-GH-007 | P0 |
+| W-022 | 고급 GitHub 도구 | Gist, Attestation, Skill, Agent-task, Extension 탐색, `licenses`. 정책 분류를 함께 표시 | FR-GH-004, FR-GH-013 | P2 |
+| W-023 | Recipe 빌더 | 등록된 capability만 조합하는 다단계 작업 정의·검증·저장 | FR-GH-005, FR-GH-003 | P2 |
+
+| 화면 ID | 화면명 | 목적 | 관련 요구사항 | 우선순위 |
+| --- | --- | --- | --- | --- |
+| A-005 | GitHub 실행 정책 | capability 허용/차단, 위험도 재정의, 승인 필요 지정, `gh api` 엔드포인트 정책, 확장 허용 목록 | FR-GH-009, FR-GH-010, FR-GH-013 | P1 |
+| A-006 | gh capability·버전 레지스트리 | manifest 버전·해시, gh 버전 대조, 분류 커버리지, 드리프트, 호스트 지원 상태 | FR-GH-001, FR-GH-011, FR-GH-013 | P0 |
+| A-007 | GitHub 작업 감사·승인 | 전체 실행 감사 조회, 승인 대기 작업 처리, 위임 신원 연결 상태 | FR-GH-012, FR-GH-008, FR-GH-009 | P1 |
 
 ## 5. 내비게이션과 진입 경로
 

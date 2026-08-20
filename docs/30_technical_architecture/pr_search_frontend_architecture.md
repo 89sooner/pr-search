@@ -225,3 +225,58 @@ apps/web/app/api/[...path]/route.ts
 - 픽스처는 정상 응답뿐 아니라 각 오류 코드와 부분 상태(`enrichment_pending`, `truncated`, `approximate`, `low_sample`)를 모두 포함한다.
 - 픽스처 데이터는 합성이며 실제 GHE 데이터를 포함하지 않는다.
 - 실제 API 연결 시 픽스처를 삭제하지 않고 테스트용으로 유지한다. 계약 테스트가 픽스처와 실제 응답 스키마의 일치를 검증한다.
+
+## 9. GitHub Operations 화면 (CR-005 신규)
+
+### 9.1 라우트
+
+| 라우트 | 화면 | 비고 |
+| --- | --- | --- |
+| `/gh` | W-010 GitHub Command Center | capability 검색과 생성형 폼 |
+| `/gh/pr`, `/gh/issue`, `/gh/repo`, `/gh/actions`, `/gh/release`, `/gh/project`, `/gh/codespace`, `/gh/settings`, `/gh/search`, `/gh/tools` | W-011~W-019, W-022 | 업무 중심 화면 |
+| `/gh/api` | W-020 gh API 탐색기 | |
+| `/gh/history` | W-021 실행 이력·저장된 Recipe | |
+| `/gh/recipes/[id]` | W-023 Recipe 빌더 | |
+| `/admin/gh/policy`, `/admin/gh/registry`, `/admin/gh/audit` | A-005, A-006, A-007 | |
+
+기존 규칙은 그대로다 — 브라우저는 Next.js 라우트 핸들러만 호출하고 핸들러가 프록시한다 (ADR-011). URL 질의 파라미터가 단일 진실이라는 원칙도 유지하되, **실행 요청 본문은 URL에 넣지 않는다.** 비밀 입력이 URL·히스토리·리퍼러에 남으면 안 되기 때문이다 (NFR-010).
+
+### 9.2 GenericCommandForm
+
+capability 하나를 받아 폼 전체를 생성하는 단일 컴포넌트다. 명령마다 화면을 만들지 않는 것이 ADR-015의 핵심이다.
+
+```text
+GhCapability
+     │
+     ├─ positional 컨트롤 생성
+     ├─ flag 컨트롤 생성 (타입별)
+     ├─ 제약 검증 (conflicts / requires / oneOf)
+     ├─ 권한 미리보기 (필요 권한 vs 보유 권한)
+     ├─ 위험도 미리보기
+     ├─ 정확한 argv 미리보기 (비밀 마스킹)
+     └─ 실행
+```
+
+flag 타입 → 컨트롤 매핑. 모든 컨트롤은 Conductor 프리미티브로 구현한다 (ADR-006). 자체 UI 프리미티브나 리터럴 색상값을 만들지 않는다.
+
+| flag 타입 | 컨트롤 |
+| --- | --- |
+| boolean | `Switch` / `Checkbox` |
+| enum | `Select` |
+| string | `Input` |
+| number | `NumberInput` |
+| repeatable | 다중 값 입력 |
+| repository | `RepositoryPicker` |
+| branch / ref | `BranchPicker` |
+| user / team | `UserTeamPicker` |
+| file | `FileUpload` |
+| stdin secret | `SecretInput` (값 재표시 없음) |
+| date | `DatePicker` |
+
+**argv 미리보기와 실제 실행 argv는 같은 구조화 명령 모델에서 파생한다.** 두 경로를 따로 만들면 미리보기가 거짓말을 하게 되고, 그 순간 확인 절차 전체가 무의미해진다 (FR-GH-002 AC-4).
+
+### 9.3 실행 상태 표현
+
+실행 수명주기(FR-GH-006)의 10개 상태를 화면 상태로 매핑한다. 진행 중 출력은 SSE로 받아 append-only로 렌더링하고, 상한 초과 시 절삭 사실을 표시한다.
+
+미지원 capability는 목록에서 숨기지 않는다. 비활성 상태와 사유(`unsupported_by_host`, `policy_blocked`, `terminal_only`, `requires_extension`)를 함께 보여준다 (FR-GH-013 AC-5).

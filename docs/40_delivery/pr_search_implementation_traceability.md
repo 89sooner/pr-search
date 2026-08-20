@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v0.3 | 갱신일: 2026-08-19
+> 상태: review | 버전: v0.4 | 갱신일: 2026-08-20
 
 ## 1. 목적
 
@@ -66,6 +66,22 @@
 | WP-042 | 이분 탐색 보조 | REL-006 | todo | - | - | - | - |
 | WP-043 | 관계 그래프 API와 W-007 | REL-006 | todo | - | - | - | 조건부 (REL-004 ACC-06) |
 | WP-044 | 검색 결과 내보내기 | REL-006 | todo | - | - | - | - |
+| WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 | todo | - | - | - | CR-005 신규 |
+| WP-046 | 위임 GitHub 신원과 Operations App | REL-007 | todo | - | - | - | CR-005 신규 |
+| WP-047 | 격리 gh 실행기와 실행 수명주기 | REL-007 | todo | - | - | - | CR-005 신규 |
+| WP-048 | W-010 GitHub Command Center 수직 슬라이스 | REL-007 | todo | - | - | - | CR-005 신규 |
+| WP-049 | PR 작업 (W-011) | REL-008 | todo | - | - | - | CR-005 신규 |
+| WP-050 | Issue·Discussion 작업 (W-012) | REL-008 | todo | - | - | - | CR-005 신규 |
+| WP-051 | 저장소 작업 (W-013) | REL-009 | todo | - | - | - | CR-005 신규 |
+| WP-052 | Actions·워크플로·실행·캐시 (W-014) | REL-009 | todo | - | - | - | CR-005 신규 |
+| WP-053 | 릴리스·프로젝트 작업 (W-015, W-016) | REL-009 | todo | - | - | - | CR-005 신규 |
+| WP-054 | 시크릿·변수·레이블·룰셋·키 (W-018) | REL-010 | todo | - | - | - | CR-005 신규 |
+| WP-055 | Codespace·Gist·Attestation·고급 도구 (W-017, W-019, W-022) | REL-010 | todo | - | - | - | CR-005 신규 |
+| WP-056 | gh API 탐색기 (W-020) | REL-010 | todo | - | - | - | CR-005 신규 |
+| WP-057 | 임시 workspace와 로컬 git 작업 | REL-009 | todo | - | - | - | CR-005 신규 |
+| WP-058 | Recipe 빌더 (W-023) | REL-011 | todo | - | - | - | CR-005 신규 |
+| WP-059 | capability 드리프트와 정책 관리 (A-005, A-006) | REL-011 | todo | - | - | - | CR-005 신규 |
+| WP-060 | 전체 parity 검증 | REL-011 | todo | - | - | - | CR-005 신규 |
 
 ## 4. 요구사항-코드 매핑
 
@@ -132,6 +148,23 @@
 | NFR-006 | WP-039 | - | - | not_started |
 | NFR-007 | WP-015 ~ WP-018, WP-025, WP-038 | - | - | not_started |
 | NFR-008 | WP-001, WP-035, WP-040 | `package.json` 스크립트, `scripts/lint-deps.mjs`, `.github/workflows/ci.yml`, `docker-compose.yml`, 각 앱 `src/server.ts`의 `GET /healthz` | `scripts/lint-deps.test.ts`, `apps/*/src/server.test.ts` | partial (WP-001분: 재현 가능한 검증 파이프라인과 헬스 엔드포인트. 롤백 절차·재색인 소요는 WP-035·WP-040) |
+| FR-GH-001 | WP-045, WP-060 | - | - | not_started |
+| FR-GH-002 | WP-047, WP-048 | - | - | not_started |
+| FR-GH-003 | WP-048 | - | - | not_started |
+| FR-GH-004 | WP-049 ~ WP-055 | - | - | not_started |
+| FR-GH-005 | WP-058 | - | - | not_started |
+| FR-GH-006 | WP-047, WP-052 | - | - | not_started |
+| FR-GH-007 | WP-053, WP-057 | - | - | not_started |
+| FR-GH-008 | WP-046 | - | - | not_started |
+| FR-GH-009 | WP-048, WP-054, WP-059 | - | - | not_started |
+| FR-GH-010 | WP-056 | - | - | not_started |
+| FR-GH-011 | WP-045, WP-059 | - | - | not_started |
+| FR-GH-012 | WP-048 | - | - | not_started |
+| FR-GH-013 | WP-055, WP-059 | - | - | not_started |
+| NFR-009 | WP-045, WP-060 | - | - | not_started |
+| NFR-010 | WP-047, WP-054 | - | - | not_started |
+| NFR-011 | WP-047 | - | - | not_started |
+| NFR-012 | WP-048 | - | - | not_started |
 
 ## 5. 편차 로그 (DEV)
 
@@ -272,26 +305,47 @@ DEV-006의 근거다. 로컬 검증이 네이티브 인스턴스였던 것은 �
 
 ## 8. 다음 작업
 
-현재 이 저장소는 **REL-001 구현 단계**다. Gate 1(핸드오프 게이트) 통과, WP-001 완료.
+현재 이 저장소는 **REL-001 구현 단계**이며, CR-005로 제품 범위가 확장되어 REL-007~011이 추가되었다.
 
 완료:
 
-1. ~~`srs_final.md`를 사용자 승인으로 `baseline` 전환~~ → 완료 (2026-08-19, v1.0, CR-003)
-2. ~~`validate_srs_prd_env.py --strict` 통과 확인~~ → 완료 (오류 0, 경고 0)
-3. ~~OD-003(원본 보존 기간), OD-006(ES 클러스터 형태), OD-007(PR 규모 기준선) 결정~~ → 완료 (2026-08-19, CR-004). 보존 3년·`raw_event` 4TB, ES 전용 클러스터 3노드(컨테이너 3개, 복제본 1), 워크로드 기준선 1,000 PR/일. ADR-003 샤드 수는 변경 없음
-4. WP-001 워크스페이스와 공유 패키지 골격 → 구현 완료 (2026-08-19), DoD 4항 중 3항 검증 완료. `docker compose up` 기동 확인만 남았다 (DEV-001). 검증 결과는 6.1장
+1. ~~`srs_final.md` baseline 전환~~ → 완료 (2026-08-19, v1.0, CR-003)
+2. ~~`validate_srs_prd_env.py --strict` 통과 확인~~ → 완료
+3. ~~OD-003·OD-006·OD-007 결정~~ → 완료 (2026-08-19, CR-004)
+4. WP-001 워크스페이스 골격 → 구현 완료, `docker compose up` 검증만 보류 (DEV-001)
+5. ~~WP-002 PostgreSQL 스키마와 마이그레이션~~ → 완료 (2026-08-19). 검증 결과는 6.2장
+6. ~~CR-005 제품 범위 확장 (GitHub Operations Plane)~~ → 완료 (2026-08-20, SRS baseline v2.0)
 
-남은 착수 조건 (WP와 병행 가능):
+**다음 WP: WP-003 Elasticsearch 매핑과 인덱스 부트스트랩.**
 
-5. GitHub App 발급(읽기 전용), 웹훅 엔드포인트 등록, OIDC 클라이언트 등록 — WP-004·WP-006·WP-012 전에 필요
-6. ES 컨테이너 3개의 Docker host 배치 확정 — 마스터 자격 노드 3개가 서로 다른 호스트에 놓이는지 확인 (인프라 4.1장). CPU·RAM·디스크 사양과 호스트 수는 CR-004에서 결정하지 않았다
-7. 컨테이너 레지스트리 접근이 되는 환경에서 `docker compose up -d` 재검증 (DEV-001)
+CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 — Search/Data Plane(REL-001~006)을 end-to-end로 닫은 뒤에 Operations Plane(REL-007~011)을 시작한다. GitHub Operations 기능을 WP-003 안에 섞지 않는다.
 
-다음 WP:
+권장 순서:
 
-8. ~~WP-002 PostgreSQL 스키마와 마이그레이션~~ → 완료 (2026-08-19). 검증 결과는 6.2장
-9. **WP-003 Elasticsearch 매핑과 인덱스 부트스트랩** (선행 WP-001 충족). WP-005·WP-006도 WP-001만 선행이라 병렬 착수 가능하다. WP-004는 WP-002가 끝났으므로 착수 가능하다
+```text
+WP-003 Elasticsearch
+→ WP-004 웹훅 게이트웨이
+→ WP-005 Redis EventBus
+→ WP-006 GitHub REST 클라이언트
+→ WP-007 보강 워커
+→ WP-008 투영 워커
+→ WP-009 DLQ
+→ WP-010 저장소 등록·파이프라인 지표
+   ... REL-002~006 ...
+→ WP-045 gh capability 레지스트리   (REL-007 시작)
+```
 
-`srs_final.md`가 baseline이므로 이제 그 문서의 변경은 `../00_governance/change_control.md`에 CR을 먼저 등록해야 한다. 구현 중 문서와 현실이 어긋나면 위 5장에 `DEV-###`를 등록하고 CR로 연결한다. 조용한 범위 변경은 금지다.
+남은 착수 조건:
+
+| 항목 | 필요 시점 |
+| --- | --- |
+| GitHub App 발급(읽기 전용), 웹훅 엔드포인트 등록, OIDC 클라이언트 등록 | WP-004·WP-006·WP-012 |
+| ES 컨테이너 3개의 Docker host 배치 확정 | REL-001 프로비저닝 |
+| 컨테이너 레지스트리 접근 환경에서 `docker compose up -d` 재검증 | DEV-001 |
+| GitHub Operations App 발급과 권한 승인 | REL-007 |
+| 비밀 저장소 연동 | REL-007 |
+| `gh-executor` 런타임 프로비저닝과 gh 버전 고정 | REL-007 |
+
+`srs_final.md`가 baseline이므로 그 문서의 변경은 CR을 먼저 등록해야 한다. 구현 중 문서와 현실이 어긋나면 5장에 `DEV-###`를 등록하고 CR로 연결한다. 조용한 범위 변경은 금지다.
 
 착수 후 매 WP 완료 시 이 문서의 3·4·6장을 갱신한다. 갱신 없는 완료 보고는 완료가 아니다.

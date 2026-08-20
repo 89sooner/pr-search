@@ -22,6 +22,10 @@
 | ADR-010 | 페이지네이션은 `search_after` 커서 전용 | accepted | 2026-08-19 | api, frontend |
 | ADR-011 | 프런트엔드는 Next.js App Router + 서버 라우트 프록시 | accepted | 2026-08-19 | frontend, security |
 | ADR-012 | 축약 SHA 검색은 keyword prefix, 최소 7자 | accepted | 2026-08-19 | data, api |
+| ADR-013 | GitHub Operations Plane을 Search/Data Plane과 분리 | accepted | 2026-08-20 | system, security, infrastructure |
+| ADR-014 | 사용자 주도 GitHub 작업은 별도 Operations App + 위임 사용자 토큰 | accepted | 2026-08-20 | security, backend, api |
+| ADR-015 | 버전 고정 gh capability manifest + 생성형 command UI | accepted | 2026-08-20 | frontend, backend, data |
+| ADR-016 | 격리 gh 실행기와 risk/policy/approval 모델 | accepted | 2026-08-20 | infrastructure, security, async |
 
 ## ADR-001 전 계층 TypeScript 단일 언어
 
@@ -470,3 +474,175 @@ Next.js App Router. 브라우저는 항상 Next.js 서버 라우트(`/api/*`)를
 - Positive: 추가 색인 비용 0. 매핑이 단순하다. 40자 전체 SHA 조회는 `term` 질의로 더 빠르다.
 - Negative: 6자 이하 검색을 지원하지 않는다.
 - Follow-up: 부하 시험에서 7자 접두 질의의 p95를 측정해 NFR-001의 200ms를 만족하는지 확인한다. 미달 시 옵션 3(`index_prefixes`)을 별도 ADR로 검토한다.
+
+## ADR-013 GitHub Operations Plane을 Search/Data Plane과 분리
+
+### Context
+
+CR-005로 제품에 GitHub 쓰기 작업이 들어왔다. 기존 시스템은 웹훅을 받아 PostgreSQL에 넣고 Elasticsearch에 투영하는 읽기 전용 파이프라인이며, GitHub App 설치 토큰으로 서버가 자율 동작한다. 새 기능은 성격이 정반대다 — 사용자가 명시적으로 요청할 때만, 사용자 권한으로, GitHub 상태를 바꾼다.
+
+두 성격을 한 런타임에 섞으면 세 가지가 무너진다. 첫째 자격 증명이다. 수집용 App에 쓰기 권한을 더하면 웹훅 처리 버그가 GitHub을 손상시킬 수 있는 경로가 생긴다. 둘째 장애 격리다. `gh` 프로세스가 실행기를 포화시키면 수집이 멈춘다. 셋째 감사다. 자동 파이프라인 동작과 사용자 지시 동작이 같은 로그에 섞이면 "누가 무엇을 시켰나"를 답할 수 없다.
+
+### Options
+
+1. **기존 서비스 확장** — `search-api`에 실행 엔드포인트를 더하고 거기서 `gh`를 호출한다.
+2. **파이프라인을 gh로 교체** — 수집도 `gh`로 통일한다.
+3. **별도 Plane 분리** — 실행 전용 런타임·패키지·App·감사 경계를 새로 만든다.
+
+옵션 2는 즉시 배제된다. `gh`는 웹훅을 받지 못하고, 저장소 단위 순서 보장도, 트랜잭션 서수 채번도 하지 못한다 (ADR-002가 Filebeat를 배제한 것과 같은 이유). 옵션 1은 배포 단위가 하나 줄지만 위 세 가지 문제를 모두 안는다.
+
+### Decision
+
+**옵션 3.** 두 Plane을 분리한다.
+
+| 구분 | Search / Data Plane | GitHub Operations Plane |
+| --- | --- | --- |
+| 런타임 | `ingest-gateway`, `pipeline-worker`, `search-api` | `gh-executor` (신규) |
+| 패키지 | `@prs/github` (REST 클라이언트) | `@prs/gh-cli` (capability 모델·argv 조립) |
+| GitHub App | Data App (server-to-server, read) | Operations App (user-to-server, 위임) |
+| 트리거 | 웹훅·잡 | 사용자 명시 요청만 |
+| 감사 | `audit_record` | `gh_execution` (별도 엔티티) |
+
+`search-api`와 `pipeline-worker`는 `gh` 프로세스를 직접 띄우지 않는다. 실행은 반드시 `gh-executor`를 거친다. 기존 `@prs/github`를 gh 래퍼로 바꾸지 않는다 — REST 클라이언트는 rate limit 관리와 보강 로직을 갖고 있고 그 책임은 그대로 남는다.
+
+### Consequences
+
+- Positive: 수집 경로에 쓰기 권한이 없다. `gh` 실행 부하가 검색·수집에 영향을 주지 않는다. 사용자 지시 동작이 별도 감사 축에 남는다. Operations Plane을 통째로 비활성화해도 제품의 조사 기능은 동작한다.
+- Negative: 배포 단위가 하나 늘고 GitHub App이 두 개가 된다. 저장소·브랜치 같은 공통 컨텍스트를 두 Plane이 각각 해석한다.
+- Follow-up: 공통 컨텍스트(저장소 식별, 권한 판정 캐시)는 `@prs/domain`에 두어 두 Plane이 같은 타입을 쓴다.
+
+## ADR-014 사용자 주도 GitHub 작업은 별도 Operations App + 위임 사용자 토큰
+
+### Context
+
+Operations Plane이 GitHub을 호출할 때 어떤 자격 증명을 쓰는가. 기존 수집 파이프라인은 GitHub App 설치 토큰을 쓴다. 설치 토큰은 설치 범위 전체에 대해 App에 부여된 권한을 갖는다 — 사용자가 누구든 상관없다.
+
+이걸 그대로 쓰면 권한 승격이 일어난다. 저장소 A에 접근 권한이 없는 사용자가 웹 UI를 통해 저장소 A의 PR을 머지할 수 있게 된다. 애플리케이션 계층에서 막을 수는 있지만, 그 검사가 뚫리는 순간 GitHub 쪽에는 아무 방어선이 없다.
+
+### Options
+
+1. **설치 토큰 + 애플리케이션 권한 검사** — 구현이 단순하다. 방어선이 하나뿐이다.
+2. **사용자 PAT 보관** — 사용자 권한과 정확히 일치한다. 대신 장기 자격 증명을 대신 보관해야 하고 범위를 좁힐 수 없다.
+3. **별도 Operations App + 사용자 위임 액세스 토큰** — GitHub App user-to-server 토큰.
+
+### Decision
+
+**옵션 3.** GitHub App을 두 개로 나누고, 작업 실행에는 사용자 위임 토큰을 쓴다.
+
+```text
+GitHub Data App           GitHub Operations App
+  server-to-server          user-to-server
+  최소 read 권한            명시적으로 필요한 권한만
+  수집·보강 전용            사용자 요청 실행 전용
+```
+
+유효 권한은 다음과 같이 정의한다.
+
+```text
+유효 권한 = Operations App 권한 ∩ 해당 사용자의 GitHub 권한
+```
+
+App 설치 권한이 사용자 권한보다 넓더라도 그 차이는 사용자에게 부여되지 않는다. GitHub이 위임 토큰에 대해 이 교집합을 강제하므로, 애플리케이션 검사가 뚫려도 GitHub이 거부한다. 방어선이 둘이 된다.
+
+토큰은 평문으로 저장하지 않는다. 비밀 저장소 참조와 메타데이터만 DB에 두고, 실행 직전에 실체화해 프로세스 환경으로 전달한 뒤 즉시 폐기한다. 서버에서 `gh auth login`으로 자격 증명을 gh config에 영속 저장하지 않는다.
+
+### Consequences
+
+- Positive: 권한 승격 경로가 구조적으로 없다. 사용자가 GitHub에서 권한을 잃으면 다음 실행부터 즉시 반영된다. 감사에 실제 GitHub 행위자가 남는다.
+- Negative: 사용자마다 App 인가 절차가 필요하다. 토큰 만료·갱신 처리가 늘어난다. 사용자가 인가하지 않으면 기능을 쓸 수 없다.
+- Follow-up: 위임 토큰이 만료되고 갱신에 실패하면 재인가를 요구한다. 갱신 토큰을 요구하는 GitHub 구성이면 회전 주기를 명시한다.
+
+## ADR-015 버전 고정 gh capability manifest + 생성형 command UI
+
+### Context
+
+`gh` 2.97.0 실측 기준으로 command node가 228개(실행 가능 leaf 196), command 고유 flag가 1,034개다. 이 규모를 화면으로 손수 만들면 유지가 불가능하고, gh가 올라갈 때마다 제품 전체를 다시 만져야 한다.
+
+동시에 "빠짐없이"라는 요구가 있다. 어떤 command를 조용히 빠뜨리면 사용자는 그것이 없는지 못 만든 건지 알 수 없다.
+
+### Options
+
+1. **화면 수작업** — 자주 쓰는 것만 만든다. 나머지는 없다. 완전성 요구를 만족하지 못한다.
+2. **help 출력 실시간 파싱** — 항상 최신이다. 대신 파싱 실패가 곧 기능 정지이고, 위험도·권한·의미 제약을 help에서 얻을 수 없다.
+3. **버전 고정 manifest + 생성형 UI** — help에서 생성한 인벤토리에 사람이 만든 의미 정보를 덧입혀 검증된 manifest를 만들고, 거기서 UI를 생성한다.
+
+### Decision
+
+**옵션 3.** 파이프라인은 다음과 같다.
+
+```text
+gh help (고정 버전)
+   ↓  자동 추출
+generated capability inventory
+   ↓  사람이 보강 (의미 오버라이드)
+curated semantic overrides
+   ↓  스키마 검증 + 커버리지 계산
+validated capability manifest  (버전 + 해시)
+   ↓
+UI generator ──→ GenericCommandForm
+            └──→ 전용 업무 화면이 참조
+```
+
+자동 파싱만 신뢰하지 않는 이유는 help가 주지 않는 정보가 실행 안전성의 핵심이기 때문이다 — 상호 배타 flag, flag 의존, 반복 가능 여부, 열거값, 자원 선택자 종류, 위험도, 필요 GitHub 권한, 비밀 값 여부, 확인 필요 여부, 파일·stdin 입력, 출력 스키마, 호스트·버전 호환성.
+
+manifest는 버전과 내용 해시를 갖고, 실행 기록은 자신이 쓴 manifest 버전을 참조한다. 실행기의 gh 버전과 manifest 생성 버전이 다르면 `registry_stale` / `execution_disabled` / `admin_action_required` 중 하나로 처리하며, 새 기능을 조용히 실행하지 않는다.
+
+CI는 설치된 gh와 커밋된 manifest의 차이를 검출하고, 분류 커버리지를 게이트로 검사한다 (NFR-009).
+
+### Consequences
+
+- Positive: gh가 올라가도 manifest 갱신과 오버라이드 보강으로 끝난다. 커버리지가 수치로 측정된다. 미분류가 CI에서 실패로 드러나므로 조용한 누락이 불가능하다.
+- Negative: 오버라이드는 사람이 유지해야 하는 자산이다. gh 마이너 업그레이드마다 신규 flag의 의미 분류가 필요하다.
+- Follow-up: 오버라이드가 없는 신규 flag는 `mapped_to_generic_control`로 자동 분류하되, 위험도가 정해지지 않은 command는 실행을 허용하지 않는다.
+
+## ADR-016 격리 gh 실행기와 risk/policy/approval 모델
+
+### Context
+
+`gh` 실행은 외부 프로세스 실행이다. 잘못 설계하면 명령 주입, 자격 증명 유출, 자원 고갈, 되돌릴 수 없는 파괴적 작업으로 이어진다.
+
+특히 웹 UI라는 맥락이 위험을 키운다. 터미널에서는 사용자가 명령 전체를 보고 엔터를 누르지만, 웹에서는 버튼 하나가 무엇을 하는지 가려질 수 있고, 같은 버튼을 두 번 누를 수도 있다.
+
+### Options
+
+1. **애플리케이션 프로세스에서 직접 실행** — 배포가 단순하다. 자격 증명과 자원이 애플리케이션과 공유된다.
+2. **공용 워커에서 실행** — 격리는 되지만 실행 간 파일·상태가 섞인다.
+3. **전용 실행기 + 실행별 격리 + 위험도 모델**.
+
+### Decision
+
+**옵션 3.** `apps/gh-executor`를 독립 배포 단위로 두고 다음을 강제한다.
+
+실행 안전:
+
+```text
+고정 경로의 gh 바이너리 + argv 배열
+shell 미경유 (shell: true, bash -c, sh -c 금지)
+argv는 capability manifest에서 조립 — 사용자 문자열 연결 없음
+비루트 · 읽기 전용 루트 파일시스템
+실행별 임시 workspace (TTL, 디스크 할당량)
+프로세스 타임아웃 · 출력 상한 · 프로세스 그룹 취소
+동시 실행 상한
+아웃바운드는 구성된 GHE 호스트만
+```
+
+자격 증명은 매 실행마다 주입하고 즉시 폐기한다. `GH_CONFIG_DIR`과 `HOME`은 실행 전용 임시 디렉터리를 쓴다. headless 동작을 위해 프롬프트를 비활성화하고 페이저와 색상을 끈다.
+
+위험도 모델:
+
+| 등급 | 성격 | 예 | 정책 |
+| --- | --- | --- | --- |
+| R0 | 읽기 전용 | `pr list`, `repo view`, `run view` | 즉시 실행 |
+| R1 | 가역적 낮은 위험 쓰기 | `issue comment`, `pr edit --add-label` | 대상·동작 미리보기 |
+| R2 | 영향도가 큰 쓰기 | `pr merge`, `run rerun`, `run cancel`, `release create` | 명시적 확인 + 실행 직전 대상 상태 재확인 |
+| R3 | 파괴적·관리자·비밀 | `repo delete`, `repo rename`, `secret set`, `ruleset` 변경 | 강한 확인 + 정책에 따른 승인 |
+
+R2 이상은 실행 직전에 대상 상태를 다시 조회한다. 사용자가 화면에서 본 상태와 달라졌으면 실행하지 않는다 — 웹에서는 화면을 열어둔 채 시간이 흐르기 때문이다.
+
+중복 실행 방지: 쓰기 요청은 중복 방지 키를 갖고, 같은 대상에 상충하는 작업은 자원 잠금으로 직렬화한다.
+
+### Consequences
+
+- Positive: 명령 주입 경로가 구조적으로 없다. 실행 폭주가 애플리케이션을 무너뜨리지 않는다. 파괴적 작업에 사람의 확인이 강제된다. 실행 간 파일이 섞이지 않는다.
+- Negative: 배포 단위와 운영 대상이 늘어난다. 임시 workspace 관리(할당량, 정리, 고아 회수)가 새 운영 부담이다. 확인 단계가 R2 이상 작업의 체감 속도를 늦춘다.
+- Follow-up: workspace 정리 실패는 경보 대상이다. 종료된 실행이 비종료 상태로 남는 경우를 회수하는 정합성 감시 잡을 둔다.

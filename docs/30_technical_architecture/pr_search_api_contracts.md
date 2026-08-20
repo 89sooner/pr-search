@@ -52,6 +52,23 @@
 | API-ADM-006 | GET | `/admin/pipeline-status` | 파이프라인 지표 | `operator` | FR-ADMIN-001 |
 | API-ADM-007 | GET/POST | `/admin/sequence-integrity` | 정합성 점검·재채번 | `operator` | FR-ADMIN-003, FR-SEQ-005 |
 
+**GitHub Operations Plane (CR-005 신규).** 아래 API는 `search-api`가 아니라 Operations 경로에 속하며, 인증은 세션 인증에 더해 사용자 위임 GitHub 신원(FR-GH-008)을 요구한다.
+
+| API ID | Method | Path | 목적 | 인증/권한 | 관련 FR |
+| --- | --- | --- | --- | --- | --- |
+| API-GH-001 | GET | `/gh/capabilities` | capability manifest 조회·검색. 분류 상태와 호스트 지원 여부 포함 | 인증 | FR-GH-001, FR-GH-011, FR-GH-013 |
+| API-GH-002 | POST | `/gh/executions` | 명령 실행 요청. 중복 방지 키 필수 | 인증 + 위임 신원 + 위험도 정책 | FR-GH-002, FR-GH-003, FR-GH-009 |
+| API-GH-003 | GET | `/gh/contexts/{scope}` | 대상 컨텍스트 해석 (저장소·브랜치·PR·이슈 선택자) | 인증 + 접근 범위 | FR-GH-004 |
+| API-GH-004 | GET/POST/PATCH | `/gh/recipes[/{id}]` | Recipe 정의 조회·저장·개정 | 인증 | FR-GH-005 |
+| API-GH-005 | GET | `/gh/executions/{id}/stream` | 실행 진행 상황 스트리밍 (SSE) | 인증 + 실행 소유자 또는 `security_officer` | FR-GH-006 |
+| API-GH-006 | GET/POST | `/gh/executions/{id}/artifacts` | 실행 아티팩트 목록·내려받기, 파일 입력 업로드 | 인증 + 실행 소유자 | FR-GH-007 |
+| API-GH-007 | GET/POST/DELETE | `/gh/identity` | Operations App 연결 상태 조회, 인가 시작, 연결 해제 | 인증 | FR-GH-008 |
+| API-GH-008 | GET/PUT | `/gh/policies` | 실행 정책 조회·변경 (capability 허용/차단, 위험도 재정의, 승인 필요, 엔드포인트·확장 목록) | `operator` | FR-GH-009, FR-GH-010, FR-GH-013 |
+| API-GH-009 | POST | `/gh/api-requests` | `gh api` 요청 구성·실행 | 인증 + 위임 신원 + 엔드포인트 정책 | FR-GH-010 |
+| API-GH-010 | GET | `/gh/executions` | 실행 이력 조회·필터. 본인 이력 기본, `security_officer`는 전체 | 인증 | FR-GH-012 |
+| API-GH-011 | POST | `/gh/executions/{id}/cancel` | 실행 취소 | 인증 + 실행 소유자 또는 `operator` | FR-GH-006 |
+| API-GH-012 | POST | `/gh/executions/{id}/approve` | 승인 대기 실행의 승인·거부 | `operator` 또는 정책이 지정한 승인자 | FR-GH-009 |
+
 ## 4. API 상세 규격
 
 ### API-SRCH-001 식별자 해석
@@ -894,6 +911,22 @@ POST /api/v1/admin/sequence-integrity
 | `AGGREGATION_TIMEOUT` | 504 | 집계 5초 초과 | 기간 축소 |
 | `GRAPH_TIMEOUT` | 200 (부분) | 그래프 2초 초과 | 깊이 축소 (부분 결과 반환) |
 | `INTERNAL_ERROR` | 500 | 예상치 못한 오류 | 상관 ID로 문의 |
+| `GH_CAPABILITY_UNKNOWN` | 404 | manifest에 없는 capability | 레지스트리 상태 확인 |
+| `GH_CONSTRAINT_VIOLATION` | 400 | argument·flag 제약 위반 | 충돌·의존 관계 수정 |
+| `GH_IDENTITY_REQUIRED` | 401 | Operations App 미연결·토큰 만료 | GitHub 계정 연결 |
+| `GH_PERMISSION_DENIED` | 403 | 사용자 GitHub 권한 부족 | 필요 권한 요청 |
+| `GH_POLICY_BLOCKED` | 403 | 실행 정책이 차단한 capability | 관리자에게 문의 |
+| `GH_ENDPOINT_BLOCKED` | 403 | `gh api` 엔드포인트 정책 차단 | 허용된 엔드포인트 사용 |
+| `GH_EXTENSION_BLOCKED` | 403 | 허용 목록에 없는 확장 | 관리자 승인 요청 |
+| `GH_HOST_UNSUPPORTED` | 409 | 대상 GHE 버전이 미지원 | 지원되는 기능 사용 |
+| `GH_REGISTRY_STALE` | 409 | 실행기 gh 버전과 manifest 불일치 | 관리자 조치 대기 |
+| `GH_CONFIRMATION_REQUIRED` | 409 | 위험도에 따른 확인 미수행 | 확인 후 재요청 |
+| `GH_APPROVAL_REQUIRED` | 409 | 승인자 승인 대기 | 승인 후 자동 진행 |
+| `GH_TARGET_CHANGED` | 409 | 실행 직전 대상 상태가 변경됨 | 새로 고침 후 재확인 |
+| `GH_DUPLICATE_REQUEST` | 409 | 동일 중복 방지 키의 재요청 | 기존 실행 확인 |
+| `GH_RESOURCE_LOCKED` | 409 | 같은 대상에 상충 작업 진행 중 | 완료 후 재시도 |
+| `GH_EXECUTION_TIMEOUT` | 504 | 실행 시간 상한 초과 | 범위를 줄여 재시도 |
+| `GH_WORKSPACE_UNAVAILABLE` | 503 | 임시 작업 공간 확보 실패 | 잠시 후 재시도 |
 
 ## 7. 내부 이벤트 계약
 

@@ -62,6 +62,22 @@
 | WP-042 | 이분 탐색 보조 | REL-006 | WP-023, WP-025 | todo |
 | WP-043 | 관계 그래프 API와 W-007 | REL-006 | WP-031 | todo |
 | WP-044 | 검색 결과 내보내기 | REL-006 | WP-013, WP-016 | todo |
+| WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 | WP-001 | todo |
+| WP-046 | 위임 GitHub 신원과 Operations App | REL-007 | WP-012 | todo |
+| WP-047 | 격리 gh 실행기와 실행 수명주기 | REL-007 | WP-045, WP-046 | todo |
+| WP-048 | W-010 GitHub Command Center 수직 슬라이스 | REL-007 | WP-047 | todo |
+| WP-049 | PR 작업 (W-011) | REL-008 | WP-048 | todo |
+| WP-050 | Issue·Discussion 작업 (W-012) | REL-008 | WP-048 | todo |
+| WP-051 | 저장소 작업 (W-013) | REL-009 | WP-048, WP-057 | todo |
+| WP-052 | Actions·워크플로·실행·캐시 (W-014) | REL-009 | WP-048 | todo |
+| WP-053 | 릴리스·프로젝트 작업 (W-015, W-016) | REL-009 | WP-048, WP-057 | todo |
+| WP-054 | 시크릿·변수·레이블·룰셋·키 (W-018) | REL-010 | WP-048 | todo |
+| WP-055 | Codespace·Gist·Attestation·고급 도구 (W-017, W-019, W-022) | REL-010 | WP-048 | todo |
+| WP-056 | gh API 탐색기 (W-020) | REL-010 | WP-048 | todo |
+| WP-057 | 임시 workspace와 로컬 git 작업 | REL-009 | WP-047 | todo |
+| WP-058 | Recipe 빌더 (W-023) | REL-011 | WP-049, WP-052 | todo |
+| WP-059 | capability 드리프트와 정책 관리 (A-005, A-006) | REL-011 | WP-045, WP-048 | todo |
+| WP-060 | 전체 parity 검증 | REL-011 | WP-045 ~ WP-059 | todo |
 
 의존 그래프에 순환은 없다. WP-001~WP-003과 WP-005·WP-006은 병렬 착수 가능하다.
 
@@ -1315,6 +1331,391 @@
 - 검증 방법: `pnpm test:integration -- export`, `pnpm test:e2e -- export`
 - 기록: 원장 WP-044 상태, FR-SRCH-012 매핑
 
+### WP-045 gh capability 레지스트리와 parity 검증기
+
+- 목표: 고정 gh 버전의 전 command와 flag가 분류된 검증 가능한 manifest가 선다.
+- 관련 요구사항: FR-GH-001, FR-GH-011, NFR-009
+- 관련 화면/플로우: A-006
+- 관련 API/데이터/잡: API-GH-001 / ENT-GH-006 / JOB-GH-003
+- 선행 WP: WP-001
+- 구현 범위:
+  - `packages/gh-cli` 신규: `GhCapability` 타입, manifest 스키마, 로더
+  - `pnpm gh:inventory`: 설치된 gh를 걸어 command path·positional·flag·JSON 필드 추출
+  - 의미 오버라이드 파일: conflicts / requires / oneOf, 반복 가능, 열거값, 자원 선택자, 위험도, 필요 권한, 비밀 여부, 확인 필요, 파일·stdin 입력, 출력 종류
+  - `pnpm gh:validate-capabilities`: 스키마 검증 + 분류 커버리지 계산 + 미분류 시 종료 코드 1
+  - `pnpm gh:diff-capabilities`: 설치 gh와 커밋된 manifest의 차이 출력
+  - manifest 버전·해시 생성과 `gh_capability_snapshot` 기록 (마이그레이션 009)
+  - CI에 드리프트 검출 잡 추가
+- 제외:
+  - UI (WP-048)
+  - 실행 (WP-047)
+- 완료 기준(DoD):
+  - [ ] `pnpm gh:inventory`가 설치된 gh에서 command node와 flag를 추출한다
+  - [ ] `pnpm gh:validate-capabilities`가 command path 분류 100%, flag 분류 100%를 확인한다
+  - [ ] 미분류 항목을 하나 만들면 검증기가 종료 코드 1로 실패한다
+  - [ ] manifest에 없는 command를 gh가 갖고 있으면 `gh:diff-capabilities`가 검출한다
+  - [ ] manifest 해시가 내용 변경 시 달라진다
+- 검증 방법: `pnpm gh:inventory && pnpm gh:validate-capabilities && pnpm test -- gh-cli`
+- 기록: 원장 WP-045 상태, FR-GH-001·FR-GH-011 매핑, 측정한 gh 버전과 command·flag 수
+
+### WP-046 위임 GitHub 신원과 Operations App
+
+- 목표: 사용자를 대신하는 GitHub 자격 증명이 수집용과 분리되어 안전하게 관리된다.
+- 관련 요구사항: FR-GH-008
+- 관련 화면/플로우: A-007
+- 관련 API/데이터/잡: API-GH-007 / ENT-GH-001 / JOB-GH-004
+- 선행 WP: WP-012
+- 구현 범위:
+  - 마이그레이션 006: `github_identity_connection` (토큰 원문 없음, 비밀 저장소 참조만)
+  - GitHub App user authorization 흐름 (인가 시작·콜백·연결 해제)
+  - 비밀 저장소 연동: 토큰 저장·조회·폐기
+  - 권한 교집합 판정: Operations App 권한 ∩ 사용자 GitHub 권한
+  - JOB-GH-004 토큰 갱신, 만료·철회 처리
+  - A-007의 연결 상태 표시
+- 제외:
+  - 실행 경로 (WP-047)
+  - 권한별 UI 표현 (WP-048)
+- 완료 기준(DoD):
+  - [ ] 사용자가 Operations App을 인가하면 연결이 생기고 토큰 원문이 DB에 없다
+  - [ ] 사용자에게 없는 저장소 권한의 작업이 권한 판정에서 거부된다
+  - [ ] 설치 권한이 더 넓어도 사용자 권한을 넘는 작업이 허용되지 않는다
+  - [ ] 토큰 만료 시 갱신되고, 갱신 실패 시 재인가를 요구한다
+  - [ ] 연결 해제 시 비밀 저장소의 토큰이 폐기된다
+- 검증 방법: `pnpm test:integration -- gh-identity`
+- 기록: 원장 WP-046 상태, FR-GH-008 매핑
+
+### WP-047 격리 gh 실행기와 실행 수명주기
+
+- 목표: gh 명령이 격리된 실행기에서 안전하게 실행되고 진행 상황과 취소가 동작한다.
+- 관련 요구사항: FR-GH-002, FR-GH-006, NFR-010, NFR-011
+- 관련 화면/플로우: 없음 (W-010이 소비)
+- 관련 API/데이터/잡: API-GH-002, API-GH-005, API-GH-011 / ENT-GH-002 / JOB-GH-001, JOB-GH-007
+- 선행 WP: WP-045, WP-046
+- 구현 범위:
+  - `apps/gh-executor` 신규 배포 단위 (비루트, 읽기 전용 루트 FS, 고정 gh 바이너리)
+  - argv 조립: manifest + 타입 있는 입력 → argv 배열. shell 미경유
+  - 실행별 임시 workspace (TTL, 할당량), `GH_CONFIG_DIR`·`HOME` 격리
+  - 자격 증명 주입과 즉시 폐기, headless 환경 설정
+  - 마이그레이션 007: `gh_execution`(월별 파티션), `gh_execution_lock`
+  - 수명주기 10개 상태, 타임아웃, 출력 상한, 프로세스 그룹 취소
+  - SSE 스트리밍 (API-GH-005)
+  - JOB-GH-007 고아 실행 회수
+- 제외:
+  - capability UI (WP-048)
+  - Recipe (WP-058)
+  - 로컬 git workspace 심화 (WP-057)
+- 완료 기준(DoD):
+  - [ ] `gh pr list` 같은 R0 명령이 실행되고 결과가 반환된다
+  - [ ] shell 메타문자가 포함된 입력이 명령으로 해석되지 않는다
+  - [ ] 타임아웃 초과 실행이 `timed_out`으로 종료된다
+  - [ ] 취소 요청이 3초 내 프로세스 그룹을 종료시킨다
+  - [ ] 출력 상한 초과 시 절삭 사실과 함께 잘린다
+  - [ ] 실행 종료 후 workspace와 토큰이 남지 않는다
+  - [ ] 실행기 파드를 강제 종료하면 JOB-GH-007이 해당 실행을 `failed`로 회수한다
+- 검증 방법: `pnpm test:integration -- gh-exec`
+- 기록: 원장 WP-047 상태, FR-GH-002·FR-GH-006 매핑, NFR-010·NFR-011 매핑
+
+### WP-048 W-010 GitHub Command Center 수직 슬라이스
+
+- 목표: 사용자가 웹에서 capability를 골라 실행하고 결과와 이력을 볼 수 있다. Operations Plane의 첫 사용자 가치다.
+- 관련 요구사항: FR-GH-003, FR-GH-009, FR-GH-012, FR-GH-007
+- 관련 화면/플로우: W-010, W-021
+- 관련 API/데이터/잡: API-GH-002, API-GH-003, API-GH-006, API-GH-010, API-GH-012 / ENT-GH-002, ENT-GH-005
+- 선행 WP: WP-047
+- 구현 범위:
+  - W-010: GitHub 컨텍스트, capability 검색, GenericCommandForm, 실행 미리보기, 실행 패널
+  - flag 타입별 컨트롤 생성 (Conductor 프리미티브만)
+  - 제약 검증 (클라이언트 + 서버 재검증)
+  - 권한 미리보기와 위험도 미리보기
+  - 정확한 argv 미리보기 (비밀 마스킹). 미리보기와 실제 argv는 같은 모델에서 파생
+  - 위험도 게이트: R0 즉시, R1 미리보기, R2 확인, R3 강한 확인 + 승인 (마이그레이션 009 `gh_approval`)
+  - R2 이상 실행 직전 대상 상태 재조회
+  - 중복 방지 키와 자원 잠금
+  - 감사 선기록
+  - W-021 실행 이력 조회·재실행·아티팩트 내려받기
+  - 초기 개방 범위는 R0 읽기 전용 capability
+- 제외:
+  - 업무 전용 화면 (WP-049~WP-056)
+  - Recipe (WP-058)
+  - 정책 관리 화면 (WP-059)
+- 완료 기준(DoD):
+  - [ ] 저장소를 고르고 R0 capability를 골라 옵션을 넣고 실행될 argv를 확인한 뒤 실행해 결과를 볼 수 있다
+  - [ ] 제약을 위반하는 조합에서 실행 버튼이 활성화되지 않고, 서버도 같은 조합을 거부한다
+  - [ ] 미리보기 argv와 실제 실행 argv가 일치한다
+  - [ ] R2 capability는 확인 없이 실행되지 않는다
+  - [ ] 대상 상태를 실행 직전에 바꾸면 R2 실행이 `GH_TARGET_CHANGED`로 중단된다
+  - [ ] 같은 요청을 두 번 보내면 실행이 하나만 생성된다
+  - [ ] 감사 기록에 실패하면 쓰기 실행이 시작되지 않는다
+  - [ ] 실행 이력에서 동일 구성으로 재실행할 수 있다
+- 검증 방법: `pnpm test:integration -- gh-command`, `pnpm test:e2e -- gh-command-center`
+- 기록: 원장 WP-048 상태, FR-GH-003·FR-GH-009·FR-GH-012 매핑
+
+### WP-049 PR 작업 (W-011)
+
+- 목표: PR 대상 작업을 업무 화면에서 수행한다. 첫 쓰기 capability 개방이다.
+- 관련 요구사항: FR-GH-004, FR-GH-009
+- 관련 화면/플로우: W-011, W-002
+- 관련 API/데이터/잡: API-GH-002, API-GH-003
+- 선행 WP: WP-048
+- 구현 범위:
+  - W-011: PR 목록·상세에서 적용 가능한 작업 제시
+  - `gh pr` 하위 명령 전체를 capability로 노출 (생성·목록·조회·상태·체크·차이·편집·코멘트·리뷰·준비/초안·브랜치 갱신·닫기·재개·머지·되돌리기·잠금·체크아웃)
+  - 머지 폼: 전략, 자동 머지, 관리자 강제, head 커밋 일치, 커밋 제목·본문, 브랜치 삭제
+  - W-002 PR 상세에서 W-011로 진입
+  - R1·R2 위험도 부여와 확인 흐름
+- 제외:
+  - Issue·Discussion (WP-050)
+  - 체크아웃이 요구하는 로컬 workspace (WP-057)
+- 완료 기준(DoD):
+  - [ ] PR 머지가 전략 선택과 함께 실행된다
+  - [ ] `--match-head-commit`이 실제 head와 다르면 GitHub이 거부하고 그 사유가 표시된다
+  - [ ] 머지 확인 없이 실행되지 않는다
+  - [ ] 같은 PR에 머지를 두 번 요청하면 두 번째가 `GH_RESOURCE_LOCKED` 또는 중복으로 처리된다
+  - [ ] 권한 없는 사용자의 머지가 `GH_PERMISSION_DENIED`로 거부된다
+- 검증 방법: `pnpm test:integration -- gh-pr`, `pnpm test:e2e -- pr-operations`
+- 기록: 원장 WP-049 상태, FR-GH-004 매핑
+
+### WP-050 Issue·Discussion 작업 (W-012)
+
+- 목표: 이전 판에서 범위 밖이던 Issue와 Discussion을 작업 대상으로 편입한다.
+- 관련 요구사항: FR-GH-004
+- 관련 화면/플로우: W-012
+- 관련 API/데이터/잡: API-GH-002, API-GH-003
+- 선행 WP: WP-048
+- 구현 범위:
+  - W-012: Issue 생성·조회·목록·상태·편집·코멘트·닫기·재개·삭제·잠금·고정·이관·개발 브랜치·하위 이슈
+  - Discussion 생성·목록·조회·코멘트·편집
+  - GHE 버전이 미지원이거나 preview면 사유 표시
+- 제외:
+  - Project 연동 (WP-053)
+- 완료 기준(DoD):
+  - [ ] Issue를 만들고 코멘트를 달고 닫을 수 있다
+  - [ ] Discussion이 대상 GHE에서 preview 또는 미지원이면 그 사유가 화면에 표시된다
+  - [ ] 삭제는 R3로 분류되어 강한 확인을 요구한다
+- 검증 방법: `pnpm test:integration -- gh-issue`
+- 기록: 원장 WP-050 상태, FR-GH-004 매핑
+
+### WP-051 저장소 작업 (W-013)
+
+- 목표: 저장소 수준 작업을 수행한다. 파괴적 작업이 다수 포함된다.
+- 관련 요구사항: FR-GH-004, FR-GH-009
+- 관련 화면/플로우: W-013, W-009
+- 관련 API/데이터/잡: API-GH-002 / ENT-GH-002
+- 선행 WP: WP-048, WP-057
+- 구현 범위:
+  - W-013: 조회·목록·생성·클론·포크·동기화·편집·이름 변경·보관·해제·삭제·배포 키·오토링크·파일 읽기
+  - 삭제·이름 변경·가시성 변경을 R3로 분류
+  - 로컬 git이 필요한 명령은 임시 workspace에서 수행 (WP-057)
+- 제외:
+  - 설정·보안 영역 (WP-054)
+- 완료 기준(DoD):
+  - [ ] 저장소 조회·편집이 동작한다
+  - [ ] 삭제·이름 변경이 강한 확인과 정책에 따른 승인을 거친다
+  - [ ] 클론이 서버의 실제 소스 트리가 아니라 임시 workspace에서 수행된다
+- 검증 방법: `pnpm test:integration -- gh-repo`
+- 기록: 원장 WP-051 상태, FR-GH-004 매핑
+
+### WP-052 Actions·워크플로·실행·캐시 (W-014)
+
+- 목표: GitHub Actions를 1급 UI로 제공한다. 실행 로그 스트리밍이 핵심이다.
+- 관련 요구사항: FR-GH-004, FR-GH-006
+- 관련 화면/플로우: W-014
+- 관련 API/데이터/잡: API-GH-002, API-GH-005
+- 선행 WP: WP-048
+- 구현 범위:
+  - W-014: 워크플로 목록·조회·활성화·비활성화·수동 실행
+  - 실행 목록·조회·감시·재실행·취소·삭제, 아티팩트 내려받기
+  - 캐시 목록·삭제
+  - 실행 로그 스트리밍 UI
+  - 워크플로 수동 실행 입력을 워크플로 스키마에서 읽어 타입 있는 컨트롤로 표시
+- 제외:
+  - Release (WP-053)
+- 완료 기준(DoD):
+  - [ ] 워크플로를 수동 실행하고 입력이 타입 있는 컨트롤로 표시된다
+  - [ ] 실행 로그가 진행 중 스트리밍된다
+  - [ ] 재실행·취소가 R2 확인을 거친다
+  - [ ] 아티팩트를 내려받을 수 있다
+- 검증 방법: `pnpm test:integration -- gh-actions`, `pnpm test:e2e -- workflow-run`
+- 기록: 원장 WP-052 상태, FR-GH-004 매핑
+
+### WP-053 릴리스·프로젝트 작업 (W-015, W-016)
+
+- 목표: 릴리스와 프로젝트 작업을 제공한다. 파일 업로드·내려받기가 포함된다.
+- 관련 요구사항: FR-GH-004, FR-GH-007
+- 관련 화면/플로우: W-015, W-016
+- 관련 API/데이터/잡: API-GH-002, API-GH-006
+- 선행 WP: WP-048, WP-057
+- 구현 범위:
+  - W-015: 릴리스 생성·조회·목록·편집·삭제, 자산 업로드·내려받기·삭제·검증
+  - W-016: 프로젝트 생성·조회·목록·편집·복사·닫기·재개, 필드·항목 관리, 연결·해제
+  - 파일 업로드 크기 상한과 아티팩트 보존
+- 제외:
+  - Recipe 조합 (WP-058)
+- 완료 기준(DoD):
+  - [ ] 릴리스를 만들고 자산을 업로드·내려받을 수 있다
+  - [ ] 업로드 파일이 실행 후 workspace에서 제거된다
+  - [ ] 프로젝트 항목 관리가 동작한다
+- 검증 방법: `pnpm test:integration -- gh-release`
+- 기록: 원장 WP-053 상태, FR-GH-004 매핑
+
+### WP-054 시크릿·변수·레이블·룰셋·키 (W-018)
+
+- 목표: 비밀 값을 다루는 작업을 별도 보안 정책 아래 제공한다.
+- 관련 요구사항: FR-GH-004, FR-GH-009, NFR-010
+- 관련 화면/플로우: W-018
+- 관련 API/데이터/잡: API-GH-002 / ENT-GH-005
+- 선행 WP: WP-048
+- 구현 범위:
+  - W-018: `secret`, `variable`, `label`, `ruleset`, `gpg-key`, `ssh-key`
+  - 비밀 값은 stdin 또는 제한된 임시 파일로 전달. argv 금지
+  - 비밀 값 재표시 없음. 미리보기에서 `<redacted>`
+  - 전 항목 R3 분류와 승인 정책
+- 제외:
+  - 정책 관리 화면 (WP-059)
+- 완료 기준(DoD):
+  - [ ] 시크릿을 설정할 수 있고 값이 argv·URL·로그·이력·감사 어디에도 남지 않는다
+  - [ ] 설정한 시크릿 값을 화면에서 다시 볼 수 없다
+  - [ ] R3 확인·승인 없이 실행되지 않는다
+- 검증 방법: `pnpm test:integration -- gh-secret`
+- 기록: 원장 WP-054 상태, FR-GH-004 매핑
+
+### WP-055 Codespace·Gist·Attestation·고급 도구 (W-017, W-019, W-022)
+
+- 목표: 나머지 core 영역을 제공하고, 터미널 전용 기능을 분류해 노출한다.
+- 관련 요구사항: FR-GH-004, FR-GH-013
+- 관련 화면/플로우: W-017, W-019, W-022
+- 관련 API/데이터/잡: API-GH-001, API-GH-002
+- 선행 WP: WP-048
+- 구현 범위:
+  - W-017: Codespace 생성·목록·조회·중지·삭제·재빌드·포트·로그
+  - W-019: `gh search`, `gh org`, `gh status`
+  - W-022: Gist, Attestation, Skill, Agent-task, Extension 탐색, `licenses`
+  - 대화형 기능(`ssh`, `code`, `jupyter`, `cp`)을 웹 등가·격리 workspace·`terminal_only` 중 하나로 분류
+  - 확장은 탐색·메타데이터만. 실행은 기본 차단
+- 제외:
+  - 확장 허용 목록 관리 (WP-059)
+- 완료 기준(DoD):
+  - [ ] Codespace 비대화형 작업이 동작한다
+  - [ ] 대화형 기능이 사유와 함께 분류되어 표시되고 숨겨지지 않는다
+  - [ ] 확장 실행이 기본 차단되고 `policy_blocked`으로 표시된다
+- 검증 방법: `pnpm test:integration -- gh-advanced`
+- 기록: 원장 WP-055 상태, FR-GH-004 매핑
+
+### WP-056 gh API 탐색기 (W-020)
+
+- 목표: gh api를 command와 동일한 정책 아래 제공한다. 정책 우회 통로가 되면 안 된다.
+- 관련 요구사항: FR-GH-010
+- 관련 화면/플로우: W-020
+- 관련 API/데이터/잡: API-GH-009
+- 선행 WP: WP-048
+- 구현 범위:
+  - W-020: 엔드포인트, 메서드, 필드, 원시 필드, 헤더, 페이지네이션, 미리보기, 필터, 템플릿, 본문·파일
+  - 인증·라우팅 헤더 override 차단
+  - 대상 호스트를 구성된 GHE로 고정
+  - 쓰기 메서드에 위험도 정책 적용
+  - 엔드포인트 허용·차단 목록 평가
+- 제외:
+  - 정책 편집 UI (WP-059)
+- 완료 기준(DoD):
+  - [ ] REST와 GraphQL 요청이 실행된다
+  - [ ] `Authorization`·`Host`·`Cookie` 헤더를 지정하면 거부된다
+  - [ ] 구성된 호스트 밖 요청이 거부된다
+  - [ ] 쓰기 메서드가 위험도 확인을 거친다
+  - [ ] 차단 목록의 엔드포인트가 `GH_ENDPOINT_BLOCKED`로 거부된다
+- 검증 방법: `pnpm test:integration -- gh-api-explorer`
+- 기록: 원장 WP-056 상태, FR-GH-010 매핑
+
+### WP-057 임시 workspace와 로컬 git 작업
+
+- 목표: 로컬 git이나 파일이 필요한 명령을 격리된 임시 공간에서 수행한다.
+- 관련 요구사항: FR-GH-007, NFR-010
+- 관련 화면/플로우: 없음 (W-013, W-015가 소비)
+- 관련 API/데이터/잡: API-GH-006 / JOB-GH-005, JOB-GH-006
+- 선행 WP: WP-047
+- 구현 범위:
+  - 실행별 workspace 생성·할당량·TTL
+  - clone / sync / checkout 계열 명령의 workspace 실행
+  - 파일 업로드 입력과 생성 아티팩트 처리 (마이그레이션 007 `gh_execution_artifact`)
+  - JOB-GH-005 고아 workspace 정리, JOB-GH-006 아티팩트 만료 정리
+- 제외:
+  - 웹 터미널 (범위 밖)
+- 완료 기준(DoD):
+  - [ ] clone이 서버의 실제 소스 트리를 건드리지 않는다
+  - [ ] workspace가 실행 종료와 함께 폐기된다
+  - [ ] 할당량 초과 시 실행이 시작되지 않는다
+  - [ ] 고아 workspace가 정리 잡에서 회수된다
+- 검증 방법: `pnpm test:integration -- gh-workspace`
+- 기록: 원장 WP-057 상태, FR-GH-007 매핑
+
+### WP-058 Recipe 빌더 (W-023)
+
+- 목표: 등록된 capability만 조합하는 다단계 작업을 제공한다.
+- 관련 요구사항: FR-GH-005
+- 관련 화면/플로우: W-023, W-021
+- 관련 API/데이터/잡: API-GH-004 / ENT-GH-003, ENT-GH-004 / JOB-GH-002
+- 선행 WP: WP-049, WP-052
+- 구현 범위:
+  - 마이그레이션 008: `gh_recipe`, `gh_recipe_revision`
+  - W-023: 순차 단계, 타입 있는 입력 변수, 이전 단계 JSON 출력 바인딩, 조건, 팬아웃, 동시 실행 상한, 실패 정책
+  - JOB-GH-002 단계 진행
+  - R2 이상 단계 포함 시 전체 계획 확인
+  - Recipe 개정 보존
+- 제외:
+  - 임의 shell·표현식 (영구 금지)
+- 완료 기준(DoD):
+  - [ ] 여러 단계를 조합한 Recipe가 저장·실행된다
+  - [ ] manifest에 없는 capability를 단계에 넣을 수 없다
+  - [ ] 임의 명령 문자열을 단계로 만들 수 없다
+  - [ ] 실패 정책이 동작하고 앞선 단계를 자동으로 되돌리지 않는다
+  - [ ] Recipe 개정이 보존된다
+- 검증 방법: `pnpm test:integration -- gh-recipe`, `pnpm test:e2e -- recipe-builder`
+- 기록: 원장 WP-058 상태, FR-GH-005 매핑
+
+### WP-059 capability 드리프트와 정책 관리 (A-005, A-006)
+
+- 목표: 관리자가 실행 정책과 capability 레지스트리를 운영할 수 있게 한다.
+- 관련 요구사항: FR-GH-013, FR-GH-011, FR-GH-009
+- 관련 화면/플로우: A-005, A-006
+- 관련 API/데이터/잡: API-GH-001, API-GH-008 / ENT-GH-006
+- 선행 WP: WP-045, WP-048
+- 구현 범위:
+  - A-006: manifest 버전·해시, gh 버전 대조, 분류 커버리지, 드리프트, 호스트 지원 상태
+  - A-005: capability 허용·차단, 위험도 재정의, 승인 필요 지정, `gh api` 엔드포인트 정책, 확장 허용 목록
+  - 드리프트 시 `registry_stale` / `execution_disabled` / `admin_action_required` 처리
+  - 정책 변경의 감사 기록
+- 제외:
+  - parity 최종 검증 (WP-060)
+- 완료 기준(DoD):
+  - [ ] 설치 gh 버전과 manifest 버전이 다르면 새 command 실행이 차단된다
+  - [ ] 관리자가 capability를 차단하면 사용자 화면에서 `policy_blocked`으로 표시된다
+  - [ ] 확장 허용 목록에 추가한 확장만 실행된다
+  - [ ] 정책 변경이 감사에 남는다
+- 검증 방법: `pnpm test:integration -- gh-policy`
+- 기록: 원장 WP-059 상태, FR-GH-013 매핑
+
+### WP-060 전체 parity 검증
+
+- 목표: 고정 gh 버전에 대한 완전 분류를 릴리스 게이트로 확정한다.
+- 관련 요구사항: FR-GH-001, NFR-009
+- 관련 화면/플로우: A-006
+- 관련 API/데이터/잡: API-GH-001
+- 선행 WP: WP-045 ~ WP-059
+- 구현 범위:
+  - 전 command path·flag 분류 최종 감사
+  - 제약 속성 시험과 페어와이즈 조합 시험
+  - 터미널 전용·정책 차단·호스트 미지원 분류의 사유 문구 검수
+  - 커버리지 리포트 산출과 릴리스 게이트 연결
+- 제외:
+  - 모든 조합의 실제 실행 (조합 폭발. NFR-009가 정의한 대로 스키마 표현 가능성으로 판정한다)
+- 완료 기준(DoD):
+  - [ ] command path 분류 커버리지가 100%다
+  - [ ] 문서화된 flag 분류 커버리지가 100%다
+  - [ ] 미분류 command와 flag가 0이다
+  - [ ] 페어와이즈 조합 시험이 통과한다
+  - [ ] 숨겨진 capability가 없다 — 미지원·차단도 사유와 함께 노출된다
+- 검증 방법: `pnpm gh:validate-capabilities && pnpm test -- parity`
+- 기록: 원장 WP-060 상태, FR-GH-001 매핑
+
 ## 4. REL → WP 커버리지
 
 | REL | WP | 개수 |
@@ -1325,6 +1726,11 @@
 | REL-004 | WP-029 ~ WP-036 | 8 |
 | REL-005 | WP-037 ~ WP-040 | 4 |
 | REL-006 | WP-041 ~ WP-044 | 4 |
-| 합계 | | 44 |
+| REL-007 | WP-045 ~ WP-048 | 4 |
+| REL-008 | WP-049 ~ WP-050 | 2 |
+| REL-009 | WP-051 ~ WP-053, WP-057 | 4 |
+| REL-010 | WP-054 ~ WP-056 | 3 |
+| REL-011 | WP-058 ~ WP-060 | 3 |
+| 합계 | | 60 |
 
 모든 REL이 WP로 분해되었고, 모든 WP가 최소 1개 FR을 참조한다.
