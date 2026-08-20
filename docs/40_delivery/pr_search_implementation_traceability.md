@@ -461,6 +461,10 @@ WP가 적은 검증 명령은 `pnpm test:integration -- bus`다. WP-004 때와 �
 
 WP가 적은 검증 명령은 `pnpm test -- github`다. WP-004·WP-005 때와 같은 이유로 vitest가 `--` 뒤 인자를 필터로 받지 않아 전체 단위 스위트(126건)를 돌린다. `github`만 돌린 것은 위 표의 마지막 명령이다.
 
+**CI 검증 결과 — 커밋 `82a432a`, run 32366126973. `verify`·`integration` 모두 성공.**
+
+`verify` 잡이 단위 126건을 돌렸고 real-GHE smoke는 CI에도 자격 증명이 없어 건너뛰었다. `integration` 잡은 PostgreSQL·Elasticsearch·Redis 서비스 컨테이너로 WP-002~005 스위트를 돌려 회귀가 없음을 확인했다.
+
 ### 6.7 릴리스 게이트
 
 릴리스별로 갱신한다.
