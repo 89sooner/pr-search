@@ -27,6 +27,7 @@
 | ENT-REL-002 | Link | 관계 간선 | `link_id`, `from_type`, `from_id`, `to_type`, `to_id`, `link_type`, `confidence`, `evidence`, `resolved` | Elasticsearch | link | FR-REL-003~008 |
 | ENT-ING-001 | RawEvent | 원본 웹훅 이벤트 | `delivery_id`, `event_type`, `repository_id`, `received_at`, `payload`, `queued_at`, `processed_at` | PostgreSQL | ingestion | FR-ING-001, FR-ING-003 |
 | ENT-ING-002 | DeadLetter | 실패 이벤트 격리 | `dead_letter_id`, `delivery_id`, `stage`, `error`, `retry_count`, `state` | PostgreSQL | ingestion | FR-ING-007 |
+<!-- CR-010(DEV-013): 보강 결과 전용 테이블은 두지 않는다. EVT-ING-002가 투영에 필요한 것을 self-contained bounded 이벤트로 나른다. 원본이 필요하면 raw_event가 시스템 오브 레코드다 (ADR-004). -->
 | ENT-ING-003 | RawEventArchive | 원본 아카이브 검색 문서 | `delivery_id`, `event_type`, `repository`, `received_at`, `payload` | Elasticsearch | filebeat | FR-ING-010 |
 | ENT-ING-004 | Job | 잡 실행 상태 | `job_id`, `type`, `target`, `state`, `progress`, `cursor`, `started_at`, `finished_at` | PostgreSQL | jobs | FR-ADMIN-002, FR-ING-006 |
 | ENT-GH-001 | GitHubIdentityConnection | 사용자별 Operations App 위임 연결 | `user_id`, `github_login`, `token_ref`, `scopes[]`, `connected_at`, `expires_at`, `revoked_at` | PostgreSQL | gh-identity | FR-GH-008 |

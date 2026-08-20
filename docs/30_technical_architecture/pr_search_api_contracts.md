@@ -935,7 +935,7 @@ POST /api/v1/admin/sequence-integrity
 | Event ID | Event Name | Producer | Consumer | Payload | Ordering/Dedupe |
 | --- | --- | --- | --- | --- | --- |
 | EVT-ING-001 | `ingestion.event_received` | ingest-gateway | enrich 워커 | `{ delivery_id, event_type, action, repository_id, correlation_id }` | 파티션 키 `repository_id`. 멱등 키 `delivery_id` |
-| EVT-ING-002 | `ingestion.enriched` | enrich 워커 | project 워커 | `{ delivery_id, repository_id, entity_kind, entity_id, enrichment_pending }` | 위와 동일 |
+| EVT-ING-002 | `ingestion.enriched` | enrich 워커 | project 워커 | self-contained bounded (CR-010) — `{ delivery_id, repository_id, entity_kind, pr_number, pull_request, source_commit_shas[], changed_files[], reviews[], source_commits_truncated, files_truncated, enrichment_pending, enrichment_errors[], correlation_id }`. 타입은 `@prs/domain`의 `IngestionEnriched` | 위와 동일 |
 | EVT-ING-003 | `ingestion.projected` | project 워커 | link 워커 | `{ repository_id, entity_kind, entity_id, document_version }` | 위와 동일 |
 | EVT-ING-004 | `ingestion.failed` | 모든 워커 | ops 모듈 | `{ delivery_id, stage, error, retry_count }` | 멱등 키 `(delivery_id, stage)` |
 | EVT-SEQ-001 | `sequence.assigned` | sequence 워커 | project 워커 | `{ repository_id, base_branch, seq_epoch, from_seq, to_seq }` | 시퀀스 공간별 직렬 |
