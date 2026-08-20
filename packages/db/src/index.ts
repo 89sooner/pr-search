@@ -11,8 +11,16 @@ export { resolvePoolConfig } from './config.js';
 export type { DatabaseEnv } from './config.js';
 
 export { createPool, withTransaction } from './pool.js';
+// 앱이 pg에 직접 의존하지 않도록 타입만 다시 내보낸다 (의존 방향: apps → packages).
+export type { Pool, PoolClient } from 'pg';
 
-export { sequenceLockKey, tryAdvisoryXactLock, trySequenceSpaceLock } from './advisory-lock.js';
+export {
+  advisoryXactLock,
+  deliveryLockKey,
+  sequenceLockKey,
+  tryAdvisoryXactLock,
+  trySequenceSpaceLock,
+} from './advisory-lock.js';
 
 export { appliedVersions, loadMigrations, migrateDown, migrateUp, MIGRATIONS_DIR } from './migrate.js';
 export type { Migration } from './migrate.js';

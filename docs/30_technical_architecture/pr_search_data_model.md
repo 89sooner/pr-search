@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+> 상태: review | 버전: v0.3 | 갱신일: 2026-08-20
 
 ## 1. 목적
 
@@ -59,9 +59,32 @@ CREATE TABLE raw_event (
 -- CR-006(DEV-004): 이전 판에는 raw_event_delivery_uk를 별도로 만들었으나
 -- PRIMARY KEY (delivery_id, received_at)과 컬럼·순서가 완전히 같은 중복 인덱스였다.
 -- 5억 행·초당 2000 이벤트(NFR-002) 규모에서 중복 인덱스는 삽입 비용을 그대로
--- 두 배로 만들기 때문에 제거했다. 멱등 제약은 기본 키가 그대로 강제한다.
+-- 두 배로 만들기 때문에 제거했다.
+--
+-- CR-007(DEV-009): 다만 기본 키만으로는 재전송 중복을 막지 못한다. PostgreSQL은
+-- 파티션 테이블의 유일 제약이 파티션 키를 포함하도록 요구하므로 기본 키가
+-- (delivery_id, received_at)이고, 재전송은 received_at이 달라 충돌하지 않는다.
+-- delivery_id 단독 유일 제약은 이 파티션 구성에서 만들 수 없다.
+-- FR-ING-002 AC-1이 요구하는 "중복 저장 차단"은 게이트웨이가 강제한다 —
+-- 같은 트랜잭션에서 delivery_id에 advisory lock을 잡고 존재 검사와 INSERT를
+-- 한 문장으로 묶는다(아래 참조). 기본 키 충돌은 같은 시각에 두 번 도착한
+-- 경우를 위한 마지막 방어선으로 남는다.
 CREATE INDEX raw_event_outbox_idx  ON raw_event (queued_at) WHERE processed_at IS NULL;
 CREATE INDEX raw_event_repo_idx    ON raw_event (repository_id, received_at DESC);
+```
+
+수집 게이트웨이의 멱등 저장 (CR-007, DEV-009):
+
+```sql
+-- 한 트랜잭션 안에서 순서대로 실행한다 (apps/ingest-gateway/src/store.ts).
+SET LOCAL lock_timeout = 2000;
+SELECT pg_advisory_xact_lock(hashtext('ingest:' || $delivery_id));  -- 같은 전달 식별자 직렬화
+
+INSERT INTO raw_event (delivery_id, event_type, action, repository_id,
+                       received_at, payload, payload_hash, correlation_id)
+SELECT $1, $2, $3, $4, $5, $6, $7, $8
+ WHERE NOT EXISTS (SELECT 1 FROM raw_event WHERE delivery_id = $1);
+-- rowCount = 0 이면 중복이다. HTTP 202 + duplicate: true (FR-ING-002 AC-2).
 
 CREATE TABLE dead_letter (
   dead_letter_id  BIGSERIAL   PRIMARY KEY,
@@ -411,6 +434,7 @@ ALTER TABLE gh_capability_snapshot
 
 - `text_ko_en`은 OD-005 결정에 따라 `nori_tokenizer` 기반으로 교체할 수 있다. 분석기 이름은 유지해 매핑 참조가 변하지 않게 한다 (FR-SRCH-011 AC-4).
 - `index.sort`는 시퀀스 범위 질의와 기본 정렬(시퀀스 내림차순)에서 조기 종료를 얻기 위한 것이다 (ADR-003).
+- **`index.sort`는 `merge_seq`를 가진 인덱스에만 적용한다** (CR-007, DEV-007). `prs-links`에는 `merge_seq`가 없고, Elasticsearch는 매핑에 없는 필드로 `index.sort`를 걸면 인덱스 생성을 거부한다. 간선은 `from_id`/`to_id`로 조회하므로 시퀀스 축 정렬이 필요하지도 않다. 나머지 공통 설정(복제본·refresh·분석기)은 네 인덱스 모두에 적용한다.
 - `refresh_interval: 1s`는 수집 반영 SLO(p95 10초, NFR-002)와 색인 처리량의 절충값이다. 백필 중에는 해당 인덱스만 `30s`로 낮췄다가 복원한다.
 
 ### 4.1 `prs-pull-requests`

@@ -23,6 +23,7 @@
 | CR-005 | 2026-08-20 | scope | 2026-08-20 사용자 승인: gh CLI가 지원하는 GitHub 작업을 웹 UI에서 최대한 완전하게 제공하는 GitHub Operations Platform으로 제품 범위 확장 | 제품을 **Search/Data Plane**과 **GitHub Operations Plane** 두 축으로 분리하고 후자를 신규 범위로 편입한다. 기존 Out of Scope였던 GHE 쓰기 행위·Issue·Discussion·Project·Actions·Release·Repository·Codespace·설정/보안 운영을 In Scope 또는 Conditional Scope로 재분류한다. 버전 고정된 gh capability manifest, 생성형 command UI, 격리 executor, 위임 사용자 신원, risk/승인/감사 모델을 추가한다. FR-GH-001~013, NFR-009~012, W-010~W-023, A-005~A-007, ADR-013~016, REL-007~011, WP-045~060 신설. 기존 안정 ID는 변경하지 않는다 | FR-GH-001~013, NFR-009~012, W-010~W-023, A-005~A-007, ADR-013~016, REL-007~011, WP-045~060, API-GH-*, ENT-GH-*, JOB-GH-*, EVT-GH-* | 요구사항 4종, 파생 UI 7종, 아키텍처 10종, 딜리버리 4종, 브리프 2종, `README.md`, `change_control.md` | closed |
 | CR-006 | 2026-08-20 | correction | WP-002 구현 중 등록된 문서 편차 DEV-003·DEV-004·DEV-005 | 문서 오류 3건을 현실에 맞춘다. 게이트 기록의 오류 코드 수 표기를 실제와 일치시키고(DEV-003), `raw_event_delivery_uk`가 기본 키와 완전히 중복인 인덱스임을 데이터 모델에 반영해 삭제하며(DEV-004), 파티션 테이블 `audit_record`의 기본 키에 파티션 키를 포함시킨다(DEV-005). CR-005의 범위 변경과 섞지 않는다. 코드는 이미 올바른 방향으로 구현되어 있어 문서를 코드에 맞춘다 | DEV-003, DEV-004, DEV-005, FR-ING-002, FR-AUTH-004 | `pr_search_data_model.md`, `pr_search_api_contracts.md`, `change_control.md`, `pr_search_implementation_traceability.md` | closed |
 
+| CR-007 | 2026-08-20 | correction | WP-003·WP-004 구현 중 등록된 문서 편차 DEV-007·DEV-009 | 데이터 모델 문서 오류 2건을 현실에 맞춘다. 4장 공통 설정의 `index.sort`가 `merge_seq` 없는 `prs-links`에도 적용되는 것처럼 읽혀 그대로는 인덱스 생성이 거부되는 문제를 적용 범위 명시로 정정하고(DEV-007), 3.1의 "멱등 제약은 기본 키가 그대로 강제한다"가 파티션 테이블에서 성립하지 않음을 정정해 게이트웨이의 advisory lock + 조건부 INSERT를 멱등 강제 수단으로 명시한다(DEV-009). **SRS는 건드리지 않는다** — FR-ING-002 AC-1이 요구하는 결과(중복 저장 차단)는 그대로 충족되고, 달라지는 것은 그것을 강제하는 수단뿐이다. 코드가 이미 올바른 방향으로 구현되어 있어 문서를 코드에 맞춘다 | DEV-007, DEV-009, FR-ING-002, FR-ING-005 | `pr_search_data_model.md`, `change_control.md`, `pr_search_implementation_traceability.md` | closed |
 유형: `scope`(범위 변경), `design`(설계 변경), `implementation`(구현 편차 DEV-### 처리), `correction`(문서 오류 수정)
 
 ## 4. 게이트 통과 기록
@@ -232,6 +233,16 @@ gh capability 실측 근거: 이 CR의 수치는 실제로 설치한 gh 2.97.0(2
 - [x] `packages/contracts/src/error-codes.ts` — API 계약 6장과 재동기화 (45종). 문서를 파싱해 대조하는 기존 테스트가 이 동기화를 강제한다
 
 DEV-001(컨테이너 레지스트리 차단)과 DEV-006(testcontainers 대신 환경 변수 접속)은 환경·검증 제약이며 문서 오류가 아니다. 근거 없이 resolved 처리하지 않고 `open`으로 유지한다.
+
+### CR-007 cascade (데이터 모델 편차 정정)
+
+- [x] `30_technical_architecture/pr_search_data_model.md` — DEV-007: 4장 공통 설정의 `index.sort` 적용 범위를 `merge_seq` 보유 인덱스로 한정. DEV-009: 3.1에 파티션 테이블의 유일 제약 한계와 게이트웨이 멱등 저장 SQL 추가. 버전 v0.2 → v0.3
+- [x] `40_delivery/pr_search_implementation_traceability.md` — DEV-007·DEV-009를 `resolved`로 전환하고 CR-007 연결
+- [x] `00_governance/change_control.md` — 본 CR 등록과 cascade 기록
+
+요구사항 계층(`srs_final.md`, `prd.md`)은 변경하지 않았다. 두 편차 모두 승인된 요구사항이 아니라 그것을 구현하는 수단에 대한 서술 오류이며, FR-ING-002 AC-1(중복 저장 차단)과 FR-ING-005(색인 구성)의 수용 기준은 그대로 충족된다. 파생 UI·API 계약·딜리버리 문서에는 인용 지점이 없어 cascade가 여기서 끝난다.
+
+DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환경 변수 접속), DEV-008(로컬 ES 부재)은 환경·검증 제약이며 문서 오류가 아니다. `open`으로 유지한다.
 
 ## 6. 미결 항목
 

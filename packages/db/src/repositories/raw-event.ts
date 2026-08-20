@@ -50,6 +50,52 @@ export async function insertRawEvent(db: Queryable, event: RawEventInsert): Prom
   );
 }
 
+/**
+ * 전달 식별자가 아직 없을 때만 저장한다. 이미 있으면 `false`를 돌려준다.
+ *
+ * **왜 INSERT 충돌만으로는 부족한가.** `raw_event`는 `received_at` 범위 파티션이고
+ * PostgreSQL은 파티션 테이블의 유일 제약이 파티션 키를 포함하도록 요구하므로
+ * 기본 키가 `(delivery_id, received_at)`이다. 재전송은 수신 시각이 달라 기본 키가
+ * 충돌하지 않는다 — 그대로 두면 같은 전달 식별자가 두 행이 된다 (DEV-009).
+ * 그래서 존재 검사를 INSERT와 한 문장에 묶고, 호출 측이 같은 트랜잭션에서
+ * `advisoryXactLock`으로 같은 전달 식별자를 직렬화한다. 기본 키 충돌(23505)은
+ * 같은 시각에 두 번 도착한 경우를 위한 마지막 방어선으로 남는다.
+ *
+ * 존재 검사는 `delivery_id`가 기본 키의 선두 컬럼이라 파티션마다 인덱스 탐색
+ * 한 번으로 끝난다. `received_at` 조건이 없어 파티션 프루닝은 되지 않는다.
+ */
+export async function insertRawEventIfAbsent(db: Queryable, event: RawEventInsert): Promise<boolean> {
+  const result = await db.query(
+    `INSERT INTO raw_event
+       (delivery_id, event_type, action, repository_id, received_at, payload, payload_hash, correlation_id)
+     SELECT $1, $2, $3, $4, $5, $6, $7, $8
+      WHERE NOT EXISTS (SELECT 1 FROM raw_event WHERE delivery_id = $1)`,
+    [
+      event.delivery_id,
+      event.event_type,
+      event.action,
+      event.repository_id,
+      event.received_at,
+      JSON.stringify(event.payload),
+      event.payload_hash,
+      event.correlation_id,
+    ],
+  );
+  return result.rowCount === 1;
+}
+
+/** 전달 식별자로 원본 이벤트를 찾는다. 멱등 검증과 조사에 쓴다. */
+export async function findRawEventByDeliveryId(
+  db: Queryable,
+  deliveryId: string,
+): Promise<RawEventRow | undefined> {
+  const result = await db.query<RawEventRow>(
+    'SELECT * FROM raw_event WHERE delivery_id = $1 ORDER BY received_at LIMIT 1',
+    [deliveryId],
+  );
+  return result.rows[0];
+}
+
 /** 아웃박스 재적재 대상: enqueue됐지만 일정 시간이 지나도 처리되지 않은 행 (JOB-ING-007). */
 export async function findStuckOutboxEvents(
   db: Queryable,

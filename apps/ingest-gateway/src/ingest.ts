@@ -1,0 +1,206 @@
+/**
+ * 웹훅 수신 처리의 핵심 (FR-ING-001, FR-ING-002, FR-ING-003).
+ *
+ * **순서가 곧 보장이다** (백엔드 아키텍처 4.1, 보안 문서 9장).
+ *
+ *   1. 원문 바이트로 서명 검증 — 실패하면 저장하지 않고 401
+ *   2. 크기 상한 확인 — 초과하면 413
+ *   3. JSON 파싱 (여기서 처음으로 파서가 입력을 본다)
+ *   4. durable 저장 — 실패하면 500, GHE가 다시 보낸다
+ *   5. NDJSON 아카이브 append (레인 B, 실패해도 202를 막지 않는다)
+ *   6. 202
+ *
+ * 이 순서를 지키려고 의존성을 전부 주입받는다. Fastify에 묶어 두면 "파싱보다
+ * 서명 검증이 먼저인가"를 테스트로 증명할 수 없다.
+ */
+
+import type { RawEventInsert } from '@prs/db';
+import type { ArchiveWriter } from './archive.js';
+import { eventTypeLabel, isSupportedEventType } from './events.js';
+import type { IngestMetrics } from './metrics.js';
+import { canonicalHash, extractAction, extractRepositoryId, resolveDeliveryId } from './payload.js';
+import type { RawEventStore } from './store.js';
+
+export interface WebhookRequest {
+  readonly rawBody: Buffer | undefined;
+  readonly signature: string | undefined;
+  readonly eventType: string | undefined;
+  readonly deliveryId: string | undefined;
+}
+
+/** API-ING-001이 정의한 202 본문. */
+export interface WebhookAccepted {
+  readonly accepted: true;
+  readonly delivery_id: string;
+  readonly duplicate: boolean;
+}
+
+/**
+ * 오류 본문.
+ *
+ * 내부 정보를 담지 않는다 (보안 문서 9장: "오류 응답은 내부 정보를 노출하지
+ * 않는다"). 상관 ID만 넘겨 운영자가 로그와 맞춰 볼 수 있게 한다.
+ */
+export interface WebhookRejected {
+  readonly accepted: false;
+  readonly correlation_id: string;
+}
+
+export interface WebhookOutcome {
+  readonly status: 202 | 401 | 413 | 500;
+  readonly body: WebhookAccepted | WebhookRejected;
+}
+
+export interface LogEntry {
+  readonly level: 'info' | 'warn' | 'error';
+  readonly message: string;
+  readonly correlation_id: string;
+  readonly delivery_id?: string;
+  readonly event_type?: string;
+  readonly repository_id?: number | null;
+  readonly supported?: boolean;
+  readonly duplicate?: boolean;
+  readonly reason?: string;
+}
+
+export interface IngestDeps {
+  /** 원문 바이트에 대한 HMAC-SHA256 상수 시간 검증. */
+  readonly verifySignature: (rawBody: Buffer, signature: string | undefined) => boolean;
+  /** JSON 파싱. 검증 이후에만 불린다. */
+  readonly parsePayload: (rawBody: Buffer) => unknown;
+  readonly store: RawEventStore;
+  readonly archive: ArchiveWriter;
+  readonly metrics: IngestMetrics;
+  readonly maxBodyBytes: number;
+  readonly now: () => Date;
+  readonly newCorrelationId: () => string;
+  readonly log: (entry: LogEntry) => void;
+}
+
+function reject(
+  deps: IngestDeps,
+  status: 401 | 413 | 500,
+  reason: string,
+  correlationId: string,
+  eventType: string | undefined,
+): WebhookOutcome {
+  deps.metrics.rejected.inc({ reason });
+  deps.log({
+    level: status === 500 ? 'error' : 'warn',
+    message: 'webhook rejected',
+    correlation_id: correlationId,
+    reason,
+    ...(eventType === undefined ? {} : { event_type: eventType }),
+  });
+  return { status, body: { accepted: false, correlation_id: correlationId } };
+}
+
+export async function ingestWebhook(deps: IngestDeps, request: WebhookRequest): Promise<WebhookOutcome> {
+  const correlationId = deps.newCorrelationId();
+  const rawBody = request.rawBody;
+
+  // 본문 없음도 401이다 (API-ING-001). 서명만으로 판별할 대상이 없다.
+  if (rawBody === undefined || rawBody.length === 0) {
+    return reject(deps, 401, 'missing_body', correlationId, request.eventType);
+  }
+
+  // 1. 서명 검증. 파싱보다 먼저다.
+  if (!deps.verifySignature(rawBody, request.signature)) {
+    return reject(deps, 401, 'invalid_signature', correlationId, request.eventType);
+  }
+
+  // 2. 크기 상한. 앞단(Fastify bodyLimit)이 본문을 다 읽기 전에 끊지만,
+  //    주입된 상한이 다를 수 있으므로 여기서도 확인한다.
+  if (rawBody.length > deps.maxBodyBytes) {
+    return reject(deps, 413, 'payload_too_large', correlationId, request.eventType);
+  }
+
+  // 3. 파싱.
+  let payload: unknown;
+  try {
+    payload = deps.parsePayload(rawBody);
+  } catch {
+    // 서명이 맞는데 JSON이 깨졌다면 GHE와 우리 사이에서 본문이 상한 것이다.
+    // `payload`는 JSONB NOT NULL이라 저장할 수 없다. 허용된 상태 코드는
+    // 401/413/500뿐이므로(API-ING-001) 500으로 알리고 재전송을 받는다.
+    return reject(deps, 500, 'malformed_payload', correlationId, request.eventType);
+  }
+
+  const eventType = request.eventType ?? 'unknown';
+  const payloadHash = canonicalHash(payload);
+  const deliveryId = resolveDeliveryId(request.deliveryId, payloadHash);
+  const receivedAt = deps.now();
+  const repositoryId = extractRepositoryId(payload);
+  const supported = isSupportedEventType(eventType);
+
+  const event: RawEventInsert = {
+    delivery_id: deliveryId,
+    event_type: eventType,
+    action: extractAction(payload),
+    repository_id: repositoryId,
+    received_at: receivedAt,
+    payload,
+    payload_hash: payloadHash,
+    correlation_id: correlationId,
+  };
+
+  // 4. durable 저장.
+  let duplicate: boolean;
+  try {
+    ({ duplicate } = await deps.store(event));
+  } catch {
+    return reject(deps, 500, 'store_failed', correlationId, eventType);
+  }
+
+  deps.metrics.received.inc({ event_type: eventTypeLabel(request.eventType), supported: String(supported) });
+  if (duplicate) {
+    deps.metrics.duplicate.inc();
+    deps.log({
+      level: 'info',
+      message: 'webhook duplicate',
+      correlation_id: correlationId,
+      delivery_id: deliveryId,
+      event_type: eventType,
+      repository_id: repositoryId,
+      supported,
+      duplicate: true,
+    });
+    return { status: 202, body: { accepted: true, delivery_id: deliveryId, duplicate: true } };
+  }
+
+  // 5. 아카이브. 레인 B 실패는 레인 A를 막지 않는다.
+  try {
+    await deps.archive.append({
+      delivery_id: deliveryId,
+      event_type: eventType,
+      action: event.action,
+      repository_id: repositoryId,
+      received_at: receivedAt.toISOString(),
+      correlation_id: correlationId,
+      payload,
+    });
+  } catch {
+    deps.metrics.archiveFailed.inc();
+    deps.log({
+      level: 'error',
+      message: 'archive append failed',
+      correlation_id: correlationId,
+      delivery_id: deliveryId,
+      event_type: eventType,
+      reason: 'archive_append_failed',
+    });
+  }
+
+  deps.log({
+    level: 'info',
+    message: 'webhook accepted',
+    correlation_id: correlationId,
+    delivery_id: deliveryId,
+    event_type: eventType,
+    repository_id: repositoryId,
+    supported,
+    duplicate: false,
+  });
+
+  return { status: 202, body: { accepted: true, delivery_id: deliveryId, duplicate: false } };
+}

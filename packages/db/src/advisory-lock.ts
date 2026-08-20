@@ -7,6 +7,11 @@
 
 import type { PoolClient } from 'pg';
 
+/** 웹훅 멱등 처리 락 키. 전달 식별자 하나가 동시에 두 번 저장되지 않게 한다 (FR-ING-002). */
+export function deliveryLockKey(deliveryId: string): string {
+  return `ingest:${deliveryId}`;
+}
+
 /** 시퀀스 공간 하나에 대응하는 락 키 문자열. */
 export function sequenceLockKey(repositoryId: number, baseBranch: string): string {
   return `seq:${String(repositoryId)}:${baseBranch}`;
@@ -23,6 +28,23 @@ export async function tryAdvisoryXactLock(client: PoolClient, key: string): Prom
     [key],
   );
   return result.rows[0]?.locked === true;
+}
+
+/**
+ * 대기하는 트랜잭션 범위 advisory lock.
+ *
+ * 채번과 달리 수집 경로는 **기다려야** 한다. 같은 전달 식별자가 동시에 두 번
+ * 도착했을 때 재큐할 곳이 없기 때문이다 — 앞선 트랜잭션이 커밋할 때까지
+ * 기다렸다가 중복인지 다시 본다. `lock_timeout`으로 대기를 잘라 수신 응답
+ * 예산(NFR-002 p95 300ms)이 무한정 밀리지 않게 한다.
+ */
+export async function advisoryXactLock(
+  client: PoolClient,
+  key: string,
+  lockTimeoutMs = 2_000,
+): Promise<void> {
+  await client.query(`SET LOCAL lock_timeout = ${String(Math.trunc(lockTimeoutMs))}`);
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
 }
 
 /** 시퀀스 공간 락. `tryAdvisoryXactLock`에 키 생성을 합친 것이다. */
