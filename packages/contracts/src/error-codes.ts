@@ -3,6 +3,8 @@
  *
  * 출처: `docs/30_technical_architecture/pr_search_api_contracts.md` 6장.
  * 이 목록은 그 표와 1:1로 일치해야 하며 `error-codes.test.ts`가 문서와 대조한다.
+ *
+ * `GH_`로 시작하는 코드는 GitHub Operations Plane 전용이다 (CR-005).
  */
 
 export const ERROR_CODES = [
@@ -64,6 +66,38 @@ export const ERROR_CODES = [
   'GRAPH_TIMEOUT',
   /** 예상치 못한 오류 (사용자 조치: 상관 ID로 문의) — HTTP 500 */
   'INTERNAL_ERROR',
+  /** manifest에 없는 capability (사용자 조치: 레지스트리 상태 확인) — HTTP 404 */
+  'GH_CAPABILITY_UNKNOWN',
+  /** argument·flag 제약 위반 (사용자 조치: 충돌·의존 관계 수정) — HTTP 400 */
+  'GH_CONSTRAINT_VIOLATION',
+  /** Operations App 미연결·토큰 만료 (사용자 조치: GitHub 계정 연결) — HTTP 401 */
+  'GH_IDENTITY_REQUIRED',
+  /** 사용자 GitHub 권한 부족 (사용자 조치: 필요 권한 요청) — HTTP 403 */
+  'GH_PERMISSION_DENIED',
+  /** 실행 정책이 차단한 capability (사용자 조치: 관리자에게 문의) — HTTP 403 */
+  'GH_POLICY_BLOCKED',
+  /** `gh api` 엔드포인트 정책 차단 (사용자 조치: 허용된 엔드포인트 사용) — HTTP 403 */
+  'GH_ENDPOINT_BLOCKED',
+  /** 허용 목록에 없는 확장 (사용자 조치: 관리자 승인 요청) — HTTP 403 */
+  'GH_EXTENSION_BLOCKED',
+  /** 대상 GHE 버전이 미지원 (사용자 조치: 지원되는 기능 사용) — HTTP 409 */
+  'GH_HOST_UNSUPPORTED',
+  /** 실행기 gh 버전과 manifest 불일치 (사용자 조치: 관리자 조치 대기) — HTTP 409 */
+  'GH_REGISTRY_STALE',
+  /** 위험도에 따른 확인 미수행 (사용자 조치: 확인 후 재요청) — HTTP 409 */
+  'GH_CONFIRMATION_REQUIRED',
+  /** 승인자 승인 대기 (사용자 조치: 승인 후 자동 진행) — HTTP 409 */
+  'GH_APPROVAL_REQUIRED',
+  /** 실행 직전 대상 상태가 변경됨 (사용자 조치: 새로 고침 후 재확인) — HTTP 409 */
+  'GH_TARGET_CHANGED',
+  /** 동일 중복 방지 키의 재요청 (사용자 조치: 기존 실행 확인) — HTTP 409 */
+  'GH_DUPLICATE_REQUEST',
+  /** 같은 대상에 상충 작업 진행 중 (사용자 조치: 완료 후 재시도) — HTTP 409 */
+  'GH_RESOURCE_LOCKED',
+  /** 실행 시간 상한 초과 (사용자 조치: 범위를 줄여 재시도) — HTTP 504 */
+  'GH_EXECUTION_TIMEOUT',
+  /** 임시 작업 공간 확보 실패 (사용자 조치: 잠시 후 재시도) — HTTP 503 */
+  'GH_WORKSPACE_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -103,6 +137,22 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   AGGREGATION_TIMEOUT: 504,
   GRAPH_TIMEOUT: 200,
   INTERNAL_ERROR: 500,
+  GH_CAPABILITY_UNKNOWN: 404,
+  GH_CONSTRAINT_VIOLATION: 400,
+  GH_IDENTITY_REQUIRED: 401,
+  GH_PERMISSION_DENIED: 403,
+  GH_POLICY_BLOCKED: 403,
+  GH_ENDPOINT_BLOCKED: 403,
+  GH_EXTENSION_BLOCKED: 403,
+  GH_HOST_UNSUPPORTED: 409,
+  GH_REGISTRY_STALE: 409,
+  GH_CONFIRMATION_REQUIRED: 409,
+  GH_APPROVAL_REQUIRED: 409,
+  GH_TARGET_CHANGED: 409,
+  GH_DUPLICATE_REQUEST: 409,
+  GH_RESOURCE_LOCKED: 409,
+  GH_EXECUTION_TIMEOUT: 504,
+  GH_WORKSPACE_UNAVAILABLE: 503,
 };
 
 export function isErrorCode(value: string): value is ErrorCode {
