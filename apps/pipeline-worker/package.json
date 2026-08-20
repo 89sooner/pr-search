@@ -11,7 +11,9 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@prs/bus": "workspace:*",
     "@prs/contracts": "workspace:*",
+    "@prs/db": "workspace:*",
     "@prs/domain": "workspace:*"
   }
 }

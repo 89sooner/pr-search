@@ -7,8 +7,9 @@
  *   2. 크기 상한 확인 — 초과하면 413
  *   3. JSON 파싱 (여기서 처음으로 파서가 입력을 본다)
  *   4. durable 저장 — 실패하면 500, GHE가 다시 보낸다
- *   5. NDJSON 아카이브 append (레인 B, 실패해도 202를 막지 않는다)
- *   6. 202
+ *   5. 큐 enqueue (레인 A) — 실패해도 202를 막지 않는다. 아웃박스가 받는다
+ *   6. NDJSON 아카이브 append (레인 B, 실패해도 202를 막지 않는다)
+ *   7. 202
  *
  * 이 순서를 지키려고 의존성을 전부 주입받는다. Fastify에 묶어 두면 "파싱보다
  * 서명 검증이 먼저인가"를 테스트로 증명할 수 없다.
@@ -69,6 +70,13 @@ export interface IngestDeps {
   /** JSON 파싱. 검증 이후에만 불린다. */
   readonly parsePayload: (rawBody: Buffer) => unknown;
   readonly store: RawEventStore;
+  /**
+   * 큐 enqueue (JOB-ING-001).
+   *
+   * 실패해도 202를 막지 않는다 — 저장이 끝났고 `queued_at`이 찍혀 있으므로
+   * `JOB-ING-007`이 재적재한다 (ADR-002 follow-up).
+   */
+  readonly enqueue: (event: RawEventInsert) => Promise<void>;
   readonly archive: ArchiveWriter;
   readonly metrics: IngestMetrics;
   readonly maxBodyBytes: number;
@@ -142,6 +150,9 @@ export async function ingestWebhook(deps: IngestDeps, request: WebhookRequest): 
     payload,
     payload_hash: payloadHash,
     correlation_id: correlationId,
+    // 아웃박스 표식. "큐에 넣었다"가 아니라 "큐로 보낼 대상이다"라는 뜻이라
+    // 발행 성공 여부와 무관하게 저장 시점에 찍는다 (ADR-002 follow-up).
+    queued_at: receivedAt,
   };
 
   // 4. durable 저장.
@@ -168,7 +179,22 @@ export async function ingestWebhook(deps: IngestDeps, request: WebhookRequest): 
     return { status: 202, body: { accepted: true, delivery_id: deliveryId, duplicate: true } };
   }
 
-  // 5. 아카이브. 레인 B 실패는 레인 A를 막지 않는다.
+  // 5. 큐 enqueue. 실패는 아웃박스가 받는다.
+  try {
+    await deps.enqueue(event);
+  } catch {
+    deps.metrics.enqueueFailed.inc();
+    deps.log({
+      level: 'error',
+      message: 'enqueue failed — 아웃박스가 재적재한다',
+      correlation_id: correlationId,
+      delivery_id: deliveryId,
+      event_type: eventType,
+      reason: 'enqueue_failed',
+    });
+  }
+
+  // 6. 아카이브. 레인 B 실패는 레인 A를 막지 않는다.
   try {
     await deps.archive.append({
       delivery_id: deliveryId,

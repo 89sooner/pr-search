@@ -15,6 +15,9 @@ export const MAX_BODY_BYTES = 25 * 1024 * 1024;
 /** graceful shutdown 유예. 진행 중인 수신을 끝까지 저장하고 나간다. */
 export const SHUTDOWN_GRACE_MS = 30_000;
 
+/** 큐 발행 마감. NFR-002의 300ms 예산 안에서 저장 뒤에 남는 몫이다. */
+export const ENQUEUE_TIMEOUT_MS = 150;
+
 export interface GatewayConfig {
   readonly port: number;
   /**
@@ -26,6 +29,13 @@ export interface GatewayConfig {
   /** NDJSON 원본 아카이브 파일 경로 (ADR-002 레인 B). 빈 값이면 아카이브를 끈다. */
   readonly archivePath: string | null;
   readonly shutdownGraceMs: number;
+  /**
+   * 큐 발행 마감(ms).
+   *
+   * 수신 응답 예산 300ms(NFR-002)에서 저장에 쓰고 남는 몫이다. 넘기면 발행을
+   * 포기하고 아웃박스에 맡긴다.
+   */
+  readonly enqueueTimeoutMs: number;
 }
 
 export function resolveGatewayConfig(env: GatewayEnv = process.env): GatewayConfig {
@@ -41,5 +51,6 @@ export function resolveGatewayConfig(env: GatewayEnv = process.env): GatewayConf
     maxBodyBytes: Number(env['INGEST_MAX_BODY_BYTES'] ?? String(MAX_BODY_BYTES)),
     archivePath: archivePath === '' ? null : archivePath,
     shutdownGraceMs: Number(env['INGEST_SHUTDOWN_GRACE_MS'] ?? String(SHUTDOWN_GRACE_MS)),
+    enqueueTimeoutMs: Number(env['INGEST_ENQUEUE_TIMEOUT_MS'] ?? String(ENQUEUE_TIMEOUT_MS)),
   };
 }

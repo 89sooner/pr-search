@@ -7,7 +7,9 @@
 
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
-import type { Pool } from '@prs/db';
+import type { Pool, RawEventInsert } from '@prs/db';
+import { TOPICS, type EventBus } from '@prs/bus';
+import { EVENT_NAMES, ingestPartitionKey } from '@prs/domain';
 import type { HealthResponse } from '@prs/contracts';
 import type { ArchiveWriter } from './archive.js';
 import { createArchiveWriter, NULL_ARCHIVE_WRITER } from './archive.js';
@@ -28,6 +30,7 @@ const HEALTH_PROBE_MS = 2_000;
 export interface ServerDeps {
   readonly config: GatewayConfig;
   readonly store: RawEventStore;
+  readonly enqueue: (event: RawEventInsert) => Promise<void>;
   /** PostgreSQL 연결 확인 (인프라 3장: 게이트웨이 헬스체크는 PG 연결을 본다). */
   readonly checkDatabase: () => Promise<void>;
   readonly archive: ArchiveWriter;
@@ -41,11 +44,47 @@ function defaultLog(entry: LogEntry): void {
   process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, ...entry })}\n`);
 }
 
-/** 실행 중인 풀에서 서버 의존성을 만든다. */
-export function createServerDeps(pool: Pool, config: GatewayConfig): ServerDeps {
+/**
+ * 큐 발행자 (JOB-ING-001, EVT-ING-001).
+ *
+ * 마감 시간을 둔다. Redis가 응답하지 않을 때 발행이 매달리면 수신 응답
+ * p95 300ms(NFR-002)가 그대로 무너지기 때문이다. 마감을 넘기면 실패로 보고
+ * 넘어가고, 그 행은 `queued_at`이 찍혀 있으므로 `JOB-ING-007`이 재적재한다.
+ *
+ * 마감 뒤에 발행이 뒤늦게 성공할 수 있다. 그러면 같은 이벤트가 두 번 흐르는데,
+ * 소비자의 멱등 기준이 `delivery_id`라 문제가 되지 않는다 (at-least-once).
+ */
+export function createIngestPublisher(
+  bus: EventBus,
+  deadlineMs: number,
+): (event: RawEventInsert) => Promise<void> {
+  return async (event: RawEventInsert): Promise<void> => {
+    await withTimeout(
+      bus.publish(TOPICS.ingest, ingestPartitionKey(event.repository_id, event.delivery_id), {
+        event_id: randomUUID(),
+        event_name: EVENT_NAMES.ingestionEventReceived,
+        correlation_id: event.correlation_id,
+        occurred_at: event.received_at.toISOString(),
+        payload: {
+          delivery_id: event.delivery_id,
+          event_type: event.event_type,
+          action: event.action,
+          repository_id: event.repository_id,
+          correlation_id: event.correlation_id,
+          occurred_at: event.received_at.toISOString(),
+        },
+      }),
+      deadlineMs,
+    );
+  };
+}
+
+/** 실행 중인 풀과 버스에서 서버 의존성을 만든다. */
+export function createServerDeps(pool: Pool, config: GatewayConfig, bus: EventBus): ServerDeps {
   return {
     config,
     store: createRawEventStore(pool),
+    enqueue: createIngestPublisher(bus, config.enqueueTimeoutMs),
     checkDatabase: async (): Promise<void> => {
       await pool.query('SELECT 1');
     },
@@ -158,6 +197,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
           verifyWebhookSignature(rawBody, signature, deps.config.webhookSecrets),
         parsePayload: (rawBody) => JSON.parse(rawBody.toString('utf8')) as unknown,
         store: deps.store,
+        enqueue: deps.enqueue,
         archive: deps.archive,
         metrics: deps.metrics,
         maxBodyBytes: deps.config.maxBodyBytes,

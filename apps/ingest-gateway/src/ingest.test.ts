@@ -46,6 +46,9 @@ function harness(overrides: Partial<IngestDeps> = {}): Harness {
       calls.push('store');
       return { duplicate: false };
     },
+    enqueue: async (): Promise<void> => {
+      calls.push('enqueue');
+    },
     archive,
     metrics: createIngestMetrics(),
     maxBodyBytes: MAX_BODY_BYTES,
@@ -72,7 +75,7 @@ describe('보안 문서 9장: 서명 검증이 JSON 파싱보다 먼저 수행�
   it('정상 경로의 호출 순서가 검증 → 파싱 → 저장 → 아카이브다', async () => {
     const { deps, calls } = harness();
     await ingestWebhook(deps, request());
-    expect(calls).toEqual(['verifySignature', 'parsePayload', 'store', 'archive']);
+    expect(calls).toEqual(['verifySignature', 'parsePayload', 'store', 'enqueue', 'archive']);
   });
 
   it('서명이 틀리면 파서를 아예 부르지 않는다', async () => {
@@ -240,6 +243,39 @@ describe('FR-ING-003 / API-ING-001: 원본 보관과 화이트리스트', () => 
     const outcome = await ingestWebhook(deps, request());
     expect(outcome.status).toBe(202);
     expect(deps.metrics.archiveFailed.get()).toBe(1);
+  });
+
+  it('큐 enqueue 실패가 202를 막지 않는다 (ADR-002 follow-up)', async () => {
+    const { deps, calls } = harness({
+      enqueue: async (): Promise<void> => {
+        calls.push('enqueue');
+        throw new Error('Redis 연결 없음');
+      },
+    });
+    const outcome = await ingestWebhook(deps, request());
+    expect(outcome.status).toBe(202);
+    expect(deps.metrics.enqueueFailed.get()).toBe(1);
+    // 발행에 실패해도 아카이브까지 간다. 레인 A와 레인 B는 서로 독립이다.
+    expect(calls).toEqual(['verifySignature', 'parsePayload', 'store', 'enqueue', 'archive']);
+  });
+
+  it('저장한 행에 아웃박스 표식(queued_at)이 찍힌다 — 재적재의 근거다', async () => {
+    let stored: { queued_at?: Date | null } | undefined;
+    const { deps } = harness({
+      store: async (event) => {
+        stored = event;
+        return { duplicate: false };
+      },
+    });
+    await ingestWebhook(deps, request());
+    expect(stored?.queued_at).toEqual(new Date('2026-08-20T00:00:00.000Z'));
+  });
+
+  it('중복은 다시 발행하지 않는다', async () => {
+    const { deps, calls } = harness({ store: async () => ({ duplicate: true }) });
+    const outcome = await ingestWebhook(deps, request());
+    expect(outcome.status).toBe(202);
+    expect(calls).not.toContain('enqueue');
   });
 
   it('구조화 로그에 본문이나 서명이 실리지 않는다 (NFR-005)', async () => {

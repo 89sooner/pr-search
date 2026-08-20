@@ -117,6 +117,8 @@ export interface IngestMetrics {
   readonly responseSeconds: Histogram;
   /** 아카이브 append 실패 건수. 레인 B 장애가 조용히 묻히지 않게 한다. */
   readonly archiveFailed: Counter;
+  /** 큐 enqueue 실패 건수. 아웃박스 재적재(JOB-ING-007)가 얼마나 일하는지의 선행 지표다. */
+  readonly enqueueFailed: Counter;
   render(): string;
 }
 
@@ -126,6 +128,7 @@ export function createIngestMetrics(): IngestMetrics {
   const duplicate = new Counter('ingest_duplicate_total', '중복 전달 건수');
   const responseSeconds = new Histogram('ingest_response_seconds', '수신 응답 시간(초)');
   const archiveFailed = new Counter('ingest_archive_failed_total', 'NDJSON 아카이브 append 실패 건수');
+  const enqueueFailed = new Counter('ingest_enqueue_failed_total', '큐 enqueue 실패 건수');
 
   return {
     received,
@@ -133,8 +136,9 @@ export function createIngestMetrics(): IngestMetrics {
     duplicate,
     responseSeconds,
     archiveFailed,
+    enqueueFailed,
     render(): string {
-      return `${[received, rejected, duplicate, archiveFailed, responseSeconds]
+      return `${[received, rejected, duplicate, archiveFailed, enqueueFailed, responseSeconds]
         .map((metric) => metric.render())
         .join('\n')}\n`;
     },

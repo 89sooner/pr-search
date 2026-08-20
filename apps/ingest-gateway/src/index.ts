@@ -7,6 +7,7 @@
  */
 
 import { createPool } from '@prs/db';
+import { RedisStreamsEventBus } from '@prs/bus';
 import { resolveGatewayConfig } from './config.js';
 import { buildServer, createServerDeps, SERVICE_NAME } from './server.js';
 
@@ -19,7 +20,10 @@ if (config.webhookSecrets.length === 0) {
 }
 
 const pool = createPool();
-const deps = createServerDeps(pool, config);
+// 게이트웨이는 발행만 한다. 소비는 pipeline-worker의 몫이다 (ADR-013: 게이트웨이는
+// Search/Data Plane의 입구이며 gh를 실행하지 않는다).
+const bus = new RedisStreamsEventBus();
+const deps = createServerDeps(pool, config, bus);
 const app = buildServer(deps);
 
 try {
@@ -47,6 +51,7 @@ const shutdown = (signal: string): void => {
     try {
       await app.close();
       await deps.archive.close();
+      await bus.close();
       await pool.end();
     } catch (error) {
       process.stderr.write(`${SERVICE_NAME} shutdown error: ${String(error)}\n`);

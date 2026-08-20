@@ -3,10 +3,14 @@
  *
  * "저장까지 포함해 p95 300ms"를 재는 것이 목적이라 실제 HTTP와 실제 PostgreSQL을
  * 쓴다. 1000건을 GHE의 웹훅 유입 형태에 맞춰 어느 정도 동시에 밀어 넣는다.
+ *
+ * WP-005부터 큐 발행도 경로에 들어간다. 발행을 스텁으로 두고 잰 숫자는 운영
+ * 지연이 아니므로, 여기서도 실제 Redis에 발행한다.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from '@prs/db';
+import { RedisStreamsEventBus, TOPICS, createRedisClient, type Redis } from '@prs/bus';
 import { countRawEvents, migratedPool, postWebhook, startGateway, truncateRawEvents, type RunningGateway } from './helpers.js';
 
 const REQUESTS = 1000;
@@ -15,16 +19,33 @@ const CONCURRENCY = 20;
 const P95_BUDGET_MS = 300;
 
 let pool: Pool;
+let redis: Redis;
+let bus: RedisStreamsEventBus;
 let gateway: RunningGateway;
+
+function loadTestRedisUrl(): string {
+  const base = process.env['REDIS_URL'] ?? 'redis://localhost:6379';
+  return `${base.replace(/\/\d+$/, '')}/12`;
+}
 
 beforeAll(async () => {
   pool = await migratedPool();
   await truncateRawEvents(pool);
-  gateway = await startGateway(pool);
+  redis = createRedisClient({
+    url: loadTestRedisUrl(),
+    maxRetriesPerRequest: 1,
+    connectTimeoutMs: 2_000,
+    commandTimeoutMs: 2_000,
+  });
+  await redis.flushdb();
+  bus = new RedisStreamsEventBus(redis);
+  gateway = await startGateway(pool, { bus });
 });
 
 afterAll(async () => {
   await gateway.stop();
+  await bus.close();
+  redis.disconnect();
   await truncateRawEvents(pool);
   await pool.end();
 });
@@ -76,8 +97,15 @@ describe('DoD 6 — FR-ING-001 AC-4: 수신 응답 p95가 300ms 이하다', () =
     );
 
     expect(accepted).toBe(REQUESTS);
-    // 유실 없음: 보낸 만큼 그대로 남는다.
+    // 유실 없음: 보낸 만큼 그대로 남고, 그만큼 큐에도 들어간다.
     expect(await countRawEvents(pool)).toBe(REQUESTS);
+    expect(gateway.metrics.enqueueFailed.get()).toBe(0);
+
+    const streams = await redis.keys(`${TOPICS.ingest}:*`);
+    let queued = 0;
+    for (const stream of streams) queued += await redis.xlen(stream);
+    expect(queued).toBe(REQUESTS);
+
     expect(p95).toBeLessThanOrEqual(P95_BUDGET_MS);
   });
 });
