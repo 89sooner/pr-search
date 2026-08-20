@@ -409,6 +409,10 @@ node-postgres는 `int8`을 기본으로 문자열로 준다(2^53 정밀도 문�
 
 WP가 적은 검증 명령은 `pnpm test:integration -- bus`다. WP-004 때와 같은 이유로 vitest가 `--` 뒤 인자를 필터로 받지 않아 전체 스위트를 돌린다. 위 표의 명령이 같은 대상을 실제로 돌린 것이다.
 
+**CI 검증 결과 — 커밋 `e7b0bd9`, run 32359072673. `verify`·`integration` 모두 성공.**
+
+`integration` 잡에 Redis 7 서비스 컨테이너를 더했다. PostgreSQL·Elasticsearch·Redis 셋을 띄우고 통합 스위트 전량(WP-002~WP-005)을 돌린다. 계약 테스트는 두 어댑터 모두, 아웃박스 재적재는 실제 Redis 대상으로 CI에서도 통과했다.
+
 **환경 제약.** Elasticsearch만 여전히 로컬에서 띄울 수 없다(DEV-008). WP-005는 Elasticsearch를 쓰지 않으므로 이 WP의 DoD에는 영향이 없다.
 
 ### 6.6 릴리스 게이트
