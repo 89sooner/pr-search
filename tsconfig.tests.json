@@ -21,6 +21,7 @@
     "packages/*/src/**/*.test.ts",
     "packages/*/integration/**/*.ts",
     "apps/*/src/**/*.test.ts",
+    "apps/*/integration/**/*.ts",
     "scripts/**/*.test.ts",
     "vitest.config.ts",
     "vitest.integration.config.ts"
