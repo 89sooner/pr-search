@@ -1,6 +1,6 @@
 # PR Search 릴리스 검증 계획
 
-> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+> 상태: review | 버전: v0.3 | 갱신일: 2026-08-20
 
 ## 1. 목적
 
@@ -53,13 +53,13 @@ Gate 7은 이 제품 고유의 게이트다. 시퀀스와 매핑이 틀리면 �
 | 타입체크 | `pnpm typecheck` | 매 PR | 예 |
 | 린트 | `pnpm lint`, `pnpm lint:deps` | 매 PR | 예 |
 | 단위 | `pnpm test` | 매 PR | 예 |
-| 계약 | `pnpm test -- contract` | 매 PR | 예 |
+| 계약 | `pnpm test contract` | 매 PR | 예 |
 | 통합 | `pnpm test:integration` | 매 PR | 예 |
-| 아키텍처 | `pnpm test -- architecture` | 매 PR | 예 |
+| 아키텍처 | `pnpm test architecture` | 매 PR | 예 |
 | E2E | `pnpm test:e2e` | main 병합 | 예 |
 | 접근성 | `pnpm test:a11y` | main 병합 | 예 |
 | 대비 | Conductor `checkContrast` | main 병합 | 예 |
-| 시각 회귀 | `pnpm test:e2e -- --visual` | main 병합 | 예 |
+| 시각 회귀 | `pnpm test:e2e --visual` | main 병합 | 예 |
 | 성능 | `pnpm test:perf` | 주 1회 + 릴리스 | 예 |
 | 도메인 회귀 | `pnpm test:regression` | 주 1회 + 릴리스 | 예 |
 | 시크릿 스캔 | CI 잡 | 매 PR | 예 |
