@@ -11,6 +11,7 @@ export { resolvePoolConfig } from './config.js';
 export type { DatabaseEnv } from './config.js';
 
 export { createPool, withTransaction } from './pool.js';
+export { installTypeParsers } from './type-parsers.js';
 // 앱이 pg에 직접 의존하지 않도록 타입만 다시 내보낸다 (의존 방향: apps → packages).
 export type { Pool, PoolClient } from 'pg';
 
