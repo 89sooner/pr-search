@@ -16,6 +16,14 @@ export interface RawEventInsert {
   readonly payload: unknown;
   readonly payload_hash: string;
   readonly correlation_id: string;
+  /**
+   * 아웃박스 표식 (ADR-002 follow-up).
+   *
+   * INSERT 시점에 채운다 — "큐에 성공적으로 넣었다"가 아니라 "큐로 보낼
+   * 대상이다"라는 뜻이다. 발행이 실패해도 이 값이 있어야 `JOB-ING-007`이
+   * 그 행을 찾아 재적재한다. 생략하면 NULL이다.
+   */
+  readonly queued_at?: Date | null;
 }
 
 export interface RawEventRow extends RawEventInsert {
@@ -67,8 +75,8 @@ export async function insertRawEvent(db: Queryable, event: RawEventInsert): Prom
 export async function insertRawEventIfAbsent(db: Queryable, event: RawEventInsert): Promise<boolean> {
   const result = await db.query(
     `INSERT INTO raw_event
-       (delivery_id, event_type, action, repository_id, received_at, payload, payload_hash, correlation_id)
-     SELECT $1, $2, $3, $4, $5, $6, $7, $8
+       (delivery_id, event_type, action, repository_id, received_at, payload, payload_hash, correlation_id, queued_at)
+     SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
       WHERE NOT EXISTS (SELECT 1 FROM raw_event WHERE delivery_id = $1)`,
     [
       event.delivery_id,
@@ -79,6 +87,7 @@ export async function insertRawEventIfAbsent(db: Queryable, event: RawEventInser
       JSON.stringify(event.payload),
       event.payload_hash,
       event.correlation_id,
+      event.queued_at ?? null,
     ],
   );
   return result.rowCount === 1;
@@ -112,10 +121,16 @@ export async function findStuckOutboxEvents(
   return result.rows;
 }
 
-export async function markQueued(db: Queryable, deliveryId: string, receivedAt: Date): Promise<void> {
+/** 아웃박스 타이머를 다시 감는다. `queuedAt`을 주지 않으면 DB 시계를 쓴다. */
+export async function markQueued(
+  db: Queryable,
+  deliveryId: string,
+  receivedAt: Date,
+  queuedAt?: Date,
+): Promise<void> {
   await db.query(
-    'UPDATE raw_event SET queued_at = now() WHERE delivery_id = $1 AND received_at = $2',
-    [deliveryId, receivedAt],
+    'UPDATE raw_event SET queued_at = COALESCE($3, now()) WHERE delivery_id = $1 AND received_at = $2',
+    [deliveryId, receivedAt, queuedAt ?? null],
   );
 }
 

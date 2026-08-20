@@ -20,6 +20,7 @@ const config = (overrides: Partial<GatewayConfig> = {}): GatewayConfig => ({
   maxBodyBytes: MAX_BODY_BYTES,
   archivePath: null,
   shutdownGraceMs: 30_000,
+  enqueueTimeoutMs: 150,
   ...overrides,
 });
 
@@ -27,6 +28,9 @@ function deps(overrides: Partial<ServerDeps> = {}): ServerDeps {
   return {
     config: config(),
     store: async () => ({ duplicate: false }),
+    enqueue: async (): Promise<void> => {
+      /* 기본값: 발행 성공 */
+    },
     checkDatabase: async (): Promise<void> => {
       /* 정상 */
     },

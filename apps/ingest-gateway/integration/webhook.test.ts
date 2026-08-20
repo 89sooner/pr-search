@@ -60,24 +60,28 @@ describe('DoD 1 — FR-ING-001 AC-3: 유효 서명 요청이 202를 반환하고
     const row = await pool.query<{
       event_type: string;
       action: string | null;
-      repository_id: string | null;
+      repository_id: number | null;
       payload: Record<string, unknown>;
       payload_hash: string;
       correlation_id: string;
       queued_at: Date | null;
+      processed_at: Date | null;
     }>('SELECT * FROM raw_event WHERE delivery_id = $1', [deliveryId]);
 
     expect(row.rowCount).toBe(1);
     const stored = row.rows[0]!;
     expect(stored.event_type).toBe('pull_request');
     expect(stored.action).toBe('closed');
-    expect(Number(stored.repository_id)).toBe(4021);
+    // WP-005에서 BIGINT 파서를 넣었다. 이제 문자열이 아니라 숫자로 온다.
+    expect(stored.repository_id).toBe(4021);
     // FR-ING-003 AC-1: payload 전문이 그대로 남는다.
     expect(stored.payload).toMatchObject({ number: 1234, repository: { full_name: 'acme/payments' } });
     expect(stored.payload_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(stored.correlation_id).toMatch(/^[0-9a-f-]{36}$/);
-    // 큐 enqueue는 WP-005 범위다. 지금은 아웃박스가 비어 있어야 정상이다.
-    expect(stored.queued_at).toBeNull();
+    // WP-005: 아웃박스 표식은 INSERT 시점에 찍힌다. "큐에 넣었다"가 아니라
+    // "큐로 보낼 대상이다"라는 뜻이라, 발행이 실패해도 JOB-ING-007이 찾아낸다.
+    expect(stored.queued_at).toBeInstanceOf(Date);
+    expect(stored.processed_at).toBeNull();
   });
 
   it('화이트리스트 밖 이벤트도 저장한다 (AC-5: 저장 후 처리 대상에서만 제외)', async () => {

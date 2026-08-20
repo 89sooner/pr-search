@@ -71,6 +71,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
@@ -78,6 +87,7 @@ jobs:
       POSTGRES_PASSWORD: prs
       POSTGRES_TEST_DB: prs_test
       ELASTICSEARCH_NODE: http://localhost:9200
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
 

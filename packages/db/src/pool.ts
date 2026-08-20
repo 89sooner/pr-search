@@ -5,8 +5,11 @@
 import pg from 'pg';
 import type { Pool, PoolClient, PoolConfig } from 'pg';
 import { resolvePoolConfig } from './config.js';
+import { installTypeParsers } from './type-parsers.js';
 
 export function createPool(config: PoolConfig = resolvePoolConfig()): Pool {
+  // BIGINT를 문자열이 아니라 숫자로 받는다. 선언된 타입과 런타임 값을 맞춘다.
+  installTypeParsers();
   return new pg.Pool(config);
 }
 

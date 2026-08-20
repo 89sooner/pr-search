@@ -19,6 +19,9 @@
     },
     {
       "path": "../../packages/db"
+    },
+    {
+      "path": "../../packages/bus"
     }
   ]
 }

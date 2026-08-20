@@ -13,10 +13,18 @@ import { createArchiveWriter, NULL_ARCHIVE_WRITER, type ArchiveWriter } from '..
 import { MAX_BODY_BYTES, type GatewayConfig } from '../src/config.js';
 import { createIngestMetrics, type IngestMetrics } from '../src/metrics.js';
 import { buildServer, createServerDeps, type ServerDeps } from '../src/server.js';
+import type { EventBus } from '@prs/bus';
 import { computeSignature } from '../src/signature.js';
 import type { FastifyInstance } from 'fastify';
 
 export const WEBHOOK_SECRET = 'integration-webhook-secret';
+
+/** 발행을 버리는 버스. 큐를 보지 않는 테스트가 Redis에 의존하지 않게 한다. */
+export const NULL_BUS: EventBus = {
+  publish: async (): Promise<void> => undefined,
+  subscribe: () => Promise.reject(new Error('구독하지 않는다')),
+  close: async (): Promise<void> => undefined,
+};
 
 export function createTestPool(): Pool {
   const env = { ...process.env };
@@ -41,6 +49,7 @@ export function testConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfi
     maxBodyBytes: MAX_BODY_BYTES,
     archivePath: null,
     shutdownGraceMs: 30_000,
+    enqueueTimeoutMs: 150,
     ...overrides,
   };
 }
@@ -58,6 +67,8 @@ export interface StartOptions {
   readonly config?: GatewayConfig;
   readonly now?: () => Date;
   readonly withArchive?: boolean;
+  /** 실제 버스. 생략하면 발행을 무시하는 스텁을 쓴다. */
+  readonly bus?: EventBus;
 }
 
 /** 실제 포트를 열고 게이트웨이를 띄운다. */
@@ -73,7 +84,8 @@ export async function startGateway(pool: Pool, options: StartOptions = {}): Prom
   }
 
   const config = options.config ?? testConfig();
-  const base = createServerDeps(pool, config);
+  const bus = options.bus ?? NULL_BUS;
+  const base = createServerDeps(pool, config, bus);
   const metrics = createIngestMetrics();
   const deps: ServerDeps = {
     ...base,
