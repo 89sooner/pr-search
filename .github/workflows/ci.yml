@@ -57,12 +57,27 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.19.0
+        env:
+          discovery.type: single-node
+          # CI 전용이다. 운영에서는 보안을 끄지 않는다 (보안 문서 4장).
+          xpack.security.enabled: 'false'
+          ES_JAVA_OPTS: -Xms1g -Xmx1g
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -fsS http://localhost:9200/_cluster/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
     env:
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
       POSTGRES_USER: prs
       POSTGRES_PASSWORD: prs
       POSTGRES_TEST_DB: prs_test
+      ELASTICSEARCH_NODE: http://localhost:9200
     steps:
       - uses: actions/checkout@v4
 

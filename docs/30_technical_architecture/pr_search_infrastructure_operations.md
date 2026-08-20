@@ -182,16 +182,20 @@ pnpm db:migrate --down            # 적용분 전부 회수 (up의 역연산)
 pnpm db:migrate --down --step 1   # 최신 1개만 회수
 pnpm db:partitions                # 월별 파티션 생성 (기본 3개월치)
 pnpm db:seed                      # 개발용 합성 시드 (저장소 3, PR 200, 커밋 500, 릴리스 10)
-pnpm test:integration             # 실제 PostgreSQL 대상 통합 테스트
+pnpm test:integration             # 실제 PostgreSQL·Elasticsearch 대상 통합 테스트
+
+# --- WP-003에서 동작하는 명령 (Elasticsearch 필요) ---
+pnpm es:apply-mappings            # 엔티티 인덱스 4종 생성 + 별칭 부여
 
 # --- 후속 WP가 추가하는 명령 ---
 pnpm test:e2e                     # Playwright                                   — WP-020
 pnpm test:a11y                    # axe 검사                                     — WP-020
-pnpm es:apply-mappings            # 매핑 적용 (신규 인덱스 생성)                 — WP-003
 pnpm es:reindex --alias <별칭>    # 재색인 + 별칭 전환                           — WP-035
 ```
 
 DB 접속 정보는 환경 변수에서만 읽는다 (`@prs/db`의 `resolvePoolConfig`). 우선순위는 `DATABASE_URL` → 개별 `POSTGRES_*` → 로컬 기본값이다. 통합 테스트는 `POSTGRES_TEST_DB`(기본 `prs_test`)를 써서 개발용 DB와 분리한다.
+
+Elasticsearch 접속도 같은 원칙이다 (`@prs/es`의 `resolveClientOptions`). `ELASTICSEARCH_NODE`가 없으면 `http://localhost:9200`을 쓰고, `ELASTICSEARCH_API_KEY`가 있으면 인증에 사용한다.
 
 `pnpm test`(단위)와 `pnpm test:integration`(백킹 서비스 필요)을 분리해 둔 이유는, 백킹 서비스가 없는 환경에서도 단위 검증이 항상 돌아야 하기 때문이다. CI는 두 잡으로 나뉘며 통합 잡이 PostgreSQL 서비스 컨테이너를 띄운다.
 
