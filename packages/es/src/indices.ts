@@ -21,7 +21,12 @@ export interface EntityIndexDefinition {
   readonly index: string;
   readonly settings: estypes.IndicesIndexSettings;
   readonly mappings: estypes.MappingTypeMapping;
-  /** ADR-003의 `_routing` 대상. 저장소 범위 질의를 단일 샤드로 좁힌다. */
+  /**
+   * ADR-003의 `_routing` 대상 필드 이름.
+   *
+   * 색인·조회 요청마다 이 **필드의 값**을 `routing`으로 준다. 별칭에 고정
+   * 라우팅으로 걸지 않는다 — 그러면 전 문서가 한 샤드로 몰린다 (DEV-021).
+   */
   readonly routingField: 'repository_id';
   /** ADR-003이 정한 초기 샤드 수. OD-007 결정 후에도 변경하지 않는다 (CR-004). */
   readonly shards: number;

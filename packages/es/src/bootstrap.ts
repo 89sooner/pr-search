@@ -34,11 +34,12 @@ async function ensureIndex(client: Client, definition: EntityIndexDefinition): P
   });
 
   if (!aliasExists) {
-    await client.indices.putAlias({
-      index: definition.index,
-      name: definition.alias,
-      routing: definition.routingField,
-    });
+    // **별칭에 `routing`을 주지 않는다** (DEV-021). 별칭의 `routing`은 필드 이름이
+    // 아니라 *고정 라우팅 값*이다. `repository_id`를 넘기면 모든 문서가 문자열
+    // "repository_id" 하나의 샤드로 몰리고, 문서별 라우팅을 준 요청은
+    // `illegal_argument_exception`으로 거부된다 — ADR-003의 설계가 정반대로 뒤집힌다.
+    // `_routing`은 색인·조회 요청마다 `repository_id` **값**으로 준다 (`@prs/es`의 업서트).
+    await client.indices.putAlias({ index: definition.index, name: definition.alias });
   }
 
   return {
