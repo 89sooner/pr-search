@@ -20,6 +20,7 @@
   "include": [
     "packages/*/src/**/*.test.ts",
     "packages/*/integration/**/*.ts",
+    "packages/*/testing/**/*.ts",
     "apps/*/src/**/*.test.ts",
     "apps/*/integration/**/*.ts",
     "scripts/**/*.test.ts",
