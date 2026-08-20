@@ -292,7 +292,10 @@
   - `pipeline-worker` project 역할: `prs:enriched` 소비
   - PR·커밋 문서 생성 (필드 화이트리스트 적용 — 소스 코드 유입 차단)
   - 결정론적 문서 ID: `{repository_id}:{pr_number}`, `{repository_id}:{commit_sha}`
-  - `document_version` 조건부 스크립트 업서트 (데이터 모델 5장)
+  - `document_version` 조건부 스크립트 업서트 (데이터 모델 5장). 버전 출처는 **웹훅 수신 시각**이다 — 보강 시각을 쓰면 순서가 바뀐 두 웹훅 중 늦게 보강된 쪽이 이긴다
+  - 누적 필드(`pull_request_numbers`)는 버전과 무관하게 합집합 (CR-011, DEV-019)
+  - 투영이 소유하지 않는 필드(`merge_seq`·`link_summary`·`links_pending`·`release_tags`)는 생성 시 `upsert` 본문에만 초깃값으로 둔다 — `params.doc`에 넣으면 투영이 돌 때마다 다른 워커의 결과를 되돌린다
+  - 미등록 저장소 이벤트는 투영하지 않고 ack한다 (FR-ING-009 AC-4, CR-011 DEV-020). 실패가 아니므로 실패 대기열로 보내지 않는다
   - 사전 계산 필드: `lead_time_seconds`, `first_review_wait_seconds`, `changed_files_count`, `additions`, `deletions`
   - `_routing = repository_id`
   - 벌크 요청 1건으로 다중 인덱스 갱신, 부분 실패 항목 개별 재시도
@@ -311,6 +314,8 @@
   - [ ] 벌크 부분 실패 항목이 개별 재시도된다 (AC-3)
   - [ ] 수신부터 검색 반영까지 p95 10초 이하다 (AC-5) — 개발 데이터셋 기준
   - [ ] 매핑에 없는 필드를 넣으려 하면 색인이 거부되고 DLQ로 간다 (THR-010)
+  - [ ] 커밋이 두 PR에 속해도 `pull_request_numbers`가 합집합으로 남는다 (FR-SRCH-002, CR-011)
+  - [ ] 미등록 저장소 이벤트는 문서를 만들지 않고 실패로도 세지 않는다 (FR-ING-009 AC-4)
 - 검증 방법: `pnpm test:integration worker/project`
 - 기록: 원장 WP-008 상태, FR-ING-005 매핑
 
