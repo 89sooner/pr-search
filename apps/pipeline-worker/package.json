@@ -11,10 +11,12 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@elastic/elasticsearch": "8.19.2",
     "@prs/bus": "workspace:*",
     "@prs/contracts": "workspace:*",
     "@prs/db": "workspace:*",
     "@prs/domain": "workspace:*",
+    "@prs/es": "workspace:*",
     "@prs/github": "workspace:*"
   }
 }

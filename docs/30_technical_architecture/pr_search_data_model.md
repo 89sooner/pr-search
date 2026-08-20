@@ -687,14 +687,34 @@ ALTER TABLE gh_capability_snapshot
 
 **최종적 일관성의 사용자 노출:** 보강·관계 파생이 끝나지 않은 문서는 `enrichment_pending` / `links_pending`을 `true`로 두고 화면이 이를 표시한다 (상태 매트릭스). 불완전한 데이터를 완전한 것처럼 보여주지 않는다.
 
-**순서 역전 방지 (FR-ING-005 AC-1):** 모든 엔티티 문서에 `document_version`(이벤트 발생 시각의 밀리초 epoch)을 두고, Elasticsearch의 외부 버전 관리 또는 스크립트 조건부 업서트로 더 작은 버전의 갱신을 무시한다.
+**순서 역전 방지 (FR-ING-005 AC-1):** 모든 엔티티 문서에 `document_version`(**웹훅 수신 시각**의 밀리초 epoch)을 두고, 스크립트 조건부 업서트로 더 작은 버전의 갱신을 무시한다. 버전의 출처가 보강 시각이 아니라 수신 시각인 이유: 두 웹훅이 순서를 바꿔 보강되어도 **나중에 일어난 사실**이 이겨야 하고, 그 순서는 수신 시각만이 안다.
+
+**누적 필드는 버전 비교에서 제외한다 (CR-011, DEV-019).** `commit.pull_request_numbers`는 N:M이라 단순 대입하면 나중 이벤트가 앞 PR 번호를 지운다 — 커밋 하나가 두 PR에 속하는 경우 FR-SRCH-002(SHA → PR)가 조용히 한쪽을 잃는다. 집합 소속은 단조 증가하고 순서에 무관하므로, `params.union`에 실린 필드는 **버전 비교와 무관하게 항상 합집합**한다. 상태 필드(`state`, `merged_at`, …)만 버전 비교의 대상이다.
+
+**필드 소유권.** 투영 워커는 자기가 계산한 필드만 `params.doc`에 싣는다. 시퀀스 필드(`merge_seq`, `seq_epoch`)·관계 필드(`link_summary`, `links_pending`)·릴리스 필드(`release_tags`, `unreleased`)는 다른 워커가 소유하며, 투영은 그것들을 **생성 시점의 `upsert` 본문에만** 초깃값으로 둔다. `params.doc`에 넣으면 투영이 돌 때마다 다른 워커의 결과를 되돌린다.
+
+```painless
+boolean fresh = ctx._source.document_version == null
+             || ctx._source.document_version < params.doc.document_version;
+boolean changed = fresh;
+if (fresh) {
+  for (e in params.doc.entrySet()) { ctx._source[e.getKey()] = e.getValue(); }
+}
+// 누적 필드는 버전과 무관하게 합집합한다. 오래된 이벤트도 자기 소속은 더한다.
+for (e in params.union.entrySet()) {
+  def current = ctx._source[e.getKey()];
+  def merged = new HashSet();
+  if (current instanceof List) { merged.addAll(current); }
+  else if (current != null) { merged.add(current); }
+  if (merged.addAll(e.getValue())) { changed = true; }
+  ctx._source[e.getKey()] = new ArrayList(merged);
+}
+if (!changed) { ctx.op = 'noop'; }
+```
 
 ```json
 {
-  "script": {
-    "source": "if (ctx._source.document_version == null || ctx._source.document_version < params.doc.document_version) { for (e in params.doc.entrySet()) { ctx._source[e.getKey()] = e.getValue(); } } else { ctx.op = 'noop'; }",
-    "params": { "doc": { "...": "..." } }
-  },
+  "script": { "source": "...", "params": { "doc": { "...": "..." }, "union": { "pull_request_numbers": [1234] } } },
   "upsert": { "...": "..." }
 }
 ```

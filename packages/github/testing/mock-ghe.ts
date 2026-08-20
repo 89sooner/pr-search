@@ -98,9 +98,17 @@ export function generateTestKeyPair(): TestKeyPair {
 const PR = {
   number: 1234,
   title: 'feat: 결제 재시도 로직',
+  body: '결제 실패 시 지수 백오프로 재시도한다.',
   state: 'closed',
+  draft: false,
+  labels: [{ name: 'payments' }, { name: 'bug' }],
+  user: { login: 'jdoe' },
   merged: true,
   merge_commit_sha: 'a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5',
+  created_at: '2026-08-01T09:00:00Z',
+  updated_at: '2026-08-02T10:30:00Z',
+  closed_at: '2026-08-02T10:30:00Z',
+  merged_at: '2026-08-02T10:30:00Z',
   head: { ref: 'feature/retry', sha: 'b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e' },
   base: { ref: 'main', sha: 'c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e' },
 };

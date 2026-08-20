@@ -243,15 +243,22 @@ async function enrichTarget(
   let pullRequest: EnrichedPullRequest | null = target.webhookPullRequest;
   try {
     const fresh = await deps.client.getPullRequest(ref, target.prNumber, { priority: 'realtime' });
+    // API 응답이 웹훅보다 새롭다. 웹훅은 발생 시점의 스냅숏이고 재전송이면
+    // 몇 분 전 것일 수도 있다. 그래서 겹치는 필드는 API 값을 그대로 쓴다.
     pullRequest = {
       number: fresh.number,
       title: fresh.title,
+      body: fresh.body,
       state: fresh.state,
+      draft: fresh.draft,
+      labels: fresh.labels.map((label) => label.name),
       merged: fresh.merged,
-      // 머지 시각은 PR 요약에 없다. 웹훅이 준 값이 있으면 그것을 남긴다.
-      merged_at: target.webhookPullRequest?.merged_at ?? null,
+      created_at: fresh.created_at,
+      updated_at: fresh.updated_at,
+      closed_at: fresh.closed_at,
+      merged_at: fresh.merged_at,
       merge_commit_sha: fresh.merge_commit_sha,
-      author: target.webhookPullRequest?.author ?? null,
+      author: fresh.user?.login ?? null,
       head_ref: fresh.head.ref,
       head_sha: fresh.head.sha,
       base_ref: fresh.base.ref,

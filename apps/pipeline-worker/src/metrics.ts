@@ -1,5 +1,6 @@
 /**
- * 워커 지표 (WP-007: `enrich_pending_total`, `stage_latency_seconds`).
+ * 워커 지표 (WP-007: `enrich_pending_total`, `stage_latency_seconds`;
+ * WP-008: `ingestion_lag_seconds`).
  *
  * 사내 표준이 Prometheus 호환(인프라 4장)이라 텍스트 노출 형식을 그대로 쓴다.
  * 게이트웨이(`apps/ingest-gateway/src/metrics.ts`)와 같은 형식을 손으로 다시
@@ -110,6 +111,15 @@ export class Histogram {
 export interface WorkerMetrics {
   /** 부분 결과로 진행한 건수 (FR-ING-004 AC-3). 라벨: `reason`. */
   readonly enrichPending: Counter;
+  /**
+   * 웹훅 수신부터 색인 반영까지의 지연(초) (WP-008, FR-ING-005 AC-5, NFR-002).
+   *
+   * 단계별 처리 시간(`stage_latency_seconds`)과 다르다. 이것은 **끝에서 끝까지**라
+   * 대기열에 머문 시간과 재시도로 늘어난 시간이 전부 들어간다. p95 10초 SLO가
+   * 보는 값이 이쪽이다. 라벨을 두지 않는다 — 저장소별로 나누면 카디널리티가
+   * 저장소 수만큼 늘어난다.
+   */
+  readonly ingestionLagSeconds: Histogram;
   /** 실패 대기열로 보낸 건수. 라벨: `stage`, `reason`. */
   readonly deadLettered: Counter;
   /** 단계 처리 시간(초). 라벨: `stage`, `outcome`. */
@@ -119,15 +129,18 @@ export interface WorkerMetrics {
 
 export function createWorkerMetrics(): WorkerMetrics {
   const enrichPending = new Counter('enrich_pending_total', '부분 결과로 진행한 보강 건수');
+  const ingestionLagSeconds = new Histogram('ingestion_lag_seconds', '웹훅 수신부터 색인 반영까지 지연(초)');
   const deadLettered = new Counter('worker_dead_lettered_total', '실패 대기열로 보낸 이벤트 건수');
   const stageSeconds = new Histogram('stage_latency_seconds', '파이프라인 단계 처리 시간(초)');
 
   return {
     enrichPending,
+    ingestionLagSeconds,
     deadLettered,
     stageSeconds,
     render(): string {
-      return `${[enrichPending, deadLettered, stageSeconds].map((metric) => metric.render()).join('\n')}\n`;
+      const metrics = [enrichPending, ingestionLagSeconds, deadLettered, stageSeconds];
+      return `${metrics.map((metric) => metric.render()).join('\n')}\n`;
     },
   };
 }

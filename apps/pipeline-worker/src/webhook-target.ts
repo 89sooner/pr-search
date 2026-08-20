@@ -70,6 +70,18 @@ function asBoolean(value: unknown): boolean {
   return value === true;
 }
 
+/** 라벨 배열에서 이름만 꺼낸다. 모양이 다른 원소는 조용히 버린다 — 라벨 하나가
+ *  이상하다고 PR 전체를 실패로 만들 이유는 없다. */
+function asLabelNames(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) return [];
+  const names: string[] = [];
+  for (const entry of value) {
+    const name = asString(asRecord(entry)?.['name']);
+    if (name !== undefined) names.push(name);
+  }
+  return names;
+}
+
 /** `owner/repo`를 나눈다. 조각이 둘이 아니거나 비면 실패다. */
 export function splitFullName(fullName: string): { owner: string; repo: string } | undefined {
   const parts = fullName.split('/');
@@ -100,8 +112,14 @@ export function normalizePullRequest(value: unknown): EnrichedPullRequest | unde
   return {
     number,
     title: asString(pr['title']) ?? '',
+    body: asNullableString(pr['body']),
     state: asString(pr['state']) ?? 'unknown',
+    draft: asBoolean(pr['draft']),
+    labels: asLabelNames(pr['labels']),
     merged: asBoolean(pr['merged']),
+    created_at: asNullableString(pr['created_at']),
+    updated_at: asNullableString(pr['updated_at']),
+    closed_at: asNullableString(pr['closed_at']),
     merged_at: asNullableString(pr['merged_at']),
     merge_commit_sha: asNullableString(pr['merge_commit_sha']),
     author: asNullableString(asRecord(pr['user'])?.['login']),

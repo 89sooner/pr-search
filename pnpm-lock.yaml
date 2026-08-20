@@ -47,6 +47,9 @@ importers:
 
   apps/pipeline-worker:
     dependencies:
+      '@elastic/elasticsearch':
+        specifier: 8.19.2
+        version: 8.19.2
       '@prs/bus':
         specifier: workspace:*
         version: link:../../packages/bus
@@ -59,6 +62,9 @@ importers:
       '@prs/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@prs/es':
+        specifier: workspace:*
+        version: link:../../packages/es
       '@prs/github':
         specifier: workspace:*
         version: link:../../packages/github
