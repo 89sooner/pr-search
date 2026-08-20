@@ -207,3 +207,19 @@ export async function markReprocessing(db: Queryable, ids: readonly number[]): P
   );
   return result.rowCount ?? 0;
 }
+
+/**
+ * 재투입 발행에 실패했을 때 표시를 되돌린다.
+ *
+ * 발행하지 못했으면 `reprocessing`은 사실이 아니다. 되돌리지 않으면 아무도 다시
+ * 넣지 않은 행이 진행 중으로 남고, 그 뒤에 오는 실패가 재처리 실패로 잘못
+ * 세어진다.
+ */
+export async function revertReprocessing(db: Queryable, deadLetterId: number): Promise<boolean> {
+  const result = await db.query(
+    `UPDATE dead_letter SET state = 'pending', updated_at = now()
+      WHERE dead_letter_id = $1 AND state = 'reprocessing'`,
+    [deadLetterId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}

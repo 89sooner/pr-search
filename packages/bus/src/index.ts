@@ -34,6 +34,8 @@ export type { Topic } from './topics.js';
 
 export { allPartitions, hashPartitionKey, partitionFor } from './partition.js';
 
+export { ingestEnvelope, ingestStreamKey } from './ingest.js';
+
 export { resolvePartitionOverrides, resolveRedisConfig } from './config.js';
 export type { BusEnv, RedisConnectionConfig } from './config.js';
 

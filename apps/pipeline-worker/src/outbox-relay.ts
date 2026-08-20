@@ -11,10 +11,8 @@
  * 시점에 채우므로, 발행이 아예 안 된 행도 여기 걸린다.
  */
 
-import { EVENT_NAMES, ingestPartitionKey, type IngestionEventReceived } from '@prs/domain';
-import { rawEventRepo, type Pool, type RawEventRow } from '@prs/db';
-import { TOPICS, type EventBus } from '@prs/bus';
-import { randomUUID } from 'node:crypto';
+import { rawEventRepo, type Pool } from '@prs/db';
+import { ingestEnvelope, ingestStreamKey, TOPICS, type EventBus } from '@prs/bus';
 
 /** 비동기 문서 3장: 스케줄 5분, 대상은 10분 경과 행. */
 export const RELAY_INTERVAL_MS = 5 * 60 * 1_000;
@@ -46,17 +44,6 @@ export interface RelayResult {
   readonly failed: number;
 }
 
-export function toIngestionEvent(row: RawEventRow): IngestionEventReceived {
-  return {
-    delivery_id: row.delivery_id,
-    event_type: row.event_type,
-    action: row.action,
-    repository_id: row.repository_id,
-    correlation_id: row.correlation_id,
-    occurred_at: row.received_at.toISOString(),
-  };
-}
-
 /**
  * 한 회차를 실행한다.
  *
@@ -83,17 +70,8 @@ export async function relayOutboxOnce(
   let relayed = 0;
   let failed = 0;
   for (const row of rows) {
-    const payload = toIngestionEvent(row);
     try {
-      await bus.publish(TOPICS.ingest, ingestPartitionKey(row.repository_id, row.delivery_id), {
-        // 재발행은 새 이벤트 ID를 받는다. 소비자의 멱등 기준은 event_id가 아니라
-        // payload의 delivery_id다 (EVT-ING-001 Ordering/Dedupe).
-        event_id: randomUUID(),
-        event_name: EVENT_NAMES.ingestionEventReceived,
-        correlation_id: row.correlation_id,
-        occurred_at: row.received_at.toISOString(),
-        payload,
-      });
+      await bus.publish(TOPICS.ingest, ingestStreamKey(row), ingestEnvelope(row));
       await rawEventRepo.markQueued(pool, row.delivery_id, row.received_at, now());
       relayed += 1;
       log({

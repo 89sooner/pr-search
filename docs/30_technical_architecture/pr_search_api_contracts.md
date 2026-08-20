@@ -965,6 +965,7 @@ POST /api/v1/admin/sequence-integrity
 | `EXPORT_LIMIT_EXCEEDED` | 400 | 내보내기 10만 건 초과 | 조건 축소 |
 | `CONFIRMATION_MISMATCH` | 400 | 2단계 확인 문자열 불일치 | 저장소 이름 정확 입력 |
 | `BRANCH_LIMIT_EXCEEDED` | 400 | 시퀀스 대상 브랜치 10개 초과 | 브랜치 축소 |
+| `INVALID_PARAMETER` | 400 | 요청 파라미터·본문이 형식에 맞지 않음 | 요청 형식 확인 |
 | `UNAUTHENTICATED` | 401 | 세션 없음·만료 | 재인증 |
 | `FORBIDDEN_ROLE` | 403 | 역할 부족 | 필요 역할 요청 |
 | `NOT_FOUND` | 404 | 대상 없음 또는 접근 범위 밖 | 검색으로 복귀 |

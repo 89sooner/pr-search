@@ -86,7 +86,7 @@ Phase 4 (Architecture)
 - [x] `30_technical_architecture/pr_search_architecture_decision_records.md` — ADR-001~012
 - [x] `30_technical_architecture/pr_search_frontend_architecture.md` — 라우트 매핑, 상태 경계, 페칭 전략
 - [x] `30_technical_architecture/pr_search_backend_architecture.md` — 모듈 12종, 핵심 처리 경로 5종, 실패 처리
-- [x] `30_technical_architecture/pr_search_api_contracts.md` — API 28종 카탈로그, 안정 API 12종 JSON 예시, 오류 코드 29종 (CR-006/DEV-003 정정: 이전 판 표기는 30종이었으나 API 계약 6장의 실제 코드는 29종이었다. CR-005로 GH 코드 16종이 추가되어 현재는 45종이다)
+- [x] `30_technical_architecture/pr_search_api_contracts.md` — API 28종 카탈로그, 안정 API 12종 JSON 예시, 오류 코드 29종 (CR-006/DEV-003 정정: 이전 판 표기는 30종이었으나 API 계약 6장의 실제 코드는 29종이었다. CR-005로 GH 코드 16종이 추가되어 45종이 되었고, CR-012가 `INVALID_PARAMETER`를 더해 현재는 46종이다)
 - [x] `30_technical_architecture/pr_search_data_model.md` — 엔티티 17종, PostgreSQL 스키마, ES 매핑 5종, 조회 패턴 16종
 - [x] `30_technical_architecture/pr_search_async_events_jobs.md` — 큐 6종, 잡 21종, 이벤트 9종, 지표 20종
 - [x] `30_technical_architecture/pr_search_security_privacy_architecture.md` — 신뢰 경계 9종, 위협 20종, 오남용 5종
@@ -312,6 +312,7 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 - [x] `40_delivery/pr_search_implementation_traceability.md` — DEV-022~027 등록. 022~025 resolved, 026 open, 027 부분 resolved(`job_id` 절반은 WP-019·WP-010 몫)
 - [x] `packages/db` — 마이그레이션 006, `dead_letter` 리포지터리 업서트·필터 조회 (구현은 WP-009 커밋)
 - [x] `apps/search-api` — `ops` 모듈 (구현은 WP-009 커밋)
+- [x] `pr_search_api_contracts.md` 6장 + `packages/contracts` — 범용 400 코드 `INVALID_PARAMETER` 추가 (45 → 46종). 요청 형식 오류에 맞는 코드가 없어 뜻이 다른 코드를 빌려 쓸 뻔했다
 
 **SRS는 건드리지 않았다.** FR-ING-007이 요구하는 결과(격리·재처리·보류·경보)는 그대로다. 달라지는 것은 그것을 강제하는 수단(유일 제약)과 실행 주체(WP-019 이전에는 `ops`), 그리고 성공을 판정하는 자리뿐이다. **CR-010·CR-011과 섞지 않았다** — 둘은 보강·투영의 전방 계약을 고쳤고 CR-012는 그 두 단계가 실패했을 때의 후방 계약을 고친다.
 

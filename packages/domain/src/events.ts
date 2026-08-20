@@ -30,6 +30,35 @@ export interface IngestionEventReceived {
 }
 
 /**
+ * `raw_event` 행에서 `EVT-ING-001`을 만드는 데 필요한 만큼.
+ *
+ * `@prs/db`의 `RawEventRow`가 구조적으로 이것을 만족한다. 여기서 그 타입을
+ * 직접 import하지 않는 이유는 `@prs/domain`이 워크스페이스 의존을 갖지 않기
+ * 때문이다 — 재발행이 필요한 곳이 아웃박스 재적재(워커)와 실패 대기열
+ * 재처리(ops) 둘로 늘어나면서, 둘 다 볼 수 있는 자리는 여기뿐이 됐다.
+ */
+export interface RawEventSource {
+  readonly delivery_id: string;
+  readonly event_type: string;
+  readonly action: string | null;
+  readonly repository_id: number | null;
+  readonly correlation_id: string;
+  readonly received_at: Date;
+}
+
+/** 원본 행을 `EVT-ING-001` payload로 되돌린다. 재발행 경로가 공유한다. */
+export function toIngestionEvent(row: RawEventSource): IngestionEventReceived {
+  return {
+    delivery_id: row.delivery_id,
+    event_type: row.event_type,
+    action: row.action,
+    repository_id: row.repository_id,
+    correlation_id: row.correlation_id,
+    occurred_at: row.received_at.toISOString(),
+  };
+}
+
+/**
  * 수집 레인의 파티션 키 (비동기 문서 2장: `prs:ingest` → `repository_id`).
  *
  * 저장소를 알 수 없는 이벤트(조직 단위 `team` 등)는 전달 식별자를 쓴다. 그런
