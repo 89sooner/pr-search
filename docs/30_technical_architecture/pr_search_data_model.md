@@ -96,15 +96,32 @@ CREATE TABLE dead_letter (
   dead_letter_id  BIGSERIAL   PRIMARY KEY,
   delivery_id     TEXT        NOT NULL,
   stage           TEXT        NOT NULL,          -- enrich | project | sequence | link
+  repository_id   BIGINT,                        -- 저장소 필터용. 조직 단위 이벤트는 NULL
   error           TEXT        NOT NULL,
   retry_count     INT         NOT NULL DEFAULT 0,
   reprocess_count INT         NOT NULL DEFAULT 0,
-  state           TEXT        NOT NULL,          -- pending | reprocessing | held
+  state           TEXT        NOT NULL,          -- pending | reprocessing | held | resolved
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT dead_letter_delivery_stage_uk UNIQUE (delivery_id, stage)
 );
 CREATE INDEX dead_letter_state_idx ON dead_letter (state, created_at);
+CREATE INDEX dead_letter_repo_idx  ON dead_letter (repository_id, created_at DESC);
 ```
+
+**한 (전달, 단계)에 행 하나다 (CR-012, DEV-022).** `EVT-ING-004`가 멱등 키를 `(delivery_id, stage)`로 정한 것과 같은 기준이며, 유일 제약이 그것을 강제한다. 제약이 없으면 재처리가 실패할 때마다 `reprocess_count = 0`인 새 행이 생겨 **FR-ING-007의 "동일 이벤트가 3회 재처리 실패하면 보류"가 영원히 성립하지 않는다.** 100건 경보(AC-5)도 서로 다른 이벤트 수가 아니라 실패 횟수를 세게 된다.
+
+기록은 그래서 삽입이 아니라 업서트다. 충돌 시 상태 전이는 하나의 문장으로 정해진다.
+
+| 기존 상태 | 새 상태 | `reprocess_count` | 뜻 |
+| --- | --- | --- | --- |
+| (없음) | `pending` | 0 | 첫 실패 |
+| `pending` | `pending` | 그대로 | 재처리를 거치지 않은 실패가 또 났다. 마지막 오류만 갱신한다 |
+| `reprocessing` | `pending` / `held` | +1 | **재처리가 실패했다.** 누적이 3에 닿으면 `held` |
+| `held` | `held` | 그대로 | 자동 재처리 대상에서 빠진 채로 남는다 |
+| `resolved` | `pending` | 0 | 성공으로 닫혔던 이벤트가 새로 실패했다. 이전 주기의 누적을 물려받지 않는다 |
+
+**`resolved`는 종료 상태다 (CR-012, DEV-023).** 재처리는 원본을 파이프라인에 다시 넣는 비동기 작업이라 API가 성공을 알 수 없다. 대신 투영이 `raw_event.processed_at`을 찍는 자리에서 그 전달의 열린 행을 닫는다 — 그 시점이 "이 이벤트가 끝까지 갔다"는 유일한 증거다. 닫지 않으면 성공한 행이 `reprocessing`으로 영영 남아 경보 임계를 잠식한다. 행을 지우지 않는 이유는 보존 정책(9장)이 이 표를 90일 보관 대상으로 두었기 때문이다 — 무엇이 왜 실패했다가 언제 풀렸는지가 운영 기록이다.
 
 `raw_event`의 `queued_at`/`processed_at`이 아웃박스 역할을 한다. Redis 유실 시 `queued_at IS NOT NULL AND processed_at IS NULL`이면서 일정 시간이 지난 행을 재적재한다 (ADR-002 follow-up, `JOB-ING-007`).
 

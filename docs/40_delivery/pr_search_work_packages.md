@@ -326,14 +326,19 @@
 - 관련 API/데이터/잡: API-ADM-003, ENT-ING-002, JOB-ING-009, EVT-ING-004
 - 선행 WP: WP-007, WP-008
 - 구현 범위:
-  - `dead_letter` 적재: 실패 사유, 마지막 오류, 재시도 횟수, 단계
-  - `GET /admin/dead-letters` 목록 조회 (필터: 단계, 상태, 저장소)
-  - `POST /admin/dead-letters/reprocess` 개별·일괄 재처리
-  - 재처리는 `raw_event`에서 원본을 읽어 재투입, 멱등 규칙 적용
+  - `dead_letter` 적재: 실패 사유, 마지막 오류, 재시도 횟수, 단계, 저장소
+  - `(delivery_id, stage)` 업서트 — 한 이벤트의 한 단계에 행 하나 (CR-012, DEV-022)
+  - `GET /api/v1/admin/dead-letters` 목록 조회 (필터: 단계, 상태, 저장소)
+  - `POST /api/v1/admin/dead-letters/reprocess` 개별·일괄 재처리
+  - 재처리는 `raw_event`에서 원본을 읽어 `prs:ingest`에 재투입, 멱등 규칙 적용
   - 3회 재처리 실패 시 `held` 전환, 자동 재처리 제외
+  - 끝까지 성공한 이벤트는 투영이 `processed_at`을 찍는 자리에서 `resolved`로 닫는다 (CR-012, DEV-023)
+  - 임시 인증: `ADMIN_API_TOKEN`. 미설정이면 경로를 등록하지 않는다 (CR-012, DEV-025)
   - 메트릭: `dead_letter_total{state}`, 100건 초과 시 경보 규칙
 - 제외:
   - A-001 화면 (WP-010의 최소 콘솔)
+  - `operator` 역할 판정과 감사 기록 (WP-012 인증, WP-010 감사)
+  - `EVT-JOB-001` 진행률 보고 (`batch` 워커를 세우는 WP-019)
 - 완료 기준(DoD):
   - [ ] 재시도 5회 소진 이벤트가 사유와 함께 DLQ에 저장된다 (FR-ING-007 AC-2)
   - [ ] 개별·일괄 재처리가 동작한다 (AC-3)

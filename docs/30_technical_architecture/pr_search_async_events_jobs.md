@@ -35,7 +35,7 @@
 | JOB-ING-006 | 재색인 | 수동 (API-ADM-004) | batch | 없음 (실패 시 별칭 미전환) | 없음 | EVT-JOB-001 | FR-ING-008 |
 | JOB-ING-007 | 아웃박스 재적재 | 스케줄 (5분) | batch | 3회 | 5분 | - | ADR-002 follow-up |
 | JOB-ING-008 | PostgreSQL↔ES 정합성 감시 | 스케줄 (6시간) | batch | 3회 | 30분 | EVT-JOB-001 | ADR-004 follow-up |
-| JOB-ING-009 | 실패 대기열 재처리 | 수동 (API-ADM-003) | batch | 이벤트별 누적 | 10분 | EVT-JOB-001 | FR-ING-007 |
+| JOB-ING-009 | 실패 대기열 재처리 | 수동 (API-ADM-003) | ops (WP-009) → batch (WP-019 이후) | 이벤트별 누적 | 10분 | EVT-JOB-001 (batch 이후) | FR-ING-007 |
 | JOB-SEQ-001 | 시퀀스 증분 채번 | `push` 이벤트 / 백필 완료 | sequence | 5회 지수 백오프 | 10분 | EVT-SEQ-001 | FR-SEQ-001 |
 | JOB-SEQ-002 | 시퀀스 재채번 | 재작성 감지 / 수동 (API-ADM-007) | sequence | 없음 (실패 시 `stale`) | 60분 | EVT-SEQ-002, EVT-JOB-001 | FR-SEQ-005 |
 | JOB-SEQ-003 | 시퀀스 정합성 점검 | 수동 / 스케줄 (일 1회, 표본) | batch | 3회 | 30분 | EVT-JOB-001 | FR-ADMIN-003 |
@@ -57,7 +57,7 @@
 | EVT-ING-001 | `ingestion.event_received` | ingest-gateway | enrich | `{ delivery_id, event_type, action, repository_id, correlation_id, occurred_at }` | 파티션 `repository_id`, 멱등 `delivery_id` |
 | EVT-ING-002 | `ingestion.enriched` | enrich | project | **self-contained bounded (CR-010, DEV-013)** — `{ delivery_id, repository_id, entity_kind, pr_number, pull_request, source_commit_shas[], changed_files[], reviews[], source_commits_truncated, files_truncated, enrichment_pending, enrichment_errors[], correlation_id }`. `pull_request`는 **PR 문서 매핑(ENT-CORE-002)이 선언한 PR 고유 필드 전부**를 나른다 (CR-011, DEV-018) — `number, title, body, state, draft, labels[], author, created_at, updated_at, closed_at, merged, merged_at, merge_commit_sha, head_ref, head_sha, base_ref, base_sha`. `created_at`이 없으면 투영이 `lead_time_seconds`·`first_review_wait_seconds`를 계산할 수 없다. 투영이 GitHub API를 다시 부르지 않아도 되도록 필요한 것을 실어 보낸다. 원본 웹훅 전량·patch/diff 본문·소스 코드·토큰은 싣지 않는다. 커밋 250건·파일 3000건 상한 유지 | 위와 동일 |
 | EVT-ING-003 | `ingestion.projected` | project | link | `{ repository_id, entity_kind, entity_id, document_version, correlation_id }` | 위와 동일 |
-| EVT-ING-004 | `ingestion.failed` | 모든 워커 | ops | `{ delivery_id, stage, error, retry_count, correlation_id }` | 멱등 `(delivery_id, stage)` |
+| EVT-ING-004 | `ingestion.failed` | 모든 워커 | ops | `{ delivery_id, stage, error, retry_count, correlation_id }` | 멱등 `(delivery_id, stage)` — **`dead_letter`의 유일 제약이 같은 키로 강제한다** (CR-012, DEV-022) |
 | EVT-SEQ-001 | `sequence.assigned` | sequence | project, ops | `{ repository_id, base_branch, seq_epoch, from_seq, to_seq, head_sha }` | 시퀀스 공간별 직렬 |
 | EVT-SEQ-002 | `sequence.reassigned` | sequence | project, 알림, ops | `{ repository_id, base_branch, old_epoch, new_epoch, diverged_at_seq, affected_count }` | 시퀀스 공간별 직렬 |
 | EVT-SEQ-003 | `sequence.stale` | sequence | ops, 알림 | `{ repository_id, base_branch, reason, last_error }` | 최신 값 우선 |
@@ -113,7 +113,13 @@
 - 상한 초과 이벤트는 `dead_letter` 테이블에 `state: 'pending'`으로 저장한다. 실패 사유, 마지막 오류 메시지, 재시도 횟수를 함께 남긴다 (AC-2).
 - 운영자가 개별 또는 일괄 재처리한다 (AC-3). 재처리는 `raw_event`에서 원본을 읽어 파이프라인에 재투입하며 멱등 규칙이 그대로 적용된다 (AC-4).
 - 같은 이벤트가 3회 재처리 실패하면 `state: 'held'`로 전환하고 자동 재처리 대상에서 제외한다. 운영자 개입이 필요함을 A-001에 표시한다.
-- 실패 대기열 잔량이 100건을 넘으면 경보를 발생시킨다 (AC-5).
+- 실패 대기열 잔량이 100건을 넘으면 경보를 발생시킨다 (AC-5). 세는 대상은 `state IN ('pending','reprocessing')`이다 — `held`는 이미 사람이 보기로 한 것이고 `resolved`는 끝난 것이라 임계를 잠식하면 안 된다.
+
+**재투입 지점은 항상 `prs:ingest`다 (CR-012).** 어느 단계에서 실패했든 마찬가지다. `EVT-ING-002`·`EVT-ING-003`은 어디에도 보존되지 않으므로 `project` 단계 실패를 그 단계부터 되살릴 방법이 없다. 다시 만들 수 있는 유일한 출발점은 `raw_event`의 원본이며, 앞 단계를 다시 도는 비용은 멱등 규칙(FR-ING-002)이 중복을 만들지 않는다는 보장으로 상쇄된다.
+
+**JOB-ING-009의 실행 주체는 단계에 따라 다르다 (CR-012, DEV-024).** 재처리 자체는 "행을 읽어 스트림에 다시 넣는" I/O 가벼운 작업이라 `ops` 모듈이 요청 안에서 직접 수행한다(1회 최대 500건). `batch` 워커와 `prs:batch` 스트림은 WP-019가 세우므로, 진행률 이벤트 `EVT-JOB-001`과 10분 타임아웃은 그때부터 적용된다. 그전까지 재처리 결과는 응답 본문이 그대로 알려 준다.
+
+**`EVT-ING-004`는 아직 발행되지 않는다 (CR-012, DEV-026).** 카탈로그가 정한 소비자 `ops`는 스트림 소비자가 아니라 `dead_letter` 테이블을 읽는 조회 모듈이고, 경보 경로는 `dead_letter_total{state}` 지표가 맡는다(WP-009 범위). 지금 토픽을 만들면 소비자 없는 스트림이 하나 생길 뿐이다. 알림 소비자가 생기는 운영 고도화(REL-005)에서 발행 여부를 정한다 — **워커가 `dead_letter` 행을 동기적으로 남기므로 이벤트가 없다고 기록이 유실되지는 않는다.**
 
 ## 6. 진행률 보고
 

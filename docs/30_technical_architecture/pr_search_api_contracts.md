@@ -810,6 +810,74 @@ POST /api/v1/analytics/percentiles
 - 오류: 401 (서명 불일치, 본문 없음), 413 (25MB 초과), 500 (durable 저장 실패 — GHE 재전송 유도)
 - 지원 이벤트: `pull_request`, `pull_request_review`, `push`, `create`, `delete`, `release`, `member`, `team`, `repository`. 그 외는 저장만 하고 처리 대상에서 제외 (AC-5)
 
+### API-ADM-003 실패 대기열 조회와 재처리
+
+- 목적: 격리된 실패 이벤트를 보고 다시 파이프라인에 투입한다.
+- 관련 요구사항: FR-ING-007
+- 관련 화면: A-001 (`A-001-DLQ`)
+
+요청 (조회): `GET /api/v1/admin/dead-letters?state=pending&stage=project&repository_id=4021&limit=50&offset=0`
+
+- `state` (optional): `pending` | `reprocessing` | `held` | `resolved`. 생략하면 `resolved`를 뺀 전부
+- `stage` (optional): `enrich` | `project` | `sequence` | `link`
+- `repository_id` (optional): 저장소 한정
+- `limit` (optional, 기본 50, 최대 200), `offset` (optional, 기본 0)
+
+응답 200:
+
+```json
+{
+  "items": [
+    {
+      "dead_letter_id": "812",
+      "delivery_id": "72d1e0f3-a4b5-4c6d-8e7f-90a1b2c3d4e5",
+      "stage": "project",
+      "repository_id": 4021,
+      "error": "mapping_rejected: unknown field [patch]",
+      "retry_count": 5,
+      "reprocess_count": 1,
+      "state": "pending",
+      "created_at": "2026-08-20T11:02:41.000Z",
+      "updated_at": "2026-08-20T11:31:07.000Z"
+    }
+  ],
+  "total": 1,
+  "counts_by_state": { "pending": 1, "reprocessing": 0, "held": 0, "resolved": 12 }
+}
+```
+
+요청 (재처리):
+
+```json
+POST /api/v1/admin/dead-letters/reprocess
+{
+  "dead_letter_ids": ["812", "813"],
+  "confirmation": null
+}
+```
+
+- 개별은 `dead_letter_ids`에 한 건, 일괄은 여러 건을 넣는다. 필터로 한 번에 고르려면 `filter: { state, stage, repository_id }`를 대신 보낸다
+- 1회 상한은 500건이다. 초과하면 400 `RANGE_TOO_LARGE`
+- **대상이 100건을 넘으면 `confirmation`에 대상 건수를 문자열로 정확히 넣어야 한다** (QA-A001-05). 불일치·누락은 400 `CONFIRMATION_MISMATCH`
+- `state: 'held'`는 자동 선택 대상이 아니다. `dead_letter_ids`로 명시할 때만 재처리한다 (FR-ING-007 예외 처리)
+
+응답 202:
+
+```json
+{
+  "requested": 2,
+  "reinjected": 2,
+  "skipped": [],
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+- `skipped`에는 원본이 남아 있지 않은 항목이 `{ dead_letter_id, reason: "raw_event_missing" }`로 들어간다. 원본 보존 기간(3년)을 넘겼거나 파티션이 드롭된 경우다
+- 재투입 지점은 실패 단계와 무관하게 항상 `prs:ingest`다. 중간 이벤트는 보존되지 않으며 멱등 규칙(FR-ING-002)이 중복 문서를 막는다
+- 재처리한 행은 `state: 'reprocessing'`이 된다. 다시 실패하면 `reprocess_count`가 오르고 3회에 닿으면 `held`, 끝까지 성공하면 투영이 `resolved`로 닫는다
+
+**인증 (CR-012, DEV-025).** 이 API의 최종 권한은 `operator` 역할이며 그 판정은 WP-012의 OIDC 세션이 세운다. WP-012 이전(REL-001)에는 조직에 사용자 신원 자체가 없으므로, 그 사이의 임시 통제로 공유 토큰(`ADMIN_API_TOKEN`, `Authorization: Bearer`)을 요구한다. **토큰이 설정되지 않으면 이 경로들을 아예 등록하지 않는다** — 인증 수단 없이 열린 변경 API를 두는 것보다 없는 편이 낫다. 토큰 불일치는 401 `UNAUTHENTICATED`다. WP-012가 역할 판정을 세우면 이 통제는 대체된다.
+
 ### API-ADM-007 시퀀스 정합성 점검과 재채번
 
 요청 (점검): `GET /api/v1/admin/sequence-integrity?repository=acme/payments&base_branch=main&mode=sample`
