@@ -56,7 +56,10 @@ CREATE TABLE raw_event (
   PRIMARY KEY (delivery_id, received_at)         -- 파티션 키 포함
 ) PARTITION BY RANGE (received_at);              -- 월별 파티션, 보존 만료는 파티션 드롭
 
-CREATE UNIQUE INDEX raw_event_delivery_uk ON raw_event (delivery_id, received_at);
+-- CR-006(DEV-004): 이전 판에는 raw_event_delivery_uk를 별도로 만들었으나
+-- PRIMARY KEY (delivery_id, received_at)과 컬럼·순서가 완전히 같은 중복 인덱스였다.
+-- 5억 행·초당 2000 이벤트(NFR-002) 규모에서 중복 인덱스는 삽입 비용을 그대로
+-- 두 배로 만들기 때문에 제거했다. 멱등 제약은 기본 키가 그대로 강제한다.
 CREATE INDEX raw_event_outbox_idx  ON raw_event (queued_at) WHERE processed_at IS NULL;
 CREATE INDEX raw_event_repo_idx    ON raw_event (repository_id, received_at DESC);
 
@@ -229,15 +232,18 @@ CREATE TABLE job (
 CREATE UNIQUE INDEX job_active_uk ON job (type, target)
   WHERE state IN ('queued', 'running', 'paused');   -- 동시 1개 (FR-ADMIN-002 AC-4)
 
+-- CR-006(DEV-005): PostgreSQL은 파티션 테이블의 유니크 제약이 파티션 키를
+-- 포함하도록 요구한다. 이전 판의 PRIMARY KEY (audit_id)는 실행되지 않는다.
 CREATE TABLE audit_record (
-  audit_id       BIGSERIAL   PRIMARY KEY,
+  audit_id       BIGSERIAL   NOT NULL,
   user_id        TEXT        NOT NULL,
   action         TEXT        NOT NULL,
   target         TEXT,
   query          TEXT,
   result_code    TEXT        NOT NULL,
   correlation_id UUID        NOT NULL,
-  occurred_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  occurred_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (audit_id, occurred_at)
 ) PARTITION BY RANGE (occurred_at);      -- 월별 파티션, 1년 보존 (NFR-006)
 CREATE INDEX audit_user_idx   ON audit_record (user_id, occurred_at DESC);
 CREATE INDEX audit_action_idx ON audit_record (action, occurred_at DESC);
