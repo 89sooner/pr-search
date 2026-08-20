@@ -23,7 +23,10 @@ export interface DeliveredEvent<T = unknown> extends EventEnvelope<T> {
   readonly partition_key: string;
   readonly partition: number;
   /**
-   * 이 이벤트가 전달된 횟수. 처음이면 1이다.
+   * 이 이벤트의 **논리적** 전달 횟수. 처음이면 1이다.
+   *
+   * `defer`로 미룬 것은 여기 포함되지 않는다 (CR-010) — rate limit 대기가
+   * 재시도 예산을 갉아먹지 않게 하려는 것이다.
    *
    * 재시도 판정(비동기 5.2)과 실패 대기열 이동 판정(FR-ING-007)에 쓴다.
    * 핸들러가 던지면 ack하지 않으므로 다음 전달에서 값이 올라간다.
@@ -34,12 +37,43 @@ export interface DeliveredEvent<T = unknown> extends EventEnvelope<T> {
 }
 
 /**
+ * 핸들러가 돌려주는 처분 (CR-010, DEV-014).
+ *
+ * **"반환하면 ack, 던지면 재전달" 둘만으로는 rate limit을 표현할 수 없다.**
+ * GitHub이 "10분 뒤에 다시 오라"고 알려 줘도 재전달 간격이 고정이면 그 사이
+ * 여러 번 재전달되고, 그 횟수가 재시도로 집계되어 회복 전에 실패 대기열로
+ * 간다. 한도 대기는 실패가 아닌데 실패로 세는 셈이다.
+ *
+ * | 처분 | 의미 | 재시도 예산 |
+ * | --- | --- | --- |
+ * | `ack` | 처리 완료 | - |
+ * | `retry` | 실제 실패. 표준 백오프(1·2·4·8·16초 + 지터)로 재시도 | 소비 |
+ * | `defer` | 아직 때가 아니다. 지정 시각까지 미룬다 | **소비하지 않음** |
+ * | `dead_letter` | 종료. 호출 측이 이미 기록했고 ack해서 파티션을 푼다 | - |
+ */
+export type HandlerDisposition =
+  | { readonly kind: 'ack' }
+  | { readonly kind: 'retry'; readonly reason?: string }
+  | { readonly kind: 'defer'; readonly until: Date; readonly reason?: string }
+  | { readonly kind: 'dead_letter'; readonly reason: string };
+
+/**
  * 이벤트 처리기.
  *
- * 정상 반환하면 ack한다. 던지면 ack하지 않아 재전달 대상으로 남는다 —
- * 삼키고 정상 반환하면 그 이벤트는 조용히 사라진다.
+ * 처분을 돌려주거나, 아무것도 돌려주지 않으면 `ack`으로 본다. 던지면 `retry`다
+ * — 삼키고 정상 반환하면 그 이벤트는 조용히 사라진다.
  */
-export type EventHandler<T = unknown> = (event: DeliveredEvent<T>) => Promise<void>;
+export type EventHandler<T = unknown> = (
+  event: DeliveredEvent<T>,
+) => Promise<HandlerDisposition | void>;
+
+/** 처분 도우미. `{ kind: ... }`를 매번 적지 않게 한다. */
+export const ack = (): HandlerDisposition => ({ kind: 'ack' });
+export const retry = (reason?: string): HandlerDisposition =>
+  reason === undefined ? { kind: 'retry' } : { kind: 'retry', reason };
+export const deferUntil = (until: Date, reason?: string): HandlerDisposition =>
+  reason === undefined ? { kind: 'defer', until } : { kind: 'defer', until, reason };
+export const deadLetter = (reason: string): HandlerDisposition => ({ kind: 'dead_letter', reason });
 
 export interface Subscription {
   /** 진행 중인 처리를 마치고 소비를 멈춘다. */
@@ -68,6 +102,8 @@ export interface SubscribeOptions {
   readonly claimIdleMs?: number;
   /** 처리 실패를 알린다. 버스는 재전달만 책임지고 기록은 호출 측이 한다. */
   readonly onError?: (error: unknown, event: DeliveredEvent) => void;
+  /** 백오프 지터용 난수원. 테스트가 결정론적으로 만들 때만 넘긴다. */
+  readonly random?: () => number;
 }
 
 /**

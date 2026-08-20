@@ -9,7 +9,13 @@
 
 export const PACKAGE_NAME = '@prs/github' as const;
 
-export { resolveGitHubConfig, hasAppCredentials, QUARANTINE_THRESHOLD, TOKEN_REFRESH_LEAD_MS } from './config.js';
+export {
+  resolveGitHubConfig,
+  hasAppCredentials,
+  parseInstallations,
+  QUARANTINE_THRESHOLD,
+  TOKEN_REFRESH_LEAD_MS,
+} from './config.js';
 export type { GitHubAppConfig, GitHubEnv } from './config.js';
 
 export { redact, safeMessage, REDACTED } from './redact.js';
@@ -40,7 +46,7 @@ export { RequestScheduler } from './scheduler.js';
 export type { RequestPriority, SchedulerOptions } from './scheduler.js';
 
 export { GitHubTransport } from './transport.js';
-export type { RequestOptions, TransportEvent, TransportOptions } from './transport.js';
+export type { PagedResult, RequestOptions, TransportEvent, TransportOptions } from './transport.js';
 
 export { GitHubClient, MAX_CHANGED_FILES, MAX_PR_COMMITS } from './client.js';
 export type {

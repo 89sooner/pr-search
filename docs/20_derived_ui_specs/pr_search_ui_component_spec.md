@@ -452,5 +452,8 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 | C-065 | `WebEquivalentNotice` | 터미널 기능이 웹 등가로 대체되었음을 알리는 안내 — 무엇이 어떻게 바뀌었는지와 사유 | W-010, W-022 | CR-008. `--web`·`gh browse`는 URL 링크로, editor는 웹 편집기로 대체됨을 알린다 (ADR-019) |
 | C-066 | `ExtensionTrustBadge` | extension의 신뢰 상태 — 승인 여부, 버전 pin, 출처 저장소, provenance, 차단 사유 | W-022, A-005 | CR-008. 차단된 extension도 숨기지 않고 사유와 함께 보여준다 |
 | C-067 | `ParityCoverageMatrix` | 차원별 커버리지 매트릭스 — command path, alias, positional, command 고유 flag, inherited flag, short alias, 반복 가능 flag, interaction 모드, 입출력 모드, `--json` 필드. core/extension 분리, 드리프트 diff | A-006 | CR-008. `CapabilityBrowser`(C-049)가 개별 capability를 보여준다면 이쪽은 차원별 집계를 보여준다 |
+| C-068 | `CapabilityGraph` | Recipe를 비순환 typed DAG로 편집. 단계 노드, 입출력 port, 간선, 호환 가능한 다음 단계 제안, 순환·비호환 연결 거부 사유 | W-023 | CR-009. `RecipeStepEditor`(C-060)가 단계 하나를 편집한다면 이쪽은 단계 사이의 연결을 편집한다 (ADR-020) |
+| C-069 | `TypedBindingEditor` | 출발 단계·출력 port → 도착 입력·positional·flag·컨텍스트 연결 편집. 선언된 named field 또는 제한된 JSON Pointer만 선택 | W-023 | CR-009. **자유 표현식 입력창을 두지 않는다** — 표현식 해석기가 없다는 것이 이 컴포넌트의 요점이다 |
+| C-070 | `ResultContractBadge` | capability의 결과 계약 표시 — `kind`, sensitivity, bindable 여부, result adapter, composability 상태. `secret` 결과는 바인딩 불가 사유를 함께 | W-010, W-021, W-023, A-006 | CR-009. `RiskBadge`(C-055)가 실행 위험을 말한다면 이쪽은 결과를 어디까지 이을 수 있는지를 말한다 |
 
 **`GenericCommandForm`이 하나여야 하는 이유.** 명령이 196개다. 폼을 명령마다 만들면 gh가 올라갈 때마다 화면을 추가해야 하고, 빠뜨린 것을 아무도 모른다. 폼이 하나면 manifest에 command가 추가되는 순간 UI가 따라온다 (ADR-015).

@@ -27,6 +27,7 @@
 | ENT-REL-002 | Link | 관계 간선 | `link_id`, `from_type`, `from_id`, `to_type`, `to_id`, `link_type`, `confidence`, `evidence`, `resolved` | Elasticsearch | link | FR-REL-003~008 |
 | ENT-ING-001 | RawEvent | 원본 웹훅 이벤트 | `delivery_id`, `event_type`, `repository_id`, `received_at`, `payload`, `queued_at`, `processed_at` | PostgreSQL | ingestion | FR-ING-001, FR-ING-003 |
 | ENT-ING-002 | DeadLetter | 실패 이벤트 격리 | `dead_letter_id`, `delivery_id`, `stage`, `error`, `retry_count`, `state` | PostgreSQL | ingestion | FR-ING-007 |
+<!-- CR-010(DEV-013): 보강 결과 전용 테이블은 두지 않는다. EVT-ING-002가 투영에 필요한 것을 self-contained bounded 이벤트로 나른다. 원본이 필요하면 raw_event가 시스템 오브 레코드다 (ADR-004). -->
 | ENT-ING-003 | RawEventArchive | 원본 아카이브 검색 문서 | `delivery_id`, `event_type`, `repository`, `received_at`, `payload` | Elasticsearch | filebeat | FR-ING-010 |
 | ENT-ING-004 | Job | 잡 실행 상태 | `job_id`, `type`, `target`, `state`, `progress`, `cursor`, `started_at`, `finished_at` | PostgreSQL | jobs | FR-ADMIN-002, FR-ING-006 |
 | ENT-GH-001 | GitHubIdentityConnection | 사용자별 Operations App 위임 연결 | `user_id`, `github_login`, `token_ref`, `scopes[]`, `connected_at`, `expires_at`, `revoked_at` | PostgreSQL | gh-identity | FR-GH-008 |
@@ -38,6 +39,9 @@
 | ENT-GH-006 | GhCapabilitySnapshot | 적용 중인 capability manifest | `snapshot_id`, `gh_version`, `manifest_version`, `manifest_hash`, `command_count`, `flag_count`, `unclassified_count`, `activated_at`, `alias_count`, `positional_count`, `inherited_flag_count`, `interaction_unclassified_count`, `extension_command_count` (CR-008) | PostgreSQL | gh-registry | FR-GH-001, FR-GH-011 |
 | ENT-GH-007 | GhCapabilityConstraint | capability의 유효 조합 정의 (CR-008, ADR-017) | `capability_id`, `kind`(`requires`/`conflicts`/`oneOf`/`exactlyOne`/`atLeastOne`/`implies`/`repeatable`/`minItems`/`maxItems`/`enum`/`conditional`/`inputSource`/`context`), `subjects[]`, `condition`, `values[]`, `bounds` | manifest (PostgreSQL 스냅숏) | gh-registry | FR-GH-003 |
 | ENT-GH-008 | GhInvocation | 사용자 의도의 구조화 표현 (CR-008, ADR-017) | `capability_id`, `context`(host/org/repo/ref/workspace), `positional_arguments[]`, `flags[]`, `stdin_source`, `file_bindings[]`, `output_options` | PostgreSQL (`gh_execution`에 내장) | gh-exec | FR-GH-002, FR-GH-012 |
+| ENT-GH-009 | GhResultContract | capability의 결과 계약 (CR-009, ADR-020) | `capability_id`, `kind`(json/resource/resource_list/url/artifact/text/stream/exit_status), `schema`, `resource_type`, `bindable`, `sensitivity`(public/internal/sensitive/secret), `adapters[]`, `composability` | manifest (PostgreSQL 스냅숏) | gh-registry | FR-GH-001, FR-GH-005 |
+| ENT-GH-010 | GhResourceRef | 명령 사이를 잇는 공통 자원 참조 (CR-009) | `host`, `kind`, `repository`, `id`, `number`, `ref` | 값 타입 (실행·Recipe에 내장) | gh-exec, gh-recipe | FR-GH-005 |
+| ENT-GH-011 | GhBinding | Recipe 단계 사이의 구조화된 연결 (CR-009) | `source_step`, `source_port`, `target_step`, `target_slot`(input/positional/flag/context), `field_selector`(선언된 named field 또는 제한된 JSON Pointer) | PostgreSQL (`gh_recipe_revision.definition`) | gh-recipe | FR-GH-005 |
 
 ## 3. PostgreSQL 스키마
 

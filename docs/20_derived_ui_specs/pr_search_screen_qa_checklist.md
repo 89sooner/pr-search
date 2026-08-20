@@ -347,3 +347,13 @@ QA 실행 기록
 | QA-GH-31 | 재실행이 과거 승인을 승계하지 않고 현재 권한·정책으로 다시 검증되며 새 확인을 요구한다 | CR-008 / FR-GH-012 AC-4, THR-028 |
 | QA-GH-32 | A-006이 차원별 커버리지와 core/extension 분리 수치를 보여주고, 드리프트가 있으면 command·flag diff를 표시한다 | CR-008 / FR-GH-001 AC-10, C-067 |
 | QA-GH-33 | `gh api` 타입 폼과 원시 모드가 같은 위험도·확인·감사 경로를 거친다 | CR-008 / FR-GH-010 AC-8 |
+| QA-GH-34 | 다음 단계 후보가 현재 출력과 호환되는 capability를 먼저 보여준다 | CR-009 / FR-GH-005 AC-11, C-068 |
+| QA-GH-35 | 호환되지 않는 연결이 저장 전에 사유와 함께 거부된다 | CR-009 / FR-GH-005 AC-11 |
+| QA-GH-36 | Recipe 그래프에 순환을 만들면 저장이 거부된다 | CR-009 / FR-GH-005 AC-7 |
+| QA-GH-37 | 바인딩 편집기에 자유 표현식 입력창이 없다 — 선언된 field 또는 제한된 JSON Pointer만 고를 수 있다 | CR-009 / FR-GH-005 AC-8, C-069 |
+| QA-GH-38 | 상한 없는 fan-out은 저장도 실행도 되지 않는다 | CR-009 / FR-GH-005 AC-9 |
+| QA-GH-39 | 동적 R2/R3 대상 집합이 preflight로 확정되고 plan 해시 확인을 거친다 | CR-009 / FR-GH-005 AC-10 |
+| QA-GH-40 | 확인 이후 plan이 바뀌면 기존 확인이 무효가 되고 다시 확인을 요구한다 | CR-009 / FR-GH-005 AC-10 |
+| QA-GH-41 | `secret` 결과 capability가 바인딩 대상으로 제안되지 않고, 값이 화면·이력에 나타나지 않는다 | CR-009 / NFR-010 |
+| QA-GH-42 | `opaque_text` capability가 바인딩 source로 선택되지 않으면서도 목록에서 숨겨지지 않는다 | CR-009 / FR-GH-001 AC-11 |
+| QA-GH-43 | 앞 단계 파일이 실행기 경로가 아니라 아티팩트 ID로 다음 단계에 전달된다 | CR-009 / FR-GH-007 AC-9 |

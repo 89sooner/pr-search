@@ -1,6 +1,6 @@
 # PR Search 최종 요구사항 정의서
 
-> 상태: baseline | 버전: v2.1 | 갱신일: 2026-08-20
+> 상태: baseline | 버전: v2.2 | 갱신일: 2026-08-20
 
 > **기준선 잠금.** 이 문서는 2026-08-19 사용자 승인으로 `baseline`이 되었다. 이후 이 문서의 모든 변경은 `../00_governance/change_control.md`에 `CR-###`를 먼저 등록한 뒤에만 가능하다. 하위 문서(파생 UI, 기술 아키텍처, 딜리버리)는 이 문서의 범위를 확장할 수 없다.
 >
@@ -685,7 +685,7 @@ CR-005로 재분류된 항목이 있다. 아래 표는 재분류 후의 최종 �
 | 검증 방법 | test |
 | 관련 화면 | 없음(간접 노출: A-001 보강 지연 지표, W-002 수집 중 상태) |
 | 관련 API/데이터 | JOB-ING-002 / ENT-CORE-002, ENT-CORE-003 |
-| 예외/실패 처리 | 재시도 3회가 모두 실패하면 이벤트를 실패 대기열로 보내고 부분 문서는 유지한다(FR-ING-007). |
+| 예외/실패 처리 | 표준 재시도 5회(1·2·4·8·16초 + ±20% 지터, FR-ING-007 AC-1)가 모두 실패하면 이벤트를 실패 대기열로 보내고 부분 문서는 유지한다. **rate limit 대기는 실패가 아니다** — 주 한도 회복 시각이나 `retry-after`까지 미루는 것은 재시도 예산을 소비하지 않는다 (CR-010, DEV-012·DEV-014). 이전 판의 "재시도 3회" 표기는 FR-ING-007·비동기 5.1·WP-007과 어긋난 오기였다. |
 
 #### FR-ING-005 문서 투영과 업서트
 
@@ -1015,6 +1015,59 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 
 토큰·비밀 값 자체는 이 차원에 포함되지 않는다. `GH_ENTERPRISE_TOKEN` 같은 값은 실행기가 안전하게 주입하며 UI에 나타나지 않는다 (NFR-010).
 
+**조합 parity (CR-009).** 위 28개 차원은 *한 command*의 유효 조합을 다룬다. 그러나 실제 업무는 명령 하나로 끝나지 않는다 — 검색 결과에서 PR 하나를 골라 체크를 보고, 릴리스에서 받은 파일을 다음 명령에 넣는다. 명령마다 특수 코드를 넣지 않고 이것을 일반화하려면 **출력에도 계약이 필요하다.**
+
+기존 Recipe(FR-GH-005)는 이전 단계의 **JSON 출력** 바인딩까지만 표현한다. 그런데 gh 명령의 출력이 전부 JSON은 아니다.
+
+| 실제 상황 | 기존 표현으로 안 되는 이유 |
+| --- | --- |
+| 명령 A가 저장소 URL을 반환 → 명령 B가 저장소 입력을 요구 | URL은 JSON 필드가 아니다 |
+| `gh release download`가 파일 생성 → 다음 명령이 파일 입력 필요 | 파일은 JSON 필드가 아니고, 실행기 경로를 넘겨서도 안 된다 |
+| `gh search prs`가 PR 집합 반환 → `gh pr checks`는 PR 하나 필요 | 집합에서 하나를 고르는 의미가 표현되지 않는다 |
+| `gh run rerun`은 workflow run 참조 필요 | `owner/repo#123` 문자열을 매번 재파싱하게 된다 |
+
+그래서 다음 다섯 가지를 capability manifest에 추가한다.
+
+**1. `GhResultContract` — 결과 계약.** 각 capability는 입력 계약과 함께 결과 계약을 가진다.
+
+| 필드 | 내용 |
+| --- | --- |
+| `kind` | `json`, `resource`, `resource_list`, `url`, `artifact`, `text`, `stream`, `exit_status` |
+| `schema` | 구조화 출력의 스키마 |
+| `resourceType` | 결과가 가리키는 자원 종류 |
+| `bindable` | 다음 단계의 입력으로 이을 수 있는가 |
+| `sensitivity` | `public`, `internal`, `sensitive`, `secret` |
+| `adapters` | 구조화 수단 (아래 참조) |
+
+**2. 결과 sensitivity — `secret` 결과는 다르게 다룬다.** `gh auth token`, 비밀 조회, 자격 증명 자료의 결과를 일반 결과와 같이 취급하지 않는다. `secret`으로 분류된 결과는 화면 표시, 실행 이력 저장, Recipe 바인딩, 감사 본문 저장, 다음 명령 stdin 자동 전달을 **모두 금지**한다.
+
+**capability가 UI에 존재하는 것과 비밀 값을 노출하는 것은 다른 문제다.** capability는 목록에 보이고 실행될 수 있으면서도 그 출력은 non-bindable·policy-blocked일 수 있다. 숨기는 것이 아니라 흐르지 못하게 하는 것이다.
+
+**3. `GhResourceRef` — 공통 자원 참조.** 명령 사이에서 `owner/repo#123` 같은 문자열을 다시 파싱하지 않는다. `{ host, kind, repository, id, number, ref }` 구조로 넘긴다. `kind`는 `repository`, `pull_request`, `issue`, `discussion`, `workflow`, `workflow_run`, `release`, `project`, `codespace`, `artifact`, `gist`, `user`, `team`, `branch`, `commit`이다.
+
+**4. typed 입출력 port.** capability는 바인딩 가능한 입력·출력 port를 가진다. `gh search prs`의 출력은 `PullRequestRef[]`, `gh pr checks`의 입력은 `PullRequestRef`이고 출력은 `CheckRunRef[]`, `gh run rerun`의 입력은 `WorkflowRunRef`다. **어떤 명령 뒤에 어떤 명령을 이을 수 있는지는 타입으로 계산한다** — 이름 문자열이 같아서 잇는 것이 아니다.
+
+**5. `GhCapabilityGraph`.** manifest에서 node=capability, edge=출력 port → 호환 입력 port 인 그래프를 자동으로 계산한다. W-023이 다음 단계를 제안할 때 전체 명령을 무작정 나열하지 않고 현재 출력과 호환되는 것을 먼저 보여준다. 전체 검색은 계속 되지만, 호환되지 않는 연결은 저장 전에 사유와 함께 거부한다.
+
+**`--json`이 없는 명령의 result adapter.** 모든 명령이 `--json`을 지원하지는 않는다. 각 결과를 아래로 분류한다.
+
+| adapter | 의미 |
+| --- | --- |
+| `native_json` | 명령 자체가 `--json`을 지원 |
+| `gh_api_structured` | 자체 `--json`은 없지만 같은 의미를 `gh api`로 구조화할 수 있다 (명령 의미가 달라지면 쓰지 않는다) |
+| `resource_url` | 결과가 자원 URL |
+| `artifact` | 결과가 파일 |
+| `opaque_text` | 구조를 신뢰할 수 없는 텍스트 |
+| `stream` | 스트리밍 출력 |
+| `exit_status` | 종료 코드만 의미가 있다 |
+| `secret_non_bindable` | 비밀 자료 |
+
+**출력 텍스트를 깨지기 쉬운 정규식으로 무조건 파싱하지 않는다.** `opaque_text`는 실행하고 화면에 보여줄 수 있지만 typed 바인딩의 source가 될 수 없다고 분류한다. 목록에서 숨기지 않는다.
+
+**composability 상태.** 모든 capability는 아래 중 하나를 가지며 `unknown`은 금지한다.
+
+`fully_bindable`, `partially_bindable`, `terminal_result`, `artifact_result`, `opaque_result`, `secret_non_bindable`, `policy_blocked`, `unsupported_by_host`
+
 #### FR-GH-001 gh capability 인벤토리와 parity
 
 | 항목 | 내용 |
@@ -1023,7 +1076,7 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 우선순위 | Must |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
 | 요구사항 | 시스템은 고정된 `gh` 버전의 모든 command path와 문서화된 argument·flag를 capability manifest에 분류하여 보유하여야 하며, §9.8이 정의한 28개 parity 차원 전부에 미분류 항목이 없어야 한다. |
-| 수용 기준 | AC-1: manifest는 `gh --help`와 각 command path의 `--help` 출력에서 생성한 인벤토리를 근거로 한다. AC-2: 모든 command path는 `supported`, `unsupported_by_host`, `preview`, `policy_blocked`, `terminal_only`, `admin_only`, `requires_extension`, `requires_local_workspace` 중 하나로 분류된다. AC-3: 모든 문서화된 positional argument와 flag는 `mapped_to_typed_control`, `mapped_to_generic_control`, `mapped_to_web_equivalent`, `terminal_only`, `policy_blocked`, `unsupported_by_host`, `requires_admin_approval` 중 하나로 분류된다. AC-4: `unknown` 상태로 남은 항목이 어느 차원에든 하나라도 있으면 parity 게이트는 실패한다. AC-5: manifest는 버전과 내용 해시를 가지며 생성에 사용한 gh 버전을 함께 기록한다. AC-6: 지원되지 않는 capability를 목록에서 숨기지 않고 사유와 함께 표시한다. **AC-7 (CR-008): command alias, inherited/global flag, short flag alias, 반복 가능 flag를 command 고유 flag와 구분해 각각 분류한다 — 목록에 없다는 것은 분류가 아니다.** **AC-8 (CR-008): 모든 command는 interaction 차원에서 `web_native`, `web_equivalent`, `sandbox_terminal`, `terminal_only`, `policy_blocked`, `unsupported_by_host` 중 하나로 분류된다.** **AC-9 (CR-008): stdin 입력, 파일 입출력, 저장소·호스트·브랜치·workspace 컨텍스트 요구, 출력 형식(`--json` 필드·`--jq`·`--template`·페이지네이션)을 각 capability에 명시한다.** **AC-10 (CR-008): core gh capability와 extension capability의 커버리지 수치를 분리해 보고한다.** |
+| 수용 기준 | AC-1: manifest는 `gh --help`와 각 command path의 `--help` 출력에서 생성한 인벤토리를 근거로 한다. AC-2: 모든 command path는 `supported`, `unsupported_by_host`, `preview`, `policy_blocked`, `terminal_only`, `admin_only`, `requires_extension`, `requires_local_workspace` 중 하나로 분류된다. AC-3: 모든 문서화된 positional argument와 flag는 `mapped_to_typed_control`, `mapped_to_generic_control`, `mapped_to_web_equivalent`, `terminal_only`, `policy_blocked`, `unsupported_by_host`, `requires_admin_approval` 중 하나로 분류된다. AC-4: `unknown` 상태로 남은 항목이 어느 차원에든 하나라도 있으면 parity 게이트는 실패한다. AC-5: manifest는 버전과 내용 해시를 가지며 생성에 사용한 gh 버전을 함께 기록한다. AC-6: 지원되지 않는 capability를 목록에서 숨기지 않고 사유와 함께 표시한다. **AC-7 (CR-008): command alias, inherited/global flag, short flag alias, 반복 가능 flag를 command 고유 flag와 구분해 각각 분류한다 — 목록에 없다는 것은 분류가 아니다.** **AC-8 (CR-008): 모든 command는 interaction 차원에서 `web_native`, `web_equivalent`, `sandbox_terminal`, `terminal_only`, `policy_blocked`, `unsupported_by_host` 중 하나로 분류된다.** **AC-9 (CR-008): stdin 입력, 파일 입출력, 저장소·호스트·브랜치·workspace 컨텍스트 요구, 출력 형식(`--json` 필드·`--jq`·`--template`·페이지네이션)을 각 capability에 명시한다.** **AC-10 (CR-008): core gh capability와 extension capability의 커버리지 수치를 분리해 보고한다.** **AC-11 (CR-009): 모든 capability는 결과 계약(`GhResultContract`)을 가지며, `kind`·`sensitivity`·`bindable`·result adapter·composability 상태가 전부 분류된다. 어느 항목이든 `unknown`이면 게이트는 실패한다.** **AC-12 (CR-009): 바인딩 가능한 capability는 typed 입출력 port를 선언하고, manifest에서 capability 그래프를 계산할 수 있다.** |
 | 검증 방법 | test |
 | 관련 화면 | A-006 |
 | 관련 API/데이터 | API-GH-001 / ENT-GH-006 |
@@ -1037,7 +1090,7 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 우선순위 | Must |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
 | 요구사항 | 사용자가 구성한 명령의 실행을 요청하면, 시스템은 구조화된 `GhInvocation`을 단일 진실로 삼아 격리된 실행기에서 고정 `gh` 바이너리를 shell 없이 실행하고 그 결과를 반환하여야 한다. |
-| 수용 기준 | AC-1: 실행은 고정 경로의 `gh` 바이너리와 argv 배열로만 이뤄지며 shell을 경유하지 않는다. AC-2: argv는 capability manifest와 사용자 입력에서 결정론적으로 조립되며, 사용자 문자열을 명령 문자열로 연결하지 않는다. AC-3: 실행 전에 사용자에게 실제 실행될 argv를 비밀 값이 가려진 형태로 보여준다. AC-4: 미리보기 argv와 실제 실행 argv는 동일한 구조화 명령 모델에서 파생된다. AC-5: 실행마다 gh 버전과 manifest 버전·해시를 기록한다. AC-6: 실행기는 비루트로 동작하고 읽기 전용 루트 파일시스템을 사용한다. **AC-7 (CR-008): 요청·검증·미리보기·실행·감사·재실행은 모두 `GhInvocation`(capability ID, 컨텍스트, positional, flag, stdin 원본, 파일 바인딩, 출력 옵션) 하나에서 파생된다. 문자열 명령은 어느 단계에서도 진실이 아니다.** **AC-8 (CR-008): argv 생성기는 하나뿐이며 미리보기와 실행이 그 하나를 공유한다. 두 벌의 생성기를 두지 않는다.** **AC-9 (CR-008): 같은 `GhInvocation`은 같은 manifest·컨텍스트에서 항상 같은 argv를 만든다(결정론).** |
+| 수용 기준 | AC-1: 실행은 고정 경로의 `gh` 바이너리와 argv 배열로만 이뤄지며 shell을 경유하지 않는다. AC-2: argv는 capability manifest와 사용자 입력에서 결정론적으로 조립되며, 사용자 문자열을 명령 문자열로 연결하지 않는다. AC-3: 실행 전에 사용자에게 실제 실행될 argv를 비밀 값이 가려진 형태로 보여준다. AC-4: 미리보기 argv와 실제 실행 argv는 동일한 구조화 명령 모델에서 파생된다. AC-5: 실행마다 gh 버전과 manifest 버전·해시를 기록한다. AC-6: 실행기는 비루트로 동작하고 읽기 전용 루트 파일시스템을 사용한다. **AC-7 (CR-008): 요청·검증·미리보기·실행·감사·재실행은 모두 `GhInvocation`(capability ID, 컨텍스트, positional, flag, stdin 원본, 파일 바인딩, 출력 옵션) 하나에서 파생된다. 문자열 명령은 어느 단계에서도 진실이 아니다.** **AC-8 (CR-008): argv 생성기는 하나뿐이며 미리보기와 실행이 그 하나를 공유한다. 두 벌의 생성기를 두지 않는다.** **AC-9 (CR-008): 같은 `GhInvocation`은 같은 manifest·컨텍스트에서 항상 같은 argv를 만든다(결정론).** **AC-10 (CR-009): 실행 결과는 `GhResultEnvelope`(실행 ID, capability ID, 상태, 종료 코드, 구조화 결과, 자원 참조, 아티팩트, 무해화된 stdout·stderr, 출력 계약 버전) 하나로 통일된다. 표준 출력·오류는 예외 없이 `SafeGhOutput` 경계를 통과한 값이며 우회 경로가 없다.** |
 | 검증 방법 | test |
 | 관련 화면 | W-010 |
 | 관련 API/데이터 | API-GH-002 / ENT-GH-002 / JOB-GH-001 |
@@ -1078,8 +1131,8 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 상태 | approved |
 | 우선순위 | Should |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
-| 요구사항 | 시스템은 등록된 capability만을 조합한 다단계 작업을 정의·저장·실행할 수 있게 하여야 한다. |
-| 수용 기준 | AC-1: Recipe는 순차 단계, 타입이 있는 입력 변수, 이전 단계 JSON 출력의 바인딩, 조건, 팬아웃, 동시 실행 상한, 실패 정책을 표현한다. AC-2: Recipe의 각 단계는 capability manifest에 있는 capability만 참조할 수 있다. AC-3: 임의 shell 문자열, 임의 명령 문자열, 표현식 평가는 어떤 단계에서도 허용하지 않는다. AC-4: Recipe 실행은 단계별 상태와 개별 실행 이력을 남긴다. AC-5: 위험도가 R2 이상인 단계를 포함하면 실행 전에 전체 계획을 확인시킨다. AC-6: Recipe는 버전을 가지며 이전 개정을 보존한다. |
+| 요구사항 | 시스템은 등록된 capability만을 조합한 다단계 작업을 **비순환 typed 데이터흐름 그래프**로 정의·저장·실행할 수 있게 하여야 한다. |
+| 수용 기준 | AC-1: Recipe는 순차 단계, 타입이 있는 입력 변수, 이전 단계 JSON 출력의 바인딩, 조건, 팬아웃, 동시 실행 상한, 실패 정책을 표현한다. AC-2: Recipe의 각 단계는 capability manifest에 있는 capability만 참조할 수 있다. AC-3: 임의 shell 문자열, 임의 명령 문자열, 표현식 평가는 어떤 단계에서도 허용하지 않는다. AC-4: Recipe 실행은 단계별 상태와 개별 실행 이력을 남긴다. AC-5: 위험도가 R2 이상인 단계를 포함하면 실행 전에 전체 계획을 확인시킨다. AC-6: Recipe는 버전을 가지며 이전 개정을 보존한다. **AC-7 (CR-009): Recipe는 순차 의존, 병렬 분기, 조건, 상한이 있는 fan-out, join, typed 바인딩, 동시성 상한, 실패 정책을 표현하는 비순환 그래프다. 저장 시 순환이 있으면 거부한다. 무한 루프·`while`·재귀 Recipe·임의 표현식·임의 shell은 어떤 형태로도 허용하지 않는다.** **AC-8 (CR-009): 단계 연결은 구조화된 `GhBinding`(출발 단계, 출발 출력 port, 도착 단계, 도착 입력·positional·flag·컨텍스트)이다. JSON 내부 필드 선택이 필요하면 manifest에 선언된 named field 또는 스키마가 허용한 제한된 JSON Pointer만 쓴다 — `eval`, JavaScript 표현식, shell 표현식, 템플릿 코드 실행, 임의 표현식 해석기는 금지한다. 단일 명령의 `--jq` parity 자체는 유지하되 Recipe 내부 데이터 연결을 임의 jq 표현식에 의존시키지 않는다.** **AC-9 (CR-009): 모든 fan-out은 최대 항목 수, 동시성 상한, 위험도 집계, rate limit preflight를 가진다. 상한이 없으면 저장도 실행도 거부한다** — 검색 결과 10,000건에 각각 쓰기를 거는 실수가 곧바로 대량 호출이 되어서는 안 된다. **AC-10 (CR-009): 동적으로 산출된 대상 집합에 R2 이상 작업을 수행할 때는 preflight로 대상 집합을 확정하고 plan 해시를 만들어 사용자 확인을 받은 뒤 실행한다. 확인 이후 plan이 달라지면 기존 확인은 무효다.** **AC-11 (CR-009): 다음 단계 후보는 현재 출력과 호환되는 capability를 먼저 제안한다. 호환되지 않는 연결은 저장 전에 사유와 함께 거부한다.** |
 | 검증 방법 | test |
 | 관련 화면 | W-023, W-021 |
 | 관련 API/데이터 | API-GH-004 / ENT-GH-003, ENT-GH-004 / JOB-GH-002 |
@@ -1107,7 +1160,7 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 우선순위 | Should |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
 | 요구사항 | 시스템은 파일 입력이 필요한 명령에 업로드된 파일을 전달하고, 명령이 생성한 파일을 사용자가 내려받을 수 있게 하여야 한다. |
-| 수용 기준 | AC-1: 파일 입력은 임시 workspace에 저장되어 경로로 전달되며 실행 후 삭제된다. AC-2: 업로드 파일에는 크기 상한이 있다. AC-3: 생성된 아티팩트는 실행 이력에 연결되어 보존 기간 동안 내려받을 수 있다. AC-4: 아티팩트 접근은 해당 실행을 볼 수 있는 사용자로 제한된다. AC-5: 임시 workspace는 실행 단위로 분리되며 수명이 끝나면 폐기된다. **AC-6 (CR-008): 명령이 읽거나 쓰는 모든 경로는 실행 workspace 안으로 정규화되어 갇힌다 — 상위 경로 탈출(`..`), 절대 경로, symlink 탈출을 차단한다.** **AC-7 (CR-008): 아티팩트는 실행기 파일시스템 경로가 아니라 아티팩트 ID로 사용자에게 전달한다. 경로를 그대로 노출하지 않는다.** **AC-8 (CR-008): 아티팩트 파일명은 정규화하며, workspace 용량 할당량·아티팩트 보존 기간·실패 시 부분 파일 정리를 강제한다.** |
+| 수용 기준 | AC-1: 파일 입력은 임시 workspace에 저장되어 경로로 전달되며 실행 후 삭제된다. AC-2: 업로드 파일에는 크기 상한이 있다. AC-3: 생성된 아티팩트는 실행 이력에 연결되어 보존 기간 동안 내려받을 수 있다. AC-4: 아티팩트 접근은 해당 실행을 볼 수 있는 사용자로 제한된다. AC-5: 임시 workspace는 실행 단위로 분리되며 수명이 끝나면 폐기된다. **AC-6 (CR-008): 명령이 읽거나 쓰는 모든 경로는 실행 workspace 안으로 정규화되어 갇힌다 — 상위 경로 탈출(`..`), 절대 경로, symlink 탈출을 차단한다.** **AC-7 (CR-008): 아티팩트는 실행기 파일시스템 경로가 아니라 아티팩트 ID로 사용자에게 전달한다. 경로를 그대로 노출하지 않는다.** **AC-8 (CR-008): 아티팩트 파일명은 정규화하며, workspace 용량 할당량·아티팩트 보존 기간·실패 시 부분 파일 정리를 강제한다.** **AC-9 (CR-009): Recipe에서 앞 단계가 만든 파일을 뒤 단계의 파일 입력으로 넘길 때 실행기 경로를 전달하지 않는다. 아티팩트 ID를 전달하고, 뒤 단계가 실행 직전에 자기 workspace에 materialize한다.** |
 | 검증 방법 | test |
 | 관련 화면 | W-010, W-015, W-021 |
 | 관련 API/데이터 | API-GH-006 / ENT-GH-002-A |
@@ -1177,7 +1230,7 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 우선순위 | Must |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
 | 요구사항 | 시스템은 모든 GitHub 작업 실행을 감사 기록하고, 사용자가 자신의 실행 이력을 조회하고 동일한 구성으로 다시 실행할 수 있게 하여야 한다. |
-| 수용 기준 | AC-1: 감사 항목은 실행 ID, 사용자, GitHub 행위자, 호스트, 저장소, 대상, capability ID, gh 버전, manifest 버전, 비밀이 가려진 argv, 위험도, 권한 판정 결과, 확인·승인 여부, 시작·종료 시각, 종료 코드, 출력 해시, 상관 ID를 포함한다. AC-2: 토큰, 비밀 값, 비밀 원문 입력은 감사에 기록하지 않는다. AC-3: 사용자는 자신의 실행 이력을 조회할 수 있고, 보안 담당자는 전체를 조회할 수 있다. AC-4: 이력에서 동일 구성으로 다시 실행할 수 있으며 재실행도 새 실행으로 감사된다. **재실행은 과거 argv 문자열의 재실행이 아니라 저장된 `GhInvocation`을 현재 manifest·현재 사용자 권한·현재 정책·현재 대상 상태로 다시 검증한 뒤 새 확인을 받아 수행하는 새 실행이다. 과거의 승인이나 권한을 승계하지 않는다 (CR-008).** AC-5: 쓰기 실행 요청은 중복 방지 키를 가지며 같은 키의 재요청은 새 작업을 만들지 않는다. AC-6: 같은 대상에 상충하는 작업이 동시에 진행되지 않도록 자원 잠금 또는 동등한 동시성 정책을 적용한다. **AC-7 (CR-008): 이력에는 구조화 invocation, manifest 버전, gh 버전, 컨텍스트 스냅숏, 비밀이 가려진 argv를 함께 저장한다.** |
+| 수용 기준 | AC-1: 감사 항목은 실행 ID, 사용자, GitHub 행위자, 호스트, 저장소, 대상, capability ID, gh 버전, manifest 버전, 비밀이 가려진 argv, 위험도, 권한 판정 결과, 확인·승인 여부, 시작·종료 시각, 종료 코드, 출력 해시, 상관 ID를 포함한다. AC-2: 토큰, 비밀 값, 비밀 원문 입력은 감사에 기록하지 않는다. AC-3: 사용자는 자신의 실행 이력을 조회할 수 있고, 보안 담당자는 전체를 조회할 수 있다. AC-4: 이력에서 동일 구성으로 다시 실행할 수 있으며 재실행도 새 실행으로 감사된다. **재실행은 과거 argv 문자열의 재실행이 아니라 저장된 `GhInvocation`을 현재 manifest·현재 사용자 권한·현재 정책·현재 대상 상태로 다시 검증한 뒤 새 확인을 받아 수행하는 새 실행이다. 과거의 승인이나 권한을 승계하지 않는다 (CR-008).** AC-5: 쓰기 실행 요청은 중복 방지 키를 가지며 같은 키의 재요청은 새 작업을 만들지 않는다. AC-6: 같은 대상에 상충하는 작업이 동시에 진행되지 않도록 자원 잠금 또는 동등한 동시성 정책을 적용한다. **AC-7 (CR-008): 이력에는 구조화 invocation, manifest 버전, gh 버전, 컨텍스트 스냅숏, 비밀이 가려진 argv를 함께 저장한다.** **AC-8 (CR-009): Recipe 실행 이력에는 확정된 대상 집합의 plan 해시를 함께 남긴다. `secret`으로 분류된 결과는 이력·감사 본문에 저장하지 않는다.** |
 | 검증 방법 | test |
 | 관련 화면 | W-021, A-007 |
 | 관련 API/데이터 | API-GH-010 / ENT-GH-002 |
@@ -1338,6 +1391,15 @@ CR-008에서 게이트를 전 차원으로 넓혔다. 아래는 모두 **고정�
 | 미분류 interaction 모드 수 | 0 | 검증 도구 종료 코드 | `unknown` 금지 |
 | manifest 드리프트 검출 | 설치 gh와 manifest 불일치 시 CI 실패 | CI 검증 잡 | 새 command·flag의 조용한 누락 방지 |
 | core / extension coverage 분리 | 두 수치를 따로 보고 | 검증 도구 | 합산해 가리지 않는다 |
+| 결과 계약 분류율 (CR-009) | 100% | 검증 도구 | 모든 capability가 `GhResultContract`를 가진다 |
+| bindability 분류율 (CR-009) | 100% | 검증 도구 | composability 상태 8종 중 하나 |
+| 입력 port 분류율 (CR-009) | 100% | 검증 도구 | 바인딩 가능한 capability 기준 |
+| 출력 port 분류율 (CR-009) | 100% | 검증 도구 | 위와 동일 |
+| 자원 타입 분류율 (CR-009) | 100% | 검증 도구 | `GhResourceRef.kind` |
+| secret 출력 분류율 (CR-009) | 100% | 검증 도구 | 비밀 결과를 일반 결과로 흘리지 않는다 |
+| 미분류 결과 계약 수 (CR-009) | 0 | 검증 도구 종료 코드 | `unknown` 금지 |
+| capability 그래프 간선 수 (CR-009) | 리포트에 노출 | 검증 도구 | 0이면 조합이 하나도 성립하지 않는다는 뜻이다 |
+| `opaque_text` 결과 수 (CR-009) | 리포트에 노출 | 검증 도구 | 줄여야 할 부채. 숨기지 않는다 |
 
 **지원하지 않는 것은 실패가 아니다.** 아래 상태로 명확히 분류되면 커버리지에 포함된다.
 
@@ -1373,6 +1435,10 @@ CR-008에서 게이트를 전 차원으로 넓혔다. 아래는 모두 **고정�
 | gh 출력 무해화 | 100% | SafeGhOutput 경계 시험 | CR-008 — 아래 참조 |
 | 원시 HTML 렌더링 | 0건 | 프런트엔드 코드 검사 | gh 출력에 `dangerouslySetInnerHTML` 금지 |
 | workspace 밖 파일 접근 | 0건 | 경로 정규화 시험 | `..`·절대 경로·symlink 탈출 차단 |
+| `secret` 결과의 화면 표시 | 0건 | 결과 계약 시험 | CR-009 |
+| `secret` 결과의 이력·감사 본문 저장 | 0건 | 결과 계약 시험 | CR-009 |
+| `secret` 결과의 Recipe 바인딩 | 0건 | 그래프 검증 시험 | CR-009 — 저장 자체를 거부 |
+| `secret` 결과의 다음 명령 stdin 자동 전달 | 0건 | 바인딩 시험 | CR-009 |
 
 **gh 출력은 신뢰할 수 없는 입력이다 (CR-008, ADR-018).** 실행기의 stdout·stderr와 GitHub에서 내려온 모든 텍스트(제목, 본문, 라벨, 브랜치 이름, 파일 경로, 사용자 이름)는 외부 입력이다. gh 2.97.0 자신도 외부 입력이 섞인 터미널 escape 처리 문제를 보안 수정한 이력이 있으므로, PR Search는 gh가 출력을 안전하게 만들어 준다고 가정하지 않는다.
 

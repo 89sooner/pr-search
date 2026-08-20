@@ -1,12 +1,12 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v0.5 | 갱신일: 2026-08-20
+> 상태: review | 버전: v0.6 | 갱신일: 2026-08-20
 
 ## 1. 목적
 
 구현이 시작된 후 문서와 코드의 정합성을 유지하는 살아있는 원장이다. 코딩 에이전트는 WP를 완료할 때마다 이 문서를 갱신한다. 이 문서는 기록용이며 범위를 결정하지 않는다.
 
-**현재 상태: WP-006까지 완료.** 워크스페이스 골격, PostgreSQL 스키마·리포지터리 계층, Elasticsearch 매핑·부트스트랩, GHE 웹훅 수신 게이트웨이, `EventBus` 포트와 Redis Streams 어댑터가 서 있다. 단위 126건·통합 93건(PostgreSQL·Redis 계열)이 통과한다. GHE REST 클라이언트가 서 있으나 실제 GitHub App 자격 증명이 없어 real-GHE smoke는 실행하지 못했다(선택 시험으로 남겨 두었고 건너뛴 사실이 실행 로그에 남는다). 웹훅이 들어오면 서명 검증 → `raw_event` 저장 → `prs:ingest` 발행 → NDJSON 아카이브 → 202까지 실제로 동작하고, Redis를 정지시켜도 202가 나가며 복구 후 `JOB-ING-007`이 유실분을 재적재한다. 1000건 부하에서 수신 응답 p95는 35.6ms다(예산 300ms, 발행 포함). 소비자 로직(보강·투영·채번·관계 파생)과 검색 API·화면은 아직 없다.
+**현재 상태: WP-007까지 완료.** 워크스페이스 골격, PostgreSQL 스키마·리포지터리 계층, Elasticsearch 매핑·부트스트랩, GHE 웹훅 수신 게이트웨이, `EventBus` 포트와 Redis Streams 어댑터, GHE REST 클라이언트, 그리고 **첫 소비자인 보강 워커**가 서 있다. 단위 150건·통합 125건(PostgreSQL·Redis 계열)이 통과한다. 웹훅이 들어오면 서명 검증 → `raw_event` 저장 → `prs:ingest` 발행 → NDJSON 아카이브 → 202까지 동작하고, 그 뒤를 `enrich` 워커가 받아 원본 커밋·변경 파일·리뷰를 채워 `EVT-ING-002`로 넘긴다. rate limit에 걸리면 회복 시각까지 미루되 재시도 예산은 쓰지 않고, 보강이 일부 실패해도 부분 결과를 `enrichment_pending: true`로 진행한다. 실제 GitHub App 자격 증명이 없어 real-GHE smoke는 여전히 미실행이다(선택 시험으로 남겨 두었고 건너뛴 사실이 실행 로그에 남는다). Elasticsearch 통합 시험 3종은 이 환경에 ES가 없어 실행하지 못했다 — CI의 서비스 컨테이너에서 돈다. 투영·채번·관계 파생과 검색 API·화면은 아직 없다.
 
 ## 2. 기록 규칙
 
@@ -28,7 +28,7 @@
 | WP-004 | 웹훅 수신 게이트웨이 | REL-001 | done | 에이전트 | `6478ebc` / PR #5 | DoD 8항 전부 통과. 단위 71건·통합 47건, 부하 1000건 p95 61.6ms (6.4장) | 재전송 멱등을 기본 키에 맡길 수 없어 advisory lock + 조건부 INSERT로 강제했다 (DEV-009 → CR-007) |
 | WP-005 | EventBus 포트와 Redis Streams 어댑터 | REL-001 | done | 에이전트 | `ab7c0a3` / PR #6 | DoD 4항 전부 통과. 단위 86건·통합 93건 (6.5장) | Redis Streams에는 파티션이 없어 토픽을 물리 스트림 N개로 펴서 구현했다. `prs:sequence` 파티션 수만 문서에 없어 8을 기본값으로 두고 DEV-010에 남겼다 |
 | WP-006 | GHE 클라이언트와 rate limit 관리 | REL-001 | done | 에이전트 | `c130cf1` / PR #7 | DoD 5항 전부 통과 (목 서버 기준, 문서가 정한 검증 방법). 단위 126건 (6.6장) | 실제 GHE 자격 증명이 없어 read-only smoke 미실행 — 선택 시험으로 포함했고 REL-001 운영 readiness 전 게이트로 남긴다 |
-| WP-007 | 보강 워커 | REL-001 | todo | - | - | - | - |
+| WP-007 | 보강 워커 | REL-001 | done | 에이전트 | `fb6e5c3` / PR #8 | DoD 6항 전부 통과. 단위 150건·통합 24건(worker/enrich) (6.7장) | CR-010이 정한 `EventBus` 처분 계약을 함께 구현했다. `raw_event.processed_at`은 찍지 않는다 — 색인 시점 표식은 WP-008의 것이다. 문서의 검증 명령이 필터로 동작하지 않아 DEV-017로 등록하고 정정했다 |
 | WP-008 | 투영 워커와 버전 조건부 업서트 | REL-001 | todo | - | - | - | - |
 | WP-009 | 실패 대기열과 재처리 | REL-001 | todo | - | - | - | - |
 | WP-010 | 저장소 등록 API와 파이프라인 지표 | REL-001 | todo | - | - | - | - |
@@ -119,10 +119,10 @@
 | FR-ING-001 | WP-004 | `apps/ingest-gateway/src/{signature,ingest,store,payload,events,archive,metrics,server,config}.ts`, `apps/pipeline-worker/src/outbox-relay.ts` | `apps/ingest-gateway/src/{signature,payload,ingest,server}.test.ts`, `apps/ingest-gateway/integration/{webhook,idempotency,load,enqueue}.test.ts`, `apps/pipeline-worker/integration/outbox-relay.test.ts` | verified (AC-1~AC-6 전부. AC-4는 발행 포함 부하 1000건 p95 35.6ms) |
 | FR-ING-002 | WP-002, WP-004, WP-008 | `packages/db/migrations/001_ingestion.up.sql`, `packages/db/src/repositories/raw-event.ts`, `packages/db/src/advisory-lock.ts`, `apps/ingest-gateway/src/{store,payload}.ts` | `packages/db/integration/constraints.test.ts`, `apps/ingest-gateway/integration/{webhook,idempotency}.test.ts` | partial (AC-1~AC-4 검증. AC-5 결정론적 문서 ID는 WP-008) |
 | FR-ING-003 | WP-002, WP-004 | `packages/db/migrations/001_ingestion.up.sql`, `packages/db/src/partitions.ts`, `packages/db/src/repositories/raw-event.ts`, `apps/ingest-gateway/src/archive.ts` | `packages/db/integration/{partitions,constraints}.test.ts`, `apps/ingest-gateway/integration/webhook.test.ts` | partial (AC-1·AC-2·AC-4 충족. AC-3 원본만으로 재색인은 WP-008·WP-033) |
-| FR-ING-004 | WP-006, WP-007 | `packages/github/src/{config,redact,errors,jwt,rate-limit,token-provider,token-pool,scheduler,transport,client}.ts` | `packages/github/src/{redact,rate-limit,scheduler,jwt}.test.ts`, `packages/github/testing/{mock-ghe,client,smoke-real-ghe}.test.ts` | partial (AC-2 한도 판정·격리·회복과 AC-4·AC-5 상한은 클라이언트에 구현. 실제 보강 병합은 WP-007) |
+| FR-ING-004 | WP-006, WP-007 | `packages/github/src/{config,redact,errors,jwt,rate-limit,token-provider,token-pool,scheduler,transport,client}.ts`, `apps/pipeline-worker/src/{enrich,webhook-target,metrics}.ts`, `packages/bus/src/{types,backoff,redis-streams,in-memory}.ts`, `packages/domain/src/{events,event-id}.ts` | `packages/github/src/{redact,rate-limit,scheduler,jwt,config}.test.ts`, `packages/github/testing/{mock-ghe,client,smoke-real-ghe}.test.ts`, `apps/pipeline-worker/src/webhook-target.test.ts`, `apps/pipeline-worker/integration/worker/enrich.test.ts`, `packages/bus/integration/contract.ts` | verified (AC-1~AC-4 전부. AC-5 미러 우선 커밋 조회는 WP-020 — 지금은 ADR-005의 API 폴백 경로만) |
 | FR-ING-005 | WP-005, WP-008 | `packages/bus/src/{types,topics,partition,config,redis-streams,in-memory}.ts` | `packages/bus/src/partition.test.ts`, `packages/bus/integration/{contract,redis-streams,in-memory}.test.ts` | partial (투영에 이벤트를 나르는 전달 계층만. 문서 생성·업서트는 WP-008) |
 | FR-ING-006 | WP-019 | - | - | not_started |
-| FR-ING-007 | WP-002, WP-009 | `packages/db/migrations/001_ingestion.up.sql`, `packages/db/src/repositories/dead-letter.ts` | - | partial (격리 테이블과 리포지터리. 재처리 흐름은 WP-009) |
+| FR-ING-007 | WP-002, WP-007, WP-009 | `packages/db/migrations/001_ingestion.up.sql`, `packages/db/src/repositories/dead-letter.ts`, `packages/bus/src/backoff.ts`, `apps/pipeline-worker/src/enrich.ts` | `apps/pipeline-worker/integration/worker/enrich.test.ts`, `packages/bus/integration/contract.ts` | partial (AC-1 표준 재시도 5회와 실패 대기열 이동을 `enrich` 단계에서 검증. 재처리 흐름과 관리 API는 WP-009) |
 | FR-ING-008 | WP-035 | - | - | not_started |
 | FR-ING-009 | WP-010, WP-040 | - | - | not_started |
 | FR-ING-010 | WP-036 | - | - | not_started |
@@ -182,6 +182,12 @@
 | DEV-009 | 2026-08-20 | 데이터 모델 3.1은 `raw_event`의 멱등 제약을 "기본 키가 그대로 강제한다"고 적었으나 이 파티션 구성에서는 성립하지 않는다. PostgreSQL은 파티션 테이블의 유일 제약이 파티션 키를 포함하도록 요구해 기본 키가 `(delivery_id, received_at)`이고, GHE 재전송은 수신 시각이 달라 충돌하지 않는다 — 문서대로 "INSERT 충돌을 잡아 중복 처리"만 구현하면 같은 `delivery_id`가 두 행이 되어 FR-ING-002 AC-2와 WP-004 DoD 3이 깨진다. 실제로 조건부 INSERT를 빼고 돌려 확인했다(동시 8건 → 8행). 게이트웨이가 같은 트랜잭션에서 `delivery_id` advisory lock을 잡고 존재 검사와 INSERT를 한 문장으로 묶어 강제한다. 기본 키 충돌은 마지막 방어선으로 남겼다. **마이그레이션 001~005는 건드리지 않았다** | WP-004 / FR-ING-002 | 문서 오류 | **CR-007** | **resolved (2026-08-20)** — 데이터 모델 3.1에 파티션 유일 제약의 한계와 게이트웨이 멱등 저장 SQL을 명시했다. SRS FR-ING-002 AC-1이 요구하는 결과(중복 저장 차단)는 그대로 충족되므로 요구사항은 변경하지 않았다 |
 | DEV-010 | 2026-08-20 | 비동기 문서 2장의 스트림 표는 동시성을 다섯 스트림에 숫자로 적었지만 `prs:sequence`만 "시퀀스 공간당 1 (advisory lock)"이라고만 적혀 있어 전체 파티션 수를 알 수 없다. Redis Streams 어댑터는 토픽을 물리 스트림 N개로 펴므로 이 숫자가 반드시 필요하다. 순서 보장은 advisory lock이 이미 하므로 이 값은 처리량 조절값이며, 관계 파생과 같은 8을 코드 기본값으로 두고 `PRS_PARTITIONS_prs:sequence` 환경 변수로 덮어쓸 수 있게 했다. **확정한 것이 아니라 기본값을 둔 것이다** — 운영 실측 뒤 사용자가 정하면 코드 변경 없이 반영된다 | WP-005 / FR-SEQ-001 | 문서 공백 | 미등록 — 사용자 결정 후 비동기 문서 2장에 반영할 CR 필요 | open |
 | DEV-011 | 2026-08-20 | CR-005의 gh 인벤토리 수치 중 positional placeholder만 실측과 달랐다. 문서는 261개로 적었으나 gh 2.97.0을 다시 설치해 재실측한 값은 230개다. `gh help reference`의 명령 헤딩 기준과 command node 228개 각각에 `gh <path> --help`를 실행한 USAGE 기준이 모두 230으로 일치한다. 나머지 수치(command node 228, leaf 196, 그룹 32, command 고유 flag 1,034, `--json` 지원 41)는 CR-005와 **정확히 일치**했다. 261이 어떻게 나왔는지는 당시 스크립트가 저장소에 없어 재현할 수 없다 — 추정하지 않고 실측값으로 정정했다 | CR-008 / FR-GH-001, NFR-009 | 문서 오류 | **CR-008** | **resolved (2026-08-20)** — SRS §9.8 실측 표와 NFR-009 게이트를 230으로 정정하고, 새로 측정한 차원(inherited flag 312, short alias 625, 반복 가능 37, `--json` 필드 707, alias 보유 command 44)을 함께 기록했다 |
+| DEV-012 | 2026-08-20 | 재시도 횟수가 문서 간에 어긋난다. FR-ING-007 AC-1은 "최대 5회 + 1/2/4/8/16초", 비동기 5.1도 5회, WP-007 DoD도 "5회 소진 시 DLQ"인데 **FR-ING-004의 예외/실패 처리만 "재시도 3회"**로 적혀 있다. 승인된 표준 재시도 정책은 하나여야 한다 | WP-007 / FR-ING-004, FR-ING-007 | 문서 오류 | **CR-010** | **resolved (2026-08-20)** — FR-ING-004 표기를 5회로 정정. 제품 동작 변경이 아니라 이미 승인된 표준 정책과의 정합성 수정이다 |
+| DEV-013 | 2026-08-20 | `EVT-ING-002`가 `{delivery_id, repository_id, entity_kind, entity_id, enrichment_pending, correlation_id}`만 나른다. 그런데 WP-008 투영은 `changed_files_count`·`additions`·`deletions`·`first_review_wait_seconds`·커밋 SHA 목록을 필요로 한다. 마이그레이션 001~005에 보강 결과 저장 테이블이 없고, 그 값을 담을 곳이 어디에도 없다 — 이대로면 WP-008이 GitHub API를 다시 호출해야 하고 그것은 FR-ING-004의 rate limit 설계를 무의미하게 만든다 | WP-007 / FR-ING-004, FR-ING-005 | 범위 공백 | **CR-010** | **resolved (2026-08-20)** — `EVT-ING-002`를 self-contained bounded 이벤트로 확정하고 `@prs/domain`에 타입을 뒀다. 원본 웹훅 전량·patch/diff·소스 코드·토큰은 싣지 않으며 커밋 250건·파일 3000건 상한을 유지한다 |
+| DEV-014 | 2026-08-20 | `EventBus` 핸들러 계약이 "정상 반환=ack, 던짐=재전달" 둘뿐이다. 재전달 간격은 어댑터 설정값 `claimIdleMs`(기본 30초) 고정이고 `delivery_count`는 재전달을 무조건 센다. 그래서 (a) 1/2/4/8/16초 백오프를 표현할 수 없고 (b) GitHub이 알려 준 `retryAt`(예: 10분 뒤)까지 미룰 수 없으며 (c) rate limit 대기 중 30초마다 재전달되어 **10분이 되기 전에 재시도 5회를 소진하고 DLQ로 간다**. rate limit은 실패가 아닌데 실패로 집계되는 셈이다 | WP-007 / FR-ING-004 AC-2, FR-ING-007 AC-1 | 범위 공백 | **CR-010** | **resolved (2026-08-20)** — 핸들러가 처분(`HandlerDisposition`)을 돌려줄 수 있게 작은 확장을 더했다. `retry`(표준 백오프), `defer`(지정 시각까지 미루며 재시도 예산을 소비하지 않음), `dead_letter`(종료 후 ack). 새 큐 프레임워크를 만들지 않았고 Redis·인메모리 두 어댑터가 같은 계약을 통과한다 |
+| DEV-015 | 2026-08-20 | WP-006의 `TokenPool`은 `org → installationId` binding을 요구하는데, `pipeline-worker`가 기동할 때 그 binding을 **어디서 얻는지가 문서에도 코드에도 없다**. 임의의 고정 installation ID를 코드에 넣거나 특정 개발 환경 값에 묶으면 다른 조직 저장소가 조용히 처리되지 않는다 | WP-007 / FR-ING-004 | 범위 공백 | **CR-010** | **resolved (2026-08-20)** — 환경 변수 `GHE_INSTALLATIONS`(`org:installationId` 쉼표 구분)를 1차 출처로 정하고 파싱·검증을 `@prs/github`에 뒀다. 등록되지 않은 조직의 이벤트는 조용히 넘기지 않고 non-retryable 실패로 분류해 DLQ에 사유를 남긴다. 장래 저장소 등록(FR-ING-009) 기반 조회로 대체할 수 있게 출처를 한 곳으로 모았다 |
+| DEV-016 | 2026-08-20 | `prs:ingest`에는 지원 이벤트 9종이 모두 들어오는데 소비자는 `enrich` 그룹 하나다. 시스템 아키텍처 6.1은 "`push` 이벤트면 `sequence` 워커가 채번한다"고 적었지만 `push` 이벤트가 `prs:ingest`에서 `prs:sequence`로 어떻게 넘어가는지는 어디에도 없다. `EVT-AUTH-001`의 발행자는 게이트웨이로 되어 있어 `member`/`team`/`repository`도 이 경로가 아니다 | WP-007 / FR-SEQ-001, FR-AUTH-003 | 범위 공백 | 미등록 — 라우팅을 소유한 WP-021(시퀀스)·권한 WP에서 결정할 CR 필요 | open — WP-007은 PR 이외 이벤트를 처리하지 않고 ack한다. **원본은 `raw_event`에 남아 있으므로 유실이 아니다**(ADR-004: PostgreSQL이 시스템 오브 레코드). 다만 소비자가 생기기 전까지 그 이벤트들은 진행되지 않는다 |
+| DEV-017 | 2026-08-20 | WP 검증 방법이 모두 `pnpm <스크립트> -- <필터>` 형태인데 **이 형태는 필터로 동작하지 않는다**. vitest 4의 CLI 파서(cac)는 `--` 뒤 인자를 위치 인자가 아니라 `argv['--']`에 담으므로 필터가 비어 스위트 전량이 돈다. `pnpm test:integration -- worker/enrich`는 통합 스위트 18개 파일을 전부 돌리며, 그것을 "해당 시험이 통과했다"고 읽으면 실제로 무엇이 검증됐는지와 어긋난다. WP-004·WP-005·WP-006 검증 기록이 같은 현상을 세 번 적어 두고도 출처 문서를 고치지 않았다 | WP-004, WP-005, WP-006, WP-007 / 전 WP 검증 방법 | 문서 오류 | 미등록 — 문서 표기 정정이라 CR 불요(작업 패키지·검증 계획 모두 `review` 상태) | **resolved (2026-08-20)** — `../40_delivery/pr_search_work_packages.md` 63줄과 `pr_search_release_validation_plan.md` 3줄에서 `--`를 제거해 실제로 필터가 걸리는 형태로 고쳤다. WP-007 통합 시험은 `apps/pipeline-worker/integration/worker/enrich.test.ts`에 두어 문서가 적은 `worker/enrich` 필터가 실제로 그 파일을 고르게 했다 (`pnpm test:integration worker/enrich` → 파일 1개, 24건) |
 | DEV-003 | 2026-08-19 | `../00_governance/change_control.md` 4장 아키텍처 게이트 기록이 "오류 코드 30종"으로 적혀 있으나 API 계약 6장의 실제 코드는 29종이었다 | WP-001 | 문서 오류 | **CR-006** | **resolved (2026-08-20)** — 게이트 기록을 29종으로 정정하고 CR-005로 GH 코드 16종이 추가되어 현재 45종임을 함께 표기 |
 
 **등록이 필요한 대표 상황** (사전에 예상되는 것):
@@ -465,7 +471,43 @@ WP가 적은 검증 명령은 `pnpm test -- github`다. WP-004·WP-005 때와 �
 
 `verify` 잡이 단위 126건을 돌렸고 real-GHE smoke는 CI에도 자격 증명이 없어 건너뛰었다. `integration` 잡은 PostgreSQL·Elasticsearch·Redis 서비스 컨테이너로 WP-002~005 스위트를 돌려 회귀가 없음을 확인했다.
 
-### 6.7 릴리스 게이트
+### 6.7 WP-007 검증 실행 기록
+
+DoD 6항 전부 통과. 검증 방법은 `pnpm test:integration worker/enrich`다 (DEV-017로 정정한 형태).
+
+| DoD | 결과 | 근거 |
+| --- | --- | --- |
+| PR 이벤트 처리 후 커밋·파일·리뷰가 병합된 결과가 `EVT-ING-002`로 발행된다 (FR-ING-004 AC-1) | 통과 | 목 GHE에서 커밋·파일·리뷰를 실제 HTTP로 받아 `prs:enriched`에 발행. 투영이 API를 다시 부르지 않아도 되는지를 별도 시험으로 고정했다 |
+| rate limit 소진 시 보강이 지연되고 회복 시각에 재시도된다 (AC-2) | 통과 | 429 + `retry-after: 600`과 주 한도 소진(403 + `x-ratelimit-remaining: 0`) 둘 다 `defer`로 떨어진다. 전달 횟수가 5여도 실패 대기열로 가지 않는다 |
+| 보강 실패 시에도 부분 결과가 `enrichment_pending: true`로 진행된다 (AC-3) | 통과 | 파일 조회만 403인 경우와 넷 다 403인 경우 모두 발행된다. 후자는 웹훅 payload로 만든 PR이 남는다 |
+| 변경 파일 3000개 초과 시 절삭되고 플래그가 설정된다 (AC-4) | 통과 | 3001개 → 3000개 + `files_truncated: true`. **정확히 3000개는 절삭이 아니다**를 같은 스위트에서 고정했다 |
+| 재시도 5회 소진 시 DLQ로 이동한다 (FR-ING-007 AC-1) | 통과 | 500이 계속되면 예산 안에서는 `retry`, 소진 후에는 부분 문서를 발행하고 `dead_letter`(`retry_count = 5`) |
+| 404(삭제된 PR)는 재시도 없이 즉시 DLQ로 간다 (async 5.2) | 통과 | 첫 전달에서 곧바로 `dead_letter`. 같은 파티션의 다음 이벤트가 막히지 않는 것도 버스 왕복 시험으로 확인했다 |
+
+로컬에서 통과한 명령:
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | 종료 코드 0 |
+| `pnpm typecheck` | 종료 코드 0 |
+| `pnpm lint` / `pnpm lint:deps` | 종료 코드 0 — 패키지 11개, 위반 0건 |
+| `pnpm test` | 종료 코드 0 — 파일 20개, **150건 통과 + 1건 건너뜀**(real-GHE smoke) |
+| `pnpm build` | 종료 코드 0 |
+| `pnpm test:integration worker/enrich` | 종료 코드 0 — 파일 1개, **24건** |
+| `vitest run --config vitest.integration.config.ts packages/bus` | 종료 코드 0 — 36건 (두 어댑터가 같은 계약 통과) |
+| `pnpm test:integration` (전량) | **파일 15개 통과 / 3개 실패** — 실패 3개는 모두 `packages/es`이며 원인은 이 환경에 Elasticsearch가 없어서다(`ECONNREFUSED 127.0.0.1:9200`). 통과 125건, 건너뜀 18건 |
+
+**Elasticsearch 통합 시험 3종은 실행하지 못했다.** 이 컨테이너에는 Docker 데몬이 없어 `docker compose up`으로 ES를 띄울 수 없다. WP-003 범위이고 WP-007이 건드리지 않는 코드지만, "통합 스위트 전량 통과"라고 적을 수는 없으므로 있는 그대로 남긴다. CI의 `integration` 잡은 ES 서비스 컨테이너를 띄우므로 거기서 돈다.
+
+**실제 GHE 대상 검증은 하지 않았다 — NOT RUN.** 이 환경에 GitHub App 자격 증명이 없다. `smoke-real-ghe.test.ts`는 자격 증명이 있으면 자동으로 돌고 없으면 건너뛰되 그 사실을 실행 로그에 남긴다. WP-007의 검증 방법은 목 서버 기반 통합 시험이라 DoD 판정에는 영향이 없지만, **REL-001 운영 readiness 전 게이트**로 8장에 그대로 둔다.
+
+**구현 중 발견해 고친 결함 하나 (Redis 어댑터).**
+
+`RedisStreamsEventBus`가 재시도·유예 상태를 **스트림 엔트리 ID만으로** 식별하고 있었다. Redis 스트림 ID는 `<밀리초>-<일련번호>`라 스트림 안에서만 유일하고, 같은 밀리초에 서로 다른 파티션 스트림에 하나씩 들어가면 둘 다 `…-0`이 된다. 그래서 한 파티션에서 `defer`한 이벤트가 다른 파티션의 무관한 이벤트를 함께 묶어 **그 파티션을 통째로 멈췄다**. CR-010 계약 시험("유예 중인 파티션이 다른 파티션을 막지 않는다")이 잡았고, 상태 열쇠를 `(스트림, 메시지 ID)`로 바꿔 고쳤다. 파티션 16개로 도는 운영에서는 드문 일이 아니다.
+
+**시험이 실제로 무엇을 잡는지 확인했다.** 구현을 일부러 망가뜨려 보고 해당 시험이 실패하는지 봤다 — (1) rate limit을 `defer` 대신 `retry`로 처리 → 3건 실패, (2) 절삭 판정을 배열 길이로 추측 → 1건 실패, (3) 404를 즉시 종료로 보지 않음 → 2건 실패. 세 변형 모두 되돌린 뒤 전량 통과를 다시 확인했다.
+
+### 6.8 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -505,7 +547,13 @@ WP가 적은 검증 명령은 `pnpm test -- github`다. WP-004·WP-005 때와 �
 | `prs:sequence` 파티션 수가 문서에 없어 코드 기본값 8을 씀 | 비동기 문서 2장 / DEV-010 | 실제 상태 (환경 변수로 덮어쓸 수 있음) | 사용자 결정 후 CR |
 | Kafka 어댑터 없음 | WP-005 제외 목록 (ADR-002 전환 임계 조건부) | 실제 상태 — 계약 테스트가 교체 가능성을 강제한다 | 전환 임계 충족 시 |
 | 실제 GitHub Enterprise 대상 검증 미실행 | WP-006 / 이 실행 환경에 App 자격 증명 없음 | 실제 상태 — 목 서버 계약 시험만 통과. read-only smoke는 자격 증명이 있으면 자동 실행되도록 넣어 두었다 | **REL-001 운영 readiness 전 필수 게이트** |
-| GHE 클라이언트를 아무도 호출하지 않음 | WP-006 제외 목록 (보강 로직은 WP-007) | 실제 상태 (의도된 경계) | WP-007 보강 워커 |
+| ~~GHE 클라이언트를 아무도 호출하지 않음~~ | WP-006 제외 목록 | 해소 (2026-08-20) — WP-007 `enrich` 워커가 호출한다 | 없음 |
+| PR 이외 이벤트(`push`·`release`·`member`·`team`·`repository`·`create`·`delete`)를 아무도 진행시키지 않음 | WP-007 범위 (PR 보강만) / DEV-016 | 실제 상태 — `enrich`가 ack만 하고 넘긴다. 원본은 `raw_event`에 남아 유실이 아니다 | 라우팅을 소유한 WP-021(시퀀스)·권한 WP에서 CR로 결정 |
+| `enrichment_pending` 문서가 아직 색인되지 않음 | WP-007 제외 목록 (ES 색인은 WP-008) | 실제 상태 — `EVT-ING-002`까지만 간다 | WP-008 투영 워커 |
+| 실패 대기열에 쌓인 이벤트를 재처리할 길이 없음 | WP-007 범위 밖 (재처리는 WP-009) | 실제 상태 — `enrich`가 기록만 하고 관리 API·재처리 잡은 없다 | WP-009 |
+| 워커 재기동 시 논리 재시도 횟수가 초기화됨 | CR-010 `EventBus` 확장의 알려진 한계 | 실제 상태 — 재시도 상태가 프로세스 메모리에 있다. Redis의 물리 전달 횟수를 하한으로 삼아 완화했으나 at-least-once 범위 안에서 5회보다 많이 재시도될 수 있다. 실패 대기열은 정확성 경계가 아니라 운영 분류 도구다 | 필요해지면 별도 CR |
+| 워커 `/metrics`가 프로세스 메모리에만 존재 (스크레이프·집계 미배선) | WP-007 구현 범위 / WP-010 | 실제 상태 — 게이트웨이와 같은 형식의 지표 모듈을 워커에 따로 뒀다 | WP-010이 한 곳으로 합친다 |
+| Elasticsearch 통합 시험 3종을 이 환경에서 실행하지 못함 | WP-003 범위 / 이 컨테이너에 Docker 데몬 없음 | 실제 제약 — `ECONNREFUSED 127.0.0.1:9200` | CI `integration` 잡의 ES 서비스 컨테이너에서 검증 |
 | git 미러 경로 없음 — 커밋 목록은 API 폴백만 | WP-006 제외 목록 (미러는 WP-020) | 실제 상태 (ADR-005의 폴백 경로만 구현) | WP-020 |
 | NDJSON 아카이브 파일을 아무도 읽지 않음 | WP-004 구현 범위 (파일 append까지) | 실제 상태 | WP-036 Filebeat 소비 |
 | `/metrics`가 게이트웨이 프로세스 메모리에만 존재 (스크레이프·집계 미배선, 재기동 시 초기화) | WP-004 구현 범위 / WP-010 | 실제 상태 | WP-010 Prometheus 엔드포인트·파이프라인 지표 |
@@ -532,16 +580,19 @@ WP가 적은 검증 명령은 `pnpm test -- github`다. WP-004·WP-005 때와 �
 11. ~~WP-005 EventBus 포트와 Redis Streams 어댑터~~ → 완료 (2026-08-20). 검증 결과는 6.5장
 12. ~~CR-008 gh capability parity 요구사항 강화~~ → 완료 (2026-08-20, SRS baseline v2.1). gh 2.97.0 재실측, ADR-017~019, WP-061~065, C-061~067 추가
 13. ~~WP-006 GHE 클라이언트와 rate limit 관리~~ → 완료 (2026-08-20). 검증 결과는 6.6장. 실제 GHE smoke만 자격 증명 부재로 미실행
+14. ~~CR-009 typed gh 결과 계약과 조합 parity~~ → 완료 (2026-08-20, SRS baseline v2.2). ADR-020, WP-066 추가, 기존 안정 ID 재번호화 0건
+15. ~~CR-010 WP-007 파이프라인 계약 정정~~ → 완료 (2026-08-20). DEV-012~015 해소, DEV-016은 라우팅 소유 WP로 이월
+16. ~~WP-007 보강 워커~~ → 완료 (2026-08-20). 검증 결과는 6.7장. 실제 GHE smoke와 ES 통합 시험은 미실행
 
-**다음 WP: WP-007 보강 워커.**
+**다음 WP: WP-008 투영 워커와 버전 조건부 업서트.**
 
 CR-008은 문서만 강화했다. GitHub Operations Plane(REL-007~011) 구현 순서는 바뀌지 않는다 — Search/Data Plane을 end-to-end로 닫은 뒤다. `@prs/github`은 Data Plane의 GitHub REST 클라이언트이며 `gh` CLI를 실행하지 않는다 (ADR-013).
 
-WP-007은 이제 재료가 다 있는 상태에서 시작한다 — 큐에서 이벤트를 받고(WP-005), GHE에서 커밋·파일·리뷰를 조회하고(WP-006), 부분 문서를 먼저 색인한다. 아무도 `processed_at`을 찍지 않아 `JOB-ING-007`이 계속 재적재하는 문제는 WP-008 투영 워커가 닫는다.
+WP-008은 `EVT-ING-002`만 읽으면 문서를 만들 수 있다 — CR-010이 그 이벤트를 self-contained bounded로 확정했기 때문에 투영이 GitHub API를 다시 부를 이유가 없다. `raw_event.processed_at`은 아직 아무도 찍지 않으므로 `JOB-ING-007`이 10분마다 계속 재적재한다. 그 표식은 **문서가 색인된 시점**을 뜻하므로 WP-008이 색인 성공 뒤에 찍어야 멈춘다 — WP-007이 미리 찍지 않은 이유가 이것이다.
 
 CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 — Search/Data Plane(REL-001~006)을 end-to-end로 닫은 뒤에 Operations Plane(REL-007~011)을 시작한다. GitHub Operations 기능을 REL-001 WP 안에 섞지 않는다.
 
-수집 경로는 이제 게이트웨이에서 큐까지 닫혔다. 남은 구멍은 소비 쪽이다 — 아무도 `processed_at`을 찍지 않아 `JOB-ING-007`이 모든 행을 10분마다 계속 재적재한다. WP-007(보강)과 WP-008(투영)이 소비자를 붙이면서 그 표식을 찍어야 멈춘다.
+수집 경로는 게이트웨이에서 보강까지 닫혔다. 남은 구멍은 색인 쪽이다 — 아무도 `processed_at`을 찍지 않아 `JOB-ING-007`이 모든 행을 10분마다 계속 재적재한다. WP-008 투영 워커가 색인 뒤에 그 표식을 찍어야 멈춘다.
 
 권장 순서:
 
@@ -550,7 +601,7 @@ CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 �
 ~~WP-004 웹훅 게이트웨이~~ 완료
 ~~WP-005 Redis EventBus~~ 완료
 ~~WP-006 GitHub REST 클라이언트~~ 완료
-→ WP-007 보강 워커
+~~WP-007 보강 워커~~ 완료
 → WP-008 투영 워커
 → WP-009 DLQ
 → WP-010 저장소 등록·파이프라인 지표

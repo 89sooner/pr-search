@@ -10,12 +10,14 @@
  */
 
 import { allPartitions, partitionFor } from './partition.js';
+import { retryDelayMs } from './backoff.js';
 import { partitionCount } from './topics.js';
 import type {
   DeliveredEvent,
   EventBus,
   EventEnvelope,
   EventHandler,
+  HandlerDisposition,
   SubscribeOptions,
   Subscription,
 } from './types.js';
@@ -25,9 +27,10 @@ interface StoredMessage {
   readonly partitionKey: string;
   readonly partition: number;
   readonly messageId: string;
-  deliveryCount: number;
-  /** 마지막 전달 시각. 재전달 간격(`claimIdleMs`)을 지키는 데 쓴다. */
-  lastDeliveredAt: number;
+  /** 논리적 재시도 횟수. `defer`는 올리지 않는다 (CR-010). */
+  retries: number;
+  /** 이 시각 전에는 다시 전달하지 않는다. */
+  nextAttemptAt: number;
 }
 
 interface GroupCursor {
@@ -38,8 +41,6 @@ interface GroupCursor {
 }
 
 const POLL_MS = 5;
-/** `claimIdleMs`를 주지 않았을 때의 재전달 간격. Redis 어댑터 기본값과 맞춘다. */
-const DEFAULT_RETRY_DELAY_MS = 30_000;
 
 export class InMemoryEventBus implements EventBus {
   readonly #partitionOverrides: Readonly<Record<string, number>>;
@@ -84,8 +85,8 @@ export class InMemoryEventBus implements EventBus {
       partitionKey,
       partition,
       messageId: `${String(Date.now())}-${String(this.#sequence)}`,
-      deliveryCount: 0,
-      lastDeliveredAt: 0,
+      retries: 0,
+      nextAttemptAt: 0,
     };
 
     const groups = this.#cursorsFor(topic, partition);
@@ -163,7 +164,7 @@ class InMemorySubscription {
   }
 
   async #run(): Promise<void> {
-    const retryDelayMs = this.options.claimIdleMs ?? DEFAULT_RETRY_DELAY_MS;
+    const random = this.options.random ?? Math.random;
 
     while (!this.#stopped) {
       let worked = false;
@@ -175,12 +176,11 @@ class InMemorySubscription {
 
         // Redis 어댑터와 같은 규칙 둘.
         //   1. 미ack가 남은 파티션에서는 새 것을 읽지 않는다 (순서 보장)
-        //   2. 재전달은 방치 시간이 찬 뒤에 한다 — 즉시 재시도하면 영영 실패하는
-        //      이벤트 하나가 루프를 점유해 타이머까지 굶긴다
+        //   2. 재전달·유예 시각 전에는 핸들러를 부르지 않는다 (CR-010)
         const pending = cursor.pending[0];
         let message: StoredMessage | undefined;
         if (pending !== undefined) {
-          if (Date.now() - pending.lastDeliveredAt < retryDelayMs) continue;
+          if (Date.now() < pending.nextAttemptAt) continue;
           message = pending;
         } else {
           message = cursor.backlog.shift();
@@ -189,23 +189,37 @@ class InMemorySubscription {
         }
 
         worked = true;
-        message.deliveryCount += 1;
-        message.lastDeliveredAt = Date.now();
         const event: DeliveredEvent = {
           ...message.envelope,
           partition_key: message.partitionKey,
           partition,
-          delivery_count: message.deliveryCount,
+          delivery_count: message.retries + 1,
           message_id: message.messageId,
         };
 
+        let disposition: HandlerDisposition;
         try {
-          await this.handler(event);
+          disposition = (await this.handler(event)) ?? { kind: 'ack' };
         } catch (error) {
           this.options.onError?.(error, event);
-          continue;
+          disposition = { kind: 'retry' };
         }
-        cursor.pending.shift();
+
+        switch (disposition.kind) {
+          case 'ack':
+          case 'dead_letter':
+            // 종료 상태다. 파티션을 푼다.
+            cursor.pending.shift();
+            break;
+          case 'defer':
+            // 재시도 횟수를 올리지 않는다.
+            message.nextAttemptAt = disposition.until.getTime();
+            break;
+          case 'retry':
+            message.retries += 1;
+            message.nextAttemptAt = Date.now() + retryDelayMs(message.retries, random);
+            break;
+        }
       }
       // 항상 매크로태스크로 한 번 넘긴다. 마이크로태스크만 이어 붙이면
       // setTimeout이 영영 돌지 못한다.

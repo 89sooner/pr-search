@@ -40,6 +40,28 @@ export interface MockGheOptions {
    * 이 경로가 있어야 "토큰이 로그에 남지 않는다"를 시험으로 증명할 수 있다.
    */
   readonly echoAuthorizationInError?: boolean;
+  /**
+   * 목록 자원의 크기 (WP-007 절삭 시험).
+   *
+   * 생략하면 1건짜리 기본 목록을 준다. 값을 주면 그만큼 만들어 `per_page`대로
+   * 페이지를 나눠 준다 — 절삭 판정이 진짜 페이지네이션 위에서 검증된다.
+   */
+  readonly resources?: {
+    readonly commits?: number;
+    readonly files?: number;
+    readonly reviews?: number;
+  };
+  /** 특정 자원만 실패시킨다. 부분 보강 시험용. */
+  readonly failures?: readonly ResourceFailure[];
+}
+
+export type MockResource = 'pull_request' | 'commits' | 'files' | 'reviews';
+
+export interface ResourceFailure {
+  readonly resource: MockResource;
+  readonly status: number;
+  /** 이 횟수만큼만 실패하고 이후에는 정상 응답한다. 생략하면 계속 실패한다. */
+  readonly times?: number;
 }
 
 export interface ReceivedRequest {
@@ -83,6 +105,45 @@ const PR = {
   base: { ref: 'main', sha: 'c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e' },
 };
 
+/** `page`/`per_page`에 맞춰 잘라 준다. 실제 GitHub과 같은 규칙이어야 절삭 판정을 시험할 수 있다. */
+function paginate<T>(items: readonly T[], url: URL): T[] {
+  const page = Number(url.searchParams.get('page') ?? '1');
+  const perPage = Number(url.searchParams.get('per_page') ?? '100');
+  const start = (page - 1) * perPage;
+  return items.slice(start, start + perPage);
+}
+
+function makeCommits(count: number): { sha: string; parents: { sha: string }[]; commit: { message: string } }[] {
+  return Array.from({ length: count }, (_unused, index) => ({
+    sha: `c${String(index).padStart(39, '0')}`,
+    parents: [{ sha: `p${String(index).padStart(39, '0')}` }],
+    commit: { message: `commit ${String(index)}` },
+  }));
+}
+
+function makeFiles(count: number): { filename: string; additions: number; deletions: number; status: string }[] {
+  return Array.from({ length: count }, (_unused, index) => ({
+    filename: `src/file-${String(index)}.ts`,
+    additions: 1,
+    deletions: 0,
+    status: 'modified',
+  }));
+}
+
+function makeReviews(count: number): {
+  id: number;
+  state: string;
+  user: { login: string };
+  submitted_at: string;
+}[] {
+  return Array.from({ length: count }, (_unused, index) => ({
+    id: index + 1,
+    state: 'APPROVED',
+    user: { login: `reviewer-${String(index)}` },
+    submitted_at: '2026-08-20T00:00:00Z',
+  }));
+}
+
 export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGhe> {
   const requests: ReceivedRequest[] = [];
   const issuedTokens: string[] = [];
@@ -90,6 +151,23 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
   let secondaryLeft = options.secondaryLimitTimes ?? 0;
   let unauthorizedLeft = options.unauthorizedTimes ?? 0;
   let dataRequestCount = 0;
+
+  const commits = makeCommits(options.resources?.commits ?? 0);
+  const files = makeFiles(options.resources?.files ?? 0);
+  const reviews = makeReviews(options.resources?.reviews ?? 0);
+  const failuresLeft = new Map<MockResource, number>();
+  for (const failure of options.failures ?? []) {
+    failuresLeft.set(failure.resource, failure.times ?? Number.POSITIVE_INFINITY);
+  }
+  const failureStatus = new Map<MockResource, number>(
+    (options.failures ?? []).map((failure) => [failure.resource, failure.status]),
+  );
+  const shouldFail = (resource: MockResource): number | undefined => {
+    const left = failuresLeft.get(resource);
+    if (left === undefined || left <= 0) return undefined;
+    failuresLeft.set(resource, left - 1);
+    return failureStatus.get(resource);
+  };
 
   const server: Server = createServer((request, response) => {
     const path = request.url ?? '/';
@@ -156,14 +234,41 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
     const url = new URL(path, 'http://localhost');
     const page = Number(url.searchParams.get('page') ?? '1');
     if (url.pathname.endsWith('/commits') && url.pathname.includes('/pulls/')) {
+      const status = shouldFail('commits');
+      if (status !== undefined) {
+        send(status, { message: 'commits unavailable' }, rateHeaders);
+        return;
+      }
+      if (commits.length > 0) {
+        send(200, paginate(commits, url), rateHeaders);
+        return;
+      }
       send(200, page > 1 ? [] : [{ sha: 'aaa1', parents: [{ sha: 'bbb2' }], commit: { message: 'c1' } }], rateHeaders);
       return;
     }
     if (url.pathname.endsWith('/files')) {
+      const status = shouldFail('files');
+      if (status !== undefined) {
+        send(status, { message: 'files unavailable' }, rateHeaders);
+        return;
+      }
+      if (files.length > 0) {
+        send(200, paginate(files, url), rateHeaders);
+        return;
+      }
       send(200, page > 1 ? [] : [{ filename: 'src/pay.ts', additions: 12, deletions: 3, status: 'modified' }], rateHeaders);
       return;
     }
     if (url.pathname.endsWith('/reviews')) {
+      const status = shouldFail('reviews');
+      if (status !== undefined) {
+        send(status, { message: 'reviews unavailable' }, rateHeaders);
+        return;
+      }
+      if (reviews.length > 0) {
+        send(200, paginate(reviews, url), rateHeaders);
+        return;
+      }
       send(200, page > 1 ? [] : [{ id: 9, state: 'APPROVED', user: { login: 'reviewer' }, submitted_at: '2026-08-20T00:00:00Z' }], rateHeaders);
       return;
     }
@@ -188,6 +293,11 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
       return;
     }
     if (url.pathname.includes('/pulls/')) {
+      const status = shouldFail('pull_request');
+      if (status !== undefined) {
+        send(status, { message: status === 404 ? 'Not Found' : 'pull request unavailable' }, rateHeaders);
+        return;
+      }
       send(200, PR, rateHeaders);
       return;
     }

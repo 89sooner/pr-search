@@ -142,3 +142,10 @@
 | 웹 등가 (web equivalent) | 터미널 UX를 웹 표현으로 대체한 기능. `gh browse`의 의미는 "브라우저 프로세스 실행"이 아니라 "대상 URL로 이동"이므로 웹에서는 링크가 등가다. `terminal_only`로 밀어 넣기 전에 먼저 찾는다 (CR-008, ADR-019) |
 | parity 차원 | capability parity를 판정하는 28개 축. command path·alias·positional·flag(고유/inherited/short/반복)·입출력·컨텍스트·gh config·TTY/editor/browser 요구·출력 형식·`--json` 필드·`--jq`·`--template`·페이지네이션·REST/GraphQL 모드·GHES 버전·사용자 권한·App 권한·정책·위험도 (CR-008) |
 | extension capability plane | core gh와 분리된 gh extension의 capability 영역. 탐색·메타데이터는 허용하되 실행은 관리자 허용 목록과 정확한 버전 pin을 만족할 때만. core parity와 수치를 분리 보고한다 (CR-008, ADR-019) |
+| 결과 계약 (GhResultContract) | capability 출력의 의미 정의. `kind`·스키마·자원 종류·바인딩 가능 여부·sensitivity·result adapter를 담는다. 입력 계약만 있고 출력 계약이 없으면 명령 조합이 일반화되지 않는다 (CR-009, ADR-020) |
+| 자원 참조 (GhResourceRef) | 명령 사이를 잇는 공통 typed 참조. `owner/repo#123` 같은 문자열을 매번 재파싱하지 않기 위한 것이다 (CR-009) |
+| 입출력 port | capability가 선언하는 바인딩 지점. 어떤 명령 뒤에 어떤 명령을 이을 수 있는지는 이름이 아니라 port 타입으로 계산한다 (CR-009) |
+| GhBinding | Recipe 단계 사이의 구조화된 연결. 출발 단계·출력 port·도착 단계·도착 입력으로 이뤄지며, 표현식이 아니다 — 표현식 해석기를 두지 않는 것이 요점이다 (CR-009) |
+| capability 그래프 (GhCapabilityGraph) | manifest에서 계산한 node=capability, edge=출력 port→호환 입력 port 그래프. Recipe 빌더가 호환 가능한 다음 단계를 제안하는 근거 (CR-009) |
+| composability 상태 | capability 결과를 어디까지 이을 수 있는지의 분류. `fully_bindable`·`partially_bindable`·`terminal_result`·`artifact_result`·`opaque_result`·`secret_non_bindable`·`policy_blocked`·`unsupported_by_host`. `unknown` 금지 (CR-009) |
+| result adapter | `--json`이 없는 명령의 결과를 어떻게 구조화하는지. `native_json`·`gh_api_structured`·`resource_url`·`artifact`·`opaque_text`·`stream`·`exit_status`·`secret_non_bindable`. 출력 텍스트를 깨지기 쉬운 정규식으로 무조건 파싱하지 않기 위한 분류다 (CR-009) |

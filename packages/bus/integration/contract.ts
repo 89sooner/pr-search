@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TOPICS, type DeliveredEvent, type EventBus, type EventEnvelope } from '@prs/bus';
+import { TOPICS, deadLetter, deferUntil, type DeliveredEvent, type EventBus, type EventEnvelope } from '@prs/bus';
 
 /** 계약 테스트가 쓰는 토픽. 파티션 수를 고정해 카탈로그 변경과 분리한다. */
 export const CONTRACT_TOPIC = TOPICS.ingest;
@@ -328,6 +328,114 @@ export function runEventBusContract(adapterName: string, factory: BusFactory): v
       await bus.publish(CONTRACT_TOPIC, '4021', envelope({ index: 1 }));
       await new Promise((resolve) => setTimeout(resolve, 300));
       expect(received).toHaveLength(1);
+    });
+
+    it('CR-010: `defer`는 지정 시각 전에 다시 전달하지 않고 재시도 예산을 쓰지 않는다', async () => {
+      const attempts: number[] = [];
+      const deferUntilTime = Date.now() + 400;
+      const subscription = await bus.subscribe(
+        CONTRACT_TOPIC,
+        CONTRACT_GROUP,
+        async (event) => {
+          attempts.push(event.delivery_count);
+          // 아직 때가 아니라고 말한다. 실패가 아니다.
+          return Date.now() < deferUntilTime ? deferUntil(new Date(deferUntilTime)) : undefined;
+        },
+        { claimIdleMs: 20, blockMs: 20 },
+      );
+
+      try {
+        await bus.publish(CONTRACT_TOPIC, '4021', envelope({ delivery_id: 'deferred' }));
+        await waitFor(() => attempts.length >= 2, 5_000, '유예 후 재전달');
+      } finally {
+        await subscription.close();
+      }
+
+      // 유예 동안 폭주하지 않았다.
+      expect(attempts.length).toBeLessThan(6);
+      // 전달 횟수가 오르지 않는다 — 한도 대기는 재시도가 아니다.
+      expect(attempts.every((count) => count === 1)).toBe(true);
+    });
+
+    it('CR-010: `retry`는 표준 백오프로 재시도하며 전달 횟수를 올린다', async () => {
+      const counts: number[] = [];
+      const subscription = await bus.subscribe(
+        CONTRACT_TOPIC,
+        CONTRACT_GROUP,
+        async (event) => {
+          counts.push(event.delivery_count);
+          return counts.length < 2 ? { kind: 'retry' as const } : undefined;
+        },
+        { claimIdleMs: 20, blockMs: 20, onError: () => undefined },
+      );
+
+      try {
+        await bus.publish(CONTRACT_TOPIC, '4021', envelope({ delivery_id: 'retried' }));
+        await waitFor(() => counts.length >= 2, 10_000, '재시도');
+      } finally {
+        await subscription.close();
+      }
+      expect(counts[0]).toBe(1);
+      expect(counts[1]).toBe(2);
+    });
+
+    it('CR-010: `dead_letter`는 ack해서 파티션을 푼다', async () => {
+      const seen: string[] = [];
+      const subscription = await bus.subscribe(
+        CONTRACT_TOPIC,
+        CONTRACT_GROUP,
+        async (event) => {
+          const payload = event.payload as { index: number };
+          seen.push(String(payload.index));
+          // 첫 이벤트를 종료 처리한다. 막히지 않고 다음이 와야 한다.
+          return payload.index === 0 ? deadLetter('테스트') : undefined;
+        },
+        { claimIdleMs: 20, blockMs: 20 },
+      );
+
+      try {
+        await bus.publish(CONTRACT_TOPIC, '4021', envelope({ index: 0 }));
+        await bus.publish(CONTRACT_TOPIC, '4021', envelope({ index: 1 }));
+        await waitFor(() => seen.includes('1'), 5_000, '파티션 진행');
+      } finally {
+        await subscription.close();
+      }
+      expect(seen).toEqual(['0', '1']);
+    });
+
+    it('CR-010: 유예 중인 파티션이 다른 파티션을 막지 않는다', async () => {
+      // 같은 파티션에 몰리지 않도록 서로 다른 파티션에 떨어지는 키를 고른다.
+      const keys = ['4021', '5150', '77', 'job-9', 'acme/payments@main'];
+      const { partitionFor } = await import('@prs/bus');
+      const byPartition = new Map<number, string>();
+      for (const key of keys) byPartition.set(partitionFor(key, CONTRACT_PARTITIONS), key);
+      const distinct = [...byPartition.values()];
+      if (distinct.length < 2) return; // 파티션이 갈리지 않으면 이 성질을 볼 수 없다
+
+      const [deferredKey, freeKey] = distinct as [string, string];
+      const processed: string[] = [];
+      const subscription = await bus.subscribe(
+        CONTRACT_TOPIC,
+        CONTRACT_GROUP,
+        async (event) => {
+          if (event.partition_key === deferredKey) {
+            return deferUntil(new Date(Date.now() + 30_000));
+          }
+          processed.push(event.partition_key);
+          return undefined;
+        },
+        { claimIdleMs: 20, blockMs: 20 },
+      );
+
+      try {
+        await bus.publish(CONTRACT_TOPIC, deferredKey, envelope({ which: 'deferred' }));
+        await bus.publish(CONTRACT_TOPIC, freeKey, envelope({ which: 'free' }));
+        // 30초 유예에 갇히지 않고 다른 파티션이 진행돼야 한다.
+        await waitFor(() => processed.includes(freeKey), 5_000, '다른 파티션 진행');
+      } finally {
+        await subscription.close();
+      }
+      expect(processed).toContain(freeKey);
     });
 
     it('카탈로그에 없는 토픽은 발행도 구독도 거부한다', async () => {

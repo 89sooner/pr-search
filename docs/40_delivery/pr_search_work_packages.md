@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+> 상태: review | 버전: v0.3 | 갱신일: 2026-08-20
 
 ## 1. 목적
 
@@ -75,14 +75,15 @@
 | WP-055 | Codespace·Gist·Attestation·고급 도구 (W-017, W-019, W-022) | REL-010 | WP-048 | todo |
 | WP-056 | gh API 탐색기 (W-020) | REL-010 | WP-048 | todo |
 | WP-057 | 임시 workspace와 로컬 git 작업 | REL-009 | WP-047 | todo |
-| WP-058 | Recipe 빌더 (W-023) | REL-011 | WP-049, WP-052 | todo |
+| WP-058 | Recipe 빌더 (W-023) | REL-011 | WP-049, WP-052, WP-066 | todo |
 | WP-059 | capability 드리프트와 정책 관리 (A-005, A-006) | REL-011 | WP-045, WP-048 | todo |
-| WP-060 | 전체 parity 검증 | REL-011 | WP-045 ~ WP-059, WP-061 ~ WP-065 | todo |
+| WP-060 | 전체 parity 검증 | REL-011 | WP-045 ~ WP-059, WP-061 ~ WP-066 | todo |
 | WP-061 | 의미 capability 제약 엔진 | REL-007 | WP-045 | todo |
 | WP-062 | gh 출력·파일 안전 경계 | REL-007 | WP-047 | todo |
 | WP-063 | interactive 웹 등가와 extension 신뢰 어댑터 | REL-010 | WP-045, WP-055 | todo |
 | WP-064 | gh api 스키마 브리지와 호스트 capability 판정 | REL-010 | WP-056 | todo |
-| WP-065 | 조합 parity 검증기 | REL-011 | WP-061, WP-063, WP-064 | todo |
+| WP-065 | 조합 parity 검증기 | REL-011 | WP-061, WP-063, WP-064, WP-066 | todo |
+| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 | WP-045, WP-061 | todo |
 
 의존 그래프에 순환은 없다. WP-001~WP-003과 WP-005·WP-006은 병렬 착수 가능하다.
 
@@ -142,7 +143,7 @@
   - [ ] 같은 `(type, target)` 활성 잡 두 개 INSERT 시 유니크 위반이 발생한다 (FR-ADMIN-002 AC-4)
   - [ ] advisory lock 헬퍼가 동시 호출 시 하나만 성공한다 (FR-SEQ-001 AC-6)
   - [ ] 애플리케이션 DB 롤이 `audit_record`에 UPDATE/DELETE 권한을 갖지 않는다 (FR-AUTH-004 AC-3)
-- 검증 방법: `pnpm test:integration -- db` (testcontainers PostgreSQL)
+- 검증 방법: `pnpm test:integration db` (testcontainers PostgreSQL)
 - 기록: 원장 WP-002 상태, FR-ING-003·FR-SEQ-001의 구현 위치 매핑
 
 ### WP-003 Elasticsearch 매핑과 인덱스 부트스트랩
@@ -167,7 +168,7 @@
   - [ ] 매핑에 정의되지 않은 필드를 색인하면 거부된다 (`dynamic: strict`, THR-010)
   - [ ] `es.search()`가 `ScopedQuery`가 아닌 인자를 받으면 컴파일 실패한다 (ADR-008)
   - [ ] `commit_sha`가 대소문자 무관하게 매칭된다 (FR-SRCH-004 AC-4)
-- 검증 방법: `pnpm test:integration -- es`
+- 검증 방법: `pnpm test:integration es`
 - 기록: 원장 WP-003 상태
 
 ### WP-004 웹훅 수신 게이트웨이
@@ -200,7 +201,7 @@
   - [ ] 수신 응답 p95가 300ms 이하다 (AC-4) — 부하 시험 1000 요청
   - [ ] 서명 검증이 JSON 파싱보다 먼저 수행됨을 테스트로 확인한다 (보안 9장)
   - [ ] QA-A001-01의 수신 지표가 노출된다
-- 검증 방법: `pnpm test:integration -- gateway`, `pnpm test -- gateway/signature`
+- 검증 방법: `pnpm test:integration gateway`, `pnpm test gateway/signature`
 - 기록: 원장 WP-004 상태, FR-ING-001·FR-ING-002 매핑
 
 ### WP-005 EventBus 포트와 Redis Streams 어댑터
@@ -224,7 +225,7 @@
   - [ ] 소비자 장애 시 미ack 메시지가 재전달된다
   - [ ] 계약 테스트가 통과한다
   - [ ] Redis를 정지시킨 뒤 이벤트를 수신하면 게이트웨이는 202를 반환하고, Redis 복구 후 `JOB-ING-007`이 해당 이벤트를 재적재한다 (ADR-002 follow-up)
-- 검증 방법: `pnpm test:integration -- bus`
+- 검증 방법: `pnpm test:integration bus`
 - 기록: 원장 WP-005 상태
 
 ### WP-006 GHE 클라이언트와 rate limit 관리
@@ -249,7 +250,7 @@
   - [ ] 429 + `retry-after` 수신 시 해당 토큰이 지정 시간 격리된다
   - [ ] 실시간 요청이 백필 요청보다 먼저 토큰을 배분받는다
   - [ ] 토큰 값이 로그에 남지 않는다 (THR-009)
-- 검증 방법: `pnpm test -- github` (목 서버 기반)
+- 검증 방법: `pnpm test github` (목 서버 기반)
 - 기록: 원장 WP-006 상태
 
 ### WP-007 보강 워커
@@ -278,7 +279,7 @@
   - [ ] 변경 파일 3000개 초과 시 절삭되고 플래그가 설정된다 (AC-4)
   - [ ] 재시도 5회 소진 시 DLQ로 이동한다 (FR-ING-007 AC-1)
   - [ ] 404(삭제된 PR)는 재시도 없이 즉시 DLQ로 간다 (async 5.2)
-- 검증 방법: `pnpm test:integration -- worker/enrich`
+- 검증 방법: `pnpm test:integration worker/enrich`
 - 기록: 원장 WP-007 상태, FR-ING-004 매핑
 
 ### WP-008 투영 워커와 버전 조건부 업서트
@@ -310,7 +311,7 @@
   - [ ] 벌크 부분 실패 항목이 개별 재시도된다 (AC-3)
   - [ ] 수신부터 검색 반영까지 p95 10초 이하다 (AC-5) — 개발 데이터셋 기준
   - [ ] 매핑에 없는 필드를 넣으려 하면 색인이 거부되고 DLQ로 간다 (THR-010)
-- 검증 방법: `pnpm test:integration -- worker/project`
+- 검증 방법: `pnpm test:integration worker/project`
 - 기록: 원장 WP-008 상태, FR-ING-005 매핑
 
 ### WP-009 실패 대기열과 재처리
@@ -335,7 +336,7 @@
   - [ ] 3회 재처리 실패 이벤트가 `held`로 전환된다 (예외 처리)
   - [ ] 100건 초과 시 경보 메트릭이 임계를 넘는다 (AC-5)
   - [ ] 일괄 재처리 100건 초과 시 재확인이 요구된다 (QA-A001-05)
-- 검증 방법: `pnpm test:integration -- ops/dead-letter`
+- 검증 방법: `pnpm test:integration ops/dead-letter`
 - 기록: 원장 WP-009 상태, FR-ING-007 매핑
 
 ### WP-010 저장소 등록 API와 파이프라인 지표
@@ -363,7 +364,7 @@
   - [ ] 접근 권한 없는 저장소 등록이 403으로 거부된다 (예외 처리)
   - [ ] 파이프라인 상태 응답의 데이터 신선도가 30초 이내다 (FR-ADMIN-001 AC-2)
   - [ ] 등록·해제가 감사 기록에 남는다 (AC-5)
-- 검증 방법: `pnpm test:integration -- admin/repositories`, `pnpm test:e2e -- ops-minimal`
+- 검증 방법: `pnpm test:integration admin/repositories`, `pnpm test:e2e ops-minimal`
 - 기록: 원장 WP-010 상태, FR-ING-009·FR-ADMIN-001 매핑
 
 ---
@@ -396,7 +397,7 @@
   - [ ] 같은 키 반복이 OR, 다른 키가 AND로 결합된다 (AC-5)
   - [ ] `-author:kim`이 부정 조건이 된다 (AC-6)
   - [ ] 파싱 → 직렬화 → 재파싱 왕복이 동일 AST를 만든다 (프런트엔드 URL 동기화 전제)
-- 검증 방법: `pnpm test -- query`
+- 검증 방법: `pnpm test query`
 - 기록: 원장 WP-011 상태, FR-SRCH-005 매핑
 
 ### WP-012 인증과 접근 범위 강제
@@ -431,7 +432,7 @@
   - [ ] 권한 회수 이벤트 후 첫 요청부터 차단된다 (FR-AUTH-003 AC-4)
   - [ ] `applyMandatoryScopeFilter`를 우회하는 코드가 컴파일되지 않는다 (ADR-008)
   - [ ] 권한 매트릭스 테스트(역할 6종 × 화면 13종)의 API 계층 부분이 통과한다 (NFR-005)
-- 검증 방법: `pnpm test:integration -- authz`, `pnpm test -- authz/architecture`
+- 검증 방법: `pnpm test:integration authz`, `pnpm test authz/architecture`
 - 기록: 원장 WP-012 상태, FR-AUTH-001~003 매핑
 
 ### WP-013 검색 API 목록 조회
@@ -462,7 +463,7 @@
   - [ ] 동일 조건 두 번 조회 시 순서가 동일하다 (AC-4)
   - [ ] 목록 조회 p95가 500ms 이하다 (NFR-001) — 1000만 문서 합성 데이터셋
   - [ ] API 계약의 `/search` 응답 예시와 실제 응답 스키마가 일치한다
-- 검증 방법: `pnpm test:integration -- search`, `pnpm test:perf -- search`
+- 검증 방법: `pnpm test:integration search`, `pnpm test:perf search`
 - 기록: 원장 WP-013 상태, FR-SRCH-006·FR-SRCH-007 매핑
 
 ### WP-014 식별자 해석 API
@@ -491,7 +492,7 @@
   - [ ] 단건 해석 p95가 200ms 이하다 (NFR-001) — 커밋 1000만 건 데이터셋
   - [ ] 7자 접두 질의가 통상 후보 1건으로 좁혀진다 (ADR-012 근거 검증)
   - [ ] API 계약의 응답 예시 3종과 실제 응답이 일치한다
-- 검증 방법: `pnpm test:integration -- resolve`, `pnpm test:perf -- resolve`
+- 검증 방법: `pnpm test:integration resolve`, `pnpm test:perf resolve`
 - 기록: 원장 WP-014 상태, FR-SRCH-001~004 매핑
 
 ### WP-015 웹 앱 셸과 Conductor 통합
@@ -521,7 +522,7 @@
   - [ ] 세션 만료 후 재인증 시 원래 경로로 복귀한다 (FLOW-000)
   - [ ] `query-url` 왕복 테스트가 통과한다
   - [ ] axe 위반 0건, `checkContrast` 위반 0건
-- 검증 방법: `pnpm test -- web/lib`, `pnpm test:a11y -- shell`, `pnpm test:e2e -- auth`
+- 검증 방법: `pnpm test web/lib`, `pnpm test:a11y shell`, `pnpm test:e2e auth`
 - 기록: 원장 WP-015 상태, FR-AUTH-001 매핑
 
 ### WP-016 W-001 통합 검색 화면
@@ -550,7 +551,7 @@
   - [ ] 필터를 5회 조작한 뒤 뒤로가기 1회로 이전 화면에 돌아간다
   - [ ] URL을 복사해 새 탭에 붙여넣으면 동일 화면이 재현된다 (QA-COMMON-09)
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test -- web/search`, `pnpm test:e2e -- flow-001`, `pnpm test:a11y -- search`
+- 검증 방법: `pnpm test web/search`, `pnpm test:e2e flow-001`, `pnpm test:a11y search`
 - 기록: 원장 WP-016 상태
 
 ### WP-017 W-002 PR 상세 화면
@@ -575,7 +576,7 @@
   - [ ] 상태 매트릭스 W-002의 `loading_initial`, `ready`, `enrichment_pending`, `truncated`, `not_found` 상태가 렌더링된다
   - [ ] 미머지 PR에서 선행·후행 섹션이 숨겨지지 않고 비활성 + 사유로 표시된다 (QA-W002-07)
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test -- web/pr`, `pnpm test:e2e -- flow-002`, `pnpm test:a11y -- pr`
+- 검증 방법: `pnpm test web/pr`, `pnpm test:e2e flow-002`, `pnpm test:a11y pr`
 - 기록: 원장 WP-017 상태
 
 ### WP-018 W-003 커밋 상세 화면
@@ -600,7 +601,7 @@
   - [ ] 상태 매트릭스 W-003의 전 상태가 렌더링된다
   - [ ] FLOW-002 전 경로(SHA 입력 → 커밋 상세 → PR 상세)가 E2E로 통과한다
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test -- web/commit`, `pnpm test:e2e -- flow-002`, `pnpm test:a11y -- commit`
+- 검증 방법: `pnpm test web/commit`, `pnpm test:e2e flow-002`, `pnpm test:a11y commit`
 - 기록: 원장 WP-018 상태, FR-SRCH-002 매핑
 
 ### WP-019 저장소 백필 잡
@@ -631,7 +632,7 @@
   - [ ] 백필 문서가 더 새로운 실시간 문서를 덮어쓰지 않는다 (AC-5)
   - [ ] 동시 실행 4개 요청 시 3개만 실행된다 (AC-6)
   - [ ] API 한도 소진 시 잡이 대기하고 회복 시각에 자동 재개된다 (예외 처리)
-- 검증 방법: `pnpm test:integration -- jobs/backfill`
+- 검증 방법: `pnpm test:integration jobs/backfill`
 - 기록: 원장 WP-019 상태, FR-ING-006 매핑
 
 ---
@@ -660,7 +661,7 @@
   - [ ] blobless 클론에 파일 blob이 없다 (THR-015)
   - [ ] 미러 미사용 저장소에서 `patchId`가 null이고 `patch_id_unavailable`이 표시된다 (FR-REL-005 AC-5)
   - [ ] 미러 fetch 실패 시 API 폴백으로 전환된다
-- 검증 방법: `pnpm test:integration -- graph` (로컬 git 픽스처 저장소 사용)
+- 검증 방법: `pnpm test:integration graph` (로컬 git 픽스처 저장소 사용)
 - 기록: 원장 WP-020 상태
 
 ### WP-021 시퀀스 증분 채번
@@ -693,7 +694,7 @@
   - [ ] 동일 시퀀스 공간에 대한 채번이 동시에 1개만 실행된다 (AC-6)
   - [ ] 그래프 접근 실패 시 공간이 `stale`이 되고 기존 시퀀스가 보존된다 (예외 처리)
   - [ ] **회귀 픽스처 검증**: 병합 커밋·직접 푸시가 섞인 히스토리에서 채번이 git 결과와 일치한다 (QA 6장)
-- 검증 방법: `pnpm test:integration -- sequence/assign`, `pnpm test:regression -- sequence`
+- 검증 방법: `pnpm test:integration sequence/assign`, `pnpm test:regression sequence`
 - 기록: 원장 WP-021 상태, FR-SEQ-001 매핑
 
 ### WP-022 시퀀스 재채번과 에폭
@@ -723,7 +724,7 @@
   - [ ] 재채번 중 조회가 마지막 확정 값과 상태를 함께 반환한다 (예외 처리)
   - [ ] 재채번 실패 시 부분 채번 상태로 남지 않는다 (트랜잭션 경계)
   - [ ] merge-base 이전 시퀀스 값이 새 에폭에서도 동일하다
-- 검증 방법: `pnpm test:integration -- sequence/reassign`, `pnpm test:regression -- sequence-rewrite`
+- 검증 방법: `pnpm test:integration sequence/reassign`, `pnpm test:regression sequence-rewrite`
 - 기록: 원장 WP-022 상태, FR-SEQ-005 매핑
 
 ### WP-023 앵커 정규화와 범위 조회 API
@@ -752,7 +753,7 @@
   - [ ] 범위 조회 p95가 400ms 이하다 (구간 5000건, NFR-001)
   - [ ] **`git log --first-parent <tagA>..<tagB>` 결과와 건수·구성이 일치한다** (QA 6장)
   - [ ] API 계약의 응답 예시와 실제 응답이 일치한다
-- 검증 방법: `pnpm test:integration -- sequence/range`, `pnpm test:regression -- range-vs-git`
+- 검증 방법: `pnpm test:integration sequence/range`, `pnpm test:regression range-vs-git`
 - 기록: 원장 WP-023 상태, FR-SEQ-002·FR-SEQ-003 매핑
 
 ### WP-024 릴리스 수집과 포함 관계
@@ -779,7 +780,7 @@
   - [ ] 릴리스 목록이 시각 오름차순이다 (AC-3)
   - [ ] 미배포 시 `unreleased: true`와 대기 PR 수가 반환된다 (AC-4)
   - [ ] 릴리스 미수집 저장소에서 `RELEASE_NOT_INDEXED`가 반환된다 (예외 처리)
-- 검증 방법: `pnpm test:integration -- release/containment`
+- 검증 방법: `pnpm test:integration release/containment`
 - 기록: 원장 WP-024 상태, FR-REL-002 매핑
 
 ### WP-025 W-004 범위 조사 화면
@@ -807,7 +808,7 @@
   - [ ] 상태 매트릭스 W-004의 전 상태가 렌더링된다
   - [ ] URL 에폭 불일치 시 자동 재조회하지 않는다 (QA-W004-21)
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test -- web/range`, `pnpm test:e2e -- flow-003`, `pnpm test:a11y -- range`
+- 검증 방법: `pnpm test web/range`, `pnpm test:e2e flow-003`, `pnpm test:a11y range`
 - 기록: 원장 WP-025 상태
 
 ### WP-026 W-005 릴리스 화면과 구간 비교
@@ -833,7 +834,7 @@
   - [ ] 미배포 구간 조회가 동작한다 (AC-5)
   - [ ] 상태 매트릭스 W-005의 전 상태가 렌더링된다
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test:integration -- release/comparison`, `pnpm test:e2e -- flow-003`
+- 검증 방법: `pnpm test:integration release/comparison`, `pnpm test:e2e flow-003`
 - 기록: 원장 WP-026 상태, FR-SEQ-004 매핑
 
 ### WP-027 선행·후행 조회와 상세 화면 통합
@@ -859,7 +860,7 @@
   - [ ] 공간 경계에서 오류 없이 존재분만 반환된다 (AC-4)
   - [ ] 미머지 PR에서 409가 반환되고 섹션이 비활성 + 사유로 표시된다 (예외 처리)
   - [ ] 접근 범위 밖 PR이 이웃 목록에 나타나지 않는다 (AC-5)
-- 검증 방법: `pnpm test:integration -- relation/neighbors`, `pnpm test:e2e -- flow-002`
+- 검증 방법: `pnpm test:integration relation/neighbors`, `pnpm test:e2e flow-002`
 - 기록: 원장 WP-027 상태, FR-REL-001 매핑
 
 ### WP-028 정합성 점검과 조정 스캔
@@ -886,7 +887,7 @@
   - [ ] 조정 스캔이 색인에 없는 PR을 발견해 재투입한다 (FR-ING-011 AC-3)
   - [ ] 누락 건수가 메트릭으로 노출된다 (AC-4)
   - [ ] 점검이 감사 기록에 남는다 (FR-ADMIN-003 AC-5)
-- 검증 방법: `pnpm test:integration -- ops/integrity`, `pnpm test:integration -- jobs/reconcile`
+- 검증 방법: `pnpm test:integration ops/integrity`, `pnpm test:integration jobs/reconcile`
 - 기록: 원장 WP-028 상태, FR-ADMIN-003·FR-ING-011 매핑
 
 ---
@@ -920,7 +921,7 @@
   - [ ] 문서당 100건 상한이 적용된다 (AC-5)
   - [ ] 추출 실패가 색인을 막지 않는다 (예외 처리)
   - [ ] 같은 문서를 두 번 처리해도 간선이 중복되지 않는다 (ADR-009)
-- 검증 방법: `pnpm test -- link/reference`, `pnpm test:integration -- worker/link`
+- 검증 방법: `pnpm test link/reference`, `pnpm test:integration worker/link`
 - 기록: 원장 WP-029 상태, FR-REL-003 매핑
 
 ### WP-030 되돌림·체리픽·스택 관계 파생
@@ -948,7 +949,7 @@
   - [ ] patch-id 비교가 동일 저장소 내로 한정된다 (AC-3)
   - [ ] 미러 미사용 환경에서 트레일러 기반만 동작하고 플래그가 표시된다 (AC-5)
   - [ ] 스택 순환이 감지되면 간선을 만들지 않는다 (FR-REL-006 AC-5)
-- 검증 방법: `pnpm test -- link/revert`, `pnpm test:integration -- link/cherry-pick`
+- 검증 방법: `pnpm test link/revert`, `pnpm test:integration link/cherry-pick`
 - 기록: 원장 WP-030 상태, FR-REL-004~006 매핑
 
 ### WP-031 관계 조회 API와 상세 화면 관계 섹션
@@ -975,7 +976,7 @@
   - [ ] 관계 섹션이 확장 시에만 조회된다 (QA-W002-17)
   - [ ] `evidence`가 평문으로 렌더링된다 (THR-020)
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test:integration -- relation`, `pnpm test:e2e -- flow-006`
+- 검증 방법: `pnpm test:integration relation`, `pnpm test:e2e flow-006`
 - 기록: 원장 WP-031 상태, FR-REL-007 매핑
 
 ### WP-032 패싯·커서 페이지네이션·전문 검색
@@ -1003,7 +1004,7 @@
   - [ ] 패싯 실패가 목록을 막지 않는다 (예외 처리)
   - [ ] 제목 일치가 본문 일치보다 상위다 (FR-SRCH-011 AC-2)
   - [ ] 한글·영문 혼용 질의에서 두 언어 토큰이 매칭된다 (AC-4)
-- 검증 방법: `pnpm test:integration -- search/facets`, `pnpm test:e2e -- search-paging`
+- 검증 방법: `pnpm test:integration search/facets`, `pnpm test:e2e search-paging`
 - 기록: 원장 WP-032 상태, FR-SRCH-008·009·011 매핑
 
 ### WP-033 저장된 검색
@@ -1027,7 +1028,7 @@
   - [ ] 실행자 권한이 적용되고 저장자 권한이 승계되지 않는다 (AC-3, THR-012)
   - [ ] 100건 초과 시 409다 (AC-4)
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test:integration -- saved-search`, `pnpm test:e2e -- saved-search`
+- 검증 방법: `pnpm test:integration saved-search`, `pnpm test:e2e saved-search`
 - 기록: 원장 WP-033 상태, FR-SRCH-010 매핑
 
 ### WP-034 W-009 저장소 개요 화면
@@ -1052,7 +1053,7 @@
   - [ ] "결과 없음 / 권한 없음 / 미수집" 세 상태가 시각적으로 구분된다 (QA-COMMON-03)
   - [ ] 상태 매트릭스 W-009의 전 상태가 렌더링된다
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test -- web/repositories`, `pnpm test:a11y -- repositories`
+- 검증 방법: `pnpm test web/repositories`, `pnpm test:a11y repositories`
 - 기록: 원장 WP-034 상태
 
 ### WP-035 무중단 재색인
@@ -1080,7 +1081,7 @@
   - [ ] 재색인 실패 시 별칭이 전환되지 않는다 (AC-5)
   - [ ] 재색인 중 검색 요청이 실패하지 않는다 (무중단 검증)
   - [ ] **원본만으로 인덱스를 전량 재구성했을 때 결과가 동일하다** (FR-ING-003 AC-3, QA 6장)
-- 검증 방법: `pnpm test:integration -- reindex`
+- 검증 방법: `pnpm test:integration reindex`
 - 기록: 원장 WP-035 상태, FR-ING-008 매핑
 
 ### WP-036 원본 아카이브 레인(Filebeat)
@@ -1105,7 +1106,7 @@
   - [ ] Filebeat를 정지시켜도 엔티티 색인이 정상 동작한다 (AC-3)
   - [ ] `delivery_id`로 `raw_event`와 대조된다 (AC-4)
   - [ ] Filebeat 재기동 시 마지막 오프셋부터 이어서 적재한다 (예외 처리)
-- 검증 방법: `pnpm test:integration -- archive`, 수동 Filebeat 중단·재기동 시나리오
+- 검증 방법: `pnpm test:integration archive`, 수동 Filebeat 중단·재기동 시나리오
 - 기록: 원장 WP-036 상태, FR-ING-010 매핑
 
 ---
@@ -1137,7 +1138,7 @@
   - [ ] 집계 p95가 1500ms 이하다 (NFR-001)
   - [ ] 사전 계산 필드를 사용하고 조회 시점 script를 쓰지 않는다 (FR-STAT-003 AC-5)
   - [ ] API 계약의 응답 예시와 실제 응답이 일치한다
-- 검증 방법: `pnpm test:integration -- analytics`, `pnpm test:perf -- analytics`
+- 검증 방법: `pnpm test:integration analytics`, `pnpm test:perf analytics`
 - 기록: 원장 WP-037 상태, FR-STAT-001~006 매핑
 
 ### WP-038 W-006 통계 대시보드
@@ -1165,7 +1166,7 @@
   - [ ] 차트 색상이 라이트·다크 모두에서 대비 기준을 만족한다
   - [ ] 리터럴 색상값이 없다 (QA-COMMON-16)
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test -- web/analytics`, `pnpm test:e2e -- flow-005`, `pnpm test:a11y -- analytics`
+- 검증 방법: `pnpm test web/analytics`, `pnpm test:e2e flow-005`, `pnpm test:a11y analytics`
 - 기록: 원장 WP-038 상태
 
 ### WP-039 감사 기록과 A-004
@@ -1192,7 +1193,7 @@
   - [ ] `security_officer`가 아닌 역할이 403을 받는다 (AC-5)
   - [ ] 감사 저장 실패가 조회를 막지 않는다 (예외 처리)
   - [ ] 응답 본문이 감사에 기록되지 않는다 (보안 7장)
-- 검증 방법: `pnpm test:integration -- audit`, `pnpm test:e2e -- audit`
+- 검증 방법: `pnpm test:integration audit`, `pnpm test:e2e audit`
 - 기록: 원장 WP-039 상태, FR-AUTH-004 매핑
 
 ### WP-040 A-002·A-003 운영 콘솔
@@ -1218,7 +1219,7 @@
   - [ ] `operator`가 아닌 역할에게 내비게이션이 렌더링되지 않고 직접 진입 시 차단된다
   - [ ] FLOW-007, FLOW-008이 E2E로 통과한다
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test -- web/ops`, `pnpm test:e2e -- flow-007 flow-008`, `pnpm test:a11y -- ops`
+- 검증 방법: `pnpm test web/ops`, `pnpm test:e2e flow-007 flow-008`, `pnpm test:a11y ops`
 - 기록: 원장 WP-040 상태, FR-ADMIN-002 매핑
 
 ---
@@ -1248,7 +1249,7 @@
   - [ ] 에폭 변경 시 표식이 무효로 표시된다 (AC-4)
   - [ ] 등록·변경이 감사 기록에 남는다 (AC-5)
   - [ ] 존재하지 않는 시퀀스 지정 시 400이다 (예외 처리)
-- 검증 방법: `pnpm test:integration -- safe-marker`, `pnpm test:e2e -- safe-marker`
+- 검증 방법: `pnpm test:integration safe-marker`, `pnpm test:e2e safe-marker`
 - 기록: 원장 WP-041 상태, FR-SEQ-006 매핑
 
 ### WP-042 이분 탐색 보조
@@ -1276,7 +1277,7 @@
   - [ ] 브라우저를 닫았다 열어도 상태가 이어진다 (AC-5)
   - [ ] 에폭 변경 시 탐색이 무효화된다 (FLOW-004 예외)
   - [ ] FLOW-004가 E2E로 통과한다
-- 검증 방법: `pnpm test:integration -- bisect`, `pnpm test:e2e -- flow-004`
+- 검증 방법: `pnpm test:integration bisect`, `pnpm test:e2e flow-004`
 - 기록: 원장 WP-042 상태, FR-SEQ-007 매핑
 
 ### WP-043 관계 그래프 API와 W-007
@@ -1306,7 +1307,7 @@
   - [ ] 캔버스와 동등한 표가 제공되고 키보드로 순회된다 (NFR-007)
   - [ ] 그래프 없이도 W-002·W-003에서 동일 정보를 확인할 수 있다 (와이어프레임 W-007 구현 메모)
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test:integration -- relation/graph`, `pnpm test:a11y -- graph`
+- 검증 방법: `pnpm test:integration relation/graph`, `pnpm test:a11y graph`
 - 기록: 원장 WP-043 상태, FR-REL-008 매핑
 
 ### WP-044 검색 결과 내보내기
@@ -1333,7 +1334,7 @@
   - [ ] 내보내기가 감사 기록에 남는다 (AC-4)
   - [ ] 내보내기 결과에 접근 범위가 적용된다 (AC-5, THR-011)
   - [ ] 잡 실패 시 부분 파일이 제공되지 않는다 (예외 처리)
-- 검증 방법: `pnpm test:integration -- export`, `pnpm test:e2e -- export`
+- 검증 방법: `pnpm test:integration export`, `pnpm test:e2e export`
 - 기록: 원장 WP-044 상태, FR-SRCH-012 매핑
 
 ### WP-045 gh capability 레지스트리와 parity 검증기
@@ -1360,7 +1361,7 @@
   - [ ] 미분류 항목을 하나 만들면 검증기가 종료 코드 1로 실패한다
   - [ ] manifest에 없는 command를 gh가 갖고 있으면 `gh:diff-capabilities`가 검출한다
   - [ ] manifest 해시가 내용 변경 시 달라진다
-- 검증 방법: `pnpm gh:inventory && pnpm gh:validate-capabilities && pnpm test -- gh-cli`
+- 검증 방법: `pnpm gh:inventory && pnpm gh:validate-capabilities && pnpm test gh-cli`
 - 기록: 원장 WP-045 상태, FR-GH-001·FR-GH-011 매핑, 측정한 gh 버전과 command·flag 수
 
 ### WP-046 위임 GitHub 신원과 Operations App
@@ -1386,7 +1387,7 @@
   - [ ] 설치 권한이 더 넓어도 사용자 권한을 넘는 작업이 허용되지 않는다
   - [ ] 토큰 만료 시 갱신되고, 갱신 실패 시 재인가를 요구한다
   - [ ] 연결 해제 시 비밀 저장소의 토큰이 폐기된다
-- 검증 방법: `pnpm test:integration -- gh-identity`
+- 검증 방법: `pnpm test:integration gh-identity`
 - 기록: 원장 WP-046 상태, FR-GH-008 매핑
 
 ### WP-047 격리 gh 실행기와 실행 수명주기
@@ -1417,7 +1418,7 @@
   - [ ] 출력 상한 초과 시 절삭 사실과 함께 잘린다
   - [ ] 실행 종료 후 workspace와 토큰이 남지 않는다
   - [ ] 실행기 파드를 강제 종료하면 JOB-GH-007이 해당 실행을 `failed`로 회수한다
-- 검증 방법: `pnpm test:integration -- gh-exec`
+- 검증 방법: `pnpm test:integration gh-exec`
 - 기록: 원장 WP-047 상태, FR-GH-002·FR-GH-006 매핑, NFR-010·NFR-011 매핑
 
 ### WP-048 W-010 GitHub Command Center 수직 슬라이스
@@ -1452,7 +1453,7 @@
   - [ ] 같은 요청을 두 번 보내면 실행이 하나만 생성된다
   - [ ] 감사 기록에 실패하면 쓰기 실행이 시작되지 않는다
   - [ ] 실행 이력에서 동일 구성으로 재실행할 수 있다
-- 검증 방법: `pnpm test:integration -- gh-command`, `pnpm test:e2e -- gh-command-center`
+- 검증 방법: `pnpm test:integration gh-command`, `pnpm test:e2e gh-command-center`
 - 기록: 원장 WP-048 상태, FR-GH-003·FR-GH-009·FR-GH-012 매핑
 
 ### WP-049 PR 작업 (W-011)
@@ -1477,7 +1478,7 @@
   - [ ] 머지 확인 없이 실행되지 않는다
   - [ ] 같은 PR에 머지를 두 번 요청하면 두 번째가 `GH_RESOURCE_LOCKED` 또는 중복으로 처리된다
   - [ ] 권한 없는 사용자의 머지가 `GH_PERMISSION_DENIED`로 거부된다
-- 검증 방법: `pnpm test:integration -- gh-pr`, `pnpm test:e2e -- pr-operations`
+- 검증 방법: `pnpm test:integration gh-pr`, `pnpm test:e2e pr-operations`
 - 기록: 원장 WP-049 상태, FR-GH-004 매핑
 
 ### WP-050 Issue·Discussion 작업 (W-012)
@@ -1497,7 +1498,7 @@
   - [ ] Issue를 만들고 코멘트를 달고 닫을 수 있다
   - [ ] Discussion이 대상 GHE에서 preview 또는 미지원이면 그 사유가 화면에 표시된다
   - [ ] 삭제는 R3로 분류되어 강한 확인을 요구한다
-- 검증 방법: `pnpm test:integration -- gh-issue`
+- 검증 방법: `pnpm test:integration gh-issue`
 - 기록: 원장 WP-050 상태, FR-GH-004 매핑
 
 ### WP-051 저장소 작업 (W-013)
@@ -1517,7 +1518,7 @@
   - [ ] 저장소 조회·편집이 동작한다
   - [ ] 삭제·이름 변경이 강한 확인과 정책에 따른 승인을 거친다
   - [ ] 클론이 서버의 실제 소스 트리가 아니라 임시 workspace에서 수행된다
-- 검증 방법: `pnpm test:integration -- gh-repo`
+- 검증 방법: `pnpm test:integration gh-repo`
 - 기록: 원장 WP-051 상태, FR-GH-004 매핑
 
 ### WP-052 Actions·워크플로·실행·캐시 (W-014)
@@ -1540,7 +1541,7 @@
   - [ ] 실행 로그가 진행 중 스트리밍된다
   - [ ] 재실행·취소가 R2 확인을 거친다
   - [ ] 아티팩트를 내려받을 수 있다
-- 검증 방법: `pnpm test:integration -- gh-actions`, `pnpm test:e2e -- workflow-run`
+- 검증 방법: `pnpm test:integration gh-actions`, `pnpm test:e2e workflow-run`
 - 기록: 원장 WP-052 상태, FR-GH-004 매핑
 
 ### WP-053 릴리스·프로젝트 작업 (W-015, W-016)
@@ -1560,7 +1561,7 @@
   - [ ] 릴리스를 만들고 자산을 업로드·내려받을 수 있다
   - [ ] 업로드 파일이 실행 후 workspace에서 제거된다
   - [ ] 프로젝트 항목 관리가 동작한다
-- 검증 방법: `pnpm test:integration -- gh-release`
+- 검증 방법: `pnpm test:integration gh-release`
 - 기록: 원장 WP-053 상태, FR-GH-004 매핑
 
 ### WP-054 시크릿·변수·레이블·룰셋·키 (W-018)
@@ -1581,7 +1582,7 @@
   - [ ] 시크릿을 설정할 수 있고 값이 argv·URL·로그·이력·감사 어디에도 남지 않는다
   - [ ] 설정한 시크릿 값을 화면에서 다시 볼 수 없다
   - [ ] R3 확인·승인 없이 실행되지 않는다
-- 검증 방법: `pnpm test:integration -- gh-secret`
+- 검증 방법: `pnpm test:integration gh-secret`
 - 기록: 원장 WP-054 상태, FR-GH-004 매핑
 
 ### WP-055 Codespace·Gist·Attestation·고급 도구 (W-017, W-019, W-022)
@@ -1603,7 +1604,7 @@
   - [ ] Codespace 비대화형 작업이 동작한다
   - [ ] 대화형 기능이 사유와 함께 분류되어 표시되고 숨겨지지 않는다
   - [ ] 확장 실행이 기본 차단되고 `policy_blocked`으로 표시된다
-- 검증 방법: `pnpm test:integration -- gh-advanced`
+- 검증 방법: `pnpm test:integration gh-advanced`
 - 기록: 원장 WP-055 상태, FR-GH-004 매핑
 
 ### WP-056 gh API 탐색기 (W-020)
@@ -1627,7 +1628,7 @@
   - [ ] 구성된 호스트 밖 요청이 거부된다
   - [ ] 쓰기 메서드가 위험도 확인을 거친다
   - [ ] 차단 목록의 엔드포인트가 `GH_ENDPOINT_BLOCKED`로 거부된다
-- 검증 방법: `pnpm test:integration -- gh-api-explorer`
+- 검증 방법: `pnpm test:integration gh-api-explorer`
 - 기록: 원장 WP-056 상태, FR-GH-010 매핑
 
 ### WP-057 임시 workspace와 로컬 git 작업
@@ -1649,7 +1650,7 @@
   - [ ] workspace가 실행 종료와 함께 폐기된다
   - [ ] 할당량 초과 시 실행이 시작되지 않는다
   - [ ] 고아 workspace가 정리 잡에서 회수된다
-- 검증 방법: `pnpm test:integration -- gh-workspace`
+- 검증 방법: `pnpm test:integration gh-workspace`
 - 기록: 원장 WP-057 상태, FR-GH-007 매핑
 
 ### WP-058 Recipe 빌더 (W-023)
@@ -1658,13 +1659,20 @@
 - 관련 요구사항: FR-GH-005
 - 관련 화면/플로우: W-023, W-021
 - 관련 API/데이터/잡: API-GH-004 / ENT-GH-003, ENT-GH-004 / JOB-GH-002
-- 선행 WP: WP-049, WP-052
+- 선행 WP: WP-049, WP-052, **WP-066** (CR-009)
 - 구현 범위:
   - 마이그레이션 008: `gh_recipe`, `gh_recipe_revision`
   - W-023: 순차 단계, 타입 있는 입력 변수, 이전 단계 JSON 출력 바인딩, 조건, 팬아웃, 동시 실행 상한, 실패 정책
   - JOB-GH-002 단계 진행
   - R2 이상 단계 포함 시 전체 계획 확인
   - Recipe 개정 보존
+  - **(CR-009) 비순환 typed DAG** — 순차 의존, 병렬 분기, 조건, join. 저장 시 순환 거부
+  - **(CR-009) `GhBinding`** — 출발 단계·출력 port·도착 단계·도착 입력을 구조로. 표현식 없음
+  - **(CR-009) 호환 capability 제안** — 현재 출력과 이을 수 있는 것을 먼저 보여준다. 호환되지 않는 연결은 저장 전 사유와 함께 거부
+  - **(CR-009) 상한 있는 fan-out** — 최대 항목·동시성·위험도 집계·rate limit preflight. 상한 없으면 저장·실행 거부
+  - **(CR-009) 아티팩트 바인딩** — 실행기 경로가 아니라 아티팩트 ID
+  - **(CR-009) 자원 바인딩** — `GhResourceRef`로 잇는다. 문자열 재파싱 없음
+  - **(CR-009) 동적 R2/R3 preflight** — 대상 집합 확정 → plan 해시 → 확인 → 실행. 확인 뒤 plan이 바뀌면 무효
 - 제외:
   - 임의 shell·표현식 (영구 금지)
 - 완료 기준(DoD):
@@ -1673,7 +1681,7 @@
   - [ ] 임의 명령 문자열을 단계로 만들 수 없다
   - [ ] 실패 정책이 동작하고 앞선 단계를 자동으로 되돌리지 않는다
   - [ ] Recipe 개정이 보존된다
-- 검증 방법: `pnpm test:integration -- gh-recipe`, `pnpm test:e2e -- recipe-builder`
+- 검증 방법: `pnpm test:integration gh-recipe`, `pnpm test:e2e recipe-builder`
 - 기록: 원장 WP-058 상태, FR-GH-005 매핑
 
 ### WP-059 capability 드리프트와 정책 관리 (A-005, A-006)
@@ -1695,7 +1703,7 @@
   - [ ] 관리자가 capability를 차단하면 사용자 화면에서 `policy_blocked`으로 표시된다
   - [ ] 확장 허용 목록에 추가한 확장만 실행된다
   - [ ] 정책 변경이 감사에 남는다
-- 검증 방법: `pnpm test:integration -- gh-policy`
+- 검증 방법: `pnpm test:integration gh-policy`
 - 기록: 원장 WP-059 상태, FR-GH-013 매핑
 
 ### WP-060 전체 parity 검증
@@ -1718,7 +1726,7 @@
   - [ ] 페어와이즈 조합 시험이 통과한다
   - [ ] 숨겨진 capability가 없다 — 미지원·차단도 사유와 함께 노출된다
   - [ ] core parity와 extension parity 수치가 분리 보고된다
-- 검증 방법: `pnpm gh:validate-capabilities && pnpm test -- parity`
+- 검증 방법: `pnpm gh:validate-capabilities && pnpm test parity`
 - 기록: 원장 WP-060 상태, FR-GH-001 매핑
 
 ### WP-061 의미 capability 제약 엔진
@@ -1743,7 +1751,7 @@
   - [ ] 클라이언트 검증을 우회한 API 직접 호출이 서버에서 같은 사유로 거부된다
   - [ ] UI 판정과 서버 판정이 갈리면 시험이 실패한다
   - [ ] 미리보기 argv와 실행 argv가 같은 빌더에서 나온다 — 두 번째 빌더가 없음을 코드 검사로 확인한다
-- 검증 방법: `pnpm test -- gh/constraint`, `pnpm test -- gh/argv`
+- 검증 방법: `pnpm test gh/constraint`, `pnpm test gh/argv`
 - 기록: 원장 WP-061 상태, FR-GH-003 매핑
 
 ### WP-062 gh 출력·파일 안전 경계
@@ -1768,7 +1776,7 @@
   - [ ] `..`·절대 경로·symlink로 workspace 밖 파일에 접근하려는 시도가 차단된다
   - [ ] 아티팩트가 파일시스템 경로 없이 ID로만 전달된다
   - [ ] 바이너리 출력이 텍스트로 렌더링되지 않는다
-- 검증 방법: `pnpm test -- gh/safe-output`, `pnpm test:integration -- gh/workspace`
+- 검증 방법: `pnpm test gh/safe-output`, `pnpm test:integration gh/workspace`
 - 기록: 원장 WP-062 상태, NFR-010 매핑
 
 ### WP-063 interactive 웹 등가와 extension 신뢰 어댑터
@@ -1792,7 +1800,7 @@
   - [ ] 승인되지 않은 extension 실행이 차단되고, 그 존재와 사유는 UI에서 보인다
   - [ ] 버전 pin이 없는 extension 실행이 거부된다
   - [ ] core parity와 extension parity가 분리 집계된다
-- 검증 방법: `pnpm test -- gh/interaction`, `pnpm test -- gh/extension`
+- 검증 방법: `pnpm test gh/interaction`, `pnpm test gh/extension`
 - 기록: 원장 WP-063 상태, FR-GH-013 매핑
 
 ### WP-064 gh api 스키마 브리지와 호스트 capability 판정
@@ -1815,7 +1823,7 @@
   - [ ] `Authorization`·`Host`·`Cookie` 등 보안 헤더 덮어쓰기가 거부된다
   - [ ] 쓰기 메서드에 command와 동일한 위험도·확인·승인이 적용된다
   - [ ] 호스트가 지원하지 않는 capability가 숨겨지지 않고 사유와 함께 표시된다
-- 검증 방법: `pnpm test -- gh/api-bridge`, `pnpm test:integration -- gh/host-capability`
+- 검증 방법: `pnpm test gh/api-bridge`, `pnpm test:integration gh/host-capability`
 - 기록: 원장 WP-064 상태, FR-GH-010·FR-GH-011 매핑
 
 ### WP-065 조합 parity 검증기
@@ -1841,8 +1849,39 @@
   - [ ] `shell: true` 사용 경로가 0건임을 코드 검사가 확인한다
   - [ ] 페어와이즈 조합 시험이 통과한다
   - [ ] 차원별 커버리지 리포트가 A-006이 소비할 형식으로 산출된다
-- 검증 방법: `pnpm gh:validate-capabilities`, `pnpm test -- gh/parity`
+- 검증 방법: `pnpm gh:validate-capabilities`, `pnpm test gh/parity`
 - 기록: 원장 WP-065 상태, NFR-009 매핑
+
+### WP-066 typed 결과 계약과 capability 그래프
+
+- 목표: command의 출력에도 계약이 생기고, 어떤 명령을 이을 수 있는지 타입으로 계산된다.
+- 관련 요구사항: FR-GH-001, FR-GH-005, NFR-009, NFR-010
+- 관련 화면/플로우: W-023, A-006
+- 관련 API/데이터/잡: API-GH-001, API-GH-004 / ENT-GH-006, ENT-GH-009, ENT-GH-010, ENT-GH-011
+- 선행 WP: WP-045, WP-061
+- 구현 범위:
+  - `GhResultContract` 스키마: `kind`(json/resource/resource_list/url/artifact/text/stream/exit_status), `schema`, `resourceType`, `bindable`, `sensitivity`, `adapters`
+  - 결과 sensitivity 분류: `public`/`internal`/`sensitive`/`secret`. `secret`은 표시·이력·바인딩·감사 본문·stdin 자동 전달 전부 차단
+  - `GhResourceRef` 공통 타입과 자원 종류 확정
+  - capability별 typed 입출력 port 선언
+  - `GhBinding` 구조와 제한된 JSON Pointer 평가기 (표현식 해석기 없음)
+  - `GhCapabilityGraph` 계산: 출력 port → 호환 입력 port 간선
+  - result adapter 분류기: `native_json`/`gh_api_structured`/`resource_url`/`artifact`/`opaque_text`/`stream`/`exit_status`/`secret_non_bindable`
+  - composability 상태 분류기 (`unknown` 금지)
+  - `GhResultEnvelope` 통일 (SafeGhOutput 경계 통과값만)
+- 제외:
+  - Recipe 그래프 UI (WP-058)
+  - 조합 커버리지 리포트 산출 (WP-065)
+- 완료 기준(DoD):
+  - [ ] 모든 capability가 결과 계약을 가지며 `unknown`이 0이다
+  - [ ] `secret` 결과가 바인딩 대상으로 제안되지 않고, 저장 시도가 거부된다
+  - [ ] 출력 port와 입력 port의 호환이 이름이 아니라 타입으로 계산된다
+  - [ ] `gh search prs` → `gh pr checks` → `gh run rerun` 같은 연쇄가 그래프에서 자동으로 도출된다
+  - [ ] `opaque_text` capability가 typed 바인딩 source로 선택되지 않고, 목록에서 숨겨지지도 않는다
+  - [ ] 아티팩트 결과가 경로가 아니라 ID로 표현된다
+  - [ ] `GhBinding` 평가에 표현식 해석기가 쓰이지 않음을 코드 검사로 확인한다
+- 검증 방법: `pnpm test gh/result-contract`, `pnpm test gh/capability-graph`
+- 기록: 원장 WP-066 상태, FR-GH-001·FR-GH-005 매핑
 
 ## 4. REL → WP 커버리지
 
@@ -1854,11 +1893,11 @@
 | REL-004 | WP-029 ~ WP-036 | 8 |
 | REL-005 | WP-037 ~ WP-040 | 4 |
 | REL-006 | WP-041 ~ WP-044 | 4 |
-| REL-007 | WP-045 ~ WP-048, WP-061, WP-062 | 6 |
+| REL-007 | WP-045 ~ WP-048, WP-061, WP-062, WP-066 | 7 |
 | REL-008 | WP-049 ~ WP-050 | 2 |
 | REL-009 | WP-051 ~ WP-053, WP-057 | 4 |
 | REL-010 | WP-054 ~ WP-056, WP-063, WP-064 | 5 |
 | REL-011 | WP-058 ~ WP-060, WP-065 | 4 |
-| 합계 | | 65 |
+| 합계 | | 66 |
 
 모든 REL이 WP로 분해되었고, 모든 WP가 최소 1개 FR을 참조한다.

@@ -55,7 +55,7 @@
 | Event ID | 이름 | Producer | Consumer | Payload | Ordering/Dedupe |
 | --- | --- | --- | --- | --- | --- |
 | EVT-ING-001 | `ingestion.event_received` | ingest-gateway | enrich | `{ delivery_id, event_type, action, repository_id, correlation_id, occurred_at }` | 파티션 `repository_id`, 멱등 `delivery_id` |
-| EVT-ING-002 | `ingestion.enriched` | enrich | project | `{ delivery_id, repository_id, entity_kind, entity_id, enrichment_pending, correlation_id }` | 위와 동일 |
+| EVT-ING-002 | `ingestion.enriched` | enrich | project | **self-contained bounded (CR-010, DEV-013)** — `{ delivery_id, repository_id, entity_kind, pr_number, pull_request, source_commit_shas[], changed_files[], reviews[], source_commits_truncated, files_truncated, enrichment_pending, enrichment_errors[], correlation_id }`. 투영이 GitHub API를 다시 부르지 않아도 되도록 필요한 것을 실어 보낸다. 원본 웹훅 전량·patch/diff 본문·소스 코드·토큰은 싣지 않는다. 커밋 250건·파일 3000건 상한 유지 | 위와 동일 |
 | EVT-ING-003 | `ingestion.projected` | project | link | `{ repository_id, entity_kind, entity_id, document_version, correlation_id }` | 위와 동일 |
 | EVT-ING-004 | `ingestion.failed` | 모든 워커 | ops | `{ delivery_id, stage, error, retry_count, correlation_id }` | 멱등 `(delivery_id, stage)` |
 | EVT-SEQ-001 | `sequence.assigned` | sequence | project, ops | `{ repository_id, base_branch, seq_epoch, from_seq, to_seq, head_sha }` | 시퀀스 공간별 직렬 |
@@ -78,6 +78,25 @@
 | 초과 | 실패 대기열로 이동 |
 
 각 지연에 ±20% 지터를 적용해 동시 실패 시 재시도가 몰리지 않게 한다.
+
+**rate limit 대기는 이 재시도와 다르다 (CR-010, DEV-014).** 둘을 같은 것으로 세면 실제 장애가 아닌 대기가 실패로 집계된다.
+
+| | 표준 재시도 | rate limit defer |
+| --- | --- | --- |
+| 언제 | 네트워크·5xx·타임아웃 등 실제 실패 | 주 한도 소진, `retry-after` 수신 |
+| 얼마나 기다리나 | 1·2·4·8·16초 + ±20% 지터 | GitHub이 알려 준 회복 시각(`retryAt`)까지 |
+| 재시도 예산 | 소비한다 (5회) | **소비하지 않는다** |
+| 소진하면 | 실패 대기열 | 없음 — 회복 시각이 지나면 그냥 다시 시도한다 |
+
+한도가 10분 뒤에 풀리는데 30초마다 재전달되면 회복 전에 5회를 소진해 멀쩡한 이벤트가 실패 대기열로 간다. 그래서 `EventBus` 핸들러가 처분을 돌려준다 — `retry`(표준 백오프), `defer`(지정 시각까지, 예산 미소비), `dead_letter`(종료 기록 후 ack). 어느 어댑터를 쓰든 아래는 지켜야 한다.
+
+- `retryAt` 이전에 GHE로 HTTP 요청을 다시 보내지 않는다
+- rate limit defer는 재시도 예산을 소비하지 않는다
+- 관계없는 파티션을 프로세스 전역 sleep으로 막지 않는다
+- 같은 파티션의 기존 순서 보장을 깨지 않는다
+- 표준 재시도는 5회다
+- 재시도 소진 뒤 실패 대기열에 기록하고 **원 이벤트는 ack해 파티션을 푼다**
+- 404는 즉시 실패 대기열로 보내고 ack한다
 
 ### 5.2 재시도 대상 판정
 

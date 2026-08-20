@@ -245,6 +245,10 @@ export function search(q: ScopedQuery): Promise<EsResponse>;   // ScopedQuery만
 | THR-027 | 승인되지 않은 gh extension 실행으로 임의 코드 실행 | 실행기 장악 | 기본 `policy_blocked`, 관리자 허용 목록 + 정확한 버전 pin, 강화된 격리 (ADR-019) |
 | THR-028 | 과거 실행 이력의 argv를 그대로 재실행해 만료된 권한·정책으로 작업 수행 | 권한 우회 | 재실행은 저장된 구조화 invocation을 현재 manifest·권한·정책으로 재검증 (FR-GH-012 AC-4) |
 | THR-029 | `gh api`로 command 정책이 막은 작업을 우회 | 정책 우회 | `gh api`도 같은 위험도·확인·승인·감사 경로 (FR-GH-010) |
+| THR-030 | `gh auth token` 등 비밀 결과를 다음 단계 stdin으로 이어 자격 증명 유출 | 자격 증명 탈취 | CR-009 — 결과 sensitivity `secret`은 바인딩·표시·이력·감사 본문·stdin 자동 전달 전부 차단 (ADR-020) |
+| THR-031 | Recipe 바인딩 표현식에 코드를 심어 실행 | 임의 코드 실행 | 표현식 해석기를 두지 않는다. 선언된 named field 또는 제한된 JSON Pointer만 (FR-GH-005 AC-8) |
+| THR-032 | 검색 결과 대량 집합에 쓰기 작업을 fan-out해 대량 변경 유발 | 대규모 무단 변경 | 모든 fan-out에 상한·동시성·위험도 집계·rate limit preflight 강제. 상한 없으면 저장·실행 거부 (AC-9) |
+| THR-033 | 확인 이후 대상 집합이 바뀐 상태로 R2/R3 실행 | 의도하지 않은 대상 변경 | plan 해시로 확정. 확인 뒤 plan이 달라지면 기존 확인 무효 (AC-10) |
 
 ## 11. 오남용 사례
 

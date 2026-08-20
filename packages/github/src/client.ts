@@ -7,7 +7,7 @@
  */
 
 import type { RequestPriority } from './scheduler.js';
-import type { GitHubTransport } from './transport.js';
+import type { GitHubTransport, PagedResult } from './transport.js';
 
 export interface RepoRef {
   readonly owner: string;
@@ -105,7 +105,21 @@ export class GitHubClient {
   }
 
   async listPullRequestCommits(ref: RepoRef, number: number, options: CallOptions = {}): Promise<CommitSummary[]> {
-    return this.#transport.getAll<CommitSummary>({
+    return [...(await this.listPullRequestCommitsPaged(ref, number, options)).items];
+  }
+
+  /**
+   * 원본 커밋 목록 + 절삭 여부 (FR-SRCH-003 AC-4).
+   *
+   * 보강 워커는 `source_commits_truncated`를 이 결과에서 읽는다. 배열 길이가
+   * 250이라는 사실만으로는 잘린 것인지 원래 250건인지 알 수 없다.
+   */
+  async listPullRequestCommitsPaged(
+    ref: RepoRef,
+    number: number,
+    options: CallOptions = {},
+  ): Promise<PagedResult<CommitSummary>> {
+    return this.#transport.getAllPaged<CommitSummary>({
       org: orgOf(ref),
       path: `/repos/${ref.owner}/${ref.repo}/pulls/${String(number)}/commits`,
       maxItems: MAX_PR_COMMITS,
@@ -120,7 +134,16 @@ export class GitHubClient {
    * (백엔드 아키텍처 4.2). 그래서 이 경로만은 API가 유일한 출처다.
    */
   async listPullRequestFiles(ref: RepoRef, number: number, options: CallOptions = {}): Promise<ChangedFile[]> {
-    return this.#transport.getAll<ChangedFile>({
+    return [...(await this.listPullRequestFilesPaged(ref, number, options)).items];
+  }
+
+  /** 변경 파일 목록 + 절삭 여부 (FR-ING-004 AC-4). */
+  async listPullRequestFilesPaged(
+    ref: RepoRef,
+    number: number,
+    options: CallOptions = {},
+  ): Promise<PagedResult<ChangedFile>> {
+    return this.#transport.getAllPaged<ChangedFile>({
       org: orgOf(ref),
       path: `/repos/${ref.owner}/${ref.repo}/pulls/${String(number)}/files`,
       maxItems: MAX_CHANGED_FILES,

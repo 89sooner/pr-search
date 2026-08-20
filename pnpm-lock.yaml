@@ -59,6 +59,9 @@ importers:
       '@prs/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@prs/github':
+        specifier: workspace:*
+        version: link:../../packages/github
 
   apps/search-api:
     dependencies:
