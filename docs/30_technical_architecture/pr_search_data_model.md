@@ -38,6 +38,9 @@
 | ENT-GH-006 | GhCapabilitySnapshot | 적용 중인 capability manifest | `snapshot_id`, `gh_version`, `manifest_version`, `manifest_hash`, `command_count`, `flag_count`, `unclassified_count`, `activated_at`, `alias_count`, `positional_count`, `inherited_flag_count`, `interaction_unclassified_count`, `extension_command_count` (CR-008) | PostgreSQL | gh-registry | FR-GH-001, FR-GH-011 |
 | ENT-GH-007 | GhCapabilityConstraint | capability의 유효 조합 정의 (CR-008, ADR-017) | `capability_id`, `kind`(`requires`/`conflicts`/`oneOf`/`exactlyOne`/`atLeastOne`/`implies`/`repeatable`/`minItems`/`maxItems`/`enum`/`conditional`/`inputSource`/`context`), `subjects[]`, `condition`, `values[]`, `bounds` | manifest (PostgreSQL 스냅숏) | gh-registry | FR-GH-003 |
 | ENT-GH-008 | GhInvocation | 사용자 의도의 구조화 표현 (CR-008, ADR-017) | `capability_id`, `context`(host/org/repo/ref/workspace), `positional_arguments[]`, `flags[]`, `stdin_source`, `file_bindings[]`, `output_options` | PostgreSQL (`gh_execution`에 내장) | gh-exec | FR-GH-002, FR-GH-012 |
+| ENT-GH-009 | GhResultContract | capability의 결과 계약 (CR-009, ADR-020) | `capability_id`, `kind`(json/resource/resource_list/url/artifact/text/stream/exit_status), `schema`, `resource_type`, `bindable`, `sensitivity`(public/internal/sensitive/secret), `adapters[]`, `composability` | manifest (PostgreSQL 스냅숏) | gh-registry | FR-GH-001, FR-GH-005 |
+| ENT-GH-010 | GhResourceRef | 명령 사이를 잇는 공통 자원 참조 (CR-009) | `host`, `kind`, `repository`, `id`, `number`, `ref` | 값 타입 (실행·Recipe에 내장) | gh-exec, gh-recipe | FR-GH-005 |
+| ENT-GH-011 | GhBinding | Recipe 단계 사이의 구조화된 연결 (CR-009) | `source_step`, `source_port`, `target_step`, `target_slot`(input/positional/flag/context), `field_selector`(선언된 named field 또는 제한된 JSON Pointer) | PostgreSQL (`gh_recipe_revision.definition`) | gh-recipe | FR-GH-005 |
 
 ## 3. PostgreSQL 스키마
 

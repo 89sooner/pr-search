@@ -75,14 +75,15 @@
 | WP-055 | Codespace·Gist·Attestation·고급 도구 (W-017, W-019, W-022) | REL-010 | WP-048 | todo |
 | WP-056 | gh API 탐색기 (W-020) | REL-010 | WP-048 | todo |
 | WP-057 | 임시 workspace와 로컬 git 작업 | REL-009 | WP-047 | todo |
-| WP-058 | Recipe 빌더 (W-023) | REL-011 | WP-049, WP-052 | todo |
+| WP-058 | Recipe 빌더 (W-023) | REL-011 | WP-049, WP-052, WP-066 | todo |
 | WP-059 | capability 드리프트와 정책 관리 (A-005, A-006) | REL-011 | WP-045, WP-048 | todo |
-| WP-060 | 전체 parity 검증 | REL-011 | WP-045 ~ WP-059, WP-061 ~ WP-065 | todo |
+| WP-060 | 전체 parity 검증 | REL-011 | WP-045 ~ WP-059, WP-061 ~ WP-066 | todo |
 | WP-061 | 의미 capability 제약 엔진 | REL-007 | WP-045 | todo |
 | WP-062 | gh 출력·파일 안전 경계 | REL-007 | WP-047 | todo |
 | WP-063 | interactive 웹 등가와 extension 신뢰 어댑터 | REL-010 | WP-045, WP-055 | todo |
 | WP-064 | gh api 스키마 브리지와 호스트 capability 판정 | REL-010 | WP-056 | todo |
-| WP-065 | 조합 parity 검증기 | REL-011 | WP-061, WP-063, WP-064 | todo |
+| WP-065 | 조합 parity 검증기 | REL-011 | WP-061, WP-063, WP-064, WP-066 | todo |
+| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 | WP-045, WP-061 | todo |
 
 의존 그래프에 순환은 없다. WP-001~WP-003과 WP-005·WP-006은 병렬 착수 가능하다.
 
@@ -1658,13 +1659,20 @@
 - 관련 요구사항: FR-GH-005
 - 관련 화면/플로우: W-023, W-021
 - 관련 API/데이터/잡: API-GH-004 / ENT-GH-003, ENT-GH-004 / JOB-GH-002
-- 선행 WP: WP-049, WP-052
+- 선행 WP: WP-049, WP-052, **WP-066** (CR-009)
 - 구현 범위:
   - 마이그레이션 008: `gh_recipe`, `gh_recipe_revision`
   - W-023: 순차 단계, 타입 있는 입력 변수, 이전 단계 JSON 출력 바인딩, 조건, 팬아웃, 동시 실행 상한, 실패 정책
   - JOB-GH-002 단계 진행
   - R2 이상 단계 포함 시 전체 계획 확인
   - Recipe 개정 보존
+  - **(CR-009) 비순환 typed DAG** — 순차 의존, 병렬 분기, 조건, join. 저장 시 순환 거부
+  - **(CR-009) `GhBinding`** — 출발 단계·출력 port·도착 단계·도착 입력을 구조로. 표현식 없음
+  - **(CR-009) 호환 capability 제안** — 현재 출력과 이을 수 있는 것을 먼저 보여준다. 호환되지 않는 연결은 저장 전 사유와 함께 거부
+  - **(CR-009) 상한 있는 fan-out** — 최대 항목·동시성·위험도 집계·rate limit preflight. 상한 없으면 저장·실행 거부
+  - **(CR-009) 아티팩트 바인딩** — 실행기 경로가 아니라 아티팩트 ID
+  - **(CR-009) 자원 바인딩** — `GhResourceRef`로 잇는다. 문자열 재파싱 없음
+  - **(CR-009) 동적 R2/R3 preflight** — 대상 집합 확정 → plan 해시 → 확인 → 실행. 확인 뒤 plan이 바뀌면 무효
 - 제외:
   - 임의 shell·표현식 (영구 금지)
 - 완료 기준(DoD):
@@ -1844,6 +1852,37 @@
 - 검증 방법: `pnpm gh:validate-capabilities`, `pnpm test -- gh/parity`
 - 기록: 원장 WP-065 상태, NFR-009 매핑
 
+### WP-066 typed 결과 계약과 capability 그래프
+
+- 목표: command의 출력에도 계약이 생기고, 어떤 명령을 이을 수 있는지 타입으로 계산된다.
+- 관련 요구사항: FR-GH-001, FR-GH-005, NFR-009, NFR-010
+- 관련 화면/플로우: W-023, A-006
+- 관련 API/데이터/잡: API-GH-001, API-GH-004 / ENT-GH-006, ENT-GH-009, ENT-GH-010, ENT-GH-011
+- 선행 WP: WP-045, WP-061
+- 구현 범위:
+  - `GhResultContract` 스키마: `kind`(json/resource/resource_list/url/artifact/text/stream/exit_status), `schema`, `resourceType`, `bindable`, `sensitivity`, `adapters`
+  - 결과 sensitivity 분류: `public`/`internal`/`sensitive`/`secret`. `secret`은 표시·이력·바인딩·감사 본문·stdin 자동 전달 전부 차단
+  - `GhResourceRef` 공통 타입과 자원 종류 확정
+  - capability별 typed 입출력 port 선언
+  - `GhBinding` 구조와 제한된 JSON Pointer 평가기 (표현식 해석기 없음)
+  - `GhCapabilityGraph` 계산: 출력 port → 호환 입력 port 간선
+  - result adapter 분류기: `native_json`/`gh_api_structured`/`resource_url`/`artifact`/`opaque_text`/`stream`/`exit_status`/`secret_non_bindable`
+  - composability 상태 분류기 (`unknown` 금지)
+  - `GhResultEnvelope` 통일 (SafeGhOutput 경계 통과값만)
+- 제외:
+  - Recipe 그래프 UI (WP-058)
+  - 조합 커버리지 리포트 산출 (WP-065)
+- 완료 기준(DoD):
+  - [ ] 모든 capability가 결과 계약을 가지며 `unknown`이 0이다
+  - [ ] `secret` 결과가 바인딩 대상으로 제안되지 않고, 저장 시도가 거부된다
+  - [ ] 출력 port와 입력 port의 호환이 이름이 아니라 타입으로 계산된다
+  - [ ] `gh search prs` → `gh pr checks` → `gh run rerun` 같은 연쇄가 그래프에서 자동으로 도출된다
+  - [ ] `opaque_text` capability가 typed 바인딩 source로 선택되지 않고, 목록에서 숨겨지지도 않는다
+  - [ ] 아티팩트 결과가 경로가 아니라 ID로 표현된다
+  - [ ] `GhBinding` 평가에 표현식 해석기가 쓰이지 않음을 코드 검사로 확인한다
+- 검증 방법: `pnpm test -- gh/result-contract`, `pnpm test -- gh/capability-graph`
+- 기록: 원장 WP-066 상태, FR-GH-001·FR-GH-005 매핑
+
 ## 4. REL → WP 커버리지
 
 | REL | WP | 개수 |
@@ -1854,11 +1893,11 @@
 | REL-004 | WP-029 ~ WP-036 | 8 |
 | REL-005 | WP-037 ~ WP-040 | 4 |
 | REL-006 | WP-041 ~ WP-044 | 4 |
-| REL-007 | WP-045 ~ WP-048, WP-061, WP-062 | 6 |
+| REL-007 | WP-045 ~ WP-048, WP-061, WP-062, WP-066 | 7 |
 | REL-008 | WP-049 ~ WP-050 | 2 |
 | REL-009 | WP-051 ~ WP-053, WP-057 | 4 |
 | REL-010 | WP-054 ~ WP-056, WP-063, WP-064 | 5 |
 | REL-011 | WP-058 ~ WP-060, WP-065 | 4 |
-| 합계 | | 65 |
+| 합계 | | 66 |
 
 모든 REL이 WP로 분해되었고, 모든 WP가 최소 1개 FR을 참조한다.

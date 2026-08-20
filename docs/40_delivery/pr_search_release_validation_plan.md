@@ -203,6 +203,8 @@ ACC-06(관계 정확도)은 REL-004의 exit criteria이자 W-007(관계 그래�
 | GATE-GH-01 capability 커버리지 | NFR-009의 전 차원 분류 100% — command path, alias, positional, command 고유 flag, inherited/global flag, short alias, 반복 가능 flag, interaction 모드, 입출력 모드, `--json` 필드. 미분류 0 (CR-008) | NFR-009 |
 | GATE-GH-01b core/extension 분리 | core parity와 extension parity 수치를 분리 보고 (CR-008) | NFR-009, FR-GH-013 |
 | GATE-GH-01c 출력 안전 경계 | gh 출력에 ANSI CSI·OSC·제어 문자가 무해화되어 전달되고, 렌더링 경로에 원시 HTML이 0건 (CR-008) | NFR-010 |
+| GATE-GH-01d 결과 계약 커버리지 | 결과 계약·bindability·입출력 port·자원 타입·secret 출력 분류 각각 100%, 미분류 0 (CR-009) | NFR-009, FR-GH-001 |
+| GATE-GH-01e 조합 안전 | `secret` 결과 바인딩 0건, 상한 없는 fan-out 저장 0건, Recipe 그래프 순환 0건 (CR-009) | NFR-010, FR-GH-005 |
 | GATE-GH-02 드리프트 | 설치 gh와 커밋된 manifest가 일치. CI 검출 잡 통과 | NFR-009 |
 | GATE-GH-03 실행 격리 | shell 경유 0건, 비루트·읽기 전용 루트 FS 확인, workspace 격리 확인 | NFR-010 |
 | GATE-GH-04 비밀 취급 | argv·URL·로그·이력·감사 스캔에서 비밀 노출 0건 | NFR-010 |

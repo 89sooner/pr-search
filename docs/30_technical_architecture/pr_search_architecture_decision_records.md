@@ -29,6 +29,7 @@
 | ADR-017 | 구조화 gh invocation + 의미 제약 모델을 UI·서버·실행기의 단일 진실로 | accepted | 2026-08-20 | frontend, backend, api, data |
 | ADR-018 | gh 출력과 파일은 신뢰할 수 없으며 별도 무해화 경계를 통과한다 | accepted | 2026-08-20 | security, frontend, backend |
 | ADR-019 | interactive 명령의 웹 등가 계층과 extension 신뢰 경계 | accepted | 2026-08-20 | frontend, security, backend |
+| ADR-020 | typed gh 결과 계약과 capability 데이터흐름 그래프 | accepted | 2026-08-20 | data, frontend, backend, security |
 
 ## ADR-001 전 계층 TypeScript 단일 언어
 
@@ -774,3 +775,77 @@ extension은 다른 종류의 문제다. 임의 extension 실행은 임의 코�
 - Positive: `terminal_only`가 게으른 분류가 되지 않는다. 사용자는 왜 안 되는지 항상 알 수 있다. extension 위험이 core 실행 경로로 새지 않는다.
 - Negative: 웹 등가마다 별도 UI가 필요해 구현량이 늘어난다. extension 승인은 관리자 운영 부담이다.
 - Follow-up: WP-063이 웹 등가 어댑터와 extension 신뢰 경계를 만든다. 웹 등가가 없다고 분류할 때는 사유를 manifest에 남긴다.
+
+## ADR-020 typed gh 결과 계약과 capability 데이터흐름 그래프
+
+### Context
+
+CR-008은 *한 command*의 입력을 완전히 표현했다. `GhCapabilityConstraint`가 유효 조합을 정의하고 `GhInvocation`이 사용자 의도를 담는다. 그런데 실제 업무는 명령 하나로 끝나지 않는다 — 검색해서 고르고, 고른 것의 상태를 보고, 받은 파일을 다음에 넘긴다.
+
+**입력만 계약이 있고 출력은 계약이 없으면 조합은 일반화되지 않는다.** 지금 Recipe(FR-GH-005)가 표현할 수 있는 연결은 "이전 단계의 JSON 출력에서 필드 뽑기"뿐이다. 그런데 gh 출력이 전부 JSON은 아니다.
+
+| 상황 | JSON 필드 바인딩으로 안 되는 이유 |
+| --- | --- |
+| 명령이 저장소 URL을 반환 → 다음 명령이 저장소를 요구 | URL은 JSON 필드가 아니다 |
+| `gh release download`가 파일 생성 → 다음 명령이 파일 입력 | 파일은 JSON 필드가 아니고 실행기 경로를 넘겨서도 안 된다 |
+| `gh search prs`가 집합 반환 → `gh pr checks`는 하나 필요 | 집합에서 하나를 고른다는 의미가 없다 |
+| `gh run rerun`이 workflow run 참조 필요 | `owner/repo#123`을 매번 재파싱하게 된다 |
+
+명령마다 특수 코드를 넣어 이어 붙이는 방법도 있다. 228개 노드에 그렇게 하면 조합의 수만큼 코드가 늘고, gh가 버전을 올릴 때마다 그 코드를 전부 다시 본다.
+
+또 하나 놓치면 안 되는 것이 있다. **`gh auth token`은 값이 곧 자격 증명이다.** 이것을 "문자열을 반환하는 명령"으로 일반화해 다음 단계 stdin에 자동으로 이어 주면, 조합 기능이 그대로 자격 증명 유출 경로가 된다.
+
+### Options
+
+1. 조합이 필요한 쌍마다 어댑터 코드를 둔다.
+2. 출력을 텍스트로 보고 정규식으로 필요한 것을 뽑는다.
+3. 출력에도 계약을 두고, 연결을 타입으로 계산한다.
+
+옵션 2는 처음에 빨라 보이지만 gh 출력 형식이 조금만 바뀌어도 조용히 깨진다. 그리고 깨진 것이 실행 실패가 아니라 **잘못된 대상에 대한 실행**으로 나타난다 — 파싱이 어긋나 엉뚱한 PR 번호를 뽑는 쪽이 아무것도 못 뽑는 쪽보다 위험하다.
+
+### Decision
+
+**옵션 3.** capability manifest가 입력 계약과 함께 결과 계약을 갖는다.
+
+```text
+GhCapability
+  ├─ GhCapabilityConstraint   (CR-008, ADR-017)  입력의 유효 조합
+  └─ GhResultContract         (CR-009, 이 ADR)   출력의 의미
+       kind          json | resource | resource_list | url
+                     | artifact | text | stream | exit_status
+       schema        구조화 출력의 스키마
+       resourceType  결과가 가리키는 자원 종류
+       bindable      다음 단계 입력으로 이을 수 있는가
+       sensitivity   public | internal | sensitive | secret
+       adapters      native_json | gh_api_structured | resource_url
+                     | artifact | opaque_text | stream | exit_status
+                     | secret_non_bindable
+
+              출력 port ──── 타입 일치 ────▶ 입력 port
+                            (이름이 아니라 타입)
+                                 │
+                        GhCapabilityGraph
+              node = capability, edge = 호환 가능한 연결
+```
+
+**연결의 공통 화폐는 `GhResourceRef`다.** `{ host, kind, repository, id, number, ref }`. 명령 사이에서 `owner/repo#123` 문자열을 다시 파싱하지 않는다. `kind`는 `repository`, `pull_request`, `issue`, `discussion`, `workflow`, `workflow_run`, `release`, `project`, `codespace`, `artifact`, `gist`, `user`, `team`, `branch`, `commit`이다.
+
+**연결은 `GhBinding`이지 표현식이 아니다.** 출발 단계·출발 출력 port·도착 단계·도착 입력을 구조로 적는다. JSON 내부 필드가 필요하면 manifest에 선언된 named field 또는 스키마가 허용한 제한된 JSON Pointer만 쓴다. `eval`, JavaScript 표현식, shell 표현식, 템플릿 코드 실행, 임의 표현식 해석기는 어떤 형태로도 두지 않는다.
+
+단일 명령의 `--jq` parity는 그대로 유지한다. 사용자가 한 명령에 `--jq`를 거는 것은 gh의 기능이고 우리가 막을 이유가 없다. 다만 **Recipe 내부의 데이터 연결을 임의 jq 표현식에 의존시키지 않는다** — 그렇게 하면 표현식 해석기를 우리가 신뢰 경계 안에서 돌리는 셈이 된다.
+
+**`--json`이 없는 명령은 adapter로 분류한다.** 자체 `--json`이 없어도 같은 의미를 `gh api`로 구조화할 수 있으면 `gh_api_structured`를 web equivalent로 둔다. 단 **명령의 의미가 달라지면 쓰지 않는다.** 구조화할 수 없으면 `opaque_text`다 — 실행하고 화면에 보여줄 수 있지만 typed 바인딩의 source가 될 수 없다. 숨기지 않는다.
+
+**`secret` 결과는 흐르지 않는다.** 화면 표시, 이력 저장, Recipe 바인딩, 감사 본문 저장, 다음 명령 stdin 자동 전달을 전부 금지한다. capability 자체는 목록에 있고 실행될 수 있다 — **기능이 존재한다는 사실과 비밀 값을 노출하는 것은 다른 문제다.**
+
+**Recipe는 비순환 typed DAG다.** 순차 의존, 병렬 분기, 조건, 상한 있는 fan-out, join, typed 바인딩, 동시성 상한, 실패 정책. 순환은 저장 시 거부한다. 무한 루프·`while`·재귀 Recipe는 없다.
+
+**fan-out에는 반드시 상한이 있다.** `gh search prs`가 10,000건을 돌려주고 각각에 `gh pr merge`를 거는 실수가 곧바로 대량 쓰기가 되어서는 안 된다. 최대 항목 수·동시성·위험도 집계·rate limit preflight가 없으면 저장도 실행도 거부한다. 동적으로 산출된 R2 이상 대상 집합은 preflight로 확정하고 plan 해시를 만들어 확인을 받는다. 확인 뒤 plan이 바뀌면 그 확인은 무효다.
+
+**파일은 경로가 아니라 아티팩트 ID로 흐른다.** `/tmp/abc/file.zip` 같은 실행기 경로를 다음 단계에 넘기지 않는다. 아티팩트 ID를 넘기고 다음 단계가 실행 직전에 자기 workspace에 materialize한다 (ADR-018의 파일 경계와 같은 이유다).
+
+### Consequences
+
+- Positive: 조합이 명령 쌍마다의 특수 코드 없이 성립한다. 어떤 명령을 이을 수 있는지 UI가 계산해서 제안한다. 잘못된 연결이 실행 시점이 아니라 저장 시점에 잡힌다. 자격 증명이 조합 경로로 새지 않는다. gh 버전이 올라가면 결과 계약도 커버리지 게이트에 걸려 드러난다.
+- Negative: manifest가 다시 무거워진다. 결과 계약을 사람이 정해 줘야 하는 부분이 있고(`gh help`가 출력 의미까지 알려주지는 않는다), 그 판단이 틀리면 잘못된 연결이 허용된다. `opaque_text`가 많으면 조합 가능 범위가 좁아진다.
+- Follow-up: WP-066이 결과 계약과 그래프를 만든다. `opaque_text` 개수는 A-006에 노출해 줄여야 할 부채로 관리한다. 결과 계약의 사람 판단 부분은 CR-008의 semantic override와 같은 절차를 따른다.

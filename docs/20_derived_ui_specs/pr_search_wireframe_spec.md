@@ -880,5 +880,5 @@ capability manifest에 있는 모든 명령을 검색하고, 생성된 폼으로
 | 화면 | 핵심 요소 | 관련 FR |
 | --- | --- | --- |
 | A-005 | capability 허용·차단 목록, 위험도 재정의, 승인 필요 지정, `gh api` 엔드포인트 정책, 확장 허용 목록. 변경은 감사 대상 | FR-GH-009, FR-GH-010, FR-GH-013 |
-| A-006 | manifest 버전·해시, 설치 gh 버전 대조 결과, GHES 버전, command tree, **차원별 분류 커버리지**(command path·alias·positional·command 고유 flag·inherited flag·short alias·반복 가능 flag·interaction 모드·입출력 모드·`--json` 필드), 상태별 집계(supported / policy_blocked / unsupported_by_host / terminal_only / requires_extension), **core와 extension 수치 분리**, 미분류 목록, 드리프트가 있으면 정확한 command·flag diff, 마지막 인벤토리 시각 (CR-008, C-067) | FR-GH-001, FR-GH-011, FR-GH-013 |
+| A-006 | manifest 버전·해시, 설치 gh 버전 대조 결과, GHES 버전, command tree, **차원별 분류 커버리지**(command path·alias·positional·command 고유 flag·inherited flag·short alias·반복 가능 flag·interaction 모드·입출력 모드·`--json` 필드), 상태별 집계(supported / policy_blocked / unsupported_by_host / terminal_only / requires_extension), **core와 extension 수치 분리**, 미분류 목록, 드리프트가 있으면 정확한 command·flag diff, 마지막 인벤토리 시각 (CR-008, C-067) | FR-GH-001, FR-GH-011, FR-GH-013 | **CR-009 추가: 결과 계약 커버리지, bindability 분류 커버리지, 입력·출력 port 커버리지, 자원 타입 커버리지, secret 출력 분류, `opaque_text` 개수, capability 그래프 간선 수, 미분류 결과 계약 수 (C-070)**
 | A-007 | 전체 실행 감사 조회·필터, 승인 대기 목록과 승인·거부, 사용자별 위임 신원 연결 상태 | FR-GH-012, FR-GH-008, FR-GH-009 |
