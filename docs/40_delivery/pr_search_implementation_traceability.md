@@ -24,7 +24,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | `96d4e2f` / PR #2 | DoD 6항 전부 통과. 통합 26건, CI `verify`·`integration` 모두 성공 (6.2장) | 로컬은 네이티브 PostgreSQL 16.13, CI는 서비스 컨테이너 (DEV-006) |
-| WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | in_progress | 에이전트 | PR 예정 | 로컬 검증 통과. ES 통합 테스트는 CI에서 확인 (6.3장) | 이 환경에 ES를 띄울 수 없어 DoD 4항만 로컬 검증 (DEV-008) |
+| WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | done | 에이전트 | `2477c74` / PR #4 | DoD 5항 전부 통과. 로컬 단위 27건 + CI `verify`·`integration` 성공 (6.3장) | DoD 1·2·3·5는 CI의 ES 서비스 컨테이너에서 검증 (DEV-008) |
 | WP-004 | 웹훅 수신 게이트웨이 | REL-001 | todo | - | - | - | - |
 | WP-005 | EventBus 포트와 Redis Streams 어댑터 | REL-001 | todo | - | - | - | - |
 | WP-006 | GHE 클라이언트와 rate limit 관리 | REL-001 | todo | - | - | - | - |
@@ -280,6 +280,19 @@ DEV-006의 근거다. 로컬 검증이 네이티브 인스턴스였던 것은 �
 | 4 | `search()`가 `ScopedQuery` 아닌 인자에 컴파일 실패 | **통과** | `pnpm typecheck` |
 | 5 | `commit_sha` 대소문자 무관 매칭 | 불가 | `behavior.test.ts` |
 
+**CI 검증 결과 — 커밋 `2477c74`, run 32340561385. `verify`·`integration` 모두 성공.**
+
+`integration` 잡은 `docker.elastic.co/elasticsearch/elasticsearch:8.19.0` 서비스 컨테이너를 띄우고 통합 테스트를 돌렸다. Elasticsearch 서버 로그가 DoD를 직접 증명한다.
+
+| DoD | ES 서버 로그 증거 |
+| --- | --- |
+| 1 | `[prs-pull-requests-v1] creating index, cause [api], shards [6]/[1]`, `[prs-commits-v1] ... shards [12]/[1]`, `[prs-links-v1] ... shards [12]/[1]`, `[prs-releases-v1] ... shards [2]/[1]` — ADR-003이 정한 샤드 수 그대로 |
+| 2 | `mappings.test.ts`가 4종 전부에 대해 `dynamic: strict`와 정의한 속성의 `type`·`analyzer`·`normalizer`·`index`·`ignore_above`를 대조하고 통과 |
+| 3 | `StrictDynamicMappingException: [1:44] mapping set to strict, dynamic introduction of [source_code_body] within [_doc] is not allowed` — 매핑에 없는 필드가 실제로 거부되었다 |
+| 5 | `behavior.test.ts`의 대소문자 교차 조회와 접두 검색이 같은 문서를 반환 |
+
+멱등성도 확인되었다. 인덱스 삭제 후 재생성 로그가 한 번씩만 나타난다.
+
 DoD 4는 역으로도 확인했다. `search()`의 `ScopedQuery` 제약을 일부러 `QueryDslQueryContainer`로 완화하면 `pnpm typecheck`가 `error TS2578: Unused '@ts-expect-error' directive`로 실패하고, 원복하면 통과한다. 접근 범위 필터 우회가 런타임 버그가 아니라 빌드 실패라는 뜻이다 (ADR-008).
 
 로컬에서 통과한 명령:
@@ -292,7 +305,7 @@ DoD 4는 역으로도 확인했다. `search()`의 `ScopedQuery` 제약을 일부
 | `pnpm test` | 종료 코드 0 — 테스트 파일 8개, 27건 |
 | `pnpm build` | 종료 코드 0 |
 | `vitest run --config vitest.integration.config.ts packages/db` | 종료 코드 0 — 26건 (WP-002 회귀 없음) |
-| `pnpm test:integration` (전체) | ES 부재로 실패. CI에서 검증 |
+| `pnpm test:integration` (전체) | 로컬에서는 ES 부재로 실패. CI에서 성공 |
 
 ### 6.4 릴리스 게이트
 
