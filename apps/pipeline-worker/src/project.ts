@@ -136,7 +136,13 @@ export async function handleEnrichedEvent(
   const deliveryId = enriched.delivery_id;
 
   const fail = async (reason: string, detail: string): Promise<ProjectOutcome> => {
-    await deadLetterRepo.recordDeadLetter(deps.pool, deliveryId, PROJECT_STAGE, detail, retriesUsed);
+    await deadLetterRepo.recordDeadLetter(deps.pool, {
+      deliveryId,
+      stage: PROJECT_STAGE,
+      repositoryId: enriched.repository_id,
+      error: detail,
+      retryCount: retriesUsed,
+    });
     deps.metrics.deadLettered.inc({ stage: PROJECT_STAGE, reason });
     log({
       level: 'error',
@@ -270,6 +276,23 @@ async function projectDocuments(
   // 전부 색인됐다. 이제서야 원본에 처리 표식을 찍는다 — 순서가 반대면 색인이
   // 실패해도 아웃박스 재적재(JOB-ING-007)가 그 이벤트를 다시 집지 않는다.
   await rawEventRepo.markProcessed(deps.pool, context.deliveryId, row.received_at);
+
+  // 이 전달이 끝까지 갔다. 실패 대기열에 열린 행이 있으면 여기서 닫는다
+  // (CR-012, DEV-023). 재투입은 비동기라 재처리 API는 성공을 알 수 없고,
+  // "끝까지 갔다"를 아는 자리는 여기 하나뿐이다. 대개 0건이며 그때는 유일
+  // 제약의 인덱스 탐색 한 번으로 끝난다.
+  const resolved = await deadLetterRepo.resolveByDelivery(deps.pool, context.deliveryId);
+  if (resolved > 0) {
+    deps.metrics.deadLetterResolved.inc({ stage: PROJECT_STAGE }, resolved);
+    context.log({
+      level: 'info',
+      message: '실패 대기열 항목을 닫았다',
+      delivery_id: context.deliveryId,
+      correlation_id: enriched.correlation_id,
+      repository_id: enriched.repository_id,
+      reason: 'reprocess_succeeded',
+    });
+  }
 
   const lagSeconds = (indexedAt.getTime() - row.received_at.getTime()) / 1_000;
   deps.metrics.ingestionLagSeconds.observe(lagSeconds);

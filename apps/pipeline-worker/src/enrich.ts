@@ -159,8 +159,21 @@ export async function handleIngestEvent(
     return { disposition: { kind: 'ack' }, reason: 'malformed_envelope' };
   }
 
+  // 실패 기록에 저장소를 함께 남긴다 — A-001의 저장소 필터가 그것으로 좁힌다
+  // (CR-012). 봉투에 이미 있으므로 원본을 읽기 전에 실패해도 값이 있다.
+  const repositoryId =
+    typeof payload === 'object' && payload !== null && 'repository_id' in payload
+      ? (payload as { repository_id?: unknown }).repository_id
+      : undefined;
+
   const fail = async (reason: string, detail: string): Promise<EnrichOutcome> => {
-    await deadLetterRepo.recordDeadLetter(deps.pool, deliveryId, ENRICH_STAGE, detail, retriesUsed);
+    await deadLetterRepo.recordDeadLetter(deps.pool, {
+      deliveryId,
+      stage: ENRICH_STAGE,
+      repositoryId: typeof repositoryId === 'number' ? repositoryId : null,
+      error: detail,
+      retryCount: retriesUsed,
+    });
     deps.metrics.deadLettered.inc({ stage: ENRICH_STAGE, reason });
     log({
       level: 'error',
