@@ -26,6 +26,9 @@
 | ADR-014 | 사용자 주도 GitHub 작업은 별도 Operations App + 위임 사용자 토큰 | accepted | 2026-08-20 | security, backend, api |
 | ADR-015 | 버전 고정 gh capability manifest + 생성형 command UI | accepted | 2026-08-20 | frontend, backend, data |
 | ADR-016 | 격리 gh 실행기와 risk/policy/approval 모델 | accepted | 2026-08-20 | infrastructure, security, async |
+| ADR-017 | 구조화 gh invocation + 의미 제약 모델을 UI·서버·실행기의 단일 진실로 | accepted | 2026-08-20 | frontend, backend, api, data |
+| ADR-018 | gh 출력과 파일은 신뢰할 수 없으며 별도 무해화 경계를 통과한다 | accepted | 2026-08-20 | security, frontend, backend |
+| ADR-019 | interactive 명령의 웹 등가 계층과 extension 신뢰 경계 | accepted | 2026-08-20 | frontend, security, backend |
 
 ## ADR-001 전 계층 TypeScript 단일 언어
 
@@ -646,3 +649,128 @@ R2 이상은 실행 직전에 대상 상태를 다시 조회한다. 사용자가
 - Positive: 명령 주입 경로가 구조적으로 없다. 실행 폭주가 애플리케이션을 무너뜨리지 않는다. 파괴적 작업에 사람의 확인이 강제된다. 실행 간 파일이 섞이지 않는다.
 - Negative: 배포 단위와 운영 대상이 늘어난다. 임시 workspace 관리(할당량, 정리, 고아 회수)가 새 운영 부담이다. 확인 단계가 R2 이상 작업의 체감 속도를 늦춘다.
 - Follow-up: workspace 정리 실패는 경보 대상이다. 종료된 실행이 비종료 상태로 남는 경우를 회수하는 정합성 감시 잡을 둔다.
+
+## ADR-017 구조화 gh invocation + 의미 제약 모델을 UI·서버·실행기의 단일 진실로
+
+### Context
+
+CR-005는 capability manifest에서 폼을 생성하고 argv를 조립하기로 했다. 그런데 "유효한 조합"을 아는 주체가 넷이다 — 폼(무엇을 입력받을지), 서버 검증(무엇을 거부할지), argv 빌더(무엇을 조립할지), 테스트 생성기(무엇을 시험할지).
+
+이 넷이 각자 규칙을 가지면 반드시 갈라진다. 폼이 막는 조합을 서버가 통과시키면 클라이언트를 우회한 요청이 그대로 실행되고, 서버가 막는 조합을 폼이 허용하면 사용자는 이유 없이 거부당한다. 미리보기 argv와 실제 argv가 다른 생성기에서 나오면 "보여준 것과 다른 것을 실행"하는 최악의 상태가 된다.
+
+CR-008이 요구하는 제약은 단순 목록이 아니다. `--body`와 `--body-file`은 상호 배타이고, `--json`을 쓰면 가능한 필드 집합이 정해지며, 어떤 flag는 저장소 컨텍스트를 요구하고, 어떤 capability는 GHES 버전에 따라 아예 존재하지 않는다. 이것은 UI 힌트가 아니라 실행 가능성의 정의다.
+
+### Options
+
+1. 폼·서버·빌더가 각자 규칙을 갖고 테스트로 정합성을 확인한다.
+2. 서버 검증만 진실로 두고 UI는 자유 입력을 받는다.
+3. 의미 제약 모델 하나를 manifest에 두고 네 소비자가 그것만 읽는다.
+
+### Decision
+
+**옵션 3.** manifest의 `GhCapabilityConstraint`가 유효 조합의 유일한 정의이고, 사용자의 의도는 `GhInvocation` 구조로 표현한다.
+
+```text
+GhInvocation                     GhCapabilityConstraint
+  capabilityId                     requires / conflicts
+  context                          oneOf / exactlyOne / atLeastOne
+  positionalArguments              implies
+  flags                            repeatable / minItems / maxItems
+  stdinSource                      value enum
+  fileBindings                     conditional requirement
+  outputOptions                    input source constraint
+                                   context-dependent constraint
+        |                                    |
+        +------------------+-----------------+
+                           v
+   +-----------------------------------------------+
+   | 1. GenericCommandForm  (폼 생성)               |
+   | 2. server validation   (실행 직전 재검증)       |
+   | 3. argv builder        (미리보기·실행 공용)     |
+   | 4. property/pairwise test generator            |
+   +-----------------------------------------------+
+```
+
+문자열 명령은 어느 단계에서도 진실이 아니다. 감사·이력·재실행도 `GhInvocation`을 저장하고, 표시용 argv는 거기서 파생한다.
+
+argv 빌더는 하나뿐이다. 미리보기와 실행이 그 하나를 공유하므로 "보여준 argv와 실행된 argv가 다르다"가 구조적으로 불가능하다.
+
+### Consequences
+
+- Positive: 클라이언트 우회가 무력해진다. 폼과 서버 판정이 갈릴 수 없다. 테스트 생성기가 같은 모델을 읽으므로 제약이 늘어나면 시험도 자동으로 늘어난다. 재실행이 과거 문자열이 아니라 현재 규칙으로 재검증된다.
+- Negative: manifest가 무거워지고, 제약 표현력이 부족하면 capability 하나가 통째로 막힌다. 제약 모델 자체에 버그가 있으면 네 소비자가 동시에 틀린다.
+- Follow-up: 제약 모델의 표현력 부족은 `unknown`이 아니라 명시적 미지원으로 분류해 게이트에 드러낸다. WP-061이 이 엔진을 만든다.
+
+## ADR-018 gh 출력과 파일은 신뢰할 수 없으며 별도 무해화 경계를 통과한다
+
+### Context
+
+실행기는 gh를 돌리고 그 stdout·stderr를 사용자 브라우저로 보낸다. 그 텍스트의 출처는 GitHub이고, GitHub의 내용은 아무나 쓸 수 있다 — PR 제목, 이슈 본문, 브랜치 이름, 파일 경로, 사용자 이름, 커밋 메시지 전부 외부 입력이다.
+
+여기서 흔한 착각은 "gh가 알아서 안전하게 만들어 준다"는 것이다. 그렇지 않다. gh 2.97.0 자신이 외부 입력이 섞인 터미널 escape 시퀀스 처리 문제를 보안 수정한 이력을 갖고 있다. 도구가 고쳤다는 사실은 그 위험이 실재한다는 증거이지 앞으로 안전하다는 보장이 아니다.
+
+터미널 escape는 웹에서도 위험하다. ANSI CSI로 화면을 조작해 사용자가 보는 내용을 속일 수 있고, OSC 시퀀스는 터미널 제목·클립보드·하이퍼링크를 건드린다. 출력을 그대로 HTML로 넣으면 그때부터는 XSS다.
+
+### Options
+
+1. gh 출력을 신뢰하고 그대로 렌더링한다.
+2. 프런트엔드에서 렌더링 직전에 정리한다.
+3. 실행기와 UI 사이에 무해화 경계를 두고, 그 경계를 통과하지 않은 출력은 UI에 도달할 수 없게 한다.
+
+### Decision
+
+**옵션 3.** `SafeGhOutput` 경계를 신설한다.
+
+```text
+gh stdout/stderr --> [SafeGhOutput 경계] --> 저장·스트리밍·렌더링
+                       ANSI CSI 무해화
+                       OSC 무해화
+                       제어 문자 제거/escape
+                       invalid UTF-8 치환
+                       바이너리 탐지
+                       바이트 상한
+                       스트리밍 청크 경계 보정
+```
+
+프런트엔드는 gh 출력에 `dangerouslySetInnerHTML`을 쓰지 않는다. Markdown은 안전 렌더러로만 그린다.
+
+파일도 같은 취급이다. 실행이 읽고 쓰는 경로는 workspace 안으로 정규화되어 갇히고, 사용자에게는 파일시스템 경로가 아니라 아티팩트 ID를 준다.
+
+옵션 2를 고르지 않은 이유는 경계가 렌더링 지점마다 흩어지기 때문이다. 화면이 하나 늘 때마다 무해화를 다시 붙여야 하고, 언젠가 한 곳이 빠진다.
+
+### Consequences
+
+- Positive: gh 버전이 올라가며 출력 처리 동작이 바뀌어도 우리 경계는 그대로다. 렌더링 지점이 늘어도 무해화는 한 곳이다. 스트리밍 경계에서 escape가 잘리는 까다로운 경우를 한 번만 풀면 된다.
+- Negative: 색상 같은 터미널 표현을 잃는다(필요하면 무해화 이후 구조화 표현으로 되살린다). 무해화 비용이 스트리밍 지연에 더해진다.
+- Follow-up: WP-062가 이 경계를 만든다. 무해화 우회 시도는 보안 시험 대상이다 (THR-011~013).
+
+## ADR-019 interactive 명령의 웹 등가 계층과 extension 신뢰 경계
+
+### Context
+
+gh 명령 상당수가 터미널을 전제한다 — 브라우저를 열고(`--web`, `gh browse`), 편집기를 띄우고, 프롬프트로 되묻고, TUI를 그린다. 이것을 전부 `terminal_only`로 밀어 넣으면 parity 수치는 맞지만 제품은 쓸모없어진다. "분류했다"가 "제공한다"를 대체할 수는 없다.
+
+핵심은 **터미널 UX와 기능 의미가 다르다**는 것이다. `gh browse`의 의미는 "브라우저 프로세스를 실행한다"가 아니라 "이 대상의 GitHub URL로 간다"이다. 웹 앱에서는 후자가 더 자연스럽다. 실행기에서 브라우저를 띄우는 것은 오히려 잘못된 구현이다 — 서버에서 열린 브라우저를 사용자는 볼 수 없다.
+
+extension은 다른 종류의 문제다. 임의 extension 실행은 임의 코드 실행이라 허용할 수 없다. 그러나 전부 숨기면 사용자는 왜 안 되는지도 모른다.
+
+### Decision
+
+**interactive 명령은 웹 등가를 먼저 찾는다.** 모든 명령은 아래 중 하나로 분류되며 `unknown`은 금지한다.
+
+| 분류 | 의미 | 예 |
+| --- | --- | --- |
+| `web_native` | 그대로 웹 폼으로 표현 | 대부분의 조회·생성 명령 |
+| `web_equivalent` | 터미널 UX를 웹 표현으로 대체 | `--web`·`gh browse` → URL 반환, editor 프롬프트 → 웹 편집기, `gh auth` → Operations App 연결 화면, `gh completion` → 스크립트 내려받기, `gh config` → 실행 단위 scoped profile |
+| `sandbox_terminal` | 승인된 격리 웹 터미널이 있을 때만 | Codespace SSH·Jupyter |
+| `terminal_only` | 웹 등가가 없음 + 사유 명시 | 승인된 웹 터미널이 없는 경우 |
+| `policy_blocked` | 정책상 차단 + 사유 명시 | 임의 extension 실행 |
+| `unsupported_by_host` | 대상 GHES가 지원하지 않음 | 호스트 기능 판정 결과 |
+
+**extension은 별도 capability plane이다.** 탐색·목록·메타데이터·출처 저장소·설치 버전·pin·승인 상태는 조회할 수 있다. 실행은 관리자 허용 목록 + 정확한 버전 pin(태그 또는 커밋, 가능하면 digest 확인)을 만족할 때만, core gh와 같거나 더 강한 격리에서 허용한다. 실행기의 실제 사용자 HOME을 쓰지 않는다. core parity와 extension parity는 수치를 분리해 보고한다.
+
+### Consequences
+
+- Positive: `terminal_only`가 게으른 분류가 되지 않는다. 사용자는 왜 안 되는지 항상 알 수 있다. extension 위험이 core 실행 경로로 새지 않는다.
+- Negative: 웹 등가마다 별도 UI가 필요해 구현량이 늘어난다. extension 승인은 관리자 운영 부담이다.
+- Follow-up: WP-063이 웹 등가 어댑터와 extension 신뢰 경계를 만든다. 웹 등가가 없다고 분류할 때는 사유를 manifest에 남긴다.

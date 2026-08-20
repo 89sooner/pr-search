@@ -36,11 +36,11 @@
 | REL-004 | 관계 파생과 전문 검색 | FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006, FR-REL-007, FR-SRCH-008, FR-SRCH-009, FR-SRCH-010, FR-SRCH-011, FR-ING-008, FR-ING-010 | `pipeline-worker:link`, W-008, W-009, 패싯·커서·전문 검색, 재색인, Filebeat 원본 레인 | 되돌림·체리픽·참조 관계가 표시되고 신뢰도가 구분된다. 무중단 재색인이 검증된다. 관계 정확도 표본 200건 검수 결과가 기록된다(ACC-06 — W-007 활성화 판단 근거) |
 | REL-005 | 통계와 운영 고도화 | FR-STAT-001, FR-STAT-002, FR-STAT-003, FR-STAT-004, FR-STAT-005, FR-STAT-006, FR-ADMIN-002, FR-AUTH-004 | W-006, A-002, A-003, A-004, 감사 조회 | 그룹·시계열·백분위·분포 집계가 동작하고 근거 목록으로 이동한다. 운영 콘솔에서 백필·재색인·재채번을 제어한다. 감사 조회가 `security_officer`로 제한된다 |
 | REL-006 | 조사 보조와 관계 시각화 | FR-SEQ-006, FR-SEQ-007, FR-REL-008, FR-SRCH-012 | W-007(조건부), 이분 탐색, 안전 구간 표식, 내보내기 | 이분 탐색이 후보를 절반씩 줄인다. 안전 구간 표식이 저장·표시된다. W-007은 REL-004의 ACC-06(관계 간선 정확도 표본 200건 검수 95% 이상)을 충족할 때만 포함한다 |
-| REL-007 | GitHub CLI 실행 기반 | FR-GH-001, FR-GH-002, FR-GH-003, FR-GH-006, FR-GH-008, FR-GH-009, FR-GH-011, FR-GH-012 | `@prs/gh-cli`, capability manifest와 검증 도구, `gh-executor`, Operations App 연동, W-010, A-006, A-007 | 사용자가 웹에서 저장소를 고르고 R0 capability를 골라 옵션을 넣고 실행될 argv를 확인한 뒤 실행하고 결과와 이력을 볼 수 있다. capability 분류 커버리지 100%, 미분류 0 |
+| REL-007 | GitHub CLI 실행 기반 | FR-GH-001, FR-GH-002, FR-GH-003, FR-GH-006, FR-GH-008, FR-GH-009, FR-GH-011, FR-GH-012 | `@prs/gh-cli`, capability manifest와 검증 도구, 의미 제약 엔진(WP-061), 출력·파일 안전 경계(WP-062), `gh-executor`, Operations App 연동, W-010, A-006, A-007 | 사용자가 웹에서 저장소를 고르고 R0 capability를 골라 옵션을 넣고 실행될 argv를 확인한 뒤 실행하고 결과와 이력을 볼 수 있다. capability 분류 커버리지 100%, 미분류 0. gh 출력이 무해화 경계를 통과한다 (CR-008) |
 | REL-008 | PR·Issue·Discussion 작업 | FR-GH-004, FR-GH-009 | W-011, W-012, R1·R2 쓰기 capability 개방 | PR 머지가 전략·자동 머지·관리자 강제·head 일치·커밋 메시지·브랜치 삭제를 선택해 실행된다. R2 확인과 대상 재조회가 동작한다 |
 | REL-009 | 저장소·Actions·Release·Project 작업 | FR-GH-004, FR-GH-006, FR-GH-007 | W-013, W-014, W-015, W-016, 임시 workspace, 아티팩트 | 워크플로 수동 실행과 실행 로그 스트리밍이 동작한다. 릴리스 자산 업로드·내려받기가 동작한다. 로컬 git이 필요한 명령이 임시 workspace에서 수행된다 |
-| REL-010 | 고급·보안 민감 작업 | FR-GH-004, FR-GH-010, FR-GH-013 | W-017, W-018, W-019, W-020, W-022, A-005 | 비밀·키·룰셋 작업이 별도 정책과 마스킹 아래 동작한다. `gh api` 탐색기가 command와 동일한 정책을 거친다. 확장·터미널 전용 기능이 사유와 함께 분류되어 표시된다 |
-| REL-011 | Recipe와 완전 parity | FR-GH-005, FR-GH-001 | W-021 확장, W-023, parity 검증 도구 | 다단계 Recipe가 등록된 capability만으로 정의·실행된다. 고정 gh 버전의 command path·flag 분류 커버리지가 100%이고 미분류가 0이다 (NFR-009) |
+| REL-010 | 고급·보안 민감 작업 | FR-GH-004, FR-GH-010, FR-GH-011, FR-GH-013 | W-017, W-018, W-019, W-020, W-022, A-005, 웹 등가·extension 신뢰 어댑터(WP-063), gh api 스키마 브리지(WP-064) | 비밀·키·룰셋 작업이 별도 정책과 마스킹 아래 동작한다. `gh api` 탐색기가 command와 동일한 정책을 거친다. 확장·터미널 전용 기능이 사유와 함께 분류되어 표시된다 |
+| REL-011 | Recipe와 완전 parity | FR-GH-005, FR-GH-001 | W-021 확장, W-023, 조합 parity 검증기(WP-065) | 다단계 Recipe가 등록된 capability만으로 정의·실행된다. NFR-009의 전 차원 분류 커버리지가 100%이고 미분류가 0이며, core와 extension 수치가 분리 보고된다 (CR-008) |
 
 ## 5. Slice Definition
 

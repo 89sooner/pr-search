@@ -192,6 +192,26 @@ export function search(q: ScopedQuery): Promise<EsResponse>;   // ScopedQuery만
 | 오류 응답 | 내부 정보를 노출하지 않는다. 401/413/500만 반환 |
 | 거부 지표 | `ingest_rejected_total` 5분간 10건 초과 시 경보 (공격 신호) |
 
+## 9.1 gh 실행 출력·파일 경계 (CR-008)
+
+`ingest-gateway`가 유일한 공개 인바운드 지점이라면, `gh-executor`의 출력은 유일하게 **외부에서 온 텍스트가 사용자 화면까지 직행하는 경로**다. 그래서 따로 다룬다.
+
+| 통제 | 구현 |
+| --- | --- |
+| 신뢰 가정 | gh 출력과 GitHub 텍스트는 신뢰하지 않는다. gh 2.97.0 자체도 외부 입력이 섞인 터미널 escape 처리 문제를 보안 수정한 이력이 있다 |
+| 무해화 지점 | 실행기와 UI 사이의 `SafeGhOutput` 경계 한 곳. 렌더링 지점마다 붙이지 않는다 (ADR-018) |
+| ANSI CSI / OSC | 무해화. 화면 조작·터미널 제목·클립보드·하이퍼링크 주입 차단 |
+| 기타 제어 문자 | 제거 또는 escape |
+| Markdown | 안전 렌더러만. 원시 HTML 실행 금지 |
+| 프런트엔드 | gh 출력에 `dangerouslySetInnerHTML` 금지 |
+| invalid UTF-8 | 대체 문자로 치환 |
+| 출력 크기 | 바이트 상한 후 절단 표시 |
+| 바이너리 출력 | 탐지해 텍스트로 렌더링하지 않음 |
+| 스트리밍 | 청크 경계에서 분할된 escape 시퀀스를 복원 후 처리 |
+| 파일 경로 | workspace 안으로 정규화·강제. `..`·절대 경로·symlink 탈출 차단 |
+| 아티팩트 | 파일시스템 경로가 아니라 아티팩트 ID로 전달. 파일명 정규화 |
+| workspace | 실행 단위 격리, 용량 할당량, 실패 시 부분 파일 정리, 종료 후 폐기 |
+
 ## 10. 위협 모델
 
 | Threat ID | 시나리오 | 영향 | 완화 |
@@ -216,6 +236,15 @@ export function search(q: ScopedQuery): Promise<EsResponse>;   // ScopedQuery만
 | THR-018 | XSS로 세션 탈취 | 계정 탈취 | HttpOnly 쿠키, CSP, React 기본 이스케이프. PR 본문을 HTML로 렌더링하지 않음 |
 | THR-019 | CSRF로 쓰기 액션 실행 | 무단 변경 | SameSite=Lax + 쓰기 요청에 CSRF 토큰 |
 | THR-020 | 관계 근거 문자열(`evidence`)에 삽입된 마크업 렌더링 | XSS | `evidence`는 항상 `CodeBlock`으로 평문 렌더링 |
+| THR-021 | gh stdout/stderr에 실린 ANSI CSI 시퀀스로 사용자가 보는 실행 결과를 조작 | 조사 오도, 승인 유도 | CR-008 — `SafeGhOutput` 경계에서 CSI 무해화 (ADR-018) |
+| THR-022 | OSC 시퀀스로 터미널 제목·클립보드·하이퍼링크 주입 | 피싱, 자격 증명 탈취 유도 | 같은 경계에서 OSC 무해화 |
+| THR-023 | GitHub 필드(PR 제목·브랜치명·파일 경로)에 심은 마크업이 실행 결과 화면에서 렌더링 | XSS | gh 출력에 `dangerouslySetInnerHTML` 금지, Markdown은 안전 렌더러만 |
+| THR-024 | 스트리밍 청크 경계에서 escape 시퀀스가 분할되어 무해화를 통과 | 위 셋과 동일 | 경계가 청크 상태를 유지하며 분할 시퀀스를 복원 후 처리 |
+| THR-025 | 파일 입력 경로에 `..`·절대 경로·symlink를 넣어 workspace 밖 파일 접근 | 실행기 파일 유출·변조 | 경로 정규화 후 workspace 안으로 강제, symlink 탈출 차단 (FR-GH-007 AC-6) |
+| THR-026 | 아티팩트 파일명에 경로 구분자·제어 문자를 넣어 내려받기 경로 조작 | 클라이언트 파일 덮어쓰기 | 파일명 정규화, 아티팩트는 ID로만 전달 |
+| THR-027 | 승인되지 않은 gh extension 실행으로 임의 코드 실행 | 실행기 장악 | 기본 `policy_blocked`, 관리자 허용 목록 + 정확한 버전 pin, 강화된 격리 (ADR-019) |
+| THR-028 | 과거 실행 이력의 argv를 그대로 재실행해 만료된 권한·정책으로 작업 수행 | 권한 우회 | 재실행은 저장된 구조화 invocation을 현재 manifest·권한·정책으로 재검증 (FR-GH-012 AC-4) |
+| THR-029 | `gh api`로 command 정책이 막은 작업을 우회 | 정책 우회 | `gh api`도 같은 위험도·확인·승인·감사 경로 (FR-GH-010) |
 
 ## 11. 오남용 사례
 
@@ -226,6 +255,7 @@ export function search(q: ScopedQuery): Promise<EsResponse>;   // ScopedQuery만
 | ABU-003 | 대량 내보내기 반복으로 데이터 축적 | 상한 + 감사 + 반복 패턴 경보 |
 | ABU-004 | 안전 구간 표식을 임의 변경해 검증 상태 위장 | `release_manager` 한정, 이력 보존, 감사 기록 |
 | ABU-005 | 재채번으로 조사 결과 왜곡 | THR-017과 동일 대응 |
+| ABU-006 | 자신이 제어하는 저장소의 PR 제목·브랜치명에 escape 시퀀스를 심어 다른 사용자의 실행 결과 화면을 조작 | THR-021·022·024와 동일 대응. 출처가 GitHub이라는 사실이 신뢰 근거가 되지 않는다 |
 
 ## 12. 보안 검증
 

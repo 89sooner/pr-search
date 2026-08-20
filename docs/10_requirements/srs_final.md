@@ -1,6 +1,6 @@
 # PR Search 최종 요구사항 정의서
 
-> 상태: baseline | 버전: v2.0 | 갱신일: 2026-08-20
+> 상태: baseline | 버전: v2.1 | 갱신일: 2026-08-20
 
 > **기준선 잠금.** 이 문서는 2026-08-19 사용자 승인으로 `baseline`이 되었다. 이후 이 문서의 모든 변경은 `../00_governance/change_control.md`에 `CR-###`를 먼저 등록한 뒤에만 가능하다. 하위 문서(파생 UI, 기술 아키텍처, 딜리버리)는 이 문서의 범위를 확장할 수 없다.
 >
@@ -977,7 +977,43 @@ CR-005로 재분류된 항목이 있다. 아래 표는 재분류 후의 최종 �
 
 CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시적으로 요청한 GitHub 작업의 구성과 실행을 다룬다. 수집·검색 파이프라인(FR-ING, FR-SRCH)과는 신원·권한·감사 경계가 분리된다 (ADR-013).
 
-기준 도구는 버전이 고정된 `gh` CLI다. 이 문서 작성 시점의 실측 기준값은 gh 2.97.0이며 command node 228개(실행 가능 leaf 196, 그룹 32), command 고유 flag 1,034개, positional placeholder 261개, `--json` 지원 command 41개다. 이 수치는 고정값이 아니라 고정된 버전에서 측정한 값이며, 버전이 바뀌면 manifest와 함께 갱신된다.
+기준 도구는 버전이 고정된 `gh` CLI다. 실측 기준값은 gh 2.97.0(2026-07-31)이며, command node 228개 전부에 `gh <path> --help`를 실행해 측정했다 (CR-008에서 재실측).
+
+| 차원 | gh 2.97.0 실측값 |
+| --- | --- |
+| command node | 228 (실행 가능 leaf 196, 그룹 32) |
+| alias 전용 노드 | 1 (`gh co` → `gh pr checkout`) |
+| alias를 가진 command | 44 |
+| positional placeholder | 230 |
+| command 고유 flag | 1,034 |
+| inherited/global flag 출현 | 312 (고유 4종: `--codespace`, `--help`, `--repo`, `--repo-owner`) |
+| short alias를 가진 flag | 625 |
+| 반복 가능 flag | 37 |
+| `--json` 지원 command | 41 |
+| `--json` 필드 정의 | 707 |
+
+이전 판은 positional placeholder를 261개로 적었으나 실측은 230개다 (DEV-011, CR-008에서 정정). 이 수치는 고정값이 아니라 고정된 버전에서 측정한 값이며, 버전이 바뀌면 manifest와 함께 갱신된다.
+
+**parity의 차원 (CR-008).** "모든 기능과 유효한 조합을 웹에서 표현한다"는 요구는 command path와 flag 목록만으로 충족되지 않는다. capability manifest는 아래 28개 차원을 모두 분류해야 한다.
+
+| # | 차원 | # | 차원 |
+| --- | --- | --- | --- |
+| 1 | command path | 15 | 실행에 영향을 주는 환경 컨텍스트 |
+| 2 | command alias | 16 | interactive/TTY 요구 |
+| 3 | positional argument | 17 | editor/browser 요구 |
+| 4 | command 고유 flag | 18 | 출력 형식 |
+| 5 | inherited/global flag | 19 | `--json` 필드 |
+| 6 | short/long flag alias | 20 | `--jq` |
+| 7 | 반복 가능 flag | 21 | `--template` |
+| 8 | stdin 입력 | 22 | 페이지네이션/slurp |
+| 9 | 파일 입출력 | 23 | REST/GraphQL 모드 |
+| 10 | 현재 저장소 컨텍스트 | 24 | 대상 GHES 버전 |
+| 11 | 호스트 컨텍스트 | 25 | 사용자 권한 |
+| 12 | 브랜치/ref 컨텍스트 | 26 | Operations App 권한 |
+| 13 | 로컬 workspace 필요 여부 | 27 | PR Search 정책 |
+| 14 | gh 구성(config) | 28 | 위험도 |
+
+토큰·비밀 값 자체는 이 차원에 포함되지 않는다. `GH_ENTERPRISE_TOKEN` 같은 값은 실행기가 안전하게 주입하며 UI에 나타나지 않는다 (NFR-010).
 
 #### FR-GH-001 gh capability 인벤토리와 parity
 
@@ -986,8 +1022,8 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 상태 | approved |
 | 우선순위 | Must |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
-| 요구사항 | 시스템은 고정된 `gh` 버전의 모든 command path와 문서화된 argument·flag를 capability manifest에 분류하여 보유하여야 하며, 미분류 항목이 없어야 한다. |
-| 수용 기준 | AC-1: manifest는 `gh --help`와 각 command path의 `--help` 출력에서 생성한 인벤토리를 근거로 한다. AC-2: 모든 command path는 `supported`, `unsupported_by_host`, `preview`, `policy_blocked`, `terminal_only`, `admin_only`, `requires_extension`, `requires_local_workspace` 중 하나로 분류된다. AC-3: 모든 문서화된 positional argument와 flag는 `mapped_to_typed_control`, `mapped_to_generic_control`, `mapped_to_web_equivalent`, `terminal_only`, `policy_blocked`, `unsupported_by_host`, `requires_admin_approval` 중 하나로 분류된다. AC-4: `unknown` 상태로 남은 command 또는 flag가 하나라도 있으면 parity 게이트는 실패한다. AC-5: manifest는 버전과 내용 해시를 가지며 생성에 사용한 gh 버전을 함께 기록한다. AC-6: 지원되지 않는 capability를 목록에서 숨기지 않고 사유와 함께 표시한다. |
+| 요구사항 | 시스템은 고정된 `gh` 버전의 모든 command path와 문서화된 argument·flag를 capability manifest에 분류하여 보유하여야 하며, §9.8이 정의한 28개 parity 차원 전부에 미분류 항목이 없어야 한다. |
+| 수용 기준 | AC-1: manifest는 `gh --help`와 각 command path의 `--help` 출력에서 생성한 인벤토리를 근거로 한다. AC-2: 모든 command path는 `supported`, `unsupported_by_host`, `preview`, `policy_blocked`, `terminal_only`, `admin_only`, `requires_extension`, `requires_local_workspace` 중 하나로 분류된다. AC-3: 모든 문서화된 positional argument와 flag는 `mapped_to_typed_control`, `mapped_to_generic_control`, `mapped_to_web_equivalent`, `terminal_only`, `policy_blocked`, `unsupported_by_host`, `requires_admin_approval` 중 하나로 분류된다. AC-4: `unknown` 상태로 남은 항목이 어느 차원에든 하나라도 있으면 parity 게이트는 실패한다. AC-5: manifest는 버전과 내용 해시를 가지며 생성에 사용한 gh 버전을 함께 기록한다. AC-6: 지원되지 않는 capability를 목록에서 숨기지 않고 사유와 함께 표시한다. **AC-7 (CR-008): command alias, inherited/global flag, short flag alias, 반복 가능 flag를 command 고유 flag와 구분해 각각 분류한다 — 목록에 없다는 것은 분류가 아니다.** **AC-8 (CR-008): 모든 command는 interaction 차원에서 `web_native`, `web_equivalent`, `sandbox_terminal`, `terminal_only`, `policy_blocked`, `unsupported_by_host` 중 하나로 분류된다.** **AC-9 (CR-008): stdin 입력, 파일 입출력, 저장소·호스트·브랜치·workspace 컨텍스트 요구, 출력 형식(`--json` 필드·`--jq`·`--template`·페이지네이션)을 각 capability에 명시한다.** **AC-10 (CR-008): core gh capability와 extension capability의 커버리지 수치를 분리해 보고한다.** |
 | 검증 방법 | test |
 | 관련 화면 | A-006 |
 | 관련 API/데이터 | API-GH-001 / ENT-GH-006 |
@@ -1000,8 +1036,8 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 상태 | approved |
 | 우선순위 | Must |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
-| 요구사항 | 사용자가 구성한 명령의 실행을 요청하면, 시스템은 격리된 실행기에서 고정 `gh` 바이너리를 shell 없이 실행하고 그 결과를 반환하여야 한다. |
-| 수용 기준 | AC-1: 실행은 고정 경로의 `gh` 바이너리와 argv 배열로만 이뤄지며 shell을 경유하지 않는다. AC-2: argv는 capability manifest와 사용자 입력에서 결정론적으로 조립되며, 사용자 문자열을 명령 문자열로 연결하지 않는다. AC-3: 실행 전에 사용자에게 실제 실행될 argv를 비밀 값이 가려진 형태로 보여준다. AC-4: 미리보기 argv와 실제 실행 argv는 동일한 구조화 명령 모델에서 파생된다. AC-5: 실행마다 gh 버전과 manifest 버전·해시를 기록한다. AC-6: 실행기는 비루트로 동작하고 읽기 전용 루트 파일시스템을 사용한다. |
+| 요구사항 | 사용자가 구성한 명령의 실행을 요청하면, 시스템은 구조화된 `GhInvocation`을 단일 진실로 삼아 격리된 실행기에서 고정 `gh` 바이너리를 shell 없이 실행하고 그 결과를 반환하여야 한다. |
+| 수용 기준 | AC-1: 실행은 고정 경로의 `gh` 바이너리와 argv 배열로만 이뤄지며 shell을 경유하지 않는다. AC-2: argv는 capability manifest와 사용자 입력에서 결정론적으로 조립되며, 사용자 문자열을 명령 문자열로 연결하지 않는다. AC-3: 실행 전에 사용자에게 실제 실행될 argv를 비밀 값이 가려진 형태로 보여준다. AC-4: 미리보기 argv와 실제 실행 argv는 동일한 구조화 명령 모델에서 파생된다. AC-5: 실행마다 gh 버전과 manifest 버전·해시를 기록한다. AC-6: 실행기는 비루트로 동작하고 읽기 전용 루트 파일시스템을 사용한다. **AC-7 (CR-008): 요청·검증·미리보기·실행·감사·재실행은 모두 `GhInvocation`(capability ID, 컨텍스트, positional, flag, stdin 원본, 파일 바인딩, 출력 옵션) 하나에서 파생된다. 문자열 명령은 어느 단계에서도 진실이 아니다.** **AC-8 (CR-008): argv 생성기는 하나뿐이며 미리보기와 실행이 그 하나를 공유한다. 두 벌의 생성기를 두지 않는다.** **AC-9 (CR-008): 같은 `GhInvocation`은 같은 manifest·컨텍스트에서 항상 같은 argv를 만든다(결정론).** |
 | 검증 방법 | test |
 | 관련 화면 | W-010 |
 | 관련 API/데이터 | API-GH-002 / ENT-GH-002 / JOB-GH-001 |
@@ -1014,8 +1050,8 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 상태 | approved |
 | 우선순위 | Must |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
-| 요구사항 | 시스템은 capability manifest가 정의한 제약을 사용자 입력에 적용하여, 유효하지 않은 argument·flag 조합이 실행에 도달하지 않도록 하여야 한다. |
-| 수용 기준 | AC-1: 상호 배타(`conflicts`), 의존(`requires`), 택일(`oneOf`) 제약을 폼에서 즉시 검증한다. AC-2: 반복 가능 flag는 다중 값 입력으로 표현한다. AC-3: 열거형 flag는 선택 목록으로 표현하고 임의 값을 허용하지 않는다. AC-4: 필수 positional argument가 비어 있으면 실행 버튼을 활성화하지 않는다. AC-5: 클라이언트 검증과 동일한 제약을 서버가 실행 직전에 다시 검증한다. AC-6: 서버 검증에서 탈락한 요청은 실행하지 않고 위반한 제약을 반환한다. |
+| 요구사항 | 시스템은 capability manifest가 정의한 **의미 제약 모델**을 사용자 입력에 적용하여, 유효하지 않은 argument·flag 조합이 실행에 도달하지 않도록 하여야 한다. 같은 제약 모델을 폼·서버 검증·argv 빌더·테스트 생성기가 공유한다. |
+| 수용 기준 | AC-1: 상호 배타(`conflicts`), 의존(`requires`), 택일(`oneOf`) 제약을 폼에서 즉시 검증한다. AC-2: 반복 가능 flag는 다중 값 입력으로 표현한다. AC-3: 열거형 flag는 선택 목록으로 표현하고 임의 값을 허용하지 않는다. AC-4: 필수 positional argument가 비어 있으면 실행 버튼을 활성화하지 않는다. AC-5: 클라이언트 검증과 동일한 제약을 서버가 실행 직전에 다시 검증한다. AC-6: 서버 검증에서 탈락한 요청은 실행하지 않고 위반한 제약을 반환한다. **AC-7 (CR-008): 제약 모델은 최소한 `requires`, `conflicts`, `oneOf`, `exactlyOne`, `atLeastOne`, `implies`, `repeatable`, `minItems`, `maxItems`, 값 열거, 조건부 필수, 입력원 제약(stdin·파일·인라인 상호 배타), 컨텍스트 의존 제약(저장소·호스트·브랜치·로컬 workspace·GHES 버전)을 표현할 수 있어야 한다.** **AC-8 (CR-008): 클라이언트가 폼 검증을 우회해 API를 직접 호출해도 서버가 같은 제약 모델로 같은 판정을 내린다. 두 판정이 갈리면 실패로 간주한다.** **AC-9 (CR-008): 제약 모델은 UI 전용 로직이 아니라 폼 생성·서버 검증·argv 조립·조합 테스트 생성의 공통 입력이다 (ADR-017).** |
 | 검증 방법 | test |
 | 관련 화면 | W-010 |
 | 관련 API/데이터 | API-GH-002 / ENT-GH-006 |
@@ -1071,7 +1107,7 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 우선순위 | Should |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
 | 요구사항 | 시스템은 파일 입력이 필요한 명령에 업로드된 파일을 전달하고, 명령이 생성한 파일을 사용자가 내려받을 수 있게 하여야 한다. |
-| 수용 기준 | AC-1: 파일 입력은 임시 workspace에 저장되어 경로로 전달되며 실행 후 삭제된다. AC-2: 업로드 파일에는 크기 상한이 있다. AC-3: 생성된 아티팩트는 실행 이력에 연결되어 보존 기간 동안 내려받을 수 있다. AC-4: 아티팩트 접근은 해당 실행을 볼 수 있는 사용자로 제한된다. AC-5: 임시 workspace는 실행 단위로 분리되며 수명이 끝나면 폐기된다. |
+| 수용 기준 | AC-1: 파일 입력은 임시 workspace에 저장되어 경로로 전달되며 실행 후 삭제된다. AC-2: 업로드 파일에는 크기 상한이 있다. AC-3: 생성된 아티팩트는 실행 이력에 연결되어 보존 기간 동안 내려받을 수 있다. AC-4: 아티팩트 접근은 해당 실행을 볼 수 있는 사용자로 제한된다. AC-5: 임시 workspace는 실행 단위로 분리되며 수명이 끝나면 폐기된다. **AC-6 (CR-008): 명령이 읽거나 쓰는 모든 경로는 실행 workspace 안으로 정규화되어 갇힌다 — 상위 경로 탈출(`..`), 절대 경로, symlink 탈출을 차단한다.** **AC-7 (CR-008): 아티팩트는 실행기 파일시스템 경로가 아니라 아티팩트 ID로 사용자에게 전달한다. 경로를 그대로 노출하지 않는다.** **AC-8 (CR-008): 아티팩트 파일명은 정규화하며, workspace 용량 할당량·아티팩트 보존 기간·실패 시 부분 파일 정리를 강제한다.** |
 | 검증 방법 | test |
 | 관련 화면 | W-010, W-015, W-021 |
 | 관련 API/데이터 | API-GH-006 / ENT-GH-002-A |
@@ -1113,7 +1149,7 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 우선순위 | Should |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
 | 요구사항 | 시스템은 `gh api`를 통한 REST·GraphQL 요청을 구성·실행할 수 있게 하되, command 실행과 동일한 신원·권한·위험·감사 정책을 적용하여야 한다. |
-| 수용 기준 | AC-1: 엔드포인트, HTTP 메서드, 필드, 원시 필드, 헤더, 페이지네이션, 미리보기, 필터, 템플릿, 본문·파일 입력을 구성할 수 있다. AC-2: 인증·라우팅 관련 헤더(`Authorization`, `Host`, `Cookie` 등)는 사용자가 지정하거나 덮어쓸 수 없다. AC-3: 대상 호스트는 구성된 GitHub Enterprise 호스트로 제한된다. AC-4: 쓰기 메서드(`POST`, `PUT`, `PATCH`, `DELETE`)에는 위험도 정책이 적용된다. AC-5: 관리자는 엔드포인트 허용·차단 목록을 구성할 수 있다. AC-6: 모든 요청은 command 실행과 동일하게 감사 기록된다. |
+| 수용 기준 | AC-1: 엔드포인트, HTTP 메서드, 필드, 원시 필드, 헤더, 페이지네이션, 미리보기, 필터, 템플릿, 본문·파일 입력을 구성할 수 있다. AC-2: 인증·라우팅 관련 헤더(`Authorization`, `Host`, `Cookie` 등)는 사용자가 지정하거나 덮어쓸 수 없다. AC-3: 대상 호스트는 구성된 GitHub Enterprise 호스트로 제한된다. AC-4: 쓰기 메서드(`POST`, `PUT`, `PATCH`, `DELETE`)에는 위험도 정책이 적용된다. AC-5: 관리자는 엔드포인트 허용·차단 목록을 구성할 수 있다. AC-6: 모든 요청은 command 실행과 동일하게 감사 기록된다. **AC-7 (CR-008): 가능한 경우 REST 스키마와 GraphQL introspection에서 타입 있는 요청 폼을 생성한다 — 원시 엔드포인트 입력만 제공하는 화면으로 끝내지 않는다.** **AC-8 (CR-008): 고급 사용자를 위한 원시 모드는 유지하되, 타입 폼과 원시 모드가 같은 정책·위험도·감사 경로를 거친다.** **AC-9 (CR-008): REST는 메서드·엔드포인트·경로 파라미터·질의·본문·헤더·페이지네이션·미리보기·`--jq`/`--template`을, GraphQL은 query·variables·operation·페이지네이션을 구성할 수 있다.** |
 | 검증 방법 | test |
 | 관련 화면 | W-020, A-005 |
 | 관련 API/데이터 | API-GH-009 / ENT-GH-002 |
@@ -1141,7 +1177,7 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 우선순위 | Must |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
 | 요구사항 | 시스템은 모든 GitHub 작업 실행을 감사 기록하고, 사용자가 자신의 실행 이력을 조회하고 동일한 구성으로 다시 실행할 수 있게 하여야 한다. |
-| 수용 기준 | AC-1: 감사 항목은 실행 ID, 사용자, GitHub 행위자, 호스트, 저장소, 대상, capability ID, gh 버전, manifest 버전, 비밀이 가려진 argv, 위험도, 권한 판정 결과, 확인·승인 여부, 시작·종료 시각, 종료 코드, 출력 해시, 상관 ID를 포함한다. AC-2: 토큰, 비밀 값, 비밀 원문 입력은 감사에 기록하지 않는다. AC-3: 사용자는 자신의 실행 이력을 조회할 수 있고, 보안 담당자는 전체를 조회할 수 있다. AC-4: 이력에서 동일 구성으로 다시 실행할 수 있으며 재실행도 새 실행으로 감사된다. AC-5: 쓰기 실행 요청은 중복 방지 키를 가지며 같은 키의 재요청은 새 작업을 만들지 않는다. AC-6: 같은 대상에 상충하는 작업이 동시에 진행되지 않도록 자원 잠금 또는 동등한 동시성 정책을 적용한다. |
+| 수용 기준 | AC-1: 감사 항목은 실행 ID, 사용자, GitHub 행위자, 호스트, 저장소, 대상, capability ID, gh 버전, manifest 버전, 비밀이 가려진 argv, 위험도, 권한 판정 결과, 확인·승인 여부, 시작·종료 시각, 종료 코드, 출력 해시, 상관 ID를 포함한다. AC-2: 토큰, 비밀 값, 비밀 원문 입력은 감사에 기록하지 않는다. AC-3: 사용자는 자신의 실행 이력을 조회할 수 있고, 보안 담당자는 전체를 조회할 수 있다. AC-4: 이력에서 동일 구성으로 다시 실행할 수 있으며 재실행도 새 실행으로 감사된다. **재실행은 과거 argv 문자열의 재실행이 아니라 저장된 `GhInvocation`을 현재 manifest·현재 사용자 권한·현재 정책·현재 대상 상태로 다시 검증한 뒤 새 확인을 받아 수행하는 새 실행이다. 과거의 승인이나 권한을 승계하지 않는다 (CR-008).** AC-5: 쓰기 실행 요청은 중복 방지 키를 가지며 같은 키의 재요청은 새 작업을 만들지 않는다. AC-6: 같은 대상에 상충하는 작업이 동시에 진행되지 않도록 자원 잠금 또는 동등한 동시성 정책을 적용한다. **AC-7 (CR-008): 이력에는 구조화 invocation, manifest 버전, gh 버전, 컨텍스트 스냅숏, 비밀이 가려진 argv를 함께 저장한다.** |
 | 검증 방법 | test |
 | 관련 화면 | W-021, A-007 |
 | 관련 API/데이터 | API-GH-010 / ENT-GH-002 |
@@ -1155,7 +1191,7 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | 우선순위 | Should |
 | 출처 | CR-005 / 사용자 승인 2026-08-20 |
 | 요구사항 | 시스템은 `gh` 확장과 터미널에 강하게 의존하는 기능을 core command와 구분하여 취급하고, 각각의 처리 방식을 사용자에게 명시하여야 한다. |
-| 수용 기준 | AC-1: 확장 탐색과 메타데이터 조회는 허용한다. AC-2: 확장 실행은 기본 차단이며 관리자가 허용 목록에 올린 확장만 격리 환경에서 조건부로 실행한다. AC-3: 임의 확장의 설치와 실행은 허용하지 않는다. AC-4: 터미널 전용 기능은 웹 등가 기능, 격리 workspace 상호작용, `terminal_only` 중 하나로 분류한다. AC-5: 어느 분류든 사용자에게 사유를 표시하며 목록에서 숨기지 않는다. AC-6: 차단된 capability도 coverage 집계에는 `policy_blocked`으로 포함된다. |
+| 수용 기준 | AC-1: 확장 탐색과 메타데이터 조회는 허용한다. AC-2: 확장 실행은 기본 차단이며 관리자가 허용 목록에 올린 확장만 격리 환경에서 조건부로 실행한다. AC-3: 임의 확장의 설치와 실행은 허용하지 않는다. AC-4: 터미널 전용 기능은 웹 등가 기능, 격리 workspace 상호작용, `terminal_only` 중 하나로 분류한다. AC-5: 어느 분류든 사용자에게 사유를 표시하며 목록에서 숨기지 않는다. AC-6: 차단된 capability도 coverage 집계에는 `policy_blocked`으로 포함된다. **AC-7 (CR-008): `terminal_only`는 마지막 분류다. 터미널 UX와 기능 의미를 분리해 웹 등가를 먼저 찾는다 — 브라우저를 여는 명령(`--web`, `gh browse`)은 실행기에서 브라우저 프로세스를 띄우지 않고 대상 URL을 반환해 웹에서 연다. editor 프롬프트는 웹 편집기로, `gh auth`는 Operations App 연결 화면으로, `gh completion`은 스크립트 내려받기로, `gh config`는 실행 단위 scoped profile로 대체한다.** **AC-8 (CR-008): extension은 core gh와 분리된 capability plane으로 다룬다 — 탐색·목록·메타데이터·출처 저장소·설치 버전·pin 정보·승인 상태는 조회할 수 있고, 실행은 관리자 허용 목록과 정확한 버전 pin을 만족할 때만 core gh와 같거나 더 강한 격리에서 허용한다. 임의 설치·실행은 기본 `policy_blocked`이다.** **AC-9 (CR-008): 승인되지 않은 extension도 존재와 차단 사유를 UI에서 확인할 수 있다.** |
 | 검증 방법 | test |
 | 관련 화면 | W-022, A-005, A-006 |
 | 관련 API/데이터 | API-GH-001, API-GH-008 / ENT-GH-005, ENT-GH-006 |
@@ -1282,16 +1318,46 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 
 CR-005 신규. 이 지표는 릴리스 게이트다 — 하나라도 미달이면 GitHub Operations Plane 릴리스를 승인하지 않는다.
 
-| 지표 | 목표 | 측정 방법 | 비고 |
-| --- | --- | --- | --- |
-| command path 분류율 | 고정 gh 버전의 core command path 100% | capability manifest 검증 도구 | gh 2.97.0 기준 command node 228개 (실행 가능 leaf 196, 그룹 32) |
-| 문서화된 flag 분류율 | 100% | capability manifest 검증 도구 | gh 2.97.0 기준 command 고유 flag 1,034개 |
-| 미분류 command 수 | 0 | 검증 도구 종료 코드 | `unknown` 상태 금지 |
-| 미분류 flag 수 | 0 | 검증 도구 종료 코드 | `unknown` 상태 금지 |
-| positional argument 분류율 | 100% | capability manifest 검증 도구 | gh 2.97.0 기준 placeholder 261개 |
-| manifest 드리프트 검출 | 설치 gh와 manifest 불일치 시 CI 실패 | CI 검증 잡 | 새 command·flag의 조용한 누락 방지 |
+CR-008에서 게이트를 전 차원으로 넓혔다. 아래는 모두 **고정된 gh 버전 기준**이며, 하나라도 미달이면 릴리스를 승인하지 않는다.
 
-"모든 조합 지원"은 유효한 모든 조합을 스키마가 표현할 수 있다는 뜻이지, 모든 조합을 CI에서 실제 호출한다는 뜻이 아니다. 조합 검증은 제약 속성 시험과 페어와이즈 조합 시험으로 수행한다.
+| 지표 | 목표 | 측정 방법 | gh 2.97.0 실측 기준 |
+| --- | --- | --- | --- |
+| core command path 분류율 | 100% | capability manifest 검증 도구 | command node 228 (leaf 196, 그룹 32) |
+| command alias 분류율 | 100% | 검증 도구 | alias 보유 command 44, alias 전용 노드 1 |
+| positional argument 분류율 | 100% | 검증 도구 | placeholder 230 |
+| command 고유 flag 분류율 | 100% | 검증 도구 | 1,034 |
+| inherited/global flag 분류율 | 100% | 검증 도구 | 출현 312, 고유 4종 |
+| short/long alias 분류율 | 100% | 검증 도구 | short alias 보유 flag 625 |
+| 반복 가능 flag 분류율 | 100% | 검증 도구 | 37 |
+| interaction 모드 분류율 | 100% | 검증 도구 | `web_native`/`web_equivalent`/`sandbox_terminal`/`terminal_only`/`policy_blocked`/`unsupported_by_host` |
+| 입출력 모드 분류율 | 100% | 검증 도구 | stdin·파일 입력·파일 출력·출력 형식 |
+| `--json` 필드 분류율 | 100% | 검증 도구 | 지원 command 41, 필드 707 |
+| 미분류 command 수 | 0 | 검증 도구 종료 코드 | `unknown` 금지 |
+| 미분류 positional 수 | 0 | 검증 도구 종료 코드 | `unknown` 금지 |
+| 미분류 flag 수 | 0 | 검증 도구 종료 코드 | `unknown` 금지 |
+| 미분류 interaction 모드 수 | 0 | 검증 도구 종료 코드 | `unknown` 금지 |
+| manifest 드리프트 검출 | 설치 gh와 manifest 불일치 시 CI 실패 | CI 검증 잡 | 새 command·flag의 조용한 누락 방지 |
+| core / extension coverage 분리 | 두 수치를 따로 보고 | 검증 도구 | 합산해 가리지 않는다 |
+
+**지원하지 않는 것은 실패가 아니다.** 아래 상태로 명확히 분류되면 커버리지에 포함된다.
+
+`supported`, `web_equivalent`, `sandbox_terminal`, `unsupported_by_host`, `policy_blocked`, `terminal_only`, `requires_extension`, `requires_local_workspace`
+
+**목록에서 사라지는 것은 분류가 아니다.** 숨겨진 capability는 미분류로 집계하고 게이트를 실패시킨다.
+
+"모든 조합 지원"은 유효한 모든 조합을 스키마가 표현할 수 있다는 뜻이지, 모든 조합을 CI에서 실제 호출한다는 뜻이 아니다 — 데카르트 곱을 전부 돌리지 않는다. 조합 검증은 다음으로 수행한다 (CR-008).
+
+| 검증 | 내용 |
+| --- | --- |
+| 인벤토리 커버리지 | 실제 gh 바이너리에서 뽑은 항목이 전부 분류되었는가 |
+| 스키마 검증 | manifest가 스키마를 만족하는가 |
+| 제약 속성 시험 | 스키마가 유효하다고 판단한 조합을 argv 빌더가 표현할 수 있는가, 무효 조합을 서버가 거부하는가, UI와 서버 판정이 같은가, argv 생성이 결정론적인가 |
+| 유효/무효 조합 생성기 | 제약 모델에서 조합을 생성해 양쪽을 검사 |
+| 페어와이즈 조합 시험 | flag 쌍 단위 상호작용 |
+| 핵심 워크플로 시나리오 | 실제 업무 흐름 |
+| golden argv 시험 | 고정 invocation → 고정 argv |
+
+속성 시험이 반드시 포함해야 하는 성질: 사용자 입력이 command path 자체를 바꿀 수 없다, shell 메타문자가 shell 의미를 갖지 않는다, `shell: true` 경로가 0건이다.
 
 ### NFR-010 작업 실행 격리와 보안
 
@@ -1304,6 +1370,25 @@ CR-005 신규. 이 지표는 릴리스 게이트다 — 하나라도 미달이�
 | 비밀 노출 | argv·URL·로그·이력·감사에서 0건 | 마스킹 시험과 로그 스캔 | 비밀은 stdin 또는 제한된 임시 파일로 전달 |
 | 토큰 잔존 | 실행 종료 후 0건 | 프로세스·파일시스템 검사 | gh config에 영속 저장 금지 |
 | 권한 승격 | 0건 | 권한 판정 시험 | 유효 권한 = App 권한 ∩ 사용자 권한 |
+| gh 출력 무해화 | 100% | SafeGhOutput 경계 시험 | CR-008 — 아래 참조 |
+| 원시 HTML 렌더링 | 0건 | 프런트엔드 코드 검사 | gh 출력에 `dangerouslySetInnerHTML` 금지 |
+| workspace 밖 파일 접근 | 0건 | 경로 정규화 시험 | `..`·절대 경로·symlink 탈출 차단 |
+
+**gh 출력은 신뢰할 수 없는 입력이다 (CR-008, ADR-018).** 실행기의 stdout·stderr와 GitHub에서 내려온 모든 텍스트(제목, 본문, 라벨, 브랜치 이름, 파일 경로, 사용자 이름)는 외부 입력이다. gh 2.97.0 자신도 외부 입력이 섞인 터미널 escape 처리 문제를 보안 수정한 이력이 있으므로, PR Search는 gh가 출력을 안전하게 만들어 준다고 가정하지 않는다.
+
+모든 출력은 `SafeGhOutput` 경계를 통과한다.
+
+| 처리 | 내용 |
+| --- | --- |
+| ANSI CSI 시퀀스 | 무해화 |
+| OSC 시퀀스 | 무해화 (터미널 제목·클립보드·하이퍼링크 주입 차단) |
+| 기타 터미널 제어 문자 | 제거 또는 escape |
+| 원시 HTML | 실행 금지 |
+| Markdown | 안전 렌더러만 사용 |
+| 잘못된 UTF-8 | 대체 문자로 치환 |
+| 출력 크기 | 바이트 상한 적용 후 절단 표시 |
+| 바이너리 출력 | 탐지해 텍스트로 렌더링하지 않음 |
+| 스트리밍 경계 | 청크 경계에서 escape 시퀀스가 잘려도 안전하게 처리 |
 
 ### NFR-011 실행 지연, 진행 상황, 취소
 

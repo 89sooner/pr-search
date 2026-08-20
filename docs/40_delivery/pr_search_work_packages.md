@@ -77,7 +77,12 @@
 | WP-057 | 임시 workspace와 로컬 git 작업 | REL-009 | WP-047 | todo |
 | WP-058 | Recipe 빌더 (W-023) | REL-011 | WP-049, WP-052 | todo |
 | WP-059 | capability 드리프트와 정책 관리 (A-005, A-006) | REL-011 | WP-045, WP-048 | todo |
-| WP-060 | 전체 parity 검증 | REL-011 | WP-045 ~ WP-059 | todo |
+| WP-060 | 전체 parity 검증 | REL-011 | WP-045 ~ WP-059, WP-061 ~ WP-065 | todo |
+| WP-061 | 의미 capability 제약 엔진 | REL-007 | WP-045 | todo |
+| WP-062 | gh 출력·파일 안전 경계 | REL-007 | WP-047 | todo |
+| WP-063 | interactive 웹 등가와 extension 신뢰 어댑터 | REL-010 | WP-045, WP-055 | todo |
+| WP-064 | gh api 스키마 브리지와 호스트 capability 판정 | REL-010 | WP-056 | todo |
+| WP-065 | 조합 parity 검증기 | REL-011 | WP-061, WP-063, WP-064 | todo |
 
 의존 그래프에 순환은 없다. WP-001~WP-003과 WP-005·WP-006은 병렬 착수 가능하다.
 
@@ -1699,22 +1704,145 @@
 - 관련 요구사항: FR-GH-001, NFR-009
 - 관련 화면/플로우: A-006
 - 관련 API/데이터/잡: API-GH-001
-- 선행 WP: WP-045 ~ WP-059
+- 선행 WP: WP-045 ~ WP-059, **WP-061, WP-062, WP-063, WP-064, WP-065** (CR-008)
 - 구현 범위:
-  - 전 command path·flag 분류 최종 감사
-  - 제약 속성 시험과 페어와이즈 조합 시험
+  - NFR-009가 정의한 전 차원 분류 최종 감사 (command path, alias, positional, command 고유 flag, inherited/global flag, short alias, 반복 가능 flag, interaction 모드, 입출력 모드, `--json` 필드)
+  - WP-065의 조합 검증기 실행 결과 검수
   - 터미널 전용·정책 차단·호스트 미지원 분류의 사유 문구 검수
-  - 커버리지 리포트 산출과 릴리스 게이트 연결
+  - core / extension 커버리지 분리 리포트 산출과 릴리스 게이트 연결
 - 제외:
   - 모든 조합의 실제 실행 (조합 폭발. NFR-009가 정의한 대로 스키마 표현 가능성으로 판정한다)
 - 완료 기준(DoD):
-  - [ ] command path 분류 커버리지가 100%다
-  - [ ] 문서화된 flag 분류 커버리지가 100%다
-  - [ ] 미분류 command와 flag가 0이다
+  - [ ] NFR-009의 모든 분류율 지표가 100%다
+  - [ ] 미분류 command·positional·flag·interaction 모드가 각각 0이다
   - [ ] 페어와이즈 조합 시험이 통과한다
   - [ ] 숨겨진 capability가 없다 — 미지원·차단도 사유와 함께 노출된다
+  - [ ] core parity와 extension parity 수치가 분리 보고된다
 - 검증 방법: `pnpm gh:validate-capabilities && pnpm test -- parity`
 - 기록: 원장 WP-060 상태, FR-GH-001 매핑
+
+### WP-061 의미 capability 제약 엔진
+
+- 목표: 유효 조합의 정의가 한 곳에만 존재하고, 폼·서버·argv 빌더·테스트 생성기가 그것만 읽는다.
+- 관련 요구사항: FR-GH-003, FR-GH-002, NFR-009
+- 관련 화면/플로우: W-010
+- 관련 API/데이터/잡: API-GH-002 / ENT-GH-006
+- 선행 WP: WP-045
+- 구현 범위:
+  - `GhCapabilityConstraint` 스키마: `requires`, `conflicts`, `oneOf`, `exactlyOne`, `atLeastOne`, `implies`, `repeatable`, `minItems`, `maxItems`, 값 열거, 조건부 필수, 입력원 제약, 컨텍스트 의존 제약
+  - `GhInvocation` 구조: capability ID, 컨텍스트, positional, flag, stdin 원본, 파일 바인딩, 출력 옵션
+  - 제약 평가기 (순수 함수, 클라이언트·서버 공용)
+  - 단일 argv 빌더 — 미리보기와 실행이 공유
+  - 서버 측 실행 직전 재검증
+- 제외:
+  - 폼 렌더링 (WP-046)
+  - 실행기 (WP-047)
+- 완료 기준(DoD):
+  - [ ] 13종 제약을 전부 표현하고 평가한다
+  - [ ] 같은 invocation이 같은 manifest에서 항상 같은 argv를 만든다 (결정론)
+  - [ ] 클라이언트 검증을 우회한 API 직접 호출이 서버에서 같은 사유로 거부된다
+  - [ ] UI 판정과 서버 판정이 갈리면 시험이 실패한다
+  - [ ] 미리보기 argv와 실행 argv가 같은 빌더에서 나온다 — 두 번째 빌더가 없음을 코드 검사로 확인한다
+- 검증 방법: `pnpm test -- gh/constraint`, `pnpm test -- gh/argv`
+- 기록: 원장 WP-061 상태, FR-GH-003 매핑
+
+### WP-062 gh 출력·파일 안전 경계
+
+- 목표: gh 출력과 파일이 사용자에게 닿기 전에 반드시 무해화 경계를 통과한다.
+- 관련 요구사항: FR-GH-006, FR-GH-007, NFR-010
+- 관련 화면/플로우: W-010, W-021
+- 관련 API/데이터/잡: API-GH-005, API-GH-006 / ENT-GH-002-A
+- 선행 WP: WP-047
+- 구현 범위:
+  - `SafeGhOutput` 경계: ANSI CSI·OSC 무해화, 제어 문자 처리, invalid UTF-8 치환, 바이트 상한, 바이너리 탐지
+  - 스트리밍 청크 경계에서 분할된 escape 시퀀스 복원
+  - 프런트엔드 안전 렌더러 (원시 HTML 금지)
+  - workspace 경로 정규화·탈출 차단·symlink 차단
+  - 아티팩트 ID 발급, 파일명 정규화, 할당량·TTL·부분 파일 정리
+- 제외:
+  - 터미널 색상 재현 (무해화 이후 구조화 표현으로 별도 판단)
+- 완료 기준(DoD):
+  - [ ] CSI·OSC·제어 문자가 포함된 출력이 무해화되어 전달된다
+  - [ ] 청크 경계에서 잘린 escape 시퀀스도 무해화된다
+  - [ ] gh 출력 렌더링 경로에 `dangerouslySetInnerHTML`이 0건이다 (코드 검사)
+  - [ ] `..`·절대 경로·symlink로 workspace 밖 파일에 접근하려는 시도가 차단된다
+  - [ ] 아티팩트가 파일시스템 경로 없이 ID로만 전달된다
+  - [ ] 바이너리 출력이 텍스트로 렌더링되지 않는다
+- 검증 방법: `pnpm test -- gh/safe-output`, `pnpm test:integration -- gh/workspace`
+- 기록: 원장 WP-062 상태, NFR-010 매핑
+
+### WP-063 interactive 웹 등가와 extension 신뢰 어댑터
+
+- 목표: `terminal_only`가 마지막 분류가 되고, extension이 신뢰 경계 안에서만 실행된다.
+- 관련 요구사항: FR-GH-013, FR-GH-001
+- 관련 화면/플로우: W-022, A-005, A-006
+- 관련 API/데이터/잡: API-GH-001, API-GH-008 / ENT-GH-005, ENT-GH-006
+- 선행 WP: WP-045, WP-055
+- 구현 범위:
+  - interaction 분류기: `web_native`, `web_equivalent`, `sandbox_terminal`, `terminal_only`, `policy_blocked`, `unsupported_by_host`
+  - 웹 등가 어댑터: `--web`·`gh browse` → URL 반환, editor → 웹 편집기, `gh auth` → Operations App 연결, `gh completion` → 스크립트 내려받기, `gh config` → 실행 단위 scoped profile
+  - extension capability plane: 탐색·목록·메타데이터·출처·버전·pin·승인 상태 조회
+  - extension 실행 게이트: 관리자 허용 목록 + 정확한 버전 pin + 강화 격리
+  - core / extension 커버리지 분리 집계
+- 제외:
+  - 격리 웹 터미널 자체 구현 (별도 승인 필요. 없으면 `terminal_only`로 분류하고 사유 기록)
+- 완료 기준(DoD):
+  - [ ] 모든 command가 6종 interaction 분류 중 하나를 갖고 `unknown`이 0이다
+  - [ ] 실행기에서 브라우저 프로세스를 띄우는 경로가 0건이다
+  - [ ] 승인되지 않은 extension 실행이 차단되고, 그 존재와 사유는 UI에서 보인다
+  - [ ] 버전 pin이 없는 extension 실행이 거부된다
+  - [ ] core parity와 extension parity가 분리 집계된다
+- 검증 방법: `pnpm test -- gh/interaction`, `pnpm test -- gh/extension`
+- 기록: 원장 WP-063 상태, FR-GH-013 매핑
+
+### WP-064 gh api 스키마 브리지와 호스트 capability 판정
+
+- 목표: `gh api`가 원시 입력창이 아니라 타입 있는 폼이 되고, 호스트가 지원하지 않는 것을 미리 안다.
+- 관련 요구사항: FR-GH-010, FR-GH-011
+- 관련 화면/플로우: W-020, A-006
+- 관련 API/데이터/잡: API-GH-009 / ENT-GH-002, ENT-GH-006
+- 선행 WP: WP-056
+- 구현 범위:
+  - REST 스키마 브리지: 메서드·엔드포인트·경로 파라미터·질의·본문·헤더·페이지네이션·미리보기
+  - GraphQL introspection 브리지: query·variables·operation·페이지네이션
+  - 타입 폼 생성과 원시 모드 병행 (둘 다 같은 정책·위험도·감사 경로)
+  - GHES 버전 기반 호스트 capability 판정과 `unsupported_by_host` 표기
+- 제외:
+  - GitHub 리소스 선택기 고도화 (WP-051 컨텍스트 해석 재사용)
+- 완료 기준(DoD):
+  - [ ] REST·GraphQL 각각 타입 폼이 스키마에서 생성된다
+  - [ ] 원시 모드 요청도 타입 폼과 동일한 정책·감사 경로를 거친다
+  - [ ] `Authorization`·`Host`·`Cookie` 등 보안 헤더 덮어쓰기가 거부된다
+  - [ ] 쓰기 메서드에 command와 동일한 위험도·확인·승인이 적용된다
+  - [ ] 호스트가 지원하지 않는 capability가 숨겨지지 않고 사유와 함께 표시된다
+- 검증 방법: `pnpm test -- gh/api-bridge`, `pnpm test:integration -- gh/host-capability`
+- 기록: 원장 WP-064 상태, FR-GH-010·FR-GH-011 매핑
+
+### WP-065 조합 parity 검증기
+
+- 목표: "모든 유효 조합 지원"을 데카르트 곱 없이 검증 가능한 형태로 만든다.
+- 관련 요구사항: NFR-009, FR-GH-003
+- 관련 화면/플로우: A-006
+- 관련 API/데이터/잡: API-GH-001 / ENT-GH-006
+- 선행 WP: WP-061, WP-063, WP-064
+- 구현 범위:
+  - 인벤토리 커버리지 검사 (실제 gh 바이너리 기준)
+  - manifest 스키마 검증
+  - 제약 속성 시험: 유효 조합의 argv 표현 가능성, 무효 조합의 서버 거부, UI·서버 판정 일치, argv 결정론
+  - 유효/무효 조합 생성기
+  - 페어와이즈 조합 시험
+  - golden argv 시험
+  - 커버리지 리포트 산출 (차원별, core/extension 분리)
+- 제외:
+  - 전 조합 실제 실행
+- 완료 기준(DoD):
+  - [ ] 사용자 입력이 command path를 바꿀 수 없음을 속성 시험이 증명한다
+  - [ ] shell 메타문자가 shell 의미를 갖지 않음을 속성 시험이 증명한다
+  - [ ] `shell: true` 사용 경로가 0건임을 코드 검사가 확인한다
+  - [ ] 페어와이즈 조합 시험이 통과한다
+  - [ ] 차원별 커버리지 리포트가 A-006이 소비할 형식으로 산출된다
+- 검증 방법: `pnpm gh:validate-capabilities`, `pnpm test -- gh/parity`
+- 기록: 원장 WP-065 상태, NFR-009 매핑
 
 ## 4. REL → WP 커버리지
 
@@ -1726,11 +1854,11 @@
 | REL-004 | WP-029 ~ WP-036 | 8 |
 | REL-005 | WP-037 ~ WP-040 | 4 |
 | REL-006 | WP-041 ~ WP-044 | 4 |
-| REL-007 | WP-045 ~ WP-048 | 4 |
+| REL-007 | WP-045 ~ WP-048, WP-061, WP-062 | 6 |
 | REL-008 | WP-049 ~ WP-050 | 2 |
 | REL-009 | WP-051 ~ WP-053, WP-057 | 4 |
-| REL-010 | WP-054 ~ WP-056 | 3 |
-| REL-011 | WP-058 ~ WP-060 | 3 |
-| 합계 | | 60 |
+| REL-010 | WP-054 ~ WP-056, WP-063, WP-064 | 5 |
+| REL-011 | WP-058 ~ WP-060, WP-065 | 4 |
+| 합계 | | 65 |
 
 모든 REL이 WP로 분해되었고, 모든 WP가 최소 1개 FR을 참조한다.

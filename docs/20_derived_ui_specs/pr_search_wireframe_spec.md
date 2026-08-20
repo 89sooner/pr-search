@@ -826,7 +826,9 @@ capability manifest에 있는 모든 명령을 검색하고, 생성된 폼으로
 | Capability 검색 | 명령·설명·카테고리·읽기/쓰기·위험도로 필터. 미지원·차단 항목도 사유와 함께 표시 | FR-GH-001, FR-GH-011, FR-GH-013 |
 | Command 폼 | manifest에서 생성. positional과 flag를 타입별 컨트롤로 표현. 제약 위반을 즉시 표시 | FR-GH-003 |
 | 실행 미리보기 | 유효 대상, 위험도, 필요 권한과 보유 여부, 비밀이 가려진 argv | FR-GH-002, FR-GH-009 |
-| 실행 결과 | 상태, 표준 출력·오류 스트리밍, 구조화 JSON, 아티팩트, 취소 | FR-GH-006, FR-GH-007 |
+| **유효 실행 컨텍스트** (CR-008, C-062) | 실행 직전 확정된 값 — 호스트, GitHub 신원, 조직, 저장소, 브랜치/ref, workspace, gh 버전, manifest 버전, 위험도, 필요 권한, 실제 권한 판정, 정책 판정. 실행기가 환경으로 주입하는 컨텍스트(`GH_HOST`, `GH_REPO` 등) 때문에 미리보기와 실제 대상이 갈리지 않음을 여기서 확인한다. 비밀 값은 표시하지 않는다 | FR-GH-002, FR-GH-008, FR-GH-011 |
+| 실행 결과 | 상태, 표준 출력·오류 스트리밍, 구조화 JSON, 아티팩트, 취소. 출력은 무해화 경계를 통과한 것만 표시한다 (C-063) | FR-GH-006, FR-GH-007, NFR-010 |
+| **웹 등가 안내** (CR-008, C-065) | 터미널 기능이 웹 등가로 대체된 경우 무엇이 어떻게 바뀌었는지 표시 — `--web`·`gh browse`는 링크로, editor는 웹 편집기로 | FR-GH-013 |
 
 ### 상태
 
@@ -835,8 +837,11 @@ capability manifest에 있는 모든 명령을 검색하고, 생성된 폼으로
 ### 규칙
 
 - 실제 토큰과 비밀 값은 argv 미리보기에 절대 노출하지 않는다. `<redacted>`로 표시한다.
-- 미리보기 argv와 실제 실행 argv는 같은 구조화 명령 모델에서 파생한다.
+- 미리보기 argv와 실제 실행 argv는 같은 구조화 명령 모델에서 파생한다. **argv 빌더는 하나뿐이다** (CR-008, ADR-017).
 - 지원되지 않는 capability를 목록에서 숨기지 않는다.
+- **폼 검증 규칙은 UI가 소유하지 않는다.** manifest의 의미 제약 모델을 폼·서버가 함께 읽고, 두 판정이 갈리면 실패로 본다 (CR-008, FR-GH-003 AC-8).
+- **gh 출력을 원시 HTML로 렌더링하지 않는다.** ANSI CSI·OSC·제어 문자가 무해화된 뒤에만 화면에 닿는다 (CR-008, ADR-018).
+- **실행기에서 브라우저 프로세스를 띄우지 않는다.** `--web` 계열은 URL을 돌려주고 사용자의 브라우저가 연다 (CR-008, ADR-019).
 
 ## W-011 ~ W-023 GitHub Operations 업무 화면
 
@@ -875,5 +880,5 @@ capability manifest에 있는 모든 명령을 검색하고, 생성된 폼으로
 | 화면 | 핵심 요소 | 관련 FR |
 | --- | --- | --- |
 | A-005 | capability 허용·차단 목록, 위험도 재정의, 승인 필요 지정, `gh api` 엔드포인트 정책, 확장 허용 목록. 변경은 감사 대상 | FR-GH-009, FR-GH-010, FR-GH-013 |
-| A-006 | manifest 버전·해시, 설치 gh 버전 대조 결과, 분류 커버리지(command/flag/positional), 미분류 목록, 드리프트 차이, 호스트 지원 상태 | FR-GH-001, FR-GH-011 |
+| A-006 | manifest 버전·해시, 설치 gh 버전 대조 결과, GHES 버전, command tree, **차원별 분류 커버리지**(command path·alias·positional·command 고유 flag·inherited flag·short alias·반복 가능 flag·interaction 모드·입출력 모드·`--json` 필드), 상태별 집계(supported / policy_blocked / unsupported_by_host / terminal_only / requires_extension), **core와 extension 수치 분리**, 미분류 목록, 드리프트가 있으면 정확한 command·flag diff, 마지막 인벤토리 시각 (CR-008, C-067) | FR-GH-001, FR-GH-011, FR-GH-013 |
 | A-007 | 전체 실행 감사 조회·필터, 승인 대기 목록과 승인·거부, 사용자별 위임 신원 연결 상태 | FR-GH-012, FR-GH-008, FR-GH-009 |

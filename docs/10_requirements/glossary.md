@@ -136,3 +136,9 @@
 | Recipe | `gh_recipe` | 등록된 capability만 조합한 다단계 작업 정의 | shell 스크립트가 아니다. 임의 명령을 넣을 수 없다 | FR-GH-005 |
 | 임시 workspace | `workspace` | 로컬 git이나 파일이 필요한 실행에 배정되는 격리된 디렉터리 | 서버의 실제 소스 트리가 아니다 | FR-GH-007 |
 | 레지스트리 드리프트 | `registry_stale` | 실행기의 gh 버전과 manifest 생성 버전이 다른 상태 | 이 상태에서 신규 command를 실행하지 않는다 | FR-GH-011 AC-3 |
+| 구조화 invocation (GhInvocation) | 사용자가 구성한 gh 작업의 구조 표현. capability ID, 컨텍스트, positional, flag, stdin 원본, 파일 바인딩, 출력 옵션으로 이뤄진다. 문자열 명령이 아니라 이것이 요청·검증·미리보기·실행·감사·재실행의 단일 진실이다 (CR-008, ADR-017) |
+| 의미 제약 모델 (GhCapabilityConstraint) | capability의 유효 조합 정의. `requires`·`conflicts`·`oneOf`·`exactlyOne`·`atLeastOne`·`implies`·반복 가능·최소/최대·값 열거·조건부 필수·입력원 제약·컨텍스트 의존 제약을 표현한다. 폼·서버 검증·argv 빌더·테스트 생성기가 같은 모델을 읽는다 (CR-008) |
+| SafeGhOutput | gh stdout·stderr와 GitHub 텍스트가 사용자 화면에 닿기 전에 반드시 통과하는 무해화 경계. ANSI CSI·OSC·제어 문자 무해화, invalid UTF-8 치환, 바이너리 탐지, 바이트 상한, 스트리밍 청크 경계 보정 (CR-008, ADR-018) |
+| 웹 등가 (web equivalent) | 터미널 UX를 웹 표현으로 대체한 기능. `gh browse`의 의미는 "브라우저 프로세스 실행"이 아니라 "대상 URL로 이동"이므로 웹에서는 링크가 등가다. `terminal_only`로 밀어 넣기 전에 먼저 찾는다 (CR-008, ADR-019) |
+| parity 차원 | capability parity를 판정하는 28개 축. command path·alias·positional·flag(고유/inherited/short/반복)·입출력·컨텍스트·gh config·TTY/editor/browser 요구·출력 형식·`--json` 필드·`--jq`·`--template`·페이지네이션·REST/GraphQL 모드·GHES 버전·사용자 권한·App 권한·정책·위험도 (CR-008) |
+| extension capability plane | core gh와 분리된 gh extension의 capability 영역. 탐색·메타데이터는 허용하되 실행은 관리자 허용 목록과 정확한 버전 pin을 만족할 때만. core parity와 수치를 분리 보고한다 (CR-008, ADR-019) |

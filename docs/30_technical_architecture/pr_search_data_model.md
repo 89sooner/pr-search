@@ -30,12 +30,14 @@
 | ENT-ING-003 | RawEventArchive | 원본 아카이브 검색 문서 | `delivery_id`, `event_type`, `repository`, `received_at`, `payload` | Elasticsearch | filebeat | FR-ING-010 |
 | ENT-ING-004 | Job | 잡 실행 상태 | `job_id`, `type`, `target`, `state`, `progress`, `cursor`, `started_at`, `finished_at` | PostgreSQL | jobs | FR-ADMIN-002, FR-ING-006 |
 | ENT-GH-001 | GitHubIdentityConnection | 사용자별 Operations App 위임 연결 | `user_id`, `github_login`, `token_ref`, `scopes[]`, `connected_at`, `expires_at`, `revoked_at` | PostgreSQL | gh-identity | FR-GH-008 |
-| ENT-GH-002 | GhExecution | gh 실행 요청과 결과 | `execution_id`, `user_id`, `capability_id`, `redacted_argv[]`, `risk_level`, `state`, `gh_version`, `manifest_version`, `exit_code`, `output_hash`, `idempotency_key` | PostgreSQL | gh-exec | FR-GH-002, FR-GH-006, FR-GH-012 |
+| ENT-GH-002 | GhExecution | gh 실행 요청과 결과 | `execution_id`, `user_id`, `capability_id`, `invocation`(ENT-GH-008 구조화 원본 — 재실행의 근거), `context_snapshot`, `redacted_argv[]`, `risk_level`, `state`, `gh_version`, `manifest_version`, `exit_code`, `output_hash`, `output_truncated`, `idempotency_key` | PostgreSQL | gh-exec | FR-GH-002, FR-GH-006, FR-GH-012 |
 | ENT-GH-002-A | GhExecutionArtifact | 실행이 만든 파일 | `artifact_id`, `execution_id`, `name`, `size_bytes`, `content_type`, `storage_ref`, `expires_at` | PostgreSQL + 파일 저장 | gh-exec | FR-GH-007 |
 | ENT-GH-003 | GhRecipe | 저장된 다단계 작업 | `recipe_id`, `owner_user_id`, `name`, `visibility`, `current_revision` | PostgreSQL | gh-recipe | FR-GH-005 |
 | ENT-GH-004 | GhRecipeRevision | Recipe 개정 | `revision_id`, `recipe_id`, `revision`, `definition`, `created_by`, `created_at` | PostgreSQL | gh-recipe | FR-GH-005 |
 | ENT-GH-005 | GhApproval | 승인 대기·처리 기록 | `approval_id`, `execution_id`, `required_role`, `state`, `decided_by`, `decided_at`, `reason` | PostgreSQL | gh-policy | FR-GH-009, FR-GH-013 |
-| ENT-GH-006 | GhCapabilitySnapshot | 적용 중인 capability manifest | `snapshot_id`, `gh_version`, `manifest_version`, `manifest_hash`, `command_count`, `flag_count`, `unclassified_count`, `activated_at` | PostgreSQL | gh-registry | FR-GH-001, FR-GH-011 |
+| ENT-GH-006 | GhCapabilitySnapshot | 적용 중인 capability manifest | `snapshot_id`, `gh_version`, `manifest_version`, `manifest_hash`, `command_count`, `flag_count`, `unclassified_count`, `activated_at`, `alias_count`, `positional_count`, `inherited_flag_count`, `interaction_unclassified_count`, `extension_command_count` (CR-008) | PostgreSQL | gh-registry | FR-GH-001, FR-GH-011 |
+| ENT-GH-007 | GhCapabilityConstraint | capability의 유효 조합 정의 (CR-008, ADR-017) | `capability_id`, `kind`(`requires`/`conflicts`/`oneOf`/`exactlyOne`/`atLeastOne`/`implies`/`repeatable`/`minItems`/`maxItems`/`enum`/`conditional`/`inputSource`/`context`), `subjects[]`, `condition`, `values[]`, `bounds` | manifest (PostgreSQL 스냅숏) | gh-registry | FR-GH-003 |
+| ENT-GH-008 | GhInvocation | 사용자 의도의 구조화 표현 (CR-008, ADR-017) | `capability_id`, `context`(host/org/repo/ref/workspace), `positional_arguments[]`, `flags[]`, `stdin_source`, `file_bindings[]`, `output_options` | PostgreSQL (`gh_execution`에 내장) | gh-exec | FR-GH-002, FR-GH-012 |
 
 ## 3. PostgreSQL 스키마
 
