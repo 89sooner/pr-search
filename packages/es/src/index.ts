@@ -37,5 +37,8 @@ export type { AccessScope, ExplicitAccessScope, OrgTeamAccessScope, ScopedQuery 
 export { search } from './search.js';
 export type { ScopedSearchOptions } from './search.js';
 
+export { CONDITIONAL_UPSERT_SCRIPT, bulkUpsert, classifyFailure, upsertOne } from './upsert.js';
+export type { BulkItemOutcome, BulkUpsertResult, UpsertRequest } from './upsert.js';
+
 export { applyMappings, dropEntityIndices } from './bootstrap.js';
 export type { BootstrapResult } from './bootstrap.js';

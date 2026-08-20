@@ -227,9 +227,15 @@ describe('정상 보강 (FR-ING-004 AC-1)', () => {
       merge_commit_sha: 'a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5',
       base_ref: 'main',
       head_sha: 'b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e',
-      author: 'dev',
-      merged_at: '2026-08-19T10:00:00Z',
     });
+    // 투영의 `lead_time_seconds`·`first_review_wait_seconds` 기준점 (CR-011, DEV-018).
+    expect(published.pull_request?.created_at).toBe('2026-08-01T09:00:00Z');
+    expect(published.pull_request?.labels).toEqual(['payments', 'bug']);
+    expect(published.pull_request?.draft).toBe(false);
+    // 겹치는 필드는 **API 응답**이 이긴다. 웹훅은 발생 시점의 스냅숏이고 재전송이면
+    // 몇 분 전 것일 수도 있다 — 목 GHE는 `jdoe`/`2026-08-02`, 웹훅은 `dev`/`2026-08-19`다.
+    expect(published.pull_request?.author).toBe('jdoe');
+    expect(published.pull_request?.merged_at).toBe('2026-08-02T10:30:00Z');
     const additions = published.changed_files.reduce((sum, file) => sum + file.additions, 0);
     const deletions = published.changed_files.reduce((sum, file) => sum + file.deletions, 0);
     expect({ count: published.changed_files.length, additions, deletions }).toEqual({

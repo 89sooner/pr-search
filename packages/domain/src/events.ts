@@ -51,12 +51,27 @@ export function ingestPartitionKey(repositoryId: number | null, deliveryId: stri
  * Authorization 정보. 크기는 커밋 250건·파일 3000건 상한이 묶는다.
  */
 
-/** 보강된 PR 요약. 웹훅 payload만으로도 채울 수 있는 범위다 (FR-ING-004 AC-3). */
+/**
+ * 보강된 PR 요약. 웹훅 payload만으로도 채울 수 있는 범위다 (FR-ING-004 AC-3).
+ *
+ * 필드 집합은 **PR 문서 매핑(ENT-CORE-002)이 선언한 PR 고유 필드 전부**다
+ * (CR-011, DEV-018). 투영이 이 이벤트만 보고 문서를 만들 수 있어야 하고,
+ * `created_at` 없이는 `lead_time_seconds`·`first_review_wait_seconds`를
+ * 계산할 수 없다.
+ */
 export interface EnrichedPullRequest {
   readonly number: number;
   readonly title: string;
+  readonly body: string | null;
   readonly state: string;
+  readonly draft: boolean;
+  /** 라벨 이름만. 색·설명은 매핑에 없다. */
+  readonly labels: readonly string[];
   readonly merged: boolean;
+  /** 투영의 리드 타임 기준점. 웹훅에도 PR API에도 있다. */
+  readonly created_at: string | null;
+  readonly updated_at: string | null;
+  readonly closed_at: string | null;
   readonly merged_at: string | null;
   readonly merge_commit_sha: string | null;
   readonly author: string | null;
@@ -110,4 +125,43 @@ export interface IngestionEnriched {
   readonly enrichment_pending: boolean;
   readonly enrichment_errors: readonly EnrichmentError[];
   readonly correlation_id: string;
+}
+
+/** EVT-ING-003이 가리킬 수 있는 엔티티. 릴리스 문서는 WP-024가 더한다. */
+export type ProjectedEntityKind = 'pull_request' | 'commit';
+
+/**
+ * EVT-ING-003 `ingestion.projected`.
+ *
+ * 관계 워커(JOB-REL-001~005)가 이것을 받아 간선을 판다. 문서 본문을 싣지 않는
+ * 이유: 관계 파생은 색인된 문서를 다시 읽어야 하고, 그때 읽는 것이 정본이다.
+ */
+export interface IngestionProjected {
+  readonly repository_id: number;
+  readonly entity_kind: ProjectedEntityKind;
+  /** 색인된 문서 ID. `pullRequestDocId`/`commitDocId`가 만든 값이다. */
+  readonly entity_id: string;
+  readonly document_version: number;
+  readonly correlation_id: string;
+}
+
+/**
+ * PR 문서 ID (WP-008).
+ *
+ * 저장소를 접두로 두는 이유는 두 가지다. PR 번호는 저장소 안에서만 유일하고,
+ * 같은 접두가 `_routing`과 짝을 이뤄 한 저장소의 문서가 한 샤드에 모인다.
+ */
+export function pullRequestDocId(repositoryId: number, prNumber: number): string {
+  return `${String(repositoryId)}:${String(prNumber)}`;
+}
+
+/**
+ * 커밋 문서 ID (WP-008).
+ *
+ * SHA는 **소문자 40자 그대로** 쓴다. 축약하지 않는다 — 축약 SHA는 검색 입력이지
+ * 문서 정체성이 아니다 (ADR-012). 대소문자를 섞어 보내는 곳이 있어 여기서 한 번
+ * 낮춘다. 그러지 않으면 같은 커밋이 문서 둘이 된다.
+ */
+export function commitDocId(repositoryId: number, commitSha: string): string {
+  return `${String(repositoryId)}:${commitSha.toLowerCase()}`;
 }

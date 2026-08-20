@@ -23,12 +23,28 @@ export interface CallOptions {
   readonly priority?: RequestPriority;
 }
 
+/**
+ * PR 요약.
+ *
+ * 필드 경계는 **PR 문서 매핑(ENT-CORE-002)이 선언한 PR 고유 필드 전부**다
+ * (CR-011, DEV-018). "지금 쓰는 것만" 담으면 다음 WP가 이 타입을 또 연다.
+ * 본문(`body`)까지는 담되 patch/diff와 소스 코드는 담지 않는다.
+ */
 export interface PullRequestSummary {
   readonly number: number;
   readonly title: string;
+  readonly body: string | null;
   readonly state: string;
+  readonly draft: boolean;
+  readonly labels: readonly { readonly name: string }[];
+  readonly user: { readonly login: string } | null;
   readonly merged: boolean;
   readonly merge_commit_sha: string | null;
+  /** 투영의 `lead_time_seconds`·`first_review_wait_seconds` 기준점이다. */
+  readonly created_at: string;
+  readonly updated_at: string | null;
+  readonly closed_at: string | null;
+  readonly merged_at: string | null;
   readonly head: { readonly ref: string; readonly sha: string };
   readonly base: { readonly ref: string; readonly sha: string };
 }
