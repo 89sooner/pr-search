@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "noEmit": true,
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@prs/domain": ["./packages/domain/src/index.ts"],
+      "@prs/contracts": ["./packages/contracts/src/index.ts"],
+      "@prs/query": ["./packages/query/src/index.ts"],
+      "@prs/es": ["./packages/es/src/index.ts"],
+      "@prs/db": ["./packages/db/src/index.ts"],
+      "@prs/github": ["./packages/github/src/index.ts"],
+      "@prs/bus": ["./packages/bus/src/index.ts"]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*.test.ts",
+    "packages/*/integration/**/*.ts",
+    "apps/*/src/**/*.test.ts",
+    "scripts/**/*.test.ts",
+    "vitest.config.ts",
+    "vitest.integration.config.ts"
+  ]
+}

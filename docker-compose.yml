@@ -1,0 +1,62 @@
+# 로컬 개발용 백킹 서비스 (WP-001).
+#
+# 인프라 4장의 backing service 3종을 local 프로파일로 띄운다. local 환경은
+# 인프라 2장 표에 따라 Elasticsearch 노드 1개 / 복제본 0이다. production의
+# 전용 3노드 구성(OD-006)은 여기서 재현하지 않는다.
+#
+# 운영 배포 매니페스트는 WP-010이 다룬다. 이 파일은 로컬 전용이다.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: prs-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-prs}
+      POSTGRES_USER: ${POSTGRES_USER:-prs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-prs}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-prs} -d ${POSTGRES_DB:-prs}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.0
+    container_name: prs-elasticsearch
+    environment:
+      # local 전용 설정이다. 운영에서는 보안을 끄지 않는다 (보안 문서 4장).
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+      ES_JAVA_OPTS: '-Xms1g -Xmx1g'
+    ports:
+      - '9200:9200'
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9200/_cluster/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: prs-redis
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres-data:
+  elasticsearch-data:
+  redis-data:

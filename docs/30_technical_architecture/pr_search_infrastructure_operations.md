@@ -155,30 +155,61 @@ ES 아카이브(약 700GB)와 `raw_event`(4TB)는 같은 payload를 담지만 �
 
 ## 8. 개발/실행 명령
 
-코드 저장소가 생기면 실제 명령으로 갱신한다. 실행 브리프가 이 절을 인용한다.
+WP-001 시점의 실제 명령이다. 아직 구현되지 않은 명령은 그것을 만드는 WP를 함께 적었다. 실행 브리프가 이 절을 인용한다.
 
 ```bash
 # 전제: Node 20+, pnpm 10+, Docker
+
+# --- WP-001에서 동작하는 명령 ---
 pnpm install                      # 의존성 설치
-pnpm dev                          # 전 앱 개발 서버 (docker compose로 PG/ES/Redis 기동 포함)
+pnpm dev                          # docker compose up -d 후 전 앱 개발 서버
 pnpm dev:web                      # 웹만
 pnpm dev:api                      # search-api만
 pnpm dev:worker                   # pipeline-worker만
-pnpm typecheck                    # tsc --noEmit (전 패키지)
+pnpm typecheck                    # tsc --build (전 패키지) + web의 tsc --noEmit
 pnpm lint                         # ESLint
-pnpm lint:deps                    # 패키지 의존 방향 검사 (역방향 참조 시 실패)
-pnpm test                         # 단위 + 계약 테스트
-pnpm test:integration             # testcontainers (PostgreSQL + Elasticsearch)
-pnpm test:e2e                     # Playwright
-pnpm test:a11y                    # axe 검사
-pnpm build                        # 전 앱 빌드
-pnpm db:migrate                   # 마이그레이션 적용
-pnpm db:seed                      # 개발용 합성 시드
-pnpm es:apply-mappings            # 매핑 적용 (신규 인덱스 생성)
-pnpm es:reindex --alias <별칭>    # 재색인 + 별칭 전환
+pnpm lint:deps                    # 패키지 의존 방향 검사 (역방향 참조 시 종료 코드 1)
+pnpm test                         # 단위 + 계약 테스트 (Vitest)
+pnpm build                        # 전 패키지·앱 빌드
+pnpm clean                        # 빌드 산출물 제거
+
+# --- WP-002에서 동작하는 명령 (PostgreSQL 필요) ---
+pnpm db:migrate                   # 미적용 마이그레이션 전부 적용
+pnpm db:migrate --down            # 적용분 전부 회수 (up의 역연산)
+pnpm db:migrate --down --step 1   # 최신 1개만 회수
+pnpm db:partitions                # 월별 파티션 생성 (기본 3개월치)
+pnpm db:seed                      # 개발용 합성 시드 (저장소 3, PR 200, 커밋 500, 릴리스 10)
+pnpm test:integration             # 실제 PostgreSQL 대상 통합 테스트
+
+# --- 후속 WP가 추가하는 명령 ---
+pnpm test:e2e                     # Playwright                                   — WP-020
+pnpm test:a11y                    # axe 검사                                     — WP-020
+pnpm es:apply-mappings            # 매핑 적용 (신규 인덱스 생성)                 — WP-003
+pnpm es:reindex --alias <별칭>    # 재색인 + 별칭 전환                           — WP-035
 ```
 
-로컬 개발은 GHE 없이도 가능해야 한다. `pnpm dev`가 목 웹훅 이벤트 주입기와 합성 시드를 함께 띄운다.
+DB 접속 정보는 환경 변수에서만 읽는다 (`@prs/db`의 `resolvePoolConfig`). 우선순위는 `DATABASE_URL` → 개별 `POSTGRES_*` → 로컬 기본값이다. 통합 테스트는 `POSTGRES_TEST_DB`(기본 `prs_test`)를 써서 개발용 DB와 분리한다.
+
+`pnpm test`(단위)와 `pnpm test:integration`(백킹 서비스 필요)을 분리해 둔 이유는, 백킹 서비스가 없는 환경에서도 단위 검증이 항상 돌아야 하기 때문이다. CI는 두 잡으로 나뉘며 통합 잡이 PostgreSQL 서비스 컨테이너를 띄운다.
+
+로컬 백킹 서비스는 저장소 루트의 `docker-compose.yml`이 띄운다. local 환경은 2장 표에 따라 Elasticsearch 노드 1개·복제본 0이며, 운영의 전용 3노드 구성(OD-006, 4.1장)을 재현하지 않는다.
+
+| 서비스 | 이미지 | 포트 |
+| --- | --- | --- |
+| PostgreSQL | `postgres:16-alpine` | 5432 |
+| Elasticsearch | `docker.elastic.co/elasticsearch/elasticsearch:8.19.0` | 9200 |
+| Redis | `redis:7-alpine` | 6379 |
+
+각 앱은 3장이 정의한 `GET /healthz`를 노출한다.
+
+| 앱 | 포트 | 비고 |
+| --- | --- | --- |
+| `web` | 3000 | Next.js 라우트 핸들러 |
+| `ingest-gateway` | 3001 | Fastify |
+| `search-api` | 3002 | Fastify |
+| `pipeline-worker` | 3003 | 순수 Node `node:http`. 3장의 하트비트를 HTTP로 노출한 것이며 요청 처리 서비스가 아니다 (DEV-002) |
+
+로컬 개발은 GHE 없이도 가능해야 한다. 목 웹훅 이벤트 주입기와 합성 시드는 WP-002·WP-004가 `pnpm dev` 경로에 더한다.
 
 ## 9. 운영 절차
 

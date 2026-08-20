@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS dead_letter;
+DROP TABLE IF EXISTS raw_event;

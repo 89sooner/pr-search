@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS permission_cache;
+DROP TABLE IF EXISTS team_member;
+DROP TABLE IF EXISTS team;
+DROP TABLE IF EXISTS app_user;
+DROP TABLE IF EXISTS repository;
