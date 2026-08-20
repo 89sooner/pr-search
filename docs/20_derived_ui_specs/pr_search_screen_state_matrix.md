@@ -224,3 +224,25 @@
 - 시스템 내부 용어를 노출하지 않는다. "shard failure" 대신 "일부 결과를 가져오지 못했습니다".
 - 복구 불가 오류에는 상관 ID를 표시해 운영자 문의에 사용하게 한다.
 - 권한 부족 문구에는 필요한 역할명을 그대로 적는다. "권한이 없습니다" 대신 "이 화면은 운영자(`operator`) 역할이 필요합니다".
+
+## GitHub Operations 화면 상태 (CR-005 신규)
+
+기존 공통 상태에 더해 Operations 화면에만 있는 상태다.
+
+| 상태 | 의미 | 사용자에게 보이는 것 | 다음 동작 |
+| --- | --- | --- | --- |
+| `identity_required` | Operations App 미연결 또는 토큰 만료 | 연결 안내 | GitHub 계정 연결 |
+| `permission_denied` | 사용자 GitHub 권한 부족 | 필요 권한과 보유 여부 | 권한 요청 |
+| `policy_blocked` | 실행 정책이 차단 | 차단 사유 | 관리자 문의 |
+| `unsupported_host` | 대상 GHE 버전 미지원 | 미지원 사유 | 지원 기능 사용 |
+| `terminal_only` | 웹으로 옮길 수 없는 기능 | 분류 사유와 대안 | 터미널 사용 |
+| `registry_stale` | 실행기 gh와 manifest 불일치 | 관리자 조치 대기 안내 | A-006 확인 |
+| `constraint_error` | argument·flag 제약 위반 | 위반한 제약 | 입력 수정 |
+| `awaiting_confirmation` | R2 이상 확인 대기 | 대상·위험도·영향 | 확인 또는 취소 |
+| `awaiting_approval` | R3 승인 대기 | 승인자와 대기 시간 | 대기 또는 취소 |
+| `running` | 실행 중 | 스트리밍 출력, 취소 버튼 | 취소 가능 |
+| `target_changed` | 실행 직전 대상 상태 변경 | 무엇이 달라졌는지 | 새로 고침 후 재확인 |
+| `timed_out` | 실행 시간 상한 초과 | 경과 시간과 상한 | 범위 축소 후 재시도 |
+| `output_truncated` | 출력 상한 초과 | 절삭 사실 | 아티팩트로 전체 확인 |
+
+전이 규칙 중 되돌릴 수 없는 것 하나: `running` → `succeeded`인 쓰기 작업은 화면에서 되돌리기를 제공하지 않는다. GitHub 상태를 되돌리려면 별도의 되돌리기 작업(예: `pr revert`)을 새 실행으로 수행한다.

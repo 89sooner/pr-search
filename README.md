@@ -1,6 +1,11 @@
 # PR Search
 
-GitHub Enterprise의 PR·커밋을 수집해 **커밋 SHA ↔ PR 양방향 검색**과 **Perforce Changelist를 대체하는 머지 시퀀스**를 제공하는 사내 읽기 전용 검색·분석 대시보드다.
+GitHub Enterprise를 위한 사내 도구다. 두 가지 일을 한다.
+
+- **PR·커밋 검색과 조사** — PR·커밋을 수집해 **커밋 SHA ↔ PR 양방향 검색**과 **Perforce Changelist를 대체하는 머지 시퀀스**를 제공한다
+- **GitHub 운영 콘솔** — `gh` CLI가 지원하는 GitHub 작업을 웹에서 구성·실행한다 (CR-005)
+
+두 축은 아키텍처·인증·감사에서 분리되어 있다 (ADR-013). 조사 쪽은 읽기 전용 파생 시스템이고, 운영 쪽은 사용자가 명시적으로 요청한 작업만 사용자 위임 자격 증명으로 실행한다.
 
 설계 문서가 진실이다. 코드를 읽기 전에 `docs/20_derived_ui_specs/pr_search_ai_agent_execution_brief.md`를 먼저 읽는다.
 
@@ -16,11 +21,13 @@ packages/
   db/                     PostgreSQL 리포지터리 계층          @prs/db      (WP-002)
   github/                 GHE REST 클라이언트                 @prs/github  (WP-006)
   bus/                    EventBus 포트와 Redis Streams       @prs/bus     (WP-005)
+  gh-cli/                 gh capability 모델과 argv 조립      @prs/gh-cli  (WP-045)
 apps/
   ingest-gateway/         웹훅 수신 (Fastify)                 (WP-004)
   pipeline-worker/        보강·투영·채번·관계 파생 (순수 Node) (WP-007~)
   search-api/             조회 API (Fastify)                  (WP-021)
   web/                    대시보드 (Next.js App Router)       (WP-019~)
+  gh-executor/            격리된 gh 실행기                    (WP-047)
 ```
 
 ## 의존 방향

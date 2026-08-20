@@ -29,6 +29,13 @@
 | ENT-ING-002 | DeadLetter | 실패 이벤트 격리 | `dead_letter_id`, `delivery_id`, `stage`, `error`, `retry_count`, `state` | PostgreSQL | ingestion | FR-ING-007 |
 | ENT-ING-003 | RawEventArchive | 원본 아카이브 검색 문서 | `delivery_id`, `event_type`, `repository`, `received_at`, `payload` | Elasticsearch | filebeat | FR-ING-010 |
 | ENT-ING-004 | Job | 잡 실행 상태 | `job_id`, `type`, `target`, `state`, `progress`, `cursor`, `started_at`, `finished_at` | PostgreSQL | jobs | FR-ADMIN-002, FR-ING-006 |
+| ENT-GH-001 | GitHubIdentityConnection | 사용자별 Operations App 위임 연결 | `user_id`, `github_login`, `token_ref`, `scopes[]`, `connected_at`, `expires_at`, `revoked_at` | PostgreSQL | gh-identity | FR-GH-008 |
+| ENT-GH-002 | GhExecution | gh 실행 요청과 결과 | `execution_id`, `user_id`, `capability_id`, `redacted_argv[]`, `risk_level`, `state`, `gh_version`, `manifest_version`, `exit_code`, `output_hash`, `idempotency_key` | PostgreSQL | gh-exec | FR-GH-002, FR-GH-006, FR-GH-012 |
+| ENT-GH-002-A | GhExecutionArtifact | 실행이 만든 파일 | `artifact_id`, `execution_id`, `name`, `size_bytes`, `content_type`, `storage_ref`, `expires_at` | PostgreSQL + 파일 저장 | gh-exec | FR-GH-007 |
+| ENT-GH-003 | GhRecipe | 저장된 다단계 작업 | `recipe_id`, `owner_user_id`, `name`, `visibility`, `current_revision` | PostgreSQL | gh-recipe | FR-GH-005 |
+| ENT-GH-004 | GhRecipeRevision | Recipe 개정 | `revision_id`, `recipe_id`, `revision`, `definition`, `created_by`, `created_at` | PostgreSQL | gh-recipe | FR-GH-005 |
+| ENT-GH-005 | GhApproval | 승인 대기·처리 기록 | `approval_id`, `execution_id`, `required_role`, `state`, `decided_by`, `decided_at`, `reason` | PostgreSQL | gh-policy | FR-GH-009, FR-GH-013 |
+| ENT-GH-006 | GhCapabilitySnapshot | 적용 중인 capability manifest | `snapshot_id`, `gh_version`, `manifest_version`, `manifest_hash`, `command_count`, `flag_count`, `unclassified_count`, `activated_at` | PostgreSQL | gh-registry | FR-GH-001, FR-GH-011 |
 
 ## 3. PostgreSQL 스키마
 
@@ -49,7 +56,10 @@ CREATE TABLE raw_event (
   PRIMARY KEY (delivery_id, received_at)         -- 파티션 키 포함
 ) PARTITION BY RANGE (received_at);              -- 월별 파티션, 보존 만료는 파티션 드롭
 
-CREATE UNIQUE INDEX raw_event_delivery_uk ON raw_event (delivery_id, received_at);
+-- CR-006(DEV-004): 이전 판에는 raw_event_delivery_uk를 별도로 만들었으나
+-- PRIMARY KEY (delivery_id, received_at)과 컬럼·순서가 완전히 같은 중복 인덱스였다.
+-- 5억 행·초당 2000 이벤트(NFR-002) 규모에서 중복 인덱스는 삽입 비용을 그대로
+-- 두 배로 만들기 때문에 제거했다. 멱등 제약은 기본 키가 그대로 강제한다.
 CREATE INDEX raw_event_outbox_idx  ON raw_event (queued_at) WHERE processed_at IS NULL;
 CREATE INDEX raw_event_repo_idx    ON raw_event (repository_id, received_at DESC);
 
@@ -222,21 +232,153 @@ CREATE TABLE job (
 CREATE UNIQUE INDEX job_active_uk ON job (type, target)
   WHERE state IN ('queued', 'running', 'paused');   -- 동시 1개 (FR-ADMIN-002 AC-4)
 
+-- CR-006(DEV-005): PostgreSQL은 파티션 테이블의 유니크 제약이 파티션 키를
+-- 포함하도록 요구한다. 이전 판의 PRIMARY KEY (audit_id)는 실행되지 않는다.
 CREATE TABLE audit_record (
-  audit_id       BIGSERIAL   PRIMARY KEY,
+  audit_id       BIGSERIAL   NOT NULL,
   user_id        TEXT        NOT NULL,
   action         TEXT        NOT NULL,
   target         TEXT,
   query          TEXT,
   result_code    TEXT        NOT NULL,
   correlation_id UUID        NOT NULL,
-  occurred_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  occurred_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (audit_id, occurred_at)
 ) PARTITION BY RANGE (occurred_at);      -- 월별 파티션, 1년 보존 (NFR-006)
 CREATE INDEX audit_user_idx   ON audit_record (user_id, occurred_at DESC);
 CREATE INDEX audit_action_idx ON audit_record (action, occurred_at DESC);
 ```
 
 `audit_record`에는 UPDATE·DELETE 권한을 애플리케이션 롤에 부여하지 않는다 (FR-AUTH-004 AC-3). 보존 만료 삭제는 별도 관리 롤이 파티션 드롭으로 수행한다.
+
+### 3.5 GitHub Operations (CR-005 신규)
+
+기존 마이그레이션 001~005는 수정하지 않는다. 아래 스키마는 **006 이후 additive 마이그레이션**으로만 추가한다.
+
+```sql
+-- 006: 위임 신원. 토큰 원문을 저장하지 않는다 (FR-GH-008 AC-5).
+CREATE TABLE github_identity_connection (
+  user_id       TEXT        PRIMARY KEY REFERENCES app_user(user_id),
+  github_login  TEXT        NOT NULL,
+  github_user_id BIGINT     NOT NULL,
+  token_ref     TEXT        NOT NULL,          -- 비밀 저장소 참조. 토큰 값이 아니다
+  scopes        TEXT[]      NOT NULL DEFAULT '{}',
+  connected_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at    TIMESTAMPTZ,
+  revoked_at    TIMESTAMPTZ
+);
+
+-- 007: 실행 기록. 월별 파티션 (감사와 같은 1년 보존).
+CREATE TABLE gh_execution (
+  execution_id      BIGSERIAL   NOT NULL,
+  user_id           TEXT        NOT NULL,
+  github_actor      TEXT        NOT NULL,
+  host              TEXT        NOT NULL,
+  repository        TEXT,
+  target            TEXT,
+  capability_id     TEXT        NOT NULL,
+  redacted_argv     TEXT[]      NOT NULL,      -- 비밀은 <redacted>로 치환된 상태
+  risk_level        TEXT        NOT NULL,
+  state             TEXT        NOT NULL,
+  gh_version        TEXT        NOT NULL,
+  manifest_version  TEXT        NOT NULL,
+  manifest_hash     TEXT        NOT NULL,
+  idempotency_key   TEXT        NOT NULL,
+  authorization_result TEXT     NOT NULL,
+  confirmed_at      TIMESTAMPTZ,
+  approval_id       BIGINT,
+  started_at        TIMESTAMPTZ,
+  finished_at       TIMESTAMPTZ,
+  exit_code         INT,
+  output_hash       TEXT,
+  error             TEXT,
+  correlation_id    UUID        NOT NULL,
+  requested_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (execution_id, requested_at),
+  CONSTRAINT gh_execution_risk_chk CHECK (risk_level IN ('R0','R1','R2','R3')),
+  CONSTRAINT gh_execution_state_chk CHECK (state IN (
+    'queued','preflighting','awaiting_confirmation','awaiting_approval',
+    'running','succeeded','failed','cancelled','timed_out','policy_blocked'))
+) PARTITION BY RANGE (requested_at);
+
+-- 같은 중복 방지 키의 재요청은 새 실행을 만들지 않는다 (FR-GH-012 AC-5).
+CREATE UNIQUE INDEX gh_execution_idem_uk ON gh_execution (user_id, idempotency_key, requested_at);
+CREATE INDEX gh_execution_user_idx ON gh_execution (user_id, requested_at DESC);
+CREATE INDEX gh_execution_target_idx ON gh_execution (repository, target, requested_at DESC);
+
+-- 같은 대상에 상충 작업이 동시에 진행되지 않도록 한다 (FR-GH-012 AC-6).
+-- 활성 상태에만 걸리는 부분 유니크 인덱스다.
+CREATE TABLE gh_execution_lock (
+  lock_key     TEXT        PRIMARY KEY,        -- {host}:{repository}:{target}:{action_class}
+  execution_id BIGINT      NOT NULL,
+  acquired_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at   TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE gh_execution_artifact (
+  artifact_id   BIGSERIAL   PRIMARY KEY,
+  execution_id  BIGINT      NOT NULL,
+  name          TEXT        NOT NULL,
+  size_bytes    BIGINT      NOT NULL,
+  content_type  TEXT,
+  storage_ref   TEXT        NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at    TIMESTAMPTZ NOT NULL
+);
+
+-- 008: Recipe
+CREATE TABLE gh_recipe (
+  recipe_id        BIGSERIAL   PRIMARY KEY,
+  owner_user_id    TEXT        NOT NULL REFERENCES app_user(user_id),
+  name             TEXT        NOT NULL,
+  visibility       TEXT        NOT NULL DEFAULT 'private',
+  current_revision INT         NOT NULL DEFAULT 1,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT gh_recipe_visibility_chk CHECK (visibility IN ('private','team','org')),
+  UNIQUE (owner_user_id, name)
+);
+
+CREATE TABLE gh_recipe_revision (
+  revision_id  BIGSERIAL   PRIMARY KEY,
+  recipe_id    BIGINT      NOT NULL REFERENCES gh_recipe(recipe_id),
+  revision     INT         NOT NULL,
+  definition   JSONB       NOT NULL,          -- 등록된 capability만 참조 (FR-GH-005 AC-2)
+  created_by   TEXT        NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (recipe_id, revision)
+);
+
+-- 009: 승인과 capability 스냅샷
+CREATE TABLE gh_approval (
+  approval_id   BIGSERIAL   PRIMARY KEY,
+  execution_id  BIGINT      NOT NULL,
+  required_role TEXT        NOT NULL,
+  state         TEXT        NOT NULL DEFAULT 'pending',
+  requested_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  decided_by    TEXT,
+  decided_at    TIMESTAMPTZ,
+  reason        TEXT,
+  CONSTRAINT gh_approval_state_chk CHECK (state IN ('pending','approved','rejected','expired'))
+);
+
+CREATE TABLE gh_capability_snapshot (
+  snapshot_id        BIGSERIAL   PRIMARY KEY,
+  gh_version         TEXT        NOT NULL,
+  manifest_version   TEXT        NOT NULL,
+  manifest_hash      TEXT        NOT NULL,
+  command_count      INT         NOT NULL,
+  flag_count         INT         NOT NULL,
+  unclassified_count INT         NOT NULL,
+  activated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (manifest_version, manifest_hash)
+);
+
+-- 미분류가 하나라도 있으면 활성화하지 않는다 (NFR-009).
+ALTER TABLE gh_capability_snapshot
+  ADD CONSTRAINT gh_capability_no_unclassified CHECK (unclassified_count = 0);
+```
+
+**저장하지 않는 것.** GitHub 액세스 토큰, 사용자가 입력한 비밀 값, 비밀이 포함된 argv 원문. `redacted_argv`는 이미 마스킹된 배열이며 원문을 복원할 수 없다.
 
 ## 4. Elasticsearch 매핑
 
@@ -582,6 +724,12 @@ CREATE INDEX audit_action_idx ON audit_record (action, occurred_at DESC);
 | `audit_record` | 1년 (NFR-006) | 월별 파티션 드롭 (관리 롤만) | PostgreSQL 백업에 포함 |
 | 엔티티 ES 인덱스 | 영구 | 저장소 폐기 시 문서 삭제 | 백업 안 함. PostgreSQL에서 재구성 |
 | `saved_search`, `safe_marker`, `bisect_session` | 영구 (사용자 삭제 시 제거) | 하드 삭제 | PostgreSQL 백업에 포함 |
+| `gh_execution` | 1년 (NFR-012, 감사와 동일) | 월별 파티션 드롭 (관리 롤만) | PostgreSQL 백업에 포함 |
+| `gh_execution_artifact` | 실행 기록보다 짧게 — 기본 30일 | `expires_at` 경과분 정리 잡 | 백업 안 함. 재실행으로 재생성 |
+| `github_identity_connection` | 연결 해제 또는 만료까지 | 하드 삭제 | 참조만 백업. 토큰은 비밀 저장소 소관 |
+| `gh_recipe`, `gh_recipe_revision` | 영구 (사용자 삭제 시 제거) | 하드 삭제 | PostgreSQL 백업에 포함 |
+| `gh_approval` | 1년 (연결된 실행과 동일) | 연결 실행 파티션 드롭 시 함께 | PostgreSQL 백업에 포함 |
+| `gh_capability_snapshot` | 영구 | 삭제하지 않음 | 과거 실행의 argv 해석에 필요하다 |
 
 원본 이벤트의 3년 보존 보증은 `raw_event`(PostgreSQL)가 진다. ES 아카이브 인덱스의 ILM 창은 FR-ING-010 AC-1이 요구하는 대로 분리된 값이며, 아카이브는 백업 대상이 아니라 `raw_event`에서 재구성한다. 두 값을 같게 맞출 의무는 없다 — ILM 창을 줄여도 보존 보증은 영향받지 않는다.
 | `job`, `dead_letter` | 90일 | 배치 삭제 | PostgreSQL 백업에 포함 |

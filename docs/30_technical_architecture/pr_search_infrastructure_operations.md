@@ -43,6 +43,7 @@
 | `pipeline-worker:link` | 관계 파생 | `prs:projected` 적체 | 1 / 4 | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:batch` | 배치 잡 | 고정 | 1 / 3 | 하트비트 | 이전 이미지 재배포 |
 | `filebeat` | 원본 아카이브 적재 | DaemonSet | - | Filebeat 자체 | 설정 롤백 |
+| `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005) | 대기 중 실행 수 | 2 / 8 | `GET /healthz` (gh 버전·manifest 대조 포함) | 이전 이미지 재배포 |
 
 배포 순서 규칙:
 
@@ -133,6 +134,8 @@ ES 아카이브(약 700GB)와 `raw_event`(4TB)는 같은 payload를 담지만 �
 - `pipeline-worker`는 인바운드 연결을 받지 않는다.
 - `ingest-gateway`는 아웃바운드로 PostgreSQL·Redis에만 접근한다. GHE API를 호출하지 않는다.
 - Filebeat는 Elasticsearch로만 아웃바운드한다.
+- `gh-executor`는 구성된 GitHub Enterprise 호스트로만 아웃바운드한다. 그 외 목적지는 네트워크 정책에서 차단한다 (NFR-010).
+- `gh-executor`는 PostgreSQL과 Redis에 접속하되 Elasticsearch에는 접속하지 않는다.
 
 ## 7. 구성 관리
 
@@ -300,3 +303,23 @@ DB 접속 정보는 환경 변수에서만 읽는다 (`@prs/db`의 `resolvePoolC
 | Redis 유실 시 큐 내용 손실 | 처리 지연 | 아웃박스 재적재로 복구 (데이터 유실 아님) |
 | 단일 리전 배포 | 리전 장애 시 전체 중단 | 사내 시스템이며 GHE도 같은 리전이다. 별도 DR 리전을 두지 않는다 |
 | staging이 운영 웹훅을 미러링 | GHE 웹훅 대상이 2개 | GHE 측 부하 미미. staging 장애가 운영에 영향 없음 |
+
+## 12. gh 실행기 런타임 (CR-005 신규)
+
+ADR-016이 정의한 격리 요건을 배포 수준에서 구체화한다.
+
+| 항목 | 값 | 근거 |
+| --- | --- | --- |
+| 실행 사용자 | 비루트 | NFR-010 |
+| 루트 파일시스템 | 읽기 전용 | NFR-010 |
+| 쓰기 가능 경로 | 실행별 임시 workspace 한 곳 | 실행 간 파일 공유 차단 |
+| workspace 수명 | 실행 종료 즉시 폐기, 고아는 JOB-GH-005가 회수 | FR-GH-007 |
+| gh 바이너리 | 이미지에 고정 버전으로 포함. 런타임 설치·업데이트 없음 | FR-GH-011 |
+| `GH_CONFIG_DIR`, `HOME` | 실행 전용 임시 디렉터리 | 자격 증명 영속 저장 방지 |
+| 프롬프트·페이저·색상 | 비활성화 (headless) | 대화형 대기로 인한 행 방지 |
+| 자격 증명 | 실행 직전 환경 변수로 주입, 종료와 함께 제거 | ADR-014 |
+| 네트워크 | 구성된 GHE 호스트 허용 목록 | NFR-010 |
+
+**확정하지 않은 것.** 실행기 파드의 CPU·메모리·임시 디스크 크기, workspace 디스크 할당량 수치, 동시 실행 상한의 구체값은 REL-007 프로비저닝에서 정한다. 실측 없이 값을 넣지 않는다.
+
+`gh auth login`을 서버에서 실행해 자격 증명을 gh config에 영속 저장하지 않는다. 매 실행마다 주입하고 폐기하는 것이 유일한 경로다.

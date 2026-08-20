@@ -425,3 +425,25 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 4. 동적으로 갱신되는 건수·상태는 `aria-live="polite"`로 알린다. 단, 30초 주기 자동 갱신 지표(C-040)는 `aria-live`를 쓰지 않는다. 반복 알림이 스크린 리더 사용을 방해한다.
 5. 색상 대비는 Conductor `checkContrast` CLI로 라이트·다크 두 테마 모두에서 검증한다.
 6. 오버레이(Dialog/Drawer)는 포커스 트랩과 닫힘 시 트리거 복귀를 보장한다. Conductor 프리미티브가 이를 제공하므로 자체 구현하지 않는다.
+
+## GitHub Operations 컴포넌트 (CR-005 신규)
+
+기존 C-001~C-047은 번호를 유지한다. 신규는 C-048부터 이어 붙인다. 모두 Conductor 프리미티브로 구현하며 자체 UI 프리미티브나 리터럴 색상값을 만들지 않는다 (ADR-006).
+
+| ID | 컴포넌트 | 책임 | 사용 화면 | 중복 방지 |
+| --- | --- | --- | --- | --- |
+| C-048 | `GhContextHeader` | 호스트·조직·저장소·브랜치·인증된 GitHub 신원 표시 | W-010~W-023 | 기존 `C-002 TopBar`와 구분 — 이쪽은 GitHub 대상 컨텍스트다 |
+| C-049 | `CapabilityBrowser` | capability 검색·필터·목록. 미지원·차단 항목의 사유 배지 | W-010, A-006 | |
+| C-050 | `GenericCommandForm` | capability에서 폼 전체 생성. 제약 검증 포함 | W-010, W-023 | 명령별 폼을 따로 만들지 않는다 |
+| C-051 | `FlagControl` | flag 타입 → 컨트롤 디스패치 (boolean/enum/string/number/repeatable/선택자/file/secret/date) | C-050 내부 | |
+| C-052 | `RepositoryPicker` / `BranchPicker` / `UserTeamPicker` | GitHub 자원 선택자 | C-051, 업무 화면 | 기존 검색 화면의 저장소 필터와 별개 — 이쪽은 작업 대상 선택 |
+| C-053 | `SecretInput` | 비밀 값 입력. 재표시 없음, 미리보기에서 마스킹 | W-018, C-051 | |
+| C-054 | `ArgvPreview` | 실행될 argv를 비밀이 가려진 형태로 표시 | W-010, 업무 화면 | 실제 실행 argv와 같은 모델에서 파생 |
+| C-055 | `RiskBadge` | R0~R3 위험도 표시 | C-049, C-054, W-021 | Conductor `Tone` 매핑. `Severity`는 관계 신뢰도가 쓰므로 재사용하지 않는다 |
+| C-056 | `PermissionPreview` | 필요 GitHub 권한과 사용자 보유 여부 | W-010, 업무 화면 | |
+| C-057 | `ConfirmationDialog` | R2 확인 / R3 강한 확인 (대상 이름 입력) | 전 Operations 화면 | 기존 `C-030 2단계 확인`을 확장 사용 |
+| C-058 | `ExecutionPanel` | 실행 상태·스트리밍 출력·JSON·아티팩트·취소 | W-010, 업무 화면, W-021 | |
+| C-059 | `ExecutionHistoryTable` | 실행 이력 목록·필터·재실행 | W-021, A-007 | 기존 결과 테이블과 별개 |
+| C-060 | `RecipeStepEditor` | Recipe 단계 편집. capability 선택과 출력 바인딩 | W-023 | |
+
+**`GenericCommandForm`이 하나여야 하는 이유.** 명령이 196개다. 폼을 명령마다 만들면 gh가 올라갈 때마다 화면을 추가해야 하고, 빠뜨린 것을 아무도 모른다. 폼이 하나면 manifest에 command가 추가되는 순간 UI가 따라온다 (ADR-015).

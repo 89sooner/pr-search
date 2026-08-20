@@ -211,3 +211,21 @@ Conductor `Status` 어휘(`queued` / `running` / `waiting` / `success` / `partia
 | Conductor에 차트 프리미티브가 없다 | C-033, C-034를 제품에서 구현해야 한다 | Conductor semantic 토큰만 사용해 구현하고, 안정화 후 design-system 기여를 제안한다 |
 | Conductor에 그래프 캔버스 프리미티브가 없다 | C-036을 제품에서 구현해야 한다 | W-007은 조건부 범위(REL-004 ACC-06)이므로 착수 시점에 재검토한다 |
 | Conductor `Severity` 어휘는 관계 신뢰도와 의미 축이 다르다 | 신뢰도에 `SeverityTag`를 쓸 수 없다 | `Badge`의 `Tone`으로 매핑한다 (5.4장) |
+
+## GitHub Operations 토큰 매핑 (CR-005 신규)
+
+| 개념 | Conductor 매핑 | 근거 |
+| --- | --- | --- |
+| 위험도 R0 | `Tone` 중립 | 읽기 전용. 시각적으로 눈에 띌 필요가 없다 |
+| 위험도 R1 | `Tone` 정보 | 가역적 쓰기 |
+| 위험도 R2 | `Tone` 경고 | 확인이 필요한 쓰기 |
+| 위험도 R3 | `Tone` 위험 | 파괴적·관리자·비밀 |
+| 실행 상태 | 기존 `Status` 어휘 재사용 | `running`/`succeeded`/`failed`/`cancelled`는 기존 잡 상태와 같은 축이다 |
+| 정책 차단·미지원 | `Tone` 비활성 + 사유 텍스트 | 숨기지 않고 비활성으로 보여준다 |
+
+**`Severity`를 위험도에 쓰지 않는다.** `Severity`는 이미 관계 신뢰도(`exact`/`derived`/`heuristic`)에 매핑되어 있고 의미 축이 다르다. 위험도는 `Badge`의 `Tone`으로 표현한다 (기존 5.4장 규칙과 같은 이유).
+
+| 제한 | 영향 | 대응 |
+| --- | --- | --- |
+| Conductor에 코드/argv 표시 프리미티브가 없다 | C-054 `ArgvPreview`를 제품에서 구현해야 한다 | Conductor semantic 토큰만 사용해 구현하고, 안정화 후 design-system 기여를 제안한다 |
+| Conductor에 스트리밍 로그 뷰어가 없다 | C-058의 출력 영역을 제품에서 구현해야 한다 | 동일. 가상 스크롤은 접근성 요구(NFR-007)를 함께 만족시켜야 한다 |

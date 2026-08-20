@@ -116,3 +116,23 @@
 3. 금지 동의어를 발견하면 표준 용어로 치환한다.
 4. "CL", "Changelist"는 Perforce 개념을 설명할 때만 사용하고, 이 제품의 기능 명칭으로는 사용하지 않는다. 제품 안에서의 대응 개념은 항상 **머지 시퀀스**다.
 5. "빌드"와 "릴리스"를 혼용하지 않는다. 시퀀스 앵커가 되는 개체는 항상 **릴리스**이며, 릴리스의 표시 이름이 `build-YYYYMMDD-NN`일 수 있을 뿐이다.
+
+## GitHub Operations 용어 (CR-005 신규)
+
+| 용어 | 코드 표기 | 정의 | 혼동 주의 | 관련 FR |
+| --- | --- | --- | --- | --- |
+| Search / Data Plane | - | 웹훅 수집·검색·분석을 담당하는 읽기 전용 파생 시스템 축 | Operations Plane과 자격 증명·감사가 분리된다 | ADR-013 |
+| GitHub Operations Plane | - | 사용자가 명시적으로 요청한 GitHub 작업을 실행하는 축 | 데이터 파이프라인이 아니다 | FR-GH-002 |
+| capability | `gh_capability` | 실행 가능한 `gh` command path 하나와 그 argument·flag·제약·위험도·권한 정보 | `gh` command와 1:1이지만 의미 정보가 덧붙는다 | FR-GH-001 |
+| capability manifest | `capability_manifest` | 고정 gh 버전의 전 capability를 담은 검증된 목록. 버전과 내용 해시를 갖는다 | 인벤토리(자동 추출 결과)와 다르다 — 오버라이드가 반영된 최종본이다 | FR-GH-001, ADR-015 |
+| 의미 오버라이드 | `semantic_override` | help가 주지 않는 정보(상호 배타, 의존, 위험도, 필요 권한, 비밀 여부)를 사람이 보강한 것 | 자동 파싱 결과가 아니다 | ADR-015 |
+| 분류 상태 | `support` | capability가 어떻게 취급되는지 — `supported`, `unsupported_by_host`, `preview`, `policy_blocked`, `terminal_only`, `admin_only`, `requires_extension`, `requires_local_workspace` | `unknown`은 허용되지 않는다 | FR-GH-001 AC-2 |
+| flag 분류 | - | flag가 UI에서 어떻게 표현되는지 — `mapped_to_typed_control`, `mapped_to_generic_control`, `mapped_to_web_equivalent`, `terminal_only`, `policy_blocked`, `unsupported_by_host`, `requires_admin_approval` | 위와 다른 축이다 | FR-GH-001 AC-3 |
+| 위험도 | `risk_level` | `R0`(읽기) / `R1`(가역 쓰기) / `R2`(영향 큰 쓰기) / `R3`(파괴적·관리자·비밀) | 관계 신뢰도(`confidence`)와 다른 축이다 | FR-GH-009 |
+| 위임 신원 | `delegated_identity` | 사용자를 대신해 GitHub을 호출하는 사용자 액세스 토큰 기반 자격 증명 | 수집용 설치 토큰과 다르다 | FR-GH-008, ADR-014 |
+| 유효 권한 | - | Operations App 권한 ∩ 사용자 GitHub 권한 | 설치 권한만으로 판단하지 않는다 | FR-GH-008 AC-3 |
+| 실행 | `gh_execution` | 하나의 capability 실행 요청과 그 결과 | 잡(`job`)과 다르다 — 잡은 파이프라인 배치 작업이다 | FR-GH-002 |
+| 중복 방지 키 | `idempotency_key` | 같은 요청의 재전송이 새 실행을 만들지 않게 하는 키 | 웹훅 멱등 키(`delivery_id`)와 다른 축이다 | FR-GH-012 AC-5 |
+| Recipe | `gh_recipe` | 등록된 capability만 조합한 다단계 작업 정의 | shell 스크립트가 아니다. 임의 명령을 넣을 수 없다 | FR-GH-005 |
+| 임시 workspace | `workspace` | 로컬 git이나 파일이 필요한 실행에 배정되는 격리된 디렉터리 | 서버의 실제 소스 트리가 아니다 | FR-GH-007 |
+| 레지스트리 드리프트 | `registry_stale` | 실행기의 gh 버전과 manifest 생성 버전이 다른 상태 | 이 상태에서 신규 command를 실행하지 않는다 | FR-GH-011 AC-3 |

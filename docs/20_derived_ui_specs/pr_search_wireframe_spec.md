@@ -769,3 +769,111 @@ PR 1건의 전체 맥락 — 커밋 집합, 시퀀스 위치, 선행·후행, �
 
 - 감사 기록 조회 자체도 감사 대상이다. 조회 화면 진입 시 기록을 남긴다.
 - 감사 기록은 갱신·삭제 UI를 제공하지 않는다.
+
+## W-010 GitHub Command Center
+
+> CR-005 신규. GitHub Operations Plane의 진입점이며 전 capability의 fallback 화면이다.
+
+### 화면 목적
+
+capability manifest에 있는 모든 명령을 검색하고, 생성된 폼으로 구성하고, 실행될 argv를 확인한 뒤 실행한다. 업무 전용 화면(W-011~W-019, W-022)이 다루지 않는 나머지가 전부 여기로 온다.
+
+### 진입 경로
+
+- 좌측 내비게이션 → GitHub Operations
+- 업무 화면의 "고급 옵션으로 열기"
+- W-021 실행 이력의 "동일 구성으로 다시 실행"
+
+### 레이아웃
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│ GitHub 컨텍스트  host · organization · repository · branch       │
+│                  인증된 GitHub 신원 (@login)        [연결 관리]  │
+├────────────────────┬─────────────────────────────────────────────┤
+│ Capability 검색    │ Command 폼                                  │
+│                    │                                             │
+│ [검색어         ]  │  positional arguments                       │
+│ 카테고리 ▾         │   <number>  [           ]                   │
+│ 읽기/쓰기 ▾        │                                             │
+│ 위험도 ▾           │  flags                                      │
+│                    │   --squash        [x]                       │
+│ ▸ pr               │   --delete-branch [ ]                       │
+│   list      R0     │   --match-head-commit [        ]            │
+│   view      R0     │                                             │
+│   merge     R2     │  ⚠ --squash / --rebase / --merge 는 택일    │
+│   ...              │                                             │
+│ ▸ issue            ├─────────────────────────────────────────────┤
+│ ▸ repo             │ 실행 미리보기                               │
+│ ▸ run              │  대상   owner/repo#123                      │
+│   ...              │  위험도 R2 — 확인 필요                      │
+│                    │  권한   pull_requests: write ✓              │
+│ (미지원·차단도     │  argv   gh pr merge 123 --squash \          │
+│  사유와 함께 표시) │           --match-head-commit abc1234        │
+│                    │                     [확인 후 실행]          │
+│                    ├─────────────────────────────────────────────┤
+│                    │ 실행 결과                                   │
+│                    │  상태 running ▸ 취소                        │
+│                    │  stdout / stderr / JSON / 아티팩트 탭       │
+└────────────────────┴─────────────────────────────────────────────┘
+```
+
+### 섹션
+
+| 섹션 | 내용 | 관련 FR |
+| --- | --- | --- |
+| GitHub 컨텍스트 | 호스트, 조직, 저장소, 브랜치, 인증된 GitHub 신원. 어느 GitHub에 무엇을 하는지 항상 보인다 | FR-GH-008 |
+| Capability 검색 | 명령·설명·카테고리·읽기/쓰기·위험도로 필터. 미지원·차단 항목도 사유와 함께 표시 | FR-GH-001, FR-GH-011, FR-GH-013 |
+| Command 폼 | manifest에서 생성. positional과 flag를 타입별 컨트롤로 표현. 제약 위반을 즉시 표시 | FR-GH-003 |
+| 실행 미리보기 | 유효 대상, 위험도, 필요 권한과 보유 여부, 비밀이 가려진 argv | FR-GH-002, FR-GH-009 |
+| 실행 결과 | 상태, 표준 출력·오류 스트리밍, 구조화 JSON, 아티팩트, 취소 | FR-GH-006, FR-GH-007 |
+
+### 상태
+
+`empty`(capability 미선택), `loading`, `constraint_error`, `permission_denied`, `policy_blocked`, `unsupported_host`, `registry_stale`, `awaiting_confirmation`, `awaiting_approval`, `running`, `succeeded`, `failed`, `cancelled`, `timed_out`.
+
+### 규칙
+
+- 실제 토큰과 비밀 값은 argv 미리보기에 절대 노출하지 않는다. `<redacted>`로 표시한다.
+- 미리보기 argv와 실제 실행 argv는 같은 구조화 명령 모델에서 파생한다.
+- 지원되지 않는 capability를 목록에서 숨기지 않는다.
+
+## W-011 ~ W-023 GitHub Operations 업무 화면
+
+> CR-005 신규. 공통 규칙만 여기 두고, 화면별 상세는 각 WP 착수 시 이 문서에 추가한다.
+
+모든 업무 화면은 다음을 공유한다.
+
+| 요소 | 규칙 |
+| --- | --- |
+| 컨텍스트 헤더 | W-010과 동일. 호스트·저장소·브랜치·GitHub 신원 표시 |
+| 작업 목록 | 현재 대상에 적용 가능한 capability만 활성. 불가한 것은 비활성 + 사유 |
+| 실행 경로 | W-010과 동일한 제약 검증·권한 판정·위험도 게이트·감사를 거친다 |
+| 고급 옵션 | "고급 옵션으로 열기" → 같은 capability를 W-010의 GenericCommandForm으로 |
+| 결과 표시 | W-010의 실행 결과 패널과 동일 컴포넌트 |
+
+| 화면 | 핵심 화면 요소 |
+| --- | --- |
+| W-011 PR 작업 | PR 선택 → 작업 목록. 머지 폼은 전략·자동 머지·관리자 강제·head 일치·커밋 메시지·브랜치 삭제를 한 화면에 |
+| W-012 Issue·Discussion | 목록·상세·작업. Discussion이 preview/미지원이면 배지로 표시 |
+| W-013 저장소 작업 | 저장소 속성 편집과 파괴적 작업 분리 배치. 삭제·이름 변경은 강한 확인 |
+| W-014 Actions | 워크플로 목록 / 실행 목록 / 실행 상세(로그 스트리밍). 수동 실행 입력은 스키마 기반 타입 컨트롤 |
+| W-015 릴리스 | 릴리스 목록·상세, 자산 업로드·내려받기 영역 |
+| W-016 프로젝트 | 프로젝트·필드·항목의 3단 구성 |
+| W-017 Codespace | 목록·상태·포트·로그. 대화형 기능은 분류 배지와 사유 |
+| W-018 설정·보안 | 시크릿·변수·레이블·룰셋·키. 값 입력은 `SecretInput`, 재표시 없음 |
+| W-019 검색·조직·상태 | `gh search` 질의 폼과 결과, 조직·상태 요약 |
+| W-020 gh API 탐색기 | 요청 구성(엔드포인트·메서드·필드·헤더·본문)과 응답 뷰어. 차단 헤더는 입력 불가 |
+| W-021 실행 이력 | 이력 목록·필터·상세·재실행·아티팩트. 저장된 Recipe 목록 |
+| W-022 고급 도구 | Gist·Attestation·Skill·Agent-task·Extension. 정책 분류를 목록에 노출 |
+| W-023 Recipe 빌더 | 단계 목록, 단계별 capability 선택, 입력 변수, 출력 바인딩, 조건·팬아웃·실패 정책 |
+
+## A-005 GitHub 실행 정책 / A-006 gh capability·버전 레지스트리 / A-007 GitHub 작업 감사·승인
+
+> CR-005 신규.
+
+| 화면 | 핵심 요소 | 관련 FR |
+| --- | --- | --- |
+| A-005 | capability 허용·차단 목록, 위험도 재정의, 승인 필요 지정, `gh api` 엔드포인트 정책, 확장 허용 목록. 변경은 감사 대상 | FR-GH-009, FR-GH-010, FR-GH-013 |
+| A-006 | manifest 버전·해시, 설치 gh 버전 대조 결과, 분류 커버리지(command/flag/positional), 미분류 목록, 드리프트 차이, 호스트 지원 상태 | FR-GH-001, FR-GH-011 |
+| A-007 | 전체 실행 감사 조회·필터, 승인 대기 목록과 승인·거부, 사용자별 위임 신원 연결 상태 | FR-GH-012, FR-GH-008, FR-GH-009 |
