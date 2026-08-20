@@ -215,6 +215,21 @@ apps/web/app/api/[...path]/route.ts
 | E2E | FLOW-001~008 전 경로, 권한 매트릭스(역할 6종 × 화면 13종) | Playwright |
 | 시각 회귀 | 라이트·다크 두 테마의 주요 화면 | Playwright 스크린샷 |
 
+### gh 실행 출력 렌더링 규칙 (CR-008, ADR-018)
+
+GitHub Operations 화면은 실행기 stdout·stderr를 그린다. 그 텍스트는 GitHub에서 왔고 GitHub 내용은 아무나 쓸 수 있으므로 **신뢰하지 않는다**. gh 2.97.0 자신도 외부 입력이 섞인 터미널 escape 처리에서 보안 수정을 한 이력이 있다.
+
+| 규칙 | 내용 |
+| --- | --- |
+| 무해화 위치 | 프런트엔드가 아니라 서버의 `SafeGhOutput` 경계. 화면은 이미 무해화된 값만 받는다 |
+| 원시 HTML | gh 출력에 `dangerouslySetInnerHTML`을 쓰지 않는다. 코드 검사로 0건을 강제한다 |
+| Markdown | 안전 렌더러만. 원시 HTML 통과 옵션을 켜지 않는다 |
+| 표시 컴포넌트 | `SafeGhOutputViewer`(C-063). `ExecutionPanel`(C-058)이 출력 영역에 이것을 쓴다 |
+| 절단·바이너리 | 경계가 표시한 절단·바이너리 플래그를 그대로 사용자에게 보여준다 |
+| 링크 | `--web` 계열이 돌려준 URL은 링크로 그린다. 서버가 브라우저를 띄우지 않는다 (ADR-019) |
+
+같은 규칙이 관계 근거 문자열(`evidence`, THR-020)과 PR 본문에도 이미 적용되어 있다. gh 출력은 그 목록에 추가되는 것이지 예외가 아니다.
+
 상태별 렌더링 테스트가 중요하다. 이 제품은 정상 경로보다 비정상 상태(`enrichment_pending`, `no_sequence`, `epoch_stale`, `sequence_reassigning`)가 사용자 신뢰를 좌우한다. 상태 매트릭스의 모든 항목에 대응하는 테스트를 만든다.
 
 ## 12. 픽스처 정책

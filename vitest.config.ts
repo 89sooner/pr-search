@@ -19,7 +19,13 @@ export default defineConfig({
   },
   test: {
     // 통합 테스트는 vitest.integration.config.ts가 따로 돌린다.
-    include: ['packages/*/src/**/*.test.ts', 'apps/*/src/**/*.test.ts', 'scripts/**/*.test.ts'],
+    // `testing/`은 목 서버 같은 시험 보조 코드다. 빌드 산출물에는 들어가지 않는다.
+    include: [
+      'packages/*/src/**/*.test.ts',
+      'packages/*/testing/**/*.test.ts',
+      'apps/*/src/**/*.test.ts',
+      'scripts/**/*.test.ts',
+    ],
     environment: 'node',
     reporters: ['default'],
   },

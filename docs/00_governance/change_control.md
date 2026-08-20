@@ -24,6 +24,7 @@
 | CR-006 | 2026-08-20 | correction | WP-002 구현 중 등록된 문서 편차 DEV-003·DEV-004·DEV-005 | 문서 오류 3건을 현실에 맞춘다. 게이트 기록의 오류 코드 수 표기를 실제와 일치시키고(DEV-003), `raw_event_delivery_uk`가 기본 키와 완전히 중복인 인덱스임을 데이터 모델에 반영해 삭제하며(DEV-004), 파티션 테이블 `audit_record`의 기본 키에 파티션 키를 포함시킨다(DEV-005). CR-005의 범위 변경과 섞지 않는다. 코드는 이미 올바른 방향으로 구현되어 있어 문서를 코드에 맞춘다 | DEV-003, DEV-004, DEV-005, FR-ING-002, FR-AUTH-004 | `pr_search_data_model.md`, `pr_search_api_contracts.md`, `change_control.md`, `pr_search_implementation_traceability.md` | closed |
 
 | CR-007 | 2026-08-20 | correction | WP-003·WP-004 구현 중 등록된 문서 편차 DEV-007·DEV-009 | 데이터 모델 문서 오류 2건을 현실에 맞춘다. 4장 공통 설정의 `index.sort`가 `merge_seq` 없는 `prs-links`에도 적용되는 것처럼 읽혀 그대로는 인덱스 생성이 거부되는 문제를 적용 범위 명시로 정정하고(DEV-007), 3.1의 "멱등 제약은 기본 키가 그대로 강제한다"가 파티션 테이블에서 성립하지 않음을 정정해 게이트웨이의 advisory lock + 조건부 INSERT를 멱등 강제 수단으로 명시한다(DEV-009). **SRS는 건드리지 않는다** — FR-ING-002 AC-1이 요구하는 결과(중복 저장 차단)는 그대로 충족되고, 달라지는 것은 그것을 강제하는 수단뿐이다. 코드가 이미 올바른 방향으로 구현되어 있어 문서를 코드에 맞춘다 | DEV-007, DEV-009, FR-ING-002, FR-ING-005 | `pr_search_data_model.md`, `change_control.md`, `pr_search_implementation_traceability.md` | closed |
+| CR-008 | 2026-08-20 | scope | 사용자 요구: "gh가 지원하는 모든 기능과 유효한 조합을 웹 UI에서 표현한다"의 parity 정의와 검증 범위를 더 엄격하게 만든다 | **CR-005가 세운 GitHub Operations Plane을 다시 만들지 않는다.** parity의 *정의*를 강화한다. (1) parity 차원을 command path·flag 중심에서 28개 차원(alias, inherited/global flag, short alias, repeatable, stdin/file 입출력, 저장소·호스트·브랜치·workspace 컨텍스트, gh config, TTY/editor/browser 요구, 출력 형식, `--json` 필드, `--jq`/`--template`, 페이지네이션, REST/GraphQL 모드, GHES 버전, 사용자·App 권한, 정책, 위험도)으로 확장한다. (2) `GhCapability`에 의미 제약 모델(`requires`/`conflicts`/`oneOf`/`exactlyOne`/`atLeastOne`/`implies`/`repeatable`/`minItems`/`maxItems`/enum/조건부/입력원/컨텍스트 의존)을 추가하고 UI·서버·argv 빌더·테스트 생성기가 **같은 모델**을 공유하도록 못 박는다 (ADR-017). (3) 문자열 명령이 아니라 `GhInvocation` 구조를 단일 진실로 삼는다. (4) 실행 직전 유효 컨텍스트를 W-010에 표시한다. (5) interactive 명령을 `web_native`/`web_equivalent`/`sandbox_terminal`/`terminal_only`/`policy_blocked`/`unsupported_by_host` 중 하나로 분류하고 `unknown`을 금지한다. (6) extension을 신뢰 경계가 있는 별도 plane으로 정의한다 (ADR-019). (7) `gh api`를 스키마 인지 폼으로 강화한다. (8) **gh stdout/stderr와 GitHub 텍스트를 신뢰할 수 없는 입력으로 취급하는 `SafeGhOutput` 경계를 신설한다** — gh 2.97.0 자신도 외부 입력이 섞인 터미널 escape 처리 문제를 보안 수정한 이력이 있어 gh 출력을 안전하다고 가정하지 않는다 (ADR-018). (9) 파일 입출력을 실행 workspace 안으로 가둔다. (10) 재실행을 argv 재실행이 아니라 구조화 invocation의 재검증으로 정의한다. (11) NFR-009 게이트를 전 차원 100%·`unknown` 0으로 강화한다. 신규 ADR-017~019, WP-061~065, C-061~067. **기존 FR-GH-001~013·NFR-009~012·W-010~023·A-005~007·ADR-013~016·WP-045~060 ID를 그대로 재사용하며 재번호화하지 않는다.** gh 2.97.0 인벤토리를 재실측해 문서 수치를 검증했다 (DEV-011) | FR-GH-001, FR-GH-002, FR-GH-003, FR-GH-007, FR-GH-010, FR-GH-012, FR-GH-013, NFR-009, NFR-010, ADR-017, ADR-018, ADR-019, WP-061~065, C-061~067, W-010, W-020, W-021, W-022, A-006 | `srs_final.md`(v2.0 → v2.1), `prd.md`, `glossary.md`, `requirements_screen_traceability_matrix.md`, 파생 UI 4종, 아키텍처 6종, 딜리버리 3종, `change_control.md` | closed |
 유형: `scope`(범위 변경), `design`(설계 변경), `implementation`(구현 편차 DEV-### 처리), `correction`(문서 오류 수정)
 
 ## 4. 게이트 통과 기록
@@ -243,6 +244,20 @@ DEV-001(컨테이너 레지스트리 차단)과 DEV-006(testcontainers 대신 �
 요구사항 계층(`srs_final.md`, `prd.md`)은 변경하지 않았다. 두 편차 모두 승인된 요구사항이 아니라 그것을 구현하는 수단에 대한 서술 오류이며, FR-ING-002 AC-1(중복 저장 차단)과 FR-ING-005(색인 구성)의 수용 기준은 그대로 충족된다. 파생 UI·API 계약·딜리버리 문서에는 인용 지점이 없어 cascade가 여기서 끝난다.
 
 DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환경 변수 접속), DEV-008(로컬 ES 부재)은 환경·검증 제약이며 문서 오류가 아니다. `open`으로 유지한다.
+
+### CR-008 cascade (gh capability parity 강화)
+
+- [x] `10_requirements/srs_final.md` — v2.0 → v2.1. §9.8 도입부의 실측 기준값 갱신, FR-GH-001(28개 parity 차원·interaction 분류), FR-GH-002(구조화 invocation 단일 진실), FR-GH-003(의미 제약 모델), FR-GH-007(파일 경계), FR-GH-010(스키마 인지 api 탐색기), FR-GH-012(재검증형 재실행), FR-GH-013(web equivalence·extension 신뢰 경계), NFR-009(전 차원 게이트), NFR-010(SafeGhOutput·파일 경계) 강화
+- [x] `10_requirements/prd.md` — parity 정의 강화 반영
+- [x] `10_requirements/glossary.md` — 구조화 invocation·제약 모델·SafeGhOutput·web equivalence 용어 추가
+- [x] `10_requirements/requirements_screen_traceability_matrix.md` — 신규 컴포넌트·WP 참조 반영
+- [x] `20_derived_ui_specs/` — 컴포넌트 스펙(C-061~067), 와이어프레임(W-010·W-020·W-021·W-022·A-006), 상태 매트릭스, QA 체크리스트
+- [x] `30_technical_architecture/` — ADR-017·018·019 추가, 데이터 모델(GhCapabilityConstraint·GhInvocation), API 계약(API-GH-002·009 요청 스키마), 보안 문서(SafeGhOutput 경계·THR 추가), 프런트엔드(출력 렌더링 금지 규칙), 시스템(경계 표기)
+- [x] `40_delivery/` — WP-061~065 추가, WP-060 선행 의존 갱신, 로드맵 배치, 원장 기록
+
+**기존 ID를 하나도 재번호화하지 않았다.** CR-005가 만든 FR-GH-001~013, NFR-009~012, W-010~W-023, A-005~A-007, C-048~C-060, ADR-013~016, API-GH-*, ENT-GH-*, JOB-GH-*, EVT-GH-*, REL-007~011, WP-045~060은 그대로 두고 내용만 강화했다. 새 ID는 전부 마지막 번호 뒤에 덧붙였다 (ADR-017~019, C-061~067, WP-061~065).
+
+**gh 인벤토리 재실측 (2026-08-20).** 이 환경에 gh 2.97.0을 다시 설치해 command node 228개 전부에 `gh <path> --help`를 실행했다. command node 228(그룹 32, leaf 196), command 고유 flag 1,034, `--json` 지원 41은 CR-005 수치와 **정확히 일치**했다. positional placeholder만 문서의 261과 달랐고 실측은 230이다 — `gh help reference` 헤딩 기준과 각 명령 `--help`의 USAGE 기준이 모두 230으로 일치한다. DEV-011로 등록하고 이 CR에서 정정했다. 새로 측정한 차원: inherited/global flag 출현 312회(고유 4종: `--codespace`, `--help`, `--repo`, `--repo-owner`), short alias 보유 flag 625개, 반복 가능 flag 37개, `--json` 필드 707개, alias 보유 command 44개, alias 전용 노드 1개(`gh co`).
 
 ## 6. 미결 항목
 

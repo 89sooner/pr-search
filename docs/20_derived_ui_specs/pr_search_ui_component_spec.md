@@ -445,5 +445,12 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 | C-058 | `ExecutionPanel` | 실행 상태·스트리밍 출력·JSON·아티팩트·취소 | W-010, 업무 화면, W-021 | |
 | C-059 | `ExecutionHistoryTable` | 실행 이력 목록·필터·재실행 | W-021, A-007 | 기존 결과 테이블과 별개 |
 | C-060 | `RecipeStepEditor` | Recipe 단계 편집. capability 선택과 출력 바인딩 | W-023 | |
+| C-061 | `CapabilityConstraintForm` | 의미 제약 모델에서 파생된 입력 폼. `requires`/`conflicts`/`oneOf`/`exactlyOne`/`atLeastOne`/`implies`/반복/최소·최대/열거/조건부/입력원/컨텍스트 제약을 즉시 검증하고 위반 이유를 보여준다 | W-010, W-023 | CR-008. `GenericCommandForm`(C-050)이 이 폼을 감싼다. 검증 규칙은 UI 소유가 아니라 manifest 소유다 (ADR-017) |
+| C-062 | `EffectiveExecutionContext` | 실행 직전 유효 컨텍스트 패널 — 호스트, GitHub 신원, 조직, 저장소, 브랜치/ref, workspace, gh 버전, manifest 버전, 위험도, 필요한 권한, 실제 권한 판정, 정책 판정 | W-010, W-020, W-023 | CR-008. 비밀 값은 표시하지 않는다. 미리보기와 실제 실행 대상이 갈리지 않음을 사용자가 눈으로 확인하는 자리 |
+| C-063 | `SafeGhOutputViewer` | 무해화 경계를 통과한 실행 출력 표시. ANSI CSI·OSC·제어 문자가 제거된 텍스트, 절단 표시, 바이너리 표시 | W-010, W-021, 업무 화면 | CR-008. gh 출력에 `dangerouslySetInnerHTML`을 쓰지 않는다 (ADR-018). `ExecutionPanel`(C-058)이 출력 영역에 이 뷰어를 쓴다 |
+| C-064 | `GhArtifactPanel` | 실행이 만든 아티팩트 목록·내려받기. 아티팩트 ID 기반 | W-010, W-021 | CR-008. 실행기 파일시스템 경로를 노출하지 않는다 |
+| C-065 | `WebEquivalentNotice` | 터미널 기능이 웹 등가로 대체되었음을 알리는 안내 — 무엇이 어떻게 바뀌었는지와 사유 | W-010, W-022 | CR-008. `--web`·`gh browse`는 URL 링크로, editor는 웹 편집기로 대체됨을 알린다 (ADR-019) |
+| C-066 | `ExtensionTrustBadge` | extension의 신뢰 상태 — 승인 여부, 버전 pin, 출처 저장소, provenance, 차단 사유 | W-022, A-005 | CR-008. 차단된 extension도 숨기지 않고 사유와 함께 보여준다 |
+| C-067 | `ParityCoverageMatrix` | 차원별 커버리지 매트릭스 — command path, alias, positional, command 고유 flag, inherited flag, short alias, 반복 가능 flag, interaction 모드, 입출력 모드, `--json` 필드. core/extension 분리, 드리프트 diff | A-006 | CR-008. `CapabilityBrowser`(C-049)가 개별 capability를 보여준다면 이쪽은 차원별 집계를 보여준다 |
 
 **`GenericCommandForm`이 하나여야 하는 이유.** 명령이 196개다. 폼을 명령마다 만들면 gh가 올라갈 때마다 화면을 추가해야 하고, 빠뜨린 것을 아무도 모른다. 폼이 하나면 manifest에 command가 추가되는 순간 UI가 따라온다 (ADR-015).
