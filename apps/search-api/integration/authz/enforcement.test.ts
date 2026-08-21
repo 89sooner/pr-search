@@ -108,7 +108,7 @@ beforeAll(async () => {
 
   app = buildServer({
     // 세션이 서면 토큰 목록은 비어 있어야 한다 (DEV-048).
-    config: { port: 0, adminTokens: [], metricsQueryUrl: null, auth: AUTH_CONFIG },
+    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG },
     ops: { pool, bus: undefined as never },
     auth,
   });
@@ -251,10 +251,34 @@ describe('API-AUTH-001 /me', () => {
 
   it('저장소 ID 목록을 응답에 싣지 않는다 (DEV-040)', async () => {
     const sessionId = await login(DEVELOPER, ['developer']);
-    const body = (await app.inject({ method: 'GET', url: ME_PATH, headers: cookie(sessionId) })).body;
+    const response = await app.inject({ method: 'GET', url: ME_PATH, headers: cookie(sessionId) });
 
-    expect(body).not.toContain('101');
-    expect(body).not.toContain('repository_ids');
+    /*
+     * **본문 전체를 부분 문자열로 검사하지 않는다.**
+     *
+     * 예전에는 `expect(body).not.toContain('101')`이었다. 그런데 응답에는
+     * `correlation_id`(임의 UUID)가 들어 있고, 그 16진수 안에 `101`이 우연히
+     * 들어가면 코드가 옳아도 시험이 깨진다 — 실제로 CI에서
+     * `…784d1011edac`가 나와 깨졌다. UUID 22개 창 × (1/16)^3 ≈ 0.5%다.
+     *
+     * 그래서 **허용된 키 집합 자체를 고정한다.** 목록을 싣는 순간 키가 늘어나
+     * 걸리고, 우연에 흔들리지 않는다. DEV-040이 정한 것은 "요약만 싣는다"이지
+     * "어떤 숫자도 나타나지 않는다"가 아니다.
+     */
+    const parsed = response.json<{ access_scope: Record<string, unknown> }>();
+
+    expect(Object.keys(parsed.access_scope).sort()).toEqual([
+      'org_count',
+      'refreshed_at',
+      'repository_count',
+      'scope_kind',
+      'team_count',
+    ]);
+    // 요약 값 중 배열은 하나도 없다 — 배열이 곧 목록이다.
+    for (const [key, value] of Object.entries(parsed.access_scope)) {
+      expect(Array.isArray(value), key).toBe(false);
+    }
+    expect(response.body).not.toContain('repository_ids');
   });
 
   it('접근 범위 조회가 실패하면 503 permission_unavailable이다 (DoD 6)', async () => {
@@ -311,7 +335,7 @@ describe('DEV-048: 세션과 토큰은 배타다', () => {
         config: {
           port: 0,
           adminTokens: [{ name: 'alice', token: 'tok' }],
-          metricsQueryUrl: null,
+          metricsQueryUrl: null, gheBaseUrl: null,
           auth: AUTH_CONFIG,
         },
         ops: { pool, bus: undefined as never },

@@ -52,6 +52,22 @@ describe('설정 해석', () => {
     expect(resolveSearchApiConfig({ METRICS_QUERY_URL: '  ' }).metricsQueryUrl).toBeNull();
   });
 
+  it('GHE 기준 URL이 없으면 null이다 — URL 해석을 아예 하지 않는다 (CR-017, DEV-064)', () => {
+    // 무엇이 우리 호스트인지 모르는 채로 경로를 파싱하면 아무 URL이나 우리 것이 된다.
+    expect(resolveSearchApiConfig({}).gheBaseUrl).toBeNull();
+    expect(resolveSearchApiConfig({ GHE_BASE_URL: '   ' }).gheBaseUrl).toBeNull();
+  });
+
+  it('GHE 기준 URL의 끝 슬래시를 떼어 낸다', () => {
+    // `@prs/github`의 같은 이름 설정과 모양을 맞춘다.
+    expect(resolveSearchApiConfig({ GHE_BASE_URL: 'https://ghe.acme.example/' }).gheBaseUrl).toBe(
+      'https://ghe.acme.example',
+    );
+    expect(resolveSearchApiConfig({ GHE_BASE_URL: 'https://ghe.acme.example///' }).gheBaseUrl).toBe(
+      'https://ghe.acme.example',
+    );
+  });
+
   it('감사 주체에 접두를 붙여 사람 계정과 섞이지 않게 한다', () => {
     expect(auditUserId({ name: 'alice', token: 'x' })).toBe('admin:alice');
     expect(auditUserId({ name: 'unnamed', token: 'x' })).toBe('admin:unnamed');

@@ -38,5 +38,18 @@ export type { QueryErrorCode, QueryErrorDetail } from './errors.js';
 export { tokenize } from './tokenizer.js';
 export type { RawToken } from './tokenizer.js';
 
+export {
+  MIN_SHA_PREFIX_LENGTH,
+  detectIdentifier,
+  primaryKind,
+} from './identifier.js';
+export type {
+  DetectOptions,
+  Identifier,
+  IdentifierDetection,
+  IdentifierKind,
+  IdentifierRejection,
+} from './identifier.js';
+
 export { MIN_TEXT_LENGTH, parseQuery } from './parse.js';
 export { serializeQuery } from './serialize.js';

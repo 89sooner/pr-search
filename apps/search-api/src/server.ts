@@ -16,6 +16,7 @@ import { resolveSearchApiConfig, type SearchApiConfig } from './config.js';
 import { registerOpsRoutes } from './ops/routes.js';
 import { registerAuthRoutes } from './auth/routes.js';
 import { registerSearchRoutes } from './search/routes.js';
+import { registerResolveRoutes } from './resolve/routes.js';
 import type { SearchDeps } from './search/service.js';
 import type { AuthContext } from './auth/context.js';
 import type { OpsDeps } from './ops/dead-letters.js';
@@ -82,6 +83,14 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
 
     if (deps.search !== undefined) {
       registerSearchRoutes(app, { ...deps.search, auth: deps.auth, loginPath: config.auth.loginPath });
+      // 식별자 해석은 목록 조회와 같은 의존을 쓴다 (WP-014). ES 하나면 된다.
+      registerResolveRoutes(app, {
+        es: deps.search.es,
+        ...(deps.search.timeoutMs === undefined ? {} : { timeoutMs: deps.search.timeoutMs }),
+        auth: deps.auth,
+        loginPath: config.auth.loginPath,
+        gheBaseUrl: config.gheBaseUrl,
+      });
     } else {
       log({ level: 'warn', message: 'Elasticsearch 의존이 없어 검색 경로를 등록하지 않는다 (API-SRCH-004)' });
     }

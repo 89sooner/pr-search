@@ -77,7 +77,7 @@ describe('저장소 등록 관리 (WP-010, API-ADM-001)', () => {
     redis = createTestRedis();
     bus = new RedisStreamsEventBus(redis);
     app = buildServer({
-      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG },
+      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG },
       ops: { pool, bus },
       registry: {
         pool,
