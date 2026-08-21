@@ -12,7 +12,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { NavList, type NavItem } from '@conductor-by-89soone/react';
 import type { Role } from '@prs/authz/roles';
-import { SECTION_LABELS, visibleNavEntries } from '../lib/nav.js';
+import { SECTION_LABELS, visibleNavEntries } from '../lib/nav';
 
 export interface LeftNavPanelProps {
   readonly roles: readonly Role[];

@@ -22,6 +22,8 @@ export default defineConfig({
       '@prs/contracts': resolvePackage('contracts'),
       '@prs/query': resolvePackage('query'),
       '@prs/es': resolvePackage('es'),
+      // 서브패스가 먼저다 — `@prs/db`가 앞서면 `/migrate`가 진입점으로 잡힌다.
+      '@prs/db/migrate': fileURLToPath(new URL('./packages/db/src/migrate.ts', import.meta.url)),
       '@prs/db': resolvePackage('db'),
       '@prs/github': resolvePackage('github'),
       '@prs/bus': resolvePackage('bus'),

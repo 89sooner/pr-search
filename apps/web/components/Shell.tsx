@@ -18,9 +18,9 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppShell } from '@conductor-by-89soone/react';
 import type { Role } from '@prs/authz/roles';
-import { activeNavId } from '../lib/nav.js';
-import { AppTopBar, type UserSummary } from './AppTopBar.js';
-import { LeftNavPanel } from './LeftNavPanel.js';
+import { activeNavId } from '../lib/nav';
+import { AppTopBar, type UserSummary } from './AppTopBar';
+import { LeftNavPanel } from './LeftNavPanel';
 
 export const MAIN_ID = 'main-content';
 

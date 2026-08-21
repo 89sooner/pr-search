@@ -17,7 +17,7 @@ import {
   withAst,
   writeQueryState,
   type QueryState,
-} from './query-url.js';
+} from './query-url';
 
 function roundTrip(state: QueryState): QueryState {
   return readQueryState(writeQueryState(state));

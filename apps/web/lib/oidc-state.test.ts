@@ -14,7 +14,7 @@ import {
   decodeRoundTrip,
   encodeRoundTrip,
   roundTripCookie,
-} from './oidc-state.js';
+} from './oidc-state';
 
 describe('왕복', () => {
   it('네 값이 그대로 돌아온다', () => {

@@ -44,7 +44,6 @@ export function ErrorBanner({
 
   if (!recoverable && id === null && process.env.NODE_ENV !== 'production') {
     // 개발 중에 잡는다. 운영에서 던지면 오류 화면이 또 다른 오류로 덮인다.
-    // eslint-disable-next-line no-console
     console.error('[C-005] 복구 불가 오류에는 correlationId가 있어야 한다');
   }
 

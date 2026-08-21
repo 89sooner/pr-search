@@ -14,7 +14,7 @@ import {
   formatSequenceRef,
   formatTimestamp,
   shortSha,
-} from './format.js';
+} from './format';
 
 const SHA = 'a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5';
 

@@ -12,7 +12,7 @@ import {
   activeNavId,
   canSeeOps,
   visibleNavEntries,
-} from './nav.js';
+} from './nav';
 
 function idsFor(...roles: Role[]): string[] {
   return visibleNavEntries(roles).map((entry) => entry.id);
