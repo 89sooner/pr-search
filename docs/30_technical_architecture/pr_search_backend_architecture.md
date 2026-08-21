@@ -235,17 +235,23 @@ async function search(rawQuery: string, opts: SearchOptions, ctx: RequestContext
 
 ```text
 입력 문자열
- 1. GHE URL 패턴 (호스트+경로)   → pull_request | commit | release + repository 확정
+ 1. GHE URL 패턴 (호스트+경로)   → pull_request | commit + repository 확정
  2. owner/repo#N                 → pull_request + repository 확정
  3. #N 또는 순수 정수            → pull_request (repository 미확정 → 접근 범위 내 후보 조회)
  4. 40자 hex                     → commit (term 질의)
  5. 7~39자 hex                   → commit (prefix 질의, ADR-012)
  6. 7자 미만 hex                 → 400 sha_prefix_too_short
- 7. seq: 형태 또는 태그 패턴     → release | sequence
+ 7. seq: 형태 또는 태그 패턴     → release | sequence  ← WP-014에서는 도달하지 않는다 (CR-017, DEV-065)
  8. 그 외                        → text (전문 검색 위임)
 ```
 
 4번에서 40자 hex가 커밋으로 안 잡히면 `merge_commit_sha` / `head_sha` / `base_sha` 필드도 순차 확인한다. 아직 커밋 문서가 색인되지 않았지만 PR 문서에는 SHA가 들어 있는 경우가 있기 때문이다.
+
+1번의 **호스트 비교는 생략할 수 없다** (CR-017, DEV-064). `GHE_BASE_URL`이 가리키는 호스트와 다른 URL은 경로가 같은 모양이어도 `text`로 떨어진다. 호스트를 보지 않고 경로만 파싱하면 외부 URL이 우리 저장소의 PR로 해석된다.
+
+7번은 **WP-014 범위 밖이다** (CR-017, DEV-065). 릴리스 태그의 패턴이 어디에도 정의되어 있지 않고 `prs-releases`도 비어 있다(WP-024). 패턴을 추측해 넣으면 `v1`·`build-2` 같은 문자열이 릴리스로 오분류되어 전문 검색으로 가야 할 질의가 0건이 된다. 릴리스를 색인하는 WP-024가 패턴을 정의할 때까지 태그처럼 보이는 문자열은 8번으로 간다.
+
+**커밋 상세는 커밋 문서가 가진 것만 낸다** (CR-017, DEV-060). 커밋 문서는 SHA·역할·소속 PR 번호·대상 브랜치만 갖는다 — `EVT-ING-002`가 커밋에 대해 SHA만 나르기 때문이다. SHA → PR 역추적(FR-SRCH-002)의 AC-4가 요구하는 PR 번호·제목·작성자·리뷰어·머지 시각은 **PR 문서를 조인해** 채운다(데이터 모델 6장의 `prs-commits` → `pull_request_numbers` → `prs-pull-requests` 경로). 커밋 자체의 메시지·작성자·부모 SHA는 미러 기반 보강(WP-020)이 채운다.
 
 ## 5. 동기/비동기 경계
 

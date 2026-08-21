@@ -122,6 +122,10 @@
 }
 ```
 
+**URL은 호스트까지 맞아야 한다 (CR-017, DEV-064).** `GHE_BASE_URL`이 가리키는 호스트와 다른 URL은 경로가 `/owner/repo/pull/N` 모양이더라도 `text`로 떨어진다. 호스트를 보지 않으면 `https://other.example/acme/payments/pull/1`이 우리 저장소의 PR로 해석된다 — 접근 범위가 데이터를 막아 주더라도 **엉뚱한 저장소로 해석하는 것 자체가 오답**이다.
+
+**릴리스 태그는 아직 판별하지 않는다 (CR-017, DEV-065).** 백엔드 아키텍처 4.5의 해석 7단계가 "태그 패턴"을 말하지만 **그 패턴이 무엇인지는 어디에도 정의되어 있지 않고**, `prs-releases`도 아직 비어 있다(WP-024). 패턴을 추측해 넣으면 `v1`·`build-2` 같은 문자열이 릴리스로 오분류되어 전문 검색으로 가야 할 질의가 0건이 된다. 태그처럼 보이는 문자열은 FR-SRCH-001 AC-4대로 `text`이며, 패턴은 릴리스를 색인하는 WP-024가 정의한다.
+
 - 오류: `SHA_PREFIX_TOO_SHORT` (400), `SEARCH_TIMEOUT` (504), `PERMISSION_UNAVAILABLE` (503)
 - Authz: 인증 필요. 접근 범위 밖 후보는 결과에서 제외한다 (FR-SRCH-001 AC-6)
 - 페이지네이션: 없음. `limit`으로 상한만 둔다
@@ -132,24 +136,23 @@
 - 관련 요구사항: FR-SRCH-002, FR-REL-002
 - 요청: `GET /api/v1/commits/acme%2Fpayments/a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5`
 
-응답 200:
+**커밋 문서가 실제로 갖는 것만 응답에 싣는다 (CR-017, DEV-060).** 커밋 문서는 SHA·역할·소속 PR 번호·대상 브랜치만 갖는다 — 매핑에는 `message`·`author`·`authored_at`·`parent_shas`·`patch_id`·`changed_paths`·`changed_files_count`·`additions`·`deletions` 자리가 있으나 **투영이 채우지 않는다.** `EVT-ING-002`가 커밋에 대해 SHA만 나르기 때문이다. 커밋 자체의 메타데이터는 미러 기반 보강(WP-020)이 채운다.
+
+**채워지지 않은 필드는 키를 넣지 않는다.** CR-016 DEV-057이 `facets`에 세운 규칙과 같다 — 키가 없으면 "만들지 않았다", `null`이면 "만들었는데 비었다". `additions: 0`으로 채우면 *파일을 하나도 바꾸지 않은 커밋*과 구분되지 않는다.
+
+응답 200 (머지 커밋):
 
 ```json
 {
   "repository": "acme/payments",
   "repository_id": 4021,
   "commit_sha": "a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5",
-  "parent_shas": ["b81f3e0a9c2d4e5f60718293a4b5c6d7e8f90a1b"],
-  "message": "feat: 결제 재시도 로직 (#1234)\n\nRefs: PAY-880",
-  "author": "kim",
-  "committer": "kim",
-  "authored_at": "2026-08-19T04:51:02Z",
-  "committed_at": "2026-08-19T05:02:11Z",
+  "short_sha": "a3f9c21b4e8d",
   "role": "merge_commit",
   "base_branch": "main",
-  "merge_seq": 1342,
-  "seq_epoch": 3,
-  "sequence_space": "acme/payments@main",
+  "merge_seq": null,
+  "seq_epoch": null,
+  "sequence_space": null,
   "pull_requests": [
     {
       "pr_number": 1234,
@@ -162,23 +165,18 @@
       "url": "/pr/acme/payments/1234"
     }
   ],
-  "changed_paths": [
-    { "path": "src/payment/retry.ts", "additions": 80, "deletions": 12 },
-    { "path": "src/payment/index.ts", "additions": 40, "deletions": 3 }
-  ],
-  "changed_files_count": 2,
-  "additions": 120,
-  "deletions": 15,
   "link_summary": { "has_revert": false, "is_reverted": true, "has_cherry_pick": true },
-  "release_tags": ["build-20260819-02", "build-20260820-01"],
-  "patch_id": "7f3c1a2b9d8e0f4a5b6c7d8e9f0a1b2c3d4e5f60",
-  "patch_id_unavailable": false,
   "enrichment_pending": false,
+  "url": "/commit/acme/payments/a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5",
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
 
-응답 200 (직접 푸시 커밋):
+시퀀스 3종은 **키를 두고 `null`**이다 — 채번 경로(WP-021)가 아직 없다는 뜻이며, 커밋 메타데이터처럼 "만들지 않은" 것과 구분된다.
+
+WP-020 이후 붙는 키: `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at`, `patch_id`, `patch_id_unavailable`, `changed_paths`, `changed_files_count`, `additions`, `deletions`. WP-024 이후: `release_tags`.
+
+응답 200 (직접 푸시 커밋) — **아직 도달하지 않는 경로다 (CR-017, DEV-061).** 커밋 문서는 PR 이벤트에서만 만들어지고 `push` 이벤트는 ack 후 버려진다(DEV-016). 직접 푸시 커밋은 **문서 자체가 없어** 현재는 404다. push 이벤트 라우팅(WP-021)이 서면 이 모양으로 응답한다 — 그때 계약을 다시 고치지 않도록 지금 적어 둔다:
 
 ```json
 {
@@ -205,6 +203,10 @@
 
 요청: `GET /api/v1/pull-requests/acme%2Fpayments/1234`
 
+**`source_commits`는 객체 배열이되 지금은 `commit_sha`만 채운다 (CR-017, DEV-062).** PR 문서가 갖는 것은 `source_commit_shas`(문자열 배열)뿐이고, 커밋 문서를 조인해도 메시지·작성자가 없다(DEV-060). FR-SRCH-003 AC-3이 요구하는 `subject`·`author`·`authored_at`은 **키를 넣지 않는다** — 배열 모양을 지금부터 객체로 두는 이유는 WP-020이 커밋을 보강하면 키가 저절로 붙어 계약을 다시 고치지 않아도 되기 때문이다.
+
+**`source_commits_total`은 절삭됐을 때 키를 넣지 않는다 (CR-017, DEV-063).** 절삭되지 않았으면 배열 길이가 곧 총계다. 250건에서 잘렸을 때의 진짜 총계는 **저장되어 있지 않으므로**(보강 payload가 나르지 않는다) 250을 총계로 내보내지 않는다 — `source_commits_truncated: true`가 "더 있다"를 말하고, 얼마나 더 있는지는 모른다고 두는 편이 틀린 수를 주는 것보다 낫다.
+
 응답 200:
 
 ```json
@@ -224,18 +226,8 @@
   "head_branch": "feature/payment-retry",
   "merge_commit_sha": "a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5",
   "source_commits": [
-    {
-      "commit_sha": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
-      "subject": "wip: 재시도 스켈레톤",
-      "author": "kim",
-      "authored_at": "2026-08-18T02:10:00Z"
-    },
-    {
-      "commit_sha": "2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e",
-      "subject": "test: 재시도 케이스 추가",
-      "author": "kim",
-      "authored_at": "2026-08-18T07:41:00Z"
-    }
+    { "commit_sha": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d" },
+    { "commit_sha": "2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e" }
   ],
   "source_commits_total": 2,
   "source_commits_truncated": false,
