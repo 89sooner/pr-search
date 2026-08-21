@@ -466,6 +466,28 @@ describe('DoD 3: 0건일 때 완화 후보 (AC-3)', () => {
     const { body } = await get('q=repo%3Aacme%2Fpayments');
     expect(body.relaxation_hints).toBeUndefined();
   });
+
+  it('ADR-008: 후보 계산도 강제 접근 범위 필터를 지난다', async () => {
+    /*
+     * 완화 후보는 건수만 돌려주지만 그 건수도 정보다. 범위 밖 문서를 세면
+     * "이 조건을 빼면 1건이 나옵니다"가 볼 수 없는 문서의 존재를 알려 준다.
+     *
+     * `repo:other/secret`은 범위 밖 저장소이고 `pr-hidden`이 그 안에 있다.
+     * `author:kim`을 **빼면** 남는 것은 `repo:other/secret`뿐이다 — 범위 필터가
+     * 있으면 0건이라 후보가 되지 않고, 없으면 `pr-hidden`이 걸려 후보로
+     * 올라온다. 그 차이가 이 시험이 보는 것이다.
+     */
+    const { status, body } = await get('q=repo%3Aother%2Fsecret+author%3Akim');
+
+    expect(status).toBe(200);
+    expect(body.total.value).toBe(0);
+
+    const hints = body.relaxation_hints ?? [];
+    expect(hints.map((one) => one.remove)).not.toContain('author:kim');
+    // 범위 안에서 세는 후보는 그대로 나온다 — 후보 계산 자체가 죽은 것이 아니다.
+    // `author:kim`은 범위 안에서 PR 둘과 커밋 하나에 걸린다.
+    expect(hints).toContainEqual({ remove: 'repo:other/secret', would_yield: 3 });
+  });
 });
 
 describe('DoD 7: 응답 스키마가 계약과 맞는다', () => {

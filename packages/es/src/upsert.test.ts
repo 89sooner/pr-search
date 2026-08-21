@@ -75,6 +75,41 @@ describe('벌크 요청 모양 (AC-2)', () => {
   });
 });
 
+describe('DEV-059: `doc_id`를 업서트가 자동으로 채운다', () => {
+  /*
+   * Elasticsearch 8은 `_id` 정렬을 금지한다. FR-SRCH-007 AC-4의 "문서 ID를
+   * 마지막 정렬 키로"가 성립하려면 같은 값이 정렬 가능한 필드로 문서 안에
+   * 있어야 한다. 투영 자리마다 손으로 넣게 하면 언젠가 한 곳이 빠지고, 그
+   * 인덱스만 정렬에서 조용히 뒤로 밀린다 — 그래서 여기서 넣는다.
+   */
+  it('생성 본문에 `_id`와 같은 값이 들어간다', async () => {
+    const { client, bulk } = fakeClient({ items: [{ update: { status: 201, result: 'created' } }] });
+    await bulkUpsert(client, [REQUEST]);
+
+    const body = (bulk.mock.calls[0]?.[0]?.operations as { upsert: Record<string, unknown> }[])[1];
+    expect(body?.upsert['doc_id']).toBe(REQUEST.id);
+  });
+
+  it('스크립트 `params.doc`에도 들어간다 — 이미 색인된 문서가 다음 이벤트에서 채워진다', async () => {
+    const { client, bulk } = fakeClient({ items: [{ update: { status: 200, result: 'updated' } }] });
+    await bulkUpsert(client, [COMMIT]);
+
+    const body = (bulk.mock.calls[0]?.[0]?.operations as { script: { params: Record<string, Record<string, unknown>> } }[])[1];
+    expect(body?.script.params['doc']?.['doc_id']).toBe(COMMIT.id);
+  });
+
+  it('요청마다 자기 ID를 갖는다', async () => {
+    const { client, bulk } = fakeClient({
+      items: [{ update: { status: 200, result: 'updated' } }, { update: { status: 200, result: 'updated' } }],
+    });
+    await bulkUpsert(client, [REQUEST, COMMIT]);
+
+    const operations = bulk.mock.calls[0]?.[0]?.operations as { upsert: Record<string, unknown> }[];
+    expect(operations[1]?.upsert['doc_id']).toBe(REQUEST.id);
+    expect(operations[3]?.upsert['doc_id']).toBe(COMMIT.id);
+  });
+});
+
 describe('벌크 응답 해석 (AC-3)', () => {
   it('성공·거절·재시도 가능을 항목별로 가른다', async () => {
     const { client } = fakeClient({

@@ -36,7 +36,7 @@
 | WP-010 | 저장소 등록 API와 파이프라인 지표 | REL-001 | todo | - | - | - | - |
 | WP-011 | 구조화 질의 파서 | REL-002 | done | 에이전트 | (이 PR) | DoD 7항 전부 통과. 단위 88건 (6.11장) | CR-014가 메운 빈칸(부정된 범위·값 검증 경계·범위 키·오류 판정 주체)을 함께 구현했다. AST를 ES 질의로 옮기는 것은 WP-013이다 |
 | WP-012 | 인증과 접근 범위 강제 | REL-002 | done | 에이전트 | (이 PR) | DoD 10항 중 9항 통과, 1항 부분 (6.12장). 단위 175건 + 통합 47건 | CR-015가 메운 빈칸(신원 표현·무효화 대상 산출·경합 순서·역할 합성)을 함께 구현했다. OIDC 라우트는 `web`이 소유하므로 WP-015가 붙인다 — 이 WP는 라이브러리와 `search-api` 강제를 세운다. 구현 중 DEV-050(해소)·DEV-051(미해소)을 등록했다 |
-| WP-013 | 검색 API 목록 조회 | REL-002 | todo | - | - | - | - |
+| WP-013 | 검색 API 목록 조회 | REL-002 | done | 에이전트 | (이 PR) | DoD 7항 중 6항 통과, 1항 **NOT RUN** (6.13장). 단위 66건 + 통합 46건 | CR-016이 메운 빈칸(키→필드 표·파생 상태·다중 인덱스 정렬·완화 힌트 산출·응답 키 유무)을 함께 구현했다. NFR-001의 p95 500ms는 1000만 문서 데이터셋과 부하 harness가 없어 **측정하지 않았다**(DEV-058) — REL-002 성능 게이트로 넘긴다. 구현 중 DEV-059(해소)를 등록했다. 패싯·커서·전문 검색은 WP-032 |
 | WP-014 | 식별자 해석 API | REL-002 | todo | - | - | - | - |
 | WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | todo | - | - | - | - |
 | WP-016 | W-001 통합 검색 화면 | REL-002 | todo | - | - | - | - |
@@ -96,8 +96,8 @@
 | FR-SRCH-003 | WP-014, WP-017 | - | - | not_started |
 | FR-SRCH-004 | WP-014, WP-016 | - | - | not_started |
 | FR-SRCH-005 | WP-011, WP-016 | `packages/query/src/{keys,errors,ast,tokenizer,parse,serialize}.ts` | `packages/query/src/{parse,serialize}.test.ts` | verified (AC-1~AC-6 전부. 화면의 오류 구간 강조는 WP-016) |
-| FR-SRCH-006 | WP-013, WP-016 | - | - | not_started |
-| FR-SRCH-007 | WP-013, WP-016 | - | - | not_started |
+| FR-SRCH-006 | WP-013, WP-016 | `packages/es/src/query-builder.ts`, `apps/search-api/src/search/{routes,service,relaxation}.ts`, `packages/db/src/repositories/{repository,auth}.ts` | `packages/es/src/query-builder.test.ts`, `apps/search-api/integration/search/list.test.ts` | done (AC-1~AC-3, AC-6. 화면 쪽 결합은 WP-016) |
+| FR-SRCH-007 | WP-013, WP-016 | `packages/es/src/sort.ts`, `packages/es/src/upsert.ts` (`doc_id`), `packages/es/src/mappings/*.ts`, `apps/search-api/src/search/{routes,service}.ts` | `packages/es/src/sort.test.ts`, `packages/es/src/upsert.test.ts`, `apps/search-api/integration/search/list.test.ts` | done (AC-1~AC-4. AC-4의 "문서 ID"는 `_id`가 아니라 같은 값의 `doc_id` 필드다 — DEV-059) |
 | FR-SRCH-008 | WP-032 | - | - | not_started |
 | FR-SRCH-009 | WP-032 | - | - | not_started |
 | FR-SRCH-010 | WP-033 | - | - | not_started |
@@ -142,7 +142,7 @@
 | FR-ADMIN-001 | WP-010, WP-040 | `apps/search-api/src/ops/pipeline-status.ts`, `packages/db/src/repositories/pipeline.ts`, `packages/bus/src/{types,redis-streams,in-memory}.ts`, `packages/metrics/src/index.ts` | `apps/search-api/integration/ops/pipeline-status.test.ts`, `packages/bus/integration/contract.ts` | partial (AC-1의 단계별 지연을 뺀 전 항목과 AC-2·AC-3 충족. 단계별 지연은 지표 저장소가 설정된 경우에만(DEV-029), 시퀀스 공간 요약은 WP-021 이후. AC-4 `operator` 역할 판정은 WP-012) |
 | FR-ADMIN-002 | WP-002, WP-019, WP-040 | `packages/db/migrations/004_app_state.up.sql` (`job_active_uk`), `packages/db/src/repositories/job.ts` | `packages/db/integration/constraints.test.ts` (AC-4) | partial (동시 실행 제약. 콘솔은 WP-040) |
 | FR-ADMIN-003 | WP-028, WP-040 | - | - | not_started |
-| NFR-001 | WP-013, WP-014, WP-023, WP-037 | - | - | not_started |
+| NFR-001 | WP-013, WP-014, WP-023, WP-037 | `apps/search-api/src/search/{service,relaxation,routes}.ts` (`track_total_hits: 10000`, 완화 힌트 `msearch` 1회·상한 8, ES 마감 3초) | `apps/search-api/integration/search/list.test.ts` (왕복 수가 필터 수에 비례하지 않음) | **NOT RUN** (p95 실측 없음 — 1000만 문서 데이터셋과 부하 harness 부재, DEV-058. 예산을 지키는 **구조**만 시험으로 고정했다) |
 | NFR-002 | WP-004, WP-005, WP-008 | `apps/ingest-gateway/src/{server,metrics}.ts`, `packages/bus/src/{types,topics,partition,config,redis-streams,in-memory}.ts`, `apps/pipeline-worker/src/{project,metrics}.ts` | `apps/ingest-gateway/integration/{load,enqueue}.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | partial (발행까지 포함한 수신 응답 p95 38.3ms / 예산 300ms. 수신→색인 지연은 `ingestion_lag_seconds`로 계측하며 개발 데이터셋에서 전량 10초 이내. 운영 규모 측정은 REL-001 성능 게이트) |
 | NFR-003 | WP-002, WP-003 | `packages/db/migrations/*`, `packages/db/src/partitions.ts`, `packages/es/src/indices.ts` | `packages/db/integration/partitions.test.ts`, `packages/es/integration/bootstrap.test.ts` | partial (PostgreSQL 파티션 + ES 샤드 수. 용량 실측은 REL-001 이후) |
 | NFR-004 | WP-010 (인프라) | - | - | not_started |
@@ -717,7 +717,43 @@ DoD 10항 중 9항 통과, 1항 부분. 검증 방법은 `pnpm test:integration 
 
 **시험이 확인하지 못한 것.** 실제 사내 IdP와의 OIDC 왕복은 **NOT RUN**이다 — IdP 자격 증명이 없다. ID 토큰 검증은 테스트가 생성한 RSA 키쌍으로 다섯 검사를 각각 무너뜨려 확인했으나, 실제 IdP의 클레임 이름(특히 그룹 클레임)과 JWKS 회전 동작은 REL-002 게이트에서 확인해야 한다.
 
-### 6.13 릴리스 게이트
+### 6.13 WP-013 검증 실행 기록
+
+DoD 7항 중 6항 통과, 1항 **NOT RUN**. 검증 방법은 `pnpm test:integration search`와 `pnpm test es`다.
+
+| DoD | 결과 | 근거 |
+| --- | --- | --- |
+| 필터 12종이 AND로 결합된다 (FR-SRCH-006 AC-1) | 통과 | 12종이 `filter` 배열에 나란히 놓인다. 실제 인덱스에서 조건을 더할수록 결과가 좁아지는 것까지 확인했다 — 모양이 맞아도 필드 이름이 어긋나면 아무것도 거르지 못한다 |
+| 같은 필드 다중 값이 OR로 결합된다 (AC-2) | 통과 | 같은 키의 값들이 `terms` 하나로 묶인다. 긍정과 부정이 섞이면 `filter`와 `must_not`으로 갈라진다 (AC-6) |
+| 0건일 때 완화 후보가 반환된다 (AC-3) | 통과 | `msearch` **1회**, 후보 상한 8개, 절삭 시 `relaxation_hints_truncated`. 많이 나오는 후보가 먼저 온다. 빼도 0건인 필터는 후보가 아니다. 필터가 하나뿐이면 계산하지 않는다 |
+| 정렬 키 8종이 동작하고 미지원 키는 400이다 (FR-SRCH-007 AC-1, AC-3) | 통과 | 8종 모두 정렬 절을 만든다. 목록 밖 키는 **ES를 부르기 전에** 400 `INVALID_PARAMETER`이고 응답에 지원 키 목록을 싣는다 |
+| 동일 조건 두 번 조회 시 순서가 동일하다 (AC-4) | 통과 | 모든 정렬이 문서 ID로 끝난다. 같은 질의를 3회 던져 항목 순서가 동일함을 실제 인덱스에서 확인했다 |
+| 목록 조회 p95가 500ms 이하다 (NFR-001) — 1000만 문서 합성 데이터셋 | **NOT RUN** | 데이터셋도 `pnpm test:perf` 스크립트도 이 환경에 없다 (DEV-058, DEV-032와 같은 형태). **측정하지 않은 것을 통과로 적지 않는다.** 예산을 지키는 구조(완화 힌트 왕복 1회 고정, `track_total_hits` 상한, ES 마감 3초)만 시험으로 고정했다 |
+| API 계약의 `/search` 응답 예시와 실제 응답 스키마가 일치한다 | 통과 | 최상위 키 7종을 확인했다. `next_cursor`는 **항상 `null`로 실린다**(키가 있고 값이 없다 = 다음 페이지 없음), `facets`는 **키 자체를 넣지 않는다**(빈 객체는 "세었는데 없다"로 읽힌다) — CR-016 DEV-057 |
+
+로컬에서 통과한 명령:
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` / `pnpm lint` / `pnpm lint:deps` | 종료 코드 0 — 패키지 13개, 위반 0건 |
+| `pnpm test` (전량) | 종료 코드 0 — **550건 통과 + 1건 건너뜀**(real-GHE smoke) |
+| `pnpm test:integration` (전량) | 종료 코드 0 — **325건** |
+| WP-013 몫만: 단위 66건 (파일 3개 + `upsert.test.ts` 3건), 통합 46건 | 종료 코드 0 |
+| `pnpm build` | 종료 코드 0 |
+
+**시험이 실제로 무엇을 잡는지 확인했다.** 구현을 26가지로 망가뜨렸다 — (1) 다른 키를 AND 대신 OR로, (2) 같은 키에서 첫 값만 사용, (3) 부정을 긍정으로, (4) 못 찾은 이름의 필터를 조용히 버림, (5) 미해석 이름을 응답에서 생략, (6) 경로 접두를 `match`+`operator:and`로, (7) 경로 접두를 `.raw` `prefix`로, (8) `is:reverted`를 엉뚱한 필드로, (9) 정렬에서 동점 처리 키 제거, (10) 동점 처리를 `_doc`으로, (11) 기본 정렬의 둘째 단 제거, (12) `missing`을 `_first`로, (13) `unmapped_type` 제거, (14) 샤드 부분 실패 검사 무력화, (15) 서비스가 샤드 검사를 호출하지 않음, (16) `upsert`가 `doc_id`를 넣지 않음, (16b) 생성 본문에만 넣고 스크립트에는 넣지 않음, (17) 검색이 강제 범위 필터를 건너뜀, (18) **완화 힌트가 강제 범위 필터를 건너뜀**, (19) 잘못된 정렬 키를 조용히 기본값으로, (20) `size` 상한 제거, (21) `size` 하한 검사 제거. **처음 20가지 중 16가지가 잡혔고 4가지가 살아남았다.** 살아남은 넷((15)·(16)·(18)·(20))은 그대로 **시험의 구멍**이므로 시험을 더해 막았고, 다시 돌려 26가지 전부가 잡히는 것을 확인했다.
+
+**살아남은 변이 중 하나는 접근 범위 누출이었다 (18).** 완화 힌트 계산은 건수만 돌려주지만 그 건수도 정보다 — 범위 밖 문서를 세면 "이 조건을 빼면 1건이 나옵니다"가 볼 수 없는 문서의 **존재**를 알려 준다 (THR-004와 같은 형태). 구현은 처음부터 옳았으나 **그것을 확인하는 시험이 없었다.** 범위 밖 저장소 fixture로 힌트가 그 문서를 세지 않음을 확인하는 통합 시험을 더했다.
+
+**타입 시스템이 막지 못하는 우회가 하나 더 있다.** (17)·(18)의 변이는 `as unknown as ReturnType<typeof applyMandatoryScopeFilter>`로 브랜드를 위조했고, 아키텍처 테스트의 `as ScopedQuery` 탐지에 걸리지 않았다. 둘 다 **동작 시험**이 잡았다(범위 밖 문서가 결과·힌트에 나타난다). 캐스팅 표기를 모두 열거하는 대신 결과 집합을 보는 시험을 방어선으로 삼는다 — 표기는 무한하고 결과는 하나다.
+
+**시험이 결함 하나를 먼저 잡았다.** 경로 접두 필터를 처음에 `match`로, 다음에 `match`+`operator: 'and'`로 썼는데 **둘 다 형제 디렉터리를 걸러내지 못했다.** ES `_analyze`로 확인하니 `path_hierarchy`가 `src`와 `src/pay`를 **같은 position 0**에 쌓는다 — 같은 위치의 토큰은 동의어로 취급되어 `operator: and`가 OR로 무너진다. 세 후보(`match`+and, `.raw` `prefix`, `term`)를 실제 문서 셋에 재어 `term`만이 옳음을 확인하고, `src/payments/list.ts`를 영구 회귀 fixture로 남겼다.
+
+**통합 시험 사이의 오염을 하나 고쳤다.** `packages/authz/integration/scope.test.ts`가 `team` 테이블을 비우지 않아, `team`에 쓰는 두 번째 파일이 생기자 `UNIQUE (org_id, slug)`에 걸렸다. 통합 파일은 한 데이터베이스를 나눠 쓰므로 각자 자기 전제를 세우도록 고쳤다 — 남의 파일이 치우고 갔기를 기대하지 않는다.
+
+**시험이 확인하지 못한 것.** NFR-001의 p95는 **NOT RUN**이다(위 DoD 표). 전문 검색이 없어 `relevance` 정렬은 실질적으로 문서 ID 순이며(DEV-056), 그것이 지금의 계약이다 — 동작하는 척하지 않았다. `allowed_team_ids`가 투영에서 비어 있으므로 `team:` 필터는 통합 시험이 fixture로 넣은 값에 대해서만 검증됐다(7장 한계 참조).
+
+### 6.14 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -750,7 +786,7 @@ DoD 10항 중 9항 통과, 1항 부분. 검증 방법은 `pnpm test:integration 
 | `docker compose up`이 이 실행 환경에서 검증되지 않음 | 인프라 8장 / DEV-001 | 실제 제약 (레지스트리 이그레스 차단) | 레지스트리 접근 가능한 환경에서 재검증 |
 | 워크스페이스 패키지 5종(`query`·`es`·`db`·`github`·`bus`)이 식별 정보만 내보냄 | WP-001 구현 범위 | 실제 상태 (의도된 골격) | WP-002·WP-003·WP-005·WP-006·WP-025 |
 | `web`이 Conductor 디자인 시스템을 아직 쓰지 않음 | WP-001 제외 목록 (화면 제외) | 실제 상태 | WP-019 (셸과 Conductor 연동) |
-| 각 앱 헬스체크가 백킹 서비스 연결을 확인하지 않음 | WP-001 구현 범위 (프로세스 기동만) | `ingest-gateway`는 해소 — `GET /healthz`가 PostgreSQL을 확인하고 실패 시 503 (인프라 3장) | `search-api`(ES·PG)는 검색 경로를 여는 WP-013, `web`·`pipeline-worker`는 기존대로 |
+| 각 앱 헬스체크가 백킹 서비스 연결을 확인하지 않음 | WP-001 구현 범위 (프로세스 기동만) | `ingest-gateway`는 해소 — `GET /healthz`가 PostgreSQL을 확인하고 실패 시 503 (인프라 3장). **`search-api`는 WP-013에서도 해소하지 못했다** — 검색 경로는 열렸으나 `/healthz`는 여전히 프로세스 기동만 본다. 서버가 ES 핸들만 받고 PostgreSQL 핸들은 받지 않아(`resolveNames` 클로저 안에 있다) ES만 확인하면 PG가 죽어도 `ok`가 나간다 — 반만 확인하는 헬스체크가 없는 것보다 나쁘다 | `search-api`는 서버에 PG 핸들을 넘기는 별도 변경 (WP-013 구현 범위·DoD 밖), `web`·`pipeline-worker`는 기존대로 |
 | 통합 테스트가 testcontainers가 아니라 외부 PostgreSQL에 붙음 | WP-002 검증 방법 / DEV-006 | 실제 상태 (환경 변수로 접속 정보 주입) | WP-003에서 ES와 함께 재검토 |
 | `saved_search`·`bisect_session`에 리포지터리 계층이 없음 | WP-002 구현 범위 (6종만 명시) | 실제 상태 (스키마는 존재). **`permission_cache`·`app_user`·`team`·`team_member`는 해소** (2026-08-21) — `authRepo`가 세웠다 | WP-024·WP-042 |
 | ~~큐에 들어간 이벤트를 아무도 소비하지 않음 (`processed_at`이 영영 NULL)~~ | WP-005 제외 목록 | 해소 (2026-08-20) — WP-008 투영 워커가 색인 성공 뒤 `markProcessed`를 부른다. 투영되지 않는 이벤트(미등록 저장소, PR 이외 이벤트)는 여전히 NULL로 남아 `JOB-ING-007`이 계속 재적재한다 | 라우팅을 소유한 WP와 WP-010 저장소 등록 |
@@ -777,7 +813,7 @@ DoD 10항 중 9항 통과, 1항 부분. 검증 방법은 `pnpm test:integration 
 | 미등록 저장소 이벤트도 그대로 저장됨 | FR-ING-009 AC-4는 "투영하지 않음"이지 "저장하지 않음"이 아님 | 실제 상태 (의도된 동작) — 투영이 걸러 ack하고(DEV-020), 이제 API-ADM-001로 등록하면 백필(WP-019)이 원본에서 채운다 | 없음 |
 | 서명이 맞는데 JSON이 깨진 요청은 500 (GHE 재전송 유도) | API-ING-001 오류 코드가 401·413·500으로 한정 | 실제 상태 | 없음 (서명 유효 시 발생하지 않는 경로) |
 | 커밋 문서에 메시지·작성자·부모 SHA가 없음 | WP-008 입력이 `EVT-ING-002`이고 그 이벤트는 커밋 SHA만 나른다 | 실제 상태 — SHA → PR 해석(FR-SRCH-002)에 필요한 만큼만 채운다. 조건부 업서트가 키 단위로 대입하므로 나중에 채워도 덮이지 않는다 | WP-020 미러 기반 커밋 보강 |
-| `allowed_team_ids`·`author_team_ids`가 비어 있음 | WP-008 범위 밖 (투영이 채워야 함) | **실제 상태 — WP-012가 해소하지 못했다.** 접근 범위 쪽(`org_team` 조건 생성, 팀 소속 조회, 무효화)은 세웠으나 **문서에 팀 ID를 쓰는 것은 투영의 일**이고 `EVT-ING-002`가 팀 정보를 나르지 않는다. `explicit` 범위는 `repository_id`만으로 동작하므로 조회는 성립한다. 통합 시험은 fixture로 팀 ID를 직접 넣어 `org_team` 조건을 검증했다 | 투영이 저장소 등록에서 팀 ID를 읽도록 하는 별도 CR (WP-013 착수 전 권장) |
+| `allowed_team_ids`·`author_team_ids`가 비어 있음 | WP-008 범위 밖 (투영이 채워야 함) | **실제 상태 — WP-012가 해소하지 못했다.** 접근 범위 쪽(`org_team` 조건 생성, 팀 소속 조회, 무효화)은 세웠으나 **문서에 팀 ID를 쓰는 것은 투영의 일**이고 `EVT-ING-002`가 팀 정보를 나르지 않는다. `explicit` 범위는 `repository_id`만으로 동작하므로 조회는 성립한다. 통합 시험은 fixture로 팀 ID를 직접 넣어 `org_team` 조건을 검증했다 | 투영이 저장소 등록에서 팀 ID를 읽도록 하는 별도 CR. **WP-013 착수 전 권장이었으나 열린 채로 남았다** — `team:` 필터는 구현·시험됐지만 실제 투영이 팀 ID를 쓰지 않는 한 운영 데이터에서 0건이 된다 |
 | `links_pending`이 영영 `true` | 관계 파생이 WP-029 | 실제 상태 — 투영이 생성 시점에만 `true`로 두고 이후 건드리지 않는다. 화면은 이 표식으로 "관계 미확정"을 표시한다 | WP-029 |
 | k8s 매니페스트가 클러스터에 적용된 적 없음 | WP-010 구현 범위 / 이 환경에 Kubernetes·`kubectl` 없음 | 실제 제약 — YAML 파싱만 확인했다. 이미지 이름(`prs/*:latest`)과 백킹 서비스 호스트는 자리표시자다 | **REL-001 프로비저닝 때 실제 클러스터에서 검증** |
 | 단계별 지연 p50/p95가 기본적으로 `unavailable` | CR-013 / DEV-029 | 실제 상태 — 지표 저장소(사내 Prometheus 호환)가 `METRICS_QUERY_URL`로 설정된 경우에만 채운다. 워커 복제본 하나를 긁어 클러스터 전체인 양 내놓지 않는다 | REL-001 프로비저닝에서 주소 주입 |
@@ -791,6 +827,12 @@ DoD 10항 중 9항 통과, 1항 부분. 검증 방법은 `pnpm test:integration 
 | 권한 매트릭스가 API 계층까지만 검증됨 | NFR-005는 역할 6종 × 화면 13종 | 실제 상태 — 역할 6종 × 역할 요구 경로는 통과한다. 화면이 없어 13종 축을 걸 수 없다 | WP-015 이후 |
 | 세션이 Redis에만 있어 Redis 유실 시 전원 재로그인 | 보안 문서 4장 (의도된 결정) | 실제 상태 — PostgreSQL 백업을 두지 않는다. 세션을 두 곳에 두면 로그아웃이 두 곳 모두에서 성립해야 하고, AC-5를 어길 자리가 하나 더 생긴다 | 없음 (의도된 동작) |
 | `search-api`가 GHE 자격 증명 없이는 세션 인증을 세우지 않음 | FR-AUTH-002 AC-1 (접근 범위 산출에 GHE가 필요) | 실제 상태 — 자격 증명이 없으면 모든 조회가 503이 되므로, 인증이 구성되지 않았다고 기동 로그에 남기고 토큰 통제로 돌아간다 | 없음 (의도된 동작) |
+| 목록 조회 p95(NFR-001)가 측정되지 않음 | WP-013 DoD / DEV-058 | **NOT RUN** — 1000만 문서 합성 데이터셋도 `pnpm test:perf` 스크립트도 이 환경에 없다. 예산을 지키는 구조(완화 힌트 왕복 1회, `track_total_hits` 상한 1만, ES 마감 3초)만 시험으로 고정했다 | **REL-002 성능 게이트 전 필수** |
+| `relevance` 정렬이 실질적으로 문서 ID 순 | CR-016 DEV-056 / 전문 검색이 WP-032 | 실제 상태 (의도된 계약) — 접근 범위 필터도 사용자 필터도 전부 `filter` 문맥이라 모든 문서의 점수가 같다. 키를 400으로 거절하지 않고 받되, 지금 무엇인지 계약에 적었다 | WP-032가 점수 절을 더한다 |
+| `/search` 응답에 `facets`가 없고 `next_cursor`가 항상 `null` | WP-013 제외 목록 (패싯·커서는 WP-032) / CR-016 DEV-057 | 실제 상태 (의도된 구분) — `next_cursor`는 키를 두고 `null`을 실어 "다음 페이지 없음"을 말하고, `facets`는 키 자체를 넣지 않아 "세지 않았다"와 "세었는데 없다"를 구분한다 | WP-032 |
+| 전문 검색어(`q`의 자유 문자열)가 조회에 쓰이지 않음 | WP-013 제외 목록 (전문 검색은 WP-032) | 실제 상태 — 파서가 `parsed.text`로 응답에 실어 사용자가 무시된 것을 볼 수 있다. 조용히 버리지 않는다 | WP-032 |
+| 이미 색인된 문서에 `doc_id`가 없어 정렬 뒤로 밀림 | CR-016 DEV-059 | 실제 상태 — `upsert`가 생성 본문과 스크립트 `params.doc` 양쪽에 넣으므로 **다음 이벤트에서 채워진다.** 그때까지는 `missing: _last`로 뒤에 선다. 이 저장소에는 아직 운영 데이터가 없어 실질 영향이 없다 | 백필(WP-019) 또는 재색인(WP-035)이 지나면 사라진다 |
+| 완화 힌트 후보가 8개로 잘림 | CR-016 DEV-055 | 실제 상태 (의도된 상한) — 넘으면 `relaxation_hints_truncated: true`를 실어 조용한 절삭이 "이것이 전부"로 읽히지 않게 한다 | 없음 |
 | 문서당 `EVT-ING-003`이 하나씩 발행됨 (PR 1 + 커밋 N) | 비동기 문서 4장의 payload가 엔티티 단위 | 실제 상태 — 커밋 250건 PR이면 251건이 나간다. `noop`은 내지 않아 재처리 시에는 줄어든다 | 관계 워커(WP-029) 실측 후 필요하면 CR |
 
 ## 8. 다음 작업
@@ -825,20 +867,28 @@ DoD 10항 중 9항 통과, 1항 부분. 검증 방법은 `pnpm test:integration 
 24. ~~WP-011 구조화 질의 파서~~ → 완료 (2026-08-21). 검증 결과는 6.11장
 25. ~~CR-015 WP-012 인증·접근 범위 계약 정정~~ → 완료 (2026-08-21). DEV-040~050 해소, DEV-051은 사용자 결정이 필요해 미해소. SRS 버전은 v2.2 유지(빈칸 메우기)
 26. ~~WP-012 인증과 접근 범위 강제~~ → 완료 (2026-08-21). 검증 결과는 6.12장. **DoD 10항 중 9항 통과, AC-1의 브라우저 리다이렉트만 WP-015로 이월**
+27. ~~CR-016 WP-013 검색 계약 정정~~ → 완료 (2026-08-21). DEV-052~057·DEV-059 해소, DEV-058은 성능 harness 부재로 미해소. SRS 버전은 v2.2 유지(빈칸 메우기)
+28. ~~WP-013 검색 API 목록 조회~~ → 완료 (2026-08-21). 검증 결과는 6.13장. **DoD 7항 중 6항 통과, NFR-001의 p95 실측만 NOT RUN**
 
-**다음 WP: WP-013 검색 API 목록 조회.**
+**다음 WP: WP-014 식별자 해석 API** (선행 WP-013 충족).
+
+**사용자 결정이 필요한 것 — REL-002 진행 전:**
+
+1. **OD-002 권한 원천** — 마감이 "REL-002 착수 전"이었고 지금이 그 시점이다. 현재는 GHE 협업자 권한 API를 원천으로 쓰되 `AccessScopeSource` 포트 뒤에 두었으므로, IdP 그룹으로 결정되면 어댑터 교체다. 결정이 늦어질수록 캐시 미스마다 등록 저장소 수만큼 GHE 호출이 나가는 상태가 길어진다
+2. **DEV-051 운영 집계의 접근 범위** — API-ADM-006의 `enrichment_pending`과 `slowest_repositories`. FR-ADMIN-001 AC-1·AC-3이 전역 값을 요구하고 THR-003·THR-016이 반대한다. **동작을 바꾸지 않고** 사유 붙은 허용 목록에 등록해 둔 상태다
+3. **`allowed_team_ids` 투영 CR** — `team:` 필터는 WP-013이 구현·시험했으나, 투영이 문서에 팀 ID를 쓰지 않는 한 운영 데이터에서 0건이 된다. `explicit` 범위(등록 저장소 500개 이하)는 이것 없이도 동작한다
 
 CR-008은 문서만 강화했다. GitHub Operations Plane(REL-007~011) 구현 순서는 바뀌지 않는다 — Search/Data Plane을 end-to-end로 닫은 뒤다. `@prs/github`은 Data Plane의 GitHub REST 클라이언트이며 `gh` CLI를 실행하지 않는다 (ADR-013).
 
 **REL-001의 WP는 전부 끝났다.** 웹훅 수신부터 검색 인덱스까지, 실패 격리와 재처리, 저장소 등록과 파이프라인 관측이 모두 선다. 남은 것은 **코드가 아니라 게이트**다 — 실제 GHE 대상 read-only smoke, k8s 매니페스트의 클러스터 적용, 운영 규모 성능 측정(QA-PERF), `docker compose up` 검증(DEV-001). 넷 다 이 실행 환경에 없는 것을 요구하며 7장과 6.12장에 그대로 남아 있다.
 
-**WP-013이 다음이다.** 질의 파서(WP-011)와 접근 범위 강제(WP-012)가 모두 섰으므로 검색 API가 딛고 설 것이 갖춰졌다 — AST를 ES 질의로 옮기고 `applyMandatoryScopeFilter`를 거쳐 `search`로 보내면 된다. 그 경로는 이제 **타입이 강제한다.**
+**WP-014가 다음이다.** WP-013이 질의→ES 경로를 세웠으므로 식별자 해석 API가 같은 파사드 위에 선다 — SHA→PR과 PR→커밋 모두 `applyMandatoryScopeFilter`를 거친 `search`를 쓴다.
 
-**WP-012가 남긴 것 셋을 WP-013 착수 전에 판단해야 한다.**
+**WP-012가 남긴 것 셋은 WP-013을 막지 않았고, 셋 다 아직 열려 있다.**
 
-1. **DEV-051 (사용자 결정 필요).** API-ADM-006의 운영 집계 두 곳이 접근 범위를 거치지 않는다. FR-ADMIN-001 AC-1·AC-3이 그 값을 요구하고 THR-003·THR-016이 반대한다. 동작을 바꾸지 않고 아키텍처 테스트의 사유 붙은 허용 목록에 등록했다. WP-013이 첫 사용자 대면 검색 API이므로 그 전에 경계를 정해 두는 편이 낫다.
-2. **`allowed_team_ids`가 여전히 비어 있다.** 접근 범위 쪽은 세웠으나 **문서에 팀 ID를 쓰는 것은 투영의 일**이고 `EVT-ING-002`가 팀 정보를 나르지 않는다. `explicit` 범위(저장소 500개 이하)는 `repository_id`만으로 동작하므로 WP-013을 막지는 않는다. 500개를 넘는 사용자가 실제로 생기기 전에 CR이 필요하다.
-3. **OD-002가 열려 있다** (권한 판정 소스, 기한 REL-002 착수 전). `resolveAccessScope`를 포트로 두고 GHE 어댑터를 구현했으므로 IdP 그룹으로 결정되어도 어댑터 교체다. 다만 GHE 어댑터는 캐시 미스마다 등록 저장소 수만큼 호출한다 — 저장소가 많은 조직이면 이 결정이 성능에 직접 걸린다.
+1. **DEV-051 (사용자 결정 필요).** API-ADM-006의 운영 집계 두 곳이 접근 범위를 거치지 않는다. FR-ADMIN-001 AC-1·AC-3이 그 값을 요구하고 THR-003·THR-016이 반대한다. 동작을 바꾸지 않고 아키텍처 테스트의 사유 붙은 허용 목록에 등록했다. **WP-013이 첫 사용자 대면 검색 API로 열렸는데도 이 경계는 정해지지 않았다** — 운영 콘솔(WP-040)이 서기 전에는 실사용자에게 노출되지 않으므로 아직 시급하지 않다.
+2. **`allowed_team_ids`가 여전히 비어 있다.** 접근 범위 쪽은 세웠으나 **문서에 팀 ID를 쓰는 것은 투영의 일**이고 `EVT-ING-002`가 팀 정보를 나르지 않는다. WP-013이 `team:` 필터를 구현·시험했으므로 이제 **사용자가 쓸 수 있는 필터가 운영 데이터에서 0건을 내는 상태**다 — 다만 미해석 이름과 달리 이것은 "이름은 찾았는데 문서에 값이 없는" 경우라 응답에 표식이 남지 않는다. `explicit` 범위(저장소 500개 이하)는 영향이 없다.
+3. **OD-002가 열려 있다** (권한 판정 소스, 기한 REL-002 착수 전 — **지금이 그 시점이다**). `resolveAccessScope`를 포트로 두고 GHE 어댑터를 구현했으므로 IdP 그룹으로 결정되어도 어댑터 교체다. 다만 GHE 어댑터는 캐시 미스마다 등록 저장소 수만큼 호출한다 — 저장소가 많은 조직이면 이 결정이 성능에 직접 걸리고, NFR-001 실측(DEV-058)도 이 결정 뒤에 하는 편이 뜻이 있다.
 
 **WP-015(웹 셸)가 WP-012의 나머지 절반을 쥐고 있다.** OIDC 인가 URL 생성·토큰 교환·ID 토큰 검증·세션 발급은 `@prs/authz`가 라이브러리로 제공하지만 그것을 부르는 라우트가 없다. 인프라 문서의 아웃바운드 허용 목록이 IdP를 `web`에만 열기 때문이다. 권한 매트릭스의 화면 13종 축도 그때 걸린다.
 
