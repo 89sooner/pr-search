@@ -84,7 +84,7 @@ describe('파이프라인 상태 (WP-010, API-ADM-006)', () => {
     redis = createTestRedis();
     bus = new RedisStreamsEventBus(redis);
     app = buildServer({
-      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG },
+      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG },
       ops: { pool, bus },
       pipeline: { pool, bus, es, metricsQueryUrl: null },
     });
@@ -237,7 +237,7 @@ describe('파이프라인 상태 (WP-010, API-ADM-006)', () => {
 
   it('한 출처가 죽어도 나머지는 정상 반환한다 (예외 처리)', async () => {
     const broken = buildServer({
-      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG },
+      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG },
       ops: { pool, bus },
       pipeline: {
         pool,

@@ -108,7 +108,7 @@ beforeAll(async () => {
 
   app = buildServer({
     // 세션이 서면 토큰 목록은 비어 있어야 한다 (DEV-048).
-    config: { port: 0, adminTokens: [], metricsQueryUrl: null, auth: AUTH_CONFIG },
+    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG },
     ops: { pool, bus: undefined as never },
     auth,
   });
@@ -311,7 +311,7 @@ describe('DEV-048: 세션과 토큰은 배타다', () => {
         config: {
           port: 0,
           adminTokens: [{ name: 'alice', token: 'tok' }],
-          metricsQueryUrl: null,
+          metricsQueryUrl: null, gheBaseUrl: null,
           auth: AUTH_CONFIG,
         },
         ops: { pool, bus: undefined as never },

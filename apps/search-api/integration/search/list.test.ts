@@ -212,7 +212,7 @@ beforeAll(async () => {
   };
 
   app = buildServer({
-    config: { port: 0, adminTokens: [], metricsQueryUrl: null, auth: AUTH_CONFIG },
+    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG },
     auth,
     search: {
       es,

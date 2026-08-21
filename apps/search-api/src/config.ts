@@ -43,6 +43,17 @@ export interface SearchApiConfig {
   readonly metricsQueryUrl: string | null;
   /** 세션 인증 구성 (WP-012). `enabled`가 false면 토큰 통제가 남는다. */
   readonly auth: SessionReaderConfig;
+  /**
+   * 이 GHE 인스턴스의 기준 URL (CR-017, DEV-064).
+   *
+   * 식별자 해석 1단계가 "GHE URL 패턴(호스트+경로)"인데, 무엇이 우리
+   * 호스트인지 모르면 **아무 URL의 경로나 우리 저장소로 해석된다** —
+   * `https://other.example/acme/payments/pull/1`이 우리 PR이 된다. 접근
+   * 범위가 데이터를 막아 주더라도 엉뚱한 저장소로 해석하는 것 자체가 오답이다.
+   *
+   * 없으면(`null`) URL 해석을 **하지 않는다**. 추측하느니 안 하는 편이 낫다.
+   */
+  readonly gheBaseUrl: string | null;
 }
 
 /** `"alice:tok1,bob:tok2"`를 주체 목록으로. 이름이 없으면 `unnamed`. */
@@ -78,11 +89,14 @@ export function parseAdminTokens(env: SearchApiEnv): readonly AdminPrincipal[] {
 
 export function resolveSearchApiConfig(env: SearchApiEnv = process.env): SearchApiConfig {
   const metricsUrl = (env['METRICS_QUERY_URL'] ?? '').trim();
+  // `@prs/github`가 이미 쓰는 이름이다. 같은 인스턴스를 가리키므로 이름을 나누지 않는다.
+  const gheBaseUrl = (env['GHE_BASE_URL'] ?? '').trim().replace(/\/+$/, '');
   return {
     port: Number(env['SEARCH_API_PORT'] ?? '3002'),
     adminTokens: parseAdminTokens(env),
     metricsQueryUrl: metricsUrl === '' ? null : metricsUrl,
     auth: resolveSessionReaderConfig(env),
+    gheBaseUrl: gheBaseUrl === '' ? null : gheBaseUrl,
   };
 }
 

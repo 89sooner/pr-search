@@ -37,6 +37,18 @@ export type { AccessScope, ExplicitAccessScope, OrgTeamAccessScope, ScopedQuery 
 export { multiSearch, search } from './search.js';
 export type { ScopedSearchOptions, ScopedSearchRequest, SearchTarget } from './search.js';
 
+export {
+  MAX_PREFIX_CANDIDATES,
+  PR_SHA_FIELDS,
+  commitDetailQuery,
+  commitExactQuery,
+  commitPrefixQuery,
+  pullRequestDetailQuery,
+  pullRequestQuery,
+  pullRequestsByNumbersQuery,
+  shaFallbackQuery,
+} from './resolve-query.js';
+
 export { EMPTY_RESOLUTION, buildQuery, collectNames } from './query-builder.js';
 export type { BuiltQuery, NameResolution, UnresolvedName } from './query-builder.js';
 

@@ -86,7 +86,7 @@ describe('실패 대기열 API (WP-009, API-ADM-003)', () => {
     redis = createTestRedis();
     bus = new RedisStreamsEventBus(redis);
     app = buildServer({
-      config: { port: 0, adminTokens: [{ name: 'tester', token: TOKEN }], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG },
+      config: { port: 0, adminTokens: [{ name: 'tester', token: TOKEN }], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG },
       ops: { pool, bus },
     });
     await app.ready();
@@ -134,7 +134,7 @@ describe('실패 대기열 API (WP-009, API-ADM-003)', () => {
     });
 
     it('토큰이 설정되지 않으면 경로가 아예 없다', async () => {
-      const bare = buildServer({ config: { port: 0, adminTokens: [], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG }, ops: { pool, bus } });
+      const bare = buildServer({ config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG }, ops: { pool, bus } });
       try {
         await bare.ready();
         const response = await bare.inject({ method: 'GET', url: DEAD_LETTER_PATH, headers: AUTH });
@@ -364,7 +364,7 @@ describe('실패 대기열 API (WP-009, API-ADM-003)', () => {
         close: async (): Promise<void> => undefined,
       };
       const broken = buildServer({
-        config: { port: 0, adminTokens: [{ name: 'tester', token: TOKEN }], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG },
+        config: { port: 0, adminTokens: [{ name: 'tester', token: TOKEN }], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG },
         ops: { pool, bus: brokenBus },
       });
 
