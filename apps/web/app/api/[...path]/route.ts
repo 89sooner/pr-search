@@ -19,6 +19,7 @@ import {
   buildProxyHeaders,
   buildResponseHeaders,
   buildUpstreamUrl,
+  resolveProxyAuth,
 } from '../../../lib/proxy';
 import { resolveWebConfig } from '../../../lib/server/config';
 import { sessionStore } from '../../../lib/server/session';
@@ -47,21 +48,42 @@ async function proxy(request: NextRequest, segments: readonly string[]): Promise
   const correlationId = randomUUID();
   const config = resolveWebConfig();
 
-  // 1. 세션 쿠키. **Redis에서 실제로 살아 있는지**까지 본다 — 쿠키가 있다는
-  //    것만으로 백엔드를 부르면 만료된 세션이 401을 두 번 왕복한다.
-  const sessionId = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  if (sessionId === undefined || sessionId === '') {
+  /*
+   * 1. 세션 쿠키. **Redis에서 실제로 살아 있는지**까지 본다 — 쿠키가 있다는
+   *    것만으로 백엔드를 부르면 만료된 세션이 401을 두 번 왕복한다.
+   *
+   * 판정은 `lib/proxy.ts`의 순수 함수가 한다. 저장소 장애(503)와 그런
+   * 세션이 없음(401)을 가르는 것이 이 프록시의 보안 경계이므로, Redis
+   * 없이도 세 갈래 전부를 시험할 수 있어야 한다.
+   */
+  const auth = await resolveProxyAuth(request.cookies.get(SESSION_COOKIE_NAME)?.value, (id) =>
+    sessionStore().load(id),
+  );
+
+  if (auth.kind === 'unauthenticated') {
     return unauthenticated(correlationId, config.session.loginPath);
   }
 
-  const loaded = await sessionStore().load(sessionId);
-  if (loaded === null) {
-    return unauthenticated(correlationId, config.session.loginPath);
+  if (auth.kind === 'unavailable') {
+    /*
+     * 세션 저장소에 닿지 못하면 **401이 아니라 503이다.**
+     *
+     * 401은 "다시 로그인하라"는 뜻인데, Redis가 죽은 것은 사용자가 고칠 수
+     * 있는 일이 아니다 — 다시 로그인해도 같은 곳에서 막힌다. `search-api`가
+     * 접근 범위를 못 구했을 때 503을 내는 것과 같은 판단이다 (FR-AUTH-002 AC-3).
+     */
+    return NextResponse.json(
+      {
+        error: { code: 'PERMISSION_UNAVAILABLE', message: '세션을 확인할 수 없습니다' },
+        correlation_id: correlationId,
+      },
+      { status: 503, headers: { [CORRELATION_HEADER]: correlationId } },
+    );
   }
 
   // 3. 전달.
   const url = buildUpstreamUrl(config.searchApiUrl, segments, request.nextUrl.search);
-  const headers = buildProxyHeaders({ headers: request.headers, sessionId, correlationId });
+  const headers = buildProxyHeaders({ headers: request.headers, sessionId: auth.sessionId, correlationId });
 
   let upstream: Response;
   try {

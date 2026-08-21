@@ -53,6 +53,49 @@ const FORWARDED_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
   CORRELATION_HEADER,
 ]);
 
+/**
+ * 프록시가 요청을 들여보낼지에 대한 판정.
+ *
+ * - `authenticated` — 살아 있는 세션이다. 전달한다.
+ * - `unauthenticated` — 쿠키가 없거나, 있어도 저장소에 그런 세션이 없다. 401.
+ * - `unavailable` — 저장소에 닿지 못해 **판정 자체를 못 했다.** 503.
+ */
+export type ProxyAuthOutcome =
+  | { readonly kind: 'authenticated'; readonly sessionId: string }
+  | { readonly kind: 'unauthenticated' }
+  | { readonly kind: 'unavailable' };
+
+/**
+ * 세션 쿠키 하나로 위 셋 중 무엇인지 정한다 (FR-AUTH-001 / DEV-047).
+ *
+ * **왜 라우트에서 뗐는가.** 이 판정은 이 프록시의 전체 보안 경계다 —
+ * "위조한 쿠키가 통하지 않는다"가 여기 한 줄에 달려 있다. 라우트 안에
+ * 두면 Redis가 서 있는 환경에서만 시험할 수 있고, 그러면 저장소가 없는
+ * 곳에서는 **"저장소에 닿지 못했다"(503)가 "그런 세션이 없다"(401)를
+ * 가려** 위조 경로가 검증되지 않은 채 초록으로 보인다. 실제로 그랬다
+ * (변이 E11). 적재를 인자로 받으면 세 갈래 전부를 저장소 없이 건다.
+ *
+ * `load`가 던지는 것과 `null`을 주는 것은 **다르게** 다룬다. 401은 "다시
+ * 로그인하라"는 뜻인데, 저장소 장애는 다시 로그인해도 같은 곳에서 막힌다.
+ */
+export async function resolveProxyAuth(
+  sessionId: string | undefined,
+  load: (id: string) => Promise<unknown>,
+): Promise<ProxyAuthOutcome> {
+  if (sessionId === undefined || sessionId === '') return { kind: 'unauthenticated' };
+
+  let loaded: unknown;
+  try {
+    loaded = await load(sessionId);
+  } catch {
+    return { kind: 'unavailable' };
+  }
+
+  // 저장소가 `null`을 주면 그런 세션이 없다 — 만료됐거나 위조됐다.
+  if (loaded === null || loaded === undefined) return { kind: 'unauthenticated' };
+  return { kind: 'authenticated', sessionId };
+}
+
 export interface ProxyRequestInput {
   /** 클라이언트가 보낸 헤더 전부. */
   readonly headers: Headers;

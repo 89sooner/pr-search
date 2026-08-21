@@ -38,7 +38,7 @@
 | WP-012 | 인증과 접근 범위 강제 | REL-002 | done | 에이전트 | (이 PR) | DoD 10항 중 9항 통과, 1항 부분 (6.12장). 단위 175건 + 통합 47건 | CR-015가 메운 빈칸(신원 표현·무효화 대상 산출·경합 순서·역할 합성)을 함께 구현했다. OIDC 라우트는 `web`이 소유하므로 WP-015가 붙인다 — 이 WP는 라이브러리와 `search-api` 강제를 세운다. 구현 중 DEV-050(해소)·DEV-051(미해소)을 등록했다 |
 | WP-013 | 검색 API 목록 조회 | REL-002 | done | 에이전트 | (이 PR) | DoD 7항 중 6항 통과, 1항 **NOT RUN** (6.13장). 단위 66건 + 통합 46건 | CR-016이 메운 빈칸(키→필드 표·파생 상태·다중 인덱스 정렬·완화 힌트 산출·응답 키 유무)을 함께 구현했다. NFR-001의 p95 500ms는 1000만 문서 데이터셋과 부하 harness가 없어 **측정하지 않았다**(DEV-058) — REL-002 성능 게이트로 넘긴다. 구현 중 DEV-059(해소)를 등록했다. 패싯·커서·전문 검색은 WP-032 |
 | WP-014 | 식별자 해석 API | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 4항 통과, 1항 부분, 1항 **NOT RUN** (6.14장). 단위 61건 + 통합 53건 | CR-017이 메운 빈칸(채워지지 않는 필드 처리·호스트 비교·릴리스 태그·정수와 SHA 접두의 겹침)을 함께 구현했다. **QA-W003-03(`direct_push`)은 도달 불가**라 통과하지 못했다(DEV-061) — push 이벤트 라우팅이 서는 WP-021의 몫이다. NFR-001의 단건 p95는 데이터셋이 없어 **측정하지 않았다**(DEV-058) |
-| WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | todo | - | - | - | - |
+| WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 4항 통과, 2항 부분 (6.15장). 단위 32건 + a11y 24건 + e2e 15건, axe 위반 0건, `checkContrast` 80쌍 중 0건 실패 | CR-018이 메운 빈칸(프록시 신원 전달·클라이언트 import 경계·harness·단축키 슬롯·OIDC 왕복 상태)을 함께 구현했다. **DEV-032/DEV-069가 여기서 닫힌다** — `pnpm test:a11y`·`test:e2e`가 저장소에 생겼고 WP 20곳이 그 이름을 참조한다. 구현 중 **DEV-073(좁은 화면에서 내비게이션 도달 불가)**과 **DEV-074(프록시 세션 판정의 시험 공백)**을 스스로 발견해 등록·해소했다. 화면은 만들지 않는다(WP-016 이후) — QA-COMMON-01·09·14는 셸이 소유한 부분까지만 검증했다 |
 | WP-016 | W-001 통합 검색 화면 | REL-002 | todo | - | - | - | - |
 | WP-017 | W-002 PR 상세 화면 | REL-002 | todo | - | - | - | - |
 | WP-018 | W-003 커밋 상세 화면 | REL-002 | todo | - | - | - | - |
@@ -135,7 +135,7 @@
 | FR-STAT-004 | WP-037, WP-038 | - | - | not_started |
 | FR-STAT-005 | WP-037, WP-038 | - | - | not_started |
 | FR-STAT-006 | WP-037, WP-038 | - | - | not_started |
-| FR-AUTH-001 | WP-012, WP-015 | `packages/authz/src/{oidc,pkce,id-token,jwks,session,session-store,roles,config}.ts`, `apps/search-api/src/auth/*` | `packages/authz/src/{id-token,oidc,session,session-store,roles}.test.ts`, `apps/search-api/integration/authz/enforcement.test.ts` | partial (AC-2~AC-5 충족. AC-1의 브라우저 리다이렉트는 `web` 라우트라 WP-015 — API 계층은 401 + `login_path` 힌트까지) |
+| FR-AUTH-001 | WP-012, WP-015 | `packages/authz/src/{oidc,pkce,id-token,jwks,session,session-store,roles,config}.ts`, `apps/search-api/src/auth/*`, `apps/web/app/auth/{login,callback,logout}/route.ts`, `apps/web/app/api/[...path]/route.ts`, `apps/web/lib/{oidc-state,proxy}.ts` | `packages/authz/src/{id-token,oidc,session,session-store,roles}.test.ts`, `apps/search-api/integration/authz/enforcement.test.ts`, `apps/web/lib/{oidc-state,proxy}.test.ts`, `apps/web/e2e/shell.spec.ts` | done (AC-1~AC-5. WP-015가 브라우저 왕복을 채웠다 — 인가 리다이렉트·PKCE·`state`/`nonce` 검증·세션 발급·원래 경로 복귀·로그아웃. 왕복 상태는 짧은 수명 HttpOnly 쿠키로 나른다(DEV-071). **실제 IdP 왕복은 자격 증명이 없어 NOT RUN** — e2e는 OIDC 미구성 배포의 503과 라우트 계약까지 건다) |
 | FR-AUTH-002 | WP-012 | `packages/authz/src/{scope,scope-source,scope-database}.ts`, `packages/es/src/scoped-query.ts`, `apps/search-api/src/auth/{principal,errors,me}.ts` | `packages/es/integration/scope-enforcement.test.ts`, `packages/es/src/architecture.test.ts`, `packages/authz/integration/scope.test.ts`, `apps/search-api/integration/authz/enforcement.test.ts` | done (AC-1~AC-6. 단, 검색·집계 API 자체는 WP-013·WP-014가 세운다 — 여기서는 필터와 강제 지점을 세우고 ES에 직접 물어 결과 집합을 검증했다) |
 | FR-AUTH-003 | WP-012 | `packages/authz/src/{scope,invalidation}.ts`, `packages/db/src/repositories/auth.ts`, `packages/db/migrations/007_auth.up.sql`, `apps/ingest-gateway/src/{ingest,server}.ts`, `apps/pipeline-worker/src/authz.ts` | `packages/authz/{src/invalidation.test.ts,integration/scope.test.ts}`, `apps/pipeline-worker/src/authz.test.ts`, `apps/ingest-gateway/src/ingest.test.ts` | done (AC-1~AC-5. 적중률은 `access_scope_lookup_total{outcome}`) |
 | FR-AUTH-004 | WP-002, WP-039 | `packages/db/migrations/004_app_state.up.sql`, `packages/db/migrations/005_roles.up.sql` | `packages/db/integration/audit-grants.test.ts` (AC-3) | partial (감사 테이블과 롤 권한. 기록·조회는 WP-039) |
@@ -148,7 +148,7 @@
 | NFR-004 | WP-010 (인프라) | - | - | not_started |
 | NFR-005 | WP-003, WP-004, WP-012 | `packages/es/src/mappings/*` (`dynamic: strict`), `apps/ingest-gateway/src/signature.ts` | `packages/es/integration/behavior.test.ts`, `apps/ingest-gateway/src/signature.test.ts` | partial (매핑 수준 차단 + 웹훅 서명 검증·로그 금지 항목. 세션 인증은 WP-012) |
 | NFR-006 | WP-039 | - | - | not_started |
-| NFR-007 | WP-015 ~ WP-018, WP-025, WP-038 | - | - | not_started |
+| NFR-007 | WP-015 ~ WP-018, WP-025, WP-038 | `apps/web/components/{Shell,AppTopBar,LeftNavPanel,EmptyState,ErrorBanner}.tsx`, `apps/web/lib/nav.ts` | `apps/web/a11y/shell.test.tsx` (axe wcag2a/2aa/21a/21aa, 위반 0건), `apps/web/lib/architecture.test.ts` (QA-COMMON-16·17 정적 검사), `pnpm test:contrast` (라이트·다크 80쌍, 실패 0건), `apps/web/e2e/shell.spec.ts` | partial (**셸 범위는 done** — 랜드마크·스킵 링크·`aria-current`·라우트 전환 알림·좁은 화면 내비게이션·포커스 복귀. 개별 화면은 WP-016 이후다. `color-contrast` axe 규칙은 jsdom에 레이아웃·canvas가 없어 끄고 `checkContrast`로 대신 건다 — 켜 두면 조용히 아무것도 검사하지 않으면서 통과로 보인다) |
 | NFR-008 | WP-001, WP-035, WP-040 | `package.json` 스크립트, `scripts/lint-deps.mjs`, `.github/workflows/ci.yml`, `docker-compose.yml`, 각 앱 `src/server.ts`의 `GET /healthz` | `scripts/lint-deps.test.ts`, `apps/*/src/server.test.ts` | partial (WP-001분: 재현 가능한 검증 파이프라인과 헬스 엔드포인트. 롤백 절차·재색인 소요는 WP-035·WP-040) |
 | FR-GH-001 | WP-045, WP-060 | - | - | not_started |
 | FR-GH-002 | WP-047, WP-048 | - | - | not_started |
@@ -245,6 +245,8 @@
 | DEV-070 | 2026-08-21 | **`⌘K`가 포커스할 대상이 이 WP 범위에 없다.** C-001이 `omniSearch: ReactNode`를 필수 prop으로 요구하고 WP-015 DoD가 "`⌘K`/`Ctrl+K`로 옴니 검색에 포커스"를 요구하는데, C-010 `OmniSearchInput`은 W-001의 컴포넌트라 WP-016 소관이다 | WP-015, WP-016 / C-001, C-010 | 범위 공백 | **CR-018** | **resolved (2026-08-21)** — **셸이 단축키와 슬롯 계약을 소유한다.** `AppTopBar`는 `omniSearch` 슬롯을 받고, 단축키는 슬롯 안의 첫 포커스 가능 요소를 잡는다. WP-016이 C-010을 슬롯에 넣으면 단축키가 저절로 그것을 가리킨다 — 셸을 다시 고치지 않는다 |
 | DEV-071 | 2026-08-21 | **OIDC 콜백이 세션을 발급할 경로가 네트워크 정책에 없다.** 인프라 문서의 아웃바운드 허용 목록은 `web` → OIDC IdP만 열고 **`web` → Redis는 어디에도 없다.** 정책이 허용 목록 방식이라("목록에 없는 목적지로의 연결을 차단한다") 세션을 쓸 수 없다. 게다가 `AuthorizationRequest`의 `state`·`nonce`·`codeVerifier`·`returnTo` 넷을 인가 리다이렉트와 콜백 **사이에 어디에 보관하는지**가 정해져 있지 않다 | WP-015 / FR-AUTH-001, FLOW-000, 인프라 6장 | 범위 공백 | **CR-018** | **resolved (2026-08-21)** — 허용 목록에 `web` → Redis를 더했다. 왕복 상태 넷은 **짧은 수명(10분)의 HttpOnly·SameSite=Lax 쿠키**로 나른다 — 서버 저장소에 두면 콜백 전에 이탈한 사용자의 흔적이 쌓이고, URL에 두면 `codeVerifier`가 노출되어 PKCE가 막으려던 것을 그대로 연다 |
 | DEV-072 | 2026-08-21 | **`@prs/db`의 진입점이 마이그레이션 실행기를 재수출해 `web` 빌드가 깨졌다.** `MIGRATIONS_DIR = fileURLToPath(new URL('../migrations', import.meta.url))`은 **디렉터리**를 가리키므로 어떤 번들러도 해석하지 못한다. 그런데 진입점에 있으면 `@prs/authz` → `@prs/db`를 거쳐 **서버 컴포넌트의 번들 그래프에까지** 끌려 들어간다. DEV-068은 이 문제를 클라이언트 경계로만 보았으나 실제로는 **서버 컴포넌트도 막혔다** — `next.config.ts`의 `serverExternalPackages`로도 워크스페이스 심링크에는 듣지 않았다 | WP-015, WP-002 / ADR-011 | 구현 공백 | **CR-018** | **resolved (2026-08-21)** — 마이그레이션 실행기를 **`@prs/db/migrate` 서브패스로 옮겼다.** 마이그레이션은 **운영 도구이지 조회 경로가 아니므로** 경계가 거기 있는 것이 옳다. 진입점에서 재수출을 빼자 두 번들러(webpack·Turbopack) 모두 통과했다. 쓰는 곳은 통합 헬퍼 셋과 `@prs/db` CLI뿐이라 변경이 좁다 |
+| DEV-073 | 2026-08-21 | **좁은 화면(≤800px)에서 내비게이션에 닿을 방법이 없었다.** Conductor CSS는 그 폭에서 사이드바(`.cdt-app-shell__nav:not([data-mobile])`)를 `display: none`으로 감추고 내비게이션을 서랍(Radix Dialog)으로만 연다. 그런데 `AppShell`은 `navOpen`/`onNavOpenChange`만 넘겨 주고 **여는 버튼은 앱이 낸다** — 초기 구현이 그것을 빠뜨려 800px 이하에서 마우스로도 키보드로도 내비게이션에 도달할 수 없었다. QA-COMMON-06(모든 인터랙티브 요소에 키보드로 도달)과 NFR-007 위반이다 | WP-015 / QA-COMMON-06, QA-COMMON-07, NFR-007, C-001 | **구현 결함(자체)** | **CR-018** | **resolved (2026-08-21)** — 구현 중 접근성 조사에서 발견했다(문서·계약 문제가 아니라 **내 누락**이다). Conductor `TopBar`가 이미 `menuButton` 슬롯을 갖고 있고 `.cdt-topbar__menu-button`을 기본 `display: none` / 800px 이하 `inline-flex`로 두므로 **앱이 중단점을 다시 적을 필요가 없다** — 슬롯을 채우는 것으로 끝났다. 추가 CSS도 아이콘 라이브러리도 넣지 않았다(QA-COMMON-16·17 유지). 함께 드러난 것: 비모달 Radix Dialog는 포커스를 가두지도 닫을 때 트리거로 되돌리지도 않아 `Escape` 시 포커스가 `<body>`로 떨어졌다(QA-COMMON-07). `Dialog.Trigger`를 쓰려면 `@radix-ui`를 직접 의존해야 해 QA-COMMON-17에 걸리므로, **포커스가 버려졌을 때만** 버튼으로 되돌리도록 앱 쪽에서 처리했다 — 라우트 전환으로 닫힐 때는 `main`이 이겨야 하기 때문이다 |
+| DEV-074 | 2026-08-21 | **프록시의 "그런 세션이 없다" 갈래가 검증되지 않은 채 초록이었다.** e2e 환경에는 Redis가 없어 `SessionStore.load`가 늘 던지고, 그러면 503(확인할 수 없다)이 401(그런 세션이 없다)을 **가린다.** `위조한 세션 쿠키로도 통과하지 못한다` 시험이 옳은 이유가 아닌 이유로 통과하고 있었다 — 세션 검사를 통째로 없애도 시험이 잡지 못한다(변이 E11로 확인) | WP-015 / FR-AUTH-001, DEV-047 | **시험 공백(자체)** | **CR-018** | **resolved (2026-08-21)** — 판정을 라우트에서 떼어 `lib/proxy.ts`의 순수 함수 `resolveProxyAuth(sessionId, load)`로 옮겼다. 적재를 인자로 받으므로 **저장소 없이 세 갈래(인증됨·미인증·확인 불가) 전부를 직접 건다.** `lib/proxy.ts`가 스스로 밝힌 원칙("보안 판정은 Next.js 런타임 없이 시험할 수 있어야 한다")을 인증 판정에도 적용한 것이다. e2e의 `[401, 503]` 단언은 그대로 두되(양쪽 환경에서 회귀를 잡는다) 무엇을 덮지 못하는지를 주석에 적었다 |
 | DEV-003 | 2026-08-19 | `../00_governance/change_control.md` 4장 아키텍처 게이트 기록이 "오류 코드 30종"으로 적혀 있으나 API 계약 6장의 실제 코드는 29종이었다 | WP-001 | 문서 오류 | **CR-006** | **resolved (2026-08-20)** — 게이트 기록을 29종으로 정정하고 CR-005로 GH 코드 16종이 추가되어 현재 45종임을 함께 표기 |
 
 **등록이 필요한 대표 상황** (사전에 예상되는 것):
@@ -814,7 +816,65 @@ DoD 6항 중 4항 통과, 1항 부분, 1항 **NOT RUN**. 검증 방법은 `pnpm 
 
 **시험이 확인하지 못한 것.** NFR-001의 단건 p95는 **NOT RUN**이다(위 DoD 표). ADR-012의 "5000만 커밋에서도 7자 접두는 통상 1건" 근거도 그 규모를 재현하지 못해 **확인하지 못했다** — 접두가 겹칠 때 후보가 여럿 나온다는 동작만 확인했다. 둘 다 REL-002 성능 게이트의 몫이다.
 
-### 6.15 릴리스 게이트
+### 6.15 WP-015 검증 실행 기록
+
+DoD 6항 중 4항 통과, 2항 부분. 검증 방법은 `pnpm test web/lib`, `pnpm test:a11y shell`, `pnpm test:e2e auth`다 — **세 스크립트가 이 WP에서 처음 존재하게 됐다** (DEV-032 / DEV-069).
+
+| DoD | 결과 | 근거 |
+| --- | --- | --- |
+| QA-COMMON 10항이 통과한다 (01·06·07·09·11·12·14·16·17·18) | **부분 (7/10)** | **통과**: 06(키보드 도달 — 스킵 링크가 첫 탭, `⌘K`, 좁은 화면 내비 버튼), 07(서랍이 `Escape`로 닫히고 **포커스가 트리거로 복귀**), 11(axe 위반 0건), 12(`checkContrast` 라이트·다크 80쌍 실패 0건), 16(리터럴 색상 0건 — 정적 시험이 강제), 17(Conductor 외 UI 의존성 0건 — 정적 시험이 강제), 18(`return_to` 왕복과 콜백의 재무해화). **부분**: 01·09·14는 **셸이 소유한 부분까지만**이다 — 화면이 없으므로 IA 진입 경로표 전체(01), 화면 상태 URL 재현 전체(09), 식별자 고정폭 표시(14)는 WP-016 이후에 완성된다. 없는 화면을 통과로 적지 않았다 |
+| `operator`가 아닌 역할에게 운영 내비게이션이 렌더링되지 않는다 (QA-A001-10) | 통과 | 판정을 렌더링에서 떼어 `lib/nav.ts`에 두고 역할 6종 전부를 단위로 건다. DOM에도 **비활성으로조차 나타나지 않음**을 a11y 시험이 확인한다 — 비활성 항목은 "여기에 운영 콘솔이 있다"를 알려 준다 |
+| `⌘K`/`Ctrl+K`로 옴니 검색에 포커스한다 | 통과 | 셸이 단축키와 슬롯 계약을 소유한다 (DEV-070). `Ctrl`·`Meta` 양쪽, 수식 키 없는 `k`는 가로채지 않음, 슬롯이 비어 있어도 던지지 않음을 건다 — 마지막 것이 WP-016 전까지의 실제 상태다 |
+| 세션 만료 후 재인증 시 원래 경로로 복귀한다 (FLOW-000) | **부분** | 왕복 상태(`state`·`nonce`·`codeVerifier`·`returnTo`)의 인코딩·되읽기·쿠키 속성과 `sanitizeReturnPath`의 오픈 리다이렉트 차단은 단위로 건다. 라우트도 서 있다 — `/auth/login?return_to=`, 콜백의 재무해화, 만료 세션의 로그인 리다이렉트. **실제 IdP 왕복은 자격 증명이 없어 NOT RUN이다** (WP-006의 real-GHE smoke와 같은 형태). 지금 경로 보존을 실제로 도는 것은 `/` 하나뿐이다 — 나머지 경로는 그 화면이 생기는 WP에서 붙는다 |
+| `query-url` 왕복 테스트가 통과한다 | 통과 | `@prs/query`의 파서를 그대로 쓴다 (ADR-001) — 질의 문자열 → URL → 질의 문자열이 같은 값으로 돌아온다 |
+| axe 위반 0건, `checkContrast` 위반 0건 | 통과 | axe: wcag2a/2aa/21a/21aa로 좁혀 셸·EmptyState 5종·ErrorBanner 3종·서랍 열린 상태까지 **위반 0건**. `checkContrast --theme all`: **80쌍 중 0건 실패**. **`color-contrast` axe 규칙은 껐다** — jsdom에는 레이아웃도 canvas도 없어 axe가 실제 색을 계산할 수 없고, 켜 두면 규칙이 조용히 아무것도 검사하지 않으면서 "통과"로 보인다. 대비의 계측기는 `checkContrast`다 |
+
+로컬에서 통과한 명령:
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` / `pnpm lint` / `pnpm lint:deps` | 종료 코드 0 — 패키지 13개, 위반 0건 |
+| `pnpm test` (전량) | 종료 코드 0 — **724건 통과 + 1건 건너뜀**(real-GHE smoke) |
+| `pnpm test:a11y` | 종료 코드 0 — **24건**, axe 위반 0건 |
+| `pnpm test:e2e` | 종료 코드 0 — **15건** (실제 Chromium) |
+| `pnpm test:contrast` | 종료 코드 0 — 80쌍 중 실패 0건 |
+| `pnpm build` | 종료 코드 0 |
+| `pnpm test:integration` | **NOT RUN** — 이 환경에 Docker가 없어 Postgres·ES·Redis가 서지 않는다. WP-015는 백킹 서비스를 쓰는 코드를 바꾸지 않았다 |
+
+**시험이 실제로 무엇을 잡는지 확인했다.** 구현을 47가지로 망가뜨렸다 — 내비게이션 역할 필터와 경로 판정, 프록시 헤더 허용 목록·세션 쿠키 재조립·경로 이탈·응답 헤더, 세션 판정 네 갈래, OIDC 왕복 쿠키 속성과 되읽기, 라우트의 상태 코드와 재인증 힌트, 로그아웃 메서드와 쿠키 만료, 셸의 포커스 이동·알림·`aria-live`, 단축키의 수식 키 판정, 서랍 버튼과 포커스 복귀, 정적 검사 자체의 무력화.
+
+**43가지가 잡혔고 4가지가 살아남았다.** 넷을 하나씩 확인한 결과 **셋은 진짜 구멍이었고 하나는 동치 변이**였다.
+
+| 생존 | 판정 | 조치 |
+| --- | --- | --- |
+| `activeNavId`의 최장 일치 폐기 | **검증 불가능한 방어 코드** — `NAV_ENTRIES`에는 서로 접두가 되는 항목이 하나도 없어 그 분기가 **한 번도 실행되지 않는다**. 지금 목록으로는 어떤 단언을 더해도 잡을 수 없다 | 목록을 인자로 받는 `matchNavEntry(pathname, entries)`를 떼어 내고 겹치는 목록으로 직접 걸었다. 나중에 `/ops` 같은 그룹 랜딩 항목이 들어와도 하위 화면 표시가 그룹으로 밀리지 않는다 |
+| **세션 저장소가 `null`을 줘도 통과시킨다** | **시험 구멍이자 보안 경계** — e2e 환경에 Redis가 없어 `load`가 늘 던지고, 503(확인할 수 없다)이 401(그런 세션이 없다)을 **가린다.** `위조한 세션 쿠키로도 통과하지 못한다`가 옳은 이유가 아닌 이유로 통과하고 있었다 (DEV-074) | 판정을 순수 함수 `resolveProxyAuth(sessionId, load)`로 떼어 **저장소 없이 네 갈래 전부**를 건다. 다시 돌려 잡히는 것을 확인했다 |
+| 적재기가 `undefined`를 줘도 통과시킨다 | **시험 구멍** — 지금 `SessionStore.load`는 `LoadedSession \| null`이라 `undefined`를 주지 않지만, 이 함수의 서명은 `Promise<unknown>`이라 적재기를 갈면 들어올 수 있다 | `undefined`를 주는 적재기를 거는 시험을 더했다 |
+| 서랍 닫힘 시 포커스를 **무조건** 되돌린다 | **시험 구멍** — "버려진 포커스일 때만"이라는 조건이 왜 필요한지 아무도 확인하지 않았다 | 서랍을 연 채로 라우트를 바꾸는 시험을 더했다. 그때는 `main`이 이겨야 한다 — 아니면 화면이 바뀌어도 포커스가 상단 버튼에 남는다 |
+| 글리프의 `aria-hidden` 제거 | **동치 변이** — `IconButton`에 명시적 `aria-label`이 있어 접근 가능 이름이 내용으로 계산되지 않는다. 변이를 넣은 채로도 `toHaveAccessibleName`이 그대로 통과하는 것을 실측했다 | 조치 없음. `aria-hidden`은 관례상 남긴다 |
+| 라우트 전환 시 `setNavOpen(false)` 제거 | **동치 변이** — 바로 뒤에서 `main`에 포커스를 주는 순간 Radix의 비모달 Dialog가 "바깥으로 포커스가 나갔다"로 보고 스스로 닫는다. 실측으로 확인했다 | 조치 없음. 다만 **의도를 라이브러리의 부수 효과에 맡기지 않기 위해** 그 줄은 남기고 왜 남기는지를 주석에 적었다 |
+
+고친 뒤 다시 돌려 **47가지 중 45가지가 잡히는 것**을 확인했다. 동치 변이 둘은 잡히지 않는 것이 옳다.
+
+**시험이 결함 둘을 잡았고, 둘 다 내 것이다.**
+
+첫째, **좁은 화면에서 내비게이션에 닿을 방법이 없었다** (DEV-073). Conductor는 800px 이하에서 사이드바를 감추고 내비게이션을 서랍으로만 여는데, `AppShell`은 `navOpen` 상태만 넘겨 주고 **여는 버튼은 앱이 낸다.** 그것을 빠뜨려 마우스로도 키보드로도 도달할 수 없었다. 접근성 조사 중에 "서랍을 여는 트리거가 어디 있나"를 실제로 렌더링해 확인하다가 드러났다 — 넓은 화면만 보고 있었으면 끝까지 몰랐을 것이다. Conductor의 `TopBar`가 이미 `menuButton` 슬롯을 갖고 있고 `.cdt-topbar__menu-button`이 사이드바가 사라지는 지점과 **같은 중단점**에서 나타나므로, 앱이 CSS를 새로 쓰지 않고 슬롯을 채우는 것으로 끝났다.
+
+함께 드러난 것: 비모달 Radix Dialog는 포커스를 가두지도 닫을 때 트리거로 되돌리지도 않아 `Escape` 시 포커스가 `<body>`로 떨어졌다 (QA-COMMON-07). `Dialog.Trigger`를 쓰면 Radix가 알아서 하지만 그러려면 `@radix-ui`를 직접 의존해야 하고 그것은 QA-COMMON-17 위반이다 — 그래서 앱 쪽에서 되돌린다. **한 번 틀렸다**: 이펙트에서 곧바로 확인했더니 Radix가 아직 포커스를 풀기 전이라 놓쳤다. 다음 프레임에 보도록 고쳤다.
+
+둘째, **e2e가 프록시의 세션 판정을 검증하지 못하고 있었다** (DEV-074, 위 변이 표). 이쪽은 "시험이 초록이니 됐다"로 넘어갔으면 그대로 남았을 것이다 — 변이 시험이 아니었으면 찾지 못했다.
+
+**e2e가 실제 결함 하나를 더 잡았다.** Redis가 없는 상태로 프록시를 부르면 `sessionStore().load()`가 던져 **500**이 나갔다. 401은 "다시 로그인하라"는 뜻인데 Redis 장애는 사용자가 고칠 수 있는 일이 아니고, 500은 원인을 말해 주지 않는다. `search-api`가 접근 범위를 못 구했을 때 503을 내는 것과 같은 판단으로 **503 `PERMISSION_UNAVAILABLE`**로 고쳤다 (FR-AUTH-002 AC-3).
+
+**시험을 약하게 만들어 초록을 얻지 않았다.** e2e를 세우다 `next start`가 기동을 거부하는 것을 만났다 — `NODE_ENV=production`에서 `SESSION_COOKIE_SECURE=false`를 주면 `resolveSessionReaderConfig`가 거절한다. 그것은 WP-012 FR-AUTH-001 AC-2가 정한 **옳은 동작**이므로 시험을 위해 끄지 않고 그 환경 변수를 걷어냈다. 끄는 순간 e2e가 운영과 다른 앱을 시험하게 된다.
+
+**스킵 링크 시험은 내 단언이 틀렸다.** `#main-content`로 URL이 바뀌는 것을 기대했는데 Conductor의 스킵 링크는 `preventDefault()` 후 `main`에 직접 `focus()`를 부른다. 그쪽이 옳다 — 여러 브라우저에서 `href="#id"` 이동은 스크롤만 옮기고 키보드 포커스는 옮기지 않아 스킵 링크가 존재하는 이유를 잃는다. 구현이 아니라 시험을 고쳤고, **포커스가 실제로 `main`에 있는지**를 걸도록 바꿨다.
+
+**정적 규칙을 시험으로 못박았다.** ADR-006이 "리터럴 색상값을 두지 않는다. **정적 검사로 강제한다**"고 적었으나 그 검사가 없었다. 화면을 처음 세우는 WP가 그물을 쳐 두어야 WP-016 이후가 그 위에서 큰다 — `lib/architecture.test.ts`가 QA-COMMON-16·17을 건다. 검사 자체를 무력화하는 변이(대상 디렉터리 비우기)까지 잡히는지 확인했다.
+
+**시험이 확인하지 못한 것.** 실제 IdP를 상대로 한 OIDC 왕복 전체는 **NOT RUN**이다 — 자격 증명이 없다. `pnpm test:integration`도 이 환경에 Docker가 없어 **NOT RUN**이다(WP-015는 백킹 서비스를 쓰는 코드를 바꾸지 않았다). 실제 뷰포트에서 800px 이하 CSS가 버튼을 드러내는지는 **jsdom으로 걸 수 없어** Conductor의 규칙을 읽어 확인했을 뿐이다 — 뷰포트를 좁히는 e2e는 화면이 생기는 WP에서 함께 세우는 것이 낫다. 화면 13종의 권한 매트릭스와 QA-COMMON-01·09·14의 나머지도 WP-016 이후다.
+
+### 6.16 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -846,7 +906,7 @@ DoD 6항 중 4항 통과, 1항 부분, 1항 **NOT RUN**. 검증 방법은 `pnpm 
 | 개인 단위 순위표 없음 | SRS 4.3 | 범위 밖 (정책) | 없음 |
 | `docker compose up`이 이 실행 환경에서 검증되지 않음 | 인프라 8장 / DEV-001 | 실제 제약 (레지스트리 이그레스 차단) | 레지스트리 접근 가능한 환경에서 재검증 |
 | 워크스페이스 패키지 5종(`query`·`es`·`db`·`github`·`bus`)이 식별 정보만 내보냄 | WP-001 구현 범위 | 실제 상태 (의도된 골격) | WP-002·WP-003·WP-005·WP-006·WP-025 |
-| `web`이 Conductor 디자인 시스템을 아직 쓰지 않음 | WP-001 제외 목록 (화면 제외) | 실제 상태 | WP-019 (셸과 Conductor 연동) |
+| ~~`web`이 Conductor 디자인 시스템을 아직 쓰지 않음~~ | WP-001 제외 목록 (화면 제외) | 해소 (2026-08-21) — WP-015가 `AppShell`·`TopBar`·`NavList`·`EmptyState`·`Banner` 위에 셸을 세웠다. CSS는 루트 레이아웃에서 1회 import한다 (ADR-006) | 없음 |
 | 각 앱 헬스체크가 백킹 서비스 연결을 확인하지 않음 | WP-001 구현 범위 (프로세스 기동만) | `ingest-gateway`는 해소 — `GET /healthz`가 PostgreSQL을 확인하고 실패 시 503 (인프라 3장). **`search-api`는 WP-013에서도 해소하지 못했다** — 검색 경로는 열렸으나 `/healthz`는 여전히 프로세스 기동만 본다. 서버가 ES 핸들만 받고 PostgreSQL 핸들은 받지 않아(`resolveNames` 클로저 안에 있다) ES만 확인하면 PG가 죽어도 `ok`가 나간다 — 반만 확인하는 헬스체크가 없는 것보다 나쁘다 | `search-api`는 서버에 PG 핸들을 넘기는 별도 변경 (WP-013 구현 범위·DoD 밖), `web`·`pipeline-worker`는 기존대로 |
 | 통합 테스트가 testcontainers가 아니라 외부 PostgreSQL에 붙음 | WP-002 검증 방법 / DEV-006 | 실제 상태 (환경 변수로 접속 정보 주입) | WP-003에서 ES와 함께 재검토 |
 | `saved_search`·`bisect_session`에 리포지터리 계층이 없음 | WP-002 구현 범위 (6종만 명시) | 실제 상태 (스키마는 존재). **`permission_cache`·`app_user`·`team`·`team_member`는 해소** (2026-08-21) — `authRepo`가 세웠다 | WP-024·WP-042 |
@@ -878,11 +938,15 @@ DoD 6항 중 4항 통과, 1항 부분, 1항 **NOT RUN**. 검증 방법은 `pnpm 
 | `links_pending`이 영영 `true` | 관계 파생이 WP-029 | 실제 상태 — 투영이 생성 시점에만 `true`로 두고 이후 건드리지 않는다. 화면은 이 표식으로 "관계 미확정"을 표시한다 | WP-029 |
 | k8s 매니페스트가 클러스터에 적용된 적 없음 | WP-010 구현 범위 / 이 환경에 Kubernetes·`kubectl` 없음 | 실제 제약 — YAML 파싱만 확인했다. 이미지 이름(`prs/*:latest`)과 백킹 서비스 호스트는 자리표시자다 | **REL-001 프로비저닝 때 실제 클러스터에서 검증** |
 | 단계별 지연 p50/p95가 기본적으로 `unavailable` | CR-013 / DEV-029 | 실제 상태 — 지표 저장소(사내 Prometheus 호환)가 `METRICS_QUERY_URL`로 설정된 경우에만 채운다. 워커 복제본 하나를 긁어 클러스터 전체인 양 내놓지 않는다 | REL-001 프로비저닝에서 주소 주입 |
-| `test:e2e`·`test:a11y` 스크립트가 없음 | DEV-032 | 실제 상태 — WP 20곳이 여전히 참조한다. WP-010분만 API 수준으로 대체했다 | E2E·접근성 harness를 처음 필요로 하는 화면 WP(WP-015 이후) |
-| A-001 운영 콘솔 화면 없음 | 사용자 결정 (WP-010은 API까지) | 실제 상태 — 로드맵의 REL-001 UI 열이 "A-001 최소 지표 화면"을 적었으나, 웹 셸과 Conductor가 WP-015라 지금 만들면 다시 써야 한다 | WP-015 이후 |
+| ~~`test:e2e`·`test:a11y` 스크립트가 없음~~ | DEV-032 / DEV-069 | 해소 (2026-08-21) — WP-015가 harness를 세웠다. `pnpm test:a11y`(vitest + axe, jsdom), `pnpm test:e2e`(Playwright, 실제 Chromium), `pnpm test:contrast`(Conductor `checkContrast`)가 저장소 루트에서 돈다 | 없음 |
+| A-001 운영 콘솔 화면 없음 | 사용자 결정 (WP-010은 API까지) | 실제 상태 — **셸은 섰고 경로도 있다**(`/ops/pipeline`·`/ops/repositories`·`/ops/audit`, `operator`·`security_officer`에게만 렌더링). 그 경로의 **화면 내용이 아직 없어 404다** | WP-017 이후 (셸이 경로 구조를 소유하고 각 화면은 자기 WP에서 붙는다) |
 | 저장소 등록이 GHE 자격 증명 없이는 열리지 않음 | FR-ING-009 예외 처리 (접근 권한 확인이 필수) | 실제 상태 — `GHE_APP_ID`/`GHE_INSTALLATIONS`가 없으면 등록 경로를 달지 않고 기동 로그에 남긴다. 확인 없이 등록을 받으면 수집이 영영 비어 있는 저장소가 "등록됨"으로 남는다 | 없음 (의도된 동작) |
-| OIDC 로그인·콜백·로그아웃 라우트가 없음 | WP-012 제외 목록 (화면은 WP-015) / 인프라 문서 아웃바운드 허용 목록이 IdP를 `web`에만 연다 | 실제 상태 — 인가 URL 생성(PKCE·state·nonce), 토큰 교환, ID 토큰 5종 검증, 세션 발급·무효화는 `@prs/authz`가 라이브러리로 제공한다. **그것을 부르는 HTTP 라우트가 없다** | WP-015가 `web`에 라우트를 붙인다 |
+| ~~OIDC 로그인·콜백·로그아웃 라우트가 없음~~ | WP-012 제외 목록 (화면은 WP-015) | 해소 (2026-08-21) — WP-015가 `/auth/login`·`/auth/callback`·`/auth/logout`을 붙였다. 왕복 상태 넷은 짧은 수명 HttpOnly 쿠키로 나르고(DEV-071), 로그아웃은 `POST`만 받는다(`<img src>` 하나로 로그아웃되지 않게). OIDC 미구성 배포에서는 IdP 대신 503을 낸다 | 없음 |
 | 실제 사내 IdP 대상 OIDC 왕복 미실행 | 이 실행 환경에 IdP 자격 증명 없음 | **NOT RUN** — 테스트가 생성한 RSA 키쌍으로 다섯 검사를 각각 무너뜨려 확인했다. 실제 IdP의 그룹 클레임 이름과 JWKS 회전 동작은 확인하지 못했다 | **REL-002 게이트 전 필수** |
+| 화면이 없어 셸만 선다 | WP-015 제외 목록 (개별 화면은 WP-016 이후) | 실제 상태 (의도) — 셸이 **경로 구조**를 소유하고 `/`만 내용을 그린다. `/search`·`/ranges`·`/releases`·`/stats`·`/ops/*`는 이동은 되지만 404다 | WP-016 이후 각 화면 WP |
+| `⌘K`가 잡을 옴니 검색 입력이 아직 없음 | DEV-070 (C-010은 W-001 컴포넌트라 WP-016) | 실제 상태 — 셸이 단축키와 **슬롯 계약**을 소유하고, 슬롯이 비면 단축키는 아무것도 잡지 않는다(던지지도 않는다). WP-016이 C-010을 슬롯에 넣으면 셸을 고치지 않고 연결된다 | WP-016 |
+| 좁은 화면(≤800px) 동작을 실제 뷰포트에서 확인하지 못함 | jsdom에 뷰포트·CSS가 없음 / DEV-073 | 실제 상태 — 서랍 버튼의 **존재·키보드 도달·여닫기·포커스 복귀**는 a11y 시험이 건다. 그 버튼이 800px 이하에서만 보인다는 것은 Conductor의 `.cdt-topbar__menu-button` 규칙을 읽어 확인했을 뿐 **실행으로 확인하지 않았다** | 뷰포트를 좁히는 e2e를 화면 WP에서 함께 세운다 |
+| 세션 만료 후 경로 복귀가 `/` 하나에서만 실증됨 | WP-015 범위 (화면 없음) | 실제 상태 — `return_to` 생성·무해화·왕복·재무해화는 전부 시험이 걸지만, 실제로 그 경로를 만드는 화면이 `/`뿐이다 | WP-016 이후 각 화면이 자기 경로로 리다이렉트하면 저절로 넓어진다 |
 | 접근 범위 산출이 등록 저장소마다 GHE를 한 번씩 부름 | FR-AUTH-002 AC-1이 "read 이상 권한을 가진 저장소"를 요구 / OD-002 미결 | 실제 상태 — 협업자 권한 API가 조직 기본 권한·팀·직접 협업자를 모두 반영한 실효 권한을 주므로 정확하다. 대신 캐시 미스마다 등록 저장소 수만큼 호출이 나간다(동시 8, 캐시 5분, 사용자별 요청 병합). **저장소 수가 커지면 재검토가 필요하다** | OD-002 결정 후 (IdP 그룹이면 호출이 사라진다) |
 | 운영 집계 두 곳이 접근 범위를 거치지 않음 | CR-015 DEV-051 (미해소) | 실제 상태 — API-ADM-006의 `enrichment_pending`(전 저장소 `es.count`)과 `slowest_repositories`(저장소 이름 포함). FR-ADMIN-001 AC-1·AC-3이 요구하고 THR-003·THR-016이 반대한다. **동작을 바꾸지 않고** 아키텍처 테스트의 사유 붙은 허용 목록에 등록했다 | **사용자 결정 + CR** |
 | 권한 매트릭스가 API 계층까지만 검증됨 | NFR-005는 역할 6종 × 화면 13종 | 실제 상태 — 역할 6종 × 역할 요구 경로는 통과한다. 화면이 없어 13종 축을 걸 수 없다 | WP-015 이후 |
@@ -939,10 +1003,16 @@ DoD 6항 중 4항 통과, 1항 부분, 1항 **NOT RUN**. 검증 방법은 `pnpm 
 28. ~~WP-013 검색 API 목록 조회~~ → 완료 (2026-08-21). 검증 결과는 6.13장. **DoD 7항 중 6항 통과, NFR-001의 p95 실측만 NOT RUN**
 29. ~~CR-017 WP-014 식별자 해석 계약 정정~~ → 완료 (2026-08-21). DEV-060·062~066 해소, DEV-061은 push 이벤트 라우팅이 없어 미해소. SRS 버전은 v2.2 유지(빈칸 메우기)
 30. ~~WP-014 식별자 해석 API~~ → 완료 (2026-08-21). 검증 결과는 6.14장. **DoD 6항 중 4항 통과, QA-W003-03 도달 불가, NFR-001 실측 NOT RUN**
+31. ~~CR-018 WP-015 웹 셸 계약 정정~~ → 완료 (2026-08-21). DEV-067~072 해소. 구현 중 DEV-073·074를 추가 등록·해소했다. SRS 버전은 v2.2 유지(빈칸 메우기와 문서 간 모순 해소)
+32. ~~WP-015 웹 앱 셸과 Conductor 통합~~ → 완료 (2026-08-21). 검증 결과는 6.15장. **DoD 6항 중 4항 통과, QA-COMMON 3항과 FLOW-000 경로 복귀가 화면 부재로 부분**
 
-**다음 WP: WP-015 웹 앱 셸과 Conductor 통합** (선행 WP-001 충족).
+**WP-015가 열어 준 것.** 세 가지가 여기서 닫혔다 — WP-012가 남긴 OIDC 브라우저 왕복(로그인·콜백·로그아웃 라우트), `test:e2e`·`test:a11y`·`test:contrast` harness(DEV-032, WP 20곳이 참조하던 이름), 그리고 셸이 소유하는 경로 구조와 역할 필터링. 이제 각 화면 WP는 **자기 화면만** 만들면 된다.
 
-WP-015가 REL-002의 나머지를 여는 열쇠다. 지금 열려 있는 것 중 셋이 화면을 기다린다 — WP-012의 OIDC 라우트(인프라 문서가 IdP 아웃바운드를 `web`에만 연다), NFR-005 권한 매트릭스의 화면 13종 축, 그리고 `test:e2e`·`test:a11y` harness(DEV-032). 조회 API 쪽은 WP-013·WP-014로 W-001·W-002·W-003이 딛고 설 것이 갖춰졌다.
+**다음 WP: WP-016 W-001 통합 검색 화면** (선행 WP-011·WP-013·WP-015 충족).
+
+딛고 설 것이 갖춰졌다 — 파서(`@prs/query`), 목록 조회(`GET /search`), 식별자 해석(`GET /resolve`), 셸과 프록시. WP-016이 처음으로 할 일 중 하나는 **C-010 `OmniSearchInput`을 셸의 `omniSearch` 슬롯에 넣는 것**이다(DEV-070). 그러면 `⌘K`가 셸을 고치지 않고 그것을 가리킨다.
+
+화면이 생기면서 함께 넓어지는 것들: NFR-005 권한 매트릭스의 화면 13종 축, QA-COMMON-01(IA 진입 경로표)·09(URL 상태 재현)·14(식별자 고정폭), FLOW-000의 경로 복귀(지금은 `/` 하나에서만 실증됨), 그리고 뷰포트를 좁히는 e2e(DEV-073의 미검증 부분).
 
 **사용자 결정이 필요한 것 — REL-002 진행 전:**
 

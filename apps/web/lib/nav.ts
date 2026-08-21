@@ -76,18 +76,31 @@ export function visibleNavEntries(roles: readonly Role[]): readonly NavEntry[] {
 }
 
 /**
- * 현재 경로에 해당하는 항목 id.
+ * 주어진 목록에서 현재 경로에 해당하는 항목을 고른다.
  *
  * 접두 일치를 쓴다 — `/search/abc`도 `search`가 현재 항목이다. 다만 `/`로
  * 경계를 확인해 `/searchable`이 `/search`에 걸리지 않게 한다.
+ *
+ * **목록을 인자로 받는 이유**는 최장 일치 규칙을 시험할 수 있게 하기
+ * 위해서다. 지금 `NAV_ENTRIES`에는 서로 접두가 되는 항목이 없어 그 규칙이
+ * 한 번도 실행되지 않는다 — 목록을 고정해 두면 검증할 수 없는 방어 코드가
+ * 되고, 나중에 `/ops` 같은 그룹 항목이 들어오는 순간 아무도 모르게 틀린다.
  */
-export function activeNavId(pathname: string): string | null {
+export function matchNavEntry(
+  pathname: string,
+  entries: readonly NavEntry[],
+): NavEntry | null {
   let best: NavEntry | null = null;
-  for (const entry of NAV_ENTRIES) {
+  for (const entry of entries) {
     if (pathname === entry.href || pathname.startsWith(`${entry.href}/`)) {
       // 더 긴 경로가 이긴다 — `/ops/pipeline`이 `/ops`보다 구체적이다.
       if (best === null || entry.href.length > best.href.length) best = entry;
     }
   }
-  return best?.id ?? null;
+  return best;
+}
+
+/** 현재 경로에 해당하는 항목 id. 셸이 쓰는 것은 이쪽이다. */
+export function activeNavId(pathname: string): string | null {
+  return matchNavEntry(pathname, NAV_ENTRIES)?.id ?? null;
 }

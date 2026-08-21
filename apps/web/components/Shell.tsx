@@ -52,6 +52,12 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
      *
      * 열린 채로 두면 새 화면이 그 뒤에 가려지고, 포커스를 `main`으로 옮겨도
      * 사용자에게는 아무것도 바뀌지 않은 것처럼 보인다.
+     *
+     * **지금은 이 줄이 없어도 서랍이 닫힌다** — 아래에서 `main`에 포커스를
+     * 주는 순간 Radix의 비모달 Dialog가 "바깥으로 포커스가 나갔다"로 보고
+     * 스스로 닫기 때문이다(변이 D11로 확인했다). 그래도 남겨 둔다: 그 동작은
+     * Radix의 내부 사정이고, `main`을 못 찾아 포커스를 옮기지 못하는 경우에는
+     * 닫아 주는 것이 이 줄뿐이다. 의도를 라이브러리의 부수 효과에 맡기지 않는다.
      */
     setNavOpen(false);
 
@@ -80,7 +86,14 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
       mainId={MAIN_ID}
       navOpen={navOpen}
       onNavOpenChange={setNavOpen}
-      topBar={<AppTopBar user={user} {...(omniSearch === undefined ? {} : { omniSearch })} />}
+      topBar={
+        <AppTopBar
+          user={user}
+          navOpen={navOpen}
+          onNavOpenChange={setNavOpen}
+          {...(omniSearch === undefined ? {} : { omniSearch })}
+        />
+      }
       nav={<LeftNavPanel roles={roles} activeId={activeNavId(pathname)} />}
     >
       {/*

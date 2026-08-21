@@ -546,17 +546,18 @@
   - `lib/query-url.ts`: 질의 문자열 ↔ URL 동기화 (`@prs/query` 사용)
   - `lib/format.ts`: SHA 축약(12자), 시퀀스 표기(구분 기호 없음), 기간 포맷
   - 라우트 전환 시 `main` 포커스 이동 + `aria-live` 제목 알림
+  - 좁은 화면(≤800px) 내비게이션 서랍을 여는 버튼 — `TopBar`의 `menuButton` 슬롯. 없으면 그 폭에서 내비게이션에 도달할 수 없다 (DEV-073)
   - 라이트·다크 테마 확인
 - 제외:
   - 개별 화면 (WP-016 이후)
 - 완료 기준(DoD):
-  - [ ] QA-COMMON-01, QA-COMMON-06, QA-COMMON-07, QA-COMMON-09, QA-COMMON-11, QA-COMMON-12, QA-COMMON-14, QA-COMMON-16, QA-COMMON-17, QA-COMMON-18이 통과한다
-  - [ ] `operator`가 아닌 역할에게 운영 내비게이션이 렌더링되지 않는다 (QA-A001-10)
-  - [ ] `⌘K`/`Ctrl+K`로 옴니 검색에 포커스한다
-  - [ ] 세션 만료 후 재인증 시 원래 경로로 복귀한다 (FLOW-000)
-  - [ ] `query-url` 왕복 테스트가 통과한다
-  - [ ] axe 위반 0건, `checkContrast` 위반 0건
-- 검증 방법: `pnpm test web/lib`, `pnpm test:a11y shell`, `pnpm test:e2e auth`
+  - [~] QA-COMMON-01, QA-COMMON-06, QA-COMMON-07, QA-COMMON-09, QA-COMMON-11, QA-COMMON-12, QA-COMMON-14, QA-COMMON-16, QA-COMMON-17, QA-COMMON-18이 통과한다 — **7/10 통과**. 01·09·14는 화면이 없어 셸 몫까지만 (원장 6.15장)
+  - [x] `operator`가 아닌 역할에게 운영 내비게이션이 렌더링되지 않는다 (QA-A001-10)
+  - [x] `⌘K`/`Ctrl+K`로 옴니 검색에 포커스한다 — 셸이 슬롯 계약을 소유한다 (DEV-070)
+  - [~] 세션 만료 후 재인증 시 원래 경로로 복귀한다 (FLOW-000) — 라우트와 왕복 상태는 서고 시험도 있으나 **실제 IdP 왕복은 NOT RUN**이고 경로가 `/` 하나뿐이다
+  - [x] `query-url` 왕복 테스트가 통과한다
+  - [x] axe 위반 0건, `checkContrast` 위반 0건 — axe 24건 위반 0, `checkContrast` 80쌍 실패 0
+- 검증 방법: `pnpm test web/lib`, `pnpm test:a11y shell`, `pnpm test:e2e auth` — **세 스크립트를 이 WP가 만들었다** (DEV-069 / DEV-032)
 - 기록: 원장 WP-015 상태, FR-AUTH-001 매핑
 
 ### WP-016 W-001 통합 검색 화면

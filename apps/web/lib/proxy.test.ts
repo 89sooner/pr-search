@@ -13,6 +13,7 @@ import {
   buildProxyHeaders,
   buildResponseHeaders,
   buildUpstreamUrl,
+  resolveProxyAuth,
 } from './proxy';
 
 function proxied(clientHeaders: Record<string, string>): Headers {
@@ -150,5 +151,68 @@ describe('대상 URL', () => {
 
   it('빈 조각을 버린다', () => {
     expect(buildUpstreamUrl('http://api', ['', 'search', ''], '')).toBe('http://api/api/v1/search');
+  });
+});
+
+/*
+ * 이 블록은 **변이 E11이 살아남아서** 생겼다.
+ *
+ * e2e에는 Redis가 없어 `load`가 늘 던진다 — 그래서 "저장소에 닿지 못했다"
+ * (503)가 "그런 세션이 없다"(401)를 가렸고, `위조한 세션 쿠키로도 통과하지
+ * 못한다`가 **옳은 이유가 아닌 이유로** 통과하고 있었다. 판정을 순수 함수로
+ * 떼어 세 갈래를 저장소 없이 직접 건다.
+ */
+describe('세션 판정 (`resolveProxyAuth`)', () => {
+  const never = (): Promise<unknown> => {
+    throw new Error('쿠키가 없으면 저장소를 부르지 않아야 한다');
+  };
+
+  it('쿠키가 없으면 미인증이다 — 저장소를 부르지도 않는다', async () => {
+    await expect(resolveProxyAuth(undefined, never)).resolves.toEqual({ kind: 'unauthenticated' });
+  });
+
+  it('빈 쿠키도 미인증이다', async () => {
+    await expect(resolveProxyAuth('', never)).resolves.toEqual({ kind: 'unauthenticated' });
+  });
+
+  it('**저장소에 그런 세션이 없으면 미인증이다** — 위조 쿠키가 여기서 막힌다', async () => {
+    await expect(resolveProxyAuth('forged', () => Promise.resolve(null))).resolves.toEqual({
+      kind: 'unauthenticated',
+    });
+  });
+
+  it('`undefined`도 없는 것으로 본다 — 적재기가 `null` 대신 그것을 줄 수 있다', async () => {
+    /*
+     * 지금 `SessionStore.load`는 `LoadedSession | null`이라 `undefined`를 주지
+     * 않는다. 그래도 거는 이유는 이 함수의 서명이 `Promise<unknown>`이기
+     * 때문이다 — 다른 적재기를 끼우는 순간 `undefined`가 들어올 수 있고,
+     * 그것을 세션으로 인정하면 인증이 통째로 뚫린다.
+     */
+    await expect(resolveProxyAuth('x', () => Promise.resolve(undefined))).resolves.toEqual({
+      kind: 'unauthenticated',
+    });
+  });
+
+  it('저장소가 던지면 미인증이 아니라 `unavailable`이다', async () => {
+    const outcome = await resolveProxyAuth('sess-1', () => Promise.reject(new Error('ECONNREFUSED')));
+
+    // 401이면 사용자가 고칠 수 없는 일로 재로그인을 반복하게 된다.
+    expect(outcome).toEqual({ kind: 'unavailable' });
+  });
+
+  it('살아 있는 세션이면 그 id를 그대로 넘긴다', async () => {
+    await expect(resolveProxyAuth('sess-1', () => Promise.resolve({ userId: 'u1' }))).resolves.toEqual({
+      kind: 'authenticated',
+      sessionId: 'sess-1',
+    });
+  });
+
+  it('저장소가 부른 id는 쿠키의 값 그대로다', async () => {
+    const seen: string[] = [];
+    await resolveProxyAuth('sess-abc', (id) => {
+      seen.push(id);
+      return Promise.resolve({ userId: 'u1' });
+    });
+    expect(seen).toEqual(['sess-abc']);
   });
 });
