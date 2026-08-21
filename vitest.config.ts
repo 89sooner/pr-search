@@ -16,6 +16,9 @@ export default defineConfig({
       '@prs/db': resolvePackage('db'),
       '@prs/github': resolvePackage('github'),
       '@prs/bus': resolvePackage('bus'),
+      // 서브패스가 먼저다 — `@prs/authz`가 앞서면 `/roles`가 진입점으로 잡힌다.
+      '@prs/authz/roles': fileURLToPath(new URL('./packages/authz/src/roles.ts', import.meta.url)),
+      '@prs/authz': resolvePackage('authz'),
     },
   },
   test: {
@@ -25,6 +28,9 @@ export default defineConfig({
       'packages/*/src/**/*.test.ts',
       'packages/*/testing/**/*.test.ts',
       'apps/*/src/**/*.test.ts',
+      // `web`은 Next.js 관례를 따라 `src/`가 아니라 `app/`·`lib/`를 쓴다.
+      'apps/web/lib/**/*.test.ts',
+      'apps/web/app/**/*.test.ts',
       'scripts/**/*.test.ts',
     ],
     environment: 'node',
