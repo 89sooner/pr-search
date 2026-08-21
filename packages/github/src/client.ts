@@ -69,11 +69,36 @@ export interface ReviewSummary {
   readonly submitted_at: string | null;
 }
 
+/**
+ * 저장소 요약.
+ *
+ * `owner.id`와 `visibility`가 여기 있는 이유는 저장소 등록이 그 둘을 요구하기
+ * 때문이다 (CR-013, DEV-033). `repository.org_id`는 NOT NULL이고
+ * `repository.visibility`는 `public|internal|private` CHECK이며, **ADR-008의
+ * 필수 접근 범위 필터가 바로 그 두 필드 위에 선다.**
+ *
+ * `private: boolean`으로 대신할 수 없다. 사내 GitHub Enterprise의 저장소
+ * 대부분이 `internal`인데 그것을 `private`로 적으면 접근 범위 판정이 조직
+ * 전체에서 어긋난다.
+ */
 export interface RepositorySummary {
   readonly id: number;
   readonly full_name: string;
   readonly private: boolean;
   readonly default_branch: string;
+  readonly owner: { readonly id: number; readonly login: string };
+  /** GHES 3.x가 주는 값. 예전 응답에는 없을 수 있어 선택으로 둔다. */
+  readonly visibility?: 'public' | 'internal' | 'private';
+}
+
+/**
+ * 등록에 쓸 가시성.
+ *
+ * `visibility`가 오면 그대로 쓰고, 없으면 `private`로만 갈린다 — `internal`을
+ * 지어내지 않는다. 모르면서 아는 척하는 것보다 좁게 잡는 편이 안전하다.
+ */
+export function resolveVisibility(summary: RepositorySummary): 'public' | 'internal' | 'private' {
+  return summary.visibility ?? (summary.private ? 'private' : 'public');
 }
 
 export interface TeamSummary {

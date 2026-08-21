@@ -40,13 +40,13 @@ export function envelope(payload: unknown, name = 'ingestion.event_received'): E
 }
 
 export async function waitFor(
-  predicate: () => boolean,
+  predicate: () => boolean | Promise<boolean>,
   timeoutMs = 5_000,
   label = '조건',
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (predicate()) return;
+    if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`${label}이(가) ${String(timeoutMs)}ms 안에 충족되지 않았다`);
@@ -436,6 +436,55 @@ export function runEventBusContract(adapterName: string, factory: BusFactory): v
         await subscription.close();
       }
       expect(processed).toContain(freeKey);
+    });
+
+    it('WP-010: 대기 길이는 처리량이 아니라 적체를 센다', async () => {
+      // `XLEN`을 쓰면 잘 도는 파이프라인일수록 값이 커진다. 소비된 것은 빠져야
+      // "적체"라는 말이 성립한다 (FR-ADMIN-001 AC-1).
+      expect(await bus.depth(CONTRACT_TOPIC)).toBe(0);
+
+      await bus.publish(CONTRACT_TOPIC, '4021', envelope({ index: 0 }));
+      await bus.publish(CONTRACT_TOPIC, '5150', envelope({ index: 1 }));
+      expect(await bus.depth(CONTRACT_TOPIC)).toBe(2);
+
+      const seen: number[] = [];
+      const subscription = await bus.subscribe(
+        CONTRACT_TOPIC,
+        CONTRACT_GROUP,
+        async (event) => {
+          seen.push((event.payload as { index: number }).index);
+        },
+        { claimIdleMs: 50, blockMs: 50 },
+      );
+
+      try {
+        await waitFor(() => seen.length === 2, 5_000, '두 건 소비');
+        await waitFor(async () => (await bus.depth(CONTRACT_TOPIC)) === 0, 5_000, '적체 해소');
+      } finally {
+        await subscription.close();
+      }
+
+      expect(await bus.depth(CONTRACT_TOPIC)).toBe(0);
+    });
+
+    it('WP-010: ack되지 않은 이벤트는 계속 적체로 센다', async () => {
+      const subscription = await bus.subscribe(
+        CONTRACT_TOPIC,
+        CONTRACT_GROUP,
+        async () => {
+          throw new Error('처리 실패');
+        },
+        { claimIdleMs: 60_000, blockMs: 50, onError: () => undefined },
+      );
+
+      try {
+        await bus.publish(CONTRACT_TOPIC, '4021', envelope({ index: 0 }));
+        // 전달됐지만 ack되지 않았다. 사라지지 않아야 한다.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(await bus.depth(CONTRACT_TOPIC)).toBe(1);
+      } finally {
+        await subscription.close();
+      }
     });
 
     it('카탈로그에 없는 토픽은 발행도 구독도 거부한다', async () => {

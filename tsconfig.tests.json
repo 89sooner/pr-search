@@ -9,6 +9,7 @@
     "types": ["node", "vitest/globals"],
     "paths": {
       "@prs/domain": ["./packages/domain/src/index.ts"],
+      "@prs/metrics": ["./packages/metrics/src/index.ts"],
       "@prs/contracts": ["./packages/contracts/src/index.ts"],
       "@prs/query": ["./packages/query/src/index.ts"],
       "@prs/es": ["./packages/es/src/index.ts"],

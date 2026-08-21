@@ -17,6 +17,7 @@
     "@prs/db": "workspace:*",
     "@prs/domain": "workspace:*",
     "@prs/es": "workspace:*",
-    "@prs/github": "workspace:*"
+    "@prs/github": "workspace:*",
+    "@prs/metrics": "workspace:*"
   }
 }

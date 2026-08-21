@@ -18,6 +18,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@prs/domain': resolvePackage('domain'),
+      '@prs/metrics': resolvePackage('metrics'),
       '@prs/contracts': resolvePackage('contracts'),
       '@prs/query': resolvePackage('query'),
       '@prs/es': resolvePackage('es'),

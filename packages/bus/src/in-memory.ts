@@ -11,7 +11,7 @@
 
 import { allPartitions, partitionFor } from './partition.js';
 import { retryDelayMs } from './backoff.js';
-import { partitionCount } from './topics.js';
+import { CONSUMER_GROUPS, partitionCount } from './topics.js';
 import type {
   DeliveredEvent,
   EventBus,
@@ -42,6 +42,9 @@ interface GroupCursor {
 
 const POLL_MS = 5;
 
+/** 구독자가 뜨기 전에 발행된 이벤트를 담아 두는 자리. 어느 그룹의 것도 아니다. */
+const UNCLAIMED = '__unclaimed__';
+
 export class InMemoryEventBus implements EventBus {
   readonly #partitionOverrides: Readonly<Record<string, number>>;
   /** `topic:partition` → `group` → 커서 */
@@ -55,6 +58,29 @@ export class InMemoryEventBus implements EventBus {
 
   partitions(topic: string): number {
     return partitionCount(topic, this.#partitionOverrides);
+  }
+
+  /**
+   * 대기 길이 (FR-ADMIN-001 AC-1).
+   *
+   * 아직 전달되지 않은 것(`backlog`)과 전달했지만 ack되지 않은 것(`pending`)의
+   * 합이다. Redis 어댑터의 `lag + pending`과 같은 뜻이어야 계약이 성립한다.
+   */
+  async depth(topic: string): Promise<number> {
+    const group = CONSUMER_GROUPS[topic as keyof typeof CONSUMER_GROUPS];
+    let total = 0;
+
+    for (const partition of allPartitions(this.partitions(topic))) {
+      const cursors = this.#cursors.get(`${topic}:${String(partition)}`);
+      if (cursors === undefined) continue;
+      for (const [name, cursor] of cursors) {
+        // 구독자가 뜨기 전에 발행된 것도 적체다. Redis 쪽에서 그룹이 없을 때
+        // `XLEN` 전량을 세는 것과 같은 뜻이어야 계약이 성립한다.
+        if (group !== undefined && name !== group && name !== UNCLAIMED) continue;
+        total += cursor.backlog.length + cursor.pending.length;
+      }
+    }
+    return total;
   }
 
   #cursorsFor(topic: string, partition: number): Map<string, GroupCursor> {
@@ -93,7 +119,7 @@ export class InMemoryEventBus implements EventBus {
     if (groups.size === 0) {
       // 아직 구독자가 없다. Redis Streams는 그룹을 `0`부터 만들어 이전 이벤트도
       // 읽으므로, 같은 동작을 내려면 어딘가 담아 둬야 한다.
-      groups.set('__unclaimed__', { backlog: [stored], pending: [] });
+      groups.set(UNCLAIMED, { backlog: [stored], pending: [] });
       return;
     }
     for (const cursor of groups.values()) cursor.backlog.push(stored);
@@ -113,11 +139,11 @@ export class InMemoryEventBus implements EventBus {
       }
       // 구독보다 먼저 발행된 이벤트를 이 그룹의 백로그로 옮긴다.
       const groups = this.#cursorsFor(topic, partition);
-      const unclaimed = groups.get('__unclaimed__');
+      const unclaimed = groups.get(UNCLAIMED);
       const cursor = this.#cursor(topic, partition, group);
       if (unclaimed !== undefined) {
         cursor.backlog.push(...unclaimed.backlog);
-        groups.delete('__unclaimed__');
+        groups.delete(UNCLAIMED);
       }
     }
 

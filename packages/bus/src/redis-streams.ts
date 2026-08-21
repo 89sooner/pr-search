@@ -19,7 +19,7 @@
 import { Redis } from 'ioredis';
 import { allPartitions, partitionFor } from './partition.js';
 import { retryDelayMs } from './backoff.js';
-import { partitionCount, partitionStream } from './topics.js';
+import { CONSUMER_GROUPS, partitionCount, partitionStream } from './topics.js';
 import type {
   DeliveredEvent,
   EventBus,
@@ -55,6 +55,17 @@ export function createRedisClient(config: RedisConnectionConfig = resolveRedisCo
     enableOfflineQueue: true,
     lazyConnect: false,
   });
+}
+
+/** `XINFO`가 돌려주는 `[k, v, k, v, …]`를 객체로. 값이 문자열이 아닐 수 있다. */
+function readPairs(entry: unknown): Record<string, unknown> {
+  const record: Record<string, unknown> = {};
+  if (!Array.isArray(entry)) return record;
+  for (let index = 0; index + 1 < entry.length; index += 2) {
+    const key = entry[index];
+    if (typeof key === 'string') record[key] = entry[index + 1];
+  }
+  return record;
 }
 
 /** ioredis가 돌려주는 필드 배열(`[k, v, k, v, …]`)을 객체로 만든다. */
@@ -146,6 +157,56 @@ export class RedisStreamsEventBus implements EventBus {
       'payload',
       JSON.stringify(message.payload),
     );
+  }
+
+  /**
+   * 대기 길이 (FR-ADMIN-001 AC-1).
+   *
+   * `XLEN`이 아니다. Redis Streams는 ack해도 항목을 지우지 않으므로 `XLEN`은
+   * **처리량**이지 적체가 아니다 — 잘 도는 파이프라인일수록 커진다. 소비자
+   * 그룹이 아직 읽지 않은 수(`lag`)와 읽었지만 ack하지 않은 수(`pending`)를
+   * 더한 값이 "아직 소비되지 않은" 것이다.
+   *
+   * 그룹이 아직 없으면(소비자가 한 번도 뜨지 않았다) 전량이 대기 중이다.
+   */
+  async depth(topic: string): Promise<number> {
+    const group = CONSUMER_GROUPS[topic as keyof typeof CONSUMER_GROUPS];
+    let total = 0;
+
+    for (const partition of allPartitions(this.partitions(topic))) {
+      const stream = partitionStream(topic, partition);
+      if (group === undefined) {
+        total += await this.#redis.xlen(stream);
+        continue;
+      }
+      total += await this.#groupDepth(stream, group);
+    }
+    return total;
+  }
+
+  async #groupDepth(stream: string, group: string): Promise<number> {
+    let groups: unknown;
+    try {
+      groups = await this.#redis.xinfo('GROUPS', stream);
+    } catch {
+      // 스트림 자체가 없다. 발행이 한 번도 없었다는 뜻이라 0이다.
+      return 0;
+    }
+    if (!Array.isArray(groups)) return 0;
+
+    for (const entry of groups) {
+      const fields = readPairs(entry);
+      if (fields['name'] !== group) continue;
+      const pending = Number(fields['pending'] ?? 0);
+      const lag = fields['lag'];
+      // `lag`는 Redis 7+가 준다. 알 수 없으면(`null`) 전량에서 읽은 수를 뺀다.
+      if (lag !== null && lag !== undefined) return Number(lag) + pending;
+      const read = Number(fields['entries-read'] ?? 0);
+      return Math.max(0, (await this.#redis.xlen(stream)) - read) + pending;
+    }
+
+    // 그룹이 없다. 아직 아무도 읽지 않았으므로 전량이 대기 중이다.
+    return this.#redis.xlen(stream);
   }
 
   async subscribe(

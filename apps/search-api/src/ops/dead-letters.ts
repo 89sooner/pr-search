@@ -18,6 +18,7 @@
 import { deadLetterRepo, rawEventRepo, type Pool } from '@prs/db';
 import type { DeadLetterFilter, DeadLetterRow, DeadLetterStage, DeadLetterState } from '@prs/db';
 import { ingestEnvelope, ingestStreamKey, TOPICS, type EventBus } from '@prs/bus';
+import { AdminRejected } from './errors.js';
 
 /** 1회 재처리 상한. 요청 안에서 끝내는 이상 무제한일 수 없다. */
 export const MAX_REPROCESS_BATCH = 500;
@@ -67,18 +68,6 @@ export interface ReprocessResult {
   readonly skipped: readonly SkippedItem[];
 }
 
-/** 재처리 요청이 계약을 어겼다. HTTP 코드는 라우트가 붙인다. */
-export class ReprocessRejected extends Error {
-  constructor(
-    readonly code: 'RANGE_TOO_LARGE' | 'CONFIRMATION_MISMATCH' | 'INVALID_PARAMETER',
-    message: string,
-    readonly detail?: Readonly<Record<string, unknown>>,
-  ) {
-    super(message);
-    this.name = 'ReprocessRejected';
-  }
-}
-
 export async function listDeadLetters(
   deps: OpsDeps,
   filter: DeadLetterFilter,
@@ -103,13 +92,13 @@ export async function listDeadLetters(
 async function resolveTargets(deps: OpsDeps, request: ReprocessRequest): Promise<DeadLetterRow[]> {
   if (request.deadLetterIds !== undefined) {
     if (request.deadLetterIds.length === 0) {
-      throw new ReprocessRejected('INVALID_PARAMETER', '재처리할 항목이 없다');
+      throw new AdminRejected('INVALID_PARAMETER', '재처리할 항목이 없다');
     }
     return deadLetterRepo.findByIds(deps.pool, request.deadLetterIds);
   }
 
   if (request.filter === undefined) {
-    throw new ReprocessRejected('INVALID_PARAMETER', 'dead_letter_ids 또는 filter가 필요하다');
+    throw new AdminRejected('INVALID_PARAMETER', 'dead_letter_ids 또는 filter가 필요하다');
   }
 
   const states = request.filter.states ?? deadLetterRepo.OPEN_STATES;
@@ -130,7 +119,7 @@ export async function reprocessDeadLetters(
   const targets = await resolveTargets(deps, request);
 
   if (targets.length > MAX_REPROCESS_BATCH) {
-    throw new ReprocessRejected(
+    throw new AdminRejected(
       'RANGE_TOO_LARGE',
       `1회 재처리 상한을 넘었다: ${String(targets.length)}건 (상한 ${String(MAX_REPROCESS_BATCH)})`,
       { limit: MAX_REPROCESS_BATCH, matched: targets.length },
@@ -142,7 +131,7 @@ export async function reprocessDeadLetters(
   if (targets.length > CONFIRMATION_REQUIRED_ABOVE) {
     const expected = String(targets.length);
     if (request.confirmation !== expected) {
-      throw new ReprocessRejected(
+      throw new AdminRejected(
         'CONFIRMATION_MISMATCH',
         `${expected}건을 재처리하려면 확인 문자열로 대상 건수를 정확히 보내야 한다`,
         { required_confirmation: expected },
@@ -223,7 +212,7 @@ export function parseStage(value: unknown): DeadLetterStage | undefined {
   if (value === undefined) return undefined;
   const stage = STAGES.find((candidate) => candidate === value);
   if (stage === undefined) {
-    throw new ReprocessRejected('INVALID_PARAMETER', `알 수 없는 단계다: ${String(value)}`);
+    throw new AdminRejected('INVALID_PARAMETER', `알 수 없는 단계다: ${String(value)}`);
   }
   return stage;
 }
@@ -232,7 +221,7 @@ export function parseState(value: unknown): DeadLetterState | undefined {
   if (value === undefined) return undefined;
   const state = STATES.find((candidate) => candidate === value);
   if (state === undefined) {
-    throw new ReprocessRejected('INVALID_PARAMETER', `알 수 없는 상태다: ${String(value)}`);
+    throw new AdminRejected('INVALID_PARAMETER', `알 수 없는 상태다: ${String(value)}`);
   }
   return state;
 }
@@ -243,14 +232,14 @@ export const DEFAULT_LIST_STATES: readonly DeadLetterState[] = ['pending', 'repr
 export function parseIds(value: unknown): readonly number[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) {
-    throw new ReprocessRejected('INVALID_PARAMETER', 'dead_letter_ids는 배열이어야 한다');
+    throw new AdminRejected('INVALID_PARAMETER', 'dead_letter_ids는 배열이어야 한다');
   }
   return value.map((entry) => {
     // 문자열로 온 식별자도 받는다. JSON에는 숫자로 나가지만(DEV-027) 클라이언트가
     // 큰 정수를 문자열로 다루는 것은 흔한 선택이다.
     const parsed = typeof entry === 'string' ? Number(entry) : entry;
     if (typeof parsed !== 'number' || !Number.isSafeInteger(parsed) || parsed <= 0) {
-      throw new ReprocessRejected('INVALID_PARAMETER', `식별자가 정수가 아니다: ${String(entry)}`);
+      throw new AdminRejected('INVALID_PARAMETER', `식별자가 정수가 아니다: ${String(entry)}`);
     }
     return parsed;
   });
@@ -260,7 +249,7 @@ export function parseLimit(value: unknown): number {
   if (value === undefined) return DEFAULT_LIST_LIMIT;
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_LIST_LIMIT) {
-    throw new ReprocessRejected('INVALID_PARAMETER', `limit은 1..${String(MAX_LIST_LIMIT)}이다`);
+    throw new AdminRejected('INVALID_PARAMETER', `limit은 1..${String(MAX_LIST_LIMIT)}이다`);
   }
   return parsed;
 }
@@ -269,7 +258,7 @@ export function parseOffset(value: unknown): number {
   if (value === undefined) return 0;
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new ReprocessRejected('INVALID_PARAMETER', 'offset은 0 이상의 정수다');
+    throw new AdminRejected('INVALID_PARAMETER', 'offset은 0 이상의 정수다');
   }
   return parsed;
 }
@@ -278,7 +267,7 @@ export function parseRepositoryId(value: unknown): number | undefined {
   if (value === undefined) return undefined;
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new ReprocessRejected('INVALID_PARAMETER', `repository_id가 정수가 아니다: ${String(value)}`);
+    throw new AdminRejected('INVALID_PARAMETER', `repository_id가 정수가 아니다: ${String(value)}`);
   }
   return parsed;
 }

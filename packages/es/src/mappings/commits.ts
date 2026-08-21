@@ -17,6 +17,7 @@ export const COMMIT_MAPPING: estypes.MappingTypeMapping = {
     org_id: { type: 'long' },
     visibility: { type: 'keyword' },
     allowed_team_ids: { type: 'long' },
+    repository_archived: { type: 'boolean' },
 
     commit_sha: { type: 'keyword', normalizer: LOWERCASE_NORMALIZER },
     parent_shas: { type: 'keyword', normalizer: LOWERCASE_NORMALIZER },

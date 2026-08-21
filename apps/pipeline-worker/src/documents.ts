@@ -191,6 +191,10 @@ export function buildCommitDocuments(source: ProjectionSource): readonly UpsertR
       commit_sha: sha,
       role,
       enrichment_pending: enriched.enrichment_pending,
+      // PR 문서와 같은 값이다. 커밋 문서는 FR-SRCH-002(SHA → PR)의 결과로
+      // 직접 나가므로, 표식이 없으면 해제된 저장소가 살아 있는 것처럼 보인다
+      // (CR-013, DEV-028).
+      repository_archived: repository.status === 'archived',
       last_delivery_id: enriched.delivery_id,
       indexed_at: source.indexedAt.toISOString(),
     };

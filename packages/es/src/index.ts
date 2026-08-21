@@ -40,5 +40,8 @@ export type { ScopedSearchOptions } from './search.js';
 export { CONDITIONAL_UPSERT_SCRIPT, bulkUpsert, classifyFailure, upsertOne } from './upsert.js';
 export type { BulkItemOutcome, BulkUpsertResult, UpsertRequest } from './upsert.js';
 
+export { ARCHIVABLE_ALIASES, NON_ARCHIVABLE_ALIASES, markRepositoryArchived } from './registry.js';
+export type { MarkArchivedResult } from './registry.js';
+
 export { applyMappings, dropEntityIndices } from './bootstrap.js';
 export type { BootstrapResult } from './bootstrap.js';

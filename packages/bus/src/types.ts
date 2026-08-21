@@ -114,6 +114,14 @@ export interface SubscribeOptions {
  */
 export interface EventBus {
   publish(topic: string, partitionKey: string, message: EventEnvelope): Promise<void>;
+  /**
+   * 토픽의 대기 길이 (비동기 문서 10장 `queue_depth{stream}`, FR-ADMIN-001 AC-1).
+   *
+   * **아직 소비되지 않은 이벤트 수**다. 파티션 스트림 전체를 합산한다. ack된
+   * 항목까지 세면 처리량이 곧 적체로 보이므로, 소비자 그룹이 아직 읽지 않은
+   * 것만 센다.
+   */
+  depth(topic: string): Promise<number>;
   subscribe(
     topic: string,
     group: string,

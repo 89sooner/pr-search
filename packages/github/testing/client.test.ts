@@ -13,6 +13,7 @@ import {
   InstallationTokenProvider,
   RequestScheduler,
   TokenPool,
+  resolveVisibility,
 } from '../src/index.js';
 import { generateTestKeyPair, startMockGhe, type MockGhe, type MockGheOptions } from './mock-ghe.js';
 
@@ -89,7 +90,11 @@ describe('오퍼레이션 (SRS 10장)', () => {
     expect(await client.listPullRequestReviews(REPO, 1234)).toMatchObject([{ state: 'APPROVED' }]);
     expect(await client.listTags(REPO)).toMatchObject([{ name: 'v1.2.3' }]);
     expect(await client.listReleases(REPO)).toMatchObject([{ tag_name: 'v1.2.3' }]);
-    expect(await client.getRepository(REPO)).toMatchObject({ id: 4021, full_name: 'acme/payments' });
+    const repository = await client.getRepository(REPO);
+    expect(repository).toMatchObject({ id: 4021, full_name: 'acme/payments' });
+    // 등록이 요구하는 두 필드 (DEV-033). ADR-008의 접근 범위 필터가 그 위에 선다.
+    expect(repository.owner.id).toBe(77);
+    expect(resolveVisibility(repository)).toBe('internal');
     expect(await client.listOrgTeams('acme')).toMatchObject([{ slug: 'payments' }]);
     expect(await client.listCollaborators(REPO)).toMatchObject([{ login: 'dev' }]);
     expect(await client.listCommits(REPO, { sha: 'main' })).toMatchObject([{ sha: 'ddd4' }]);

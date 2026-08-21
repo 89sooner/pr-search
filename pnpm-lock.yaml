@@ -41,6 +41,9 @@ importers:
       '@prs/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@prs/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
       fastify:
         specifier: 5.12.1
         version: 5.12.1
@@ -68,9 +71,15 @@ importers:
       '@prs/github':
         specifier: workspace:*
         version: link:../../packages/github
+      '@prs/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
 
   apps/search-api:
     dependencies:
+      '@elastic/elasticsearch':
+        specifier: 8.19.2
+        version: 8.19.2
       '@prs/bus':
         specifier: workspace:*
         version: link:../../packages/bus
@@ -83,6 +92,15 @@ importers:
       '@prs/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@prs/es':
+        specifier: workspace:*
+        version: link:../../packages/es
+      '@prs/github':
+        specifier: workspace:*
+        version: link:../../packages/github
+      '@prs/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
       fastify:
         specifier: 5.12.1
         version: 5.12.1
@@ -153,6 +171,8 @@ importers:
       '@prs/domain':
         specifier: workspace:*
         version: link:../domain
+
+  packages/metrics: {}
 
   packages/query:
     dependencies:

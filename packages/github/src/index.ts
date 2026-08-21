@@ -48,7 +48,7 @@ export type { RequestPriority, SchedulerOptions } from './scheduler.js';
 export { GitHubTransport } from './transport.js';
 export type { PagedResult, RequestOptions, TransportEvent, TransportOptions } from './transport.js';
 
-export { GitHubClient, MAX_CHANGED_FILES, MAX_PR_COMMITS } from './client.js';
+export { GitHubClient, MAX_CHANGED_FILES, MAX_PR_COMMITS, resolveVisibility } from './client.js';
 export type {
   CallOptions,
   ChangedFile,

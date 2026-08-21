@@ -89,6 +89,22 @@ OpenTelemetry로 분산 추적을 수집한다.
 | `aggregation_approximate_total` | 카운터 | - |
 | `frontend_web_vitals` | 히스토그램 | `metric`(LCP/INP/CLS), `route` |
 
+### 3.4 지표를 누가 읽는가 (CR-013)
+
+노출과 질의는 다른 일이다. 세 프로세스(`ingest-gateway`, `pipeline-worker`, `search-api`)가 각자 `/metrics`로 **노출**하고, 사내 Prometheus 호환 저장소가 그것을 긁어 **보관·집계**한다 (인프라 4장).
+
+그래서 API-ADM-006이 값을 어디서 얻는지는 항목마다 다르다.
+
+| 항목 | 출처 | 이유 |
+| --- | --- | --- |
+| 수신량(분당), 수집 반영 지연 p50/p95, 저장소별 지연 상위 10 | PostgreSQL `raw_event` | `received_at`·`processed_at`이 행에 있어 정확히 계산된다. 표본이 곧 사실이다 |
+| 대기열 길이 | Redis 파티션 스트림 | 그 순간의 길이다 |
+| 실패 대기열 건수 | PostgreSQL `dead_letter` | 위와 같다 |
+| 보강 대기 건수 | Elasticsearch `enrichment_pending` | 문서에 붙은 표식이다 |
+| **단계별 지연 p50/p95** | **지표 저장소 (설정 시)** | 워커 프로세스의 히스토그램에만 있다. `search-api`가 읽을 방법이 없다 |
+
+**단계별 지연만 외부 의존이다.** 워커 복제본 하나의 `/metrics`를 직접 긁으면 그 복제본의 히스토그램일 뿐 클러스터 전체가 아니다 — 그것을 전체인 양 내놓는 것은 틀린 답을 자신 있게 말하는 일이라 하지 않는다. 지표 저장소가 설정되지 않으면 그 항목만 `unavailable`로 남긴다 (FR-ADMIN-001 예외 처리).
+
 ## 4. 알림
 
 **실패 대기열 임계가 세는 것 (CR-012).** `dead_letter_open_total`은 `pending`과 `reprocessing`의 합이다. `pending`만 세면 **200건을 일괄 재처리한 직후 경보가 사라진다** — 아직 아무것도 해결되지 않았는데도 그렇다. 반대로 `held`와 `resolved`는 세지 않는다. 전자는 이미 사람이 보기로 한 것이고 후자는 끝난 것이라, 둘 다 "지금 쌓이고 있다"의 근거가 아니다. 상태별 세부는 `dead_letter_total{state}`가 따로 노출한다.

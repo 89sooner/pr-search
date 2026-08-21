@@ -1,0 +1,23 @@
+# 배포 순서 1단계 (인프라 3장). 워커·API보다 먼저 끝나야 한다.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: prs-migrate
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: migrate }
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: migrate }
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: prs/db:latest
+          command: ['node', 'dist/cli.js', 'migrate']
+          envFrom:
+            - secretRef: { name: prs-secrets }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 256Mi }

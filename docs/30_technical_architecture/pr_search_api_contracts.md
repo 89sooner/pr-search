@@ -810,6 +810,102 @@ POST /api/v1/analytics/percentiles
 - 오류: 401 (서명 불일치, 본문 없음), 413 (25MB 초과), 500 (durable 저장 실패 — GHE 재전송 유도)
 - 지원 이벤트: `pull_request`, `pull_request_review`, `push`, `create`, `delete`, `release`, `member`, `team`, `repository`. 그 외는 저장만 하고 처리 대상에서 제외 (AC-5)
 
+### API-ADM-001 저장소 등록 관리
+
+- 목적: 수집 대상 저장소를 등록·변경·해제한다.
+- 관련 요구사항: FR-ING-009
+- 관련 화면: A-002 (WP-040)
+
+요청 (목록): `GET /api/v1/admin/repositories?status=active&limit=50&offset=0`
+
+응답 200:
+
+```json
+{
+  "items": [
+    {
+      "repository_id": 4021,
+      "owner": "acme",
+      "name": "payments",
+      "org_id": 77,
+      "visibility": "internal",
+      "sequence_branches": ["main", "release/2026.08"],
+      "mirror_enabled": true,
+      "status": "active",
+      "registered_at": "2026-08-20T11:02:41.000Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+요청 (등록): `POST /api/v1/admin/repositories`
+
+```json
+{
+  "owner": "acme",
+  "name": "payments",
+  "sequence_branches": ["main"],
+  "mirror_enabled": true,
+  "backfill": true
+}
+```
+
+- `owner`·`name`이 진실의 출처다. `repository_id`·`org_id`·`visibility`는 **GHE에 물어서 채운다** — 클라이언트가 보낸 값을 믿지 않는다 (CR-013, DEV-033)
+- `sequence_branches`는 최대 10개다. 초과 시 400 `BRANCH_LIMIT_EXCEEDED` (AC-2)
+- `backfill: true`면 `job` 행을 `type: 'backfill'`, `state: 'queued'`로 넣는다. 실행은 `batch` 워커를 세우는 WP-019부터다 (CR-013, DEV-031)
+
+응답 201: 등록된 저장소 객체. 이미 있으면 200과 갱신된 객체.
+
+요청 (변경): `PATCH /api/v1/admin/repositories/{repository_id}` — `sequence_branches`, `mirror_enabled`만 바꾼다. 소유자·이름·가시성은 GHE가 소유한 값이라 여기서 바꾸지 않는다.
+
+요청 (해제): `DELETE /api/v1/admin/repositories/{repository_id}`
+
+응답 200:
+
+```json
+{ "repository_id": 4021, "status": "archived", "documents_marked": 1284 }
+```
+
+- **문서를 지우지 않는다.** `status = 'archived'`로 바꾸고 이미 색인된 PR·커밋 문서에 `repository_archived: true`를 표시한다 (AC-3). `documents_marked`는 그렇게 표시된 문서 수다
+- 해제 이후의 웹훅 이벤트는 원본만 보관하고 투영하지 않는다 (AC-4, FR-ING-005 예외 처리)
+
+- 오류: 400 `BRANCH_LIMIT_EXCEEDED`, 400 `INVALID_PARAMETER`, 401 `UNAUTHENTICATED`, **403 `FORBIDDEN_ROLE`** (등록 대상에 접근 권한이 없음 — 응답 `detail.required_permissions`에 필요한 권한을 담는다), 404 `NOT_FOUND`
+- 등록·변경·해제는 모두 감사 기록 대상이다 (AC-5). 기록되는 주체는 요청에 쓰인 관리 토큰의 이름이다 (CR-013, DEV-030)
+
+### API-ADM-006 파이프라인 상태
+
+- 목적: 수집 파이프라인의 건강 상태를 한 번에 조회한다.
+- 관련 요구사항: FR-ADMIN-001
+- 관련 화면: A-001
+
+요청: `GET /api/v1/admin/pipeline-status`
+
+응답 200:
+
+```json
+{
+  "generated_at": "2026-08-20T11:31:07.000Z",
+  "intake_per_minute": 42,
+  "queue_depth": { "prs:ingest": 12, "prs:enriched": 3, "prs:projected": 0 },
+  "ingestion_lag_seconds": { "p50": 1.8, "p95": 6.4 },
+  "stage_latency_seconds": { "enrich": "unavailable", "project": "unavailable" },
+  "dead_letter": { "pending": 2, "reprocessing": 0, "held": 1, "resolved": 40 },
+  "enrichment_pending": 7,
+  "slowest_repositories": [
+    { "repository_id": 4021, "repository": "acme/payments", "lag_p95_seconds": 9.2, "sample_count": 118 }
+  ],
+  "unavailable": ["stage_latency_seconds"]
+}
+```
+
+- **데이터 신선도는 요청 시점이다** (AC-2의 30초 이내를 만족한다). 캐시하지 않고 PostgreSQL·Redis·Elasticsearch에 그때 물어본다
+- `ingestion_lag_seconds`는 `raw_event.processed_at − received_at`의 백분위다. 최근 1시간 표본을 쓴다
+- `slowest_repositories`는 같은 표본을 저장소로 묶은 상위 10개다 (AC-3)
+- **`stage_latency_seconds`는 조건부다 (CR-013, DEV-029).** 단계별 지연은 워커 프로세스의 히스토그램에만 있고 `search-api`가 읽을 수 없다. 지표 저장소(사내 Prometheus 호환)가 `METRICS_QUERY_URL`로 설정되어 있으면 질의해서 채우고, 없으면 `"unavailable"`로 둔다 — FR-ADMIN-001 예외 처리가 정한 "해당 항목만 미확인" 형태다. **워커 복제본 하나를 긁어 클러스터 전체인 양 내놓지 않는다**
+- `unavailable` 배열은 이번 응답에서 값을 채우지 못한 항목 이름을 담는다. 조회에 실패한 항목도 여기 들어가고 나머지는 정상 반환된다
+- 시퀀스 공간 상태 요약은 WP-021 이후에 더한다
+
 ### API-ADM-003 실패 대기열 조회와 재처리
 
 - 목적: 격리된 실패 이벤트를 보고 다시 파이프라인에 투입한다.
