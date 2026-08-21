@@ -26,6 +26,9 @@
       "path": "packages/bus"
     },
     {
+      "path": "packages/authz"
+    },
+    {
       "path": "apps/ingest-gateway"
     },
     {

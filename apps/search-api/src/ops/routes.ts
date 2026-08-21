@@ -1,18 +1,30 @@
 /**
  * `ops` 모듈 라우트 (API-ADM-001, API-ADM-003, API-ADM-006).
  *
- * **토큰이 없으면 이 경로를 등록하지 않는다** (CR-012, DEV-025). 최종 권한은
- * `operator` 역할이고 그 판정은 WP-012의 OIDC 세션이 세우지만, REL-001에는
- * 사용자 신원 자체가 없다. 그 사이에 인증 없이 열린 변경 API를 두는 것보다
- * 경로가 없는 편이 낫다.
+ * **권한은 `operator` 역할이다** (API 계약 3장). WP-012가 OIDC 세션을 세웠으므로
+ * 세션이 구성된 배포에서는 그 판정을 쓴다.
+ *
+ * OIDC가 **구성되지 않은** 배포에서는 CR-012·CR-013이 세운 이름 붙은 토큰이
+ * 임시 통제로 남는다. 둘은 배타다 (CR-015, DEV-048) — 실제 세션 옆에 역할
+ * 검사를 우회하는 토큰 문이 열린 채로 배포되는 것이 이 통제가 막으려던 바로
+ * 그 상황이기 때문이다. 인증 수단이 아예 없으면 경로를 등록하지 않는다.
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type { ErrorResponse } from '@prs/contracts';
 import { deadLetterRepo } from '@prs/db';
 import type { DeadLetterFilter, DeadLetterState, RepositoryStatus } from '@prs/db';
-import { auditUserId, type AdminPrincipal } from '../config.js';
+import type { AdminPrincipal } from '../config.js';
+import type { AuthContext } from '../auth/context.js';
+import {
+  authenticateSession,
+  authenticateToken,
+  principalId,
+  requireRole,
+  type Principal,
+} from '../auth/principal.js';
+import { sendAuthError, toAuthError } from '../auth/errors.js';
 import { Gauge, METRICS_CONTENT_TYPE, renderMetrics } from '../metrics.js';
 import { ADMIN_ERROR_STATUS, AdminRejected } from './errors.js';
 import {
@@ -42,20 +54,6 @@ export const REPROCESS_PATH = '/api/v1/admin/dead-letters/reprocess';
 export const REPOSITORIES_PATH = '/api/v1/admin/repositories';
 export const PIPELINE_STATUS_PATH = '/api/v1/admin/pipeline-status';
 
-/** 길이 노출과 조기 반환을 막는 상수 시간 비교. */
-function tokenMatches(provided: string, expected: string): boolean {
-  const a = Buffer.from(provided, 'utf8');
-  const b = Buffer.from(expected, 'utf8');
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
-function bearer(request: FastifyRequest): string | undefined {
-  const header = request.headers.authorization;
-  if (typeof header !== 'string') return undefined;
-  const match = /^Bearer (.+)$/.exec(header);
-  return match?.[1];
-}
-
 function fail(
   reply: FastifyReply,
   status: number,
@@ -72,7 +70,11 @@ function fail(
 }
 
 export interface OpsRouteOptions extends OpsDeps {
+  /** OIDC 미구성 배포의 임시 토큰. `auth`가 있으면 무시된다 (DEV-048). */
   readonly adminTokens: readonly AdminPrincipal[];
+  /** 세션 인증 컨텍스트. 있으면 `operator` 역할이 통제한다. */
+  readonly auth?: AuthContext | undefined;
+  readonly loginPath?: string;
   /** 저장소 등록 의존. 없으면 등록 경로를 달지 않는다 (API-ADM-001). */
   readonly registry?: RegistryDeps;
   /** 파이프라인 상태 의존. 없으면 상태 경로를 달지 않는다 (API-ADM-006). */
@@ -80,36 +82,42 @@ export interface OpsRouteOptions extends OpsDeps {
 }
 
 export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions): void {
-  const { adminTokens, registry, pipeline, ...deps } = options;
+  const { adminTokens, auth, loginPath, registry, pipeline, ...deps } = options;
 
   /**
-   * 토큰을 주체로 바꾼다.
+   * 주체를 세우고 `operator` 역할을 확인한다.
    *
-   * 일치하는 것을 찾아도 **끝까지 돈다.** 처음 일치에서 멈추면 비교 횟수가
-   * 토큰 위치를 알려 준다.
+   * 세션이 구성되어 있으면 세션만 본다 — 토큰 경로를 함께 열어 두면 그것이
+   * 역할 검사를 우회하는 문이 된다 (CR-015, DEV-048).
    */
-  const authorize = (
+  const authorize = async (
     request: FastifyRequest,
     reply: FastifyReply,
     correlationId: string,
-  ): AdminPrincipal | null => {
-    const token = bearer(request);
-    let matched: AdminPrincipal | null = null;
-    if (token !== undefined) {
-      for (const principal of adminTokens) {
-        if (tokenMatches(token, principal.token)) matched = principal;
+  ): Promise<Principal | null> => {
+    try {
+      const principal =
+        auth === undefined
+          ? authenticateToken(request, adminTokens)
+          : await authenticateSession(request, auth.sessions);
+      requireRole(principal, 'operator');
+      return principal;
+    } catch (error) {
+      const shape = toAuthError(error, {
+        correlationId,
+        ...(loginPath === undefined ? {} : { loginPath }),
+      });
+      if (shape !== null) {
+        void sendAuthError(reply, shape);
+        return null;
       }
+      throw error;
     }
-    if (matched === null) {
-      // 무엇이 틀렸는지는 말하지 않는다. 토큰 존재 여부도 정보다.
-      void fail(reply, 401, 'UNAUTHENTICATED', '관리 API 인증에 실패했다', correlationId);
-    }
-    return matched;
   };
 
   app.get(DEAD_LETTER_PATH, async (request, reply) => {
     const correlationId = randomUUID();
-    if (authorize(request, reply, correlationId) === null) return reply;
+    if ((await authorize(request, reply, correlationId)) === null) return reply;
 
     const query = (request.query ?? {}) as Record<string, unknown>;
     try {
@@ -138,7 +146,7 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
 
   app.post(REPROCESS_PATH, async (request, reply) => {
     const correlationId = randomUUID();
-    if (authorize(request, reply, correlationId) === null) return reply;
+    if ((await authorize(request, reply, correlationId)) === null) return reply;
 
     const body = (request.body ?? {}) as Record<string, unknown>;
     try {
@@ -172,7 +180,7 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
   if (pipeline !== undefined) {
     app.get(PIPELINE_STATUS_PATH, async (request, reply) => {
       const correlationId = randomUUID();
-      if (authorize(request, reply, correlationId) === null) return reply;
+      if ((await authorize(request, reply, correlationId)) === null) return reply;
       return reply.send(await pipelineStatus(pipeline));
     });
   }
@@ -216,7 +224,7 @@ type Authorize = (
   request: FastifyRequest,
   reply: FastifyReply,
   correlationId: string,
-) => AdminPrincipal | null;
+) => Promise<Principal | null>;
 
 function repositoryIdOf(request: FastifyRequest): number {
   const raw = (request.params as { repository_id?: string }).repository_id;
@@ -240,12 +248,12 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
     request: FastifyRequest,
     reply: FastifyReply,
     run: (
-      principal: AdminPrincipal,
+      principal: Principal,
       correlationId: string,
     ) => Promise<{ readonly status: number; readonly body: unknown }>,
   ): Promise<FastifyReply> => {
     const correlationId = randomUUID();
-    const principal = authorize(request, reply, correlationId);
+    const principal = await authorize(request, reply, correlationId);
     if (principal === null) return reply;
 
     try {
@@ -294,7 +302,7 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
           ...(typeof body['mirror_enabled'] === 'boolean' ? { mirrorEnabled: body['mirror_enabled'] } : {}),
           ...(body['backfill'] === true ? { backfill: true } : {}),
         },
-        auditUserId(principal),
+        principalId(principal),
         correlationId,
       );
       return {
@@ -321,7 +329,7 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
             : { sequence_branches: normalizeBranches(body['sequence_branches']) }),
           ...(typeof body['mirror_enabled'] === 'boolean' ? { mirror_enabled: body['mirror_enabled'] } : {}),
         },
-        auditUserId(principal),
+        principalId(principal),
         correlationId,
       );
       return { status: 200, body: updated };
@@ -333,7 +341,7 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
       const result = await unregisterRepository(
         registry,
         repositoryIdOf(request),
-        auditUserId(principal),
+        principalId(principal),
         correlationId,
       );
       return {

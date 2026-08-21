@@ -1,14 +1,21 @@
 /**
  * search-api — 조회 API. 모든 ES 질의가 필수 접근 범위 필터를 거친다 (ADR-008).
  *
- * 지금 살아 있는 것은 헬스체크와 `ops` 모듈(WP-009)뿐이다. 검색 처리 경로는
- * WP-013·WP-014가 채운다.
+ * 지금 살아 있는 것은 헬스체크와 `ops` 모듈(WP-009), 그리고 `/me`(WP-012)다.
+ * 검색 처리 경로는 WP-013·WP-014가 채운다.
+ *
+ * **인증 통제는 둘 중 하나다** (CR-015, DEV-048). OIDC 세션이 구성되어 있으면
+ * `/me`가 서고 `/admin/*`는 `operator` 역할이 지킨다. 구성되지 않았으면
+ * 이름 붙은 토큰이 `/admin/*`의 임시 통제로 남고 `/me`는 서지 않는다.
+ * 둘을 함께 두면 토큰이 역할 검사를 우회하는 문이 된다.
  */
 
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { HealthResponse } from '@prs/contracts';
 import { resolveSearchApiConfig, type SearchApiConfig } from './config.js';
 import { registerOpsRoutes } from './ops/routes.js';
+import { registerAuthRoutes } from './auth/routes.js';
+import type { AuthContext } from './auth/context.js';
 import type { OpsDeps } from './ops/dead-letters.js';
 import type { RegistryDeps } from './ops/repositories.js';
 import type { PipelineStatusDeps } from './ops/pipeline-status.js';
@@ -29,6 +36,13 @@ export interface ServerDeps {
   readonly registry?: RegistryDeps;
   /** 파이프라인 상태 의존. 없으면 상태 경로를 달지 않는다 (API-ADM-006). */
   readonly pipeline?: PipelineStatusDeps;
+  /**
+   * 세션 인증 컨텍스트 (WP-012).
+   *
+   * 있으면 `/me`가 서고 `/admin/*`의 통제가 `operator` 역할이 된다.
+   * 없으면 이름 붙은 토큰이 `/admin/*`를 지킨다 (CR-015, DEV-048).
+   */
+  readonly auth?: AuthContext;
   readonly log?: (entry: { readonly level: string; readonly message: string }) => void;
 }
 
@@ -46,13 +60,24 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
     return { status: 'ok', service: SERVICE_NAME, version: VERSION };
   });
 
+  if (deps.auth !== undefined) {
+    if (config.adminTokens.length > 0) {
+      // 세션 옆에 토큰 우회를 열어 둔 배포를 만들지 않는다 (CR-015, DEV-048).
+      throw new Error(
+        'OIDC 세션과 ADMIN_API_TOKENS를 함께 구성할 수 없다 (CR-015, DEV-048). ' +
+          '세션이 서면 관리 API의 통제는 operator 역할이며 토큰 경로는 대체된다',
+      );
+    }
+    registerAuthRoutes(app, { auth: deps.auth, loginPath: config.auth.loginPath });
+  }
+
   if (deps.ops === undefined) return app;
 
-  if (config.adminTokens.length === 0) {
+  if (deps.auth === undefined && config.adminTokens.length === 0) {
     // 조용히 열어 두지 않는다. 뜨는 순간 왜 없는지 로그로 말한다 (CR-012, DEV-025).
     log({
       level: 'warn',
-      message: 'ADMIN_API_TOKENS가 없어 관리 경로를 등록하지 않는다 (API-ADM-001, API-ADM-003)',
+      message: '인증 수단이 없어 관리 경로를 등록하지 않는다 (API-ADM-001, API-ADM-003)',
     });
     return app;
   }
@@ -60,6 +85,8 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   registerOpsRoutes(app, {
     ...deps.ops,
     adminTokens: config.adminTokens,
+    ...(deps.auth === undefined ? {} : { auth: deps.auth }),
+    loginPath: config.auth.loginPath,
     ...(deps.registry === undefined ? {} : { registry: deps.registry }),
     ...(deps.pipeline === undefined ? {} : { pipeline: deps.pipeline }),
   });

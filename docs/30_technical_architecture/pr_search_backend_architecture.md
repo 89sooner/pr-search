@@ -279,7 +279,7 @@ async function search(rawQuery: string, opts: SearchOptions, ctx: RequestContext
 
 모든 조회는 다음 순서를 거친다.
 
-1. 세션 검증 (미인증 → 401 + OIDC 리다이렉트 힌트)
+1. 세션 검증 — `search-api`가 세션 쿠키를 Redis에서 **직접** 해석한다. 신원을 주장하는 헤더는 읽지 않는다 (CR-015, DEV-047). 미인증 → 401 + OIDC 리다이렉트 힌트
 2. 접근 범위 산출 (실패 → 503 `permission_unavailable`, 부분 결과 없음)
 3. 역할 검사 (운영·감사 화면만 해당. 부족 → 403)
 4. 강제 필터 결합 (우회 불가)

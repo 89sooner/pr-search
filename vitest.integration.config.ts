@@ -25,6 +25,7 @@ export default defineConfig({
       '@prs/db': resolvePackage('db'),
       '@prs/github': resolvePackage('github'),
       '@prs/bus': resolvePackage('bus'),
+      '@prs/authz': resolvePackage('authz'),
     },
   },
   test: {

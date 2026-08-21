@@ -433,7 +433,12 @@
   - `applyMandatoryScopeFilter` + `ScopedQuery` 브랜드 타입 실제 구현
   - `member`/`team`/`repository` 웹훅 수신 시 캐시 무효화 (`EVT-AUTH-001`)
   - 대량 무효화 시 요청 병합 + 동시 요청 상한 20
-  - `GET /me`: 사용자, 역할, 접근 범위 요약
+  - `GET /me`: 사용자, 역할, 접근 범위 **요약** (저장소 ID 목록 미포함 — CR-015, DEV-040)
+  - 신원 seam: `web`은 세션 쿠키·상관 ID만 전달하고 `search-api`가 Redis에서 직접 해석한다 (CR-015, DEV-047)
+  - 역할 합성: {`developer`} ∪ IdP 그룹 매핑(`manager`·`qa`) ∪ DB 지정값 (CR-015, DEV-049)
+  - `access_scope_version` 울타리 — 무효화와 겹친 갱신은 캐시에 쓰지 않는다 (CR-015, DEV-044)
+  - 무효화 대상 산출: `github_user_id` 조회, `team_id` → GHE 구성원 + `team_member` 갱신, `repository_id` → GIN 색인 (CR-015, DEV-043·DEV-045·DEV-046)
+  - `/admin/*` 인증 인계: OIDC 구성 시 세션 + `operator`, 이름 붙은 토큰은 OIDC 미구성 시에만 (CR-015, DEV-048)
   - 아키텍처 테스트: `applyMandatoryScopeFilter`를 거치지 않는 ES 호출 부재
 - 제외:
   - 화면 (WP-015)

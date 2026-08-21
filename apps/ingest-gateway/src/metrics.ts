@@ -23,6 +23,13 @@ export interface IngestMetrics {
   readonly archiveFailed: Counter;
   /** 큐 enqueue 실패 건수. 아웃박스 재적재(JOB-ING-007)가 얼마나 일하는지의 선행 지표다. */
   readonly enqueueFailed: Counter;
+  /**
+   * `permission.invalidated` 발행 실패 건수 (EVT-AUTH-001, CR-015 DEV-042).
+   *
+   * 유실은 곧 영구 우회가 아니다 — 캐시 TTL 5분이 최후의 안전망이다. 그러나
+   * 그 5분 동안 권한 회수가 반영되지 않으므로 0이 아니면 봐야 한다.
+   */
+  readonly permissionPublishFailed: Counter;
   render(): string;
 }
 
@@ -33,6 +40,10 @@ export function createIngestMetrics(): IngestMetrics {
   const responseSeconds = new Histogram('ingest_response_seconds', '수신 응답 시간(초)', RESPONSE_BUCKETS);
   const archiveFailed = new Counter('ingest_archive_failed_total', 'NDJSON 아카이브 append 실패 건수');
   const enqueueFailed = new Counter('ingest_enqueue_failed_total', '큐 enqueue 실패 건수');
+  const permissionPublishFailed = new Counter(
+    'ingest_permission_publish_failed_total',
+    'permission.invalidated 발행 실패 건수',
+  );
 
   return {
     received,
@@ -41,7 +52,16 @@ export function createIngestMetrics(): IngestMetrics {
     responseSeconds,
     archiveFailed,
     enqueueFailed,
+    permissionPublishFailed,
     render: (): string =>
-      renderMetrics([received, rejected, duplicate, archiveFailed, enqueueFailed, responseSeconds]),
+      renderMetrics([
+        received,
+        rejected,
+        duplicate,
+        archiveFailed,
+        enqueueFailed,
+        permissionPublishFailed,
+        responseSeconds,
+      ]),
   };
 }

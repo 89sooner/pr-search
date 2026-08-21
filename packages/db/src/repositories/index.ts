@@ -1,4 +1,5 @@
 export * as auditRepo from './audit.js';
+export * as authRepo from './auth.js';
 export * as deadLetterRepo from './dead-letter.js';
 export * as jobRepo from './job.js';
 export * as mergeSequenceRepo from './merge-sequence.js';
@@ -27,4 +28,12 @@ export type {
   RepositoryStatus,
 } from './repository.js';
 export type { AuditFilter, AuditRecordInput, AuditRecordRow } from './audit.js';
+export type {
+  AppUserRow,
+  AppUserUpsert,
+  PermissionCacheRow,
+  PermissionCacheWrite,
+  ScopeKind,
+  TeamRow,
+} from './auth.js';
 export type { SequenceSpaceRow, SequenceSpaceState } from './sequence-space.js';

@@ -15,6 +15,8 @@ export const EVENT_NAMES = {
   ingestionProjected: 'ingestion.projected',
   /** EVT-ING-004 */
   ingestionFailed: 'ingestion.failed',
+  /** EVT-AUTH-001 */
+  permissionInvalidated: 'permission.invalidated',
 } as const;
 
 export type EventName = (typeof EVENT_NAMES)[keyof typeof EVENT_NAMES];

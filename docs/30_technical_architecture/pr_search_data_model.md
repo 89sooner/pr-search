@@ -215,11 +215,12 @@ CREATE TABLE repository (
 );
 
 CREATE TABLE app_user (
-  user_id               TEXT        PRIMARY KEY,
-  login                 TEXT        NOT NULL UNIQUE,
+  user_id               TEXT        PRIMARY KEY,          -- OIDC sub (CR-015, DEV-043)
+  login                 TEXT        NOT NULL UNIQUE,      -- GHE login
+  github_user_id        BIGINT      UNIQUE,               -- GHE 숫자 id (CR-015, DEV-043)
   email                 TEXT,
   roles                 TEXT[]      NOT NULL DEFAULT '{developer}',
-  access_scope_version  INT         NOT NULL DEFAULT 0,   -- 무효화 시 증가
+  access_scope_version  INT         NOT NULL DEFAULT 0,   -- 무효화 시 증가 (CR-015, DEV-044)
   last_seen_at          TIMESTAMPTZ
 );
 
@@ -244,7 +245,18 @@ CREATE TABLE permission_cache (            -- Redis 미스 시 백업 (ADR-008)
   team_ids     BIGINT[],
   refreshed_at TIMESTAMPTZ NOT NULL
 );
+
+-- `repository` 웹훅의 "영향 사용자"를 찾는 색인 (CR-015, DEV-045).
+-- 없으면 전량 스캔이고, org_team 모드 사용자는 저장소를 나열하지 않아 아예 찾히지 않는다.
+CREATE INDEX permission_cache_repos_idx ON permission_cache USING GIN (repository_ids);
+CREATE INDEX permission_cache_orgs_idx  ON permission_cache USING GIN (org_ids);
 ```
+
+**신원의 세 가지 표현 (CR-015, DEV-043).** 세션은 OIDC `sub`로 만들어지고, 무효화 이벤트는 GHE 신원으로 도착한다. `user_id`(OIDC `sub`)가 기본 키이고, `login`과 `github_user_id`가 GHE 쪽 두 이름이다. 무효화는 **`github_user_id`를 우선 쓴다** — login은 개명될 수 있지만 숫자 id는 아니고, 개명 웹훅을 놓친 사이의 무효화가 조용히 아무도 맞히지 못하는 것이 이 시스템에서 가장 나쁜 실패다.
+
+**`access_scope_version`은 울타리다 (CR-015, DEV-044).** 무효화마다 증가하고, 캐시 갱신은 시작 시점에 읽은 값이 그대로일 때만 기록한다. 회수 직전에 시작된 GHE 조회가 회수 뒤에 끝나면서 회수 이전 범위를 되살리는 것을 막는다. 보안 문서 5.4에 순서가 있다.
+
+**`team_member`는 `team` 웹훅이 채운다 (CR-015, DEV-046).** authz 소비자가 이벤트를 받아 GHE에서 구성원을 다시 읽어 갱신한다. 표를 무효화의 유일한 근거로 삼지는 않는다 — 비어 있는 표가 "무효화할 사람이 없다"로 읽히면 회수가 반영되지 않는다.
 
 ### 3.4 애플리케이션 상태
 

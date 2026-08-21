@@ -803,6 +803,45 @@ POST /api/v1/analytics/percentiles
 - 표본 20건 미만이면 `low_sample: true`와 원값 목록 (`raw_values`)을 반환한다
 - `first_review_wait_seconds`는 리뷰 없는 PR을 제외하고 `excluded_count`에 집계한다 (FR-STAT-004 AC-1)
 
+### API-AUTH-001 현재 사용자
+
+- 목적: 세션의 주인이 누구이고, 무엇을 볼 수 있는지 한 번에 알려 준다.
+- 관련 요구사항: FR-AUTH-001, FR-AUTH-002
+- 관련 화면: 없음 (셸이 역할 기반 내비게이션 필터링에 쓴다 — WP-015)
+
+요청: `GET /api/v1/me`
+
+응답 200:
+
+```json
+{
+  "user_id": "8f2b1c40-5d7a-4a11-9f3e-6c0d2b8a7e51",
+  "login": "kim",
+  "email": "kim@acme.example",
+  "roles": ["developer", "operator"],
+  "access_scope": {
+    "scope_kind": "explicit",
+    "repository_count": 128,
+    "org_count": 1,
+    "team_count": 6,
+    "refreshed_at": "2026-08-21T09:14:02.000Z"
+  },
+  "session": {
+    "issued_at": "2026-08-21T08:55:00.000Z",
+    "idle_expires_at": "2026-08-21T17:14:02.000Z",
+    "absolute_expires_at": "2026-08-21T20:55:00.000Z"
+  },
+  "correlation_id": "01J9Z..."
+}
+```
+
+- 오류: 401 `UNAUTHENTICATED` (세션 없음·만료), 503 `PERMISSION_UNAVAILABLE` (접근 범위 조회 실패)
+- Authz: 인증만 필요하다. 역할 검사는 없다 — 자기 자신을 보는 것이므로
+- **`access_scope`는 요약이다. 저장소 ID 목록을 싣지 않는다 (CR-015, DEV-040).** 접근 범위가 500개를 넘는 사용자에서 응답이 수십 KB가 되고, 그 목록은 조직의 저장소 인벤토리 그 자체다. 화면은 건수만 필요하다
+- `scope_kind`가 `org_team`이면 `repository_count`는 `null`이다 — 그 모드는 저장소를 세지 않고 조직·팀 조건으로 치환하기 때문이다 (FR-AUTH-002 AC-6)
+- `roles`는 IdP 그룹 매핑(`manager`, `qa`)과 DB 지정(`operator`, `release_manager`, `security_officer`)의 합집합에 `developer`를 더한 것이다 (CR-015, DEV-049)
+- **접근 범위 조회에 실패하면 부분 응답을 내지 않는다.** `access_scope`를 비우고 200을 주면 화면이 "볼 수 있는 저장소가 없다"로 읽는다. 503이어야 FLOW-000 5단계의 `permission_unavailable` 상태가 성립한다 (FR-AUTH-002 AC-3)
+
 ### API-ING-001 웹훅 수신
 
 - 목적: GHE 웹훅을 검증·저장하고 파이프라인에 투입한다.
@@ -989,7 +1028,7 @@ POST /api/v1/admin/dead-letters/reprocess
 - 재투입 지점은 실패 단계와 무관하게 항상 `prs:ingest`다. 중간 이벤트는 보존되지 않으며 멱등 규칙(FR-ING-002)이 중복 문서를 막는다
 - 재처리한 행은 `state: 'reprocessing'`이 된다. 다시 실패하면 `reprocess_count`가 오르고 3회에 닿으면 `held`, 끝까지 성공하면 투영이 `resolved`로 닫는다
 
-**인증 (CR-012, DEV-025).** 이 API의 최종 권한은 `operator` 역할이며 그 판정은 WP-012의 OIDC 세션이 세운다. WP-012 이전(REL-001)에는 조직에 사용자 신원 자체가 없으므로, 그 사이의 임시 통제로 공유 토큰(`ADMIN_API_TOKEN`, `Authorization: Bearer`)을 요구한다. **토큰이 설정되지 않으면 이 경로들을 아예 등록하지 않는다** — 인증 수단 없이 열린 변경 API를 두는 것보다 없는 편이 낫다. 토큰 불일치는 401 `UNAUTHENTICATED`다. WP-012가 역할 판정을 세우면 이 통제는 대체된다.
+**인증 (CR-012, DEV-025).** 이 API의 최종 권한은 `operator` 역할이며 그 판정은 WP-012의 OIDC 세션이 세운다. WP-012 이전(REL-001)에는 조직에 사용자 신원 자체가 없으므로, 그 사이의 임시 통제로 공유 토큰(`ADMIN_API_TOKEN`, `Authorization: Bearer`)을 요구한다. **토큰이 설정되지 않으면 이 경로들을 아예 등록하지 않는다** — 인증 수단 없이 열린 변경 API를 두는 것보다 없는 편이 낫다. 토큰 불일치는 401 `UNAUTHENTICATED`다. WP-012가 역할 판정을 세우면 이 통제는 대체된다. **인계 방법 (CR-015, DEV-048): OIDC가 구성되면 `/admin/*`의 통제는 세션 + `operator` 역할이고, 이름 붙은 토큰 경로는 OIDC가 구성되지 않은 경우에만 등록된다.** 둘은 배타다 — 두 구성이 함께 주어지면 기동에서 거부한다. 실제 세션 옆에 역할 검사를 우회하는 토큰 문이 열린 채로 배포되는 것이 이 통제가 막으려던 바로 그 상황이기 때문이다.
 
 ### API-ADM-007 시퀀스 정합성 점검과 재채번
 
@@ -1122,7 +1161,7 @@ POST /api/v1/admin/sequence-integrity
 | EVT-ING-004 | `ingestion.failed` | 모든 워커 | ops 모듈 | `{ delivery_id, stage, error, retry_count }` | 멱등 키 `(delivery_id, stage)` |
 | EVT-SEQ-001 | `sequence.assigned` | sequence 워커 | project 워커 | `{ repository_id, base_branch, seq_epoch, from_seq, to_seq }` | 시퀀스 공간별 직렬 |
 | EVT-SEQ-002 | `sequence.reassigned` | sequence 워커 | project 워커, 알림 | `{ repository_id, base_branch, old_epoch, new_epoch, from_seq }` | 시퀀스 공간별 직렬 |
-| EVT-AUTH-001 | `permission.invalidated` | ingest-gateway | authz 모듈 | `{ user_ids[], repository_id, reason }` | 멱등 (집합 연산) |
+| EVT-AUTH-001 | `permission.invalidated` | ingest-gateway | authz 모듈 | `{ user_ids[], team_id, repository_id, reason }` (CR-015, DEV-041 — 비동기 문서 4장과 일치시켰다. `team` 웹훅은 팀 전원에 영향을 주는데 게이트웨이가 수신 경로 안에서 팀을 구성원으로 펼치면 GHE 동기 호출이 들어가 NFR-002의 수신 p95 300ms가 무너진다. 셋 다 선택이며 하나 이상이 있어야 한다) | 멱등 (집합 연산) |
 | EVT-JOB-001 | `job.progress` | 모든 배치 워커 | ops 모듈 | `{ job_id, type, target, state, progress }` | 최신 값 우선 |
 
 이벤트 이름은 `<도메인>.<행위>` 규칙을 따른다 (glossary 3장).

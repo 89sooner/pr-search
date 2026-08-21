@@ -12,6 +12,9 @@
   ],
   "references": [
     {
+      "path": "../../packages/authz"
+    },
+    {
       "path": "../../packages/domain"
     },
     {

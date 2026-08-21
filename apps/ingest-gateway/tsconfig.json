@@ -25,6 +25,9 @@
     },
     {
       "path": "../../packages/metrics"
+    },
+    {
+      "path": "../../packages/authz"
     }
   ]
 }

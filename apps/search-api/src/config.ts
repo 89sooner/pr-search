@@ -5,6 +5,8 @@
  * (보안 문서 6장, NFR-005).
  */
 
+import { resolveSessionReaderConfig, type SessionReaderConfig } from '@prs/authz';
+
 export interface SearchApiEnv {
   readonly [key: string]: string | undefined;
 }
@@ -39,6 +41,8 @@ export interface SearchApiConfig {
    * 하나를 긁어 클러스터 전체인 양 내놓지 않는다.
    */
   readonly metricsQueryUrl: string | null;
+  /** 세션 인증 구성 (WP-012). `enabled`가 false면 토큰 통제가 남는다. */
+  readonly auth: SessionReaderConfig;
 }
 
 /** `"alice:tok1,bob:tok2"`를 주체 목록으로. 이름이 없으면 `unnamed`. */
@@ -78,6 +82,7 @@ export function resolveSearchApiConfig(env: SearchApiEnv = process.env): SearchA
     port: Number(env['SEARCH_API_PORT'] ?? '3002'),
     adminTokens: parseAdminTokens(env),
     metricsQueryUrl: metricsUrl === '' ? null : metricsUrl,
+    auth: resolveSessionReaderConfig(env),
   };
 }
 

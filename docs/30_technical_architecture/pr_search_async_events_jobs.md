@@ -46,6 +46,17 @@
 | JOB-REL-005 | 미해결 참조 해결 | EVT-ING-003 | link | 3회 | 30초 | - | FR-REL-003 AC-3 |
 | JOB-REL-006 | 관계 전량 재파생 | 수동 (API-ADM-002) | batch | 항목별 3회 | 없음 | EVT-JOB-001 | FR-REL-003~006 |
 | JOB-AUTH-001 | 권한 캐시 갱신·무효화 | EVT-AUTH-001 / TTL 만료 | authz | 3회 | 10초 | - | FR-AUTH-003 |
+
+**JOB-AUTH-001의 대상 펼치기 (CR-015, DEV-042·DEV-045·DEV-046).** 게이트웨이는 웹훅이 준 것만 싣고, 펼치는 일은 전부 이 소비자가 한다 — 수신 경로에 GHE 동기 호출을 넣으면 NFR-002의 수신 p95 300ms가 무너지기 때문이다.
+
+| 실린 필드 | 무효화 대상 | 찾는 방법 |
+| --- | --- | --- |
+| `user_ids[]` | 그 사용자들 | `app_user.github_user_id`로 조회한다. login은 개명될 수 있으나 숫자 id는 아니다 (DEV-043) |
+| `team_id` | 팀 전원 | GHE에서 구성원을 다시 읽어 `team_member`를 갱신하고, 같은 응답을 무효화 대상으로 쓴다. 표가 비어 있어도 성립한다 |
+| `repository_id` | 그 저장소를 볼 수 있던 사용자 | (`permission_cache.repository_ids`가 그 저장소를 담은 행) ∪ (`org_ids`가 그 저장소의 조직을 담은 `org_team` 행). 둘 다 GIN 색인으로 찾는다 |
+
+무효화는 Redis 키 삭제 + `permission_cache` 행 삭제 + `app_user.access_scope_version` 증가다. **버전 증가가 울타리다** — 회수 직전에 시작된 GHE 조회가 회수 뒤에 끝나 회수 이전 범위를 캐시에 다시 써 넣는 것을 막는다 (DEV-044). 대량 무효화 시 사용자 단위 요청 병합과 동시 요청 상한 20을 적용한다 (FR-AUTH-003 예외 처리).
+
 | JOB-SRCH-001 | 검색 결과 비동기 내보내기 | 수동 (API-SRCH-006) | batch | 없음 | 30분 | EVT-JOB-001 | FR-SRCH-012 |
 | JOB-AUD-001 | 감사·원본 보존 만료 파티션 드롭 | 스케줄 (일 1회) | batch | 3회 | 10분 | - | FR-ING-003, FR-AUTH-004 |
 | JOB-MIR-001 | 미러 fetch 동기화 | `push` 이벤트 / 스케줄 (6시간) | sequence | 3회 | 15분 | - | ADR-005 |
@@ -61,7 +72,7 @@
 | EVT-SEQ-001 | `sequence.assigned` | sequence | project, ops | `{ repository_id, base_branch, seq_epoch, from_seq, to_seq, head_sha }` | 시퀀스 공간별 직렬 |
 | EVT-SEQ-002 | `sequence.reassigned` | sequence | project, 알림, ops | `{ repository_id, base_branch, old_epoch, new_epoch, diverged_at_seq, affected_count }` | 시퀀스 공간별 직렬 |
 | EVT-SEQ-003 | `sequence.stale` | sequence | ops, 알림 | `{ repository_id, base_branch, reason, last_error }` | 최신 값 우선 |
-| EVT-AUTH-001 | `permission.invalidated` | ingest-gateway | authz | `{ user_ids[], team_id, repository_id, reason }` | 집합 연산이라 멱등 |
+| EVT-AUTH-001 | `permission.invalidated` | ingest-gateway | authz | `{ user_ids[], team_id, repository_id, reason }` — 세 대상 필드는 모두 선택이며 **하나 이상이 있어야 한다.** `member` 웹훅은 `user_ids`, `team` 웹훅은 `team_id`, `repository` 웹훅은 `repository_id`를 채운다. 게이트웨이는 펼치지 않는다 (CR-015, DEV-041·DEV-042) | 집합 연산이라 멱등 |
 | EVT-JOB-001 | `job.progress` | 배치 워커 | ops | `{ job_id, type, target, state, progress: { done, total, unit }, cursor }` | 최신 값 우선 |
 
 ## 5. 재시도와 백오프

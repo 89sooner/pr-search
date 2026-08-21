@@ -15,7 +15,8 @@
       "@prs/es": ["./packages/es/src/index.ts"],
       "@prs/db": ["./packages/db/src/index.ts"],
       "@prs/github": ["./packages/github/src/index.ts"],
-      "@prs/bus": ["./packages/bus/src/index.ts"]
+      "@prs/bus": ["./packages/bus/src/index.ts"],
+      "@prs/authz": ["./packages/authz/src/index.ts"]
     }
   },
   "include": [

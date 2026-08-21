@@ -21,6 +21,15 @@ import { buildServer } from '../../src/server.js';
 import { DEAD_LETTER_PATH, REPROCESS_PATH } from '../../src/ops/routes.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
 
+/** WP-012 이전과 같은 조건: OIDC 미구성 → 이름 붙은 토큰이 통제한다 (CR-015, DEV-048). */
+const TEST_AUTH_CONFIG = {
+  enabled: false,
+  cookieSecure: false,
+  loginPath: '/auth/login',
+  groupRoleMap: new Map<string, never>(),
+} as const;
+
+
 const TOKEN = 'test-admin-token';
 const AUTH = { authorization: `Bearer ${TOKEN}` };
 const REPOSITORY_ID = 4021;
@@ -77,7 +86,7 @@ describe('실패 대기열 API (WP-009, API-ADM-003)', () => {
     redis = createTestRedis();
     bus = new RedisStreamsEventBus(redis);
     app = buildServer({
-      config: { port: 0, adminTokens: [{ name: 'tester', token: TOKEN }], metricsQueryUrl: null },
+      config: { port: 0, adminTokens: [{ name: 'tester', token: TOKEN }], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG },
       ops: { pool, bus },
     });
     await app.ready();
@@ -125,7 +134,7 @@ describe('실패 대기열 API (WP-009, API-ADM-003)', () => {
     });
 
     it('토큰이 설정되지 않으면 경로가 아예 없다', async () => {
-      const bare = buildServer({ config: { port: 0, adminTokens: [], metricsQueryUrl: null }, ops: { pool, bus } });
+      const bare = buildServer({ config: { port: 0, adminTokens: [], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG }, ops: { pool, bus } });
       try {
         await bare.ready();
         const response = await bare.inject({ method: 'GET', url: DEAD_LETTER_PATH, headers: AUTH });
@@ -355,7 +364,7 @@ describe('실패 대기열 API (WP-009, API-ADM-003)', () => {
         close: async (): Promise<void> => undefined,
       };
       const broken = buildServer({
-        config: { port: 0, adminTokens: [{ name: 'tester', token: TOKEN }], metricsQueryUrl: null },
+        config: { port: 0, adminTokens: [{ name: 'tester', token: TOKEN }], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG },
         ops: { pool, bus: brokenBus },
       });
 

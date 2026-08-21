@@ -29,6 +29,10 @@ export interface WorkerMetrics {
   readonly deadLetterResolved: Counter;
   /** 단계 처리 시간(초). 라벨: `stage`, `outcome`. */
   readonly stageSeconds: Histogram;
+  /** 무효화한 사용자 수 (JOB-AUTH-001). 라벨: `reason`. */
+  readonly permissionInvalidated: Counter;
+  /** 무효화 실패 건수. 라벨: `reason`. 0이 아니면 회수가 최대 5분 늦는다. */
+  readonly permissionInvalidationFailed: Counter;
   render(): string;
 }
 
@@ -45,6 +49,11 @@ export function createWorkerMetrics(): WorkerMetrics {
     '재처리 성공으로 닫은 실패 대기열 건수',
   );
   const stageSeconds = new Histogram('stage_latency_seconds', '파이프라인 단계 처리 시간(초)', STAGE_BUCKETS);
+  const permissionInvalidated = new Counter('permission_invalidated_total', '권한 캐시를 무효화한 사용자 수');
+  const permissionInvalidationFailed = new Counter(
+    'permission_invalidation_failed_total',
+    '권한 캐시 무효화 실패 건수',
+  );
 
   return {
     enrichPending,
@@ -52,7 +61,17 @@ export function createWorkerMetrics(): WorkerMetrics {
     deadLettered,
     deadLetterResolved,
     stageSeconds,
+    permissionInvalidated,
+    permissionInvalidationFailed,
     render: (): string =>
-      renderMetrics([enrichPending, ingestionLagSeconds, deadLettered, deadLetterResolved, stageSeconds]),
+      renderMetrics([
+        enrichPending,
+        ingestionLagSeconds,
+        deadLettered,
+        deadLetterResolved,
+        permissionInvalidated,
+        permissionInvalidationFailed,
+        stageSeconds,
+      ]),
   };
 }

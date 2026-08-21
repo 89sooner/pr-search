@@ -49,6 +49,9 @@ function harness(overrides: Partial<IngestDeps> = {}): Harness {
     enqueue: async (): Promise<void> => {
       calls.push('enqueue');
     },
+    publishPermissionInvalidation: async (): Promise<void> => {
+      calls.push('permission');
+    },
     archive,
     metrics: createIngestMetrics(),
     maxBodyBytes: MAX_BODY_BYTES,
@@ -285,5 +288,98 @@ describe('FR-ING-003 / API-ING-001: 원본 보관과 화이트리스트', () => 
     expect(serialized).not.toContain('sha256=deadbeef');
     expect(serialized).not.toContain('"action":"opened"');
     expect(logs.at(-1)).toMatchObject({ message: 'webhook accepted', supported: true });
+  });
+});
+
+describe('EVT-AUTH-001: 권한 캐시 무효화 발행 (CR-015, DEV-042)', () => {
+  const memberBody = Buffer.from(
+    JSON.stringify({
+      action: 'removed',
+      member: { login: 'kim', id: 501 },
+      repository: { id: 4021 },
+      organization: { login: 'acme', id: 1 },
+    }),
+  );
+
+  it('`member` 이벤트에서 발행한다', async () => {
+    const published: unknown[] = [];
+    const { deps } = harness({
+      publishPermissionInvalidation: async (target): Promise<void> => {
+        published.push(target);
+      },
+    });
+
+    await ingestWebhook(deps, request({ eventType: 'member', rawBody: memberBody }));
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatchObject({ reason: 'member', githubUserIds: [501], logins: ['kim'] });
+  });
+
+  it('`team`·`repository` 이벤트에서도 발행한다', async () => {
+    for (const [eventType, body, expected] of [
+      ['team', { team: { id: 77, slug: 'core' }, organization: { login: 'acme', id: 1 } }, { teamId: 77 }],
+      ['repository', { action: 'privatized', repository: { id: 4021 } }, { repositoryId: 4021 }],
+    ] as const) {
+      const published: unknown[] = [];
+      const { deps } = harness({
+        publishPermissionInvalidation: async (target): Promise<void> => {
+          published.push(target);
+        },
+      });
+
+      await ingestWebhook(deps, request({ eventType, rawBody: Buffer.from(JSON.stringify(body)) }));
+      expect(published[0]).toMatchObject(expected);
+    }
+  });
+
+  it('PR 이벤트에서는 발행하지 않는다', async () => {
+    const { deps, calls } = harness();
+    await ingestWebhook(deps, request());
+    expect(calls).not.toContain('permission');
+  });
+
+  it('게이트웨이가 팀을 구성원으로 펼치지 않는다 (NFR-002 수신 p95 300ms)', async () => {
+    const published: { githubUserIds: readonly number[] }[] = [];
+    const { deps } = harness({
+      publishPermissionInvalidation: async (target): Promise<void> => {
+        published.push(target);
+      },
+    });
+
+    await ingestWebhook(
+      deps,
+      request({
+        eventType: 'team',
+        rawBody: Buffer.from(JSON.stringify({ team: { id: 77, slug: 'core' } })),
+      }),
+    );
+    // 펼치려면 GHE 동기 호출이 필요하고, 그것이 수신 응답 시간을 무너뜨린다.
+    expect(published[0]?.githubUserIds).toEqual([]);
+  });
+
+  it('발행이 실패해도 202를 막지 않고 오류로 남긴다', async () => {
+    const { deps, logs } = harness({
+      publishPermissionInvalidation: async (): Promise<void> => {
+        throw new Error('Redis 연결 없음');
+      },
+    });
+
+    const outcome = await ingestWebhook(deps, request({ eventType: 'member', rawBody: memberBody }));
+    expect(outcome.status).toBe(202);
+    expect(logs.some((entry) => entry.reason === 'permission_publish_failed')).toBe(true);
+  });
+
+  it('중복 전달은 다시 발행하지 않는다', async () => {
+    const { deps, calls } = harness({ store: async () => ({ duplicate: true }) });
+    await ingestWebhook(deps, request({ eventType: 'member', rawBody: memberBody }));
+    expect(calls).not.toContain('permission');
+  });
+
+  it('모양이 다른 payload에서는 발행하지 않는다 — 빈 무효화를 만들지 않는다', async () => {
+    const { deps, calls } = harness();
+    await ingestWebhook(
+      deps,
+      request({ eventType: 'member', rawBody: Buffer.from(JSON.stringify({ action: 'added' })) }),
+    );
+    expect(calls).not.toContain('permission');
   });
 });

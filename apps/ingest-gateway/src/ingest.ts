@@ -16,6 +16,7 @@
  */
 
 import type { RawEventInsert } from '@prs/db';
+import { extractInvalidationTarget, isEmptyTarget, type InvalidationTarget } from '@prs/authz';
 import type { ArchiveWriter } from './archive.js';
 import { eventTypeLabel, isSupportedEventType } from './events.js';
 import type { IngestMetrics } from './metrics.js';
@@ -77,6 +78,17 @@ export interface IngestDeps {
    * `JOB-ING-007`이 재적재한다 (ADR-002 follow-up).
    */
   readonly enqueue: (event: RawEventInsert) => Promise<void>;
+  /**
+   * 권한 캐시 무효화 발행 (EVT-AUTH-001, CR-015 DEV-042).
+   *
+   * `member`/`team`/`repository` 이벤트만 대상이다. **여기서 팀을 구성원으로
+   * 펼치지 않는다** — GHE 동기 호출이 수신 경로에 들어가면 NFR-002의 수신
+   * p95 300ms가 그대로 무너진다. 펼치기는 authz 소비자가 한다.
+   */
+  readonly publishPermissionInvalidation: (
+    target: InvalidationTarget,
+    correlationId: string,
+  ) => Promise<void>;
   readonly archive: ArchiveWriter;
   readonly metrics: IngestMetrics;
   readonly maxBodyBytes: number;
@@ -192,6 +204,26 @@ export async function ingestWebhook(deps: IngestDeps, request: WebhookRequest): 
       event_type: eventType,
       reason: 'enqueue_failed',
     });
+  }
+
+  // 5b. 권한 캐시 무효화 (EVT-AUTH-001). 실패해도 202를 막지 않는다 —
+  //     TTL 5분이 최후의 안전망이라 유실이 곧 영구 우회는 아니다. 다만
+  //     그 5분 동안 회수가 반영되지 않으므로 오류로 남긴다.
+  const invalidation = extractInvalidationTarget(eventType, payload);
+  if (invalidation !== null && !isEmptyTarget(invalidation)) {
+    try {
+      await deps.publishPermissionInvalidation(invalidation, correlationId);
+    } catch {
+      deps.metrics.permissionPublishFailed.inc();
+      deps.log({
+        level: 'error',
+        message: 'permission.invalidated 발행 실패 — 최대 5분간 회수가 반영되지 않는다',
+        correlation_id: correlationId,
+        delivery_id: deliveryId,
+        event_type: eventType,
+        reason: 'permission_publish_failed',
+      });
+    }
   }
 
   // 6. 아카이브. 레인 B 실패는 레인 A를 막지 않는다.
