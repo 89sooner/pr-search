@@ -96,7 +96,14 @@ describe('axe 위반 0건 (NFR-007)', () => {
   it('C-005 ErrorBanner — tone 3종 전부', async () => {
     for (const tone of ['info', 'warning', 'danger'] as const) {
       const { container, unmount } = render(
-        <ErrorBanner tone={tone} title="조회 실패" impact="결과를 표시할 수 없습니다" correlationId="corr-1" />,
+        <ErrorBanner
+          tone={tone}
+          title="조회 실패"
+          impact="결과를 표시할 수 없습니다"
+          correlationId="corr-1"
+          /* `danger`에는 복구 액션이 필수다 — C-005와 Conductor가 함께 건다. */
+          action={<button type="button">다시 시도</button>}
+        />,
       );
       expect(describeViolations(await violations(container)), tone).toBe('');
       unmount();

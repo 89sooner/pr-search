@@ -94,7 +94,8 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 식별자·질의 통합 입력. 클라이언트 사전 판정과 해석 트리거
 - 기반: Conductor `TextField` + `DropdownMenu`(최근 검색)
-- 필수 props: `value`, `onSubmit(value)`, `recentQueries: string[]`
+- 필수 props: `value`, `onSubmit(value)`
+- 선택 props: `recentQueries?: string[]` (기본 `[]`) — **저장 위치가 정해지지 않아 선택이다** (CR-019, DEV-079). 비면 최근 목록을 그리지 않는다. 서버에 보내면 사용자의 조사 이력이 서버 기록이 되는데 그것을 요구한 문서가 없다
 - 상태: `idle`, `resolving`, `error_prefix_too_short`, `error_query_syntax`
 - 이벤트: `search.submit`
 - 접근성: `role="searchbox"`, 결과 후보는 `aria-live="polite"`로 건수를 알린다
@@ -115,8 +116,9 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - 책임: 필드별 값 분포와 건수를 제공하고 필터 선택을 반영
 - 기반: Conductor `Panel` + `Checkbox`
 - 필수 props: `facets: Facet[]`, `selected: FilterSelection`, `onChange`, `omitted?: boolean`
-- 상태: `loading`, `ready`, `omitted`(패싯 생략), `error`
-- 사용 규칙: 패싯 생략 시 사유를 레일 상단에 표시한다. 조용히 비우지 않는다
+- 상태: `loading`, `ready`, `not_computed`(아직 세지 않음), `omitted`(예산 초과로 생략), `error`
+- 사용 규칙: 세지 않았거나 생략했으면 **사유를 레일 상단에 표시한다. 조용히 비우지 않는다**
+- **세 경우를 구분한다** (CR-019, DEV-076): 응답에 `facets` 키가 **없으면** `not_computed`(WP-032 전까지의 상태), `facets_omitted: true`면 `omitted`(이번 조회에서 예산을 넘겼다), 키가 있고 `false`면 `ready`. 사용자가 할 수 있는 일이 각각 다르므로 같은 문구로 뭉뚱그리지 않는다
 - 관련 FR: FR-SRCH-006, FR-SRCH-009
 
 ### C-013 ResultTable
@@ -133,8 +135,10 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 머지 시퀀스 값과 시퀀스 공간을 함께 표시
 - 기반: Conductor `Badge`
-- 필수 props: `seq: number | null`, `space: SequenceSpaceRef`, `epoch: number`, `contextSpace?: SequenceSpaceRef`
-- 상태: `assigned`, `unassigned`(미머지), `stale`, `reassigning`, `epoch_stale`
+- 필수 props: `seq: number | null`, `space: SequenceSpaceRef | null`, `epoch: number | null`, `contextSpace?: SequenceSpaceRef | null`
+- `SequenceSpaceRef`는 투영이 주는 `owner/repo@branch` 문자열이다 (CR-019, DEV-077)
+- 상태: `assigned`, `unassigned`(미머지), `not_computed`(**아직 계산하지 않음** — WP-021 전), `stale`, `reassigning`, `epoch_stale`
+- **`unassigned`와 `not_computed`를 절대 같이 그리지 않는다** (CR-019, DEV-077): 전자는 "머지되지 않았다"는 **사실 주장**이고 후자는 "아직 모른다"이다. 미계산을 미머지로 그리면 화면이 거짓을 말한다
 - 사용 규칙: `contextSpace`와 `space`가 다르면 tone을 `neutral`로 낮추고 툴팁에 공간을 명시한다. 서로 다른 공간의 시퀀스가 비교 가능한 값으로 오인되면 안 된다
 - 접근성: 툴팁 내용은 `aria-describedby`로 연결하고, 시각적 tone 차이에만 의존하지 않는다
 - 관련 FR: FR-SEQ-001, FR-SEQ-005

@@ -45,11 +45,21 @@ const FILES = SOURCE_DIRS.flatMap(sourceFiles);
 
 describe('QA-COMMON-16: 리터럴 색상값이 없다 (ADR-006)', () => {
   /*
-   * `#rrggbb`·`rgb()`·`hsl()` 전부를 본다. 색은 Conductor 토큰에서만 온다 —
-   * 리터럴을 하나 두면 그 하나가 테마 전환에서 따라오지 않아, 다크 모드에서
-   * 글자가 배경과 같은 색이 된다.
+   * `#rrggbb`·`#rrggbbaa`·`rgb()`·`hsl()`을 본다. 색은 Conductor 토큰에서만
+   * 온다 — 리터럴을 하나 두면 그 하나가 테마 전환에서 따라오지 않아,
+   * 다크 모드에서 글자가 배경과 같은 색이 된다.
+   *
+   * **3·4자리 축약형은 일부러 뺐다.** 이 제품의 UI 문구에는 `#1234` 같은
+   * **PR 번호**가 도처에 있고(`ResultTable`의 표시 이름이 그 모양이다),
+   * `#1234`는 4자리 RGBA 축약과 문자열로 구별되지 않는다. 실제로 이 검사가
+   * `OmniSearchInput`의 placeholder에 있는 `#1234`를 색으로 신고했다.
+   *
+   * 늘 거짓 경보를 내는 검사는 곧 꺼지므로, **요구사항이 문자 그대로 적은
+   * 것**(QA-COMMON-16: "리터럴 색상값(`#rrggbb`)")까지만 건다. 축약형이
+   * 새어 들어올 위험은 남지만, Conductor 토큰이 색을 전부 공급하므로 그
+   * 경로 자체가 드물다.
    */
-  const COLOR = /#[0-9a-fA-F]{3,8}\b|\brgba?\s*\(|\bhsla?\s*\(/;
+  const COLOR = /#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?\b|\brgba?\s*\(|\bhsla?\s*\(/;
 
   it('제품 코드 어디에도 없다', () => {
     const offenders = FILES.filter((file) => COLOR.test(readFileSync(file, 'utf8'))).map((f) =>
