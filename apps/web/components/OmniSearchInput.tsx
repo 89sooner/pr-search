@@ -52,7 +52,15 @@ export function OmniSearchInput({
 
   function handleSubmit(event: FormEvent): void {
     event.preventDefault();
-    // **너무 짧으면 제출 자체를 하지 않는다.** 서버 호출이 없어야 한다.
+    /*
+     * **너무 짧으면 제출하지 않는다.**
+     *
+     * 아래 버튼이 `blockedReason`으로 이미 잠기므로 정상 경로에서는 이 줄에
+     * 도달하지 않는다 — 변이 시험으로 확인했다(이 줄을 지워도 아무 시험이
+     * 깨지지 않는다). 그래도 남긴다: 잠금은 **보이는 것**이고 이 줄은
+     * **실제로 막는 것**이라, 나중에 누가 잠금을 풀면(예: 툴팁을 보이려고)
+     * 이것만 남는다. 서버 왕복이 없어야 한다는 것이 AC-2의 요구다.
+     */
     if (tooShort) return;
     onSubmit(draft);
   }
@@ -94,7 +102,19 @@ export function OmniSearchInput({
         </datalist>
       )}
 
-      <Button type="submit" variant="primary" loading={busy} disabled={tooShort}>
+      {/*
+        * `blockedReason`은 Conductor가 "막혔지만 이유가 있다"를 표현하는
+        * 방식이다 — 잠그면서 `title`로 사유를 함께 단다. 맨 `disabled`는
+        * 왜 눌리지 않는지 말해 주지 않는다.
+        */}
+      <Button
+        type="submit"
+        variant="primary"
+        loading={busy}
+        {...(tooShort
+          ? { blockedReason: `축약 SHA는 최소 ${String(MIN_SHA_PREFIX_LENGTH)}자가 필요합니다` }
+          : {})}
+      >
         검색
       </Button>
 

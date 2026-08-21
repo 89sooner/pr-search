@@ -13,7 +13,7 @@
  * 핵심이고, 그것을 `fetch` 없이 시험할 수 있어야 한다.
  */
 
-import { QUERY_KEYS, detectIdentifier } from '@prs/query';
+import { detectIdentifier } from '@prs/query';
 import { PARAM, type QueryState } from './query-url';
 
 /**
@@ -44,18 +44,22 @@ export function chooseRoute(state: QueryState, gheBaseUrl?: string): SearchRoute
   if (raw === '') return { kind: 'none' };
 
   /*
-   * 지원 키가 붙은 토큰이 있으면 질의다. 판별기를 부르지 않는다.
+   * **판별기 하나로 정한다.** 구조화 질의를 미리 걸러 내는 지름길을 두지
+   * 않는다.
    *
-   * **키 목록을 파서에서 가져온다.** 처음에는 `[a-z_]+:` 같은 일반 패턴을
-   * 썼는데 그것이 `https://…`의 **스킴에 걸려** 붙여넣은 GHE URL이 전문
-   * 검색으로 떨어졌다 (QA-W001-02가 잡았다). 키가 무엇인지는 파서가 아는
-   * 것이지 여기서 추측할 것이 아니다 (ADR-001).
+   * 처음에는 `[a-z_]+:` 패턴으로 질의 키를 먼저 찾았는데, 그것이
+   * `https://…`의 **스킴에 걸려** 붙여넣은 GHE URL이 전문 검색으로
+   * 떨어졌다 (QA-W001-02가 잡았다). 파서의 `QUERY_KEYS`로 고쳤더니 변이
+   * 시험에서 **그 검사를 통째로 없애도 아무 시험이 깨지지 않았다.**
+   *
+   * 확인해 보니 겹칠 수가 없다: 식별자 패턴(40자 hex, `#N`, `owner/repo#N`,
+   * GHE URL)은 어느 것도 `<질의키>:` 접두를 가질 수 없다. 키 15종 × 값
+   * 9종 × 형태 4종을 전부 판별기에 넣어 **겹치는 입력이 0건**임을 실측했다.
+   *
+   * 그래서 지웠다. 결과를 바꾸지 않으면서 매 호출마다 정규식 15개를 돌리고,
+   * **틀리게 쓰면 버그를 만드는** 코드다. 어느 문자열이 식별자인지는 판별기가
+   * 아는 것이지 여기서 미리 판단할 것이 아니다 (ADR-001).
    */
-  const hasQueryKey = QUERY_KEYS.some((key) =>
-    new RegExp(`(^|\\s)-?${key}:`, 'i').test(raw),
-  );
-  if (hasQueryKey) return { kind: 'search' };
-
   const detection = detectIdentifier(raw, gheBaseUrl === undefined ? {} : { gheBaseUrl });
 
   // 판별기가 거절했으면(7자 미만 hex 등) 화면이 이미 막았어야 한다.

@@ -578,3 +578,133 @@ describe('찾을 수 없는 이름 (CR-016, DEV-052)', () => {
     });
   });
 });
+
+describe('제출 경로 (C-010, QA-W001-04)', () => {
+  it('**짧은 hex를 쳐서 제출해도 아무것도 부르지 않는다**', async () => {
+    /*
+     * URL로 들어오는 경로는 위에서 걸었다. 여기서는 **사람이 치고 누르는**
+     * 경로를 건다 — 변이 시험에서 제출 가드를 없앴을 때 위 시험들이
+     * 잡지 못했다(URL 경로에서는 `chooseRoute`가 이미 막기 때문이다).
+     */
+    const calls = stubFetch({});
+    view();
+
+    await userEvent.type(screen.getByRole('searchbox'), 'a1b2c3');
+    await userEvent.click(screen.getByRole('button', { name: '검색' }));
+
+    expect(pushed).toEqual([]);
+    await waitFor(() => {
+      expect(calls).toEqual([]);
+    });
+  });
+
+  it('**Enter로도 제출되지 않는다** — 버튼 잠금과 별개의 가드다', async () => {
+    /*
+     * 버튼이 잠겨 있어도 입력창에서 Enter를 치면 폼이 제출될 수 있다.
+     * 그래서 가드가 둘이다 — 잠금(보이는 것)과 `handleSubmit`의 조기 반환
+     * (실제로 막는 것). 변이 시험이 후자를 없앴을 때 앞 시험이 잡지
+     * 못해서(버튼이 잠겨 클릭이 아무 일도 안 한다) 이것을 더했다.
+     */
+    const calls = stubFetch({});
+    view();
+
+    await userEvent.type(screen.getByRole('searchbox'), 'a1b2c3{Enter}');
+
+    expect(pushed).toEqual([]);
+    await waitFor(() => {
+      expect(calls).toEqual([]);
+    });
+  });
+
+  it('짧은 hex 동안 제출 버튼이 잠긴다', async () => {
+    stubFetch({});
+    view();
+
+    await userEvent.type(screen.getByRole('searchbox'), 'a1b2c3');
+    expect(screen.getByRole('button', { name: '검색' })).toBeDisabled();
+  });
+
+  it('7자가 되면 잠금이 풀리고 제출이 라우팅한다', async () => {
+    stubFetch({});
+    view();
+
+    await userEvent.type(screen.getByRole('searchbox'), 'a1b2c3d');
+    expect(screen.getByRole('button', { name: '검색' })).toBeEnabled();
+
+    await userEvent.click(screen.getByRole('button', { name: '검색' }));
+    // 제출은 새 조사다 — `push`로 히스토리에 남는다.
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0]).toContain('a1b2c3d');
+  });
+
+  it('**URL이 바뀌면 입력창이 따라간다** — 뒤로가기가 성립한다', async () => {
+    stubFetch({ total: { value: 1, relation: 'eq' }, items: [ROW], next_cursor: null });
+    params.current = new URLSearchParams('q=repo:acme/a');
+    const { rerender } = view();
+
+    await waitFor(() => {
+      expect(screen.getByRole('searchbox')).toHaveValue('repo:acme/a');
+    });
+
+    // 뒤로가기가 일어난 것과 같은 상황: URL만 바뀐다.
+    params.current = new URLSearchParams('q=repo:acme/older');
+    rerender(<SearchView loginPath="/auth/login" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('searchbox')).toHaveValue('repo:acme/older');
+    });
+  });
+});
+
+describe('경합 (늦게 도착한 응답)', () => {
+  it('**먼저 보낸 요청이 나중에 와도 화면을 덮지 않는다**', async () => {
+    /*
+     * 사용자가 빠르게 조건을 바꾸면 순서가 뒤집힐 수 있다. 옛 응답을 그리면
+     * **화면이 URL과 다른 것을 보여 준다** — 조사 도구에서 가장 나쁜 종류의
+     * 거짓이다. `AbortController`만으로는 이미 도착한 응답을 막지 못한다.
+     */
+    const resolvers: ((value: unknown) => void)[] = [];
+    vi.stubGlobal('fetch', (url: string) => {
+      const isOld = url.includes('older');
+      return new Promise<Response>((resolve) => {
+        resolvers.push(() =>
+          resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                total: { value: 1, relation: 'eq' },
+                items: [{ ...ROW, title: isOld ? '옛 결과' : '새 결과' }],
+                next_cursor: null,
+              }),
+          } as Response),
+        );
+      });
+    });
+
+    params.current = new URLSearchParams('q=repo:acme/older');
+    const { rerender } = view();
+    await waitFor(() => {
+      expect(resolvers).toHaveLength(1);
+    });
+
+    params.current = new URLSearchParams('q=repo:acme/newer');
+    rerender(<SearchView loginPath="/auth/login" />);
+    await waitFor(() => {
+      expect(resolvers).toHaveLength(2);
+    });
+
+    // **새 요청을 먼저, 옛 요청을 나중에** 응답시킨다.
+    resolvers[1]?.(null);
+    await waitFor(() => {
+      expect(screen.getByText('새 결과')).toBeInTheDocument();
+    });
+
+    resolvers[0]?.(null);
+    // 옛 응답이 도착해도 화면은 새 결과를 유지해야 한다.
+    await waitFor(() => {
+      expect(screen.getByText('새 결과')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('옛 결과')).toBeNull();
+  });
+});

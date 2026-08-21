@@ -39,7 +39,7 @@
 | WP-013 | 검색 API 목록 조회 | REL-002 | done | 에이전트 | (이 PR) | DoD 7항 중 6항 통과, 1항 **NOT RUN** (6.13장). 단위 66건 + 통합 46건 | CR-016이 메운 빈칸(키→필드 표·파생 상태·다중 인덱스 정렬·완화 힌트 산출·응답 키 유무)을 함께 구현했다. NFR-001의 p95 500ms는 1000만 문서 데이터셋과 부하 harness가 없어 **측정하지 않았다**(DEV-058) — REL-002 성능 게이트로 넘긴다. 구현 중 DEV-059(해소)를 등록했다. 패싯·커서·전문 검색은 WP-032 |
 | WP-014 | 식별자 해석 API | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 4항 통과, 1항 부분, 1항 **NOT RUN** (6.14장). 단위 61건 + 통합 53건 | CR-017이 메운 빈칸(채워지지 않는 필드 처리·호스트 비교·릴리스 태그·정수와 SHA 접두의 겹침)을 함께 구현했다. **QA-W003-03(`direct_push`)은 도달 불가**라 통과하지 못했다(DEV-061) — push 이벤트 라우팅이 서는 WP-021의 몫이다. NFR-001의 단건 p95는 데이터셋이 없어 **측정하지 않았다**(DEV-058) |
 | WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 4항 통과, 2항 부분 (6.15장). 단위 32건 + a11y 24건 + e2e 15건, axe 위반 0건, `checkContrast` 80쌍 중 0건 실패 | CR-018이 메운 빈칸(프록시 신원 전달·클라이언트 import 경계·harness·단축키 슬롯·OIDC 왕복 상태)을 함께 구현했다. **DEV-032/DEV-069가 여기서 닫힌다** — `pnpm test:a11y`·`test:e2e`가 저장소에 생겼고 WP 20곳이 그 이름을 참조한다. 구현 중 **DEV-073(좁은 화면에서 내비게이션 도달 불가)**과 **DEV-074(프록시 세션 판정의 시험 공백)**을 스스로 발견해 등록·해소했다. 화면은 만들지 않는다(WP-016 이후) — QA-COMMON-01·09·14는 셸이 소유한 부분까지만 검증했다 |
-| WP-016 | W-001 통합 검색 화면 | REL-002 | todo | - | - | - | - |
+| WP-016 | W-001 통합 검색 화면 | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 5항 통과, 1항 부분 (6.16장). 단위 32건 + a11y 62건 + e2e 26건, axe 위반 0건 | CR-019가 메운 빈칸(QA 항목 이중 배정·패싯 세 상태·시퀀스 미채번·`from_q`·최근 검색 출처·해석 상한·관계 배지 소유권)을 함께 구현했다. **상태 매트릭스 13종 전부**가 렌더링되고 각각 시험이 있다. `QA-W001-14`는 CR-019 DEV-075대로 **절반만** — "페이지 번호 UI 없음"은 통과, "커서 기반 동작"은 WP-032다. 구현 중 결함 셋을 스스로 잡았다: 붙여넣은 GHE URL이 전문 검색으로 떨어지던 것, QA-COMMON-16 검사의 거짓 경보, Conductor 규칙 위반 2건 |
 | WP-017 | W-002 PR 상세 화면 | REL-002 | todo | - | - | - | - |
 | WP-018 | W-003 커밋 상세 화면 | REL-002 | todo | - | - | - | - |
 | WP-019 | 저장소 백필 잡 | REL-002 | todo | - | - | - | - |
@@ -94,10 +94,10 @@
 | FR-SRCH-001 | WP-014 | `packages/query/src/identifier.ts`, `packages/es/src/resolve-query.ts`, `apps/search-api/src/resolve/{service,routes}.ts` | `packages/query/src/identifier.test.ts`, `apps/search-api/integration/resolve/resolve.test.ts` | done (AC-1~AC-6. 릴리스 태그 판별만 제외 — 패턴이 정의되어 있지 않아 WP-024로 넘겼다, DEV-065) |
 | FR-SRCH-002 | WP-014, WP-018 | `apps/search-api/src/resolve/detail.ts`, `packages/es/src/resolve-query.ts` | `apps/search-api/integration/resolve/resolve.test.ts`, `packages/es/src/resolve-query.test.ts` | partial (AC-1·AC-2·AC-4·AC-5 충족. **AC-3 `direct_push`는 도달 불가** — 커밋 문서가 PR 이벤트에서만 만들어진다, DEV-061 / WP-021) |
 | FR-SRCH-003 | WP-014, WP-017 | `apps/search-api/src/resolve/detail.ts` | `apps/search-api/integration/resolve/resolve.test.ts` | partial (AC-1·AC-2·AC-4 충족. **AC-3의 메시지 첫 줄·작성자·작성 시각은 커밋 문서에 없다** — 배열 모양만 객체로 두고 `commit_sha`만 채웠다, DEV-062 / WP-020) |
-| FR-SRCH-004 | WP-014, WP-016 | `packages/query/src/identifier.ts` (7자 하한), `packages/es/src/resolve-query.ts` (`prefix`), `apps/search-api/src/resolve/{service,routes}.ts` | `packages/query/src/identifier.test.ts`, `packages/es/src/resolve-query.test.ts`, `apps/search-api/integration/resolve/resolve.test.ts` | done (AC-1~AC-4. 판별이 브라우저에서도 도는 순수 코드라 AC-2의 "검색을 수행하지 않는다"가 화면에서도 성립한다) |
-| FR-SRCH-005 | WP-011, WP-016 | `packages/query/src/{keys,errors,ast,tokenizer,parse,serialize}.ts` | `packages/query/src/{parse,serialize}.test.ts` | verified (AC-1~AC-6 전부. 화면의 오류 구간 강조는 WP-016) |
-| FR-SRCH-006 | WP-013, WP-016 | `packages/es/src/query-builder.ts`, `apps/search-api/src/search/{routes,service,relaxation}.ts`, `packages/db/src/repositories/{repository,auth}.ts` | `packages/es/src/query-builder.test.ts`, `apps/search-api/integration/search/list.test.ts` | done (AC-1~AC-3, AC-6. 화면 쪽 결합은 WP-016) |
-| FR-SRCH-007 | WP-013, WP-016 | `packages/es/src/sort.ts`, `packages/es/src/upsert.ts` (`doc_id`), `packages/es/src/mappings/*.ts`, `apps/search-api/src/search/{routes,service}.ts` | `packages/es/src/sort.test.ts`, `packages/es/src/upsert.test.ts`, `apps/search-api/integration/search/list.test.ts` | done (AC-1~AC-4. AC-4의 "문서 ID"는 `_id`가 아니라 같은 값의 `doc_id` 필드다 — DEV-059) |
+| FR-SRCH-004 | WP-014, WP-016 | `packages/query/src/identifier.ts` (7자 하한), `packages/es/src/resolve-query.ts` (`prefix`), `apps/search-api/src/resolve/{service,routes}.ts`, `apps/web/lib/search-state.ts` (클라이언트 사전 판정), `apps/web/components/OmniSearchInput.tsx` | `packages/query/src/identifier.test.ts`, `packages/es/src/resolve-query.test.ts`, `apps/search-api/integration/resolve/resolve.test.ts`, `apps/web/lib/search-state.test.ts`, `apps/web/a11y/search.test.tsx`, `apps/web/e2e/flow-001.spec.ts` | done (AC-1~AC-4. 판별이 브라우저에서도 도는 순수 코드라 AC-2의 "검색을 수행하지 않는다"가 화면에서도 성립한다) |
+| FR-SRCH-005 | WP-011, WP-016 | `packages/query/src/{keys,errors,ast,tokenizer,parse,serialize}.ts`, `apps/web/lib/tokens.ts`, `apps/web/components/QueryTokenBar.tsx` | `packages/query/src/{parse,serialize}.test.ts`, `apps/web/lib/tokens.test.ts`, `apps/web/a11y/search.test.tsx` | verified (AC-1~AC-6 전부. 화면의 오류 구간 강조는 WP-016) |
+| FR-SRCH-006 | WP-013, WP-016 | `packages/es/src/query-builder.ts`, `apps/search-api/src/search/{routes,service,relaxation}.ts`, `packages/db/src/repositories/{repository,auth}.ts`, `apps/web/lib/facets.ts`, `apps/web/components/FacetRail.tsx` | `packages/es/src/query-builder.test.ts`, `apps/search-api/integration/search/list.test.ts`, `apps/web/lib/facets.test.ts`, `apps/web/a11y/search.test.tsx` | done (AC-1~AC-3, AC-6. 화면 쪽 결합은 WP-016) |
+| FR-SRCH-007 | WP-013, WP-016 | `packages/es/src/sort.ts`, `packages/es/src/upsert.ts` (`doc_id`), `packages/es/src/mappings/*.ts`, `apps/search-api/src/search/{routes,service}.ts`, `apps/web/components/ResultTable.tsx` (`aria-sort`, 정렬 헤더) | `packages/es/src/sort.test.ts`, `packages/es/src/upsert.test.ts`, `apps/search-api/integration/search/list.test.ts`, `apps/web/a11y/search.test.tsx`, `apps/web/e2e/flow-001.spec.ts` | done (AC-1~AC-4. AC-4의 "문서 ID"는 `_id`가 아니라 같은 값의 `doc_id` 필드다 — DEV-059) |
 | FR-SRCH-008 | WP-032 | - | - | not_started |
 | FR-SRCH-009 | WP-032 | - | - | not_started |
 | FR-SRCH-010 | WP-033 | - | - | not_started |
@@ -883,7 +883,51 @@ DoD 6항 중 4항 통과, 2항 부분. 검증 방법은 `pnpm test web/lib`, `pn
 
 **시험이 확인하지 못한 것.** 실제 IdP를 상대로 한 OIDC 왕복 전체는 **NOT RUN**이다 — 자격 증명이 없다. `pnpm test:integration`도 이 환경에 Docker가 없어 **NOT RUN**이다(WP-015는 백킹 서비스를 쓰는 코드를 바꾸지 않았다). 실제 뷰포트에서 800px 이하 CSS가 버튼을 드러내는지는 **jsdom으로 걸 수 없어** Conductor의 규칙을 읽어 확인했을 뿐이다 — 뷰포트를 좁히는 e2e는 화면이 생기는 WP에서 함께 세우는 것이 낫다. 화면 13종의 권한 매트릭스와 QA-COMMON-01·09·14의 나머지도 WP-016 이후다.
 
-### 6.16 릴리스 게이트
+### 6.16 WP-016 검증 실행 기록
+
+DoD 6항 중 5항 통과, 1항 부분. 검증 방법은 `pnpm test web/search`, `pnpm test:e2e flow-001`, `pnpm test:a11y search`다.
+
+| DoD | 결과 | 근거 |
+| --- | --- | --- |
+| QA-W001-01 ~ QA-W001-13, QA-W001-22, QA-W001-23 | **부분** | **화면 계층에서 통과**: 01·02·03(식별자가 해석 경로로 간다), 04(**서버 왕복 0건** — 실제 브라우저에서 네트워크 계층으로 셌다), 05(후보 2건이면 자동 이동하지 않는다), 06(절삭 표시), 07(오류 구간 강조 + 지원 키), 11(완화 후보), 12(기본 정렬 `merge_seq` 내림차순), 22(다른 시퀀스 공간은 tone을 낮추고 **글자로도 밝힌다**). 08·09·10·13은 **서버가 판정하고 WP-013이 통합 시험으로 이미 걸었다** — 화면은 질의를 그대로 실어 보낸다. **23(접근 범위)은 화면에서 확인할 수 없다** — 서버가 강제하고 WP-012·WP-013이 실제 ES 조회로 검증했다. 없는 검증을 통과로 적지 않았다 |
+| **QA-W001-14는 절반만** (CR-019, DEV-075) | 통과 (절반) | "페이지 번호 UI가 없다"를 a11y와 e2e 양쪽에서 건다. **금지 규칙이라 데이터 없이 성립하고, 지금 세우는 것이 옳다** — 나중에 검사하면 이미 잘못 만든 뒤다. "커서 기반으로 동작한다"는 `next_cursor`가 늘 `null`이라 WP-032다 |
+| 상태 매트릭스 W-001의 모든 상태에 대응하는 컴포넌트 테스트가 있다 | 통과 | **13종 전부.** `empty_no_query`·`error_prefix_too_short`·`error_query_syntax`·`loading_initial`·`ambiguous`(절삭 포함)·`ready`·`empty_no_result`·`error_search_timeout`·`no_permission`·`auth_expired`·`offline`·`error_other`. 판정은 `lib/search-state.test.ts`가 29건으로 따로 걸고, 렌더링은 a11y가 건다 — 같은 것을 두 번 걸지 않는다 |
+| 필터를 5회 조작한 뒤 뒤로가기 1회로 이전 화면에 돌아간다 | 통과 | **실제 브라우저에서 확인했다.** 패싯 3회 + 정렬 2회를 만진 뒤 `goBack()` 한 번으로 `/`로 돌아온다. 조건이 실제로 URL에 쌓였는지(`author%3Akim`, `sort=changed_files_count`)를 먼저 확인해 시험이 무의미해지지 않게 했다 |
+| URL을 복사해 새 탭에 붙여넣으면 동일 화면이 재현된다 (QA-COMMON-09) | 통과 | `?q=…&sort=…&order=…`로 진입하면 입력창·칩·결과가 그대로 선다. 조회 요청에도 같은 조건이 실린다 |
+| axe 위반 0건 | 통과 | 13종 상태 각각에 axe를 돌려 **위반 0건**. `checkContrast`는 80쌍 중 실패 0건 |
+
+로컬에서 통과한 명령:
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` / `pnpm lint` / `pnpm lint:deps` | 종료 코드 0 — 패키지 13개, 위반 0건 |
+| `pnpm test` (전량) | 종료 코드 0 — **833건 통과 + 1건 건너뜀**(real-GHE smoke) |
+| `pnpm test:a11y` | 종료 코드 0 — **62건**, axe 위반 0건 |
+| `pnpm test:e2e` | 종료 코드 0 — **26건** (실제 Chromium) |
+| `pnpm test:contrast` | 종료 코드 0 — 80쌍 중 실패 0건 |
+| `pnpm build` | 종료 코드 0 — `/search` 라우트가 선다 |
+| `pnpm test:integration` | **NOT RUN** — 이 환경에 Docker가 없다. WP-016은 백킹 서비스를 쓰는 코드를 바꾸지 않았다 |
+
+**시험이 실제로 무엇을 잡는지 확인했다.** 구현을 52가지로 망가뜨렸다 — 상태 우선순위, 시퀀스 판정, 패싯 세 갈래, 토큰 편집과 왕복, 경로 선택, 정렬·`aria-sort`, 링크 시맨틱, 히스토리 규율, 경합 처리, 정적 검사 자체의 무력화.
+
+**50가지가 잡혔고 2가지가 살아남았다. 둘 다 동치 변이임을 실측으로 확인했다.**
+
+| 생존 | 판정 | 조치 |
+| --- | --- | --- |
+| 구조화 질의를 미리 걸러 내는 지름길 제거 | **도달 불가능한 코드** — 식별자 패턴(40자 hex, `#N`, `owner/repo#N`, GHE URL)은 어느 것도 `<질의키>:` 접두를 가질 수 없다. 키 15종 × 값 9종 × 형태 4종 = **540개 입력을 판별기에 넣어 겹치는 것이 0건**임을 확인했다 | **지웠다.** 결과를 바꾸지 않으면서 매 호출마다 정규식 15개를 돌리고, **틀리게 쓰면 버그를 만드는** 코드였다(아래 참조). 어느 문자열이 식별자인지는 판별기가 아는 것이다 |
+| 제출 핸들러의 조기 반환 제거 | **버튼 잠금에 가려진다** — `blockedReason`이 버튼을 실제로 `disabled`로 만들므로 클릭도 Enter도 submit 이벤트를 내지 않는다. jsdom에서 Enter까지 확인했다 | 남겼다. 잠금은 **보이는 것**이고 이 줄은 **실제로 막는 것**이라, 누가 잠금을 풀면 이것만 남는다. 왜 관찰되지 않는지를 주석에 적었다 |
+
+**시험이 결함 셋을 잡았고 전부 내 것이다.**
+
+첫째, **붙여넣은 GHE URL이 전문 검색으로 떨어졌다.** 질의 키를 `[a-z_]+:` 패턴으로 찾았는데 그것이 `https://…`의 **스킴에 걸렸다.** QA-W001-02를 거는 시험이 잡았다. 파서의 `QUERY_KEYS`를 쓰도록 고쳤고, 그 뒤 변이 시험이 **그 검사 자체가 불필요함**을 드러내 통째로 지웠다 — 고친 것보다 지운 것이 나은 경우였다.
+
+둘째, **WP-015에서 내가 만든 QA-COMMON-16 검사가 거짓 경보를 냈다.** `#1234`(PR 번호)를 색상 리터럴로 신고했는데, 이 제품 UI는 `#1234`로 가득하고 4자리 RGBA 축약과 문자열로 구별되지 않는다. **요구사항이 문자 그대로 적은 `#rrggbb`**까지만 걸도록 좁혔다 — 늘 거짓 경보를 내는 검사는 곧 꺼진다. 좁힌 뒤 변이 4종(6자리·8자리·`rgb()`·`hsla()`)으로 여전히 무는 것을 확인했다.
+
+셋째, **Conductor가 두 규칙을 경고했다.** `TextField`의 이름을 시각적으로 숨긴 `<label for>`로 줬는데 이 디자인 시스템은 `Field`·`aria-label`·`aria-labelledby`만 인정한다(axe는 통과했다). `danger` 배너에 복구 액션이 없다는 것도 걸렸다. 둘 다 고쳤고, **후자는 C-005가 스스로 잡도록 개발용 검사를 더했다** — 런타임 경고는 콘솔에만 남고 아무도 보지 않는다.
+
+**시험이 확인하지 못한 것.** `QA-W001-23`(접근 범위 밖 결과가 목록·패싯·건수 어디에도 없다)은 **화면에서 확인할 수 없다** — 서버가 강제하는 것이고 WP-012·WP-013이 실제 ES 조회로 걸었다. 화면은 서버가 준 것을 그릴 뿐이므로 여기서 통과로 적는 것은 거짓이다. `QA-W001-08·09·10·13`도 같은 이유로 서버 계층의 몫이다. `pnpm test:integration`은 Docker가 없어 **NOT RUN**이다.
+
+### 6.17 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -953,10 +997,15 @@ DoD 6항 중 4항 통과, 2항 부분. 검증 방법은 `pnpm test web/lib`, `pn
 | ~~OIDC 로그인·콜백·로그아웃 라우트가 없음~~ | WP-012 제외 목록 (화면은 WP-015) | 해소 (2026-08-21) — WP-015가 `/auth/login`·`/auth/callback`·`/auth/logout`을 붙였다. 왕복 상태 넷은 짧은 수명 HttpOnly 쿠키로 나르고(DEV-071), 로그아웃은 `POST`만 받는다(`<img src>` 하나로 로그아웃되지 않게). OIDC 미구성 배포에서는 IdP 대신 503을 낸다 | 없음 |
 | 실제 사내 IdP 대상 OIDC 왕복 미실행 | 이 실행 환경에 IdP 자격 증명 없음 | **NOT RUN** — 테스트가 생성한 RSA 키쌍으로 다섯 검사를 각각 무너뜨려 확인했다. 실제 IdP의 그룹 클레임 이름과 JWKS 회전 동작은 확인하지 못했다 | **REL-002 게이트 전 필수** |
 | **게이트웨이 p95 시험이 CI 러너 속도에 흔들린다** | `apps/ingest-gateway/integration/load.test.ts` / FR-ING-001 AC-4 (p95 ≤ 300ms) | 실제 상태 — WP-015 CI에서 **한 번 314.8ms로 실패**했다. 같은 커밋을 다시 돌리자 227.4ms로 통과했으나 그것도 예산의 76%다. main의 과거 세 실행은 66.6·74.2·93.2ms였다. **이 PR의 것이 아니다**: 통합 잡의 시험 파일 수가 main과 같은 29개로 동일하고(부하를 더하지 않았다), 게이트웨이 요청 경로를 건드리지 않았으며(`helpers.ts`의 `migrateUp` import 경로만 바뀌었고 그것은 `beforeAll` 1회다), **p50은 오히려 빨라졌다**(36.2·46.6 vs main 41.6~51.9). 계통적 저하라면 p50도 함께 올라간다 — 꼬리만 3배인 것은 러너 실속(stall)의 모양이다. **측정 도구의 문제다**: 컨테이너화된 Postgres·Redis에 붙는 공유 CI 러너에서 p95 SLO를 재는 것은 요구사항을 검증할 수 있는 계측기가 아니다 | **제안**(별도 CR, 이 PR에서 바꾸지 않았다): CI의 단언은 "파국적으로 느리지 않다"는 느슨한 상한으로 두고 측정값은 계속 출력하되, **FR-ING-001 AC-4의 실제 300ms 검증은 대표 하드웨어의 REL-001 성능 게이트**로 옮긴다. 예산을 올리는 것이 아니라 **잴 수 있는 곳에서 재는 것**이다 |
-| 화면이 없어 셸만 선다 | WP-015 제외 목록 (개별 화면은 WP-016 이후) | 실제 상태 (의도) — 셸이 **경로 구조**를 소유하고 `/`만 내용을 그린다. `/search`·`/ranges`·`/releases`·`/stats`·`/ops/*`는 이동은 되지만 404다 | WP-016 이후 각 화면 WP |
-| `⌘K`가 잡을 옴니 검색 입력이 아직 없음 | DEV-070 (C-010은 W-001 컴포넌트라 WP-016) | 실제 상태 — 셸이 단축키와 **슬롯 계약**을 소유하고, 슬롯이 비면 단축키는 아무것도 잡지 않는다(던지지도 않는다). WP-016이 C-010을 슬롯에 넣으면 셸을 고치지 않고 연결된다 | WP-016 |
+| 화면 대부분이 아직 없다 | 각 화면이 자기 WP 소관 | 실제 상태 (의도) — **`/`와 `/search`가 선다.** `/ranges`·`/releases`·`/stats`·`/ops/*`는 이동은 되지만 404다 | WP-017 이후 각 화면 WP |
+| `⌘K`가 셸 슬롯이 아니라 화면 안의 입력을 잡는다 | DEV-070 / WP-016 구현 | 실제 상태 — WP-016은 C-010을 **W-001 화면 안**에 두었다(질의가 URL 단일 진실이라 화면이 소유해야 한다). 셸의 `omniSearch` 슬롯은 비어 있어 `⌘K`가 아무것도 잡지 않는다 — 셸 단축키가 화면의 입력에 닿으려면 슬롯에 넣어야 한다 | 전 화면 공통 옴니 입력을 셸에 올리는 별도 변경 (WP-017 이후 화면이 늘 때 판단) |
 | 좁은 화면(≤800px) 동작을 실제 뷰포트에서 확인하지 못함 | jsdom에 뷰포트·CSS가 없음 / DEV-073 | 실제 상태 — 서랍 버튼의 **존재·키보드 도달·여닫기·포커스 복귀**는 a11y 시험이 건다. 그 버튼이 800px 이하에서만 보인다는 것은 Conductor의 `.cdt-topbar__menu-button` 규칙을 읽어 확인했을 뿐 **실행으로 확인하지 않았다** | 뷰포트를 좁히는 e2e를 화면 WP에서 함께 세운다 |
-| 세션 만료 후 경로 복귀가 `/` 하나에서만 실증됨 | WP-015 범위 (화면 없음) | 실제 상태 — `return_to` 생성·무해화·왕복·재무해화는 전부 시험이 걸지만, 실제로 그 경로를 만드는 화면이 `/`뿐이다 | WP-016 이후 각 화면이 자기 경로로 리다이렉트하면 저절로 넓어진다 |
+| 세션 만료 후 경로 복귀가 `/` 하나에서만 실증됨 | WP-015 범위 (화면 없음) | 실제 상태 — `return_to` 생성·무해화·왕복·재무해화는 전부 시험이 걸지만, 실제로 그 경로를 만드는 화면이 `/`뿐이다 | **`/search`가 더해져 둘이 됐다.** 화면이 늘수록 넓어진다 |
+| W-001의 패싯이 늘 `not_computed` | WP-016 제외 목록 (패싯 데이터는 WP-032) / CR-019 DEV-076 | 실제 상태 (의도) — `/search`가 `facets`·`facets_omitted` 키를 넣지 않으므로 레일이 **사유를 표시하고** 선택 UI를 그리지 않는다. 조용히 비우지 않는다 | WP-032 |
+| 결과 목록의 시퀀스가 늘 `not_computed` | WP-021 전까지 투영이 시퀀스를 쓰지 않음 / CR-019 DEV-077 | 실제 상태 — 미머지(`unassigned`)와 **다른 배지**로 그린다. 섞으면 머지된 PR을 "미머지"로 표시하게 된다 | WP-021 |
+| 결과 행에 관계 배지 열이 없음 | CR-019 DEV-081 (`C-015`는 WP-031 소관, `link_summary`는 WP-029까지 빈다) | 실제 상태 (의도) — **빈 열을 미리 두지 않는다.** 사용자가 "관계 없음"으로 읽는다 | WP-031 |
+| `/search` 결과 행이 가리키는 상세 화면이 없음 | W-002·W-003이 WP-017·WP-018 | 실제 상태 — 행은 **진짜 링크**이고 `from_q`도 싣지만 목적지가 404다. 링크 시맨틱을 지금 세워야 나중에 고칠 것이 없다 | WP-017, WP-018 |
+| 최근 검색 목록이 비어 있음 | CR-019 DEV-079 (저장 위치 미정) | 실제 상태 — prop을 선택으로 낮추고 비면 그리지 않는다. **저장 설계를 지어내지 않았다** — 서버에 보내면 조사 이력이 서버 기록이 되는데 요구한 문서가 없다 | 사용자 결정 후 |
 | 접근 범위 산출이 등록 저장소마다 GHE를 한 번씩 부름 | FR-AUTH-002 AC-1이 "read 이상 권한을 가진 저장소"를 요구 / OD-002 미결 | 실제 상태 — 협업자 권한 API가 조직 기본 권한·팀·직접 협업자를 모두 반영한 실효 권한을 주므로 정확하다. 대신 캐시 미스마다 등록 저장소 수만큼 호출이 나간다(동시 8, 캐시 5분, 사용자별 요청 병합). **저장소 수가 커지면 재검토가 필요하다** | OD-002 결정 후 (IdP 그룹이면 호출이 사라진다) |
 | 운영 집계 두 곳이 접근 범위를 거치지 않음 | CR-015 DEV-051 (미해소) | 실제 상태 — API-ADM-006의 `enrichment_pending`(전 저장소 `es.count`)과 `slowest_repositories`(저장소 이름 포함). FR-ADMIN-001 AC-1·AC-3이 요구하고 THR-003·THR-016이 반대한다. **동작을 바꾸지 않고** 아키텍처 테스트의 사유 붙은 허용 목록에 등록했다 | **사용자 결정 + CR** |
 | 권한 매트릭스가 API 계층까지만 검증됨 | NFR-005는 역할 6종 × 화면 13종 | 실제 상태 — 역할 6종 × 역할 요구 경로는 통과한다. 화면이 없어 13종 축을 걸 수 없다 | WP-015 이후 |
@@ -1015,6 +1064,13 @@ DoD 6항 중 4항 통과, 2항 부분. 검증 방법은 `pnpm test web/lib`, `pn
 30. ~~WP-014 식별자 해석 API~~ → 완료 (2026-08-21). 검증 결과는 6.14장. **DoD 6항 중 4항 통과, QA-W003-03 도달 불가, NFR-001 실측 NOT RUN**
 31. ~~CR-018 WP-015 웹 셸 계약 정정~~ → 완료 (2026-08-21). DEV-067~072 해소. 구현 중 DEV-073·074를 추가 등록·해소했다. SRS 버전은 v2.2 유지(빈칸 메우기와 문서 간 모순 해소)
 32. ~~WP-015 웹 앱 셸과 Conductor 통합~~ → 완료 (2026-08-21). 검증 결과는 6.15장. **DoD 6항 중 4항 통과, QA-COMMON 3항과 FLOW-000 경로 복귀가 화면 부재로 부분**
+
+33. ~~CR-019 WP-016 W-001 계약 정정~~ → 완료 (2026-08-21). DEV-075~081 해소. SRS 버전은 v2.2 유지(빈칸 메우기와 문서 정합)
+34. ~~WP-016 W-001 통합 검색 화면~~ → 완료 (2026-08-21). 검증 결과는 6.16장. **DoD 6항 중 5항 통과, `QA-W001-14`만 절반**(커서는 WP-032)
+
+**다음 WP: WP-017 W-002 PR 상세 화면** (선행 WP-014·WP-016 충족).
+
+W-001의 결과 행과 해석 후보가 **이미 그곳을 가리키고 있다** — `from_q`까지 실어 보내므로 WP-017은 목적지를 만들기만 하면 뒤로가기가 저절로 성립한다. `GET /pull-requests/{repo}/{number}`는 WP-014가 세웠다.
 
 **WP-015가 열어 준 것.** 세 가지가 여기서 닫혔다 — WP-012가 남긴 OIDC 브라우저 왕복(로그인·콜백·로그아웃 라우트), `test:e2e`·`test:a11y`·`test:contrast` harness(DEV-032, WP 20곳이 참조하던 이름), 그리고 셸이 소유하는 경로 구조와 역할 필터링. 이제 각 화면 WP는 **자기 화면만** 만들면 된다.
 
