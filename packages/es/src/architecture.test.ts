@@ -19,7 +19,12 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
-/** `search`를 정의하는 파일. 여기서만 `client.search`를 부른다. */
+/**
+ * `search`·`multiSearch`를 정의하는 파일.
+ *
+ * 여기서만 `client.search`·`client.msearch`를 부른다. 둘 다 `ScopedQuery`만
+ * 받으므로 이 파일을 거치는 조회는 필터를 건너뛸 수 없다.
+ */
 const SEARCH_FACADE = 'packages/es/src/search.ts';
 /** 브랜드를 만드는 파일. 여기서만 `as ScopedQuery`가 허용된다. */
 const SCOPE_FILTER = 'packages/es/src/scoped-query.ts';
@@ -141,7 +146,7 @@ describe('DoD 9 / ADR-008: 우회 경로 부재', () => {
     // `search` 말고도 문서를 세거나 읽는 경로가 있다. 생기면 여기서 걸린다.
     const offences = scan(
       /\b(?:client|es)\s*\.\s*(?:msearch|count|scroll|openPointInTime)\s*[(<]/,
-      UNSCOPED_FILES,
+      [SEARCH_FACADE, ...UNSCOPED_FILES],
     );
 
     expect(

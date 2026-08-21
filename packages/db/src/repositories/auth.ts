@@ -278,3 +278,32 @@ export async function listTeamMembers(db: Queryable, teamId: number): Promise<st
   const { rows } = await db.query<{ user_id: string }>('SELECT user_id FROM team_member WHERE team_id = $1', [teamId]);
   return rows.map((row) => row.user_id);
 }
+
+/**
+ * 팀 slug을 `team_id`로 옮긴다 (CR-016, DEV-052).
+ *
+ * `org`와 같은 이유다 — 문서는 `allowed_team_ids`를 숫자로만 갖는다.
+ *
+ * **slug은 조직 안에서만 유일하다** (`UNIQUE (org_id, slug)`). 여러 조직에 같은
+ * slug이 있으면 그 이름 하나가 팀 여럿을 가리킨다. 하나를 골라 나머지를 조용히
+ * 버리는 대신 **전부 돌려준다** — 호출 측이 `terms`로 묶으면 OR가 되어
+ * "그 이름의 팀 중 어느 것이든"이라는 사용자의 뜻과 맞는다.
+ */
+export async function resolveTeamIds(db: Queryable, slugs: readonly string[]): Promise<Map<string, number>> {
+  if (slugs.length === 0) return new Map();
+
+  const { rows } = await db.query<{ slug: string; team_id: number }>(
+    'SELECT slug, team_id FROM team WHERE slug = ANY($1::text[]) ORDER BY team_id',
+    [[...slugs]],
+  );
+
+  // 같은 slug이 여럿이면 가장 작은 `team_id`가 남는다 — `ORDER BY`가 그것을
+  // 결정론적으로 만든다. 여러 조직에 걸친 동명 팀은 WP-032의 패싯이 조직과
+  // 함께 보여 줄 때 제대로 다룬다.
+  const resolved = new Map<string, number>();
+  for (const row of rows) {
+    if (!resolved.has(row.slug)) resolved.set(row.slug, row.team_id);
+  }
+  return resolved;
+}
+

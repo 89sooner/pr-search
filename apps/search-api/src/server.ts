@@ -15,6 +15,8 @@ import type { HealthResponse } from '@prs/contracts';
 import { resolveSearchApiConfig, type SearchApiConfig } from './config.js';
 import { registerOpsRoutes } from './ops/routes.js';
 import { registerAuthRoutes } from './auth/routes.js';
+import { registerSearchRoutes } from './search/routes.js';
+import type { SearchDeps } from './search/service.js';
 import type { AuthContext } from './auth/context.js';
 import type { OpsDeps } from './ops/dead-letters.js';
 import type { RegistryDeps } from './ops/repositories.js';
@@ -43,6 +45,14 @@ export interface ServerDeps {
    * 없으면 이름 붙은 토큰이 `/admin/*`를 지킨다 (CR-015, DEV-048).
    */
   readonly auth?: AuthContext;
+  /**
+   * 목록 조회 의존 (API-SRCH-004).
+   *
+   * 세션 없이는 접근 범위를 산출할 수 없으므로 `auth`가 있을 때만 경로를
+   * 단다. 없으면 검색이 전부 401이 되는 서비스를 띄우는 것보다 경로가
+   * 없는 편이 낫다.
+   */
+  readonly search?: SearchDeps;
   readonly log?: (entry: { readonly level: string; readonly message: string }) => void;
 }
 
@@ -69,6 +79,15 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
       );
     }
     registerAuthRoutes(app, { auth: deps.auth, loginPath: config.auth.loginPath });
+
+    if (deps.search !== undefined) {
+      registerSearchRoutes(app, { ...deps.search, auth: deps.auth, loginPath: config.auth.loginPath });
+    } else {
+      log({ level: 'warn', message: 'Elasticsearch 의존이 없어 검색 경로를 등록하지 않는다 (API-SRCH-004)' });
+    }
+  } else if (deps.search !== undefined) {
+    // 세션 없이 검색을 열면 접근 범위를 채울 신원이 없다 (ADR-008).
+    log({ level: 'warn', message: '세션 인증이 없어 검색 경로를 등록하지 않는다 (FR-AUTH-002)' });
   }
 
   if (deps.ops === undefined) return app;

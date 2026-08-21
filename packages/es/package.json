@@ -19,8 +19,9 @@
     "typecheck": "tsc --build"
   },
   "dependencies": {
+    "@elastic/elasticsearch": "8.19.2",
     "@prs/domain": "workspace:*",
-    "@elastic/elasticsearch": "8.19.2"
+    "@prs/query": "workspace:*"
   },
   "bin": {
     "prs-es": "./dist/cli.js"

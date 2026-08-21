@@ -20,6 +20,7 @@
     "@prs/es": "workspace:*",
     "@prs/github": "workspace:*",
     "@prs/metrics": "workspace:*",
+    "@prs/query": "workspace:*",
     "fastify": "5.12.1"
   }
 }

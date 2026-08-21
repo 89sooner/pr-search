@@ -283,7 +283,7 @@ async function search(rawQuery: string, opts: SearchOptions, ctx: RequestContext
 2. 접근 범위 산출 (실패 → 503 `permission_unavailable`, 부분 결과 없음)
 3. 역할 검사 (운영·감사 화면만 해당. 부족 → 403)
 4. 강제 필터 결합 (우회 불가)
-5. 조회 실행
+5. 조회 실행 — 여러 인덱스를 함께 도는 조회는 **모든 정렬 키에 `unmapped_type`을 붙이고 `_shards.failed`를 검사한다** (CR-016, DEV-054). 한쪽 인덱스에만 있는 필드로 정렬하면 Elasticsearch가 HTTP 200에 샤드 부분 실패를 붙여 주는데, 그대로 내보내면 한 인덱스가 통째로 빠진 결과가 정상처럼 보인다
 6. 감사 기록 (비동기, 실패해도 응답에 영향 없음)
 
 접근 범위 산출 (`authz.resolveAccessScope`):

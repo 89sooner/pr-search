@@ -12,9 +12,10 @@ import {
   resolveGitHubConfig,
 } from '@prs/github';
 import { GheAccessScopeSource, ghePermissionApi } from '@prs/authz';
-import { repositoryRepo } from '@prs/db';
+import { authRepo, repositoryRepo } from '@prs/db';
 import { resolveSearchApiConfig } from './config.js';
 import { createAuthContext, createAuthMetrics, type AuthContext, type AuthRedis } from './auth/context.js';
+import { SEARCH_TIMEOUT_MS } from './search/routes.js';
 import { createGheLookup } from './ops/ghe-lookup.js';
 import type { RegistryDeps } from './ops/repositories.js';
 import { buildServer, SERVICE_NAME } from './server.js';
@@ -134,6 +135,20 @@ function buildAuth(): AuthContext | undefined {
 const registry = buildRegistry();
 const auth = buildAuth();
 
+/**
+ * `org`·`team` 이름을 ID로 옮긴다 (CR-016, DEV-052).
+ *
+ * 문서는 숫자만 갖고 사용자는 이름으로 묻는다. 레지스트리가 그 사이를 잇는다.
+ */
+const searchDeps = {
+  es,
+  resolveNames: async (names: { readonly orgs: readonly string[]; readonly teams: readonly string[] }) => ({
+    orgIds: await repositoryRepo.resolveOrgIds(pool, names.orgs),
+    teamIds: await authRepo.resolveTeamIds(pool, names.teams),
+  }),
+  timeoutMs: SEARCH_TIMEOUT_MS,
+};
+
 const app = buildServer({
   config,
   ops: { pool, bus, log: (entry) => log({ ...entry }) },
@@ -145,7 +160,7 @@ const app = buildServer({
     log: (entry) => log({ ...entry }),
   },
   ...(registry === undefined ? {} : { registry }),
-  ...(auth === undefined ? {} : { auth }),
+  ...(auth === undefined ? {} : { auth, search: searchDeps }),
   log: (entry) => log({ ...entry }),
 });
 

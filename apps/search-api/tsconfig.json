@@ -12,6 +12,9 @@
   ],
   "references": [
     {
+      "path": "../../packages/query"
+    },
+    {
       "path": "../../packages/authz"
     },
     {

@@ -133,9 +133,23 @@ function failureReason(status: number, error: FailureShape | undefined): string 
   return reason === '' ? `${String(status)} ${type}` : `${String(status)} ${type}: ${reason}`;
 }
 
+/**
+ * `_id`를 문서 필드로도 넣는다 (CR-016, DEV-059).
+ *
+ * Elasticsearch 8은 `_id`로 정렬하는 것을 금지한다. FR-SRCH-007 AC-4의
+ * "문서 ID를 마지막 정렬 키로"가 성립하려면 그 값이 정렬 가능한 필드로
+ * 문서 안에 있어야 한다.
+ *
+ * **호출 측이 넣지 않고 여기서 넣는다.** 투영 자리마다 손으로 넣게 하면
+ * 언젠가 한 곳이 빠지고, 그 인덱스만 정렬에서 조용히 뒤로 밀린다.
+ */
+function withDocId(request: UpsertRequest, doc: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return { ...doc, doc_id: request.id };
+}
+
 /** 생성 시점 본문. 스크립트는 생성 때 돌지 않으므로 여기에 전량이 들어가야 한다. */
 function initialDocument(request: UpsertRequest): Record<string, unknown> {
-  return { ...request.doc, ...toArrays(request.union), ...request.createOnly };
+  return withDocId(request, { ...request.doc, ...toArrays(request.union), ...request.createOnly });
 }
 
 function toArrays(union: UpsertRequest['union']): Record<string, unknown[]> {
@@ -149,7 +163,8 @@ function scriptBody(request: UpsertRequest): Record<string, unknown> {
     script: {
       lang: 'painless',
       source: CONDITIONAL_UPSERT_SCRIPT,
-      params: { doc: request.doc, union: toArrays(request.union) },
+      // `doc_id`를 여기에도 넣어 이미 색인된 문서가 다음 이벤트에서 채워지게 한다.
+      params: { doc: withDocId(request, request.doc), union: toArrays(request.union) },
     },
     upsert: initialDocument(request),
   };
