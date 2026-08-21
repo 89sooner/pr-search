@@ -38,6 +38,8 @@ export const ERROR_CODES = [
   'CONFIRMATION_MISMATCH',
   /** 시퀀스 대상 브랜치 10개 초과 (사용자 조치: 브랜치 축소) — HTTP 400 */
   'BRANCH_LIMIT_EXCEEDED',
+  /** 요청 파라미터·본문이 형식에 맞지 않음 (사용자 조치: 요청 형식 확인) — HTTP 400 */
+  'INVALID_PARAMETER',
   /** 세션 없음·만료 (사용자 조치: 재인증) — HTTP 401 */
   'UNAUTHENTICATED',
   /** 역할 부족 (사용자 조치: 필요 역할 요청) — HTTP 403 */
@@ -123,6 +125,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   EXPORT_LIMIT_EXCEEDED: 400,
   CONFIRMATION_MISMATCH: 400,
   BRANCH_LIMIT_EXCEEDED: 400,
+  INVALID_PARAMETER: 400,
   UNAUTHENTICATED: 401,
   FORBIDDEN_ROLE: 403,
   NOT_FOUND: 404,

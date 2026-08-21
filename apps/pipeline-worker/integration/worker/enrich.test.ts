@@ -578,7 +578,7 @@ describe('버스 왕복 (WP-005 계약 위)', () => {
     // 정확히 한 번이다. 첫 429가 설치를 격리하므로 나머지 조회는 HTTP까지 가지도
     // 않는다. 2초 동안 200ms 주기로 재전달됐다면 열 번 가까이 찍혔을 자리다.
     expect(attempts).toBe(1);
-    expect(await deadLetterRepo.listPending(pool)).toHaveLength(0);
+    expect(await deadLetterRepo.listDeadLetters(pool, { states: deadLetterRepo.OPEN_STATES })).toHaveLength(0);
   });
 
   it('종료 실패는 ack되어 같은 파티션의 다음 이벤트를 막지 않는다', async () => {

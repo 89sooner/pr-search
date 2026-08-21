@@ -122,6 +122,8 @@ export interface WorkerMetrics {
   readonly ingestionLagSeconds: Histogram;
   /** 실패 대기열로 보낸 건수. 라벨: `stage`, `reason`. */
   readonly deadLettered: Counter;
+  /** 재처리가 끝까지 성공해 닫은 실패 대기열 건수. 라벨: `stage`. */
+  readonly deadLetterResolved: Counter;
   /** 단계 처리 시간(초). 라벨: `stage`, `outcome`. */
   readonly stageSeconds: Histogram;
   render(): string;
@@ -131,15 +133,17 @@ export function createWorkerMetrics(): WorkerMetrics {
   const enrichPending = new Counter('enrich_pending_total', '부분 결과로 진행한 보강 건수');
   const ingestionLagSeconds = new Histogram('ingestion_lag_seconds', '웹훅 수신부터 색인 반영까지 지연(초)');
   const deadLettered = new Counter('worker_dead_lettered_total', '실패 대기열로 보낸 이벤트 건수');
+  const deadLetterResolved = new Counter('worker_dead_letter_resolved_total', '재처리 성공으로 닫은 실패 대기열 건수');
   const stageSeconds = new Histogram('stage_latency_seconds', '파이프라인 단계 처리 시간(초)');
 
   return {
     enrichPending,
     ingestionLagSeconds,
     deadLettered,
+    deadLetterResolved,
     stageSeconds,
     render(): string {
-      const metrics = [enrichPending, ingestionLagSeconds, deadLettered, stageSeconds];
+      const metrics = [enrichPending, ingestionLagSeconds, deadLettered, deadLetterResolved, stageSeconds];
       return `${metrics.map((metric) => metric.render()).join('\n')}\n`;
     },
   };

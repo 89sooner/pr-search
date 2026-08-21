@@ -91,13 +91,16 @@ OpenTelemetry로 분산 추적을 수집한다.
 
 ## 4. 알림
 
+**실패 대기열 임계가 세는 것 (CR-012).** `dead_letter_open_total`은 `pending`과 `reprocessing`의 합이다. `pending`만 세면 **200건을 일괄 재처리한 직후 경보가 사라진다** — 아직 아무것도 해결되지 않았는데도 그렇다. 반대로 `held`와 `resolved`는 세지 않는다. 전자는 이미 사람이 보기로 한 것이고 후자는 끝난 것이라, 둘 다 "지금 쌓이고 있다"의 근거가 아니다. 상태별 세부는 `dead_letter_total{state}`가 따로 노출한다.
+
+
 | Alert | 조건 | Severity | Runbook |
 | --- | --- | --- | --- |
 | 수집 중단 | `ingest_received_total` 15분간 0 (평시 유입이 있는 시간대) | P1 | RB-01 |
 | 수신 지연 | `ingest_response_seconds` p95 300ms 초과 10분 지속 | P2 | RB-02 |
 | 수집 반영 지연 | `ingestion_lag_seconds` p95 10초 초과 15분 지속 | P2 | RB-03 |
 | 큐 적체 | `queue_depth` 10000 초과 15분 지속 | P2 | RB-03 |
-| 실패 대기열 적체 | `dead_letter_total{state="pending"}` 100건 초과 | P2 | RB-04 |
+| 실패 대기열 적체 | `dead_letter_open_total` 100건 초과 (CR-012) | P2 | RB-04 |
 | 검색 불가 | `/search` 5xx 비율 10분간 5% 초과 | P1 | RB-05 |
 | 검색 지연 | `/search` p95 500ms 초과 15분 지속 | P2 | RB-06 |
 | ES 클러스터 이상 | 클러스터 상태 red | P1 | RB-07 |

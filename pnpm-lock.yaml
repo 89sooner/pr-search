@@ -71,9 +71,15 @@ importers:
 
   apps/search-api:
     dependencies:
+      '@prs/bus':
+        specifier: workspace:*
+        version: link:../../packages/bus
       '@prs/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@prs/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@prs/domain':
         specifier: workspace:*
         version: link:../../packages/domain

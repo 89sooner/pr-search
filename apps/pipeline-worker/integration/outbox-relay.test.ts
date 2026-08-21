@@ -7,10 +7,10 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { rawEventRepo, type Pool, type RawEventInsert } from '@prs/db';
+import { rawEventRepo, type Pool, type RawEventInsert, type RawEventRow } from '@prs/db';
 import { RedisStreamsEventBus, TOPICS, partitionFor, partitionStream, type DeliveredEvent, type Redis } from '@prs/bus';
-import { EVENT_NAMES } from '@prs/domain';
-import { relayOutboxOnce, startOutboxRelay, toIngestionEvent } from '../src/outbox-relay.js';
+import { EVENT_NAMES, toIngestionEvent } from '@prs/domain';
+import { relayOutboxOnce, startOutboxRelay } from '../src/outbox-relay.js';
 import { createTestRedis, migratedPool } from './helpers.js';
 
 let pool: Pool;
@@ -165,14 +165,13 @@ describe('EVT-ING-001 봉투', () => {
 
   it('toIngestionEvent가 행을 카탈로그 payload로 옮긴다', () => {
     const received = new Date('2026-08-20T11:45:00.000Z');
-    expect(
-      toIngestionEvent({
-        ...strandedRow(),
-        received_at: received,
-        queued_at: received,
-        processed_at: null,
-      }),
-    ).toEqual({
+    const row: RawEventRow = {
+      ...strandedRow(),
+      received_at: received,
+      queued_at: received,
+      processed_at: null,
+    };
+    expect(toIngestionEvent(row)).toEqual({
       delivery_id: 'stranded-1',
       event_type: 'pull_request',
       action: 'closed',

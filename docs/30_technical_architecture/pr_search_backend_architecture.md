@@ -114,6 +114,29 @@ enrich 워커
 - `secondary rate limit`(429 + `retry-after`) 수신 시 해당 토큰을 지정 시간만큼 격리한다.
 - 백필 워커와 실시간 워커가 같은 풀을 쓰되, 실시간이 우선 배분을 받는다.
 
+### 4.2.1 실패 격리와 재처리 (FR-ING-007)
+
+```
+워커 (enrich | project)
+  └─ 표준 재시도 5회 소진, 또는 재시도 불가 오류
+       └─ dead_letter 업서트 (delivery_id, stage) ─ 유일 제약이 멱등 키다
+            └─ ack 해서 파티션을 푼다 (CR-010: dead_letter 처분)
+
+ops 모듈 (search-api)
+  GET  /api/v1/admin/dead-letters              ─ 단계·상태·저장소 필터
+  POST /api/v1/admin/dead-letters/reprocess
+       └─ raw_event에서 원본 조회 (delivery_id)
+            ├─ 없음 → skipped: raw_event_missing
+            └─ 있음 → EVT-ING-001 재발행 (prs:ingest) + state = 'reprocessing'
+                        └─ 파이프라인이 처음부터 다시 돈다 (멱등)
+                             ├─ 성공 → project가 processed_at을 찍는 자리에서 resolved
+                             └─ 실패 → 업서트가 reprocess_count += 1, 3회면 held
+```
+
+**재처리가 성공을 스스로 확인하지 않는 이유.** 재투입은 비동기다. API가 응답할 시점에 파이프라인은 아직 돌지도 않았다. 그래서 "성공"의 판정을 API가 아니라 **끝까지 간 자리**에 둔다 — 투영이 `raw_event.processed_at`을 찍는 그 지점이다. 거기 말고 성공을 아는 곳이 없다.
+
+**재처리 결과를 폴링으로 기다리지 않는다.** 운영자는 목록을 다시 조회해 상태가 `resolved`로 바뀌었는지 본다. A-001이 30초 주기로 지표를 갱신하는 것과 같은 리듬이다.
+
 ### 4.3 시퀀스 채번 (FR-SEQ-001, FR-SEQ-005)
 
 ```ts
