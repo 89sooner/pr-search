@@ -471,7 +471,10 @@
   - 모든 정렬에 문서 ID를 마지막 정렬 키로 추가
   - `size` 기본 25·최대 200 절삭
   - `track_total_hits: 10000`
-  - 결과 0건 시 `relaxation_hints` 산출
+  - 결과 0건 시 `relaxation_hints` 산출 — `msearch` 1회, 후보 상한 8개, 절삭 시 표식 (CR-016, DEV-055)
+  - 질의 키 15종 → ES 필드. `org`·`team`은 레지스트리에서 이름→ID 해석 (CR-016, DEV-052)
+  - `is`는 파생 상태 — `reverted`는 `link_summary.is_reverted` (CR-016, DEV-053)
+  - 대상 인덱스는 PR·커밋 둘. **모든 정렬 키에 `unmapped_type`, `_shards.failed` 검사** (CR-016, DEV-054)
   - `applyMandatoryScopeFilter` 결합
   - 공통 오류 DTO + 상관 ID
 - 제외:

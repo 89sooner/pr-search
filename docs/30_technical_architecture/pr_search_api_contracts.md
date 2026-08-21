@@ -308,6 +308,42 @@
 
 **`key`가 세 범위 키가 아니면 `..`는 리터럴이다.** `path:src/a..b`는 범위가 아니라 그 문자열을 찾는 조건이다.
 
+**질의 키가 가 닿는 자리 (CR-016, DEV-052).** 파서는 키를 15종으로 알지만 그것이 어느 필드를 보는지는 별개다.
+
+| 키 | 대상 | 비고 |
+| --- | --- | --- |
+| `repo` | `repository` | `owner/name` 그대로 |
+| `org` | `org_id` | **레지스트리 해석** — 문서에 조직 이름이 없다. `repository.owner`로 `org_id`를 찾는다 |
+| `author` | `author` | |
+| `team` | `allowed_team_ids` | **레지스트리 해석** — `team.slug` → `team_id`. **지금은 결과를 내지 못한다** (문서의 팀 ID가 비어 있다) |
+| `reviewer` | `reviewers` | |
+| `label` | `labels` | 커밋 문서에는 없다 → 커밋은 매치되지 않는다 (정상) |
+| `base` | `base_branch` | |
+| `head` | `head_branch` | PR에만 있다 |
+| `state` | `state` | GitHub이 준 값 그대로 |
+| `merged` | `merged_at` 범위 | |
+| `created` | `created_at` 범위 | |
+| `seq` | `merge_seq` 범위 | |
+| `release` | `release_tags` | |
+| `path` | `changed_paths` | `path_hierarchy` 토크나이저라 `match`가 곧 접두 매칭이다 (AC-1의 "변경 경로 접두") |
+| `is` | 파생 상태 | 아래 |
+
+**`is`는 파생 상태다 (CR-016, DEV-053).** `state`가 GitHub이 준 값을 그대로 보는 반면 `is`는 이 시스템이 계산한 것까지 본다.
+
+| 값 | 조건 |
+| --- | --- |
+| `is:merged` / `is:open` / `is:closed` | `state`와 같다 |
+| `is:reverted` | `link_summary.is_reverted` — GitHub에는 없는, 관계 파생이 만든 상태 |
+
+겹치는 셋을 지우지 않은 것은 사용자가 `is:` 하나로 상태를 물을 수 있어야 하기 때문이다.
+
+**대상 인덱스는 `prs-pull-requests`와 `prs-commits` 둘이다 (CR-016, DEV-054).** W-001-RESULTS의 유형 열이 PR/커밋을 함께 보여 준다.
+
+- 한쪽에만 있는 필드로 **필터**하면 그 인덱스는 매치되지 않는다. 이것이 옳다 — 커밋에 라벨이 없는 것은 사실이다.
+- 한쪽에만 있는 필드로 **정렬**하면 Elasticsearch가 HTTP 200에 `_shards.failed`를 붙인 **부분 실패**를 준다. 한 인덱스가 통째로 빠진 결과가 정상처럼 돌아온다. 그래서 **모든 정렬 키에 `unmapped_type`을 붙이고 `_shards.failed`를 검사한다.** 0이 아니면 부분 결과를 내지 않는다.
+
+**`relaxation_hints`는 `msearch` 한 번이다 (CR-016, DEV-055).** 필터마다 질의를 따로 던지면 NFR-001의 예산을 필터 수만큼 쓴다. 후보는 **상한 8개**이며, 넘으면 `relaxation_hints_truncated: true`로 잘랐다는 사실을 남긴다. 0건일 때만 계산하므로 정상 경로의 지연에 영향이 없다.
+
 응답 200:
 
 ```json
@@ -396,6 +432,9 @@
 - **문법·값 오류는 파서가 낸다** (CR-014, DEV-038). `@prs/query`가 오류 코드와 문자 오프셋을 함께 돌려주고 API는 그대로 실어 보낸다. `QUERY_TOO_SHORT`(전문 검색어 1자)도 파서가 판정한다 — 무엇이 전문 검색어인지 아는 곳이 파서뿐이다
 - 페이지네이션: `size` 기본 25, 최대 200 (초과 시 200으로 절삭). `cursor`로 다음 페이지
 - 정렬: `merge_seq` | `merged_at` | `created_at` | `updated_at` | `changed_files_count` | `additions` | `lead_time_seconds` | `relevance`. 기본 `merge_seq` desc
+- **모든 정렬은 문서 ID를 마지막 키로 갖는다** (FR-SRCH-007 AC-4). 동점이 있어도 두 번 조회한 순서가 같다
+- **`relevance`는 전문 검색이 서기 전까지 문서 ID 순이다** (CR-016, DEV-056). 접근 범위 필터는 `filter` 절이라 점수를 만들지 않으므로 모든 문서의 점수가 같다. 키를 거절하지는 않는다 — AC-1이 지원 키로 열거했다. 실제 점수는 WP-032가 붙인다
+- **`facets`와 `next_cursor`는 WP-032 전까지 이렇게 나간다** (CR-016, DEV-057). `next_cursor`는 **항상 `null`**로 실린다(키가 있고 값이 없다 = 다음 페이지가 없다). `facets`는 **키 자체가 없다** — 빈 객체는 "패싯을 셌는데 아무것도 없다"로 읽히기 때문이다
 
 ### API-SEQ-001 시퀀스 범위 조회
 
