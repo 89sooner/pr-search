@@ -208,6 +208,19 @@ describe('DEV-066: 순수 정수는 PR이면서 SHA 접두다', () => {
     expect(first('1'.repeat(40))).toEqual({ kind: 'commit', match: 'exact', sha: '1'.repeat(40) });
   });
 
+  it('PR 번호 상한을 넘는 숫자는 PR이 아니다', () => {
+    // 40자리는 `MAX_SAFE_INTEGER`도 넘어 어느 상한을 써도 걸린다. 경계를 실제로
+    // 거는 것은 **32비트를 넘고 `MAX_SAFE_INTEGER`는 넘지 않는** 자리수다.
+    expect(kinds('9999999999')).toEqual(['commit']);
+    expect(kinds('12345678901234')).toEqual(['commit']);
+  });
+
+  it('상한 바로 아래·위가 갈린다', () => {
+    // 2_147_483_647이 상한이다.
+    expect(kinds('2147483647')).toEqual(['pull_request', 'commit']);
+    expect(kinds('2147483648')).toEqual(['commit']);
+  });
+
   it('6자리 숫자는 PR 하나다 — SHA로는 너무 짧다', () => {
     expect(kinds('123456')).toEqual(['pull_request']);
   });

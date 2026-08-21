@@ -59,6 +59,24 @@ const SHARED_SHA = 'cafe0011223344556677889900aabbccddeeff01';
 const HIDDEN_SHA = 'dead000000000000000000000000000000000001';
 /** 커밋 문서는 없고 PR 문서의 `head_sha`에만 있는 SHA (40자 폴백). */
 const HEAD_ONLY_SHA = 'fade000000000000000000000000000000000009';
+/**
+ * **같은 SHA가 범위 안 저장소 둘에 있다.**
+ *
+ * 체리픽·리베이스 없이도 저장소를 옮겨 심으면 생긴다. 상세 조회가 경로의
+ * 저장소를 실제로 보는지 확인하는 유일한 방법이다 — SHA가 한 저장소에만
+ * 있으면 저장소 조건을 빼도 시험이 통과한다.
+ */
+const TWIN_REPO_SHA = 'facade00000000000000000000000000000000ff';
+/**
+ * 범위 안 저장소에 있으나 **문서의 범위 필드가 어긋난** PR.
+ *
+ * 저장소가 private으로 바뀌었는데 투영이 아직 따라잡지 못한 상태를 흉내낸다.
+ * 커밋 → PR 조인이 강제 범위 필터를 거치는지 확인한다 — 조인이 필터를 건너뛰면
+ * 커밋이 범위 안이라는 이유로 이 PR이 딸려 나온다.
+ */
+const SKEWED_PR = 1500;
+/** 위 PR을 가리키는 커밋. 커밋 자체는 범위 안이다. */
+const SKEW_SHA = 'ba5eba11000000000000000000000000000000cc';
 
 let pool: Pool;
 let redis: Redis;
@@ -186,6 +204,15 @@ const PULL_REQUESTS = [
     created_at: '2026-08-21T02:00:00Z', document_version: 1,
   },
   {
+    _id: `${String(PAYMENTS)}:${String(SKEWED_PR)}`,
+    ...scope('acme/payments', PAYMENTS),
+    // 저장소는 범위 안인데 문서의 범위 필드가 범위 밖을 가리킨다.
+    visibility: 'private', allowed_team_ids: [99], org_id: 2,
+    pr_number: SKEWED_PR, title: '범위가 어긋난 PR', state: 'merged', author: 'kim',
+    base_branch: 'main', source_commit_shas: [], source_commits_truncated: false,
+    created_at: '2026-08-05T00:00:00Z', merged_at: '2026-08-06T00:00:00Z', document_version: 1,
+  },
+  {
     _id: `${String(HIDDEN)}:9`,
     ...scope('other/secret', HIDDEN),
     visibility: 'private', allowed_team_ids: [99],
@@ -227,6 +254,26 @@ const COMMITS = [
     _id: `${String(PAYMENTS)}:${TWIN_B}`,
     ...scope('acme/payments', PAYMENTS),
     commit_sha: TWIN_B, role: 'source_commit', pull_request_numbers: [1234],
+    base_branch: 'main', document_version: 1,
+  },
+  {
+    // 같은 SHA, 저장소 둘. 경로의 저장소가 어느 문서를 고르는지 가른다.
+    _id: `${String(PAYMENTS)}:${TWIN_REPO_SHA}`,
+    ...scope('acme/payments', PAYMENTS),
+    commit_sha: TWIN_REPO_SHA, role: 'merge_commit', pull_request_numbers: [1234],
+    base_branch: 'main', document_version: 1,
+  },
+  {
+    _id: `${String(BILLING)}:${TWIN_REPO_SHA}`,
+    ...scope('acme/billing', BILLING),
+    commit_sha: TWIN_REPO_SHA, role: 'source_commit', pull_request_numbers: [1234],
+    base_branch: 'release', document_version: 1,
+  },
+  {
+    _id: `${String(PAYMENTS)}:${SKEW_SHA}`,
+    ...scope('acme/payments', PAYMENTS),
+    // 커밋은 범위 안이지만 가리키는 PR의 범위 필드가 어긋나 있다.
+    commit_sha: SKEW_SHA, role: 'merge_commit', pull_request_numbers: [SKEWED_PR],
     base_branch: 'main', document_version: 1,
   },
   {
@@ -297,9 +344,21 @@ beforeAll(async () => {
   };
 
   const sessions = new SessionStore({ redis: redisPort });
+  /*
+   * **이 스위트는 `org_team` 범위로 돈다** (저장소 500개 초과, WP-012 AC-6).
+   *
+   * `explicit` 범위는 `repository_id` 하나만 보므로, 같은 저장소 안의 문서는
+   * 범위 필드가 어긋나 있어도 전부 통과한다 — 커밋 → PR 조인이 강제 필터를
+   * 건너뛰어도 아무 차이가 없어 ADR-008 위반을 시험이 잡지 못한다.
+   * `org_team`은 문서의 `org_id`·`visibility`·`allowed_team_ids`를 보므로 그
+   * 위반이 드러난다.
+   *
+   * `explicit` 경로는 `search/list.test.ts`가 덮는다. 둘을 갈라 두 모드를 모두
+   * 실제 조회로 확인한다.
+   */
   const source: AccessScopeSource = {
     fetch: async () => ({
-      repositoryIds: [PAYMENTS, BILLING],
+      repositoryIds: [PAYMENTS, BILLING, ...Array.from({ length: 600 }, (_, i) => 5000 + i)],
       orgIds: [ORG],
       teamIds: [10],
       visibilities: ['public', 'internal'],
@@ -612,6 +671,49 @@ describe('QA-W003-01·02·04·05: 커밋 상세 (API-SRCH-002 / FR-SRCH-002)', (
     }
   });
 
+  it('M14: 경로의 저장소가 어느 문서를 고르는지 가른다', async () => {
+    // 같은 SHA가 범위 안 저장소 둘에 있다. 저장소 조건을 빼면 아무거나 나온다.
+    const payments = await getPath(
+      `/api/v1/commits/${encodeURIComponent('acme/payments')}/${TWIN_REPO_SHA}`,
+    );
+    const billing = await getPath(
+      `/api/v1/commits/${encodeURIComponent('acme/billing')}/${TWIN_REPO_SHA}`,
+    );
+
+    expect(payments.body.repository).toBe('acme/payments');
+    expect(payments.body.role).toBe('merge_commit');
+    expect(billing.body.repository).toBe('acme/billing');
+    expect(billing.body.role).toBe('source_commit');
+  });
+
+  it('ADR-008: 커밋 → PR 조인도 강제 범위 필터를 지난다', async () => {
+    /*
+     * 커밋은 범위 안이지만 그것이 가리키는 PR의 범위 필드는 범위 밖을
+     * 가리킨다(저장소가 private이 됐는데 투영이 아직 따라잡지 못한 상태).
+     * 조인이 필터를 건너뛰면 커밋이 범위 안이라는 이유로 이 PR이 딸려 나온다.
+     */
+    const { status, body } = await getPath(
+      `/api/v1/commits/${encodeURIComponent('acme/payments')}/${SKEW_SHA}`,
+    );
+
+    expect(status).toBe(200);
+    expect(body.pull_requests).toEqual([]);
+    // 볼 수 있는 PR이 없으므로 사유가 남는다.
+    expect(body.reason_code).toBe('no_pull_request');
+  });
+
+  it('DEV-060: 값이 없는 선택 필드는 `null`이 아니라 **키가 없다**', async () => {
+    // 원본 커밋 fixture에는 `link_summary`가 없다.
+    const { body } = await getPath(
+      `/api/v1/commits/${encodeURIComponent('acme/payments')}/${SOURCE_SHA}`,
+    );
+
+    expect(body).not.toHaveProperty('link_summary');
+    // 있는 것은 그대로 실린다 — 규칙이 "전부 뺀다"가 아님을 함께 건다.
+    expect(body).toHaveProperty('role');
+    expect(body).toHaveProperty('base_branch');
+  });
+
   it('40자가 아닌 SHA로 상세를 부르면 404다', async () => {
     const { status } = await getPath(`/api/v1/commits/${encodeURIComponent('acme/payments')}/beef123`);
     expect(status).toBe(404);
@@ -689,6 +791,20 @@ describe('QA-W002-01·02·03: PR 상세 (API-SRCH-003 / FR-SRCH-003)', () => {
     );
 
     expect(body).toMatchObject({ pr_number: 1234, title: '결제 재시도 로직', state: 'merged' });
+  });
+
+  it('DEV-060: PR에서도 값이 없는 선택 필드는 키가 없다', async () => {
+    // 미머지 PR fixture에는 `labels`·`reviewers`·`merged_at`이 없다.
+    const { body } = await getPath(
+      `/api/v1/pull-requests/${encodeURIComponent('acme/payments')}/1235`,
+    );
+
+    for (const key of ['labels', 'reviewers', 'approved_by', 'merged_at']) {
+      expect(body, key).not.toHaveProperty(key);
+    }
+    // `merge_commit_sha`만은 키를 두고 `null`이다 — "미머지"를 말해야 한다 (AC-2).
+    expect(body).toHaveProperty('merge_commit_sha');
+    expect(body.merge_commit_sha).toBeNull();
   });
 
   it('없는 PR은 404다', async () => {

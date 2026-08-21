@@ -37,7 +37,7 @@
 | WP-011 | 구조화 질의 파서 | REL-002 | done | 에이전트 | (이 PR) | DoD 7항 전부 통과. 단위 88건 (6.11장) | CR-014가 메운 빈칸(부정된 범위·값 검증 경계·범위 키·오류 판정 주체)을 함께 구현했다. AST를 ES 질의로 옮기는 것은 WP-013이다 |
 | WP-012 | 인증과 접근 범위 강제 | REL-002 | done | 에이전트 | (이 PR) | DoD 10항 중 9항 통과, 1항 부분 (6.12장). 단위 175건 + 통합 47건 | CR-015가 메운 빈칸(신원 표현·무효화 대상 산출·경합 순서·역할 합성)을 함께 구현했다. OIDC 라우트는 `web`이 소유하므로 WP-015가 붙인다 — 이 WP는 라이브러리와 `search-api` 강제를 세운다. 구현 중 DEV-050(해소)·DEV-051(미해소)을 등록했다 |
 | WP-013 | 검색 API 목록 조회 | REL-002 | done | 에이전트 | (이 PR) | DoD 7항 중 6항 통과, 1항 **NOT RUN** (6.13장). 단위 66건 + 통합 46건 | CR-016이 메운 빈칸(키→필드 표·파생 상태·다중 인덱스 정렬·완화 힌트 산출·응답 키 유무)을 함께 구현했다. NFR-001의 p95 500ms는 1000만 문서 데이터셋과 부하 harness가 없어 **측정하지 않았다**(DEV-058) — REL-002 성능 게이트로 넘긴다. 구현 중 DEV-059(해소)를 등록했다. 패싯·커서·전문 검색은 WP-032 |
-| WP-014 | 식별자 해석 API | REL-002 | todo | - | - | - | - |
+| WP-014 | 식별자 해석 API | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 4항 통과, 1항 부분, 1항 **NOT RUN** (6.14장). 단위 61건 + 통합 53건 | CR-017이 메운 빈칸(채워지지 않는 필드 처리·호스트 비교·릴리스 태그·정수와 SHA 접두의 겹침)을 함께 구현했다. **QA-W003-03(`direct_push`)은 도달 불가**라 통과하지 못했다(DEV-061) — push 이벤트 라우팅이 서는 WP-021의 몫이다. NFR-001의 단건 p95는 데이터셋이 없어 **측정하지 않았다**(DEV-058) |
 | WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | todo | - | - | - | - |
 | WP-016 | W-001 통합 검색 화면 | REL-002 | todo | - | - | - | - |
 | WP-017 | W-002 PR 상세 화면 | REL-002 | todo | - | - | - | - |
@@ -91,10 +91,10 @@
 
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
-| FR-SRCH-001 | WP-014 | - | - | not_started |
-| FR-SRCH-002 | WP-014, WP-018 | - | - | not_started |
-| FR-SRCH-003 | WP-014, WP-017 | - | - | not_started |
-| FR-SRCH-004 | WP-014, WP-016 | - | - | not_started |
+| FR-SRCH-001 | WP-014 | `packages/query/src/identifier.ts`, `packages/es/src/resolve-query.ts`, `apps/search-api/src/resolve/{service,routes}.ts` | `packages/query/src/identifier.test.ts`, `apps/search-api/integration/resolve/resolve.test.ts` | done (AC-1~AC-6. 릴리스 태그 판별만 제외 — 패턴이 정의되어 있지 않아 WP-024로 넘겼다, DEV-065) |
+| FR-SRCH-002 | WP-014, WP-018 | `apps/search-api/src/resolve/detail.ts`, `packages/es/src/resolve-query.ts` | `apps/search-api/integration/resolve/resolve.test.ts`, `packages/es/src/resolve-query.test.ts` | partial (AC-1·AC-2·AC-4·AC-5 충족. **AC-3 `direct_push`는 도달 불가** — 커밋 문서가 PR 이벤트에서만 만들어진다, DEV-061 / WP-021) |
+| FR-SRCH-003 | WP-014, WP-017 | `apps/search-api/src/resolve/detail.ts` | `apps/search-api/integration/resolve/resolve.test.ts` | partial (AC-1·AC-2·AC-4 충족. **AC-3의 메시지 첫 줄·작성자·작성 시각은 커밋 문서에 없다** — 배열 모양만 객체로 두고 `commit_sha`만 채웠다, DEV-062 / WP-020) |
+| FR-SRCH-004 | WP-014, WP-016 | `packages/query/src/identifier.ts` (7자 하한), `packages/es/src/resolve-query.ts` (`prefix`), `apps/search-api/src/resolve/{service,routes}.ts` | `packages/query/src/identifier.test.ts`, `packages/es/src/resolve-query.test.ts`, `apps/search-api/integration/resolve/resolve.test.ts` | done (AC-1~AC-4. 판별이 브라우저에서도 도는 순수 코드라 AC-2의 "검색을 수행하지 않는다"가 화면에서도 성립한다) |
 | FR-SRCH-005 | WP-011, WP-016 | `packages/query/src/{keys,errors,ast,tokenizer,parse,serialize}.ts` | `packages/query/src/{parse,serialize}.test.ts` | verified (AC-1~AC-6 전부. 화면의 오류 구간 강조는 WP-016) |
 | FR-SRCH-006 | WP-013, WP-016 | `packages/es/src/query-builder.ts`, `apps/search-api/src/search/{routes,service,relaxation}.ts`, `packages/db/src/repositories/{repository,auth}.ts` | `packages/es/src/query-builder.test.ts`, `apps/search-api/integration/search/list.test.ts` | done (AC-1~AC-3, AC-6. 화면 쪽 결합은 WP-016) |
 | FR-SRCH-007 | WP-013, WP-016 | `packages/es/src/sort.ts`, `packages/es/src/upsert.ts` (`doc_id`), `packages/es/src/mappings/*.ts`, `apps/search-api/src/search/{routes,service}.ts` | `packages/es/src/sort.test.ts`, `packages/es/src/upsert.test.ts`, `apps/search-api/integration/search/list.test.ts` | done (AC-1~AC-4. AC-4의 "문서 ID"는 `_id`가 아니라 같은 값의 `doc_id` 필드다 — DEV-059) |
@@ -760,7 +760,49 @@ DoD 7항 중 6항 통과, 1항 **NOT RUN**. 검증 방법은 `pnpm test:integrat
 
 **시험이 확인하지 못한 것.** NFR-001의 p95는 **NOT RUN**이다(위 DoD 표). 전문 검색이 없어 `relevance` 정렬은 실질적으로 문서 ID 순이며(DEV-056), 그것이 지금의 계약이다 — 동작하는 척하지 않았다. `allowed_team_ids`가 투영에서 비어 있으므로 `team:` 필터는 통합 시험이 fixture로 넣은 값에 대해서만 검증됐다(7장 한계 참조).
 
-### 6.14 릴리스 게이트
+### 6.14 WP-014 검증 실행 기록
+
+DoD 6항 중 4항 통과, 1항 부분, 1항 **NOT RUN**. 검증 방법은 `pnpm test:integration resolve`다.
+
+| DoD | 결과 | 근거 |
+| --- | --- | --- |
+| QA-W001-01 ~ QA-W001-06이 API 계층에서 통과한다 | 통과 | 40자 SHA·`#N`·`owner/repo#N`·GHE URL·7자 접두가 모두 옳은 문서를 집어 온다. 6자는 **조회 없이** 400이고, 후보 2건이면 자동 이동하지 않고 배열로 낸다. `limit`을 넘으면 절삭 표식이 붙는다 |
+| QA-W003-01 ~ QA-W003-05가 통과한다 | **부분 (4/5)** | QA-W003-01·02·04·05는 통과한다 — 역할 판정, AC-4의 PR 필드 전량, 같은 SHA가 PR 둘에 속하는 경우. **QA-W003-03(`direct_push`)은 통과하지 못한다** (DEV-061): 커밋 문서가 PR 이벤트에서만 만들어지고 `push`는 ack 후 버려지므로 직접 푸시 커밋은 **문서 자체가 없어** 404가 된다. 없는 동작을 시험으로 꾸며 통과시키지 않았다 |
+| QA-W002-01 ~ QA-W002-03이 통과한다 | 통과 | 머지 커밋과 원본 커밋이 갈라져 나오고, 미머지 PR은 `merge_commit_sha`가 `null`이며, 260건 fixture가 250건으로 잘리고 절삭 표식이 붙는다 |
+| 단건 해석 p95가 200ms 이하다 (NFR-001) — 커밋 1000만 건 데이터셋 | **NOT RUN** | 데이터셋도 `pnpm test:perf` 스크립트도 이 환경에 없다 (DEV-058, WP-013과 같은 형태). **측정하지 않은 것을 통과로 적지 않는다.** 예산을 지키는 구조(40자는 `term`, 접두는 `prefix`, 폴백은 커밋을 못 찾았을 때만, ES 마감 3초)만 시험으로 고정했다 |
+| 7자 접두 질의가 통상 후보 1건으로 좁혀진다 (ADR-012 근거 검증) | 통과 (규모 미달) | 접두가 겹치는 fixture 둘을 일부러 넣어 **접두가 겹치면 후보가 여럿 나온다**는 것과, 겹치지 않으면 1건이라는 것을 함께 확인했다. 다만 ADR-012의 근거는 *5000만 커밋에서도 통상 1건*이며 그 규모는 이 환경에서 재현하지 못했다 — 성능 게이트에서 함께 본다 |
+| API 계약의 응답 예시 3종과 실제 응답이 일치한다 | 통과 | 세 응답의 최상위 키를 확인했다. CR-017이 계약의 예시를 **실제 채워지는 필드로 줄인 뒤**의 일치다 — 계약을 고치지 않았다면 이 항목은 실패했을 것이다 |
+
+로컬에서 통과한 명령:
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` / `pnpm lint` / `pnpm lint:deps` | 종료 코드 0 — 패키지 13개, 위반 0건 |
+| `pnpm test` (전량) | 종료 코드 0 — **611건 통과 + 1건 건너뜀**(real-GHE smoke) |
+| `pnpm test:integration` (전량) | 종료 코드 0 — **378건** |
+| WP-014 몫만: 단위 61건 (판별 48 + 질의 모양 11 + 설정 2), 통합 53건 | 종료 코드 0 |
+| `pnpm build` | 종료 코드 0 |
+
+**시험이 실제로 무엇을 잡는지 확인했다.** 구현을 35가지로 망가뜨렸다 — 판별(길이 경계, 대소문자, 호스트 비교, 우선순위 목록, PR 번호 상한, 릴리스 태그 추측), 질의(40자를 `prefix`로, 접두를 `term`으로, 저장소 조건 제거, 폴백 필드 축소), 접근 범위(해석·상세·조인 각각의 강제 필터 우회), 절삭(접두 상한, 250건 상한, 총계 표기), 라우트(400 생략, 404를 403으로, 인증 생략), 채워지지 않은 키 채우기.
+
+**처음 28가지 중 22가지가 잡혔고 6가지가 살아남았다.** 살아남은 여섯을 하나씩 확인한 결과 **넷은 진짜 시험 구멍이었고 하나는 동치 변이, 하나는 결과가 같고 비용만 다른 변이**였다.
+
+| 생존 | 판정 | 조치 |
+| --- | --- | --- |
+| PR 번호 상한 제거 | **시험 구멍** — 40자리 숫자는 `MAX_SAFE_INTEGER`도 넘어 어느 상한을 써도 걸린다. 경계를 실제로 거는 것은 32비트를 넘고 `MAX_SAFE_INTEGER`는 넘지 않는 10~15자리다 | 10·14자리와 상한 ±1을 거는 시험을 더했다 |
+| 커밋 상세에서 저장소 조건 제거 | **시험 구멍** — SHA가 한 저장소에만 있으면 조건을 빼도 통과한다 | **같은 SHA를 범위 안 저장소 둘에 넣는 fixture**를 더해 경로의 저장소가 어느 문서를 고르는지 갈랐다 |
+| 커밋 → PR 조인의 범위 필터 제거 | **시험 구멍** — `explicit` 범위는 `repository_id` 하나만 보므로 같은 저장소 안에서는 필터를 빼도 차이가 없다 | 이 스위트를 **`org_team` 범위(저장소 500개 초과)로 전환**하고, 범위 필드가 어긋난 PR fixture를 더했다. `explicit` 경로는 `search/list.test.ts`가 계속 덮는다 — 두 모드를 갈라 모두 실제 조회로 확인한다 |
+| 없는 값을 `null`로 채우기 | **시험 구멍** — 값이 없는 선택 필드가 실제로 빠지는지 아무도 확인하지 않았다 | 커밋의 `link_summary`, PR의 `labels`·`reviewers`·`merged_at`이 **키째 없음**을 걸었다. `merge_commit_sha`만은 키를 두고 `null`이어야 함도 함께 걸었다 (AC-2) |
+| 기준 URL 가드 제거 | **동치 변이** — `hostOf(undefined)`와 `hostOf('')`가 모두 `null`이라 뒤따르는 `expected === null` 검사가 가드를 대신한다. 실측으로 확인했다 | 조치 없음. 가드는 읽기 위해 남긴다 |
+| 40자를 `prefix`로 조회 | **결과는 같고 비용만 다르다** — 40자 전체가 접두면 일치하는 term이 하나뿐이다. 그러나 데이터 모델 6장이 그 조회에 잡은 예산은 `term`의 p95 100ms다 | 질의 **모양**을 거는 단위 시험을 더했다. 실측 시험이 없는 지금 그 결정을 지키는 것은 모양 시험뿐이다 |
+
+고친 뒤 다시 돌려 **35가지 전부**(28 + 변이 7)가 잡히는 것을 확인했다. 동치 변이 하나는 잡히지 않는 것이 옳다.
+
+**시험이 결함 하나를 먼저 잡았다.** 접근 범위 누출을 확인하려고 만든 fixture가 **통과해 버렸다** — 범위 필드가 어긋난 PR이 그대로 나왔다. 원인은 구현이 아니라 시험 설계였다: `explicit` 범위는 `repository_id`만 보므로 같은 저장소 안의 문서는 범위 필드가 무엇이든 통과한다. 이것을 "구현이 틀렸다"로 읽지 않고 **`org_team` 범위에서만 관찰 가능한 불변식**임을 확인한 뒤 스위트를 그쪽으로 옮겼다.
+
+**시험이 확인하지 못한 것.** NFR-001의 단건 p95는 **NOT RUN**이다(위 DoD 표). ADR-012의 "5000만 커밋에서도 7자 접두는 통상 1건" 근거도 그 규모를 재현하지 못해 **확인하지 못했다** — 접두가 겹칠 때 후보가 여럿 나온다는 동작만 확인했다. 둘 다 REL-002 성능 게이트의 몫이다.
+
+### 6.15 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -840,6 +882,13 @@ DoD 7항 중 6항 통과, 1항 **NOT RUN**. 검증 방법은 `pnpm test:integrat
 | 전문 검색어(`q`의 자유 문자열)가 조회에 쓰이지 않음 | WP-013 제외 목록 (전문 검색은 WP-032) | 실제 상태 — 파서가 `parsed.text`로 응답에 실어 사용자가 무시된 것을 볼 수 있다. 조용히 버리지 않는다 | WP-032 |
 | 이미 색인된 문서에 `doc_id`가 없어 정렬 뒤로 밀림 | CR-016 DEV-059 | 실제 상태 — `upsert`가 생성 본문과 스크립트 `params.doc` 양쪽에 넣으므로 **다음 이벤트에서 채워진다.** 그때까지는 `missing: _last`로 뒤에 선다. 이 저장소에는 아직 운영 데이터가 없어 실질 영향이 없다 | 백필(WP-019) 또는 재색인(WP-035)이 지나면 사라진다 |
 | 완화 힌트 후보가 8개로 잘림 | CR-016 DEV-055 | 실제 상태 (의도된 상한) — 넘으면 `relaxation_hints_truncated: true`를 실어 조용한 절삭이 "이것이 전부"로 읽히지 않게 한다 | 없음 |
+| 직접 푸시 커밋을 조회할 수 없음 (`direct_push` 역할 도달 불가) | CR-017 DEV-061 / FR-SRCH-002 AC-3, QA-W003-03 | **실제 상태** — 커밋 문서가 PR 이벤트에서만 만들어지고 `push`는 ack 후 버려진다(DEV-016). 직접 푸시 커밋은 문서 자체가 없어 조회가 404다. API 계약과 타입은 그 값을 표현할 수 있게 두어, 값이 생겼을 때 계약을 다시 고치지 않게 했다 | **WP-021** (push 이벤트 라우팅) |
+| 커밋 상세에 메시지·작성자·부모 SHA·파일 목록이 없음 | CR-017 DEV-060 / WP-008이 남긴 한계 | 실제 상태 — `EVT-ING-002`가 커밋에 대해 SHA만 나른다. 채워지지 않은 필드는 **키를 넣지 않아** "만들지 않았다"와 "만들었는데 비었다"를 구분한다. 커밋의 표시명은 SHA 축약이다 | WP-020 (미러 기반 커밋 보강) |
+| PR 상세의 원본 커밋에 제목·작성자·작성 시각이 없음 | CR-017 DEV-062 / FR-SRCH-003 AC-3 | 실제 상태 — PR 문서는 SHA 배열만 갖고 커밋 문서를 조인해도 메시지가 없다. 배열 **모양은 객체**로 두어 WP-020이 키를 더할 때 계약을 고치지 않아도 되게 했다 | WP-020 |
+| 250건 초과 원본 커밋의 **진짜 총계를 모름** | CR-017 DEV-063 / FR-SRCH-003 AC-4 | 실제 상태 — 보강 payload가 총계를 나르지 않는다. 250을 총계로 내보내면 거짓이므로 **키를 빼고** `source_commits_truncated: true`만 남긴다 | `EVT-ING-002` 확장 CR |
+| 릴리스 태그를 식별자로 판별하지 않음 | CR-017 DEV-065 / 해석 순서 7단계 | 실제 상태 — **태그 패턴이 어디에도 정의되어 있지 않고** `prs-releases`도 비어 있다. 추측해 넣으면 `v1`·`build-2`가 오분류되어 전문 검색으로 가야 할 질의가 0건이 된다 | WP-024 (릴리스 수집)가 패턴을 정의한다 |
+| 단건 해석 p95(NFR-001)와 ADR-012의 선택도 근거가 측정되지 않음 | WP-014 DoD / DEV-058 | **NOT RUN** — 커밋 1000만 건 데이터셋이 없다. 접두가 겹칠 때 후보가 여럿 나온다는 **동작**만 확인했고, "5000만 커밋에서도 통상 1건"이라는 ADR-012의 **근거**는 확인하지 못했다 | **REL-002 성능 게이트 전 필수** |
+| `/resolve`가 자유 텍스트를 전문 검색으로 위임하지 않음 | WP-014 범위 (전문 검색은 WP-032) | 실제 상태 — `detected_kind: 'text'`로 판별만 하고 후보는 빈 배열이다. 화면이 그 신호를 받아 `/search`를 부른다 | WP-016 (화면 결합), WP-032 (전문 검색) |
 | 문서당 `EVT-ING-003`이 하나씩 발행됨 (PR 1 + 커밋 N) | 비동기 문서 4장의 payload가 엔티티 단위 | 실제 상태 — 커밋 250건 PR이면 251건이 나간다. `noop`은 내지 않아 재처리 시에는 줄어든다 | 관계 워커(WP-029) 실측 후 필요하면 CR |
 
 ## 8. 다음 작업
@@ -876,8 +925,12 @@ DoD 7항 중 6항 통과, 1항 **NOT RUN**. 검증 방법은 `pnpm test:integrat
 26. ~~WP-012 인증과 접근 범위 강제~~ → 완료 (2026-08-21). 검증 결과는 6.12장. **DoD 10항 중 9항 통과, AC-1의 브라우저 리다이렉트만 WP-015로 이월**
 27. ~~CR-016 WP-013 검색 계약 정정~~ → 완료 (2026-08-21). DEV-052~057·DEV-059 해소, DEV-058은 성능 harness 부재로 미해소. SRS 버전은 v2.2 유지(빈칸 메우기)
 28. ~~WP-013 검색 API 목록 조회~~ → 완료 (2026-08-21). 검증 결과는 6.13장. **DoD 7항 중 6항 통과, NFR-001의 p95 실측만 NOT RUN**
+29. ~~CR-017 WP-014 식별자 해석 계약 정정~~ → 완료 (2026-08-21). DEV-060·062~066 해소, DEV-061은 push 이벤트 라우팅이 없어 미해소. SRS 버전은 v2.2 유지(빈칸 메우기)
+30. ~~WP-014 식별자 해석 API~~ → 완료 (2026-08-21). 검증 결과는 6.14장. **DoD 6항 중 4항 통과, QA-W003-03 도달 불가, NFR-001 실측 NOT RUN**
 
-**다음 WP: WP-014 식별자 해석 API** (선행 WP-013 충족).
+**다음 WP: WP-015 웹 앱 셸과 Conductor 통합** (선행 WP-001 충족).
+
+WP-015가 REL-002의 나머지를 여는 열쇠다. 지금 열려 있는 것 중 셋이 화면을 기다린다 — WP-012의 OIDC 라우트(인프라 문서가 IdP 아웃바운드를 `web`에만 연다), NFR-005 권한 매트릭스의 화면 13종 축, 그리고 `test:e2e`·`test:a11y` harness(DEV-032). 조회 API 쪽은 WP-013·WP-014로 W-001·W-002·W-003이 딛고 설 것이 갖춰졌다.
 
 **사용자 결정이 필요한 것 — REL-002 진행 전:**
 
