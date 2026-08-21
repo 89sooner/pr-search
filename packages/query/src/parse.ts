@@ -151,7 +151,6 @@ export function parseQuery(input: string): QueryAst {
       throw syntaxError(`'${token.key}'의 값이 비었습니다`, token.raw, token.start, token.end);
     }
 
-
     checkEnumeratedValue(token.key, token);
 
     const op = token.negated ? 'not_eq' : 'eq';
