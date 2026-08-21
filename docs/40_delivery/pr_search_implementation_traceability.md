@@ -839,7 +839,9 @@ DoD 6항 중 4항 통과, 2항 부분. 검증 방법은 `pnpm test web/lib`, `pn
 | `pnpm test:e2e` | 종료 코드 0 — **15건** (실제 Chromium) |
 | `pnpm test:contrast` | 종료 코드 0 — 80쌍 중 실패 0건 |
 | `pnpm build` | 종료 코드 0 |
-| `pnpm test:integration` | **NOT RUN** — 이 환경에 Docker가 없어 Postgres·ES·Redis가 서지 않는다. WP-015는 백킹 서비스를 쓰는 코드를 바꾸지 않았다 |
+| `pnpm test:integration` | **NOT RUN (로컬)** — 이 환경에 Docker가 없어 Postgres·ES·Redis가 서지 않는다. CI의 `integration` 잡이 실제 서비스로 돈다 |
+
+**CI가 셋을 함께 돌게 배선했다.** harness를 만들어 두고 CI가 부르지 않으면 곧 썩는다 — 이 저장소의 다른 시험 계층(`test`·`test:integration`)은 전부 CI에 있다. `verify` 잡의 `build` 뒤에 `test:a11y` → `test:contrast` → `test:e2e` 순으로 붙였다. 브라우저가 필요 없는 둘을 먼저 두어, 거기서 깨지면 Chromium을 받지 않는다.
 
 **시험이 실제로 무엇을 잡는지 확인했다.** 구현을 47가지로 망가뜨렸다 — 내비게이션 역할 필터와 경로 판정, 프록시 헤더 허용 목록·세션 쿠키 재조립·경로 이탈·응답 헤더, 세션 판정 네 갈래, OIDC 왕복 쿠키 속성과 되읽기, 라우트의 상태 코드와 재인증 힌트, 로그아웃 메서드와 쿠키 만료, 셸의 포커스 이동·알림·`aria-live`, 단축키의 수식 키 판정, 서랍 버튼과 포커스 복귀, 정적 검사 자체의 무력화.
 
