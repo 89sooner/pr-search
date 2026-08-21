@@ -106,11 +106,13 @@ function source(scope: Partial<RawAccessScope> = {}): AccessScopeSource & { call
   return impl;
 }
 
-function build(overrides: { source?: AccessScopeSource; now?: () => number } = {}) {
+function build(overrides: { source?: AccessScopeSource & { calls?: number }; now?: () => number } = {}) {
   const redis = new FakeRedis();
   const db = new FakeDb();
   const m = metrics();
-  const src = overrides.source ?? source();
+  const src: AccessScopeSource & { calls: number } = (overrides.source as
+    | (AccessScopeSource & { calls: number })
+    | undefined) ?? source();
   let clock = T0;
   const resolver = new AccessScopeResolver({
     redis,

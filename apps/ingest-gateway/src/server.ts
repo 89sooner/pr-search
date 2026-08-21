@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, RawEventInsert } from '@prs/db';
 import { TOPICS, type EventBus } from '@prs/bus';
 import { EVENT_NAMES, ingestPartitionKey } from '@prs/domain';
+import { toEventPayload, type InvalidationTarget } from '@prs/authz';
 import type { HealthResponse } from '@prs/contracts';
 import type { ArchiveWriter } from './archive.js';
 import { createArchiveWriter, NULL_ARCHIVE_WRITER } from './archive.js';
@@ -31,6 +32,11 @@ export interface ServerDeps {
   readonly config: GatewayConfig;
   readonly store: RawEventStore;
   readonly enqueue: (event: RawEventInsert) => Promise<void>;
+  /** 권한 캐시 무효화 발행 (EVT-AUTH-001, CR-015 DEV-042). */
+  readonly publishPermissionInvalidation: (
+    target: InvalidationTarget,
+    correlationId: string,
+  ) => Promise<void>;
   /** PostgreSQL 연결 확인 (인프라 3장: 게이트웨이 헬스체크는 PG 연결을 본다). */
   readonly checkDatabase: () => Promise<void>;
   readonly archive: ArchiveWriter;
@@ -79,12 +85,50 @@ export function createIngestPublisher(
   };
 }
 
+/**
+ * 권한 캐시 무효화 발행자 (EVT-AUTH-001, CR-015 DEV-042).
+ *
+ * `prs:permission`은 `user_id`로 파티션한다 (비동기 문서 2장). 그런데 이
+ * 이벤트는 사용자를 아직 모를 수 있다 — `team`·`repository` 이벤트가 그렇다.
+ * 그래서 파티션 키는 **대상 자체**로 잡는다. 같은 팀·같은 저장소의 무효화가
+ * 한 파티션에서 직렬로 처리되므로, 연달아 오는 변경이 서로를 앞지르지 않는다.
+ *
+ * 마감 시간은 enqueue와 같은 값을 쓴다. 이 발행이 매달리면 수신 응답 p95
+ * 300ms(NFR-002)가 그대로 무너진다.
+ */
+export function createPermissionPublisher(
+  bus: EventBus,
+  deadlineMs: number,
+): (target: InvalidationTarget, correlationId: string) => Promise<void> {
+  return async (target: InvalidationTarget, correlationId: string): Promise<void> => {
+    await withTimeout(
+      bus.publish(TOPICS.permission, permissionPartitionKey(target), {
+        event_id: randomUUID(),
+        event_name: EVENT_NAMES.permissionInvalidated,
+        correlation_id: correlationId,
+        occurred_at: new Date().toISOString(),
+        payload: { ...toEventPayload(target), org: target.org, team_slug: target.teamSlug, org_id: target.orgId },
+      }),
+      deadlineMs,
+    );
+  };
+}
+
+/** 대상별 파티션 키. 같은 대상의 무효화가 서로를 앞지르지 않게 한다. */
+function permissionPartitionKey(target: InvalidationTarget): string {
+  if (target.teamId !== null) return `team:${String(target.teamId)}`;
+  if (target.githubUserIds.length > 0) return `user:${String(target.githubUserIds[0])}`;
+  if (target.repositoryId !== null) return `repo:${String(target.repositoryId)}`;
+  return `login:${target.logins[0] ?? 'unknown'}`;
+}
+
 /** 실행 중인 풀과 버스에서 서버 의존성을 만든다. */
 export function createServerDeps(pool: Pool, config: GatewayConfig, bus: EventBus): ServerDeps {
   return {
     config,
     store: createRawEventStore(pool),
     enqueue: createIngestPublisher(bus, config.enqueueTimeoutMs),
+    publishPermissionInvalidation: createPermissionPublisher(bus, config.enqueueTimeoutMs),
     checkDatabase: async (): Promise<void> => {
       await pool.query('SELECT 1');
     },
@@ -198,6 +242,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         parsePayload: (rawBody) => JSON.parse(rawBody.toString('utf8')) as unknown,
         store: deps.store,
         enqueue: deps.enqueue,
+        publishPermissionInvalidation: deps.publishPermissionInvalidation,
         archive: deps.archive,
         metrics: deps.metrics,
         maxBodyBytes: deps.config.maxBodyBytes,

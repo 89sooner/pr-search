@@ -9,7 +9,8 @@
  */
 
 import { createPool } from '@prs/db';
-import { RedisStreamsEventBus } from '@prs/bus';
+import { scopeKey, type ScopeRedis } from '@prs/authz';
+import { RedisStreamsEventBus, createRedisClient } from '@prs/bus';
 import {
   GitHubClient,
   GitHubTransport,
@@ -25,6 +26,7 @@ import { startOutboxRelay, type OutboxRelay } from './outbox-relay.js';
 import { createWorkerMetrics } from './metrics.js';
 import { startEnrichWorker, type EnrichLogEntry } from './enrich.js';
 import { startProjectWorker, type ProjectLogEntry } from './project.js';
+import { startAuthzWorker, type AuthzLogEntry } from './authz.js';
 import { createEsClient } from '@prs/es';
 import type { Subscription } from '@prs/bus';
 import type { Client } from '@elastic/elasticsearch';
@@ -46,6 +48,8 @@ const bus = new RedisStreamsEventBus();
 let relay: OutboxRelay | undefined;
 let enrichSubscription: Subscription | undefined;
 let projectSubscription: Subscription | undefined;
+let authzSubscription: Subscription | undefined;
+let authzRedisClient: { quit(): Promise<unknown> } | undefined;
 let esClient: Client | undefined;
 
 if (roles.includes('batch')) {
@@ -114,6 +118,65 @@ if (roles.includes('project')) {
   });
 }
 
+if (roles.includes('authz')) {
+  // JOB-AUTH-001. GHE 자격 증명은 **선택**이다 — 없으면 `team_member` 표만으로
+  // 팀을 펼친다. 표가 비어 있으면 팀 무효화가 아무도 맞히지 못하므로,
+  // 자격 증명이 있는 배포를 권한다 (CR-015, DEV-046).
+  const authzRedis = createRedisClient();
+  const scopeRedis: ScopeRedis = {
+    get: (key) => authzRedis.get(key),
+    set: (key, value, mode, seconds) => authzRedis.set(key, value, mode, seconds),
+    del: (...keys) => authzRedis.del(...keys),
+  };
+
+  let authzGithub: GitHubClient | undefined;
+  const ghConfig = resolveGitHubConfig();
+  if (hasAppCredentials(ghConfig) && parseInstallations().length > 0) {
+    const authzPool = new TokenPool(
+      new InstallationTokenProvider({
+        apiUrl: ghConfig.apiUrl,
+        appId: ghConfig.appId,
+        privateKey: ghConfig.privateKey,
+        refreshLeadMs: ghConfig.tokenRefreshLeadMs,
+        requestTimeoutMs: ghConfig.requestTimeoutMs,
+      }),
+      { installations: parseInstallations(), quarantineThreshold: ghConfig.quarantineThreshold },
+    );
+    authzGithub = new GitHubClient(
+      new GitHubTransport({
+        apiUrl: ghConfig.apiUrl,
+        requestTimeoutMs: ghConfig.requestTimeoutMs,
+        pool: authzPool,
+        scheduler: new RequestScheduler({ maxConcurrent: ghConfig.maxConcurrentRequests }),
+      }),
+    );
+  } else {
+    process.stdout.write(
+      `${JSON.stringify({
+        service: SERVICE_NAME,
+        job: 'JOB-AUTH-001',
+        level: 'warn',
+        message: 'GHE 자격 증명이 없다 — 팀 무효화는 team_member 표만 쓴다 (CR-015, DEV-046)',
+      })}\n`,
+    );
+  }
+
+  authzRedisClient = authzRedis;
+  authzSubscription = await startAuthzWorker({
+    pool,
+    bus,
+    metrics,
+    github: authzGithub,
+    forgetCached: async (userIds) => {
+      if (userIds.length === 0) return;
+      await scopeRedis.del(...userIds.map(scopeKey));
+    },
+    log: (entry: AuthzLogEntry) => {
+      process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-AUTH-001', ...entry })}\n`);
+    },
+  });
+}
+
 let shuttingDown = false;
 const shutdown = (): void => {
   if (shuttingDown) return;
@@ -125,6 +188,8 @@ const shutdown = (): void => {
       await relay?.stop();
       await enrichSubscription?.close();
       await projectSubscription?.close();
+      await authzSubscription?.close();
+      await authzRedisClient?.quit();
       await bus.close();
       await esClient?.close();
       await pool.end();
