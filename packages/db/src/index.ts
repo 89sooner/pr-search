@@ -23,8 +23,16 @@ export {
   trySequenceSpaceLock,
 } from './advisory-lock.js';
 
-export { appliedVersions, loadMigrations, migrateDown, migrateUp, MIGRATIONS_DIR } from './migrate.js';
-export type { Migration } from './migrate.js';
+/*
+ * 마이그레이션 실행기는 여기서 내보내지 않는다 (CR-018, DEV-072).
+ *
+ * `@prs/db/migrate` 서브패스로 가져간다. 진입점에 두면 `MIGRATIONS_DIR`의
+ * `new URL('../migrations', import.meta.url)`이 **이 패키지를 간접적으로
+ * 가져오는 모든 곳**의 번들 그래프에 들어간다 — 디렉터리라 어떤 번들러도
+ * 해석하지 못하고, `web`의 빌드가 그것 때문에 깨졌다.
+ *
+ * 마이그레이션은 운영 도구이지 조회 경로가 아니므로 경계가 여기 있는 것이 옳다.
+ */
 
 export { ensureAllPartitions, ensureMonthlyPartitions, partitionName, PARTITIONED_TABLES } from './partitions.js';
 export type { PartitionedTable } from './partitions.js';

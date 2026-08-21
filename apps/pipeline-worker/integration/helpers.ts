@@ -1,6 +1,7 @@
 /** 워커 통합 테스트 공용 헬퍼. 실제 PostgreSQL과 실제 Redis에 붙는다. */
 
-import { createPool, ensureAllPartitions, migrateUp, resolvePoolConfig, type Pool } from '@prs/db';
+import { createPool, ensureAllPartitions, resolvePoolConfig, type Pool } from '@prs/db';
+import { migrateUp } from '@prs/db/migrate';
 import { createRedisClient, type Redis } from '@prs/bus';
 
 export async function migratedPool(): Promise<Pool> {

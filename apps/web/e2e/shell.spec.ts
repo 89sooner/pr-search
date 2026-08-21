@@ -1,0 +1,168 @@
+import { expect, test } from '@playwright/test';
+
+/**
+ * 셸과 인증 라우트 (WP-015 DoD / FLOW-000, QA-COMMON).
+ *
+ * **실제 브라우저에서만 확인할 수 있는 것**만 여기 둔다. 역할 필터링이나
+ * 포맷 같은 것은 단위·a11y 시험이 이미 더 촘촘하게 건다 — 같은 것을 느린
+ * 계층에서 다시 걸면 실행 시간만 늘고 잡는 것은 늘지 않는다.
+ */
+
+test.describe('셸이 실제 브라우저에서 선다', () => {
+  test('랜드마크가 서고 스킵 링크가 첫 탭이다', async ({ page }) => {
+    await page.goto('/');
+
+    await expect(page.getByRole('banner')).toBeVisible();
+    await expect(page.getByRole('navigation', { name: '주요 화면' })).toBeVisible();
+    await expect(page.getByRole('main')).toBeVisible();
+
+    // 스킵 링크는 평소 숨어 있다가 포커스를 받으면 나타난다.
+    await page.keyboard.press('Tab');
+    const focused = page.locator(':focus');
+    await expect(focused).toHaveAttribute('href', '#main-content');
+  });
+
+  test('스킵 링크를 누르면 포커스가 본문으로 간다', async ({ page }) => {
+    await page.goto('/');
+
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Enter');
+
+    /*
+     * **URL이 아니라 포커스를 건다.**
+     *
+     * Conductor의 스킵 링크는 `preventDefault()` 후 `main`에 직접
+     * `focus()`를 부른다. 해시 이동에 기대지 않는 것이 옳다 — 여러
+     * 브라우저에서 `href="#id"` 이동은 스크롤만 옮기고 **키보드 포커스는
+     * 옮기지 않아서**, 다음 탭이 본문이 아니라 헤더 다음 항목으로 간다.
+     * 그래서 URL에 `#main-content`가 남지 않으며(히스토리도 더럽히지
+     * 않는다), 스킵 링크가 존재하는 이유인 **포커스 이동**만 남는다.
+     *
+     * 이것이 실제 브라우저에서만 확인되는 것이다 — jsdom은 해시 이동의
+     * 포커스 동작을 흉내 내지 못한다.
+     */
+    const focusedId = await page.evaluate(() => document.activeElement?.id ?? null);
+    expect(focusedId).toBe('main-content');
+
+    // 다음 탭이 본문 안에서 이어져야 스킵이 실제로 이뤄진 것이다.
+    const inMain = await page.evaluate(
+      () => document.getElementById('main-content')?.contains(document.activeElement) ?? false,
+    );
+    expect(inMain).toBe(true);
+  });
+
+  test('제목이 문서 제목에 실린다', async ({ page }) => {
+    await page.goto('/');
+    await expect(page).toHaveTitle(/PR Search/);
+  });
+
+  test('`lang`이 한국어다 — 스크린 리더의 발음을 정한다', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ko');
+  });
+});
+
+test.describe('내비게이션', () => {
+  test('링크가 실제로 이동한다', async ({ page }) => {
+    await page.goto('/');
+
+    // 화면은 WP-016 이후지만 경로 구조는 셸이 소유한다. 404여도 이동은 일어난다.
+    await page.getByRole('link', { name: '통합 검색' }).click();
+    await expect(page).toHaveURL(/\/search$/);
+  });
+
+  test('인증이 꺼진 배포에서는 운영 항목이 없다', async ({ page }) => {
+    // 세션이 없으므로 역할도 없다 — 운영 그룹이 렌더링되지 않는다 (QA-A001-10).
+    await page.goto('/');
+
+    await expect(page.getByRole('link', { name: '파이프라인' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: '감사 기록' })).toHaveCount(0);
+  });
+});
+
+test.describe('프록시가 미인증을 401로 막는다', () => {
+  test('세션 없이 API를 부르면 401과 로그인 경로를 준다', async ({ request }) => {
+    const response = await request.get('/api/search?q=test');
+
+    expect(response.status()).toBe(401);
+    const body = (await response.json()) as {
+      error: { code: string; detail?: { login_path?: string } };
+      correlation_id: string;
+    };
+    expect(body.error.code).toBe('UNAUTHENTICATED');
+    expect(body.error.detail?.login_path).toBe('/auth/login');
+    // 상관 ID가 있어야 사용자가 운영자에게 전달할 것이 생긴다.
+    expect(body.correlation_id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  test('위조한 세션 쿠키로도 통과하지 못한다', async ({ request }) => {
+    const response = await request.get('/api/search?q=test', {
+      headers: { cookie: '__Host-prs_session=forged-value' },
+    });
+
+    /*
+     * Redis가 서 있으면 401(그런 세션이 없다), 없으면 503(확인할 수 없다).
+     * **어느 쪽이든 통과하지 못한다**가 이 계층이 거는 것이다 — e2e 환경에
+     * Redis를 요구하지 않으면서도 "위조가 통한다"는 회귀는 잡는다.
+     *
+     * 다만 이 단언만으로는 **부족하다.** 저장소가 없으면 503이 401을 가려
+     * "그런 세션이 없다" 갈래가 한 번도 실행되지 않는다 — 변이 E11이
+     * 그것을 드러냈다. 그 갈래는 `lib/proxy.test.ts`의 `resolveProxyAuth`가
+     * 저장소 없이 직접 건다.
+     */
+    expect([401, 503]).toContain(response.status());
+  });
+
+  test('**신원 헤더로는 통과하지 못한다** (CR-018, DEV-067)', async ({ request }) => {
+    for (const headers of [
+      { 'x-user-id': 'attacker' },
+      { 'x-forwarded-user': 'attacker' },
+      { 'x-roles': 'operator' },
+      { authorization: 'Bearer stolen' },
+    ]) {
+      const response = await request.get('/api/search?q=test', { headers });
+      expect(response.status(), JSON.stringify(headers)).toBe(401);
+    }
+  });
+
+  test('상관 ID를 응답 헤더로도 돌려준다', async ({ request }) => {
+    const response = await request.get('/api/search?q=test');
+    expect(response.headers()['x-correlation-id']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});
+
+test.describe('인증 라우트 (FLOW-000)', () => {
+  test('OIDC 미구성 배포에서는 로그인이 503이다 — IdP 대신 404로 보내지 않는다', async ({ request }) => {
+    const response = await request.get('/auth/login', { maxRedirects: 0 });
+
+    expect(response.status()).toBe(503);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('PERMISSION_UNAVAILABLE');
+  });
+
+  test('콜백도 마찬가지다', async ({ request }) => {
+    const response = await request.get('/auth/callback?code=x&state=y', { maxRedirects: 0 });
+    expect(response.status()).toBe(503);
+  });
+
+  test('로그아웃은 `GET`을 받지 않는다 — `<img src>` 하나로 로그아웃되면 안 된다', async ({ request }) => {
+    const response = await request.get('/auth/logout', { maxRedirects: 0 });
+    expect(response.status()).toBe(405);
+  });
+
+  test('로그아웃 `POST`는 세션 쿠키를 만료시킨다', async ({ request }) => {
+    const response = await request.post('/auth/logout');
+
+    expect(response.status()).toBe(200);
+    const setCookie = response.headers()['set-cookie'] ?? '';
+    expect(setCookie).toContain('__Host-prs_session=');
+    expect(setCookie).toContain('Max-Age=0');
+    expect(setCookie).toContain('HttpOnly');
+  });
+});
+
+test.describe('헬스체크', () => {
+  test('`/healthz`가 200이다', async ({ request }) => {
+    expect((await request.get('/healthz')).status()).toBe(200);
+  });
+});

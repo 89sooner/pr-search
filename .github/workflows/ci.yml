@@ -41,6 +41,22 @@ jobs:
       - name: build
         run: pnpm build
 
+      # 접근성과 대비는 브라우저가 필요 없다 — jsdom과 토큰 계산만 쓴다.
+      # 빠르므로 e2e보다 먼저 둔다: 여기서 깨지면 브라우저를 받을 이유가 없다.
+      - name: test:a11y
+        run: pnpm test:a11y
+
+      - name: test:contrast
+        run: pnpm test:contrast
+
+      # e2e는 **실제 브라우저와 빌드된 앱** 둘 다 필요하다.
+      # `build`가 위에서 `.next`를 만들었고, Playwright가 `next start`로 띄운다.
+      - name: install chromium
+        run: pnpm --filter @prs/web exec playwright install --with-deps chromium
+
+      - name: test:e2e
+        run: pnpm test:e2e
+
   integration:
     runs-on: ubuntu-latest
     services:

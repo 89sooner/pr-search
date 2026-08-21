@@ -10,3 +10,7 @@ next-env.d.ts
 
 # 로컬 원본 아카이브 (ADR-002 레인 B). 운영에서는 볼륨으로 마운트한다.
 var/
+
+# Playwright 실행 산출물 (WP-015). 실패했을 때만 생기고, 실패를 고치면 사라진다.
+test-results/
+playwright-report/

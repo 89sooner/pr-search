@@ -6,16 +6,33 @@
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "dev": "next dev --port ${WEB_PORT:-3000}",
-    "start": "next start --port ${WEB_PORT:-3000}"
+    "start": "next start --port ${WEB_PORT:-3000}",
+    "test:a11y": "vitest run --config vitest.a11y.config.ts",
+    "test:contrast": "conductor-check-contrast --theme all",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@conductor-by-89soone/css": "0.1.0",
+    "@conductor-by-89soone/react": "0.1.1",
+    "@conductor-by-89soone/tokens": "0.1.0",
+    "@prs/authz": "workspace:*",
+    "@prs/bus": "workspace:*",
     "@prs/contracts": "workspace:*",
+    "@prs/query": "workspace:*",
     "next": "16.3.1",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "server-only": "0.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.57.0",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.0",
+    "@testing-library/user-event": "14.6.1",
     "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.4"
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.1.0",
+    "axe-core": "4.10.3",
+    "jsdom": "26.1.0"
   }
 }

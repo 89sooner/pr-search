@@ -8,7 +8,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createPool, ensureAllPartitions, migrateUp, resolvePoolConfig, type Pool } from '@prs/db';
+import { createPool, ensureAllPartitions, resolvePoolConfig, type Pool } from '@prs/db';
+import { migrateUp } from '@prs/db/migrate';
 import { createArchiveWriter, NULL_ARCHIVE_WRITER, type ArchiveWriter } from '../src/archive.js';
 import { MAX_BODY_BYTES, type GatewayConfig } from '../src/config.js';
 import { createIngestMetrics, type IngestMetrics } from '../src/metrics.js';
