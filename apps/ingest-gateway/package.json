@@ -15,6 +15,7 @@
     "@prs/contracts": "workspace:*",
     "@prs/db": "workspace:*",
     "@prs/domain": "workspace:*",
+    "@prs/metrics": "workspace:*",
     "fastify": "5.12.1"
   }
 }

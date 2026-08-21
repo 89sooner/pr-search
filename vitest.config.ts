@@ -9,6 +9,7 @@ export default defineConfig({
     // 테스트는 빌드 산출물이 아니라 소스를 직접 읽는다. pnpm build 없이도 pnpm test가 돈다.
     alias: {
       '@prs/domain': resolvePackage('domain'),
+      '@prs/metrics': resolvePackage('metrics'),
       '@prs/contracts': resolvePackage('contracts'),
       '@prs/query': resolvePackage('query'),
       '@prs/es': resolvePackage('es'),

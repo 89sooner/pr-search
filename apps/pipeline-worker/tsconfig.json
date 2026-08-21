@@ -28,6 +28,9 @@
     },
     {
       "path": "../../packages/es"
+    },
+    {
+      "path": "../../packages/metrics"
     }
   ]
 }

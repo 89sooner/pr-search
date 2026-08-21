@@ -12,7 +12,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import type { ErrorResponse } from '@prs/contracts';
 import { deadLetterRepo } from '@prs/db';
 import type { DeadLetterFilter, DeadLetterState } from '@prs/db';
-import { METRICS_CONTENT_TYPE, renderGauge } from '../metrics.js';
+import { Gauge, METRICS_CONTENT_TYPE, renderMetrics } from '../metrics.js';
 import {
   DEFAULT_LIST_STATES,
   ReprocessRejected,
@@ -150,19 +150,19 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
    */
   app.get('/metrics', async (_request, reply): Promise<string> => {
     const counts = await deadLetterRepo.countsByState(deps.pool);
-    const samples = (Object.keys(counts) as DeadLetterState[]).map((state) => ({
-      labels: { state },
-      value: counts[state],
-    }));
-    const body = [
-      renderGauge('dead_letter_total', '실패 대기열 항목 수 (상태별)', samples),
-      renderGauge(
-        'dead_letter_open_total',
-        '아직 열려 있는 실패 대기열 항목 수. 100건 초과가 경보 임계다',
-        [{ labels: {}, value: counts.pending + counts.reprocessing }],
-      ),
-    ].join('\n');
-    return reply.type(METRICS_CONTENT_TYPE).send(`${body}\n`);
+    const byState = new Gauge('dead_letter_total', '실패 대기열 항목 수 (상태별)');
+    byState.replace(
+      (Object.keys(counts) as DeadLetterState[]).map((state) => ({
+        labels: { state },
+        value: counts[state],
+      })),
+    );
+    const open = new Gauge(
+      'dead_letter_open_total',
+      '아직 열려 있는 실패 대기열 항목 수. 100건 초과가 경보 임계다',
+    );
+    open.set(counts.pending + counts.reprocessing);
+    return reply.type(METRICS_CONTENT_TYPE).send(renderMetrics([byState, open]));
   });
 }
 
