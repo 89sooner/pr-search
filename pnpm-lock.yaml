@@ -176,6 +176,9 @@ importers:
 
   packages/query:
     dependencies:
+      '@prs/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@prs/domain':
         specifier: workspace:*
         version: link:../domain
