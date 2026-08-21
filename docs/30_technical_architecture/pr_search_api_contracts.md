@@ -432,7 +432,7 @@
 - **문법·값 오류는 파서가 낸다** (CR-014, DEV-038). `@prs/query`가 오류 코드와 문자 오프셋을 함께 돌려주고 API는 그대로 실어 보낸다. `QUERY_TOO_SHORT`(전문 검색어 1자)도 파서가 판정한다 — 무엇이 전문 검색어인지 아는 곳이 파서뿐이다
 - 페이지네이션: `size` 기본 25, 최대 200 (초과 시 200으로 절삭). `cursor`로 다음 페이지
 - 정렬: `merge_seq` | `merged_at` | `created_at` | `updated_at` | `changed_files_count` | `additions` | `lead_time_seconds` | `relevance`. 기본 `merge_seq` desc
-- **모든 정렬은 문서 ID를 마지막 키로 갖는다** (FR-SRCH-007 AC-4). 동점이 있어도 두 번 조회한 순서가 같다
+- **모든 정렬은 문서 ID를 마지막 키로 갖는다** (FR-SRCH-007 AC-4). 동점이 있어도 두 번 조회한 순서가 같다. 그 값은 `_id`가 아니라 **`doc_id` 필드**다 (CR-016, DEV-059) — Elasticsearch 8은 `_id` 정렬을 금지한다. `upsert`가 `_id`와 같은 값을 그 필드에 함께 넣는다
 - **`relevance`는 전문 검색이 서기 전까지 문서 ID 순이다** (CR-016, DEV-056). 접근 범위 필터는 `filter` 절이라 점수를 만들지 않으므로 모든 문서의 점수가 같다. 키를 거절하지는 않는다 — AC-1이 지원 키로 열거했다. 실제 점수는 WP-032가 붙인다
 - **`facets`와 `next_cursor`는 WP-032 전까지 이렇게 나간다** (CR-016, DEV-057). `next_cursor`는 **항상 `null`**로 실린다(키가 있고 값이 없다 = 다음 페이지가 없다). `facets`는 **키 자체가 없다** — 빈 객체는 "패싯을 셌는데 아무것도 없다"로 읽히기 때문이다
 

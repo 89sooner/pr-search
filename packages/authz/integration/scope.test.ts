@@ -68,6 +68,11 @@ beforeEach(async () => {
 
   await pool.query('DELETE FROM permission_cache');
   await pool.query('DELETE FROM team_member');
+  // `team`도 비운다. 이 파일이 쓰는 team_id는 다른 통합 파일이 쓰는 것과
+  // 겹칠 수 있고, `team`에는 `UNIQUE (org_id, slug)`가 있어 남의 행이 남아
+  // 있으면 같은 slug를 다른 team_id로 넣는 순간 삽입이 통째로 실패한다.
+  // 통합 파일은 한 데이터베이스를 나눠 쓰므로 각자 자기 전제를 세운다.
+  await pool.query('DELETE FROM team');
   await pool.query('DELETE FROM app_user');
   await redis.del(scopeKey(USER));
 

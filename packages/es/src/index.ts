@@ -34,8 +34,23 @@ export {
 } from './scoped-query.js';
 export type { AccessScope, ExplicitAccessScope, OrgTeamAccessScope, ScopedQuery } from './scoped-query.js';
 
-export { search } from './search.js';
-export type { ScopedSearchOptions } from './search.js';
+export { multiSearch, search } from './search.js';
+export type { ScopedSearchOptions, ScopedSearchRequest, SearchTarget } from './search.js';
+
+export { EMPTY_RESOLUTION, buildQuery, collectNames } from './query-builder.js';
+export type { BuiltQuery, NameResolution, UnresolvedName } from './query-builder.js';
+
+export {
+  DEFAULT_SORT_KEY,
+  DEFAULT_SORT_ORDER,
+  PartialSearchError,
+  SORT_KEYS,
+  TIEBREAK_FIELD,
+  assertNoShardFailures,
+  buildSort,
+  isSortKey,
+} from './sort.js';
+export type { SortKey, SortOrder } from './sort.js';
 
 export { CONDITIONAL_UPSERT_SCRIPT, bulkUpsert, classifyFailure, upsertOne } from './upsert.js';
 export type { BulkItemOutcome, BulkUpsertResult, UpsertRequest } from './upsert.js';

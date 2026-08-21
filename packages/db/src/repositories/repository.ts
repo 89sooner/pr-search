@@ -181,3 +181,28 @@ export async function updateRepositorySettings(
   );
   return result.rows[0];
 }
+
+/**
+ * 조직 이름을 `org_id`로 옮긴다 (CR-016, DEV-052).
+ *
+ * 검색 문서는 `org_id`를 숫자로만 갖는다 — 조직 **이름**이 없다. 사용자는
+ * `org:acme`처럼 이름으로 묻으므로 그 사이를 레지스트리가 잇는다. 문서에
+ * 이름을 넣어 재색인하지 않는 이유는 그 이름의 주인이 여기이고, 조직명이
+ * 바뀌면 문서 전량을 다시 써야 하기 때문이다.
+ *
+ * 한 `owner`가 여러 `org_id`를 갖는 일은 없다 — `(owner, name)`이 유일하고
+ * 같은 owner의 저장소는 같은 조직에 속한다. `DISTINCT`로 그것을 강제한다.
+ *
+ * 찾지 못한 이름은 결과에 담기지 않는다. 호출 측이 그 사실을 사용자에게
+ * 알린다 — 조용히 0건을 내지 않기 위해서다.
+ */
+export async function resolveOrgIds(db: Queryable, owners: readonly string[]): Promise<Map<string, number>> {
+  if (owners.length === 0) return new Map();
+
+  const { rows } = await db.query<{ owner: string; org_id: number }>(
+    'SELECT DISTINCT owner, org_id FROM repository WHERE owner = ANY($1::text[])',
+    [[...owners]],
+  );
+  return new Map(rows.map((row) => [row.owner, row.org_id]));
+}
+

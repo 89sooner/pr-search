@@ -252,6 +252,8 @@ CREATE INDEX permission_cache_repos_idx ON permission_cache USING GIN (repositor
 CREATE INDEX permission_cache_orgs_idx  ON permission_cache USING GIN (org_ids);
 ```
 
+**모든 검색 문서는 `doc_id`를 갖는다 (CR-016, DEV-059).** `_id`와 같은 값이다. Elasticsearch 8이 `_id` 정렬을 금지하므로 FR-SRCH-007 AC-4의 "문서 ID를 마지막 정렬 키로"를 성립시키려면 그 값이 정렬 가능한 필드로 문서 안에 있어야 한다. `@prs/es`의 `upsert`가 자동으로 채우므로 투영이 잊을 수 없다.
+
 **`org`·`team` 질의는 레지스트리를 거친다 (CR-016, DEV-052).** 검색 문서는 `org_id`와 `allowed_team_ids`를 **숫자로만** 갖는다 — 조직 이름도 팀 slug도 없다. 사용자는 `org:acme`·`team:payments-core`처럼 이름으로 묻으므로, 질의 빌더가 `repository.owner` → `org_id`, `team.slug` → `team_id`로 먼저 해석한다. 문서에 이름을 더해 재색인하지 않는 이유는 그 이름의 주인이 레지스트리이고, 조직명·팀명이 바뀌면 문서 전량을 다시 써야 하기 때문이다.
 
 **신원의 세 가지 표현 (CR-015, DEV-043).** 세션은 OIDC `sub`로 만들어지고, 무효화 이벤트는 GHE 신원으로 도착한다. `user_id`(OIDC `sub`)가 기본 키이고, `login`과 `github_user_id`가 GHE 쪽 두 이름이다. 무효화는 **`github_user_id`를 우선 쓴다** — login은 개명될 수 있지만 숫자 id는 아니고, 개명 웹훅을 놓친 사이의 무효화가 조용히 아무도 맞히지 못하는 것이 이 시스템에서 가장 나쁜 실패다.

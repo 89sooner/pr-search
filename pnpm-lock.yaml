@@ -110,6 +110,9 @@ importers:
       '@prs/metrics':
         specifier: workspace:*
         version: link:../../packages/metrics
+      '@prs/query':
+        specifier: workspace:*
+        version: link:../../packages/query
       fastify:
         specifier: 5.12.1
         version: 5.12.1
@@ -195,6 +198,9 @@ importers:
       '@prs/domain':
         specifier: workspace:*
         version: link:../domain
+      '@prs/query':
+        specifier: workspace:*
+        version: link:../query
 
   packages/github:
     dependencies:
