@@ -361,12 +361,17 @@
   - 등록 시 저장소 ID·대상 브랜치(최대 10)·미러 사용·백필 여부
   - 해제 시 `status = 'archived'`, ES 문서 `repository_archived: true` (삭제하지 않음)
   - 미등록 저장소 이벤트는 원본 보관만 하고 투영하지 않음
-  - `GET /admin/pipeline-status`: 수신량, 큐 길이, 단계별 지연 p50/p95, DLQ 수, 보강 대기 수, 저장소별 지연 상위 10
+  - `GET /admin/pipeline-status`: 수신량, 큐 길이, 수집 반영 지연 p50/p95, DLQ 수, 보강 대기 수, 저장소별 지연 상위 10
+  - 단계별 지연은 지표 저장소가 설정된 경우에만. 없으면 `unavailable` (CR-013, DEV-029)
+  - `repository_archived`를 커밋 문서까지 확장하고 해제 시 기존 문서에 소급 표시 (CR-013, DEV-028)
+  - 이름 붙은 관리 토큰과 감사 기록 적재 (CR-013, DEV-030)
   - k8s 매니페스트 (게이트웨이, 워커, PostgreSQL/ES/Redis 연결)
-  - Prometheus 메트릭 엔드포인트
+  - Prometheus 메트릭 엔드포인트 — 세 앱이 손으로 복제한 지표 모듈을 `@prs/metrics` 한 곳으로 합친다
 - 제외:
   - A-002 화면 (WP-040)
+  - A-001 화면 (WP-015 웹 셸과 Conductor가 선 뒤). 이 WP는 API까지다
   - 시퀀스 공간 상태 (WP-021 이후)
+  - 백필 잡의 **실행** (WP-019가 `batch` 워커를 세운다). 여기서는 `job` 행만 큐에 넣는다
 - 완료 기준(DoD):
   - [ ] 대상 브랜치 11개 등록 시 400 `BRANCH_LIMIT_EXCEEDED`를 반환한다 (FR-ING-009 AC-2)
   - [ ] 해제 후에도 기존 문서가 조회된다 (AC-3)
@@ -374,7 +379,7 @@
   - [ ] 접근 권한 없는 저장소 등록이 403으로 거부된다 (예외 처리)
   - [ ] 파이프라인 상태 응답의 데이터 신선도가 30초 이내다 (FR-ADMIN-001 AC-2)
   - [ ] 등록·해제가 감사 기록에 남는다 (AC-5)
-- 검증 방법: `pnpm test:integration admin/repositories`, `pnpm test:e2e ops-minimal`
+- 검증 방법: `pnpm test:integration admin/repositories`, `pnpm test:integration ops/pipeline-status` (CR-013, DEV-032 — `test:e2e` 스크립트가 없고 이 WP는 화면을 만들지 않으므로 API 수준 end-to-end로 대체)
 - 기록: 원장 WP-010 상태, FR-ING-009·FR-ADMIN-001 매핑
 
 ---
