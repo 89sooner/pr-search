@@ -536,6 +536,10 @@
   - Next.js App Router, `@conductor-by-89soone/css` 1회 import
   - `AppShell` + `C-001 AppTopBar` + `C-002 LeftNavPanel`, 스킵 링크
   - 라우트 핸들러 프록시 (`/api/[...path]`), 세션 검증, 상관 ID 전파, 클라이언트 헤더 미전달
+    — **신원 헤더를 만들지 않는다.** 세션 쿠키만 전달한다 (CR-018, DEV-067)
+  - `test:a11y`·`test:e2e` harness 수립 — 화면을 처음 세우는 WP다 (CR-018, DEV-069 / DEV-032)
+  - `⌘K`는 셸이 소유하고 `omniSearch` 슬롯의 첫 포커스 가능 요소를 잡는다. C-010은 WP-016 (CR-018, DEV-070)
+  - 클라이언트는 `@prs/authz/roles` 서브패스만 쓴다 — 진입점은 `@prs/es`를 끌어온다 (CR-018, DEV-068)
   - OIDC 콜백 라우트, 경로 보존 리다이렉트
   - 역할 기반 내비게이션 필터링 (운영 그룹은 렌더링하지 않음)
   - `C-004 EmptyState`, `C-005 ErrorBanner` 구현

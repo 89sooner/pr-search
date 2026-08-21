@@ -125,6 +125,7 @@ ES 아카이브(약 700GB)와 `raw_event`(4TB)는 같은 payload를 담지만 �
 | 아웃바운드 | 워커 → GHE REST | 허용 목록 (GHE 호스트만) |
 | 아웃바운드 | 워커 → GHE Git (HTTPS) | 허용 목록 |
 | 아웃바운드 | `web` → OIDC IdP | 허용 목록 |
+| 아웃바운드 | `web` → Redis | 허용 목록 (OIDC 콜백이 세션을 발급한다, CR-018 DEV-071) |
 | 아웃바운드 | 서비스 → 알림 채널 | 허용 목록 |
 
 인터넷 노출은 없다. 아웃바운드는 허용 목록 방식이며, 목록에 없는 목적지로의 연결을 차단한다.
@@ -136,6 +137,7 @@ ES 아카이브(약 700GB)와 `raw_event`(4TB)는 같은 payload를 담지만 �
 - Filebeat는 Elasticsearch로만 아웃바운드한다.
 - `gh-executor`는 구성된 GitHub Enterprise 호스트로만 아웃바운드한다. 그 외 목적지는 네트워크 정책에서 차단한다 (NFR-010).
 - `gh-executor`는 PostgreSQL과 Redis에 접속하되 Elasticsearch에는 접속하지 않는다.
+- `web`은 OIDC IdP와 Redis로만 아웃바운드한다 (CR-018, DEV-071). PostgreSQL·Elasticsearch에는 접속하지 않는다 — 조회는 전부 `search-api`를 거친다.
 
 ## 7. 구성 관리
 
