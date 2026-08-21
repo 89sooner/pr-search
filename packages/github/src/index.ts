@@ -54,11 +54,13 @@ export type {
   ChangedFile,
   CollaboratorSummary,
   CommitSummary,
+  PermissionSummary,
   PullRequestSummary,
   ReleaseSummary,
   RepoRef,
   RepositorySummary,
   ReviewSummary,
   TagSummary,
+  TeamMemberSummary,
   TeamSummary,
 } from './client.js';

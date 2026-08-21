@@ -127,6 +127,27 @@ importers:
         specifier: 19.2.4
         version: 19.2.4(@types/react@19.2.18)
 
+  packages/authz:
+    dependencies:
+      '@prs/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@prs/db':
+        specifier: workspace:*
+        version: link:../db
+      '@prs/es':
+        specifier: workspace:*
+        version: link:../es
+      '@prs/github':
+        specifier: workspace:*
+        version: link:../github
+      '@prs/metrics':
+        specifier: workspace:*
+        version: link:../metrics
+      ioredis:
+        specifier: 6.0.0
+        version: 6.0.0
+
   packages/bus:
     dependencies:
       '@prs/domain':

@@ -6,6 +6,7 @@
  * 작업은 Operations Plane의 몫이고 신원·권한·감사 경계가 아예 다르다 (ADR-013).
  */
 
+import { GitHubApiError } from './errors.js';
 import type { RequestPriority } from './scheduler.js';
 import type { GitHubTransport, PagedResult } from './transport.js';
 
@@ -110,6 +111,24 @@ export interface TeamSummary {
 export interface CollaboratorSummary {
   readonly login: string;
   readonly permissions: Readonly<Record<string, boolean>>;
+}
+
+/**
+ * `GET /repos/{owner}/{repo}/collaborators/{username}/permission`의 응답.
+ *
+ * `permission`은 `none`·`read`·`write`·`admin`이 아니라 GHE 내부 이름
+ * (`pull`·`triage`·`push`·`maintain`·`admin`)으로 온다. `read` 이상의 판정은
+ * `@prs/authz`의 `isReadable`이 한다.
+ */
+export interface PermissionSummary {
+  readonly permission: string;
+  readonly user?: { readonly login: string; readonly id: number };
+}
+
+/** 팀 구성원 (CR-015, DEV-046). */
+export interface TeamMemberSummary {
+  readonly id: number;
+  readonly login: string;
 }
 
 export interface TagSummary {
@@ -249,5 +268,80 @@ export class GitHubClient {
       path: `/repos/${ref.owner}/${ref.repo}/collaborators`,
       ...options,
     });
+  }
+
+  /**
+   * 한 사용자의 저장소 **실효** 권한 (FR-AUTH-002 AC-1, WP-012).
+   *
+   * 조직 기본 권한·팀 권한·직접 협업자를 모두 반영한 값이라, 세 경로를 따로
+   * 합치지 않아도 "read 이상 권한을 가진 저장소"가 정확히 나온다.
+   *
+   * 권한이 없으면 GHE가 404를 준다. **그것은 실패가 아니라 답이므로** `null`로
+   * 옮긴다 — 던지면 접근 범위 산출 전체가 503이 되고, 볼 수 없는 저장소 하나가
+   * 사용자의 모든 조회를 막는다.
+   */
+  async collaboratorPermission(
+    ref: RepoRef,
+    username: string,
+    options: CallOptions = {},
+  ): Promise<PermissionSummary | null> {
+    try {
+      return await this.#transport.get<PermissionSummary>({
+        org: orgOf(ref),
+        path: `/repos/${ref.owner}/${ref.repo}/collaborators/${encodeURIComponent(username)}/permission`,
+        ...options,
+      });
+    } catch (error) {
+      if (error instanceof GitHubApiError && error.kind === 'not_found') return null;
+      throw error;
+    }
+  }
+
+  /**
+   * 조직 구성원 여부 (FR-AUTH-002 AC-6).
+   *
+   * 구성원이 아니면 404다. 여기서도 404는 답이다.
+   */
+  async isOrgMember(org: string, username: string, options: CallOptions = {}): Promise<boolean> {
+    return this.#exists({ org, path: `/orgs/${org}/members/${encodeURIComponent(username)}`, ...options });
+  }
+
+  /** 팀 소속 여부. 소속이 아니면 404다. */
+  async isTeamMember(
+    org: string,
+    teamSlug: string,
+    username: string,
+    options: CallOptions = {},
+  ): Promise<boolean> {
+    return this.#exists({
+      org,
+      path: `/orgs/${org}/teams/${encodeURIComponent(teamSlug)}/memberships/${encodeURIComponent(username)}`,
+      ...options,
+    });
+  }
+
+  /** 팀 구성원 목록 (CR-015, DEV-046). `team` 웹훅이 `team_member`를 갱신할 때 쓴다. */
+  async listTeamMembers(org: string, teamSlug: string, options: CallOptions = {}): Promise<TeamMemberSummary[]> {
+    return this.#transport.getAll<TeamMemberSummary>({
+      org,
+      path: `/orgs/${org}/teams/${encodeURIComponent(teamSlug)}/members`,
+      ...options,
+    });
+  }
+
+  /**
+   * "있는가"를 묻는 조회.
+   *
+   * 404만 `false`로 옮긴다. 401·403·5xx는 그대로 던진다 — **권한을 모르는
+   * 것과 권한이 없는 것을 섞으면 기본 거부가 무너진다** (FR-AUTH-002 AC-3).
+   */
+  async #exists(options: { org: string; path: string } & CallOptions): Promise<boolean> {
+    try {
+      await this.#transport.get<unknown>(options);
+      return true;
+    } catch (error) {
+      if (error instanceof GitHubApiError && error.kind === 'not_found') return false;
+      throw error;
+    }
   }
 }

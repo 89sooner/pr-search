@@ -1,0 +1,125 @@
+/**
+ * @prs/authz — 인증과 접근 범위 강제 (WP-012).
+ *
+ * 이 패키지는 HTTP 서버도 Fastify도 Next.js도 모른다. 세 가지 일만 한다.
+ *
+ *   1. **누구인가** — OIDC 흐름과 서버 측 세션 (FR-AUTH-001)
+ *   2. **무엇을 볼 수 있는가** — 접근 범위 산출과 캐시 (FR-AUTH-002, FR-AUTH-003)
+ *   3. **무엇을 할 수 있는가** — 역할 (보안 문서 5.1)
+ *
+ * 강제 결합 자체(`applyMandatoryScopeFilter`, `ScopedQuery`)는 `@prs/es`가
+ * 소유한다 — 그것은 Elasticsearch 질의의 성질이고, 여기서 다시 정의하면
+ * 우회 가능한 두 번째 경로가 생긴다 (ADR-008).
+ */
+
+export const PACKAGE_NAME = '@prs/authz' as const;
+
+export { AuthError, ForbiddenRoleError, OidcError, UnauthenticatedError } from './errors.js';
+
+export {
+  ADMIN_ASSIGNED_ROLES,
+  DEFAULT_ROLE,
+  IDP_ASSIGNABLE_ROLES,
+  ROLES,
+  composeRoles,
+  hasRole,
+  isRole,
+  parseGroupRoleMap,
+} from './roles.js';
+export type { GroupRoleMap, Role } from './roles.js';
+
+export { codeChallengeOf, createAuthorizationRequest, sanitizeReturnPath, statesMatch } from './pkce.js';
+export type { AuthorizationRequest } from './pkce.js';
+
+export {
+  JWKS_REFRESH_COOLDOWN_MS,
+  JWKS_TTL_MS,
+  JwksCache,
+  SUPPORTED_ALGORITHMS,
+  isSupportedAlgorithm,
+} from './jwks.js';
+export type { JwksCacheOptions, JwksFetcher, SupportedAlgorithm } from './jwks.js';
+
+export { CLOCK_SKEW_SECONDS, verifyIdToken } from './id-token.js';
+export type { IdTokenClaims, VerifyOptions } from './id-token.js';
+
+export { buildAuthorizationUrl, exchangeCode, fetchJwks, fetchTokenExchanger } from './oidc.js';
+export type { OidcProviderConfig, TokenExchanger, TokenResponse } from './oidc.js';
+
+export {
+  ABSOLUTE_TIMEOUT_MS,
+  IDLE_TIMEOUT_MS,
+  SESSION_COOKIE_NAME,
+  createSessionId,
+  deadlinesOf,
+  expiryOf,
+  readSessionCookie,
+  remainingTtlSeconds,
+  serializeClearingCookie,
+  serializeSessionCookie,
+  sessionIdsMatch,
+} from './session.js';
+export type { CookieOptions, ExpiryReason, SessionDeadlines, SessionRecord } from './session.js';
+
+export {
+  SESSION_KEY_PREFIX,
+  SessionStore,
+  TOUCH_INTERVAL_MS,
+  cookieMaxAgeSeconds,
+  parseSession,
+  sessionKey,
+} from './session-store.js';
+export type { LoadedSession, SessionRedis, SessionStoreOptions } from './session-store.js';
+
+export {
+  DEFAULT_REPOSITORY_CONCURRENCY,
+  GheAccessScopeSource,
+  ghePermissionApi,
+  isReadable,
+} from './scope-source.js';
+export type {
+  AccessScopeSource,
+  CollaboratorPermission,
+  GhePermissionApi,
+  GheScopeSourceOptions,
+  RawAccessScope,
+  RegisteredRepository,
+} from './scope-source.js';
+
+export {
+  AccessScopeResolver,
+  CACHE_TTL_MS,
+  CACHE_TTL_SECONDS,
+  DEFAULT_MAX_CONCURRENT_REFRESH,
+  EXPLICIT_SCOPE_LIMIT,
+  SCOPE_KEY_PREFIX,
+  ScopeUnavailableError,
+  parseCachedScope,
+  scopeKey,
+  toAccessScope,
+} from './scope.js';
+export type {
+  CachedScope,
+  ScopeDatabase,
+  ScopeMetrics,
+  ScopeRedis,
+  ScopeResolverOptions,
+} from './scope.js';
+
+export {
+  applyInvalidation,
+  extractInvalidationTarget,
+  isEmptyTarget,
+  toEventPayload,
+} from './invalidation.js';
+export type {
+  InvalidationContext,
+  InvalidationPorts,
+  InvalidationReason,
+  InvalidationResult,
+  InvalidationTarget,
+  PermissionInvalidated,
+} from './invalidation.js';
+
+export { groupsClaimName, hasOidcCredentials, resolveOidcConfig, resolveSessionReaderConfig } from './config.js';
+export type { AuthEnv, SessionReaderConfig } from './config.js';
