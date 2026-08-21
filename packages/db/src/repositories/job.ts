@@ -23,7 +23,13 @@ export type JobState = 'queued' | 'running' | 'paused' | 'completed' | 'failed' 
 export const ACTIVE_JOB_STATES: readonly JobState[] = ['queued', 'running', 'paused'];
 
 export interface JobRow {
-  readonly job_id: string;
+  /**
+   * `BIGSERIAL`이라 int8이고, `@prs/db`의 타입 파서가 숫자로 준다 (CR-013,
+   * DEV-027). 선언을 `string`으로 두면 타입만 문자열이고 런타임 값은 숫자인
+   * 상태가 되어 `===` 비교와 JSON 직렬화가 조용히 어긋난다 — 실제로 WP-010의
+   * 등록 응답이 `backfill_job_id`를 내보내면서 드러났다.
+   */
+  readonly job_id: number;
   readonly type: JobType;
   readonly target: string;
   readonly state: JobState;
@@ -43,8 +49,8 @@ export async function enqueueJob(
   type: JobType,
   target: string,
   requestedBy: string,
-): Promise<string> {
-  const result = await db.query<{ job_id: string }>(
+): Promise<number> {
+  const result = await db.query<{ job_id: number }>(
     `INSERT INTO job (type, target, state, requested_by)
      VALUES ($1, $2, 'queued', $3)
      RETURNING job_id`,
@@ -72,7 +78,7 @@ export async function findActiveJob(
 /** 진행률과 재개 지점을 기록한다. `cursor`가 있어야 중단 후 이어서 실행된다 (FR-ING-006 AC-4). */
 export async function updateJobProgress(
   db: Queryable,
-  jobId: string,
+  jobId: number,
   progress: Record<string, unknown>,
   cursor: Record<string, unknown> | null,
 ): Promise<void> {
@@ -85,7 +91,7 @@ export async function updateJobProgress(
 
 export async function finishJob(
   db: Queryable,
-  jobId: string,
+  jobId: number,
   state: Extract<JobState, 'completed' | 'failed' | 'cancelled'>,
   error: string | null = null,
 ): Promise<void> {

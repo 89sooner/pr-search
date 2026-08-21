@@ -10,6 +10,7 @@ import type { HealthResponse } from '@prs/contracts';
 import { resolveSearchApiConfig, type SearchApiConfig } from './config.js';
 import { registerOpsRoutes } from './ops/routes.js';
 import type { OpsDeps } from './ops/dead-letters.js';
+import type { RegistryDeps } from './ops/repositories.js';
 
 export const SERVICE_NAME = 'search-api' as const;
 export const DEFAULT_PORT = 3002;
@@ -23,6 +24,8 @@ export interface ServerDeps {
    * 프로세스로 뜬다.
    */
   readonly ops?: OpsDeps;
+  /** 저장소 등록 의존. 없으면 등록 경로를 달지 않는다 (API-ADM-001). */
+  readonly registry?: RegistryDeps;
   readonly log?: (entry: { readonly level: string; readonly message: string }) => void;
 }
 
@@ -42,15 +45,19 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
 
   if (deps.ops === undefined) return app;
 
-  if (config.adminToken === null) {
+  if (config.adminTokens.length === 0) {
     // 조용히 열어 두지 않는다. 뜨는 순간 왜 없는지 로그로 말한다 (CR-012, DEV-025).
     log({
       level: 'warn',
-      message: 'ADMIN_API_TOKEN이 없어 관리 경로를 등록하지 않는다 (API-ADM-003)',
+      message: 'ADMIN_API_TOKENS가 없어 관리 경로를 등록하지 않는다 (API-ADM-001, API-ADM-003)',
     });
     return app;
   }
 
-  registerOpsRoutes(app, { ...deps.ops, adminToken: config.adminToken });
+  registerOpsRoutes(app, {
+    ...deps.ops,
+    adminTokens: config.adminTokens,
+    ...(deps.registry === undefined ? {} : { registry: deps.registry }),
+  });
   return app;
 }

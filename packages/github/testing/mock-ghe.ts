@@ -310,7 +310,20 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
       return;
     }
     if (/\/repos\/[^/]+\/[^/]+$/.test(url.pathname)) {
-      send(200, { id: 4021, full_name: 'acme/payments', private: true, default_branch: 'main' }, rateHeaders);
+      send(
+        200,
+        {
+          id: 4021,
+          full_name: 'acme/payments',
+          private: true,
+          default_branch: 'main',
+          owner: { id: 77, login: 'acme' },
+          // 사내 GHE의 저장소 대부분이 internal이다. `private: true`로는
+          // 구분되지 않는 값이라 목이 실제 응답 모양을 그대로 갖는다 (DEV-033).
+          visibility: 'internal',
+        },
+        rateHeaders,
+      );
       return;
     }
     send(404, { message: 'Not Found' }, rateHeaders);

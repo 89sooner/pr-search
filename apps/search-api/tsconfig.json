@@ -25,6 +25,12 @@
     },
     {
       "path": "../../packages/metrics"
+    },
+    {
+      "path": "../../packages/es"
+    },
+    {
+      "path": "../../packages/github"
     }
   ]
 }
