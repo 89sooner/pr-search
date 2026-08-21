@@ -292,6 +292,22 @@
 
 지원 질의 키 (FR-SRCH-005 AC-1): `repo`, `org`, `author`, `team`, `reviewer`, `label`, `base`, `head`, `state`, `merged`, `created`, `seq`, `release`, `path`, `is`
 
+**질의 문법 (CR-014).** 파서는 `@prs/query`가 갖고 서버와 클라이언트가 같은 코드를 쓴다 (ADR-001).
+
+| 요소 | 형태 | 비고 |
+| --- | --- | --- |
+| 동등 | `key:value` | 같은 키 반복은 OR, 다른 키는 AND (AC-5) |
+| 부정 | `-key:value` | 범위에도 붙는다 (AC-6) |
+| 범위 | `key:a..b` | **`seq`·`merged`·`created` 세 키만** (DEV-037). 양끝이 모두 있어야 한다 |
+| 인용 | `key:"두 낱말"` | `"`와 `\`는 `\`로 escape한다 |
+| 전문 검색어 | 키 없는 남은 문자열 | 공백 하나로 이어 붙인다 |
+
+`op` 값은 넷이다 — `eq`, `not_eq`, `range`, **`not_range`** (CR-014, DEV-035). AC-6의 `-`는 문법 수준에서 모든 키에 붙으므로, 범위에만 붙일 수 없게 하면 사용자가 이해할 수 없는 특례가 된다.
+
+**값 검증은 SRS가 값을 열거한 키에만 한다 (DEV-036).** `is`는 AC-1이 `merged`/`open`/`closed`/`reverted`를 명시했으므로 그 밖의 값은 400으로 거절한다. `state`처럼 열거되지 않은 키의 값은 검증하지 않는다 — 없는 제약을 지어내지 않는다.
+
+**`key`가 세 범위 키가 아니면 `..`는 리터럴이다.** `path:src/a..b`는 범위가 아니라 그 문자열을 찾는 조건이다.
+
 응답 200:
 
 ```json
@@ -377,6 +393,7 @@
 ```
 
 - 오류: `QUERY_SYNTAX_ERROR` (400), `SHA_PREFIX_TOO_SHORT` (400), `CURSOR_INVALID` (400), `CURSOR_QUERY_MISMATCH` (400), `QUERY_TOO_SHORT` (400), `SEARCH_TIMEOUT` (504), `PERMISSION_UNAVAILABLE` (503)
+- **문법·값 오류는 파서가 낸다** (CR-014, DEV-038). `@prs/query`가 오류 코드와 문자 오프셋을 함께 돌려주고 API는 그대로 실어 보낸다. `QUERY_TOO_SHORT`(전문 검색어 1자)도 파서가 판정한다 — 무엇이 전문 검색어인지 아는 곳이 파서뿐이다
 - 페이지네이션: `size` 기본 25, 최대 200 (초과 시 200으로 절삭). `cursor`로 다음 페이지
 - 정렬: `merge_seq` | `merged_at` | `created_at` | `updated_at` | `changed_files_count` | `additions` | `lead_time_seconds` | `relevance`. 기본 `merge_seq` desc
 

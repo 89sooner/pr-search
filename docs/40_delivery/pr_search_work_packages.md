@@ -395,8 +395,10 @@
 - 구현 범위:
   - `@prs/query`: 토크나이저 + 파서 + AST + 직렬화(AST → 질의 문자열)
   - 지원 키 15종 (FR-SRCH-005 AC-1)
-  - 범위 문법 `a..b` (숫자, 날짜, 날짜시각)
-  - 부정 접두 `-`
+  - 범위 문법 `a..b` (숫자, 날짜, 날짜시각) — `seq`·`merged`·`created` 세 키만 (CR-014, DEV-037)
+  - 부정 접두 `-`. 범위에도 붙으며 `op`는 `not_range`다 (CR-014, DEV-035)
+  - `is` 값 검증 (`merged`/`open`/`closed`/`reverted`). 값이 열거되지 않은 키는 검증하지 않는다 (CR-014, DEV-036)
+  - 전문 검색어 1자는 `QUERY_TOO_SHORT` (CR-014, DEV-038)
   - 같은 키 반복은 OR, 다른 키는 AND
   - 미지원 키는 문자 오프셋과 지원 키 목록을 담은 오류
   - 인용 문자열(`label:"needs review"`) 처리
