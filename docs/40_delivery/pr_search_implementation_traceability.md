@@ -35,7 +35,7 @@
 | WP-009 | 실패 대기열과 재처리 | REL-001 | todo | - | - | - | - |
 | WP-010 | 저장소 등록 API와 파이프라인 지표 | REL-001 | todo | - | - | - | - |
 | WP-011 | 구조화 질의 파서 | REL-002 | done | 에이전트 | (이 PR) | DoD 7항 전부 통과. 단위 88건 (6.11장) | CR-014가 메운 빈칸(부정된 범위·값 검증 경계·범위 키·오류 판정 주체)을 함께 구현했다. AST를 ES 질의로 옮기는 것은 WP-013이다 |
-| WP-012 | 인증과 접근 범위 강제 | REL-002 | todo | - | - | - | - |
+| WP-012 | 인증과 접근 범위 강제 | REL-002 | done | 에이전트 | (이 PR) | DoD 10항 중 9항 통과, 1항 부분 (6.12장). 단위 175건 + 통합 47건 | CR-015가 메운 빈칸(신원 표현·무효화 대상 산출·경합 순서·역할 합성)을 함께 구현했다. OIDC 라우트는 `web`이 소유하므로 WP-015가 붙인다 — 이 WP는 라이브러리와 `search-api` 강제를 세운다. 구현 중 DEV-050(해소)·DEV-051(미해소)을 등록했다 |
 | WP-013 | 검색 API 목록 조회 | REL-002 | todo | - | - | - | - |
 | WP-014 | 식별자 해석 API | REL-002 | todo | - | - | - | - |
 | WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | todo | - | - | - | - |
@@ -135,9 +135,9 @@
 | FR-STAT-004 | WP-037, WP-038 | - | - | not_started |
 | FR-STAT-005 | WP-037, WP-038 | - | - | not_started |
 | FR-STAT-006 | WP-037, WP-038 | - | - | not_started |
-| FR-AUTH-001 | WP-012, WP-015 | - | - | not_started |
-| FR-AUTH-002 | WP-012 | - | - | not_started |
-| FR-AUTH-003 | WP-012 | - | - | not_started |
+| FR-AUTH-001 | WP-012, WP-015 | `packages/authz/src/{oidc,pkce,id-token,jwks,session,session-store,roles,config}.ts`, `apps/search-api/src/auth/*` | `packages/authz/src/{id-token,oidc,session,session-store,roles}.test.ts`, `apps/search-api/integration/authz/enforcement.test.ts` | partial (AC-2~AC-5 충족. AC-1의 브라우저 리다이렉트는 `web` 라우트라 WP-015 — API 계층은 401 + `login_path` 힌트까지) |
+| FR-AUTH-002 | WP-012 | `packages/authz/src/{scope,scope-source,scope-database}.ts`, `packages/es/src/scoped-query.ts`, `apps/search-api/src/auth/{principal,errors,me}.ts` | `packages/es/integration/scope-enforcement.test.ts`, `packages/es/src/architecture.test.ts`, `packages/authz/integration/scope.test.ts`, `apps/search-api/integration/authz/enforcement.test.ts` | done (AC-1~AC-6. 단, 검색·집계 API 자체는 WP-013·WP-014가 세운다 — 여기서는 필터와 강제 지점을 세우고 ES에 직접 물어 결과 집합을 검증했다) |
+| FR-AUTH-003 | WP-012 | `packages/authz/src/{scope,invalidation}.ts`, `packages/db/src/repositories/auth.ts`, `packages/db/migrations/007_auth.up.sql`, `apps/ingest-gateway/src/{ingest,server}.ts`, `apps/pipeline-worker/src/authz.ts` | `packages/authz/{src/invalidation.test.ts,integration/scope.test.ts}`, `apps/pipeline-worker/src/authz.test.ts`, `apps/ingest-gateway/src/ingest.test.ts` | done (AC-1~AC-5. 적중률은 `access_scope_lookup_total{outcome}`) |
 | FR-AUTH-004 | WP-002, WP-039 | `packages/db/migrations/004_app_state.up.sql`, `packages/db/migrations/005_roles.up.sql` | `packages/db/integration/audit-grants.test.ts` (AC-3) | partial (감사 테이블과 롤 권한. 기록·조회는 WP-039) |
 | FR-ADMIN-001 | WP-010, WP-040 | `apps/search-api/src/ops/pipeline-status.ts`, `packages/db/src/repositories/pipeline.ts`, `packages/bus/src/{types,redis-streams,in-memory}.ts`, `packages/metrics/src/index.ts` | `apps/search-api/integration/ops/pipeline-status.test.ts`, `packages/bus/integration/contract.ts` | partial (AC-1의 단계별 지연을 뺀 전 항목과 AC-2·AC-3 충족. 단계별 지연은 지표 저장소가 설정된 경우에만(DEV-029), 시퀀스 공간 요약은 WP-021 이후. AC-4 `operator` 역할 판정은 WP-012) |
 | FR-ADMIN-002 | WP-002, WP-019, WP-040 | `packages/db/migrations/004_app_state.up.sql` (`job_active_uk`), `packages/db/src/repositories/job.ts` | `packages/db/integration/constraints.test.ts` (AC-4) | partial (동시 실행 제약. 콘솔은 WP-040) |
@@ -674,7 +674,42 @@ DoD 7항 전부 통과. 검증 방법은 `pnpm test query`다.
 
 **통합 시험이 없다.** 이 패키지는 백킹 서비스에 붙지 않는다 — 순수 함수뿐이라 단위 시험이 곧 계약 시험이다.
 
-### 6.12 릴리스 게이트
+### 6.12 WP-012 검증 실행 기록
+
+DoD 10항 중 9항 통과, 1항 부분. 검증 방법은 `pnpm test:integration authz`와 `pnpm test authz/architecture`다.
+
+| DoD | 결과 | 근거 |
+| --- | --- | --- |
+| 미인증 요청이 OIDC로 리다이렉트된다 (AC-1) | **부분** | API 계층까지다 — 401 + `detail.login_path`를 돌려주고 `enforcement.test.ts`가 확인한다. **브라우저 302는 `web` 라우트라 WP-015가 세운다** (인프라 문서의 아웃바운드 허용 목록이 IdP를 `web`에만 연다). 인가 URL 생성·PKCE·토큰 교환·ID 토큰 검증은 이 WP가 라이브러리로 세웠고 시험도 있다 |
+| 세션 쿠키가 HttpOnly·Secure·SameSite=Lax다 (AC-2) | 통과 | `serializeSessionCookie`가 셋을 모두 달고 `__Host-` 접두의 조건(`Path=/`, `Domain` 없음)도 맞춘다. 운영에서 `SESSION_COOKIE_SECURE=false`면 **기동을 거부한다** |
+| 유휴 8시간·절대 12시간 만료가 동작한다 (AC-3) | 통과 | 1시간 간격으로 11번 활동해도 12시간에서 끊긴다. 저장소 TTL을 인위적으로 늘려도 읽는 즉시 지운다 — 판정을 Redis TTL에만 맡기지 않는다 |
+| 접근 범위 밖 문서가 목록·건수·집계 어디에도 없다 (AC-5) | 통과 | 실제 Elasticsearch에 fixture 4건을 넣고 확인했다. 사용자 질의를 `should`로 넓히려 해도 `must` 안에 갇힌다 |
+| 접근 범위 밖 문서 직접 조회가 404다 (AC-4) | 통과 | ID를 알아도 0건이고, API 계층이 그 0건을 404로 옮긴다. 403이면 존재가 샌다 (THR-004) |
+| 접근 범위 조회 실패 시 부분 결과 없이 503이다 (AC-3) | 통과 | `/me`가 503 `PERMISSION_UNAVAILABLE`. 낡은 캐시가 남아 있어도 쓰지 않는다 — 행이 남아 있음을 확인하는 시험을 따로 두었다 |
+| 500개 초과 시 `org_team`으로 전환되고 두 모드의 결과 집합이 같다 (AC-6) | 통과 | 500개는 `explicit`, 501개부터 `org_team`. 실제 ES에서 두 모드의 문서 집합이 같음을 확인했다 — 넓지도 좁지도 않다 |
+| 권한 회수 이벤트 후 첫 요청부터 차단된다 (AC-4) | 통과 | `/me`의 저장소 수가 무효화 직후 줄어든다. **갱신 중에 회수가 끼어들어도 회수 이전 범위가 되살아나지 않는다** — `access_scope_version` 울타리가 SQL 조건절에 있다 (DEV-044) |
+| `applyMandatoryScopeFilter`를 우회하는 코드가 컴파일되지 않는다 | 통과 | 타입이 막고, 아키텍처 테스트가 타입이 못 막는 둘(`client.search` 직접 호출, `as ScopedQuery` 캐스팅)을 소스에서 찾는다. 검사기 자신이 동작하는지도 함께 건다 |
+| 권한 매트릭스 테스트의 API 계층 부분이 통과한다 (NFR-005) | 통과 | 역할 6종 × (`operator` 필요 경로, `security_officer` 필요 경로). 화면 13종은 WP-015 이후다 |
+
+로컬에서 통과한 명령:
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` / `pnpm lint` / `pnpm lint:deps` | 종료 코드 0 — 패키지 13개, 위반 0건 |
+| `pnpm test` (전량) | 종료 코드 0 — **484건 통과 + 1건 건너뜀**(real-GHE smoke) |
+| `pnpm test:integration` (전량) | 종료 코드 0 — **279건** |
+| WP-012 몫만: 단위 175건 (파일 10개), 통합 47건 (파일 3개) | 종료 코드 0 |
+| `pnpm build` | 종료 코드 0 |
+
+**시험이 실제로 무엇을 잡는지 확인했다.** 구현을 17가지로 망가뜨렸다 — (1) `nonce` 검증 제거, (2) `aud` 검증 제거, (3) 만료 캐시 사용 허용, (4) `access_scope_version` 울타리 제거, (5) 범위 필터를 `must` 대신 `should`로 결합, (6) IdP 그룹으로 `operator` 부여 허용, (7) `search-api`가 `X-User-Id` 헤더 신뢰, (8) 접근 범위 밖을 403으로, (9) 절대 만료 무시, (10) `team` 이벤트 발행 생략, (11) `BIGINT[]` 파서 제거, (12) `org_team` 임계를 5000으로, (13) 동시 갱신 상한 제거, (14) 아키텍처 테스트를 우회하는 직접 조회 추가, (15) 무효화 순서 뒤집기, (16) `scope_kind`를 늘 `explicit`으로, (17) `/me`에 저장소 ID 목록 싣기. **열일곱 전부 잡혔다.**
+
+**시험이 결함 하나를 먼저 잡았다 (DEV-050).** 통합 시험이 접근 범위를 `["101"]`로 돌려받았다 — `BIGINT[]`은 스칼라와 다른 OID(`_int8` = 1016)라 DEV-027의 파서가 닿지 않았다. `permission_cache.repository_ids`가 이 저장소의 첫 `BIGINT[]` 열이라 여기서 드러났다. 그대로 두면 필수 접근 범위 필터의 `terms` 절이 문자열을 싣는다.
+
+**아키텍처 테스트가 미해소 항목 하나를 드러냈다 (DEV-051).** API-ADM-006의 운영 집계 두 곳이 접근 범위를 거치지 않는다. **동작을 바꾸지 않았다** — FR-ADMIN-001 AC-1·AC-3이 그 값을 요구하고 THR-003·THR-016이 반대를 요구하는, 승인된 문서 사이의 모순이기 때문이다. 사유 붙은 허용 목록에 등록해 다음 전역 집계가 조용히 들어오지 못하게 했고, 해소는 별도 CR과 사용자 결정으로 남긴다.
+
+**시험이 확인하지 못한 것.** 실제 사내 IdP와의 OIDC 왕복은 **NOT RUN**이다 — IdP 자격 증명이 없다. ID 토큰 검증은 테스트가 생성한 RSA 키쌍으로 다섯 검사를 각각 무너뜨려 확인했으나, 실제 IdP의 클레임 이름(특히 그룹 클레임)과 JWKS 회전 동작은 REL-002 게이트에서 확인해야 한다.
+
+### 6.13 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -709,17 +744,17 @@ DoD 7항 전부 통과. 검증 방법은 `pnpm test query`다.
 | `web`이 Conductor 디자인 시스템을 아직 쓰지 않음 | WP-001 제외 목록 (화면 제외) | 실제 상태 | WP-019 (셸과 Conductor 연동) |
 | 각 앱 헬스체크가 백킹 서비스 연결을 확인하지 않음 | WP-001 구현 범위 (프로세스 기동만) | `ingest-gateway`는 해소 — `GET /healthz`가 PostgreSQL을 확인하고 실패 시 503 (인프라 3장) | `search-api`(ES·PG)는 검색 경로를 여는 WP-013, `web`·`pipeline-worker`는 기존대로 |
 | 통합 테스트가 testcontainers가 아니라 외부 PostgreSQL에 붙음 | WP-002 검증 방법 / DEV-006 | 실제 상태 (환경 변수로 접속 정보 주입) | WP-003에서 ES와 함께 재검토 |
-| `saved_search`·`bisect_session`·`permission_cache`·`team`에 리포지터리 계층이 없음 | WP-002 구현 범위 (6종만 명시) | 실제 상태 (스키마는 존재) | 각각을 쓰는 WP-012·WP-024·WP-042 |
+| `saved_search`·`bisect_session`에 리포지터리 계층이 없음 | WP-002 구현 범위 (6종만 명시) | 실제 상태 (스키마는 존재). **`permission_cache`·`app_user`·`team`·`team_member`는 해소** (2026-08-21) — `authRepo`가 세웠다 | WP-024·WP-042 |
 | ~~큐에 들어간 이벤트를 아무도 소비하지 않음 (`processed_at`이 영영 NULL)~~ | WP-005 제외 목록 | 해소 (2026-08-20) — WP-008 투영 워커가 색인 성공 뒤 `markProcessed`를 부른다. 투영되지 않는 이벤트(미등록 저장소, PR 이외 이벤트)는 여전히 NULL로 남아 `JOB-ING-007`이 계속 재적재한다 | 라우팅을 소유한 WP와 WP-010 저장소 등록 |
 | `prs:sequence` 파티션 수가 문서에 없어 코드 기본값 8을 씀 | 비동기 문서 2장 / DEV-010 | 실제 상태 (환경 변수로 덮어쓸 수 있음) | 사용자 결정 후 CR |
 | Kafka 어댑터 없음 | WP-005 제외 목록 (ADR-002 전환 임계 조건부) | 실제 상태 — 계약 테스트가 교체 가능성을 강제한다 | 전환 임계 충족 시 |
 | 실제 GitHub Enterprise 대상 검증 미실행 | WP-006 / 이 실행 환경에 App 자격 증명 없음 | 실제 상태 — 목 서버 계약 시험만 통과. read-only smoke는 자격 증명이 있으면 자동 실행되도록 넣어 두었다 | **REL-001 운영 readiness 전 필수 게이트** |
 | ~~GHE 클라이언트를 아무도 호출하지 않음~~ | WP-006 제외 목록 | 해소 (2026-08-20) — WP-007 `enrich` 워커가 호출한다 | 없음 |
-| PR 이외 이벤트(`push`·`release`·`member`·`team`·`repository`·`create`·`delete`)를 아무도 진행시키지 않음 | WP-007 범위 (PR 보강만) / DEV-016 | 실제 상태 — `enrich`가 ack만 하고 넘긴다. 원본은 `raw_event`에 남아 유실이 아니다 | 라우팅을 소유한 WP-021(시퀀스)·권한 WP에서 CR로 결정 |
+| PR 이외 이벤트 중 `push`·`release`·`create`·`delete`를 아무도 진행시키지 않음 | WP-007 범위 (PR 보강만) / DEV-016 | 실제 상태 — `enrich`가 ack만 하고 넘긴다. 원본은 `raw_event`에 남아 유실이 아니다. **`member`·`team`·`repository`는 해소** (2026-08-21) — 게이트웨이가 `prs:permission`에도 발행하고 `authz` 워커가 소비한다 (CR-015, DEV-042) | 라우팅을 소유한 WP-021(시퀀스) |
 | ~~`enrichment_pending` 문서가 아직 색인되지 않음~~ | WP-007 제외 목록 | 해소 (2026-08-20) — WP-008이 `enrichment_pending`을 문서에 그대로 옮겨 색인한다 | 없음 |
 | ~~실패 대기열에 쌓인 이벤트를 재처리할 길이 없음~~ | WP-007 범위 밖 (재처리는 WP-009) | 해소 (2026-08-20) — API-ADM-003이 조회·재처리를 연다 | 없음 |
 | 재처리 실행이 감사 기록에 남지 않음 | WP-009 범위 밖 | 실제 상태 — WP-010이 감사 적재(`auditRepo`)와 이름 붙은 토큰을 세웠으나 실패 대기열 재처리 경로에는 아직 붙이지 않았다. 저장소 등록·변경·해제만 남는다 | 재처리에도 같은 방식으로 붙이면 된다 (다음 WP에서 함께) |
-| 관리 API가 `operator` 역할이 아니라 이름 붙은 토큰으로 보호됨 | CR-012 DEV-025 / CR-013 DEV-030 | 실제 상태 — 임시 통제다. 토큰 미설정이면 경로를 등록하지 않아 기본값은 "닫힘"이고, 이름이 감사 주체가 된다. 토큰을 공유하면 감사가 사람을 구분하지 못한다 | WP-012가 OIDC 세션과 역할 판정으로 대체 |
+| ~~관리 API가 `operator` 역할이 아니라 이름 붙은 토큰으로 보호됨~~ | CR-012 DEV-025 / CR-013 DEV-030 / CR-015 DEV-048 | 해소 (2026-08-21) — OIDC 세션이 구성되면 통제는 `operator` 역할이다. 이름 붙은 토큰은 OIDC **미구성** 배포에만 남고, 둘을 함께 구성하면 기동을 거부한다 | 없음 |
 | 재처리 진행률(`EVT-JOB-001`)이 보고되지 않음 | JOB-ING-009의 `batch` 워커가 WP-019 소관 / DEV-024 | 실제 상태 — 1회 500건 상한 안에서 요청이 끝나고 결과는 응답 본문이 알려 준다 | WP-019가 `batch`를 세운 뒤 |
 | `EVT-ING-004 ingestion.failed`가 발행되지 않음 | 카탈로그의 소비자 `ops`가 스트림이 아니라 테이블을 읽음 / DEV-026 | 실제 상태 — 워커가 `dead_letter` 행을 동기적으로 남기므로 기록 유실은 없다 | 실시간 알림 소비자가 생기는 REL-005 |
 | 재처리가 실패 단계와 무관하게 `prs:ingest`부터 다시 돎 | `EVT-ING-002`·`EVT-ING-003`이 보존되지 않음 | 실제 상태 — 투영 단계 실패도 보강부터 다시 한다. GHE 왕복이 한 번 더 든다 | 없음 (중간 이벤트를 보존하려면 별도 CR) |
@@ -734,13 +769,20 @@ DoD 7항 전부 통과. 검증 방법은 `pnpm test query`다.
 | 미등록 저장소 이벤트도 그대로 저장됨 | FR-ING-009 AC-4는 "투영하지 않음"이지 "저장하지 않음"이 아님 | 실제 상태 (의도된 동작) — 투영이 걸러 ack하고(DEV-020), 이제 API-ADM-001로 등록하면 백필(WP-019)이 원본에서 채운다 | 없음 |
 | 서명이 맞는데 JSON이 깨진 요청은 500 (GHE 재전송 유도) | API-ING-001 오류 코드가 401·413·500으로 한정 | 실제 상태 | 없음 (서명 유효 시 발생하지 않는 경로) |
 | 커밋 문서에 메시지·작성자·부모 SHA가 없음 | WP-008 입력이 `EVT-ING-002`이고 그 이벤트는 커밋 SHA만 나른다 | 실제 상태 — SHA → PR 해석(FR-SRCH-002)에 필요한 만큼만 채운다. 조건부 업서트가 키 단위로 대입하므로 나중에 채워도 덮이지 않는다 | WP-020 미러 기반 커밋 보강 |
-| `allowed_team_ids`·`author_team_ids`가 비어 있음 | WP-008 범위 밖 (권한 동기화는 WP-012) | 실제 상태 — `org_team` 접근 범위 질의는 아직 팀 조건을 만족시키지 못한다. `explicit` 범위는 `repository_id`만으로 동작한다. `org_id`·`visibility`는 이제 등록이 GHE에서 정확히 채운다 (DEV-033) | WP-012 |
+| `allowed_team_ids`·`author_team_ids`가 비어 있음 | WP-008 범위 밖 (투영이 채워야 함) | **실제 상태 — WP-012가 해소하지 못했다.** 접근 범위 쪽(`org_team` 조건 생성, 팀 소속 조회, 무효화)은 세웠으나 **문서에 팀 ID를 쓰는 것은 투영의 일**이고 `EVT-ING-002`가 팀 정보를 나르지 않는다. `explicit` 범위는 `repository_id`만으로 동작하므로 조회는 성립한다. 통합 시험은 fixture로 팀 ID를 직접 넣어 `org_team` 조건을 검증했다 | 투영이 저장소 등록에서 팀 ID를 읽도록 하는 별도 CR (WP-013 착수 전 권장) |
 | `links_pending`이 영영 `true` | 관계 파생이 WP-029 | 실제 상태 — 투영이 생성 시점에만 `true`로 두고 이후 건드리지 않는다. 화면은 이 표식으로 "관계 미확정"을 표시한다 | WP-029 |
 | k8s 매니페스트가 클러스터에 적용된 적 없음 | WP-010 구현 범위 / 이 환경에 Kubernetes·`kubectl` 없음 | 실제 제약 — YAML 파싱만 확인했다. 이미지 이름(`prs/*:latest`)과 백킹 서비스 호스트는 자리표시자다 | **REL-001 프로비저닝 때 실제 클러스터에서 검증** |
 | 단계별 지연 p50/p95가 기본적으로 `unavailable` | CR-013 / DEV-029 | 실제 상태 — 지표 저장소(사내 Prometheus 호환)가 `METRICS_QUERY_URL`로 설정된 경우에만 채운다. 워커 복제본 하나를 긁어 클러스터 전체인 양 내놓지 않는다 | REL-001 프로비저닝에서 주소 주입 |
 | `test:e2e`·`test:a11y` 스크립트가 없음 | DEV-032 | 실제 상태 — WP 20곳이 여전히 참조한다. WP-010분만 API 수준으로 대체했다 | E2E·접근성 harness를 처음 필요로 하는 화면 WP(WP-015 이후) |
 | A-001 운영 콘솔 화면 없음 | 사용자 결정 (WP-010은 API까지) | 실제 상태 — 로드맵의 REL-001 UI 열이 "A-001 최소 지표 화면"을 적었으나, 웹 셸과 Conductor가 WP-015라 지금 만들면 다시 써야 한다 | WP-015 이후 |
 | 저장소 등록이 GHE 자격 증명 없이는 열리지 않음 | FR-ING-009 예외 처리 (접근 권한 확인이 필수) | 실제 상태 — `GHE_APP_ID`/`GHE_INSTALLATIONS`가 없으면 등록 경로를 달지 않고 기동 로그에 남긴다. 확인 없이 등록을 받으면 수집이 영영 비어 있는 저장소가 "등록됨"으로 남는다 | 없음 (의도된 동작) |
+| OIDC 로그인·콜백·로그아웃 라우트가 없음 | WP-012 제외 목록 (화면은 WP-015) / 인프라 문서 아웃바운드 허용 목록이 IdP를 `web`에만 연다 | 실제 상태 — 인가 URL 생성(PKCE·state·nonce), 토큰 교환, ID 토큰 5종 검증, 세션 발급·무효화는 `@prs/authz`가 라이브러리로 제공한다. **그것을 부르는 HTTP 라우트가 없다** | WP-015가 `web`에 라우트를 붙인다 |
+| 실제 사내 IdP 대상 OIDC 왕복 미실행 | 이 실행 환경에 IdP 자격 증명 없음 | **NOT RUN** — 테스트가 생성한 RSA 키쌍으로 다섯 검사를 각각 무너뜨려 확인했다. 실제 IdP의 그룹 클레임 이름과 JWKS 회전 동작은 확인하지 못했다 | **REL-002 게이트 전 필수** |
+| 접근 범위 산출이 등록 저장소마다 GHE를 한 번씩 부름 | FR-AUTH-002 AC-1이 "read 이상 권한을 가진 저장소"를 요구 / OD-002 미결 | 실제 상태 — 협업자 권한 API가 조직 기본 권한·팀·직접 협업자를 모두 반영한 실효 권한을 주므로 정확하다. 대신 캐시 미스마다 등록 저장소 수만큼 호출이 나간다(동시 8, 캐시 5분, 사용자별 요청 병합). **저장소 수가 커지면 재검토가 필요하다** | OD-002 결정 후 (IdP 그룹이면 호출이 사라진다) |
+| 운영 집계 두 곳이 접근 범위를 거치지 않음 | CR-015 DEV-051 (미해소) | 실제 상태 — API-ADM-006의 `enrichment_pending`(전 저장소 `es.count`)과 `slowest_repositories`(저장소 이름 포함). FR-ADMIN-001 AC-1·AC-3이 요구하고 THR-003·THR-016이 반대한다. **동작을 바꾸지 않고** 아키텍처 테스트의 사유 붙은 허용 목록에 등록했다 | **사용자 결정 + CR** |
+| 권한 매트릭스가 API 계층까지만 검증됨 | NFR-005는 역할 6종 × 화면 13종 | 실제 상태 — 역할 6종 × 역할 요구 경로는 통과한다. 화면이 없어 13종 축을 걸 수 없다 | WP-015 이후 |
+| 세션이 Redis에만 있어 Redis 유실 시 전원 재로그인 | 보안 문서 4장 (의도된 결정) | 실제 상태 — PostgreSQL 백업을 두지 않는다. 세션을 두 곳에 두면 로그아웃이 두 곳 모두에서 성립해야 하고, AC-5를 어길 자리가 하나 더 생긴다 | 없음 (의도된 동작) |
+| `search-api`가 GHE 자격 증명 없이는 세션 인증을 세우지 않음 | FR-AUTH-002 AC-1 (접근 범위 산출에 GHE가 필요) | 실제 상태 — 자격 증명이 없으면 모든 조회가 503이 되므로, 인증이 구성되지 않았다고 기동 로그에 남기고 토큰 통제로 돌아간다 | 없음 (의도된 동작) |
 | 문서당 `EVT-ING-003`이 하나씩 발행됨 (PR 1 + 커밋 N) | 비동기 문서 4장의 payload가 엔티티 단위 | 실제 상태 — 커밋 250건 PR이면 251건이 나간다. `noop`은 내지 않아 재처리 시에는 줄어든다 | 관계 워커(WP-029) 실측 후 필요하면 CR |
 
 ## 8. 다음 작업
@@ -773,14 +815,24 @@ DoD 7항 전부 통과. 검증 방법은 `pnpm test query`다.
 22. ~~WP-010 저장소 등록 API와 파이프라인 지표~~ → 완료 (2026-08-21). 검증 결과는 6.10장. **REL-001 구현 범위가 닫혔다**
 23. ~~CR-014 WP-011 질의 문법 계약 정정~~ → 완료 (2026-08-21). DEV-035~039 해소. SRS 버전은 v2.2 유지(빈칸 메우기)
 24. ~~WP-011 구조화 질의 파서~~ → 완료 (2026-08-21). 검증 결과는 6.11장
+25. ~~CR-015 WP-012 인증·접근 범위 계약 정정~~ → 완료 (2026-08-21). DEV-040~050 해소, DEV-051은 사용자 결정이 필요해 미해소. SRS 버전은 v2.2 유지(빈칸 메우기)
+26. ~~WP-012 인증과 접근 범위 강제~~ → 완료 (2026-08-21). 검증 결과는 6.12장. **DoD 10항 중 9항 통과, AC-1의 브라우저 리다이렉트만 WP-015로 이월**
 
-**다음 WP: WP-012 인증과 접근 범위 강제.**
+**다음 WP: WP-013 검색 API 목록 조회.**
 
 CR-008은 문서만 강화했다. GitHub Operations Plane(REL-007~011) 구현 순서는 바뀌지 않는다 — Search/Data Plane을 end-to-end로 닫은 뒤다. `@prs/github`은 Data Plane의 GitHub REST 클라이언트이며 `gh` CLI를 실행하지 않는다 (ADR-013).
 
 **REL-001의 WP는 전부 끝났다.** 웹훅 수신부터 검색 인덱스까지, 실패 격리와 재처리, 저장소 등록과 파이프라인 관측이 모두 선다. 남은 것은 **코드가 아니라 게이트**다 — 실제 GHE 대상 read-only smoke, k8s 매니페스트의 클러스터 적용, 운영 규모 성능 측정(QA-PERF), `docker compose up` 검증(DEV-001). 넷 다 이 실행 환경에 없는 것을 요구하며 7장과 6.12장에 그대로 남아 있다.
 
-**WP-012가 다음이고, 그것이 REL-002의 문을 연다.** 질의 파서는 섰지만 그 AST를 읽는 검색 API(WP-013)는 접근 범위 필터 없이는 만들 수 없다 — ADR-008이 모든 ES 읽기에 필수 필터를 요구하고, 그 필터를 채울 신원이 아직 없다. WP-012가 OIDC 세션과 역할 판정을 세우면 **WP-009·WP-010이 임시 토큰으로 막아 둔 관리 API도 제 통제를 얻고**, 감사 기록의 주체가 사람 계정이 된다.
+**WP-013이 다음이다.** 질의 파서(WP-011)와 접근 범위 강제(WP-012)가 모두 섰으므로 검색 API가 딛고 설 것이 갖춰졌다 — AST를 ES 질의로 옮기고 `applyMandatoryScopeFilter`를 거쳐 `search`로 보내면 된다. 그 경로는 이제 **타입이 강제한다.**
+
+**WP-012가 남긴 것 셋을 WP-013 착수 전에 판단해야 한다.**
+
+1. **DEV-051 (사용자 결정 필요).** API-ADM-006의 운영 집계 두 곳이 접근 범위를 거치지 않는다. FR-ADMIN-001 AC-1·AC-3이 그 값을 요구하고 THR-003·THR-016이 반대한다. 동작을 바꾸지 않고 아키텍처 테스트의 사유 붙은 허용 목록에 등록했다. WP-013이 첫 사용자 대면 검색 API이므로 그 전에 경계를 정해 두는 편이 낫다.
+2. **`allowed_team_ids`가 여전히 비어 있다.** 접근 범위 쪽은 세웠으나 **문서에 팀 ID를 쓰는 것은 투영의 일**이고 `EVT-ING-002`가 팀 정보를 나르지 않는다. `explicit` 범위(저장소 500개 이하)는 `repository_id`만으로 동작하므로 WP-013을 막지는 않는다. 500개를 넘는 사용자가 실제로 생기기 전에 CR이 필요하다.
+3. **OD-002가 열려 있다** (권한 판정 소스, 기한 REL-002 착수 전). `resolveAccessScope`를 포트로 두고 GHE 어댑터를 구현했으므로 IdP 그룹으로 결정되어도 어댑터 교체다. 다만 GHE 어댑터는 캐시 미스마다 등록 저장소 수만큼 호출한다 — 저장소가 많은 조직이면 이 결정이 성능에 직접 걸린다.
+
+**WP-015(웹 셸)가 WP-012의 나머지 절반을 쥐고 있다.** OIDC 인가 URL 생성·토큰 교환·ID 토큰 검증·세션 발급은 `@prs/authz`가 라이브러리로 제공하지만 그것을 부르는 라우트가 없다. 인프라 문서의 아웃바운드 허용 목록이 IdP를 `web`에만 열기 때문이다. 권한 매트릭스의 화면 13종 축도 그때 걸린다.
 
 CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 — Search/Data Plane(REL-001~006)을 end-to-end로 닫은 뒤에 Operations Plane(REL-007~011)을 시작한다. GitHub Operations 기능을 REL-001 WP 안에 섞지 않는다.
 
