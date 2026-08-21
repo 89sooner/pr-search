@@ -94,11 +94,13 @@ describe('파이프라인 상태 (WP-010, API-ADM-006)', () => {
   beforeEach(async () => {
     await pool.query('TRUNCATE raw_event, dead_letter, repository RESTART IDENTITY CASCADE');
     await redis.flushdb();
+    // 다른 스위트가 남긴 문서가 `enrichment_pending` 집계에 섞이지 않게
+    // 이 저장소의 문서를 전부 비운다.
     await es.deleteByQuery({
       index: 'prs-pull-requests',
       refresh: true,
       conflicts: 'proceed',
-      query: { term: { repository_id: REPOSITORY_ID } },
+      query: { match_all: {} },
     });
   });
 

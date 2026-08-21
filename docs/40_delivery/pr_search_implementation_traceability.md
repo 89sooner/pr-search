@@ -6,7 +6,7 @@
 
 구현이 시작된 후 문서와 코드의 정합성을 유지하는 살아있는 원장이다. 코딩 에이전트는 WP를 완료할 때마다 이 문서를 갱신한다. 이 문서는 기록용이며 범위를 결정하지 않는다.
 
-**현재 상태: WP-009까지 완료.** 워크스페이스 골격, PostgreSQL 스키마·리포지터리 계층, Elasticsearch 매핑·부트스트랩, GHE 웹훅 수신 게이트웨이, `EventBus` 포트와 Redis Streams 어댑터, GHE REST 클라이언트, 보강 워커, 그리고 **투영 워커**가 서 있다. 단위 195건·통합 158건이 전부 통과한다. **수집 경로가 웹훅에서 검색 인덱스까지 닫혔다** — 서명 검증 → `raw_event` 저장 → `prs:ingest` 발행 → NDJSON 아카이브 → 202, 그 뒤를 `enrich`가 받아 원본 커밋·변경 파일·리뷰를 채워 `EVT-ING-002`로 넘기고, `project`가 그것만 읽어 PR·커밋 문서를 만들어 Elasticsearch에 조건부 업서트한 뒤 `raw_event.processed_at`을 찍고 `EVT-ING-003`을 낸다. 오래된 이벤트는 새 상태를 덮지 않고, 커밋의 PR 소속은 순서와 무관하게 합집합으로 쌓인다. 이 환경에서 처음으로 실제 Elasticsearch(`mirror.gcr.io` 경유 8.19.0)를 띄워 ES 통합 시험을 돌렸고, 그 과정에서 WP-003의 별칭 라우팅 결함(DEV-021)을 찾아 고쳤다. 실제 GitHub App 자격 증명이 없어 real-GHE smoke는 여전히 미실행이다(선택 시험으로 남겨 두었고 건너뛴 사실이 실행 로그에 남는다). 여기에 **실패 대기열 관리 API**가 더해져 격리된 이벤트를 보고 다시 흘려보낼 수 있다 — 한 (전달, 단계)에 행 하나로 누적되고, 3회 재처리 실패면 `held`, 끝까지 성공하면 투영이 `resolved`로 닫는다. 채번·관계 파생과 검색 API·화면은 아직 없다.
+**현재 상태: WP-010까지 완료 — REL-001 구현 범위가 닫혔다.** 워크스페이스 골격, PostgreSQL 스키마·리포지터리 계층, Elasticsearch 매핑·부트스트랩, GHE 웹훅 수신 게이트웨이, `EventBus` 포트와 Redis Streams 어댑터, GHE REST 클라이언트, 보강 워커, 그리고 **투영 워커**가 서 있다. 단위 195건·통합 158건이 전부 통과한다. **수집 경로가 웹훅에서 검색 인덱스까지 닫혔다** — 서명 검증 → `raw_event` 저장 → `prs:ingest` 발행 → NDJSON 아카이브 → 202, 그 뒤를 `enrich`가 받아 원본 커밋·변경 파일·리뷰를 채워 `EVT-ING-002`로 넘기고, `project`가 그것만 읽어 PR·커밋 문서를 만들어 Elasticsearch에 조건부 업서트한 뒤 `raw_event.processed_at`을 찍고 `EVT-ING-003`을 낸다. 오래된 이벤트는 새 상태를 덮지 않고, 커밋의 PR 소속은 순서와 무관하게 합집합으로 쌓인다. 이 환경에서 처음으로 실제 Elasticsearch(`mirror.gcr.io` 경유 8.19.0)를 띄워 ES 통합 시험을 돌렸고, 그 과정에서 WP-003의 별칭 라우팅 결함(DEV-021)을 찾아 고쳤다. 실제 GitHub App 자격 증명이 없어 real-GHE smoke는 여전히 미실행이다(선택 시험으로 남겨 두었고 건너뛴 사실이 실행 로그에 남는다). 여기에 **저장소 등록 API**가 더해져 수집 대상을 정식으로 등록·해제할 수 있고, **파이프라인 상태 API**가 수신량·대기열·지연·실패 대기열을 한 번에 보여 준다. **실패 대기열 관리 API**도 있어 격리된 이벤트를 보고 다시 흘려보낼 수 있다 — 한 (전달, 단계)에 행 하나로 누적되고, 3회 재처리 실패면 `held`, 끝까지 성공하면 투영이 `resolved`로 닫는다. 채번·관계 파생과 검색 API·화면은 아직 없다.
 
 ## 2. 기록 규칙
 
@@ -30,7 +30,8 @@
 | WP-006 | GHE 클라이언트와 rate limit 관리 | REL-001 | done | 에이전트 | `c130cf1` / PR #7 | DoD 5항 전부 통과 (목 서버 기준, 문서가 정한 검증 방법). 단위 126건 (6.6장) | 실제 GHE 자격 증명이 없어 read-only smoke 미실행 — 선택 시험으로 포함했고 REL-001 운영 readiness 전 게이트로 남긴다 |
 | WP-007 | 보강 워커 | REL-001 | done | 에이전트 | `fb6e5c3` / PR #8 | DoD 6항 전부 통과. 단위 150건·통합 24건(worker/enrich) (6.7장) | CR-010이 정한 `EventBus` 처분 계약을 함께 구현했다. `raw_event.processed_at`은 찍지 않는다 — 색인 시점 표식은 WP-008의 것이다. 문서의 검증 명령이 필터로 동작하지 않아 DEV-017로 등록하고 정정했다 |
 | WP-008 | 투영 워커와 버전 조건부 업서트 | REL-001 | done | 에이전트 | `3f8e39e` / PR #9 | DoD 8항 전부 통과. 단위 195건·통합 158건 전량 (6.8장) | CR-011이 정한 `EVT-ING-002` PR 필드 확장과 누적 필드 합집합을 함께 구현했다. `raw_event.processed_at`을 여기서 찍는다 — 색인 성공 뒤에만. 실제 ES로 돌리는 과정에서 WP-003의 별칭 고정 라우팅 결함(DEV-021)이 드러나 함께 고쳤다 |
-| WP-009 | 실패 대기열과 재처리 | REL-001 | done | 에이전트 | (이 PR) | DoD 6항 전부 통과. 단위 195건·통합 191건 전량 (6.9장) | CR-012가 정한 `(delivery_id, stage)` 업서트와 `resolved` 종료 상태를 함께 구현했다. JOB-ING-009의 `batch` 워커는 WP-019가 세우므로 재처리를 `ops` 모듈이 요청 안에서 수행한다(DEV-024). `operator` 역할 판정이 WP-012에 있어 임시 공유 토큰으로 막았고, 미설정이면 경로를 등록하지 않는다(DEV-025) |
+| WP-009 | 실패 대기열과 재처리 | REL-001 | done | 에이전트 | `6342073` / PR #10 | DoD 6항 전부 통과. 단위 195건·통합 191건 전량 (6.9장) | CR-012가 정한 `(delivery_id, stage)` 업서트와 `resolved` 종료 상태를 함께 구현했다. JOB-ING-009의 `batch` 워커는 WP-019가 세우므로 재처리를 `ops` 모듈이 요청 안에서 수행한다(DEV-024). `operator` 역할 판정이 WP-012에 있어 임시 공유 토큰으로 막았고, 미설정이면 경로를 등록하지 않는다(DEV-025) |
+| WP-010 | 저장소 등록 API와 파이프라인 지표 | REL-001 | done | 에이전트 | (이 PR) | DoD 6항 전부 통과. 단위 214건·통합 230건 전량 (6.10장) | CR-013이 정한 커밋 문서 표식·지표 출처 분리·이름 붙은 토큰을 함께 구현했다. 세 앱의 지표 모듈을 `@prs/metrics`로 합쳤다. 단계별 지연은 지표 저장소가 설정된 경우에만 채운다(DEV-029). k8s 매니페스트는 작성했으나 **클러스터에 적용해 보지 못했다** — 이 환경에 Kubernetes가 없다 |
 | WP-009 | 실패 대기열과 재처리 | REL-001 | todo | - | - | - | - |
 | WP-010 | 저장소 등록 API와 파이프라인 지표 | REL-001 | todo | - | - | - | - |
 | WP-011 | 구조화 질의 파서 | REL-002 | todo | - | - | - | - |
@@ -125,7 +126,7 @@
 | FR-ING-006 | WP-019 | - | - | not_started |
 | FR-ING-007 | WP-002, WP-007, WP-008, WP-009 | `packages/db/migrations/{001_ingestion,006_dead_letter}.up.sql`, `packages/db/src/repositories/dead-letter.ts`, `packages/bus/src/{backoff,ingest}.ts`, `apps/pipeline-worker/src/{enrich,project}.ts`, `apps/search-api/src/ops/{dead-letters,routes}.ts`, `apps/search-api/src/{config,metrics}.ts` | `packages/db/integration/dead-letter.test.ts`, `apps/search-api/integration/ops/dead-letter.test.ts`, `apps/pipeline-worker/integration/worker/{enrich,project}.test.ts`, `packages/bus/integration/contract.ts` | verified (AC-1~AC-5 전부. AC-4 재처리 멱등은 재투입 payload의 `delivery_id` 보존으로, 문서 수준은 WP-008의 결정론적 ID 시험으로 각각 검증) |
 | FR-ING-008 | WP-035 | - | - | not_started |
-| FR-ING-009 | WP-008, WP-010, WP-040 | `apps/pipeline-worker/src/{project,documents}.ts`, `packages/db/src/repositories/repository.ts` | `apps/pipeline-worker/integration/worker/project.test.ts`, `apps/pipeline-worker/src/documents.test.ts` | partial (AC-3 `repository_archived` 표시와 AC-4 미등록 저장소 투영 차단만. 등록·해제 API와 감사 기록은 WP-010·WP-040) |
+| FR-ING-009 | WP-008, WP-010, WP-040 | `apps/search-api/src/ops/{repositories,ghe-lookup,routes}.ts`, `packages/db/src/repositories/{repository,audit,job}.ts`, `packages/es/src/registry.ts`, `packages/es/src/mappings/commits.ts`, `apps/pipeline-worker/src/{project,documents}.ts` | `apps/search-api/integration/admin/repositories.test.ts`, `packages/es/integration/registry.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | verified (AC-1~AC-5 전부. AC-5 감사 주체는 관리 토큰 이름이며 WP-012의 OIDC 신원이 대체한다) |
 | FR-ING-010 | WP-036 | - | - | not_started |
 | FR-ING-011 | WP-028 | - | - | not_started |
 | FR-STAT-001 | WP-037, WP-038 | - | - | not_started |
@@ -138,7 +139,7 @@
 | FR-AUTH-002 | WP-012 | - | - | not_started |
 | FR-AUTH-003 | WP-012 | - | - | not_started |
 | FR-AUTH-004 | WP-002, WP-039 | `packages/db/migrations/004_app_state.up.sql`, `packages/db/migrations/005_roles.up.sql` | `packages/db/integration/audit-grants.test.ts` (AC-3) | partial (감사 테이블과 롤 권한. 기록·조회는 WP-039) |
-| FR-ADMIN-001 | WP-010, WP-040 | - | - | not_started |
+| FR-ADMIN-001 | WP-010, WP-040 | `apps/search-api/src/ops/pipeline-status.ts`, `packages/db/src/repositories/pipeline.ts`, `packages/bus/src/{types,redis-streams,in-memory}.ts`, `packages/metrics/src/index.ts` | `apps/search-api/integration/ops/pipeline-status.test.ts`, `packages/bus/integration/contract.ts` | partial (AC-1의 단계별 지연을 뺀 전 항목과 AC-2·AC-3 충족. 단계별 지연은 지표 저장소가 설정된 경우에만(DEV-029), 시퀀스 공간 요약은 WP-021 이후. AC-4 `operator` 역할 판정은 WP-012) |
 | FR-ADMIN-002 | WP-002, WP-019, WP-040 | `packages/db/migrations/004_app_state.up.sql` (`job_active_uk`), `packages/db/src/repositories/job.ts` | `packages/db/integration/constraints.test.ts` (AC-4) | partial (동시 실행 제약. 콘솔은 WP-040) |
 | FR-ADMIN-003 | WP-028, WP-040 | - | - | not_started |
 | NFR-001 | WP-013, WP-014, WP-023, WP-037 | - | - | not_started |
@@ -591,7 +592,43 @@ DoD 6항 전부 통과. 검증 방법은 `pnpm test:integration ops/dead-letter`
 
 **실제 GHE 대상 검증은 여전히 하지 않았다 — NOT RUN.** WP-009는 GitHub API를 부르지 않으므로 이 WP의 DoD와는 무관하다. **REL-001 운영 readiness 전 게이트**로 8장에 그대로 둔다.
 
-### 6.10 릴리스 게이트
+### 6.10 WP-010 검증 실행 기록
+
+DoD 6항 전부 통과. 검증 방법은 `pnpm test:integration admin/repositories`(19건)와 `pnpm test:integration ops/pipeline-status`(11건)다 (CR-013, DEV-032 — `test:e2e` 스크립트가 없고 이 WP는 화면을 만들지 않기로 결정되어 API 수준으로 대체했다).
+
+| DoD | 결과 | 근거 |
+| --- | --- | --- |
+| 대상 브랜치 11개 등록 시 400 `BRANCH_LIMIT_EXCEEDED` (FR-ING-009 AC-2) | 통과 | 11개는 거절되고 행도 생기지 않는다. **중복을 접은 뒤에** 세므로 `main`을 두 번 적어도 2개로 세지 않는다 |
+| 해제 후에도 기존 문서가 조회된다 (AC-3) | 통과 | 행도 문서도 남고 `repository_archived: true`만 붙는다. 재등록하면 풀린다 |
+| 미등록 저장소 이벤트가 `raw_event`에는 있고 ES에는 없다 (AC-4) | 통과 | WP-008이 이미 구현했고(DEV-020) 투영 시험이 지킨다. 이 WP는 그 저장소를 **등록할 길**을 열었다 |
+| 접근 권한 없는 저장소 등록이 403으로 거부된다 (예외 처리) | 통과 | 403과 `detail.required_permissions`. 404와 403을 구분하지 않는다 — GitHub이 권한 없는 저장소를 404로 감추므로 구분하려는 시도가 추측이 된다 |
+| 파이프라인 상태 응답의 데이터 신선도가 30초 이내다 (FR-ADMIN-001 AC-2) | 통과 | 캐시하지 않는다. 행을 넣고 곧바로 다시 물으면 값이 따라 움직인다 — 30초가 아니라 요청 시점이다 |
+| 등록·해제가 감사 기록에 남는다 (AC-5) | 통과 | 등록·변경·해제 셋 다 남고 주체는 `admin:alice`다. **거절된 등록도 남는다.** 인증 실패는 남기지 않는다 — 그것은 관리자의 행위가 아니다 |
+
+로컬에서 통과한 명령:
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | 종료 코드 0 |
+| `pnpm typecheck` | 종료 코드 0 |
+| `pnpm lint` / `pnpm lint:deps` | 종료 코드 0 — 패키지 12개, 위반 0건 |
+| `pnpm test` | 종료 코드 0 — **214건 통과 + 1건 건너뜀**(real-GHE smoke) |
+| `pnpm build` | 종료 코드 0 |
+| `pnpm test:integration admin/repositories` | 종료 코드 0 — 파일 1개, **19건** |
+| `pnpm test:integration ops/pipeline-status` | 종료 코드 0 — 파일 1개, **11건** |
+| `pnpm test:integration` (전량) | 종료 코드 0 — 파일 **24개 전부 통과, 230건** |
+
+**시험이 실제로 무엇을 잡는지 확인했다.** 등록 로직을 하나씩 망가뜨려 봤다 — (1) 클라이언트가 보낸 `org_id`를 믿는다 → 1건 실패, (2) 중복을 접기 전에 브랜치를 센다 → 1건, (3) 재등록해도 문서 표식을 풀지 않는다 → 1건, (4) 해제할 때 행을 지운다 → 3건, (5) PATCH가 가시성도 바꾼다 → 1건. **다섯 변형 모두 잡혔다.**
+
+**DEV-028은 실제 Elasticsearch가 아니었으면 못 찾았다.** 커밋 매핑에 `repository_archived`가 없는 상태로 표식을 붙이려 하면 `strict_dynamic_mapping_exception`이 난다. 그 과정에서 두 번째 결함(DEV-034)도 드러났다 — 부트스트랩이 이미 있는 인덱스를 전혀 건드리지 않아, 매핑에 필드를 더해도 떠 있는 인덱스는 모르는 채로 남았다.
+
+**`JobRow.job_id` 타입 거짓말(DEV-027 나머지 절반)을 통합 시험이 짚었다.** 등록 응답이 `backfill_job_id`를 내보내면서 소비자가 생겼고, `Any<String>` 기대가 실패해 정확한 자리를 알려 줬다.
+
+**k8s 매니페스트는 검증되지 않았다.** 이 실행 환경에 Kubernetes도 `kubectl`도 없다. YAML 파싱만 확인했고 클러스터 적용은 **REL-001 프로비저닝 때 해야 한다** — 7장에 한계로 남겼다.
+
+**실제 GHE 대상 검증은 여전히 하지 않았다 — NOT RUN.** 저장소 등록은 GHE를 부르지만(`getRepository`) 이 환경에 App 자격 증명이 없다. 통합 시험은 조회를 좁은 포트로 대체했고, 그 포트 뒤의 실제 클라이언트는 `@prs/github`의 목 GHES 계약 시험이 덮는다. **REL-001 운영 readiness 전 게이트**로 8장에 그대로 둔다.
+
+### 6.11 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -635,24 +672,29 @@ DoD 6항 전부 통과. 검증 방법은 `pnpm test:integration ops/dead-letter`
 | PR 이외 이벤트(`push`·`release`·`member`·`team`·`repository`·`create`·`delete`)를 아무도 진행시키지 않음 | WP-007 범위 (PR 보강만) / DEV-016 | 실제 상태 — `enrich`가 ack만 하고 넘긴다. 원본은 `raw_event`에 남아 유실이 아니다 | 라우팅을 소유한 WP-021(시퀀스)·권한 WP에서 CR로 결정 |
 | ~~`enrichment_pending` 문서가 아직 색인되지 않음~~ | WP-007 제외 목록 | 해소 (2026-08-20) — WP-008이 `enrichment_pending`을 문서에 그대로 옮겨 색인한다 | 없음 |
 | ~~실패 대기열에 쌓인 이벤트를 재처리할 길이 없음~~ | WP-007 범위 밖 (재처리는 WP-009) | 해소 (2026-08-20) — API-ADM-003이 조회·재처리를 연다 | 없음 |
-| 재처리 실행이 감사 기록에 남지 않음 | WP-009 범위 밖 (감사 적재는 WP-010 DoD, 신원은 WP-012) | 실제 상태 — A-001 정책은 "재처리 실행은 감사 기록 대상"이지만 `audit_record.user_id`에 넣을 **실제 신원이 아직 없다**. 공유 토큰 보유자를 사용자로 지어내지 않았다 | WP-010 감사 적재 + WP-012 OIDC 신원 |
-| 관리 API가 `operator` 역할이 아니라 공유 토큰으로 보호됨 | CR-012 / DEV-025 | 실제 상태 — 임시 통제다. 토큰 미설정이면 경로를 등록하지 않아 기본값은 "닫힘"이다 | WP-012가 OIDC 세션과 역할 판정으로 대체 |
+| 재처리 실행이 감사 기록에 남지 않음 | WP-009 범위 밖 | 실제 상태 — WP-010이 감사 적재(`auditRepo`)와 이름 붙은 토큰을 세웠으나 실패 대기열 재처리 경로에는 아직 붙이지 않았다. 저장소 등록·변경·해제만 남는다 | 재처리에도 같은 방식으로 붙이면 된다 (다음 WP에서 함께) |
+| 관리 API가 `operator` 역할이 아니라 이름 붙은 토큰으로 보호됨 | CR-012 DEV-025 / CR-013 DEV-030 | 실제 상태 — 임시 통제다. 토큰 미설정이면 경로를 등록하지 않아 기본값은 "닫힘"이고, 이름이 감사 주체가 된다. 토큰을 공유하면 감사가 사람을 구분하지 못한다 | WP-012가 OIDC 세션과 역할 판정으로 대체 |
 | 재처리 진행률(`EVT-JOB-001`)이 보고되지 않음 | JOB-ING-009의 `batch` 워커가 WP-019 소관 / DEV-024 | 실제 상태 — 1회 500건 상한 안에서 요청이 끝나고 결과는 응답 본문이 알려 준다 | WP-019가 `batch`를 세운 뒤 |
 | `EVT-ING-004 ingestion.failed`가 발행되지 않음 | 카탈로그의 소비자 `ops`가 스트림이 아니라 테이블을 읽음 / DEV-026 | 실제 상태 — 워커가 `dead_letter` 행을 동기적으로 남기므로 기록 유실은 없다 | 실시간 알림 소비자가 생기는 REL-005 |
 | 재처리가 실패 단계와 무관하게 `prs:ingest`부터 다시 돎 | `EVT-ING-002`·`EVT-ING-003`이 보존되지 않음 | 실제 상태 — 투영 단계 실패도 보강부터 다시 한다. GHE 왕복이 한 번 더 든다 | 없음 (중간 이벤트를 보존하려면 별도 CR) |
 | 경보 규칙 파일이 저장소에 없음 | WP-010이 k8s 매니페스트와 스크레이프 배선을 소유 | 실제 상태 — 지표(`dead_letter_open_total`)와 규칙 정의(관측성 문서 4장)는 있고 배포된 규칙만 없다 | WP-010 |
 | 워커 재기동 시 논리 재시도 횟수가 초기화됨 | CR-010 `EventBus` 확장의 알려진 한계 | 실제 상태 — 재시도 상태가 프로세스 메모리에 있다. Redis의 물리 전달 횟수를 하한으로 삼아 완화했으나 at-least-once 범위 안에서 5회보다 많이 재시도될 수 있다. 실패 대기열은 정확성 경계가 아니라 운영 분류 도구다 | 필요해지면 별도 CR |
-| 워커 `/metrics`가 프로세스 메모리에만 존재 (스크레이프·집계 미배선) | WP-007 구현 범위 / WP-010 | 실제 상태 — 게이트웨이와 같은 형식의 지표 모듈을 워커에 따로 뒀다 | WP-010이 한 곳으로 합친다 |
+| 지표가 프로세스 메모리에만 존재 (재기동 시 초기화) | WP-010 범위는 노출까지 | 실제 상태 — 세 앱이 `@prs/metrics` 한 구현을 공유하고 스크레이프 애노테이션도 매니페스트에 있다. 보관·집계는 사내 지표 저장소의 몫이다 | REL-001 프로비저닝 |
 | ~~Elasticsearch 통합 시험 3종을 이 환경에서 실행하지 못함~~ | WP-003 범위 / DEV-008 | 해소 (2026-08-20) — `mirror.gcr.io/library/elasticsearch:8.19.0`이 이그레스 정책을 통과한다. CI와 같은 8.19.0으로 19건 전량 실행 | 없음 (compose 정의는 그대로이므로 DEV-001은 유효) |
 | git 미러 경로 없음 — 커밋 목록은 API 폴백만 | WP-006 제외 목록 (미러는 WP-020) | 실제 상태 (ADR-005의 폴백 경로만 구현) | WP-020 |
 | NDJSON 아카이브 파일을 아무도 읽지 않음 | WP-004 구현 범위 (파일 append까지) | 실제 상태 | WP-036 Filebeat 소비 |
-| `/metrics`가 게이트웨이 프로세스 메모리에만 존재 (스크레이프·집계 미배선, 재기동 시 초기화) | WP-004 구현 범위 / WP-010 | 실제 상태 | WP-010 Prometheus 엔드포인트·파이프라인 지표 |
-| `queue_depth{stream}` 지표 미노출 | 비동기 문서 10장 / WP-010 | 실제 상태 (버스는 파티션 스트림을 만들지만 길이를 지표로 내지 않음) | WP-010 |
-| 미등록 저장소 이벤트도 그대로 저장됨 | FR-ING-009 AC-4는 "투영하지 않음"이지 "저장하지 않음"이 아님 | 실제 상태 (원본 보관 우선) — WP-008이 투영 단계에서 걸러 ack한다 (DEV-020) | WP-010 저장소 등록 API |
+| ~~게이트웨이·워커·search-api가 지표 모듈을 각자 복제~~ | WP-004·WP-007 구현 범위 / WP-010 | 해소 (2026-08-21) — `@prs/metrics` 한 곳으로 합쳤다 | 없음 |
+| ~~`queue_depth{stream}` 지표 미노출~~ | 비동기 문서 10장 / WP-010 | 해소 (2026-08-21) — `EventBus.depth`를 포트에 더했고 API-ADM-006이 토픽별로 돌려준다. `XLEN`이 아니라 `lag + pending`이다 | 없음 |
+| 미등록 저장소 이벤트도 그대로 저장됨 | FR-ING-009 AC-4는 "투영하지 않음"이지 "저장하지 않음"이 아님 | 실제 상태 (의도된 동작) — 투영이 걸러 ack하고(DEV-020), 이제 API-ADM-001로 등록하면 백필(WP-019)이 원본에서 채운다 | 없음 |
 | 서명이 맞는데 JSON이 깨진 요청은 500 (GHE 재전송 유도) | API-ING-001 오류 코드가 401·413·500으로 한정 | 실제 상태 | 없음 (서명 유효 시 발생하지 않는 경로) |
 | 커밋 문서에 메시지·작성자·부모 SHA가 없음 | WP-008 입력이 `EVT-ING-002`이고 그 이벤트는 커밋 SHA만 나른다 | 실제 상태 — SHA → PR 해석(FR-SRCH-002)에 필요한 만큼만 채운다. 조건부 업서트가 키 단위로 대입하므로 나중에 채워도 덮이지 않는다 | WP-020 미러 기반 커밋 보강 |
-| `allowed_team_ids`·`author_team_ids`가 비어 있음 | WP-008 범위 밖 (권한 동기화는 WP-012) | 실제 상태 — `org_team` 접근 범위 질의는 아직 팀 조건을 만족시키지 못한다. `explicit` 범위는 `repository_id`만으로 동작한다 | WP-012 |
+| `allowed_team_ids`·`author_team_ids`가 비어 있음 | WP-008 범위 밖 (권한 동기화는 WP-012) | 실제 상태 — `org_team` 접근 범위 질의는 아직 팀 조건을 만족시키지 못한다. `explicit` 범위는 `repository_id`만으로 동작한다. `org_id`·`visibility`는 이제 등록이 GHE에서 정확히 채운다 (DEV-033) | WP-012 |
 | `links_pending`이 영영 `true` | 관계 파생이 WP-029 | 실제 상태 — 투영이 생성 시점에만 `true`로 두고 이후 건드리지 않는다. 화면은 이 표식으로 "관계 미확정"을 표시한다 | WP-029 |
+| k8s 매니페스트가 클러스터에 적용된 적 없음 | WP-010 구현 범위 / 이 환경에 Kubernetes·`kubectl` 없음 | 실제 제약 — YAML 파싱만 확인했다. 이미지 이름(`prs/*:latest`)과 백킹 서비스 호스트는 자리표시자다 | **REL-001 프로비저닝 때 실제 클러스터에서 검증** |
+| 단계별 지연 p50/p95가 기본적으로 `unavailable` | CR-013 / DEV-029 | 실제 상태 — 지표 저장소(사내 Prometheus 호환)가 `METRICS_QUERY_URL`로 설정된 경우에만 채운다. 워커 복제본 하나를 긁어 클러스터 전체인 양 내놓지 않는다 | REL-001 프로비저닝에서 주소 주입 |
+| `test:e2e`·`test:a11y` 스크립트가 없음 | DEV-032 | 실제 상태 — WP 20곳이 여전히 참조한다. WP-010분만 API 수준으로 대체했다 | E2E·접근성 harness를 처음 필요로 하는 화면 WP(WP-015 이후) |
+| A-001 운영 콘솔 화면 없음 | 사용자 결정 (WP-010은 API까지) | 실제 상태 — 로드맵의 REL-001 UI 열이 "A-001 최소 지표 화면"을 적었으나, 웹 셸과 Conductor가 WP-015라 지금 만들면 다시 써야 한다 | WP-015 이후 |
+| 저장소 등록이 GHE 자격 증명 없이는 열리지 않음 | FR-ING-009 예외 처리 (접근 권한 확인이 필수) | 실제 상태 — `GHE_APP_ID`/`GHE_INSTALLATIONS`가 없으면 등록 경로를 달지 않고 기동 로그에 남긴다. 확인 없이 등록을 받으면 수집이 영영 비어 있는 저장소가 "등록됨"으로 남는다 | 없음 (의도된 동작) |
 | 문서당 `EVT-ING-003`이 하나씩 발행됨 (PR 1 + 커밋 N) | 비동기 문서 4장의 payload가 엔티티 단위 | 실제 상태 — 커밋 250건 PR이면 251건이 나간다. `noop`은 내지 않아 재처리 시에는 줄어든다 | 관계 워커(WP-029) 실측 후 필요하면 CR |
 
 ## 8. 다음 작업
@@ -681,12 +723,16 @@ DoD 6항 전부 통과. 검증 방법은 `pnpm test:integration ops/dead-letter`
 18. ~~WP-008 투영 워커와 버전 조건부 업서트~~ → 완료 (2026-08-20). 검증 결과는 6.8장. 통합 스위트 전량(158건)이 처음으로 통과했다
 19. ~~CR-012 WP-009 실패 대기열 계약 정정~~ → 완료 (2026-08-20). DEV-022~025·DEV-027 해소, DEV-026은 알림 소비자를 소유한 REL-005로 이월. SRS 버전은 v2.2 유지(정합성 수정)
 20. ~~WP-009 실패 대기열과 재처리~~ → 완료 (2026-08-20). 검증 결과는 6.9장. 통합 191건 전량 통과
+21. ~~CR-013 WP-010 저장소 등록·파이프라인 상태 계약 정정~~ → 완료 (2026-08-21). DEV-028~031·033·034 해소, DEV-032는 화면 WP로 이월. SRS 버전은 v2.2 유지(정합성 수정)
+22. ~~WP-010 저장소 등록 API와 파이프라인 지표~~ → 완료 (2026-08-21). 검증 결과는 6.10장. **REL-001 구현 범위가 닫혔다**
 
-**다음 WP: WP-010 저장소 등록 API와 파이프라인 지표.**
+**다음 WP: WP-011 구조화 질의 파서 (REL-002 시작).**
 
 CR-008은 문서만 강화했다. GitHub Operations Plane(REL-007~011) 구현 순서는 바뀌지 않는다 — Search/Data Plane을 end-to-end로 닫은 뒤다. `@prs/github`은 Data Plane의 GitHub REST 클라이언트이며 `gh` CLI를 실행하지 않는다 (ADR-013).
 
-WP-010은 지금 파이프라인이 조용히 버리고 있는 것을 없앤다. 투영은 `repository` 행이 없는 이벤트를 문서로 만들지 않고 ack하는데(DEV-020), **그 행을 넣을 API가 아직 없다.** 그래서 이 시스템은 현재 어떤 저장소도 정식으로 등록할 수 없고, 미등록 이벤트는 `processed_at`이 영영 NULL로 남아 `JOB-ING-007`이 10분마다 다시 집는다. WP-010이 `/admin/repositories`와 `/admin/pipeline-status`를 세워 FR-ING-009·FR-ADMIN-001을 닫고, 흩어져 있는 세 개의 `/metrics`(게이트웨이·워커·ops)를 한 곳으로 합친다. 감사 적재(`audit_record`)도 WP-010 DoD에 있으므로, WP-009가 신원 부재로 남겨 둔 재처리 감사 기록이 그때 자리를 얻는다.
+**REL-001의 WP는 전부 끝났다.** 웹훅 수신부터 검색 인덱스까지, 실패 격리와 재처리, 저장소 등록과 파이프라인 관측이 모두 선다. 남은 것은 **코드가 아니라 게이트**다 — 실제 GHE 대상 read-only smoke, k8s 매니페스트의 클러스터 적용, 운영 규모 성능 측정(QA-PERF), `docker compose up` 검증(DEV-001). 넷 다 이 실행 환경에 없는 것을 요구하며 7장과 6.11장에 그대로 남아 있다.
+
+REL-002는 사람이 들어오는 릴리스다. WP-011 질의 파서가 첫 자리이고, 그 뒤 WP-012가 OIDC 신원과 `operator` 역할 판정을 세우면 **WP-009·WP-010이 임시 토큰으로 막아 둔 관리 API가 제 통제를 얻는다**. 감사 기록의 주체도 그때 사람 계정이 된다.
 
 CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 — Search/Data Plane(REL-001~006)을 end-to-end로 닫은 뒤에 Operations Plane(REL-007~011)을 시작한다. GitHub Operations 기능을 REL-001 WP 안에 섞지 않는다.
 

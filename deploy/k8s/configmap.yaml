@@ -1,0 +1,23 @@
+# 시크릿이 아닌 설정만 둔다. 토큰·키·비밀번호는 Secret으로 간다 (보안 문서 6장).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prs-config
+  namespace: pr-search
+  labels:
+    app.kubernetes.io/part-of: pr-search
+data:
+  # 백킹 서비스. 호스트 이름은 환경마다 다르므로 kustomize 오버레이가 덮는다.
+  REDIS_URL: redis://redis.pr-search.svc.cluster.local:6379
+  ELASTICSEARCH_NODE: http://elasticsearch.pr-search.svc.cluster.local:9200
+  GHE_BASE_URL: https://ghe.example.com
+
+  # 게이트웨이 (인프라 3장: graceful shutdown 30초)
+  INGEST_GATEWAY_PORT: '3001'
+  INGEST_SHUTDOWN_GRACE_MS: '30000'
+  # 아웃박스가 받으므로 발행 마감을 짧게 둔다 (NFR-002의 300ms 예산 안)
+  INGEST_ENQUEUE_TIMEOUT_MS: '150'
+  INGEST_ARCHIVE_PATH: /var/lib/prs/archive/raw-events.ndjson
+
+  SEARCH_API_PORT: '3002'
+  PIPELINE_WORKER_PORT: '3003'

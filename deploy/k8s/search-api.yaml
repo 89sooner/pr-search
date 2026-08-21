@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-api
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: search-api }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app.kubernetes.io/component: search-api }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: search-api }
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '3002'
+    spec:
+      # 진행 중 요청을 마무리할 시간 (인프라 3장). 끊긴 웹훅은 GHE가 재전송하고
+      # 멱등 처리가 흡수한다.
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: search-api
+          image: prs/search-api:latest
+          ports:
+            - name: http
+              containerPort: 3002
+          envFrom:
+            - configMapRef: { name: prs-config }
+            - secretRef: { name: prs-secrets }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: search-api
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: search-api }
+spec:
+  selector: { app.kubernetes.io/component: search-api }
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

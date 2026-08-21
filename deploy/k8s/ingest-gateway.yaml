@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingest-gateway
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: ingest-gateway }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app.kubernetes.io/component: ingest-gateway }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: ingest-gateway }
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '3001'
+    spec:
+      # 진행 중 요청을 마무리할 시간 (인프라 3장). 끊긴 웹훅은 GHE가 재전송하고
+      # 멱등 처리가 흡수한다.
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: ingest-gateway
+          image: prs/ingest-gateway:latest
+          ports:
+            - name: http
+              containerPort: 3001
+          envFrom:
+            - configMapRef: { name: prs-config }
+            - secretRef: { name: prs-secrets }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingest-gateway
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: ingest-gateway }
+spec:
+  selector: { app.kubernetes.io/component: ingest-gateway }
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

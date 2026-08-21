@@ -12,7 +12,7 @@ import type { Client as EsClient } from '@elastic/elasticsearch';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { auditRepo, repositoryRepo, type Pool } from '@prs/db';
-import { applyMappings, createEsClient, resolveClientOptions } from '@prs/es';
+import { ARCHIVABLE_ALIASES, applyMappings, createEsClient, resolveClientOptions } from '@prs/es';
 import { RedisStreamsEventBus, type Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { REPOSITORIES_PATH } from '../../src/ops/routes.js';
@@ -94,12 +94,16 @@ describe('저장소 등록 관리 (WP-010, API-ADM-001)', () => {
     lookupResult = facts();
     lookupCalls = [];
     await pool.query('TRUNCATE repository, job, audit_record RESTART IDENTITY CASCADE');
-    await es.deleteByQuery({
-      index: 'prs-commits',
-      refresh: true,
-      conflicts: 'proceed',
-      query: { term: { repository_id: REPOSITORY_ID } },
-    });
+    // 표식은 두 인덱스 모두에 붙으므로 두 곳 다 비운다. 한 곳만 비우면 다른
+    // 스위트가 남긴 문서까지 세어 `documents_marked`가 흔들린다.
+    for (const alias of ARCHIVABLE_ALIASES) {
+      await es.deleteByQuery({
+        index: alias,
+        refresh: true,
+        conflicts: 'proceed',
+        query: { term: { repository_id: REPOSITORY_ID } },
+      });
+    }
   });
 
   async function register(body: Record<string, unknown>): Promise<ReturnType<FastifyInstance['inject']>> {
