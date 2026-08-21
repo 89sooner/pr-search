@@ -74,6 +74,13 @@ const registry = buildRegistry();
 const app = buildServer({
   config,
   ops: { pool, bus, log: (entry) => log({ ...entry }) },
+  pipeline: {
+    pool,
+    bus,
+    es,
+    metricsQueryUrl: config.metricsQueryUrl,
+    log: (entry) => log({ ...entry }),
+  },
   ...(registry === undefined ? {} : { registry }),
   log: (entry) => log({ ...entry }),
 });

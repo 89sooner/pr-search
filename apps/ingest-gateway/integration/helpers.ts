@@ -21,6 +21,7 @@ export const WEBHOOK_SECRET = 'integration-webhook-secret';
 
 /** 발행을 버리는 버스. 큐를 보지 않는 테스트가 Redis에 의존하지 않게 한다. */
 export const NULL_BUS: EventBus = {
+  depth: async (): Promise<number> => 0,
   publish: async (): Promise<void> => undefined,
   subscribe: () => Promise.reject(new Error('구독하지 않는다')),
   close: async (): Promise<void> => undefined,

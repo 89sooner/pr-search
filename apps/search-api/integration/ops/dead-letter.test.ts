@@ -347,6 +347,7 @@ describe('실패 대기열 API (WP-009, API-ADM-003)', () => {
       const id = await seedFailure('publish-fail');
       const brokenBus = {
         partitions: (topic: string) => bus.partitions(topic),
+        depth: async (): Promise<number> => 0,
         publish: async (): Promise<void> => {
           throw new Error('Redis가 응답하지 않는다');
         },

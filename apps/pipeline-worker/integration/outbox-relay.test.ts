@@ -114,7 +114,8 @@ describe('대상 판정 (비동기 문서 3장)', () => {
   it('재적재에 실패하면 타이머를 감지 않는다 — 다음 회차에서 다시 잡힌다', async () => {
     await insert(strandedRow());
     const brokenBus = {
-      publish: async (): Promise<void> => {
+      depth: async (): Promise<number> => 0,
+    publish: async (): Promise<void> => {
         throw new Error('Redis 연결 없음');
       },
       subscribe: () => Promise.reject(new Error('사용하지 않는다')),

@@ -2,6 +2,7 @@ export * as auditRepo from './audit.js';
 export * as deadLetterRepo from './dead-letter.js';
 export * as jobRepo from './job.js';
 export * as mergeSequenceRepo from './merge-sequence.js';
+export * as pipelineRepo from './pipeline.js';
 export * as rawEventRepo from './raw-event.js';
 export * as repositoryRepo from './repository.js';
 export { MAX_SEQUENCE_BRANCHES } from './repository.js';
@@ -16,6 +17,7 @@ export type {
 } from './dead-letter.js';
 export type { JobRow, JobState, JobType } from './job.js';
 export type { MergeSequenceInsert, MergeSequenceRow } from './merge-sequence.js';
+export type { LagPercentiles, RepositoryLag } from './pipeline.js';
 export type { RawEventInsert, RawEventRow } from './raw-event.js';
 export type {
   RepositoryFilter,

@@ -27,6 +27,7 @@ import {
   reprocessDeadLetters,
   type OpsDeps,
 } from './dead-letters.js';
+import { pipelineStatus, type PipelineStatusDeps } from './pipeline-status.js';
 import {
   listRepositories,
   normalizeBranches,
@@ -39,6 +40,7 @@ import {
 export const DEAD_LETTER_PATH = '/api/v1/admin/dead-letters';
 export const REPROCESS_PATH = '/api/v1/admin/dead-letters/reprocess';
 export const REPOSITORIES_PATH = '/api/v1/admin/repositories';
+export const PIPELINE_STATUS_PATH = '/api/v1/admin/pipeline-status';
 
 /** 길이 노출과 조기 반환을 막는 상수 시간 비교. */
 function tokenMatches(provided: string, expected: string): boolean {
@@ -73,10 +75,12 @@ export interface OpsRouteOptions extends OpsDeps {
   readonly adminTokens: readonly AdminPrincipal[];
   /** 저장소 등록 의존. 없으면 등록 경로를 달지 않는다 (API-ADM-001). */
   readonly registry?: RegistryDeps;
+  /** 파이프라인 상태 의존. 없으면 상태 경로를 달지 않는다 (API-ADM-006). */
+  readonly pipeline?: PipelineStatusDeps;
 }
 
 export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions): void {
-  const { adminTokens, registry, ...deps } = options;
+  const { adminTokens, registry, pipeline, ...deps } = options;
 
   /**
    * 토큰을 주체로 바꾼다.
@@ -164,6 +168,14 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
   });
 
   if (registry !== undefined) registerRegistryRoutes(app, registry, authorize);
+
+  if (pipeline !== undefined) {
+    app.get(PIPELINE_STATUS_PATH, async (request, reply) => {
+      const correlationId = randomUUID();
+      if (authorize(request, reply, correlationId) === null) return reply;
+      return reply.send(await pipelineStatus(pipeline));
+    });
+  }
 
   /**
    * 지표 노출 (FR-ING-007 AC-5).
