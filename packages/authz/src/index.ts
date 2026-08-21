@@ -98,6 +98,9 @@ export {
   scopeKey,
   toAccessScope,
 } from './scope.js';
+export { createScopeDatabase } from './scope-database.js';
+export { applyMandatoryScopeFilter, shouldUseOrgTeamScope } from '@prs/es';
+export type { AccessScope, ExplicitAccessScope, OrgTeamAccessScope, ScopedQuery } from '@prs/es';
 export type {
   CachedScope,
   ScopeDatabase,

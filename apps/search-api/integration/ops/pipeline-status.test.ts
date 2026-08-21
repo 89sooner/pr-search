@@ -16,6 +16,14 @@ import { buildServer } from '../../src/server.js';
 import { PIPELINE_STATUS_PATH } from '../../src/ops/routes.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
 
+/** WP-012 이전과 같은 조건: OIDC 미구성 → 이름 붙은 토큰이 통제한다 (CR-015, DEV-048). */
+const TEST_AUTH_CONFIG = {
+  enabled: false,
+  cookieSecure: false,
+  loginPath: '/auth/login',
+  groupRoleMap: new Map(),
+} as const;
+
 const TOKEN = 'status-token';
 const AUTH = { authorization: `Bearer ${TOKEN}` };
 const REPOSITORY_ID = 4021;
@@ -76,7 +84,7 @@ describe('파이프라인 상태 (WP-010, API-ADM-006)', () => {
     redis = createTestRedis();
     bus = new RedisStreamsEventBus(redis);
     app = buildServer({
-      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null },
+      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG },
       ops: { pool, bus },
       pipeline: { pool, bus, es, metricsQueryUrl: null },
     });
@@ -229,7 +237,7 @@ describe('파이프라인 상태 (WP-010, API-ADM-006)', () => {
 
   it('한 출처가 죽어도 나머지는 정상 반환한다 (예외 처리)', async () => {
     const broken = buildServer({
-      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null },
+      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG },
       ops: { pool, bus },
       pipeline: {
         pool,

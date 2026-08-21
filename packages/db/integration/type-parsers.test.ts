@@ -85,4 +85,29 @@ describe('BIGINT 타입 파서', () => {
     expect(typeof row?.repository_id).toBe('number');
     expect(row?.repository_id).toBe(largeId);
   });
+
+  /**
+   * CR-015, DEV-050 — `BIGINT[]`은 다른 OID다.
+   *
+   * WP-012의 `permission_cache.repository_ids`가 이 저장소의 첫 `BIGINT[]`
+   * 열이다. 스칼라 파서만 등록해 두면 접근 범위가 `["101"]`로 나오고, 필수
+   * 접근 범위 필터의 `terms` 절이 문자열을 싣는다.
+   */
+  it('BIGINT[]의 원소도 숫자로 온다', async () => {
+    const { rows } = await pool.query<{ ids: (number | null)[] }>(
+      "SELECT ARRAY[1::bigint, 987654321012::bigint]::bigint[] AS ids",
+    );
+
+    expect(rows[0]?.ids).toEqual([1, 987_654_321_012]);
+    expect(typeof rows[0]?.ids[0]).toBe('number');
+  });
+
+  it('빈 BIGINT[]과 NULL 원소를 다룬다', async () => {
+    const { rows } = await pool.query<{ empty: number[]; sparse: (number | null)[] }>(
+      "SELECT '{}'::bigint[] AS empty, ARRAY[1::bigint, NULL::bigint] AS sparse",
+    );
+
+    expect(rows[0]?.empty).toEqual([]);
+    expect(rows[0]?.sparse).toEqual([1, null]);
+  });
 });

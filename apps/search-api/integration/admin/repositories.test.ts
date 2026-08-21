@@ -19,6 +19,15 @@ import { REPOSITORIES_PATH } from '../../src/ops/routes.js';
 import type { GheRepositoryFacts } from '../../src/ops/repositories.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
 
+/** WP-012 이전과 같은 조건: OIDC 미구성 → 이름 붙은 토큰이 통제한다 (CR-015, DEV-048). */
+const TEST_AUTH_CONFIG = {
+  enabled: false,
+  cookieSecure: false,
+  loginPath: '/auth/login',
+  groupRoleMap: new Map<string, never>(),
+} as const;
+
+
 const TOKEN = 'registry-token';
 const AUTH = { authorization: `Bearer ${TOKEN}` };
 const REPOSITORY_ID = 4021;
@@ -68,7 +77,7 @@ describe('저장소 등록 관리 (WP-010, API-ADM-001)', () => {
     redis = createTestRedis();
     bus = new RedisStreamsEventBus(redis);
     app = buildServer({
-      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null },
+      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, auth: TEST_AUTH_CONFIG },
       ops: { pool, bus },
       registry: {
         pool,
