@@ -126,6 +126,8 @@ interface DetailBody {
     approved_by?: string[];
     state?: string;
     merged_at?: string;
+    // W-003의 `no_sequence` 안내가 쓴다 (CR-021, DEV-091). 미머지면 키가 없다.
+    merge_commit_sha?: string;
     url?: string;
   }[];
   readonly pr_number?: number;
