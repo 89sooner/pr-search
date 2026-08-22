@@ -8,6 +8,8 @@
 
 import type { Pool, PoolClient } from 'pg';
 
+import { advisoryXactLock, jobClaimLockKey } from '../advisory-lock.js';
+
 export type JobType =
   | 'backfill'
   | 'reconcile'
@@ -108,6 +110,17 @@ export async function finishJob(
 export const DEFAULT_MAX_CONCURRENT_JOBS = 3;
 
 /**
+ * claim 직렬화 락 대기 상한 (CR-022, DEV-107).
+ *
+ * 임계 구역은 짧은 질의 두 개라 정상적으로는 밀리초다. 상한을 두는 것은
+ * **락을 쥔 채 멈춘 세션**이 모든 워커를 영구히 묶지 않게 하기 위해서다.
+ * 넘기면 예외가 나고 러너가 그것을 기록한 뒤 다음 주기에 다시 본다 —
+ * "잡을 것이 없다"로 삼키지 않는다. 조용히 삼키면 큐가 밀리는데도 지표에
+ * 아무것도 남지 않는다.
+ */
+const CLAIM_LOCK_TIMEOUT_MS = 5_000;
+
+/**
  * 큐에서 잡 하나를 잡는다 (WP-019 / CR-022, DEV-101·DEV-102).
  *
  * ## 왜 이벤트가 아니라 폴링인가
@@ -116,14 +129,25 @@ export const DEFAULT_MAX_CONCURRENT_JOBS = 3;
  * 공유 저장소에서 세어야 한다. 실행 지시를 이벤트로도 나르면 진실이 둘이
  * 되고, 스트림이 재전달할 때 상한이 조용히 새어 나간다.
  *
- * ## 왜 한 트랜잭션인가
+ * ## 한 트랜잭션만으로는 상한이 서지 않는다 (CR-022, DEV-107)
  *
- * 세는 것과 잡는 것이 나뉘면 워커 넷이 동시에 `running`을 2로 읽고 **모두**
- * 시작한다. `FOR UPDATE SKIP LOCKED`로 후보 행을 잠근 채 같은 트랜잭션에서
- * 세고 갱신해야 상한이 실제로 상한이 된다.
+ * 처음에는 "세는 것과 잡는 것을 한 트랜잭션에 넣으면 된다"고 적었다.
+ * **틀렸다.** PostgreSQL 기본 격리 수준(READ COMMITTED)에서 각 문장은 그때까지
+ * **커밋된** 것만 본다. 다섯 워커가 동시에 시작하면 다섯 모두 아직 아무도
+ * 커밋하지 않은 상태에서 `running = 0`을 읽고, 서로 다른 행을 잡아 다섯 모두
+ * 시작한다. 실제로 CI에서 그렇게 됐다 — 상한 3에 다섯이 돌았다.
  *
- * `SKIP LOCKED`인 이유: 다른 워커가 이미 잡은 행을 기다리지 않고 다음 후보로
- * 넘어간다. 기다리면 워커들이 한 줄로 서서 병렬성이 사라진다.
+ * `FOR UPDATE SKIP LOCKED`가 막는 것은 **같은 행**을 둘이 잡는 것뿐이다.
+ * 서로 다른 행을 잡는 워커들은 애초에 충돌하지 않으므로 아무것도 직렬화되지
+ * 않는다. 세기가 정확하려면 **세는 워커들끼리** 직렬화되어야 한다.
+ *
+ * 그래서 유형 단위 advisory lock을 먼저 잡는다. 임계 구역은 짧은 질의 두
+ * 개뿐이고 백필은 분 단위로 도는 작업이라, 여기서 줄을 서는 비용은 무시할 수
+ * 있다. **기다리는** 락을 쓰는 이유는 `try` 버전이면 상한에 여유가 있어도
+ * 락을 놓친 워커가 빈손으로 돌아가 큐가 느리게 비기 때문이다.
+ *
+ * `SKIP LOCKED`는 그대로 둔다. 락 안에서도 앞선 트랜잭션이 아직 커밋하지 않은
+ * 행이 남아 있을 수 있고(claim 뒤 커밋 전), 그것을 기다릴 이유는 없다.
  *
  * @returns 잡을 것이 없거나 상한에 닿았으면 `undefined`. **둘을 구분하지
  * 않는다** — 호출 측이 할 일은 둘 다 "잠시 뒤 다시 본다"로 같다.
@@ -136,6 +160,13 @@ export async function claimNextJob(
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+
+    /*
+     * **세기 전에 줄을 선다.** 이것이 없으면 아래 count는 다른 워커가 방금
+     * 잡았지만 아직 커밋하지 않은 잡을 보지 못한다 (DEV-107). 락은 커밋·롤백
+     * 시점에 저절로 풀린다.
+     */
+    await advisoryXactLock(client, jobClaimLockKey(type), CLAIM_LOCK_TIMEOUT_MS);
 
     /*
      * 먼저 센다. `running`만 센다 — `paused`는 운영자가 멈춘 것이라 자원을
