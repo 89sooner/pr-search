@@ -171,9 +171,10 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 머지 커밋과 원본 커밋 목록을 구분 표시
 - 기반: Conductor `Table` + `Badge`
-- 필수 props: `mergeCommit: CommitSummary | null`, `sourceCommits: CommitSummary[]`, `truncated: boolean`, `totalCount: number`
+- 필수 props: `mergeCommit: CommitSummary | null`, `sourceCommits: CommitSummary[]`, `truncated: boolean`, `totalCount: number | null`
 - 상태: `ready`, `enrichment_pending`, `truncated`
 - 사용 규칙: 머지 커밋을 항상 첫 행에 두고 배지로 구분한다. 원본 커밋은 기본 접힘
+- **`totalCount: null`은 "250건 이상, 정확한 수를 모름"이다** (CR-020, DEV-083). 확정 총계와 **다른 문구로** 표시한다 — 절삭됐을 때 진짜 총계가 저장되어 있지 않다(CR-017 DEV-063). 가짜 숫자를 그리느니 모른다고 말한다
 - 관련 FR: FR-SRCH-003
 
 ### C-019 NeighborSequenceList
@@ -207,14 +208,17 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - 책임: 생성 → 첫 리뷰 → 승인 → 머지 → 릴리스 포함 단계와 소요 시간 표시
 - 기반: Conductor `Timeline`
 - 필수 props: `steps: TimelineStep[]`
+- `TimelineStep.status`는 넷이다 (CR-020, DEV-084): `done`(일어났고 시각을 안다) / `done_at_unknown`(**일어났으나 시각을 모른다** — 승인이 그렇다: `approved_by`는 있고 `approved_at`은 매핑에 없다) / `pending`(아직 일어나지 않았다) / `out_of_scope`(이 릴리스 범위 밖 — 릴리스 포함은 WP-024)
 - 상태: `ready`, `partial`(일부 단계 데이터 없음)
+- **시각을 지어내지 않는다.** `done_at_unknown`을 `pending`으로 그리면 "승인되지 않았다"는 거짓이 되고, `done`으로 그리면 없는 시각을 채워야 한다
 - 관련 FR: FR-STAT-003, FR-STAT-004
 
 ### C-023 EntityHeader
 
 - 책임: PR·커밋·릴리스 상세의 공통 헤더(제목, 식별자, 상태 배지, 시퀀스 배지, 외부 링크)
 - 기반: Conductor `Panel` + `Badge` + `Button`
-- 필수 props: `kind: 'pull_request' | 'commit' | 'release'`, `title`, `identifier`, `badges`, `externalUrl`
+- 필수 props: `kind: 'pull_request' | 'commit' | 'release'`, `title`, `identifier`, `badges`
+- 선택 props: `externalUrl?: string` — GHE 링크는 `GHE_BASE_URL`로 만든다(형식은 FR-SRCH-001 AC-3이 정한 `https://<host>/<owner>/<repo>/pull/<N>`). **미구성 배포에서는 버튼을 그리지 않는다** (CR-020, DEV-086). 죽은 링크는 없는 것보다 나쁘다
 - 재사용: W-002, W-003, W-005
 - 접근성: 외부 링크는 `rel="noreferrer"`와 새 창 안내 라벨을 포함한다
 

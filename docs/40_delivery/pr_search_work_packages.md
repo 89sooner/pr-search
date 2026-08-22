@@ -34,7 +34,7 @@
 | WP-014 | 식별자 해석 API | REL-002 | WP-013 | todo |
 | WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | WP-001 | todo |
 | WP-016 | W-001 통합 검색 화면 | REL-002 | WP-013, WP-014, WP-015 | todo |
-| WP-017 | W-002 PR 상세 화면 | REL-002 | WP-015, WP-016 | todo |
+| WP-017 | W-002 PR 상세 화면 | REL-002 | WP-015, WP-016 | done |
 | WP-018 | W-003 커밋 상세 화면 | REL-002 | WP-015, WP-016 | todo |
 | WP-019 | 저장소 백필 잡 | REL-002 | WP-006, WP-008 | todo |
 | WP-020 | 커밋 그래프 접근 계층 | REL-003 | WP-006 | todo |
@@ -606,14 +606,21 @@
   - `W-002-RELEASES` 섹션 골격 (데이터는 WP-024)
   - `W-002-LINKS` 섹션 골격 (데이터는 WP-031)
   - `enrichment_pending` 배지 + 수동 재조회 (자동 폴링 금지)
-  - 딥링크 `/pr/[owner]/[repo]/[number]`
+  - 타임라인 단계는 `done`/`done_at_unknown`/`pending`/`out_of_scope`를 구분한다 — 승인은 시각을 모르고 릴리스는 WP-024다 (CR-020, DEV-084)
+  - 리뷰 상태는 "승인함 / 아직 아님"까지만 — "변경 요청"은 데이터가 없다 (CR-020, DEV-085)
+  - GHE 링크는 `GHE_BASE_URL`로 만들고 **미구성이면 버튼을 그리지 않는다** (CR-020, DEV-086)
+  - **`repository_archived`·`files_truncated` 표시** — 파이프라인이 채우는데 어느 화면도 보여 주지 않던 것을 여기서 연다 (CR-020, DEV-089)
+  - 딥링크 `/pr/[owner]/[repo]/[number]`. **번호는 앞자리 0이 없는 양의 정수만** 받고, 그 밖은 조회 없이 `not_found`를 보인다 — 문구는 접근 범위 밖과 같아야 한다 (FR-AUTH-002 AC-4)
 - 제외:
   - 선행·후행 데이터 (WP-027), 관계 (WP-031), 릴리스 (WP-024), 동시 변경 (WP-031)
+  - `epoch_stale` 상태 — 지금 도달할 수 없어 만들지 않는다. WP-021이 시퀀스와 함께 정한다 (CR-020, DEV-087)
 - 완료 기준(DoD):
-  - [ ] QA-W002-01 ~ QA-W002-03, QA-W002-15, QA-W002-17, QA-W002-18이 통과한다
-  - [ ] 상태 매트릭스 W-002의 `loading_initial`, `ready`, `enrichment_pending`, `truncated`, `not_found` 상태가 렌더링된다
-  - [ ] 미머지 PR에서 선행·후행 섹션이 숨겨지지 않고 비활성 + 사유로 표시된다 (QA-W002-07)
-  - [ ] axe 위반 0건
+  - [x] QA-W002-01, QA-W002-02, QA-W002-15, QA-W002-18이 통과한다
+  - [x] **QA-W002-03은 절반만** — "절삭 표시"는 여기서, "전체 건수"는 `EVT-ING-002` 확장 뒤 (CR-020, DEV-082)
+  - [x] **QA-W002-17도 절반만** — "확장 전에 조회하지 않는다"는 여기서, "확장하면 조회한다"는 WP-031 (CR-020, DEV-088)
+  - [x] 상태 매트릭스 W-002의 `loading_initial`, `ready`, `enrichment_pending`, `truncated`, `not_found` 상태가 렌더링된다
+  - [x] 미머지 PR에서 선행·후행 섹션이 숨겨지지 않고 비활성 + 사유로 표시된다 (QA-W002-07)
+  - [x] axe 위반 0건
 - 검증 방법: `pnpm test web/pr`, `pnpm test:e2e flow-002`, `pnpm test:a11y pr`
 - 기록: 원장 WP-017 상태
 
