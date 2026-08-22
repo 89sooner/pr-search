@@ -55,6 +55,13 @@ const TWIN_A = 'beef1230000000000000000000000000000000aa';
 const TWIN_B = 'beef1231111111111111111111111111111111bb';
 /** 커밋 하나가 PR 둘에 속하는 경우 (QA-W003-05). */
 const SHARED_SHA = 'cafe0011223344556677889900aabbccddeeff01';
+/**
+ * **미머지 PR에만 속한 원본 커밋** (CR-021, DEV-091).
+ *
+ * `merge_commit_sha` 키가 **없어야** 하는 경우를 만든다. `SHARED_SHA`로는
+ * 잴 수 없다 — 그것은 머지된 PR에도 속해 어느 PR이 첫 항목인지 정해지지 않는다.
+ */
+const OPEN_SOURCE_SHA = 'bbbb000000000000000000000000000000000001';
 /** 접근 범위 밖 저장소의 커밋. 어떤 경로로도 새면 안 된다. */
 const HIDDEN_SHA = 'dead000000000000000000000000000000000001';
 /** 커밋 문서는 없고 PR 문서의 `head_sha`에만 있는 SHA (40자 폴백). */
@@ -119,6 +126,8 @@ interface DetailBody {
     approved_by?: string[];
     state?: string;
     merged_at?: string;
+    // W-003의 `no_sequence` 안내가 쓴다 (CR-021, DEV-091). 미머지면 키가 없다.
+    merge_commit_sha?: string;
     url?: string;
   }[];
   readonly pr_number?: number;
@@ -178,6 +187,15 @@ const PULL_REQUESTS = [
     // 미머지: `merge_commit_sha`가 없다 (QA-W002-02).
     source_commit_shas: [SHARED_SHA], source_commits_truncated: false,
     created_at: '2026-08-20T02:00:00Z', document_version: 1,
+  },
+  {
+    _id: `${String(PAYMENTS)}:1236`,
+    ...scope('acme/payments', PAYMENTS),
+    // 미머지이고 이 커밋은 **이 PR에만** 속한다 (CR-021, DEV-091 시험용).
+    pr_number: 1236, title: '미머지 후속', state: 'open', draft: false, author: 'park',
+    base_branch: 'main', head_branch: 'feature/open',
+    source_commit_shas: [OPEN_SOURCE_SHA], source_commits_truncated: false,
+    created_at: '2026-08-21T02:00:00Z', document_version: 1,
   },
   {
     _id: `${String(BILLING)}:1234`,
@@ -242,6 +260,12 @@ const COMMITS = [
     ...scope('acme/payments', PAYMENTS),
     // 같은 커밋이 PR 둘에 속한다 (QA-W003-05).
     commit_sha: SHARED_SHA, role: 'source_commit', pull_request_numbers: [1234, 1235],
+    base_branch: 'main', enrichment_pending: false, document_version: 1,
+  },
+  {
+    _id: `${String(PAYMENTS)}:${OPEN_SOURCE_SHA}`,
+    ...scope('acme/payments', PAYMENTS),
+    commit_sha: OPEN_SOURCE_SHA, role: 'source_commit', pull_request_numbers: [1236],
     base_branch: 'main', enrichment_pending: false, document_version: 1,
   },
   {
@@ -650,6 +674,29 @@ describe('QA-W003-01·02·04·05: 커밋 상세 (API-SRCH-002 / FR-SRCH-002)', (
     expect(body.merge_seq).toBeNull();
     expect(body.seq_epoch).toBeNull();
     expect(body.sequence_space).toBeNull();
+  });
+
+  it('**소속 PR에 `merge_commit_sha`가 실린다** (CR-021, DEV-091)', async () => {
+    /*
+     * W-003의 `no_sequence` 안내가 이 키를 쓴다 — 원본 커밋 화면이 "머지 커밋
+     * X로 반영되었습니다"라고 말하고 그 X로 이동시킬 수 있어야 한다.
+     */
+    const { body } = await getPath(
+      `/api/v1/commits/${encodeURIComponent('acme/payments')}/${SOURCE_SHA}`,
+    );
+
+    expect(body.pull_requests?.[0]?.merge_commit_sha).toBe(MERGE_SHA);
+  });
+
+  it('미머지 PR이면 `merge_commit_sha` **키가 없다** — `null`로 채우지 않는다', async () => {
+    const { body } = await getPath(
+      `/api/v1/commits/${encodeURIComponent('acme/payments')}/${OPEN_SOURCE_SHA}`,
+    );
+
+    const pr = body.pull_requests?.[0];
+    expect(pr?.pr_number).toBe(1236);
+    // 키가 없어야 한다. `null`이면 "머지 커밋이 없다"는 다른 주장이 된다.
+    expect(pr).not.toHaveProperty('merge_commit_sha');
   });
 
   it('같은 SHA가 PR 둘에 속하면 둘 다 실린다 (AC-5)', async () => {

@@ -143,6 +143,18 @@ function linkedPullRequest(source: PullRequestSource): Record<string, unknown> {
   put(out, 'approved_by', source.approved_by === undefined ? undefined : [...source.approved_by]);
   put(out, 'state', source.state);
   put(out, 'merged_at', source.merged_at);
+  /*
+   * W-003의 `no_sequence` 안내가 이 키를 쓴다 (CR-021, DEV-091).
+   *
+   * 원본 커밋 화면은 "이 커밋은 대상 브랜치에 직접 존재하지 않고 **머지 커밋
+   * X로 반영되었습니다**"라고 말하고 그 X로 이동시켜야 하는데, 그 X가 여기
+   * 말고는 어디에도 없다. 값은 이미 PR 문서에 있으니 **없는 것을 만드는 것이
+   * 아니라 있는 것을 내보내는** 것이다.
+   *
+   * 미머지 PR이면 키가 없다 — `null`로 채우지 않는다. "머지 커밋이 없다"와
+   * "아직 만들지 않았다"를 가르는 이 응답의 규칙 그대로다 (CR-016, DEV-057).
+   */
+  put(out, 'merge_commit_sha', source.merge_commit_sha);
   if (source.repository !== undefined && source.pr_number !== undefined) {
     out['url'] = `/pr/${source.repository}/${String(source.pr_number)}`;
   }

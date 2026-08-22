@@ -20,6 +20,7 @@ import type { ReactNode } from 'react';
 import { Card, CardGrid } from '@conductor-by-89soone/react';
 import { SequenceBadge } from './SequenceBadge';
 import { shortSha } from '../lib/format';
+import { withFromQuery } from '../lib/query-url';
 
 /** `/resolve`의 후보 하나. 유형에 따라 채워지는 키가 다르다. */
 export interface ResolutionCandidate {
@@ -73,12 +74,7 @@ export function ResolutionCandidateList({
       <CardGrid>
         {candidates.map((candidate) => {
           const name = label(candidate);
-          const href =
-            candidate.url === null
-              ? null
-              : fromQuery.trim() === ''
-                ? candidate.url
-                : `${candidate.url}?from_q=${encodeURIComponent(fromQuery)}`;
+          const href = withFromQuery(candidate.url, fromQuery);
 
           const body = (
             <>

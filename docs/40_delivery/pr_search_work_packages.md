@@ -35,7 +35,7 @@
 | WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | WP-001 | todo |
 | WP-016 | W-001 통합 검색 화면 | REL-002 | WP-013, WP-014, WP-015 | todo |
 | WP-017 | W-002 PR 상세 화면 | REL-002 | WP-015, WP-016 | done |
-| WP-018 | W-003 커밋 상세 화면 | REL-002 | WP-015, WP-016 | todo |
+| WP-018 | W-003 커밋 상세 화면 | REL-002 | WP-015, WP-016 | done |
 | WP-019 | 저장소 백필 잡 | REL-002 | WP-006, WP-008 | todo |
 | WP-020 | 커밋 그래프 접근 계층 | REL-003 | WP-006 | todo |
 | WP-021 | 시퀀스 증분 채번 | REL-003 | WP-002, WP-020 | todo |
@@ -632,20 +632,25 @@
 - 관련 API/데이터/잡: API-SRCH-002
 - 선행 WP: WP-015, WP-016
 - 구현 범위:
-  - `C-024 ShaChip` (12자 표시, 전체 40자 복사, `aria-live` 복사 알림)
-  - `C-025 ChangedPathList`
-  - 소속 PR 섹션, 역할 배지(`merge_commit`/`source_commit`/`direct_push`)
-  - `no_sequence`(원본 커밋) 상태를 오류가 아닌 설명 + 머지 커밋 링크로 표시
+  - `C-024 ShaChip` (12자 표시, 전체 40자 복사, `aria-live` 복사 **성공·실패** 알림 — 조용한 실패 금지, CR-021 DEV-096)
+  - `C-025 ChangedPathList` — 골격과 사유만. `totalCount`는 널 허용이고 `null`을 `0`으로 그리지 않는다 (CR-021, DEV-094). **파일 내용 미표시는 지금 세운다** (`QA-W003-08`, 금지 규칙)
+  - 소속 PR 섹션, 역할 배지(`merge_commit`/`source_commit`/`direct_push` — **셋째는 WP-021 전까지 도달하지 않는다**, DEV-061·093)
+  - `no_sequence`(원본 커밋) 상태를 오류가 아닌 설명 + 머지 커밋 링크로 표시. **역할로 판정한다** — 시퀀스 값은 전부 `null`이라 근거가 되지 못한다 (CR-021, DEV-092)
   - `multi_pr` 상태 목록 표시
+  - **헤더는 축약 SHA를 표시명으로 쓴다.** 메시지·작성자·시각은 커밋 문서에 없고(DEV-060) **소속 PR에서 빌려오지 않는다** (CR-021, DEV-090)
   - `W-003-SEQPOS` 섹션 골격 (데이터는 WP-027)
   - 딥링크 `/commit/[owner]/[repo]/[sha]`
+  - `API-SRCH-002`의 `pull_requests[]`에 `merge_commit_sha` 추가 (CR-021, DEV-091 — 없으면 `no_sequence`의 복구 경로가 성립하지 않는다)
+  - **화면 라우트의 세션 확인을 공통 함수로 묶는다** — 네 번째 화면이 서면서 복제가 넷이 된다 (WP-017이 여기로 넘긴 일)
 - 제외:
   - 시퀀스 위치 데이터 (WP-027), 릴리스 (WP-024), 관계 (WP-031)
+  - 커밋 메타데이터(메시지·작성자·부모 SHA·변경 경로) — WP-020
 - 완료 기준(DoD):
-  - [ ] QA-W003-01 ~ QA-W003-08이 통과한다
-  - [ ] 상태 매트릭스 W-003의 전 상태가 렌더링된다
-  - [ ] FLOW-002 전 경로(SHA 입력 → 커밋 상세 → PR 상세)가 E2E로 통과한다
-  - [ ] axe 위반 0건
+  - [x] QA-W003-01, QA-W003-02, QA-W003-04 ~ QA-W003-08이 통과한다
+  - [x] **QA-W003-03은 절반만** — "PR이 없을 때 사유를 표시한다"는 여기서, "**직접 푸시**로 표시한다"는 `role: 'direct_push'`가 도달하는 WP-021 뒤 (CR-021, DEV-093 / DEV-061)
+  - [x] 상태 매트릭스 W-003의 전 상태가 렌더링된다 (`no_pr`의 `direct_push` 갈래는 도달 불가 — 매핑은 있고 시험은 합성 입력으로 건다)
+  - [x] FLOW-002 전 경로(SHA 입력 → 커밋 상세 → PR 상세)가 E2E로 통과한다 — **이 항목을 쓰다가 DEV-097을 찾았다**
+  - [x] axe 위반 0건
 - 검증 방법: `pnpm test web/commit`, `pnpm test:e2e flow-002`, `pnpm test:a11y commit`
 - 기록: 원장 WP-018 상태, FR-SRCH-002 매핑
 

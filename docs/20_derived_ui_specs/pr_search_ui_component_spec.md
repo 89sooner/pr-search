@@ -228,13 +228,15 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - 기반: Conductor `Badge` + `IconButton` + `Tooltip`
 - 필수 props: `commitSha: string`, `abbreviate?: number`
 - 사용 규칙: 복사 버튼은 항상 전체 40자를 복사한다. 화면 표시값을 복사하지 않는다
-- 접근성: 복사 성공은 `aria-live="polite"`로 알린다
+- 접근성: 복사 **성공과 실패를 같은 `aria-live="polite"` 영역에** 알린다. 성공만 알리면 "성공했거나, 아무 일도 없었거나"가 구분되지 않는다 (CR-021, DEV-096)
+- 실패 처리: `navigator.clipboard`는 **보안 컨텍스트에서만 존재한다** — 없거나 권한이 거부되면 실패를 알리고 **전체 40자를 선택 가능한 텍스트로 노출**해 손으로 복사할 길을 남긴다. 조용한 실패는 사용자가 복사됐다고 믿고 붙여넣게 만드는데, 조사 도구에서 잘못된 SHA는 조사 결과 전체를 틀리게 만든다 (CR-021, DEV-096)
 
 ### C-025 ChangedPathList
 
 - 책임: 변경 경로와 추가/삭제 라인 수 표시
 - 기반: Conductor `Table`
-- 필수 props: `paths: ChangedPath[]`, `totalCount: number`, `truncated: boolean`
+- 필수 props: `paths: ChangedPath[]`, `totalCount: number | null`, `truncated: boolean`
+- `totalCount: null`은 **"세지 않았다"**이다 — `0`("바꾼 파일이 없다")과 다른 문구로 표시한다. 커밋 문서의 `changed_files_count`는 WP-020까지 채워지지 않으므로 `0`을 넣으면 *파일을 하나도 바꾸지 않은 커밋*과 구분되지 않는다 (CR-021, DEV-094; C-018의 DEV-083과 같은 규칙)
 - 사용 규칙: 파일 내용은 표시하지 않는다. 경로 문자열과 라인 수만 다룬다 (SRS 4.3)
 - 관련 FR: FR-ING-004
 

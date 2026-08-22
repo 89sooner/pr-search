@@ -23,6 +23,7 @@ import { Badge, Table } from '@conductor-by-89soone/react';
 import { SequenceBadge } from './SequenceBadge';
 import { commonSpace } from '../lib/sequence';
 import { shortSha } from '../lib/format';
+import { withFromQuery } from '../lib/query-url';
 
 /** 목록 한 행. `/search`의 `items` 원소와 같은 모양이다. */
 export interface ResultRow {
@@ -80,8 +81,7 @@ function rowHref(row: ResultRow, fromQuery: string): string | null {
    * `q`를 쓰지 않는 이유는 상세 URL에 `q`가 있으면 그 화면이 검색 결과처럼
    * 읽히고, 공유된 링크가 의도와 다르게 해석되기 때문이다.
    */
-  if (fromQuery.trim() === '') return row.url;
-  return `${row.url}?from_q=${encodeURIComponent(fromQuery)}`;
+  return withFromQuery(row.url, fromQuery);
 }
 
 /** 결과 행의 표시 이름. PR은 `#번호`, 커밋은 축약 SHA(12자)다. */

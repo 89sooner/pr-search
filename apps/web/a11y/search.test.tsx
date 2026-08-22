@@ -191,6 +191,109 @@ describe('상태 매트릭스 W-001 — 모든 상태가 그려진다', () => {
     expect(describeViolations(await violations(container))).toBe('');
   });
 
+  it('**제출한 뒤 후보 1건이면 상세로 이동한다** (FLOW-001 4단계, CR-021 DEV-097)', async () => {
+    const sha = 'a'.repeat(40);
+    stubFetch({
+      detected_kind: 'commit',
+      candidates: [
+        { kind: 'commit', repository: 'acme/a', display_name: 'a1b2c3d',
+          url: `/commit/acme/a/${sha}`, merge_seq: null, seq_epoch: null, sequence_space: null },
+      ],
+      truncated: false,
+    });
+    params.current = new URLSearchParams(`q=${sha}`);
+    view();
+
+    await waitFor(() => {
+      expect(stateOf()).toBe('resolved_single');
+    });
+    /*
+     * `resolved_single` 분기가 없으면 화면이 `loading_initial`에 **영원히
+     * 멈춘다** — 해석 응답에는 `items`가 없기 때문이다. 40자 SHA 붙여넣기가
+     * 이 제품에서 가장 흔한 입력이므로 그 정지는 곧 제품이 멈추는 것이다.
+     */
+    await userEvent.type(screen.getByRole('searchbox'), `${sha}{Enter}`);
+    await waitFor(() => {
+      expect(pushed).toContain(`/commit/acme/a/${sha}?from_q=${sha}`);
+    });
+  });
+
+  it('**제출하지 않았으면 이동하지 않는다** — 뒤로가기가 튕겨 나가지 않는다', async () => {
+    const sha = 'a'.repeat(40);
+    stubFetch({
+      candidates: [
+        { kind: 'commit', repository: 'acme/a', display_name: 'a1b2c3d',
+          url: `/commit/acme/a/${sha}`, merge_seq: null, seq_epoch: null, sequence_space: null },
+      ],
+      truncated: false,
+    });
+    params.current = new URLSearchParams(`q=${sha}`);
+    view();
+
+    await waitFor(() => {
+      expect(stateOf()).toBe('resolved_single');
+    });
+    /*
+     * 뒤로가기로 이 URL에 **돌아온** 경우다. 여기서 또 떠나면 사용자는
+     * 검색 화면에 영영 닿지 못한다 — e2e가 실제로 그것을 잡았다.
+     */
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(pushed.filter((h) => h.startsWith('/commit/'))).toEqual([]);
+    // 대신 후보 카드를 눌러 갈 수 있어야 한다.
+    expect(screen.getByTestId('candidate-link')).toHaveAttribute(
+      'href',
+      `/commit/acme/a/${sha}?from_q=${sha}`,
+    );
+  });
+
+  it('**제출 한 번에 이동도 한 번이다** — 제출 횟수를 소비한다', async () => {
+    const sha = 'a'.repeat(40);
+    stubFetch({
+      candidates: [
+        { kind: 'commit', repository: 'acme/a', display_name: 'a1b2c3d',
+          url: `/commit/acme/a/${sha}`, merge_seq: null, seq_epoch: null, sequence_space: null },
+      ],
+      truncated: false,
+    });
+    params.current = new URLSearchParams(`q=${sha}`);
+    const { rerender } = view();
+
+    await waitFor(() => {
+      expect(stateOf()).toBe('resolved_single');
+    });
+    await userEvent.type(screen.getByRole('searchbox'), `${sha}{Enter}`);
+    await waitFor(() => {
+      expect(pushed.filter((h) => h.startsWith('/commit/'))).toHaveLength(1);
+    });
+
+    /*
+     * 소비하지 않으면 이후의 어떤 갱신에서도 이동이 되풀이된다. 실제
+     * 브라우저에서는 곧 언마운트되어 가려지지만, **가려진 결함은 결함이다** —
+     * 이동이 막히거나 화면이 남는 순간 드러난다.
+     */
+    rerender(<SearchView loginPath="/auth/login" />);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(pushed.filter((h) => h.startsWith('/commit/'))).toHaveLength(1);
+  });
+
+  it('이동 중에도 **후보 카드를 남긴다** — 이동이 막히면 손으로 누른다', async () => {
+    stubFetch({
+      candidates: [
+        { kind: 'commit', repository: 'acme/a', display_name: 'a1b2c3d',
+          url: '/commit/acme/a/x', merge_seq: null, seq_epoch: null, sequence_space: null },
+      ],
+      truncated: false,
+    });
+    params.current = new URLSearchParams('q=a1b2c3d');
+    const { container } = view();
+
+    await waitFor(() => {
+      expect(stateOf()).toBe('resolved_single');
+    });
+    expect(screen.getByTestId('candidate-link')).toBeInTheDocument();
+    expect(describeViolations(await violations(container))).toBe('');
+  });
+
   it('`ambiguous` — **자동 이동하지 않는다** (QA-W001-05)', async () => {
     stubFetch({
       candidates: [

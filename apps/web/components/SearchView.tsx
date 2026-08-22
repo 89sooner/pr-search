@@ -31,7 +31,14 @@ import { OmniSearchInput } from './OmniSearchInput';
 import { QueryTokenBar } from './QueryTokenBar';
 import { ResolutionCandidateList, type ResolutionCandidate } from './ResolutionCandidateList';
 import { ResultTable, type ResultRow, type SortState } from './ResultTable';
-import { parseQueryState, readQueryState, toHref, withAst, type QueryState } from '../lib/query-url';
+import {
+  parseQueryState,
+  readQueryState,
+  toHref,
+  withAst,
+  withFromQuery,
+  type QueryState,
+} from '../lib/query-url';
 import { chooseRoute, resolveUrl, searchUrl } from '../lib/search-fetch';
 import { resolveScreenState, type ApiErrorBody } from '../lib/search-state';
 import { addEquality, removeChip, removeEquality, toChips } from '../lib/tokens';
@@ -97,6 +104,27 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
    * 버린다 — `AbortController`만으로는 이미 도착한 응답을 막지 못한다.
    */
   const generation = useRef(0);
+  /**
+   * 제출 횟수 (FLOW-001 4단계, CR-021 DEV-097).
+   *
+   * ## 왜 제출에만 매다는가
+   *
+   * 자동 이동을 해석 결과에만 걸면 **뒤로가기가 막힌다.** `/search?q=<40자 SHA>`로
+   * 돌아오는 순간 해석이 다시 후보 1건을 내고 화면이 곧바로 상세로 튕겨 나가,
+   * 사용자는 검색 화면에 영영 닿지 못한다. 실제로 e2e가 그것을 잡았다.
+   *
+   * 흐름 명세의 1단계가 **"사용자가 제출한다"**이므로, 이동은 그 제출에 대한
+   * 응답이다. 뒤로가기·붙여넣은 링크로 같은 URL에 도착한 경우에는 후보 카드를
+   * 보이고 사용자가 고르게 한다 — **놀라게 하지 않는다.**
+   *
+   * ## 왜 `ref`가 아니라 세는가
+   *
+   * 불리언 `ref`로 두면 **같은 질의를 다시 제출했을 때 아무 일도 일어나지
+   * 않는다** — URL이 그대로라 해석이 다시 돌지 않고, 효과의 의존값도 그대로라
+   * 다시 실행되지 않기 때문이다. 사용자가 Enter를 눌렀는데 화면이 가만히 있는
+   * 것은 고장으로 읽힌다. 세면 제출마다 값이 바뀌어 효과가 반드시 다시 돈다.
+   */
+  const [submitCount, setSubmitCount] = useState(0);
 
   useEffect(() => {
     const route = chooseRoute(state, gheBaseUrl);
@@ -161,6 +189,24 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     loginPath,
   });
 
+  /*
+   * **후보가 1건이면 상세로 이동한다** (FLOW-001 4단계, CR-021 DEV-097).
+   *
+   * `push`이지 `replace`가 아니다 — 뒤로가기 한 번으로 검색 화면과 원래
+   * 입력이 살아 돌아와야 한다. `from_q`가 그 입력을 나른다(DEV-078).
+   *
+   * 이동 자체는 효과에서 한다. 렌더 중에 `router.push`를 부르면 React가
+   * 렌더 도중 다른 컴포넌트를 갱신한다고 경고하고, StrictMode에서 두 번 나간다.
+   */
+  const singleHref = screen.kind === 'resolved_single' ? withFromQuery(candidates?.[0]?.url ?? null, state.q) : null;
+
+  useEffect(() => {
+    if (singleHref === null || submitCount === 0) return;
+    // 한 번만 떠난다. 소비하지 않으면 뒤로가기가 곧바로 튕겨 나간다.
+    setSubmitCount(0);
+    router.push(singleHref);
+  }, [singleHref, submitCount, router]);
+
   /** 조건 변경은 히스토리를 쌓지 않는다 — 뒤로가기 1회로 이전 화면이어야 한다. */
   const replaceState = useCallback(
     (next: QueryState) => {
@@ -172,6 +218,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
   const submit = useCallback(
     (value: string) => {
       // 제출은 새 조사다 — 히스토리에 남긴다 (화면 이동은 `push`).
+      setSubmitCount((n) => n + 1);
       router.push(toHref(SEARCH_PATH, { ...state, q: value }));
     },
     [router, state],
@@ -327,6 +374,19 @@ function ScreenBody({
         <div data-testid="loading-initial">
           <Spinner label="검색 중" />
           <ResultTable rows={[]} sort={sort} onSortChange={onSortChange} loading />
+        </div>
+      );
+
+    case 'resolved_single':
+      /*
+       * 이동 중이다. **후보 카드를 함께 그린다** — 이동이 막히면(팝업 차단,
+       * 라우터 실패) 사용자가 손으로 누를 길이 남아야 한다. 빈 화면을 두면
+       * 그때 아무 데도 갈 수 없다.
+       */
+      return (
+        <div data-testid="resolved-single">
+          <p>해석한 대상으로 이동합니다…</p>
+          <ResolutionCandidateList candidates={candidates ?? []} truncated={false} fromQuery={fromQuery} />
         </div>
       );
 

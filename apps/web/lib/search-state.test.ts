@@ -159,6 +159,39 @@ describe('상태 매트릭스 13종', () => {
   });
 });
 
+describe('후보 1건 (FLOW-001 4단계, CR-021 DEV-097)', () => {
+  it('**후보가 1건이면 `resolved_single`이다** — `loading_initial`이 아니다', () => {
+    /*
+     * 이 분기가 없으면 해석 응답에 `items`가 없어 `itemCount === null`이 되고
+     * 화면이 **영원히 로딩으로 남는다.** 40자 SHA 붙여넣기가 이 제품에서 가장
+     * 흔한 입력이므로 그 정지는 곧 제품이 멈추는 것이다.
+     */
+    expect(state({ candidateCount: 1, itemCount: null }).kind).toBe('resolved_single');
+  });
+
+  it('2건 이상은 여전히 `ambiguous`다 — 자동 이동하지 않는다 (AC-5)', () => {
+    expect(state({ candidateCount: 2, itemCount: null }).kind).toBe('ambiguous');
+  });
+
+  it('0건은 이동하지 않는다', () => {
+    expect(state({ candidateCount: 0, itemCount: 0 }).kind).toBe('empty_no_result');
+  });
+
+  it('**로딩 중에는 이동하지 않는다** — 응답이 오기 전에 떠나면 안 된다', () => {
+    expect(state({ loading: true, candidateCount: 1, itemCount: null }).kind).toBe('loading_initial');
+  });
+
+  it('**오류가 후보 1건을 이긴다** — 실패를 이동으로 감추지 않는다', () => {
+    const failed = state({
+      candidateCount: 1,
+      itemCount: null,
+      status: 404,
+      errorBody: { error: { code: 'NOT_FOUND', message: 'x' } },
+    });
+    expect(failed.kind).not.toBe('resolved_single');
+  });
+});
+
 describe('우선순위', () => {
   it('**클라이언트 거절이 서버 결과를 이긴다** — 부르지 않았어야 할 조회다', () => {
     expect(state({ rawQuery: 'a1b2c3', itemCount: 10 }).kind).toBe('error_prefix_too_short');
