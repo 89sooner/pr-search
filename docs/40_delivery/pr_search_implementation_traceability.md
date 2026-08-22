@@ -6,7 +6,7 @@
 
 구현이 시작된 후 문서와 코드의 정합성을 유지하는 살아있는 원장이다. 코딩 에이전트는 WP를 완료할 때마다 이 문서를 갱신한다. 이 문서는 기록용이며 범위를 결정하지 않는다.
 
-**현재 상태: WP-019까지 완료 — REL-001이 닫혔고 REL-002 아홉 WP(WP-011~019)가 전부 병합됐다.** 워크스페이스 골격, PostgreSQL 스키마·리포지터리 계층, Elasticsearch 매핑·부트스트랩, GHE 웹훅 수신 게이트웨이, `EventBus` 포트와 Redis Streams 어댑터, GHE REST 클라이언트, 보강 워커, 그리고 **투영 워커**가 서 있다. 단위 953건·통합 419건이 전부 통과한다(CI 기준). **수집 경로가 웹훅에서 검색 인덱스까지 닫혔다** — 서명 검증 → `raw_event` 저장 → `prs:ingest` 발행 → NDJSON 아카이브 → 202, 그 뒤를 `enrich`가 받아 원본 커밋·변경 파일·리뷰를 채워 `EVT-ING-002`로 넘기고, `project`가 그것만 읽어 PR·커밋 문서를 만들어 Elasticsearch에 조건부 업서트한 뒤 `raw_event.processed_at`을 찍고 `EVT-ING-003`을 낸다. 오래된 이벤트는 새 상태를 덮지 않고, 커밋의 PR 소속은 순서와 무관하게 합집합으로 쌓인다. 이 환경에서 처음으로 실제 Elasticsearch(`mirror.gcr.io` 경유 8.19.0)를 띄워 ES 통합 시험을 돌렸고, 그 과정에서 WP-003의 별칭 라우팅 결함(DEV-021)을 찾아 고쳤다. 실제 GitHub App 자격 증명이 없어 real-GHE smoke는 여전히 미실행이다(선택 시험으로 남겨 두었고 건너뛴 사실이 실행 로그에 남는다). 여기에 **저장소 등록 API**가 더해져 수집 대상을 정식으로 등록·해제할 수 있고, **파이프라인 상태 API**가 수신량·대기열·지연·실패 대기열을 한 번에 보여 준다. **실패 대기열 관리 API**도 있어 격리된 이벤트를 보고 다시 흘려보낼 수 있다 — 한 (전달, 단계)에 행 하나로 누적되고, 3회 재처리 실패면 `held`, 끝까지 성공하면 투영이 `resolved`로 닫는다. 여기에 **구조화 질의 파서**가 더해져 `key:value` 질의가 AST가 되고, **검색 API**가 그 AST를 읽어 접근 범위 필터를 강제한 채 조회하며, **식별자 해석 API**가 SHA·PR 번호를 양방향으로 잇는다. **웹 셸과 화면 넷**(`/`·`/search`·`/pr/...`·`/commit/...`)이 서서 FLOW-002 전 경로가 실제 브라우저에서 이어지고, **저장소 백필 잡**이 과거 PR·커밋을 채운다. **채번(WP-021)과 관계 파생(WP-029)은 아직 없다** — 그래서 시퀀스와 관계 배지가 화면에서 `not_computed`로 남는다. 이 제품의 핵심인 머지 시퀀스가 아직 서지 않았다는 뜻이다.
+**현재 상태: WP-020까지 완료 — REL-001과 REL-002가 닫혔고 REL-003의 첫 WP(커밋 그래프 접근 계층)가 들어갔다.** 워크스페이스 골격, PostgreSQL 스키마·리포지터리 계층, Elasticsearch 매핑·부트스트랩, GHE 웹훅 수신 게이트웨이, `EventBus` 포트와 Redis Streams 어댑터, GHE REST 클라이언트, 보강 워커, 그리고 **투영 워커**가 서 있다. 단위 953건·통합 419건이 전부 통과한다(CI 기준). **수집 경로가 웹훅에서 검색 인덱스까지 닫혔다** — 서명 검증 → `raw_event` 저장 → `prs:ingest` 발행 → NDJSON 아카이브 → 202, 그 뒤를 `enrich`가 받아 원본 커밋·변경 파일·리뷰를 채워 `EVT-ING-002`로 넘기고, `project`가 그것만 읽어 PR·커밋 문서를 만들어 Elasticsearch에 조건부 업서트한 뒤 `raw_event.processed_at`을 찍고 `EVT-ING-003`을 낸다. 오래된 이벤트는 새 상태를 덮지 않고, 커밋의 PR 소속은 순서와 무관하게 합집합으로 쌓인다. 이 환경에서 처음으로 실제 Elasticsearch(`mirror.gcr.io` 경유 8.19.0)를 띄워 ES 통합 시험을 돌렸고, 그 과정에서 WP-003의 별칭 라우팅 결함(DEV-021)을 찾아 고쳤다. 실제 GitHub App 자격 증명이 없어 real-GHE smoke는 여전히 미실행이다(선택 시험으로 남겨 두었고 건너뛴 사실이 실행 로그에 남는다). 여기에 **저장소 등록 API**가 더해져 수집 대상을 정식으로 등록·해제할 수 있고, **파이프라인 상태 API**가 수신량·대기열·지연·실패 대기열을 한 번에 보여 준다. **실패 대기열 관리 API**도 있어 격리된 이벤트를 보고 다시 흘려보낼 수 있다 — 한 (전달, 단계)에 행 하나로 누적되고, 3회 재처리 실패면 `held`, 끝까지 성공하면 투영이 `resolved`로 닫는다. 여기에 **구조화 질의 파서**가 더해져 `key:value` 질의가 AST가 되고, **검색 API**가 그 AST를 읽어 접근 범위 필터를 강제한 채 조회하며, **식별자 해석 API**가 SHA·PR 번호를 양방향으로 잇는다. **웹 셸과 화면 넷**(`/`·`/search`·`/pr/...`·`/commit/...`)이 서서 FLOW-002 전 경로가 실제 브라우저에서 이어지고, **저장소 백필 잡**이 과거 PR·커밋을 채운다. **커밋 그래프 접근 계층**(WP-020)이 first-parent 체인을 미러 또는 API로 내주므로 채번이 딛고 설 바닥은 생겼다. 그러나 **채번(WP-021) 자체와 관계 파생(WP-029)은 아직 없다** — 그래서 시퀀스와 관계 배지가 화면에서 `not_computed`로 남는다. 이 제품의 핵심인 머지 시퀀스는 WP-021에서 처음 실재한다.
 
 ## 2. 기록 규칙
 
@@ -41,7 +41,7 @@
 | WP-017 | W-002 PR 상세 화면 | REL-002 | done | 에이전트 | `fe3e9f6` / PR #19 | DoD 6항 중 4항 통과, 2항 부분 (6.17장). 단위 42건 + a11y 34건 + e2e 13건, axe 위반 0건 | CR-020이 메운 빈칸(커밋 총계·타임라인 네 상태·리뷰 상태 둘·GHE 링크 널 허용·`epoch_stale` 미구현·확장 조회 절반)을 함께 구현했다. `QA-W002-03`·`QA-W002-17`은 CR-020 DEV-082·088대로 **절반만** — 절삭 표시와 "확장 전 조회 금지"는 통과, 전체 건수는 WP-020, 확장 조회는 WP-031이다. 구현 중 **DEV-089(보관·파일 절삭을 어느 화면도 표시하지 않는다)**를 스스로 발견해 등록·해소했다. 변이 시험 48종 전부가 잡혔고, 그 과정에서 **시험 구멍 6개**를 찾아 메웠다 |
 | WP-018 | W-003 커밋 상세 화면 | REL-002 | done | 에이전트 | `c5a9ae0` / PR #20 | DoD 4항 중 3항 통과, 1항 부분 (6.18장). 단위 47건 + a11y 34건 + e2e 14건, axe 위반 0건 | CR-021이 메운 빈칸(헤더 메타데이터·머지 커밋 링크 재료·체인 밖 판정·직접 푸시 도달 불가·경로 총계 널 허용·보강 의미·복사 실패)을 함께 구현했다. `QA-W003-03`은 CR-021 DEV-093대로 **절반만** — "PR 없을 때 사유 표시"는 통과, "직접 푸시로 표시"는 WP-021이다. **WP-017이 넘긴 세션 관문 통합을 여기서 했다** — 라우트 넷이 `GuardedPage` 하나를 지난다. 구현 중 **DEV-097(FLOW-001 4단계 미구현 — W-001이 후보 1건에서 영원히 멈춘다)**을 발견해 등록·해소했다 |
 | WP-019 | 저장소 백필 잡 | REL-002 | done | 에이전트 | `07f1cfe` / PR #21 | DoD 6항 중 4항 통과, 1항 부분, 1항 **NOT RUN** (6.19장). 단위 31건 + 통합 39건 (CI 32파일 419건 전부 통과) | CR-022가 메운 빈칸(PR 목록 메서드 부재·문서 버전·합성 델리버리 ID·실행 경로·동시 실행 상한·`/admin/jobs` 부재·한도 대기 상태·설정 복원 책임)을 함께 구현했다. **AC-5가 분기가 아니라 수의 대소로 성립한다** — 백필의 버전이 엔티티 `updated_at`이라 조건부 업서트가 저절로 거절한다. **이 환경에 Docker가 없어 통합 시험을 로컬에서 돌리지 못했다** — DoD 6항 중 5항이 그 시험에 걸려 있어 **CI가 처음 판정한다** |
-| WP-020 | 커밋 그래프 접근 계층 | REL-003 | todo | - | - | - | OD-001 결정 전이면 두 경로 모두 구현 |
+| WP-020 | 커밋 그래프 접근 계층 | REL-003 | done | 에이전트 | `61b9a98` / PR #23 | DoD 5항 전부 통과 (6.20장). 단위 36건 + 통합 24건, **실제 git 픽스처로 `git rev-list --first-parent --reverse`와 직접 대조** | CR-023이 메운 빈칸(저장소 컨텍스트·미러 루트·git 자격 증명·워커 역할)과 **실측으로 드러난 ADR-005의 대가**(DEV-111). OD-001 결정 전이라 두 경로 모두 구현했다. 커밋 메타데이터 채우기는 뺐다(DEV-112) |
 | WP-021 | 시퀀스 증분 채번 | REL-003 | todo | - | - | - | 핵심 WP |
 | WP-022 | 시퀀스 재채번과 에폭 | REL-003 | todo | - | - | - | - |
 | WP-023 | 앵커 정규화와 범위 조회 API | REL-003 | todo | - | - | - | - |
@@ -101,7 +101,7 @@
 | FR-SRCH-010 | WP-033 | - | - | not_started |
 | FR-SRCH-011 | WP-032 | - | - | not_started |
 | FR-SRCH-012 | WP-044 | - | - | not_started |
-| FR-SEQ-001 | WP-002, WP-018, WP-020, WP-021 | `packages/db/migrations/002_sequence.up.sql`, `packages/db/src/advisory-lock.ts`, `packages/db/src/repositories/{merge-sequence,sequence-space}.ts`, `apps/web/lib/commit-detail.ts` (`sequencePositionState`), `apps/web/components/SequencePosition.tsx` | `packages/db/integration/advisory-lock.test.ts` (AC-6), `packages/db/integration/seed.test.ts` (AC-3), `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx` | partial (스키마·채번 동시성 제어. 실제 채번 로직은 WP-021. **화면은 시퀀스 값 없이도 "체인 밖"과 "미채번"을 가른다** — 역할로 판정하며, 섞으면 머지 커밋까지 체인 밖으로 표시된다, DEV-092) |
+| FR-SEQ-001 | WP-002, WP-018, WP-020, WP-021 | `packages/db/migrations/002_sequence.up.sql`, `packages/db/src/advisory-lock.ts`, `packages/db/src/repositories/{merge-sequence,sequence-space}.ts`, `packages/github/src/{graph-plan,commit-graph,mirror-graph,api-graph,mirror-sync}.ts`, `apps/pipeline-worker/src/mirror-runner.ts`, `apps/web/lib/commit-detail.ts` (`sequencePositionState`), `apps/web/components/SequencePosition.tsx` | `packages/github/src/graph-plan.test.ts`, `packages/github/integration/graph.test.ts` (AC-2 대조), `packages/db/integration/advisory-lock.test.ts` (AC-6), `packages/db/integration/seed.test.ts` (AC-3), `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx` | partial (스키마·채번 동시성 제어. 실제 채번 로직은 WP-021. **화면은 시퀀스 값 없이도 "체인 밖"과 "미채번"을 가른다** — 역할로 판정하며, 섞으면 머지 커밋까지 체인 밖으로 표시된다, DEV-092) |
 | FR-SEQ-002 | WP-023, WP-025 | - | - | not_started |
 | FR-SEQ-003 | WP-023, WP-025 | - | - | not_started |
 | FR-SEQ-004 | WP-024, WP-026 | - | - | not_started |
@@ -112,7 +112,7 @@
 | FR-REL-002 | WP-024 | - | - | not_started |
 | FR-REL-003 | WP-029, WP-031 | - | - | not_started |
 | FR-REL-004 | WP-030, WP-031 | - | - | not_started |
-| FR-REL-005 | WP-030, WP-031 | - | - | not_started |
+| FR-REL-005 | WP-020, WP-030, WP-031 | `packages/github/src/{commit-graph,mirror-graph,api-graph}.ts` (patch-id 계산과 `patch_id_unavailable` 사유) | `packages/github/src/graph-plan.test.ts`, `packages/github/integration/graph.test.ts` | **부분** — AC-5(미러 없을 때 `patch_id_unavailable`)의 계산 계층만 섰다. 간선 생성(AC-1~AC-4)은 WP-030. **AC-2(patch-id 기반 후보)는 기본 설정에서 동작하지 않는다** (CR-023, DEV-111) |
 | FR-REL-006 | WP-030, WP-031 | - | - | not_started |
 | FR-REL-007 | WP-031 | - | - | not_started |
 | FR-REL-008 | WP-043 | - | - | not_started |
@@ -278,6 +278,12 @@
 | DEV-105 | 2026-08-22 | **`refresh_interval` 조정의 값과 복원 책임이 문서마다 다르다.** 작업 패키지는 "일시 **상향**", 데이터 모델은 "`30s`로 **낮췄다가** 복원"이라 적는다(같은 변경의 반대 표현이고 구체값은 데이터 모델에만 있다). 더 중요한 것은 **잡이 죽었을 때 누가 복원하는가**가 어디에도 없다는 점이다 — 그대로 남으면 인덱스가 계속 `30s`라 NFR-002(수집 반영 p95 10초)를 영구히 어긴다 | WP-019, WP-003 / FR-ING-006, NFR-002, 데이터 모델 4.4 | 문서 간 모순 | **CR-022** | **resolved (2026-08-22)** — 값은 데이터 모델의 **`30s`**를 따르고 문구를 정합화했다. 복원은 `finally`로 보장하되, **프로세스가 죽는 경우는 `finally`가 돌지 않으므로** 잡 시작 시 무조건 기본값으로 되돌린 뒤 올린다 — 앞선 잡이 남긴 설정을 다음 잡이 치운다. 설정 변경 실패는 **잡을 중단시키지 않는다**: 색인은 느려질 뿐 계속되고, 백필을 통째로 멈추는 편이 더 나쁘다 |
 | DEV-106 | 2026-08-22 | **백필이 색인 실패를 성공으로 셌다.** `bulkUpsert`는 항목 단위 실패를 던지지 않고 분류해서 돌려주는데(벌크 요청 자체는 200이다), 백필의 `projectOne`이 그 결과를 **읽지 않고** 무조건 성공으로 처리했다. 매핑 거부(THR-010)나 쓰기 거부(429)로 문서가 하나도 생기지 않은 PR이 완료 보고의 실패 0건에 섞여, 운영자는 색인되지 않은 PR을 색인됐다고 읽는다 — 검색에서 그것은 "그런 PR은 없다"로 나온다. CI 통합 시험이 드러냈다(PR #21) | WP-019, WP-008 / FR-ING-005 AC-3, FR-ING-006 | 구현 결함 | 불필요 — 문서가 이미 말한 규칙(개별 실패는 모아서 보고)을 코드가 지키지 않은 것이다 | **resolved (2026-08-22)** — 재시도 사다리를 `index-retry.ts`로 뽑아 **실시간 투영과 백필이 같은 것을 쓰게** 했다. 백필은 끝내 실패한 항목이 있으면 그 PR을 `failed[]`에 넣고 잡은 계속 간다. 단위 시험 9건과 실제 거부를 만드는 통합 시험 1건을 붙였다 |
 | DEV-107 | 2026-08-22 | **동시 실행 상한이 실제로는 하나도 강제되지 않았다.** DEV-102의 해소책은 "세는 것과 잡는 것을 한 트랜잭션에 넣으면 된다"였는데, PostgreSQL 기본 격리 수준(READ COMMITTED)에서 각 문장은 그때까지 **커밋된** 것만 본다. 동시에 시작한 다섯 워커는 모두 `running = 0`을 읽고 서로 다른 행을 잡아 **다섯 모두** 시작한다. `FOR UPDATE SKIP LOCKED`가 막는 것은 같은 행을 둘이 잡는 것뿐이라 아무것도 직렬화하지 않는다. CI가 잡았고(PR #21, `expected [...] to have a length of 3 but got 5`), 실제 PostgreSQL 16.13에 붙는 프로브로 재현했다 — **5회 중 4회가 5개, 1회가 4개**(상한 3) | WP-019, WP-002 / FR-ING-006 AC-6 | 구현 결함 | 불필요 — SRS가 요구한 상한을 코드가 지키지 못한 것이다 | **resolved (2026-08-22)** — claim이 세기 **전에** 유형 단위 advisory lock(`job:claim:{type}`)을 잡는다. 저장소에 이미 있는 관용구다(수집 멱등의 `ingest:{delivery_id}`, 채번의 `seq:{repo}:{branch}`). 임계 구역은 짧은 질의 둘이고 백필은 분 단위 작업이라 줄서기 비용은 무시할 수 있다. **기다리는** 락을 쓴다 — `try` 버전이면 상한에 여유가 있어도 락을 놓친 워커가 빈손으로 돌아가 큐가 느리게 빈다. 같은 프로브가 수정 뒤 5회 모두 정확히 3을 냈고, ES 없이 도는 회귀 시험 6건을 `packages/db/integration/job-claim.test.ts`에 남겼다 |
+| DEV-108 | 2026-08-22 | **그래프 연산에 저장소 컨텍스트가 없다.** 백엔드 아키텍처 4.3의 `graph.isAncestor(headSha, newHead)`·`graph.mergeBase(...)`는 SHA만 받는데, git 명령은 **특정 미러 디렉터리에서** 돌아야 한다. `firstParentRevList`만 `repositoryId`를 받는다 — 같은 인터페이스 안에서 어떤 것은 저장소를 알고 어떤 것은 모른다 | WP-020 / FR-SEQ-001, ADR-005 | 문서 오류 | **CR-023** | **resolved (2026-08-22)** — 모든 그래프 연산이 첫 인자로 `RepoRef`를 받는다. API 폴백도 저장소를 알아야 호출할 수 있으므로 미러 전용 문제가 아니다 |
+| DEV-109 | 2026-08-22 | **미러 루트 경로를 설정할 수단이 없다.** ADR-005의 예시에 `/mirrors/<repository_id>.git` 문자열이 있을 뿐 환경 변수도 기본값 규약도 어디에도 없다. 그대로 두면 경로가 코드에 박혀 로컬·CI에서 시험할 수 없다 | WP-020 / ADR-005, 인프라 3장 | 범위 공백 | **CR-023** | **resolved (2026-08-22)** — `MIRROR_ROOT`(기본 `/mirrors`)로 읽는다. 저장소 디렉터리 이름은 `<repository_id>.git`을 유지한다 — 소유자·이름이 바뀌어도 경로가 따라 바뀌지 않아야 미러를 다시 클론하지 않는다 |
+| DEV-110 | 2026-08-22 | **미러 클론의 git 자격 증명이 정의되어 있지 않다.** ADR-005는 `git clone --mirror --filter=blob:none <repo-url>`만 적는다. 사설 저장소에는 자격 증명이 필요한데, 토큰을 remote URL에 넣으면 **`.git/config`에 평문으로 남아** 볼륨 수명 내내 존재한다 — NFR-005(로그·응답에 토큰 0건)의 취지와 THR-015(볼륨 노출)를 정면으로 거스른다 | WP-020, WP-006 / ADR-005, NFR-005, THR-015 | 범위 공백 | **CR-023** | **resolved (2026-08-22)** — **remote URL에 토큰을 넣지 않는다.** `TokenPool`이 내준 설치 토큰을 `http.extraHeader`로 **호출마다** 넘기고(`-c` 인자라 디스크에 남지 않음), 원격 URL은 자격 증명 없는 순수 URL로 저장한다. 오류 문자열은 기존 `safeMessage`를 거친다 |
+| DEV-111 | 2026-08-22 | **blobless 미러에서 `patch-id`는 공짜가 아니다.** ADR-005는 "미러면 patch-id 체리픽 탐지가 가능하다"고 적지만, `git patch-id`는 diff를 요구하고 diff는 blob을 요구한다. 실측: blobless 클론(커밋 3·트리 3·**blob 0**)에서 `diff-tree -p`를 돌리자 promisor 원격에서 **blob 2개를 지연 인출해 볼륨에 남겼다.** `GIT_NO_LAZY_FETCH=1`이면 `could not fetch ... from promisor remote`로 깨끗이 실패하고 blob은 그대로 0이다. 즉 patch-id를 쓰면 **THR-015의 완화 수단("blobless라 파일 내용이 없음")이 성립하지 않고**, 인프라 5장의 용량 산정(blob 제외 저장소당 50MB)도 시간이 지나며 어긋난다 | WP-020 / ADR-005, THR-015, FR-REL-005 AC-2·AC-5, 인프라 5장 | **문서 간 모순 (실측으로 확인)** | **CR-023** | **resolved (2026-08-22)** — **요구사항을 먼저 지킨다.** THR-015와 용량 산정은 명세이고 patch-id 이점은 ADR의 `Positive` 항목이며, FR-REL-005 AC-5가 이미 `patch_id_unavailable` 경로를 정의한다. 그래서 **지연 인출을 기본으로 차단**(`GIT_NO_LAZY_FETCH=1`)하고 `patchId`는 `null` + 사유를 돌려준다. 켜는 스위치(`MIRROR_ALLOW_BLOB_FETCH`)는 두되 기본은 꺼짐이고, 켜면 무엇을 잃는지 문서에 적었다. **어느 쪽을 택할지는 사용자 결정으로 남긴다** |
+| DEV-112 | 2026-08-22 | **커밋 메타데이터를 채우는 잡이 카탈로그에 없다.** API 계약 §커밋 상세는 "WP-020 이후 붙는 키: `parent_shas`·`message`·`author`·`committer`·`authored_at`·`committed_at`·`patch_id`·`changed_paths`…"라 적고 원장의 알려진 제한 셋도 WP-020이 닫는다고 적었으나, **WP-020의 구현 범위·DoD에는 그 항목이 없고** 잡 카탈로그에도 그것을 수행하는 잡이 없다(JOB-MIR-001은 미러 fetch 동기화뿐이다) | WP-020, WP-008 / ENT-CORE-003, API 계약 | 범위 공백 | **CR-023** | **open — 이 WP에서 하지 않는다.** WP-020은 DoD가 검사하는 **그래프 접근 계층**을 낸다. 메타데이터 보강은 새 잡이 필요하고 그 잡은 어디에도 정의되어 있지 않다 — 없는 잡을 지어내는 대신 빈칸으로 남긴다. 그래프 계층이 서면 그 위에 잡 하나를 얹는 일이므로 **후속 CR로 정의할 것을 제안한다** |
+| DEV-113 | 2026-08-22 | **JOB-MIR-001의 워커 그룹이 `sequence`인데 그 역할이 아직 없다.** 잡 카탈로그가 `sequence` 그룹을 지정하지만 `sequence` 역할은 WP-021이 세운다. WP-020이 미러 동기화를 내려면 그 전에 실행 자리가 있어야 한다 | WP-020, WP-021 / JOB-MIR-001 | 범위 공백 | **CR-023** | **resolved (2026-08-22)** — `pipeline-worker`에 `mirror` 역할을 세워 그 안에서 돌린다. WP-021이 `sequence` 역할을 세우면 같은 프로세스에 합치거나 그대로 두면 된다 — **어느 쪽이든 미러 동기화의 호출 지점은 바뀌지 않는다.** 카탈로그의 그룹 표기를 `mirror`로 정정했다 |
 | DEV-003 | 2026-08-19 | `../00_governance/change_control.md` 4장 아키텍처 게이트 기록이 "오류 코드 30종"으로 적혀 있으나 API 계약 6장의 실제 코드는 29종이었다 | WP-001 | 문서 오류 | **CR-006** | **resolved (2026-08-20)** — 게이트 기록을 29종으로 정정하고 CR-005로 GH 코드 16종이 추가되어 현재 45종임을 함께 표기 |
 
 **등록이 필요한 대표 상황** (사전에 예상되는 것):
@@ -1145,7 +1151,67 @@ DoD 4항 중 3항 통과, 1항 부분. 검증 방법은 `pnpm test web/commit`, 
 
 **WP-007의 코드를 하나 건드렸다.** PR 응답 → `EnrichedPullRequest` 매핑을 `enriched-payload.ts`로 뽑아 실시간과 백필이 공유하게 했다. 각자 옮기면 언젠가 어긋나고, 그때 **백필로 들어온 PR만 어떤 필드가 비는** 상태가 된다 — 검색 결과에서 그것은 "그런 PR은 없다"로 읽힌다. WP-007의 시험 73건이 그대로 통과함을 확인했다.
 
-### 6.20 릴리스 게이트
+### 6.20 WP-020 검증 실행 기록
+
+**DoD 5항 전부 통과했고, 전부 로컬에서 판정했다.** 이 WP의 시험은 실제 git만 요구하고 Elasticsearch를 요구하지 않는다 — WP-019가 남긴 교훈("착수할 때 ES 비의존 통합 시험부터 돌린다")을 처음 적용한 WP다.
+
+| DoD | 결과 | 근거 |
+| --- | --- | --- |
+| `firstParentRevList`가 `git rev-list --first-parent --reverse`와 같다 | **통과** | 병합 커밋·직접 푸시가 섞인 실제 픽스처에서 전 구간·부분 구간 모두 일치. **선형 히스토리로만 시험하지 않았다** — 그러면 두 번째 부모를 따라가는 구현도 통과한다 |
+| `ApiCommitGraph`가 같은 픽스처에서 같은 체인을 만든다 (ADR-005) | **통과** | 폴백 클라이언트의 답을 **실제 git이 낸 값**으로 채워 비교했다. 조상 판정도 두 경로가 일치한다 |
+| blobless 클론에 파일 blob이 없다 (THR-015) | **통과** | 커밋·트리 > 0, **blob = 0**. 그래프 연산 셋을 돌린 뒤에도 0이다 |
+| 미러 미사용 저장소에서 `patchId`가 null이고 사유가 표시된다 (FR-REL-005 AC-5) | **통과** | `no_mirror`. 그리고 **미러가 있어도 `blob_fetch_disabled`가 나온다** — 아래 참조 |
+| 미러 fetch 실패 시 API 폴백으로 전환된다 | **통과** | `FallbackCommitGraph`. 폴백은 콜백으로 알린다 — 조용히 넘어가면 미러가 죽은 것을 아무도 모른다 |
+
+로컬에서 통과한 명령:
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` / `pnpm lint` | 종료 코드 0 |
+| `pnpm test` (전량) | 종료 코드 0 — **989건 통과 + 1건 건너뜀**. 그래프 판정 36건이 새것이다 |
+| `pnpm test:integration` (ES 비의존 20파일) | 종료 코드 0 — **205건 통과.** 그래프 24건이 새것이다 |
+| `pnpm test:integration` (ES 의존 12파일) | **로컬 NOT RUN** — 이 WP가 건드리지 않은 영역이고 CI가 판정한다 |
+
+**ADR-005의 이점 하나가 실측에서 다른 대가를 요구했다 (DEV-111).**
+
+ADR-005는 "미러면 patch-id 체리픽 탐지가 가능하다"를 Positive로 적는다. 그런데 `git patch-id`는 diff를 요구하고 diff는 blob을 요구하는데, blobless 클론에는 blob이 없다. 실측:
+
+```
+blobless 미러:            commit 3, tree 3, blob 0
+diff-tree -p 한 번 뒤:     commit 3, tree 3, blob 2   ← promisor 원격에서 지연 인출
+GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 0 유지)
+```
+
+즉 patch-id를 쓰는 순간 **THR-015가 근거로 삼은 "blobless라 파일 내용이 없음"이 성립하지 않는다.** 인프라 5장의 용량 산정(blob 제외 50MB)도 시간이 지나며 어긋난다.
+
+**요구사항을 먼저 지켰다.** THR-015와 용량 산정은 명세이고 patch-id 이점은 ADR의 `Positive` 항목이며, FR-REL-005 AC-5가 이미 `patch_id_unavailable` 경로를 정의한다. 그래서 지연 인출을 **기본으로 막고**(`GIT_NO_LAZY_FETCH=1`) 사유를 붙여 `null`을 돌려준다. 켜는 스위치(`MIRROR_ALLOW_BLOB_FETCH`)는 두되 기본은 꺼짐이고, 켜져 있으면 기동 로그가 경고한다. **어느 쪽을 운영 기본으로 둘지는 사용자 결정으로 남긴다.**
+
+시험이 그 대가를 직접 보여 준다 — 스위치를 켠 별도 미러에서 patch-id가 나오고, 같은 볼륨에 blob이 생긴 것을 함께 단언한다.
+
+**시험이 구현 결함 하나를 잡았다.**
+
+`resolveHead`가 처음에는 0이 아닌 종료 코드를 전부 `null`로 읽었다. 그러면 **미러가 통째로 사라진 저장소가 "아직 브랜치가 없는 저장소"로 읽힌다** — 채번이 조용히 아무 일도 하지 않고, 시퀀스 공간은 `stale`로 표시되지도 않으며(FR-SEQ-001 예외 처리), 폴백도 발동하지 않는다. 실패한 적이 없기 때문이다. git의 종료 코드를 실측해(없는 ref는 1, 없는 저장소는 128) 둘을 갈랐다.
+
+**변이 시험 12종을 돌렸고 전부 잡혔다.**
+
+| 변이 | 결과 |
+| --- | --- |
+| blob 지연 인출 기본을 허용으로 뒤집기 | 잡힘 |
+| 토큰을 base64 없이 평문으로 넣기 | 잡힘 |
+| 구간 끝의 SHA 검사 제거 | 잡힘 |
+| 브랜치 이름 앞의 `-` 허용 | 잡힘 |
+| `is-ancestor`의 예상 밖 코드를 "조상 아님"으로 읽기 | 잡힘 |
+| first-parent 대신 마지막 부모 따라가기 | 잡힘 |
+| 끊긴 체인에서 조용히 멈추기 | 잡힘 |
+| 구간 시작이 체인에 없어도 통과시키기 | 잡힘 |
+| `--reverse` 상실 | 잡힘 |
+| 디스크 총량 0을 사용률 0으로 답하기 | 잡힘 |
+| patch-id 모양 검사 제거 | 잡힘 |
+| 터미널 프롬프트 차단 제거 | 잡힘 |
+
+**워커 루프(`mirror-runner.ts`)는 변이를 돌리지 못했다** — 그 계층에 시험을 붙이지 않았다. 미러 동기화 자체(clone·fetch·prune·실패)는 통합 시험이 걸지만, 6시간 스윕 루프와 지표 보고는 걸지 않았다. 돌린 척하지 않는다.
+
+### 6.21 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -1251,6 +1317,9 @@ DoD 4항 중 3항 통과, 1항 부분. 검증 방법은 `pnpm test web/commit`, 
 | 백필 진행률의 `total`이 마지막 페이지 전까지 `null` | WP-019 구현 / GitHub `/pulls`가 총계를 주지 않음 | 실제 상태 (의도) — **`done`을 총계로 쓰지 않는다.** 쓰면 언제나 100%로 보여 운영자가 끝난 줄 안다. 마지막 페이지에 닿아야 총계를 안다 | 없음 (GHE API의 한계) |
 | **통합 시험의 `delete_by_query` 정리가 refresh되지 않은 문서를 놓친다** | 이 저장소의 통합 스위트 공통 패턴 (`worker/project.test.ts`·`ops/pipeline-status.test.ts`·`admin/repositories.test.ts`·`jobs/backfill.test.ts`) | 실제 상태 — `delete_by_query`는 검색으로 대상을 찾으므로 인덱스의 `refresh_interval`(1초)보다 짧은 간격으로 이어지는 시험 사이에서는 앞 시험이 남긴 문서를 **보지 못한다.** `refresh: true`는 지운 *뒤에* 새로 고치는 옵션이라 이것을 풀지 않는다. **PR #21에서 실제로 터졌다** — 문서 하나가 살아남아 집계가 3이 됐다. `jobs/backfill.test.ts`는 정리 전에 refresh하도록 고쳤고, **나머지 세 스위트는 이 PR에서 건드리지 않았다**(지금은 초록이고 WP-019 범위 밖이다) | 남은 세 스위트에도 같은 한 줄을 넣는 별도 정리 |
 | **로컬에서 못 도는 통합 시험은 Elasticsearch 의존분뿐이다** | DEV-006·DEV-008이 "Docker가 없어 통합 시험 NOT RUN"으로 적어 온 것의 정정 | 실제 상태 — 이 환경에 네이티브 **PostgreSQL 16.13**과 **`redis-server`**가 있다. 그 둘만 쓰는 **19파일 181건이 로컬에서 통과한다.** 없는 것은 ES뿐이고 거기 걸린 것이 12파일이다. **이 사실을 WP-019 착수 때 확인하지 않아 AC-6 결함(DEV-107)이 CI까지 갔다** — 상한은 PostgreSQL만의 성질이라 로컬에서 잡을 수 있었다 | ES 의존 시험은 여전히 CI가 처음 판정한다. 앞으로는 착수 시 ES 비의존분을 먼저 돌린다 |
+| **기본 설정에서 patch-id가 나오지 않는다** | CR-023 DEV-111 / ADR-005 vs THR-015·인프라 5장 | 실제 상태 (의도된 선택) — `git patch-id`가 blob을 요구하고 blobless 미러에는 blob이 없다. 지연 인출을 켜면 소스가 볼륨에 쌓여 THR-015의 완화 근거와 용량 산정이 무너진다. **요구사항(THR-015·용량)을 ADR의 Positive보다 앞세웠고**, FR-REL-005 AC-5가 정의한 `patch_id_unavailable` 경로로 간다. `MIRROR_ALLOW_BLOB_FETCH=true`로 켤 수 있고 켜지면 기동 로그가 경고한다 | **사용자 결정** — 체리픽 탐지(FR-REL-005 AC-2)를 살릴지, 볼륨을 blobless로 유지할지. WP-030 착수 전에 정해야 한다 |
+| 커밋 메타데이터가 여전히 비어 있다 | CR-023 DEV-112 / DEV-090·DEV-094와 같은 자리 | 실제 상태 — **WP-020이 닫을 것으로 적혀 있었으나 닫지 못했다.** 그래프 접근 계층은 섰지만 그 값을 커밋 문서에 쓰는 잡이 카탈로그에 없다(JOB-MIR-001은 fetch 동기화뿐). 없는 잡을 지어내지 않았다 | **후속 CR로 잡을 정의한 뒤** 그래프 계층 위에 얹는다 |
+| 미러 스윕 루프와 지표 보고에 시험이 없다 | WP-020 구현 (`mirror-runner.ts`) | 실제 상태 — 미러 동기화 자체(clone·fetch·prune·실패·폴백)는 통합 시험이 걸지만 6시간 스윕 루프와 `mirror_disk_usage_ratio` 보고는 걸지 않았다. **변이 시험도 돌리지 못했다** | 스윕에 시험을 붙이는 별도 정리 |
 | PR 상세의 선행·후행·릴리스·관계가 **골격뿐** | WP-017 제외 목록 (데이터는 WP-024·WP-027·WP-031) | 실제 상태 (의도) — **셋 다 숨기지 않고 사유를 적는다.** 숨기면 사용자가 기능 부재로 오인한다. 미머지 PR의 선행·후행 사유는 머지된 PR과 **다른 문구**다 | WP-024, WP-027, WP-031 |
 | PR 상세 타임라인의 **승인 시각을 모름** | CR-020 DEV-084 / `approved_at`이 ES 매핑에 없음 | 실제 상태 — `approved_by`로 **일어난 것은 알고 시각만 모른다.** `done_at_unknown`으로 그리고 사유를 함께 적는다. `pending`으로 그리면 승인된 PR이 "승인 대기"가 된다 | 매핑에 `approved_at`을 더하는 별도 CR (투영과 `EVT-ING-002` 함께) |
 | 리뷰어별 상태가 "승인함 / 아직 아님" 둘뿐 | CR-020 DEV-085 / 투영이 리뷰어별 상태를 저장하지 않음 | 실제 상태 — "변경 요청"을 **지어내지 않는다.** `reviewers`·`approved_by` 두 로그인 목록만으로 파생할 수 있는 것이 이 둘이다 | 투영이 리뷰 상태를 저장하도록 하는 별도 CR |
@@ -1308,7 +1377,13 @@ DoD 4항 중 3항 통과, 1항 부분. 검증 방법은 `pnpm test web/commit`, 
 
 **REL-002의 조사 경로가 닫혔고 과거 데이터를 채울 길도 생겼다.** 붙여넣기(W-001) → 커밋(W-003) → PR(W-002)이 실제 브라우저에서 이어지고, WP-019가 그 화면들이 볼 과거 PR을 채운다.
 
-**다음은 REL-003의 WP-020 커밋 그래프 접근 계층이다** (로드맵 순서). 시퀀스 채번(WP-021)이 그 위에 서고, 그것이 이 제품의 핵심 주장 — **머지 순서** — 을 처음으로 실재하게 만든다.
+~~**다음은 REL-003의 WP-020 커밋 그래프 접근 계층이다**~~ → **완료 (2026-08-22).** 검증 결과는 6.20장.
+
+`CommitGraph` 인터페이스와 미러·API 두 구현, JOB-MIR-001 미러 동기화, 볼륨 사용률 지표가 들어갔다. **WP-021 시퀀스 채번이 딛고 설 바닥이 생겼다** — 이 제품의 핵심 주장인 **머지 순서**가 거기서 처음 실재한다.
+
+그 과정에서 **ADR-005의 Positive 하나가 실측에서 다른 대가를 요구하는 것**이 드러났다(DEV-111). patch-id를 쓰려면 blob을 볼륨에 받아야 하고, 그러면 THR-015의 완화 근거가 성립하지 않는다. 기본을 "받지 않음"으로 두었으나 **어느 쪽을 운영 기본으로 둘지는 미결이다** — 체리픽 간선(WP-030) 착수 전에 정해야 한다.
+
+**다음은 WP-021 시퀀스 증분 채번이다.** 선행(WP-002·WP-020)이 모두 섰다.
 
 **WP-020이 함께 닫는 것 셋.** 지금 화면들이 "아직 수집 전"이라고 적어 둔 자리가 전부 WP-020의 몫이다 — 커밋 메시지·작성자·시각(DEV-090), 변경 경로(DEV-094), PR 상세의 원본 커밋 제목(DEV-062). 타입을 전부 널 허용으로 열어 두었으므로 **화면을 고치지 않아도 키가 붙는 대로 채워진다.**
 
