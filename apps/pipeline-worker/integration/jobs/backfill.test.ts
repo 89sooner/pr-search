@@ -115,6 +115,16 @@ afterAll(async () => {
 beforeEach(async () => {
   await pool.query('TRUNCATE job');
   await pool.query('TRUNCATE repository CASCADE');
+  /*
+   * **지우기 전에 먼저 refresh한다.**
+   *
+   * `delete_by_query`는 검색으로 대상을 찾으므로 **아직 refresh되지 않은
+   * 문서를 보지 못한다.** `refresh: true`는 지운 *뒤에* 새로 고치는 옵션이라
+   * 이 문제를 풀지 않는다. 인덱스의 `refresh_interval`이 1초인데 시험 하나는
+   * 수십 밀리초라, 앞 시험이 색인한 문서가 그대로 살아남아 다음 시험의 집계에
+   * 섞인다 — CI에서 실제로 그렇게 됐다(PR #21, `expected 3 to be 2`).
+   */
+  await es.indices.refresh({ index: ['prs-pull-requests', 'prs-commits'] });
   await es.deleteByQuery({
     index: ['prs-pull-requests', 'prs-commits'],
     query: { match_all: {} },
@@ -221,6 +231,16 @@ describe('AC-5: 백필이 실시간을 덮어쓰지 않는다', () => {
     await es.index({
       index: 'prs-pull-requests',
       id: `${String(REPOSITORY_ID)}:${String(prNumber)}`,
+      /*
+       * **투영이 쓰는 것과 같은 `_routing`으로 넣는다** (ADR-003).
+       *
+       * 인덱스가 6샤드이고 투영은 `repository_id`로 라우팅한다. 라우팅 없이
+       * 넣으면 이 문서는 `_id` 해시 샤드에 앉고 백필의 업서트는 라우팅 샤드로
+       * 가서, 같은 `_id`를 가진 문서 **둘**이 서로 다른 샤드에 생긴다. 그러면
+       * 조건부 업서트가 무엇을 하든 이 시험은 통과한다 — 즉 아무것도 검증하지
+       * 못한다.
+       */
+      routing: String(REPOSITORY_ID),
       document: {
         repository_id: REPOSITORY_ID,
         repository: TARGET,
@@ -242,6 +262,7 @@ describe('AC-5: 백필이 실시간을 덮어쓰지 않는다', () => {
     const doc = await es.get<{ title: string; document_version: number }>({
       index: 'prs-pull-requests',
       id: `${String(REPOSITORY_ID)}:${String(prNumber)}`,
+      routing: String(REPOSITORY_ID),
     });
     /*
      * 백필의 버전은 `updated_at`이라 실시간보다 작다. 조건부 업서트가
@@ -263,6 +284,8 @@ describe('AC-5: 백필이 실시간을 덮어쓰지 않는다', () => {
     const doc = await es.get<{ pr_number: number; last_delivery_id: string }>({
       index: 'prs-pull-requests',
       id: `${String(REPOSITORY_ID)}:77`,
+      // 라우팅 없이 읽으면 `_id` 해시 샤드를 보고 404가 난다 (ADR-003).
+      routing: String(REPOSITORY_ID),
     });
     expect(doc._source?.pr_number).toBe(77);
     // 합성 델리버리 ID가 문서에 남아 출처를 밝힌다 (DEV-100).
@@ -395,6 +418,60 @@ describe('개별 PR 실패가 잡을 중단시키지 않는다', () => {
 
     const found = await es.count({ index: 'prs-pull-requests', query: { term: { repository_id: REPOSITORY_ID } } });
     expect(found.count).toBe(2);
+    void jobId;
+  });
+
+  it('**색인이 거부된 PR을 성공으로 세지 않는다** (CR-022, DEV-106)', async () => {
+    const jobId = await enqueue();
+    const claimed = await jobRepo.claimNextJob(pool, 'backfill');
+    const client = fakeClient({ pages: [[{ number: 31, updated_at: '2026-08-19T05:02:11Z' }]] });
+
+    /*
+     * 화이트리스트가 뚫린 상황을 만들어 **클러스터가 실제로 막게** 한다
+     * (THR-010). 응답만 조작하면 문서는 색인된 채로 남아 "세는 방법"만
+     * 시험하게 되고, 정작 확인해야 할 것 — 색인되지 않은 PR을 색인했다고
+     * 세는가 — 를 못 본다.
+     */
+    const leaky = new Proxy(es, {
+      get(target, property, receiver) {
+        if (property === 'bulk') {
+          return async (params: { operations: unknown[] }, ...rest: unknown[]): Promise<unknown> => {
+            const operations = params.operations.map((operation) => {
+              const body = operation as {
+                script?: { params: { doc: Record<string, unknown> } };
+                upsert?: Record<string, unknown>;
+              };
+              if (body.script === undefined) return operation;
+              return {
+                ...body,
+                script: {
+                  ...body.script,
+                  params: { ...body.script.params, doc: { ...body.script.params.doc, source_patch: 'diff --git' } },
+                },
+                upsert: { ...body.upsert, source_patch: 'diff --git' },
+              };
+            });
+            return Reflect.apply(target.bulk as (...a: unknown[]) => Promise<unknown>, target, [
+              { ...params, operations },
+              ...rest,
+            ]);
+          };
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    });
+
+    const result = await runBackfillJob(deps(client, { es: leaky }), claimed!, repository);
+    await es.indices.refresh({ index: 'prs-pull-requests' });
+
+    // 잡은 계속 간다 — PR 하나의 거부가 저장소 전체를 버릴 이유는 아니다.
+    expect(result.outcome).toBe('completed');
+    // 그러나 **성공으로 세지 않는다.** 벌크는 200이었고 실패는 항목 안에 있었다.
+    expect(result.failed).toEqual([31]);
+
+    // 실제로 문서가 없다. 이것이 "색인했다"고 세면 안 되는 이유다.
+    const found = await es.count({ index: 'prs-pull-requests', query: { term: { repository_id: REPOSITORY_ID } } });
+    expect(found.count).toBe(0);
     void jobId;
   });
 });

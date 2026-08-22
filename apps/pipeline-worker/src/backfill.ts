@@ -24,6 +24,7 @@ import type { Client } from '@elastic/elasticsearch';
 import { bulkUpsert } from '@prs/es';
 import { buildUpsertRequests } from './documents.js';
 import { toEnrichedPullRequest } from './enriched-payload.js';
+import { describeFailedItems, retryFailedItems } from './index-retry.js';
 import {
   advanceCursor,
   backfillDeliveryId,
@@ -240,7 +241,32 @@ async function projectOne(
       documentVersion,
       indexedAt: (deps.now ?? ((): Date => new Date()))(),
     });
-    await bulkUpsert(deps.es, requests);
+
+    /*
+     * **벌크가 200이어도 항목은 실패할 수 있다** (CR-022, DEV-106).
+     *
+     * `bulkUpsert`는 항목 실패를 던지지 않고 분류해서 돌려준다. 결과를 보지
+     * 않으면 매핑 거부(THR-010)로 문서가 하나도 안 생긴 PR을 "색인했다"고
+     * 세게 되고, 운영자는 실패 0건인 완료 보고를 받는다 — 검색에서 그 PR은
+     * "그런 PR은 없다"로 읽힌다.
+     *
+     * 재시도 사다리는 실시간 투영과 같은 것을 쓴다. 여기서 끝내 실패한
+     * 항목은 **이 PR 하나만** 실패로 세고 잡은 계속 간다.
+     */
+    const { outcomes } = await bulkUpsert(deps.es, requests);
+    const settled = await retryFailedItems(deps.es, outcomes, deps.sleep);
+    const detail = describeFailedItems(settled);
+    if (detail !== '') {
+      deps.log({
+        level: 'warn',
+        message: 'PR 색인 실패',
+        job_id: job.job_id,
+        pr_number: summary.number,
+        reason: 'index_failed',
+        detail: detail.slice(0, 200),
+      });
+      return false;
+    }
     return true;
   } catch (error) {
     deps.log({
