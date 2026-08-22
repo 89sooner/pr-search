@@ -17,6 +17,7 @@ export type { Pool, PoolClient } from 'pg';
 
 export {
   advisoryXactLock,
+  jobClaimLockKey,
   deliveryLockKey,
   sequenceLockKey,
   tryAdvisoryXactLock,

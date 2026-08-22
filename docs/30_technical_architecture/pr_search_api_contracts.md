@@ -973,6 +973,67 @@ POST /api/v1/analytics/percentiles
 - 오류: 400 `BRANCH_LIMIT_EXCEEDED`, 400 `INVALID_PARAMETER`, 401 `UNAUTHENTICATED`, **403 `FORBIDDEN_ROLE`** (등록 대상에 접근 권한이 없음 — 응답 `detail.required_permissions`에 필요한 권한을 담는다), 404 `NOT_FOUND`
 - 등록·변경·해제는 모두 감사 기록 대상이다 (AC-5). 기록되는 주체는 요청에 쓰인 관리 토큰의 이름이다 (CR-013, DEV-030)
 
+### API-ADM-002 잡 실행·중단·진행률
+
+- 목적: 백필을 비롯한 배치 잡을 실행·중단하고 진행률을 읽는다.
+- 관련 요구사항: FR-ADMIN-002, FR-ING-006
+- Authz: `operator`
+
+**실행 지시는 이벤트가 아니라 `job` 행이다 (CR-022, DEV-101).** API가 행을 만들고 배치 워커가 그것을 원자적으로 claim한다. 이벤트로 나르지 않는 이유는 동시 실행 상한(AC-6)을 어차피 DB에서 강제해야 하기 때문이다 — 둘을 함께 쓰면 진실이 둘이 되어 상한이 새어 나간다.
+
+#### `GET /api/v1/admin/jobs`
+
+- 질의: `type` (optional), `state` (optional), `limit` (기본 20, 최대 100)
+
+```json
+{
+  "items": [
+    {
+      "job_id": 88,
+      "type": "backfill",
+      "target": "acme/payments",
+      "state": "running",
+      "progress": { "done": 1200, "total": 4310, "unit": "pull_request" },
+      "requested_by": "alice",
+      "started_at": "2026-08-22T09:00:00Z",
+      "finished_at": null,
+      "error": null
+    }
+  ],
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+**`cursor`는 내보내지 않는다.** 재개 지점은 워커의 내부 상태이고, 운영자가 그것을 읽을 이유가 없다 — 읽을 수 있으면 고치고 싶어지고, 고치면 재개가 무엇을 이어받는지 아무도 보장하지 못한다.
+
+**한도 대기는 `state`가 아니라 `progress`에 나타난다 (CR-022, DEV-104).** API 한도가 소진되면 잡은 `running`을 유지한 채 `progress.waiting_until`에 회복 시각(RFC3339)을 싣는다. `paused`는 **운영자가 멈춘 것만** 뜻한다 — 둘을 한 상태로 섞으면 자동 재개가 운영자의 중단까지 되살린다.
+
+#### `POST /api/v1/admin/jobs`
+
+```json
+{ "type": "backfill", "target": "acme/payments" }
+```
+
+- 응답 201: `{ "job_id": 88, "state": "queued", "correlation_id": "..." }`
+- 오류: **`JOB_CONFLICT`** (409) — 같은 `(type, target)`에 활성 잡이 이미 있다. 부분 유니크 인덱스가 DB에서 강제하므로 경합에서도 둘이 뜨지 않는다
+- 오류: `NOT_FOUND` (404) — 등록되지 않은 저장소. **잡을 만들어 두지 않는다**: 만들면 워커가 잡을 때마다 실패하고 운영자는 원인이 미등록임을 알 수 없다
+- 오류: `INVALID_PARAMETER` (400) — 알 수 없는 `type`
+
+**상한을 초과해도 `POST`는 거절하지 않는다.** 큐에 넣고 `queued`로 둔다 — 상한은 *동시에 도는 수*의 제약이지 *요청받을 수 있는 수*의 제약이 아니다(AC-6). 넷째 요청을 400으로 막으면 운영자가 앞의 셋이 끝날 때까지 지켜보다 다시 눌러야 한다.
+
+#### `PATCH /api/v1/admin/jobs/{job_id}`
+
+```json
+{ "action": "cancel" }
+```
+
+- `action`: `cancel` | `pause` | `resume` — **이 셋만 받는다** (CR-022, DEV-103). 진행률·커서·상태를 직접 쓰는 필드는 두지 않는다
+- 응답 200: 갱신된 잡 1건
+- 오류: `INVALID_PARAMETER` (400) — 현재 상태에서 불가능한 전이(예: `completed`를 `resume`). **현재 상태를 `detail`에 함께 싣는다** — 운영자가 왜 안 되는지 알아야 다음 행동을 고른다
+- 오류: `NOT_FOUND` (404)
+
+전이 규칙: `queued`·`running` → `pause`/`cancel`, `paused` → `resume`/`cancel`. 종료 상태(`completed`·`failed`·`cancelled`)는 어느 것도 받지 않는다 — 끝난 잡을 되살리는 것은 **새 잡**이지 전이가 아니다.
+
 ### API-ADM-006 파이프라인 상태
 
 - 목적: 수집 파이프라인의 건강 상태를 한 번에 조회한다.

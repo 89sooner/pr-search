@@ -36,7 +36,6 @@ import {
   TOPICS,
   consumerGroup,
   deadLetter,
-  retryDelayMs,
   type DeliveredEvent,
   type EventBus,
   type EventHandler,
@@ -45,23 +44,15 @@ import {
   type Subscription,
 } from '@prs/bus';
 import { deadLetterRepo, rawEventRepo, repositoryRepo, type Pool, type RawEventRow } from '@prs/db';
-import { bulkUpsert, classifyFailure, upsertOne, type BulkItemOutcome, type UpsertRequest } from '@prs/es';
+import { bulkUpsert, classifyFailure, type BulkItemOutcome, type UpsertRequest } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
 import { buildUpsertRequests } from './documents.js';
 import { parseEnriched } from './enriched-payload.js';
+import { defaultSleep, retryFailedItems } from './index-retry.js';
 import type { WorkerMetrics } from './metrics.js';
 
 /** 실패 대기열·지표에서 이 단계를 가리키는 이름. */
 export const PROJECT_STAGE = 'project' as const;
-
-/**
- * 벌크 부분 실패를 항목별로 다시 보내는 횟수 (AC-3).
- *
- * 짧게 잡는다. 여기서 오래 붙들면 파티션이 막히고, 정말 Elasticsearch가 아픈
- * 상황이라면 즉시 재시도가 부하를 더한다. 이 예산을 넘기면 버스의 표준 백오프
- * (1·2·4·8·16초)에 넘긴다 — 재시도 엔진을 두 개 만들지 않는다.
- */
-const MAX_ITEM_RETRIES = 2;
 
 export interface ProjectLogEntry {
   readonly level: 'info' | 'warn' | 'error';
@@ -96,10 +87,6 @@ export interface ProjectOutcome {
 
 function entityKindOf(request: UpsertRequest): ProjectedEntityKind {
   return request.alias === 'prs-commits' ? 'commit' : 'pull_request';
-}
-
-function defaultSleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -240,7 +227,7 @@ async function projectDocuments(
     return context.fail('bulk_unavailable', detail);
   }
 
-  outcomes = await retryFailedItems(deps, outcomes);
+  outcomes = await retryFailedItems(deps.es, outcomes, deps.sleep ?? defaultSleep);
 
   const rejected = outcomes.filter((outcome) => outcome.kind === 'rejected');
   if (rejected.length > 0) {
@@ -311,36 +298,6 @@ async function projectDocuments(
   });
   context.observe('ok');
   return { disposition: { kind: 'ack' }, projected };
-}
-
-/**
- * 재시도 가능한 항목만 하나씩 다시 보낸다 (AC-3).
- *
- * 성공한 항목은 건드리지 않는다. 그것이 "부분 실패 항목이 개별 재시도된다"의
- * 뜻이고, 벌크 전체를 되돌리는 것과 다른 점이다.
- */
-async function retryFailedItems(
-  deps: ProjectDeps,
-  outcomes: readonly BulkItemOutcome[],
-): Promise<readonly BulkItemOutcome[]> {
-  if (!outcomes.some((outcome) => outcome.kind === 'retryable')) return outcomes;
-
-  const sleep = deps.sleep ?? defaultSleep;
-  const current = [...outcomes];
-
-  for (let attempt = 1; attempt <= MAX_ITEM_RETRIES; attempt += 1) {
-    const pending = current
-      .map((outcome, index) => ({ outcome, index }))
-      .filter((entry) => entry.outcome.kind === 'retryable');
-    if (pending.length === 0) break;
-
-    await sleep(retryDelayMs(attempt));
-    for (const entry of pending) {
-      current[entry.index] = await upsertOne(deps.es, entry.outcome.request);
-    }
-  }
-
-  return current;
 }
 
 /**

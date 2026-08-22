@@ -8,7 +8,7 @@
  * `sequence`·`link`는 이후 WP가 채운다.
  */
 
-import { createPool } from '@prs/db';
+import { createPool, jobRepo, repositoryRepo } from '@prs/db';
 import { scopeKey, type ScopeRedis } from '@prs/authz';
 import { RedisStreamsEventBus, createRedisClient } from '@prs/bus';
 import {
@@ -27,6 +27,7 @@ import { createWorkerMetrics } from './metrics.js';
 import { startEnrichWorker, type EnrichLogEntry } from './enrich.js';
 import { startProjectWorker, type ProjectLogEntry } from './project.js';
 import { startAuthzWorker, type AuthzLogEntry } from './authz.js';
+import { startBackfillRunner, BACKFILL_JOB, type BackfillLogEntry, type BackfillRunner } from './backfill.js';
 import { createEsClient } from '@prs/es';
 import type { Subscription } from '@prs/bus';
 import type { Client } from '@elastic/elasticsearch';
@@ -36,6 +37,26 @@ const roles = (process.env['PIPELINE_WORKER_ROLES'] ?? 'batch')
   .split(',')
   .map((role) => role.trim())
   .filter((role) => role !== '');
+
+/**
+ * 동시 실행 상한 (FR-ING-006 AC-6, 기본 3).
+ *
+ * 값이 틀리면 **기본값으로 돈다.** 기동을 거부하지 않는 이유: 백필은
+ * 실시간 수집과 달리 멈춰도 데이터가 유실되지 않고, 설정 오타 하나로
+ * 워커 전체가 뜨지 않으면 실시간 수집까지 함께 죽는다.
+ */
+function resolveBackfillConcurrency(): number {
+  const raw = process.env['BACKFILL_MAX_CONCURRENCY'];
+  if (raw === undefined || raw === '') return jobRepo.DEFAULT_MAX_CONCURRENT_JOBS;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    process.stderr.write(
+      `BACKFILL_MAX_CONCURRENCY가 양의 정수가 아니다: ${raw} — 기본값 ${String(jobRepo.DEFAULT_MAX_CONCURRENT_JOBS)}로 돈다\n`,
+    );
+    return jobRepo.DEFAULT_MAX_CONCURRENT_JOBS;
+  }
+  return parsed;
+}
 
 const metrics = createWorkerMetrics();
 const server = buildServer({ metrics });
@@ -50,6 +71,7 @@ let enrichSubscription: Subscription | undefined;
 let projectSubscription: Subscription | undefined;
 let authzSubscription: Subscription | undefined;
 let authzRedisClient: { quit(): Promise<unknown> } | undefined;
+let backfillRunner: BackfillRunner | undefined;
 let esClient: Client | undefined;
 
 if (roles.includes('batch')) {
@@ -101,6 +123,35 @@ if (roles.includes('enrich')) {
       process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-ING-002', ...entry })}\n`);
     },
   });
+
+  /*
+   * 백필도 GHE를 부르므로 `enrich`와 같은 자격 증명·토큰 풀을 쓴다
+   * (WP-019 / JOB-ING-004). 별도 역할 플래그로 켜는 이유는 **워커 풀을
+   * 나눌 수 있어야** 하기 때문이다 (FR-ING-006 AC-3) — 백필 전용 파드를
+   * 띄우면 실시간 파드가 백필 부하를 전혀 받지 않는다.
+   *
+   * 같은 파드에서 함께 켜도 안전하다: 모든 백필 호출이 `priority: 'backfill'`
+   * 이라 `RequestScheduler`가 실시간을 먼저 비운다.
+   */
+  if (roles.includes('backfill')) {
+    esClient = esClient ?? createEsClient();
+    backfillRunner = startBackfillRunner(
+      {
+        pool,
+        es: esClient,
+        client,
+        findRepository: async (target) => {
+          const slash = target.indexOf('/');
+          if (slash < 0) return undefined;
+          return repositoryRepo.findRepositoryBySlug(pool, target.slice(0, slash), target.slice(slash + 1));
+        },
+        log: (entry: BackfillLogEntry) => {
+          process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: BACKFILL_JOB, ...entry })}\n`);
+        },
+      },
+      { maxConcurrent: resolveBackfillConcurrency() },
+    );
+  }
 }
 
 if (roles.includes('project')) {
@@ -186,6 +237,11 @@ const shutdown = (): void => {
       // 진행 중인 회차를 마치고 나간다. 중간에 끊으면 발행은 됐는데 타이머를
       // 못 감은 행이 남아 다음 기동에서 한 번 더 발행된다.
       await relay?.stop();
+      /*
+       * 러너는 **현재 페이지를 마치고** 나간다. 중간에 끊으면 커서가 가리키는
+       * 지점과 실제 처리 지점이 어긋나 재개가 처리하지 않은 PR을 건너뛴다.
+       */
+      await backfillRunner?.stop();
       await enrichSubscription?.close();
       await projectSubscription?.close();
       await authzSubscription?.close();

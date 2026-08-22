@@ -12,6 +12,17 @@ export function deliveryLockKey(deliveryId: string): string {
   return `ingest:${deliveryId}`;
 }
 
+/**
+ * 잡 claim 직렬화 락 키 (CR-022, DEV-107).
+ *
+ * 유형 단위다. 동시 실행 상한이 `(type, state='running')`의 수에 대한
+ * 제약이므로, 같은 유형을 잡으려는 워커들만 줄을 서면 된다 — 백필이
+ * 재색인의 claim을 막을 이유는 없다.
+ */
+export function jobClaimLockKey(type: string): string {
+  return `job:claim:${type}`;
+}
+
 /** 시퀀스 공간 하나에 대응하는 락 키 문자열. */
 export function sequenceLockKey(repositoryId: number, baseBranch: string): string {
   return `seq:${String(repositoryId)}:${baseBranch}`;

@@ -9,7 +9,14 @@ import type { ErrorCode } from '@prs/contracts';
 
 export type AdminErrorCode = Extract<
   ErrorCode,
-  'INVALID_PARAMETER' | 'RANGE_TOO_LARGE' | 'CONFIRMATION_MISMATCH' | 'BRANCH_LIMIT_EXCEEDED' | 'FORBIDDEN_ROLE' | 'NOT_FOUND'
+  | 'INVALID_PARAMETER'
+  | 'RANGE_TOO_LARGE'
+  | 'CONFIRMATION_MISMATCH'
+  | 'BRANCH_LIMIT_EXCEEDED'
+  | 'FORBIDDEN_ROLE'
+  | 'NOT_FOUND'
+  // 같은 대상에 활성 잡이 이미 있다 (API-ADM-002, WP-019).
+  | 'JOB_CONFLICT'
 >;
 
 export const ADMIN_ERROR_STATUS: Readonly<Record<AdminErrorCode, number>> = {
@@ -19,6 +26,7 @@ export const ADMIN_ERROR_STATUS: Readonly<Record<AdminErrorCode, number>> = {
   BRANCH_LIMIT_EXCEEDED: 400,
   FORBIDDEN_ROLE: 403,
   NOT_FOUND: 404,
+  JOB_CONFLICT: 409,
 };
 
 export class AdminRejected extends Error {

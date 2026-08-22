@@ -48,11 +48,14 @@ import {
   updateRepository,
   type RegistryDeps,
 } from './repositories.js';
+import { applyJobAction, createJob, isJobAction, toJobResponse, JOB_ACTIONS } from './jobs.js';
+import { jobRepo } from '@prs/db';
 
 export const DEAD_LETTER_PATH = '/api/v1/admin/dead-letters';
 export const REPROCESS_PATH = '/api/v1/admin/dead-letters/reprocess';
 export const REPOSITORIES_PATH = '/api/v1/admin/repositories';
 export const PIPELINE_STATUS_PATH = '/api/v1/admin/pipeline-status';
+export const JOBS_PATH = '/api/v1/admin/jobs';
 
 function fail(
   reply: FastifyReply,
@@ -235,6 +238,16 @@ function repositoryIdOf(request: FastifyRequest): number {
   return parsed;
 }
 
+/** 잡 식별자. `BIGSERIAL`이라 안전 정수 범위 안이다 (CR-013, DEV-027). */
+function jobIdOf(request: FastifyRequest): number {
+  const raw = (request.params as { job_id?: string }).job_id;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new AdminRejected('INVALID_PARAMETER', `잡 식별자가 정수가 아니다: ${String(raw)}`);
+  }
+  return parsed;
+}
+
 function parseStatus(value: unknown): RepositoryStatus | undefined {
   if (value === undefined) return undefined;
   if (value === 'active' || value === 'archived') return value;
@@ -313,6 +326,78 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
           backfill_job_id: result.backfillJobId,
         },
       };
+    }),
+  );
+
+  /*
+   * API-ADM-002 잡 (WP-019 / CR-022, DEV-103).
+   *
+   * `registry`가 `pool`을 갖고 있으므로 새 의존을 더하지 않는다 — 잡과
+   * 저장소는 같은 DB의 이웃한 테이블이다.
+   */
+  app.get(JOBS_PATH, async (request, reply) =>
+    handle(request, reply, async () => {
+      const query = (request.query ?? {}) as Record<string, unknown>;
+      const rows = await jobRepo.listJobs(registry.pool, {
+        ...(typeof query['type'] === 'string' ? { type: query['type'] as 'backfill' } : {}),
+        ...(typeof query['state'] === 'string' ? { state: query['state'] as 'running' } : {}),
+        limit: parseLimit(query['limit']),
+      });
+      return { status: 200, body: { items: rows.map(toJobResponse) } };
+    }),
+  );
+
+  app.get(`${JOBS_PATH}/:job_id`, async (request, reply) =>
+    handle(request, reply, async () => {
+      const row = await jobRepo.findJobById(registry.pool, jobIdOf(request));
+      if (row === undefined) throw new AdminRejected('NOT_FOUND', '잡을 찾을 수 없다');
+      return { status: 200, body: toJobResponse(row) };
+    }),
+  );
+
+  app.post(JOBS_PATH, async (request, reply) =>
+    handle(request, reply, async (principal) => {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      /*
+       * `type`은 지금 `backfill`뿐이다. 다른 값을 조용히 받아 큐에 넣으면
+       * 아무 워커도 잡지 않는 유령 잡이 남는다.
+       */
+      if (body['type'] !== 'backfill') {
+        throw new AdminRejected('INVALID_PARAMETER', "type은 'backfill'이어야 한다");
+      }
+      const target = body['target'];
+      if (typeof target !== 'string' || !target.includes('/')) {
+        throw new AdminRejected('INVALID_PARAMETER', 'target은 owner/repo 형식이어야 한다');
+      }
+
+      const outcome = await createJob(registry.pool, 'backfill', target, principalId(principal));
+      if (outcome.kind === 'unknown_repository') {
+        throw new AdminRejected('NOT_FOUND', '등록되지 않은 저장소다', { target });
+      }
+      if (outcome.kind === 'conflict') {
+        throw new AdminRejected('JOB_CONFLICT', '같은 대상에 활성 잡이 이미 있다', { target });
+      }
+      return { status: 201, body: toJobResponse(outcome.job) };
+    }),
+  );
+
+  app.patch(`${JOBS_PATH}/:job_id`, async (request, reply) =>
+    handle(request, reply, async () => {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const action = body['action'];
+      if (!isJobAction(action)) {
+        throw new AdminRejected('INVALID_PARAMETER', `action은 ${JOB_ACTIONS.join('·')} 중 하나여야 한다`);
+      }
+
+      const outcome = await applyJobAction(registry.pool, jobIdOf(request), action);
+      if (outcome.kind === 'not_found') throw new AdminRejected('NOT_FOUND', '잡을 찾을 수 없다');
+      if (outcome.kind === 'invalid_transition') {
+        // 현재 상태를 함께 준다 — 운영자가 왜 안 되는지 알아야 다음을 고른다.
+        throw new AdminRejected('INVALID_PARAMETER', `${outcome.state} 상태에서는 ${action}할 수 없다`, {
+          state: outcome.state,
+        });
+      }
+      return { status: 200, body: toJobResponse(outcome.job) };
     }),
   );
 

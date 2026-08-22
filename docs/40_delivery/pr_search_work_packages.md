@@ -36,7 +36,7 @@
 | WP-016 | W-001 통합 검색 화면 | REL-002 | WP-013, WP-014, WP-015 | todo |
 | WP-017 | W-002 PR 상세 화면 | REL-002 | WP-015, WP-016 | done |
 | WP-018 | W-003 커밋 상세 화면 | REL-002 | WP-015, WP-016 | done |
-| WP-019 | 저장소 백필 잡 | REL-002 | WP-006, WP-008 | todo |
+| WP-019 | 저장소 백필 잡 | REL-002 | WP-006, WP-008 | done |
 | WP-020 | 커밋 그래프 접근 계층 | REL-003 | WP-006 | todo |
 | WP-021 | 시퀀스 증분 채번 | REL-003 | WP-002, WP-020 | todo |
 | WP-022 | 시퀀스 재채번과 에폭 | REL-003 | WP-021 | todo |
@@ -663,26 +663,32 @@
 - 선행 WP: WP-006, WP-008
 - 구현 범위:
   - `pipeline-worker` batch 역할, `prs:batch` 스트림 (실시간과 분리)
+  - **`GitHubClient.listPullRequestsPaged`** — 없던 메서드다. **정렬은 `updated asc` 고정** (CR-022, DEV-098): 기본값 `created desc`면 백필 도중 갱신된 PR이 페이지를 밀어 항목이 조용히 건너뛰어진다
   - 저장소 단위 백필: PR 목록 페이지네이션 → 보강 → 투영
   - `job.cursor`에 진행 지점 저장, 중단 후 재개
   - 진행률 30초 이내 갱신 (`done`/`total`/`unit`)
-  - 동시 실행 상한 기본 3 (설정값)
+  - **잡은 이벤트가 아니라 `job` 행으로 지시하고 워커가 원자적으로 claim한다** (CR-022, DEV-101)
+  - 동시 실행 상한 기본 3 (`BACKFILL_MAX_CONCURRENCY`). **세는 것과 잡는 것을 한 트랜잭션에** 둔다 (CR-022, DEV-102)
   - 실시간보다 낮은 우선순위 (GHE 토큰 배분, 워커 풀 분리)
-  - 백필 문서도 `document_version` 규칙 준수
+  - 백필 문서의 `document_version`은 **엔티티의 `updated_at`** — 지금 시각을 쓰면 실시간을 덮어쓴다 (CR-022, DEV-099)
+  - 합성 델리버리 ID `backfill:{repository_id}:{pr_number}` — 결정론적이고 출처를 밝힌다 (CR-022, DEV-100)
   - 개별 PR 실패는 목록으로 보고하고 잡을 중단하지 않음
-  - `POST/PATCH /admin/jobs` (실행·중단)
-  - 백필 중 해당 인덱스 `refresh_interval` 일시 상향 후 복원
+  - `GET/POST/PATCH /admin/jobs` (조회·실행·중단). `PATCH`는 `cancel`·`pause`·`resume`만 받는다 (CR-022, DEV-103)
+  - API 한도 대기는 `paused`가 아니라 `running` + `progress.waiting_until` (CR-022, DEV-104)
+  - 백필 중 해당 인덱스 `refresh_interval`을 `30s`로 두고 복원. **시작 시 무조건 기본값으로 되돌린 뒤 올린다** — 앞선 잡이 죽어 남긴 것을 치운다 (CR-022, DEV-105)
 - 제외:
   - A-003 화면 (WP-040)
   - 시퀀스 채번 (WP-021)
 - 완료 기준(DoD):
-  - [ ] QA-A003-05, QA-A003-06이 통과한다
-  - [ ] 백필 실행 중 실시간 수집 지연 p95가 10초를 유지한다 (FR-ING-006 AC-3)
-  - [ ] 중단 후 재개 시 마지막 커서부터 이어진다 (AC-4)
-  - [ ] 백필 문서가 더 새로운 실시간 문서를 덮어쓰지 않는다 (AC-5)
-  - [ ] 동시 실행 4개 요청 시 3개만 실행된다 (AC-6)
-  - [ ] API 한도 소진 시 잡이 대기하고 회복 시각에 자동 재개된다 (예외 처리)
-- 검증 방법: `pnpm test:integration jobs/backfill`
+  - [~] QA-A003-05, QA-A003-06이 통과한다 — **06(재개)은 CI 통과**, **05(우선순위)는 구조로만 세웠다**(모든 백필 호출이 `priority: 'backfill'`, 워커 풀 분리). 실제 지연 영향은 운영 규모 측정이 필요하다
+  - [ ] 백필 실행 중 실시간 수집 지연 p95가 10초를 유지한다 (FR-ING-006 AC-3) — **NOT RUN**, 부하 harness 부재 (DEV-058과 같은 형태)
+  - [x] 중단 후 재개 시 마지막 커서부터 이어진다 (AC-4) — CI 통과 (`24c1fdb`)
+  - [x] 백필 문서가 더 새로운 실시간 문서를 덮어쓰지 않는다 (AC-5) — CI 통과. **처음 시험은 거짓 통과였다** — 씨앗 문서를 `_routing` 없이 넣어 조건부 업서트가 없어도 통과했다. 라우팅을 맞춰 실제로 조건부 업서트가 판정하게 고쳤다
+  - [x] 동시 실행 4개 요청 시 3개만 실행된다 (AC-6) — CI 통과 + **로컬 실측**. **처음 구현은 이것을 전혀 지키지 못했다**(상한 3에 다섯이 돌았다, DEV-107). 세기 전에 유형 단위 advisory lock을 잡아야 성립한다
+  - [x] API 한도 소진 시 잡이 대기하고 회복 시각에 자동 재개된다 (예외 처리) — CI 통과
+
+  판정 근거: CI run 55 (`24c1fdb`) 통합 **32파일 419건 전부 통과**. AC-6은 그와 별개로 이 환경의 네이티브 PostgreSQL 16.13에서 `packages/db/integration/job-claim.test.ts` 6건으로 직접 확인했다 — 수정을 되돌리면 2건이 실패하는 것까지 양방향으로 봤다.
+- 검증 방법: `pnpm test:integration jobs/backfill`, `pnpm test:integration packages/db/integration/job-claim.test.ts` (ES 없이 돈다)
 - 기록: 원장 WP-019 상태, FR-ING-006 매핑
 
 ---
