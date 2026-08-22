@@ -63,7 +63,7 @@
 
 | JOB-SRCH-001 | 검색 결과 비동기 내보내기 | 수동 (API-SRCH-006) | batch | 없음 | 30분 | EVT-JOB-001 | FR-SRCH-012 |
 | JOB-AUD-001 | 감사·원본 보존 만료 파티션 드롭 | 스케줄 (일 1회) | batch | 3회 | 10분 | - | FR-ING-003, FR-AUTH-004 |
-| JOB-MIR-001 | 미러 fetch 동기화 | `push` 이벤트 / 스케줄 (6시간) | sequence | 3회 | 15분 | - | ADR-005 |
+| JOB-MIR-001 | 미러 fetch 동기화 | `push` 이벤트 / 스케줄 (6시간) | **mirror** (CR-023, DEV-113 — `sequence` 역할은 WP-021이 세운다) | 3회 | 15분 | - | ADR-005 |
 
 ## 4. Event 카탈로그
 

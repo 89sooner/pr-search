@@ -56,6 +56,13 @@ export interface CommitSummary {
   readonly commit: { readonly message: string };
 }
 
+/** `GET /repos/{o}/{r}/compare/{base}...{head}` 응답 중 이 시스템이 쓰는 것만. */
+export interface CompareResult {
+  readonly merge_base_commit?: { readonly sha?: string };
+  readonly status?: string;
+  readonly commits?: readonly CommitSummary[];
+}
+
 export interface ChangedFile {
   readonly filename: string;
   readonly additions: number;
@@ -275,10 +282,65 @@ export class GitHubClient {
     query: { readonly sha?: string; readonly since?: string } = {},
     options: CallOptions = {},
   ): Promise<CommitSummary[]> {
-    return this.#transport.getAll<CommitSummary>({
+    return [...(await this.listCommitsPaged(ref, query, options)).items];
+  }
+
+  /**
+   * 절삭 여부까지 알려 주는 커밋 목록 (WP-020).
+   *
+   * **`listCommits`만으로는 부모 체인을 재구성할 수 없다.** 상한에서 잘린
+   * 목록과 원래 그만큼인 목록이 구분되지 않아, 잘린 줄 모르고 체인을 이으면
+   * 서수가 통째로 밀린다. 그 사실은 아무도 눈치채지 못한다.
+   */
+  async listCommitsPaged(
+    ref: RepoRef,
+    query: { readonly sha?: string; readonly since?: string } = {},
+    options: CallOptions & { readonly maxItems?: number } = {},
+  ): Promise<PagedResult<CommitSummary>> {
+    return this.#transport.getAllPaged<CommitSummary>({
       org: orgOf(ref),
       path: `/repos/${ref.owner}/${ref.repo}/commits`,
       query: { sha: query.sha, since: query.since },
+      ...options,
+    });
+  }
+
+  /**
+   * 브랜치의 현재 head (WP-020, ADR-005의 API 폴백).
+   *
+   * @returns 브랜치가 없으면 `null`. 아직 만들어지지 않은 대상 브랜치는
+   * 오류가 아니라 "채번할 것이 없음"이다 (FR-SEQ-001).
+   */
+  async getBranchHead(ref: RepoRef, branch: string, options: CallOptions = {}): Promise<string | null> {
+    try {
+      const body = await this.#transport.get<{ commit?: { sha?: string } }>({
+        org: orgOf(ref),
+        path: `/repos/${ref.owner}/${ref.repo}/branches/${encodeURIComponent(branch)}`,
+        ...options,
+      });
+      return body.commit?.sha ?? null;
+    } catch (error) {
+      if (error instanceof GitHubApiError && error.kind === 'not_found') return null;
+      throw error;
+    }
+  }
+
+  /**
+   * 두 커밋의 비교 (WP-020).
+   *
+   * API 폴백에는 `merge-base`에 대응하는 것이 이것뿐이다 — GitHub이
+   * `merge_base_commit`을 직접 준다. 커밋 목록도 함께 오지만 **그 순서를
+   * first-parent 체인으로 믿지 않는다** (ADR-005).
+   */
+  async compareCommits(
+    ref: RepoRef,
+    base: string,
+    head: string,
+    options: CallOptions = {},
+  ): Promise<CompareResult> {
+    return this.#transport.get<CompareResult>({
+      org: orgOf(ref),
+      path: `/repos/${ref.owner}/${ref.repo}/compare/${base}...${head}`,
       ...options,
     });
   }

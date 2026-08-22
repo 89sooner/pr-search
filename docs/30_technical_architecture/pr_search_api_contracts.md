@@ -177,7 +177,7 @@
 
 `pull_requests[]`의 **`merge_commit_sha`는 W-003의 `no_sequence` 안내가 요구한다** (CR-021, DEV-091). 원본 커밋 화면이 "이 커밋은 머지 커밋 X로 반영되었습니다"라고 말하고 그 X로 이동시키려면 이 키가 필요하다 — 값은 이미 PR 문서에 있으므로 없는 데이터를 만드는 것이 아니다. **미머지 PR이면 키를 넣지 않는다** (`null`로 채우지 않는다).
 
-WP-020 이후 붙는 키: `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at`, `patch_id`, `patch_id_unavailable`, `changed_paths`, `changed_files_count`, `additions`, `deletions`. WP-024 이후: `release_tags`.
+**WP-020은 이 키들을 채우지 않는다 (CR-023, DEV-112).** WP-020이 낸 것은 커밋 그래프 **접근 계층**(`CommitGraph` 인터페이스와 미러·API 두 구현)이고, 그 값을 읽어 커밋 문서에 쓰는 **잡은 카탈로그에 정의되어 있지 않다** — JOB-MIR-001은 미러 fetch 동기화뿐이다. 없는 잡을 지어내지 않고 빈칸으로 남겨 둔다. 채우려면 후속 CR로 잡을 먼저 정의해야 하며, 그때 붙는 키는 `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at`, `patch_id`, `patch_id_unavailable`, `changed_paths`, `changed_files_count`, `additions`, `deletions`다. WP-024 이후: `release_tags`.
 
 응답 200 (직접 푸시 커밋) — **아직 도달하지 않는 경로다 (CR-017, DEV-061).** 커밋 문서는 PR 이벤트에서만 만들어지고 `push` 이벤트는 ack 후 버려진다(DEV-016). 직접 푸시 커밋은 **문서 자체가 없어** 현재는 404다. push 이벤트 라우팅(WP-021)이 서면 이 모양으로 응답한다 — 그때 계약을 다시 고치지 않도록 지금 적어 둔다:
 

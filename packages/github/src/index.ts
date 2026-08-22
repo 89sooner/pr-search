@@ -16,7 +16,38 @@ export {
   QUARANTINE_THRESHOLD,
   TOKEN_REFRESH_LEAD_MS,
 } from './config.js';
-export type { GitHubAppConfig, GitHubEnv } from './config.js';
+export { resolveMirrorConfig, DEFAULT_MIRROR_ROOT } from './config.js';
+export type { GitHubAppConfig, GitHubEnv, MirrorConfig } from './config.js';
+
+export {
+  authArgs,
+  branchRef,
+  diskUsageRatio,
+  firstParentChain,
+  gitEnv,
+  GraphInputError,
+  isFullSha,
+  isSafeBranch,
+  MIRROR_DISK_ALERT_RATIO,
+  mirrorPath,
+  parsePatchId,
+  parseRevList,
+  readAncestorExit,
+  revRangeArg,
+} from './graph-plan.js';
+export type { GitEnvOptions, ParentLink, RevRange } from './graph-plan.js';
+
+export { CommitGraphError, FallbackCommitGraph, selectCommitGraph } from './commit-graph.js';
+export type { CommitGraph, CommitGraphKind, PatchIdResult, PatchIdUnavailable } from './commit-graph.js';
+
+export { MirrorCommitGraph, nodeGitRunner } from './mirror-graph.js';
+export type { GitExecResult, GitRunner, GitRunOptions, MirrorGraphOptions } from './mirror-graph.js';
+
+export { ApiCommitGraph, DEFAULT_MAX_API_COMMITS } from './api-graph.js';
+export type { ApiGraphOptions } from './api-graph.js';
+
+export { MirrorSync, MirrorSyncError, mirrorDiskUsage, MIRROR_SYNC_TIMEOUT_MS } from './mirror-sync.js';
+export type { MirrorSyncOptions, MirrorSyncResult, MirrorSyncAction } from './mirror-sync.js';
 
 export { redact, safeMessage, REDACTED } from './redact.js';
 
@@ -57,6 +88,7 @@ export type {
   PermissionSummary,
   PullRequestSummary,
   ReleaseSummary,
+  CompareResult,
   RepoRef,
   RepositorySummary,
   ReviewSummary,
