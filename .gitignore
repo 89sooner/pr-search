@@ -14,3 +14,7 @@ var/
 # Playwright 실행 산출물 (WP-015). 실패했을 때만 생기고, 실패를 고치면 사라진다.
 test-results/
 playwright-report/
+
+# 로컬 통합 시험용 Redis 스냅샷. 원장 8장이 안내하는 대로 저장소 루트에서
+# `redis-server`를 띄우면 여기에 떨어진다. 시험 부산물이지 소스가 아니다.
+dump.rdb
