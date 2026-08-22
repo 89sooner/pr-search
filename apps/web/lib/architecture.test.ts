@@ -74,6 +74,42 @@ describe('QA-COMMON-16: 리터럴 색상값이 없다 (ADR-006)', () => {
   });
 });
 
+describe('FR-AUTH-001: 화면 라우트는 전부 세션을 확인한다', () => {
+  /*
+   * 세 라우트가 같은 다섯 줄을 각자 갖고 있다 — 쿠키를 읽고, 세션을 싣고,
+   * 없으면 로그인으로 보낸다. **네 번째 화면(WP-018 W-003)이 그 다섯 줄을
+   * 빠뜨리면 인증 구멍이 된다.**
+   *
+   * 지금 공통 함수로 묶지 않는 이유: 그것은 WP-015가 세운 라우트 셋을
+   * 건드리는 일이고 WP-017의 범위가 아니다. 대신 **빠뜨릴 수 없게** 만든다 —
+   * 묶는 것은 WP-018이 네 번째 화면을 세울 때 함께 한다.
+   *
+   * `app/api`·`auth/*`·`healthz`는 화면이 아니라 제외한다. 프록시는
+   * 자기 방식으로 401을 내고(WP-015 `resolveProxyAuth`), 로그인 라우트가
+   * 세션을 요구하면 로그인할 방법이 없어진다.
+   */
+  const NOT_A_SCREEN = ['app/api/', 'app/auth/', 'app/healthz/'];
+
+  const screenRoutes = sourceFiles('app')
+    .filter((f) => /(^|\/)page\.tsx$/.test(f))
+    .filter((f) => !NOT_A_SCREEN.some((skip) => f.includes(skip)));
+
+  it('검사가 실제로 도는지 — 화면 라우트를 찾았다', () => {
+    expect(screenRoutes.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it.each(screenRoutes.map((f) => [f.slice(WEB_ROOT.length), f] as const))(
+    '%s가 세션을 확인하고 없으면 로그인으로 보낸다',
+    (_name, full) => {
+      const source = readFileSync(full, 'utf8');
+      expect(source).toContain('SESSION_COOKIE_NAME');
+      expect(source).toContain('sessionStore()');
+      // 확인만 하고 통과시키면 확인하지 않은 것과 같다.
+      expect(source).toContain('redirect(');
+    },
+  );
+});
+
 describe('QA-COMMON-17: Conductor 외 UI 라이브러리가 없다 (ADR-006)', () => {
   const pkg = JSON.parse(
     readFileSync(join(WEB_ROOT, 'package.json'), 'utf8'),
