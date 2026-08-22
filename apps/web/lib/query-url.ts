@@ -128,3 +128,19 @@ export function parseQueryState(state: QueryState): ParsedQuery {
 export function withAst(state: QueryState, ast: QueryAst): QueryState {
   return { ...state, q: serializeQuery(ast) };
 }
+
+/**
+ * 상세 화면으로 갈 때 원본 입력을 함께 싣는다 (CR-019 DEV-078 / FLOW-001 4단계).
+ *
+ * "이동 전 원본 입력을 URL 쿼리에 남겨 뒤로가기 시 입력이 보존되게 한다"가
+ * 흐름 명세의 문장이다. 그것을 만드는 자리가 **셋**이었다 — 결과 행, 해석
+ * 후보 카드, 그리고 후보 1건의 자동 이동. 셋이 각자 문자열을 이으면 한 곳만
+ * 인코딩을 빠뜨려도 **되살아난 질의가 원본과 달라진다.**
+ *
+ * @returns `url`이 없으면 `null` — 갈 곳이 없으면 링크를 만들지 않는다.
+ */
+export function withFromQuery(url: string | null, fromQuery: string): string | null {
+  if (url === null || url === '') return null;
+  if (fromQuery.trim() === '') return url;
+  return `${url}?from_q=${encodeURIComponent(fromQuery)}`;
+}

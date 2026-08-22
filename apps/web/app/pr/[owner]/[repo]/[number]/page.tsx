@@ -5,17 +5,12 @@
  * 이 경로를 가리키고 `from_q`를 싣고 있다 (CR-019, DEV-078).
  */
 
-import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
-import { SESSION_COOKIE_NAME } from '@prs/authz';
-import type { Role } from '@prs/authz/roles';
-import { Shell } from '../../../../../components/Shell';
 import { PrDetailView } from '../../../../../components/PrDetailView';
 import { EmptyState } from '../../../../../components/EmptyState';
 import { searchBackHref } from '../../../../../lib/pr-detail';
 import { resolveWebConfig } from '../../../../../lib/server/config';
-import { sessionStore } from '../../../../../lib/server/session';
+import { GuardedPage } from '../../../../../lib/server/page-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,31 +67,10 @@ export default async function PrDetailPage({ params, searchParams }: PageProps):
     </div>
   );
 
-  if (!config.authEnabled) {
-    return (
-      <Shell roles={[]} user={null} title="PR 상세">
-        {body}
-      </Shell>
-    );
-  }
-
-  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-  const loaded = sessionId === undefined ? null : await sessionStore().load(sessionId);
-
-  if (loaded === null) {
-    redirect(
-      `${config.session.loginPath}?return_to=${encodeURIComponent(`/pr/${repository}/${number}`)}`,
-    );
-  }
-
-  const { session } = loaded;
+  // 세션 관문은 `GuardedPage` 하나가 소유한다 (WP-018).
   return (
-    <Shell
-      roles={session.roles as readonly Role[]}
-      user={{ login: session.login, email: session.email }}
-      title="PR 상세"
-    >
+    <GuardedPage title="PR 상세" returnTo={`/pr/${repository}/${number}`}>
       {body}
-    </Shell>
+    </GuardedPage>
   );
 }

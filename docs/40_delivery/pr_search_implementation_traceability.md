@@ -41,7 +41,7 @@
 | WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 4항 통과, 2항 부분 (6.15장). 단위 32건 + a11y 24건 + e2e 15건, axe 위반 0건, `checkContrast` 80쌍 중 0건 실패 | CR-018이 메운 빈칸(프록시 신원 전달·클라이언트 import 경계·harness·단축키 슬롯·OIDC 왕복 상태)을 함께 구현했다. **DEV-032/DEV-069가 여기서 닫힌다** — `pnpm test:a11y`·`test:e2e`가 저장소에 생겼고 WP 20곳이 그 이름을 참조한다. 구현 중 **DEV-073(좁은 화면에서 내비게이션 도달 불가)**과 **DEV-074(프록시 세션 판정의 시험 공백)**을 스스로 발견해 등록·해소했다. 화면은 만들지 않는다(WP-016 이후) — QA-COMMON-01·09·14는 셸이 소유한 부분까지만 검증했다 |
 | WP-016 | W-001 통합 검색 화면 | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 5항 통과, 1항 부분 (6.16장). 단위 32건 + a11y 62건 + e2e 26건, axe 위반 0건 | CR-019가 메운 빈칸(QA 항목 이중 배정·패싯 세 상태·시퀀스 미채번·`from_q`·최근 검색 출처·해석 상한·관계 배지 소유권)을 함께 구현했다. **상태 매트릭스 13종 전부**가 렌더링되고 각각 시험이 있다. `QA-W001-14`는 CR-019 DEV-075대로 **절반만** — "페이지 번호 UI 없음"은 통과, "커서 기반 동작"은 WP-032다. 구현 중 결함 셋을 스스로 잡았다: 붙여넣은 GHE URL이 전문 검색으로 떨어지던 것, QA-COMMON-16 검사의 거짓 경보, Conductor 규칙 위반 2건 |
 | WP-017 | W-002 PR 상세 화면 | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 4항 통과, 2항 부분 (6.17장). 단위 42건 + a11y 34건 + e2e 13건, axe 위반 0건 | CR-020이 메운 빈칸(커밋 총계·타임라인 네 상태·리뷰 상태 둘·GHE 링크 널 허용·`epoch_stale` 미구현·확장 조회 절반)을 함께 구현했다. `QA-W002-03`·`QA-W002-17`은 CR-020 DEV-082·088대로 **절반만** — 절삭 표시와 "확장 전 조회 금지"는 통과, 전체 건수는 WP-020, 확장 조회는 WP-031이다. 구현 중 **DEV-089(보관·파일 절삭을 어느 화면도 표시하지 않는다)**를 스스로 발견해 등록·해소했다. 변이 시험 48종 전부가 잡혔고, 그 과정에서 **시험 구멍 6개**를 찾아 메웠다 |
-| WP-018 | W-003 커밋 상세 화면 | REL-002 | todo | - | - | - | - |
+| WP-018 | W-003 커밋 상세 화면 | REL-002 | done | 에이전트 | (이 PR) | DoD 4항 중 3항 통과, 1항 부분 (6.18장). 단위 47건 + a11y 34건 + e2e 14건, axe 위반 0건 | CR-021이 메운 빈칸(헤더 메타데이터·머지 커밋 링크 재료·체인 밖 판정·직접 푸시 도달 불가·경로 총계 널 허용·보강 의미·복사 실패)을 함께 구현했다. `QA-W003-03`은 CR-021 DEV-093대로 **절반만** — "PR 없을 때 사유 표시"는 통과, "직접 푸시로 표시"는 WP-021이다. **WP-017이 넘긴 세션 관문 통합을 여기서 했다** — 라우트 넷이 `GuardedPage` 하나를 지난다. 구현 중 **DEV-097(FLOW-001 4단계 미구현 — W-001이 후보 1건에서 영원히 멈춘다)**을 발견해 등록·해소했다 |
 | WP-019 | 저장소 백필 잡 | REL-002 | todo | - | - | - | - |
 | WP-020 | 커밋 그래프 접근 계층 | REL-003 | todo | - | - | - | OD-001 결정 전이면 두 경로 모두 구현 |
 | WP-021 | 시퀀스 증분 채번 | REL-003 | todo | - | - | - | 핵심 WP |
@@ -92,7 +92,7 @@
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
 | FR-SRCH-001 | WP-014 | `packages/query/src/identifier.ts`, `packages/es/src/resolve-query.ts`, `apps/search-api/src/resolve/{service,routes}.ts` | `packages/query/src/identifier.test.ts`, `apps/search-api/integration/resolve/resolve.test.ts` | done (AC-1~AC-6. 릴리스 태그 판별만 제외 — 패턴이 정의되어 있지 않아 WP-024로 넘겼다, DEV-065) |
-| FR-SRCH-002 | WP-014, WP-018 | `apps/search-api/src/resolve/detail.ts`, `packages/es/src/resolve-query.ts` | `apps/search-api/integration/resolve/resolve.test.ts`, `packages/es/src/resolve-query.test.ts` | partial (AC-1·AC-2·AC-4·AC-5 충족. **AC-3 `direct_push`는 도달 불가** — 커밋 문서가 PR 이벤트에서만 만들어진다, DEV-061 / WP-021) |
+| FR-SRCH-002 | WP-014, WP-018 | `apps/search-api/src/resolve/detail.ts` (`merge_commit_sha` 포함), `packages/es/src/resolve-query.ts`, `apps/web/lib/commit-detail.ts`, `apps/web/components/{ShaChip,ChangedPathList,LinkedPrList,SequencePosition,CommitDetailView}.tsx`, `apps/web/app/commit/[owner]/[repo]/[sha]/page.tsx` | `apps/search-api/integration/resolve/resolve.test.ts`, `packages/es/src/resolve-query.test.ts`, `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx`, `apps/web/e2e/flow-003.spec.ts` | partial (AC-1·AC-2·AC-4·AC-5 충족, **화면 결합은 WP-018에서 done** — 역할 배지 셋, 소속 PR 전량 필드, `multi_pr` 목록, 체인 밖 안내와 머지 커밋 링크. **AC-3 `direct_push`는 여전히 도달 불가** — 커밋 문서가 PR 이벤트에서만 만들어진다, DEV-061 / WP-021. 화면은 매핑을 갖추고 도달하지 않음을 기록했으며, **`reason_code`를 "직접 푸시"로 부르지 않는다**, DEV-093) |
 | FR-SRCH-003 | WP-014, WP-017 | `apps/search-api/src/resolve/detail.ts`, `apps/web/lib/pr-detail.ts`, `apps/web/components/{CommitList,EntityHeader,PrDetailView}.tsx`, `apps/web/app/pr/[owner]/[repo]/[number]/page.tsx` | `apps/search-api/integration/resolve/resolve.test.ts`, `apps/web/lib/pr-detail.test.ts`, `apps/web/a11y/pr-detail.test.tsx`, `apps/web/e2e/flow-002.spec.ts` | partial (AC-1·AC-2·AC-4 충족, **화면 결합은 WP-017에서 done** — 머지 커밋이 항상 첫 행이고 미머지면 사유를 그 행에 표시한다. **AC-3의 메시지 첫 줄·작성자·작성 시각은 커밋 문서에 없다** — 배열 모양만 객체로 두고 `commit_sha`만 채웠다, DEV-062 / WP-020. AC-4의 **전체 건수**도 절삭 시 없어 `null`로 두고 "250건 이상"으로 표시한다, DEV-082·083 / WP-020) |
 | FR-SRCH-004 | WP-014, WP-016 | `packages/query/src/identifier.ts` (7자 하한), `packages/es/src/resolve-query.ts` (`prefix`), `apps/search-api/src/resolve/{service,routes}.ts`, `apps/web/lib/search-state.ts` (클라이언트 사전 판정), `apps/web/components/OmniSearchInput.tsx` | `packages/query/src/identifier.test.ts`, `packages/es/src/resolve-query.test.ts`, `apps/search-api/integration/resolve/resolve.test.ts`, `apps/web/lib/search-state.test.ts`, `apps/web/a11y/search.test.tsx`, `apps/web/e2e/flow-001.spec.ts` | done (AC-1~AC-4. 판별이 브라우저에서도 도는 순수 코드라 AC-2의 "검색을 수행하지 않는다"가 화면에서도 성립한다) |
 | FR-SRCH-005 | WP-011, WP-016 | `packages/query/src/{keys,errors,ast,tokenizer,parse,serialize}.ts`, `apps/web/lib/tokens.ts`, `apps/web/components/QueryTokenBar.tsx` | `packages/query/src/{parse,serialize}.test.ts`, `apps/web/lib/tokens.test.ts`, `apps/web/a11y/search.test.tsx` | verified (AC-1~AC-6 전부. 화면의 오류 구간 강조는 WP-016) |
@@ -103,7 +103,7 @@
 | FR-SRCH-010 | WP-033 | - | - | not_started |
 | FR-SRCH-011 | WP-032 | - | - | not_started |
 | FR-SRCH-012 | WP-044 | - | - | not_started |
-| FR-SEQ-001 | WP-002, WP-020, WP-021 | `packages/db/migrations/002_sequence.up.sql`, `packages/db/src/advisory-lock.ts`, `packages/db/src/repositories/merge-sequence.ts`, `packages/db/src/repositories/sequence-space.ts` | `packages/db/integration/advisory-lock.test.ts` (AC-6), `packages/db/integration/seed.test.ts` (AC-3) | partial (스키마·채번 동시성 제어. 실제 채번 로직은 WP-020) |
+| FR-SEQ-001 | WP-002, WP-018, WP-020, WP-021 | `packages/db/migrations/002_sequence.up.sql`, `packages/db/src/advisory-lock.ts`, `packages/db/src/repositories/{merge-sequence,sequence-space}.ts`, `apps/web/lib/commit-detail.ts` (`sequencePositionState`), `apps/web/components/SequencePosition.tsx` | `packages/db/integration/advisory-lock.test.ts` (AC-6), `packages/db/integration/seed.test.ts` (AC-3), `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx` | partial (스키마·채번 동시성 제어. 실제 채번 로직은 WP-021. **화면은 시퀀스 값 없이도 "체인 밖"과 "미채번"을 가른다** — 역할로 판정하며, 섞으면 머지 커밋까지 체인 밖으로 표시된다, DEV-092) |
 | FR-SEQ-002 | WP-023, WP-025 | - | - | not_started |
 | FR-SEQ-003 | WP-023, WP-025 | - | - | not_started |
 | FR-SEQ-004 | WP-024, WP-026 | - | - | not_started |
@@ -148,7 +148,7 @@
 | NFR-004 | WP-010 (인프라) | - | - | not_started |
 | NFR-005 | WP-003, WP-004, WP-012 | `packages/es/src/mappings/*` (`dynamic: strict`), `apps/ingest-gateway/src/signature.ts` | `packages/es/integration/behavior.test.ts`, `apps/ingest-gateway/src/signature.test.ts` | partial (매핑 수준 차단 + 웹훅 서명 검증·로그 금지 항목. 세션 인증은 WP-012) |
 | NFR-006 | WP-039 | - | - | not_started |
-| NFR-007 | WP-015 ~ WP-018, WP-025, WP-038 | `apps/web/components/*.tsx`, `apps/web/lib/nav.ts` | `apps/web/a11y/{shell,search,pr-detail}.test.tsx` (axe wcag2a/2aa/21a/21aa, 위반 0건), `apps/web/lib/architecture.test.ts` (QA-COMMON-16·17 정적 검사 + 화면 라우트 세션 확인), `pnpm test:contrast` (라이트·다크 80쌍, 실패 0건), `apps/web/e2e/{shell,flow-001,flow-002}.spec.ts` | partial (**셸·W-001·W-002는 done** — 랜드마크·스킵 링크·`aria-current`·라우트 전환 알림·좁은 화면 내비게이션·포커스 복귀에 더해, 두 화면의 모든 DoD 상태에 axe를 돌려 위반 0건. 상태를 **색이 아니라 글자로도** 구분한다(타임라인 네 상태, 시퀀스 배지). 나머지 화면은 WP-018 이후다. `color-contrast` axe 규칙은 jsdom에 레이아웃·canvas가 없어 끄고 `checkContrast`로 대신 건다 — 켜 두면 조용히 아무것도 검사하지 않으면서 통과로 보인다) |
+| NFR-007 | WP-015 ~ WP-018, WP-025, WP-038 | `apps/web/components/*.tsx`, `apps/web/lib/nav.ts` | `apps/web/a11y/{shell,search,pr-detail,commit-detail}.test.tsx` (axe wcag2a/2aa/21a/21aa, 위반 0건), `apps/web/lib/architecture.test.ts` (QA-COMMON-16·17 정적 검사 + 화면 라우트가 공통 관문을 지나는지), `pnpm test:contrast` (라이트·다크 80쌍, 실패 0건), `apps/web/e2e/{shell,flow-001,flow-002,flow-003}.spec.ts` | partial (**셸·W-001·W-002·W-003은 done** — 랜드마크·스킵 링크·`aria-current`·라우트 전환 알림·좁은 화면 내비게이션·포커스 복귀에 더해, 두 화면의 모든 DoD 상태에 axe를 돌려 위반 0건. 상태를 **색이 아니라 글자로도** 구분한다(타임라인 네 상태, 시퀀스 배지). 복사 결과는 성공·실패 **양쪽을** 라이브 리전으로 알린다(DEV-096). 나머지 화면은 WP-025 이후다. `color-contrast` axe 규칙은 jsdom에 레이아웃·canvas가 없어 끄고 `checkContrast`로 대신 건다 — 켜 두면 조용히 아무것도 검사하지 않으면서 통과로 보인다) |
 | NFR-008 | WP-001, WP-035, WP-040 | `package.json` 스크립트, `scripts/lint-deps.mjs`, `.github/workflows/ci.yml`, `docker-compose.yml`, 각 앱 `src/server.ts`의 `GET /healthz` | `scripts/lint-deps.test.ts`, `apps/*/src/server.test.ts` | partial (WP-001분: 재현 가능한 검증 파이프라인과 헬스 엔드포인트. 롤백 절차·재색인 소요는 WP-035·WP-040) |
 | FR-GH-001 | WP-045, WP-060 | - | - | not_started |
 | FR-GH-002 | WP-047, WP-048 | - | - | not_started |
@@ -269,6 +269,7 @@
 | DEV-094 | 2026-08-22 | **`C-025 ChangedPathList`를 채울 데이터가 없고 타입이 그것을 표현하지 못한다.** `changed_paths`·`changed_files_count`·`additions`·`deletions`는 커밋 문서에 자리만 있고 투영이 채우지 않는다(DEV-060). 그런데 C-025의 필수 props는 `paths`·`totalCount: number`·`truncated: boolean`으로 **널을 허용하지 않는다** — 타입대로 만들려면 `0`을 채워야 하고, 그러면 *파일을 하나도 바꾸지 않은 커밋*과 구분되지 않는다 | WP-018, WP-020 / C-025, W-003-PATHS, FR-ING-004 | 범위 공백 | **CR-021** | **resolved (2026-08-22)** — `totalCount: number \| null`로 넓히고(DEV-083이 C-018에 한 것과 같다) 섹션은 **골격 + 사유**로 세운다. **`QA-W003-08`("변경 경로 목록에 파일 내용이 표시되지 않는다")은 금지 규칙이라 데이터 없이 성립하고 지금 세운다** — 나중에 검사하면 이미 잘못 만든 뒤다 (SRS 4.3, NFR-005의 소스 코드 미저장) |
 | DEV-095 | 2026-08-22 | **커밋의 `enrichment_pending`이 상태 이름과 다른 것을 뜻한다.** 상태 매트릭스는 `enrichment_pending`을 "PR 연결 미완료"로 정의하는데, 투영은 커밋 문서의 그 필드에 **PR 이벤트의 보강 상태를 그대로 복사한다**(`enriched.enrichment_pending`). 그것은 "이 PR의 보강이 안 끝났다"이고, PR 연결이 실제로 비는 경우는 `pull_requests: []` + `reason_code`로 **따로** 온다. 하나로 읽으면 보강 중인 PR의 머지 커밋이 "PR 연결 없음"으로 표시된다 | WP-018, WP-008 / W-003 상태 매트릭스 `enrichment_pending`, FR-SRCH-002 예외 처리 | 문서와 구현 불일치 | **CR-021** | **resolved (2026-08-22)** — **둘을 따로 다룬다.** `enrichment_pending: true`는 "수집 중 — 목록이 나중에 늘 수 있습니다"(이미 있는 PR은 그대로 보인다), `pull_requests: []`는 "아직 PR 연결을 찾지 못했습니다"다. 사용자가 할 일이 다르다 — 전자는 기다리는 것이고 후자는 재조회해도 같을 수 있다. 상태 매트릭스의 설명을 고쳤다 |
 | DEV-096 | 2026-08-22 | **`C-024 ShaChip`의 복사 실패 경로가 명세에 없다.** "복사 성공은 `aria-live=\"polite\"`로 알린다"만 있는데, `navigator.clipboard`는 **보안 컨텍스트에서만 존재하고** 권한 거부·구형 브라우저·HTTP 배포에서 던지거나 없다. 실패가 조용하면 사용자는 복사됐다고 믿고 붙여넣는다 — **조사 도구에서 잘못된 SHA를 붙여넣는 것은 조사 결과 전체를 틀리게 만든다** | WP-018 / C-024, QA-W003-07 | 범위 공백 | **CR-021** | **resolved (2026-08-22)** — 실패도 **같은 `aria-live` 영역에 알리고**, 전체 40자를 선택 가능한 텍스트로 함께 노출해 손으로 복사할 길을 남긴다. 성공만 알리는 것은 "성공했거나, 아무 일도 없었거나"를 구분해 주지 않는다 |
+| DEV-097 | 2026-08-22 | **FLOW-001 4단계가 구현되어 있지 않다 — W-001이 후보 1건에서 영원히 멈춘다.** 흐름 명세는 "후보가 1건이면 해당 상세 화면으로 이동한다"고 정하고 CR-019 DEV-078이 그 이동을 위해 `from_q`까지 정했는데, **이동 자체가 없다.** `resolveScreenState`는 후보 2건 이상만 `ambiguous`로 다루고 1건은 그냥 통과시키는데, 해석 응답에는 `items`가 없어 `itemCount === null`이 되므로 화면이 `loading_initial`로 떨어진다. **40자 SHA 붙여넣기는 이 제품에서 가장 흔한 입력이고 FLOW-001은 "가장 중요한 흐름"이다** — 그것이 화면을 정지시킨다. WP-018의 DoD(FLOW-002 전 경로 E2E)를 쓰다가 드러났다 | WP-016, WP-018 / FLOW-001 4단계, FR-SRCH-001, FR-SRCH-004 | 구현 결함 | **CR-021** | **resolved (2026-08-22)** — `resolved_single` 상태를 더하고 화면이 `router.push`로 이동한다. **이동은 제출에 대한 응답으로만 일어난다** — 해석 결과에만 걸면 뒤로가기로 `/search?q=<SHA>`에 돌아오는 순간 다시 튕겨 나가 **사용자가 검색 화면에 영영 닿지 못한다**(e2e가 그것을 잡았다). 제출을 **세어서** 매단다 — 불리언이면 같은 질의를 다시 제출했을 때 URL도 의존값도 그대로라 아무 일도 일어나지 않고, 사용자는 Enter를 눌렀는데 화면이 가만히 있는 것을 고장으로 읽는다. 이동 중에도 후보 카드를 남겨 이동이 막히면 손으로 누를 수 있게 했다. `?from_q=` 부착은 세 군데(결과 행·후보 카드·자동 이동)에 있었으므로 `withFromQuery` 하나로 묶었다 — 한 곳만 인코딩을 빠뜨려도 되살아난 질의가 원본과 달라진다 |
 | DEV-003 | 2026-08-19 | `../00_governance/change_control.md` 4장 아키텍처 게이트 기록이 "오류 코드 30종"으로 적혀 있으나 API 계약 6장의 실제 코드는 29종이었다 | WP-001 | 문서 오류 | **CR-006** | **resolved (2026-08-20)** — 게이트 기록을 29종으로 정정하고 CR-005로 GH 코드 16종이 추가되어 현재 45종임을 함께 표기 |
 
 **등록이 필요한 대표 상황** (사전에 예상되는 것):
@@ -992,7 +993,68 @@ DoD 6항 중 4항 통과, 2항 부분. 검증 방법은 `pnpm test web/pr`, `pnp
 
 **시험이 확인하지 못한 것.** `QA-W002-18`의 서버 쪽 절반(접근 범위 밖 PR에 대해 **서버가** 404를 준다)은 WP-012·WP-014가 실제 ES 조회로 걸었다 — 화면은 404를 받았을 때의 행동만 건다. 라우트의 인증 분기는 **e2e에서 도달하지 않는다**(`AUTH_ENABLED=false`로 띄운다, WP-015와 같은 이유) — 정적 검사로 존재를 강제하고 실제 동작은 `@prs/authz` 단위 시험이 건다. `no_permission` 화면 상태는 **PR 상세에서 도달하지 않는다**(서버가 404를 준다) — 판정은 걸었고 도달하지 않음을 기록한다. `pnpm test:integration`은 Docker가 없어 **NOT RUN**이다.
 
-### 6.18 릴리스 게이트
+### 6.18 WP-018 검증 실행 기록
+
+DoD 4항 중 3항 통과, 1항 부분. 검증 방법은 `pnpm test web/commit`, `pnpm test:e2e flow-002`, `pnpm test:a11y commit`이다.
+
+| DoD | 결과 | 근거 |
+| --- | --- | --- |
+| QA-W003-01·02·04~08 | 통과 | 01·02(역할 배지가 머지/원본을 **글자로** 가른다), 04(AC-4의 PR 필드 전량 — 번호·제목·작성자·리뷰어·머지 시각), 05(같은 SHA가 PR 둘에 속하면 **둘 다** 보이고 그 사실을 배지로도 알린다), 06(**체인 밖을 오류가 아니라 사실로** 그리고 머지 커밋 링크를 준다), 07(**실제 브라우저에서 클립보드를 읽어** 40자임을 확인했다 — 표시값은 12자다), 08(파일 내용을 표시하지 않는다 — C-025는 **담을 prop 자체가 없다**) |
+| **QA-W003-03은 절반만** (CR-021, DEV-093) | 통과 (절반) | "PR이 없을 때 사유를 표시한다"는 통과. **다만 화면은 그것을 "직접 푸시"라고 부르지 않는다** — 서버의 `reason_code: 'no_pull_request'`는 "투영이 아직 PR 번호를 잇지 못했다"이고, 그것을 직접 푸시라고 쓰면 **PR 리뷰를 거치지 않고 들어간 커밋**이라는 거짓이 된다. `role: 'direct_push'` 갈래는 매핑을 갖추고 합성 입력으로 걸었으나 **WP-021 전까지 서버가 그 값을 내지 않는다**(DEV-061) |
+| 상태 매트릭스 W-003의 전 상태가 렌더링된다 | 통과 | `loading_initial`·`ready`·`enrichment_pending`·`multi_pr`·`no_pr`(두 갈래)·`no_sequence`·`not_found`·`no_permission`·`auth_expired`·`offline`. **`no_pr`의 `direct_push` 갈래만 실제 서버로는 도달하지 않는다** |
+| FLOW-002 전 경로(SHA 입력 → 커밋 상세 → PR 상세)가 E2E로 통과한다 | 통과 | **실제 브라우저에서 셋이 이어진다.** 40자 SHA 제출 → (자동 이동) 커밋 상세 → 소속 PR 클릭 → PR 상세. 뒤로가기 두 번으로 원래 입력이 살아 돌아온다. **이 항목을 쓰다가 DEV-097을 찾았다** |
+| axe 위반 0건 | 통과 | DoD 상태와 `multi_pr`·`off_chain`·경로 목록·보관 배너 각각에 axe(wcag2a/2aa/21a/21aa)를 돌려 **위반 0건**. `checkContrast`는 80쌍 중 실패 0건 |
+
+로컬에서 통과한 명령:
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` / `pnpm lint` | 종료 코드 0 |
+| `pnpm test` (전량) | 종료 코드 0 — **922건 통과 + 1건 건너뜀**(real-GHE smoke) |
+| `pnpm test:a11y` | 종료 코드 0 — **133건**, axe 위반 0건 |
+| `pnpm test:e2e` | 종료 코드 0 — **53건** (실제 Chromium) |
+| `pnpm test:contrast` | 종료 코드 0 — 80쌍 중 실패 0건 |
+| `pnpm build` | 종료 코드 0 — `/commit/[owner]/[repo]/[sha]` 라우트가 선다 |
+| `pnpm test:integration` | **NOT RUN** — 이 환경에 Docker가 없다. `linkedPullRequest`에 키 하나를 더했고(DEV-091) 그에 대한 통합 시험 2건을 함께 넣었으나 **실행하지 못했다** |
+
+**DoD를 쓰다가 운영 중인 결함을 찾았다 (DEV-097).**
+
+"FLOW-002 전 경로가 E2E로 통과한다"를 쓰려면 첫 단계가 FLOW-001이다. 40자 SHA를 제출하는 시험을 쓰자 **화면이 응답하지 않았다.** 파 보니 **FLOW-001 4단계("후보가 1건이면 해당 상세 화면으로 이동한다")가 구현되어 있지 않았다** — CR-019 DEV-078이 그 이동을 위해 `from_q`까지 정해 두었는데 이동 자체가 없었다. `resolveScreenState`가 후보 2건 이상만 다루고 1건은 통과시키는데, 해석 응답에는 `items`가 없어 `itemCount === null`이 되고 화면이 `loading_initial`로 떨어진다.
+
+**40자 SHA 붙여넣기는 이 제품에서 가장 흔한 입력이고, 흐름 명세가 FLOW-001을 "가장 중요한 흐름"이라고 부른다.** 그것이 화면을 정지시키고 있었다. 추측으로 고치지 않고 먼저 재현했다 — 목 라우터로 `SearchView`를 세워 상태가 `loading_initial`이고 `router.push` 호출이 0건임을 확인한 뒤에 손댔다.
+
+고치는 과정에서 **두 번 더 틀렸고 시험이 두 번 다 잡았다.**
+
+| 시도 | 무엇이 잘못됐나 | 잡은 것 |
+| --- | --- | --- |
+| 해석 결과에만 이동을 건다 | **뒤로가기가 막힌다.** `/search?q=<SHA>`로 돌아오는 순간 다시 후보 1건이 나와 곧바로 상세로 튕겨 나가고, 사용자가 검색 화면에 영영 닿지 못한다 | e2e (뒤로가기 뒤 검색창을 찾지 못함) |
+| 제출 여부를 불리언 `ref`로 매단다 | **같은 질의를 다시 제출하면 아무 일도 안 일어난다.** URL이 그대로라 해석이 다시 돌지 않고 효과의 의존값도 그대로다. Enter를 눌렀는데 화면이 가만히 있는 것은 고장으로 읽힌다 | a11y (제출 뒤에도 `push` 0건) |
+
+최종 형태는 **제출을 세어서** 매단다. 이동은 제출에 대한 응답이고, 뒤로가기·붙여넣은 링크로 같은 URL에 도착한 경우에는 후보 카드를 보이고 사용자가 고르게 한다 — **놀라게 하지 않는다.** 이동 중에도 카드를 남겨 이동이 막히면 손으로 누를 수 있다.
+
+**WP-017이 넘긴 일을 했다 — 세션 관문 통합.**
+
+라우트 셋이 같은 다섯 줄(쿠키 읽기·세션 적재·`redirect`)을 각자 갖고 있었고, WP-017은 묶는 대신 정적 검사로 **빠뜨릴 수 없게** 만들고 네 번째 화면과 함께 묶기로 미뤘다. 그 네 번째가 W-003이다. `GuardedPage` 하나가 관문을 소유하고 라우트 넷이 모두 그것을 지난다. 정적 검사도 함께 바꿨다 — 이제 "다섯 줄이 있는가"가 아니라 **"관문을 지나는가, 세션을 직접 만지지 않는가"**를 본다.
+
+같은 이유로 **상태 판정도 합쳤다.** 상태 매트릭스가 W-002·W-003 양쪽에서 `not_found`/`no_permission`/`auth_expired`/`offline`을 "공통"이라고 적는데, 복제하면 한쪽만 고쳐지고 **그 한쪽이 404를 403처럼 다루는 쪽이면 존재 여부가 샌다.** `lib/screen-state.ts` 하나가 소유한다.
+
+`?from_q=` 부착도 세 군데(결과 행·후보 카드·자동 이동)에 있어 `withFromQuery` 하나로 묶었다 — 한 곳만 인코딩을 빠뜨려도 되살아난 질의가 원본과 달라진다.
+
+**시험이 실제로 무엇을 잡는지 확인했다.** 구현을 47가지로 망가뜨렸다 — 판정 15종, 컴포넌트·자동 이동 24종, 라우트·관문 8종.
+
+**첫 통과에서 41가지가 잡혔고 6가지가 살아남았다. 하나는 내가 잘못 만든 변이였고, 나머지 다섯은 진짜 시험 구멍이었다. 다섯을 메운 뒤 다시 돌려 47/47이 잡혔다.**
+
+| 생존 | 판정 | 조치 |
+| --- | --- | --- |
+| 로딩 중에도 이동한다 | **내 변이가 틀렸다** — 삽입한 줄이 앞선 `loading` 관문 뒤라 도달하지 않는다. 동치가 아니라 **죽은 코드**를 넣은 것이다 | 관문 **앞**으로 옮긴 변이로 다시 걸었고 잡혔다 |
+| `aria-live`를 뺀다 | `role="status"`가 암시 `aria-live="polite"`를 갖고 있어 실제 낭독은 같지만, **C-024가 명시적으로 요구하는 속성**이다 | 라이브 리전 계약을 속성으로 건다 |
+| 수집 전인데 "파일 0개" / 절삭인데 상위 N건을 숨김 / 총계를 목록 길이로 | `pathCountLabel`이 **컴포넌트 파일에 있어 단위 시험이 닿지 않았다.** 화면 경로로는 그 분기에 이르지 못한다 | **판정 모듈로 옮겼다** — 이것은 그리기가 아니라 주장이다. 다섯 경우를 각각 건다 |
+| 제출 횟수를 소비하지 않는다 | 실제 브라우저에서는 곧 언마운트되어 가려지지만 **가려진 결함은 결함이다** — 이동이 막히거나 화면이 남는 순간 되풀이 이동이 된다 | 마운트를 유지한 채 재렌더해 이동이 한 번뿐임을 건다 |
+| `from_q`를 화면으로 넘기지 않는다 | 라우트→화면 배선에 시험이 없었다. a11y는 prop을 직접 넘겨 그 구간을 건너뛴다 | 딥링크에 `from_q`를 실어 되돌아가기 링크와 실제 이동까지 e2e로 건다 |
+
+**시험이 확인하지 못한 것.** `QA-W003-03`의 나머지 절반(`role: 'direct_push'`)은 **서버가 그 값을 낼 수 없어** 합성 입력으로만 걸었다 — 통과로 적지 않는다. `W-003-SEQPOS`의 앞뒤 인접 커밋(WP-027), 포함 릴리스(WP-024), 관계(WP-031)는 골격만 세웠다. `pnpm test:integration`은 Docker가 없어 **NOT RUN**이고, DEV-091이 더한 `merge_commit_sha`의 통합 시험 2건도 그래서 실행하지 못했다 — **CI가 처음 돌린다.**
+
+### 6.19 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -1062,14 +1124,14 @@ DoD 6항 중 4항 통과, 2항 부분. 검증 방법은 `pnpm test web/pr`, `pnp
 | ~~OIDC 로그인·콜백·로그아웃 라우트가 없음~~ | WP-012 제외 목록 (화면은 WP-015) | 해소 (2026-08-21) — WP-015가 `/auth/login`·`/auth/callback`·`/auth/logout`을 붙였다. 왕복 상태 넷은 짧은 수명 HttpOnly 쿠키로 나르고(DEV-071), 로그아웃은 `POST`만 받는다(`<img src>` 하나로 로그아웃되지 않게). OIDC 미구성 배포에서는 IdP 대신 503을 낸다 | 없음 |
 | 실제 사내 IdP 대상 OIDC 왕복 미실행 | 이 실행 환경에 IdP 자격 증명 없음 | **NOT RUN** — 테스트가 생성한 RSA 키쌍으로 다섯 검사를 각각 무너뜨려 확인했다. 실제 IdP의 그룹 클레임 이름과 JWKS 회전 동작은 확인하지 못했다 | **REL-002 게이트 전 필수** |
 | **게이트웨이 p95 시험이 CI 러너 속도에 흔들린다** | `apps/ingest-gateway/integration/load.test.ts` / FR-ING-001 AC-4 (p95 ≤ 300ms) | 실제 상태 — WP-015 CI에서 **한 번 314.8ms로 실패**했다. 같은 커밋을 다시 돌리자 227.4ms로 통과했으나 그것도 예산의 76%다. main의 과거 세 실행은 66.6·74.2·93.2ms였다. **이 PR의 것이 아니다**: 통합 잡의 시험 파일 수가 main과 같은 29개로 동일하고(부하를 더하지 않았다), 게이트웨이 요청 경로를 건드리지 않았으며(`helpers.ts`의 `migrateUp` import 경로만 바뀌었고 그것은 `beforeAll` 1회다), **p50은 오히려 빨라졌다**(36.2·46.6 vs main 41.6~51.9). 계통적 저하라면 p50도 함께 올라간다 — 꼬리만 3배인 것은 러너 실속(stall)의 모양이다. **측정 도구의 문제다**: 컨테이너화된 Postgres·Redis에 붙는 공유 CI 러너에서 p95 SLO를 재는 것은 요구사항을 검증할 수 있는 계측기가 아니다 | **제안**(별도 CR, 이 PR에서 바꾸지 않았다): CI의 단언은 "파국적으로 느리지 않다"는 느슨한 상한으로 두고 측정값은 계속 출력하되, **FR-ING-001 AC-4의 실제 300ms 검증은 대표 하드웨어의 REL-001 성능 게이트**로 옮긴다. 예산을 올리는 것이 아니라 **잴 수 있는 곳에서 재는 것**이다 |
-| 화면 대부분이 아직 없다 | 각 화면이 자기 WP 소관 | 실제 상태 (의도) — **`/`·`/search`·`/pr/:owner/:repo/:number`가 선다.** `/ranges`·`/releases`·`/stats`·`/ops/*`는 이동은 되지만 404다 | WP-018 이후 각 화면 WP |
+| 화면 대부분이 아직 없다 | 각 화면이 자기 WP 소관 | 실제 상태 (의도) — **`/`·`/search`·`/pr/...`·`/commit/...`이 선다.** `/ranges`·`/releases`·`/stats`·`/ops/*`는 이동은 되지만 404다 | WP-025 이후 각 화면 WP |
 | `⌘K`가 셸 슬롯이 아니라 화면 안의 입력을 잡는다 | DEV-070 / WP-016 구현 | 실제 상태 — WP-016은 C-010을 **W-001 화면 안**에 두었다(질의가 URL 단일 진실이라 화면이 소유해야 한다). 셸의 `omniSearch` 슬롯은 비어 있어 `⌘K`가 아무것도 잡지 않는다 — 셸 단축키가 화면의 입력에 닿으려면 슬롯에 넣어야 한다 | 전 화면 공통 옴니 입력을 셸에 올리는 별도 변경 (WP-017 이후 화면이 늘 때 판단) |
 | 좁은 화면(≤800px) 동작을 실제 뷰포트에서 확인하지 못함 | jsdom에 뷰포트·CSS가 없음 / DEV-073 | 실제 상태 — 서랍 버튼의 **존재·키보드 도달·여닫기·포커스 복귀**는 a11y 시험이 건다. 그 버튼이 800px 이하에서만 보인다는 것은 Conductor의 `.cdt-topbar__menu-button` 규칙을 읽어 확인했을 뿐 **실행으로 확인하지 않았다** | 뷰포트를 좁히는 e2e를 화면 WP에서 함께 세운다 |
 | 세션 만료 후 경로 복귀가 `/` 하나에서만 실증됨 | WP-015 범위 (화면 없음) | 실제 상태 — `return_to` 생성·무해화·왕복·재무해화는 전부 시험이 걸지만, 실제로 그 경로를 만드는 화면이 `/`뿐이다 | **`/search`가 더해져 둘이 됐다.** 화면이 늘수록 넓어진다 |
 | W-001의 패싯이 늘 `not_computed` | WP-016 제외 목록 (패싯 데이터는 WP-032) / CR-019 DEV-076 | 실제 상태 (의도) — `/search`가 `facets`·`facets_omitted` 키를 넣지 않으므로 레일이 **사유를 표시하고** 선택 UI를 그리지 않는다. 조용히 비우지 않는다 | WP-032 |
 | 결과 목록의 시퀀스가 늘 `not_computed` | WP-021 전까지 투영이 시퀀스를 쓰지 않음 / CR-019 DEV-077 | 실제 상태 — 미머지(`unassigned`)와 **다른 배지**로 그린다. 섞으면 머지된 PR을 "미머지"로 표시하게 된다 | WP-021 |
 | 결과 행에 관계 배지 열이 없음 | CR-019 DEV-081 (`C-015`는 WP-031 소관, `link_summary`는 WP-029까지 빈다) | 실제 상태 (의도) — **빈 열을 미리 두지 않는다.** 사용자가 "관계 없음"으로 읽는다 | WP-031 |
-| ~~`/search` 결과 행이 가리키는 상세 화면이 없음~~ | W-002·W-003이 WP-017·WP-018 | **절반 해소 (2026-08-22)** — WP-017이 `/pr/[owner]/[repo]/[number]`를 세웠다. `from_q`도 실제로 살아 돌아온다(실제 브라우저에서 왕복 확인). **커밋 상세(`/commit/...`)는 아직 404다** | WP-018 |
+| ~~`/search` 결과 행이 가리키는 상세 화면이 없음~~ | W-002·W-003이 WP-017·WP-018 | **해소 (2026-08-22)** — WP-017이 `/pr/...`을, WP-018이 `/commit/...`을 세웠다. 결과 행·해석 후보·W-002 커밋 목록이 가리키는 곳이 모두 실재하고, FLOW-002 전 경로가 실제 브라우저에서 이어진다 | 없음 |
 | 최근 검색 목록이 비어 있음 | CR-019 DEV-079 (저장 위치 미정) | 실제 상태 — prop을 선택으로 낮추고 비면 그리지 않는다. **저장 설계를 지어내지 않았다** — 서버에 보내면 조사 이력이 서버 기록이 되는데 요구한 문서가 없다 | 사용자 결정 후 |
 | 접근 범위 산출이 등록 저장소마다 GHE를 한 번씩 부름 | FR-AUTH-002 AC-1이 "read 이상 권한을 가진 저장소"를 요구 / OD-002 미결 | 실제 상태 — 협업자 권한 API가 조직 기본 권한·팀·직접 협업자를 모두 반영한 실효 권한을 주므로 정확하다. 대신 캐시 미스마다 등록 저장소 수만큼 호출이 나간다(동시 8, 캐시 5분, 사용자별 요청 병합). **저장소 수가 커지면 재검토가 필요하다** | OD-002 결정 후 (IdP 그룹이면 호출이 사라진다) |
 | 운영 집계 두 곳이 접근 범위를 거치지 않음 | CR-015 DEV-051 (미해소) | 실제 상태 — API-ADM-006의 `enrichment_pending`(전 저장소 `es.count`)과 `slowest_repositories`(저장소 이름 포함). FR-ADMIN-001 AC-1·AC-3이 요구하고 THR-003·THR-016이 반대한다. **동작을 바꾸지 않고** 아키텍처 테스트의 사유 붙은 허용 목록에 등록했다 | **사용자 결정 + CR** |
@@ -1082,7 +1144,7 @@ DoD 6항 중 4항 통과, 2항 부분. 검증 방법은 `pnpm test web/pr`, `pnp
 | 전문 검색어(`q`의 자유 문자열)가 조회에 쓰이지 않음 | WP-013 제외 목록 (전문 검색은 WP-032) | 실제 상태 — 파서가 `parsed.text`로 응답에 실어 사용자가 무시된 것을 볼 수 있다. 조용히 버리지 않는다 | WP-032 |
 | 이미 색인된 문서에 `doc_id`가 없어 정렬 뒤로 밀림 | CR-016 DEV-059 | 실제 상태 — `upsert`가 생성 본문과 스크립트 `params.doc` 양쪽에 넣으므로 **다음 이벤트에서 채워진다.** 그때까지는 `missing: _last`로 뒤에 선다. 이 저장소에는 아직 운영 데이터가 없어 실질 영향이 없다 | 백필(WP-019) 또는 재색인(WP-035)이 지나면 사라진다 |
 | 완화 힌트 후보가 8개로 잘림 | CR-016 DEV-055 | 실제 상태 (의도된 상한) — 넘으면 `relaxation_hints_truncated: true`를 실어 조용한 절삭이 "이것이 전부"로 읽히지 않게 한다 | 없음 |
-| 직접 푸시 커밋을 조회할 수 없음 (`direct_push` 역할 도달 불가) | CR-017 DEV-061 / FR-SRCH-002 AC-3, QA-W003-03 | **실제 상태** — 커밋 문서가 PR 이벤트에서만 만들어지고 `push`는 ack 후 버려진다(DEV-016). 직접 푸시 커밋은 문서 자체가 없어 조회가 404다. API 계약과 타입은 그 값을 표현할 수 있게 두어, 값이 생겼을 때 계약을 다시 고치지 않게 했다 | **WP-021** (push 이벤트 라우팅) |
+| 직접 푸시 커밋을 조회할 수 없음 (`direct_push` 역할 도달 불가) | CR-017 DEV-061 / FR-SRCH-002 AC-3, QA-W003-03 | **실제 상태 — WP-018도 해소하지 못했다.** 화면은 역할 배지 매핑에 세 값을 모두 두고 합성 입력으로 걸었으나 서버가 그 값을 내지 못한다. **`reason_code: 'no_pull_request'`를 "직접 푸시"로 부르지 않는다**(DEV-093) — 그것은 "아직 못 이었다"이고, 섞으면 PR 리뷰를 거치지 않은 커밋이라는 거짓이 된다. — 커밋 문서가 PR 이벤트에서만 만들어지고 `push`는 ack 후 버려진다(DEV-016). 직접 푸시 커밋은 문서 자체가 없어 조회가 404다. API 계약과 타입은 그 값을 표현할 수 있게 두어, 값이 생겼을 때 계약을 다시 고치지 않게 했다 | **WP-021** (push 이벤트 라우팅) |
 | 커밋 상세에 메시지·작성자·부모 SHA·파일 목록이 없음 | CR-017 DEV-060 / WP-008이 남긴 한계 | 실제 상태 — `EVT-ING-002`가 커밋에 대해 SHA만 나른다. 채워지지 않은 필드는 **키를 넣지 않아** "만들지 않았다"와 "만들었는데 비었다"를 구분한다. 커밋의 표시명은 SHA 축약이다 | WP-020 (미러 기반 커밋 보강) |
 | PR 상세의 원본 커밋에 제목·작성자·작성 시각이 없음 | CR-017 DEV-062 / FR-SRCH-003 AC-3 | 실제 상태 — PR 문서는 SHA 배열만 갖고 커밋 문서를 조인해도 메시지가 없다. 배열 **모양은 객체**로 두어 WP-020이 키를 더할 때 계약을 고치지 않아도 되게 했다 | WP-020 |
 | 250건 초과 원본 커밋의 **진짜 총계를 모름** | CR-017 DEV-063 / FR-SRCH-003 AC-4 | 실제 상태 — 보강 payload가 총계를 나르지 않는다. 250을 총계로 내보내면 거짓이므로 **키를 빼고** `source_commits_truncated: true`만 남긴다 | `EVT-ING-002` 확장 CR |
@@ -1090,12 +1152,15 @@ DoD 6항 중 4항 통과, 2항 부분. 검증 방법은 `pnpm test web/pr`, `pnp
 | 단건 해석 p95(NFR-001)와 ADR-012의 선택도 근거가 측정되지 않음 | WP-014 DoD / DEV-058 | **NOT RUN** — 커밋 1000만 건 데이터셋이 없다. 접두가 겹칠 때 후보가 여럿 나온다는 **동작**만 확인했고, "5000만 커밋에서도 통상 1건"이라는 ADR-012의 **근거**는 확인하지 못했다 | **REL-002 성능 게이트 전 필수** |
 | `/resolve`가 자유 텍스트를 전문 검색으로 위임하지 않음 | WP-014 범위 (전문 검색은 WP-032) | 실제 상태 — `detected_kind: 'text'`로 판별만 하고 후보는 빈 배열이다. 화면이 그 신호를 받아 `/search`를 부른다 | WP-016 (화면 결합), WP-032 (전문 검색) |
 | 문서당 `EVT-ING-003`이 하나씩 발행됨 (PR 1 + 커밋 N) | 비동기 문서 4장의 payload가 엔티티 단위 | 실제 상태 — 커밋 250건 PR이면 251건이 나간다. `noop`은 내지 않아 재처리 시에는 줄어든다 | 관계 워커(WP-029) 실측 후 필요하면 CR |
+| 커밋 상세의 **헤더에 메시지·작성자·시각이 없다** | CR-021 DEV-090 / DEV-060 | 실제 상태 — 커밋 문서가 SHA만 갖는다. **소속 PR에서 빌려오지 않는다**: 한 PR의 원본 커밋 N건이 전부 같은 제목으로 보이면 체리픽·되돌림 조사가 반대 결론에 이른다. 표시명은 축약 SHA이고 화면이 왜 없는지 적는다 | WP-020 (미러 기반 커밋 보강) |
+| 커밋 상세의 **변경 경로가 골격뿐** | CR-021 DEV-094 / DEV-060 | 실제 상태 — `changed_paths`·`changed_files_count`가 채워지지 않는다. 섹션은 숨기지 않고 사유를 적으며, 총계를 `0`으로 그리지 않는다(*파일을 하나도 바꾸지 않은 커밋*과 같아진다). **파일 내용 미표시(`QA-W003-08`)는 금지 규칙이라 지금 세웠다** | WP-020 |
+| 커밋 상세의 시퀀스 위치가 **앞뒤 인접 커밋 없이 상태만** | WP-018 제외 목록 (데이터는 WP-027) | 실제 상태 — 값 없이도 **`off_chain`과 `not_computed`를 가른다**(역할로 판정, DEV-092). 앞뒤 목록과 "범위로 확장"은 WP-027 | WP-027 |
 | PR 상세의 선행·후행·릴리스·관계가 **골격뿐** | WP-017 제외 목록 (데이터는 WP-024·WP-027·WP-031) | 실제 상태 (의도) — **셋 다 숨기지 않고 사유를 적는다.** 숨기면 사용자가 기능 부재로 오인한다. 미머지 PR의 선행·후행 사유는 머지된 PR과 **다른 문구**다 | WP-024, WP-027, WP-031 |
 | PR 상세 타임라인의 **승인 시각을 모름** | CR-020 DEV-084 / `approved_at`이 ES 매핑에 없음 | 실제 상태 — `approved_by`로 **일어난 것은 알고 시각만 모른다.** `done_at_unknown`으로 그리고 사유를 함께 적는다. `pending`으로 그리면 승인된 PR이 "승인 대기"가 된다 | 매핑에 `approved_at`을 더하는 별도 CR (투영과 `EVT-ING-002` 함께) |
 | 리뷰어별 상태가 "승인함 / 아직 아님" 둘뿐 | CR-020 DEV-085 / 투영이 리뷰어별 상태를 저장하지 않음 | 실제 상태 — "변경 요청"을 **지어내지 않는다.** `reviewers`·`approved_by` 두 로그인 목록만으로 파생할 수 있는 것이 이 둘이다 | 투영이 리뷰 상태를 저장하도록 하는 별도 CR |
 | `epoch_stale` 화면 상태가 없음 | CR-020 DEV-087 / 시퀀스가 WP-021까지 전부 `null` | 실제 상태 (의도) — **도달할 수 없는 코드를 만들지 않았다.** 에폭 변경을 감지할 경로도 정해져 있지 않다 | **WP-021**이 시퀀스와 함께 감지 경로를 정한다 |
 | W-001 결과 표가 `repository_archived`·`files_truncated`를 표시하지 않음 | CR-020 DEV-089 (W-002만 열었다) | 실제 상태 — **W-002는 둘 다 표시한다.** 목록 쪽은 행마다 배지를 더하면 밀도 설계를 다시 해야 하고 그것은 WP-016의 완료된 범위라 이번에 건드리지 않았다 | 목록 표시가 필요하다고 판단되면 별도 CR |
-| 화면 라우트 셋이 세션 확인 다섯 줄을 각자 복제 | WP-015가 세운 라우트 구조 | 실제 상태 — 지금 묶는 것은 WP-017 범위 밖이라, 대신 **빠뜨릴 수 없게** 했다. `architecture.test.ts`가 화면 라우트를 모두 찾아 세션 확인과 `redirect`를 강제한다 | **WP-018**이 네 번째 화면과 함께 공통 함수로 묶는다 |
+| ~~화면 라우트 셋이 세션 확인 다섯 줄을 각자 복제~~ | WP-015가 세운 라우트 구조 | **해소 (2026-08-22)** — WP-018이 `GuardedPage` 하나로 묶었고 라우트 넷이 모두 그것을 지난다. 정적 검사도 "다섯 줄이 있는가"에서 **"관문을 지나는가, 세션을 직접 만지지 않는가"**로 바꿨다 | 없음 |
 
 ## 8. 다음 작업
 
@@ -1140,14 +1205,18 @@ DoD 6항 중 4항 통과, 2항 부분. 검증 방법은 `pnpm test web/pr`, `pnp
 34. ~~WP-016 W-001 통합 검색 화면~~ → 완료 (2026-08-21). 검증 결과는 6.16장. **DoD 6항 중 5항 통과, `QA-W001-14`만 절반**(커서는 WP-032)
 35. ~~CR-020 WP-017 W-002 계약 정정~~ → 완료 (2026-08-22). DEV-082~088 해소. 구현 중 DEV-089를 추가 등록·해소했다. SRS 버전은 v2.2 유지(빈칸 메우기)
 36. ~~WP-017 W-002 PR 상세 화면~~ → 완료 (2026-08-22). 검증 결과는 6.17장. **DoD 6항 중 4항 통과, `QA-W002-03`·`QA-W002-17`이 절반**(전체 건수는 WP-020, 확장 조회는 WP-031)
+37. ~~CR-021 WP-018 W-003 계약 정정~~ → 완료 (2026-08-22). DEV-090~096 해소. 구현 중 DEV-097을 추가 등록·해소했다. SRS 버전은 v2.2 유지(빈칸 메우기)
+38. ~~WP-018 W-003 커밋 상세 화면~~ → 완료 (2026-08-22). 검증 결과는 6.18장. **DoD 4항 중 3항 통과, `QA-W003-03`이 절반**(`direct_push`는 WP-021). **FLOW-002 전 경로가 실제 브라우저에서 이어진다**
 
-**다음 WP: WP-018 W-003 커밋 상세 화면** (선행 WP-015·WP-016 충족).
+**REL-002의 조사 경로가 닫혔다.** 붙여넣기(W-001) → 커밋(W-003) → PR(W-002)이 실제 브라우저에서 이어지고, 각 화면이 **모르는 것을 모른다고 말한다.** 남은 REL-002 화면은 범위 조사(W-004, WP-025)다.
 
-**WP-017이 딛고 설 자리를 만들어 두었다.** `EntityHeader`(C-023)는 `kind`와 `badges`로 받도록 만들어 커밋 상세가 그대로 쓴다 — PR에만 있는 것을 헤더에 넣지 않은 이유가 그것이다. `PendingSection`도 `W-003-SEQPOS` 골격에 그대로 쓰인다. `GET /commits/{sha}`는 WP-014가 세웠다.
+**WP-019 저장소 백필 잡이 다음이다** (로드맵 순서). 화면이 더 필요하면 WP-025가 W-004를 세운다.
 
-**WP-018이 함께 할 것 하나.** 화면 라우트가 넷이 되면서 세션 확인 다섯 줄의 복제도 넷이 된다. 지금은 `architecture.test.ts`가 빠뜨림을 막고 있을 뿐이므로, **네 번째 화면과 함께 공통 함수로 묶는다** — 세 개일 때 묶는 것은 WP-015가 세운 라우트를 건드리는 범위 밖 작업이었지만, 네 번째를 새로 쓰면서 묶는 것은 그 화면의 일이다.
+**WP-018이 남긴 것 셋.**
 
-**WP-018이 마주칠 것.** `direct_push` 역할이 **도달 불가**다(DEV-061) — 커밋 문서가 PR 이벤트에서만 만들어져 직접 푸시 커밋은 문서 자체가 없다. `QA-W003-03`은 WP-021 전까지 통과할 수 없으므로, WP-016·WP-017이 `QA-W001-14`·`QA-W002-03`에 한 것과 같이 **착수 전 감사에서 항목을 가르는 CR**이 필요하다.
+1. **`direct_push`는 여전히 도달 불가다**(DEV-061). 화면은 매핑을 갖췄고 합성 입력으로 걸었으나 서버가 그 값을 내지 못한다. **WP-021**이 push 이벤트 라우팅을 세울 때 `QA-W003-03`의 나머지 절반이 닫힌다.
+2. **커밋 메타데이터가 없다**(DEV-090·094). 헤더의 이름이 축약 SHA이고 변경 경로가 골격이다. **WP-020**이 미러로 보강하면 화면을 고치지 않아도 키가 붙는 대로 채워진다 — 타입을 널 허용으로 열어 두었다.
+3. **`merge_commit_sha` 추가의 통합 시험이 NOT RUN이다.** 이 환경에 Docker가 없어 CI가 처음 돌린다.
 
 **WP-015가 열어 준 것.** 세 가지가 여기서 닫혔다 — WP-012가 남긴 OIDC 브라우저 왕복(로그인·콜백·로그아웃 라우트), `test:e2e`·`test:a11y`·`test:contrast` harness(DEV-032, WP 20곳이 참조하던 이름), 그리고 셸이 소유하는 경로 구조와 역할 필터링. 이제 각 화면 WP는 **자기 화면만** 만들면 된다.
 

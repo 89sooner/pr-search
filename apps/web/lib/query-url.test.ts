@@ -15,6 +15,7 @@ import {
   readQueryState,
   toHref,
   withAst,
+  withFromQuery,
   writeQueryState,
   type QueryState,
 } from './query-url';
@@ -142,5 +143,29 @@ describe('AST로 상태를 고친다', () => {
     // 같은 문법이어야 URL이 흔들리지 않는다.
     const next = withAst(EMPTY_STATE, parseQuery('label:backend label:frontend'));
     expect(roundTrip(next)).toEqual(next);
+  });
+});
+
+describe('`from_q` 부착 (DEV-078, DEV-097)', () => {
+  it('원본 입력을 인코딩해 싣는다', () => {
+    expect(withFromQuery('/pr/acme/a/1', 'title:"a&b" OR author:kim')).toBe(
+      '/pr/acme/a/1?from_q=title%3A%22a%26b%22%20OR%20author%3Akim',
+    );
+  });
+
+  it('**되살아난 질의가 원본과 같다** — 왕복이 성립한다', () => {
+    const raw = 'repo:acme/payments merged:>2026-01-01';
+    const href = withFromQuery('/commit/acme/a/abc', raw);
+    expect(new URL(href ?? '', 'https://x.example').searchParams.get('from_q')).toBe(raw);
+  });
+
+  it('질의가 비면 그냥 그 경로다 — `?from_q=`를 빈 채로 붙이지 않는다', () => {
+    expect(withFromQuery('/pr/acme/a/1', '')).toBe('/pr/acme/a/1');
+    expect(withFromQuery('/pr/acme/a/1', '   ')).toBe('/pr/acme/a/1');
+  });
+
+  it('**갈 곳이 없으면 `null`이다** — 죽은 링크를 만들지 않는다', () => {
+    expect(withFromQuery(null, 'q')).toBeNull();
+    expect(withFromQuery('', 'q')).toBeNull();
   });
 });

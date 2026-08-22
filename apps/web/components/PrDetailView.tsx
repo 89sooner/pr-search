@@ -27,12 +27,12 @@ import { formatDuration } from '../lib/format';
 import {
   commitListModel,
   gheePullRequestUrl,
-  resolvePrScreenState,
   reviewerStates,
   searchBackHref,
   timelineSteps,
   type PrDetailSource,
 } from '../lib/pr-detail';
+import { resolveDetailScreenState, type DetailStateInput } from '../lib/screen-state';
 
 export interface PrDetailViewProps {
   readonly repository: string;
@@ -45,7 +45,7 @@ export interface PrDetailViewProps {
 
 interface Outcome {
   readonly detail: PrDetailSource | null;
-  readonly errorBody: Parameters<typeof resolvePrScreenState>[0]['errorBody'];
+  readonly errorBody: DetailStateInput['errorBody'];
   readonly status: number | null;
   readonly networkFailed: boolean;
 }
@@ -101,7 +101,7 @@ export function PrDetailView({
     setNonce((n) => n + 1);
   }, []);
 
-  const screen = resolvePrScreenState({
+  const screen = resolveDetailScreenState({
     loading,
     networkFailed: outcome.networkFailed,
     errorBody: outcome.errorBody,

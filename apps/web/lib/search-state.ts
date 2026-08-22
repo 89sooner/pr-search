@@ -24,6 +24,15 @@ export type SearchScreenState =
   | { readonly kind: 'error_query_syntax'; readonly error: QueryParseError }
   | { readonly kind: 'loading_initial' }
   | { readonly kind: 'ambiguous'; readonly truncated: boolean }
+  /**
+   * 후보가 **정확히 1건**이다. 화면은 그 상세로 이동한다 (FLOW-001 4단계).
+   *
+   * `loading_initial`과 구분해야 하는 이유: 조회는 이미 끝났고 화면이
+   * **떠나는 중**이다. 로딩으로 그리면 스크린 리더가 "불러오는 중"을
+   * 읽고, 이동이 실패했을 때 영영 그 상태로 남아도 아무도 모른다
+   * (CR-021, DEV-097).
+   */
+  | { readonly kind: 'resolved_single' }
   | { readonly kind: 'ready' }
   | { readonly kind: 'empty_no_result' }
   | { readonly kind: 'error_search_timeout' }
@@ -153,6 +162,14 @@ export function resolveScreenState(input: SearchStateInput): SearchScreenState {
   if (input.candidateCount !== null && input.candidateCount >= 2) {
     return { kind: 'ambiguous', truncated: input.candidatesTruncated };
   }
+  /*
+   * **1건이면 이동한다** (FLOW-001 4단계, CR-021 DEV-097).
+   *
+   * 이 분기가 없으면 해석 응답에 `items`가 없어 `itemCount === null`이 되고,
+   * 화면이 `loading_initial`에 **영원히 멈춘다.** 40자 SHA를 붙여넣는 것이
+   * 이 제품에서 가장 흔한 입력이므로 그 정지는 곧 제품이 멈추는 것이다.
+   */
+  if (input.candidateCount === 1) return { kind: 'resolved_single' };
 
   if (input.itemCount === null) return { kind: 'loading_initial' };
   if (input.itemCount > 0) return { kind: 'ready' };

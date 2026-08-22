@@ -74,19 +74,19 @@ describe('QA-COMMON-16: 리터럴 색상값이 없다 (ADR-006)', () => {
   });
 });
 
-describe('FR-AUTH-001: 화면 라우트는 전부 세션을 확인한다', () => {
+describe('FR-AUTH-001: 화면 라우트는 전부 공통 관문을 지난다', () => {
   /*
-   * 세 라우트가 같은 다섯 줄을 각자 갖고 있다 — 쿠키를 읽고, 세션을 싣고,
-   * 없으면 로그인으로 보낸다. **네 번째 화면(WP-018 W-003)이 그 다섯 줄을
-   * 빠뜨리면 인증 구멍이 된다.**
+   * WP-017까지는 라우트 셋이 **같은 다섯 줄을 각자 갖고** 있었고, 이 검사는
+   * 그 다섯 줄이 빠지지 않았는지를 봤다. WP-018이 네 번째 화면을 세우면서
+   * `GuardedPage` 하나로 묶었으므로, 이제 볼 것은 **관문을 지나는가**다.
    *
-   * 지금 공통 함수로 묶지 않는 이유: 그것은 WP-015가 세운 라우트 셋을
-   * 건드리는 일이고 WP-017의 범위가 아니다. 대신 **빠뜨릴 수 없게** 만든다 —
-   * 묶는 것은 WP-018이 네 번째 화면을 세울 때 함께 한다.
+   * 검사를 유지하는 이유는 그대로다 — 다섯 번째 화면(W-004)이 관문을 건너뛰고
+   * 직접 `Shell`을 세우면 **미인증 사용자가 화면을 보게 되고**, 그것은 리뷰에서
+   * 눈에 띄지 않는다.
    *
-   * `app/api`·`auth/*`·`healthz`는 화면이 아니라 제외한다. 프록시는
-   * 자기 방식으로 401을 내고(WP-015 `resolveProxyAuth`), 로그인 라우트가
-   * 세션을 요구하면 로그인할 방법이 없어진다.
+   * `app/api`·`auth/*`·`healthz`는 화면이 아니라 제외한다. 프록시는 자기
+   * 방식으로 401을 내고(WP-015 `resolveProxyAuth`), 로그인 라우트가 세션을
+   * 요구하면 로그인할 방법이 없어진다.
    */
   const NOT_A_SCREEN = ['app/api/', 'app/auth/', 'app/healthz/'];
 
@@ -95,19 +95,37 @@ describe('FR-AUTH-001: 화면 라우트는 전부 세션을 확인한다', () =>
     .filter((f) => !NOT_A_SCREEN.some((skip) => f.includes(skip)));
 
   it('검사가 실제로 도는지 — 화면 라우트를 찾았다', () => {
-    expect(screenRoutes.length).toBeGreaterThanOrEqual(3);
+    expect(screenRoutes.length).toBeGreaterThanOrEqual(4);
   });
 
   it.each(screenRoutes.map((f) => [f.slice(WEB_ROOT.length), f] as const))(
-    '%s가 세션을 확인하고 없으면 로그인으로 보낸다',
+    '%s가 `GuardedPage`를 지난다',
     (_name, full) => {
-      const source = readFileSync(full, 'utf8');
-      expect(source).toContain('SESSION_COOKIE_NAME');
-      expect(source).toContain('sessionStore()');
-      // 확인만 하고 통과시키면 확인하지 않은 것과 같다.
-      expect(source).toContain('redirect(');
+      expect(readFileSync(full, 'utf8')).toContain('GuardedPage');
     },
   );
+
+  it.each(screenRoutes.map((f) => [f.slice(WEB_ROOT.length), f] as const))(
+    '%s가 세션을 **직접** 다루지 않는다 — 관문을 우회하지 않는다',
+    (_name, full) => {
+      const source = readFileSync(full, 'utf8');
+      /*
+       * 라우트가 쿠키를 직접 읽기 시작하면 관문이 둘이 되고, 둘은 갈라진다.
+       * 세션에 관한 결정은 전부 `page-guard.tsx` 안에 있어야 한다.
+       */
+      expect(source).not.toContain('SESSION_COOKIE_NAME');
+      expect(source).not.toContain('sessionStore(');
+    },
+  );
+
+  it('관문 자신은 세 가지를 모두 한다 — 읽고, 없으면 보내고, 셸을 세운다', () => {
+    const guard = readFileSync(join(WEB_ROOT, 'lib/server/page-guard.tsx'), 'utf8');
+    expect(guard).toContain('SESSION_COOKIE_NAME');
+    expect(guard).toContain('sessionStore()');
+    // 확인만 하고 통과시키면 확인하지 않은 것과 같다.
+    expect(guard).toContain('redirect(');
+    expect(guard).toContain('return_to=');
+  });
 });
 
 describe('QA-COMMON-17: Conductor 외 UI 라이브러리가 없다 (ADR-006)', () => {
