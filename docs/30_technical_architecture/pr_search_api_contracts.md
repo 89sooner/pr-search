@@ -162,6 +162,7 @@
       "approved_by": ["lee"],
       "state": "merged",
       "merged_at": "2026-08-19T05:02:11Z",
+      "merge_commit_sha": "a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5",
       "url": "/pr/acme/payments/1234"
     }
   ],
@@ -173,6 +174,8 @@
 ```
 
 시퀀스 3종은 **키를 두고 `null`**이다 — 채번 경로(WP-021)가 아직 없다는 뜻이며, 커밋 메타데이터처럼 "만들지 않은" 것과 구분된다.
+
+`pull_requests[]`의 **`merge_commit_sha`는 W-003의 `no_sequence` 안내가 요구한다** (CR-021, DEV-091). 원본 커밋 화면이 "이 커밋은 머지 커밋 X로 반영되었습니다"라고 말하고 그 X로 이동시키려면 이 키가 필요하다 — 값은 이미 PR 문서에 있으므로 없는 데이터를 만드는 것이 아니다. **미머지 PR이면 키를 넣지 않는다** (`null`로 채우지 않는다).
 
 WP-020 이후 붙는 키: `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at`, `patch_id`, `patch_id_unavailable`, `changed_paths`, `changed_files_count`, `additions`, `deletions`. WP-024 이후: `release_tags`.
 

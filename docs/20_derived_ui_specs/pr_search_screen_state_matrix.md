@@ -80,10 +80,10 @@
 | --- | --- | --- | --- | --- |
 | `loading_initial` | 진입 | skeleton | - | - |
 | `ready` | 정상 | 전체 섹션 | - | - |
-| `enrichment_pending` | PR 연결 미완료 | 소속 PR 섹션에 수집 중 배지 | 재조회 | FR-SRCH-002 |
+| `enrichment_pending` | **PR 보강 미완료** (투영이 PR 이벤트의 보강 상태를 커밋 문서에 그대로 복사한다 — "PR 연결이 없다"가 아니다, CR-021 DEV-095) | 소속 PR 섹션에 수집 중 배지. **이미 이어진 PR은 그대로 보인다** — 목록이 나중에 늘 수 있다고 알린다 | 재조회 | FR-SRCH-002 |
 | `multi_pr` | 동일 SHA가 2개 이상 PR에 속함 | 모든 PR을 목록으로 표시 | 사용자 선택 | FR-SRCH-002 |
-| `no_pr` | 직접 푸시 커밋 | "PR 없음(직접 푸시)" 표시, 시퀀스는 정상 표시 | - | FR-SRCH-002 |
-| `no_sequence` | first-parent 체인 밖(원본 커밋) | 오류 아님. 머지 커밋 링크와 설명 표시 | 머지 커밋 이동 | FR-SEQ-001 |
+| `no_pr` | `pull_requests`가 비었다. **두 경우가 있다** (CR-021, DEV-093): `role: 'direct_push'`(진짜 직접 푸시 — **WP-021 전까지 도달 불가**, DEV-061)와 `reason_code: 'no_pull_request'`(투영이 아직 PR 번호를 잇지 못함) | 전자만 "PR 없음(직접 푸시)"이다. 후자는 **"아직 PR 연결을 찾지 못했습니다"** — 다르게 쓰지 않으면 없는 사실을 주장하게 된다 | 재조회 | FR-SRCH-002 |
+| `no_sequence` | first-parent 체인 밖(원본 커밋). **역할로 판정한다** — `role === 'source_commit'`. 시퀀스 값은 WP-021까지 전부 `null`이라 판정 근거가 되지 못한다 (CR-021, DEV-092) | 오류 아님. 머지 커밋 링크와 설명 표시. `merge_commit`인데 시퀀스가 `null`인 것은 **미채번**이고 다른 문구다 | 머지 커밋 이동 | FR-SEQ-001 |
 | `not_found` / `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 
 ### W-004 범위 조사
