@@ -255,11 +255,14 @@ git -C /mirrors/<repository_id>.git rev-list --first-parent --reverse <last_head
 - 미러 사용 여부는 저장소별 설정이다 (FR-ING-009 AC-1). 보안 정책이 불허하면(OD-001 (b)) 저장소 단위로 API 폴백 모드로 동작한다.
 - API 폴백 모드에서는 `parents[0]`을 따라 체인을 재구성하고, patch-id 기반 체리픽 탐지를 비활성화하며 문서에 `patch_id_unavailable: true`를 표시한다 (FR-REL-005 AC-5).
 - 미러는 읽기 전용이다. PR Search는 절대 push하지 않는다.
+- **자격 증명을 remote URL에 넣지 않는다 (CR-023, DEV-110).** 넣으면 `.git/config`에 평문으로 남아 볼륨 수명 내내 존재한다. 설치 토큰은 호출마다 `-c http.extraHeader=...`로 넘기며, 그 값은 프로세스 인자라 디스크에 남지 않는다.
+- **미러 볼륨 루트는 `MIRROR_ROOT`가 정한다 (CR-023, DEV-109).** 기본값은 아래 예시의 `/mirrors`이고, 저장소 디렉터리 이름은 `<repository_id>.git`이다 — 소유자·이름이 바뀌어도 경로가 따라 바뀌지 않아야 미러를 다시 클론하지 않는다.
 - 미러 볼륨은 재구성 가능한 캐시다. 백업 대상이 아니며, 손실 시 재클론한다.
 
 ### Consequences
 
-- Positive: 시퀀스 계산이 rate limit과 무관해진다. patch-id 체리픽 탐지가 가능해진다. 대규모 백필이 API 소모 없이 진행된다.
+- Positive: 시퀀스 계산이 rate limit과 무관해진다. 대규모 백필이 API 소모 없이 진행된다.
+- **정정 (CR-023, DEV-111): patch-id는 공짜가 아니다.** `git patch-id`는 diff를 요구하고 diff는 blob을 요구하는데, blobless 클론에는 blob이 없다. git은 그것을 promisor 원격에서 **지연 인출해 볼륨에 남긴다** — 실측으로 확인했다(커밋 3·트리 3·blob 0이던 미러에서 `diff-tree -p` 한 번에 blob 2개가 생겼다). 즉 patch-id를 쓰는 순간 **THR-015가 근거로 삼은 "blobless라 파일 내용이 없음"이 성립하지 않고**, 5장의 용량 산정(blob 제외 저장소당 50MB)도 시간이 지나며 어긋난다. WP-020은 `GIT_NO_LAZY_FETCH=1`을 **기본**으로 두어 지연 인출을 막고, `patchId`는 `blob_fetch_disabled` 사유와 함께 `null`을 돌려준다 (FR-REL-005 AC-5가 정의한 경로다). `MIRROR_ALLOW_BLOB_FETCH=true`로 켤 수 있으나 위의 대가를 진다. **어느 쪽을 운영 기본으로 둘지는 미결이다.**
 - Negative: 저장소 수에 비례하는 디스크가 필요하고(3000 저장소 기준 용량은 인프라 문서에서 산정), 미러 동기화 실패라는 새 실패 모드가 생긴다.
 - Follow-up: 미러 동기화 실패 시 시퀀스 공간을 `stale`로 표시하고 재시도한다 (FR-SEQ-001 예외 처리).
 - Follow-up: 미러 디스크 사용률을 SLI로 감시하고 85% 임계에서 경보한다.

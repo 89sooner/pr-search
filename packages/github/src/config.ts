@@ -32,6 +32,32 @@ export const TOKEN_REFRESH_LEAD_MS = 5 * 60 * 1_000;
 /** FR-ING-004 AC-2가 정한 10%. */
 export const QUARANTINE_THRESHOLD = 0.1;
 
+/** 미러 볼륨 루트의 기본값. ADR-005의 예시 경로와 같다 (CR-023, DEV-109). */
+export const DEFAULT_MIRROR_ROOT = '/mirrors';
+
+export interface MirrorConfig {
+  readonly root: string;
+  /**
+   * blob 지연 인출 허용 여부 (CR-023, DEV-111).
+   *
+   * **기본은 `false`다.** 켜면 `git patch-id`가 살아나 체리픽 탐지
+   * (FR-REL-005 AC-2)가 가능해지지만, git이 promisor 원격에서 blob을 받아와
+   * **미러 볼륨에 남긴다.** 그러면 THR-015의 완화 근거("blobless라 파일
+   * 내용이 없음")와 인프라 5장의 용량 산정이 함께 무너진다. 끄면
+   * FR-REL-005 AC-5가 정의한 `patch_id_unavailable` 경로로 간다.
+   */
+  readonly allowBlobFetch: boolean;
+}
+
+export function resolveMirrorConfig(env: GitHubEnv = process.env): MirrorConfig {
+  const root = (env['MIRROR_ROOT'] ?? DEFAULT_MIRROR_ROOT).replace(/\/+$/, '');
+  return {
+    root: root === '' ? DEFAULT_MIRROR_ROOT : root,
+    // 문자열 `'true'`만 켠다. 오타나 `'0'`이 켜짐으로 읽히면 조용히 소스가 볼륨에 쌓인다.
+    allowBlobFetch: env['MIRROR_ALLOW_BLOB_FETCH'] === 'true',
+  };
+}
+
 export function resolveGitHubConfig(env: GitHubEnv = process.env): GitHubAppConfig {
   const baseUrl = (env['GHE_BASE_URL'] ?? 'https://ghe.example.com').replace(/\/+$/, '');
   return {

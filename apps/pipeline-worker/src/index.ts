@@ -20,6 +20,8 @@ import {
   hasAppCredentials,
   parseInstallations,
   resolveGitHubConfig,
+  MirrorSync,
+  resolveMirrorConfig,
 } from '@prs/github';
 import { buildServer, DEFAULT_PORT, SERVICE_NAME } from './server.js';
 import { startOutboxRelay, type OutboxRelay } from './outbox-relay.js';
@@ -28,6 +30,7 @@ import { startEnrichWorker, type EnrichLogEntry } from './enrich.js';
 import { startProjectWorker, type ProjectLogEntry } from './project.js';
 import { startAuthzWorker, type AuthzLogEntry } from './authz.js';
 import { startBackfillRunner, BACKFILL_JOB, type BackfillLogEntry, type BackfillRunner } from './backfill.js';
+import { startMirrorSweeper, type MirrorLogEntry, type MirrorRunner } from './mirror-runner.js';
 import { createEsClient } from '@prs/es';
 import type { Subscription } from '@prs/bus';
 import type { Client } from '@elastic/elasticsearch';
@@ -72,6 +75,7 @@ let projectSubscription: Subscription | undefined;
 let authzSubscription: Subscription | undefined;
 let authzRedisClient: { quit(): Promise<unknown> } | undefined;
 let backfillRunner: BackfillRunner | undefined;
+let mirrorRunner: MirrorRunner | undefined;
 let esClient: Client | undefined;
 
 if (roles.includes('batch')) {
@@ -169,6 +173,66 @@ if (roles.includes('project')) {
   });
 }
 
+if (roles.includes('mirror')) {
+  /*
+   * JOB-MIR-001 (CR-023, DEV-113).
+   *
+   * **GHE 자격 증명은 선택이다.** 없으면 자격 증명 없이 클론을 시도하고
+   * 사설 저장소에서는 실패한다 — 그 실패는 지표와 로그로 드러나며 조회는
+   * API 폴백이 답한다 (ADR-005). 자격 증명을 URL에 넣지 않는 이유는
+   * `.git/config`에 평문으로 남기 때문이다 (DEV-110).
+   */
+  const mirrorConfig = resolveMirrorConfig();
+  const ghConfig = resolveGitHubConfig();
+  let mirrorTokenFor: ((org: string) => Promise<string | null>) | undefined;
+  if (hasAppCredentials(ghConfig) && parseInstallations().length > 0) {
+    const mirrorTokens = new TokenPool(
+      new InstallationTokenProvider({
+        apiUrl: ghConfig.apiUrl,
+        appId: ghConfig.appId,
+        privateKey: ghConfig.privateKey,
+        refreshLeadMs: ghConfig.tokenRefreshLeadMs,
+        requestTimeoutMs: ghConfig.requestTimeoutMs,
+      }),
+      { installations: parseInstallations(), quarantineThreshold: ghConfig.quarantineThreshold },
+    );
+    mirrorTokenFor = async (org: string): Promise<string | null> => {
+      try {
+        return (await mirrorTokens.lease(org)).token.token;
+      } catch {
+        // 토큰을 못 얻으면 자격 증명 없이 시도한다. 공개 저장소는 그래도 된다.
+        return null;
+      }
+    };
+  }
+
+  const mirrorSync = new MirrorSync({
+    root: mirrorConfig.root,
+    remoteUrl: (ref) => `${ghConfig.baseUrl}/${ref.owner}/${ref.repo}.git`,
+    allowBlobFetch: mirrorConfig.allowBlobFetch,
+    ...(mirrorTokenFor === undefined ? {} : { tokenFor: mirrorTokenFor }),
+  });
+
+  mirrorRunner = startMirrorSweeper({
+    pool,
+    sync: mirrorSync,
+    log: (entry: MirrorLogEntry) => {
+      process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-MIR-001', ...entry })}\n`);
+    },
+  });
+
+  if (mirrorConfig.allowBlobFetch) {
+    // 조용히 켜져 있으면 안 되는 설정이다 (CR-023, DEV-111).
+    process.stdout.write(
+      `${JSON.stringify({
+        service: SERVICE_NAME,
+        level: 'warn',
+        message: 'MIRROR_ALLOW_BLOB_FETCH가 켜져 있다 — patch-id가 가능해지지만 소스 blob이 미러 볼륨에 쌓인다 (THR-015)',
+      })}\n`,
+    );
+  }
+}
+
 if (roles.includes('authz')) {
   // JOB-AUTH-001. GHE 자격 증명은 **선택**이다 — 없으면 `team_member` 표만으로
   // 팀을 펼친다. 표가 비어 있으면 팀 무효화가 아무도 맞히지 못하므로,
@@ -242,6 +306,7 @@ const shutdown = (): void => {
        * 지점과 실제 처리 지점이 어긋나 재개가 처리하지 않은 PR을 건너뛴다.
        */
       await backfillRunner?.stop();
+      await mirrorRunner?.stop();
       await enrichSubscription?.close();
       await projectSubscription?.close();
       await authzSubscription?.close();

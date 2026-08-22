@@ -37,7 +37,7 @@
 | WP-017 | W-002 PR 상세 화면 | REL-002 | WP-015, WP-016 | done |
 | WP-018 | W-003 커밋 상세 화면 | REL-002 | WP-015, WP-016 | done |
 | WP-019 | 저장소 백필 잡 | REL-002 | WP-006, WP-008 | done |
-| WP-020 | 커밋 그래프 접근 계층 | REL-003 | WP-006 | todo |
+| WP-020 | 커밋 그래프 접근 계층 | REL-003 | WP-006 | done |
 | WP-021 | 시퀀스 증분 채번 | REL-003 | WP-002, WP-020 | todo |
 | WP-022 | 시퀀스 재채번과 에폭 | REL-003 | WP-021 | todo |
 | WP-023 | 앵커 정규화와 범위 조회 API | REL-003 | WP-021, WP-013 | todo |
@@ -712,12 +712,13 @@
 - 제외:
   - 시퀀스 채번 로직 (WP-021)
 - 완료 기준(DoD):
-  - [ ] `MirrorCommitGraph.firstParentRevList`가 `git rev-list --first-parent --reverse`와 동일한 결과를 낸다
-  - [ ] `ApiCommitGraph`가 같은 픽스처에서 `MirrorCommitGraph`와 동일한 체인을 만든다 (ADR-005)
-  - [ ] blobless 클론에 파일 blob이 없다 (THR-015)
-  - [ ] 미러 미사용 저장소에서 `patchId`가 null이고 `patch_id_unavailable`이 표시된다 (FR-REL-005 AC-5)
-  - [ ] 미러 fetch 실패 시 API 폴백으로 전환된다
-- 검증 방법: `pnpm test:integration graph` (로컬 git 픽스처 저장소 사용)
+  - [x] `MirrorCommitGraph.firstParentRevList`가 `git rev-list --first-parent --reverse`와 동일한 결과를 낸다 — **실제 git 픽스처로 대조**(병합 커밋·직접 푸시 혼재). 전 구간·부분 구간 모두 일치
+  - [x] `ApiCommitGraph`가 같은 픽스처에서 `MirrorCommitGraph`와 동일한 체인을 만든다 (ADR-005)
+  - [x] blobless 클론에 파일 blob이 없다 (THR-015) — 커밋·트리 > 0, **blob = 0**. 부분 클론 설정(`promisor`·`partialclonefilter`)도 함께 검사해 필터가 무시된 클론을 blobless로 오인하지 않는다
+  - [x] 미러 미사용 저장소에서 `patchId`가 null이고 사유가 표시된다 (FR-REL-005 AC-5) — `no_mirror`. **미러가 있어도 `blob_fetch_disabled`가 나온다** (CR-023, DEV-111)
+  - [x] 미러 fetch 실패 시 API 폴백으로 전환된다 — `FallbackCommitGraph`. 폴백은 **조용히 넘어가지 않고** 콜백으로 알린다
+- 구현 범위에서 뺀 것 (CR-023, DEV-112): **커밋 메타데이터(`message`·`author`·`parent_shas`·`changed_paths`) 채우기.** API 계약과 원장 일부가 "WP-020 이후 붙는다"고 적었으나 이 WP의 구현 범위·DoD에 없고 그것을 수행하는 잡도 카탈로그에 없다. 후속 CR로 잡을 먼저 정의해야 한다
+- 검증 방법: `pnpm test:integration graph` (로컬 git 픽스처 저장소 사용 — **Elasticsearch가 필요 없어 로컬에서 판정된다**)
 - 기록: 원장 WP-020 상태
 
 ### WP-021 시퀀스 증분 채번
