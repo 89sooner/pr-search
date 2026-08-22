@@ -208,11 +208,13 @@ CREATE TABLE repository (
   visibility        TEXT        NOT NULL,          -- public | internal | private
   sequence_branches TEXT[]      NOT NULL DEFAULT '{}',   -- 최대 10 (FR-ING-009 AC-2)
   mirror_enabled    BOOLEAN     NOT NULL DEFAULT true,
+  allowed_team_ids  BIGINT[]    NOT NULL DEFAULT '{}',   -- 이 저장소에 접근할 수 있는 팀 (CR-024)
   status            TEXT        NOT NULL DEFAULT 'active', -- active | archived
   registered_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT sequence_branches_limit CHECK (array_length(sequence_branches, 1) <= 10),
   UNIQUE (owner, name)
 );
+CREATE INDEX repository_allowed_teams_idx ON repository USING GIN (allowed_team_ids);
 
 CREATE TABLE app_user (
   user_id               TEXT        PRIMARY KEY,          -- OIDC sub (CR-015, DEV-043)
@@ -261,6 +263,14 @@ CREATE INDEX permission_cache_orgs_idx  ON permission_cache USING GIN (org_ids);
 **`access_scope_version`은 울타리다 (CR-015, DEV-044).** 무효화마다 증가하고, 캐시 갱신은 시작 시점에 읽은 값이 그대로일 때만 기록한다. 회수 직전에 시작된 GHE 조회가 회수 뒤에 끝나면서 회수 이전 범위를 되살리는 것을 막는다. 보안 문서 5.4에 순서가 있다.
 
 **`team_member`는 `team` 웹훅이 채운다 (CR-015, DEV-046).** authz 소비자가 이벤트를 받아 GHE에서 구성원을 다시 읽어 갱신한다. 표를 무효화의 유일한 근거로 삼지는 않는다 — 비어 있는 표가 "무효화할 사람이 없다"로 읽히면 회수가 반영되지 않는다.
+
+**`allowed_team_ids`의 주인은 이 표다 (CR-024).** 네 개의 Elasticsearch 매핑이 모두 `allowed_team_ids`를 선언하고, 강제 접근 범위 필터(`org_team` 경로)와 `team:` 질의 필터가 그 값을 **읽는다.** 그런데 그 값을 만들어 내는 자리가 어디에도 없었다 — 투영은 `org_id`와 `visibility`만 저장소 등록에서 복사한다. 그래서 이 열을 여기에 둔다.
+
+**이벤트에 싣지 않는 이유가 있다.** 팀 권한은 PR·커밋 웹훅이 나르는 **엔티티 상태가 아니라 저장소의 운영 상태**다. `EVT-ING-002`에 실으면 이벤트마다 값이 달라지는데 `document_version`은 PR의 버전이지 저장소 권한의 버전이 아니므로 어느 쪽이 최신인지 판정할 방법이 없다. `repository_archived`가 이미 같은 이유로 이벤트가 아니라 레지스트리에서 온다 (CR-013, DEV-028).
+
+**팀 구성이 바뀌면 소급 적용한다.** `repository.allowed_team_ids`를 갱신한 뒤 `update_by_query`로 기존 문서를 고친다 — `markRepositoryArchived`와 같은 형태다. 이 경로가 없으면 팀에서 빠진 사용자가 과거 문서를 계속 보게 된다. `document_version`은 건드리지 않는다.
+
+**지금은 비어 있고, 비어 있는 것이 안전한 쪽으로 실패한다.** 열이 없던 동안 문서의 `allowed_team_ids`도 비어 있었으므로 `team:` 필터는 아무것도 맞히지 못했고, 500 저장소 초과 시의 `org_team` 경로는 팀을 통해서만 볼 수 있는 비공개 저장소를 **덜 보여 주었다**. 유출이 아니라 누락이다. 채우는 일은 WP-068이 한다 (DEV-114).
 
 ### 3.4 애플리케이션 상태
 
@@ -575,7 +585,7 @@ ALTER TABLE gh_capability_snapshot
       "commit_sha":        { "type": "keyword", "normalizer": "lowercase_normalizer" },
       "parent_shas":       { "type": "keyword", "normalizer": "lowercase_normalizer" },
       "patch_id":          { "type": "keyword" },
-      "patch_id_unavailable": { "type": "boolean" },
+      "patch_id_unavailable": { "type": "keyword" },   // no_mirror | blob_fetch_disabled | compute_failed (CR-024)
 
       "message":           { "type": "text", "analyzer": "text_ko_en",
                              "fields": { "subject": { "type": "keyword", "ignore_above": 512 } } },

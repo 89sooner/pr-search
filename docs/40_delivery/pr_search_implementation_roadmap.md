@@ -48,7 +48,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | REL-001 | 없음 (A-001 최소 지표 화면만) | `ingest-gateway`, enrich/project 워커, API-ING-001, API-ADM-006 | `raw_event`, `repository`, `dead_letter`, `job` 테이블 / `prs-pull-requests`, `prs-commits` 매핑 | k8s 매니페스트, PostgreSQL·ES·Redis 프로비저닝, CI 파이프라인 | 웹훅 HMAC 검증, 시크릿 배치 | 수집 통합 테스트, 멱등·버전 역전 테스트 |
 | REL-002 | AppShell, W-001, W-002, W-003, Conductor 통합 | `search-api`, 질의 파서, 강제 필터, API-SRCH-001~004, API-AUTH-001 | 없음 (REL-001 매핑 사용) | `web`·`search-api` 배포, OIDC 클라이언트 등록 | OIDC, 접근 범위, 권한 캐시, 권한 매트릭스 테스트 | E2E FLOW-001·FLOW-002, 권한 매트릭스, 성능 스모크 |
-| REL-003 | W-004, W-005, 시퀀스 배지, 선행·후행 섹션 | sequence 워커, API-SEQ-001~003, API-REL-001~002, API-ADM-007 | `sequence_space`, `merge_sequence` / `prs-releases` 매핑 | 미러 PVC, git 도구 이미지 | 미러 접근 정책(OD-001) | 시퀀스 회귀 테스트(git 대조), FLOW-003 E2E |
+| REL-003 | W-004, W-005, 시퀀스 배지, 선행·후행 섹션 | sequence 워커, **mirror 워커**, API-SEQ-001~003, API-REL-001~002, API-ADM-007 | `sequence_space`, `merge_sequence`, `repository.allowed_team_ids` / `prs-releases` 매핑 | 미러 PVC, git 도구 이미지 | ~~미러 접근 정책(OD-001)~~ **해소 (CR-024)** | 시퀀스 회귀 테스트(git 대조), FLOW-003 E2E |
 | REL-004 | W-008, W-009, 패싯 레일, 커서 페이저, 관계 섹션 | link 워커, API-SRCH-005, API-REL-003~004, API-ADM-004 | `prs-links` 매핑, `saved_search` 테이블 | Filebeat 배포, 아카이브 ILM | 저장된 검색 권한 미승계 | 관계 정확도 표본 검수, 재색인 무중단 검증, FLOW-006 E2E |
 | REL-005 | W-006, A-002, A-003, A-004, 차트 컴포넌트 | analytics 모듈, API-STAT-001~004, API-ADM-001~005 | `audit_record` 파티션 | 감사 보존 잡, 대시보드·알림 구성 | 감사 역할 제한, 집계 권한 반영 | 집계 정확성 테스트, FLOW-005·FLOW-007 E2E |
 | REL-006 | W-007(조건부), 이분 탐색 패널, 표식 카드, 내보내기 | API-SEQ-004~005, API-SRCH-006 | `safe_marker`, `bisect_session` 테이블 | 내보내기 잡 | 표식 역할 제한, 내보내기 감사 | FLOW-004 E2E, 그래프 접근성 검증 |
@@ -70,12 +70,12 @@
 | **Product** | capability 의미 오버라이드 작성 (위험도·권한·비밀 여부) | REL-007 — 자동 파싱만으로는 안전 정보가 나오지 않는다 (ADR-015) |
 | **Security** | GitHub App 발급 (읽기 전용) | REL-001 보강 |
 | **Security** | 웹훅 엔드포인트 등록 | REL-001 수집 |
-| **Security** | OD-002 (권한 판정 소스) | REL-002 권한 구현 |
+| ~~**Security** | OD-002 (권한 판정 소스)~~ | **해소 (2026-08-22, CR-024)** — GHE 협업자/팀 API. 등록 저장소 1,000개 초과 시 조직 단위 조회로 바꾸는 CR을 연다 |
 | **Security** | OIDC 클라이언트 등록 | REL-002 인증 |
-| **Security** | OD-001 (미러 클론 허용) | REL-003 구현 경로 선택 (두 경로 모두 구현하므로 차단은 아님) |
+| ~~**Security** | OD-001 (미러 클론 허용)~~ | **해소 (2026-08-22, CR-024)** — 허용. 단 blob 지연 인출은 기본 차단이며 켜는 것은 저장소 단위 예외다. 두 경로는 `mirror_enabled` 때문에 계속 유지한다 |
 | **Design** | Conductor 패키지 접근 | REL-002 프런트엔드 |
 | **Design** | OD-005 (nori 플러그인) | REL-004 전문 검색 분석기 (대체 경로 있으므로 차단 아님) |
-| **Release Eng** | OD-004 (릴리스 앵커 소스) | REL-003 릴리스 수집 (Git 태그만으로 진행 가능) |
+| ~~**Release Eng** | OD-004 (릴리스 앵커 소스)~~ | **해소 (2026-08-22, CR-024)** — Git 태그와 GitHub Release만. CI 배포 이벤트는 그래프 밖이라 `git log --first-parent`로 검증할 수 없다 |
 | **Infrastructure** | k8s 네임스페이스·PVC | REL-001 |
 | **Infrastructure** | PostgreSQL·ES·Redis 인스턴스 | REL-001 |
 | **Infrastructure** | 미러용 PVC 용량 | REL-003 |

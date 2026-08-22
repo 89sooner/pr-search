@@ -177,7 +177,11 @@
 
 `pull_requests[]`의 **`merge_commit_sha`는 W-003의 `no_sequence` 안내가 요구한다** (CR-021, DEV-091). 원본 커밋 화면이 "이 커밋은 머지 커밋 X로 반영되었습니다"라고 말하고 그 X로 이동시키려면 이 키가 필요하다 — 값은 이미 PR 문서에 있으므로 없는 데이터를 만드는 것이 아니다. **미머지 PR이면 키를 넣지 않는다** (`null`로 채우지 않는다).
 
-**WP-020은 이 키들을 채우지 않는다 (CR-023, DEV-112).** WP-020이 낸 것은 커밋 그래프 **접근 계층**(`CommitGraph` 인터페이스와 미러·API 두 구현)이고, 그 값을 읽어 커밋 문서에 쓰는 **잡은 카탈로그에 정의되어 있지 않다** — JOB-MIR-001은 미러 fetch 동기화뿐이다. 없는 잡을 지어내지 않고 빈칸으로 남겨 둔다. 채우려면 후속 CR로 잡을 먼저 정의해야 하며, 그때 붙는 키는 `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at`, `patch_id`, `patch_id_unavailable`, `changed_paths`, `changed_files_count`, `additions`, `deletions`다. WP-024 이후: `release_tags`.
+**WP-020은 이 키들을 채우지 않는다 (CR-023, DEV-112).** WP-020이 낸 것은 커밋 그래프 **접근 계층**(`CommitGraph` 인터페이스와 미러·API 두 구현)이고, 그 값을 읽어 커밋 문서에 쓰는 잡은 그때 카탈로그에 없었다.
+
+**그 잡을 CR-024가 정의했다: `JOB-MIR-002` 커밋 메타데이터 보강, 소유 WP는 WP-067이다.** 그때 붙는 키는 `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at`, `patch_id`, `patch_id_unavailable`, `changed_paths`, `changed_paths_truncated`, `changed_files_count`, `additions`, `deletions`다. WP-024 이후: `release_tags`.
+
+그중 **`patch_id`만 조건부다.** `MIRROR_ALLOW_BLOB_FETCH=true`인 저장소에서만 값이 오고, 그 외에는 키가 없는 대신 `patch_id_unavailable`이 `no_mirror` | `blob_fetch_disabled` | `compute_failed` 중 하나를 담는다 (FR-REL-005 AC-5, CR-024). `changed_paths`는 조건부가 아니다 — `git diff-tree --name-only`는 트리만 비교하므로 blob 없이 얻는다.
 
 응답 200 (직접 푸시 커밋) — **아직 도달하지 않는 경로다 (CR-017, DEV-061).** 커밋 문서는 PR 이벤트에서만 만들어지고 `push` 이벤트는 ack 후 버려진다(DEV-016). 직접 푸시 커밋은 **문서 자체가 없어** 현재는 404다. push 이벤트 라우팅(WP-021)이 서면 이 모양으로 응답한다 — 그때 계약을 다시 고치지 않도록 지금 적어 둔다:
 
@@ -1056,13 +1060,16 @@ POST /api/v1/analytics/percentiles
   "slowest_repositories": [
     { "repository_id": 4021, "repository": "acme/payments", "lag_p95_seconds": 9.2, "sample_count": 118 }
   ],
+  "slowest_repositories_out_of_scope": 3,
   "unavailable": ["stage_latency_seconds"]
 }
 ```
 
 - **데이터 신선도는 요청 시점이다** (AC-2의 30초 이내를 만족한다). 캐시하지 않고 PostgreSQL·Redis·Elasticsearch에 그때 물어본다
 - `ingestion_lag_seconds`는 `raw_event.processed_at − received_at`의 백분위다. 최근 1시간 표본을 쓴다
-- `slowest_repositories`는 같은 표본을 저장소로 묶은 상위 10개다 (AC-3)
+- `slowest_repositories`는 같은 표본을 저장소로 묶은 상위 10개다 (AC-3). **요청자의 접근 범위 안 저장소만 식별해서 싣는다 (CR-024, DEV-051).** 상위 10개를 먼저 고른 뒤 범위 밖 항목을 걷어 내며, 걷어 낸 개수를 `slowest_repositories_out_of_scope`에 담는다 — 순서를 뒤집어 "범위 안에서 상위 10개"를 고르면 조회자는 자기가 못 보는 더 느린 저장소가 있다는 사실 자체를 알 수 없게 된다
+- `slowest_repositories_out_of_scope`는 **건수만** 담는다. 저장소 ID·이름·지연 값 어느 것도 담지 않는다. 이 값이 있어야 조회자가 "느린 저장소가 없다"와 "내가 볼 수 없다"를 구분한다. 목록이 비고 이 값이 0이 아니면 A-001은 그 사실을 화면에 적는다
+- **나머지 집계 수치는 접근 범위를 거치지 않는다 (CR-024, DEV-051).** `intake_per_minute`·`queue_depth`·`ingestion_lag_seconds`·`dead_letter`·`enrichment_pending`은 조직 전체 값이며, FR-AUTH-002 AC-5의 명시적 예외로 SRS에 기록되어 있다. 저장소를 지목하지 않으므로 THR-003이 막으려는 저장소별 활동량 추론이 성립하지 않는다. 아키텍처 테스트의 허용 목록은 **이 두 갈래를 구분해서** 유지한다 — 새로 들어오는 전역 집계가 저장소 식별자를 담으면 통과시키지 않는다
 - **`stage_latency_seconds`는 조건부다 (CR-013, DEV-029).** 단계별 지연은 워커 프로세스의 히스토그램에만 있고 `search-api`가 읽을 수 없다. 지표 저장소(사내 Prometheus 호환)가 `METRICS_QUERY_URL`로 설정되어 있으면 질의해서 채우고, 없으면 `"unavailable"`로 둔다 — FR-ADMIN-001 예외 처리가 정한 "해당 항목만 미확인" 형태다. **워커 복제본 하나를 긁어 클러스터 전체인 양 내놓지 않는다**
 - `unavailable` 배열은 이번 응답에서 값을 채우지 못한 항목 이름을 담는다. 조회에 실패한 항목도 여기 들어가고 나머지는 정상 반환된다
 - 시퀀스 공간 상태 요약은 WP-021 이후에 더한다

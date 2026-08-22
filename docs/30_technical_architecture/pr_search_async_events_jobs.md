@@ -64,6 +64,29 @@
 | JOB-SRCH-001 | 검색 결과 비동기 내보내기 | 수동 (API-SRCH-006) | batch | 없음 | 30분 | EVT-JOB-001 | FR-SRCH-012 |
 | JOB-AUD-001 | 감사·원본 보존 만료 파티션 드롭 | 스케줄 (일 1회) | batch | 3회 | 10분 | - | FR-ING-003, FR-AUTH-004 |
 | JOB-MIR-001 | 미러 fetch 동기화 | `push` 이벤트 / 스케줄 (6시간) | **mirror** (CR-023, DEV-113 — `sequence` 역할은 WP-021이 세운다) | 3회 | 15분 | - | ADR-005 |
+| JOB-MIR-002 | 커밋 메타데이터 보강 | EVT-ING-003 (`entity_kind: commit`) / 백필 항목 / 수동 재보강 (API-ADM-002) | **mirror** | 항목별 3회 | 30초 (항목) | EVT-JOB-001 (배치 실행 시) | FR-SRCH-002, FR-REL-005, ENT-CORE-003 (CR-024, DEV-112) |
+
+### 3.1 JOB-MIR-002 커밋 메타데이터 보강 (CR-024, DEV-112)
+
+WP-020이 커밋 **그래프**를 읽는 계층을 세웠지만, 그 결과를 `prs-commits` 문서에 **쓰는 잡은 어디에도 없었다.** API 계약 §커밋 상세가 "WP-020 이후 붙는 키"로 예고한 `parent_shas`·`message`·`author`·`committer`·`authored_at`·`committed_at`·`patch_id`·`changed_paths`가 그래서 계속 비어 있다. 이 잡이 그 자리를 채운다.
+
+**입력은 커밋 SHA와 저장소다.** 커밋 문서는 투영(JOB-ING-003)이 PR 보강 결과에서 먼저 만들고, 이 잡은 그 위에 **부분 업데이트**만 얹는다. 문서를 새로 만들지 않는다 — 만들면 접근 범위 필드(`org_id`, `visibility`, `allowed_team_ids`)의 출처가 둘이 되어 어느 쪽이 맞는지 판정할 수 없다.
+
+**출처는 `selectCommitGraph`가 고른 경로다.** 미러가 있으면 `git cat-file`/`rev-list` 한 번으로 전부 읽고, `mirror_enabled`가 꺼진 저장소는 GitHub API `GET /repos/{o}/{r}/commits/{sha}`로 같은 값을 얻는다. 두 경로의 반환 형태를 이 잡이 맞춰서 하나로 쓴다.
+
+**모르는 것은 비워 두지 않고 사유를 적는다.**
+
+| 필드 | 미러 경로 | API 폴백 경로 |
+| --- | --- | --- |
+| `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at` | `git cat-file commit` | 커밋 API 응답 |
+| `changed_paths` | `git diff-tree --no-commit-id --name-only -r` — **파일 이름만 읽고 내용은 읽지 않는다.** blob이 필요 없으므로 지연 인출을 켜지 않아도 된다 | 커밋 API의 `files[].filename` (상한 300건, 초과 시 `changed_paths_truncated: true`) |
+| `patch_id` | `MIRROR_ALLOW_BLOB_FETCH=true`인 저장소에서만. 아니면 필드를 **두지 않고** `patch_id_unavailable: blob_fetch_disabled` | 계산 불가. `patch_id_unavailable: no_mirror` |
+
+`changed_paths`가 blob 없이 얻어진다는 점이 중요하다 — `git diff-tree --name-only`는 트리만 비교하므로 THR-015의 완화(“blob이 볼륨에 없음”)를 깨지 않는다. **patch-id만 blob을 요구한다.**
+
+**멱등이다.** 같은 SHA로 다시 돌려도 같은 값을 쓰며, `document_version`은 건드리지 않는다 — 이 값들은 웹훅이 나르는 엔티티 상태가 아니라 Git 히스토리에서 읽은 **불변 사실**이므로 버전 경쟁의 대상이 아니다. 단 `patch_id`만은 `MIRROR_ALLOW_BLOB_FETCH`를 켠 뒤 재실행하면 `null`에서 값으로 바뀔 수 있다.
+
+**소스 코드 본문은 어떤 경로로도 저장하지 않는다.** 이 잡은 경로 이름과 patch-id 해시만 다룬다 (NFR-005).
 
 ## 4. Event 카탈로그
 
@@ -184,6 +207,7 @@
 | JOB-ING-008 정합성 감시 | 6시간 | - | PostgreSQL↔ES 문서 수·표본 대조 |
 | JOB-SEQ-003 정합성 점검 (표본) | 1일 | 04:00 KST | 시퀀스 공간별 최근 1000개 대조 |
 | JOB-MIR-001 미러 동기화 (보정) | 6시간 | - | push 이벤트 누락 대비 |
+| JOB-MIR-002 커밋 메타데이터 재보강 | 수시 | - | 스케줄 잡이 아니다. `EVT-ING-003`으로 상시 구동되며, 스케줄 항목에 적는 것은 **미보강 잔여분 스윕**뿐이다 (일 1회, 05:00 KST) |
 | JOB-AUD-001 보존 만료 | 1일 | 03:00 KST | 파티션 드롭 |
 
 ## 10. 운영 지표

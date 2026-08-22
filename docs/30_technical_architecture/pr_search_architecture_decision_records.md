@@ -252,8 +252,8 @@ git -C /mirrors/<repository_id>.git fetch --prune origin
 git -C /mirrors/<repository_id>.git rev-list --first-parent --reverse <last_head>..<new_head>
 ```
 
-- 미러 사용 여부는 저장소별 설정이다 (FR-ING-009 AC-1). 보안 정책이 불허하면(OD-001 (b)) 저장소 단위로 API 폴백 모드로 동작한다.
-- API 폴백 모드에서는 `parents[0]`을 따라 체인을 재구성하고, patch-id 기반 체리픽 탐지를 비활성화하며 문서에 `patch_id_unavailable: true`를 표시한다 (FR-REL-005 AC-5).
+- 미러 사용 여부는 저장소별 설정이다 (FR-ING-009 AC-1). **OD-001은 2026-08-22 CR-024로 (a) 허용으로 닫혔다** — 미러가 기본 경로이고, `mirror_enabled`가 꺼진 저장소만 API 폴백 모드로 동작한다. 폴백은 "결정이 안 나서 남겨 둔 대안"이 아니라 **상시 운영 경로**이므로 계속 구현·시험 대상이다.
+- API 폴백 모드에서는 `parents[0]`을 따라 체인을 재구성하고, patch-id 기반 체리픽 탐지를 비활성화하며 문서에 `patch_id_unavailable: no_mirror`를 표시한다 (FR-REL-005 AC-5). **사유를 구분해서 적는다** — `no_mirror`(미러 자체가 없음)와 `blob_fetch_disabled`(미러는 있으나 blob 인출이 꺼져 있음)는 운영자가 해야 할 일이 다르다. 전자는 저장소 설정, 후자는 보안 정책 판단이다.
 - 미러는 읽기 전용이다. PR Search는 절대 push하지 않는다.
 - **자격 증명을 remote URL에 넣지 않는다 (CR-023, DEV-110).** 넣으면 `.git/config`에 평문으로 남아 볼륨 수명 내내 존재한다. 설치 토큰은 호출마다 `-c http.extraHeader=...`로 넘기며, 그 값은 프로세스 인자라 디스크에 남지 않는다.
 - **미러 볼륨 루트는 `MIRROR_ROOT`가 정한다 (CR-023, DEV-109).** 기본값은 아래 예시의 `/mirrors`이고, 저장소 디렉터리 이름은 `<repository_id>.git`이다 — 소유자·이름이 바뀌어도 경로가 따라 바뀌지 않아야 미러를 다시 클론하지 않는다.
@@ -262,11 +262,11 @@ git -C /mirrors/<repository_id>.git rev-list --first-parent --reverse <last_head
 ### Consequences
 
 - Positive: 시퀀스 계산이 rate limit과 무관해진다. 대규모 백필이 API 소모 없이 진행된다.
-- **정정 (CR-023, DEV-111): patch-id는 공짜가 아니다.** `git patch-id`는 diff를 요구하고 diff는 blob을 요구하는데, blobless 클론에는 blob이 없다. git은 그것을 promisor 원격에서 **지연 인출해 볼륨에 남긴다** — 실측으로 확인했다(커밋 3·트리 3·blob 0이던 미러에서 `diff-tree -p` 한 번에 blob 2개가 생겼다). 즉 patch-id를 쓰는 순간 **THR-015가 근거로 삼은 "blobless라 파일 내용이 없음"이 성립하지 않고**, 5장의 용량 산정(blob 제외 저장소당 50MB)도 시간이 지나며 어긋난다. WP-020은 `GIT_NO_LAZY_FETCH=1`을 **기본**으로 두어 지연 인출을 막고, `patchId`는 `blob_fetch_disabled` 사유와 함께 `null`을 돌려준다 (FR-REL-005 AC-5가 정의한 경로다). `MIRROR_ALLOW_BLOB_FETCH=true`로 켤 수 있으나 위의 대가를 진다. **어느 쪽을 운영 기본으로 둘지는 미결이다.**
+- **정정 (CR-023, DEV-111): patch-id는 공짜가 아니다.** `git patch-id`는 diff를 요구하고 diff는 blob을 요구하는데, blobless 클론에는 blob이 없다. git은 그것을 promisor 원격에서 **지연 인출해 볼륨에 남긴다** — 실측으로 확인했다(커밋 3·트리 3·blob 0이던 미러에서 `diff-tree -p` 한 번에 blob 2개가 생겼다). 즉 patch-id를 쓰는 순간 **THR-015가 근거로 삼은 "blobless라 파일 내용이 없음"이 성립하지 않고**, 5장의 용량 산정(blob 제외 저장소당 50MB)도 시간이 지나며 어긋난다. WP-020은 `GIT_NO_LAZY_FETCH=1`을 **기본**으로 두어 지연 인출을 막고, `patchId`는 `blob_fetch_disabled` 사유와 함께 `null`을 돌려준다 (FR-REL-005 AC-5가 정의한 경로다). `MIRROR_ALLOW_BLOB_FETCH=true`로 켤 수 있으나 위의 대가를 진다. **운영 기본은 꺼짐으로 확정했다 (CR-024, 2026-08-22).** OD-001이 미러를 허용한 근거가 바로 "blobless라 blob이 0건"이라는 실측이므로, 지연 인출을 기본으로 켜면 그 근거를 스스로 무너뜨린다. 켜는 것은 저장소 단위의 **명시적 예외**이며, 그때는 해당 저장소의 미러 용량 산정이 blob을 포함하도록 다시 계산해야 한다.
 - Negative: 저장소 수에 비례하는 디스크가 필요하고(3000 저장소 기준 용량은 인프라 문서에서 산정), 미러 동기화 실패라는 새 실패 모드가 생긴다.
 - Follow-up: 미러 동기화 실패 시 시퀀스 공간을 `stale`로 표시하고 재시도한다 (FR-SEQ-001 예외 처리).
 - Follow-up: 미러 디스크 사용률을 SLI로 감시하고 85% 임계에서 경보한다.
-- Follow-up: OD-001 결정 전까지 두 경로 모두 구현·테스트한다. 폴백 경로를 나중에 만들지 않는다.
+- ~~Follow-up: OD-001 결정 전까지 두 경로 모두 구현·테스트한다.~~ **완료 (CR-024).** OD-001이 (a)로 닫혔지만 **두 경로는 계속 유지한다** — `mirror_enabled`가 저장소별 설정이라 API 폴백은 영구 경로다. `selectCommitGraph`가 그 선택을 한 곳에서 한다.
 
 ## ADR-006 UI는 사내 Conductor 디자인 시스템만 사용
 
@@ -360,6 +360,8 @@ merge_seq = git rev-list --first-parent --reverse <base_branch> 에서의 1-기�
 - 접근 범위를 확인할 수 없으면 결과를 반환하지 않는다(기본 거부). 부분 결과를 내지 않는다 (FR-AUTH-002 AC-3).
 - 접근 범위 밖 문서 직접 조회는 404다. 403이 아니다. 403은 "존재한다"를 노출한다 (AC-4).
 - 접근 범위가 500 저장소를 넘으면 `terms` 목록 대신 조직·팀 조건으로 치환해 질의 크기를 제한한다 (AC-6). 이를 위해 문서에 `org_id`, `visibility`, `allowed_team_ids`를 함께 저장한다.
+- **`allowed_team_ids`의 주인은 저장소 등록(PostgreSQL `repository`)이고, 투영은 그것을 읽어 문서에 복사할 뿐이다 (CR-024).** 이 값을 `EVT-ING-002`에 실어 나르지 않는다 — 팀 권한은 PR·커밋 이벤트가 나르는 **엔티티 상태가 아니라 저장소의 운영 상태**이므로, 이벤트에 실으면 이벤트마다 값이 달라져 어느 것이 최신인지 판정할 수 없다(`document_version`은 저장소 권한의 버전이 아니다). 팀 구성이 바뀌면 `repository.allowed_team_ids`를 갱신한 뒤 `update_by_query`로 기존 문서에 **소급 적용**한다 — `markRepositoryArchived`가 이미 쓰는 것과 같은 형태다. 이 경로가 없으면 팀에서 빠진 사용자가 과거 문서를 계속 보게 된다.
+- **파이프라인 건강 집계는 이 강제 필터의 유일한 예외다 (CR-024, DEV-051).** 저장소를 식별하지 않는 **전역 수치**(수신량, 대기열 길이, 지연 백분위, 실패·보강 대기 건수)는 필터를 거치지 않는다. 그 수치들은 "어느 저장소가 무엇을 했는가"가 아니라 "파이프라인이 살아 있는가"에 답하며, 저장소를 지목하지 않으므로 THR-003이 막으려는 **저장소별 활동량 추론**이 성립하지 않는다. 반대로 저장소를 **식별하는** 값(`slowest_repositories`)은 `operator`에게도 접근 범위 안으로 한정하고, 범위 밖은 건수로만 알린다 — 목록이 잘렸다는 사실까지 감추면 운영자가 "느린 저장소가 없다"로 잘못 읽는다. 아키텍처 테스트의 허용 목록은 이 두 갈래를 구분해서 유지한다.
 - 접근 범위 캐시는 Redis, TTL 5분. `member`/`team`/`repository` 웹훅 이벤트 수신 시 즉시 무효화한다 (FR-AUTH-003).
 
 ### Consequences

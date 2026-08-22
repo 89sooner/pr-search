@@ -46,6 +46,8 @@
 | WP-026 | W-005 릴리스 화면과 구간 비교 | REL-003 | WP-024, WP-025 | todo |
 | WP-027 | 선행·후행 조회와 상세 화면 통합 | REL-003 | WP-023, WP-017, WP-018 | todo |
 | WP-028 | 정합성 점검과 조정 스캔 | REL-003 | WP-021, WP-019 | todo |
+| WP-067 | 커밋 메타데이터 보강 (JOB-MIR-002) | REL-003 | WP-020, WP-008 | todo |
+| WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | WP-010, WP-012 | todo |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003 | todo |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020 | todo |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | WP-030, WP-017 | todo |
@@ -717,7 +719,7 @@
   - [x] blobless 클론에 파일 blob이 없다 (THR-015) — 커밋·트리 > 0, **blob = 0**. 부분 클론 설정(`promisor`·`partialclonefilter`)도 함께 검사해 필터가 무시된 클론을 blobless로 오인하지 않는다
   - [x] 미러 미사용 저장소에서 `patchId`가 null이고 사유가 표시된다 (FR-REL-005 AC-5) — `no_mirror`. **미러가 있어도 `blob_fetch_disabled`가 나온다** (CR-023, DEV-111)
   - [x] 미러 fetch 실패 시 API 폴백으로 전환된다 — `FallbackCommitGraph`. 폴백은 **조용히 넘어가지 않고** 콜백으로 알린다
-- 구현 범위에서 뺀 것 (CR-023, DEV-112): **커밋 메타데이터(`message`·`author`·`parent_shas`·`changed_paths`) 채우기.** API 계약과 원장 일부가 "WP-020 이후 붙는다"고 적었으나 이 WP의 구현 범위·DoD에 없고 그것을 수행하는 잡도 카탈로그에 없다. 후속 CR로 잡을 먼저 정의해야 한다
+- 구현 범위에서 뺀 것 (CR-023, DEV-112): **커밋 메타데이터(`message`·`author`·`parent_shas`·`changed_paths`) 채우기.** API 계약과 원장 일부가 "WP-020 이후 붙는다"고 적었으나 이 WP의 구현 범위·DoD에 없고 그것을 수행하는 잡도 카탈로그에 없었다. **CR-024가 `JOB-MIR-002`를 정의하고 WP-067에 소유를 줬다** — 빈칸이 주인을 찾았다
 - 검증 방법: `pnpm test:integration graph` (로컬 git 픽스처 저장소 사용 — **Elasticsearch가 필요 없어 로컬에서 판정된다**)
 - 기록: 원장 WP-020 상태
 
@@ -946,6 +948,62 @@
   - [ ] 점검이 감사 기록에 남는다 (FR-ADMIN-003 AC-5)
 - 검증 방법: `pnpm test:integration ops/integrity`, `pnpm test:integration jobs/reconcile`
 - 기록: 원장 WP-028 상태, FR-ADMIN-003·FR-ING-011 매핑
+
+### WP-067 커밋 메타데이터 보강 (JOB-MIR-002)
+
+> CR-024 신설. WP-020이 그래프 **읽기** 계층을 세웠으나 그 값을 커밋 문서에 **쓰는** 잡이 없었다 (DEV-112).
+
+- 목표: `prs-commits` 문서의 커밋 자체 메타데이터를 채운다.
+- 관련 요구사항: FR-SRCH-002, FR-REL-005 (AC-5), FR-SRCH-004
+- 관련 API/데이터/잡: `JOB-MIR-002` / ENT-CORE-003, API-SRCH-003 (커밋 상세)
+- 선행 WP: WP-020, WP-008
+- 구현 범위:
+  - `JOB-MIR-002`: `EVT-ING-003`(`entity_kind: commit`) 소비 + 백필 항목 + 수동 재보강
+  - `CommitGraph`에 `readCommit(ref, sha)` 추가 — `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at`
+  - `changed_paths`: 미러는 `git diff-tree --no-commit-id --name-only -r`, 폴백은 커밋 API `files[].filename` (상한 300, 초과 시 `changed_paths_truncated`)
+  - `patch_id`: `MIRROR_ALLOW_BLOB_FETCH=true`인 저장소에서만. 그 외에는 `patch_id_unavailable`에 사유를 적는다
+  - 부분 업서트만 한다 — 문서를 새로 만들지 않고 `document_version`도 건드리지 않는다
+  - 미보강 잔여분 스윕 (일 1회 05:00 KST)
+  - 메트릭: `commit_enrich_total{source,result}`, `patch_id_unavailable_total{reason}`
+- 제외:
+  - 체리픽 **간선 생성** (WP-030) — 이 WP는 `patch_id` 값을 채우기만 한다
+  - `release_tags` (WP-024)
+  - 소스 코드 본문 저장 — 어떤 경로로도 하지 않는다 (NFR-005)
+- 완료 기준(DoD):
+  - [ ] 미러 경로와 API 폴백 경로가 **같은 픽스처에서 같은 메타데이터**를 낸다
+  - [ ] `changed_paths`를 얻은 뒤에도 미러의 **blob 수가 0이다** — `diff-tree --name-only`가 트리만 읽음을 실측으로 확인한다 (THR-015)
+  - [ ] `MIRROR_ALLOW_BLOB_FETCH`가 꺼진 저장소에서 `patch_id` 키가 **없고** `patch_id_unavailable`이 `blob_fetch_disabled`다 (FR-REL-005 AC-5)
+  - [ ] 미러가 없는 저장소에서 사유가 `no_mirror`다
+  - [ ] 같은 SHA로 두 번 돌려도 문서가 동일하고 `document_version`이 변하지 않는다
+  - [ ] 커밋 상세 API가 채워진 키를 실제로 반환한다 (API 계약 §커밋 상세)
+- 검증 방법: `pnpm test:integration jobs/commit-enrich`, `pnpm test:integration graph`
+- 기록: 원장 WP-067 상태, DEV-112 해소, FR-REL-005 매핑 갱신
+
+### WP-068 저장소 팀 접근 범위 채우기
+
+> CR-024 신설. 네 매핑이 모두 `allowed_team_ids`를 선언하고 강제 필터가 그것을 읽는데, 그 값을 만드는 자리가 없었다 (DEV-114).
+
+- 목표: `allowed_team_ids`를 레지스트리가 소유하고 투영이 읽어 문서에 싣게 한다.
+- 관련 요구사항: FR-AUTH-002 (AC-6), FR-AUTH-003, FR-SRCH-005 (`team:` 필터), FR-ING-009
+- 관련 API/데이터/잡: API-ADM-001 / ENT-CORE-001~004
+- 선행 WP: WP-010, WP-012
+- 구현 범위:
+  - 마이그레이션: `repository.allowed_team_ids BIGINT[] NOT NULL DEFAULT '{}'` + GIN 색인
+  - 저장소 등록·갱신 시 GHE 팀 API로 채운다 (OD-002가 정한 소스와 같다)
+  - `repositoryScope()`가 `allowed_team_ids`를 문서에 싣는다
+  - 팀 구성 변경(`team` 웹훅) 시 `update_by_query` 소급 적용 — `markRepositoryArchived`와 같은 형태. `document_version`은 건드리지 않는다
+  - 소급 적용을 `EVT-AUTH-001`의 권한 캐시 무효화와 **함께** 돌린다
+- 제외:
+  - 팀 이름 → ID 해석 (WP-013이 이미 세웠다)
+  - 문서에 팀 **이름** 저장 — 하지 않는다 (데이터 모델 §3.3)
+- 완료 기준(DoD):
+  - [ ] `team:<slug>` 질의가 실제 투영 문서를 맞힌다 — 지금은 한 건도 맞히지 못한다
+  - [ ] 접근 범위 500 저장소 초과 시 `org_team` 경로가 **팀을 통해서만 볼 수 있는** 비공개 저장소를 반환한다
+  - [ ] 팀에서 제거된 사용자가 그 팀으로만 보이던 과거 문서를 **더 이상 보지 못한다** (소급 적용 검증)
+  - [ ] 소급 적용 후 `document_version`이 변하지 않는다
+  - [ ] 권한 매트릭스 테스트가 팀 경로를 포함한다
+- 검증 방법: `pnpm test:integration scope-enforcement`, `pnpm test:integration resolve`
+- 기록: 원장 WP-068 상태, DEV-114 해소
 
 ---
 
@@ -1946,7 +2004,7 @@
 | --- | --- | --- |
 | REL-001 | WP-001 ~ WP-010 | 10 |
 | REL-002 | WP-011 ~ WP-019 | 9 |
-| REL-003 | WP-020 ~ WP-028 | 9 |
+| REL-003 | WP-020 ~ WP-028, WP-067, WP-068 | 11 |
 | REL-004 | WP-029 ~ WP-036 | 8 |
 | REL-005 | WP-037 ~ WP-040 | 4 |
 | REL-006 | WP-041 ~ WP-044 | 4 |
@@ -1955,6 +2013,6 @@
 | REL-009 | WP-051 ~ WP-053, WP-057 | 4 |
 | REL-010 | WP-054 ~ WP-056, WP-063, WP-064 | 5 |
 | REL-011 | WP-058 ~ WP-060, WP-065 | 4 |
-| 합계 | | 66 |
+| 합계 | | 68 |
 
 모든 REL이 WP로 분해되었고, 모든 WP가 최소 1개 FR을 참조한다.
