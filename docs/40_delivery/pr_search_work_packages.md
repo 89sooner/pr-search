@@ -663,15 +663,19 @@
 - 선행 WP: WP-006, WP-008
 - 구현 범위:
   - `pipeline-worker` batch 역할, `prs:batch` 스트림 (실시간과 분리)
+  - **`GitHubClient.listPullRequestsPaged`** — 없던 메서드다. **정렬은 `updated asc` 고정** (CR-022, DEV-098): 기본값 `created desc`면 백필 도중 갱신된 PR이 페이지를 밀어 항목이 조용히 건너뛰어진다
   - 저장소 단위 백필: PR 목록 페이지네이션 → 보강 → 투영
   - `job.cursor`에 진행 지점 저장, 중단 후 재개
   - 진행률 30초 이내 갱신 (`done`/`total`/`unit`)
-  - 동시 실행 상한 기본 3 (설정값)
+  - **잡은 이벤트가 아니라 `job` 행으로 지시하고 워커가 원자적으로 claim한다** (CR-022, DEV-101)
+  - 동시 실행 상한 기본 3 (`BACKFILL_MAX_CONCURRENCY`). **세는 것과 잡는 것을 한 트랜잭션에** 둔다 (CR-022, DEV-102)
   - 실시간보다 낮은 우선순위 (GHE 토큰 배분, 워커 풀 분리)
-  - 백필 문서도 `document_version` 규칙 준수
+  - 백필 문서의 `document_version`은 **엔티티의 `updated_at`** — 지금 시각을 쓰면 실시간을 덮어쓴다 (CR-022, DEV-099)
+  - 합성 델리버리 ID `backfill:{repository_id}:{pr_number}` — 결정론적이고 출처를 밝힌다 (CR-022, DEV-100)
   - 개별 PR 실패는 목록으로 보고하고 잡을 중단하지 않음
-  - `POST/PATCH /admin/jobs` (실행·중단)
-  - 백필 중 해당 인덱스 `refresh_interval` 일시 상향 후 복원
+  - `GET/POST/PATCH /admin/jobs` (조회·실행·중단). `PATCH`는 `cancel`·`pause`·`resume`만 받는다 (CR-022, DEV-103)
+  - API 한도 대기는 `paused`가 아니라 `running` + `progress.waiting_until` (CR-022, DEV-104)
+  - 백필 중 해당 인덱스 `refresh_interval`을 `30s`로 두고 복원. **시작 시 무조건 기본값으로 되돌린 뒤 올린다** — 앞선 잡이 죽어 남긴 것을 치운다 (CR-022, DEV-105)
 - 제외:
   - A-003 화면 (WP-040)
   - 시퀀스 채번 (WP-021)
