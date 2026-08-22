@@ -164,6 +164,56 @@ export class GitHubClient {
     });
   }
 
+  /**
+   * 저장소의 PR 목록 한 페이지 (WP-019 / CR-022, DEV-098).
+   *
+   * ## 왜 한 페이지씩인가
+   *
+   * `getAllPaged`는 상한까지 **전부 모아서** 돌려준다. 백필 대상 저장소는 PR이
+   * 수만 건일 수 있고, 그것을 메모리에 쌓은 뒤 처리하면 중간에 죽었을 때
+   * 처음부터 다시 해야 한다. 백필은 **한 페이지 처리 → 커서 저장**을 반복해야
+   * 재개가 성립한다 (FR-ING-006 AC-4).
+   *
+   * ## 정렬을 `updated asc`로 고정한다
+   *
+   * 호출 측이 고를 수 없게 인자로 열어 두지 않았다. GitHub 기본값은
+   * `created desc`인데, 그대로 쓰면 **백필 도중 새 PR이 생길 때마다 목록 앞이
+   * 밀려** 아직 읽지 않은 항목이 뒤 페이지로 넘어가고 그대로 건너뛰어진다.
+   *
+   * `updated asc`에서는 갱신된 PR이 **목록 끝으로** 간다. 이미 처리한 것이
+   * 다시 걸릴 수는 있어도 **아직 처리하지 않은 것이 사라지지 않는다.**
+   * 재처리는 문서 버전 비교가 흡수하지만(FR-ING-005 AC-1), 건너뛴 PR은
+   * 아무도 눈치채지 못한 채 검색에서 영영 빠진다 — 조사 도구에서 그것이
+   * 훨씬 나쁘다.
+   *
+   * @returns `hasMore`는 "이 페이지가 꽉 찼다"는 뜻이다. 총계가 `perPage`의
+   * 배수면 다음 요청이 빈 배열을 받는데, 그 한 번의 여분 요청이 "더 있는지"를
+   * 추측하지 않는 값이다.
+   */
+  async listPullRequestsPage(
+    ref: RepoRef,
+    page: number,
+    options: CallOptions & { readonly perPage?: number } = {},
+  ): Promise<{ readonly items: readonly PullRequestSummary[]; readonly hasMore: boolean }> {
+    const perPage = options.perPage ?? 100;
+    const items = await this.#transport.get<PullRequestSummary[]>({
+      org: orgOf(ref),
+      path: `/repos/${ref.owner}/${ref.repo}/pulls`,
+      query: {
+        // 열린 것만 받으면 백필의 목적(과거 PR)을 정면으로 놓친다.
+        state: 'all',
+        sort: 'updated',
+        direction: 'asc',
+        per_page: perPage,
+        page,
+      },
+      ...options,
+    });
+
+    if (!Array.isArray(items)) return { items: [], hasMore: false };
+    return { items, hasMore: items.length >= perPage };
+  }
+
   async listPullRequestCommits(ref: RepoRef, number: number, options: CallOptions = {}): Promise<CommitSummary[]> {
     return [...(await this.listPullRequestCommitsPaged(ref, number, options)).items];
   }

@@ -1015,9 +1015,9 @@ POST /api/v1/analytics/percentiles
 ```
 
 - 응답 201: `{ "job_id": 88, "state": "queued", "correlation_id": "..." }`
-- 오류: `CONFLICT` (409) — 같은 `(type, target)`에 활성 잡이 이미 있다. 부분 유니크 인덱스가 DB에서 강제하므로 경합에서도 둘이 뜨지 않는다
-- 오류: `NOT_FOUND` (404) — 등록되지 않은 저장소
-- `VALIDATION_ERROR` (400) — 알 수 없는 `type`
+- 오류: **`JOB_CONFLICT`** (409) — 같은 `(type, target)`에 활성 잡이 이미 있다. 부분 유니크 인덱스가 DB에서 강제하므로 경합에서도 둘이 뜨지 않는다
+- 오류: `NOT_FOUND` (404) — 등록되지 않은 저장소. **잡을 만들어 두지 않는다**: 만들면 워커가 잡을 때마다 실패하고 운영자는 원인이 미등록임을 알 수 없다
+- 오류: `INVALID_PARAMETER` (400) — 알 수 없는 `type`
 
 **상한을 초과해도 `POST`는 거절하지 않는다.** 큐에 넣고 `queued`로 둔다 — 상한은 *동시에 도는 수*의 제약이지 *요청받을 수 있는 수*의 제약이 아니다(AC-6). 넷째 요청을 400으로 막으면 운영자가 앞의 셋이 끝날 때까지 지켜보다 다시 눌러야 한다.
 
@@ -1029,7 +1029,7 @@ POST /api/v1/analytics/percentiles
 
 - `action`: `cancel` | `pause` | `resume` — **이 셋만 받는다** (CR-022, DEV-103). 진행률·커서·상태를 직접 쓰는 필드는 두지 않는다
 - 응답 200: 갱신된 잡 1건
-- 오류: `VALIDATION_ERROR` (400) — 현재 상태에서 불가능한 전이(예: `completed`를 `resume`)
+- 오류: `INVALID_PARAMETER` (400) — 현재 상태에서 불가능한 전이(예: `completed`를 `resume`). **현재 상태를 `detail`에 함께 싣는다** — 운영자가 왜 안 되는지 알아야 다음 행동을 고른다
 - 오류: `NOT_FOUND` (404)
 
 전이 규칙: `queued`·`running` → `pause`/`cancel`, `paused` → `resume`/`cancel`. 종료 상태(`completed`·`failed`·`cancelled`)는 어느 것도 받지 않는다 — 끝난 잡을 되살리는 것은 **새 잡**이지 전이가 아니다.

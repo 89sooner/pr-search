@@ -44,6 +44,7 @@ import {
 } from '@prs/bus';
 import { deadLetterRepo, rawEventRepo, type Pool, type RawEventRow } from '@prs/db';
 import { GitHubApiError, safeMessage, type GitHubClient } from '@prs/github';
+import { toEnrichedPullRequest } from './enriched-payload.js';
 import { extractTarget, type EnrichTarget } from './webhook-target.js';
 import type { WorkerMetrics } from './metrics.js';
 
@@ -258,25 +259,8 @@ async function enrichTarget(
     const fresh = await deps.client.getPullRequest(ref, target.prNumber, { priority: 'realtime' });
     // API 응답이 웹훅보다 새롭다. 웹훅은 발생 시점의 스냅숏이고 재전송이면
     // 몇 분 전 것일 수도 있다. 그래서 겹치는 필드는 API 값을 그대로 쓴다.
-    pullRequest = {
-      number: fresh.number,
-      title: fresh.title,
-      body: fresh.body,
-      state: fresh.state,
-      draft: fresh.draft,
-      labels: fresh.labels.map((label) => label.name),
-      merged: fresh.merged,
-      created_at: fresh.created_at,
-      updated_at: fresh.updated_at,
-      closed_at: fresh.closed_at,
-      merged_at: fresh.merged_at,
-      merge_commit_sha: fresh.merge_commit_sha,
-      author: fresh.user?.login ?? null,
-      head_ref: fresh.head.ref,
-      head_sha: fresh.head.sha,
-      base_ref: fresh.base.ref,
-      base_sha: fresh.base.sha,
-    };
+    // 매핑은 백필과 공유한다 — 두 경로가 각자 옮기면 언젠가 어긋난다 (CR-022).
+    pullRequest = toEnrichedPullRequest(fresh);
   } catch (error) {
     if (isNotFound(error)) {
       // 삭제된 PR이다. 다시 물어봐도 없다 (비동기 5.2). 재시도 없이 종료한다.

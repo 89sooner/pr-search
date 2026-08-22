@@ -1,0 +1,279 @@
+/**
+ * API-ADM-002 잡 실행·중단·진행률 (WP-019 DoD, FR-ING-006·FR-ADMIN-002).
+ *
+ * 실제 PostgreSQL에 붙는다. 이 API가 지켜야 할 것 대부분이 **DB 제약**이다 —
+ * 같은 대상에 활성 잡 하나(`job_active_uk`)와 상태 전이가 그렇다. 목으로
+ * 바꾸면 검증하려던 것을 건너뛴다.
+ *
+ * 검증: `pnpm test:integration admin/jobs`
+ */
+
+import type { Client as EsClient } from '@elastic/elasticsearch';
+import type { FastifyInstance } from 'fastify';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { jobRepo, repositoryRepo, type Pool } from '@prs/db';
+import { createEsClient, resolveClientOptions } from '@prs/es';
+import { RedisStreamsEventBus, type Redis } from '@prs/bus';
+import { buildServer } from '../../src/server.js';
+import { JOBS_PATH } from '../../src/ops/routes.js';
+import { createTestRedis, migratedPool } from '../helpers.js';
+
+const TEST_AUTH_CONFIG = {
+  enabled: false,
+  cookieSecure: false,
+  loginPath: '/auth/login',
+  groupRoleMap: new Map<string, never>(),
+} as const;
+
+const TOKEN = 'jobs-token';
+const AUTH = { authorization: `Bearer ${TOKEN}` };
+const REPOSITORY_ID = 4021;
+const TARGET = 'acme/payments';
+
+let pool: Pool;
+let es: EsClient;
+let redis: Redis;
+let bus: RedisStreamsEventBus;
+let app: FastifyInstance;
+
+beforeAll(async () => {
+  pool = await migratedPool();
+  es = createEsClient(resolveClientOptions());
+  redis = createTestRedis();
+  bus = new RedisStreamsEventBus(redis);
+  app = buildServer({
+    config: {
+      port: 0,
+      adminTokens: [{ name: 'alice', token: TOKEN }],
+      metricsQueryUrl: null,
+      gheBaseUrl: null,
+      auth: TEST_AUTH_CONFIG,
+    },
+    ops: { pool, bus },
+    registry: { pool, es, lookup: async () => null },
+  });
+  await app.ready();
+}, 90_000);
+
+afterAll(async () => {
+  await app.close();
+  await bus.close();
+  redis.disconnect();
+  await es.close();
+  await pool.end();
+});
+
+beforeEach(async () => {
+  await pool.query('TRUNCATE repository, job, audit_record RESTART IDENTITY CASCADE');
+  await repositoryRepo.upsertRepository(pool, {
+    repository_id: REPOSITORY_ID,
+    owner: 'acme',
+    name: 'payments',
+    org_id: 77,
+    visibility: 'internal',
+    sequence_branches: ['main'],
+  });
+});
+
+type Injected = Awaited<ReturnType<FastifyInstance['inject']>>;
+
+const post = async (payload: Record<string, unknown>): Promise<Injected> =>
+  app.inject({ method: 'POST', url: JOBS_PATH, headers: AUTH, payload });
+
+const patch = async (jobId: number, payload: Record<string, unknown>): Promise<Injected> =>
+  app.inject({ method: 'PATCH', url: `${JOBS_PATH}/${String(jobId)}`, headers: AUTH, payload });
+
+describe('POST — 잡 실행', () => {
+  it('백필을 큐에 넣는다', async () => {
+    const response = await post({ type: 'backfill', target: TARGET });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json<{ job_id: number; state: string; target: string }>();
+    expect(body.state).toBe('queued');
+    expect(body.target).toBe(TARGET);
+    expect(body.job_id).toBeGreaterThan(0);
+  });
+
+  it('**같은 대상에 둘째는 409다** — 부분 유니크 인덱스가 강제한다', async () => {
+    await post({ type: 'backfill', target: TARGET });
+    const second = await post({ type: 'backfill', target: TARGET });
+
+    expect(second.statusCode).toBe(409);
+    expect(second.json<{ error: { code: string } }>().error.code).toBe('JOB_CONFLICT');
+  });
+
+  it('끝난 잡이 있으면 새로 넣을 수 있다 — 활성 잡만 막는다', async () => {
+    const first = await post({ type: 'backfill', target: TARGET });
+    const jobId = first.json<{ job_id: number }>().job_id;
+    await jobRepo.finishJob(pool, jobId, 'completed');
+
+    expect((await post({ type: 'backfill', target: TARGET })).statusCode).toBe(201);
+  });
+
+  it('**등록되지 않은 저장소는 404다** — 유령 잡을 만들지 않는다', async () => {
+    /*
+     * 만들어 두면 워커가 잡을 때마다 실패하고, 운영자는 원인이 미등록임을
+     * 알 수 없다.
+     */
+    const response = await post({ type: 'backfill', target: 'acme/nope' });
+
+    expect(response.statusCode).toBe(404);
+    const rows = await jobRepo.listJobs(pool);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('알 수 없는 `type`은 400이다 — 아무도 잡지 않는 잡을 만들지 않는다', async () => {
+    expect((await post({ type: 'reindex', target: TARGET })).statusCode).toBe(400);
+    expect((await post({ target: TARGET })).statusCode).toBe(400);
+  });
+
+  it('`target` 모양이 틀리면 400이다', async () => {
+    expect((await post({ type: 'backfill', target: 'payments' })).statusCode).toBe(400);
+    expect((await post({ type: 'backfill', target: 42 })).statusCode).toBe(400);
+  });
+
+  it('**상한을 넘겨도 거절하지 않는다** — 큐에 넣는다 (AC-6)', async () => {
+    /*
+     * 상한은 *동시에 도는 수*의 제약이지 *요청받을 수 있는 수*의 제약이
+     * 아니다. 넷째를 400으로 막으면 운영자가 앞의 셋이 끝나는 것을 지켜보다
+     * 다시 눌러야 한다.
+     */
+    for (const name of ['a', 'b', 'c', 'd']) {
+      await repositoryRepo.upsertRepository(pool, {
+        repository_id: 5000 + name.charCodeAt(0),
+        owner: 'acme',
+        name,
+        org_id: 77,
+        visibility: 'internal',
+        sequence_branches: ['main'],
+      });
+      expect((await post({ type: 'backfill', target: `acme/${name}` })).statusCode).toBe(201);
+    }
+    expect(await jobRepo.listJobs(pool, { state: 'queued' })).toHaveLength(4);
+  });
+
+  it('인증 없이는 401이다', async () => {
+    expect((await app.inject({ method: 'POST', url: JOBS_PATH, payload: {} })).statusCode).toBe(401);
+  });
+});
+
+describe('GET — 조회', () => {
+  it('목록과 단건을 낸다', async () => {
+    const created = await post({ type: 'backfill', target: TARGET });
+    const jobId = created.json<{ job_id: number }>().job_id;
+
+    const list = await app.inject({ method: 'GET', url: JOBS_PATH, headers: AUTH });
+    expect(list.statusCode).toBe(200);
+    expect(list.json<{ items: unknown[] }>().items).toHaveLength(1);
+
+    const one = await app.inject({ method: 'GET', url: `${JOBS_PATH}/${String(jobId)}`, headers: AUTH });
+    expect(one.statusCode).toBe(200);
+    expect(one.json<{ job_id: number }>().job_id).toBe(jobId);
+  });
+
+  it('**`cursor`를 내보내지 않는다** (DEV-103)', async () => {
+    const created = await post({ type: 'backfill', target: TARGET });
+    const jobId = created.json<{ job_id: number }>().job_id;
+    await jobRepo.updateJobProgress(pool, jobId, { done: 10, total: 100, unit: 'pull_request' }, { page: 2, done: 10 });
+
+    const one = await app.inject({ method: 'GET', url: `${JOBS_PATH}/${String(jobId)}`, headers: AUTH });
+    const body = one.json<Record<string, unknown>>();
+
+    /*
+     * 재개 지점은 워커의 내부 상태다. 운영자가 읽을 수 있으면 고치고
+     * 싶어지고, 고치면 재개가 무엇을 이어받는지 아무도 보장하지 못한다.
+     */
+    expect(body).not.toHaveProperty('cursor');
+    // 진행률은 그대로 보인다 — 그것이 운영자가 볼 것이다 (AC-2).
+    expect(body['progress']).toMatchObject({ done: 10, total: 100, unit: 'pull_request' });
+  });
+
+  it('**한도 대기가 진행률에 보인다** (DEV-104)', async () => {
+    const created = await post({ type: 'backfill', target: TARGET });
+    const jobId = created.json<{ job_id: number }>().job_id;
+    const until = '2026-08-22T10:00:00.000Z';
+    await jobRepo.updateJobProgress(
+      pool,
+      jobId,
+      { done: 10, total: null, unit: 'pull_request', waiting_until: until },
+      { page: 2, done: 10 },
+    );
+
+    const one = await app.inject({ method: 'GET', url: `${JOBS_PATH}/${String(jobId)}`, headers: AUTH });
+    const body = one.json<{ state: string; progress: Record<string, unknown> }>();
+
+    expect(body.progress['waiting_until']).toBe(until);
+    // 상태는 바뀌지 않았다 — `paused`는 운영자 의도만 뜻한다.
+    expect(body.state).not.toBe('paused');
+  });
+
+  it('없는 잡은 404다', async () => {
+    expect((await app.inject({ method: 'GET', url: `${JOBS_PATH}/999999`, headers: AUTH })).statusCode).toBe(404);
+  });
+
+  it('식별자가 정수가 아니면 400이다', async () => {
+    expect((await app.inject({ method: 'GET', url: `${JOBS_PATH}/abc`, headers: AUTH })).statusCode).toBe(400);
+  });
+});
+
+describe('PATCH — 중단·재개', () => {
+  async function queued(): Promise<number> {
+    return (await post({ type: 'backfill', target: TARGET })).json<{ job_id: number }>().job_id;
+  }
+
+  it('중단하고 재개한다', async () => {
+    const jobId = await queued();
+
+    const paused = await patch(jobId, { action: 'pause' });
+    expect(paused.statusCode).toBe(200);
+    expect(paused.json<{ state: string }>().state).toBe('paused');
+
+    const resumed = await patch(jobId, { action: 'resume' });
+    /*
+     * `running`이 아니라 `queued`로 돌아간다 — 곧바로 올리면 상한을 넘겨
+     * 되살아난다. claim을 다시 거쳐야 한다 (DEV-102).
+     */
+    expect(resumed.json<{ state: string }>().state).toBe('queued');
+  });
+
+  it('취소는 종료 시각을 남긴다', async () => {
+    const jobId = await queued();
+    const response = await patch(jobId, { action: 'cancel' });
+
+    expect(response.json<{ state: string; finished_at: string | null }>().state).toBe('cancelled');
+    expect(response.json<{ finished_at: string | null }>().finished_at).not.toBeNull();
+  });
+
+  it('**끝난 잡은 되살릴 수 없다** — 새 잡이지 전이가 아니다', async () => {
+    const jobId = await queued();
+    await jobRepo.finishJob(pool, jobId, 'completed');
+
+    const response = await patch(jobId, { action: 'resume' });
+    expect(response.statusCode).toBe(400);
+    // 현재 상태를 알려 준다 — 조용히 무시하면 운영자가 됐다고 믿는다.
+    expect(response.json<{ error: { detail?: { state?: string } } }>().error.detail?.state).toBe('completed');
+  });
+
+  it('**중단이 조용히 무시되지 않는다** — 이미 취소된 잡을 또 취소하면 400', async () => {
+    const jobId = await queued();
+    await patch(jobId, { action: 'cancel' });
+
+    expect((await patch(jobId, { action: 'cancel' })).statusCode).toBe(400);
+  });
+
+  it('**세 액션만 받는다** (DEV-103)', async () => {
+    const jobId = await queued();
+
+    for (const action of ['complete', 'fail', 'reset', '']) {
+      expect((await patch(jobId, { action })).statusCode).toBe(400);
+    }
+    // 진행률·커서를 직접 쓰는 길이 없다.
+    expect((await patch(jobId, { cursor: { page: 99 } })).statusCode).toBe(400);
+    const row = await jobRepo.findJobById(pool, jobId);
+    expect(row?.cursor).toBeNull();
+  });
+
+  it('없는 잡은 404다', async () => {
+    expect((await patch(999999, { action: 'cancel' })).statusCode).toBe(404);
+  });
+});

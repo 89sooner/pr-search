@@ -42,7 +42,7 @@
 | WP-016 | W-001 통합 검색 화면 | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 5항 통과, 1항 부분 (6.16장). 단위 32건 + a11y 62건 + e2e 26건, axe 위반 0건 | CR-019가 메운 빈칸(QA 항목 이중 배정·패싯 세 상태·시퀀스 미채번·`from_q`·최근 검색 출처·해석 상한·관계 배지 소유권)을 함께 구현했다. **상태 매트릭스 13종 전부**가 렌더링되고 각각 시험이 있다. `QA-W001-14`는 CR-019 DEV-075대로 **절반만** — "페이지 번호 UI 없음"은 통과, "커서 기반 동작"은 WP-032다. 구현 중 결함 셋을 스스로 잡았다: 붙여넣은 GHE URL이 전문 검색으로 떨어지던 것, QA-COMMON-16 검사의 거짓 경보, Conductor 규칙 위반 2건 |
 | WP-017 | W-002 PR 상세 화면 | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 4항 통과, 2항 부분 (6.17장). 단위 42건 + a11y 34건 + e2e 13건, axe 위반 0건 | CR-020이 메운 빈칸(커밋 총계·타임라인 네 상태·리뷰 상태 둘·GHE 링크 널 허용·`epoch_stale` 미구현·확장 조회 절반)을 함께 구현했다. `QA-W002-03`·`QA-W002-17`은 CR-020 DEV-082·088대로 **절반만** — 절삭 표시와 "확장 전 조회 금지"는 통과, 전체 건수는 WP-020, 확장 조회는 WP-031이다. 구현 중 **DEV-089(보관·파일 절삭을 어느 화면도 표시하지 않는다)**를 스스로 발견해 등록·해소했다. 변이 시험 48종 전부가 잡혔고, 그 과정에서 **시험 구멍 6개**를 찾아 메웠다 |
 | WP-018 | W-003 커밋 상세 화면 | REL-002 | done | 에이전트 | (이 PR) | DoD 4항 중 3항 통과, 1항 부분 (6.18장). 단위 47건 + a11y 34건 + e2e 14건, axe 위반 0건 | CR-021이 메운 빈칸(헤더 메타데이터·머지 커밋 링크 재료·체인 밖 판정·직접 푸시 도달 불가·경로 총계 널 허용·보강 의미·복사 실패)을 함께 구현했다. `QA-W003-03`은 CR-021 DEV-093대로 **절반만** — "PR 없을 때 사유 표시"는 통과, "직접 푸시로 표시"는 WP-021이다. **WP-017이 넘긴 세션 관문 통합을 여기서 했다** — 라우트 넷이 `GuardedPage` 하나를 지난다. 구현 중 **DEV-097(FLOW-001 4단계 미구현 — W-001이 후보 1건에서 영원히 멈춘다)**을 발견해 등록·해소했다 |
-| WP-019 | 저장소 백필 잡 | REL-002 | todo | - | - | - | - |
+| WP-019 | 저장소 백필 잡 | REL-002 | done | 에이전트 | (이 PR) | DoD 6항 중 1항 통과, 5항 **CI 검증** (6.19장). 단위 22건 + 통합 26건(로컬 NOT RUN) | CR-022가 메운 빈칸(PR 목록 메서드 부재·문서 버전·합성 델리버리 ID·실행 경로·동시 실행 상한·`/admin/jobs` 부재·한도 대기 상태·설정 복원 책임)을 함께 구현했다. **AC-5가 분기가 아니라 수의 대소로 성립한다** — 백필의 버전이 엔티티 `updated_at`이라 조건부 업서트가 저절로 거절한다. **이 환경에 Docker가 없어 통합 시험을 로컬에서 돌리지 못했다** — DoD 6항 중 5항이 그 시험에 걸려 있어 **CI가 처음 판정한다** |
 | WP-020 | 커밋 그래프 접근 계층 | REL-003 | todo | - | - | - | OD-001 결정 전이면 두 경로 모두 구현 |
 | WP-021 | 시퀀스 증분 채번 | REL-003 | todo | - | - | - | 핵심 WP |
 | WP-022 | 시퀀스 재채번과 에폭 | REL-003 | todo | - | - | - | - |
@@ -123,7 +123,7 @@
 | FR-ING-003 | WP-002, WP-004 | `packages/db/migrations/001_ingestion.up.sql`, `packages/db/src/partitions.ts`, `packages/db/src/repositories/raw-event.ts`, `apps/ingest-gateway/src/archive.ts` | `packages/db/integration/{partitions,constraints}.test.ts`, `apps/ingest-gateway/integration/webhook.test.ts` | partial (AC-1·AC-2·AC-4 충족. AC-3 원본만으로 재색인은 WP-008·WP-033) |
 | FR-ING-004 | WP-006, WP-007 | `packages/github/src/{config,redact,errors,jwt,rate-limit,token-provider,token-pool,scheduler,transport,client}.ts`, `apps/pipeline-worker/src/{enrich,webhook-target,metrics}.ts`, `packages/bus/src/{types,backoff,redis-streams,in-memory}.ts`, `packages/domain/src/{events,event-id}.ts` | `packages/github/src/{redact,rate-limit,scheduler,jwt,config}.test.ts`, `packages/github/testing/{mock-ghe,client,smoke-real-ghe}.test.ts`, `apps/pipeline-worker/src/webhook-target.test.ts`, `apps/pipeline-worker/integration/worker/enrich.test.ts`, `packages/bus/integration/contract.ts` | verified (AC-1~AC-4 전부. AC-5 미러 우선 커밋 조회는 WP-020 — 지금은 ADR-005의 API 폴백 경로만) |
 | FR-ING-005 | WP-005, WP-008 | `packages/bus/src/{types,topics,partition,config,redis-streams,in-memory}.ts`, `packages/es/src/{upsert,bootstrap,indices}.ts`, `apps/pipeline-worker/src/{project,documents,enriched-payload,metrics}.ts`, `packages/domain/src/events.ts` | `packages/es/src/upsert.test.ts`, `packages/es/integration/bootstrap.test.ts`, `apps/pipeline-worker/src/{documents,enriched-payload}.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | verified (AC-1~AC-5 전부. AC-5는 개발 데이터셋 20건 기준 전량 10초 버킷 이내) |
-| FR-ING-006 | WP-019 | - | - | not_started |
+| FR-ING-006 | WP-019 | `packages/github/src/client.ts` (`listPullRequestsPage`), `packages/db/src/repositories/job.ts` (`claimNextJob`·`transitionJob`), `apps/pipeline-worker/src/{backfill-plan,backfill}.ts`, `apps/search-api/src/ops/jobs.ts` | `apps/pipeline-worker/src/backfill-plan.test.ts`, `apps/pipeline-worker/integration/jobs/backfill.test.ts`, `apps/search-api/integration/admin/jobs.test.ts` | partial (AC-1·AC-2·AC-4·AC-5·AC-6 구현하고 통합 시험을 썼으나 **로컬 실행은 NOT RUN**(Docker 부재) — CI가 판정한다. **AC-3(실시간 지연 미영향)은 구조로만 세웠다**: 모든 백필 호출이 `priority: 'backfill'`이고 역할 분리로 워커 풀을 나눌 수 있다. 실제 지연 p95는 운영 규모 측정이 필요해 **측정하지 않았다**, DEV-058과 같은 형태) |
 | FR-ING-007 | WP-002, WP-007, WP-008, WP-009 | `packages/db/migrations/{001_ingestion,006_dead_letter}.up.sql`, `packages/db/src/repositories/dead-letter.ts`, `packages/bus/src/{backoff,ingest}.ts`, `apps/pipeline-worker/src/{enrich,project}.ts`, `apps/search-api/src/ops/{dead-letters,routes}.ts`, `apps/search-api/src/{config,metrics}.ts` | `packages/db/integration/dead-letter.test.ts`, `apps/search-api/integration/ops/dead-letter.test.ts`, `apps/pipeline-worker/integration/worker/{enrich,project}.test.ts`, `packages/bus/integration/contract.ts` | verified (AC-1~AC-5 전부. AC-4 재처리 멱등은 재투입 payload의 `delivery_id` 보존으로, 문서 수준은 WP-008의 결정론적 ID 시험으로 각각 검증) |
 | FR-ING-008 | WP-035 | - | - | not_started |
 | FR-ING-009 | WP-008, WP-010, WP-040 | `apps/search-api/src/ops/{repositories,ghe-lookup,routes}.ts`, `packages/db/src/repositories/{repository,audit,job}.ts`, `packages/es/src/registry.ts`, `packages/es/src/mappings/commits.ts`, `apps/pipeline-worker/src/{project,documents}.ts` | `apps/search-api/integration/admin/repositories.test.ts`, `packages/es/integration/registry.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | verified (AC-1~AC-5 전부. AC-5 감사 주체는 관리 토큰 이름이며 WP-012의 OIDC 신원이 대체한다) |
@@ -1062,7 +1062,46 @@ DoD 4항 중 3항 통과, 1항 부분. 검증 방법은 `pnpm test web/commit`, 
 
 **시험이 확인하지 못한 것.** `QA-W003-03`의 나머지 절반(`role: 'direct_push'`)은 **서버가 그 값을 낼 수 없어** 합성 입력으로만 걸었다 — 통과로 적지 않는다. `W-003-SEQPOS`의 앞뒤 인접 커밋(WP-027), 포함 릴리스(WP-024), 관계(WP-031)는 골격만 세웠다. `pnpm test:integration`은 이 환경에 Docker가 없어 **로컬에서 NOT RUN**이었고, DEV-091이 더한 `merge_commit_sha`의 통합 시험 2건은 **CI가 처음 돌려 통과했다**(378 → 380건).
 
-### 6.19 릴리스 게이트
+### 6.19 WP-019 검증 실행 기록
+
+**DoD 6항 중 1항만 로컬에서 판정했다. 나머지 다섯은 통합 시험에 걸려 있고 이 환경에 Docker가 없어 CI가 처음 판정한다.** 통과로 적지 않는다.
+
+| DoD | 결과 | 근거 |
+| --- | --- | --- |
+| QA-A003-05, QA-A003-06이 통과한다 | **부분** | **QA-A003-06(재개)은 통합 시험을 썼다** — 1페이지 처리 중 중단이 걸리면 2페이지를 시작하지 않고 커서가 `page: 2`를 가리키며, 그 커서로 claim하면 3페이지부터 읽는다. **로컬 NOT RUN.** **QA-A003-05(우선순위)는 구조로만 세웠다**: 모든 백필 호출이 `priority: 'backfill'`이고 `RequestScheduler`가 실시간을 먼저 비운다. 실제 지연 영향은 운영 규모 부하가 있어야 재므로 **측정하지 않았다** |
+| 백필 실행 중 실시간 수집 지연 p95 10초 유지 (AC-3) | **NOT RUN** | 운영 규모 데이터셋도 부하 harness도 이 환경에 없다 (DEV-058과 같은 형태). 예산을 지키는 **구조**만 세웠다 — 우선순위 분리와 워커 풀 분리 |
+| 중단 후 재개 시 마지막 커서부터 이어진다 (AC-4) | 통합 시험 있음, **로컬 NOT RUN** | 커서가 `{page, done}`이고 **페이지를 다 처리한 뒤에만** 전진한다. 망가진 커서는 처음부터 — 중간을 추측하면 그 사이 PR이 영영 색인되지 않는다 |
+| 백필 문서가 더 새로운 실시간 문서를 덮어쓰지 않는다 (AC-5) | 통합 시험 있음, **로컬 NOT RUN** | **분기가 아니라 수의 대소로 성립한다.** 백필의 버전이 엔티티 `updated_at`이고 웹훅 수신은 언제나 그 뒤이므로, 이미 있는 조건부 업서트가 저절로 거절한다 |
+| 동시 실행 4개 요청 시 3개만 실행된다 (AC-6) | 통합 시험 있음, **로컬 NOT RUN** | 세는 것과 잡는 것이 **한 트랜잭션**이다(`FOR UPDATE SKIP LOCKED`). 다섯을 동시에 claim하는 시험도 함께 걸었다 — 나뉘어 있으면 다섯이 동시에 `running=0`을 읽는다 |
+| API 한도 소진 시 대기하고 회복 시각에 자동 재개 | 통합 시험 있음, **로컬 NOT RUN** | 잡을 **실패시키지 않고** 기다린다. 상태는 `running`을 유지하고 사유만 `progress.waiting_until`에 남긴다 — `paused`로 바꾸면 자동 재개가 운영자의 중단까지 되살린다 |
+
+로컬에서 통과한 명령:
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` / `pnpm lint` | 종료 코드 0 |
+| `pnpm test` (전량) | 종료 코드 0 — **944건 통과 + 1건 건너뜀**(real-GHE smoke). 백필 판정 22건이 그중 새것이다 |
+| `pnpm test:integration` | **NOT RUN** — 이 환경에 Docker가 없다. **이번 WP는 그것이 특히 아프다**: DoD 6항 중 5항이 통합 시험에 걸려 있어 CI가 처음 판정한다 |
+
+**AC-5를 코드가 아니라 산술로 세웠다.**
+
+백필에 "실시간을 덮어쓰지 않기" 분기를 따로 두지 않았다. 백필 문서의 버전을 **엔티티의 `updated_at`**으로 두면, 웹훅 수신 시각은 언제나 그 갱신보다 뒤이므로 같은 사실에 대해 실시간이 **항상** 이긴다 — 이미 있는 조건부 업서트가 낮은 버전을 거절한다. 분기를 두면 그 분기가 틀렸을 때 조용히 덮어쓰고, 덮어쓴 사실은 아무도 눈치채지 못한다.
+
+**정렬을 고정한 것이 이 WP에서 가장 조용한 결정이다 (DEV-098).**
+
+`listPullRequestsPage`는 정렬을 인자로 열어 두지 않고 `updated asc`로 못박는다. GitHub 기본값 `created desc`로 두면 **백필 도중 새 PR이 생길 때마다 목록 앞이 밀려** 아직 읽지 않은 항목이 뒤 페이지로 넘어가고 그대로 건너뛰어진다. `updated asc`에서는 갱신된 PR이 목록 끝으로 가므로 **이미 처리한 것이 다시 걸릴 수는 있어도 아직 처리하지 않은 것이 사라지지 않는다.** 재처리는 버전 비교가 흡수하지만, 건너뛴 PR은 검색에서 영영 빠진 채 아무도 모른다.
+
+**변이 시험은 판정 계층까지만 돌렸다.** 15종 중 14종이 첫 통과에서 잡혔고 1종이 살아남았다.
+
+| 생존 | 판정 | 조치 |
+| --- | --- | --- |
+| 빈 문자열 검사 제거 | **동치 변이 — 죽은 검사였다.** `Date.parse('')`가 이미 `NaN`을 준다(실측 확인: `''`·`'   '`·`'not-a-date'` 모두 `NaN`). 검사가 결과를 **바꾸지 못한다** | **지웠다.** 결과를 바꾸지 못하는 줄은 읽는 사람에게 "여기에 무언가 있다"고 거짓말을 한다 (WP-016에서 도달 불가능한 지름길을 지운 것과 같은 판단) |
+
+**워커 루프와 API는 변이 시험을 돌리지 못했다.** 그 계층의 시험이 전부 통합 시험이고 로컬에서 실행되지 않기 때문이다 — **변이를 넣어도 잡히는지 알 수 없으므로 돌리지 않았다.** 통과했다고 적을 수 없는 것을 돌린 척하지 않는다.
+
+**WP-007의 코드를 하나 건드렸다.** PR 응답 → `EnrichedPullRequest` 매핑을 `enriched-payload.ts`로 뽑아 실시간과 백필이 공유하게 했다. 각자 옮기면 언젠가 어긋나고, 그때 **백필로 들어온 PR만 어떤 필드가 비는** 상태가 된다 — 검색 결과에서 그것은 "그런 PR은 없다"로 읽힌다. WP-007의 시험 73건이 그대로 통과함을 확인했다.
+
+### 6.20 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -1163,6 +1202,9 @@ DoD 4항 중 3항 통과, 1항 부분. 검증 방법은 `pnpm test web/commit`, 
 | 커밋 상세의 **헤더에 메시지·작성자·시각이 없다** | CR-021 DEV-090 / DEV-060 | 실제 상태 — 커밋 문서가 SHA만 갖는다. **소속 PR에서 빌려오지 않는다**: 한 PR의 원본 커밋 N건이 전부 같은 제목으로 보이면 체리픽·되돌림 조사가 반대 결론에 이른다. 표시명은 축약 SHA이고 화면이 왜 없는지 적는다 | WP-020 (미러 기반 커밋 보강) |
 | 커밋 상세의 **변경 경로가 골격뿐** | CR-021 DEV-094 / DEV-060 | 실제 상태 — `changed_paths`·`changed_files_count`가 채워지지 않는다. 섹션은 숨기지 않고 사유를 적으며, 총계를 `0`으로 그리지 않는다(*파일을 하나도 바꾸지 않은 커밋*과 같아진다). **파일 내용 미표시(`QA-W003-08`)는 금지 규칙이라 지금 세웠다** | WP-020 |
 | 커밋 상세의 시퀀스 위치가 **앞뒤 인접 커밋 없이 상태만** | WP-018 제외 목록 (데이터는 WP-027) | 실제 상태 — 값 없이도 **`off_chain`과 `not_computed`를 가른다**(역할로 판정, DEV-092). 앞뒤 목록과 "범위로 확장"은 WP-027 | WP-027 |
+| 백필의 실시간 영향(AC-3)이 **측정되지 않음** | WP-019 DoD / DEV-058과 같은 형태 | **NOT RUN** — 운영 규모 데이터셋도 부하 harness도 이 환경에 없다. 예산을 지키는 **구조**만 세웠다: 모든 백필 호출이 `priority: 'backfill'`이고 역할 분리로 워커 풀을 나눌 수 있다 | **REL-002 성능 게이트 전 필수** |
+| 백필이 릴리스를 채우지 않음 | FR-ING-006은 "과거 PR·커밋·**릴리스**"를 요구 / 릴리스 수집이 WP-024 | 실제 상태 — `prs-releases`가 비어 있고 릴리스를 만드는 경로가 아직 없다. 백필은 PR과 그 커밋만 채운다 | WP-024 |
+| 백필 진행률의 `total`이 마지막 페이지 전까지 `null` | WP-019 구현 / GitHub `/pulls`가 총계를 주지 않음 | 실제 상태 (의도) — **`done`을 총계로 쓰지 않는다.** 쓰면 언제나 100%로 보여 운영자가 끝난 줄 안다. 마지막 페이지에 닿아야 총계를 안다 | 없음 (GHE API의 한계) |
 | PR 상세의 선행·후행·릴리스·관계가 **골격뿐** | WP-017 제외 목록 (데이터는 WP-024·WP-027·WP-031) | 실제 상태 (의도) — **셋 다 숨기지 않고 사유를 적는다.** 숨기면 사용자가 기능 부재로 오인한다. 미머지 PR의 선행·후행 사유는 머지된 PR과 **다른 문구**다 | WP-024, WP-027, WP-031 |
 | PR 상세 타임라인의 **승인 시각을 모름** | CR-020 DEV-084 / `approved_at`이 ES 매핑에 없음 | 실제 상태 — `approved_by`로 **일어난 것은 알고 시각만 모른다.** `done_at_unknown`으로 그리고 사유를 함께 적는다. `pending`으로 그리면 승인된 PR이 "승인 대기"가 된다 | 매핑에 `approved_at`을 더하는 별도 CR (투영과 `EVT-ING-002` 함께) |
 | 리뷰어별 상태가 "승인함 / 아직 아님" 둘뿐 | CR-020 DEV-085 / 투영이 리뷰어별 상태를 저장하지 않음 | 실제 상태 — "변경 요청"을 **지어내지 않는다.** `reviewers`·`approved_by` 두 로그인 목록만으로 파생할 수 있는 것이 이 둘이다 | 투영이 리뷰 상태를 저장하도록 하는 별도 CR |
@@ -1215,10 +1257,14 @@ DoD 4항 중 3항 통과, 1항 부분. 검증 방법은 `pnpm test web/commit`, 
 36. ~~WP-017 W-002 PR 상세 화면~~ → 완료 (2026-08-22). 검증 결과는 6.17장. **DoD 6항 중 4항 통과, `QA-W002-03`·`QA-W002-17`이 절반**(전체 건수는 WP-020, 확장 조회는 WP-031)
 37. ~~CR-021 WP-018 W-003 계약 정정~~ → 완료 (2026-08-22). DEV-090~096 해소. 구현 중 DEV-097을 추가 등록·해소했다. SRS 버전은 v2.2 유지(빈칸 메우기)
 38. ~~WP-018 W-003 커밋 상세 화면~~ → 완료 (2026-08-22). 검증 결과는 6.18장. **DoD 4항 중 3항 통과, `QA-W003-03`이 절반**(`direct_push`는 WP-021). **FLOW-002 전 경로가 실제 브라우저에서 이어진다**
+39. ~~CR-022 저장소 백필 계약 정정~~ → 완료 (2026-08-22). DEV-098~105 해소. SRS 버전은 v2.2 유지(빈칸 메우기)
+40. ~~WP-019 저장소 백필 잡~~ → 완료 (2026-08-22). 검증 결과는 6.19장. **DoD 6항 중 1항만 로컬 판정, 5항은 통합 시험에 걸려 CI가 처음 판정한다**
 
-**REL-002의 조사 경로가 닫혔다.** 붙여넣기(W-001) → 커밋(W-003) → PR(W-002)이 실제 브라우저에서 이어지고, 각 화면이 **모르는 것을 모른다고 말한다.** 남은 REL-002 화면은 범위 조사(W-004, WP-025)다.
+**REL-002의 조사 경로가 닫혔고 과거 데이터를 채울 길도 생겼다.** 붙여넣기(W-001) → 커밋(W-003) → PR(W-002)이 실제 브라우저에서 이어지고, WP-019가 그 화면들이 볼 과거 PR을 채운다.
 
-**WP-019 저장소 백필 잡이 다음이다** (로드맵 순서). 화면이 더 필요하면 WP-025가 W-004를 세운다.
+**다음은 REL-003의 WP-020 커밋 그래프 접근 계층이다** (로드맵 순서). 시퀀스 채번(WP-021)이 그 위에 서고, 그것이 이 제품의 핵심 주장 — **머지 순서** — 을 처음으로 실재하게 만든다.
+
+**WP-020이 함께 닫는 것 셋.** 지금 화면들이 "아직 수집 전"이라고 적어 둔 자리가 전부 WP-020의 몫이다 — 커밋 메시지·작성자·시각(DEV-090), 변경 경로(DEV-094), PR 상세의 원본 커밋 제목(DEV-062). 타입을 전부 널 허용으로 열어 두었으므로 **화면을 고치지 않아도 키가 붙는 대로 채워진다.**
 
 **WP-018이 남긴 것 셋.**
 

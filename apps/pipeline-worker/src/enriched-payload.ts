@@ -9,6 +9,7 @@
  * 이상하면 그 원소만 버린다 — 리뷰 한 건 때문에 PR 문서를 통째로 잃을 이유는 없다.
  */
 
+import type { PullRequestSummary } from '@prs/github';
 import type {
   EnrichedChangedFile,
   EnrichedPullRequest,
@@ -175,5 +176,34 @@ export function parseEnriched(payload: unknown): EnrichedParse {
       enrichment_errors: parseErrors(root['enrichment_errors']),
       correlation_id: asString(root['correlation_id']) ?? '',
     },
+  };
+}
+
+/**
+ * GHE API의 PR 응답 → `EnrichedPullRequest` (WP-007 / WP-019).
+ *
+ * **실시간과 백필이 같은 매핑을 쓴다** (CR-022). 두 경로가 각자 필드를 옮기면
+ * 언젠가 어긋나고, 그때 **백필로 들어온 PR만 어떤 필드가 비는** 상태가 된다 —
+ * 검색 결과에서 그것은 "그런 PR은 없다"로 읽힌다.
+ */
+export function toEnrichedPullRequest(fresh: PullRequestSummary): EnrichedPullRequest {
+  return {
+    number: fresh.number,
+    title: fresh.title,
+    body: fresh.body,
+    state: fresh.state,
+    draft: fresh.draft,
+    labels: fresh.labels.map((label) => label.name),
+    merged: fresh.merged,
+    created_at: fresh.created_at,
+    updated_at: fresh.updated_at,
+    closed_at: fresh.closed_at,
+    merged_at: fresh.merged_at,
+    merge_commit_sha: fresh.merge_commit_sha,
+    author: fresh.user?.login ?? null,
+    head_ref: fresh.head.ref,
+    head_sha: fresh.head.sha,
+    base_ref: fresh.base.ref,
+    base_sha: fresh.base.sha,
   };
 }
