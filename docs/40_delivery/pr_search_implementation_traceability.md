@@ -313,6 +313,7 @@
 | DEV-138 | 2026-08-23 | **`next_cursor`의 값을 낼 수단이 없다.** 커서 페이지네이션은 WP-032다. `/search`와 같은 사정이며 같은 처리(키는 두고 늘 `null`)가 필요하다 | WP-023 / ADR-010 | 범위 공백 | **CR-027** | **resolved (2026-08-23)** — `/search`와 같은 처리: 키는 두고 늘 `null`. WP-032 몫 |
 | DEV-139 | 2026-08-23 | **`summary.commit_count`가 무엇을 세는지 정해져 있지 않다.** 구간의 first-parent 커밋 수인지 PR의 원본 커밋까지 포함한 수인지에 따라 값이 한 자릿수 배 차이 난다. API 예시의 `commit_count == pull_request_count == 62`는 전자와만 맞는다 | WP-023 / FR-SEQ-002 AC-2 | 문서 오류 | **CR-027** | **resolved (2026-08-23)** — first-parent 커밋 수(= `merge_sequence` 행 수)로 확정했다. `git log --first-parent A..B`가 세는 것과 같은 것을 센다. API 계약 필드 근거 표에 명시 |
 | DEV-140 | 2026-08-23 | **"5만 건 사전 추정"이 실은 정확히 셀 수 있다.** DEV-130의 결정으로 정본이 PostgreSQL이 되면 `count(*)`가 PK 범위 스캔 한 번이라 추정할 이유가 없다. 추정으로 두면 상한 근처에서 통과와 거절이 흔들린다 | WP-023 / FR-SEQ-002 AC-4 | 문서 오류 | **CR-027** | **resolved (2026-08-23)** — `countRange`가 정확한 count를 낸다. 5만+1행 실데이터로 400과 경계(정확히 5만이면 통과)를 실측했다. 응답 필드 이름은 하위 호환으로 `estimated_count`를 유지하되 `exact: true`를 함께 싣는다 |
+| DEV-141 | 2026-08-23 | **`multiSearch`가 헤더 전용 파라미터 `routing`을 본문에 실었다** (내 구현 결함, CI 실-ES 계층이 검출). `search` API에서는 클라이언트가 `routing`을 쿼리스트링으로 올려 주지만 `msearch`의 옵션은 해석 없이 NDJSON 본문 줄에 그대로 실린다 — 본문의 `routing`을 Elasticsearch가 400으로 거절해 **범위 조회의 ES 왕복 전부가 실패했다.** 대역 시험 62건은 아무 키나 받아 전부 초록이었고, PR #28 CI의 `range-es.test.ts`(실제 ES) 11건이 처음 잡았다 — 실-ES 계층을 따로 둔 이유가 정확히 이 결함이다. 기존 `multiSearch` 사용처(완화 힌트)는 라우팅을 쓰지 않아 드러나지 않았다 | WP-023 / API-SEQ-001 | 구현 결함 | - (문서가 msearch 전송 형식을 규정하지 않아 계단식 갱신 없음) | **resolved (2026-08-23)** — `multiSearch`가 `routing`을 헤더 줄로 옮긴다. `search.test.ts` 4건이 전송 모양을 단위에서 고정 — 결함을 되돌리면 2건이 실패함을 확인했다. ES 없이도 회귀가 막힌다 |
 | DEV-003 | 2026-08-19 | `../00_governance/change_control.md` 4장 아키텍처 게이트 기록이 "오류 코드 30종"으로 적혀 있으나 API 계약 6장의 실제 코드는 29종이었다 | WP-001 | 문서 오류 | **CR-006** | **resolved (2026-08-20)** — 게이트 기록을 29종으로 정정하고 CR-005로 GH 코드 16종이 추가되어 현재 45종임을 함께 표기 |
 
 **등록이 필요한 대표 상황** (사전에 예상되는 것):
@@ -1349,7 +1350,7 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 | 단위 (전체) | `pnpm test` | 1,059건 통과 (앵커 분류 26건 + `isRepositoryInScope` 8건 신규 포함) |
 | 통합 — 앵커 | `pnpm test:integration sequence/anchors` | 26건 통과. 실제 PostgreSQL + Redis, **기본 대역 ES는 부르면 던진다** — 정본만으로 답하는 경로가 색인을 건드리면 실패한다 |
 | 통합 — 범위 | `pnpm test:integration sequence/range.test` | 36건 통과. 실제 PostgreSQL + 대역 ES(색인 부재를 시험이 주입). 5만+1행 실데이터로 `RANGE_TOO_LARGE` 경계 실측 |
-| 통합 — 범위 (실제 ES) | `pnpm test:integration sequence/range-es` | **로컬 NOT RUN** (이 환경에 Elasticsearch가 없다 — 기존 `search/list.test.ts`와 동일 사정). 13건, CI 서비스 컨테이너에서 실행 |
+| 통합 — 범위 (실제 ES) | `pnpm test:integration sequence/range-es` | **로컬 NOT RUN** (이 환경에 Elasticsearch가 없다 — 기존 `search/list.test.ts`와 동일 사정). 13건, CI 서비스 컨테이너에서 실행. **1차 CI에서 11건 실패 — DEV-141을 검출했다**: `multiSearch`가 `routing`을 msearch 본문에 실어 실제 ES가 400으로 거절. 헤더 줄로 옮기고 전송 모양을 단위 시험 4건으로 고정했다 |
 | git 대조 회귀 | `pnpm test:regression range-vs-git` | 14건 통과. **정답은 `git log --first-parent A..B`가 낸다** — 가운데 구간·경계·빈 구간·머지 커밋 단일 계수·건수 전부 git과 일치 |
 | 회귀 (전체) | `pnpm test:regression` | 22건 통과 |
 | p95 (DoD: 구간 5000건 400ms) | 로컬 프로브 200회 | **부분 실측** — PostgreSQL 구간(정확 count + 페이지 200건 + PR 번호 목록, 1만 행 표에서 5000행 반개구간, 매회 다른 구간): **p95 7.50ms**, p99 10.41ms. ES 집계 왕복은 로컬 ES 부재로 **NOT RUN** (DEV-058과 같은 사정). 400ms 예산 중 PostgreSQL 몫이 2% 미만임은 실측했다 |
@@ -1374,6 +1375,8 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 - **M30 (`SEQUENCE_SPACE_MISMATCH`와 `ANCHOR_NOT_MERGED` 미구분)** — 다른 브랜치로 머지된 PR 경로에 시험이 없었다. 사용자가 할 일이 다른 두 실패(브랜치를 바꾼다 / 머지를 기다린다)를 가르는 시험을 더했다.
 
 **초록이 곧 검증은 아니다** — M13과 M29가 이번 회차의 사례다. 시험이 있어도 대역이 관대하거나 분기가 실행되지 않으면 아무것도 지키지 않는다.
+
+**그리고 실-ES 계층이 그 원칙의 세 번째 사례를 즉시 냈다 (DEV-141).** 대역 62건이 전부 초록인 채로 msearch 본문의 `routing`이 실제 Elasticsearch에서 400을 냈다 — 대역은 아무 키나 받으므로 **전송 형식의 결함은 대역으로 잡을 수 없다.** "질의가 진짜 색인에서 진짜로 도는가"를 CI가 따로 묻게 해 둔 것이 이 결함을 병합 전에 세웠다.
 
 ### 6.24 릴리스 게이트
 
