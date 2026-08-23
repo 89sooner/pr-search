@@ -40,7 +40,7 @@
 | JOB-ING-007 | 아웃박스 재적재 | 스케줄 (5분) | batch | 3회 | 5분 | - | ADR-002 follow-up |
 | JOB-ING-008 | PostgreSQL↔ES 정합성 감시 | 스케줄 (6시간) | batch | 3회 | 30분 | EVT-JOB-001 | ADR-004 follow-up |
 | JOB-ING-009 | 실패 대기열 재처리 | 수동 (API-ADM-003) | ops (WP-009) → batch (WP-019 이후) | 이벤트별 누적 | 10분 | EVT-JOB-001 (batch 이후) | FR-ING-007 |
-| JOB-SEQ-001 | 시퀀스 증분 채번 | `push` 이벤트 / 백필 완료 | sequence | 5회 지수 백오프 | 10분 | EVT-SEQ-001 | FR-SEQ-001 |
+| JOB-SEQ-001 | 시퀀스 증분 채번 | `push` 웹훅 → 게이트웨이가 `prs:sequence`에 발행 (CR-025, DEV-116) / 백필 완료 | sequence | 락 실패는 `defer`, 그 밖은 5회 지수 백오프 | 10분 | EVT-SEQ-001 | FR-SEQ-001 |
 | JOB-SEQ-002 | 시퀀스 재채번 | 재작성 감지 / 수동 (API-ADM-007) | sequence | 없음 (실패 시 `stale`) | 60분 | EVT-SEQ-002, EVT-JOB-001 | FR-SEQ-005 |
 | JOB-SEQ-003 | 시퀀스 정합성 점검 | 수동 / 스케줄 (일 1회, 표본) | batch | 3회 | 30분 | EVT-JOB-001 | FR-ADMIN-003 |
 | JOB-REL-001 | 참조 간선 추출 | EVT-ING-003 | link | 3회 | 30초 | - | FR-REL-003 |
@@ -90,17 +90,21 @@ WP-020이 커밋 **그래프**를 읽는 계층을 세웠지만, 그 결과를 `
 
 ## 4. Event 카탈로그
 
-| Event ID | 이름 | Producer | Consumer | Payload | Ordering/Dedupe |
-| --- | --- | --- | --- | --- | --- |
-| EVT-ING-001 | `ingestion.event_received` | ingest-gateway | enrich | `{ delivery_id, event_type, action, repository_id, correlation_id, occurred_at }` | 파티션 `repository_id`, 멱등 `delivery_id` |
-| EVT-ING-002 | `ingestion.enriched` | enrich | project | **self-contained bounded (CR-010, DEV-013)** — `{ delivery_id, repository_id, entity_kind, pr_number, pull_request, source_commit_shas[], changed_files[], reviews[], source_commits_truncated, files_truncated, enrichment_pending, enrichment_errors[], correlation_id }`. `pull_request`는 **PR 문서 매핑(ENT-CORE-002)이 선언한 PR 고유 필드 전부**를 나른다 (CR-011, DEV-018) — `number, title, body, state, draft, labels[], author, created_at, updated_at, closed_at, merged, merged_at, merge_commit_sha, head_ref, head_sha, base_ref, base_sha`. `created_at`이 없으면 투영이 `lead_time_seconds`·`first_review_wait_seconds`를 계산할 수 없다. 투영이 GitHub API를 다시 부르지 않아도 되도록 필요한 것을 실어 보낸다. 원본 웹훅 전량·patch/diff 본문·소스 코드·토큰은 싣지 않는다. 커밋 250건·파일 3000건 상한 유지 | 위와 동일 |
-| EVT-ING-003 | `ingestion.projected` | project | link | `{ repository_id, entity_kind, entity_id, document_version, correlation_id }` | 위와 동일 |
-| EVT-ING-004 | `ingestion.failed` | 모든 워커 | ops | `{ delivery_id, stage, error, retry_count, correlation_id }` | 멱등 `(delivery_id, stage)` — **`dead_letter`의 유일 제약이 같은 키로 강제한다** (CR-012, DEV-022) |
-| EVT-SEQ-001 | `sequence.assigned` | sequence | project, ops | `{ repository_id, base_branch, seq_epoch, from_seq, to_seq, head_sha }` | 시퀀스 공간별 직렬 |
-| EVT-SEQ-002 | `sequence.reassigned` | sequence | project, 알림, ops | `{ repository_id, base_branch, old_epoch, new_epoch, diverged_at_seq, affected_count }` | 시퀀스 공간별 직렬 |
-| EVT-SEQ-003 | `sequence.stale` | sequence | ops, 알림 | `{ repository_id, base_branch, reason, last_error }` | 최신 값 우선 |
-| EVT-AUTH-001 | `permission.invalidated` | ingest-gateway | authz | `{ user_ids[], team_id, repository_id, reason }` — 세 대상 필드는 모두 선택이며 **하나 이상이 있어야 한다.** `member` 웹훅은 `user_ids`, `team` 웹훅은 `team_id`, `repository` 웹훅은 `repository_id`를 채운다. 게이트웨이는 펼치지 않는다 (CR-015, DEV-041·DEV-042) | 집합 연산이라 멱등 |
-| EVT-JOB-001 | `job.progress` | 배치 워커 | ops | `{ job_id, type, target, state, progress: { done, total, unit }, cursor }` | 최신 값 우선 |
+| Event ID | 이름 | Producer | Consumer | **전송 스트림** | Payload | Ordering/Dedupe |
+| --- | --- | --- | --- | --- | --- | --- |
+| EVT-ING-001 | `ingestion.event_received` | ingest-gateway | enrich | `prs:ingest` | `{ delivery_id, event_type, action, repository_id, correlation_id, occurred_at }` | 파티션 `repository_id`, 멱등 `delivery_id` |
+| EVT-ING-002 | `ingestion.enriched` | enrich | project | `prs:enriched` | **self-contained bounded (CR-010, DEV-013)** — `{ delivery_id, repository_id, entity_kind, pr_number, pull_request, source_commit_shas[], changed_files[], reviews[], source_commits_truncated, files_truncated, enrichment_pending, enrichment_errors[], correlation_id }`. `pull_request`는 **PR 문서 매핑(ENT-CORE-002)이 선언한 PR 고유 필드 전부**를 나른다 (CR-011, DEV-018) — `number, title, body, state, draft, labels[], author, created_at, updated_at, closed_at, merged, merged_at, merge_commit_sha, head_ref, head_sha, base_ref, base_sha`. `created_at`이 없으면 투영이 `lead_time_seconds`·`first_review_wait_seconds`를 계산할 수 없다. 투영이 GitHub API를 다시 부르지 않아도 되도록 필요한 것을 실어 보낸다. 원본 웹훅 전량·patch/diff 본문·소스 코드·토큰은 싣지 않는다. 커밋 250건·파일 3000건 상한 유지 | 위와 동일 |
+| EVT-ING-003 | `ingestion.projected` | project | link | `prs:projected` | `{ repository_id, entity_kind, entity_id, document_version, correlation_id }` | 위와 동일 |
+| EVT-ING-004 | `ingestion.failed` | 모든 워커 | ops | `prs:batch` | `{ delivery_id, stage, error, retry_count, correlation_id }` | 멱등 `(delivery_id, stage)` — **`dead_letter`의 유일 제약이 같은 키로 강제한다** (CR-012, DEV-022) |
+| EVT-SEQ-001 | `sequence.assigned` | sequence | project, ops | **`prs:projected`** (CR-025, DEV-121) | `{ repository_id, base_branch, seq_epoch, from_seq, to_seq, head_sha }` | 시퀀스 공간별 직렬 |
+| EVT-SEQ-002 | `sequence.reassigned` | sequence | project, 알림, ops | `prs:projected` | `{ repository_id, base_branch, old_epoch, new_epoch, diverged_at_seq, affected_count }` | 시퀀스 공간별 직렬 |
+| EVT-SEQ-003 | `sequence.stale` | sequence | ops, 알림 | `prs:projected` | `{ repository_id, base_branch, reason, last_error }` | 최신 값 우선 |
+| EVT-AUTH-001 | `permission.invalidated` | ingest-gateway | authz | `prs:permission` | `{ user_ids[], team_id, repository_id, reason }` — 세 대상 필드는 모두 선택이며 **하나 이상이 있어야 한다.** `member` 웹훅은 `user_ids`, `team` 웹훅은 `team_id`, `repository` 웹훅은 `repository_id`를 채운다. 게이트웨이는 펼치지 않는다 (CR-015, DEV-041·DEV-042) | 집합 연산이라 멱등 |
+| EVT-JOB-001 | `job.progress` | 배치 워커 | ops | `prs:batch` | `{ job_id, type, target, state, progress: { done, total, unit }, cursor }` | 최신 값 우선 |
+
+**전송 스트림 열은 CR-025가 더했다 (DEV-121).** 그전까지 카탈로그는 Producer와 Consumer만 적고 **어느 스트림이 그 이벤트를 나르는지**를 적지 않았다. WP-021이 `EVT-SEQ-001`을 내려다가 그 빈칸을 만났다 — `project`가 읽는 `prs:enriched`에 실으면 투영 핸들러가 모양이 다른 payload를 받고, `prs:sequence`에 실으면 채번이 자기 이벤트를 다시 소비한다. 소비자 이름만으로는 전송 수단이 정해지지 않는다.
+
+한 스트림이 여러 이벤트를 나르므로 **소비자는 봉투의 `event_name`으로 가른다.** 새 규약이 아니다 — `EventEnvelope`에 이미 있는 필드다.
 
 ## 5. 재시도와 백오프
 

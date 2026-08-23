@@ -1,12 +1,12 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v0.7 | 갱신일: 2026-08-22
+> 상태: review | 버전: v0.8 | 갱신일: 2026-08-23
 
 ## 1. 목적
 
 구현이 시작된 후 문서와 코드의 정합성을 유지하는 살아있는 원장이다. 코딩 에이전트는 WP를 완료할 때마다 이 문서를 갱신한다. 이 문서는 기록용이며 범위를 결정하지 않는다.
 
-**현재 상태: WP-020까지 완료 — REL-001과 REL-002가 닫혔고 REL-003의 첫 WP(커밋 그래프 접근 계층)가 들어갔다.** 워크스페이스 골격, PostgreSQL 스키마·리포지터리 계층, Elasticsearch 매핑·부트스트랩, GHE 웹훅 수신 게이트웨이, `EventBus` 포트와 Redis Streams 어댑터, GHE REST 클라이언트, 보강 워커, 그리고 **투영 워커**가 서 있다. 단위 953건·통합 419건이 전부 통과한다(CI 기준). **수집 경로가 웹훅에서 검색 인덱스까지 닫혔다** — 서명 검증 → `raw_event` 저장 → `prs:ingest` 발행 → NDJSON 아카이브 → 202, 그 뒤를 `enrich`가 받아 원본 커밋·변경 파일·리뷰를 채워 `EVT-ING-002`로 넘기고, `project`가 그것만 읽어 PR·커밋 문서를 만들어 Elasticsearch에 조건부 업서트한 뒤 `raw_event.processed_at`을 찍고 `EVT-ING-003`을 낸다. 오래된 이벤트는 새 상태를 덮지 않고, 커밋의 PR 소속은 순서와 무관하게 합집합으로 쌓인다. 이 환경에서 처음으로 실제 Elasticsearch(`mirror.gcr.io` 경유 8.19.0)를 띄워 ES 통합 시험을 돌렸고, 그 과정에서 WP-003의 별칭 라우팅 결함(DEV-021)을 찾아 고쳤다. 실제 GitHub App 자격 증명이 없어 real-GHE smoke는 여전히 미실행이다(선택 시험으로 남겨 두었고 건너뛴 사실이 실행 로그에 남는다). 여기에 **저장소 등록 API**가 더해져 수집 대상을 정식으로 등록·해제할 수 있고, **파이프라인 상태 API**가 수신량·대기열·지연·실패 대기열을 한 번에 보여 준다. **실패 대기열 관리 API**도 있어 격리된 이벤트를 보고 다시 흘려보낼 수 있다 — 한 (전달, 단계)에 행 하나로 누적되고, 3회 재처리 실패면 `held`, 끝까지 성공하면 투영이 `resolved`로 닫는다. 여기에 **구조화 질의 파서**가 더해져 `key:value` 질의가 AST가 되고, **검색 API**가 그 AST를 읽어 접근 범위 필터를 강제한 채 조회하며, **식별자 해석 API**가 SHA·PR 번호를 양방향으로 잇는다. **웹 셸과 화면 넷**(`/`·`/search`·`/pr/...`·`/commit/...`)이 서서 FLOW-002 전 경로가 실제 브라우저에서 이어지고, **저장소 백필 잡**이 과거 PR·커밋을 채운다. **커밋 그래프 접근 계층**(WP-020)이 first-parent 체인을 미러 또는 API로 내주므로 채번이 딛고 설 바닥은 생겼다. 그러나 **채번(WP-021) 자체와 관계 파생(WP-029)은 아직 없다** — 그래서 시퀀스와 관계 배지가 화면에서 `not_computed`로 남는다. 이 제품의 핵심인 머지 시퀀스는 WP-021에서 처음 실재한다. **여기에 CR-024가 기한이 지난 결정 셋(OD-001·OD-002·OD-004)과 구현이 드러낸 미결 넷을 닫았다** — 미러는 허용하되 blob 지연 인출은 기본 차단, 권한 원천은 GHE 협업자/팀 API, 릴리스 앵커는 Git 태그만이다. 그 과정에서 **`allowed_team_ids`를 읽는 곳은 넷인데 쓰는 곳이 없다는 사실**을 찾아 DEV-114로 등록했다 — 통합 시험이 그 필드를 손으로 심어 초록을 내고 있었다.
+**현재 상태: WP-020까지 완료 — REL-001과 REL-002가 닫혔고 REL-003의 첫 WP(커밋 그래프 접근 계층)가 들어갔다.** 워크스페이스 골격, PostgreSQL 스키마·리포지터리 계층, Elasticsearch 매핑·부트스트랩, GHE 웹훅 수신 게이트웨이, `EventBus` 포트와 Redis Streams 어댑터, GHE REST 클라이언트, 보강 워커, 그리고 **투영 워커**가 서 있다. 단위 953건·통합 419건이 전부 통과한다(CI 기준). **수집 경로가 웹훅에서 검색 인덱스까지 닫혔다** — 서명 검증 → `raw_event` 저장 → `prs:ingest` 발행 → NDJSON 아카이브 → 202, 그 뒤를 `enrich`가 받아 원본 커밋·변경 파일·리뷰를 채워 `EVT-ING-002`로 넘기고, `project`가 그것만 읽어 PR·커밋 문서를 만들어 Elasticsearch에 조건부 업서트한 뒤 `raw_event.processed_at`을 찍고 `EVT-ING-003`을 낸다. 오래된 이벤트는 새 상태를 덮지 않고, 커밋의 PR 소속은 순서와 무관하게 합집합으로 쌓인다. 이 환경에서 처음으로 실제 Elasticsearch(`mirror.gcr.io` 경유 8.19.0)를 띄워 ES 통합 시험을 돌렸고, 그 과정에서 WP-003의 별칭 라우팅 결함(DEV-021)을 찾아 고쳤다. 실제 GitHub App 자격 증명이 없어 real-GHE smoke는 여전히 미실행이다(선택 시험으로 남겨 두었고 건너뛴 사실이 실행 로그에 남는다). 여기에 **저장소 등록 API**가 더해져 수집 대상을 정식으로 등록·해제할 수 있고, **파이프라인 상태 API**가 수신량·대기열·지연·실패 대기열을 한 번에 보여 준다. **실패 대기열 관리 API**도 있어 격리된 이벤트를 보고 다시 흘려보낼 수 있다 — 한 (전달, 단계)에 행 하나로 누적되고, 3회 재처리 실패면 `held`, 끝까지 성공하면 투영이 `resolved`로 닫는다. 여기에 **구조화 질의 파서**가 더해져 `key:value` 질의가 AST가 되고, **검색 API**가 그 AST를 읽어 접근 범위 필터를 강제한 채 조회하며, **식별자 해석 API**가 SHA·PR 번호를 양방향으로 잇는다. **웹 셸과 화면 넷**(`/`·`/search`·`/pr/...`·`/commit/...`)이 서서 FLOW-002 전 경로가 실제 브라우저에서 이어지고, **저장소 백필 잡**이 과거 PR·커밋을 채운다. **커밋 그래프 접근 계층**(WP-020)이 first-parent 체인을 미러 또는 API로 내주므로 채번이 딛고 설 바닥은 생겼다. 그러나 **채번(WP-021) 자체와 관계 파생(WP-029)은 아직 없다** — 그래서 시퀀스와 관계 배지가 화면에서 `not_computed`로 남는다. 이 제품의 핵심인 머지 시퀀스는 **WP-021에서 실재하게 되었다** — 채번이 `git rev-list --first-parent --reverse`가 낸 순서를 그대로 옮기고, 회귀 계층(`pnpm test:regression`)이 매 실행마다 그것을 git과 대조한다. 병합 커밋은 하나로 세고 직접 푸시도 서수를 받으며, 히스토리 재작성은 **감지해서 `stale`로 두고 멈춘다**(회복은 WP-022). **여기에 CR-024가 기한이 지난 결정 셋(OD-001·OD-002·OD-004)과 구현이 드러낸 미결 넷을 닫았다** — 미러는 허용하되 blob 지연 인출은 기본 차단, 권한 원천은 GHE 협업자/팀 API, 릴리스 앵커는 Git 태그만이다. 그 과정에서 **`allowed_team_ids`를 읽는 곳은 넷인데 쓰는 곳이 없다는 사실**을 찾아 DEV-114로 등록했다 — 통합 시험이 그 필드를 손으로 심어 초록을 내고 있었다.
 
 ## 2. 기록 규칙
 
@@ -42,7 +42,7 @@
 | WP-018 | W-003 커밋 상세 화면 | REL-002 | done | 에이전트 | `c5a9ae0` / PR #20 | DoD 4항 중 3항 통과, 1항 부분 (6.18장). 단위 47건 + a11y 34건 + e2e 14건, axe 위반 0건 | CR-021이 메운 빈칸(헤더 메타데이터·머지 커밋 링크 재료·체인 밖 판정·직접 푸시 도달 불가·경로 총계 널 허용·보강 의미·복사 실패)을 함께 구현했다. `QA-W003-03`은 CR-021 DEV-093대로 **절반만** — "PR 없을 때 사유 표시"는 통과, "직접 푸시로 표시"는 WP-021이다. **WP-017이 넘긴 세션 관문 통합을 여기서 했다** — 라우트 넷이 `GuardedPage` 하나를 지난다. 구현 중 **DEV-097(FLOW-001 4단계 미구현 — W-001이 후보 1건에서 영원히 멈춘다)**을 발견해 등록·해소했다 |
 | WP-019 | 저장소 백필 잡 | REL-002 | done | 에이전트 | `07f1cfe` / PR #21 | DoD 6항 중 4항 통과, 1항 부분, 1항 **NOT RUN** (6.19장). 단위 31건 + 통합 39건 (CI 32파일 419건 전부 통과) | CR-022가 메운 빈칸(PR 목록 메서드 부재·문서 버전·합성 델리버리 ID·실행 경로·동시 실행 상한·`/admin/jobs` 부재·한도 대기 상태·설정 복원 책임)을 함께 구현했다. **AC-5가 분기가 아니라 수의 대소로 성립한다** — 백필의 버전이 엔티티 `updated_at`이라 조건부 업서트가 저절로 거절한다. **이 환경에 Docker가 없어 통합 시험을 로컬에서 돌리지 못했다** — DoD 6항 중 5항이 그 시험에 걸려 있어 **CI가 처음 판정한다** |
 | WP-020 | 커밋 그래프 접근 계층 | REL-003 | done | 에이전트 | `61b9a98` / PR #23 | DoD 5항 전부 통과 (6.20장). 단위 36건 + 통합 24건, **실제 git 픽스처로 `git rev-list --first-parent --reverse`와 직접 대조** | CR-023이 메운 빈칸(저장소 컨텍스트·미러 루트·git 자격 증명·워커 역할)과 **실측으로 드러난 ADR-005의 대가**(DEV-111). OD-001 결정 전이라 두 경로 모두 구현했다. 커밋 메타데이터 채우기는 뺐다(DEV-112) |
-| WP-021 | 시퀀스 증분 채번 | REL-003 | todo | - | - | - | 핵심 WP |
+| WP-021 | 시퀀스 증분 채번 | REL-003 | done | 에이전트 | `60c0aa1` / PR #25 | DoD 8항 전부 통과 (6.21장). 단위 44건 + 통합 24건 + 회귀 5건 + ES 통합 10건(CI). **실제 git 픽스처로 `git rev-list --first-parent --reverse`와 직접 대조** | **이 제품의 핵심 주장이 여기서 실재한다.** CR-025가 메운 빈칸 여섯(커밋 시각 출처·push 트리거 부재·`requeueLater`·PR 번호 출처·`sequence_space` 오용·회귀 계층 부재)과, 시험이 잡아낸 내 결함 둘(DEV-122 첫 실패가 조용함, DEV-123 접근 범위 우회). 재채번은 감지만 하고 WP-022로 넘긴다 |
 | WP-067 | 커밋 메타데이터 보강 (JOB-MIR-002) | REL-003 | todo | - | - | - | **CR-024 신설.** WP-020이 남긴 빈칸(DEV-112)의 주인. `JOB-MIR-002`가 그래프 계층을 읽어 커밋 문서를 채운다 |
 | WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | todo | - | - | - | **CR-024 신설.** 네 매핑이 `allowed_team_ids`를 선언하고 강제 필터가 읽는데 그 값을 만드는 자리가 없다 (DEV-114) |
 | WP-022 | 시퀀스 재채번과 에폭 | REL-003 | todo | - | - | - | - |
@@ -103,7 +103,7 @@
 | FR-SRCH-010 | WP-033 | - | - | not_started |
 | FR-SRCH-011 | WP-032 | - | - | not_started |
 | FR-SRCH-012 | WP-044 | - | - | not_started |
-| FR-SEQ-001 | WP-002, WP-018, WP-020, WP-021 | `packages/db/migrations/002_sequence.up.sql`, `packages/db/src/advisory-lock.ts`, `packages/db/src/repositories/{merge-sequence,sequence-space}.ts`, `packages/github/src/{graph-plan,commit-graph,mirror-graph,api-graph,mirror-sync}.ts`, `apps/pipeline-worker/src/mirror-runner.ts`, `apps/web/lib/commit-detail.ts` (`sequencePositionState`), `apps/web/components/SequencePosition.tsx` | `packages/github/src/graph-plan.test.ts`, `packages/github/integration/graph.test.ts` (AC-2 대조), `packages/db/integration/advisory-lock.test.ts` (AC-6), `packages/db/integration/seed.test.ts` (AC-3), `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx` | partial (스키마·채번 동시성 제어. 실제 채번 로직은 WP-021. **화면은 시퀀스 값 없이도 "체인 밖"과 "미채번"을 가른다** — 역할로 판정하며, 섞으면 머지 커밋까지 체인 밖으로 표시된다, DEV-092) |
+| FR-SEQ-001 | WP-002, WP-018, WP-020, WP-021 | `packages/db/migrations/002_sequence.up.sql`, `packages/db/src/advisory-lock.ts`, `packages/db/src/repositories/{merge-sequence,sequence-space}.ts`, `packages/github/src/{graph-plan,commit-graph,mirror-graph,api-graph,mirror-sync}.ts`, `apps/pipeline-worker/src/mirror-runner.ts`, `apps/web/lib/commit-detail.ts` (`sequencePositionState`), `apps/web/components/SequencePosition.tsx`, `apps/pipeline-worker/src/{sequence,sequence-plan}.ts`, `packages/domain/src/sequence.ts`, `packages/es/src/sequence.ts`, `apps/ingest-gateway/src/{ingest,server}.ts` (push → `prs:sequence`) | `packages/github/src/graph-plan.test.ts`, `packages/github/integration/graph.test.ts` (AC-2 대조), `packages/db/integration/advisory-lock.test.ts` (AC-6), `packages/db/integration/seed.test.ts` (AC-3), `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx`, `apps/pipeline-worker/src/sequence-plan.test.ts`, `packages/domain/src/sequence.test.ts`, **`apps/pipeline-worker/integration/sequence/assign.test.ts`** (AC-1~AC-6 전부, 실제 git 픽스처 대조), **`regression/sequence.test.ts`** (ACC-02), `packages/es/integration/sequence.test.ts` | **완료 (WP-021)** — AC-1~AC-6과 예외 처리가 전부 실제 PostgreSQL·git으로 판정된다. 채번은 `git rev-list --first-parent --reverse`가 낸 순서를 그대로 옮기고, 그것을 회귀 계층이 매 실행마다 git과 대조한다. **재작성 감지 후의 재채번만 WP-022로 남는다** — 여기서는 감지해서 `stale`로 두고 기존 값을 보존한다 |
 | FR-SEQ-002 | WP-023, WP-025 | - | - | not_started |
 | FR-SEQ-003 | WP-023, WP-025 | - | - | not_started |
 | FR-SEQ-004 | WP-024, WP-026 | - | - | not_started |
@@ -233,7 +233,7 @@
 | DEV-058 | 2026-08-21 | **`pnpm test:perf` 스크립트가 저장소에 없다** (DEV-032와 같은 형태). WP-013의 DoD가 NFR-001의 p95 500ms를 1000만 문서 합성 데이터셋으로 요구하는데, 스크립트도 데이터셋도 이 실행 환경에 없다 | WP-013 / NFR-001, DEV-032 | 실행 환경 제약 | **CR-016** | **open** — 질의 **모양**이 필터 수에 비례해 커지지 않음을 시험으로 고정했다(상수 왕복 수). 그러나 **실측 p95는 NOT RUN이다.** 1000만 문서 데이터셋과 부하 시험 harness는 **REL-002 성능 게이트**에서 세운다. 측정하지 않은 것을 통과로 적지 않는다 |
 | DEV-059 | 2026-08-21 | FR-SRCH-007 AC-4가 "동점 처리를 위해 **문서 ID를 마지막 정렬 키로** 사용해 결정론적 순서를 보장한다"고 요구하는데, **Elasticsearch 8은 `_id`로 정렬하는 것을 금지한다** — `Fielddata access on the _id field is disallowed`. 켜려면 `indices.id_field_data.enabled` 클러스터 전역 설정이 필요하고 그것은 모든 문서 ID를 힙에 올린다. AC를 문자 그대로 구현할 수 없다 | WP-013 / FR-SRCH-007 AC-4 | 도구 제약 | **CR-016** | **resolved (2026-08-21)** — `_id`와 **같은 값**을 `doc_id` keyword 필드로 문서에 함께 넣고 그 필드로 정렬한다. `upsert`가 `request.id`에서 자동으로 채우므로 투영 자리가 잊을 수 없다. AC-4의 뜻("문서 ID로 동점을 가른다")은 그대로 성립한다. `_doc`은 쓰지 않았다 — 세그먼트 내부 순서라 머지·재색인에 값이 달라져 결정론이 깨진다. **이미 색인된 문서는 다음 이벤트에서 채워진다**(스크립트 `params.doc`에도 넣었다). 그때까지는 `missing: _last`로 뒤에 선다 |
 | DEV-060 | 2026-08-21 | **API-SRCH-002의 커밋 상세가 커밋 문서에 채워지지 않는 필드 11종을 약속한다** — `message`, `author`, `committer`, `authored_at`, `committed_at`, `parent_shas`, `patch_id`, `changed_paths`, `changed_files_count`, `additions`, `deletions`. 매핑에는 자리가 있으나 투영이 채우지 않는다: `EVT-ING-002`가 커밋에 대해 SHA만 나른다(WP-008이 남긴 기존 한계). WP-014는 조회 계층이라 투영을 고칠 수 없다 | WP-014, WP-020 / FR-SRCH-002, API-SRCH-002, ENT-CORE-003 | 문서와 구현 불일치 | **CR-017** | **resolved (2026-08-21)** — 응답에서 **없는 키는 넣지 않는다**(CR-016 DEV-057이 `facets`에 세운 규칙과 같다: 키 없음 = 만들지 않았다, `null` = 만들었는데 비었다). 0이나 빈 문자열로 채우면 "파일을 하나도 안 바꾼 커밋"과 구분되지 않는다. 계약 예시를 실제 채워지는 필드만 남기도록 고치고 나머지는 WP-020(미러 기반 커밋 보강)으로 표시했다 |
-| DEV-061 | 2026-08-21 | **`role: 'direct_push'`에 도달할 수 없다.** FR-SRCH-002 AC-3과 QA-W003-03이 요구하지만 커밋 문서는 **PR 이벤트에서만** 만들어지고 투영의 `CommitRole` 타입에 값이 둘(`merge_commit`·`source_commit`)뿐이다. `push` 이벤트는 ack 후 버려진다(DEV-016). 직접 푸시 커밋은 **문서 자체가 없어** 조회가 404가 된다 | WP-014, WP-021 / FR-SRCH-002 AC-3, QA-W003-03 | 구현 공백 | **CR-017** | **open** — API 계약과 타입은 `direct_push`를 표현할 수 있게 그대로 둔다(값이 생겼을 때 계약을 다시 고치지 않기 위해). 그러나 **그 값이 실제로 나오려면 push 이벤트 라우팅(WP-021)이 필요하다.** 동작을 지어내지 않았고 **QA-W003-03을 NOT SATISFIED로 기록한다** |
+| DEV-061 | 2026-08-21 | **`role: 'direct_push'`에 도달할 수 없다.** FR-SRCH-002 AC-3과 QA-W003-03이 요구하지만 커밋 문서는 **PR 이벤트에서만** 만들어지고 투영의 `CommitRole` 타입에 값이 둘(`merge_commit`·`source_commit`)뿐이다. `push` 이벤트는 ack 후 버려진다(DEV-016). 직접 푸시 커밋은 **문서 자체가 없어** 조회가 404가 된다 | WP-014, WP-021 / FR-SRCH-002 AC-3, QA-W003-03 | 구현 공백 | **CR-017** | **open** — API 계약과 타입은 `direct_push`를 표현할 수 있게 그대로 둔다(값이 생겼을 때 계약을 다시 고치지 않기 위해). 그러나 **그 값이 실제로 나오려면 push 이벤트 라우팅(WP-021)이 필요하다.** 동작을 지어내지 않았고 **QA-W003-03을 NOT SATISFIED로 기록한다**. **해소 (2026-08-23, WP-021)** — 게이트웨이가 push를 `prs:sequence`에 싣고(DEV-116) 채번이 직접 푸시 커밋에도 서수를 붙이며 `pull_request_number`를 `null`로 둔다. 그 구분이 실제로 성립하는 것을 머지 커밋과 같은 히스토리에서 대조해 확인했다. 다만 **화면의 `direct_push` 표시는 커밋 문서의 `role`을 보는데 그 값을 채우는 것은 투영이므로**, W-003이 그것을 그리려면 커밋 메타데이터 보강(WP-067)이 필요하다 — 도달 불가는 풀렸고 표시는 아직이다 |
 | DEV-062 | 2026-08-21 | **`source_commits`가 객체 배열(SHA·메시지 첫 줄·작성자·작성 시각)인데 PR 문서는 `source_commit_shas`(문자열 배열)만 갖는다.** 커밋 문서를 조인해도 메시지·작성자가 없다(DEV-060). FR-SRCH-003 AC-3이 각 항목에 넷을 요구한다 | WP-014, WP-020 / FR-SRCH-003 AC-3, API-SRCH-003 | 문서와 구현 불일치 | **CR-017** | **resolved (2026-08-21)** — 배열 **모양은 계약대로 객체**로 내되 `commit_sha`만 채우고 나머지 키는 넣지 않는다(DEV-060과 같은 규칙). 화면이 SHA만으로도 목록을 그릴 수 있고, WP-020이 커밋을 보강하면 키가 저절로 붙는다 — 계약을 다시 고치지 않는다 |
 | DEV-063 | 2026-08-21 | **`source_commits_total`이 저장되지 않는다.** PR 매핑에 `source_commits_truncated`(boolean)만 있고 보강 payload도 총계를 나르지 않는다. FR-SRCH-003 AC-4는 250건 절삭 시 "앞의 250건과 **전체 건수**"를 요구한다 | WP-014 / FR-SRCH-003 AC-4, EVT-ING-002, ENT-CORE-002 | 범위 공백 | **CR-017** | **부분 해소 (2026-08-21)** — 절삭되지 않았을 때는 배열 길이가 곧 총계이므로 그대로 싣는다. **절삭됐을 때는 총계를 모른다** — 250을 총계로 내보내면 거짓이므로 **키를 빼고** `source_commits_truncated: true`만 남긴다. 진짜 총계를 실으려면 보강이 그 수를 함께 보내야 하므로 `EVT-ING-002` 확장은 별도 CR로 남긴다 |
 | DEV-064 | 2026-08-21 | **`search-api`에 GHE 호스트 설정이 없다.** 해석 순서 1단계가 "GHE URL 패턴(호스트+경로)"인데 무엇이 우리 호스트인지 알 방법이 없고, **호스트가 다른 URL을 어떻게 처리할지도 정해져 있지 않다.** 호스트를 보지 않고 경로만 파싱하면 `https://other.example/acme/payments/pull/1`이 우리 PR로 해석된다 | WP-014 / FR-SRCH-001 AC-3, API-SRCH-001 | 범위 공백 | **CR-017** | **resolved (2026-08-21)** — `GHE_BASE_URL`을 `search-api` 설정에 더했다(`@prs/github`가 이미 같은 이름을 쓴다). 호스트가 맞지 않는 URL은 `text`로 떨어진다 — 접근 범위가 데이터를 막아 주더라도 **엉뚱한 저장소로 해석하는 것 자체가 오답**이다 |
@@ -293,6 +293,9 @@
 | DEV-118 | 2026-08-23 | **`merge_sequence.pull_request_number`의 출처가 정의되어 있지 않다.** 스키마는 그 열을 갖고 FR-SEQ-001 AC-3이 "직접 푸시는 null"이라 명시하는데, 백엔드 4.3의 `upsertMergeSequence` 호출은 그 인자를 아예 넘기지 않는다. PR↔머지 커밋 대응은 PostgreSQL에 없다 — `pull_request` 테이블 자체가 없고 ES 문서의 `merge_commit_sha`만 있다 | WP-021 / ENT-SEQ-001, FR-SEQ-001 AC-3 | 범위 공백 | **CR-025** | **resolved (2026-08-23)** — 채번이 `prs-pull-requests`를 `merge_commit_sha`로 조회해 채운다. **경합을 인정하고 설계한다**: push 이벤트가 그 PR의 투영보다 먼저 도착하면 그 순간에는 PR을 모르므로 null이 된다. 그래서 upsert를 `COALESCE(기존, 신규)`로 두어 **null은 나중에 채워지되 이미 아는 값은 덮이지 않게** 한다. 시퀀스 값 자체(AC-4의 멱등 대상)는 이 경로로 절대 바뀌지 않으며, 같은 서수에 **다른 SHA**가 오면 조용히 넘기지 않고 던진다 — 그것은 경합이 아니라 손상이다 |
 | DEV-119 | 2026-08-23 | **`sequence_space`는 표시용 문자열인데 데이터 모델 질의 표가 그것으로 범위를 거른다.** API 계약의 모든 예시가 `"acme/payments@main"`이고 `SequencePosition.tsx`가 그 값을 화면에 그대로 출력한다(사람이 읽는 값이다). 그런데 데이터 모델 7장은 시퀀스 범위 조회를 `range(merge_seq) + term(sequence_space)`로, 릴리스 포함 조회를 `term(sequence_space) + range(merge_seq)`로 적는다. **저장소 소유자·이름이 바뀌면** 같은 시퀀스 공간의 문서가 두 문자열로 갈라지고, 범위 조회가 **오류 없이 절반만** 돌려준다 | WP-021, WP-023, WP-024 / ENT-CORE-001~004, FR-SEQ-002, 데이터 모델 7장 | **문서 간 모순** | **CR-025** | **resolved (2026-08-23)** — **`sequence_space`는 표시 전용으로 못박고, 범위 질의는 `repository_id` + `base_branch`로 거른다.** 두 필드는 네 매핑에 이미 있으므로 새로 저장할 것이 없다. 표시 문자열을 필터로 쓰지 않는 이유는 하나다 — 사람이 읽으라고 만든 값은 사람이 읽기 좋게 바뀌고, 바뀌는 값 위에 정확성을 세울 수 없다. 데이터 모델 질의 표를 고쳤고 WP-023·WP-024가 그것을 딛는다 |
 | DEV-120 | 2026-08-23 | **`pnpm test:regression`이 없다.** WP-021의 검증 방법이 `pnpm test:regression sequence`이고 릴리스 검증 계획 7장도 "도메인 회귀 `pnpm test:regression` 주 1회 + 릴리스"로 적지만, `package.json`에 그 스크립트가 없다. DoD의 "회귀 픽스처 검증"이 걸려 있는 명령이 존재하지 않는다 | WP-021 / 릴리스 검증 계획 7·8장, ACC-02 | 범위 공백 | **CR-025** | **resolved (2026-08-23)** — WP-020이 세운 실제 git 픽스처 위에 `vitest.regression.config.ts`와 `test:regression` 스크립트를 만든다. **이번 WP가 채우는 것은 ACC-02(시퀀스-git 일치) 하나뿐이고**, 나머지 회귀 항목(ACC-01·03~08)은 각자의 WP가 채운다 — 빈 통을 만들어 놓고 "회귀 시험이 있다"고 적지 않는다 |
+| DEV-121 | 2026-08-23 | **EVT-SEQ-001을 어느 스트림이 나르는지 어디에도 없다.** 이벤트 카탈로그는 Producer(`sequence`)와 Consumer(`project, ops`)만 적고 **전송 수단을 적지 않는다.** 큐 구조표는 워커 역할별 스트림만 정의한다. `project`가 읽는 `prs:enriched`에 실으면 투영 핸들러가 모양이 다른 payload를 받고, `prs:sequence`에 실으면 채번이 자기 이벤트를 다시 소비한다 | WP-021 / EVT-SEQ-001, 비동기 문서 2·4장 | 범위 공백 | **CR-025** | **resolved (2026-08-23)** — **`prs:projected`에 싣는다.** EVT-ING-003이 이미 그리로 가고 `ops`가 그 스트림을 본다. 소비자는 `event_name`으로 가른다 — 봉투에 이미 있는 필드이므로 새 규약이 필요 없다. **카탈로그에 전송 스트림 열을 더해** 다음 이벤트가 같은 빈칸을 만나지 않게 했다 |
+| DEV-122 | 2026-08-23 | **채번 첫 시도가 실패하면 아무 신호도 남지 않는다 (내 코드 결함).** `markStale`이 `UPDATE`였는데, 첫 채번에서 그래프를 읽지 못하면 `ensureSequenceSpace`를 부른 트랜잭션이 롤백되어 갱신할 행이 없다. 0행이 갱신되고 그 저장소는 **`stale`로 표시되지도 `sequence_space_state` 경보가 울리지도 않은 채** 조용히 아무 시퀀스도 갖지 못한다. `last_error`도 남지 않아 운영자가 볼 수 있는 것이 하나도 없다 | WP-021 / FR-SEQ-001 예외 처리, 관측 문서 RB-10 | **코드 결함 (시험이 발견)** | **CR-025** | **resolved (2026-08-23)** — `markStale`을 `INSERT ... ON CONFLICT DO UPDATE`로 바꿨다. **시험이 먼저 잡았고**, 고친 뒤 `UPDATE`로 되돌려 시험 2건이 실패하는 것을 확인했다 — 시험이 이 결함을 실제로 잡는다는 증거다. 기존 시퀀스 값(`head_seq`·`head_sha`)은 여전히 건드리지 않는다 |
+| DEV-123 | 2026-08-23 | **채번의 PR 조회가 필수 접근 범위 필터를 우회할 뻔했다 (내 코드 결함).** `findPullRequestNumber`가 `client.search`를 직접 불렀고, ADR-008을 강제하는 아키텍처 시험이 그것을 잡았다. 허용 목록에 넣으려 했으나 그 목록은 **사용자 대면 예외**(DEV-051)를 위한 것이라, 워커를 넣으면 두 갈래가 섞이고 목록이 워커 수만큼 늘어난다 | WP-021, WP-012 / ADR-008, FR-AUTH-002 | **코드 결함 (아키텍처 시험이 발견)** | **CR-025** | **resolved (2026-08-23)** — **예외를 만들지 않았다.** 이 잡은 자기가 채번하는 **저장소 하나**만 보면 되고 그것은 예외가 아니라 **정확한 접근 범위**다. 저장소 하나짜리 `explicit` 범위로 `applyMandatoryScopeFilter`를 그대로 통과한다 — 불변식에 구멍이 없고, 코드가 "이 잡은 이 저장소만 본다"를 스스로 말한다. 허용 목록에는 `kind`(`user_facing` / `no_requester`)를 더해 두 갈래를 구분해 두었다 |
 | DEV-003 | 2026-08-19 | `../00_governance/change_control.md` 4장 아키텍처 게이트 기록이 "오류 코드 30종"으로 적혀 있으나 API 계약 6장의 실제 코드는 29종이었다 | WP-001 | 문서 오류 | **CR-006** | **resolved (2026-08-20)** — 게이트 기록을 29종으로 정정하고 CR-005로 GH 코드 16종이 추가되어 현재 45종임을 함께 표기 |
 
 **등록이 필요한 대표 상황** (사전에 예상되는 것):
@@ -1220,7 +1223,60 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 
 **워커 루프(`mirror-runner.ts`)는 변이를 돌리지 못했다** — 그 계층에 시험을 붙이지 않았다. 미러 동기화 자체(clone·fetch·prune·실패)는 통합 시험이 걸지만, 6시간 스윕 루프와 지표 보고는 걸지 않았다. 돌린 척하지 않는다.
 
-### 6.21 릴리스 게이트
+### 6.21 WP-021 검증 실행 기록
+
+**실행 일시**: 2026-08-23 · **커밋**: `60c0aa1` / PR #25
+
+| DoD | 결과 | 근거 |
+| --- | --- | --- |
+| 1. 채번이 `git rev-list --first-parent --reverse`와 일치 (AC-2) | **통과** | `assign.test.ts` — 정답을 우리 구현이 아니라 origin 저장소의 git이 낸다 |
+| 2. 공간별 독립, 루트가 1 (AC-1) | **통과** | 같은 저장소의 두 브랜치가 서로를 막지 않는 것까지 확인 |
+| 3. 직접 푸시가 서수를 받고 PR 연결이 null (AC-3) | **통과** | **머지 커밋과 같은 히스토리에서 대조한다** — 아래 참조 |
+| 4. 두 번 실행해도 값이 변하지 않는다 (AC-4) | **통과** | 재실행 결과가 전량 동일. 아는 PR 번호가 지워지지 않는 것도 별도 확인 |
+| 5. 증분 채번이 저장된 head 이후만 (AC-5) | **통과** | 나눠 채번한 결과가 한 번에 채번한 것과 같다 |
+| 6. 공간당 동시 1개 (AC-6) | **통과** | 실제 PostgreSQL에서 동시 5건 — 중복도 구멍도 없다 |
+| 7. 그래프 실패 시 `stale`, 기존 값 보존 | **통과** | **첫 시도 실패 포함** (DEV-122가 여기서 나왔다) |
+| 8. 회귀 픽스처 검증 | **통과** | `pnpm test:regression` 5건 |
+
+| 시험 계층 | 건수 | 환경 |
+| --- | --- | --- |
+| 단위 | 전체 **1025**건 (989 → 1025) | 로컬 |
+| 통합 (ES 비의존) | **21파일 235건** (19파일 181건 → ) | 로컬 PostgreSQL 16.13 + 실제 git 픽스처 |
+| 회귀 | **5**건 | 로컬 (git만 필요) |
+| ES 통합 | 10건 | **CI가 처음 판정한다** — 이 환경에 Elasticsearch가 없다 |
+| `pnpm typecheck` / `pnpm lint` | 통과 | 로컬 |
+
+**통합 시험이 Elasticsearch를 요구하지 않는다.** 시퀀스는 PostgreSQL이 정본이고 색인은 그것을 비친 것이므로(ADR-004), 정본이 맞는지는 PostgreSQL과 git만으로 판정할 수 있어야 한다. WP-019에서 ES를 요구하는 파일에 PostgreSQL만의 불변식을 넣었다가 로컬에서 못 돌린 채 결함이 CI로 나갔다 — 그 교훈을 이번에 적용했다.
+
+**AC-3이 거짓 통과하기 쉬운 자리였다.** 직접 푸시 커밋만 있는 픽스처로 "`pull_request_number`가 null이다"를 확인하면, **PR 조회를 아예 하지 않는 구현도 통과한다** — PR 문서가 애초에 없으니 무엇을 해도 null이 나온다. 그래서 픽스처가 머지 커밋(PR #42)과 직접 푸시 셋을 **같은 히스토리에** 담고, 대역이 머지 커밋 하나에만 PR 번호를 준다. 둘을 가르는 것이 그 대역의 존재 이유다.
+
+#### 변이 시험 (9종, 생존 0)
+
+| 변이 | 결과 |
+| --- | --- |
+| 서수 오프셋 `+index+1` → `+index` (루트가 0이 된다) | 잡힘 |
+| 커밋 시각으로 재정렬 (git 순서를 버린다) | 잡힘 |
+| 브랜치 판정을 정확 일치 → 접두 일치 | 잡힘 |
+| push의 `deleted` 플래그 무시 | 잡힘 |
+| 40자 0 SHA 검사 제거 (없는 커밋을 채번한다) | 잡힘 |
+| 태그 ref를 브랜치로 받는다 | 잡힘 |
+| `after`의 SHA 모양 검사 제거 | 잡힘 |
+| 시각 없는 줄을 던지지 않고 버린다 (서수가 하나씩 밀린다) | 잡힘 |
+| 시각의 오프셋 검사 제거 | 잡힘 |
+
+마지막 항목은 처음에 **생존으로 보였다.** `sed` 이스케이프가 조용히 실패해 변이가 아예 적용되지 않았던 것이고, python으로 제대로 적용하니 시험이 잡았다. **생존자를 등가 변이로 단정하지 않고 적용 여부부터 확인한 것이 그 차이를 만들었다.**
+
+#### 구현 중 스스로 잡은 결함 둘
+
+**DEV-122 — 첫 채번 실패가 아무 신호도 남기지 않았다.** `markStale`이 `UPDATE`라서, 첫 시도에서 그래프를 읽지 못하면 공간을 만든 트랜잭션이 롤백되어 갱신할 행이 없었다. 그 저장소는 `stale`로 표시되지도 `sequence_space_state` 경보가 울리지도 않은 채 조용히 아무 시퀀스도 갖지 못한다. **시험이 먼저 잡았고**, 고친 뒤 `UPDATE`로 되돌려 시험 2건이 실패하는 것을 확인했다 — 그 시험이 이 결함을 실제로 잡는다는 증거다.
+
+**DEV-123 — 접근 범위 우회를 만들 뻔했다.** PR 번호 조회가 `client.search`를 직접 불렀고 ADR-008 아키텍처 시험이 잡았다. 허용 목록에 넣으려다 멈췄다 — 그 목록은 **사용자 대면 예외**를 위한 것이라 워커를 넣으면 두 갈래가 섞인다. 대신 이 잡이 볼 수 있는 것이 **저장소 하나뿐**이라는 사실을 그대로 `explicit` 접근 범위로 적어 필수 필터를 통과했다. **예외가 필요 없었다.**
+
+#### 게이지를 세는 방식
+
+`sequence_space_state`를 `set(1)`로 올릴 뻔했다. 그러면 한 번 `stale`이 된 공간이 복구된 뒤에도 라벨이 1로 남아 **P2 경보가 영원히 울리고, 아무도 그 경보를 믿지 않게 된다.** 상태별로 세어 `replace`하며, 복구 시 게이지가 따라 내려가는 것을 시험이 건다.
+
+### 6.22 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -1295,7 +1351,9 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 | 좁은 화면(≤800px) 동작을 실제 뷰포트에서 확인하지 못함 | jsdom에 뷰포트·CSS가 없음 / DEV-073 | 실제 상태 — 서랍 버튼의 **존재·키보드 도달·여닫기·포커스 복귀**는 a11y 시험이 건다. 그 버튼이 800px 이하에서만 보인다는 것은 Conductor의 `.cdt-topbar__menu-button` 규칙을 읽어 확인했을 뿐 **실행으로 확인하지 않았다** | 뷰포트를 좁히는 e2e를 화면 WP에서 함께 세운다 |
 | 세션 만료 후 경로 복귀가 `/` 하나에서만 실증됨 | WP-015 범위 (화면 없음) | 실제 상태 — `return_to` 생성·무해화·왕복·재무해화는 전부 시험이 걸지만, 실제로 그 경로를 만드는 화면이 `/`뿐이다 | **`/search`가 더해져 둘이 됐다.** 화면이 늘수록 넓어진다 |
 | W-001의 패싯이 늘 `not_computed` | WP-016 제외 목록 (패싯 데이터는 WP-032) / CR-019 DEV-076 | 실제 상태 (의도) — `/search`가 `facets`·`facets_omitted` 키를 넣지 않으므로 레일이 **사유를 표시하고** 선택 UI를 그리지 않는다. 조용히 비우지 않는다 | WP-032 |
-| 결과 목록의 시퀀스가 늘 `not_computed` | WP-021 전까지 투영이 시퀀스를 쓰지 않음 / CR-019 DEV-077 | 실제 상태 — 미머지(`unassigned`)와 **다른 배지**로 그린다. 섞으면 머지된 PR을 "미머지"로 표시하게 된다 | WP-021 |
+| ~~결과 목록의 시퀀스가 늘 `not_computed`~~ | CR-019 DEV-077 | **해소 (2026-08-23, WP-021)** — 채번이 서수를 붙이고 `applySequenceToDocuments`가 커밋·PR 문서에 싣는다. 미머지(`unassigned`)와 다른 배지로 그리는 구분은 그대로다 | 없음 |
+| 채번은 push 웹훅이 온 저장소만 따라간다 | WP-021 구현 범위 | 실제 상태 (의도) — 백필로 과거 PR을 채운 저장소는 **첫 push가 올 때까지** 시퀀스가 없다. 잡 카탈로그가 "백필 완료"도 트리거로 적지만 그 연결은 WP-028(조정 스캔)이 맡는다 | WP-028 |
+| 재작성된 시퀀스 공간이 `stale`로 멈춘다 | WP-021 제외 (재채번은 WP-022) | 실제 상태 (의도) — 감지해서 기존 값을 보존하고 P2 경보를 낸다. **조용히 다시 번호를 매기지 않는다** — 그러면 과거에 인용된 범위가 말없이 다른 것을 가리킨다 (ADR-007) | WP-022 |
 | 결과 행에 관계 배지 열이 없음 | CR-019 DEV-081 (`C-015`는 WP-031 소관, `link_summary`는 WP-029까지 빈다) | 실제 상태 (의도) — **빈 열을 미리 두지 않는다.** 사용자가 "관계 없음"으로 읽는다 | WP-031 |
 | ~~`/search` 결과 행이 가리키는 상세 화면이 없음~~ | W-002·W-003이 WP-017·WP-018 | **해소 (2026-08-22)** — WP-017이 `/pr/...`을, WP-018이 `/commit/...`을 세웠다. 결과 행·해석 후보·W-002 커밋 목록이 가리키는 곳이 모두 실재하고, FLOW-002 전 경로가 실제 브라우저에서 이어진다 | 없음 |
 | 최근 검색 목록이 비어 있음 | CR-019 DEV-079 (저장 위치 미정) | 실제 상태 — prop을 선택으로 낮추고 비면 그리지 않는다. **저장 설계를 지어내지 않았다** — 서버에 보내면 조사 이력이 서버 기록이 되는데 요구한 문서가 없다 | 사용자 결정 후 |
@@ -1398,7 +1456,16 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 
 **결정을 미루는 것도 선택이고, 그 선택에는 값이 있다.** OD-001·OD-002의 기한은 REL-002 착수 전이었는데 REL-002가 이미 닫혔고, OD-004의 기한(REL-003 착수 전)은 WP-020 착수로 지났다. **셋 다 기한을 넘긴 채였다.** 넘긴 동안 WP-020은 "결정 전이라 두 경로 모두 구현"했고, DEV-051은 다섯 WP 동안 허용 목록에 남아 있었다. 지금 닫으면서 그중 **코드를 바꿔야 하는 것은 둘뿐이다** — `patch_id_unavailable` 매핑(이번에 함께 고쳤다)과 `slowest_repositories`의 범위 축약(WP-040 전까지). 나머지는 이미 결정대로 서 있었다.
 
-**다음은 WP-021 시퀀스 증분 채번이다.** 선행(WP-002·WP-020)이 모두 섰다. WP-067·WP-068은 REL-003 안에서 WP-021과 독립이므로 순서를 다투지 않는다.
+~~**다음은 WP-021 시퀀스 증분 채번이다.**~~ → **완료 (2026-08-23).** 검증 결과는 6.21장.
+
+42. ~~CR-025 시퀀스 채번 계약 정정~~ → 완료 (2026-08-23). DEV-115~120 해소. 구현 중 DEV-121~123을 추가 등록·해소했다. SRS 버전은 v2.3 유지(빈칸 메우기)
+43. ~~WP-021 시퀀스 증분 채번~~ → 완료 (2026-08-23, `60c0aa1` / PR #25). 검증 결과는 6.21장. **DoD 8항 전부 통과.** 단위 1025건·통합 235건·회귀 5건
+
+**이 제품의 핵심 주장이 실재한다.** "번호 순서 = 반영 순서"가 이제 코드로 있고, 그것이 참인지를 `git rev-list --first-parent --reverse`와 대조하는 회귀 계층이 매 실행마다 검사한다. Perforce Changelist가 주던 신뢰의 본질이 그 대조 가능성이었으므로(ADR-007), 이 검사가 도는 한 그 주장은 증명 가능한 상태로 남는다.
+
+**시험이 결함 둘을 잡았고 그것이 이번 WP의 소득이다.** 첫 채번 실패가 아무 신호도 남기지 않던 것(DEV-122)과 접근 범위 우회를 만들 뻔한 것(DEV-123). 둘 다 코드를 읽어서가 아니라 **시험을 돌려서** 드러났다. 특히 DEV-123은 아키텍처 시험이 잡았는데, 그 시험이 없었다면 허용 목록이 워커 수만큼 늘어나는 길로 갔을 것이다.
+
+**다음은 WP-022 시퀀스 재채번과 에폭이다.** WP-021이 재작성을 **감지해서 `stale`로 두고 멈추므로**, 그 공간은 사람이 손대기 전까지 새 시퀀스를 받지 못한다 — 감지만 있고 회복이 없는 상태다. WP-067·WP-068은 REL-003 안에서 독립이라 순서를 다투지 않는다.
 
 **WP-020이 함께 닫는 것 셋.** 지금 화면들이 "아직 수집 전"이라고 적어 둔 자리가 전부 WP-020의 몫이다 — 커밋 메시지·작성자·시각(DEV-090), 변경 경로(DEV-094), PR 상세의 원본 커밋 제목(DEV-062). 타입을 전부 널 허용으로 열어 두었으므로 **화면을 고치지 않아도 키가 붙는 대로 채워진다.**
 
