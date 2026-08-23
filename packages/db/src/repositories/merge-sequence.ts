@@ -124,3 +124,76 @@ export async function findByPullRequest(
   );
   return result.rows;
 }
+
+/**
+ * 공간·에폭 안에서 커밋의 서수를 찾는다 (WP-022 / CR-026, DEV-124).
+ *
+ * `findByCommitSha`와 달리 브랜치·에폭까지 좁힌다 — 재채번의 merge-base
+ * 판정은 "**이 에폭의 이 체인**에서 그 커밋이 몇 번인가"를 물어야 하고,
+ * 저장소 전체에서 찾으면 다른 브랜치의 같은 커밋이 걸린다.
+ *
+ * @returns 체인에 없으면 `null`. merge-base가 first-parent 체인 밖(피처
+ * 브랜치 안) 커밋이면 정상적으로 이 값이 나온다 (DEV-125).
+ */
+export async function findSeqByCommit(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  commitSha: string,
+): Promise<number | null> {
+  const result = await db.query<{ merge_seq: string }>(
+    `SELECT merge_seq FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND commit_sha = $4`,
+    [repositoryId, baseBranch, seqEpoch, commitSha],
+  );
+  const seq = result.rows[0]?.merge_seq;
+  return seq === undefined ? null : Number(seq);
+}
+
+/**
+ * 이전 에폭의 서수를 새 에폭으로 복사한다 (WP-022 / CR-026, DEV-124).
+ *
+ * merge-base까지의 구간은 히스토리가 바뀌지 않았으므로 **값이 그대로다**
+ * (ADR-007: "그 구간은 값이 동일하므로 이전 에폭 인용 중 상당수가 여전히
+ * 같은 커밋을 가리킨다"). 다시 걸어서 계산해도 같은 값이 나오지만, 복사가
+ * 훨씬 싸고 `pull_request_number`처럼 **나중에 채워진 값**을 잃지 않는다 —
+ * 재계산하면 그 열은 다시 null에서 시작한다.
+ *
+ * @returns 복사한 행 수.
+ */
+export async function copySequencesUpTo(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  fromEpoch: number,
+  toEpoch: number,
+  uptoSeqInclusive: number,
+): Promise<number> {
+  const result = await db.query(
+    `INSERT INTO merge_sequence
+       (repository_id, base_branch, seq_epoch, merge_seq, commit_sha, pull_request_number, committed_at)
+     SELECT repository_id, base_branch, $4, merge_seq, commit_sha, pull_request_number, committed_at
+       FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq <= $5
+     ON CONFLICT (repository_id, base_branch, seq_epoch, merge_seq) DO NOTHING`,
+    [repositoryId, baseBranch, fromEpoch, toEpoch, uptoSeqInclusive],
+  );
+  return result.rowCount ?? 0;
+}
+
+/** 어긋난 지점 이후의 이전 에폭 행 수. EVT-SEQ-002의 `affected_count`다. */
+export async function countAbove(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  aboveSeqExclusive: number,
+): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq > $4`,
+    [repositoryId, baseBranch, seqEpoch, aboveSeqExclusive],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}

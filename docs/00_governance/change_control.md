@@ -501,6 +501,7 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 **DEV-099의 해법이 이 CR에서 가장 값싸다.** AC-5("백필이 실시간을 덮어쓰지 않는다")를 지키는 코드를 따로 쓰지 않았다 — 백필의 버전을 엔티티 `updated_at`으로 두니 **이미 있는 조건부 업서트가 저절로 거절한다.** 규칙을 강제하는 분기는 그 분기가 틀렸을 때 조용히 어긋나지만, 산술은 틀릴 자리가 없다.
 
 | CR-025 | 2026-08-23 | correction | WP-021 착수 전 시퀀스 채번 계약 감사에서 확인된 DEV-115~120 | **이 제품의 핵심 값을 쓰려는데, 그 값을 만들 재료 하나와 그것을 부를 사람이 없다.** `merge_sequence.committed_at`은 `NOT NULL`인데 WP-020이 낸 그래프 계층은 SHA만 주고 커밋 시각을 주는 잡(JOB-MIR-002)은 아직 todo다(DEV-115). 그리고 JOB-SEQ-001의 트리거인 `push` 이벤트는 게이트웨이가 `prs:ingest`에 싣고 `enrich`가 "PR 이벤트가 아니다"로 버린다 — **`prs:sequence`에 무언가를 싣는 코드가 어디에도 없다**(DEV-116). 여기에 `pull_request_number`의 출처 미정의(DEV-118)와 `bus.requeueLater()`라는 없는 포트(DEV-117)가 겹친다. **가장 조용한 것은 DEV-119다** — 데이터 모델 질의 표가 범위 조회를 `term(sequence_space)`로 거르는데 그 값은 `acme/payments@main` 같은 표시용 문자열이라, 저장소 이름이 바뀌면 같은 공간이 두 문자열로 갈라져 **범위 조회가 조용히 절반만 돌려준다.** 이 제품의 핵심 산출물이 틀리는데 아무 오류도 나지 않는다 | DEV-115~120, FR-SEQ-001, FR-SEQ-002, ADR-005, ADR-007, JOB-SEQ-001, EVT-SEQ-001, ENT-SEQ-001 | ADR 문서, 백엔드 아키텍처, 데이터 모델, 비동기·잡 카탈로그, API 계약, 릴리스 검증 계획, 작업 패키지, 원장 | closed |
+| CR-026 | 2026-08-23 | correction | WP-022 착수 전 재채번 계약 감사에서 확인된 DEV-124~129 | **재채번이 딛고 설 함수 둘이 없고, 의사코드가 성공을 가정한 자리 둘이 실제로는 실패할 수 있다.** 백엔드 4.3의 `copySequencesUpTo`·`getSeqByCommit`은 리포지터리에 없다(DEV-124). `mergeBase`가 first-parent 체인 **밖**의 커밋을 줄 수 있는데 의사코드는 그 SHA로 서수를 찾는 데 무조건 성공한다고 가정한다(DEV-125) — 못 찾으면 **처음부터 전체 재채번**으로 폴백한다: first-parent walk가 결정론이라 히스토리가 같은 구간은 같은 서수가 재현된다. `invalidateSafeMarkers`는 쓸 수단이 스키마에 없다(DEV-126) — AC-4 후반부가 이미 답을 정의한다: 표식·세션·인용은 `seq_epoch`를 저장하므로 **현재 에폭과 비교해 계산**하면 되고 저장 시점 쓰기가 필요 없다. 저장된 검색 `seq:` 무효화는 `saved_search` 테이블 자체가 없어(REL-004) 도달 불가. 알림 어댑터도 없어(DEV-127, DEV-026과 같은 사정) EVT-SEQ-002 발행 + 감사 기록으로 AC-5를 성립시킨다. 잡 스키마의 `sequence_assign`과 API 계약의 `sequence_reassign`이 불일치한다(DEV-128, WP-028 몫). ES에 에폭 전환을 비출 수단이 없다(DEV-129) — SHA 목록 기반 `applySequenceToDocuments`로는 저장소 전체의 `seq_epoch`를 못 올린다 | DEV-124~129, FR-SEQ-005, ADR-007, JOB-SEQ-002, EVT-SEQ-002, API-ADM-007, ENT-SEQ-001·002 | 백엔드 아키텍처, 데이터 모델, 작업 패키지, 원장 | closed |
 
 ### CR-024 반영 내역 (2026-08-22)
 
@@ -523,6 +524,18 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 **두 갈래를 구분한 것이 DEV-051의 핵심이다.** "운영 집계는 예외"로 뭉뚱그리면 다음에 들어올 저장소별 집계가 조용히 따라 들어온다. 예외의 경계를 **저장소 식별자의 유무**에 두었으므로 아키텍처 테스트가 그 경계를 검사할 수 있다.
 
 **DEV-114는 이 CR이 찾아낸 것이다.** `allowed_team_ids`의 소유권을 정하려고 코드를 확인하다가, 매핑 넷이 선언하고 강제 필터가 읽는 그 필드를 **아무도 쓰지 않는다**는 사실이 드러났다. 통합 시험이 문서를 손으로 심으면서 그 필드를 직접 넣기 때문에 초록이 나온다 — **초록이 곧 검증은 아니다**의 또 한 사례다.
+
+### CR-026 반영 내역 (2026-08-23)
+
+- [x] `30_technical_architecture/pr_search_backend_architecture.md` — 4.3장 `reassign` 의사코드 전면 정정: 없는 함수(`invalidateSafeMarkers`) 제거, merge-base 폴백(DEV-125), 사전 `reassigning` 표시, COMMIT 뒤 후처리 분리, 표식 무효는 에폭 비교(DEV-126)
+- [x] `30_technical_architecture/pr_search_data_model.md` — `safe_marker` 주석: 에폭 무효는 열이 아니라 비교다. `superseded_at`과 섞지 않는다
+- [x] `40_delivery/pr_search_work_packages.md` — WP-022 DoD 7항 체크, 제외 목록(수동 API는 WP-028)
+- [x] `40_delivery/pr_search_implementation_traceability.md` — **v0.9.** DEV-124~129 등록(128은 WP-028로 이월), 6.22장 검증 기록, §7 재작성 제한 해소
+- [x] `packages/db`, `packages/es`, `packages/domain`, `apps/pipeline-worker` — 구현은 WP-022 커밋
+
+**SRS는 건드리지 않았다.** FR-SEQ-005의 AC-1~AC-5는 그대로다. 여섯 중 셋이 "의사코드가 성공을 가정한 자리"였다 — 없는 함수 둘(DEV-124), 체인 밖 merge-base(DEV-125), 쓸 수단 없는 무효 표시(DEV-126). **의사코드는 실패 경로를 적지 않아서 짧다. 구현이 길어지는 자리가 바로 그 안 적힌 실패 경로다.**
+
+**DEV-126의 결정이 이 CR에서 가장 값싸다.** "무효 표시"를 쓰기로 구현하면 표식·세션·저장된 검색 세 곳에 소급 쓰기 경로가 생기고, 그중 하나(저장된 검색)는 테이블조차 없다. 비교로 구현하면 **쓰기가 0곳**이고, 각자 저장한 에폭이 곧 판정 근거다 — AC-4 후반부가 이미 그렇게 적혀 있었다. 요구사항이 답을 품고 있는데 의사코드가 다른 길을 가리키던 경우다.
 
 ### CR-025 반영 내역 (2026-08-23)
 

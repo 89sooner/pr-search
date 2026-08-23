@@ -150,6 +150,64 @@ async function updateOne(
 }
 
 /**
+ * 재채번 뒤 문서의 에폭을 새 값으로 올린다 (WP-022 / CR-026, DEV-129).
+ *
+ * base 이전 구간은 **서수가 같아도 에폭은 바뀐다** — 인용은 `(seq, epoch)`
+ * 쌍이고(ADR-007 규칙 5), 문서가 옛 에폭을 달고 있으면 조회가 그 문서를
+ * `epoch_stale`로 오판한다. SHA 목록 기반 `applySequenceToDocuments`로 전체를
+ * 넘기면 요청이 저장소 크기에 비례하므로, 에폭만 올리는 갱신은
+ * `update_by_query` 하나로 한다.
+ *
+ * **`merge_seq`가 있는 문서만 만진다.** 서수를 받은 적 없는 문서에 에폭을
+ * 붙이면 "서수 없이 에폭만 있는" 반쪽 상태가 생긴다 — API 계약 DTO 표준이
+ * 셋(seq·epoch·space)을 함께 반환하라고 못박은 이유와 같다.
+ *
+ * `document_version`은 건드리지 않는다.
+ */
+export async function applyEpochBump(
+  client: Client,
+  input: {
+    readonly repositoryId: number;
+    readonly baseBranch: string;
+    readonly newEpoch: number;
+    readonly sequenceSpace: string;
+  },
+): Promise<ApplySequenceResult> {
+  const updated: Record<string, number> = {};
+  let total = 0;
+
+  for (const alias of ['prs-commits', 'prs-pull-requests'] as const) {
+    const response = await client.updateByQuery({
+      index: alias,
+      routing: String(input.repositoryId),
+      refresh: true,
+      conflicts: 'proceed',
+      query: {
+        bool: {
+          filter: [
+            { term: { repository_id: input.repositoryId } },
+            { term: { base_branch: input.baseBranch } },
+            { exists: { field: 'merge_seq' } },
+          ],
+          // 이미 새 에폭인 문서는 건드리지 않는다. 재실행이 싸진다.
+          must_not: [{ term: { seq_epoch: input.newEpoch } }],
+        },
+      },
+      script: {
+        lang: 'painless',
+        source: 'ctx._source.seq_epoch = params.epoch; ctx._source.sequence_space = params.space;',
+        params: { epoch: input.newEpoch, space: input.sequenceSpace },
+      },
+    });
+    const count = Number(response.updated ?? 0);
+    updated[alias] = count;
+    total += count;
+  }
+
+  return { updated, total };
+}
+
+/**
  * 이 머지 커밋에 대응하는 PR 번호 (CR-025, DEV-118).
  *
  * ## 접근 범위를 우회하지 않는다

@@ -17,6 +17,8 @@ export const EVENT_NAMES = {
   ingestionFailed: 'ingestion.failed',
   /** EVT-SEQ-001 */
   sequenceAssigned: 'sequence.assigned',
+  /** EVT-SEQ-002 */
+  sequenceReassigned: 'sequence.reassigned',
   /** EVT-AUTH-001 */
   permissionInvalidated: 'permission.invalidated',
 } as const;
@@ -231,4 +233,21 @@ export interface SequenceAssigned {
   readonly from_seq: number;
   readonly to_seq: number;
   readonly head_sha: string;
+}
+
+/**
+ * EVT-SEQ-002 `sequence.reassigned` (WP-022, FR-SEQ-005).
+ *
+ * `diverged_at_seq`는 **첫 무효 서수**다 — 그 앞까지는 새 에폭에서도 값이
+ * 같고, 그 서수부터 이전 에폭 인용이 다른 커밋을 가리킬 수 있다.
+ * `affected_count`는 무효가 된 이전 에폭 행 수다. 알림 소비자(REL-005)가
+ * "몇 건이 무효가 됐는가"를 이 값으로 말한다.
+ */
+export interface SequenceReassigned {
+  readonly repository_id: number;
+  readonly base_branch: string;
+  readonly old_epoch: number;
+  readonly new_epoch: number;
+  readonly diverged_at_seq: number;
+  readonly affected_count: number;
 }

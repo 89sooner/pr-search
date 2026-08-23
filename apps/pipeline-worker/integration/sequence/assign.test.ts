@@ -409,24 +409,41 @@ describe('DoD 7: 그래프 실패는 `stale`이고 기존 값을 보존한다', 
   });
 });
 
-describe('히스토리 재작성은 감지만 하고 고치지 않는다 (WP-022)', () => {
-  it('**재작성을 감지하면 `rewritten`을 내고 기존 시퀀스를 보존한다**', async () => {
+describe('히스토리 재작성은 재채번으로 이어진다 (WP-022, FR-SEQ-005)', () => {
+  it('**재작성을 감지하면 에폭을 올려 재채번하고 이전 에폭 행을 보존한다**', async () => {
+    /*
+     * WP-021 시점에는 감지만 하고 `stale`로 멈추는 것이 계약이었다.
+     * WP-022가 그 자리를 재채번으로 이었다 — 이전 에폭 행은 그대로 남는다
+     * (이전 인용을 해석할 근거다). 재채번 자체의 전 경로는
+     * `reassign.test.ts`가 건다.
+     */
     await registerRepository();
     await assignSequence(deps(), REPOSITORY_ID, BRANCH);
-    const before = await storedSequence();
+
+    // `storedSequence()`는 에폭 구분이 없다 — 재채번 뒤에는 두 에폭이 섞이므로
+    // 이 시험만 에폭을 직접 거른다.
+    const epochRows = async (epoch: number): Promise<unknown[]> =>
+      (
+        await pool.query(
+          `SELECT merge_seq, commit_sha FROM merge_sequence
+            WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 ORDER BY merge_seq`,
+          [REPOSITORY_ID, BRANCH, epoch],
+        )
+      ).rows;
+    const before = await epochRows(1);
 
     await rewriteHistory(origin.dir);
     await cloneMirror();
 
     const outcome = await assignSequence(deps(), REPOSITORY_ID, BRANCH);
-    expect(outcome.kind).toBe('rewritten');
+    expect(outcome.kind).toBe('reassigned');
 
-    // 조용히 다시 번호를 매기지 않는다 — 그러면 과거 인용이 말없이 다른 것을 가리킨다.
-    expect(await storedSequence()).toEqual(before);
+    // 이전 에폭(1) 행은 조용히 다시 매겨지지 않고 그대로 남는다.
+    expect(await epochRows(1)).toEqual(before);
 
     const space = await sequenceSpaceRepo.findSequenceSpace(pool, REPOSITORY_ID, BRANCH);
-    expect(space?.state).toBe('stale');
-    expect(space?.last_error).toContain('history_rewritten');
+    expect(space?.seq_epoch).toBe(2);
+    expect(space?.state).toBe('ok');
   });
 });
 

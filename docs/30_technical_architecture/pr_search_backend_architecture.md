@@ -167,21 +167,33 @@ async function assignSequence(repositoryId: number, baseBranch: string) {
   });
 }
 
-async function reassign(t, space, newHead) {
-  await t.updateSequenceSpace({ state: 'reassigning' });
-  const base = await graph.mergeBase(space.headSha, newHead);
-  const baseSeq = await t.getSeqByCommit(space.repositoryId, space.baseBranch, space.seqEpoch, base);
-  const newEpoch = space.seqEpoch + 1;
+async function reassign(deps, repository, baseBranch, storedHead, newHead) {
+  // 1) 밖에서 보이는 상태. 본 작업은 트랜잭션 하나라 그 안의 상태 변경은
+  //    커밋 전까지 아무도 못 본다 — 표시가 먼저 따로 커밋되어야 한다.
+  await markReassigning(pool, ...);
 
-  await t.copySequencesUpTo(space, newEpoch, baseSeq);          // baseSeq까지는 값이 같음
-  const shas = await graph.firstParentRevList(space.repositoryId, space.baseBranch, `${base}..${newHead}`);
-  let seq = baseSeq;
-  for (const sha of shas) { seq += 1; await t.upsertMergeSequence({ ..., epoch: newEpoch, mergeSeq: seq }); }
+  return tx(async (t) => {                                      // 실패 시 통째로 롤백 — 부분 상태 없음
+    if (!(await trySequenceSpaceLock(t, ...))) return rewritten; // 다음 회차가 잇는다
+    const space = await findSequenceSpace(t, ...);
+    if (space.headSha !== storedHead) return skipped;           // 그새 누가 처리했다 — 옛 판정으로 안 잇는다
 
-  await t.updateSequenceSpace({ seqEpoch: newEpoch, headSha: newHead, headSeq: seq, state: 'ok' });
-  await t.invalidateSafeMarkers(space);                         // AC-4
-  await audit.record({ action: 'sequence.reassigned', ... });   // AC-5
-  await notify.alert('sequence.reassigned', { ... });
+    const base = await graph.mergeBase(ref, storedHead, newHead);
+    let baseSeq = base ? await findSeqByCommit(t, ..., space.seqEpoch, base) : null;
+    // **merge-base가 first-parent 체인 밖일 수 있다 (CR-026, DEV-125).**
+    // 못 찾으면 처음부터 전부 다시 건다 — walk가 결정론이라 히스토리가 같은
+    // 구간은 같은 서수가 재현되므로, 복사는 최적화지 정확성의 조건이 아니다.
+    if (baseSeq === null) { baseSeq = 0; base = null; }
+
+    const newEpoch = await bumpEpoch(t, ...);
+    await copySequencesUpTo(t, ..., space.seqEpoch, newEpoch, baseSeq);  // PR 번호처럼 나중에 채워진 값을 잃지 않는다
+    const commits = await graph.firstParentCommits(ref, { from: base, to: newHead });
+    // numberCommits(baseSeq, commits) → upsert(..., epoch: newEpoch)
+    await advanceHead(t, ..., newHead, toSeq);                  // state='ok'
+  });
+  // COMMIT 뒤 (실패해도 재채번은 성공 — PostgreSQL이 정본, ADR-004):
+  //   applyEpochBump + applySequenceToDocuments               // ES (DEV-129)
+  //   publish EVT-SEQ-002                                     // 알림 소비자는 REL-005 (DEV-127)
+  //   recordAudit({ userId: 'system:sequence', ... })          // AC-5
 }
 ```
 
@@ -190,6 +202,7 @@ async function reassign(t, space, newHead) {
 - **advisory lock을 트랜잭션 스코프로 잡는다.** 트랜잭션이 끝나면 자동 해제되므로 워커가 죽어도 락이 남지 않는다.
 - **락 획득 실패 시 대기하지 않고 미룬다.** 대기하면 워커 슬롯이 묶여 다른 저장소 처리가 밀린다. **포트에 `requeueLater`는 없다 (CR-025, DEV-117)** — `HandlerDisposition`의 `deferUntil`이 그 동작이고, 락 실패는 실패가 아니라 "지금은 다른 워커가 쥐고 있음"이므로 재시도 예산을 소모하는 `retry`가 아니라 `defer`가 맞다.
 - **재채번 시 merge-base까지의 시퀀스를 새 에폭으로 복사한다.** 그 구간은 값이 동일하므로 이전 에폭 인용 중 상당수가 여전히 같은 커밋을 가리킨다. 다만 화면은 안전을 위해 전부 무효로 표시한다.
+- **안전 구간 표식·이분 탐색 세션·인용에는 아무것도 쓰지 않는다 (CR-026, DEV-126).** 그들은 `seq_epoch`를 저장하고 있으므로 조회가 **현재 에폭과 비교해** `epoch_stale`을 계산한다 — FR-SEQ-005 AC-4 후반부가 정의한 그대로다. 이전 판의 `invalidateSafeMarkers`는 쓸 수단이 스키마에 없는 호출이었다. 저장된 검색의 `seq:` 조건은 `saved_search`를 만드는 WP-033이 같은 규칙(에폭 저장 + 조회 시 비교)을 따른다.
 - Elasticsearch 문서의 `merge_seq` 갱신은 별도 작업으로 이어진다. **PostgreSQL 커밋이 먼저다** — 색인 반영이 실패해도 시퀀스 값은 살아 있고 다음 회차가 다시 비춘다 (ADR-004). 갱신은 `update_by_query`이며 `document_version`을 올리지 않는다 — 시퀀스는 웹훅이 나르는 엔티티 상태가 아니라 git 히스토리에서 파생한 값이라 버전 비교의 대상이 아니다.
 - **`upsertMergeSequence`가 `pull_request_number`를 나중에 채운다 (CR-025, DEV-118).** push가 그 PR의 투영보다 먼저 도착하면 채번 시점에는 대응 PR을 모르므로 `null`이 된다. `COALESCE(기존, 신규)`로 두어 모르는 값은 나중에 채워지되 **이미 아는 값이 `null`로 덮이지 않게** 한다. 같은 서수에 다른 SHA가 오면 조용히 넘기지 않고 던진다 — 그것은 경합이 아니라 손상이다.
 - **PR 조회는 저장소 하나짜리 `explicit` 접근 범위로 필수 필터를 통과한다 (CR-025, DEV-123).** 채번 잡에는 요청자가 없지만 그렇다고 필터를 우회하지 않는다 — 이 잡이 볼 수 있는 것은 자기가 채번하는 저장소 하나이고, 그것을 접근 범위로 적으면 예외 없이 성립한다.

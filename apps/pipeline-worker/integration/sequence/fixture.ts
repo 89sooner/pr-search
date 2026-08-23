@@ -155,3 +155,21 @@ export async function rewriteHistory(dir: string): Promise<string> {
   await run(dir, ['commit', '-q', '-m', 'c4 rewritten']);
   return (await run(dir, ['rev-parse', 'HEAD'])).trim();
 }
+
+/**
+ * main을 **피처 브랜치의 마지막 커밋**으로 재작성한다 (DEV-125 폴백 시나리오).
+ *
+ * 이전 head(병합 커밋)와 새 head(f2)의 merge-base는 f2 자신인데, f2는
+ * first-parent 체인 **밖**(병합의 두 번째 부모 쪽)이다 — `findSeqByCommit`이
+ * `null`을 돌려주는 유일하게 자연스러운 구성이고, 이때 재채번은 처음부터
+ * 전부 다시 걸어야 한다.
+ *
+ * @returns 재작성 뒤의 head (= f2).
+ */
+export async function rewriteToFeatureHead(dir: string): Promise<string> {
+  const f2 = (await run(dir, ['rev-parse', 'feature'])).trim();
+  await run(dir, ['checkout', '-q', 'feature']);
+  await run(dir, ['branch', '-f', 'main', 'feature']);
+  await run(dir, ['checkout', '-q', 'main']);
+  return f2;
+}
