@@ -160,7 +160,7 @@ const app = buildServer({
     log: (entry) => log({ ...entry }),
   },
   ...(registry === undefined ? {} : { registry }),
-  ...(auth === undefined ? {} : { auth, search: searchDeps }),
+  ...(auth === undefined ? {} : { auth, search: searchDeps, sequence: { ...searchDeps, pool } }),
   log: (entry) => log({ ...entry }),
 });
 
