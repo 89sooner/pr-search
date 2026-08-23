@@ -525,6 +525,18 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 
 **DEV-114는 이 CR이 찾아낸 것이다.** `allowed_team_ids`의 소유권을 정하려고 코드를 확인하다가, 매핑 넷이 선언하고 강제 필터가 읽는 그 필드를 **아무도 쓰지 않는다**는 사실이 드러났다. 통합 시험이 문서를 손으로 심으면서 그 필드를 직접 넣기 때문에 초록이 나온다 — **초록이 곧 검증은 아니다**의 또 한 사례다.
 
+### CR-026 반영 내역 (2026-08-23)
+
+- [x] `30_technical_architecture/pr_search_backend_architecture.md` — 4.3장 `reassign` 의사코드 전면 정정: 없는 함수(`invalidateSafeMarkers`) 제거, merge-base 폴백(DEV-125), 사전 `reassigning` 표시, COMMIT 뒤 후처리 분리, 표식 무효는 에폭 비교(DEV-126)
+- [x] `30_technical_architecture/pr_search_data_model.md` — `safe_marker` 주석: 에폭 무효는 열이 아니라 비교다. `superseded_at`과 섞지 않는다
+- [x] `40_delivery/pr_search_work_packages.md` — WP-022 DoD 7항 체크, 제외 목록(수동 API는 WP-028)
+- [x] `40_delivery/pr_search_implementation_traceability.md` — **v0.9.** DEV-124~129 등록(128은 WP-028로 이월), 6.22장 검증 기록, §7 재작성 제한 해소
+- [x] `packages/db`, `packages/es`, `packages/domain`, `apps/pipeline-worker` — 구현은 WP-022 커밋
+
+**SRS는 건드리지 않았다.** FR-SEQ-005의 AC-1~AC-5는 그대로다. 여섯 중 셋이 "의사코드가 성공을 가정한 자리"였다 — 없는 함수 둘(DEV-124), 체인 밖 merge-base(DEV-125), 쓸 수단 없는 무효 표시(DEV-126). **의사코드는 실패 경로를 적지 않아서 짧다. 구현이 길어지는 자리가 바로 그 안 적힌 실패 경로다.**
+
+**DEV-126의 결정이 이 CR에서 가장 값싸다.** "무효 표시"를 쓰기로 구현하면 표식·세션·저장된 검색 세 곳에 소급 쓰기 경로가 생기고, 그중 하나(저장된 검색)는 테이블조차 없다. 비교로 구현하면 **쓰기가 0곳**이고, 각자 저장한 에폭이 곧 판정 근거다 — AC-4 후반부가 이미 그렇게 적혀 있었다. 요구사항이 답을 품고 있는데 의사코드가 다른 길을 가리키던 경우다.
+
 ### CR-025 반영 내역 (2026-08-23)
 
 - [x] `30_technical_architecture/pr_search_backend_architecture.md` — 4.3장 `assignSequence`: `requeueLater` → `deferUntil`(DEV-117), `COALESCE` upsert(DEV-118), 범위 하나짜리 접근 범위(DEV-123), `markStale` upsert(DEV-122), 재작성은 감지만

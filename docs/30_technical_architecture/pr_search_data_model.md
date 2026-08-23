@@ -181,6 +181,9 @@ CREATE TABLE safe_marker (
 );
 CREATE UNIQUE INDEX safe_marker_current_uk
   ON safe_marker (repository_id, base_branch) WHERE superseded_at IS NULL;
+-- 에폭 무효(FR-SEQ-005 AC-4)는 열이 아니다: 표식이 저장한 seq_epoch와 현재
+-- 에폭의 비교로 조회가 epoch_stale을 계산한다 (CR-026, DEV-126). superseded_at은
+-- "새 표식으로 대체됨"이지 에폭 무효가 아니다 — 둘을 섞지 않는다.
 
 CREATE TABLE bisect_session (
   session_id    BIGSERIAL   PRIMARY KEY,

@@ -39,7 +39,7 @@
 | WP-019 | 저장소 백필 잡 | REL-002 | WP-006, WP-008 | done |
 | WP-020 | 커밋 그래프 접근 계층 | REL-003 | WP-006 | done |
 | WP-021 | 시퀀스 증분 채번 | REL-003 | WP-002, WP-020 | done |
-| WP-022 | 시퀀스 재채번과 에폭 | REL-003 | WP-021 | todo |
+| WP-022 | 시퀀스 재채번과 에폭 | REL-003 | WP-021 | done |
 | WP-023 | 앵커 정규화와 범위 조회 API | REL-003 | WP-021, WP-013 | todo |
 | WP-024 | 릴리스 수집과 포함 관계 | REL-003 | WP-021, WP-008 | todo |
 | WP-025 | W-004 범위 조사 화면 | REL-003 | WP-023, WP-015 | todo |
@@ -779,14 +779,17 @@
   - 정합성 점검 (WP-028)
   - 2단계 확인 UI (WP-040)
 - 완료 기준(DoD):
-  - [ ] 강제 푸시 픽스처에서 조상 관계 위반이 감지된다 (FR-SEQ-005 AC-1, AC-2)
-  - [ ] 재채번 시 에폭이 1 증가한다 (AC-3)
-  - [ ] 이전 에폭 표식이 무효 표시되고 조회 시 `epoch_stale`이 반환된다 (AC-4)
-  - [ ] 재채번이 감사 기록과 알림을 남긴다 (AC-5)
-  - [ ] 재채번 중 조회가 마지막 확정 값과 상태를 함께 반환한다 (예외 처리)
-  - [ ] 재채번 실패 시 부분 채번 상태로 남지 않는다 (트랜잭션 경계)
-  - [ ] merge-base 이전 시퀀스 값이 새 에폭에서도 동일하다
-- 검증 방법: `pnpm test:integration sequence/reassign`, `pnpm test:regression sequence-rewrite`
+  - [x] 강제 푸시 픽스처에서 조상 관계 위반이 감지된다 (FR-SEQ-005 AC-1, AC-2) — 실제 git 픽스처
+  - [x] 재채번 시 에폭이 1 증가한다 (AC-3)
+  - [x] 이전 에폭 인용이 조회 시 `epoch_stale`로 판정된다 (AC-4) — **저장 시점 쓰기가 아니라 에폭 비교다** (CR-026, DEV-126). 표식 조회 화면은 REL-006이 이 규칙을 그대로 쓴다
+  - [x] 재채번이 감사 기록(`system:sequence`)과 EVT-SEQ-002를 남긴다 (AC-5) — 알림 소비자는 REL-005 (DEV-127)
+  - [x] 재채번 중 조회가 마지막 확정 값과 `reassigning` 상태를 함께 본다 (예외 처리) — 본 트랜잭션이 도는 동안 다른 커넥션으로 실측
+  - [x] 재채번 실패 시 부분 채번 상태로 남지 않는다 (트랜잭션 경계) — 실패 뒤 새 에폭 행 0건, 다음 회차가 완주
+  - [x] merge-base 이전 시퀀스 값이 새 에폭에서도 동일하다 — **`pull_request_number`까지** 동일 (복사가 재계산이 아닌 이유)
+- 구현 범위에서 뺀 것:
+  - **수동 재채번 API (API-ADM-007 POST)와 잡 테이블 경유** — WP-028 소유. 잡 유형 이름 불일치(DEV-128)도 그때 함께 푼다
+  - **merge-base가 체인 밖이면 전체 재채번** (CR-026, DEV-125) — walk가 결정론이라 히스토리가 같은 구간은 같은 서수가 재현된다. 회귀 시험이 그 성질 자체를 건다
+- 검증 방법: `pnpm test:integration apps/pipeline-worker/integration/sequence` (**Elasticsearch가 필요 없다**), `pnpm test:regression`
 - 기록: 원장 WP-022 상태, FR-SEQ-005 매핑
 
 ### WP-023 앵커 정규화와 범위 조회 API
