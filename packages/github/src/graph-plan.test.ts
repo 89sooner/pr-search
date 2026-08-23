@@ -19,6 +19,7 @@ import {
   isSafeBranch,
   mirrorPath,
   parsePatchId,
+  parseFirstParentCommits,
   parseRevList,
   readAncestorExit,
   revRangeArg,
@@ -157,6 +158,62 @@ describe('출력 해석', () => {
 
   it('patch-id 모양이 아니면 받지 않는다', () => {
     expect(parsePatchId('not-a-patch-id abc\n')).toBeNull();
+  });
+});
+
+describe('parseFirstParentCommits (CR-025, DEV-115)', () => {
+  const AT_A = '2026-08-23T09:49:50+09:00';
+  const AT_B = '2026-08-22T23:08:41+00:00';
+
+  it('한 줄에서 SHA와 시각을 함께 읽는다', () => {
+    expect(parseFirstParentCommits(`${SHA_A} ${AT_A}\n${SHA_B} ${AT_B}\n`)).toEqual([
+      { sha: SHA_A, committedAt: AT_A },
+      { sha: SHA_B, committedAt: AT_B },
+    ]);
+  });
+
+  it('빈 줄은 버린다', () => {
+    expect(parseFirstParentCommits('')).toEqual([]);
+    expect(parseFirstParentCommits(`\n${SHA_A} ${AT_A}\n\n`)).toEqual([{ sha: SHA_A, committedAt: AT_A }]);
+  });
+
+  it('시각이 없는 줄은 **버리지 않고 던진다**', () => {
+    /*
+     * 한 줄을 조용히 버리면 그 뒤 서수가 통째로 하나씩 밀리는데, 그 사실을
+     * 알아챌 방법이 없다. `parseRevList`가 빈 줄을 버리는 것과 다르다 —
+     * 거기서 버리는 것은 값이 없는 줄이고, 여기서 버리게 되는 것은 커밋이다.
+     */
+    expect(() => parseFirstParentCommits(`${SHA_A}\n`)).toThrow();
+  });
+
+  it('SHA 자리가 40자 hex가 아니면 던진다', () => {
+    expect(() => parseFirstParentCommits(`abc1234 ${AT_A}\n`)).toThrow();
+    expect(() => parseFirstParentCommits(`commit ${SHA_A}\n`)).toThrow();
+  });
+
+  it('`rev-list --format`의 머리줄을 만나면 던진다 — 조용히 넘기지 않는다', () => {
+    /*
+     * `git rev-list --format=...`은 커밋마다 `commit <sha>` 머리줄을 더 낸다
+     * (실측 확인). 그래서 구현은 `git log`를 쓰지만, 누군가 명령을 되돌렸을 때
+     * **파서가 그것을 알아채야** 한다 — 머리줄을 커밋으로 세면 서수가 두 배가 된다.
+     */
+    expect(() => parseFirstParentCommits(`commit ${SHA_A}\n${SHA_A} ${AT_A}\n`)).toThrow();
+  });
+
+  it('오프셋 없는 시각은 던진다 — 서버 시간대로 해석되면 커밋 시각이 환경마다 달라진다', () => {
+    expect(() => parseFirstParentCommits(`${SHA_A} 2026-08-23 09:49:50\n`)).toThrow();
+    expect(() => parseFirstParentCommits(`${SHA_A} 2026-08-23T09:49:50\n`)).toThrow();
+  });
+
+  it('`Z` 표기와 `+09:00` 표기를 모두 받는다', () => {
+    expect(parseFirstParentCommits(`${SHA_A} 2026-08-23T00:49:50Z\n`)).toEqual([
+      { sha: SHA_A, committedAt: '2026-08-23T00:49:50Z' },
+    ]);
+    expect(parseFirstParentCommits(`${SHA_A} ${AT_A}\n`)).toEqual([{ sha: SHA_A, committedAt: AT_A }]);
+  });
+
+  it('날짜가 아닌 문자열은 던진다', () => {
+    expect(() => parseFirstParentCommits(`${SHA_A} not-a-date+09:00\n`)).toThrow();
   });
 });
 

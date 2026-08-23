@@ -30,18 +30,35 @@ const SEARCH_FACADE = 'packages/es/src/search.ts';
 const SCOPE_FILTER = 'packages/es/src/scoped-query.ts';
 
 /**
- * 접근 범위를 거치지 않는 조회가 **의도적으로** 허용된 자리 (CR-015, DEV-051).
+ * 접근 범위를 거치지 않는 조회가 **의도적으로** 허용된 자리.
  *
  * 목록이 짧고 사유가 붙어 있어야 한다. 비워 두거나 규칙에서 `count`를 통째로
  * 빼면 다음 전역 집계가 조용히 들어온다 — 그것이 THR-003이 말하는 유출 경로다.
+ *
+ * **두 갈래를 섞지 않는다** (CR-024 DEV-051이 정한 경계).
+ *
+ *   - `user_facing`: 사용자 요청이 부르는 경로. 요청자가 있으므로 무엇을
+ *     내주는지가 곧 유출 여부다. 여기 새 항목이 들어오는 것은 **경계를 넓히는
+ *     일**이므로 CR이 필요하다.
+ *   - `no_requester`: 웹훅·스케줄이 깨운 잡. 볼 사람이 없어 접근 범위라는
+ *     개념 자체가 성립하지 않는다. 결과를 사용자에게 내주는 API가 각자 필터를
+ *     건다.
+ *
+ * 둘을 하나로 뭉치면 다음에 들어올 사용자 대면 예외가 "워커도 있잖아"를 근거로
+ * 조용히 따라 들어온다.
  */
-const UNSCOPED_ALLOWLIST: readonly { readonly file: string; readonly why: string }[] = [
+const UNSCOPED_ALLOWLIST: readonly {
+  readonly file: string;
+  readonly kind: 'user_facing' | 'no_requester';
+  readonly why: string;
+}[] = [
   {
     file: 'apps/search-api/src/ops/pipeline-status.ts',
+    kind: 'user_facing',
     why:
       'FR-ADMIN-001 AC-1이 파이프라인 전체의 "보강 대기 건수"를 요구한다. ' +
       '저장소 신원이 없는 단일 정수이고 `operator` 역할 뒤에 있다. ' +
-      '같은 API의 저장소별 지연(AC-3)과 함께 DEV-051에 기록되어 있다.',
+      'CR-024가 그 경계를 확정했다 — 전역 수치는 예외, 저장소 식별자는 범위 안 (DEV-051).',
   },
 ];
 

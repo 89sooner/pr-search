@@ -524,6 +524,25 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 
 **DEV-114는 이 CR이 찾아낸 것이다.** `allowed_team_ids`의 소유권을 정하려고 코드를 확인하다가, 매핑 넷이 선언하고 강제 필터가 읽는 그 필드를 **아무도 쓰지 않는다**는 사실이 드러났다. 통합 시험이 문서를 손으로 심으면서 그 필드를 직접 넣기 때문에 초록이 나온다 — **초록이 곧 검증은 아니다**의 또 한 사례다.
 
+### CR-025 반영 내역 (2026-08-23)
+
+- [x] `30_technical_architecture/pr_search_backend_architecture.md` — 4.3장 `assignSequence`: `requeueLater` → `deferUntil`(DEV-117), `COALESCE` upsert(DEV-118), 범위 하나짜리 접근 범위(DEV-123), `markStale` upsert(DEV-122), 재작성은 감지만
+- [x] `30_technical_architecture/pr_search_async_events_jobs.md` — **이벤트 카탈로그에 전송 스트림 열 신설**(DEV-121), JOB-SEQ-001 트리거 정정(DEV-116)
+- [x] `30_technical_architecture/pr_search_data_model.md` — **7장 질의 표에서 `term(sequence_space)` 제거**(DEV-119). 범위는 `repository_id` + `base_branch`로 건다
+- [x] `40_delivery/pr_search_release_validation_plan.md` — ACC 표에 자동화 열 신설, ACC-02를 자동화 완료로
+- [x] `40_delivery/pr_search_work_packages.md` — WP-021 DoD 8항 체크, 제외 목록 신설, 검증 명령 정정
+- [x] `40_delivery/pr_search_implementation_traceability.md` — **v0.8.** DEV-115~120 해소, **DEV-121~123 신규**, DEV-061 해소, §3·§4·§6.21·§7·§8
+- [x] `packages/github`, `packages/domain`, `packages/es`, `packages/db`, `apps/ingest-gateway`, `apps/pipeline-worker` — 구현은 WP-021 커밋
+- [x] `vitest.regression.config.ts`, `regression/`, `package.json` — 회귀 계층 신설(DEV-120)
+
+**SRS는 건드리지 않았다.** FR-SEQ-001의 AC-1~AC-6은 그대로다. 달라진 것은 **그것을 성립시킬 수단이 없던 자리**(DEV-115 커밋 시각, DEV-116 트리거, DEV-118 PR 번호, DEV-120 회귀 명령)와 **문서끼리 어긋난 자리**(DEV-117 없는 포트, DEV-119 표시 문자열을 필터로 씀, DEV-121 전송 스트림 미정)뿐이다.
+
+**여섯 중 둘이 "이름은 있는데 물건이 없다"였다.** `bus.requeueLater()`는 포트에 없는 메서드였고 `pnpm test:regression`은 없는 스크립트였다. 둘 다 문서가 그것을 **당연한 듯 인용**해서, 읽는 사람은 있다고 믿는다. 없는 것을 인용하는 문서는 빈칸보다 나쁘다 — 빈칸은 눈에 띄지만 이건 안 띈다.
+
+**DEV-119가 가장 조용했다.** 데이터 모델이 범위 조회를 `term(sequence_space)`로 거르는데, 그 값은 화면에 그대로 출력되는 사람이 읽는 문자열이다. 저장소 이름이 바뀌면 같은 공간이 두 문자열로 갈라져 **범위 조회가 오류 없이 절반만** 돌려준다. 이 제품의 핵심 산출물이 틀리는데 아무 신호도 나지 않는다. 사람이 읽으라고 만든 값은 사람이 읽기 좋게 바뀌므로, 그 위에 정확성을 세울 수 없다.
+
+**구현 중 내 결함 둘을 시험이 잡았다 (DEV-122·123).** 첫 채번 실패가 아무 신호도 남기지 않던 것과, 접근 범위 우회를 만들 뻔한 것. 후자는 허용 목록에 넣는 대신 **이 잡이 볼 수 있는 것이 저장소 하나뿐이라는 사실을 그대로 접근 범위로 적어** 예외 없이 풀었다 — 불변식에 구멍을 내지 않는 쪽이 더 짧기도 했다.
+
 ## 6. 미결 항목
 
 CR-004 종료 시점의 미결 항목이다. 각각 별도 CR로 처리한다. 취소선 항목은 해소된 이력이다.

@@ -144,7 +144,7 @@ ops 모듈 (search-api)
 async function assignSequence(repositoryId: number, baseBranch: string) {
   return db.tx(async (t) => {
     const locked = await t.tryAdvisoryLock(`seq:${repositoryId}:${baseBranch}`);
-    if (!locked) { await bus.requeueLater(); return; }          // 대기하지 않고 재큐 (AC-6)
+    if (!locked) { return deferUntil(in5s, 'sequence_space_locked'); }  // 대기하지 않고 미룬다 (AC-6)
 
     const space = await t.getSequenceSpace(repositoryId, baseBranch);
     const newHead = await graph.resolveHead(repositoryId, baseBranch);   // 미러 또는 API
@@ -188,9 +188,12 @@ async function reassign(t, space, newHead) {
 주의점:
 
 - **advisory lock을 트랜잭션 스코프로 잡는다.** 트랜잭션이 끝나면 자동 해제되므로 워커가 죽어도 락이 남지 않는다.
-- **락 획득 실패 시 대기하지 않고 재큐한다.** 대기하면 워커 슬롯이 묶여 다른 저장소 처리가 밀린다.
+- **락 획득 실패 시 대기하지 않고 미룬다.** 대기하면 워커 슬롯이 묶여 다른 저장소 처리가 밀린다. **포트에 `requeueLater`는 없다 (CR-025, DEV-117)** — `HandlerDisposition`의 `deferUntil`이 그 동작이고, 락 실패는 실패가 아니라 "지금은 다른 워커가 쥐고 있음"이므로 재시도 예산을 소모하는 `retry`가 아니라 `defer`가 맞다.
 - **재채번 시 merge-base까지의 시퀀스를 새 에폭으로 복사한다.** 그 구간은 값이 동일하므로 이전 에폭 인용 중 상당수가 여전히 같은 커밋을 가리킨다. 다만 화면은 안전을 위해 전부 무효로 표시한다.
-- Elasticsearch 문서의 `merge_seq` 갱신은 별도 벌크 작업으로 이어진다. PostgreSQL 커밋이 먼저다.
+- Elasticsearch 문서의 `merge_seq` 갱신은 별도 작업으로 이어진다. **PostgreSQL 커밋이 먼저다** — 색인 반영이 실패해도 시퀀스 값은 살아 있고 다음 회차가 다시 비춘다 (ADR-004). 갱신은 `update_by_query`이며 `document_version`을 올리지 않는다 — 시퀀스는 웹훅이 나르는 엔티티 상태가 아니라 git 히스토리에서 파생한 값이라 버전 비교의 대상이 아니다.
+- **`upsertMergeSequence`가 `pull_request_number`를 나중에 채운다 (CR-025, DEV-118).** push가 그 PR의 투영보다 먼저 도착하면 채번 시점에는 대응 PR을 모르므로 `null`이 된다. `COALESCE(기존, 신규)`로 두어 모르는 값은 나중에 채워지되 **이미 아는 값이 `null`로 덮이지 않게** 한다. 같은 서수에 다른 SHA가 오면 조용히 넘기지 않고 던진다 — 그것은 경합이 아니라 손상이다.
+- **PR 조회는 저장소 하나짜리 `explicit` 접근 범위로 필수 필터를 통과한다 (CR-025, DEV-123).** 채번 잡에는 요청자가 없지만 그렇다고 필터를 우회하지 않는다 — 이 잡이 볼 수 있는 것은 자기가 채번하는 저장소 하나이고, 그것을 접근 범위로 적으면 예외 없이 성립한다.
+- **재작성 감지는 WP-021이 하고 재채번은 WP-022가 한다.** 감지한 공간은 `stale`로 두고 기존 값을 보존하며 소리를 낸다. 첫 채번에서 그래프를 읽지 못한 경우도 마찬가지로 `stale`이 되어야 하므로, 그 표시는 `UPDATE`가 아니라 **upsert**다 — `UPDATE`면 롤백된 트랜잭션 탓에 갱신할 행이 없어 아무 신호도 남지 않는다 (CR-025, DEV-122).
 
 ### 4.4 관계 파생 (FR-REL-003~006)
 

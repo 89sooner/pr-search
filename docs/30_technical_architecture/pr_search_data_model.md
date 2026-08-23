@@ -781,7 +781,7 @@ if (!changed) { ctx.op = 'noop'; }
 | 7~39자 접두 → 커밋 | `prs-commits` | `prefix(commit_sha)` (ADR-012) | p95 200ms | FR-SRCH-004 |
 | SHA → PR | `prs-commits` → `pull_request_numbers` → `prs-pull-requests` (ID 조회) | 문서 ID `{repo}:{number}` | p95 200ms | FR-SRCH-002 |
 | PR → 커밋 | `prs-pull-requests.source_commit_shas` + `merge_commit_sha` | 문서 내 배열 | p95 100ms | FR-SRCH-003 |
-| 시퀀스 범위 | `prs-pull-requests` | `range(merge_seq)` + `term(sequence_space)`, `index.sort` 조기 종료 | p95 400ms @ 5000건 | FR-SEQ-002 |
+| 시퀀스 범위 | `prs-pull-requests` | `range(merge_seq)` + **`term(repository_id)` + `term(base_branch)`** + `term(seq_epoch)`, `index.sort` 조기 종료 | p95 400ms @ 5000건 | FR-SEQ-002 |
 | 선행·후행 | `prs-pull-requests` | `range(merge_seq)` 양방향 각 N건 | p95 200ms | FR-REL-001 |
 | 다차원 필터 목록 | `prs-pull-requests` | 복합 `bool.filter` + `search_after` | p95 500ms @ 1000만 | FR-SRCH-006 |
 | 패싯 | `prs-pull-requests` | `terms` 집계 6종, size 20 | 목록과 동일 요청 | FR-SRCH-009 |
@@ -791,9 +791,13 @@ if (!changed) { ctx.op = 'noop'; }
 | 백분위 | `prs-pull-requests` | `percentiles(lead_time_seconds)` | p95 1500ms | FR-STAT-003 |
 | 관계 조회 (정방향) | `prs-links` | `term(from_type) + term(from_id)` | p95 150ms | FR-REL-003 |
 | 관계 조회 (역방향) | `prs-links` | `term(to_type) + term(to_id)` | p95 150ms | FR-REL-004 |
-| 릴리스 포함 | `prs-releases` | `term(sequence_space) + range(merge_seq >= C.merge_seq)` | p95 150ms | FR-REL-002 |
+| 릴리스 포함 | `prs-releases` | **`term(repository_id) + term(base_branch)`** + `range(merge_seq >= C.merge_seq)` | p95 150ms | FR-REL-002 |
 | 체리픽 후보 | `prs-commits` | `term(patch_id) + term(repository_id)` | p95 200ms | FR-REL-005 |
 | 동시 변경 | `prs-pull-requests` | `terms(changed_paths.raw)` + 날짜 범위 90일 | p95 800ms | FR-REL-007 |
+
+**범위 질의를 `sequence_space`로 거르지 않는다 (CR-025, DEV-119).** 그 값은 `acme/payments@main` 같은 **사람이 읽는 문자열**이고 `SequencePosition`이 화면에 그대로 출력한다. 저장소 소유자·이름이 바뀌면 같은 시퀀스 공간의 문서가 **두 문자열로 갈라지고**, `term(sequence_space)`로 거른 범위 조회는 그때 **오류 없이 절반만** 돌려준다 — 이 제품의 핵심 산출물이 조용히 틀리는 자리다.
+
+`repository_id`와 `base_branch`는 네 매핑에 모두 있으므로 새로 저장할 것이 없다. **사람이 읽으라고 만든 값은 사람이 읽기 좋게 바뀐다. 바뀌는 값 위에 정확성을 세울 수 없다.** `sequence_space`는 표시 전용으로 남는다.
 
 **라우팅**: 모든 엔티티 문서를 `repository_id`로 라우팅한다. 저장소가 지정된 질의는 단일 샤드에서 끝난다. 저장소 미지정 전역 질의는 전 샤드 팬아웃이며 이는 의도된 동작이다.
 

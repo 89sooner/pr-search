@@ -12,6 +12,8 @@
  */
 
 import type { Client } from '@elastic/elasticsearch';
+import { search } from './search.js';
+import { applyMandatoryScopeFilter } from './scoped-query.js';
 
 /**
  * 커밋 하나에 붙일 시퀀스.
@@ -145,4 +147,41 @@ async function updateOne(
   });
 
   return Number(response.updated ?? 0);
+}
+
+/**
+ * 이 머지 커밋에 대응하는 PR 번호 (CR-025, DEV-118).
+ *
+ * ## 접근 범위를 우회하지 않는다
+ *
+ * 처음에는 `client.search`를 직접 부르고 아키텍처 시험의 허용 목록에 넣으려
+ * 했다. **그것이 틀렸다.** 이 잡은 자기가 채번하는 **저장소 하나**만 보면
+ * 되고, 그 사실은 예외가 아니라 **정확한 접근 범위**다. 그래서 저장소 하나짜리
+ * `explicit` 범위를 만들어 필수 필터를 그대로 통과한다 — 불변식에 구멍을 내지
+ * 않으면서, 코드가 "이 잡은 이 저장소만 본다"를 스스로 말한다.
+ *
+ * 허용 목록에 넣었다면 그 목록이 워커 수만큼 늘어나고, 사용자 대면 예외
+ * (DEV-051)와 시스템 내부 조회가 한 목록에서 섞였을 것이다.
+ *
+ * @returns 대응하는 PR을 모르면 `null`. 직접 푸시이거나 아직 그 PR이 투영되지
+ * 않았다는 뜻이며, 둘을 여기서 가르지 않는다 — 어느 쪽이든 지금은 모른다.
+ */
+export async function findPullRequestByMergeCommit(
+  client: Client,
+  repositoryId: number,
+  commitSha: string,
+): Promise<number | null> {
+  const scoped = applyMandatoryScopeFilter(
+    { bool: { filter: [{ term: { merge_commit_sha: commitSha.toLowerCase() } }] } },
+    { kind: 'explicit', repositoryIds: [repositoryId] },
+  );
+
+  const response = await search<{ pr_number?: number }>(client, 'prs-pull-requests', scoped, {
+    size: 1,
+    _source: ['pr_number'],
+    routing: String(repositoryId),
+  });
+
+  const found = response.hits.hits[0]?._source?.pr_number;
+  return typeof found === 'number' ? found : null;
 }

@@ -104,7 +104,18 @@ export async function countByState(db: Queryable): Promise<Readonly<Record<strin
   return counts;
 }
 
-/** 시퀀스 공간을 `stale`로 두고 사유를 남긴다. 기존 시퀀스 값은 건드리지 않는다 (FR-SEQ-001 예외 처리). */
+/**
+ * 시퀀스 공간을 `stale`로 두고 사유를 남긴다 (FR-SEQ-001 예외 처리).
+ *
+ * **`UPDATE`가 아니라 upsert다.** 채번의 첫 시도에서 그래프를 읽지 못하면
+ * 공간을 만든 트랜잭션이 롤백되므로 갱신할 행이 없다 — `UPDATE`로 두면
+ * 0행이 갱신되고, 그 저장소는 **`stale`로 표시되지도 경보가 울리지도
+ * 않은 채** 조용히 아무 시퀀스도 갖지 못한다. 운영자가 볼 수 있는 신호가
+ * 하나도 남지 않는 것이 이 실패의 가장 나쁜 점이다.
+ *
+ * 기존 시퀀스 값(`head_seq`, `head_sha`)은 건드리지 않는다. 읽지 못한 것과
+ * 값이 틀린 것은 다르고, 지우면 그 사이 모든 범위 인용이 죽는다.
+ */
 export async function markStale(
   db: Queryable,
   repositoryId: number,
@@ -112,8 +123,10 @@ export async function markStale(
   reason: string,
 ): Promise<void> {
   await db.query(
-    `UPDATE sequence_space SET state = 'stale', last_error = $3
-      WHERE repository_id = $1 AND base_branch = $2`,
+    `INSERT INTO sequence_space (repository_id, base_branch, state, last_error)
+     VALUES ($1, $2, 'stale', $3)
+     ON CONFLICT (repository_id, base_branch) DO UPDATE
+        SET state = 'stale', last_error = EXCLUDED.last_error`,
     [repositoryId, baseBranch, reason.slice(0, 500)],
   );
 }

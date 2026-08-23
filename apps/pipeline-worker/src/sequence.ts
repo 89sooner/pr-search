@@ -52,7 +52,7 @@ import {
   type Pool,
   type RepositoryRow,
 } from '@prs/db';
-import { applySequenceToDocuments } from '@prs/es';
+import { applySequenceToDocuments, findPullRequestByMergeCommit } from '@prs/es';
 import { CommitGraphError, type CommitGraph, type RepoRef } from '@prs/github';
 import type { Client } from '@elastic/elasticsearch';
 import { isSequenceBranch, numberCommits, type AssignOutcome } from './sequence-plan.js';
@@ -311,27 +311,12 @@ async function findPullRequestNumber(
   sha: string,
 ): Promise<number | null> {
   try {
-    const response = await deps.es.search<{ pr_number?: number }>({
-      index: 'prs-pull-requests',
-      routing: String(repositoryId),
-      size: 1,
-      _source: ['pr_number'],
-      query: {
-        bool: {
-          filter: [
-            { term: { repository_id: repositoryId } },
-            { term: { merge_commit_sha: sha.toLowerCase() } },
-          ],
-        },
-      },
-    });
-    const hit = response.hits.hits[0]?._source?.pr_number;
-    return typeof hit === 'number' ? hit : null;
+    return await findPullRequestByMergeCommit(deps.es, repositoryId, sha);
   } catch {
     /*
      * 조회가 실패해도 채번은 멈추지 않는다. 서수가 이 제품의 핵심이고 PR 연결은
      * 그 위의 편의값이다 — 조회 실패로 서수를 미루면 핵심이 부수적인 것에
-     * 인질로 잡힌다. `null`로 두면 다음 회차가 채운다.
+     * 인질로 잡힌다. `null`로 두면 다음 회차가 `COALESCE`로 채운다.
      */
     return null;
   }
