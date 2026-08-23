@@ -9,7 +9,14 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { randomUUID } from 'node:crypto';
 import type { Pool, RawEventInsert } from '@prs/db';
 import { TOPICS, type EventBus } from '@prs/bus';
-import { EVENT_NAMES, ingestPartitionKey } from '@prs/domain';
+import {
+  EVENT_NAMES,
+  deterministicEventId,
+  ingestPartitionKey,
+  sequencePartitionKey,
+  type PushTarget,
+  type SequenceRequested,
+} from '@prs/domain';
 import { toEventPayload, type InvalidationTarget } from '@prs/authz';
 import type { HealthResponse } from '@prs/contracts';
 import type { ArchiveWriter } from './archive.js';
@@ -37,6 +44,8 @@ export interface ServerDeps {
     target: InvalidationTarget,
     correlationId: string,
   ) => Promise<void>;
+  /** 채번 요청 발행 (JOB-SEQ-001 트리거, CR-025 DEV-116). */
+  readonly publishSequenceRequest: (target: PushTarget, correlationId: string) => Promise<void>;
   /** PostgreSQL 연결 확인 (인프라 3장: 게이트웨이 헬스체크는 PG 연결을 본다). */
   readonly checkDatabase: () => Promise<void>;
   readonly archive: ArchiveWriter;
@@ -114,6 +123,46 @@ export function createPermissionPublisher(
   };
 }
 
+/**
+ * 채번 요청 발행자 (JOB-SEQ-001의 트리거, CR-025 DEV-116).
+ *
+ * 파티션 키가 `repository_id:base_branch`인 이유는 **같은 시퀀스 공간의 채번이
+ * 직렬화되어야** 하기 때문이다 (비동기 문서 2장). advisory lock이 이중
+ * 안전장치지만, 파티션이 먼저 줄을 세우면 락 경합 자체가 줄어든다.
+ *
+ * `event_id`를 `(저장소, 브랜치, head)`에서 결정론적으로 만든다. 같은 push가
+ * 두 번 도착해도 같은 ID가 나오므로 소비자가 중복을 알아볼 수 있다 — 채번은
+ * 어차피 멱등이지만, 중복이 지표에서 새 일감으로 보이지 않게 한다.
+ */
+export function createSequencePublisher(
+  bus: EventBus,
+  deadlineMs: number,
+): (target: PushTarget, correlationId: string) => Promise<void> {
+  return async (target: PushTarget, correlationId: string): Promise<void> => {
+    const payload: SequenceRequested = {
+      repository_id: target.repositoryId,
+      base_branch: target.baseBranch,
+      head_sha: target.headSha,
+      correlation_id: correlationId,
+    };
+    await withTimeout(
+      bus.publish(TOPICS.sequence, sequencePartitionKey(target.repositoryId, target.baseBranch), {
+        event_id: deterministicEventId(
+          'sequence.requested',
+          String(target.repositoryId),
+          target.baseBranch,
+          target.headSha,
+        ),
+        event_name: 'sequence.requested',
+        correlation_id: correlationId,
+        occurred_at: new Date().toISOString(),
+        payload,
+      }),
+      deadlineMs,
+    );
+  };
+}
+
 /** 대상별 파티션 키. 같은 대상의 무효화가 서로를 앞지르지 않게 한다. */
 function permissionPartitionKey(target: InvalidationTarget): string {
   if (target.teamId !== null) return `team:${String(target.teamId)}`;
@@ -129,6 +178,7 @@ export function createServerDeps(pool: Pool, config: GatewayConfig, bus: EventBu
     store: createRawEventStore(pool),
     enqueue: createIngestPublisher(bus, config.enqueueTimeoutMs),
     publishPermissionInvalidation: createPermissionPublisher(bus, config.enqueueTimeoutMs),
+    publishSequenceRequest: createSequencePublisher(bus, config.enqueueTimeoutMs),
     checkDatabase: async (): Promise<void> => {
       await pool.query('SELECT 1');
     },
@@ -243,6 +293,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         store: deps.store,
         enqueue: deps.enqueue,
         publishPermissionInvalidation: deps.publishPermissionInvalidation,
+        publishSequenceRequest: deps.publishSequenceRequest,
         archive: deps.archive,
         metrics: deps.metrics,
         maxBodyBytes: deps.config.maxBodyBytes,

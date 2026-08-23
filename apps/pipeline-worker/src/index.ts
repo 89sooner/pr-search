@@ -21,6 +21,10 @@ import {
   parseInstallations,
   resolveGitHubConfig,
   MirrorSync,
+  MirrorCommitGraph,
+  ApiCommitGraph,
+  FallbackCommitGraph,
+  selectCommitGraph,
   resolveMirrorConfig,
 } from '@prs/github';
 import { buildServer, DEFAULT_PORT, SERVICE_NAME } from './server.js';
@@ -31,6 +35,7 @@ import { startProjectWorker, type ProjectLogEntry } from './project.js';
 import { startAuthzWorker, type AuthzLogEntry } from './authz.js';
 import { startBackfillRunner, BACKFILL_JOB, type BackfillLogEntry, type BackfillRunner } from './backfill.js';
 import { startMirrorSweeper, type MirrorLogEntry, type MirrorRunner } from './mirror-runner.js';
+import { refreshSequenceSpaceStates, startSequenceWorker, type SequenceLogFields } from './sequence.js';
 import { createEsClient } from '@prs/es';
 import type { Subscription } from '@prs/bus';
 import type { Client } from '@elastic/elasticsearch';
@@ -76,6 +81,7 @@ let authzSubscription: Subscription | undefined;
 let authzRedisClient: { quit(): Promise<unknown> } | undefined;
 let backfillRunner: BackfillRunner | undefined;
 let mirrorRunner: MirrorRunner | undefined;
+let sequenceSubscription: Subscription | undefined;
 let esClient: Client | undefined;
 
 if (roles.includes('batch')) {
@@ -233,6 +239,89 @@ if (roles.includes('mirror')) {
   }
 }
 
+if (roles.includes('sequence')) {
+  /*
+   * JOB-SEQ-001 (WP-021). **이 제품의 핵심 값이 여기서 만들어진다.**
+   *
+   * 그래프는 저장소별로 고른다 (`selectCommitGraph`, ADR-005). 미러가 켜진
+   * 저장소는 미러를 쓰되 실패하면 API로 넘어가고(`FallbackCommitGraph`), 그
+   * 전환은 **조용히 넘어가지 않고** 로그로 드러난다 — 폴백이 계속되면 미러가
+   * 죽어 있다는 뜻이다.
+   */
+  const seqMirrorConfig = resolveMirrorConfig();
+  const seqGhConfig = resolveGitHubConfig();
+  const seqEs = createEsClient();
+
+  const seqTokenPool = new TokenPool(
+    new InstallationTokenProvider({
+      apiUrl: seqGhConfig.apiUrl,
+      appId: seqGhConfig.appId,
+      privateKey: seqGhConfig.privateKey,
+      refreshLeadMs: seqGhConfig.tokenRefreshLeadMs,
+      requestTimeoutMs: seqGhConfig.requestTimeoutMs,
+    }),
+    { installations: parseInstallations(), quarantineThreshold: seqGhConfig.quarantineThreshold },
+  );
+  const apiGraph = new ApiCommitGraph({
+    client: new GitHubClient(
+      new GitHubTransport({
+        apiUrl: seqGhConfig.apiUrl,
+        requestTimeoutMs: seqGhConfig.requestTimeoutMs,
+        pool: seqTokenPool,
+        scheduler: new RequestScheduler({ maxConcurrent: seqGhConfig.maxConcurrentRequests }),
+      }),
+    ),
+    priority: 'realtime',
+  });
+  const mirrorGraph = new MirrorCommitGraph({
+    root: seqMirrorConfig.root,
+    repositoryIdOf: async (ref) =>
+      (await repositoryRepo.findRepositoryBySlug(pool, ref.owner, ref.repo))?.repository_id,
+    allowBlobFetch: seqMirrorConfig.allowBlobFetch,
+    tokenFor: async (org: string): Promise<string | null> => {
+      try {
+        return (await seqTokenPool.lease(org)).token.token;
+      } catch {
+        // 토큰을 못 얻으면 자격 증명 없이 시도한다. 공개 저장소는 그래도 된다.
+        return null;
+      }
+    },
+  });
+
+  const seqLog = (entry: SequenceLogFields): void => {
+    process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-001', ...entry })}\n`);
+  };
+
+  sequenceSubscription = await startSequenceWorker({
+    pool,
+    es: seqEs,
+    bus,
+    metrics,
+    graphFor: (repository) =>
+      selectCommitGraph(repository, {
+        mirror: new FallbackCommitGraph(mirrorGraph, apiGraph, (error) => {
+          seqLog({
+            level: 'warn',
+            message: '미러 조회가 실패해 API로 넘어갔다 — 계속되면 미러가 죽어 있다는 뜻이다',
+            repository: repository.repository_id,
+            reason: 'graph_fallback',
+            detail: String(error instanceof Error ? error.message : error).slice(0, 200),
+          });
+        }),
+        api: apiGraph,
+      }),
+    log: seqLog,
+  });
+
+  // 기동 직후 한 번 세어 둔다. 세지 않으면 `stale` 공간이 있어도 게이지가 비어
+  // 있고, 경보가 "값이 없음"과 "0"을 구분하지 못한다 (관측 문서 RB-10).
+  void refreshSequenceSpaceStates({ pool, es: seqEs, bus, metrics, graphFor: () => apiGraph, log: seqLog });
+
+  if (seqGhConfig.baseUrl === '') {
+    seqLog({ level: 'warn', message: 'GHE base URL이 비어 있다 — API 폴백 경로가 동작하지 않는다' });
+  }
+}
+
 if (roles.includes('authz')) {
   // JOB-AUTH-001. GHE 자격 증명은 **선택**이다 — 없으면 `team_member` 표만으로
   // 팀을 펼친다. 표가 비어 있으면 팀 무효화가 아무도 맞히지 못하므로,
@@ -309,6 +398,7 @@ const shutdown = (): void => {
       await mirrorRunner?.stop();
       await enrichSubscription?.close();
       await projectSubscription?.close();
+      await sequenceSubscription?.close();
       await authzSubscription?.close();
       await authzRedisClient?.quit();
       await bus.close();

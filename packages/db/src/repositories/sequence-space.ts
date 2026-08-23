@@ -87,3 +87,33 @@ export async function bumpEpoch(
   }
   return epoch;
 }
+
+/**
+ * 상태별 시퀀스 공간 수 (WP-021, 관측 문서 RB-10).
+ *
+ * **게이지는 "지금 몇 개가 그 상태인가"여야 한다.** 채번할 때마다 1을 써 넣으면
+ * 한 번 `stale`이 된 공간이 복구된 뒤에도 그 라벨이 1로 남아 경보가 영원히
+ * 울린다. 그래서 매번 세어서 통째로 바꾼다 — 사라진 상태의 라벨도 함께 사라진다.
+ */
+export async function countByState(db: Queryable): Promise<Readonly<Record<string, number>>> {
+  const result = await db.query<{ state: string; count: string }>(
+    'SELECT state, count(*)::text AS count FROM sequence_space GROUP BY state',
+  );
+  const counts: Record<string, number> = {};
+  for (const row of result.rows) counts[row.state] = Number(row.count);
+  return counts;
+}
+
+/** 시퀀스 공간을 `stale`로 두고 사유를 남긴다. 기존 시퀀스 값은 건드리지 않는다 (FR-SEQ-001 예외 처리). */
+export async function markStale(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  reason: string,
+): Promise<void> {
+  await db.query(
+    `UPDATE sequence_space SET state = 'stale', last_error = $3
+      WHERE repository_id = $1 AND base_branch = $2`,
+    [repositoryId, baseBranch, reason.slice(0, 500)],
+  );
+}

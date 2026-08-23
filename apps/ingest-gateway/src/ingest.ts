@@ -15,6 +15,7 @@
  * 서명 검증이 먼저인가"를 테스트로 증명할 수 없다.
  */
 
+import { extractPushTarget, type PushTarget } from '@prs/domain';
 import type { RawEventInsert } from '@prs/db';
 import { extractInvalidationTarget, isEmptyTarget, type InvalidationTarget } from '@prs/authz';
 import type { ArchiveWriter } from './archive.js';
@@ -89,6 +90,19 @@ export interface IngestDeps {
     target: InvalidationTarget,
     correlationId: string,
   ) => Promise<void>;
+  /**
+   * 채번 요청 발행 (JOB-SEQ-001의 트리거, CR-025 DEV-116).
+   *
+   * 잡 카탈로그가 JOB-SEQ-001의 트리거를 "push 이벤트"라 적지만 **그 이벤트를
+   * `prs:sequence`에 싣는 코드가 없었다** — push는 `prs:ingest`로 가고 보강이
+   * "PR 이벤트가 아니다"로 버린다. 여기서 싣는다.
+   *
+   * **레지스트리를 조회하지 않는다.** 어느 브랜치가 채번 대상인지
+   * (`repository.sequence_branches`)는 채번 워커가 판단한다 — 그 조회를 여기
+   * 두면 수신 응답 예산(NFR-002 p95 300ms)에 왕복 하나가 더해지고, 수신
+   * 경로에 새 실패 지점이 생긴다.
+   */
+  readonly publishSequenceRequest: (target: PushTarget, correlationId: string) => Promise<void>;
   readonly archive: ArchiveWriter;
   readonly metrics: IngestMetrics;
   readonly maxBodyBytes: number;
@@ -223,6 +237,28 @@ export async function ingestWebhook(deps: IngestDeps, request: WebhookRequest): 
         event_type: eventType,
         reason: 'permission_publish_failed',
       });
+    }
+  }
+
+  // 5c. 채번 요청 (JOB-SEQ-001, CR-025 DEV-116). 실패해도 202를 막지 않는다 —
+  //     시퀀스는 증분이라 이번 push를 놓쳐도 다음 push나 6시간 보정이
+  //     `<저장 head>..<현재 head>`를 통째로 메운다. 유실이 곧 구멍이 아니다.
+  if (eventType === 'push') {
+    const pushOutcome = extractPushTarget(payload);
+    if (pushOutcome.kind === 'target') {
+      try {
+        await deps.publishSequenceRequest(pushOutcome.target, correlationId);
+      } catch {
+        deps.metrics.sequencePublishFailed.inc();
+        deps.log({
+          level: 'error',
+          message: '채번 요청 발행 실패 — 다음 push나 보정 주기가 메운다',
+          correlation_id: correlationId,
+          delivery_id: deliveryId,
+          event_type: eventType,
+          reason: 'sequence_publish_failed',
+        });
+      }
     }
   }
 

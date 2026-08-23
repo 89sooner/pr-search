@@ -34,6 +34,9 @@ function deps(overrides: Partial<ServerDeps> = {}): ServerDeps {
     publishPermissionInvalidation: async (): Promise<void> => {
       /* 기본값: 발행 성공 */
     },
+    publishSequenceRequest: async (): Promise<void> => {
+      /* 기본값: 발행 성공 */
+    },
     checkDatabase: async (): Promise<void> => {
       /* 정상 */
     },

@@ -70,5 +70,8 @@ export type { BulkItemOutcome, BulkUpsertResult, UpsertRequest } from './upsert.
 export { ARCHIVABLE_ALIASES, NON_ARCHIVABLE_ALIASES, markRepositoryArchived } from './registry.js';
 export type { MarkArchivedResult } from './registry.js';
 
+export { SEQUENCE_CHUNK, applySequenceToDocuments } from './sequence.js';
+export type { ApplySequenceInput, ApplySequenceResult, SequenceAssignment } from './sequence.js';
+
 export { applyMappings, dropEntityIndices } from './bootstrap.js';
 export type { BootstrapResult } from './bootstrap.js';
