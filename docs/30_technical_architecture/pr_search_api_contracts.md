@@ -450,7 +450,10 @@
 - 목적: 반개구간 `(from_seq, to_seq]`의 PR·커밋과 요약 통계를 반환한다.
 - 관련 요구사항: FR-SEQ-002
 
-요청: `GET /api/v1/sequence-ranges?repository=acme/payments&base_branch=main&from_seq=1280&to_seq=1342&q=path:src/payment&size=50`
+요청: `GET /api/v1/sequence-ranges?repository=acme/payments&base_branch=main&from_seq=1280&to_seq=1342&seq_epoch=3&q=path:src/payment&size=50`
+
+- `seq_epoch`는 **선택**이며 인용이 딛고 선 에폭이다 (CR-027). 넣으면 서버가 현재 에폭과 대조하고, 다르면 구간을 실행하지 않은 채 `epoch_stale: true`로 답한다 — ADR-007의 "조용히 옮기지 않고 무효화한다"가 여기서 성립한다. 생략하면 현재 에폭으로 조회한다.
+- `q`는 구간을 좁히며 **목록과 요약 양쪽에 같이 적용된다** (CR-027, DEV-136). 둘이 다른 집합을 말하면 화면이 고장난 것으로 읽힌다.
 
 응답 200:
 
@@ -459,6 +462,7 @@
   "sequence_space": "acme/payments@main",
   "seq_epoch": 3,
   "sequence_state": "ok",
+  "epoch_stale": false,
   "range": { "from_seq": 1280, "to_seq": 1342, "boundary": "(from, to]" },
   "summary": {
     "pull_request_count": 62,
@@ -467,10 +471,10 @@
     "changed_files_total": 412,
     "additions_total": 8940,
     "deletions_total": 3120,
-    "reverted_pull_request_count": 2,
+    "files_truncated_pull_request_count": 0,
     "top_changed_paths": [
-      { "path": "src/payment", "count": 24 },
-      { "path": "src/session", "count": 11 }
+      { "path": "src/payment/timeout.ts", "count": 24 },
+      { "path": "src/session/store.ts", "count": 11 }
     ]
   },
   "items": [
@@ -488,6 +492,7 @@
       "url": "/pr/acme/payments/1198"
     }
   ],
+  "items_missing_in_index": 0,
   "next_cursor": null,
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
@@ -508,6 +513,21 @@
 
 - 오류: `RANGE_INVERTED` (400), `RANGE_TOO_LARGE` (400), `SEQUENCE_SPACE_MISMATCH` (400), `NOT_FOUND` (404)
 - 비고: `sequence_state`가 `reassigning` 또는 `stale`이면 마지막 확정 값으로 응답하고 상태를 함께 반환한다
+
+#### 필드 근거 (CR-027)
+
+| 필드 | 출처 | 왜 이렇게 정했나 |
+| --- | --- | --- |
+| `items`의 멤버십과 순서, `summary.pull_request_count`·`commit_count` | PostgreSQL `merge_sequence` | 서수의 정본이며 `git log --first-parent`와 대조 가능한 유일한 출처다 (DEV-130). Elasticsearch `range(merge_seq)`로 읽으면 색인 반영이 실패한 만큼 **오류 없이 항목이 빠진다** |
+| `summary.commit_count` | 구간의 **first-parent 커밋 수** (= `merge_sequence` 행 수) | PR의 원본 커밋까지 세지 않는다 (DEV-139). DoD가 `git log --first-parent A..B`와 대조하라고 하므로 그 명령이 세는 것과 같은 것을 센다 |
+| `items_missing_in_index` | 정본에는 있으나 색인에 없는 항목 수 | 그런 항목을 조용히 빼지 않는다 (DEV-130). `0`이면 정본과 색인이 일치한다는 뜻이고, 양수면 결과가 덜 채워졌다는 뜻이다 |
+| `summary.top_changed_paths[].path` | `prs-pull-requests.changed_paths.raw` | **파일 경로**다 (DEV-134). 디렉터리 롤업 깊이를 정한 문서가 없어 발명하지 않는다. `repository_id` 라우팅으로 단일 샤드에서 끝나므로 `terms` 집계가 근사가 아니라 정확하다 |
+| `summary.files_truncated_pull_request_count` | `prs-pull-requests.files_truncated` | 변경 파일 목록이 절삭된 PR 수다 (DEV-135). 절삭이 있으면 `changed_files_total`·`additions_total`·`deletions_total`은 **하한**이며, 이 수가 그 사실을 말한다 |
+| `epoch_stale` | 요청 `seq_epoch` vs 현재 `seq_epoch` | `true`면 `summary`와 `items` 키를 **넣지 않는다** (DEV-138과 같은 원칙: 계산하지 않은 것은 키를 비우는 것이 아니라 없앤다). 서버가 다른 에폭으로 자동 재조회하지 않는 것이 ADR-007의 요구다 |
+| `next_cursor` | 항상 `null` | 커서 페이지네이션은 WP-032다 (DEV-138). 키를 빼면 화면이 마지막 페이지를 오해하므로 `null`로 둔다 |
+| `reverted_pull_request_count` | **아직 없다** | 되돌림 관계 파생(WP-030)이 서기 전에는 `link_summary.is_reverted`가 투영이 넣은 `false`뿐이라 세면 언제나 `0`이 나오고, 그 `0`은 "되돌림이 없다"와 구분되지 않는다 (DEV-133). **키를 넣지 않는다** — 계산하지 않은 것을 계산한 척하지 않는다. WP-030 이후 더한다 |
+
+`RANGE_TOO_LARGE`의 `estimated_count`는 이름과 달리 **정확한 값**이다 (DEV-140). 정본이 PostgreSQL이므로 `count(*)`가 PK 범위 스캔 한 번이고, 추정할 이유가 없다. 필드 이름은 하위 호환을 위해 그대로 둔다.
 
 ### API-SEQ-002 앵커 정규화
 
@@ -579,6 +599,24 @@ POST /api/v1/sequence-anchors/resolve
 ```
 
 - 오류: `ANCHOR_NOT_ON_BRANCH` (400), `ANCHOR_NOT_MERGED` (400), `ANCHOR_UNRESOLVABLE` (400), `SEQUENCE_SPACE_MISMATCH` (400)
+
+#### 앵커 유형과 판정 순서 (CR-027)
+
+`kind`는 다섯이다. 표현을 보고 **모호하지 않은 쪽부터** 가른다 — 순서를 뒤집으면 `1234`가 PR 번호인지 서수인지에 따라 답이 달라진다.
+
+| 순서 | `kind` | 표현 | 시퀀스로 바꾸는 방법 | 근거 |
+| --- | --- | --- | --- | --- |
+| 1 | `sequence` | `seq:1342` 또는 `@1342` | 그 값 자체. 구간에 실재하는지 확인한다 | FR-SEQ-003 |
+| 2 | `pull_request` | `#1234` | `merge_sequence.pull_request_number` 조회. 미머지면 `ANCHOR_NOT_MERGED` | AC-3 |
+| 3 | `commit` | 7~40자 16진 SHA | `merge_sequence.commit_sha` 조회(접두는 후보 1건일 때만). 체인 밖이면 `ANCHOR_NOT_ON_BRANCH` + `suggested_anchor` | AC-2, ADR-012 |
+| 4 | `time` | ISO 8601 시각 | `committed_at <= T`인 최대 서수. 그런 커밋이 없으면 `ANCHOR_UNRESOLVABLE` | AC-4 |
+| 5 | `release` | 그 밖의 문자열(태그명) | **지금은 해석할 수 없다.** `ANCHOR_UNRESOLVABLE` + `detail.reason: "release_not_indexed"` | AC-1, DEV-132 |
+
+**릴리스 태그 앵커가 아직 서지 못하는 이유는 근거가 없어서다 (DEV-132).** `prs-releases` 인덱스는 매핑과 부트스트랩만 있고 **쓰는 경로가 없다** (WP-024). 미러도 대안이 못 된다: `git clone --mirror`는 태그를 가져오지만 이후 동기화는 `fetch --prune --no-tags`라 태그를 갱신하지 않는다. 그 위에 태그 해석을 세우면 **오래 전에 클론된 저장소에서만 우연히 맞는** 비결정적 기능이 된다 — 틀린 답보다 나쁜 것은 언제 틀리는지 모르는 답이다. WP-024가 릴리스를 수집하면 이 행이 `prs-releases`를 보게 된다.
+
+`boundary`는 표현이 아니라 **`position`이 정한다**: `from`은 `exclusive`, `to`는 `inclusive`. 반개구간 `(from, to]`가 `git log A..B`와 같은 의미이기 위한 조건이며, 앵커 유형과 무관하다.
+
+`SEQUENCE_SPACE_MISMATCH`는 앵커가 요청의 `(repository, base_branch)`와 **다른 공간에 속할 때** 낸다 — 예를 들어 `#1234`의 `base_ref`가 요청의 `base_branch`와 다를 때다. 같은 브랜치 위에 있으나 first-parent 체인 밖인 커밋은 이것이 아니라 `ANCHOR_NOT_ON_BRANCH`다.
 
 ### API-SEQ-003 릴리스 구간 비교
 

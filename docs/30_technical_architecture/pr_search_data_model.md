@@ -485,7 +485,7 @@ ALTER TABLE gh_capability_snapshot
 ```
 
 - `text_ko_en`은 OD-005 결정에 따라 `nori_tokenizer` 기반으로 교체할 수 있다. 분석기 이름은 유지해 매핑 참조가 변하지 않게 한다 (FR-SRCH-011 AC-4).
-- `index.sort`는 시퀀스 범위 질의와 기본 정렬(시퀀스 내림차순)에서 조기 종료를 얻기 위한 것이다 (ADR-003).
+- `index.sort`는 **기본 정렬(시퀀스 내림차순)** 에서 조기 종료를 얻기 위한 것이다 (ADR-003). **시퀀스 범위 조회는 여기 해당하지 않는다** (CR-027, DEV-131) — 색인 정렬은 `merge_seq` 내림차순인데 FR-SEQ-002는 오름차순 결과를 요구하므로 방향이 어긋나 조기 종료 조건이 서지 않는다. 범위 조회는 애초에 Elasticsearch를 범위 스캔에 쓰지 않는다(DEV-130).
 - **`index.sort`는 `merge_seq`를 가진 인덱스에만 적용한다** (CR-007, DEV-007). `prs-links`에는 `merge_seq`가 없고, Elasticsearch는 매핑에 없는 필드로 `index.sort`를 걸면 인덱스 생성을 거부한다. 간선은 `from_id`/`to_id`로 조회하므로 시퀀스 축 정렬이 필요하지도 않다. 나머지 공통 설정(복제본·refresh·분석기)은 네 인덱스 모두에 적용한다.
 - `refresh_interval: 1s`는 수집 반영 SLO(p95 10초, NFR-002)와 색인 처리량의 절충값이다. 백필 중에는 해당 인덱스만 `30s`로 낮췄다가 복원한다(값이 커질수록 갱신이 뜸해져 처리량이 는다).
 - **복원은 `finally`만으로 보장되지 않는다 (CR-022, DEV-105).** 프로세스가 죽으면 `finally`가 돌지 않아 인덱스가 `30s`에 남고 NFR-002를 영구히 어긴다. 그래서 **백필은 시작할 때 무조건 기본값으로 되돌린 뒤 올린다** — 앞선 잡이 남긴 것을 다음 잡이 치운다. 설정 변경 실패는 **잡을 중단시키지 않는다**: 색인은 느려질 뿐 계속되고, 백필을 통째로 멈추는 편이 더 나쁘다.
@@ -784,7 +784,8 @@ if (!changed) { ctx.op = 'noop'; }
 | 7~39자 접두 → 커밋 | `prs-commits` | `prefix(commit_sha)` (ADR-012) | p95 200ms | FR-SRCH-004 |
 | SHA → PR | `prs-commits` → `pull_request_numbers` → `prs-pull-requests` (ID 조회) | 문서 ID `{repo}:{number}` | p95 200ms | FR-SRCH-002 |
 | PR → 커밋 | `prs-pull-requests.source_commit_shas` + `merge_commit_sha` | 문서 내 배열 | p95 100ms | FR-SRCH-003 |
-| 시퀀스 범위 | `prs-pull-requests` | `range(merge_seq)` + **`term(repository_id)` + `term(base_branch)`** + `term(seq_epoch)`, `index.sort` 조기 종료 | p95 400ms @ 5000건 | FR-SEQ-002 |
+| 시퀀스 범위 (멤버십·건수) | **PostgreSQL `merge_sequence`** | PK 범위 스캔 `(repository_id, base_branch, seq_epoch, merge_seq)` | p95 100ms @ 5000건 | FR-SEQ-002 |
+| 시퀀스 범위 (표시 필드·요약) | `prs-pull-requests` | `terms(pr_number)` + `term(repository_id)`, `routing=repository_id` | p95 300ms @ 5000건 | FR-SEQ-002 |
 | 선행·후행 | `prs-pull-requests` | `range(merge_seq)` 양방향 각 N건 | p95 200ms | FR-REL-001 |
 | 다차원 필터 목록 | `prs-pull-requests` | 복합 `bool.filter` + `search_after` | p95 500ms @ 1000만 | FR-SRCH-006 |
 | 패싯 | `prs-pull-requests` | `terms` 집계 6종, size 20 | 목록과 동일 요청 | FR-SRCH-009 |
@@ -797,6 +798,12 @@ if (!changed) { ctx.op = 'noop'; }
 | 릴리스 포함 | `prs-releases` | **`term(repository_id) + term(base_branch)`** + `range(merge_seq >= C.merge_seq)` | p95 150ms | FR-REL-002 |
 | 체리픽 후보 | `prs-commits` | `term(patch_id) + term(repository_id)` | p95 200ms | FR-REL-005 |
 | 동시 변경 | `prs-pull-requests` | `terms(changed_paths.raw)` + 날짜 범위 90일 | p95 800ms | FR-REL-007 |
+
+**시퀀스 범위의 정답지는 PostgreSQL이다 (CR-027, DEV-130).** 이 표의 다른 행과 달리 범위 조회만 두 줄인 이유가 그것이다. `merge_sequence`는 first-parent walk가 직접 쓴 표이고 서수의 정본이다 (ADR-004: Elasticsearch는 PostgreSQL만으로 재구축 가능한 파생 뷰다). 채번은 **PostgreSQL을 먼저 커밋하고 그 뒤에 Elasticsearch로 비춘다** — 비추기가 실패하면(`sequence_index_failed`) 서수를 가진 문서가 그만큼 줄어들고, 그 상태에서 `range(merge_seq)`로 읽은 구간은 **아무 오류 없이 항목이 빠진 채** 돌아온다. 범위 인용이 조용히 틀리는 것은 이 제품이 막으려는 실패 그 자체다.
+
+그래서 **구간에 무엇이 속하는가와 그것이 몇 건인가는 `merge_sequence`가 답하고**, 제목·작성자·변경 경로 같은 표시 필드와 요약 집계만 Elasticsearch가 채운다. 정본에는 있는데 색인에 없는 항목은 **버리지 않고 응답에 드러낸다** — 없는 것을 없다고 말하는 것과 모른다고 말하는 것은 다르다.
+
+이 결정이 `index.sort` 조기 종료 논의도 함께 끝낸다. Elasticsearch가 범위를 스캔하지 않으므로 정렬 방향이 어긋나는 문제(DEV-131)가 성능 경로에 남지 않는다.
 
 **범위 질의를 `sequence_space`로 거르지 않는다 (CR-025, DEV-119).** 그 값은 `acme/payments@main` 같은 **사람이 읽는 문자열**이고 `SequencePosition`이 화면에 그대로 출력한다. 저장소 소유자·이름이 바뀌면 같은 시퀀스 공간의 문서가 **두 문자열로 갈라지고**, `term(sequence_space)`로 거른 범위 조회는 그때 **오류 없이 절반만** 돌려준다 — 이 제품의 핵심 산출물이 조용히 틀리는 자리다.
 
