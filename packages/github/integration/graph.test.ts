@@ -102,6 +102,70 @@ describe('DoD 1: first-parent 체인이 git과 같다 (FR-SEQ-001 AC-2)', () => 
   });
 });
 
+describe('firstParentCommits: SHA와 시각을 한 번에 (CR-025, DEV-115)', () => {
+  it('**SHA 순서가 `firstParentRevList`와 같다** — 같은 체인의 다른 표현일 뿐이다', async () => {
+    const head = await mirror.resolveHead(REF, 'main');
+    const withDates = await mirror.firstParentCommits(REF, { from: null, to: head! });
+    const shasOnly = await mirror.firstParentRevList(REF, { from: null, to: head! });
+
+    expect(withDates.map((c) => c.sha)).toEqual(shasOnly);
+  });
+
+  it('**커밋 시각이 git이 말하는 값과 같다**', async () => {
+    const head = await mirror.resolveHead(REF, 'main');
+    const ours = await mirror.firstParentCommits(REF, { from: null, to: head! });
+
+    // 정답은 우리 구현이 아니라 origin 저장소의 git이 낸다.
+    const expected = (await run(origin.dir, ['log', '--first-parent', '--reverse', '--format=%H %cI', 'main']))
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((line) => {
+        const [sha, at] = line.trim().split(' ');
+        return { sha: sha!, committedAt: at! };
+      });
+
+    expect(ours).toEqual(expected);
+  });
+
+  it('시각이 파싱 가능한 순간이다 — `merge_sequence.committed_at`이 이 값을 받는다', async () => {
+    const head = await mirror.resolveHead(REF, 'main');
+    const ours = await mirror.firstParentCommits(REF, { from: null, to: head! });
+
+    expect(ours.length).toBeGreaterThan(0);
+    for (const commit of ours) {
+      expect(Number.isNaN(Date.parse(commit.committedAt))).toBe(false);
+      // 오프셋이 있어야 실행 환경 시간대에 좌우되지 않는다.
+      expect(commit.committedAt).toMatch(/([Zz]|[+-]\d{2}:?\d{2})$/);
+    }
+  });
+
+  it('부분 구간도 git과 같다 — 증분 채번이 쓰는 경로다 (AC-5)', async () => {
+    const all = await expectedFirstParent(origin.dir, 'main');
+    const from = all[0]!;
+    const to = all[all.length - 1]!;
+
+    const ours = await mirror.firstParentCommits(REF, { from, to });
+    expect(ours.map((c) => c.sha)).toEqual(await expectedFirstParent(origin.dir, `${from}..${to}`));
+  });
+
+  it('빈 구간은 빈 배열이다', async () => {
+    const head = await mirror.resolveHead(REF, 'main');
+    expect(await mirror.firstParentCommits(REF, { from: head!, to: head! })).toEqual([]);
+  });
+
+  it('**blob을 인출하지 않는다** — 커밋 객체만 읽으므로 THR-015가 그대로 성립한다', async () => {
+    const dir = await mirror.dirFor(REF);
+    const before = await objectTypeCounts(dir);
+
+    const head = await mirror.resolveHead(REF, 'main');
+    await mirror.firstParentCommits(REF, { from: null, to: head! });
+
+    const after = await objectTypeCounts(dir);
+    expect(after['blob'] ?? 0).toBe(before['blob'] ?? 0);
+    expect(after['blob'] ?? 0).toBe(0);
+  });
+});
+
 describe('DoD 3: blobless 클론에 파일 blob이 없다 (THR-015)', () => {
   it('**커밋과 트리는 있고 blob은 0이다**', async () => {
     const counts = await objectTypeCounts(sync.dirFor(REPOSITORY_ID));
