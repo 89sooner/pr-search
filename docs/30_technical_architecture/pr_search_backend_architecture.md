@@ -390,7 +390,9 @@ Elasticsearch와 PostgreSQL 사이에는 분산 트랜잭션을 쓰지 않는다
 | --- | --- | --- |
 | 목록·집계 필드 | 색인 시점 사전 계산 (`lead_time_seconds` 등) | 조회 시점 script/runtime field는 집계에서 느리다 (NFR-001) |
 | 저장소 범위 질의 | `_routing = repository_id` | 단일 샤드 조회로 축소 |
-| 시퀀스 범위 질의 | `index.sort` 조기 종료 | 정렬 순서와 색인 순서 일치 |
+| 시퀀스 범위 질의 (멤버십) | PostgreSQL `merge_sequence` PK 범위 스캔 | 서수의 정본이고 git과 대조 가능한 유일한 출처 (CR-027, DEV-130) |
+| 시퀀스 범위 질의 (표시·요약) | `terms(pr_number)` + `routing = repository_id` 단일 왕복 | 단일 샤드라 `terms` 집계가 근사가 아니라 정확하다 |
+| 기본 정렬 (시퀀스 내림차순) | `index.sort` 조기 종료 | 색인 정렬 방향과 일치. **오름차순 범위 조회에는 서지 않는다** (DEV-131) |
 | 깊은 페이징 | `search_after` 커서 | 오프셋 페이징 금지 (ADR-010) |
 | 총 건수 | `track_total_hits: 10000` | 정확한 총계는 집계 엔드포인트에서 |
 | 패싯 | 목록 요청과 동일 질의에 집계 첨부 | 왕복 1회 |

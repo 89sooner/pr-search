@@ -28,6 +28,7 @@ export type { EntityAlias, EntityIndexDefinition } from './indices.js';
 
 export {
   applyMandatoryScopeFilter,
+  isRepositoryInScope,
   shouldUseOrgTeamScope,
   AccessScopeUnavailableError,
   EXPLICIT_SCOPE_LIMIT,

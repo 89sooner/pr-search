@@ -40,7 +40,7 @@
 | WP-020 | 커밋 그래프 접근 계층 | REL-003 | WP-006 | done |
 | WP-021 | 시퀀스 증분 채번 | REL-003 | WP-002, WP-020 | done |
 | WP-022 | 시퀀스 재채번과 에폭 | REL-003 | WP-021 | done |
-| WP-023 | 앵커 정규화와 범위 조회 API | REL-003 | WP-021, WP-013 | todo |
+| WP-023 | 앵커 정규화와 범위 조회 API | REL-003 | WP-021, WP-013 | done |
 | WP-024 | 릴리스 수집과 포함 관계 | REL-003 | WP-021, WP-008 | todo |
 | WP-025 | W-004 범위 조사 화면 | REL-003 | WP-023, WP-015 | todo |
 | WP-026 | W-005 릴리스 화면과 구간 비교 | REL-003 | WP-024, WP-025 | todo |
@@ -800,24 +800,29 @@
 - 관련 API/데이터/잡: API-SEQ-001, API-SEQ-002
 - 선행 WP: WP-021, WP-013
 - 구현 범위:
-  - `POST /sequence-anchors/resolve`: 릴리스 태그·SHA·PR 번호·시각·시퀀스 값 5종 정규화
+  - `POST /sequence-anchors/resolve`: SHA·PR 번호·시각·시퀀스 값 4종 정규화. **릴리스 태그는 `ANCHOR_UNRESOLVABLE`** (CR-027, DEV-132 — 근거가 되는 릴리스 수집이 WP-024)
   - `GET /sequence-ranges`: 반개구간 조회, 시퀀스 오름차순
-  - 요약: PR 수, 커밋 수, 작성자 수, 변경 경로 상위 20, 되돌림 보유 수
-  - 구간 5만 건 초과 시 사전 추정 후 400
+  - **멤버십·건수는 PostgreSQL `merge_sequence`, 표시 필드·요약 집계는 Elasticsearch** (CR-027, DEV-130)
+  - 요약: PR 수, 커밋 수, 작성자 수, 변경 경로 상위 20, 절삭 PR 수. **되돌림 보유 수는 WP-030 이후** (DEV-133)
+  - 구간 5만 건 초과 시 조회 전 정확 count 후 400 (DEV-140)
   - 시퀀스 공간 불일치·역전·브랜치 밖 앵커·미머지 앵커 오류
-  - `sequence_state` 함께 반환
-  - `q` 파라미터로 구간 내 추가 필터
-  - `index.sort` 조기 종료 활용
+  - `sequence_state`, `epoch_stale`, `items_missing_in_index` 함께 반환
+  - `q` 파라미터로 구간 내 추가 필터 — 목록과 요약 양쪽에 적용 (DEV-136)
 - 제외:
   - 화면 (WP-025)
   - 릴리스 비교 (WP-026)
+  - **릴리스 태그 앵커 해석** (WP-024가 `prs-releases`를 채운 뒤)
+  - **`summary.reverted_pull_request_count`** (WP-030 되돌림 관계 파생)
+  - **커서 페이지네이션** — `next_cursor`는 늘 `null` (WP-032)
+  - `index.sort` 조기 종료 — 오름차순 범위 조회에는 서지 않으며, 범위 스캔 자체가 Elasticsearch에서 일어나지 않는다 (CR-027, DEV-131)
 - 완료 기준(DoD):
-  - [ ] QA-W004-01 ~ QA-W004-11이 API 계층에서 통과한다
-  - [ ] 시작 앵커 PR이 결과에서 제외되고 끝 앵커 PR이 포함된다 (FR-SEQ-002 AC-1)
-  - [ ] 브랜치 밖 앵커에 머지 커밋 대체 제안이 포함된다 (FR-SEQ-003 AC-2)
-  - [ ] 범위 조회 p95가 400ms 이하다 (구간 5000건, NFR-001)
-  - [ ] **`git log --first-parent <tagA>..<tagB>` 결과와 건수·구성이 일치한다** (QA 6장)
-  - [ ] API 계약의 응답 예시와 실제 응답이 일치한다
+  - [x] QA-W004-02·04·05·06·07·08·10·11이 API 계층에서 통과한다 (01·09는 화면 규칙이라 WP-025, 03은 5종 중 4종만 — DEV-132)
+  - [x] 시작 앵커 PR이 결과에서 제외되고 끝 앵커 PR이 포함된다 (FR-SEQ-002 AC-1)
+  - [x] 브랜치 밖 앵커에 머지 커밋 대체 제안이 포함된다 (FR-SEQ-003 AC-2)
+  - [~] 범위 조회 p95가 400ms 이하다 (구간 5000건, NFR-001) — **부분 실측**: PostgreSQL 구간 p95 7.50ms, ES 포함 전체는 NOT RUN (6.23장)
+  - [x] **`git log --first-parent <A>..<B>` 결과와 건수·구성이 일치한다** (QA 6장). 태그가 아니라 커밋 앵커로 건다 — 미러가 태그를 갱신하지 않으므로 (DEV-132)
+  - [x] 색인에 없는 항목이 조용히 빠지지 않고 `items_missing_in_index`로 드러난다 (DEV-130)
+  - [x] API 계약의 응답 예시와 실제 응답이 일치한다
 - 검증 방법: `pnpm test:integration sequence/range`, `pnpm test:regression range-vs-git`
 - 기록: 원장 WP-023 상태, FR-SEQ-002·FR-SEQ-003 매핑
 
@@ -835,6 +840,7 @@
   - `GET /containments`: 시퀀스 정수 비교로 포함 판정 (간선 생성 없음)
   - `release_tags` 비정규화 (상위 5개), `unreleased` 플래그
   - 미배포 시 대기 PR 수 계산
+  - **WP-023에서 이월: `POST /sequence-anchors/resolve`의 `release` 앵커**를 `ANCHOR_UNRESOLVABLE`에서 실제 해석으로 바꾼다 (CR-027, DEV-132 / FR-SEQ-003 AC-1). 미러는 `fetch --no-tags`라 근거가 못 되므로 `prs-releases`를 본다
   - `C-020 ReleaseContainmentList` 구현, W-002·W-003 섹션 연결
 - 제외:
   - CI 배포 이벤트 소스 (조건부, OD-004)
@@ -1058,6 +1064,7 @@
   - 상위 PR 머지 시 스택 간선 `detached` 표시
   - `link_summary.is_reverted` 갱신 → `is:reverted` 필터 지원
   - patch-id 실패 시 null + 메트릭
+  - **WP-023에서 이월: `GET /sequence-ranges` 요약의 `summary.reverted_pull_request_count`** (CR-027, DEV-133 / FR-SEQ-002 AC-2, FR-SEQ-004 AC-2). 그전에는 세면 언제나 `0`이라 키를 넣지 않았다
 - 제외:
   - 동시 변경 (조회 시점 계산, WP-031)
   - 그래프 탐색 (WP-043)

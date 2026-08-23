@@ -17,7 +17,7 @@ export type {
   DeadLetterState,
 } from './dead-letter.js';
 export type { JobRow, JobState, JobType } from './job.js';
-export type { MergeSequenceInsert, MergeSequenceRow } from './merge-sequence.js';
+export type { MergeSequenceInsert, MergeSequenceRow, SequencePoint } from './merge-sequence.js';
 export type { LagPercentiles, RepositoryLag } from './pipeline.js';
 export type { RawEventInsert, RawEventRow } from './raw-event.js';
 export type {

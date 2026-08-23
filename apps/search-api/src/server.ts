@@ -17,7 +17,9 @@ import { registerOpsRoutes } from './ops/routes.js';
 import { registerAuthRoutes } from './auth/routes.js';
 import { registerSearchRoutes } from './search/routes.js';
 import { registerResolveRoutes } from './resolve/routes.js';
+import { registerSequenceRoutes } from './sequence/routes.js';
 import type { SearchDeps } from './search/service.js';
+import type { RangeDeps } from './sequence/range.js';
 import type { AuthContext } from './auth/context.js';
 import type { OpsDeps } from './ops/dead-letters.js';
 import type { RegistryDeps } from './ops/repositories.js';
@@ -54,6 +56,15 @@ export interface ServerDeps {
    * 없는 편이 낫다.
    */
   readonly search?: SearchDeps;
+  /**
+   * 시퀀스 앵커·범위 조회 의존 (API-SEQ-001·002, WP-023).
+   *
+   * **`search`와 달리 PostgreSQL이 필요하다.** 구간의 멤버십은 `merge_sequence`가
+   * 정본이라 Elasticsearch만으로는 답할 수 없다 (CR-027, DEV-130). `search`와
+   * 마찬가지로 세션이 있어야 접근 범위를 산출할 수 있으므로 `auth`가 있을 때만
+   * 경로를 단다.
+   */
+  readonly sequence?: RangeDeps;
   readonly log?: (entry: { readonly level: string; readonly message: string }) => void;
 }
 
@@ -93,6 +104,19 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
       });
     } else {
       log({ level: 'warn', message: 'Elasticsearch 의존이 없어 검색 경로를 등록하지 않는다 (API-SRCH-004)' });
+    }
+
+    if (deps.sequence !== undefined) {
+      registerSequenceRoutes(app, {
+        ...deps.sequence,
+        auth: deps.auth,
+        loginPath: config.auth.loginPath,
+      });
+    } else {
+      log({
+        level: 'warn',
+        message: 'PostgreSQL 의존이 없어 시퀀스 경로를 등록하지 않는다 (API-SEQ-001, API-SEQ-002)',
+      });
     }
   } else if (deps.search !== undefined) {
     // 세션 없이 검색을 열면 접근 범위를 채울 신원이 없다 (ADR-008).

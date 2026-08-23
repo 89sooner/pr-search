@@ -503,6 +503,8 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 | CR-025 | 2026-08-23 | correction | WP-021 착수 전 시퀀스 채번 계약 감사에서 확인된 DEV-115~120 | **이 제품의 핵심 값을 쓰려는데, 그 값을 만들 재료 하나와 그것을 부를 사람이 없다.** `merge_sequence.committed_at`은 `NOT NULL`인데 WP-020이 낸 그래프 계층은 SHA만 주고 커밋 시각을 주는 잡(JOB-MIR-002)은 아직 todo다(DEV-115). 그리고 JOB-SEQ-001의 트리거인 `push` 이벤트는 게이트웨이가 `prs:ingest`에 싣고 `enrich`가 "PR 이벤트가 아니다"로 버린다 — **`prs:sequence`에 무언가를 싣는 코드가 어디에도 없다**(DEV-116). 여기에 `pull_request_number`의 출처 미정의(DEV-118)와 `bus.requeueLater()`라는 없는 포트(DEV-117)가 겹친다. **가장 조용한 것은 DEV-119다** — 데이터 모델 질의 표가 범위 조회를 `term(sequence_space)`로 거르는데 그 값은 `acme/payments@main` 같은 표시용 문자열이라, 저장소 이름이 바뀌면 같은 공간이 두 문자열로 갈라져 **범위 조회가 조용히 절반만 돌려준다.** 이 제품의 핵심 산출물이 틀리는데 아무 오류도 나지 않는다 | DEV-115~120, FR-SEQ-001, FR-SEQ-002, ADR-005, ADR-007, JOB-SEQ-001, EVT-SEQ-001, ENT-SEQ-001 | ADR 문서, 백엔드 아키텍처, 데이터 모델, 비동기·잡 카탈로그, API 계약, 릴리스 검증 계획, 작업 패키지, 원장 | closed |
 | CR-026 | 2026-08-23 | correction | WP-022 착수 전 재채번 계약 감사에서 확인된 DEV-124~129 | **재채번이 딛고 설 함수 둘이 없고, 의사코드가 성공을 가정한 자리 둘이 실제로는 실패할 수 있다.** 백엔드 4.3의 `copySequencesUpTo`·`getSeqByCommit`은 리포지터리에 없다(DEV-124). `mergeBase`가 first-parent 체인 **밖**의 커밋을 줄 수 있는데 의사코드는 그 SHA로 서수를 찾는 데 무조건 성공한다고 가정한다(DEV-125) — 못 찾으면 **처음부터 전체 재채번**으로 폴백한다: first-parent walk가 결정론이라 히스토리가 같은 구간은 같은 서수가 재현된다. `invalidateSafeMarkers`는 쓸 수단이 스키마에 없다(DEV-126) — AC-4 후반부가 이미 답을 정의한다: 표식·세션·인용은 `seq_epoch`를 저장하므로 **현재 에폭과 비교해 계산**하면 되고 저장 시점 쓰기가 필요 없다. 저장된 검색 `seq:` 무효화는 `saved_search` 테이블 자체가 없어(REL-004) 도달 불가. 알림 어댑터도 없어(DEV-127, DEV-026과 같은 사정) EVT-SEQ-002 발행 + 감사 기록으로 AC-5를 성립시킨다. 잡 스키마의 `sequence_assign`과 API 계약의 `sequence_reassign`이 불일치한다(DEV-128, WP-028 몫). ES에 에폭 전환을 비출 수단이 없다(DEV-129) — SHA 목록 기반 `applySequenceToDocuments`로는 저장소 전체의 `seq_epoch`를 못 올린다 | DEV-124~129, FR-SEQ-005, ADR-007, JOB-SEQ-002, EVT-SEQ-002, API-ADM-007, ENT-SEQ-001·002 | 백엔드 아키텍처, 데이터 모델, 작업 패키지, 원장 | closed |
 
+| CR-027 | 2026-08-23 | correction | WP-023 착수 전 앵커·범위 조회 계약 감사에서 확인된 DEV-130~140 | **범위 조회의 정답지를 파생 뷰에서 읽으려 한다.** 데이터 모델 8장 성능표는 시퀀스 범위 조회를 `prs-pull-requests`의 `range(merge_seq)`로 적었으나 서수의 정본은 PostgreSQL `merge_sequence`이고 (ADR-004) WP-021의 채번은 PostgreSQL 커밋 뒤 ES에 비춘다 — 비추기가 실패하면 ES `range`는 **아무 오류 없이 적게 돌려준다**(DEV-130). 그것이 이 제품이 존재하는 이유인 "범위 인용"이 조용히 틀리는 모양이다. 같은 표가 인용한 `index.sort` 조기 종료도 성립하지 않는다 — 색인 정렬은 `merge_seq` **내림차순**인데 FR-SEQ-002는 오름차순을 요구한다(DEV-131). **릴리스 태그 앵커는 지금 해석할 수 없다** — `prs-releases`에 쓰는 경로가 없고(WP-024), 미러도 근거가 못 된다: `clone --mirror`는 태그를 가져오지만 이후 `fetch --prune --no-tags`가 갱신하지 않아 오래된 저장소에서만 우연히 맞는다(DEV-132). `reverted_pull_request_count`는 되돌림 파생(WP-030) 이전에는 언제나 0이 나오고 그 0은 "되돌림이 없다"와 구분되지 않는다(DEV-133). `top_changed_paths`의 값 단위(DEV-134), 절삭된 파일 목록의 합계(DEV-135), `q`와 요약의 관계(DEV-136), 공간이 없는 저장소(DEV-137), `next_cursor`(DEV-138), `commit_count`의 뜻(DEV-139), "사전 추정"이 실은 정확히 셀 수 있다는 것(DEV-140)이 나머지다 | DEV-130~140, FR-SEQ-002, FR-SEQ-003, ADR-004, ADR-007, API-SEQ-001·002, ENT-SEQ-001·002 | API 계약, 데이터 모델, 백엔드 아키텍처, 작업 패키지, 원장 | closed |
+
 ### CR-024 반영 내역 (2026-08-22)
 
 - [x] `10_requirements/srs_final.md` — **v2.3.** OD-001·OD-002·OD-004를 `resolved`로, 4.2장 조건부 범위 표 정리. FR-REL-005 AC-2·AC-5 정정(DEV-111), FR-ADMIN-001 AC-1·AC-3 정정, FR-AUTH-002 AC-5에 예외 명시(DEV-051)
@@ -524,6 +526,23 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 **두 갈래를 구분한 것이 DEV-051의 핵심이다.** "운영 집계는 예외"로 뭉뚱그리면 다음에 들어올 저장소별 집계가 조용히 따라 들어온다. 예외의 경계를 **저장소 식별자의 유무**에 두었으므로 아키텍처 테스트가 그 경계를 검사할 수 있다.
 
 **DEV-114는 이 CR이 찾아낸 것이다.** `allowed_team_ids`의 소유권을 정하려고 코드를 확인하다가, 매핑 넷이 선언하고 강제 필터가 읽는 그 필드를 **아무도 쓰지 않는다**는 사실이 드러났다. 통합 시험이 문서를 손으로 심으면서 그 필드를 직접 넣기 때문에 초록이 나온다 — **초록이 곧 검증은 아니다**의 또 한 사례다.
+
+### CR-027 반영 내역 (2026-08-23)
+
+- [x] `30_technical_architecture/pr_search_data_model.md` — 8장 질의 표의 "시퀀스 범위" 한 줄을 **두 줄로 분리**(멤버십은 PostgreSQL, 표시·요약은 Elasticsearch, DEV-130), `index.sort` 적용 범위에서 범위 조회 제외(DEV-131), 근거 문단 신설
+- [x] `30_technical_architecture/pr_search_backend_architecture.md` — 10장 성능 표: 범위 질의 행을 멤버십·표시로 나누고 `index.sort`를 기본 정렬 전용으로 한정
+- [x] `30_technical_architecture/pr_search_api_contracts.md` — API-SEQ-001에 `seq_epoch` 요청 파라미터·`epoch_stale`·`items_missing_in_index`·`files_truncated_pull_request_count` 추가, `reverted_pull_request_count` 제거, `top_changed_paths` 예시를 파일 경로로 정정, **필드 근거 표 신설**. API-SEQ-002에 **앵커 유형과 판정 순서 표 신설**, 릴리스 앵커 미해석 사유 명시
+- [x] `40_delivery/pr_search_work_packages.md` — WP-023 구현 범위·제외·DoD 정정, **WP-024·WP-030에 이월 항목 명시**
+- [x] `40_delivery/pr_search_implementation_traceability.md` — DEV-130~140 등록
+- [x] `packages/db`, `packages/domain`, `packages/es`, `apps/search-api` — 구현은 WP-023 커밋 (PR #28)
+
+**SRS는 건드리지 않았다.** FR-SEQ-002·FR-SEQ-003의 AC는 그대로다. 달라진 것은 **그것을 어디서 읽을 것인가**(DEV-130), **지금 무엇을 낼 수 없는가**(DEV-132·133), 그리고 **문서가 정하지 않고 넘어간 자리**(DEV-134~140)뿐이다. AC 하나도 축소하지 않았고, 대신 지금 충족하지 못하는 AC-1(릴리스 태그)을 WP-024로 **이월했다고 적었다** — 충족한 척하지 않는 것이 이 CR의 요점이다.
+
+**열하나 중 하나가 나머지를 결정한다.** DEV-130을 "정본은 PostgreSQL"로 정하면 DEV-131(`index.sort` 방향)은 성능 경로에서 사라지고, DEV-140("사전 추정")은 정확한 count가 되며, DEV-139(`commit_count`의 뜻)는 `merge_sequence` 행 수라는 답이 저절로 나온다. **어디서 읽을지를 정하지 않은 채 어떻게 읽을지를 정한 것이 원래 문서의 문제였다.**
+
+**DEV-130이 가장 조용하다.** ES `range(merge_seq)`로 읽어도 오류는 나지 않는다. 색인 반영이 실패한 만큼 항목이 빠질 뿐이고, 빠진 줄은 화면에도 응답에도 나타나지 않는다. **범위 인용이 틀렸다는 사실 자체가 관측되지 않는 것**이 이 결함의 성질이며, "Perforce Changelist를 대체한다"는 이 제품의 약속이 정확히 그 지점에서 깨진다. 그래서 정본에는 있고 색인에 없는 항목을 버리지 않고 `items_missing_in_index`로 드러낸다 — 덜 채워진 결과와 완전한 결과를 응답만 보고 가를 수 있어야 한다.
+
+**DEV-132는 "지금 만들 수 있다"와 "지금 만들면 안 된다"가 갈리는 자리다.** 미러에 태그가 있는 저장소가 실제로 있다 — `clone --mirror`가 가져오기 때문이다. 그래서 태그 해석을 지금 구현하면 **시험도 통과하고 일부 저장소에서는 실제로 동작한다.** 그러나 이후 동기화가 `--no-tags`라 새 태그는 영영 들어오지 않으므로, 오래된 저장소에서만 맞고 새 저장소에서는 조용히 틀린다. 언제 맞는지 모르는 기능은 없는 기능보다 나쁘다.
 
 ### CR-026 반영 내역 (2026-08-23)
 

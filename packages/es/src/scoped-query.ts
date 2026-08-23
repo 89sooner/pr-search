@@ -100,3 +100,47 @@ export function applyMandatoryScopeFilter(
 export function shouldUseOrgTeamScope(repositoryCount: number): boolean {
   return repositoryCount > EXPLICIT_SCOPE_LIMIT;
 }
+
+/**
+ * 한 저장소를 볼 수 있는지 (WP-023 / ADR-008, CR-027 DEV-130).
+ *
+ * ## 왜 필요한가
+ *
+ * `applyMandatoryScopeFilter`는 **Elasticsearch를 읽을 때** 접근 범위를 강제한다.
+ * 볼 수 없는 저장소의 문서는 매치되지 않으므로 결과에 섞이지 않는다.
+ *
+ * 그런데 시퀀스 범위 조회는 멤버십을 PostgreSQL `merge_sequence`에서 읽는다
+ * (DEV-130). 그 표에는 접근 범위 필터가 걸리지 않으므로, **여기서 명시적으로
+ * 막지 않으면 볼 수 없는 저장소의 구간이 그대로 나간다.** 타입 시스템이 지켜
+ * 주던 자리가 PostgreSQL 경로에는 없다는 것이 이 함수가 있는 이유다.
+ *
+ * ## `scopeFilter`와 같은 규칙이어야 한다
+ *
+ * 그래서 두 함수를 같은 파일에 나란히 둔다. 규칙이 갈라지면 한쪽 경로만 더
+ * 넓어지고, 넓어진 쪽은 아무 오류도 내지 않는다.
+ *
+ * @param allowedTeamIds 저장소가 팀에 개별 허용된 목록. **오늘은 언제나 비어
+ * 있다** — `repository.allowed_team_ids` 열이 아직 마이그레이션에 없다(WP-068,
+ * DEV-114). 그래서 팀 소속으로만 볼 수 있는 비공개 저장소는 `org_team` 범위에서
+ * 거절된다. Elasticsearch 필터도 같은 필드가 비어 있어 같은 결과를 내므로 두
+ * 경로가 어긋나지는 않는다. WP-068이 열을 채우면 호출 측이 그 값을 넘긴다.
+ */
+export function isRepositoryInScope(
+  repository: {
+    readonly repositoryId: number;
+    readonly orgId: number;
+    readonly visibility: string;
+    readonly allowedTeamIds?: readonly number[];
+  },
+  scope: AccessScope,
+): boolean {
+  if (scope.kind === 'explicit') {
+    return scope.repositoryIds.includes(repository.repositoryId);
+  }
+
+  if (!scope.orgIds.includes(repository.orgId)) return false;
+  if (scope.visibilities.includes(repository.visibility)) return true;
+
+  const allowed = repository.allowedTeamIds ?? [];
+  return allowed.some((teamId) => scope.teamIds.includes(teamId));
+}

@@ -4,6 +4,7 @@ import {
   AccessScopeUnavailableError,
   EXPLICIT_SCOPE_LIMIT,
   applyMandatoryScopeFilter,
+  isRepositoryInScope,
   shouldUseOrgTeamScope,
 } from './scoped-query.js';
 import type { AccessScope } from './scoped-query.js';
@@ -72,5 +73,63 @@ describe('WP-003 DoD 4: search()는 ScopedQuery가 아닌 인자를 받으면 �
 
   it('가드 함수가 타입 검사 대상으로 존재한다', () => {
     expect(typeof compileTimeGuard).toBe('function');
+  });
+});
+
+describe('isRepositoryInScope (WP-023 / ADR-008, CR-027 DEV-130)', () => {
+  /*
+   * 시퀀스 범위 조회는 멤버십을 PostgreSQL에서 읽으므로 `ScopedQuery` 타입이
+   * 지켜 주지 않는다. 이 함수가 그 자리를 메우며, **`scopeFilter`와 같은 규칙**을
+   * 표현해야 한다 — 규칙이 갈라지면 한쪽 경로만 넓어지고 아무 오류도 나지 않는다.
+   */
+  const payments = { repositoryId: 1001, orgId: 1, visibility: 'internal' };
+
+  it('명시적 범위에 있는 저장소를 통과시킨다', () => {
+    expect(isRepositoryInScope(payments, { kind: 'explicit', repositoryIds: [1001, 1002] })).toBe(true);
+  });
+
+  it('명시적 범위 밖 저장소를 막는다', () => {
+    expect(isRepositoryInScope(payments, { kind: 'explicit', repositoryIds: [1002] })).toBe(false);
+  });
+
+  it('빈 명시적 범위는 아무것도 통과시키지 않는다 — 기본 거부다', () => {
+    expect(isRepositoryInScope(payments, { kind: 'explicit', repositoryIds: [] })).toBe(false);
+  });
+
+  const orgTeam: AccessScope = {
+    kind: 'org_team',
+    orgIds: [1],
+    teamIds: [10],
+    visibilities: ['public', 'internal'],
+  };
+
+  it('조직과 가시성이 맞으면 통과한다 — ES 필터의 should 첫 갈래와 같다', () => {
+    expect(isRepositoryInScope(payments, orgTeam)).toBe(true);
+  });
+
+  it('**조직이 다르면 가시성과 무관하게 막는다** — ES 필터에서 org_id가 filter에 있는 것과 같다', () => {
+    expect(isRepositoryInScope({ ...payments, orgId: 2 }, orgTeam)).toBe(false);
+  });
+
+  it('가시성이 밖이어도 팀이 허용됐으면 통과한다 — should 둘째 갈래', () => {
+    expect(
+      isRepositoryInScope({ ...payments, visibility: 'private', allowedTeamIds: [10] }, orgTeam),
+    ).toBe(true);
+  });
+
+  it('가시성 밖 + 팀도 아니면 막는다', () => {
+    expect(
+      isRepositoryInScope({ ...payments, visibility: 'private', allowedTeamIds: [99] }, orgTeam),
+    ).toBe(false);
+  });
+
+  it('**`allowedTeamIds`가 없으면 팀 갈래가 성립하지 않는다** (WP-068, DEV-114)', () => {
+    /*
+     * 오늘의 실제 상태다 — `repository.allowed_team_ids` 열이 아직 없다. 그래서
+     * 팀 소속으로만 볼 수 있는 비공개 저장소는 거절된다. Elasticsearch 필터도
+     * 같은 필드가 비어 있어 같은 결과를 내므로 **두 경로가 어긋나지는 않는다.**
+     * 열이 생기면 이 시험이 위의 "팀이 허용됐으면 통과"와 함께 그것을 지킨다.
+     */
+    expect(isRepositoryInScope({ ...payments, visibility: 'private' }, orgTeam)).toBe(false);
   });
 });

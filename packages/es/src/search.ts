@@ -65,8 +65,18 @@ export async function multiSearch<TDocument>(
   const searches: estypes.MsearchRequestItem[] = [];
 
   for (const request of requests) {
-    searches.push({ index: toIndex(request.target) });
-    searches.push({ ...(request.options ?? {}), query: request.query } as estypes.MsearchRequestItem);
+    /*
+     * `routing`은 **헤더 줄**로 옮긴다 (WP-023, DEV-141).
+     *
+     * `search` API에서는 클라이언트가 `routing`을 쿼리스트링으로 올려 주지만,
+     * `msearch`의 옵션은 해석 없이 NDJSON 본문 줄에 그대로 실린다. 본문에
+     * `routing`이 있으면 Elasticsearch가 요청 전체를 400으로 거절한다 —
+     * 대역 시험은 통과하고 실제 색인에서만 터지는 모양이라, CI의 실-ES
+     * 계층(`range-es.test.ts`)이 처음 잡았다.
+     */
+    const { routing, ...body } = request.options ?? {};
+    searches.push({ index: toIndex(request.target), ...(routing === undefined ? {} : { routing }) });
+    searches.push({ ...body, query: request.query } as estypes.MsearchRequestItem);
   }
 
   return client.msearch<TDocument>({ searches });
