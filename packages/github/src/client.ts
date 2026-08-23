@@ -53,7 +53,18 @@ export interface PullRequestSummary {
 export interface CommitSummary {
   readonly sha: string;
   readonly parents: readonly { readonly sha: string }[];
-  readonly commit: { readonly message: string };
+  readonly commit: {
+    readonly message: string;
+    /**
+     * 커밋 시각 (CR-025, DEV-115).
+     *
+     * `merge_sequence.committed_at`이 요구하는 값이고, API 폴백 경로에서는
+     * 여기가 유일한 출처다. **선택으로 둔 이유**는 GHE 버전에 따라 이 필드가
+     * 빠질 수 있어서다 — 빠졌을 때 `now()`로 메우면 커밋 시각이 채번 시각이
+     * 되어 시간순 정렬이 조용히 거짓말을 한다. 호출 측이 그것을 보고 던진다.
+     */
+    readonly committer?: { readonly date?: string };
+  };
 }
 
 /** `GET /repos/{o}/{r}/compare/{base}...{head}` 응답 중 이 시스템이 쓰는 것만. */

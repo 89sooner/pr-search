@@ -6,7 +6,7 @@
  * 세는지만 정의한다.
  */
 
-import { Counter, Histogram, STAGE_BUCKETS, renderMetrics } from '@prs/metrics';
+import { Counter, Gauge, Histogram, STAGE_BUCKETS, renderMetrics } from '@prs/metrics';
 
 export { METRICS_CONTENT_TYPE, STAGE_BUCKETS } from '@prs/metrics';
 export type { Labels } from '@prs/metrics';
@@ -33,6 +33,24 @@ export interface WorkerMetrics {
   readonly permissionInvalidated: Counter;
   /** 무효화 실패 건수. 라벨: `reason`. 0이 아니면 회수가 최대 5분 늦는다. */
   readonly permissionInvalidationFailed: Counter;
+  /**
+   * 시퀀스 공간 상태 (WP-021, 관측 문서 RB-10). 라벨: `state`.
+   *
+   * `stale`이 1 이상이면 P2 경보다 — 그 공간의 시퀀스가 브랜치 현실을 더는
+   * 반영하지 않는다는 뜻이고, 범위 조회가 옛 답을 준다.
+   */
+  readonly sequenceSpaceState: Gauge;
+  /** 붙인 서수 개수 (JOB-SEQ-001). 라벨: `repository`. */
+  readonly sequenceAssigned: Counter;
+  /**
+   * 감지한 히스토리 재작성 건수 (FR-SEQ-005, 관측 문서 RB-11).
+   *
+   * WP-021은 감지만 하고 재채번하지 않는다. 이 값이 오르는데 시퀀스가 그대로면
+   * 그 공간은 **재채번을 기다리는 중**이다.
+   */
+  readonly sequenceRewriteDetected: Counter;
+  /** 시퀀스를 색인에 반영하지 못한 회차 수. PostgreSQL 값은 살아 있다. */
+  readonly sequenceIndexFailed: Counter;
   render(): string;
 }
 
@@ -54,6 +72,10 @@ export function createWorkerMetrics(): WorkerMetrics {
     'permission_invalidation_failed_total',
     '권한 캐시 무효화 실패 건수',
   );
+  const sequenceSpaceState = new Gauge('sequence_space_state', '시퀀스 공간 상태');
+  const sequenceAssigned = new Counter('sequence_assigned_total', '붙인 머지 서수 개수');
+  const sequenceRewriteDetected = new Counter('sequence_rewrite_detected_total', '감지한 히스토리 재작성 건수');
+  const sequenceIndexFailed = new Counter('sequence_index_failed_total', '시퀀스 색인 반영 실패 회차');
 
   return {
     enrichPending,
@@ -63,6 +85,10 @@ export function createWorkerMetrics(): WorkerMetrics {
     stageSeconds,
     permissionInvalidated,
     permissionInvalidationFailed,
+    sequenceSpaceState,
+    sequenceAssigned,
+    sequenceRewriteDetected,
+    sequenceIndexFailed,
     render: (): string =>
       renderMetrics([
         enrichPending,
@@ -71,6 +97,10 @@ export function createWorkerMetrics(): WorkerMetrics {
         deadLetterResolved,
         permissionInvalidated,
         permissionInvalidationFailed,
+        sequenceAssigned,
+        sequenceIndexFailed,
+        sequenceRewriteDetected,
+        sequenceSpaceState,
         stageSeconds,
       ]),
   };

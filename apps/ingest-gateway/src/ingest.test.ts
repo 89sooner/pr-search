@@ -52,6 +52,9 @@ function harness(overrides: Partial<IngestDeps> = {}): Harness {
     publishPermissionInvalidation: async (): Promise<void> => {
       calls.push('permission');
     },
+    publishSequenceRequest: async (): Promise<void> => {
+      calls.push('sequence');
+    },
     archive,
     metrics: createIngestMetrics(),
     maxBodyBytes: MAX_BODY_BYTES,

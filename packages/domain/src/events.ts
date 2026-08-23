@@ -15,6 +15,8 @@ export const EVENT_NAMES = {
   ingestionProjected: 'ingestion.projected',
   /** EVT-ING-004 */
   ingestionFailed: 'ingestion.failed',
+  /** EVT-SEQ-001 */
+  sequenceAssigned: 'sequence.assigned',
   /** EVT-AUTH-001 */
   permissionInvalidated: 'permission.invalidated',
 } as const;
@@ -195,4 +197,38 @@ export function pullRequestDocId(repositoryId: number, prNumber: number): string
  */
 export function commitDocId(repositoryId: number, commitSha: string): string {
   return `${String(repositoryId)}:${commitSha.toLowerCase()}`;
+}
+
+/**
+ * 채번 요청 (WP-021 / CR-025, DEV-116).
+ *
+ * `prs:sequence`가 나르는 것. 잡 카탈로그는 JOB-SEQ-001의 트리거를 "push
+ * 이벤트"라 적지만 그 이벤트를 이 스트림에 싣는 코드가 없었다 — 게이트웨이가
+ * push를 보고 이것을 낸다.
+ *
+ * **`head_sha`는 참고값이다.** 채번은 이 값을 믿지 않고 그래프에서 head를
+ * 다시 읽는다. 웹훅이 밀려 도착했으면 이 값은 이미 옛 head이고, 그것으로
+ * 채번하면 그 사이 커밋이 통째로 빠진다.
+ */
+export interface SequenceRequested {
+  readonly repository_id: number;
+  readonly base_branch: string;
+  readonly head_sha: string;
+  readonly correlation_id: string;
+}
+
+/**
+ * EVT-SEQ-001 `sequence.assigned`.
+ *
+ * `from_seq`는 **채번 전** 마지막 서수, `to_seq`는 채번 후 마지막 서수다.
+ * 둘이 같으면 새 커밋이 없었다는 뜻이며, 그것도 정상 결과이므로 이벤트를 낸다
+ * — 내지 않으면 "채번이 돌긴 했나"를 소비자가 알 수 없다.
+ */
+export interface SequenceAssigned {
+  readonly repository_id: number;
+  readonly base_branch: string;
+  readonly seq_epoch: number;
+  readonly from_seq: number;
+  readonly to_seq: number;
+  readonly head_sha: string;
 }

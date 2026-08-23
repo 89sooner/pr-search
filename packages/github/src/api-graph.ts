@@ -19,9 +19,15 @@
  * `no_mirror` 사유와 함께 `null`을 돌려준다.
  */
 
-import type { GitHubClient, RepoRef } from './client.js';
+import type { CommitSummary, GitHubClient, RepoRef } from './client.js';
 import { CommitGraphError, type CommitGraph, type PatchIdResult } from './commit-graph.js';
-import { firstParentChain, isFullSha, type ParentLink, type RevRange } from './graph-plan.js';
+import {
+  firstParentChain,
+  isFullSha,
+  type FirstParentCommit,
+  type ParentLink,
+  type RevRange,
+} from './graph-plan.js';
 
 export interface ApiGraphOptions {
   readonly client: GitHubClient;
@@ -82,7 +88,17 @@ export class ApiCommitGraph implements CommitGraph {
     return compared.merge_base_commit?.sha ?? null;
   }
 
-  async firstParentRevList(ref: RepoRef, range: RevRange): Promise<readonly string[]> {
+  /**
+   * 커밋 목록을 한 번 받아 first-parent 체인을 재구성한다.
+   *
+   * SHA만 필요한 호출과 시각까지 필요한 호출이 **같은 한 번의 응답**을 쓰도록
+   * 여기로 모은다 (CR-025, DEV-115). 각자 부르면 그 사이에 강제 푸시가 나는
+   * 순간 서로 다른 히스토리를 섞게 된다.
+   */
+  async #loadChain(
+    ref: RepoRef,
+    range: RevRange,
+  ): Promise<{ readonly items: readonly CommitSummary[]; readonly chain: readonly string[] }> {
     if (!isFullSha(range.to)) throw new CommitGraphError('api', `구간의 끝이 40자 SHA가 아니다: ${range.to}`);
     if (range.from !== null && !isFullSha(range.from)) {
       throw new CommitGraphError('api', `구간의 시작이 40자 SHA가 아니다: ${range.from}`);
@@ -103,10 +119,41 @@ export class ApiCommitGraph implements CommitGraph {
     }
 
     try {
-      return firstParentChain(page.items as readonly ParentLink[], range.to, range.from);
+      return { items: page.items, chain: firstParentChain(page.items as readonly ParentLink[], range.to, range.from) };
     } catch (error) {
       throw new CommitGraphError('api', String(error instanceof Error ? error.message : error), { cause: error });
     }
+  }
+
+  async firstParentRevList(ref: RepoRef, range: RevRange): Promise<readonly string[]> {
+    return (await this.#loadChain(ref, range)).chain;
+  }
+
+  /**
+   * 같은 체인을 커밋 시각과 함께 (CR-025, DEV-115).
+   *
+   * 체인 재구성은 `firstParentRevList`와 **같은 한 번의 호출 결과**를 쓴다.
+   * 두 번 부르면 그 사이의 강제 푸시로 서로 다른 히스토리가 섞인다.
+   *
+   * 커밋 API가 `commit.committer.date`를 주지 않는 경우가 있다 — 그때는
+   * **지어내지 않고 던진다.** `now()`로 채우면 `committed_at`이 채번 시각이
+   * 되어, 시간순 정렬이 조용히 거짓말을 한다.
+   */
+  async firstParentCommits(ref: RepoRef, range: RevRange): Promise<readonly FirstParentCommit[]> {
+    const page = await this.#loadChain(ref, range);
+    const dateBySha = new Map<string, string>();
+    for (const commit of page.items) {
+      const date = commit.commit.committer?.date;
+      if (typeof date === 'string' && date !== '') dateBySha.set(commit.sha, date);
+    }
+
+    return page.chain.map((sha) => {
+      const committedAt = dateBySha.get(sha);
+      if (committedAt === undefined) {
+        throw new CommitGraphError('api', `커밋 시각을 주지 않았다: ${sha}`);
+      }
+      return { sha, committedAt };
+    });
   }
 
   /** ADR-005: API 경로에서는 계산하지 않는다 (FR-REL-005 AC-5). */

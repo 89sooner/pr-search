@@ -30,12 +30,13 @@ export {
   isSafeBranch,
   MIRROR_DISK_ALERT_RATIO,
   mirrorPath,
+  parseFirstParentCommits,
   parsePatchId,
   parseRevList,
   readAncestorExit,
   revRangeArg,
 } from './graph-plan.js';
-export type { GitEnvOptions, ParentLink, RevRange } from './graph-plan.js';
+export type { FirstParentCommit, GitEnvOptions, ParentLink, RevRange } from './graph-plan.js';
 
 export { CommitGraphError, FallbackCommitGraph, selectCommitGraph } from './commit-graph.js';
 export type { CommitGraph, CommitGraphKind, PatchIdResult, PatchIdUnavailable } from './commit-graph.js';

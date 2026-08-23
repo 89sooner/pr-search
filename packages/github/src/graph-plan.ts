@@ -42,6 +42,19 @@ export interface RevRange {
   readonly to: string;
 }
 
+/**
+ * first-parent 체인의 한 커밋 (CR-025, DEV-115).
+ *
+ * `committedAt`은 `merge_sequence.committed_at`(`NOT NULL`)이 요구하는 값이다.
+ * 커밋 객체에만 있으므로 blobless 미러에서도 blob 없이 읽힌다 — THR-015의
+ * 완화 근거를 깨지 않는다.
+ */
+export interface FirstParentCommit {
+  readonly sha: string;
+  /** 엄격 ISO 8601 문자열 (`%cI`). 오프셋을 포함한다. */
+  readonly committedAt: string;
+}
+
 export class GraphInputError extends Error {
   constructor(message: string) {
     super(message);
@@ -140,6 +153,49 @@ export function parseRevList(stdout: string): readonly string[] {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line !== '');
+}
+
+/**
+ * `git log --format=%H %cI` 출력 → SHA와 커밋 시각.
+ *
+ * **한 줄이 한 커밋이고, 두 값이 같은 줄에서 온다** (CR-025, DEV-115).
+ * SHA 목록과 시각 목록을 따로 얻어 인덱스로 맞추면, 두 호출 사이에 강제
+ * 푸시가 나는 순간 서로 다른 히스토리의 값이 짝지어진다 — 그것은 아무
+ * 오류도 내지 않고 틀린 서수를 만든다.
+ *
+ * 형식에 맞지 않는 줄은 **버리지 않고 던진다.** 한 줄을 조용히 버리면 그
+ * 뒤의 서수가 통째로 하나씩 밀리는데, 그 사실을 알아챌 방법이 없다.
+ */
+export function parseFirstParentCommits(stdout: string): readonly FirstParentCommit[] {
+  const out: FirstParentCommit[] = [];
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trim();
+    if (line === '') continue;
+
+    const space = line.indexOf(' ');
+    if (space < 0) throw new GraphInputError(`커밋 줄에 시각이 없다: ${line.slice(0, 60)}`);
+
+    const sha = line.slice(0, space);
+    const committedAt = line.slice(space + 1).trim();
+    if (!isFullSha(sha)) throw new GraphInputError(`커밋 줄의 앞이 40자 SHA가 아니다: ${sha.slice(0, 60)}`);
+    if (!isIsoInstant(committedAt)) {
+      throw new GraphInputError(`커밋 시각을 읽을 수 없다: ${committedAt.slice(0, 60)}`);
+    }
+    out.push({ sha, committedAt });
+  }
+  return out;
+}
+
+/**
+ * 파싱 가능한 시각인가.
+ *
+ * `%cI`는 엄격 ISO 8601(오프셋 포함)을 낸다. 오프셋 없는 값을 통과시키면
+ * 실행 환경의 시간대로 해석되어 **같은 커밋이 서버마다 다른 시각으로**
+ * 저장된다.
+ */
+function isIsoInstant(value: string): boolean {
+  if (!/[Zz]$|[+-]\d{2}:?\d{2}$/.test(value)) return false;
+  return !Number.isNaN(Date.parse(value));
 }
 
 /**

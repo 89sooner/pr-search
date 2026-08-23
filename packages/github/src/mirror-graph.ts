@@ -32,10 +32,12 @@ import {
   gitEnv,
   isFullSha,
   mirrorPath,
+  parseFirstParentCommits,
   parsePatchId,
   parseRevList,
   readAncestorExit,
   revRangeArg,
+  type FirstParentCommit,
   type RevRange,
 } from './graph-plan.js';
 import { safeMessage } from './redact.js';
@@ -222,6 +224,36 @@ export class MirrorCommitGraph implements CommitGraph {
       '--',
     ]);
     return parseRevList(stdout);
+  }
+
+  /**
+   * 같은 체인을 커밋 시각과 함께 (CR-025, DEV-115).
+   *
+   * **`rev-list`가 아니라 `log`를 쓴다.** `rev-list --format=...`은 커밋마다
+   * `commit <sha>` 머리줄을 한 줄 더 내보내 파싱이 두 갈래가 된다 — 실측으로
+   * 확인했다. `log`는 한 줄에 한 커밋이라 파서가 줄 수를 곧 커밋 수로 믿을 수
+   * 있다.
+   *
+   * `%cI`는 오프셋을 포함한 엄격 ISO 8601이다. 오프셋 없는 `%cd`를 쓰면 같은
+   * 커밋이 워커의 시간대에 따라 다른 시각으로 저장된다.
+   *
+   * **커밋 객체만 읽으므로 blob이 필요 없다** — blobless 미러에서 그대로
+   * 동작하고 THR-015의 완화 근거를 깨지 않는다.
+   */
+  async firstParentCommits(ref: RepoRef, range: RevRange): Promise<readonly FirstParentCommit[]> {
+    const stdout = await this.#expect(ref, [
+      'log',
+      '--first-parent',
+      '--reverse',
+      '--format=%H %cI',
+      revRangeArg(range),
+      '--',
+    ]);
+    try {
+      return parseFirstParentCommits(stdout);
+    } catch (error) {
+      throw new CommitGraphError('mirror', String(error instanceof Error ? error.message : error), { cause: error });
+    }
   }
 
   /**

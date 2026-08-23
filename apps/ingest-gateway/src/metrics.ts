@@ -30,6 +30,14 @@ export interface IngestMetrics {
    * 그 5분 동안 권한 회수가 반영되지 않으므로 0이 아니면 봐야 한다.
    */
   readonly permissionPublishFailed: Counter;
+  /**
+   * 채번 요청 발행 실패 건수 (CR-025, DEV-116).
+   *
+   * 0이 아니어도 시퀀스에 구멍이 나지는 않는다 — 채번이 증분이라 다음 push나
+   * 6시간 보정이 `<저장 head>..<현재 head>`를 통째로 메운다. 다만 그때까지
+   * 새 커밋의 서수가 늦으므로 오류로 남긴다.
+   */
+  readonly sequencePublishFailed: Counter;
   render(): string;
 }
 
@@ -44,6 +52,10 @@ export function createIngestMetrics(): IngestMetrics {
     'ingest_permission_publish_failed_total',
     'permission.invalidated 발행 실패 건수',
   );
+  const sequencePublishFailed = new Counter(
+    'ingest_sequence_publish_failed_total',
+    '채번 요청 발행 실패 건수',
+  );
 
   return {
     received,
@@ -53,6 +65,7 @@ export function createIngestMetrics(): IngestMetrics {
     archiveFailed,
     enqueueFailed,
     permissionPublishFailed,
+    sequencePublishFailed,
     render: (): string =>
       renderMetrics([
         received,
@@ -61,6 +74,7 @@ export function createIngestMetrics(): IngestMetrics {
         archiveFailed,
         enqueueFailed,
         permissionPublishFailed,
+        sequencePublishFailed,
         responseSeconds,
       ]),
   };
