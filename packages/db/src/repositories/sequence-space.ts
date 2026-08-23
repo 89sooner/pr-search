@@ -130,3 +130,24 @@ export async function markStale(
     [repositoryId, baseBranch, reason.slice(0, 500)],
   );
 }
+
+/**
+ * 재채번이 시작됐음을 **본 트랜잭션 밖에서** 표시한다 (FR-SEQ-005 예외 처리).
+ *
+ * 재채번 본 작업은 트랜잭션 하나 안에서 끝나므로, 그 안에서 상태를 바꾸면
+ * 커밋 전까지 아무도 `reassigning`을 보지 못한다 — "재채번 중 조회는 마지막
+ * 확정 값과 `sequence_state: reassigning`을 함께 반환한다"가 성립하려면
+ * 이 표시가 **먼저 따로 커밋**되어야 한다. 조회가 보는 서수는 여전히 이전
+ * 값이다: 새 에폭 행은 본 트랜잭션이 커밋되기 전까지 보이지 않는다.
+ */
+export async function markReassigning(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+): Promise<void> {
+  await db.query(
+    `UPDATE sequence_space SET state = 'reassigning', last_error = NULL
+      WHERE repository_id = $1 AND base_branch = $2`,
+    [repositoryId, baseBranch],
+  );
+}

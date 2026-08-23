@@ -56,5 +56,17 @@ export type AssignOutcome =
   | { readonly kind: 'locked' }
   /** 그래프를 읽지 못했다. 공간을 `stale`로 두고 기존 값은 보존한다. */
   | { readonly kind: 'stale'; readonly reason: string }
-  /** 히스토리가 재작성됐다. 여기서 고치지 않는다 (WP-022). */
+  /** 히스토리 재작성을 감지해 **재채번까지 마쳤다** (WP-022, FR-SEQ-005). */
+  | {
+      readonly kind: 'reassigned';
+      readonly oldEpoch: number;
+      readonly newEpoch: number;
+      /** 첫 무효 서수. 그 앞까지는 새 에폭에서도 값이 같다. */
+      readonly divergedAtSeq: number;
+      /** 무효가 된 이전 에폭 행 수. EVT-SEQ-002와 같은 값이다. */
+      readonly affectedCount: number;
+      readonly toSeq: number;
+      readonly headSha: string;
+    }
+  /** 재작성을 감지했으나 재채번이 진행되지 못했다 (락 경합 등). 다음 회차가 잇는다. */
   | { readonly kind: 'rewritten'; readonly storedHead: string; readonly newHead: string };

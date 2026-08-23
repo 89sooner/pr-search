@@ -9,7 +9,7 @@
 
 import type { Client } from '@elastic/elasticsearch';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { applySequenceToDocuments } from '../src/sequence.js';
+import { applyEpochBump, applySequenceToDocuments } from '../src/sequence.js';
 import { applyMappings } from '../src/bootstrap.js';
 import { createTestClient, waitForCluster } from './helpers.js';
 
@@ -197,5 +197,63 @@ describe('채번 결과 반영', () => {
     expect(result.updated['prs-commits']).toBe(1);
     expect(result.updated['prs-pull-requests']).toBe(1);
     expect(result.total).toBe(2);
+  });
+});
+
+describe('에폭 전환 반영 (WP-022 / CR-026, DEV-129)', () => {
+  const NEW_SPACE = 'acme/payments@main';
+
+  it('**서수를 가진 문서만 새 에폭을 받는다** — 서수 없는 문서에 반쪽 상태를 만들지 않는다', async () => {
+    await apply([{ commitSha: MERGE_SHA, mergeSeq: 3 }]);
+
+    const result = await applyEpochBump(es, {
+      repositoryId: REPOSITORY_ID,
+      baseBranch: BRANCH,
+      newEpoch: 2,
+      sequenceSpace: NEW_SPACE,
+    });
+    expect(result.total).toBeGreaterThan(0);
+
+    const merge = await commitDoc(REPOSITORY_ID, MERGE_SHA);
+    expect(merge['seq_epoch']).toBe(2);
+    expect(merge['merge_seq']).toBe(3); // 서수는 그대로다 — 에폭만 바뀐다.
+
+    // 서수를 받은 적 없는 커밋은 에폭도 받지 않는다.
+    const unrelated = await commitDoc(REPOSITORY_ID, UNRELATED_SHA);
+    expect(unrelated['seq_epoch']).toBeUndefined();
+  });
+
+  it('다른 저장소는 건드리지 않는다', async () => {
+    await apply([{ commitSha: MERGE_SHA, mergeSeq: 3 }]);
+    await applyEpochBump(es, {
+      repositoryId: REPOSITORY_ID,
+      baseBranch: BRANCH,
+      newEpoch: 2,
+      sequenceSpace: NEW_SPACE,
+    });
+
+    const other = await commitDoc(OTHER_REPOSITORY_ID, MERGE_SHA);
+    expect(other['seq_epoch']).toBeUndefined();
+  });
+
+  it('`document_version`을 올리지 않고, 재실행은 0건 갱신이다 (멱등)', async () => {
+    await apply([{ commitSha: MERGE_SHA, mergeSeq: 3 }]);
+    await applyEpochBump(es, {
+      repositoryId: REPOSITORY_ID,
+      baseBranch: BRANCH,
+      newEpoch: 2,
+      sequenceSpace: NEW_SPACE,
+    });
+
+    const merge = await commitDoc(REPOSITORY_ID, MERGE_SHA);
+    expect(merge['document_version']).toBe(1);
+
+    const again = (await applyEpochBump(es, {
+      repositoryId: REPOSITORY_ID,
+      baseBranch: BRANCH,
+      newEpoch: 2,
+      sequenceSpace: NEW_SPACE,
+    })) as { total: number };
+    expect(again.total).toBe(0);
   });
 });

@@ -51,6 +51,8 @@ export interface WorkerMetrics {
   readonly sequenceRewriteDetected: Counter;
   /** 시퀀스를 색인에 반영하지 못한 회차 수. PostgreSQL 값은 살아 있다. */
   readonly sequenceIndexFailed: Counter;
+  /** 실행한 재채번 수 (FR-SEQ-005, 관측 문서 RB-11 — 증가 자체가 P3 알림 대상이다). 라벨: `repository`. */
+  readonly sequenceReassignTotal: Counter;
   render(): string;
 }
 
@@ -76,6 +78,7 @@ export function createWorkerMetrics(): WorkerMetrics {
   const sequenceAssigned = new Counter('sequence_assigned_total', '붙인 머지 서수 개수');
   const sequenceRewriteDetected = new Counter('sequence_rewrite_detected_total', '감지한 히스토리 재작성 건수');
   const sequenceIndexFailed = new Counter('sequence_index_failed_total', '시퀀스 색인 반영 실패 회차');
+  const sequenceReassignTotal = new Counter('sequence_reassign_total', '실행한 시퀀스 재채번 수');
 
   return {
     enrichPending,
@@ -89,6 +92,7 @@ export function createWorkerMetrics(): WorkerMetrics {
     sequenceAssigned,
     sequenceRewriteDetected,
     sequenceIndexFailed,
+    sequenceReassignTotal,
     render: (): string =>
       renderMetrics([
         enrichPending,
@@ -99,6 +103,7 @@ export function createWorkerMetrics(): WorkerMetrics {
         permissionInvalidationFailed,
         sequenceAssigned,
         sequenceIndexFailed,
+        sequenceReassignTotal,
         sequenceRewriteDetected,
         sequenceSpaceState,
         stageSeconds,

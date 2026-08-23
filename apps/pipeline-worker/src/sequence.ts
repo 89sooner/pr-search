@@ -31,6 +31,7 @@ import {
   sequencePartitionKey,
   sequenceSpaceLabel,
   type SequenceAssigned,
+  type SequenceReassigned,
   type SequenceRequested,
 } from '@prs/domain';
 import {
@@ -45,6 +46,7 @@ import {
   type Subscription,
 } from '@prs/bus';
 import {
+  auditRepo,
   mergeSequenceRepo,
   repositoryRepo,
   sequenceSpaceRepo,
@@ -52,8 +54,9 @@ import {
   type Pool,
   type RepositoryRow,
 } from '@prs/db';
-import { applySequenceToDocuments, findPullRequestByMergeCommit } from '@prs/es';
+import { applyEpochBump, applySequenceToDocuments, findPullRequestByMergeCommit } from '@prs/es';
 import { CommitGraphError, type CommitGraph, type RepoRef } from '@prs/github';
+import { randomUUID } from 'node:crypto';
 import type { Client } from '@elastic/elasticsearch';
 import { isSequenceBranch, numberCommits, type AssignOutcome } from './sequence-plan.js';
 import type { WorkerMetrics } from './metrics.js';
@@ -165,19 +168,23 @@ export async function assignSequence(
         return await markStale(deps, repositoryId, baseBranch, graphReason(error));
       }
       if (!ancestor) {
+        /*
+         * 재작성이다 (FR-SEQ-005 AC-1). 이 트랜잭션과 락을 **먼저 내려놓고**
+         * 재채번으로 넘어간다 — 재채번은 자기 트랜잭션에서 락을 새로 잡고,
+         * 그 사이 다른 워커가 끼어들었으면 저장된 head 재검증이 멱등을
+         * 보장한다.
+         */
         await client.query('ROLLBACK');
-        const outcome: AssignOutcome = { kind: 'rewritten', storedHead: space.head_sha, newHead };
-        await markStale(deps, repositoryId, baseBranch, `history_rewritten:${space.head_sha}->${newHead}`);
         deps.metrics.sequenceRewriteDetected.inc({ repository: String(repositoryId) });
         log({
           level: 'warn',
-          message: '히스토리 재작성을 감지했다 — 기존 시퀀스를 보존하고 재채번하지 않는다 (WP-022)',
+          message: '히스토리 재작성을 감지했다 — 에폭을 올려 재채번한다 (FR-SEQ-005)',
           repository_id: repositoryId,
           base_branch: baseBranch,
           stored_head: space.head_sha,
           new_head: newHead,
         });
-        return outcome;
+        return await reassignSequence(deps, repository, baseBranch, space.head_sha, newHead, correlationId);
       }
     }
 
@@ -287,6 +294,280 @@ export async function assignSequence(
   });
 
   deps.metrics.sequenceAssigned.inc({ repository: String(repositoryId) }, applied.length);
+  await refreshSequenceSpaceStates(deps);
+  return outcome;
+}
+
+/**
+ * JOB-SEQ-002 시퀀스 재채번 (WP-022, FR-SEQ-005, ADR-007).
+ *
+ * **조용히 다시 번호를 매기는 것과의 차이가 에폭이다.** 재작성 뒤 그냥
+ * 덮어쓰면 과거에 인용된 범위가 말없이 다른 커밋을 가리키게 된다 — 조사
+ * 도구가 할 수 있는 가장 나쁜 실패다. 에폭을 올리면 이전 인용은 전부
+ * "다른 에폭의 값"이 되어, 조회가 `epoch_stale`로 표시할 수 있다 (AC-4).
+ * 표식·세션·인용 쪽에는 **아무것도 쓰지 않는다** — 그들이 저장한 에폭과
+ * 현재 에폭의 비교가 곧 무효 판정이다 (CR-026, DEV-126).
+ *
+ * 순서가 곧 안전이다:
+ *
+ * 1. `reassigning` 표시를 **먼저 따로 커밋**한다. 본 작업은 트랜잭션
+ *    하나라 그 안의 상태 변경은 커밋 전까지 아무도 못 본다 — 예외 처리
+ *    ("재채번 중 조회는 마지막 확정 값 + `reassigning`")가 성립하려면
+ *    표시가 밖에 있어야 한다.
+ * 2. 본 작업은 트랜잭션 하나다. 실패하면 통째로 롤백되므로 **부분 채번
+ *    상태가 남지 않는다** (DoD). 이전 에폭 행은 지우지 않는다 — 남아
+ *    있어야 이전 인용을 해석할 수 있고, 지울 이유도 없다.
+ * 3. merge-base까지는 **복사**한다 (DEV-124). 값이 같을 뿐 아니라
+ *    `pull_request_number`처럼 나중에 채워진 값을 잃지 않는다.
+ * 4. merge-base가 체인 밖이면 **처음부터 전부** 다시 건다 (DEV-125).
+ *    first-parent walk가 결정론이라 히스토리가 같은 구간은 같은 서수가
+ *    재현된다 — 복사는 최적화지 정확성의 조건이 아니다.
+ */
+export async function reassignSequence(
+  deps: SequenceDeps,
+  repository: RepositoryRow,
+  baseBranch: string,
+  storedHead: string,
+  newHead: string,
+  correlationId = '',
+): Promise<AssignOutcome> {
+  const log = deps.log ?? ((): void => undefined);
+  const repositoryId = repository.repository_id;
+  const graph = deps.graphFor(repository);
+
+  // 1단계: 밖에서 보이는 상태. 본 트랜잭션과 별개로 커밋된다.
+  await sequenceSpaceRepo.markReassigning(deps.pool, repositoryId, baseBranch);
+
+  const client = await deps.pool.connect();
+  let committed: {
+    readonly outcome: Extract<AssignOutcome, { kind: 'reassigned' }>;
+    readonly applied: readonly NumberedEntry[];
+    readonly label: string;
+  };
+
+  try {
+    await client.query('BEGIN');
+    const locked = await trySequenceSpaceLock(client, repositoryId, baseBranch);
+    if (!locked) {
+      await client.query('ROLLBACK');
+      // 다른 워커가 쥐고 있다. 감지 사실은 남기고 다음 회차가 잇는다.
+      return { kind: 'rewritten', storedHead, newHead };
+    }
+
+    const space = await sequenceSpaceRepo.findSequenceSpace(client, repositoryId, baseBranch);
+    if (space === undefined) {
+      await client.query('ROLLBACK');
+      return await markStale(deps, repositoryId, baseBranch, 'sequence_space_missing');
+    }
+    if (space.head_sha !== storedHead) {
+      /*
+       * 락을 다시 잡는 사이 다른 워커가 이미 처리했다. 지금의 재작성 판정은
+       * 옛 head 기준이므로 여기서 이어 가면 안 된다 — 다음 push가 현재
+       * 상태로 다시 판정한다.
+       */
+      await client.query('ROLLBACK');
+      return { kind: 'skipped', reason: 'head_moved' };
+    }
+
+    const oldEpoch = space.seq_epoch;
+
+    // merge-base와 그 서수. 체인 밖이거나 공통 조상이 없으면 전체 재채번이다.
+    let baseSeq = 0;
+    let baseSha: string | null = null;
+    try {
+      baseSha = await graph.mergeBase(refOf(repository), storedHead, newHead);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      return await markStale(deps, repositoryId, baseBranch, graphReason(error));
+    }
+    if (baseSha !== null) {
+      const found = await mergeSequenceRepo.findSeqByCommit(client, repositoryId, baseBranch, oldEpoch, baseSha);
+      if (found === null) {
+        // DEV-125: merge-base가 first-parent 체인 밖이다. 소리 내고 전체로 간다.
+        log({
+          level: 'warn',
+          message: 'merge-base가 first-parent 체인에 없다 — 처음부터 전체 재채번한다',
+          repository_id: repositoryId,
+          base_branch: baseBranch,
+          merge_base: baseSha,
+          reason: 'merge_base_off_chain',
+        });
+        baseSha = null;
+      } else {
+        baseSeq = found;
+      }
+    }
+
+    const affectedCount = await mergeSequenceRepo.countAbove(client, repositoryId, baseBranch, oldEpoch, baseSeq);
+    const newEpoch = await sequenceSpaceRepo.bumpEpoch(client, repositoryId, baseBranch);
+
+    if (baseSeq > 0) {
+      await mergeSequenceRepo.copySequencesUpTo(client, repositoryId, baseBranch, oldEpoch, newEpoch, baseSeq);
+    }
+
+    let commits: readonly { readonly sha: string; readonly committedAt: string }[];
+    try {
+      commits = await graph.firstParentCommits(refOf(repository), { from: baseSha, to: newHead });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      return await markStale(deps, repositoryId, baseBranch, graphReason(error));
+    }
+
+    const numbered = numberCommits(baseSeq, commits);
+    const applied: NumberedEntry[] = [];
+    for (const entry of numbered) {
+      const prNumber = await findPullRequestNumber(deps, repositoryId, entry.sha);
+      await mergeSequenceRepo.upsertMergeSequence(client, {
+        repository_id: repositoryId,
+        base_branch: baseBranch,
+        seq_epoch: newEpoch,
+        merge_seq: entry.mergeSeq,
+        commit_sha: entry.sha,
+        pull_request_number: prNumber,
+        committed_at: new Date(entry.committedAt),
+      });
+      applied.push({ mergeSeq: entry.mergeSeq, sha: entry.sha });
+    }
+
+    const toSeq = baseSeq + numbered.length;
+    await sequenceSpaceRepo.advanceHead(client, repositoryId, baseBranch, newHead, toSeq);
+    await client.query('COMMIT');
+
+    committed = {
+      outcome: {
+        kind: 'reassigned',
+        oldEpoch,
+        newEpoch,
+        divergedAtSeq: baseSeq + 1,
+        toSeq,
+        headSha: newHead,
+        affectedCount,
+      },
+      applied,
+      label: sequenceSpaceLabel(`${repository.owner}/${repository.name}`, baseBranch),
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    /*
+     * 트랜잭션이 통째로 롤백됐다 — 부분 채번 상태는 없다 (DoD). JOB-SEQ-002는
+     * **재시도하지 않는다** (잡 카탈로그: "없음 (실패 시 stale)") — 던져서 버스
+     * 재전달을 부르는 대신 `stale`로 소리 내고 끝낸다. 다음 push가 다시 재작성을
+     * 감지하면 그때 다시 시도된다.
+     */
+    return await markStale(deps, repositoryId, baseBranch, graphReason(error));
+  } finally {
+    client.release();
+  }
+
+  /*
+   * ---- 커밋 뒤: 색인·이벤트·감사. **트랜잭션 try 밖이다** — 여기서 무엇이
+   * 실패해도 재채번 자체는 이미 성공했고 PostgreSQL 값이 정본이다 (ADR-004).
+   * 이 실패로 공간을 `stale`로 표시하면 성공한 재채번이 실패로 읽힌다.
+   */
+  const { outcome, applied, label } = committed;
+
+  log({
+    level: 'warn',
+    message: '재채번을 마쳤다 — 이전 에폭 인용은 조회 시 epoch_stale로 표시된다',
+    repository_id: repositoryId,
+    base_branch: baseBranch,
+    old_epoch: outcome.oldEpoch,
+    new_epoch: outcome.newEpoch,
+    diverged_at_seq: outcome.divergedAtSeq,
+    affected_count: outcome.affectedCount,
+  });
+
+  try {
+    await applyEpochBump(deps.es, {
+      repositoryId,
+      baseBranch,
+      newEpoch: outcome.newEpoch,
+      sequenceSpace: label,
+    });
+    await applySequenceToDocuments(deps.es, {
+      repositoryId,
+      baseBranch,
+      seqEpoch: outcome.newEpoch,
+      sequenceSpace: label,
+      assignments: applied.map((entry) => ({ commitSha: entry.sha, mergeSeq: entry.mergeSeq })),
+    });
+  } catch (error) {
+    log({
+      level: 'error',
+      message: '재채번 결과를 색인에 반영하지 못했다 — PostgreSQL 값은 살아 있다',
+      repository_id: repositoryId,
+      base_branch: baseBranch,
+      reason: 'sequence_index_failed',
+      detail: String(error instanceof Error ? error.message : error).slice(0, 200),
+    });
+    deps.metrics.sequenceIndexFailed.inc({ repository: String(repositoryId) });
+  }
+
+  try {
+    const payload: SequenceReassigned = {
+      repository_id: repositoryId,
+      base_branch: baseBranch,
+      old_epoch: outcome.oldEpoch,
+      new_epoch: outcome.newEpoch,
+      diverged_at_seq: outcome.divergedAtSeq,
+      affected_count: outcome.affectedCount,
+    };
+    await deps.bus.publish(TOPICS.projected, sequencePartitionKey(repositoryId, baseBranch), {
+      event_id: deterministicEventId(
+        EVENT_NAMES.sequenceReassigned,
+        String(repositoryId),
+        baseBranch,
+        String(outcome.oldEpoch),
+        String(outcome.newEpoch),
+      ),
+      event_name: EVENT_NAMES.sequenceReassigned,
+      correlation_id: correlationId,
+      occurred_at: (deps.now ?? ((): Date => new Date()))().toISOString(),
+      payload,
+    });
+  } catch {
+    log({
+      level: 'error',
+      message: 'EVT-SEQ-002 발행 실패 — 알림·투영 소비자가 이 재채번을 놓친다',
+      repository_id: repositoryId,
+      reason: 'event_publish_failed',
+    });
+  }
+
+  /*
+   * 감사 기록 (AC-5). 자동 감지 경로라 사람이 없다 — 신원을 지어내지 않고
+   * `system:sequence`로 "시스템이 했다"는 사실 자체를 남긴다 (CR-026,
+   * DEV-127). 저장 실패가 재채번을 되돌리지는 않는다 (FR-AUTH-004 예외).
+   */
+  try {
+    /*
+     * `audit_record.correlation_id`는 **uuid 타입**이다. push 경로의
+     * correlation은 게이트웨이가 만든 uuid라 그대로 쓰지만, 직접 호출처럼
+     * correlation이 없는 경로에서 빈 문자열을 넣으면 INSERT가 던지고 —
+     * catch가 삼켜 — **감사 기록이 조용히 사라진다** (시험이 잡은 결함이다).
+     * 열쇠가 없을 때 새 uuid는 아무것도 잇지 않으므로 "연결 없음"과 같다 —
+     * NOT NULL uuid 제약 아래 가장 정직한 표현이다.
+     */
+    const auditCorrelation = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(correlationId)
+      ? correlationId
+      : randomUUID();
+    await auditRepo.recordAudit(deps.pool, {
+      userId: 'system:sequence',
+      action: 'sequence.reassign',
+      target: `${repository.owner}/${repository.name}@${baseBranch}`,
+      resultCode: 'ok',
+      correlationId: auditCorrelation,
+    });
+  } catch {
+    log({
+      level: 'error',
+      message: '재채번 감사 기록 저장 실패',
+      repository_id: repositoryId,
+      reason: 'audit_write_failed',
+    });
+  }
+
+  deps.metrics.sequenceReassignTotal.inc({ repository: String(repositoryId) });
   await refreshSequenceSpaceStates(deps);
   return outcome;
 }
