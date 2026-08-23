@@ -197,3 +197,220 @@ export async function countAbove(
   );
   return Number(result.rows[0]?.count ?? 0);
 }
+
+/**
+ * 반개구간의 정확한 건수 (WP-023 / FR-SEQ-002 AC-4, CR-027 DEV-140).
+ *
+ * API 계약은 이 값을 `estimated_count`로 싣지만 **추정이 아니다.** 서수의 정본이
+ * 이 표이므로 `count(*)`가 기본 키 범위 스캔 한 번이고, 추정할 이유가 없다.
+ * 추정으로 두면 5만 건 상한 근처에서 통과와 거절이 실행마다 흔들린다.
+ */
+export async function countRange(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  fromExclusive: number,
+  toInclusive: number,
+): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+        AND merge_seq > $4 AND merge_seq <= $5`,
+    [repositoryId, baseBranch, seqEpoch, fromExclusive, toInclusive],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+/**
+ * 반개구간의 한 쪽 (WP-023 / FR-SEQ-002).
+ *
+ * `findRange`와 달리 상한을 받는다. 구간은 5만 건까지 허용되지만 한 응답에
+ * 담는 것은 `size`(최대 200)뿐이므로, 표시할 것보다 많이 읽지 않는다.
+ *
+ * **정렬은 오름차순 고정이다.** FR-SEQ-002가 그렇게 요구하고, 이 순서가 곧
+ * `git log --first-parent --reverse`의 순서다 — 대조 검증이 성립하는 근거다.
+ */
+export async function findRangePage(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  fromExclusive: number,
+  toInclusive: number,
+  limit: number,
+): Promise<MergeSequenceRow[]> {
+  const result = await db.query<MergeSequenceRow>(
+    `SELECT * FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+        AND merge_seq > $4 AND merge_seq <= $5
+      ORDER BY merge_seq
+      LIMIT $6`,
+    [repositoryId, baseBranch, seqEpoch, fromExclusive, toInclusive, limit],
+  );
+  return result.rows;
+}
+
+/** 앵커 해석이 찾는 한 지점. 서수와 그 서수가 가리키는 커밋을 함께 준다 (FR-SEQ-003 AC-5). */
+export interface SequencePoint {
+  readonly mergeSeq: number;
+  readonly commitSha: string;
+  readonly pullRequestNumber: number | null;
+  readonly committedAt: Date;
+}
+
+function toPoint(row: MergeSequenceRow): SequencePoint {
+  return {
+    mergeSeq: Number(row.merge_seq),
+    commitSha: row.commit_sha,
+    pullRequestNumber: row.pull_request_number,
+    committedAt: row.committed_at,
+  };
+}
+
+/**
+ * 40자 SHA 앵커 (FR-SEQ-003 AC-2).
+ *
+ * `findSeqByCommit`이 서수만 주는 것과 달리 커밋 시각까지 준다 — AC-5가 응답에
+ * 요구하는 값이라, 서수를 받은 뒤 다시 조회하면 왕복이 둘이 된다.
+ *
+ * `merge_sequence_commit_uk`가 `(저장소, 브랜치, 에폭, SHA)`에 유일하므로 결과는
+ * 0건 아니면 1건이다.
+ */
+export async function findPointByCommit(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  commitSha: string,
+): Promise<SequencePoint | null> {
+  const result = await db.query<MergeSequenceRow>(
+    `SELECT * FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND commit_sha = $4`,
+    [repositoryId, baseBranch, seqEpoch, commitSha.toLowerCase()],
+  );
+  const row = result.rows[0];
+  return row === undefined ? null : toPoint(row);
+}
+
+/** 서수 앵커. 값이 이미 서수이므로 하는 일은 **실재 확인**뿐이다 (FR-SEQ-003). */
+export async function findPointBySeq(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  mergeSeq: number,
+): Promise<SequencePoint | null> {
+  const result = await db.query<MergeSequenceRow>(
+    `SELECT * FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq = $4`,
+    [repositoryId, baseBranch, seqEpoch, mergeSeq],
+  );
+  const row = result.rows[0];
+  return row === undefined ? null : toPoint(row);
+}
+
+/**
+ * PR 번호 앵커 (FR-SEQ-003 AC-3).
+ *
+ * 이 표에 행이 있다는 것은 **그 PR의 머지 커밋이 first-parent 체인에 있다**는
+ * 뜻이다 — 채번이 그 체인만 걷기 때문이다. 그래서 없으면 "미머지이거나 이
+ * 브랜치가 아니다"이고, 어느 쪽인지는 호출 측이 PR 문서를 보고 가른다.
+ */
+export async function findPointByPullRequest(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  pullRequestNumber: number,
+): Promise<SequencePoint | null> {
+  const result = await db.query<MergeSequenceRow>(
+    `SELECT * FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND pull_request_number = $4
+      ORDER BY merge_seq
+      LIMIT 1`,
+    [repositoryId, baseBranch, seqEpoch, pullRequestNumber],
+  );
+  const row = result.rows[0];
+  return row === undefined ? null : toPoint(row);
+}
+
+/**
+ * 축약 SHA 앵커의 후보 (FR-SEQ-003 AC-2, ADR-012).
+ *
+ * **후보를 세어서 돌려주는 이유**는 앵커가 하나여야 하기 때문이다. 접두가 두
+ * 커밋에 걸리는데 하나를 골라 주면 사용자는 자기가 뜻하지 않은 구간을 보고도
+ * 그 사실을 모른다. 2건까지만 읽어 "하나인가 아닌가"만 가른다 — 전부 세는 것은
+ * 답을 바꾸지 않으면서 비용만 는다.
+ */
+export async function findPointsByCommitPrefix(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  prefix: string,
+): Promise<SequencePoint[]> {
+  const result = await db.query<MergeSequenceRow>(
+    `SELECT * FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+        AND commit_sha LIKE $4 || '%'
+      ORDER BY merge_seq
+      LIMIT 2`,
+    [repositoryId, baseBranch, seqEpoch, prefix.toLowerCase()],
+  );
+  return result.rows.map(toPoint);
+}
+
+/**
+ * 시각 앵커 (FR-SEQ-003 AC-4): "그 시각 이전 마지막 커밋".
+ *
+ * **`committed_at` 최대가 아니라 `merge_seq` 최대다.** 두 값은 대개 같은 순서지만
+ * 항상 그렇지는 않다 — 오래된 브랜치를 나중에 머지하면 커밋 시각이 앞선 커밋이
+ * 뒤 서수를 받는다. 구간은 서수로 정의되므로 **시각으로 거르고 서수로 고른다.**
+ */
+export async function findPointAtOrBefore(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  instant: Date,
+): Promise<SequencePoint | null> {
+  const result = await db.query<MergeSequenceRow>(
+    `SELECT * FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+        AND committed_at <= $4
+      ORDER BY merge_seq DESC
+      LIMIT 1`,
+    [repositoryId, baseBranch, seqEpoch, instant],
+  );
+  const row = result.rows[0];
+  return row === undefined ? null : toPoint(row);
+}
+
+/**
+ * 구간에 든 PR 번호 (WP-023 / FR-SEQ-002).
+ *
+ * **행 전체가 아니라 번호만 읽는 이유**는 구간이 5만 건까지 허용되기 때문이다.
+ * 행을 통째로 올리면 SHA와 시각까지 5만 벌이 메모리에 들어오는데, 요약이 쓰는
+ * 것은 번호뿐이다 — 색인 질의의 `terms`에 실을 목록이 이것이다.
+ *
+ * 정렬을 걸지 않는다. `terms` 질의는 순서를 보지 않고, 목록의 순서는 페이지를
+ * 읽는 `findRangePage`가 정한다.
+ */
+export async function listPullRequestNumbersInRange(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  fromExclusive: number,
+  toInclusive: number,
+): Promise<number[]> {
+  const result = await db.query<{ pull_request_number: number }>(
+    `SELECT DISTINCT pull_request_number FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+        AND merge_seq > $4 AND merge_seq <= $5
+        AND pull_request_number IS NOT NULL`,
+    [repositoryId, baseBranch, seqEpoch, fromExclusive, toInclusive],
+  );
+  return result.rows.map((row) => row.pull_request_number);
+}
