@@ -182,11 +182,22 @@ beforeAll(async () => {
     refresh: true,
     conflicts: 'proceed',
   });
-  const indexed = PULL_REQUESTS.filter((doc) => doc._id !== null);
+  const indexed = PULL_REQUESTS.filter(
+    (doc): doc is Extract<(typeof PULL_REQUESTS)[number], { repository_id: number }> => doc._id !== null,
+  );
+  /*
+   * **`routing` 없이 색인하면 이 파일의 시험 전부가 0건을 본다.**
+   *
+   * 운영 색인은 모든 문서를 `repository_id`로 라우팅하고(ADR-003, `upsert.ts`),
+   * 범위 조회는 같은 값으로 라우팅해 단일 샤드만 읽는다. 픽스처가 라우팅 없이
+   * 색인하면 문서는 `_id` 해시 샤드에 흩어지고 라우팅된 읽기는 빈 샤드 하나만
+   * 본다 — 실제로 1차 CI에서 그렇게 9건이 0건으로 실패했다. 픽스처는 운영이
+   * 쓰는 것과 같은 방식으로 넣어야 시험이 운영을 말한다.
+   */
   const bulk = await es.bulk({
     refresh: true,
     operations: indexed.flatMap(({ _id, ...doc }) => [
-      { index: { _index: 'prs-pull-requests', _id: _id as string } },
+      { index: { _index: 'prs-pull-requests', _id: _id as string, routing: String(doc.repository_id) } },
       { ...doc, doc_id: _id },
     ]),
   });

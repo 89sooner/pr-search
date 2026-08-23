@@ -1350,7 +1350,7 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 | 단위 (전체) | `pnpm test` | 1,059건 통과 (앵커 분류 26건 + `isRepositoryInScope` 8건 신규 포함) |
 | 통합 — 앵커 | `pnpm test:integration sequence/anchors` | 26건 통과. 실제 PostgreSQL + Redis, **기본 대역 ES는 부르면 던진다** — 정본만으로 답하는 경로가 색인을 건드리면 실패한다 |
 | 통합 — 범위 | `pnpm test:integration sequence/range.test` | 36건 통과. 실제 PostgreSQL + 대역 ES(색인 부재를 시험이 주입). 5만+1행 실데이터로 `RANGE_TOO_LARGE` 경계 실측 |
-| 통합 — 범위 (실제 ES) | `pnpm test:integration sequence/range-es` | **로컬 NOT RUN** (이 환경에 Elasticsearch가 없다 — 기존 `search/list.test.ts`와 동일 사정). 13건, CI 서비스 컨테이너에서 실행. **1차 CI에서 11건 실패 — DEV-141을 검출했다**: `multiSearch`가 `routing`을 msearch 본문에 실어 실제 ES가 400으로 거절. 헤더 줄로 옮기고 전송 모양을 단위 시험 4건으로 고정했다 |
+| 통합 — 범위 (실제 ES) | `pnpm test:integration sequence/range-es` | **로컬 NOT RUN** (이 환경에 Elasticsearch가 없다 — 기존 `search/list.test.ts`와 동일 사정). 13건, CI 서비스 컨테이너에서 실행. **1차 CI에서 11건 실패 — DEV-141을 검출했다**: `multiSearch`가 `routing`을 msearch 본문에 실어 실제 ES가 400으로 거절. 헤더 줄로 옮기고 전송 모양을 단위 시험 4건으로 고정했다. **2차 CI에서 9건 실패 — 이번엔 픽스처 결함**: 문서를 라우팅 없이 색인해 라우팅된 읽기가 빈 샤드만 봤다(0건). 운영 색인은 전 문서를 `repository_id`로 라우팅하므로(ADR-003) 픽스처도 같게 고쳤다 — 시험은 운영이 쓰는 방식으로 넣어야 운영을 말한다 |
 | git 대조 회귀 | `pnpm test:regression range-vs-git` | 14건 통과. **정답은 `git log --first-parent A..B`가 낸다** — 가운데 구간·경계·빈 구간·머지 커밋 단일 계수·건수 전부 git과 일치 |
 | 회귀 (전체) | `pnpm test:regression` | 22건 통과 |
 | p95 (DoD: 구간 5000건 400ms) | 로컬 프로브 200회 | **부분 실측** — PostgreSQL 구간(정확 count + 페이지 200건 + PR 번호 목록, 1만 행 표에서 5000행 반개구간, 매회 다른 구간): **p95 7.50ms**, p99 10.41ms. ES 집계 왕복은 로컬 ES 부재로 **NOT RUN** (DEV-058과 같은 사정). 400ms 예산 중 PostgreSQL 몫이 2% 미만임은 실측했다 |
