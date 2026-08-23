@@ -31,7 +31,19 @@ export const COMMIT_MAPPING: estypes.MappingTypeMapping = {
     commit_sha: { type: 'keyword', normalizer: LOWERCASE_NORMALIZER },
     parent_shas: { type: 'keyword', normalizer: LOWERCASE_NORMALIZER },
     patch_id: { type: 'keyword' },
-    patch_id_unavailable: { type: 'boolean' },
+    /**
+     * patch-id를 **왜** 못 얻었는지 (FR-REL-005 AC-5, CR-024).
+     *
+     * boolean이었다가 keyword가 되었다. `true` 하나로는 운영자가 할 일을
+     * 고를 수 없기 때문이다 — `no_mirror`는 저장소 설정을 보라는 뜻이고
+     * `blob_fetch_disabled`는 보안 정책 판단이 필요하다는 뜻이며
+     * `compute_failed`만이 실제 오류다. 기본 설정에서는 대다수 커밋이
+     * `blob_fetch_disabled`이고 그것은 정상 상태다.
+     *
+     * 이 필드가 **없으면** patch-id를 정상적으로 얻었다는 뜻이다.
+     * `null`을 쓰지 않는다 — 없는 것과 비어 있는 것을 구분한다.
+     */
+    patch_id_unavailable: { type: 'keyword' },
 
     message: {
       type: 'text',
