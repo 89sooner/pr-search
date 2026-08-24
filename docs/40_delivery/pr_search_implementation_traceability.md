@@ -1398,7 +1398,7 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 | 통합 (실 PG + 실 git + 대역 ES) | `apps/pipeline-worker/integration/release/refresh.test.ts` 15건 — 스냅숏 해석(주석 태그 peel, 체인 밖 NULL 셋), 멱등, 삭제 전파, `ci_deployment` 삭제 면제, 강제 이동, 에폭 재해석, creatordate, GHE 덮어쓰기·실패 폴백, 동기화 실패 무변경, 미등록 skip, 잠금 경합, ES 실패 비차단, 비정규화 모양 | **전부 통과** |
 | 통합 (실 PG + Redis, API) | `apps/search-api/integration/release/containment.test.ts` 24건 — PR·커밋 기준 판정, `<=` 경계, 미배포 대기 수·hint, 미머지/미수집/에폭 불일치/체인밖-전용의 네 갈래, 릴리스 앵커 6갈래, 40자 SHA 규칙, 강제 필터·라우팅 wire 검증, 접근 통제 | **전부 통과** |
 | git 대조 회귀 | `regression/releases-vs-git.test.ts` 5건 — **정답은 `git merge-base --is-ancestor`가 낸다**: 체인 6 커밋 × 체인 태그 3종 = 18쌍 전수 일치, 주석 태그 peel = `rev-parse ^{commit}`, 시각 순서 = `for-each-ref --sort=creatordate`, 체인 밖 태그의 설계된 차이(DAG 조상이어도 공간 밖), 최신 릴리스 서수 | **전부 통과** |
-| 실-ES (CI) | `packages/es/integration/releases.test.ts` 10건 — strict 매핑 수용, NULL 셋 키 부재, 스냅숏 버전 역전 거부, 삭제, painless 컴파일·경계(서수5=릴리스5)·에폭/저장소 격리·가장 이른 5개·noop 수렴·전량 삭제 복귀 | **NOT RUN (로컬 ES 부재)** — CI가 판정 |
+| 실-ES (CI) | `packages/es/integration/releases.test.ts` 10건 — strict 매핑 수용, NULL 셋 키 부재, 스냅숏 버전 역전 거부, 삭제, painless 컴파일·경계(서수5=릴리스5)·에폭/저장소 격리·가장 이른 5개·noop 수렴·전량 삭제 복귀 | **통과 (CI 2차, 2026-08-24)** — 로컬 ES 부재로 CI가 첫 판정. M11(painless 경계 변이)의 유일한 킬러인 경계 문서 시험이 실제 Elasticsearch에서 돌았다 |
 
 **DoD 판정.** QA-W002-08(시각 오름차순 유지)·QA-W002-09(미배포 배지+대기 수) 통과. 판정=시퀀스 비교(AC-5), 오름차순(AC-3), 미배포 응답(AC-4), 미수집 200+사유(DEV-146), 자가 치유(삭제·강제 이동·재채번 뒤 git 일치), 릴리스 앵커가 같은 서수 지점으로 해석되어 WP-023 범위 조회를 그대로 딛는다(AC-1 ↔ seq 앵커 동치).
 
@@ -1423,7 +1423,7 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 
 생존 3종(M7·M8·M12)과 픽스처 결함 1종(M10)은 전부 시험 결함이었고 구현 결함은 없었다. 각 시험 추가 후 변이 재적용으로 킬을 확인하고 원복했다. M11은 잔여 항목으로 CI 판정을 명시한다.
 
-**CI 1차 (2026-08-24): a11y 계층이 진입 조회 위반을 잡았다.** C-020 컨테이너가 진입 시 `/containments`를 불러 QA-W002-17(확장 전 조회 금지, CR-020 DEV-088이 세운 구조)을 깼고, 커밋 화면의 섹션 testid도 어긋났다(`section-commit-releases`). **로컬 검증이 `test:a11y`를 빠뜨린 것이 원인이다** — 화면 배선을 바꾼 WP는 a11y·e2e·contrast까지 돌려야 한다. 수정: 섹션을 PendingSection과 같은 접힘 기본 + **펼칠 때 1회 조회**로 바꾸고(접거나 다시 펼쳐도 재조회 없음), CR-020이 미뤄 둔 "확장하면 조회한다" 절반을 화면 경유 실네트워크 계수로 처음 검증했다(a11y 2건 추가 — 진입 1회 → 펼침 2회 → 접기/재펼침에도 2회 고정). 수정 후 a11y 135건·contrast 80쌍·e2e 53건·단위 1,089건 전량 통과.
+**CI 1차 (2026-08-24): a11y 계층이 진입 조회 위반을 잡았다.** C-020 컨테이너가 진입 시 `/containments`를 불러 QA-W002-17(확장 전 조회 금지, CR-020 DEV-088이 세운 구조)을 깼고, 커밋 화면의 섹션 testid도 어긋났다(`section-commit-releases`). **로컬 검증이 `test:a11y`를 빠뜨린 것이 원인이다** — 화면 배선을 바꾼 WP는 a11y·e2e·contrast까지 돌려야 한다. 수정: 섹션을 PendingSection과 같은 접힘 기본 + **펼칠 때 1회 조회**로 바꾸고(접거나 다시 펼쳐도 재조회 없음), CR-020이 미뤄 둔 "확장하면 조회한다" 절반을 화면 경유 실네트워크 계수로 처음 검증했다(a11y 2건 추가 — 진입 1회 → 펼침 2회 → 접기/재펼침에도 2회 고정). 수정 후 a11y 135건·contrast 80쌍·e2e 53건·단위 1,089건 전량 통과. **CI 2차 (`4a68769`): verify·integration 둘 다 초록** — 실-ES 계층 첫 실행 포함.
 
 ### 6.25 릴리스 게이트
 
