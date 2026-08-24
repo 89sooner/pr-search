@@ -527,6 +527,18 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 
 **DEV-114는 이 CR이 찾아낸 것이다.** `allowed_team_ids`의 소유권을 정하려고 코드를 확인하다가, 매핑 넷이 선언하고 강제 필터가 읽는 그 필드를 **아무도 쓰지 않는다**는 사실이 드러났다. 통합 시험이 문서를 손으로 심으면서 그 필드를 직접 넣기 때문에 초록이 나온다 — **초록이 곧 검증은 아니다**의 또 한 사례다.
 
+| CR-028 | 2026-08-24 | correction | WP-024 착수 전 릴리스 수집 계약 감사에서 확인된 DEV-142~149 | **릴리스 엔티티가 검색 인덱스에만 존재하도록 설계되어 있다.** 데이터 모델 3장의 ENT-REL-001은 저장 위치를 Elasticsearch로, 갱신 주체를 projection으로 적는다 — "어떤 데이터도 검색 인덱스에만 존재해서는 안 된다"는 ADR-004 위반이고, 범위 인용의 정본을 PostgreSQL로 정한 CR-027(DEV-130)과도 정면 충돌한다. 포함 판정과 릴리스 앵커가 ES에만 있는 데이터를 딛으면 색인 반영 실패가 **오류 없이 항목을 빠뜨리는** 같은 실패가 재현된다(DEV-142) → PostgreSQL `release` 테이블을 신설하고 ES는 투영으로 둔다. **DEV-132의 기록된 사유가 실측으로 반증됐다**(DEV-143): `--mirror` 클론의 refspec `+refs/*:refs/*`는 `--no-tags`와 무관하게 태그를 가져오고 prune이 삭제도 반영하며 `^{commit}` peel로 주석 태그도 커밋 SHA가 나온다 — 이월 결정 자체는 옳았으나(쓰는 경로 부재) 이유가 틀렸고, 이 사실이 WP-024의 태그 소스를 정한다: GHE API가 아니라 **미러**다 (ADR-007 대조 가능, 자격 증명 불요, 백필·실시간 동일 경로). 릴리스 수집의 잡·이벤트·스트림이 카탈로그에 없고(DEV-144, DEV-116과 같은 모양), 태그 push·release·create의 실시간 신호 추출이 게이트웨이에 없다(DEV-145). `RELEASE_NOT_INDEXED`가 계약 표에서 404인데 FR-REL-002 예외는 "빈 배열과 사유 코드를 함께"(=200)다(DEV-146). `released_at`의 뜻(DEV-147), `release_tags` "상위 5"의 뜻(DEV-148), 에폭 전환 시 릴리스 서수 무효 처리(DEV-149)가 미정이다 | DEV-142~149, FR-REL-002, FR-SEQ-003 AC-1, FR-SEQ-004, ADR-004, ADR-005, ADR-007, API-REL-002, ENT-REL-001 | 데이터 모델, 비동기·잡 카탈로그, API 계약, 작업 패키지, 원장 | closed (2026-08-24) |
+
+### CR-028 반영 내역 (2026-08-24)
+
+1. `pr_search_data_model.md` — ENT-REL-001 저장 위치를 "PostgreSQL (정본) + Elasticsearch (투영)"으로 정정, 3.2에 `release` DDL(스냅숏 표·`release_seq_chk` 셋 동반 제약·부분 인덱스) 추가, 5장 `release_tags`를 **가장 이른 5개**로 명시(DEV-148)
+2. `pr_search_async_events_jobs.md` — `prs:release` 스트림(그룹 `release`, 전체 기본 4), JOB-REL-007(신호·6시간 스윕·재채번 후), EVT-REL-001(**태그 이름을 싣지 않는 신호** — 순서 역전이 스냅숏을 되돌리지 못하게) 등록 (DEV-144·145)
+3. `pr_search_api_contracts.md` — API-REL-002에 판정·실패 근거(정본 PostgreSQL, 200+`release_not_indexed`, DEV-146), API-SEQ-002 release 앵커 행 갱신, DEV-132 문단을 실측 결과로 정정(DEV-143·147)
+4. `pr_search_work_packages.md` — WP-024 구현 범위·제외·DoD 재작성 (자가 치유 DoD, 앵커 동치 DoD, C-022 제외)
+5. `pr_search_ui_component_spec.md` — C-020에 `not_sequenced` 상태와 서버 정렬 신뢰 규칙 추가
+6. 원장 — DEV-142~149 등록·해소, WP-024 검증 기록(6.24장), 알려진 제한 갱신
+7. 검증 — `rg` 식별자 검사 통과, WP-024 시험 전 계층 통과(6.24장). SRS·PRD는 건드리지 않았다 (범위 확장 없음 — FR-REL-002·FR-SEQ-003이 이미 부여한 범위의 계약 정정이다)
+
 ### CR-027 반영 내역 (2026-08-23)
 
 - [x] `30_technical_architecture/pr_search_data_model.md` — 8장 질의 표의 "시퀀스 범위" 한 줄을 **두 줄로 분리**(멤버십은 PostgreSQL, 표시·요약은 Elasticsearch, DEV-130), `index.sort` 적용 범위에서 범위 조회 제외(DEV-131), 근거 문단 신설

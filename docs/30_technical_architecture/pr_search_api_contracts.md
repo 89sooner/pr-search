@@ -610,9 +610,9 @@ POST /api/v1/sequence-anchors/resolve
 | 2 | `pull_request` | `#1234` | `merge_sequence.pull_request_number` 조회. 미머지면 `ANCHOR_NOT_MERGED` | AC-3 |
 | 3 | `commit` | 7~40자 16진 SHA | `merge_sequence.commit_sha` 조회(접두는 후보 1건일 때만). 체인 밖이면 `ANCHOR_NOT_ON_BRANCH` + `suggested_anchor` | AC-2, ADR-012 |
 | 4 | `time` | ISO 8601 시각 | `committed_at <= T`인 최대 서수. 그런 커밋이 없으면 `ANCHOR_UNRESOLVABLE` | AC-4 |
-| 5 | `release` | 그 밖의 문자열(태그명) | **지금은 해석할 수 없다.** `ANCHOR_UNRESOLVABLE` + `detail.reason: "release_not_indexed"` | AC-1, DEV-132 |
+| 5 | `release` | 그 밖의 문자열(태그명) | PostgreSQL `release` 표에서 `(repository, tag_name)` 조회 (CR-028, DEV-142). 수집 전이면 `ANCHOR_UNRESOLVABLE` + `detail.reason: "release_not_indexed"`, 태그는 있으나 체인 밖이면 `ANCHOR_NOT_ON_BRANCH`, 다른 브랜치 체인이면 `SEQUENCE_SPACE_MISMATCH` | AC-1 |
 
-**릴리스 태그 앵커가 아직 서지 못하는 이유는 근거가 없어서다 (DEV-132).** `prs-releases` 인덱스는 매핑과 부트스트랩만 있고 **쓰는 경로가 없다** (WP-024). 미러도 대안이 못 된다: `git clone --mirror`는 태그를 가져오지만 이후 동기화는 `fetch --prune --no-tags`라 태그를 갱신하지 않는다. 그 위에 태그 해석을 세우면 **오래 전에 클론된 저장소에서만 우연히 맞는** 비결정적 기능이 된다 — 틀린 답보다 나쁜 것은 언제 틀리는지 모르는 답이다. WP-024가 릴리스를 수집하면 이 행이 `prs-releases`를 보게 된다.
+**릴리스 태그 앵커는 WP-024가 세웠다.** 이월 당시의 사유 중 "미러는 `fetch --no-tags`라 태그를 갱신하지 않는다"는 **실측으로 반증됐다** (CR-028, DEV-143) — `--mirror` 클론의 refspec `+refs/*:refs/*`는 그 플래그와 무관하게 태그를 옮긴다. 실제 공백은 릴리스를 저장하는 경로 자체의 부재였고, WP-024가 미러의 refs/tags 스냅숏을 PostgreSQL `release` 표로 동기화해 그 공백을 메웠다. 앵커 해석은 그 표를 본다 — `prs-releases`가 아니다 (DEV-142).
 
 `boundary`는 표현이 아니라 **`position`이 정한다**: `from`은 `exclusive`, `to`는 `inclusive`. 반개구간 `(from, to]`가 `git log A..B`와 같은 의미이기 위한 조건이며, 앵커 유형과 무관하다.
 
@@ -702,6 +702,13 @@ POST /api/v1/sequence-anchors/resolve
 
 - 목적: 커밋·PR을 포함하는 릴리스 목록과 소속 PR을 반환한다.
 - 관련 요구사항: FR-REL-002
+
+#### 판정과 실패의 근거 (CR-028)
+
+- **포함 판정의 정본은 PostgreSQL `release` 표다** (DEV-142). 같은 시퀀스 공간에서 `target.merge_seq <= release.merge_seq`인 릴리스가 포함 릴리스다 (FR-REL-002 AC-5). `prs-releases`는 투영이며 이 API는 그것을 읽지 않는다 — 색인 반영 실패가 포함 목록을 조용히 줄이면 안 된다.
+- **릴리스 미수집은 오류가 아니라 상태다** (DEV-146). FR-REL-002 예외 처리가 "빈 배열과 사유 코드를 **함께** 반환한다"고 정하므로, 이 API는 릴리스가 하나도 수집되지 않은 저장소에 **200** + `releases: []` + `reason: "release_not_indexed"`를 낸다. 6장의 `RELEASE_NOT_INDEXED`(404)는 릴리스 **자체**를 대상으로 지목하는 조회(API-SEQ-003의 릴리스 앵커 등)에서 그 릴리스가 없을 때의 코드다 — 대상이 다르다.
+- 대상이 미머지 PR이거나 체인 밖 커밋이면 서수가 없어 판정할 수 없다 — `merge_seq: null` + `releases: []`에 사유를 싣는다. 미배포(`unreleased: true`)와는 다른 상태다: 미배포는 "판정했고 없는 것", 이쪽은 "판정할 기준이 없는 것"이다.
+- `pending_pull_request_count`는 정본 `merge_sequence`에서 센다 — 마지막 릴리스 서수보다 큰 `pull_request_number IS NOT NULL` 행 수다 (AC-4).
 
 요청: `GET /api/v1/containments?repository=acme/payments&kind=pull_request&id=1234`
 

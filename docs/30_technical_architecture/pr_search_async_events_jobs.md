@@ -16,6 +16,7 @@
 | `prs:enriched` | `project` | 문서 투영 | `repository_id` | 전체 기본 16 |
 | `prs:projected` | `link` | 관계 파생 | `repository_id` | 전체 기본 8 |
 | `prs:sequence` | `sequence` | 서수 채번 | `repository_id:base_branch` | 시퀀스 공간당 1 (advisory lock) |
+| `prs:release` | `release` | 릴리스 태그 스냅숏 동기화 (CR-028, DEV-144) | `repository_id` | 저장소당 1, 전체 기본 4 |
 | `prs:batch` | `batch` | 백필·스캔·재색인·점검 | `job_id` | 전체 기본 3 |
 | `prs:permission` | `authz` | 권한 캐시 무효화 | `user_id` | 전체 기본 4 |
 
@@ -40,6 +41,7 @@
 | JOB-ING-007 | 아웃박스 재적재 | 스케줄 (5분) | batch | 3회 | 5분 | - | ADR-002 follow-up |
 | JOB-ING-008 | PostgreSQL↔ES 정합성 감시 | 스케줄 (6시간) | batch | 3회 | 30분 | EVT-JOB-001 | ADR-004 follow-up |
 | JOB-ING-009 | 실패 대기열 재처리 | 수동 (API-ADM-003) | ops (WP-009) → batch (WP-019 이후) | 이벤트별 누적 | 10분 | EVT-JOB-001 (batch 이후) | FR-ING-007 |
+| EVT-REL-001 | `release.refresh_requested` | ingest-gateway, sequence(재채번 후) | release | `prs:release` | `{ repository_id, correlation_id }` — **태그 이름·SHA를 싣지 않는다**: 정본은 미러의 refs/tags 스냅숏이고(DEV-143), 이벤트는 "이 저장소의 태그가 바뀌었으니 다시 봐라"라는 신호일 뿐이다. payload를 신뢰하면 이벤트 순서 역전이 스냅숏을 되돌린다 | 파티션 `repository_id`, 저장소당 직렬 |
 | JOB-SEQ-001 | 시퀀스 증분 채번 | `push` 웹훅 → 게이트웨이가 `prs:sequence`에 발행 (CR-025, DEV-116) / 백필 완료 | sequence | 락 실패는 `defer`, 그 밖은 5회 지수 백오프 | 10분 | EVT-SEQ-001 | FR-SEQ-001 |
 | JOB-SEQ-002 | 시퀀스 재채번 | 재작성 감지 / 수동 (API-ADM-007) | sequence | 없음 (실패 시 `stale`) | 60분 | EVT-SEQ-002, EVT-JOB-001 | FR-SEQ-005 |
 | JOB-SEQ-003 | 시퀀스 정합성 점검 | 수동 / 스케줄 (일 1회, 표본) | batch | 3회 | 30분 | EVT-JOB-001 | FR-ADMIN-003 |
@@ -49,6 +51,7 @@
 | JOB-REL-004 | 스택 간선 파생 | EVT-ING-003 (PR 이벤트) | link | 3회 | 30초 | - | FR-REL-006 |
 | JOB-REL-005 | 미해결 참조 해결 | EVT-ING-003 | link | 3회 | 30초 | - | FR-REL-003 AC-3 |
 | JOB-REL-006 | 관계 전량 재파생 | 수동 (API-ADM-002) | batch | 항목별 3회 | 없음 | EVT-JOB-001 | FR-REL-003~006 |
+| JOB-REL-007 | 릴리스 태그 스냅숏 동기화 (CR-028, DEV-144) | `release`·`create(tag)`·`push(refs/tags)` 웹훅 → 게이트웨이가 `prs:release`에 발행 / 6시간 보정 스윕 / 재채번(EVT-SEQ-002) 후 | release | 3회 지수 백오프 | 5분 | - | FR-REL-002, FR-SEQ-003 AC-1 |
 | JOB-AUTH-001 | 권한 캐시 갱신·무효화 | EVT-AUTH-001 / TTL 만료 | authz | 3회 | 10초 | - | FR-AUTH-003 |
 
 **JOB-AUTH-001의 대상 펼치기 (CR-015, DEV-042·DEV-045·DEV-046).** 게이트웨이는 웹훅이 준 것만 싣고, 펼치는 일은 전부 이 소비자가 한다 — 수신 경로에 GHE 동기 호출을 넣으면 NFR-002의 수신 p95 300ms가 무너지기 때문이다.

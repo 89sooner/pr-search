@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v1.0 | 갱신일: 2026-08-23
+> 상태: review | 버전: v1.1 | 갱신일: 2026-08-24
 
 ## 1. 목적
 
@@ -47,7 +47,7 @@
 | WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | todo | - | - | - | **CR-024 신설.** 네 매핑이 `allowed_team_ids`를 선언하고 강제 필터가 읽는데 그 값을 만드는 자리가 없다 (DEV-114) |
 | WP-022 | 시퀀스 재채번과 에폭 | REL-003 | done | 에이전트 | `2adc9dd` / PR #27 | DoD 7항 전부 통과 (6.22장). 통합 12건 + ES 통합 3건(CI) + 회귀 3건. 변이 6종 전부 잡힘 | CR-026이 메운 빈칸 여섯(복사·서수 조회 함수 부재, 체인 밖 merge-base, 표식 무효화 수단 부재, 알림 어댑터 부재, 잡 유형 불일치, ES 에폭 반영). **AC-4는 저장 시점 쓰기가 아니라 에폭 비교다.** 수동 재채번 API는 WP-028 몫 |
 | WP-023 | 앵커 정규화와 범위 조회 API | REL-003 | done | 에이전트 | PR #28 | DoD 8항 중 7항 통과, p95는 PostgreSQL 구간만 실측 (6.23장). 단위 41건 + 통합 62건 + 실ES 13건(CI) + git 대조 회귀 14건. 변이 30종 전부 잡힘 | CR-027이 정본을 PostgreSQL로 정정(DEV-130) — 멤버십·건수는 `merge_sequence`, 표시·요약은 ES. 색인에 없는 항목은 `items_missing_in_index`로 드러낸다. 릴리스 태그 앵커는 WP-024로, `reverted_pull_request_count`는 WP-030으로 이월 |
-| WP-024 | 릴리스 수집과 포함 관계 | REL-003 | todo | - | - | - | - |
+| WP-024 | 릴리스 수집과 포함 관계 | REL-003 | done | 에이전트 | (푸시 후 기입) | DoD 7항 전부 통과 (6.24장). 단위 54건 + 통합 39건 + git 대조 회귀 5건 + 실ES 10건(CI). 변이 12종: 로컬 킬 11, 실-ES 전용 킬 1(M11, CI가 판정) | CR-028이 정본을 PostgreSQL `release` 표로 정정(DEV-142)하고 미러가 태그를 갱신함을 실측(DEV-143). 갱신은 이벤트 payload 없는 신호 + 전량 diff(EVT-REL-001) — 순서 역전이 스냅숏을 되돌릴 수 없다. 매핑 결함 둘(릴리스 `document_version`·커밋 `unreleased` 부재)을 실-ES 계층 작성 중 발견해 고쳤다. WP-023 이월분(릴리스 앵커, DEV-132)을 해석으로 교체했다 |
 | WP-025 | W-004 범위 조사 화면 | REL-003 | todo | - | - | - | - |
 | WP-026 | W-005 릴리스 화면과 구간 비교 | REL-003 | todo | - | - | - | - |
 | WP-027 | 선행·후행 조회와 상세 화면 통합 | REL-003 | todo | - | - | - | - |
@@ -105,13 +105,13 @@
 | FR-SRCH-012 | WP-044 | - | - | not_started |
 | FR-SEQ-001 | WP-002, WP-018, WP-020, WP-021 | `packages/db/migrations/002_sequence.up.sql`, `packages/db/src/advisory-lock.ts`, `packages/db/src/repositories/{merge-sequence,sequence-space}.ts`, `packages/github/src/{graph-plan,commit-graph,mirror-graph,api-graph,mirror-sync}.ts`, `apps/pipeline-worker/src/mirror-runner.ts`, `apps/web/lib/commit-detail.ts` (`sequencePositionState`), `apps/web/components/SequencePosition.tsx`, `apps/pipeline-worker/src/{sequence,sequence-plan}.ts`, `packages/domain/src/sequence.ts`, `packages/es/src/sequence.ts`, `apps/ingest-gateway/src/{ingest,server}.ts` (push → `prs:sequence`) | `packages/github/src/graph-plan.test.ts`, `packages/github/integration/graph.test.ts` (AC-2 대조), `packages/db/integration/advisory-lock.test.ts` (AC-6), `packages/db/integration/seed.test.ts` (AC-3), `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx`, `apps/pipeline-worker/src/sequence-plan.test.ts`, `packages/domain/src/sequence.test.ts`, **`apps/pipeline-worker/integration/sequence/assign.test.ts`** (AC-1~AC-6 전부, 실제 git 픽스처 대조), **`regression/sequence.test.ts`** (ACC-02), `packages/es/integration/sequence.test.ts` | **완료 (WP-021)** — AC-1~AC-6과 예외 처리가 전부 실제 PostgreSQL·git으로 판정된다. 채번은 `git rev-list --first-parent --reverse`가 낸 순서를 그대로 옮기고, 그것을 회귀 계층이 매 실행마다 git과 대조한다. **재작성 감지 후의 재채번만 WP-022로 남는다** — 여기서는 감지해서 `stale`로 두고 기존 값을 보존한다 |
 | FR-SEQ-002 | WP-023, WP-025 | `apps/search-api/src/sequence/{range,routes,space}.ts`, `packages/db/src/repositories/merge-sequence.ts` (`countRange`·`findRangePage`·`listPullRequestNumbersInRange`) | `apps/search-api/integration/sequence/range.test.ts`·`range-es.test.ts`, `regression/range-vs-git.test.ts` | api_done (화면은 WP-025) |
-| FR-SEQ-003 | WP-023, WP-025 | `packages/domain/src/anchor.ts` (`classifyAnchor`·`boundaryOf`), `apps/search-api/src/sequence/anchors.ts`, `packages/db` `findPointBy{Seq,PullRequest,Commit}`·`findPointsByCommitPrefix`·`findPointAtOrBefore` | `packages/domain/src/anchor.test.ts`, `apps/search-api/integration/sequence/anchors.test.ts` | api_done — **AC-1 릴리스 태그만 미해석** (DEV-132, WP-024 이월) |
-| FR-SEQ-004 | WP-024, WP-026 | - | - | not_started |
+| FR-SEQ-003 | WP-023, WP-025 | `packages/domain/src/anchor.ts` (`classifyAnchor`·`boundaryOf`), `apps/search-api/src/sequence/anchors.ts`, `packages/db` `findPointBy{Seq,PullRequest,Commit}`·`findPointsByCommitPrefix`·`findPointAtOrBefore` | `packages/domain/src/anchor.test.ts`, `apps/search-api/integration/sequence/anchors.test.ts`, `apps/search-api/integration/release/containment.test.ts` (릴리스 앵커) | api_done — **AC-1 릴리스 태그 해석 완료** (WP-024, CR-028). 정본은 PostgreSQL `release` 표, 서수는 현재 에폭에서 재확인(DEV-149), `occurred_at`은 릴리스 시각. 미수집(`release_not_indexed`)·미존재(`tag_not_found`)·공간 불일치·체인 밖을 가른다 |
+| FR-SEQ-004 | WP-024, WP-026 | `apps/search-api/src/sequence/anchors.ts` (release 갈래) + WP-023의 `/sequence-ranges` | `apps/search-api/integration/release/containment.test.ts`, `regression/releases-vs-git.test.ts` | api_done (WP-024) — 릴리스 앵커 두 개로 구간 비교가 성립한다(같은 서수 지점으로 해석되어 WP-023 범위 조회를 그대로 딛는다). W-005 화면은 WP-026 |
 | FR-SEQ-005 | WP-021, WP-022, WP-028 | `apps/pipeline-worker/src/sequence.ts` (`reassignSequence`), `packages/db/src/repositories/merge-sequence.ts` (`findSeqByCommit`·`copySequencesUpTo`·`countAbove`), `packages/db/src/repositories/sequence-space.ts` (`markReassigning`·`bumpEpoch`), `packages/es/src/sequence.ts` (`applyEpochBump`) | `apps/pipeline-worker/integration/sequence/reassign.test.ts` (AC-1~AC-5 전부, 실제 git 픽스처), `packages/es/integration/sequence.test.ts` (에폭 반영), `regression/sequence-rewrite.test.ts` (재작성 walk=git, 공통 접두 결정론) | **부분 (WP-022)** — 자동 감지 경로의 AC-1~AC-5가 실제 PostgreSQL·git으로 판정된다. AC-4의 저장된 검색 `seq:` 절반은 `saved_search`가 없어(WP-033) 도달 불가, 수동 재채번(API-ADM-007 POST)과 잡 유형 정정(DEV-128)은 WP-028, `epoch_stale` 화면 표시는 W-004(WP-025) 몫이다 |
 | FR-SEQ-006 | WP-002, WP-041 | `packages/db/migrations/002_sequence.up.sql` (`safe_marker_current_uk`) | `packages/db/integration/constraints.test.ts` (AC-1) | partial (스키마만. 화면·API는 WP-041) |
 | FR-SEQ-007 | WP-042 | - | - | not_started |
 | FR-REL-001 | WP-027 | - | - | not_started |
-| FR-REL-002 | WP-024 | - | - | not_started |
+| FR-REL-002 | WP-024 | `packages/db/migrations/008_release.up.sql`, `packages/db/src/repositories/release.ts`, `packages/github/src/mirror-graph.ts` (`listTags`), `packages/domain/src/release.ts`, `apps/ingest-gateway/src/ingest.ts` (5d), `apps/pipeline-worker/src/release.ts` (JOB-REL-007), `packages/es/src/releases.ts`, `apps/search-api/src/sequence/containments.ts`·`routes.ts` (`GET /containments`), `apps/web/lib/containment.ts`, `apps/web/components/ReleaseContainmentList.tsx` (C-020) | `packages/domain/src/release.test.ts`, `apps/ingest-gateway/src/ingest.test.ts` (EVT-REL-001), `apps/pipeline-worker/integration/release/refresh.test.ts`, `apps/search-api/integration/release/containment.test.ts`, `packages/es/integration/releases.test.ts` (실ES, CI), `apps/web/lib/containment.test.ts`, `regression/releases-vs-git.test.ts` | done (AC-1~AC-5 + 예외 처리. 판정 정본은 PostgreSQL, `release_tags`/`unreleased`는 표시 전용 비정규화. CI 배포 소스는 OD-004 조건부로 제외 — 스키마·삭제 면제만 준비) |
 | FR-REL-003 | WP-029, WP-031 | - | - | not_started |
 | FR-REL-004 | WP-030, WP-031 | - | - | not_started |
 | FR-REL-005 | WP-020, WP-030, WP-031 | `packages/github/src/{commit-graph,mirror-graph,api-graph}.ts` (patch-id 계산과 `patch_id_unavailable` 사유) | `packages/github/src/graph-plan.test.ts`, `packages/github/integration/graph.test.ts` | **부분** — AC-5(미러 없을 때 `patch_id_unavailable`)의 계산 계층만 섰다. 간선 생성(AC-1~AC-4)은 WP-030. **AC-2는 CR-024로 조건부가 되었다** — blob 인출이 허용된 미러에서만 수행하며, 기본 설정에서 수행하지 않는 것이 이제 명세다 (DEV-111). `patch_id_unavailable`은 사유 3종을 담는 `keyword`다 |
@@ -314,6 +314,14 @@
 | DEV-139 | 2026-08-23 | **`summary.commit_count`가 무엇을 세는지 정해져 있지 않다.** 구간의 first-parent 커밋 수인지 PR의 원본 커밋까지 포함한 수인지에 따라 값이 한 자릿수 배 차이 난다. API 예시의 `commit_count == pull_request_count == 62`는 전자와만 맞는다 | WP-023 / FR-SEQ-002 AC-2 | 문서 오류 | **CR-027** | **resolved (2026-08-23)** — first-parent 커밋 수(= `merge_sequence` 행 수)로 확정했다. `git log --first-parent A..B`가 세는 것과 같은 것을 센다. API 계약 필드 근거 표에 명시 |
 | DEV-140 | 2026-08-23 | **"5만 건 사전 추정"이 실은 정확히 셀 수 있다.** DEV-130의 결정으로 정본이 PostgreSQL이 되면 `count(*)`가 PK 범위 스캔 한 번이라 추정할 이유가 없다. 추정으로 두면 상한 근처에서 통과와 거절이 흔들린다 | WP-023 / FR-SEQ-002 AC-4 | 문서 오류 | **CR-027** | **resolved (2026-08-23)** — `countRange`가 정확한 count를 낸다. 5만+1행 실데이터로 400과 경계(정확히 5만이면 통과)를 실측했다. 응답 필드 이름은 하위 호환으로 `estimated_count`를 유지하되 `exact: true`를 함께 싣는다 |
 | DEV-141 | 2026-08-23 | **`multiSearch`가 헤더 전용 파라미터 `routing`을 본문에 실었다** (내 구현 결함, CI 실-ES 계층이 검출). `search` API에서는 클라이언트가 `routing`을 쿼리스트링으로 올려 주지만 `msearch`의 옵션은 해석 없이 NDJSON 본문 줄에 그대로 실린다 — 본문의 `routing`을 Elasticsearch가 400으로 거절해 **범위 조회의 ES 왕복 전부가 실패했다.** 대역 시험 62건은 아무 키나 받아 전부 초록이었고, PR #28 CI의 `range-es.test.ts`(실제 ES) 11건이 처음 잡았다 — 실-ES 계층을 따로 둔 이유가 정확히 이 결함이다. 기존 `multiSearch` 사용처(완화 힌트)는 라우팅을 쓰지 않아 드러나지 않았다 | WP-023 / API-SEQ-001 | 구현 결함 | - (문서가 msearch 전송 형식을 규정하지 않아 계단식 갱신 없음) | **resolved (2026-08-23)** — `multiSearch`가 `routing`을 헤더 줄로 옮긴다. `search.test.ts` 4건이 전송 모양을 단위에서 고정 — 결함을 되돌리면 2건이 실패함을 확인했다. ES 없이도 회귀가 막힌다 |
+| DEV-142 | 2026-08-24 | **릴리스 엔티티가 검색 인덱스에만 존재하도록 설계됐다.** 데이터 모델 3장 ENT-REL-001의 저장 위치가 Elasticsearch, 갱신 주체가 projection이다 — ADR-004("어떤 데이터도 검색 인덱스에만 존재해서는 안 된다") 위반이고, 정본을 PostgreSQL로 정한 DEV-130과 정면 충돌한다. 포함 판정·릴리스 앵커가 ES에만 있는 데이터를 딛으면 색인 반영 실패가 오류 없이 항목을 빠뜨리는 실패가 재현된다 | WP-024 / ENT-REL-001, ADR-004, FR-REL-002 | **문서 간 모순** | **CR-028** | **resolved (2026-08-24)** — 마이그레이션 008이 PostgreSQL `release` 표를 신설해 정본으로 삼았다. ENT-REL-001의 저장 위치를 "PostgreSQL (정본) + Elasticsearch (투영)"으로 고치고 DDL을 데이터 모델 3.2에 실었다. 포함 판정(`/containments`)과 릴리스 앵커는 정본만 읽으며, `prs-releases`·`release_tags`는 표시 전용 투영이라 색인 실패는 표시 지연이지 판정 오류가 아니다 |
+| DEV-143 | 2026-08-24 | **DEV-132의 기록된 사유가 실측으로 반증됐다.** "미러는 `fetch --no-tags`라 태그를 갱신하지 않는다"고 적었으나, `--mirror` 클론의 refspec `+refs/*:refs/*`는 `--no-tags`와 무관하게 refs/tags/*를 옮긴다 — 새 태그·주석 태그·삭제(prune) 전부 반영됨을 합성 저장소로 실측했다. `for-each-ref refs/tags --format='%(refname:short)|%(creatordate:iso-strict)|…peel'` 한 번으로 태그명·시각·커밋 SHA가 나온다. 이월 결정 자체는 옳았으나(쓰는 경로 부재) 이유가 틀렸고, 틀린 이유가 문서에 남으면 다음 구현자가 미러를 배제한다 | WP-024 / ADR-005, ADR-007, DEV-132 | 기록 오류 (실측 반증) | **CR-028** | **resolved (2026-08-24)** — 합성 저장소 실측을 근거로 API 계약의 DEV-132 문단과 데이터 모델을 정정했다. `listTags`는 `for-each-ref refs/tags --format='%(refname:short)%00%(creatordate:iso-strict)%00…peel'` 하나로 태그명·시각·peel된 커밋을 전량 열거한다(주석 태그는 `%(*objectname)`). 형식이 어긋난 줄은 건너뛰지 않고 던진다 — 조용히 빼면 diff가 그 태그를 삭제로 읽는다 |
+| DEV-144 | 2026-08-24 | **릴리스 수집의 잡·이벤트·스트림이 카탈로그에 없다** (DEV-116과 같은 모양). `release`·`create`는 게이트웨이가 받아 `raw_event`에 저장하고 `prs:ingest`에 싣지만 enrich가 "PR 이벤트가 아니다"로 버린다 — 릴리스를 처리하는 소비자가 어디에도 없다. JOB-REL-001~006은 전부 간선 파생(WP-029+)이다 | WP-024 / JOB-REL-*, EVT 카탈로그 2·5장 | 범위 공백 | **CR-028** | **resolved (2026-08-24)** — `prs:release` 스트림(그룹 `release`, 파티션 키 `repository_id`, 전체 기본 4)·JOB-REL-007·EVT-REL-001을 비동기 카탈로그 2·4·5장에 등록하고 그대로 구현했다. 워커 `release` 역할이 신호 소비와 6시간 보정 스윕을 돈다 |
+| DEV-145 | 2026-08-24 | **태그 push의 실시간 신호가 버려진다.** `extractPushTarget`은 `refs/tags/*`를 "브랜치 push가 아니다"로 skip한다 — 채번 대상이 아니니 옳은 판정이지만, 릴리스 갱신의 실시간 트리거로는 바로 그 이벤트가 필요하다. `release`(published)·`create`(tag)도 마찬가지로 추출 없이 저장만 된다 | WP-024 / FR-REL-002, EVT-ING-001 | 범위 공백 | **CR-028** | **resolved (2026-08-24)** — `extractReleaseSignal`(packages/domain)이 `push(refs/tags/*)`·`create(tag)`·`delete(tag)`·`release`를 신호로 가른다. 게이트웨이 5d 단계가 발행하며 실패해도 202를 막지 않는다(다음 신호·스윕이 메운다). 채번의 skip 판정은 그대로다 — 두 소비자가 같은 push를 다르게 읽는 것이 맞다 |
+| DEV-146 | 2026-08-24 | **`RELEASE_NOT_INDEXED`의 상태 코드가 모순이다.** `error-codes.ts`와 API 계약 6장은 404로 매핑하는데, FR-REL-002 예외 처리는 "빈 배열과 사유 코드 `release_not_indexed`를 **함께** 반환한다" — 조회 자체는 성공(200)이고 사유가 본문에 실린다는 뜻이다. C-020도 `release_not_indexed`를 오류 화면이 아니라 상태로 갖는다 | WP-024 / FR-REL-002, API-REL-002 | 문서 간 모순 | **CR-028** | **resolved (2026-08-24)** — FR-REL-002 예외 처리가 이긴다: `/containments`는 **200 + `reason: "release_not_indexed"`**를 반환하고, 오류 코드 표의 404는 릴리스 자체를 대상으로 하는 조회(릴리스 앵커의 `ANCHOR_UNRESOLVABLE` detail 등)에 남는다. C-020은 ready/unreleased/release_not_indexed/not_sequenced 네 상태를 가른다 — 뭉치면 미수집 저장소의 PR에 "판정했다"는 거짓 배지가 붙는다 |
+| DEV-147 | 2026-08-24 | **`released_at`의 뜻이 정해져 있지 않다.** 주석 태그는 taggerdate가 있고 경량 태그는 없으며(커밋 시각뿐), GitHub Release는 제3의 값 published_at을 갖는다. 셋 중 무엇인지에 따라 "시각 오름차순"(AC-3)의 순서가 달라진다 | WP-024 / FR-REL-002 AC-3, ENT-REL-001 | 빈칸 | **CR-028** | **resolved (2026-08-24)** — `released_at` = git `creatordate`(주석 태그 taggerdate, 경량 태그는 커밋 시각)를 기본으로 하고, GHE 자격 증명이 있으면 GitHub Release `published_at`이 덮으며 `source: github_release`로 표시한다(draft는 제외). GHE 조회 실패는 경고 후 creatordate로 계속한다 — 덮어쓰기는 보강이지 의존이 아니다 |
+| DEV-148 | 2026-08-24 | **`release_tags` "상위 5개"의 상위가 무엇 기준인지 정해져 있지 않다.** 가장 이른 5개인지, 최신 5개인지에 따라 목록 배지의 뜻이 달라진다 | WP-024 / 데이터 모델 5장 | 빈칸 | **CR-028** | **resolved (2026-08-24)** — **가장 이른 5개**로 정의하고 데이터 모델 5장에 적었다. "어느 배포에 처음 들어갔는가"가 SCN-004의 질문이므로 최신이 아니라 최초가 답이다. 워커가 시각 오름차순으로 보내고 painless가 앞에서부터 5개에서 멈춘다 — 순서가 곧 정의라서 워커 통합 시험이 역순 변이를 잡는다(6.24장 M10) |
+| DEV-149 | 2026-08-24 | **에폭 전환 시 릴리스 서수의 무효 처리가 정해져 있지 않다.** 릴리스의 `merge_seq`는 `seq_epoch`에 묶이는데, 재채번(WP-022)이 에폭을 올리면 이전 에폭으로 저장된 릴리스 서수는 다른 커밋을 가리킬 수 있다. FR-SEQ-005 AC-4의 원칙(저장 시점 쓰기가 아니라 현재 에폭과 비교)이 여기에도 적용되어야 한다 | WP-024 / FR-SEQ-005 AC-4, ENT-REL-001 | 빈칸 | **CR-028** | **resolved (2026-08-24)** — 릴리스 서수는 에폭에 묶인 스냅숏이다: 갱신마다 전 태그를 **현재 에폭**으로 재해석하고, 재채번(EVT-SEQ-002) 후 갱신 신호를 발행하며(스윕이 예비), 읽기는 현재 에폭 행만 신뢰한다 — 포함 판정은 에폭 불일치를 `target_not_sequenced`로 답하고, 릴리스 앵커는 표의 서수 대신 `findPointByCommit`을 현재 에폭으로 다시 묻고, 비정규화는 `seq_epoch`까지 걸러 옛 에폭 문서에 새 배지를 달지 않는다 |
 | DEV-003 | 2026-08-19 | `../00_governance/change_control.md` 4장 아키텍처 게이트 기록이 "오류 코드 30종"으로 적혀 있으나 API 계약 6장의 실제 코드는 29종이었다 | WP-001 | 문서 오류 | **CR-006** | **resolved (2026-08-20)** — 게이트 기록을 29종으로 정정하고 CR-005로 GH 코드 16종이 추가되어 현재 45종임을 함께 표기 |
 
 **등록이 필요한 대표 상황** (사전에 예상되는 것):
@@ -1378,7 +1386,44 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 
 **그리고 실-ES 계층이 그 원칙의 세 번째 사례를 즉시 냈다 (DEV-141).** 대역 62건이 전부 초록인 채로 msearch 본문의 `routing`이 실제 Elasticsearch에서 400을 냈다 — 대역은 아무 키나 받으므로 **전송 형식의 결함은 대역으로 잡을 수 없다.** "질의가 진짜 색인에서 진짜로 도는가"를 CI가 따로 묻게 해 둔 것이 이 결함을 병합 전에 세웠다.
 
-### 6.24 릴리스 게이트
+### 6.24 WP-024 검증 실행 기록
+
+2026-08-24, PostgreSQL 16.13 네이티브 + Redis 네이티브 + 실제 git 저장소 픽스처 (DEV-001과 같은 환경 제약). Elasticsearch는 로컬에 없어 실-ES 계층은 CI가 처음 판정한다 — WP-023과 같은 배치다.
+
+**계층별 결과.**
+
+| 계층 | 파일 | 결과 |
+| --- | --- | --- |
+| 단위 | `packages/domain/src/release.test.ts` 10건, `apps/web/lib/containment.test.ts` 11건, `apps/ingest-gateway/src/ingest.test.ts` EVT-REL-001 5건, `packages/bus` 스트림 카탈로그 갱신 | **전부 통과** (전체 단위 1,089건) |
+| 통합 (실 PG + 실 git + 대역 ES) | `apps/pipeline-worker/integration/release/refresh.test.ts` 15건 — 스냅숏 해석(주석 태그 peel, 체인 밖 NULL 셋), 멱등, 삭제 전파, `ci_deployment` 삭제 면제, 강제 이동, 에폭 재해석, creatordate, GHE 덮어쓰기·실패 폴백, 동기화 실패 무변경, 미등록 skip, 잠금 경합, ES 실패 비차단, 비정규화 모양 | **전부 통과** |
+| 통합 (실 PG + Redis, API) | `apps/search-api/integration/release/containment.test.ts` 24건 — PR·커밋 기준 판정, `<=` 경계, 미배포 대기 수·hint, 미머지/미수집/에폭 불일치/체인밖-전용의 네 갈래, 릴리스 앵커 6갈래, 40자 SHA 규칙, 강제 필터·라우팅 wire 검증, 접근 통제 | **전부 통과** |
+| git 대조 회귀 | `regression/releases-vs-git.test.ts` 5건 — **정답은 `git merge-base --is-ancestor`가 낸다**: 체인 6 커밋 × 체인 태그 3종 = 18쌍 전수 일치, 주석 태그 peel = `rev-parse ^{commit}`, 시각 순서 = `for-each-ref --sort=creatordate`, 체인 밖 태그의 설계된 차이(DAG 조상이어도 공간 밖), 최신 릴리스 서수 | **전부 통과** |
+| 실-ES (CI) | `packages/es/integration/releases.test.ts` 10건 — strict 매핑 수용, NULL 셋 키 부재, 스냅숏 버전 역전 거부, 삭제, painless 컴파일·경계(서수5=릴리스5)·에폭/저장소 격리·가장 이른 5개·noop 수렴·전량 삭제 복귀 | **NOT RUN (로컬 ES 부재)** — CI가 판정 |
+
+**DoD 판정.** QA-W002-08(시각 오름차순 유지)·QA-W002-09(미배포 배지+대기 수) 통과. 판정=시퀀스 비교(AC-5), 오름차순(AC-3), 미배포 응답(AC-4), 미수집 200+사유(DEV-146), 자가 치유(삭제·강제 이동·재채번 뒤 git 일치), 릴리스 앵커가 같은 서수 지점으로 해석되어 WP-023 범위 조회를 그대로 딛는다(AC-1 ↔ seq 앵커 동치).
+
+**실-ES 계층을 쓰면서 발견한 매핑 결함 둘 (푸시 전 수정).** ① `RELEASE_MAPPING`에 `document_version`이 없었다 — 조건부 업서트의 비교 키인데 `dynamic: strict`가 색인 자체를 거부했을 것이다. ② `prs-commits` 매핑에 `unreleased`가 없었다 — 비정규화 스크립트가 양쪽 별칭에 같은 짝을 쓰는데 커밋 쪽 갱신이 전부 거부됐을 것이다. 두 결함 모두 대역 시험은 영원히 초록이었다 — DEV-141과 같은 계층의 교훈이다.
+
+**변이 시험 12종 (전부 적용 확인 후 실행).**
+
+| # | 변이 | 결과 |
+| --- | --- | --- |
+| M1 | 포함 경계 `>=` → `>` | **킬** — 통합 3건 + git 대조 전수 쌍 |
+| M2 | 미수집을 미배포로 뭉침 (hasAnyRelease 제거) | **킬** — DEV-146 갈래 시험 |
+| M3 | 판정의 에폭 검증 제거 | **킬** — DEV-149 판정 시험 |
+| M4 | 릴리스 앵커가 표의 서수를 신뢰 (재확인 생략) | **킬** — DEV-149 앵커 시험 (NULL 셋 태그가 해석돼야 함) |
+| M5 | 미러 동기화 실패에도 계속 진행 | **킬** — 무변경 시험 (오래된 스냅숏 삭제가 최악) |
+| M6 | 신호에 태그 이름 탑재 | **킬** — EVT-REL-001 단위 2건 |
+| M7 | 대기 수 기준 `?? 0` → 대상 서수 누출 | **생존 → 시험 추가 → 킬.** 체인 밖 태그만 가진 저장소가 없었다 — `acme/infra` 픽스처와 AC-4 시험을 더해 잡았다 |
+| M8 | 게이트웨이 5d 실패가 202를 깨뜨림 | **생존 영역 발견 → 시험 추가 → 킬.** 5d 전체가 무시험이었다 — EVT-REL-001 발행 5건(태그 push 발행, 브랜치 제외, 실패 202+메트릭, 아카이브 비차단, 중복 미발행)을 더했다 |
+| M9 | 삭제 전파 제거 (`deletedTags = []`) | **킬** — 자가 치유 시험 |
+| M10 | 비정규화 정렬 역전 (최신 5개로) | **생존 → 픽스처 보강 → 킬.** 태그 시각이 같은 초라 타이브레이크가 방향을 가렸다 — 2020년으로 backdate한 주석 태그(`zz-oldest`: 체인 마지막 커밋, 이름 역순, 시각 최선)를 더해 시각·이름·체인 순서를 갈랐다 |
+| M11 | painless 경계 `<=` → `<` | **로컬 전 계층 생존 (39건 초록 확인)** — 대역은 painless를 실행하지 못한다. 유일한 킬러는 실-ES 계층의 경계 문서(서수 5 = 릴리스 5)이고 **CI가 판정한다**. 이것이 실-ES 계층이 존재하는 이유다 |
+| M12 | C-020 판정 `=== true` → `!== undefined` | **생존 → 시험 추가 → 킬.** `unreleased: false` + 빈 목록의 모순 응답 입력이 없었다 — false를 미배포로 그리는 구현을 가르는 시험을 더했다 |
+
+생존 3종(M7·M8·M12)과 픽스처 결함 1종(M10)은 전부 시험 결함이었고 구현 결함은 없었다. 각 시험 추가 후 변이 재적용으로 킬을 확인하고 원복했다. M11은 잔여 항목으로 CI 판정을 명시한다.
+
+### 6.25 릴리스 게이트
 
 릴리스별로 갱신한다.
 
@@ -1397,8 +1442,8 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 
 | 제한 | 근거 문서 | 현재 상태 | 후속 |
 | --- | --- | --- | --- |
-| 시퀀스는 REL-003부터 제공 | 로드맵 4장 | **부분 해소** (2026-08-23) — 채번(WP-021)·재채번(WP-022)·앵커/범위 API(WP-023)가 섰다. 화면(WP-025)과 릴리스 앵커(WP-024)가 남았다 | REL-003 잔여 WP |
-| 릴리스 태그 앵커가 `ANCHOR_UNRESOLVABLE`을 반환 | FR-SEQ-003 AC-1 / CR-027 DEV-132 | 실제 상태 — `prs-releases`에 쓰는 경로가 없고 미러는 `--no-tags`라 태그 근거가 없다. `detail.reason: "release_not_indexed"`로 사유를 가른다 | WP-024가 릴리스를 수집하면 해석으로 교체 |
+| 시퀀스는 REL-003부터 제공 | 로드맵 4장 | **부분 해소** (2026-08-24) — 채번(WP-021)·재채번(WP-022)·앵커/범위 API(WP-023)·릴리스 수집과 포함 관계(WP-024)가 섰다. 화면(WP-025·WP-026)이 남았다 | REL-003 잔여 WP |
+| ~~릴리스 태그 앵커가 `ANCHOR_UNRESOLVABLE`을 반환~~ | FR-SEQ-003 AC-1 / CR-027 DEV-132 | **해소** (2026-08-24, WP-024) — PostgreSQL `release` 표를 근거로 해석한다. `ANCHOR_UNRESOLVABLE`은 미수집(`release_not_indexed`)·미존재(`tag_not_found`)에만 남고 사유를 가른다. 미러가 태그를 갱신하지 않는다던 기록 사유는 실측으로 반증됐다(DEV-143) | - |
 | 범위 요약에 `reverted_pull_request_count` 키가 없음 | FR-SEQ-002 AC-2 / CR-027 DEV-133 | 실제 상태 — 되돌림 파생(WP-030) 전에는 세면 언제나 0이라 계산하지 않은 것을 계산한 척하지 않는다 | WP-030 뒤 요약에 추가 |
 | 범위 조회 p95 실측이 PostgreSQL 구간뿐 | WP-023 DoD / NFR-001 | 부분 실측 — PostgreSQL 3질의 p95 7.50ms(5000건). ES 집계 왕복 포함 전체 p95는 로컬 ES 부재로 NOT RUN (DEV-058과 같은 사정) | 성능 harness가 서는 시점에 전체 경로 실측 |
 | 관계 정보는 REL-004부터 제공 | 로드맵 4장 | 계획 | REL-004 |
@@ -1416,7 +1461,7 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 | ~~`web`이 Conductor 디자인 시스템을 아직 쓰지 않음~~ | WP-001 제외 목록 (화면 제외) | 해소 (2026-08-21) — WP-015가 `AppShell`·`TopBar`·`NavList`·`EmptyState`·`Banner` 위에 셸을 세웠다. CSS는 루트 레이아웃에서 1회 import한다 (ADR-006) | 없음 |
 | 각 앱 헬스체크가 백킹 서비스 연결을 확인하지 않음 | WP-001 구현 범위 (프로세스 기동만) | `ingest-gateway`는 해소 — `GET /healthz`가 PostgreSQL을 확인하고 실패 시 503 (인프라 3장). **`search-api`는 WP-013에서도 해소하지 못했다** — 검색 경로는 열렸으나 `/healthz`는 여전히 프로세스 기동만 본다. 서버가 ES 핸들만 받고 PostgreSQL 핸들은 받지 않아(`resolveNames` 클로저 안에 있다) ES만 확인하면 PG가 죽어도 `ok`가 나간다 — 반만 확인하는 헬스체크가 없는 것보다 나쁘다 | `search-api`는 서버에 PG 핸들을 넘기는 별도 변경 (WP-013 구현 범위·DoD 밖), `web`·`pipeline-worker`는 기존대로 |
 | 통합 테스트가 testcontainers가 아니라 외부 PostgreSQL에 붙음 | WP-002 검증 방법 / DEV-006 | 실제 상태 (환경 변수로 접속 정보 주입) | WP-003에서 ES와 함께 재검토 |
-| `saved_search`·`bisect_session`에 리포지터리 계층이 없음 | WP-002 구현 범위 (6종만 명시) | 실제 상태 (스키마는 존재). **`permission_cache`·`app_user`·`team`·`team_member`는 해소** (2026-08-21) — `authRepo`가 세웠다 | WP-024·WP-042 |
+| `saved_search`·`bisect_session`에 리포지터리 계층이 없음 | WP-002 구현 범위 (6종만 명시) | 실제 상태 (스키마는 존재). **`permission_cache`·`app_user`·`team`·`team_member`는 해소** (2026-08-21) — `authRepo`가 세웠다. (후속의 WP-024 표기는 오기였다 — 릴리스 수집과 무관하다) | WP-033·WP-042 |
 | ~~큐에 들어간 이벤트를 아무도 소비하지 않음 (`processed_at`이 영영 NULL)~~ | WP-005 제외 목록 | 해소 (2026-08-20) — WP-008 투영 워커가 색인 성공 뒤 `markProcessed`를 부른다. 투영되지 않는 이벤트(미등록 저장소, PR 이외 이벤트)는 여전히 NULL로 남아 `JOB-ING-007`이 계속 재적재한다 | 라우팅을 소유한 WP와 WP-010 저장소 등록 |
 | `prs:sequence` 파티션 수가 문서에 없어 코드 기본값 8을 씀 | 비동기 문서 2장 / DEV-010 | 실제 상태 (환경 변수로 덮어쓸 수 있음) | 사용자 결정 후 CR |
 | Kafka 어댑터 없음 | WP-005 제외 목록 (ADR-002 전환 임계 조건부) | 실제 상태 — 계약 테스트가 교체 가능성을 강제한다 | 전환 임계 충족 시 |
@@ -1481,7 +1526,7 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 | 커밋 상세에 메시지·작성자·부모 SHA·파일 목록이 없음 | CR-017 DEV-060 / WP-008이 남긴 한계 | 실제 상태 — `EVT-ING-002`가 커밋에 대해 SHA만 나른다. 채워지지 않은 필드는 **키를 넣지 않아** "만들지 않았다"와 "만들었는데 비었다"를 구분한다. 커밋의 표시명은 SHA 축약이다 | WP-020 (미러 기반 커밋 보강) |
 | PR 상세의 원본 커밋에 제목·작성자·작성 시각이 없음 | CR-017 DEV-062 / FR-SRCH-003 AC-3 | 실제 상태 — PR 문서는 SHA 배열만 갖고 커밋 문서를 조인해도 메시지가 없다. 배열 **모양은 객체**로 두어 WP-020이 키를 더할 때 계약을 고치지 않아도 되게 했다 | WP-020 |
 | 250건 초과 원본 커밋의 **진짜 총계를 모름** | CR-017 DEV-063 / FR-SRCH-003 AC-4 | 실제 상태 — 보강 payload가 총계를 나르지 않는다. 250을 총계로 내보내면 거짓이므로 **키를 빼고** `source_commits_truncated: true`만 남긴다 | `EVT-ING-002` 확장 CR |
-| 릴리스 태그를 식별자로 판별하지 않음 | CR-017 DEV-065 / 해석 순서 7단계 | 실제 상태 — **태그 패턴이 어디에도 정의되어 있지 않고** `prs-releases`도 비어 있다. 추측해 넣으면 `v1`·`build-2`가 오분류되어 전문 검색으로 가야 할 질의가 0건이 된다 | WP-024 (릴리스 수집)가 패턴을 정의한다 |
+| 릴리스 태그를 식별자로 판별하지 않음 | CR-017 DEV-065 / 해석 순서 7단계 | 실제 상태 — 다만 **막던 것이 바뀌었다** (2026-08-24): WP-024가 릴리스 데이터를 세웠으므로 이제 패턴 추측이 아니라 **`release` 표 조회(정확 일치)**로 판별할 수 있다. 릴리스 앵커가 이미 그 방식이다. `/resolve` 배선만 남았다 | `/resolve` 소유 WP의 후속 (WP-014 연장) — 표 조회로 구현, 정규식 금지 원칙 유지 |
 | 단건 해석 p95(NFR-001)와 ADR-012의 선택도 근거가 측정되지 않음 | WP-014 DoD / DEV-058 | **NOT RUN** — 커밋 1000만 건 데이터셋이 없다. 접두가 겹칠 때 후보가 여럿 나온다는 **동작**만 확인했고, "5000만 커밋에서도 통상 1건"이라는 ADR-012의 **근거**는 확인하지 못했다 | **REL-002 성능 게이트 전 필수** |
 | `/resolve`가 자유 텍스트를 전문 검색으로 위임하지 않음 | WP-014 범위 (전문 검색은 WP-032) | 실제 상태 — `detected_kind: 'text'`로 판별만 하고 후보는 빈 배열이다. 화면이 그 신호를 받아 `/search`를 부른다 | WP-016 (화면 결합), WP-032 (전문 검색) |
 | 문서당 `EVT-ING-003`이 하나씩 발행됨 (PR 1 + 커밋 N) | 비동기 문서 4장의 payload가 엔티티 단위 | 실제 상태 — 커밋 250건 PR이면 251건이 나간다. `noop`은 내지 않아 재처리 시에는 줄어든다 | 관계 워커(WP-029) 실측 후 필요하면 CR |
@@ -1489,14 +1534,14 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 | 커밋 상세의 **변경 경로가 골격뿐** | CR-021 DEV-094 / DEV-060 | 실제 상태 — `changed_paths`·`changed_files_count`가 채워지지 않는다. 섹션은 숨기지 않고 사유를 적으며, 총계를 `0`으로 그리지 않는다(*파일을 하나도 바꾸지 않은 커밋*과 같아진다). **파일 내용 미표시(`QA-W003-08`)는 금지 규칙이라 지금 세웠다** | WP-020 |
 | 커밋 상세의 시퀀스 위치가 **앞뒤 인접 커밋 없이 상태만** | WP-018 제외 목록 (데이터는 WP-027) | 실제 상태 — 값 없이도 **`off_chain`과 `not_computed`를 가른다**(역할로 판정, DEV-092). 앞뒤 목록과 "범위로 확장"은 WP-027 | WP-027 |
 | 백필의 실시간 영향(AC-3)이 **측정되지 않음** | WP-019 DoD / DEV-058과 같은 형태 | **NOT RUN** — 운영 규모 데이터셋도 부하 harness도 이 환경에 없다. 예산을 지키는 **구조**만 세웠다: 모든 백필 호출이 `priority: 'backfill'`이고 역할 분리로 워커 풀을 나눌 수 있다 | **REL-002 성능 게이트 전 필수** |
-| 백필이 릴리스를 채우지 않음 | FR-ING-006은 "과거 PR·커밋·**릴리스**"를 요구 / 릴리스 수집이 WP-024 | 실제 상태 — `prs-releases`가 비어 있고 릴리스를 만드는 경로가 아직 없다. 백필은 PR과 그 커밋만 채운다 | WP-024 |
+| ~~백필이 릴리스를 채우지 않음~~ | FR-ING-006은 "과거 PR·커밋·**릴리스**"를 요구 / 릴리스 수집이 WP-024 | **해소** (2026-08-24, WP-024) — 릴리스는 항목별 백필이 필요 없다: 동기화가 미러 refs/tags **전량 스냅숏 diff**라 과거 태그까지 한 번에 실린다. 남는 것은 시차뿐 — 신규 등록 저장소는 첫 태그 웹훅 또는 6시간 스윕까지 기다린다(백필 완료가 즉시 갱신을 트리거하지 않는다 — `BackfillDeps`에 버스가 없다, JOB-SEQ-001과 같은 기존 공백) | 백필 완료 → 갱신 신호 배선은 별도 정리 (시퀀스와 같은 자리) |
 | 백필 진행률의 `total`이 마지막 페이지 전까지 `null` | WP-019 구현 / GitHub `/pulls`가 총계를 주지 않음 | 실제 상태 (의도) — **`done`을 총계로 쓰지 않는다.** 쓰면 언제나 100%로 보여 운영자가 끝난 줄 안다. 마지막 페이지에 닿아야 총계를 안다 | 없음 (GHE API의 한계) |
 | **통합 시험의 `delete_by_query` 정리가 refresh되지 않은 문서를 놓친다** | 이 저장소의 통합 스위트 공통 패턴 (`worker/project.test.ts`·`ops/pipeline-status.test.ts`·`admin/repositories.test.ts`·`jobs/backfill.test.ts`) | 실제 상태 — `delete_by_query`는 검색으로 대상을 찾으므로 인덱스의 `refresh_interval`(1초)보다 짧은 간격으로 이어지는 시험 사이에서는 앞 시험이 남긴 문서를 **보지 못한다.** `refresh: true`는 지운 *뒤에* 새로 고치는 옵션이라 이것을 풀지 않는다. **PR #21에서 실제로 터졌다** — 문서 하나가 살아남아 집계가 3이 됐다. `jobs/backfill.test.ts`는 정리 전에 refresh하도록 고쳤고, **나머지 세 스위트는 이 PR에서 건드리지 않았다**(지금은 초록이고 WP-019 범위 밖이다) | 남은 세 스위트에도 같은 한 줄을 넣는 별도 정리 |
 | **로컬에서 못 도는 통합 시험은 Elasticsearch 의존분뿐이다** | DEV-006·DEV-008이 "Docker가 없어 통합 시험 NOT RUN"으로 적어 온 것의 정정 | 실제 상태 — 이 환경에 네이티브 **PostgreSQL 16.13**과 **`redis-server`**가 있다. 그 둘만 쓰는 **19파일 181건이 로컬에서 통과한다.** 없는 것은 ES뿐이고 거기 걸린 것이 12파일이다. **이 사실을 WP-019 착수 때 확인하지 않아 AC-6 결함(DEV-107)이 CI까지 갔다** — 상한은 PostgreSQL만의 성질이라 로컬에서 잡을 수 있었다 | ES 의존 시험은 여전히 CI가 처음 판정한다. 앞으로는 착수 시 ES 비의존분을 먼저 돌린다 |
 | **기본 설정에서 patch-id가 나오지 않는다** | CR-023 DEV-111 → **CR-024로 확정** / ADR-005 vs THR-015·인프라 5장 | 실제 상태 (의도된 선택) — `git patch-id`가 blob을 요구하고 blobless 미러에는 blob이 없다. 지연 인출을 켜면 소스가 볼륨에 쌓여 THR-015의 완화 근거와 용량 산정이 무너진다. **요구사항(THR-015·용량)을 ADR의 Positive보다 앞세웠고**, FR-REL-005 AC-5가 정의한 `patch_id_unavailable` 경로로 간다. `MIRROR_ALLOW_BLOB_FETCH=true`로 켤 수 있고 켜지면 기동 로그가 경고한다 | **결정 완료 (CR-024)** — 볼륨을 blobless로 유지하는 쪽. FR-REL-005 AC-2를 조건부로 좁혀 SRS에 반영했으므로 **이제 이것은 미구현이 아니라 명세대로의 동작이다** |
 | 커밋 메타데이터가 여전히 비어 있다 | CR-023 DEV-112 → **CR-024가 잡을 정의** / DEV-090·DEV-094와 같은 자리 | 실제 상태 — 그래프 접근 계층은 섰지만 그 값을 커밋 문서에 쓰는 코드가 아직 없다. **잡은 이제 정의되어 있다** (`JOB-MIR-002`) | **WP-067** |
 | 미러 스윕 루프와 지표 보고에 시험이 없다 | WP-020 구현 (`mirror-runner.ts`) | 실제 상태 — 미러 동기화 자체(clone·fetch·prune·실패·폴백)는 통합 시험이 걸지만 6시간 스윕 루프와 `mirror_disk_usage_ratio` 보고는 걸지 않았다. **변이 시험도 돌리지 못했다** | 스윕에 시험을 붙이는 별도 정리 |
-| PR 상세의 선행·후행·릴리스·관계가 **골격뿐** | WP-017 제외 목록 (데이터는 WP-024·WP-027·WP-031) | 실제 상태 (의도) — **셋 다 숨기지 않고 사유를 적는다.** 숨기면 사용자가 기능 부재로 오인한다. 미머지 PR의 선행·후행 사유는 머지된 PR과 **다른 문구**다 | WP-024, WP-027, WP-031 |
+| PR 상세의 선행·후행·관계가 골격뿐 (**릴리스는 해소**) | WP-017 제외 목록 (데이터는 WP-024·WP-027·WP-031) | **부분 해소** (2026-08-24) — 포함 릴리스 섹션(C-020)은 WP-024로 실데이터가 붙었고 네 상태(포함/미배포/미수집/미채번)를 사유와 함께 그린다. 선행·후행(WP-027)·관계(WP-031)는 여전히 골격이며 숨기지 않고 사유를 적는다 | WP-027, WP-031 |
 | PR 상세 타임라인의 **승인 시각을 모름** | CR-020 DEV-084 / `approved_at`이 ES 매핑에 없음 | 실제 상태 — `approved_by`로 **일어난 것은 알고 시각만 모른다.** `done_at_unknown`으로 그리고 사유를 함께 적는다. `pending`으로 그리면 승인된 PR이 "승인 대기"가 된다 | 매핑에 `approved_at`을 더하는 별도 CR (투영과 `EVT-ING-002` 함께) |
 | 리뷰어별 상태가 "승인함 / 아직 아님" 둘뿐 | CR-020 DEV-085 / 투영이 리뷰어별 상태를 저장하지 않음 | 실제 상태 — "변경 요청"을 **지어내지 않는다.** `reviewers`·`approved_by` 두 로그인 목록만으로 파생할 수 있는 것이 이 둘이다 | 투영이 리뷰 상태를 저장하도록 하는 별도 CR |
 | `epoch_stale` 화면 상태가 없음 | CR-020 DEV-087 / 시퀀스가 WP-021까지 전부 `null` | 실제 상태 (의도) — **도달할 수 없는 코드를 만들지 않았다.** 에폭 변경을 감지할 경로도 정해져 있지 않다 | **WP-021**이 시퀀스와 함께 감지 경로를 정한다 |
@@ -1578,12 +1623,16 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 45. ~~WP-022 시퀀스 재채번과 에폭~~ → 완료 (2026-08-23, `2adc9dd` / PR #27). 검증 결과는 6.22장. **DoD 7항 전부 통과**
 46. ~~CR-027 WP-023 앵커·범위 계약 정정~~ → 완료 (2026-08-23). DEV-130~140 등록: **범위의 정본을 PostgreSQL로 정정**(DEV-130), `index.sort` 방향 오류(DEV-131), 릴리스 앵커 근거 부재(DEV-132 → WP-024), 되돌림 수(DEV-133 → WP-030), 나머지 일곱은 값 단위·필터 의미·경계의 미정 자리. SRS는 건드리지 않았다
 47. ~~WP-023 앵커 정규화와 범위 조회 API~~ → 완료 (2026-08-23, PR #28). 검증 결과는 6.23장. **DoD 8항 중 7항 통과** — p95는 PostgreSQL 구간만 실측(7.50ms/5000건), ES 포함 전체는 NOT RUN. 변이 30종 전부 잡힘 (1차 생존 3종은 시험 결함으로 판명, 구별 시험 추가)
+48. ~~CR-028 WP-024 릴리스 계약 정정~~ → 완료 (2026-08-24). DEV-142~149 등록·해소: **릴리스 정본을 PostgreSQL로 정정**(DEV-142, ADR-004), 미러 태그 갱신 실측으로 기록 사유 반증(DEV-143), 잡·이벤트·스트림 등록(DEV-144), 태그 push 신호(DEV-145), 미수집 200+사유(DEV-146), `released_at`=creatordate+GHE 덮어쓰기(DEV-147), 가장 이른 5개(DEV-148), 에폭 재해석(DEV-149). SRS는 건드리지 않았다
+49. ~~WP-024 릴리스 수집과 포함 관계~~ → 완료 (2026-08-24). 검증 결과는 6.24장. **DoD 7항 전부 통과.** 변이 12종 — 로컬 킬 11(생존 3종은 시험 결함, 구별 시험 추가 후 킬), 실-ES 전용 킬 1(M11, CI 판정). 실-ES 계층 작성 중 매핑 결함 둘을 푸시 전에 발견·수정
 
 **감지와 회복이 이어졌다.** 재작성이 나면 push 한 번으로 감지→에폭 증가→재채번까지 끝나고, 이전 에폭 인용은 조회의 에폭 비교로 `epoch_stale`이 된다. **AC-4의 핵심 결정은 "무효 표시는 쓰기가 아니라 비교"라는 것이다** (DEV-126) — 표식·세션·저장된 검색 어디에도 소급 쓰기가 없고, 각자 저장한 에폭이 곧 판정 근거다. `saved_search`를 만들 WP-033과 표식 화면을 만들 REL-006이 이 규칙 위에 선다.
 
 ~~**다음은 WP-023 앵커 정규화와 범위 조회 API다.**~~ → **완료 (2026-08-23).** 검증 결과는 6.23장.
 
-**다음은 WP-024 릴리스 수집과 포함 관계다** (선행 WP-021·WP-008 충족). WP-023이 이월해 둔 릴리스 태그 앵커(DEV-132)가 거기서 처음 해석된다 — `release`/`create` 웹훅과 백필이 `prs-releases`를 채우면 앵커 해석의 `release` 갈래가 `ANCHOR_UNRESOLVABLE`에서 실제 조회로 바뀐다. 화면(WP-025)도 선행이 찼으므로 순서를 바꿔도 된다. WP-067·WP-068은 여전히 독립이다.
+~~**다음은 WP-024 릴리스 수집과 포함 관계다.**~~ → **완료 (2026-08-24).** 검증 결과는 6.24장. 릴리스 앵커(DEV-132 이월분)가 해석으로 바뀌었고, "이 PR이 어느 배포에 들어갔는가"(SCN-004)가 W-002·W-003에서 실데이터로 답한다.
+
+**다음은 WP-025 W-004 범위 조사 화면이다** (선행 WP-023·WP-015 충족). 앵커 입력·정규화 결과·범위 요약·PR 목록이 화면으로 이어지면 FLOW-003(60초 안에 반영분 확정)이 처음으로 끝까지 걷힌다. 릴리스 화면 WP-026도 선행(WP-024)이 찼으므로 순서를 바꿔도 된다. WP-067·WP-068은 여전히 독립이다.
 
 **WP-020이 함께 닫는 것 셋.** 지금 화면들이 "아직 수집 전"이라고 적어 둔 자리가 전부 WP-020의 몫이다 — 커밋 메시지·작성자·시각(DEV-090), 변경 경로(DEV-094), PR 상세의 원본 커밋 제목(DEV-062). 타입을 전부 널 허용으로 열어 두었으므로 **화면을 고치지 않아도 키가 붙는 대로 채워진다.**
 

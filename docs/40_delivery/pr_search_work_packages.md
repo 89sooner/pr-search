@@ -834,25 +834,29 @@
 - 관련 API/데이터/잡: API-REL-002, ENT-REL-001
 - 선행 WP: WP-021, WP-008
 - 구현 범위:
-  - `release`/`create`(tag) 웹훅 처리 → `prs-releases` 문서
-  - 백필 시 태그·릴리스 목록 수집
-  - 릴리스 커밋의 시퀀스 값 부여
-  - `GET /containments`: 시퀀스 정수 비교로 포함 판정 (간선 생성 없음)
-  - `release_tags` 비정규화 (상위 5개), `unreleased` 플래그
-  - 미배포 시 대기 PR 수 계산
-  - **WP-023에서 이월: `POST /sequence-anchors/resolve`의 `release` 앵커**를 `ANCHOR_UNRESOLVABLE`에서 실제 해석으로 바꾼다 (CR-027, DEV-132 / FR-SEQ-003 AC-1). 미러는 `fetch --no-tags`라 근거가 못 되므로 `prs-releases`를 본다
+  - **PostgreSQL `release` 테이블 신설** (마이그레이션 008, CR-028 DEV-142 — ADR-004). 포함 판정·앵커 해석의 정본이다. `prs-releases`는 투영
+  - **태그의 정본은 미러다** (CR-028, DEV-143 실측 — `--mirror` refspec은 `--no-tags`와 무관하게 태그를 옮긴다). `for-each-ref refs/tags`로 전량 열거해 diff 동기화: 신규 upsert, 삭제 반영, 서수는 현재 에폭으로 전량 재해석(DEV-149)
+  - `release`·`create(tag)`·`delete(tag)`·`push(refs/tags)` 웹훅 → 게이트웨이가 `prs:release`에 갱신 신호 발행 (JOB-REL-007, EVT-REL-001) + 6시간 보정 스윕 + 재채번 후 재해석
+  - `released_at` = git `creatordate`(주석=taggerdate, 경량=커밋 시각). GHE 자격 증명이 있으면 GitHub Release `published_at`이 덮는다(`source: github_release`, DEV-147)
+  - `GET /containments`: **PostgreSQL에서** 시퀀스 정수 비교로 포함 판정 (간선 생성 없음). 릴리스 미수집은 **200 + `reason: "release_not_indexed"`** (DEV-146)
+  - `release_tags` 비정규화 (**가장 이른 5개**, DEV-148), `unreleased` 플래그 — 표시 전용, 판정은 PG
+  - 미배포 시 대기 PR 수 계산 (정본 `merge_sequence`에서)
+  - **WP-023에서 이월: `POST /sequence-anchors/resolve`의 `release` 앵커** 해석 (FR-SEQ-003 AC-1) — PostgreSQL `release` 표를 본다 (DEV-143이 이월 사유의 미러 문구를 정정했다)
   - `C-020 ReleaseContainmentList` 구현, W-002·W-003 섹션 연결
 - 제외:
   - CI 배포 이벤트 소스 (조건부, OD-004)
   - 릴리스 화면 (WP-026)
+  - C-022 PrTimeline의 릴리스 단계 연결 (별도 정리 — 원장 8장)
 - 완료 기준(DoD):
   - [ ] QA-W002-08, QA-W002-09가 통과한다
   - [ ] 포함 판정이 시퀀스 비교로 이루어진다 (FR-REL-002 AC-5)
   - [ ] 릴리스 목록이 시각 오름차순이다 (AC-3)
   - [ ] 미배포 시 `unreleased: true`와 대기 PR 수가 반환된다 (AC-4)
-  - [ ] 릴리스 미수집 저장소에서 `RELEASE_NOT_INDEXED`가 반환된다 (예외 처리)
-- 검증 방법: `pnpm test:integration release/containment`
-- 기록: 원장 WP-024 상태, FR-REL-002 매핑
+  - [ ] 릴리스 미수집 저장소에서 200 + `release_not_indexed` 사유가 반환된다 (예외 처리, DEV-146)
+  - [ ] **태그 삭제·강제 이동·재채번 뒤에도 동기화가 git과 일치한다** (diff·재해석의 자가 치유)
+  - [ ] 릴리스 앵커가 `seq:` 앵커와 같은 구간을 낸다 (FR-SEQ-003 AC-1 ↔ WP-023 회귀)
+- 검증 방법: `pnpm test:integration release/`, `pnpm test:regression releases-vs-git`
+- 기록: 원장 WP-024 상태, FR-REL-002·FR-SEQ-003 AC-1 매핑
 
 ### WP-025 W-004 범위 조사 화면
 

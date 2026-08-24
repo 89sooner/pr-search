@@ -190,8 +190,9 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 개체를 포함하는 릴리스 목록과 미배포 상태 표시
 - 기반: Conductor `Table` + `Badge`
-- 필수 props: `releases: ReleaseSummary[]`, `unreleased: boolean`, `pendingPrCount?: number`
-- 상태: `ready`, `unreleased`, `release_not_indexed`
+- 필수 props: `state: ContainmentState` (판정은 `lib/containment.ts`가 끝낸 상태 유니언)
+- 상태: `ready`, `unreleased`, `release_not_indexed`, **`not_sequenced`** (CR-028 — 대상에 서수가 없어 판정 기준 자체가 없는 상태. `unreleased`로 뭉치면 "판정했다"는 거짓이 된다)
+- 사용 규칙: 목록은 서버가 보장한 시각 오름차순을 그대로 그린다(QA-W002-08) — 화면이 다시 정렬하면 규칙이 갈라졌을 때 그 사실이 숨는다
 - 관련 FR: FR-REL-002
 
 ### C-021 LinkGroupList
