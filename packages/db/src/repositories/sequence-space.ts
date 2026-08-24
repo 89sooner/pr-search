@@ -35,6 +35,25 @@ export async function ensureSequenceSpace(
   );
 }
 
+/**
+ * 여러 저장소의 시퀀스 공간을 한 번에 읽는다 (API-SEQ-006, CR-029 DEV-152).
+ *
+ * C-027 셀렉터 목록이 쓴다 — 저장소마다 한 번씩 물으면 목록 크기만큼
+ * 왕복이 늘어난다. 행이 없는 (저장소, 브랜치) 짝은 결과에 없다: 그 부재가
+ * 곧 "채번된 적 없음"이고, 호출 측이 `unknown`으로 옮긴다.
+ */
+export async function listSpacesForRepositories(
+  db: Queryable,
+  repositoryIds: readonly number[],
+): Promise<SequenceSpaceRow[]> {
+  if (repositoryIds.length === 0) return [];
+  const result = await db.query<SequenceSpaceRow>(
+    'SELECT * FROM sequence_space WHERE repository_id = ANY($1) ORDER BY repository_id, base_branch',
+    [repositoryIds],
+  );
+  return result.rows;
+}
+
 export async function findSequenceSpace(
   db: Queryable,
   repositoryId: number,
