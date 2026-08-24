@@ -527,7 +527,16 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 
 **DEV-114는 이 CR이 찾아낸 것이다.** `allowed_team_ids`의 소유권을 정하려고 코드를 확인하다가, 매핑 넷이 선언하고 강제 필터가 읽는 그 필드를 **아무도 쓰지 않는다**는 사실이 드러났다. 통합 시험이 문서를 손으로 심으면서 그 필드를 직접 넣기 때문에 초록이 나온다 — **초록이 곧 검증은 아니다**의 또 한 사례다.
 
+| CR-029 | 2026-08-24 | correction | WP-025 착수 전 W-004 계약 감사에서 확인된 DEV-150~153 | **W-004 범위 조사 화면의 계약 네 곳이 실측과 어긋난다.** (1) QA-W004-10이 요구하는 요약 다섯 값 중 "되돌림 관계 보유 PR 수"는 관계 파생(WP-030) 전에는 데이터가 없다 — DEV-133이 이미 API에서 키 자체를 빼기로 정했으므로 화면 항목도 갈라야 한다(DEV-150). (2) WP-025 DoD "상태 매트릭스 W-004의 전 상태 렌더링"이 제외 범위의 상태까지 포함한다 — 안전 구간 표식(WP-041)·이분 탐색(WP-042)의 `bisect_contradiction` 등은 도달 불가하고, 도달 불가 상태는 만들지 않는다(DEV-087의 교훈, DEV-151). (3) C-027 SequenceSpaceSelector가 요구하는 저장소·브랜치 목록을 줄 **일반 사용자용 API가 없다** — 목록은 관리자 게이트(`/admin/repositories`)뿐이다. 접근 범위 필터를 지나는 `GET /sequence-spaces`(API-SEQ-006)를 신설한다(DEV-152). (4) 딥링크 경로가 문서 간 모순이다: 셸 내비게이션(WP-015 구현, main 병합)은 `/ranges`를 소유하는데 IA·와이어프레임·화면 흐름·프론트 아키텍처는 `/range`이고, IA의 파라미터는 `space=`인데 화면 흐름은 `repo`·`branch`다 — 구현된 코드 쪽(`/ranges`, `repo`·`branch` 분리)으로 통일한다(DEV-153). `q` 파라미터는 패싯 데이터가 서는 WP-032에서 붙는다 | DEV-150, DEV-151, DEV-152, DEV-153, DEV-154, FR-SEQ-002, FR-SEQ-003, QA-W004-10, QA-W004-11, W-004, C-013, C-027, API-SEQ-006 | API 계약, 제품 IA, 와이어프레임, 화면 흐름, 프론트 아키텍처, 작업 패키지, 원장 | closed (2026-08-24) |
 | CR-028 | 2026-08-24 | correction | WP-024 착수 전 릴리스 수집 계약 감사에서 확인된 DEV-142~149 | **릴리스 엔티티가 검색 인덱스에만 존재하도록 설계되어 있다.** 데이터 모델 3장의 ENT-REL-001은 저장 위치를 Elasticsearch로, 갱신 주체를 projection으로 적는다 — "어떤 데이터도 검색 인덱스에만 존재해서는 안 된다"는 ADR-004 위반이고, 범위 인용의 정본을 PostgreSQL로 정한 CR-027(DEV-130)과도 정면 충돌한다. 포함 판정과 릴리스 앵커가 ES에만 있는 데이터를 딛으면 색인 반영 실패가 **오류 없이 항목을 빠뜨리는** 같은 실패가 재현된다(DEV-142) → PostgreSQL `release` 테이블을 신설하고 ES는 투영으로 둔다. **DEV-132의 기록된 사유가 실측으로 반증됐다**(DEV-143): `--mirror` 클론의 refspec `+refs/*:refs/*`는 `--no-tags`와 무관하게 태그를 가져오고 prune이 삭제도 반영하며 `^{commit}` peel로 주석 태그도 커밋 SHA가 나온다 — 이월 결정 자체는 옳았으나(쓰는 경로 부재) 이유가 틀렸고, 이 사실이 WP-024의 태그 소스를 정한다: GHE API가 아니라 **미러**다 (ADR-007 대조 가능, 자격 증명 불요, 백필·실시간 동일 경로). 릴리스 수집의 잡·이벤트·스트림이 카탈로그에 없고(DEV-144, DEV-116과 같은 모양), 태그 push·release·create의 실시간 신호 추출이 게이트웨이에 없다(DEV-145). `RELEASE_NOT_INDEXED`가 계약 표에서 404인데 FR-REL-002 예외는 "빈 배열과 사유 코드를 함께"(=200)다(DEV-146). `released_at`의 뜻(DEV-147), `release_tags` "상위 5"의 뜻(DEV-148), 에폭 전환 시 릴리스 서수 무효 처리(DEV-149)가 미정이다 | DEV-142~149, FR-REL-002, FR-SEQ-003 AC-1, FR-SEQ-004, ADR-004, ADR-005, ADR-007, API-REL-002, ENT-REL-001 | 데이터 모델, 비동기·잡 카탈로그, API 계약, 작업 패키지, 원장 | closed (2026-08-24) |
+
+### CR-029 반영 내역 (2026-08-24)
+
+1. `pr_search_api_contracts.md` — API-SEQ-006 `GET /sequence-spaces` 신설 (표 행·상세 절·stable 등재). 접근 범위 필터 통과, unknown 브랜치 노출 규칙 명시 (DEV-152)
+2. `pr_search_product_ia.md`·`pr_search_wireframe_spec.md`·`pr_search_screen_flow_spec.md`·`pr_search_frontend_architecture.md` — 딥링크 `/range`→`/ranges`, 파라미터 `repo`·`branch`·`from`·`to`·`epoch` 통일, `space=` 제거 (DEV-153)
+3. `pr_search_work_packages.md` — WP-025 구현 범위에 API-SEQ-006·전용 결과 표(DEV-154) 반영, DoD를 되돌림 분할(DEV-150)·도달 가능 상태 13종(DEV-151)으로 정정
+4. 원장 — DEV-150~154 등록·해소, WP-025 검증 기록(6.25장)
+5. 검증 — WP-025 시험 전 계층 통과(원장 6.25장). SRS·PRD는 건드리지 않았다 (FR-SEQ-001~003이 이미 부여한 범위의 계약 정정)
 
 ### CR-028 반영 내역 (2026-08-24)
 

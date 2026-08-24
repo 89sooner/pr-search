@@ -30,7 +30,7 @@
 | `/search` | W-001 | FR-SRCH-005~009, FR-SRCH-011, FR-STAT-006 | 서버 최초 + 클라이언트 갱신 | API-SRCH-004, API-STAT-001 |
 | `/pr/[owner]/[repo]/[number]` | W-002 | FR-SRCH-003, FR-REL-001~007 | 서버 (헤더·개요·커밋) + 클라이언트 (관계·동시 변경) | API-SRCH-003, API-REL-001, API-REL-002, API-REL-003, API-REL-004 |
 | `/commit/[owner]/[repo]/[sha]` | W-003 | FR-SRCH-002, FR-REL-002 | 서버 | API-SRCH-002, API-REL-002 |
-| `/range` | W-004 | FR-SEQ-002, FR-SEQ-003, FR-SEQ-006, FR-SEQ-007 | 서버 최초 + 클라이언트 갱신 | API-SEQ-001, API-SEQ-002, API-SEQ-004, API-SEQ-005 |
+| `/ranges` | W-004 | FR-SEQ-002, FR-SEQ-003, FR-SEQ-006, FR-SEQ-007 | 서버 최초 + 클라이언트 갱신 | API-SEQ-001, API-SEQ-002, API-SEQ-006, API-SEQ-004, API-SEQ-005 |
 | `/releases/[owner]/[repo]` | W-005 | FR-SEQ-004, FR-REL-002 | 서버 | API-SEQ-003 |
 | `/analytics` | W-006 | FR-STAT-001~005 | 클라이언트 (패널별 독립 조회) | API-STAT-001~004 |
 | `/graph` | W-007 | FR-REL-008 | 클라이언트 | API-REL-004 |

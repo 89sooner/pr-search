@@ -30,7 +30,7 @@
 | `/search` | W-001 | `q`, `sort`, `order`, `cursor`, `tab` |
 | `/pr/:owner/:repo/:number` | W-002 | `section` (앵커 스크롤) |
 | `/commit/:owner/:repo/:sha` | W-003 | - |
-| `/range` | W-004 | `repo`, `branch`, `from`, `to`, `q`, `epoch` |
+| `/ranges` | W-004 | `repo`, `branch`, `from`, `to`, `q`(WP-032에서 붙는다), `epoch` |
 | `/releases/:owner/:repo` | W-005 | `branch`, `select` (비교 대상 2건) |
 | `/analytics` | W-006 | `q`, `from`, `to`, `interval`, `groupBy`, `tz` |
 | `/graph` | W-007 | `type`, `repo`, `id`, `depth`, `linkTypes` |
@@ -47,7 +47,7 @@
 - 권한 없음: `not_found` 상태로 응답한다. 접근 범위 밖 개체의 존재 여부를 노출하지 않는다 (FR-AUTH-002 AC-4). 단, 미인증이면 `auth_expired`로 구분한다.
 - 인증 만료: `auth_expired` 상태. 현재 경로를 보존해 인증 후 복귀한다.
 - 미수집 저장소: `not_indexed` 상태. W-009 저장소 개요로 이동하는 경로를 제시한다.
-- 시퀀스 에폭 불일치(`/range`의 `epoch` 파라미터가 현재 에폭과 다름): `epoch_stale` 상태. 현재 에폭으로 재조회하는 액션을 제시하고, 자동 재조회는 하지 않는다.
+- 시퀀스 에폭 불일치(`/ranges`의 `epoch` 파라미터가 현재 에폭과 다름): `epoch_stale` 상태. 현재 에폭으로 재조회하는 액션을 제시하고, 자동 재조회는 하지 않는다.
 
 ## FLOW-000 진입과 인증
 

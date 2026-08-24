@@ -40,10 +40,12 @@ import {
   containmentForPullRequest,
   type ContainmentResult,
 } from './containments.js';
+import { listSequenceSpaces } from './spaces-list.js';
 
 export const SEQUENCE_RANGE_PATH = '/api/v1/sequence-ranges';
 export const SEQUENCE_ANCHOR_PATH = '/api/v1/sequence-anchors/resolve';
 export const CONTAINMENT_PATH = '/api/v1/containments';
+export const SEQUENCE_SPACES_PATH = '/api/v1/sequence-spaces';
 
 export interface SequenceRouteOptions extends RangeDeps {
   readonly auth: AuthContext;
@@ -328,6 +330,19 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
         next_cursor: null,
         correlation_id: correlationId,
       });
+    } catch (error) {
+      return toFailureResponse(reply, correlationId, error);
+    }
+  });
+
+  // API-SEQ-006: C-027 셀렉터의 데이터 소스 (CR-029, DEV-152).
+  app.get(SEQUENCE_SPACES_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    try {
+      const userId = (await authenticateSession(request, auth.sessions)).userId;
+      const scope = await auth.scopes.resolve(userId);
+      const spaces = await listSequenceSpaces(deps.pool, scope);
+      return await reply.send({ spaces, correlation_id: correlationId });
     } catch (error) {
       return toFailureResponse(reply, correlationId, error);
     }

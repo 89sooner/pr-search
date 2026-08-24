@@ -34,6 +34,7 @@
 | API-SEQ-003 | GET | `/release-comparisons` | 두 릴리스 구간 비교 | 인증 + 접근 범위 | FR-SEQ-004 |
 | API-SEQ-004 | GET/PUT | `/safe-markers` | 안전 구간 표식 조회·등록 | 인증 / `release_manager` | FR-SEQ-006 |
 | API-SEQ-005 | GET/POST/DELETE | `/bisect-sessions` | 이분 탐색 상태 | 인증 | FR-SEQ-007 |
+| API-SEQ-006 | GET | `/sequence-spaces` | 접근 범위 안 시퀀스 공간 목록 (CR-029, DEV-152) | 인증 + 접근 범위 | FR-SEQ-001 |
 | API-REL-001 | GET | `/sequence-neighbors` | 선행·후행 조회 | 인증 + 접근 범위 | FR-REL-001 |
 | API-REL-002 | GET | `/containments` | 포함 릴리스·소속 PR | 인증 + 접근 범위 | FR-REL-002 |
 | API-REL-003 | GET | `/co-changes` | 동시 변경 상관 | 인증 + 접근 범위 | FR-REL-007 |
@@ -649,6 +650,35 @@ POST /api/v1/sequence-anchors/resolve
 
 - `to=unreleased`를 지정하면 마지막 릴리스 이후 브랜치 head까지를 조회한다 (AC-5)
 - 오류: `SEQUENCE_SPACE_MISMATCH` (400), `RELEASE_NOT_INDEXED` (404)
+
+### API-SEQ-006 시퀀스 공간 목록 (CR-029, DEV-152)
+
+- 목적: W-004·W-005의 시퀀스 공간 선택기(C-027)를 채운다 — 사용자의 접근 범위 안에 있는 등록 저장소와 그 시퀀스 대상 브랜치, 브랜치별 현재 에폭·상태를 준다.
+- 관련 요구사항: FR-SEQ-001 (시퀀스 공간의 정의), W-004-SPACE
+- 신설 사유: 저장소 목록이 관리자 게이트(`/admin/repositories`)에만 있어 일반 사용자가 셀렉터를 채울 수 없었다 (DEV-152). 접근 범위 강제 필터를 지나므로 범위 밖 저장소의 존재는 드러나지 않는다 (ADR-008·THR-004와 같은 원칙).
+
+응답:
+
+```json
+GET /api/v1/sequence-spaces
+{
+  "spaces": [
+    {
+      "repository": "acme/payments",
+      "repository_id": 2101,
+      "base_branch": "main",
+      "sequence_space": "acme/payments@main",
+      "seq_epoch": 3,
+      "sequence_state": "ok"
+    }
+  ],
+  "correlation_id": "..."
+}
+```
+
+- `sequence_state`는 `ok | stale | reassigning | unknown` — C-027의 `state` prop과 같은 집합이다 (WP-022가 정의).
+- 채번된 적 없는 브랜치(공간 행 부재)는 `sequence_state: "unknown"` + `seq_epoch: null`로 싣는다 — 목록에서 숨기면 사용자가 등록 부재로 오인한다 (숨기지 않는다 원칙).
+- 정렬은 `repository`, `base_branch` 오름차순. 페이지네이션 없음 — 등록 저장소는 운영상 수백 규모다 (FR-ING-009의 등록 모델).
 
 ### API-REL-001 선행·후행 조회
 
@@ -1327,7 +1357,7 @@ POST /api/v1/admin/sequence-integrity
 
 | API | 상태 | 변경 정책 |
 | --- | --- | --- |
-| API-SRCH-001~004, API-SEQ-001~003, API-REL-001~002 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
+| API-SRCH-001~004, API-SEQ-001~003, API-SEQ-006, API-REL-001~002 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
 | API-STAT-001~004, API-SEQ-004~005, API-REL-003~004 | stable | 위와 동일 |
 | API-ADM-* | internal | 운영 콘솔 전용. 프런트엔드와 동시 배포 전제로 변경 가능 |
 | API-ING-001 | external | GHE 계약. 변경 시 웹훅 재등록 필요 |

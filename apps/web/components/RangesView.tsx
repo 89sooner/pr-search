@@ -1,0 +1,405 @@
+'use client';
+
+/**
+ * W-004 범위 조사 (WP-025 / FLOW-003, FR-SEQ-002·003).
+ *
+ * ## 흐름이 상태의 정본을 정한다
+ *
+ * - **URL이 조사 상태다** — 공간·앵커·에폭이 `/ranges?repo=&branch=&from=&to=&epoch=`에
+ *   실리고, 조회가 성공하면 URL을 현재 에폭으로 갱신한다. 그 URL이 곧 인용이다 (ADR-007).
+ * - **정규화는 사용자 행위(Enter·blur)로만** 일어난다 — 타이핑마다 부르지 않는다.
+ * - **조회 버튼은 사전 판정이 지킨다** (QA-W004-07·08·09): 역전은 교환 제안,
+ *   5만 초과는 축소 안내를 조회 전에 낸다. 서버(RANGE_INVERTED·RANGE_TOO_LARGE)가
+ *   이중 방어다.
+ * - **에폭 불일치는 경고이지 재조회가 아니다** (QA-W004-21) — URL의 에폭이 현재와
+ *   다르면 무효 경고와 "현재 에폭으로 재조회" 액션을 내고, 클릭 전에는 아무것도
+ *   다시 부르지 않는다.
+ */
+
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Badge, Banner, Button, Panel } from '@conductor-by-89soone/react';
+import { AnchorInput, type AnchorFieldState } from './AnchorInput';
+import { SequenceSpaceSelector, type SequenceSpaceRef } from './SequenceSpaceSelector';
+import { RangeSummaryCard } from './RangeSummaryCard';
+import { RangeResultTable } from './RangeResultTable';
+import { FacetRail } from './FacetRail';
+import { ErrorBanner } from './ErrorBanner';
+import {
+  formatRangeQuery,
+  judgeAnchorFailure,
+  judgeEpoch,
+  judgeItems,
+  judgeResolvedAnchors,
+  judgeSpaces,
+  judgeSummary,
+  parseRangeParams,
+  preflightRange,
+  type RangeItemView,
+  type RangeSummaryView,
+  type ResolvedAnchorView,
+  type SequenceSpaceOption,
+} from '../lib/range';
+
+interface RangeSuccess {
+  readonly seqEpoch: number;
+  readonly sequenceState: 'ok' | 'stale' | 'reassigning' | 'unknown';
+  readonly summary: RangeSummaryView | null;
+  readonly items: readonly RangeItemView[];
+  readonly missingInIndex: number;
+}
+
+type QueryOutcome =
+  | { readonly kind: 'idle' }
+  | { readonly kind: 'loading' }
+  | { readonly kind: 'ready'; readonly result: RangeSuccess }
+  | { readonly kind: 'epoch_stale'; readonly currentEpoch: number; readonly requestedEpoch: number }
+  | { readonly kind: 'server_error'; readonly code: string; readonly message: string; readonly correlationId: string | null; readonly status: number }
+  | { readonly kind: 'offline' };
+
+export interface RangesViewProps {
+  readonly loginPath: string;
+}
+
+export function RangesView({ loginPath }: RangesViewProps): ReactNode {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initial = useRef(parseRangeParams(new URLSearchParams(searchParams.toString())));
+
+  const [spaces, setSpaces] = useState<readonly SequenceSpaceOption[] | null>(null);
+  const [spacesFailed, setSpacesFailed] = useState(false);
+  const [space, setSpace] = useState<SequenceSpaceRef | null>(
+    initial.current.repo !== null && initial.current.branch !== null
+      ? { repository: initial.current.repo, baseBranch: initial.current.branch }
+      : null,
+  );
+  const [fromText, setFromText] = useState(initial.current.from ?? '');
+  const [toText, setToText] = useState(initial.current.to ?? '');
+  const [fromState, setFromState] = useState<AnchorFieldState>({ kind: 'idle' });
+  const [toState, setToState] = useState<AnchorFieldState>({ kind: 'idle' });
+  const [resolveEpoch, setResolveEpoch] = useState<number | null>(null);
+  const [outcome, setOutcome] = useState<QueryOutcome>({ kind: 'idle' });
+  const generation = useRef(0);
+
+  // 공간 목록은 이 화면의 자기 데이터다 (API-SEQ-006) — 진입 시 한 번 부른다.
+  useEffect(() => {
+    let alive = true;
+    void (async (): Promise<void> => {
+      try {
+        const response = await fetch('/api/sequence-spaces', { cache: 'no-store' });
+        if (!alive) return;
+        if (!response.ok) {
+          setSpacesFailed(true);
+          return;
+        }
+        setSpaces(judgeSpaces(await response.json()));
+      } catch {
+        if (alive) setSpacesFailed(true);
+      }
+    })();
+    return (): void => {
+      alive = false;
+    };
+  }, []);
+
+  const resolveAnchor = useCallback(
+    async (position: 'from' | 'to', expression: string): Promise<void> => {
+      if (space === null || expression.trim() === '') return;
+      const set = position === 'from' ? setFromState : setToState;
+      set({ kind: 'resolving' });
+      try {
+        const response = await fetch('/api/sequence-anchors/resolve', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            repository: space.repository,
+            base_branch: space.baseBranch,
+            anchors: [{ position, expression: expression.trim() }],
+          }),
+          cache: 'no-store',
+        });
+        const body: unknown = await response.json();
+        if (!response.ok) {
+          const failure = judgeAnchorFailure(body);
+          const message =
+            (body as { error?: { message?: string } }).error?.message ?? '앵커를 해석하지 못했습니다.';
+          set({ kind: 'failed', failure, message });
+          return;
+        }
+        const resolved = judgeResolvedAnchors(body).find((anchor) => anchor.position === position);
+        const epoch = (body as { seq_epoch?: number }).seq_epoch;
+        if (typeof epoch === 'number') setResolveEpoch(epoch);
+        if (resolved === undefined) {
+          set({ kind: 'failed', failure: null, message: '응답에 해석 결과가 없습니다.' });
+          return;
+        }
+        set({ kind: 'resolved', anchor: resolved });
+      } catch {
+        set({ kind: 'failed', failure: null, message: '네트워크 오류로 해석하지 못했습니다.' });
+      }
+    },
+    [space],
+  );
+
+  const fromAnchor: ResolvedAnchorView | null = fromState.kind === 'resolved' ? fromState.anchor : null;
+  const toAnchor: ResolvedAnchorView | null = toState.kind === 'resolved' ? toState.anchor : null;
+  const preflight = preflightRange(fromAnchor, toAnchor);
+
+  const runQuery = useCallback(
+    async (options: { readonly pinEpoch: number | null }): Promise<void> => {
+      if (space === null || fromAnchor === null || toAnchor === null) return;
+      const mine = (generation.current += 1);
+      setOutcome({ kind: 'loading' });
+      const query = new URLSearchParams({
+        repository: space.repository,
+        base_branch: space.baseBranch,
+        from_seq: String(fromAnchor.mergeSeq),
+        to_seq: String(toAnchor.mergeSeq),
+      });
+      if (options.pinEpoch !== null) query.set('seq_epoch', String(options.pinEpoch));
+      try {
+        const response = await fetch(`/api/sequence-ranges?${query.toString()}`, { cache: 'no-store' });
+        const body: unknown = await response.json();
+        if (generation.current !== mine) return;
+        const record = body as Record<string, unknown>;
+
+        if (response.ok && record['epoch_stale'] === true) {
+          // 서버가 "인용 에폭이 낡았다"고 답했다 — 결과 없이 경고만 낸다 (QA-W004-21).
+          setOutcome({
+            kind: 'epoch_stale',
+            currentEpoch: typeof record['seq_epoch'] === 'number' ? record['seq_epoch'] : 0,
+            requestedEpoch:
+              typeof record['requested_seq_epoch'] === 'number' ? record['requested_seq_epoch'] : 0,
+          });
+          return;
+        }
+        if (!response.ok) {
+          const error = (record['error'] ?? {}) as { code?: string; message?: string };
+          setOutcome({
+            kind: 'server_error',
+            code: error.code ?? 'UNKNOWN',
+            message: error.message ?? '조회에 실패했습니다.',
+            correlationId: typeof record['correlation_id'] === 'string' ? record['correlation_id'] : null,
+            status: response.status,
+          });
+          return;
+        }
+
+        const seqEpoch = typeof record['seq_epoch'] === 'number' ? record['seq_epoch'] : 0;
+        const stateRaw = record['sequence_state'];
+        setOutcome({
+          kind: 'ready',
+          result: {
+            seqEpoch,
+            sequenceState:
+              stateRaw === 'ok' || stateRaw === 'stale' || stateRaw === 'reassigning' ? stateRaw : 'unknown',
+            summary: judgeSummary(body),
+            items: judgeItems(body),
+            missingInIndex:
+              typeof record['items_missing_in_index'] === 'number' ? record['items_missing_in_index'] : 0,
+          },
+        });
+        /*
+         * 성공한 조회의 URL이 곧 인용이다 — 현재 에폭을 URL에 남긴다. 다음에
+         * 이 링크로 들어온 사람은 에폭 비교(QA-W004-21)의 보호를 받는다.
+         */
+        router.replace(
+          `/ranges?${formatRangeQuery({
+            repo: space.repository,
+            branch: space.baseBranch,
+            from: fromText,
+            to: toText,
+            epoch: seqEpoch,
+          })}`,
+        );
+      } catch {
+        if (generation.current === mine) setOutcome({ kind: 'offline' });
+      }
+    },
+    [space, fromAnchor, toAnchor, fromText, toText, router],
+  );
+
+  /*
+   * 딥링크 자동 흐름: 앵커가 URL에 실려 온 첫 진입이면 정규화까지는 자동으로
+   * 진행한다 — 사용자가 이미 링크로 의사를 밝혔다. **조회는 에폭 판정을 지나야
+   * 한다**: URL 에폭이 현재와 다르면 여기서 멈추고 경고만 낸다 (QA-W004-21).
+   */
+  const bootstrapped = useRef(false);
+  useEffect(() => {
+    if (bootstrapped.current || spaces === null || space === null) return;
+    bootstrapped.current = true;
+    if (initial.current.from !== null) void resolveAnchor('from', initial.current.from);
+    if (initial.current.to !== null) void resolveAnchor('to', initial.current.to);
+  }, [spaces, space, resolveAnchor]);
+
+  const selectedSpace =
+    space === null || spaces === null
+      ? undefined
+      : spaces.find(
+          (option) => option.repository === space.repository && option.base_branch === space.baseBranch,
+        );
+  const urlEpochJudgement =
+    selectedSpace?.seq_epoch != null ? judgeEpoch(initial.current.epoch, selectedSpace.seq_epoch) : 'unpinned';
+
+  const canQuery = preflight.kind === 'ok';
+
+  return (
+    <div data-testid="ranges-view">
+      <Panel as="section" aria-label="시퀀스 공간과 앵커">
+        {spacesFailed ? (
+          <p data-testid="spaces-error">시퀀스 공간 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.</p>
+        ) : null}
+        {spaces === null && !spacesFailed ? <p data-testid="spaces-loading">공간 목록을 불러오는 중…</p> : null}
+        {spaces !== null ? (
+          <SequenceSpaceSelector
+            spaces={spaces}
+            value={space}
+            onChange={(next) => {
+              setSpace(next);
+              // 공간이 바뀌면 이전 공간의 해석은 무효다 — 상태를 비운다.
+              setFromState({ kind: 'idle' });
+              setToState({ kind: 'idle' });
+              setOutcome({ kind: 'idle' });
+            }}
+          />
+        ) : null}
+
+        {/* 반개구간 규칙 상시 표기 (QA-W004-01) — 앵커 라벨의 제외/포함과 짝이다. */}
+        <p data-testid="range-boundary-rule">
+          구간 규칙: <code>(시작, 끝]</code> — 시작 앵커는 <Badge tone="neutral">제외</Badge>, 끝 앵커는{' '}
+          <Badge tone="neutral">포함</Badge>됩니다.
+        </p>
+
+        <AnchorInput
+          id="from"
+          label="시작 앵커"
+          boundary="exclusive"
+          value={fromText}
+          state={fromState}
+          epoch={resolveEpoch}
+          onChange={(value) => {
+            setFromText(value);
+            setFromState({ kind: 'idle' });
+          }}
+          onCommit={() => void resolveAnchor('from', fromText)}
+        />
+        <AnchorInput
+          id="to"
+          label="끝 앵커"
+          boundary="inclusive"
+          value={toText}
+          state={toState}
+          epoch={resolveEpoch}
+          onChange={(value) => {
+            setToText(value);
+            setToState({ kind: 'idle' });
+          }}
+          onCommit={() => void resolveAnchor('to', toText)}
+        />
+
+        {preflight.kind === 'inverted' ? (
+          <p data-testid="range-inverted" role="alert">
+            시작(seq {preflight.fromSeq})이 끝(seq {preflight.toSeq})보다 뒤입니다.{' '}
+            <Button
+              data-testid="range-swap"
+              onClick={() => {
+                // 교환 제안 (QA-W004-07) — 값을 서로 바꾸고 해석 상태도 함께 바꾼다.
+                setFromText(toText);
+                setToText(fromText);
+                const previousFrom = fromState;
+                setFromState(toState);
+                setToState(previousFrom);
+              }}
+            >
+              두 앵커 교환
+            </Button>
+          </p>
+        ) : null}
+        {preflight.kind === 'too_large' ? (
+          <p data-testid="range-too-large" role="alert">
+            예상 {preflight.expected.toLocaleString()}건 — 5만 건을 넘습니다. 앵커를 좁혀 주세요.
+          </p>
+        ) : null}
+
+        {urlEpochJudgement === 'stale' && outcome.kind === 'idle' ? (
+          <Banner tone="warning" title="에폭 불일치" data-testid="epoch-stale-banner">
+            이 링크는 에폭 {initial.current.epoch ?? 0} 기준 인용인데 현재 에폭은{' '}
+            {selectedSpace?.seq_epoch ?? 0}입니다. 서수가 다른 커밋을 가리킬 수 있어 자동으로 재조회하지
+            않습니다.
+          </Banner>
+        ) : null}
+
+        <Button
+          data-testid="range-query"
+          disabled={!canQuery}
+          onClick={() =>
+            void runQuery({
+              // 링크의 에폭 인용은 첫 조회에만 싣는다 — 서버가 낡음을 판정한다.
+              pinEpoch: outcome.kind === 'idle' ? initial.current.epoch : null,
+            })
+          }
+        >
+          조회
+        </Button>
+      </Panel>
+
+      {outcome.kind === 'idle' && fromAnchor === null && toAnchor === null ? (
+        <p data-testid="range-empty">앵커 두 개를 지정하면 구간을 조회합니다.</p>
+      ) : null}
+      {outcome.kind === 'loading' ? <p data-testid="range-loading">구간을 조회하는 중…</p> : null}
+
+      {outcome.kind === 'epoch_stale' ? (
+        <Banner tone="warning" title="인용 에폭이 낡았습니다" data-testid="epoch-stale-result">
+          에폭 {outcome.requestedEpoch} 인용은 현재 에폭 {outcome.currentEpoch}에서 무효입니다.{' '}
+          <Button data-testid="requery-current-epoch" onClick={() => void runQuery({ pinEpoch: null })}>
+            현재 에폭으로 재조회
+          </Button>
+        </Banner>
+      ) : null}
+
+      {outcome.kind === 'server_error' ? (
+        <ErrorBanner
+          tone={outcome.status >= 500 ? 'danger' : 'warning'}
+          title={`조회 실패 (${outcome.code})`}
+          impact={outcome.message}
+          correlationId={outcome.correlationId}
+          recoverable={outcome.status < 500}
+        />
+      ) : null}
+      {outcome.kind === 'offline' ? (
+        <p data-testid="range-offline" role="alert">
+          네트워크 오류로 조회하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.
+        </p>
+      ) : null}
+
+      {outcome.kind === 'ready' ? (
+        <>
+          {outcome.result.sequenceState === 'reassigning' ? (
+            <Banner tone="warning" title="재채번 진행 중" data-testid="reassigning-banner">
+              마지막 확정 값으로 표시 중입니다 — 재채번이 끝나면 서수가 달라질 수 있습니다 (QA-W004-22).
+            </Banner>
+          ) : null}
+          {outcome.result.sequenceState === 'stale' ? (
+            <Banner tone="warning" title="채번이 뒤처져 있습니다" data-testid="stale-banner">
+              최근 머지가 아직 서수를 받지 않았습니다. 구간 끝이 실제보다 짧을 수 있습니다.
+            </Banner>
+          ) : null}
+          {outcome.result.summary === null ? null : <RangeSummaryCard summary={outcome.result.summary} />}
+          <div data-testid="range-body">
+            <FacetRail source={{}} ast={null} onToggle={() => undefined} />
+            {space === null ? null : (
+              <RangeResultTable
+                repository={space.repository}
+                items={outcome.result.items}
+                missingInIndex={outcome.result.missingInIndex}
+              />
+            )}
+          </div>
+        </>
+      ) : null}
+      <span data-testid="login-path" hidden>
+        {loginPath}
+      </span>
+    </div>
+  );
+}
