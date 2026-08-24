@@ -82,6 +82,8 @@ function stubEs(): Client {
       esCalls.deleteByQuery.push(request);
       return Promise.resolve({ deleted: 0, failures: [] });
     },
+    // 걷어내기가 지우기 전에 refresh한다 — 검색 기반 삭제의 가시성 창 보정.
+    indices: { refresh: () => Promise.resolve({}) },
   } as unknown as Client;
 }
 

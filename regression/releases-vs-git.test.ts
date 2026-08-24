@@ -71,6 +71,7 @@ function stubEs(): Client {
     },
     updateByQuery: () => Promise.resolve({ updated: 0 }),
     deleteByQuery: () => Promise.resolve({ deleted: 0, failures: [] }),
+    indices: { refresh: () => Promise.resolve({}) },
   } as unknown as Client;
 }
 

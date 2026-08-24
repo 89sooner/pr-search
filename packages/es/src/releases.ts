@@ -93,6 +93,14 @@ export async function pruneReleaseDocuments(
   repositoryId: number,
   keepTagNames: readonly string[],
 ): Promise<void> {
+  /*
+   * **지우기 전에 refresh한다.** `delete_by_query`는 검색으로 대상을 찾으므로
+   * `refresh_interval`(1초) 안에 색인된 문서를 보지 못한다 — 같은 회차의
+   * 업서트 직후에 도는 이 걷어내기가 그 창에 걸리면 오류 없이 0건을 지운다
+   * (원장 7장의 기지 패턴, jobs/backfill.test.ts에서 실제로 터졌던 모양).
+   * 걷어내기는 저장소당 갱신 회차마다 한 번이라 refresh 비용은 무시할 수 있다.
+   */
+  await client.indices.refresh({ index: 'prs-releases' });
   const response = await client.deleteByQuery({
     index: 'prs-releases',
     routing: String(repositoryId),
