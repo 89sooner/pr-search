@@ -20,6 +20,7 @@ import { EntityHeader } from './EntityHeader';
 import { ErrorBanner } from './ErrorBanner';
 import { LinkedPrList } from './LinkedPrList';
 import { PendingSection } from './PendingSection';
+import { ReleaseContainmentSection } from './ReleaseContainmentList';
 import { SequencePosition } from './SequencePosition';
 import { ShaChip } from './ShaChip';
 import {
@@ -288,12 +289,7 @@ export function CommitDetailView({
 
       <ChangedPathList {...paths} owner="WP-020 (미러 기반 커밋 보강)" />
 
-      <PendingSection
-        id="commit-releases"
-        title="포함 릴리스"
-        reason="릴리스 수집이 서면 이 커밋을 포함하는 릴리스를 표시합니다."
-        owner="WP-024 (릴리스 수집)"
-      />
+      <ReleaseContainmentSection repository={repo} kind="commit" id={sha} />
       <PendingSection
         id="commit-links"
         title="관계"
