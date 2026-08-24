@@ -33,7 +33,13 @@ import {
 } from '../sequence/fixture.js';
 import { migratedPool, truncate } from '../../../../packages/db/integration/helpers.js';
 import { numberCommits } from '../../src/sequence-plan.js';
-import { refreshReleases, publishedAtByTag, type ReleaseDeps } from '../../src/release.js';
+import {
+  handleReleaseEvent,
+  publishedAtByTag,
+  refreshReleases,
+  startReleaseSweeper,
+  type ReleaseDeps,
+} from '../../src/release.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
 
 const REPOSITORY_ID = 6101;
@@ -49,7 +55,7 @@ let graph: MirrorCommitGraph;
 let chain: readonly string[];
 
 /** 대역 ES가 받은 호출 기록. */
-let esCalls: { bulk: unknown[]; updateByQuery: unknown[] };
+let esCalls: { bulk: unknown[]; updateByQuery: unknown[]; deleteByQuery: unknown[] };
 let esFailNext: boolean;
 
 function stubEs(): Client {
@@ -71,6 +77,13 @@ function stubEs(): Client {
       esCalls.updateByQuery.push(request);
       return Promise.resolve({ updated: 0 });
     },
+    deleteByQuery: (request: unknown) => {
+      if (esFailNext) return Promise.reject(new Error('es down'));
+      esCalls.deleteByQuery.push(request);
+      return Promise.resolve({ deleted: 0, failures: [] });
+    },
+    // 걷어내기가 지우기 전에 refresh한다 — 검색 기반 삭제의 가시성 창 보정.
+    indices: { refresh: () => Promise.resolve({}) },
   } as unknown as Client;
 }
 
@@ -143,7 +156,7 @@ beforeAll(async () => {
 }, 180_000);
 
 beforeEach(() => {
-  esCalls = { bulk: [], updateByQuery: [] };
+  esCalls = { bulk: [], updateByQuery: [], deleteByQuery: [] };
   esFailNext = false;
 });
 
@@ -206,11 +219,20 @@ describe('스냅숏 동기화 (DEV-142·143)', () => {
     expect(outcome.deletedCount).toBe(1);
     expect((await releaseRepo.listReleases(pool, REPOSITORY_ID)).map((row) => row.tag_name)).not.toContain('doomed');
 
-    // 색인에도 같은 삭제가 나갔다.
-    const deletes = esCalls.bulk
-      .flatMap((request) => ((request as { operations?: unknown[] }).operations ?? []))
-      .filter((op) => (op as Record<string, unknown>)['delete'] !== undefined);
-    expect(JSON.stringify(deletes)).toContain('doomed');
+    /*
+     * 색인 쪽 삭제는 "지운 것"이 아니라 **"남길 것 밖 전부"의 질의 삭제**다 —
+     * 회차의 부분 실패가 유령 문서로 남지 않고 다음 회차에 아문다 (수렴).
+     * doomed는 남길 목록에 없어야 하고, 살아 있는 태그는 있어야 한다.
+     */
+    const prune = esCalls.deleteByQuery[esCalls.deleteByQuery.length - 1] as {
+      routing?: string;
+      query?: unknown;
+    };
+    expect(prune.routing).toBe(String(REPOSITORY_ID));
+    const pruneJson = JSON.stringify(prune.query);
+    expect(pruneJson).toContain('must_not');
+    expect(pruneJson).not.toContain('doomed');
+    expect(pruneJson).toContain('rel-1');
   });
 
   it('**`ci_deployment` 행은 diff 삭제에서 면제다** — 미러에 없는 것이 정상인 출처다 (OD-004)', async () => {
@@ -349,6 +371,37 @@ describe('실패 갈래', () => {
     expect(outcome.kind).toBe('refreshed');
     // 정본은 갱신됐다.
     expect((await releaseRepo.listReleases(pool, REPOSITORY_ID)).length).toBeGreaterThan(0);
+  });
+
+  it('**일시 실패 이벤트는 ack가 아니라 retry다** — 재시도 예산을 버스가 집행한다', async () => {
+    /*
+     * ack하면 XACK로 사라져 문서화된 3회 백오프(비동기 문서 4장)를 쓰지 못하고,
+     * 일시 장애가 "다음 웹훅 또는 6시간 스윕까지 지연"으로 확대된다.
+     */
+    const event = {
+      payload: { repository_id: REPOSITORY_ID, correlation_id: 'evt-1' },
+      correlation_id: 'evt-1',
+    } as never;
+    const disposition = await handleReleaseEvent(
+      deps({ sync: async () => Promise.reject(new Error('network down')) }),
+      event,
+    );
+    expect(disposition).toEqual({ kind: 'retry', reason: 'mirror_sync_failed' });
+
+    // 성공은 그대로 ack다.
+    expect(await handleReleaseEvent(deps(), event)).toEqual({ kind: 'ack' });
+  });
+});
+
+describe('보정 스윕의 종료 (SIGTERM)', () => {
+  it('**대기 중에도 stop()이 즉시 돌아온다** — 6시간 타이머를 기다리면 강제 종료된다', async () => {
+    const sweeper = startReleaseSweeper(deps(), { intervalMs: 6 * 60 * 60 * 1_000 });
+    // 첫 회차(이 저장소 하나)가 sleep에 들어갈 시간을 준다.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    const startedAt = Date.now();
+    await sweeper.stop();
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
   });
 });
 

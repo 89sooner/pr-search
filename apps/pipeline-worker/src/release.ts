@@ -36,7 +36,7 @@ import {
 } from '@prs/db';
 import {
   applyReleaseTagsToDocuments,
-  deleteReleaseDocuments,
+  pruneReleaseDocuments,
   upsertReleaseDocuments,
   DENORM_TAG_LIMIT,
   type ReleaseDocInput,
@@ -280,7 +280,8 @@ export async function refreshReleases(
       syncedAtMs,
     );
     if (result.hasFailures) throw new Error('release_index_partial_failure');
-    await deleteReleaseDocuments(deps.es, repositoryId, deletedTags);
+    // 지운 태그가 아니라 **현재 스냅숏**을 넘긴다 — 이전 회차가 놓친 삭제도 함께 아문다.
+    await pruneReleaseDocuments(deps.es, repositoryId, rows.map((row) => row.tag_name));
   } catch {
     log({
       level: 'error',
@@ -367,7 +368,11 @@ export const RELEASE_LOCK_RETRY_MS = 15_000;
 export async function handleReleaseEvent(
   deps: ReleaseDeps,
   event: DeliveredEvent,
-): Promise<{ kind: 'ack' } | { kind: 'defer'; until: Date; reason: string }> {
+): Promise<
+  | { kind: 'ack' }
+  | { kind: 'retry'; reason: string }
+  | { kind: 'defer'; until: Date; reason: string }
+> {
   const payload = event.payload as Partial<ReleaseRefreshRequested> | undefined;
   const repositoryId = payload?.repository_id;
 
@@ -384,6 +389,15 @@ export async function handleReleaseEvent(
   if (outcome.kind === 'locked') {
     const now = (deps.now ?? ((): Date => new Date()))();
     return { kind: 'defer', until: new Date(now.getTime() + RELEASE_LOCK_RETRY_MS), reason: 'release_locked' };
+  }
+  /*
+   * 일시 실패(미러 동기화·태그 열거·정본 트랜잭션)는 ack가 아니라 **retry**다 —
+   * 버스가 지수 백오프와 재시도 예산(비동기 문서 4장: 3회)을 집행한다. ack하면
+   * 그 예산을 쓰지 않은 채 다음 신호나 6시간 스윕까지 지연이 늘어난다.
+   * 갱신이 멱등 전량 diff라 재시도는 안전하다.
+   */
+  if (outcome.kind === 'failed') {
+    return { kind: 'retry', reason: outcome.reason };
   }
   return { kind: 'ack' };
 }
@@ -419,9 +433,28 @@ export function startReleaseSweeper(
   options: { readonly intervalMs?: number } = {},
 ): ReleaseSweeper {
   const interval = options.intervalMs ?? RELEASE_SWEEP_INTERVAL_MS;
-  const sleep = deps.sleep ?? ((ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms)));
   const log = deps.log ?? ((): void => undefined);
   let stopped = false;
+
+  /*
+   * **깨울 수 있는 sleep이다.** 기본 setTimeout을 그대로 기다리면 SIGTERM이
+   * 와도 stop()이 최대 6시간짜리 타이머를 기다린다 — 롤링 배포의 종료 유예를
+   * 넘겨 강제 종료된다. stop()이 타이머를 걷어 즉시 깨운다.
+   */
+  let wake: () => void = () => undefined;
+  const interruptibleSleep = (ms: number): Promise<void> =>
+    new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        wake = () => undefined;
+        resolve();
+      }, ms);
+      wake = (): void => {
+        clearTimeout(timer);
+        wake = () => undefined;
+        resolve();
+      };
+    });
+  const sleep = deps.sleep ?? interruptibleSleep;
 
   const loop = (async (): Promise<void> => {
     while (!stopped) {
@@ -437,6 +470,7 @@ export function startReleaseSweeper(
       } catch (error) {
         log({ level: 'error', message: '릴리스 스윕 실패', reason: String(error).slice(0, 200) });
       }
+      if (stopped) break;
       await sleep(interval);
     }
   })();
@@ -444,6 +478,7 @@ export function startReleaseSweeper(
   return {
     async stop(): Promise<void> {
       stopped = true;
+      wake();
       await loop;
     },
   };

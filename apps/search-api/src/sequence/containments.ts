@@ -180,6 +180,36 @@ async function containmentOf(
   };
 }
 
+type JudgmentRow = Awaited<ReturnType<typeof mergeSequenceRepo.findByPullRequest>>[number];
+
+/**
+ * 여러 서수 행 가운데 판정에 쓸 행을 고른다.
+ *
+ * 재채번 뒤에는 같은 PR·커밋의 행이 **이전 에폭과 현재 에폭에 함께** 있다
+ * (WP-022의 copy가 인용 보존을 위해 이전 행을 지우지 않는다). 아무 행이나
+ * 집으면(rows[0]) 이전 에폭 행이 걸려 멀쩡히 재채번된 대상이
+ * `target_not_sequenced`로 나온다.
+ *
+ * 시퀀스 브랜치를 **등록 순서대로** 보고, 그 브랜치의 **현재 에폭**과 일치하는
+ * 행을 첫 적중으로 쓴다 — JOB-REL-007의 태그 서수 해석과 같은 결정론 규칙이다.
+ * 현재 에폭 행이 없으면 아무 행이나 돌려준다: `containmentOf`의 에폭 검증이
+ * 그 경우를 `target_not_sequenced`로 옳게 답한다.
+ */
+async function pickJudgmentRow(
+  deps: ContainmentDeps,
+  repository: RepositoryRow,
+  rows: readonly JudgmentRow[],
+): Promise<JudgmentRow | undefined> {
+  if (rows.length <= 1) return rows[0];
+  for (const branch of repository.sequence_branches) {
+    const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repository.repository_id, branch);
+    if (space === undefined) continue;
+    const row = rows.find((one) => one.base_branch === branch && one.seq_epoch === space.seq_epoch);
+    if (row !== undefined) return row;
+  }
+  return rows[0];
+}
+
 /** 서수 없는 대상의 공통 응답. 어느 릴리스와도 비교할 수 없다 — 미배포와 다른 상태다. */
 function unsequenced(
   commitSha: string | null,
@@ -205,7 +235,7 @@ export async function containmentForPullRequest(
   prNumber: number,
 ): Promise<ContainmentResult> {
   const rows = await mergeSequenceRepo.findByPullRequest(deps.pool, repository.repository_id, prNumber);
-  const row = rows[0];
+  const row = await pickJudgmentRow(deps, repository, rows);
   if (row === undefined) {
     /*
      * 채번에 없다 = 미머지이거나 아직 채번 전이다. PR의 실재는 색인이 알지만,
@@ -238,7 +268,7 @@ export async function containmentForCommit(
 ): Promise<ContainmentResult> {
   const sha = commitSha.toLowerCase();
   const rows = await mergeSequenceRepo.findByCommitSha(deps.pool, repository.repository_id, sha);
-  const onChain = rows[0];
+  const onChain = await pickJudgmentRow(deps, repository, rows);
   if (onChain !== undefined) {
     return containmentOf(deps, repository, {
       baseBranch: onChain.base_branch,

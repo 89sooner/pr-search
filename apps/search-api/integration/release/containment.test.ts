@@ -57,6 +57,8 @@ const NORELEASE = 2102;
 const EPOCH = 2103;
 /** 릴리스가 **체인 밖 태그뿐**인 저장소 — 미배포 판정의 대기-수 기준이 0이 된다. */
 const OFFCHAIN_ONLY = 2104;
+/** 재채번이 **끝난** 저장소 — 같은 PR·커밋의 행이 두 에폭에 함께 있다 (WP-022의 copy). */
+const REASSIGNED = 2105;
 const HIDDEN = 2900;
 const ORG = 1;
 const BRANCH = 'main';
@@ -152,6 +154,7 @@ beforeAll(async () => {
     [NORELEASE, 'acme', 'ledger', ORG],
     [EPOCH, 'acme', 'risk', ORG],
     [OFFCHAIN_ONLY, 'acme', 'infra', ORG],
+    [REASSIGNED, 'acme', 'billing', ORG],
     [HIDDEN, 'other', 'secret', 2],
   ] as const) {
     await repositoryRepo.upsertRepository(pool, {
@@ -240,6 +243,28 @@ beforeAll(async () => {
     source: 'git_tag',
   });
 
+  /*
+   * REASSIGNED: 재채번이 끝난 모습이다 — 같은 PR·커밋 행이 에폭 1(서수 1)과
+   * 에폭 2(서수 2)에 함께 있고 공간은 에폭 2다. 판정은 현재 에폭 행을 골라야
+   * 한다: 아무 행이나 집으면(rows[0]) 멀쩡히 재채번된 대상이 판정 불가가 된다.
+   */
+  await sequenceSpaceRepo.ensureSequenceSpace(pool, REASSIGNED, BRANCH);
+  for (const [epoch, seq] of [
+    [1, 1],
+    [2, 2],
+  ] as const) {
+    await mergeSequenceRepo.upsertMergeSequence(pool, {
+      repository_id: REASSIGNED,
+      base_branch: BRANCH,
+      seq_epoch: epoch,
+      merge_seq: seq,
+      commit_sha: `${'9'.repeat(40)}`,
+      pull_request_number: 81,
+      committed_at: new Date('2026-08-10T00:00:00Z'),
+    });
+  }
+  await pool.query('UPDATE sequence_space SET seq_epoch = 2 WHERE repository_id = $1', [REASSIGNED]);
+
   const redisPort: AuthRedis = {
     get: (key) => redis.get(key),
     set: (key, value, mode, seconds) => redis.set(key, value, mode, seconds),
@@ -249,7 +274,7 @@ beforeAll(async () => {
 
   const source: AccessScopeSource = {
     fetch: async () => ({
-      repositoryIds: [PAYMENTS, NORELEASE, EPOCH, OFFCHAIN_ONLY],
+      repositoryIds: [PAYMENTS, NORELEASE, EPOCH, OFFCHAIN_ONLY, REASSIGNED],
       orgIds: [ORG],
       teamIds: [10],
       visibilities: ['public', 'internal'],
@@ -393,6 +418,24 @@ describe('PR 기준 포함 판정 (API-REL-002 AC-2·AC-5)', () => {
     expect(body.reason).toBe('target_not_sequenced');
   });
 
+  it('**두 에폭에 행이 있으면 현재 에폭 행으로 판정한다** — 재채번이 끝난 대상은 판정 가능하다', async () => {
+    /*
+     * WP-022의 copy는 인용 보존을 위해 이전 에폭 행을 지우지 않는다. 아무
+     * 행이나 집으면 이전 에폭 행이 걸려, 멀쩡히 재채번된 PR이 판정 불가로
+     * 나온다 (Codex 리뷰 P1). 커밋 조회도 같은 행 집합을 지나므로 함께 건다.
+     */
+    const pr = await getContainment({ repository: 'acme/billing', kind: 'pull_request', id: '81' });
+    expect(pr.status).toBe(200);
+    expect(pr.body.merge_seq).toBe(2); // 에폭 2의 서수다 — 에폭 1의 1이 아니라.
+    expect(pr.body.reason).toBe('release_not_indexed'); // 판정은 성립했고, 릴리스가 미수집일 뿐이다.
+
+    const commit = await getContainment({ repository: 'acme/billing', kind: 'commit', id: `${'9'.repeat(40)}` });
+    expect(commit.status).toBe(200);
+    expect(commit.body.merge_seq).toBe(2);
+    expect(commit.body.reason).toBe('release_not_indexed');
+    expect(esRequests).toHaveLength(0);
+  });
+
   it('릴리스가 **체인 밖 태그뿐**이면 미배포이고, 대기 수의 기준은 0이다 (AC-4)', async () => {
     /*
      * 릴리스가 있으므로 미수집이 아니고(판정은 성립), 체인 위 릴리스가 없으므로
@@ -440,7 +483,7 @@ describe('커밋 기준 포함 판정 (API-REL-002 AC-1)', () => {
     expect(String(esRequests[0]?.['index'])).toContain('commits');
     // 강제 필터가 접근 가능한 저장소 목록으로 좁힌다 — 밖 계층 filter에 실린다.
     expect(JSON.stringify(esRequests[0]?.['query'])).toContain(
-      `"terms":{"repository_id":[${String(PAYMENTS)},${String(NORELEASE)},${String(EPOCH)},${String(OFFCHAIN_ONLY)}]}`,
+      `"terms":{"repository_id":[${String(PAYMENTS)},${String(NORELEASE)},${String(EPOCH)},${String(OFFCHAIN_ONLY)},${String(REASSIGNED)}]}`,
     );
   });
 
