@@ -15,6 +15,8 @@ import {
   ingestPartitionKey,
   sequencePartitionKey,
   type PushTarget,
+  type ReleaseRefreshRequested,
+  type ReleaseSignal,
   type SequenceRequested,
 } from '@prs/domain';
 import { toEventPayload, type InvalidationTarget } from '@prs/authz';
@@ -46,6 +48,7 @@ export interface ServerDeps {
   ) => Promise<void>;
   /** 채번 요청 발행 (JOB-SEQ-001 트리거, CR-025 DEV-116). */
   readonly publishSequenceRequest: (target: PushTarget, correlationId: string) => Promise<void>;
+  readonly publishReleaseRequest: (signal: ReleaseSignal, correlationId: string) => Promise<void>;
   /** PostgreSQL 연결 확인 (인프라 3장: 게이트웨이 헬스체크는 PG 연결을 본다). */
   readonly checkDatabase: () => Promise<void>;
   readonly archive: ArchiveWriter;
@@ -124,6 +127,36 @@ export function createPermissionPublisher(
 }
 
 /**
+ * 릴리스 갱신 신호 발행자 (JOB-REL-007의 트리거, CR-028 DEV-144·145).
+ *
+ * `event_id`가 (저장소, 상관 ID)로 결정론적이다 — 같은 웹훅의 재전송이 같은
+ * 신호가 된다. 태그 이름·SHA를 싣지 않는 이유는 EVT-REL-001에 있다: 갱신은
+ * 항상 미러 스냅숏과의 전량 diff이므로 신호에 필요한 것은 저장소뿐이고,
+ * payload의 태그를 신뢰하면 이벤트 순서 역전이 스냅숏을 되돌린다.
+ */
+export function createReleasePublisher(
+  bus: EventBus,
+  deadlineMs: number,
+): (signal: ReleaseSignal, correlationId: string) => Promise<void> {
+  return async (signal: ReleaseSignal, correlationId: string): Promise<void> => {
+    const payload: ReleaseRefreshRequested = {
+      repository_id: signal.repositoryId,
+      correlation_id: correlationId,
+    };
+    await withTimeout(
+      bus.publish(TOPICS.release, String(signal.repositoryId), {
+        event_id: deterministicEventId('release.refresh_requested', String(signal.repositoryId), correlationId),
+        event_name: 'release.refresh_requested',
+        correlation_id: correlationId,
+        occurred_at: new Date().toISOString(),
+        payload,
+      }),
+      deadlineMs,
+    );
+  };
+}
+
+/**
  * 채번 요청 발행자 (JOB-SEQ-001의 트리거, CR-025 DEV-116).
  *
  * 파티션 키가 `repository_id:base_branch`인 이유는 **같은 시퀀스 공간의 채번이
@@ -179,6 +212,7 @@ export function createServerDeps(pool: Pool, config: GatewayConfig, bus: EventBu
     enqueue: createIngestPublisher(bus, config.enqueueTimeoutMs),
     publishPermissionInvalidation: createPermissionPublisher(bus, config.enqueueTimeoutMs),
     publishSequenceRequest: createSequencePublisher(bus, config.enqueueTimeoutMs),
+    publishReleaseRequest: createReleasePublisher(bus, config.enqueueTimeoutMs),
     checkDatabase: async (): Promise<void> => {
       await pool.query('SELECT 1');
     },
@@ -294,6 +328,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         enqueue: deps.enqueue,
         publishPermissionInvalidation: deps.publishPermissionInvalidation,
         publishSequenceRequest: deps.publishSequenceRequest,
+        publishReleaseRequest: deps.publishReleaseRequest,
         archive: deps.archive,
         metrics: deps.metrics,
         maxBodyBytes: deps.config.maxBodyBytes,

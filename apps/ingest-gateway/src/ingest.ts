@@ -15,7 +15,7 @@
  * 서명 검증이 먼저인가"를 테스트로 증명할 수 없다.
  */
 
-import { extractPushTarget, type PushTarget } from '@prs/domain';
+import { extractPushTarget, extractReleaseSignal, type PushTarget, type ReleaseSignal } from '@prs/domain';
 import type { RawEventInsert } from '@prs/db';
 import { extractInvalidationTarget, isEmptyTarget, type InvalidationTarget } from '@prs/authz';
 import type { ArchiveWriter } from './archive.js';
@@ -103,6 +103,7 @@ export interface IngestDeps {
    * 경로에 새 실패 지점이 생긴다.
    */
   readonly publishSequenceRequest: (target: PushTarget, correlationId: string) => Promise<void>;
+  readonly publishReleaseRequest: (signal: ReleaseSignal, correlationId: string) => Promise<void>;
   readonly archive: ArchiveWriter;
   readonly metrics: IngestMetrics;
   readonly maxBodyBytes: number;
@@ -259,6 +260,26 @@ export async function ingestWebhook(deps: IngestDeps, request: WebhookRequest): 
           reason: 'sequence_publish_failed',
         });
       }
+    }
+  }
+
+  // 5d. 릴리스 갱신 신호 (JOB-REL-007, CR-028 DEV-144·145). 실패해도 202를
+  //     막지 않는다 — 갱신은 전량 diff라 이번 신호를 놓쳐도 다음 신호나
+  //     6시간 보정 스윕이 같은 결과에 도달한다. 유실이 곧 구멍이 아니다.
+  const releaseOutcome = extractReleaseSignal(eventType ?? '', payload as Record<string, unknown>);
+  if (releaseOutcome.kind === 'signal') {
+    try {
+      await deps.publishReleaseRequest(releaseOutcome.signal, correlationId);
+    } catch {
+      deps.metrics.releasePublishFailed.inc();
+      deps.log({
+        level: 'error',
+        message: '릴리스 갱신 신호 발행 실패 — 다음 신호나 보정 주기가 메운다',
+        correlation_id: correlationId,
+        delivery_id: deliveryId,
+        event_type: eventType,
+        reason: 'release_publish_failed',
+      });
     }
   }
 

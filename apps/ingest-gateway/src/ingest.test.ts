@@ -55,6 +55,7 @@ function harness(overrides: Partial<IngestDeps> = {}): Harness {
     publishSequenceRequest: async (): Promise<void> => {
       calls.push('sequence');
     },
+    publishReleaseRequest: async (): Promise<void> => {},
     archive,
     metrics: createIngestMetrics(),
     maxBodyBytes: MAX_BODY_BYTES,
@@ -384,5 +385,83 @@ describe('EVT-AUTH-001: 권한 캐시 무효화 발행 (CR-015, DEV-042)', () =>
       request({ eventType: 'member', rawBody: Buffer.from(JSON.stringify({ action: 'added' })) }),
     );
     expect(calls).not.toContain('permission');
+  });
+});
+
+describe('EVT-REL-001: 릴리스 갱신 신호 발행 (WP-024 / CR-028, DEV-144·145)', () => {
+  const tagPushBody = Buffer.from(
+    JSON.stringify({ ref: 'refs/tags/v1.2.0', repository: { id: 4021 } }),
+  );
+
+  it('**태그 push에서 발행한다** — 채번(5c)이 skip하는 바로 그 이벤트다', async () => {
+    const published: unknown[] = [];
+    const { deps } = harness({
+      publishReleaseRequest: async (signal, correlationId): Promise<void> => {
+        published.push({ signal, correlationId });
+      },
+    });
+
+    await ingestWebhook(deps, request({ eventType: 'push', rawBody: tagPushBody }));
+    expect(published).toEqual([
+      {
+        signal: { repositoryId: 4021 },
+        correlationId: '0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8',
+      },
+    ]);
+  });
+
+  it('브랜치 push에서는 발행하지 않는다 — push마다 전량 diff를 돌리지 않는다', async () => {
+    const published: unknown[] = [];
+    const { deps } = harness({
+      publishReleaseRequest: async (signal): Promise<void> => {
+        published.push(signal);
+      },
+    });
+
+    await ingestWebhook(
+      deps,
+      request({
+        eventType: 'push',
+        rawBody: Buffer.from(JSON.stringify({ ref: 'refs/heads/main', repository: { id: 4021 } })),
+      }),
+    );
+    expect(published).toEqual([]);
+  });
+
+  it('**발행이 실패해도 202다** — 다음 신호나 6시간 스윕이 같은 결과에 도달한다', async () => {
+    const { deps, logs } = harness({
+      publishReleaseRequest: async (): Promise<void> => {
+        throw new Error('Redis 연결 없음');
+      },
+    });
+
+    const outcome = await ingestWebhook(deps, request({ eventType: 'push', rawBody: tagPushBody }));
+    expect(outcome.status).toBe(202);
+    expect(deps.metrics.releasePublishFailed.get()).toBe(1);
+    expect(logs.some((entry) => entry.reason === 'release_publish_failed')).toBe(true);
+  });
+
+  it('발행이 실패해도 아카이브(레인 B)는 그대로 돈다', async () => {
+    const { deps, archived } = harness({
+      publishReleaseRequest: async (): Promise<void> => {
+        throw new Error('발행 실패');
+      },
+    });
+
+    await ingestWebhook(deps, request({ eventType: 'push', rawBody: tagPushBody }));
+    expect(archived).toHaveLength(1);
+  });
+
+  it('중복 전달은 다시 발행하지 않는다', async () => {
+    const published: unknown[] = [];
+    const { deps } = harness({
+      store: async () => ({ duplicate: true }),
+      publishReleaseRequest: async (signal): Promise<void> => {
+        published.push(signal);
+      },
+    });
+
+    await ingestWebhook(deps, request({ eventType: 'push', rawBody: tagPushBody }));
+    expect(published).toEqual([]);
   });
 });

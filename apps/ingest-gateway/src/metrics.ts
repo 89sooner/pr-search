@@ -38,6 +38,8 @@ export interface IngestMetrics {
    * 새 커밋의 서수가 늦으므로 오류로 남긴다.
    */
   readonly sequencePublishFailed: Counter;
+  /** 릴리스 갱신 신호 발행 실패 (JOB-REL-007). diff 갱신이라 다음 신호·보정이 메운다. */
+  readonly releasePublishFailed: Counter;
   render(): string;
 }
 
@@ -56,6 +58,10 @@ export function createIngestMetrics(): IngestMetrics {
     'ingest_sequence_publish_failed_total',
     '채번 요청 발행 실패 건수',
   );
+  const releasePublishFailed = new Counter(
+    'ingest_release_publish_failed_total',
+    '릴리스 갱신 신호 발행 실패 건수',
+  );
 
   return {
     received,
@@ -66,6 +72,7 @@ export function createIngestMetrics(): IngestMetrics {
     enqueueFailed,
     permissionPublishFailed,
     sequencePublishFailed,
+    releasePublishFailed,
     render: (): string =>
       renderMetrics([
         received,
@@ -75,6 +82,7 @@ export function createIngestMetrics(): IngestMetrics {
         enqueueFailed,
         permissionPublishFailed,
         sequencePublishFailed,
+        releasePublishFailed,
         responseSeconds,
       ]),
   };
