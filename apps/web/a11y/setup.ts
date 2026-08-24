@@ -6,3 +6,14 @@
  */
 
 import '@testing-library/jest-dom/vitest';
+
+/*
+ * Radix 기반 컴포넌트(Select 등)가 jsdom에 없는 포인터 API를 부른다 (WP-025).
+ * 없으면 열기 상호작용이 TypeError로 죽는다 — 실제 브라우저 동작은 e2e가 본다.
+ */
+if (typeof window !== 'undefined') {
+  window.HTMLElement.prototype.hasPointerCapture ??= () => false;
+  window.HTMLElement.prototype.setPointerCapture ??= () => undefined;
+  window.HTMLElement.prototype.releasePointerCapture ??= () => undefined;
+  window.HTMLElement.prototype.scrollIntoView ??= () => undefined;
+}
