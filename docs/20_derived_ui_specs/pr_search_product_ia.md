@@ -151,7 +151,7 @@ Product Surface
 | A-003 정합성 점검 결과 → 재채번 | A-003 | `operator` 역할 |
 | 딥링크 `/pr/:repo/:number` | W-002 | 권한 확인 후 |
 | 딥링크 `/commit/:repo/:sha` | W-003 | 권한 확인 후 |
-| 딥링크 `/range?space=&from=&to=` | W-004 | 권한 확인 후 |
+| 딥링크 `/ranges?repo=&branch=&from=&to=&epoch=` | W-004 | 권한 확인 후 (CR-029, DEV-153 — 표시 문자열 `space`를 파라미터로 쓰지 않는다, DEV-119와 같은 이유) |
 
 ## 6. 화면 ID 체계
 

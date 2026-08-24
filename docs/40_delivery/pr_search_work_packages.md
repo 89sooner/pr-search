@@ -866,24 +866,27 @@
 - 관련 API/데이터/잡: API-SEQ-001, API-SEQ-002
 - 선행 WP: WP-023, WP-015
 - 구현 범위:
+  - **`GET /sequence-spaces` (API-SEQ-006) 신설** — C-027이 쓸 접근 범위 안 시퀀스 공간 목록 (CR-029, DEV-152)
   - `C-027 SequenceSpaceSelector` (에폭·상태 표시)
   - `C-026 AnchorInput` (정규화 결과, "제외"/"포함" 라벨 상시 표시)
-  - `C-028 RangeSummaryCard`
+  - `C-028 RangeSummaryCard` — **되돌림 수는 "준비 중" 표기** (CR-029, DEV-150: API가 키를 주지 않는다, DEV-133). 값이 서는 것은 WP-030
   - `C-013 ResultTable` 재사용
-  - `C-012 FacetRail` (구간 내 패싯 — 데이터는 WP-032)
+  - `C-012 FacetRail` (구간 내 패싯 — 데이터는 WP-032, 골격+사유 표시)
   - 시퀀스 공간 불일치 시 클라이언트에서 조회 버튼 비활성 + 즉시 사유
-  - 구간 5만 건 초과 예상 시 조회 전 안내
+  - 구간 5만 건 초과 예상 시 조회 전 안내 (앵커 서수 차로 클라이언트 계산, 서버 RANGE_TOO_LARGE가 이중 방어)
   - `sequence_reassigning`/`sequence_stale`/`epoch_stale` 배너
-  - 딥링크 `/range?repo=&branch=&from=&to=&epoch=`
+  - 딥링크 `/ranges?repo=&branch=&from=&to=&epoch=` (경로는 셸이 소유한 `/ranges` — CR-029, DEV-153)
 - 제외:
-  - 안전 구간 표식 (WP-041), 이분 탐색 (WP-042)
+  - 안전 구간 표식 (WP-041), 이분 탐색 (WP-042) — **그 상태(`bisect_contradiction` 등)도 함께 제외한다** (CR-029, DEV-151: 도달 불가 상태는 만들지 않는다)
+  - 패싯 데이터와 `q` 파라미터 (WP-032)
 - 완료 기준(DoD):
-  - [ ] QA-W004-01 ~ QA-W004-11, QA-W004-21, QA-W004-22가 통과한다
+  - [ ] QA-W004-01 ~ QA-W004-09, QA-W004-11, QA-W004-21, QA-W004-22가 통과한다
+  - [ ] QA-W004-10은 **되돌림 수를 제외한 넷**으로 통과하고, 되돌림 자리는 "준비 중"과 사유가 보인다 (CR-029, DEV-150)
   - [ ] 반개구간 규칙이 화면에 상시 표시된다 (QA-W004-01)
-  - [ ] 상태 매트릭스 W-004의 전 상태가 렌더링된다
+  - [ ] 상태 매트릭스 W-004 중 **이 WP가 도달 가능한 상태 전부**가 렌더링된다: `empty_no_anchor`·`loading_initial`·`ready`·`error_range_inverted`·`error_range_too_large`·`error_space_mismatch`·`error_anchor_not_on_branch`·`error_anchor_not_merged`·`sequence_reassigning`·`sequence_stale`·`epoch_stale`·`no_permission`·`auth_expired` (표식·이분 상태는 WP-041·042 — CR-029, DEV-151)
   - [ ] URL 에폭 불일치 시 자동 재조회하지 않는다 (QA-W004-21)
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test web/range`, `pnpm test:e2e flow-003`, `pnpm test:a11y range`
+- 검증 방법: `pnpm test web/lib/range`, `pnpm test:e2e flow-003-range`, `pnpm test:a11y ranges`
 - 기록: 원장 WP-025 상태
 
 ### WP-026 W-005 릴리스 화면과 구간 비교
