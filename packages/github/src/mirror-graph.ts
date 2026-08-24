@@ -109,6 +109,18 @@ export interface MirrorGraphOptions {
   readonly env?: NodeJS.ProcessEnv;
 }
 
+/** 미러 refs/tags 스냅숏의 한 줄 (WP-024 / CR-028, DEV-143). */
+export interface MirrorTag {
+  readonly name: string;
+  /**
+   * git `creatordate` — 주석 태그는 taggerdate, 경량 태그는 커밋 시각이다
+   * (CR-028, DEV-147). 릴리스 시각의 기본값이 이 값이다.
+   */
+  readonly createdAt: string;
+  /** peel된 커밋 SHA. 주석 태그의 태그 객체가 아니라 그것이 가리키는 커밋이다. */
+  readonly commitSha: string;
+}
+
 /** 그래프 명령 기본 상한. JOB-MIR-001의 15분과 달리 이쪽은 단건 조회다. */
 const DEFAULT_TIMEOUT_MS = 60_000;
 
@@ -263,6 +275,44 @@ export class MirrorCommitGraph implements CommitGraph {
    * 실패하고, 그때 `blob_fetch_disabled`를 돌려준다 — **실패를 성공으로 세지
    * 않는다.** 켜져 있는데도 실패하면 `compute_failed`다.
    */
+  /**
+   * refs/tags 스냅숏 (WP-024 / CR-028, DEV-143).
+   *
+   * **미러가 태그의 정본이다.** `--mirror` 클론의 refspec `+refs/*:refs/*`는
+   * `--no-tags`와 무관하게 태그를 옮기고 `--prune`이 삭제도 반영한다 — 합성
+   * 저장소로 실측했다. GHE API를 부르지 않으므로 자격 증명 없이도, 백필과
+   * 실시간에서 같은 경로로 돈다.
+   *
+   * 구분자는 NUL이다 — `|` 같은 문자는 태그 이름에 올 수 있어 구분자로 쓰면
+   * 그런 태그 하나가 그 줄 전체를 오독하게 만든다.
+   *
+   * `%(if)%(*objectname)`은 주석 태그를 peel한다: 태그 객체가 아니라 그것이
+   * 가리키는 커밋의 SHA를 얻는다. 경량 태그는 `%(objectname)`이 이미 커밋이다.
+   */
+  async listTags(ref: RepoRef): Promise<readonly MirrorTag[]> {
+    const stdout = await this.#expect(ref, [
+      'for-each-ref',
+      'refs/tags',
+      '--format=%(refname:short)%00%(creatordate:iso-strict)%00%(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)',
+    ]);
+
+    const tags: MirrorTag[] = [];
+    for (const line of stdout.split('\n')) {
+      if (line.trim() === '') continue;
+      const [name, createdAt, sha] = line.split('\u0000');
+      /*
+       * 셋 중 하나라도 어긋난 줄은 **버리지 않고 던진다.** 조용히 건너뛰면
+       * 그 태그가 diff에서 "삭제됨"으로 읽혀 릴리스가 사라진다 — 파싱 실패는
+       * 데이터가 아니라 코드의 문제이므로 소리를 내야 고쳐진다.
+       */
+      if (name === undefined || name === '' || createdAt === undefined || sha === undefined || !/^[0-9a-f]{40}$/.test(sha)) {
+        throw new CommitGraphError('mirror', `태그 줄을 해석할 수 없다: ${line.slice(0, 120)}`);
+      }
+      tags.push({ name, createdAt, commitSha: sha });
+    }
+    return tags;
+  }
+
   async patchId(ref: RepoRef, sha: string): Promise<PatchIdResult> {
     assertSha(sha);
     const diff = await this.#git(ref, ['diff-tree', '-p', '--no-color', sha]);

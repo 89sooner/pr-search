@@ -19,6 +19,7 @@ export {
   advisoryXactLock,
   jobClaimLockKey,
   deliveryLockKey,
+  releaseLockKey,
   sequenceLockKey,
   tryAdvisoryXactLock,
   trySequenceSpaceLock,

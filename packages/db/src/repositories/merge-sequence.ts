@@ -414,3 +414,26 @@ export async function listPullRequestNumbersInRange(
   );
   return result.rows.map((row) => row.pull_request_number);
 }
+
+/**
+ * 서수 초과 구간의 PR 수 (WP-024 / FR-REL-002 AC-4).
+ *
+ * "대상 브랜치 head까지 대기 중인 PR 수" — 마지막 릴리스 서수보다 큰 서수를
+ * 받은 **PR**의 수다. `countAbove`와 달리 직접 푸시 커밋(`pull_request_number
+ * IS NULL`)은 세지 않는다: AC-4가 세라는 것은 커밋이 아니라 PR이다.
+ */
+export async function countPullRequestsAbove(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  aboveSeqExclusive: number,
+): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `SELECT count(DISTINCT pull_request_number)::text AS count FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+        AND merge_seq > $4 AND pull_request_number IS NOT NULL`,
+    [repositoryId, baseBranch, seqEpoch, aboveSeqExclusive],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}

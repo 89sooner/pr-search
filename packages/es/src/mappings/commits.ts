@@ -81,6 +81,8 @@ export const COMMIT_MAPPING: estypes.MappingTypeMapping = {
     },
 
     release_tags: { type: 'keyword' },
+    // 비정규화가 PR·커밋 양쪽에 같은 짝(release_tags·unreleased)을 쓴다 (WP-024).
+    unreleased: { type: 'boolean' },
     enrichment_pending: { type: 'boolean' },
     last_delivery_id: { type: 'keyword', index: false },
     indexed_at: { type: 'date' },

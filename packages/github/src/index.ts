@@ -42,7 +42,7 @@ export { CommitGraphError, FallbackCommitGraph, selectCommitGraph } from './comm
 export type { CommitGraph, CommitGraphKind, PatchIdResult, PatchIdUnavailable } from './commit-graph.js';
 
 export { MirrorCommitGraph, nodeGitRunner } from './mirror-graph.js';
-export type { GitExecResult, GitRunner, GitRunOptions, MirrorGraphOptions } from './mirror-graph.js';
+export type { GitExecResult, GitRunner, GitRunOptions, MirrorGraphOptions, MirrorTag } from './mirror-graph.js';
 
 export { ApiCommitGraph, DEFAULT_MAX_API_COMMITS } from './api-graph.js';
 export type { ApiGraphOptions } from './api-graph.js';

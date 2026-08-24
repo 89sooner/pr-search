@@ -35,6 +35,16 @@ export {
 } from './scoped-query.js';
 export type { AccessScope, ExplicitAccessScope, OrgTeamAccessScope, ScopedQuery } from './scoped-query.js';
 
+export {
+  DENORM_TAG_LIMIT,
+  RELEASE_TAGS_LIMIT,
+  applyReleaseTagsToDocuments,
+  deleteReleaseDocuments,
+  releaseDocId,
+  upsertReleaseDocuments,
+} from './releases.js';
+export type { ApplyReleaseTagsInput, DenormRelease, ReleaseDocInput, ReleaseScope } from './releases.js';
+
 export { multiSearch, search } from './search.js';
 export type { ScopedSearchOptions, ScopedSearchRequest, SearchTarget } from './search.js';
 

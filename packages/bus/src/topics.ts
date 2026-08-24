@@ -11,6 +11,7 @@ export const TOPICS = {
   enriched: 'prs:enriched',
   projected: 'prs:projected',
   sequence: 'prs:sequence',
+  release: 'prs:release',
   batch: 'prs:batch',
   permission: 'prs:permission',
 } as const;
@@ -22,6 +23,7 @@ export const CONSUMER_GROUPS = {
   [TOPICS.enriched]: 'project',
   [TOPICS.projected]: 'link',
   [TOPICS.sequence]: 'sequence',
+  [TOPICS.release]: 'release',
   [TOPICS.batch]: 'batch',
   [TOPICS.permission]: 'authz',
 } as const;
@@ -39,6 +41,8 @@ export const PARTITION_COUNTS: Readonly<Record<Topic, number>> = {
   [TOPICS.enriched]: 16,
   [TOPICS.projected]: 8,
   [TOPICS.sequence]: 8,
+  // 저장소당 직렬 (CR-028, DEV-144). diff 갱신은 멱등이라 넓은 동시성이 필요 없다.
+  [TOPICS.release]: 4,
   [TOPICS.batch]: 3,
   [TOPICS.permission]: 4,
 };
@@ -49,6 +53,7 @@ export const PARTITION_KEY_SOURCES: Readonly<Record<Topic, string>> = {
   [TOPICS.enriched]: 'repository_id',
   [TOPICS.projected]: 'repository_id',
   [TOPICS.sequence]: 'repository_id:base_branch',
+  [TOPICS.release]: 'repository_id',
   [TOPICS.batch]: 'job_id',
   [TOPICS.permission]: 'user_id',
 };

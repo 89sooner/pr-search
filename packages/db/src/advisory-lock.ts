@@ -29,6 +29,17 @@ export function sequenceLockKey(repositoryId: number, baseBranch: string): strin
 }
 
 /**
+ * 릴리스 스냅숏 갱신 락 키 (WP-024 / JOB-REL-007).
+ *
+ * 저장소 단위다 — 갱신이 전량 diff(upsert + 스냅숏 밖 삭제)라, 두 갱신이
+ * 겹치면 한쪽의 upsert를 다른 쪽의 삭제가 지운다. 파티션이 저장소당 직렬을
+ * 이미 만들지만 6시간 보정 스윕은 파티션 밖에서 돌므로 락이 이중 안전장치다.
+ */
+export function releaseLockKey(repositoryId: number): string {
+  return `release:${String(repositoryId)}`;
+}
+
+/**
  * 트랜잭션 범위 advisory lock을 시도한다.
  *
  * @returns 락을 얻었으면 `true`. 다른 트랜잭션이 쥐고 있으면 즉시 `false`.
