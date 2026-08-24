@@ -82,55 +82,92 @@ export interface ReleaseContainmentSectionProps {
   readonly repository: string;
   readonly kind: 'pull_request' | 'commit';
   readonly id: string;
+  /** 섹션 testid·aria id의 어근. W-002는 `releases`, W-003은 `commit-releases`. */
+  readonly sectionId: string;
 }
 
 type SectionOutcome =
+  | { readonly phase: 'idle' }
   | { readonly phase: 'loading' }
   | { readonly phase: 'ready'; readonly state: ContainmentState }
   | { readonly phase: 'error' };
 
-/** `/containments`를 조회해 C-020을 채우는 컨테이너. */
+/**
+ * `/containments`를 조회해 C-020을 채우는 컨테이너.
+ *
+ * **진입 시에는 부르지 않는다** (QA-W002-17, IA 원칙 4 — CR-020 DEV-088이
+ * 세운 구조). PendingSection과 같은 접힘 기본 + 펼칠 때 1회 조회다: 상세
+ * 진입의 네트워크 요청은 문서 하나여야 하고, a11y 계층이 그 수를 실제로
+ * 센다. 접거나 다시 펼쳐도 재조회하지 않는다 — 자동 폴링 금지와 같은 원칙.
+ */
 export function ReleaseContainmentSection({
   repository,
   kind,
   id,
+  sectionId,
 }: ReleaseContainmentSectionProps): ReactNode {
-  const [outcome, setOutcome] = useState<SectionOutcome>({ phase: 'loading' });
-  const generation = useRef(0);
+  const [expanded, setExpanded] = useState(false);
+  const [outcome, setOutcome] = useState<SectionOutcome>({ phase: 'idle' });
+  const requested = useRef(false);
+  const alive = useRef(true);
 
   useEffect(() => {
-    const mine = (generation.current += 1);
-    const controller = new AbortController();
+    alive.current = true;
+    return (): void => {
+      alive.current = false;
+    };
+  }, []);
+
+  const load = (): void => {
+    if (requested.current) return;
+    requested.current = true;
+    setOutcome({ phase: 'loading' });
     // 프록시가 `/api/<rest>`를 업스트림 `/api/v1/<rest>`로 옮긴다 (lib/proxy.ts).
     const url = `/api/containments?repository=${encodeURIComponent(repository)}&kind=${kind}&id=${encodeURIComponent(id)}`;
 
     void (async (): Promise<void> => {
       try {
-        const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
-        if (generation.current !== mine) return;
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!alive.current) return;
         if (!response.ok) {
           setOutcome({ phase: 'error' });
           return;
         }
         const body = (await response.json()) as ContainmentSource;
-        if (generation.current !== mine) return;
+        if (!alive.current) return;
         setOutcome({ phase: 'ready', state: judgeContainment(body) });
       } catch {
-        if (generation.current === mine) setOutcome({ phase: 'error' });
+        if (alive.current) setOutcome({ phase: 'error' });
       }
     })();
-
-    return (): void => controller.abort();
-  }, [repository, kind, id]);
+  };
 
   return (
-    <Panel as="section" aria-labelledby="releases-heading" data-testid="section-releases">
-      <h2 id="releases-heading">포함 릴리스</h2>
-      {outcome.phase === 'loading' ? <p data-testid="releases-loading">불러오는 중…</p> : null}
-      {outcome.phase === 'error' ? (
-        <p data-testid="releases-error">포함 릴리스를 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.</p>
-      ) : null}
-      {outcome.phase === 'ready' ? <ReleaseContainmentList state={outcome.state} /> : null}
+    <Panel as="section" aria-labelledby={`${sectionId}-heading`} data-testid={`section-${sectionId}`}>
+      <h2 id={`${sectionId}-heading`}>포함 릴리스</h2>
+
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={`${sectionId}-body`}
+        data-testid={`toggle-${sectionId}`}
+        onClick={() => {
+          const next = !expanded;
+          setExpanded(next);
+          // 펼칠 때만, 처음 한 번만 부른다 (QA-W002-17).
+          if (next) load();
+        }}
+      >
+        {expanded ? '접기' : '펼치기'}
+      </button>
+
+      <div id={`${sectionId}-body`} hidden={!expanded} data-testid={`body-${sectionId}`}>
+        {outcome.phase === 'loading' ? <p data-testid="releases-loading">불러오는 중…</p> : null}
+        {outcome.phase === 'error' ? (
+          <p data-testid="releases-error">포함 릴리스를 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.</p>
+        ) : null}
+        {outcome.phase === 'ready' ? <ReleaseContainmentList state={outcome.state} /> : null}
+      </div>
     </Panel>
   );
 }

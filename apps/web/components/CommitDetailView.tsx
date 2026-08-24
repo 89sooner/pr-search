@@ -289,7 +289,7 @@ export function CommitDetailView({
 
       <ChangedPathList {...paths} owner="WP-020 (미러 기반 커밋 보강)" />
 
-      <ReleaseContainmentSection repository={repo} kind="commit" id={sha} />
+      <ReleaseContainmentSection repository={repo} kind="commit" id={sha} sectionId="commit-releases" />
       <PendingSection
         id="commit-links"
         title="관계"

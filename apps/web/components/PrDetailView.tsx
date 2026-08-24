@@ -303,7 +303,12 @@ export function PrDetailView({
         }
         owner="WP-021 (시퀀스 채번), WP-027 (선행·후행 조회)"
       />
-      <ReleaseContainmentSection repository={repository} kind="pull_request" id={String(prNumber)} />
+      <ReleaseContainmentSection
+        repository={repository}
+        kind="pull_request"
+        id={String(prNumber)}
+        sectionId="releases"
+      />
       <PendingSection
         id="links"
         title="관계"

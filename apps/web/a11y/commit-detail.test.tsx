@@ -518,4 +518,34 @@ describe('되돌아가기와 준비 중 섹션', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]).toContain('/api/commits/');
   });
+
+  it('**릴리스는 펼칠 때 한 번만 조회한다** (QA-W002-17 확장 절반 — WP-024)', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', (url: string) => {
+      calls.push(url);
+      const body = url.includes('/api/containments')
+        ? { merge_seq: null, releases: [], unreleased: false, reason: 'target_not_sequenced' }
+        : COMMIT;
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response);
+    });
+    view();
+
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    expect(calls).toHaveLength(1);
+
+    const toggle = screen.getByTestId('toggle-commit-releases');
+    await userEvent.click(toggle);
+    // 서수 없는 커밋은 미배포가 아니라 판정 불가로 그린다 (DEV-146).
+    await waitFor(() => {
+      expect(screen.getByTestId('releases-not-sequenced')).toBeInTheDocument();
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toContain('/api/containments');
+
+    await userEvent.click(toggle);
+    await userEvent.click(toggle);
+    expect(calls).toHaveLength(2);
+  });
 });

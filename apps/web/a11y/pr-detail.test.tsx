@@ -480,6 +480,46 @@ describe('준비 중 섹션 (QA-W002-07, QA-W002-17)', () => {
     await userEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
   });
+
+  it('**릴리스는 펼칠 때 한 번만 조회한다** (QA-W002-17 확장 절반 — WP-024가 처음 채웠다)', async () => {
+    /*
+     * CR-020(DEV-088)이 "확장 전 조회 금지"를 세울 때 "확장하면 조회한다"는
+     * 데이터가 생기는 WP로 미뤘다. 릴리스가 그 첫 데이터다 — 화면을 통해
+     * 실제 네트워크 계층에서 잰다. 접었다 다시 펼쳐도 재조회하지 않는다.
+     */
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', (url: string) => {
+      calls.push(url);
+      const body = url.includes('/api/containments')
+        ? {
+            merge_seq: 1342,
+            releases: [
+              { tag_name: 'v1.0', released_at: '2026-08-14T09:00:00Z', base_branch: 'main', merge_seq: 1350, source: 'git_tag' },
+            ],
+            unreleased: false,
+          }
+        : PR;
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response);
+    });
+    view();
+
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    expect(calls).toHaveLength(1);
+
+    const toggle = screen.getByTestId('toggle-releases');
+    await userEvent.click(toggle);
+    await waitFor(() => {
+      expect(screen.getByTestId('release-row')).toBeInTheDocument();
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toContain('/api/containments');
+
+    await userEvent.click(toggle); // 접기
+    await userEvent.click(toggle); // 다시 펼치기
+    expect(calls).toHaveLength(2);
+  });
 });
 
 describe('확장 시에만 조회한다 (QA-W002-17 금지 절반)', () => {
