@@ -21,6 +21,7 @@ import { EmptyState } from './EmptyState';
 import { EntityHeader } from './EntityHeader';
 import { ErrorBanner } from './ErrorBanner';
 import { PendingSection } from './PendingSection';
+import { ReleaseContainmentSection } from './ReleaseContainmentList';
 import { PrTimeline } from './PrTimeline';
 import { SequenceBadge } from './SequenceBadge';
 import { formatDuration } from '../lib/format';
@@ -302,11 +303,11 @@ export function PrDetailView({
         }
         owner="WP-021 (시퀀스 채번), WP-027 (선행·후행 조회)"
       />
-      <PendingSection
-        id="releases"
-        title="포함 릴리스"
-        reason="릴리스 수집이 서면 이 머지 커밋을 포함하는 릴리스를 표시합니다."
-        owner="WP-024 (릴리스 수집)"
+      <ReleaseContainmentSection
+        repository={repository}
+        kind="pull_request"
+        id={String(prNumber)}
+        sectionId="releases"
       />
       <PendingSection
         id="links"

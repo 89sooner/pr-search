@@ -5,3 +5,4 @@ export * from './events.js';
 export * from './sequence.js';
 export * from './links.js';
 export * from './anchor.js';
+export * from './release.js';

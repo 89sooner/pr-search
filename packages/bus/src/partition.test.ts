@@ -63,12 +63,13 @@ describe('파티션 키 해시', () => {
 });
 
 describe('스트림 카탈로그 (비동기 문서 2장)', () => {
-  it('스트림 6종과 소비자 그룹이 문서와 일치한다', () => {
+  it('스트림 7종과 소비자 그룹이 문서와 일치한다', () => {
     expect(Object.values(TOPICS)).toEqual([
       'prs:ingest',
       'prs:enriched',
       'prs:projected',
       'prs:sequence',
+      'prs:release',
       'prs:batch',
       'prs:permission',
     ]);
@@ -76,6 +77,7 @@ describe('스트림 카탈로그 (비동기 문서 2장)', () => {
     expect(CONSUMER_GROUPS['prs:enriched']).toBe('project');
     expect(CONSUMER_GROUPS['prs:projected']).toBe('link');
     expect(CONSUMER_GROUPS['prs:sequence']).toBe('sequence');
+    expect(CONSUMER_GROUPS['prs:release']).toBe('release');
     expect(CONSUMER_GROUPS['prs:batch']).toBe('batch');
     expect(CONSUMER_GROUPS['prs:permission']).toBe('authz');
   });
@@ -84,6 +86,7 @@ describe('스트림 카탈로그 (비동기 문서 2장)', () => {
     expect(PARTITION_COUNTS['prs:ingest']).toBe(16);
     expect(PARTITION_COUNTS['prs:enriched']).toBe(16);
     expect(PARTITION_COUNTS['prs:projected']).toBe(8);
+    expect(PARTITION_COUNTS['prs:release']).toBe(4);
     expect(PARTITION_COUNTS['prs:batch']).toBe(3);
     expect(PARTITION_COUNTS['prs:permission']).toBe(4);
   });

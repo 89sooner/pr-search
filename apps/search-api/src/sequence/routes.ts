@@ -30,13 +30,20 @@ import {
   isEpochStale,
   parseEpochParam,
   parseRepositorySlug,
+  resolveRepository,
   resolveSpace,
   type ResolvedSpace,
   type SpaceLookup,
 } from './space.js';
+import {
+  containmentForCommit,
+  containmentForPullRequest,
+  type ContainmentResult,
+} from './containments.js';
 
 export const SEQUENCE_RANGE_PATH = '/api/v1/sequence-ranges';
 export const SEQUENCE_ANCHOR_PATH = '/api/v1/sequence-anchors/resolve';
+export const CONTAINMENT_PATH = '/api/v1/containments';
 
 export interface SequenceRouteOptions extends RangeDeps {
   readonly auth: AuthContext;
@@ -319,6 +326,95 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
         ...(result.unresolved.length === 0 ? {} : { unresolved_names: result.unresolved }),
         // WP-032 전까지 늘 `null`이다. 키를 빼면 화면이 마지막 페이지를 오해한다.
         next_cursor: null,
+        correlation_id: correlationId,
+      });
+    } catch (error) {
+      return toFailureResponse(reply, correlationId, error);
+    }
+  });
+
+  app.get(CONTAINMENT_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const query = (request.query ?? {}) as Record<string, unknown>;
+
+    try {
+      const userId = (await authenticateSession(request, auth.sessions)).userId;
+
+      const slug = parseRepositorySlug(query['repository']);
+      if (slug === null) {
+        return invalidParameter(reply, correlationId, 'repository', 'repository는 owner/name 형식이어야 합니다.');
+      }
+
+      const kind = query['kind'];
+      if (kind !== 'pull_request' && kind !== 'commit') {
+        return invalidParameter(reply, correlationId, 'kind', "kind는 'pull_request' 또는 'commit'이어야 합니다.");
+      }
+
+      const rawId = typeof query['id'] === 'string' ? query['id'].trim() : '';
+      let prNumber: number | null = null;
+      let commitSha: string | null = null;
+      if (kind === 'pull_request') {
+        const value = Number(rawId);
+        if (!Number.isInteger(value) || value < 1) {
+          return invalidParameter(reply, correlationId, 'id', 'PR 번호는 1 이상의 정수여야 합니다.');
+        }
+        prNumber = value;
+      } else {
+        /*
+         * 커밋은 40자 전체 SHA만 받는다. 판정의 정본이 PostgreSQL 정확 일치라
+         * 접두로는 답할 수 없고, 이 API의 호출자(W-002·W-003 상세 화면)는 전체
+         * SHA를 이미 갖고 있다. 축약 해석은 `/resolve`의 몫이다 (ADR-012).
+         */
+        if (!/^[0-9a-f]{40}$/i.test(rawId)) {
+          return invalidParameter(reply, correlationId, 'id', '커밋은 40자 SHA여야 합니다.');
+        }
+        commitSha = rawId.toLowerCase();
+      }
+
+      const scope = await auth.scopes.resolve(userId);
+      const lookup = await resolveRepository(deps.pool, slug, scope);
+      if (lookup.kind !== 'ok') {
+        return fail(reply, 404, {
+          error: { code: 'NOT_FOUND', message: lookup.message },
+          correlation_id: correlationId,
+        });
+      }
+
+      const result: ContainmentResult =
+        prNumber !== null
+          ? await containmentForPullRequest(
+              { pool: deps.pool, es: deps.es, ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }) },
+              lookup.repository,
+              prNumber,
+            )
+          : await containmentForCommit(
+              { pool: deps.pool, es: deps.es, ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }) },
+              lookup.repository,
+              scope,
+              commitSha ?? '',
+            );
+
+      if (result.kind === 'not_found') {
+        return fail(reply, 404, {
+          error: { code: 'NOT_FOUND', message: result.message },
+          correlation_id: correlationId,
+        });
+      }
+
+      return reply.send({
+        target: { kind, repository: `${slug.owner}/${slug.name}`, id: rawId },
+        merge_commit_sha: result.mergeCommitSha,
+        merge_seq: result.mergeSeq,
+        ...(result.baseBranch === null ? {} : { base_branch: result.baseBranch }),
+        ...(result.pullRequestNumber === null ? {} : { pull_request_number: result.pullRequestNumber }),
+        releases: result.releases,
+        unreleased: result.unreleased,
+        pending_pull_request_count: result.pendingPullRequestCount,
+        ...(result.unreleased && result.pendingPullRequestCount > 0
+          ? { hint: `마지막 릴리스 이후 ${String(result.pendingPullRequestCount)}건이 대기 중입니다.` }
+          : {}),
+        // 미수집·판정 불가의 사유 (DEV-146). 정상 판정이면 키를 넣지 않는다.
+        ...(result.reason === null ? {} : { reason: result.reason }),
         correlation_id: correlationId,
       });
     } catch (error) {

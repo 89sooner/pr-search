@@ -12,6 +12,8 @@ import { LOWERCASE_NORMALIZER } from '../settings.js';
 export const RELEASE_MAPPING: estypes.MappingTypeMapping = {
   dynamic: 'strict',
   properties: {
+    // 조건부 업서트의 비교 키다 (FR-ING-005) — 없으면 strict 매핑이 색인 자체를 거부한다.
+    document_version: { type: 'long' },
     release_id: { type: 'keyword' },
     /**
      * `_id`와 같은 값 (CR-016, DEV-059).

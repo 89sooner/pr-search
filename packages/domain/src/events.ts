@@ -202,6 +202,18 @@ export function commitDocId(repositoryId: number, commitSha: string): string {
 }
 
 /**
+ * EVT-REL-001 `release.refresh_requested` (WP-024 / CR-028, DEV-144).
+ *
+ * **태그 이름·SHA를 싣지 않는다.** 정본은 미러의 refs/tags 스냅숏이고, 이
+ * 이벤트는 "이 저장소의 태그가 바뀌었으니 다시 봐라"라는 신호일 뿐이다.
+ * payload의 태그를 신뢰하면 이벤트 순서 역전이 스냅숏을 되돌린다.
+ */
+export interface ReleaseRefreshRequested {
+  readonly repository_id: number;
+  readonly correlation_id: string;
+}
+
+/**
  * 채번 요청 (WP-021 / CR-025, DEV-116).
  *
  * `prs:sequence`가 나르는 것. 잡 카탈로그는 JOB-SEQ-001의 트리거를 "push

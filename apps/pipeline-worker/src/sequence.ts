@@ -87,6 +87,14 @@ export interface SequenceDeps {
   readonly graphFor: (repository: RepositoryRow) => CommitGraph;
   readonly log?: (fields: SequenceLogFields) => void;
   readonly now?: () => Date;
+  /**
+   * 재채번 뒤 릴리스 서수 재해석 트리거 (WP-024 / CR-028, DEV-149).
+   *
+   * 에폭이 바뀌면 릴리스의 `merge_seq`가 이전 에폭에 묶여 무효가 된다.
+   * 6시간 스윕이 결국 잡지만, 재채번 직후에 신호를 내면 그 지연이 사라진다.
+   * **없어도 된다** — 릴리스 역할이 함께 뜨지 않은 배포에서는 스윕이 맡는다.
+   */
+  readonly requestReleaseRefresh?: (repositoryId: number, correlationId: string) => Promise<void>;
 }
 
 function refOf(repository: RepositoryRow): RepoRef {
@@ -532,6 +540,21 @@ export async function reassignSequence(
       repository_id: repositoryId,
       reason: 'event_publish_failed',
     });
+  }
+
+  // 릴리스 서수는 에폭에 묶인다 — 재해석 신호를 낸다 (DEV-149). 실패해도
+  // 6시간 스윕이 메우므로 재채번 결과에는 영향이 없다.
+  if (deps.requestReleaseRefresh !== undefined) {
+    try {
+      await deps.requestReleaseRefresh(repositoryId, correlationId);
+    } catch {
+      log({
+        level: 'warn',
+        message: '릴리스 재해석 신호 발행 실패 — 보정 스윕이 메운다',
+        repository_id: repositoryId,
+        reason: 'release_refresh_publish_failed',
+      });
+    }
   }
 
   /*

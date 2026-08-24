@@ -9,8 +9,9 @@
  */
 
 import { createPool, jobRepo, repositoryRepo } from '@prs/db';
+import { deterministicEventId } from '@prs/domain';
 import { scopeKey, type ScopeRedis } from '@prs/authz';
-import { RedisStreamsEventBus, createRedisClient } from '@prs/bus';
+import { RedisStreamsEventBus, TOPICS, createRedisClient } from '@prs/bus';
 import {
   GitHubClient,
   GitHubTransport,
@@ -36,8 +37,10 @@ import { startAuthzWorker, type AuthzLogEntry } from './authz.js';
 import { startBackfillRunner, BACKFILL_JOB, type BackfillLogEntry, type BackfillRunner } from './backfill.js';
 import { startMirrorSweeper, type MirrorLogEntry, type MirrorRunner } from './mirror-runner.js';
 import { refreshSequenceSpaceStates, startSequenceWorker, type SequenceLogFields } from './sequence.js';
+import { startReleaseSweeper, startReleaseWorker, type ReleaseLogFields, type ReleaseSweeper } from './release.js';
 import { createEsClient } from '@prs/es';
 import type { Subscription } from '@prs/bus';
+import type { ReleaseSummary } from '@prs/github';
 import type { Client } from '@elastic/elasticsearch';
 
 const port = Number(process.env['PIPELINE_WORKER_PORT'] ?? DEFAULT_PORT);
@@ -297,6 +300,15 @@ if (roles.includes('sequence')) {
     es: seqEs,
     bus,
     metrics,
+    requestReleaseRefresh: async (repositoryId: number, correlationId: string): Promise<void> => {
+      await bus.publish(TOPICS.release, String(repositoryId), {
+        event_id: deterministicEventId('release.refresh_requested', String(repositoryId), correlationId),
+        event_name: 'release.refresh_requested',
+        correlation_id: correlationId,
+        occurred_at: new Date().toISOString(),
+        payload: { repository_id: repositoryId, correlation_id: correlationId },
+      });
+    },
     graphFor: (repository) =>
       selectCommitGraph(repository, {
         mirror: new FallbackCommitGraph(mirrorGraph, apiGraph, (error) => {
@@ -320,6 +332,82 @@ if (roles.includes('sequence')) {
   if (seqGhConfig.baseUrl === '') {
     seqLog({ level: 'warn', message: 'GHE base URL이 비어 있다 — API 폴백 경로가 동작하지 않는다' });
   }
+}
+
+let releaseSubscription: Awaited<ReturnType<typeof startReleaseWorker>> | undefined;
+let releaseSweeper: ReleaseSweeper | undefined;
+if (roles.includes('release')) {
+  /*
+   * JOB-REL-007 (WP-024 / CR-028). 태그의 정본은 미러이므로(DEV-143) 이 역할은
+   * 미러 볼륨을 요구한다. GHE 자격 증명은 **선택**이다 — 없으면 `git_tag`
+   * 소스만으로 돌고, 있으면 GitHub Release의 `published_at`이 시각을 덮는다.
+   */
+  const relMirrorConfig = resolveMirrorConfig();
+  const relGhConfig = resolveGitHubConfig();
+  const relEs = createEsClient();
+
+  let relTokenFor: ((org: string) => Promise<string | null>) | undefined;
+  let relListReleases: ((ref: { owner: string; repo: string }) => Promise<readonly ReleaseSummary[]>) | undefined;
+  if (hasAppCredentials(relGhConfig) && parseInstallations().length > 0) {
+    const relTokens = new TokenPool(
+      new InstallationTokenProvider({
+        apiUrl: relGhConfig.apiUrl,
+        appId: relGhConfig.appId,
+        privateKey: relGhConfig.privateKey,
+        refreshLeadMs: relGhConfig.tokenRefreshLeadMs,
+        requestTimeoutMs: relGhConfig.requestTimeoutMs,
+      }),
+      { installations: parseInstallations(), quarantineThreshold: relGhConfig.quarantineThreshold },
+    );
+    relTokenFor = async (org: string): Promise<string | null> => {
+      try {
+        return (await relTokens.lease(org)).token.token;
+      } catch {
+        return null;
+      }
+    };
+    const relClient = new GitHubClient(
+      new GitHubTransport({
+        apiUrl: relGhConfig.apiUrl,
+        requestTimeoutMs: relGhConfig.requestTimeoutMs,
+        pool: relTokens,
+        scheduler: new RequestScheduler({ maxConcurrent: relGhConfig.maxConcurrentRequests }),
+      }),
+    );
+    relListReleases = async (ref) => relClient.listReleases(ref);
+  }
+
+  const relSync = new MirrorSync({
+    root: relMirrorConfig.root,
+    remoteUrl: (ref) => `${relGhConfig.baseUrl}/${ref.owner}/${ref.repo}.git`,
+    allowBlobFetch: relMirrorConfig.allowBlobFetch,
+    ...(relTokenFor === undefined ? {} : { tokenFor: relTokenFor }),
+  });
+  const relGraph = new MirrorCommitGraph({
+    root: relMirrorConfig.root,
+    repositoryIdOf: async (ref) =>
+      (await repositoryRepo.findRepositoryBySlug(pool, ref.owner, ref.repo))?.repository_id,
+    allowBlobFetch: relMirrorConfig.allowBlobFetch,
+    ...(relTokenFor === undefined ? {} : { tokenFor: relTokenFor }),
+  });
+
+  const relLog = (entry: ReleaseLogFields): void => {
+    process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-REL-007', ...entry })}\n`);
+  };
+
+  const releaseDeps = {
+    pool,
+    es: relEs,
+    bus,
+    metrics,
+    sync: (ref: { owner: string; repo: string }, repositoryId: number) => relSync.sync(ref, repositoryId),
+    listTags: (ref: { owner: string; repo: string }) => relGraph.listTags(ref),
+    ...(relListReleases === undefined ? {} : { listReleases: relListReleases }),
+    log: relLog,
+  };
+
+  releaseSubscription = await startReleaseWorker(releaseDeps);
+  releaseSweeper = startReleaseSweeper(releaseDeps);
 }
 
 if (roles.includes('authz')) {
@@ -399,6 +487,8 @@ const shutdown = (): void => {
       await enrichSubscription?.close();
       await projectSubscription?.close();
       await sequenceSubscription?.close();
+      await releaseSubscription?.close();
+      await releaseSweeper?.stop();
       await authzSubscription?.close();
       await authzRedisClient?.quit();
       await bus.close();

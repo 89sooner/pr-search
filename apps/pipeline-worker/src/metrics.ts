@@ -51,6 +51,12 @@ export interface WorkerMetrics {
   readonly sequenceRewriteDetected: Counter;
   /** 시퀀스를 색인에 반영하지 못한 회차 수. PostgreSQL 값은 살아 있다. */
   readonly sequenceIndexFailed: Counter;
+  /** 릴리스 스냅숏 동기화 성공 회차 (JOB-REL-007). */
+  readonly releaseRefreshed: Counter;
+  /** 동기화 실패 회차 — 미러·정본 단계의 실패다. 색인 실패와 가른다. */
+  readonly releaseRefreshFailed: Counter;
+  /** 색인 반영 실패 회차 — 정본은 맞고 표시만 늦는 상태다. */
+  readonly releaseIndexFailed: Counter;
   /** 실행한 재채번 수 (FR-SEQ-005, 관측 문서 RB-11 — 증가 자체가 P3 알림 대상이다). 라벨: `repository`. */
   readonly sequenceReassignTotal: Counter;
   render(): string;
@@ -79,6 +85,9 @@ export function createWorkerMetrics(): WorkerMetrics {
   const sequenceRewriteDetected = new Counter('sequence_rewrite_detected_total', '감지한 히스토리 재작성 건수');
   const sequenceIndexFailed = new Counter('sequence_index_failed_total', '시퀀스 색인 반영 실패 회차');
   const sequenceReassignTotal = new Counter('sequence_reassign_total', '실행한 시퀀스 재채번 수');
+  const releaseRefreshed = new Counter('release_refreshed_total', '릴리스 스냅숏 동기화 성공 회차');
+  const releaseRefreshFailed = new Counter('release_refresh_failed_total', '릴리스 스냅숏 동기화 실패 회차');
+  const releaseIndexFailed = new Counter('release_index_failed_total', '릴리스 색인 반영 실패 회차');
 
   return {
     enrichPending,
@@ -92,6 +101,9 @@ export function createWorkerMetrics(): WorkerMetrics {
     sequenceAssigned,
     sequenceRewriteDetected,
     sequenceIndexFailed,
+    releaseRefreshed,
+    releaseRefreshFailed,
+    releaseIndexFailed,
     sequenceReassignTotal,
     render: (): string =>
       renderMetrics([
@@ -103,6 +115,9 @@ export function createWorkerMetrics(): WorkerMetrics {
         permissionInvalidationFailed,
         sequenceAssigned,
         sequenceIndexFailed,
+        releaseRefreshed,
+        releaseRefreshFailed,
+        releaseIndexFailed,
         sequenceReassignTotal,
         sequenceRewriteDetected,
         sequenceSpaceState,

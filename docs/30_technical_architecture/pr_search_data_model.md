@@ -23,7 +23,7 @@
 | ENT-SEQ-002 | SequenceSpace | 시퀀스 공간 상태 | `repository_id`, `base_branch`, `seq_epoch`, `head_sha`, `head_seq`, `state`, `last_assigned_at` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-005 |
 | ENT-SEQ-003 | SafeMarker | 안전 구간 표식 | `marker_id`, `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `note`, `created_by` | PostgreSQL | sequence | FR-SEQ-006 |
 | ENT-SEQ-004 | BisectSession | 이분 탐색 상태 | `session_id`, `user_id`, `repository_id`, `base_branch`, `seq_epoch`, `good_seq`, `bad_seq` | PostgreSQL | sequence | FR-SEQ-007 |
-| ENT-REL-001 | Release | 릴리스 앵커 | `release_id`, `repository_id`, `tag_name`, `commit_sha`, `base_branch`, `merge_seq`, `released_at` | Elasticsearch | projection | FR-SEQ-004, FR-REL-002 |
+| ENT-REL-001 | Release | 릴리스 앵커 | `release_id`, `repository_id`, `tag_name`, `commit_sha`, `base_branch`, `seq_epoch`, `merge_seq`, `released_at`, `source` | **PostgreSQL (정본) + Elasticsearch (투영)** (CR-028, DEV-142) | release | FR-SEQ-004, FR-REL-002, FR-SEQ-003 AC-1 |
 | ENT-REL-002 | Link | 관계 간선 | `link_id`, `from_type`, `from_id`, `to_type`, `to_id`, `link_type`, `confidence`, `evidence`, `resolved` | Elasticsearch | link | FR-REL-003~008 |
 | ENT-ING-001 | RawEvent | 원본 웹훅 이벤트 | `delivery_id`, `event_type`, `repository_id`, `received_at`, `payload`, `queued_at`, `processed_at` | PostgreSQL | ingestion | FR-ING-001, FR-ING-003 |
 | ENT-ING-002 | DeadLetter | 실패 이벤트 격리 | `dead_letter_id`, `delivery_id`, `stage`, `error`, `retry_count`, `state` | PostgreSQL | ingestion | FR-ING-007 |
@@ -199,6 +199,41 @@ CREATE TABLE bisect_session (
 ```
 
 `bisect_session`이 `seq_epoch`를 들고 있으므로, 에폭이 바뀌면 탐색 상태를 무효화할 수 있다 (FLOW-004 예외 흐름).
+
+#### `release` (CR-028, DEV-142 — WP-024)
+
+```sql
+CREATE TABLE release (
+  release_id    BIGSERIAL   PRIMARY KEY,
+  repository_id BIGINT      NOT NULL,
+  tag_name      TEXT        NOT NULL,
+  commit_sha    TEXT        NOT NULL,
+  -- 태그 커밋이 어느 시퀀스 브랜치의 first-parent 체인에도 없으면 셋 다 NULL이다.
+  -- 그 릴리스는 표시는 되지만 앵커·포함 판정에는 쓰이지 않는다 (ADR-007).
+  base_branch   TEXT,
+  seq_epoch     INT,
+  merge_seq     BIGINT,
+  released_at   TIMESTAMPTZ NOT NULL,
+  source        TEXT        NOT NULL DEFAULT 'git_tag',
+  synced_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (repository_id, tag_name),
+  CONSTRAINT release_source_chk CHECK (source IN ('git_tag', 'github_release', 'ci_deployment')),
+  CONSTRAINT release_seq_chk CHECK (
+    (base_branch IS NULL AND seq_epoch IS NULL AND merge_seq IS NULL)
+    OR (base_branch IS NOT NULL AND seq_epoch IS NOT NULL AND merge_seq IS NOT NULL)
+  )
+);
+
+CREATE INDEX release_containment_idx
+  ON release (repository_id, base_branch, merge_seq)
+  WHERE merge_seq IS NOT NULL;
+```
+
+**왜 PostgreSQL이 정본인가 (DEV-142).** ADR-004가 요구하고, DEV-130이 정한 원칙이 여기에도 그대로 적용된다 — 포함 판정과 릴리스 앵커는 범위 인용의 일부이며, ES에만 있는 데이터를 딛으면 색인 반영 실패가 **오류 없이 항목을 빠뜨린다.** `prs-releases`는 이 표의 투영이다.
+
+**태그의 정본은 미러다 (DEV-143, 실측).** `--mirror` 클론의 refspec은 `--no-tags`와 무관하게 태그를 옮기고 prune이 삭제도 반영한다. 갱신 잡은 미러의 `for-each-ref refs/tags`로 태그 전량을 열거해 이 표와 diff한다 — 원격에서 지워진 태그는 여기서도 지운다. `released_at`은 git `creatordate`(주석 태그 = taggerdate, 경량 태그 = 커밋 시각)이고, GHE 자격 증명이 있으면 GitHub Release의 `published_at`이 그 태그의 값을 덮는다(`source: github_release`) (DEV-147).
+
+**서수는 현재 에폭으로 전량 재해석한다 (DEV-149).** 태그 수는 작으므로 갱신 잡은 매번 저장소의 모든 태그를 현재 `seq_epoch` 기준으로 다시 해석한다 — 재채번(WP-022)이 에폭을 올려도 다음 갱신이 자가 치유하고, 조회는 릴리스의 `seq_epoch`가 공간의 현재 에폭과 일치할 때만 서수를 신뢰한다 (FR-SEQ-005 AC-4의 원칙).
 
 ### 3.3 레지스트리와 권한
 
@@ -697,7 +732,7 @@ ALTER TABLE gh_capability_snapshot
 
 `source`는 `git_tag` | `github_release` | `ci_deployment` (OD-004).
 
-**릴리스 포함 판정은 간선이 아니라 시퀀스 비교다.** 커밋 C가 릴리스 R에 포함되었다 ⟺ 같은 시퀀스 공간에서 `C.merge_seq <= R.merge_seq` (FR-REL-002 AC-5). 릴리스 하나당 수만 개 `contains` 간선을 만드는 대신 정수 비교 하나로 끝난다. `release_tags` 비정규화 필드는 상위 5개 릴리스만 담아 목록 표시에 쓴다.
+**릴리스 포함 판정은 간선이 아니라 시퀀스 비교다.** 커밋 C가 릴리스 R에 포함되었다 ⟺ 같은 시퀀스 공간에서 `C.merge_seq <= R.merge_seq` (FR-REL-002 AC-5). 릴리스 하나당 수만 개 `contains` 간선을 만드는 대신 정수 비교 하나로 끝난다. `release_tags` 비정규화 필드는 **가장 이른 5개**(그 항목을 처음 실은 릴리스들, DEV-148)만 담아 목록 표시에 쓴다 — 조사 질문 "이 변경이 언제 처음 나갔나"에 답하는 값이다. 이 필드는 표시 전용이며, 포함 판정의 정본은 PostgreSQL `release` 표다 (DEV-142).
 
 ### 4.5 `prs-raw-events` (아카이브, ILM)
 

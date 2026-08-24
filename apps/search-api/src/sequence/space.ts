@@ -12,7 +12,7 @@
  */
 
 import { repositoryRepo, sequenceSpaceRepo } from '@prs/db';
-import type { Pool, SequenceSpaceState } from '@prs/db';
+import type { Pool, RepositoryRow, SequenceSpaceState } from '@prs/db';
 import { isRepositoryInScope, type AccessScope } from '@prs/es';
 
 /** `owner/name` 한 쌍. 요청이 문자열로 주는 것을 여기서 한 번만 가른다. */
@@ -57,19 +57,24 @@ export type SpaceLookup =
    */
   | { readonly kind: 'forbidden'; readonly message: string };
 
+/** 저장소 해석 + 접근 통제. `resolveSpace`와 `/containments`가 함께 쓰는 첫 관문이다. */
+export type RepositoryLookup =
+  | { readonly kind: 'ok'; readonly repository: RepositoryRow }
+  | { readonly kind: 'not_found'; readonly message: string }
+  | { readonly kind: 'forbidden'; readonly message: string };
+
 /**
- * `owner/name` + 브랜치 → 시퀀스 공간.
+ * `owner/name` → 저장소 행. **여기가 접근 통제의 자리다** (ADR-008, DEV-130).
  *
- * 순서가 통제다: 저장소를 찾고 → **범위를 확인하고** → 공간을 읽는다. 범위 확인이
- * 마지막이면 그 사이의 실패 메시지가 저장소의 존재를 흘린다.
+ * PostgreSQL을 읽는 시퀀스·릴리스 경로에는 `ScopedQuery` 타입 강제가 닿지
+ * 않으므로, 저장소 행을 얻는 유일한 통로에 `isRepositoryInScope`를 둔다.
+ * 범위 밖과 미등록의 메시지가 같은 이유: 다르면 비공개 저장소의 존재가 샌다.
  */
-export async function resolveSpace(
+export async function resolveRepository(
   pool: Pool,
   slug: RepositorySlug,
-  baseBranch: string,
   scope: AccessScope,
-): Promise<SpaceLookup> {
-  const label = `${slug.owner}/${slug.name}@${baseBranch}`;
+): Promise<RepositoryLookup> {
   const repository = await repositoryRepo.findRepositoryBySlug(pool, slug.owner, slug.name);
   if (repository === undefined) {
     return { kind: 'not_found', message: `등록되지 않은 저장소다: ${slug.owner}/${slug.name}` };
@@ -87,6 +92,25 @@ export async function resolveSpace(
   if (!visible) {
     return { kind: 'forbidden', message: `등록되지 않은 저장소다: ${slug.owner}/${slug.name}` };
   }
+  return { kind: 'ok', repository };
+}
+
+/**
+ * `owner/name` + 브랜치 → 시퀀스 공간.
+ *
+ * 순서가 통제다: 저장소를 찾고 → **범위를 확인하고** → 공간을 읽는다. 범위 확인이
+ * 마지막이면 그 사이의 실패 메시지가 저장소의 존재를 흘린다.
+ */
+export async function resolveSpace(
+  pool: Pool,
+  slug: RepositorySlug,
+  baseBranch: string,
+  scope: AccessScope,
+): Promise<SpaceLookup> {
+  const label = `${slug.owner}/${slug.name}@${baseBranch}`;
+  const lookup = await resolveRepository(pool, slug, scope);
+  if (lookup.kind !== 'ok') return lookup;
+  const repository = lookup.repository;
 
   const space = await sequenceSpaceRepo.findSequenceSpace(pool, repository.repository_id, baseBranch);
   if (space === undefined) {
