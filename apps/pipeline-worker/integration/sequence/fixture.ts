@@ -29,12 +29,16 @@ const GIT_ENV: NodeJS.ProcessEnv = {
   HOME: '/nonexistent',
 };
 
-export function git(cwd: string | null, args: readonly string[]): Promise<GitOut> {
+export function git(
+  cwd: string | null,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv = {},
+): Promise<GitOut> {
   return new Promise((resolve) => {
     execFile(
       'git',
       cwd === null ? [...args] : ['-C', cwd, ...args],
-      { env: GIT_ENV, maxBuffer: 8 * 1024 * 1024 },
+      { env: { ...GIT_ENV, ...env }, maxBuffer: 8 * 1024 * 1024 },
       (error, stdout, stderr) => {
         const code = error === null ? 0 : ((error as NodeJS.ErrnoException & { code?: number }).code ?? 1);
         resolve({ code: typeof code === 'number' ? code : 1, stdout, stderr });
@@ -43,8 +47,12 @@ export function git(cwd: string | null, args: readonly string[]): Promise<GitOut
   });
 }
 
-export async function run(cwd: string, args: readonly string[]): Promise<string> {
-  const result = await git(cwd, args);
+export async function run(
+  cwd: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv = {},
+): Promise<string> {
+  const result = await git(cwd, args, env);
   if (result.code !== 0) {
     throw new Error(`git ${args.join(' ')} 실패 (${String(result.code)}): ${result.stderr}`);
   }

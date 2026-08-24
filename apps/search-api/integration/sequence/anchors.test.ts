@@ -108,6 +108,8 @@ beforeAll(async () => {
   pool = await migratedPool();
   redis = createTestRedis();
 
+  // 릴리스 미수집(release_not_indexed) 판정이 이 표의 0건에 기댄다 (WP-024).
+  await pool.query('DELETE FROM release');
   await pool.query('DELETE FROM merge_sequence');
   await pool.query('DELETE FROM sequence_space');
   await pool.query('DELETE FROM permission_cache');
