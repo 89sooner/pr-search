@@ -70,6 +70,7 @@ function stubEs(): Client {
       return Promise.resolve({ errors: false, items });
     },
     updateByQuery: () => Promise.resolve({ updated: 0 }),
+    deleteByQuery: () => Promise.resolve({ deleted: 0, failures: [] }),
   } as unknown as Client;
 }
 

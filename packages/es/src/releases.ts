@@ -77,28 +77,38 @@ export async function upsertReleaseDocuments(
 }
 
 /**
- * 원격에서 지워진 태그의 문서를 지운다 (DEV-143의 삭제 반영).
+ * 스냅숏에 없는 릴리스 문서를 걷어낸다 (DEV-143의 삭제 반영).
  *
- * `_id` 직접 삭제다 — 질의 삭제보다 정확하고, 라우팅을 알아 단일 샤드로 간다.
- * 404(이미 없음)는 성공으로 센다: 지우려던 것이 없는 상태가 곧 목표 상태다.
+ * **"지운 것"이 아니라 "남길 것"을 받는다.** 지운 태그 목록으로 `_id` 삭제를
+ * 보내면 그 회차의 부분 실패(항목 단위 429/5xx)가 영구 유령 문서가 된다 —
+ * 정본 행은 이미 지워져 다음 diff가 그 태그를 다시 내주지 않기 때문이다.
+ * 갱신마다 "현재 스냅숏 밖 전부"를 질의 삭제하면 놓친 삭제가 다음 회차에
+ * 저절로 아문다 — 정본 쪽 diff와 같은 수렴 철학이다.
+ *
+ * 부분 실패는 삼키지 않는다: `failures`가 비어 있지 않으면 던져 호출 측이
+ * 실패 메트릭을 찍게 한다 (수렴은 다음 회차가 보장하지만, 실패는 보여야 한다).
  */
-export async function deleteReleaseDocuments(
+export async function pruneReleaseDocuments(
   client: Client,
   repositoryId: number,
-  tagNames: readonly string[],
+  keepTagNames: readonly string[],
 ): Promise<void> {
-  if (tagNames.length === 0) return;
-
-  await client.bulk({
+  const response = await client.deleteByQuery({
+    index: 'prs-releases',
+    routing: String(repositoryId),
     refresh: true,
-    operations: tagNames.map((tagName) => ({
-      delete: {
-        _index: 'prs-releases',
-        _id: releaseDocId(repositoryId, tagName),
-        routing: String(repositoryId),
+    conflicts: 'proceed',
+    query: {
+      bool: {
+        filter: [{ term: { repository_id: repositoryId } }],
+        ...(keepTagNames.length === 0 ? {} : { must_not: [{ terms: { tag_name: [...keepTagNames] } }] }),
       },
-    })),
+    },
   });
+  const failures = (response as { failures?: unknown[] }).failures ?? [];
+  if (failures.length > 0) {
+    throw new Error(`release_prune_partial_failure: ${String(failures.length)}건`);
+  }
 }
 
 /** 비정규화에 쓰는 릴리스 하나. `released_at` 오름차순으로 정렬해 넘긴다. */

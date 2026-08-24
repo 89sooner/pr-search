@@ -20,7 +20,7 @@ import { applyMappings } from '../src/bootstrap.js';
 import {
   RELEASE_TAGS_LIMIT,
   applyReleaseTagsToDocuments,
-  deleteReleaseDocuments,
+  pruneReleaseDocuments,
   releaseDocId,
   upsertReleaseDocuments,
   type ReleaseDocInput,
@@ -199,10 +199,38 @@ describe('릴리스 문서 투영 (ENT-REL-001)', () => {
     expect((await releaseDoc('v1.0'))?.['merge_seq']).toBe(2);
   });
 
-  it('지워진 태그의 문서가 사라지고, 이미 없는 태그 삭제는 실패가 아니다', async () => {
-    await upsertReleaseDocuments(es, SCOPE, [release('doomed', 3, '2026-08-15T09:00:00Z')], 1_000);
-    await deleteReleaseDocuments(es, REPOSITORY_ID, ['doomed', 'never-existed']);
+  it('**스냅숏 밖 문서가 걷힌다** — 남길 것 목록의 질의 삭제라 놓친 삭제도 다음 회차에 아문다', async () => {
+    await upsertReleaseDocuments(
+      es,
+      SCOPE,
+      [release('keep-me', 2, '2026-08-14T09:00:00Z'), release('doomed', 3, '2026-08-15T09:00:00Z')],
+      1_000,
+    );
+    await pruneReleaseDocuments(es, REPOSITORY_ID, ['keep-me']);
     expect(await releaseDoc('doomed')).toBeUndefined();
+    expect((await releaseDoc('keep-me'))?.['tag_name']).toBe('keep-me');
+  });
+
+  it('남길 것이 없으면 저장소의 릴리스 문서가 전부 걷힌다 — 다른 저장소는 그대로다', async () => {
+    await upsertReleaseDocuments(es, SCOPE, [release('only', 1, '2026-08-14T09:00:00Z')], 1_000);
+    await upsertReleaseDocuments(
+      es,
+      { ...SCOPE, repositoryId: OTHER_REPOSITORY_ID },
+      [release('other-repo-tag', 1, '2026-08-14T09:00:00Z')],
+      1_000,
+    );
+    await pruneReleaseDocuments(es, REPOSITORY_ID, []);
+    expect(await releaseDoc('only')).toBeUndefined();
+
+    const other = await es.get<Record<string, unknown>>(
+      {
+        index: 'prs-releases',
+        id: releaseDocId(OTHER_REPOSITORY_ID, 'other-repo-tag'),
+        routing: String(OTHER_REPOSITORY_ID),
+      },
+      { ignore: [404] },
+    );
+    expect(other.found).toBe(true);
   });
 });
 

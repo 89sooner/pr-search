@@ -39,7 +39,7 @@ export {
   DENORM_TAG_LIMIT,
   RELEASE_TAGS_LIMIT,
   applyReleaseTagsToDocuments,
-  deleteReleaseDocuments,
+  pruneReleaseDocuments,
   releaseDocId,
   upsertReleaseDocuments,
 } from './releases.js';
