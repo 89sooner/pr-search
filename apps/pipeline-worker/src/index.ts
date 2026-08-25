@@ -36,10 +36,17 @@ import { startProjectWorker, type ProjectLogEntry } from './project.js';
 import { startAuthzWorker, type AuthzLogEntry } from './authz.js';
 import { startBackfillRunner, BACKFILL_JOB, type BackfillLogEntry, type BackfillRunner } from './backfill.js';
 import { startMirrorSweeper, type MirrorLogEntry, type MirrorRunner } from './mirror-runner.js';
-import { refreshSequenceSpaceStates, startSequenceWorker, type SequenceLogFields } from './sequence.js';
+import {
+  refreshSequenceSpaceStates,
+  startSequenceWorker,
+  type SequenceDeps,
+  type SequenceLogFields,
+} from './sequence.js';
 import { startReleaseSweeper, startReleaseWorker, type ReleaseLogFields, type ReleaseSweeper } from './release.js';
 import { startIntegritySweeper, type IntegritySweeper } from './integrity.js';
 import { startConsistencySweeper, type ConsistencySweeper } from './consistency.js';
+import { startReconcileSweeper, type ReconcileSweeper } from './reconcile.js';
+import { startSequenceRepairRunner, type RepairRunner } from './sequence-repair-runner.js';
 import { createEsClient } from '@prs/es';
 import type { Subscription } from '@prs/bus';
 import type { ReleaseSummary } from '@prs/github';
@@ -263,6 +270,7 @@ if (roles.includes('mirror')) {
 }
 
 let integritySweeper: IntegritySweeper | undefined;
+let repairRunner: RepairRunner | undefined;
 
 if (roles.includes('sequence')) {
   /*
@@ -317,7 +325,11 @@ if (roles.includes('sequence')) {
     process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-001', ...entry })}\n`);
   };
 
-  sequenceSubscription = await startSequenceWorker({
+  /*
+   * 채번 소비자와 수동 복구 러너가 **같은 의존**을 쓴다 (CR-034, DEV-178).
+   * 둘이 각자 그래프를 만들면 한쪽만 미러를 쓰는 날이 온다.
+   */
+  const sequenceDeps: SequenceDeps = {
     pool,
     es: seqEs,
     bus,
@@ -345,7 +357,9 @@ if (roles.includes('sequence')) {
         api: apiGraph,
       }),
     log: seqLog,
-  });
+  };
+
+  sequenceSubscription = await startSequenceWorker(sequenceDeps);
 
   // 기동 직후 한 번 세어 둔다. 세지 않으면 `stale` 공간이 있어도 게이지가 비어
   // 있고, 경보가 "값이 없음"과 "0"을 구분하지 못한다 (관측 문서 RB-10).
@@ -367,6 +381,24 @@ if (roles.includes('sequence')) {
     },
   });
 
+  /*
+   * JOB-SEQ-002 수동 재채번 러너 (CR-034, DEV-178).
+   *
+   * API-ADM-007 POST가 만드는 `sequence_reassign` 잡을 **실제로 집는 곳**이다.
+   * 이것이 없어서 운영자의 요청이 영구 `queued`로 남았고, `job_active_uk` 때문에
+   * 같은 공간의 다음 요청까지 전부 거절됐다.
+   *
+   * 시퀀스 역할이 소유한다 — 공간 락(`trySequenceSpaceLock`)과 그래프가 이미
+   * 여기 있고, 채번을 두 프로세스가 나눠 갖지 않는 편이 안전하다.
+   */
+  repairRunner = startSequenceRepairRunner({
+    pool,
+    sequence: sequenceDeps,
+    log: (fields) => {
+      process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-002', ...fields })}\n`);
+    },
+  });
+
   if (seqGhConfig.baseUrl === '') {
     seqLog({ level: 'warn', message: 'GHE base URL이 비어 있다 — API 폴백 경로가 동작하지 않는다' });
   }
@@ -374,6 +406,78 @@ if (roles.includes('sequence')) {
 
 let releaseSubscription: Awaited<ReturnType<typeof startReleaseWorker>> | undefined;
 let releaseSweeper: ReleaseSweeper | undefined;
+/**
+ * 조정 스캔 역할 (JOB-ING-005 / CR-034, DEV-179).
+ *
+ * ## 왜 전용 역할인가
+ *
+ * `enrich`에 몰래 붙이지 않는다. 조정 스캔은 정기 정비 작업이라 **확장 축이
+ * 실시간 소비자와 다르다** — 실시간은 이벤트 유량을 따라 늘리고, 정비는 저장소
+ * 수를 따라 한 번씩 돈다. 같은 파드에 묶으면 실시간을 늘릴 때마다 주기 스윕이
+ * 그 수만큼 중복 실행된다.
+ *
+ * `batch`라는 이름 하나에 서로 다른 의존 집합을 밀어 넣지도 않는다. 역할이 하나
+ * 느는 편이 암묵적 조건부 실행보다 읽기 쉽다.
+ *
+ * ## 주기 스윕이 있는 역할은 replica 1이 기본이다
+ *
+ * 여러 파드가 같은 주기에 함께 돌면 같은 저장소를 동시에 조정한다. 되돌리기는
+ * 멱등하지만 GHE 한도를 그만큼 더 쓴다. 수평 확장이 필요하면 claim 규칙을 먼저
+ * 세운다 — 배포 문서에 그렇게 적었다.
+ */
+let reconcileSweeper: ReconcileSweeper | undefined;
+
+if (roles.includes('reconcile')) {
+  const config = resolveGitHubConfig();
+  const installations = parseInstallations();
+  if (!hasAppCredentials(config) || installations.length === 0) {
+    // 자격 증명 없이 켜면 매 주기가 인증 실패로 끝난다. 조용히 도는 것보다 낫다.
+    throw new Error('reconcile 역할에는 GHE_APP_ID·GHE_APP_PRIVATE_KEY·GHE_INSTALLATIONS가 필요하다');
+  }
+
+  const tokenPool = new TokenPool(
+    new InstallationTokenProvider({
+      apiUrl: config.apiUrl,
+      appId: config.appId,
+      privateKey: config.privateKey,
+      refreshLeadMs: config.tokenRefreshLeadMs,
+      requestTimeoutMs: config.requestTimeoutMs,
+    }),
+    { installations, quarantineThreshold: config.quarantineThreshold },
+  );
+  const client = new GitHubClient(
+    new GitHubTransport({
+      apiUrl: config.apiUrl,
+      requestTimeoutMs: config.requestTimeoutMs,
+      pool: tokenPool,
+      scheduler: new RequestScheduler({ maxConcurrent: config.maxConcurrentRequests }),
+    }),
+  );
+  const reconcileEs = createEsClient();
+  esClient = esClient ?? reconcileEs;
+  const reconcileLog = (entry: Record<string, unknown>): void => {
+    process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-ING-005', ...entry })}\n`);
+  };
+
+  reconcileSweeper = startReconcileSweeper({
+    pool,
+    es: reconcileEs,
+    client,
+    bus,
+    metrics,
+    graphFor: () => new ApiCommitGraph({ client, priority: 'backfill' }),
+    // 되돌리기는 백필과 같은 경로다 (DEV-176) — 여기서 그 의존을 만든다.
+    backfill: {
+      pool,
+      es: reconcileEs,
+      client,
+      snapshotSource: 'reconcile',
+      log: (entry) => { reconcileLog({ ...entry }); },
+    },
+    log: (fields) => { reconcileLog({ ...fields }); },
+  });
+}
+
 if (roles.includes('release')) {
   /*
    * JOB-REL-007 (WP-024 / CR-028). 태그의 정본은 미러이므로(DEV-143) 이 역할은
@@ -529,6 +633,8 @@ const shutdown = (): void => {
       await releaseSweeper?.stop();
       await integritySweeper?.stop();
       await consistencySweeper?.stop();
+      await reconcileSweeper?.stop();
+      await repairRunner?.stop();
       await authzSubscription?.close();
       await authzRedisClient?.quit();
       await bus.close();

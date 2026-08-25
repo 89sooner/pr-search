@@ -1,8 +1,25 @@
-# 배포 매니페스트 (WP-010)
+# 배포 매니페스트 (WP-010, CR-034)
 
-REL-001 배포 단위만 있다 — `ingest-gateway`, `pipeline-worker`(enrich/project),
-`search-api`. `web`·`filebeat`·`gh-executor`와 나머지 워커 역할은 그것을
-소유한 WP가 더한다 (인프라 문서 3장).
+REL-001 배포 단위(`ingest-gateway`, `pipeline-worker` enrich/project, `search-api`)에
+REL-003의 두 워커 역할이 더해졌다 — `sequence`, `reconcile` (CR-034, DEV-183).
+`web`·`filebeat`·`gh-executor`와 나머지 역할은 그것을 소유한 WP가 더한다
+(인프라 문서 3장).
+
+**역할에 manifest가 없으면 그 기능은 배포되지 않는다.** WP-021~028이 만든
+채번·재채번·정합성 점검·조정 스캔이 배포 단위 없이 "완료"로 기록돼 있던 것이
+CR-034가 찾은 결함 하나다. 새 워커 역할을 만드는 WP는 manifest를 함께 낸다.
+
+## 주기 스윕이 있는 역할은 replica 1이다
+
+`pipeline-worker-sequence`와 `pipeline-worker-reconcile`은 이벤트 소비자이면서
+**주기 스윕**을 함께 갖는다. 스윕에는 리더 선출이 없으므로 여러 파드가 같은
+주기에 같은 대상을 중복 처리한다 — 결과가 틀리지는 않지만(채번은
+`trySequenceSpaceLock`이, 큐는 `claimNextJob`의 advisory lock이 막는다) GHE 한도를
+그만큼 더 쓰고, **한도 소진은 조정 스캔이 다음 주기로 미루는 조건**이라 자기
+발등을 찍는다.
+
+수평 확장이 필요하면 **리더 선출이나 claim 규칙을 먼저 세운다.** replica를 먼저
+올리지 않는다.
 
 ## 적용 순서
 
@@ -14,7 +31,8 @@ kubectl apply -f configmap.yaml
 # 시크릿은 저장소에 두지 않는다. secret.example.yaml을 보고 만든다.
 kubectl apply -f migrate-job.yaml   # 1. DB 마이그레이션
 kubectl wait --for=condition=complete job/prs-migrate -n pr-search --timeout=300s
-kubectl apply -f pipeline-worker-enrich.yaml pipeline-worker-project.yaml   # 2. 워커
+kubectl apply -f pipeline-worker-enrich.yaml pipeline-worker-project.yaml   # 2. 워커 (REL-001)
+kubectl apply -f pipeline-worker-sequence.yaml pipeline-worker-reconcile.yaml  #    워커 (REL-003)
 kubectl apply -f search-api.yaml ingest-gateway.yaml                        # 3. API
 ```
 
@@ -29,7 +47,7 @@ kubectl apply -f search-api.yaml ingest-gateway.yaml                        # 3.
 | 키 | 쓰는 곳 | 없으면 |
 | --- | --- | --- |
 | `GHE_WEBHOOK_SECRET` | 게이트웨이 서명 검증 | 모든 웹훅이 401 |
-| `GHE_APP_ID`, `GHE_APP_PRIVATE_KEY` | 보강, 저장소 등록 | `enrich` 역할이 기동을 거부한다 |
+| `GHE_APP_ID`, `GHE_APP_PRIVATE_KEY` | 보강, 저장소 등록, 조정 스캔, 정합성 점검 API | `enrich`·`reconcile` 역할이 기동을 거부한다. search-api는 뜨되 **API-ADM-007을 등록하지 않고 기동 로그의 `capabilities`가 그 사실을 밝힌다** (CR-034, DEV-177) |
 | `GHE_INSTALLATIONS` | `org → installationId` (CR-010, DEV-015) | 위와 같다 |
 | `DATABASE_URL` | 전 서비스 | 기동 실패 |
 | `ADMIN_API_TOKENS` | 관리 API (CR-013, DEV-030) | **관리 경로를 등록하지 않는다** |

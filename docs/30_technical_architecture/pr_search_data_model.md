@@ -125,6 +125,30 @@ CREATE INDEX dead_letter_repo_idx  ON dead_letter (repository_id, created_at DES
 
 `raw_event`의 `queued_at`/`processed_at`이 아웃박스 역할을 한다. Redis 유실 시 `queued_at IS NOT NULL AND processed_at IS NULL`이면서 일정 시간이 지난 행을 재적재한다 (ADR-002 follow-up, `JOB-ING-007`).
 
+#### `pull_request_snapshot` — 백필·조정의 정본 (CR-034, DEV-184)
+
+```sql
+CREATE TABLE pull_request_snapshot (
+  repository_id    BIGINT      NOT NULL,
+  pr_number        INT         NOT NULL,
+  document_version BIGINT      NOT NULL,
+  source           TEXT        NOT NULL,   -- 'webhook' | 'backfill' | 'reconcile'
+  document         JSONB       NOT NULL,
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (repository_id, pr_number)
+);
+```
+
+**`raw_event`만으로는 ADR-004가 성립하지 않는다.** 웹훅으로 들어온 PR은 그 표가 재구성 근거이지만, **백필(JOB-ING-004)과 조정 스캔(JOB-ING-005)은 GHE에서 직접 읽어 Elasticsearch에만 쓴다** — `raw_event` 행을 남기지 않는다. 그 PR들은 색인에만 존재했고, "어떤 데이터도 검색 인덱스에만 존재해서는 안 된다"가 그 경로에서 실제로 깨져 있었다.
+
+- **두 투영 경로가 함께 남긴다.** 실시간과 백필·조정이 이미 같은 `buildUpsertRequests`를 쓰므로 그 결과를 한 자리에서 저장한다 — 한쪽만 남기면 그쪽만 재구성 가능한 반쪽 불변식이 된다.
+- **색인보다 먼저 쓴다.** 정본이 먼저 있어야 색인 실패가 데이터 유실이 아니다.
+- **`document_version`은 Elasticsearch 업서트와 같은 값이다.** 그래서 "오래된 백필이 최신 웹훅을 덮어쓰지 않는다"(DEV-099)가 이 표에서도 같은 규칙으로 성립하고, 같은 PR 재실행은 멱등이다.
+- **합성 웹훅을 `raw_event`에 넣지 않는다.** 원본 레인은 실제로 받은 것만 담아야 감사 근거가 된다.
+- 문서에는 변경 **경로 이름**만 있고 소스 코드·패치 본문은 애초에 들어 있지 않다.
+
+`JOB-ING-008`의 정합성 대조가 이 표를 정본으로 읽는다 — 재구성 근거와 대조 근거가 같은 것이다.
+
 ### 3.2 시퀀스 (핵심)
 
 ```sql

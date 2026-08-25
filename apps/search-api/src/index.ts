@@ -19,6 +19,7 @@ import { SEARCH_TIMEOUT_MS } from './search/routes.js';
 import { createGheLookup } from './ops/ghe-lookup.js';
 import type { RegistryDeps } from './ops/repositories.js';
 import { buildServer, SERVICE_NAME } from './server.js';
+import { buildServerDeps, runtimeCapabilities } from './runtime.js';
 
 const config = resolveSearchApiConfig();
 const pool = createPool();
@@ -149,20 +150,25 @@ const searchDeps = {
   timeoutMs: SEARCH_TIMEOUT_MS,
 };
 
-const app = buildServer({
+/*
+ * 조립은 `runtime.ts`가 한다 (CR-034, DEV-177). 여기서 직접 객체를 만들면
+ * "무엇을 넘기는가"가 어떤 시험에도 걸리지 않는 자리로 남는다 — API-ADM-007이
+ * 정확히 그 자리에서 빠졌다.
+ */
+const runtimeParts = {
   config,
-  ops: { pool, bus, log: (entry) => log({ ...entry }) },
-  pipeline: {
-    pool,
-    bus,
-    es,
-    metricsQueryUrl: config.metricsQueryUrl,
-    log: (entry) => log({ ...entry }),
-  },
+  pool,
+  bus,
+  es,
+  log,
+  ...(github === undefined ? {} : { github }),
   ...(registry === undefined ? {} : { registry }),
-  ...(auth === undefined ? {} : { auth, search: searchDeps, sequence: { ...searchDeps, pool } }),
-  log: (entry) => log({ ...entry }),
-});
+  ...(auth === undefined ? {} : { auth, searchDeps }),
+};
+
+log({ level: 'info', message: '기능 가용성', capabilities: runtimeCapabilities(runtimeParts) });
+
+const app = buildServer(buildServerDeps(runtimeParts));
 
 try {
   await app.listen({ port: config.port, host: '0.0.0.0' });

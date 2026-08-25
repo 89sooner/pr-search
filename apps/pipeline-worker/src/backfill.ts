@@ -18,11 +18,12 @@
  * 무엇이 색인됐는지 알 수 없는 채로 처음부터 다시 해야 한다.
  */
 
-import { jobRepo, type JobRow, type Pool, type RepositoryRow } from '@prs/db';
+import { jobRepo, type JobRow, type Pool, type RepositoryRow, type SnapshotSource } from '@prs/db';
 import { GitHubApiError, safeMessage, type GitHubClient } from '@prs/github';
 import type { Client } from '@elastic/elasticsearch';
 import { bulkUpsert } from '@prs/es';
 import { buildUpsertRequests } from './documents.js';
+import { recordProjectionSnapshot } from './snapshot.js';
 import { toEnrichedPullRequest } from './enriched-payload.js';
 import { describeFailedItems, retryFailedItems } from './index-retry.js';
 import {
@@ -60,6 +61,8 @@ export interface BackfillDeps {
   readonly sleep?: (ms: number) => Promise<void>;
   /** 색인 설정을 조정한다. 없으면 조정하지 않는다 (CR-022, DEV-105). */
   readonly indexTuning?: IndexTuning;
+  /** 정본 스냅숏에 남길 출처. 조정 스캔이 `reconcile`로 바꾼다 (CR-034, DEV-184). */
+  readonly snapshotSource?: SnapshotSource;
 }
 
 /** 백필 중 `refresh_interval` 조정 (CR-022, DEV-105). */
@@ -247,6 +250,17 @@ export async function projectOne(
       // 엔티티가 갱신된 시각이다. 지금 시각이 아니다 (CR-022, DEV-099).
       documentVersion,
       indexedAt: (deps.now ?? ((): Date => new Date()))(),
+    });
+
+    /*
+     * **정본을 색인보다 먼저 남긴다** (CR-034, DEV-184 / ADR-004). 백필·조정은
+     * GHE에서 직접 읽어 색인에만 써 왔다 — `raw_event`가 없으므로 이 스냅숏이
+     * 없으면 그 PR들은 색인에만 존재하고, 색인을 잃으면 되살릴 근거가 없다.
+     */
+    await recordProjectionSnapshot(deps.pool, requests, {
+      repositoryId: repository.repository_id,
+      prNumber: summary.number,
+      source: deps.snapshotSource ?? 'backfill',
     });
 
     /*

@@ -1,0 +1,51 @@
+# 조정 스캔 역할 (JOB-ING-005 / FR-ING-011).
+#
+# **전용 역할이다** (CR-034, DEV-179). 정기 정비 작업이라 확장 축이 실시간
+# 소비자와 다르다 — 실시간은 이벤트 유량을 따라 늘리고, 정비는 저장소 수를
+# 따라 한 번씩 돈다. `enrich`에 묶으면 실시간을 늘릴 때마다 주기 스윕이 그만큼
+# 중복 실행된다.
+#
+# **replica 1이다.** 주기 스윕에 리더 선출이 없다. 여러 파드가 같은 주기에 같은
+# 저장소를 조정하면 되돌리기는 멱등이라 결과가 틀리지는 않지만 GHE 한도를
+# 그만큼 더 쓴다 — 한도 소진은 이 잡이 미루는 조건이므로 자기 발등을 찍는다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pipeline-worker-reconcile
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: pipeline-worker-reconcile }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/component: pipeline-worker-reconcile }
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: pipeline-worker-reconcile }
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '3003'
+    spec:
+      # 진행 중인 저장소 한 바퀴를 끝내고 나간다.
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: pipeline-worker
+          image: prs/pipeline-worker:latest
+          env:
+            - name: PIPELINE_WORKER_ROLES
+              value: reconcile
+          ports:
+            - name: http
+              containerPort: 3003
+          envFrom:
+            - configMapRef: { name: prs-config }
+            - secretRef: { name: prs-secrets }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 200m, memory: 384Mi }
+            limits: { memory: 768Mi }

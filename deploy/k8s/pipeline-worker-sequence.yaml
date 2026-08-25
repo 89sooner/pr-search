@@ -1,0 +1,53 @@
+# 시퀀스 역할 (JOB-SEQ-001 채번 · JOB-SEQ-002 수동 재채번 · JOB-SEQ-003 정합성 점검).
+#
+# **replica 1이다.** 이 역할은 이벤트 소비자이면서 동시에 주기 스윕(JOB-SEQ-003)과
+# 큐 러너(JOB-SEQ-002)를 갖는다. 여러 파드가 함께 돌면 같은 주기에 같은 공간을
+# 중복 점검한다 — 정합성 점검은 읽기라 결과가 틀리지는 않지만 그래프 호출을
+# 그만큼 더 쓴다.
+#
+# 수평 확장이 필요하면 **먼저 claim 규칙을 세운다.** 채번 자체는
+# `trySequenceSpaceLock`이, 큐는 `claimNextJob`의 advisory lock이 이미 막지만,
+# 주기 스윕에는 리더 선출이 없다 (CR-034에 기록).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pipeline-worker-sequence
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: pipeline-worker-sequence }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/component: pipeline-worker-sequence }
+  strategy:
+    # 시퀀스 공간은 한 번에 하나만 써야 안전하다 — 겹치는 롤링을 만들지 않는다.
+    type: Recreate
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: pipeline-worker-sequence }
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '3003'
+    spec:
+      # 진행 중 재채번 트랜잭션을 끝내고 나간다. 중간에 끊겨도 트랜잭션이
+      # 통째로 롤백되므로 부분 채번은 남지 않는다.
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: pipeline-worker
+          image: prs/pipeline-worker:latest
+          env:
+            - name: PIPELINE_WORKER_ROLES
+              value: sequence
+          ports:
+            - name: http
+              containerPort: 3003
+          envFrom:
+            - configMapRef: { name: prs-config }
+            - secretRef: { name: prs-secrets }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 300m, memory: 384Mi }
+            limits: { memory: 768Mi }
