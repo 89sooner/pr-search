@@ -36,15 +36,15 @@
 **JOB-ING-004의 실행은 이벤트가 아니라 `job` 행이 지시한다 (CR-022, DEV-101).** API가 행을 만들고 배치 워커가 폴링해 **원자적으로 claim한다** — 세는 것과 잡는 것이 한 트랜잭션에 있어야 동시 실행 상한(AC-6)이 성립한다. 이벤트를 함께 쓰면 진실이 둘이 되어 넷이 동시에 "둘뿐이네"를 읽는다. `prs:batch` 스트림은 진행률(`EVT-JOB-001`)에 쓴다.
 
 **백필은 웹훅이 아니라 델리버리 ID가 없다 (CR-022, DEV-100).** `backfill:{repository_id}:{pr_number}`를 만들어 쓴다. **결정론적**이라야 재개·재시도에서 같은 PR이 같은 키를 갖고 실패 대기열(`(delivery_id, stage)` 유니크)에 중복이 쌓이지 않으며, **접두**가 있어야 운영자가 UUID 사이에서 출처를 안다. `job_id`는 넣지 않는다 — 넣으면 잡을 다시 실행할 때 같은 PR이 다른 키를 갖는다.
-| JOB-ING-005 | 조정 스캔 | 스케줄 (기본 1시간) / 수동 | batch | 3회 | 30분 | EVT-JOB-001 | FR-ING-011 |
+| JOB-ING-005 | 조정 스캔 | 스케줄 (기본 1시간) / 수동 | **`reconcile` 역할** (CR-034, DEV-179) | 3회 | 30분 | EVT-JOB-001 · `sequence.requested`(head 복구, DEV-180) | FR-ING-011 |
 | JOB-ING-006 | 재색인 | 수동 (API-ADM-004) | batch | 없음 (실패 시 별칭 미전환) | 없음 | EVT-JOB-001 | FR-ING-008 |
 | JOB-ING-007 | 아웃박스 재적재 | 스케줄 (5분) | batch | 3회 | 5분 | - | ADR-002 follow-up |
-| JOB-ING-008 | PostgreSQL↔ES 정합성 감시 | 스케줄 (6시간) | batch | 3회 | 30분 | EVT-JOB-001 | ADR-004 follow-up |
+| JOB-ING-008 | PostgreSQL↔ES 정합성 감시 | 스케줄 (6시간) | **`project` 역할** | 3회 | 30분 | EVT-JOB-001 | ADR-004 follow-up |
 | JOB-ING-009 | 실패 대기열 재처리 | 수동 (API-ADM-003) | ops (WP-009) → batch (WP-019 이후) | 이벤트별 누적 | 10분 | EVT-JOB-001 (batch 이후) | FR-ING-007 |
 | EVT-REL-001 | `release.refresh_requested` | ingest-gateway, sequence(재채번 후) | release | `prs:release` | `{ repository_id, correlation_id }` — **태그 이름·SHA를 싣지 않는다**: 정본은 미러의 refs/tags 스냅숏이고(DEV-143), 이벤트는 "이 저장소의 태그가 바뀌었으니 다시 봐라"라는 신호일 뿐이다. payload를 신뢰하면 이벤트 순서 역전이 스냅숏을 되돌린다 | 파티션 `repository_id`, 저장소당 직렬 |
 | JOB-SEQ-001 | 시퀀스 증분 채번 | `push` 웹훅 → 게이트웨이가 `prs:sequence`에 발행 (CR-025, DEV-116) / 백필 완료 | sequence | 락 실패는 `defer`, 그 밖은 5회 지수 백오프 | 10분 | EVT-SEQ-001 | FR-SEQ-001 |
-| JOB-SEQ-002 | 시퀀스 재채번 | 재작성 감지 / 수동 (API-ADM-007) | sequence | 없음 (실패 시 `stale`) | 60분 | EVT-SEQ-002, EVT-JOB-001 | FR-SEQ-005 |
-| JOB-SEQ-003 | 시퀀스 정합성 점검 | 수동 / 스케줄 (일 1회, 표본) | batch | 3회 | 30분 | EVT-JOB-001 | FR-ADMIN-003 |
+| JOB-SEQ-002 | 시퀀스 재채번 | 재작성 감지(자동) / 수동 (API-ADM-007 → `sequence_reassign` 잡) | `sequence` 역할 — 자동은 버스 소비자, **수동은 `startSequenceRepairRunner`가 잡을 claim한다** (CR-034, DEV-178) | 없음 (실패 시 `stale`) | 60분 | EVT-SEQ-002, EVT-JOB-001 | FR-SEQ-005, FR-ADMIN-003 AC-4 |
+| JOB-SEQ-003 | 시퀀스 정합성 점검 | 수동 / 스케줄 (일 1회, 표본) | **`sequence` 역할** | 3회 | 30분 | EVT-JOB-001 | FR-ADMIN-003 |
 | JOB-REL-001 | 참조 간선 추출 | EVT-ING-003 | link | 3회 | 30초 | - | FR-REL-003 |
 | JOB-REL-002 | 되돌림 간선 파생 | EVT-ING-003 | link | 3회 | 30초 | - | FR-REL-004 |
 | JOB-REL-003 | 체리픽 간선 파생 | EVT-ING-003 | link | 3회 | 60초 | - | FR-REL-005 |
