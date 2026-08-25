@@ -698,9 +698,15 @@ GET /api/v1/sequence-spaces
 - 관련 요구사항: FR-REL-001
 - 소비자: `W-002-NEIGHBORS`(PR 상세)와 `W-003-SEQPOS`(커밋 상세). 두 화면이 같은 목록을 다른 앵커로 본다.
 
-요청: `GET /api/v1/sequence-neighbors?repository=acme/payments&pr_number=1234&count=10`
+요청: `GET /api/v1/sequence-neighbors?repository=acme/payments&base_branch=main&pr_number=1234&count=10`
 
 **앵커는 `pr_number` 또는 `commit_sha` 하나다** (CR-031, DEV-163). 둘 다 주거나 둘 다 없으면 400 `INVALID_PARAMETER`다. 커밋 앵커가 필요한 이유는 W-003이다 — **직접 푸시 커밋은 PR이 없어** `pr_number`로는 자기 위치를 물을 수 없다.
+
+**`base_branch`는 필수다 — 서버가 시퀀스 공간을 고르지 않는다** (CR-032, DEV-168). 서수는 `(저장소, 대상 브랜치)` 공간 안에서만 의미가 있고(ADR-007), `merge_sequence`의 유일 색인이 공간별로 걸려 있으므로 **한 커밋이 `main`과 `release/*`의 현재 first-parent 체인에 함께 있는 것은 정상이다.** 앵커만 받아 저장소 전체에서 찾으면 어느 공간의 서수를 낼지 저장 순서가 정하게 되고, 사용자가 묻지 않은 브랜치의 답이 나온다. 정렬을 더해도 **결정적으로 같은 오답**일 뿐이다. 소비자인 두 화면은 이미 공간을 안다 — W-002는 PR 문서의 `base_branch`, W-003은 커밋 문서의 `base_branch`다. 없으면 400 `INVALID_PARAMETER`(`detail.field: "base_branch"`)다.
+
+- **불변식**: `sequence_space`는 언제나 `<repository>@<요청한 base_branch>`다. 앵커도 이웃도 그 공간에서만 고른다.
+- 그 공간에 앵커가 없으면 **다른 브랜치의 행으로 대신 답하지 않는다** — 409 `NO_SEQUENCE`(`reason: "not_sequenced"`)다. 다른 브랜치에는 있다는 사실도 알리지 않는다(그 답은 API-REL-002 포함 관계 조회의 몫이다).
+- 채번된 적이 없는 브랜치는 404다 — API-SEQ-001과 같은 규칙이다 (CR-027, DEV-137). 빈 목록으로 200을 내면 "그 공간에 아무것도 없다"로 읽힌다.
 
 응답 200:
 
@@ -738,6 +744,10 @@ GET /api/v1/sequence-spaces
 
 - `count`는 기본 10, 최대 50이며 **앞뒤 각각**이다 (AC-1). 응답 항목 수는 최대 `2 × count + 1`이다.
 - `indexed: false`는 **정본(`merge_sequence`)에는 있는데 색인에 표시값이 없다**는 뜻이다 (DEV-130과 같은 규칙). 서수·SHA는 확정값이므로 행을 빼지 않고, 화면은 "색인 대기"로 밝힌다. 직접 푸시 커밋은 보강 전까지 언제나 이 상태다.
+- **`merged_at`은 행의 종류가 정한다** (CR-032, DEV-169). 커밋 시각과 PR 머지 시각은 다른 값이다.
+  - `kind: "commit"`(직접 푸시) → 그 커밋의 `committed_at`. PR이 없으므로 이것이 그 행의 시각으로서 참이다.
+  - `kind: "pull_request"` + `indexed: true` → PR 문서의 `merged_at`.
+  - `kind: "pull_request"` + `indexed: false` → **`null`**. 머지 시각은 PR 문서만 아는 값이고, 색인이 아직 그것을 싣지 못했다면 서버가 아는 것은 "모른다"다. **병합 커밋의 `committed_at`으로 대신 채우지 않는다** — 화면의 "머지 시각" 칸이 확인되지 않은 값을 확정처럼 그리게 된다. 화면은 `—`로 비운다.
 - 에폭 봉투는 API-SEQ-001과 같다. `seq_epoch`는 현재 에폭이고, 요청에 `seq_epoch`를 실어 인용을 고정할 수 있다 — 다르면 `epoch_stale: true` + `requested_seq_epoch`를 싣고 **결과는 내지 않는다** (ADR-007). 재채번 중이면 `sequence_state: "reassigning"`과 마지막 확정 값이다.
 - `boundary.at_start`는 앞쪽으로 `count`건을 채우지 못했다는 뜻이고 `at_end`는 뒤쪽이다 — 공간 경계에서 **오류가 아니라 존재하는 만큼만** 반환한다 (AC-4).
 - 항목 표시값은 강제 접근 범위 필터를 지난 색인 조회로 채운다 (ADR-008). 요청 자체가 저장소 단위로 이미 걸러지므로 이웃이 다른 저장소로 새지 않는다.
@@ -757,7 +767,7 @@ GET /api/v1/sequence-spaces
 
 `reason`은 둘이다: 미머지는 `not_merged`, **머지됐으나 아직 채번되지 않은** 개체는 `not_sequenced`다. 한 코드로 묶으면 화면이 "머지되지 않았다"는 **사실 주장**과 "아직 모른다"를 같이 그리게 되고, 그것은 C-014가 금지하는 것이다 (CR-019, DEV-077).
 
-- 오류: `INVALID_PARAMETER` (400, 앵커가 둘이거나 없음), `NO_SEQUENCE` (409), `NOT_FOUND` (404, 미등록·범위 밖 저장소 또는 없는 PR·커밋)
+- 오류: `INVALID_PARAMETER` (400, 앵커가 둘이거나 없음 · `base_branch` 없음), `NO_SEQUENCE` (409), `NOT_FOUND` (404, 미등록·범위 밖 저장소, 채번된 적 없는 시퀀스 공간, 없는 PR·커밋)
 
 ### API-REL-002 포함 관계 조회
 
