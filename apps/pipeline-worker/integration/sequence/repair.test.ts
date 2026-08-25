@@ -399,6 +399,59 @@ describe('재채번 러너가 큐를 비운다 (CR-034, DEV-178)', () => {
       expect(rows.map((row) => row.sha)).toEqual([...chain]);
     });
 
+    it('일을 마친 직후 취소가 들어오면 최종 상태는 cancelled다 (DEV-196)', async () => {
+      await seedLiveWithCorruptionAt(3);
+      const repository = (await repositoryRepo.findRepositoryBySlug(pool, OWNER, NAME))!;
+      const jobId = await jobRepo.enqueueJob(pool, 'sequence_reassign', `${OWNER}/${NAME}@${BRANCH}`, 'operator-cr037');
+      const claimed = await jobRepo.claimNextJob(pool, 'sequence_reassign');
+      expect(claimed?.job_id).toBe(jobId);
+
+      /*
+       * 실제 일을 마친 **직후, finish 직전**에 취소가 들어온다. 무조건 UPDATE면
+       * 여기서 `cancelled`가 `completed`로 덮인다.
+       */
+      const outcome = await runRepairJob(
+        {
+          pool,
+          sequence: deps(),
+          repair: async (): Promise<RepairOutcome> => {
+            await pool.query("UPDATE job SET state = 'cancelled' WHERE job_id = $1", [jobId]);
+            return { kind: 'consistent', checked: 4 };
+          },
+        },
+        claimed!,
+      );
+
+      expect(outcome?.kind).toBe('consistent');
+      const state = await jobRepo.findJobState(pool, jobId);
+      expect(state).toBe('cancelled');
+      expect(repository.repository_id).toBe(REPOSITORY_ID);
+    });
+
+    it('시작 전에 취소된 잡은 비가역 복구를 실행하지 않는다 (DEV-196)', async () => {
+      await seedLiveWithCorruptionAt(3);
+      const jobId = await jobRepo.enqueueJob(pool, 'sequence_reassign', `${OWNER}/${NAME}@${BRANCH}`, 'operator-cr037');
+      const claimed = await jobRepo.claimNextJob(pool, 'sequence_reassign');
+      await pool.query("UPDATE job SET state = 'cancelled' WHERE job_id = $1", [jobId]);
+
+      let ran = false;
+      const outcome = await runRepairJob(
+        {
+          pool,
+          sequence: deps(),
+          repair: (): Promise<RepairOutcome> => {
+            ran = true;
+            return Promise.resolve({ kind: 'consistent', checked: 4 });
+          },
+        },
+        claimed!,
+      );
+
+      expect(ran).toBe(false);
+      expect(outcome).toBeNull();
+      expect(await jobRepo.findJobState(pool, jobId)).toBe('cancelled');
+    });
+
     it('저장된 head가 움직였으면 Git head가 그대로여도 커밋하지 않는다 (DEV-192)', async () => {
       /*
        * 실제 Git head 울타리만으로는 부족하다. 다른 채번이 `sequence_space`의
