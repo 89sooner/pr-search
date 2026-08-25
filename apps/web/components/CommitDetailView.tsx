@@ -21,6 +21,7 @@ import { ErrorBanner } from './ErrorBanner';
 import { LinkedPrList } from './LinkedPrList';
 import { PendingSection } from './PendingSection';
 import { ReleaseContainmentSection } from './ReleaseContainmentList';
+import { NeighborSection } from './NeighborSequenceList';
 import { SequencePosition } from './SequencePosition';
 import { ShaChip } from './ShaChip';
 import {
@@ -285,6 +286,29 @@ export function CommitDetailView({
         sequenceSpace={commit.sequence_space ?? null}
         landedAs={landedAsCommitSha(commit)}
         repository={repo}
+      />
+
+      {/*
+        * 앞뒤 인접 항목 (WP-027, CR-031 DEV-163). **앵커는 커밋 SHA다** — 직접
+        * 푸시 커밋은 PR이 없어 PR 번호로 자기 위치를 물을 수 없다.
+        *
+        * 체인 밖(`off_chain`)과 미채번(`not_computed`)은 **역할로 이미 아는
+        * 사실**이므로 조회하지 않는다 (DEV-092). 서버는 그 둘을 가릴 수 없다.
+        */}
+      <NeighborSection
+        repository={repo}
+        sectionId="commit-neighbors"
+        anchor={{ kind: 'commit', commitSha: commit.commit_sha ?? commitSha }}
+        baseBranch={commit.base_branch ?? null}
+        documentEpoch={commit.seq_epoch ?? null}
+        {...(seqState === 'assigned'
+          ? {}
+          : {
+              skip:
+                seqState === 'off_chain'
+                  ? { reason: null, offChain: true }
+                  : { reason: 'not_sequenced' as const },
+            })}
       />
 
       <ChangedPathList {...paths} owner="WP-020 (미러 기반 커밋 보강)" />
