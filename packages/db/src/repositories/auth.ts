@@ -229,11 +229,28 @@ export async function upsertTeam(
   db: Queryable,
   team: { readonly team_id: number; readonly slug: string; readonly org_id: number },
 ): Promise<void> {
-  await db.query(
-    `INSERT INTO team (team_id, slug, org_id) VALUES ($1, $2, $3)
-     ON CONFLICT (team_id) DO UPDATE SET slug = EXCLUDED.slug, org_id = EXCLUDED.org_id`,
-    [team.team_id, team.slug, team.org_id],
-  );
+  /*
+   * `team`에는 유니크 제약이 **둘** 있다 — `team_id`(기본 키)와 `(org_id, slug)`.
+   * `ON CONFLICT (team_id)`는 앞의 것만 중재자로 삼으므로, 행이 아직 없는 상태에서
+   * 같은 팀을 **동시에** 넣으면 뒤의 인덱스에서 충돌이 나 23505로 터진다 —
+   * 팀을 공유하는 두 저장소가 함께 동기화될 때 실재하는 경로다 (CR-037, DEV-201).
+   *
+   * 한 번 다시 시도하면 그 사이 상대가 커밋해 행이 존재하므로 `ON CONFLICT
+   * (team_id)`가 정상적으로 갱신 경로를 탄다. 두 인덱스를 한 문장에서 함께
+   * 중재할 방법은 없다.
+   */
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await db.query(
+        `INSERT INTO team (team_id, slug, org_id) VALUES ($1, $2, $3)
+         ON CONFLICT (team_id) DO UPDATE SET slug = EXCLUDED.slug, org_id = EXCLUDED.org_id`,
+        [team.team_id, team.slug, team.org_id],
+      );
+      return;
+    } catch (error) {
+      if (attempt >= 1 || (error as { code?: string }).code !== '23505') throw error;
+    }
+  }
 }
 
 export async function findTeam(db: Queryable, teamId: number): Promise<TeamRow | null> {

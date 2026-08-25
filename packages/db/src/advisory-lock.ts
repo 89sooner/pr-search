@@ -40,6 +40,60 @@ export function releaseLockKey(repositoryId: number): string {
 }
 
 /**
+ * 저장소 접근 범위 동기화 락 키 (CR-037, DEV-191).
+ *
+ * 저장소 단위다. 같은 저장소의 팀 목록을 GHE에서 읽어 정본과 색인에 쓰는 일이
+ * 여러 진입점(등록·팀 웹훅·조정 스캔)에서 동시에 일어날 수 있고, 각자 다른
+ * 스냅숏을 읽어 조건 없이 덮어쓰면 **늦게 끝난 옛 호출이 회수를 되돌린다.**
+ * 권한 스트림은 `team_id`로만 파티션되므로 그 직렬화는 여기에 닿지 않는다.
+ */
+export function repositoryScopeLockKey(repositoryId: number): string {
+  return `repo:scope:${String(repositoryId)}`;
+}
+
+/**
+ * 세션 범위 advisory lock을 잡는다 (CR-037, DEV-191).
+ *
+ * ## 왜 트랜잭션 범위가 아닌가
+ *
+ * 이 락은 **GHE 왕복을 감싸야** 한다 — 조회와 쓰기 사이에 다른 호출이 끼어드는
+ * 것이 막으려는 경주이기 때문이다. 트랜잭션 범위 락을 쓰면 네트워크 왕복 내내
+ * 트랜잭션이 열려 있어야 하고, 그것은 커넥션과 스냅숏을 GHE 응답 시간만큼
+ * 붙잡는다. 세션 락은 트랜잭션과 수명이 분리되므로 그럴 필요가 없다.
+ *
+ * ## 반드시 풀어야 한다
+ *
+ * 세션 락은 커넥션이 풀로 돌아가도 **남는다.** 풀지 않고 반납하면 그 커넥션을
+ * 다음에 쓰는 쪽이 영원히 잠긴 키를 물려받는다. 호출부는 `finally`에서
+ * `releaseAdvisorySessionLock`을 부른 뒤 반납한다.
+ *
+ * @returns 잡았으면 `true`. `lockTimeoutMs` 안에 잡지 못하면 `false`.
+ */
+export async function acquireAdvisorySessionLock(
+  client: PoolClient,
+  key: string,
+  lockTimeoutMs = 30_000,
+): Promise<boolean> {
+  await client.query(`SET lock_timeout = ${String(Math.trunc(lockTimeoutMs))}`);
+  try {
+    await client.query('SELECT pg_advisory_lock(hashtext($1))', [key]);
+    return true;
+  } catch (error) {
+    // 55P03 lock_not_available — 다른 세션이 쥐고 있다. 던지지 않고 알린다.
+    if ((error as { code?: string }).code === '55P03') return false;
+    throw error;
+  } finally {
+    // 세션 설정이라 반납 후 다음 사용자에게 새어 나간다. 반드시 되돌린다.
+    await client.query('RESET lock_timeout').catch(() => undefined);
+  }
+}
+
+/** 세션 범위 advisory lock을 푼다. 잡지 않은 키를 풀어도 경고뿐이다. */
+export async function releaseAdvisorySessionLock(client: PoolClient, key: string): Promise<void> {
+  await client.query('SELECT pg_advisory_unlock(hashtext($1))', [key]);
+}
+
+/**
  * 트랜잭션 범위 advisory lock을 시도한다.
  *
  * @returns 락을 얻었으면 `true`. 다른 트랜잭션이 쥐고 있으면 즉시 `false`.

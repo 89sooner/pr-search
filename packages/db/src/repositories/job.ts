@@ -19,7 +19,9 @@ export type JobType =
   | 'sequence_reassign'
   | 'sequence_integrity'
   | 'link_rebuild'
-  | 'export';
+  | 'export'
+  /** 기존 데이터의 정본 스냅숏 부트스트랩 (JOB-ING-010). 마이그레이션 012 (CR-037, DEV-194). */
+  | 'snapshot_bootstrap';
 
 export type JobState = 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
@@ -104,6 +106,41 @@ export async function finishJob(
     state,
     error,
   ]);
+}
+
+/**
+ * 잡을 **`running`일 때만** 종료 상태로 옮긴다 (CR-037, DEV-196).
+ *
+ * ## 왜 조건부여야 하나
+ *
+ * `finishJob`은 무조건 UPDATE라, 운영자가 실행 중 잡을 `cancelled`로 바꿔도
+ * 러너가 완료 시점에 그것을 `completed`로 되돌린다 — **취소가 반영되지 않는다.**
+ *
+ * 읽고 나서 쓰는 방식(`if (state !== 'cancelled') finishJob(...)`)으로는 못 고친다.
+ * 읽기와 쓰기 사이에 취소가 들어오면 같은 경주가 그대로 남는다. 전이 조건을
+ * **UPDATE의 WHERE 절에** 두어야 데이터베이스가 한 번에 판정한다.
+ *
+ * @returns 실제로 옮겼으면 `true`. 이미 다른 상태(대개 `cancelled`)면 `false`이며,
+ *   **그때 호출부는 아무것도 덮어쓰지 않는다.**
+ */
+export async function finishJobIfRunning(
+  db: Queryable,
+  jobId: number,
+  state: Extract<JobState, 'completed' | 'failed'>,
+  error: string | null = null,
+): Promise<boolean> {
+  const result = await db.query(
+    `UPDATE job SET state = $2, finished_at = now(), error = $3
+      WHERE job_id = $1 AND state = 'running'`,
+    [jobId, state, error],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** 잡의 현재 상태. 취소가 들어왔는지 확인할 때 쓴다 (CR-037, DEV-196). */
+export async function findJobState(db: Queryable, jobId: number): Promise<JobState | undefined> {
+  const result = await db.query<{ state: JobState }>('SELECT state FROM job WHERE job_id = $1', [jobId]);
+  return result.rows[0]?.state;
 }
 
 // ------------------------------------------------------------------ 배치 실행

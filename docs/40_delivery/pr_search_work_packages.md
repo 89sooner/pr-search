@@ -18,22 +18,22 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
-| WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | - | todo |
-| WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | WP-001 | todo |
-| WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | WP-001 | todo |
-| WP-004 | 웹훅 수신 게이트웨이 | REL-001 | WP-002 | todo |
-| WP-005 | EventBus 포트와 Redis Streams 어댑터 | REL-001 | WP-001 | todo |
-| WP-006 | GHE 클라이언트와 rate limit 관리 | REL-001 | WP-001 | todo |
-| WP-007 | 보강 워커 | REL-001 | WP-005, WP-006 | todo |
-| WP-008 | 투영 워커와 버전 조건부 업서트 | REL-001 | WP-003, WP-007 | todo |
-| WP-009 | 실패 대기열과 재처리 | REL-001 | WP-007, WP-008 | todo |
-| WP-010 | 저장소 등록 API와 파이프라인 지표 | REL-001 | WP-008 | todo |
-| WP-011 | 구조화 질의 파서 | REL-002 | WP-001 | todo |
-| WP-012 | 인증과 접근 범위 강제 | REL-002 | WP-002 | todo |
-| WP-013 | 검색 API 목록 조회 | REL-002 | WP-011, WP-012 | todo |
-| WP-014 | 식별자 해석 API | REL-002 | WP-013 | todo |
-| WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | WP-001 | todo |
-| WP-016 | W-001 통합 검색 화면 | REL-002 | WP-013, WP-014, WP-015 | todo |
+| WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | - | in_progress |
+| WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | WP-001 | done |
+| WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | WP-001 | done |
+| WP-004 | 웹훅 수신 게이트웨이 | REL-001 | WP-002 | done |
+| WP-005 | EventBus 포트와 Redis Streams 어댑터 | REL-001 | WP-001 | done |
+| WP-006 | GHE 클라이언트와 rate limit 관리 | REL-001 | WP-001 | done |
+| WP-007 | 보강 워커 | REL-001 | WP-005, WP-006 | done |
+| WP-008 | 투영 워커와 버전 조건부 업서트 | REL-001 | WP-003, WP-007 | done |
+| WP-009 | 실패 대기열과 재처리 | REL-001 | WP-007, WP-008 | done |
+| WP-010 | 저장소 등록 API와 파이프라인 지표 | REL-001 | WP-008 | done |
+| WP-011 | 구조화 질의 파서 | REL-002 | WP-001 | done |
+| WP-012 | 인증과 접근 범위 강제 | REL-002 | WP-002 | done |
+| WP-013 | 검색 API 목록 조회 | REL-002 | WP-011, WP-012 | done |
+| WP-014 | 식별자 해석 API | REL-002 | WP-013 | done |
+| WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | WP-001 | done |
+| WP-016 | W-001 통합 검색 화면 | REL-002 | WP-013, WP-014, WP-015 | done |
 | WP-017 | W-002 PR 상세 화면 | REL-002 | WP-015, WP-016 | done |
 | WP-018 | W-003 커밋 상세 화면 | REL-002 | WP-015, WP-016 | done |
 | WP-019 | 저장소 백필 잡 | REL-002 | WP-006, WP-008 | done |
@@ -41,13 +41,13 @@
 | WP-021 | 시퀀스 증분 채번 | REL-003 | WP-002, WP-020 | done |
 | WP-022 | 시퀀스 재채번과 에폭 | REL-003 | WP-021 | done |
 | WP-023 | 앵커 정규화와 범위 조회 API | REL-003 | WP-021, WP-013 | done |
-| WP-024 | 릴리스 수집과 포함 관계 | REL-003 | WP-021, WP-008 | todo |
-| WP-025 | W-004 범위 조사 화면 | REL-003 | WP-023, WP-015 | todo |
-| WP-026 | W-005 릴리스 화면과 구간 비교 | REL-003 | WP-024, WP-025 | todo |
-| WP-027 | 선행·후행 조회와 상세 화면 통합 | REL-003 | WP-023, WP-017, WP-018 | todo |
-| WP-028 | 정합성 점검과 조정 스캔 | REL-003 | WP-021, WP-019 | todo |
+| WP-024 | 릴리스 수집과 포함 관계 | REL-003 | WP-021, WP-008 | done |
+| WP-025 | W-004 범위 조사 화면 | REL-003 | WP-023, WP-015 | done |
+| WP-026 | W-005 릴리스 화면과 구간 비교 | REL-003 | WP-024, WP-025 | done |
+| WP-027 | 선행·후행 조회와 상세 화면 통합 | REL-003 | WP-023, WP-017, WP-018 | done |
+| WP-028 | 정합성 점검과 조정 스캔 | REL-003 | WP-021, WP-019 | done |
 | WP-067 | 커밋 메타데이터 보강 (JOB-MIR-002) | REL-003 | WP-020, WP-008 | todo |
-| WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | WP-010, WP-012 | todo |
+| WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | WP-010, WP-012 | done |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003 | todo |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020 | todo |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | WP-030, WP-017 | todo |
@@ -977,37 +977,46 @@
   - 메트릭: `sequence_integrity_mismatch_total`, `reconcile_missing_total`
   - API 한도 소진 시 스캔 분할, 3주기 미완주 시 경보
 - 완료 기준(DoD):
-  - [ ] QA-A003-09가 통과한다
-  - [ ] 표본 모드가 최근 1000개를 대조한다 (FR-ADMIN-003 AC-2)
-  - [ ] 불일치 시 최초 지점의 저장 SHA와 실제 SHA가 보고된다 (AC-3)
-  - [ ] `confirmation` 불일치 시 400이다 (FLOW-008)
-  - [ ] 조정 스캔이 색인에 없는 PR을 발견해 재투입한다 (FR-ING-011 AC-3)
-  - [ ] 누락 건수가 메트릭으로 노출된다 (AC-4)
-  - [ ] 점검이 감사 기록에 남는다 (FR-ADMIN-003 AC-5)
-  - [ ] **점검 실패가 시퀀스 공간 상태를 바꾸지 않는다** — 그래프를 읽지 못해도 기존 상태가 보존되고, 실패를 `consistent`로 표현하지 않는다 (CR-033, DEV-171 / SRS v2.5)
-  - [ ] **`sequence_reassign` 잡 행이 실제로 만들어진다** — 마이그레이션 009가 `job_type_chk`를 넓혔고 up/down이 쌍으로 돈다 (CR-033, DEV-172 / DEV-128 해소)
-  - [ ] `new_epoch_expected`가 현재 에폭 + 1의 **실제 계산 결과**다 (고정값이 아니다)
-  - [ ] `affected_saved_search_count`가 **`@prs/query` 파서**로 판정된다 — 문자열 검색이 아니며, `repo:`·`base:`가 없는 질의는 보수적으로 센다 (CR-033, DEV-173)
-  - [ ] `impact_estimate`의 세 항목이 실제 데이터로 계산된다 — 계산하지 않은 항목을 `0`으로 채우지 않는다
-  - [ ] 조정 스캔이 **주기 설정값(기본 1시간)**으로 돈다 (FR-ING-011 AC-1)
-  - [ ] 조정 스캔이 **최근 24시간 갱신 PR**을 읽는다 — `/pulls`에 `since`가 없으므로 `updated desc` + 컷오프다. 백필의 `asc` 고정(DEV-098)은 기본값으로 유지된다 (CR-033, DEV-175)
-  - [ ] **대상 브랜치 head에 시퀀스가 없으면 채번 잡을 예약한다** (FR-ING-011 AC-5) — 기존 채번 경로로 예약할 뿐 서수를 직접 붙이지 않는다
-  - [ ] 한도 소진 시 전체 주기를 실패시키지 않고 다음 주기로 미룬다. **3주기 연속 미완주면 경보 상태·지표가 발생한다** (FR-ING-011 예외 처리)
-  - [ ] **JOB-ING-008이 개수와 표본 내용을 각각 대조하고**, PG에 있고 ES에 없는 항목만 재투영 대상이며 **ES에만 있는 잉여 문서는 자동 삭제하지 않는다** (CR-033, DEV-174 / ADR-004)
-  - [ ] 조사 가능한 보고에 민감 페이로드·소스 코드가 들어가지 않는다 (NFR-005)
-  - [ ] **운영 도달성** (CR-034): 아래가 각각 한 줄로 이어진다 — 선언 → 운영 entrypoint 기동 → 종료 정리 → 배포 manifest → 통합 증거. 함수가 존재하는 것으로는 충족되지 않는다
-    - [ ] API-ADM-007이 **운영 조립**에서 등록된다. GHE 미구성이면 등록하지 않되 기동 로그가 그 사실을 밝힌다 (DEV-177)
-    - [ ] `sequence_reassign` 잡을 **실제로 집는 러너**가 있고 잡 수명주기가 행에 남는다. 영구 `queued`가 없다 (DEV-178)
-    - [ ] 조정 스캔이 **전용 역할에서 기동**하고 SIGTERM에서 정리된다 (DEV-179)
-    - [ ] head 복구가 **살아 있는 채번 경로**로 간다. 집는 러너가 없는 잡 행을 만들지 않는다 (DEV-180)
-    - [ ] 내용 대조가 **정규 필드**를 본다. `content` 불일치가 실제로 도달한다 (DEV-181)
-    - [ ] 수동 복구가 **head 그대로인 중간 손상**을 실제 git 체인과 같게 고친다 (DEV-182)
-    - [ ] 각 역할의 **배포 manifest**가 있다 (DEV-183)
-    - [ ] 두 투영 경로가 **PostgreSQL 정본**을 남긴다 — ADR-004가 백필 경로에서도 성립한다 (DEV-184)
+  - [x] QA-A003-09가 통과한다
+  - [x] 표본 모드가 최근 1000개를 대조한다 (FR-ADMIN-003 AC-2)
+  - [x] 불일치 시 최초 지점의 저장 SHA와 실제 SHA가 보고된다 (AC-3)
+  - [x] `confirmation` 불일치 시 400이다 (FLOW-008)
+  - [x] 조정 스캔이 색인에 없는 PR을 발견해 재투입한다 (FR-ING-011 AC-3)
+  - [x] 누락 건수가 메트릭으로 노출된다 (AC-4)
+  - [x] 점검이 감사 기록에 남는다 (FR-ADMIN-003 AC-5)
+  - [x] **점검 실패가 시퀀스 공간 상태를 바꾸지 않는다** — 그래프를 읽지 못해도 기존 상태가 보존되고, 실패를 `consistent`로 표현하지 않는다 (CR-033, DEV-171 / SRS v2.5)
+  - [x] **`sequence_reassign` 잡 행이 실제로 만들어진다** — 마이그레이션 009가 `job_type_chk`를 넓혔고 up/down이 쌍으로 돈다 (CR-033, DEV-172 / DEV-128 해소)
+  - [x] `new_epoch_expected`가 현재 에폭 + 1의 **실제 계산 결과**다 (고정값이 아니다)
+  - [x] `affected_saved_search_count`가 **`@prs/query` 파서**로 판정된다 — 문자열 검색이 아니며, `repo:`·`base:`가 없는 질의는 보수적으로 센다 (CR-033, DEV-173)
+  - [x] `impact_estimate`의 세 항목이 실제 데이터로 계산된다 — 계산하지 않은 항목을 `0`으로 채우지 않는다
+  - [x] 조정 스캔이 **주기 설정값(기본 1시간)**으로 돈다 (FR-ING-011 AC-1)
+  - [x] 조정 스캔이 **최근 24시간 갱신 PR**을 읽는다 — `/pulls`에 `since`가 없으므로 `updated desc` + 컷오프다. 백필의 `asc` 고정(DEV-098)은 기본값으로 유지된다 (CR-033, DEV-175)
+  - [x] **대상 브랜치 head에 시퀀스가 없으면 채번 잡을 예약한다** (FR-ING-011 AC-5) — 기존 채번 경로로 예약할 뿐 서수를 직접 붙이지 않는다
+  - [x] 한도 소진 시 전체 주기를 실패시키지 않고 다음 주기로 미룬다. **3주기 연속 미완주면 경보 상태·지표가 발생한다** (FR-ING-011 예외 처리)
+  - [x] **JOB-ING-008이 개수와 표본 내용을 각각 대조하고**, PG에 있고 ES에 없는 항목만 재투영 대상이며 **ES에만 있는 잉여 문서는 자동 삭제하지 않는다** (CR-033, DEV-174 / ADR-004)
+  - [x] 조사 가능한 보고에 민감 페이로드·소스 코드가 들어가지 않는다 (NFR-005)
+  - [x] **운영 도달성** (CR-034): 아래가 각각 한 줄로 이어진다 — 선언 → 운영 entrypoint 기동 → 종료 정리 → 배포 manifest → 통합 증거. 함수가 존재하는 것으로는 충족되지 않는다
+    - [x] API-ADM-007이 **운영 조립**에서 등록된다. GHE 미구성이면 등록하지 않되 기동 로그가 그 사실을 밝힌다 (DEV-177)
+    - [x] `sequence_reassign` 잡을 **실제로 집는 러너**가 있고 잡 수명주기가 행에 남는다. 영구 `queued`가 없다 (DEV-178)
+    - [x] 조정 스캔이 **전용 역할에서 기동**하고 SIGTERM에서 정리된다 (DEV-179)
+    - [x] head 복구가 **살아 있는 채번 경로**로 간다. 집는 러너가 없는 잡 행을 만들지 않는다 (DEV-180)
+    - [x] 내용 대조가 **정규 필드**를 본다. `content` 불일치가 실제로 도달한다 (DEV-181)
+    - [x] 수동 복구가 **head 그대로인 중간 손상**을 실제 git 체인과 같게 고친다 (DEV-182)
+    - [x] 각 역할의 **배포 manifest**가 있다 (DEV-183)
+    - [x] 두 투영 경로가 **PostgreSQL 정본**을 남긴다 — ADR-004가 백필 경로에서도 성립한다 (DEV-184)
+  - [x] **머지 후 정정** (CR-037): 아래가 실제 동작으로 검증된다
+    - [x] 수동 복구가 **락 아래에서 저장 head를, 커밋 직전에 실제 Git head를** 다시 확인한다. 분석 중 head가 전진하면 아무것도 커밋하지 않는다 (DEV-192)
+    - [x] 정합성 지문이 **접근 통제 필드**(`org_id`·`visibility`·`allowed_team_ids`·`repository_archived`)를 포함하고, 그 기대값을 `repository` 표에서 합성한다 (DEV-193)
+    - [x] 마이그레이션 이전 데이터가 **재개 가능한 부트스트랩**(JOB-ING-010)으로 정본 스냅숏을 얻는다. 마이그레이션 안에서 GHE·ES를 부르지 않는다 (DEV-194)
+    - [x] 부트스트랩 전 상태를 **`snapshot_bootstrap_pending`**으로 구분해 보고한다 — `extra_in_es`로 확정하지 않는다 (DEV-195)
+    - [x] 실행 중 잡의 취소가 **조건부 전이(CAS)**로 보존된다. `cancelled`를 `completed`로 덮지 않는다 (DEV-196)
+    - [x] 수동 복구가 성공하면 **`EVT-SEQ-002`를 발행한다** — 자동 경로와 같은 확정 절차다 (DEV-197)
+    - [x] `reassigning`이 재구축 중 **다른 연결에서 관측된다** (DEV-198)
+    - [x] 그래프를 읽지 못한 실패가 **`stale`로 영속된다** — 서수 값은 보존한다 (DEV-199)
 - 제외:
   - A-003 화면 (WP-040)
   - **실제 outbound 알림 발송** — 알림 어댑터는 REL-005 소유다 (DEV-026·DEV-127 이월). FLOW-008 7단계는 이 WP에서 **감사 기록·지표·잡 상태**까지만 성립한다. 발송했다고 보고하지 않는다 (CR-033, DEV-176)
-- 검증 방법: `pnpm test:integration ops/sequence-integrity`, `pnpm test:integration job-type-reassign`, `pnpm test pipeline-worker/src/{integrity,reconcile,consistency}`
+- 검증 방법: `pnpm test:integration ops/sequence-integrity`, `pnpm test:integration job-type-reassign`, `pnpm test:integration sequence/repair`, `pnpm test:integration jobs/snapshot-bootstrap`, `pnpm test pipeline-worker/src/{integrity,reconcile,consistency}`, `pnpm test:regression`
 - 기록: 원장 WP-028 상태, FR-ADMIN-003·FR-ING-011 매핑
 
 ### WP-067 커밋 메타데이터 보강 (JOB-MIR-002)
@@ -1058,12 +1067,13 @@
   - 팀 이름 → ID 해석 (WP-013이 이미 세웠다)
   - 문서에 팀 **이름** 저장 — 하지 않는다 (데이터 모델 §3.3)
 - 완료 기준(DoD):
-  - [ ] `team:<slug>` 질의가 실제 투영 문서를 맞힌다 — 지금은 한 건도 맞히지 못한다
-  - [ ] 접근 범위 500 저장소 초과 시 `org_team` 경로가 **팀을 통해서만 볼 수 있는** 비공개 저장소를 반환한다
-  - [ ] 팀에서 제거된 사용자가 그 팀으로만 보이던 과거 문서를 **더 이상 보지 못한다** (소급 적용 검증)
-  - [ ] 소급 적용 후 `document_version`이 변하지 않는다
-  - [ ] 권한 매트릭스 테스트가 팀 경로를 포함한다
-- 검증 방법: `pnpm test:integration scope-enforcement`, `pnpm test:integration resolve`
+  - [x] `team:<slug>` 질의가 실제 투영 문서를 맞힌다 — 지금은 한 건도 맞히지 못한다
+  - [x] 접근 범위 500 저장소 초과 시 `org_team` 경로가 **팀을 통해서만 볼 수 있는** 비공개 저장소를 반환한다
+  - [x] 팀에서 제거된 사용자가 그 팀으로만 보이던 과거 문서를 **더 이상 보지 못한다** (소급 적용 검증)
+  - [x] 소급 적용 후 `document_version`이 변하지 않는다
+  - [x] 권한 매트릭스 테스트가 팀 경로를 포함한다
+  - [x] **동기화가 저장소 단위로 직렬화된다** (CR-037, DEV-191) — GHE 조회부터 색인 반영까지가 한 락 안에 있고, 겹친 두 동기화의 GHE 응답이 뒤집힌 순서로 끝나도 **회수된 팀이 되살아나지 않는다.** 프로세스 내부 mutex가 아니라 저장소 단위 세션 advisory lock이며, GHE 왕복 동안 DB 트랜잭션을 열지 않는다
+- 검증 방법: `pnpm test:integration scope-enforcement`, `pnpm test:integration resolve`, `pnpm test:integration team-scope-race`
 - 기록: 원장 WP-068 상태, DEV-114 해소
 
 ---

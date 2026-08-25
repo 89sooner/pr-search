@@ -72,6 +72,15 @@ const CAPABILITIES = [
     manifest: 'deploy/k8s/pipeline-worker-reconcile.yaml',
   },
   {
+    id: 'JOB-ING-010',
+    what: '정본 스냅숏 부트스트랩',
+    process: 'pipeline-worker',
+    role: 'reconcile',
+    start: 'snapshotBootstrapRunner = startSnapshotBootstrapRunner(',
+    stop: 'snapshotBootstrapRunner?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-reconcile.yaml',
+  },
+  {
     id: 'JOB-ING-008',
     what: 'PG↔ES 정합성 감시',
     process: 'pipeline-worker',
@@ -212,5 +221,16 @@ describe('경로가 실재하는지', () => {
   it('root 경로가 실재한다 — 시험이 잘못된 디렉터리를 보고 있지 않다', () => {
     expect(existsSync(new URL('package.json', new URL('..', import.meta.url)))).toBe(true);
     expect(root.length).toBeGreaterThan(0);
+  });
+
+  /*
+   * 예약과 실행이 **같은 역할에서 함께** 서는지 본다 (CR-037, DEV-194).
+   *
+   * 예약만 하고 집는 러너가 없으면 잡 행이 영구 `queued`로 남고 `job_active_uk`가
+   * 이후 요청을 전부 막는다 — DEV-178·DEV-180이 정확히 그 모양의 결함이었다.
+   */
+  it('JOB-ING-010 — 예약과 러너가 같은 역할에 함께 있다', () => {
+    expect(WORKER_INDEX).toContain('enqueueSnapshotBootstrap: () => enqueueSnapshotBootstrap(pool)');
+    expect(WORKER_INDEX).toContain('snapshotBootstrapRunner = startSnapshotBootstrapRunner(');
   });
 });

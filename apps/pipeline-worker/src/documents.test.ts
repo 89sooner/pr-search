@@ -22,6 +22,7 @@ const REPOSITORY: RepositoryRow = {
   status: 'active',
   registered_at: new Date('2026-08-01T00:00:00.000Z'),
   allowed_team_ids: [],
+  snapshot_bootstrapped_at: null,
 };
 
 const PR: EnrichedPullRequest = {

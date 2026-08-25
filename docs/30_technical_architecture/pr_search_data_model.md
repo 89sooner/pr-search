@@ -285,12 +285,26 @@ CREATE TABLE repository (
   sequence_branches TEXT[]      NOT NULL DEFAULT '{}',   -- 최대 10 (FR-ING-009 AC-2)
   mirror_enabled    BOOLEAN     NOT NULL DEFAULT true,
   allowed_team_ids  BIGINT[]    NOT NULL DEFAULT '{}',   -- 이 저장소에 접근할 수 있는 팀 (CR-024)
+  snapshot_bootstrapped_at TIMESTAMPTZ,                  -- 정본 스냅숏이 완전하다고 확인된 시점 (CR-037, DEV-194)
   status            TEXT        NOT NULL DEFAULT 'active', -- active | archived
   registered_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT sequence_branches_limit CHECK (array_length(sequence_branches, 1) <= 10),
   UNIQUE (owner, name)
 );
 CREATE INDEX repository_allowed_teams_idx ON repository USING GIN (allowed_team_ids);
+
+#### `repository.snapshot_bootstrapped_at` — 정본 스냅숏 완결 표시 (CR-037, DEV-194·195)
+
+```sql
+-- 마이그레이션 012
+ALTER TABLE repository ADD COLUMN snapshot_bootstrapped_at TIMESTAMPTZ;
+CREATE INDEX repository_snapshot_bootstrap_idx
+  ON repository (repository_id) WHERE snapshot_bootstrapped_at IS NULL;
+```
+
+`NULL`은 **"아직 부트스트랩되지 않았다"**이며, 마이그레이션 012 이후 기존 행은 전부 `NULL`로 시작한다 — 그 저장소들의 스냅숏이 완전한지 우리는 실제로 모르고, **모르는 것을 "완료"로 적으면 정합성 감시가 그 위에서 거짓을 말한다.**
+
+JOB-ING-010이 실패 0건으로 끝났을 때만 찍힌다. JOB-ING-008은 이 열이 `NULL`인 저장소를 `extra_in_es`가 아니라 **`snapshot_bootstrap_pending`**으로 보고한다 (DEV-195) — "Elasticsearch가 잘못됐다"와 "PostgreSQL 부트스트랩이 아직 안 끝났다"는 다른 사실이고 조치도 다르다.
 
 CREATE TABLE app_user (
   user_id               TEXT        PRIMARY KEY,          -- OIDC sub (CR-015, DEV-043)
@@ -367,7 +381,9 @@ CREATE TABLE saved_search (
 CREATE TABLE job (
   job_id      BIGSERIAL   PRIMARY KEY,
   type        TEXT        NOT NULL,   -- backfill | reconcile | reindex | sequence_assign
+                                      -- | sequence_reassign (마이그레이션 009, CR-033 DEV-172)
                                       -- | sequence_integrity | link_rebuild | export
+                                      -- | snapshot_bootstrap (마이그레이션 012, CR-037 DEV-194)
   target      TEXT        NOT NULL,   -- repository_id 또는 인덱스명 등
   state       TEXT        NOT NULL,   -- queued | running | paused | completed | failed | cancelled
   progress    JSONB       NOT NULL DEFAULT '{}',

@@ -71,15 +71,54 @@ export function parseRepairTarget(target: string): { readonly owner: string; rea
  */
 export async function runRepairJob(deps: RepairRunnerDeps, job: JobRow): Promise<RepairOutcome | null> {
   const log = deps.log ?? ((): void => undefined);
+
+  /**
+   * 종료 상태를 **`running`일 때만** 쓴다 (CR-037, DEV-196).
+   *
+   * 옮기지 못했다는 것은 그 사이 운영자가 취소했다는 뜻이다. 그때 `completed`로
+   * 덮으면 취소가 **반영되지도 존중되지도** 않는다 — 그대로 두고 소리만 낸다.
+   */
+  const finish = async (state: 'completed' | 'failed', error?: string): Promise<void> => {
+    const moved = await jobRepo.finishJobIfRunning(deps.pool, job.job_id, state, error ?? null);
+    if (moved) return;
+    const current = await jobRepo.findJobState(deps.pool, job.job_id);
+    log({
+      level: 'warn',
+      message: '실행 중 잡의 상태가 이미 바뀌어 있어 종료 상태를 덮지 않았다',
+      job_id: job.job_id,
+      target: job.target,
+      outcome: state,
+      reason: current ?? 'missing',
+    });
+  };
+
   const parsed = parseRepairTarget(job.target);
   if (parsed === null) {
-    await jobRepo.finishJob(deps.pool, job.job_id, 'failed', `target 형식이 아니다: ${job.target}`);
+    await finish('failed', `target 형식이 아니다: ${job.target}`);
     return null;
   }
 
   const repository = await repositoryRepo.findRepositoryBySlug(deps.pool, parsed.owner, parsed.name);
   if (repository === undefined) {
-    await jobRepo.finishJob(deps.pool, job.job_id, 'failed', '등록되지 않은 저장소다');
+    await finish('failed', '등록되지 않은 저장소다');
+    return null;
+  }
+
+  /*
+   * 비가역 복구를 시작하기 전에 한 번 더 본다. 큐에서 기다리는 사이 취소됐다면
+   * **아예 시작하지 않는 것**이 취소를 존중하는 것이다 (CR-037, DEV-196).
+   * 이것은 최종 판정이 아니라 창을 좁히는 예비 검사이며, 종료 시점의 조건부
+   * 전이가 나머지를 막는다.
+   */
+  const before = await jobRepo.findJobState(deps.pool, job.job_id);
+  if (before !== 'running') {
+    log({
+      level: 'warn',
+      message: '시작 전에 취소된 잡이다 — 복구를 실행하지 않는다',
+      job_id: job.job_id,
+      target: job.target,
+      reason: before ?? 'missing',
+    });
     return null;
   }
 
@@ -91,14 +130,14 @@ export async function runRepairJob(deps: RepairRunnerDeps, job: JobRow): Promise
        * `consistent`도 **성공**이다 (CR-034, DEV-182). 큐에서 기다리는 사이 이미
        * 고쳐졌을 수 있고, 그때 실패로 적으면 운영자가 없는 문제를 쫓는다.
        */
-      await jobRepo.finishJob(deps.pool, job.job_id, 'completed');
+      await finish('completed');
     } else {
-      await jobRepo.finishJob(deps.pool, job.job_id, 'failed', outcome.kind);
+      await finish('failed', outcome.kind);
     }
     log({ level: 'info', message: '수동 재채번 처리', job_id: job.job_id, target: job.target, outcome: outcome.kind });
     return outcome;
   } catch (error) {
-    await jobRepo.finishJob(deps.pool, job.job_id, 'failed', String(error).slice(0, 500));
+    await finish('failed', String(error).slice(0, 500));
     log({ level: 'error', message: '수동 재채번 실패', job_id: job.job_id, target: job.target, reason: String(error).slice(0, 200) });
     return null;
   }

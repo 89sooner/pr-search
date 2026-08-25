@@ -16,10 +16,13 @@ export { installTypeParsers } from './type-parsers.js';
 export type { Pool, PoolClient } from 'pg';
 
 export {
+  acquireAdvisorySessionLock,
   advisoryXactLock,
   jobClaimLockKey,
   deliveryLockKey,
+  releaseAdvisorySessionLock,
   releaseLockKey,
+  repositoryScopeLockKey,
   sequenceLockKey,
   tryAdvisoryXactLock,
   trySequenceSpaceLock,

@@ -52,6 +52,10 @@ import { startReleaseSweeper, startReleaseWorker, type ReleaseLogFields, type Re
 import { startIntegritySweeper, type IntegritySweeper } from './integrity.js';
 import { startConsistencySweeper, type ConsistencySweeper } from './consistency.js';
 import { startReconcileSweeper, type ReconcileSweeper } from './reconcile.js';
+import {
+  enqueueSnapshotBootstrap,
+  startSnapshotBootstrapRunner,
+} from './snapshot-bootstrap.js';
 import { startSequenceRepairRunner, type RepairRunner } from './sequence-repair-runner.js';
 import { applyRepositoryTeams, createEsClient } from '@prs/es';
 import type { Subscription } from '@prs/bus';
@@ -432,6 +436,8 @@ let releaseSweeper: ReleaseSweeper | undefined;
  * 세운다 — 배포 문서에 그렇게 적었다.
  */
 let reconcileSweeper: ReconcileSweeper | undefined;
+/** JOB-ING-010 러너. 예약과 같은 역할에서 함께 선다 (CR-037, DEV-194). */
+let snapshotBootstrapRunner: BackfillRunner | undefined;
 
 if (roles.includes('reconcile')) {
   const config = resolveGitHubConfig();
@@ -491,6 +497,12 @@ if (roles.includes('reconcile')) {
         repository,
       );
     },
+    /*
+     * 정본 스냅숏 부트스트랩 예약 (JOB-ING-010 / CR-037, DEV-194). 마이그레이션
+     * 010이 남긴 빈 표를 채우는 유일한 경로이며, 팀 접근 범위와 같은 이유로
+     * 이미 저장소를 도는 정기 정비에 얹는다.
+     */
+    enqueueSnapshotBootstrap: () => enqueueSnapshotBootstrap(pool),
     // 되돌리기는 백필과 같은 경로다 (DEV-176) — 여기서 그 의존을 만든다.
     backfill: {
       pool,
@@ -500,6 +512,23 @@ if (roles.includes('reconcile')) {
       log: (entry) => { reconcileLog({ ...entry }); },
     },
     log: (fields) => { reconcileLog({ ...fields }); },
+  });
+
+  /*
+   * 예약만 하고 집는 러너가 없으면 잡 행이 영구 `queued`로 남고
+   * `job_active_uk`가 이후 요청을 전부 막는다 — DEV-178·DEV-180이 같은 모양의
+   * 결함이었다. 예약과 실행을 **같은 역할에서 함께** 세운다.
+   */
+  snapshotBootstrapRunner = startSnapshotBootstrapRunner({
+    pool,
+    es: reconcileEs,
+    client,
+    findRepository: async (target) => {
+      const [owner, name] = target.split('/');
+      if (owner === undefined || name === undefined) return undefined;
+      return repositoryRepo.findRepositoryBySlug(pool, owner, name);
+    },
+    log: (entry) => { reconcileLog({ job: 'JOB-ING-010', ...entry }); },
   });
 }
 
@@ -697,6 +726,7 @@ const shutdown = (): void => {
       await integritySweeper?.stop();
       await consistencySweeper?.stop();
       await reconcileSweeper?.stop();
+      await snapshotBootstrapRunner?.stop();
       await repairRunner?.stop();
       await authzSubscription?.close();
       await authzRedisClient?.quit();

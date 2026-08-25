@@ -17,7 +17,13 @@
  * 방아쇠가 무엇이든 **GHE가 지금 무엇이라고 답하는지**를 다시 읽는다.
  */
 
-import { authRepo, repositoryRepo } from '@prs/db';
+import {
+  acquireAdvisorySessionLock,
+  authRepo,
+  releaseAdvisorySessionLock,
+  repositoryRepo,
+  repositoryScopeLockKey,
+} from '@prs/db';
 import type { Pool } from '@prs/db';
 /**
  * 색인 반영 포트.
@@ -45,7 +51,19 @@ export interface TeamScopeDeps {
   readonly pool: Pool;
   readonly index: TeamScopeIndex;
   readonly source: RepositoryTeamsSource;
-  readonly log?: (entry: { level: 'info' | 'error'; message: string; repository_id?: number; reason?: string }) => void;
+  readonly log?: (entry: {
+    level: 'info' | 'warn' | 'error';
+    message: string;
+    repository_id?: number;
+    reason?: string;
+  }) => void;
+  /**
+   * 락 대기 상한. 넘기면 이 회차를 미룬다 (CR-037, DEV-191).
+   *
+   * GHE 왕복 하나보다 훨씬 길게 잡는다 — 정상적으로는 도달하지 않고, **락을 쥔 채
+   * 멈춘 세션**이 모든 진입점을 영구히 묶지 않게 하는 상한이다.
+   */
+  readonly lockTimeoutMs?: number;
 }
 
 export interface TeamSyncOutcome {
@@ -55,10 +73,43 @@ export interface TeamSyncOutcome {
   readonly documentsRefreshed: number;
   /** 색인 반영에 실패해 정본을 되돌렸다. 다음 동기화가 다시 시도한다. */
   readonly rolledBack: boolean;
+  /**
+   * 락을 얻지 못해 이 회차를 미뤘다 (CR-037, DEV-191).
+   *
+   * 같은 저장소를 다른 동기화가 쥐고 있다는 뜻이다. 그 쪽이 **우리보다 나중에**
+   * GHE를 읽으므로 결과는 최소한 우리 것만큼 새롭다. 조정 스캔(JOB-ING-005)이
+   * 주기적으로 모든 저장소를 다시 훑으므로 미룬 회차는 스스로 메워진다.
+   */
+  readonly deferred: boolean;
 }
 
 /**
  * 한 저장소의 팀 접근 범위를 GHE 기준으로 맞춘다.
+ *
+ * ## 저장소 단위로 직렬화한다 (CR-037, DEV-191)
+ *
+ * 이 함수를 부르는 자리는 셋이다 — 저장소 등록(search-api), 팀 웹훅
+ * (pipeline-worker), 조정 스캔(JOB-ING-005). 잠금 없이 두면 셋이 겹칠 때 각자
+ * **다른 GHE 스냅숏**을 읽고 조건 없이 덮어쓴다. 늦게 끝난 옛 호출이 새 회수를
+ * 되돌려 **이미 제거된 팀 ID가 색인에 복원되고**, 그 팀에서 빠진 사용자가 다음
+ * 동기화가 올 때까지 문서를 계속 본다. 권한 스트림은 `team_id`로만 파티션되므로
+ * 그 직렬화는 여기에 닿지 않는다.
+ *
+ * 그래서 **GHE 조회부터 색인 반영까지**를 저장소 단위 세션 advisory lock으로
+ * 묶는다. 조회가 락 안에 있는 것이 핵심이다 — 락이 쓰기만 감싸면 두 호출이
+ * 여전히 각자 옛 스냅숏을 읽어 놓고 줄만 서서 덮어쓴다.
+ *
+ * **프로세스 내부 mutex로는 안 된다.** 워커 복제본이 여럿이고 등록 경로는 아예
+ * 다른 프로세스다 — 정확성 경계가 프로세스 안에 있지 않다.
+ *
+ * **GHE 왕복 동안 트랜잭션을 열지 않는다.** 세션 락은 트랜잭션과 수명이
+ * 분리되므로 커넥션 하나만 쥐고 네트워크를 기다린다.
+ *
+ * ## 정본과 색인을 같은 커넥션으로 쓴다
+ *
+ * 락을 쥔 커넥션이 그대로 정본 쓰기도 한다. 풀에서 두 번째 커넥션을 얻으려 하면
+ * 모든 커넥션이 락을 기다리는 상황에서 **교착**이 된다 — 승자가 쓰기용 커넥션을
+ * 얻지 못한다.
  *
  * ## 색인이 실패하면 정본을 되돌린다 (CR-036, DEV-189)
  *
@@ -71,46 +122,84 @@ export async function syncRepositoryTeamScope(
   deps: TeamScopeDeps,
   repository: { readonly repository_id: number; readonly owner: string; readonly name: string; readonly org_id: number },
 ): Promise<TeamSyncOutcome> {
-  const teams = await deps.source.listRepositoryTeams(repository.owner, repository.name);
-  for (const team of teams) {
-    // `team:` 질의가 slug를 ID로 옮길 수 있어야 한다 (DEV-186).
-    await authRepo.upsertTeam(deps.pool, { team_id: team.id, slug: team.slug, org_id: repository.org_id });
-  }
-
-  const before = await repositoryRepo.findRepositoryById(deps.pool, repository.repository_id);
-  const previous = before?.allowed_team_ids ?? [];
-  const teamIds = teams.map((team) => team.id);
-  const changed = await repositoryRepo.setAllowedTeams(deps.pool, repository.repository_id, teamIds);
-
-  if (!changed) {
-    return { repositoryId: repository.repository_id, changed: false, teamIds, documentsRefreshed: 0, rolledBack: false };
-  }
+  const repositoryId = repository.repository_id;
+  const key = repositoryScopeLockKey(repositoryId);
+  const client = await deps.pool.connect();
 
   try {
-    const result = await deps.index.applyRepositoryTeams(repository.repository_id, teamIds);
-    return {
-      repositoryId: repository.repository_id,
-      changed: true,
-      teamIds,
-      documentsRefreshed: result.total,
-      rolledBack: false,
-    };
-  } catch (error) {
-    // 되돌려 두어야 다음 동기화가 같은 차이를 다시 보고 재시도한다.
-    await repositoryRepo.setAllowedTeams(deps.pool, repository.repository_id, previous);
-    deps.log?.({
-      level: 'error',
-      message: '색인 반영 실패로 팀 접근 범위를 되돌렸다 — 다음 동기화가 다시 시도한다',
-      repository_id: repository.repository_id,
-      reason: String(error).slice(0, 200),
-    });
-    return {
-      repositoryId: repository.repository_id,
-      changed: false,
-      teamIds: previous,
-      documentsRefreshed: 0,
-      rolledBack: true,
-    };
+    const locked = await acquireAdvisorySessionLock(client, key, deps.lockTimeoutMs);
+    if (!locked) {
+      deps.log?.({
+        level: 'warn',
+        message: '다른 동기화가 저장소를 쥐고 있어 팀 접근 범위 갱신을 미뤘다',
+        repository_id: repositoryId,
+        reason: 'scope_lock_timeout',
+      });
+      return {
+        repositoryId,
+        changed: false,
+        teamIds: [],
+        documentsRefreshed: 0,
+        rolledBack: false,
+        deferred: true,
+      };
+    }
+
+    try {
+      /*
+       * ---- 락 안에서 읽는다. 여기가 이 정정의 핵심이다: 조회가 락 밖에 있으면
+       * 두 호출이 각자 옛 스냅숏을 들고 줄만 서게 된다.
+       */
+      const teams = await deps.source.listRepositoryTeams(repository.owner, repository.name);
+      for (const team of teams) {
+        // `team:` 질의가 slug를 ID로 옮길 수 있어야 한다 (DEV-186).
+        await authRepo.upsertTeam(client, { team_id: team.id, slug: team.slug, org_id: repository.org_id });
+      }
+
+      const before = await repositoryRepo.findRepositoryById(client, repositoryId);
+      const previous = before?.allowed_team_ids ?? [];
+      const teamIds = teams.map((team) => team.id);
+      const changed = await repositoryRepo.setAllowedTeams(client, repositoryId, teamIds);
+
+      if (!changed) {
+        return { repositoryId, changed: false, teamIds, documentsRefreshed: 0, rolledBack: false, deferred: false };
+      }
+
+      try {
+        const result = await deps.index.applyRepositoryTeams(repositoryId, teamIds);
+        return {
+          repositoryId,
+          changed: true,
+          teamIds,
+          documentsRefreshed: result.total,
+          rolledBack: false,
+          deferred: false,
+        };
+      } catch (error) {
+        // 되돌려 두어야 다음 동기화가 같은 차이를 다시 보고 재시도한다.
+        await repositoryRepo.setAllowedTeams(client, repositoryId, previous);
+        deps.log?.({
+          level: 'error',
+          message: '색인 반영 실패로 팀 접근 범위를 되돌렸다 — 다음 동기화가 다시 시도한다',
+          repository_id: repositoryId,
+          reason: String(error).slice(0, 200),
+        });
+        return {
+          repositoryId,
+          changed: false,
+          teamIds: previous,
+          documentsRefreshed: 0,
+          rolledBack: true,
+          deferred: false,
+        };
+      }
+    } finally {
+      // 세션 락은 반납해도 남는다. 풀지 않으면 이 커넥션을 다음에 쓰는 쪽이
+      // 영원히 잠긴 키를 물려받는다.
+      await releaseAdvisorySessionLock(client, key).catch(() => undefined);
+    }
+  } finally {
+    client.release();
   }
 }
 

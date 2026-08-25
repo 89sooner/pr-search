@@ -225,6 +225,15 @@ export class GitHubClient {
       readonly perPage?: number;
       /** 기본 `asc` — 백필의 건너뜀 방지(DEV-098)가 기본값으로 유지된다. */
       readonly direction?: 'asc' | 'desc';
+      /**
+       * 정렬 키. 기본 `updated` — 기존 호출부의 의미를 바꾸지 않는다 (CR-037, DEV-204).
+       *
+       * **전량 열거에는 `created`를 쓴다.** `updated`로 페이지를 넘기는 동안 어떤 PR이
+       * 갱신되면 그 항목이 목록 끝으로 이동하고, **뒤에 있던 항목이 이미 지나온 페이지
+       * 자리로 당겨져 영영 방문되지 않는다.** 생성 시각은 바뀌지 않으므로 `created`에서는
+       * 어떤 항목도 앞으로 당겨지지 않는다.
+       */
+      readonly sort?: 'created' | 'updated';
     } = {},
   ): Promise<{ readonly items: readonly PullRequestSummary[]; readonly hasMore: boolean }> {
     const perPage = options.perPage ?? 100;
@@ -234,7 +243,7 @@ export class GitHubClient {
       query: {
         // 열린 것만 받으면 백필의 목적(과거 PR)을 정면으로 놓친다.
         state: 'all',
-        sort: 'updated',
+        sort: options.sort ?? 'updated',
         direction: options.direction ?? 'asc',
         per_page: perPage,
         page,

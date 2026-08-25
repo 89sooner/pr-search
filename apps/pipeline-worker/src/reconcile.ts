@@ -77,6 +77,18 @@ export interface ReconcileDeps {
    * 없으면 하지 않는다 (GHE 자격 증명이 없는 배포).
    */
   readonly syncTeams?: (repository: RepositoryRow) => Promise<void>;
+  /**
+   * 정본 스냅숏 부트스트랩을 큐에 넣는다 (JOB-ING-010 / CR-037, DEV-194).
+   *
+   * **팀 접근 범위와 같은 이유로 여기에 있다** — 마이그레이션 010은 빈 표를
+   * 남기고 그것을 채우는 경로가 없었다. 이미 저장소를 한 바퀴 도는 정기 정비에
+   * 얹는 것이 새 스케줄러를 만들지 않는 길이다 (DEV-190의 선례).
+   *
+   * 한 주기에 일부만 넣는다 — 첫 배포에서 GHE 한도를 통째로 태우지 않는다.
+   *
+   * @returns 이번 주기에 큐에 넣은 저장소 수.
+   */
+  readonly enqueueSnapshotBootstrap?: () => Promise<number>;
   readonly reproject?: (
     deps: BackfillDeps,
     repository: RepositoryRow,
@@ -291,6 +303,28 @@ export async function runReconcileSweep(deps: ReconcileDeps): Promise<{
   const repositories = await repositoryRepo.listRepositories(deps.pool, { status: 'active' });
   let missing = 0;
   let deferred = 0;
+
+  /*
+   * 정본 스냅숏 부트스트랩 예약 (CR-037, DEV-194). 저장소 순회 **앞에** 둔다 —
+   * 개별 저장소의 조정이 실패해도 예약은 이미 끝나 있다.
+   *
+   * 실패해도 조정 스캔을 멈추지 않는다. 다음 주기가 다시 시도하고, 그 사이
+   * 정합성 감시는 그 저장소를 `snapshot_bootstrap_pending`으로 정직하게 보고한다.
+   */
+  if (deps.enqueueSnapshotBootstrap !== undefined) {
+    try {
+      const queued = await deps.enqueueSnapshotBootstrap();
+      if (queued > 0) {
+        log({ level: 'info', message: `정본 스냅숏 부트스트랩 ${String(queued)}건을 큐에 넣었다` });
+      }
+    } catch (error) {
+      log({
+        level: 'warn',
+        message: '부트스트랩 예약 실패 — 다음 주기가 다시 시도한다',
+        reason: String(error).slice(0, 200),
+      });
+    }
+  }
 
   for (const repository of repositories) {
     const slug = `${repository.owner}/${repository.name}`;

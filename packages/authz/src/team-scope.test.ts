@@ -18,6 +18,8 @@ interface Harness {
   readonly deps: TeamScopeDeps;
   readonly indexed: { repositoryId: number; teamIds: readonly number[] }[];
   readonly stored: { current: number[] };
+  /** 락 획득·해제·반납 순서. 새는 락을 시험이 직접 본다 (CR-037, DEV-191). */
+  readonly lockLog: string[];
 }
 
 function harness(options: {
@@ -29,6 +31,7 @@ function harness(options: {
 }): Harness {
   const indexed: { repositoryId: number; teamIds: readonly number[] }[] = [];
   const stored = { current: [...(options.existing ?? [])] };
+  const lockLog: string[] = [];
 
   const pool = {
     query: (text: string, values?: readonly unknown[]) => {
@@ -50,11 +53,40 @@ function harness(options: {
       }
       return Promise.resolve({ rows: [], rowCount: 0 });
     },
+  } as { query: (text: string, values?: readonly unknown[]) => Promise<unknown> };
+
+  /*
+   * 대역이 실제보다 관대하면 그만큼이 사각지대다. 실제 `syncRepositoryTeamScope`는
+   * 커넥션을 얻어 **세션 락을 잡고 반드시 푼 뒤 반납한다** (CR-037, DEV-191).
+   * 그래서 대역도 그 세 가지를 실제로 기록하고, 시험이 그것을 단언한다.
+   */
+  const client = {
+    query: (text: string, values?: readonly unknown[]) => {
+      const sql = String(text);
+      if (/pg_advisory_lock/i.test(sql)) {
+        lockLog.push('lock');
+        return Promise.resolve({ rows: [{}] });
+      }
+      if (/pg_advisory_unlock/i.test(sql)) {
+        lockLog.push('unlock');
+        return Promise.resolve({ rows: [{}] });
+      }
+      if (/lock_timeout/i.test(sql)) return Promise.resolve({ rows: [] });
+      return pool.query(sql, values);
+    },
+    release: () => {
+      lockLog.push('release');
+    },
+  };
+
+  const poolWithConnect = {
+    ...pool,
+    connect: () => Promise.resolve(client),
   } as unknown as TeamScopeDeps['pool'];
 
   return {
     deps: {
-      pool,
+      pool: poolWithConnect,
       index: {
         applyRepositoryTeams: (repositoryId, teamIds) => {
           if (options.indexFails === true) return Promise.reject(new Error('ES 503'));
@@ -66,6 +98,7 @@ function harness(options: {
     },
     indexed,
     stored,
+    lockLog,
   };
 }
 
@@ -112,6 +145,31 @@ describe('syncRepositoryTeamScope', () => {
     const outcome = await syncRepositoryTeamScope(healthy.deps, REPO);
     expect(outcome.changed).toBe(true);
     expect(healthy.indexed[0]?.teamIds).toEqual([10]);
+  });
+});
+
+describe('저장소 단위 직렬화 (CR-037, DEV-191)', () => {
+  it('락을 잡고 → 풀고 → 커넥션을 반납한다', async () => {
+    const h = harness({ ghe: [{ id: 10, slug: 'core' }] });
+    await syncRepositoryTeamScope(h.deps, REPO);
+    expect(h.lockLog).toEqual(['lock', 'unlock', 'release']);
+  });
+
+  it('색인이 실패해도 락을 푼다 — finally가 없으면 커넥션이 잠긴 채 풀로 돌아간다', async () => {
+    const h = harness({ ghe: [{ id: 10, slug: 'core' }], indexFails: true });
+    const outcome = await syncRepositoryTeamScope(h.deps, REPO);
+    expect(outcome.rolledBack).toBe(true);
+    expect(h.lockLog).toEqual(['lock', 'unlock', 'release']);
+  });
+
+  it('GHE가 던져도 락을 푼다', async () => {
+    const h = harness({ ghe: [] });
+    const failing: TeamScopeDeps = {
+      ...h.deps,
+      source: { listRepositoryTeams: () => Promise.reject(new Error('GHE 502')) },
+    };
+    await expect(syncRepositoryTeamScope(failing, REPO)).rejects.toThrow('GHE 502');
+    expect(h.lockLog).toEqual(['lock', 'unlock', 'release']);
   });
 });
 
