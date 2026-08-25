@@ -120,6 +120,46 @@ export const CANONICAL_FIELDS = [
   'document_version',
 ] as const;
 
+/**
+ * 접근 통제에 쓰이는 필드 (CR-037, DEV-193).
+ *
+ * ## 왜 이것들이 대조에 있어야 하나
+ *
+ * `packages/es/src/scoped-query.ts`의 `org_team` 경로(저장소 500개를 넘긴
+ * 사용자)는 `org_id`·`visibility`·`allowed_team_ids`를 **그대로 읽어** 필수 접근
+ * 범위 필터를 만든다. 그 셋이 빠져 있으면 저장소 이전·공개 범위 변경·색인 손상
+ * 뒤에 PostgreSQL과 Elasticsearch가 접근 통제 데이터에서 어긋나도 이 잡이
+ * `consistent`라고 보고한다.
+ *
+ * **그것은 검색 데이터 drift가 아니라 authorization material drift다** — 잘못된
+ * 조직에 결과를 노출하거나 정당한 결과를 감추는 상태를 감시가 통과시킨다.
+ */
+export const SCOPE_FIELDS = ['org_id', 'visibility', 'allowed_team_ids', 'repository_archived'] as const;
+
+/**
+ * 지문에 들어가는 전체 필드. **PostgreSQL 쪽과 Elasticsearch 쪽이 같은 목록을 쓴다.**
+ *
+ * 두 쪽이 다른 목록을 쓰면 대조가 언제나 불일치를 내거나(한쪽에만 있는 필드)
+ * 언제나 일치를 낸다(양쪽에서 빠진 필드). 스키마는 하나여야 한다.
+ */
+export const FINGERPRINT_FIELDS = [...CANONICAL_FIELDS, ...SCOPE_FIELDS] as const;
+
+/**
+ * 저장소의 **현재** 접근 범위 상태 (CR-037, DEV-193).
+ *
+ * 정본은 `repository` 표다 — 스냅숏에 권한 상태를 중복 저장하지 않는다. 스냅숏은
+ * 투영 당시의 사본을 담고 있지만, 그 뒤 팀이 회수되거나 공개 범위가 바뀌면
+ * **그 사본이야말로 낡은 값**이다. 기대값은 언제나 지금의 레지스트리에서 만든다.
+ */
+export function repositoryScopeState(repository: RepositoryRow): Readonly<Record<string, unknown>> {
+  return {
+    org_id: repository.org_id,
+    visibility: repository.visibility,
+    allowed_team_ids: [...repository.allowed_team_ids],
+    repository_archived: repository.status === 'archived',
+  };
+}
+
 /** 순서가 의미 없는 모음은 정렬 후 비교한다 — 순서 차이는 불일치가 아니다. */
 function canonicalValue(value: unknown): unknown {
   if (Array.isArray(value)) return [...(value as unknown[])].map(String).sort();
@@ -132,7 +172,7 @@ function canonicalValue(value: unknown): unknown {
  * 필드를 **고정 순서**로 늘어놓아 JSON 키 순서에 기대지 않는다.
  */
 export function fingerprint(document: Readonly<Record<string, unknown>>): string {
-  const canonical = CANONICAL_FIELDS.map((field) => [field, canonicalValue(document[field])]);
+  const canonical = FINGERPRINT_FIELDS.map((field) => [field, canonicalValue(document[field])]);
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
 
@@ -147,10 +187,16 @@ interface SnapshotSide {
  * `raw_event`가 아니다: 백필·조정 스캔은 원본 이벤트를 남기지 않으므로 그 표를
  * 정본으로 삼으면 정상 백필 문서가 전부 잉여로 보고된다.
  */
-async function postgresPullRequests(pool: Pool, repositoryId: number): Promise<SnapshotSide> {
-  const rows = await prSnapshotRepo.listSnapshots(pool, repositoryId, CONSISTENCY_SAMPLE_SIZE);
+async function postgresPullRequests(pool: Pool, repository: RepositoryRow): Promise<SnapshotSide> {
+  const rows = await prSnapshotRepo.listSnapshots(pool, repository.repository_id, CONSISTENCY_SAMPLE_SIZE);
+  /*
+   * 엔티티 상태는 스냅숏이, **접근 범위는 레지스트리가** 준다 (CR-037, DEV-193).
+   * 겹치면 레지스트리가 이긴다 — 팀 회수 뒤 스냅숏에 남은 옛 배열을 기대값으로
+   * 삼으면 색인의 같은 옛 배열과 일치해 **유출 상태가 정상으로 보고된다.**
+   */
+  const scope = repositoryScopeState(repository);
   const fingerprints = new Map<number, string>();
-  for (const row of rows) fingerprints.set(row.pr_number, fingerprint(row.document));
+  for (const row of rows) fingerprints.set(row.pr_number, fingerprint({ ...row.document, ...scope }));
   return { numbers: rows.map((row) => row.pr_number), fingerprints };
 }
 
@@ -176,7 +222,7 @@ async function elasticsearchPullRequests(
   const response = await search<Record<string, unknown>>(deps.es, 'prs-pull-requests', scoped, {
     size: CONSISTENCY_SAMPLE_SIZE,
     routing: String(repositoryId),
-    _source: [...CANONICAL_FIELDS],
+    _source: [...FINGERPRINT_FIELDS],
     sort: [{ pr_number: 'desc' }],
     track_total_hits: true,
   });
@@ -205,7 +251,7 @@ export async function checkRepositoryConsistency(
 
   const [pgTotal, pgSide, esSide] = await Promise.all([
     postgresCount(deps.pool, repository.repository_id),
-    postgresPullRequests(deps.pool, repository.repository_id),
+    postgresPullRequests(deps.pool, repository),
     elasticsearchPullRequests(deps, repository.repository_id),
   ]);
   const pgSample = pgSide.numbers;

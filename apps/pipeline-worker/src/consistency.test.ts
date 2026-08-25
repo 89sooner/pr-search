@@ -14,10 +14,21 @@ import {
 } from './consistency.js';
 import type { ConsistencyDeps } from './consistency.js';
 
+/**
+ * 레지스트리 행. **접근 범위 필드를 실제와 같게 채운다** (CR-037, DEV-193).
+ *
+ * `repository.allowed_team_ids`는 마이그레이션 011에서 `NOT NULL DEFAULT '{}'`이며
+ * `status`도 `NOT NULL`이다. 대역이 그것을 비워 두면 지문이 무엇을 근거로 만드는지
+ * 시험이 보지 못한다 — 대역이 실제보다 관대하면 그만큼이 사각지대다.
+ */
 const REPOSITORY = {
   repository_id: 1,
   owner: 'acme',
   name: 'payments',
+  org_id: 9,
+  visibility: 'private',
+  allowed_team_ids: [7, 3],
+  status: 'active',
 } as unknown as Parameters<typeof checkRepositoryConsistency>[1];
 
 /** 정본·색인 문서. 기본 내용은 같고, 시험이 필요할 때만 어긋뜨린다. */
@@ -38,6 +49,11 @@ function doc(prNumber: number, overrides: Record<string, unknown> = {}): Record<
     closed_at: null,
     labels: ['backend'],
     document_version: 100,
+    // 투영이 문서에 싣는 접근 범위 (`repositoryScope()`). 지문의 일부다.
+    org_id: 9,
+    visibility: 'private',
+    allowed_team_ids: [3, 7],
+    repository_archived: false,
     ...overrides,
   };
 }
@@ -228,5 +244,74 @@ describe('지문', () => {
 
   it('본문은 대조에 넣지 않는다 — 달라도 불일치가 아니다', () => {
     expect(fingerprint(doc(1, { body: 'x' }))).toBe(fingerprint(doc(1, { body: 'y' })));
+  });
+});
+
+/**
+ * 접근 통제 필드의 drift (CR-037, DEV-193).
+ *
+ * ID·개수·제목·상태가 **전부 같아도** 접근 범위 재료가 어긋나면 불일치다.
+ * 이것은 검색 데이터 drift가 아니라 authorization material drift이며, 그냥 두면
+ * 잘못된 조직에 결과가 노출되거나 정당한 결과가 감춰진 채 감시가 통과시킨다.
+ */
+describe('접근 통제 필드는 지문의 일부다 (CR-037, DEV-193)', () => {
+  const same = { pgNumbers: [1, 2], esNumbers: [1, 2] } as const;
+
+  async function kindsFor(esOverrides: Readonly<Record<number, Record<string, unknown>>>): Promise<readonly string[]> {
+    const h = harness({ ...same, esOverrides });
+    const reports = await checkRepositoryConsistency(h.deps, REPOSITORY);
+    return reports.map((report) => report.kind);
+  }
+
+  it('org_id만 달라도 content 불일치다', async () => {
+    expect(await kindsFor({ 1: { org_id: 99 } })).toContain('content');
+  });
+
+  it('visibility만 달라도 content 불일치다', async () => {
+    expect(await kindsFor({ 1: { visibility: 'public' } })).toContain('content');
+  });
+
+  it('allowed_team_ids만 달라도 content 불일치다 — PG [1] vs ES [1,2]', async () => {
+    /*
+     * 색인이 정본보다 **넓은** 팀 목록을 들고 있는 상태다. 회수가 색인에
+     * 반영되지 않은 모습 그대로이며, 이것을 `consistent`로 적으면 유출이 감시를
+     * 통과한다.
+     */
+    const narrow = {
+      ...REPOSITORY,
+      allowed_team_ids: [1],
+    } as unknown as typeof REPOSITORY;
+    const h = harness({ ...same, esOverrides: { 1: { allowed_team_ids: [1, 2] } } });
+    const reports = await checkRepositoryConsistency(h.deps, narrow);
+    expect(reports.map((report) => report.kind)).toContain('content');
+  });
+
+  it('repository_archived만 달라도 content 불일치다', async () => {
+    expect(await kindsFor({ 2: { repository_archived: true } })).toContain('content');
+  });
+
+  it('팀 목록의 순서만 다른 것은 불일치가 아니다', async () => {
+    expect(await kindsFor({ 1: { allowed_team_ids: [7, 3] } })).not.toContain('content');
+  });
+
+  it('보고에는 식별자만 남는다 — 원문 제목·본문을 싣지 않는다', async () => {
+    const h = harness({ ...same, esOverrides: { 1: { org_id: 99 } } });
+    const reports = await checkRepositoryConsistency(h.deps, REPOSITORY);
+    const serialized = JSON.stringify(reports);
+    expect(serialized).not.toContain('PR 1');
+    expect(serialized).not.toContain('backend');
+  });
+
+  it('정본의 접근 범위는 레지스트리가 준다 — 스냅숏의 옛 사본이 아니다', async () => {
+    /*
+     * 스냅숏 문서(`doc()`)는 투영 당시의 `allowed_team_ids: [3, 7]`을 담고 있다.
+     * 그 뒤 팀이 회수되어 레지스트리는 [3]만 안다. 색인도 옛 [3, 7]이다.
+     * 스냅숏을 기대값으로 삼으면 **양쪽이 옛 값으로 일치**해 유출이 정상으로
+     * 보고된다 — 레지스트리를 읽어야 어긋남이 드러난다.
+     */
+    const revoked = { ...REPOSITORY, allowed_team_ids: [3] } as unknown as typeof REPOSITORY;
+    const h = harness(same);
+    const reports = await checkRepositoryConsistency(h.deps, revoked);
+    expect(reports.map((report) => report.kind)).toContain('content');
   });
 });

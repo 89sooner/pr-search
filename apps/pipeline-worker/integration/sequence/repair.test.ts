@@ -22,7 +22,7 @@ import { MirrorCommitGraph, MirrorSync, type CommitGraph, type RepoRef } from '@
 import { jobRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { migratedPool } from '../../../../packages/db/integration/helpers.js';
-import { reassignSequence, repairSequence, type SequenceDeps } from '../../src/sequence.js';
+import { reassignSequence, repairSequence, type RepairOutcome, type SequenceDeps } from '../../src/sequence.js';
 import { runRepairJob, parseRepairTarget } from '../../src/sequence-repair-runner.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
 import {
