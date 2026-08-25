@@ -45,8 +45,8 @@
 | 관계 유형 | `link_type` | 간선의 종류. `contains`, `precedes`, `references`, `reverts`, `cherry_picks`, `stacks_on`, `co_changes` 중 하나 | 링크 타입, 관계 종류 | FR-REL-001~007 |
 | 포함 관계 | `contains` | PR이 커밋을 포함하거나 릴리스가 커밋을 포함하는 관계 | 소속, 하위 | FR-REL-002 |
 | 선행 관계 | `precedes` | 같은 시퀀스 공간에서 시퀀스 값이 작은 개체가 큰 개체보다 먼저 반영되었음을 뜻하는 관계 | 이전, 앞선 | FR-REL-001 |
-| 선행 PR | `predecessor` | 기준 PR보다 머지 시퀀스가 작은 PR | 이전 PR, 앞 PR | FR-REL-001 |
-| 후행 PR | `successor` | 기준 PR보다 머지 시퀀스가 큰 PR | 다음 PR, 뒤 PR | FR-REL-001 |
+| 선행 항목 | `predecessor` | 기준 개체보다 머지 시퀀스가 작은 **항목**. PR 머지 커밋일 수도, 직접 푸시 커밋일 수도 있다 (CR-031) | 이전 PR, 앞 PR, 선행 PR | FR-REL-001 |
+| 후행 항목 | `successor` | 기준 개체보다 머지 시퀀스가 큰 **항목**. PR 머지 커밋일 수도, 직접 푸시 커밋일 수도 있다 (CR-031) | 다음 PR, 뒤 PR, 후행 PR | FR-REL-001 |
 | 참조 관계 | `references` | 텍스트에 적힌 `#123`, `Refs:`, 이슈 키 등에서 파생한 관계 | 언급, 멘션 | FR-REL-003 |
 | 되돌림 관계 | `reverts` | 어떤 변경을 취소하는 커밋/PR과 취소 대상 사이의 관계 | 롤백, 취소 | FR-REL-004 |
 | 체리픽 관계 | `cherry_picks` | 다른 브랜치의 동일 변경을 옮겨 담은 관계 | 백포트, 이식 | FR-REL-005 |

@@ -821,7 +821,11 @@ if (!changed) { ctx.op = 'noop'; }
 | PR → 커밋 | `prs-pull-requests.source_commit_shas` + `merge_commit_sha` | 문서 내 배열 | p95 100ms | FR-SRCH-003 |
 | 시퀀스 범위 (멤버십·건수) | **PostgreSQL `merge_sequence`** | PK 범위 스캔 `(repository_id, base_branch, seq_epoch, merge_seq)` | p95 100ms @ 5000건 | FR-SEQ-002 |
 | 시퀀스 범위 (표시 필드·요약) | `prs-pull-requests` | `terms(pr_number)` + `term(repository_id)`, `routing=repository_id` | p95 300ms @ 5000건 | FR-SEQ-002 |
-| 선행·후행 | `prs-pull-requests` | `range(merge_seq)` 양방향 각 N건 | p95 200ms | FR-REL-001 |
+| 선행·후행 (멤버십) | **PostgreSQL `merge_sequence`** | 기준 서수 앞뒤 각 N건, PK 범위 스캔 | p95 100ms | FR-REL-001 |
+| 선행·후행 (표시 필드) | `prs-pull-requests` + `prs-commits` | `terms(pr_number)`·`terms(commit_sha)`, `routing=repository_id` | p95 200ms | FR-REL-001 |
+
+**선행·후행도 멤버십은 PostgreSQL이다** (CR-031, DEV-166 — 범위 조회와 같은 이유, DEV-130). 색인에서 `range(merge_seq)`로 이웃을 고르면 **색인 반영이 늦은 이웃이 오류 없이 빠지고**, 그 자리에 더 먼 항목이 올라와 "인접"이 거짓이 된다. 정본에서 앞뒤를 고른 뒤 표시값만 색인에서 채우며, 채워지지 않은 항목은 `indexed: false`로 밝힌다. 직접 푸시 커밋은 커밋 메타데이터 보강(WP-067) 전까지 언제나 그 상태다.
+
 | 다차원 필터 목록 | `prs-pull-requests` | 복합 `bool.filter` + `search_after` | p95 500ms @ 1000만 | FR-SRCH-006 |
 | 패싯 | `prs-pull-requests` | `terms` 집계 6종, size 20 | 목록과 동일 요청 | FR-SRCH-009 |
 | 전문 검색 | `prs-pull-requests` | `multi_match` (title^3, body, message) + highlight | p95 500ms | FR-SRCH-011 |
