@@ -111,8 +111,7 @@
 | --- | --- | --- | --- | --- |
 | `loading_initial` | 진입 | 타임라인 skeleton | - | - |
 | `ready` | 정상 | 릴리스 목록 + 상세 | - | FR-SEQ-004 |
-| `empty_no_release` | 릴리스 0건 | 태그 생성 안내(외부 GHE 경로) | - | FR-SEQ-004 |
-| `not_indexed` | 릴리스 미수집 저장소 | 저장소 개요 경로 | W-009 | FR-SEQ-004 |
+| `release_not_indexed` | 릴리스 0건 (태그가 없거나 아직 수집되지 않았거나 — 서버가 둘을 판별할 수 없다, CR-030 DEV-159) | 두 원인과 다음 행동을 함께 안내. **W-009는 P1이라 그 화면이 서기 전에는 링크를 걸지 않는다** | W-009 (REL-004~005) | FR-SEQ-004 |
 | `error_space_mismatch` | 비교 대상 2건이 다른 브랜치 | 비교 버튼 비활성 + 사유 | 선택 변경 | FR-SEQ-004 |
 | `not_found` / `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 
