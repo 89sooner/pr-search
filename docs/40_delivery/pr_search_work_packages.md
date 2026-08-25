@@ -18,22 +18,22 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
-| WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | - | todo |
-| WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | WP-001 | todo |
-| WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | WP-001 | todo |
-| WP-004 | 웹훅 수신 게이트웨이 | REL-001 | WP-002 | todo |
-| WP-005 | EventBus 포트와 Redis Streams 어댑터 | REL-001 | WP-001 | todo |
-| WP-006 | GHE 클라이언트와 rate limit 관리 | REL-001 | WP-001 | todo |
-| WP-007 | 보강 워커 | REL-001 | WP-005, WP-006 | todo |
-| WP-008 | 투영 워커와 버전 조건부 업서트 | REL-001 | WP-003, WP-007 | todo |
-| WP-009 | 실패 대기열과 재처리 | REL-001 | WP-007, WP-008 | todo |
-| WP-010 | 저장소 등록 API와 파이프라인 지표 | REL-001 | WP-008 | todo |
-| WP-011 | 구조화 질의 파서 | REL-002 | WP-001 | todo |
-| WP-012 | 인증과 접근 범위 강제 | REL-002 | WP-002 | todo |
-| WP-013 | 검색 API 목록 조회 | REL-002 | WP-011, WP-012 | todo |
-| WP-014 | 식별자 해석 API | REL-002 | WP-013 | todo |
-| WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | WP-001 | todo |
-| WP-016 | W-001 통합 검색 화면 | REL-002 | WP-013, WP-014, WP-015 | todo |
+| WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | - | in_progress |
+| WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | WP-001 | done |
+| WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | WP-001 | done |
+| WP-004 | 웹훅 수신 게이트웨이 | REL-001 | WP-002 | done |
+| WP-005 | EventBus 포트와 Redis Streams 어댑터 | REL-001 | WP-001 | done |
+| WP-006 | GHE 클라이언트와 rate limit 관리 | REL-001 | WP-001 | done |
+| WP-007 | 보강 워커 | REL-001 | WP-005, WP-006 | done |
+| WP-008 | 투영 워커와 버전 조건부 업서트 | REL-001 | WP-003, WP-007 | done |
+| WP-009 | 실패 대기열과 재처리 | REL-001 | WP-007, WP-008 | done |
+| WP-010 | 저장소 등록 API와 파이프라인 지표 | REL-001 | WP-008 | done |
+| WP-011 | 구조화 질의 파서 | REL-002 | WP-001 | done |
+| WP-012 | 인증과 접근 범위 강제 | REL-002 | WP-002 | done |
+| WP-013 | 검색 API 목록 조회 | REL-002 | WP-011, WP-012 | done |
+| WP-014 | 식별자 해석 API | REL-002 | WP-013 | done |
+| WP-015 | 웹 앱 셸과 Conductor 통합 | REL-002 | WP-001 | done |
+| WP-016 | W-001 통합 검색 화면 | REL-002 | WP-013, WP-014, WP-015 | done |
 | WP-017 | W-002 PR 상세 화면 | REL-002 | WP-015, WP-016 | done |
 | WP-018 | W-003 커밋 상세 화면 | REL-002 | WP-015, WP-016 | done |
 | WP-019 | 저장소 백필 잡 | REL-002 | WP-006, WP-008 | done |
@@ -41,13 +41,13 @@
 | WP-021 | 시퀀스 증분 채번 | REL-003 | WP-002, WP-020 | done |
 | WP-022 | 시퀀스 재채번과 에폭 | REL-003 | WP-021 | done |
 | WP-023 | 앵커 정규화와 범위 조회 API | REL-003 | WP-021, WP-013 | done |
-| WP-024 | 릴리스 수집과 포함 관계 | REL-003 | WP-021, WP-008 | todo |
-| WP-025 | W-004 범위 조사 화면 | REL-003 | WP-023, WP-015 | todo |
-| WP-026 | W-005 릴리스 화면과 구간 비교 | REL-003 | WP-024, WP-025 | todo |
-| WP-027 | 선행·후행 조회와 상세 화면 통합 | REL-003 | WP-023, WP-017, WP-018 | todo |
-| WP-028 | 정합성 점검과 조정 스캔 | REL-003 | WP-021, WP-019 | todo |
+| WP-024 | 릴리스 수집과 포함 관계 | REL-003 | WP-021, WP-008 | done |
+| WP-025 | W-004 범위 조사 화면 | REL-003 | WP-023, WP-015 | done |
+| WP-026 | W-005 릴리스 화면과 구간 비교 | REL-003 | WP-024, WP-025 | done |
+| WP-027 | 선행·후행 조회와 상세 화면 통합 | REL-003 | WP-023, WP-017, WP-018 | done |
+| WP-028 | 정합성 점검과 조정 스캔 | REL-003 | WP-021, WP-019 | in_progress |
 | WP-067 | 커밋 메타데이터 보강 (JOB-MIR-002) | REL-003 | WP-020, WP-008 | todo |
-| WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | WP-010, WP-012 | todo |
+| WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | WP-010, WP-012 | in_progress |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003 | todo |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020 | todo |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | WP-030, WP-017 | todo |
