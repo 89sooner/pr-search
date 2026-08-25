@@ -66,6 +66,17 @@ export interface ReconcileDeps {
    * 주입은 시험을 위한 것이다. 되돌리기를 갈아 끼우라는 뜻이 아니라, 탐지·집계
    * 규칙을 백필 스택 전체 없이 검증하기 위한 이음매다.
    */
+  /**
+   * 팀 접근 범위 동기화 (WP-068 / CR-036, DEV-190).
+   *
+   * **마이그레이션은 기존 저장소에 빈 배열을 남긴다.** 등록 경로만이 그것을
+   * 채우므로, 마이그레이션 이전부터 있던 저장소는 **누군가 다시 등록하기 전까지
+   * 팀으로만 볼 수 있는 상태로 남는다** — 그리고 팀 웹훅의 역조회도 빈 배열이라
+   * 그 저장소를 찾지 못한다. 정기 정비가 그 공백을 메운다.
+   *
+   * 없으면 하지 않는다 (GHE 자격 증명이 없는 배포).
+   */
+  readonly syncTeams?: (repository: RepositoryRow) => Promise<void>;
   readonly reproject?: (
     deps: BackfillDeps,
     repository: RepositoryRow,
@@ -168,6 +179,24 @@ export async function reconcileRepository(
   }
 
   const sequenceScheduled = await scheduleHeadSequence(deps, repository);
+
+  /*
+   * 팀 접근 범위를 맞춘다 (CR-036, DEV-190). 등록 경로만으로는 마이그레이션
+   * 이전 저장소가 영영 빈 채로 남는다. 실패해도 조정 스캔을 멈추지 않는다.
+   */
+  if (deps.syncTeams !== undefined) {
+    try {
+      await deps.syncTeams(repository);
+    } catch (error) {
+      log({
+        level: 'warn',
+        message: '팀 접근 범위 동기화 실패 — 다음 주기가 다시 시도한다',
+        repository: slug,
+        reason: String(error).slice(0, 200),
+      });
+    }
+  }
+
   return { scanned, missing, reprojected, sequenceScheduled, deferred };
 }
 
