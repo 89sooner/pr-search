@@ -63,12 +63,20 @@ const HIDDEN = 2900;
 const ORG = 1;
 const BRANCH = 'main';
 
-/** 서수 1~4. 1은 직접 푸시(PR 없음), 2·3·4는 PR 41·42·43의 머지 커밋. */
+/**
+ * 서수 1~5. 1은 직접 푸시(PR 없음), 2~5는 PR 41·42·43·44의 머지 커밋.
+ *
+ * 서수 5는 **마지막 릴리스보다 뒤**다 (CR-030, DEV-160). 포함 판정이 저장 열
+ * 대신 현재 에폭 체인을 보게 되면서 `resynced-later`(서수 4)가 진짜 포함
+ * 릴리스가 되었고, 그러면 서수 4까지는 전부 배포된 것이라 **미배포를 검증할
+ * 대상이 픽스처에서 사라진다.** 그 상태를 만들 커밋 하나를 더 둔다.
+ */
 const COMMITS = [
   { seq: 1, sha: `${'1'.repeat(40)}`, pr: null, at: '2026-08-10T00:00:00Z' },
   { seq: 2, sha: `${'2'.repeat(40)}`, pr: 41, at: '2026-08-11T00:00:00Z' },
   { seq: 3, sha: `${'3'.repeat(40)}`, pr: 42, at: '2026-08-12T00:00:00Z' },
   { seq: 4, sha: `${'4'.repeat(40)}`, pr: 43, at: '2026-08-13T00:00:00Z' },
+  { seq: 5, sha: `${'7'.repeat(40)}`, pr: 44, at: '2026-08-14T00:00:00Z' },
 ] as const;
 
 /** 어느 체인에도 없는 SHA들. */
@@ -179,7 +187,7 @@ beforeAll(async () => {
       committed_at: new Date(commit.at),
     });
   }
-  await sequenceSpaceRepo.advanceHead(pool, PAYMENTS, BRANCH, COMMITS[3].sha, 4);
+  await sequenceSpaceRepo.advanceHead(pool, PAYMENTS, BRANCH, COMMITS[4].sha, 5);
 
   /*
    * 릴리스 다섯: 체인 위 둘(v1.0=서수 2, v1.1=서수 3), 체인 밖 하나(NULL 셋),
@@ -351,8 +359,12 @@ describe('PR 기준 포함 판정 (API-REL-002 AC-2·AC-5)', () => {
     expect(body.merge_seq).toBe(2);
     expect(body.merge_commit_sha).toBe(COMMITS[1].sha);
     expect(body.base_branch).toBe(BRANCH);
-    // 서수 2 <= 릴리스 서수인 것: v1.0(2), v1.1(3). 시각 오름차순 (AC-3).
-    expect(body.releases?.map((release) => release.tag_name)).toEqual(['v1.0', 'v1.1']);
+    // 서수 2 <= 릴리스 서수인 것: v1.0(2), v1.1(3), resynced-later(4). 시각 오름차순 (AC-3).
+    expect(body.releases?.map((release) => release.tag_name)).toEqual([
+      'v1.0',
+      'v1.1',
+      'resynced-later',
+    ]);
     expect(body.releases?.[0]).toEqual({
       tag_name: 'v1.0',
       released_at: '2026-08-14T09:00:00.000Z',
@@ -366,15 +378,29 @@ describe('PR 기준 포함 판정 (API-REL-002 AC-2·AC-5)', () => {
     expect(esRequests).toHaveLength(0);
   });
 
+  it('**저장 서수가 NULL이어도 현재 에폭 체인에 있으면 포함 릴리스다** (CR-030, DEV-160)', async () => {
+    /*
+     * `resynced-later`는 동기화가 채번보다 먼저 돌아 표에는 `base_branch`·
+     * `merge_seq`가 NULL이지만 커밋은 서수 4다. 저장 열로 판정하면 이 릴리스가
+     * 포함 목록에서 통째로 빠지고, **이미 배포된 PR이 "미배포"로 보인다** —
+     * 앵커 해석은 이미 다시 찾는데(DEV-149) 포함 판정만 저장 열을 읽고 있었다.
+     */
+    const { body } = await getContainment({ kind: 'pull_request', id: '43' });
+    expect(body.merge_seq).toBe(4);
+    expect(body.releases?.map((release) => release.tag_name)).toEqual(['resynced-later']);
+    expect(body.unreleased).toBe(false);
+    expect(body.releases?.[0]?.merge_seq).toBe(4);
+  });
+
   it('경계는 `<=`다 — 릴리스 직후 서수는 그 릴리스에 포함되지 않는다', async () => {
     // PR 42(서수 3)는 v1.0(서수 2)에는 없고 v1.1(서수 3)에는 있다.
     const { body } = await getContainment({ kind: 'pull_request', id: '42' });
-    expect(body.releases?.map((release) => release.tag_name)).toEqual(['v1.1']);
+    expect(body.releases?.map((release) => release.tag_name)).toEqual(['v1.1', 'resynced-later']);
   });
 
   it('**미배포는 "판정했고 없음"이다** — 대기 수와 안내가 붙는다 (AC-4, QA-W002-09)', async () => {
-    // PR 43(서수 4)은 마지막 릴리스 v1.1(서수 3)보다 뒤다.
-    const { status, body } = await getContainment({ kind: 'pull_request', id: '43' });
+    // PR 44(서수 5)는 마지막 릴리스 resynced-later(서수 4)보다 뒤다.
+    const { status, body } = await getContainment({ kind: 'pull_request', id: '44' });
     expect(status).toBe(200);
     expect(body.releases).toEqual([]);
     expect(body.unreleased).toBe(true);
@@ -461,7 +487,11 @@ describe('커밋 기준 포함 판정 (API-REL-002 AC-1)', () => {
     const { status, body } = await getContainment({ kind: 'commit', id: COMMITS[0].sha });
     expect(status).toBe(200);
     expect(body.merge_seq).toBe(1);
-    expect(body.releases?.map((release) => release.tag_name)).toEqual(['v1.0', 'v1.1']);
+    expect(body.releases?.map((release) => release.tag_name)).toEqual([
+      'v1.0',
+      'v1.1',
+      'resynced-later',
+    ]);
     expect(body).not.toHaveProperty('pull_request_number');
     expect(esRequests).toHaveLength(0);
   });
@@ -474,7 +504,11 @@ describe('커밋 기준 포함 판정 (API-REL-002 AC-1)', () => {
     // 판정 근거는 머지 커밋이다 — 조회한 원본 커밋이 아니라.
     expect(body.merge_commit_sha).toBe(COMMITS[1].sha);
     expect(body.merge_seq).toBe(2);
-    expect(body.releases?.map((release) => release.tag_name)).toEqual(['v1.0', 'v1.1']);
+    expect(body.releases?.map((release) => release.tag_name)).toEqual([
+      'v1.0',
+      'v1.1',
+      'resynced-later',
+    ]);
     expect(body.target?.id).toBe(SOURCE_COMMIT_SHA);
 
     // 색인 호출의 wire 검증 (DEV-141의 교훈): 라우팅과 강제 범위 필터가 실려야 한다.

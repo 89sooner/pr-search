@@ -125,9 +125,18 @@ export async function hasAnyRelease(db: Queryable, repositoryId: number): Promis
 /**
  * 대상을 포함하는 릴리스 (FR-REL-002 AC-5): 같은 공간에서 `release.merge_seq >= $4`.
  *
- * **에폭까지 좁힌다** (DEV-149). 재채번 직후 아직 재해석되지 않은 이전 에폭
- * 행의 서수는 다른 커밋을 가리킬 수 있다 — 그런 행으로 포함을 판정하면 틀린
- * 답이 오류 없이 나간다. 정렬은 시각 오름차순이다 (AC-3).
+ * **서수는 저장 열이 아니라 현재 에폭 체인에서 다시 찾는다** (DEV-149, CR-030
+ * DEV-160). 이유가 둘이다:
+ *
+ * - 이전 에폭 행의 서수는 다른 커밋을 가리킬 수 있다. 그런 값으로 판정하면 틀린
+ *   답이 오류 없이 나간다.
+ * - 동기화(JOB-REL-007)가 채번보다 먼저 돌면 표에는 `base_branch`·`merge_seq`가
+ *   `NULL`인데 커밋은 이미 체인 위에 있다. 저장 열로 판정하면 **그 릴리스가 포함
+ *   목록에서 통째로 빠지고**, 이미 배포된 PR이 "미배포"로 보인다. 앵커 해석은
+ *   이미 다시 찾는데(DEV-149) 포함 판정만 저장 열을 읽고 있었다 — 같은 화면의
+ *   두 답이 어긋나던 자리다.
+ *
+ * 정렬은 시각 오름차순이다 (AC-3).
  */
 export async function findContainingReleases(
   db: Queryable,
@@ -137,12 +146,63 @@ export async function findContainingReleases(
   mergeSeq: number,
 ): Promise<ReleaseRow[]> {
   const result = await db.query<ReleaseRow>(
-    `SELECT * FROM release
-      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq >= $4
-      ORDER BY released_at, tag_name`,
+    `SELECT rel.release_id, rel.repository_id, rel.tag_name, rel.commit_sha,
+            $2::text AS base_branch, $3::int AS seq_epoch, ms.merge_seq::text AS merge_seq,
+            rel.released_at, rel.source, rel.synced_at
+       FROM release rel
+       JOIN merge_sequence ms
+         ON ms.repository_id = rel.repository_id
+        AND ms.base_branch = $2
+        AND ms.seq_epoch = $3
+        AND ms.commit_sha = rel.commit_sha
+      WHERE rel.repository_id = $1 AND ms.merge_seq >= $4
+      ORDER BY rel.released_at, rel.tag_name`,
     [repositoryId, baseBranch, seqEpoch, mergeSeq],
   );
   return result.rows;
+}
+
+/** 공간의 마지막 릴리스 — 태그 이름과 **현재 에폭에서 다시 확인한** 서수. */
+export interface LatestReleasePoint {
+  readonly tag_name: string;
+  readonly merge_seq: string;
+}
+
+/**
+ * 공간의 마지막 릴리스 (API-SEQ-003의 `to=unreleased` 시작 앵커, CR-030 DEV-156).
+ *
+ * **저장된 `base_branch`·`merge_seq`를 조건으로 쓰지 않는다** (DEV-149). 동기화가
+ * 채번보다 먼저 돌면 표에는 그 둘이 `NULL`인데 커밋은 이미 체인 위에 있고, 저장된
+ * 값으로 고르면 **그 릴리스를 건너뛴 채** 더 오래된 릴리스가 미배포 구간의 시작이
+ * 된다 — 이미 배포된 PR이 미배포로 세어진다. 타임라인(`listReleaseTimeline`)은
+ * 서수를 다시 찾으므로, 여기서 다시 찾지 않으면 **같은 화면의 두 숫자가 어긋난다.**
+ *
+ * 그래서 판정은 하나뿐이다: 이 공간의 현재 에폭 체인에 커밋이 있는 태그 중 서수가
+ * 가장 큰 것.
+ *
+ * 태그 이름을 함께 주는 이유는 미배포 구간의 방향 표기 때문이다 — "마지막 릴리스
+ * 이후"라고만 적으면 그것이 무엇인지 화면에서 확인할 수 없다.
+ */
+export async function findLatestRelease(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+): Promise<LatestReleasePoint | undefined> {
+  const result = await db.query<LatestReleasePoint>(
+    `SELECT rel.tag_name, ms.merge_seq::text AS merge_seq
+       FROM release rel
+       JOIN merge_sequence ms
+         ON ms.repository_id = rel.repository_id
+        AND ms.base_branch = $2
+        AND ms.seq_epoch = $3
+        AND ms.commit_sha = rel.commit_sha
+      WHERE rel.repository_id = $1
+      ORDER BY ms.merge_seq DESC
+      LIMIT 1`,
+    [repositoryId, baseBranch, seqEpoch],
+  );
+  return result.rows[0];
 }
 
 /**
@@ -156,11 +216,119 @@ export async function findLatestReleaseSeq(
   baseBranch: string,
   seqEpoch: number,
 ): Promise<number | null> {
-  const result = await db.query<{ merge_seq: string }>(
-    `SELECT max(merge_seq)::text AS merge_seq FROM release
-      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq IS NOT NULL`,
-    [repositoryId, baseBranch, seqEpoch],
+  // 판정은 `findLatestRelease` 하나뿐이다 (CR-030, DEV-160). 두 벌로 두면
+  // 대기 수와 미배포 구간의 시작점이 서로 다른 릴리스를 기준으로 삼는다.
+  const latest = await findLatestRelease(db, repositoryId, baseBranch, seqEpoch);
+  return latest === undefined ? null : Number(latest.merge_seq);
+}
+
+/**
+ * W-005 타임라인 한 행 (API-REL-005, CR-030 DEV-155).
+ *
+ * `merge_seq`는 **저장된 값이 아니라 현재 에폭에서 다시 확인한 값**이다 (DEV-149).
+ * 확인되지 않으면 `null`이다 — 재채번 직후 아직 재해석되지 않았거나 체인 밖이다.
+ */
+export interface ReleaseTimelineRow {
+  readonly tag_name: string;
+  readonly commit_sha: string;
+  readonly released_at: Date;
+  readonly source: ReleaseSource;
+  readonly base_branch: string | null;
+  readonly seq_epoch: number | null;
+  readonly merge_seq: string | null;
+  readonly previous_tag_name: string | null;
+  readonly pull_request_count_since_previous: string | null;
+}
+
+/**
+ * 저장소의 릴리스 타임라인 (API-REL-005 / FR-SEQ-004).
+ *
+ * ## 왜 저장된 서수를 믿지 않는가
+ *
+ * 릴리스 서수는 에폭에 묶인 스냅숏이다 (DEV-149). 재채번이 에폭을 올리면 이전
+ * 에폭의 서수는 다른 커밋을 가리킬 수 있으므로, **현재 에폭의 `merge_sequence`에서
+ * `commit_sha`로 다시 찾아** 서수를 얻는다 — 앵커 해석이 표의 서수 대신
+ * `findPointByCommit`을 다시 묻는 것과 같은 규칙이다. 탐색은 저장소의 시퀀스
+ * 공간(스키마상 최대 10개)을 돌며 각각 유일 인덱스를 그대로 타고, 릴리스 행이
+ * 적어 둔 브랜치를 먼저 본다. 브랜치도 그렇게 **다시 정한다**: 동기화가 채번보다
+ * 먼저 돌면 표에는 `NULL`인데 커밋은 체인 위에 있다. 못 찾으면 `null`이다 —
+ * 재채번 중에 틀린 서수를 조용히 보이는 것보다 서수가 없다고 말하는 쪽이 옳다.
+ *
+ * ## 왜 저장소 스코프인가
+ *
+ * 브랜치를 강제로 고정하면 "다른 대상 브랜치 릴리스 2건 선택"(FR-SEQ-004 AC-3)이
+ * 만들어지지 않아 그 규칙을 검증할 길이 사라진다 (DEV-158). `branch`는 선택 필터다.
+ *
+ * ## "직전"은 시각이 아니라 서수다
+ *
+ * 태그는 나중에 옛 커밋을 가리키며 생길 수 있어 시각 순서와 서수 순서가 어긋나는데,
+ * 구간은 서수로 잘린다. 그래서 `lag`를 **서수로** 매기고 비교 대상 태그명을 함께
+ * 싣는다 — 화면이 무엇과 비교한 수인지 말할 수 있어야 한다.
+ *
+ * `pull_request_count_since_previous`는 서수 차가 아니라 반개구간
+ * `(previous, current]`의 **PR 문서 수**다 (QA-W005-06). 직접 푸시 커밋이 섞이면
+ * 두 값이 달라진다. 비교 대상이 없는 첫 릴리스는 `null`이다 — 0이 아니다.
+ *
+ * @param limit 페이지 크기. 절삭 판정을 위해 호출자가 `+1`을 넘긴다.
+ */
+export async function listReleaseTimeline(
+  db: Queryable,
+  repositoryId: number,
+  branch: string | null,
+  limit: number,
+): Promise<ReleaseTimelineRow[]> {
+  const result = await db.query<ReleaseTimelineRow>(
+    `WITH resolved AS (
+       SELECT rel.tag_name, rel.commit_sha, rel.released_at, rel.source,
+              COALESCE(pt.base_branch, rel.base_branch) AS base_branch,
+              pt.seq_epoch AS seq_epoch,
+              pt.merge_seq AS merge_seq
+         FROM release rel
+         LEFT JOIN LATERAL (
+           SELECT ms.base_branch, ms.seq_epoch, ms.merge_seq
+             FROM sequence_space ss
+             JOIN merge_sequence ms
+               ON ms.repository_id = ss.repository_id
+              AND ms.base_branch = ss.base_branch
+              AND ms.seq_epoch = ss.seq_epoch
+              AND ms.commit_sha = rel.commit_sha
+            WHERE ss.repository_id = rel.repository_id
+            ORDER BY (ss.base_branch IS NOT DISTINCT FROM rel.base_branch) DESC, ss.base_branch
+            LIMIT 1
+         ) pt ON true
+        WHERE rel.repository_id = $1
+     ),
+     filtered AS (
+       SELECT * FROM resolved
+        WHERE $2::text IS NULL OR base_branch = $2::text
+     ),
+     windowed AS (
+       SELECT f.*,
+              lag(f.merge_seq) OVER w AS prev_seq,
+              lag(f.tag_name)  OVER w AS prev_tag
+         FROM filtered f
+       WINDOW w AS (PARTITION BY f.base_branch ORDER BY f.merge_seq)
+     ),
+     page AS (
+       SELECT * FROM windowed ORDER BY released_at DESC, tag_name ASC LIMIT $3::int
+     )
+     SELECT p.tag_name, p.commit_sha, p.released_at, p.source, p.base_branch,
+            p.seq_epoch,
+            p.merge_seq::text AS merge_seq,
+            CASE WHEN p.merge_seq IS NULL THEN NULL ELSE p.prev_tag END AS previous_tag_name,
+            CASE WHEN p.merge_seq IS NULL OR p.prev_seq IS NULL THEN NULL ELSE (
+              SELECT count(DISTINCT ms2.pull_request_number)::text
+                FROM merge_sequence ms2
+               WHERE ms2.repository_id = $1
+                 AND ms2.base_branch = p.base_branch
+                 AND ms2.seq_epoch = p.seq_epoch
+                 AND ms2.merge_seq > p.prev_seq
+                 AND ms2.merge_seq <= p.merge_seq
+                 AND ms2.pull_request_number IS NOT NULL
+            ) END AS pull_request_count_since_previous
+       FROM page p
+      ORDER BY p.released_at DESC, p.tag_name ASC`,
+    [repositoryId, branch, limit],
   );
-  const seq = result.rows[0]?.merge_seq;
-  return seq === undefined || seq === null ? null : Number(seq);
+  return result.rows;
 }

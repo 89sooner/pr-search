@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { QUERY_KEYS, QueryParseError, parseQuery, type QueryAst } from '@prs/query';
 import { AccessScopeUnavailableError, PartialSearchError } from '@prs/es';
+import { ERROR_HTTP_STATUS } from '@prs/contracts';
 import type { ErrorResponse } from '@prs/contracts';
 import { SUPPORTED_ANCHOR_FORMATS } from '@prs/domain';
 import type { AuthContext } from '../auth/context.js';
@@ -41,11 +42,20 @@ import {
   type ContainmentResult,
 } from './containments.js';
 import { listSequenceSpaces } from './spaces-list.js';
+import { clampReleaseLimit, listReleases } from './releases-list.js';
+import {
+  UNRELEASED,
+  clampComparisonSize,
+  comparisonFailureCode,
+  planComparison,
+} from './release-comparison.js';
 
 export const SEQUENCE_RANGE_PATH = '/api/v1/sequence-ranges';
 export const SEQUENCE_ANCHOR_PATH = '/api/v1/sequence-anchors/resolve';
 export const CONTAINMENT_PATH = '/api/v1/containments';
 export const SEQUENCE_SPACES_PATH = '/api/v1/sequence-spaces';
+export const RELEASES_PATH = '/api/v1/releases';
+export const RELEASE_COMPARISON_PATH = '/api/v1/release-comparisons';
 
 export interface SequenceRouteOptions extends RangeDeps {
   readonly auth: AuthContext;
@@ -343,6 +353,166 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
       const scope = await auth.scopes.resolve(userId);
       const spaces = await listSequenceSpaces(deps.pool, scope);
       return await reply.send({ spaces, correlation_id: correlationId });
+    } catch (error) {
+      return toFailureResponse(reply, correlationId, error);
+    }
+  });
+
+  // API-REL-005: C-032 릴리스 타임라인의 데이터 소스 (CR-030, DEV-155).
+  app.get(RELEASES_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const query = (request.query ?? {}) as Record<string, unknown>;
+
+    try {
+      const userId = (await authenticateSession(request, auth.sessions)).userId;
+
+      const slug = parseRepositorySlug(query['repository']);
+      if (slug === null) {
+        return invalidParameter(reply, correlationId, 'repository', 'repository는 owner/name 형식이어야 합니다.');
+      }
+
+      const scope = await auth.scopes.resolve(userId);
+      const lookup = await resolveRepository(deps.pool, slug, scope);
+      if (lookup.kind !== 'ok') {
+        return fail(reply, 404, {
+          error: { code: 'NOT_FOUND', message: lookup.message },
+          correlation_id: correlationId,
+        });
+      }
+
+      /*
+       * `branch`는 **선택 필터**다 (DEV-158). 없으면 저장소 전체를 낸다 — 브랜치를
+       * 고정하면 "다른 대상 브랜치 릴리스 2건 선택"(AC-3)이 만들어지지 않는다.
+       */
+      const rawBranch = query['branch'];
+      const branch = typeof rawBranch === 'string' && rawBranch.trim() !== '' ? rawBranch.trim() : null;
+      const repository = `${slug.owner}/${slug.name}`;
+
+      const result = await listReleases(
+        deps.pool,
+        lookup.repository.repository_id,
+        repository,
+        branch,
+        clampReleaseLimit(query['limit']),
+      );
+
+      return await reply.send({
+        repository,
+        releases: result.releases,
+        // 릴리스 0건은 오류가 아니라 상태다 (DEV-146). 키는 늘 있고 값이 없을 뿐이다.
+        reason: result.reason,
+        truncated: result.truncated,
+        correlation_id: correlationId,
+      });
+    } catch (error) {
+      return toFailureResponse(reply, correlationId, error);
+    }
+  });
+
+  // API-SEQ-003: W-005의 릴리스 상세와 미배포 구간 (CR-030, DEV-156).
+  app.get(RELEASE_COMPARISON_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const query = (request.query ?? {}) as Record<string, unknown>;
+
+    const rawFrom = typeof query['from'] === 'string' ? query['from'].trim() : '';
+    const rawTo = typeof query['to'] === 'string' ? query['to'].trim() : '';
+    if (rawTo === '') {
+      return invalidParameter(reply, correlationId, 'to', `to가 필요합니다. 릴리스 태그 또는 '${UNRELEASED}'.`);
+    }
+    // `from`은 `to=unreleased`일 때만 생략할 수 있다 — 그때 시작은 마지막 릴리스다.
+    if (rawFrom === '' && rawTo !== UNRELEASED) {
+      return invalidParameter(reply, correlationId, 'from', 'from이 필요합니다.');
+    }
+
+    try {
+      const entered = await enter(request, reply, correlationId, query['repository'], query['base_branch']);
+      if (entered === null) return reply;
+      const { space, scope } = entered;
+
+      // 에폭 봉투는 API-SEQ-001과 같다 (ADR-007). 인용이 다른 에폭이면 실행하지 않는다.
+      const requestedEpoch = parseEpochParam(query['seq_epoch']);
+      if (isEpochStale(space, requestedEpoch)) {
+        return reply.send({
+          sequence_space: space.sequenceSpace,
+          seq_epoch: space.seqEpoch,
+          sequence_state: space.state,
+          epoch_stale: true,
+          requested_seq_epoch: requestedEpoch,
+          next_cursor: null,
+          correlation_id: correlationId,
+        });
+      }
+
+      const plan = await planComparison(
+        { pool: deps.pool, es: deps.es, ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }) },
+        space,
+        scope,
+        rawFrom === '' ? null : rawFrom,
+        rawTo,
+      );
+      if (plan.kind === 'failed') {
+        // 상태는 계약 표가 정한다 — 여기서 숫자를 다시 적으면 둘이 갈라진다.
+        const code = comparisonFailureCode(plan.failure);
+        return fail(reply, ERROR_HTTP_STATUS[code], {
+          error: {
+            code,
+            message: plan.failure.message,
+            detail: { ...plan.failure.detail },
+          },
+          correlation_id: correlationId,
+        });
+      }
+
+      /*
+       * 5만 건 가드는 API-SEQ-001과 **같은 함수**다. 릴리스 두 개 사이가 넓은 것은
+       * 흔한 일이고, 그때 여기만 상한이 없으면 같은 구간이 API에 따라 되기도 하고
+       * 안 되기도 한다. 방향은 이미 정규화됐으므로 `inverted`는 나오지 않는다.
+       */
+      const guard = await guardRange(deps.pool, space, plan.fromSeq, plan.toSeq);
+      if (guard.kind === 'too_large') {
+        return fail(reply, 400, {
+          error: {
+            code: 'RANGE_TOO_LARGE',
+            message:
+              `구간에 포함된 항목이 상한(${String(RANGE_LIMIT)})을 넘습니다. ` +
+              `현재 ${guard.total.toLocaleString('en-US')}건.`,
+            detail: { estimated_count: guard.total, limit: RANGE_LIMIT, exact: true },
+          },
+          correlation_id: correlationId,
+        });
+      }
+      if (guard.kind === 'inverted') {
+        throw new Error('정규화된 구간이 역전됐다');
+      }
+
+      const result = await runRange(
+        {
+          space,
+          scope,
+          fromExclusive: plan.fromSeq,
+          toInclusive: plan.toSeq,
+          size: clampComparisonSize(query['size']),
+          ast: null,
+          rangeTotal: guard.total,
+        },
+        deps,
+      );
+
+      return reply.send({
+        sequence_space: space.sequenceSpace,
+        seq_epoch: space.seqEpoch,
+        sequence_state: space.state,
+        epoch_stale: false,
+        normalized_direction: plan.normalizedDirection,
+        unreleased: plan.unreleased,
+        range: { from_seq: plan.fromSeq, to_seq: plan.toSeq, boundary: '(from, to]' },
+        summary: result.summary,
+        items: result.items,
+        items_missing_in_index: result.items_missing_in_index,
+        ...(result.unresolved.length === 0 ? {} : { unresolved_names: result.unresolved }),
+        next_cursor: null,
+        correlation_id: correlationId,
+      });
     } catch (error) {
       return toFailureResponse(reply, correlationId, error);
     }

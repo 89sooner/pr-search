@@ -650,19 +650,18 @@ POST /api/v1/sequence-anchors/resolve
   },
   "items": [],
   "items_missing_in_index": 0,
-  "unresolved": [],
   "next_cursor": null,
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
 
-**요약과 항목은 API-SEQ-001의 계층을 그대로 딛는다.** `RangeSummary`·`RangeItem` 하나를 두 API가 공유하므로 W-004와 W-005가 같은 구간에 대해 다른 숫자를 말하는 일이 없다. 그래서 `reverted_pull_request_count`는 **없다** — CR-027(DEV-133)이 관계 파생(WP-030) 전에는 세면 언제나 0이라 키 자체를 뺐고, 화면도 그 자리를 "준비 중"으로 둔다(CR-029, DEV-150). 반대로 실측 요약이 내는 `commit_count`·`files_truncated_pull_request_count`·`top_changed_paths`와 봉투의 `sequence_state`·`epoch_stale`·`items_missing_in_index`·`unresolved`는 여기에도 그대로 실린다.
+**요약과 항목은 API-SEQ-001의 계층을 그대로 딛는다.** `RangeSummary`·`RangeItem` 하나를 두 API가 공유하므로 W-004와 W-005가 같은 구간에 대해 다른 숫자를 말하는 일이 없다. 그래서 `reverted_pull_request_count`는 **없다** — CR-027(DEV-133)이 관계 파생(WP-030) 전에는 세면 언제나 0이라 키 자체를 뺐고, 화면도 그 자리를 "준비 중"으로 둔다(CR-029, DEV-150). 반대로 실측 요약이 내는 `commit_count`·`files_truncated_pull_request_count`·`top_changed_paths`와 봉투의 `sequence_state`·`epoch_stale`·`items_missing_in_index`는 여기에도 그대로 실린다. `unresolved_names`는 API-SEQ-001과 같이 **비면 키 자체를 넣지 않는다**(빈 배열은 "찾아봤고 없다"로 읽힌다, DEV-052).
 
 - 요청 파라미터는 API-SEQ-001과 같다: `size`(0~200, 기본 50), `seq_epoch`(에폭 고정 인용). **`size=0`은 요약만** — 릴리스 상세 패널은 항목을 그리지 않으므로 항목 질의를 돌리지 않는다.
 - 에폭 봉투도 같다. 요청 `seq_epoch`가 현재 에폭과 다르면 `epoch_stale: true` + `requested_seq_epoch`를 싣고 **결과는 내지 않는다**(ADR-007, WP-023). 재채번 중이면 `sequence_state: "reassigning"`과 마지막 확정 값이다.
 - **`to=unreleased`는 마지막 릴리스 이후 브랜치 head까지다** (AC-5). `from`을 생략하면 마지막 릴리스가 시작 앵커다 — 미배포 구간의 정의가 그것이다. 릴리스가 하나도 없는 저장소에서는 404가 아니라 **200 + 공간 전체 구간**이다: 태그가 없으면 "전부 미배포"가 참이고, `RELEASE_NOT_INDEXED`는 **지목한 태그**가 없을 때의 코드다(DEV-146).
 - **AC-4의 정규화는 서수로 한다.** 지정 순서와 무관하게 서수가 작은 쪽이 `from`이고, 뒤집힌 입력은 오류가 아니라 정규화 대상이다 — `normalized_direction`이 실제로 조회한 방향을 말한다.
-- 오류: `SEQUENCE_SPACE_MISMATCH` (400, 두 릴리스가 다른 공간), `RELEASE_NOT_INDEXED` (404, 지목한 태그가 없다), `ANCHOR_NOT_ON_BRANCH` (400, 태그가 체인 밖), `RANGE_TOO_LARGE` (400, 구간 5만 초과 — API-SEQ-001과 같은 가드다)
+- 오류: `SEQUENCE_SPACE_MISMATCH` (400, 두 릴리스가 다른 공간), `RELEASE_NOT_INDEXED` (404, **지목한 태그가 없다** — `detail.reason`이 `tag_not_found`(다른 태그는 있다)와 `release_not_indexed`(수집 자체가 없다)를 가른다), `ANCHOR_NOT_ON_BRANCH` (400, 태그가 체인 밖), `RANGE_TOO_LARGE` (400, 구간 5만 초과 — API-SEQ-001과 같은 가드다)
 
 ### API-SEQ-006 시퀀스 공간 목록 (CR-029, DEV-152)
 
