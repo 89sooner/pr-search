@@ -192,6 +192,23 @@ describe('경로가 실재하는지', () => {
     expect(registry).toContain('for (const alias of TEAM_SCOPED_ALIASES)');
   });
 
+  it('**팀 소급이 GHE를 다시 읽는다** — 정본의 옛 값을 되쓰지 않는다 (CR-036, DEV-188)', () => {
+    expect(WORKER_INDEX).toContain('refreshTeamScope(');
+    expect(WORKER_INDEX).toContain('listRepositoryTeams(');
+    // 회수 사건에서 정본의 옛 배열을 그대로 색인에 쓰던 경로로 되돌아가지 않는다.
+    expect(WORKER_INDEX).not.toContain('repository.allowed_team_ids,');
+  });
+
+  it('두 경로가 **같은 동기화 구현**을 쓴다 (CR-036, DEV-188)', () => {
+    expect(read('apps/search-api/src/ops/repositories.ts')).toContain('syncRepositoryTeamScope(');
+    expect(WORKER_INDEX).toContain('syncRepositoryTeamScope(');
+  });
+
+  it('조정 스캔이 기존 저장소의 팀을 메운다 (CR-036, DEV-190)', () => {
+    expect(WORKER_INDEX).toContain('syncTeams:');
+    expect(read('apps/pipeline-worker/src/reconcile.ts')).toContain('await deps.syncTeams(repository)');
+  });
+
   it('root 경로가 실재한다 — 시험이 잘못된 디렉터리를 보고 있지 않다', () => {
     expect(existsSync(new URL('package.json', new URL('..', import.meta.url)))).toBe(true);
     expect(root.length).toBeGreaterThan(0);

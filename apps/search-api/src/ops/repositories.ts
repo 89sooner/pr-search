@@ -12,10 +12,11 @@
  * 조사 이력의 보존이 이 제품의 목적이다.
  */
 
-import { auditRepo, authRepo, jobRepo, repositoryRepo, type Pool, type RepositoryRow } from '@prs/db';
+import { auditRepo, jobRepo, repositoryRepo, type Pool, type RepositoryRow } from '@prs/db';
 import { MAX_SEQUENCE_BRANCHES } from '@prs/db';
 import { applyRepositoryTeams, markRepositoryArchived, type MarkArchivedResult } from '@prs/es';
 import type { Client as EsClient } from '@elastic/elasticsearch';
+import { syncRepositoryTeamScope } from '@prs/authz';
 import { AdminRejected } from './errors.js';
 
 /** GHE App이 저장소를 다루려면 필요한 권한. 403 본문에 그대로 실어 보낸다. */
@@ -321,13 +322,14 @@ export async function unregisterRepository(
 }
 
 /**
- * GHE의 저장소 팀을 정본과 색인에 반영한다 (WP-068 / CR-035).
+ * GHE의 저장소 팀을 정본과 색인에 반영한다 (WP-068 / CR-035·036).
  *
- * **값이 바뀔 때만 색인을 만진다.** 등록 갱신은 잦고 팀은 드물게 바뀌므로,
- * 같은 값으로 `update_by_query`를 돌리면 문서를 헛되이 다시 쓴다.
+ * **판정과 쓰기는 `@prs/authz`의 공유 구현이 한다** (CR-036, DEV-188). 등록
+ * 경로와 팀 웹훅 경로가 같은 동기화를 하는데 각자 구현하면 한쪽만 고쳐지는
+ * 날이 오고, 접근 범위에서 그것은 유출이다.
  *
- * 실패해도 등록을 되돌리지 않는다 — 저장소는 등록됐고 팀은 다음 갱신이나 팀
- * 웹훅이 채운다. 여기서 던지면 GHE 일시 오류가 등록 자체를 막는다.
+ * 실패해도 등록을 되돌리지 않는다 — 저장소는 등록됐고 팀은 다음 동기화가
+ * 채운다. 여기서 던지면 GHE 일시 오류가 등록 자체를 막는다.
  */
 export async function syncRepositoryTeams(
   deps: RegistryDeps,
@@ -337,22 +339,23 @@ export async function syncRepositoryTeams(
   name: string,
   correlationId: string,
 ): Promise<{ readonly changed: boolean; readonly teamIds: readonly number[] }> {
-  if (deps.listTeams === undefined) return { changed: false, teamIds: [] };
+  const listTeams = deps.listTeams;
+  if (listTeams === undefined) return { changed: false, teamIds: [] };
 
   try {
-    const teams = await deps.listTeams(owner, name);
-    for (const team of teams) {
-      // `team:` 질의가 slug를 ID로 옮길 수 있어야 한다 (DEV-186).
-      await authRepo.upsertTeam(deps.pool, { team_id: team.id, slug: team.slug, org_id: orgId });
-    }
-
-    const teamIds = teams.map((team) => team.id);
-    const changed = await repositoryRepo.setAllowedTeams(deps.pool, repositoryId, teamIds);
-    if (changed) {
-      // 강제 필터는 문서에 박힌 값을 본다 — 소급하지 않으면 과거 문서가 옛 권한으로 남는다.
-      await applyRepositoryTeams(deps.es, repositoryId, teamIds);
-    }
-    return { changed, teamIds };
+    const outcome = await syncRepositoryTeamScope(
+      {
+        pool: deps.pool,
+        index: {
+          applyRepositoryTeams: (repositoryId, teamIds) =>
+            applyRepositoryTeams(deps.es, repositoryId, teamIds),
+        },
+        source: { listRepositoryTeams: listTeams },
+        log: (entry) => deps.log?.({ ...entry, correlation_id: correlationId }),
+      },
+      { repository_id: repositoryId, owner, name, org_id: orgId },
+    );
+    return { changed: outcome.changed, teamIds: outcome.teamIds };
   } catch (error) {
     deps.log?.({
       level: 'error',

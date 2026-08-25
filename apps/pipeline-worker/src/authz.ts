@@ -71,7 +71,7 @@ export interface AuthzDeps {
    * 없으면 소급하지 않는다(색인 의존이 없는 배포). 그때는 캐시 TTL과 다음 등록
    * 갱신이 뒤늦게 메운다.
    */
-  readonly refreshRepositoryTeams?: (teamId: number) => Promise<number>;
+  readonly refreshRepositoryTeams?: (teamId: number, repositoryId: number | null) => Promise<number>;
   readonly log?: (entry: AuthzLogEntry) => void;
 }
 
@@ -178,9 +178,11 @@ export function createAuthzHandler(
        * 등록 갱신이 메우고, 그 사이 캐시 TTL이 안전망이다.
        */
       let documentsRefreshed = 0;
-      if (parsed.event.team_id != null && deps.refreshRepositoryTeams !== undefined) {
+      const teamTarget = parsed.event.team_id ?? null;
+      const repositoryTarget = parsed.event.repository_id ?? null;
+      if ((teamTarget !== null || repositoryTarget !== null) && deps.refreshRepositoryTeams !== undefined) {
         try {
-          documentsRefreshed = await deps.refreshRepositoryTeams(parsed.event.team_id);
+          documentsRefreshed = await deps.refreshRepositoryTeams(teamTarget ?? 0, repositoryTarget);
         } catch (error) {
           log({
             level: 'error',

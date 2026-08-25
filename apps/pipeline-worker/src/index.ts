@@ -10,7 +10,13 @@
 
 import { createPool, jobRepo, repositoryRepo } from '@prs/db';
 import { deterministicEventId } from '@prs/domain';
-import { scopeKey, type ScopeRedis } from '@prs/authz';
+import {
+  refreshTeamScope,
+  scopeKey,
+  syncRepositoryTeamScope,
+  type ScopeRedis,
+  type TeamScopeDeps,
+} from '@prs/authz';
 import { RedisStreamsEventBus, TOPICS, createRedisClient } from '@prs/bus';
 import {
   GitHubClient,
@@ -466,6 +472,25 @@ if (roles.includes('reconcile')) {
     bus,
     metrics,
     graphFor: () => new ApiCommitGraph({ client, priority: 'backfill' }),
+    /*
+     * 마이그레이션 이전 저장소의 팀 접근 범위를 메운다 (CR-036, DEV-190).
+     * 등록 경로만으로는 다시 등록하기 전까지 빈 채로 남는다.
+     */
+    syncTeams: async (repository) => {
+      await syncRepositoryTeamScope(
+        {
+          pool,
+          index: {
+            applyRepositoryTeams: (id, teamIds) => applyRepositoryTeams(reconcileEs, id, teamIds),
+          },
+          source: {
+            listRepositoryTeams: (owner, name) => client.listRepositoryTeams({ owner, repo: name }),
+          },
+          log: (entry) => { reconcileLog({ ...entry }); },
+        },
+        repository,
+      );
+    },
     // 되돌리기는 백필과 같은 경로다 (DEV-176) — 여기서 그 의존을 만든다.
     backfill: {
       pool,
@@ -612,19 +637,36 @@ if (roles.includes('authz')) {
      * 박힌 `allowed_team_ids`를 보므로, 캐시만 지우고 문서를 두면 팀에서 빠진
      * 사용자가 과거 문서를 계속 본다.
      */
-    refreshRepositoryTeams: async (teamId: number): Promise<number> => {
+    /*
+     * 팀 변경을 색인에 소급 적용한다 (WP-068 / CR-035 DEV-187, CR-036 DEV-188).
+     *
+     * **GHE에서 다시 읽는다.** 첫 구현은 PostgreSQL에 이미 있는 값을 색인에 다시
+     * 썼는데, 회수 사건에서 그 값은 **아직 제거된 팀을 담고 있어** 회수가 반영되지
+     * 않았다 — 옛 구성원이 문서를 계속 보는 유출이다. 추가 사건에서는 저장소가
+     * 아직 그 팀을 갖고 있지 않아 역조회로 대상을 찾지도 못했다.
+     *
+     * 그래서 웹훅의 `repository_id`를 함께 받고, 판정은 공유 구현에 맡긴다.
+     */
+    refreshRepositoryTeams: async (teamId: number, repositoryId: number | null): Promise<number> => {
+      if (authzGithub === undefined) return 0;
       const authzEs = (esClient = esClient ?? createEsClient());
-      const affected = await repositoryRepo.findRepositoriesForTeam(pool, teamId);
-      let refreshed = 0;
-      for (const repository of affected) {
-        const result = await applyRepositoryTeams(
-          authzEs,
-          repository.repository_id,
-          repository.allowed_team_ids,
-        );
-        refreshed += result.total;
-      }
-      return refreshed;
+      const teamScopeDeps: TeamScopeDeps = {
+          pool,
+          index: {
+            applyRepositoryTeams: (id, teamIds) => applyRepositoryTeams(authzEs, id, teamIds),
+          },
+          source: {
+            listRepositoryTeams: (owner, name) =>
+              authzGithub.listRepositoryTeams({ owner, repo: name }),
+          },
+          log: (entry) => {
+            process.stdout.write(
+              `${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-AUTH-001', ...entry })}\n`,
+            );
+          },
+      };
+      const outcomes = await refreshTeamScope(teamScopeDeps, { teamId, repositoryId });
+      return outcomes.reduce((sum, outcome) => sum + outcome.documentsRefreshed, 0);
     },
     log: (entry: AuthzLogEntry) => {
       process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-AUTH-001', ...entry })}\n`);

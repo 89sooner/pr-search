@@ -125,4 +125,6 @@ export type {
 } from './invalidation.js';
 
 export { groupsClaimName, hasOidcCredentials, resolveOidcConfig, resolveSessionReaderConfig } from './config.js';
+export { refreshTeamScope, syncRepositoryTeamScope } from './team-scope.js';
+export type { RepositoryTeamsSource, TeamScopeDeps, TeamScopeIndex, TeamSyncOutcome } from './team-scope.js';
 export type { AuthEnv, SessionReaderConfig } from './config.js';
