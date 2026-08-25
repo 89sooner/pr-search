@@ -59,6 +59,31 @@ export interface WorkerMetrics {
   readonly releaseIndexFailed: Counter;
   /** 실행한 재채번 수 (FR-SEQ-005, 관측 문서 RB-11 — 증가 자체가 P3 알림 대상이다). 라벨: `repository`. */
   readonly sequenceReassignTotal: Counter;
+  /**
+   * 정합성 점검이 발견한 불일치 공간 수 (JOB-SEQ-003, FR-ADMIN-003 AC-3).
+   *
+   * 라벨은 `repository`·`base_branch`다. **커밋 SHA·PR 번호는 라벨로 쓰지
+   * 않는다** — 값의 종류가 사실상 무한해 시계열이 폭발한다.
+   */
+  readonly sequenceIntegrityMismatch: Counter;
+  /**
+   * 점검을 마치지 못한 횟수. 라벨: `reason`.
+   *
+   * **공간 상태를 바꾸지 않으므로 실패는 이 지표로만 보인다** (CR-033, DEV-171).
+   * 점검이 조용히 실패하면 아무도 모르는 상태가 되는 것을 이 값이 막는다.
+   */
+  readonly sequenceIntegrityCheckFailed: Counter;
+  /** 조정 스캔이 발견한 누락 수 (JOB-ING-005, FR-ING-011 AC-4). 라벨: `repository`·`kind`. */
+  readonly reconcileMissing: Counter;
+  /**
+   * 조정 스캔이 연속으로 완주하지 못한 주기 수 (FR-ING-011 예외 처리).
+   *
+   * 3 이상이면 경보다. 한도 소진으로 미룬 것이 계속 쌓이면 그 저장소는 사실상
+   * 조정되지 않고 있다 — 미룸 자체는 정상이고, **미룸이 반복되는 것**이 문제다.
+   */
+  readonly reconcileIncompleteCycles: Gauge;
+  /** PG↔ES 불일치 수 (JOB-ING-008, ADR-004). 라벨: `index`·`kind`. */
+  readonly projectionConsistencyMismatch: Counter;
   render(): string;
 }
 
@@ -88,6 +113,23 @@ export function createWorkerMetrics(): WorkerMetrics {
   const releaseRefreshed = new Counter('release_refreshed_total', '릴리스 스냅숏 동기화 성공 회차');
   const releaseRefreshFailed = new Counter('release_refresh_failed_total', '릴리스 스냅숏 동기화 실패 회차');
   const releaseIndexFailed = new Counter('release_index_failed_total', '릴리스 색인 반영 실패 회차');
+  const sequenceIntegrityMismatch = new Counter(
+    'sequence_integrity_mismatch_total',
+    '정합성 점검이 발견한 불일치 공간 수',
+  );
+  const sequenceIntegrityCheckFailed = new Counter(
+    'sequence_integrity_check_failed_total',
+    '정합성 점검을 마치지 못한 횟수',
+  );
+  const reconcileMissing = new Counter('reconcile_missing_total', '조정 스캔이 발견한 누락 수');
+  const reconcileIncompleteCycles = new Gauge(
+    'reconcile_incomplete_cycles',
+    '조정 스캔이 연속으로 완주하지 못한 주기 수',
+  );
+  const projectionConsistencyMismatch = new Counter(
+    'projection_consistency_mismatch_total',
+    'PostgreSQL↔Elasticsearch 불일치 수',
+  );
 
   return {
     enrichPending,
@@ -105,6 +147,11 @@ export function createWorkerMetrics(): WorkerMetrics {
     releaseRefreshFailed,
     releaseIndexFailed,
     sequenceReassignTotal,
+    sequenceIntegrityMismatch,
+    sequenceIntegrityCheckFailed,
+    reconcileMissing,
+    reconcileIncompleteCycles,
+    projectionConsistencyMismatch,
     render: (): string =>
       renderMetrics([
         enrichPending,
@@ -117,7 +164,12 @@ export function createWorkerMetrics(): WorkerMetrics {
         sequenceIndexFailed,
         releaseRefreshed,
         releaseRefreshFailed,
+        projectionConsistencyMismatch,
+        reconcileIncompleteCycles,
+        reconcileMissing,
         releaseIndexFailed,
+        sequenceIntegrityCheckFailed,
+        sequenceIntegrityMismatch,
         sequenceReassignTotal,
         sequenceRewriteDetected,
         sequenceSpaceState,

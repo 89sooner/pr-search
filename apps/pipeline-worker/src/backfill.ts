@@ -43,7 +43,8 @@ export const BACKFILL_JOB = 'JOB-ING-004' as const;
 export interface BackfillLogEntry {
   readonly level: 'info' | 'warn' | 'error';
   readonly message: string;
-  readonly job_id?: number;
+  /** 잡 밖(조정 스캔)에서 부르면 `null`이다 (CR-033, DEV-176). */
+  readonly job_id?: number | null;
   readonly target?: string;
   readonly pr_number?: number;
   readonly reason?: string;
@@ -158,7 +159,7 @@ export async function runBackfillJob(
       }
 
       for (const summary of page.items) {
-        const ok = await projectOne(deps, job, repository, summary);
+        const ok = await projectOne(deps, job.job_id, repository, summary);
         if (!ok) failed.push(summary.number);
       }
 
@@ -205,12 +206,18 @@ export async function runBackfillJob(
 /**
  * PR 하나를 보강해 색인한다.
  *
+ * **조정 스캔(JOB-ING-005)도 이 함수를 쓴다** (CR-033, DEV-176). 색인에서 빠진
+ * PR을 되살리는 일은 백필이 하는 일과 정확히 같으므로, "간이 색인" 경로를 따로
+ * 만들지 않는다 — 두 경로가 문서 버전 규칙(DEV-099)이나 벌크 항목 실패 처리
+ * (DEV-106) 중 하나만 갖게 되는 날이 오기 때문이다.
+ *
+ * @param jobId 로그에 남길 잡 번호. 잡 밖에서 부르면 `null`이다.
  * @returns 실패하면 `false`. **던지지 않는다** — 개별 PR 실패로 잡 전체를
  * 버리지 않는다 (WP-019 구현 범위).
  */
-async function projectOne(
+export async function projectOne(
   deps: BackfillDeps,
-  job: JobRow,
+  jobId: number | null,
   repository: RepositoryRow,
   summary: Parameters<typeof toEnrichedPullRequest>[0],
 ): Promise<boolean> {
@@ -223,7 +230,7 @@ async function projectOne(
     deps.log({
       level: 'warn',
       message: '갱신 시각을 읽을 수 없어 건너뛴다',
-      job_id: job.job_id,
+      job_id: jobId,
       pr_number: summary.number,
       reason: 'unparsable_updated_at',
     });
@@ -260,7 +267,7 @@ async function projectOne(
       deps.log({
         level: 'warn',
         message: 'PR 색인 실패',
-        job_id: job.job_id,
+        job_id: jobId,
         pr_number: summary.number,
         reason: 'index_failed',
         detail: detail.slice(0, 200),
@@ -272,7 +279,7 @@ async function projectOne(
     deps.log({
       level: 'warn',
       message: 'PR 색인 실패',
-      job_id: job.job_id,
+      job_id: jobId,
       pr_number: summary.number,
       reason: 'index_failed',
       detail: String(error).slice(0, 200),

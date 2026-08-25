@@ -24,6 +24,7 @@ import type { AuthContext } from './auth/context.js';
 import type { OpsDeps } from './ops/dead-letters.js';
 import type { RegistryDeps } from './ops/repositories.js';
 import type { PipelineStatusDeps } from './ops/pipeline-status.js';
+import type { IntegrityDeps } from './ops/sequence-integrity.js';
 
 export const SERVICE_NAME = 'search-api' as const;
 export const DEFAULT_PORT = 3002;
@@ -41,6 +42,12 @@ export interface ServerDeps {
   readonly registry?: RegistryDeps;
   /** 파이프라인 상태 의존. 없으면 상태 경로를 달지 않는다 (API-ADM-006). */
   readonly pipeline?: PipelineStatusDeps;
+  /**
+   * 시퀀스 정합성 점검 의존 (API-ADM-007, WP-028).
+   *
+   * 커밋 그래프가 있어야 대조가 성립하므로 없으면 경로를 달지 않는다.
+   */
+  readonly integrity?: IntegrityDeps;
   /**
    * 세션 인증 컨텍스트 (WP-012).
    *
@@ -141,6 +148,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
     loginPath: config.auth.loginPath,
     ...(deps.registry === undefined ? {} : { registry: deps.registry }),
     ...(deps.pipeline === undefined ? {} : { pipeline: deps.pipeline }),
+    ...(deps.integrity === undefined ? {} : { integrity: deps.integrity }),
   });
   return app;
 }

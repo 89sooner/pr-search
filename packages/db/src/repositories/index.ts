@@ -1,6 +1,7 @@
 export * as auditRepo from './audit.js';
 export * as authRepo from './auth.js';
 export * as deadLetterRepo from './dead-letter.js';
+export * as integrityRepo from './integrity.js';
 export * as jobRepo from './job.js';
 export * as mergeSequenceRepo from './merge-sequence.js';
 export * as pipelineRepo from './pipeline.js';

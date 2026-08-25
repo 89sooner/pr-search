@@ -38,6 +38,8 @@ import { startBackfillRunner, BACKFILL_JOB, type BackfillLogEntry, type Backfill
 import { startMirrorSweeper, type MirrorLogEntry, type MirrorRunner } from './mirror-runner.js';
 import { refreshSequenceSpaceStates, startSequenceWorker, type SequenceLogFields } from './sequence.js';
 import { startReleaseSweeper, startReleaseWorker, type ReleaseLogFields, type ReleaseSweeper } from './release.js';
+import { startIntegritySweeper, type IntegritySweeper } from './integrity.js';
+import { startConsistencySweeper, type ConsistencySweeper } from './consistency.js';
 import { createEsClient } from '@prs/es';
 import type { Subscription } from '@prs/bus';
 import type { ReleaseSummary } from '@prs/github';
@@ -167,6 +169,8 @@ if (roles.includes('enrich')) {
   }
 }
 
+let consistencySweeper: ConsistencySweeper | undefined;
+
 if (roles.includes('project')) {
   // 투영은 GitHub을 부르지 않는다 — EVT-ING-002가 self-contained이기 때문이다
   // (CR-010, DEV-013). 그래서 이 역할에는 GHE 자격 증명이 필요 없다.
@@ -178,6 +182,22 @@ if (roles.includes('project')) {
     metrics,
     log: (entry: ProjectLogEntry) => {
       process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-ING-003', ...entry })}\n`);
+    },
+  });
+
+  /*
+   * JOB-ING-008 PG↔ES 정합성 감시 (WP-028 / ADR-004). 투영 역할이 소유한다 —
+   * 투영이 만든 것을 투영이 검산한다.
+   *
+   * **ES에만 있는 잉여 문서는 지우지 않는다** (CR-033, DEV-174). 보고만 하고,
+   * 되돌릴 수 있는 방향(정본에 있고 색인에 없음)만 조치 대상이다.
+   */
+  consistencySweeper = startConsistencySweeper({
+    pool,
+    es: esClient,
+    metrics,
+    log: (fields) => {
+      process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-ING-008', ...fields })}\n`);
     },
   });
 }
@@ -241,6 +261,8 @@ if (roles.includes('mirror')) {
     );
   }
 }
+
+let integritySweeper: IntegritySweeper | undefined;
 
 if (roles.includes('sequence')) {
   /*
@@ -328,6 +350,22 @@ if (roles.includes('sequence')) {
   // 기동 직후 한 번 세어 둔다. 세지 않으면 `stale` 공간이 있어도 게이지가 비어
   // 있고, 경보가 "값이 없음"과 "0"을 구분하지 못한다 (관측 문서 RB-10).
   void refreshSequenceSpaceStates({ pool, es: seqEs, bus, metrics, graphFor: () => apiGraph, log: seqLog });
+
+  /*
+   * JOB-SEQ-003 정합성 점검 (WP-028 / FR-ADMIN-003). 시퀀스 역할이 이미 갖고 있는
+   * `graphFor`를 그대로 쓴다 — 대조의 정답지가 채번과 같은 그래프여야 한다.
+   *
+   * **점검은 공간 상태를 바꾸지 않는다** (CR-033, DEV-171). 실패는
+   * `sequence_integrity_check_failed_total`로만 보인다.
+   */
+  integritySweeper = startIntegritySweeper({
+    pool,
+    metrics,
+    graphFor: (repository) => selectCommitGraph(repository, { mirror: mirrorGraph, api: apiGraph }),
+    log: (fields) => {
+      process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-003', ...fields })}\n`);
+    },
+  });
 
   if (seqGhConfig.baseUrl === '') {
     seqLog({ level: 'warn', message: 'GHE base URL이 비어 있다 — API 폴백 경로가 동작하지 않는다' });
@@ -489,6 +527,8 @@ const shutdown = (): void => {
       await sequenceSubscription?.close();
       await releaseSubscription?.close();
       await releaseSweeper?.stop();
+      await integritySweeper?.stop();
+      await consistencySweeper?.stop();
       await authzSubscription?.close();
       await authzRedisClient?.quit();
       await bus.close();
