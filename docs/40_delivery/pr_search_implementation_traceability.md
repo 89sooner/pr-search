@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v1.4 | 갱신일: 2026-08-25
+> 상태: review | 버전: v1.5 | 갱신일: 2026-08-25
 
 ## 1. 목적
 
@@ -51,7 +51,7 @@
 | WP-025 | W-004 범위 조사 화면 | REL-003 | done | 에이전트 | `df3e899` / PR #31 | DoD 6항 전부 통과 (6.25장). 단위 25건 + a11y 18건 + e2e 4건 + API 통합 4건. 변이 7종 전부 킬 | CR-029가 계약 다섯을 정정(DEV-150~154): 시퀀스 공간 목록 API-SEQ-006 신설, 경로 `/ranges` 통일, 되돌림 수·상태 매트릭스·C-013 재사용의 분할. 에폭 불일치는 경고+수동 재조회(QA-W004-21), 5만 사전 판정은 앵커 서수 차 계산(QA-W004-08). 표식(WP-041)·이분(WP-042)·패싯 데이터(WP-032)는 골격만 |
 | WP-026 | W-005 릴리스 화면과 구간 비교 | REL-003 | done | 에이전트 | `6461e05`(API)·`4aa2d93`(화면) / PR #32 | DoD 9항 중 8항 통과, QA-W005-05는 절반 (6.26장). 단위 25건 + a11y 21건 + e2e 4건 + API 통합 24건. 변이 9종 처리 | CR-030이 계약 다섯을 정정(DEV-155~159): 릴리스 목록 API-REL-005 신설, API-SEQ-003 재작성, 경로 `/releases` 통일, 목록을 저장소 스코프로, 빈 상태 병합. 구현 중 **DEV-160**(포함 판정이 저장 서수를 읽어 배포된 PR이 미배포로 보이던 결함)을 등록·해소했다. W-009 링크는 REL-004~005로 이월 |
 | WP-027 | 선행·후행 조회와 상세 화면 통합 | REL-003 | done | 에이전트 | `9aef48e`(API)·화면 커밋 / PR #33 | DoD 10항 전부 통과 (6.27장). 단위 15건 + a11y 12건 + e2e 4건 + API 통합 20건. 변이 8종 처리 | CR-031이 계약 일곱을 정정(DEV-161~167)했고 그중 하나는 **SRS 문장 자체**였다(v2.4 — 직접 푸시 커밋 포함). 커밋 앵커 신설, 확장 조회 통일, 409 사유 분리, `indexed`·`url` 추가, 범위 확장 앵커 확정, QA-W002-16(에폭 경고)의 DEV-087 이월 종결. **머지 후 Codex 리뷰 3건이 실결함으로 확인돼 CR-032로 정정했다**(DEV-168~170: 공간 판별자 `base_branch` 필수화, `merged_at` 경계, 실패 재시도) — 검증 기록은 6.27.1장 |
-| WP-028 | 정합성 점검과 조정 스캔 | REL-003 | todo | - | - | - | - |
+| WP-028 | 정합성 점검과 조정 스캔 | REL-003 | done | 에이전트 | CR-033 브랜치 | DoD 18항 전부 통과 (6.28장). 단위 57건 + API 통합 20건 + 마이그레이션 통합 5건. 결함 재적용 9종 처리 | CR-033이 계약 여섯을 정정(DEV-171~176)했고 그중 하나는 **SRS 문장 자체**였다(v2.5 — 점검 실패가 시퀀스 공간 상태를 바꾸지 않는다). DEV-128을 마이그레이션 009로 해소. `affected_saved_search_count`를 파서 기반으로 확정, JOB-ING-008 유지·DoD 신설, GHE 클라이언트 `direction` 옵션 신설. **실제 알림 발송은 REL-005로 이월**(DEV-176) |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | todo | - | - | - | - |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | todo | - | - | - | - |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | todo | - | - | - | - |
@@ -128,7 +128,7 @@
 | FR-ING-008 | WP-035 | - | - | not_started |
 | FR-ING-009 | WP-008, WP-010, WP-040 | `apps/search-api/src/ops/{repositories,ghe-lookup,routes}.ts`, `packages/db/src/repositories/{repository,audit,job}.ts`, `packages/es/src/registry.ts`, `packages/es/src/mappings/commits.ts`, `apps/pipeline-worker/src/{project,documents}.ts` | `apps/search-api/integration/admin/repositories.test.ts`, `packages/es/integration/registry.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | verified (AC-1~AC-5 전부. AC-5 감사 주체는 관리 토큰 이름이며 WP-012의 OIDC 신원이 대체한다) |
 | FR-ING-010 | WP-036 | - | - | not_started |
-| FR-ING-011 | WP-028 | - | - | not_started |
+| FR-ING-011 | WP-028 | `apps/pipeline-worker/src/reconcile.ts` (JOB-ING-005), `packages/github/src/client.ts` (`listPullRequestsPage` `direction`), `apps/pipeline-worker/src/metrics.ts` | `apps/pipeline-worker/src/reconcile.test.ts` | done — AC-1~AC-5 전부. 주기는 설정값(기본 1시간), 창은 `updated desc` + 24시간 컷오프(`/pulls`에 `since`가 없다, DEV-175), 누락은 백필의 `projectOne`으로 되돌리고(두 번째 경로를 만들지 않는다), head 서수가 없으면 기존 `sequence_assign` 잡을 예약한다. 한도 소진은 미룸이며 3주기 연속이면 경보 지표가 뜬다 |
 | FR-STAT-001 | WP-037, WP-038 | - | - | not_started |
 | FR-STAT-002 | WP-037, WP-038 | - | - | not_started |
 | FR-STAT-003 | WP-017, WP-037, WP-038 | `apps/web/lib/pr-detail.ts` (`timelineSteps`, `reviewerStates`), `apps/web/components/{PrTimeline,PrDetailView}.tsx` | `apps/web/lib/pr-detail.test.ts`, `apps/web/a11y/pr-detail.test.tsx` | partial (**PR 1건의 리드타임·첫 리뷰 대기·타임라인은 WP-017에서 done.** 승인 단계는 `done_at_unknown`이다 — `approved_at`이 매핑에 없어 **시각을 모른다**, DEV-084. 집계 지표(분포·추세)는 WP-037·WP-038) |
@@ -141,7 +141,7 @@
 | FR-AUTH-004 | WP-002, WP-039 | `packages/db/migrations/004_app_state.up.sql`, `packages/db/migrations/005_roles.up.sql` | `packages/db/integration/audit-grants.test.ts` (AC-3) | partial (감사 테이블과 롤 권한. 기록·조회는 WP-039) |
 | FR-ADMIN-001 | WP-010, WP-040 | `apps/search-api/src/ops/pipeline-status.ts`, `packages/db/src/repositories/pipeline.ts`, `packages/bus/src/{types,redis-streams,in-memory}.ts`, `packages/metrics/src/index.ts` | `apps/search-api/integration/ops/pipeline-status.test.ts`, `packages/bus/integration/contract.ts` | partial (AC-1의 단계별 지연을 뺀 전 항목과 AC-2·AC-3 충족. 단계별 지연은 지표 저장소가 설정된 경우에만(DEV-029), 시퀀스 공간 요약은 WP-021 이후. AC-4 `operator` 역할 판정은 WP-012) |
 | FR-ADMIN-002 | WP-002, WP-019, WP-040 | `packages/db/migrations/004_app_state.up.sql` (`job_active_uk`), `packages/db/src/repositories/job.ts` | `packages/db/integration/constraints.test.ts` (AC-4) | partial (동시 실행 제약. 콘솔은 WP-040) |
-| FR-ADMIN-003 | WP-028, WP-040 | - | - | not_started |
+| FR-ADMIN-003 | WP-028, WP-040 | `apps/search-api/src/ops/sequence-integrity.ts` (API-ADM-007), `apps/search-api/src/ops/routes.ts`, `apps/pipeline-worker/src/integrity.ts` (JOB-SEQ-003), `packages/domain/src/integrity.ts` (대조 규칙), `packages/db/src/repositories/integrity.ts`, `packages/db/migrations/009_job_type_reassign.up.sql` | `apps/search-api/integration/ops/sequence-integrity.test.ts`, `apps/search-api/src/ops/sequence-integrity.test.ts`, `packages/domain/src/integrity.test.ts`, `apps/pipeline-worker/src/integrity.test.ts`, `packages/db/integration/job-type-reassign.test.ts` | done — AC-1~AC-5 전부. **점검은 관찰이며 시퀀스 공간 상태를 바꾸지 않는다** (SRS v2.5, CR-033 DEV-171). 비교 규칙은 `firstSequenceMismatch` 하나를 API와 잡이 함께 쓴다. A-003 화면은 WP-040 몫이다 |
 | NFR-001 | WP-013, WP-014, WP-023, WP-037 | `apps/search-api/src/search/{service,relaxation,routes}.ts` (`track_total_hits: 10000`, 완화 힌트 `msearch` 1회·상한 8, ES 마감 3초) | `apps/search-api/integration/search/list.test.ts` (왕복 수가 필터 수에 비례하지 않음) | **NOT RUN** (p95 실측 없음 — 1000만 문서 데이터셋과 부하 harness 부재, DEV-058. 예산을 지키는 **구조**만 시험으로 고정했다) |
 | NFR-002 | WP-004, WP-005, WP-008 | `apps/ingest-gateway/src/{server,metrics}.ts`, `packages/bus/src/{types,topics,partition,config,redis-streams,in-memory}.ts`, `apps/pipeline-worker/src/{project,metrics}.ts` | `apps/ingest-gateway/integration/{load,enqueue}.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | partial (발행까지 포함한 수신 응답 p95 38.3ms / 예산 300ms. 수신→색인 지연은 `ingestion_lag_seconds`로 계측하며 개발 데이터셋에서 전량 10초 이내. 운영 규모 측정은 REL-001 성능 게이트) |
 | NFR-003 | WP-002, WP-003 | `packages/db/migrations/*`, `packages/db/src/partitions.ts`, `packages/es/src/indices.ts` | `packages/db/integration/partitions.test.ts`, `packages/es/integration/bootstrap.test.ts` | partial (PostgreSQL 파티션 + ES 샤드 수. 용량 실측은 REL-001 이후) |
@@ -300,7 +300,7 @@
 | DEV-125 | 2026-08-23 | **`mergeBase`가 first-parent 체인 밖의 커밋을 줄 수 있는데 의사코드는 성공을 가정한다.** `git merge-base`는 DAG 공통 조상을 주고, 그것이 피처 브랜치 안(체인 밖) 커밋이면 `merge_sequence`에서 서수를 찾을 수 없다 — 의사코드의 `getSeqByCommit`은 그 경우를 다루지 않는다 | WP-022 / FR-SEQ-005 AC-2, 백엔드 4.3 | **문서 공백 (실패 경로 미정의)** | **CR-026** | **resolved (2026-08-23)** — **서수를 못 찾으면 처음부터 전체 재채번한다** (`baseSeq = 0`). first-parent walk가 결정론이라 히스토리가 같은 구간은 같은 서수가 재현되므로 정확성은 같고, copy는 성능·인용 보존 최적화일 뿐이다. 폴백 발동은 로그로 드러낸다 |
 | DEV-126 | 2026-08-23 | **`invalidateSafeMarkers`를 실행할 수단이 스키마에 없다.** `safe_marker`에는 무효 표시 열이 없고(`superseded_at`은 "대체"지 "에폭 무효"가 아니다) 리포지터리도 없다. 저장된 검색의 `seq:` 조건 무효화는 `saved_search` 테이블 자체가 없어(REL-004) 도달 불가다 | WP-022 / FR-SEQ-005 AC-4, 백엔드 4.3, 데이터 모델 3.2 | 문서 오류 + 범위 공백 | **CR-026** | **resolved (2026-08-23)** — **저장 시점에 아무것도 쓰지 않는다.** AC-4 후반부가 이미 답을 정의한다: 표식·이분 탐색 세션·인용은 `seq_epoch`를 저장하고 있으므로 조회가 **현재 에폭과 비교해** `epoch_stale`을 계산한다. 백엔드 4.3의 `invalidateSafeMarkers` 호출을 그 규칙으로 정정했다. `saved_search` 쪽 절반은 그 테이블을 만드는 WP-033이 같은 규칙(에폭 저장 + 조회 시 비교)을 따르도록 원장에 남긴다 |
 | DEV-127 | 2026-08-23 | **알림 어댑터가 없다 (DEV-026과 같은 사정).** AC-5의 "운영 콘솔 알림"과 EVT-SEQ-002의 소비자 "알림"이 걸릴 곳이 아직 없다 — 알림 소비자는 REL-005 소유다 | WP-022 / FR-SEQ-005 AC-5, EVT-SEQ-002 | 범위 공백 (이월) | **CR-026** | **resolved (2026-08-23)** — **EVT-SEQ-002 발행 + 감사 기록으로 AC-5를 성립시킨다.** 이벤트가 스트림에 남으므로 REL-005의 알림 소비자가 서면 소급 없이 흐른다. 감사 주체는 자동 감지 경로라 사람이 없으므로 `system:sequence`로 남긴다 — 신원을 지어내지 않고 "시스템이 했다"는 사실 자체를 기록한다 |
-| DEV-128 | 2026-08-23 | **잡 스키마와 API 계약의 잡 유형 이름이 다르다.** `job_type_chk`는 `sequence_assign`을 허용하는데 API-ADM-007의 202 응답 예시는 `type: sequence_reassign`이다. 수동 재채번이 잡 행을 만드는 순간 CHECK 위반이다 | WP-028 / API-ADM-007, 데이터 모델 3.4 | **문서 간 모순** | **CR-026** | **open — WP-028 몫.** 수동 재채번 경로(API-ADM-007 POST)가 WP-028 소유이므로 그때 마이그레이션과 함께 정한다. 이번 WP의 자동 감지 경로는 잡 테이블을 거치지 않아 영향이 없다 |
+| DEV-128 | 2026-08-23 | **잡 스키마와 API 계약의 잡 유형 이름이 다르다.** `job_type_chk`는 `sequence_assign`을 허용하는데 API-ADM-007의 202 응답 예시는 `type: sequence_reassign`이다. 수동 재채번이 잡 행을 만드는 순간 CHECK 위반이다 | WP-028 / API-ADM-007, 데이터 모델 3.4 | **문서 간 모순** | **CR-026** | **resolved (2026-08-25, CR-033 / DEV-172).** 마이그레이션 009가 `job_type_chk`에 `sequence_reassign`을 추가했다 — API-ADM-007이 이미 그 이름을 안정 계약으로 쓰므로 계약이 아니라 스키마를 넓혔다. 기존 마이그레이션은 고치지 않았고 down도 함께 있다. 실제 잡 행을 넣는 통합 시험이 CHECK 통과를 고정한다 |
 | DEV-129 | 2026-08-23 | **ES에 에폭 전환을 비출 수단이 없다.** 재채번 뒤 저장소 문서 전체의 `seq_epoch`가 새 값이 되어야 하는데(base 이전은 서수가 같아도 에폭은 바뀐다), SHA 목록 기반 `applySequenceToDocuments`로 전체를 넘기면 요청이 저장소 크기에 비례한다 | WP-022 / ENT-CORE-002·003, ADR-004 | 범위 공백 | **CR-026** | **resolved (2026-08-23)** — `applyEpochBump`를 추가했다: `update_by_query`로 해당 `(repository_id, base_branch)`의 `merge_seq` 있는 문서만 에폭·공간 문자열을 갱신한다. `document_version`은 건드리지 않는다. base 이후 서수 변경은 기존 `applySequenceToDocuments`가 그대로 맡는다 |
 | DEV-130 | 2026-08-23 | **범위 조회의 정답지를 파생 뷰에서 읽으려 했다.** 데이터 모델 8장 질의 표는 시퀀스 범위를 `prs-pull-requests`의 `range(merge_seq)`로 적었으나, 서수의 정본은 PostgreSQL `merge_sequence`이고 Elasticsearch는 그것만으로 재구축 가능한 파생 뷰다 (ADR-004). WP-021의 채번은 **PostgreSQL을 먼저 커밋하고 뒤에 ES로 비추므로**, 비추기가 실패하면(`sequence_index_failed`) ES에는 서수가 붙지 않은 문서가 남는다. 그 상태에서 `range(merge_seq)`로 읽은 구간은 **아무 오류 없이 항목이 빠진 채** 돌아온다 — 범위 인용이 조용히 틀리는 것은 이 제품이 막으려는 실패 그 자체다 | WP-023 / FR-SEQ-002, ADR-004, ADR-007 | 문서 오류 | **CR-027** | **resolved (2026-08-23)** — 멤버십·순서·건수는 `merge_sequence`(PK 범위 스캔), 표시·요약은 ES `terms(pr_number)` + 집계로 갈랐다. 정본에 있고 색인에 없는 항목은 버리지 않고 `indexed: false` + `items_missing_in_index`로 드러낸다. git 대조 회귀 14건이 `git log --first-parent A..B`와의 일치를 강제한다 |
 | DEV-131 | 2026-08-23 | **`index.sort` 조기 종료가 오름차순 범위 조회에는 서지 않는다.** 설정의 `index.sort.order`는 `merge_seq` **내림차순**인데 FR-SEQ-002는 오름차순 결과를 요구한다. 조기 종료는 검색 정렬이 색인 정렬의 접두와 같은 방향일 때만 성립하므로 방향이 어긋나면 조건이 서지 않는다. 데이터 모델 8장·백엔드 10장·WP-023 구현 범위 셋이 모두 이 기법을 근거로 인용하고 있었다 | WP-023 / FR-SEQ-002, ADR-003 | 문서 오류 | **CR-027** | **resolved (2026-08-23)** — 데이터 모델 8장·백엔드 10장에서 `index.sort` 조기 종료를 기본 정렬(내림차순) 전용으로 한정했다. 범위 조회는 ES 범위 스캔 자체를 하지 않으므로(DEV-130) 방향 문제가 성능 경로에서 사라졌다 |
@@ -343,6 +343,12 @@
 | DEV-168 | 2026-08-25 | **선행·후행이 어느 시퀀스 공간의 서수인지 서버가 임의로 정했다.** `findNeighbors`가 `findByPullRequest`/`findByCommitSha`로 **저장소 전체**를 훑고 현재 에폭인 **첫 행**에서 멈췄다. `merge_sequence`의 유일 색인은 `(repository_id, base_branch, seq_epoch, commit_sha)`이므로 **한 커밋이 `main`과 `release/*`의 현재 first-parent 체인에 함께 있는 것은 정상**이고, 두 행이 모두 에폭 검사를 통과하면 어느 공간의 서수를 낼지 **PostgreSQL의 반환 순서가 정한다** — 서수는 `(저장소, 대상 브랜치)` 안에서만 의미가 있다는 ADR-007이 응답에서 무너진다. 게다가 화면은 "범위로 확장" 링크를 **문서의 `base_branch`**로 만들고 있어, 서버가 다른 공간을 고르면 목록의 서수와 링크가 서로 다른 공간을 가리킨 채 조용히 어긋난다. 단일 브랜치 픽스처로는 이 상황이 만들어지지 않아 통합 20건과 CI가 전부 초록이었다 | WP-027 / API-REL-001, FR-REL-001, ADR-007, W-002, W-003 | 구현 결함 + 계약 공백 | **CR-032** | **resolved (2026-08-25)** — `base_branch`를 API-REL-001의 **필수 파라미터**로 세웠다. 앵커 해석은 API-SEQ-002가 쓰던 `findPointByPullRequest`/`findPointByCommit`(공간·에폭 한정)을 재사용해 `packages/db`에 새 질의를 만들지 않았다. 응답의 `sequence_space`는 저장 행이 아니라 **요청한 공간**에서 만들어 불변식이 구조가 되게 했다. 두 화면은 이미 갖고 있던 `base_branch`를 보내고, 모르면 조회하지 않는다. **다중 공간 픽스처**(`acme/multi`: 같은 커밋이 `main`에서 서수 2, `release/2026.08`에서 서수 11)를 세워 저장 순서를 뒤집어도 답이 같음까지 단언한다. 결함 재적용이 통합 3건에 킬됐다. 결정론적 정렬은 기각했다 — **결정적으로 같은 오답**일 뿐 사용자가 묻지 않은 브랜치다 |
 | DEV-169 | 2026-08-25 | **색인 안 된 PR 이웃이 커밋 시각을 머지 시각으로 표시했다.** `merged_at: source?.merged_at ?? row.committed_at`은 PR 문서가 색인에 아직 없을 때 **병합 커밋의 `committed_at`**을 실었고, C-019는 그것을 "머지 시각" 칸에 그렸다 — Git 커밋 시각과 GitHub의 PR 머지 시각은 다른 값이므로 **확인되지 않은 값을 확정처럼** 보여 준 것이다. 같은 행이 `indexed: false`를 함께 달고 있어 "표시값을 모른다"와 "이 시각은 안다"가 한 행에서 모순됐다. 계약의 응답 예시는 **직접 푸시 커밋 행**에만 커밋 시각을 허용하고 PR 행의 미색인 경우는 정의되어 있지 않았다 | WP-027 / API-REL-001, C-019, DEV-130 | 구현 결함 + 계약 공백 | **CR-032** | **resolved (2026-08-25)** — 행의 종류가 규칙을 정한다: `kind: "commit"`은 `committed_at`, `kind: "pull_request"`는 색인이 아는 값이거나 **`null`**. 계약에 세 갈래를 명시했다. `formatTimestamp(null)`이 이미 `—`를 내므로 화면 표기는 바꾸지 않았다. 세지 않은 것을 0으로 채우지 않는 DEV-133과 같은 규율이다. 결함 재적용이 통합 1건에 킬됐다 |
 | DEV-170 | 2026-08-25 | **선행·후행 조회가 실패하면 사용자가 빠져나올 수 없었다.** `outcome.phase`가 `error`가 되면 화면은 "잠시 뒤 다시 시도해 주세요"라고 안내하는데, 접기/펴기는 `phase === 'idle'`일 때만 조회하고(DEV-162) 건수 조절 UI는 `view !== null`일 때만 그려진다 — **error 상태에서는 두 경로가 모두 닫혀 있어** 상세 화면 전체를 다시 여는 것 말고는 복구 수단이 없었다. 화면이 **따를 수 없는 지시**를 한 셈이다 | WP-027 / C-019, W-002, W-003 | 구현 결함 | **CR-032** | **resolved (2026-08-25)** — 명시적 "다시 시도" 버튼을 두고 `load(count)`를 다시 실행한다. 접기/펴기 게이트는 `idle`로 유지해 DEV-162("펼칠 때 1회 조회")를 되돌리지 않았다. 안내 문구에서 따를 수 없는 지시를 뺐다. 결함 재적용이 a11y 1건에 킬됐고, 실 브라우저 왕복(e2e)도 함께 건다 |
+| DEV-171 | 2026-08-25 | **정합성 점검 실패가 정본 상태를 오염시킨다.** FR-ADMIN-003의 예외 처리는 "커밋 그래프에 접근할 수 없으면 점검을 중단하고 시퀀스 공간 상태를 `unknown`으로 표시"인데, `unknown`은 이미 **"채번된 적 없는 브랜치"**를 뜻하고 API-SEQ-006·C-027·W-004가 그 뜻으로 표시하고 있다(CR-029). 거기에 "점검 실패"를 얹으면 **한 번의 일시적 그래프 오류가 이미 선 화면들을 거짓말하게 만든다** — 채번된 공간이 "채번된 적 없음"으로 보인다. 더 근본적으로 **점검은 읽기(관찰)다** — 진단 실행의 실패는 진단 결과에 담기지 진단 대상의 정본 상태가 되지 않는다 | WP-028 / FR-ADMIN-003 예외 처리, API-SEQ-006, C-027, W-004 | **문서 간 모순** | **CR-033** | **resolved (2026-08-25)** — 사용자 결정(갈래 A)으로 **SRS를 직접 고쳤다(v2.5)**: 점검을 실패로 종료하고 사유·상관 ID를 보고하되 **기존 상태를 보존**한다. 실패를 `consistent`로 표현하지도 않는다(검사하지 않은 것을 "일치"로 적으면 그 줄이 거짓이다). 새 상태값 `check_failed`는 **만들지 않았다** — 시퀀스 상태와 진단 실행 상태는 다른 개념이고, enum을 늘리면 마이그레이션·C-027·W-004가 그 오염을 물려받는다. 실패는 `sequence_integrity_check_failed_total`로만 보인다. 구현에는 **쓰기 질의가 아예 없고** 단위 시험이 그 사실(쓰기 0건)을 직접 단언한다 — 상태를 바꾸는 변이가 API 통합 1건·단위 1건에 킬됐다 |
+| DEV-172 | 2026-08-25 | **`sequence_reassign`이 잡 유형에 없다** (DEV-128의 해소). `job_type_chk`는 `sequence_assign`까지만 허용하는데 API-ADM-007의 202 예시는 `type: "sequence_reassign"`을 낸다 — 수동 재채번이 잡 행을 만드는 순간 CHECK 위반이다 | WP-028 / API-ADM-007, 데이터 모델 3.4 | 문서 간 모순 | **CR-033** | **resolved (2026-08-25)** — API-ADM-007이 이미 그 이름을 안정 계약으로 쓰므로 **계약을 코드에 맞추지 않고 스키마를 넓혔다**: 마이그레이션 009가 `job_type_chk`에 유형을 추가한다. **기존 마이그레이션(004)은 고치지 않았다** — 이미 적용된 환경에서 004를 고쳐도 다시 돌지 않으므로 넓히는 변경은 언제나 새 마이그레이션이어야 한다. down도 함께 썼다. CHECK는 타입이 잡아 주지 않으므로 **실제 행을 넣는 통합 시험**으로 고정했고, 제약에서 유형을 빼는 변이가 통합 2건에 킬됐다 |
+| DEV-173 | 2026-08-25 | **`affected_saved_search_count`의 판정 규칙이 없다.** `saved_search`에는 저장소 열이 없고 질의 문자열뿐이라 무엇을 세는지 정의되어 있지 않았다. 문자열에 `seq:`가 들어 있는지로 세면 인용 안의 본문·부정 필터·다른 저장소로 좁힌 검색을 전부 오답으로 만든다 | WP-028 / API-ADM-007 `impact_estimate` | 범위 공백 | **CR-033** | **resolved (2026-08-25)** — 값의 정의를 *"재채번으로 **의미가 바뀔 가능성이 있는** 저장 검색 수"*로 못 박았다(정확히 대상만 가리키는 검색 수가 아니다). 판정은 **`@prs/query` 파서**가 한다: `seq` 술어가 없으면 제외, `repo:`·`base:`가 **없으면 보수적으로 후보**(대상을 포함할 수 있다), 있고 다르면 제외, 명시적 부정이면 제외. 파싱 실패 질의는 세지 않는다 — 이미 실행 불가능한 검색이고 영향 수를 부풀리면 운영자의 판단 근거가 나빠진다. 문자열 검색으로 되돌리는 변이가 단위 2건에 킬됐다 |
+| DEV-174 | 2026-08-25 | **JOB-ING-008(PG↔ES 정합성 감시)이 구현 범위에는 있고 DoD에는 없다.** 대응하는 FR도 없다(ADR-004 follow-up). 표본 크기와 불일치 시 조치를 정한 곳이 없었다 | WP-028 / JOB-ING-008, ADR-004 | 범위 공백 | **CR-033** | **resolved (2026-08-25)** — **범위에서 빼지 않았다**: ADR-004("Elasticsearch는 PostgreSQL만으로 재구축 가능")를 실제로 검증하는 잡은 이것뿐이다. 명시적 DoD를 세우고 **개수 대조와 표본 내용 대조 두 층**을 나눴다(뭉치면 "개수는 맞는데 내용이 다른" 상태가 안 보인다). 표본은 FR-ADMIN-003 AC-2와 같은 1000. **ES에만 있는 잉여 문서는 자동 삭제하지 않는다** — 투영 지연과 진짜 잉여를 이 잡이 가릴 수 없고 삭제는 승인된 계약 없이 할 일이 아니다. 되돌릴 수 있는 방향(정본에 있고 색인에 없음)만 재투영을 예약한다(조건부 업서트라 멱등). **구현 중 확인**: 이 스키마에 정규화된 `pull_request` 표가 없어 대조의 정본 쪽은 `raw_event`에서 뽑는다 — ADR-004가 "재생의 진짜 소스는 `raw_event`"라고 정하고 있어 그것이 맞다. 삭제를 넣는 변이가 단위 1건에 킬됐다 |
+| DEV-175 | 2026-08-25 | **GHE 클라이언트가 "최근 24시간 갱신 PR"을 낼 수 없다.** `listPullRequestsPage`가 `direction: 'asc'`로 고정돼 있고(백필의 건너뜀 방지 — DEV-098) `/pulls`에는 `since`가 없다. FR-ING-011 AC-2가 요구하는 대조 대상을 만들 수단이 없었다 | WP-028 / FR-ING-011 AC-2, JOB-ING-005 | 범위 공백 | **CR-033** | **resolved (2026-08-25)** — 선택적 `direction` 옵션을 더하고 **기본값을 `asc`로 두었다**. 백필은 호출부가 아무것도 하지 않아도 기존 의미를 그대로 유지하고, `desc`를 고르는 쪽이 "전량을 읽지 않는다"는 것을 알고 고른다. 조정 스캔만 `desc`로 읽어 24시간 컷오프에서 멈춘다 — **없는 `since`를 있는 것처럼 만들지 않는다.** `asc`로 되돌리는 변이가 단위 1건에 킬됐다 |
+| DEV-176 | 2026-08-25 | **FLOW-008 7단계 "알림 발송"이 성립하지 않고, FR-ING-011 AC-1·AC-5에 대응하는 DoD가 없다.** 알림 어댑터는 REL-005 소유이며(DEV-026·DEV-127 이월) 지금 만들 수 없다. 한편 주기 설정값(기본 1시간)과 "head 시퀀스가 없으면 채번 예약"은 어느 DoD에도 없었다 — 후자는 원장 §7의 "채번은 push 웹훅이 온 저장소만 따라간다"를 메우는 항목이다 | WP-028 / FLOW-008, FR-ING-011 AC-1·AC-5 | 범위 공백 | **CR-033** | **resolved (2026-08-25)** — **가짜 알림 구현을 만들지 않았다.** WP-028의 DoD를 감사 기록·지표·잡 상태로 좁히고 실제 발송을 REL-005로 이월했음을 제외 항목에 명시했다. FR-ING-011의 빠진 두 항목은 DoD에 더했고, head 채번 예약은 **기존 `sequence_assign` 잡을 큐에 넣을 뿐 서수를 직접 붙이지 않는다**(같은 기능의 두 번째 구현을 만들지 않는다). 되돌리기도 백필의 `projectOne`을 그대로 쓴다 — "간이 색인" 경로를 만들면 문서 버전 규칙(DEV-099)이나 벌크 항목 실패 처리(DEV-106) 중 하나만 갖는 두 번째 경로가 생긴다. 예약을 빼는 변이가 단위 2건에 킬됐다 |
 | DEV-003 | 2026-08-19 | `../00_governance/change_control.md` 4장 아키텍처 게이트 기록이 "오류 코드 30종"으로 적혀 있으나 API 계약 6장의 실제 코드는 29종이었다 | WP-001 | 문서 오류 | **CR-006** | **resolved (2026-08-20)** — 게이트 기록을 29종으로 정정하고 CR-005로 GH 코드 16종이 추가되어 현재 45종임을 함께 표기 |
 
 **등록이 필요한 대표 상황** (사전에 예상되는 것):
@@ -1579,7 +1585,46 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 
 **`flow-001` 간헐 실패의 귀속을 실측했다.** 이 라운드의 전체 e2e에서도 같은 시험이 한 번 실패해, **변경을 stash하고 깨끗한 `main`(`bc0e931`)에서 재빌드 후 2회 돌렸다 — 1회 실패·1회 통과였다.** 이 정정과 무관한 기존 간헐 실패임이 확인됐다(§7).
 
-### 6.28 릴리스 게이트
+### 6.28 WP-028 검증 실행 기록
+
+2026-08-25, 실제 PostgreSQL 16.13(API·마이그레이션 통합) / Node 22.23.2.
+
+**계층별 결과.** 단위 `packages/domain/src/integrity.test.ts` 9건(최초 지점, 채번 뒤처짐과 히스토리 단축의 구분, 입력 순서 무관, 표본 하한) + `ops/sequence-integrity.test.ts` 17건(파서 기반 영향 판정 8갈래, 확인 문자열, mode) + `pipeline-worker/src/integrity.test.ts` 8건 + `reconcile.test.ts` 14건 + `consistency.test.ts` 9건 통과 — 전체 단위 1218건(1 skipped). API 통합 `ops/sequence-integrity.test.ts` 20건, 마이그레이션 통합 `job-type-reassign.test.ts` 5건 통과 — 전체 통합 709건. a11y 192, e2e 67, 회귀 27, contrast 80쌍.
+
+**이 WP의 결정 하나가 나머지를 정한다 — 점검은 관찰이다.** FR-ADMIN-003의 예외 처리가 점검 실패 시 공간 상태를 `unknown`으로 바꾸라고 적고 있었는데, `unknown`은 이미 "채번된 적 없는 브랜치"라는 뜻으로 세 화면이 표시하고 있었다(CR-029). 사용자 결정(갈래 A)으로 **SRS를 v2.5로 고쳐** 상태를 보존하게 했고, 그 결정이 구현에서는 "**이 경로에 쓰기 질의가 없다**"로 나타난다. 단위 시험이 그 사실을 직접 단언한다 — 질의 문자열을 감시해 `UPDATE`/`INSERT`/`DELETE`가 0건임을 본다. 상태 enum을 늘리는 갈래 B는 기각했다: 시퀀스 상태와 진단 실행 상태는 다른 개념이고, 한 번 섞으면 마이그레이션·C-027·W-004가 그 오염을 물려받는다.
+
+**구현 중 잡은 것.** ① **정규화된 `pull_request` 표가 없다.** JOB-ING-008의 초안이 그 표를 가정했는데 스키마에 없다 — ADR-004가 "재생의 진짜 소스는 PostgreSQL의 `raw_event`"라고 정하고 있어 대조의 정본 쪽을 `raw_event`에서 뽑도록 고쳤다. 없는 표를 가정했다면 이 잡은 ADR-004가 아니라 다른 무언가를 검증했을 것이다. ② **조정 스캔이 단위 시험에서 백필 스택 전체를 요구했다.** 되돌리기가 `projectOne`을 직접 부르고 있어 탐지·집계 규칙만 보려 해도 ES·GHE 대역이 필요했다. 주입 가능한 이음매를 두되 **기본값을 `projectOne`으로** 남겨 "되돌리기 경로는 하나"라는 결정은 그대로 두었고, 주입을 걷어 내면 기본 경로가 쓰인다는 것을 시험이 단언한다.
+
+**재사용한 것.** 앵커·스케줄러·되돌리기 어느 것도 새로 만들지 않았다 — 주기 스윕은 `startReleaseSweeper`의 형태(깨울 수 있는 sleep)를 그대로 쓰고, 되돌리기는 백필의 `projectOne`, head 채번은 기존 `sequence_assign` 잡 예약이다. 대조 규칙은 `@prs/domain`에 한 벌만 두어 API(`GET /admin/sequence-integrity`)와 잡(JOB-SEQ-003)이 함께 쓴다 — 둘이 각자 갖고 있으면 "점검은 통과인데 잡은 불일치"가 나온다.
+
+**결함 재적용 9종 (전부 적용 확인 후 실행, 전부 킬 후 원복).**
+
+| # | 되살린 결함 | 킬 |
+| --- | --- | --- |
+| N1 | 점검 실패가 공간 상태를 `unknown`으로 바꾼다 (API, 갈래 B로 되돌림) | API 통합 1건 |
+| N2 | 잡 쪽에서 공간 상태를 바꾼다 | 단위 1건 |
+| N3 | 표본을 999개만 검사한다 | 단위 1 + API 통합 1 |
+| N4 | 최초가 아니라 마지막 불일치를 낸다 | 단위 1 + API 통합 2 |
+| N5 | 저장 검색을 `includes('seq:')`로 판정한다 | 단위 2건 |
+| N6 | 조정 스캔을 `updated asc`로 돌린다 | 단위 1건 |
+| N7 | head 서수가 없어도 채번을 예약하지 않는다 | 단위 2건 |
+| N8 | JOB-ING-008이 ES 잉여 문서를 자동 삭제한다 | 단위 1건 |
+| N9 | `sequence_reassign`을 CHECK에서 뺀다 | 마이그레이션 통합 2건 |
+
+**N5의 첫 형태는 킬이 얇았다.** `includes('seq:')`로 되돌리는 변이가 처음에는 단위 1건만 잡았다 — 인용 안의 `seq:`를 검증하는 시험이 술어 판정 함수만 보고 있어서, 세는 함수를 바꾼 변이에 닿지 않았다. **집계 함수 자체에 네 갈래(인용 본문·부정 필터·다른 저장소·다른 브랜치)를 거는 시험을 더하자** 킬이 2건이 됐다. 변이가 죽었다고 해서 시험이 그 자리를 지키는 것은 아니라는 사례다.
+
+**DoD 판정.** 18항 전부 통과. QA-A003-09는 A-003 화면이 WP-040 몫이라 **API 계층까지** 검증했다(점검 실행·결과 형식·감사 기록). 표본 1000·최초 불일치·`confirmation` 400·누락 재투입·지표 노출·감사 기록·상태 보존·마이그레이션 009·`new_epoch_expected` 계산·파서 기반 영향 판정·주기 설정값·24시간 창·head 채번 예약·한도 미룸과 3주기 경보·PG↔ES 두 층 대조와 무삭제·보고의 민감 정보 배제 전부 시험이 고정한다.
+
+**NOT RUN·이월.**
+
+- **실제 outbound 알림 발송** — 알림 어댑터가 REL-005 소유다(DEV-026·DEV-127). FLOW-008 7단계는 이 WP에서 **감사 기록·지표·잡 상태**까지만 성립하며, 발송했다고 보고하지 않는다 (CR-033, DEV-176). 제외 항목에 명시했다.
+- **A-003 운영 콘솔 화면** — WP-040.
+- **실제 GHE 대상 smoke** — 사내망 전제라 이 환경에서 돌지 않는다. 조정 스캔의 `direction: 'desc'` 왕복은 대역으로 검증했다.
+- **`sequence_reassign` 잡의 실행부** — 이 WP는 잡을 **큐에 넣는 데까지**다. 큐를 집어 `reassignSequence`를 부르는 러너는 붙이지 않았다(기존 `reassignSequence`는 WP-021이 이미 세웠다). 잡 행은 `queued`로 남는다.
+
+**관찰: `flow-001` 간헐 실패는 이 WP와 무관하다.** CR-032 라운드에서 깨끗한 `main` 기준으로 재현을 확인했다(§6.27.1). §7에 남아 있다.
+
+### 6.29 릴리스 게이트
 
 릴리스별로 갱신한다.
 
