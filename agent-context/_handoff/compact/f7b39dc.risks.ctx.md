@@ -1,7 +1,7 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=9d6c26fabdc4f2fa7c942e54b1427003b01c63bf035af0b06f4bb15c486d9c11 bytes=4500 lines=82 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;DISTINCT;pull_request_number;NOT;NULL;expected;Node;e2e;Codex;v20;install;visitor;engines;v22;a11y;require;ESM;PATH;HOME;versions;prs_test;chromium;unknown
+@kv sha256=fbfba7ae18be0330d398a7f85dfa87aa3d531ad5f5a55eab4f5eec95baa29b1c bytes=9933 lines=181 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;DISTINCT;pull_request_number;NOT;NULL;expected;Node;e2e;Codex;v20;install;visitor;engines;v22;a11y;require;ESM;PATH;HOME;versions
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
 @h3 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다
@@ -43,3 +43,52 @@
 @h2 검증되지 않은 것 (NOT RUN)
 @b 실제 GHE 대상 smoke, OIDC 실연동 — 사내망 전제라 이 환경에서 돌지 않는다.
 @p 목 서버 계약 시험 + 실 PostgreSQL·Redis·Elasticsearch로 대체하고 있다.
+@p ---
+@h1 2026-08-25 후반 세션이 추가한 것
+@h2 가장 큰 함정 — 시험이 초록인데 운영이 부르지 않는다
+@path WP-028은 API도 러너도 스윕도 만들어 놓고 배포에서 하나도 실행되지 않는 상태로
+@p 원장에 done이 기록돼 있었다. 격리된 함수 시험은 전부 통과했다.
+@b 통합 시험이 buildServer에 목을 직접 꽂아 라우트를 세웠다 — 그것은 "라우트가
+@p 존재한다"를 증명하지 "운영이 그것을 세운다"를 증명하지 않는다
+@b startReconcileSweeper는 정의만 되고 부르는 곳이 없었다
+@b sequence_reassign 잡을 집는 러너가 없어 행이 영구 queued로 남았고,
+@p job_active_uk 때문에 이후 요청이 전부 거절됐다
+@risk 대응: regression/runtime-reachability.test.ts — 선언 → 기동 → 종료 →
+@p manifest가 한 줄로 이어지는지만 묻는 계층을 세웠다.
+@h2 그 회귀 시험조차 첫 형태는 통과했다
+@p expect(WORKER_INDEX).toContain('startReconcileSweeper')로 썼더니 호출을 지워도 import 줄이 남아 통과했다. 변이 셋(M2·M3·M5)이 살아남는 것을 보고 reconcileSweeper = startReconcileSweeper(처럼 호출 형태로 고쳤다.
+@path → WP-028의 N5와 같은 교훈이 다시 나왔다: 변이가 죽었다고 시험이 그 자리를
+@p 지키는 것은 아니고, 살아남았을 때가 시험을 고칠 때다.
+@h2 머지 뒤에 리뷰가 온다 — 머지 직후 반드시 다시 확인
+@path 이 세션에서 다섯 번 겪었다. PR #35는 머지(08:52:03Z) 1분 뒤(08:53:18Z)에
+@p 리뷰가 도착해, 머지 직전에 확인했을 때는 0건이었다.
+@code lang=bash sha=c4cdec2a5321 lines=3 kept=3
+|gh api repos/89sooner/pr-search/pulls/<N>/comments --jq 'length'
+|gh api graphql -f query='{ repository(owner:"89sooner",name:"pr-search"){ pullRequest(number:N){
+|  reviewThreads(first:20){ nodes{ id isResolved isOutdated path line } } } } }'
+@p 머지된 PR의 지적은 같은 PR에 밀어 넣을 수 없다 — 후속 CR로 정정하고 원장의 해당 WP 검증 장에 X.Y.1 머지 후 리뷰 라운드 절을 만든다(6.27.1·6.28.1·6.30.1이 선례).
+@h2 접근 범위에서 "각자 구현"은 유출이다
+@path WP-068에서 등록 경로(search-api)와 팀 웹훅 경로(pipeline-worker)가 같은 동기화를
+@p 하는데 앱은 서로를 가져올 수 없다(lint:deps). 각자 구현했더니 웹훅 쪽만 정본의 옛 값을 되써서 팀에서 회수된 구성원이 문서를 계속 보는 유출이 났다.
+@p → 공유 판정은 패키지로 올린다. 색인 클라이언트처럼 무거운 의존은 포트로 받아 패키지가 그 타입에 묶이지 않게 한다(scope-source.ts 선례).
+@h2 부분 성공을 성공으로 처리하면 재시도 경로가 사라진다
+@p setAllowedTeams(정본)가 성공하고 applyRepositoryTeams(색인)가 실패했을 때 catch로 넘기면, 다음 동기화는 GHE가 같은 답을 주므로 "바뀐 것 없음"으로 판단해 건너뛴다. 회수된 팀이 색인에 영원히 남는다.
+@p → 정본을 되돌려 다음 회차가 같은 차이를 다시 보게 한다.
+@h2 소급 대상 목록을 다른 기능에서 빌려 오지 마라
+@p applyRepositoryTeams가 markRepositoryArchived의 ARCHIVABLE_ALIASES(두 색인)를 재사용했는데, repository_archived는 둘에만 있고 allowed_team_ids는 네 매핑이 모두 선언한다. 둘만 소급하면 관계·릴리스 문서가 옛 권한을 들고 남는다.
+@h2 문서 상태를 한 곳만 고치면 모순이 남는다
+@p 원장의 WP 상태를 done으로 바꾸면서 pr_search_work_packages.md의 순서표와 DoD 체크박스를 그대로 두었다. 후속 에이전트가 작업 패키지 문서를 기준으로 판단하면 재작업하게 된다. 미해결 항목이다 (todos.md 0번).
+@h2 환경 (변경 없음, 재확인)
+@b Node v22.23.2 필수. 셸 기본값 v20.12.0으로는 pnpm install이 거부된다
+@b 컨테이너 3종(prs-postgres/redis/elasticsearch) healthy, prs·prs_test DB 존재
+@b 마이그레이션은 이 세션에서 009·010·011을 추가 적용했다
+@p ---
+@h1 2026-08-26 인계 검증 세션이 추가한 것
+@h2 컨텍스트 파일 자체가 커밋되지 않은 채 인계된다
+@p 직전 세션이 agent-context/*.md 7개와 _handoff/ 전체를 쓰고 커밋 없이 끝냈다. 위 4번("임시 컨테이너에서는 슬라이스마다 커밋하라")이 경고하는 바로 그 상황인데, 경고문을 담은 파일이 거기 걸려 있다.
+@p → 인계받은 에이전트는 코드 작업 전에 이 변경분을 커밋할지 먼저 정하라. 단 git add -A는 쓰지 마라 — exports/는 무시되지만 다른 미추적 산출물이 함께 들어갈 수 있다. 경로를 지목해 stage 한다.
+@h2 기록된 파일 위치를 그대로 믿지 마라
+@p session-notes.md와 todos.md가 전사를 "저장소 루트"에 있다고 적었지만 실제
+@path 위치는 exports/202608260047.md였고 그 디렉터리는 .gitignore 대상이다. 그래서
+@p "커밋에 딸려 들어갈 수 있다"는 경고까지 통째로 잘못된 근거 위에 있었다.
+@p → 컨텍스트 문서의 경로 주장은 인계 시점에 ls로 확인한다. 비용이 거의 없고, 틀린 경로는 그것을 근거로 세운 판단까지 함께 틀리게 만든다.

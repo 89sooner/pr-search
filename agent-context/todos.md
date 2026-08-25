@@ -1,69 +1,76 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
-## 0. 지금 당장 (블로킹)
+> 상태 기준: main `5e18e00`, SRS `baseline v2.5`, 원장 `review v1.8`,
+> CR-036·DEV-190까지. REL-003 **10/11** (WP-067만 `todo`).
+> 브랜치 없음 — 전부 병합·삭제했다.
 
-### PR #33 머지 대기
+## 0. 지금 당장 — CR-037로 미해결 리뷰 9건 정정 (블로킹)
 
-- `claude/cr-031-wp-027` = PR #33 (WP-027). **CI 초록, draft, 리뷰 0건**
-- 사용자가 draft → ready로 전환하면 **Codex 리뷰가 붙는다** (PR #32에서 그랬고
-  지적 3건이 전부 실결함이었다). 지적이 오면 검증 → 수정 → 재푸시 → 원장 6.27장에
-  리뷰 라운드 표 추가(6.24·6.26장이 선례)
-- 머지되면: `git checkout main && git pull`, 원격·로컬 브랜치 삭제,
-  다음 WP 브랜치를 main에서 딴다
+**전부 코드로 재현 확인했다.** WP-028·WP-068의 `done` 판정을 실질적으로
+약화시키므로 WP-067보다 먼저다. 다음 free 번호는 **CR-037 / DEV-191**이지만
+착수 시 반드시 실측할 것.
 
-### WP-028 ②번 결정 — **사용자 답변 대기 중**
+### PR #37 (CR-034) — P1 4건
 
-감사 결과 ②번(`unknown` 상태 과부하)에 두 갈래를 제시하고 답을 기다리는
-상태로 세션이 끝났다. 답이 오기 전에는 CR-032를 등록하지 말 것.
-
-- **갈래 A (권고)**: 점검 실패 시 공간 상태를 **바꾸지 않고** 점검 응답에만
-  싣는다. 점검은 읽기인데 쓰기 부작용을 갖지 않는 편이 안전하다.
-  → `srs_final.md`의 FR-ADMIN-003 예외 처리 문구 정정 = **SRS 변경(v2.5)**
-- **갈래 B**: 새 상태값 `check_failed` 추가.
-  → `sequence_space_state_chk` 마이그레이션 + C-027·W-004 표기 확장
-
-## 1. WP-028 착수 감사 결과 (CR-032로 등록할 것)
-
-감사는 끝났고 근거도 확인했다. 등록만 남았다.
-
-| # | 공백 | 정할 것 |
+| # | 결함 | 재현 근거 |
 | --- | --- | --- |
-| ① | **DEV-128 (이미 등록·미해소)** — `job_type_chk`에 `sequence_reassign`이 없는데 API-ADM-007의 202 예시는 그 값을 낸다. 잡 행을 만드는 순간 CHECK 위반 | 마이그레이션 009로 유형 추가 vs 계약을 기존 유형으로 정정 |
-| ② | `unknown` 상태가 "채번된 적 없음"(API-SEQ-006/CR-029)과 "점검 실패"(FR-ADMIN-003 예외) 두 가지를 뜻하게 된다 | **위 0번 참조 — 사용자 결정 대기** |
-| ③ | `affected_saved_search_count`의 판정 규칙이 없다. `saved_search`에는 저장소 열이 없고 질의 문자열뿐이다(`seq`는 실재 질의 키). `repo:` 없는 검색을 어느 쪽으로 셀지 미정 | 파싱 규칙 확정 |
-| ④ | `JOB-ING-008`(PG↔ES 정합성 감시)이 구현 범위에는 있고 **DoD에는 없다**. FR도 없다(ADR-004 follow-up). 표본 크기·불일치 시 조치(재투영/경보) 미정 | DoD 항목 신설 또는 범위에서 제외 |
-| ⑤ | GHE 클라이언트가 "최근 24시간 갱신 PR"을 낼 수 없다. `listPullRequestsPage`가 `direction: 'asc'` 고정(백필용). `/pulls`에 `since`가 없어 `direction` 옵션이 필요 | 클라이언트에 `direction` 옵션 추가 |
-| ⑥ | FLOW-008 7단계 "알림 발송"이 불가능. 알림 어댑터는 REL-005 소유(DEV-026·DEV-127 이월) | DoD를 감사 기록만으로 좁히고 알림 이월 명시 |
-| ⑦ | FR-ING-011 **AC-1(주기 설정값)·AC-5(head 시퀀스 없으면 채번 예약)**에 대응하는 DoD가 없다. AC-5는 원장 §7의 "채번은 push 웹훅이 온 저장소만 따라간다"를 메우는 항목 | DoD 항목 추가 |
+| 1 | `repairSequence`가 락 획득 후 **`head_sha`를 재확인하지 않는다** (`seq_epoch`만 검사) | `apps/pipeline-worker/src/sequence.ts` 818행 부근. 그래프 walk 중 정상 채번이 head를 전진시키면 **head를 뒤로 되돌리고 이미 채번된 커밋을 누락**한다 |
+| 2 | 마이그레이션 010이 **기존 문서를 백필하지 않는다** | 업그레이드 시 기존 PR 문서는 ES에만 남는다. 투영은 바뀐 PR만 쓰고 조정 스캔은 이미 색인된 것을 건너뛰므로, 손대지 않은 운영 데이터는 스냅숏을 영영 못 얻고 `extra_in_es`로 보고된다 (DEV-190과 같은 계열) |
+| 3 | 지문에 **`org_id`·`visibility` 누락** | `apps/pipeline-worker/src/consistency.ts`의 `CANONICAL_FIELDS`. `packages/es/src/scoped-query.ts`가 `org_team` 필터에 쓰는 바로 그 필드인데 대조에서 빠져, **접근 통제 데이터가 불일치해도 일치로 보고**한다 |
+| 4 | 실행 중 잡 **취소가 무시된다** | `apps/pipeline-worker/src/sequence-repair-runner.ts` 96행 부근. 운영자가 `cancelled`로 바꿔도 무조건 `finishJob`이 `completed`/`failed`로 덮어쓰고, 비가역 복구도 계속 진행된다 |
 
-**문제가 아닌 것 (감사에서 확인)**: `invalidated_safe_marker_count`는 `safe_marker`
-표가 있고 질의가 성립하며, 표식이 없으면 0이 **참**이다. DEV-133("세면 언제나
-0이라 계산하지 않은 것을 계산한 척하지 않는다")과는 다른 경우다.
+### PR #37 — P2 3건
 
-## 2. WP-028 구현 순서 (CR-032 캐스케이드 후)
+- 수동 복구가 `sequence.reassigned`(EVT-SEQ-002)를 **발행하지 않는다** —
+  `reassignSequence`와 달리 알림 소비자가 수동 복구를 놓친다
+- `reassigning`이 **트랜잭션 밖에서 관측되지 않는다** — `bumpEpoch`가 같은
+  트랜잭션 안에서 설정하고 `advanceHead`가 즉시 `ok`로 되돌린다. 긴 재구축 중
+  조회가 "정상"으로 옛 에폭을 낸다. `reassignSequence`처럼 `markReassigning`을
+  **먼저 따로 커밋**해야 한다
+- 그래프를 읽지 못한 실패가 **`stale`로 영속화되지 않는다** — `repairSequence`가
+  `stale` outcome을 반환만 하고 `markStale`을 부르지 않아, 잠재적으로 손상된
+  공간이 `ok`로 광고된다
 
-1. 마이그레이션 009 (①의 결정에 따라)
-2. `GET/POST /admin/sequence-integrity` (API-ADM-007) — 표본/전량, 최초 불일치,
-   `impact_estimate`, `confirmation` 검증
-3. `JOB-SEQ-003` 정합성 점검 잡 (일 1회 표본) — 스케줄러는
-   `startMirrorSweeper`·`startReleaseSweeper` 선례
-4. `JOB-ING-005` 조정 스캔 (1시간) — GHE 클라이언트 `direction` 옵션 선행
-5. `JOB-ING-008` (④의 결정에 따라)
-6. 메트릭 `sequence_integrity_mismatch_total`·`reconcile_missing_total`
-7. 통합 시험 → 변이 시험 → 원장 6.28장 → CR-032 종결
+### PR #36 · #38 — P2 2건
 
-## 3. 미뤄 둔 항목
+- **PR #36**: WP-027 원장 행에 `화면 커밋 / PR #33` 플레이스홀더가 남아 있고
+  실제 화면 커밋 `594fa94`와 CR-032 정정이 빠졌다
+- **PR #38**: **`docs/40_delivery/pr_search_work_packages.md`의 순서표가
+  WP-028·WP-068을 아직 `todo`로 표시한다** (48·50행). 원장은 `done`이고 DoD
+  체크박스도 미체크다. **이 세션이 만든 문서 모순이다** — 후속 에이전트가 작업
+  패키지 문서를 기준으로 판단하면 재작업하게 된다
 
-- **`flow-001` "히스토리 규율" e2e 간헐 실패** — 사용자가 "나중에"로 미뤘다.
-  전체 실행 6회 중 2회 실패, 단독 3/3 통과. "필터 5회 조작 후 뒤로가기 1회"라
-  히스토리 항목이 가끔 더 쌓이는 **제품 결함일 가능성**이 있다. 원장 §7에 기록됨.
-  WP-016 소관.
-- **WP-067 (커밋 메타데이터 보강)의 우선순위가 올라갔다** — 선행·후행의 직접
-  푸시 행에 제목·작성자를 채우는 일이라 이제 사용자에게 보이는 값이 걸렸다.
-  원장 §8에 그렇게 적었다.
-- REL-003 잔여: WP-028, WP-067, WP-068
+## 1. WP-067 — 착수 전 계약 감사 필요 (CR 먼저)
 
-## 4. 확인할 사항
+**현재 WP-067 계약을 그대로 구현하면 안 된다.** 다음 다섯을 먼저 정리할 것.
 
-- `agent-context/`가 `.gitignore`에 **없다.** PR 커밋 시 `git add -A`를 쓰면
-  딸려 들어간다. 커밋 전에 제외하거나 `.gitignore`에 추가할지 사용자에게 확인할 것.
+1. `JOB-MIR-002`가 `EVT-ING-003`를 소비할 때 `prs:projected`의 기존 `link`
+   consumer group과 **같은 group을 쓰면 안 된다** — 독립 처리라 별도 group 필요
+2. 현재 계약은 "기존 commit document **부분 갱신만**"이라 **direct-push commit
+   document가 아예 없는 문제**를 해결하지 못한다
+3. sequence projection도 `update_by_query`뿐이라 **없는 문서를 만들지 않는다**
+4. PR 상세의 `source_commits`는 SHA 객체만 만들고 **commit document를 join하지
+   않는다** — 메타데이터를 채워도 화면에는 계속 SHA만 나온다
+5. Neighbor API의 direct-push 행도 **PR document만 표시 소스로 읽는다** — 같은 이유
+
+**우선순위 근거**: WP-027이 직접 푸시 커밋을 선행·후행에 실제 노출하기 시작해
+이제 사용자에게 보이는 조사 품질이다(원장 §8).
+
+## 2. 미뤄 둔 항목
+
+- **`flow-001` "히스토리 규율" e2e 간헐 실패** — 이 세션에서 **깨끗한 `main`
+  (`bc0e931`)으로 재현해 기존 문제로 귀속 확인**했다(2회 중 1회 실패). WP-016
+  소관, 원장 §7. 사용자가 "나중에"로 미뤘다
+- REL-003 잔여: **WP-067뿐**
+
+## 3. 확인할 사항
+
+- `agent-context/`는 이제 **main에 tracked**다(`6d2577f`). `.gitignore`에 넣지
+  않고 삭제하지도 않는다 — 지시서 확인 완료
+- `.gitignore`에 `exports/`가 있다(`/export` 전사 아카이브용)
+- 전사는 `exports/202608260047.md`에 있고 **`exports/`는 `.gitignore` 대상이다**
+  (2026-08-26 실측 정정 — 이전 기록의 "저장소 루트" 주장은 **틀렸다**). 직전 세션
+  전사 `exports/202608251453.md`도 같은 자리다. 커밋에 딸려 갈 위험은 없다
+- **`agent-context/` 변경분이 커밋되지 않은 채 인계된다** — `*.md` 7개 +
+  `_handoff/` 전체. 코드 작업을 시작하기 전에 이것부터 커밋할지 정할 것
+  (`risks.md` 13번). `git add -A`는 쓰지 말 것

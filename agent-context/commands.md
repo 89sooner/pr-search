@@ -99,3 +99,151 @@ timeout 1800 bash -c 'until gh pr checks 33 2>/dev/null | grep "^integration" | 
 core.autocrlf=true`). Python으로 편집할 때 `newline=''`로 읽고 쓰며, 삽입하는
 블록도 `\r\n`으로 맞춰야 앵커 매칭이 되고 diff가 깨끗하다.
 `docs/00_governance/change_control.md`와 `pr_search_api_contracts.md`는 LF다.
+
+---
+
+# 2026-08-25 후반 세션 갱신
+
+## 검증 배터리 (마지막 실행 결과 — main `5e18e00`)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                # 통과
+pnpm lint                     # 통과 — 마지막 파일까지 쓴 뒤 다시 돌릴 것
+pnpm run lint:deps            # 패키지 13개, 위반 0건
+pnpm run test                 # 단위 1243 통과 (1 skipped)   [1161 → +82]
+pnpm run test:a11y            # 192 통과 (axe 0건)            [186 → +6]
+pnpm run test:integration     # 746 통과                      [674 → +72]
+pnpm run test:regression      # 64 통과                       [27 → +37]
+pnpm run test:contrast        # 80쌍 통과
+pnpm --filter @prs/web run build   # e2e 전에 필수
+pnpm run test:e2e             # 67 통과                       [65 → +2]
+pnpm build                    # 통과
+```
+
+## 문서 검증기 (저장소에 없다 — 스킬 디렉터리에 있다)
+
+```bash
+V=/home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py
+python3 $V --root . --strict
+python3 $V --root . --report --code-root .
+```
+
+**`--strict`는 오류 2건으로 끝나는 것이 정상이다** — `change_control.md` 9건,
+원장 5건의 "미정/TODO" 플레이스홀더가 **기존 문서 산문**이다. 깨끗한 `main`에서도
+같은 수가 나온다. **작업 전후로 그 수가 늘지 않았는지**를 보면 된다.
+
+## 이 세션에서 쓴 부분 실행
+
+```bash
+pnpm run test:integration ops/sequence-integrity
+pnpm run test:integration pipeline-worker/integration/sequence/repair
+pnpm run test:integration authz/team-scope        # team-scope + team-scope-es 둘 다
+pnpm run test:integration pr-snapshot
+pnpm run test packages/authz/src/team-scope
+pnpm run test search-api/src/runtime
+```
+
+## 머지 후 리뷰 확인 (이 세션에서 다섯 번 필요했다)
+
+```bash
+gh api repos/89sooner/pr-search/pulls/<N>/comments --jq 'length'
+gh api graphql -f query='{ repository(owner:"89sooner",name:"pr-search"){ pullRequest(number:<N>){
+  reviewThreads(first:20){ nodes{ id isResolved isOutdated path line
+    comments(first:2){ nodes{ author{login} body } } } } } } }'
+```
+
+reply / resolve:
+
+```bash
+gh api graphql -f query='mutation($tid: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $tid, body: $body}) { comment { url } } }' \
+  -f tid="<PRRT_...>" -f body="$(cat reply.md)"
+gh api graphql -f query='mutation($tid: ID!) {
+  resolveReviewThread(input: {threadId: $tid}) { thread { isResolved } } }' -f tid="<PRRT_...>"
+```
+
+**코드를 고치고 CI가 초록이 된 뒤에만 reply → resolve 한다.**
+
+## CI 대기 (verify와 integration 둘 다 봐야 한다)
+
+```bash
+for i in $(seq 1 30); do
+  ok=$(gh pr checks <N> 2>/dev/null | grep -cE "^(verify|integration)\s+(pass|fail)" || echo 0)
+  [ "$ok" = "2" ] && break
+  sleep 20
+done
+gh pr checks <N>
+```
+
+`integration`만 보고 나가면 `verify`가 아직 도는 상태(`UNSTABLE`)에서 머지를
+시도하게 된다 — 이 세션에서 실제로 한 번 겪었다.
+
+## 변이 시험 헬퍼 (정확히 1건일 때만 치환, CRLF 보존)
+
+```bash
+python3 mutate.py <path> "<old>" "<new>"
+```
+
+**중복 매칭이 안전장치다.** WP-028에서 `findPointByPullRequest`와 똑같은 질의를
+가진 기존 함수가 있어 2건이 잡혔고, 그 덕에 **내가 만들려던 함수가 이미 있다는
+것을 발견**해 중복 구현을 지웠다.
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 증상 | 원인·해결 |
+| --- | --- | --- |
+| `pnpm run test:integration ops/sequence-integrity` | `duplicate key ... repository_owner_name_key` | `acme/payments`를 다른 시험이 이미 쓴다 → 고유 픽스처 이름(`acme/integrity-wp028`) |
+| 같은 시험 | `app_user_login_key` 중복 | 시험용 사용자 login도 고유해야 한다 |
+| 같은 시험 | `new_epoch_expected`가 8 | `beforeEach`가 `seq_epoch`를 리셋하지 않았다 |
+| `pnpm typecheck` | 통합 시험 타입 오류 | **통합 시험은 vitest만으로는 타입 검사가 안 된다.** `tsconfig.tests.json`이 잡는다 — 시험이 초록이어도 typecheck를 따로 돌릴 것 |
+| `git stash pop` 후 실패 | 변이 원복 실패 | 여러 변이를 연달아 걸면 앞의 치환이 뒤의 앵커를 바꾼다. **한 번에 하나씩** |
+| `kill %1` 포함 명령 | exit 144, 뒤 명령 미실행 | 같은 명령줄에서 백그라운드 작업을 죽이면 셸 자체가 죽는다 |
+
+## 파일 편집 시 개행 주의 (변경 없음)
+
+`docs/`와 `apps/web`·`packages/`의 대부분 소스가 **CRLF**다(git `core.autocrlf=true`).
+Python으로 편집할 때 `newline=''`로 읽고 쓰며, 삽입 블록도 `\r\n`으로 맞춰야
+앵커 매칭이 되고 diff가 깨끗하다. `agent-context/*.md`도 CRLF다.
+
+---
+
+# 인계 검증 명령 (2026-08-26 세션에서 실제로 쓴 것)
+
+문서 버전과 ID 최댓값을 한 번에 확인한다 — 인계받자마자 이것부터.
+
+```bash
+sed -n '1,4p' docs/10_requirements/srs_final.md                         # baseline v2.5
+sed -n '1,4p' docs/40_delivery/pr_search_implementation_traceability.md # review v1.8
+grep -oE 'CR-[0-9]{3}' docs/00_governance/change_control.md | sort -u | tail -3
+grep -oE 'DEV-[0-9]{3}' docs/40_delivery/pr_search_implementation_traceability.md | sort -u | tail -3
+```
+
+미해결 리뷰 스레드 **수만** 세는 짧은 형태 (위쪽의 전체 조회보다 빠르다):
+
+```bash
+for n in 36 37 38; do
+  gh api graphql -f query="{ repository(owner:\"89sooner\",name:\"pr-search\"){
+    pullRequest(number:$n){ reviewThreads(first:30){ nodes{ isResolved isOutdated path } } } } }" \
+    --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length'
+done
+# 2026-08-26 결과: 1 / 7 / 1 = 9건. 전부 아직 열려 있다
+```
+
+문서 모순(원장 `done` vs 작업 패키지 `todo`) 확인:
+
+```bash
+sed -n '48p;50p' docs/40_delivery/pr_search_work_packages.md   # WP-028 · WP-068 → 아직 todo
+grep -nE '^\| WP-(028|068) ' docs/40_delivery/pr_search_implementation_traceability.md
+```
+
+## handoff pack 재생성
+
+```bash
+python /home/roqkf/.claude/skills/agent-context-handoff/scripts/context_handoff.py \
+  build --root . --source agent-context --output agent-context/_handoff
+python agent-context/_handoff/reader.py list --output agent-context/_handoff
+```
+
+**입력에서 제외되는 것**: `agent-context/_handoff/` 자신, 그리고 `exports/`의 전사.
+전사는 사람이 읽는 원본이며 compact 대상이 아니다.
