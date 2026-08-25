@@ -28,6 +28,7 @@ import {
   BOOTSTRAP_ENQUEUE_BATCH,
   completeSnapshotBootstrap,
   enqueueSnapshotBootstrap,
+  startSnapshotBootstrapRunner,
   SNAPSHOT_BOOTSTRAP_TYPE,
 } from '../../src/snapshot-bootstrap.js';
 import {
@@ -69,15 +70,23 @@ function prSummary(number: number): Record<string, unknown> {
 }
 
 /** GHE 목. 페이지를 시험이 통제한다. */
-function fakeClient(pages: readonly (readonly number[])[], onPage?: (page: number) => void): BackfillDeps['client'] {
+function fakeClient(
+  pages: readonly (readonly number[])[],
+  onPage?: (page: number) => void,
+  sorts?: string[],
+  failKinds?: ReadonlySet<'commits' | 'files' | 'reviews'>,
+): BackfillDeps['client'] {
   return {
-    listPullRequestsPage: (_ref: unknown, page: number) => {
+    listPullRequestsPage: (_ref: unknown, page: number, options?: { sort?: string }) => {
       onPage?.(page);
+      sorts?.push(options?.sort ?? 'updated');
       const items = pages[page - 1] ?? [];
       return Promise.resolve({ items: items.map(prSummary), hasMore: page < pages.length });
     },
     listPullRequestCommitsPaged: () =>
-      Promise.resolve({ items: [{ sha: 'd'.repeat(40) }], truncated: false, maxItems: 250 }),
+      failKinds?.has('commits') === true
+        ? Promise.reject(new Error('GHE 502'))
+        : Promise.resolve({ items: [{ sha: 'd'.repeat(40) }], truncated: false, maxItems: 250 }),
     listPullRequestFilesPaged: () =>
       Promise.resolve({
         items: [{ filename: 'a.ts', additions: 1, deletions: 0, status: 'modified' }],
@@ -349,6 +358,124 @@ describe('정본 스냅숏 부트스트랩 (CR-037, DEV-194·195)', () => {
           REPOSITORY_ID + 200,
         ]);
       }
+    });
+  });
+
+  /**
+   * PR #41 리뷰가 찾은 것 셋 (CR-037, DEV-203·204).
+   *
+   * 부트스트랩은 **완결 표시를 찍는 잡**이라, 한 번 건너뛰거나 반쪽 문서를 정본으로
+   * 쓰면 그 뒤 아무도 다시 채우지 않는다 — 다른 잡보다 실패의 값이 훨씬 비싸다.
+   */
+  describe('완결 표시를 찍기 전에 실제 커버리지를 지킨다 (PR #41 리뷰)', () => {
+    it('전량 열거를 `created` 정렬로 한다 — 갱신이 항목을 앞 페이지로 당기지 않는다 (DEV-204)', async () => {
+      await jobRepo.enqueueJob(pool, SNAPSHOT_BOOTSTRAP_TYPE, TARGET, 'system');
+      const job = await jobRepo.claimNextJob(pool, SNAPSHOT_BOOTSTRAP_TYPE);
+      const { es } = forbiddenEs();
+      const sorts: string[] = [];
+
+      await runBackfillJob(
+        {
+          pool,
+          es,
+          client: fakeClient([INDEXED], undefined, sorts),
+          log: () => undefined,
+          sleep: () => Promise.resolve(),
+          snapshotOnly: true,
+          listSort: 'created',
+        },
+        job!,
+        repository,
+      );
+
+      /*
+       * `updated`면 스캔 중 갱신된 PR이 목록 끝으로 이동하고 뒤 항목이 이미 지나온
+       * 페이지 자리로 당겨진다 — 그 항목은 방문되지 않은 채 잡이 `completed`가 되고,
+       * 완결 표시가 찍히면 **다시는 선택되지 않는다.**
+       */
+      expect(sorts.length).toBeGreaterThan(0);
+      expect(new Set(sorts)).toEqual(new Set(['created']));
+    });
+
+    it('**운영 러너가** `created` 정렬로 부른다 — 옵션이 실제로 전달된다 (DEV-204)', async () => {
+      /*
+       * 앞 시험은 `runBackfillJob`을 직접 부르며 정렬을 넘겼다. 그것만으로는
+       * **러너가 그 옵션을 실제로 넘기는지**를 증명하지 못한다 — CR-034가 배운
+       * 그대로다. 여기서는 운영이 세우는 러너를 그대로 띄운다.
+       */
+      await jobRepo.enqueueJob(pool, SNAPSHOT_BOOTSTRAP_TYPE, TARGET, 'system');
+      const { es } = forbiddenEs();
+      const sorts: string[] = [];
+
+      const runner = startSnapshotBootstrapRunner(
+        {
+          pool,
+          es,
+          client: fakeClient([INDEXED], undefined, sorts),
+          log: () => undefined,
+          sleep: () => Promise.resolve(),
+          findRepository: () => Promise.resolve(repository),
+        },
+        { idlePollMs: 5 },
+      );
+
+      for (let i = 0; i < 200 && sorts.length === 0; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      await runner.stop();
+
+      expect(sorts.length).toBeGreaterThan(0);
+      expect(new Set(sorts)).toEqual(new Set(['created']));
+      expect(await snapshotNumbers()).toEqual(INDEXED);
+      // 완결 표시까지 러너가 찍는다.
+      expect((await reload()).snapshot_bootstrapped_at).not.toBeNull();
+    });
+
+    it('보강이 불완전하면 스냅숏을 쓰지 않고 실패로 센다 (DEV-203)', async () => {
+      // 먼저 완전한 스냅숏을 만들어 둔다.
+      await jobRepo.enqueueJob(pool, SNAPSHOT_BOOTSTRAP_TYPE, TARGET, 'system');
+      const first = await jobRepo.claimNextJob(pool, SNAPSHOT_BOOTSTRAP_TYPE);
+      const { es } = forbiddenEs();
+      await runBackfillJob(
+        { pool, es, client: fakeClient([[11]]), log: () => undefined, sleep: () => Promise.resolve(), snapshotOnly: true },
+        first!,
+        repository,
+      );
+      const before = await prSnapshotRepo.listSnapshots(pool, REPOSITORY_ID, 10);
+      expect(before).toHaveLength(1);
+      const commitsBefore = (before[0]?.document as { source_commit_shas?: unknown[] }).source_commit_shas;
+      expect(commitsBefore).toHaveLength(1);
+
+      // 이제 커밋 조회가 실패하는 회차. 같은 `updated_at`이라 버전이 같다.
+      await pool.query('DELETE FROM job');
+      await jobRepo.enqueueJob(pool, SNAPSHOT_BOOTSTRAP_TYPE, TARGET, 'system');
+      const second = await jobRepo.claimNextJob(pool, SNAPSHOT_BOOTSTRAP_TYPE);
+      const result = await runBackfillJob(
+        {
+          pool,
+          es,
+          client: fakeClient([[11]], undefined, undefined, new Set(['commits'] as const)),
+          log: () => undefined,
+          sleep: () => Promise.resolve(),
+          snapshotOnly: true,
+        },
+        second!,
+        repository,
+      );
+
+      // 실패로 세어 완결 표시가 찍히지 않는다.
+      expect(result.failed).toEqual([11]);
+      expect(await completeSnapshotBootstrap(pool, repository, result)).toBe(false);
+      expect((await reload()).snapshot_bootstrapped_at).toBeNull();
+
+      /*
+       * 스냅숏 업서트는 **같은 버전을 덮는다.** 반쪽 문서를 썼다면 완전한 스냅숏이
+       * 여기서 되돌아간다 — ADR-004의 재구축 근거가 조용히 반쪽이 된다.
+       */
+      const after = await prSnapshotRepo.listSnapshots(pool, REPOSITORY_ID, 10);
+      const commitsAfter = (after[0]?.document as { source_commit_shas?: unknown[] }).source_commit_shas;
+      expect(commitsAfter).toHaveLength(1);
+      expect((after[0]?.document as { enrichment_pending?: boolean }).enrichment_pending).not.toBe(true);
     });
   });
 });

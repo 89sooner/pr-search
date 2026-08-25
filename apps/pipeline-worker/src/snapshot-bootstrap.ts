@@ -114,7 +114,13 @@ export function startSnapshotBootstrapRunner(
   options: { readonly maxConcurrent?: number; readonly idlePollMs?: number } = {},
 ): BackfillRunner {
   return startBackfillRunner(
-    { ...deps, snapshotOnly: true, snapshotSource: 'backfill' },
+    /*
+     * `listSort: 'created'`가 이 잡의 정확성 조건이다 (CR-037, DEV-204). 기본값
+     * `updated`로 페이지를 넘기면 스캔 중 갱신된 PR이 끝으로 이동하고 뒤 항목이
+     * 앞 페이지 자리로 당겨져 **방문되지 않는다.** 완결 표시를 찍는 잡이라
+     * 건너뜀이 곧 영구 누락이다.
+     */
+    { ...deps, snapshotOnly: true, snapshotSource: 'backfill', listSort: 'created' },
     {
       ...options,
       jobType: SNAPSHOT_BOOTSTRAP_TYPE,

@@ -491,6 +491,66 @@ describe('재채번 러너가 큐를 비운다 (CR-034, DEV-178)', () => {
       expect(chain.length).toBeGreaterThan(0);
     });
 
+    it('락을 못 얻으면 남의 `reassigning`을 건드리지 않는다 (DEV-202)', async () => {
+      /*
+       * 표시를 락보다 **먼저** 세우면, 락 경쟁에서 진 쪽이 이긴 쪽의 표시를 자기
+       * 것으로 알고 `ok`로 되돌린다 — 다른 워커가 한창 재구축 중인 공간을 조회가
+       * "정상"으로 읽는다. 표시는 락을 잡은 뒤에만 세워야 한다.
+       */
+      await seedLiveWithCorruptionAt(3);
+      const repository = (await repositoryRepo.findRepositoryBySlug(pool, OWNER, NAME))!;
+
+      // 다른 워커가 이미 공간을 쥐고 재구축 중인 상태를 만든다.
+      const holder = await pool.connect();
+      try {
+        await holder.query('BEGIN');
+        await holder.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `seq:${String(REPOSITORY_ID)}:${BRANCH}`,
+        ]);
+        await pool.query(
+          "UPDATE sequence_space SET state = 'reassigning' WHERE repository_id = $1 AND base_branch = $2",
+          [REPOSITORY_ID, BRANCH],
+        );
+
+        const outcome = await repairSequence(deps(), repository, BRANCH);
+        expect(outcome.kind).toBe('locked');
+
+        // 남의 표시가 그대로 살아 있어야 한다.
+        expect((await spaceRow()).state).toBe('reassigning');
+      } finally {
+        await holder.query('ROLLBACK').catch(() => undefined);
+        holder.release();
+      }
+    });
+
+    it('락을 얻기 전에는 표시를 세우지 않는다 (DEV-202)', async () => {
+      /*
+       * 락 경쟁에서 지면 우리는 **아무 일도 하지 않는다.** 그런데 표시를 락보다 먼저
+       * 세우면 그 사실이 공간에 남고, 되돌릴 주인도 없어 **아무도 재구축하지 않는
+       * 공간이 계속 "재채번 중"으로 광고된다.** 조회는 그동안 서수를 믿지 못한다.
+       */
+      await seedLiveWithCorruptionAt(3);
+      const repository = (await repositoryRepo.findRepositoryBySlug(pool, OWNER, NAME))!;
+      expect((await spaceRow()).state).toBe('ok');
+
+      const holder = await pool.connect();
+      try {
+        await holder.query('BEGIN');
+        await holder.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+          `seq:${String(REPOSITORY_ID)}:${BRANCH}`,
+        ]);
+
+        const outcome = await repairSequence(deps(), repository, BRANCH);
+        expect(outcome.kind).toBe('locked');
+
+        // 표시를 세운 적이 없으므로 공간은 출발 상태 그대로다.
+        expect((await spaceRow()).state).toBe('ok');
+      } finally {
+        await holder.query('ROLLBACK').catch(() => undefined);
+        holder.release();
+      }
+    });
+
     it('재구축이 도는 동안 다른 연결이 `reassigning`을 본다 (DEV-198)', async () => {
       await seedLiveWithCorruptionAt(3);
       const repository = (await repositoryRepo.findRepositoryBySlug(pool, OWNER, NAME))!;

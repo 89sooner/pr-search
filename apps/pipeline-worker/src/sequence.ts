@@ -847,20 +847,31 @@ export async function repairSequence(
   const divergedAtSeq = mismatch.mergeSeq;
 
   /*
-   * ---- 밖에서 보이는 상태 (CR-037, DEV-198). **본 트랜잭션과 별개로 커밋된다.**
+   * ---- 표시의 소유권은 **락이 정한다** (CR-037, DEV-198·202).
    *
-   * 이 표시가 없으면 `bumpEpoch`가 트랜잭션 안에서 `reassigning`을 세우고 같은
-   * 트랜잭션의 `advanceHead`가 즉시 `ok`로 되돌리므로, 긴 재구축이 도는 내내
-   * 조회는 옛 에폭을 **정상이라고** 낸다. 자동 경로가 하는 것과 같다.
+   * `reassigning`은 본 트랜잭션과 별개로 커밋되어야 밖에서 보인다. 그런데 그것을
+   * **락을 잡기 전에** 하면, 락 경쟁에서 진 쪽이 이긴 쪽의 표시를 자기 것으로 알고
+   * `ok`로 되돌린다 — 다른 워커가 한창 재구축하는 공간을 조회가 "정상"으로 읽는다.
    *
-   * 여기서부터 아무것도 하지 않고 끝나는 갈래는 반드시 `restoreRepairState`로
-   * 표시를 되돌린다 — 그러지 않으면 멀쩡한 공간이 영원히 "재채번 중"이 된다.
+   * 그래서 표시는 **락을 잡고 울타리를 통과한 뒤에** 세운다. 그때부터 이 공간의
+   * `reassigning`은 우리 것이고 되돌리는 것도 안전하다. 락을 얻지 못한 갈래는
+   * 애초에 아무것도 표시하지 않았으므로 되돌릴 것이 없다.
    */
   const priorState = space.state;
   const priorError = space.last_error;
-  await sequenceSpaceRepo.markReassigning(deps.pool, repositoryId, baseBranch);
+  /** 표시를 세웠는가. **세운 갈래만** 되돌린다. */
+  let marked = false;
+
+  /**
+   * 우리가 세운 `reassigning`을 원래대로 되돌린다.
+   *
+   * **락을 쥐고 있는 동안에만 부른다.** 락 밖에서 되돌리면 그 사이 다른 워커가 세운
+   * 표시를 지울 수 있다. `state = 'reassigning'` 조건은 그 위의 이중 안전장치다.
+   */
   const restoreRepairState = async (reason: string): Promise<Extract<RepairOutcome, { kind: 'skipped' }>> => {
-    await sequenceSpaceRepo.restoreSequenceState(deps.pool, repositoryId, baseBranch, priorState, priorError);
+    if (marked) {
+      await sequenceSpaceRepo.restoreSequenceState(deps.pool, repositoryId, baseBranch, priorState, priorError);
+    }
     return { kind: 'skipped', reason };
   };
 
@@ -875,8 +886,8 @@ export async function repairSequence(
     await client.query('BEGIN');
     const locked = await trySequenceSpaceLock(client, repositoryId, baseBranch);
     if (!locked) {
+      // 아직 아무것도 표시하지 않았다 — 되돌릴 것이 없고, 남의 표시를 건드리지도 않는다.
       await client.query('ROLLBACK');
-      await sequenceSpaceRepo.restoreSequenceState(deps.pool, repositoryId, baseBranch, priorState, priorError);
       return { kind: 'locked' };
     }
 
@@ -903,6 +914,14 @@ export async function repairSequence(
       await client.query('ROLLBACK');
       return await restoreRepairState('head_moved');
     }
+
+    /*
+     * 여기서부터 이 공간은 우리 것이다(advisory lock 보유). 이제 표시를 세운다 —
+     * **별도 커넥션에서 즉시 커밋**되어야 긴 재구축 동안 밖에서 보인다. 본 트랜잭션은
+     * 아직 `sequence_space` 행을 갱신하지 않았으므로 행 잠금이 겹치지 않는다.
+     */
+    await sequenceSpaceRepo.markReassigning(deps.pool, repositoryId, baseBranch);
+    marked = true;
 
     const oldEpoch = current.seq_epoch;
     const affectedCount = await mergeSequenceRepo.countAbove(

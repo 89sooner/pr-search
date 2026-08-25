@@ -72,6 +72,18 @@ export interface BackfillDeps {
    * 경로로 만들면 재구축의 근거와 실제 색인 내용이 갈라진다.
    */
   readonly snapshotOnly?: boolean;
+  /**
+   * 목록 정렬 키. 기본은 클라이언트 기본값(`updated`)이다 (CR-037, DEV-204).
+   *
+   * **전량 열거에는 `created`가 안전하다.** `updated`로 페이지를 넘기는 동안 어떤
+   * PR이 갱신되면 그 항목이 목록 끝으로 이동하고, 뒤에 있던 항목이 **이미 지나온
+   * 페이지 자리로 당겨져 영영 방문되지 않는다.** 생성 시각은 바뀌지 않으므로
+   * `created`에서는 어떤 항목도 앞으로 당겨지지 않는다 — 스캔 중 새로 만들어진
+   * PR이 끝에 붙을 뿐이고 그것은 우리가 지나갈 자리다.
+   *
+   * 부트스트랩이 이 값을 쓴다. 완결 표시를 찍는 잡이므로 **건너뜀이 곧 영구 누락**이다.
+   */
+  readonly listSort?: 'created' | 'updated';
 }
 
 /** 백필 중 `refresh_interval` 조정 (CR-022, DEV-105). */
@@ -149,6 +161,7 @@ export async function runBackfillJob(
         page = await deps.client.listPullRequestsPage(ref, cursor.page, {
           priority: 'backfill',
           perPage: BACKFILL_PAGE_SIZE,
+          ...(deps.listSort === undefined ? {} : { sort: deps.listSort }),
         });
       } catch (error) {
         const retryAt = rateLimitRetryAt(error);
@@ -260,6 +273,30 @@ export async function projectOne(
       documentVersion,
       indexedAt: (deps.now ?? ((): Date => new Date()))(),
     });
+
+    /*
+     * **부트스트랩은 부분 보강을 정본으로 쓰지 않는다** (CR-037, DEV-203).
+     *
+     * `enrichForBackfill`은 커밋·파일·리뷰 조회가 실패해도 던지지 않고
+     * `enrichment_pending` 문서를 만든다. 그 문서를 스냅숏에 쓰면 두 가지가
+     * 한꺼번에 잘못된다: 스냅숏 업서트는 **같은 `document_version`을 덮으므로**
+     * 이미 완전한 스냅숏을 반쪽으로 되돌릴 수 있고, 그러고도 이 PR이 성공으로
+     * 세어져 저장소가 "부트스트랩 완료"로 찍힌다 — 그 뒤에는 아무도 다시 채우지
+     * 않는다. 실패로 세어 **다음 회차가 같은 PR을 다시 보게** 한다.
+     *
+     * 실시간·백필 경로는 그대로다. 그쪽은 부분 문서라도 색인에 실어 두는 것이
+     * 맞고(`enrichment_pending`이 그 사실을 말한다) 보강 재시도 경로가 따로 있다.
+     */
+    if (deps.snapshotOnly === true && enriched.enrichment_pending) {
+      deps.log({
+        level: 'warn',
+        message: '보강이 불완전해 정본 스냅숏을 남기지 않는다 — 다음 회차가 다시 본다',
+        job_id: jobId,
+        pr_number: summary.number,
+        reason: 'enrichment_pending',
+      });
+      return false;
+    }
 
     /*
      * **정본을 색인보다 먼저 남긴다** (CR-034, DEV-184 / ADR-004). 백필·조정은
