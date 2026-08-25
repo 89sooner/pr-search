@@ -145,7 +145,23 @@ async function stubApi(page: Page, prBody: Record<string, unknown> = {}): Promis
     let status = 200;
     let body: unknown;
     if (url.includes('/api/search')) body = SEARCH_RESULT;
-    else if (url.includes('/api/sequence-neighbors')) body = NEIGHBORS;
+    else if (url.includes('/api/sequence-neighbors')) {
+      /*
+       * **대역이 서버보다 관대하면 그만큼이 사각지대다** (WP-026의 교훈). 서버는
+       * `base_branch` 없이는 공간을 추측하지 않고 400을 낸다 (CR-032, DEV-168).
+       * 대역이 그것을 받아 주면 화면이 공간을 빠뜨려도 초록이 난다.
+       */
+      const branch = new URL(url).searchParams.get('base_branch');
+      if (branch === null || branch === '') {
+        status = 400;
+        body = {
+          error: { code: 'INVALID_PARAMETER', message: 'base_branch가 필요합니다.', detail: { field: 'base_branch' } },
+          correlation_id: 'c',
+        };
+      } else {
+        body = NEIGHBORS;
+      }
+    }
     else if (url.includes('/api/sequence-ranges')) body = RANGE;
     else if (url.includes('/api/sequence-anchors/resolve')) {
       const payload = route.request().postDataJSON() as {
@@ -362,5 +378,52 @@ test.describe('선행·후행 (WP-027 / FR-REL-001, CR-031)', () => {
 
     await expect(page.getByTestId('neighbor-not-merged')).toBeVisible();
     expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toHaveLength(0);
+  });
+});
+
+test.describe('공간 지정과 실패 복구 (CR-032)', () => {
+  test('**요청이 공간을 지정하고 목록이 실제로 선다** (DEV-168)', async ({ page }) => {
+    const calls = await stubApi(page);
+    await page.goto('/pr/acme/payments/1234');
+    await expect(page.getByTestId('pr-detail')).toHaveAttribute('data-screen-state', 'ready');
+
+    await page.getByTestId('toggle-neighbors').click();
+    /*
+     * 대역이 `base_branch` 없는 요청을 400으로 거절하므로, 목록이 보인다는 것은
+     * 화면이 공간을 실제로 실어 보냈다는 뜻이다 — 왕복으로 확인한다.
+     */
+    await expect(page.getByTestId('neighbor-list')).toBeVisible();
+    const asked = calls.find((url) => url.includes('/api/sequence-neighbors'));
+    expect(asked).toContain('base_branch=main');
+  });
+
+  test('**실패한 뒤 실제 브라우저에서 다시 시도할 수 있다** (DEV-170)', async ({ page }) => {
+    let attempts = 0;
+    await page.route('**/api/**', async (route) => {
+      const url = route.request().url();
+      if (!url.includes('/api/sequence-neighbors')) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PR) });
+        return;
+      }
+      attempts += 1;
+      if (attempts === 1) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: { code: 'INTERNAL', message: '일시 오류' } }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(NEIGHBORS) });
+    });
+
+    await page.goto('/pr/acme/payments/1234');
+    await expect(page.getByTestId('pr-detail')).toHaveAttribute('data-screen-state', 'ready');
+    await page.getByTestId('toggle-neighbors').click();
+    await expect(page.getByTestId('neighbors-error')).toBeVisible();
+
+    await page.getByTestId('neighbors-retry').click();
+    await expect(page.getByTestId('neighbor-list')).toBeVisible();
+    expect(attempts).toBe(2);
   });
 });

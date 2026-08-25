@@ -394,30 +394,37 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
     }
 
     try {
-      const userId = (await authenticateSession(request, auth.sessions)).userId;
+      /*
+       * **공간을 요청이 지정한다** (CR-032, DEV-168). 한 커밋이 여러 브랜치의 현재
+       * 체인에 함께 있을 수 있으므로, 서버가 공간을 고르면 사용자가 묻지 않은
+       * 브랜치의 서수를 낼 수 있다. `enter`는 API-SEQ-001·API-SEQ-002가 이미 쓰는
+       * 관문이며 `base_branch` 누락을 `INVALID_PARAMETER`로, 채번된 적 없는 공간을
+       * 404로 답한다 (DEV-137) — 새 오류 코드를 만들지 않는다.
+       */
+      const entered = await enter(request, reply, correlationId, query['repository'], query['base_branch']);
+      if (entered === null) return reply;
+      const { space, scope } = entered;
 
+      /*
+       * 항목 URL이 쓸 `owner/name`. `space.sequenceSpace`를 자르지 않는다 — 브랜치
+       * 이름에 `@`가 들어가면 그 분리가 틀린다. `enter`가 이미 통과시킨 값이므로
+       * 여기서 다시 가르는 것은 문자열 파싱뿐이고 조회는 없다.
+       */
       const slug = parseRepositorySlug(query['repository']);
       if (slug === null) {
         return invalidParameter(reply, correlationId, 'repository', 'repository는 owner/name 형식이어야 합니다.');
       }
-
-      const scope = await auth.scopes.resolve(userId);
-      const lookup = await resolveRepository(deps.pool, slug, scope);
-      if (lookup.kind !== 'ok') {
-        return fail(reply, 404, {
-          error: { code: 'NOT_FOUND', message: lookup.message },
-          correlation_id: correlationId,
-        });
-      }
-
       const repositorySlug = `${slug.owner}/${slug.name}`;
       const outcome = await findNeighbors(
         { pool: deps.pool, es: deps.es, ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }) },
         {
-          repository: lookup.repository,
+          repositoryId: space.repositoryId,
           repositorySlug,
           scope,
           count: clampNeighborCount(query['count']),
+          baseBranch: space.baseBranch,
+          seqEpoch: space.seqEpoch,
+          sequenceState: space.state,
           ...(prNumber === null ? {} : { prNumber }),
           ...(rawSha === '' ? {} : { commitSha: rawSha.toLowerCase() }),
         },

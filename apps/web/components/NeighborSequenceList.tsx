@@ -230,11 +230,26 @@ export function NeighborSection({
     };
   }, []);
 
+  /**
+   * 조회하지 않는 자리. `skip`(화면이 이미 아는 사유)에 **공간 미상**을 더한다.
+   *
+   * 대상 브랜치를 모르면 어느 시퀀스 공간을 물을지 정할 수 없다 (CR-032, DEV-168).
+   * 그때 `base_branch` 없이 물어 서버가 공간을 고르게 하거나 `main`으로 지어내지
+   * 않는다 — 사유를 확인하지 못했다고 말한다.
+   */
+  const unavailable: NeighborSectionProps['skip'] | undefined =
+    skip ?? (baseBranch === null ? { reason: null } : undefined);
+
   const load = useCallback(
     (next: number): void => {
-      if (skip !== undefined) return;
+      if (skip !== undefined || baseBranch === null) return;
       setOutcome({ phase: 'loading' });
-      const query = new URLSearchParams({ repository, count: String(clampNeighborCount(next)) });
+      const query = new URLSearchParams({
+        repository,
+        // 공간을 요청이 지정한다 (CR-032, DEV-168). 화면이 이미 아는 값이다.
+        base_branch: baseBranch,
+        count: String(clampNeighborCount(next)),
+      });
       if (anchor.kind === 'pull_request') query.set('pr_number', String(anchor.prNumber));
       else query.set('commit_sha', anchor.commitSha);
 
@@ -261,7 +276,7 @@ export function NeighborSection({
         }
       })();
     },
-    [repository, anchor, skip],
+    [repository, baseBranch, anchor, skip],
   );
 
   const view = outcome.phase === 'ready' ? outcome.view : null;
@@ -291,16 +306,27 @@ export function NeighborSection({
       </button>
 
       <div id={`${sectionId}-body`} hidden={!expanded} data-testid={`body-${sectionId}`}>
-        {skip !== undefined ? (
+        {unavailable !== undefined ? (
           <NeighborUnavailable
-            reason={skip.reason}
-            {...(skip.offChain === undefined ? {} : { offChain: skip.offChain })}
+            reason={unavailable.reason}
+            {...(unavailable.offChain === undefined ? {} : { offChain: unavailable.offChain })}
           />
         ) : null}
 
         {outcome.phase === 'loading' ? <p data-testid="neighbors-loading">불러오는 중…</p> : null}
+        {/*
+          * 실패에서 **빠져나갈 길을 함께 낸다** (CR-032, DEV-170). 안내만 두면
+          * 접었다 펴도 `phase`가 `idle`이 아니라 다시 부르지 않고, 건수 조절은
+          * 결과가 있을 때만 그려지므로 상세 화면 전체를 새로 여는 것 말고는
+          * 복구 수단이 없다 — 화면이 따를 수 없는 지시를 하지 않는다.
+          */}
         {outcome.phase === 'error' ? (
-          <p data-testid="neighbors-error">선행·후행을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.</p>
+          <>
+            <p data-testid="neighbors-error">선행·후행을 불러오지 못했습니다.</p>
+            <button type="button" data-testid="neighbors-retry" onClick={() => { load(count); }}>
+              다시 시도
+            </button>
+          </>
         ) : null}
         {outcome.phase === 'no_sequence' ? <NeighborUnavailable reason={outcome.reason} /> : null}
 

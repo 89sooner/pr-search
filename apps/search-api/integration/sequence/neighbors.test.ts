@@ -48,9 +48,20 @@ const USER = 'sub-neighbors';
 const PAYMENTS = 5101;
 /** 공간은 에폭 2인데 서수 행은 에폭 1에 남았다 — 이전 에폭 행은 앵커가 아니다. */
 const RISK = 5102;
+/**
+ * 두 시퀀스 공간이 **같은 커밋을 공유하는** 저장소 (CR-032, DEV-168).
+ *
+ * `main`에 머지된 커밋이 릴리스 브랜치의 first-parent 체인에도 있는 것은 정상이며,
+ * 그때 그 커밋은 **공간마다 다른 서수**를 갖는다. 단일 브랜치 픽스처로는 이 상황이
+ * 만들어지지 않아 결함이 CI를 통과했다.
+ */
+const MULTI = 5103;
 const HIDDEN = 5900;
 const ORG = 1;
 const MAIN = 'main';
+const RELEASE = 'release/2026.08';
+/** 채번된 적 없는 브랜치 — 공간이 없으면 404다 (DEV-137). */
+const UNSEQUENCED_BRANCH = 'feature/none';
 
 /**
  * 서수 1~7. **3번은 PR 없는 직접 푸시**다 (CR-031의 핵심 픽스처).
@@ -78,6 +89,22 @@ const OPEN_PR = 701;
 function shaOf(seq: number): string {
   return `${String(seq).padStart(2, '0')}${'e'.repeat(38)}`;
 }
+
+/** `acme/multi`의 행. `main`과 `release/2026.08`이 SHARED_SHA를 공유한다. */
+const SHARED_SHA = `${'b'.repeat(39)}1`;
+const SHARED_PR = 802;
+function multiSha(seq: number): string {
+  return `${String(seq).padStart(2, '0')}${'c'.repeat(38)}`;
+}
+/** 같은 커밋이 `main`에서는 서수 2, `release/2026.08`에서는 서수 11이다. */
+const MULTI_ROWS = [
+  { branch: MAIN, seq: 1, sha: multiSha(1), pr: 801 },
+  { branch: MAIN, seq: 2, sha: SHARED_SHA, pr: SHARED_PR },
+  { branch: MAIN, seq: 3, sha: multiSha(3), pr: 803 },
+  { branch: RELEASE, seq: 10, sha: multiSha(10), pr: 810 },
+  { branch: RELEASE, seq: 11, sha: SHARED_SHA, pr: SHARED_PR },
+  { branch: RELEASE, seq: 12, sha: multiSha(12), pr: 812 },
+] as const;
 const UNKNOWN_SHA = 'f'.repeat(40);
 /** 색인에는 있으나 체인에 없는 커밋 (원본 커밋의 모습). */
 const OFF_CHAIN_SHA = 'a'.repeat(40);
@@ -119,7 +146,12 @@ async function get(
   params: Record<string, string>,
   withSession = true,
 ): Promise<{ status: number; body: NeighborsBody }> {
-  const query = new URLSearchParams({ repository: 'acme/payments', ...params }).toString();
+  // 공간을 요청이 지정한다 (CR-032, DEV-168). 시험은 필요할 때 덮어쓴다.
+  const query = new URLSearchParams({
+    repository: 'acme/payments',
+    base_branch: MAIN,
+    ...params,
+  }).toString();
   const response = await app.inject({
     method: 'GET',
     url: `${SEQUENCE_NEIGHBORS_PATH}?${query}`,
@@ -203,10 +235,11 @@ beforeAll(async () => {
   await pool.query('DELETE FROM repository');
 
   await authRepo.upsertUserOnLogin(pool, { user_id: USER, login: 'kim', github_user_id: 7401 });
-  for (const [id, owner, name, org] of [
-    [PAYMENTS, 'acme', 'payments', ORG],
-    [RISK, 'acme', 'risk', ORG],
-    [HIDDEN, 'other', 'secret', 2],
+  for (const [id, owner, name, org, branches] of [
+    [PAYMENTS, 'acme', 'payments', ORG, [MAIN]],
+    [RISK, 'acme', 'risk', ORG, [MAIN]],
+    [MULTI, 'acme', 'multi', ORG, [MAIN, RELEASE]],
+    [HIDDEN, 'other', 'secret', 2, [MAIN]],
   ] as const) {
     await repositoryRepo.upsertRepository(pool, {
       repository_id: id,
@@ -214,7 +247,7 @@ beforeAll(async () => {
       name,
       org_id: org,
       visibility: 'internal',
-      sequence_branches: [MAIN],
+      sequence_branches: [...branches],
     });
   }
 
@@ -245,6 +278,27 @@ beforeAll(async () => {
   });
   await pool.query('UPDATE sequence_space SET seq_epoch = 2 WHERE repository_id = $1', [RISK]);
 
+  /*
+   * MULTI: 두 공간이 SHARED_SHA를 공유한다. **릴리스 행을 먼저 넣는다** — 공간을
+   * 좁히지 않는 조회는 저장 순서가 먼저 준 행을 앵커로 쓰므로, 이 순서에서
+   * `base_branch=main` 요청이 `main` 답을 내야 결함이 없는 것이다.
+   */
+  await sequenceSpaceRepo.ensureSequenceSpace(pool, MULTI, RELEASE);
+  await sequenceSpaceRepo.ensureSequenceSpace(pool, MULTI, MAIN);
+  for (const row of [...MULTI_ROWS].sort((a, b) => (a.branch === RELEASE ? -1 : 1) - (b.branch === RELEASE ? -1 : 1))) {
+    await mergeSequenceRepo.upsertMergeSequence(pool, {
+      repository_id: MULTI,
+      base_branch: row.branch,
+      seq_epoch: 1,
+      merge_seq: row.seq,
+      commit_sha: row.sha,
+      pull_request_number: row.pr,
+      committed_at: new Date('2026-08-10T00:00:00Z'),
+    });
+  }
+  await sequenceSpaceRepo.advanceHead(pool, MULTI, MAIN, multiSha(3), 3);
+  await sequenceSpaceRepo.advanceHead(pool, MULTI, RELEASE, multiSha(12), 12);
+
   const redisPort: AuthRedis = {
     get: (key) => redis.get(key),
     set: (key, value, mode, seconds) => redis.set(key, value, mode, seconds),
@@ -253,7 +307,7 @@ beforeAll(async () => {
   };
   const source: AccessScopeSource = {
     fetch: async () => ({
-      repositoryIds: [PAYMENTS, RISK],
+      repositoryIds: [PAYMENTS, RISK, MULTI],
       orgIds: [ORG],
       teamIds: [10],
       visibilities: ['public', 'internal'],
@@ -418,7 +472,7 @@ describe('서수가 없을 때 사유를 가른다 (DEV-164)', () => {
   it('머지됐으나 채번 전이면 not_sequenced다 — 같은 문구로 묶지 않는다', async () => {
     const response = await app.inject({
       method: 'GET',
-      url: `${SEQUENCE_NEIGHBORS_PATH}?repository=acme%2Frisk&pr_number=${String(MERGED_UNSEQUENCED_PR)}`,
+      url: `${SEQUENCE_NEIGHBORS_PATH}?repository=acme%2Frisk&base_branch=${MAIN}&pr_number=${String(MERGED_UNSEQUENCED_PR)}`,
       headers: { cookie: `${SESSION_COOKIE_NAME}=${sessionId}` },
     });
     expect(response.statusCode).toBe(409);
@@ -462,7 +516,7 @@ describe('표시값과 접근 통제', () => {
   it('접근 범위 밖 저장소는 404다', async () => {
     const response = await app.inject({
       method: 'GET',
-      url: `${SEQUENCE_NEIGHBORS_PATH}?repository=other%2Fsecret&pr_number=1`,
+      url: `${SEQUENCE_NEIGHBORS_PATH}?repository=other%2Fsecret&base_branch=${MAIN}&pr_number=1`,
       headers: { cookie: `${SESSION_COOKIE_NAME}=${sessionId}` },
     });
     expect(response.statusCode).toBe(404);
@@ -488,5 +542,126 @@ describe('에폭 봉투 (ADR-007)', () => {
     expect(body.epoch_stale).toBe(false);
     expect(body.items).toBeDefined();
     expect(body.sequence_state).toBe('ok');
+  });
+});
+
+describe('공간을 요청이 지정한다 (CR-032, DEV-168)', () => {
+  async function multi(params: Record<string, string>): Promise<{ status: number; body: NeighborsBody }> {
+    const query = new URLSearchParams({ repository: 'acme/multi', ...params }).toString();
+    const response = await app.inject({
+      method: 'GET',
+      url: `${SEQUENCE_NEIGHBORS_PATH}?${query}`,
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${sessionId}` },
+    });
+    return { status: response.statusCode, body: response.json<NeighborsBody>() };
+  }
+
+  it('**같은 PR이 두 공간에 있으면 요청한 공간의 서수를 낸다**', async () => {
+    const main = await multi({ base_branch: MAIN, pr_number: String(SHARED_PR), count: '5' });
+    expect(main.status).toBe(200);
+    expect(main.body.sequence_space).toBe(`acme/multi@${MAIN}`);
+    expect(main.body.anchor?.merge_seq).toBe(2);
+    expect((main.body.items ?? []).map((i) => i.merge_seq)).toEqual([1, 2, 3]);
+
+    const release = await multi({ base_branch: RELEASE, pr_number: String(SHARED_PR), count: '5' });
+    expect(release.status).toBe(200);
+    expect(release.body.sequence_space).toBe(`acme/multi@${RELEASE}`);
+    expect(release.body.anchor?.merge_seq).toBe(11);
+    expect((release.body.items ?? []).map((i) => i.merge_seq)).toEqual([10, 11, 12]);
+  });
+
+  it('**같은 커밋 앵커도 요청한 공간을 따른다** — 앵커 종류가 규칙을 바꾸지 않는다', async () => {
+    const main = await multi({ base_branch: MAIN, commit_sha: SHARED_SHA, count: '5' });
+    expect(main.body.sequence_space).toBe(`acme/multi@${MAIN}`);
+    expect(main.body.anchor?.merge_seq).toBe(2);
+    expect((main.body.items ?? []).map((i) => i.merge_seq)).toEqual([1, 2, 3]);
+
+    const release = await multi({ base_branch: RELEASE, commit_sha: SHARED_SHA, count: '5' });
+    expect(release.body.sequence_space).toBe(`acme/multi@${RELEASE}`);
+    expect(release.body.anchor?.merge_seq).toBe(11);
+    expect((release.body.items ?? []).map((i) => i.merge_seq)).toEqual([10, 11, 12]);
+  });
+
+  it('응답의 공간은 **언제나 요청한 공간이다** — 이웃도 그 공간에서만 나온다', async () => {
+    for (const [branch, seqs] of [
+      [MAIN, [1, 2, 3]],
+      [RELEASE, [10, 11, 12]],
+    ] as const) {
+      const { body } = await multi({ base_branch: branch, pr_number: String(SHARED_PR), count: '5' });
+      expect(body.sequence_space).toBe(`acme/multi@${branch}`);
+      // 다른 공간의 서수가 한 건도 섞이지 않는다.
+      expect((body.items ?? []).map((i) => i.merge_seq)).toEqual([...seqs]);
+    }
+  });
+
+  it('**저장 순서를 뒤집어도 답이 같다** — 데이터베이스 반환 순서에 기대지 않는다', async () => {
+    const readMain = async (): Promise<number | undefined> =>
+      (await multi({ base_branch: MAIN, pr_number: String(SHARED_PR), count: '5' })).body.anchor?.merge_seq;
+    expect(await readMain()).toBe(2);
+
+    // 공유 커밋의 두 행을 지우고 순서를 바꿔 다시 넣는다.
+    await pool.query(
+      'DELETE FROM merge_sequence WHERE repository_id = $1 AND commit_sha = $2',
+      [MULTI, SHARED_SHA],
+    );
+    for (const branch of [MAIN, RELEASE]) {
+      const row = MULTI_ROWS.find((r) => r.branch === branch && r.sha === SHARED_SHA);
+      if (row === undefined) throw new Error('픽스처가 깨졌다');
+      await mergeSequenceRepo.upsertMergeSequence(pool, {
+        repository_id: MULTI,
+        base_branch: row.branch,
+        seq_epoch: 1,
+        merge_seq: row.seq,
+        commit_sha: row.sha,
+        pull_request_number: row.pr,
+        committed_at: new Date('2026-08-10T00:00:00Z'),
+      });
+    }
+    expect(await readMain()).toBe(2);
+  });
+
+  it('다른 공간에만 있는 PR은 그 공간의 답으로 대신하지 않는다', async () => {
+    // 810은 릴리스 공간에만 있다. main으로 물으면 그 행을 빌려 오지 않는다.
+    const { status, body } = await multi({ base_branch: MAIN, pr_number: '810' });
+    expect(status).not.toBe(200);
+    expect(body.items).toBeUndefined();
+  });
+
+  it('base_branch가 없으면 공간을 추측하지 않는다 — 400이다', async () => {
+    const { status, body } = await multi({ pr_number: String(SHARED_PR) });
+    expect(status).toBe(400);
+    expect(body.error?.code).toBe('INVALID_PARAMETER');
+    expect(body.error?.detail?.['field']).toBe('base_branch');
+  });
+
+  it('채번된 적 없는 브랜치는 404다 (DEV-137)', async () => {
+    const { status } = await multi({ base_branch: UNSEQUENCED_BRANCH, pr_number: String(SHARED_PR) });
+    expect(status).toBe(404);
+  });
+});
+
+describe('merged_at은 행의 종류가 정한다 (CR-032, DEV-169)', () => {
+  it('색인된 PR 행은 PR 문서의 머지 시각이다', async () => {
+    const { body } = await get({ pr_number: '604', count: '2' });
+    const indexed = (body.items ?? []).find((item) => item.pr_number === 604);
+    expect(indexed?.indexed).toBe(true);
+    expect(indexed?.merged_at).toBe('2026-08-12T00:00:00Z');
+  });
+
+  it('**색인 안 된 PR 행은 null이다 — 커밋 시각을 머지 시각으로 싣지 않는다**', async () => {
+    const { body } = await get({ pr_number: '604', count: '2' });
+    const unindexed = (body.items ?? []).find((item) => item.pr_number === UNINDEXED_PR);
+    expect(unindexed?.indexed).toBe(false);
+    expect(unindexed?.kind).toBe('pull_request');
+    // 정본의 committed_at(서수 5 = 2026-08-05)이 새어 나오면 안 된다.
+    expect(unindexed?.merged_at).toBeNull();
+  });
+
+  it('직접 푸시 커밋 행은 커밋 시각이다 — 그 행에는 PR이 없다', async () => {
+    const { body } = await get({ pr_number: '604', count: '2' });
+    const direct = (body.items ?? []).find((item) => item.merge_seq === 3);
+    expect(direct?.kind).toBe('commit');
+    expect(direct?.pr_number).toBeNull();
+    expect(direct?.merged_at).toBe('2026-08-03T00:00:00.000Z');
   });
 });

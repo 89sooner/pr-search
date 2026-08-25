@@ -726,3 +726,89 @@ describe('되돌아가기 (CR-019 DEV-078)', () => {
     expect(screen.getByTestId('back-link')).toHaveAttribute('href', '/search');
   });
 });
+
+describe('공간을 요청이 지정한다 · 실패에서 빠져나간다 (CR-032)', () => {
+  it('**요청에 문서의 base_branch를 싣는다** (DEV-168)', async () => {
+    const calls = stubWithNeighbors(PR);
+    view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbor-list')).toBeInTheDocument();
+    });
+    const asked = calls.find((url) => url.includes('/api/sequence-neighbors'));
+    expect(asked).toBeDefined();
+    // 서버가 공간을 고르게 두지 않는다 — 화면이 아는 값을 보낸다.
+    expect(asked).toContain('base_branch=main');
+  });
+
+  it('**대상 브랜치를 모르면 조회하지 않는다** — main으로 지어내지 않는다', async () => {
+    const calls = stubWithNeighbors({ ...PR, base_branch: null });
+    view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    expect(screen.getByTestId('neighbor-unknown-reason')).toBeInTheDocument();
+    expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toEqual([]);
+  });
+
+  it('**실패한 뒤 다시 시도할 수 있다** (DEV-170)', async () => {
+    const calls: string[] = [];
+    let neighborAttempts = 0;
+    vi.stubGlobal('fetch', (url: string) => {
+      calls.push(url);
+      if (!url.includes('/api/sequence-neighbors')) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(PR) } as Response);
+      }
+      neighborAttempts += 1;
+      if (neighborAttempts === 1) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ error: { code: 'INTERNAL' } }),
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(NEIGHBORS) } as Response);
+    });
+
+    view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    const documentCalls = calls.filter((url) => !url.includes('/api/sequence-neighbors')).length;
+
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbors-error')).toBeInTheDocument();
+    });
+
+    // 안내만 있고 수단이 없으면 사용자는 상세 화면을 통째로 다시 여는 수밖에 없다.
+    await userEvent.click(screen.getByTestId('neighbors-retry'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbor-list')).toBeInTheDocument();
+    });
+    expect(neighborAttempts).toBe(2);
+    // 상세 문서는 다시 부르지 않는다 — 다시 부른 것은 이웃뿐이다.
+    expect(calls.filter((url) => !url.includes('/api/sequence-neighbors'))).toHaveLength(documentCalls);
+  });
+
+  it('접었다 펴는 것이 유일한 복구 수단이 아니다 — 그 경로로는 낫지 않는다', async () => {
+    const calls = stubWithNeighbors(PR, { status: 500, body: { error: { code: 'INTERNAL' } } });
+    view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbors-error')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    // 재조회가 일어나지 않으므로 실패가 그대로다 — 그래서 버튼이 필요하다.
+    expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toHaveLength(1);
+    expect(screen.getByTestId('neighbors-retry')).toBeInTheDocument();
+  });
+});

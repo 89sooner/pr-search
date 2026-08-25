@@ -630,3 +630,30 @@ describe('시퀀스 위치의 앞뒤 (WP-027 / CR-031, DEV-163)', () => {
     expect(found, describeViolations(found)).toEqual([]);
   });
 });
+
+describe('W-003도 공간을 지정한다 (CR-032, DEV-168)', () => {
+  it('**커밋 문서의 base_branch를 싣는다**', async () => {
+    const calls = stubWithNeighbors({ ...COMMIT, merge_seq: 4, seq_epoch: 3 });
+    view();
+    await waitFor(() => {
+      expect(screen.getByTestId('section-commit-neighbors')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId('toggle-commit-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbor-list')).toBeInTheDocument();
+    });
+    const neighborCall = calls.find((url) => url.includes('/api/sequence-neighbors'));
+    expect(neighborCall).toContain('base_branch=main');
+  });
+
+  it('**대상 브랜치를 모르면 조회하지 않는다** — 서버가 고르게 두지 않는다', async () => {
+    const calls = stubWithNeighbors({ ...COMMIT, merge_seq: 4, seq_epoch: 3, base_branch: null });
+    view();
+    await waitFor(() => {
+      expect(screen.getByTestId('section-commit-neighbors')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId('toggle-commit-neighbors'));
+    expect(screen.getByTestId('neighbor-unknown-reason')).toBeInTheDocument();
+    expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toEqual([]);
+  });
+});
