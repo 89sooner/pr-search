@@ -14,6 +14,13 @@
  * 건너뛴 채 보여 사용자가 **누락으로 읽는다**. 그 항목의 제목·작성자는 커밋 메타데이터
  * 보강(WP-067) 전까지 `null`이고 **소속 PR의 값으로 대신 채우지 않는다** (DEV-090).
  *
+ * ## 공간은 요청이 지정한다 (CR-032, DEV-168)
+ *
+ * 서수는 `(저장소, 대상 브랜치)` 안에서만 의미가 있다 (ADR-007). 한 커밋이 여러
+ * 브랜치의 현재 체인에 함께 있을 수 있으므로, 공간을 서버가 고르면 사용자가 묻지
+ * 않은 브랜치의 서수를 낼 수 있다. `base_branch`는 필수이며 응답의 공간은 언제나
+ * 그 값이다.
+ *
  * ## 시퀀스가 없을 때 사유를 가른다
  *
  * `NO_SEQUENCE` 한 코드 아래 `not_merged`와 `not_sequenced`다 (DEV-164). C-014가
@@ -21,8 +28,8 @@
  * (DEV-077) 서버가 그 둘을 가려 준다.
  */
 
-import { mergeSequenceRepo, sequenceSpaceRepo } from '@prs/db';
-import type { MergeSequenceRow, Pool, RepositoryRow, SequenceSpaceState } from '@prs/db';
+import { mergeSequenceRepo } from '@prs/db';
+import type { MergeSequenceRow, Pool, SequenceSpaceState } from '@prs/db';
 import { applyMandatoryScopeFilter, search, type AccessScope } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
 
@@ -104,6 +111,15 @@ function urlOf(repository: string, row: MergeSequenceRow): string {
  *
  * 색인에 문서가 없으면 **행을 빼지 않고** 서수·SHA만 확정으로 그린다. 직접 푸시
  * 커밋은 PR 문서가 애초에 없으므로 언제나 이 경로다.
+ *
+ * ## `merged_at`은 행의 종류가 정한다 (CR-032, DEV-169)
+ *
+ * 커밋 시각과 PR 머지 시각은 **다른 값이다**. 직접 푸시 커밋 행에는 PR이 없으므로
+ * 커밋 시각이 그 행의 시각으로서 참이고 계약도 그렇게 적는다. 그러나 **PR 행의
+ * 머지 시각은 PR 문서만 안다** — 색인이 아직 그 문서를 싣지 못했다면 서버가 아는
+ * 것은 "모른다"이지 병합 커밋의 `committed_at`이 아니다. 그것을 대신 실으면
+ * 화면의 "머지 시각" 칸이 **확인되지 않은 값을 확정처럼** 그린다. `null`을 내고
+ * 화면이 `—`로 비운다 — 세지 않은 것을 0으로 채우지 않는 DEV-133과 같은 규율이다.
  */
 function toItem(
   repository: string,
@@ -120,21 +136,11 @@ function toItem(
     pr_number: prNumber,
     title: source?.title ?? null,
     author: source?.author ?? null,
-    merged_at: source?.merged_at ?? row.committed_at.toISOString(),
+    merged_at: prNumber === null ? row.committed_at.toISOString() : (source?.merged_at ?? null),
     is_anchor: Number(row.merge_seq) === anchorSeq,
     indexed: source !== undefined,
     url: urlOf(repository, row),
   };
-}
-
-/** 이 공간의 현재 에폭과 상태. 없으면 채번된 적 없는 브랜치다. */
-async function currentSpace(
-  deps: NeighborsDeps,
-  repositoryId: number,
-  baseBranch: string,
-): Promise<{ epoch: number; state: SequenceSpaceState } | null> {
-  const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repositoryId, baseBranch);
-  return space === undefined ? null : { epoch: space.seq_epoch, state: space.state };
 }
 
 /**
@@ -146,7 +152,7 @@ async function currentSpace(
  */
 async function reasonForPullRequest(
   deps: NeighborsDeps,
-  repository: RepositoryRow,
+  repositoryId: number,
   scope: AccessScope,
   prNumber: number,
 ): Promise<NeighborsOutcome> {
@@ -154,7 +160,7 @@ async function reasonForPullRequest(
     {
       bool: {
         filter: [
-          { term: { repository_id: repository.repository_id } },
+          { term: { repository_id: repositoryId } },
           { term: { pr_number: prNumber } },
         ],
       },
@@ -163,7 +169,7 @@ async function reasonForPullRequest(
   );
   const response = await search<PullRequestSource>(deps.es, 'prs-pull-requests', scoped, {
     size: 1,
-    routing: String(repository.repository_id),
+    routing: String(repositoryId),
     _source: ['state'],
     ...(deps.timeoutMs === undefined ? {} : { timeout: `${String(deps.timeoutMs)}ms` }),
   });
@@ -184,7 +190,7 @@ async function reasonForPullRequest(
 /** 서수가 없는 커밋의 사유. 실재만 확인한다 — 채번 전인지 체인 밖인지는 역할이 정한다. */
 async function reasonForCommit(
   deps: NeighborsDeps,
-  repository: RepositoryRow,
+  repositoryId: number,
   scope: AccessScope,
   commitSha: string,
 ): Promise<NeighborsOutcome> {
@@ -192,7 +198,7 @@ async function reasonForCommit(
     {
       bool: {
         filter: [
-          { term: { repository_id: repository.repository_id } },
+          { term: { repository_id: repositoryId } },
           { term: { commit_sha: commitSha } },
         ],
       },
@@ -201,7 +207,7 @@ async function reasonForCommit(
   );
   const response = await search<{ commit_sha?: string }>(deps.es, 'prs-commits', scoped, {
     size: 1,
-    routing: String(repository.repository_id),
+    routing: String(repositoryId),
     _source: ['commit_sha'],
     ...(deps.timeoutMs === undefined ? {} : { timeout: `${String(deps.timeoutMs)}ms` }),
   });
@@ -217,10 +223,19 @@ async function reasonForCommit(
 }
 
 export interface NeighborsRequest {
-  readonly repository: RepositoryRow;
+  readonly repositoryId: number;
   readonly repositorySlug: string;
   readonly scope: AccessScope;
   readonly count: number;
+  /**
+   * 조회할 시퀀스 공간. **호출자가 정한다** (CR-032, DEV-168).
+   *
+   * 라우트가 `resolveSpace`로 이미 해석한 값이며, 서버는 여기서 다른 브랜치로
+   * 옮겨 가지 않는다 — 응답의 `sequence_space`는 언제나 요청한 이 브랜치다.
+   */
+  readonly baseBranch: string;
+  readonly seqEpoch: number;
+  readonly sequenceState: SequenceSpaceState;
   readonly prNumber?: number;
   readonly commitSha?: string;
 }
@@ -228,47 +243,60 @@ export interface NeighborsRequest {
 /**
  * 앵커를 찾고 그 앞뒤를 낸다.
  *
- * 앵커 해석은 **저장소의 모든 시퀀스 브랜치**를 본다 — 요청이 공간을 지정하지
- * 않으므로(PR·커밋만 준다) 그 개체가 있는 공간을 서버가 찾는다. 현재 에폭 행만
- * 신뢰한다 (DEV-149·DEV-160과 같은 규칙).
+ * ## 앵커는 **요청한 공간 안에서만** 찾는다 (CR-032, DEV-168)
+ *
+ * 서수는 `(저장소, 대상 브랜치)` 공간 안에서만 의미가 있다 (ADR-007). 그런데 한
+ * 커밋이 `main`과 `release/*`의 **현재 first-parent 체인에 함께 있는 것은 정상이며**
+ * (`merge_sequence`의 유일 색인이 공간별로 걸려 있다), 저장소 전체를 훑어 먼저 온
+ * 행을 앵커로 쓰면 어느 공간의 서수를 낼지 **데이터베이스의 반환 순서가 정한다**.
+ * 정렬을 더해도 답이 결정적으로 바뀔 뿐 여전히 사용자가 묻지 않은 브랜치다.
+ *
+ * 그래서 공간을 요청이 지정한다. W-002는 PR 문서의 `base_branch`를, W-003은 커밋
+ * 문서의 `base_branch`를 이미 갖고 있으므로 새로 물을 것이 없다. 그 공간에 앵커가
+ * 없으면 **다른 브랜치의 행으로 대신 답하지 않고** 서수 없음으로 답한다.
+ *
+ * 에폭은 라우트가 해석한 현재 에폭이다. 이전 에폭 행은 앵커가 되지 않는다 —
+ * 그것으로 이웃을 고르면 **다른 커밋들이 이웃으로 나온다** (DEV-149·DEV-160).
  */
 export async function findNeighbors(
   deps: NeighborsDeps,
   request: NeighborsRequest,
 ): Promise<NeighborsOutcome> {
-  const { repository, scope, count } = request;
-  const rows =
-    request.prNumber !== undefined
-      ? await mergeSequenceRepo.findByPullRequest(deps.pool, repository.repository_id, request.prNumber)
-      : await mergeSequenceRepo.findByCommitSha(deps.pool, repository.repository_id, request.commitSha ?? '');
-
+  const { repositoryId, scope, count, baseBranch, seqEpoch } = request;
   /*
-   * 현재 에폭 행만 앵커가 된다. 재채번 직후에는 같은 개체의 행이 두 에폭에 있고,
-   * 이전 에폭 행으로 이웃을 고르면 **다른 커밋들이 이웃으로 나온다** (DEV-160).
+   * 공간 안의 앵커 해석은 API-SEQ-002가 쓰는 함수를 그대로 쓴다 (WP-023). 두
+   * 경로가 같은 질의를 각자 갖고 있으면 한쪽만 고쳐지는 날이 온다.
    */
-  let anchorRow: MergeSequenceRow | undefined;
-  let anchorState: SequenceSpaceState = 'unknown';
-  for (const row of rows) {
-    const space = await currentSpace(deps, repository.repository_id, row.base_branch);
-    if (space !== null && space.epoch === row.seq_epoch) {
-      anchorRow = row;
-      anchorState = space.state;
-      break;
-    }
-  }
+  const anchor =
+    request.prNumber !== undefined
+      ? await mergeSequenceRepo.findPointByPullRequest(
+          deps.pool,
+          repositoryId,
+          baseBranch,
+          seqEpoch,
+          request.prNumber,
+        )
+      : await mergeSequenceRepo.findPointByCommit(
+          deps.pool,
+          repositoryId,
+          baseBranch,
+          seqEpoch,
+          request.commitSha ?? '',
+        );
 
-  if (anchorRow === undefined) {
+  if (anchor === null) {
     return request.prNumber !== undefined
-      ? await reasonForPullRequest(deps, repository, scope, request.prNumber)
-      : await reasonForCommit(deps, repository, scope, request.commitSha ?? '');
+      ? await reasonForPullRequest(deps, repositoryId, scope, request.prNumber)
+      : await reasonForCommit(deps, repositoryId, scope, request.commitSha ?? '');
   }
 
-  const anchorSeq = Number(anchorRow.merge_seq);
+  const anchorSeq = anchor.mergeSeq;
+  // 앵커를 찾은 공간이 곧 요청한 공간이다 — 이웃도 같은 공간에서만 고른다.
   const neighbors = await mergeSequenceRepo.findNeighbors(
     deps.pool,
-    repository.repository_id,
-    anchorRow.base_branch,
-    anchorRow.seq_epoch,
+    repositoryId,
+    baseBranch,
+    seqEpoch,
     anchorSeq,
     count,
   );
@@ -285,7 +313,7 @@ export async function findNeighbors(
       {
         bool: {
           filter: [
-            { term: { repository_id: repository.repository_id } },
+            { term: { repository_id: repositoryId } },
             { terms: { pr_number: prNumbers } },
           ],
         },
@@ -294,7 +322,7 @@ export async function findNeighbors(
     );
     const response = await search<PullRequestSource>(deps.es, 'prs-pull-requests', scoped, {
       size: prNumbers.length,
-      routing: String(repository.repository_id),
+      routing: String(repositoryId),
       _source: ['pr_number', 'title', 'author', 'merged_at'],
       ...(deps.timeoutMs === undefined ? {} : { timeout: `${String(deps.timeoutMs)}ms` }),
     });
@@ -309,14 +337,19 @@ export async function findNeighbors(
 
   return {
     kind: 'ok',
-    baseBranch: anchorRow.base_branch,
-    seqEpoch: anchorRow.seq_epoch,
-    sequenceState: anchorState,
+    /*
+     * **요청한 공간을 그대로 되돌린다** (CR-032, DEV-168). 저장 행의 값을 쓰면
+     * 불변식이 "우연히 같다"에 기대게 된다 — 응답의 공간은 구조적으로 요청과
+     * 같아야 한다.
+     */
+    baseBranch,
+    seqEpoch,
+    sequenceState: request.sequenceState,
     anchor: {
       merge_seq: anchorSeq,
-      kind: anchorRow.pull_request_number === null ? 'commit' : 'pull_request',
-      pr_number: anchorRow.pull_request_number,
-      commit_sha: anchorRow.commit_sha,
+      kind: anchor.pullRequestNumber === null ? 'commit' : 'pull_request',
+      pr_number: anchor.pullRequestNumber,
+      commit_sha: anchor.commitSha,
     },
     items: neighbors.map((row) => toItem(request.repositorySlug, row, anchorSeq, sources)),
     // 한쪽을 `count`만큼 채우지 못했다 = 그 끝이 공간의 경계다 (AC-4).
