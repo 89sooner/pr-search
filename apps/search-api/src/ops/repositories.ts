@@ -56,7 +56,8 @@ export interface RegistryDeps {
 }
 
 export interface RegistryLogEntry {
-  readonly level: 'info' | 'error';
+  // `warn`은 팀 접근 범위 동기화가 락 대기로 회차를 미룰 때 쓴다 (CR-037, DEV-191).
+  readonly level: 'info' | 'warn' | 'error';
   readonly message: string;
   readonly correlation_id?: string;
   readonly repository_id?: number;
