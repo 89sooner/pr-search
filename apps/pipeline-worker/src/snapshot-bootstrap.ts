@@ -1,5 +1,5 @@
 /**
- * 기존 데이터의 PR 정본 스냅숏 부트스트랩 (JOB-ING-009 / CR-037, DEV-194·195).
+ * 기존 데이터의 PR 정본 스냅숏 부트스트랩 (JOB-ING-010 / CR-037, DEV-194·195).
  *
  * ## 무엇을 메우나
  *
@@ -44,7 +44,7 @@ import {
 } from './backfill.js';
 
 /** 잡 카탈로그 이름. `job.type`은 `snapshot_bootstrap`이다. */
-export const SNAPSHOT_BOOTSTRAP_JOB = 'JOB-ING-009' as const;
+export const SNAPSHOT_BOOTSTRAP_JOB = 'JOB-ING-010' as const;
 export const SNAPSHOT_BOOTSTRAP_TYPE = 'snapshot_bootstrap' as const;
 
 /** 한 주기에 큐에 넣는 저장소 수. 무한정 밀어 넣지 않는다. */

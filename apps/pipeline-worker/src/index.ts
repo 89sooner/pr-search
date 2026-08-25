@@ -436,7 +436,7 @@ let releaseSweeper: ReleaseSweeper | undefined;
  * 세운다 — 배포 문서에 그렇게 적었다.
  */
 let reconcileSweeper: ReconcileSweeper | undefined;
-/** JOB-ING-009 러너. 예약과 같은 역할에서 함께 선다 (CR-037, DEV-194). */
+/** JOB-ING-010 러너. 예약과 같은 역할에서 함께 선다 (CR-037, DEV-194). */
 let snapshotBootstrapRunner: BackfillRunner | undefined;
 
 if (roles.includes('reconcile')) {
@@ -498,7 +498,7 @@ if (roles.includes('reconcile')) {
       );
     },
     /*
-     * 정본 스냅숏 부트스트랩 예약 (JOB-ING-009 / CR-037, DEV-194). 마이그레이션
+     * 정본 스냅숏 부트스트랩 예약 (JOB-ING-010 / CR-037, DEV-194). 마이그레이션
      * 010이 남긴 빈 표를 채우는 유일한 경로이며, 팀 접근 범위와 같은 이유로
      * 이미 저장소를 도는 정기 정비에 얹는다.
      */
@@ -528,7 +528,7 @@ if (roles.includes('reconcile')) {
       if (owner === undefined || name === undefined) return undefined;
       return repositoryRepo.findRepositoryBySlug(pool, owner, name);
     },
-    log: (entry) => { reconcileLog({ job: 'JOB-ING-009', ...entry }); },
+    log: (entry) => { reconcileLog({ job: 'JOB-ING-010', ...entry }); },
   });
 }
 

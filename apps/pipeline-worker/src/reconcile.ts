@@ -78,7 +78,7 @@ export interface ReconcileDeps {
    */
   readonly syncTeams?: (repository: RepositoryRow) => Promise<void>;
   /**
-   * 정본 스냅숏 부트스트랩을 큐에 넣는다 (JOB-ING-009 / CR-037, DEV-194).
+   * 정본 스냅숏 부트스트랩을 큐에 넣는다 (JOB-ING-010 / CR-037, DEV-194).
    *
    * **팀 접근 범위와 같은 이유로 여기에 있다** — 마이그레이션 010은 빈 표를
    * 남기고 그것을 채우는 경로가 없었다. 이미 저장소를 한 바퀴 도는 정기 정비에

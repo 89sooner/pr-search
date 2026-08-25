@@ -15,7 +15,7 @@
 -- 넣으면 되돌릴 수도 재개할 수도 없는 배포 단계가 된다.
 --
 -- 그래서 여기서는 **표시할 자리와 잡 유형만** 만들고, 실제 채우기는 재개 가능한
--- 잡(JOB-ING-009)이 한다.
+-- 잡(JOB-ING-010)이 한다.
 --
 -- ## 기존 마이그레이션은 고치지 않는다
 --
@@ -33,7 +33,7 @@ CREATE INDEX repository_snapshot_bootstrap_idx
   ON repository (repository_id)
   WHERE snapshot_bootstrapped_at IS NULL;
 
--- JOB-ING-009 `snapshot_bootstrap`. 재개 가능한 일회성 잡이다.
+-- JOB-ING-010 `snapshot_bootstrap`. 재개 가능한 일회성 잡이다.
 ALTER TABLE job DROP CONSTRAINT job_type_chk;
 
 ALTER TABLE job ADD CONSTRAINT job_type_chk CHECK (type IN (

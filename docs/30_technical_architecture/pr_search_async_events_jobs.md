@@ -35,12 +35,23 @@
 
 **JOB-ING-004의 실행은 이벤트가 아니라 `job` 행이 지시한다 (CR-022, DEV-101).** API가 행을 만들고 배치 워커가 폴링해 **원자적으로 claim한다** — 세는 것과 잡는 것이 한 트랜잭션에 있어야 동시 실행 상한(AC-6)이 성립한다. 이벤트를 함께 쓰면 진실이 둘이 되어 넷이 동시에 "둘뿐이네"를 읽는다. `prs:batch` 스트림은 진행률(`EVT-JOB-001`)에 쓴다.
 
+**JOB-ING-010은 백필과 같은 실행 틀을 쓴다 (CR-037, DEV-194).** 마이그레이션 010이 세운 `pull_request_snapshot`은 **빈 표로 시작하고**, 업그레이드 이전에 이미 색인된 PR은 그것을 채울 경로가 없었다 — 투영은 바뀐 PR만 쓰고 조정 스캔은 이미 색인된 것을 건너뛴다. 그 PR들은 색인에만 존재하며 **ADR-004("Elasticsearch는 PostgreSQL만으로 전량 재구축 가능")가 그 데이터에 대해 성립하지 않는다.**
+
+이 잡은 GHE의 PR 목록을 페이지네이션하며 **`pull_request_snapshot`만** 채운다 — 색인은 이미 그 문서를 갖고 있으므로 다시 쓰지 않는다. 문서를 만드는 경로는 백필과 **완전히 같다**(`buildUpsertRequests`): 다른 경로로 만들면 재구축의 근거와 실제 색인 내용이 갈라진다. 커서·재개·rate limit 처리도 백필의 것을 그대로 쓴다 — **두 번째 실행 틀도, 두 번째 GHE 클라이언트도 만들지 않는다.**
+
+`document_version`은 **GitHub 엔티티의 `updated_at`**이다(DEV-099와 같은 규칙). 지금 시각을 쓰면 늦게 끝난 부트스트랩이 그 사이 도착한 웹훅 상태를 덮는다. 같은 PR을 다시 처리해도 조건부 업서트라 결과가 같다.
+
+**부분 완료를 완료로 적지 않는다.** `repository.snapshot_bootstrapped_at`은 잡이 실패 0건으로 끝났을 때만 찍힌다 — 그 열이 JOB-ING-008의 `snapshot_bootstrap_pending` 판정 근거이므로, 거짓으로 찍으면 감시가 그 위에서 거짓을 말한다.
+
+**마이그레이션이 이 일을 하지 않는다.** 스냅숏 내용은 GHE만 답할 수 있고, 마이그레이션 안에서 네트워크를 부르면 되돌릴 수도 재개할 수도 없는 배포 단계가 된다. 012는 스키마만 넓힌다.
+
 **백필은 웹훅이 아니라 델리버리 ID가 없다 (CR-022, DEV-100).** `backfill:{repository_id}:{pr_number}`를 만들어 쓴다. **결정론적**이라야 재개·재시도에서 같은 PR이 같은 키를 갖고 실패 대기열(`(delivery_id, stage)` 유니크)에 중복이 쌓이지 않으며, **접두**가 있어야 운영자가 UUID 사이에서 출처를 안다. `job_id`는 넣지 않는다 — 넣으면 잡을 다시 실행할 때 같은 PR이 다른 키를 갖는다.
 | JOB-ING-005 | 조정 스캔 | 스케줄 (기본 1시간) / 수동 | **`reconcile` 역할** (CR-034, DEV-179) | 3회 | 30분 | EVT-JOB-001 · `sequence.requested`(head 복구, DEV-180) | FR-ING-011 |
 | JOB-ING-006 | 재색인 | 수동 (API-ADM-004) | batch | 없음 (실패 시 별칭 미전환) | 없음 | EVT-JOB-001 | FR-ING-008 |
 | JOB-ING-007 | 아웃박스 재적재 | 스케줄 (5분) | batch | 3회 | 5분 | - | ADR-002 follow-up |
 | JOB-ING-008 | PostgreSQL↔ES 정합성 감시 | 스케줄 (6시간) | **`project` 역할** | 3회 | 30분 | EVT-JOB-001 | ADR-004 follow-up |
 | JOB-ING-009 | 실패 대기열 재처리 | 수동 (API-ADM-003) | ops (WP-009) → batch (WP-019 이후) | 이벤트별 누적 | 10분 | EVT-JOB-001 (batch 이후) | FR-ING-007 |
+| JOB-ING-010 | 정본 스냅숏 부트스트랩 | 조정 스캔이 예약 (JOB-ING-005) / 수동 | **`reconcile` 역할** (CR-037, DEV-194) | 항목별 3회, 잡 전체는 재개 | 없음 (중단·재개) | EVT-JOB-001 | ADR-004 follow-up |
 | EVT-REL-001 | `release.refresh_requested` | ingest-gateway, sequence(재채번 후) | release | `prs:release` | `{ repository_id, correlation_id }` — **태그 이름·SHA를 싣지 않는다**: 정본은 미러의 refs/tags 스냅숏이고(DEV-143), 이벤트는 "이 저장소의 태그가 바뀌었으니 다시 봐라"라는 신호일 뿐이다. payload를 신뢰하면 이벤트 순서 역전이 스냅숏을 되돌린다 | 파티션 `repository_id`, 저장소당 직렬 |
 | JOB-SEQ-001 | 시퀀스 증분 채번 | `push` 웹훅 → 게이트웨이가 `prs:sequence`에 발행 (CR-025, DEV-116) / 백필 완료 | sequence | 락 실패는 `defer`, 그 밖은 5회 지수 백오프 | 10분 | EVT-SEQ-001 | FR-SEQ-001 |
 | JOB-SEQ-002 | 시퀀스 재채번 | 재작성 감지(자동) / 수동 (API-ADM-007 → `sequence_reassign` 잡) | `sequence` 역할 — 자동은 버스 소비자, **수동은 `startSequenceRepairRunner`가 잡을 claim한다** (CR-034, DEV-178) | 없음 (실패 시 `stale`) | 60분 | EVT-SEQ-002, EVT-JOB-001 | FR-SEQ-005, FR-ADMIN-003 AC-4 |
@@ -211,7 +222,8 @@ WP-020이 커밋 **그래프**를 읽는 계층을 세웠지만, 그 결과를 `
 | --- | --- | --- | --- |
 | JOB-ING-005 조정 스캔 | 1시간 | 매시 정각 + 저장소별 분산 | 저장소를 시간 단위로 분산해 API 부하 평탄화 |
 | JOB-ING-007 아웃박스 재적재 | 5분 | - | `queued_at`이 10분 이상 지나고 `processed_at`이 없는 행 |
-| JOB-ING-008 정합성 감시 | 6시간 | - | PostgreSQL↔ES 문서 수·표본 대조. 표본 1000건 (CR-033, DEV-174). **ES에만 있는 잉여 문서는 자동 삭제하지 않는다** — 불일치로 보고·경보만 한다 |
+| JOB-ING-008 정합성 감시 | 6시간 | - | PostgreSQL↔ES 문서 수·표본 대조. 표본 1000건 (CR-033, DEV-174). **ES에만 있는 잉여 문서는 자동 삭제하지 않는다** — 불일치로 보고·경보만 한다. 지문에는 **접근 통제 필드**(`org_id`·`visibility`·`allowed_team_ids`·`repository_archived`)가 포함되며 그 기대값은 `repository` 표에서 합성한다 (CR-037, DEV-193). 부트스트랩 전 저장소는 `snapshot_bootstrap_pending`으로 구분해 보고한다 (DEV-195) |
+| JOB-ING-010 정본 스냅숏 부트스트랩 | 조정 스캔 주기(1시간)에 편승 | - | 스케줄 잡이 아니다. 조정 스캔이 `snapshot_bootstrapped_at IS NULL`인 저장소를 **한 주기에 최대 5개씩** 큐에 넣는다 — 첫 배포에서 GHE 한도를 통째로 태우지 않기 위해서다 (CR-037, DEV-194) |
 | JOB-SEQ-003 정합성 점검 (표본) | 1일 | 04:00 KST | 시퀀스 공간별 최근 1000개 대조. **그래프를 읽지 못하면 공간 상태를 바꾸지 않고 실패로 끝낸다** (CR-033, DEV-171) |
 | JOB-MIR-001 미러 동기화 (보정) | 6시간 | - | push 이벤트 누락 대비 |
 | JOB-MIR-002 커밋 메타데이터 재보강 | 수시 | - | 스케줄 잡이 아니다. `EVT-ING-003`으로 상시 구동되며, 스케줄 항목에 적는 것은 **미보강 잔여분 스윕**뿐이다 (일 1회, 05:00 KST) |

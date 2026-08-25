@@ -20,7 +20,7 @@ export type JobType =
   | 'sequence_integrity'
   | 'link_rebuild'
   | 'export'
-  /** 기존 데이터의 정본 스냅숏 부트스트랩 (JOB-ING-009). 마이그레이션 012 (CR-037, DEV-194). */
+  /** 기존 데이터의 정본 스냅숏 부트스트랩 (JOB-ING-010). 마이그레이션 012 (CR-037, DEV-194). */
   | 'snapshot_bootstrap';
 
 export type JobState = 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';

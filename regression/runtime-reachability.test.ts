@@ -72,7 +72,7 @@ const CAPABILITIES = [
     manifest: 'deploy/k8s/pipeline-worker-reconcile.yaml',
   },
   {
-    id: 'JOB-ING-009',
+    id: 'JOB-ING-010',
     what: '정본 스냅숏 부트스트랩',
     process: 'pipeline-worker',
     role: 'reconcile',
@@ -229,7 +229,7 @@ describe('경로가 실재하는지', () => {
    * 예약만 하고 집는 러너가 없으면 잡 행이 영구 `queued`로 남고 `job_active_uk`가
    * 이후 요청을 전부 막는다 — DEV-178·DEV-180이 정확히 그 모양의 결함이었다.
    */
-  it('JOB-ING-009 — 예약과 러너가 같은 역할에 함께 있다', () => {
+  it('JOB-ING-010 — 예약과 러너가 같은 역할에 함께 있다', () => {
     expect(WORKER_INDEX).toContain('enqueueSnapshotBootstrap: () => enqueueSnapshotBootstrap(pool)');
     expect(WORKER_INDEX).toContain('snapshotBootstrapRunner = startSnapshotBootstrapRunner(');
   });
