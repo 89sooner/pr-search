@@ -211,8 +211,8 @@ WP-020이 커밋 **그래프**를 읽는 계층을 세웠지만, 그 결과를 `
 | --- | --- | --- | --- |
 | JOB-ING-005 조정 스캔 | 1시간 | 매시 정각 + 저장소별 분산 | 저장소를 시간 단위로 분산해 API 부하 평탄화 |
 | JOB-ING-007 아웃박스 재적재 | 5분 | - | `queued_at`이 10분 이상 지나고 `processed_at`이 없는 행 |
-| JOB-ING-008 정합성 감시 | 6시간 | - | PostgreSQL↔ES 문서 수·표본 대조 |
-| JOB-SEQ-003 정합성 점검 (표본) | 1일 | 04:00 KST | 시퀀스 공간별 최근 1000개 대조 |
+| JOB-ING-008 정합성 감시 | 6시간 | - | PostgreSQL↔ES 문서 수·표본 대조. 표본 1000건 (CR-033, DEV-174). **ES에만 있는 잉여 문서는 자동 삭제하지 않는다** — 불일치로 보고·경보만 한다 |
+| JOB-SEQ-003 정합성 점검 (표본) | 1일 | 04:00 KST | 시퀀스 공간별 최근 1000개 대조. **그래프를 읽지 못하면 공간 상태를 바꾸지 않고 실패로 끝낸다** (CR-033, DEV-171) |
 | JOB-MIR-001 미러 동기화 (보정) | 6시간 | - | push 이벤트 누락 대비 |
 | JOB-MIR-002 커밋 메타데이터 재보강 | 수시 | - | 스케줄 잡이 아니다. `EVT-ING-003`으로 상시 구동되며, 스케줄 항목에 적는 것은 **미보강 잔여분 스윕**뿐이다 (일 1회, 05:00 KST) |
 | JOB-AUD-001 보존 만료 | 1일 | 03:00 KST | 파티션 드롭 |
@@ -234,7 +234,11 @@ WP-020이 커밋 **그래프**를 읽는 계층을 세웠지만, 그 결과를 `
 | `retry_total{stage,reason}` | 재시도 횟수 | 급증 시 경보 | - |
 | `sequence_space_state{state}` | 시퀀스 공간 상태별 수 | `stale` 1개 이상 시 경보 | FR-SEQ-001 |
 | `sequence_reassign_total` | 재채번 발생 횟수 | 1건이라도 발생 시 알림 | FR-SEQ-005 AC-5 |
-| `reconcile_missing_total` | 조정 스캔이 발견한 누락 수 | 0 초과 시 경고 | FR-ING-011 AC-4, NFR-002 |
+| `reconcile_missing_total` | 조정 스캔이 발견한 누락 수 (`repository`·`kind` 라벨) | 0 초과 시 경고 | FR-ING-011 AC-4, NFR-002 |
+| `sequence_integrity_mismatch_total` | 정합성 점검이 발견한 불일치 공간 수 (`repository`·`base_branch` 라벨) | 1건이라도 발생 시 경보 | FR-ADMIN-003 AC-3 |
+| `sequence_integrity_check_failed_total` | 점검을 마치지 못한 횟수 (`reason` 라벨). **공간 상태를 바꾸지 않으므로** 실패는 이 지표로만 보인다 (CR-033, DEV-171) | 3회 연속 시 경보 | FR-ADMIN-003 예외 처리 |
+| `projection_consistency_mismatch_total` | PG↔ES 불일치 수 (`index`·`kind` 라벨: `count` \| `content` \| `missing_in_es` \| `extra_in_es`) | 0 초과 시 경고 | ADR-004 (JOB-ING-008) |
+| `reconcile_incomplete_cycles` | 조정 스캔이 연속으로 완주하지 못한 주기 수 (`repository` 라벨) | **3 이상 시 경보** | FR-ING-011 예외 처리 |
 | `job_duration_seconds{type}` | 잡 소요 시간 | 재색인 4시간 초과 시 경보 | NFR-008 |
 | `mirror_disk_usage_ratio` | 미러 볼륨 사용률 | 85% 초과 시 경보 | ADR-005 |
 | `patch_id_failure_total` | patch-id 계산 실패 수 | 증가 추세 시 경고 | FR-REL-005 |
