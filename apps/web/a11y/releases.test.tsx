@@ -274,6 +274,34 @@ describe('릴리스 상세', () => {
     expect(screen.getByTestId('range-summary')).toHaveTextContent('준비 중');
   });
 
+  it('**행의 공간으로 묻는다** — 셀렉터의 브랜치로 고정하지 않는다', async () => {
+    /*
+     * 목록이 저장소 스코프라 `release/2.4` 행이 함께 있다. 셀렉터(main)의 브랜치로
+     * 상세를 물으면 서버가 두 태그를 다른 공간에서 풀어 SEQUENCE_SPACE_MISMATCH를
+     * 낸다 — 화면이 스스로 만든 조합을 스스로 거절하는 꼴이다.
+     */
+    const calls = stubFetch({
+      releases: {
+        status: 200,
+        body: {
+          ...RELEASES,
+          releases: RELEASES.releases.map((r) =>
+            r.tag_name === 'r2.4.0' ? { ...r, previous_tag_name: 'r2.3.0', pull_request_count_since_previous: 4 } : r,
+          ),
+        },
+      },
+    });
+    view();
+    await waitForRows();
+    await userEvent.click(within(rowOf('r2.4.0')).getByTestId('release-select'));
+    await waitFor(() => {
+      expect(calls.some((url) => url.includes('/api/release-comparisons') && url.includes('from=r2.3.0'))).toBe(true);
+    });
+    const detailCall = calls.find((url) => url.includes('from=r2.3.0'));
+    expect(detailCall).toContain('base_branch=release%2F2.4');
+    expect(detailCall).not.toContain('base_branch=main');
+  });
+
   it('가장 이른 릴리스는 비교할 구간이 없다고 말한다 — 0으로 그리지 않는다', async () => {
     stubFetch();
     view();
@@ -294,7 +322,7 @@ describe('미배포 구간 (QA-W005-04, AC-5)', () => {
     expect(screen.getByTestId('unreleased-summary')).toHaveTextContent('2건');
     expect(screen.getByTestId('unreleased-link')).toHaveAttribute(
       'href',
-      '/ranges?repo=acme%2Fpayments&branch=main&from=6&to=8&epoch=3',
+      '/ranges?repo=acme%2Fpayments&branch=main&from=seq%3A6&to=seq%3A8&epoch=3',
     );
   });
 });
@@ -339,6 +367,20 @@ describe('상태 렌더링과 접근성', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('릴리스 목록을 불러오지 못했습니다');
     });
     expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument();
+  });
+
+  it('**"다시 시도"가 실제로 다시 부른다**', async () => {
+    // 같은 저장소로 상태만 새 객체로 바꾸면 효과가 다시 돌지 않는다 — 그 자리다.
+    const calls = stubFetch({ releases: { status: 503, body: {} } });
+    view();
+    await waitFor(() => {
+      expect(screen.getByTestId('releases-retry')).toBeInTheDocument();
+    });
+    const before = calls.filter((url) => url.includes('/api/releases')).length;
+    await userEvent.click(screen.getByTestId('releases-retry'));
+    await waitFor(() => {
+      expect(calls.filter((url) => url.includes('/api/releases')).length).toBe(before + 1);
+    });
   });
 
   it('공간이 없으면 무엇을 해야 하는지 말한다', async () => {

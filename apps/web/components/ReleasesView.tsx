@@ -39,6 +39,7 @@ import {
   formatReleaseQuery,
   judgeComparisonRange,
   judgeReleases,
+  hasStartAnchor,
   judgeSelection,
   parseReleaseParams,
   unreleasedHref,
@@ -80,6 +81,14 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
       : null,
   );
   const [list, setList] = useState<ListOutcome>({ kind: 'idle' });
+  /**
+   * 목록 재조회 방아쇠.
+   *
+   * 같은 저장소로 상태만 새 객체로 바꾸면 효과가 다시 돌지 않는다 — 의존성이
+   * 파생 문자열(`repository`)이기 때문이다. 실패 화면에서 "다시 시도"가 아무 일도
+   * 하지 않던 자리다.
+   */
+  const [reloadToken, setReloadToken] = useState(0);
   const [selection, setSelection] = useState<readonly string[]>([]);
   const [detailTag, setDetailTag] = useState<string | null>(null);
   const [detail, setDetail] = useState<SummaryOutcome>({ kind: 'idle' });
@@ -138,15 +147,22 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
     return (): void => {
       alive = false;
     };
-  }, [repository]);
+  }, [repository, reloadToken]);
 
-  /** 요약 조회 하나 — 상세와 미배포가 같은 API를 다른 앵커로 부른다. */
+  /**
+   * 요약 조회 하나 — 상세와 미배포가 같은 API를 다른 앵커로 부른다.
+   *
+   * **공간은 호출부가 정한다.** 목록이 저장소 스코프라 행마다 브랜치가 다를 수
+   * 있고(DEV-158), 셀렉터의 브랜치를 고정으로 쓰면 `release/2.4` 릴리스의 상세를
+   * `main` 공간에서 풀어 `SEQUENCE_SPACE_MISMATCH`가 난다 — 화면이 스스로 만든
+   * 조합을 스스로 거절하는 꼴이다. 미배포만 셀렉터의 공간을 쓴다.
+   */
   const fetchSummary = useCallback(
-    async (params: Record<string, string>): Promise<SummaryOutcome> => {
-      if (repository === null || baseBranch === null) return { kind: 'idle' };
+    async (space: string, params: Record<string, string>): Promise<SummaryOutcome> => {
+      if (repository === null) return { kind: 'idle' };
       const query = new URLSearchParams({
         repository,
-        base_branch: baseBranch,
+        base_branch: space,
         // 요약만 쓴다 — 항목 질의를 돌리지 않는다 (API-SEQ-003 `size=0`).
         size: '0',
         ...params,
@@ -164,7 +180,7 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
         return { kind: 'failed' };
       }
     },
-    [repository, baseBranch],
+    [repository],
   );
 
   /** 미배포 구간 — 공간이 정해져야 뜻이 있다 (브랜치 head까지의 구간이므로). */
@@ -173,7 +189,7 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
     let alive = true;
     setUnreleased({ kind: 'loading' });
     void (async (): Promise<void> => {
-      const outcome = await fetchSummary({ to: 'unreleased' });
+      const outcome = await fetchSummary(baseBranch, { to: 'unreleased' });
       if (alive) setUnreleased(outcome);
     })();
     return (): void => {
@@ -197,8 +213,14 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
     setDetail({ kind: 'loading' });
     const previous = selected.previousTagName;
     const current = selected.tagName;
+    // **행의 공간**으로 묻는다 — 셀렉터의 브랜치가 아니다 (위 주석 참조).
+    const space = selected.baseBranch;
+    if (space === null) {
+      setDetail({ kind: 'failed' });
+      return;
+    }
     void (async (): Promise<void> => {
-      const outcome = await fetchSummary({ from: previous, to: current });
+      const outcome = await fetchSummary(space, { from: previous, to: current });
       if (alive) setDetail(outcome);
     })();
     return (): void => {
@@ -259,8 +281,9 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
           impact="타임라인과 구간 비교를 사용할 수 없습니다."
           action={
             <Button
+              data-testid="releases-retry"
               onClick={() => {
-                setSpace(space === null ? null : { ...space });
+                setReloadToken((token) => token + 1);
               }}
             >
               다시 시도
@@ -378,17 +401,25 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
                   head까지 대기 중입니다.
                 </p>
                 {unreleased.range === null ? null : (
-                  <Link
-                    href={unreleasedHref(
-                      repository ?? '',
-                      baseBranch ?? '',
-                      { fromSeq: unreleased.range.fromSeq, toSeq: unreleased.range.toSeq },
-                      unreleased.range.seqEpoch,
+                  <>
+                    <Link
+                      href={unreleasedHref(
+                        repository ?? '',
+                        baseBranch ?? '',
+                        { fromSeq: unreleased.range.fromSeq, toSeq: unreleased.range.toSeq },
+                        unreleased.range.seqEpoch,
+                      )}
+                      data-testid="unreleased-link"
+                    >
+                      미배포 목록 보기
+                    </Link>
+                    {hasStartAnchor(unreleased.range) ? null : (
+                      <p data-testid="unreleased-no-start">
+                        이 공간에는 채번된 릴리스가 없어 시작 앵커가 없습니다 — 범위 조사에서 시작
+                        지점을 직접 고르세요.
+                      </p>
                     )}
-                    data-testid="unreleased-link"
-                  >
-                    미배포 목록 보기
-                  </Link>
+                  </>
                 )}
               </>
             ) : null}

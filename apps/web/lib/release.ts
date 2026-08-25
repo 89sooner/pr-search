@@ -187,6 +187,21 @@ export function compareHref(repo: string, from: ReleaseRowView, to: ReleaseRowVi
  * 앵커 5종은 그대로 두고, 비교 응답이 알려 준 `range.to_seq`를 시퀀스 앵커로
  * 넘긴다. 시작도 같은 응답의 `from_seq`를 쓴다: 화면이 본 것과 W-004가 조회할
  * 것이 같아야 한다.
+ *
+ * ## `seq:` 접두를 반드시 붙인다
+ *
+ * 맨 숫자는 `classifyAnchor`가 **의도적으로 `ambiguous`로 판정한다** — `1234`가
+ * PR 번호인지 서수인지 시스템이 고르지 않는다. 접두 없이 넘기면 W-004가 두 앵커를
+ * 모두 해석하지 못해 **조회 버튼이 잠긴 채로 도착한다**. 링크를 만드는 쪽이 뜻을
+ * 명시하는 것이 옳다.
+ *
+ * ## 시작 서수 0은 앵커로 표현할 수 없다
+ *
+ * 반개구간의 시작 `0`은 "공간 맨 앞"이라는 정상 값이지만(`from_seq=0`), 앵커 문법은
+ * 1 이상만 받는다(`positiveWithin`). 채번된 릴리스가 하나도 없는 공간에서 그 값이
+ * 나오며, 그때는 **`from`을 싣지 않는다** — 없는 앵커를 지어내거나 시작을 1로
+ * 올려 첫 커밋을 조용히 빼지 않는다. W-004는 끝 앵커만 채운 채로 열리고 시작은
+ * 사용자가 고른다.
  */
 export function unreleasedHref(
   repo: string,
@@ -197,11 +212,16 @@ export function unreleasedHref(
   const query = formatRangeQuery({
     repo,
     branch,
-    from: String(range.fromSeq),
-    to: String(range.toSeq),
+    ...(range.fromSeq >= 1 ? { from: `seq:${String(range.fromSeq)}` } : {}),
+    to: `seq:${String(range.toSeq)}`,
     ...(epoch === null ? {} : { epoch }),
   });
   return `/ranges?${query}`;
+}
+
+/** 시작 앵커를 실을 수 있는가. 화면이 "시작은 직접 고르세요"를 말할 근거다. */
+export function hasStartAnchor(range: { readonly fromSeq: number }): boolean {
+  return range.fromSeq >= 1;
 }
 
 /** 비교 응답에서 화면이 쓰는 것 (요약은 `judgeSummary`가 따로 본다). */

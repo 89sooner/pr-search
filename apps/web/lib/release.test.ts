@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   compareHref,
   formatReleaseQuery,
+  hasStartAnchor,
   isSelectable,
   judgeComparisonRange,
   judgeReleases,
@@ -159,12 +160,34 @@ describe('W-004로 넘기는 링크 (FLOW-003)', () => {
 
   it('미배포는 서수 앵커로 넘긴다 — head 앵커 유형을 만들지 않는다', () => {
     const href = unreleasedHref('acme/payments', 'main', { fromSeq: 6, toSeq: 7 }, 3);
-    expect(href).toBe('/ranges?repo=acme%2Fpayments&branch=main&from=6&to=7&epoch=3');
+    expect(href).toBe('/ranges?repo=acme%2Fpayments&branch=main&from=seq%3A6&to=seq%3A7&epoch=3');
+  });
+
+  it('**맨 숫자로 넘기지 않는다** — `classifyAnchor`가 모호로 판정해 조회가 잠긴다', () => {
+    const href = unreleasedHref('acme/payments', 'main', { fromSeq: 6, toSeq: 7 }, 3);
+    // `from=6`이면 PR #6인지 서수 6인지 시스템이 고르지 않는다 (의도된 설계).
+    expect(href).not.toMatch(/from=6(&|$)/);
+    expect(href).not.toMatch(/to=7(&|$)/);
+    expect(href).toContain('seq%3A');
   });
 
   it('미배포 구간이 비어 있어도 링크는 같은 규칙이다', () => {
     const href = unreleasedHref('acme/payments', 'main', { fromSeq: 7, toSeq: 7 }, 3);
-    expect(href).toContain('from=7&to=7');
+    expect(href).toContain('from=seq%3A7&to=seq%3A7');
+  });
+
+  it('시작 서수 0은 앵커로 표현할 수 없으므로 싣지 않는다', () => {
+    // 채번된 릴리스가 없는 공간의 미배포 구간은 `(0, N]`이고, 앵커 문법은 1 이상만 받는다.
+    const href = unreleasedHref('acme/payments', 'main', { fromSeq: 0, toSeq: 7 }, 3);
+    expect(href).not.toContain('from=');
+    expect(href).toContain('to=seq%3A7');
+    // 시작을 1로 올려 첫 커밋을 조용히 빼지 않는다.
+    expect(href).not.toContain('seq%3A1&');
+  });
+
+  it('hasStartAnchor가 그 사실을 화면에 알린다', () => {
+    expect(hasStartAnchor({ fromSeq: 0 })).toBe(false);
+    expect(hasStartAnchor({ fromSeq: 1 })).toBe(true);
   });
 });
 

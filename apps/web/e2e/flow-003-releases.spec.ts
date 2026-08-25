@@ -52,23 +52,63 @@ const COMPARISON = {
   correlation_id: 'c',
 };
 
-function resolvedBody(position: string, expression: string): unknown {
-  const seq = expression === 'v1.0' ? 2 : 6;
-  return {
-    sequence_space: 'acme/payments@main',
-    seq_epoch: 3,
-    resolved: [
-      {
-        position,
-        expression,
-        kind: 'release',
-        merge_seq: seq,
-        commit_sha: `${String(seq).padStart(2, '0')}${'a'.repeat(38)}`,
-        boundary: position === 'from' ? 'exclusive' : 'inclusive',
-        occurred_at: '2026-08-12T00:00:00Z',
+/**
+ * 앵커 대역 — **표현을 실제로 판정한다**.
+ *
+ * 무엇을 주든 해석해 주는 대역은 링크가 만든 표현이 틀려도 초록을 낸다. 실제로
+ * 그 구멍으로 "맨 숫자 앵커" 결함이 CI를 통과했다 — `classifyAnchor`는 맨 숫자를
+ * **의도적으로 `ambiguous`로 판정**하는데(PR 번호와 서수를 고르지 않는다) 대역은
+ * 그것을 몰랐다. 그래서 여기서는 서버와 같은 갈래를 흉내 낸다.
+ */
+function resolveAnchorExpression(
+  position: string,
+  expression: string,
+): { status: number; body: unknown } {
+  const bare = /^\d+$/.test(expression);
+  if (bare) {
+    return {
+      status: 400,
+      body: {
+        error: {
+          code: 'ANCHOR_UNRESOLVABLE',
+          message: `무엇을 뜻하는지 정할 수 없습니다: ${expression}`,
+          detail: { candidates: [`#${expression} (PR 번호)`, `seq:${expression} (시퀀스 값)`] },
+        },
+        correlation_id: 'c',
       },
-    ],
-    correlation_id: 'c',
+    };
+  }
+
+  const seqMatch = /^seq:(\d+)$/.exec(expression);
+  const seq = seqMatch !== null ? Number(seqMatch[1]) : expression === 'v1.0' ? 2 : 6;
+  if (seqMatch !== null && seq < 1) {
+    return {
+      status: 400,
+      body: {
+        error: { code: 'ANCHOR_UNRESOLVABLE', message: '시퀀스 값이 범위를 벗어난다', detail: {} },
+        correlation_id: 'c',
+      },
+    };
+  }
+
+  return {
+    status: 200,
+    body: {
+      sequence_space: 'acme/payments@main',
+      seq_epoch: 3,
+      resolved: [
+        {
+          position,
+          expression,
+          kind: seqMatch === null ? 'release' : 'sequence',
+          merge_seq: seq,
+          commit_sha: `${String(seq).padStart(2, '0')}${'a'.repeat(38)}`,
+          boundary: position === 'from' ? 'exclusive' : 'inclusive',
+          occurred_at: '2026-08-12T00:00:00Z',
+        },
+      ],
+      correlation_id: 'c',
+    },
   };
 }
 
@@ -101,6 +141,7 @@ async function stubApi(page: Page): Promise<string[]> {
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
     calls.push(url);
+    let status = 200;
     let body: unknown = {};
     if (url.includes('/api/sequence-spaces')) body = SPACES;
     else if (url.includes('/api/releases')) body = RELEASES;
@@ -110,9 +151,14 @@ async function stubApi(page: Page): Promise<string[]> {
         anchors?: { position: string; expression: string }[];
       };
       const anchor = payload.anchors?.[0];
-      body = anchor === undefined ? {} : resolvedBody(anchor.position, anchor.expression);
+      const outcome =
+        anchor === undefined
+          ? { status: 400, body: {} }
+          : resolveAnchorExpression(anchor.position, anchor.expression);
+      status = outcome.status;
+      body = outcome.body;
     } else if (url.includes('/api/sequence-ranges')) body = RANGE;
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
   });
   return calls;
 }
@@ -168,6 +214,14 @@ test.describe('W-005: 릴리스 목록에서 구간 조사로', () => {
 
     await expect(page.getByTestId('unreleased-summary')).toContainText('2건');
     await page.getByTestId('unreleased-link').click();
-    await expect(page).toHaveURL(/from=6&to=8/);
+    await expect(page).toHaveURL(/from=seq%3A6&to=seq%3A8/);
+
+    /*
+     * **도착만으로는 부족하다.** 링크가 만든 표현을 W-004가 실제로 해석해야
+     * 조회가 열린다 — 맨 숫자로 넘기면 여기서 두 앵커가 모두 실패하고 사용자는
+     * 조회 버튼이 잠긴 화면을 만난다.
+     */
+    await expect(page.getByTestId('anchor-from-resolved')).toBeVisible();
+    await expect(page.getByTestId('anchor-to-resolved')).toBeVisible();
   });
 });
