@@ -259,6 +259,9 @@ describe('DoD 5: 재채번 중 조회 (예외 처리)', () => {
       },
       firstParentRevList: (ref, range) => real.firstParentRevList(ref, range),
       patchId: (ref, sha) => real.patchId(ref, sha),
+      // WP-067이 CommitGraph를 넓혔다. 이 시험은 채번만 보므로 그대로 위임한다.
+      readCommit: (ref, sha) => real.readCommit(ref, sha),
+      changedPaths: (ref, sha, limit) => real.changedPaths(ref, sha, limit),
     };
 
     const running = assignSequence(deps({ graphFor: () => slow }), REPOSITORY_ID, BRANCH);
@@ -293,6 +296,9 @@ describe('DoD 6: 실패 시 부분 상태로 남지 않는다', () => {
       },
       firstParentRevList: (ref, range) => real.firstParentRevList(ref, range),
       patchId: (ref, sha) => real.patchId(ref, sha),
+      // WP-067이 CommitGraph를 넓혔다. 이 시험은 채번만 보므로 그대로 위임한다.
+      readCommit: (ref, sha) => real.readCommit(ref, sha),
+      changedPaths: (ref, sha, limit) => real.changedPaths(ref, sha, limit),
     };
 
     const outcome = await assignSequence(deps({ graphFor: () => broken }), REPOSITORY_ID, BRANCH);

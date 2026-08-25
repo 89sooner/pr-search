@@ -7,6 +7,7 @@ import {
   PARTITION_COUNTS,
   TOPICS,
   consumerGroup,
+  LOGICAL_CONSUMERS,
   isKnownTopic,
   partitionCount,
   partitionStream,
@@ -104,5 +105,38 @@ describe('스트림 카탈로그 (비동기 문서 2장)', () => {
 
   it('파티션 스트림 이름이 토픽에 번호를 붙인 형태다', () => {
     expect(partitionStream('prs:ingest', 7)).toBe('prs:ingest:7');
+  });
+});
+
+/**
+ * 한 토픽을 독립적으로 읽는 소비자 (CR-038, DEV-205).
+ *
+ * consumer group은 broadcast가 아니라 **work sharing**이다. 같은 group으로 두
+ * 소비자가 붙으면 이벤트가 나뉘고 각자 절반씩만 본다 — 관계 파생과 커밋 보강은
+ * 같은 `prs:projected` 이벤트를 **각각 전부** 받아야 한다.
+ */
+describe('논리 소비자 그룹 (CR-038, DEV-205)', () => {
+  it('기본 소비자는 기존 그룹 이름을 그대로 쓴다 — 읽던 자리를 잃지 않는다', () => {
+    expect(consumerGroup(TOPICS.projected)).toBe('link');
+    expect(consumerGroup(TOPICS.projected, 'link')).toBe('link');
+  });
+
+  it('두 번째 소비자는 **다른** 그룹을 얻는다', () => {
+    const link = consumerGroup(TOPICS.projected, 'link');
+    const enrich = consumerGroup(TOPICS.projected, 'commit-enrich');
+    expect(enrich).not.toBe(link);
+    expect(enrich).toBe('link:commit-enrich');
+  });
+
+  it('카탈로그에 없는 소비자는 던진다 — 오타가 조용히 새 그룹을 만들지 않는다', () => {
+    expect(() => consumerGroup(TOPICS.projected, 'commit_enrich')).toThrow(/알 수 없는 논리 소비자/);
+    expect(() => consumerGroup(TOPICS.enriched, 'commit-enrich')).toThrow(/알 수 없는 논리 소비자/);
+  });
+
+  it('카탈로그의 모든 소비자가 서로 다른 그룹으로 풀린다', () => {
+    for (const topic of Object.values(TOPICS)) {
+      const groups = LOGICAL_CONSUMERS[topic].map((name) => consumerGroup(topic, name));
+      expect(new Set(groups).size).toBe(groups.length);
+    }
   });
 });

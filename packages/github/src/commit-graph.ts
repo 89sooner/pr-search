@@ -38,6 +38,34 @@ export type PatchIdResult =
   | { readonly patchId: string; readonly unavailable?: undefined }
   | { readonly patchId: null; readonly unavailable: PatchIdUnavailable };
 
+/** 변경 경로 상한 (WP-067). 넘으면 자르고 `truncated`로 알린다. */
+export const CHANGED_PATHS_LIMIT = 300;
+
+/**
+ * 커밋 객체가 담은 값 (WP-067 / CR-038, DEV-208).
+ *
+ * 전부 **불변 git 사실**이다 — 같은 SHA면 언제 읽어도 같다. 그래서 이 값을 채우는
+ * 보강은 멱등하고 `document_version`을 올릴 이유가 없다 (DEV-209).
+ */
+export interface CommitMetadata {
+  readonly sha: string;
+  readonly parentShas: readonly string[];
+  /** 커밋 메시지 전문. **소스 코드가 아니다** — 메시지 본문은 검색 대상이다. */
+  readonly message: string;
+  readonly author: string | null;
+  readonly authorEmail: string | null;
+  readonly committer: string | null;
+  readonly committerEmail: string | null;
+  /** ISO-8601 (오프셋 포함). 워커 시간대에 좌우되지 않는다. */
+  readonly authoredAt: string;
+  readonly committedAt: string;
+}
+
+export interface ChangedPaths {
+  readonly paths: readonly string[];
+  readonly truncated: boolean;
+}
+
 export interface CommitGraph {
   readonly kind: CommitGraphKind;
 
@@ -70,6 +98,28 @@ export interface CommitGraph {
 
   /** 체리픽 판정용 patch-id (FR-REL-005 AC-2). 낼 수 없으면 사유를 함께 준다. */
   patchId(ref: RepoRef, sha: string): Promise<PatchIdResult>;
+
+  /**
+   * 커밋 자체의 메타데이터 (WP-067 / CR-038, DEV-208).
+   *
+   * **불변 git 사실만 담는다** — 커밋 객체에 이미 있는 값이라 두 번 읽어도 같고,
+   * 그래서 보강이 멱등하다. 소스 코드 본문은 어떤 필드에도 담지 않는다 (NFR-005).
+   *
+   * @returns 저장소나 커밋을 찾을 수 없으면 `null`. **던지지 않는다** — 아직
+   * 미러에 도착하지 않은 커밋은 오류가 아니라 "다음 회차에 다시 본다"이다.
+   */
+  readCommit(ref: RepoRef, sha: string): Promise<CommitMetadata | null>;
+
+  /**
+   * 변경 경로 목록 (WP-067).
+   *
+   * **경로 이름만 읽는다.** 미러는 `diff-tree --no-commit-id --name-only -r`로
+   * 트리만 훑으므로 blobless 미러에서 blob을 한 개도 인출하지 않는다 —
+   * THR-015의 완화 근거가 여기에 걸려 있다.
+   *
+   * 상한을 넘으면 잘라 내고 `truncated`로 알린다. 조용히 자르면 "이것이 전부"로 읽힌다.
+   */
+  changedPaths(ref: RepoRef, sha: string, limit?: number): Promise<ChangedPaths>;
 }
 
 /** 그래프 접근 실패. 채번은 이것을 받으면 시퀀스 공간을 `stale`로 둔다 (FR-SEQ-001 예외 처리). */
@@ -153,5 +203,13 @@ export class FallbackCommitGraph implements CommitGraph {
 
   patchId(ref: RepoRef, sha: string): Promise<PatchIdResult> {
     return this.#try((graph) => graph.patchId(ref, sha));
+  }
+
+  readCommit(ref: RepoRef, sha: string): Promise<CommitMetadata | null> {
+    return this.#try((graph) => graph.readCommit(ref, sha));
+  }
+
+  changedPaths(ref: RepoRef, sha: string, limit?: number): Promise<ChangedPaths> {
+    return this.#try((graph) => graph.changedPaths(ref, sha, limit));
   }
 }

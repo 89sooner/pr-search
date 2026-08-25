@@ -20,7 +20,14 @@
  */
 
 import type { CommitSummary, GitHubClient, RepoRef } from './client.js';
-import { CommitGraphError, type CommitGraph, type PatchIdResult } from './commit-graph.js';
+import {
+  CHANGED_PATHS_LIMIT,
+  CommitGraphError,
+  type ChangedPaths,
+  type CommitGraph,
+  type CommitMetadata,
+  type PatchIdResult,
+} from './commit-graph.js';
 import {
   firstParentChain,
   isFullSha,
@@ -154,6 +161,65 @@ export class ApiCommitGraph implements CommitGraph {
       }
       return { sha, committedAt };
     });
+  }
+
+  /**
+   * 커밋 객체 메타데이터 — API 폴백 (WP-067 / CR-038).
+   *
+   * 미러 경로와 **같은 값**을 내야 한다. `commit.author.date`가 `%aI`에,
+   * `commit.committer.date`가 `%cI`에 대응한다 — 둘 다 오프셋을 포함한 ISO-8601이다.
+   *
+   * 시각이 없으면 **던진다.** `now()`로 메우면 커밋 시각이 보강 시각이 되어
+   * 시간순 정렬이 조용히 거짓말을 한다 (DEV-115와 같은 규율).
+   */
+  async readCommit(ref: RepoRef, sha: string): Promise<CommitMetadata | null> {
+    const detail = await this.#options.client.getCommitDetail(ref, sha, this.#call);
+    if (detail === null) return null;
+
+    const authoredAt = detail.commit?.author?.date;
+    const committedAt = detail.commit?.committer?.date;
+    if (typeof committedAt !== 'string' || committedAt === '') {
+      throw new CommitGraphError('api', `커밋 시각을 주지 않았다: ${sha}`);
+    }
+
+    return {
+      sha: detail.sha,
+      parentShas: (detail.parents ?? [])
+        .map((parent) => parent.sha)
+        .filter((parentSha): parentSha is string => typeof parentSha === 'string' && parentSha !== ''),
+      message: detail.commit?.message ?? '',
+      author: detail.commit?.author?.name ?? null,
+      authorEmail: detail.commit?.author?.email ?? null,
+      committer: detail.commit?.committer?.name ?? null,
+      committerEmail: detail.commit?.committer?.email ?? null,
+      // 작성 시각이 없으면 커밋 시각으로 대신한다 — 둘 다 없는 경우는 위에서 던졌다.
+      authoredAt: typeof authoredAt === 'string' && authoredAt !== '' ? authoredAt : committedAt,
+      committedAt,
+    };
+  }
+
+  /**
+   * 변경 경로 — API 폴백 (WP-067).
+   *
+   * 커밋 API의 `files[].filename`만 읽는다. **`patch` 필드는 보지 않는다** — 소스
+   * 코드이며 타입에도 두지 않았다 (NFR-005).
+   *
+   * GitHub은 파일을 최대 300개까지만 준다. 우리 상한과 같거나 그보다 크면 절삭
+   * 여부를 구분할 수 없으므로, **상한에 닿으면 절삭으로 본다** — 조용히 "이것이
+   * 전부"라고 말하지 않는다.
+   */
+  async changedPaths(ref: RepoRef, sha: string, limit = CHANGED_PATHS_LIMIT): Promise<ChangedPaths> {
+    const detail = await this.#options.client.getCommitDetail(ref, sha, this.#call);
+    if (detail === null) return { paths: [], truncated: false };
+
+    const all = (detail.files ?? [])
+      .map((file) => file.filename)
+      .filter((name): name is string => typeof name === 'string' && name !== '');
+    const apiCap = 300;
+    return {
+      paths: all.slice(0, limit),
+      truncated: all.length > limit || all.length >= apiCap,
+    };
   }
 
   /** ADR-005: API 경로에서는 계산하지 않는다 (FR-REL-005 AC-5). */

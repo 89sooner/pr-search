@@ -22,8 +22,11 @@
 import { execFile } from 'node:child_process';
 import type { RepoRef } from './client.js';
 import {
+  CHANGED_PATHS_LIMIT,
   CommitGraphError,
+  type ChangedPaths,
   type CommitGraph,
+  type CommitMetadata,
   type PatchIdResult,
 } from './commit-graph.js';
 import {
@@ -334,6 +337,83 @@ export class MirrorCommitGraph implements CommitGraph {
     const id = computed.code === 0 ? parsePatchId(computed.stdout) : null;
     return id === null ? { patchId: null, unavailable: 'compute_failed' } : { patchId: id };
   }
+
+  /**
+   * 커밋 객체 하나를 읽는다 (WP-067 / CR-038).
+   *
+   * **커밋 객체만 읽으므로 blob이 필요 없다** — `firstParentCommits`와 같은 이유로
+   * blobless 미러에서 그대로 동작한다.
+   *
+   * 구분자는 NUL이다. 커밋 메시지에는 개행·파이프가 자유롭게 오므로 눈에 보이는
+   * 문자를 구분자로 쓰면 그런 메시지 하나가 그 줄 전체를 오독하게 만든다.
+   * 메시지(`%B`)는 **맨 뒤**에 둔다 — 여러 줄이라 그 앞에 필드가 오면 파싱이 깨진다.
+   *
+   * 시각은 `%aI`·`%cI`(ISO-8601 오프셋 포함)다. `%ad`류를 쓰면 워커의 시간대가
+   * 값에 새어 들어간다.
+   */
+  async readCommit(ref: RepoRef, sha: string): Promise<CommitMetadata | null> {
+    assertSha(sha);
+    const result = await this.#git(ref, [
+      'show',
+      '--no-patch',
+      '--format=%H%x00%P%x00%an%x00%ae%x00%cn%x00%ce%x00%aI%x00%cI%x00%B',
+      sha,
+      '--',
+    ]);
+    // 커밋이 아직 미러에 없다. 오류가 아니라 "다음 회차에 다시 본다"이다.
+    if (result.code !== 0 || result.stdout.trim() === '') return null;
+
+    const parts = result.stdout.split('\u0000');
+    const [full, parents, author, authorEmail, committer, committerEmail, authoredAt, committedAt] = parts;
+    const message = parts.slice(8).join('\u0000');
+    if (
+      full === undefined || !isFullSha(full) ||
+      parents === undefined || authoredAt === undefined || committedAt === undefined
+    ) {
+      throw new CommitGraphError('mirror', `커밋 줄을 해석할 수 없다: ${sha}`);
+    }
+
+    return {
+      sha: full,
+      parentShas: parents.trim() === '' ? [] : parents.trim().split(/\s+/),
+      // 끝의 개행만 떼고 본문은 그대로 둔다 — 메시지는 검색 대상이다.
+      message: (message ?? '').replace(/\n+$/, ''),
+      author: emptyToNull(author),
+      authorEmail: emptyToNull(authorEmail),
+      committer: emptyToNull(committer),
+      committerEmail: emptyToNull(committerEmail),
+      authoredAt,
+      committedAt,
+    };
+  }
+
+  /**
+   * 변경 경로 (WP-067).
+   *
+   * `--name-only`는 **트리만 읽는다** — blob을 인출하지 않으므로 blobless 미러의
+   * 완화 근거(THR-015)가 그대로 유지된다. `patchId`가 blob을 요구하는 것과 다르다.
+   *
+   * 루트 커밋에는 부모가 없어 `diff-tree`가 빈 결과를 낸다. 그때는 `--root`로
+   * 다시 읽는다 — 첫 커밋의 변경 경로를 "없음"으로 적으면 거짓이다.
+   */
+  async changedPaths(ref: RepoRef, sha: string, limit = CHANGED_PATHS_LIMIT): Promise<ChangedPaths> {
+    assertSha(sha);
+    const base = ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z'];
+    let result = await this.#git(ref, [...base, sha, '--']);
+    if (result.code !== 0) return { paths: [], truncated: false };
+    if (result.stdout === '') {
+      result = await this.#git(ref, [...base, '--root', sha, '--']);
+      if (result.code !== 0) return { paths: [], truncated: false };
+    }
+
+    const all = result.stdout.split('\u0000').filter((path) => path !== '');
+    return { paths: all.slice(0, limit), truncated: all.length > limit };
+  }
+}
+
+/** 빈 문자열은 "값이 없다"로 읽는다 — git은 없는 필드를 빈 문자열로 낸다. */
+function emptyToNull(value: string | undefined): string | null {
+  return value === undefined || value === '' ? null : value;
 }
 
 function assertSha(sha: string): void {

@@ -269,6 +269,12 @@ describe('재채번 러너가 큐를 비운다 (CR-034, DEV-178)', () => {
       patchId(...args: Parameters<CommitGraph['patchId']>): ReturnType<CommitGraph['patchId']> {
         return this.inner.patchId(...args);
       }
+      readCommit(...args: Parameters<CommitGraph['readCommit']>): ReturnType<CommitGraph['readCommit']> {
+        return this.inner.readCommit(...args);
+      }
+      changedPaths(...args: Parameters<CommitGraph['changedPaths']>): ReturnType<CommitGraph['changedPaths']> {
+        return this.inner.changedPaths(...args);
+      }
       async firstParentRevList(ref: RepoRef, range: Parameters<CommitGraph['firstParentRevList']>[1]): Promise<readonly string[]> {
         const result = await this.inner.firstParentRevList(ref, range);
         if (this.hooks.afterRevList !== undefined) await this.hooks.afterRevList();
