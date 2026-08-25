@@ -1,0 +1,82 @@
+# 미러 역할 (JOB-MIR-001 미러 동기화 · JOB-MIR-002 커밋 메타데이터 보강).
+#
+# **미러 볼륨을 가진 유일한 워커다.** 그래서 커밋 메타데이터 보강(WP-067)도 이
+# 역할이 소유한다 — 새 역할을 만들면 같은 볼륨을 두 곳에 붙여야 하고, 그 볼륨은
+# `ReadWriteOnce`다.
+#
+# **replica 1이다.** 두 파드가 같은 미러 디렉터리에 동시에 `git fetch`를 걸면
+# 인덱스 잠금이 충돌한다. JOB-MIR-002의 주기 스윕에도 리더 선출이 없다
+# (JOB-SEQ-003·JOB-ING-005와 같은 이유, CR-034에 기록).
+#
+# **`prs:projected`를 전용 소비자 그룹으로 읽는다** (CR-038, DEV-205) — 관계
+# 파생(WP-029)이 같은 토픽을 읽지만 group이 달라 서로의 이벤트를 가져가지 않는다.
+#
+# blob 지연 인출은 기본으로 꺼져 있다 (THR-015). 켜면 patch-id가 가능해지는 대신
+# 소스 blob이 이 볼륨에 쌓인다 — `MIRROR_ALLOW_BLOB_FETCH`를 켤 때는 볼륨 용량과
+# 보안 판단을 함께 한다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prs-mirror
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: pipeline-worker-mirror }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      # blobless 미러라 커밋·트리만 쌓인다. blob 인출을 켜면 이 값으로 부족하다.
+      storage: 50Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pipeline-worker-mirror
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: pipeline-worker-mirror }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/component: pipeline-worker-mirror }
+  strategy:
+    # 같은 미러 볼륨을 두 파드가 동시에 쓰지 않는다.
+    type: Recreate
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: pipeline-worker-mirror }
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '3003'
+    spec:
+      # 진행 중인 fetch와 보강 회차를 끝내고 나간다.
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: pipeline-worker
+          image: prs/pipeline-worker:latest
+          env:
+            - name: PIPELINE_WORKER_ROLES
+              value: mirror
+            # `DEFAULT_MIRROR_ROOT`와 같은 값이지만 명시한다 — 볼륨 마운트 경로와
+            # 코드 기본값이 조용히 갈라지면 미러가 빈 디렉터리를 보게 된다.
+            - name: MIRROR_ROOT
+              value: /var/lib/prs/mirrors
+          ports:
+            - name: http
+              containerPort: 3003
+          envFrom:
+            - configMapRef: { name: prs-config }
+            - secretRef: { name: prs-secrets }
+          volumeMounts:
+            - name: mirror
+              mountPath: /var/lib/prs/mirrors
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 300m, memory: 512Mi }
+            limits: { memory: 1Gi }
+      volumes:
+        - name: mirror
+          persistentVolumeClaim:
+            claimName: prs-mirror

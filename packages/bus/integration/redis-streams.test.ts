@@ -7,7 +7,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Redis } from 'ioredis';
-import { RedisStreamsEventBus, partitionFor, partitionStream } from '@prs/bus';
+import { RedisStreamsEventBus, TOPICS, consumerGroup, partitionFor, partitionStream } from '@prs/bus';
 import { CONTRACT_GROUP, CONTRACT_PARTITIONS, CONTRACT_TOPIC, envelope, runEventBusContract, waitFor, type BusFixture } from './contract.js';
 import { TEST_PARTITION_OVERRIDES, createTestRedis, flushTestRedis } from './helpers.js';
 
@@ -108,5 +108,75 @@ describe('RedisStreamsEventBus — Redis 고유 동작', () => {
     } finally {
       await subscription.close();
     }
+  });
+
+  /*
+   * 논리 소비자 그룹 (CR-038, DEV-205).
+   *
+   * **consumer group은 broadcast가 아니라 work sharing이다.** 같은 group으로 두
+   * 소비자가 붙으면 이벤트가 나뉘고 각자 절반씩만 본다. `prs:projected`는 관계
+   * 파생(WP-029)과 커밋 보강(WP-067) **둘의** 방아쇠이므로 각자 전부 받아야 한다.
+   *
+   * 그 성질은 Redis의 동작이라 **여기서만 진짜로 검증된다.**
+   */
+  it('**두 논리 소비자가 같은 이벤트를 각각 전부 받는다** (CR-038, DEV-205)', async () => {
+    const link: string[] = [];
+    const enrich: string[] = [];
+
+    const linkSub = await bus.subscribe(
+      CONTRACT_TOPIC,
+      'link',
+      (delivered) => {
+        link.push(String((delivered.payload as { n?: unknown }).n));
+        return Promise.resolve({ kind: 'ack' });
+      },
+      { partitions: [0] },
+    );
+    const enrichSub = await bus.subscribe(
+      CONTRACT_TOPIC,
+      'link:commit-enrich',
+      (delivered) => {
+        enrich.push(String((delivered.payload as { n?: unknown }).n));
+        return Promise.resolve({ kind: 'ack' });
+      },
+      { partitions: [0] },
+    );
+
+    try {
+      /*
+       * 두 구독이 파티션 0을 맡고 있으므로 **거기로 가는 키를 찾아서** 쓴다.
+       * 아무 키나 쓰고 "아니면 건너뛴다"로 두면 시험이 조용히 아무것도 검증하지
+       * 않는 날이 온다.
+       */
+      let key = '';
+      for (let candidate = 0; candidate < 500; candidate += 1) {
+        const name = `repo-${String(candidate)}`;
+        if (partitionFor(name, CONTRACT_PARTITIONS) === 0) {
+          key = name;
+          break;
+        }
+      }
+      expect(key).not.toBe('');
+
+      const sent: string[] = [];
+      for (let n = 0; n < 4; n += 1) {
+        sent.push(String(n));
+        await bus.publish(CONTRACT_TOPIC, key, envelope({ n }));
+      }
+      expect(sent).toHaveLength(4);
+
+      await waitFor(() => link.length >= sent.length && enrich.length >= sent.length);
+
+      // 나뉘지 않았다. 같은 group이면 합이 sent.length가 되고 각자는 그 절반이다.
+      expect([...link].sort()).toEqual([...sent].sort());
+      expect([...enrich].sort()).toEqual([...sent].sort());
+    } finally {
+      await linkSub.close();
+      await enrichSub.close();
+    }
+  });
+
+  it('두 논리 소비자가 서로 다른 Redis group으로 등록된다', async () => {
+    expect(consumerGroup(TOPICS.projected, 'commit-enrich')).not.toBe(consumerGroup(TOPICS.projected));
   });
 });

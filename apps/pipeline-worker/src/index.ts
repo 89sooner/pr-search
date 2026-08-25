@@ -53,6 +53,12 @@ import { startIntegritySweeper, type IntegritySweeper } from './integrity.js';
 import { startConsistencySweeper, type ConsistencySweeper } from './consistency.js';
 import { startReconcileSweeper, type ReconcileSweeper } from './reconcile.js';
 import {
+  startCommitEnrichSweeper,
+  startCommitEnrichWorker,
+  type CommitEnrichDeps,
+  type CommitEnrichSweeper,
+} from './commit-enrich.js';
+import {
   enqueueSnapshotBootstrap,
   startSnapshotBootstrapRunner,
 } from './snapshot-bootstrap.js';
@@ -103,6 +109,9 @@ let authzSubscription: Subscription | undefined;
 let authzRedisClient: { quit(): Promise<unknown> } | undefined;
 let backfillRunner: BackfillRunner | undefined;
 let mirrorRunner: MirrorRunner | undefined;
+/** JOB-MIR-002 (WP-067 / CR-038). 미러 역할이 함께 세운다. */
+let commitEnrichSubscription: Subscription | undefined;
+let commitEnrichSweeper: CommitEnrichSweeper | undefined;
 let sequenceSubscription: Subscription | undefined;
 let esClient: Client | undefined;
 
@@ -277,6 +286,72 @@ if (roles.includes('mirror')) {
       })}\n`,
     );
   }
+
+  /*
+   * JOB-MIR-002 커밋 메타데이터 보강 (WP-067 / CR-038).
+   *
+   * **미러 역할이 소유한다** — 이 잡의 정답지가 미러이고, 새 역할을 만들면 미러
+   * 볼륨을 두 곳에 붙여야 한다. 다만 미러가 없는 저장소는 API 폴백으로 돈다
+   * (ADR-005).
+   *
+   * `prs:projected`를 **전용 소비자 그룹**으로 구독한다 (DEV-205) — 관계 파생과
+   * 같은 그룹을 쓰면 이벤트가 둘로 나뉘어 각자 절반씩만 본다.
+   */
+  const enrichEs = createEsClient();
+  esClient = esClient ?? enrichEs;
+  const enrichLog = (fields: Record<string, unknown>): void => {
+    process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-MIR-002', ...fields })}\n`);
+  };
+  const enrichMirrorGraph = new MirrorCommitGraph({
+    root: mirrorConfig.root,
+    repositoryIdOf: async (ref) =>
+      (await repositoryRepo.findRepositoryBySlug(pool, ref.owner, ref.repo))?.repository_id,
+    allowBlobFetch: mirrorConfig.allowBlobFetch,
+    ...(mirrorTokenFor === undefined ? {} : { tokenFor: mirrorTokenFor }),
+  });
+  /*
+   * 미러가 없는 저장소의 폴백 (ADR-005). 자격 증명이 없으면 API 그래프를 만들 수
+   * 없으므로 미러만으로 돈다 — 미러도 없는 저장소는 보강되지 않고 그 사실이
+   * `commit_enrich_total{result="not_found"}`로 보인다.
+   */
+  const enrichApiGraph =
+    hasAppCredentials(ghConfig) && parseInstallations().length > 0
+      ? new ApiCommitGraph({
+          client: new GitHubClient(
+            new GitHubTransport({
+              apiUrl: ghConfig.apiUrl,
+              requestTimeoutMs: ghConfig.requestTimeoutMs,
+              pool: new TokenPool(
+                new InstallationTokenProvider({
+                  apiUrl: ghConfig.apiUrl,
+                  appId: ghConfig.appId,
+                  privateKey: ghConfig.privateKey,
+                  refreshLeadMs: ghConfig.tokenRefreshLeadMs,
+                  requestTimeoutMs: ghConfig.requestTimeoutMs,
+                }),
+                { installations: parseInstallations(), quarantineThreshold: ghConfig.quarantineThreshold },
+              ),
+              scheduler: new RequestScheduler({ maxConcurrent: ghConfig.maxConcurrentRequests }),
+            }),
+          ),
+          priority: 'backfill',
+        })
+      : undefined;
+
+  const enrichDeps: CommitEnrichDeps = {
+    pool,
+    es: enrichEs,
+    bus,
+    metrics,
+    graphFor: (repository) =>
+      enrichApiGraph === undefined
+        ? enrichMirrorGraph
+        : selectCommitGraph(repository, { mirror: enrichMirrorGraph, api: enrichApiGraph }),
+    log: (fields) => { enrichLog({ ...fields }); },
+  };
+
+  commitEnrichSubscription = await startCommitEnrichWorker(enrichDeps);
+  commitEnrichSweeper = startCommitEnrichSweeper(enrichDeps);
 }
 
 let integritySweeper: IntegritySweeper | undefined;
@@ -718,6 +793,8 @@ const shutdown = (): void => {
        */
       await backfillRunner?.stop();
       await mirrorRunner?.stop();
+      await commitEnrichSweeper?.stop();
+      await commitEnrichSubscription?.close();
       await enrichSubscription?.close();
       await projectSubscription?.close();
       await sequenceSubscription?.close();

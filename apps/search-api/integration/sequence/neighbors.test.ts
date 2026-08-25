@@ -207,6 +207,34 @@ function stubEsClient(): Client {
         });
       }
 
+      /*
+       * 직접 푸시 행의 표시값 조회 (WP-067 / CR-038, DEV-212).
+       *
+       * `terms`로 여러 SHA를 **한 번에** 묻는다. 행마다 물으면 이 갈래가 목록
+       * 길이만큼 호출되고, `esQueries`가 그것을 그대로 드러낸다.
+       */
+      const shaTerms = /"commit_sha":\[([^\]]*)\]/.exec(body);
+      if (shaTerms !== null && shaTerms[1] !== undefined && shaTerms[1] !== '') {
+        const shas = shaTerms[1].split(',').map((one) => one.replace(/"/g, ''));
+        // 서수 3(직접 푸시)만 보강돼 있다. 나머지는 아직 문서가 없다.
+        const enriched = shas.filter((one) => one === shaOf(3));
+        return Promise.resolve({
+          hits: {
+            total: { value: enriched.length, relation: 'eq' },
+            hits: enriched.map((one) => ({
+              _index: 'prs-commits-v1',
+              _id: `c-${one}`,
+              _source: {
+                commit_sha: one,
+                message: 'hotfix: 결제 타임아웃\n\n본문은 목록에 실리지 않는다.',
+                author: 'park',
+                committed_at: '2026-08-11T05:00:00Z',
+              },
+            })),
+          },
+        });
+      }
+
       const sha = /"commit_sha":"([0-9a-f]{40})"/.exec(body);
       const known = sha !== null && sha[1] === OFF_CHAIN_SHA;
       return Promise.resolve({
@@ -385,9 +413,15 @@ describe('앞뒤 각 N건 (AC-1·AC-2·AC-3)', () => {
     const direct = (body.items ?? []).find((item) => item.merge_seq === 3);
     expect(direct?.kind).toBe('commit');
     expect(direct?.pr_number).toBeNull();
-    // 제목·작성자는 없다 — 소속 PR 값으로 채우지 않는다 (DEV-090).
-    expect(direct?.title).toBeNull();
-    expect(direct?.author).toBeNull();
+    /*
+     * **소속 PR 값으로 채우지 않는다** (DEV-090). 그 규칙은 그대로다.
+     *
+     * 달라진 것은 표시값의 **출처**다: WP-067이 커밋 문서를 채우면서 그 행의
+     * 제목·작성자를 커밋 자신에게서 얻는다 (CR-038, DEV-212). 앵커 PR의 제목이
+     * 새어 들어오지 않는 것이 여기서 걸리는 불변식이다.
+     */
+    expect(direct?.title).not.toBe('PR 604');
+    expect(direct?.author).toBe('park');
     expect(direct?.url).toBe(`/commit/acme/payments/${shaOf(3)}`);
   });
 
@@ -663,5 +697,54 @@ describe('merged_at은 행의 종류가 정한다 (CR-032, DEV-169)', () => {
     expect(direct?.kind).toBe('commit');
     expect(direct?.pr_number).toBeNull();
     expect(direct?.merged_at).toBe('2026-08-03T00:00:00.000Z');
+  });
+
+  /**
+   * 직접 푸시 행의 표시값 (WP-067 / CR-038, DEV-212).
+   *
+   * WP-027이 이 행을 실제로 노출하기 시작했는데 제목·작성자가 언제나 비어 있었다 —
+   * **SHA만 보이는 행**이다. 그것이 이 WP의 사용자-visible 동기다.
+   */
+  describe('직접 푸시 행이 메타데이터를 보인다 (WP-067)', () => {
+    it('**제목 첫 줄·작성자가 실제로 채워진다**', async () => {
+      esQueries.length = 0;
+      const { status, body } = await get({ pr_number: '604', count: '3' });
+      expect(status).toBe(200);
+
+      const direct = (body.items ?? []).find((item) => item.merge_seq === 3);
+      expect(direct).toBeDefined();
+      expect(direct?.pr_number).toBeNull();
+      // 목록 행이라 첫 줄만이다. 전문은 커밋 상세가 준다.
+      expect(direct?.title).toBe('hotfix: 결제 타임아웃');
+      expect(direct?.author).toBe('park');
+      // 표시 소스가 색인에 있으므로 `indexed`가 참이다 (DEV-130의 규칙).
+      expect(direct?.indexed).toBe(true);
+      // 그 행의 시각은 커밋 시각이다 (DEV-169). 커밋 문서가 그것을 덮지 않는다.
+      expect(direct?.merged_at).not.toBeNull();
+    });
+
+    it('**커밋 표시값을 조회 한 번으로 읽는다** — N+1이 아니다', async () => {
+      esQueries.length = 0;
+      await get({ pr_number: '604', count: '3' });
+
+      const commitQueries = esQueries.filter((one) => one.index === 'prs-commits');
+      expect(commitQueries).toHaveLength(1);
+      // 그리고 그 한 번이 `terms`로 여러 SHA를 함께 묻는다.
+      expect(commitQueries[0]?.body).toContain('"commit_sha":[');
+    });
+
+    it('보강되지 않은 직접 푸시 행은 제목이 비고 `indexed`가 거짓이다', async () => {
+      /*
+       * 조용히 채우지 않는다 — "아직 보강되지 않았다"와 "제목이 없다"는 다른
+       * 사실이고, 화면이 그 둘을 구분할 수 있어야 한다.
+       */
+      esQueries.length = 0;
+      const { body } = await get({ repository: 'acme/multi', pr_number: String(SHARED_PR), count: '3' });
+      const rows = (body.items ?? []).filter((item) => item.pr_number === null);
+      for (const row of rows) {
+        expect(row.title).toBeNull();
+        expect(row.indexed).toBe(false);
+      }
+    });
   });
 });

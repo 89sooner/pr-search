@@ -81,6 +81,24 @@ const CAPABILITIES = [
     manifest: 'deploy/k8s/pipeline-worker-reconcile.yaml',
   },
   {
+    id: 'JOB-MIR-002',
+    what: '커밋 메타데이터 보강',
+    process: 'pipeline-worker',
+    role: 'mirror',
+    start: 'commitEnrichSubscription = await startCommitEnrichWorker(',
+    stop: 'commitEnrichSubscription?.close()',
+    manifest: 'deploy/k8s/pipeline-worker-mirror.yaml',
+  },
+  {
+    id: 'JOB-MIR-002-sweep',
+    what: '커밋 보강 잔여분 스윕',
+    process: 'pipeline-worker',
+    role: 'mirror',
+    start: 'commitEnrichSweeper = startCommitEnrichSweeper(',
+    stop: 'commitEnrichSweeper?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-mirror.yaml',
+  },
+  {
     id: 'JOB-ING-008',
     what: 'PG↔ES 정합성 감시',
     process: 'pipeline-worker',
@@ -232,5 +250,22 @@ describe('경로가 실재하는지', () => {
   it('JOB-ING-010 — 예약과 러너가 같은 역할에 함께 있다', () => {
     expect(WORKER_INDEX).toContain('enqueueSnapshotBootstrap: () => enqueueSnapshotBootstrap(pool)');
     expect(WORKER_INDEX).toContain('snapshotBootstrapRunner = startSnapshotBootstrapRunner(');
+  });
+
+  /*
+   * JOB-MIR-002는 `prs:projected`를 **전용 소비자 그룹**으로 읽어야 한다
+   * (CR-038, DEV-205). 기본 그룹으로 구독하면 관계 파생(WP-029)과 이벤트를 나눠
+   * 갖고 둘 다 절반씩 놓친다 — 어느 쪽도 실패로 보이지 않는 조용한 결함이다.
+   */
+  it('JOB-MIR-002 — 전용 소비자 그룹으로 구독한다', () => {
+    const source = read('apps/pipeline-worker/src/commit-enrich.ts');
+    expect(source).toContain('consumerGroup(TOPICS.projected, COMMIT_ENRICH_CONSUMER)');
+  });
+
+  it('JOB-MIR-002 — 미러 볼륨이 배포에 붙어 있다', () => {
+    // 미러가 이 잡의 정답지다. 볼륨이 없으면 전부 API 폴백으로 떨어진다.
+    const manifest = read('deploy/k8s/pipeline-worker-mirror.yaml');
+    expect(manifest).toContain('persistentVolumeClaim');
+    expect(manifest).toContain('MIRROR_ROOT');
   });
 });
