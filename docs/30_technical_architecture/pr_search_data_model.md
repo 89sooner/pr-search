@@ -293,6 +293,35 @@ CREATE TABLE repository (
 );
 CREATE INDEX repository_allowed_teams_idx ON repository USING GIN (allowed_team_ids);
 
+#### `commit_snapshot` — 커밋 정본 (WP-067 / CR-038, DEV-208 / ADR-004)
+
+```sql
+-- 마이그레이션 013
+CREATE TABLE commit_snapshot (
+  repository_id           BIGINT      NOT NULL,
+  commit_sha              TEXT        NOT NULL,
+  parent_shas             TEXT[]      NOT NULL DEFAULT '{}',
+  message                 TEXT        NOT NULL DEFAULT '',
+  author                  TEXT,
+  committer               TEXT,
+  authored_at             TIMESTAMPTZ NOT NULL,
+  committed_at            TIMESTAMPTZ NOT NULL,
+  changed_paths           TEXT[]      NOT NULL DEFAULT '{}',
+  changed_paths_truncated BOOLEAN     NOT NULL DEFAULT false,
+  patch_id                TEXT,
+  patch_id_unavailable    TEXT,
+  metadata_source         TEXT        NOT NULL,   -- 'mirror' | 'api'
+  fetched_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (repository_id, commit_sha)
+);
+```
+
+커밋 **자체의** 메타데이터에는 정규화된 자리가 없었다 — `merge_sequence`는 서수와 SHA만 알고 `raw_event`는 웹훅으로 들어온 것만 담는다. WP-067을 원래 계약대로 구현하면 메시지·작성자·부모·변경 경로가 **색인에만** 존재하게 되고, 색인을 잃으면 되살릴 근거가 없다 — **ADR-004가 커밋 축에서 깨진다.** CR-034가 PR 축에서 겪은 것(마이그레이션 010)과 같은 모양이며, 같은 실수를 반복하지 않는다.
+
+**소스 코드 본문과 patch 본문은 어떤 열에도 담지 않는다** (NFR-005). 변경 경로는 파일 **이름**이고 `patch_id`는 diff의 해시이지 diff가 아니다. 이메일도 담지 않는다 — CR-038이 승인한 필드 목록에 없다.
+
+값은 전부 커밋 객체가 가진 것이라 **불변**이다. 같은 SHA면 언제 읽어도 같으므로 조건부 버전 비교가 필요 없고, 그래서 보강이 멱등하며 `document_version`을 올릴 이유도 없다 (DEV-209). 다만 **미러가 얻은 `patch_id`를 API 폴백 회차가 `no_mirror`로 덮지 않는다** — 능력이 없는 쪽이 있는 쪽을 지우면 체리픽 파생(WP-030)이 근거를 잃는다.
+
 #### `repository.snapshot_bootstrapped_at` — 정본 스냅숏 완결 표시 (CR-037, DEV-194·195)
 
 ```sql
