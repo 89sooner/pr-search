@@ -976,8 +976,6 @@
   - `JOB-ING-008` PostgreSQL↔ES 정합성 감시 (문서 수 + 표본 내용)
   - 메트릭: `sequence_integrity_mismatch_total`, `reconcile_missing_total`
   - API 한도 소진 시 스캔 분할, 3주기 미완주 시 경보
-- 제외:
-  - A-003 화면 (WP-040)
 - 완료 기준(DoD):
   - [ ] QA-A003-09가 통과한다
   - [ ] 표본 모드가 최근 1000개를 대조한다 (FR-ADMIN-003 AC-2)
@@ -986,7 +984,21 @@
   - [ ] 조정 스캔이 색인에 없는 PR을 발견해 재투입한다 (FR-ING-011 AC-3)
   - [ ] 누락 건수가 메트릭으로 노출된다 (AC-4)
   - [ ] 점검이 감사 기록에 남는다 (FR-ADMIN-003 AC-5)
-- 검증 방법: `pnpm test:integration ops/integrity`, `pnpm test:integration jobs/reconcile`
+  - [ ] **점검 실패가 시퀀스 공간 상태를 바꾸지 않는다** — 그래프를 읽지 못해도 기존 상태가 보존되고, 실패를 `consistent`로 표현하지 않는다 (CR-033, DEV-171 / SRS v2.5)
+  - [ ] **`sequence_reassign` 잡 행이 실제로 만들어진다** — 마이그레이션 009가 `job_type_chk`를 넓혔고 up/down이 쌍으로 돈다 (CR-033, DEV-172 / DEV-128 해소)
+  - [ ] `new_epoch_expected`가 현재 에폭 + 1의 **실제 계산 결과**다 (고정값이 아니다)
+  - [ ] `affected_saved_search_count`가 **`@prs/query` 파서**로 판정된다 — 문자열 검색이 아니며, `repo:`·`base:`가 없는 질의는 보수적으로 센다 (CR-033, DEV-173)
+  - [ ] `impact_estimate`의 세 항목이 실제 데이터로 계산된다 — 계산하지 않은 항목을 `0`으로 채우지 않는다
+  - [ ] 조정 스캔이 **주기 설정값(기본 1시간)**으로 돈다 (FR-ING-011 AC-1)
+  - [ ] 조정 스캔이 **최근 24시간 갱신 PR**을 읽는다 — `/pulls`에 `since`가 없으므로 `updated desc` + 컷오프다. 백필의 `asc` 고정(DEV-098)은 기본값으로 유지된다 (CR-033, DEV-175)
+  - [ ] **대상 브랜치 head에 시퀀스가 없으면 채번 잡을 예약한다** (FR-ING-011 AC-5) — 기존 채번 경로로 예약할 뿐 서수를 직접 붙이지 않는다
+  - [ ] 한도 소진 시 전체 주기를 실패시키지 않고 다음 주기로 미룬다. **3주기 연속 미완주면 경보 상태·지표가 발생한다** (FR-ING-011 예외 처리)
+  - [ ] **JOB-ING-008이 개수와 표본 내용을 각각 대조하고**, PG에 있고 ES에 없는 항목만 재투영 대상이며 **ES에만 있는 잉여 문서는 자동 삭제하지 않는다** (CR-033, DEV-174 / ADR-004)
+  - [ ] 조사 가능한 보고에 민감 페이로드·소스 코드가 들어가지 않는다 (NFR-005)
+- 제외:
+  - A-003 화면 (WP-040)
+  - **실제 outbound 알림 발송** — 알림 어댑터는 REL-005 소유다 (DEV-026·DEV-127 이월). FLOW-008 7단계는 이 WP에서 **감사 기록·지표·잡 상태**까지만 성립한다. 발송했다고 보고하지 않는다 (CR-033, DEV-176)
+- 검증 방법: `pnpm test:integration ops/sequence-integrity`, `pnpm test:integration job-type-reassign`, `pnpm test pipeline-worker/src/{integrity,reconcile,consistency}`
 - 기록: 원장 WP-028 상태, FR-ADMIN-003·FR-ING-011 매핑
 
 ### WP-067 커밋 메타데이터 보강 (JOB-MIR-002)

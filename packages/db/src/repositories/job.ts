@@ -15,6 +15,8 @@ export type JobType =
   | 'reconcile'
   | 'reindex'
   | 'sequence_assign'
+  /** 수동 재채번 (API-ADM-007). 마이그레이션 009가 CHECK에 더했다 (CR-033, DEV-172). */
+  | 'sequence_reassign'
   | 'sequence_integrity'
   | 'link_rebuild'
   | 'export';

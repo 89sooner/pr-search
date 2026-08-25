@@ -1360,6 +1360,49 @@ POST /api/v1/admin/sequence-integrity
 
 - `confirmation`이 저장소 이름과 정확히 일치해야 한다. 불일치 시 400 `CONFIRMATION_MISMATCH` (FLOW-008)
 - 재채번은 비가역이다. 실행은 감사 기록 대상이다
+- 권한은 `operator` 역할이다 (3장). `mode`는 `sample`(기본) 또는 `full`이다. `sample`은 **최근 1000 서수**를 대조한다 (FR-ADMIN-003 AC-2)
+- `new_epoch_expected`는 **현재 에폭 + 1의 실제 계산 결과**다. 고정값이 아니다
+- 잡 유형 `sequence_reassign`은 마이그레이션 009가 `job_type_chk`에 추가한다 (CR-033, DEV-172 / DEV-128 해소). 그 전에는 잡 행 생성이 CHECK 위반이었다
+
+**점검 실패는 시퀀스 공간 상태를 바꾸지 않는다** (CR-033, DEV-171 / FR-ADMIN-003 예외 처리, SRS v2.5). 커밋 그래프를 읽을 수 없으면 점검을 실패로 끝내고 사유와 `correlation_id`를 낸다 — **`sequence_space.state`는 그대로 둔다.** `unknown`은 이미 "채번된 적 없는 브랜치"라는 뜻으로 API-SEQ-006·C-027·W-004가 표시하고 있고(CR-029), 거기에 "점검 실패"를 얹으면 한 번의 일시적 그래프 오류가 이미 선 화면들을 거짓말하게 만든다. **점검은 관찰이다** — 진단 실행의 실패는 진단 결과에 담기지 진단 대상의 정본 상태가 되지 않는다. 새 상태값 `check_failed`도 만들지 않는다.
+
+```json
+{
+  "sequence_space": "acme/payments@main",
+  "seq_epoch": 3,
+  "mode": "sample",
+  "check_state": "failed",
+  "reason": "commit_graph_unavailable",
+  "message": "커밋 그래프를 읽을 수 없어 점검을 마치지 못했습니다.",
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+성공한 점검은 `check_state: "completed"`이며 그때만 `consistent`·`checked_count`·`first_mismatch`·`impact_estimate`를 싣는다 — **실패를 `consistent: true`로 표현하지 않는다.** 검사하지 않은 것을 "일치"로 적으면 그것이 곧 거짓이다.
+
+**`first_mismatch`는 최초 지점이다.** 서수 오름차순으로 대조하다 처음 어긋난 곳 하나만 낸다 — 그 뒤는 전부 밀린 결과이므로 나열해도 정보가 늘지 않는다. 일치하면 `null`이다.
+
+**`impact_estimate`는 실제 데이터로 계산한다** — 계산하지 않은 항목을 `0`으로 채우지 않는다 (DEV-133과 같은 규율).
+
+- `affected_commit_count`: 최초 불일치 서수 이상의 `merge_sequence` 행 수
+- `invalidated_safe_marker_count`: 그 구간에 걸린 `safe_marker` 수. 표식이 하나도 없으면 `0`이 참이다
+- `affected_saved_search_count`: 아래 규칙으로 센다
+
+**`affected_saved_search_count`의 판정 규칙** (CR-033, DEV-173). 이 값은 *"정확히 이 공간만 가리키는 저장 검색 수"*가 아니라 **"재채번으로 의미가 바뀔 가능성이 있는 저장 검색 수"**다. 재채번은 서수의 뜻을 바꾸므로 `seq` 술어를 가진 검색만 영향을 받고, 대상을 좁히지 않은 검색은 대상을 포함할 수 있으므로 **보수적으로 센다.**
+
+**질의 문자열을 정규식으로 훑지 않는다** — `@prs/query` 파서로 술어를 읽는다. `"seq:"`가 인용 안의 본문이거나 부정 필터일 때 문자열 검색은 전부 오답을 낸다.
+
+| 조건 | 판정 |
+| --- | --- |
+| `seq` 술어가 없다 | **제외** — 재채번이 의미를 바꾸지 않는다 |
+| `repo:`가 대상 저장소와 일치 | 후보 |
+| `repo:`가 없다 | **후보** — 대상 저장소를 포함할 수 있다 |
+| `repo:`가 있고 대상과 다르다 | 제외 |
+| `base:`가 대상 브랜치와 일치 | 후보 |
+| `base:`가 없다 | **후보** — 대상 브랜치를 포함할 수 있다 |
+| `base:`가 있고 대상과 다르다 | 제외 |
+
+파싱에 실패하는 저장 질의(이미 실행 불가능한 것)는 **세지 않는다** — 영향 수를 부풀리지 않는다.
 
 ## 5. DTO 표준
 

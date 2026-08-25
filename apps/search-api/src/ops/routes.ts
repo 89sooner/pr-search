@@ -14,7 +14,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import type { ErrorResponse } from '@prs/contracts';
 import { deadLetterRepo } from '@prs/db';
-import type { DeadLetterFilter, DeadLetterState, RepositoryStatus } from '@prs/db';
+import type { DeadLetterFilter, DeadLetterState, RepositoryRow, RepositoryStatus } from '@prs/db';
 import type { AdminPrincipal } from '../config.js';
 import type { AuthContext } from '../auth/context.js';
 import {
@@ -49,13 +49,22 @@ import {
   type RegistryDeps,
 } from './repositories.js';
 import { applyJobAction, createJob, isJobAction, toJobResponse, JOB_ACTIONS } from './jobs.js';
-import { jobRepo } from '@prs/db';
+import { auditRepo, jobRepo, repositoryRepo } from '@prs/db';
+import {
+  confirmationMatches,
+  expectedNewEpoch,
+  parseIntegrityMode,
+  runIntegrityCheck,
+  type IntegrityDeps,
+} from './sequence-integrity.js';
+
 
 export const DEAD_LETTER_PATH = '/api/v1/admin/dead-letters';
 export const REPROCESS_PATH = '/api/v1/admin/dead-letters/reprocess';
 export const REPOSITORIES_PATH = '/api/v1/admin/repositories';
 export const PIPELINE_STATUS_PATH = '/api/v1/admin/pipeline-status';
 export const JOBS_PATH = '/api/v1/admin/jobs';
+export const SEQUENCE_INTEGRITY_PATH = '/api/v1/admin/sequence-integrity';
 
 function fail(
   reply: FastifyReply,
@@ -82,10 +91,17 @@ export interface OpsRouteOptions extends OpsDeps {
   readonly registry?: RegistryDeps;
   /** 파이프라인 상태 의존. 없으면 상태 경로를 달지 않는다 (API-ADM-006). */
   readonly pipeline?: PipelineStatusDeps;
+  /**
+   * 시퀀스 정합성 점검 의존 (API-ADM-007).
+   *
+   * 커밋 그래프가 있어야 대조가 성립한다. 없으면 경로를 달지 않는다 — 그래프
+   * 없이 뜬 프로세스가 "점검했는데 일치"라고 답하는 것이 최악이다.
+   */
+  readonly integrity?: IntegrityDeps;
 }
 
 export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions): void {
-  const { adminTokens, auth, loginPath, registry, pipeline, ...deps } = options;
+  const { adminTokens, auth, loginPath, registry, pipeline, integrity, ...deps } = options;
 
   /**
    * 주체를 세우고 `operator` 역할을 확인한다.
@@ -179,6 +195,7 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
   });
 
   if (registry !== undefined) registerRegistryRoutes(app, registry, authorize);
+  if (integrity !== undefined) registerIntegrityRoutes(app, integrity, authorize);
 
   if (pipeline !== undefined) {
     app.get(PIPELINE_STATUS_PATH, async (request, reply) => {
@@ -436,6 +453,171 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
           status: result.repository.status,
           documents_marked: result.documentsMarked,
         },
+      };
+    }),
+  );
+}
+
+/**
+ * API-ADM-007 시퀀스 정합성 점검과 재채번 (WP-028 / FR-ADMIN-003, CR-033).
+ *
+ * **점검은 공간 상태를 바꾸지 않는다** (DEV-171). 실패는 `check_state: "failed"`와
+ * 사유로 답하고, 그때 `consistent`를 싣지 않는다 — 검사하지 않은 것을 "일치"로
+ * 적으면 그 한 줄이 거짓이다.
+ */
+function registerIntegrityRoutes(app: FastifyInstance, integrity: IntegrityDeps, authorize: Authorize): void {
+  const handle = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    run: (
+      principal: Principal,
+      correlationId: string,
+    ) => Promise<{ readonly status: number; readonly body: unknown }>,
+  ): Promise<FastifyReply> => {
+    const correlationId = randomUUID();
+    const principal = await authorize(request, reply, correlationId);
+    if (principal === null) return reply;
+
+    try {
+      const result = await run(principal, correlationId);
+      return reply.status(result.status).send(result.body);
+    } catch (error) {
+      if (error instanceof AdminRejected) {
+        return fail(reply, ADMIN_ERROR_STATUS[error.code], error.code, error.message, correlationId, error.detail);
+      }
+      throw error;
+    }
+  };
+
+  /** `owner/name` + 브랜치를 읽고 저장소 행을 찾는다. 없으면 404다. */
+  const target = async (
+    source: Record<string, unknown>,
+  ): Promise<{ readonly repository: RepositoryRow; readonly baseBranch: string; readonly slug: string }> => {
+    const raw = source['repository'];
+    if (typeof raw !== 'string' || raw.split('/').length !== 2) {
+      throw new AdminRejected('INVALID_PARAMETER', 'repository는 owner/name 형식이어야 한다');
+    }
+    const [owner, name] = raw.split('/') as [string, string];
+    const baseBranch = source['base_branch'];
+    if (typeof baseBranch !== 'string' || baseBranch.trim() === '') {
+      throw new AdminRejected('INVALID_PARAMETER', 'base_branch가 필요하다');
+    }
+    const repository = await repositoryRepo.findRepositoryBySlug(integrity.pool, owner, name);
+    if (repository === undefined) {
+      throw new AdminRejected('NOT_FOUND', '등록되지 않은 저장소다', { repository: raw });
+    }
+    return { repository, baseBranch: baseBranch.trim(), slug: `${owner}/${name}` };
+  };
+
+  app.get(SEQUENCE_INTEGRITY_PATH, async (request, reply) =>
+    handle(request, reply, async (principal, correlationId) => {
+      const query = (request.query ?? {}) as Record<string, unknown>;
+      const mode = parseIntegrityMode(query['mode']);
+      if (mode === null) throw new AdminRejected('INVALID_PARAMETER', "mode는 'sample' 또는 'full'이어야 한다");
+
+      const { repository, baseBranch, slug } = await target(query);
+      const outcome = await runIntegrityCheck(integrity, { repository, baseBranch, mode });
+      if (outcome.kind === 'not_found') throw new AdminRejected('NOT_FOUND', outcome.message);
+
+      const space = `${slug}@${baseBranch}`;
+      /*
+       * **점검 결과는 감사 기록 대상이다** (FR-ADMIN-003 AC-5). 실패도 남긴다 —
+       * 운영자가 "점검했는데 답이 없었다"를 나중에 추적할 수 있어야 한다.
+       */
+      await auditRepo.recordAudit(integrity.pool, {
+        userId: principalId(principal),
+        action: 'sequence_integrity.check',
+        target: space,
+        query: mode,
+        resultCode: outcome.kind === 'failed' ? outcome.reason : outcome.consistent ? 'consistent' : 'mismatch',
+        correlationId,
+      });
+
+      if (outcome.kind === 'failed') {
+        return {
+          status: 200,
+          body: {
+            sequence_space: space,
+            seq_epoch: outcome.seqEpoch,
+            mode,
+            check_state: 'failed',
+            reason: outcome.reason,
+            message: outcome.message,
+            correlation_id: correlationId,
+          },
+        };
+      }
+
+      return {
+        status: 200,
+        body: {
+          sequence_space: space,
+          seq_epoch: outcome.seqEpoch,
+          mode,
+          check_state: 'completed',
+          checked_count: outcome.checkedCount,
+          consistent: outcome.consistent,
+          first_mismatch:
+            outcome.firstMismatch === null
+              ? null
+              : {
+                  merge_seq: outcome.firstMismatch.mergeSeq,
+                  stored_commit_sha: outcome.firstMismatch.storedCommitSha,
+                  actual_commit_sha: outcome.firstMismatch.actualCommitSha,
+                },
+          ...(outcome.impact === null ? {} : { impact_estimate: outcome.impact }),
+          correlation_id: correlationId,
+        },
+      };
+    }),
+  );
+
+  app.post(SEQUENCE_INTEGRITY_PATH, async (request, reply) =>
+    handle(request, reply, async (principal, correlationId) => {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      if (body['action'] !== 'reassign') {
+        throw new AdminRejected('INVALID_PARAMETER', "action은 'reassign'이어야 한다");
+      }
+      const { repository, baseBranch, slug } = await target(body);
+
+      /*
+       * **확인 문자열을 먼저 본다.** 잡을 만든 뒤에 확인하면 그 사이에 실패한
+       * 요청이 활성 잡을 남긴다. 재채번은 비가역이므로 순서가 통제다 (FLOW-008).
+       */
+      if (!confirmationMatches(body['confirmation'], slug)) {
+        throw new AdminRejected('CONFIRMATION_MISMATCH', '확인 문자열이 저장소 이름과 다르다', {
+          expected: slug,
+        });
+      }
+
+      const newEpoch = await expectedNewEpoch(integrity.pool, repository.repository_id, baseBranch);
+      if (newEpoch === null) {
+        throw new AdminRejected('NOT_FOUND', '채번된 적이 없는 시퀀스 공간이다', { base_branch: baseBranch });
+      }
+
+      const space = `${slug}@${baseBranch}`;
+      const active = await jobRepo.findActiveJob(integrity.pool, 'sequence_reassign', space);
+      if (active !== undefined) {
+        throw new AdminRejected('JOB_CONFLICT', '같은 공간에 활성 재채번 잡이 이미 있다', { target: space });
+      }
+
+      const jobId = await jobRepo.enqueueJob(
+        integrity.pool,
+        'sequence_reassign',
+        space,
+        principalId(principal),
+      );
+      await auditRepo.recordAudit(integrity.pool, {
+        userId: principalId(principal),
+        action: 'sequence_integrity.reassign',
+        target: space,
+        resultCode: 'queued',
+        correlationId,
+      });
+
+      return {
+        status: 202,
+        body: { job_id: jobId, type: 'sequence_reassign', state: 'queued', new_epoch_expected: newEpoch },
       };
     }),
   );

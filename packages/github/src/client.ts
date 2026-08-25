@@ -192,17 +192,27 @@ export class GitHubClient {
    * 처음부터 다시 해야 한다. 백필은 **한 페이지 처리 → 커서 저장**을 반복해야
    * 재개가 성립한다 (FR-ING-006 AC-4).
    *
-   * ## 정렬을 `updated asc`로 고정한다
+   * ## 정렬은 `updated asc`가 **기본값**이다
    *
-   * 호출 측이 고를 수 없게 인자로 열어 두지 않았다. GitHub 기본값은
-   * `created desc`인데, 그대로 쓰면 **백필 도중 새 PR이 생길 때마다 목록 앞이
-   * 밀려** 아직 읽지 않은 항목이 뒤 페이지로 넘어가고 그대로 건너뛰어진다.
+   * GitHub 기본값은 `created desc`인데, 그대로 쓰면 **백필 도중 새 PR이 생길
+   * 때마다 목록 앞이 밀려** 아직 읽지 않은 항목이 뒤 페이지로 넘어가고 그대로
+   * 건너뛰어진다.
    *
    * `updated asc`에서는 갱신된 PR이 **목록 끝으로** 간다. 이미 처리한 것이
    * 다시 걸릴 수는 있어도 **아직 처리하지 않은 것이 사라지지 않는다.**
    * 재처리는 문서 버전 비교가 흡수하지만(FR-ING-005 AC-1), 건너뛴 PR은
    * 아무도 눈치채지 못한 채 검색에서 영영 빠진다 — 조사 도구에서 그것이
-   * 훨씬 나쁘다.
+   * 훨씬 나쁘다. **백필은 이 기본값을 그대로 쓴다.**
+   *
+   * ## `direction`을 왜 열었나 (CR-033, DEV-175)
+   *
+   * 조정 스캔(JOB-ING-005)은 "최근 24시간 갱신 PR"을 읽어야 하는데, `/pulls`에는
+   * `since`가 없다. `updated desc`로 읽어 컷오프에 닿으면 멈추는 것이 그 질문에
+   * 답하는 유일한 방법이다 — **없는 `since`를 있는 것처럼 만들지 않는다.**
+   *
+   * 기본값을 `asc`로 두는 것이 이 옵션의 핵심이다. 백필의 건너뜀 방지(DEV-098)는
+   * 호출부가 아무것도 하지 않아도 유지되고, `desc`를 고르는 쪽이 **전량을 읽지
+   * 않는다는 것을 알고** 고른다.
    *
    * @returns `hasMore`는 "이 페이지가 꽉 찼다"는 뜻이다. 총계가 `perPage`의
    * 배수면 다음 요청이 빈 배열을 받는데, 그 한 번의 여분 요청이 "더 있는지"를
@@ -211,7 +221,11 @@ export class GitHubClient {
   async listPullRequestsPage(
     ref: RepoRef,
     page: number,
-    options: CallOptions & { readonly perPage?: number } = {},
+    options: CallOptions & {
+      readonly perPage?: number;
+      /** 기본 `asc` — 백필의 건너뜀 방지(DEV-098)가 기본값으로 유지된다. */
+      readonly direction?: 'asc' | 'desc';
+    } = {},
   ): Promise<{ readonly items: readonly PullRequestSummary[]; readonly hasMore: boolean }> {
     const perPage = options.perPage ?? 100;
     const items = await this.#transport.get<PullRequestSummary[]>({
@@ -221,7 +235,7 @@ export class GitHubClient {
         // 열린 것만 받으면 백필의 목적(과거 PR)을 정면으로 놓친다.
         state: 'all',
         sort: 'updated',
-        direction: 'asc',
+        direction: options.direction ?? 'asc',
         per_page: perPage,
         page,
       },
