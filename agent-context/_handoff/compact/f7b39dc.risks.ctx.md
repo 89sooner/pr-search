@@ -1,0 +1,45 @@
+#hidden
+# aci:v1 id=f7b39dc src=agent-context/risks.md
+@kv sha256=9d6c26fabdc4f2fa7c942e54b1427003b01c63bf035af0b06f4bb15c486d9c11 bytes=4500 lines=82 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;DISTINCT;pull_request_number;NOT;NULL;expected;Node;e2e;Codex;v20;install;visitor;engines;v22;a11y;require;ESM;PATH;HOME;versions;prs_test;chromium;unknown
+@h1 리스크 · 불확실한 가정 · 함정
+@h2 절차 함정 (이 세션에서 실제로 밟은 것들)
+@h3 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다
+@path WP-026 M3: "직전 대비 PR 수"에 count(DISTINCT pull_request_number)와
+@p WHERE pull_request_number IS NOT NULL이 함께 있어, 각각을 지우는 변이가 둘 다 살아남았다 (count(DISTINCT col)은 NULL을 세지 않는다). 둘을 함께 지운 변이가 expected 3 to be 2로 킬됐다.
+@todo WP-027 M3: if (next && phase === 'idle') load()에서 next &&만 떼는
+@p 변이가 살아남았다 — 접는 시점에는 이미 조회가 끝나 idle이 아니다. 마운트 조회로 바꾸자 여섯 시험이 잡았다.
+@p → 변이를 걸었으면 답이 실제로 달라지는지 먼저 확인한다. 살아남았을 때 "시험 구멍"이라고 결론 내리기 전에 "등가 변이인가"를 의심한다.
+@h3 lint는 마지막 파일을 쓴 뒤에 다시 돌려라
+@path WP-027 백엔드에서 라우트 등록 직후 pnpm lint를 돌리고 통합 시험 파일은 그
+@p 뒤에 썼다. 그래서 커밋 메시지의 "lint 통과"가 그 파일을 본 적 없는 결과였고, 미사용 import(vi)가 커밋에 들어갔다. Node 22로 옮겨 전 계층을 다시 돌릴 때 드러났다.
+@h3 대역(mock)이 실제보다 관대하면 그만큼이 사각지대다
+@p e2e 앵커 대역이 무엇을 주든 해석해 줬다. 그래서 "맨 숫자 앵커" 결함(Codex P1)이 CI 초록을 받았다. 지금은 대역이 서버와 같은 갈래로 판정한다(맨 숫자· seq:0은 400). 새 대역을 쓸 때 같은 질문을 하라: 이 대역이 틀린 입력을 받아 주지는 않는가?
+@h3 임시 컨테이너에서는 슬라이스마다 커밋하라
+@path 직전 웹 세션이 CR-030 캐스케이드를 커밋하지 않고 끝나 전부 유실됐다.
+@h3 draft → ready 전환이 Codex 리뷰를 부른다
+@path PR #32에서 지적 3건(P1 하나·P2 둘)이 왔고 전부 실결함이었다. 리뷰가 오면
+@p 먼저 실측으로 검증하고(3건 모두 코드를 읽어 확인했다), 수정마다 결함 재적용 으로 킬을 확인한 뒤, 원장의 해당 WP 검증 장에 리뷰 라운드 표를 남긴다 (6.24장·6.26장이 형식 선례).
+@h2 환경 리스크
+@h3 Node 버전이 셋으로 갈린다
+@p | 버전 | 상태 | | --- | --- | | v20.12.0 (셸 기본값) | pnpm install 거부 — eslint-visitor-keys@5.0.1이 ^20.19.0 \|\| ^22.13.0 \|\| >=24 요구 | | v20.19.6 | ... y 설정 로드 실패 (require(ESM) 미지원) | | v22.23.2 | 정상. .nvmrc(22)·CI와 같은 메이저 |
+@p 전역 기본값은 바꾸지 않았다(사용자의 다른 프로젝트 영향). 명령마다
+@path export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH가 필요하다.
+@h3 백킹 서비스는 세션 시작 시 부분적으로만 준비돼 있었다
+@b prs_test DB가 없어서 통합 시험이 전부 실패했다 → 생성함
+@b 개발 DB prs에 마이그레이션이 없었다 → 8종 적용함
+@b Playwright가 요구하는 chromium 빌드(1200)가 없었다 → 설치함
+@b 컨테이너 3종은 3일째 healthy였다
+@p 이전 세션들에서 PG·Redis가 죽어 재기동한 기록이 있으니, 통합 시험이 갑자기 연결 오류를 내면 docker ps부터 본다.
+@h2 설계상 주의할 점
+@b unknown 시퀀스 공간 상태는 이미 뜻이 있다 — "채번된 적 없는 브랜치"
+@path (API-SEQ-006, C-027, W-004). WP-028이 여기에 "점검 실패"를 얹으면 이미 선
+@p 화면이 거짓을 말한다. todos.md 0번 참조.
+@path indexed: false 규칙(DEV-130)은 이제 세 곳에 있다 — 범위 결과, 릴리스
+@p 타임라인, 선행·후행. 새 목록을 만들 때 같은 질문을 하라: 정본에는 있는데 색인에 없는 항목을 행으로 남기는가?
+@path 에폭은 비교이지 쓰기가 아니다 — W-004·W-002 모두 불일치 시 경고만 내고
+@p 자동 재조회하지 않는다. 새 화면도 같은 규칙을 따른다.
+@b git add -A 주의 — agent-context/가 .gitignore에 없다.
+@h2 검증되지 않은 것 (NOT RUN)
+@b 실제 GHE 대상 smoke, OIDC 실연동 — 사내망 전제라 이 환경에서 돌지 않는다.
+@p 목 서버 계약 시험 + 실 PostgreSQL·Redis·Elasticsearch로 대체하고 있다.

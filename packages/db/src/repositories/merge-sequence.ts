@@ -437,3 +437,56 @@ export async function countPullRequestsAbove(
   );
   return Number(result.rows[0]?.count ?? 0);
 }
+
+/**
+ * 기준 서수의 앞뒤 이웃 (WP-027 / FR-REL-001, CR-031).
+ *
+ * ## 왜 정본에서 고르는가
+ *
+ * 이웃을 색인에서 `range(merge_seq)`로 고르면 **색인 반영이 늦은 항목이 오류 없이
+ * 빠지고**, 그 자리에 더 먼 항목이 올라와 "인접"이 거짓이 된다 (CR-031, DEV-166 —
+ * 범위 조회가 정본을 읽는 것과 같은 이유, DEV-130). 여기서 앞뒤를 고른 뒤 표시값만
+ * 색인에서 채운다.
+ *
+ * ## 직접 푸시 커밋을 거르지 않는다
+ *
+ * `pull_request_number IS NULL`인 행도 이웃이다 (CR-031, DEV-161 / FR-REL-001 AC-2).
+ * 빼면 목록의 서수가 건너뛴 채 보여 사용자가 **누락으로 읽는다** — 이 제품이 지켜야
+ * 하는 것은 "서수가 `git log --first-parent`와 대조된다"는 사실이다.
+ *
+ * @param count 한쪽당 건수. 반환은 최대 `2 * count + 1`행이며 **서수 오름차순**이다.
+ * @returns 기준 서수의 행이 없으면 빈 배열 — 호출부가 그것을 먼저 확인한다.
+ */
+export async function findNeighbors(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  anchorSeq: number,
+  count: number,
+): Promise<MergeSequenceRow[]> {
+  const result = await db.query<MergeSequenceRow>(
+    `WITH before AS (
+       SELECT * FROM merge_sequence
+        WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq < $4
+        ORDER BY merge_seq DESC
+        LIMIT $5
+     ),
+     anchor AS (
+       SELECT * FROM merge_sequence
+        WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq = $4
+     ),
+     after AS (
+       SELECT * FROM merge_sequence
+        WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq > $4
+        ORDER BY merge_seq ASC
+        LIMIT $5
+     )
+     SELECT * FROM before
+     UNION ALL SELECT * FROM anchor
+     UNION ALL SELECT * FROM after
+     ORDER BY merge_seq`,
+    [repositoryId, baseBranch, seqEpoch, anchorSeq, count],
+  );
+  return result.rows;
+}

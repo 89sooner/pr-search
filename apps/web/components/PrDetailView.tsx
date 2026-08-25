@@ -21,6 +21,7 @@ import { EmptyState } from './EmptyState';
 import { EntityHeader } from './EntityHeader';
 import { ErrorBanner } from './ErrorBanner';
 import { PendingSection } from './PendingSection';
+import { NeighborSection } from './NeighborSequenceList';
 import { ReleaseContainmentSection } from './ReleaseContainmentList';
 import { PrTimeline } from './PrTimeline';
 import { SequenceBadge } from './SequenceBadge';
@@ -293,15 +294,18 @@ export function PrDetailView({
        * 골격 셋. **숨기지 않는다** — 숨기면 기능 부재로 오인한다.
        * 미머지 PR의 선행·후행은 특히 그렇다 (QA-W002-07).
        */}
-      <PendingSection
-        id="neighbors"
-        title="선행·후행"
-        reason={
-          commits.mergeCommitSha === null
-            ? '머지 후 시퀀스가 부여됩니다. 아직 머지되지 않아 앞뒤를 셀 기준이 없습니다.'
-            : '머지 시퀀스 채번이 서면 같은 시퀀스 공간의 앞뒤를 표시합니다.'
-        }
-        owner="WP-021 (시퀀스 채번), WP-027 (선행·후행 조회)"
+      {/*
+        * 선행·후행 (WP-027, CR-031). **미머지면 조회하지 않는다** (DEV-164):
+        * PR 문서의 `state`로 아는 사실을 409로 되묻지 않는다. 그때도 섹션은
+        * 숨기지 않고 사유를 그린다 (QA-W002-07).
+        */}
+      <NeighborSection
+        repository={repository}
+        sectionId="neighbors"
+        anchor={{ kind: 'pull_request', prNumber }}
+        baseBranch={pr.base_branch ?? null}
+        documentEpoch={pr.seq_epoch ?? null}
+        {...(pr.state === 'merged' ? {} : { skip: { reason: 'not_merged' as const } })}
       />
       <ReleaseContainmentSection
         repository={repository}

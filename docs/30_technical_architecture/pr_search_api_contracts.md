@@ -694,10 +694,13 @@ GET /api/v1/sequence-spaces
 
 ### API-REL-001 선행·후행 조회
 
-- 목적: 시퀀스 기준 인접 PR을 앞뒤 N건 반환한다.
+- 목적: 시퀀스 기준 인접 항목을 앞뒤 각 N건 반환한다.
 - 관련 요구사항: FR-REL-001
+- 소비자: `W-002-NEIGHBORS`(PR 상세)와 `W-003-SEQPOS`(커밋 상세). 두 화면이 같은 목록을 다른 앵커로 본다.
 
 요청: `GET /api/v1/sequence-neighbors?repository=acme/payments&pr_number=1234&count=10`
+
+**앵커는 `pr_number` 또는 `commit_sha` 하나다** (CR-031, DEV-163). 둘 다 주거나 둘 다 없으면 400 `INVALID_PARAMETER`다. 커밋 앵커가 필요한 이유는 W-003이다 — **직접 푸시 커밋은 PR이 없어** `pr_number`로는 자기 위치를 물을 수 없다.
 
 응답 200:
 
@@ -705,40 +708,56 @@ GET /api/v1/sequence-spaces
 {
   "sequence_space": "acme/payments@main",
   "seq_epoch": 3,
-  "anchor": { "merge_seq": 1342, "pr_number": 1234 },
+  "sequence_state": "ok",
+  "epoch_stale": false,
+  "anchor": { "merge_seq": 1342, "kind": "pull_request", "pr_number": 1234,
+              "commit_sha": "a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5" },
   "items": [
     { "merge_seq": 1339, "kind": "commit", "commit_sha": "c72d1e0f3a4b5c6d7e8f90a1b2c3d4e5f6071829",
-      "title": "hotfix: 로그 레벨", "author": "ops-bot", "pr_number": null,
-      "merged_at": "2026-08-19T01:10:00Z", "is_anchor": false },
-    { "merge_seq": 1341, "kind": "pull_request", "pr_number": 1233,
-      "title": "fix: 세션 만료", "author": "lee",
-      "merged_at": "2026-08-19T04:20:00Z", "is_anchor": false },
-    { "merge_seq": 1342, "kind": "pull_request", "pr_number": 1234,
-      "title": "feat: 결제 재시도 로직", "author": "kim",
-      "merged_at": "2026-08-19T05:02:11Z", "is_anchor": true },
-    { "merge_seq": 1343, "kind": "pull_request", "pr_number": 1240,
-      "title": "fix: 세션 만료 처리", "author": "park",
-      "merged_at": "2026-08-19T06:11:00Z", "is_anchor": false }
+      "pr_number": null, "title": null, "author": null, "merged_at": "2026-08-19T01:10:00Z",
+      "is_anchor": false, "indexed": false, "url": "/commit/acme/payments/c72d1e0f3a4b5c6d7e8f90a1b2c3d4e5f6071829" },
+    { "merge_seq": 1341, "kind": "pull_request", "commit_sha": "b41c9a0d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6071",
+      "pr_number": 1233, "title": "fix: 세션 만료", "author": "lee",
+      "merged_at": "2026-08-19T04:20:00Z", "is_anchor": false, "indexed": true,
+      "url": "/pr/acme/payments/1233" },
+    { "merge_seq": 1342, "kind": "pull_request", "commit_sha": "a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5",
+      "pr_number": 1234, "title": "feat: 결제 재시도 로직", "author": "kim",
+      "merged_at": "2026-08-19T05:02:11Z", "is_anchor": true, "indexed": true,
+      "url": "/pr/acme/payments/1234" },
+    { "merge_seq": 1343, "kind": "pull_request", "commit_sha": "d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708",
+      "pr_number": 1240, "title": "fix: 세션 만료 처리", "author": "park",
+      "merged_at": "2026-08-19T06:11:00Z", "is_anchor": false, "indexed": true,
+      "url": "/pr/acme/payments/1240" }
   ],
   "boundary": { "at_start": false, "at_end": false },
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
 
-응답 409 (미머지 PR):
+**직접 푸시 커밋을 빼지 않는다** (CR-031, DEV-161 / FR-REL-001 AC-2). PR만 실으면 목록의 서수가 `1339 → 1341`처럼 건너뛴 채 보이고 사용자는 그것을 **누락으로 읽는다** — "서수는 `git log --first-parent`로 검증 가능해야 한다"(ADR-007)는 불변식이 화면에서 깨진다. 그 항목의 `title`·`author`는 커밋 메타데이터 보강(WP-067, JOB-MIR-002) 전까지 `null`이며, **소속 PR의 값으로 대신 채우지 않는다** (DEV-090과 같은 이유).
+
+- `count`는 기본 10, 최대 50이며 **앞뒤 각각**이다 (AC-1). 응답 항목 수는 최대 `2 × count + 1`이다.
+- `indexed: false`는 **정본(`merge_sequence`)에는 있는데 색인에 표시값이 없다**는 뜻이다 (DEV-130과 같은 규칙). 서수·SHA는 확정값이므로 행을 빼지 않고, 화면은 "색인 대기"로 밝힌다. 직접 푸시 커밋은 보강 전까지 언제나 이 상태다.
+- 에폭 봉투는 API-SEQ-001과 같다. `seq_epoch`는 현재 에폭이고, 요청에 `seq_epoch`를 실어 인용을 고정할 수 있다 — 다르면 `epoch_stale: true` + `requested_seq_epoch`를 싣고 **결과는 내지 않는다** (ADR-007). 재채번 중이면 `sequence_state: "reassigning"`과 마지막 확정 값이다.
+- `boundary.at_start`는 앞쪽으로 `count`건을 채우지 못했다는 뜻이고 `at_end`는 뒤쪽이다 — 공간 경계에서 **오류가 아니라 존재하는 만큼만** 반환한다 (AC-4).
+- 항목 표시값은 강제 접근 범위 필터를 지난 색인 조회로 채운다 (ADR-008). 요청 자체가 저장소 단위로 이미 걸러지므로 이웃이 다른 저장소로 새지 않는다.
+
+응답 409 (시퀀스 없음) — **사유를 가른다** (CR-031, DEV-164):
 
 ```json
 {
   "error": {
     "code": "NO_SEQUENCE",
     "message": "이 PR은 아직 머지되지 않아 머지 시퀀스가 없습니다.",
-    "detail": { "pr_number": 1250, "state": "open" }
+    "detail": { "pr_number": 1250, "reason": "not_merged", "state": "open" }
   },
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
 
-- `count` 기본 10, 최대 50 (AC-1)
+`reason`은 둘이다: 미머지는 `not_merged`, **머지됐으나 아직 채번되지 않은** 개체는 `not_sequenced`다. 한 코드로 묶으면 화면이 "머지되지 않았다"는 **사실 주장**과 "아직 모른다"를 같이 그리게 되고, 그것은 C-014가 금지하는 것이다 (CR-019, DEV-077).
+
+- 오류: `INVALID_PARAMETER` (400, 앵커가 둘이거나 없음), `NO_SEQUENCE` (409), `NOT_FOUND` (404, 미등록·범위 밖 저장소 또는 없는 PR·커밋)
 
 ### API-REL-002 포함 관계 조회
 

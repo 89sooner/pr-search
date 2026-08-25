@@ -74,6 +74,42 @@ function stubFetch(body: unknown, init: { status?: number } = {}): string[] {
   return calls;
 }
 
+/** 이웃 응답. 서수 3은 **PR 없는 직접 푸시**다 — 그 행이 빠지면 서수가 건너뛴다. */
+const NEIGHBORS = {
+  sequence_space: 'acme/payments@main',
+  seq_epoch: 3,
+  sequence_state: 'ok',
+  epoch_stale: false,
+  anchor: { merge_seq: 4, kind: 'pull_request', pr_number: 1234, commit_sha: 'a'.repeat(40) },
+  items: [
+    { merge_seq: 3, kind: 'commit', commit_sha: 'e'.repeat(40), pr_number: null, title: null, author: null, merged_at: '2026-08-18T00:00:00Z', is_anchor: false, indexed: false, url: '/commit/acme/payments/eee' },
+    { merge_seq: 4, kind: 'pull_request', commit_sha: 'a'.repeat(40), pr_number: 1234, title: 'feat: 결제 재시도', author: 'kim', merged_at: '2026-08-19T05:02:11Z', is_anchor: true, indexed: true, url: '/pr/acme/payments/1234' },
+    { merge_seq: 5, kind: 'pull_request', commit_sha: 'f'.repeat(40), pr_number: 1240, title: 'fix: 세션', author: 'park', merged_at: '2026-08-19T06:00:00Z', is_anchor: false, indexed: true, url: '/pr/acme/payments/1240' },
+  ],
+  boundary: { at_start: false, at_end: true },
+  correlation_id: 'n',
+};
+
+/** PR 문서와 이웃을 URL로 가리는 대역. 이웃 응답과 상태를 시험이 정한다. */
+function stubWithNeighbors(
+  pr: unknown,
+  neighbors: { status?: number; body?: unknown } = {},
+): string[] {
+  const calls: string[] = [];
+  vi.stubGlobal('fetch', (url: string) => {
+    calls.push(url);
+    const isNeighbors = url.includes('/api/sequence-neighbors');
+    const status = isNeighbors ? (neighbors.status ?? 200) : 200;
+    const body = isNeighbors ? (neighbors.body ?? NEIGHBORS) : pr;
+    return Promise.resolve({
+      ok: status < 400,
+      status,
+      json: () => Promise.resolve(body),
+    } as Response);
+  });
+  return calls;
+}
+
 function view(props: Partial<Parameters<typeof PrDetailView>[0]> = {}): ReturnType<typeof render> {
   return render(
     <PrDetailView repository="acme/payments" prNumber={1234} loginPath="/auth/login" {...props} />,
@@ -434,26 +470,130 @@ describe('준비 중 섹션 (QA-W002-07, QA-W002-17)', () => {
     expect(screen.getByTestId('section-links')).toBeInTheDocument();
   });
 
-  it('미머지 PR의 선행·후행에 **머지 후 부여** 사유가 뜬다 (QA-W002-07)', async () => {
-    stubFetch({ ...PR, state: 'open', merge_commit_sha: null });
+  it('**미머지 PR은 조회하지 않고** 사유를 보인다 (QA-W002-07, CR-031 DEV-164)', async () => {
+    const calls = stubWithNeighbors({ ...PR, state: 'open', merge_commit_sha: null });
     view();
 
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
     await userEvent.click(screen.getByTestId('toggle-neighbors'));
-    expect(screen.getByTestId('reason-neighbors')).toHaveTextContent('머지 후 시퀀스가 부여됩니다');
+    expect(screen.getByTestId('neighbor-not-merged')).toHaveTextContent('아직 머지되지 않아');
+    // PR 문서의 `state`로 아는 사실을 409로 되묻지 않는다.
+    expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toEqual([]);
   });
 
-  it('머지된 PR은 다른 사유를 보인다 — 미머지와 구분한다', async () => {
-    stubFetch(PR);
+  it('머지된 PR은 펼칠 때 1회 부르고 목록을 그린다', async () => {
+    const calls = stubWithNeighbors(PR);
     view();
 
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
+    expect(calls).toHaveLength(1);
+
     await userEvent.click(screen.getByTestId('toggle-neighbors'));
-    expect(screen.getByTestId('reason-neighbors')).toHaveTextContent('채번이 서면');
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbor-list')).toBeInTheDocument();
+    });
+    expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toHaveLength(1);
+    expect(calls[1]).toContain('pr_number=1234');
+  });
+
+  it('접었다 다시 펼쳐도 재조회하지 않는다', async () => {
+    const calls = stubWithNeighbors(PR);
+    view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbor-list')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toHaveLength(1);
+  });
+
+  it('**건수 변경은 사용자의 조작이므로 다시 부른다** (AC-1)', async () => {
+    const calls = stubWithNeighbors(PR);
+    view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbor-count')).toBeInTheDocument();
+    });
+    await userEvent.selectOptions(screen.getByTestId('neighbor-count'), '50');
+    await waitFor(() => {
+      expect(calls.filter((url) => url.includes('count=50'))).toHaveLength(1);
+    });
+  });
+
+  it('**직접 푸시 커밋이 목록에 있어 서수가 건너뛰지 않는다** (CR-031, DEV-161)', async () => {
+    stubWithNeighbors(PR);
+    view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbor-list')).toBeInTheDocument();
+    });
+    const rows = screen.getAllByTestId('neighbor-row');
+    expect(rows).toHaveLength(3);
+    expect(screen.getByTestId('neighbor-direct-push')).toBeInTheDocument();
+    // 기준 개체가 강조된다 (AC-3).
+    expect(screen.getByTestId('neighbor-anchor-badge')).toBeInTheDocument();
+    // 색인 미반영 행도 남는다 (DEV-166).
+    expect(screen.getByTestId('neighbor-unindexed')).toBeInTheDocument();
+  });
+
+  it('머지됐으나 채번 전이면 **다른 문구**다 (DEV-077의 구분)', async () => {
+    stubWithNeighbors(PR, {
+      status: 409,
+      body: { error: { code: 'NO_SEQUENCE', message: 'x', detail: { reason: 'not_sequenced' } } },
+    });
+    view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbor-not-sequenced')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('neighbor-not-merged')).not.toBeInTheDocument();
+  });
+
+  it('**에폭이 어긋나면 경고만 내고 자동으로 다시 부르지 않는다** (QA-W002-16)', async () => {
+    const calls = stubWithNeighbors({ ...PR, merge_seq: 4, seq_epoch: 2 });
+    view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbors-epoch-stale')).toBeInTheDocument();
+    });
+    // 경고 뒤에도 조회는 한 번뿐이다.
+    expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toHaveLength(1);
+  });
+
+  it('범위로 확장이 **서수 앵커**로 W-004에 넘긴다 (DEV-167)', async () => {
+    stubWithNeighbors(PR);
+    view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    await userEvent.click(screen.getByTestId('toggle-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbors-range-expand')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('neighbors-range-expand')).toHaveAttribute(
+      'href',
+      '/ranges?repo=acme%2Fpayments&branch=main&from=seq%3A3&to=seq%3A5&epoch=3',
+    );
   });
 
   it('**진입 시 관계를 함께 부르지 않는다** (QA-W002-17 금지 절반)', async () => {

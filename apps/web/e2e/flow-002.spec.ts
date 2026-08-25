@@ -60,14 +60,106 @@ const SEARCH_RESULT = {
   next_cursor: null,
 };
 
+/** 선행·후행 응답. 서수 3은 **PR 없는 직접 푸시**다 (CR-031, DEV-161). */
+const NEIGHBORS = {
+  sequence_space: 'acme/payments@main',
+  seq_epoch: 3,
+  sequence_state: 'ok',
+  epoch_stale: false,
+  anchor: { merge_seq: 4, kind: 'pull_request', pr_number: 1234, commit_sha: 'a'.repeat(40) },
+  items: [
+    { merge_seq: 3, kind: 'commit', commit_sha: 'e'.repeat(40), pr_number: null, title: null, author: null, merged_at: '2026-08-18T00:00:00Z', is_anchor: false, indexed: false, url: '/commit/acme/payments/' + 'e'.repeat(40) },
+    { merge_seq: 4, kind: 'pull_request', commit_sha: 'a'.repeat(40), pr_number: 1234, title: 'feat: 결제 재시도', author: 'kim', merged_at: '2026-08-19T05:02:11Z', is_anchor: true, indexed: true, url: '/pr/acme/payments/1234' },
+    { merge_seq: 5, kind: 'pull_request', commit_sha: 'f'.repeat(40), pr_number: 1240, title: 'fix: 세션', author: 'park', merged_at: '2026-08-19T06:00:00Z', is_anchor: false, indexed: true, url: '/pr/acme/payments/1240' },
+  ],
+  boundary: { at_start: false, at_end: true },
+  correlation_id: 'n',
+};
+
+const RANGE = {
+  sequence_space: 'acme/payments@main',
+  seq_epoch: 3,
+  sequence_state: 'ok',
+  epoch_stale: false,
+  range: { from_seq: 3, to_seq: 5, boundary: '(from, to]' },
+  summary: {
+    pull_request_count: 1,
+    commit_count: 2,
+    distinct_author_count: 1,
+    changed_files_total: 2,
+    additions_total: 10,
+    deletions_total: 1,
+    files_truncated_pull_request_count: 0,
+    top_changed_paths: [],
+  },
+  items: [],
+  items_missing_in_index: 0,
+  next_cursor: null,
+  correlation_id: 'r',
+};
+
+/**
+ * 앵커 대역 — **표현을 실제로 판정한다** (WP-026의 교훈).
+ *
+ * 무엇을 주든 해석해 주는 대역은 링크가 만든 표현이 틀려도 초록을 낸다. 맨 숫자는
+ * `classifyAnchor`가 의도적으로 `ambiguous`로 판정하므로 여기서도 거절한다.
+ */
+function resolveAnchorExpression(position: string, expression: string): { status: number; body: unknown } {
+  if (/^\d+$/.test(expression)) {
+    return {
+      status: 400,
+      body: {
+        error: { code: 'ANCHOR_UNRESOLVABLE', message: `모호합니다: ${expression}`, detail: {} },
+        correlation_id: 'c',
+      },
+    };
+  }
+  const seq = Number(/^seq:(\d+)$/.exec(expression)?.[1] ?? '1');
+  return {
+    status: 200,
+    body: {
+      sequence_space: 'acme/payments@main',
+      seq_epoch: 3,
+      resolved: [
+        {
+          position,
+          expression,
+          kind: 'sequence',
+          merge_seq: seq,
+          commit_sha: `${String(seq).padStart(2, '0')}${'a'.repeat(38)}`,
+          boundary: position === 'from' ? 'exclusive' : 'inclusive',
+          occurred_at: '2026-08-12T00:00:00Z',
+        },
+      ],
+      correlation_id: 'c',
+    },
+  };
+}
+
 /** 두 API를 모두 가로채고 호출 URL을 기록한다. */
 async function stubApi(page: Page, prBody: Record<string, unknown> = {}): Promise<string[]> {
   const calls: string[] = [];
   await page.route('**/api/**', async (route) => {
     const url = route.request().url();
     calls.push(url);
-    const body = url.includes('/api/search') ? SEARCH_RESULT : { ...PR, ...prBody };
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    let status = 200;
+    let body: unknown;
+    if (url.includes('/api/search')) body = SEARCH_RESULT;
+    else if (url.includes('/api/sequence-neighbors')) body = NEIGHBORS;
+    else if (url.includes('/api/sequence-ranges')) body = RANGE;
+    else if (url.includes('/api/sequence-anchors/resolve')) {
+      const payload = route.request().postDataJSON() as {
+        anchors?: { position: string; expression: string }[];
+      };
+      const anchor = payload.anchors?.[0];
+      const outcome =
+        anchor === undefined
+          ? { status: 400, body: {} }
+          : resolveAnchorExpression(anchor.position, anchor.expression);
+      status = outcome.status;
+      body = outcome.body;
+    } else body = { ...PR, ...prBody };
+    await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
   });
   return calls;
 }
@@ -221,5 +313,54 @@ test.describe('접근 범위 (QA-W002-18)', () => {
     await expect(page.getByTestId('pr-detail')).toHaveAttribute('data-screen-state', 'not_found');
     // "권한"이라는 말이 나오면 "있긴 있다"가 새어 나간다.
     await expect(page.getByRole('main')).not.toContainText('권한');
+  });
+});
+
+test.describe('선행·후행 (WP-027 / FR-REL-001, CR-031)', () => {
+  test('**진입 시에는 부르지 않고, 펼칠 때 1회 부른다** (QA-W002-17)', async ({ page }) => {
+    const calls = await stubApi(page);
+    await page.goto('/pr/acme/payments/1234');
+    await expect(page.getByTestId('pr-detail')).toHaveAttribute('data-screen-state', 'ready');
+    expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toHaveLength(0);
+
+    await page.getByTestId('toggle-neighbors').click();
+    await expect(page.getByTestId('neighbor-list')).toBeVisible();
+    expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toHaveLength(1);
+  });
+
+  test('**직접 푸시 커밋이 목록에 있어 서수가 건너뛰지 않는다** (DEV-161)', async ({ page }) => {
+    await stubApi(page);
+    await page.goto('/pr/acme/payments/1234');
+    await page.getByTestId('toggle-neighbors').click();
+    await expect(page.getByTestId('neighbor-list')).toBeVisible();
+
+    await expect(page.getByTestId('neighbor-row')).toHaveCount(3);
+    await expect(page.getByTestId('neighbor-direct-push')).toBeVisible();
+    await expect(page.getByTestId('neighbor-anchor-badge')).toBeVisible();
+  });
+
+  test('**범위로 확장이 W-004에 닿고 앵커가 해석된다** (DEV-167)', async ({ page }) => {
+    await stubApi(page);
+    await page.goto('/pr/acme/payments/1234');
+    await page.getByTestId('toggle-neighbors').click();
+    await expect(page.getByTestId('neighbors-range-expand')).toBeVisible();
+
+    await page.getByTestId('neighbors-range-expand').click();
+    await expect(page).toHaveURL(/from=seq%3A3&to=seq%3A5/);
+    /*
+     * 도착만으로는 부족하다 — 링크가 만든 표현을 W-004가 실제로 해석해야 조회가
+     * 열린다. 맨 숫자로 넘기면 여기서 두 앵커가 모두 실패한다 (WP-026에서 겪었다).
+     */
+    await expect(page.getByTestId('anchor-from-resolved')).toBeVisible();
+    await expect(page.getByTestId('anchor-to-resolved')).toBeVisible();
+  });
+
+  test('미머지 PR은 조회하지 않고 사유를 보인다 (QA-W002-07, DEV-164)', async ({ page }) => {
+    const calls = await stubApi(page, { state: 'open', merge_commit_sha: null });
+    await page.goto('/pr/acme/payments/1234');
+    await page.getByTestId('toggle-neighbors').click();
+
+    await expect(page.getByTestId('neighbor-not-merged')).toBeVisible();
+    expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toHaveLength(0);
   });
 });

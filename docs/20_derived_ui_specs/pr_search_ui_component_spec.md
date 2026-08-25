@@ -181,9 +181,11 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 시퀀스 기준 선행·후행 목록과 기준 개체 강조
 - 기반: Conductor `Table`
-- 필수 props: `neighbors: NeighborRow[]`, `anchorSeq: number`, `count: number`, `onCountChange`
-- 상태: `ready`, `no_sequence`(비활성 + 사유 표시), `boundary`(공간 경계)
-- 사용 규칙: `no_sequence`에서도 컴포넌트를 숨기지 않는다. 비활성 상태와 사유를 렌더링한다
+- 필수 props: `neighbors: NeighborRow[]`, `anchorSeq: number`, `count: number`, `onCountChange`, `onExpand`
+- 상태: `ready`, `collapsed`(**진입 기본** — 열 때 1회 조회, CR-031 DEV-162), `no_sequence`(비활성 + 사유), `not_sequenced`(같은 자리, 다른 문구), `boundary`(공간 경계)
+- 사용 규칙: `no_sequence`·`not_sequenced`에서도 컴포넌트를 숨기지 않는다. 비활성 상태와 사유를 렌더링하며, **두 사유의 문구를 같게 쓰지 않는다** (C-014와 같은 구분, DEV-077)
+- **직접 푸시 커밋 행을 빼지 않는다** (CR-031, DEV-161): 빼면 서수가 건너뛴 채 보여 누락으로 읽힌다. 그 행은 제목·작성자 자리를 비우고 축약 SHA로 표시하며, **소속 PR의 값으로 채우지 않는다** (DEV-090)
+- **정렬은 서버 순서를 그대로 믿는다** — 서수 오름차순이며 클라이언트에서 재정렬하지 않는다 (C-020·`RangeResultTable`과 같은 규칙). `indexed: false` 행은 서수·SHA만 확정이고 나머지는 "색인 대기"다 (DEV-130)
 - 관련 FR: FR-REL-001
 
 ### C-020 ReleaseContainmentList

@@ -78,6 +78,31 @@ function stubFetch(body: unknown, init: { status?: number } = {}): string[] {
   return calls;
 }
 
+const COMMIT_NEIGHBORS = {
+  sequence_space: 'acme/payments@main',
+  seq_epoch: 3,
+  sequence_state: 'ok',
+  epoch_stale: false,
+  anchor: { merge_seq: 4, kind: 'commit', pr_number: null, commit_sha: MERGE_SHA },
+  items: [
+    { merge_seq: 3, kind: 'commit', commit_sha: 'e'.repeat(40), pr_number: null, title: null, author: null, merged_at: '2026-08-18T00:00:00Z', is_anchor: false, indexed: false, url: '/commit/acme/payments/eee' },
+    { merge_seq: 4, kind: 'commit', commit_sha: MERGE_SHA, pr_number: null, title: null, author: null, merged_at: '2026-08-19T00:00:00Z', is_anchor: true, indexed: false, url: `/commit/acme/payments/${MERGE_SHA}` },
+  ],
+  boundary: { at_start: false, at_end: true },
+  correlation_id: 'n',
+};
+
+/** 커밋 문서와 이웃을 URL로 가리는 대역. */
+function stubWithNeighbors(commit: unknown): string[] {
+  const calls: string[] = [];
+  vi.stubGlobal('fetch', (url: string) => {
+    calls.push(url);
+    const body = url.includes('/api/sequence-neighbors') ? COMMIT_NEIGHBORS : commit;
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response);
+  });
+  return calls;
+}
+
 function view(props: Partial<Parameters<typeof CommitDetailView>[0]> = {}): ReturnType<typeof render> {
   return render(
     <CommitDetailView
@@ -547,5 +572,61 @@ describe('되돌아가기와 준비 중 섹션', () => {
     await userEvent.click(toggle);
     await userEvent.click(toggle);
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe('시퀀스 위치의 앞뒤 (WP-027 / CR-031, DEV-163)', () => {
+  it('**커밋 SHA를 앵커로 부른다** — 직접 푸시 커밋은 PR 번호가 없다', async () => {
+    const calls = stubWithNeighbors({ ...COMMIT, merge_seq: 4, seq_epoch: 3 });
+    view();
+    await waitFor(() => {
+      expect(screen.getByTestId('section-commit-neighbors')).toBeInTheDocument();
+    });
+    // 진입 요청은 커밋 문서 하나뿐이다 (IA 원칙 4).
+    expect(calls).toHaveLength(1);
+
+    await userEvent.click(screen.getByTestId('toggle-commit-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbor-list')).toBeInTheDocument();
+    });
+    const neighborCall = calls.find((url) => url.includes('/api/sequence-neighbors'));
+    expect(neighborCall).toContain(`commit_sha=${MERGE_SHA}`);
+    expect(neighborCall).not.toContain('pr_number');
+  });
+
+  it('**체인 밖 커밋은 조회하지 않는다** — 역할로 아는 사실이다 (DEV-092)', async () => {
+    const calls = stubWithNeighbors({ ...COMMIT, role: 'source_commit', merge_seq: null });
+    view();
+    await waitFor(() => {
+      expect(screen.getByTestId('section-commit-neighbors')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId('toggle-commit-neighbors'));
+    expect(screen.getByTestId('neighbor-off-chain')).toHaveTextContent('first-parent 체인 밖');
+    expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toEqual([]);
+  });
+
+  it('채번 전 커밋은 **체인 밖과 다른 문구**다', async () => {
+    stubWithNeighbors({ ...COMMIT, role: 'merge_commit', merge_seq: null });
+    view();
+    await waitFor(() => {
+      expect(screen.getByTestId('section-commit-neighbors')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId('toggle-commit-neighbors'));
+    expect(screen.getByTestId('neighbor-not-sequenced')).toBeInTheDocument();
+    expect(screen.queryByTestId('neighbor-off-chain')).not.toBeInTheDocument();
+  });
+
+  it('axe 위반 0건 — 앞뒤가 펼쳐진 상태', async () => {
+    stubWithNeighbors({ ...COMMIT, merge_seq: 4, seq_epoch: 3 });
+    const { container } = view();
+    await waitFor(() => {
+      expect(screen.getByTestId('section-commit-neighbors')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId('toggle-commit-neighbors'));
+    await waitFor(() => {
+      expect(screen.getByTestId('neighbor-list')).toBeInTheDocument();
+    });
+    const found = await violations(container);
+    expect(found, describeViolations(found)).toEqual([]);
   });
 });
