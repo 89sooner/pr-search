@@ -29,6 +29,9 @@ const REPOSITORY = {
   visibility: 'private',
   allowed_team_ids: [7, 3],
   status: 'active',
+  // 부트스트랩이 끝난 저장소다. 실제 열은 `Date | null`이며 절대 `undefined`가
+  // 아니다 — 비워 두면 부트스트랩 관문이 시험되지 않는다 (CR-037, DEV-195).
+  snapshot_bootstrapped_at: new Date('2026-08-20T00:00:00Z'),
 } as unknown as Parameters<typeof checkRepositoryConsistency>[1];
 
 /** 정본·색인 문서. 기본 내용은 같고, 시험이 필요할 때만 어긋뜨린다. */
@@ -313,5 +316,52 @@ describe('접근 통제 필드는 지문의 일부다 (CR-037, DEV-193)', () => 
     const h = harness(same);
     const reports = await checkRepositoryConsistency(h.deps, revoked);
     expect(reports.map((report) => report.kind)).toContain('content');
+  });
+});
+
+/**
+ * 부트스트랩 이전 상태와 색인 손상을 가른다 (CR-037, DEV-195).
+ */
+describe('정본 부트스트랩이 끝나지 않았으면 손상이라고 말하지 않는다 (CR-037, DEV-195)', () => {
+  const pending = {
+    ...(REPOSITORY as unknown as Record<string, unknown>),
+    snapshot_bootstrapped_at: null,
+  } as unknown as typeof REPOSITORY;
+
+  it('스냅숏이 비어 있어도 extra_in_es로 보고하지 않는다', async () => {
+    const h = harness({ pgNumbers: [], pgTotal: 0, esNumbers: [1, 2, 3] });
+    const reports = await checkRepositoryConsistency(h.deps, pending);
+    const kinds = reports.map((report) => report.kind);
+    expect(kinds).toEqual(['snapshot_bootstrap_pending']);
+    expect(kinds).not.toContain('extra_in_es');
+    expect(kinds).not.toContain('count');
+  });
+
+  it('보고에 양쪽 개수를 실어 진행 상황을 볼 수 있게 한다', async () => {
+    const h = harness({ pgNumbers: [1], pgTotal: 1, esNumbers: [1, 2, 3], esTotal: 3 });
+    const [report] = await checkRepositoryConsistency(h.deps, pending);
+    expect(report?.postgresCount).toBe(1);
+    expect(report?.elasticsearchCount).toBe(3);
+    expect(report?.sampleIdentifiers).toEqual([]);
+  });
+
+  it('재투영을 예약하지 않는다 — 기대값 자체가 아직 완성되지 않았다', async () => {
+    const h = harness({ pgNumbers: [1], pgTotal: 1, esNumbers: [] });
+    await checkRepositoryConsistency(h.deps, pending);
+    expect(h.reprojected).toEqual([]);
+  });
+
+  it('부트스트랩이 끝난 저장소는 평소대로 대조한다', async () => {
+    const h = harness({ pgNumbers: [1], pgTotal: 1, esNumbers: [1, 2, 3], esTotal: 3 });
+    const kinds = (await checkRepositoryConsistency(h.deps, REPOSITORY)).map((report) => report.kind);
+    expect(kinds).toContain('count');
+    expect(kinds).toContain('extra_in_es');
+    expect(kinds).not.toContain('snapshot_bootstrap_pending');
+  });
+
+  it('여전히 자동 삭제는 하지 않는다', async () => {
+    const h = harness({ pgNumbers: [], pgTotal: 0, esNumbers: [1, 2, 3] });
+    await checkRepositoryConsistency(h.deps, pending);
+    expect(h.deletes).toEqual([]);
   });
 });

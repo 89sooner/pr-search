@@ -51,7 +51,20 @@ export const CONSISTENCY_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /** 내용 대조 표본 크기. FR-ADMIN-003 AC-2와 같은 값으로 둔다 (CR-033, DEV-174). */
 export const CONSISTENCY_SAMPLE_SIZE = 1000;
 
-export type MismatchKind = 'count' | 'content' | 'missing_in_es' | 'extra_in_es';
+export type MismatchKind =
+  | 'count'
+  | 'content'
+  | 'missing_in_es'
+  | 'extra_in_es'
+  /**
+   * 정본 부트스트랩이 아직 끝나지 않았다 (CR-037, DEV-195).
+   *
+   * **`extra_in_es`가 아니다.** "Elasticsearch가 잘못됐다"와 "PostgreSQL 정본
+   * 부트스트랩이 아직 안 끝났다"는 다른 사실이고 조치도 다르다 — 앞의 것은
+   * 조사할 손상이고 뒤의 것은 기다리면 사라지는 진행 상태다. 뭉쳐 보고하면
+   * 운영자가 멀쩡한 색인을 의심하고, 그 소음에 **진짜 잉여 문서가 묻힌다.**
+   */
+  | 'snapshot_bootstrap_pending';
 
 /**
  * 조사 가능한 근거.
@@ -255,6 +268,31 @@ export async function checkRepositoryConsistency(
     elasticsearchPullRequests(deps, repository.repository_id),
   ]);
   const pgSample = pgSide.numbers;
+
+  /*
+   * ---- 부트스트랩 이전 상태를 손상으로 확정하지 않는다 (CR-037, DEV-195).
+   *
+   * 스냅숏이 아직 완전하다고 확인되지 않은 저장소는 개수도 식별자도 당연히
+   * 어긋난다. 그것을 `count`·`extra_in_es`로 적으면 **정상적인 진행 상태가
+   * 색인 손상으로 보고된다.** 진행 상태를 그 이름으로 부르고, 대조는 여기서
+   * 멈춘다 — 기대값 자체가 아직 완성되지 않았으므로 그 위의 판정은 전부 무의미하다.
+   *
+   * `content` 대조도 하지 않는다: 표본에 든 일부 스냅숏이 맞더라도, 그 표본이
+   * 전체를 대표한다는 근거가 없다.
+   */
+  if (repository.snapshot_bootstrapped_at === null) {
+    return [
+      {
+        repository: slug,
+        index: 'prs-pull-requests',
+        kind: 'snapshot_bootstrap_pending',
+        observedAt,
+        postgresCount: pgTotal,
+        elasticsearchCount: esSide.total,
+        sampleIdentifiers: [],
+      },
+    ];
+  }
 
   // 1층: 개수. 싸고 전체를 본다.
   if (pgTotal !== esSide.total) {

@@ -63,6 +63,15 @@ export interface BackfillDeps {
   readonly indexTuning?: IndexTuning;
   /** 정본 스냅숏에 남길 출처. 조정 스캔이 `reconcile`로 바꾼다 (CR-034, DEV-184). */
   readonly snapshotSource?: SnapshotSource;
+  /**
+   * **정본만 남기고 색인은 건드리지 않는다** (CR-037, DEV-194).
+   *
+   * 부트스트랩(JOB-ING-009)이 쓰는 모드다. 이미 색인된 문서를 다시 쓸 이유가
+   * 없고, 전량 재색인은 운영 색인에 부하를 주며 `document_version` 규칙상
+   * 결과도 같다. 만드는 문서는 백필과 **완전히 같은 경로**로 만든다 — 다른
+   * 경로로 만들면 재구축의 근거와 실제 색인 내용이 갈라진다.
+   */
+  readonly snapshotOnly?: boolean;
 }
 
 /** 백필 중 `refresh_interval` 조정 (CR-022, DEV-105). */
@@ -263,6 +272,14 @@ export async function projectOne(
       source: deps.snapshotSource ?? 'backfill',
     });
 
+    if (deps.snapshotOnly === true) {
+      /*
+       * 부트스트랩은 여기서 끝난다 (CR-037, DEV-194). 색인은 이미 그 문서를
+       * 갖고 있고, 우리가 메우려는 공백은 **PostgreSQL 쪽**이다.
+       */
+      return true;
+    }
+
     /*
      * **벌크가 200이어도 항목은 실패할 수 있다** (CR-022, DEV-106).
      *
@@ -419,6 +436,15 @@ export interface BackfillRunnerOptions {
   readonly maxConcurrent?: number;
   /** 잡이 없을 때 다시 볼 때까지의 간격. */
   readonly idlePollMs?: number;
+  /**
+   * 집을 잡 유형. 기본은 `backfill` (CR-037, DEV-194).
+   *
+   * 부트스트랩은 같은 페이지네이션·커서·중단 처리를 쓰므로 두 번째 러너를
+   * 만들지 않는다 — 큐에서 집는 유형만 다르다.
+   */
+  readonly jobType?: 'backfill' | 'snapshot_bootstrap';
+  /** 잡이 정상 완료했을 때. 부트스트랩이 완료 시점을 기록하는 자리다. */
+  readonly onCompleted?: (repository: RepositoryRow, result: BackfillResult) => Promise<void>;
 }
 
 export interface BackfillRunner {
@@ -449,7 +475,7 @@ export function startBackfillRunner(
     while (!stopped) {
       let job: JobRow | undefined;
       try {
-        job = await jobRepo.claimNextJob(deps.pool, 'backfill', options.maxConcurrent);
+        job = await jobRepo.claimNextJob(deps.pool, options.jobType ?? 'backfill', options.maxConcurrent);
       } catch (error) {
         deps.log({ level: 'error', message: '잡 claim 실패', detail: String(error).slice(0, 200) });
       }
@@ -476,7 +502,20 @@ export function startBackfillRunner(
         continue;
       }
 
-      await runBackfillJob(deps, job, repository);
+      const result = await runBackfillJob(deps, job, repository);
+      if (result.outcome === 'completed' && options.onCompleted !== undefined) {
+        try {
+          await options.onCompleted(repository, result);
+        } catch (error) {
+          deps.log({
+            level: 'warn',
+            message: '완료 후 처리에 실패했다 — 다음 주기가 다시 집는다',
+            job_id: job.job_id,
+            target: job.target,
+            detail: String(error).slice(0, 200),
+          });
+        }
+      }
     }
   })();
 

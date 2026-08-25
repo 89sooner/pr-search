@@ -24,6 +24,14 @@ export interface RepositoryRow {
    * 권한 변경이 수집 순서를 흔든다.
    */
   readonly allowed_team_ids: number[];
+  /**
+   * 정본 스냅숏이 완전하다고 확인된 시점 (CR-037, DEV-194).
+   *
+   * `null`이면 아직 부트스트랩되지 않았다 — 그 저장소의 `pull_request_snapshot`은
+   * 비어 있거나 일부만 있으며, 정합성 감시가 그것을 색인 손상으로 읽으면 안 된다.
+   */
+  snapshot_bootstrapped_at: Date | null;
+
 }
 
 /**
@@ -248,6 +256,39 @@ export async function findRepositoriesForTeam(
   const result = await db.query<RepositoryRow>(
     'SELECT * FROM repository WHERE allowed_team_ids @> ARRAY[$1]::bigint[]',
     [teamId],
+  );
+  return result.rows;
+}
+
+/**
+ * 정본 스냅숏 부트스트랩 완료를 기록한다 (CR-037, DEV-194).
+ *
+ * 이 시점 이후 `pull_request_snapshot`은 그 저장소의 PR 전량을 담고 있다고
+ * 본다 — 정합성 감시가 `extra_in_es`와 `snapshot_bootstrap_pending`을 가르는
+ * 근거다.
+ */
+export async function markSnapshotBootstrapped(
+  db: Queryable,
+  repositoryId: number,
+  at: Date,
+): Promise<void> {
+  await db.query('UPDATE repository SET snapshot_bootstrapped_at = $2 WHERE repository_id = $1', [
+    repositoryId,
+    at,
+  ]);
+}
+
+/** 아직 부트스트랩되지 않은 활성 저장소. 조정 스캔이 한 주기에 일부씩 집는다. */
+export async function listSnapshotBootstrapPending(
+  db: Queryable,
+  limit: number,
+): Promise<readonly RepositoryRow[]> {
+  const result = await db.query<RepositoryRow>(
+    `SELECT * FROM repository
+      WHERE snapshot_bootstrapped_at IS NULL AND status = 'active'
+      ORDER BY repository_id
+      LIMIT $1`,
+    [limit],
   );
   return result.rows;
 }
