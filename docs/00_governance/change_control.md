@@ -544,7 +544,7 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 5. `deploy/k8s/README.md` + `pipeline-worker-sequence.yaml` + `pipeline-worker-reconcile.yaml` — REL-003 두 역할의 배포 단위 신설. **주기 스윕이 있는 역할은 replica 1**이며 수평 확장 전에 claim 규칙을 세운다고 명시 (DEV-183)
 6. `pr_search_work_packages.md` — WP-028 DoD에 **운영 도달성** 항목 신설 (기동·종료·배포 manifest·정본 기록)
 7. 원장 — DEV-177~184 등록·해소, WP-028 `done` → `in_progress` → (CR-034 병합 후) `done`, FR-ADMIN-003·FR-ING-011 매핑 갱신, **6.28.1장(리뷰 라운드 + 운영 도달성 표)** 신설, 원장 v1.6
-8. 구현 — `apps/search-api/src/runtime.ts`(조립 이음매), `apps/pipeline-worker/src/sequence-repair-runner.ts`, `sequence.ts`의 `repairSequence`, `reconcile.ts`(버스 경로), `consistency.ts`(지문 대조), `snapshot.ts`, 마이그레이션 `010_pr_snapshot`, `reconcile` 역할
+8. 구현 — `223e84d`(계약)·`e363b97`(구현)·`97d0637`(원장) / PR #37, `main` 병합 `a620899`. `apps/search-api/src/runtime.ts`(조립 이음매), `apps/pipeline-worker/src/sequence-repair-runner.ts`, `sequence.ts`의 `repairSequence`, `reconcile.ts`(버스 경로), `consistency.ts`(지문 대조), `snapshot.ts`, 마이그레이션 `010_pr_snapshot`, `reconcile` 역할
 9. 시험 — `regression/runtime-reachability.test.ts` **신설**: "선언한 기능이 배포에서 실제로 실행되는가"만 묻는 계층이다. 실제 git으로 검증하는 `integration/sequence/repair.test.ts`도 함께
 10. 검증 — 타입·lint·lint:deps, 단위 1235(1 skipped), a11y 192, e2e 67, 통합 727, 회귀 57, contrast 80쌍 전량 통과. **결함 재적용 12종 전부 킬 확인**
 11. **NOT RUN** — 실제 Kubernetes 적용(클러스터 부재, manifest는 정적 검증만), 실제 GHE smoke, 배포된 워커의 큐 소진
