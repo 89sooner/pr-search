@@ -20,7 +20,7 @@ export type {
 export type { JobRow, JobState, JobType } from './job.js';
 export type { MergeSequenceInsert, MergeSequenceRow, SequencePoint } from './merge-sequence.js';
 export type { LagPercentiles, RepositoryLag } from './pipeline.js';
-export type { ReleaseRow, ReleaseSource, ReleaseUpsert } from './release.js';
+export type { ReleaseRow, ReleaseSource, ReleaseTimelineRow, ReleaseUpsert } from './release.js';
 export type { RawEventInsert, RawEventRow } from './raw-event.js';
 export type {
   RepositoryFilter,

@@ -251,16 +251,24 @@ export async function runRange(request: RangeRequest, deps: RangeDeps): Promise<
    * `size`(최대 200)뿐이다. 필요한 것은 보여 줄 페이지와, 요약 질의에 실을 PR
    * 번호 목록 둘이다.
    */
+  /*
+   * `size: 0`은 **요약만** 필요한 호출이다 (API-SEQ-003의 릴리스 상세, CR-030
+   * DEV-156). 0건을 요청하는 왕복도 돌지 않는다 — 안 그릴 목록을 위해 PostgreSQL을
+   * 부르지 않는다. 요약 질의는 그대로 돈다: 요약이 그 호출의 목적이다.
+   */
+  const emptyPage: MergeSequenceRow[] = [];
   const [page, prNumbers] = await Promise.all([
-    mergeSequenceRepo.findRangePage(
-      deps.pool,
-      space.repositoryId,
-      space.baseBranch,
-      space.seqEpoch,
-      request.fromExclusive,
-      request.toInclusive,
-      request.size,
-    ),
+    request.size === 0
+      ? emptyPage
+      : mergeSequenceRepo.findRangePage(
+          deps.pool,
+          space.repositoryId,
+          space.baseBranch,
+          space.seqEpoch,
+          request.fromExclusive,
+          request.toInclusive,
+          request.size,
+        ),
     mergeSequenceRepo.listPullRequestNumbersInRange(
       deps.pool,
       space.repositoryId,

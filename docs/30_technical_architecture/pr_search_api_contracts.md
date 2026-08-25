@@ -39,6 +39,7 @@
 | API-REL-002 | GET | `/containments` | 포함 릴리스·소속 PR | 인증 + 접근 범위 | FR-REL-002 |
 | API-REL-003 | GET | `/co-changes` | 동시 변경 상관 | 인증 + 접근 범위 | FR-REL-007 |
 | API-REL-004 | GET | `/relation-graphs` | 관계 그래프 탐색 | 인증 + 접근 범위 | FR-REL-008 |
+| API-REL-005 | GET | `/releases` | 저장소 릴리스 목록 (CR-030, DEV-155) | 인증 + 접근 범위 | FR-SEQ-004, FR-REL-002 |
 | API-STAT-001 | POST | `/analytics/groups` | 그룹 집계 | 인증 + 접근 범위 | FR-STAT-001, FR-STAT-006 |
 | API-STAT-002 | POST | `/analytics/time-series` | 시계열 집계 | 인증 + 접근 범위 | FR-STAT-002 |
 | API-STAT-003 | POST | `/analytics/percentiles` | 리드타임·리뷰 대기 백분위 | 인증 + 접근 범위 | FR-STAT-003, FR-STAT-004 |
@@ -623,8 +624,9 @@ POST /api/v1/sequence-anchors/resolve
 
 - 목적: 두 릴리스 사이 반영분과 요약 통계를 반환한다.
 - 관련 요구사항: FR-SEQ-004
+- 소비자: W-005의 릴리스 상세(`W-005-DETAIL`)와 미배포 구간(`W-005-UNRELEASED`). **구간 비교 버튼(`W-005-COMPARE`)은 이 API를 부르지 않는다** — FLOW-003대로 W-004로 앵커를 넘겨 이동하고, 결과 목록·패싯·뒤로가기 복귀는 거기 한 곳에만 둔다 (CR-030, DEV-156).
 
-요청: `GET /api/v1/release-comparisons?repository=acme/payments&base_branch=main&from=build-20260812-03&to=build-20260814-01`
+요청: `GET /api/v1/release-comparisons?repository=acme/payments&base_branch=main&from=build-20260812-03&to=build-20260814-01&size=0`
 
 응답 200:
 
@@ -632,24 +634,34 @@ POST /api/v1/sequence-anchors/resolve
 {
   "sequence_space": "acme/payments@main",
   "seq_epoch": 3,
+  "sequence_state": "ok",
+  "epoch_stale": false,
   "normalized_direction": "from=build-20260812-03(seq 1280) → to=build-20260814-01(seq 1318)",
   "range": { "from_seq": 1280, "to_seq": 1318, "boundary": "(from, to]" },
   "summary": {
     "pull_request_count": 38,
+    "commit_count": 41,
+    "distinct_author_count": 12,
     "changed_files_total": 241,
     "additions_total": 5120,
     "deletions_total": 1840,
-    "distinct_author_count": 12,
-    "reverted_pull_request_count": 1
+    "files_truncated_pull_request_count": 0,
+    "top_changed_paths": [{ "path": "services/payments/src/retry.ts", "count": 9 }]
   },
   "items": [],
-  "next_cursor": "eyJzIjpbMTI5MF0sImYiOiJiN2MyIn0",
+  "items_missing_in_index": 0,
+  "next_cursor": null,
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
 
-- `to=unreleased`를 지정하면 마지막 릴리스 이후 브랜치 head까지를 조회한다 (AC-5)
-- 오류: `SEQUENCE_SPACE_MISMATCH` (400), `RELEASE_NOT_INDEXED` (404)
+**요약과 항목은 API-SEQ-001의 계층을 그대로 딛는다.** `RangeSummary`·`RangeItem` 하나를 두 API가 공유하므로 W-004와 W-005가 같은 구간에 대해 다른 숫자를 말하는 일이 없다. 그래서 `reverted_pull_request_count`는 **없다** — CR-027(DEV-133)이 관계 파생(WP-030) 전에는 세면 언제나 0이라 키 자체를 뺐고, 화면도 그 자리를 "준비 중"으로 둔다(CR-029, DEV-150). 반대로 실측 요약이 내는 `commit_count`·`files_truncated_pull_request_count`·`top_changed_paths`와 봉투의 `sequence_state`·`epoch_stale`·`items_missing_in_index`는 여기에도 그대로 실린다. `unresolved_names`는 API-SEQ-001과 같이 **비면 키 자체를 넣지 않는다**(빈 배열은 "찾아봤고 없다"로 읽힌다, DEV-052).
+
+- 요청 파라미터는 API-SEQ-001과 같다: `size`(0~200, 기본 50), `seq_epoch`(에폭 고정 인용). **`size=0`은 요약만** — 릴리스 상세 패널은 항목을 그리지 않으므로 항목 질의를 돌리지 않는다.
+- 에폭 봉투도 같다. 요청 `seq_epoch`가 현재 에폭과 다르면 `epoch_stale: true` + `requested_seq_epoch`를 싣고 **결과는 내지 않는다**(ADR-007, WP-023). 재채번 중이면 `sequence_state: "reassigning"`과 마지막 확정 값이다.
+- **`to=unreleased`는 마지막 릴리스 이후 브랜치 head까지다** (AC-5). `from`을 생략하면 마지막 릴리스가 시작 앵커다 — 미배포 구간의 정의가 그것이다. 릴리스가 하나도 없는 저장소에서는 404가 아니라 **200 + 공간 전체 구간**이다: 태그가 없으면 "전부 미배포"가 참이고, `RELEASE_NOT_INDEXED`는 **지목한 태그**가 없을 때의 코드다(DEV-146).
+- **AC-4의 정규화는 서수로 한다.** 지정 순서와 무관하게 서수가 작은 쪽이 `from`이고, 뒤집힌 입력은 오류가 아니라 정규화 대상이다 — `normalized_direction`이 실제로 조회한 방향을 말한다.
+- 오류: `SEQUENCE_SPACE_MISMATCH` (400, 두 릴리스가 다른 공간), `RELEASE_NOT_INDEXED` (404, **지목한 태그가 없다** — `detail.reason`이 `tag_not_found`(다른 태그는 있다)와 `release_not_indexed`(수집 자체가 없다)를 가른다), `ANCHOR_NOT_ON_BRANCH` (400, 태그가 체인 밖), `RANGE_TOO_LARGE` (400, 구간 5만 초과 — API-SEQ-001과 같은 가드다)
 
 ### API-SEQ-006 시퀀스 공간 목록 (CR-029, DEV-152)
 
@@ -809,6 +821,61 @@ GET /api/v1/sequence-spaces
 
 - `depth` 기본 2, 최대 3. 노드 상한 300 (AC-1, AC-2)
 - 2초 초과 시 부분 그래프 + `truncated: true` 반환
+
+### API-REL-005 저장소 릴리스 목록 (CR-030, DEV-155)
+
+- 목적: W-005의 릴리스 타임라인(C-032)을 채운다 — 한 저장소에 수집된 릴리스와 각 릴리스의 시퀀스 좌표, 직전 릴리스 대비 PR 수를 준다.
+- 관련 요구사항: FR-SEQ-004 (구간 비교의 진입), FR-REL-002 (미배포 구간)
+- 신설 사유: 릴리스 **목록**을 줄 경로가 없었다. `/containments`(API-REL-002)는 대상을 지목해 묻는 조회이고 `/release-comparisons`(API-SEQ-003)는 구간 비교다 — C-027의 공간 목록이 없어 API-SEQ-006을 세운 것과 같은 공백이다 (DEV-152 → DEV-155).
+
+요청: `GET /api/v1/releases?repository=acme/payments&branch=main&limit=100`
+
+응답 200:
+
+```json
+{
+  "repository": "acme/payments",
+  "releases": [
+    {
+      "tag_name": "build-20260814-01",
+      "commit_sha": "b81f3e0a9c2d4e5f60718293a4b5c6d7e8f90a1b",
+      "released_at": "2026-08-14T11:00:00Z",
+      "source": "git_tag",
+      "base_branch": "main",
+      "sequence_space": "acme/payments@main",
+      "seq_epoch": 3,
+      "merge_seq": 1318,
+      "previous_tag_name": "build-20260812-03",
+      "pull_request_count_since_previous": 38
+    },
+    {
+      "tag_name": "hotfix-20260813",
+      "commit_sha": "a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5",
+      "released_at": "2026-08-13T02:10:00Z",
+      "source": "git_tag",
+      "base_branch": null,
+      "sequence_space": null,
+      "seq_epoch": null,
+      "merge_seq": null,
+      "previous_tag_name": null,
+      "pull_request_count_since_previous": null
+    }
+  ],
+  "reason": null,
+  "truncated": false,
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+- **목록은 저장소 스코프다** (DEV-158). `branch`를 주면 필터이고 없으면 전부다. 브랜치를 강제로 고정하면 "다른 대상 브랜치 릴리스 2건 선택"(FR-SEQ-004 AC-3 / QA-W005-03)이라는 상황 자체가 만들어지지 않아 그 규칙을 검증할 길이 사라진다. 화면은 행마다 브랜치를 표기한다.
+- **체인 밖 태그도 싣는다**(`base_branch: null`). `release` 표가 그 상태를 허용하고(`release_seq_chk`), 숨기면 "그런 태그가 없다"로 오인된다 — API-SEQ-006이 채번 이력 없는 브랜치를 `unknown`으로 싣는 것과 같은 원칙이다. 서수가 없으므로 **비교 앵커로 선택할 수 없다**.
+- **저장된 `merge_seq`를 그대로 믿지 않는다** (DEV-149). 릴리스 서수는 에폭에 묶인 스냅숏이므로, 이 API는 `release`를 **현재 에폭의 `merge_sequence`와 `commit_sha`로 조인해** 서수를 다시 얻는다(질의 한 번, 행마다 묻지 않는다). 현재 에폭 체인에 없으면 — 재채번 직후 아직 재해석되지 않았거나 체인 밖이거나 — `merge_seq: null`로 싣는다. 재채번 중에 **틀린 서수를 조용히 보이는 것보다 서수가 없다고 말하는 쪽**이 옳다.
+- 정렬은 `released_at` 내림차순, 동률은 `tag_name` 오름차순 (와이어프레임 `W-005-LIST`).
+- **`previous_tag_name`은 시각이 아니라 서수로 정한다** — 같은 공간·에폭에서 `merge_seq`가 바로 아래인 릴리스다. 태그는 나중에 옛 커밋을 가리키며 생길 수 있어 시각 순서와 서수 순서가 어긋나고, 구간은 서수로 잘리기 때문이다. 목록 정렬(시각)과 다를 수 있으므로 **비교 대상 태그명을 함께 싣는다**: 행이 무엇과 비교된 수인지 화면이 말할 수 있어야 한다.
+- **`pull_request_count_since_previous`는 서수 차가 아니라 PR 문서 수다** (QA-W005-06). 반개구간 `(previous.merge_seq, merge_seq]`에서 `pull_request_number IS NOT NULL`인 서로 다른 PR의 수이며, 직접 푸시 커밋이 섞이면 서수 차와 달라진다. 그 공간에서 서수가 가장 낮은 릴리스는 비교 대상이 없으므로 **`null`이다 — 0이 아니다**: 세지 않은 것을 0으로 적지 않는다(DEV-133과 같은 원칙).
+- **릴리스가 하나도 없으면 200 + `releases: []` + `reason: "release_not_indexed"`다** (API-REL-002와 같은 처리, DEV-146). 404가 아니다 — 저장소는 있고 릴리스가 없을 뿐이다. **"태그가 0개"와 "아직 한 번도 받지 않았다"는 구분하지 않는다**: `repository` 표에 릴리스 동기화 마커가 없어 서버가 판별할 수 없고, 판별할 수 없는 것을 두 상태로 그리면 둘 중 하나는 반드시 거짓이 된다 (DEV-159).
+- `limit`은 기본 100, 최대 500이다. 넘치면 최신부터 채우고 `truncated: true`를 싣는다 — **말없이 자르지 않는다**. 커서 페이지네이션은 WP-032다.
+- 접근 범위 밖 저장소는 `NOT_FOUND`(404)다. 목록 API는 단건 판정과 같은 `isRepositoryInScope`를 쓴다 (ADR-008, THR-004 — 존재를 드러내지 않는다).
 
 ### API-STAT-001 그룹 집계
 
@@ -1357,7 +1424,7 @@ POST /api/v1/admin/sequence-integrity
 
 | API | 상태 | 변경 정책 |
 | --- | --- | --- |
-| API-SRCH-001~004, API-SEQ-001~003, API-SEQ-006, API-REL-001~002 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
+| API-SRCH-001~004, API-SEQ-001~003, API-SEQ-006, API-REL-001~002, API-REL-005 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
 | API-STAT-001~004, API-SEQ-004~005, API-REL-003~004 | stable | 위와 동일 |
 | API-ADM-* | internal | 운영 콘솔 전용. 프런트엔드와 동시 배포 전제로 변경 가능 |
 | API-ING-001 | external | GHE 계약. 변경 시 웹훅 재등록 필요 |

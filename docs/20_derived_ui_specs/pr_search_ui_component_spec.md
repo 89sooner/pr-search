@@ -293,11 +293,15 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 ### C-032 ReleaseTimeline
 
-- 책임: 릴리스 목록을 시간 순으로 표시하고 비교 대상 2건 선택 제공
+- 책임: **저장소 스코프** 릴리스 목록을 시각 내림차순으로 표시하고 비교 대상 2건 선택 제공. 행은 태그명·대상 브랜치·시각·서수·직전 대비 PR 수를 보인다
 - 기반: Conductor `Timeline` + `Checkbox`
-- 필수 props: `releases: ReleaseRow[]`, `selection: string[]`, `onSelectionChange`, `maxSelection: 2`
-- 상태: `ready`, `empty_no_release`, `error_space_mismatch`
+- 필수 props: `releases: ReleaseRow[]`, `selection: string[]` (태그명), `onSelectionChange`, `maxSelection: 2`, `selectedTag: string | null`, `onSelect`
+- **비교 선택과 상세 선택은 다른 축이다**: `release.compare`는 체크박스 2건, `release.select`는 행 클릭이다 (와이어프레임 W-005 이벤트 정의). 체크박스가 상세 선택을 겸하면 2건을 고르는 순간 상세가 무엇인지 모호해진다
+- 상태: `ready`, `release_not_indexed`, `error_space_mismatch`
+- 사용 규칙: **서수 없는 릴리스도 렌더링한다** — 체인 밖 태그이거나 현재 에폭으로 아직 재해석되지 않은 릴리스(DEV-149)는 앵커가 될 수 없으므로 체크박스를 비활성하고 그 사유를 행에서 말한다. 숨기면 "그런 태그가 없다"로 오인된다. 선택 2건의 시퀀스 공간이 다르면 비교를 차단하고 사유를 표시한다 (FR-SEQ-004 AC-3). **정렬은 서버 순서를 그대로 믿고 클라이언트에서 재정렬하지 않는다** (C-020·`RangeResultTable`과 같은 규칙 — 부분 목록을 다시 정렬하면 거짓이 된다)
+- 접근성: 체크박스 그룹에 이름을 준다. 선택 상한(2건)에 도달하면 미선택 행의 체크박스를 비활성하고 그 사유를 `aria-describedby`로 연결한다 — 눌러도 아무 일이 없는 컨트롤을 두지 않는다
 - 관련 FR: FR-SEQ-004
+- 사용 화면: W-005
 
 ### C-033 TimeSeriesChart
 

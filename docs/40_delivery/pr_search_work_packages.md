@@ -894,25 +894,33 @@
 - 목표: 릴리스 2건을 골라 그 사이 반영분을 본다.
 - 관련 요구사항: FR-SEQ-004
 - 관련 화면/플로우: W-005 / FLOW-003
-- 관련 API/데이터/잡: API-SEQ-003
+- 관련 API/데이터/잡: API-REL-005, API-SEQ-003, API-SEQ-006
 - 선행 WP: WP-024, WP-025
 - 구현 범위:
-  - `GET /release-comparisons` API
-  - `C-032 ReleaseTimeline` (체크박스 2건 선택 상한)
-  - 릴리스 상세 요약, 미배포 구간 진입
-  - 시퀀스 작은 쪽을 시작 앵커로 정규화하고 방향 명시
-  - 다른 브랜치 릴리스 선택 시 비교 차단
-  - `to=unreleased` 지원
-  - "직전 릴리스 대비 PR 수"는 실제 PR 문서 수
-  - 딥링크 `/releases/[owner]/[repo]?branch=&select=`
-- 제외: 없음
+  - **`GET /releases` (API-REL-005) 신설** — C-032가 읽을 저장소 릴리스 목록 (CR-030, DEV-155). 목록을 줄 경로가 어디에도 없었다. **저장소 스코프**(브랜치는 선택 필터), 저장된 서수를 믿지 않고 **현재 에폭으로 재조인**(DEV-149), 직전 대비 PR 수는 서수 차가 아니라 PR 문서 수, 릴리스 0건은 200 + `reason`
+  - **`GET /release-comparisons` (API-SEQ-003)** — WP-023의 `runRange`를 그대로 딛는다. 이 API가 따로 소유하는 것은 셋뿐이다: `to=unreleased`, 서수 기준 방향 정규화(AC-4), `size=0`(요약만). 요약·항목·에폭 봉투는 API-SEQ-001과 같은 계층이다 (CR-030, DEV-156)
+  - `C-032 ReleaseTimeline` (체크박스 2건 선택 상한, 행에 브랜치·서수 표기, **서수 없는 릴리스는 표시하되 선택 불가**)
+  - `C-027 SequenceSpaceSelector` 재사용 — 저장소 선택 (API-SEQ-006)
+  - `C-028 RangeSummaryCard` 재사용 — 릴리스 상세 요약. **되돌림 수는 "준비 중"** (CR-027 DEV-133, CR-029 DEV-150)
+  - 미배포 구간 진입 (`to=unreleased`)
+  - 다른 시퀀스 공간의 릴리스 2건 선택 시 **클라이언트에서 비교 차단** + 사유 (FR-SEQ-004 AC-3)
+  - 구간 비교 실행은 **W-004로 이동한다** — 결과 목록·패싯·뒤로가기 복귀는 W-004 한 곳에만 둔다 (FLOW-003)
+  - 딥링크 `/releases?repo=&branch=` (경로는 셸이 소유한 `/releases` — CR-030, DEV-157)
+- 제외:
+  - 릴리스 목록의 커서 페이지네이션 (WP-032) — `limit` 상한과 `truncated` 표기로 대신하고 **말없이 자르지 않는다**
+  - 되돌림 보유 PR 수의 **값** (WP-030) — 자리와 사유만 그린다
+  - W-009 저장소 개요 링크 (REL-004~005) — 화면이 없으므로 링크를 걸지 않는다 (CR-030, DEV-159)
+  - 옴니 검색의 `release` 유형 해석 — `/resolve` 소유 WP의 후속이다 (CR-017, DEV-065). W-005 진입은 내비게이션·딥링크·W-002/W-003 포함 릴리스로 충분하다
 - 완료 기준(DoD):
-  - [ ] QA-W005-01 ~ QA-W005-06이 통과한다
+  - [ ] QA-W005-01 ~ QA-W005-04, QA-W005-06이 통과한다
+  - [ ] QA-W005-05는 **절반**이다: `release_not_indexed`와 두 원인 안내는 통과하고, 저장소 개요 경로는 W-009가 서는 REL-004~005로 이월한다 (CR-030, DEV-159)
   - [ ] 지정 순서와 무관하게 정규화되고 방향이 응답에 명시된다 (FR-SEQ-004 AC-4)
   - [ ] 미배포 구간 조회가 동작한다 (AC-5)
-  - [ ] 상태 매트릭스 W-005의 전 상태가 렌더링된다
+  - [ ] 상태 매트릭스 W-005 중 **이 WP가 도달 가능한 상태 전부**가 렌더링된다: `loading_initial`·`ready`·`release_not_indexed`·`error_space_mismatch`·`not_found`·`no_permission`·`auth_expired`
+  - [ ] **다른 브랜치의 릴리스가 한 목록에 함께 보인다** — 그래야 QA-W005-03이 도달 가능하다 (CR-030, DEV-158)
+  - [ ] `pull_request_count_since_previous`가 서수 차와 다른 경우(직접 푸시 혼재)를 시험이 구분한다 (QA-W005-06)
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test:integration release/comparison`, `pnpm test:e2e flow-003`
+- 검증 방법: `pnpm test:integration release`, `pnpm test web/lib/release`, `pnpm test:e2e flow-003`, `pnpm test:a11y releases`
 - 기록: 원장 WP-026 상태, FR-SEQ-004 매핑
 
 ### WP-027 선행·후행 조회와 상세 화면 통합
