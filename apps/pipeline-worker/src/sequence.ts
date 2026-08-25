@@ -513,36 +513,15 @@ export async function reassignSequence(
     deps.metrics.sequenceIndexFailed.inc({ repository: String(repositoryId) });
   }
 
-  try {
-    const payload: SequenceReassigned = {
-      repository_id: repositoryId,
-      base_branch: baseBranch,
-      old_epoch: outcome.oldEpoch,
-      new_epoch: outcome.newEpoch,
-      diverged_at_seq: outcome.divergedAtSeq,
-      affected_count: outcome.affectedCount,
-    };
-    await deps.bus.publish(TOPICS.projected, sequencePartitionKey(repositoryId, baseBranch), {
-      event_id: deterministicEventId(
-        EVENT_NAMES.sequenceReassigned,
-        String(repositoryId),
-        baseBranch,
-        String(outcome.oldEpoch),
-        String(outcome.newEpoch),
-      ),
-      event_name: EVENT_NAMES.sequenceReassigned,
-      correlation_id: correlationId,
-      occurred_at: (deps.now ?? ((): Date => new Date()))().toISOString(),
-      payload,
-    });
-  } catch {
-    log({
-      level: 'error',
-      message: 'EVT-SEQ-002 발행 실패 — 알림·투영 소비자가 이 재채번을 놓친다',
-      repository_id: repositoryId,
-      reason: 'event_publish_failed',
-    });
-  }
+  await publishSequenceReassigned(deps, {
+    repositoryId,
+    baseBranch,
+    oldEpoch: outcome.oldEpoch,
+    newEpoch: outcome.newEpoch,
+    divergedAtSeq: outcome.divergedAtSeq,
+    affectedCount: outcome.affectedCount,
+    correlationId,
+  });
 
   // 릴리스 서수는 에폭에 묶인다 — 재해석 신호를 낸다 (DEV-149). 실패해도
   // 6시간 스윕이 메우므로 재채번 결과에는 영향이 없다.
@@ -639,6 +618,65 @@ function graphReason(error: unknown): string {
  * **기존 시퀀스 값은 건드리지 않는다.** 읽지 못했다는 것과 값이 틀렸다는 것은
  * 다르고, 지우면 그 사이 모든 범위 인용이 죽는다.
  */
+/**
+ * `EVT-SEQ-002` 발행 (CR-037, DEV-197).
+ *
+ * ## 왜 공유하나
+ *
+ * 자동 재작성과 수동 복구는 **시작 조건이 다르므로** 알고리즘을 합치지 않는다.
+ * 그러나 "에폭이 올랐다"는 사실이 밖으로 나가는 방식은 하나여야 한다 — 수동
+ * 복구만 발행하지 않으면 알림·투영 소비자가 그 재채번을 통째로 놓친다.
+ *
+ * `event_id`는 결정론적이라 같은 (공간, 옛 에폭 → 새 에폭)이 두 번 발행돼도
+ * 소비자가 멱등하게 처리한다.
+ *
+ * **던지지 않는다.** 재채번은 이미 커밋됐고 PostgreSQL이 정본이다 — 발행 실패로
+ * 성공한 복구를 실패로 만들지 않는다.
+ */
+async function publishSequenceReassigned(
+  deps: SequenceDeps,
+  input: {
+    readonly repositoryId: number;
+    readonly baseBranch: string;
+    readonly oldEpoch: number;
+    readonly newEpoch: number;
+    readonly divergedAtSeq: number;
+    readonly affectedCount: number;
+    readonly correlationId: string;
+  },
+): Promise<void> {
+  try {
+    const payload: SequenceReassigned = {
+      repository_id: input.repositoryId,
+      base_branch: input.baseBranch,
+      old_epoch: input.oldEpoch,
+      new_epoch: input.newEpoch,
+      diverged_at_seq: input.divergedAtSeq,
+      affected_count: input.affectedCount,
+    };
+    await deps.bus.publish(TOPICS.projected, sequencePartitionKey(input.repositoryId, input.baseBranch), {
+      event_id: deterministicEventId(
+        EVENT_NAMES.sequenceReassigned,
+        String(input.repositoryId),
+        input.baseBranch,
+        String(input.oldEpoch),
+        String(input.newEpoch),
+      ),
+      event_name: EVENT_NAMES.sequenceReassigned,
+      correlation_id: input.correlationId,
+      occurred_at: (deps.now ?? ((): Date => new Date()))().toISOString(),
+      payload,
+    });
+  } catch {
+    (deps.log ?? ((): void => undefined))({
+      level: 'error',
+      message: 'EVT-SEQ-002 발행 실패 — 알림·투영 소비자가 이 재채번을 놓친다',
+      repository_id: input.repositoryId,
+      reason: 'event_publish_failed',
+    });
+  }
+}
+
 async function markStale(
   deps: SequenceDeps,
   repositoryId: number,
@@ -773,21 +811,33 @@ export async function repairSequence(
   const repositoryId = repository.repository_id;
   const graph = deps.graphFor(repository);
 
-  // ---- 실행 시점의 실측. 트랜잭션 밖에서 읽는다 (그래프 호출이 길다).
+  /*
+   * ---- 실행 시점의 실측. 트랜잭션 밖에서 읽는다 (그래프 호출이 길다).
+   *
+   * **분석의 근거를 긴 walk보다 먼저 고정한다** (CR-037, DEV-192). 공간 상태와
+   * 저장분을 walk 뒤에 읽으면, walk가 도는 동안 일어난 채번이 그 읽기에 이미
+   * 반영되어 **락 아래의 울타리가 비교할 대상 자체를 잃는다** — 무엇이 움직였는지
+   * 알 수 없게 된다. 먼저 찍어 두어야 "그 사이에 바뀌었다"를 판정할 수 있다.
+   */
   let head: string | null;
-  let actual: readonly string[];
   try {
     head = await graph.resolveHead(refOf(repository), baseBranch);
-    if (head === null) return { kind: 'no_branch' };
-    actual = await graph.firstParentRevList(refOf(repository), { from: null, to: head });
   } catch (error) {
-    return { kind: 'stale', reason: graphReason(error) };
+    return await markRepairStale(deps, repositoryId, baseBranch, graphReason(error));
   }
+  if (head === null) return { kind: 'no_branch' };
 
   const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repositoryId, baseBranch);
   if (space === undefined) return { kind: 'skipped', reason: 'sequence_space_missing' };
-
   const stored = await integrityRepo.listStoredSequence(deps.pool, repositoryId, baseBranch, space.seq_epoch, 1);
+
+  let actual: readonly string[];
+  try {
+    actual = await graph.firstParentRevList(refOf(repository), { from: null, to: head });
+  } catch (error) {
+    return await markRepairStale(deps, repositoryId, baseBranch, graphReason(error));
+  }
+
   const mismatch = firstSequenceMismatch(stored, actual);
   if (mismatch === null) {
     // 큐에서 기다리는 사이 다른 경로가 이미 고쳤거나 애초에 멀쩡했다.
@@ -795,6 +845,25 @@ export async function repairSequence(
   }
 
   const divergedAtSeq = mismatch.mergeSeq;
+
+  /*
+   * ---- 밖에서 보이는 상태 (CR-037, DEV-198). **본 트랜잭션과 별개로 커밋된다.**
+   *
+   * 이 표시가 없으면 `bumpEpoch`가 트랜잭션 안에서 `reassigning`을 세우고 같은
+   * 트랜잭션의 `advanceHead`가 즉시 `ok`로 되돌리므로, 긴 재구축이 도는 내내
+   * 조회는 옛 에폭을 **정상이라고** 낸다. 자동 경로가 하는 것과 같다.
+   *
+   * 여기서부터 아무것도 하지 않고 끝나는 갈래는 반드시 `restoreRepairState`로
+   * 표시를 되돌린다 — 그러지 않으면 멀쩡한 공간이 영원히 "재채번 중"이 된다.
+   */
+  const priorState = space.state;
+  const priorError = space.last_error;
+  await sequenceSpaceRepo.markReassigning(deps.pool, repositoryId, baseBranch);
+  const restoreRepairState = async (reason: string): Promise<Extract<RepairOutcome, { kind: 'skipped' }>> => {
+    await sequenceSpaceRepo.restoreSequenceState(deps.pool, repositoryId, baseBranch, priorState, priorError);
+    return { kind: 'skipped', reason };
+  };
+
   const client = await deps.pool.connect();
   let committed: {
     readonly outcome: Extract<RepairOutcome, { kind: 'repaired' }>;
@@ -807,13 +876,14 @@ export async function repairSequence(
     const locked = await trySequenceSpaceLock(client, repositoryId, baseBranch);
     if (!locked) {
       await client.query('ROLLBACK');
+      await sequenceSpaceRepo.restoreSequenceState(deps.pool, repositoryId, baseBranch, priorState, priorError);
       return { kind: 'locked' };
     }
 
     const current = await sequenceSpaceRepo.findSequenceSpace(client, repositoryId, baseBranch);
     if (current === undefined) {
       await client.query('ROLLBACK');
-      return { kind: 'skipped', reason: 'sequence_space_missing' };
+      return await restoreRepairState('sequence_space_missing');
     }
     if (current.seq_epoch !== space.seq_epoch) {
       /*
@@ -821,7 +891,17 @@ export async function repairSequence(
        * 아니다. 그 분석으로 이어 가면 다른 에폭의 판정을 이 에폭에 적용한다.
        */
       await client.query('ROLLBACK');
-      return { kind: 'skipped', reason: 'epoch_moved' };
+      return await restoreRepairState('epoch_moved');
+    }
+    if (current.head_sha !== space.head_sha) {
+      /*
+       * **에폭만으로는 부족하다** (CR-037, DEV-192). 정상 채번(`advanceHead`)은
+       * 에폭을 올리지 않으므로, 우리가 그래프를 걷는 사이 head가 전진해도 위
+       * 검사를 그대로 통과한다. 그 상태로 이어 가면 옛 head를 정답으로 커밋해
+       * **저장된 head를 뒤로 되돌리고 이미 채번된 커밋을 누락**한다.
+       */
+      await client.query('ROLLBACK');
+      return await restoreRepairState('head_moved');
     }
 
     const oldEpoch = current.seq_epoch;
@@ -859,7 +939,7 @@ export async function repairSequence(
       commits = await graph.firstParentCommits(refOf(repository), { from, to: head });
     } catch (error) {
       await client.query('ROLLBACK');
-      return { kind: 'stale', reason: graphReason(error) };
+      return await markRepairStale(deps, repositoryId, baseBranch, graphReason(error));
     }
 
     const numbered = numberCommits(divergedAtSeq - 1, commits);
@@ -883,6 +963,35 @@ export async function repairSequence(
      * 작아진다 — 옛 값을 남겨 두면 없는 커밋을 가리키는 head가 된다.
      */
     const toSeq = divergedAtSeq - 1 + numbered.length;
+
+    /*
+     * ---- 커밋 직전 울타리 (CR-037, DEV-192).
+     *
+     * 저장된 head는 락 아래에서 확인했지만 **Git은 우리 락을 모른다.** 분석을
+     * 시작한 뒤 브랜치가 실제로 전진했다면 우리가 계산한 체인은 이미 과거이며,
+     * 그것을 정답으로 커밋하면 head가 뒤로 간다. 짧은 ref 조회 하나로 그 창을
+     * 닫는다 — 여기서 어긋나면 **아무것도 커밋하지 않고** 다음 회차에 맡긴다.
+     */
+    let liveHead: string | null;
+    try {
+      liveHead = await graph.resolveHead(refOf(repository), baseBranch);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      return await markRepairStale(deps, repositoryId, baseBranch, graphReason(error));
+    }
+    if (liveHead !== head) {
+      await client.query('ROLLBACK');
+      log({
+        level: 'warn',
+        message: '복구 중 브랜치 head가 움직였다 — 커밋하지 않고 다음 회차에 맡긴다',
+        repository_id: repositoryId,
+        base_branch: baseBranch,
+        analyzed_head: head,
+        live_head: liveHead,
+      });
+      return await restoreRepairState('head_moved');
+    }
+
     await sequenceSpaceRepo.advanceHead(client, repositoryId, baseBranch, head, toSeq);
     await client.query('COMMIT');
 
@@ -901,7 +1010,7 @@ export async function repairSequence(
     };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
-    return { kind: 'stale', reason: graphReason(error) };
+    return await markRepairStale(deps, repositoryId, baseBranch, graphReason(error));
   } finally {
     client.release();
   }
@@ -945,9 +1054,35 @@ export async function repairSequence(
   }
 
   deps.metrics.sequenceReassignTotal.inc({ repository: `${repository.owner}/${repository.name}` });
+
+  /*
+   * 자동 경로와 같은 확정 절차다 (CR-037, DEV-197). 에폭이 올라 이전 에폭의 모든
+   * 범위 인용이 무효가 됐다는 사실은 수동이든 자동이든 같은 방식으로 나가야 한다.
+   */
+  await publishSequenceReassigned(deps, {
+    repositoryId,
+    baseBranch,
+    oldEpoch: outcome.oldEpoch,
+    newEpoch: outcome.newEpoch,
+    divergedAtSeq: outcome.divergedAtSeq,
+    affectedCount: outcome.affectedCount,
+    correlationId,
+  });
+
   if (deps.requestReleaseRefresh !== undefined) {
     await deps.requestReleaseRefresh(repositoryId, correlationId).catch(() => undefined);
   }
 
   return outcome;
+}
+
+/** `markStale`을 부르고 수동 복구의 결과 형태로 돌려준다 (CR-037, DEV-199). */
+async function markRepairStale(
+  deps: SequenceDeps,
+  repositoryId: number,
+  baseBranch: string,
+  reason: string,
+): Promise<Extract<RepairOutcome, { kind: 'stale' }>> {
+  await markStale(deps, repositoryId, baseBranch, reason);
+  return { kind: 'stale', reason };
 }

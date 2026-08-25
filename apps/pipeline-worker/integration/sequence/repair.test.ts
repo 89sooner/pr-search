@@ -18,7 +18,7 @@
 
 import type { Client } from '@elastic/elasticsearch';
 import type { EventBus } from '@prs/bus';
-import { MirrorCommitGraph, MirrorSync, type CommitGraph } from '@prs/github';
+import { MirrorCommitGraph, MirrorSync, type CommitGraph, type RepoRef } from '@prs/github';
 import { jobRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { migratedPool } from '../../../../packages/db/integration/helpers.js';
@@ -26,6 +26,7 @@ import { reassignSequence, repairSequence, type SequenceDeps } from '../../src/s
 import { runRepairJob, parseRepairTarget } from '../../src/sequence-repair-runner.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
 import {
+  appendCommit,
   createSequenceFixture,
   firstParentOf,
   makeTempDir,
@@ -235,4 +236,278 @@ describe('재채번 러너가 큐를 비운다 (CR-034, DEV-178)', () => {
     expect((await jobRepo.findJobById(pool, jobId))?.state).toBe('failed');
   });
 });
+
+
+  /**
+   * 커밋 직전 head 울타리·관측 가능한 `reassigning`·`stale` 영속·이벤트 대칭
+   * (CR-037, DEV-192·197·198·199).
+   *
+   * 실행: `pnpm test:integration pipeline-worker/integration/sequence/repair`
+   */
+  describe('수동 복구의 울타리와 부수 효과 (CR-037)', () => {
+    /** 특정 호출 시점에 끼어드는 그래프 데코레이터. */
+    class StagedGraph implements CommitGraph {
+      readonly kind: CommitGraph['kind'];
+      constructor(
+        private readonly inner: CommitGraph,
+        private readonly hooks: {
+          afterRevList?: () => Promise<void>;
+          beforeFirstParentCommits?: () => Promise<void>;
+        },
+      ) {
+        this.kind = inner.kind;
+      }
+      resolveHead(ref: RepoRef, branch: string): Promise<string | null> {
+        return this.inner.resolveHead(ref, branch);
+      }
+      isAncestor(ref: RepoRef, a: string, b: string): Promise<boolean> {
+        return this.inner.isAncestor(ref, a, b);
+      }
+      mergeBase(ref: RepoRef, a: string, b: string): Promise<string | null> {
+        return this.inner.mergeBase(ref, a, b);
+      }
+      patchId(...args: Parameters<CommitGraph['patchId']>): ReturnType<CommitGraph['patchId']> {
+        return this.inner.patchId(...args);
+      }
+      async firstParentRevList(ref: RepoRef, range: Parameters<CommitGraph['firstParentRevList']>[1]): Promise<readonly string[]> {
+        const result = await this.inner.firstParentRevList(ref, range);
+        if (this.hooks.afterRevList !== undefined) await this.hooks.afterRevList();
+        return result;
+      }
+      async firstParentCommits(
+        ref: RepoRef,
+        range: Parameters<CommitGraph['firstParentCommits']>[1],
+      ): Promise<readonly { readonly sha: string; readonly committedAt: string }[]> {
+        if (this.hooks.beforeFirstParentCommits !== undefined) await this.hooks.beforeFirstParentCommits();
+        return this.inner.firstParentCommits(ref, range);
+      }
+    }
+
+    function stagedDeps(
+      hooks: ConstructorParameters<typeof StagedGraph>[1],
+      published: unknown[] = [],
+    ): SequenceDeps {
+      const base = deps();
+      return {
+        ...base,
+        bus: {
+          publish: (_topic: string, _key: string, event: unknown) => {
+            published.push(event);
+            return Promise.resolve();
+          },
+        } as unknown as SequenceDeps['bus'],
+        graphFor: (): CommitGraph =>
+          new StagedGraph(
+            new MirrorCommitGraph({ root: mirrorRoot, repositoryIdOf: () => REPOSITORY_ID }),
+            hooks,
+          ),
+      };
+    }
+
+    async function spaceRow(): Promise<{ state: string; head_sha: string | null; head_seq: number; seq_epoch: number; last_error: string | null }> {
+      const result = await pool.query<{ state: string; head_sha: string | null; head_seq: string; seq_epoch: string; last_error: string | null }>(
+        'SELECT state, head_sha, head_seq, seq_epoch, last_error FROM sequence_space WHERE repository_id = $1 AND base_branch = $2',
+        [REPOSITORY_ID, BRANCH],
+      );
+      const row = result.rows[0]!;
+      return { ...row, head_seq: Number(row.head_seq), seq_epoch: Number(row.seq_epoch) };
+    }
+
+    /**
+     * **지금 git이 가진 체인**으로 씨를 뿌린다.
+     *
+     * 이 describe의 첫 시험이 origin에 커밋을 더하므로, `beforeAll`에서 잡아 둔
+     * `actual`을 쓰면 뒤 시험이 실행 순서에 묶인다. 매번 실측한다.
+     */
+    async function seedLiveWithCorruptionAt(seq: number): Promise<readonly string[]> {
+      const chain = await firstParentOf(origin.dir, BRANCH);
+      for (const [index, sha] of chain.entries()) {
+        await mergeSequenceRepo.upsertMergeSequence(pool, {
+          repository_id: REPOSITORY_ID,
+          base_branch: BRANCH,
+          seq_epoch: 1,
+          merge_seq: index + 1,
+          commit_sha: index + 1 === seq ? CORRUPT_SHA : sha,
+          pull_request_number: null,
+          committed_at: new Date('2026-08-01T00:00:00Z'),
+        });
+      }
+      await sequenceSpaceRepo.advanceHead(pool, REPOSITORY_ID, BRANCH, chain.at(-1) ?? '', chain.length);
+      return chain;
+    }
+
+    beforeEach(async () => {
+      await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
+      await pool.query('DELETE FROM job');
+      await sequenceSpaceRepo.ensureSequenceSpace(pool, REPOSITORY_ID, BRANCH);
+      await pool.query(
+        "UPDATE sequence_space SET state = 'ok', head_seq = 0, seq_epoch = 1, head_sha = NULL, last_error = NULL WHERE repository_id = $1",
+        [REPOSITORY_ID],
+      );
+    });
+
+    it('**분석 중 head가 전진하면 커밋하지 않는다 — 그리고 재시도가 E까지 고친다** (DEV-192)', async () => {
+      await seedLiveWithCorruptionAt(3);
+      const before = await spaceRow();
+      const repository = (await repositoryRepo.findRepositoryBySlug(pool, OWNER, NAME))!;
+
+      /*
+       * 분석 walk가 끝난 직후 origin에 커밋 하나를 더 얹고 미러를 다시 맞춘다 —
+       * 채번이 D→E로 전진한 상황 그대로다. 울타리가 없으면 옛 head `D`가 커밋되어
+       * **head가 뒤로 가고 `E`가 누락된다.**
+       */
+      let advanced = false;
+      const first = await repairSequence(
+        stagedDeps({
+          afterRevList: async (): Promise<void> => {
+            if (advanced) return;
+            advanced = true;
+            await appendCommit(origin.dir, 'moving-head-e');
+            await new MirrorSync({ root: mirrorRoot, remoteUrl: () => origin.url }).sync(
+              { owner: OWNER, repo: NAME },
+              REPOSITORY_ID,
+            );
+          },
+        }),
+        repository,
+        BRANCH,
+      );
+
+      expect(first.kind).toBe('skipped');
+      if (first.kind === 'skipped') expect(first.reason).toBe('head_moved');
+
+      // 아무것도 커밋되지 않았다 — 에폭도 head도 그대로다.
+      const after = await spaceRow();
+      expect(after.seq_epoch).toBe(before.seq_epoch);
+      expect(after.head_sha).toBe(before.head_sha);
+      expect(after.head_seq).toBe(before.head_seq);
+      // 표시를 되돌렸다 — 아무것도 하지 않은 공간이 "재채번 중"으로 남지 않는다.
+      expect(after.state).toBe('ok');
+
+      // ---- 재시도: 이제 E까지 보고 고친다.
+      const retry = await repairSequence(deps(), repository, BRANCH);
+      expect(retry.kind).toBe('repaired');
+
+      const chain = await firstParentOf(origin.dir, BRANCH);
+      expect(chain).toHaveLength(5);
+      const final = await spaceRow();
+      expect(final.head_sha).toBe(chain.at(-1));
+      expect(final.head_seq).toBe(5);
+      expect(final.state).toBe('ok');
+
+      const rows = await storedSequence(final.seq_epoch);
+      expect(rows.map((row) => row.sha)).toEqual([...chain]);
+    });
+
+    it('저장된 head가 움직였으면 Git head가 그대로여도 커밋하지 않는다 (DEV-192)', async () => {
+      /*
+       * 실제 Git head 울타리만으로는 부족하다. 다른 채번이 `sequence_space`의
+       * head를 앞세운 뒤 브랜치가 되돌려졌거나 미러가 아직 옛 ref를 보고 있으면,
+       * **살아 있는 head는 우리가 분석한 것과 같은데 저장분은 다르다.** 그대로
+       * 커밋하면 그 채번 결과를 조용히 버린다.
+       */
+      const chain = await seedLiveWithCorruptionAt(3);
+      const repository = (await repositoryRepo.findRepositoryBySlug(pool, OWNER, NAME))!;
+      const other = 'a'.repeat(40);
+
+      let moved = false;
+      const outcome = await repairSequence(
+        stagedDeps({
+          afterRevList: async (): Promise<void> => {
+            if (moved) return;
+            moved = true;
+            // 다른 채번이 head를 앞세운 상황. Git은 건드리지 않는다.
+            await pool.query(
+              'UPDATE sequence_space SET head_sha = $3 WHERE repository_id = $1 AND base_branch = $2',
+              [REPOSITORY_ID, BRANCH, other],
+            );
+          },
+        }),
+        repository,
+        BRANCH,
+      );
+
+      expect(outcome.kind).toBe('skipped');
+      if (outcome.kind === 'skipped') expect(outcome.reason).toBe('head_moved');
+
+      const after = await spaceRow();
+      // 다른 채번이 세운 값을 지우지 않았고, 에폭도 올리지 않았다.
+      expect(after.head_sha).toBe(other);
+      expect(after.seq_epoch).toBe(1);
+      expect(after.state).toBe('ok');
+      expect(chain.length).toBeGreaterThan(0);
+    });
+
+    it('재구축이 도는 동안 다른 연결이 `reassigning`을 본다 (DEV-198)', async () => {
+      await seedLiveWithCorruptionAt(3);
+      const repository = (await repositoryRepo.findRepositoryBySlug(pool, OWNER, NAME))!;
+
+      let observed: string | null = null;
+      const outcome = await repairSequence(
+        stagedDeps({
+          beforeFirstParentCommits: async (): Promise<void> => {
+            if (observed !== null) return;
+            // **다른 커넥션**이다. 같은 트랜잭션 안에서만 바뀌면 여기서 'ok'가 보인다.
+            const result = await pool.query<{ state: string }>(
+              'SELECT state FROM sequence_space WHERE repository_id = $1 AND base_branch = $2',
+              [REPOSITORY_ID, BRANCH],
+            );
+            observed = result.rows[0]?.state ?? null;
+          },
+        }),
+        repository,
+        BRANCH,
+      );
+
+      expect(outcome.kind).toBe('repaired');
+      expect(observed).toBe('reassigning');
+      // 끝나면 정상으로 돌아온다 — 표시가 고착되지 않는다.
+      expect((await spaceRow()).state).toBe('ok');
+    });
+
+    it('그래프를 읽지 못하면 `stale`이 실제로 남고 마지막 확정 값은 보존된다 (DEV-199)', async () => {
+      await seedLiveWithCorruptionAt(3);
+      const before = await spaceRow();
+      const repository = (await repositoryRepo.findRepositoryBySlug(pool, OWNER, NAME))!;
+
+      const outcome = await repairSequence(
+        stagedDeps({
+          beforeFirstParentCommits: (): Promise<void> => Promise.reject(new Error('mirror gone')),
+        }),
+        repository,
+        BRANCH,
+      );
+
+      expect(outcome.kind).toBe('stale');
+
+      const after = await spaceRow();
+      expect(after.state).toBe('stale');
+      expect(after.last_error).not.toBeNull();
+      // 읽지 못한 것과 값이 틀린 것은 다르다 — 서수는 지우지 않는다.
+      expect(after.head_sha).toBe(before.head_sha);
+      expect(after.head_seq).toBe(before.head_seq);
+      expect(after.seq_epoch).toBe(before.seq_epoch);
+    });
+
+    it('성공한 수동 복구가 EVT-SEQ-002를 발행한다 (DEV-197)', async () => {
+      await seedLiveWithCorruptionAt(3);
+      const repository = (await repositoryRepo.findRepositoryBySlug(pool, OWNER, NAME))!;
+      const published: unknown[] = [];
+
+      const outcome = await repairSequence(stagedDeps({}, published), repository, BRANCH);
+      expect(outcome.kind).toBe('repaired');
+      if (outcome.kind !== 'repaired') return;
+
+      const reassigned = published.filter(
+        (event) => (event as { event_name?: string }).event_name === 'sequence.reassigned',
+      );
+      expect(reassigned).toHaveLength(1);
+      const payload = (reassigned[0] as { payload: Record<string, unknown> }).payload;
+      expect(payload['repository_id']).toBe(REPOSITORY_ID);
+      expect(payload['base_branch']).toBe(BRANCH);
+      expect(payload['old_epoch']).toBe(outcome.oldEpoch);
+      expect(payload['new_epoch']).toBe(outcome.newEpoch);
+      expect(payload['diverged_at_seq']).toBe(outcome.divergedAtSeq);
+    });
+  });
 });

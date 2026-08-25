@@ -170,3 +170,32 @@ export async function markReassigning(
     [repositoryId, baseBranch],
   );
 }
+
+/**
+ * `reassigning` 표시를 원래 상태로 되돌린다 (CR-037, DEV-198).
+ *
+ * 수동 복구는 재구축을 시작하기 전에 `markReassigning`을 **따로 커밋**해 밖에서
+ * 보이게 만든다. 그런데 그 뒤 울타리에 걸려(락 실패·에폭 이동·head 이동) 아무것도
+ * 하지 않고 끝날 수 있다. 그때 표시를 그대로 두면 **아무 일도 하지 않는 공간이
+ * 영원히 "재채번 중"으로 광고된다.**
+ *
+ * **`state = 'reassigning'`일 때만 되돌린다.** 그 사이 다른 경로가 `stale`로
+ * 옮겼다면 그것이 더 새로운 사실이고, 덮으면 진짜 실패가 지워진다.
+ *
+ * 서수 값(`head_sha`·`head_seq`·`seq_epoch`)은 건드리지 않는다 — 우리는 그것을
+ * 바꾼 적이 없다.
+ */
+export async function restoreSequenceState(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  state: string,
+  lastError: string | null,
+): Promise<void> {
+  await db.query(
+    `UPDATE sequence_space
+        SET state = $3, last_error = $4
+      WHERE repository_id = $1 AND base_branch = $2 AND state = 'reassigning'`,
+    [repositoryId, baseBranch, state, lastError],
+  );
+}
