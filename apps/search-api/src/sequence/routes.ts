@@ -43,6 +43,7 @@ import {
 } from './containments.js';
 import { listSequenceSpaces } from './spaces-list.js';
 import { clampReleaseLimit, listReleases } from './releases-list.js';
+import { clampNeighborCount, findNeighbors } from './neighbors.js';
 import {
   UNRELEASED,
   clampComparisonSize,
@@ -56,6 +57,7 @@ export const CONTAINMENT_PATH = '/api/v1/containments';
 export const SEQUENCE_SPACES_PATH = '/api/v1/sequence-spaces';
 export const RELEASES_PATH = '/api/v1/releases';
 export const RELEASE_COMPARISON_PATH = '/api/v1/release-comparisons';
+export const SEQUENCE_NEIGHBORS_PATH = '/api/v1/sequence-neighbors';
 
 export interface SequenceRouteOptions extends RangeDeps {
   readonly auth: AuthContext;
@@ -353,6 +355,121 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
       const scope = await auth.scopes.resolve(userId);
       const spaces = await listSequenceSpaces(deps.pool, scope);
       return await reply.send({ spaces, correlation_id: correlationId });
+    } catch (error) {
+      return toFailureResponse(reply, correlationId, error);
+    }
+  });
+
+  // API-REL-001: W-002 선행·후행과 W-003 시퀀스 위치 (CR-031, DEV-161~166).
+  app.get(SEQUENCE_NEIGHBORS_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const query = (request.query ?? {}) as Record<string, unknown>;
+
+    /*
+     * **앵커는 하나다** (CR-031, DEV-163). 둘 다 주면 무엇을 기준으로 셌는지가
+     * 응답에서 모호해지고, 둘 다 없으면 셀 기준이 없다.
+     */
+    const rawPr = typeof query['pr_number'] === 'string' ? query['pr_number'].trim() : '';
+    const rawSha = typeof query['commit_sha'] === 'string' ? query['commit_sha'].trim() : '';
+    if ((rawPr === '') === (rawSha === '')) {
+      return invalidParameter(
+        reply,
+        correlationId,
+        'pr_number',
+        'pr_number 또는 commit_sha 중 하나가 필요합니다.',
+      );
+    }
+
+    let prNumber: number | null = null;
+    if (rawPr !== '') {
+      const value = Number(rawPr);
+      if (!Number.isInteger(value) || value < 1) {
+        return invalidParameter(reply, correlationId, 'pr_number', 'PR 번호는 1 이상의 정수여야 합니다.');
+      }
+      prNumber = value;
+    }
+    if (rawSha !== '' && !/^[0-9a-f]{40}$/i.test(rawSha)) {
+      // 축약 해석은 `/resolve`의 몫이다 (ADR-012) — 이 API의 호출자는 전체 SHA를 갖고 있다.
+      return invalidParameter(reply, correlationId, 'commit_sha', '커밋은 40자 SHA여야 합니다.');
+    }
+
+    try {
+      const userId = (await authenticateSession(request, auth.sessions)).userId;
+
+      const slug = parseRepositorySlug(query['repository']);
+      if (slug === null) {
+        return invalidParameter(reply, correlationId, 'repository', 'repository는 owner/name 형식이어야 합니다.');
+      }
+
+      const scope = await auth.scopes.resolve(userId);
+      const lookup = await resolveRepository(deps.pool, slug, scope);
+      if (lookup.kind !== 'ok') {
+        return fail(reply, 404, {
+          error: { code: 'NOT_FOUND', message: lookup.message },
+          correlation_id: correlationId,
+        });
+      }
+
+      const repositorySlug = `${slug.owner}/${slug.name}`;
+      const outcome = await findNeighbors(
+        { pool: deps.pool, es: deps.es, ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }) },
+        {
+          repository: lookup.repository,
+          repositorySlug,
+          scope,
+          count: clampNeighborCount(query['count']),
+          ...(prNumber === null ? {} : { prNumber }),
+          ...(rawSha === '' ? {} : { commitSha: rawSha.toLowerCase() }),
+        },
+      );
+
+      if (outcome.kind === 'not_found') {
+        return fail(reply, 404, {
+          error: { code: 'NOT_FOUND', message: outcome.message },
+          correlation_id: correlationId,
+        });
+      }
+      if (outcome.kind === 'no_sequence') {
+        /*
+         * 코드는 하나, 사유는 둘이다 (DEV-164). 화면이 "머지되지 않았다"는 사실
+         * 주장과 "아직 모른다"를 같은 문구로 그리지 않게 하는 것이 이 구분이다.
+         */
+        return fail(reply, ERROR_HTTP_STATUS['NO_SEQUENCE'], {
+          error: {
+            code: 'NO_SEQUENCE',
+            message:
+              outcome.reason === 'not_merged'
+                ? '이 PR은 아직 머지되지 않아 머지 시퀀스가 없습니다.'
+                : '이 개체는 현재 에폭의 first-parent 체인에서 서수를 찾을 수 없습니다.',
+            detail: { ...outcome.detail, reason: outcome.reason },
+          },
+          correlation_id: correlationId,
+        });
+      }
+
+      // 에폭 봉투는 API-SEQ-001과 같다 (ADR-007). 인용이 다르면 결과를 내지 않는다.
+      const requestedEpoch = parseEpochParam(query['seq_epoch']);
+      if (requestedEpoch !== null && requestedEpoch !== outcome.seqEpoch) {
+        return reply.send({
+          sequence_space: `${repositorySlug}@${outcome.baseBranch}`,
+          seq_epoch: outcome.seqEpoch,
+          sequence_state: outcome.sequenceState,
+          epoch_stale: true,
+          requested_seq_epoch: requestedEpoch,
+          correlation_id: correlationId,
+        });
+      }
+
+      return await reply.send({
+        sequence_space: `${repositorySlug}@${outcome.baseBranch}`,
+        seq_epoch: outcome.seqEpoch,
+        sequence_state: outcome.sequenceState,
+        epoch_stale: false,
+        anchor: outcome.anchor,
+        items: outcome.items,
+        boundary: outcome.boundary,
+        correlation_id: correlationId,
+      });
     } catch (error) {
       return toFailureResponse(reply, correlationId, error);
     }
