@@ -20,9 +20,15 @@
  * 생긴다.
  */
 
-import { jobRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo } from '@prs/db';
+import { mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo } from '@prs/db';
 import type { Pool, RepositoryRow } from '@prs/db';
 import { GitHubApiError, type CommitGraph, type GitHubClient } from '@prs/github';
+import { TOPICS, type EventBus } from '@prs/bus';
+import {
+  deterministicEventId,
+  sequencePartitionKey,
+  type SequenceRequested,
+} from '@prs/domain';
 import { applyMandatoryScopeFilter, search } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
 import { projectOne, type BackfillDeps } from './backfill.js';
@@ -47,6 +53,8 @@ export interface ReconcileDeps {
   readonly pool: Pool;
   readonly es: Client;
   readonly client: GitHubClient;
+  /** head 채번 요청을 싣는 버스. 게이트웨이가 쓰는 것과 같은 토픽이다 (DEV-180). */
+  readonly bus: EventBus;
   readonly metrics: WorkerMetrics;
   readonly graphFor: (repository: RepositoryRow) => CommitGraph;
   /** 되돌리기가 쓸 백필 의존. `projectOne`이 요구하는 것과 같다. */
@@ -151,7 +159,9 @@ export async function reconcileRepository(
       deps.metrics.reconcileMissing.inc({ repository: slug, kind: 'pull_request' });
       // 되돌리기는 백필과 같은 경로다 — 두 번째 방식을 만들지 않는다.
       const reproject = deps.reproject ?? ((d, r, sm) => projectOne(d, null, r, sm));
-      if (await reproject(deps.backfill, repository, summary)) reprojected += 1;
+      // 출처를 남긴다 — 스냅숏이 어느 경로에서 왔는지가 조사에 필요하다 (DEV-184).
+      const backfillDeps = { ...deps.backfill, snapshotSource: 'reconcile' as const };
+      if (await reproject(backfillDeps, repository, summary)) reprojected += 1;
     }
 
     if (items.length < PAGE_SIZE) break;
@@ -162,13 +172,25 @@ export async function reconcileRepository(
 }
 
 /**
- * 대상 브랜치 head에 서수가 없으면 채번을 예약한다 (FR-ING-011 AC-5).
+ * 대상 브랜치 head에 서수가 없으면 채번을 요청한다 (FR-ING-011 AC-5).
  *
  * 원장 §7이 적어 둔 빈칸을 메우는 항목이다 — 채번은 push 웹훅이 온 저장소만
  * 따라가므로, 웹훅을 놓친 저장소는 아무도 채번을 요청하지 않는다.
  *
- * **기존 채번 경로로 예약한다.** `sequence_assign` 잡을 큐에 넣을 뿐 여기서
- * 서수를 붙이지 않는다 — 같은 기능을 두 번째 방식으로 구현하지 않는다.
+ * ## 잡 행이 아니라 **살아 있는 경로**로 보낸다 (CR-034, DEV-180)
+ *
+ * 처음에는 `sequence_assign` 잡 행을 넣었다. 그런데 **그 유형을 집는 러너가
+ * 없다** — 데이터베이스 잡을 claim하는 곳은 백필뿐이고, 정상 채번은 버스
+ * 이벤트가 몬다. 그래서 그 행은 영원히 `queued`로 남고, 게다가
+ * `findActiveJob`이 그것을 보고 **이후의 모든 복구 시도를 막는다.** 고치려고
+ * 만든 것이 고치지 못하게 막는 자물쇠가 된다.
+ *
+ * 두 번째 채번 실행 구조를 만들지 않는다. 이미 정식으로 살아 있는 경로
+ * (`prs:sequence` → `sequence.requested` → JOB-SEQ-001 → `assignSequence`)로
+ * 보낸다. 게이트웨이가 push 웹훅에서 내는 것과 **같은 이벤트**다.
+ *
+ * `head_sha`를 실어 보내지만 소비자는 그것을 맹신하지 않고 실행 시 그래프 head를
+ * 다시 읽는다 — 기존 규칙이 그대로 통제한다.
  */
 async function scheduleHeadSequence(deps: ReconcileDeps, repository: RepositoryRow): Promise<boolean> {
   const graph = deps.graphFor(repository);
@@ -192,12 +214,31 @@ async function scheduleHeadSequence(deps: ReconcileDeps, repository: RepositoryR
     );
     if (seq !== null) continue;
 
-    const target = `${repository.owner}/${repository.name}@${baseBranch}`;
-    const active = await jobRepo.findActiveJob(deps.pool, 'sequence_assign', target);
-    // 이미 줄 서 있으면 또 넣지 않는다 — `job_active_uk`가 막지만 409를 만들 이유가 없다.
-    if (active !== undefined) continue;
-
-    await jobRepo.enqueueJob(deps.pool, 'sequence_assign', target, 'job:reconcile');
+    const correlationId = `reconcile:${String(repository.repository_id)}:${baseBranch}`;
+    const payload: SequenceRequested = {
+      repository_id: repository.repository_id,
+      base_branch: baseBranch,
+      head_sha: head,
+      correlation_id: correlationId,
+    };
+    await deps.bus.publish(
+      TOPICS.sequence,
+      // 파티션 키는 게이트웨이와 같은 규칙이다 — 공간별 직렬이 유지된다.
+      sequencePartitionKey(repository.repository_id, baseBranch),
+      {
+        // 같은 head에 대한 재요청은 같은 ID다 — 멱등이 결정론에서 나온다.
+        event_id: deterministicEventId(
+          'sequence.requested',
+          String(repository.repository_id),
+          baseBranch,
+          head,
+        ),
+        event_name: 'sequence.requested',
+        correlation_id: correlationId,
+        occurred_at: (deps.now ?? ((): Date => new Date()))().toISOString(),
+        payload,
+      },
+    );
     scheduled = true;
   }
 

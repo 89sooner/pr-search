@@ -47,6 +47,7 @@ import { deadLetterRepo, rawEventRepo, repositoryRepo, type Pool, type RawEventR
 import { bulkUpsert, classifyFailure, type BulkItemOutcome, type UpsertRequest } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
 import { buildUpsertRequests } from './documents.js';
+import { recordProjectionSnapshot } from './snapshot.js';
 import { parseEnriched } from './enriched-payload.js';
 import { defaultSleep, retryFailedItems } from './index-retry.js';
 import type { WorkerMetrics } from './metrics.js';
@@ -207,6 +208,17 @@ async function projectDocuments(
     // AC-1. 웹훅 수신 시각이 사실의 순서다.
     documentVersion: row.received_at.getTime(),
     indexedAt,
+  });
+
+  /*
+   * **정본을 색인보다 먼저 남긴다** (CR-034, DEV-184 / ADR-004). 순서를 뒤집으면
+   * 색인에는 있고 정본에는 없는 창이 생기고, 그 창에서 죽으면 재구성 근거가
+   * 사라진다.
+   */
+  await recordProjectionSnapshot(deps.pool, requests, {
+    repositoryId: repository.repository_id,
+    prNumber: enriched.pr_number,
+    source: 'webhook',
   });
 
   let outcomes: readonly BulkItemOutcome[];

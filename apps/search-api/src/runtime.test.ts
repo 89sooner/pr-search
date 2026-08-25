@@ -1,0 +1,93 @@
+/**
+ * 운영 조립 (CR-034, DEV-177).
+ *
+ * ## 이 파일이 막는 것
+ *
+ * WP-028은 API-ADM-007의 함수도, 라우트 등록 코드도, 통합 시험도 갖고 있었다.
+ * 전부 초록이었고 **배포된 search-api에는 두 경로가 없었다** — 운영 조립이 그
+ * 의존을 넘기지 않았기 때문이다. 목을 꽂아 라우트를 세우는 시험은 "라우트가
+ * 존재한다"를 증명하지만 **"운영이 그것을 세운다"는 증명하지 않는다.**
+ *
+ * 그래서 여기서는 `index.ts`가 부르는 **바로 그 함수**를 부른다.
+ */
+
+import { describe, expect, it } from 'vitest';
+import type { Pool } from '@prs/db';
+import type { EventBus } from '@prs/bus';
+import type { Client } from '@elastic/elasticsearch';
+import type { GitHubClient } from '@prs/github';
+import { buildIntegrityDeps, buildServerDeps, runtimeCapabilities, type RuntimeParts } from './runtime.js';
+import type { SearchApiConfig } from './config.js';
+
+const CONFIG = {
+  port: 0,
+  adminTokens: [{ name: 'tester', token: 't' }],
+  metricsQueryUrl: null,
+  gheBaseUrl: null,
+  auth: { enabled: false, cookieSecure: false, loginPath: '/auth/login', groupRoleMap: new Map() },
+} as unknown as SearchApiConfig;
+
+function parts(overrides: Partial<RuntimeParts> = {}): RuntimeParts {
+  return {
+    config: CONFIG,
+    pool: {} as unknown as Pool,
+    bus: {} as unknown as EventBus,
+    es: {} as unknown as Client,
+    log: () => undefined,
+    ...overrides,
+  };
+}
+
+const GITHUB = { client: {} as unknown as GitHubClient };
+
+describe('buildIntegrityDeps', () => {
+  it('**GHE가 있으면 정합성 점검 의존을 만든다**', () => {
+    const deps = buildIntegrityDeps({} as unknown as Pool, GITHUB);
+    expect(deps).toBeDefined();
+    expect(typeof deps?.graphFor).toBe('function');
+  });
+
+  it('GHE가 없으면 만들지 않는다 — 그래프 없이 "점검했다"고 답하지 않는다', () => {
+    expect(buildIntegrityDeps({} as unknown as Pool, undefined)).toBeUndefined();
+  });
+
+  it('미러 볼륨을 요구하지 않는다 — API 그래프만으로 선다', () => {
+    // 클라이언트 하나 말고 아무것도 주지 않았는데 만들어진다.
+    expect(buildIntegrityDeps({} as unknown as Pool, { client: {} as unknown as GitHubClient })).toBeDefined();
+  });
+});
+
+describe('buildServerDeps — 운영이 무엇을 넘기는가', () => {
+  it('**GHE가 구성되면 integrity를 넘긴다** (DEV-177)', () => {
+    const deps = buildServerDeps(parts({ github: GITHUB }));
+    expect(deps.integrity).toBeDefined();
+  });
+
+  it('GHE가 없으면 넘기지 않는다', () => {
+    expect(buildServerDeps(parts()).integrity).toBeUndefined();
+  });
+
+  it('**없을 때 조용히 넘어가지 않는다** — 운영자가 404 이유를 로그에서 읽는다', () => {
+    const entries: Record<string, unknown>[] = [];
+    buildServerDeps(parts({ log: (entry) => entries.push(entry) }));
+    const warned = entries.find((entry) => String(entry['message']).includes('정합성 점검'));
+    expect(warned).toBeDefined();
+    expect(warned?.['level']).toBe('warn');
+  });
+
+  it('ops·pipeline은 언제나 넘긴다 — 관리 경로의 관문이다', () => {
+    const deps = buildServerDeps(parts());
+    expect(deps.ops).toBeDefined();
+    expect(deps.pipeline).toBeDefined();
+  });
+});
+
+describe('runtimeCapabilities — 없는 것을 없다고 말한다', () => {
+  it('GHE가 없으면 sequence_integrity가 false다', () => {
+    expect(runtimeCapabilities(parts())['sequence_integrity']).toBe(false);
+  });
+
+  it('GHE가 있으면 true다', () => {
+    expect(runtimeCapabilities(parts({ github: GITHUB }))['sequence_integrity']).toBe(true);
+  });
+});

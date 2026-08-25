@@ -2,6 +2,7 @@ export * as auditRepo from './audit.js';
 export * as authRepo from './auth.js';
 export * as deadLetterRepo from './dead-letter.js';
 export * as integrityRepo from './integrity.js';
+export * as prSnapshotRepo from './pr-snapshot.js';
 export * as jobRepo from './job.js';
 export * as mergeSequenceRepo from './merge-sequence.js';
 export * as pipelineRepo from './pipeline.js';
@@ -31,6 +32,7 @@ export type {
   RepositoryStatus,
 } from './repository.js';
 export type { AuditFilter, AuditRecordInput, AuditRecordRow } from './audit.js';
+export type { PullRequestSnapshotInput, PullRequestSnapshotRow, SnapshotSource } from './pr-snapshot.js';
 export type {
   AppUserRow,
   AppUserUpsert,

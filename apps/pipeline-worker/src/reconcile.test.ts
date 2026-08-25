@@ -8,6 +8,8 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { GitHubApiError } from '@prs/github';
+import { TOPICS } from '@prs/bus';
+import { sequencePartitionKey } from '@prs/domain';
 import {
   RECONCILE_ALERT_CYCLES,
   RECONCILE_INTERVAL_MS,
@@ -38,15 +40,18 @@ function harness(options: Options): {
   readonly listCalls: { page: number; direction: string | undefined }[];
   readonly projected: number[];
   readonly enqueued: { type: string; target: string }[];
+  readonly published: { topic: string; partitionKey: string; eventName: string; payload: unknown }[];
 } {
   const listCalls: { page: number; direction: string | undefined }[] = [];
   const projected: number[] = [];
   const enqueued: { type: string; target: string }[] = [];
+  const published: { topic: string; partitionKey: string; eventName: string; payload: unknown }[] = [];
 
   const pool = {
     query: (text: string, values?: readonly unknown[]) => {
       const sql = String(text);
       if (/INSERT INTO job/i.test(sql)) {
+        // 이 경로가 다시 살아나면(DEV-180 회귀) 시험이 본다.
         enqueued.push({ type: String(values?.[0]), target: String(values?.[1]) });
         return Promise.resolve({ rows: [{ job_id: 1 }] });
       }
@@ -98,11 +103,19 @@ function harness(options: Options): {
 
   const backfill = {} as unknown as ReconcileDeps['backfill'];
 
+  const bus = {
+    publish: (topic: string, partitionKey: string, envelope: { event_name: string; payload: unknown }) => {
+      published.push({ topic, partitionKey, eventName: envelope.event_name, payload: envelope.payload });
+      return Promise.resolve();
+    },
+  } as unknown as ReconcileDeps['bus'];
+
   return {
     deps: {
       pool,
       es,
       client,
+      bus,
       metrics,
       graphFor: () => graph,
       backfill,
@@ -116,6 +129,7 @@ function harness(options: Options): {
     listCalls,
     projected,
     enqueued,
+    published,
   };
 }
 
@@ -168,31 +182,38 @@ describe('누락 탐지 (AC-3)', () => {
   });
 });
 
-describe('head 시퀀스 예약 (AC-5)', () => {
-  it('**head에 서수가 없으면 채번을 예약한다** — 원장 §7의 빈칸이다', async () => {
+describe('head 시퀀스 복구 (AC-5 / CR-034 DEV-180)', () => {
+  it('**head에 서수가 없으면 살아 있는 채번 경로로 요청한다**', async () => {
     const h = harness({ prs: [], indexed: [], headSeq: null });
     const result = await reconcileRepository(h.deps, REPOSITORY);
     expect(result.sequenceScheduled).toBe(true);
-    expect(h.enqueued).toEqual([{ type: 'sequence_assign', target: 'acme/payments@main' }]);
+    expect(h.published).toHaveLength(1);
+    expect(h.published[0]?.topic).toBe(TOPICS.sequence);
+    expect(h.published[0]?.eventName).toBe('sequence.requested');
+    expect(h.published[0]?.payload).toEqual({
+      repository_id: 1,
+      base_branch: 'main',
+      head_sha: 'head-sha',
+      correlation_id: 'reconcile:1:main',
+    });
   });
 
-  it('서수가 이미 있으면 예약하지 않는다', async () => {
-    const h = harness({ prs: [], indexed: [], headSeq: 42 });
-    expect((await reconcileRepository(h.deps, REPOSITORY)).sequenceScheduled).toBe(false);
-    expect(h.enqueued).toEqual([]);
-  });
-
-  it('**이미 줄 서 있으면 또 넣지 않는다**', async () => {
-    const h = harness({ prs: [], indexed: [], headSeq: null, activeAssign: true });
-    expect((await reconcileRepository(h.deps, REPOSITORY)).sequenceScheduled).toBe(false);
-    expect(h.enqueued).toEqual([]);
-  });
-
-  it('**같은 기능을 두 번째 방식으로 구현하지 않는다** — 기존 채번 잡을 예약할 뿐이다', async () => {
+  it('**죽은 sequence_assign 잡 행을 만들지 않는다** — 집는 러너가 없다', async () => {
     const h = harness({ prs: [], indexed: [], headSeq: null });
     await reconcileRepository(h.deps, REPOSITORY);
-    // 서수를 직접 쓰지 않는다.
-    expect(h.enqueued.every((job) => job.type === 'sequence_assign')).toBe(true);
+    expect(h.enqueued).toEqual([]);
+  });
+
+  it('파티션 키가 게이트웨이와 같은 규칙이다 — 공간별 직렬이 유지된다', async () => {
+    const h = harness({ prs: [], indexed: [], headSeq: null });
+    await reconcileRepository(h.deps, REPOSITORY);
+    expect(h.published[0]?.partitionKey).toBe(sequencePartitionKey(1, 'main'));
+  });
+
+  it('서수가 이미 있으면 요청하지 않는다', async () => {
+    const h = harness({ prs: [], indexed: [], headSeq: 42 });
+    expect((await reconcileRepository(h.deps, REPOSITORY)).sequenceScheduled).toBe(false);
+    expect(h.published).toEqual([]);
   });
 });
 

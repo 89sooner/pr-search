@@ -1,0 +1,120 @@
+/**
+ * 운영 조립 이음매 (WP-028 post-merge / CR-034, DEV-177).
+ *
+ * ## 왜 이 파일이 있나
+ *
+ * `index.ts`는 최상위에서 포트를 열기 때문에 시험이 가져올 수 없다. 그래서
+ * "무엇을 만들어 `buildServer`에 넘기는가"가 **어떤 시험에도 걸리지 않는 자리**로
+ * 남아 있었고, WP-028의 API-ADM-007이 정확히 그 자리에서 빠졌다 — 함수도 있고
+ * 라우트 등록 코드도 있고 통합 시험도 초록이었지만, 운영 프로세스는 그 의존을
+ * 넘기지 않아 **배포된 search-api에 두 경로가 아예 없었다.**
+ *
+ * 조립을 함수로 꺼내면 시험이 운영과 **같은 것**을 부른다. 목을 꽂아 라우트를
+ * 세우는 시험은 "라우트가 존재한다"를 증명하지만 "운영이 그것을 세운다"는
+ * 증명하지 않는다.
+ */
+
+import type { Pool } from '@prs/db';
+import type { EventBus } from '@prs/bus';
+import type { Client } from '@elastic/elasticsearch';
+import { ApiCommitGraph, type GitHubClient } from '@prs/github';
+import type { SearchApiConfig } from './config.js';
+import type { ServerDeps } from './server.js';
+import type { AuthContext } from './auth/context.js';
+import type { RegistryDeps } from './ops/repositories.js';
+import type { IntegrityDeps } from './ops/sequence-integrity.js';
+
+/** 운영이 자격 증명으로 만든 GHE 접근. 없으면 GHE에 닿는 기능이 서지 않는다. */
+export interface RuntimeGitHub {
+  readonly client: GitHubClient;
+}
+
+export interface SearchDepsLike {
+  readonly es: Client;
+  readonly resolveNames: (names: {
+    readonly orgs: readonly string[];
+    readonly teams: readonly string[];
+  }) => Promise<{ readonly orgIds: Map<string, number>; readonly teamIds: Map<string, number> }>;
+  readonly timeoutMs?: number;
+}
+
+export interface RuntimeParts {
+  readonly config: SearchApiConfig;
+  readonly pool: Pool;
+  readonly bus: EventBus;
+  readonly es: Client;
+  /** 운영 로거. `index.ts`가 넘기는 것과 같은 함수다. */
+  readonly log: (entry: Record<string, unknown>) => void;
+  readonly github?: RuntimeGitHub | undefined;
+  readonly registry?: RegistryDeps | undefined;
+  readonly auth?: AuthContext | undefined;
+  readonly searchDeps?: SearchDepsLike | undefined;
+}
+
+/**
+ * 정합성 점검 의존 (API-ADM-007).
+ *
+ * **미러 볼륨을 만들지 않는다.** search-api는 조회 프로세스이고 미러는 워커의
+ * 것이다 — 여기에 볼륨을 붙이면 배포 단위가 하나 늘고 디스크 산정이 바뀐다.
+ * 대조에 필요한 것은 first-parent 체인 읽기뿐이므로, 이미 만들어 둔 GHE
+ * 클라이언트 위에 **읽기 전용 API 그래프**를 얹는다 (ADR-005의 폴백 경로).
+ *
+ * @returns GHE 자격 증명이 없으면 `undefined`. 그때 API-ADM-007은 서지 않으며,
+ * **그 사실을 호출부가 로그로 밝힌다** — 조용히 없는 것이 이 결함의 원인이었다.
+ */
+export function buildIntegrityDeps(pool: Pool, github: RuntimeGitHub | undefined): IntegrityDeps | undefined {
+  if (github === undefined) return undefined;
+  const graph = new ApiCommitGraph({ client: github.client, priority: 'realtime' });
+  return { pool, graphFor: () => graph };
+}
+
+/**
+ * 운영 `buildServer` 인자를 만든다. **`index.ts`와 시험이 같은 함수를 쓴다.**
+ *
+ * 여기서 한 줄이 빠지면 그 기능은 배포에서 사라진다 — 그래서 이 함수가
+ * 시험 대상이다.
+ */
+export function buildServerDeps(parts: RuntimeParts): ServerDeps {
+  const integrity = buildIntegrityDeps(parts.pool, parts.github);
+  if (integrity === undefined) {
+    /*
+     * 조용히 숨기지 않는다 (CR-034, DEV-177). 운영자가 `/admin/sequence-integrity`가
+     * 404인 이유를 로그에서 읽을 수 있어야 한다.
+     */
+    parts.log({
+      level: 'warn',
+      message: 'GHE 자격 증명이 없어 시퀀스 정합성 점검 경로를 등록하지 않는다 (API-ADM-007)',
+    });
+  }
+
+  return {
+    config: parts.config,
+    ops: { pool: parts.pool, bus: parts.bus, log: (entry) => { parts.log({ ...entry }); } },
+    pipeline: {
+      pool: parts.pool,
+      bus: parts.bus,
+      es: parts.es,
+      metricsQueryUrl: parts.config.metricsQueryUrl,
+      log: (entry) => { parts.log({ ...entry }); },
+    },
+    ...(parts.registry === undefined ? {} : { registry: parts.registry }),
+    ...(parts.auth === undefined || parts.searchDeps === undefined
+      ? {}
+      : {
+          auth: parts.auth,
+          search: parts.searchDeps,
+          sequence: { ...parts.searchDeps, pool: parts.pool },
+        }),
+    ...(integrity === undefined ? {} : { integrity }),
+    log: (entry) => { parts.log({ ...entry }); },
+  };
+}
+
+/** 기동 로그·헬스에 실을 기능 가용성. 없는 것을 없다고 말하기 위한 값이다. */
+export function runtimeCapabilities(parts: RuntimeParts): Readonly<Record<string, boolean>> {
+  return {
+    repository_registry: parts.registry !== undefined,
+    session_auth: parts.auth !== undefined,
+    sequence_integrity: buildIntegrityDeps(parts.pool, parts.github) !== undefined,
+  };
+}

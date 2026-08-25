@@ -30,6 +30,8 @@ import {
 import { CommitGraphError, type CommitGraph } from '@prs/github';
 import { buildServer } from '../../src/server.js';
 import { SEQUENCE_INTEGRITY_PATH } from '../../src/ops/routes.js';
+import { buildServerDeps } from '../../src/runtime.js';
+import type { GitHubClient } from '@prs/github';
 import type { OpsDeps } from '../../src/ops/dead-letters.js';
 import { migratedPool } from '../helpers.js';
 
@@ -390,4 +392,76 @@ describe('API-ADM-007 시퀀스 정합성 점검 (WP-028)', () => {
       expect(response.statusCode).toBe(404);
     });
   });
+describe('운영 조립이 실제로 경로를 세운다 (CR-034, DEV-177)', () => {
+  /**
+   * **목을 꽂지 않는다.** `index.ts`가 부르는 `buildServerDeps`를 그대로 불러
+   * 서버를 세우고 경로가 실재하는지 본다 — 그 한 줄이 빠지면 여기서 404가 난다.
+   */
+  it('GHE가 구성되면 API-ADM-007 두 경로가 선다', async () => {
+    const deps = buildServerDeps({
+      config: {
+        port: 0,
+        adminTokens: [{ name: 'tester', token: TOKEN }],
+        metricsQueryUrl: null,
+        gheBaseUrl: null,
+        auth: TEST_AUTH_CONFIG,
+      } as unknown as Parameters<typeof buildServerDeps>[0]['config'],
+      pool,
+      bus: { publish: () => Promise.reject(new Error('버스를 쓰지 않는다')) } as unknown as OpsDeps['bus'],
+      es: {} as unknown as Parameters<typeof buildServerDeps>[0]['es'],
+      log: () => undefined,
+      github: { client: {} as unknown as GitHubClient },
+    });
+    expect(deps.integrity).toBeDefined();
+
+    const assembled = buildServer(deps);
+    await assembled.ready();
+    try {
+      for (const method of ['GET', 'POST'] as const) {
+        const response = await assembled.inject({
+          method,
+          url: SEQUENCE_INTEGRITY_PATH,
+          headers: AUTH,
+          ...(method === 'POST' ? { payload: {} } : {}),
+        });
+        // 404가 아니면 경로가 실재한다는 뜻이다 (400/401은 핸들러가 답한 것).
+        expect(response.statusCode).not.toBe(404);
+      }
+    } finally {
+      await assembled.close();
+    }
+  });
+
+  it('GHE가 없으면 경로가 서지 않는다 — 그 사실이 명시적이다', async () => {
+    const warnings: Record<string, unknown>[] = [];
+    const deps = buildServerDeps({
+      config: {
+        port: 0,
+        adminTokens: [{ name: 'tester', token: TOKEN }],
+        metricsQueryUrl: null,
+        gheBaseUrl: null,
+        auth: TEST_AUTH_CONFIG,
+      } as unknown as Parameters<typeof buildServerDeps>[0]['config'],
+      pool,
+      bus: { publish: () => Promise.reject(new Error('버스를 쓰지 않는다')) } as unknown as OpsDeps['bus'],
+      es: {} as unknown as Parameters<typeof buildServerDeps>[0]['es'],
+      log: (entry) => warnings.push(entry),
+    });
+    expect(deps.integrity).toBeUndefined();
+    expect(warnings.some((entry) => String(entry['message']).includes('정합성 점검'))).toBe(true);
+
+    const assembled = buildServer(deps);
+    await assembled.ready();
+    try {
+      const response = await assembled.inject({
+        method: 'GET',
+        url: `${SEQUENCE_INTEGRITY_PATH}?repository=${SLUG}&base_branch=${MAIN}`,
+        headers: AUTH,
+      });
+      expect(response.statusCode).toBe(404);
+    } finally {
+      await assembled.close();
+    }
+  });
+});
 });

@@ -28,6 +28,7 @@
 import {
   EVENT_NAMES,
   deterministicEventId,
+  firstSequenceMismatch,
   sequencePartitionKey,
   sequenceSpaceLabel,
   type SequenceAssigned,
@@ -47,6 +48,7 @@ import {
 } from '@prs/bus';
 import {
   auditRepo,
+  integrityRepo,
   mergeSequenceRepo,
   repositoryRepo,
   sequenceSpaceRepo,
@@ -716,4 +718,236 @@ export async function refreshSequenceSpaceStates(deps: SequenceDeps): Promise<vo
   } catch {
     // 지표 갱신 실패로 채번을 실패시키지 않는다. 다음 회차가 다시 센다.
   }
+}
+
+/** 수동 정합성 복구 결과 (JOB-SEQ-002 수동 경로 / CR-034, DEV-182). */
+export type RepairOutcome =
+  /** 실행 시점에 이미 일치했다. 안전한 무동작 완료다. */
+  | { readonly kind: 'consistent'; readonly checked: number }
+  | {
+      readonly kind: 'repaired';
+      readonly oldEpoch: number;
+      readonly newEpoch: number;
+      /** 최초 불일치 서수. 그 앞은 검증된 prefix라 그대로 옮겼다. */
+      readonly divergedAtSeq: number;
+      readonly toSeq: number;
+      readonly headSha: string;
+      readonly affectedCount: number;
+    }
+  | { readonly kind: 'no_branch' }
+  | { readonly kind: 'locked' }
+  | { readonly kind: 'skipped'; readonly reason: string }
+  | { readonly kind: 'stale'; readonly reason: string };
+
+/**
+ * 운영자가 요청한 정합성 복구 (API-ADM-007 POST → `sequence_reassign`).
+ *
+ * ## 자동 재작성 복구를 그대로 쓸 수 없다 (CR-034, DEV-182)
+ *
+ * `reassignSequence`는 `mergeBase(storedHead, newHead)`까지를 **검증된 것으로
+ * 간주해 복사**한다. 그 가정은 "head가 움직였다"는 재작성 상황에서만 참이다.
+ *
+ * 수동 복구가 다루는 상황은 다르다 — **head는 그대로인데 중간이 손상된 경우**가
+ * 실재한다(저장 3번이 `X`인데 실제 3번은 `C`, head는 양쪽 다 `D`). 그때
+ * `mergeBase(D, D) = D`이고 그 서수는 head 서수이므로, 자동 경로는 **손상된
+ * 구간을 통째로 검증된 prefix로 복사하고 다시 계산할 커밋은 0건**이 된다.
+ * 복구가 아무것도 고치지 않고 에폭만 올린다.
+ *
+ * 그래서 수동 경로는 **최초 불일치를 경계로** 삼는다: `1..N-1`은 대조로 검증된
+ * 구간이므로 복사하고, `N..head`는 실제 first-parent 체인에서 다시 계산한다.
+ * `N = 1`이면 전체 재계산이다.
+ *
+ * ## 실행 시점에 다시 읽는다
+ *
+ * API 요청 때 본 불일치를 저장해 두고 그대로 실행하지 않는다. 큐에서 기다리는
+ * 사이 저장소가 바뀔 수 있고, **이미 고쳐진 것을 다시 고치면 멀쩡한 에폭이
+ * 무효가 된다.** 일치하면 무동작으로 끝낸다.
+ */
+export async function repairSequence(
+  deps: SequenceDeps,
+  repository: RepositoryRow,
+  baseBranch: string,
+  correlationId = '',
+): Promise<RepairOutcome> {
+  const log = deps.log ?? ((): void => undefined);
+  const repositoryId = repository.repository_id;
+  const graph = deps.graphFor(repository);
+
+  // ---- 실행 시점의 실측. 트랜잭션 밖에서 읽는다 (그래프 호출이 길다).
+  let head: string | null;
+  let actual: readonly string[];
+  try {
+    head = await graph.resolveHead(refOf(repository), baseBranch);
+    if (head === null) return { kind: 'no_branch' };
+    actual = await graph.firstParentRevList(refOf(repository), { from: null, to: head });
+  } catch (error) {
+    return { kind: 'stale', reason: graphReason(error) };
+  }
+
+  const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repositoryId, baseBranch);
+  if (space === undefined) return { kind: 'skipped', reason: 'sequence_space_missing' };
+
+  const stored = await integrityRepo.listStoredSequence(deps.pool, repositoryId, baseBranch, space.seq_epoch, 1);
+  const mismatch = firstSequenceMismatch(stored, actual);
+  if (mismatch === null) {
+    // 큐에서 기다리는 사이 다른 경로가 이미 고쳤거나 애초에 멀쩡했다.
+    return { kind: 'consistent', checked: stored.length };
+  }
+
+  const divergedAtSeq = mismatch.mergeSeq;
+  const client = await deps.pool.connect();
+  let committed: {
+    readonly outcome: Extract<RepairOutcome, { kind: 'repaired' }>;
+    readonly applied: readonly NumberedEntry[];
+    readonly label: string;
+  };
+
+  try {
+    await client.query('BEGIN');
+    const locked = await trySequenceSpaceLock(client, repositoryId, baseBranch);
+    if (!locked) {
+      await client.query('ROLLBACK');
+      return { kind: 'locked' };
+    }
+
+    const current = await sequenceSpaceRepo.findSequenceSpace(client, repositoryId, baseBranch);
+    if (current === undefined) {
+      await client.query('ROLLBACK');
+      return { kind: 'skipped', reason: 'sequence_space_missing' };
+    }
+    if (current.seq_epoch !== space.seq_epoch) {
+      /*
+       * 락을 잡는 사이 에폭이 올랐다 — 우리가 분석한 저장분은 더 이상 현재가
+       * 아니다. 그 분석으로 이어 가면 다른 에폭의 판정을 이 에폭에 적용한다.
+       */
+      await client.query('ROLLBACK');
+      return { kind: 'skipped', reason: 'epoch_moved' };
+    }
+
+    const oldEpoch = current.seq_epoch;
+    const affectedCount = await mergeSequenceRepo.countAbove(
+      client,
+      repositoryId,
+      baseBranch,
+      oldEpoch,
+      divergedAtSeq - 1,
+    );
+    const newEpoch = await sequenceSpaceRepo.bumpEpoch(client, repositoryId, baseBranch);
+
+    /*
+     * `1..N-1`은 **대조로 검증된** 구간이다. 복사하면 `pull_request_number`처럼
+     * 나중에 채워진 값을 잃지 않는다 (DEV-124와 같은 이유).
+     */
+    if (divergedAtSeq > 1) {
+      await mergeSequenceRepo.copySequencesUpTo(
+        client,
+        repositoryId,
+        baseBranch,
+        oldEpoch,
+        newEpoch,
+        divergedAtSeq - 1,
+      );
+    }
+
+    /*
+     * `N..head`를 실제 체인에서 다시 건다. 시작점은 **검증된 마지막 커밋**
+     * (서수 `N-1`)이며, `N = 1`이면 체인 처음부터다.
+     */
+    const from = divergedAtSeq === 1 ? null : (actual[divergedAtSeq - 2] ?? null);
+    let commits: readonly { readonly sha: string; readonly committedAt: string }[];
+    try {
+      commits = await graph.firstParentCommits(refOf(repository), { from, to: head });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      return { kind: 'stale', reason: graphReason(error) };
+    }
+
+    const numbered = numberCommits(divergedAtSeq - 1, commits);
+    const applied: NumberedEntry[] = [];
+    for (const entry of numbered) {
+      const prNumber = await findPullRequestNumber(deps, repositoryId, entry.sha);
+      await mergeSequenceRepo.upsertMergeSequence(client, {
+        repository_id: repositoryId,
+        base_branch: baseBranch,
+        seq_epoch: newEpoch,
+        merge_seq: entry.mergeSeq,
+        commit_sha: entry.sha,
+        pull_request_number: prNumber,
+        committed_at: new Date(entry.committedAt),
+      });
+      applied.push({ mergeSeq: entry.mergeSeq, sha: entry.sha });
+    }
+
+    /*
+     * 새 head 서수는 **실제 체인 길이**다. 히스토리가 짧아졌으면 저장분보다
+     * 작아진다 — 옛 값을 남겨 두면 없는 커밋을 가리키는 head가 된다.
+     */
+    const toSeq = divergedAtSeq - 1 + numbered.length;
+    await sequenceSpaceRepo.advanceHead(client, repositoryId, baseBranch, head, toSeq);
+    await client.query('COMMIT');
+
+    committed = {
+      outcome: {
+        kind: 'repaired',
+        oldEpoch,
+        newEpoch,
+        divergedAtSeq,
+        toSeq,
+        headSha: head,
+        affectedCount,
+      },
+      applied,
+      label: sequenceSpaceLabel(`${repository.owner}/${repository.name}`, baseBranch),
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    return { kind: 'stale', reason: graphReason(error) };
+  } finally {
+    client.release();
+  }
+
+  // ---- 커밋 뒤: 색인·이벤트. 실패해도 복구 자체는 끝났고 PostgreSQL이 정본이다.
+  const { outcome, applied, label } = committed;
+  log({
+    level: 'warn',
+    message: '수동 정합성 복구를 마쳤다 — 이전 에폭 인용은 무효다',
+    repository_id: repositoryId,
+    base_branch: baseBranch,
+    old_epoch: outcome.oldEpoch,
+    new_epoch: outcome.newEpoch,
+    diverged_at_seq: outcome.divergedAtSeq,
+    affected_count: outcome.affectedCount,
+  });
+
+  try {
+    await applyEpochBump(deps.es, {
+      repositoryId,
+      baseBranch,
+      newEpoch: outcome.newEpoch,
+      sequenceSpace: label,
+    });
+    await applySequenceToDocuments(deps.es, {
+      repositoryId,
+      baseBranch,
+      seqEpoch: outcome.newEpoch,
+      sequenceSpace: label,
+      assignments: applied.map((entry) => ({ commitSha: entry.sha, mergeSeq: entry.mergeSeq })),
+    });
+  } catch (error) {
+    deps.metrics.sequenceIndexFailed.inc();
+    log({
+      level: 'error',
+      message: '복구는 끝났으나 색인 반영에 실패했다 — PostgreSQL 값이 정본이다',
+      repository_id: repositoryId,
+      base_branch: baseBranch,
+      reason: String(error).slice(0, 200),
+    });
+  }
+
+  deps.metrics.sequenceReassignTotal.inc({ repository: `${repository.owner}/${repository.name}` });
+  if (deps.requestReleaseRefresh !== undefined) {
+    await deps.requestReleaseRefresh(repositoryId, correlationId).catch(() => undefined);
+  }
+
+  return outcome;
 }
