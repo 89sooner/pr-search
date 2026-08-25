@@ -47,7 +47,7 @@ import { startIntegritySweeper, type IntegritySweeper } from './integrity.js';
 import { startConsistencySweeper, type ConsistencySweeper } from './consistency.js';
 import { startReconcileSweeper, type ReconcileSweeper } from './reconcile.js';
 import { startSequenceRepairRunner, type RepairRunner } from './sequence-repair-runner.js';
-import { createEsClient } from '@prs/es';
+import { applyRepositoryTeams, createEsClient } from '@prs/es';
 import type { Subscription } from '@prs/bus';
 import type { ReleaseSummary } from '@prs/github';
 import type { Client } from '@elastic/elasticsearch';
@@ -604,6 +604,27 @@ if (roles.includes('authz')) {
     forgetCached: async (userIds) => {
       if (userIds.length === 0) return;
       await scopeRedis.del(...userIds.map(scopeKey));
+    },
+    /*
+     * 팀 변경을 색인에 소급 적용한다 (WP-068 / CR-035, DEV-187).
+     *
+     * 권한 캐시 무효화와 **같은 사건에서 함께** 돈다 — 강제 필터는 문서에
+     * 박힌 `allowed_team_ids`를 보므로, 캐시만 지우고 문서를 두면 팀에서 빠진
+     * 사용자가 과거 문서를 계속 본다.
+     */
+    refreshRepositoryTeams: async (teamId: number): Promise<number> => {
+      const authzEs = (esClient = esClient ?? createEsClient());
+      const affected = await repositoryRepo.findRepositoriesForTeam(pool, teamId);
+      let refreshed = 0;
+      for (const repository of affected) {
+        const result = await applyRepositoryTeams(
+          authzEs,
+          repository.repository_id,
+          repository.allowed_team_ids,
+        );
+        refreshed += result.total;
+      }
+      return refreshed;
     },
     log: (entry: AuthzLogEntry) => {
       process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-AUTH-001', ...entry })}\n`);

@@ -166,6 +166,32 @@ describe('경로가 실재하는지', () => {
     expect(consistency).not.toContain('FROM raw_event');
   });
 
+  /*
+   * **팀 접근 범위가 운영에서 실제로 채워지고 소급된다** (WP-068 / CR-035).
+   *
+   * 값을 만드는 자리가 없어 `team:` 질의가 한 건도 맞히지 못하던 것이 DEV-114였다.
+   * 배선이 빠지면 같은 상태로 조용히 되돌아간다.
+   */
+  it('저장소 등록이 팀을 채운다 (DEV-185)', () => {
+    expect(API_INDEX).toContain('listTeams:');
+    expect(read('apps/search-api/src/ops/repositories.ts')).toContain('await syncRepositoryTeams(');
+  });
+
+  it('팀 변경이 색인에 소급 적용된다 (DEV-187)', () => {
+    expect(WORKER_INDEX).toContain('refreshRepositoryTeams:');
+    expect(WORKER_INDEX).toContain('applyRepositoryTeams(');
+  });
+
+  it('투영이 접근 범위에 팀을 싣는다 (DEV-114)', () => {
+    expect(read('apps/pipeline-worker/src/documents.ts')).toContain('allowed_team_ids: [...repository.allowed_team_ids]');
+  });
+
+  it('**소급 적용이 네 색인 전부를 덮는다** — 둘만 덮으면 관계·릴리스가 옛 권한을 남긴다', () => {
+    const registry = read('packages/es/src/registry.ts');
+    expect(registry).toContain('TEAM_SCOPED_ALIASES: readonly EntityAlias[] = ENTITY_ALIASES');
+    expect(registry).toContain('for (const alias of TEAM_SCOPED_ALIASES)');
+  });
+
   it('root 경로가 실재한다 — 시험이 잘못된 디렉터리를 보고 있지 않다', () => {
     expect(existsSync(new URL('package.json', new URL('..', import.meta.url)))).toBe(true);
     expect(root.length).toBeGreaterThan(0);

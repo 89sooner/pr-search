@@ -12,9 +12,9 @@
  * 조사 이력의 보존이 이 제품의 목적이다.
  */
 
-import { auditRepo, jobRepo, repositoryRepo, type Pool, type RepositoryRow } from '@prs/db';
+import { auditRepo, authRepo, jobRepo, repositoryRepo, type Pool, type RepositoryRow } from '@prs/db';
 import { MAX_SEQUENCE_BRANCHES } from '@prs/db';
-import { markRepositoryArchived, type MarkArchivedResult } from '@prs/es';
+import { applyRepositoryTeams, markRepositoryArchived, type MarkArchivedResult } from '@prs/es';
 import type { Client as EsClient } from '@elastic/elasticsearch';
 import { AdminRejected } from './errors.js';
 
@@ -44,6 +44,13 @@ export interface RegistryDeps {
   readonly pool: Pool;
   readonly es: EsClient;
   readonly lookup: GheRepositoryLookup;
+  /**
+   * 저장소에 접근 가능한 팀 (WP-068 / CR-035, DEV-185).
+   *
+   * **없으면 팀을 채우지 않는다** — GHE 자격 증명이 없는 배포에서 등록이 막히면
+   * 안 되고, 팀을 모르는 채로 빈 배열을 쓰면 기존 값을 지운다.
+   */
+  readonly listTeams?: (owner: string, name: string) => Promise<readonly { id: number; slug: string }[]>;
   readonly log?: (entry: RegistryLogEntry) => void;
 }
 
@@ -197,6 +204,16 @@ export async function registerRepository(
     status: 'active',
   });
 
+  /*
+   * 팀 접근 범위를 채운다 (WP-068 / CR-035, DEV-114·186).
+   *
+   * 조회한 팀을 `team` 표에도 넣는다 — `resolveTeamIds`(WP-013)가 `team:` 질의의
+   * slug를 ID로 옮길 때 그 표를 읽는데, 채우는 자리가 없어 **이름이 ID로
+   * 옮겨지지 않아 질의가 한 건도 맞히지 못했다.** 조회한 것만 넣으므로 별도
+   * 동기화 잡을 만들지 않는다.
+   */
+  await syncRepositoryTeams(deps, facts.repository_id, facts.org_id, owner, name, correlationId);
+
   // 해제됐던 저장소를 다시 등록하면 문서의 표식도 풀어야 한다. 풀지 않으면
   // 되살아난 저장소가 계속 "해제됨"으로 보인다.
   const documentsMarked =
@@ -301,4 +318,50 @@ export async function unregisterRepository(
   });
 
   return { repository: archived, documentsMarked: marked.total };
+}
+
+/**
+ * GHE의 저장소 팀을 정본과 색인에 반영한다 (WP-068 / CR-035).
+ *
+ * **값이 바뀔 때만 색인을 만진다.** 등록 갱신은 잦고 팀은 드물게 바뀌므로,
+ * 같은 값으로 `update_by_query`를 돌리면 문서를 헛되이 다시 쓴다.
+ *
+ * 실패해도 등록을 되돌리지 않는다 — 저장소는 등록됐고 팀은 다음 갱신이나 팀
+ * 웹훅이 채운다. 여기서 던지면 GHE 일시 오류가 등록 자체를 막는다.
+ */
+export async function syncRepositoryTeams(
+  deps: RegistryDeps,
+  repositoryId: number,
+  orgId: number,
+  owner: string,
+  name: string,
+  correlationId: string,
+): Promise<{ readonly changed: boolean; readonly teamIds: readonly number[] }> {
+  if (deps.listTeams === undefined) return { changed: false, teamIds: [] };
+
+  try {
+    const teams = await deps.listTeams(owner, name);
+    for (const team of teams) {
+      // `team:` 질의가 slug를 ID로 옮길 수 있어야 한다 (DEV-186).
+      await authRepo.upsertTeam(deps.pool, { team_id: team.id, slug: team.slug, org_id: orgId });
+    }
+
+    const teamIds = teams.map((team) => team.id);
+    const changed = await repositoryRepo.setAllowedTeams(deps.pool, repositoryId, teamIds);
+    if (changed) {
+      // 강제 필터는 문서에 박힌 값을 본다 — 소급하지 않으면 과거 문서가 옛 권한으로 남는다.
+      await applyRepositoryTeams(deps.es, repositoryId, teamIds);
+    }
+    return { changed, teamIds };
+  } catch (error) {
+    deps.log?.({
+      level: 'error',
+      message: '팀 접근 범위를 채우지 못했다 — 등록은 유지된다',
+      correlation_id: correlationId,
+      repository_id: repositoryId,
+      repository: `${owner}/${name}`,
+      reason: String(error).slice(0, 200),
+    });
+    return { changed: false, teamIds: [] };
+  }
 }

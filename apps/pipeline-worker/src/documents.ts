@@ -69,12 +69,21 @@ function uniqueStrings(values: readonly (string | null)[]): string[] {
   return [...new Set(values.filter((value): value is string => value !== null && value !== ''))];
 }
 
+/**
+ * 접근 범위 필드의 **유일한 출처** (ADR-008).
+ *
+ * 네 투영이 모두 이것을 부른다 — 각자 계산하면 한 색인만 팀을 놓치는 날이 오고,
+ * 그때 그 색인의 `team:` 질의만 조용히 비어 온다 (WP-068 / CR-035, DEV-114).
+ */
 function repositoryScope(repository: RepositoryRow): Fields {
   return {
     repository_id: repository.repository_id,
     repository: `${repository.owner}/${repository.name}`,
     org_id: repository.org_id,
     visibility: repository.visibility,
+    // 레지스트리가 소유한 값을 그대로 싣는다. 이벤트에는 없다 (CR-024).
+    allowed_team_ids: [...repository.allowed_team_ids],
+
   };
 }
 
