@@ -541,7 +541,7 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 3. `pr_search_async_events_jobs.md` — JOB-SEQ-003·JOB-ING-008 스케줄 주석에 결정 반영, 운영 지표 5종 추가(`sequence_integrity_mismatch_total`, `sequence_integrity_check_failed_total`, `projection_consistency_mismatch_total`, `reconcile_incomplete_cycles`, `reconcile_missing_total` 라벨 명시) (DEV-171·174·176)
 4. `pr_search_work_packages.md` — WP-028 DoD를 7항 → **18항**으로 확장하고, 제외에 **실제 알림 발송 이월**을 명시 (DEV-176)
 5. 원장 — DEV-171~176 등록·해소, **DEV-128 해소**(마이그레이션 009), WP-028 상태 `todo` → `done`, FR-ADMIN-003·FR-ING-011 매핑, 검증 기록 6.28장 신설(기존 릴리스 게이트는 6.29로), 원장 v1.5
-6. 구현 — 마이그레이션 `009_job_type_reassign`(up/down), `packages/domain/src/integrity.ts`(대조 규칙 한 벌), `packages/db/src/repositories/integrity.ts`, `apps/search-api/src/ops/sequence-integrity.ts`(API-ADM-007), `apps/pipeline-worker/src/{integrity,reconcile,consistency}.ts`(JOB-SEQ-003·JOB-ING-005·JOB-ING-008), `packages/github/src/client.ts`(`direction` 옵션), 지표 5종
+6. 구현 — `b9d3b1c`(계약)·`4d192b2`(구현)·`f9df507`(원장) / PR #35, `main` 병합 `4b954d1`. 마이그레이션 `009_job_type_reassign`(up/down), `packages/domain/src/integrity.ts`(대조 규칙 한 벌), `packages/db/src/repositories/integrity.ts`, `apps/search-api/src/ops/sequence-integrity.ts`(API-ADM-007), `apps/pipeline-worker/src/{integrity,reconcile,consistency}.ts`(JOB-SEQ-003·JOB-ING-005·JOB-ING-008), `packages/github/src/client.ts`(`direction` 옵션), 지표 5종
 7. 검증 — 타입·lint·lint:deps, 단위 1218(1 skipped), a11y 192, e2e 67, 통합 709, 회귀 27, contrast 80쌍 전량 통과. **결함 재적용 9종 전부 킬 확인**
 8. 기각한 갈래 — `sequence_space.state`에 `check_failed`를 더하는 안(갈래 B). 시퀀스 상태와 진단 실행 상태는 다른 개념이며, 한 번의 일시적 그래프 실패가 정본 상태를 오염시키고 마이그레이션·C-027·W-004가 그것을 물려받는다
 
@@ -554,7 +554,7 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 5. `pr_search_screen_qa_checklist.md` — QA-W002-20(공간 지정)·QA-W002-21(실패 복구)·QA-W002-22(머지 시각 경계)·QA-W003-09(커밋 화면 공간 지정) 신설
 6. `pr_search_work_packages.md` — WP-027 DoD에 공간 지정·시각 경계·실패 복구 3항 추가 (머지 후 정정이므로 WP는 신설하지 않는다)
 7. 원장 — DEV-168~170 등록·해소, 6.27장에 **리뷰 라운드 표**(머지 후) 추가, FR-REL-001 매핑을 `base_branch` 판별자까지 갱신
-8. 구현 — `apps/search-api/src/sequence/{neighbors,routes}.ts`, `apps/web/components/NeighborSequenceList.tsx`. **`packages/db`는 변경 없음** — 공간 한정 앵커 조회는 API-SEQ-002가 쓰던 `findPointByPullRequest`/`findPointByCommit`을 그대로 재사용했다(같은 질의를 두 벌 두지 않는다)
+8. 구현 — `e514bfe`(문서)·`394854a`(코드) / PR #34, `main` 병합 `1d0dee2`. `apps/search-api/src/sequence/{neighbors,routes}.ts`, `apps/web/components/NeighborSequenceList.tsx`. **`packages/db`는 변경 없음** — 공간 한정 앵커 조회는 API-SEQ-002가 쓰던 `findPointByPullRequest`/`findPointByCommit`을 그대로 재사용했다(같은 질의를 두 벌 두지 않는다)
 9. 검증 — 타입·lint·lint:deps, 단위 1161, a11y 192, e2e 67, 통합 684, 회귀 27, contrast 80쌍 전량 통과. 결함 재적용 4종 전부 킬 확인
 
 ### CR-031 반영 내역 (2026-08-25)
