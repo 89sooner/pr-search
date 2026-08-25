@@ -398,6 +398,24 @@ export class GitHubClient {
     return this.#transport.getAll<TeamSummary>({ org, path: `/orgs/${org}/teams`, ...options });
   }
 
+  /**
+   * **이 저장소에 접근 가능한 팀** (WP-068 / CR-035, DEV-185).
+   *
+   * `allowed_team_ids`가 필요로 하는 것은 **저장소 축**의 답인데, 기존 조회는
+   * 셋 다 사용자 축이다(`listOrgTeams`는 조직 전체 팀, `isTeamMember`는 사용자가
+   * 그 팀인가, `collaboratorPermission`은 사용자의 저장소 권한). 조직 전체 팀을
+   * 훑어 각각 확인하면 **등록 한 번이 팀 수만큼의 요청**이 된다.
+   *
+   * GitHub이 이 질문에 직접 답하는 엔드포인트를 제공하므로 그것을 쓴다.
+   */
+  async listRepositoryTeams(ref: RepoRef, options: CallOptions = {}): Promise<TeamSummary[]> {
+    return this.#transport.getAll<TeamSummary>({
+      org: orgOf(ref),
+      path: `/repos/${ref.owner}/${ref.repo}/teams`,
+      ...options,
+    });
+  }
+
   /** 접근 범위 산출용 협업자·권한 조회 (FR-AUTH-003). */
   async listCollaborators(ref: RepoRef, options: CallOptions = {}): Promise<CollaboratorSummary[]> {
     return this.#transport.getAll<CollaboratorSummary>({

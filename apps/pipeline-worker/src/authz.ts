@@ -41,6 +41,8 @@ export interface AuthzLogEntry {
   readonly team_id?: number | null;
   readonly repository_id?: number | null;
   readonly invalidated?: number;
+  /** 팀 변경으로 색인에서 접근 범위를 다시 쓴 문서 수 (CR-035, DEV-187). */
+  readonly documents_refreshed?: number;
   readonly error?: string;
 }
 
@@ -59,6 +61,17 @@ export interface AuthzDeps {
    * 이 워커를 고치지 않는다.
    */
   readonly ports?: InvalidationPorts | undefined;
+  /**
+   * 팀 변경을 색인에 소급 적용한다 (WP-068 / CR-035, DEV-187).
+   *
+   * **권한 캐시 무효화와 같은 사건에서 함께 돈다.** 강제 필터는 문서에 박힌
+   * `allowed_team_ids`를 보므로, 캐시만 지우고 문서를 두면 팀에서 빠진 사용자가
+   * 과거 문서를 계속 본다 — 그것이 유출이다.
+   *
+   * 없으면 소급하지 않는다(색인 의존이 없는 배포). 그때는 캐시 TTL과 다음 등록
+   * 갱신이 뒤늦게 메운다.
+   */
+  readonly refreshRepositoryTeams?: (teamId: number) => Promise<number>;
   readonly log?: (entry: AuthzLogEntry) => void;
 }
 
@@ -159,6 +172,25 @@ export function createAuthzHandler(
         orgId: parsed.orgId,
       });
 
+      /*
+       * 팀이 걸린 사건이면 색인도 함께 맞춘다 (CR-035, DEV-187). 실패해도
+       * 무효화 자체는 성공했으므로 재시도로 되돌리지 않는다 — 다음 팀 변경이나
+       * 등록 갱신이 메우고, 그 사이 캐시 TTL이 안전망이다.
+       */
+      let documentsRefreshed = 0;
+      if (parsed.event.team_id != null && deps.refreshRepositoryTeams !== undefined) {
+        try {
+          documentsRefreshed = await deps.refreshRepositoryTeams(parsed.event.team_id);
+        } catch (error) {
+          log({
+            level: 'error',
+            message: '팀 접근 범위 소급 적용 실패 — 권한 캐시는 무효화됐다',
+            correlation_id: delivered.correlation_id,
+            error: String(error).slice(0, 200),
+          });
+        }
+      }
+
       deps.metrics.permissionInvalidated.inc({ reason: result.reason }, result.invalidatedUserIds.length);
       log({
         level: 'info',
@@ -168,6 +200,7 @@ export function createAuthzHandler(
         team_id: parsed.event.team_id ?? null,
         repository_id: parsed.event.repository_id ?? null,
         invalidated: result.invalidatedUserIds.length,
+        documents_refreshed: documentsRefreshed,
       });
       return { kind: 'ack' };
     } catch (error) {

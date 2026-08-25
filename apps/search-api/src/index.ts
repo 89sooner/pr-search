@@ -81,6 +81,11 @@ function buildRegistry(): RegistryDeps | undefined {
     pool,
     es,
     lookup: createGheLookup(github.client, github.installationFor),
+    /*
+     * 저장소 팀 접근 범위 (WP-068 / CR-035, DEV-185). 등록·갱신 시 채운다 —
+     * 이 값이 없으면 `team:` 질의가 한 건도 맞히지 못한다.
+     */
+    listTeams: async (owner, name) => github.client.listRepositoryTeams({ owner, repo: name }),
     log: (entry) => log({ ...entry }),
   };
 }

@@ -78,7 +78,13 @@ export type { SortKey, SortOrder } from './sort.js';
 export { CONDITIONAL_UPSERT_SCRIPT, bulkUpsert, classifyFailure, upsertOne } from './upsert.js';
 export type { BulkItemOutcome, BulkUpsertResult, UpsertRequest } from './upsert.js';
 
-export { ARCHIVABLE_ALIASES, NON_ARCHIVABLE_ALIASES, markRepositoryArchived } from './registry.js';
+export {
+  ARCHIVABLE_ALIASES,
+  NON_ARCHIVABLE_ALIASES,
+  TEAM_SCOPED_ALIASES,
+  applyRepositoryTeams,
+  markRepositoryArchived,
+} from './registry.js';
 export type { MarkArchivedResult } from './registry.js';
 
 export { SEQUENCE_CHUNK, applyEpochBump, applySequenceToDocuments, findPullRequestByMergeCommit } from './sequence.js';

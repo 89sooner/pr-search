@@ -149,6 +149,20 @@ CREATE TABLE pull_request_snapshot (
 
 `JOB-ING-008`의 정합성 대조가 이 표를 정본으로 읽는다 — 재구성 근거와 대조 근거가 같은 것이다.
 
+#### `repository.allowed_team_ids` — 팀 접근 범위 (WP-068 / CR-035, DEV-114)
+
+```sql
+ALTER TABLE repository ADD COLUMN allowed_team_ids BIGINT[] NOT NULL DEFAULT '{}';
+CREATE INDEX repository_allowed_teams_idx ON repository USING GIN (allowed_team_ids);
+```
+
+네 색인 매핑이 모두 이 필드를 선언하고 강제 필터의 `org_team` 경로와 `team:` 질의가 그것을 읽는데, **값을 만드는 자리가 없었다.**
+
+- **레지스트리가 소유한다** (CR-024). 등록·갱신 시 GHE `GET /repos/{owner}/{repo}/teams`로 채운다.
+- **`EVT-ING-002`에 싣지 않는다.** 팀 권한은 PR 엔티티의 버전이 아니라 **저장소 접근 상태**다 — 이벤트에 실으면 권한 변경이 문서 버전을 올려 수집 순서를 흔든다.
+- 팀 변경은 `permission.invalidated`(EVT-AUTH-001) 소비자에서 **권한 캐시 무효화와 함께** `update_by_query`로 소급 적용하며, `document_version`은 건드리지 않는다.
+- **소급 대상은 네 색인 전부다.** `repository_archived`를 갖는 둘(`ARCHIVABLE_ALIASES`)과 다르다 — 둘만 돌리면 관계·릴리스 문서가 옛 권한을 들고 남는다.
+
 ### 3.2 시퀀스 (핵심)
 
 ```sql

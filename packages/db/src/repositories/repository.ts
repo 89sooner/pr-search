@@ -16,6 +16,14 @@ export interface RepositoryRow {
   readonly mirror_enabled: boolean;
   readonly status: RepositoryStatus;
   readonly registered_at: Date;
+  /**
+   * 이 저장소를 볼 수 있는 팀 (WP-068 / CR-035, DEV-114 해소).
+   *
+   * **레지스트리가 소유한다** (CR-024) — 이벤트에 싣지 않는다. 팀 권한은 PR
+   * 엔티티의 버전이 아니라 저장소 접근 상태이며, 그것으로 문서 버전이 오르면
+   * 권한 변경이 수집 순서를 흔든다.
+   */
+  readonly allowed_team_ids: number[];
 }
 
 /**
@@ -206,3 +214,40 @@ export async function resolveOrgIds(db: Queryable, owners: readonly string[]): P
   return new Map(rows.map((row) => [row.owner, row.org_id]));
 }
 
+/**
+ * 저장소를 볼 수 있는 팀을 갈아 끼운다 (WP-068 / CR-035, DEV-114).
+ *
+ * **등록·갱신과 분리된 함수다.** `upsertRepository`에 넣으면 팀을 모르는 호출
+ * (시험 픽스처, 시퀀스 브랜치만 바꾸는 갱신)이 기존 팀을 지운다 — 권한을
+ * 모르는 호출이 권한을 비우는 일이 없어야 한다.
+ *
+ * @returns 값이 실제로 바뀌었으면 `true`. 색인 소급 적용은 그때만 돌린다 —
+ * 같은 값으로 `update_by_query`를 돌리면 문서를 헛되이 다시 쓴다.
+ */
+export async function setAllowedTeams(
+  db: Queryable,
+  repositoryId: number,
+  teamIds: readonly number[],
+): Promise<boolean> {
+  // 정렬·중복 제거해 저장한다 — 순서만 다른 값이 "바뀌었다"로 읽히지 않게.
+  const normalized = [...new Set(teamIds)].sort((a, b) => a - b);
+  const result = await db.query(
+    `UPDATE repository
+        SET allowed_team_ids = $2
+      WHERE repository_id = $1 AND allowed_team_ids IS DISTINCT FROM $2::bigint[]`,
+    [repositoryId, normalized],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** 이 팀을 볼 수 있는 저장소들. 팀 변경의 소급 적용 대상이다. */
+export async function findRepositoriesForTeam(
+  db: Queryable,
+  teamId: number,
+): Promise<readonly RepositoryRow[]> {
+  const result = await db.query<RepositoryRow>(
+    'SELECT * FROM repository WHERE allowed_team_ids @> ARRAY[$1]::bigint[]',
+    [teamId],
+  );
+  return result.rows;
+}
