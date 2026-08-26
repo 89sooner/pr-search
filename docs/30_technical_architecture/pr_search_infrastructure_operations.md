@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.3 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -41,9 +41,13 @@
 | `pipeline-worker:project` | 투영 | `prs:enriched` 적체 | 2 / 8 | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:sequence` | 채번 | `prs:sequence` 적체 | 1 / 4 | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:link` | 관계 파생 | `prs:projected` 적체 | 1 / 4 | 하트비트 | 이전 이미지 재배포 |
-| `pipeline-worker:batch` | 배치 잡 | 고정 | 1 / 3 | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:mirror` | git 미러 동기화·커밋 메타데이터 보강 | 저장소 수 | 1 / 2 | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:reconcile` | 조정 스캔 | 저장소 수 | 1 / 1 | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:batch` | 배치 잡 (JOB-ING-006 재색인 · JOB-ING-007 아웃박스 재적재) | 고정 | 1 / 3 | 하트비트 | 이전 이미지 재배포 |
 | `filebeat` | 원본 아카이브 적재 | DaemonSet | - | Filebeat 자체 | 설정 롤백 |
 | `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005) | 대기 중 실행 수 | 2 / 8 | `GET /healthz` (gh 버전·manifest 대조 포함) | 이전 이미지 재배포 |
+
+**이 표는 `deploy/k8s/`와 서로를 검사한다** (CR-045, DEV-293·307). `mirror`(CR-038)·`reconcile`(CR-034)은 manifest가 신설됐는데 이 표에 오르지 않았고, 반대로 `batch`는 이 표에 있는데 **manifest가 없었다** — 그 결과 이미 구현된 JOB-ING-007이 배포되지 않았다(DEV-292). 이제 운영 도달성 회귀가 **코드가 갈래를 만든 역할마다 그것을 세우는 manifest가 있는지** 묻는다. `authz`(JOB-AUTH-001)·`release`(JOB-REL-007)·`backfill`(JOB-ING-004) 셋은 **아직 배포되지 않으며** DEV-304~306으로 열려 있다 — **배포되지 않는 단위를 이 표에 먼저 적지 않는다.** 그러면 표가 다시 사실과 어긋난다.
 
 배포 순서 규칙:
 
