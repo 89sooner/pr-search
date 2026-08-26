@@ -1380,29 +1380,51 @@
 ### WP-035 무중단 재색인
 
 - 목표: 매핑 변경이 서비스 중단 없이 반영된다.
-- 관련 요구사항: FR-ING-008, NFR-008
+- 관련 요구사항: FR-ING-008, NFR-008, **ADR-004**(정본만으로 재구축)
 - 관련 화면/플로우: A-003 (API만)
 - 관련 API/데이터/잡: API-ADM-004, JOB-ING-006
 - 선행 WP: WP-003, WP-008
+- **차단 대상: WP-032** — `edge_ngram` 활성화가 이 WP의 기계를 요구한다 (CR-043, DEV-266·267)
 - 구현 범위:
-  - `POST /admin/reindex`: 새 버전 인덱스 생성 → PostgreSQL에서 재투영 → 별칭 원자 전환
-  - 재색인 중 신규 이벤트 이중 쓰기
-  - 별칭 전환은 alias 액션 1회
-  - 전환 후 이전 인덱스 7일 보관 후 삭제
-  - 실패 시 별칭 미전환, 기존 인덱스 유지
-  - 진행률 보고
-  - `pnpm es:reindex --alias <별칭>` CLI
+  - **`batch` 역할 배포 manifest 신설** (`deploy/k8s/pipeline-worker-batch.yaml`)과 README 적용 순서 등재. 인프라 3장이 `pipeline-worker:batch`를 이미 배포 단위로 승인했는데 **파일이 없었다** — JOB-ING-006이 그 역할이고, **이미 구현된 JOB-ING-007(아웃박스 재적재)도 그래서 배포되지 않고 있었다** (CR-045, DEV-292)
+  - **배포 단위 ↔ manifest 역방향 회귀**: 인프라 3장의 배포 단위 표를 정본으로 삼아 "승인된 단위에 manifest가 있는가"를 묻는다. 기존 검사는 "존재하는 manifest가 적용 순서에 있는가"뿐이라 **없는 파일이 보이지 않았다** (DEV-293)
+  - **API-ADM-004 `POST /admin/reindex`** — `alias`만 받고 다음 버전은 서버가 정한다. `operator` 전용. 같은 별칭 활성 잡은 409, 전 별칭 동시 재색인 상한 **1**
+  - **JOB-ING-006 러너**를 `batch` 역할에서 실제로 기동·종료한다. `claimNextJob('reindex')`를 쓰고 새 큐 틀을 만들지 않는다
+  - **`pnpm es:reindex --alias <별칭>` CLI** — API와 **같은 enqueue seam**을 부른다. 두 번째 알고리즘을 만들지 않는다
+  - **버전 인덱스 생성**: 현재 별칭 대상의 버전을 하나 올려 desired settings·mappings로 처음부터 만든다. 기존 인덱스에 파괴적 설정을 억지로 밀어 넣지 않는다
+  - **이중 쓰기 seam**: 논리 쓰기 대상 집합을 한 곳에서 해석한다(평시 `[serving]`, 재색인 중 `[serving, shadow]`). **대상 열일곱 전부**를 덮는다 — `bulkUpsert`·`upsertOne`·`upsertCommitMetadata`·`applySequenceToDocuments`·`applyEpochBump`·`markRepositoryArchived`·`applyRepositoryTeams`·`pruneReleaseDocuments`·`applyReleaseTagsToDocuments`·`writeReferenceLinks`·`deleteStaleReferenceLinks`·`resolveReferenceLinks`·`updateLinkSummary`·`writeDerivedLinks`·`deleteStaleDerivedLinks`·`setLinkDetached`·`setLinkResolved`. **`@prs/es`가 `@prs/db`에 의존하게 하지 않는다**
+  - **활성화·전환 울타리**: 별칭 단위 advisory lock. 논리 쓰기는 시작 시점에 구체 대상을 확정하고, 활성화와 전환이 그 구간과 겹치지 않는다. 활성화는 **정본 스캔보다 먼저**다
+  - **PostgreSQL 정본에서만 재구축**한다. 옛 인덱스를 `_reindex` source로 쓰지 않는다 (ADR-004). 운영 투영·파생 빌더를 재사용하고 두 번째 문서 생성 경로를 만들지 않는다
+  - **전환 전 검증**: 스캔 완료 · 알려진 실패 0(bulk **item 단위** 포함) · 이중 쓰기 구간 치명 실패 0 · 대상 매핑 버전 · 커버리지 · 대표 질의 · 잡이 여전히 `running`
+  - **단일 원자 별칭 전환** (`indices.updateAliases` 한 번). `remove` → `add` 두 호출로 나누지 않는다
+  - **실패·취소 처분**: shadow 실패는 서비스를 끊지 않되 잡을 `failed`로 만들고 전환을 막는다. 늦은 취소가 `completed`를 덮지 않도록 CAS로 종료한다
+  - **보관 7일 정리 스윕**. 정본은 완료 잡의 `progress`(`source_index`·`switched_at`)다 — **새 표를 만들지 않는다**. 현재 별칭 대상은 어떤 경우에도 지우지 않는다
+  - `job.state`를 늘리지 않는다. 세부 단계는 `progress.phase`(`prepare`·`dual_write`·`backfill`·`verify`·`cutover`·`retention`)에 둔다
+  - `OPERATOR_JOB_TYPES`에 `reindex` 추가 — 집는 러너가 생겼으므로 (DEV-301)
 - 제외:
   - A-003 화면 (WP-040)
+  - **WP-032의 구체 매핑**(`edge_ngram` 필드 이름·`min_gram`·`search_analyzer`) — 이 WP는 **버전 전환 기계**를 만들고, 무엇을 얹을지는 WP-032가 정한다. 미리 하드코딩하면 그 WP의 결정을 검증 없이 선점한다
+  - 부분 재색인, 자동 트리거
+  - 새 워커 역할·새 consumer group·새 마이그레이션
 - 완료 기준(DoD):
   - [ ] QA-A003-07, QA-A003-08이 통과한다
-  - [ ] 애플리케이션이 실제 인덱스명이 아닌 별칭만 참조한다 (FR-ING-008 AC-1)
-  - [ ] 재색인 중 신규 이벤트가 양쪽 인덱스에 기록된다 (AC-2)
-  - [ ] 별칭 전환이 원자적이다 (AC-3)
+  - [ ] 애플리케이션이 실제 인덱스명이 아닌 별칭만 참조한다 (FR-ING-008 AC-1) — **아키텍처 시험이 강제한다**
+  - [ ] 재색인 중 신규 이벤트가 양쪽 인덱스에 기록된다 (AC-2) — **열일곱 경로 전부**
+  - [ ] 별칭 전환이 원자적이다 (AC-3) — `updateAliases` **한 번**
   - [ ] 재색인 실패 시 별칭이 전환되지 않는다 (AC-5)
-  - [ ] 재색인 중 검색 요청이 실패하지 않는다 (무중단 검증)
-  - [ ] **원본만으로 인덱스를 전량 재구성했을 때 결과가 동일하다** (FR-ING-003 AC-3, QA 6장)
-- 검증 방법: `pnpm test:integration reindex`
+  - [ ] 재색인 중 검색 요청이 실패하지 않는다 (무중단 검증) — 실제 ES로 재색인 중 반복 조회
+  - [ ] **원본만으로 인덱스를 전량 재구성했을 때 결과가 동일하다** (FR-ING-003 AC-3, ADR-004)
+  - [ ] **`batch` 역할이 배포 manifest를 갖고 README 적용 순서에 있다** (DEV-292)
+  - [ ] **승인된 배포 단위에 manifest가 없으면 회귀가 실패한다** (DEV-293)
+  - [ ] **reindex 러너가 운영 조립에서 실제로 기동·종료된다** — 문자열 존재가 아니라 **호출 형태**로 단언한다 (CR-034가 배운 것)
+  - [ ] **API-ADM-004가 운영 조립으로 세운 서버에서 실제로 응답한다** (401이면 있고 404면 없다)
+  - [ ] **CLI가 API와 같은 enqueue seam을 부른다** — 별도 가짜 구현을 부르지 않는다
+  - [ ] 클라이언트가 임의 구체 인덱스를 대상으로 지정할 수 없다
+  - [ ] shadow의 **item 단위 부분 실패**가 전환을 막는다
+  - [ ] 전환 뒤 늦은 취소가 결과를 되돌리지 않는다
+  - [ ] 보관 7일 전에는 옛 인덱스가 남고, 뒤에는 지워지며, **현재 별칭 대상은 지워지지 않는다**
+  - [ ] **WP-032가 쓸 능력이 증명된다** — 현재 v1에 없는 분석기·다중 필드를 가진 시험용 v2를 이 기계로 세워 별칭을 옮긴다. **WP-032의 실제 필드 이름을 선점하지 않는다**
+- 검증 방법: `pnpm test:integration reindex` (0건이 아닌지 확인), `pnpm test:regression`
 - 기록: 원장 WP-035 상태, FR-ING-008 매핑
 
 ### WP-036 원본 아카이브 레인(Filebeat)

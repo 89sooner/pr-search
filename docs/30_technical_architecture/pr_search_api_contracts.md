@@ -1721,6 +1721,64 @@ POST /api/v1/admin/sequence-integrity
 | `base:`가 있고 대상과 다르다 | 제외 |
 
 파싱에 실패하는 저장 질의(이미 실행 불가능한 것)는 **세지 않는다** — 영향 수를 부풀리지 않는다.
+### API-ADM-004 무중단 재색인
+
+- 목적: 매핑·분석기가 바뀐 새 버전 인덱스를 정본에서 채우고 별칭을 원자적으로 옮긴다.
+- 관련 요구사항: FR-ING-008, NFR-008
+- 관련 화면: A-003 (진행률 표시는 WP-040)
+- 관련 잡: JOB-ING-006
+
+요청:
+
+```json
+POST /api/v1/admin/reindex
+{ "alias": "prs-pull-requests" }
+```
+
+응답 202:
+
+```json
+{
+  "job_id": 9114,
+  "type": "reindex",
+  "state": "queued",
+  "alias": "prs-pull-requests",
+  "source_index": "prs-pull-requests-v1",
+  "target_index": "prs-pull-requests-v2",
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+- Authz: `operator` 전용.
+- 오류: 400 `INVALID_PARAMETER` (알 수 없는 별칭), 409 `JOB_CONFLICT` (같은 별칭에 활성 재색인), 409 `REINDEX_BUSY` (다른 별칭이 재색인 중 — 아래 동시 실행 상한), 503 `PERMISSION_UNAVAILABLE`.
+
+**`alias`만 받는다. 구체 인덱스 이름을 받지 않는다.** 허용 값은 안정 별칭 넷(`prs-pull-requests`·`prs-commits`·`prs-links`·`prs-releases`)이고, 클라이언트가 `prs-pull-requests-v99` 같은 대상을 지정하지 못한다. 다음 버전을 정하는 것은 **서버**다 — 현재 별칭이 가리키는 구체 인덱스를 읽어 버전을 하나 올린다. 클라이언트가 대상을 고르면 이미 서비스 중인 인덱스를 대상으로 지목해 정본을 덮어쓰는 요청이 가능해진다.
+
+`job.type`은 `reindex`, `job.target`은 **안정 별칭**이다. 같은 별칭에 활성 잡이 둘일 수 없는 것은 `job_active_uk` 부분 유니크 인덱스가 이미 강제한다.
+
+**동시 실행 상한은 1이다** (CR-045, DEV-300). 전 별칭을 통틀어 활성 재색인은 하나뿐이다. 일반 잡의 동시 실행 3을 그대로 적용하지 않는 이유는 재색인이 **클러스터 자원을 통째로 쓰는 작업**이기 때문이다 — PR·커밋·간선을 동시에 전량 재구축하면 색인 부하와 cutover 판정이 함께 복잡해진다. 상한을 넘으면 `409 REINDEX_BUSY`이며 실행 중인 별칭을 함께 알려 준다. 실측으로 여유가 확인되면 그때 올린다.
+
+**API-ADM-002의 일반 잡 생성 목록에 `reindex`를 넣지 않는다.** SRS가 API-ADM-004를 재색인의 진입점으로 이미 정했다. API-ADM-002는 목록·진행률·중단·취소라는 **공통 잡 표면**을 계속 소유하고, 생성만 이 경로가 갖는다. 두 진입점이 각자 알고리즘을 만들지 않도록 **enqueue seam은 하나**다 — CLI(`pnpm es:reindex --alias <별칭>`)도 같은 seam을 부른다 (CR-045, DEV-302).
+
+#### 진행 단계 (`job.progress`)
+
+**`job.state`에 새 값을 만들지 않는다.** 기존 여섯(`queued`·`running`·`paused`·`completed`·`failed`·`cancelled`)을 그대로 쓰고, 세부 단계는 `progress`에 둔다 — 상태 기계를 늘리면 이미 그 여섯으로 판정하는 모든 운영 경로가 새 값을 모른다.
+
+| `progress.phase` | 뜻 |
+| --- | --- |
+| `prepare` | 대상 인덱스 생성 |
+| `dual_write` | 이중 쓰기 활성화 기록 (fencing 안에서) |
+| `backfill` | PostgreSQL 정본 스캔·색인 |
+| `verify` | 전환 전 검증 |
+| `cutover` | 별칭 원자 전환 |
+| `retention` | 이전 인덱스 보관 대기 |
+
+`progress`는 그 밖에 `source_index`·`target_index`·`documents_scanned`·`documents_written`·`failures`·`dual_write_since`·`switched_at`을 싣는다. **보관 정본도 여기다** (CR-045, DEV-299) — 완료된 잡 행의 `progress.target_index`(전환된 새 인덱스)·`progress.source_index`(보관 대상)·`progress.switched_at`이 정리 스윕의 입력이며, 그것만으로 충분하므로 **새 표를 만들지 않는다.**
+
+#### 이 API가 하지 않는 것
+
+- **부분 재색인이 없다.** 별칭 하나가 단위다. "이 저장소만" 같은 요청을 받으면 정본과 색인의 대조 가능성이 대상마다 갈린다.
+- **자동 트리거가 없다.** 매핑이 바뀌었다는 것을 시스템이 스스로 판정해 재색인을 걸지 않는다 — 배포와 재색인의 순서는 운영자가 정한다.
 
 ## 5. DTO 표준
 
