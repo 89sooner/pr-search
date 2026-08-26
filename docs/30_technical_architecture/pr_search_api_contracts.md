@@ -1,6 +1,7 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.3 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
+
 
 ## 1. 목적
 
@@ -40,6 +41,8 @@
 | API-REL-003 | GET | `/co-changes` | 동시 변경 상관 | 인증 + 접근 범위 | FR-REL-007 |
 | API-REL-004 | GET | `/relation-graphs` | 관계 그래프 탐색 | 인증 + 접근 범위 | FR-REL-008 |
 | API-REL-005 | GET | `/releases` | 저장소 릴리스 목록 (CR-030, DEV-155) | 인증 + 접근 범위 | FR-SEQ-004, FR-REL-002 |
+| API-REL-006 | GET | `/relations` | 저장된 관계 간선 조회 (정방향·역방향) (CR-042, DEV-248) | 인증 + 접근 범위 | FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006 |
+
 | API-STAT-001 | POST | `/analytics/groups` | 그룹 집계 | 인증 + 접근 범위 | FR-STAT-001, FR-STAT-006 |
 | API-STAT-002 | POST | `/analytics/time-series` | 시계열 집계 | 인증 + 접근 범위 | FR-STAT-002 |
 | API-STAT-003 | POST | `/analytics/percentiles` | 리드타임·리뷰 대기 백분위 | 인증 + 접근 범위 | FR-STAT-003, FR-STAT-004 |
@@ -831,7 +834,72 @@ GET /api/v1/sequence-spaces
 }
 ```
 
+### API-REL-003 동시 변경 상관 (CR-042, DEV-249)
+
+- 목적: 기준 PR과 변경 경로가 겹치는 다른 PR을 겹침 정도 내림차순으로 반환한다. `W-002`의 동시 변경 하위 섹션이 유일한 소비자다.
+- 관련 요구사항: FR-REL-007
+- 신설 사유: 카탈로그에 한 줄만 있고 상세 절이 없었다 — 자격 판정·후보 선정·순서를 어디에도 적어 두지 않아 구현이 AC 다섯을 각자 해석하게 된다 (DEV-249).
+
+요청: `GET /api/v1/co-changes?repository=acme/payments&pr_number=1234`
+
+- `repository` (required), `pr_number` (required). **PR 전용이다** — FR-REL-007이 PR의 변경 경로 집합을 대상으로 정한다. 커밋 앵커를 받지 않는다.
+- 앵커는 강제 접근 범위 필터를 지난 조회로 찾는다. 없거나 범위 밖이면 **404**다 (ADR-008, THR-004).
+
+**계산 불가와 결과 0건은 다른 사실이다.** 자격을 갖추지 못한 기준 PR은 오류가 아니라 정상 도메인 상태이며, `available: false`와 사유를 함께 낸다 (DEV-254).
+
+| `reason` | 조건 | 왜 계산할 수 없는가 |
+| --- | --- | --- |
+| `not_merged` | `merged_at`이 없다 | AC-2의 창이 **머지 시각 기준 ±90일**이다. 기준점이 없으면 창이 없다. `created_at`·`updated_at`으로 대체하지 않는다 — 그것은 AC-2가 정한 창이 아닌 다른 창을 계산한 뒤 그 결과를 자카드 상위 20이라고 부르는 것이다 |
+| `enrichment_pending` | `enrichment_pending: true`이거나 `changed_paths`가 없다 | 경로 집합을 모르면 교집합이 성립하지 않는다 (FR-REL-007 예외 처리) |
+| `too_many_changed_files` | `changed_files_count > 200` | AC-4. **판정은 `changed_files_count`로만 한다** — `files_truncated`는 `MAX_CHANGED_FILES`(3000) 상한의 표식이라 다른 계약이며, `files_truncated: false`에서 "그러니 200 이하"를 추론하면 틀린다 (DEV-254) |
+
+후보(candidate) 자격은 AC-2~AC-4를 그대로 따른다. **같은 저장소**, 기준 PR 자신 제외, `merged_at`이 기준 PR의 `merged_at` ±90일 이내, `changed_files_count <= 200`, `enrichment_pending`이 아님, 경로 교집합 1개 이상. 같은 저장소라는 사실을 이유로 **강제 접근 범위 필터를 건너뛰지 않는다** (ADR-008).
+
+**정확한 자카드를 계산한다 — 앱단 pre-limit을 두지 않는다** (DEV-255). 자격 조건과 경로 교집합 존재를 Elasticsearch가 먼저 강제하고, 자카드 `|A ∩ B| / |A ∪ B|`를 `changed_paths.raw`의 정확 값 위에서 계산해 정렬한다. "후보 N건을 먼저 가져와 앱에서 계산해 상위 20"은 **진짜 상위 20이 N번째 밖에 있을 수 있고**, 그 사실이 응답 어디에도 드러나지 않아 사용자는 완전한 답을 받았다고 믿는다. 조사 도구에서 그것은 조용한 오답이다.
+
+- 정렬은 `similarity` 내림차순, 동률이면 `pr_number` 오름차순이다. 같은 정본에서 같은 순서를 보장한다 (ADR-004).
+- `items`는 **최대 20건**이다 (AC-3).
+- `overlapping_paths`는 최종 20건에 대해서만 계산하고 **사전순 오름차순 앞 10개**다 (AC-5, DEV-256). AC-5에 순위 개념이 없으므로 결정론을 우선한다.
+
+응답 200:
+
+```json
+{
+  "available": true,
+  "anchor": { "repository": "acme/payments", "pr_number": 1234, "changed_files_count": 12 },
+  "items": [
+    {
+      "repository": "acme/payments",
+      "pr_number": 1180,
+      "title": "fix: 결제 재시도 백오프",
+      "author": "lee",
+      "merged_at": "2026-07-02T11:20:00Z",
+      "similarity": 0.4286,
+      "overlapping_paths": ["src/payment/retry.ts", "src/payment/types.ts"],
+      "url": "/pr/acme/payments/1180"
+    }
+  ],
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+응답 200 (계산 불가):
+
+```json
+{
+  "available": false,
+  "reason": "not_merged",
+  "anchor": { "repository": "acme/payments", "pr_number": 1250 },
+  "items": [],
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+- `available: true` + `items: []`는 **"자격을 갖췄고 겹치는 PR이 없다"**이다. `available: false`와 같은 그림으로 그리지 않는다.
+- 오류: `INVALID_PARAMETER` (400, `pr_number` 없음·형식 오류), `NOT_FOUND` (404, 미등록·범위 밖 저장소, 없는 PR)
+
 ### API-REL-004 관계 그래프 탐색
+
 
 - 목적: 기준 개체에서 지정 깊이까지 연결된 노드·간선을 반환한다.
 - 관련 요구사항: FR-REL-008
@@ -921,7 +989,96 @@ GET /api/v1/sequence-spaces
 - `limit`은 기본 100, 최대 500이다. 넘치면 최신부터 채우고 `truncated: true`를 싣는다 — **말없이 자르지 않는다**. 커서 페이지네이션은 WP-032다.
 - 접근 범위 밖 저장소는 `NOT_FOUND`(404)다. 목록 API는 단건 판정과 같은 `isRepositoryInScope`를 쓴다 (ADR-008, THR-004 — 존재를 드러내지 않는다).
 
+### API-REL-006 관계 간선 조회 (CR-042, DEV-248)
+
+- 목적: WP-029·WP-030이 `prs-links`에 저장한 간선을 화면에 준다. `C-021 LinkGroupList`의 유일한 데이터 소스다.
+- 관련 요구사항: FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006 / FR-AUTH-002
+- 소비자: `W-002-LINKS`(PR 상세)와 `W-003-LINKS`(커밋 상세).
+- 신설 사유: 파생은 섰는데 그것을 읽을 경로가 없었다. API-REL-001·002·005는 `prs-links`를 읽지 않고, 003은 조회 시점 계산이며 004는 그래프(WP-043)다 (DEV-248).
+
+요청: `GET /api/v1/relations?repository=acme/payments&pr_number=1234&link_type=reverts&direction=incoming&limit=50`
+
+- `repository` (required)
+- **앵커는 `pr_number` 또는 `commit_sha` 하나다.** 둘 다 주거나 둘 다 없으면 400 `INVALID_PARAMETER` — API-REL-001과 같은 규칙이다.
+- `link_type` (required): `references` | `reverts` | `cherry_picks` | `stacks_on`. **`co_changes`·`precedes`는 여기 없다** — 저장하지 않고 조회 시점에 계산한다 (ADR-009). 전자는 API-REL-003, 후자는 API-REL-001이다.
+- `direction` (required): `outgoing`(이 개체가 `from`) | `incoming`(이 개체가 `to`)
+- `limit` (optional, 기본 50, 최대 100)
+
+**한 요청은 한 유형 · 한 방향이다** (DEV-252). 여러 유형을 한 번에 받으면 어느 유형이 상한에 걸렸는지 응답이 말할 수 없고, 화면은 유형별 그룹으로 그리므로 묶어 받을 이유가 없다.
+
+**끝점 조합이 성립하지 않는 요청은 서버가 거절한다.** `stacks_on`은 PR↔PR 관계이므로 `commit_sha` 앵커와 함께 오면 400 `INVALID_PARAMETER`(`detail.field: "link_type"`)다. 화면이 그런 요청을 보내지 않는 것이 1차 책임이지만, 서버가 받아 주면 빈 배열이 "관계 없음"으로 읽힌다 — **없는 것과 물을 수 없는 것은 다른 답이다.**
+
+- 상한은 `limit`이고 **오프셋 파라미터를 만들지 않는다** (공통 원칙 7, ADR-010). 내부에서 `limit + 1`을 읽어 `truncated`를 판정한다. 커서를 세우지 않는 이유는 현재 어떤 요구사항도 관계 목록의 전량 열람을 요구하지 않기 때문이다 — 필요해지면 그때 커서 계약을 연다.
+
+#### 접근 통제 — 두 번의 독립한 강제 필터 (THR-034, DEV-253)
+
+**간선의 접근 범위는 근거를 소유한 저장소(`from` 쪽)의 것이지 대상의 것이 아니다** (THR-035). 그래서 이 API는 필터를 **두 번** 건다.
+
+1. **앵커 해석** — 강제 접근 범위 필터를 지난 조회로 찾는다. 없거나 범위 밖이면 **404**다. 403으로 "있지만 못 본다"를 알리지 않는다 (THR-004).
+2. **간선 조회** — `prs-links`를 강제 접근 범위 필터로 친다. 간선 문서가 source 저장소의 통제 material(`repository_id`·`org_id`·`visibility`·`allowed_team_ids`)을 싣고 있으므로 그대로 성립한다.
+3. **대상 내용 조회** — 대상의 제목·본문·작성자를 실으려면 **대상 저장소를 다시 교집합해야 한다.** 대상 문서를 강제 접근 범위 필터를 지난 **batch 조회**로 읽는다. `mget`·`get`으로 우회하지 않는다.
+
+**역방향 조회는 저장소 라우팅을 쓰지 않는다** (DEV-250). 간선은 source 저장소에 살기 때문에, `acme/b`의 PR을 가리키는 참조를 `b`로 라우팅해 찾으면 `acme/a`·`acme/c`가 만든 간선을 **구조적으로 놓친다.** 경계를 만드는 것은 라우팅이 아니라 강제 접근 범위 필터다. 되돌림·체리픽·스택은 동일 저장소 관계라 이 차이가 드러나지 않지만, 같은 경로를 쓰므로 규칙을 하나로 둔다.
+
+**대상을 볼 수 없을 때** 간선 자체와 식별자·근거는 남기고 **내용 필드를 두지 않는다**(키 부재). `content_available: false`로 그 사실만 말한다. 화면 문구는 사유를 구분하지 않는다 — "권한이 없습니다"와 "대상이 존재합니다"는 둘 다 존재를 밝히는 문장이다.
+
+**`resolved`와 `content_available`은 다른 사실이다.** 전자는 "대상 개체가 색인되었는가"(FR-REL-003 AC-3), 후자는 "이 요청자가 그 내용을 볼 수 있는가"다. `resolved: true`인데 `content_available: false`인 항목은 정상이다.
+
+응답 200:
+
+```json
+{
+  "anchor": { "repository": "acme/payments", "kind": "pull_request", "pr_number": 1234 },
+  "link_type": "reverts",
+  "direction": "incoming",
+  "items": [
+    {
+      "link_id": "9f1c…",
+      "link_type": "reverts",
+      "direction": "incoming",
+      "confidence": "exact",
+      "evidence": "This reverts commit a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5",
+      "resolved": true,
+      "ambiguous": false,
+      "content_available": true,
+      "endpoint": {
+        "kind": "pull_request",
+        "repository": "acme/payments",
+        "pr_number": 1301,
+        "title": "Revert \"feat: 결제 재시도 로직\"",
+        "author": "park",
+        "url": "/pr/acme/payments/1301"
+      }
+    },
+    {
+      "link_id": "2b74…",
+      "link_type": "reverts",
+      "direction": "incoming",
+      "confidence": "heuristic",
+      "evidence": "Revert \"feat: 결제 재시도 로직\"",
+      "resolved": true,
+      "ambiguous": false,
+      "content_available": false,
+      "endpoint": { "kind": "pull_request", "repository": "acme/internal", "pr_number": 88 }
+    }
+  ],
+  "truncated": false,
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+- `endpoint`는 **반대쪽 끝점**이다. `outgoing`이면 `to`, `incoming`이면 `from`이다. 화면이 방향을 다시 계산하지 않게 한다.
+- **내부 Elasticsearch 문서 ID를 사용자 식별자로 노출하지 않는다.** `endpoint`는 `repository` + `pr_number` 또는 `commit_sha`로 말한다. `link_id`는 화면이 항목을 구분하는 불투명 키이며 그것 말고 다른 뜻을 주지 않는다.
+- `content_available: false`이면 `title`·`author`·`url`이 **없다**(키 부재). `null`로 채우지 않는다 — 이 응답의 나머지 규칙과 같다.
+- **미해결 참조**(`resolved: false`)는 `endpoint`에 대상 식별자가 없고 `reference_expression`이 그 자리를 대신한다. 화면은 원 표현을 보이되 링크를 비활성으로 둔다 (FR-REL-003 AC-3).
+- `detached`는 **`stacks_on`에만 실린다** (FR-REL-006 AC-3, CR-041 DEV-238). 다른 유형에 `false`를 넣지 않는다 — "해제될 수 있는 관계인데 아직 아니다"라는 뜻이 되고 그런 개념이 없다.
+- **`ambiguous`는 다중 후보 되돌림을 표시한다** (FR-REL-004 예외 처리, DEV-261). 같은 `evidence`를 공유하는 `confidence: heuristic` 항목이 응답 안에 둘 이상이면 그 항목들이 `true`다. 제목 대조 후보가 여럿일 때 저장 계층은 **후보를 좁히지 않으므로**(CR-041, DEV-237) 화면도 하나를 고르면 안 된다.
+- `truncated: true`는 `limit`을 넘는 간선이 더 있다는 뜻이다. 화면은 그 사실을 밝히고 상세는 W-007(WP-043)로 넘긴다.
+
+- 오류: `INVALID_PARAMETER` (400, 앵커가 둘이거나 없음 · 지원하지 않는 `link_type`·`direction` · 끝점 조합 불가), `NOT_FOUND` (404, 미등록·범위 밖 저장소, 없는 PR·커밋)
+
 ### API-STAT-001 그룹 집계
+
 
 - 목적: 현재 질의 조건 위에서 그룹별 지표를 반환한다.
 - 관련 요구사항: FR-STAT-001, FR-STAT-006
@@ -1529,7 +1686,8 @@ POST /api/v1/admin/sequence-integrity
 | API | 상태 | 변경 정책 |
 | --- | --- | --- |
 | API-SRCH-001~004, API-SEQ-001~003, API-SEQ-006, API-REL-001~002, API-REL-005 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
-| API-STAT-001~004, API-SEQ-004~005, API-REL-003~004 | stable | 위와 동일 |
+| API-STAT-001~004, API-SEQ-004~005, API-REL-003~004, API-REL-006 | stable | 위와 동일 |
+
 | API-ADM-* | internal | 운영 콘솔 전용. 프런트엔드와 동시 배포 전제로 변경 가능 |
 | API-ING-001 | external | GHE 계약. 변경 시 웹훅 재등록 필요 |
 
