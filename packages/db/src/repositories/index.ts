@@ -1,4 +1,5 @@
 export * as auditRepo from './audit.js';
+export * as commitSnapshotRepo from './commit-snapshot.js';
 export * as authRepo from './auth.js';
 export * as deadLetterRepo from './dead-letter.js';
 export * as integrityRepo from './integrity.js';
@@ -19,6 +20,7 @@ export type {
   DeadLetterStage,
   DeadLetterState,
 } from './dead-letter.js';
+export type { CommitMetadataSource, CommitSnapshotInput, CommitSnapshotRow } from './commit-snapshot.js';
 export type { JobRow, JobState, JobType } from './job.js';
 export type { MergeSequenceInsert, MergeSequenceRow, SequencePoint } from './merge-sequence.js';
 export type { LagPercentiles, RepositoryLag } from './pipeline.js';

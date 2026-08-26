@@ -138,7 +138,11 @@
 - 관련 요구사항: FR-SRCH-002, FR-REL-002
 - 요청: `GET /api/v1/commits/acme%2Fpayments/a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5`
 
-**커밋 문서가 실제로 갖는 것만 응답에 싣는다 (CR-017, DEV-060).** 커밋 문서는 SHA·역할·소속 PR 번호·대상 브랜치만 갖는다 — 매핑에는 `message`·`author`·`authored_at`·`parent_shas`·`patch_id`·`changed_paths`·`changed_files_count`·`additions`·`deletions` 자리가 있으나 **투영이 채우지 않는다.** `EVT-ING-002`가 커밋에 대해 SHA만 나르기 때문이다. 커밋 자체의 메타데이터는 미러 기반 보강(WP-020)이 채운다.
+**커밋 문서가 실제로 갖는 것만 응답에 싣는다 (CR-017, DEV-060).** 원래 커밋 문서는 SHA·역할·소속 PR 번호·대상 브랜치만 가졌다 — `EVT-ING-002`가 커밋에 대해 SHA만 나르기 때문이다.
+
+**WP-067이 그 공백을 메웠다 (CR-038, DEV-210).** `JOB-MIR-002`가 채운 `message`·`author`·`committer`·`authored_at`·`committed_at`·`parent_shas`·`changed_paths`·`changed_paths_truncated`·`patch_id`·`patch_id_unavailable`을 이 응답이 **실제로 반환한다.** 채우기만 하고 응답에 잇지 않으면 `/commit/...` 화면은 그대로 SHA만 보인다 — 보강했다는 사실을 사용자가 확인할 길이 없다.
+
+**직접 푸시 커밋도 이 경로로 조회된다 (CR-038, DEV-206).** 그전에는 커밋 문서 자체가 만들어지지 않아 404였고(DEV-061), WP-027이 그 커밋을 선행·후행 목록에 노출하기 시작하면서 **사용자가 볼 수 있는 행이 클릭하면 없는 화면으로 갔다.** JOB-MIR-002가 문서를 만들면서 그 경로가 닫힌다. `role`은 `direct_push`이고 `pull_requests`는 빈 배열이다.
 
 **채워지지 않은 필드는 키를 넣지 않는다.** CR-016 DEV-057이 `facets`에 세운 규칙과 같다 — 키가 없으면 "만들지 않았다", `null`이면 "만들었는데 비었다". `additions: 0`으로 채우면 *파일을 하나도 바꾸지 않은 커밋*과 구분되지 않는다.
 
@@ -212,7 +216,13 @@
 
 요청: `GET /api/v1/pull-requests/acme%2Fpayments/1234`
 
-**`source_commits`는 객체 배열이되 지금은 `commit_sha`만 채운다 (CR-017, DEV-062).** PR 문서가 갖는 것은 `source_commit_shas`(문자열 배열)뿐이고, 커밋 문서를 조인해도 메시지·작성자가 없다(DEV-060). FR-SRCH-003 AC-3이 요구하는 `subject`·`author`·`authored_at`은 **키를 넣지 않는다** — 배열 모양을 지금부터 객체로 두는 이유는 WP-020이 커밋을 보강하면 키가 저절로 붙어 계약을 다시 고치지 않아도 되기 때문이다.
+**`source_commits`는 커밋 문서와 조인해 채운다 (CR-038, DEV-211).** 원래는 `commit_sha`만 실었다(CR-017, DEV-062) — 커밋 문서를 조인해도 메시지·작성자가 없었기 때문이다. WP-067이 그것을 채우면서 이제 FR-SRCH-003 AC-3이 요구하는 `message`(제목 **첫 줄**)·`author`·`authored_at`이 실린다.
+
+**제목은 첫 줄만이다.** 목록 행에 여러 줄이 들어가면 화면이 무너지고, 전문은 커밋 상세가 준다.
+
+**조회는 한 번이다 — N+1이 아니다.** 최대 250개를 하나씩 물으면 그 비용이 목록 길이에 비례해 사용자에게 그대로 간다. 접근 범위는 이 조인에서도 강제된다(ADR-008) — 같은 저장소라는 것을 알고 있어도 우회 경로를 만들지 않는다.
+
+**아직 보강되지 않은 커밋은 키가 없는 채로 남는다.** 거짓 `null`을 채우지 않는다 — "만들지 않았다"와 "만들었는데 비었다"는 다른 사실이다.
 
 **`source_commits_total`은 절삭됐을 때 키를 넣지 않는다 (CR-017, DEV-063).** 절삭되지 않았으면 배열 길이가 곧 총계다. 250건에서 잘렸을 때의 진짜 총계는 **저장되어 있지 않으므로**(보강 payload가 나르지 않는다) 250을 총계로 내보내지 않는다 — `source_commits_truncated: true`가 "더 있다"를 말하고, 얼마나 더 있는지는 모른다고 두는 편이 틀린 수를 주는 것보다 낫다.
 
@@ -235,7 +245,12 @@
   "head_branch": "feature/payment-retry",
   "merge_commit_sha": "a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5",
   "source_commits": [
-    { "commit_sha": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d" },
+    {
+      "commit_sha": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+      "message": "feat: 재시도 백오프를 추가한다",
+      "author": "kim",
+      "authored_at": "2026-08-18T09:11:02Z"
+    },
     { "commit_sha": "2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e" }
   ],
   "source_commits_total": 2,

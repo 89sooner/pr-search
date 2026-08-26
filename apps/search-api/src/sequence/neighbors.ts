@@ -90,6 +90,20 @@ export type NeighborsOutcome =
   /** 대상 자체가 없다. 접근 범위 밖과 같은 답이다 — 존재를 드러내지 않는다. */
   | { readonly kind: 'not_found'; readonly message: string };
 
+/**
+ * 직접 푸시 행의 표시값 (WP-067 / CR-038, DEV-212).
+ *
+ * WP-027이 직접 푸시 커밋을 이 목록에 실제로 노출하기 시작했는데, 그 행은 PR
+ * 문서가 없어 제목·작성자가 언제나 비어 있었다 — SHA만 보이는 행이다.
+ * **이것이 WP-067의 사용자-visible 동기다.**
+ */
+interface CommitSource {
+  readonly commit_sha?: string;
+  readonly message?: string;
+  readonly author?: string;
+  readonly committed_at?: string;
+}
+
 interface PullRequestSource {
   readonly pr_number?: number;
   readonly title?: string;
@@ -126,19 +140,34 @@ function toItem(
   row: MergeSequenceRow,
   anchorSeq: number,
   sources: ReadonlyMap<number, PullRequestSource>,
+  commits: ReadonlyMap<string, CommitSource>,
 ): NeighborItem {
   const prNumber = row.pull_request_number;
   const source = prNumber === null ? undefined : sources.get(prNumber);
+  /*
+   * 직접 푸시 행의 표시값은 **커밋 문서**가 준다 (CR-038, DEV-212). PR 행에는
+   * 쓰지 않는다 — PR의 제목과 머지 커밋의 첫 줄은 다른 값이고, 섞으면 목록의
+   * 같은 칸이 행마다 다른 것을 뜻하게 된다.
+   */
+  const commit = prNumber === null ? commits.get(row.commit_sha.toLowerCase()) : undefined;
+  // 목록 행이라 **첫 줄**만 싣는다. 전문은 커밋 상세가 준다.
+  const subject = commit?.message === undefined ? null : (commit.message.split('\n', 1)[0] ?? null);
+
   return {
     merge_seq: Number(row.merge_seq),
     kind: prNumber === null ? 'commit' : 'pull_request',
     commit_sha: row.commit_sha,
     pr_number: prNumber,
-    title: source?.title ?? null,
-    author: source?.author ?? null,
+    title: prNumber === null ? subject : (source?.title ?? null),
+    author: prNumber === null ? (commit?.author ?? null) : (source?.author ?? null),
     merged_at: prNumber === null ? row.committed_at.toISOString() : (source?.merged_at ?? null),
     is_anchor: Number(row.merge_seq) === anchorSeq,
-    indexed: source !== undefined,
+    /*
+     * `indexed`는 **그 행의 표시 소스가 색인에 있는가**다. 직접 푸시 행은 커밋
+     * 문서가 그 소스이므로 그것으로 판정한다 — PR 문서 유무로 판정하면 보강된
+     * 직접 푸시 행이 영원히 `false`로 남는다 (DEV-130의 규칙을 이 행에도 적용).
+     */
+    indexed: prNumber === null ? commit !== undefined : source !== undefined,
     url: urlOf(repository, row),
   };
 }
@@ -332,6 +361,40 @@ export async function findNeighbors(
     }
   }
 
+  /*
+   * 직접 푸시 행의 표시값도 **한 번에** 읽는다 (CR-038, DEV-212). 행마다 조회하면
+   * 목록 길이만큼 왕복이 늘고 그 비용이 사용자에게 그대로 간다.
+   */
+  const commitShas = [
+    ...new Set(
+      neighbors.filter((row) => row.pull_request_number === null).map((row) => row.commit_sha.toLowerCase()),
+    ),
+  ];
+  const commits = new Map<string, CommitSource>();
+  if (commitShas.length > 0) {
+    const scopedCommits = applyMandatoryScopeFilter(
+      {
+        bool: {
+          filter: [
+            { term: { repository_id: repositoryId } },
+            { terms: { commit_sha: commitShas } },
+          ],
+        },
+      },
+      scope,
+    );
+    const response = await search<CommitSource>(deps.es, 'prs-commits', scopedCommits, {
+      size: commitShas.length,
+      routing: String(repositoryId),
+      _source: ['commit_sha', 'message', 'author', 'committed_at'],
+      ...(deps.timeoutMs === undefined ? {} : { timeout: `${String(deps.timeoutMs)}ms` }),
+    });
+    for (const hit of response.hits.hits) {
+      const source = hit._source;
+      if (source?.commit_sha !== undefined) commits.set(source.commit_sha.toLowerCase(), source);
+    }
+  }
+
   const before = neighbors.filter((row) => Number(row.merge_seq) < anchorSeq).length;
   const after = neighbors.filter((row) => Number(row.merge_seq) > anchorSeq).length;
 
@@ -351,7 +414,7 @@ export async function findNeighbors(
       pr_number: anchor.pullRequestNumber,
       commit_sha: anchor.commitSha,
     },
-    items: neighbors.map((row) => toItem(request.repositorySlug, row, anchorSeq, sources)),
+    items: neighbors.map((row) => toItem(request.repositorySlug, row, anchorSeq, sources, commits)),
     // 한쪽을 `count`만큼 채우지 못했다 = 그 끝이 공간의 경계다 (AC-4).
     boundary: { at_start: before < count, at_end: after < count },
   };

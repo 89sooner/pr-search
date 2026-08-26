@@ -50,6 +50,10 @@ export interface WorkerMetrics {
    */
   readonly sequenceRewriteDetected: Counter;
   /** 시퀀스를 색인에 반영하지 못한 회차 수. PostgreSQL 값은 살아 있다. */
+  /** 커밋 메타데이터 보강 결과 (WP-067 / CR-038). `source`는 mirror|api다. */
+  readonly commitEnrichTotal: Counter;
+  /** patch-id를 못 얻은 사유별 수 (FR-REL-005 AC-5). 대다수가 blob_fetch_disabled인 것이 정상이다. */
+  readonly patchIdUnavailableTotal: Counter;
   readonly sequenceIndexFailed: Counter;
   /** 릴리스 스냅숏 동기화 성공 회차 (JOB-REL-007). */
   readonly releaseRefreshed: Counter;
@@ -108,6 +112,8 @@ export function createWorkerMetrics(): WorkerMetrics {
   const sequenceSpaceState = new Gauge('sequence_space_state', '시퀀스 공간 상태');
   const sequenceAssigned = new Counter('sequence_assigned_total', '붙인 머지 서수 개수');
   const sequenceRewriteDetected = new Counter('sequence_rewrite_detected_total', '감지한 히스토리 재작성 건수');
+  const commitEnrichTotal = new Counter('commit_enrich_total', '커밋 메타데이터 보강 결과');
+  const patchIdUnavailableTotal = new Counter('patch_id_unavailable_total', 'patch-id를 얻지 못한 사유별 수');
   const sequenceIndexFailed = new Counter('sequence_index_failed_total', '시퀀스 색인 반영 실패 회차');
   const sequenceReassignTotal = new Counter('sequence_reassign_total', '실행한 시퀀스 재채번 수');
   const releaseRefreshed = new Counter('release_refreshed_total', '릴리스 스냅숏 동기화 성공 회차');
@@ -143,6 +149,8 @@ export function createWorkerMetrics(): WorkerMetrics {
     sequenceAssigned,
     sequenceRewriteDetected,
     sequenceIndexFailed,
+    commitEnrichTotal,
+    patchIdUnavailableTotal,
     releaseRefreshed,
     releaseRefreshFailed,
     releaseIndexFailed,
@@ -162,6 +170,8 @@ export function createWorkerMetrics(): WorkerMetrics {
         permissionInvalidationFailed,
         sequenceAssigned,
         sequenceIndexFailed,
+        commitEnrichTotal,
+        patchIdUnavailableTotal,
         releaseRefreshed,
         releaseRefreshFailed,
         projectionConsistencyMismatch,

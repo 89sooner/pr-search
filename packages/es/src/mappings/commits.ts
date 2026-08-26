@@ -69,6 +69,14 @@ export const COMMIT_MAPPING: estypes.MappingTypeMapping = {
       analyzer: PATH_ANALYZER,
       fields: { raw: { type: 'keyword', ignore_above: 1024 } },
     },
+    /**
+     * 변경 경로가 상한(300)에서 잘렸는가 (WP-067 / CR-038).
+     *
+     * **조용히 자르지 않는다.** 이 표식이 없으면 화면이 목록을 "이것이 전부"로
+     * 읽고, 큰 커밋의 조사 결과가 조용히 반쪽이 된다. 매핑이 `strict`이므로 이
+     * 필드가 선언되어 있지 않으면 보강 자체가 THR-010으로 거부된다.
+     */
+    changed_paths_truncated: { type: 'boolean' },
     additions: { type: 'integer' },
     deletions: { type: 'integer' },
 

@@ -33,8 +33,14 @@ kubectl apply -f migrate-job.yaml   # 1. DB 마이그레이션
 kubectl wait --for=condition=complete job/prs-migrate -n pr-search --timeout=300s
 kubectl apply -f pipeline-worker-enrich.yaml pipeline-worker-project.yaml   # 2. 워커 (REL-001)
 kubectl apply -f pipeline-worker-sequence.yaml pipeline-worker-reconcile.yaml  #    워커 (REL-003)
+kubectl apply -f pipeline-worker-mirror.yaml                                #    워커 (REL-003, 미러 PVC 포함)
 kubectl apply -f search-api.yaml ingest-gateway.yaml                        # 3. API
 ```
+
+**여기 없는 manifest는 배포되지 않는다.** `pipeline-worker-mirror.yaml`이 그 예였다 —
+파일은 있고 회귀 시험도 그것을 확인했지만 이 목록에 없어, 절차를 따르는 운영자는
+JOB-MIR-001·JOB-MIR-002를 **끝내 만들지 않았다** (CR-038 / PR #42 리뷰). 회귀 시험이
+이제 `deploy/k8s/*.yaml` 전부가 이 목록에 있는지 함께 본다.
 
 마이그레이션은 항상 하위 호환이어야 한다 (데이터 모델 7장). 파괴적 변경은
 두 릴리스에 나눠 한다.

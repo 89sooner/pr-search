@@ -17,7 +17,7 @@
  * 실행: `pnpm test:regression`
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -79,6 +79,24 @@ const CAPABILITIES = [
     start: 'snapshotBootstrapRunner = startSnapshotBootstrapRunner(',
     stop: 'snapshotBootstrapRunner?.stop()',
     manifest: 'deploy/k8s/pipeline-worker-reconcile.yaml',
+  },
+  {
+    id: 'JOB-MIR-002',
+    what: '커밋 메타데이터 보강',
+    process: 'pipeline-worker',
+    role: 'mirror',
+    start: 'commitEnrichSubscription = await startCommitEnrichWorker(',
+    stop: 'commitEnrichSubscription?.close()',
+    manifest: 'deploy/k8s/pipeline-worker-mirror.yaml',
+  },
+  {
+    id: 'JOB-MIR-002-sweep',
+    what: '커밋 보강 잔여분 스윕',
+    process: 'pipeline-worker',
+    role: 'mirror',
+    start: 'commitEnrichSweeper = startCommitEnrichSweeper(',
+    stop: 'commitEnrichSweeper?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-mirror.yaml',
   },
   {
     id: 'JOB-ING-008',
@@ -232,5 +250,50 @@ describe('경로가 실재하는지', () => {
   it('JOB-ING-010 — 예약과 러너가 같은 역할에 함께 있다', () => {
     expect(WORKER_INDEX).toContain('enqueueSnapshotBootstrap: () => enqueueSnapshotBootstrap(pool)');
     expect(WORKER_INDEX).toContain('snapshotBootstrapRunner = startSnapshotBootstrapRunner(');
+  });
+
+  /*
+   * JOB-MIR-002는 `prs:projected`를 **전용 소비자 그룹**으로 읽어야 한다
+   * (CR-038, DEV-205). 기본 그룹으로 구독하면 관계 파생(WP-029)과 이벤트를 나눠
+   * 갖고 둘 다 절반씩 놓친다 — 어느 쪽도 실패로 보이지 않는 조용한 결함이다.
+   */
+  it('JOB-MIR-002 — 전용 소비자 그룹으로 구독한다', () => {
+    const source = read('apps/pipeline-worker/src/commit-enrich.ts');
+    expect(source).toContain('consumerGroup(TOPICS.projected, COMMIT_ENRICH_CONSUMER)');
+  });
+
+  it('JOB-MIR-002 — 미러 볼륨이 배포에 붙어 있다', () => {
+    // 미러가 이 잡의 정답지다. 볼륨이 없으면 전부 API 폴백으로 떨어진다.
+    const manifest = read('deploy/k8s/pipeline-worker-mirror.yaml');
+    expect(manifest).toContain('persistentVolumeClaim');
+    expect(manifest).toContain('MIRROR_ROOT');
+  });
+
+  /*
+   * **manifest가 있는 것과 배포되는 것은 다르다** (CR-038 / PR #42 리뷰).
+   *
+   * `pipeline-worker-mirror.yaml`은 파일도 있고 위의 도달성 시험도 통과했지만,
+   * `deploy/k8s/README.md`의 적용 순서에 없어 **절차를 따르는 운영자가 끝내 만들지
+   * 않았다.** 도달성 사슬의 마지막 고리는 "누군가 실제로 apply 하는가"다.
+   */
+  it('모든 배포 manifest가 적용 순서에 들어 있다', () => {
+    /*
+     * **적용 순서 블록만 본다.** README 전문을 보면 산문에 파일 이름을 한 번
+     * 언급한 것만으로 통과한다 — 실제로 `kubectl apply` 목록에 있는지를 물어야
+     * 이 시험이 의미가 있다 (이 시험의 첫 형태가 그 이유로 변이에 살아남았다).
+     */
+    const readme = read('deploy/k8s/README.md');
+    const applyBlock = /## 적용 순서[\s\S]*?```sh([\s\S]*?)```/.exec(readme)?.[1] ?? '';
+    expect(applyBlock).not.toBe('');
+    const dir = new URL('deploy/k8s/', new URL('..', import.meta.url));
+    const manifests = readdirSync(dir)
+      .filter((name) => name.endsWith('.yaml'))
+      // 시크릿 예시는 그대로 apply 하지 않는다 — 사내 시크릿 관리가 만든다.
+      .filter((name) => name !== 'secret.example.yaml');
+
+    expect(manifests.length).toBeGreaterThan(0);
+    for (const name of manifests) {
+      expect(applyBlock, `${name}이 적용 순서에 없다`).toContain(name);
+    }
   });
 });

@@ -92,3 +92,10 @@ export type { ApplySequenceInput, ApplySequenceResult, SequenceAssignment } from
 
 export { applyMappings, dropEntityIndices } from './bootstrap.js';
 export type { BootstrapResult } from './bootstrap.js';
+export {
+  COMMIT_METADATA_SCRIPT,
+  upsertCommitMetadata,
+  type CommitMetadataFields,
+  type CommitMetadataResult,
+  type CommitMetadataUpsert,
+} from './commit-metadata.js';

@@ -26,6 +26,7 @@ export {
   PARTITION_KEY_SOURCES,
   TOPICS,
   consumerGroup,
+  LOGICAL_CONSUMERS,
   isKnownTopic,
   partitionCount,
   partitionStream,

@@ -46,7 +46,7 @@
 | WP-026 | W-005 릴리스 화면과 구간 비교 | REL-003 | WP-024, WP-025 | done |
 | WP-027 | 선행·후행 조회와 상세 화면 통합 | REL-003 | WP-023, WP-017, WP-018 | done |
 | WP-028 | 정합성 점검과 조정 스캔 | REL-003 | WP-021, WP-019 | done |
-| WP-067 | 커밋 메타데이터 보강 (JOB-MIR-002) | REL-003 | WP-020, WP-008 | todo |
+| WP-067 | 커밋 메타데이터 보강 (JOB-MIR-002) | REL-003 | WP-020, WP-008 | done |
 | WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | WP-010, WP-012 | done |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003 | todo |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020 | todo |
@@ -1022,32 +1022,51 @@
 ### WP-067 커밋 메타데이터 보강 (JOB-MIR-002)
 
 > CR-024 신설. WP-020이 그래프 **읽기** 계층을 세웠으나 그 값을 커밋 문서에 **쓰는** 잡이 없었다 (DEV-112).
+>
+> **CR-038이 계약을 경화했다 (DEV-205~214).** 원래 계약("기존 커밋 문서를 부분 갱신한다")대로 구현하면 **사용자에게 보이는 것이 하나도 달라지지 않는다** — 조사 품질을 떨어뜨리는 직접 푸시 커밋에는 문서 자체가 없고, 채운 값을 읽어 주는 화면 경로도 없다. 제품 범위를 넓히지 않고 이미 승인된 요구사항을 실제 커밋과 API/UI까지 잇는다.
 
-- 목표: `prs-commits` 문서의 커밋 자체 메타데이터를 채운다.
-- 관련 요구사항: FR-SRCH-002, FR-REL-005 (AC-5), FR-SRCH-004
-- 관련 API/데이터/잡: `JOB-MIR-002` / ENT-CORE-003, API-SRCH-003 (커밋 상세)
-- 선행 WP: WP-020, WP-008
+- 목표: `prs-commits` 문서의 커밋 자체 메타데이터를 채우고, **직접 푸시 커밋도 조회 가능한 문서로 만든다.**
+- 관련 요구사항: FR-SRCH-002 (AC-3), FR-REL-005 (AC-5), FR-SRCH-004, FR-REL-001
+- 관련 API/데이터/잡: `JOB-MIR-002` / ENT-CORE-003, API-SRCH-003 (커밋 상세), API-REL-001 (선행·후행)
+- 선행 WP: WP-020, WP-008, **WP-068** (접근 범위 소스)
 - 구현 범위:
-  - `JOB-MIR-002`: `EVT-ING-003`(`entity_kind: commit`) 소비 + 백필 항목 + 수동 재보강
-  - `CommitGraph`에 `readCommit(ref, sha)` 추가 — `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at`
-  - `changed_paths`: 미러는 `git diff-tree --no-commit-id --name-only -r`, 폴백은 커밋 API `files[].filename` (상한 300, 초과 시 `changed_paths_truncated`)
+  - **버스**: 토픽별 **복수 논리 소비자 그룹**. `prs:projected`를 `link`와 `commit-enrich`가 **각각** 받는다 (CR-038, DEV-205)
+  - **그래프**: `CommitGraph`에 `readCommit(ref, sha)` — `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at`
+  - **그래프**: `changedPaths(ref, sha)` — 미러는 `git diff-tree --no-commit-id --name-only -r`, 폴백은 커밋 API `files[].filename` (상한 300, 초과 시 `changed_paths_truncated`)
   - `patch_id`: `MIRROR_ALLOW_BLOB_FETCH=true`인 저장소에서만. 그 외에는 `patch_id_unavailable`에 사유를 적는다
-  - 부분 업서트만 한다 — 문서를 새로 만들지 않고 `document_version`도 건드리지 않는다
-  - 미보강 잔여분 스윕 (일 1회 05:00 KST)
+  - **PostgreSQL 정본** `commit_snapshot` (additive 마이그레이션). ADR-004가 커밋 축에서도 성립해야 한다 (CR-038, DEV-208). 소스 코드 본문·patch 본문은 **어떤 경로로도** 저장하지 않는다
+  - **방아쇠 넷** (CR-038, DEV-206):
+    - `sequence.assigned`(EVT-SEQ-001) → `from_seq..to_seq` 구간을 `merge_sequence`에서 읽어 보강. **직접 푸시 커밋이 여기로 들어온다**
+    - `sequence.reassigned`(EVT-SEQ-002) → 새 에폭의 영향 구간 재확인
+    - `EVT-ING-003`(`entity_kind: commit`) → 기존 PR 유래 커밋 문서 보강
+    - 미보강 잔여분 스윕 (일 1회 05:00 KST) — **보정용이며 주 전달 수단이 아니다**
+  - **문서 생성**: 색인에 없는 first-parent 커밋은 문서를 **만든다.** 생성 시점에 `repositoryScope()`의 접근 통제 material을 함께 싣는다 (DEV-213)
+  - **역할 판정**: `direct_push`는 근거를 요구한다 — first-parent 커밋이고, 현재 알려진 PR 머지 매핑이 없다. 이후 매핑이 생기면 `merge_commit`으로 **교정 가능**하다 (DEV-207)
+  - **API/UI 연결**: 커밋 상세 응답(DEV-210), PR 상세 `source_commits` batch join(DEV-211), 선행·후행 직접 푸시 행 batch join(DEV-212)
   - 메트릭: `commit_enrich_total{source,result}`, `patch_id_unavailable_total{reason}`
 - 제외:
   - 체리픽 **간선 생성** (WP-030) — 이 WP는 `patch_id` 값을 채우기만 한다
   - `release_tags` (WP-024)
-  - 소스 코드 본문 저장 — 어떤 경로로도 하지 않는다 (NFR-005)
+  - 소스 코드 본문·patch 본문 저장 — 어떤 경로로도 하지 않는다 (NFR-005)
+  - 기존 커밋 문서의 대량 소급 보강 — 스윕이 점진적으로 메운다
 - 완료 기준(DoD):
-  - [ ] 미러 경로와 API 폴백 경로가 **같은 픽스처에서 같은 메타데이터**를 낸다
-  - [ ] `changed_paths`를 얻은 뒤에도 미러의 **blob 수가 0이다** — `diff-tree --name-only`가 트리만 읽음을 실측으로 확인한다 (THR-015)
-  - [ ] `MIRROR_ALLOW_BLOB_FETCH`가 꺼진 저장소에서 `patch_id` 키가 **없고** `patch_id_unavailable`이 `blob_fetch_disabled`다 (FR-REL-005 AC-5)
-  - [ ] 미러가 없는 저장소에서 사유가 `no_mirror`다
-  - [ ] 같은 SHA로 두 번 돌려도 문서가 동일하고 `document_version`이 변하지 않는다
-  - [ ] 커밋 상세 API가 채워진 키를 실제로 반환한다 (API 계약 §커밋 상세)
-- 검증 방법: `pnpm test:integration jobs/commit-enrich`, `pnpm test:integration graph`
-- 기록: 원장 WP-067 상태, DEV-112 해소, FR-REL-005 매핑 갱신
+  - [x] 미러 경로와 API 폴백 경로가 **같은 픽스처에서 같은 메타데이터**를 낸다
+  - [x] `changed_paths`를 얻은 뒤에도 미러의 **blob 수가 0이다** — `diff-tree --name-only`가 트리만 읽음을 실측으로 확인한다 (THR-015)
+  - [x] `MIRROR_ALLOW_BLOB_FETCH`가 꺼진 저장소에서 `patch_id` 키가 **없고** `patch_id_unavailable`이 `blob_fetch_disabled`다 (FR-REL-005 AC-5)
+  - [x] 미러가 없는 저장소에서 사유가 `no_mirror`다
+  - [x] 같은 SHA로 두 번 돌려도 문서가 동일하고 `document_version`이 변하지 않는다
+  - [x] 커밋 상세 API가 채워진 키를 실제로 반환한다 (API 계약 §커밋 상세)
+  - [x] **`link`와 `commit-enrich`가 같은 projected 이벤트를 각각 받는다** (CR-038, DEV-205)
+  - [x] **직접 푸시 first-parent 커밋이 실제 `prs-commits` 문서로 존재하고** 검색·해석·커밋 상세에서 조회된다 (DEV-206 / FR-SRCH-002 AC-3)
+  - [x] 그 문서에 **접근 범위가 강제된다** — 권한 필드 없는 문서를 먼저 만들지 않는다 (DEV-213)
+  - [x] 후발 PR 매핑이 생기면 잘못된 `direct_push` 역할이 **교정된다** (DEV-207)
+  - [x] 새 직접 푸시 문서의 초기 `document_version`이 **커밋 시각**이며, 이후 정상 투영이 밀려나지 않는다 (DEV-209)
+  - [x] PR 상세 `source_commits`에 제목·작성자·시각이 실제로 채워지고 **N+1 조회가 없다** (DEV-211)
+  - [x] 선행·후행의 직접 푸시 행에 메타데이터가 실제로 표시되고 **N+1 조회가 없다** (DEV-212)
+  - [x] **PostgreSQL 정본에서 ES 커밋 문서를 재구성할 수 있다** (DEV-208 / ADR-004)
+  - [x] **운영 도달성** (DEV-214): 선언 → 소비자 그룹 → 워커 역할 → entrypoint 기동 → 핸들러 → PG 정본 → ES 투영 → 종료 정리 → 배포 manifest가 한 줄로 이어진다. 함수가 존재하는 것으로는 충족되지 않는다
+- 검증 방법: `pnpm test:integration jobs/commit-enrich`, `pnpm test:integration graph`, `pnpm test:integration commit-snapshot`, `pnpm test:regression`
+- 기록: 원장 WP-067 상태, DEV-112 해소, FR-REL-005·FR-SRCH-002 매핑 갱신
 
 ### WP-068 저장소 팀 접근 범위 채우기
 

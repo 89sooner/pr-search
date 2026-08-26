@@ -50,6 +50,17 @@ interface CommitSource {
   readonly repository_id?: number;
   readonly commit_sha?: string;
   readonly role?: string;
+  // 커밋 자체의 값 (WP-067 / CR-038, DEV-210). 보강 전에는 키가 없다.
+  readonly message?: string;
+  readonly author?: string;
+  readonly committer?: string;
+  readonly authored_at?: string;
+  readonly committed_at?: string;
+  readonly parent_shas?: readonly string[];
+  readonly changed_paths?: readonly string[];
+  readonly changed_paths_truncated?: boolean;
+  readonly patch_id?: string;
+  readonly patch_id_unavailable?: string;
   readonly base_branch?: string;
   readonly pull_request_numbers?: readonly number[];
   readonly enrichment_pending?: boolean;
@@ -218,6 +229,23 @@ export async function getCommitDetail(
   put(out, 'repository_id', commit.repository_id);
   put(out, 'role', commit.role);
   put(out, 'base_branch', commit.base_branch);
+  /*
+   * 커밋 자체의 값 (WP-067 / CR-038, DEV-210).
+   *
+   * **`put`이 `undefined`면 키를 넣지 않는다.** 보강 전 문서와 보강된 문서를
+   * 화면이 구분할 수 있어야 한다 — `null`로 채우면 "만들었는데 비었다"가 되고,
+   * 그것은 "아직 보강되지 않았다"와 다른 사실이다 (DEV-060의 규율).
+   */
+  put(out, 'message', commit.message);
+  put(out, 'author', commit.author);
+  put(out, 'committer', commit.committer);
+  put(out, 'authored_at', commit.authored_at);
+  put(out, 'committed_at', commit.committed_at);
+  put(out, 'parent_shas', commit.parent_shas === undefined ? undefined : [...commit.parent_shas]);
+  put(out, 'changed_paths', commit.changed_paths === undefined ? undefined : [...commit.changed_paths]);
+  put(out, 'changed_paths_truncated', commit.changed_paths_truncated);
+  put(out, 'patch_id', commit.patch_id);
+  put(out, 'patch_id_unavailable', commit.patch_id_unavailable);
   put(out, 'link_summary', commit.link_summary);
   put(out, 'enrichment_pending', commit.enrichment_pending);
   put(out, 'repository_archived', commit.repository_archived);
@@ -237,12 +265,82 @@ export async function getCommitDetail(
 }
 
 /**
+ * 원본 커밋의 표시값을 **한 번에** 읽는다 (WP-067 / CR-038, DEV-211).
+ *
+ * ## N+1을 만들지 않는다
+ *
+ * `source_commits`는 최대 250개다. 하나씩 조회하면 그 비용이 목록 길이에 비례해
+ * 사용자에게 그대로 간다 — 조회 하나로 묶는다.
+ *
+ * 접근 범위는 **여기서도 강제된다** (ADR-008). 대상 커밋이 같은 저장소라는 것을
+ * 알고 있어도 우회 경로를 만들지 않는다 — 한 번 만들면 그것이 다음 조회의
+ * 선례가 된다.
+ *
+ * 보강되지 않은 커밋은 **키가 없는 채로** 남는다. 거짓 `null`을 채우지 않는다.
+ */
+async function loadSourceCommits(
+  repository: string,
+  shas: readonly string[],
+  scope: AccessScope,
+  deps: DetailDeps,
+): Promise<ReadonlyMap<string, CommitSource>> {
+  if (shas.length === 0) return new Map();
+
+  const response = await search<CommitSource>(
+    deps.es,
+    COMMIT_ALIAS,
+    applyMandatoryScopeFilter(
+      {
+        bool: {
+          filter: [
+            { term: { repository: repository } },
+            { terms: { commit_sha: shas.map((sha) => sha.toLowerCase()) } },
+          ],
+        },
+      },
+      scope,
+    ),
+    {
+      size: shas.length,
+      _source: ['commit_sha', 'message', 'author', 'authored_at', 'committed_at'],
+      ...(deps.timeoutMs === undefined ? {} : { timeout: `${String(deps.timeoutMs)}ms` }),
+    },
+  );
+  assertNoShardFailures(response);
+
+  const bySha = new Map<string, CommitSource>();
+  for (const hit of response.hits.hits) {
+    const source = hit._source;
+    if (source?.commit_sha !== undefined) bySha.set(source.commit_sha.toLowerCase(), source);
+  }
+  return bySha;
+}
+
+/**
+ * 원본 커밋 항목 하나.
+ *
+ * 계약이 요구하는 최소는 `commit_sha`·제목 첫 줄·작성자·작성 시각이다. 커밋
+ * 메시지 전문이 아니라 **첫 줄**을 싣는다 — 목록 행에 여러 줄이 들어가면 화면이
+ * 무너지고, 전문은 커밋 상세가 준다.
+ */
+function sourceCommitItem(sha: string, source: CommitSource | undefined): Record<string, unknown> {
+  const item: Record<string, unknown> = { commit_sha: sha };
+  if (source === undefined) return item;
+
+  const firstLine = source.message === undefined ? undefined : source.message.split('\n', 1)[0];
+  put(item, 'message', firstLine);
+  put(item, 'author', source.author);
+  put(item, 'authored_at', source.authored_at);
+  put(item, 'committed_at', source.committed_at);
+  return item;
+}
+
+/**
  * PR 상세 (API-SRCH-003).
  *
- * `source_commits`는 **객체 배열이되 지금은 `commit_sha`만 채운다** (CR-017,
- * DEV-062). PR 문서가 갖는 것은 SHA 배열뿐이고 커밋 문서를 조인해도
- * 메시지·작성자가 없다. 배열 모양을 지금부터 객체로 두는 이유는 WP-020이
- * 커밋을 보강하면 키가 저절로 붙어 계약을 다시 고치지 않아도 되기 때문이다.
+ * `source_commits`는 객체 배열이며 **커밋 문서와 조인해 표시값을 채운다**
+ * (CR-038, DEV-211). WP-067 이전에는 `commit_sha`만 있었고(CR-017, DEV-062),
+ * 그래서 메타데이터를 채워도 화면에는 계속 SHA만 나왔다.
  */
 export async function getPullRequestDetail(
   repository: string,
@@ -260,13 +358,16 @@ export async function getPullRequestDetail(
 
   const shas = pr.source_commit_shas ?? [];
   const truncated = pr.source_commits_truncated === true || shas.length > MAX_SOURCE_COMMITS;
+  const shown = shas.slice(0, MAX_SOURCE_COMMITS);
+  // 조회 **한 번**이다 (DEV-211). 250개를 하나씩 물으면 그 비용이 사용자에게 간다.
+  const commitMeta = await loadSourceCommits(pr.repository ?? repository, shown, scope, deps);
 
   const out: Record<string, unknown> = {
     repository: pr.repository ?? repository,
     pr_number: pr.pr_number ?? prNumber,
     // 미머지 PR은 `null`이다 (FR-SRCH-003 AC-2). 키가 없으면 화면이 "아직 모른다"로 읽는다.
     merge_commit_sha: pr.merge_commit_sha ?? null,
-    source_commits: shas.slice(0, MAX_SOURCE_COMMITS).map((sha) => ({ commit_sha: sha })),
+    source_commits: shown.map((sha) => sourceCommitItem(sha, commitMeta.get(sha.toLowerCase()))),
     source_commits_truncated: truncated,
     ...sequence(pr),
     url: `/pr/${pr.repository ?? repository}/${String(pr.pr_number ?? prNumber)}`,

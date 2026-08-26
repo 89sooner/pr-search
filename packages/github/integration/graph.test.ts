@@ -404,3 +404,160 @@ describe('안전하지 않은 입력', () => {
     await expect(unknown.resolveHead(REF, 'main')).rejects.toThrow(/repository_id/);
   });
 });
+
+/**
+ * 커밋 메타데이터 읽기 (WP-067 / CR-038, DEV-208).
+ *
+ * DoD 1은 "미러 경로와 API 폴백 경로가 **같은 픽스처에서 같은 메타데이터**를 낸다"이다.
+ * 그래서 두 경로를 **같은 커밋에 대해 나란히 세우고 값을 직접 비교한다.**
+ */
+describe('WP-067 DoD 1·2: 커밋 메타데이터와 변경 경로', () => {
+  /** 같은 커밋을 API가 답하는 모양으로 바꾼 대역. 실제 git이 정답지다. */
+  async function apiGraphFor(sha: string): Promise<CommitGraph> {
+    const format = ['%H', '%P', '%an', '%ae', '%cn', '%ce', '%aI', '%cI'].join('%x00');
+    const raw = await run(origin.dir, ['show', '--no-patch', `--format=${format}%x00%B`, sha]);
+    const parts = raw.split('\u0000');
+    const hasParent = (await run(origin.dir, ['rev-list', '--parents', '-n', '1', sha])).trim().split(/\s+/).length > 1;
+    const files = (await run(
+      origin.dir,
+      hasParent
+        ? ['diff-tree', '--no-commit-id', '--name-only', '-r', `${sha}^1`, sha]
+        : ['diff-tree', '--no-commit-id', '--name-only', '-r', '--root', sha],
+    ))
+      .split('\n')
+      .filter((line) => line.trim() !== '');
+
+    const client = {
+      getCommitDetail: () =>
+        Promise.resolve({
+          sha: parts[0],
+          parents: (parts[1] ?? '').trim() === '' ? [] : (parts[1] ?? '').trim().split(/\s+/).map((p) => ({ sha: p })),
+          commit: {
+            message: parts.slice(8).join('\u0000').replace(/\n+$/, ''),
+            author: { name: parts[2], email: parts[3], date: parts[6] },
+            committer: { name: parts[4], email: parts[5], date: parts[7] },
+          },
+          files: files.map((filename) => ({ filename })),
+        }),
+    } as unknown as GitHubClient;
+    return new ApiCommitGraph({ client });
+  }
+
+  it('**미러와 API 폴백이 같은 커밋에서 같은 메타데이터를 낸다** (DoD 1)', async () => {
+    const chain = await mirror.firstParentRevList(REF, { from: null, to: await headSha() });
+    const sha = chain.at(-1) ?? '';
+    expect(sha).not.toBe('');
+
+    const fromMirror = await mirror.readCommit(REF, sha);
+    const fromApi = await (await apiGraphFor(sha)).readCommit(REF, sha);
+
+    expect(fromMirror).not.toBeNull();
+    expect(fromApi).toEqual(fromMirror);
+  });
+
+  it('부모 SHA·시각·작성자를 실제 git과 대조한다', async () => {
+    const sha = (await mirror.firstParentRevList(REF, { from: null, to: await headSha() })).at(-1) ?? '';
+    const meta = await mirror.readCommit(REF, sha);
+    expect(meta).not.toBeNull();
+    if (meta === null) return;
+
+    const expectedParents = (await run(origin.dir, ['rev-list', '--parents', '-n', '1', sha])).trim().split(/\s+/).slice(1);
+    expect(meta.parentShas).toEqual(expectedParents);
+    expect(meta.committedAt).toBe((await run(origin.dir, ['show', '-s', '--format=%cI', sha])).trim());
+    expect(meta.author).toBe((await run(origin.dir, ['show', '-s', '--format=%an', sha])).trim());
+    // 메시지가 여러 줄이어도 잘리지 않는다 — 구분자가 NUL이고 %B가 맨 뒤다.
+    expect(meta.message).toBe((await run(origin.dir, ['show', '-s', '--format=%B', sha])).replace(/\n+$/, ''));
+  });
+
+  it('없는 커밋은 **던지지 않고** `null`이다 — 아직 도착하지 않은 것은 오류가 아니다', async () => {
+    expect(await mirror.readCommit(REF, 'b'.repeat(40))).toBeNull();
+  });
+
+  it('**변경 경로를 얻은 뒤에도 blob 수가 0이다** (DoD 2 / THR-015)', async () => {
+    const dir = `${root}/${String(REPOSITORY_ID)}.git`;
+    const before = await objectTypeCounts(dir);
+    const chain = await mirror.firstParentRevList(REF, { from: null, to: await headSha() });
+
+    let total = 0;
+    for (const sha of chain) {
+      const changed = await mirror.changedPaths(REF, sha);
+      total += changed.paths.length;
+    }
+    expect(total).toBeGreaterThan(0);
+
+    const after = await objectTypeCounts(dir);
+    // `--name-only`는 트리만 읽는다. `patchId`가 blob을 요구하는 것과 다르다.
+    expect(after['blob'] ?? 0).toBe(before['blob'] ?? 0);
+    expect(after['blob'] ?? 0).toBe(0);
+  });
+
+  it('**병합 커밋의 변경 경로가 비지 않는다** — 첫 부모와 비교한다 (PR #42 리뷰)', async () => {
+    /*
+     * 인자 하나로 부른 `diff-tree`는 병합 커밋에 대해 아무것도 내지 않는다 —
+     * 부모가 둘 이상이면 어느 쪽과 비교할지 정해지지 않기 때문이다. 그대로 두면
+     * 병합 커밋의 경로가 조용히 빈 배열이 되고, 경로 기반 조사가 "이 병합은
+     * 아무것도 바꾸지 않았다"고 거짓을 말한다.
+     */
+    const chain = await mirror.firstParentRevList(REF, { from: null, to: await headSha() });
+    let merge = '';
+    for (const sha of chain) {
+      const meta = await mirror.readCommit(REF, sha);
+      if ((meta?.parentShas.length ?? 0) > 1) {
+        merge = sha;
+        break;
+      }
+    }
+    // 픽스처에 병합 커밋이 있어야 이 시험이 의미가 있다.
+    expect(merge).not.toBe('');
+
+    const changed = await mirror.changedPaths(REF, merge);
+    expect(changed.paths.length).toBeGreaterThan(0);
+
+    // 첫 부모 기준이다 — git이 직접 낸 값과 같아야 한다.
+    const expected = (await run(origin.dir, ['diff-tree', '--no-commit-id', '--name-only', '-r', `${merge}^1`, merge]))
+      .split('\n')
+      .filter((line) => line.trim() !== '');
+    expect([...changed.paths].sort()).toEqual([...expected].sort());
+
+    // API 폴백도 같은 값을 낸다 (DoD 1).
+    const fromApi = await (await apiGraphFor(merge)).changedPaths(REF, merge);
+    expect([...fromApi.paths].sort()).toEqual([...changed.paths].sort());
+  });
+
+  it('미러와 API 폴백이 같은 변경 경로를 낸다 (DoD 1)', async () => {
+    const sha = (await mirror.firstParentRevList(REF, { from: null, to: await headSha() })).at(-1) ?? '';
+    const fromMirror = await mirror.changedPaths(REF, sha);
+    const fromApi = await (await apiGraphFor(sha)).changedPaths(REF, sha);
+    expect([...fromApi.paths].sort()).toEqual([...fromMirror.paths].sort());
+  });
+
+  it('루트 커밋의 변경 경로가 비지 않는다 — 첫 커밋을 "변경 없음"으로 적지 않는다', async () => {
+    const chain = await mirror.firstParentRevList(REF, { from: null, to: await headSha() });
+    const root0 = chain[0] ?? '';
+    expect(root0).not.toBe('');
+    const changed = await mirror.changedPaths(REF, root0);
+    expect(changed.paths.length).toBeGreaterThan(0);
+  });
+
+  it('상한을 넘으면 자르고 **`truncated`로 알린다** — 조용히 자르지 않는다', async () => {
+    const sha = (await mirror.firstParentRevList(REF, { from: null, to: await headSha() })).at(-1) ?? '';
+    const full = await mirror.changedPaths(REF, sha);
+    const capped = await mirror.changedPaths(REF, sha, 1);
+    expect(capped.paths).toHaveLength(Math.min(1, full.paths.length));
+    expect(capped.truncated).toBe(full.paths.length > 1);
+  });
+});
+
+/**
+ * **미러가 아는 head**를 쓴다.
+ *
+ * origin의 `HEAD`를 읽으면 앞선 시험이 origin에 붙인 커밋까지 가리키는데, 미러는
+ * 그 시점에 동기화되지 않았을 수 있다 — blobless 미러에서 없는 객체를 물으면
+ * `bad object`로 죽는다. 정답지가 필요한 자리에서는 origin을 읽되, **그래프에
+ * 물을 대상**은 미러가 실제로 가진 것이어야 한다.
+ */
+async function headSha(): Promise<string> {
+  const head = await mirror.resolveHead(REF, 'main');
+  expect(head).not.toBeNull();
+  return head ?? '';
+}

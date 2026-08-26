@@ -6,9 +6,10 @@
  * 인덱스에서 옳은 문서를 집어 오는지**를 확인한다 — 판별이 맞아도 필드 이름이
  * 하나 어긋나면 아무것도 못 찾고, 그것을 잡는 것은 실제 조회뿐이다.
  *
- * **QA-W003-03(`direct_push`)은 여기에 없다.** 직접 푸시 커밋은 커밋 문서 자체가
- * 만들어지지 않아 조회가 404가 된다 (CR-017, DEV-061). 없는 동작을 시험으로
- * 꾸며 통과시키지 않는다.
+ * **QA-W003-03(`direct_push`)이 WP-067로 성립하게 됐다.** 그전에는 직접 푸시 커밋의
+ * 문서 자체가 만들어지지 않아 조회가 404였고(CR-017, DEV-061), 그래서 이 시험이
+ * 없었다. JOB-MIR-002가 그 문서를 만들면서(CR-038, DEV-206) 이제 조회가 성립하며,
+ * 아래 `직접 푸시 커밋 (WP-067)` 블록이 그것을 건다.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -64,6 +65,16 @@ const SHARED_SHA = 'cafe0011223344556677889900aabbccddeeff01';
 const OPEN_SOURCE_SHA = 'bbbb000000000000000000000000000000000001';
 /** 접근 범위 밖 저장소의 커밋. 어떤 경로로도 새면 안 된다. */
 const HIDDEN_SHA = 'dead000000000000000000000000000000000001';
+/**
+ * **직접 푸시 커밋** (WP-067 / CR-038, DEV-206).
+ *
+ * PR이 없으므로 `pull_request_numbers`가 비어 있고 역할이 `direct_push`다.
+ * JOB-MIR-002가 만든 문서의 모양 그대로다 — 메타데이터가 채워져 있고 접근 통제
+ * material도 함께 실려 있다.
+ */
+const DIRECT_PUSH_SHA = 'add1e50000000000000000000000000000000001';
+/** 접근 범위 밖 저장소의 직접 푸시 커밋. 새면 안 된다 (DEV-213). */
+const HIDDEN_DIRECT_SHA = 'dead111111111111111111111111111111111111';
 /** 커밋 문서는 없고 PR 문서의 `head_sha`에만 있는 SHA (40자 폴백). */
 const HEAD_ONLY_SHA = 'fade000000000000000000000000000000000009';
 /**
@@ -254,6 +265,10 @@ const COMMITS = [
     ...scope('acme/payments', PAYMENTS),
     commit_sha: SOURCE_SHA, role: 'source_commit', pull_request_numbers: [1234],
     base_branch: 'main', enrichment_pending: false, document_version: 1,
+    // JOB-MIR-002가 채운 모양이다 (WP-067 / CR-038, DEV-211).
+    message: 'feat: 타임아웃 설정을 추가한다\n\n본문은 목록 행에 실리지 않는다.',
+    author: 'lee', committer: 'lee',
+    authored_at: '2026-08-09T03:00:00Z', committed_at: '2026-08-09T03:30:00Z',
   },
   {
     _id: `${String(PAYMENTS)}:${SHARED_SHA}`,
@@ -306,6 +321,27 @@ const COMMITS = [
     visibility: 'private', allowed_team_ids: [99],
     commit_sha: HIDDEN_SHA, role: 'merge_commit', pull_request_numbers: [9],
     base_branch: 'main', document_version: 1,
+  },
+  {
+    _id: `${String(PAYMENTS)}:${DIRECT_PUSH_SHA}`,
+    ...scope('acme/payments', PAYMENTS),
+    commit_sha: DIRECT_PUSH_SHA, role: 'direct_push', pull_request_numbers: [],
+    base_branch: 'main', document_version: 1_700_000_000_000,
+    message: 'hotfix: 결제 타임아웃을 늘린다\n\n장애 대응으로 직접 푸시했다.',
+    author: 'kim', committer: 'kim',
+    authored_at: '2026-08-10T01:00:00Z', committed_at: '2026-08-10T01:00:00Z',
+    parent_shas: [MERGE_SHA],
+    changed_paths: ['src/payments/timeout.ts'], changed_paths_truncated: false,
+    patch_id_unavailable: 'blob_fetch_disabled',
+  },
+  {
+    _id: `${String(HIDDEN)}:${HIDDEN_DIRECT_SHA}`,
+    ...scope('other/secret', HIDDEN),
+    visibility: 'private', allowed_team_ids: [99],
+    commit_sha: HIDDEN_DIRECT_SHA, role: 'direct_push', pull_request_numbers: [],
+    base_branch: 'main', document_version: 1,
+    message: 'secret: 새면 안 되는 커밋',
+    author: 'nobody', committed_at: '2026-08-10T02:00:00Z', authored_at: '2026-08-10T02:00:00Z',
   },
 ];
 
@@ -914,5 +950,116 @@ describe('응답 스키마가 계약과 맞는다', () => {
     const one = await resolve(`q=${MERGE_SHA}`);
     const two = await resolve(`q=${MERGE_SHA}`);
     expect(one.body.correlation_id).not.toBe(two.body.correlation_id);
+  });
+
+  /**
+   * 직접 푸시 커밋 (WP-067 / CR-038, DEV-206·210·213).
+   *
+   * WP-027이 이 커밋을 선행·후행 목록에 노출하기 시작했는데 조회하면 404였다 —
+   * 사용자가 볼 수 있는 행이 클릭하면 없는 화면으로 갔다. JOB-MIR-002가 문서를
+   * 만들면서 그 경로가 닫힌다.
+   */
+  describe('직접 푸시 커밋 (WP-067)', () => {
+    it('**커밋 상세가 200이고 메타데이터를 반환한다** (QA-W003-03, DEV-210)', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/v1/commits/${encodeURIComponent('acme/payments')}/${DIRECT_PUSH_SHA}`,
+        cookies: { [SESSION_COOKIE_NAME]: sessionId },
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json<Record<string, unknown>>();
+
+      expect(body['role']).toBe('direct_push');
+      expect(body['pull_requests']).toEqual([]);
+      // 채운 값이 실제로 응답에 나온다 — 저장만 하고 끝내지 않는다.
+      expect(String(body['message'])).toContain('hotfix');
+      expect(body['author']).toBe('kim');
+      expect(body['committed_at']).toBe('2026-08-10T01:00:00Z');
+      expect(body['parent_shas']).toEqual([MERGE_SHA]);
+      expect(body['changed_paths']).toEqual(['src/payments/timeout.ts']);
+      expect(body['changed_paths_truncated']).toBe(false);
+      // 값이 없으면 키가 없다 — 거짓 `null`을 만들지 않는다 (FR-REL-005 AC-5).
+      expect(body['patch_id']).toBeUndefined();
+      expect(body['patch_id_unavailable']).toBe('blob_fetch_disabled');
+    });
+
+    it('`/resolve`가 그 SHA를 해석한다', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: `${RESOLVE_PATH}?q=${DIRECT_PUSH_SHA}`,
+        cookies: { [SESSION_COOKIE_NAME]: sessionId },
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ candidates?: { commit_sha?: string }[] }>();
+      expect((body.candidates ?? []).some((one) => one.commit_sha === DIRECT_PUSH_SHA)).toBe(true);
+    });
+
+    it('축약 SHA 접두로도 찾힌다 (ADR-012)', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: `${RESOLVE_PATH}?q=${DIRECT_PUSH_SHA.slice(0, 7)}`,
+        cookies: { [SESSION_COOKIE_NAME]: sessionId },
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ candidates?: { commit_sha?: string }[] }>();
+      expect((body.candidates ?? []).some((one) => one.commit_sha === DIRECT_PUSH_SHA)).toBe(true);
+    });
+
+    it('**접근 범위 밖 직접 푸시 커밋은 새지 않는다** (DEV-213 / ADR-008)', async () => {
+      const detail = await app.inject({
+        method: 'GET',
+        url: `/api/v1/commits/${encodeURIComponent('other/secret')}/${HIDDEN_DIRECT_SHA}`,
+        cookies: { [SESSION_COOKIE_NAME]: sessionId },
+      });
+      expect(detail.statusCode).toBe(404);
+
+      const resolved = await app.inject({
+        method: 'GET',
+        url: `${RESOLVE_PATH}?q=${HIDDEN_DIRECT_SHA}`,
+        cookies: { [SESSION_COOKIE_NAME]: sessionId },
+      });
+      const body = resolved.json<{ candidates?: { commit_sha?: string }[] }>();
+      expect((body.candidates ?? []).some((one) => one.commit_sha === HIDDEN_DIRECT_SHA)).toBe(false);
+      // 본문 어디에도 그 커밋의 메시지가 없다.
+      expect(resolved.body).not.toContain('새면 안 되는');
+    });
+  });
+
+  /**
+   * PR 상세의 원본 커밋 목록 (WP-067 / CR-038, DEV-211).
+   *
+   * WP-067 이전에는 `commit_sha`만 실려, 커밋을 아무리 보강해도 W-002의 원본 커밋
+   * 목록에는 SHA만 나왔다.
+   */
+  describe('원본 커밋 목록이 메타데이터와 조인된다 (WP-067)', () => {
+    it('**제목 첫 줄·작성자·시각이 실제로 채워진다**', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/v1/pull-requests/${encodeURIComponent('acme/payments')}/1234`,
+        cookies: { [SESSION_COOKIE_NAME]: sessionId },
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ source_commits?: Record<string, unknown>[] }>();
+
+      const item = (body.source_commits ?? []).find((one) => one['commit_sha'] === SOURCE_SHA);
+      expect(item).toBeDefined();
+      // **첫 줄만** 싣는다 — 목록 행에 여러 줄이 들어가면 화면이 무너진다.
+      expect(item?.['message']).toBe('feat: 타임아웃 설정을 추가한다');
+      expect(item?.['author']).toBe('lee');
+      expect(item?.['authored_at']).toBe('2026-08-09T03:00:00Z');
+    });
+
+    it('보강되지 않은 커밋은 **키가 없는 채로** 남는다 — 거짓 null을 만들지 않는다', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/v1/pull-requests/${encodeURIComponent('acme/payments')}/1234`,
+        cookies: { [SESSION_COOKIE_NAME]: sessionId },
+      });
+      const body = response.json<{ source_commits?: Record<string, unknown>[] }>();
+      const item = (body.source_commits ?? []).find((one) => one['commit_sha'] === SHARED_SHA);
+      expect(item).toBeDefined();
+      expect(item?.['commit_sha']).toBe(SHARED_SHA);
+      expect('message' in (item ?? {})).toBe(false);
+    });
   });
 });

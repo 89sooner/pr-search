@@ -67,6 +67,25 @@ export interface CommitSummary {
   };
 }
 
+/**
+ * `GET /repos/{o}/{r}/commits/{sha}` 응답 중 이 시스템이 쓰는 것만 (WP-067 / CR-038).
+ *
+ * **`patch` 필드는 읽지 않는다.** GitHub이 파일마다 diff 본문을 함께 주지만 그것은
+ * 소스 코드이며, 저장하지 않는 것을 넘어 **타입에도 두지 않는다** — 있으면 언젠가
+ * 누군가 쓴다 (NFR-005).
+ */
+export interface CommitDetail {
+  readonly sha: string;
+  readonly parents?: readonly { readonly sha?: string }[];
+  readonly commit?: {
+    readonly message?: string;
+    readonly author?: { readonly name?: string; readonly email?: string; readonly date?: string };
+    readonly committer?: { readonly name?: string; readonly email?: string; readonly date?: string };
+  };
+  /** 커밋 API는 파일을 최대 300개까지만 준다. 그 이상은 절삭이다. */
+  readonly files?: readonly { readonly filename?: string }[];
+}
+
 /** `GET /repos/{o}/{r}/compare/{base}...{head}` 응답 중 이 시스템이 쓰는 것만. */
 export interface CompareResult {
   readonly merge_base_commit?: { readonly sha?: string };
@@ -253,6 +272,24 @@ export class GitHubClient {
 
     if (!Array.isArray(items)) return { items: [], hasMore: false };
     return { items, hasMore: items.length >= perPage };
+  }
+
+  /**
+   * 커밋 하나의 상세 (WP-067 / CR-038, DEV-208).
+   *
+   * 미러가 없는 저장소의 폴백 경로다. 미러 경로와 **같은 메타데이터**를 내야 하며,
+   * 그것이 이 WP의 DoD 첫 항목이다.
+   *
+   * @returns 커밋을 찾을 수 없으면 `null`. 아직 도착하지 않은 커밋은 오류가 아니다.
+   */
+  async getCommitDetail(ref: RepoRef, sha: string, options: CallOptions = {}): Promise<CommitDetail | null> {
+    const detail = await this.#transport.get<CommitDetail | null>({
+      org: orgOf(ref),
+      path: `/repos/${ref.owner}/${ref.repo}/commits/${sha}`,
+      ...options,
+    });
+    if (detail === null || typeof detail !== 'object' || typeof detail.sha !== 'string') return null;
+    return detail;
   }
 
   async listPullRequestCommits(ref: RepoRef, number: number, options: CallOptions = {}): Promise<CommitSummary[]> {
