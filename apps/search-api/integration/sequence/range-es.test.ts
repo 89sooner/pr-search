@@ -75,6 +75,8 @@ const PULL_REQUESTS = [
     author: 'lee', base_branch: BRANCH, merged_at: '2026-08-12T00:00:00Z',
     changed_files_count: 1, additions: 20, deletions: 2,
     changed_paths: ['src/pay/retry.ts'], files_truncated: true,
+    // 되돌려진 PR (CR-041, DEV-239). 구간 안에서 유일하다.
+    link_summary: { is_reverted: true, has_revert: false, has_cherry_pick: false, has_stack: false },
     document_version: 1,
   },
   {
@@ -95,6 +97,8 @@ const PULL_REQUESTS = [
     author: 'park', base_branch: BRANCH, merged_at: '2026-08-20T00:00:00Z',
     changed_files_count: 99, additions: 9_000, deletions: 900,
     changed_paths: ['src/other/huge.ts'], files_truncated: false,
+    // **구간 밖인데 되돌려져 있다.** `terms(pr_number)`가 새면 되돌림 수가 2가 된다.
+    link_summary: { is_reverted: true, has_revert: false, has_cherry_pick: false, has_stack: false },
     document_version: 1,
   },
   {
@@ -122,6 +126,7 @@ interface RangeBody {
     additions_total: number;
     deletions_total: number;
     files_truncated_pull_request_count: number;
+    reverted_pull_request_count: number;
     top_changed_paths: { path: string; count: number }[];
   };
   readonly items?: { merge_seq: number; pr_number?: number; title: string | null; indexed: boolean }[];
@@ -321,6 +326,23 @@ describe('질의가 실제로 고르는 문서 (CR-027, DEV-130)', () => {
   it('절삭된 PR 수가 실제 `filter` 집계에서 온다 (DEV-135)', async () => {
     const { body } = await get('from_seq=0&to_seq=4');
     expect(body.summary?.files_truncated_pull_request_count).toBe(1);
+  });
+
+  it('**되돌려진 PR 수가 같은 왕복의 `filter` 집계에서 온다** (CR-041, DEV-239)', async () => {
+    /*
+     * CR-027(DEV-133)이 뺐던 키다 — 되돌림 파생 전에는 세면 언제나 0이고 그 0이
+     * "되돌림이 없다"와 구분되지 않았다. WP-030이 `is_reverted`를 실제로 쓰면서
+     * 그 조건이 해소됐다.
+     *
+     * **구간 밖 PR 205도 되돌려져 있다.** `terms(pr_number)` 경계가 새면 2가 나온다.
+     */
+    const { body } = await get('from_seq=0&to_seq=4');
+    expect(body.summary?.reverted_pull_request_count).toBe(1);
+  });
+
+  it('되돌림이 없는 구간은 **0이고 그 0은 사실 주장이다**', async () => {
+    const { body } = await get('from_seq=2&to_seq=3');
+    expect(body.summary?.reverted_pull_request_count).toBe(0);
   });
 });
 

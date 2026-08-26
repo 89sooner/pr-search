@@ -136,6 +136,7 @@ interface ComparisonBody {
     additions_total: number;
     deletions_total: number;
     files_truncated_pull_request_count: number;
+    reverted_pull_request_count: number;
     top_changed_paths: { path: string; count: number }[];
   };
   readonly items?: { merge_seq: number; commit_sha: string }[];
@@ -535,12 +536,17 @@ describe('GET /release-comparisons — 릴리스 구간 비교 (API-SEQ-003)', (
     expect(reversed.body.normalized_direction).toContain('to=v1.1(seq 5)');
   });
 
-  it('요약은 API-SEQ-001과 같은 계층이다 — 되돌림 키는 없다 (DEV-133)', async () => {
+  it('요약은 API-SEQ-001과 같은 계층이다 — **되돌림 키가 양쪽에 함께 생긴다** (CR-041)', async () => {
     const { body } = await compare({ from: 'v1.0', to: 'v1.1' });
     // (2, 5]: 서수 셋 중 PR은 204·205 둘.
     expect(body.summary?.pull_request_count).toBe(2);
     expect(body.summary?.commit_count).toBe(3);
-    expect(Object.keys(body.summary ?? {})).not.toContain('reverted_pull_request_count');
+    /*
+     * **이 시험도 반대를 단언하고 있었다** (DEV-133). 두 API가 `RangeSummary` 하나를
+     * 공유하므로 한쪽에만 생길 수 없다 — 그것이 이 시험의 원래 요지였고, WP-030이
+     * 키를 세우면서 요지는 그대로인 채 값만 반대가 됐다.
+     */
+    expect(Object.keys(body.summary ?? {})).toContain('reverted_pull_request_count');
   });
 
   it('size=0은 요약만 낸다', async () => {
