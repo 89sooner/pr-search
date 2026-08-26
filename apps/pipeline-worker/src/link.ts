@@ -66,6 +66,7 @@ import {
   type TargetLookup,
 } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
+import { handleRelationsReady, type RelationOutcome } from './relations.js';
 import type { WorkerMetrics } from './metrics.js';
 
 export const LINK_DERIVE_JOB = 'JOB-REL-001' as const;
@@ -500,10 +501,24 @@ export async function handleSourceReady(
   deps: LinkDeps,
   repository: RepositoryRow,
   source: LinkSource,
-): Promise<{ readonly derived: DeriveOutcome; readonly resolved: number }> {
+): Promise<{
+  readonly derived: DeriveOutcome;
+  readonly resolved: number;
+  readonly relations: RelationOutcome;
+  readonly reevaluated: number;
+}> {
   const derived = await deriveReferenceLinks(deps, repository, source);
   const resolved = await resolveReferencesTo(deps, repository, source);
-  return { derived, resolved };
+  /*
+   * ---- WP-030: 되돌림·체리픽·스택 (CR-041).
+   *
+   * **같은 진입점에 붙인다.** 별도 핸들러·별도 소비자 그룹·별도 역할을 만들지
+   * 않는다 — 입력이 같은 PostgreSQL 정본이고, 나누면 JOB-REL-006이 두 틀을
+   * 각각 돌아야 한다. 여기 붙였으므로 **재파생이 저절로 네 계열을 덮는다**
+   * (DEV-234): `runReferenceRebuild`가 이 함수를 부른다.
+   */
+  const { outcome: relations, reevaluated } = await handleRelationsReady(deps, repository, source);
+  return { derived, resolved, relations, reevaluated };
 }
 
 export async function handleLinkEvent(
@@ -553,6 +568,12 @@ export async function handleLinkEvent(
       removed: outcome.derived.removed,
       resolved: outcome.resolved,
       complete: outcome.derived.complete,
+      reverts: outcome.relations.reverts,
+      cherry_picks: outcome.relations.cherryPicks,
+      stacks: outcome.relations.stacks,
+      detached: outcome.relations.detached,
+      relations_complete: outcome.relations.complete,
+      reevaluated: outcome.reevaluated,
     });
     return { kind: 'ack' };
   } catch (error) {

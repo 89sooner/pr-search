@@ -22,6 +22,8 @@
 
 import { createHash } from 'node:crypto';
 
+import { EVIDENCE_LIMIT, maskExcluded } from './text.js';
+
 import {
   FULL_SHA_LENGTH,
   MAX_REFERENCE_SHA_PREFIX_LENGTH,
@@ -47,7 +49,7 @@ export const ABBREV_SHA_MAX = MAX_REFERENCE_SHA_PREFIX_LENGTH;
  * 아니다(매핑이 `index: false`). 본문을 통째로 복제하면 그 순간 links 인덱스가
  * PR 본문의 두 번째 사본이 된다 (NFR-005).
  */
-export const EVIDENCE_LIMIT = 200;
+export { EVIDENCE_LIMIT } from './text.js';
 
 export interface RepoSlug {
   readonly owner: string;
@@ -172,77 +174,6 @@ export function pullRequestReferenceKeys(prNumber: number, repo: RepoSlug | null
 /* ------------------------------------------------------------------------- */
 /* 제외 구간 마스킹                                                            */
 /* ------------------------------------------------------------------------- */
-
-/**
- * 코드 블록·인라인 코드·인용 구간을 **같은 길이의 공백으로** 덮는다 (AC-4).
- *
- * 지우지 않고 덮는 이유는 오프셋이 그대로 남아야 근거 텍스트를 원문에서 잘라낼
- * 수 있기 때문이다. Markdown 렌더러를 새로 구현하지는 않는다 — AC-4가 요구하는
- * 세 구간만 정확히 처리한다.
- */
-function maskExcluded(text: string): string {
-  const lines = text.split('\n');
-  let fence: string | null = null;
-  const out: string[] = [];
-
-  for (const line of lines) {
-    const opener = /^[ \t]{0,3}(`{3,}|~{3,})/.exec(line);
-
-    if (fence !== null) {
-      // 닫는 울타리는 같은 문자이고 열 때보다 짧지 않아야 한다 (CommonMark).
-      if (opener !== null && opener[1]!.startsWith(fence[0]!) && opener[1]!.length >= fence.length) {
-        fence = null;
-      }
-      out.push(blank(line));
-      continue;
-    }
-    if (opener !== null) {
-      fence = opener[1]!;
-      out.push(blank(line));
-      continue;
-    }
-    if (/^[ \t]{0,3}>/.test(line)) {
-      out.push(blank(line));
-      continue;
-    }
-    out.push(maskInlineCode(line));
-  }
-
-  return out.join('\n');
-}
-
-function blank(line: string): string {
-  return ' '.repeat(line.length);
-}
-
-/**
- * 인라인 코드 스팬을 덮는다.
- *
- * 여는 백틱 N개는 **정확히 N개**인 다음 백틱 묶음이 닫는다 (CommonMark).
- * 짝이 없으면 코드가 아니므로 덮지 않는다.
- */
-function maskInlineCode(line: string): string {
-  const runs: Array<{ readonly start: number; readonly length: number }> = [];
-  const pattern = /`+/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(line)) !== null) {
-    runs.push({ start: match.index, length: match[0].length });
-  }
-  if (runs.length < 2) return line;
-
-  const chars = line.split('');
-  let index = 0;
-  while (index < runs.length) {
-    const open = runs[index]!;
-    let close = index + 1;
-    while (close < runs.length && runs[close]!.length !== open.length) close += 1;
-    if (close >= runs.length) break;
-    const end = runs[close]!.start + runs[close]!.length;
-    for (let position = open.start; position < end; position += 1) chars[position] = ' ';
-    index = close + 1;
-  }
-  return chars.join('');
-}
 
 /* ------------------------------------------------------------------------- */
 /* 추출                                                                        */

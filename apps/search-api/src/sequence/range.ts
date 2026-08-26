@@ -88,6 +88,15 @@ export interface RangeSummary {
   readonly additions_total: number;
   readonly deletions_total: number;
   readonly files_truncated_pull_request_count: number;
+  /**
+   * 구간에 포함된 PR 중 현재 되돌려진 것의 수 (FR-SEQ-002 AC-2, CR-041 / DEV-239).
+   *
+   * **WP-030 전에는 이 키가 없었다.** 되돌림 파생이 서기 전에는 `is_reverted`가
+   * 투영이 넣은 `false`뿐이라 세면 언제나 `0`이고, 그 `0`은 "되돌림이 없다"와
+   * 구분되지 않았다 (CR-027, DEV-133). 이제 그 필드를 실제로 쓰는 워커가 있으므로
+   * `0`이 사실 주장이 된다.
+   */
+  readonly reverted_pull_request_count: number;
   readonly top_changed_paths: readonly { readonly path: string; readonly count: number }[];
 }
 
@@ -179,6 +188,7 @@ interface SummaryAggregations {
   readonly additions?: { readonly value: number | null };
   readonly deletions?: { readonly value: number | null };
   readonly files_truncated?: { readonly doc_count: number };
+  readonly reverted?: { readonly doc_count: number };
   readonly top_paths?: { readonly buckets: readonly { readonly key: string; readonly doc_count: number }[] };
 }
 
@@ -190,6 +200,7 @@ const EMPTY_SUMMARY_AGGS: RangeSummary = {
   additions_total: 0,
   deletions_total: 0,
   files_truncated_pull_request_count: 0,
+  reverted_pull_request_count: 0,
   top_changed_paths: [],
 };
 
@@ -223,6 +234,12 @@ const SUMMARY_AGGS: Record<string, estypes.AggregationsAggregationContainer> = {
   additions: { sum: { field: 'additions' } },
   deletions: { sum: { field: 'deletions' } },
   files_truncated: { filter: { term: { files_truncated: true } } },
+  /*
+   * 되돌려진 PR 수 (DEV-239). **간선 인덱스를 PR마다 다시 묻지 않는다** — 그러면
+   * 5만 건 구간에서 요약이 서지 않는다. 목록·요약이 이미 도는 이 왕복 안에서
+   * `filter` 집계 하나로 끝낸다. `files_truncated`가 같은 형태의 선례다.
+   */
+  reverted: { filter: { term: { 'link_summary.is_reverted': true } } },
   top_paths: { terms: { field: 'changed_paths.raw', size: TOP_PATHS } },
 };
 
@@ -403,6 +420,7 @@ export async function runRange(request: RangeRequest, deps: RangeDeps): Promise<
       additions_total: Math.round(aggs.additions?.value ?? 0),
       deletions_total: Math.round(aggs.deletions?.value ?? 0),
       files_truncated_pull_request_count: aggs.files_truncated?.doc_count ?? 0,
+      reverted_pull_request_count: aggs.reverted?.doc_count ?? 0,
       top_changed_paths: (aggs.top_paths?.buckets ?? []).map((bucket) => ({
         path: bucket.key,
         count: bucket.doc_count,

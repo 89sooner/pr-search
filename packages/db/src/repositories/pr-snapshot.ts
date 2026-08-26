@@ -106,3 +106,99 @@ export async function countSnapshots(db: Queryable, repositoryId: number): Promi
   );
   return Number(result.rows[0]?.count ?? 0);
 }
+
+/* ------------------------------------------------------------------------- */
+/* 관계 후보 조회 (WP-030 / CR-041, DEV-240)                                   */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * 제목이 일치하는 PR — 되돌림 제목 대조 후보 (FR-REL-004 AC-1).
+ *
+ * **후보를 하나로 좁히지 않는다.** 2건 이상이면 전부 돌려주고, 호출 측이 전부
+ * 저장한다 (예외 처리, DEV-237). `LIMIT`은 폭주 방지이지 선택이 아니다.
+ */
+export async function findPullRequestsByTitle(
+  db: Queryable,
+  repositoryId: number,
+  title: string,
+  limit: number,
+): Promise<readonly PullRequestSnapshotRow[]> {
+  const result = await db.query<PullRequestSnapshotRow>(
+    `SELECT repository_id, pr_number, document_version, source, document
+       FROM pull_request_snapshot
+      WHERE repository_id = $1 AND document ->> 'title' = $2
+      ORDER BY pr_number ASC
+      LIMIT $3`,
+    [repositoryId, title, limit],
+  );
+  return result.rows;
+}
+
+/**
+ * `head_branch`가 일치하는 **열린** PR — 스택 상위 후보 (FR-REL-006).
+ *
+ * 요구사항 문장이 "다른 **열린** PR"이므로 상태 조건이 질의에 있다. 부분 인덱스
+ * (`pull_request_snapshot_open_head_idx`)와 같은 술어를 쓴다.
+ *
+ * **후보가 여럿일 수 있다** (DEV-244). 계약이 `head_branch` 유일성을 보장하지
+ * 않으므로 첫 결과로 좁히지 않는다 — 실제 의존 하나가 조용히 사라진다.
+ */
+export async function findOpenPullRequestsByHeadBranch(
+  db: Queryable,
+  repositoryId: number,
+  headBranch: string,
+  limit: number,
+): Promise<readonly PullRequestSnapshotRow[]> {
+  const result = await db.query<PullRequestSnapshotRow>(
+    `SELECT repository_id, pr_number, document_version, source, document
+       FROM pull_request_snapshot
+      WHERE repository_id = $1
+        AND document ->> 'head_branch' = $2
+        AND document ->> 'state' = 'open'
+      ORDER BY pr_number ASC
+      LIMIT $3`,
+    [repositoryId, headBranch, limit],
+  );
+  return result.rows;
+}
+
+/**
+ * `base_branch`가 이 분기인 PR — **스택 하위(child) 역방향 후보** (DEV-232).
+ *
+ * 상위 PR이 머지·종료·retarget될 때 바뀌어야 하는 것은 **하위 PR의 간선**인데,
+ * 하위 PR에는 그때 아무 이벤트도 오지 않는다. 이 조회가 그 역방향의 경계다 —
+ * 없으면 저장소 전량 스캔이거나, 더 나쁘게는 재평가 자체를 하지 않게 된다.
+ *
+ * 상태로 거르지 않는다. 닫힌 하위 PR의 간선도 `detached` 판정 대상이다.
+ */
+export async function findPullRequestsByBaseBranch(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  limit: number,
+): Promise<readonly PullRequestSnapshotRow[]> {
+  const result = await db.query<PullRequestSnapshotRow>(
+    `SELECT repository_id, pr_number, document_version, source, document
+       FROM pull_request_snapshot
+      WHERE repository_id = $1 AND document ->> 'base_branch' = $2
+      ORDER BY pr_number ASC
+      LIMIT $3`,
+    [repositoryId, baseBranch, limit],
+  );
+  return result.rows;
+}
+
+/** 한 PR의 정본 스냅숏. 없으면 `undefined` — 실패가 아니다. */
+export async function findPullRequestSnapshot(
+  db: Queryable,
+  repositoryId: number,
+  prNumber: number,
+): Promise<PullRequestSnapshotRow | undefined> {
+  const result = await db.query<PullRequestSnapshotRow>(
+    `SELECT repository_id, pr_number, document_version, source, document
+       FROM pull_request_snapshot
+      WHERE repository_id = $1 AND pr_number = $2`,
+    [repositoryId, prNumber],
+  );
+  return result.rows[0];
+}

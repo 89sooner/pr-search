@@ -54,6 +54,15 @@ export interface WorkerMetrics {
   readonly commitEnrichTotal: Counter;
   /** 파생한 참조 간선 수 (JOB-REL-001, FR-REL-003). */
   readonly linkReferencesTotal: Counter;
+  /** 파생한 관계 간선 수 (JOB-REL-002·003·004). `link_type`·`confidence` 라벨 (CR-041). */
+  readonly linkRelationsTotal: Counter;
+  /**
+   * 순환이 감지되어 스택 간선을 만들지 않은 횟수 (FR-REL-006 AC-5, DEV-247).
+   *
+   * **0이 정상이며 양수는 조사 대상이다.** 지표가 없으면 스택 관계가 비어 있는 것이
+   * 정상인지 순환 때문인지 운영자가 가를 수 없다.
+   */
+  readonly linkStackCycleTotal: Counter;
   /** patch-id를 못 얻은 사유별 수 (FR-REL-005 AC-5). 대다수가 blob_fetch_disabled인 것이 정상이다. */
   readonly patchIdUnavailableTotal: Counter;
   readonly sequenceIndexFailed: Counter;
@@ -116,6 +125,8 @@ export function createWorkerMetrics(): WorkerMetrics {
   const sequenceRewriteDetected = new Counter('sequence_rewrite_detected_total', '감지한 히스토리 재작성 건수');
   const commitEnrichTotal = new Counter('commit_enrich_total', '커밋 메타데이터 보강 결과');
   const linkReferencesTotal = new Counter('link_references_total', '파생한 참조 간선 수');
+  const linkRelationsTotal = new Counter('link_relations_total', '파생한 관계 간선 수');
+  const linkStackCycleTotal = new Counter('link_stack_cycle_total', '순환 감지로 만들지 않은 스택 간선 수');
   const patchIdUnavailableTotal = new Counter('patch_id_unavailable_total', 'patch-id를 얻지 못한 사유별 수');
   const sequenceIndexFailed = new Counter('sequence_index_failed_total', '시퀀스 색인 반영 실패 회차');
   const sequenceReassignTotal = new Counter('sequence_reassign_total', '실행한 시퀀스 재채번 수');
@@ -154,6 +165,8 @@ export function createWorkerMetrics(): WorkerMetrics {
     sequenceIndexFailed,
     commitEnrichTotal,
     linkReferencesTotal,
+    linkRelationsTotal,
+    linkStackCycleTotal,
     patchIdUnavailableTotal,
     releaseRefreshed,
     releaseRefreshFailed,
@@ -176,6 +189,8 @@ export function createWorkerMetrics(): WorkerMetrics {
         sequenceIndexFailed,
         commitEnrichTotal,
         linkReferencesTotal,
+        linkRelationsTotal,
+        linkStackCycleTotal,
         patchIdUnavailableTotal,
         releaseRefreshed,
         releaseRefreshFailed,
