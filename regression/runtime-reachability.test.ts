@@ -819,13 +819,36 @@ describe('경로가 실재하는지', () => {
     const approved = [...infra.matchAll(/`pipeline-worker:([a-z-]+)`\s*\|/g)].map((match) => match[1]);
     expect(approved.length, '배포 단위 표에서 pipeline-worker 단위를 하나도 찾지 못했다').toBeGreaterThan(0);
 
-    const exempt = new Set(UNDEPLOYED_ROLE_ALLOWLIST.map((one) => one.role));
+    /*
+     * **이 방향에는 예외를 적용하지 않는다** (CR-047, DEV-312).
+     *
+     * 예외 목록을 여기에도 걸면, 예외 역할이 승인 표에 오르는 순간 **이 검사가
+     * 통째로 침묵한다** — 그리고 그것이 이 시험이 잡으려던 "승인했는데 만들지
+     * 않았다" 그 자체다. 표에 오른 것은 **예외 없이** manifest를 가져야 한다.
+     * 아직 만들지 않았다면 표에 올리지 않는 것이 맞고, 그 규율은 아래 시험이 건다.
+     */
     for (const role of new Set(approved)) {
-      if (exempt.has(role)) continue;
       expect(
         deployedRoles(),
         `인프라 3장이 승인한 배포 단위 'pipeline-worker:${role}'의 manifest가 없다`,
       ).toContain(role);
+    }
+  });
+
+  it('미배포 예외 역할은 배포 단위 표에 오르지 않는다', () => {
+    /*
+     * 인프라 3장이 적어 둔 규율("배포되지 않는 단위를 이 표에 먼저 적지 않는다")을
+     * 시험이 강제한다 (CR-047, DEV-312). 예외 역할이 표에 오르면 **표가 사실과
+     * 어긋난 상태**이며, 위 검사의 예외를 없앤 것만으로는 그것을 막지 못한다 —
+     * 막는 것은 이 시험이다. 예외를 지우고 manifest를 만드는 것이 정상 경로다.
+     */
+    const infra = read('docs/30_technical_architecture/pr_search_infrastructure_operations.md');
+    const approved = new Set([...infra.matchAll(/`pipeline-worker:([a-z-]+)`\s*\|/g)].map((match) => match[1]));
+    for (const one of UNDEPLOYED_ROLE_ALLOWLIST) {
+      expect(
+        approved,
+        `'${one.role}'은 배포되지 않는데 배포 단위 표에 올라 있다 (${one.dev}) — 표를 고치거나 manifest를 만들어라`,
+      ).not.toContain(one.role);
     }
   });
 
