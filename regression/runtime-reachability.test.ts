@@ -461,7 +461,23 @@ describe('관계 조회의 도달성과 계약 (WP-031 / CR-042)', () => {
     expect(body).toContain('applyMandatoryScopeFilter(');
   });
 
+  it('**부분 결과를 정상 응답으로 내지 않는다** (PR #47 리뷰 P1)', () => {
+    /*
+     * 이 질의는 라우팅을 쓰지 않아 샤드 전부를 돈다 — 한 샤드만 흔들려도
+     * 부분 결과가 된다. 짧아진 목록이 `truncated: false`와 함께 나가면
+     * 화면이 "관계가 이것뿐"이라고 말한다. 다른 조회 경로는 전부 이 검사를
+     * 지난다.
+     */
+    expect(codeOf(RELATIONS_READ)).toContain('assertNoShardFailures(response)');
+    const body = RELATIONS_READ.split('export async function searchRelationLinks')[1] ?? '';
+    // 검사가 hits를 쓰기 **전에** 있어야 한다.
+    expect(body.indexOf('assertNoShardFailures(response)')).toBeLessThan(
+      body.indexOf('const hits = response.hits.hits'),
+    );
+  });
+
   it('**응답에 상한이 있다** — 워커의 전량 스크롤을 쓰지 않는다 (DEV-252)', () => {
+
     expect(RELATIONS_READ).toContain('limit + 1');
     expect(RELATIONS_READ).toContain('truncated');
     // 워커용 helper를 사용자 경로로 가져오지 않는다.

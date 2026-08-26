@@ -37,6 +37,8 @@ import type { estypes } from '@elastic/elasticsearch';
 import { LINKS_ALIAS, type LinkEndpointKind } from './links.js';
 import { applyMandatoryScopeFilter, type AccessScope } from './scoped-query.js';
 import { search } from './search.js';
+import { assertNoShardFailures } from './sort.js';
+
 
 /** 한 요청이 돌려주는 기본 건수. */
 export const RELATION_LIMIT_DEFAULT = 50;
@@ -143,8 +145,23 @@ export async function searchRelationLinks(
     },
   );
 
+  /*
+   * **부분 결과를 정상 응답으로 내지 않는다** (PR #47 리뷰 P1).
+   *
+   * 샤드가 실패하거나 시간을 넘겨도 Elasticsearch는 살아남은 샤드의 결과로
+   * HTTP 200을 준다. 그것을 그대로 쓰면 **짧아진 목록이 `truncated: false`와
+   * 함께 나가** 화면이 "관계가 이것뿐"이라고 말한다 — 조사 도구에서 그것은
+   * 자신 있게 틀린 답이다.
+   *
+   * 이 질의는 특히 위험하다. 저장소를 건너뛰는 참조를 찾으려고 **라우팅을 쓰지
+   * 않아 샤드 전부를 돌기 때문**에, 한 샤드만 흔들려도 부분 결과가 된다. 앵커·
+   * 대상·동시 변경·일반 검색이 모두 이 검사를 지나는데 여기만 빠져 있었다.
+   */
+  assertNoShardFailures(response);
+
   const hits = response.hits.hits;
   const items: RelationLinkHit[] = [];
+
   for (const hit of hits.slice(0, limit)) {
     if (hit._source !== undefined) items.push(hit._source);
   }
