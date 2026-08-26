@@ -774,10 +774,8 @@ describe('경로가 실재하는지', () => {
     },
   ];
 
-  it('코드가 갈래를 만든 역할은 그것을 세우는 manifest를 갖는다', () => {
-    const declared = [...WORKER_INDEX.matchAll(/roles\.includes\('([a-z-]+)'\)/g)].map((match) => match[1]);
-    expect(declared.length).toBeGreaterThan(0);
-
+  /** manifest가 실제로 켜는 역할 집합. 파일 존재가 아니라 `PIPELINE_WORKER_ROLES` **값**을 본다. */
+  const deployedRoles = (): Set<string> => {
     const dir = new URL('deploy/k8s/', new URL('..', import.meta.url));
     const deployed = new Set<string>();
     for (const name of readdirSync(dir).filter((one) => one.endsWith('.yaml'))) {
@@ -789,11 +787,67 @@ describe('경로가 실재하는지', () => {
         if (trimmed !== '') deployed.add(trimmed);
       }
     }
+    return deployed;
+  };
 
+  it('코드가 갈래를 만든 역할은 그것을 세우는 manifest를 갖는다', () => {
+    const declared = [...WORKER_INDEX.matchAll(/roles\.includes\('([a-z-]+)'\)/g)].map((match) => match[1]);
+    expect(declared.length).toBeGreaterThan(0);
+
+    const deployed = deployedRoles();
     const exempt = new Set(UNDEPLOYED_ROLE_ALLOWLIST.map((one) => one.role));
     for (const role of new Set(declared)) {
       if (exempt.has(role)) continue;
       expect(deployed, `역할 '${role}'을 세우는 manifest가 없다 — 그 갈래는 배포에서 실행되지 않는다`).toContain(role);
+    }
+  });
+
+  /*
+   * **두 정본을 모두 읽는다** (CR-046, DEV-310).
+   *
+   * 위 시험은 `index.ts`의 갈래를 정본으로 삼는다 — 그것은 "구현했는데 배포되지
+   * 않았다"(`batch`가 그랬다)를 잡는다. 그러나 **구현 자체가 없는 경우**는 못 잡는다:
+   * 인프라 3장이 배포 단위를 승인했는데 워커 갈래도 manifest도 없으면 `declared`에
+   * 아예 나타나지 않으므로 이 검사를 그냥 통과한다.
+   *
+   * WP-035 계약이 "**인프라 3장의 배포 단위 표를 정본으로 삼아** 승인된 단위에
+   * manifest가 있는가를 묻는다"고 적었는데 구현은 코드만 정본으로 삼았다 —
+   * **하위 문서와 구현이 어긋난 자리이며 DEV-291과 같은 계열이다.** 두 방향을 모두 건다.
+   */
+  it('인프라 3장이 승인한 배포 단위는 manifest를 갖는다', () => {
+    const infra = read('docs/30_technical_architecture/pr_search_infrastructure_operations.md');
+    const approved = [...infra.matchAll(/`pipeline-worker:([a-z-]+)`\s*\|/g)].map((match) => match[1]);
+    expect(approved.length, '배포 단위 표에서 pipeline-worker 단위를 하나도 찾지 못했다').toBeGreaterThan(0);
+
+    const exempt = new Set(UNDEPLOYED_ROLE_ALLOWLIST.map((one) => one.role));
+    for (const role of new Set(approved)) {
+      if (exempt.has(role)) continue;
+      expect(
+        deployedRoles(),
+        `인프라 3장이 승인한 배포 단위 'pipeline-worker:${role}'의 manifest가 없다`,
+      ).toContain(role);
+    }
+  });
+
+  it('배포 단위 표와 코드 갈래가 서로를 덮는다', () => {
+    /*
+     * 표에만 있고 코드에 없는 역할은 **아직 만들지 않은 것**이고, 코드에만 있고 표에
+     * 없는 역할은 **표가 낡은 것**이다. 둘 다 조용히 두면 어느 쪽이 사실인지 아무도
+     * 모른다 (DEV-307).
+     */
+    const infra = read('docs/30_technical_architecture/pr_search_infrastructure_operations.md');
+    const approved = new Set([...infra.matchAll(/`pipeline-worker:([a-z-]+)`\s*\|/g)].map((match) => match[1]));
+    const declared = new Set(
+      [...WORKER_INDEX.matchAll(/roles\.includes\('([a-z-]+)'\)/g)].map((match) => match[1]),
+    );
+    const exempt = new Set(UNDEPLOYED_ROLE_ALLOWLIST.map((one) => one.role));
+
+    for (const role of approved) {
+      expect(declared, `표가 승인한 '${role}'을 코드가 갈래로 만들지 않는다`).toContain(role);
+    }
+    for (const role of declared) {
+      if (exempt.has(role)) continue;
+      expect(approved, `코드가 갈래를 만든 '${role}'이 배포 단위 표에 없다`).toContain(role);
     }
   });
 

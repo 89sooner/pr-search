@@ -43,9 +43,11 @@
 | `pipeline-worker:link` | 관계 파생 | `prs:projected` 적체 | 1 / 4 | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:mirror` | git 미러 동기화·커밋 메타데이터 보강 | 저장소 수 | 1 / 2 | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:reconcile` | 조정 스캔 | 저장소 수 | 1 / 1 | 하트비트 | 이전 이미지 재배포 |
-| `pipeline-worker:batch` | 배치 잡 (JOB-ING-006 재색인 · JOB-ING-007 아웃박스 재적재) | 고정 | 1 / 3 | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:batch` | 배치 잡 (JOB-ING-006 재색인 · JOB-ING-007 아웃박스 재적재) | 고정 | **1 / 1** | 하트비트 | 이전 이미지 재배포 |
 | `filebeat` | 원본 아카이브 적재 | DaemonSet | - | Filebeat 자체 | 설정 롤백 |
 | `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005) | 대기 중 실행 수 | 2 / 8 | `GET /healthz` (gh 버전·manifest 대조 포함) | 이전 이미지 재배포 |
+
+**`batch`의 상한은 3이 아니라 1이다** (CR-046, DEV-311). 이 표가 3을 허용하면 운영자가 문서를 따라 늘릴 수 있는데, JOB-ING-007은 리더 선출이 없는 주기 스윕이라 파드마다 같은 아웃박스 행을 다시 발행하고 JOB-ING-006은 동시 실행 상한이 1이다. `pipeline-worker-batch.yaml`의 주석은 replica 1을 요구하는데 이 표가 3을 승인하고 있었다 — **아키텍처가 배포 계약이 경고하는 형상을 허가하고 있었다.** 조정 수단이 생기면 그때 올린다.
 
 **이 표는 `deploy/k8s/`와 서로를 검사한다** (CR-045, DEV-293·307). `mirror`(CR-038)·`reconcile`(CR-034)은 manifest가 신설됐는데 이 표에 오르지 않았고, 반대로 `batch`는 이 표에 있는데 **manifest가 없었다** — 그 결과 이미 구현된 JOB-ING-007이 배포되지 않았다(DEV-292). 이제 운영 도달성 회귀가 **코드가 갈래를 만든 역할마다 그것을 세우는 manifest가 있는지** 묻는다. `authz`(JOB-AUTH-001)·`release`(JOB-REL-007)·`backfill`(JOB-ING-004) 셋은 **아직 배포되지 않으며** DEV-304~306으로 열려 있다 — **배포되지 않는 단위를 이 표에 먼저 적지 않는다.** 그러면 표가 다시 사실과 어긋난다.
 
