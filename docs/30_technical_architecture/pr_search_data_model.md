@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.5 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -885,6 +885,19 @@ ALTER TABLE gh_capability_snapshot
 | `has_cherry_pick` | WP-030 | FR-REL-005 체리픽 |
 | `has_stack` | WP-030 | FR-REL-006 스택 |
 
+**leaf boolean은 간선 하나의 결과가 아니다 (CR-041, DEV-241).** "간선 하나를 지웠으니 `false`"는 틀렸다 — 같은
+종류의 다른 간선이 남아 있을 수 있다. 조정이 끝난 뒤 **현재 active 간선 집합에서 다시 계산한다.**
+
+| leaf | 정의 |
+| --- | --- |
+| `has_revert` | 이 엔티티를 `from`으로 하는 active `reverts` 간선이 1건 이상 |
+| `is_reverted` | 이 엔티티를 `to`로 하는 active `reverts` 간선이 1건 이상 |
+| `has_cherry_pick` | 이 엔티티가 걸린 active `cherry_picks` 간선이 1건 이상 (방향 무관 — 목록 배지의 뜻이다) |
+| `has_stack` | 이 PR이 걸린 `stacks_on` 간선 중 **`detached`가 아닌 것**이 1건 이상 |
+
+`false`는 **"확인했고 현재 없다"**일 때만 쓴다. 계산하지 못한 회차는 값을 건드리지 않는다 — WP-029가
+`reference_count`에 세운 규율과 같다.
+
 **조건부 업서트 스크립트로는 이 분업을 표현할 수 없다.** 그 스크립트는 `ctx._source[key] = value`로 대입하므로
 `link_summary`를 넘기면 **객체를 통째로 바꾼다** — WP-029가 참조 수만 고치려 해도 WP-030이 써 둔 네 값이 사라진다.
 그래서 관계 요약은 **leaf 단위로 대입하는 전용 경로**를 쓴다. CR-038이 커밋 메타데이터에서 같은 이유로 만든
@@ -893,6 +906,14 @@ ALTER TABLE gh_capability_snapshot
 **`to_repository_id`·`detached`의 소유 (CR-039, DEV-223).** `to_repository_id`는 **WP-029**가 대상 저장소를 해석한
 시점에 채운다. `detached`는 **WP-030**이 소유한다 — WP-029는 이 필드를 두지 않는다. `strict` 매핑에서 값을 두지
 않는 것과 `false`를 두는 것은 다른 주장이며, 아직 계산하지 않은 것을 `false`로 적으면 "확인했고 아니었다"가 된다.
+
+**`detached`는 `stacks_on` 전용이며 "지우지 않는 제거"다 (CR-041, DEV-238).** FR-REL-006 AC-3은 상위 PR이 머지되어
+조건이 깨지면 간선을 "해제 상태로 **표시**한다"고 요구한다 — 지우라고 하지 않는다. 지우면 *그런 의존이 있었다*는
+사실이 사라져 사후 조사가 불가능해진다. 조건이 다시 성립하면 `false`로 되돌린다. **한 번도 성립한 적 없는 후보에는
+간선 자체를 만들지 않는다** — `detached: true`를 미리 두면 없었던 관계를 주장하게 된다.
+
+`references`·`reverts`·`cherry_picks`는 이 필드를 두지 않는다. 그 셋은 근거가 사라지면 **간선을 제거**한다 —
+본문에서 사라진 참조·되돌림 표현, 후보 집합에서 빠진 체리픽은 "해제된 관계"가 아니라 **없는 관계**다.
 
 ```painless
 boolean fresh = ctx._source.document_version == null

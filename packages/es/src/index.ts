@@ -93,18 +93,28 @@ export type { ApplySequenceInput, ApplySequenceResult, SequenceAssignment } from
 export { applyMappings, dropEntityIndices } from './bootstrap.js';
 export type { BootstrapResult } from './bootstrap.js';
 export {
+  DERIVED_LINK_TYPES,
   LINKS_ALIAS,
   LINK_SUMMARY_SCRIPT,
   REFERENCE_LINK_TYPE,
   REFERENCE_PAGE_SIZE,
+  deleteStaleDerivedLinks,
   deleteStaleReferenceLinks,
+  findLinksFrom,
+  findLinksTo,
   findReferenceTargets,
   findReferencesTo,
   resolveReferenceLinks,
+  setLinkDetached,
+  setLinkResolved,
+  summarizeRelations,
   updateLinkSummary,
+  writeDerivedLinks,
   writeReferenceLinks,
 } from './links.js';
 export type {
+  DerivedLinkDoc,
+  DerivedLinkTypeName,
   LinkEndpointKind,
   LinkScopeFields,
   LinkSummaryResult,
@@ -114,6 +124,8 @@ export type {
   ReferenceLinkDoc,
   ReferenceResolution,
   ReferencingLink,
+  RelationSummary,
+  StoredLink,
   TargetLookup,
 } from './links.js';
 

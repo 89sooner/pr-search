@@ -243,3 +243,123 @@ export async function listCommitsMissingProjection(
   );
   return result.rows;
 }
+
+/* ------------------------------------------------------------------------- */
+/* 관계 후보 조회 (WP-030 / CR-041, DEV-240)                                   */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * 같은 저장소에서 같은 `patch_id`를 가진 커밋 (FR-REL-005 AC-2·AC-3·AC-4).
+ *
+ * ## 동일 저장소 한정을 질의가 강제한다
+ *
+ * AC-3의 "동일 저장소 안으로 한정"을 호출 측 필터로 미루지 않는다. 그 한 줄이
+ * 사라지는 순간 저장소 간 간선이 **조용히** 생기고, 그것은 접근 범위가 다른
+ * 저장소의 내용을 잇는 것이다. 조건이 `WHERE`에 있으면 변이가 시험에 걸린다.
+ *
+ * ## 순서는 결정론이다 (DEV-243)
+ *
+ * `committed_at` 내림차순 + 동률 시 `commit_sha` 오름차순. 상위 5건이 회차마다
+ * 달라지면 같은 정본에서 다른 색인이 나와 ADR-004의 재구축 증명이 깨진다.
+ * 인덱스(`commit_snapshot_patch_candidate_idx`)가 이 순서를 그대로 담는다.
+ *
+ * `self`는 제외한다 — 자기 자신은 후보가 아니다.
+ */
+export interface PatchCandidateBound {
+  /** `earlier`면 기준보다 이전, `later`면 이후. 전순서는 `(committed_at, commit_sha)`다. */
+  readonly relation: 'earlier' | 'later';
+  readonly committedAt: Date;
+  readonly commitSha: string;
+}
+
+export async function findCommitsByPatchId(
+  db: Queryable,
+  repositoryId: number,
+  patchId: string,
+  selfSha: string,
+  limit: number,
+  bound?: PatchCandidateBound,
+): Promise<readonly CommitSnapshotRow[]> {
+  /*
+   * **방향 술어가 질의 안에 있어야 한다** (PR #46 리뷰 P2).
+   *
+   * 넓게 가져와 애플리케이션에서 거르면, 기준보다 **나중인** 커밋이 상한을 채우는
+   * 순간 이전 후보가 한 건도 남지 않는다 — 그리고 조정이 그것을 "후보가 사라졌다"로
+   * 읽어 **멀쩡한 체리픽 간선을 지운다.** 같은 patch를 여러 브랜치가 들고 있는
+   * 재구축에서 실제로 일어난다.
+   */
+  const where = ['repository_id = $1', 'patch_id = $2', 'commit_sha <> $3'];
+  const params: unknown[] = [repositoryId, patchId, selfSha];
+  let order = 'committed_at DESC, commit_sha ASC';
+
+  if (bound !== undefined) {
+    const at = `$${String(params.length + 1)}`;
+    const sha = `$${String(params.length + 2)}`;
+    params.push(bound.committedAt, bound.commitSha);
+    if (bound.relation === 'earlier') {
+      where.push(`(committed_at < ${at} OR (committed_at = ${at} AND commit_sha < ${sha}))`);
+    } else {
+      where.push(`(committed_at > ${at} OR (committed_at = ${at} AND commit_sha > ${sha}))`);
+      // 이후 후보는 오름차순이 자연스럽다. 어느 쪽이든 **결정론이어야** 한다.
+      order = 'committed_at ASC, commit_sha ASC';
+    }
+  }
+
+  params.push(limit);
+  const result = await db.query<CommitSnapshotRow>(
+    `SELECT * FROM commit_snapshot
+      WHERE ${where.join(' AND ')}
+      ORDER BY ${order}
+      LIMIT $${String(params.length)}`,
+    params,
+  );
+  return result.rows;
+}
+
+/**
+ * 제목(메시지 첫 줄)이 일치하는 커밋 — 되돌림 제목 대조 후보 (FR-REL-004 AC-1).
+ *
+ * 식(`split_part(message, E'\n', 1)`)이 인덱스와 **정확히 같아야** 한다. 한쪽만
+ * 바꾸면 인덱스가 조용히 무시되고 저장소 전체 스캔이 된다.
+ *
+ * **후보를 하나로 좁히지 않는다.** 2건 이상이면 전부 돌려준다 — 고르는 것은
+ * 이 함수의 일이 아니고, 애초에 골라서는 안 된다 (DEV-237).
+ */
+export async function findCommitsBySubject(
+  db: Queryable,
+  repositoryId: number,
+  subject: string,
+  limit: number,
+): Promise<readonly CommitSnapshotRow[]> {
+  const result = await db.query<CommitSnapshotRow>(
+    `SELECT * FROM commit_snapshot
+      WHERE repository_id = $1 AND split_part(message, E'\n', 1) = $2
+      ORDER BY committed_at DESC, commit_sha ASC
+      LIMIT $3`,
+    [repositoryId, subject, limit],
+  );
+  return result.rows;
+}
+
+/**
+ * 이 커밋을 되돌림 대상으로 삼을 수 있는 **다른 커밋들** (역방향 후보, DEV-242).
+ *
+ * 트레일러는 40자 SHA를 본문에 그대로 적으므로 문자열 포함으로 찾는다. 인덱스가
+ * 없는 조회이므로 **저장소 범위 + 상한**으로 경계를 만든다 — 이 경로는 커밋
+ * 하나가 새로 준비됐을 때만 돈다.
+ */
+export async function findCommitsRevertingSha(
+  db: Queryable,
+  repositoryId: number,
+  sha: string,
+  limit: number,
+): Promise<readonly CommitSnapshotRow[]> {
+  const result = await db.query<CommitSnapshotRow>(
+    `SELECT * FROM commit_snapshot
+      WHERE repository_id = $1 AND commit_sha <> $2 AND position($2 in lower(message)) > 0
+      ORDER BY commit_sha ASC
+      LIMIT $3`,
+    [repositoryId, sha.toLowerCase(), limit],
+  );
+  return result.rows;
+}

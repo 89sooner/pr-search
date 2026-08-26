@@ -523,8 +523,29 @@ export const LINK_SUMMARY_SCRIPT = [
   '    ctx._source.link_summary.reference_count = next; changed = true;',
   '  }',
   '}',
-  'if (ctx._source.links_pending != params.links_pending) {',
+  /*
+   * **생략하면 건드리지 않는다** (CR-041, PR #46 리뷰 P1).
+   *
+   * `links_pending`은 **참조 추출의 완결 상태**다. 관계 파생만 도는 회차가 그것을
+   * `false`로 덮으면 참조 쪽의 실패 표식이 사라지고, 그 문서는 재파생 대상에서
+   * 조용히 빠진다 — 실패했는데 아무도 다시 하지 않는 자리가 하나 더 생긴다.
+   */
+  'if (params.links_pending != null && ctx._source.links_pending != params.links_pending) {',
   '  ctx._source.links_pending = params.links_pending; changed = true;',
+  '}',
+  /*
+   * WP-030의 네 leaf도 **leaf 단위로** 대입한다 (CR-041, DEV-241·222).
+   *
+   * `params.relations`가 없으면 건드리지 않는다 — 참조만 고치는 회차가 관계
+   * boolean을 지우면 안 되고, 그 반대도 마찬가지다. 값이 넘어왔다는 것은
+   * **호출 측이 active 간선 집합에서 다시 계산했다**는 뜻이다.
+   */
+  'if (params.relations != null) {',
+  '  for (def entry : params.relations.entrySet()) {',
+  '    if (ctx._source.link_summary[entry.getKey()] != entry.getValue()) {',
+  '      ctx._source.link_summary[entry.getKey()] = entry.getValue(); changed = true;',
+  '    }',
+  '  }',
   '}',
   "if (!changed) { ctx.op = 'noop'; }",
 ].join('\n');
@@ -535,7 +556,24 @@ export interface LinkSummaryUpdate {
   readonly repositoryId: number;
   /** 생략하면 참조 수를 건드리지 않는다 — 세지 못한 회차의 정직한 표현이다. */
   readonly referenceCount?: number;
-  readonly linksPending: boolean;
+  /**
+   * 참조 추출의 완결 상태 (FR-REL-003).
+   *
+   * **생략하면 건드리지 않는다.** 관계 파생(WP-030)만 도는 회차는 이 값을 넘기지
+   * 않는다 — 그 워커는 참조를 추출하지 않았으므로 그 상태에 대해 할 말이 없다.
+   */
+  readonly linksPending?: boolean;
+  /**
+   * WP-030의 관계 leaf (CR-041). **생략하면 건드리지 않는다.**
+   *
+   * 참조만 고치는 회차가 관계 boolean을 지우지 않게 하는 것이 생략의 뜻이다.
+   *
+   * **부분 집합을 받는다.** `has_stack`은 PR 문서에만 있는 leaf이고 커밋 매핑에는
+   * 선언되어 있지 않다 — 스택은 PR↔PR 관계이기 때문이다. 커밋에 `false`를 쓰면
+   * `dynamic: strict`가 거부하며, 거부하는 것이 옳다: **없는 것과 아닌 것은
+   * 다른 주장**이다.
+   */
+  readonly relations?: Partial<RelationSummary>;
 }
 
 export type LinkSummaryResult = 'updated' | 'noop' | 'missing';
@@ -564,7 +602,12 @@ export async function updateLinkSummary(
         source: LINK_SUMMARY_SCRIPT,
         params: {
           reference_count: input.referenceCount ?? null,
-          links_pending: input.linksPending,
+          links_pending: input.linksPending ?? null,
+          /*
+           * `null`이면 스크립트가 건드리지 않는다 — WP-029만 도는 회차가 WP-030의
+           * 네 값을 지우지 않고, 그 반대도 마찬가지다 (DEV-222).
+           */
+          relations: input.relations === undefined ? null : { ...input.relations },
         },
       },
     });
@@ -578,4 +621,447 @@ export async function updateLinkSummary(
 function isNotFound(error: unknown): boolean {
   const shape = error as { statusCode?: number; meta?: { statusCode?: number } };
   return shape.statusCode === 404 || shape.meta?.statusCode === 404;
+}
+
+/* ------------------------------------------------------------------------- */
+/* 파생 간선 — 되돌림·체리픽·스택 (WP-030 / CR-041)                            */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * `references`가 아닌 저장 간선 유형.
+ *
+ * `contains`(릴리스↔커밋)는 릴리스 투영이 소유하므로 여기 없다.
+ */
+export const DERIVED_LINK_TYPES = ['reverts', 'cherry_picks', 'stacks_on'] as const;
+export type DerivedLinkTypeName = (typeof DERIVED_LINK_TYPES)[number];
+
+export interface DerivedLinkDoc {
+  readonly link_id: string;
+  readonly link_type: DerivedLinkTypeName;
+  readonly scope: LinkScopeFields;
+  readonly from_type: LinkEndpointKind;
+  readonly from_id: string;
+  readonly to_type: LinkEndpointKind;
+  readonly to_id: string;
+  readonly to_repository_id: number;
+  readonly confidence: 'exact' | 'derived' | 'heuristic';
+  readonly evidence: string;
+  /** `stacks_on`만 갖는다. 다른 유형에는 두지 않는다 (CR-041, DEV-238). */
+  readonly detached?: boolean;
+  /** source 정본의 시각. `now()`가 아니다 — 재파생이 결정론적이어야 한다. */
+  readonly created_at: string;
+  /**
+   * 대상이 색인되었는가.
+   *
+   * 되돌림 트레일러는 대상 SHA를 **직접 지목**하므로 대상 문서가 아직 없어도
+   * 끝점이 정해진다. 그때는 `false`로 저장하고 대상이 나타나면 갱신한다 —
+   * `link_id`가 끝점으로 만들어지므로 **같은 문서의 갱신**이다.
+   */
+  readonly resolved: boolean;
+}
+
+function toDerivedSource(doc: DerivedLinkDoc): Record<string, unknown> {
+  const source: Record<string, unknown> = {
+    link_id: doc.link_id,
+    repository_id: doc.scope.repository_id,
+    org_id: doc.scope.org_id,
+    visibility: doc.scope.visibility,
+    allowed_team_ids: [...doc.scope.allowed_team_ids],
+    from_type: doc.from_type,
+    from_id: doc.from_id,
+    to_type: doc.to_type,
+    to_id: doc.to_id,
+    to_repository_id: doc.to_repository_id,
+    link_type: doc.link_type,
+    confidence: doc.confidence,
+    evidence: doc.evidence,
+    resolved: doc.resolved,
+    created_at: doc.created_at,
+  };
+  /*
+   * `detached`는 `stacks_on`에만 둔다 (DEV-238). `strict` 매핑에서 값을 두지
+   * 않는 것과 `false`를 두는 것은 다른 주장이다 — 되돌림 간선에 `false`를 적으면
+   * "해제될 수 있는 관계인데 아직 아니다"라는 뜻이 되고, 그런 개념이 없다.
+   */
+  if (doc.link_type === 'stacks_on') source['detached'] = doc.detached === true;
+  /*
+   * `reference_key`를 두지 않는다 — 그것은 대상이 나중에 밝혀지는 참조의 정체성
+   * 수단이며(DEV-217), 이 셋은 대상을 알아낸 뒤에 만들어진다.
+   */
+  return source;
+}
+
+/** 파생 간선을 통째로 색인한다. 같은 `link_id`면 덮어쓴다 (멱등). */
+export async function writeDerivedLinks(
+  client: Client,
+  docs: readonly DerivedLinkDoc[],
+  options: { readonly refresh?: boolean } = {},
+): Promise<LinkWriteResult> {
+  if (docs.length === 0) return { written: 0, failures: [] };
+
+  const operations: unknown[] = [];
+  for (const doc of docs) {
+    operations.push({
+      index: { _index: LINKS_ALIAS, _id: doc.link_id, routing: String(doc.scope.repository_id) },
+    });
+    operations.push(toDerivedSource(doc));
+  }
+
+  const response = await client.bulk({
+    operations: operations as estypes.BulkRequest['operations'],
+    ...(options.refresh === true ? { refresh: true } : {}),
+  });
+
+  const failures: LinkWriteFailure[] = [];
+  for (const item of response.items) {
+    const outcome = item.index;
+    if (outcome?.error === undefined || outcome.error === null) continue;
+    failures.push({ link_id: outcome._id ?? '', status: outcome.status ?? 0, reason: outcome.error.type });
+  }
+  return { written: docs.length - failures.length, failures };
+}
+
+/**
+ * 이번 파생이 만들지 않은 **이 source의 이 유형** 간선을 지운다 (DEV-233).
+ *
+ * `stacks_on`에는 쓰지 않는다 — 그 계열은 제거가 아니라 `detached`다. 호출 측이
+ * 유형을 넘기므로 규칙이 한곳에 모이지 않지만, **계열마다 수명이 다르다는 사실을
+ * 하나의 추상으로 덮는 것보다 낫다.** 덮으면 그 차이가 조건문 속으로 숨는다.
+ *
+ * `deleteStaleReferenceLinks`와 같은 이유로 **먼저 refresh한다** —
+ * `delete_by_query`는 검색으로 대상을 찾는다.
+ *
+ * 호출 측이 **완전한 파생에 성공했을 때만** 부른다. 실패한 회차가 부르면 멀쩡한
+ * 간선이 사라진다.
+ */
+export async function deleteStaleDerivedLinks(
+  client: Client,
+  input: {
+    readonly repositoryId: number;
+    readonly linkType: 'reverts' | 'cherry_picks';
+    readonly fromType: LinkEndpointKind;
+    readonly fromId: string;
+    readonly keep: readonly string[];
+  },
+): Promise<number> {
+  await client.indices.refresh({ index: LINKS_ALIAS });
+
+  const response = await client.deleteByQuery({
+    index: LINKS_ALIAS,
+    routing: String(input.repositoryId),
+    conflicts: 'proceed',
+    refresh: true,
+    query: {
+      bool: {
+        filter: [
+          { term: { repository_id: input.repositoryId } },
+          { term: { link_type: input.linkType } },
+          { term: { from_type: input.fromType } },
+          { term: { from_id: input.fromId } },
+        ],
+        ...(input.keep.length === 0 ? {} : { must_not: [{ ids: { values: [...input.keep] } }] }),
+      },
+    },
+  });
+  return response.deleted ?? 0;
+}
+
+/** 간선 하나의 최소 정보. 조정과 요약 재계산이 읽는다. */
+export interface StoredLink {
+  readonly link_id: string;
+  readonly repository_id: number;
+  readonly link_type: string;
+  readonly from_type: string;
+  readonly from_id: string;
+  readonly to_type?: string;
+  readonly to_id?: string;
+  readonly detached?: boolean;
+  readonly resolved?: boolean;
+}
+
+const LINK_FIELDS = [
+  'link_id',
+  'repository_id',
+  'link_type',
+  'from_type',
+  'from_id',
+  'to_type',
+  'to_id',
+  'detached',
+  'resolved',
+];
+
+/**
+ * 한 저장소에서 조건에 맞는 간선을 **끝까지** 가져온다.
+ *
+ * 한 페이지만 읽으면 페이지를 넘는 간선이 조정에서 영영 빠진다 — WP-029가 PR #44
+ * 리뷰에서 배운 자리다. `link_id` 정렬 + `search_after`로 끝까지 넘긴다.
+ */
+async function scrollLinks(
+  client: Client,
+  repositoryId: number,
+  filter: readonly estypes.QueryDslQueryContainer[],
+  pageSize: number,
+): Promise<readonly StoredLink[]> {
+  const out: StoredLink[] = [];
+  let after: readonly unknown[] | undefined;
+
+  for (;;) {
+    const response = await client.search<StoredLink>({
+      index: LINKS_ALIAS,
+      routing: String(repositoryId),
+      size: pageSize,
+      _source: LINK_FIELDS,
+      sort: [{ link_id: 'asc' }],
+      query: { bool: { filter: [{ term: { repository_id: repositoryId } }, ...filter] } },
+      ...(after === undefined ? {} : { search_after: [...after] }),
+    });
+    const hits = response.hits.hits;
+    for (const hit of hits) {
+      if (hit._source !== undefined) out.push(hit._source);
+    }
+    if (hits.length < pageSize) return out;
+    const last = hits[hits.length - 1];
+    if (last?.sort === undefined) return out;
+    after = last.sort;
+  }
+}
+
+/** 이 source가 가진 특정 유형의 간선 전부. */
+export async function findLinksFrom(
+  client: Client,
+  input: {
+    readonly repositoryId: number;
+    readonly fromType: LinkEndpointKind;
+    readonly fromId: string;
+    readonly linkTypes: readonly string[];
+    readonly pageSize?: number;
+  },
+): Promise<readonly StoredLink[]> {
+  return scrollLinks(
+    client,
+    input.repositoryId,
+    [
+      { terms: { link_type: [...input.linkTypes] } },
+      { term: { from_type: input.fromType } },
+      { term: { from_id: input.fromId } },
+    ],
+    input.pageSize ?? REFERENCE_PAGE_SIZE,
+  );
+}
+
+/**
+ * 이 대상을 가리키는 간선 전부 (역방향).
+ *
+ * `to_repository_id`가 아니라 `repository_id`(= source 저장소)로 라우팅한다는 점에
+ * 주의한다 — 저장소 간 간선은 source 쪽에 산다. 되돌림·체리픽·스택은 모두 동일
+ * 저장소 관계이므로 이 경로에서 둘은 같다.
+ */
+export async function findLinksTo(
+  client: Client,
+  input: {
+    readonly repositoryId: number;
+    readonly toType: LinkEndpointKind;
+    readonly toId: string;
+    readonly linkTypes: readonly string[];
+    readonly pageSize?: number;
+  },
+): Promise<readonly StoredLink[]> {
+  return scrollLinks(
+    client,
+    input.repositoryId,
+    [
+      { terms: { link_type: [...input.linkTypes] } },
+      { term: { to_type: input.toType } },
+      { term: { to_id: input.toId } },
+    ],
+    input.pageSize ?? REFERENCE_PAGE_SIZE,
+  );
+}
+
+/**
+ * `detached` 표식을 바꾼다 (FR-REL-006 AC-3, DEV-238).
+ *
+ * 간선을 **지우지 않는다.** 지우면 "그런 의존이 있었다"는 사실이 사라져 사후
+ * 조사가 불가능해진다. 조건이 다시 성립하면 `false`로 되돌린다.
+ */
+export async function setLinkDetached(
+  client: Client,
+  updates: readonly { readonly link_id: string; readonly repository_id: number; readonly detached: boolean }[],
+  options: { readonly refresh?: boolean } = {},
+): Promise<LinkWriteResult> {
+  if (updates.length === 0) return { written: 0, failures: [] };
+
+  const operations: unknown[] = [];
+  for (const update of updates) {
+    operations.push({
+      update: {
+        _index: LINKS_ALIAS,
+        _id: update.link_id,
+        routing: String(update.repository_id),
+        retry_on_conflict: 3,
+      },
+    });
+    operations.push({ doc: { detached: update.detached } });
+  }
+
+  const response = await client.bulk({
+    operations: operations as estypes.BulkRequest['operations'],
+    ...(options.refresh === true ? { refresh: true } : {}),
+  });
+
+  const failures: LinkWriteFailure[] = [];
+  for (const item of response.items) {
+    const outcome = item.update;
+    if (outcome?.error === undefined || outcome.error === null) continue;
+    failures.push({ link_id: outcome._id ?? '', status: outcome.status ?? 0, reason: outcome.error.type });
+  }
+  return { written: updates.length - failures.length, failures };
+}
+
+/**
+ * 대상이 색인된 파생 간선의 `resolved`를 갱신한다.
+ *
+ * 되돌림 트레일러처럼 **끝점은 알지만 대상 문서가 아직 없는** 간선이 있다.
+ * `link_id`가 끝점으로 만들어지므로 이것은 새 문서가 아니라 **같은 문서의 갱신**
+ * 이다 — `references`가 `reference_key`로 얻는 성질을 이쪽은 끝점으로 얻는다.
+ */
+export async function setLinkResolved(
+  client: Client,
+  updates: readonly { readonly link_id: string; readonly repository_id: number; readonly resolved: boolean }[],
+  options: { readonly refresh?: boolean } = {},
+): Promise<LinkWriteResult> {
+  if (updates.length === 0) return { written: 0, failures: [] };
+
+  const operations: unknown[] = [];
+  for (const update of updates) {
+    operations.push({
+      update: {
+        _index: LINKS_ALIAS,
+        _id: update.link_id,
+        routing: String(update.repository_id),
+        retry_on_conflict: 3,
+      },
+    });
+    operations.push({ doc: { resolved: update.resolved } });
+  }
+
+  const response = await client.bulk({
+    operations: operations as estypes.BulkRequest['operations'],
+    ...(options.refresh === true ? { refresh: true } : {}),
+  });
+
+  const failures: LinkWriteFailure[] = [];
+  for (const item of response.items) {
+    const outcome = item.update;
+    if (outcome?.error === undefined || outcome.error === null) continue;
+    failures.push({ link_id: outcome._id ?? '', status: outcome.status ?? 0, reason: outcome.error.type });
+  }
+  return { written: updates.length - failures.length, failures };
+}
+
+/* ------------------------------------------------------------------------- */
+/* 관계 요약 재계산 (CR-041, DEV-241)                                          */
+/* ------------------------------------------------------------------------- */
+
+export interface RelationSummary {
+  readonly has_revert: boolean;
+  readonly is_reverted: boolean;
+  readonly has_cherry_pick: boolean;
+  readonly has_stack: boolean;
+}
+
+interface SummaryAggs {
+  readonly out_revert?: { readonly doc_count: number };
+  readonly in_revert?: { readonly doc_count: number };
+  readonly cherry?: { readonly doc_count: number };
+  readonly stack?: { readonly doc_count: number };
+}
+
+/**
+ * 한 엔티티의 관계 요약을 **현재 active 간선 집합에서** 다시 계산한다 (DEV-241).
+ *
+ * ## 왜 간선 하나의 결과로 쓰면 안 되는가
+ *
+ * "간선을 지웠으니 `has_revert = false`"는 틀렸다 — 같은 종류의 다른 간선이 남아
+ * 있을 수 있다. `false`는 **"확인했고 현재 없다"**여야 하며, 그러려면 조정이 끝난
+ * 뒤 집합 전체를 봐야 한다.
+ *
+ * 왕복은 한 번이다. 바깥 질의가 "이 엔티티에 걸린 간선"으로 좁히고 filter 집계
+ * 넷이 그 안에서 센다.
+ */
+export async function summarizeRelations(
+  client: Client,
+  input: {
+    readonly repositoryId: number;
+    readonly kind: LinkEndpointKind;
+    readonly docId: string;
+  },
+): Promise<RelationSummary> {
+  const touching: estypes.QueryDslQueryContainer[] = [
+    { bool: { filter: [{ term: { from_type: input.kind } }, { term: { from_id: input.docId } }] } },
+    { bool: { filter: [{ term: { to_type: input.kind } }, { term: { to_id: input.docId } }] } },
+  ];
+
+  const response = await client.search({
+    index: LINKS_ALIAS,
+    routing: String(input.repositoryId),
+    size: 0,
+    query: {
+      bool: {
+        filter: [
+          { term: { repository_id: input.repositoryId } },
+          { terms: { link_type: [...DERIVED_LINK_TYPES] } },
+        ],
+        should: touching,
+        minimum_should_match: 1,
+      },
+    },
+    aggs: {
+      out_revert: {
+        filter: {
+          bool: {
+            filter: [
+              { term: { link_type: 'reverts' } },
+              { term: { from_type: input.kind } },
+              { term: { from_id: input.docId } },
+            ],
+          },
+        },
+      },
+      in_revert: {
+        filter: {
+          bool: {
+            filter: [
+              { term: { link_type: 'reverts' } },
+              { term: { to_type: input.kind } },
+              { term: { to_id: input.docId } },
+            ],
+          },
+        },
+      },
+      cherry: { filter: { term: { link_type: 'cherry_picks' } } },
+      /*
+       * `detached`가 아닌 것만 센다. `must_not`은 **필드가 없는 문서도 통과**시키므로
+       * 값을 두지 않는 다른 유형과도 안전하다 — 바깥 filter가 이미 `stacks_on`으로
+       * 좁히지만, 그 사실에 기대지 않는다.
+       */
+      stack: {
+        filter: {
+          bool: {
+            filter: [{ term: { link_type: 'stacks_on' } }],
+            must_not: [{ term: { detached: true } }],
+          },
+        },
+      },
+    },
+  });
+
+  const aggs = (response.aggregations ?? {}) as SummaryAggs;
+  return {
+    has_revert: (aggs.out_revert?.doc_count ?? 0) > 0,
+    is_reverted: (aggs.in_revert?.doc_count ?? 0) > 0,
+    has_cherry_pick: (aggs.cherry?.doc_count ?? 0) > 0,
+    has_stack: (aggs.stack?.doc_count ?? 0) > 0,
+  };
 }

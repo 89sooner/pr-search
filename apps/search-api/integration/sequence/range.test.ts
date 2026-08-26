@@ -90,6 +90,7 @@ interface RangeBody {
     additions_total: number;
     deletions_total: number;
     files_truncated_pull_request_count: number;
+    reverted_pull_request_count: number;
     top_changed_paths: { path: string; count: number }[];
   };
   readonly items?: {
@@ -355,13 +356,20 @@ describe('요약 (FR-SEQ-002 AC-2, QA-W004-10)', () => {
     expect(body.summary?.files_truncated_pull_request_count).toBe(1);
   });
 
-  it('**`reverted_pull_request_count` 키를 넣지 않는다** (DEV-133)', async () => {
+  it('**`reverted_pull_request_count`를 낸다** (CR-041 / DEV-239 — DEV-133 이월 종결)', async () => {
     /*
-     * 되돌림 파생(WP-030) 전에는 세면 언제나 0이 나오고, 그 0은 "되돌림이 없다"와
-     * 구분되지 않는다. **계산하지 않은 것은 0이 아니라 부재다.**
+     * **이 시험은 반대를 단언하고 있었다.** CR-027(DEV-133)이 정한 것은 "되돌림
+     * 파생(WP-030) 전에는 세면 언제나 0이고, 그 0은 '되돌림이 없다'와 구분되지
+     * 않으므로 키를 넣지 않는다"였다. 그 전제가 WP-030으로 해소됐다 —
+     * `link_summary.is_reverted`를 실제로 쓰는 워커가 생겼으므로 이제 `0`이
+     * **사실 주장**이다.
+     *
+     * 계약이 바뀐 것이지 시험이 틀렸던 것이 아니다. 그래서 지우지 않고 뒤집는다.
      */
     const { body } = await get('from_seq=0&to_seq=6');
-    expect(body.summary).not.toHaveProperty('reverted_pull_request_count');
+    expect(body.summary).toHaveProperty('reverted_pull_request_count');
+    // 이 픽스처의 PR에는 되돌림이 없다. 그 `0`은 이제 확인된 사실이다.
+    expect(body.summary?.reverted_pull_request_count).toBe(0);
   });
 });
 
