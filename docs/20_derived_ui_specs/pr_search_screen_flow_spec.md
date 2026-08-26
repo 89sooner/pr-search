@@ -2,7 +2,6 @@
 
 > 상태: review | 버전: v0.3 | 갱신일: 2026-08-26
 
-
 ## 1. 전환 규칙
 
 - 전환은 사용자의 현재 컨텍스트(질의 문자열, 시퀀스 공간, 스크롤 위치)를 보존해야 한다.
@@ -184,7 +183,6 @@
 
 관련 요구사항: FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006, FR-REL-007, FR-REL-008
 
-
 ## FLOW-007 수집 지연 대응 (SCN-006)
 
 1. 운영자가 A-001에 진입한다.
@@ -247,7 +245,6 @@
 | FLOW-004 | FR-SEQ-007, FR-SEQ-005 | W-004 |
 | FLOW-005 | FR-STAT-001, FR-STAT-002, FR-STAT-003, FR-STAT-005, FR-STAT-006 | W-006, W-001 |
 | FLOW-006 | FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006, FR-REL-007, FR-REL-008 | W-001, W-002, W-003, W-007 |
-
 | FLOW-007 | FR-ING-007, FR-ING-011, FR-ADMIN-001, FR-ADMIN-002 | A-001, A-003 |
 | FLOW-008 | FR-SEQ-005, FR-ADMIN-003 | A-003, W-004 |
 

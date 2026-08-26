@@ -2,7 +2,6 @@
 
 > 상태: review | 버전: v0.3 | 갱신일: 2026-08-26
 
-
 ## 1. 문서 원칙
 
 1. 동일 의미의 컴포넌트를 중복 구현하지 않는다. 각 컴포넌트는 책임, 입력, 상태, 이벤트, 접근성을 가진다.
@@ -155,7 +154,6 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - **행마다 관계를 조회하지 않는다** (ADR-009). 목록 화면의 배지는 `API-SRCH-004`가 싣는 비정규화 `link_summary`로 그린다 — 그것이 그 필드가 존재하는 이유다
 - 관련 FR: FR-REL-004, FR-REL-005
 
-
 ### C-016 CursorPager
 
 - 책임: 커서 기반 다음 페이지 로딩
@@ -208,7 +206,7 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 ### C-021 LinkGroupList
 
 - 책임: 관계 간선을 유형별로 묶어 방향·신뢰도·근거와 함께 표시
-- 기반: Conductor `Panel` + `Table` + `SeverityTag` + `CodeBlock`
+- 기반: Conductor `Panel` + `Table` + `Badge` + `CodeBlock` + `Button`(재시도). **`SeverityTag`를 쓰지 않는다** (CR-042): 그 컴포넌트의 `severity`는 `read`/`write`/`destructive`/`blocked`, 즉 **실행 위험도** 어휘(C-061~067, GitHub Operations Plane)이고 관계 신뢰도와 다른 축이다. 위험도 어휘로 `heuristic`을 그리면 "차단됨"처럼 읽힌다 — 축이 다른 것을 같은 배지로 말하지 않는다
 - 필수 props: `groups: LinkGroup[]`, `onOpenTarget`, `onExpandGroup`, `onRetryGroup`
 - **상태는 두 축이다** (CR-042, DEV-257). 하나의 enum에 섞으면 "없는 것 · 모르는 것 · 실패한 것 · 해제된 것"이 같은 빈 화면이 된다.
   - **섹션 축**: `collapsed` / `loading` / `ready` / `error`(조회 실패 — **"다시 시도" 버튼을 함께 낸다**, C-019의 규칙과 같다)
@@ -222,7 +220,6 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - **방향을 텍스트로 말한다** (CR-042). 화살표만으로 주체와 대상을 구분하지 않는다 — 되돌림 `outgoing`은 "이 PR이 되돌림 → 대상", `incoming`은 "이 PR을 되돌림 ← 주체"이고 스택도 같다. `aria-label`에 같은 문장을 싣는다
 - **`evidence`는 평문으로만 렌더링한다** (THR-020). `CodeBlock`에 텍스트로 넣고 HTML로 해석하지 않는다
 - 관련 FR: FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006, FR-REL-007
-
 
 ### C-022 PrTimeline
 

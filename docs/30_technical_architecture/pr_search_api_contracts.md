@@ -2,7 +2,6 @@
 
 > 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
 
-
 ## 1. 목적
 
 프론트엔드와 백엔드, 외부 연동, 이벤트 간 계약을 정의한다. 안정된 API는 요청/응답 JSON 예시를 포함하며, 구현 에이전트는 이 예시를 그대로 fixture와 테스트에 사용한다.
@@ -42,7 +41,6 @@
 | API-REL-004 | GET | `/relation-graphs` | 관계 그래프 탐색 | 인증 + 접근 범위 | FR-REL-008 |
 | API-REL-005 | GET | `/releases` | 저장소 릴리스 목록 (CR-030, DEV-155) | 인증 + 접근 범위 | FR-SEQ-004, FR-REL-002 |
 | API-REL-006 | GET | `/relations` | 저장된 관계 간선 조회 (정방향·역방향) (CR-042, DEV-248) | 인증 + 접근 범위 | FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006 |
-
 | API-STAT-001 | POST | `/analytics/groups` | 그룹 집계 | 인증 + 접근 범위 | FR-STAT-001, FR-STAT-006 |
 | API-STAT-002 | POST | `/analytics/time-series` | 시계열 집계 | 인증 + 접근 범위 | FR-STAT-002 |
 | API-STAT-003 | POST | `/analytics/percentiles` | 리드타임·리뷰 대기 백분위 | 인증 + 접근 범위 | FR-STAT-003, FR-STAT-004 |
@@ -900,7 +898,6 @@ GET /api/v1/sequence-spaces
 
 ### API-REL-004 관계 그래프 탐색
 
-
 - 목적: 기준 개체에서 지정 깊이까지 연결된 노드·간선을 반환한다.
 - 관련 요구사항: FR-REL-008
 
@@ -1078,7 +1075,6 @@ GET /api/v1/sequence-spaces
 - 오류: `INVALID_PARAMETER` (400, 앵커가 둘이거나 없음 · 지원하지 않는 `link_type`·`direction` · 끝점 조합 불가), `NOT_FOUND` (404, 미등록·범위 밖 저장소, 없는 PR·커밋)
 
 ### API-STAT-001 그룹 집계
-
 
 - 목적: 현재 질의 조건 위에서 그룹별 지표를 반환한다.
 - 관련 요구사항: FR-STAT-001, FR-STAT-006
@@ -1687,7 +1683,6 @@ POST /api/v1/admin/sequence-integrity
 | --- | --- | --- |
 | API-SRCH-001~004, API-SEQ-001~003, API-SEQ-006, API-REL-001~002, API-REL-005 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
 | API-STAT-001~004, API-SEQ-004~005, API-REL-003~004, API-REL-006 | stable | 위와 동일 |
-
 | API-ADM-* | internal | 운영 콘솔 전용. 프런트엔드와 동시 배포 전제로 변경 가능 |
 | API-ING-001 | external | GHE 계약. 변경 시 웹훅 재등록 필요 |
 

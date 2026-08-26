@@ -556,7 +556,7 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 8. `20_derived_ui_specs/pr_search_screen_flow_spec.md` — **v0.3.** FLOW-006 관련 요구사항에 **FR-REL-006·FR-REL-007 추가**, `links_pending` 예외를 **"참조 분석 중"**으로 정정, **"백포트 누락 후보" 문장 삭제**
 9. `20_derived_ui_specs/pr_search_screen_state_matrix.md` — **v0.3.** W-002의 `links_pending` 의미 정정, W-003에 관계 섹션 상태 신설
 10. `20_derived_ui_specs/pr_search_screen_qa_checklist.md` — **v0.3.** QA-W001-24(관계 배지의 세 상태 구분), QA-W002-20(해제된 스택 표시), QA-W002-21(다중 후보 표시), QA-W002-22(대상 내용 부재), QA-W003-10(커밋 관계 섹션 지연 조회) 신설
-11. `40_delivery/pr_search_work_packages.md` — **v0.7.** WP-031 관련 화면에 **W-001 추가**, 관련 API에 **API-REL-006 추가**, 구현 범위·제외·DoD 재작성(DoD 8항 → 24항)
+11. `40_delivery/pr_search_work_packages.md` — **v0.7.** WP-031 관련 화면에 **W-001 추가**, 관련 API에 **API-REL-006 추가**, 구현 범위·제외·DoD 재작성(DoD 8항 → **21항**)
 12. `40_delivery/pr_search_implementation_traceability.md` — **v2.7.** DEV-248~265 등록, WP-031 `in_progress`
 
 **새 ADR을 만들지 않았다.** 접근 범위 강제는 ADR-008이, 간선 구조와 역방향 조회는 ADR-009가, 커서 전용 페이지네이션은 ADR-010이 이미 정했다. 이 CR은 그 셋을 **조회 축에서 실제로 성립시킨다.** 특히 "간선 하나만 저장하고 역방향은 `to_id`로 조회한다"(ADR-009)는 결정이 **저장소를 건너뛰는 참조에서는 라우팅을 포기해야 성립한다**는 것을 명시한 것이 이 CR의 정정이며, 결정을 바꾸는 것이 아니라 그 결정이 요구하는 대가를 적는 것이다.

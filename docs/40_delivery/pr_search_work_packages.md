@@ -2,7 +2,6 @@
 
 > 상태: review | 버전: v0.7 | 갱신일: 2026-08-26
 
-
 ## 1. 목적
 
 구현 로드맵의 릴리스 슬라이스(REL)를 코딩 에이전트가 한 세션에서 완료·검증할 수 있는 작업 패키지(WP)로 분해한다. WP는 범위를 새로 만들 수 없으며, 모든 WP는 승인된 FR을 참조해야 한다.
@@ -1272,7 +1271,6 @@
   - [ ] axe 위반 0건
 - 검증 방법: `pnpm test:integration relation`, `pnpm test:integration co-change`, `pnpm test:e2e flow-006`, `pnpm run test:regression`
 - 기록: 원장 WP-031 상태, FR-REL-003~007 매핑
-
 
 ### WP-032 패싯·커서 페이지네이션·전문 검색
 

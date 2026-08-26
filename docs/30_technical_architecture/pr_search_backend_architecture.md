@@ -45,7 +45,6 @@ apps/
 | `projection` | pipeline-worker | 정규화 문서 생성, 버전 조건부 업서트 | FR-ING-005 | - | ENT-CORE-002, ENT-CORE-003, ENT-REL-001 |
 | `sequence` | pipeline-worker, search-api | first-parent 서수 채번, 에폭 관리, 앵커 정규화, 범위 조회, 이분 탐색, 안전 구간 표식 | FR-SEQ-001~007, FR-ADMIN-003 | API-SEQ-001~005 | ENT-SEQ-001~004 |
 | `link` | pipeline-worker (파생), search-api (조회) | 참조·되돌림·체리픽·스택 간선 파생, 관계 조회, 그래프 탐색 | FR-REL-003~008 | **API-REL-003, API-REL-004, API-REL-006** (CR-039 DEV-227, CR-042 DEV-248) | ENT-REL-002 |
-
 | `search` | search-api | 식별자 해석, 질의 파싱, 필터·정렬·커서·패싯, 전문 검색, 저장된 검색, 내보내기 | FR-SRCH-001~012 | API-SRCH-001~006 | ENT-CORE-002, ENT-CORE-003, ENT-CORE-006 |
 | `analytics` | search-api | 그룹·시계열·백분위·분포 집계 | FR-STAT-001~006 | API-STAT-001~004 | ENT-CORE-002 |
 | `authz` | search-api (공용 미들웨어) | OIDC 세션, 접근 범위 산출·캐시, 강제 필터 결합 | FR-AUTH-001~003 | API-AUTH-001 | ENT-CORE-004, ENT-CORE-005 |
