@@ -1204,6 +1204,12 @@ POST /api/v1/analytics/percentiles
 { "type": "backfill", "target": "acme/payments" }
 ```
 
+**`type`은 집는 러너가 있는 것만 받는다** — `backfill`(JOB-ING-004)과 **`link_rebuild`(JOB-REL-006 참조 간선 전량 재파생, CR-039)**. 다른 값을 조용히 큐에 넣으면 아무 워커도 잡지 않는 유령 잡이 남고, 운영자는 진행률이 영원히 0인 이유를 알 수 없다 (CR-022, DEV-103).
+
+`link_rebuild`가 열려 있어야 하는 이유는 그것이 **PostgreSQL 정본에서 `prs-links`를 복구하는 유일한 경로**이기 때문이다 (ADR-004). Redis stream retention은 정본이 아니고, WP-029 이전의 직접 푸시 커밋에는 `EVT-ING-003`이 애초에 없었다 — 이 경로가 없으면 과거 엔티티와 재구축한 인덱스가 간선을 영원히 얻지 못한다.
+
+`target`은 두 유형 모두 **`owner/repo`**다. 잡 유형마다 다른 형식을 쓰면 러너가 자기 행을 해석하지 못한다.
+
 - 응답 201: `{ "job_id": 88, "state": "queued", "correlation_id": "..." }`
 - 오류: **`JOB_CONFLICT`** (409) — 같은 `(type, target)`에 활성 잡이 이미 있다. 부분 유니크 인덱스가 DB에서 강제하므로 경합에서도 둘이 뜨지 않는다
 - 오류: `NOT_FOUND` (404) — 등록되지 않은 저장소. **잡을 만들어 두지 않는다**: 만들면 워커가 잡을 때마다 실패하고 운영자는 원인이 미등록임을 알 수 없다

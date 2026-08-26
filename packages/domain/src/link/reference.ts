@@ -350,6 +350,16 @@ function toTarget(
 }
 
 /**
+ * 문장 부호로 끝나는 URL을 다듬는다.
+ *
+ * `See https://ghe/acme/b/pull/77.` 처럼 산문 끝에 붙은 마침표·쉼표·괄호가
+ * 경로의 일부로 딸려 오면 `URL_TARGET`이 거부해 **참조가 통째로 사라진다**.
+ * URL에 실제로 쓰일 수 있는 문자이므로 정규식에서 뺄 수는 없고, 여기서 뒤에서부터
+ * 벗긴다. 벗긴 뒤에도 해석되지 않으면 그때가 참조가 아닌 것이다.
+ */
+const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"»]+$/;
+
+/**
  * URL 참조.
  *
  * **승인된 GHE 호스트만 인정한다** (THR-036). 호스트가 구성되지 않았거나 다르면
@@ -359,7 +369,7 @@ function fromUrl(raw: string, source: RepoSlug, host: string | null): ReferenceT
   if (host === null) return null;
   let url: URL;
   try {
-    url = new URL(raw);
+    url = new URL(raw.replace(TRAILING_PUNCTUATION, ''));
   } catch {
     return null;
   }

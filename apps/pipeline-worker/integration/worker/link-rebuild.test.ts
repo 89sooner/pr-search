@@ -21,6 +21,8 @@ import type { Client } from '@elastic/elasticsearch';
 import { InMemoryEventBus, TOPICS, consumerGroup, type Subscription } from '@prs/bus';
 import { EVENT_NAMES, commitDocId, pullRequestDocId } from '@prs/domain';
 import {
+  commitSnapshotRepo,
+  jobRepo,
   mergeSequenceRepo,
   prSnapshotRepo,
   repositoryRepo,
@@ -32,10 +34,17 @@ import { applyMappings, createEsClient, resolveClientOptions } from '@prs/es';
 import { MirrorCommitGraph, MirrorSync, type CommitGraph } from '@prs/github';
 import {
   COMMIT_ENRICH_CONSUMER,
+  enrichCommit,
   handleProjectedEvent,
   type CommitEnrichDeps,
 } from '../../src/commit-enrich.js';
-import { handleLinkEvent, runReferenceRebuild, type LinkDeps } from '../../src/link.js';
+import {
+  LINK_REBUILD_TYPE,
+  handleLinkEvent,
+  runReferenceRebuild,
+  startReferenceRebuildRunner,
+  type LinkDeps,
+} from '../../src/link.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
 import { migratedPool } from '../helpers.js';
 import { writeFile } from 'node:fs/promises';
@@ -238,6 +247,7 @@ describe('직접 푸시 종단과 전량 재파생 (WP-029 / CR-039)', () => {
   });
 
   beforeEach(async () => {
+    await pool.query('DELETE FROM job WHERE target = $1', [`${OWNER}/${NAME}`]);
     await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM commit_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
@@ -510,6 +520,64 @@ describe('직접 푸시 종단과 전량 재파생 (WP-029 / CR-039)', () => {
       }
     }, 60_000);
 
+    it('**운영자가 만든 잡을 러너가 실제로 집어 끝낸다** (PR #44 리뷰 P1)', async () => {
+      /*
+       * `target`은 API-ADM-002가 만드는 형식(`owner/repo`)이다. 러너가 그것을
+       * 해석하지 못하면 운영자가 만들 수 있는 유일한 행을 아무도 처리하지 못한다.
+       */
+      await prSnapshotRepo.upsertPullRequestSnapshot(pool, {
+        repositoryId: REPOSITORY_ID,
+        prNumber: 21,
+        documentVersion: 1,
+        source: 'backfill',
+        document: { pr_number: 21, title: 't', body: 'Refs: #20', updated_at: '2026-07-01T00:00:00.000Z' },
+      });
+      await es.index({
+        index: 'prs-pull-requests',
+        id: pullRequestDocId(REPOSITORY_ID, 21),
+        routing: String(REPOSITORY_ID),
+        refresh: true,
+        document: {
+          document_version: 1,
+          repository_id: REPOSITORY_ID,
+          repository: `${OWNER}/${NAME}`,
+          org_id: 1,
+          visibility: 'private',
+          allowed_team_ids: [TEAM],
+          pr_number: 21,
+          links_pending: true,
+          link_summary: {
+            has_revert: false,
+            is_reverted: false,
+            has_cherry_pick: false,
+            has_stack: false,
+            reference_count: 0,
+          },
+        },
+      });
+
+      const jobId = await jobRepo.enqueueJob(pool, LINK_REBUILD_TYPE, `${OWNER}/${NAME}`, 'alice');
+      const bus = new InMemoryEventBus();
+      const runner = startReferenceRebuildRunner(linkDeps(bus));
+      try {
+        for (let waited = 0; waited < 60; waited += 1) {
+          const row = await jobRepo.findJobById(pool, jobId);
+          if (row?.state === 'completed' || row?.state === 'failed') break;
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        const row = await jobRepo.findJobById(pool, jobId);
+        expect(row?.state).toBe('completed');
+        expect(row?.error).toBeNull();
+
+        const links = await linksOf(pullRequestDocId(REPOSITORY_ID, 21));
+        expect(links).toHaveLength(1);
+        expect(links[0]?.['reference_key']).toBe('pr:20');
+      } finally {
+        await runner.stop();
+        await bus.close();
+      }
+    }, 60_000);
+
     it('**재파생은 결정론적이다** — 두 번 돌려도 같은 문서 ID다', async () => {
       await prSnapshotRepo.upsertPullRequestSnapshot(pool, {
         repositoryId: REPOSITORY_ID,
@@ -569,6 +637,38 @@ describe('직접 푸시 종단과 전량 재파생 (WP-029 / CR-039)', () => {
   });
 
   /* --------------------------------------------------------------------- */
+
+  it('**ready 신호 발행이 실패하면 완결을 찍지 않는다** — 스윕이 다시 본다 (PR #44 리뷰 P1)', async () => {
+    /*
+     * 발행을 완결 표식 뒤에 두면 발행 실패가 **영구 유실**이 된다: 스냅숏이 있고
+     * 투영도 찍혀 있어 두 스윕이 모두 그 커밋을 건너뛰고, `enrichCommits`는 예외를
+     * 잡아 `skipped`로 세며 핸들러는 ack한다. 직접 푸시 커밋의 유일한 방아쇠가
+     * 사라지고 그 메시지의 참조는 영영 간선이 되지 않는다.
+     */
+    await seedSequence();
+    const bus = new InMemoryEventBus();
+    try {
+      const broken = {
+        ...enrichDeps(bus),
+        bus: { publish: () => Promise.reject(new Error('bus down')) } as never,
+      };
+
+      await expect(
+        enrichCommit(broken, repository, { commitSha: directSha, firstParent: true, pullRequestNumber: null }),
+      ).rejects.toThrow(/bus down/);
+
+      const row = await commitSnapshotRepo.findCommitSnapshot(pool, REPOSITORY_ID, directSha);
+      // 정본은 남았다 — 그것이 재구성 근거다 (ADR-004).
+      expect(row?.message).toContain(`Refs: #${String(DIRECT_REF_PR)}`);
+      // **완결은 찍히지 않았다.** 이것이 스윕의 재시도 조건이다.
+      expect(row?.projected_at).toBeNull();
+
+      const pending = await commitSnapshotRepo.listCommitsMissingProjection(pool, 500);
+      expect(pending.some((one) => one.commit_sha === directSha)).toBe(true);
+    } finally {
+      await bus.close();
+    }
+  }, 60_000);
 
   it('커밋 문서도 `links_pending`을 가질 수 있다 (DEV-218)', async () => {
     const sha = chain[0]!;

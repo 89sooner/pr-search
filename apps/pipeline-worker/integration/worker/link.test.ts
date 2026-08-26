@@ -25,10 +25,12 @@ import {
   type RepositoryRow,
 } from '@prs/db';
 import { applyMappings, createEsClient, resolveClientOptions } from '@prs/es';
+import { findReferencesTo } from '@prs/es';
 import {
   deriveReferenceLinks,
   handleLinkEvent,
   handleSourceReady,
+  resolveReferencesTo,
   type LinkDeps,
 } from '../../src/link.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
@@ -137,6 +139,24 @@ function withBulkFailure(inner: Client): Client {
   return {
     bulk: () =>
       Promise.resolve({ items: [{ index: { _id: 'x', status: 500, error: { type: 'internal' } } }] }),
+    msearch: (params: unknown) => inner.msearch(params as never),
+    search: (params: unknown) => inner.search(params as never),
+    update: (params: unknown) => inner.update(params as never),
+    deleteByQuery: (params: unknown) => inner.deleteByQuery(params as never),
+    indices: inner.indices,
+  } as unknown as Client;
+}
+
+/**
+ * `bulk`의 **개별 항목만** 실패시킨다.
+ *
+ * 요청 수준 실패와 다르다 — ES는 `bulk`를 200으로 돌려주면서 항목마다 오류를
+ * 담을 수 있고, 그 갈래를 놓치면 실패가 성공으로 세어진다.
+ */
+function withUpdateItemFailure(inner: Client): Client {
+  return {
+    bulk: () =>
+      Promise.resolve({ items: [{ update: { _id: 'x', status: 409, error: { type: 'conflict' } } }] }),
     msearch: (params: unknown) => inner.msearch(params as never),
     search: (params: unknown) => inner.search(params as never),
     update: (params: unknown) => inner.update(params as never),
@@ -558,6 +578,106 @@ describe('참조 간선 파생과 해결 (WP-029 / CR-039)', () => {
   });
 
   /* --------------------------------------------------------------------- */
+
+  describe('PR #44 리뷰 — 해결 상태의 재평가·부분 실패·페이지네이션', () => {
+    const prefix = FULL_A.slice(0, 9);
+
+    it('**한 번 해결된 접두 간선이 나중에 모호해지면 되돌린다** (P1)', async () => {
+      await indexPullRequest(1);
+      await seedPullRequestSnapshot(1, { body: `caused by ${prefix}` });
+
+      // A만 있을 때는 유일하므로 해결된다.
+      await indexCommit(FULL_A);
+      await deriveReferenceLinks(deps(), repository, { kind: 'pull_request', id: '1' });
+      const resolved = await linksOf(pullRequestDocId(REPOSITORY_ID, 1));
+      expect(resolved[0]?.['resolved']).toBe(true);
+      expect(resolved[0]?.['to_id']).toBe(commitDocId(REPOSITORY_ID, FULL_A));
+      const linkId = resolved[0]?.['_id'];
+
+      /*
+       * B가 같은 접두로 들어온다. **source 이벤트는 다시 오지 않는다** — 대상
+       * 도착만이 방아쇠다. 이때 되돌리지 않으면 간선이 "자신 있게 틀린 답"을
+       * 계속 말한다.
+       */
+      await indexCommit(FULL_B);
+      await handleSourceReady(deps(), repository, { kind: 'commit', id: FULL_B });
+
+      const after = await linksOf(pullRequestDocId(REPOSITORY_ID, 1));
+      expect(after).toHaveLength(1);
+      // 같은 문서다 — 되돌림이 새 간선을 만들지 않는다.
+      expect(after[0]?.['_id']).toBe(linkId);
+      expect(after[0]?.['resolved']).toBe(false);
+      // 대상 필드가 남아 있으면 화면이 그것을 읽는다.
+      expect(after[0]).not.toHaveProperty('to_id');
+      expect(after[0]).not.toHaveProperty('to_repository_id');
+    });
+
+    it('정확한 키는 재평가하지 않는다 — 모호해질 수 없다', async () => {
+      await indexPullRequest(1);
+      await indexPullRequest(30);
+      await seedPullRequestSnapshot(1, { body: 'Refs: #30' });
+      await deriveReferenceLinks(deps(), repository, { kind: 'pull_request', id: '1' });
+      expect((await linksOf(pullRequestDocId(REPOSITORY_ID, 1)))[0]?.['resolved']).toBe(true);
+
+      await handleSourceReady(deps(), repository, { kind: 'pull_request', id: '30' });
+
+      expect((await linksOf(pullRequestDocId(REPOSITORY_ID, 1)))[0]?.['resolved']).toBe(true);
+    });
+
+    it('**해결 부분 실패를 성공으로 세지 않는다** — 이벤트가 재시도된다 (P2)', async () => {
+      await indexPullRequest(1);
+      await seedPullRequestSnapshot(1, { body: 'Refs: #999' });
+      await deriveReferenceLinks(deps(), repository, { kind: 'pull_request', id: '1' });
+      await indexPullRequest(999);
+      await seedPullRequestSnapshot(999, { body: '' });
+
+      /*
+       * `bulk`가 요청 수준에서는 성공하고 **개별 항목만** 실패한다. 그 실패를
+       * 버리고 성공 수만 돌려주면 핸들러가 ack하고, 실패한 간선을 다시 시도할
+       * 방아쇠가 없다 — 대상 색인은 보통 한 번뿐인 사건이다.
+       */
+      const partial = deps({ es: withUpdateItemFailure(es) });
+      await expect(
+        resolveReferencesTo(partial, repository, { kind: 'pull_request', id: '999' }),
+      ).rejects.toThrow(/부분 실패/);
+    });
+
+    it('**한 대상을 가리키는 간선이 페이지를 넘겨도 전부 해결된다** (P2)', async () => {
+      /*
+       * 페이지 크기를 넘는 미해결 간선을 만든다. 한 페이지만 읽으면 나머지가
+       * 영원히 미해결로 남는다 — 대상 색인은 다시 오지 않는다.
+       */
+      const SOURCES = 12;
+      const PAGE = 5;
+      for (let index = 1; index <= SOURCES; index += 1) {
+        await indexPullRequest(index);
+        await seedPullRequestSnapshot(index, { body: 'Refs: #900' });
+        await deriveReferenceLinks(deps(), repository, {
+          kind: 'pull_request',
+          id: String(index),
+        });
+      }
+      const unresolvedBefore = await findReferencesTo(es, {
+        targetRepositoryId: REPOSITORY_ID,
+        sameRepoKeys: ['pr:900'],
+        crossRepoKeys: [],
+        pageSize: PAGE,
+      });
+      expect(unresolvedBefore).toHaveLength(SOURCES);
+
+      await indexPullRequest(900);
+      await seedPullRequestSnapshot(900, { body: '' });
+      await handleSourceReady(deps(), repository, { kind: 'pull_request', id: '900' });
+
+      const stillUnresolved = await findReferencesTo(es, {
+        targetRepositoryId: REPOSITORY_ID,
+        sameRepoKeys: ['pr:900'],
+        crossRepoKeys: [],
+        pageSize: PAGE,
+      });
+      expect(stillUnresolved).toHaveLength(0);
+    });
+  });
 
   describe('저장소를 건너뛰는 참조 (THR-034)', () => {
     it('등록·색인된 저장소면 `to_repository_id`를 채운다', async () => {

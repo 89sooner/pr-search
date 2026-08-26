@@ -239,29 +239,22 @@ export async function enrichCommit(
   });
 
   /*
-   * 투영이 성공했음을 정본에 남긴다 (CR-038 / PR #42 리뷰).
-   *
-   * 정본을 색인보다 먼저 쓰므로, 색인 쓰기가 실패하면 스냅숏만 남는다. 스윕이
-   * "스냅숏이 없는 커밋"만 찾으면 그 커밋은 **영원히 재시도되지 않는다** — 다시
-   * 투영할 다른 경로도 없다. 여기까지 왔다는 것이 곧 색인이 그 값을 안다는 뜻이다.
-   */
-  await commitSnapshotRepo.markCommitProjected(
-    deps.pool,
-    repository.repository_id,
-    sha,
-    (deps.now ?? ((): Date => new Date()))(),
-  );
-
-  /*
    * ---- 관계 파생에 "이 커밋을 다시 보라"고 알린다 (CR-039, DEV-215).
    *
-   * **정본과 색인이 **모두** 성공한 뒤에만 낸다.** 먼저 내면 관계 워커가 아직
-   * 메시지가 없는 커밋을 읽어 참조 0건으로 확정하고, 그 뒤 아무도 다시 하지
-   * 않는다 — CR-038이 PR #42 리뷰에서 배운 "실패했는데 아무도 다시 하지 않는다"의
-   * 같은 모양이다.
+   * **정본과 색인이 모두 성공한 뒤에 낸다.** 먼저 내면 관계 워커가 아직 메시지가
+   * 없는 커밋을 읽어 참조 0건으로 확정하고, 그 뒤 아무도 다시 하지 않는다.
    *
-   * 발행이 실패하면 던진다. 호출 측이 그 커밋을 `skipped`로 세고 스윕이 다시
-   * 본다 — 조용히 삼키면 그 커밋의 참조가 영영 생기지 않는다.
+   * **그러나 완결 표식(`projected_at`)보다는 앞이다** (PR #44 리뷰 P1).
+   *
+   * 표식을 먼저 찍으면 발행 실패가 **영구 유실**이 된다: 스냅숏이 있고 투영도
+   * 찍혀 있어 두 스윕이 모두 그 커밋을 건너뛰고, `enrichCommits`는 예외를 잡아
+   * `skipped`로 세며 핸들러는 ack한다 — 직접 푸시 커밋의 유일한 방아쇠가
+   * 사라지고 그 메시지의 참조는 영영 간선이 되지 않는다. 순서를 뒤집으면
+   * 발행 실패가 `projected_at`을 `null`로 남겨 **`listCommitsMissingProjection`
+   * 스윕이 다시 본다.**
+   *
+   * 발행이 한 번 더 나가는 것은 안전하다 — 파생은 정본에서 다시 계산하는
+   * 멱등 연산이고 `event_id`도 결정론적이다.
    */
   const ready: CommitMetadataReady = {
     repository_id: repository.repository_id,
@@ -283,6 +276,21 @@ export async function enrichCommit(
     occurred_at: (deps.now ?? ((): Date => new Date()))().toISOString(),
     payload: ready,
   });
+
+  /*
+   * 투영이 성공했음을 정본에 남긴다 (CR-038 / PR #42 리뷰).
+   *
+   * 정본을 색인보다 먼저 쓰므로, 색인 쓰기가 실패하면 스냅숏만 남는다. 스윕이
+   * "스냅숏이 없는 커밋"만 찾으면 그 커밋은 **영원히 재시도되지 않는다** — 다시
+   * 투영할 다른 경로도 없다. 여기까지 왔다는 것이 곧 색인이 그 값을 알고
+   * 관계 파생도 깨워졌다는 뜻이다.
+   */
+  await commitSnapshotRepo.markCommitProjected(
+    deps.pool,
+    repository.repository_id,
+    sha,
+    (deps.now ?? ((): Date => new Date()))(),
+  );
 
   deps.metrics.commitEnrichTotal.inc({ source: graph.kind, result: result.result });
   if (result.result === 'created') {

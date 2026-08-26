@@ -189,11 +189,22 @@ describe('참조 간선 파생의 도달성 (WP-029 / CR-039)', () => {
     expect(COMMIT_ENRICH).toContain('event_name: EVENT_NAMES.commitMetadataReady');
   });
 
-  it('**정본·색인이 모두 성공한 뒤에 발행한다** — markCommitProjected 뒤다', () => {
-    const projected = COMMIT_ENRICH.indexOf('markCommitProjected');
+  it('**색인 뒤·완결 표식 앞에 발행한다** (PR #44 리뷰 P1)', () => {
+    /*
+     * 순서가 셋 다 의미를 갖는다.
+     *
+     * - 색인보다 **뒤**: 먼저 내면 관계 워커가 아직 메시지가 없는 커밋을 읽어
+     *   참조 0건으로 확정한다
+     * - 완결 표식보다 **앞**: 뒤에 두면 발행 실패가 영구 유실이 된다 — 스냅숏도
+     *   있고 투영도 찍혀 두 스윕이 모두 건너뛰고, 핸들러는 ack한다. 직접 푸시
+     *   커밋의 유일한 방아쇠가 사라진다
+     */
+    const indexed = COMMIT_ENRICH.indexOf('await upsertCommitMetadata(');
     const publish = COMMIT_ENRICH.indexOf('event_name: EVENT_NAMES.commitMetadataReady');
-    expect(projected).toBeGreaterThan(-1);
-    expect(publish).toBeGreaterThan(projected);
+    const marked = COMMIT_ENRICH.indexOf('markCommitProjected');
+    expect(indexed).toBeGreaterThan(-1);
+    expect(publish).toBeGreaterThan(indexed);
+    expect(marked).toBeGreaterThan(publish);
   });
 
   it('**커밋 보강이 자기 이벤트를 되받아 처리하지 않는다** (DEV-216)', () => {
@@ -217,6 +228,25 @@ describe('참조 간선 파생의 도달성 (WP-029 / CR-039)', () => {
     // 정본에서 본문을 읽는 호출이 실재해야 한다. ES 문서를 파생 근거로 읽지 않는다.
     expect(LINK).toContain('prSnapshotRepo.listSnapshotsAfter(');
     expect(LINK).toContain('commitSnapshotRepo.findCommitSnapshot(');
+  });
+
+  it('**운영자가 JOB-REL-006을 시작할 수 있다** (PR #44 리뷰 P1)', () => {
+    /*
+     * 러너만 있고 큐에 넣을 경로가 없으면 그 잡은 영원히 돌지 않는다.
+     * API-ADM-002가 유일한 시작 경로이고, 그것은 PostgreSQL 정본에서
+     * `prs-links`를 복구하는 유일한 길이다 (ADR-004).
+     */
+    const jobs = read('apps/search-api/src/ops/jobs.ts');
+    const routes = read('apps/search-api/src/ops/routes.ts');
+    expect(jobs).toContain("export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild'] as const;");
+    expect(routes).toContain("if (!isOperatorJobType(body['type'])) {");
+    // 러너와 API가 **같은 `target` 형식**을 쓴다 — 다르면 러너가 자기 행을 못 읽는다.
+    expect(LINK).toContain('repositoryRepo.findRepositoryBySlug(');
+  });
+
+  it('**해결된 접두 간선도 다시 판정한다** (PR #44 리뷰 P1)', () => {
+    // `resolved`로 걸러 내면 한 번 잘못 붙은 간선을 다시 볼 방법이 없다.
+    expect(LINK).toContain("include: target.kind === 'commit' ? 'any' : 'unresolved'");
   });
 
   it('**재파생이 같은 파생 핸들러를 쓴다** — 두 번째 알고리즘을 만들지 않는다', () => {

@@ -71,7 +71,7 @@
 | JOB-REL-003 | 체리픽 간선 파생 | EVT-ING-003 | link | 3회 | 60초 | - | FR-REL-005 |
 | JOB-REL-004 | 스택 간선 파생 | EVT-ING-003 (PR 이벤트) | link | 3회 | 30초 | - | FR-REL-006 |
 | JOB-REL-005 | 미해결 참조 해결 | **EVT-ING-003 / EVT-ING-005** (CR-039, DEV-215) | link | 3회 (위와 같다) | 30초 | - | FR-REL-003 AC-3 |
-| JOB-REL-006 | 관계 전량 재파생 | 수동 (API-ADM-002). **`job.type`은 `link_rebuild`** (마이그레이션 001에 이미 있다) | batch | 항목별 3회, 잡 전체는 재개 | 없음 (중단·재개) | EVT-JOB-001 | FR-REL-003~006 |
+| JOB-REL-006 | 관계 전량 재파생 | 수동 (API-ADM-002). **`job.type`은 `link_rebuild`** (마이그레이션 001에 이미 있다), `target`은 `owner/repo` | **`link` 역할** (CR-039) | 항목별 3회, 잡 전체는 재개 | 없음 (중단·재개) | EVT-JOB-001 | FR-REL-003~006 |
 | JOB-REL-007 | 릴리스 태그 스냅숏 동기화 (CR-028, DEV-144) | `release`·`create(tag)`·`push(refs/tags)` 웹훅 → 게이트웨이가 `prs:release`에 발행 / 6시간 보정 스윕 / 재채번(EVT-SEQ-002) 후 | release | 3회 지수 백오프 | 5분 | - | FR-REL-002, FR-SEQ-003 AC-1 |
 | JOB-AUTH-001 | 권한 캐시 갱신·무효화 | EVT-AUTH-001 / TTL 만료 | authz | 3회 | 10초 | - | FR-AUTH-003 |
 

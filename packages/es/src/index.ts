@@ -96,9 +96,10 @@ export {
   LINKS_ALIAS,
   LINK_SUMMARY_SCRIPT,
   REFERENCE_LINK_TYPE,
+  REFERENCE_PAGE_SIZE,
   deleteStaleReferenceLinks,
   findReferenceTargets,
-  findUnresolvedReferences,
+  findReferencesTo,
   resolveReferenceLinks,
   updateLinkSummary,
   writeReferenceLinks,
@@ -112,8 +113,8 @@ export type {
   LinkWriteResult,
   ReferenceLinkDoc,
   ReferenceResolution,
+  ReferencingLink,
   TargetLookup,
-  UnresolvedLink,
 } from './links.js';
 
 export {

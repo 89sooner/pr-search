@@ -56,7 +56,7 @@ import type { Pool, RepositoryRow } from '@prs/db';
 import {
   deleteStaleReferenceLinks,
   findReferenceTargets,
-  findUnresolvedReferences,
+  findReferencesTo,
   resolveReferenceLinks,
   updateLinkSummary,
   writeReferenceLinks,
@@ -365,14 +365,20 @@ async function markPending(
 /* ------------------------------------------------------------------------- */
 
 /**
- * 새로 쓸 수 있게 된 대상 T를 가리키는 미해결 참조를 해결한다.
+ * 새로 쓸 수 있게 된 대상 T를 가리키는 참조를 다시 판정한다.
  *
  * **전량 스캔하지 않는다.** `reference_key` 후보가 대상 하나당 최대 일곱이라
- * `terms` 하나로 찾는다.
+ * `terms` 하나로 찾고, 페이지는 끝까지 넘긴다.
  *
- * 축약 SHA 참조는 대상이 나타났다고 바로 해결하지 않는다 — 그 사이 같은 접두를
- * 가진 커밋이 하나 더 생겨 **방금 모호해졌을 수** 있다. 그래서 접두 키는
- * 유일성을 다시 확인한다.
+ * ## 축약 SHA는 양방향이다 (PR #44 리뷰 P1)
+ *
+ * 대상이 나타났다고 바로 해결하지 않는다 — 그 사이 같은 접두를 가진 커밋이 하나
+ * 더 생겨 **방금 모호해졌을 수** 있다. 반대도 참이다: **한 번 유일해서 해결된
+ * 간선이 새 커밋 때문에 모호해질 수 있고**, 그때 대상을 그대로 두면 간선이
+ * "자신 있게 틀린 답"을 계속 말한다. 그래서 접두 키는 해결 여부와 무관하게
+ * 매번 유일성을 다시 계산하고, 모호해졌으면 **해결을 되돌린다.**
+ *
+ * 정확한 키(`pr:N`·`commit:<40자>`)는 모호해질 수 없으므로 재평가하지 않는다.
  */
 export async function resolveReferencesTo(
   deps: LinkDeps,
@@ -392,16 +398,21 @@ export async function resolveReferencesTo(
       ? pullRequestReferenceKeys(Number(target.id), slug)
       : commitReferenceKeys(target.id, slug);
 
-  const unresolved = await findUnresolvedReferences(deps.es, {
+  /*
+   * 커밋 대상은 **해결된 것까지** 가져온다 — 접두 간선이 방금 모호해졌을 수 있다.
+   * PR 대상은 키가 정확해 모호해질 수 없으므로 미해결만 본다.
+   */
+  const candidates = await findReferencesTo(deps.es, {
     targetRepositoryId: repositoryId,
     sameRepoKeys,
     crossRepoKeys,
+    include: target.kind === 'commit' ? 'any' : 'unresolved',
   });
-  if (unresolved.length === 0) return 0;
+  if (candidates.length === 0) return 0;
 
   // 접두 키는 유일성을 다시 본다. 나머지는 대상이 곧 답이다.
   const prefixKeys = new Set<string>();
-  for (const link of unresolved) {
+  for (const link of candidates) {
     const parsed = parseReferenceKey(link.reference_key);
     if (parsed?.kind === 'commit_prefix') prefixKeys.add(link.reference_key);
   }
@@ -423,17 +434,44 @@ export async function resolveReferencesTo(
     to_repository_id: repositoryId,
   };
 
-  const updates: Array<{ link_id: string; repository_id: number; resolution: ReferenceResolution }> = [];
-  for (const link of unresolved) {
-    const resolution = prefixKeys.has(link.reference_key)
-      ? prefixResolutions.get(link.reference_key)
-      : direct;
-    // 모호하거나 사라졌으면 미해결로 둔다. 첫 결과를 임의로 고르지 않는다.
-    if (resolution === undefined) continue;
-    updates.push({ link_id: link.link_id, repository_id: Number(link.repository_id), resolution });
+  const updates: Array<{
+    link_id: string;
+    repository_id: number;
+    resolution: ReferenceResolution | null;
+  }> = [];
+  for (const link of candidates) {
+    if (prefixKeys.has(link.reference_key)) {
+      /*
+       * 접두는 **매번 다시 계산한다.** 유일하면 그 커밋으로, 모호하거나 사라졌으면
+       * `null`로 — 되돌리는 쪽이 없으면 한 번 잘못 붙은 간선이 영원히 남는다.
+       */
+      const next = prefixResolutions.get(link.reference_key) ?? null;
+      // 이미 미해결인데 여전히 해결되지 않으면 쓸 것이 없다.
+      if (next === null && !link.resolved) continue;
+      updates.push({ link_id: link.link_id, repository_id: Number(link.repository_id), resolution: next });
+      continue;
+    }
+    // 정확한 키. 이미 해결됐으면 다시 쓸 이유가 없다 — 모호해질 수 없다.
+    if (link.resolved) continue;
+    updates.push({ link_id: link.link_id, repository_id: Number(link.repository_id), resolution: direct });
   }
 
   const result = await resolveReferenceLinks(deps.es, updates, { refresh: deps.refresh === true });
+
+  /*
+   * **부분 실패를 성공으로 세지 않는다** (PR #44 리뷰 P2).
+   *
+   * `bulk`는 요청 수준에서 성공하면서 개별 항목만 실패할 수 있다. 그 실패를
+   * 버리고 성공 수만 돌려주면 핸들러가 ack하고, 실패한 간선은 **다시 시도할
+   * 방아쇠가 없다** — 대상 색인은 보통 한 번뿐인 사건이다.
+   *
+   * 던지면 핸들러가 예산 안에서 재시도한다. 해결은 멱등이라 다시 해도 안전하다.
+   */
+  if (result.failures.length > 0) {
+    throw new Error(
+      `참조 해결 부분 실패 ${String(result.failures.length)}건: ${result.failures[0]?.reason ?? ''}`,
+    );
+  }
   return result.written;
 }
 
@@ -702,12 +740,26 @@ async function runJob(deps: LinkDeps, jobId: number, log: (fields: LinkLogFields
   const row = await jobRepo.findJobById(deps.pool, jobId);
   if (row === undefined) return;
 
-  const repositoryId = Number(row.target);
-  const repository = await repositoryRepo.findRepositoryById(deps.pool, repositoryId);
+  /*
+   * `target`은 다른 잡과 같은 **`owner/repo`**다 (PR #44 리뷰 P1).
+   *
+   * 여기만 `repository_id`를 쓰면 API-ADM-002가 만든 행을 러너가 해석하지
+   * 못한다 — 운영자가 만들 수 있는 유일한 경로가 그 형식이다.
+   */
+  const slash = row.target.indexOf('/');
+  const repository =
+    slash < 0
+      ? undefined
+      : await repositoryRepo.findRepositoryBySlug(
+          deps.pool,
+          row.target.slice(0, slash),
+          row.target.slice(slash + 1),
+        );
   if (repository === undefined) {
     await jobRepo.finishJobIfRunning(deps.pool, jobId, 'failed', 'repository_not_found');
     return;
   }
+  const repositoryId = Number(repository.repository_id);
 
   let cursor = parseCursor(row.cursor);
   let total = 0;

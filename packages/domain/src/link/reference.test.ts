@@ -319,3 +319,23 @@ describe('역방향 조회 후보 (JOB-REL-005)', () => {
     expect(pullRequestReferenceKeys(20, { owner: 'acme', name: 'a' })).toEqual(['x:acme/a:pr:20']);
   });
 });
+
+describe('산문 속 URL (PR #44 리뷰 P2)', () => {
+  it('**마침표로 끝나는 GHE URL도 참조다**', () => {
+    expect(keys(`See https://${HOST}/acme/b/pull/77.`)).toEqual(['x:acme/b:pr:77']);
+  });
+
+  it('쉼표·괄호·물음표도 벗긴다', () => {
+    expect(keys(`(https://${HOST}/acme/b/pull/77), and more`)).toEqual(['x:acme/b:pr:77']);
+    expect(keys(`https://${HOST}/acme/b/pull/77?`)).toEqual(['x:acme/b:pr:77']);
+  });
+
+  it('커밋 URL도 같다', () => {
+    expect(keys(`fixed in https://${HOST}/acme/b/commit/${FULL}.`)).toEqual([`x:acme/b:commit:${FULL}`]);
+  });
+
+  it('**벗겨도 해석되지 않으면 참조가 아니다** — 부호를 벗기는 것이 관대해지는 것은 아니다', () => {
+    expect(keys(`https://${HOST}/acme/b/issues/77.`)).toEqual([]);
+    expect(keys('https://github.com/acme/b/pull/77.')).toEqual([]);
+  });
+});

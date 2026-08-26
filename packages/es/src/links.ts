@@ -191,32 +191,50 @@ export async function deleteStaleReferenceLinks(
 /* 미해결 참조 역방향 조회 (JOB-REL-005)                                       */
 /* ------------------------------------------------------------------------- */
 
-export interface UnresolvedLink {
+export interface ReferencingLink {
   readonly link_id: string;
   readonly repository_id: number;
   readonly reference_key: string;
+  readonly resolved: boolean;
 }
 
+/** 한 페이지 크기. 상한이 아니라 왕복 단위다 — 호출이 끝까지 페이지를 넘긴다. */
+export const REFERENCE_PAGE_SIZE = 500;
+
 /**
- * 대상 T를 가리키는 **미해결** 참조만 찾는다.
+ * 대상 T를 가리킬 수 있는 참조 간선을 **전부** 찾는다.
  *
- * 미해결 간선 전량을 스캔하지 않는다 — `reference_key` 후보는 대상 하나당
- * 최대 일곱(전체 SHA 하나 + 접두 여섯)으로 상한이 있으므로 `terms` 하나면 된다.
+ * 간선 전량을 스캔하지 않는다 — `reference_key` 후보는 대상 하나당 최대
+ * 일곱(전체 SHA 하나 + 접두 여섯)으로 상한이 있으므로 `terms` 하나면 된다.
  *
  * 후보는 두 형태다. **같은 저장소 형태**(`pr:20`)는 그 저장소의 간선에서만
  * 뜻이 있으므로 `repository_id`로 좁힌다. **저장소를 명시한 형태**
  * (`x:acme/b:pr:20`)는 어느 저장소의 본문에서든 나올 수 있으므로 좁히지 않는다.
+ *
+ * ## 왜 페이지를 끝까지 넘기는가 (PR #44 리뷰 P2)
+ *
+ * 한 페이지만 읽으면 같은 대상을 가리키는 간선이 페이지 크기를 넘을 때 나머지가
+ * **영원히 미해결로 남는다** — 대상 색인은 보통 한 번뿐인 사건이라 다시 깨울
+ * 방아쇠가 없다. `link_id` 정렬 + `search_after`로 끝까지 넘긴다.
+ *
+ * ## 왜 해결된 것도 가져오는가 (PR #44 리뷰 P1)
+ *
+ * 축약 SHA 참조는 **한 번 유일했다가 나중에 모호해질 수 있다.** 새 커밋이 같은
+ * 접두를 갖는 순간 이미 해결된 간선이 "자신 있게 틀린 답"이 된다. `resolved`로
+ * 걸러 내면 그 간선을 다시 볼 방법이 없으므로, 판정은 호출 측이 한다.
  */
-export async function findUnresolvedReferences(
+export async function findReferencesTo(
   client: Client,
   input: {
     /** 대상이 속한 저장소. 같은 저장소 형태 후보를 이 저장소로 좁힌다. */
     readonly targetRepositoryId: number;
     readonly sameRepoKeys: readonly string[];
     readonly crossRepoKeys: readonly string[];
-    readonly limit?: number;
+    /** `unresolved`면 미해결만. `any`면 해결된 것도 함께 (접두 재평가용). */
+    readonly include?: 'unresolved' | 'any';
+    readonly pageSize?: number;
   },
-): Promise<readonly UnresolvedLink[]> {
+): Promise<readonly ReferencingLink[]> {
   const should: estypes.QueryDslQueryContainer[] = [];
   if (input.sameRepoKeys.length > 0) {
     should.push({
@@ -233,39 +251,65 @@ export async function findUnresolvedReferences(
   }
   if (should.length === 0) return [];
 
-  const response = await client.search<UnresolvedLink>({
-    index: LINKS_ALIAS,
-    size: input.limit ?? 500,
-    _source: ['link_id', 'repository_id', 'reference_key'],
-    query: {
-      bool: {
-        minimum_should_match: 1,
-        should,
-        filter: [{ term: { link_type: REFERENCE_LINK_TYPE } }, { term: { resolved: false } }],
-      },
-    },
-  });
+  const filter: estypes.QueryDslQueryContainer[] = [{ term: { link_type: REFERENCE_LINK_TYPE } }];
+  if (input.include !== 'any') filter.push({ term: { resolved: false } });
 
-  const links: UnresolvedLink[] = [];
-  for (const hit of response.hits.hits) {
-    if (hit._source === undefined) continue;
-    links.push(hit._source);
+  const size = input.pageSize ?? REFERENCE_PAGE_SIZE;
+  const links: ReferencingLink[] = [];
+  let after: estypes.SortResults | undefined;
+
+  for (;;) {
+    const response = await client.search<ReferencingLink>({
+      index: LINKS_ALIAS,
+      size,
+      _source: ['link_id', 'repository_id', 'reference_key', 'resolved'],
+      // 안정 정렬이 있어야 `search_after`가 항목을 건너뛰지 않는다.
+      sort: [{ link_id: 'asc' }],
+      ...(after === undefined ? {} : { search_after: after }),
+      query: { bool: { minimum_should_match: 1, should, filter } },
+    });
+
+    const hits = response.hits.hits;
+    for (const hit of hits) {
+      if (hit._source === undefined) continue;
+      links.push(hit._source);
+    }
+    if (hits.length < size) return links;
+    after = hits.at(-1)?.sort;
+    if (after === undefined) return links;
   }
-  return links;
 }
 
 /**
- * 미해결 간선을 해결 상태로 **갱신**한다 (FR-REL-003 AC-3).
+ * 해결 상태를 **되돌린다** (PR #44 리뷰 P1).
+ *
+ * 축약 SHA 참조는 한 번 유일했다가 나중에 모호해질 수 있다. 그때 대상 필드를
+ * 그대로 두면 간선이 "자신 있게 틀린 답"을 계속 말한다 — 지운다. 필드를
+ * 남기지 않는 것이 미해결 간선의 모양이다.
+ */
+const UNRESOLVE_SCRIPT = [
+  'boolean changed = false;',
+  'if (ctx._source.resolved != false) { ctx._source.resolved = false; changed = true; }',
+  "for (def key : ['to_type', 'to_id', 'to_repository_id']) {",
+  '  if (ctx._source.containsKey(key)) { ctx._source.remove(key); changed = true; }',
+  '}',
+  "if (!changed) { ctx.op = 'noop'; }",
+].join('\n');
+
+/**
+ * 간선의 해결 상태를 **갱신**한다 (FR-REL-003 AC-3).
  *
  * `link_id`는 그대로다 — 그것이 `reference_key`를 ID 재료로 쓴 이유다 (DEV-217).
  * 부분 갱신이라 `evidence`·`confidence`·`created_at`을 건드리지 않는다.
+ *
+ * `resolution`이 `null`이면 해결을 **되돌린다.**
  */
 export async function resolveReferenceLinks(
   client: Client,
   updates: readonly {
     readonly link_id: string;
     readonly repository_id: number;
-    readonly resolution: ReferenceResolution;
+    readonly resolution: ReferenceResolution | null;
   }[],
   options: { readonly refresh?: boolean } = {},
 ): Promise<LinkWriteResult> {
@@ -281,14 +325,18 @@ export async function resolveReferenceLinks(
         retry_on_conflict: 3,
       },
     });
-    operations.push({
-      doc: {
-        resolved: true,
-        to_type: update.resolution.to_type,
-        to_id: update.resolution.to_id,
-        to_repository_id: update.resolution.to_repository_id,
-      },
-    });
+    operations.push(
+      update.resolution === null
+        ? { script: { lang: 'painless', source: UNRESOLVE_SCRIPT } }
+        : {
+            doc: {
+              resolved: true,
+              to_type: update.resolution.to_type,
+              to_id: update.resolution.to_id,
+              to_repository_id: update.resolution.to_repository_id,
+            },
+          },
+    );
   }
 
   const response = await client.bulk({
