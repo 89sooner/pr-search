@@ -37,6 +37,9 @@
 import {
   EVENT_NAMES,
   commitDocId,
+  deterministicEventId,
+  ingestPartitionKey,
+  type CommitMetadataReady,
   type IngestionProjected,
   type SequenceAssigned,
   type SequenceReassigned,
@@ -149,6 +152,7 @@ export async function enrichCommit(
   deps: CommitEnrichDeps,
   repository: RepositoryRow,
   target: EnrichTarget,
+  correlationId = '',
 ): Promise<boolean> {
   const log = deps.log ?? ((): void => undefined);
   const graph = deps.graphFor(repository);
@@ -248,6 +252,38 @@ export async function enrichCommit(
     (deps.now ?? ((): Date => new Date()))(),
   );
 
+  /*
+   * ---- 관계 파생에 "이 커밋을 다시 보라"고 알린다 (CR-039, DEV-215).
+   *
+   * **정본과 색인이 **모두** 성공한 뒤에만 낸다.** 먼저 내면 관계 워커가 아직
+   * 메시지가 없는 커밋을 읽어 참조 0건으로 확정하고, 그 뒤 아무도 다시 하지
+   * 않는다 — CR-038이 PR #42 리뷰에서 배운 "실패했는데 아무도 다시 하지 않는다"의
+   * 같은 모양이다.
+   *
+   * 발행이 실패하면 던진다. 호출 측이 그 커밋을 `skipped`로 세고 스윕이 다시
+   * 본다 — 조용히 삼키면 그 커밋의 참조가 영영 생기지 않는다.
+   */
+  const ready: CommitMetadataReady = {
+    repository_id: repository.repository_id,
+    commit_sha: sha,
+    entity_id: commitDocId(repository.repository_id, sha),
+    metadata_source: graph.kind === 'mirror' ? 'mirror' : 'api',
+    correlation_id: correlationId,
+  };
+  await deps.bus.publish(TOPICS.projected, ingestPartitionKey(repository.repository_id, sha), {
+    // 같은 커밋을 같은 경로로 다시 보강하면 같은 ID다.
+    event_id: deterministicEventId(
+      EVENT_NAMES.commitMetadataReady,
+      String(repository.repository_id),
+      sha,
+      ready.metadata_source,
+    ),
+    event_name: EVENT_NAMES.commitMetadataReady,
+    correlation_id: correlationId,
+    occurred_at: (deps.now ?? ((): Date => new Date()))().toISOString(),
+    payload: ready,
+  });
+
   deps.metrics.commitEnrichTotal.inc({ source: graph.kind, result: result.result });
   if (result.result === 'created') {
     log({
@@ -265,6 +301,7 @@ export async function enrichCommits(
   deps: CommitEnrichDeps,
   repository: RepositoryRow,
   targets: readonly EnrichTarget[],
+  correlationId = '',
 ): Promise<EnrichOutcome> {
   const log = deps.log ?? ((): void => undefined);
   let enriched = 0;
@@ -272,7 +309,7 @@ export async function enrichCommits(
 
   for (const target of targets.slice(0, COMMIT_ENRICH_EVENT_BATCH)) {
     try {
-      if (await enrichCommit(deps, repository, target)) enriched += 1;
+      if (await enrichCommit(deps, repository, target, correlationId)) enriched += 1;
       else skipped += 1;
     } catch (error) {
       /*
@@ -329,6 +366,17 @@ export async function handleProjectedEvent(
   const repositoryId = typeof payload['repository_id'] === 'number' ? payload['repository_id'] : null;
   if (repositoryId === null) return { kind: 'ack' };
 
+  /*
+   * **자기 이벤트다. 되받아 처리하지 않는다** (CR-039, DEV-216).
+   *
+   * `commit.metadata_ready`는 이 워커가 `prs:projected`로 낸다. 그런데 이 워커가
+   * 같은 토픽을 구독하므로 그것이 다시 돌아온다. 처리하면 보강 → 발행 → 보강의
+   * 무한 루프이고, 그 루프의 유일한 방어선이 이 한 줄이다.
+   *
+   * 저장소 조회보다 **앞**에 둔다 — 자기 이벤트에 DB 왕복을 쓸 이유가 없다.
+   */
+  if (name === EVENT_NAMES.commitMetadataReady) return { kind: 'ack' };
+
   const repository = await repositoryRepo.findRepositoryById(deps.pool, repositoryId);
   if (repository === undefined) {
     // 등록되지 않은 저장소의 문서는 애초에 만들지 않는다 (FR-ING-009 AC-4).
@@ -375,7 +423,7 @@ export async function handleProjectedEvent(
 
   if (targets.length === 0) return { kind: 'ack' };
 
-  const outcome = await enrichCommits(deps, repository, targets);
+  const outcome = await enrichCommits(deps, repository, targets, delivered.correlation_id);
   log({
     level: 'info',
     message: '커밋 메타데이터 보강',

@@ -140,6 +140,28 @@ export async function listCommitSnapshots(
 }
 
 /**
+ * 재파생용 열거 (JOB-REL-006 / CR-039, DEV-221).
+ *
+ * **`commit_sha` 오름차순 + 커서**다. SHA는 불변이라 스캔 도중 행이 갱신돼도
+ * 자리가 바뀌지 않는다 — 완결을 찍는 잡이 건너뛰지 않는 유일한 조건이다.
+ */
+export async function listCommitSnapshotsAfter(
+  db: Queryable,
+  repositoryId: number,
+  afterSha: string,
+  limit: number,
+): Promise<readonly CommitSnapshotRow[]> {
+  const result = await db.query<CommitSnapshotRow>(
+    `SELECT * FROM commit_snapshot
+      WHERE repository_id = $1 AND commit_sha > $2
+      ORDER BY commit_sha ASC
+      LIMIT $3`,
+    [repositoryId, afterSha, limit],
+  );
+  return result.rows;
+}
+
+/**
  * 아직 정본이 없는 first-parent 커밋 (WP-067 스윕).
  *
  * `merge_sequence`가 **현재 에폭의** first-parent 체인을 전부 알고 있으므로 그것이

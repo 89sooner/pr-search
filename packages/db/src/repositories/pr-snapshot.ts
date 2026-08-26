@@ -73,6 +73,31 @@ export async function listSnapshots(
   return result.rows;
 }
 
+/**
+ * 재파생용 열거 (JOB-REL-006 / CR-039, DEV-221).
+ *
+ * **`pr_number` 오름차순 + 커서**다. `updated_at` 정렬은 스캔 중 갱신된 항목을
+ * 끝으로 옮기고 뒤 항목을 이미 지나온 페이지로 당긴다 — 완결 표시를 찍는 잡에서
+ * 그 건너뜀은 곧 영구 누락이다 (DEV-204와 같은 이유). `pr_number`는 저장소 안에서
+ * 불변이라 커서가 안정적이다.
+ */
+export async function listSnapshotsAfter(
+  db: Queryable,
+  repositoryId: number,
+  afterPrNumber: number,
+  limit: number,
+): Promise<readonly PullRequestSnapshotRow[]> {
+  const result = await db.query<PullRequestSnapshotRow>(
+    `SELECT repository_id, pr_number, document_version, source, document
+       FROM pull_request_snapshot
+      WHERE repository_id = $1 AND pr_number > $2
+      ORDER BY pr_number ASC
+      LIMIT $3`,
+    [repositoryId, afterPrNumber, limit],
+  );
+  return result.rows;
+}
+
 /** 저장소가 정본으로 아는 PR 수. */
 export async function countSnapshots(db: Queryable, repositoryId: number): Promise<number> {
   const result = await db.query<{ count: string }>(

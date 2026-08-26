@@ -93,6 +93,30 @@ export type { ApplySequenceInput, ApplySequenceResult, SequenceAssignment } from
 export { applyMappings, dropEntityIndices } from './bootstrap.js';
 export type { BootstrapResult } from './bootstrap.js';
 export {
+  LINKS_ALIAS,
+  LINK_SUMMARY_SCRIPT,
+  REFERENCE_LINK_TYPE,
+  deleteStaleReferenceLinks,
+  findReferenceTargets,
+  findUnresolvedReferences,
+  resolveReferenceLinks,
+  updateLinkSummary,
+  writeReferenceLinks,
+} from './links.js';
+export type {
+  LinkEndpointKind,
+  LinkScopeFields,
+  LinkSummaryResult,
+  LinkSummaryUpdate,
+  LinkWriteFailure,
+  LinkWriteResult,
+  ReferenceLinkDoc,
+  ReferenceResolution,
+  TargetLookup,
+  UnresolvedLink,
+} from './links.js';
+
+export {
   COMMIT_METADATA_SCRIPT,
   upsertCommitMetadata,
   type CommitMetadataFields,

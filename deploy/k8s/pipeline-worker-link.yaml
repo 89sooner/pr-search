@@ -1,0 +1,57 @@
+# 관계 파생 역할 (WP-029 / CR-039). JOB-REL-001·JOB-REL-005·JOB-REL-006.
+#
+# 적체 축은 `prs:projected`이며 커밋 보강(mirror 역할)과 **같은 토픽을 다른 논리
+# 소비자 그룹으로** 읽는다 (CR-038, DEV-205). 그래서 둘의 스케일 기준이 서로
+# 독립이다 — 파생은 PostgreSQL·Elasticsearch만 쓰고 GHE를 부르지 않으므로
+# rate limit과 무관하게 늘릴 수 있다.
+#
+# **미러 볼륨이 필요 없다.** 파생의 정본은 `pull_request_snapshot`·
+# `commit_snapshot`이고 Git 그래프를 읽지 않는다 (ADR-004).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pipeline-worker-link
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: pipeline-worker-link }
+spec:
+  # `prs:projected`의 파티션이 8이므로 그 이상 늘려도 일이 늘지 않는다.
+  # 재파생 러너(JOB-REL-006)는 `claimNextJob`이 동시 실행을 막으므로
+  # replica가 여럿이어도 같은 잡을 두 번 돌지 않는다.
+  replicas: 2
+  selector:
+    matchLabels: { app.kubernetes.io/component: pipeline-worker-link }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: pipeline-worker-link }
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '3003'
+    spec:
+      # 처리 중 이벤트를 끝내고 나간다. 재파생 러너는 현재 배치를 마치고 커서를
+      # 남긴 뒤 물러나므로 재개가 처리하지 않은 문서를 건너뛰지 않는다.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: pipeline-worker
+          image: prs/pipeline-worker:latest
+          env:
+            - name: PIPELINE_WORKER_ROLES
+              value: link
+          ports:
+            - name: http
+              containerPort: 3003
+          envFrom:
+            # GHE_BASE_URL이 여기 있어야 URL 참조를 인정한다 (THR-036).
+            # 없으면 URL 참조를 아예 만들지 않는다 — fail closed다.
+            - configMapRef: { name: prs-config }
+            - secretRef: { name: prs-secrets }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 300m, memory: 384Mi }
+            limits: { memory: 768Mi }

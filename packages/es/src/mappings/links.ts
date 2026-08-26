@@ -39,10 +39,22 @@ export const LINK_MAPPING: estypes.MappingTypeMapping = {
     to_repository_id: { type: 'long' },
 
     link_type: { type: 'keyword' },
+    /**
+     * `references` 간선의 **안정 참조 식별자** (CR-039, DEV-217).
+     *
+     * `link_id`가 이 값으로 만들어지므로 대상이 해결돼도 문서 정체성이 바뀌지
+     * 않는다. JOB-REL-005의 역방향 조회도 이 필드를 `terms`로 친다 — 미해결
+     * 간선 전량을 스캔하지 않기 위해서다.
+     *
+     * `references`가 아닌 간선에는 두지 않는다.
+     */
+    reference_key: { type: 'keyword' },
     confidence: { type: 'keyword' },
     evidence: { type: 'text', index: false },
     // 대상이 아직 색인되지 않은 참조는 false로 저장하고 나중에 해결한다 (FR-REL-003 AC-3).
     resolved: { type: 'boolean' },
+    // WP-030 소유 (CR-039, DEV-223). WP-029는 이 필드를 두지 않는다 — 계산하지
+    // 않은 것을 `false`로 적으면 "확인했고 아니었다"가 된다.
     detached: { type: 'boolean' },
     created_at: { type: 'date' },
   },

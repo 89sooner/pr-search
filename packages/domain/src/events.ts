@@ -15,6 +15,8 @@ export const EVENT_NAMES = {
   ingestionProjected: 'ingestion.projected',
   /** EVT-ING-004 */
   ingestionFailed: 'ingestion.failed',
+  /** EVT-ING-005 (CR-039, DEV-215) */
+  commitMetadataReady: 'commit.metadata_ready',
   /** EVT-SEQ-001 */
   sequenceAssigned: 'sequence.assigned',
   /** EVT-SEQ-002 */
@@ -199,6 +201,34 @@ export function pullRequestDocId(repositoryId: number, prNumber: number): string
  */
 export function commitDocId(repositoryId: number, commitSha: string): string {
   return `${String(repositoryId)}:${commitSha.toLowerCase()}`;
+}
+
+/**
+ * EVT-ING-005 `commit.metadata_ready` (WP-029 / CR-039, DEV-215).
+ *
+ * **왜 필요한가.** `EVT-ING-003`은 `project` 워커가 색인한 문서마다 낸다. 그런데
+ * 직접 푸시 커밋 문서는 `project`가 만들지 않는다 — 커밋 보강(JOB-MIR-002)이
+ * 만든다(DEV-206). 그 경로가 아무 이벤트도 내지 않으면 그 커밋 메시지에 적힌
+ * 참조는 **영원히 간선이 되지 않는다.**
+ *
+ * **bounded 식별자만 싣는다.** 커밋 메시지·변경 경로를 다시 버스에 실으면
+ * `EVT-ING-002`가 피하려던 크기 문제를 커밋 축에서 되풀이하게 된다. 소비자는
+ * `commit_snapshot`에서 읽는다 — 그것이 정본이고, 늦게 재전달된 이벤트도 **현재**
+ * 정본을 보게 되어 순서 역전이 옛 본문을 되살리지 않는다.
+ *
+ * **`prs:projected`로 나간다.** 그 토픽을 커밋 보강 자신이 `link:commit-enrich`
+ * 그룹으로 읽고 있으므로 **자기 이벤트를 되받는다** — 소비자는 `event_name`으로
+ * 가르고, 보강은 이 이벤트를 받아 이것을 다시 내지 않는다 (DEV-216).
+ */
+export interface CommitMetadataReady {
+  readonly repository_id: number;
+  /** 소문자 40자. */
+  readonly commit_sha: string;
+  /** 색인된 커밋 문서 ID. `commitDocId`가 만든 값이다. */
+  readonly entity_id: string;
+  /** 어느 경로가 메타데이터를 읽었는지. 미러가 정답지다 (ADR-005). */
+  readonly metadata_source: 'mirror' | 'api';
+  readonly correlation_id: string;
 }
 
 /**
