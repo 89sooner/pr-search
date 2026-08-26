@@ -193,6 +193,51 @@ async function prDoc(prNumber: number): Promise<Record<string, unknown>> {
   return response._source ?? {};
 }
 
+/**
+ * `bulk`의 **개별 항목만** 실패시킨다.
+ *
+ * ES는 `bulk`를 200으로 돌려주면서 항목마다 오류를 담을 수 있고, 그 갈래를 놓치면
+ * 실패가 성공으로 세어진다. 스프레드로 만들면 프로토타입 메서드가 사라지므로
+ * 필요한 것만 **명시적으로 위임**한다.
+ */
+function withUpdateItemFailure(inner: Client): Client {
+  return {
+    bulk: (params: { readonly operations?: readonly unknown[] }) => {
+      const ops = params.operations ?? [];
+      // `index` 연산(간선 쓰기)은 그대로 통과시키고 `update`(해제 표시)만 실패시킨다.
+      const isUpdate = ops.some((one) => typeof one === 'object' && one !== null && 'update' in one);
+      if (!isUpdate) return inner.bulk(params as never);
+      return Promise.resolve({ items: [{ update: { _id: 'x', status: 409, error: { type: 'conflict' } } }] });
+    },
+    msearch: (params: unknown) => inner.msearch(params as never),
+    search: (params: unknown) => inner.search(params as never),
+    update: (params: unknown) => inner.update(params as never),
+    get: (params: unknown) => inner.get(params as never),
+    index: (params: unknown) => inner.index(params as never),
+    deleteByQuery: (params: unknown) => inner.deleteByQuery(params as never),
+    indices: inner.indices,
+  } as unknown as Client;
+}
+
+/** 간선 쓰기(`index` 연산)만 항목 수준에서 실패시킨다. */
+function withIndexItemFailure(inner: Client): Client {
+  return {
+    bulk: (params: { readonly operations?: readonly unknown[] }) => {
+      const ops = params.operations ?? [];
+      const isIndex = ops.some((one) => typeof one === 'object' && one !== null && 'index' in one);
+      if (!isIndex) return inner.bulk(params as never);
+      return Promise.resolve({ items: [{ index: { _id: 'x', status: 500, error: { type: 'internal' } } }] });
+    },
+    msearch: (params: unknown) => inner.msearch(params as never),
+    search: (params: unknown) => inner.search(params as never),
+    update: (params: unknown) => inner.update(params as never),
+    get: (params: unknown) => inner.get(params as never),
+    index: (params: unknown) => inner.index(params as never),
+    deleteByQuery: (params: unknown) => inner.deleteByQuery(params as never),
+    indices: inner.indices,
+  } as unknown as Client;
+}
+
 const prSource = (n: number) => ({ kind: 'pull_request' as const, id: String(n) });
 const commitSource = (s: string) => ({ kind: 'commit' as const, id: s });
 
@@ -669,6 +714,176 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
      * 아니라 "커밋에는 스택이라는 개념이 없다"이기 때문이다.
      */
     expect(summary).not.toHaveProperty('has_stack');
+  });
+
+  it('**대상(`to`)의 요약도 함께 갱신된다** — `is_reverted`는 대상의 필드다 (PR #46 리뷰 P1)', async () => {
+    /*
+     * source만 갱신하면 대상은 아무도 건드리지 않아 `is_reverted`가 영원히
+     * `false`로 남고, 그 위에서 도는 `reverted_pull_request_count`가 통째로
+     * 틀린 수를 낸다.
+     */
+    const reverter = sha('c1a');
+    await indexPullRequest(121, 0);
+    await indexCommit(reverter);
+    await seedPullRequest({ number: 121, title: 'fix login' });
+    await seedCommit({ sha: reverter, message: 'Revert "fix login"' });
+
+    await deriveRelations(deps(), repository, commitSource(reverter));
+
+    const target = (await prDoc(121))['link_summary'] as Record<string, unknown>;
+    expect(target['is_reverted']).toBe(true);
+    // 대상은 되돌리는 쪽이 아니다.
+    expect(target['has_revert']).toBe(false);
+  });
+
+  it('**간선이 사라지면 옛 대상의 요약도 되돌아간다** (PR #46 리뷰 P1)', async () => {
+    const reverter = sha('c2a');
+    await indexPullRequest(131, 0);
+    await indexCommit(reverter);
+    await seedPullRequest({ number: 131, title: 'fix login' });
+    await seedCommit({ sha: reverter, message: 'Revert "fix login"' });
+    await deriveRelations(deps(), repository, commitSource(reverter));
+    expect(((await prDoc(131))['link_summary'] as Record<string, unknown>)['is_reverted']).toBe(true);
+
+    // 되돌림 표현이 사라진다 → 간선 제거 → **옛 대상**이 다시 false여야 한다.
+    await seedCommit({ sha: reverter, message: 'unrelated work now' });
+    await deriveRelations(deps(), repository, commitSource(reverter));
+
+    expect(((await prDoc(131))['link_summary'] as Record<string, unknown>)['is_reverted']).toBe(false);
+  });
+
+  it('**관계 파생이 `links_pending`을 지우지 않는다** (DEV-246, PR #46 리뷰 P1)', async () => {
+    /*
+     * `links_pending`은 **참조 추출**의 완결 상태다. 관계 파생이 그것을 `false`로
+     * 덮으면 참조 쪽의 실패 표식이 사라져 그 문서가 재파생 대상에서 조용히 빠진다.
+     */
+    await es.index({
+      index: 'prs-pull-requests',
+      id: pullRequestDocId(REPOSITORY_ID, 141),
+      routing: String(REPOSITORY_ID),
+      refresh: true,
+      document: {
+        document_version: 1,
+        repository_id: REPOSITORY_ID,
+        repository: `${OWNER}/${NAME}`,
+        org_id: 1,
+        visibility: 'private',
+        allowed_team_ids: [TEAM],
+        pr_number: 141,
+        // 참조 추출이 실패해 남긴 표식이다.
+        links_pending: true,
+        link_summary: { reference_count: 2 },
+      },
+    });
+    await seedPullRequest({ number: 141, title: 'Revert "fix login"' });
+    await seedPullRequest({ number: 142, title: 'fix login' });
+
+    await deriveRelations(deps(), repository, prSource(141));
+
+    const doc = await prDoc(141);
+    expect(doc['links_pending']).toBe(true);
+    expect((doc['link_summary'] as Record<string, unknown>)['has_revert']).toBe(true);
+    expect((doc['link_summary'] as Record<string, unknown>)['reference_count']).toBe(2);
+  });
+
+  it('**간선 쓰기의 부분 실패도 조용히 ack하지 않는다** (DEV-228 규율)', async () => {
+    /*
+     * WP-030에는 `links_pending` 같은 재시도 표식이 없다(DEV-246). 여기서 조용히
+     * ack하면 **실패했는데 아무도 다시 하지 않는다** — 이 저장소가 반복해서 밟은
+     * 모양이다. 던져서 핸들러의 재시도 예산에 맡긴다.
+     *
+     * 그리고 **조정을 하지 않는다**: 실패한 회차가 stale 제거를 돌면 멀쩡한 간선이
+     * 사라진다.
+     */
+    const target = sha('c3a');
+    const reverter = sha('c3b');
+    await seedCommit({ sha: target, message: 'fix login' });
+    await seedCommit({ sha: reverter, message: `This reverts commit ${target}` });
+    await deriveRelations(deps(), repository, commitSource(reverter));
+    expect(await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' })).toHaveLength(1);
+
+    await expect(
+      deriveRelations(deps({ es: withIndexItemFailure(es) }), repository, commitSource(reverter)),
+    ).rejects.toThrow(/관계 간선 쓰기 실패/);
+
+    // 실패 회차가 기존 간선을 지우지 않았다.
+    expect(await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' })).toHaveLength(1);
+  });
+
+  it('**스택 해제의 부분 실패를 성공으로 세지 않는다** (PR #46 리뷰 P1)', async () => {
+    await seedPullRequest({ number: 151, head: 'fp', base: 'main', state: 'open' });
+    await seedPullRequest({ number: 152, head: 'fc', base: 'fp', state: 'open' });
+    await deriveRelations(deps(), repository, prSource(152));
+
+    // 상위가 머지된다 → 해제해야 하는데 bulk 항목이 거부된다.
+    await seedPullRequest({ number: 151, head: 'fp', base: 'main', state: 'merged' });
+    await expect(
+      deriveRelations(deps({ es: withUpdateItemFailure(es) }), repository, prSource(152)),
+    ).rejects.toThrow(/스택 해제/);
+  });
+
+  it('**운영 설정(refresh 꺼짐)에서도 해제가 요약에 반영된다** (PR #46 리뷰 P2)', async () => {
+    /*
+     * 운영에서 `refresh`는 꺼져 있다. `setLinkDetached`의 bulk가 검색에 보이지 않는
+     * 상태에서 요약을 세면 **방금 해제한 마지막 스택 간선이 여전히 살아 있는 것으로
+     * 세어져** `has_stack: true`가 굳는다 — 뒤따르는 자동 refresh는 요약을 다시
+     * 계산해 주지 않는다.
+     *
+     * 그래서 이 시험만 `refresh: false`로 돈다. 시험 편의를 끄면 운영과 같아진다.
+     */
+    await indexPullRequest(171, 0);
+    await indexPullRequest(172, 0);
+    await seedPullRequest({ number: 171, head: 'pp', base: 'main', state: 'open' });
+    await seedPullRequest({ number: 172, head: 'cc', base: 'pp', state: 'open' });
+    await deriveRelations(deps({ refresh: false }), repository, prSource(172));
+    expect(((await prDoc(172))['link_summary'] as Record<string, unknown>)['has_stack']).toBe(true);
+
+    await seedPullRequest({ number: 171, head: 'pp', base: 'main', state: 'merged' });
+    await deriveRelations(deps({ refresh: false }), repository, prSource(172));
+
+    expect(((await prDoc(172))['link_summary'] as Record<string, unknown>)['has_stack']).toBe(false);
+  });
+
+  it('**상위 PR이 retarget돼도 옛 child의 간선이 해제된다** (PR #46 리뷰 P2)', async () => {
+    await seedPullRequest({ number: 161, head: 'old-head', base: 'main', state: 'open' });
+    await seedPullRequest({ number: 162, head: 'child', base: 'old-head', state: 'open' });
+    await deriveRelations(deps(), repository, prSource(162));
+    expect((await links({ fromId: pullRequestDocId(REPOSITORY_ID, 162), linkType: 'stacks_on' }))[0]!['detached']).toBe(false);
+
+    /*
+     * 상위가 head를 바꾼다. 정본은 이미 새 값이라 **분기로 찾는 조회는 옛 child를
+     * 보지 못한다** — 이미 있는 간선에서 찾아야 한다.
+     */
+    await seedPullRequest({ number: 161, head: 'new-head', base: 'main', state: 'open' });
+    await handleRelationsReady(deps(), repository, prSource(161));
+
+    const after = await links({ fromId: pullRequestDocId(REPOSITORY_ID, 162), linkType: 'stacks_on' });
+    expect(after).toHaveLength(1);
+    expect(after[0]!['detached']).toBe(true);
+  });
+
+  it('**나중 커밋이 상한을 채워도 이전 후보를 놓치지 않는다** (PR #46 리뷰 P2)', async () => {
+    /*
+     * 방향 술어가 질의에 없으면, 같은 patch를 가진 **나중** 커밋이 SQL 상한을
+     * 채우는 순간 이전 후보가 한 건도 남지 않고 조정이 멀쩡한 간선을 지운다.
+     */
+    const self = sha('d0');
+    await seedCommit({ sha: sha('d1'), message: 'feature', committedAt: '2026-08-01T00:00:00.000Z', patchId: 'PZ' });
+    await seedCommit({ sha: self, message: 'feature', committedAt: '2026-08-02T00:00:00.000Z', patchId: 'PZ' });
+    for (let index = 0; index < 25; index += 1) {
+      await seedCommit({
+        sha: sha(`e${index.toString(16)}`.padEnd(4, '0')),
+        message: 'feature',
+        committedAt: `2026-09-${String(1 + index).padStart(2, '0')}T00:00:00.000Z`,
+        patchId: 'PZ',
+      });
+    }
+
+    await deriveRelations(deps(), repository, commitSource(self));
+
+    const found = await links({ fromId: commitDocId(REPOSITORY_ID, self), linkType: 'cherry_picks' });
+    expect(found).toHaveLength(1);
+    expect(found[0]!['to_id']).toBe(commitDocId(REPOSITORY_ID, sha('d1')));
   });
 
   it('간선이 **접근 통제 material을 생성 시점에** 갖는다 (THR-035)', async () => {

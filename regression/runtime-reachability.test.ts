@@ -365,6 +365,46 @@ describe('되돌림·체리픽·스택 파생의 도달성 (WP-030 / CR-041)', (
     expect(existsSync(new URL('deploy/k8s/pipeline-worker-relations.yaml', new URL('..', import.meta.url)))).toBe(false);
   });
 
+  it('**양 끝점의 요약을 갱신한다** (PR #46 리뷰 P1) — `is_reverted`는 대상의 필드다', () => {
+    const derive = RELATIONS.slice(RELATIONS.indexOf('export async function deriveRelations'));
+    // 조정 **전에** 기존 간선을 읽어야 사라진 대상의 요약도 되돌릴 수 있다.
+    expect(derive).toContain('const before = await findLinksFrom(deps.es');
+    expect(derive).toContain('for (const endpoint of endpoints.values())');
+  });
+
+  it('**요약 질의 전에 색인을 새로 고친다** (PR #46 리뷰 P2) — 운영은 refresh가 꺼져 있다', () => {
+    const derive = RELATIONS.slice(RELATIONS.indexOf('export async function deriveRelations'));
+    const refresh = derive.indexOf('await deps.es.indices.refresh({ index: LINKS_ALIAS })');
+    const summarize = derive.indexOf('await refreshRelationSummary(');
+    expect(refresh).toBeGreaterThan(-1);
+    expect(summarize).toBeGreaterThan(refresh);
+  });
+
+  it('**부분 실패를 조용히 ack하지 않는다** (PR #46 리뷰 P1) — WP-030에는 pending 표식이 없다', () => {
+    expect(RELATIONS).toContain('throw new Error(`관계 간선 쓰기 실패');
+    expect(RELATIONS).toContain('throw new Error(`스택 해제 표시 실패');
+  });
+
+  it('**`links_pending`을 관계 파생이 덮지 않는다** (DEV-246, PR #46 리뷰 P1)', () => {
+    const refresh = RELATIONS.slice(RELATIONS.indexOf('export async function refreshRelationSummary'));
+    expect(refresh).not.toContain('linksPending');
+    // 스크립트도 값이 없으면 건드리지 않아야 한다.
+    const links = read('packages/es/src/links.ts');
+    expect(links).toContain("'if (params.links_pending != null && ctx._source.links_pending != params.links_pending) {',");
+  });
+
+  it('**체리픽 방향 술어가 질의 안에 있다** (PR #46 리뷰 P2)', () => {
+    const plan = RELATIONS.slice(RELATIONS.indexOf('async function planCherryPicks'));
+    expect(plan).toContain("{ relation: 'earlier', committedAt: self.committed_at, commitSha: self.commit_sha }");
+    // 앱에서 방향을 거르면 나중 커밋이 상한을 채울 때 이전 후보를 통째로 잃는다.
+    expect(plan).not.toContain('.filter((row) => isLater(self, row))');
+  });
+
+  it('**retarget된 옛 child를 간선에서 찾는다** (PR #46 리뷰 P2)', () => {
+    const reeval = RELATIONS.slice(RELATIONS.indexOf('export async function reevaluateAffectedRelations'));
+    expect(reeval).toContain('await findLinksTo(deps.es');
+  });
+
   it('**범위 요약이 되돌림 수를 같은 왕복에서 센다** (DEV-239) — N+1이 아니다', () => {
     const range = read('apps/search-api/src/sequence/range.ts');
     expect(range).toContain("reverted: { filter: { term: { 'link_summary.is_reverted': true } } }");

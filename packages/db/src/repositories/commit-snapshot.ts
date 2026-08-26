@@ -265,19 +265,53 @@ export async function listCommitsMissingProjection(
  *
  * `self`는 제외한다 — 자기 자신은 후보가 아니다.
  */
+export interface PatchCandidateBound {
+  /** `earlier`면 기준보다 이전, `later`면 이후. 전순서는 `(committed_at, commit_sha)`다. */
+  readonly relation: 'earlier' | 'later';
+  readonly committedAt: Date;
+  readonly commitSha: string;
+}
+
 export async function findCommitsByPatchId(
   db: Queryable,
   repositoryId: number,
   patchId: string,
   selfSha: string,
   limit: number,
+  bound?: PatchCandidateBound,
 ): Promise<readonly CommitSnapshotRow[]> {
+  /*
+   * **방향 술어가 질의 안에 있어야 한다** (PR #46 리뷰 P2).
+   *
+   * 넓게 가져와 애플리케이션에서 거르면, 기준보다 **나중인** 커밋이 상한을 채우는
+   * 순간 이전 후보가 한 건도 남지 않는다 — 그리고 조정이 그것을 "후보가 사라졌다"로
+   * 읽어 **멀쩡한 체리픽 간선을 지운다.** 같은 patch를 여러 브랜치가 들고 있는
+   * 재구축에서 실제로 일어난다.
+   */
+  const where = ['repository_id = $1', 'patch_id = $2', 'commit_sha <> $3'];
+  const params: unknown[] = [repositoryId, patchId, selfSha];
+  let order = 'committed_at DESC, commit_sha ASC';
+
+  if (bound !== undefined) {
+    const at = `$${String(params.length + 1)}`;
+    const sha = `$${String(params.length + 2)}`;
+    params.push(bound.committedAt, bound.commitSha);
+    if (bound.relation === 'earlier') {
+      where.push(`(committed_at < ${at} OR (committed_at = ${at} AND commit_sha < ${sha}))`);
+    } else {
+      where.push(`(committed_at > ${at} OR (committed_at = ${at} AND commit_sha > ${sha}))`);
+      // 이후 후보는 오름차순이 자연스럽다. 어느 쪽이든 **결정론이어야** 한다.
+      order = 'committed_at ASC, commit_sha ASC';
+    }
+  }
+
+  params.push(limit);
   const result = await db.query<CommitSnapshotRow>(
     `SELECT * FROM commit_snapshot
-      WHERE repository_id = $1 AND patch_id = $2 AND commit_sha <> $3
-      ORDER BY committed_at DESC, commit_sha ASC
-      LIMIT $4`,
-    [repositoryId, patchId, selfSha, limit],
+      WHERE ${where.join(' AND ')}
+      ORDER BY ${order}
+      LIMIT $${String(params.length)}`,
+    params,
   );
   return result.rows;
 }

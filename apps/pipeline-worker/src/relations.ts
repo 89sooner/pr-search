@@ -40,8 +40,11 @@ import {
   type ExtractedRevert,
 } from '@prs/domain';
 import {
+  DERIVED_LINK_TYPES,
+  LINKS_ALIAS,
   deleteStaleDerivedLinks,
   findLinksFrom,
+  findLinksTo,
   setLinkDetached,
   summarizeRelations,
   updateLinkSummary,
@@ -108,6 +111,27 @@ function scopeOf(repository: RepositoryRow): LinkScopeFields {
     visibility: repository.visibility,
     allowed_team_ids: [...repository.allowed_team_ids].map(Number),
   };
+}
+
+/**
+ * 문서 ID에서 source를 되돌린다. 요약을 다시 계산할 끝점을 모을 때 쓴다.
+ *
+ * ID 형식은 `pullRequestDocId`·`commitDocId`가 정한 `{repository_id}:{키}`다.
+ * 형식이 맞지 않으면 **넣지 않는다** — 손으로 넣은 값이나 옛 형식을 조용히
+ * 해석하지 않는다.
+ */
+function addEndpoint(
+  into: Map<string, LinkSource>,
+  repositoryId: number,
+  kind: LinkEndpointKind,
+  docId: string,
+): void {
+  const prefix = `${String(repositoryId)}:`;
+  if (!docId.startsWith(prefix)) return;
+  const key = docId.slice(prefix.length);
+  if (key === '') return;
+  if (kind === 'pull_request' && !/^\d+$/.test(key)) return;
+  into.set(`${kind}:${key}`, { kind, id: key });
 }
 
 function docIdOf(repositoryId: number, source: LinkSource): string {
@@ -300,23 +324,23 @@ async function planCherryPicks(
      * 후보는 **같은 저장소 안에서만** 찾는다 (AC-3). 그 조건은 질의 자신이
      * 강제한다 — 여기서 거르면 그 한 줄이 사라지는 순간 저장소 간 간선이 생긴다.
      */
-    const candidates = await commitSnapshotRepo.findCommitsByPatchId(
-      deps.pool,
-      repositoryId,
-      self.patch_id,
-      self.commit_sha,
-      /*
-       * 상한보다 넉넉히 가져온다 — 방향 필터로 걸러진 뒤에도 5건을 채울 수 있어야
-       * "상위 5건"이 실제로 5건이다.
-       */
-      CHERRY_CANDIDATE_LIMIT * 4,
-    );
     /*
      * **방향: 나중 커밋 → 이른 커밋** (DEV-243). 체리픽은 원본이 먼저 있고 사본이
      * 뒤에 온다. 미래 커밋을 현재 커밋의 "원본 후보"로 거꾸로 잇지 않는다 —
      * 나중 커밋이 들어오면 **그 커밋이 source가 되어** 이쪽으로 간선을 만든다.
+     *
+     * **방향 술어는 질의가 건다** (PR #46 리뷰 P2). 넓게 가져와 뒤에서 거르면
+     * 나중 커밋이 상한을 채우는 순간 이전 후보가 한 건도 안 남고, 조정이 그것을
+     * "후보가 사라졌다"로 읽어 멀쩡한 간선을 지운다.
      */
-    const earlier = candidates.filter((row) => isLater(self, row)).slice(0, CHERRY_CANDIDATE_LIMIT);
+    const earlier = await commitSnapshotRepo.findCommitsByPatchId(
+      deps.pool,
+      repositoryId,
+      self.patch_id,
+      self.commit_sha,
+      CHERRY_CANDIDATE_LIMIT,
+      { relation: 'earlier', committedAt: self.committed_at, commitSha: self.commit_sha },
+    );
     for (const row of earlier) {
       push(row.commit_sha, 'derived', `patch-id ${self.patch_id}`, true);
     }
@@ -496,25 +520,39 @@ export async function deriveRelations(
     });
   }
 
+  /*
+   * ---- 조정 전에 **기존 간선의 끝점**을 기억한다 (PR #46 리뷰 P1).
+   *
+   * 요약은 양 끝점의 상태다 — `is_reverted`는 **대상**의 필드이고, 간선이 사라지면
+   * 그 대상의 값도 바뀐다. source만 갱신하면 대상은 아무도 건드리지 않아
+   * `is_reverted`가 영원히 `false`로 남고, 그 위에서 도는
+   * `reverted_pull_request_count`가 통째로 틀린 수를 낸다.
+   */
+  const before = await findLinksFrom(deps.es, {
+    repositoryId,
+    fromType: source.kind,
+    fromId: docId,
+    linkTypes: [...DERIVED_LINK_TYPES],
+  });
+
   const all = [...revertDocs, ...cherryDocs, ...stackDocs];
   const write = await writeDerivedLinks(deps.es, all, { refresh });
   if (write.failures.length > 0) {
     log({
-      level: 'warn',
+      level: 'error',
       message: '관계 간선 쓰기 일부 실패 — 조정을 하지 않는다',
       repository_id: repositoryId,
       doc_id: docId,
       failures: write.failures.length,
       reason: write.failures[0]?.reason ?? '',
     });
-    return {
-      reverts: revertDocs.length,
-      cherryPicks: cherryDocs.length,
-      stacks: stackDocs.length,
-      removed: 0,
-      detached: 0,
-      complete: false,
-    };
+    /*
+     * **던진다.** WP-030에는 `links_pending` 같은 재시도 표식이 없고(DEV-246),
+     * 여기서 조용히 ack하면 **실패했는데 아무도 다시 하지 않는다.** 핸들러가
+     * `delivery_count`로 예산을 집행하고, 소진하면 실패 대기열 + JOB-REL-006이
+     * 보정 경로다 (DEV-228 규율).
+     */
+    throw new Error(`관계 간선 쓰기 실패: ${write.failures[0]?.reason ?? 'unknown'}`);
   }
 
   /*
@@ -543,7 +581,33 @@ export async function deriveRelations(
     detached = await reconcileStackDetachment(deps, repositoryId, docId, stackDocs);
   }
 
-  await refreshRelationSummary(deps, repositoryId, source, docId);
+  /*
+   * ---- **양 끝점의 요약을 다시 계산한다** (PR #46 리뷰 P1).
+   *
+   * 지금 만든 간선의 대상과, 조정으로 사라지거나 해제된 간선의 옛 대상이 모두
+   * 대상이다. 둘을 합치는 이유: 새 대상은 `is_reverted`가 `true`가 되어야 하고,
+   * 옛 대상은 `false`로 돌아가야 한다.
+   */
+  const endpoints = new Map<string, LinkSource>();
+  endpoints.set(`${source.kind}:${source.id}`, source);
+  for (const doc of all) addEndpoint(endpoints, repositoryId, doc.to_type, doc.to_id);
+  for (const link of before) {
+    if (link.to_type === undefined || link.to_id === undefined) continue;
+    addEndpoint(endpoints, repositoryId, link.to_type as LinkEndpointKind, link.to_id);
+  }
+
+  /*
+   * **요약 질의 전에 색인을 새로 고친다** (PR #46 리뷰 P2).
+   *
+   * 운영에서 `refresh`는 꺼져 있다. `setLinkDetached`의 bulk가 검색에 보이지 않는
+   * 상태에서 요약을 세면 **방금 해제한 마지막 스택 간선이 여전히 살아 있는 것으로
+   * 세어져** `has_stack: true`가 굳는다. 뒤따르는 자동 refresh는 요약을 다시
+   * 계산해 주지 않는다.
+   */
+  await deps.es.indices.refresh({ index: LINKS_ALIAS });
+  for (const endpoint of endpoints.values()) {
+    await refreshRelationSummary(deps, repositoryId, endpoint, docIdOf(repositoryId, endpoint));
+  }
 
   for (const doc of all) {
     deps.metrics.linkRelationsTotal.inc({ link_type: doc.link_type, confidence: doc.confidence }, 1);
@@ -583,11 +647,21 @@ async function reconcileStackDetachment(
   const stale = existing.filter((link) => !keep.has(link.link_id) && link.detached !== true);
   if (stale.length === 0) return 0;
 
-  await setLinkDetached(
+  const result = await setLinkDetached(
     deps.es,
     stale.map((link) => ({ link_id: link.link_id, repository_id: repositoryId, detached: true })),
     { refresh: deps.refresh === true },
   );
+  /*
+   * **부분 실패를 성공으로 세지 않는다** (PR #46 리뷰 P1).
+   *
+   * ES는 bulk를 200으로 돌려주면서 항목마다 오류를 담을 수 있다. 그것을 버리면
+   * 머지된 상위 PR에 대한 의존이 `active`로 남고 **아무도 다시 하지 않는다** —
+   * 이 저장소가 다섯 번 밟은 모양이다. 던져서 핸들러의 재시도 예산에 맡긴다.
+   */
+  if (result.failures.length > 0) {
+    throw new Error(`스택 해제 표시 실패: ${result.failures[0]?.reason ?? 'unknown'}`);
+  }
   return stale.length;
 }
 
@@ -634,11 +708,13 @@ export async function refreshRelationSummary(
       docId,
       repositoryId,
       /*
-       * `links_pending`은 **참조 추출의 완결 상태**다 (DEV-246). 관계 파생이
-       * 그 뜻을 빌려 쓰지 않는다 — 한 필드가 두 뜻을 가지면 화면이 무엇을
-       * 말하는지 아무도 설명할 수 없다. 여기서는 현재 값을 보존한다.
+       * **`links_pending`을 넘기지 않는다** (DEV-246, PR #46 리뷰 P1).
+       *
+       * 그것은 **참조 추출**의 완결 상태이고 이 워커는 참조를 추출하지 않았다 —
+       * 그 상태에 대해 할 말이 없다. `false`로 덮으면 참조 쪽의 실패 표식이
+       * 사라져 그 문서가 재파생 대상에서 조용히 빠진다. 앞선 판(v1)의 주석은
+       * "보존한다"고 적고 있었으나 **코드는 그 반대를 하고 있었다.**
        */
-      linksPending: false,
       relations,
     },
     { refresh: deps.refresh === true },
@@ -761,6 +837,26 @@ export async function reevaluateAffectedRelations(
         AFFECTED_LIMIT,
       );
       for (const one of children) add({ kind: 'pull_request', id: String(one.pr_number) });
+    }
+
+    /*
+     * ---- **옛 head의 child도 다시 본다** (PR #46 리뷰 P2).
+     *
+     * 이 PR이 `head_branch`를 바꾸면(retarget) 정본은 이미 새 값이라 위 조회는
+     * **옛 head를 base로 삼던 child를 보지 못한다.** 그 child들의 `stacks_on`은
+     * 조건이 깨졌는데도 `active`로 남는다.
+     *
+     * 분기 값 대신 **이미 있는 간선**에서 찾는다 — 간선이 그때의 관계를 기억하고
+     * 있으므로 분기가 무엇으로 바뀌었든 정확하다.
+     */
+    const incoming = await findLinksTo(deps.es, {
+      repositoryId,
+      toType: 'pull_request',
+      toId: pullRequestDocId(repositoryId, Number(source.id)),
+      linkTypes: ['stacks_on'],
+    });
+    for (const link of incoming) {
+      addEndpoint(targets, repositoryId, 'pull_request', link.from_id);
     }
   }
 

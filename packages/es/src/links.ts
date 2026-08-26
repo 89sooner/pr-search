@@ -523,7 +523,14 @@ export const LINK_SUMMARY_SCRIPT = [
   '    ctx._source.link_summary.reference_count = next; changed = true;',
   '  }',
   '}',
-  'if (ctx._source.links_pending != params.links_pending) {',
+  /*
+   * **생략하면 건드리지 않는다** (CR-041, PR #46 리뷰 P1).
+   *
+   * `links_pending`은 **참조 추출의 완결 상태**다. 관계 파생만 도는 회차가 그것을
+   * `false`로 덮으면 참조 쪽의 실패 표식이 사라지고, 그 문서는 재파생 대상에서
+   * 조용히 빠진다 — 실패했는데 아무도 다시 하지 않는 자리가 하나 더 생긴다.
+   */
+  'if (params.links_pending != null && ctx._source.links_pending != params.links_pending) {',
   '  ctx._source.links_pending = params.links_pending; changed = true;',
   '}',
   /*
@@ -549,7 +556,13 @@ export interface LinkSummaryUpdate {
   readonly repositoryId: number;
   /** 생략하면 참조 수를 건드리지 않는다 — 세지 못한 회차의 정직한 표현이다. */
   readonly referenceCount?: number;
-  readonly linksPending: boolean;
+  /**
+   * 참조 추출의 완결 상태 (FR-REL-003).
+   *
+   * **생략하면 건드리지 않는다.** 관계 파생(WP-030)만 도는 회차는 이 값을 넘기지
+   * 않는다 — 그 워커는 참조를 추출하지 않았으므로 그 상태에 대해 할 말이 없다.
+   */
+  readonly linksPending?: boolean;
   /**
    * WP-030의 관계 leaf (CR-041). **생략하면 건드리지 않는다.**
    *
@@ -589,7 +602,7 @@ export async function updateLinkSummary(
         source: LINK_SUMMARY_SCRIPT,
         params: {
           reference_count: input.referenceCount ?? null,
-          links_pending: input.linksPending,
+          links_pending: input.linksPending ?? null,
           /*
            * `null`이면 스크립트가 건드리지 않는다 — WP-029만 도는 회차가 WP-030의
            * 네 값을 지우지 않고, 그 반대도 마찬가지다 (DEV-222).
