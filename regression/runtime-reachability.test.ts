@@ -731,4 +731,79 @@ describe('경로가 실재하는지', () => {
       expect(applyBlock, `${name}이 적용 순서에 없다`).toContain(name);
     }
   });
+
+  /*
+   * **방향이 반대인 검사** (CR-045, DEV-293).
+   *
+   * 위 시험은 "존재하는 manifest가 적용 순서에 있는가"를 묻는다. 그래서 **없는
+   * 파일은 물음의 대상이 아니었고**, `batch` 역할은 코드에 갈래가 있고 인프라
+   * 3장이 배포 단위로 승인했는데도 manifest 없이 남아 있었다 — 그 결과 이미
+   * 구현된 JOB-ING-007(아웃박스 재적재)이 배포되지 않았다 (DEV-292).
+   *
+   * 이 시험은 **코드를 정본으로 삼는다**: `index.ts`가 `roles.includes('X')`로
+   * 갈래를 만들었다면 그 역할을 세우는 manifest가 있어야 한다. 코드가 그 역할을
+   * 위해 무언가를 기동하는데 아무 배포도 그 역할을 켜지 않는다면, 그 기능은
+   * **선언만 되고 실행되지 않는다.**
+   *
+   * 예외는 **짧고 사유와 DEV 번호가 붙어야 한다** (`architecture.test.ts`의
+   * `UNSCOPED_ALLOWLIST`가 같은 형식이다). 비워 두거나 검사를 지우면 다음
+   * 미배포 역할이 조용히 들어온다.
+   */
+  const UNDEPLOYED_ROLE_ALLOWLIST: readonly { readonly role: string; readonly dev: string; readonly why: string }[] = [
+    {
+      role: 'backfill',
+      dev: 'DEV-304',
+      why:
+        'JOB-ING-004 백필 러너. `enrich` 안의 중첩 갈래인데 `pipeline-worker-enrich.yaml`이 ' +
+        '`PIPELINE_WORKER_ROLES=enrich`만 세워 러너가 뜨지 않는다. 잡을 만들면 아무도 집지 않고 ' +
+        '`job_active_uk`가 이후 요청을 막는다 — DEV-178과 같은 모양이다. WP-019 소관',
+    },
+    {
+      role: 'release',
+      dev: 'DEV-305',
+      why:
+        'JOB-REL-007 릴리스 수집. manifest 자체가 없다. 이 역할은 **미러 볼륨을 요구하므로**(DEV-143) ' +
+        'PVC 배치가 함께 정해져야 해 복사만으로 만들 수 없다. WP-024 소관',
+    },
+    {
+      role: 'authz',
+      dev: 'DEV-306',
+      why:
+        'JOB-AUTH-001 권한 캐시 무효화. manifest가 없어 `EVT-AUTH-001`을 아무도 소비하지 않는다 — ' +
+        '회수된 권한이 TTL 만료까지 캐시에 남는다 (FR-AUTH-003 AC-2). **접근 통제 축이므로 별도 CR로 다룬다.** WP-012 소관',
+    },
+  ];
+
+  it('코드가 갈래를 만든 역할은 그것을 세우는 manifest를 갖는다', () => {
+    const declared = [...WORKER_INDEX.matchAll(/roles\.includes\('([a-z-]+)'\)/g)].map((match) => match[1]);
+    expect(declared.length).toBeGreaterThan(0);
+
+    const dir = new URL('deploy/k8s/', new URL('..', import.meta.url));
+    const deployed = new Set<string>();
+    for (const name of readdirSync(dir).filter((one) => one.endsWith('.yaml'))) {
+      const manifest = readFileSync(new URL(name, dir), 'utf8');
+      // 개행을 넘지 않는다 — `\s`를 넣으면 다음 YAML 키까지 삼킨다.
+      const value = /PIPELINE_WORKER_ROLES[\s\S]{0,80}?value:[ \t]*([a-z][a-z,-]*)/.exec(manifest)?.[1] ?? '';
+      for (const role of value.split(',')) {
+        const trimmed = role.trim();
+        if (trimmed !== '') deployed.add(trimmed);
+      }
+    }
+
+    const exempt = new Set(UNDEPLOYED_ROLE_ALLOWLIST.map((one) => one.role));
+    for (const role of new Set(declared)) {
+      if (exempt.has(role)) continue;
+      expect(deployed, `역할 '${role}'을 세우는 manifest가 없다 — 그 갈래는 배포에서 실행되지 않는다`).toContain(role);
+    }
+  });
+
+  it('미배포 역할 예외는 목록에 사유와 DEV가 함께 있다', () => {
+    // 예외를 늘리는 것은 **경계를 넓히는 일**이다. 비워 두면 검사가 무의미해진다.
+    for (const one of UNDEPLOYED_ROLE_ALLOWLIST) {
+      expect(one.dev, `${one.role} 예외에 DEV 번호가 없다`).toMatch(/^DEV-\d{3}$/);
+      expect(one.why.length, `${one.role} 예외에 사유가 없다`).toBeGreaterThan(40);
+    }
+    // 이미 배포된 역할이 예외 목록에 남아 있으면 목록이 낡은 것이다.
+    expect(UNDEPLOYED_ROLE_ALLOWLIST.map((one) => one.role)).not.toContain('batch');
+  });
 });

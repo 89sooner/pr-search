@@ -1,0 +1,65 @@
+# 배치 잡 역할 (JOB-ING-006 재색인 / JOB-ING-007 아웃박스 재적재).
+#
+# **이 파일이 없었다** (CR-045, DEV-292). 인프라 3장의 배포 단위 표는
+# `pipeline-worker:batch`를 1/3 replica로 승인하고 있었고 `index.ts`도
+# `roles.includes('batch')` 갈래를 갖고 있었는데, 그 역할을 세우는 manifest만
+# 저장소에 없었다. 결과는 둘이다.
+#
+#   - JOB-ING-006(재색인)이 구현되어도 배포에 도달할 수 없다
+#   - **이미 구현된 JOB-ING-007(아웃박스 재적재)이 지금 돌지 않는다.**
+#     `outbox-relay.ts`의 주석이 적는 대로, 그 잡이 없으면 Redis가 잠깐만
+#     내려가도 그 사이 이벤트가 영영 처리되지 않는다
+#
+# 운영 도달성 회귀(CR-034)가 이것을 놓친 이유는 **방향**이다 — 그 시험은
+# "존재하는 manifest가 적용 순서에 있는가"를 물었고, 없는 파일은 물음의
+# 대상이 아니었다. 이제 배포 단위 표를 정본으로 삼는 역방향 검사가 함께 있다
+# (DEV-293).
+#
+# **replica 1이다.** 재색인은 별칭 하나를 통째로 다시 만드는 작업이라 동시
+# 실행 상한이 1이고(DEV-300), 아웃박스 재적재도 리더 선출 없이 도는 주기
+# 스윕이다. 파드가 둘이면 같은 행을 두 번 발행한다 — 멱등이라 결과는 같지만
+# 버스 유량을 그만큼 더 쓴다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pipeline-worker-batch
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: pipeline-worker-batch }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/component: pipeline-worker-batch }
+  # 재색인이 진행 중인 파드를 새 파드와 겹쳐 띄우지 않는다. 겹치면 두 파드가
+  # 같은 잡을 집으려 경합하고, 이중 쓰기 활성화 구간이 두 번 열린다.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: pipeline-worker-batch }
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '3003'
+    spec:
+      # 재색인은 한 배치를 끝내고 나가야 진행률이 정확하다. 조정 스캔보다 길게 준다.
+      terminationGracePeriodSeconds: 300
+      containers:
+        - name: pipeline-worker
+          image: prs/pipeline-worker:latest
+          env:
+            - name: PIPELINE_WORKER_ROLES
+              value: batch
+          ports:
+            - name: http
+              containerPort: 3003
+          envFrom:
+            - configMapRef: { name: prs-config }
+            - secretRef: { name: prs-secrets }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          # 재색인은 벌크 본문을 메모리에 쌓는다. 조정 스캔보다 여유를 준다.
+          resources:
+            requests: { cpu: 300m, memory: 512Mi }
+            limits: { memory: 1536Mi }
