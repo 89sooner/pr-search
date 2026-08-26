@@ -400,21 +400,21 @@
 | 접근 범위가 500개를 훨씬 넘는 사용자가 다수 | 기술 제약 | ADR-008의 `org_team` 모드 임계 재검토 |
 | 미러 디스크가 산정치를 크게 초과 | 기술 제약 | 인프라 5장 용량 재산정 CR |
 
-| DEV-215 | 2026-08-26 | **JOB-REL-001·JOB-REL-005가 직접 푸시 커밋에 도달하지 않는다.** 잡 카탈로그가 적은 방아쇠는 `EVT-ING-003` 하나인데, 그 이벤트는 `project` 워커가 색인한 문서마다 낸다. WP-067이 새로 만드는 직접 푸시 커밋 문서는 그 경로를 지나지 않고 `commit-enrich`가 만든다 — 그 파일에는 `bus.subscribe`가 하나 있고 **`bus.publish`가 하나도 없다.** 그래서 직접 푸시 커밋 메시지의 참조는 영원히 간선이 되지 않는다. **CR-038이 DEV-206에서 잡은 것과 정확히 같은 모양이 한 홉 아래에 남아 있었다** | WP-029 / FR-REL-003, JOB-REL-001, JOB-REL-005 | 범위 공백 | **CR-039** | open |
-| DEV-216 | 2026-08-26 | **새 ready 신호를 `prs:projected`에 실으면 되먹임이 생긴다.** 그 이벤트를 내는 JOB-MIR-002가 같은 토픽을 `link:commit-enrich` 그룹으로 읽고 있어 자기 이벤트를 자기가 받는다. 방치하면 무한 루프이거나, 조용히 ack되면서 아무도 그 사실을 모른다 | WP-029 / EVT-ING-005, JOB-MIR-002 | 범위 공백 | **CR-039** | open |
-| DEV-217 | 2026-08-26 | **`link_id`가 가변 `to_id`를 재료로 써서 FR-REL-003 AC-3과 충돌한다.** 규칙은 세 곳에 같은 문장으로 적혀 있다 — 데이터 모델 4.3, `packages/es/src/mappings/links.ts`, `packages/domain/src/entities.ts`. `Refs: abc1234`가 미해결로 저장된 뒤 대상이 색인되면 `to_id`가 축약 SHA에서 40자 SHA로 바뀌고 `link_id`가 함께 바뀐다. 그러면 AC-3이 요구하는 **갱신**이 아니라 새 문서가 되고 미해결 간선이 그대로 남는다 — AC-3·멱등·결정론적 ID 셋이 한 번에 깨진다 | WP-029 / FR-REL-003 AC-3, ENT-REL-002, ADR-009 | 범위 공백 | **CR-039** | open |
-| DEV-218 | 2026-08-26 | **커밋 매핑에 `links_pending`이 없다.** FR-REL-003의 예외 처리는 "추출 실패는 색인을 막지 않고 문서에 `links_pending: true`를 표시한다"인데, 요구사항이 PR **또는 커밋**을 대상으로 하면서 커밋 매핑에는 그 필드가 선언되어 있지 않다. 매핑이 `strict`라 표시 자체가 THR-010으로 거부된다 — 커밋에 대해서는 승인된 예외 처리를 표현할 수단이 없다 | WP-029 / FR-REL-003 예외 처리, ENT-CORE-003 | 범위 공백 | **CR-039** | open |
-| DEV-219 | 2026-08-26 | **커밋 매핑 `link_summary`에 `reference_count`가 없다.** PR 매핑에는 있다. 커밋 상세(W-003)가 참조 수를 간선 인덱스 조회 없이 그릴 수 없어 ADR-009의 핫패스 비정규화가 커밋 축에서만 성립하지 않는다 | WP-029 / ENT-CORE-003, ADR-009 | 범위 공백 | **CR-039** | open |
-| DEV-220 | 2026-08-26 | **본문에서 사라진 참조를 지울 계약이 없다.** WP-029 계약은 "추출하여 간선을 생성한다"까지다. PR 본문이 `Refs: #10`에서 `Refs: #20`으로 바뀌면 `#20`이 생기지만 **`#10`이 그대로 남는다.** 조사 도구에서 없는 참조를 있다고 말하는 것은 있는 참조를 놓치는 것과 같은 등급의 오류다 | WP-029 / FR-REL-003 | 범위 공백 | **CR-039** | open |
-| DEV-221 | 2026-08-26 | **과거 엔티티에 간선을 만들 경로가 없다.** 새 `link` consumer group은 Redis stream을 `0`부터 읽을 수 있으나 stream retention은 정본이 아니고, WP-029 이전의 직접 푸시 커밋에는 애초에 `EVT-ING-003`이 없었다. 배포 뒤 "새 이벤트부터만 관계가 생긴다"가 운영 구멍으로 남는다 — CR-037이 DEV-194에서 PR 스냅숏 축에 대해 이미 겪은 자리다 | WP-029 / JOB-REL-006, ADR-004 | 범위 공백 | **CR-039** | open |
-| DEV-222 | 2026-08-26 | **`link_summary`의 leaf별 소유자가 없고 부분 갱신 수단도 없다.** 매핑에는 다섯 leaf가 있고 그중 넷이 WP-030 것이다. 그런데 `bulkUpsert`의 조건부 스크립트는 `ctx._source[key] = value`로 **객체를 통째 대입**하므로, WP-029가 `link_summary`를 그대로 쓰면 WP-030이 써 둔 값을 지운다 | WP-029 / ADR-009, ENT-CORE-002, ENT-CORE-003 | 범위 공백 | **CR-039** | open |
-| DEV-223 | 2026-08-26 | **`to_repository_id`·`detached`를 누가 채우는지 정의되어 있지 않다.** 매핑에는 선언되어 있다. 소유가 없으면 WP-029가 미래 필드를 선점하거나(예: `detached: false`를 기계적으로 채움) 아무도 채우지 않는다. `strict` 매핑에서 값을 두지 않는 것과 `false`를 두는 것은 다른 주장이다 | WP-029 / ENT-REL-002 | 범위 공백 | **CR-039** | open |
-| DEV-224 | 2026-08-26 | **저장소를 건너뛰는 참조의 접근 통제 경계가 문서에 없다.** `acme/a`의 PR이 `acme/b#20`을 참조하면 간선은 a의 접근 범위로 저장된다 — 그것이 맞다. 그러나 간선이 `to_repository_id: b`를 들고 있으므로, 관계 조회 API가 대상의 제목·본문을 함께 반환하면 **b를 볼 수 없는 사용자에게 b의 내용이 샌다.** WP-029는 조회 API를 만들지 않아 지금 유출은 없지만, 경계를 적어 두지 않으면 WP-031이 그것을 모른 채 만든다 — CR-036이 WP-068에서 겪은 것과 같은 종류다 | WP-029 / ADR-008, FR-AUTH-002, THR-034~036 | 범위 공백 | **CR-039** | open |
-| DEV-225 | 2026-08-26 | **`@prs/domain`의 관계 타입 셋이 실제 매핑과 어긋난다.** `LinkSummary`는 `reverted_by_count`를 선언하는데 매핑에 없고, 매핑의 `is_reverted`·`has_stack`은 타입에 없다. `CommitRole`은 `'merge' | 'original'`인데 실제 값은 `merge_commit`·`source_commit`·`direct_push`다 — **`documents.ts`가 자기 `CommitRole`을 따로 정의해 쓰고 있어** 타입 검사가 드리프트를 잡지 못했다. `Link`에는 접근 통제 필드 넷과 `to_repository_id`·`detached`·`created_at`이 없다 | WP-029 / ENT-REL-002, ENT-CORE-003 | 문서 오류 | **CR-039** | open |
-| DEV-226 | 2026-08-26 | **ADR-009 자신이 구현과 어긋난다.** Decision 블록의 간선 문서 구조에 `direction`이 있으나 매핑에 없고, 접근 통제 필드 넷과 `to_repository_id`·`detached`가 없다. `link_summary` 목록도 `reverted_by_count`를 적는다 | WP-029 / ADR-009 | 문서 오류 | **CR-039** | open |
-| DEV-227 | 2026-08-26 | **`link` 모듈이 API-REL-001~004 전체를 소유한다고 적혀 있으나 사실이 아니다.** API-REL-001(`/sequence-neighbors`)은 WP-027이 `sequence` 경로로, API-REL-002(`/containments`)·API-REL-005(`/releases`)는 WP-024·WP-026이 릴리스 경로로 이미 구현했다. 둘 다 간선 인덱스를 읽지 않는다. 문서가 초기 설계를 사실처럼 말하면 다음 WP가 잘못된 자리에 코드를 넣는다 | WP-029 / API-REL-001, API-REL-002 | 문서 오류 | **CR-039** | open |
-| DEV-228 | 2026-08-26 | **`retry` 처분에 재시도 예산을 집행하는 주체가 없다.** 잡 카탈로그는 재시도 3회를 적지만 Redis·in-memory 두 어댑터 모두 `retry`를 받으면 백오프만 늘리고 **횟수 상한을 보지 않는다.** 핸들러가 `delivery_count`로 집행해야 하는데 계약에 그 사실이 없다. **그리고 `apps/pipeline-worker/src/release.ts`의 JOB-REL-007이 실제로 그 상태다** — 미러 동기화·태그 열거·트랜잭션이 영구 실패하면 무한 재시도되며 그 파티션의 뒤 이벤트를 영영 막는다. PR #30의 P1 지적이 미해결로 남아 있었고 2026-08-26 재실측으로 확인했다 | WP-029 / JOB-REL-001, JOB-REL-005, **JOB-REL-007**, FR-ING-007 | 범위 공백 | **CR-039** | open |
-| DEV-229 | 2026-08-26 | **`pr_search_work_packages.md` 헤더가 `v0.3 / 2026-08-20`에 멈춰 있다.** 내용은 2026-08-26까지 갱신됐다(WP-028·067·068 `done` 반영). 상태표를 근거로 판단하는 후속 에이전트가 문서가 낡았다고 오판한다 | WP-029 / 문서 위생 | 문서 오류 | **CR-039** | open |
+| DEV-215 | 2026-08-26 | **JOB-REL-001·JOB-REL-005가 직접 푸시 커밋에 도달하지 않는다.** 잡 카탈로그가 적은 방아쇠는 `EVT-ING-003` 하나인데, 그 이벤트는 `project` 워커가 색인한 문서마다 낸다. WP-067이 새로 만드는 직접 푸시 커밋 문서는 그 경로를 지나지 않고 `commit-enrich`가 만든다 — 그 파일에는 `bus.subscribe`가 하나 있고 **`bus.publish`가 하나도 없다.** 그래서 직접 푸시 커밋 메시지의 참조는 영원히 간선이 되지 않는다. **CR-038이 DEV-206에서 잡은 것과 정확히 같은 모양이 한 홉 아래에 남아 있었다** | WP-029 / FR-REL-003, JOB-REL-001, JOB-REL-005 | 범위 공백 | **CR-039** | **resolved (2026-08-26)** — `EVT-ING-005 commit.metadata_ready` 신설. 커밋 보강이 **정본·색인이 모두 성공한 뒤에만** 낸다. payload는 bounded 식별자뿐이고 본문을 버스에 다시 싣지 않는다 — 소비자가 `commit_snapshot`에서 읽으므로 늦게 재전달된 이벤트도 현재 정본을 본다. 채번 → 보강 → 정본 → 색인 → 신호 → 파생 전 사슬을 **실제 git·PG·ES·버스**로 잇는 통합 시험이 건다 |
+| DEV-216 | 2026-08-26 | **새 ready 신호를 `prs:projected`에 실으면 되먹임이 생긴다.** 그 이벤트를 내는 JOB-MIR-002가 같은 토픽을 `link:commit-enrich` 그룹으로 읽고 있어 자기 이벤트를 자기가 받는다. 방치하면 무한 루프이거나, 조용히 ack되면서 아무도 그 사실을 모른다 | WP-029 / EVT-ING-005, JOB-MIR-002 | 범위 공백 | **CR-039** | **resolved (2026-08-26)** — 토픽을 새로 만들지 않고 `event_name`으로 가른다. 보강은 이 이벤트를 받아 이것을 다시 내지 않는다. 실제 버스로 이벤트가 멎는지 보는 통합 시험 + 가드 존재를 거는 회귀. **진짜 루프를 만드는 변이가 킬되는 것**까지 확인했다 |
+| DEV-217 | 2026-08-26 | **`link_id`가 가변 `to_id`를 재료로 써서 FR-REL-003 AC-3과 충돌한다.** 규칙은 세 곳에 같은 문장으로 적혀 있다 — 데이터 모델 4.3, `packages/es/src/mappings/links.ts`, `packages/domain/src/entities.ts`. `Refs: abc1234`가 미해결로 저장된 뒤 대상이 색인되면 `to_id`가 축약 SHA에서 40자 SHA로 바뀌고 `link_id`가 함께 바뀐다. 그러면 AC-3이 요구하는 **갱신**이 아니라 새 문서가 되고 미해결 간선이 그대로 남는다 — AC-3·멱등·결정론적 ID 셋이 한 번에 깨진다 | WP-029 / FR-REL-003 AC-3, ENT-REL-002, ADR-009 | 범위 공백 | **CR-039** | **resolved (2026-08-26)** — `reference_key` 신설. `references` 간선의 안정 ID는 `link_type` + source + `reference_key`이며 대상이 들어가지 않는다. 해결 전후로 **문서 `_id`가 같은지**를 통합 시험이 직접 본다. 역방향 조회는 커밋당 후보 일곱으로 상한이 있어 전량 스캔하지 않는다 |
+| DEV-218 | 2026-08-26 | **커밋 매핑에 `links_pending`이 없다.** FR-REL-003의 예외 처리는 "추출 실패는 색인을 막지 않고 문서에 `links_pending: true`를 표시한다"인데, 요구사항이 PR **또는 커밋**을 대상으로 하면서 커밋 매핑에는 그 필드가 선언되어 있지 않다. 매핑이 `strict`라 표시 자체가 THR-010으로 거부된다 — 커밋에 대해서는 승인된 예외 처리를 표현할 수단이 없다 | WP-029 / FR-REL-003 예외 처리, ENT-CORE-003 | 범위 공백 | **CR-039** | **resolved (2026-08-26)** — 커밋 매핑에 `links_pending` 추가. `applyMappings`가 제자리 갱신하므로 재색인이 필요 없다 |
+| DEV-219 | 2026-08-26 | **커밋 매핑 `link_summary`에 `reference_count`가 없다.** PR 매핑에는 있다. 커밋 상세(W-003)가 참조 수를 간선 인덱스 조회 없이 그릴 수 없어 ADR-009의 핫패스 비정규화가 커밋 축에서만 성립하지 않는다 | WP-029 / ENT-CORE-003, ADR-009 | 범위 공백 | **CR-039** | **resolved (2026-08-26)** — 커밋 매핑 `link_summary`에 `reference_count` 추가 |
+| DEV-220 | 2026-08-26 | **본문에서 사라진 참조를 지울 계약이 없다.** WP-029 계약은 "추출하여 간선을 생성한다"까지다. PR 본문이 `Refs: #10`에서 `Refs: #20`으로 바뀌면 `#20`이 생기지만 **`#10`이 그대로 남는다.** 조사 도구에서 없는 참조를 있다고 말하는 것은 있는 참조를 놓치는 것과 같은 등급의 오류다 | WP-029 / FR-REL-003 | 범위 공백 | **CR-039** | **resolved (2026-08-26)** — 한 source의 참조를 **완전한 파생 집합**으로 다룬다. 정본에서 다시 만들고 나머지를 제거하되, **추출·쓰기가 실패한 회차는 제거하지 않고** `links_pending`으로 남긴다. V1→V2→V3 픽스처와 실패 회차 보존을 통합 시험이 건다 |
+| DEV-221 | 2026-08-26 | **과거 엔티티에 간선을 만들 경로가 없다.** 새 `link` consumer group은 Redis stream을 `0`부터 읽을 수 있으나 stream retention은 정본이 아니고, WP-029 이전의 직접 푸시 커밋에는 애초에 `EVT-ING-003`이 없었다. 배포 뒤 "새 이벤트부터만 관계가 생긴다"가 운영 구멍으로 남는다 — CR-037이 DEV-194에서 PR 스냅숏 축에 대해 이미 겪은 자리다 | WP-029 / JOB-REL-006, ADR-004 | 범위 공백 | **CR-039** | **resolved (2026-08-26)** — 이미 카탈로그에 있는 **JOB-REL-006**을 references subset에 대해 실행 가능하게 했다. PostgreSQL 정본에서 재개 가능·경계 있는 열거(`pr_number`·`commit_sha` 오름차순 커서)이며 **같은 파생 핸들러**를 쓴다. 이벤트가 하나도 없는 과거 데이터와 색인을 비운 뒤 정본만으로의 복구를 통합 시험이 건다. `job.type`은 이미 있는 `link_rebuild`라 **마이그레이션을 만들지 않았다** |
+| DEV-222 | 2026-08-26 | **`link_summary`의 leaf별 소유자가 없고 부분 갱신 수단도 없다.** 매핑에는 다섯 leaf가 있고 그중 넷이 WP-030 것이다. 그런데 `bulkUpsert`의 조건부 스크립트는 `ctx._source[key] = value`로 **객체를 통째 대입**하므로, WP-029가 `link_summary`를 그대로 쓰면 WP-030이 써 둔 값을 지운다 | WP-029 / ADR-009, ENT-CORE-002, ENT-CORE-003 | 범위 공백 | **CR-039** | **resolved (2026-08-26)** — leaf 단위 대입 전용 스크립트. 숫자는 `equals`로 비교하지 않는다 — painless에서 `Integer(3).equals(Long(3))`은 거짓이라 값이 같아도 매번 갱신으로 세어진다. WP-030 값 넷을 미리 심고 살아남는지 통합 시험이 건다 |
+| DEV-223 | 2026-08-26 | **`to_repository_id`·`detached`를 누가 채우는지 정의되어 있지 않다.** 매핑에는 선언되어 있다. 소유가 없으면 WP-029가 미래 필드를 선점하거나(예: `detached: false`를 기계적으로 채움) 아무도 채우지 않는다. `strict` 매핑에서 값을 두지 않는 것과 `false`를 두는 것은 다른 주장이다 | WP-029 / ENT-REL-002 | 범위 공백 | **CR-039** | **resolved (2026-08-26)** — `to_repository_id`는 WP-029, `detached`는 WP-030. WP-029는 `detached`를 두지 않는다 — 계산하지 않은 것을 `false`로 적으면 "확인했고 아니었다"가 된다 |
+| DEV-224 | 2026-08-26 | **저장소를 건너뛰는 참조의 접근 통제 경계가 문서에 없다.** `acme/a`의 PR이 `acme/b#20`을 참조하면 간선은 a의 접근 범위로 저장된다 — 그것이 맞다. 그러나 간선이 `to_repository_id: b`를 들고 있으므로, 관계 조회 API가 대상의 제목·본문을 함께 반환하면 **b를 볼 수 없는 사용자에게 b의 내용이 샌다.** WP-029는 조회 API를 만들지 않아 지금 유출은 없지만, 경계를 적어 두지 않으면 WP-031이 그것을 모른 채 만든다 — CR-036이 WP-068에서 겪은 것과 같은 종류다 | WP-029 / ADR-008, FR-AUTH-002, THR-034~036 | 범위 공백 | **CR-039** | **resolved (2026-08-26)** — THR-034·035·036 신설. **간선의 접근 범위는 근거를 소유한 저장소의 것**이며 대상 저장소의 것이 아니다. 대상의 내용을 반환하려면 대상 범위를 다시 교집합해야 한다는 것을 **WP-031의 필수 수용 기준**으로 남겼다. WP-029는 조회 API를 만들지 않으므로 현재 유출 경로가 없다 |
+| DEV-225 | 2026-08-26 | **`@prs/domain`의 관계 타입 셋이 실제 매핑과 어긋난다.** `LinkSummary`는 `reverted_by_count`를 선언하는데 매핑에 없고, 매핑의 `is_reverted`·`has_stack`은 타입에 없다. `CommitRole`은 `'merge' | 'original'`인데 실제 값은 `merge_commit`·`source_commit`·`direct_push`다 — **`documents.ts`가 자기 `CommitRole`을 따로 정의해 쓰고 있어** 타입 검사가 드리프트를 잡지 못했다. `Link`에는 접근 통제 필드 넷과 `to_repository_id`·`detached`·`created_at`이 없다 | WP-029 / ENT-REL-002, ENT-CORE-003 | 문서 오류 | **CR-039** | **resolved (2026-08-26)** — `LinkSummary`·`CommitRole`·`Link`를 실제 매핑에 맞췄다. `documents.ts`의 별도 정의를 없애고 `Extract`로 좁혀 **타입 검사가 다음 드리프트를 잡게** 했다. ES 구현 detail을 전부 복사하지는 않았다 |
+| DEV-226 | 2026-08-26 | **ADR-009 자신이 구현과 어긋난다.** Decision 블록의 간선 문서 구조에 `direction`이 있으나 매핑에 없고, 접근 통제 필드 넷과 `to_repository_id`·`detached`가 없다. `link_summary` 목록도 `reverted_by_count`를 적는다 | WP-029 / ADR-009 | 문서 오류 | **CR-039** | **resolved (2026-08-26)** — ADR-009 개정. 결정을 뒤집지 않고 적힌 것을 구현에 맞춘다(`direction` 제거, 접근 통제 필드 넷·`to_repository_id`·`detached` 추가, `link_summary` 목록 정정, `reference_key` 추가). **새 ADR을 만들지 않았다** — `reference_key`는 ADR-009가 이미 한 결정을 성립시키는 수단이다 |
+| DEV-227 | 2026-08-26 | **`link` 모듈이 API-REL-001~004 전체를 소유한다고 적혀 있으나 사실이 아니다.** API-REL-001(`/sequence-neighbors`)은 WP-027이 `sequence` 경로로, API-REL-002(`/containments`)·API-REL-005(`/releases`)는 WP-024·WP-026이 릴리스 경로로 이미 구현했다. 둘 다 간선 인덱스를 읽지 않는다. 문서가 초기 설계를 사실처럼 말하면 다음 WP가 잘못된 자리에 코드를 넣는다 | WP-029 / API-REL-001, API-REL-002 | 문서 오류 | **CR-039** | **resolved (2026-08-26)** — 모듈 표를 API-REL-003·004로 정정하고 사유를 문단으로 남겼다 |
+| DEV-228 | 2026-08-26 | **`retry` 처분에 재시도 예산을 집행하는 주체가 없다.** 잡 카탈로그는 재시도 3회를 적지만 Redis·in-memory 두 어댑터 모두 `retry`를 받으면 백오프만 늘리고 **횟수 상한을 보지 않는다.** 핸들러가 `delivery_count`로 집행해야 하는데 계약에 그 사실이 없다. **그리고 `apps/pipeline-worker/src/release.ts`의 JOB-REL-007이 실제로 그 상태다** — 미러 동기화·태그 열거·트랜잭션이 영구 실패하면 무한 재시도되며 그 파티션의 뒤 이벤트를 영영 막는다. PR #30의 P1 지적이 미해결로 남아 있었고 2026-08-26 재실측으로 확인했다 | WP-029 / JOB-REL-001, JOB-REL-005, **JOB-REL-007**, FR-ING-007 | 범위 공백 | **CR-039** | **resolved (2026-08-26)** — 예산을 핸들러가 `delivery_count`로 집행한다고 계약(§5.1)에 명시하고, link 핸들러와 **`release.ts`를 함께 고쳤다.** 두 파일 각각 예산 안/소진을 **행동으로** 거는 통합 시험 넷을 뒀다 — 텍스트 단언이 아니다. PR #30의 P1 지적이 이로써 닫힌다 |
+| DEV-229 | 2026-08-26 | **`pr_search_work_packages.md` 헤더가 `v0.3 / 2026-08-20`에 멈춰 있다.** 내용은 2026-08-26까지 갱신됐다(WP-028·067·068 `done` 반영). 상태표를 근거로 판단하는 후속 에이전트가 문서가 낡았다고 오판한다 | WP-029 / 문서 위생 | 문서 오류 | **CR-039** | **resolved (2026-08-26)** — `pr_search_work_packages.md` v0.4 / 2026-08-26 |
 
 ## 6. 검증 결과 기록
 
@@ -1875,6 +1875,96 @@ GIT_NO_LAZY_FETCH=1:      fatal: could not fetch ... from promisor remote (blob 
 **전 계층 검증.** 타입·lint·lint:deps 통과, 단위 **1264**(1 skipped), a11y **192**, e2e **67**, 통합 **804**, 회귀 **82**, contrast 80쌍, `pnpm build` 통과. **변이 9종 전부 킬** — 전용 소비자 그룹·직접 푸시 문서 생성·접근 범위 material·정본 저장·초기 버전·메타데이터의 버전 불변·`sequence.assigned` 방아쇠·`source_commits` batch·이웃 커밋 조인을 각각 지우면 시험이 깨진다.
 
 **NOT RUN.** 실제 GHE 대상 커밋 조회(API 폴백 경로의 실연동)와 실제 Kubernetes 적용. 사내망·클러스터 전제라 이 환경에서 돌지 않으며, API 폴백은 실제 git이 낸 값을 GHE 응답 모양으로 바꾼 대역으로 미러 경로와 대조했다(DoD 1).
+
+### 6.34 WP-029 참조 간선 파생 검증 기록 (CR-039)
+
+**착수 전 감사에서 열다섯을 찾았고 다섯이 같은 뿌리다** — 계약이 **"만든다"만 말하고 "다시 만든다"를 말하지 않는다.** 참조는 본문에서 파생되는데 본문은 수정되고, 대상은 나중에 색인되며, 과거 데이터는 이벤트를 남기지 않았고, 실패한 것은 누군가 다시 해야 한다.
+
+| DEV | 감사에서 무엇을 확인했나 | 어떻게 풀었나 | 시험 |
+| --- | --- | --- | --- |
+| 215 | JOB-REL-001·005의 방아쇠가 `EVT-ING-003` 하나인데, 직접 푸시 커밋 문서는 `project`가 만들지 않는다. `commit-enrich.ts`에 `bus.subscribe`는 하나 있고 **`bus.publish`가 하나도 없다** — 그 커밋의 참조는 영원히 간선이 되지 않는다 | `EVT-ING-005 commit.metadata_ready` 신설. **정본·색인이 모두 성공한 뒤에만** 낸다. payload는 bounded 식별자뿐이고 본문을 버스에 다시 싣지 않는다 | 통합 1건(실 git·PG·ES·버스로 채번→보강→정본→색인→신호→파생 전 사슬) + 회귀 3건 |
+| 216 | 그 신호를 `prs:projected`에 실으면 커밋 보강이 **자기 이벤트를 되받는다** — 같은 토픽을 `link:commit-enrich` 그룹으로 읽고 있다 | 토픽을 새로 만들지 않고 `event_name`으로 가른다. 보강은 이 이벤트를 받아 이것을 다시 내지 않는다 | 통합 1건(실 버스로 이벤트가 멎는지 본다) + 회귀 1건 |
+| 217 | `link_id` 재료에 가변 `to_id`가 들어 있다(세 곳에 같은 문장). 축약 SHA 참조가 해결되면 대상이 40자로 바뀌어 **ID가 함께 바뀌고**, 미해결 간선과 해결된 간선이 둘 다 남는다 — AC-3·멱등·결정론적 ID가 한 번에 깨진다 | `references` 간선에 **해결 대상과 독립인 `reference_key`**. 안정 ID는 `link_type` + source + `reference_key`다 | 단위 5건 + 통합 3건(**문서 `_id`가 같은지를 직접 본다**) |
+| 218 | 커밋 매핑에 `links_pending`이 없다. 매핑이 `strict`라 FR-REL-003의 예외 처리를 커밋에 대해 **표현할 수단이 없었다** | 매핑에 추가 | 통합 1건(실 ES가 거부하지 않는지) |
+| 219 | 커밋 매핑 `link_summary`에 `reference_count`가 없다 — 핫패스 비정규화가 커밋 축에서만 성립하지 않는다 | 매핑에 추가 | 통합 1건 |
+| 220 | 본문에서 사라진 참조를 지울 계약이 없다. `Refs: #10` → `Refs: #20`이면 `#20`이 생기지만 **`#10`이 남는다** | 한 source의 참조를 **완전한 파생 집합**으로 다룬다. 정본에서 다시 만들고 나머지를 제거. **추출·쓰기가 실패한 회차는 제거하지 않는다** | 통합 3건(V1→V2→V3, 다른 source 불변, 실패 회차 보존) |
+| 221 | 과거 엔티티에 간선을 만들 경로가 없다. Redis stream retention은 정본이 아니고, WP-029 이전 직접 푸시 커밋에는 `EVT-ING-003`이 애초에 없었다 | 이미 있는 **JOB-REL-006**을 references subset에 대해 실행 가능하게. PostgreSQL 정본에서 재개 가능·경계 있는 열거, **같은 파생 핸들러** | 통합 3건(이벤트 0건인 과거 데이터·PG-only 재구축·결정론) + 회귀 1건 |
+| 222 | `link_summary`의 leaf 소유가 갈리는데 조건부 스크립트는 **객체를 통째 대입**한다 — WP-029가 참조 수만 고쳐도 WP-030의 네 값이 사라진다 | leaf 단위 대입 전용 스크립트. 숫자는 `equals`로 비교하지 않는다(painless에서 `Integer(3).equals(Long(3))`은 거짓이다) | 통합 1건(WP-030 값 넷을 미리 심고 살아남는지) |
+| 223 | `to_repository_id`·`detached`의 소유 WP가 없다 | `to_repository_id`는 WP-029, `detached`는 WP-030. **WP-029는 `detached`를 두지 않는다** — `strict` 매핑에서 값을 두지 않는 것과 `false`를 두는 것은 다른 주장이다 | 통합 1건 |
+| 224 | 저장소를 건너뛰는 참조의 접근 통제 경계가 문서에 없다. 간선이 `to_repository_id`를 들고 있으므로 조회가 대상의 내용을 함께 반환하면 **대상 저장소를 볼 수 없는 사용자에게 샌다** | THR-034~036 신설. **간선의 범위는 source의 것**이며, 대상 내용을 반환하려면 대상 범위를 다시 교집합해야 한다 — WP-031의 필수 수용 기준으로 남겼다 | 통합 3건(대상 팀이 새어 들어오지 않는지 포함) |
+| 225 | `LinkSummary`·`CommitRole`·`Link` 셋이 실제 매핑과 어긋난다. `documents.ts`가 **자기 `CommitRole`을 따로 정의해** 타입 검사가 드리프트를 잡지 못했다 | 정의를 하나로 모으고 투영은 `Extract`로 좁힌다 | `pnpm typecheck` |
+| 226 | ADR-009 자신이 구현과 어긋난다(`direction` 존재, 접근 통제 필드 부재, `reverted_by_count`) | 결정을 뒤집지 않고 **적힌 것을 구현에 맞춘다**. `reference_key`는 이미 한 결정을 성립시키는 수단이므로 새 ADR을 만들지 않았다 | 문서 |
+| 227 | `link` 모듈이 API-REL-001~004 전체를 소유한다고 적혀 있으나 001·002는 이미 다른 WP가 구현했다 | 모듈 표를 API-REL-003·004로 정정하고 사유를 남겼다 | 문서 |
+| 228 | `retry` 예산을 집행하는 주체가 없다. 두 어댑터 모두 상한을 보지 않는다. **`release.ts`가 실제로 그 상태였다** — PR #30의 P1 지적이 미해결로 남아 있었다 | 예산을 핸들러가 `delivery_count`로 집행한다고 계약에 명시하고, link 핸들러와 `release.ts`를 함께 고쳤다 | 통합 4건(두 파일 각각 예산 안/소진) |
+| 229 | `work_packages.md` 헤더가 `v0.3 / 2026-08-20`에 멈춰 있다 | v0.4 / 2026-08-26 | 문서 |
+
+#### 왜 `reference_key`가 필요한가 (DEV-217)
+
+이 감사에서 값이 가장 컸던 발견이다. FR-REL-003 AC-3은 "대상 색인 시 해결 상태로 **갱신**한다"를 요구하는데, 문서에 적힌 `link_id` 재료(`{link_type}:{from_type}:{from_id}:{to_type}:{to_id}`)가 그것을 **불가능하게** 만들고 있었다. `Refs: abc1234`는 미해결일 때 축약 SHA를, 해결 뒤에는 40자 SHA를 대상으로 갖는다 — ID가 함께 바뀌면 갱신이 아니라 새 문서가 되고 미해결 간선이 그대로 남는다.
+
+`reference_key`는 **본문이 말한 것**만으로 정규화한다. 원문 그대로가 아니고(같은 저장소의 `#20`과 `acme/a#20`이 같은 키로 접힌다), 저장소 등록 상태에도 의존하지 않는다(나중에 등록돼도 키가 바뀌지 않는다). 역방향 조회는 커밋 하나당 후보가 **일곱**(전체 하나 + 접두 여섯)으로 상한이 있어 `terms` 하나면 된다 — 미해결 간선 전량을 스캔하지 않는다.
+
+#### 운영 도달성 (CR-034 계층에 JOB-REL-001·006 추가)
+
+| 기능 | 선언 | 소비자 그룹 | 기동 | 종료 | 배포 manifest |
+| --- | --- | --- | --- | --- | --- |
+| JOB-REL-001·005 파생·해결 | `link.ts` | **`link`**(기본) | `roles.includes('link')` | `linkSubscription?.close()` | `pipeline-worker-link.yaml` |
+| JOB-REL-006 전량 재파생 | `link.ts` | — (잡 claim) | `roles.includes('link')` | `referenceRebuildRunner?.stop()` | `pipeline-worker-link.yaml` |
+
+manifest는 `deploy/k8s/README.md`의 **적용 순서 블록**에도 들어 있다 — 파일만 있고 목록에 없으면 운영자가 끝내 만들지 않는다(CR-038 / PR #42 리뷰가 배운 것).
+
+#### 검증 배터리 (main `3e3009b` 대비)
+
+| 계층 | 결과 |
+| --- | --- |
+| `pnpm typecheck` | 통과 |
+| `pnpm lint` · `lint:deps` | 통과 (패키지 13, 위반 0) |
+| `pnpm run test` | 단위 **1316** 통과 (1 skipped) [1264 → +52] |
+| `pnpm run test:integration` | 통합 **841** 통과 [809 → +32] |
+| `pnpm run test:regression` | 회귀 **102** 통과 [83 → +19] |
+| `pnpm run test:a11y` | 192 통과 (axe 0건) |
+| `pnpm run test:contrast` | 80쌍 통과 |
+| `pnpm build` · `pnpm --filter @prs/web run build` | 통과 |
+| `pnpm run test:e2e` | **67 통과** — 이번 실행에서는 `flow-001` 간헐 실패가 재현되지 않았다 |
+| `validate_srs_prd_env.py --strict` | 오류 2건(9+5) — **기준선과 동일**, 신규 0 |
+
+#### 변이 시험 — 결함 재적용 29종 킬, 등가 2종
+
+| 변이 | 결과 |
+| --- | --- |
+| `link_id`에 무작위 요소 / `reference_key` 제거 | 킬 (해결 전후 `_id`가 달라진다) |
+| stale 제거 삭제 / 실패 회차를 완결로 처리 | 킬 |
+| 중복 제거 · derived 우선 · 100건 상한 · 펜스 제외 · 인용 제외 제거 | 킬 (단위) |
+| 접두 유일성 검사를 first-match로 | 킬 |
+| `link_summary` leaf 대입을 객체 통째 대입으로 | 킬 |
+| ready 신호 발행 제거 | 킬 (직접 푸시 간선이 사라진다) |
+| 되먹임 가드 제거 **+ metadata_ready를 보강 대상으로** | 킬 (실 버스에서 이벤트가 멎지 않는다) |
+| link 역할 기동·종료·역할 분기·manifest·README 적용 순서 제거 | 킬 (회귀 5종) |
+| 소비자 그룹을 `commit-enrich`와 공유 | 킬 |
+| 재파생에서 파생 핸들러 호출 제거 | 킬 |
+| `allowed_team_ids`·`visibility`·`org_id` 제거 | 킬 |
+| `created_at`을 `now()`로 | 킬 |
+| `markPending`이 참조 수를 덮어씀 / 완결 회차가 `links_pending`을 세움 | 킬 |
+| link 핸들러·`release.ts`의 재시도 예산 제거 | 킬 (**행동으로** — 텍스트 단언이 아니다) |
+
+**등가 변이 둘을 킬로 세지 않았다.**
+
+1. **되먹임 가드만 제거** — 그것만으로는 루프가 나지 않는다. `commit.metadata_ready`의 payload에 `entity_kind`가 없어 보강의 다음 갈래가 스스로 ack하기 때문이다. 가드는 그 사실을 **명시**하고 DB 왕복을 아끼는 것이며, 존재 자체는 회귀가 건다. 진짜 루프를 만드는 변이(가드 제거 + 그 이벤트를 보강 대상으로)는 킬됐다.
+2. **정본 부재 가드 제거** — 뒤따르는 `extractReferences` 호출이 `TypeError`를 던지고 그것을 같은 함수의 `try/catch`가 잡아 `markPending`으로 수렴한다. 관측 가능한 결과가 같다. 운영에서 스냅숏이 삭제되는 경로가 없으므로 두 상태를 가르는 시나리오 자체가 도달 불가다.
+
+#### 변이 시험이 찾아 준 것 — 내 결함 하나
+
+`markPending`이 `reference_count`에 `-1`을 쓰고 있었다. 완결을 보장할 수 없는 회차가 **세지 못한 수를 어떤 값으로든 적으면 그 값이 거짓말이 된다** — 화면은 그 수를 "이 문서의 참조는 N건"으로 읽는다. 참조 수를 선택 필드로 바꿔 그 회차는 `links_pending`만 세우게 했다. 변이(`referenceCount: 0`을 다시 넣기)가 킬되는 것으로 확인했다.
+
+#### Gate 4 보안 증거 (부분)
+
+| 항목 | 결과 |
+| --- | --- |
+| 시크릿 스캔 | **전용 도구 없음** — `gitleaks`·`trufflehog`·`detect-secrets` 모두 이 환경에 없다. 추적 파일 전량에 대해 패턴 기반 스캔(GitHub 토큰 접두 6종, PEM 개인 키, AWS 키, Slack 토큰, 자격 증명 키=값)을 돌렸다. 적중 2건은 **가림(redaction)이 동작하는지 확인하는 시험 픽스처**이고, `secret.example.yaml`·`.env.example`은 자리표시자·로컬 개발값뿐이다. **전용 도구 스캔은 NOT RUN** |
+| 위협 모델 재검토 | THR-034·035·036 신설 — 대상 저장소 내용 유출, 접근 통제 없는 간선 생성, 승인되지 않은 호스트 URL 오인. 신규 코드에 자격 증명·토큰 취급 경로가 없음을 확인했고, `evidence`는 200자 상한 + `index: false`라 본문 사본이 되지 않는다 (NFR-005) |
+| 권한 매트릭스 78셀 | **미완** — 화면 13종 축은 화면이 더 서야 걸 수 있다 |
+
+**Gate 4는 `fail`을 유지한다.** 두 항목을 채웠다고 게이트가 통과하지 않는다 — 화면 축이 남아 있다.
 
 ### 6.31 릴리스 게이트
 
