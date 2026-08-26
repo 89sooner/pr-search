@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=fbfba7ae18be0330d398a7f85dfa87aa3d531ad5f5a55eab4f5eec95baa29b1c bytes=9933 lines=181 title=리스크-불확실한-가정-함정
+@kv sha256=8370c71cd77e18ccdc91d3757d1dfd6620c716768e2e9aafde61108ccc30ce2d bytes=15500 lines=274 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;DISTINCT;pull_request_number;NOT;NULL;expected;Node;e2e;Codex;v20;install;visitor;engines;v22;a11y;require;ESM;PATH;HOME;versions
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -92,3 +92,50 @@
 @path 위치는 exports/202608260047.md였고 그 디렉터리는 .gitignore 대상이다. 그래서
 @p "커밋에 딸려 들어갈 수 있다"는 경고까지 통째로 잘못된 근거 위에 있었다.
 @p → 컨텍스트 문서의 경로 주장은 인계 시점에 ls로 확인한다. 비용이 거의 없고, 틀린 경로는 그것을 근거로 세운 판단까지 함께 틀리게 만든다.
+@p ---
+@h1 2026-08-26 대형 세션이 추가한 것
+@h2 변이가 세 번 살아남았고 원인이 전부 같았다
+@p | 변이 | 왜 살아남았나 | 고친 방법 | | --- | --- | --- |
+@cmd | 저장 head 확인 제거 (M-B2) | 실제 Git head 울타리가 같은 상황을 잡아 버렸다 — 두 검사가 겹치는 시나리오만 시험했다 | SQL로 저장 head만 바꾸고 Git은 그대로 두는 시험 |
+@path | 표시를 락 앞으로 되돌리기 (M-202) | !locked 갈래의 복원을 이미 지운 상태라 두 설계가 같은 결과를 냈다 | "락 못 얻었을 때 공간이 ok 그대로인가"를 직접 거는 시험 |
+@path | 러너의 listSort 제거 (M-204) | 시험이 runBackfillJob을 직접 부르며 옵션을 넘겼다 — 러너가 그것을 전달하는지는 안 봤다 | 운영 러너(startSnapshotBootstrapRunner)를 그대로 띄우는 시험 |
+@p → 공통점: 시험이 운영 경로가 아니라 내가 직접 부른 함수를 보고 있었다.
+@path CR-034가 배운 것과 같은 자리다. 변이가 살아남으면 "등가인가"보다 먼저
+@p "이 시험이 운영이 부르는 그 경로를 부르는가"를 물어라.
+@h2 통합 시험이 전역 질의를 쓰면 공유 DB에 오염된다 (3회 겪었다)
+@p prs_test는 모든 시험 파일이 공유하고 fileParallelism: false라 순차 실행이지만, 앞선 파일이 남긴 행은 그대로 있다.
+@p | 자리 | 증상 | | --- | --- | | enqueueSnapshotBootstrap 건수 단언 | 다른 저장소가 큐에 들어가 1이 아니라 5 | | runCommitEnrichSweep 배치 상한 | 다른 저장소가 500건을 채워 내 커밋이 창에 ... , 전량 실행은 실패 | | upsertTeam 픽스처 slug | (org_id, slug) 유니크에 다른 파일의 행이 걸림 |
+@p → 전역 건수로 단언하지 마라. "내 저장소의 상태가 이렇게 됐는가"로 건다. 배치 상한이 걸리는 시험은 남의 행을 지우지 말고 이미 처리된 것으로 표시해 창에서 비운다(commit-enrich.test.ts의 beforeEach 참조).
+@h2 ES deleteByQuery 앞에 refresh가 또 필요했다
+@p delete_by_query는 검색으로 대상을 찾는다. refresh: true는 지운 *뒤에*
+@path 새로 고치는 옵션이라 이 문제를 풀지 않는다. WP-019가 CI에서 겪은 것과 같은 자리를
+@p commit-enrich.test.ts에서 다시 밟았다.
+@h2 클래스 인스턴스를 스프레드하면 프로토타입 메서드가 사라진다
+@p { ...mirrorGraph(), patchId: ... }로 만든 대역은 나머지 메서드가 전부 undefined가 되고, 그 사실이 엉뚱한 자리에서 터진다. 명시적으로 위임하는 헬퍼를 쓴다 (commit-enrich.test.ts의 delegating).
+@h2 실패를 빈 결과로 세면 폴백이 영원히 돌지 않는다
+@p MirrorCommitGraph.changedPaths가 code !== 0을 { paths: [] }로 삼켰다. FallbackCommitGraph는 던졌을 때만 폴백하므로, 미러가 통째로 없어도 "변경 없음"이 정상 응답으로 보여 API로 넘어가지 않는다. readCommit의 null도 같은 문제라 null도 폴백 사유로 만들었다.
+@p → 변경 없음(exit 0 + 빈 출력)과 읽지 못함(exit != 0)은 다른 사실이다.
+@h2 diff-tree는 병합 커밋에 대해 아무것도 내지 않는다
+@p 인자 하나로 부르면 부모가 둘 이상일 때 어느 쪽과 비교할지 정해지지 않아 빈 출력이다. --root 폴백도 마찬가지다. 그대로 두면 병합 커밋의 changed_paths가 조용히 빈 배열이 되고 경로 기반 조사가 거짓을 말한다. 첫 부모를 명시한다 (<sha>^1 <sha>) — 이 제품의 세계관이 first-parent이고 GitHub API도 같은 기준이다.
+@h2 문서 검증 시험이 산문 언급으로 통과할 수 있다
+@p "모든 manifest가 적용 순서에 있는가"를 README 전문에 toContain으로 걸었더니, 내가 적어 둔 설명 산문에 파일 이름이 한 번 나온다는 이유로 통과했다. ## 적용 순서의
+@code lang=sh 블록만 잘라 봐야 의미가 있다. sha=cf6c03632343 lines=14 kept=14
+|→ **문서를 검사하는 시험은 검사 범위를 좁혀라.** 넓게 잡으면 그 문서에 이름만
+|있으면 통과한다.
+|## 22. 인계 문서의 숫자를 그대로 믿지 마라
+|이전 컨텍스트가 미해결 리뷰를 **9건**으로 적었으나 실제는 **10건**이었다 —
+|그때 확인이 PR #36·#37·#38만 훑었고 #40을 안 봤다. "확인했다"는 기록이
+|**모든 대상을 훑었다는 뜻은 아니다.**
+|## 23. 마이그레이션을 같은 PR 안에서 고친 자리 (013)
+|`projected_at`을 013에 **추가**했다. 013은 이 PR에서 신설된 표라 아직 main에
+|없었으므로 "이미 적용된 마이그레이션은 고치지 않는다" 규칙의 대상이 아니다.
+|다만 **로컬 개발 DB(`prs`)는 이미 적용돼 있어** 수동으로 맞췄다:
+@p bash
+@cmd docker exec prs-postgres psql -U prs -d prs -c "ALTER TABLE commit_snapshot ADD COLUMN IF NOT EXISTS projected_at TIMESTAMPTZ; ..."
+@cmd docker exec prs-postgres psql -U prs -d prs_test -c "DROP TABLE IF EXISTS commit_snapshot;"
+@cmd docker exec prs-postgres psql -U prs -d prs_test -c "DELETE FROM schema_migration WHERE version = '013';"
+@code lang=txt sha=5afa6750f61c lines=6 kept=6
+|→ 같은 일을 또 하게 되면 **CI는 처음부터 만들므로 안전하지만 로컬은 아니다.**
+|## 환경 (변경 없음, 재확인)
+|- Node **v22.23.2** 필수. 마이그레이션은 **013**까지 적용됐다
+|- 컨테이너 3종 healthy. `prs`·`prs_test` 존재
