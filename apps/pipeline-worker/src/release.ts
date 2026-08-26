@@ -21,7 +21,7 @@
 
 import type { Client } from '@elastic/elasticsearch';
 import type { EventBus, DeliveredEvent, EventHandler, SubscribeOptions, Subscription } from '@prs/bus';
-import { TOPICS, consumerGroup } from '@prs/bus';
+import { MAX_RETRIES, TOPICS, consumerGroup } from '@prs/bus';
 import {
   mergeSequenceRepo,
   releaseLockKey,
@@ -372,6 +372,7 @@ export async function handleReleaseEvent(
   | { kind: 'ack' }
   | { kind: 'retry'; reason: string }
   | { kind: 'defer'; until: Date; reason: string }
+  | { kind: 'dead_letter'; reason: string }
 > {
   const payload = event.payload as Partial<ReleaseRefreshRequested> | undefined;
   const repositoryId = payload?.repository_id;
@@ -391,13 +392,26 @@ export async function handleReleaseEvent(
     return { kind: 'defer', until: new Date(now.getTime() + RELEASE_LOCK_RETRY_MS), reason: 'release_locked' };
   }
   /*
-   * 일시 실패(미러 동기화·태그 열거·정본 트랜잭션)는 ack가 아니라 **retry**다 —
-   * 버스가 지수 백오프와 재시도 예산(비동기 문서 4장: 3회)을 집행한다. ack하면
-   * 그 예산을 쓰지 않은 채 다음 신호나 6시간 스윕까지 지연이 늘어난다.
-   * 갱신이 멱등 전량 diff라 재시도는 안전하다.
+   * 일시 실패(미러 동기화·태그 열거·정본 트랜잭션)는 ack가 아니라 **retry**다.
+   * ack하면 다음 신호나 6시간 스윕까지 지연이 늘어난다. 갱신이 멱등 전량 diff라
+   * 재시도는 안전하다.
+   *
+   * **예산은 여기서 집행한다** (CR-039, DEV-228).
+   *
+   * 이 자리는 원래 `delivery_count`를 보지 않고 무조건 `retry`를 냈고, 주석은
+   * "버스가 재시도 예산을 집행한다"고 적고 있었다. **버스는 그러지 않는다** —
+   * Redis·in-memory 두 어댑터 모두 `retry`를 받으면 백오프만 늘리고 횟수 상한을
+   * 보지 않는다. 그래서 영구 실패(예: 미러가 영영 안 서는 저장소)가 무한히
+   * 재시도되며 **그 파티션의 뒤 이벤트를 영영 막았다.** PR #30의 P1 지적이
+   * 그것이었고 미해결로 남아 있었다.
+   *
+   * 소진하면 종료 처분으로 바꿔 파티션을 푼다. 릴리스 스냅숏은 6시간 보정
+   * 스윕과 재채번 후 재동기화라는 다른 경로가 있으므로 유실이 아니다.
    */
   if (outcome.kind === 'failed') {
-    return { kind: 'retry', reason: outcome.reason };
+    return event.delivery_count >= MAX_RETRIES
+      ? { kind: 'dead_letter', reason: outcome.reason }
+      : { kind: 'retry', reason: outcome.reason };
   }
   return { kind: 'ack' };
 }
