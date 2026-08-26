@@ -414,7 +414,169 @@ describe('되돌림·체리픽·스택 파생의 도달성 (WP-030 / CR-041)', (
   });
 });
 
+describe('관계 조회의 도달성과 계약 (WP-031 / CR-042)', () => {
+  const SERVER = read('apps/search-api/src/server.ts');
+  const RELATION_ROUTES = read('apps/search-api/src/relations/routes.ts');
+  const RELATION_SERVICE = read('apps/search-api/src/relations/service.ts');
+  const CO_CHANGES = read('apps/search-api/src/relations/co-changes.ts');
+  const RELATIONS_READ = read('packages/es/src/relations-read.ts');
+  const ARCHITECTURE = read('packages/es/src/architecture.test.ts');
+  const RESULT_TABLE = read('apps/web/components/ResultTable.tsx');
+  const PR_DETAIL = read('apps/web/components/PrDetailView.tsx');
+  const COMMIT_DETAIL = read('apps/web/components/CommitDetailView.tsx');
+  const RELATION_SECTION = read('apps/web/components/RelationSection.tsx');
+
+  /**
+   * 주석을 걷어 낸 코드만 본다.
+   *
+   * "이 필드를 쓰지 않는다"를 파일 전문에 걸면 **그 사실을 설명한 주석에 걸린다**
+   * — 검사기가 자기 검색어를 세는 것과 같은 함정이다 (원장 §7의 문서 검증기
+   * 기술 부채, risks 21). 금지를 거는 검사는 범위를 코드로 좁힌다.
+   */
+  const codeOf = (source: string): string =>
+    source
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+
+  it('**운영 서버가 관계 라우트를 실제로 등록한다** (DEV-248)', () => {
+    // 호출 형태로 건다 — 이름만 찾으면 import 줄이 남아 있는 한 통과한다.
+    expect(SERVER).toContain('registerRelationRoutes(app, {');
+  });
+
+  it('관계 라우트가 검색과 **같은 조건** 뒤에 있다 — 세션 없이 열지 않는다', () => {
+    const at = SERVER.indexOf('registerRelationRoutes(app, {');
+    const guard = SERVER.indexOf('if (deps.search !== undefined) {');
+    expect(guard).toBeGreaterThan(-1);
+    expect(at).toBeGreaterThan(guard);
+  });
+
+  it('**역방향 조회가 라우팅을 쓰지 않는다** (DEV-250)', () => {
+    /*
+     * 간선은 source 저장소에 산다. 대상 저장소로 라우팅하면 저장소를 건너뛰는
+     * 참조를 어떤 값으로도 찾을 수 없다. 경계는 강제 필터가 만든다.
+     */
+    const body = RELATIONS_READ.split('export async function searchRelationLinks')[1] ?? '';
+    expect(body).not.toMatch(/^\s*routing:/m);
+    expect(body).toContain('applyMandatoryScopeFilter(');
+  });
+
+  it('**응답에 상한이 있다** — 워커의 전량 스크롤을 쓰지 않는다 (DEV-252)', () => {
+    expect(RELATIONS_READ).toContain('limit + 1');
+    expect(RELATIONS_READ).toContain('truncated');
+    // 워커용 helper를 사용자 경로로 가져오지 않는다.
+    expect(RELATION_SERVICE).not.toContain('findLinksTo');
+    expect(RELATION_SERVICE).not.toContain('findLinksFrom');
+    expect(RELATION_SERVICE).not.toContain('scrollLinks');
+  });
+
+  it('**오프셋 파라미터를 만들지 않는다** (ADR-010)', () => {
+    expect(RELATION_ROUTES).not.toContain("'offset'");
+    expect(RELATION_ROUTES).not.toContain("'page'");
+  });
+
+  it('**대상 내용을 강제 필터로 따로 읽는다** (THR-034, DEV-253)', () => {
+    const loader = RELATION_SERVICE.split('async function loadTargets')[1] ?? '';
+    expect(loader).toContain('applyMandatoryScopeFilter(');
+    // `mget`·`get`으로 지름길을 내지 않는다 — ID를 알아도 필터를 지나야 한다.
+    expect(RELATION_SERVICE).not.toMatch(/\bes\s*\.\s*(?:get|mget)\s*\(/);
+  });
+
+  it('대상 조회가 **종류별 한 번**이다 — 항목마다 부르지 않는다', () => {
+    const calls = (RELATION_SERVICE.match(/loadTargets\(/g) ?? []).length;
+    // 정의 1 + PR 1 + 커밋 1 = 3. 반복문 안에 있으면 이 수로는 안 잡히므로 함께 본다.
+    expect(calls).toBeLessThanOrEqual(3);
+    expect(RELATION_SERVICE).toContain('Promise.all([');
+  });
+
+  it('**ADR-008 가드레일이 `mget`과 `es.get`도 검사한다** (DEV-265)', () => {
+    expect(ARCHITECTURE).toContain('mget');
+    expect(ARCHITECTURE).toMatch(/es\|elasticsearch\)\\s\*\\\.\\s\*get/);
+  });
+
+  it('**관계 조회 계층이 `links.ts`의 면제를 물려받지 않는다** (DEV-265)', () => {
+    // 허용 목록은 파일 단위다. 사용자 대면 조회가 그 파일에 있으면 검사가 침묵한다.
+    expect(RELATIONS_READ).toContain("from './search.js'");
+    const allowlist = ARCHITECTURE.split('UNSCOPED_ALLOWLIST')[1] ?? '';
+    expect(allowlist.split('const UNSCOPED_FILES')[0]).not.toContain('relations-read.ts');
+  });
+
+  it('**동시 변경이 앱단에서 후보를 먼저 자르지 않는다** (DEV-255)', () => {
+    // 점수와 상한이 같은 질의 안에 있어야 진짜 상위 20이 나온다.
+    expect(CO_CHANGES).toContain('script_score');
+    expect(CO_CHANGES).toContain('CO_CHANGE_LIMIT');
+    expect(CO_CHANGES).toContain("sort: [{ _score: { order: 'desc' } }, { pr_number: { order: 'asc' } }]");
+  });
+
+  it('**200개 판정을 `changed_files_count`로 한다** — `files_truncated`는 다른 계약이다', () => {
+    expect(CO_CHANGES).toContain('changed_files_count');
+    // 3000 상한의 표식으로 200을 추론하지 않는다. 코드에서 그 필드를 읽지 않는다.
+    expect(codeOf(CO_CHANGES)).not.toContain('files_truncated');
+  });
+
+  it('**미머지를 `created_at`으로 대체하지 않는다** (DEV-254)', () => {
+    expect(CO_CHANGES).toContain("unavailable('not_merged')");
+    const code = codeOf(CO_CHANGES);
+    expect(code).not.toContain('created_at');
+    expect(code).not.toContain('updated_at');
+    // 창의 기준점은 언제나 `merged_at`이다.
+    expect(code).toContain('shiftDays(anchor.merged_at');
+  });
+
+
+  it('겹치는 경로가 사전순 상한 10이다 (DEV-256)', () => {
+    expect(CO_CHANGES).toContain('CO_CHANGE_OVERLAP_LIMIT');
+    expect(CO_CHANGES).toContain('.sort()');
+  });
+
+  it('**목록 화면이 `link_summary`를 버리지 않는다** (DEV-264)', () => {
+    expect(RESULT_TABLE).toContain('link_summary');
+    expect(RESULT_TABLE).toContain('<RelationBadgeGroup summary={row.link_summary ?? null} />');
+  });
+
+  it('**상세 화면이 골격이 아니라 실제 섹션을 그린다**', () => {
+    expect(PR_DETAIL).toContain('<RelationSection');
+    expect(PR_DETAIL).toContain('<CoChangeSection');
+    expect(COMMIT_DETAIL).toContain('<RelationSection');
+    // 관계 자리에 더 이상 "준비 중" 골격을 두지 않는다.
+    expect(PR_DETAIL).not.toContain('PendingSection');
+    expect(COMMIT_DETAIL).not.toContain('PendingSection');
+  });
+
+  it('**진입 시 조회하지 않는다** — 펼칠 때만 부른다 (QA-W002-17, QA-W003-10)', () => {
+    // `useEffect`로 마운트 시 부르면 진입 요청이 늘어난다. 조회는 토글 뒤에 있다.
+    expect(RELATION_SECTION).toContain('if (next) loadAll();');
+    const effects = RELATION_SECTION.split('useEffect(')[1]?.split('}, [')[0] ?? '';
+    expect(effects).not.toContain('loadAll');
+  });
+
+  it('**커밋 화면이 스택·동시 변경을 묻지 않는다** (QA-W003-11)', () => {
+    expect(RELATION_SECTION).toContain("const COMMIT_TYPES: readonly RelationLinkType[] = ['references', 'reverts', 'cherry_picks']");
+    expect(COMMIT_DETAIL).not.toContain('CoChangeSection');
+  });
+
+  it('**`links_pending`이 참조 그룹에만 걸린다** (DEV-258)', () => {
+    expect(RELATION_SECTION).toContain("linkType === 'references' && linksPending === true");
+  });
+
+  it('**`stacks_on`을 커밋 앵커로 물으면 서버가 거절한다** — 빈 배열로 답하지 않는다', () => {
+    expect(RELATION_SERVICE).toContain('export function supportsAnchorKind');
+    expect(RELATION_ROUTES).toContain('if (!supportsAnchorKind(linkType, anchor.kind))');
+  });
+
+  it('**앵커가 범위 밖이면 404다** — 403으로 존재를 밝히지 않는다', () => {
+    expect(RELATION_ROUTES).toContain("notFound(reply, correlationId, '대상을 찾을 수 없습니다')");
+    expect(RELATION_ROUTES).not.toContain('403');
+  });
+
+  it('커밋 상세가 `links_pending`을 응답에 싣는다 (DEV-263)', () => {
+    const detail = read('apps/search-api/src/resolve/detail.ts');
+    expect(detail).toContain("put(out, 'links_pending', commit.links_pending)");
+  });
+});
+
 describe('경로가 실재하는지', () => {
+
   it('운영 조립이 정합성 점검 의존을 넘긴다', () => {
     expect(API_RUNTIME).toContain('buildIntegrityDeps');
     expect(API_RUNTIME).toMatch(/integrity\s*===\s*undefined\s*\?\s*\{\}\s*:\s*\{\s*integrity\s*\}/);
