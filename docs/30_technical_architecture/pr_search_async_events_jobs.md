@@ -66,12 +66,12 @@
 | JOB-SEQ-001 | 시퀀스 증분 채번 | `push` 웹훅 → 게이트웨이가 `prs:sequence`에 발행 (CR-025, DEV-116) / 백필 완료 | sequence | 락 실패는 `defer`, 그 밖은 5회 지수 백오프 | 10분 | EVT-SEQ-001 | FR-SEQ-001 |
 | JOB-SEQ-002 | 시퀀스 재채번 | 재작성 감지(자동) / 수동 (API-ADM-007 → `sequence_reassign` 잡) | `sequence` 역할 — 자동은 버스 소비자, **수동은 `startSequenceRepairRunner`가 잡을 claim한다** (CR-034, DEV-178) | 없음 (실패 시 `stale`) | 60분 | EVT-SEQ-002, EVT-JOB-001 | FR-SEQ-005, FR-ADMIN-003 AC-4 |
 | JOB-SEQ-003 | 시퀀스 정합성 점검 | 수동 / 스케줄 (일 1회, 표본) | **`sequence` 역할** | 3회 | 30분 | EVT-JOB-001 | FR-ADMIN-003 |
-| JOB-REL-001 | 참조 간선 추출 | EVT-ING-003 | link | 3회 | 30초 | - | FR-REL-003 |
+| JOB-REL-001 | 참조 간선 추출 | **EVT-ING-003 / EVT-ING-005** (CR-039, DEV-215) | link | 3회 (**핸들러가 `delivery_count`로 집행한다**, DEV-228) | 30초 | - | FR-REL-003 |
 | JOB-REL-002 | 되돌림 간선 파생 | EVT-ING-003 | link | 3회 | 30초 | - | FR-REL-004 |
 | JOB-REL-003 | 체리픽 간선 파생 | EVT-ING-003 | link | 3회 | 60초 | - | FR-REL-005 |
 | JOB-REL-004 | 스택 간선 파생 | EVT-ING-003 (PR 이벤트) | link | 3회 | 30초 | - | FR-REL-006 |
-| JOB-REL-005 | 미해결 참조 해결 | EVT-ING-003 | link | 3회 | 30초 | - | FR-REL-003 AC-3 |
-| JOB-REL-006 | 관계 전량 재파생 | 수동 (API-ADM-002) | batch | 항목별 3회 | 없음 | EVT-JOB-001 | FR-REL-003~006 |
+| JOB-REL-005 | 미해결 참조 해결 | **EVT-ING-003 / EVT-ING-005** (CR-039, DEV-215) | link | 3회 (위와 같다) | 30초 | - | FR-REL-003 AC-3 |
+| JOB-REL-006 | 관계 전량 재파생 | 수동 (API-ADM-002). **`job.type`은 `link_rebuild`** (마이그레이션 001에 이미 있다) | batch | 항목별 3회, 잡 전체는 재개 | 없음 (중단·재개) | EVT-JOB-001 | FR-REL-003~006 |
 | JOB-REL-007 | 릴리스 태그 스냅숏 동기화 (CR-028, DEV-144) | `release`·`create(tag)`·`push(refs/tags)` 웹훅 → 게이트웨이가 `prs:release`에 발행 / 6시간 보정 스윕 / 재채번(EVT-SEQ-002) 후 | release | 3회 지수 백오프 | 5분 | - | FR-REL-002, FR-SEQ-003 AC-1 |
 | JOB-AUTH-001 | 권한 캐시 갱신·무효화 | EVT-AUTH-001 / TTL 만료 | authz | 3회 | 10초 | - | FR-AUTH-003 |
 
@@ -112,6 +112,107 @@ WP-020이 커밋 **그래프**를 읽는 계층을 세웠지만, 그 결과를 `
 
 **소스 코드 본문은 어떤 경로로도 저장하지 않는다.** 이 잡은 경로 이름과 patch-id 해시만 다룬다 (NFR-005).
 
+### 3.2 JOB-REL-001·005 참조 간선 파생과 해결 (CR-039, DEV-215~228)
+
+**방아쇠는 둘이다.**
+
+| 방아쇠 | 무엇을 깨우나 |
+| --- | --- |
+| `EVT-ING-003` (`ingestion.projected`) | PR 문서·PR 유래 커밋 문서가 색인됐다 |
+| `EVT-ING-005` (`commit.metadata_ready`) | 커밋 메타데이터가 정본·색인에 모두 들어갔다 — **직접 푸시 커밋이 여기로 들어온다** |
+
+`EVT-ING-003`만으로는 성립하지 않는다. 그 이벤트는 `project` 워커가 **색인한 문서마다** 내는데, 직접 푸시 커밋 문서는
+`project`가 만들지 않는다 — WP-067의 `commit-enrich`가 만든다 (DEV-206). 그 경로가 아무 이벤트도 내지 않으면 그 커밋의
+메시지에 적힌 참조는 **영원히 간선이 되지 않는다.** CR-038이 JOB-MIR-002에서 잡은 것과 같은 모양이 한 홉 아래에 있었다.
+
+**커밋의 `EVT-ING-003`이 먼저 와도 괜찮다.** 그때는 메시지가 아직 비어 있어 참조가 0건이지만, 나중에 `EVT-ING-005`가
+같은 커밋을 다시 파생시킨다. 안정 식별자(아래)와 멱등 reconcile이 중복을 막는다.
+
+**이벤트는 신호이고 본문이 아니다.** 핸들러는 payload의 텍스트를 쓰지 않고 **현재 PostgreSQL 정본**에서 읽는다
+(`pull_request_snapshot.document`의 `title`·`body`, `commit_snapshot.message`). 그래서 오래된 이벤트가 늦게 재전달돼도
+결과가 현재 정본으로 수렴한다 — 순서 역전이 옛 본문을 되살리지 않는다.
+
+#### 안정 참조 식별자 `reference_key` (DEV-217)
+
+`link_id`를 `{link_type}:{from_type}:{from_id}:{to_type}:{to_id}`로 만들면 **`to_id`가 해결 과정에서 바뀐다.**
+`Refs: abc1234`는 미해결 상태에서 축약 SHA를, 해결 뒤에는 40자 SHA를 대상으로 갖는다. 그러면 같은 참조에 대해
+미해결 간선과 해결된 간선이 둘 다 남아 FR-REL-003 AC-3(같은 간선을 갱신)·멱등·결정론적 ID가 한 번에 깨진다.
+
+`references` 간선은 **해결 대상과 독립인 안정 식별자**를 갖는다.
+
+| 참조 표현 | `reference_key` |
+| --- | --- |
+| `#N` | `pr:N` |
+| `owner/repo#N` | `x:<owner>/<repo>:pr:N` |
+| 40자 SHA | `commit:<sha>` |
+| 7~12자 SHA | `commit-prefix:<prefix>` |
+| GHE PR URL | `x:<owner>/<repo>:pr:N` |
+| GHE 커밋 URL | `x:<owner>/<repo>:commit:<sha>` |
+
+- **원문이 아니라 정규화된 locator다.** 소문자로 맞추고 트레일러 접두·구두점을 벗긴다.
+- **저장소 등록 상태에 의존하지 않는다.** 등록되지 않은 저장소를 가리켜도 키가 정해지며, 나중에 등록돼도 키가 바뀌지 않는다.
+- **접두 `x:`가 없으면 source 저장소다.** 간선은 언제나 source 저장소 범위로 저장되므로 생략이 모호하지 않다.
+- **대상이 해결돼도 바꾸지 않는다.** `to_id`·`to_repository_id`만 채운다.
+
+`references` 간선의 안정 ID는 `link_type` + source identity(`from_type`,`from_id`) + `reference_key`로 만든다.
+`resolved`가 `false`에서 `true`로 바뀌어도 `link_id`는 그대로다.
+
+#### 역방향 조회 (JOB-REL-005)
+
+대상 T가 새로 쓸 수 있게 되면 **T를 가리키는 미해결 참조만** 조회한다. 전량 스캔하지 않는다.
+
+- 대상이 PR N이면 후보 키는 `pr:N`(같은 저장소)과 `x:<owner>/<repo>:pr:N`(다른 저장소) 둘이다.
+- 대상이 커밋 `<sha>`이면 `commit:<sha>`와 **길이 7~12의 접두 여섯**을 더한 일곱이다. 상한이 있어 `terms` 질의 하나로 끝난다.
+
+#### 해결 규칙 (FR-REL-003 AC-3)
+
+| 상황 | 결과 |
+| --- | --- |
+| 유일하게 일치 | `resolved: true`, `to_id`·`to_repository_id` 기입 |
+| 0건 | `resolved: false` 유지 — **오류가 아니다** |
+| 축약 SHA가 2건 이상 | `resolved: false` 유지. 첫 결과를 임의로 고르지 않는다 |
+| 등록되지 않은 저장소 | `resolved: false` 유지. **임의의 외부 GitHub 조회로 확장하지 않는다** |
+| 승인된 GHE 호스트가 아닌 URL | 참조로 인정하지 않는다 |
+
+#### 완전한 파생 집합과 stale 제거 (DEV-220)
+
+한 source의 `references` 간선은 **완전한 파생 집합**으로 취급한다. 정본의 현재 본문에서 원하는 집합을 다시 만들고,
+없어진 간선을 제거한다 — `Refs: #10`이 `Refs: #20`으로 바뀌면 `#10` 간선이 사라져야 한다.
+
+**추출이 실패한 회차는 제거를 하지 않는다.** 부분 결과를 완전한 결과로 확정하면 멀쩡한 간선이 사라진다.
+실패는 기존 집합을 보존하고 `links_pending: true`로 표시한 뒤 재파생 대상으로 남긴다.
+
+순서는 **원하는 간선 upsert → stale 제거 → 요약·`links_pending` 확정**이다. 중간에 실패하면 `links_pending`이 `true`로
+남아 다음 회차가 같은 차이를 다시 본다 — 다중 인덱스 트랜잭션 대신 **수렴 경로**로 푼다.
+
+#### 중복 제거와 상한 (FR-REL-003 AC-5)
+
+같은 참조가 본문과 트레일러에 함께 나오면 **간선은 하나다.** `reference_key`로 중복을 제거하고 신뢰도는
+`derived`(트레일러) > `heuristic`(본문 언급)이 이긴다. 근거 텍스트도 이긴 쪽의 것을 쓴다.
+
+**100건 상한은 원시 일치가 아니라 중복 제거된 고유 참조에 적용한다.** 선택은 결정론적이어야 한다 —
+본문 등장 순서를 보존하고 중복 제거 뒤 앞의 100개를 쓴다. 다시 돌려도 같은 100개가 나온다.
+
+#### 실패 분류
+
+| 상황 | 처리 |
+| --- | --- |
+| 대상 없음 | 실패가 아니다. `resolved: false`로 저장하고 ack |
+| 결정론적 파싱 실패 | source 색인을 되돌리지 않는다. `links_pending: true` + 재파생 대상. ack |
+| 일시적 DB·ES 실패 | 예산 안에서 `retry`, 소진하면 실패 대기열(`stage: link`) 기록 후 ack |
+
+### 3.3 JOB-REL-006 관계 전량 재파생 (CR-039, DEV-221)
+
+**Redis stream을 마이그레이션 보장으로 쓰지 않는다.** 새 소비자 그룹이 `0`부터 읽을 수는 있으나 stream retention은
+정본이 아니고, WP-029 이전의 직접 푸시 커밋에는 애초에 `EVT-ING-003`이 없었다. 배포 뒤 "새 이벤트부터만 관계가 생긴다"는
+운영 구멍이 남는다 — CR-037이 DEV-194에서 PR 스냅숏 축에 대해 이미 겪은 자리다.
+
+- 입력은 **PostgreSQL 정본**(`pull_request_snapshot`, `commit_snapshot`)이다. Elasticsearch 현재 문서를 파생의 정본으로 읽지 않는다 (ADR-004)
+- 저장소 범위로 열거하며 **재개 가능·경계 있음**이다. 커서는 `job` 행에 남는다
+- **같은 파생 핸들러를 쓴다.** 두 번째 추출 알고리즘을 만들지 않는다 — 다른 경로로 만들면 재구축의 근거와 실제 색인 내용이 갈라진다
+- GHE를 부르지 않는다. 내부 파생이라 rate limit과 무관하다
+- WP-030이 되돌림·체리픽·스택을 같은 틀에 확장한다
+
 ## 4. Event 카탈로그
 
 | Event ID | 이름 | Producer | Consumer | **전송 스트림** | Payload | Ordering/Dedupe |
@@ -119,6 +220,7 @@ WP-020이 커밋 **그래프**를 읽는 계층을 세웠지만, 그 결과를 `
 | EVT-ING-001 | `ingestion.event_received` | ingest-gateway | enrich | `prs:ingest` | `{ delivery_id, event_type, action, repository_id, correlation_id, occurred_at }` | 파티션 `repository_id`, 멱등 `delivery_id` |
 | EVT-ING-002 | `ingestion.enriched` | enrich | project | `prs:enriched` | **self-contained bounded (CR-010, DEV-013)** — `{ delivery_id, repository_id, entity_kind, pr_number, pull_request, source_commit_shas[], changed_files[], reviews[], source_commits_truncated, files_truncated, enrichment_pending, enrichment_errors[], correlation_id }`. `pull_request`는 **PR 문서 매핑(ENT-CORE-002)이 선언한 PR 고유 필드 전부**를 나른다 (CR-011, DEV-018) — `number, title, body, state, draft, labels[], author, created_at, updated_at, closed_at, merged, merged_at, merge_commit_sha, head_ref, head_sha, base_ref, base_sha`. `created_at`이 없으면 투영이 `lead_time_seconds`·`first_review_wait_seconds`를 계산할 수 없다. 투영이 GitHub API를 다시 부르지 않아도 되도록 필요한 것을 실어 보낸다. 원본 웹훅 전량·patch/diff 본문·소스 코드·토큰은 싣지 않는다. 커밋 250건·파일 3000건 상한 유지 | 위와 동일 |
 | EVT-ING-003 | `ingestion.projected` | project | link | `prs:projected` | `{ repository_id, entity_kind, entity_id, document_version, correlation_id }` | 위와 동일 |
+| EVT-ING-005 | `commit.metadata_ready` | mirror (JOB-MIR-002) | link | **`prs:projected`** | `{ repository_id, commit_sha, entity_id, metadata_source, correlation_id }` — **bounded 식별자만.** 메시지 본문·경로 목록을 싣지 않는다: link 워커가 `commit_snapshot`에서 읽는다 (CR-039, DEV-215) | 파티션 `repository_id`, 멱등 `(repository_id, commit_sha, metadata_source)` |
 | EVT-ING-004 | `ingestion.failed` | 모든 워커 | ops | `prs:batch` | `{ delivery_id, stage, error, retry_count, correlation_id }` | 멱등 `(delivery_id, stage)` — **`dead_letter`의 유일 제약이 같은 키로 강제한다** (CR-012, DEV-022) |
 | EVT-SEQ-001 | `sequence.assigned` | sequence | project, ops | **`prs:projected`** (CR-025, DEV-121) | `{ repository_id, base_branch, seq_epoch, from_seq, to_seq, head_sha }` | 시퀀스 공간별 직렬 |
 | EVT-SEQ-002 | `sequence.reassigned` | sequence | project, 알림, ops | `prs:projected` | `{ repository_id, base_branch, old_epoch, new_epoch, diverged_at_seq, affected_count }` | 시퀀스 공간별 직렬 |
@@ -129,6 +231,21 @@ WP-020이 커밋 **그래프**를 읽는 계층을 세웠지만, 그 결과를 `
 **전송 스트림 열은 CR-025가 더했다 (DEV-121).** 그전까지 카탈로그는 Producer와 Consumer만 적고 **어느 스트림이 그 이벤트를 나르는지**를 적지 않았다. WP-021이 `EVT-SEQ-001`을 내려다가 그 빈칸을 만났다 — `project`가 읽는 `prs:enriched`에 실으면 투영 핸들러가 모양이 다른 payload를 받고, `prs:sequence`에 실으면 채번이 자기 이벤트를 다시 소비한다. 소비자 이름만으로는 전송 수단이 정해지지 않는다.
 
 한 스트림이 여러 이벤트를 나르므로 **소비자는 봉투의 `event_name`으로 가른다.** 새 규약이 아니다 — `EventEnvelope`에 이미 있는 필드다.
+
+**되먹임 금지 (CR-039, DEV-216).** `EVT-ING-005`는 `prs:projected`로 나가는데, 그 이벤트를 **내는** JOB-MIR-002가 같은 토픽을
+`link:commit-enrich` 그룹으로 **읽고 있다.** 그래서 자기 이벤트를 자기가 다시 받는다. 토픽을 새로 만들어 푸는 대신
+`event_name` 판별을 계약으로 못 박는다.
+
+| 소비자 | 처리하는 `event_name` | 무시(ack)하는 것 |
+| --- | --- | --- |
+| `link:commit-enrich` (JOB-MIR-002) | `ingestion.projected`(commit), `sequence.assigned`, `sequence.reassigned` | **`commit.metadata_ready`** |
+| `link` (JOB-REL-001·005) | `ingestion.projected`, `commit.metadata_ready` | 시퀀스 이벤트 |
+
+JOB-MIR-002는 **`commit.metadata_ready`를 받아 `commit.metadata_ready`를 다시 내지 않는다.** 무한 루프의 유일한 방어선이
+이 규칙이므로 시험으로 직접 건다.
+
+`EVT-ING-003`을 JOB-MIR-002가 재발행해 같은 뜻으로 쓰는 방식은 **기각한다** — 한 이벤트 이름이 "투영이 색인했다"와
+"보강이 채웠다" 두 가지를 뜻하게 되고, 그 순간 위 표를 쓸 수 없다.
 
 ## 5. 재시도와 백오프
 
@@ -163,6 +280,14 @@ WP-020이 커밋 **그래프**를 읽는 계층을 세웠지만, 그 결과를 `
 - 표준 재시도는 5회다
 - 재시도 소진 뒤 실패 대기열에 기록하고 **원 이벤트는 ack해 파티션을 푼다**
 - 404는 즉시 실패 대기열로 보내고 ack한다
+
+**재시도 예산을 집행하는 것은 핸들러다 (CR-039, DEV-228).** 어댑터는 `retry`를 받으면 백오프를 늘리고 미ack로 둘 뿐
+**횟수 상한을 보지 않는다** — Redis·in-memory 두 구현 모두 그렇다. 그래서 핸들러가 `delivery_count`를 읽어 예산 소진 시
+종료 처분(`dead_letter`)으로 바꾸지 않으면 **영구 실패가 무한 재시도되며 그 파티션의 뒤 이벤트를 영영 막는다.**
+
+- 새 소비자를 만들 때 `delivery_count >= MAX_RETRIES`를 **반드시** 확인한다 (`authz.ts`가 선례다)
+- `defer`는 예산을 소비하지 않으므로 이 검사 대상이 아니다
+- 이것은 어댑터의 결함이 아니라 **분업**이다: 어댑터는 언제 다시 부를지를, 핸들러는 언제 그만둘지를 정한다
 
 ### 5.2 재시도 대상 판정
 

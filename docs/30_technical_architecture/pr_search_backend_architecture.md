@@ -30,13 +30,21 @@ apps/
 
 ## 3. 모듈 맵
 
+**`link` 모듈의 API 소유권은 CR-039가 정정했다 (DEV-227).** 이전 표는 `API-REL-001~004` 전부를 이 모듈에 두었으나
+사실이 아니다 — `API-REL-001`(`/sequence-neighbors`)은 WP-027이 `sequence` 모듈로, `API-REL-002`(`/containments`)와
+`API-REL-005`(`/releases`)는 WP-024·WP-026이 릴리스 경로로 이미 구현했다. 둘 다 간선 인덱스를 읽지 않고
+`merge_sequence`·`release` 표를 읽는다. 문서가 초기 설계를 계속 사실처럼 말하면 다음 WP가 그것을 근거로
+잘못된 자리에 코드를 넣는다.
+
+`link` 모듈의 pipeline-worker 쪽은 **`link` 역할**이 맡는다 (JOB-REL-001~006). search-api 쪽 관계 조회는 WP-031 이후다.
+
 | 모듈 | 소속 앱 | 책임 | 관련 요구사항 | API | 데이터 |
 | --- | --- | --- | --- | --- | --- |
 | `ingestion` | ingest-gateway | 서명 검증, 원본 저장, 멱등, 아웃박스 enqueue, NDJSON 아카이브 | FR-ING-001, FR-ING-002, FR-ING-003, FR-ING-010 | API-ING-001 | ENT-ING-001 |
 | `enrichment` | pipeline-worker | GHE API·미러에서 커밋·파일·리뷰 조회 후 병합 | FR-ING-004 | - | ENT-CORE-002, ENT-CORE-003 |
 | `projection` | pipeline-worker | 정규화 문서 생성, 버전 조건부 업서트 | FR-ING-005 | - | ENT-CORE-002, ENT-CORE-003, ENT-REL-001 |
 | `sequence` | pipeline-worker, search-api | first-parent 서수 채번, 에폭 관리, 앵커 정규화, 범위 조회, 이분 탐색, 안전 구간 표식 | FR-SEQ-001~007, FR-ADMIN-003 | API-SEQ-001~005 | ENT-SEQ-001~004 |
-| `link` | pipeline-worker, search-api | 참조·되돌림·체리픽·스택 간선 파생, 관계 조회, 그래프 탐색 | FR-REL-002~008 | API-REL-001~004 | ENT-REL-002 |
+| `link` | pipeline-worker (파생), search-api (조회) | 참조·되돌림·체리픽·스택 간선 파생, 관계 조회, 그래프 탐색 | FR-REL-003~008 | **API-REL-003, API-REL-004** (CR-039, DEV-227) | ENT-REL-002 |
 | `search` | search-api | 식별자 해석, 질의 파싱, 필터·정렬·커서·패싯, 전문 검색, 저장된 검색, 내보내기 | FR-SRCH-001~012 | API-SRCH-001~006 | ENT-CORE-002, ENT-CORE-003, ENT-CORE-006 |
 | `analytics` | search-api | 그룹·시계열·백분위·분포 집계 | FR-STAT-001~006 | API-STAT-001~004 | ENT-CORE-002 |
 | `authz` | search-api (공용 미들웨어) | OIDC 세션, 접근 범위 산출·캐시, 강제 필터 결합 | FR-AUTH-001~003 | API-AUTH-001 | ENT-CORE-004, ENT-CORE-005 |

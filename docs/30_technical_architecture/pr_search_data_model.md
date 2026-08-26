@@ -732,12 +732,14 @@ ALTER TABLE gh_capability_snapshot
         "properties": {
           "has_revert":      { "type": "boolean" },
           "is_reverted":     { "type": "boolean" },
-          "has_cherry_pick": { "type": "boolean" }
+          "has_cherry_pick": { "type": "boolean" },
+          "reference_count": { "type": "integer" }
         }
       },
 
       "release_tags":      { "type": "keyword" },
       "enrichment_pending":{ "type": "boolean" },
+      "links_pending":     { "type": "boolean" },
       "last_delivery_id":  { "type": "keyword", "index": false },
       "indexed_at":        { "type": "date" }
     }
@@ -767,6 +769,7 @@ ALTER TABLE gh_capability_snapshot
       "to_repository_id": { "type": "long" },
 
       "link_type":     { "type": "keyword" },
+      "reference_key": { "type": "keyword" },
       "confidence":    { "type": "keyword" },
       "evidence":      { "type": "text", "index": false },
       "resolved":      { "type": "boolean" },
@@ -777,7 +780,12 @@ ALTER TABLE gh_capability_snapshot
 }
 ```
 
-- `link_id`는 `{link_type}:{from_type}:{from_id}:{to_type}:{to_id}`의 결정론적 해시다. 재파생이 중복 간선을 만들지 않는다.
+- `link_id`는 결정론적 해시다. 재파생이 중복 간선을 만들지 않는다. **재료는 간선 유형에 따라 다르다 (CR-039, DEV-217).**
+  - `references`: `{link_type}:{from_type}:{from_id}:{reference_key}`. **대상이 아니라 참조 표현이 재료다.**
+  - 그 밖(`reverts`·`cherry_picks`·`stacks_on`·`contains`): `{link_type}:{from_type}:{from_id}:{to_type}:{to_id}`. 이들은 대상 SHA/ID를 **알아낸 뒤에** 만들어지므로 대상이 나중에 바뀌지 않는다.
+- **왜 `references`만 다른가.** FR-REL-003 AC-3은 "대상이 아직 색인되지 않았으면 미해결로 저장하고, 대상 색인 시 해결 상태로 **갱신**한다"를 요구한다. 그런데 `to_id`를 ID 재료에 넣으면 `Refs: abc1234`가 해결되는 순간 대상이 축약 SHA에서 40자 SHA로 바뀌어 **`link_id`가 함께 바뀐다.** 그러면 갱신이 아니라 새 문서가 되고 미해결 간선이 그대로 남는다 — AC-3·멱등·결정론적 ID가 한 번에 깨진다.
+- `reference_key`는 **해결 대상과 독립인 정규화 locator**다. 원문 문자열이 아니고, 저장소 등록 상태에 의존하지 않으며, 대상이 해결돼도 바뀌지 않는다. 형식은 비동기·잡 카탈로그 3.2장에 있다. `references`가 아닌 간선에는 이 필드를 두지 않는다.
+- `to_id`·`to_repository_id`는 **해결된 뒤에만** 채운다. 미해결 `references` 간선에는 없다.
 - `link_type`: `contains` | `precedes` | `references` | `reverts` | `cherry_picks` | `stacks_on` | `co_changes`
 - `confidence`: `exact` | `derived` | `heuristic`
 - `precedes` 간선은 저장하지 않는다. 시퀀스 값 비교로 계산 가능하므로 간선으로 만들면 커밋 수만큼의 간선이 생겨 낭비다. `link_type` 어휘에는 남겨 두되, FR-REL-001은 `merge_sequence` 범위 질의로 구현한다.
@@ -867,6 +875,24 @@ ALTER TABLE gh_capability_snapshot
 **누적 필드는 버전 비교에서 제외한다 (CR-011, DEV-019).** `commit.pull_request_numbers`는 N:M이라 단순 대입하면 나중 이벤트가 앞 PR 번호를 지운다 — 커밋 하나가 두 PR에 속하는 경우 FR-SRCH-002(SHA → PR)가 조용히 한쪽을 잃는다. 집합 소속은 단조 증가하고 순서에 무관하므로, `params.union`에 실린 필드는 **버전 비교와 무관하게 항상 합집합**한다. 상태 필드(`state`, `merged_at`, …)만 버전 비교의 대상이다.
 
 **필드 소유권.** 투영 워커는 자기가 계산한 필드만 `params.doc`에 싣는다. 시퀀스 필드(`merge_seq`, `seq_epoch`)·관계 필드(`link_summary`, `links_pending`)·릴리스 필드(`release_tags`, `unreleased`)는 다른 워커가 소유하며, 투영은 그것들을 **생성 시점의 `upsert` 본문에만** 초깃값으로 둔다. `params.doc`에 넣으면 투영이 돌 때마다 다른 워커의 결과를 되돌린다.
+
+**`link_summary`는 leaf 단위로 소유가 갈린다 (CR-039, DEV-222).** 관계 워커가 하나가 아니기 때문이다.
+
+| leaf | 소유 WP | 근거 |
+| --- | --- | --- |
+| `reference_count` | **WP-029** | FR-REL-003 참조 간선 |
+| `has_revert` · `is_reverted` | WP-030 | FR-REL-004 되돌림 |
+| `has_cherry_pick` | WP-030 | FR-REL-005 체리픽 |
+| `has_stack` | WP-030 | FR-REL-006 스택 |
+
+**조건부 업서트 스크립트로는 이 분업을 표현할 수 없다.** 그 스크립트는 `ctx._source[key] = value`로 대입하므로
+`link_summary`를 넘기면 **객체를 통째로 바꾼다** — WP-029가 참조 수만 고치려 해도 WP-030이 써 둔 네 값이 사라진다.
+그래서 관계 요약은 **leaf 단위로 대입하는 전용 경로**를 쓴다. CR-038이 커밋 메타데이터에서 같은 이유로 만든
+`COMMIT_METADATA_SCRIPT`가 선례다.
+
+**`to_repository_id`·`detached`의 소유 (CR-039, DEV-223).** `to_repository_id`는 **WP-029**가 대상 저장소를 해석한
+시점에 채운다. `detached`는 **WP-030**이 소유한다 — WP-029는 이 필드를 두지 않는다. `strict` 매핑에서 값을 두지
+않는 것과 `false`를 두는 것은 다른 주장이며, 아직 계산하지 않은 것을 `false`로 적으면 "확인했고 아니었다"가 된다.
 
 ```painless
 boolean fresh = ctx._source.document_version == null
