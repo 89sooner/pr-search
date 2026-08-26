@@ -176,3 +176,68 @@ GitHub/코드/production composition을 다시 실측한다".
 - 게이트 로그: `docs/00_governance/change_control.md` 4장
 - 전사(transcript): **`exports/202608261008.md`** — `exports/`는 `.gitignore`
   대상이므로 커밋에 딸려 가지 않는다 (2026-08-26 실측 정정)
+
+---
+
+# Session: 2026-08-26 (수직) — CR-039 · WP-029 참조 간선
+
+## Goal
+
+사용자의 3단계 지시서. 재실측 → housekeeping → WP-029 계약 감사 → CR-039 →
+구현 → 재파생 → 운영 배선 → 전 계층 검증 → PR → 리뷰 정정 → 머지 →
+머지 직후 재확인 → WP-029 done / REL-004 진행률. **WP-030은 구현하지 않는다.**
+
+## Current state
+
+- main = `ea917b8` (PR #44 머지)
+- SRS `baseline v2.5`(변경 없음), 원장 `review v2.3`, 작업 패키지 `v0.4`
+- CR-039 closed, DEV-215~229 resolved
+- **REL-004 구현 1/8** (WP-029 done)
+- **REL-003 릴리스 게이트는 여전히 미통과** — 베타 공개 승인 안 됨
+- 미해결 리뷰 **0건** (PR #1~#44 전수)
+
+## Decisions
+
+`decisions.md`의 "CR-039" 절 참조. 무거운 것 넷:
+
+1. **참조 간선의 정체성은 대상이 아니라 표현이다** — `reference_key`. `link_id`에
+   가변 `to_id`가 들어 있으면 AC-3이 요구하는 "갱신"이 구조적으로 불가능하다
+2. **직접 푸시 커밋에는 `EVT-ING-003`이 오지 않는다** — `EVT-ING-005` 신설.
+   CR-038이 DEV-206에서 잡은 것과 같은 모양이 한 홉 아래에 있었다
+3. **한 source의 참조는 완전한 파생 집합** — 사라지면 지운다. 단 실패 회차는 아니다
+4. **`retry` 예산은 핸들러가 집행한다** — 어댑터는 상한을 보지 않는다.
+   `release.ts`가 실제로 무한 재시도 상태였다 (PR #30 P1, 미해결로 남아 있었다)
+
+## Changed files
+
+`files.md` 참조. 커밋(머지 제외, 시간순):
+
+- `713bbed` docs: agent-context 정리 / `e327ccf` docs: CR-039 계약 경화
+- `3224a00` feat: 참조 간선 파생·해결 / `ab917ed` fix: 재시도 예산 (DEV-228)
+- `f5f0f5a` test: 파생·조정·재파생 / `3648589` docs: 원장 6.34장
+- `b99d326` fix: PR #44 리뷰 여섯 / `522d2bd` docs: WP-029 done · REL-004 1/8
+
+## Commands
+
+`commands.md` 참조. 이번에 새로 배운 것: 변이 시험이 **내 결함을 찾아 줬다**
+(`markPending`의 `reference_count: -1`). 그리고 **내 회귀 시험 하나가 틀린 것을
+단언하고 있었다** — 리뷰가 지적한 순서를 시험이 굳히고 있었다.
+
+## Next steps
+
+1. **WP-030 착수 전 계약 감사** → next-free CR(CR-040 예상, 실측할 것) → 구현
+2. 릴리스 게이트 4·5·6은 별도 작업 — 이 환경에서 돌지 않는 항목이 섞여 있다
+3. `flow-001` e2e 간헐 실패 원인 규명 (WP-016 소관)
+4. OD-005(nori) 사용자 결정 — 기한이 도래했다
+
+## Risks/gotchas
+
+`risks.md` 참조. 이 세션이 새로 배운 것: **리뷰가 머지 전에 왔고 여섯 전부
+실결함이었다.** 그중 셋이 "실패했는데 아무도 다시 하지 않는다"의 변주다.
+
+## References
+
+- PR #44 `ea917b8` — CR-039 / WP-029
+- CR-039: `docs/00_governance/change_control.md` (3장 대장 + 5장 반영 내역)
+- DEV-215~229: 원장 5장 / 검증 기록: 원장 6.34·6.34.1장
+- PR #30·#32의 묵은 스레드 3건도 함께 종결했다 (재실측으로 발견)

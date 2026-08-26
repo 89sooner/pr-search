@@ -347,3 +347,81 @@ V=/home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py
 python3 $V --root . --strict     # 오류 2건(9+5)이 정상 — 기존 산문 플레이스홀더
 python3 $V --root . --report --code-root .
 ```
+
+---
+
+# 2026-08-26 CR-039 / WP-029 세션
+
+## 검증 배터리 (main `ea917b8` 기준 실측)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                # 통과
+pnpm lint                     # 통과
+pnpm run lint:deps            # 통과 (패키지 13, 위반 0)
+pnpm run test                 # 단위 1320 통과 (1 skipped)   [1264 → +56]
+pnpm run test:a11y            # 192 통과
+pnpm run test:integration     # 통합 849 통과                 [809 → +40]
+pnpm run test:regression      # 회귀 104 통과                 [83 → +21]
+pnpm run test:contrast        # 80쌍 통과
+pnpm build
+pnpm --filter @prs/web run build   # e2e 전에 필수
+pnpm run test:e2e             # 67 통과 (flow-001 간헐 — 전량 3회 중 1회)
+```
+
+## 이 세션에서 쓴 부분 실행
+
+```bash
+pnpm run test link/reference                      # 파서 단위 55건
+pnpm run test:integration worker/link             # 두 파일 다
+pnpm run test:integration worker/link.test        # 파생·조정·해결만
+pnpm run test:integration worker/link-rebuild     # 종단·재파생만
+pnpm run test:integration admin/jobs
+pnpm run test:integration release/refresh         # DEV-228 예산
+```
+
+## 변이 시험 하니스 (이번에 쓴 형태)
+
+정확히 1건일 때만 치환하고, **되돌리기는 역방향 치환**이다 — 신규 파일은
+`git checkout --`으로 원복되지 않는다.
+
+```bash
+# mut.sh <id> <file> <old> <new> <suite> <filter>
+#   1) 치환 → 2) 스위트 실행 → 3) 역방향 치환으로 원복 → 4) KILLED/SURVIVED 출력
+# 앵커가 1건이 아니면 ANCHOR-FAIL로 멈춘다 (안전장치)
+```
+
+**구문을 깨뜨리는 변이를 킬로 세지 마라.** 처음 M3·M10을 그렇게 걸었다가
+"컴파일 실패"를 킬로 읽을 뻔했다. 변이는 **의미가 바뀌되 컴파일되는** 형태여야 한다.
+
+## 리뷰 확인 — 전수로 센다
+
+```bash
+for n in $(seq 1 44); do
+  c=$(gh api graphql -f query="{ repository(owner:\"89sooner\",name:\"pr-search\"){
+    pullRequest(number:$n){ reviewThreads(first:60){ nodes{ isResolved isOutdated } } } } }" \
+    --jq '[.data.repository.pullRequest.reviewThreads.nodes[]|select(.isResolved==false and .isOutdated==false)]|length' 2>/dev/null)
+  [ -n "$c" ] && [ "$c" != "0" ] && printf 'PR #%s = %s\n' "$n" "$c"
+done
+```
+
+**`#33 이상`처럼 범위를 좁히지 마라.** 이번에 전수로 세어 PR #30의 P1과 PR #32의
+P2 둘을 찾았다 — 앞선 두 세션이 각각 범위를 좁혀 놓쳤던 것이다.
+
+## e2e 귀속 절차 (이번에도 썼다)
+
+```bash
+git diff --stat origin/main..HEAD -- apps/web        # 비어 있으면 화면 코드 동일
+cd apps/web && ./node_modules/.bin/playwright test e2e/flow-001.spec.ts --reporter=line   # 4/4 통과
+for i in 1 2 3; do pnpm run test:e2e >/dev/null 2>&1 && echo PASS || echo FAIL; done       # 1회 FAIL
+```
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 증상 | 원인·해결 |
+| --- | --- | --- |
+| `pnpm run test` (첫 실행) | `architecture.test.ts` 2건 실패 | **ADR-008 가드레일이 잡았다** — `@prs/es`에서 `client.search`·`msearch` 직접 호출. 편법 대신 허용 목록을 `no_requester`/`user_facing`으로 갈라, `search`는 전자만 열었다 |
+| `pnpm run test:integration worker/link` | `client.msearch is not a function` | `{ ...es, bulk }` 스프레드 — `risks.md` 18번을 또 밟았다. 명시적 위임 헬퍼로 고침 |
+| 같은 시험 | 접두 해결이 이미 `true` | ES 문서가 **같은 파일의 앞선 케이스**에서 남았다. `beforeEach`에서 내 저장소의 엔티티 문서까지 지운다 |
+| `pnpm run test:regression` (리뷰 정정 후) | 발행 순서 단언 실패 | **내 회귀가 틀린 계약을 굳히고 있었다** — 리뷰가 지적한 순서였다. 새 계약으로 다시 걸었다 |
+| `mut.sh M3`(첫 형태) | 즉시 KILLED | 앵커가 **구문을 깨뜨렸다.** 컴파일 실패는 킬이 아니다 — 의미만 바꾸는 형태로 다시 걸었다 |

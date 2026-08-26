@@ -159,3 +159,49 @@
 - **기존 마이그레이션을 수정하지 않는다.** 012·013은 이 세션이 신설했다
 - **기본 consumer group 이름을 바꾸지 않는다** — Redis에서 읽던 자리를 잃는다
 - `agent-context/`는 tracked. 전사는 `exports/`에 둔다 (`todos.md` D절)
+
+---
+
+# 2026-08-26 CR-039 / WP-029가 만든 것
+
+## 읽는 순서가 바뀐 문서
+
+- `docs/40_delivery/pr_search_implementation_traceability.md` — **원장 v2.3**.
+  이 세션의 장: **6.34**(WP-029 검증) · **6.34.1**(PR #44 리뷰 라운드)
+- `docs/40_delivery/pr_search_work_packages.md` — **v0.4**. WP-029 범위·DoD 16항 재작성
+- `docs/00_governance/change_control.md` — CR-001~039. 5장에 CR-039 반영 내역
+- `docs/30_technical_architecture/pr_search_async_events_jobs.md` — **3.2·3.3장 신설**
+  (참조 파생·`reference_key`·역방향 조회·해결 규칙·완전 파생 집합·전량 재파생),
+  `EVT-ING-005` 행, **되먹임 금지 표**, §5.1 **재시도 예산 집행 주체**
+
+## 참조 간선 (WP-029)
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/domain/src/link/reference.ts` | **순수 파서 + 안정 식별자.** 패턴 6종·제외 구간·중복 제거·상한·`reference_key`·`parseReferenceKey`·역방향 후보 |
+| `packages/es/src/links.ts` | 간선 쓰기·stale 제거·**페이지 넘기는** 역방향 조회·해결/되돌림·`link_summary` leaf 갱신·대상 해석(`msearch`) |
+| `apps/pipeline-worker/src/link.ts` | **JOB-REL-001·005·006.** 파생 정본은 PostgreSQL. 방아쇠 둘. 재시도 예산 집행. 재개 가능한 재파생 러너 |
+| `apps/pipeline-worker/src/commit-enrich.ts` | **`EVT-ING-005` 발행** (색인 뒤·완결 표식 **앞**) + 되먹임 가드 |
+| `apps/search-api/src/ops/jobs.ts` | `OPERATOR_JOB_TYPES` — 집는 러너가 있는 유형만 |
+| `deploy/k8s/pipeline-worker-link.yaml` | **신설.** `link` 역할 (미러 볼륨 불필요) |
+| `packages/es/src/mappings/links.ts` | `reference_key` 추가 |
+| `packages/es/src/mappings/commits.ts` | `links_pending`·`link_summary.reference_count` 추가 |
+| `packages/db/src/repositories/{pr-snapshot,commit-snapshot}.ts` | `list*After` — 재개 가능한 오름차순 커서 열거 |
+
+## 이 세션의 시험 (신규)
+
+| 경로 | 무엇을 지키나 |
+| --- | --- |
+| `packages/domain/src/link/reference.test.ts` | 파서 55건 — 패턴·제외·신뢰도·중복·상한·부호·역방향 후보 |
+| `apps/pipeline-worker/integration/worker/link.test.ts` | **실 PG·ES.** 정본 파생·V1→V2→V3 조정·순서 역전·해결(같은 `_id`)·접두 3갈래·**해결 뒤 모호해지면 되돌림**·cross-repo·접근 통제·leaf 보존·부분 실패·페이지네이션·예산 |
+| `apps/pipeline-worker/integration/worker/link-rebuild.test.ts` | **실 git·PG·ES·버스.** 직접 푸시 종단(실제 사슬)·되먹임 없음·발행 실패 시 미완결·과거 데이터·**PG-only 재구축**·결정론·운영자 잡 종단 |
+| `apps/search-api/integration/admin/jobs.test.ts` | `link_rebuild` 생성 허용 + 러너 없는 유형 거절 유지 |
+| `regression/runtime-reachability.test.ts` | JOB-REL-001·006 도달성 + 발행 순서 셋 + 잡 생성 경로 + 접두 재평가 |
+
+## 손대면 안 되는 것 (갱신)
+
+- `docs/10_requirements/srs_final.md`는 baseline **v2.5**. CR 먼저
+- **기존 마이그레이션을 수정하지 않는다.** CR-039는 새 마이그레이션을 **만들지 않았다**
+- **기본 consumer group 이름을 바꾸지 않는다** — `link`와 `link:commit-enrich`
+- **`link_summary`를 객체 통째로 대입하지 않는다** — leaf 소유가 WP-029/WP-030으로 갈린다
+- **`detached`는 WP-030 소유다** — WP-029는 그 필드를 두지 않는다

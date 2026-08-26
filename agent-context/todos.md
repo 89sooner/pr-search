@@ -1,28 +1,36 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
-> **최신 기준 (2026-08-26 대형 세션 종료 시점)**
-> main `3e3009b` · SRS `baseline v2.5` · 원장 `review v2.2` · CR-038 · DEV-214까지.
-> **REL-003 WP 11/11 done · 릴리스 게이트 미통과.** 미해결 리뷰 **0건**.
-> 아래 "이전 세션 기록"은 보존용이며 0번은 해소됐다.
+> **최신 기준 (2026-08-26 CR-039 / WP-029 종료 시점)**
+> main `ea917b8` · SRS `baseline v2.5` · 원장 `review v2.3` · 작업 패키지 `v0.4` ·
+> CR-039 · DEV-229까지. **REL-004 구현 1/8** (WP-029 done).
+> **REL-003 릴리스 게이트는 여전히 미통과 — 베타 공개 승인 안 됨.**
+> 미해결 리뷰 **0건** (PR #1~#44 전수 실측). 브랜치 없음.
 
-## A. 지금 당장 — WP-029 착수 전 계약 감사 (REL-004)
+## A. 지금 당장 — WP-030 착수 전 계약 감사 (REL-004)
 
-**구현부터 시작하지 않는다.** REL-003의 WP가 연속 여섯 번(CR-029·030·031·033·035·038)
-"착수 전 감사에서 계약 공백이 나왔다"를 반복했다. 같은 순서를 지킨다: **감사 → CR → 구현**.
+**구현부터 시작하지 않는다.** "착수 전 감사에서 계약 공백이 나왔다"가 **일곱 번 연속**이다
+(CR-029·030·031·033·035·038·039). 같은 순서를 지킨다: **감사 → CR → 구현**.
 
-- 대상: **WP-029 관계 간선 인덱스와 참조 추출** (`docs/40_delivery/pr_search_work_packages.md`)
-- next-free는 **실측할 것** — CR-039 / DEV-215가 예상이지만 추측해 쓰지 않는다:
+- 대상: **WP-030 되돌림·체리픽·스택 관계 파생** (`docs/40_delivery/pr_search_work_packages.md`)
+- next-free는 **실측할 것** — CR-040 / DEV-230이 예상이지만 추측해 쓰지 않는다:
   ```bash
   grep -ohE 'CR-[0-9]{3}' docs/00_governance/change_control.md | sort -u | tail -2
   grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -2
+  grep -rohE 'JOB-[A-Z]+-[0-9]{3}' docs/ | sort -u   # 새 ID는 충돌부터
   ```
-- **새 JOB/EVT/API ID를 붙이기 전에 충돌을 확인**한다 (이 세션이 `JOB-ING-009`에서 밟았다):
-  ```bash
-  grep -rohE 'JOB-[A-Z]+-[0-9]{3}' docs/ | sort -u
-  ```
-- 감사할 때 볼 것: `prs:projected`의 `link` 소비자 그룹이 **이미 카탈로그에 있다**
-  (`packages/bus/src/topics.ts`의 `LOGICAL_CONSUMERS`). WP-029는 기본 그룹 `link`를
-  그대로 쓰면 된다 — 커밋 보강은 `link:commit-enrich`로 분리돼 있다
+- **WP-029가 깔아 둔 자리** — 다시 만들지 말 것:
+  - `link` 역할·`pipeline-worker-link.yaml`·README 적용 순서가 **이미 있다**
+  - `link_summary`의 네 leaf(`has_revert`·`is_reverted`·`has_cherry_pick`·`has_stack`)와
+    `detached`가 **WP-030 소유로 명시**돼 있다 (DEV-222·223). 객체 통째 대입 금지 —
+    leaf 단위 스크립트(`LINK_SUMMARY_SCRIPT`)가 선례다
+  - `commit_snapshot.patch_id`가 체리픽 판정 근거로 **보존**된다 (CR-038, DEV-208)
+  - `STORED_LINK_TYPES`에 `reverts`·`cherry_picks`·`stacks_on`이 이미 어휘로 있다
+- **감사에서 물을 것** (WP-029가 같은 계열로 다섯을 찾았다):
+  1. 방아쇠가 **문서 존재를 전제하지 않는가** — JOB-REL-002·003·004도 `EVT-ING-003`만 적혀 있다
+  2. 되돌림·체리픽 간선의 **`link_id` 재료가 안정적인가** — 대상이 나중에 밝혀지는 경로가 있나
+  3. **본문이 바뀌면 간선이 사라지는가** — WP-029의 완전 파생 집합 규율을 이어받는가
+  4. **과거 데이터 재파생 경로**가 JOB-REL-006에 확장되는가
+  5. FR-REL-005 AC-2가 **조건부**임을 계약이 반영하는가 (CR-024, DEV-111 — blob 인출 기본 차단)
 
 ## B. 릴리스 게이트 4·5·6 (REL-003 미통과 사유)
 
@@ -48,6 +56,20 @@
   커밋이 매 회차 같은 자리를 차지한다. 정확성은 안 깨진다 (원장 §7)
 
 ## D. 확인할 사항
+
+- **open DEV는 5건이다** — DEV-001·006·010·016·026. 이전 인계가 "1건(DEV-010)"이라
+  적었으나 실측은 다섯이다. 전부 기존 환경 제약·범위 공백이며 이번 작업이 만든 것이
+  아니다. 세는 법:
+  ```bash
+  grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
+  ```
+- **`OD-005`(nori 플러그인)의 기한이 도래했다.** "REL-004 착수 전"인데 WP-029가
+  REL-004의 첫 WP였다. 전문 검색(WP-032) 소관이라 WP-029·030을 막지 않으므로
+  결정하지 않았다 — **사용자 결정 항목으로 열려 있다** (`change_control.md` 6장)
+- **`link` 역할이 배포에 추가됐다.** 운영 적용 시 `pipeline-worker-link.yaml`이
+  적용 순서에 들어 있는지 확인할 것 — 회귀가 그것을 검사한다
+- `GHE_BASE_URL`이 `link` 역할에 **반드시** 필요하다. 없으면 URL 참조를 아예
+  만들지 않는다 (THR-036, fail closed) — 조용히 적게 만드는 것이라 눈치채기 어렵다
 
 - **전사는 `exports/202608261008.md`에 있다** (2026-08-26 실측 정정 — 이전 기록의
   "저장소 루트" 주장은 **틀렸다**). `exports/`는 `.gitignore` 대상이라 커밋에 딸려

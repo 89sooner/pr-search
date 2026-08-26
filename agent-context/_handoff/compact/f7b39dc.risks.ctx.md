@@ -1,7 +1,7 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=8370c71cd77e18ccdc91d3757d1dfd6620c716768e2e9aafde61108ccc30ce2d bytes=15500 lines=274 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;DISTINCT;pull_request_number;NOT;NULL;expected;Node;e2e;Codex;v20;install;visitor;engines;v22;a11y;require;ESM;PATH;HOME;versions
+@kv sha256=c748ccdb116b37c0e89f47ccca5307e3c7bfc6c4748944305acce7256cb24c41 bytes=20639 lines=360 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;DISTINCT;pull_request_number;NOT;NULL;expected;Node;e2e;Codex;v20;install;visitor;engines;v22;a11y;require;ESM;PATH
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
 @h3 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다
@@ -134,8 +134,67 @@
 @cmd docker exec prs-postgres psql -U prs -d prs -c "ALTER TABLE commit_snapshot ADD COLUMN IF NOT EXISTS projected_at TIMESTAMPTZ; ..."
 @cmd docker exec prs-postgres psql -U prs -d prs_test -c "DROP TABLE IF EXISTS commit_snapshot;"
 @cmd docker exec prs-postgres psql -U prs -d prs_test -c "DELETE FROM schema_migration WHERE version = '013';"
-@code lang=txt sha=5afa6750f61c lines=6 kept=6
+@code lang=txt sha=66492a24405e lines=59 kept=59
 |→ 같은 일을 또 하게 되면 **CI는 처음부터 만들므로 안전하지만 로컬은 아니다.**
 |## 환경 (변경 없음, 재확인)
 |- Node **v22.23.2** 필수. 마이그레이션은 **013**까지 적용됐다
 |- 컨테이너 3종 healthy. `prs`·`prs_test` 존재
+|---
+|# 2026-08-26 CR-039 / WP-029 세션이 추가한 것
+|## 24. "실패했는데 아무도 다시 하지 않는다"가 **한 세션에 네 번** 나왔다
+|CR-038이 PR #42 리뷰에서 배운 것과 같은 모양이 계속 나온다. 이번 넷:
+|| 자리 | 왜 영원히 멈추나 |
+|| --- | --- |
+|| `release.ts`의 `retry` | 어댑터가 상한을 보지 않아 영구 실패가 파티션을 영영 막는다 |
+|| ready 신호 발행을 **완결 표식 뒤**에 둠 | 실패해도 스냅숏·`projected_at`이 다 있어 두 스윕이 건너뛴다 |
+|| 해결의 **부분 실패**를 성공으로 셈 | 핸들러가 ack하고, 대상 색인은 한 번뿐이라 다시 깨울 방아쇠가 없다 |
+|| 미해결 조회를 **한 페이지만** | 페이지를 넘는 간선이 영원히 미해결로 남는다 |
+|→ 새 경로를 쓸 때 **먼저 물어라: 이것이 실패하면 누가 다시 하는가?** 답이 "아무도"면
+|그 자리가 결함이다. 특히 **완결 표식·성공 카운트·페이지 상한** 셋을 의심하라.
+|## 25. 내 회귀 시험이 **틀린 계약을 굳히고** 있었다
+|"발행은 `markCommitProjected` **뒤**"를 회귀로 걸어 두었는데, 그 순서가 바로 리뷰가
+|지적한 결함이었다. 시험이 있다고 그 시험이 옳은 것을 지키는 것은 아니다.
+|→ 순서를 단언하는 시험은 **왜 그 순서인지**를 함께 적어라. 사유가 없으면 다음 사람이
+|(또는 내가) 그것을 고칠 근거를 잃는다. 지금은 세 지점(색인 → 발행 → 표식) 각각의
+|사유가 시험 주석에 있다.
+|## 26. 변이 시험이 **내 결함**을 찾아 줬다
+|`markPending`이 `reference_count`에 `-1`을 쓰고 있었다. 변이가 살아남은 이유를 파고들다
+|발견했다 — 완결을 보장할 수 없는 회차가 **세지 못한 수를 어떤 값으로든 적으면 그 값이
+|거짓말**이 된다. 화면은 그 수를 "이 문서의 참조는 N건"으로 읽는다.
+|→ 변이가 살아남으면 등가인지 묻기 전에 **그 경로를 실제로 읽어라.** 살아남은 이유가
+|"두 결과가 같아서"가 아니라 "둘 다 틀려서"일 수 있다.
+|## 27. 등가 변이 둘을 킬로 세지 않았다
+|- **되먹임 가드만 제거** → 루프가 나지 않는다. `commit.metadata_ready`의 payload에
+|  `entity_kind`가 없어 보강의 다음 갈래가 스스로 ack한다. 가드는 그 사실을 **명시**하고
+|  DB 왕복을 아끼는 것이며, 존재 자체는 회귀가 건다. **진짜 루프를 만드는 변이**(가드 제거
+|  + 그 이벤트를 보강 대상으로)는 킬됐다 — 그것으로 `settle()`이 루프를 잡는다는 것도 증명됐다
+|- **정본 부재 가드 제거** → 뒤따르는 호출이 던지고 같은 함수의 `try/catch`가 잡아 같은
+|  상태로 수렴한다. 운영에서 스냅숏이 삭제되는 경로가 없어 두 상태를 가르는 시나리오가
+|  **도달 불가**다
+|→ **등가를 킬로 세면 시험 커버리지를 과대평가한다.** 사유를 적고 세지 않는다.
+|## 28. 인계 문서의 "open DEV 1건"이 틀렸다 — 실제 5건
+|`DEV-001`·`006`·`010`·`016`·`026`. 전부 기존 환경 제약·범위 공백이고 이번 작업이
+|만든 것이 아니지만, **숫자를 그대로 옮기면 다음 인계도 틀린다.** 세는 법:
+@p bash
+@path grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
+@code lang=txt sha=e1c18424327c lines=28 kept=28
+|## 29. 리뷰가 **머지 전에** 왔다 — 그래도 머지 후 재확인은 했다
+|이번에는 CI 초록 약 4분 뒤에 6건이 도착했다. 이전 세션들의 "머지 뒤 도착"과 다르지만
+|**규율은 그대로다**: 머지 직후 다시 세고, 이번에는 전수(PR #1~#44)로 셌다. 그 덕에
+|**PR #30·#32의 묵은 스레드 3건**을 찾아 함께 닫았다.
+|## 30. 통합 시험이 **자기 파일 안에서도** 오염된다
+|ES 문서는 케이스 사이에 남는다. 앞선 케이스가 색인한 커밋 때문에 "아직 색인되지
+|않았다"를 전제한 케이스가 조용히 해결된 상태로 시작했다 — 파일 하나로 돌리면 통과하고
+|케이스 순서를 바꾸면 깨지는 시험이 된다.
+|→ `beforeEach`에서 **내 저장소 범위의 엔티티 문서까지** 지운다. 그리고 `delete_by_query`
+|앞에 `refresh`는 여기서도 필요하다.
+|## 31. 클래스 스프레드 함정을 **또** 밟았다
+|`{ ...es, bulk: ... }`로 만든 대역이 `msearch`를 잃었고, 그 사실이 엉뚱한 시험에서
+|터졌다. `risks.md` 18번에 이미 적혀 있던 것이다 — **적어 둔 것을 읽는 것과 지키는 것은
+|다르다.** 이번에도 명시적 위임 헬퍼로 고쳤다.
+|## 환경 (변경 없음, 재확인)
+|- Node **v22.23.2** 필수 (셸 기본값은 v20.12.0). 마이그레이션은 **013**까지 — CR-039는
+|  새 마이그레이션을 만들지 않았다
+|- 컨테이너 3종 healthy. `prs`·`prs_test` 존재
+|- **`link` 역할에 `GHE_BASE_URL`이 필요하다.** 없으면 URL 참조를 아예 만들지 않는다
+|  (fail closed) — 조용히 적게 만드는 것이라 눈치채기 어렵다
