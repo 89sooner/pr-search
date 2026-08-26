@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.3 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
 
 ## 1. 상태 설계 원칙
 
@@ -56,7 +56,11 @@
 | `error_prefix_too_short` | 7자 미만 hex | 클라이언트 즉시 안내, 서버 호출 없음 | 입력 보강 | FR-SRCH-004 |
 | `error_search_timeout` | 3초 초과 | 저장소 조건 추가 안내 | 조건 추가 | FR-SRCH-004 |
 | `truncated` | 접두 결과 50건 초과 | 앞 50건 + 조건 추가 안내 | 조건 추가 | FR-SRCH-004 |
-| `partial_failure` | 패싯만 실패 | 목록 정상, 레일에 실패 표시 | 레일 재시도 | FR-SRCH-009 |
+| `partial_failure` | 패싯 계산 **실패** (`facets_status: "failed"`) | 목록 정상, 레일에 실패 표시 | 레일 재시도 | FR-SRCH-009 예외 처리 |
+| `facets_omitted` | 패싯이 **예산 초과로 생략**됨 (`facets_status: "budget_omitted"`) | 목록 정상, 레일에 "이번 조회에서는 생략했습니다" | 조건을 좁혀 재조회 | FR-SRCH-009 AC-4 |
+| `facets_not_computed` | 응답에 패싯 키가 **없음** (패싯을 요청하지 않았거나 WP-032 전) | 레일에 "아직 분포를 세지 않습니다" | 패싯 요청 | CR-019 DEV-076 |
+| `cursor_rejected_mismatch` | 조건이 바뀐 뒤 이전 커서 사용 (`CURSOR_QUERY_MISMATCH`) | "조건이 바뀌어 처음부터 다시 봅니다" + 현재 조건의 첫 페이지 | 자동 복귀. **재시도 루프 금지** | FR-SRCH-008 AC-3 |
+| `cursor_rejected_invalid` | 커서 훼손·만료·PIT 부재 (`CURSOR_INVALID`) | "이 위치를 더 쓸 수 없어 처음부터 다시 봅니다" + 첫 페이지 | 자동 복귀. **재시도 루프 금지** | FR-SRCH-008 예외 처리 |
 | `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | FR-AUTH-001 |
 
 ### W-002 PR 상세
@@ -114,6 +118,9 @@
 | `sequence_stale` | 채번 중단 | 마지막 확정 값 + 경고 배너 | 운영자 문의 | FR-SEQ-001 |
 | `epoch_stale` | URL 에폭 ≠ 현재 에폭 | 무효 경고 + 현재 에폭 재조회 액션(자동 재조회 금지) | 재조회 | FR-SEQ-005 |
 | `bisect_contradiction` | good > bad 표시 | 모순 지점 표시 | 탐색 초기화 | FR-SEQ-007 |
+| `loading_more` | 구간 커서 페이지 요청 | 기존 목록 유지, 하단 진행 표시 | - | FR-SEQ-002 AC-6 |
+| `cursor_rejected` | 에폭·구간 경계·질의가 바뀐 뒤 이전 커서 사용 | 사유 표시 + 현재 조건의 첫 페이지로 복귀 | 자동 복귀. 재시도 루프 금지 | FR-SEQ-002 AC-7 |
+| `facets_omitted` / `partial_failure` (패싯) | 구간 패싯이 예산을 넘겼거나 실패 | 목록 정상, 레일에만 사유 표시 | 레일 재시도 / 조건 축소 | FR-SRCH-009 |
 | `no_permission` (표식 쓰기) | `release_manager` 아님 | 표식 버튼 비활성 + `blockedReason` | - | FR-SEQ-006 |
 | `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 
