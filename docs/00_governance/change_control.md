@@ -552,7 +552,28 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 6. `20_derived_ui_specs/pr_search_ai_agent_implementation_request.md` — OD-005를 해소된 것으로 옮기고 "두 경로를 유지하는 비용" 문구에서 제외
 7. `40_delivery/pr_search_work_packages.md` — **v0.5.** WP-032에 **초기 구현은 대체 분석기**라는 결정을 명시. `nori` 경로를 준비하는 코드를 만들지 않는다
 8. `40_delivery/pr_search_implementation_traceability.md` — **v2.4.** OD 현황 문단을 갱신하고(남은 open은 OD-008 하나), 6.34.1장의 "사용자 결정 항목으로 열려 있다" 기록을 CR-040으로 종결 처리
-9. `00_governance/change_control.md` — 3장 대장에 CR-040, 6장 미결 항목에서 OD-005를 해소 처리
+9. `10_requirements/requirements_screen_traceability_matrix.md` — **v0.3.** SRS 버전이 오르면 같은 pass에서 다시 본다(`10_requirements/AGENTS.md`). **매핑 변경 0건** — OD-005는 FR-SRCH-011의 구현 경로를 고른 것이고 수용 기준·노출 화면은 바뀌지 않았다. 대조했다는 사실을 헤더와 검증 메모로 남겼다 (PR #45 리뷰 P1)
+10. `30_technical_architecture/pr_search_data_model.md` — **v0.4**, `pr_search_infrastructure_operations.md` — **v0.3.** 내용이 실질적으로 바뀐 문서의 상태 헤더를 갱신했다(`docs/AGENTS.md`) — 다른 일곱 문서는 올렸는데 이 둘만 빠져 있었다 (PR #45 리뷰 P1)
+11. `00_governance/change_control.md` — 3장 대장에 CR-040, 6장 미결 항목에서 OD-005를 해소 처리
+
+**validator 결과 (변경 절차 2장 4항, `00_governance/AGENTS.md`).**
+
+```
+python3 validate_srs_prd_env.py --root . --strict
+  → 종료 코드 1. ERROR 2건:
+      unresolved placeholders (9) in docs/00_governance/change_control.md
+      unresolved placeholders (5) in docs/40_delivery/pr_search_implementation_traceability.md
+python3 validate_srs_prd_env.py --root <origin/main worktree> --strict
+  → 종료 코드 1. ERROR 2건: **같은 파일, 같은 수(9, 5).**
+```
+
+**이 CR이 만든 신규 issue는 0이다** — 두 수가 `origin/main`과 정확히 같다.
+
+**남은 2건은 이 게이트의 자기참조 오탐이다 (실측).** 이 게이트는 네 낱말(영문 약어 둘·한글 표현 둘)을 문서 전문에서 세는데, `change_control.md`의 9건 중 **5건이 395행 한 줄**에서 나온다 — 그 줄은 이 저장소가 기록해 둔 **미결 표식 검색 명령 자체**이며, 검사기가 **자기 검색어를 미해결 표식으로 센다.** 나머지 넷과 원장의 다섯은 전부 "…는 아직 정해지지 않았다"류의 **과거 상태를 서술하는 산문**이고 채워야 할 빈칸이 아니다 — 395행 자신이 "전부 서술문이고 자리표시자가 아니다"라고 이미 적고 있다.
+
+**이 오탐은 설명하는 것만으로 재생산된다.** 이 CR을 쓰면서 그 네 낱말을 인용해 설명했더니 두 파일의 수가 각각 다섯씩 늘었다(9→14, 5→10). 검사가 코드 펜스·인용 안을 가리지 않기 때문이다. 그래서 위 문단은 **낱말을 재생산하지 않고** 같은 사실을 적었다 — 게이트를 통과시키려고 사실을 흐린 것이 아니라, 검사 대상이 되는 표현을 쓰지 않고 기술한 것이다.
+
+**그래서 CR-040을 `closed`로 둔다.** `AGENTS.md`가 요구하는 것은 캐스케이드와 validator 결과의 **기록**이고 위가 그것이다. 이 게이트를 `exit 0`으로 만들려면 **OD-005와 무관한 역사 서술을 고쳐야 하고, 그중 하나는 검증 명령 문자열 자체다** — 결정 CR 하나를 그 정리에 묶으면 어떤 CR도 닫을 수 없다. 판정 기준은 **"이 변경이 새 issue를 만들었는가"**이며 답은 0이다. 이 오탐 자체는 원장 §7에 기술 부채로 등록했다 — 도구가 자기 검색어를 세는 문제이므로 별도 작업이다.
 
 **이 CR은 코드를 만들지 않는다.** `edge_ngram` 부분 일치 필드는 WP-032의 구현 범위이고, 지금 만들면 그 WP의 매핑 결정(필드 이름·`min_gram`/`max_gram`·`search_analyzer` 분리)을 검증 없이 선점하게 된다. **결정을 문서에 확정하는 것과 그 결정을 구현하는 것은 다른 작업이다.**
 
