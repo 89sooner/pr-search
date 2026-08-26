@@ -20,7 +20,10 @@ import { CommitList } from './CommitList';
 import { EmptyState } from './EmptyState';
 import { EntityHeader } from './EntityHeader';
 import { ErrorBanner } from './ErrorBanner';
-import { PendingSection } from './PendingSection';
+import { RelationSection } from './RelationSection';
+import { CoChangeSection } from './CoChangeSection';
+
+
 import { NeighborSection } from './NeighborSequenceList';
 import { ReleaseContainmentSection } from './ReleaseContainmentList';
 import { PrTimeline } from './PrTimeline';
@@ -313,16 +316,23 @@ export function PrDetailView({
         id={String(prNumber)}
         sectionId="releases"
       />
-      <PendingSection
-        id="links"
-        title="관계"
-        reason={
-          pr.links_pending === true
-            ? '관계 파생이 아직 끝나지 않았습니다.'
-            : '되돌림·체리픽·참조·스택·동시 변경은 관계 파생이 서면 표시됩니다.'
-        }
-        owner="WP-029 (관계 파생), WP-031 (관계 조회)"
+      {/*
+        * 관계와 동시 변경은 **독립한 하위 섹션**이다 (WP-031, CR-042).
+        *
+        * 한쪽이 실패해도 다른 쪽과 상세 본체는 그대로다 — 상태 매트릭스 W-002의
+        * `partial_failure`가 정한 규칙이다. `links_pending`은 **참조 그룹에만**
+        * 넘긴다: 그 필드는 참조 추출의 완결 상태이고, 되돌림·체리픽·스택은 그
+        * 상태에서도 이미 계산돼 있다 (CR-041, CR-042 DEV-258).
+        */}
+      <RelationSection
+        repository={repository}
+        kind="pull_request"
+        id={String(prNumber)}
+        sectionId="links"
+        linksPending={pr.links_pending === true}
       />
+      <CoChangeSection repository={repository} prNumber={prNumber} sectionId="cochanges" />
+
 
       <p>
         <a href={backHref} data-testid="back-link">

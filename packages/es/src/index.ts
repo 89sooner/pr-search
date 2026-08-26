@@ -49,6 +49,15 @@ export { multiSearch, search } from './search.js';
 export type { ScopedSearchOptions, ScopedSearchRequest, SearchTarget } from './search.js';
 
 export {
+  RELATION_LIMIT_DEFAULT,
+  RELATION_LIMIT_MAX,
+  clampRelationLimit,
+  searchRelationLinks,
+} from './relations-read.js';
+export type { RelationDirection, RelationLinkHit, RelationLinkPage } from './relations-read.js';
+
+
+export {
   MAX_PREFIX_CANDIDATES,
   PR_SHA_FIELDS,
   commitDetailQuery,

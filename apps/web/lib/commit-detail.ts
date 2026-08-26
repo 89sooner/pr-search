@@ -35,7 +35,10 @@ export interface CommitDetailSource {
   readonly pull_requests?: readonly LinkedPullRequest[];
   readonly reason_code?: string;
   readonly enrichment_pending?: boolean;
+  /** 참조 추출의 완결 상태. 되돌림·체리픽과 무관하다 (CR-042, DEV-258). */
+  readonly links_pending?: boolean;
   readonly repository_archived?: boolean;
+
   /* WP-020이 붙일 커밋 메타데이터. 지금은 어느 키도 오지 않는다. */
   readonly message?: string;
   readonly author?: string;

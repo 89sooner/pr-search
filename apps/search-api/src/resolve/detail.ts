@@ -64,8 +64,16 @@ interface CommitSource {
   readonly base_branch?: string;
   readonly pull_request_numbers?: readonly number[];
   readonly enrichment_pending?: boolean;
+  /**
+   * 참조 추출의 완결 상태 (FR-REL-003 예외 처리, CR-039 DEV-218).
+   *
+   * 커밋 매핑에 이 필드를 둔 이유가 W-003이 그 상태를 그릴 수 있게 하는
+   * 것이었는데 응답에 싣지 않아 화면이 볼 수 없었다 (CR-042, DEV-263).
+   */
+  readonly links_pending?: boolean;
   readonly repository_archived?: boolean;
   readonly link_summary?: Readonly<Record<string, unknown>>;
+
   readonly merge_seq?: number;
   readonly seq_epoch?: number;
   readonly sequence_space?: string;
@@ -248,6 +256,8 @@ export async function getCommitDetail(
   put(out, 'patch_id_unavailable', commit.patch_id_unavailable);
   put(out, 'link_summary', commit.link_summary);
   put(out, 'enrichment_pending', commit.enrichment_pending);
+  put(out, 'links_pending', commit.links_pending);
+
   put(out, 'repository_archived', commit.repository_archived);
 
   /*
