@@ -25,7 +25,7 @@ import {
   type RepositoryRow,
 } from '@prs/db';
 import { applyMappings, createEsClient, dropEntityIndices, resolveClientOptions } from '@prs/es';
-import { MirrorCommitGraph, MirrorSync, type CommitGraph } from '@prs/github';
+import { FallbackCommitGraph, MirrorCommitGraph, MirrorSync, type CommitGraph } from '@prs/github';
 import {
   enrichCommit,
   handleProjectedEvent,
@@ -61,6 +61,28 @@ function mirrorGraph(options: { readonly allowBlobFetch?: boolean } = {}): Commi
     repositoryIdOf: () => REPOSITORY_ID,
     ...(options.allowBlobFetch === undefined ? {} : { allowBlobFetch: options.allowBlobFetch }),
   });
+}
+
+/**
+ * 일부 메서드만 갈아 끼운 그래프.
+ *
+ * **클래스 인스턴스를 스프레드하면 프로토타입 메서드가 복사되지 않는다** — 그렇게
+ * 만든 대역은 나머지 메서드가 통째로 `undefined`가 되고, 그 사실이 엉뚱한 자리에서
+ * 터진다. 명시적으로 위임한다.
+ */
+function delegating(inner: CommitGraph, overrides: Partial<CommitGraph>): CommitGraph {
+  return {
+    kind: inner.kind,
+    resolveHead: (ref, branch) => inner.resolveHead(ref, branch),
+    isAncestor: (ref, a, b) => inner.isAncestor(ref, a, b),
+    mergeBase: (ref, a, b) => inner.mergeBase(ref, a, b),
+    firstParentRevList: (ref, range) => inner.firstParentRevList(ref, range),
+    firstParentCommits: (ref, range) => inner.firstParentCommits(ref, range),
+    patchId: (ref, sha) => inner.patchId(ref, sha),
+    readCommit: (ref, sha) => inner.readCommit(ref, sha),
+    changedPaths: (ref, sha, limit) => inner.changedPaths(ref, sha, limit),
+    ...overrides,
+  };
 }
 
 /** 미러가 없는 저장소를 흉내 낸다 — `patchId`가 `no_mirror`를 낸다. */
@@ -156,6 +178,26 @@ describe('커밋 메타데이터 보강 (WP-067 / CR-038)', () => {
     await repositoryRepo.setAllowedTeams(pool, REPOSITORY_ID, [7001]);
     repository = (await repositoryRepo.findRepositoryById(pool, REPOSITORY_ID))!;
     await sequenceSpaceRepo.ensureSequenceSpace(pool, REPOSITORY_ID, BRANCH);
+
+    /*
+     * ---- 스윕은 **전역**이라 다른 시험 파일이 남긴 행이 배치 상한을 채운다.
+     *
+     * `listCommitsMissingSnapshot`은 `repository_id` 순으로 최대 500건을 집으므로,
+     * 앞서 실행된 파일들이 낮은 번호의 저장소에 행을 남겨 두면 우리 커밋이 그
+     * 창에 들어오지 못한다 — 파일 하나로 돌리면 통과하고 전량으로 돌리면 깨진다.
+     *
+     * 남의 행을 지우지 않고 **이미 처리된 것으로 표시**해 창에서 비운다. 우리
+     * 저장소의 행은 건드리지 않으므로 시험이 보려는 것은 그대로 남는다.
+     */
+    await pool.query(
+      `INSERT INTO commit_snapshot
+         (repository_id, commit_sha, authored_at, committed_at, metadata_source, projected_at)
+       SELECT DISTINCT ms.repository_id, ms.commit_sha, now(), now(), 'mirror', now()
+         FROM merge_sequence ms
+        WHERE ms.repository_id <> $1
+       ON CONFLICT (repository_id, commit_sha) DO NOTHING`,
+      [REPOSITORY_ID],
+    );
 
     /*
      * **지우기 전에 먼저 refresh한다.** `delete_by_query`는 검색으로 대상을 찾으므로
@@ -451,9 +493,17 @@ describe('커밋 메타데이터 보강 (WP-067 / CR-038)', () => {
       expect(outcome.enriched).toBeGreaterThanOrEqual(chain.length);
       expect(await commitSnapshotRepo.listCommitSnapshots(pool, REPOSITORY_ID, chain)).toHaveLength(chain.length);
 
-      // 두 번째 회차는 할 일이 없다 — 이미 정본이 있는 커밋은 다시 읽지 않는다.
-      const second = await runCommitEnrichSweep(deps());
-      expect(second.enriched).toBe(0);
+      /*
+       * 두 번째 회차는 **이 저장소에서** 할 일이 없다.
+       *
+       * `prs_test`는 다른 시험 파일의 행도 담고 있고 스윕은 전역이라, 전체 건수로
+       * 걸면 다른 파일이 픽스처를 하나 더할 때마다 깨진다. 우리 커밋이 전부
+       * 투영 완료로 남았는지를 본다 — 그것이 "다시 집지 않는다"의 실제 의미다.
+       */
+      await runCommitEnrichSweep(deps());
+      const rows = await commitSnapshotRepo.listCommitSnapshots(pool, REPOSITORY_ID, chain);
+      expect(rows).toHaveLength(chain.length);
+      expect(rows.every((row) => row.projected_at !== null)).toBe(true);
     });
 
     it('등록되지 않은 저장소의 이벤트는 조용히 ack한다 (FR-ING-009 AC-4)', async () => {
@@ -466,6 +516,121 @@ describe('커밋 메타데이터 보강 (WP-067 / CR-038)', () => {
         payload: { repository_id: 999_999, base_branch: BRANCH, seq_epoch: 1, from_seq: 1, to_seq: 1, head_sha: 'x' },
       } as never);
       expect(disposition.kind).toBe('ack');
+    });
+  });
+
+  /**
+   * PR #42 리뷰가 찾은 것 (CR-038 / DEV-208·214 보강).
+   *
+   * 셋 다 **"실패했는데 아무도 다시 하지 않는다"**는 같은 모양이다.
+   */
+  describe('실패한 뒤 스스로 회복한다 (PR #42 리뷰)', () => {
+    it('**색인 쓰기가 실패한 커밋을 스윕이 다시 집는다**', async () => {
+      await seedSequence();
+      const sha = chain[0] ?? '';
+
+      // Elasticsearch 장애를 흉내 낸다 — 정본은 써지고 색인은 실패한다.
+      const brokenEs = {
+        update: () => Promise.reject(new Error('ES 503')),
+      } as unknown as Client;
+      const broken: CommitEnrichDeps = { ...deps(), es: brokenEs };
+
+      await expect(
+        enrichCommit(broken, repository, {
+          commitSha: sha,
+          firstParent: true,
+          pullRequestNumber: null,
+          baseBranch: BRANCH,
+        }),
+      ).rejects.toThrow();
+
+      // 정본은 있다. 그래서 "스냅숏이 없는 커밋" 조건에는 걸리지 않는다.
+      const row = await commitSnapshotRepo.findCommitSnapshot(pool, REPOSITORY_ID, sha);
+      expect(row).toBeDefined();
+      expect(row?.projected_at).toBeNull();
+      expect(await commitDoc(sha)).toBeUndefined();
+
+      /*
+       * 투영 상태를 따로 들지 않으면 이 커밋은 **영원히 색인에 나타나지 않는다** —
+       * 다시 투영할 다른 경로가 없다.
+       */
+      const outcome = await runCommitEnrichSweep(deps());
+      expect(outcome.enriched).toBeGreaterThan(0);
+      expect(await commitDoc(sha)).toBeDefined();
+      expect((await commitSnapshotRepo.findCommitSnapshot(pool, REPOSITORY_ID, sha))?.projected_at).not.toBeNull();
+    });
+
+    it('성공한 보강은 `projected_at`을 남겨 스윕이 다시 집지 않는다', async () => {
+      await seedSequence();
+      await runCommitEnrichSweep(deps());
+
+      // 전역 건수가 아니라 **이 저장소의 상태**를 본다 (공유 DB 오염에 견딘다).
+      const pending = await commitSnapshotRepo.listCommitsMissingProjection(pool, 1000);
+      expect(pending.filter((row) => Number(row.repository_id) === REPOSITORY_ID)).toEqual([]);
+      const missing = await commitSnapshotRepo.listCommitsMissingSnapshot(pool, 1000);
+      expect(missing.filter((row) => Number(row.repository_id) === REPOSITORY_ID)).toEqual([]);
+    });
+
+    it('**미러가 커밋을 모르면 API 폴백이 답한다** — `null`도 폴백 사유다', async () => {
+      const sha = chain[0] ?? '';
+      const truth = await mirrorGraph().readCommit({ owner: OWNER, repo: NAME }, sha);
+      expect(truth).not.toBeNull();
+
+      /*
+       * `readCommit`은 못 찾았을 때 던지지 않고 `null`을 돌려준다. 그 규약을 그대로
+       * 두면 미러가 통째로 비어 있어도 예외가 나지 않아 폴백이 영원히 돌지 않는다.
+       */
+      const api = delegating(mirrorGraph(), {
+        kind: 'api',
+        readCommit: () => Promise.resolve(truth),
+        changedPaths: () => Promise.resolve({ paths: ['fallback.ts'], truncated: false }),
+        patchId: () => Promise.resolve({ patchId: null, unavailable: 'no_mirror' as const }),
+      });
+      const fallback = new FallbackCommitGraph(noMirrorGraph(), api);
+
+      const done = await enrichCommit(deps(fallback), repository, {
+        commitSha: sha,
+        firstParent: true,
+        pullRequestNumber: null,
+        baseBranch: BRANCH,
+      });
+      expect(done).toBe(true);
+      expect((await commitDoc(sha))?.['changed_paths']).toEqual(['fallback.ts']);
+    });
+
+    it('미러가 얻은 `patch_id`를 API 폴백 회차가 지우지 않는다', async () => {
+      const sha = chain[0] ?? '';
+      // 1) patch_id를 얻은 회차 (blob 인출 허용).
+      const withPatch = delegating(mirrorGraph(), {
+        patchId: () => Promise.resolve({ patchId: 'p-abc123' as const }),
+      });
+      await enrichCommit(deps(withPatch), repository, {
+        commitSha: sha,
+        firstParent: true,
+        pullRequestNumber: null,
+        baseBranch: BRANCH,
+      });
+      expect((await commitDoc(sha))?.['patch_id']).toBe('p-abc123');
+
+      // 2) API 폴백으로 돈 회차 — 계산할 수 없어 `no_mirror`를 낸다.
+      const noPatch = delegating(mirrorGraph(), {
+        patchId: () => Promise.resolve({ patchId: null, unavailable: 'no_mirror' as const }),
+      });
+      await enrichCommit(deps(noPatch), repository, {
+        commitSha: sha,
+        firstParent: true,
+        pullRequestNumber: null,
+        baseBranch: BRANCH,
+      });
+
+      /*
+       * 능력이 없는 쪽이 있는 쪽을 지우면 색인이 정본과 어긋나고 체리픽 파생
+       * (WP-030)이 이미 알던 사실을 잃는다. PostgreSQL은 `COALESCE`로 보존한다.
+       */
+      const doc = await commitDoc(sha);
+      expect(doc?.['patch_id']).toBe('p-abc123');
+      expect(doc?.['patch_id_unavailable']).toBeUndefined();
+      expect((await commitSnapshotRepo.findCommitSnapshot(pool, REPOSITORY_ID, sha))?.patch_id).toBe('p-abc123');
     });
   });
 });

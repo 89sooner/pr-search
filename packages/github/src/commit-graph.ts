@@ -205,8 +205,23 @@ export class FallbackCommitGraph implements CommitGraph {
     return this.#try((graph) => graph.patchId(ref, sha));
   }
 
-  readCommit(ref: RepoRef, sha: string): Promise<CommitMetadata | null> {
-    return this.#try((graph) => graph.readCommit(ref, sha));
+  /**
+   * **`null`도 폴백 사유다** (WP-067 / CR-038, PR #42 리뷰).
+   *
+   * `readCommit`은 커밋을 못 찾았을 때 던지지 않고 `null`을 돌려준다 — 아직
+   * 동기화되지 않은 커밋은 오류가 아니기 때문이다. 그런데 그 규약을 그대로 두면
+   * **미러가 통째로 비어 있어도 예외가 나지 않아** 폴백이 영원히 돌지 않고, 보강이
+   * 조용히 아무 일도 하지 않는다. 미러가 "모른다"고 답한 것 역시 폴백할 이유다.
+   */
+  async readCommit(ref: RepoRef, sha: string): Promise<CommitMetadata | null> {
+    try {
+      const found = await this.#primary.readCommit(ref, sha);
+      if (found !== null) return found;
+      this.#onFallback?.(new CommitGraphError('mirror', `미러가 커밋을 갖고 있지 않다: ${sha}`));
+    } catch (error) {
+      this.#onFallback?.(error);
+    }
+    return this.#fallback.readCommit(ref, sha);
   }
 
   changedPaths(ref: RepoRef, sha: string, limit?: number): Promise<ChangedPaths> {

@@ -47,6 +47,12 @@ CREATE TABLE commit_snapshot (
   -- 'mirror' | 'api'. 두 경로가 같은 값을 내야 한다는 DoD의 조사 근거다.
   metadata_source         TEXT        NOT NULL,
   fetched_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- 색인 투영이 성공한 시점. NULL이면 정본은 있으나 **색인이 아직 없다**.
+  --
+  -- 정본을 색인보다 먼저 쓰므로, 색인 쓰기가 실패한 커밋은 스냅숏만 남는다.
+  -- 스윕이 "스냅숏이 없는 커밋"만 찾으면 그 커밋은 **영원히 재시도되지 않는다** —
+  -- 다시 투영할 다른 경로도 없다. 그래서 투영 상태를 따로 들고 있는다.
+  projected_at            TIMESTAMPTZ,
 
   PRIMARY KEY (repository_id, commit_sha),
   CONSTRAINT commit_snapshot_source_chk CHECK (metadata_source IN ('mirror', 'api')),
@@ -57,3 +63,8 @@ CREATE TABLE commit_snapshot (
 
 -- 미보강 잔여분 스윕이 "정본이 아직 모르는 커밋"을 저장소별로 훑는다.
 CREATE INDEX commit_snapshot_repo_idx ON commit_snapshot (repository_id, fetched_at);
+
+-- 색인 투영이 밀린 커밋을 싸게 찾는다 (스윕의 두 번째 대상).
+CREATE INDEX commit_snapshot_unprojected_idx
+  ON commit_snapshot (repository_id)
+  WHERE projected_at IS NULL;

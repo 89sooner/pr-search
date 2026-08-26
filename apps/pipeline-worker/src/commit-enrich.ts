@@ -234,6 +234,20 @@ export async function enrichCommit(
       : {}),
   });
 
+  /*
+   * 투영이 성공했음을 정본에 남긴다 (CR-038 / PR #42 리뷰).
+   *
+   * 정본을 색인보다 먼저 쓰므로, 색인 쓰기가 실패하면 스냅숏만 남는다. 스윕이
+   * "스냅숏이 없는 커밋"만 찾으면 그 커밋은 **영원히 재시도되지 않는다** — 다시
+   * 투영할 다른 경로도 없다. 여기까지 왔다는 것이 곧 색인이 그 값을 안다는 뜻이다.
+   */
+  await commitSnapshotRepo.markCommitProjected(
+    deps.pool,
+    repository.repository_id,
+    sha,
+    (deps.now ?? ((): Date => new Date()))(),
+  );
+
   deps.metrics.commitEnrichTotal.inc({ source: graph.kind, result: result.result });
   if (result.result === 'created') {
     log({
@@ -407,17 +421,40 @@ export async function runCommitEnrichSweep(
   limit = COMMIT_ENRICH_SWEEP_BATCH,
 ): Promise<EnrichOutcome> {
   const log = deps.log ?? ((): void => undefined);
-  const pending = await commitSnapshotRepo.listCommitsMissingSnapshot(deps.pool, limit);
+  /*
+   * 두 종류를 함께 집는다 (CR-038 / PR #42 리뷰):
+   *
+   * 1. 정본이 아직 없는 커밋 — 이 잡이 서기 전에 쌓인 과거 데이터와 이벤트를 놓친 것
+   * 2. 정본은 있으나 **색인 투영이 밀린** 커밋 — Elasticsearch 장애 중에 보강된 것
+   *
+   * 2를 빼면 장애가 끝나도 그 커밋들이 색인에 영영 나타나지 않는다. 정본이 이미
+   * 있으니 1의 조건에는 걸리지 않기 때문이다.
+   */
+  const missing = await commitSnapshotRepo.listCommitsMissingSnapshot(deps.pool, limit);
+  const unprojected = await commitSnapshotRepo.listCommitsMissingProjection(deps.pool, limit);
+  const seen = new Set<string>();
+  const pending = [...missing, ...unprojected].filter((row) => {
+    const key = `${row.repository_id}:${row.commit_sha}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   const byRepository = new Map<number, EnrichTarget[]>();
   for (const row of pending) {
     const id = Number(row.repository_id);
     const list = byRepository.get(id) ?? [];
+    /*
+     * `base_branch`가 비었다는 것은 그 커밋이 **현재 에폭의 체인에 없다**는 뜻이다
+     * (재채번으로 밀려났거나 원본 커밋). 그때는 역할을 판정하지 않는다 —
+     * first-parent라는 근거가 없기 때문이다 (DEV-207).
+     */
+    const onChain = row.base_branch !== '';
     list.push({
       commitSha: row.commit_sha,
-      firstParent: true,
+      firstParent: onChain,
       pullRequestNumber: row.pull_request_number,
-      baseBranch: row.base_branch,
+      ...(onChain ? { baseBranch: row.base_branch } : {}),
     });
     byRepository.set(id, list);
   }

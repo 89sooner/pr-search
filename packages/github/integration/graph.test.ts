@@ -417,7 +417,13 @@ describe('WP-067 DoD 1·2: 커밋 메타데이터와 변경 경로', () => {
     const format = ['%H', '%P', '%an', '%ae', '%cn', '%ce', '%aI', '%cI'].join('%x00');
     const raw = await run(origin.dir, ['show', '--no-patch', `--format=${format}%x00%B`, sha]);
     const parts = raw.split('\u0000');
-    const files = (await run(origin.dir, ['diff-tree', '--no-commit-id', '--name-only', '-r', '--root', sha]))
+    const hasParent = (await run(origin.dir, ['rev-list', '--parents', '-n', '1', sha])).trim().split(/\s+/).length > 1;
+    const files = (await run(
+      origin.dir,
+      hasParent
+        ? ['diff-tree', '--no-commit-id', '--name-only', '-r', `${sha}^1`, sha]
+        : ['diff-tree', '--no-commit-id', '--name-only', '-r', '--root', sha],
+    ))
       .split('\n')
       .filter((line) => line.trim() !== '');
 
@@ -483,6 +489,39 @@ describe('WP-067 DoD 1·2: 커밋 메타데이터와 변경 경로', () => {
     // `--name-only`는 트리만 읽는다. `patchId`가 blob을 요구하는 것과 다르다.
     expect(after['blob'] ?? 0).toBe(before['blob'] ?? 0);
     expect(after['blob'] ?? 0).toBe(0);
+  });
+
+  it('**병합 커밋의 변경 경로가 비지 않는다** — 첫 부모와 비교한다 (PR #42 리뷰)', async () => {
+    /*
+     * 인자 하나로 부른 `diff-tree`는 병합 커밋에 대해 아무것도 내지 않는다 —
+     * 부모가 둘 이상이면 어느 쪽과 비교할지 정해지지 않기 때문이다. 그대로 두면
+     * 병합 커밋의 경로가 조용히 빈 배열이 되고, 경로 기반 조사가 "이 병합은
+     * 아무것도 바꾸지 않았다"고 거짓을 말한다.
+     */
+    const chain = await mirror.firstParentRevList(REF, { from: null, to: await headSha() });
+    let merge = '';
+    for (const sha of chain) {
+      const meta = await mirror.readCommit(REF, sha);
+      if ((meta?.parentShas.length ?? 0) > 1) {
+        merge = sha;
+        break;
+      }
+    }
+    // 픽스처에 병합 커밋이 있어야 이 시험이 의미가 있다.
+    expect(merge).not.toBe('');
+
+    const changed = await mirror.changedPaths(REF, merge);
+    expect(changed.paths.length).toBeGreaterThan(0);
+
+    // 첫 부모 기준이다 — git이 직접 낸 값과 같아야 한다.
+    const expected = (await run(origin.dir, ['diff-tree', '--no-commit-id', '--name-only', '-r', `${merge}^1`, merge]))
+      .split('\n')
+      .filter((line) => line.trim() !== '');
+    expect([...changed.paths].sort()).toEqual([...expected].sort());
+
+    // API 폴백도 같은 값을 낸다 (DoD 1).
+    const fromApi = await (await apiGraphFor(merge)).changedPaths(REF, merge);
+    expect([...fromApi.paths].sort()).toEqual([...changed.paths].sort());
   });
 
   it('미러와 API 폴백이 같은 변경 경로를 낸다 (DoD 1)', async () => {

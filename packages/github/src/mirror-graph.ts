@@ -399,14 +399,34 @@ export class MirrorCommitGraph implements CommitGraph {
   async changedPaths(ref: RepoRef, sha: string, limit = CHANGED_PATHS_LIMIT): Promise<ChangedPaths> {
     assertSha(sha);
     const base = ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z'];
-    let result = await this.#git(ref, [...base, sha, '--']);
-    if (result.code !== 0) return { paths: [], truncated: false };
-    if (result.stdout === '') {
-      result = await this.#git(ref, [...base, '--root', sha, '--']);
-      if (result.code !== 0) return { paths: [], truncated: false };
-    }
 
-    const all = result.stdout.split('\u0000').filter((path) => path !== '');
+    /*
+     * **부모를 명시해서 비교한다.**
+     *
+     * 인자 하나로 부른 `diff-tree`는 **병합 커밋에 대해 아무것도 내지 않는다** —
+     * 부모가 둘 이상이면 어느 쪽과 비교할지 정해지지 않기 때문이다. 그대로 두면
+     * 병합 커밋의 `changed_paths`가 조용히 빈 배열이 되고, 경로 기반 조사가
+     * "이 병합은 아무것도 바꾸지 않았다"고 거짓을 말한다. API 폴백은 `files[]`를
+     * 첫 부모 기준으로 주므로 두 경로의 값도 갈라진다.
+     *
+     * **첫 부모와 비교한다.** 이 제품의 세계관이 first-parent이고(ADR-007),
+     * GitHub 커밋 API도 같은 기준이다. 부모가 없는 루트 커밋만 `--root`다.
+     */
+    const parent = await this.#git(ref, ['rev-parse', '--verify', '--quiet', `${sha}^1`]);
+    const firstParent = parent.code === 0 ? parent.stdout.trim() : '';
+
+    /*
+     * **실패를 빈 결과로 세지 않는다** (PR #42 리뷰). 미러가 없거나 커밋이 아직
+     * 동기화되지 않았을 때 `[]`를 돌려주면, 폴백 그래프는 그것을 **정상 응답**으로
+     * 읽어 API로 넘어가지 않고 "이 커밋은 아무 파일도 바꾸지 않았다"가 저장된다.
+     * 변경 없음(exit 0 + 빈 출력)과 읽지 못함(exit != 0)은 다른 사실이다.
+     */
+    const result =
+      firstParent === ''
+        ? await this.#expect(ref, [...base, '--root', sha, '--'])
+        : await this.#expect(ref, [...base, firstParent, sha, '--']);
+
+    const all = result.split('\u0000').filter((path) => path !== '');
     return { paths: all.slice(0, limit), truncated: all.length > limit };
   }
 }

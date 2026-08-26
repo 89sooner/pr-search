@@ -343,10 +343,27 @@ if (roles.includes('mirror')) {
     es: enrichEs,
     bus,
     metrics,
+    /*
+     * **미러를 폴백으로 감싼다** (ADR-005 / PR #42 리뷰). `selectCommitGraph`에
+     * 미러를 맨몸으로 넘기면 미러 디렉터리가 없거나 fetch가 깨졌을 때 폴백이 아예
+     * 돌지 않는다 — `readCommit`이 던지지 않고 `null`을 돌려주기 때문이다. 시퀀스
+     * 역할이 하는 것과 같은 형태로 감싼다.
+     */
     graphFor: (repository) =>
       enrichApiGraph === undefined
         ? enrichMirrorGraph
-        : selectCommitGraph(repository, { mirror: enrichMirrorGraph, api: enrichApiGraph }),
+        : selectCommitGraph(repository, {
+            mirror: new FallbackCommitGraph(enrichMirrorGraph, enrichApiGraph, (error) => {
+              enrichLog({
+                level: 'warn',
+                message: '미러 조회가 실패해 API로 넘어갔다 — 계속되면 미러가 죽어 있다는 뜻이다',
+                repository_id: repository.repository_id,
+                reason: 'graph_fallback',
+                detail: String(error instanceof Error ? error.message : error).slice(0, 200),
+              });
+            }),
+            api: enrichApiGraph,
+          }),
     log: (fields) => { enrichLog({ ...fields }); },
   };
 

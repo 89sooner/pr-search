@@ -43,7 +43,21 @@ export const COMMIT_METADATA_SCRIPT = [
   '  boolean same = cur == null ? next == null : cur.equals(next);',
   '  if (!same) { ctx._source[key] = next; changed = true; }',
   '}',
-  'for (e in params.drop) { if (ctx._source.containsKey(e)) { ctx._source.remove(e); changed = true; } }',
+  /*
+   * `patch_id`는 **한 번 얻으면 잃지 않는다** (PR #42 리뷰).
+   *
+   * 미러가 계산해 준 값을, 나중에 API 폴백으로 돈 회차가 `no_mirror`로 지우면
+   * 색인이 정본(PostgreSQL은 `COALESCE`로 보존한다)과 어긋나고 체리픽 파생
+   * (WP-030)이 이미 알던 사실을 잃는다. 능력이 없는 쪽이 있는 쪽을 지우지 않는다.
+   */
+  'if (params.patch_id != null) {',
+  "  if (!params.patch_id.equals(ctx._source.patch_id)) { ctx._source.patch_id = params.patch_id; changed = true; }",
+  "  if (ctx._source.containsKey('patch_id_unavailable')) { ctx._source.remove('patch_id_unavailable'); changed = true; }",
+  '} else if (params.patch_unavailable != null && ctx._source.patch_id == null) {',
+  "  if (!params.patch_unavailable.equals(ctx._source.patch_id_unavailable)) {",
+  '    ctx._source.patch_id_unavailable = params.patch_unavailable; changed = true;',
+  '  }',
+  '}',
   "if (!changed) { ctx.op = 'noop'; }",
 ].join('\n');
 
@@ -110,20 +124,34 @@ export async function upsertCommitMetadata(
   };
   if (fields.role !== undefined) meta['role'] = fields.role;
 
-  const drop: string[] = [];
-  if (fields.patch_id !== undefined) {
-    meta['patch_id'] = fields.patch_id;
-    drop.push('patch_id_unavailable');
-  } else if (fields.patch_id_unavailable !== undefined) {
-    meta['patch_id_unavailable'] = fields.patch_id_unavailable;
-    drop.push('patch_id');
-  }
-
+  /*
+   * `patch_id`는 스크립트가 따로 다룬다 — 이미 있는 값을 없는 쪽이 지우지 않기
+   * 위해서다. `meta`에 넣으면 단순 대입이라 그 규칙을 표현할 수 없다.
+   */
   const body: Record<string, unknown> = {
-    script: { lang: 'painless', source: COMMIT_METADATA_SCRIPT, params: { meta, drop } },
+    script: {
+      lang: 'painless',
+      source: COMMIT_METADATA_SCRIPT,
+      params: {
+        meta,
+        patch_id: fields.patch_id ?? null,
+        patch_unavailable: fields.patch_id_unavailable ?? null,
+      },
+    },
   };
   if (input.createWith !== undefined) {
-    body['upsert'] = { ...input.createWith, ...meta, doc_id: input.docId, commit_sha: input.commitSha };
+    body['upsert'] = {
+      ...input.createWith,
+      ...meta,
+      // 생성 시점에는 스크립트가 돌지 않는다 — 여기에 전량이 들어가야 한다.
+      ...(fields.patch_id === undefined
+        ? fields.patch_id_unavailable === undefined
+          ? {}
+          : { patch_id_unavailable: fields.patch_id_unavailable }
+        : { patch_id: fields.patch_id }),
+      doc_id: input.docId,
+      commit_sha: input.commitSha,
+    };
   } else {
     // 문서가 없으면 만들지 않고 조용히 넘어간다 — 접근 범위를 모르기 때문이다.
     body['scripted_upsert'] = false;

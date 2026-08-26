@@ -48,6 +48,7 @@ export interface CommitSnapshotRow {
   readonly patch_id: string | null;
   readonly patch_id_unavailable: string | null;
   readonly metadata_source: CommitMetadataSource;
+  readonly projected_at: Date | null;
 }
 
 /**
@@ -84,7 +85,10 @@ export async function upsertCommitSnapshot(db: Queryable, input: CommitSnapshotI
                                        ELSE EXCLUDED.patch_id_unavailable
                                      END,
            metadata_source         = EXCLUDED.metadata_source,
-           fetched_at              = now()`,
+           fetched_at              = now(),
+           -- 정본이 다시 쓰였으면 색인은 아직 그 값을 모른다. 투영이 성공할 때
+           -- 다시 찍힌다 (CR-038 / PR #42 리뷰).
+           projected_at            = NULL`,
     [
       input.repositoryId,
       input.commitSha,
@@ -162,6 +166,56 @@ export async function listCommitsMissingSnapshot(
         AND cs.commit_sha = ms.commit_sha
       WHERE cs.commit_sha IS NULL
       ORDER BY ms.repository_id, ms.merge_seq
+      LIMIT $1`,
+    [limit],
+  );
+  return result.rows;
+}
+
+/**
+ * 색인 투영이 성공했음을 기록한다 (CR-038 / PR #42 리뷰).
+ *
+ * **정본을 색인보다 먼저 쓰므로**, 색인 쓰기가 실패한 커밋은 스냅숏만 남는다.
+ * 스윕이 "스냅숏이 없는 커밋"만 찾으면 그 커밋은 영원히 재시도되지 않는다 —
+ * 다시 투영할 다른 경로도 없다. 이 표식이 그 구멍을 막는다.
+ */
+export async function markCommitProjected(
+  db: Queryable,
+  repositoryId: number,
+  commitSha: string,
+  at: Date,
+): Promise<void> {
+  await db.query(
+    'UPDATE commit_snapshot SET projected_at = $3 WHERE repository_id = $1 AND commit_sha = $2',
+    [repositoryId, commitSha.toLowerCase(), at],
+  );
+}
+
+/**
+ * 정본은 있으나 **색인 투영이 밀린** 커밋 (CR-038 / PR #42 리뷰).
+ *
+ * Elasticsearch 장애 중에 보강된 커밋들이 여기 쌓인다. 스윕이 이것도 함께 집어야
+ * 장애가 끝난 뒤 스스로 회복한다.
+ */
+export async function listCommitsMissingProjection(
+  db: Queryable,
+  limit: number,
+): Promise<readonly { readonly repository_id: string; readonly commit_sha: string; readonly base_branch: string; readonly pull_request_number: number | null }[]> {
+  const result = await db.query<{
+    repository_id: string;
+    commit_sha: string;
+    base_branch: string;
+    pull_request_number: number | null;
+  }>(
+    `SELECT cs.repository_id, cs.commit_sha,
+            COALESCE(ms.base_branch, '') AS base_branch,
+            ms.pull_request_number
+       FROM commit_snapshot cs
+       LEFT JOIN merge_sequence ms
+         ON ms.repository_id = cs.repository_id
+        AND ms.commit_sha = cs.commit_sha
+      WHERE cs.projected_at IS NULL
+      ORDER BY cs.repository_id, cs.commit_sha
       LIMIT $1`,
     [limit],
   );
