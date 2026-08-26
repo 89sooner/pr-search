@@ -17,6 +17,8 @@ import { registerOpsRoutes } from './ops/routes.js';
 import { registerAuthRoutes } from './auth/routes.js';
 import { registerSearchRoutes } from './search/routes.js';
 import { registerResolveRoutes } from './resolve/routes.js';
+import { registerRelationRoutes } from './relations/routes.js';
+
 import { registerSequenceRoutes } from './sequence/routes.js';
 import type { SearchDeps } from './search/service.js';
 import type { RangeDeps } from './sequence/range.js';
@@ -109,6 +111,20 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
         loginPath: config.auth.loginPath,
         gheBaseUrl: config.gheBaseUrl,
       });
+      /*
+       * 관계 조회도 같은 의존을 쓴다 (WP-031, API-REL-006·API-REL-003).
+       *
+       * **여기 한 줄이 빠지면 그 기능은 배포에서 사라진다** — WP-028의 API-ADM-007이
+       * 정확히 그 상태였다(CR-034, DEV-177). 함수도 라우트도 시험도 있었지만
+       * 운영이 부르지 않았다. 회귀가 이 호출 형태를 직접 건다.
+       */
+      registerRelationRoutes(app, {
+        es: deps.search.es,
+        ...(deps.search.timeoutMs === undefined ? {} : { timeoutMs: deps.search.timeoutMs }),
+        auth: deps.auth,
+        loginPath: config.auth.loginPath,
+      });
+
     } else {
       log({ level: 'warn', message: 'Elasticsearch 의존이 없어 검색 경로를 등록하지 않는다 (API-SRCH-004)' });
     }

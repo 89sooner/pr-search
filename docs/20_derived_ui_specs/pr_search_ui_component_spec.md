@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+> 상태: review | 버전: v0.3 | 갱신일: 2026-08-26
 
 ## 1. 문서 원칙
 
@@ -147,8 +147,11 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 개체가 보유한 관계 유형을 압축 배지로 표시(되돌림됨, 체리픽 있음 등)
 - 기반: Conductor `Badge`
-- 필수 props: `summary: LinkSummary`
+- 필수 props: `summary: LinkSummary | null`
 - 사용 규칙: 배지에 관계 유형 라벨 텍스트를 항상 포함한다. 색상만으로 유형을 구분하지 않는다
+- **"요약이 없다"와 "관계가 없다"를 같게 그리지 않는다** (CR-042, DEV-264). `summary`가 `null`이면 아직 요약값이 준비되지 않은 것이고, 값이 있는데 전부 `false`/`0`이면 **확인했고 현재 관계가 없다**이다. 전자를 "관계 없음"으로 그리면 없는 사실을 주장하게 된다 — C-014가 `unassigned`와 `not_computed`에 대해 세운 규율과 같다 (CR-019, DEV-077). 요약이 없으면 **배지 영역을 그리지 않는다**
+- 표시 대상: `reference_count > 0`(참조) · `has_revert`(되돌림 있음) · `is_reverted`(되돌림됨) · `has_cherry_pick`(체리픽) · `has_stack`(스택). **`has_stack`은 PR 문서에만 있다** — 커밋에는 스택이라는 개념이 없다 (CR-041)
+- **행마다 관계를 조회하지 않는다** (ADR-009). 목록 화면의 배지는 `API-SRCH-004`가 싣는 비정규화 `link_summary`로 그린다 — 그것이 그 필드가 존재하는 이유다
 - 관련 FR: FR-REL-004, FR-REL-005
 
 ### C-016 CursorPager
@@ -203,10 +206,19 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 ### C-021 LinkGroupList
 
 - 책임: 관계 간선을 유형별로 묶어 방향·신뢰도·근거와 함께 표시
-- 기반: Conductor `Panel` + `Table` + `SeverityTag` + `CodeBlock`
-- 필수 props: `groups: LinkGroup[]`, `onOpenTarget`, `onExpandGroup`
-- 상태: `collapsed`, `loading`, `ready`, `links_pending`, `unresolved`(대상 미색인)
+- 기반: Conductor `Panel` + `Table` + `Badge` + `CodeBlock` + `Button`(재시도). **`SeverityTag`를 쓰지 않는다** (CR-042): 그 컴포넌트의 `severity`는 `read`/`write`/`destructive`/`blocked`, 즉 **실행 위험도** 어휘(C-061~067, GitHub Operations Plane)이고 관계 신뢰도와 다른 축이다. 위험도 어휘로 `heuristic`을 그리면 "차단됨"처럼 읽힌다 — 축이 다른 것을 같은 배지로 말하지 않는다
+- 필수 props: `groups: LinkGroup[]`, `onOpenTarget`, `onExpandGroup`, `onRetryGroup`
+- **상태는 두 축이다** (CR-042, DEV-257). 하나의 enum에 섞으면 "없는 것 · 모르는 것 · 실패한 것 · 해제된 것"이 같은 빈 화면이 된다.
+  - **섹션 축**: `collapsed` / `loading` / `ready` / `error`(조회 실패 — **"다시 시도" 버튼을 함께 낸다**, C-019의 규칙과 같다)
+  - **항목 축** (플래그, 서로 배타적이지 않다):
+    - `unresolved` — 대상이 아직 색인되지 않았다 (FR-REL-003 AC-3). 원 참조 표현을 보이고 링크는 비활성
+    - `content_available: false` — **대상 저장소가 접근 범위 밖이다** (THR-034). 간선·식별자·근거는 보이고 제목·작성자·이동 링크가 없다. **사유를 문구로 구분하지 않는다** — "권한이 없습니다"는 존재를 밝힌다. "대상 상세를 표시할 수 없습니다"처럼 일반 상태로 쓴다
+    - `detached` — 스택 의존이 **해제되었다** (FR-REL-006 AC-3, CR-041 DEV-238). `stacks_on`에만 있다. **숨기지 않고, active로도 그리지 않는다** — "해제됨" 배지를 붙인다. 색상만으로 구분하지 않는다
+    - `ambiguous` — 같은 근거를 공유하는 `heuristic` 되돌림 후보가 둘 이상이다 (FR-REL-004 예외 처리, DEV-261). **첫 후보를 확정된 대상처럼 그리지 않는다** — 저장 계층이 후보를 좁히지 않은 이유가 그것이다
+  - **참조 그룹 전용**: `reference_pending` — `links_pending: true`. 문구는 **"참조 분석 중"**이다 (CR-041, CR-042 DEV-258). 그 필드는 FR-REL-003 **참조 추출**의 완결 상태이며, 되돌림·체리픽·스택은 그 상태에서도 **그대로 표시한다**
 - 사용 규칙: 신뢰도 `heuristic` 항목은 근거 문자열을 `CodeBlock`으로 항상 함께 표시한다. 근거 없이 링크만 제시하면 사용자가 확실한 사실로 오인한다. 미해결 참조는 링크를 비활성으로 둔다
+- **방향을 텍스트로 말한다** (CR-042). 화살표만으로 주체와 대상을 구분하지 않는다 — 되돌림 `outgoing`은 "이 PR이 되돌림 → 대상", `incoming`은 "이 PR을 되돌림 ← 주체"이고 스택도 같다. `aria-label`에 같은 문장을 싣는다
+- **`evidence`는 평문으로만 렌더링한다** (THR-020). `CodeBlock`에 텍스트로 넣고 HTML로 해석하지 않는다
 - 관련 FR: FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006, FR-REL-007
 
 ### C-022 PrTimeline

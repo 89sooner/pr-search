@@ -186,12 +186,17 @@ describe('DoD 9 / ADR-008: 우회 경로 부재', () => {
     ).toEqual([]);
   });
 
-  it('접근 범위 필드를 `msearch`·`count`로 우회하지 않는다', () => {
+  it('접근 범위 필드를 `msearch`·`count`·`mget`으로 우회하지 않는다', () => {
     // `search` 말고도 문서를 세거나 읽는 경로가 있다. 생기면 여기서 걸린다.
+    //
+    // `mget`을 더한 것은 CR-042다 (DEV-265). 관계 조회가 대상의 제목·작성자를
+    // 붙일 때 **ID를 알고 있으므로** `mget`이 가장 짧은 길인데, 그것은 강제
+    // 필터를 통째로 지나간다 — THR-034가 막으려는 바로 그 유출이다.
     const offences = scan(
-      /\b(?:client|es)\s*\.\s*(?:msearch|count|scroll|openPointInTime)\s*[(<]/,
+      /\b(?:client|es)\s*\.\s*(?:msearch|count|scroll|openPointInTime|mget)\s*[(<]/,
       [SEARCH_FACADE, ...UNSCOPED_FILES],
     );
+
 
     expect(
       offences,
@@ -201,7 +206,29 @@ describe('DoD 9 / ADR-008: 우회 경로 부재', () => {
     ).toEqual([]);
   });
 
+  it('**Elasticsearch 핸들의 `get`으로 문서를 직접 읽지 않는다** (CR-042, DEV-265)', () => {
+    /*
+     * `client.get`은 받지 않는다 — Redis 핸들도 같은 이름을 쓰고
+     * (`apps/search-api/src/index.ts`의 세션 저장소), 그것을 잡으면 규칙이
+     * 아니라 소음이 된다. 이 저장소에서 Elasticsearch 핸들의 이름은 `es`이며
+     * (`DetailDeps`·`SearchDeps`·`RuntimeParts`가 모두 그렇다) `mget`은 위
+     * 검사가 이름과 무관하게 잡는다.
+     */
+    const offences = scan(/\b(?:es|elasticsearch)\s*\.\s*get\s*[(<]/, [
+      SEARCH_FACADE,
+      ...UNSCOPED_FILES,
+    ]);
+
+    expect(
+      offences,
+      `범위 필터를 거치지 않는 문서 읽기가 있다:\n${offences
+        .map((one) => `  ${one.file}:${String(one.line)} — ${one.text}`)
+        .join('\n')}`,
+    ).toEqual([]);
+  });
+
   it('허용 목록의 모든 항목에 사유가 붙어 있다', () => {
+
     // 사유 없는 예외가 쌓이면 규칙이 아니라 관습이 된다.
     for (const entry of UNSCOPED_ALLOWLIST) {
       expect(entry.why.length, `${entry.file}에 사유가 없다`).toBeGreaterThan(40);

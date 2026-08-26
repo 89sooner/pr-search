@@ -10,17 +10,26 @@
  * 전부 죽는다 — 조사 도구에서 그것은 큰 손실이다. 그래서 제목 칸에 실제
  * `<a href>`를 둔다.
  *
- * ## 관계 배지 열이 없는 이유
+ * ## 관계 배지 열 (CR-042, DEV-262·264)
  *
- * `C-015 RelationBadgeGroup`은 WP-031 소관이고 `link_summary`는 WP-029까지
- * 비어 있다. **빈 열을 미리 두지 않는다** — 사용자가 "관계 없음"으로 읽는다
- * (CR-019, DEV-081).
+ * WP-029까지 `link_summary`가 비어 있어 빈 열을 두지 않았다 (CR-019, DEV-081).
+ * WP-030이 값을 채우면서 도달 가능해졌고 WP-031이 붙인다.
+ *
+ * **요약이 없는 행에는 아무것도 그리지 않는다.** `null`은 "아직 요약값이 없다"
+ * 이고 값이 있는데 전부 비어 있는 것은 "확인했고 관계가 없다"이다 — 둘을 같이
+ * 그리면 없는 사실을 주장하게 된다 (C-014가 세운 규율, DEV-077).
+ *
+ * **행마다 관계를 조회하지 않는다.** 목록 응답이 실어 온 비정규화
+ * `link_summary`만 쓴다 — 그것이 그 필드가 존재하는 이유다 (ADR-009).
  */
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Badge, Table } from '@conductor-by-89soone/react';
 import { SequenceBadge } from './SequenceBadge';
+import { RelationBadgeGroup } from './RelationBadgeGroup';
+import type { LinkSummaryView } from '../lib/relations';
+
 import { commonSpace } from '../lib/sequence';
 import { shortSha } from '../lib/format';
 import { withFromQuery } from '../lib/query-url';
@@ -41,8 +50,11 @@ export interface ResultRow {
   readonly changed_files_count: number | null;
   readonly additions: number | null;
   readonly deletions: number | null;
+  /** 비정규화 관계 요약 (ADR-009). **`null`은 "요약이 아직 없다"이다.** */
+  readonly link_summary?: LinkSummaryView | null;
   readonly url: string | null;
 }
+
 
 export interface SortState {
   readonly field: string;
@@ -124,6 +136,8 @@ export function ResultTable({
           <Table.HeaderCell scope="col">유형</Table.HeaderCell>
           <Table.HeaderCell scope="col">제목</Table.HeaderCell>
           <Table.HeaderCell scope="col">작성자</Table.HeaderCell>
+          <Table.HeaderCell scope="col">관계</Table.HeaderCell>
+
         </Table.Row>
       </Table.Head>
 
@@ -131,7 +145,8 @@ export function ResultTable({
         {loading
           ? Array.from({ length: SKELETON_ROWS }, (_, index) => (
               <Table.Row key={`skeleton-${String(index)}`} data-testid="result-skeleton" aria-hidden="true">
-                <Table.Cell colSpan={7}>&nbsp;</Table.Cell>
+                <Table.Cell colSpan={8}>&nbsp;</Table.Cell>
+
               </Table.Row>
             ))
           : rows.map((row) => {
@@ -169,7 +184,11 @@ export function ResultTable({
                     <span className="cdt-sr-only"> ({row.repository ?? '저장소 미상'} {name})</span>
                   </Table.Cell>
                   <Table.Cell>{row.author ?? '—'}</Table.Cell>
+                  <Table.Cell>
+                    <RelationBadgeGroup summary={row.link_summary ?? null} />
+                  </Table.Cell>
                 </Table.Row>
+
               );
             })}
       </Table.Body>

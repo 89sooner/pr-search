@@ -19,7 +19,9 @@ import { EmptyState } from './EmptyState';
 import { EntityHeader } from './EntityHeader';
 import { ErrorBanner } from './ErrorBanner';
 import { LinkedPrList } from './LinkedPrList';
-import { PendingSection } from './PendingSection';
+import { RelationSection } from './RelationSection';
+
+
 import { ReleaseContainmentSection } from './ReleaseContainmentList';
 import { NeighborSection } from './NeighborSequenceList';
 import { SequencePosition } from './SequencePosition';
@@ -314,12 +316,19 @@ export function CommitDetailView({
       <ChangedPathList {...paths} owner="WP-020 (미러 기반 커밋 보강)" />
 
       <ReleaseContainmentSection repository={repo} kind="commit" id={sha} sectionId="commit-releases" />
-      <PendingSection
-        id="commit-links"
-        title="관계"
-        reason="되돌림·체리픽·참조는 관계 파생이 서면 표시됩니다."
-        owner="WP-029 (관계 파생), WP-031 (관계 조회)"
+      {/*
+        * 커밋에는 **스택도 동시 변경도 없다** (CR-041, CR-042 DEV-263).
+        * 스택은 PR↔PR 관계이고 동시 변경은 PR의 변경 경로 집합을 본다 —
+        * 물을 수 없는 질문을 보내 400을 받아 내지 않는다.
+        */}
+      <RelationSection
+        repository={repo}
+        kind="commit"
+        id={commit.commit_sha ?? commitSha}
+        sectionId="commit-links"
+        linksPending={commit.links_pending === true}
       />
+
 
       <p>
         <a href={backHref} data-testid="back-link">

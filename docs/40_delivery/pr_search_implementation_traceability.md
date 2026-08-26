@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v2.6 | 갱신일: 2026-08-26
+> 상태: review | 버전: v2.7 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -54,7 +54,7 @@
 | WP-028 | 정합성 점검과 조정 스캔 | REL-003 | done | 에이전트 | `b9d3b1c`·`4d192b2`·`f9df507` / PR #35 (병합 `4b954d1`) + `223e84d`·`e363b97`·`97d0637` / PR #37 (병합 `a620899`) | DoD 18항 전부 통과 (6.28장). 단위 57건 + API 통합 20건 + 마이그레이션 통합 5건. 결함 재적용 9종 처리 | CR-033이 계약 여섯을 정정(DEV-171~176)했고 그중 하나는 **SRS 문장 자체**였다(v2.5 — 점검 실패가 시퀀스 공간 상태를 바꾸지 않는다). DEV-128을 마이그레이션 009로 해소. `affected_saved_search_count`를 파서 기반으로 확정, JOB-ING-008 유지·DoD 신설, GHE 클라이언트 `direction` 옵션 신설. **실제 알림 발송은 REL-005로 이월**(DEV-176). **머지 후 Codex 리뷰 5건 + 추가 감사 3건이 전부 실결함이었고, 그중 넷은 선언한 기능이 배포에서 아예 실행되지 않는 것이었다** — CR-034로 정정 중이다(DEV-177~184). CR-034(PR #37, 병합 `a620899`)가 그 여덟을 정정하고 **운영 도달성 표의 일곱 기능이 모두 선언 → 기동 → 종료 → 배포로 이어지는 것을 확인해** `done`으로 복귀했다 (6.28.1장). 배포 manifest는 정적 검증까지이며 실제 Kubernetes 적용은 NOT RUN이다 |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | done | 에이전트 | PR #44 | DoD 16항 전부 통과 (6.34장). 통합 37건(실 PG·ES·git·버스) + 단위 55건 + 회귀 12건. 변이 29종 + 리뷰 정정 8종 킬, 등가 2종 | **CR-039 신설·구현.** 착수 전 감사가 열다섯을 찾았고 **다섯이 같은 뿌리**다 — 계약이 "만든다"만 말하고 "다시 만든다"를 말하지 않는다(DEV-215~229). `reference_key`로 참조 간선의 정체성을 대상에서 떼어 AC-3을 성립시켰고(DEV-217), `EVT-ING-005`로 직접 푸시 커밋을 파생에 잇고(DEV-215), JOB-REL-006으로 과거 데이터와 PG-only 재구축 경로를 세웠다(DEV-221). **머지 후가 아니라 머지 전에 Codex 리뷰 6건(P1 셋)이 도착했고 전부 실결함이었다** — 잡 생성 경로 부재·발행 순서·접두 재평가·부분 실패·페이지네이션·URL 부호(6.34.1장). 실제 GHE·Kubernetes는 NOT RUN |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | done | 에이전트 | PR #46 | DoD 26항 전부 통과 (6.35장). 통합 49건(실 PG·ES) + 단위 22건 + 회귀 20건. 변이 18종 중 **하나가 살아남았고 그것이 결함이었다**(M13 깊이 상한) + 리뷰 정정 7종 킬 | **CR-041 신설·구현.** 착수 전 감사가 열여덟을 찾았고 **열둘이 같은 뿌리**다 — 계약이 source 본문만 보고 **후보(candidate)의 변화**를 보지 않는다(DEV-230~247). `EVT-ING-005`로 직접 푸시 커밋을 잇고(DEV-230·231), **상위 PR 변화가 하위 PR 간선을 바꾸는 역방향 경로**를 세웠으며(DEV-232), 체리픽 방향·상위 5건을 결정론으로 고정했다(DEV-243). 마이그레이션 014는 **인덱스만** — 새 표 없음(DEV-240). `JOB-REL-006`이 `handleSourceReady`를 거치므로 **재파생이 저절로 네 계열을 덮는다**(DEV-234). **머지 전에 Codex 리뷰 6건(P1 셋)이 도착했고 전부 실결함** — 양 끝점 요약·`links_pending` 보존·부분 실패·검색 가시성·retarget·후보 상한(6.35.1장). 실제 GHE·Kubernetes는 NOT RUN |
-| WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | todo | - | - | - | - |
+| WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | in_progress | 에이전트 | - | - | **CR-042 신설.** 착수 전 감사가 열여덟을 찾았고 **아홉이 같은 뿌리**다 — 계약이 파생의 규칙만 정하고 **조회가 다른 질문**이라는 것을 보지 않았다(DEV-248~265). `API-REL-006` 신설, 역방향 조회의 저장소 라우팅 포기(DEV-250), THR-034 대상 내용 교집합(DEV-253), `API-REL-003` 상세 계약(DEV-249·254·255·256), `detached`·다중 후보·`links_pending` 표시 정정(DEV-257·258·261), W-001 이월 정정(DEV-262·264) |
 | WP-032 | 패싯·커서 페이지네이션·전문 검색 | REL-004 | todo | - | - | - | - |
 | WP-033 | 저장된 검색 | REL-004 | todo | - | - | - | - |
 | WP-034 | W-009 저장소 개요 화면 | REL-004 | todo | - | - | - | - |
@@ -112,11 +112,11 @@
 | FR-SEQ-007 | WP-042 | - | - | not_started |
 | FR-REL-001 | WP-027 | `apps/search-api/src/sequence/neighbors.ts`, `packages/db/src/repositories/merge-sequence.ts` (`findNeighbors`), `apps/web/lib/neighbors.ts`, `apps/web/components/NeighborSequenceList.tsx` (C-019 + 컨테이너), `apps/web/components/{PrDetailView,CommitDetailView}.tsx` | `apps/search-api/integration/sequence/neighbors.test.ts`, `apps/web/lib/neighbors.test.ts`, `apps/web/a11y/{pr-detail,commit-detail}.test.tsx`, `apps/web/e2e/flow-002.spec.ts` | done — AC-1~AC-5 전부. 이웃은 PostgreSQL이 고르고 색인은 표시값만 채운다(DEV-166). 직접 푸시 커밋을 포함해 서수가 건너뛰지 않는다(SRS v2.4). 앵커는 PR·커밋 둘 다이며 **`base_branch` 판별자로 시퀀스 공간을 요청이 지정한다** — 응답의 `sequence_space`는 언제나 요청한 공간이고 앵커 해석은 `findPointByPullRequest`/`findPointByCommit`(공간·에폭 한정)을 재사용한다 (CR-032, DEV-168). 색인 안 된 PR 행의 `merged_at`은 `null`이다 (DEV-169). 실패 상태에는 재시도 수단이 있다 (DEV-170) |
 | FR-REL-002 | WP-024 | `packages/db/migrations/008_release.up.sql`, `packages/db/src/repositories/release.ts`, `packages/github/src/mirror-graph.ts` (`listTags`), `packages/domain/src/release.ts`, `apps/ingest-gateway/src/ingest.ts` (5d), `apps/pipeline-worker/src/release.ts` (JOB-REL-007), `packages/es/src/releases.ts`, `apps/search-api/src/sequence/containments.ts`·`routes.ts` (`GET /containments`), `apps/web/lib/containment.ts`, `apps/web/components/ReleaseContainmentList.tsx` (C-020) | `packages/domain/src/release.test.ts`, `apps/ingest-gateway/src/ingest.test.ts` (EVT-REL-001), `apps/pipeline-worker/integration/release/refresh.test.ts`, `apps/search-api/integration/release/containment.test.ts`, `packages/es/integration/releases.test.ts` (실ES, CI), `apps/web/lib/containment.test.ts`, `regression/releases-vs-git.test.ts` | done (AC-1~AC-5 + 예외 처리. 판정 정본은 PostgreSQL, `release_tags`/`unreleased`는 표시 전용 비정규화. CI 배포 소스는 OD-004 조건부로 제외 — 스키마·삭제 면제만 준비) |
-| FR-REL-003 | WP-029, WP-031 | - | - | not_started |
-| FR-REL-004 | WP-030, WP-031 | - | - | not_started |
+| FR-REL-003 | WP-029, WP-031 | `packages/domain/src/link/{reference,text}.ts`, `packages/es/src/links.ts` (`writeReferenceLinks`·`resolveReferenceLinks`·`findReferencesTo`), `apps/pipeline-worker/src/link.ts`, **`packages/es/src/relations-read.ts`**, **`apps/search-api/src/relations/{service,routes}.ts`**, **`apps/web/{lib/relations.ts,components/LinkGroupList.tsx,components/RelationSection.tsx}`** | `packages/domain/src/link/reference.test.ts`, `apps/pipeline-worker/integration/worker/link*.test.ts`, `apps/search-api/integration/relations/relations.test.ts`, `apps/web/a11y/relations.test.tsx`, `apps/web/e2e/flow-006.spec.ts` | done (CR-039 파생 + CR-042 조회·표시) |
+| FR-REL-004 | WP-030, WP-031 | `packages/domain/src/link/revert.ts`, `apps/pipeline-worker/src/relations.ts` (`planReverts`), `packages/query/src/keys.ts`+`packages/es/src/query-builder.ts` (`is:reverted`), **`apps/search-api/src/relations/service.ts`** (다중 후보 판정), **`apps/web/components/{LinkGroupList,RelationBadgeGroup}.tsx`** | `packages/domain/src/link/relations.test.ts`, `apps/pipeline-worker/integration/worker/relations.test.ts`, `apps/search-api/integration/relations/relations.test.ts`, `apps/web/a11y/relations.test.tsx` | done (CR-041 파생 + CR-042 조회·다중 후보 표시) |
 | FR-REL-005 | WP-020, WP-030, WP-031 | `packages/github/src/{commit-graph,mirror-graph,api-graph}.ts` (patch-id 계산과 `patch_id_unavailable` 사유) | `packages/github/src/graph-plan.test.ts`, `packages/github/integration/graph.test.ts` | **부분** — AC-5(미러 없을 때 `patch_id_unavailable`)의 계산 계층만 섰다. 간선 생성(AC-1~AC-4)은 WP-030. **AC-2는 CR-024로 조건부가 되었다** — blob 인출이 허용된 미러에서만 수행하며, 기본 설정에서 수행하지 않는 것이 이제 명세다 (DEV-111). `patch_id_unavailable`은 사유 3종을 담는 `keyword`다 |
-| FR-REL-006 | WP-030, WP-031 | - | - | not_started |
-| FR-REL-007 | WP-031 | - | - | not_started |
+| FR-REL-006 | WP-030, WP-031 | `apps/pipeline-worker/src/relations.ts` (`planStacks`·`walkChain`·`reconcileStackDetachment`), `packages/es/src/links.ts` (`setLinkDetached`), **`apps/search-api/src/relations/service.ts`** (`supportsAnchorKind`), **`apps/web/components/LinkGroupList.tsx`** (해제 표시) | `apps/pipeline-worker/integration/worker/relations.test.ts` (깊이 12/13·순환·detached 수명), `apps/search-api/integration/relations/relations.test.ts`, `apps/web/a11y/relations.test.tsx`, `apps/web/e2e/flow-006.spec.ts` | done (CR-041 파생 + CR-042 표시) |
+| FR-REL-007 | WP-031 | **`apps/search-api/src/relations/co-changes.ts`** (자격 상태 셋 · `script_score` 정확 자카드 · 상위 20 · 겹침 상위 10), **`apps/search-api/src/relations/routes.ts`**, **`apps/web/components/CoChangeSection.tsx`** | `apps/search-api/integration/relations/co-changes.test.ts` (12건 · 실 Elasticsearch), `apps/web/a11y/relations.test.tsx`, `apps/web/e2e/flow-006.spec.ts` | done (CR-042) |
 | FR-REL-008 | WP-043 | - | - | not_started |
 | FR-ING-001 | WP-004 | `apps/ingest-gateway/src/{signature,ingest,store,payload,events,archive,metrics,server,config}.ts`, `apps/pipeline-worker/src/outbox-relay.ts` | `apps/ingest-gateway/src/{signature,payload,ingest,server}.test.ts`, `apps/ingest-gateway/integration/{webhook,idempotency,load,enqueue}.test.ts`, `apps/pipeline-worker/integration/outbox-relay.test.ts` | verified (AC-1~AC-6 전부. AC-4는 발행 포함 부하 1000건 p95 35.6ms) |
 | FR-ING-002 | WP-002, WP-004, WP-008 | `packages/db/migrations/001_ingestion.up.sql`, `packages/db/src/repositories/raw-event.ts`, `packages/db/src/advisory-lock.ts`, `apps/ingest-gateway/src/{store,payload}.ts`, `packages/domain/src/events.ts` | `packages/db/integration/constraints.test.ts`, `apps/ingest-gateway/integration/{webhook,idempotency}.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | verified (AC-1~AC-4에 더해 AC-5 결정론적 문서 ID — 같은 이벤트를 두 번 투영해도 문서가 하나다) |
@@ -433,6 +433,24 @@
 | DEV-245 | 2026-08-26 | **`references`가 아닌 간선의 ID를 만드는 헬퍼가 없다.** 데이터 모델 4.3장은 재료를 이미 정해 두었으나(`{link_type}:{from_type}:{from_id}:{to_type}:{to_id}`) 코드에는 `referenceLinkId` 하나뿐이고 그 함수는 `'references'`를 하드코딩한다. 없으면 세 계열이 각자 ID를 만들게 되고, 그러면 재파생 멱등이 계열마다 다른 근거 위에 서게 된다 | ENT-REL-002 / WP-030 | 범위 공백 | **CR-041** | resolved (2026-08-26) — CR-041 |
 | DEV-246 | 2026-08-26 | **WP-030의 실패 처분이 정의되어 있지 않아 `links_pending`을 재해석할 위험이 있다.** 그 필드는 FR-REL-003 **참조 추출**의 완결 상태이며 화면이 그 뜻으로 읽는다. WP-030 실패를 거기 실으면 한 필드가 두 뜻을 갖고, "관계 미확정"이 무엇을 가리키는지 아무도 말할 수 없게 된다. 새 pending 필드를 만드는 것도 답이 아니다 — SRS가 요구하지 않는다 | FR-REL-003~006 / WP-030 | 범위 공백 | **CR-041** | resolved (2026-08-26) — CR-041 |
 | DEV-247 | 2026-08-26 | **FR-REL-006 AC-5가 요구하는 순환 지표가 없다.** "순환이 감지되면 간선을 생성하지 않고 **운영 지표로 기록한다**"인데 `metrics.ts`에 그런 지표가 없다(`reconcile_incomplete_cycles`는 조정 스캔 주기 수로 뜻이 다르다). 지표 없이 구현하면 순환이 조용히 무시되어, 스택 관계가 비어 있는 것이 정상인지 순환 때문인지 운영자가 가를 수 없다 | FR-REL-006 AC-5 / WP-030 | 범위 공백 | **CR-041** | resolved (2026-08-26) — CR-041 |
+| DEV-248 | 2026-08-26 | **저장된 관계 간선을 사용자에게 줄 API가 하나도 없다.** WP-029·WP-030이 `prs-links`에 references·reverts·cherry_picks·stacks_on을 채웠는데, API 카탈로그에서 그 인덱스를 읽는 조회가 없다 — API-REL-001은 `merge_sequence`, 002·005는 릴리스, 003은 조회 시점 계산, 004는 그래프(WP-043)다. WP-031 구현 범위 첫 줄이 "관계 조회(정방향 `from_id`, 역방향 `to_id`)"인데 그것을 줄 API ID가 없다. CR-030 DEV-155("릴리스 목록을 줄 경로가 없었다" → API-REL-005 신설)와 같은 모양이다 | FR-REL-003~006 / WP-031 | 범위 공백 | **CR-042** | **resolved (2026-08-26)** — `GET /relations`(**API-REL-006**)를 신설하고 카탈로그·상세 절을 함께 썼다. 앵커 하나 · `link_type` 하나 · `direction` 하나 · 상한 있는 응답 |
+| DEV-249 | 2026-08-26 | **API-REL-003 상세 절이 아예 없다.** `pr_search_api_contracts.md` 4장에 `### API-REL-001`·`002`·`004`·`005`는 있고 003만 없다 — 카탈로그 3장의 한 줄이 전부다. WP-031 구현 범위인 `/co-changes`의 요청·응답·오류·자격 판정이 정의된 곳이 없어, 구현이 FR-REL-007 AC 다섯을 각자 해석하게 된다 | FR-REL-007 / WP-031 | 문서 오류 | **CR-042** | **resolved (2026-08-26)** — 상세 절을 신설했다. 자격 상태 셋·정확 자카드·상위 20 결정론 정렬·겹치는 경로 상위 10 |
+| DEV-250 | 2026-08-26 | **역방향 조회가 source 저장소 라우팅에 묶여 있어 저장소를 건너뛰는 참조를 구조적으로 빠뜨린다.** `findLinksTo`는 `routing: repositoryId` + `term: { repository_id }`로 친다. 그런데 **간선은 근거를 소유한 저장소에 산다**(THR-035) — `acme/a`의 PR이 `acme/b#20`을 참조하면 그 간선의 `repository_id`는 `a`다. `b`에서 "나를 가리키는 참조"를 물으면 `a`·`c`의 간선을 **어떤 라우팅으로도 찾을 수 없다.** 되돌림·체리픽·스택은 동일 저장소 관계라 그 경로에서 둘이 같았고(함수 주석이 그 사실을 적는다), 그래서 워커에서는 결함이 아니었다. 조회에 그대로 쓰면 FR-REL-003 AC-3의 역방향이 cross-repo에서 침묵한다 | FR-REL-003 AC-3, FR-REL-004 AC-3 / WP-031 | 범위 공백 | **CR-042** | **resolved (2026-08-26)** — 조회 경로는 **라우팅을 쓰지 않고** `to_type`·`to_id`로 친다. 경계는 라우팅이 아니라 **강제 접근 범위 필터**가 만든다. 통합 시험이 A→B·C→B에서 caller가 A만 볼 때 A→B만 나오는 것을 건다 |
+| DEV-251 | 2026-08-26 | **워커의 읽기 형태가 화면 계약보다 좁다.** `StoredLink`는 `link_id`·`repository_id`·`link_type`·`from_*`·`to_*`·`detached`·`resolved`뿐이고 `_source`도 그 목록으로 잘린다. C-021은 **방향·신뢰도·근거**를 필수로 요구하고(`confidence`·`evidence`), cross-repo 표시에는 `to_repository_id`가 필요하다. 워커 타입을 HTTP DTO로 쓰면 화면이 요구하는 것을 담을 수 없고, 반대로 워커 타입을 넓히면 조정 경로가 필요 없는 필드를 매 회차 실어 나른다 | FR-REL-003 AC-2 / WP-031, C-021 | 범위 공백 | **CR-042** | **resolved (2026-08-26)** — 사용자 대면 **읽기 투영**을 별도로 두었다. 워커의 `StoredLink`는 그대로 둔다 |
+| DEV-252 | 2026-08-26 | **워커의 무한 스크롤을 HTTP에 노출하면 응답에 상한이 없다.** `scrollLinks`는 `search_after`로 **끝까지** 읽어 배열에 모은다 — 조정에는 옳다(한 페이지만 읽으면 나머지가 영영 조정되지 않는다, PR #44 리뷰 P2). 그러나 한 대상을 수백·수천 source가 가리킬 수 있고, 그것을 그대로 응답으로 내면 한 요청이 힙과 p95를 동시에 잡아먹는다. 계약에 상한이 없어 구현이 그 함수를 그대로 재사용할 유인이 크다 | NFR-001 / WP-031, ADR-010 | 범위 공백 | **CR-042** | **resolved (2026-08-26)** — 한 요청은 **한 유형 · 한 방향**이며 `limit` 기본 50 · 최대 100, 내부에서 `limit + 1`을 읽어 `truncated`를 판정한다. **오프셋을 만들지 않는다**(공통 원칙 7, ADR-010) — 커서를 세울 요구사항이 아직 없으므로 상한과 절삭 표시로 답한다 |
+| DEV-253 | 2026-08-26 | **THR-034가 WP-031의 필수 수용 기준이라고 적혀 있는데 DoD 여덟 항목에 없다.** CR-039가 선행 조건 문단(`work_packages.md`)과 위협 표에 적었으나 완료 기준 체크박스에는 넣지 않았다 — **체크되지 않는 수용 기준은 수용 기준이 아니다.** 게다가 교집합의 *방법*을 어디에도 적어 두지 않았다: 대상 문서를 강제 필터로 다시 조회하는가, 간선만 주고 내용은 별도 조회로 미루는가, 범위 밖일 때 무엇을 응답에 남기는가 | FR-AUTH-002, THR-034 / WP-031 | 범위 공백 | **CR-042** | **resolved (2026-08-26)** — 간선 조회와 대상 내용 조회를 **두 번의 독립한 강제 필터**로 가르고, 대상이 범위 밖이면 간선·식별자·근거는 남기고 **내용 필드를 두지 않는다**(키 부재). 화면 문구는 사유를 구분하지 않는다 — "권한이 없습니다"는 존재를 밝힌다. DoD에 항목으로 넣고 대적 매트릭스 넷을 시험으로 건다 |
+| DEV-254 | 2026-08-26 | **동시 변경의 자격 상태 계약이 없다.** FR-REL-007 AC-2가 "머지 시각 기준 앞뒤 90일"로 창을 정하는데 **미머지 PR에는 `merged_at`이 없다** — 기준점 자체가 없다. 계약이 그 상태를 말하지 않으면 구현이 `created_at`·`updated_at`으로 조용히 대체하게 되고, 그러면 AC-2가 정한 창이 아닌 다른 창을 계산한 뒤 그것을 자카드 상위 20이라고 부른다. AC-4의 200개 기준도 판정 근거가 적혀 있지 않다 — `files_truncated`는 **3000개** 상한(`MAX_CHANGED_FILES`)의 표식이라 다른 계약이며, `files_truncated: false`에서 "그러니 200 이하"를 추론하면 틀린다 | FR-REL-007 AC-2·AC-4 / WP-031 | 범위 공백 | **CR-042** | **resolved (2026-08-26)** — 자격 상태 셋을 정본으로 삼는다: `not_merged`·`enrichment_pending`·`too_many_changed_files`. 셋 다 오류가 아니라 **정상 도메인 상태**이며 `available: false` + `reason`으로 답한다. 200 판정은 **`changed_files_count`로만** 한다 |
+| DEV-255 | 2026-08-26 | **정확한 자카드를 어떻게 계산하는지 계약이 정하지 않는다.** AC-1이 자카드, AC-3이 상위 20을 요구하지만 후보 집합을 좁히는 방법이 없다. "후보를 100건 뽑아 앱에서 계산해 상위 20" 같은 구현은 **진짜 상위 20이 101번째 밖에 있을 수 있다** — 그리고 그 사실이 응답 어디에도 드러나지 않아 사용자는 완전한 답을 받았다고 믿는다. 조사 도구에서 그것은 조용한 오답이다 | FR-REL-007 AC-1·AC-3 / WP-031 | 범위 공백 | **CR-042** | **resolved (2026-08-26)** — 자격 조건과 **경로 교집합 존재**를 Elasticsearch가 먼저 강제하고, 자카드를 `changed_paths.raw` 위에서 정확히 계산해 `_score` 내림차순 · `pr_number` 오름차순으로 상위 20을 뽑는다. **앱단 pre-limit을 두지 않는다.** 실제 Elasticsearch 통합 시험이 상위 20 밖에 놓인 후보를 포함한 픽스처로 이것을 건다 |
+| DEV-256 | 2026-08-26 | **겹치는 경로 상위 10의 순서가 정의되어 있지 않다.** AC-5는 "상위 10개가 포함된다"만 말한다. 순서 없이 구현하면 Elasticsearch 반환 순서·집합 순회 순서가 정하게 되어 **같은 정본이 다른 응답**을 낸다 — ADR-004의 "같은 정본에서 같은 결과"가 이 축에서 깨지고, 사용자가 URL로 인용한 조사 결과가 재현되지 않는다 | FR-REL-007 AC-5, ADR-004 / WP-031 | 범위 공백 | **CR-042** | **resolved (2026-08-26)** — **사전순 오름차순** 후 앞 10개로 고정했다. "상위"에 순위 개념이 없으므로 결정론을 우선한다 |
+| DEV-257 | 2026-08-26 | **C-021 상태 모델이 WP-030이 만든 사실을 표현하지 못한다.** 상태 목록은 `collapsed`·`loading`·`ready`·`links_pending`·`unresolved`뿐이고 **`detached`는 `docs/20_derived_ui_specs/` 전체에 0회** 등장한다. 해제된 스택 의존을 "관계 없음"으로 그리면 FR-REL-006 AC-3이 **지우지 않고 보존한 사실**이 화면에서 사라진다 — 저장 계층이 지키기로 한 것을 표시 계층이 버린다. 대상 내용을 볼 수 없는 항목(THR-034)과 섹션 조회 실패를 표현할 자리도 없다 | FR-REL-006 AC-3, THR-034 / WP-031, C-021 | 범위 공백 | **CR-042** | **resolved (2026-08-26)** — 상태를 **섹션 축**(`collapsed`/`loading`/`ready`/`error`)과 **항목 축**(`detached`·`unresolved`·`content_unavailable`·`ambiguous`)으로 갈랐다. 한 enum에 두 축을 넣지 않는다 |
+| DEV-258 | 2026-08-26 | **`links_pending`의 뜻이 UI 문서에서 드리프트했다.** CR-041이 "FR-REL-003 **참조 추출**의 완결 상태"로 확정했는데, FLOW-006 예외는 "관계 파생 미완료", 상태 매트릭스 W-002는 "관계 파생 미완료 → 관계 섹션에 분석 중 배지", `PrDetailView.tsx`는 그 값으로 관계 섹션 **전체**를 "관계 파생이 아직 끝나지 않았습니다"로 덮는다. 참조 추출 실패 하나가 **이미 계산된** 되돌림·체리픽·스택을 숨긴다 — 있는 사실을 없다고 그리는 것이다 | FR-REL-003 예외 처리 / WP-031 | 문서 오류 | **CR-042** | **resolved (2026-08-26)** — 문구를 **"참조 분석 중"**으로 정정하고 범위를 참조 그룹으로 좁혔다. 다른 세 계열은 그 상태에서도 그대로 표시한다. 새 pending 필드를 만들지 않는다(DEV-246의 규율) |
+| DEV-259 | 2026-08-26 | **FLOW-006 관련 요구사항에 FR-REL-006·FR-REL-007이 없다.** 003·004·005·008뿐이다. 그런데 같은 문서의 W-002-LINKS 섹션 정의는 스택과 동시 변경을 그룹으로 적고 QA-W002-13·14는 동시 변경을 검증 항목으로 둔다 — 흐름 명세만 둘을 모른다. 흐름을 근거로 판단하는 구현이 스택·동시 변경을 범위 밖으로 읽는다 | FR-REL-006, FR-REL-007 / FLOW-006 | 문서 오류 | **CR-042** | **resolved (2026-08-26)** — 관련 요구사항에 FR-REL-006·007을 더했다 |
+| DEV-260 | 2026-08-26 | **FLOW-006이 승인되지 않은 제품 판단을 예외 흐름으로 적는다.** "체리픽 후보 없음: **백포트 누락 후보**로 표시한다"인데 FR-REL-005 어디에도 그런 판정이 없다. 게다가 AC-2가 CR-024(DEV-111)로 조건부가 된 뒤 **운영 기본 상태는 `blob_fetch_disabled`**라 후보가 없는 것이 정상이다 — 정상 상태를 "누락 후보"로 부르면 화면이 없는 기능을 지어내고 사용자는 그 추론을 사실로 읽는다 | FR-REL-005 AC-2·AC-5 / FLOW-006 | 문서 오류 | **CR-042** | **resolved (2026-08-26)** — 문장을 삭제하고 "체리픽 관계 없음"과 `patch_id_unavailable` **사유 표시**로 바꿨다. 사유 셋(`no_mirror`·`blob_fetch_disabled`·`compute_failed`)은 FR-REL-005 AC-5가 이미 정한 것이다 |
+| DEV-261 | 2026-08-26 | **다중 후보 되돌림을 표시할 계약이 없다.** FR-REL-004 예외 처리는 "제목 대조 후보가 2건 이상이면 모든 후보를 신뢰도 `heuristic`으로 저장하고 **화면에 다중 후보임을 표시한다**"인데, 그 표시가 어느 UI 문서에도 없다. 저장은 WP-030이 이미 한다(`planReverts`가 후보를 좁히지 않는다, DEV-237). 표시 계약이 없으면 구현이 목록의 첫 항목을 확정된 대상처럼 그리게 되고, 그것이 정확히 DEV-237이 저장 계층에서 막은 "자신 있게 틀린 답"이다 | FR-REL-004 예외 처리 / WP-031, C-021 | 범위 공백 | **CR-042** | **resolved (2026-08-26)** — 같은 근거(`evidence`)를 공유하는 `heuristic` 되돌림 항목이 둘 이상이면 그 그룹을 **다중 후보**로 표시한다. 응답이 근거를 싣고 있으므로 새 저장 필드를 만들지 않는다 |
+| DEV-262 | 2026-08-26 | **W-001이 WP-031 관련 화면에서 빠져 있다.** 와이어프레임 W-001은 "관계 배지 열은 **WP-031이 붙인다** — `C-015`가 그 WP 소관"이라 적고 `ResultTable.tsx` 주석도 같은 말을 하는데, WP-031의 관련 화면은 `W-002, W-003`뿐이고 관련 API도 `API-REL-003`뿐이다. 이월받은 WP가 자기 범위에 그것이 있다는 것을 모른다 — 이 상태로 WP-031을 닫으면 C-015는 **어느 WP의 것도 아닌 채로** 남는다 | FR-SRCH-006, FR-REL-004, FR-REL-005 / WP-031, C-015, W-001 | 문서 오류 | **CR-042** | **resolved (2026-08-26)** — WP-031 관련 화면에 **W-001**을, 관련 API에 **API-REL-006**을 더했다. 범위 확장이 아니라 이월 계약의 누락 정정이다 |
+| DEV-263 | 2026-08-26 | **W-003에 관계 섹션의 상태와 QA 항목이 없다.** 상태 매트릭스 W-003에는 관계 관련 상태가 하나도 없고(`enrichment_pending`·`multi_pr`·`no_pr`·`no_sequence`뿐), QA-W003-01~09에도 관계 항목이 없다. 그런데 W-003-LINKS 섹션은 와이어프레임에 정의돼 있고 WP-031 범위다 — 검증할 항목이 없는 화면 기능이 된다 | FR-REL-003~005 / WP-031, W-003 | 범위 공백 | **CR-042** | **resolved (2026-08-26)** — W-003 상태 매트릭스에 관계 섹션 상태를 더하고 QA-W003-10을 신설했다 |
+| DEV-264 | 2026-08-26 | **검색 API가 싣는 `link_summary`를 웹이 버린다.** `search/service.ts`가 `link_summary: source.link_summary ?? null`로 항목마다 실어 보내는데 `ResultTable.tsx`의 `ResultRow`에 그 필드가 없어 렌더링 경계에서 사라진다. C-015를 붙일 때 데이터가 없다고 판단해 행마다 관계 조회를 보내는 구현이 나오면 **ADR-009가 비정규화를 둔 이유가 무너진다** — 목록 화면의 배지를 간선 인덱스 조회 없이 그리기 위한 필드다 | FR-SRCH-006, ADR-009 / WP-031, C-015 | 구현 공백 | **CR-042** | **resolved (2026-08-26)** — `ResultRow`에 `link_summary`를 실어 C-015까지 잇는다. 행마다 관계를 조회하지 않는다는 것을 시험으로 건다 |
+| DEV-265 | 2026-08-26 | **ADR-008 가드레일의 면제가 파일 단위라 조회 코드를 `links.ts`에 넣으면 워커용 면제를 물려받는다.** `architecture.test.ts`의 `UNSCOPED_ALLOWLIST`는 경로 문자열이고 `packages/es/src/links.ts`가 `no_requester`로 올라 있다 — 그 사유는 "방아쇠가 이벤트와 운영자 잡이라 요청자가 없다"이며 같은 항목이 **"사용자에게 내주는 관계 조회 API는 WP-031이 만들며 거기서 대상 범위를 다시 교집합해야 한다"**고 미리 적어 두었다. 그 파일에 사용자 대면 조회를 더하면 검사기가 아무것도 말하지 않는다. 그리고 세 번째 검사는 `msearch`·`count`·`scroll`·`openPointInTime`만 보므로 **`get`·`mget`은 검사 대상이 아니다** — 대상 내용을 `mget`으로 붙이는 구현이 가드레일을 그대로 통과한다 | ADR-008, THR-034 / WP-031 | 구현 공백 | **CR-042** | **resolved (2026-08-26)** — 조회 계층을 `links.ts` **밖의 새 파일**에 두어 면제를 물려받지 않게 하고, 가드레일에 `get`·`mget`을 더했다 |
 
 ## 6. 검증 결과 기록
 
@@ -2114,6 +2132,98 @@ CI 초록 뒤 Codex 리뷰가 **P1 셋 · P2 셋**을 냈고 전부 실결함이
 
 **검증 (정정 후)**: 단위 1342 · 통합 **900**(+8) · 회귀 **124**(+6) · a11y 192 · contrast 80쌍 · build 통과. 검증기 신규 issue 0.
 
+### 6.36 WP-031 관계 조회·상세 화면 검증 기록 (CR-042)
+
+**착수 전 감사가 열여덟을 찾았고 아홉이 같은 뿌리다** — 계약이 **파생**의 규칙만 정하고 **조회가 다른 질문**이라는 것을 보지 않았다. 파생에는 요청자가 없어 저장소 안에서 끝나지만, 조회에는 요청자가 있고 **대상 쪽을 본다.** WP-029가 참조 축에서, WP-030이 후보 축에서 만난 것의 세 번째 형태다.
+
+#### 감사 결과 (DEV-248~265)
+
+| 계열 | 건수 | 대표 |
+| --- | --- | --- |
+| 계약 공백 | 9 | 관계 조회 API 부재(248) · 역방향 라우팅(250) · read shape(251) · 상한(252) · THR-034 교집합(253) · co-change 자격·후보·순서(254·255·256) |
+| 문서 오류 | 5 | API-REL-003 상세 부재(249) · `links_pending` 드리프트(258) · FLOW-006 누락(259) · 미승인 제품 판단(260) · W-001 이월 누락(262) |
+| 범위 공백 (UI) | 2 | C-021 상태 모델(257) · 다중 후보 표시(261) |
+| 구현 공백 | 2 | `ResultTable`이 `link_summary`를 버림(264) · 가드레일 면제가 파일 단위(265) |
+
+**가장 값이 컸던 것은 DEV-250이다.** `findLinksTo`는 `repository_id`로 라우팅한다. 되돌림·체리픽·스택은 동일 저장소 관계라 워커에서는 그것이 옳았고 결함이 드러나지 않았다. 그러나 **참조는 저장소를 건너뛰고, 간선은 근거를 소유한 저장소(source)에 산다** — `acme/b`의 PR을 가리키는 참조를 `b`로 라우팅해 찾으면 `acme/a`가 만든 간선을 **어떤 값으로도 찾을 수 없다.** 워커의 조회 형태를 그대로 HTTP에 재사용했다면 cross-repo 역방향이 조용히 침묵했을 것이다. 조회 경로는 **라우팅을 쓰지 않고** 강제 접근 범위 필터가 경계를 만든다.
+
+**DEV-265는 구현 중에 드러난 것이다.** ADR-008 가드레일의 허용 목록은 **파일 경로**이고 `packages/es/src/links.ts`가 `no_requester`로 올라 있다 — 사용자 대면 조회를 그 파일에 넣으면 워커용으로 쓴 면제를 그대로 물려받고 검사기는 침묵한다. 그래서 조회 계층을 `relations-read.ts`로 **밖에** 두었다. 같은 자리에서 `get`·`mget`이 검사 대상이 아니라는 것도 드러나 가드레일을 넓혔다.
+
+#### 구현
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/es/src/relations-read.ts` | 신규. 사용자 대면 간선 조회 — 라우팅 없음, `ScopedQuery` 강제, `limit + 1`로 `truncated` 판정 |
+| `apps/search-api/src/relations/service.ts` | 신규. API-REL-006 본체. 앵커 해석 → 간선 조회 → **대상 내용 batch 조회**(종류별 1회) → 다중 후보 판정 |
+| `apps/search-api/src/relations/co-changes.ts` | 신규. API-REL-003. 자격 상태 셋 · `script_score` 정확 자카드 · 결정론 정렬 |
+| `apps/search-api/src/relations/routes.ts` | 신규. 파라미터 검증과 오류 매핑. 끝점 조합 불가는 400 |
+| `apps/search-api/src/server.ts` | `registerRelationRoutes` 등록 — **여기 한 줄이 빠지면 배포에서 사라진다** |
+| `apps/search-api/src/resolve/detail.ts` | 커밋 상세가 `links_pending`을 싣는다 (DEV-263) |
+| `packages/es/src/architecture.test.ts` | ADR-008 가드레일에 `mget`·`es.get` 추가 (DEV-265) |
+| `apps/web/lib/relations.ts` | 신규. 판정 순수 함수 — 없는 것·모르는 것·볼 수 없는 것·해제된 것을 가른다 |
+| `apps/web/components/{LinkGroupList,RelationBadgeGroup,RelationSection,CoChangeSection}.tsx` | 신규. C-021 · C-015 · 지연 섹션 둘 |
+| `apps/web/components/{ResultTable,PrDetailView,CommitDetailView}.tsx` | 배지 배선, 골격 → 실제 섹션 |
+
+**새 마이그레이션·새 잡·새 소비자 그룹·새 배포 manifest 없음.** 이 WP는 읽기 전용이다.
+
+#### 검증
+
+| 계층 | 결과 |
+| --- | --- |
+| 타입 검사 · lint · lint:deps | 통과 (패키지 13, 위반 0) |
+| 단위 | **1380** (1342 → +38) |
+| 통합 | **931** (900 → +31) — 실 Elasticsearch |
+| 회귀 | **146** (124 → +22) |
+| a11y | **212** (192 → +20), axe 위반 0 |
+| contrast | 80쌍 통과 |
+| e2e | flow-006 **11건 신설**. 전량 78건 |
+
+#### e2e 간헐 실패 귀속 — 되돌려서 쟀다
+
+이번 WP는 `apps/web`을 실제로 바꿨으므로 이전 세션들이 쓰던 "화면 코드 diff 0" 근거를 **쓸 수 없다.** 그래서 §55의 절차대로 되돌려 비교했다.
+
+| 상태 | 전량 실행 | 결과 |
+| --- | --- | --- |
+| 코드 변경 **전** (baseline) | 1회 | `flow-001.spec.ts:127` 실패 |
+| 변경을 stash해 화면 코드를 `main`과 동일하게 | 3회 | **1회 실패 — 같은 시험·같은 단언·같은 오류** |
+| 변경 적용 | 8회 | 4회 실패 (그중 1회는 `flow-003.spec.ts:176`도 함께) |
+| `flow-001` **단독** | 4회 | 4/4 통과 |
+| `flow-006` (이번 WP) | 7회 | **7/7 통과** |
+
+**판정: 기존 취약성이며 이번 변경이 만든 것이 아니다.** 되돌린 상태에서도 재현되고, 실패한 두 시험은 둘 다 **뒤로가기 복원 상태를 5초 안에 확인하는 형태**이며 관계 코드에 닿지 않는다. 시험이 67 → 78로 늘어 단일 worker의 전체 실행이 길어진 것이 노출 빈도를 올린 것으로 **보이나 그것은 추정이다.** `flow-003`도 같은 계열로 실패한다는 사실은 이번에 새로 얻은 정보이며 §7에 함께 남겼다. 재시도로 가리지 않는다.
+
+#### 변이 시험 — 22종 전부 킬, 하나가 시험 구멍을 찾아 줬다
+
+접근 통제(M1·M2·M3·M4) · 표시 계약(M5~M10) · 상한(M11) · 배선(M20) · 동시 변경(M13~M19) · 화면(M6~M9·M12·M21·M22).
+
+**M5(신뢰도를 언제나 `exact`로 보고)가 1차에서 살아남았다.** 등가인지 묻기 전에 경로를 읽었더니 — 순서와 다중 후보 판정은 **원본 간선의** 신뢰도를 쓰므로 응답에 실리는 값이 틀려도 그 둘은 그대로였다. **응답의 `confidence` 값 자체를 아무도 단언하지 않고 있었다.** 화면의 배지와 QA-W002-12가 그 값에 걸려 있다. 시험 둘을 더하고 다시 걸어 킬했다. `risks.md` 32번이 적어 둔 규율이 또 값을 했다.
+
+**등가로 판정해 세지 않은 변이는 없다.**
+
+#### 6.36.1 PR #47 리뷰 라운드 — P1 하나, 실결함
+
+| 지적 | 실체 | 정정 |
+| --- | --- | --- |
+| **P1** 부분 관계 검색을 응답 만들기 전에 거절하라 | **실결함.** `searchRelationLinks`가 `assertNoShardFailures`를 부르지 않았다. 샤드가 실패해도 Elasticsearch는 살아남은 것으로 HTTP 200을 주므로, **짧아진 목록이 `truncated: false`와 함께** 나가 화면이 "관계가 이것뿐"이라고 말한다. 라우트는 `PartialSearchError`를 504로 옮길 준비가 돼 있었는데 그 오류가 나지 않았다 | 검사를 `hits`를 쓰기 **전에** 넣었다 |
+
+**이 질의가 특히 위험한 이유가 있다.** 저장소를 건너뛰는 참조를 찾으려고 **라우팅을 쓰지 않아 샤드 전부(12개)를 돈다** — 한 샤드만 흔들려도 부분 결과가 된다. 라우팅을 포기한 결정(DEV-250)이 이 실패 모드의 확률을 **올렸는데** 그 대가를 계산하지 않았다.
+
+**같은 계열을 스스로 훑었다.** 앵커 조회·대상 조회·동시 변경·일반 검색·식별자 해석은 전부 이 검사를 지난다. 빠진 것은 이 한 곳뿐이었다 — 새 파일을 만들면서 선례를 따르지 않은 자리다.
+
+**결함 재적용으로 킬 확인.** 검사를 지우면 단위 3건과 회귀 1건이 실패한다. 회귀는 검사가 `hits` **앞에** 있는지까지 본다 — 뒤에 두면 이미 부분 결과를 쓴 뒤다.
+
+**검증 (정정 후)**: 단위 **1380**(+13) · 통합 931 · 회귀 **146**(+1) · a11y 212 · contrast 80쌍.
+
+#### 도구가 결함·구멍을 찾아 준 자리 셋
+
+- **픽스처 충돌** — 상한 시험용 간선 101건을 A#10에서 냈더니 "A#10의 참조" 질의에 섞여 대상 간선을 밀어냈다. 전용 source로 갈랐다
+- **대역이 서버보다 관대했다** — a11y 대역이 모든 유형에 같은 `link_type`을 돌려줘 네 그룹이 전부 `references`로 그려졌고 같은 `data-testid`가 여러 개 생겼다. 요청을 되돌려주는 대역으로 고쳤다 (`risks.md` 3번)
+- **회귀가 주석까지 셌다** — "이 필드를 쓰지 않는다"를 파일 전문에 걸었더니 **그 사실을 설명한 주석**에 걸렸다. 문서 검증기가 자기 검색어를 세는 것과 같은 함정이다. 검사 범위를 코드로 좁혔다
+
+#### NOT RUN
+
+실제 GHE smoke · 실제 Kubernetes · 운영 규모 관계 조회 성능 · 운영 규모 동시 변경 성능(`script_score`의 실측 비용). 로컬 PostgreSQL·Redis·Elasticsearch는 **실제** 통합이다.
+
 ### 6.31 릴리스 게이트
 
 릴리스별로 갱신한다.
@@ -2271,7 +2381,7 @@ CI 초록 뒤 Codex 리뷰가 **P1 셋 · P2 셋**을 냈고 전부 실결함이
 | 문서당 `EVT-ING-003`이 하나씩 발행됨 (PR 1 + 커밋 N) | 비동기 문서 4장의 payload가 엔티티 단위 | 실제 상태 — 커밋 250건 PR이면 251건이 나간다. `noop`은 내지 않아 재처리 시에는 줄어든다 | 관계 워커(WP-029) 실측 후 필요하면 CR |
 | 커밋 상세의 **헤더에 메시지·작성자·시각이 없다** | CR-021 DEV-090 / DEV-060 | 실제 상태 — 커밋 문서가 SHA만 갖는다. **소속 PR에서 빌려오지 않는다**: 한 PR의 원본 커밋 N건이 전부 같은 제목으로 보이면 체리픽·되돌림 조사가 반대 결론에 이른다. 표시명은 축약 SHA이고 화면이 왜 없는지 적는다 | WP-020 (미러 기반 커밋 보강) |
 | 커밋 상세의 **변경 경로가 골격뿐** | CR-021 DEV-094 / DEV-060 | 실제 상태 — `changed_paths`·`changed_files_count`가 채워지지 않는다. 섹션은 숨기지 않고 사유를 적으며, 총계를 `0`으로 그리지 않는다(*파일을 하나도 바꾸지 않은 커밋*과 같아진다). **파일 내용 미표시(`QA-W003-08`)는 금지 규칙이라 지금 세웠다** | WP-020 |
-| `flow-001` "히스토리 규율" e2e가 **간헐 실패** | WP-016 / 2026-08-25 WP-027 검증 중 관찰 | **관측값 갱신 (2026-08-26).** 이 로컬 환경의 전체 실행에서 **5회 중 4회 실패**한다(이전 기록은 6회 중 2회). 단독 실행은 4/4 통과이고 **CI에서는 통과한다** — PR #41·#42의 `verify` 잡이 같은 `pnpm test:e2e`를 돌려 녹색이었다. 부하가 높을수록 드러나는 타이밍 취약성으로 보인다. **이 세션이 만든 것이 아니다**: `apps/web` 아래 파일을 한 개도 바꾸지 않았고(`git log 5e18e00..HEAD -- apps/web`이 비어 있다) 그 시험은 `page.route('**/api/**')`로 모든 API 호출을 가로채므로 이번에 고친 `detail.ts`·`neighbors.ts`가 도달할 수 없다. "필터 5회 조작 후 뒤로가기 1회"라 단순 잡음이 아니라 히스토리 항목이 가끔 더 쌓이는 결함일 수 있다 — **원인 미확인이며 재시도로 가리지 않는다** | WP-016 소관, 별도 조사 필요 |
+| `flow-001` "히스토리 규율" e2e가 **간헐 실패** | WP-016 / 2026-08-25 WP-027 검증 중 관찰 | **관측값 갱신 (2026-08-26).** 이 로컬 환경의 전체 실행에서 **5회 중 4회 실패**한다(이전 기록은 6회 중 2회). 단독 실행은 4/4 통과이고 **CI에서는 통과한다** — PR #41·#42의 `verify` 잡이 같은 `pnpm test:e2e`를 돌려 녹색이었다. 부하가 높을수록 드러나는 타이밍 취약성으로 보인다. **이 세션이 만든 것이 아니다**: `apps/web` 아래 파일을 한 개도 바꾸지 않았고(`git log 5e18e00..HEAD -- apps/web`이 비어 있다) 그 시험은 `page.route('**/api/**')`로 모든 API 호출을 가로채므로 이번에 고친 `detail.ts`·`neighbors.ts`가 도달할 수 없다. "필터 5회 조작 후 뒤로가기 1회"라 단순 잡음이 아니라 히스토리 항목이 가끔 더 쌓이는 결함일 수 있다 — **원인 미확인이며 재시도로 가리지 않는다** | WP-016 소관, 별도 조사 필요. **CR-042(WP-031) 재실측 (2026-08-26)** — 이번 WP는 `apps/web`을 **실제로 바꿨으므로** "화면 코드 diff 0"이라는 기존 귀속 근거를 쓸 수 없다. 그래서 되돌려 재고 비교했다. **변경을 stash해 화면 코드를 `main`과 동일하게 만든 상태에서 전량 3회 중 1회가 같은 시험·같은 단언·같은 오류로 실패했다**(`flow-001.spec.ts:127`, `expect(page).toHaveURL(/author%3Akim/)`, 5초 타임아웃). 변경을 얹은 상태는 전량 8회 중 4회 실패이고 **단독 실행은 4/4 통과**다. 6회차에서 `flow-003.spec.ts:176`("뒤로가기로 커밋 상세를 거쳐 검색으로 돌아온다")도 같이 실패했다 — **두 실패 모두 뒤로가기 복원 상태를 5초 안에 확인하는 형태**이고, 이것이 이 취약성이 히스토리 복원 타이밍에 있다는 첫 두 번째 증거다. 관계 e2e(`flow-006`)는 **7회 전부 통과**했고 실패한 두 시험은 관계 코드에 닿지 않는다. 시험 수가 67 → 78로 늘어 단일 worker의 전체 실행 시간이 길어진 것이 노출 빈도를 올린 것으로 보이나 **그것은 추정이며 원인 규명이 아니다.** 재시도로 가리지 않는다 |
 | ~~커밋 상세의 시퀀스 위치가 앞뒤 인접 커밋 없이 상태만~~ | WP-018 제외 목록 (데이터는 WP-027) | **해소** (2026-08-25, WP-027) — 커밋 앵커로 앞뒤 목록과 "범위로 확장"이 섰다. 체인 밖·미채번은 역할로 가려 조회하지 않는다 | - |
 | 백필의 실시간 영향(AC-3)이 **측정되지 않음** | WP-019 DoD / DEV-058과 같은 형태 | **NOT RUN** — 운영 규모 데이터셋도 부하 harness도 이 환경에 없다. 예산을 지키는 **구조**만 세웠다: 모든 백필 호출이 `priority: 'backfill'`이고 역할 분리로 워커 풀을 나눌 수 있다 | **REL-002 성능 게이트 전 필수** |
 | ~~백필이 릴리스를 채우지 않음~~ | FR-ING-006은 "과거 PR·커밋·**릴리스**"를 요구 / 릴리스 수집이 WP-024 | **해소** (2026-08-24, WP-024) — 릴리스는 항목별 백필이 필요 없다: 동기화가 미러 refs/tags **전량 스냅숏 diff**라 과거 태그까지 한 번에 실린다. 남는 것은 시차뿐 — 신규 등록 저장소는 첫 태그 웹훅 또는 6시간 스윕까지 기다린다(백필 완료가 즉시 갱신을 트리거하지 않는다 — `BackfillDeps`에 버스가 없다, JOB-SEQ-001과 같은 기존 공백) | 백필 완료 → 갱신 신호 배선은 별도 정리 (시퀀스와 같은 자리) |
@@ -2506,7 +2616,7 @@ CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 �
 | --- | --- |
 | **WP-029** 관계 간선 인덱스와 참조 추출 | **done** |
 | WP-030 되돌림·체리픽·스택 관계 파생 | done |
-| WP-031 관계 조회 API와 상세 화면 관계 섹션 | todo |
+| WP-031 관계 조회 API와 상세 화면 관계 섹션 | in_progress |
 | WP-032 패싯·커서 페이지네이션·전문 검색 | todo |
 | WP-033 저장된 검색 | todo |
 | WP-034 W-009 저장소 개요 화면 | todo |

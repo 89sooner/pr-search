@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v0.6 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.7 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -1224,32 +1224,53 @@
 
 ### WP-031 관계 조회 API와 상세 화면 관계 섹션
 
-- 목표: 관계가 근거·신뢰도와 함께 화면에 보인다.
-- 관련 요구사항: FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006, FR-REL-007
-- 관련 화면/플로우: W-002, W-003 / FLOW-006
-- 관련 API/데이터/잡: API-REL-003
-- 선행 WP: WP-030, WP-017
+- 목표: 관계가 근거·신뢰도와 함께 화면에 보인다. **파생(WP-029·030)은 섰고, 이 WP가 그것을 읽는 경로를 세운다.**
+- 관련 요구사항: FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006, FR-REL-007, FR-AUTH-002
+- 관련 화면/플로우: **W-001**, W-002, W-003 / FLOW-006 (CR-042, DEV-262 — W-001의 관계 배지 열이 이 WP로 이월돼 있었으나 관련 화면에 적혀 있지 않았다)
+- 관련 API/데이터/잡: **API-REL-006(신설)**, API-REL-003
+- 선행 WP: WP-030, WP-017, WP-016
+
 - **대상 저장소 접근 범위 교집합이 필수 수용 기준이다** (THR-034, CR-039). 간선의 접근 범위는 `from` 저장소의 것이므로, 대상의 **내용**을 반환하는 이 API는 대상 범위를 다시 교집합해야 한다
 - 구현 범위:
-  - 관계 조회 (정방향 `from_id`, 역방향 `to_id`)
-  - `GET /co-changes`: 자카드 유사도, 90일 범위, 상위 20건, 겹치는 경로 상위 10, 변경 파일 200개 초과 제외
-  - `C-021 LinkGroupList` 구현: 유형별 그룹, 신뢰도 배지, `heuristic`은 근거 `CodeBlock` 필수
-  - `C-015 RelationBadgeGroup` (목록 화면 배지)
-  - W-002·W-003 관계 섹션 연결 (확장 시 조회)
+  - **`GET /relations` (API-REL-006) 신설** — 저장된 간선 조회. 한 요청 = 한 `link_type` × 한 `direction`, `limit` 기본 50·최대 100, `truncated` 봉투. **오프셋을 만들지 않는다** (ADR-010)
+  - **역방향 조회는 저장소 라우팅을 쓰지 않는다** — 간선은 source 저장소에 살기 때문에 대상 저장소로 라우팅하면 cross-repo 참조를 구조적으로 놓친다 (DEV-250)
+  - **대상 내용 교집합** — 간선 조회와 대상 내용 조회를 **두 번의 독립한 강제 접근 범위 필터**로 가른다. `get`·`mget` 금지, batch 조회 (THR-034, DEV-253)
+  - **사용자 대면 읽기 투영** — `confidence`·`evidence`·`resolved`·`detached`·`ambiguous`·`content_available`·반대쪽 끝점. 워커의 `StoredLink`를 HTTP DTO로 쓰지 않는다 (DEV-251)
+  - `GET /co-changes` (API-REL-003): **정확한** 자카드 유사도, 머지 시각 ±90일, 상위 20건, 겹치는 경로 사전순 상위 10, 자격 상태 셋(`not_merged`·`enrichment_pending`·`too_many_changed_files`). **앱단 pre-limit 금지** (DEV-254·255·256)
+  - `C-021 LinkGroupList` 구현: 유형별 그룹, 신뢰도 배지, `heuristic`은 근거 `CodeBlock` 필수, 방향을 텍스트로, `detached`·`ambiguous`·`content_unavailable`·섹션 `error` 표현
+  - `C-015 RelationBadgeGroup` (목록 화면 배지) + **`ResultRow`에 `link_summary` 배선** (DEV-264)
+  - W-002·W-003 관계 섹션 연결 (확장 시 조회, 관계와 동시 변경은 독립 하위 섹션)
   - 미해결 참조는 링크 비활성
+  - **운영 배선** — `server.ts` 라우트 등록 + `runtime.ts` `buildServerDeps`까지 이어진다는 것을 회귀로 건다 (WP-028의 실패를 반복하지 않는다)
 - 제외:
-  - 그래프 시각화 (WP-043)
+  - 그래프 시각화 (WP-043) — `API-REL-004`는 이 WP가 만들지 않는다
+  - 관계 목록의 커서 페이지네이션 — 현재 어떤 요구사항도 전량 열람을 요구하지 않는다. 필요해지면 별도 CR
+  - 새 마이그레이션 — 필요한 데이터가 `prs-links`·`changed_paths.raw`·`changed_files_count`·`merged_at`에 전부 있다
+  - 새 파생 잡·새 소비자 그룹·새 배포 manifest — 이 WP는 **읽기 전용**이다
 - 완료 기준(DoD):
   - [ ] QA-W002-10, QA-W002-13, QA-W002-14가 통과한다
   - [ ] **QA-W002-11, QA-W002-12가 통과한다** (CR-041, DEV-236에서 WP-030으로부터 이관). 둘 다 W-002 화면 동작이다 — WP-030은 간선의 방향·신뢰도·역방향 조회 **가능성**까지 증명하고, 사용자가 그것을 보는 것은 이 WP다
+  - [ ] QA-W002-23~28이 통과한다 (해제·다중 후보·대상 내용 부재·`links_pending` 범위·부분 실패·동시 변경 자격)
+  - [ ] QA-W001-24, QA-W001-25가 통과한다 (관계 배지 세 상태 · 행마다 조회하지 않음)
+  - [ ] QA-W003-10, QA-W003-11이 통과한다 (커밋 관계 지연 조회 · 스택/동시 변경 미요청)
   - [ ] `heuristic` 항목에 근거 문자열이 반드시 표시된다 (FR-REL-003 AC-2)
   - [ ] 동시 변경이 상위 20건, 경로 상위 10개와 함께 반환된다 (FR-REL-007 AC-3, AC-5)
-  - [ ] 변경 파일 200개 초과 PR이 제외되고 사유가 표시된다 (AC-4)
-  - [ ] 관계 섹션이 확장 시에만 조회된다 (QA-W002-17)
+  - [ ] 변경 파일 200개 초과 PR이 제외되고 사유가 표시된다 (AC-4). **판정은 `changed_files_count`로 한다** — `files_truncated`(3000 상한)는 다른 계약이다
+  - [ ] **미머지 PR의 동시 변경이 `not_merged`로 답한다** — `created_at`·`updated_at`으로 창을 대체하지 않는다 (AC-2)
+  - [ ] **상위 20이 정확한 자카드로 선정된다** — 후보를 먼저 자른 뒤 계산하지 않는다. 상위 20 밖에 놓인 후보를 포함한 픽스처로 건다 (DEV-255)
+  - [ ] **겹치는 경로가 사전순 상위 10으로 결정론적이다** (DEV-256)
+  - [ ] 관계 섹션이 확장 시에만 조회된다 (QA-W002-17). 진입 시 `/relations`·`/co-changes` 요청이 **0건**이다
   - [ ] `evidence`가 평문으로 렌더링된다 (THR-020)
+  - [ ] **THR-034 대적 매트릭스 넷이 통과한다** (DEV-253): ① 양쪽 접근 가능 → 내용·이동 링크 있음 ② 대상 접근 불가 → 간선·식별자·근거만 ③ **A→B·C→B에서 A만 접근 가능하면 B의 incoming에 A→B만** ④ 앵커 접근 불가 → 404, 존재 누설 0
+  - [ ] **cross-repo 역방향 참조가 빠지지 않는다** — 대상 저장소 라우팅을 넣는 변이가 시험을 깬다 (DEV-250)
+  - [ ] **응답에 상한이 있다** — `limit`을 넘는 fixture에서 `truncated: true`이고 전량을 메모리에 올리지 않는다 (DEV-252)
+  - [ ] **대상 조인이 N+1이 아니다** — 관계 N건에 대해 대상 조회 왕복이 유형별 1회다 (DEV-253)
+  - [ ] **`links_pending`이 참조 그룹에만 적용된다** — 되돌림·체리픽·스택이 그 상태에서도 보인다 (DEV-258)
+  - [ ] **운영 조립이 관계 경로를 실제로 세운다** — `runtime.ts` → `server.ts` → 핸들러 → 강제 필터 조회가 이어짐을 회귀가 건다. 시험이 의존을 직접 꽂았을 때만 도는 상태는 실패다
+  - [ ] ADR-008 가드레일이 `get`·`mget`도 검사하고, 관계 조회 계층이 `links.ts`의 면제를 물려받지 않는다 (DEV-265)
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test:integration relation`, `pnpm test:e2e flow-006`
-- 기록: 원장 WP-031 상태, FR-REL-007 매핑
+- 검증 방법: `pnpm test:integration relation`, `pnpm test:integration co-change`, `pnpm test:e2e flow-006`, `pnpm run test:regression`
+- 기록: 원장 WP-031 상태, FR-REL-003~007 매핑
 
 ### WP-032 패싯·커서 페이지네이션·전문 검색
 

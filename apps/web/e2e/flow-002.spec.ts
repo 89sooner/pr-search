@@ -295,7 +295,8 @@ test.describe('보강 미완료 (QA-W002-15, FLOW-002 예외 흐름)', () => {
   });
 });
 
-test.describe('준비 중 섹션 (QA-W002-17)', () => {
+test.describe('지연 조회 섹션 (QA-W002-17)', () => {
+
   test('**진입 시 관계·릴리스를 부르지 않는다**', async ({ page }) => {
     const calls = await stubApi(page);
     await page.goto('/pr/acme/payments/1234');
@@ -312,8 +313,11 @@ test.describe('준비 중 섹션 (QA-W002-17)', () => {
     await expect(page.getByTestId('section-neighbors')).toBeVisible();
     await expect(page.getByTestId('section-releases')).toBeVisible();
     await expect(page.getByTestId('section-links')).toBeVisible();
+    // 동시 변경은 관계와 **독립한** 하위 섹션이다 (WP-031, CR-042).
+    await expect(page.getByTestId('section-cochanges')).toBeVisible();
   });
 });
+
 
 test.describe('접근 범위 (QA-W002-18)', () => {
   test('404는 존재 여부를 드러내지 않는다', async ({ page }) => {

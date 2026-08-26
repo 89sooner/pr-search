@@ -27,9 +27,9 @@
 | Route | 화면 ID | 관련 요구사항 | Rendering | 데이터 출처 |
 | --- | --- | --- | --- | --- |
 | `/` | W-001 | FR-SRCH-001 | 서버 (빈 상태) | - |
-| `/search` | W-001 | FR-SRCH-005~009, FR-SRCH-011, FR-STAT-006 | 서버 최초 + 클라이언트 갱신 | API-SRCH-004, API-STAT-001 |
-| `/pr/[owner]/[repo]/[number]` | W-002 | FR-SRCH-003, FR-REL-001~007 | 서버 (헤더·개요·커밋) + 클라이언트 (관계·동시 변경) | API-SRCH-003, API-REL-001, API-REL-002, API-REL-003, API-REL-004 |
-| `/commit/[owner]/[repo]/[sha]` | W-003 | FR-SRCH-002, FR-REL-001, FR-REL-002 | 서버 셸 + 클라이언트 조회 | API-SRCH-002, API-REL-001, API-REL-002 |
+| `/search` | W-001 | FR-SRCH-005~009, FR-SRCH-011, FR-STAT-006, FR-REL-004, FR-REL-005 | 서버 최초 + 클라이언트 갱신 | API-SRCH-004, API-STAT-001. **관계 배지(C-015)는 `API-SRCH-004`가 싣는 `link_summary`로 그린다 — 행마다 관계를 조회하지 않는다** (CR-042, DEV-264 / ADR-009) |
+| `/pr/[owner]/[repo]/[number]` | W-002 | FR-SRCH-003, FR-REL-001~007 | 서버 (헤더·개요·커밋) + 클라이언트 (관계·동시 변경) | API-SRCH-003, API-REL-001, API-REL-002, API-REL-003, API-REL-006 (관계 간선). API-REL-004는 W-007(WP-043) |
+| `/commit/[owner]/[repo]/[sha]` | W-003 | FR-SRCH-002, FR-REL-001, FR-REL-002, FR-REL-003~005 | 서버 셸 + 클라이언트 조회 | API-SRCH-002, API-REL-001, API-REL-002, API-REL-006 (관계 간선) |
 | `/ranges` | W-004 | FR-SEQ-002, FR-SEQ-003, FR-SEQ-006, FR-SEQ-007 | 서버 최초 + 클라이언트 갱신 | API-SEQ-001, API-SEQ-002, API-SEQ-006, API-SEQ-004, API-SEQ-005 |
 | `/releases` | W-005 | FR-SEQ-004, FR-REL-002 | 서버 셸 + 클라이언트 조회 | API-REL-005, API-SEQ-003, API-SEQ-006 |
 | `/analytics` | W-006 | FR-STAT-001~005 | 클라이언트 (패널별 독립 조회) | API-STAT-001~004 |
