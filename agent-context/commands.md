@@ -546,3 +546,134 @@ done
 | `python3 "$V" --strict \| tail` 뒤 `echo $?` | `exit=0`으로 보임 | **파이프의 마지막 명령 코드다.** 파일로 받고 나서 `$?`를 읽어야 한다 — 이 착각으로 "검증기 통과"를 한 번 잘못 읽을 뻔했다 |
 | 변이 스크립트 첫 형태 | `ANCHOR-FAIL match=2` | `sub1`이 실패 시 즉시 종료해 **파일이 안 바뀐 채 남는다**(원자적). 앵커를 좁혀 다시 걸었다 |
 | `pnpm run test:integration` (전량, 1회) | 실패했으나 **어느 시험인지 기록 못 함** | 출력을 `grep '^ *Tests '`로 줄여 받았다. **전량 실행 결과를 요약 줄만 남기고 버리지 마라** |
+
+---
+
+# 2026-08-26 CR-042 / WP-031 세션
+
+## 검증 배터리 (main `5d287b1` 기준 실측)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                # 통과
+pnpm lint                     # 통과
+pnpm run lint:deps            # 통과 (패키지 13, 위반 0)
+pnpm run test                 # 단위 1380 통과 (1 skipped)   [1342 → +38]
+pnpm run test:integration     # 통합 931 통과                 [900 → +31]
+pnpm run test:regression      # 회귀 146 통과                 [124 → +22]
+pnpm run test:a11y            # 212 통과 (axe 0건)            [192 → +20]
+pnpm run test:contrast        # 80쌍 통과
+pnpm build
+pnpm --filter @prs/web run build   # e2e 전에 필수
+pnpm run test:e2e             # 78건 (flow-006 11건 신설). flow-001 간헐 — 아래 귀속 절차
+```
+
+## 이 세션에서 쓴 부분 실행
+
+```bash
+pnpm run test:integration relations/relations      # THR-034 매트릭스·cross-repo 15건
+pnpm run test:integration relations/co-changes     # 정확 자카드·자격 12건
+pnpm run test:integration relations/reachability   # 운영 조립으로 라우트 실재 4건
+pnpm run test packages/es/src/relations-read       # 부분 결과·질의 모양 13건
+pnpm run test packages/es/src/architecture         # ADR-008 가드레일 7건
+pnpm run test web/lib/relations                    # 판정 24건
+pnpm run test:a11y relations                       # 20건
+cd apps/web && ./node_modules/.bin/playwright test e2e/flow-006.spec.ts --reporter=line
+```
+
+## e2e 귀속 절차 — **되돌려서 잰다** (화면을 바꾼 세션의 필수 절차)
+
+이전 세션들의 `git diff --stat -- apps/web`가 비어 있다는 근거는 **화면을 바꾸면 쓸 수 없다.**
+
+```bash
+# 1) baseline을 코드 변경 전에 남긴다 — 실패 시험 이름을 잃지 않는다
+set -o pipefail
+pnpm run test:integration 2>&1 | tee /tmp/.../baseline-integration.log
+pnpm --filter @prs/web run build && pnpm run test:e2e 2>&1 | tee /tmp/.../baseline-e2e.log
+
+# 2) 변경을 되돌려 같은 횟수를 돌린다
+git stash push -u -m "attribution-check"
+git diff --stat <main-sha> -- apps/web      # 0줄이면 화면이 main과 같다
+pnpm --filter @prs/web run build
+for i in 1 2 3; do pnpm run test:e2e > /tmp/.../attrib-e2e-$i.log 2>&1; done
+git stash pop
+
+# 3) 단독 실행으로 부하 대 논리를 가른다
+cd apps/web && for i in 1 2 3 4; do ./node_modules/.bin/playwright test e2e/flow-001.spec.ts --reporter=line; done
+
+# 4) 실패 시험 이름을 ANSI 제거해서 뽑는다 (요약 줄만 남기지 마라)
+sed 's/\x1b\[[0-9;]*[A-Za-z]//g' <log> | grep -E '^\s+\[chromium\] › '
+```
+
+**2026-08-26 실측**: 되돌린 상태 3회 중 1회 실패(같은 시험·단언·오류) / 변경 적용 8회 중 4회 / 단독 4/4 통과 / `flow-006` 7/7.
+
+## 변이 하니스 — JSON 목록을 돌린다
+
+```python
+# /tmp/.../mut.py  — [{id, what, file, suite, old, new}, ...] 를 받아
+#   1) 정확히 1건일 때만 치환(ANCHOR-FAIL로 멈춤) → 2) suite 실행
+#   3) 역방향 치환으로 원복(실패하면 즉시 중단) → 4) KILLED/SURVIVED 출력
+# CRLF를 보존하고, suite는 셸 문자열이라 `A && B`로 여러 스위트를 걸 수 있다
+```
+
+접근 통제 변이는 **넓은 scope로 바꾸는 형태**가 좋다 — 인자를 지우면 타입이 깨지고, 그것은 킬이 아니다.
+
+```
+applyMandatoryScopeFilter(q, input.scope)
+→ applyMandatoryScopeFilter(q, { kind: 'org_team', orgIds: [1], teamIds: [], visibilities: [...] })
+```
+
+## 문서 편집 — 앵커 뒤 개행 함정
+
+CRLF 보존 편집기에서 앵커의 끝 개행을 벗기고 새 내용이 개행으로 끝나면 **빈 줄이 하나 더 생긴다.** 표 안에 생기면 Markdown 표가 끊긴다. 편집 뒤 반드시 확인한다.
+
+```bash
+# 표 행 사이 빈 줄 탐지 (앞뒤가 모두 '|')
+python3 - "$f" <<'PY'
+import io, sys
+lines = io.open(sys.argv[1], encoding='utf-8', newline='').read().replace('\r\n','\n').split('\n')
+bad = [i+1 for i in range(1,len(lines)-1) if lines[i]=='' and lines[i-1].startswith('|') and lines[i+1].startswith('|')]
+if bad: print(f'{sys.argv[1]}: {bad}')
+PY
+# main 대비 연속 빈 줄 수가 늘지 않았는지도 함께 본다
+```
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 증상 | 원인·해결 |
+| --- | --- | --- |
+| `pnpm typecheck` | `Type 'string' has no properties in common with 'ScoreSort'` | ES 타입은 `sort: [{ _score: { order: 'desc' } }]`를 요구한다. 문자열 축약형이 안 된다 |
+| `pnpm run test:integration relations/relations` | 대상 간선이 결과에 없다 | **내 픽스처 결함.** 상한용 간선 101건을 같은 source에서 내 같은 질의에 섞였다. 전용 source로 갈랐다 |
+| `pnpm run test:integration relations/co-changes` | `expected 500 to be 999` | 픽스처가 자카드 동점을 만들었고 `pr_number` 오름차순 규칙이 이겼다. **정렬이 옳고 단언이 틀렸다** |
+| `pnpm run test:regression` | `not.toContain('created_at')` 실패 | 검사가 **주석까지** 셌다. `codeOf()`로 주석을 걷어 내고 걸었다 |
+| `pnpm run test:a11y relations` | `getByTestId` 여럿 발견 | 대역이 고정 `link_type`을 돌려줘 네 그룹이 같은 testid를 냈다. 요청을 되돌려주는 대역으로 고쳤다 |
+| `pnpm lint` | 미사용 `PendingSection` import | 골격을 실제 섹션으로 바꾸고 import를 남겼다. **마지막 파일을 쓴 뒤 다시 돌려라**(risks 3) |
+| `python3 edit.py replace` | 문서 표가 끊김 | 앵커 개행 함정(위). 정규화 스크립트로 일괄 정리 |
+
+## 문서 검증기 (변화 없음)
+
+```bash
+V=/home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py
+python3 "$V" --root . --strict     # 종료 코드 1, ERROR 2건(9·5)이 정상
+```
+
+판정은 `exit 0`이 아니라 **main 대비 증감 0**이다. 그리고 **검사 낱말(`미정` 등)을 문서에 재생산하면 카운트가 늘어난다** — 이번에도 세 곳에서 밟았고 낱말을 바꿔 써서 되돌렸다.
+
+## 리뷰 확인 — 전수로 센다 (범위를 좁히지 마라)
+
+```bash
+for n in $(seq 1 47); do
+  c=$(gh api graphql -f query="{ repository(owner:\"89sooner\",name:\"pr-search\"){
+    pullRequest(number:$n){ reviewThreads(first:100){ nodes{ isResolved isOutdated } } } } }" \
+    --jq '[.data.repository.pullRequest.reviewThreads.nodes[]|select(.isResolved==false and .isOutdated==false)]|length' 2>/dev/null)
+  [ -n "$c" ] && [ "$c" != "0" ] && printf 'PR #%s = %s\n' "$n" "$c"
+done
+```
+
+**CI 대기는 커밋 SHA의 check-runs로 본다** — `gh pr checks`는 옛 실행 결과를 그대로 보여 줄 수 있다.
+
+```bash
+SHA=$(git rev-parse HEAD)
+gh api "repos/89sooner/pr-search/commits/$SHA/check-runs" \
+  --jq '.check_runs[] | "\(.name): \(.status) \(.conclusion // "")"'
+```

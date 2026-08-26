@@ -1,7 +1,7 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=37e9ba5540d3f1b827bdbe1fe184b1c2ce382879476efbbbaa3f459a8e5b1348 bytes=25739 lines=440 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;DISTINCT;pull_request_number;NOT;NULL;expected;Node;e2e;Codex;v20;install;visitor;engines;v22;a11y
+@kv sha256=5833ac5eaf06b885814e50b06317fb3f50a798f6320a99e255d0ed94b2440296 bytes=32294 lines=519 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;DISTINCT;pull_request_number;NOT;NULL;expected;Node;e2e
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
 @h3 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다
@@ -177,7 +177,7 @@
 |만든 것이 아니지만, **숫자를 그대로 옮기면 다음 인계도 틀린다.** 세는 법:
 @p bash
 @path grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
-@code lang=txt sha=65097bd91313 lines=108 kept=80
+@code lang=txt sha=263070093ccf lines=150 kept=80
 |## 29. 리뷰가 **머지 전에** 왔다 — 그래도 머지 후 재확인은 했다
 |이번에는 CI 초록 약 4분 뒤에 6건이 도착했다. 이전 세션들의 "머지 뒤 도착"과 다르지만
 |**규율은 그대로다**: 머지 직후 다시 세고, 이번에는 전수(PR #1~#44)로 셌다. 그 덕에
@@ -231,4 +231,24 @@
 |다음 질의에 적용되지 않았다 — 풀의 `query`는 문장마다 다른 커넥션일 수 있고 `SET LOCAL`은
 |트랜잭션 범위다. `withTransaction`으로 감싸야 한다.
 |## 37. 시험용 SHA seed가 hex가 아니면 **시험이 조용히 헛돈다**
-|...cut 28 lines
+|...cut 70 lines
+@p bash set -o pipefail
+@cmd pnpm run test:integration 2>&1 | tee /tmp/.../baseline-integration.log
+@code lang=txt sha=ab86ec35c173 lines=31 kept=31
+|## 43. 금지를 거는 회귀는 **주석을 걷어 낸 코드**만 봐야 한다
+|"이 필드를 쓰지 않는다"를 파일 전문에 `not.toContain`으로 걸었더니 **그 사실을 설명한 주석**에 걸렸다. 문서 검증기가 자기 검색어를 세는 것과 같은 함정이다(risks 35).
+|→ 검사 범위를 좁힌다. `codeOf()` 헬퍼로 `/* */`와 `//`를 걷어 낸 뒤 건다.
+|## 44. 대역이 **요청을 되돌려주게** 하라
+|a11y 대역이 모든 관계 요청에 고정 `link_type: 'references'`를 돌려줬다. 네 그룹이 전부 `references`로 그려져 같은 `data-testid`가 여러 개 생겼고, `getByTestId`가 "여럿 발견"으로 터지고 나서야 알았다.
+|→ risks 3번의 반복이다: **이 대역이 틀린 입력을 받아 주지는 않는가.** 요청 URL에서 응답을 만드는 대역으로 고쳤다.
+|## 45. 픽스처가 **두 사실을 한 자리에서** 물으면 규칙이 옳아도 실패한다
+|동시 변경 픽스처에서 `#500`을 자카드 1.0으로 만들었더니 `#999`와 동점이 되고 `pr_number` 오름차순 규칙이 이겨 `#500`이 1위가 됐다. **정렬은 옳았고 내 단언이 틀렸다.**
+|그리고 상한 시험용 간선 101건을 `A#10`에서 냈더니 "A#10의 참조" 질의에 섞여 대상 간선을 밀어냈다.
+|→ **한 픽스처가 여러 시험에 걸리면 그 시험들이 서로를 방해하는지 먼저 보라.** 상한·정렬·내용은 각자 전용 fixture를 갖는 편이 싸다.
+|## 46. 변이가 살아남으면 경로를 읽어라 — 이번에도 시험 구멍이었다
+|`M5`(신뢰도를 언제나 `exact`로 보고)가 살아남았다. 등가처럼 보였지만 아니었다 — 순서와 다중 후보 판정은 **원본 간선의** 신뢰도를 쓰므로 응답에 실리는 값이 틀려도 그 둘은 그대로였다. **응답의 `confidence` 값 자체를 아무도 단언하지 않고 있었다.** 화면 배지와 QA-W002-12가 그 값에 걸려 있다.
+|→ risks 32번이 세 번째로 값을 했다. **살아남은 변이는 "시험 구멍"이거나 "결함"이다. 등가는 셋째 가능성이다.**
+|## 환경 (변경 없음, 재확인)
+|- Node **v22.23.2** 필수. **마이그레이션은 014까지** — CR-042는 새 마이그레이션을 만들지 않았다
+|- 컨테이너 3종 healthy. `prs`·`prs_test` 존재
+|- `apps/web`을 바꾸면 **e2e 전에 `pnpm --filter @prs/web run build`**가 필요하다. 이번 세션에서 여러 번 필요했다
