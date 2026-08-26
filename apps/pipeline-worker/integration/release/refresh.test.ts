@@ -41,6 +41,7 @@ import {
   type ReleaseDeps,
 } from '../../src/release.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
+import { MAX_RETRIES } from '@prs/bus';
 
 const REPOSITORY_ID = 6101;
 const REF = { owner: 'acme', repo: 'payments' };
@@ -373,23 +374,56 @@ describe('실패 갈래', () => {
     expect((await releaseRepo.listReleases(pool, REPOSITORY_ID)).length).toBeGreaterThan(0);
   });
 
-  it('**일시 실패 이벤트는 ack가 아니라 retry다** — 재시도 예산을 버스가 집행한다', async () => {
+  const releaseEvent = (deliveryCount: number): never =>
+    ({
+      payload: { repository_id: REPOSITORY_ID, correlation_id: 'evt-1' },
+      correlation_id: 'evt-1',
+      delivery_count: deliveryCount,
+    }) as never;
+
+  it('**일시 실패 이벤트는 ack가 아니라 retry다** — 예산 안에서는 다시 시도한다', async () => {
     /*
      * ack하면 XACK로 사라져 문서화된 3회 백오프(비동기 문서 4장)를 쓰지 못하고,
      * 일시 장애가 "다음 웹훅 또는 6시간 스윕까지 지연"으로 확대된다.
      */
-    const event = {
-      payload: { repository_id: REPOSITORY_ID, correlation_id: 'evt-1' },
-      correlation_id: 'evt-1',
-    } as never;
     const disposition = await handleReleaseEvent(
       deps({ sync: async () => Promise.reject(new Error('network down')) }),
-      event,
+      releaseEvent(1),
     );
     expect(disposition).toEqual({ kind: 'retry', reason: 'mirror_sync_failed' });
 
     // 성공은 그대로 ack다.
-    expect(await handleReleaseEvent(deps(), event)).toEqual({ kind: 'ack' });
+    expect(await handleReleaseEvent(deps(), releaseEvent(1))).toEqual({ kind: 'ack' });
+  });
+
+  it('**예산을 소진하면 종료 처분으로 파티션을 푼다** (CR-039, DEV-228)', async () => {
+    /*
+     * 이 자리는 원래 `delivery_count`를 보지 않고 무조건 `retry`를 냈다. 주석은
+     * "버스가 재시도 예산을 집행한다"고 적었지만 **버스는 그러지 않는다** —
+     * 두 어댑터 모두 `retry`를 받으면 백오프만 늘리고 횟수 상한을 보지 않는다.
+     * 그래서 영구 실패가 무한히 재시도되며 그 파티션의 뒤 이벤트를 영영 막았다
+     * (PR #30의 P1 지적, 미해결로 남아 있었다).
+     *
+     * 릴리스 스냅숏은 6시간 보정 스윕과 재채번 후 재동기화라는 다른 경로가
+     * 있으므로 종료 처분이 유실이 아니다.
+     */
+    const permanent = deps({ sync: async () => Promise.reject(new Error('mirror gone forever')) });
+
+    // 예산 안: 다시 시도한다.
+    expect(await handleReleaseEvent(permanent, releaseEvent(MAX_RETRIES - 1))).toEqual({
+      kind: 'retry',
+      reason: 'mirror_sync_failed',
+    });
+
+    // 소진: 파티션을 푼다.
+    expect(await handleReleaseEvent(permanent, releaseEvent(MAX_RETRIES))).toEqual({
+      kind: 'dead_letter',
+      reason: 'mirror_sync_failed',
+    });
+    expect(await handleReleaseEvent(permanent, releaseEvent(MAX_RETRIES + 5))).toEqual({
+      kind: 'dead_letter',
+      reason: 'mirror_sync_failed',
+    });
   });
 });
 

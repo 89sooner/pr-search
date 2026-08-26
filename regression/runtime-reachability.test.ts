@@ -99,6 +99,24 @@ const CAPABILITIES = [
     manifest: 'deploy/k8s/pipeline-worker-mirror.yaml',
   },
   {
+    id: 'JOB-REL-001',
+    what: '참조 간선 파생·해결',
+    process: 'pipeline-worker',
+    role: 'link',
+    start: 'linkSubscription = await startLinkWorker(',
+    stop: 'linkSubscription?.close()',
+    manifest: 'deploy/k8s/pipeline-worker-link.yaml',
+  },
+  {
+    id: 'JOB-REL-006',
+    what: '참조 간선 전량 재파생',
+    process: 'pipeline-worker',
+    role: 'link',
+    start: 'referenceRebuildRunner = startReferenceRebuildRunner(',
+    stop: 'referenceRebuildRunner?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-link.yaml',
+  },
+  {
     id: 'JOB-ING-008',
     what: 'PG↔ES 정합성 감시',
     process: 'pipeline-worker',
@@ -155,6 +173,99 @@ describe('주기 스윕을 가진 역할은 replica 1이다', () => {
       expect(read(manifest)).toMatch(/replicas:\s*1\b/);
     },
   );
+});
+
+describe('참조 간선 파생의 도달성 (WP-029 / CR-039)', () => {
+  const LINK = read('apps/pipeline-worker/src/link.ts');
+  const COMMIT_ENRICH = read('apps/pipeline-worker/src/commit-enrich.ts');
+
+  it('**커밋 보강이 ready 신호를 실제로 발행한다** (DEV-215)', () => {
+    /*
+     * 이것이 없으면 직접 푸시 커밋의 참조가 영원히 간선이 되지 않는다 —
+     * `EVT-ING-003`은 `project`가 만든 문서에만 나오기 때문이다. 상수 이름이
+     * 아니라 **발행 호출**을 본다.
+     */
+    expect(COMMIT_ENRICH).toContain('await deps.bus.publish(TOPICS.projected,');
+    expect(COMMIT_ENRICH).toContain('event_name: EVENT_NAMES.commitMetadataReady');
+  });
+
+  it('**색인 뒤·완결 표식 앞에 발행한다** (PR #44 리뷰 P1)', () => {
+    /*
+     * 순서가 셋 다 의미를 갖는다.
+     *
+     * - 색인보다 **뒤**: 먼저 내면 관계 워커가 아직 메시지가 없는 커밋을 읽어
+     *   참조 0건으로 확정한다
+     * - 완결 표식보다 **앞**: 뒤에 두면 발행 실패가 영구 유실이 된다 — 스냅숏도
+     *   있고 투영도 찍혀 두 스윕이 모두 건너뛰고, 핸들러는 ack한다. 직접 푸시
+     *   커밋의 유일한 방아쇠가 사라진다
+     */
+    const indexed = COMMIT_ENRICH.indexOf('await upsertCommitMetadata(');
+    const publish = COMMIT_ENRICH.indexOf('event_name: EVENT_NAMES.commitMetadataReady');
+    const marked = COMMIT_ENRICH.indexOf('markCommitProjected');
+    expect(indexed).toBeGreaterThan(-1);
+    expect(publish).toBeGreaterThan(indexed);
+    expect(marked).toBeGreaterThan(publish);
+  });
+
+  it('**커밋 보강이 자기 이벤트를 되받아 처리하지 않는다** (DEV-216)', () => {
+    // 되먹임의 유일한 방어선이다. 이 줄이 없으면 보강 → 발행 → 보강 무한 루프다.
+    expect(COMMIT_ENRICH).toContain(
+      "if (name === EVENT_NAMES.commitMetadataReady) return { kind: 'ack' };",
+    );
+  });
+
+  it('link 워커가 방아쇠 **둘**을 모두 처리한다', () => {
+    expect(LINK).toContain('name === EVENT_NAMES.ingestionProjected');
+    expect(LINK).toContain('name === EVENT_NAMES.commitMetadataReady');
+  });
+
+  it('link 워커가 **기본 그룹**을 쓴다 — 이름을 바꾸면 읽던 자리를 잃는다', () => {
+    expect(LINK).toContain('consumerGroup(TOPICS.projected)');
+    expect(LINK).not.toContain("consumerGroup(TOPICS.projected, 'link')");
+  });
+
+  it('**파생의 정본이 PostgreSQL이다** (ADR-004, DEV-221)', () => {
+    // 정본에서 본문을 읽는 호출이 실재해야 한다. ES 문서를 파생 근거로 읽지 않는다.
+    expect(LINK).toContain('prSnapshotRepo.listSnapshotsAfter(');
+    expect(LINK).toContain('commitSnapshotRepo.findCommitSnapshot(');
+  });
+
+  it('**운영자가 JOB-REL-006을 시작할 수 있다** (PR #44 리뷰 P1)', () => {
+    /*
+     * 러너만 있고 큐에 넣을 경로가 없으면 그 잡은 영원히 돌지 않는다.
+     * API-ADM-002가 유일한 시작 경로이고, 그것은 PostgreSQL 정본에서
+     * `prs-links`를 복구하는 유일한 길이다 (ADR-004).
+     */
+    const jobs = read('apps/search-api/src/ops/jobs.ts');
+    const routes = read('apps/search-api/src/ops/routes.ts');
+    expect(jobs).toContain("export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild'] as const;");
+    expect(routes).toContain("if (!isOperatorJobType(body['type'])) {");
+    // 러너와 API가 **같은 `target` 형식**을 쓴다 — 다르면 러너가 자기 행을 못 읽는다.
+    expect(LINK).toContain('repositoryRepo.findRepositoryBySlug(');
+  });
+
+  it('**해결된 접두 간선도 다시 판정한다** (PR #44 리뷰 P1)', () => {
+    // `resolved`로 걸러 내면 한 번 잘못 붙은 간선을 다시 볼 방법이 없다.
+    expect(LINK).toContain("include: target.kind === 'commit' ? 'any' : 'unresolved'");
+  });
+
+  it('**재파생이 같은 파생 핸들러를 쓴다** — 두 번째 알고리즘을 만들지 않는다', () => {
+    const rebuild = LINK.slice(LINK.indexOf('export async function runReferenceRebuild'));
+    expect(rebuild).toContain('handleSourceReady(');
+  });
+
+  it('**재시도 예산을 핸들러가 집행한다** (DEV-228)', () => {
+    expect(LINK).toContain('delivery_count >= MAX_RETRIES');
+    expect(LINK).toContain("kind: 'dead_letter'");
+  });
+
+  it('**완전한 파생에 성공했을 때만 stale을 지운다** (DEV-220)', () => {
+    // 실패 갈래가 제거보다 **앞에서** 돌아 나가야 한다.
+    const guard = LINK.indexOf('stale 제거를 하지 않는다');
+    const remove = LINK.indexOf('deleteStaleReferenceLinks(deps.es');
+    expect(guard).toBeGreaterThan(-1);
+    expect(remove).toBeGreaterThan(guard);
+  });
 });
 
 describe('경로가 실재하는지', () => {

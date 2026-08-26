@@ -53,9 +53,28 @@ export type CreateJobOutcome =
  * DB에서 강제하므로 **먼저 검사하지 않아도** 경합에서 둘이 뜨지 않는다.
  * 여기서 미리 보는 것은 409를 돌려주기 위한 것이지 정합성을 위한 것이 아니다.
  */
+/**
+ * 운영자가 API-ADM-002로 만들 수 있는 잡 유형.
+ *
+ * **집는 러너가 있는 것만 연다** — 러너 없는 유형을 받으면 아무도 잡지 않는
+ * 유령 잡이 큐에 남고, 운영자는 진행률이 영원히 0인 이유를 알 수 없다.
+ *
+ * - `backfill`: JOB-ING-004 (WP-019)
+ * - `link_rebuild`: JOB-REL-006 참조 간선 전량 재파생 (WP-029 / CR-039).
+ *   PostgreSQL 정본에서 색인을 복구하는 유일한 경로다 — 이것이 없으면 과거
+ *   엔티티와 재구축한 인덱스가 간선을 영원히 얻지 못한다 (PR #44 리뷰 P1)
+ */
+export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild'] as const;
+
+export type OperatorJobType = (typeof OPERATOR_JOB_TYPES)[number];
+
+export function isOperatorJobType(value: unknown): value is OperatorJobType {
+  return typeof value === 'string' && (OPERATOR_JOB_TYPES as readonly string[]).includes(value);
+}
+
 export async function createJob(
   pool: Pool,
-  type: 'backfill',
+  type: OperatorJobType,
   target: string,
   requestedBy: string,
 ): Promise<CreateJobOutcome> {

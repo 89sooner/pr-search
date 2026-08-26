@@ -3,9 +3,9 @@
  *
  * 시스템 아키텍처 4장대로 한 이미지에 여러 역할이 들어가고, 환경 변수
  * `PIPELINE_WORKER_ROLES`가 이 프로세스가 맡을 역할을 정한다. 지금 채워진
- * 역할은 셋이다 — `batch`의 아웃박스 재적재(JOB-ING-007, WP-005), `enrich`의
- * PR 보강(JOB-ING-002, WP-007), `project`의 문서 투영(JOB-ING-003, WP-008).
- * `sequence`·`link`는 이후 WP가 채운다.
+ * 역할은 `batch`·`enrich`·`backfill`·`project`·`mirror`·`sequence`·`reconcile`·
+ * `release`·`authz`·`link`다. **`link`는 WP-029가 채웠다** (CR-039) — JOB-REL-001
+ * 참조 간선 파생, JOB-REL-005 미해결 참조 해결, JOB-REL-006 전량 재파생.
  */
 
 import { createPool, jobRepo, repositoryRepo } from '@prs/db';
@@ -63,6 +63,12 @@ import {
   startSnapshotBootstrapRunner,
 } from './snapshot-bootstrap.js';
 import { startSequenceRepairRunner, type RepairRunner } from './sequence-repair-runner.js';
+import {
+  startLinkWorker,
+  startReferenceRebuildRunner,
+  type LinkLogFields,
+  type RebuildRunner,
+} from './link.js';
 import { applyRepositoryTeams, createEsClient } from '@prs/es';
 import type { Subscription } from '@prs/bus';
 import type { ReleaseSummary } from '@prs/github';
@@ -530,6 +536,8 @@ let releaseSweeper: ReleaseSweeper | undefined;
 let reconcileSweeper: ReconcileSweeper | undefined;
 /** JOB-ING-010 러너. 예약과 같은 역할에서 함께 선다 (CR-037, DEV-194). */
 let snapshotBootstrapRunner: BackfillRunner | undefined;
+let linkSubscription: Subscription | undefined;
+let referenceRebuildRunner: RebuildRunner | undefined;
 
 if (roles.includes('reconcile')) {
   const config = resolveGitHubConfig();
@@ -698,6 +706,47 @@ if (roles.includes('release')) {
   releaseSweeper = startReleaseSweeper(releaseDeps);
 }
 
+if (roles.includes('link')) {
+  /*
+   * JOB-REL-001·005·006 (WP-029 / CR-039).
+   *
+   * **파생의 정본은 PostgreSQL이다** — `pull_request_snapshot.document`와
+   * `commit_snapshot.message`. Elasticsearch 현재 문서를 파생의 근거로 읽지
+   * 않는다 (ADR-004). 그래서 이 역할에는 GHE 자격 증명이 필요 없다.
+   *
+   * **기본 소비자 그룹 `link`를 쓴다.** 이름을 바꾸면 Redis에서 읽던 자리를
+   * 잃는다 (CR-038, DEV-205). 커밋 보강은 `link:commit-enrich`라는 다른 group이라
+   * 두 소비자가 같은 이벤트를 각각 전부 받는다.
+   */
+  esClient ??= createEsClient();
+  const linkDeps = {
+    pool,
+    es: esClient,
+    bus,
+    metrics,
+    /*
+     * URL 참조는 **승인된 GHE 호스트만** 인정한다 (THR-036). 구성이 없으면
+     * URL 참조를 만들지 않는다 — 검증할 근거가 없는 상태에서 외부가 심은
+     * 문자열을 내부 대상으로 해석하지 않는다.
+     */
+    gheHost: resolveGitHubConfig().baseUrl,
+    log: (entry: LinkLogFields) => {
+      process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, ...entry })}\n`);
+    },
+  };
+
+  linkSubscription = await startLinkWorker(linkDeps);
+
+  /*
+   * JOB-REL-006 전량 재파생 (DEV-221).
+   *
+   * Redis stream backlog는 마이그레이션 보장이 아니다 — retention이 정본이 아니고,
+   * WP-029 이전의 직접 푸시 커밋에는 애초에 `EVT-ING-003`이 없었다. 이 러너가
+   * 없으면 배포 뒤 "새 이벤트부터만 관계가 생긴다"가 운영 구멍으로 남는다.
+   */
+  referenceRebuildRunner = startReferenceRebuildRunner(linkDeps);
+}
+
 if (roles.includes('authz')) {
   // JOB-AUTH-001. GHE 자격 증명은 **선택**이다 — 없으면 `team_member` 표만으로
   // 팀을 펼친다. 표가 비어 있으면 팀 무효화가 아무도 맞히지 못하므로,
@@ -821,6 +870,8 @@ const shutdown = (): void => {
       await consistencySweeper?.stop();
       await reconcileSweeper?.stop();
       await snapshotBootstrapRunner?.stop();
+      await referenceRebuildRunner?.stop();
+      await linkSubscription?.close();
       await repairRunner?.stop();
       await authzSubscription?.close();
       await authzRedisClient?.quit();

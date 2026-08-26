@@ -385,26 +385,40 @@ merge_seq = git rev-list --first-parent --reverse <base_branch> 에서의 1-기�
 
 **옵션 2 + 핫패스 비정규화.**
 
-`prs-links` 인덱스의 문서 구조:
+`prs-links` 인덱스의 문서 구조 (**CR-039로 구현에 맞춰 정정**):
 
 ```
-link_id, repository_id,
-from_type, from_id, to_type, to_id,
-link_type, confidence, evidence, direction,
-resolved (bool), created_at
+link_id, reference_key,
+repository_id, org_id, visibility, allowed_team_ids,
+from_type, from_id, to_type, to_id, to_repository_id,
+link_type, confidence, evidence,
+resolved (bool), detached (bool), created_at
 ```
 
 - 간선은 정방향 1건만 저장하고, 역방향 조회는 `to_id`로 질의한다. 두 벌 저장하지 않는다.
 - 관계 그래프 탐색(FR-REL-008)은 깊이만큼 반복 질의한다. 깊이 최대 3, 노드 상한 300이므로 최대 3회 질의로 끝난다. 그래프 DB가 필요한 규모가 아니다.
-- **핫패스 비정규화**: PR·커밋 문서에 `link_summary` 객체(`has_revert`, `has_cherry_pick`, `reverted_by_count`, `reference_count`)를 함께 저장한다. 검색 결과 목록의 관계 배지(C-015)와 `is:reverted` 필터(FR-REL-004 AC-4)가 간선 인덱스 조회 없이 동작한다.
+- **핫패스 비정규화**: PR·커밋 문서에 `link_summary` 객체(`has_revert`, `is_reverted`, `has_cherry_pick`, `has_stack`, `reference_count`)를 함께 저장한다. 검색 결과 목록의 관계 배지(C-015)와 `is:reverted` 필터(FR-REL-004 AC-4)가 간선 인덱스 조회 없이 동작한다.
 - 미해결 참조(대상 미색인)는 `resolved: false`로 저장하고, 대상 색인 시 해결 상태로 갱신한다 (FR-REL-003 AC-3).
+- **간선도 강제 접근 범위 필터를 지난다** (ADR-008). 접근 통제 material은 **근거를 소유한 저장소**(= `from` 쪽)의 것이며, 문서 생성 시점에 함께 넣는다.
+
+### CR-039 개정 (2026-08-26) — 적힌 것을 구현된 것에 맞춘다
+
+이 ADR의 결정을 뒤집지 않는다. 옵션 2 + 핫패스 비정규화는 그대로다. 아래 넷은 **문서가 초기 설계에 머물러 있던 자리**다.
+
+1. **`direction` 필드는 존재한 적이 없다.** 방향은 `from_*`/`to_*`의 구조가 이미 표현한다. 목록에서 지운다.
+2. **접근 통제 필드 넷과 `to_repository_id`·`detached`가 빠져 있었다.** 매핑은 처음부터 선언하고 있었고 `TEAM_SCOPED_ALIASES`가 `prs-links`를 포함한다.
+3. **`link_summary`에 `reverted_by_count`가 아니라 `is_reverted`·`has_stack`이 있다.** 수를 세지 않고 불리언으로 둔 것은 `is:reverted` 필터가 필요로 하는 것이 존재 여부뿐이기 때문이다.
+4. **`reference_key`를 더한다 (DEV-217).** 위 마지막 항목("미해결 참조를 간선 1건 갱신으로 해결한다")은 **`link_id`가 해결 전후로 같아야만** 성립한다. `to_id`를 ID 재료로 쓰면 축약 SHA 참조가 해결되는 순간 ID가 바뀌어 문서가 둘이 된다. `references` 간선의 안정 ID를 `link_type` + source + `reference_key`로 만들어 그 결정을 실제로 성립시킨다. 새 결정이 아니라 **이미 한 결정을 지키는 수단**이므로 새 ADR을 세우지 않는다.
 
 ### Consequences
 
 - Positive: 양방향 조회가 대칭적이다. 미해결 참조 해결이 간선 1건 갱신으로 끝난다. 목록 화면이 빠르다.
 - Negative: `link_summary` 비정규화 필드가 간선 변경 시 갱신되어야 하므로 일관성 지점이 하나 는다.
+- Negative (CR-039): `link_summary`의 leaf 소유자가 WP-029와 WP-030으로 갈리므로 **객체 통째 대입을 쓸 수 없다.** leaf 단위 갱신 경로가 하나 는다 (DEV-222).
+- Negative (CR-039): 간선이 대상 저장소를 가리킬 수 있으므로 **관계 조회 API가 대상 접근 범위를 다시 강제해야 한다.** 간선의 접근 범위는 source의 것이지 target의 것이 아니다 (DEV-224, THR-034).
 - Follow-up: `link_summary` 갱신은 `link` 워커가 간선 쓰기와 같은 벌크 요청에 포함한다.
 - Follow-up: 정합성 감시 잡이 `link_summary`와 간선 인덱스 실제 값을 표본 대조한다.
+- Follow-up (CR-039): 간선은 재파생 가능한 파생 데이터이므로 PostgreSQL 간선 표를 두지 않는다. 대신 **`pull_request_snapshot`·`commit_snapshot`만으로 `prs-links` 전량을 다시 만들 수 있어야** ADR-004가 이 축에서도 성립한다 (JOB-REL-006, DEV-221).
 
 ## ADR-010 페이지네이션은 `search_after` 커서 전용
 

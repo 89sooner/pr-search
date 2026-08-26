@@ -85,6 +85,9 @@ export const COMMIT_MAPPING: estypes.MappingTypeMapping = {
         has_revert: { type: 'boolean' },
         is_reverted: { type: 'boolean' },
         has_cherry_pick: { type: 'boolean' },
+        // WP-029 소유 (CR-039, DEV-219). PR 문서에는 있었고 커밋에는 없어서
+        // W-003이 참조 수를 간선 인덱스 조회 없이 그릴 수 없었다.
+        reference_count: { type: 'integer' },
       },
     },
 
@@ -92,6 +95,17 @@ export const COMMIT_MAPPING: estypes.MappingTypeMapping = {
     // 비정규화가 PR·커밋 양쪽에 같은 짝(release_tags·unreleased)을 쓴다 (WP-024).
     unreleased: { type: 'boolean' },
     enrichment_pending: { type: 'boolean' },
+    /**
+     * 관계 파생이 아직 완결되지 않았다 (CR-039, DEV-218).
+     *
+     * FR-REL-003의 예외 처리는 PR **또는 커밋**을 대상으로 하는데 커밋 매핑에는
+     * 이 필드가 없었다. 매핑이 `strict`이므로 표시 자체가 THR-010으로 거부되어,
+     * 승인된 예외 처리를 커밋에 대해 표현할 수단이 없었다.
+     *
+     * **미해결 참조가 있다는 뜻이 아니다.** 미해결은 정상 상태다 — 이 표식은
+     * "현재 본문에 대한 파생이 완결됐다고 보장할 수 없다"는 뜻이다.
+     */
+    links_pending: { type: 'boolean' },
     last_delivery_id: { type: 'keyword', index: false },
     indexed_at: { type: 'date' },
   },

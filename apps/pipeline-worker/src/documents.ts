@@ -14,14 +14,21 @@
 import {
   commitDocId,
   pullRequestDocId,
+  type CommitRole,
   type EnrichedReview,
   type IngestionEnriched,
 } from '@prs/domain';
 import type { RepositoryRow } from '@prs/db';
 import type { UpsertRequest } from '@prs/es';
 
-/** 커밋이 문서에서 갖는 역할 (FR-SRCH-002 AC-1~AC-3). */
-export type CommitRole = 'merge_commit' | 'source_commit';
+/**
+ * 투영이 만들 수 있는 역할 둘 (FR-SRCH-002 AC-1~AC-3).
+ *
+ * `direct_push`는 투영이 판정할 수 없다 — first-parent 체인 소속을 모르기
+ * 때문이다(CR-038, DEV-207). 그 판정은 커밋 보강이 한다. 어휘 자체는
+ * `@prs/domain`이 소유하고 여기서는 **좁힌다** (CR-039, DEV-225).
+ */
+type ProjectedCommitRole = Extract<CommitRole, 'merge_commit' | 'source_commit'>;
 
 export interface ProjectionSource {
   readonly enriched: IngestionEnriched;
@@ -182,7 +189,7 @@ export function buildCommitDocuments(source: ProjectionSource): readonly UpsertR
   const pr = enriched.pull_request;
 
   // SHA 하나에 문서 하나다. 머지 커밋이 원본 목록에도 있으면 머지 커밋이 이긴다.
-  const roles = new Map<string, CommitRole>();
+  const roles = new Map<string, ProjectedCommitRole>();
   for (const sha of enriched.source_commit_shas) {
     const normalized = sha.toLowerCase();
     if (normalized !== '') roles.set(normalized, 'source_commit');

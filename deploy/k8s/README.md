@@ -34,6 +34,7 @@ kubectl wait --for=condition=complete job/prs-migrate -n pr-search --timeout=300
 kubectl apply -f pipeline-worker-enrich.yaml pipeline-worker-project.yaml   # 2. 워커 (REL-001)
 kubectl apply -f pipeline-worker-sequence.yaml pipeline-worker-reconcile.yaml  #    워커 (REL-003)
 kubectl apply -f pipeline-worker-mirror.yaml                                #    워커 (REL-003, 미러 PVC 포함)
+kubectl apply -f pipeline-worker-link.yaml                                  #    워커 (REL-004, 관계 파생)
 kubectl apply -f search-api.yaml ingest-gateway.yaml                        # 3. API
 ```
 

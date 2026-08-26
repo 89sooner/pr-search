@@ -10,6 +10,16 @@ export const MIN_SHA_PREFIX_LENGTH = 7;
 /** 전체 커밋 SHA 길이. */
 export const FULL_SHA_LENGTH = 40;
 
+/**
+ * 본문에서 **참조로 추출하는** 축약 SHA의 최대 길이 (FR-REL-003 AC-1).
+ *
+ * 사용자가 입력하는 축약 SHA 검색(FR-SRCH-002)의 상한과 다르다 — 그쪽은
+ * 39자까지 받는다. 본문 추출은 더 좁다: 13~39자 hex 문자열은 SHA일 수도 있지만
+ * 무작위 식별자·해시일 가능성이 높고, 그것을 참조로 만들면 간선이 소음으로
+ * 채워진다. AC-1이 정한 범위가 7~12자다.
+ */
+export const MAX_REFERENCE_SHA_PREFIX_LENGTH = 12;
+
 /** 전문 검색 최소 질의 길이 (오류 코드 `QUERY_TOO_SHORT`). */
 export const MIN_QUERY_LENGTH = 2;
 

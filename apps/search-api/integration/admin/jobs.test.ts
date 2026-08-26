@@ -122,8 +122,32 @@ describe('POST — 잡 실행', () => {
     expect(rows).toHaveLength(0);
   });
 
+  it('**`link_rebuild`를 큐에 넣을 수 있다** — JOB-REL-006의 유일한 시작 경로다 (CR-039)', async () => {
+    /*
+     * 이 경로가 `backfill`만 받던 동안 **운영자는 JOB-REL-006을 시작할 방법이
+     * 아예 없었다** (PR #44 리뷰 P1). 그것은 PostgreSQL 정본에서 `prs-links`를
+     * 복구하는 유일한 경로이므로, 과거 엔티티와 재구축한 인덱스가 간선을
+     * 영원히 얻지 못한다는 뜻이었다.
+     */
+    const response = await post({ type: 'link_rebuild', target: TARGET });
+
+    expect(response.statusCode).toBe(201);
+    const body = response.json<{ job_id: number; type: string; state: string; target: string }>();
+    expect(body.type).toBe('link_rebuild');
+    expect(body.state).toBe('queued');
+    // **`target`은 다른 잡과 같은 `owner/repo`다** — 러너가 그 형식을 해석한다.
+    expect(body.target).toBe(TARGET);
+  });
+
+  it('두 유형은 서로의 활성 잡을 막지 않는다 — 대상이 같아도 하는 일이 다르다', async () => {
+    expect((await post({ type: 'backfill', target: TARGET })).statusCode).toBe(201);
+    expect((await post({ type: 'link_rebuild', target: TARGET })).statusCode).toBe(201);
+  });
+
   it('알 수 없는 `type`은 400이다 — 아무도 잡지 않는 잡을 만들지 않는다', async () => {
+    // 집는 러너가 없는 유형은 여전히 거절한다.
     expect((await post({ type: 'reindex', target: TARGET })).statusCode).toBe(400);
+    expect((await post({ type: 'sequence_reassign', target: TARGET })).statusCode).toBe(400);
     expect((await post({ target: TARGET })).statusCode).toBe(400);
   });
 

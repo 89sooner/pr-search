@@ -37,6 +37,9 @@
 import {
   EVENT_NAMES,
   commitDocId,
+  deterministicEventId,
+  ingestPartitionKey,
+  type CommitMetadataReady,
   type IngestionProjected,
   type SequenceAssigned,
   type SequenceReassigned,
@@ -149,6 +152,7 @@ export async function enrichCommit(
   deps: CommitEnrichDeps,
   repository: RepositoryRow,
   target: EnrichTarget,
+  correlationId = '',
 ): Promise<boolean> {
   const log = deps.log ?? ((): void => undefined);
   const graph = deps.graphFor(repository);
@@ -235,11 +239,51 @@ export async function enrichCommit(
   });
 
   /*
+   * ---- 관계 파생에 "이 커밋을 다시 보라"고 알린다 (CR-039, DEV-215).
+   *
+   * **정본과 색인이 모두 성공한 뒤에 낸다.** 먼저 내면 관계 워커가 아직 메시지가
+   * 없는 커밋을 읽어 참조 0건으로 확정하고, 그 뒤 아무도 다시 하지 않는다.
+   *
+   * **그러나 완결 표식(`projected_at`)보다는 앞이다** (PR #44 리뷰 P1).
+   *
+   * 표식을 먼저 찍으면 발행 실패가 **영구 유실**이 된다: 스냅숏이 있고 투영도
+   * 찍혀 있어 두 스윕이 모두 그 커밋을 건너뛰고, `enrichCommits`는 예외를 잡아
+   * `skipped`로 세며 핸들러는 ack한다 — 직접 푸시 커밋의 유일한 방아쇠가
+   * 사라지고 그 메시지의 참조는 영영 간선이 되지 않는다. 순서를 뒤집으면
+   * 발행 실패가 `projected_at`을 `null`로 남겨 **`listCommitsMissingProjection`
+   * 스윕이 다시 본다.**
+   *
+   * 발행이 한 번 더 나가는 것은 안전하다 — 파생은 정본에서 다시 계산하는
+   * 멱등 연산이고 `event_id`도 결정론적이다.
+   */
+  const ready: CommitMetadataReady = {
+    repository_id: repository.repository_id,
+    commit_sha: sha,
+    entity_id: commitDocId(repository.repository_id, sha),
+    metadata_source: graph.kind === 'mirror' ? 'mirror' : 'api',
+    correlation_id: correlationId,
+  };
+  await deps.bus.publish(TOPICS.projected, ingestPartitionKey(repository.repository_id, sha), {
+    // 같은 커밋을 같은 경로로 다시 보강하면 같은 ID다.
+    event_id: deterministicEventId(
+      EVENT_NAMES.commitMetadataReady,
+      String(repository.repository_id),
+      sha,
+      ready.metadata_source,
+    ),
+    event_name: EVENT_NAMES.commitMetadataReady,
+    correlation_id: correlationId,
+    occurred_at: (deps.now ?? ((): Date => new Date()))().toISOString(),
+    payload: ready,
+  });
+
+  /*
    * 투영이 성공했음을 정본에 남긴다 (CR-038 / PR #42 리뷰).
    *
    * 정본을 색인보다 먼저 쓰므로, 색인 쓰기가 실패하면 스냅숏만 남는다. 스윕이
    * "스냅숏이 없는 커밋"만 찾으면 그 커밋은 **영원히 재시도되지 않는다** — 다시
-   * 투영할 다른 경로도 없다. 여기까지 왔다는 것이 곧 색인이 그 값을 안다는 뜻이다.
+   * 투영할 다른 경로도 없다. 여기까지 왔다는 것이 곧 색인이 그 값을 알고
+   * 관계 파생도 깨워졌다는 뜻이다.
    */
   await commitSnapshotRepo.markCommitProjected(
     deps.pool,
@@ -265,6 +309,7 @@ export async function enrichCommits(
   deps: CommitEnrichDeps,
   repository: RepositoryRow,
   targets: readonly EnrichTarget[],
+  correlationId = '',
 ): Promise<EnrichOutcome> {
   const log = deps.log ?? ((): void => undefined);
   let enriched = 0;
@@ -272,7 +317,7 @@ export async function enrichCommits(
 
   for (const target of targets.slice(0, COMMIT_ENRICH_EVENT_BATCH)) {
     try {
-      if (await enrichCommit(deps, repository, target)) enriched += 1;
+      if (await enrichCommit(deps, repository, target, correlationId)) enriched += 1;
       else skipped += 1;
     } catch (error) {
       /*
@@ -329,6 +374,17 @@ export async function handleProjectedEvent(
   const repositoryId = typeof payload['repository_id'] === 'number' ? payload['repository_id'] : null;
   if (repositoryId === null) return { kind: 'ack' };
 
+  /*
+   * **자기 이벤트다. 되받아 처리하지 않는다** (CR-039, DEV-216).
+   *
+   * `commit.metadata_ready`는 이 워커가 `prs:projected`로 낸다. 그런데 이 워커가
+   * 같은 토픽을 구독하므로 그것이 다시 돌아온다. 처리하면 보강 → 발행 → 보강의
+   * 무한 루프이고, 그 루프의 유일한 방어선이 이 한 줄이다.
+   *
+   * 저장소 조회보다 **앞**에 둔다 — 자기 이벤트에 DB 왕복을 쓸 이유가 없다.
+   */
+  if (name === EVENT_NAMES.commitMetadataReady) return { kind: 'ack' };
+
   const repository = await repositoryRepo.findRepositoryById(deps.pool, repositoryId);
   if (repository === undefined) {
     // 등록되지 않은 저장소의 문서는 애초에 만들지 않는다 (FR-ING-009 AC-4).
@@ -375,7 +431,7 @@ export async function handleProjectedEvent(
 
   if (targets.length === 0) return { kind: 'ack' };
 
-  const outcome = await enrichCommits(deps, repository, targets);
+  const outcome = await enrichCommits(deps, repository, targets, delivered.correlation_id);
   log({
     level: 'info',
     message: '커밋 메타데이터 보강',

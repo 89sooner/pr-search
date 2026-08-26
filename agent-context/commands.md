@@ -247,3 +247,103 @@ python agent-context/_handoff/reader.py list --output agent-context/_handoff
 
 **입력에서 제외되는 것**: `agent-context/_handoff/` 자신, 그리고 `exports/`의 전사.
 전사는 사람이 읽는 원본이며 compact 대상이 아니다.
+
+---
+
+# 2026-08-26 대형 세션
+
+## 검증 배터리 (main `3e3009b` 기준 실측)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                # 통과
+pnpm lint                     # 통과
+pnpm run lint:deps            # 통과
+pnpm run test                 # 단위 1264 통과 (1 skipped)   [1243 → +21]
+pnpm run test:a11y            # 192 통과
+pnpm run test:integration     # 통합 809 통과                 [746 → +63]
+pnpm run test:regression      # 회귀 83 통과                  [64 → +19]
+pnpm run test:contrast        # 80쌍 통과
+pnpm build                    # 통과
+pnpm --filter @prs/web run build   # e2e 전에 필수
+pnpm run test:e2e             # CI 통과 / **로컬 5회 중 4회 실패** (flow-001, 아래)
+```
+
+## 이 세션에서 실제로 쓴 조사 명령
+
+```bash
+# 미해결 리뷰 전수 — **모든 PR을 훑는다** (이전 세션이 #40을 놓쳤다)
+for n in 33 34 35 36 37 38 39 40 41 42 43; do
+  c=$(gh api graphql -f query="{ repository(owner:\"89sooner\",name:\"pr-search\"){
+    pullRequest(number:$n){ reviewThreads(first:40){ nodes{ isResolved isOutdated } } } } }" \
+    --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false and .isOutdated==false)] | length')
+  printf 'PR #%s = %s\n' "$n" "$c"
+done
+
+# next-free ID (추측하지 않는다)
+grep -ohE 'CR-[0-9]{3}' docs/00_governance/change_control.md | sort -u | tail -2
+grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -2
+# **새 JOB/EVT/API ID는 충돌부터 본다** — JOB-ING-009가 이미 쓰이고 있었다
+grep -rohE 'JOB-[A-Z]+-[0-9]{3}' docs/ | sort -u
+
+# 두 문서의 WP 상태 기계 대조 (22행 어긋남을 이렇게 찾았다)
+# → python으로 두 표를 파싱해 set 차집합. 눈으로 세지 않는다
+```
+
+## e2e 귀속 절차 (§22가 요구하는 것)
+
+```bash
+# 1) 단독 실행 — 부하 없이도 깨지는가
+cd apps/web && ./node_modules/.bin/playwright test e2e/flow-001.spec.ts --reporter=line
+#    → 4/4 통과
+
+# 2) 전체 실행 반복 — 실제 비율
+for i in 1 2 3 4 5; do pnpm run test:e2e >/dev/null 2>&1 && echo PASS || echo FAIL; done
+#    → PASS=1 FAIL=4
+
+# 3) **비교 재현보다 강한 근거**: 그 코드가 이 세션에 바뀌었는가
+git log --oneline 5e18e00..HEAD -- apps/web    # 비어 있다 = 화면 코드 동일
+grep -n 'page.route' apps/web/e2e/flow-001.spec.ts   # 모든 /api/**를 가로챈다
+#    → API 변경이 그 시험에 도달할 수 없다. 비교 대상이 구조적으로 같다
+```
+
+CI의 `verify` 잡이 같은 `pnpm test:e2e`를 돌린다 (`.github/workflows/*.yml`).
+**PR #41·#42·#43 모두 통과** — 로컬 환경 문제라는 증거다.
+
+## 변이 시험 — 이번에 쓴 형태
+
+```bash
+# 정확히 1건일 때만 치환. 앵커가 모호하면 **적용하지 않고 알린다**
+python3 - "$file" "$old" "$new" <<'PY'
+import io, sys
+p, old, new = sys.argv[1], sys.argv[2], sys.argv[3]
+with io.open(p, encoding='utf-8', newline='') as f: t = f.read().replace('\r\n','\n')
+n = t.count(old)
+if n != 1:
+    print(f'ANCHOR match={n}'); sys.exit(1)
+with io.open(p,'w',encoding='utf-8',newline='\r\n') as f: f.write(t.replace(old,new,1))
+PY
+```
+
+**앵커가 2건 잡히는 것이 안전장치다** — 이 세션에서 `markReassigning`과
+`publishSequenceReassigned`가 자동/수동 두 경로에 있어 2건이 잡혔고, 그 덕에
+"수동 경로만" 지우는 정확한 변이를 만들 수 있었다.
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 증상 | 원인·해결 |
+| --- | --- | --- |
+| `python3 - <<'PYEOF'` (인라인) | `SyntaxError: '{' was never closed` | 파이썬 문자열 안에 `'cancelled'` 같은 **작은따옴표**가 있으면 heredoc 안에서 깨진다 → 스크립트를 파일로 쓴다 |
+| `Path.read_text(newline='')` | `TypeError: unexpected keyword 'newline'` | 이 파이썬 버전은 지원 안 함 → `io.open(..., newline='')` |
+| `pnpm run test:integration` (전량) | `commit-enrich` 스윕 2건 실패 (단독은 통과) | 공유 `prs_test`의 다른 파일 행이 배치 상한 500을 채웠다 → `beforeEach`에서 남의 행을 **처리된 것으로 표시** |
+| `es.deleteByQuery` 직후 조회 | 지운 문서가 남아 있다 | `delete_by_query`는 **검색으로 찾는다** → 앞에 `indices.refresh` |
+| `tail -c 2000 \| grep $'\r'` | CRLF 파일이 LF로 보임 | `tail -c`가 멀티바이트를 자른다 → `grep -c $'\r' file`로 줄 수를 센다 |
+| `StagedGraph implements CommitGraph` | `patchId`/`readCommit` 없음 | **통합 시험은 vitest만으로 타입 검사가 안 된다.** `pnpm typecheck`가 `tsconfig.tests.json`으로 잡는다 |
+
+## 문서 검증기 (변화 없음)
+
+```bash
+V=/home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py
+python3 $V --root . --strict     # 오류 2건(9+5)이 정상 — 기존 산문 플레이스홀더
+python3 $V --root . --report --code-root .
+```

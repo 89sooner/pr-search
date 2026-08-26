@@ -48,7 +48,15 @@ import {
   updateRepository,
   type RegistryDeps,
 } from './repositories.js';
-import { applyJobAction, createJob, isJobAction, toJobResponse, JOB_ACTIONS } from './jobs.js';
+import {
+  applyJobAction,
+  createJob,
+  isJobAction,
+  isOperatorJobType,
+  toJobResponse,
+  JOB_ACTIONS,
+  OPERATOR_JOB_TYPES,
+} from './jobs.js';
 import { auditRepo, jobRepo, repositoryRepo } from '@prs/db';
 import {
   confirmationMatches,
@@ -376,18 +384,25 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
     handle(request, reply, async (principal) => {
       const body = (request.body ?? {}) as Record<string, unknown>;
       /*
-       * `type`은 지금 `backfill`뿐이다. 다른 값을 조용히 받아 큐에 넣으면
-       * 아무 워커도 잡지 않는 유령 잡이 남는다.
+       * **집는 러너가 있는 유형만 받는다.** 다른 값을 조용히 큐에 넣으면 아무
+       * 워커도 잡지 않는 유령 잡이 남는다 (CR-022, DEV-103).
+       *
+       * `link_rebuild`는 WP-029가 러너를 세우면서 열렸다 — 그전까지는 이 경로가
+       * `backfill`만 받아 **JOB-REL-006을 시작할 방법이 아예 없었다**
+       * (CR-039 / PR #44 리뷰 P1).
        */
-      if (body['type'] !== 'backfill') {
-        throw new AdminRejected('INVALID_PARAMETER', "type은 'backfill'이어야 한다");
+      if (!isOperatorJobType(body['type'])) {
+        throw new AdminRejected(
+          'INVALID_PARAMETER',
+          `type은 ${OPERATOR_JOB_TYPES.map((one) => `'${one}'`).join(' 또는 ')} 중 하나여야 한다`,
+        );
       }
       const target = body['target'];
       if (typeof target !== 'string' || !target.includes('/')) {
         throw new AdminRejected('INVALID_PARAMETER', 'target은 owner/repo 형식이어야 한다');
       }
 
-      const outcome = await createJob(registry.pool, 'backfill', target, principalId(principal));
+      const outcome = await createJob(registry.pool, body['type'], target, principalId(principal));
       if (outcome.kind === 'unknown_repository') {
         throw new AdminRejected('NOT_FOUND', '등록되지 않은 저장소다', { target });
       }

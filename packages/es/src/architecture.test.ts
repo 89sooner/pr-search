@@ -60,9 +60,30 @@ const UNSCOPED_ALLOWLIST: readonly {
       '저장소 신원이 없는 단일 정수이고 `operator` 역할 뒤에 있다. ' +
       'CR-024가 그 경계를 확정했다 — 전역 수치는 예외, 저장소 식별자는 범위 안 (DEV-051).',
   },
+  {
+    file: 'packages/es/src/links.ts',
+    kind: 'no_requester',
+    why:
+      'WP-029 참조 간선 파생·해결 (CR-039). 방아쇠가 이벤트와 운영자 잡이라 **요청자가 없다** — ' +
+      '읽는 것은 "이 참조의 대상이 색인되었는가"와 "이 대상을 가리키는 미해결 간선이 무엇인가"이며, ' +
+      '둘 다 사용자에게 나가지 않는 파생 사실이다. 간선 자체는 생성 시점에 source 저장소의 ' +
+      '접근 통제 material을 싣고(THR-035), 그것을 **사용자에게 내주는** 관계 조회 API는 WP-031이 ' +
+      '만들며 거기서 대상 저장소 범위를 다시 교집합해야 한다 (THR-034).',
+  },
 ];
 
 const UNSCOPED_FILES = UNSCOPED_ALLOWLIST.map((one) => one.file);
+
+/**
+ * `search` 예외는 **`no_requester`만** 허용한다.
+ *
+ * `user_facing` 예외는 요청자에게 무언가를 내주는 경로다. 거기서 `search`가
+ * 열리면 전역 집계 하나를 허용한 근거가 **문서 목록 전체**로 번진다 —
+ * `count`는 수를 주고 `search`는 문서를 준다. 둘은 같은 예외가 아니다.
+ */
+const UNSCOPED_SEARCH_FILES = UNSCOPED_ALLOWLIST.filter((one) => one.kind === 'no_requester').map(
+  (one) => one.file,
+);
 
 /**
  * 테스트는 Elasticsearch를 직접 부를 수 있다.
@@ -137,7 +158,10 @@ function scan(
 describe('DoD 9 / ADR-008: 우회 경로 부재', () => {
   it('`@prs/es`의 `search` 밖에서 Elasticsearch를 직접 조회하지 않는다', () => {
     // 이 검사가 잡는 것: `client.search({ query })`로 브랜드 타입을 지나가는 코드.
-    const offences = scan(/\b(?:client|es|elasticsearch)\s*\.\s*search\s*[(<]/, [SEARCH_FACADE]);
+    const offences = scan(/\b(?:client|es|elasticsearch)\s*\.\s*search\s*[(<]/, [
+      SEARCH_FACADE,
+      ...UNSCOPED_SEARCH_FILES,
+    ]);
 
     expect(
       offences,
@@ -178,6 +202,16 @@ describe('DoD 9 / ADR-008: 우회 경로 부재', () => {
     // 사유 없는 예외가 쌓이면 규칙이 아니라 관습이 된다.
     for (const entry of UNSCOPED_ALLOWLIST) {
       expect(entry.why.length, `${entry.file}에 사유가 없다`).toBeGreaterThan(40);
+    }
+  });
+
+  it('**`user_facing` 예외는 `search`를 열지 않는다** (CR-039)', () => {
+    // `count`는 수를 주고 `search`는 문서를 준다. 같은 예외로 묶으면 전역 집계
+    // 하나를 허용한 근거가 문서 목록 전체로 번진다.
+    const userFacing = UNSCOPED_ALLOWLIST.filter((one) => one.kind === 'user_facing');
+    expect(userFacing.length).toBeGreaterThan(0);
+    for (const entry of userFacing) {
+      expect(UNSCOPED_SEARCH_FILES, `${entry.file}이 search 예외에 들어 있다`).not.toContain(entry.file);
     }
   });
 

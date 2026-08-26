@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v0.3 | 갱신일: 2026-08-20
+> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -48,7 +48,7 @@
 | WP-028 | 정합성 점검과 조정 스캔 | REL-003 | WP-021, WP-019 | done |
 | WP-067 | 커밋 메타데이터 보강 (JOB-MIR-002) | REL-003 | WP-020, WP-008 | done |
 | WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | WP-010, WP-012 | done |
-| WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003 | todo |
+| WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003, **WP-067** | done |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020 | todo |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | WP-030, WP-017 | todo |
 | WP-032 | 패싯·커서 페이지네이션·전문 검색 | REL-004 | WP-013, WP-016 | todo |
@@ -1101,33 +1101,60 @@
 
 ### WP-029 관계 간선 인덱스와 참조 추출
 
-- 목표: 텍스트에 적힌 참조가 탐색 가능한 간선이 된다.
+> **CR-039로 계약을 경화했다 (DEV-215~229).** 원래 계약은 "추출하여 간선을 생성한다"까지였고,
+> **다시 만드는 일**(본문 수정·대상 등장·과거 데이터)이 없었다. 아래 범위는 그 공백을 메운 것이며
+> 제품 범위를 넓히지 않는다 — SRS는 v2.5 유지.
+
+- 목표: 텍스트에 적힌 참조가 탐색 가능한 간선이 되고, **본문이 바뀌거나 대상이 나중에 나타나도 계속 맞다.**
 - 관련 요구사항: FR-REL-003
-- 관련 API/데이터/잡: JOB-REL-001, JOB-REL-005, ENT-REL-002
-- 선행 WP: WP-008, WP-003
+- 관련 API/데이터/잡: JOB-REL-001, JOB-REL-005, **JOB-REL-006**, ENT-REL-002, **EVT-ING-005**
+- 선행 WP: WP-008, WP-003, **WP-067** (직접 푸시 커밋 문서와 `commit_snapshot`이 있어야 한다)
 - 구현 범위:
-  - `pipeline-worker` link 역할, `prs:projected` 소비
-  - 참조 패턴 추출: `#N`, `owner/repo#N`, GHE URL, `Refs:`/`Closes:`/`Fixes:`/`Resolves:`, 40자·7~12자 hex
-  - 코드 블록·인용 구간 제거
+  - `pipeline-worker` **`link` 역할 신설** — 현재 역할 아홉에 없다. 배포 manifest와 README 적용 순서까지 함께 (DEV-214 선례)
+  - `prs:projected`를 **기본 그룹 `link`** 로 소비. 카탈로그에 이미 있다 — 이름을 바꾸지 않는다
+  - **방아쇠 둘**: `EVT-ING-003` + **`EVT-ING-005 commit.metadata_ready`**. 후자를 `commit-enrich`가 새로 발행한다 — 그 경로가 없으면 직접 푸시 커밋의 참조가 영원히 간선이 되지 않는다 (DEV-215)
+  - **되먹임 금지**: `commit-enrich`가 자기 이벤트를 되받지 않도록 `event_name`으로 가른다 (DEV-216)
+  - **파생 정본은 PostgreSQL** — `pull_request_snapshot.document`의 `title`·`body`, `commit_snapshot.message`. 이벤트 payload의 텍스트도, Elasticsearch 현재 문서도 정본으로 쓰지 않는다 (ADR-004)
+  - 참조 패턴 추출: `#N`, `owner/repo#N`, GHE PR·커밋 URL, `Refs:`/`Closes:`/`Fixes:`/`Resolves:`, 40자·7~12자 hex
+  - 코드 블록(펜스·인라인 백틱)·인용 구간 제거
   - 신뢰도: 트레일러 `derived`, 본문 언급 `heuristic`
-  - 결정론적 `link_id` 해시 (재파생이 중복을 만들지 않음)
-  - 미해결 참조 `resolved: false` + `JOB-REL-005`로 사후 해결
-  - 문서당 간선 상한 100건
-  - `link_summary` 비정규화 갱신 (같은 벌크)
-  - 추출 실패 시 색인을 막지 않고 `links_pending: true`
+  - **안정 참조 식별자 `reference_key`** — 해결 대상과 독립인 정규화 locator. `references` 간선의 `link_id`는 `link_type` + source + `reference_key`로 만든다. **`resolved`가 바뀌어도 `link_id`가 바뀌지 않는다** (DEV-217)
+  - 미해결 참조 `resolved: false` + `JOB-REL-005`가 **대상 ready 신호마다 경계 있는 역방향 조회**로 해결. 전량 스캔하지 않는다
+  - 축약 SHA는 **유일할 때만** 해결한다. 0건·2건 이상은 미해결 유지 — 첫 결과를 임의로 고르지 않는다
+  - 등록되지 않은 저장소·승인되지 않은 호스트는 미해결 유지. **임의의 외부 GitHub 조회로 확장하지 않는다**
+  - **중복 제거**: 같은 `reference_key`가 본문과 트레일러에 함께 나오면 간선 하나, 신뢰도는 `derived`가 이긴다
+  - **상한 100건은 중복 제거된 고유 참조 기준**이며 선택이 결정론적이다 (등장 순서 보존)
+  - **완전한 파생 집합 + stale 제거** — 본문에서 사라진 참조의 간선을 지운다. 단 **추출 실패 회차는 제거하지 않는다** (DEV-220)
+  - `link_summary.reference_count` **leaf 단위 갱신** — 객체를 통째 대입하면 WP-030의 네 값을 지운다 (DEV-222)
+  - **커밋 매핑에 `links_pending`·`link_summary.reference_count` 추가** (DEV-218·219)
+  - **접근 통제 material을 간선 생성 시점에 함께** 싣는다. 확정할 수 없으면 색인하지 않는다 — fail closed (DEV-224, THR-035)
+  - **`JOB-REL-006`을 references subset에 대해 실행 가능하게** — PostgreSQL 정본에서 재개 가능·경계 있는 열거. `job.type`은 이미 있는 `link_rebuild`다 (DEV-221)
+  - **재시도 예산을 핸들러가 `delivery_count`로 집행**한다. 어댑터는 상한을 보지 않는다 (DEV-228)
+  - `@prs/domain`의 `LinkSummary`·`CommitRole`·`Link` 드리프트 정정 (DEV-225)
 - 제외:
-  - 되돌림·체리픽·스택 (WP-030)
-  - 관계 조회 API (WP-031)
+  - 되돌림·체리픽·스택 파생, `detached`, `link_summary`의 나머지 네 leaf (WP-030)
+  - 관계 조회 API·그래프 탐색 (WP-031). **대상 접근 범위 교집합 강제가 거기 필수 수용 기준이다** (THR-034)
+  - `co_changes`·`precedes` (조회 시점 계산, 저장하지 않음)
+  - 새 PostgreSQL 간선 표 — 간선은 재파생 가능한 파생 데이터다
 - 완료 기준(DoD):
-  - [ ] 패턴 6종이 모두 추출된다 (FR-REL-003 AC-1)
-  - [ ] 신뢰도가 트레일러·본문에 따라 구분된다 (AC-2)
-  - [ ] 미해결 참조가 대상 색인 시 해결 상태로 갱신된다 (AC-3)
-  - [ ] 코드 블록·인용 안의 표현이 추출되지 않는다 (AC-4)
-  - [ ] 문서당 100건 상한이 적용된다 (AC-5)
-  - [ ] 추출 실패가 색인을 막지 않는다 (예외 처리)
-  - [ ] 같은 문서를 두 번 처리해도 간선이 중복되지 않는다 (ADR-009)
-- 검증 방법: `pnpm test link/reference`, `pnpm test:integration worker/link`
-- 기록: 원장 WP-029 상태, FR-REL-003 매핑
+  - [x] 패턴 6종이 모두 추출된다 (FR-REL-003 AC-1)
+  - [x] 신뢰도가 트레일러·본문에 따라 구분된다 (AC-2)
+  - [x] 미해결 참조가 대상 색인 시 **같은 `link_id`로** 해결 상태로 갱신된다 (AC-3, DEV-217)
+  - [x] 코드 블록·인용 안의 표현이 추출되지 않는다 (AC-4)
+  - [x] 중복 제거된 고유 참조 100건 상한이 적용되고 **재실행 시 같은 100건**이 선택된다 (AC-5)
+  - [x] 추출 실패가 색인을 막지 않고 `links_pending: true`가 되며 **기존 간선을 지우지 않는다** (예외 처리, DEV-220)
+  - [x] 같은 문서를 두 번 처리해도 간선이 중복되지 않는다 (ADR-009)
+  - [x] **본문에서 사라진 참조의 간선이 제거된다** (DEV-220)
+  - [x] **이벤트 순서가 역전돼도 최종 결과가 현재 정본과 일치한다** (DEV-215)
+  - [x] **직접 푸시 커밋의 참조가 실제 운영 방아쇠 사슬로 간선이 된다** — 이벤트를 손으로 만들어 넣지 않는다 (DEV-215)
+  - [x] **`commit-enrich`가 자기 이벤트를 되받지 않는다** (DEV-216)
+  - [x] **축약 SHA가 모호하면 해결하지 않는다** (DEV-217)
+  - [x] **`link_summary`의 WP-030 leaf가 보존된다** (DEV-222)
+  - [x] **접근 통제 material 없이 간선이 만들어지지 않는다** (THR-035)
+  - [x] **PostgreSQL 정본만으로 `prs-links`를 다시 만들 수 있다** — JOB-REL-006 (ADR-004, DEV-221)
+  - [x] **`link` 역할이 선언 → 기동 → 핸들러 → 종료 → manifest → README 적용 순서로 이어진다** (DEV-214 선례)
+- 검증 방법: `pnpm run test link/reference`, `pnpm run test:integration worker/link`, `pnpm run test:regression`
+- 기록: 원장 WP-029 상태, FR-REL-003 매핑, 원장 6.34장
 
 ### WP-030 되돌림·체리픽·스택 관계 파생
 
