@@ -1,6 +1,6 @@
 # PR Search 구현 로드맵
 
-> 상태: review | 버전: v0.3 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -33,7 +33,7 @@
 | REL-001 | 수집 파이프라인과 저장 기반 | FR-ING-001, FR-ING-002, FR-ING-003, FR-ING-004, FR-ING-005, FR-ING-007, FR-ING-009, FR-ADMIN-001, NFR-002 | 워크스페이스, `ingest-gateway`, `pipeline-worker`(enrich/project), PostgreSQL 스키마, ES 매핑, A-001 최소 콘솔 | 등록 저장소의 PR 이벤트가 수신 → 보강 → 색인되어 ES에서 조회된다. 수집 지연 p95 10초를 개발 데이터셋에서 만족한다. 실패 이벤트가 DLQ로 격리된다 |
 | REL-002 | 양방향 식별자 해석과 권한 | FR-SRCH-001, FR-SRCH-002, FR-SRCH-003, FR-SRCH-004, FR-SRCH-005, FR-SRCH-006, FR-SRCH-007, FR-AUTH-001, FR-AUTH-002, FR-AUTH-003, FR-ING-006, NFR-001, NFR-005 | `search-api`, `web` 셸(Conductor), W-001, W-002, W-003, 백필 잡 | SHA로 PR을, PR로 커밋을 찾을 수 있다. 권한 매트릭스 테스트가 통과한다. 백필로 과거 데이터를 채울 수 있다. 단건 해석 p95 200ms |
 | REL-003 | 머지 시퀀스와 범위 조사 | FR-SEQ-001, FR-SEQ-002, FR-SEQ-003, FR-SEQ-004, FR-SEQ-005, FR-REL-001, FR-REL-002, FR-ADMIN-003, FR-ING-011 | git 미러, `pipeline-worker:sequence`, W-004, W-005, 정합성 점검, 조정 스캔 | 시퀀스 값이 `git log --first-parent`와 일치한다. 두 릴리스 구간 비교가 동작한다. 강제 푸시 시 에폭이 증가하고 알림이 발생한다 |
-| REL-004 | 관계 파생과 전문 검색 | FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006, FR-REL-007, FR-SRCH-008, FR-SRCH-009, FR-SRCH-010, FR-SRCH-011, FR-ING-008, FR-ING-010 | `pipeline-worker:link`, W-008, W-009, 패싯·커서·전문 검색, 재색인, Filebeat 원본 레인 | 되돌림·체리픽·참조 관계가 표시되고 신뢰도가 구분된다. 무중단 재색인이 검증된다. 관계 정확도 표본 200건 검수 결과가 기록된다(ACC-06 — W-007 활성화 판단 근거) |
+| REL-004 | 관계 파생과 전문 검색 (실행 순서: WP-029 → WP-030 → WP-031 → **WP-035** → WP-032 → WP-033 → WP-034 → WP-036, CR-043) | FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006, FR-REL-007, FR-SRCH-008, FR-SRCH-009, FR-SRCH-010, FR-SRCH-011, FR-ING-008, FR-ING-010 | `pipeline-worker:link`, W-008, W-009, 패싯·커서·전문 검색, 재색인, Filebeat 원본 레인 | 되돌림·체리픽·참조 관계가 표시되고 신뢰도가 구분된다. 무중단 재색인이 검증된다. 관계 정확도 표본 200건 검수 결과가 기록된다(ACC-06 — W-007 활성화 판단 근거) |
 | REL-005 | 통계와 운영 고도화 | FR-STAT-001, FR-STAT-002, FR-STAT-003, FR-STAT-004, FR-STAT-005, FR-STAT-006, FR-ADMIN-002, FR-AUTH-004 | W-006, A-002, A-003, A-004, 감사 조회 | 그룹·시계열·백분위·분포 집계가 동작하고 근거 목록으로 이동한다. 운영 콘솔에서 백필·재색인·재채번을 제어한다. 감사 조회가 `security_officer`로 제한된다 |
 | REL-006 | 조사 보조와 관계 시각화 | FR-SEQ-006, FR-SEQ-007, FR-REL-008, FR-SRCH-012 | W-007(조건부), 이분 탐색, 안전 구간 표식, 내보내기 | 이분 탐색이 후보를 절반씩 줄인다. 안전 구간 표식이 저장·표시된다. W-007은 REL-004의 ACC-06(관계 간선 정확도 표본 200건 검수 95% 이상)을 충족할 때만 포함한다 |
 | REL-007 | GitHub CLI 실행 기반 | FR-GH-001, FR-GH-002, FR-GH-003, FR-GH-006, FR-GH-008, FR-GH-009, FR-GH-011, FR-GH-012 | `@prs/gh-cli`, capability manifest와 검증 도구, 의미 제약 엔진(WP-061), 출력·파일 안전 경계(WP-062), 결과 계약·capability 그래프(WP-066), `gh-executor`, Operations App 연동, W-010, A-006, A-007 | 사용자가 웹에서 저장소를 고르고 R0 capability를 골라 옵션을 넣고 실행될 argv를 확인한 뒤 실행하고 결과와 이력을 볼 수 있다. capability 분류 커버리지 100%, 미분류 0. gh 출력이 무해화 경계를 통과한다 (CR-008) |
@@ -75,6 +75,7 @@
 | ~~**Security** | OD-001 (미러 클론 허용)~~ | **해소 (2026-08-22, CR-024)** — 허용. 단 blob 지연 인출은 기본 차단이며 켜는 것은 저장소 단위 예외다. 두 경로는 `mirror_enabled` 때문에 계속 유지한다 |
 | **Design** | Conductor 패키지 접근 | REL-002 프런트엔드 |
 | ~~**Design** | OD-005 (nori 플러그인)~~ | **해소 (2026-08-26, CR-040)** — 초기 REL-004 의존성으로 채택하지 않는다. WP-032는 `standard` 분석기 + `edge_ngram` 부분 일치 필드로 구현한다. 재검토 조건 셋(운영 승인 · relevance 실측 개선 · 재색인/롤백 검증)이 모두 충족되면 별도 CR |
+| **Platform** | WP-035 무중단 재색인 (버전 인덱스 생성 · 정본 재구축 · 별칭 원자 전환) | **WP-032 전문 검색** — `edge_ngram` 분석기는 `index.analysis`의 비동적 설정이라 열린 인덱스에 추가할 수 없고(실측: `illegal_argument_exception`), 새 서브필드는 `putMapping`으로 더해도 **기존 문서에서 비어 있다**(실측: 재색인 전 0건). 매핑만 올려 배포하면 전문 검색이 과거 데이터에 대해 조용히 적게 답한다. **REL-004의 실행 순서는 WP-029 → WP-030 → WP-031 → WP-035 → WP-032다** — ID 순이 아니라 의존 순이며 ID는 재번호화하지 않는다 (CR-043) |
 | ~~**Release Eng** | OD-004 (릴리스 앵커 소스)~~ | **해소 (2026-08-22, CR-024)** — Git 태그와 GitHub Release만. CI 배포 이벤트는 그래프 밖이라 `git log --first-parent`로 검증할 수 없다 |
 | **Infrastructure** | k8s 네임스페이스·PVC | REL-001 |
 | **Infrastructure** | PostgreSQL·ES·Redis 인스턴스 | REL-001 |

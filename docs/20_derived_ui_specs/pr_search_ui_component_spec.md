@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.3 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
 
 ## 1. 문서 원칙
 
@@ -115,11 +115,14 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 필드별 값 분포와 건수를 제공하고 필터 선택을 반영
 - 기반: Conductor `Panel` + `Checkbox`
-- 필수 props: `facets: Facet[]`, `selected: FilterSelection`, `onChange`, `omitted?: boolean`
-- 상태: `loading`, `ready`, `not_computed`(아직 세지 않음), `omitted`(예산 초과로 생략), `error`
+- 필수 props: `facets: Facet[]`, `selected: FilterSelection`, `onChange`, `omitted?: boolean`, `status?: FacetStatus`
+- 상태: `loading`, `ready`, `not_computed`(아직 세지 않음), `omitted`(예산 초과로 생략), `failed`(계산 실패), `error`
 - 사용 규칙: 세지 않았거나 생략했으면 **사유를 레일 상단에 표시한다. 조용히 비우지 않는다**
-- **세 경우를 구분한다** (CR-019, DEV-076): 응답에 `facets` 키가 **없으면** `not_computed`(WP-032 전까지의 상태), `facets_omitted: true`면 `omitted`(이번 조회에서 예산을 넘겼다), 키가 있고 `false`면 `ready`. 사용자가 할 수 있는 일이 각각 다르므로 같은 문구로 뭉뚱그리지 않는다
-- 관련 FR: FR-SRCH-006, FR-SRCH-009
+- **네 경우를 구분한다** (CR-019 DEV-076 / CR-043 DEV-277): 응답에 세 키가 모두 **없으면** `not_computed`, `facets_status: "ready"`면 `ready`, `"budget_omitted"`면 `omitted`, `"failed"`면 `failed`. **생략과 실패를 같은 문구로 그리지 않는다** — 예산 초과는 조건을 좁히면 풀리고 계산 실패는 그렇지 않다. 사용자가 할 수 있는 일이 다르다
+- **패싯 실패가 목록을 가리지 않는다** (FR-SRCH-009 예외 처리). 레일만 실패 상태가 되고 결과 표는 그대로 선다
+- **화면마다 축이 다르다** (SRS v2.7, CR-043): W-001은 저장소·작성자·팀·라벨·대상 브랜치·PR 상태 여섯, W-004는 작성자·팀·라벨·경로 넷이다. W-004에서 저장소·대상 브랜치를 그리지 않는 것은 시퀀스 공간이 이미 고정하기 때문이다
+- **팀 표시값은 서버가 해석해 보낸다.** 레일이 팀 ID를 슬러그로 바꾸려 개별 조회를 걸지 않는다 (N+1 금지)
+- 관련 FR: FR-SRCH-006, FR-SRCH-009, FR-SEQ-002
 
 ### C-013 ResultTable
 
@@ -160,7 +163,11 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - 기반: Conductor `Button` + `Spinner`
 - 필수 props: `nextCursor: string | null`, `onLoadMore`, `loading: boolean`
 - 사용 규칙: 페이지 번호를 표시하지 않는다. 오프셋 페이징을 시사하는 UI를 두지 않는다
-- 관련 FR: FR-SRCH-008
+- **커서를 해석하지 않는다.** 서버가 준 문자열을 그대로 되돌려 보낸다 — 봉투는 서명돼 있고 화면이 그 안을 읽을 이유가 없다 (ADR-010 Amendment, CR-043)
+- **이어 보기는 패싯을 다시 요청하지 않는다** (`facets=false`). 첫 페이지의 분포를 그대로 쓴다. `q`·필터·정렬이 바뀌면 커서와 패싯 상태를 **함께** 버리고 첫 페이지부터 다시 연다 (CR-043, DEV-280)
+- **두 커서 오류를 같은 안내로 그리지 않는다** (CR-043, DEV-273): `CURSOR_QUERY_MISMATCH`는 "조건이 바뀌어 처음부터 다시 봅니다", `CURSOR_INVALID`는 "이 위치를 더 쓸 수 없어 처음부터 다시 봅니다"이다. 둘 다 현재 조건의 첫 페이지로 돌아가되 **자동 재시도 루프를 만들지 않는다**
+- **W-004에서도 같은 컴포넌트를 쓴다.** 커서 문자열의 재료는 화면마다 다르지만(W-001은 검색 결과, W-004는 정본 서수) 이 컴포넌트에게는 둘 다 불투명 문자열이다
+- 관련 FR: FR-SRCH-008, FR-SEQ-002
 
 ### C-017 ResolutionCandidateList
 
