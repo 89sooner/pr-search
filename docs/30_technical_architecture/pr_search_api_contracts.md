@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.5 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.6 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -393,7 +393,7 @@
       "deletions": 15,
       "labels": ["payment", "backend"],
       "link_summary": { "is_reverted": true, "has_cherry_pick": true },
-      "highlight": { "title": ["feat: <em>결제</em> 재시도 로직"] },
+      "highlight": { "title": [{ "text": "feat: 결제 재시도 로직", "matches": [{ "start": 6, "end": 8 }] }] },
       "url": "/pr/acme/payments/1234"
     }
   ],
@@ -406,18 +406,22 @@
     "repository":  [{ "value": "acme/payments", "count": 62 }]
   },
   "facets_omitted": false,
+  "facets_status": "ready",
   "next_cursor": "eyJzIjpbMTMxOCwiYWNtZS9wYXltZW50czoxMjEwIl0sImYiOiJhOWYzIn0",
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
 
-**`facets`와 `facets_omitted`는 함께 나타나거나 함께 빠진다** (CR-019 DEV-076 / CR-016 DEV-057). 세 경우가 서로 다른 뜻이다.
+**패싯 세 키는 함께 나타나거나 함께 빠진다** (CR-019 DEV-076 / CR-016 DEV-057, CR-044로 `facets_status` 추가). 네 경우가 서로 다른 뜻이며 **정본 표는 아래 「패싯 계약」 절 하나뿐이다** — 응답 형태를 두 곳에 적으면 구현이 다른 쪽을 보고 만든다.
 
 | 응답 | 뜻 | 화면 |
 | --- | --- | --- |
-| 두 키 모두 **없음** | 패싯을 **세지 않았다** (WP-032 전까지의 상태) | 레일에 "아직 분포를 세지 않습니다" |
-| `facets_omitted: false` + `facets` | 세었고 생략하지 않았다 | 분포 표시 |
-| `facets_omitted: true`, `facets` 없음 | 세려 했으나 **예산을 넘겨 생략했다** (FR-SRCH-009 AC-4) | 레일에 "이번 조회에서는 생략했습니다" + 재시도 |
+| 세 키 모두 **없음** | 패싯을 **세지 않았다** (요청하지 않았거나 WP-032 전) | 레일에 "아직 분포를 세지 않습니다" |
+| `facets` + `facets_omitted: false` + `facets_status: "ready"` | 세었고 생략하지 않았다 | 분포 표시 |
+| `facets: {}` + `facets_omitted: true` + `facets_status: "budget_omitted"` | 세려 했으나 **예산을 넘겨 생략했다** (FR-SRCH-009 AC-4) | "이번 조회에서는 생략했습니다" + 재시도 |
+| `facets: {}` + `facets_omitted: true` + `facets_status: "failed"` | **계산이 실패했다** (FR-SRCH-009 예외 처리) | 레일에만 실패 표시 + 재시도 |
+
+**생략과 실패는 `facets_status`로만 갈린다** — `facets_omitted`는 둘 다 `true`다. 그 필드는 "분포를 못 받았다"는 사실이고, **왜** 못 받았는지는 새 필드가 말한다. 기존 소비자는 `facets_omitted`만 보아도 깨지지 않는다.
 
 셋을 같은 문구로 뭉뚱그리지 않는다 — 사용자가 할 수 있는 일이 각각 다르다. 빈 분포를 조용히 그리는 것은 어느 경우에도 금지다 (C-012 사용 규칙).
 
@@ -498,7 +502,7 @@ ADR-010은 커서의 **재료**(정렬 키 값 + 질의 지문)와 **동률 처�
 
 둘 다 사용자를 첫 페이지로 되돌리지만 **같은 기술 원인인 척하지 않는다.** 하나는 "조건이 바뀌었다"이고 다른 하나는 "이 커서를 쓸 수 없다"이다. 자동 재시도 루프를 만들지 않는다.
 
-**`relevance` 정렬에는 Point In Time이 필요하다.** 새 문서가 색인되면 BM25의 term statistics가 바뀌어 같은 문서의 `_score`가 페이지 사이에서 달라진다. 살아 있는 인덱스 위에서 `search_after`만 쓰면 항목이 **중복되거나 누락된다.** 첫 페이지에서 PIT을 열어 색인 뷰를 고정하고, keep-alive는 **5분**이며 다음 페이지 요청마다 갱신한다. 마지막 페이지에서 best-effort로 닫는다. 만료된 PIT은 `CURSOR_INVALID`다.
+**모든 커서 순회에 Point In Time이 필요하다 — 정렬 키와 무관하다.** `search_after`는 "정렬 값이 이 커서보다 뒤"라는 조건이므로, 어떤 문서의 정렬 값이 페이지 사이에 움직이면 그 문서는 **두 번 나오거나 영영 나오지 않는다.** 정렬 키가 문서 자신의 필드라는 것은 그 값이 불변이라는 뜻이 아니다 — `updated_at`은 모든 PR 갱신 웹훅이, `changed_files_count`·`additions`는 보강 완료와 새 커밋이, `lead_time_seconds`는 머지 시각 확정이, `merged_at`은 미머지 PR의 머지가(`missing: _last` 무리에서 정렬 구간으로 들어온다), `merge_seq`는 에폭 상향이 움직인다. 움직이지 않는 것은 `created_at` 하나뿐이다. 첫 페이지에서 PIT을 열어 색인 뷰를 고정하고, keep-alive는 **5분**이며 다음 페이지 요청마다 갱신한다. 마지막 페이지에서 best-effort로 닫는다. 만료된 PIT은 `CURSOR_INVALID`다. `relevance`에는 이유가 하나 더 있다 — 다른 키는 **값**이 움직이고 점수는 **계산 근거**(BM25 term statistics)가 움직인다.
 
 **`relevance`도 요청한 `order`를 존중한다.** FR-SRCH-007 AC-1은 키와 방향을 함께 승인했고, `relevance`만 방향을 무시할 근거를 SRS가 주지 않는다. 편의로 조용히 `desc`로 고정하지 않는다 — 지원하지 않기로 정하려면 그것은 SRS 변경이다.
 
@@ -531,7 +535,7 @@ ADR-010은 커서의 **재료**(정렬 키 값 + 질의 지문)와 **동률 처�
 
 #### 전문 검색 계약 (CR-043, WP-032가 구현한다)
 
-**강조 구간을 HTML로 내보내지 않는다.** 위 응답 예시의 `"highlight": { "title": ["feat: <em>결제</em> 재시도 로직"] }`는 **API 경계에서 바꾼다.** Elasticsearch의 highlighter는 원문을 이스케이프하지 않고 태그만 끼워 넣으므로, PR 제목이 마크업을 담고 있으면 그것이 그대로 실려 나간다. 화면이 그 문자열을 HTML로 그리면 THR-018의 완화 근거("PR 본문을 HTML로 렌더링하지 않음")가 무너진다. 계약은 **평문 조각과 일치 구간**이다.
+**강조 구간을 HTML로 내보내지 않는다.** 위 응답 예시가 그 모양이다 — `<em>` 같은 마크업은 API 경계를 넘지 않는다. Elasticsearch의 highlighter는 원문을 이스케이프하지 않고 태그만 끼워 넣으므로, PR 제목이 마크업을 담고 있으면 그것이 그대로 실려 나간다. 화면이 그 문자열을 HTML로 그리면 THR-018의 완화 근거("PR 본문을 HTML로 렌더링하지 않음")가 무너진다. 계약은 **평문 조각과 일치 구간**이다.
 
 ```json
 "highlight": {
@@ -660,7 +664,13 @@ WP-032의 구현 범위가 `search_after`를 적는다는 이유로 W-004의 멤
 1. `last_scanned_merge_seq` 다음부터 정본 구간을 **상한 있는 chunk**로 읽는다
 2. 그 chunk를 Elasticsearch 강제 필터·`q`로 판정한다
 3. 페이지가 `size`만큼 차거나 구간 끝에 닿을 때까지 1~2를 반복한다
-4. `last_scanned_merge_seq`를 **검사한 마지막 서수**로 갱신해 커서에 봉인한다
+4. `last_scanned_merge_seq`를 갱신해 커서에 봉인한다. **어디까지 갱신하는지가 갈린다.**
+   - 페이지가 **찼으면** → 목록에 **실제로 실은 마지막 일치의 서수**
+   - chunk를 다 보고도 페이지가 **차지 않았으면** → 그 chunk의 **마지막 서수**
+
+**4단계를 무조건 "검사한 마지막 서수"로 두면 안 된다.** chunk가 100이고 `size`가 10인데 그 chunk에 일치가 20건이면, 앞의 10건을 실어 보내고 커서를 100으로 봉인하는 순간 **나머지 10건이 영영 사라진다** — 이것은 이 절이 고치려는 결함(요약과 목록의 어긋남)과 **같은 모양**이다. 실은 것보다 멀리 커서를 옮기지 않는다.
+
+실은 마지막 일치와 chunk 끝 사이의 **불일치 행은 다음 페이지에서 다시 판정된다.** 낭비지만 정확하고, 그 행들은 어차피 목록에 실리지 않으므로 중복이 생기지 않는다.
 
 **일치가 적다는 이유로 구간 순회가 중간에서 끝나지 않는다.** 구간 상한이 이미 5만이므로 전체 스캔의 최악은 유계이고, chunk 크기는 실측으로 정하되 구간 전체를 메모리에 올리지 않는다.
 

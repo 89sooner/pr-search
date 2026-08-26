@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.5 | 갱신일: 2026-08-26
 
 ## 1. 상태 설계 원칙
 
@@ -119,7 +119,8 @@
 | `epoch_stale` | URL 에폭 ≠ 현재 에폭 | 무효 경고 + 현재 에폭 재조회 액션(자동 재조회 금지) | 재조회 | FR-SEQ-005 |
 | `bisect_contradiction` | good > bad 표시 | 모순 지점 표시 | 탐색 초기화 | FR-SEQ-007 |
 | `loading_more` | 구간 커서 페이지 요청 | 기존 목록 유지, 하단 진행 표시 | - | FR-SEQ-002 AC-6 |
-| `cursor_rejected` | 에폭·구간 경계·질의가 바뀐 뒤 이전 커서 사용 | 사유 표시 + 현재 조건의 첫 페이지로 복귀 | 자동 복귀. 재시도 루프 금지 | FR-SEQ-002 AC-7 |
+| `cursor_rejected_mismatch` | 에폭·구간 경계·질의가 바뀐 뒤 이전 커서 사용 (`CURSOR_QUERY_MISMATCH`) | "조건이 바뀌어 처음부터 다시 봅니다" + 현재 조건의 첫 페이지 | 자동 복귀. **재시도 루프 금지** | FR-SEQ-002 AC-7 |
+| `cursor_rejected_invalid` | 구간 커서 훼손·서명 불일치·형식 오류·만료 (`CURSOR_INVALID`) | "이 위치를 더 쓸 수 없어 처음부터 다시 봅니다" + 첫 페이지 | 자동 복귀. **재시도 루프 금지** | FR-SEQ-002 AC-7 |
 | `facets_omitted` / `partial_failure` (패싯) | 구간 패싯이 예산을 넘겼거나 실패 | 목록 정상, 레일에만 사유 표시 | 레일 재시도 / 조건 축소 | FR-SRCH-009 |
 | `no_permission` (표식 쓰기) | `release_manager` 아님 | 표식 버튼 비활성 + `blockedReason` | - | FR-SEQ-006 |
 | `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
