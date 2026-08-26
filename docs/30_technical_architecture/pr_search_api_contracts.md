@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+> 상태: review | 버전: v0.3 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -542,7 +542,7 @@
 | `summary.files_truncated_pull_request_count` | `prs-pull-requests.files_truncated` | 변경 파일 목록이 절삭된 PR 수다 (DEV-135). 절삭이 있으면 `changed_files_total`·`additions_total`·`deletions_total`은 **하한**이며, 이 수가 그 사실을 말한다 |
 | `epoch_stale` | 요청 `seq_epoch` vs 현재 `seq_epoch` | `true`면 `summary`와 `items` 키를 **넣지 않는다** (DEV-138과 같은 원칙: 계산하지 않은 것은 키를 비우는 것이 아니라 없앤다). 서버가 다른 에폭으로 자동 재조회하지 않는 것이 ADR-007의 요구다 |
 | `next_cursor` | 항상 `null` | 커서 페이지네이션은 WP-032다 (DEV-138). 키를 빼면 화면이 마지막 페이지를 오해하므로 `null`로 둔다 |
-| `reverted_pull_request_count` | **아직 없다** | 되돌림 관계 파생(WP-030)이 서기 전에는 `link_summary.is_reverted`가 투영이 넣은 `false`뿐이라 세면 언제나 `0`이 나오고, 그 `0`은 "되돌림이 없다"와 구분되지 않는다 (DEV-133). **키를 넣지 않는다** — 계산하지 않은 것을 계산한 척하지 않는다. WP-030 이후 더한다 |
+| `summary.reverted_pull_request_count` | `prs-pull-requests.link_summary.is_reverted` | **WP-030에서 추가됐다** (CR-041, DEV-239 — CR-027 DEV-133의 이월 종결). 구간에 포함된 PR 중 현재 `link_summary.is_reverted`가 `true`인 수다. **되돌림 파생이 서기 전에는 키를 넣지 않았다** — 그때의 `0`은 "되돌림이 없다"와 "아직 세지 않았다"를 구분하지 못했기 때문이다(DEV-133). 이제 `is_reverted`를 실제로 쓰는 워커가 있으므로 `0`이 사실 주장이 된다. **요약 집계 왕복 안에서 `filter` 집계로 계산한다** — 간선 인덱스를 PR마다 다시 묻지 않는다(N+1 금지). `files_truncated_pull_request_count`와 같은 형태다 |
 
 `RANGE_TOO_LARGE`의 `estimated_count`는 이름과 달리 **정확한 값**이다 (DEV-140). 정본이 PostgreSQL이므로 `count(*)`가 PK 범위 스캔 한 번이고, 추정할 이유가 없다. 필드 이름은 하위 호환을 위해 그대로 둔다.
 
@@ -670,7 +670,7 @@ POST /api/v1/sequence-anchors/resolve
 }
 ```
 
-**요약과 항목은 API-SEQ-001의 계층을 그대로 딛는다.** `RangeSummary`·`RangeItem` 하나를 두 API가 공유하므로 W-004와 W-005가 같은 구간에 대해 다른 숫자를 말하는 일이 없다. 그래서 `reverted_pull_request_count`는 **없다** — CR-027(DEV-133)이 관계 파생(WP-030) 전에는 세면 언제나 0이라 키 자체를 뺐고, 화면도 그 자리를 "준비 중"으로 둔다(CR-029, DEV-150). 반대로 실측 요약이 내는 `commit_count`·`files_truncated_pull_request_count`·`top_changed_paths`와 봉투의 `sequence_state`·`epoch_stale`·`items_missing_in_index`는 여기에도 그대로 실린다. `unresolved_names`는 API-SEQ-001과 같이 **비면 키 자체를 넣지 않는다**(빈 배열은 "찾아봤고 없다"로 읽힌다, DEV-052).
+**요약과 항목은 API-SEQ-001의 계층을 그대로 딛는다.** `RangeSummary`·`RangeItem` 하나를 두 API가 공유하므로 W-004와 W-005가 같은 구간에 대해 다른 숫자를 말하는 일이 없다. `reverted_pull_request_count`도 **여기에 그대로 실린다** (CR-041, DEV-239). CR-027(DEV-133)이 관계 파생(WP-030) 전에는 세면 언제나 0이라 키 자체를 뺐고 화면도 그 자리를 "준비 중"으로 두었으나(CR-029, DEV-150), **WP-030이 되돌림 파생을 세우면서 그 이월이 끝났다** — 두 API가 `RangeSummary` 하나를 공유하므로 한쪽에만 생기지 않는다. 반대로 실측 요약이 내는 `commit_count`·`files_truncated_pull_request_count`·`top_changed_paths`와 봉투의 `sequence_state`·`epoch_stale`·`items_missing_in_index`는 여기에도 그대로 실린다. `unresolved_names`는 API-SEQ-001과 같이 **비면 키 자체를 넣지 않는다**(빈 배열은 "찾아봤고 없다"로 읽힌다, DEV-052).
 
 - 요청 파라미터는 API-SEQ-001과 같다: `size`(0~200, 기본 50), `seq_epoch`(에폭 고정 인용). **`size=0`은 요약만** — 릴리스 상세 패널은 항목을 그리지 않으므로 항목 질의를 돌리지 않는다.
 - 에폭 봉투도 같다. 요청 `seq_epoch`가 현재 에폭과 다르면 `epoch_stale: true` + `requested_seq_epoch`를 싣고 **결과는 내지 않는다**(ADR-007, WP-023). 재채번 중이면 `sequence_state: "reassigning"`과 마지막 확정 값이다.

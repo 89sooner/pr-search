@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v0.5 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.6 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -1158,32 +1158,69 @@
 
 ### WP-030 되돌림·체리픽·스택 관계 파생
 
-- 목표: 되돌림·백포트·의존 PR을 근거와 함께 찾는다.
-- 관련 요구사항: FR-REL-004, FR-REL-005, FR-REL-006
-- 관련 API/데이터/잡: JOB-REL-002, JOB-REL-003, JOB-REL-004
-- 선행 WP: WP-029, WP-020
+> **CR-041로 계약을 경화했다 (DEV-230~247).** 원래 계약은 "파생한다"까지였고 **후보가 나중에 나타나거나 사라질 때**가
+> 없었다. WP-029가 참조 축에서 겪은 것과 같은 공백이 세 계열에 그대로 있었다 — 다만 여기서는 한 겹 더 있다:
+> **참조는 source 본문만 보면 되지만, 되돌림 제목 대조·체리픽 patch-id·스택은 다른 엔티티의 상태에 달려 있다.**
+> 아래 범위는 그 공백을 메운 것이며 제품 범위를 넓히지 않는다 — SRS는 v2.6 유지.
+
+- 목표: 되돌림·백포트·의존 PR을 근거와 함께 찾고, **후보가 나중에 나타나거나 사라져도 계속 맞다.**
+- 관련 요구사항: FR-REL-004, FR-REL-005, FR-REL-006 (+ FR-SEQ-002 AC-2 이월분)
+- 관련 API/데이터/잡: JOB-REL-002, JOB-REL-003, JOB-REL-004, **JOB-REL-006**, ENT-REL-002, **EVT-ING-005**, API-SEQ-001·003
+- 선행 WP: WP-029, WP-020, **WP-067** (`commit_snapshot.patch_id`가 있어야 한다)
 - 구현 범위:
-  - 되돌림: `This reverts commit <sha>` 트레일러(`exact`), `Revert "<제목>"` 제목 대조(`heuristic`), 연쇄 재적용
-  - 체리픽: `(cherry picked from commit <sha>)` 트레일러(`exact`), `patch_id` 일치(`derived`, 동일 저장소 내), 후보 5건 상한
-  - 스택: `base_branch` == 다른 열린 PR의 `head_branch`, 깊이 최대 10, 순환 감지
-  - 상위 PR 머지 시 스택 간선 `detached` 표시
-  - `link_summary.is_reverted` 갱신 → `is:reverted` 필터 지원
-  - patch-id 실패 시 null + 메트릭
-  - **WP-023에서 이월: `GET /sequence-ranges` 요약의 `summary.reverted_pull_request_count`** (CR-027, DEV-133 / FR-SEQ-002 AC-2, FR-SEQ-004 AC-2). 그전에는 세면 언제나 `0`이라 키를 넣지 않았다
+  - **`link` 역할·소비자 그룹·manifest를 재사용한다.** 새 역할·새 그룹·새 manifest를 만들지 않는다 — WP-029가 세운 것을 그대로 쓴다
+  - **방아쇠에 `EVT-ING-005`를 더한다** (DEV-230·231): 직접 푸시 커밋 문서는 `project`가 만들지 않으므로 `EVT-ING-003`만으로는 그 커밋의 되돌림이 영원히 간선이 되지 않는다. 체리픽은 이유가 하나 더 있다 — `patch_id`는 커밋 보강이 채우므로 `EVT-ING-003` 시점에는 아직 없다
+  - **후보 변화 재평가** (DEV-232·242): 이벤트마다 **두 방향**을 본다 — 이 엔티티를 source로 한 재파생, 그리고 **이 엔티티의 변화가 영향을 주는 다른 source들**의 재파생. 경계 있는 역방향 조회로 좁힌다. 저장소 전량 스캔을 방아쇠마다 돌지 않는다
+  - **파생 정본은 PostgreSQL** — `pull_request_snapshot.document`(`title`·`state`·`base_branch`·`head_branch`), `commit_snapshot`(`message`·`patch_id`·`committed_at`). Elasticsearch 현재 문서를 파생 근거로 읽지 않는다 (ADR-004). 영향 source를 **좁히는 데**는 쓸 수 있고, 좁힌 뒤 판정은 정본에서 다시 한다
+  - **되돌림**: `This reverts commit <sha>` 트레일러(`exact`), `Revert "<제목>"`·PR 제목 접두 `Revert` 제목 대조(`heuristic`), 연쇄 재적용. **후보가 2건 이상이면 모두 저장한다** — `LIMIT 1`·첫 결과·최신 하나로 좁히지 않는다 (FR-REL-004 예외 처리, DEV-237)
+  - **체리픽**: 트레일러(`exact`)는 `patch_id` 가용성과 **무관하게** 동작한다. `patch_id` 일치(`derived`)는 **트레일러가 없고 값이 실제로 있을 때만**, 동일 저장소 안에서. 세 사유(`no_mirror`·`blob_fetch_disabled`·`compute_failed`)를 하나로 뭉개지 않는다 (FR-REL-005 AC-2·AC-5, CR-024 DEV-111, DEV-235)
+  - **체리픽 방향·상위 5건을 결정론으로 고정한다** (DEV-243): 방향은 **나중 커밋 → 이른 커밋**, 정렬은 `committed_at` 내림차순 + 동률 시 `commit_sha` 오름차순, 같은 쌍을 양방향 중복 저장하지 않는다. 순서가 비결정론이면 같은 정본에서 다른 색인이 나와 ADR-004 재구축 증명이 깨진다
+  - **동일 저장소 한정을 질의 자신이 강제한다** (AC-3) — 넓게 가져와 뒤에서 거르지 않는다
+  - **스택**: `base_branch` == 같은 저장소의 다른 `open` PR의 `head_branch`, 방향 하위→상위, 신뢰도 `derived`, 깊이 최대 10, 순환 감지. **후보가 여럿이면 모두 평가한다** — 계약이 `head_branch` 유일성을 보장하지 않는다 (DEV-244)
+  - **`detached` 수명** (DEV-238): 조건이 깨지면 **지우지 않고** `detached: true`. 다시 성립하면 `false`. **한 번도 성립한 적 없는 후보에는 간선을 만들지 않는다**
+  - **완전한 파생 집합 — 계열마다 수명이 다르다** (DEV-233): `reverts`·`cherry_picks`는 근거가 사라지면 **제거**, `stacks_on`은 **`detached`**. 하나의 일반 추상으로 뭉치지 않는다. **실패한 회차는 어느 계열에서도 제거하지 않는다**
+  - **`link_summary` 네 leaf를 leaf 단위로 갱신한다** — 객체 통째 대입 금지(WP-029의 `reference_count`가 사라진다, DEV-222). **boolean은 조정 후 현재 active 간선 집합에서 다시 계산한다** — 간선 하나를 지웠다는 이유로 `false`를 쓰지 않는다 (DEV-241)
+  - **`links_pending`을 재해석하지 않는다** (DEV-246): 그것은 FR-REL-003 참조 추출의 완결 상태다. WP-030 실패는 `retry` → 예산 소진 시 실패 대기열 + JOB-REL-006 보정으로 처리한다. **새 pending 필드도 만들지 않는다** — SRS가 요구하지 않는다
+  - **재시도 예산을 핸들러가 `delivery_count`로 집행한다** — 어댑터는 상한을 보지 않는다 (DEV-228 규율)
+  - **접근 통제 material을 간선 생성 시점에 함께** 싣는다. 확정할 수 없으면 색인하지 않는다 — fail closed (THR-035)
+  - **`JOB-REL-006`을 네 계열 전부로 확장한다** (DEV-234): 한 source를 만나면 그 종류에 적용되는 계열을 모두 실행한다. **두 번째 재구축 틀을 만들지 않는다**
+  - **마이그레이션 014 — 후보 조회 인덱스** (DEV-240): 정본에 제목·분기·`patch_id` 조회 인덱스가 없어 후보 탐색이 전체 스캔이 된다. 새 엔티티 표가 아니라 **인덱스만** 더한다
+  - **`link_relations_total`·`link_stack_cycle_total` 지표** (DEV-247): FR-REL-006 AC-5가 순환을 "운영 지표로 기록"하라고 요구하는데 그 지표가 없었다
+  - **WP-023에서 이월: `GET /sequence-ranges`·`/release-comparisons` 요약의 `summary.reverted_pull_request_count`** (CR-027 DEV-133 / FR-SEQ-002 AC-2, FR-SEQ-004 AC-2, DEV-239). **요약 집계 왕복 안의 `filter` 집계로 계산한다** — 간선 인덱스를 PR마다 다시 묻지 않는다
 - 제외:
+  - **관계 조회 API·상세 화면 관계 섹션 (WP-031).** 이 WP는 **저장된 간선의 방향·신뢰도·역방향 조회 가능성**까지 증명하고 멈춘다 — 화면에 그리는 것은 WP-031이다 (DEV-236)
   - 동시 변경 (조회 시점 계산, WP-031)
   - 그래프 탐색 (WP-043)
+  - `is:reverted` **질의 문법의 파서·검색 API 연결** — `link_summary.is_reverted`가 실제 값을 갖게 하는 것까지가 이 WP이며, 필터 문법은 검색 소관이다
 - 완료 기준(DoD):
-  - [ ] QA-W002-11, QA-W002-12가 통과한다
-  - [ ] 되돌림 간선이 정·역방향 모두 조회된다 (FR-REL-004 AC-3)
-  - [ ] `is:reverted` 필터가 동작한다 (AC-4)
-  - [ ] 되돌림의 되돌림이 연쇄 저장된다 (AC-5)
-  - [ ] 체리픽 트레일러가 `exact`, patch-id 일치가 `derived`로 저장된다 (FR-REL-005 AC-1, AC-2)
-  - [ ] patch-id 비교가 동일 저장소 내로 한정된다 (AC-3)
-  - [ ] 미러 미사용 환경에서 트레일러 기반만 동작하고 플래그가 표시된다 (AC-5)
-  - [ ] 스택 순환이 감지되면 간선을 만들지 않는다 (FR-REL-006 AC-5)
-- 검증 방법: `pnpm test link/revert`, `pnpm test:integration link/cherry-pick`
-- 기록: 원장 WP-030 상태, FR-REL-004~006 매핑
+  - [ ] **되돌림 트레일러가 `exact`로 저장된다** (FR-REL-004 AC-1·AC-2)
+  - [ ] **제목 대조가 `heuristic`으로 저장되고, 후보가 2건 이상이면 전부 저장된다** (AC-2, 예외 처리, DEV-237)
+  - [ ] **되돌림 간선이 방향(주체→대상)으로 저장되고 `to_id`로 역방향 조회된다** (AC-3) — 화면 표시는 WP-031
+  - [ ] **되돌림의 되돌림이 연쇄로 표현된다** (AC-5) — 전용 분기 없이
+  - [ ] **source 본문이 바뀌면 사라진 되돌림 간선이 제거된다** (DEV-233)
+  - [ ] **제목 후보가 나중에 하나 더 생기면 source 이벤트 없이 간선이 둘이 된다** (DEV-242)
+  - [ ] **체리픽 트레일러가 `patch_id` 부재 상태에서도 `exact`로 저장된다** (FR-REL-005 AC-1, DEV-235)
+  - [ ] **`patch_id` 일치가 `derived`로 저장된다** (AC-2)
+  - [ ] **`no_mirror`·`blob_fetch_disabled`에서는 `derived` 판정을 시도하지 않고, `compute_failed`와 구분된다** (AC-5, DEV-235)
+  - [ ] **patch-id 비교가 동일 저장소 안으로 한정된다 — 질의 자신이 강제한다** (AC-3)
+  - [ ] **후보가 5건을 넘으면 결정론적 상위 5건이 저장되고, 재실행 시 같은 5건이다** (AC-4, DEV-243)
+  - [ ] **같은 `patch_id` 커밋이 나중에 들어오면 source 이벤트 없이 간선이 생긴다** (DEV-242)
+  - [ ] **스택 간선이 하위→상위로 저장된다** (FR-REL-006 AC-1·AC-2)
+  - [ ] **같은 `head_branch`를 가진 열린 PR이 여럿이면 모두 평가된다** (DEV-244)
+  - [ ] **상위 PR이 머지되면 하위 PR에 이벤트가 없어도 간선이 `detached`가 된다** (AC-3, DEV-232)
+  - [ ] **조건이 다시 성립하면 `detached`가 해제된다** (DEV-238)
+  - [ ] **순환이 감지되면 간선을 만들지 않고 지표에 기록된다** (AC-5, DEV-247)
+  - [ ] **깊이 10을 넘기면 탐색을 중단한다** (AC-4)
+  - [ ] **직접 푸시 커밋의 되돌림·체리픽이 실제 운영 방아쇠 사슬로 간선이 된다** — 이벤트를 손으로 만들어 넣지 않는다 (DEV-230·231)
+  - [ ] **`link_summary`의 네 leaf가 active 간선 집합에서 재계산되고 `reference_count`가 보존된다** (DEV-241·222)
+  - [ ] **접근 통제 material 없이 간선이 만들어지지 않는다** (THR-035)
+  - [ ] **PostgreSQL 정본만으로 네 계열 전부를 다시 만들 수 있다** — JOB-REL-006 (ADR-004, DEV-234)
+  - [ ] **`summary.reverted_pull_request_count`가 두 API에 실리고 N+1 조회가 없다** (DEV-239)
+  - [ ] **마이그레이션 014가 up → down → up으로 되돌아오고, 실제 질의가 그 인덱스 형태를 쓴다** (DEV-240)
+  - [ ] **JOB-REL-002·003·004가 운영 `link` 핸들러에서 실제로 호출된다** — 이름이 파일에 있는지가 아니라 호출 형태로 건다 (도달성 회귀)
+  - QA-W002-11·QA-W002-12는 **WP-031 소유다** (DEV-236) — 둘 다 W-002 화면 동작이고 관계 조회 API가 그 WP다
+- 검증 방법: `pnpm run test link/revert`, `pnpm run test:integration worker/relations`, `pnpm run test:integration worker/link-rebuild`, `pnpm run test:regression`
+- 기록: 원장 WP-030 상태, FR-REL-004~006 매핑, 원장 6.35장
 
 ### WP-031 관계 조회 API와 상세 화면 관계 섹션
 
@@ -1192,6 +1229,7 @@
 - 관련 화면/플로우: W-002, W-003 / FLOW-006
 - 관련 API/데이터/잡: API-REL-003
 - 선행 WP: WP-030, WP-017
+- **대상 저장소 접근 범위 교집합이 필수 수용 기준이다** (THR-034, CR-039). 간선의 접근 범위는 `from` 저장소의 것이므로, 대상의 **내용**을 반환하는 이 API는 대상 범위를 다시 교집합해야 한다
 - 구현 범위:
   - 관계 조회 (정방향 `from_id`, 역방향 `to_id`)
   - `GET /co-changes`: 자카드 유사도, 90일 범위, 상위 20건, 겹치는 경로 상위 10, 변경 파일 200개 초과 제외
@@ -1203,6 +1241,7 @@
   - 그래프 시각화 (WP-043)
 - 완료 기준(DoD):
   - [ ] QA-W002-10, QA-W002-13, QA-W002-14가 통과한다
+  - [ ] **QA-W002-11, QA-W002-12가 통과한다** (CR-041, DEV-236에서 WP-030으로부터 이관). 둘 다 W-002 화면 동작이다 — WP-030은 간선의 방향·신뢰도·역방향 조회 **가능성**까지 증명하고, 사용자가 그것을 보는 것은 이 WP다
   - [ ] `heuristic` 항목에 근거 문자열이 반드시 표시된다 (FR-REL-003 AC-2)
   - [ ] 동시 변경이 상위 20건, 경로 상위 10개와 함께 반환된다 (FR-REL-007 AC-3, AC-5)
   - [ ] 변경 파일 200개 초과 PR이 제외되고 사유가 표시된다 (AC-4)
