@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.5 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -1223,6 +1223,7 @@
   - `search_after` 커서: 정렬 키 값 + 질의 지문 봉인, `cursor_query_mismatch` 검사
   - 패싯 6종 (상위 20), 목록과 동일 질의 조건, 예산 초과 시 `facets_omitted`
   - 전문 검색: `multi_match` (title^3, body, message, 브랜치명), 강조 항목당 최대 3개·160자
+  - **분석기는 `standard` 기반 `text_ko_en` + `edge_ngram` 부분 일치 필드다** (OD-005 resolved, CR-040). `nori` 플러그인은 초기 REL-004 의존성이 아니다 — **플러그인 설치를 전제한 코드나 설정 분기를 만들지 않는다.** 분석기의 안정 이름 `text_ko_en`은 유지하므로, 재검토 조건 셋이 충족되어 나중에 토크나이저를 교체해도 매핑 4종은 바뀌지 않는다 (FR-SRCH-011 AC-4)
   - 1자 검색어 거부
   - `C-016 CursorPager` 구현, `C-012 FacetRail` 데이터 연결
   - W-004에도 패싯 적용
@@ -1236,7 +1237,7 @@
   - [ ] 패싯 건수 합계가 목록 총 건수와 정합한다 (FR-SRCH-009 AC-3)
   - [ ] 패싯 실패가 목록을 막지 않는다 (예외 처리)
   - [ ] 제목 일치가 본문 일치보다 상위다 (FR-SRCH-011 AC-2)
-  - [ ] 한글·영문 혼용 질의에서 두 언어 토큰이 매칭된다 (AC-4)
+  - [ ] 한글·영문 혼용 질의에서 두 언어 토큰이 매칭된다 (AC-4). **`nori` 없이 `standard` + `edge_ngram`으로 성립함을 증명한다** (OD-005, CR-040)
 - 검증 방법: `pnpm test:integration search/facets`, `pnpm test:e2e search-paging`
 - 기록: 원장 WP-032 상태, FR-SRCH-008·009·011 매핑
 

@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.3 | 갱신일: 2026-08-20
+> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -602,7 +602,7 @@ ALTER TABLE gh_capability_snapshot
 }
 ```
 
-- `text_ko_en`은 OD-005 결정에 따라 `nori_tokenizer` 기반으로 교체할 수 있다. 분석기 이름은 유지해 매핑 참조가 변하지 않게 한다 (FR-SRCH-011 AC-4).
+- `text_ko_en`은 **`standard` 토크나이저 기반이 본 구현이다** (OD-005 resolved, CR-040 — `nori` 플러그인을 초기 REL-004 의존성으로 채택하지 않는다). WP-032가 여기에 `edge_ngram` 부분 일치 필드를 더해 FR-SRCH-011 AC-4를 만족시킨다. **분석기 이름은 어떤 경우에도 유지한다** — 매핑 4종이 이 이름을 참조하므로, 재검토 조건이 충족되어 나중에 `nori_tokenizer`로 교체하더라도 매핑은 바뀌지 않는다 (FR-SRCH-011 AC-4).
 - `index.sort`는 **기본 정렬(시퀀스 내림차순)** 에서 조기 종료를 얻기 위한 것이다 (ADR-003). **시퀀스 범위 조회는 여기 해당하지 않는다** (CR-027, DEV-131) — 색인 정렬은 `merge_seq` 내림차순인데 FR-SEQ-002는 오름차순 결과를 요구하므로 방향이 어긋나 조기 종료 조건이 서지 않는다. 범위 조회는 애초에 Elasticsearch를 범위 스캔에 쓰지 않는다(DEV-130).
 - **`index.sort`는 `merge_seq`를 가진 인덱스에만 적용한다** (CR-007, DEV-007). `prs-links`에는 `merge_seq`가 없고, Elasticsearch는 매핑에 없는 필드로 `index.sort`를 걸면 인덱스 생성을 거부한다. 간선은 `from_id`/`to_id`로 조회하므로 시퀀스 축 정렬이 필요하지도 않다. 나머지 공통 설정(복제본·refresh·분석기)은 네 인덱스 모두에 적용한다.
 - `refresh_interval: 1s`는 수집 반영 SLO(p95 10초, NFR-002)와 색인 처리량의 절충값이다. 백필 중에는 해당 인덱스만 `30s`로 낮췄다가 복원한다(값이 커질수록 갱신이 뜸해져 처리량이 는다).
