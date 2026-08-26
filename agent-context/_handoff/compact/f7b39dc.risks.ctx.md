@@ -1,7 +1,7 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=c748ccdb116b37c0e89f47ccca5307e3c7bfc6c4748944305acce7256cb24c41 bytes=20639 lines=360 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;DISTINCT;pull_request_number;NOT;NULL;expected;Node;e2e;Codex;v20;install;visitor;engines;v22;a11y;require;ESM;PATH
+@kv sha256=37e9ba5540d3f1b827bdbe1fe184b1c2ce382879476efbbbaa3f459a8e5b1348 bytes=25739 lines=440 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;DISTINCT;pull_request_number;NOT;NULL;expected;Node;e2e;Codex;v20;install;visitor;engines;v22;a11y
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
 @h3 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다
@@ -177,7 +177,7 @@
 |만든 것이 아니지만, **숫자를 그대로 옮기면 다음 인계도 틀린다.** 세는 법:
 @p bash
 @path grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
-@code lang=txt sha=e1c18424327c lines=28 kept=28
+@code lang=txt sha=65097bd91313 lines=108 kept=80
 |## 29. 리뷰가 **머지 전에** 왔다 — 그래도 머지 후 재확인은 했다
 |이번에는 CI 초록 약 4분 뒤에 6건이 도착했다. 이전 세션들의 "머지 뒤 도착"과 다르지만
 |**규율은 그대로다**: 머지 직후 다시 세고, 이번에는 전수(PR #1~#44)로 셌다. 그 덕에
@@ -198,3 +198,37 @@
 |- 컨테이너 3종 healthy. `prs`·`prs_test` 존재
 |- **`link` 역할에 `GHE_BASE_URL`이 필요하다.** 없으면 URL 참조를 아예 만들지 않는다
 |  (fail closed) — 조용히 적게 만드는 것이라 눈치채기 어렵다
+|---
+|# 2026-08-26 CR-040 · CR-041 세션이 추가한 것
+|## 32. 변이가 살아남으면 **경로를 읽어라** — 두 번 다 실결함이었다
+|risks.md 26번이 적어 둔 규율이 이 세션에서 두 번 값을 했다.
+|| 변이 | 살아남은 이유 | 실체 |
+|| --- | --- | --- |
+|| **M13** 깊이 상한 제거 | 등가처럼 보였다 — 순환은 `visited` 집합이 잡으므로 상한 없이도 종료한다 | **결함이었다.** `walkChain`이 사슬 >10이면 간선을 **아예 만들지 않고** 있었다. AC-4는 *추적 범위*를 정하지 간선의 조건을 정하지 않는다 |
+|| **R7** 쓰기 실패를 조용히 ack | — | **시험이 없다는 뜻이었다.** 그 경로를 거는 시험을 먼저 만들고 다시 걸었다 |
+|→ **살아남은 변이는 "시험 구멍"이거나 "결함"이다. 등가는 셋째 가능성이지 첫째가 아니다.**
+|## 33. 매핑이 규율을 집행한다 — `dynamic: strict`가 결함을 잡았다
+|커밋 문서에 `has_stack`을 쓰고 있었다. `strict_dynamic_mapping_exception`이 났고, 그것은
+|매핑 위반일 뿐 아니라 **주장 자체가 틀렸다**: "이 커밋은 스택이 없다"가 아니라 "커밋에는
+|스택이라는 개념이 없다"이다. **없는 것과 아닌 것은 다른 주장**이며 WP-029가 `detached`에
+|대해 세운 규율과 같다.
+|→ `strict` 매핑을 우회하지 마라. 그것이 거부하면 대개 **모델이 틀린 것**이다.
+|## 34. 주석이 코드와 정반대를 적고 있을 수 있다
+|`refreshRelationSummary`에 *"여기서는 현재 값을 보존한다"*고 써 놓고 `linksPending: false`를
+|넘기고 있었다. 필드가 필수라 스크립트가 **언제나 대입**했다. 리뷰가 잡았다.
+|→ **"보존한다"·"건드리지 않는다"류의 주석은 타입이 그것을 강제하는지 확인하라.** 선택 필드가
+|아니면 그 주석은 희망 사항이다.
+|## 35. 검증기가 **자기 검색어를 센다** — 그리고 설명하면 재현된다
+|문서 검증기 `--strict`는 `origin/main`에서도 **종료 코드 1**이고 ERROR 2건(9·5)을 낸다.
+|9건 중 **5건이 `change_control.md` 395행 한 줄** — 그 문서가 기록해 둔 미결 표식 검색 명령 자체다.
+|**오탐을 설명하는 것만으로 카운트가 늘었다.** 정정하며 검사 낱말 넷을 인용했더니 두 파일이
+|각각 다섯씩 늘었다(9→14, 5→10). 검사가 코드 펜스·인용을 가리지 않는다. 낱말을 재생산하지
+|않고 다시 써서 되돌렸다.
+|→ **CR 통과 판정은 `exit 0`이 아니라 "main 대비 증감 0"이다.** 그리고 그 게이트를 문서 수정으로
+|통과시키지 마라 — 지워야 할 것이 역사 서술이다. 원장 §7에 기술 부채로 등록해 두었다.
+|## 36. `SET LOCAL`은 트랜잭션 밖에서 아무 일도 하지 않는다
+|EXPLAIN 계획에 인덱스를 강제하려 `pool.query('SET LOCAL enable_seqscan = off')`를 썼더니
+|다음 질의에 적용되지 않았다 — 풀의 `query`는 문장마다 다른 커넥션일 수 있고 `SET LOCAL`은
+|트랜잭션 범위다. `withTransaction`으로 감싸야 한다.
+|## 37. 시험용 SHA seed가 hex가 아니면 **시험이 조용히 헛돈다**
+|...cut 28 lines

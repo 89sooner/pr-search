@@ -205,3 +205,68 @@
 - **기본 consumer group 이름을 바꾸지 않는다** — `link`와 `link:commit-enrich`
 - **`link_summary`를 객체 통째로 대입하지 않는다** — leaf 소유가 WP-029/WP-030으로 갈린다
 - **`detached`는 WP-030 소유다** — WP-029는 그 필드를 두지 않는다
+
+---
+
+# 2026-08-26 CR-040 · CR-041 / WP-030이 만든 것
+
+## 읽는 순서가 바뀐 문서
+
+- `docs/10_requirements/srs_final.md` — **baseline v2.6** (CR-040이 올렸다). 4.2 조건부 범위·14장 OD 표
+- `docs/10_requirements/prd.md` — v1.2
+- `docs/40_delivery/pr_search_implementation_traceability.md` — **원장 v2.6.**
+  이 세션의 장: **6.35**(WP-030 검증·감사 표·변이) · **6.35.1**(PR #46 리뷰 라운드)
+- `docs/40_delivery/pr_search_work_packages.md` — **v0.6.** WP-030 범위·DoD **26항** 재작성, QA-W002-11·12를 WP-031로 이관
+- `docs/00_governance/change_control.md` — CR-001~041. 5장에 CR-040·041 반영 내역
+- `docs/30_technical_architecture/pr_search_async_events_jobs.md` — **3.4장 신설**(후보 변화 방아쇠·계열별 수명·요약 leaf 정의·실패 처분), JOB-REL-002·003·004 방아쇠 정정, 지표 2종
+- `docs/30_technical_architecture/pr_search_data_model.md` — **v0.5.** `detached` 의미 확정, `link_summary` leaf **계산 규칙 표**
+- `docs/30_technical_architecture/pr_search_api_contracts.md` — **v0.3.** `summary.reverted_pull_request_count` 등재
+- `docs/10_requirements/requirements_screen_traceability_matrix.md` — v0.3 (SRS 버전이 오르면 같은 pass에서 대조한다는 규칙 추가)
+
+## 마이그레이션 014 (CR-041, DEV-240)
+
+`packages/db/migrations/014_relation_candidates.{up,down}.sql` — **인덱스 다섯, 새 표 없음.**
+
+| 인덱스 | 지원 질의 |
+| --- | --- |
+| `commit_snapshot_patch_candidate_idx` | 체리픽 후보. `(repository_id, patch_id, committed_at DESC, commit_sha)` `WHERE patch_id IS NOT NULL` — **정렬까지 담아** 상위 5건이 정렬 없이 끝난다 |
+| `commit_snapshot_subject_idx` | 되돌림 제목 대조(커밋). `split_part(message, E'\n', 1)` |
+| `pull_request_snapshot_title_idx` | 되돌림 제목 대조(PR). `(document ->> 'title')` |
+| `pull_request_snapshot_open_head_idx` | 스택 상위 후보. `WHERE document ->> 'state' = 'open'` |
+| `pull_request_snapshot_base_branch_idx` | **스택 역방향(child)** — DEV-232의 경계 |
+
+**`CREATE INDEX CONCURRENTLY`를 쓰지 않는다** — 러너가 단일 트랜잭션(`packages/db/src/migrate.ts`의 `withTransaction`). 운영 규모 무중단 적용은 **NOT RUN**.
+
+## 관계 파생 (WP-030)
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/domain/src/link/text.ts` | **신규.** 공유 텍스트 primitive — `maskExcluded`(코드 펜스·인라인·인용), `evidenceLine`, `commitSubject`, `EVIDENCE_LIMIT`. `reference.ts`가 이것을 가져다 쓴다(중복 primitive를 만들지 않는다) |
+| `packages/domain/src/link/derived-id.ts` | **신규.** `derivedLinkId(link_type, from, to)` — 비참조 간선의 결정론 ID. `reference_key`를 일반화하지 않는 이유가 주석에 있다 |
+| `packages/domain/src/link/revert.ts` | **신규.** `extractReverts`·`extractCommitReverts`. 트레일러(40자만, `exact`) · `Revert "<제목>"` · PR 제목 접두(`heuristic`) |
+| `packages/domain/src/link/cherry.ts` | **신규.** `extractCherryPicks` — 트레일러만. `patch_id` 비교는 파서의 일이 아니다 |
+| `packages/db/src/repositories/commit-snapshot.ts` | `findCommitsByPatchId`(방향 술어 `PatchCandidateBound`) · `findCommitsBySubject` · `findCommitsRevertingSha` |
+| `packages/db/src/repositories/pr-snapshot.ts` | `findPullRequestsByTitle` · `findOpenPullRequestsByHeadBranch` · `findPullRequestsByBaseBranch` · `findPullRequestSnapshot` |
+| `packages/es/src/links.ts` (+492줄) | `writeDerivedLinks` · `deleteStaleDerivedLinks` · `findLinksFrom`/`findLinksTo`(`search_after`로 끝까지) · `setLinkDetached` · `setLinkResolved` · **`summarizeRelations`**(한 왕복 filter 집계 넷) · `LINK_SUMMARY_SCRIPT`에 네 leaf 추가 |
+| **`apps/pipeline-worker/src/relations.ts`** | **신규·핵심.** `deriveRelations`(파생→조정→양 끝점 요약) · `reevaluateAffectedRelations`(후보 변화) · `handleRelationsReady`(둘을 묶은 진입점) · `reconcileStackDetachment` · `walkChain`(깊이 10 추적) |
+| `apps/pipeline-worker/src/link.ts` | `handleSourceReady`가 `handleRelationsReady`를 부른다 → **JOB-REL-006이 저절로 네 계열을 덮는다** |
+| `apps/pipeline-worker/src/metrics.ts` | `linkRelationsTotal` · `linkStackCycleTotal` |
+| `apps/search-api/src/sequence/range.ts` | `summary.reverted_pull_request_count` — `SUMMARY_AGGS`에 `filter` 집계 하나. **N+1 아님** |
+
+## 이 세션의 시험 (신규)
+
+| 경로 | 무엇을 지키나 |
+| --- | --- |
+| `packages/domain/src/link/relations.test.ts` | 파서 22건 — 패턴·펜스 제외·중복·hex 상한·ID 결정론/방향/충돌 |
+| `apps/pipeline-worker/integration/worker/relations.test.ts` | **실 PG·ES 38건.** 파생·**후보 나중 등장 수렴(source 이벤트 없이)**·stale·`detached` 수명·retarget·순환·깊이 12/13·양 끝점 요약·`links_pending` 보존·부분 실패 둘·**운영 사슬(`handleLinkEvent` + `EVT-ING-005`)**·PG-only 재구축 |
+| `packages/db/integration/relation-candidates.test.ts` | 마이그레이션 014 11건 — 존재·부분 인덱스 술어·질의 결과·**EXPLAIN으로 식 일치**(`enable_seqscan=off` + `withTransaction`) |
+| `regression/runtime-reachability.test.ts` (+20건) | JOB-REL-002·003·004 도달성 · 양 끝점 · 요약 전 refresh · 부분 실패 throw · `links_pending` 미간섭 · 방향 술어 위치 · retarget 역방향 · **새 역할/manifest가 없는지** |
+
+## 손대면 안 되는 것 (갱신)
+
+- `docs/10_requirements/srs_final.md`는 **baseline v2.6**. CR 먼저
+- 기존 마이그레이션을 수정하지 않는다. **014는 이 세션이 신설했다**
+- 기본 consumer group 이름을 바꾸지 않는다 — `link`와 `link:commit-enrich`
+- `link_summary`를 객체 통째로 대입하지 않는다. **`has_stack`은 PR 문서에만 있다** — 커밋에 쓰면 `dynamic: strict`가 거부하고, 거부하는 것이 옳다
+- `links_pending`은 **참조 추출**의 완결 상태다. 관계 파생이 그 뜻을 빌려 쓰지 않는다
+- `reference_key`는 `references` 전용. 세 계열은 양 끝점으로 ID를 만든다

@@ -241,3 +241,73 @@ GitHub/코드/production composition을 다시 실측한다".
 - CR-039: `docs/00_governance/change_control.md` (3장 대장 + 5장 반영 내역)
 - DEV-215~229: 원장 5장 / 검증 기록: 원장 6.34·6.34.1장
 - PR #30·#32의 묵은 스레드 3건도 함께 종결했다 (재실측으로 발견)
+
+---
+
+# Session: 2026-08-26 (3차) — CR-040 OD-005 · CR-041 / WP-030 관계 파생
+
+## Goal
+
+사용자가 준 3단계 지시서. "사용자의 추가 승인을 기다리지 말고 끝까지 수직으로 진행한다."
+Phase A: OD-005 overdue decision을 별도 CR로 즉시 종결 → merge.
+Phase B: WP-030 착수 전 계약 감사 → CR → 마이그레이션 → 구현 → 검증 → PR → 리뷰 정정 → merge → WP-030 done · REL-004 2/8.
+**WP-031 구현은 하지 않는다** — WP-031 preflight audit에서 멈춘다.
+
+## Current state
+
+- main = `c4f8a39`. 작업 트리 clean, origin 동기, 로컬 브랜치는 `main` 하나
+- **SRS baseline v2.6**(CR-040이 올렸다) · PRD v1.2 · 원장 review v2.6 · 작업 패키지 v0.6
+- CR-041 closed, DEV-247까지. **마이그레이션 014까지**
+- **REL-004 구현 2/8** (WP-029·WP-030 done)
+- REL-003 릴리스 게이트는 여전히 미통과 — 베타 공개 승인 안 됨
+- 미해결 리뷰 0건 (PR #1~#46 전수), 열린 PR 0건, open DEV 5건(전부 기존)
+
+## Decisions
+
+decisions.md의 "CR-040"·"CR-041" 절 참조. 무거운 것 다섯:
+
+- **`nori`를 초기 REL-004 의존성에서 제외** — FR-SRCH-011 AC-4는 분석기 구현이 아니라 행위를 정한다. 재검토 조건 셋(AND)으로 되돌릴 수 있게 남겼다
+- **후보(candidate)의 변화가 관계를 바꾼다** — 이 WP의 중심 계약. source-ready만 구독하면 관계가 수렴하지 않는다
+- **`reference_key`를 일반화하지 않는다** — 대상이 나중에 밝혀지는 참조의 문제를 푸는 수단이고, 세 계열은 대상을 알아낸 뒤에 간선을 만든다
+- **계열마다 수명이 다르다** — `reverts`·`cherry_picks`는 제거, `stacks_on`은 `detached`
+- **마이그레이션 014를 만들었다** — CR-039가 "빈 마이그레이션을 만들지 않는다"고 한 것과 다른 판단이다. 후보 탐색 인덱스가 없으면 ADR-004가 이 축에서 깨진다
+
+## Changed files
+
+files.md 참조. 커밋(머지 제외, 시간순):
+
+- `6917c17` docs: CR-040 OD-005 종결 (SRS v2.6) / `c5de774` docs: PR #45 리뷰 셋
+- `f19ac26` docs: CR-041 계약 경화 (DEV-230~247)
+- `fe8458a` feat(link): 되돌림·체리픽·스택 파생 / `d05a2a3` test(link)
+- `b06f636` docs: 원장 6.35장 / `f712381` fix: PR #46 리뷰 여섯
+- `c4f8a39` docs: WP-030 done · REL-004 2/8
+
+머지: PR #45 → `0a501f3`, PR #46 → `926b888`. 36파일 +4,059 / -147.
+
+## Commands
+
+commands.md 참조. 이번에 새로 배운 것 셋:
+
+- 문서 검증기 `--strict`는 **종료 코드 1**이다(main에서도). 판정 기준은 `exit 0`이 아니라 **main 대비 증감 0**
+- 그 게이트는 **자기 검색어를 센다** — 오탐을 설명하려 낱말을 인용하면 카운트가 늘어난다
+- `SET LOCAL`은 트랜잭션 안에서만 뜻이 있다. 풀의 `query`로 EXPLAIN 계획을 강제하려면 `withTransaction`으로 감싸야 한다
+
+## Next steps
+
+- **WP-031 착수 전 계약 감사 → next-free CR(CR-042 예상, 실측할 것) → 구현**
+- 감사에서 이미 다섯을 찾아 뒀다 (todos.md A절) — 가장 무거운 것은 **관계 조회 API가 존재하지 않는다**
+- 릴리스 게이트 4·5·6은 별도 작업
+- `flow-001` e2e 간헐 실패 원인 규명 (WP-016 소관)
+
+## Risks/gotchas
+
+risks.md 참조. 이 세션이 새로 배운 것: **변이가 살아남았을 때 등가인지 묻기 전에 경로를 읽으라**는 규율이 두 번 값을 했다 — M13과 R7 둘 다 살아남았고 **둘 다 실결함**이었다. 그리고 **주석이 코드와 정반대를 적고 있는 자리**를 리뷰가 잡았다.
+
+## References
+
+- PR #45 `0a501f3` — CR-040 / OD-005
+- PR #46 `926b888` — CR-041 / WP-030
+- CR-040·041: `docs/00_governance/change_control.md` (3장 대장 + 5장 반영 내역)
+- DEV-230~247: 원장 5장 / 검증 기록: 원장 **6.35·6.35.1장**
+- 전사(transcript): `exports/202608262010.md` — **실측 확인**. `/export` 출력은 저장소 루트를 가리켰으나 실제 파일은 `exports/`에 있고 `.gitignore` 24행이 덮는다. 미추적 0건
+- worklog: Obsidian `dailywork/2026-08-26_PR-Search-OD-005-종결과-WP-030-관계-파생.md`

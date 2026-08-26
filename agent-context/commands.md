@@ -425,3 +425,124 @@ for i in 1 2 3; do pnpm run test:e2e >/dev/null 2>&1 && echo PASS || echo FAIL; 
 | 같은 시험 | 접두 해결이 이미 `true` | ES 문서가 **같은 파일의 앞선 케이스**에서 남았다. `beforeEach`에서 내 저장소의 엔티티 문서까지 지운다 |
 | `pnpm run test:regression` (리뷰 정정 후) | 발행 순서 단언 실패 | **내 회귀가 틀린 계약을 굳히고 있었다** — 리뷰가 지적한 순서였다. 새 계약으로 다시 걸었다 |
 | `mut.sh M3`(첫 형태) | 즉시 KILLED | 앵커가 **구문을 깨뜨렸다.** 컴파일 실패는 킬이 아니다 — 의미만 바꾸는 형태로 다시 걸었다 |
+
+---
+
+# 2026-08-26 CR-040 · CR-041 세션
+
+## 검증 배터리 (main `c4f8a39` 기준 실측)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                # 통과
+pnpm lint                     # 통과
+pnpm run lint:deps            # 통과 (패키지 13, 위반 0)
+pnpm run test                 # 단위 1342 통과 (1 skipped)   [1320 → +22]
+pnpm run test:integration     # 통합 900 통과                 [849 → +51]
+pnpm run test:regression      # 회귀 124 통과                 [104 → +20]
+pnpm run test:a11y            # 192 통과 (axe 0건)
+pnpm run test:contrast        # 80쌍 통과
+pnpm build
+pnpm --filter @prs/web run build   # e2e 전에 필수
+pnpm run test:e2e             # 66/67 (flow-001 간헐 — 전량 3회 중 1회)
+```
+
+## 이 세션에서 쓴 부분 실행
+
+```bash
+pnpm run test link/relations                      # 파서 단위 22건
+pnpm run test packages/es/src/architecture        # ADR-008 가드레일
+pnpm run test:integration worker/relations        # 파생·수렴·detached·재구축 38건
+pnpm run test:integration relation-candidates     # 마이그레이션 014 11건
+pnpm run test:integration sequence/range-es       # reverted_pull_request_count
+```
+
+## 문서 검증기 — **종료 코드가 1이다** (중요)
+
+```bash
+V=/home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py
+python3 "$V" --root . --strict            # 종료 코드 1, ERROR 2건 (9·5)
+echo "exit=$?"                            # 파이프에 물리면 tail의 코드가 잡힌다 — 주의
+```
+
+**`exit 0`이 될 수 없다.** `origin/main`에서도 같은 2건이 나온다. 판정은 **main 대비 증감**으로 한다:
+
+```bash
+git worktree add -q /tmp/mainwt origin/main
+python3 "$V" --root /tmp/mainwt --strict | grep -oE 'placeholders \([0-9]+\)'
+python3 "$V" --root .          --strict | grep -oE 'placeholders \([0-9]+\)'
+# 두 출력이 같으면 신규 issue 0
+git worktree remove /tmp/mainwt
+```
+
+**함정**: 그 오탐을 **설명하면 재현된다.** 검사 낱말 넷을 문서에 인용하면 카운트가 늘어난다(9→14 실측). 낱말을 재생산하지 않고 기술하라.
+
+## 마이그레이션 014 실증 (up → down → up)
+
+```bash
+docker exec prs-postgres psql -U prs -d prs_test -q -v ON_ERROR_STOP=1 \
+  -c "$(sed 's/\r$//' packages/db/migrations/014_relation_candidates.up.sql)"
+docker exec prs-postgres psql -U prs -d prs_test -tAc \
+  "select indexname from pg_indexes where tablename in ('pull_request_snapshot','commit_snapshot') order by 1"
+# down 실증 후 prs_test는 되돌려 두고 러너가 다시 적용하게 한다
+pnpm --filter @prs/db run build && pnpm run db:migrate    # 개발 DB prs에 적용 → "적용: 014"
+```
+
+CRLF 파일이라 `psql -c`에 넣기 전에 `sed 's/\r$//'`가 필요하다.
+
+## EXPLAIN으로 인덱스 식 일치 확인
+
+```sql
+-- SET LOCAL은 트랜잭션 안에서만 뜻이 있다. 풀의 query는 문장마다 다른 커넥션일 수 있다.
+BEGIN; SET LOCAL enable_seqscan = off;
+EXPLAIN SELECT * FROM commit_snapshot
+  WHERE repository_id = $1 AND split_part(message, E'\n', 1) = $2;
+ROLLBACK;
+```
+
+시험에서는 `withTransaction(pool, ...)`으로 감싼다. **작은 데이터셋에서 planner가 seq scan을 고르는 것으로 실패 판정하지 않는다** — 확인할 것은 계획이 아니라 **식이 일치하는가**다.
+
+## 변이 시험 하니스 (이번에 쓴 형태)
+
+```python
+# scratchpad/mut.py — (이름, 파일, old, new, 스위트) 목록을 돌린다
+#   1) 정확히 1건일 때만 치환(ANCHOR-FAIL로 멈춤) → 2) 스위트 실행
+#   3) 역방향 치환으로 원복 → 4) KILLED/SURVIVED 출력
+# CRLF 파일이므로 치환 문자열을 \r\n으로 변환해 매칭한다
+```
+
+**1차 18종 → 17 킬 + M13 SURVIVED**(깊이 상한 = 실결함), **리뷰 정정 7종 → 6 킬 + R7 SURVIVED**(시험 부재).
+살아남은 둘 다 실결함이었고 **등가로 판정해 세지 않은 변이는 없다.**
+
+## e2e 귀속 절차 (이번에도 썼다)
+
+```bash
+git diff --stat origin/main..HEAD -- apps/web     # 비어 있으면 화면 코드 동일
+grep -n 'page.route' apps/web/e2e/flow-001.spec.ts # **/api/** 를 가로채면 백엔드가 도달 불가
+cd apps/web && for i in 1 2 3 4; do ./node_modules/.bin/playwright test e2e/flow-001.spec.ts --reporter=line; done  # 4/4
+for i in 1 2 3; do pnpm run test:e2e >/dev/null 2>&1 && echo PASS || echo FAIL; done   # 2 PASS / 1 FAIL
+```
+
+## 리뷰 확인 — 전수로 센다
+
+```bash
+for n in $(seq 1 46); do
+  c=$(gh api graphql -f query="{ repository(owner:\"89sooner\",name:\"pr-search\"){
+    pullRequest(number:$n){ reviewThreads(first:60){ nodes{ isResolved isOutdated } } } } }" \
+    --jq '[.data.repository.pullRequest.reviewThreads.nodes[]|select(.isResolved==false and .isOutdated==false)]|length' 2>/dev/null)
+  [ -n "$c" ] && [ "$c" != "0" ] && printf 'PR #%s = %s\n' "$n" "$c"
+done
+```
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 증상 | 원인·해결 |
+| --- | --- | --- |
+| `pnpm run test:integration worker/relations` | `strict_dynamic_mapping_exception: [has_stack]` | **실결함이었다.** 커밋 매핑에 그 leaf가 없다 — 스택은 PR↔PR이다. 종류별로 leaf를 갈랐다 |
+| 같은 시험 | 상위 5건 `first[0]` 불일치 | 조회 헬퍼가 `link_id` 순 정렬이라 배열이 **선택 순서가 아니다.** 집합 비교로 바꿨다 |
+| 같은 시험 | 되돌림 간선 0건 | 시험용 seed `sha('9x')`가 **hex가 아니었다.** 파서는 `[0-9a-f]{40}`을 요구한다. 헬퍼가 비-hex를 던지게 고쳤다 |
+| `pnpm run test:integration` (전량) | `range.test.ts`·`timeline.test.ts` 실패 | **계약이 뒤집혔다.** 두 시험이 `reverted_pull_request_count`가 **없다**를 단언하고 있었다(CR-027 DEV-133). 지우지 않고 뒤집었다 |
+| EXPLAIN 시험 | 인덱스가 계획에 안 나옴 | `SET LOCAL`이 트랜잭션 밖이라 무효. `withTransaction`으로 감쌌다 |
+| `python3 "$V" --strict \| tail` 뒤 `echo $?` | `exit=0`으로 보임 | **파이프의 마지막 명령 코드다.** 파일로 받고 나서 `$?`를 읽어야 한다 — 이 착각으로 "검증기 통과"를 한 번 잘못 읽을 뻔했다 |
+| 변이 스크립트 첫 형태 | `ANCHOR-FAIL match=2` | `sub1`이 실패 시 즉시 종료해 **파일이 안 바뀐 채 남는다**(원자적). 앵커를 좁혀 다시 걸었다 |
+| `pnpm run test:integration` (전량, 1회) | 실패했으나 **어느 시험인지 기록 못 함** | 출력을 `grep '^ *Tests '`로 줄여 받았다. **전량 실행 결과를 요약 줄만 남기고 버리지 마라** |
