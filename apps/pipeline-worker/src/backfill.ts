@@ -22,6 +22,7 @@ import { jobRepo, type JobRow, type Pool, type RepositoryRow, type SnapshotSourc
 import { GitHubApiError, safeMessage, type GitHubClient } from '@prs/github';
 import type { Client } from '@elastic/elasticsearch';
 import { bulkUpsert } from '@prs/es';
+import { withReindexWrite } from '@prs/db';
 import { buildUpsertRequests } from './documents.js';
 import { recordProjectionSnapshot } from './snapshot.js';
 import { toEnrichedPullRequest } from './enriched-payload.js';
@@ -328,8 +329,11 @@ export async function projectOne(
      * 재시도 사다리는 실시간 투영과 같은 것을 쓴다. 여기서 끝내 실패한
      * 항목은 **이 PR 하나만** 실패로 세고 잡은 계속 간다.
      */
-    const { outcomes } = await bulkUpsert(deps.es, requests);
-    const settled = await retryFailedItems(deps.es, outcomes, deps.sleep);
+    // 재색인 울타리 안에서 쓴다 (WP-035, DEV-296·308) — 재시도까지 같은 구간이다.
+    const settled = await withReindexWrite(deps.pool, async (targets) => {
+      const { outcomes } = await bulkUpsert(deps.es, requests, targets);
+      return retryFailedItems(deps.es, outcomes, targets, deps.sleep);
+    });
     const detail = describeFailedItems(settled);
     if (detail !== '') {
       deps.log({

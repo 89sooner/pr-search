@@ -100,6 +100,39 @@ export { SEQUENCE_CHUNK, applyEpochBump, applySequenceToDocuments, findPullReque
 export type { ApplySequenceInput, ApplySequenceResult, SequenceAssignment } from './sequence.js';
 
 export { applyMappings, dropEntityIndices } from './bootstrap.js';
+
+/**
+ * 이중 쓰기 대상 해석 (WP-035 / CR-045, DEV-295).
+ *
+ * 쓰기 원시체는 대상을 **인자로** 받는다. 그 값을 만드는 것은 애플리케이션
+ * 계층이며(`@prs/db`의 `withReindexWrite`), 여기는 타입만 준다 —
+ * `@prs/es`가 `@prs/db`를 의존하지 않게 하기 위해서다.
+ */
+export {
+  SERVING_ONLY,
+  dualWrite,
+  reportShadowFailure,
+  shadowIndexOf,
+  writeIndicesOf,
+  type ShadowWriteFailure,
+  type WriteTargets,
+} from './write-targets.js';
+
+/** 버전 인덱스와 원자 별칭 전환 (WP-035 / FR-ING-008). */
+export {
+  concreteIndexName,
+  createVersionedIndex,
+  deleteRetiredIndex,
+  isEntityAlias,
+  listIndexVersions,
+  nextUnusedVersion,
+  parseIndexVersion,
+  reindexIndexPort,
+  resolveServingIndex,
+  schemaOf,
+  switchAlias,
+  type VersionedIndexSchema,
+} from './versioned-index.js';
 export type { BootstrapResult } from './bootstrap.js';
 export {
   DERIVED_LINK_TYPES,

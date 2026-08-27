@@ -51,7 +51,7 @@ import {
   type SubscribeOptions,
   type Subscription,
 } from '@prs/bus';
-import { commitSnapshotRepo, jobRepo, prSnapshotRepo, repositoryRepo } from '@prs/db';
+import { commitSnapshotRepo, jobRepo, prSnapshotRepo, repositoryRepo, withReindexWrite } from '@prs/db';
 import type { Pool, RepositoryRow } from '@prs/db';
 import {
   deleteStaleReferenceLinks,
@@ -64,6 +64,7 @@ import {
   type ReferenceLinkDoc,
   type ReferenceResolution,
   type TargetLookup,
+  type WriteTargets,
 } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
 import { handleRelationsReady, type RelationOutcome } from './relations.js';
@@ -262,7 +263,7 @@ export async function deriveReferenceLinks(
       doc_id: docId,
       reason: String(error).slice(0, 200),
     });
-    await markPending(deps, source, repositoryId, docId);
+    await withReindexWrite(deps.pool, (targets) => markPending(deps, targets, source, repositoryId, docId));
     return EMPTY;
   }
 
@@ -296,7 +297,42 @@ export async function deriveReferenceLinks(
     resolution: resolutions.get(reference.reference_key) ?? null,
   }));
 
-  const write = await writeReferenceLinks(deps.es, docs, { refresh: deps.refresh === true });
+  /*
+   * 이 회차의 간선 쓰기 전체를 **한 울타리 안에서** 한다 (WP-035, DEV-296·308).
+   *
+   * 쓰기·stale 제거·요약이 하나의 논리 쓰기다 — 나누면 그 사이에 전환이 끼어들어
+   * 새 인덱스가 간선은 받고 삭제는 못 받는 상태가 될 수 있다.
+   */
+  return withReindexWrite(deps.pool, async (targets) =>
+    writeDerivedReferenceSet(deps, targets, {
+      docs,
+      source,
+      repositoryId,
+      docId,
+      resolvedCount: resolutions.size,
+      log,
+    }),
+  );
+}
+
+interface ReferenceWriteInput {
+  readonly docs: readonly ReferenceLinkDoc[];
+  readonly source: LinkSource;
+  readonly repositoryId: number;
+  readonly docId: string;
+  readonly resolvedCount: number;
+  readonly log: (fields: LinkLogFields) => void;
+}
+
+/** 울타리 안에서 도는 실제 쓰기. 대상은 인자로 받는다. */
+async function writeDerivedReferenceSet(
+  deps: LinkDeps,
+  targets: WriteTargets,
+  input: ReferenceWriteInput,
+): Promise<DeriveOutcome> {
+  const { docs, source, repositoryId, docId, log } = input;
+
+  const write = await writeReferenceLinks(deps.es, docs, targets, { refresh: deps.refresh === true });
   const complete = write.failures.length === 0;
 
   if (!complete) {
@@ -308,19 +344,23 @@ export async function deriveReferenceLinks(
       failures: write.failures.length,
       reason: write.failures[0]?.reason ?? '',
     });
-    await markPending(deps, source, repositoryId, docId);
-    return { references: docs.length, resolved: resolutions.size, removed: 0, complete: false };
+    await markPending(deps, targets, source, repositoryId, docId);
+    return { references: docs.length, resolved: input.resolvedCount, removed: 0, complete: false };
   }
 
   /*
    * ---- 완전한 파생에 성공했을 때만 지운다 (DEV-220).
    */
-  const removed = await deleteStaleReferenceLinks(deps.es, {
-    repositoryId,
-    fromType: source.kind,
-    fromId: docId,
-    keep: docs.map((doc) => doc.link_id),
-  });
+  const removed = await deleteStaleReferenceLinks(
+    deps.es,
+    {
+      repositoryId,
+      fromType: source.kind,
+      fromId: docId,
+      keep: docs.map((doc) => doc.link_id),
+    },
+    targets,
+  );
 
   await updateLinkSummary(
     deps.es,
@@ -335,11 +375,12 @@ export async function deriveReferenceLinks(
        */
       linksPending: false,
     },
+    targets,
     { refresh: deps.refresh === true },
   );
 
   deps.metrics.linkReferencesTotal.inc({ kind: source.kind }, docs.length);
-  return { references: docs.length, resolved: resolutions.size, removed, complete: true };
+  return { references: docs.length, resolved: input.resolvedCount, removed, complete: true };
 }
 
 /**
@@ -350,6 +391,7 @@ export async function deriveReferenceLinks(
  */
 async function markPending(
   deps: LinkDeps,
+  targets: WriteTargets,
   source: LinkSource,
   repositoryId: number,
   docId: string,
@@ -357,6 +399,7 @@ async function markPending(
   await updateLinkSummary(
     deps.es,
     { alias: aliasOf(source.kind), docId, repositoryId, linksPending: true },
+    targets,
     { refresh: deps.refresh === true },
   );
 }
@@ -457,7 +500,9 @@ export async function resolveReferencesTo(
     updates.push({ link_id: link.link_id, repository_id: Number(link.repository_id), resolution: direct });
   }
 
-  const result = await resolveReferenceLinks(deps.es, updates, { refresh: deps.refresh === true });
+  const result = await withReindexWrite(deps.pool, (targets) =>
+    resolveReferenceLinks(deps.es, updates, targets, { refresh: deps.refresh === true }),
+  );
 
   /*
    * **부분 실패를 성공으로 세지 않는다** (PR #44 리뷰 P2).
@@ -517,7 +562,9 @@ export async function handleSourceReady(
    * 각각 돌아야 한다. 여기 붙였으므로 **재파생이 저절로 네 계열을 덮는다**
    * (DEV-234): `runReferenceRebuild`가 이 함수를 부른다.
    */
-  const { outcome: relations, reevaluated } = await handleRelationsReady(deps, repository, source);
+  const { outcome: relations, reevaluated } = await withReindexWrite(deps.pool, (targets) =>
+    handleRelationsReady(deps, repository, source, targets),
+  );
   return { derived, resolved, relations, reevaluated };
 }
 

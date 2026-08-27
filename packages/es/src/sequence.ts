@@ -14,6 +14,7 @@
 import type { Client } from '@elastic/elasticsearch';
 import { search } from './search.js';
 import { applyMandatoryScopeFilter } from './scoped-query.js';
+import { dualWrite, type WriteTargets } from './write-targets.js';
 
 /**
  * 커밋 하나에 붙일 시퀀스.
@@ -70,6 +71,7 @@ export const SEQUENCE_CHUNK = 1_000;
 export async function applySequenceToDocuments(
   client: Client,
   input: ApplySequenceInput,
+  targets: WriteTargets,
 ): Promise<ApplySequenceResult> {
   const updated: Record<string, number> = { 'prs-commits': 0, 'prs-pull-requests': 0 };
 
@@ -80,12 +82,21 @@ export async function applySequenceToDocuments(
     const shas = Object.keys(seqBySha);
     if (shas.length === 0) continue;
 
+    /*
+     * 서비스 대상 결과만 센다 (WP-035). shadow 갱신 건수는 정본 스캔이 어디까지
+     * 갔느냐에 따라 달라지므로 서비스 건수와 더하면 지표가 뜻을 잃는다 —
+     * shadow는 실패했을 때만 말한다.
+     */
     updated['prs-commits'] =
       (updated['prs-commits'] ?? 0) +
-      (await updateOne(client, input, 'prs-commits', 'commit_sha', shas, seqBySha));
+      (await dualWrite(targets, 'prs-commits', 'update_by_query', (index) =>
+        updateOne(client, input, index, 'commit_sha', shas, seqBySha),
+      ));
     updated['prs-pull-requests'] =
       (updated['prs-pull-requests'] ?? 0) +
-      (await updateOne(client, input, 'prs-pull-requests', 'merge_commit_sha', shas, seqBySha));
+      (await dualWrite(targets, 'prs-pull-requests', 'update_by_query', (index) =>
+        updateOne(client, input, index, 'merge_commit_sha', shas, seqBySha),
+      ));
   }
 
   return { updated, total: Object.values(updated).reduce((sum, n) => sum + n, 0) };
@@ -94,13 +105,13 @@ export async function applySequenceToDocuments(
 async function updateOne(
   client: Client,
   input: ApplySequenceInput,
-  alias: string,
+  index: string,
   shaField: string,
   shas: readonly string[],
   seqBySha: Readonly<Record<string, number>>,
 ): Promise<number> {
   const response = await client.updateByQuery({
-    index: alias,
+    index,
     routing: String(input.repositoryId),
     refresh: true,
     /*
@@ -172,13 +183,15 @@ export async function applyEpochBump(
     readonly newEpoch: number;
     readonly sequenceSpace: string;
   },
+  targets: WriteTargets,
 ): Promise<ApplySequenceResult> {
   const updated: Record<string, number> = {};
   let total = 0;
 
   for (const alias of ['prs-commits', 'prs-pull-requests'] as const) {
+    const count = await dualWrite(targets, alias, 'update_by_query', async (index) => {
     const response = await client.updateByQuery({
-      index: alias,
+      index,
       routing: String(input.repositoryId),
       refresh: true,
       conflicts: 'proceed',
@@ -199,7 +212,8 @@ export async function applyEpochBump(
         params: { epoch: input.newEpoch, space: input.sequenceSpace },
       },
     });
-    const count = Number(response.updated ?? 0);
+      return Number(response.updated ?? 0);
+    });
     updated[alias] = count;
     total += count;
   }

@@ -52,6 +52,7 @@ import {
   type DerivedLinkDoc,
   type LinkEndpointKind,
   type LinkScopeFields,
+  type WriteTargets,
 } from '@prs/es';
 
 import type { LinkDeps, LinkSource } from './link.js';
@@ -469,6 +470,7 @@ export async function deriveRelations(
   deps: LinkDeps,
   repository: RepositoryRow,
   source: LinkSource,
+  writeTargets: WriteTargets,
 ): Promise<RelationOutcome> {
   const log = deps.log ?? ((): void => undefined);
   const repositoryId = Number(repository.repository_id);
@@ -536,7 +538,7 @@ export async function deriveRelations(
   });
 
   const all = [...revertDocs, ...cherryDocs, ...stackDocs];
-  const write = await writeDerivedLinks(deps.es, all, { refresh });
+  const write = await writeDerivedLinks(deps.es, all, writeTargets, { refresh });
   if (write.failures.length > 0) {
     log({
       level: 'error',
@@ -559,26 +561,34 @@ export async function deriveRelations(
    * ---- 조정: 계열마다 수명이 다르다 (DEV-233).
    */
   let removed = 0;
-  removed += await deleteStaleDerivedLinks(deps.es, {
-    repositoryId,
-    linkType: 'reverts',
-    fromType: source.kind,
-    fromId: docId,
-    keep: revertDocs.map((doc) => doc.link_id),
-  });
-  if (source.kind === 'commit') {
-    removed += await deleteStaleDerivedLinks(deps.es, {
+  removed += await deleteStaleDerivedLinks(
+    deps.es,
+    {
       repositoryId,
-      linkType: 'cherry_picks',
-      fromType: 'commit',
+      linkType: 'reverts',
+      fromType: source.kind,
       fromId: docId,
-      keep: cherryDocs.map((doc) => doc.link_id),
-    });
+      keep: revertDocs.map((doc) => doc.link_id),
+    },
+    writeTargets,
+  );
+  if (source.kind === 'commit') {
+    removed += await deleteStaleDerivedLinks(
+      deps.es,
+      {
+        repositoryId,
+        linkType: 'cherry_picks',
+        fromType: 'commit',
+        fromId: docId,
+        keep: cherryDocs.map((doc) => doc.link_id),
+      },
+      writeTargets,
+    );
   }
 
   let detached = 0;
   if (source.kind === 'pull_request') {
-    detached = await reconcileStackDetachment(deps, repositoryId, docId, stackDocs);
+    detached = await reconcileStackDetachment(deps, repositoryId, docId, stackDocs, writeTargets);
   }
 
   /*
@@ -606,7 +616,7 @@ export async function deriveRelations(
    */
   await deps.es.indices.refresh({ index: LINKS_ALIAS });
   for (const endpoint of endpoints.values()) {
-    await refreshRelationSummary(deps, repositoryId, endpoint, docIdOf(repositoryId, endpoint));
+    await refreshRelationSummary(deps, repositoryId, endpoint, docIdOf(repositoryId, endpoint), writeTargets);
   }
 
   for (const doc of all) {
@@ -636,6 +646,7 @@ async function reconcileStackDetachment(
   repositoryId: number,
   fromId: string,
   desired: readonly DerivedLinkDoc[],
+  writeTargets: WriteTargets,
 ): Promise<number> {
   const keep = new Set(desired.map((doc) => doc.link_id));
   const existing = await findLinksFrom(deps.es, {
@@ -650,6 +661,7 @@ async function reconcileStackDetachment(
   const result = await setLinkDetached(
     deps.es,
     stale.map((link) => ({ link_id: link.link_id, repository_id: repositoryId, detached: true })),
+    writeTargets,
     { refresh: deps.refresh === true },
   );
   /*
@@ -679,6 +691,7 @@ export async function refreshRelationSummary(
   repositoryId: number,
   source: LinkSource,
   docId: string,
+  writeTargets: WriteTargets,
 ): Promise<void> {
   const summary = await summarizeRelations(deps.es, {
     repositoryId,
@@ -717,6 +730,7 @@ export async function refreshRelationSummary(
        */
       relations,
     },
+    writeTargets,
     { refresh: deps.refresh === true },
   );
 }
@@ -764,6 +778,7 @@ export async function reevaluateAffectedRelations(
   deps: LinkDeps,
   repository: RepositoryRow,
   source: LinkSource,
+  writeTargets: WriteTargets,
 ): Promise<number> {
   const log = deps.log ?? ((): void => undefined);
   const repositoryId = Number(repository.repository_id);
@@ -891,7 +906,7 @@ export async function reevaluateAffectedRelations(
      * 보장할 수 없다. 한 홉이면 충분하다 — 이 source의 변화가 바꿀 수 있는 것은
      * 이 source를 후보로 삼는 쪽뿐이고, 그쪽의 결과가 또 다른 쪽을 바꾸지 않는다.
      */
-    await deriveRelations(deps, repository, target);
+    await deriveRelations(deps, repository, target, writeTargets);
     done += 1;
   }
   return done;
@@ -908,8 +923,9 @@ export async function handleRelationsReady(
   deps: LinkDeps,
   repository: RepositoryRow,
   source: LinkSource,
+  writeTargets: WriteTargets,
 ): Promise<{ readonly outcome: RelationOutcome; readonly reevaluated: number }> {
-  const outcome = await deriveRelations(deps, repository, source);
-  const reevaluated = await reevaluateAffectedRelations(deps, repository, source);
+  const outcome = await deriveRelations(deps, repository, source, writeTargets);
+  const reevaluated = await reevaluateAffectedRelations(deps, repository, source, writeTargets);
   return { outcome, reevaluated };
 }

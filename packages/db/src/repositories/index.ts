@@ -5,6 +5,8 @@ export * as deadLetterRepo from './dead-letter.js';
 export * as integrityRepo from './integrity.js';
 export * as prSnapshotRepo from './pr-snapshot.js';
 export * as jobRepo from './job.js';
+/** 무중단 재색인 잡 상태 (WP-035 / JOB-ING-006). */
+export * as reindexRepo from './reindex.js';
 export * as mergeSequenceRepo from './merge-sequence.js';
 export * as pipelineRepo from './pipeline.js';
 export * as rawEventRepo from './raw-event.js';
@@ -22,6 +24,14 @@ export type {
 } from './dead-letter.js';
 export type { CommitMetadataSource, CommitSnapshotInput, CommitSnapshotRow } from './commit-snapshot.js';
 export type { JobRow, JobState, JobType } from './job.js';
+export type {
+  EnqueueReindexOutcome,
+  ReindexIndexPort,
+  ReindexJob,
+  ReindexPhase,
+  ReindexProgress,
+  RetiredIndex,
+} from './reindex.js';
 export type { MergeSequenceInsert, MergeSequenceRow, SequencePoint } from './merge-sequence.js';
 export type { LagPercentiles, RepositoryLag } from './pipeline.js';
 export type { ReleaseRow, ReleaseSource, ReleaseTimelineRow, ReleaseUpsert } from './release.js';

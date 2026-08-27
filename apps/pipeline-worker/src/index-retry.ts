@@ -12,7 +12,7 @@
  */
 
 import { retryDelayMs } from '@prs/bus';
-import { upsertOne, type BulkItemOutcome } from '@prs/es';
+import { upsertOne, type BulkItemOutcome, type WriteTargets } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
 
 /**
@@ -38,6 +38,7 @@ export function defaultSleep(ms: number): Promise<void> {
 export async function retryFailedItems(
   es: Client,
   outcomes: readonly BulkItemOutcome[],
+  targets: WriteTargets,
   sleep: (ms: number) => Promise<void> = defaultSleep,
 ): Promise<readonly BulkItemOutcome[]> {
   if (!outcomes.some((outcome) => outcome.kind === 'retryable')) return outcomes;
@@ -52,7 +53,7 @@ export async function retryFailedItems(
 
     await sleep(retryDelayMs(attempt));
     for (const entry of pending) {
-      current[entry.index] = await upsertOne(es, entry.outcome.request);
+      current[entry.index] = await upsertOne(es, entry.outcome.request, targets);
     }
   }
 

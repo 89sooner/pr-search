@@ -46,3 +46,13 @@ export { seed, SEED_TARGET } from './seed.js';
 export type { SeedCounts } from './seed.js';
 
 export * from './repositories/index.js';
+
+/** 재색인 울타리 (WP-035 / CR-045·046, DEV-296·308). */
+export {
+  FENCE_LOCK_TIMEOUT_MS,
+  ReindexFenceUnavailableError,
+  withReindexExclusive,
+  withReindexWrite,
+  type FenceShadowFailure,
+  type ReindexWriteTargets,
+} from './reindex-fence.js';

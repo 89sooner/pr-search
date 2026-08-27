@@ -12,7 +12,7 @@
  * 조사 이력의 보존이 이 제품의 목적이다.
  */
 
-import { auditRepo, jobRepo, repositoryRepo, type Pool, type RepositoryRow } from '@prs/db';
+import { auditRepo, jobRepo, repositoryRepo, withReindexWrite, type Pool, type RepositoryRow } from '@prs/db';
 import { MAX_SEQUENCE_BRANCHES } from '@prs/db';
 import { applyRepositoryTeams, markRepositoryArchived, type MarkArchivedResult } from '@prs/es';
 import type { Client as EsClient } from '@elastic/elasticsearch';
@@ -152,7 +152,10 @@ async function markDocuments(
   correlationId: string,
 ): Promise<MarkArchivedResult> {
   try {
-    return await markRepositoryArchived(deps.es, repositoryId, archived);
+    // 등록 상태 표식도 이중 쓰기 대상이다 (WP-035, DEV-295).
+    return await withReindexWrite(deps.pool, (targets) =>
+      markRepositoryArchived(deps.es, repositoryId, archived, targets),
+    );
   } catch (error) {
     // 표식 실패가 등록·해제 자체를 되돌리지는 않는다. PostgreSQL이 시스템
     // 오브 레코드이고 ES는 그로부터 재구성 가능한 파생 뷰다 (ADR-004).
@@ -349,7 +352,9 @@ export async function syncRepositoryTeams(
         pool: deps.pool,
         index: {
           applyRepositoryTeams: (repositoryId, teamIds) =>
-            applyRepositoryTeams(deps.es, repositoryId, teamIds),
+            withReindexWrite(deps.pool, (targets) =>
+              applyRepositoryTeams(deps.es, repositoryId, teamIds, targets),
+            ),
         },
         source: { listRepositoryTeams: listTeams },
         log: (entry) => deps.log?.({ ...entry, correlation_id: correlationId }),

@@ -52,6 +52,67 @@ export function repositoryScopeLockKey(repositoryId: number): string {
 }
 
 /**
+ * 재색인 울타리 키 (WP-035 / CR-045·046, DEV-296·308).
+ *
+ * ## 왜 키가 하나인가
+ *
+ * 계약은 "별칭 단위 advisory lock"이라고 적는다. 그런데 논리 쓰기 하나가 **여러
+ * 별칭에 걸친다** — 한 이벤트가 PR 문서와 커밋 문서를 같은 벌크로 쓴다. 별칭마다
+ * 키를 나누면 그 쓰기가 락 여럿을 순서대로 잡아야 하고, 그 순간 교착 가능성이
+ * 생긴다.
+ *
+ * **동시 실행 상한이 1이므로**(DEV-300) 재색인 중인 별칭은 언제나 하나뿐이고,
+ * 키 하나는 별칭별 키와 **정확히 같은 배제 집합**을 만든다. 상한을 올리게 되면
+ * 그때 키를 나누고 잠금 순서를 정한다.
+ *
+ * ## 공유·배타로 가른다
+ *
+ * 논리 쓰기는 **공유**로 잡는다 — 서로를 막지 않으므로 평시 처리량이 그대로다.
+ * 활성화와 전환은 **배타**로 잡아 "진행 중인 논리 쓰기가 하나도 없을 때만"을
+ * 데이터베이스가 보장하게 한다 (DEV-308). 배타 하나가 모든 쓰기를 막는 것은
+ * 전환이 걸리는 몇 밀리초뿐이다.
+ */
+export function reindexFenceKey(): string {
+  return 'reindex:fence';
+}
+
+/**
+ * 세션 범위 **공유** advisory lock을 잡는다 (WP-035, DEV-296).
+ *
+ * 공유끼리는 서로를 막지 않고 배타만 막는다. 논리 쓰기가 이것을 쥔 동안에는
+ * 활성화도 전환도 진행하지 못한다.
+ *
+ * 트랜잭션 범위가 아닌 이유는 `acquireAdvisorySessionLock`과 같다 — 이 락은
+ * **Elasticsearch 왕복을 감싸야** 하고, 그동안 트랜잭션을 열어 두면 커넥션과
+ * 스냅숏을 네트워크 시간만큼 붙잡는다.
+ *
+ * @returns 잡았으면 `true`. `lockTimeoutMs` 안에 잡지 못하면 `false` —
+ *   호출부는 **쓰기를 진행하지 않는다.** 울타리 없이 쓰면 그 쓰기가 shadow에서
+ *   빠질 수 있고, 그것이 이 락이 막으려는 유일한 것이다.
+ */
+export async function acquireAdvisorySharedLock(
+  client: PoolClient,
+  key: string,
+  lockTimeoutMs = 30_000,
+): Promise<boolean> {
+  await client.query(`SET lock_timeout = ${String(Math.trunc(lockTimeoutMs))}`);
+  try {
+    await client.query('SELECT pg_advisory_lock_shared(hashtext($1))', [key]);
+    return true;
+  } catch (error) {
+    if ((error as { code?: string }).code === '55P03') return false;
+    throw error;
+  } finally {
+    await client.query('RESET lock_timeout').catch(() => undefined);
+  }
+}
+
+/** 세션 범위 공유 advisory lock을 푼다. */
+export async function releaseAdvisorySharedLock(client: PoolClient, key: string): Promise<void> {
+  await client.query('SELECT pg_advisory_unlock_shared(hashtext($1))', [key]);
+}
+
+/**
  * 세션 범위 advisory lock을 잡는다 (CR-037, DEV-191).
  *
  * ## 왜 트랜잭션 범위가 아닌가
