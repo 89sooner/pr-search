@@ -25,6 +25,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { serializeQuery } from '@prs/query';
 import { Banner, Button, Spinner } from '@conductor-by-89soone/react';
 import { CursorPager, toCursorFailure, type CursorFailure } from './CursorPager';
+import Link from 'next/link';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { FacetRail } from './FacetRail';
@@ -597,7 +598,20 @@ function ScreenBody({
     case 'empty_no_result':
       return (
         <div data-testid="empty-no-result">
-          <EmptyState cause="no_result" />
+          <EmptyState
+            cause="no_result"
+            actions={
+              /*
+               * 원인 후보 셋 중 둘(미수집 저장소 / 접근 권한 없음)은 이 화면이
+               * 판별할 수 없다 — 서버가 접근 범위 밖을 결과 없음과 같게 답하기
+               * 때문이다 (THR-004). 저장소 개요에서 사용자가 직접 확인한다
+               * (FLOW-002, CR-050).
+               */
+              <Link href="/repositories" data-testid="search-open-repository-overview">
+                저장소 수집 상태 확인
+              </Link>
+            }
+          />
           {/*
            * 어떤 조건을 빼면 결과가 생기는지 (FR-SRCH-006 AC-3, QA-W001-11).
            * "결과 없음"만 보여 주면 사용자가 어느 조건이 과했는지 모른다.
