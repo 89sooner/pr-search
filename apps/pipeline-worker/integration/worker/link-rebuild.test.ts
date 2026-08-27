@@ -188,8 +188,30 @@ async function wireBus(): Promise<{
   return { bus, subscriptions, seen };
 }
 
-/** 두 소비자가 조용해질 때까지 기다린다. 무한 루프면 여기서 끝나지 않는다. */
-async function settle(seen: string[], quietMs = 300, limitMs = 6_000): Promise<void> {
+/**
+ * 두 소비자가 조용해질 때까지 기다린다. 무한 루프면 여기서 끝나지 않는다.
+ *
+ * ## `until`을 주면 그 조건까지 기다린다 (DEV-346)
+ *
+ * **정적(quiet)은 "지금 전달 중인 이벤트가 없다"이지 "처리가 끝났다"가 아니다.**
+ * 소비자가 이벤트를 받아 `seen`에 적은 뒤 정본을 쓰고 색인하는 동안 버스는
+ * 조용하다. 느린 실행기에서 그 틈이 `quietMs`를 넘으면 사슬이 아직 진행 중인데
+ * 멎은 것으로 판정하고, 시험은 간선이 없는 상태로 단언에 들어간다 — CI에서
+ * 실제로 그렇게 실패했다(run 33073072697). 로컬에서는 늘 통과했다.
+ *
+ * 대기 시간을 늘려 가리지 않는다. **기대하는 상태를 직접 묻는다.**
+ * 루프 탐지처럼 "아무 일도 더 일어나지 않는다"를 재는 곳은 `until` 없이 부른다.
+ */
+interface SettleOptions {
+  readonly quietMs?: number;
+  readonly limitMs?: number;
+  /** 참이 될 때까지 기다린다. 정적만으로 빠져나오지 않는다. */
+  readonly until?: () => Promise<boolean>;
+}
+
+async function settle(seen: string[], options: SettleOptions = {}): Promise<void> {
+  const quietMs = options.quietMs ?? 300;
+  const limitMs = options.limitMs ?? (options.until === undefined ? 6_000 : 20_000);
   const started = Date.now();
   let last = seen.length;
   let quietSince = Date.now();
@@ -199,8 +221,19 @@ async function settle(seen: string[], quietMs = 300, limitMs = 6_000): Promise<v
       last = seen.length;
       quietSince = Date.now();
     }
-    if (Date.now() - quietSince >= quietMs) return;
-    if (Date.now() - started > limitMs) throw new Error(`이벤트가 멎지 않는다 (${String(seen.length)}건)`);
+    if (Date.now() - quietSince >= quietMs) {
+      if (options.until === undefined) return;
+      if (await options.until()) return;
+      // 조건이 아직이면 정적 판정을 다시 시작한다 — 그 사이 새 이벤트가 올 수 있다.
+      quietSince = Date.now();
+    }
+    if (Date.now() - started > limitMs) {
+      throw new Error(
+        options.until === undefined
+          ? `이벤트가 멎지 않는다 (${String(seen.length)}건)`
+          : `기대한 상태에 이르지 못했다 (이벤트 ${String(seen.length)}건)`,
+      );
+    }
   }
 }
 
@@ -306,7 +339,12 @@ describe('직접 푸시 종단과 전량 재파생 (WP-029 / CR-039)', () => {
         },
       });
 
-      await settle(seen);
+      /*
+       * **간선이 생길 때까지 기다린다** (DEV-346). 이 사슬은 채번 → 보강 →
+       * 정본 → 색인 → 신호 → 파생으로 이어지고, 마지막 두 홉 사이에 버스가
+       * 조용한 구간이 있다. 정적만으로 판정하면 그 구간에서 빠져나온다.
+       */
+      await settle(seen, { until: async () => (await linksOf(commitDocId(REPOSITORY_ID, directSha))).length > 0 });
 
       // ---- ready 신호가 실제로 나왔다. 이것이 없으면 사슬이 끊긴 것이다.
       expect(seen.filter((one) => one === `link:${EVENT_NAMES.commitMetadataReady}`).length).toBeGreaterThan(0);
