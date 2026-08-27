@@ -557,7 +557,11 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 3. `deploy/k8s/README.md` — 적용 순서에 등재
 4. `30_technical_architecture/pr_search_infrastructure_operations.md` — **v0.5.** 배포 단위 표에 `pipeline-worker:authz`(적체 축 `prs:permission`, 상한 **1 / 4**) 등재
 5. `regression/runtime-reachability.test.ts` — 미배포 예외에서 `authz` **제거**, 도달성 표에 JOB-AUTH-001 등재(기동·종료·역할·manifest·ROLES 값), `배포된 역할이 예외에 남아 있지 않다`에 `authz` 추가. 회귀 187 → **192**
-6. `40_delivery/pr_search_implementation_traceability.md` — **v3.6.** DEV-306 resolved
+6. `40_delivery/pr_search_implementation_traceability.md` — **v3.6.** DEV-306 resolved, 리뷰 정정 둘(DEV-321·322)
+
+**PR #53 리뷰 둘 — 문서가 스스로와 어긋난 자리.** 표에 같은 단위가 두 줄 올랐고(DEV-321), 표 아래 산문이 그 역할을 여전히 미배포로 적고 있었다(DEV-322). 둘 다 회귀가 잡지 못했다 — 앞의 것은 검사가 역할을 `Set`으로 다뤄서, 뒤의 것은 표만 보고 산문을 보지 않아서다. 검사 둘을 신설하고 변이(A-M4·A-M5)로 킬을 확인했다. 회귀 192 → **194**.
+
+**중복의 직접 원인은 스크립트가 멱등이 아니었던 것이다.** `git checkout --`로 잃은 편집을 복구하려 같은 편집 스크립트를 다시 돌렸고, 앵커가 여전히 맞아 한 번 더 삽입됐다.
 
 **정상 경로가 시험이 지목한 그대로였다.** CR-047이 "예외를 지우고 manifest를 만드는 것이 정상 경로"라고 적으며 그 길을 시험으로 강제했고, 이 CR이 처음으로 그 길을 걸었다 — 예외를 지우자 세 검사(코드 → manifest, 승인 표 → manifest, 서로 덮기)가 모두 다시 말을 하기 시작했다.
 
