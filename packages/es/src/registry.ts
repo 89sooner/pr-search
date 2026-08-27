@@ -12,6 +12,7 @@
 
 import type { Client } from '@elastic/elasticsearch';
 import { ENTITY_ALIASES, type EntityAlias } from './indices.js';
+import { dualWrite, type WriteTargets } from './write-targets.js';
 
 /** 저장소 등록 상태 표식을 갖는 인덱스. 릴리스·관계 문서에는 이 필드가 없다. */
 export const ARCHIVABLE_ALIASES: readonly EntityAlias[] = ['prs-pull-requests', 'prs-commits'];
@@ -42,13 +43,15 @@ export async function markRepositoryArchived(
   client: Client,
   repositoryId: number,
   archived: boolean,
+  targets: WriteTargets,
 ): Promise<MarkArchivedResult> {
   const updated: Record<string, number> = {};
   let total = 0;
 
   for (const alias of ARCHIVABLE_ALIASES) {
+    const count = await dualWrite(targets, alias, 'update_by_query', async (index) => {
     const response = await client.updateByQuery({
-      index: alias,
+      index,
       routing: String(repositoryId),
       refresh: true,
       // 충돌은 넘긴다. 같은 문서를 투영이 동시에 갱신 중이면 다음 회차가 잡는다 —
@@ -67,8 +70,9 @@ export async function markRepositoryArchived(
         params: { archived },
       },
     });
+      return Number(response.updated ?? 0);
+    });
 
-    const count = Number(response.updated ?? 0);
     updated[alias] = count;
     total += count;
   }
@@ -100,14 +104,16 @@ export async function applyRepositoryTeams(
   client: Client,
   repositoryId: number,
   teamIds: readonly number[],
+  targets: WriteTargets,
 ): Promise<MarkArchivedResult> {
   const normalized = [...new Set(teamIds)].sort((a, b) => a - b);
   const updated: Record<string, number> = {};
   let total = 0;
 
   for (const alias of TEAM_SCOPED_ALIASES) {
+    const count = await dualWrite(targets, alias, 'update_by_query', async (index) => {
     const response = await client.updateByQuery({
-      index: alias,
+      index,
       routing: String(repositoryId),
       refresh: true,
       // 투영이 같은 문서를 동시에 갱신 중이면 다음 회차가 잡는다.
@@ -123,8 +129,9 @@ export async function applyRepositoryTeams(
         params: { teams: normalized },
       },
     });
+      return Number(response.updated ?? 0);
+    });
 
-    const count = Number(response.updated ?? 0);
     updated[alias] = count;
     total += count;
   }

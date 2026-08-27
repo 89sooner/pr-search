@@ -49,18 +49,26 @@ export interface JobRow {
 
 type Queryable = Pool | PoolClient;
 
-/** 잡을 큐에 넣는다. 같은 대상에 활성 잡이 있으면 유니크 위반이 발생한다. */
+/**
+ * 잡을 큐에 넣는다. 같은 대상에 활성 잡이 있으면 유니크 위반이 발생한다.
+ *
+ * `progress`를 **같은 INSERT에** 넣을 수 있다 (PR #52 리뷰 P2). 행을 먼저 만들고
+ * 초기 상태를 뒤에 쓰면, 그 사이에 러너가 집어 **초기화되지 않은 잡**을 실행한다 —
+ * 재색인은 그 상태를 "진행 상태가 없다"로 읽어 영구 실패로 만든다. 큐에 보이는
+ * 순간 이미 완전해야 한다.
+ */
 export async function enqueueJob(
   db: Queryable,
   type: JobType,
   target: string,
   requestedBy: string,
+  progress: Record<string, unknown> = {},
 ): Promise<number> {
   const result = await db.query<{ job_id: number }>(
-    `INSERT INTO job (type, target, state, requested_by)
-     VALUES ($1, $2, 'queued', $3)
+    `INSERT INTO job (type, target, state, requested_by, progress)
+     VALUES ($1, $2, 'queued', $3, $4::jsonb)
      RETURNING job_id`,
-    [type, target, requestedBy],
+    [type, target, requestedBy, JSON.stringify(progress)],
   );
 
   const jobId = result.rows[0]?.job_id;

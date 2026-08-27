@@ -8,6 +8,10 @@
 
 import type { Client } from '@elastic/elasticsearch';
 import { bulkUpsert, type BulkUpsertResult, type UpsertRequest } from './upsert.js';
+import { dualWrite, type WriteTargets } from './write-targets.js';
+
+/** 릴리스 문서가 사는 별칭. */
+const RELEASES_ALIAS = 'prs-releases';
 
 /** 정본 한 행을 색인 문서로 옮기는 데 필요한 것. */
 export interface ReleaseDocInput {
@@ -46,6 +50,7 @@ export async function upsertReleaseDocuments(
   scope: ReleaseScope,
   releases: readonly ReleaseDocInput[],
   syncedAtMs: number,
+  targets: WriteTargets,
 ): Promise<BulkUpsertResult> {
   if (releases.length === 0) return { outcomes: [], hasFailures: false };
 
@@ -73,7 +78,7 @@ export async function upsertReleaseDocuments(
     },
   }));
 
-  return bulkUpsert(client, requests);
+  return bulkUpsert(client, requests, targets);
 }
 
 /**
@@ -92,6 +97,7 @@ export async function pruneReleaseDocuments(
   client: Client,
   repositoryId: number,
   keepTagNames: readonly string[],
+  targets: WriteTargets,
 ): Promise<void> {
   /*
    * **지우기 전에 refresh한다.** `delete_by_query`는 검색으로 대상을 찾으므로
@@ -100,23 +106,29 @@ export async function pruneReleaseDocuments(
    * (원장 7장의 기지 패턴, jobs/backfill.test.ts에서 실제로 터졌던 모양).
    * 걷어내기는 저장소당 갱신 회차마다 한 번이라 refresh 비용은 무시할 수 있다.
    */
-  await client.indices.refresh({ index: 'prs-releases' });
-  const response = await client.deleteByQuery({
-    index: 'prs-releases',
-    routing: String(repositoryId),
-    refresh: true,
-    conflicts: 'proceed',
-    query: {
-      bool: {
-        filter: [{ term: { repository_id: repositoryId } }],
-        ...(keepTagNames.length === 0 ? {} : { must_not: [{ terms: { tag_name: [...keepTagNames] } }] }),
+  /*
+   * **삭제도 이중으로 한다** (WP-035, DEV-295). 빠지면 새 인덱스에 지워야 할
+   * 문서가 남고, 그 차이는 건수 대조를 통과할 수도 있다 — 같은 수의 다른 문서다.
+   */
+  await dualWrite(targets, RELEASES_ALIAS, 'delete_by_query', async (index) => {
+    await client.indices.refresh({ index });
+    const response = await client.deleteByQuery({
+      index,
+      routing: String(repositoryId),
+      refresh: true,
+      conflicts: 'proceed',
+      query: {
+        bool: {
+          filter: [{ term: { repository_id: repositoryId } }],
+          ...(keepTagNames.length === 0 ? {} : { must_not: [{ terms: { tag_name: [...keepTagNames] } }] }),
+        },
       },
-    },
+    });
+    const failures = (response as { failures?: unknown[] }).failures ?? [];
+    if (failures.length > 0) {
+      throw new Error(`release_prune_partial_failure: ${String(failures.length)}건`);
+    }
   });
-  const failures = (response as { failures?: unknown[] }).failures ?? [];
-  if (failures.length > 0) {
-    throw new Error(`release_prune_partial_failure: ${String(failures.length)}건`);
-  }
 }
 
 /** 비정규화에 쓰는 릴리스 하나. `released_at` 오름차순으로 정렬해 넘긴다. */
@@ -153,13 +165,15 @@ export interface ApplyReleaseTagsInput {
 export async function applyReleaseTagsToDocuments(
   client: Client,
   input: ApplyReleaseTagsInput,
+  targets: WriteTargets,
 ): Promise<number> {
   const releases = input.releases.slice(0, DENORM_TAG_LIMIT);
 
   let total = 0;
   for (const alias of ['prs-pull-requests', 'prs-commits'] as const) {
+    total += await dualWrite(targets, alias, 'update_by_query', async (index) => {
     const response = await client.updateByQuery({
-      index: alias,
+      index,
       routing: String(input.repositoryId),
       refresh: true,
       conflicts: 'proceed',
@@ -195,7 +209,8 @@ export async function applyReleaseTagsToDocuments(
         },
       },
     });
-    total += Number(response.updated ?? 0);
+      return Number(response.updated ?? 0);
+    });
   }
   return total;
 }

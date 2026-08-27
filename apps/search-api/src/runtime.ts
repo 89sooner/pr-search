@@ -23,6 +23,8 @@ import type { ServerDeps } from './server.js';
 import type { AuthContext } from './auth/context.js';
 import type { RegistryDeps } from './ops/repositories.js';
 import type { IntegrityDeps } from './ops/sequence-integrity.js';
+import type { ReindexDeps } from './ops/reindex.js';
+import { reindexIndexPort } from '@prs/es';
 
 /** 운영이 자격 증명으로 만든 GHE 접근. 없으면 GHE에 닿는 기능이 서지 않는다. */
 export interface RuntimeGitHub {
@@ -69,6 +71,17 @@ export function buildIntegrityDeps(pool: Pool, github: RuntimeGitHub | undefined
 }
 
 /**
+ * 무중단 재색인 의존 (API-ADM-004 / WP-035).
+ *
+ * Elasticsearch 클라이언트만 있으면 선다 — 대상 버전을 정하는 데 필요한 것이
+ * 별칭이 가리키는 인덱스와 실재하는 버전 목록뿐이기 때문이다. GHE 자격 증명은
+ * 필요 없다.
+ */
+export function buildReindexDeps(pool: Pool, es: Client): ReindexDeps {
+  return { pool, index: reindexIndexPort(es) };
+}
+
+/**
  * 운영 `buildServer` 인자를 만든다. **`index.ts`와 시험이 같은 함수를 쓴다.**
  *
  * 여기서 한 줄이 빠지면 그 기능은 배포에서 사라진다 — 그래서 이 함수가
@@ -106,6 +119,7 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
           sequence: { ...parts.searchDeps, pool: parts.pool },
         }),
     ...(integrity === undefined ? {} : { integrity }),
+    reindex: buildReindexDeps(parts.pool, parts.es),
     log: (entry) => { parts.log({ ...entry }); },
   };
 }
@@ -116,5 +130,6 @@ export function runtimeCapabilities(parts: RuntimeParts): Readonly<Record<string
     repository_registry: parts.registry !== undefined,
     session_auth: parts.auth !== undefined,
     sequence_integrity: buildIntegrityDeps(parts.pool, parts.github) !== undefined,
+    reindex: true,
   };
 }

@@ -8,7 +8,7 @@
  * 참조 간선 파생, JOB-REL-005 미해결 참조 해결, JOB-REL-006 전량 재파생.
  */
 
-import { createPool, jobRepo, repositoryRepo } from '@prs/db';
+import { createPool, jobRepo, repositoryRepo, withReindexWrite } from '@prs/db';
 import { deterministicEventId } from '@prs/domain';
 import {
   refreshTeamScope,
@@ -64,12 +64,23 @@ import {
 } from './snapshot-bootstrap.js';
 import { startSequenceRepairRunner, type RepairRunner } from './sequence-repair-runner.js';
 import {
+  runReferenceRebuild,
   startLinkWorker,
   startReferenceRebuildRunner,
+  type LinkDeps,
   type LinkLogFields,
+  type RebuildCursor,
+  type RebuildResult,
   type RebuildRunner,
 } from './link.js';
 import { applyRepositoryTeams, createEsClient } from '@prs/es';
+import {
+  startReindexRunner,
+  startRetentionSweeper,
+  type ReindexDeps,
+  type ReindexRunner,
+  type RetentionSweeper,
+} from './reindex.js';
 import type { Subscription } from '@prs/bus';
 import type { ReleaseSummary } from '@prs/github';
 import type { Client } from '@elastic/elasticsearch';
@@ -120,6 +131,9 @@ let commitEnrichSubscription: Subscription | undefined;
 let commitEnrichSweeper: CommitEnrichSweeper | undefined;
 let sequenceSubscription: Subscription | undefined;
 let esClient: Client | undefined;
+/** JOB-ING-006 (WP-035 / CR-045). `batch` 역할이 세운다. */
+let reindexRunner: ReindexRunner | undefined;
+let retentionSweeper: RetentionSweeper | undefined;
 
 if (roles.includes('batch')) {
   relay = startOutboxRelay(pool, bus, {
@@ -127,6 +141,48 @@ if (roles.includes('batch')) {
       process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-ING-007', ...entry })}\n`);
     },
   });
+
+  /*
+   * JOB-ING-006 무중단 재색인 (WP-035 / FR-ING-008).
+   *
+   * 간선 재구축은 **JOB-REL-006의 경로를 그대로 쓴다** — 두 번째 파생 알고리즘을
+   * 만들지 않는다 (DEV-295). 그래서 여기서 링크 파생 deps를 세워 포트로 넘긴다.
+   */
+  const reindexEs = createEsClient();
+  esClient = esClient ?? reindexEs;
+  const reindexLog = (entry: Record<string, unknown>): void => {
+    process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-ING-006', ...entry })}\n`);
+  };
+  const reindexLinkDeps: LinkDeps = {
+    pool,
+    es: reindexEs,
+    bus,
+    metrics,
+    gheHost: resolveGitHubConfig().baseUrl,
+    log: (entry) => { reindexLog({ ...entry }); },
+  };
+
+  const reindexDeps: ReindexDeps = {
+    pool,
+    es: reindexEs,
+    log: (entry) => { reindexLog({ ...entry }); },
+    links: {
+      async rebuildRepository(repository) {
+        let cursor: RebuildCursor | undefined;
+        let processed = 0;
+        for (;;) {
+          const result: RebuildResult = await runReferenceRebuild(reindexLinkDeps, repository, cursor);
+          processed += result.processed;
+          cursor = result.cursor;
+          if (result.done) break;
+        }
+        return processed;
+      },
+    },
+  };
+
+  reindexRunner = startReindexRunner(reindexDeps);
+  retentionSweeper = startRetentionSweeper(reindexDeps);
 }
 
 if (roles.includes('enrich')) {
@@ -587,7 +643,8 @@ if (roles.includes('reconcile')) {
         {
           pool,
           index: {
-            applyRepositoryTeams: (id, teamIds) => applyRepositoryTeams(reconcileEs, id, teamIds),
+            applyRepositoryTeams: (id, teamIds) =>
+              withReindexWrite(pool, (targets) => applyRepositoryTeams(reconcileEs, id, teamIds, targets)),
           },
           source: {
             listRepositoryTeams: (owner, name) => client.listRepositoryTeams({ owner, repo: name }),
@@ -823,7 +880,8 @@ if (roles.includes('authz')) {
       const teamScopeDeps: TeamScopeDeps = {
           pool,
           index: {
-            applyRepositoryTeams: (id, teamIds) => applyRepositoryTeams(authzEs, id, teamIds),
+            applyRepositoryTeams: (id, teamIds) =>
+              withReindexWrite(pool, (targets) => applyRepositoryTeams(authzEs, id, teamIds, targets)),
           },
           source: {
             listRepositoryTeams: (owner, name) =>
@@ -853,6 +911,8 @@ const shutdown = (): void => {
       // 진행 중인 회차를 마치고 나간다. 중간에 끊으면 발행은 됐는데 타이머를
       // 못 감은 행이 남아 다음 기동에서 한 번 더 발행된다.
       await relay?.stop();
+      await reindexRunner?.stop();
+      await retentionSweeper?.stop();
       /*
        * 러너는 **현재 페이지를 마치고** 나간다. 중간에 끊으면 커서가 가리키는
        * 지점과 실제 처리 지점이 어긋나 재개가 처리하지 않은 PR을 건너뛴다.

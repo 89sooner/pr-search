@@ -54,6 +54,8 @@ export const ERROR_CODES = [
   'BISECT_CONTRADICTION',
   /** 동일 대상 잡 실행 중 (사용자 조치: 기존 잡 확인) — HTTP 409 */
   'JOB_CONFLICT',
+  /** 다른 별칭이 재색인 중 (사용자 조치: 실행 중인 재색인 완료 대기) — HTTP 409 */
+  'REINDEX_BUSY',
   /** 저장 100건 초과 (사용자 조치: 기존 항목 삭제) — HTTP 409 */
   'SAVED_SEARCH_LIMIT',
   /** 웹훅 25MB 초과 (사용자 조치: (GHE 측)) — HTTP 413 */
@@ -133,6 +135,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   NO_SEQUENCE: 409,
   BISECT_CONTRADICTION: 409,
   JOB_CONFLICT: 409,
+  REINDEX_BUSY: 409,
   SAVED_SEARCH_LIMIT: 409,
   PAYLOAD_TOO_LARGE: 413,
   PERMISSION_UNAVAILABLE: 503,

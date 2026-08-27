@@ -51,12 +51,13 @@ import {
 import {
   applyJobAction,
   createJob,
+  isCreatableGenericJobType,
   isJobAction,
-  isOperatorJobType,
   toJobResponse,
+  CREATABLE_GENERIC_JOB_TYPES,
   JOB_ACTIONS,
-  OPERATOR_JOB_TYPES,
 } from './jobs.js';
+import { startReindex, type ReindexDeps } from './reindex.js';
 import { auditRepo, jobRepo, repositoryRepo } from '@prs/db';
 import {
   confirmationMatches,
@@ -73,6 +74,8 @@ export const REPOSITORIES_PATH = '/api/v1/admin/repositories';
 export const PIPELINE_STATUS_PATH = '/api/v1/admin/pipeline-status';
 export const JOBS_PATH = '/api/v1/admin/jobs';
 export const SEQUENCE_INTEGRITY_PATH = '/api/v1/admin/sequence-integrity';
+/** API-ADM-004 (WP-035). */
+export const REINDEX_PATH = '/api/v1/admin/reindex';
 
 function fail(
   reply: FastifyReply,
@@ -106,10 +109,17 @@ export interface OpsRouteOptions extends OpsDeps {
    * 없이 뜬 프로세스가 "점검했는데 일치"라고 답하는 것이 최악이다.
    */
   readonly integrity?: IntegrityDeps;
+  /**
+   * 무중단 재색인 의존 (API-ADM-004).
+   *
+   * 색인 이름을 아는 포트가 있어야 대상 버전을 정할 수 있다. 없으면 경로를 달지
+   * 않는다 — 대상을 못 정하는 프로세스가 "재색인을 시작했다"고 답하는 것이 최악이다.
+   */
+  readonly reindex?: ReindexDeps;
 }
 
 export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions): void {
-  const { adminTokens, auth, loginPath, registry, pipeline, integrity, ...deps } = options;
+  const { adminTokens, auth, loginPath, registry, pipeline, integrity, reindex, ...deps } = options;
 
   /**
    * 주체를 세우고 `operator` 역할을 확인한다.
@@ -204,6 +214,7 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
 
   if (registry !== undefined) registerRegistryRoutes(app, registry, authorize);
   if (integrity !== undefined) registerIntegrityRoutes(app, integrity, authorize);
+  if (reindex !== undefined) registerReindexRoutes(app, reindex, authorize);
 
   if (pipeline !== undefined) {
     app.get(PIPELINE_STATUS_PATH, async (request, reply) => {
@@ -391,10 +402,15 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
        * `backfill`만 받아 **JOB-REL-006을 시작할 방법이 아예 없었다**
        * (CR-039 / PR #44 리뷰 P1).
        */
-      if (!isOperatorJobType(body['type'])) {
+      /*
+       * **`reindex`는 여기서 받지 않는다** (CR-045, DEV-301·302). API-ADM-004가
+       * 생성 진입점이며 대상 버전을 서버가 정한다 — 두 경로가 각자 정하면
+       * 한쪽만 상한을 보게 된다.
+       */
+      if (!isCreatableGenericJobType(body['type'])) {
         throw new AdminRejected(
           'INVALID_PARAMETER',
-          `type은 ${OPERATOR_JOB_TYPES.map((one) => `'${one}'`).join(' 또는 ')} 중 하나여야 한다`,
+          `type은 ${CREATABLE_GENERIC_JOB_TYPES.map((one) => `'${one}'`).join(' 또는 ')} 중 하나여야 한다`,
         );
       }
       const target = body['target'];
@@ -480,6 +496,30 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
  * 사유로 답하고, 그때 `consistent`를 싣지 않는다 — 검사하지 않은 것을 "일치"로
  * 적으면 그 한 줄이 거짓이다.
  */
+/**
+ * API-ADM-004 무중단 재색인 (WP-035 / CR-045).
+ *
+ * `operator` 전용이며 **`alias`만** 받는다 (DEV-294). 대상 버전은 서버가 정한다.
+ */
+function registerReindexRoutes(app: FastifyInstance, reindex: ReindexDeps, authorize: Authorize): void {
+  app.post(REINDEX_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const principal = await authorize(request, reply, correlationId);
+    if (principal === null) return reply;
+
+    try {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const result = await startReindex(reindex, body['alias'], principalId(principal));
+      return reply.status(202).send({ ...result, correlation_id: correlationId });
+    } catch (error) {
+      if (error instanceof AdminRejected) {
+        return fail(reply, ADMIN_ERROR_STATUS[error.code], error.code, error.message, correlationId, error.detail);
+      }
+      throw error;
+    }
+  });
+}
+
 function registerIntegrityRoutes(app: FastifyInstance, integrity: IntegrityDeps, authorize: Authorize): void {
   const handle = async (
     request: FastifyRequest,

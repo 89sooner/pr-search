@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Client } from '@elastic/elasticsearch';
 import type { BulkItemOutcome, UpsertRequest } from '@prs/es';
+import { SERVING_ONLY } from '@prs/es';
 import { describeFailedItems, MAX_ITEM_RETRIES, retryFailedItems } from './index-retry.js';
 
 function request(id: string): UpsertRequest {
@@ -64,13 +65,13 @@ describe('retryFailedItems', () => {
     const { client, ids } = fakeEs([]);
     const outcomes = [ok('a'), ok('b')];
 
-    expect(await retryFailedItems(client, outcomes, noSleep)).toEqual(outcomes);
+    expect(await retryFailedItems(client, outcomes, SERVING_ONLY, noSleep)).toEqual(outcomes);
     expect(ids).toEqual([]);
   });
 
   it('**실패한 항목만 다시 보낸다** — 성공한 것은 건드리지 않는다', async () => {
     const { client, ids } = fakeEs(['ok']);
-    const settled = await retryFailedItems(client, [ok('a'), retryable('b')], noSleep);
+    const settled = await retryFailedItems(client, [ok('a'), retryable('b')], SERVING_ONLY, noSleep);
 
     // 벌크 전체를 되돌리면 `a`도 다시 갔을 것이다.
     expect(ids).toEqual(['b']);
@@ -79,7 +80,7 @@ describe('retryFailedItems', () => {
 
   it('**`rejected`는 다시 보내지 않는다** — 다시 보내도 같다는 것이 그 분류의 뜻이다', async () => {
     const { client, ids } = fakeEs([]);
-    const settled = await retryFailedItems(client, [rejected('a')], noSleep);
+    const settled = await retryFailedItems(client, [rejected('a')], SERVING_ONLY, noSleep);
 
     expect(ids).toEqual([]);
     expect(settled[0]?.kind).toBe('rejected');
@@ -92,7 +93,7 @@ describe('retryFailedItems', () => {
      * 다시 보내도 드러나지 않는다 (변이 시험 M2에서 실제로 살아남았다).
      */
     const { client, ids } = fakeEs(['ok']);
-    const settled = await retryFailedItems(client, [rejected('a'), retryable('b')], noSleep);
+    const settled = await retryFailedItems(client, [rejected('a'), retryable('b')], SERVING_ONLY, noSleep);
 
     expect(ids).toEqual(['b']);
     expect(settled.map((outcome) => outcome.kind)).toEqual(['rejected', 'ok']);
@@ -100,7 +101,7 @@ describe('retryFailedItems', () => {
 
   it('예산을 넘기면 포기하고 실패로 남긴다 — 영원히 붙들지 않는다', async () => {
     const { client, ids } = fakeEs(['fail', 'fail', 'fail', 'fail']);
-    const settled = await retryFailedItems(client, [retryable('a')], noSleep);
+    const settled = await retryFailedItems(client, [retryable('a')], SERVING_ONLY, noSleep);
 
     /*
      * 상수와 견주지 않고 **횟수를 적는다.** 상수와 견주면 예산을 0으로 줄여도
@@ -115,7 +116,7 @@ describe('retryFailedItems', () => {
   it('재시도 사이에 기다린다 — 즉시 다시 때리면 아픈 클러스터를 더 아프게 한다', async () => {
     const { client } = fakeEs(['fail', 'fail']);
     const waits: number[] = [];
-    await retryFailedItems(client, [retryable('a')], async (ms) => {
+    await retryFailedItems(client, [retryable('a')], SERVING_ONLY, async (ms) => {
       waits.push(ms);
     });
 

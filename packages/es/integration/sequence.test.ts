@@ -10,6 +10,7 @@
 import type { Client } from '@elastic/elasticsearch';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyEpochBump, applySequenceToDocuments } from '../src/sequence.js';
+import { SERVING_ONLY } from '../src/write-targets.js';
 import { applyMappings } from '../src/bootstrap.js';
 import { createTestClient, waitForCluster } from './helpers.js';
 
@@ -84,7 +85,7 @@ function apply(assignments: { commitSha: string; mergeSeq: number }[]): Promise<
     seqEpoch: 1,
     sequenceSpace: SPACE,
     assignments,
-  });
+  }, SERVING_ONLY);
 }
 
 beforeAll(async () => {
@@ -211,7 +212,7 @@ describe('에폭 전환 반영 (WP-022 / CR-026, DEV-129)', () => {
       baseBranch: BRANCH,
       newEpoch: 2,
       sequenceSpace: NEW_SPACE,
-    });
+    }, SERVING_ONLY);
     expect(result.total).toBeGreaterThan(0);
 
     const merge = await commitDoc(REPOSITORY_ID, MERGE_SHA);
@@ -230,7 +231,7 @@ describe('에폭 전환 반영 (WP-022 / CR-026, DEV-129)', () => {
       baseBranch: BRANCH,
       newEpoch: 2,
       sequenceSpace: NEW_SPACE,
-    });
+    }, SERVING_ONLY);
 
     const other = await commitDoc(OTHER_REPOSITORY_ID, MERGE_SHA);
     expect(other['seq_epoch']).toBeUndefined();
@@ -243,7 +244,7 @@ describe('에폭 전환 반영 (WP-022 / CR-026, DEV-129)', () => {
       baseBranch: BRANCH,
       newEpoch: 2,
       sequenceSpace: NEW_SPACE,
-    });
+    }, SERVING_ONLY);
 
     const merge = await commitDoc(REPOSITORY_ID, MERGE_SHA);
     expect(merge['document_version']).toBe(1);
@@ -253,7 +254,7 @@ describe('에폭 전환 반영 (WP-022 / CR-026, DEV-129)', () => {
       baseBranch: BRANCH,
       newEpoch: 2,
       sequenceSpace: NEW_SPACE,
-    })) as { total: number };
+    }, SERVING_ONLY)) as { total: number };
     expect(again.total).toBe(0);
   });
 });

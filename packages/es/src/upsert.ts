@@ -15,6 +15,7 @@
 
 import type { Client, estypes } from '@elastic/elasticsearch';
 import type { EntityAlias } from './indices.js';
+import { reportShadowFailure, type WriteTargets } from './write-targets.js';
 
 /**
  * Painless 조건부 업서트.
@@ -179,21 +180,38 @@ function scriptBody(request: UpsertRequest): Record<string, unknown> {
 export async function bulkUpsert(
   client: Client,
   requests: readonly UpsertRequest[],
+  targets: WriteTargets,
 ): Promise<BulkUpsertResult> {
   if (requests.length === 0) return { outcomes: [], hasFailures: false };
 
-  const operations: unknown[] = [];
+  /*
+   * 이중 쓰기를 **같은 벌크 안에서** 한다 (WP-035, DEV-295).
+   *
+   * 서비스 대상 전량을 먼저 싣고 그 뒤에 shadow를 싣는다 — 벌크 응답 항목은
+   * 요청 순서와 1:1이므로 앞 `requests.length`개가 서비스 결과다. 두 번째 벌크로
+   * 나누면 왕복이 두 배가 되고, FR-ING-005 AC-2가 요구하는 "한 이벤트 = 한 왕복"이
+   * 재색인 중에만 깨진다.
+   */
+  const shadowPlan: { readonly request: UpsertRequest; readonly index: string }[] = [];
   for (const request of requests) {
+    const shadow = targets.shadows[request.alias];
+    if (shadow !== undefined) shadowPlan.push({ request, index: shadow });
+  }
+
+  const operations: unknown[] = [];
+  const load = (request: UpsertRequest, index: string): void => {
     operations.push({
       update: {
-        _index: request.alias,
+        _index: index,
         _id: request.id,
         routing: request.routing,
         retry_on_conflict: RETRY_ON_CONFLICT,
       },
     });
     operations.push(scriptBody(request));
-  }
+  };
+  for (const request of requests) load(request, request.alias);
+  for (const one of shadowPlan) load(one.request, one.index);
 
   const response = await client.bulk({ operations: operations as NonNullable<estypes.BulkRequest['operations']> });
   const items = response.items;
@@ -221,6 +239,31 @@ export async function bulkUpsert(
     });
   }
 
+  /*
+   * shadow 항목은 서비스 결과와 **섞지 않는다.**
+   *
+   * 불변식 6은 shadow 실패가 서비스를 끊지 않기를, 불변식 7은 그 실패를 잊지
+   * 않기를 요구한다. 그래서 `outcomes`에는 넣지 않고(호출부의 재시도·실패 대기열
+   * 판정이 shadow 때문에 달라지면 안 된다) 울타리를 쥔 쪽에만 알린다.
+   *
+   * **HTTP 200이 완료가 아니다** — 항목 단위 실패 하나도 전환을 막는 실패다.
+   */
+  for (let offset = 0; offset < shadowPlan.length; offset += 1) {
+    const one = shadowPlan[offset];
+    if (one === undefined) continue;
+    const item = items[requests.length + offset]?.update;
+    if (item !== undefined && item.error === undefined && (item.status ?? 0) < 300) continue;
+    reportShadowFailure(targets, {
+      alias: one.request.alias,
+      index: one.index,
+      operation: 'bulk',
+      reason:
+        item === undefined
+          ? '벌크 응답에 대응 항목이 없다'
+          : failureReason(item.status ?? 0, item.error),
+    });
+  }
+
   return { outcomes, hasFailures: outcomes.some((outcome) => outcome.kind !== 'ok') };
 }
 
@@ -230,10 +273,38 @@ export async function bulkUpsert(
  * 벌크 전체를 다시 보내면 이미 성공한 항목까지 되돌아간다. 멱등이라 결과는
  * 같지만, 실패한 항목이 무엇인지가 지표에서 사라진다.
  */
-export async function upsertOne(client: Client, request: UpsertRequest): Promise<BulkItemOutcome> {
+export async function upsertOne(
+  client: Client,
+  request: UpsertRequest,
+  targets: WriteTargets,
+): Promise<BulkItemOutcome> {
+  const served = await sendOne(client, request, request.alias);
+
+  const shadow = targets.shadows[request.alias];
+  if (shadow !== undefined) {
+    const mirrored = await sendOne(client, request, shadow);
+    if (mirrored.kind !== 'ok') {
+      reportShadowFailure(targets, {
+        alias: request.alias,
+        index: shadow,
+        operation: 'update',
+        reason: mirrored.reason,
+      });
+    }
+  }
+
+  return served;
+}
+
+/** 한 인덱스에 항목 하나를 보낸다. 서비스와 shadow가 **같은 경로**를 쓴다. */
+async function sendOne(
+  client: Client,
+  request: UpsertRequest,
+  index: string,
+): Promise<BulkItemOutcome> {
   try {
     const response = await client.update({
-      index: request.alias,
+      index,
       id: request.id,
       routing: request.routing,
       retry_on_conflict: RETRY_ON_CONFLICT,

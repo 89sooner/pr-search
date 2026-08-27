@@ -26,7 +26,7 @@ import {
   type Pool,
   type RepositoryRow,
 } from '@prs/db';
-import { applyMappings, createEsClient, resolveClientOptions } from '@prs/es';
+import { SERVING_ONLY, applyMappings, createEsClient, resolveClientOptions } from '@prs/es';
 
 import { handleLinkEvent, handleSourceReady, runReferenceRebuild, type LinkDeps } from '../../src/link.js';
 import { deriveRelations, handleRelationsReady } from '../../src/relations.js';
@@ -300,7 +300,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedCommit({ sha: target, message: 'fix login' });
     await seedCommit({ sha: reverter, message: `Revert "fix login"\n\nThis reverts commit ${target}` });
 
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
 
     const found = await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' });
     const exact = found.filter((one) => one['confidence'] === 'exact');
@@ -312,7 +312,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
   it('대상 정본이 아직 없으면 **끝점은 정하고 resolved: false**로 저장한다', async () => {
     const reverter = sha('b2');
     await seedCommit({ sha: reverter, message: `This reverts commit ${sha('b1')}` });
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
 
     const found = await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' });
     expect(found).toHaveLength(1);
@@ -323,11 +323,11 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     const target = sha('c1');
     const reverter = sha('c2');
     await seedCommit({ sha: reverter, message: `This reverts commit ${target}` });
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
     const before = await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' });
 
     await seedCommit({ sha: target, message: 'fix login' });
-    await handleRelationsReady(deps(), repository, commitSource(target));
+    await handleRelationsReady(deps(), repository, commitSource(target), SERVING_ONLY);
 
     const after = await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' });
     expect(after).toHaveLength(1);
@@ -341,7 +341,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedPullRequest({ number: 12, title: 'fix login' });
     await seedCommit({ sha: reverter, message: 'Revert "fix login"' });
 
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
 
     const found = await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' });
     expect(found).toHaveLength(2);
@@ -355,12 +355,12 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     const reverter = sha('e9');
     await seedPullRequest({ number: 21, title: 'fix login' });
     await seedCommit({ sha: reverter, message: 'Revert "fix login"' });
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' })).toHaveLength(1);
 
     // 새 후보가 도착한다. **되돌림 커밋에는 아무 이벤트도 오지 않는다.**
     await seedPullRequest({ number: 22, title: 'fix login' });
-    await handleRelationsReady(deps(), repository, prSource(22));
+    await handleRelationsReady(deps(), repository, prSource(22), SERVING_ONLY);
 
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' })).toHaveLength(2);
   });
@@ -370,11 +370,11 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     const reverter = sha('f2');
     await seedCommit({ sha: target, message: 'fix login' });
     await seedCommit({ sha: reverter, message: `This reverts commit ${target}` });
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' })).toHaveLength(1);
 
     await seedCommit({ sha: reverter, message: 'unrelated work now' });
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
 
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' })).toHaveLength(0);
   });
@@ -387,8 +387,8 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedCommit({ sha: b, message: `This reverts commit ${a}` });
     await seedCommit({ sha: c, message: `This reverts commit ${b}` });
 
-    await deriveRelations(deps(), repository, commitSource(b));
-    await deriveRelations(deps(), repository, commitSource(c));
+    await deriveRelations(deps(), repository, commitSource(b), SERVING_ONLY);
+    await deriveRelations(deps(), repository, commitSource(c), SERVING_ONLY);
 
     expect((await links({ fromId: commitDocId(REPOSITORY_ID, b), linkType: 'reverts' }))[0]!['to_id']).toBe(
       commitDocId(REPOSITORY_ID, a),
@@ -408,7 +408,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedCommit({ sha: origin, message: 'feature', patchId: null });
     await seedCommit({ sha: copy, message: `feature\n\n(cherry picked from commit ${origin})`, patchId: null });
 
-    await deriveRelations(deps(), repository, commitSource(copy));
+    await deriveRelations(deps(), repository, commitSource(copy), SERVING_ONLY);
 
     const found = await links({ fromId: commitDocId(REPOSITORY_ID, copy), linkType: 'cherry_picks' });
     expect(found).toHaveLength(1);
@@ -421,8 +421,8 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedCommit({ sha: early, message: 'feature', committedAt: '2026-08-01T00:00:00.000Z', patchId: 'P1' });
     await seedCommit({ sha: late, message: 'feature', committedAt: '2026-08-05T00:00:00.000Z', patchId: 'P1' });
 
-    await deriveRelations(deps(), repository, commitSource(late));
-    await deriveRelations(deps(), repository, commitSource(early));
+    await deriveRelations(deps(), repository, commitSource(late), SERVING_ONLY);
+    await deriveRelations(deps(), repository, commitSource(early), SERVING_ONLY);
 
     const fromLate = await links({ fromId: commitDocId(REPOSITORY_ID, late), linkType: 'cherry_picks' });
     const fromEarly = await links({ fromId: commitDocId(REPOSITORY_ID, early), linkType: 'cherry_picks' });
@@ -446,7 +446,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
       patchId: 'P2',
     });
 
-    await deriveRelations(deps(), repository, commitSource(copy));
+    await deriveRelations(deps(), repository, commitSource(copy), SERVING_ONLY);
 
     const found = await links({ fromId: commitDocId(REPOSITORY_ID, copy), linkType: 'cherry_picks' });
     expect(found).toHaveLength(1);
@@ -459,7 +459,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedCommit({ sha: early, message: 'feature', committedAt: '2026-08-01T00:00:00.000Z', patchId: null });
     await seedCommit({ sha: late, message: 'feature', committedAt: '2026-08-05T00:00:00.000Z', patchId: null });
 
-    await deriveRelations(deps(), repository, commitSource(late));
+    await deriveRelations(deps(), repository, commitSource(late), SERVING_ONLY);
 
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, late), linkType: 'cherry_picks' })).toHaveLength(0);
   });
@@ -476,7 +476,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     });
     await seedCommit({ sha: mine, message: 'feature', committedAt: '2026-08-05T00:00:00.000Z', patchId: 'P3' });
 
-    await deriveRelations(deps(), repository, commitSource(mine));
+    await deriveRelations(deps(), repository, commitSource(mine), SERVING_ONLY);
 
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, mine), linkType: 'cherry_picks' })).toHaveLength(0);
   });
@@ -493,11 +493,11 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     }
     await seedCommit({ sha: self, message: 'feature', committedAt: '2026-08-20T00:00:00.000Z', patchId: 'P4' });
 
-    await deriveRelations(deps(), repository, commitSource(self));
+    await deriveRelations(deps(), repository, commitSource(self), SERVING_ONLY);
     const first = (await links({ fromId: commitDocId(REPOSITORY_ID, self), linkType: 'cherry_picks' })).map(
       (one) => one['to_id'],
     );
-    await deriveRelations(deps(), repository, commitSource(self));
+    await deriveRelations(deps(), repository, commitSource(self), SERVING_ONLY);
     const second = (await links({ fromId: commitDocId(REPOSITORY_ID, self), linkType: 'cherry_picks' })).map(
       (one) => one['to_id'],
     );
@@ -521,12 +521,12 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     const early = sha('8a');
     const late = sha('8b');
     await seedCommit({ sha: late, message: 'feature', committedAt: '2026-08-05T00:00:00.000Z', patchId: 'P5' });
-    await deriveRelations(deps(), repository, commitSource(late));
+    await deriveRelations(deps(), repository, commitSource(late), SERVING_ONLY);
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, late), linkType: 'cherry_picks' })).toHaveLength(0);
 
     // 원본이 뒤늦게 도착한다. **사본에는 아무 이벤트도 오지 않는다.**
     await seedCommit({ sha: early, message: 'feature', committedAt: '2026-08-01T00:00:00.000Z', patchId: 'P5' });
-    await handleRelationsReady(deps(), repository, commitSource(early));
+    await handleRelationsReady(deps(), repository, commitSource(early), SERVING_ONLY);
 
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, late), linkType: 'cherry_picks' })).toHaveLength(1);
   });
@@ -539,7 +539,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedPullRequest({ number: 31, head: 'feature-a', base: 'main', state: 'open' });
     await seedPullRequest({ number: 32, head: 'feature-b', base: 'feature-a', state: 'open' });
 
-    await deriveRelations(deps(), repository, prSource(32));
+    await deriveRelations(deps(), repository, prSource(32), SERVING_ONLY);
 
     const found = await links({ fromId: pullRequestDocId(REPOSITORY_ID, 32), linkType: 'stacks_on' });
     expect(found).toHaveLength(1);
@@ -553,7 +553,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedPullRequest({ number: 42, head: 'shared', base: 'main', state: 'open' });
     await seedPullRequest({ number: 43, head: 'child', base: 'shared', state: 'open' });
 
-    await deriveRelations(deps(), repository, prSource(43));
+    await deriveRelations(deps(), repository, prSource(43), SERVING_ONLY);
 
     expect(await links({ fromId: pullRequestDocId(REPOSITORY_ID, 43), linkType: 'stacks_on' })).toHaveLength(2);
   });
@@ -561,12 +561,12 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
   it('**상위 PR이 머지되면 하위 PR에 이벤트 없이 detached가 된다** (AC-3, DEV-232)', async () => {
     await seedPullRequest({ number: 51, head: 'feature-p', base: 'main', state: 'open' });
     await seedPullRequest({ number: 52, head: 'feature-c', base: 'feature-p', state: 'open' });
-    await deriveRelations(deps(), repository, prSource(52));
+    await deriveRelations(deps(), repository, prSource(52), SERVING_ONLY);
     expect((await links({ fromId: pullRequestDocId(REPOSITORY_ID, 52), linkType: 'stacks_on' }))[0]!['detached']).toBe(false);
 
     // 상위 PR이 머지된다. **하위 PR에는 아무 이벤트도 오지 않는다.**
     await seedPullRequest({ number: 51, head: 'feature-p', base: 'main', state: 'merged' });
-    await handleRelationsReady(deps(), repository, prSource(51));
+    await handleRelationsReady(deps(), repository, prSource(51), SERVING_ONLY);
 
     const after = await links({ fromId: pullRequestDocId(REPOSITORY_ID, 52), linkType: 'stacks_on' });
     // **지우지 않는다** — 그런 의존이 있었다는 사실을 남긴다.
@@ -577,14 +577,14 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
   it('조건이 다시 성립하면 detached가 해제된다 (DEV-238)', async () => {
     await seedPullRequest({ number: 61, head: 'feature-p2', base: 'main', state: 'open' });
     await seedPullRequest({ number: 62, head: 'feature-c2', base: 'feature-p2', state: 'open' });
-    await deriveRelations(deps(), repository, prSource(62));
+    await deriveRelations(deps(), repository, prSource(62), SERVING_ONLY);
 
     await seedPullRequest({ number: 61, head: 'feature-p2', base: 'main', state: 'closed' });
-    await handleRelationsReady(deps(), repository, prSource(61));
+    await handleRelationsReady(deps(), repository, prSource(61), SERVING_ONLY);
     expect((await links({ fromId: pullRequestDocId(REPOSITORY_ID, 62), linkType: 'stacks_on' }))[0]!['detached']).toBe(true);
 
     await seedPullRequest({ number: 61, head: 'feature-p2', base: 'main', state: 'open' });
-    await handleRelationsReady(deps(), repository, prSource(61));
+    await handleRelationsReady(deps(), repository, prSource(61), SERVING_ONLY);
 
     const after = await links({ fromId: pullRequestDocId(REPOSITORY_ID, 62), linkType: 'stacks_on' });
     expect(after).toHaveLength(1);
@@ -596,7 +596,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedPullRequest({ number: 72, head: 'ring-b', base: 'ring-a', state: 'open' });
 
     const metrics = createWorkerMetrics();
-    await deriveRelations(deps({ metrics }), repository, prSource(71));
+    await deriveRelations(deps({ metrics }), repository, prSource(71), SERVING_ONLY);
 
     expect(await links({ fromId: pullRequestDocId(REPOSITORY_ID, 71), linkType: 'stacks_on' })).toHaveLength(0);
     expect(metrics.render()).toContain('link_stack_cycle_total');
@@ -617,7 +617,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
       });
     }
 
-    await deriveRelations(deps(), repository, prSource(211));
+    await deriveRelations(deps(), repository, prSource(211), SERVING_ONLY);
 
     const found = await links({ fromId: pullRequestDocId(REPOSITORY_ID, 211), linkType: 'stacks_on' });
     expect(found).toHaveLength(1);
@@ -641,7 +641,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
       });
     }
 
-    await deriveRelations(deps(), repository, prSource(300));
+    await deriveRelations(deps(), repository, prSource(300), SERVING_ONLY);
 
     const found = await links({ fromId: pullRequestDocId(REPOSITORY_ID, 300), linkType: 'stacks_on' });
     expect(found).toHaveLength(1);
@@ -656,7 +656,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedPullRequest({ number: 81, title: 'Revert "fix login"', head: 'r', base: 'main' });
     await seedPullRequest({ number: 82, title: 'fix login', head: 'x', base: 'main' });
 
-    await deriveRelations(deps(), repository, prSource(81));
+    await deriveRelations(deps(), repository, prSource(81), SERVING_ONLY);
 
     const summary = (await prDoc(81))['link_summary'] as Record<string, unknown>;
     expect(summary['has_revert']).toBe(true);
@@ -671,7 +671,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedPullRequest({ number: 91, title: 'fix login' });
     await seedPullRequest({ number: 92, title: 'fix login' });
     await seedCommit({ sha: reverter, message: 'Revert "fix login"' });
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' })).toHaveLength(2);
 
     // 후보 하나가 사라진다.
@@ -679,7 +679,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
       REPOSITORY_ID,
       92,
     ]);
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
 
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' })).toHaveLength(1);
     await es.indices.refresh({ index: 'prs-commits' });
@@ -698,7 +698,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedCommit({ sha: sha('9f'), message: 'fix login' });
     await seedCommit({ sha: reverter, message: `This reverts commit ${sha('9f')}` });
 
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
 
     await es.indices.refresh({ index: 'prs-commits' });
     const doc = await es.get<Record<string, unknown>>({
@@ -728,7 +728,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedPullRequest({ number: 121, title: 'fix login' });
     await seedCommit({ sha: reverter, message: 'Revert "fix login"' });
 
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
 
     const target = (await prDoc(121))['link_summary'] as Record<string, unknown>;
     expect(target['is_reverted']).toBe(true);
@@ -742,12 +742,12 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await indexCommit(reverter);
     await seedPullRequest({ number: 131, title: 'fix login' });
     await seedCommit({ sha: reverter, message: 'Revert "fix login"' });
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
     expect(((await prDoc(131))['link_summary'] as Record<string, unknown>)['is_reverted']).toBe(true);
 
     // 되돌림 표현이 사라진다 → 간선 제거 → **옛 대상**이 다시 false여야 한다.
     await seedCommit({ sha: reverter, message: 'unrelated work now' });
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
 
     expect(((await prDoc(131))['link_summary'] as Record<string, unknown>)['is_reverted']).toBe(false);
   });
@@ -778,7 +778,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedPullRequest({ number: 141, title: 'Revert "fix login"' });
     await seedPullRequest({ number: 142, title: 'fix login' });
 
-    await deriveRelations(deps(), repository, prSource(141));
+    await deriveRelations(deps(), repository, prSource(141), SERVING_ONLY);
 
     const doc = await prDoc(141);
     expect(doc['links_pending']).toBe(true);
@@ -799,11 +799,11 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     const reverter = sha('c3b');
     await seedCommit({ sha: target, message: 'fix login' });
     await seedCommit({ sha: reverter, message: `This reverts commit ${target}` });
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' })).toHaveLength(1);
 
     await expect(
-      deriveRelations(deps({ es: withIndexItemFailure(es) }), repository, commitSource(reverter)),
+      deriveRelations(deps({ es: withIndexItemFailure(es) }), repository, commitSource(reverter), SERVING_ONLY),
     ).rejects.toThrow(/관계 간선 쓰기 실패/);
 
     // 실패 회차가 기존 간선을 지우지 않았다.
@@ -813,12 +813,12 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
   it('**스택 해제의 부분 실패를 성공으로 세지 않는다** (PR #46 리뷰 P1)', async () => {
     await seedPullRequest({ number: 151, head: 'fp', base: 'main', state: 'open' });
     await seedPullRequest({ number: 152, head: 'fc', base: 'fp', state: 'open' });
-    await deriveRelations(deps(), repository, prSource(152));
+    await deriveRelations(deps(), repository, prSource(152), SERVING_ONLY);
 
     // 상위가 머지된다 → 해제해야 하는데 bulk 항목이 거부된다.
     await seedPullRequest({ number: 151, head: 'fp', base: 'main', state: 'merged' });
     await expect(
-      deriveRelations(deps({ es: withUpdateItemFailure(es) }), repository, prSource(152)),
+      deriveRelations(deps({ es: withUpdateItemFailure(es) }), repository, prSource(152), SERVING_ONLY),
     ).rejects.toThrow(/스택 해제/);
   });
 
@@ -835,11 +835,11 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await indexPullRequest(172, 0);
     await seedPullRequest({ number: 171, head: 'pp', base: 'main', state: 'open' });
     await seedPullRequest({ number: 172, head: 'cc', base: 'pp', state: 'open' });
-    await deriveRelations(deps({ refresh: false }), repository, prSource(172));
+    await deriveRelations(deps({ refresh: false }), repository, prSource(172), SERVING_ONLY);
     expect(((await prDoc(172))['link_summary'] as Record<string, unknown>)['has_stack']).toBe(true);
 
     await seedPullRequest({ number: 171, head: 'pp', base: 'main', state: 'merged' });
-    await deriveRelations(deps({ refresh: false }), repository, prSource(172));
+    await deriveRelations(deps({ refresh: false }), repository, prSource(172), SERVING_ONLY);
 
     expect(((await prDoc(172))['link_summary'] as Record<string, unknown>)['has_stack']).toBe(false);
   });
@@ -847,7 +847,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
   it('**상위 PR이 retarget돼도 옛 child의 간선이 해제된다** (PR #46 리뷰 P2)', async () => {
     await seedPullRequest({ number: 161, head: 'old-head', base: 'main', state: 'open' });
     await seedPullRequest({ number: 162, head: 'child', base: 'old-head', state: 'open' });
-    await deriveRelations(deps(), repository, prSource(162));
+    await deriveRelations(deps(), repository, prSource(162), SERVING_ONLY);
     expect((await links({ fromId: pullRequestDocId(REPOSITORY_ID, 162), linkType: 'stacks_on' }))[0]!['detached']).toBe(false);
 
     /*
@@ -855,7 +855,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
      * 보지 못한다** — 이미 있는 간선에서 찾아야 한다.
      */
     await seedPullRequest({ number: 161, head: 'new-head', base: 'main', state: 'open' });
-    await handleRelationsReady(deps(), repository, prSource(161));
+    await handleRelationsReady(deps(), repository, prSource(161), SERVING_ONLY);
 
     const after = await links({ fromId: pullRequestDocId(REPOSITORY_ID, 162), linkType: 'stacks_on' });
     expect(after).toHaveLength(1);
@@ -879,7 +879,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
       });
     }
 
-    await deriveRelations(deps(), repository, commitSource(self));
+    await deriveRelations(deps(), repository, commitSource(self), SERVING_ONLY);
 
     const found = await links({ fromId: commitDocId(REPOSITORY_ID, self), linkType: 'cherry_picks' });
     expect(found).toHaveLength(1);
@@ -891,7 +891,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     await seedCommit({ sha: sha('aa'), message: 'fix login' });
     await seedCommit({ sha: reverter, message: `This reverts commit ${sha('aa')}` });
 
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
 
     const found = await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' });
     expect(found[0]!['org_id']).toBe(1);
@@ -902,7 +902,7 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
   it('**되돌림 간선에는 detached를 두지 않는다** — 없는 개념을 false로 주장하지 않는다', async () => {
     const reverter = sha('ba');
     await seedCommit({ sha: reverter, message: `This reverts commit ${sha('bb')}` });
-    await deriveRelations(deps(), repository, commitSource(reverter));
+    await deriveRelations(deps(), repository, commitSource(reverter), SERVING_ONLY);
 
     const found = await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' });
     expect(found[0]).not.toHaveProperty('detached');

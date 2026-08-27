@@ -45,6 +45,7 @@ import {
 } from '@prs/bus';
 import { deadLetterRepo, rawEventRepo, repositoryRepo, type Pool, type RawEventRow } from '@prs/db';
 import { bulkUpsert, classifyFailure, type BulkItemOutcome, type UpsertRequest } from '@prs/es';
+import { withReindexWrite } from '@prs/db';
 import type { Client } from '@elastic/elasticsearch';
 import { buildUpsertRequests } from './documents.js';
 import { recordProjectionSnapshot } from './snapshot.js';
@@ -221,9 +222,18 @@ async function projectDocuments(
     source: 'webhook',
   });
 
+  /*
+   * 색인 쓰기 전체를 **재색인 울타리 안에서** 한다 (WP-035, DEV-296·308).
+   *
+   * 항목 재시도까지 같은 구간에 둔다 — 재시도도 논리 쓰기의 일부이고, 그 사이에
+   * 전환이 끼어들면 재시도분이 새 인덱스에서 빠진다.
+   */
   let outcomes: readonly BulkItemOutcome[];
   try {
-    outcomes = (await bulkUpsert(deps.es, requests)).outcomes;
+    outcomes = await withReindexWrite(deps.pool, async (targets) => {
+      const first = (await bulkUpsert(deps.es, requests, targets)).outcomes;
+      return retryFailedItems(deps.es, first, targets, deps.sleep ?? defaultSleep);
+    });
   } catch (error) {
     // 벌크 자체가 실패했다 — 연결 끊김이거나 클러스터가 요청을 받지 못했다.
     const shape = error as { statusCode?: number; body?: { error?: { type?: string; reason?: string } } };
@@ -238,8 +248,6 @@ async function projectDocuments(
     }
     return context.fail('bulk_unavailable', detail);
   }
-
-  outcomes = await retryFailedItems(deps.es, outcomes, deps.sleep ?? defaultSleep);
 
   const rejected = outcomes.filter((outcome) => outcome.kind === 'rejected');
   if (rejected.length > 0) {

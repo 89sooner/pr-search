@@ -73,6 +73,19 @@ const UNSCOPED_ALLOWLIST: readonly {
       'WP-030이 더한 조회도 같은 성질이다 — 후보 대조·조정·요약 재계산은 전부 파생 사실이며 ' +
       '세 계열 모두 **동일 저장소 안**의 관계라 저장소 경계를 넘지 않는다 (FR-REL-005 AC-3, FR-REL-006).',
   },
+  {
+    file: 'apps/pipeline-worker/src/reindex.ts',
+    kind: 'no_requester',
+    why:
+      'WP-035 무중단 재색인의 **전환 전 검증** (CR-045, DEV-297). 방아쇠가 운영자 잡이라 ' +
+      '요청자가 없고, 읽는 대상은 **아직 별칭이 붙지 않은 shadow 인덱스**를 구체 이름으로 ' +
+      '지목한 것이다 — 어떤 사용자 요청도 그 인덱스에 닿을 수 없다. ' +
+      '`count`는 커버리지 판정이고 `search`는 `size: 0` 대표 질의라 **문서가 하나도 나오지 않는다**: ' +
+      '둘 다 결과가 잡 진행률 로그로만 나가고 응답 본문이 되지 않는다. ' +
+      '`source_count == target_count` 하나로 판정하지 않는 것이 이 검증의 요지이며(같은 수의 다른 문서), ' +
+      '그래서 두 인덱스의 건수를 함께 본다. 이 파일에 **사용자 대면 조회를 넣지 않는다** — ' +
+      '넣으면 이 사유를 그대로 물려받고 검사기가 침묵한다 (DEV-265가 links.ts에서 배운 것).',
+  },
 ];
 
 const UNSCOPED_FILES = UNSCOPED_ALLOWLIST.map((one) => one.file);

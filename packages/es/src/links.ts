@@ -23,6 +23,7 @@
  */
 
 import type { Client, estypes } from '@elastic/elasticsearch';
+import { dualWrite, reportShadowFailure, type WriteTargets } from './write-targets.js';
 
 /** 간선 인덱스 별칭. */
 export const LINKS_ALIAS = 'prs-links';
@@ -105,38 +106,80 @@ function toSource(doc: ReferenceLinkDoc): Record<string, unknown> {
   return source;
 }
 
+/**
+ * 간선 벌크 쓰기의 공통 경로 (WP-035, DEV-295).
+ *
+ * 서비스 항목 전량을 먼저 싣고 shadow를 그 뒤에 싣는다 — 응답 항목이 요청
+ * 순서와 1:1이라 앞 `count`개가 서비스 결과다. **왕복은 한 번**이며, shadow
+ * 실패는 `LinkWriteResult`에 섞이지 않는다: 호출부의 재시도 예산과 완결 표식이
+ * shadow 때문에 달라지면 안 되고(불변식 6), 그래도 잊혀서는 안 된다(불변식 7).
+ */
+async function sendLinkBulk(
+  client: Client,
+  targets: WriteTargets,
+  count: number,
+  build: (index: string) => unknown[],
+  refresh: boolean,
+): Promise<LinkWriteResult> {
+  const shadow = targets.shadows[LINKS_ALIAS];
+  const operations: unknown[] = [...build(LINKS_ALIAS)];
+  if (shadow !== undefined) operations.push(...build(shadow));
+
+  const response = await client.bulk({
+    operations: operations as estypes.BulkRequest['operations'],
+    ...(refresh ? { refresh: true } : {}),
+  });
+
+  const failures: LinkWriteFailure[] = [];
+  for (let offset = 0; offset < count; offset += 1) {
+    const item = response.items[offset];
+    const outcome = item?.index ?? item?.update;
+    if (outcome?.error === undefined || outcome.error === null) continue;
+    failures.push({ link_id: outcome._id ?? '', status: outcome.status ?? 0, reason: outcome.error.type });
+  }
+
+  if (shadow !== undefined) {
+    for (let offset = 0; offset < count; offset += 1) {
+      const item = response.items[count + offset];
+      const outcome = item?.index ?? item?.update;
+      if (outcome !== undefined && (outcome.error === undefined || outcome.error === null)) continue;
+      reportShadowFailure(targets, {
+        alias: LINKS_ALIAS,
+        index: shadow,
+        operation: 'bulk',
+        reason: outcome?.error?.type ?? '벌크 응답에 대응 항목이 없다',
+      });
+    }
+  }
+
+  return { written: count - failures.length, failures };
+}
+
 /** 참조 간선을 통째로 색인한다. 같은 `link_id`면 덮어쓴다 (멱등). */
 export async function writeReferenceLinks(
   client: Client,
   docs: readonly ReferenceLinkDoc[],
+  targets: WriteTargets,
   options: { readonly refresh?: boolean } = {},
 ): Promise<LinkWriteResult> {
   if (docs.length === 0) return { written: 0, failures: [] };
 
-  const operations: unknown[] = [];
-  for (const doc of docs) {
-    operations.push({
-      index: { _index: LINKS_ALIAS, _id: doc.link_id, routing: String(doc.scope.repository_id) },
-    });
-    operations.push(toSource(doc));
-  }
-
-  const response = await client.bulk({
-    operations: operations as estypes.BulkRequest['operations'],
-    ...(options.refresh === true ? { refresh: true } : {}),
-  });
-
-  const failures: LinkWriteFailure[] = [];
-  for (const item of response.items) {
-    const outcome = item.index;
-    if (outcome?.error === undefined || outcome.error === null) continue;
-    failures.push({
-      link_id: outcome._id ?? '',
-      status: outcome.status ?? 0,
-      reason: outcome.error.type,
-    });
-  }
-  return { written: docs.length - failures.length, failures };
+  return sendLinkBulk(
+    client,
+    targets,
+    docs.length,
+    (index) => {
+      const operations: unknown[] = [];
+      for (const doc of docs) {
+        operations.push({
+          index: { _index: index, _id: doc.link_id, routing: String(doc.scope.repository_id) },
+        });
+        operations.push(toSource(doc));
+      }
+      return operations;
+    },
+    options.refresh === true,
+  );
 }
 
 /**
@@ -161,9 +204,8 @@ export async function deleteStaleReferenceLinks(
     readonly fromId: string;
     readonly keep: readonly string[];
   },
+  targets: WriteTargets,
 ): Promise<number> {
-  await client.indices.refresh({ index: LINKS_ALIAS });
-
   const filter: estypes.QueryDslQueryContainer[] = [
     { term: { repository_id: input.repositoryId } },
     { term: { link_type: REFERENCE_LINK_TYPE } },
@@ -171,20 +213,24 @@ export async function deleteStaleReferenceLinks(
     { term: { from_id: input.fromId } },
   ];
 
-  const response = await client.deleteByQuery({
-    index: LINKS_ALIAS,
-    routing: String(input.repositoryId),
-    // 파생이 동시에 같은 문서를 건드리면 다음 회차가 잡는다.
-    conflicts: 'proceed',
-    refresh: true,
-    query: {
-      bool: {
-        filter,
-        ...(input.keep.length === 0 ? {} : { must_not: [{ ids: { values: [...input.keep] } }] }),
+  // **삭제도 이중으로 한다** (WP-035, DEV-295).
+  return dualWrite(targets, LINKS_ALIAS, 'delete_by_query', async (index) => {
+    await client.indices.refresh({ index });
+    const response = await client.deleteByQuery({
+      index,
+      routing: String(input.repositoryId),
+      // 파생이 동시에 같은 문서를 건드리면 다음 회차가 잡는다.
+      conflicts: 'proceed',
+      refresh: true,
+      query: {
+        bool: {
+          filter,
+          ...(input.keep.length === 0 ? {} : { must_not: [{ ids: { values: [...input.keep] } }] }),
+        },
       },
-    },
+    });
+    return response.deleted ?? 0;
   });
-  return response.deleted ?? 0;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -311,50 +357,43 @@ export async function resolveReferenceLinks(
     readonly repository_id: number;
     readonly resolution: ReferenceResolution | null;
   }[],
+  targets: WriteTargets,
   options: { readonly refresh?: boolean } = {},
 ): Promise<LinkWriteResult> {
   if (updates.length === 0) return { written: 0, failures: [] };
 
-  const operations: unknown[] = [];
-  for (const update of updates) {
-    operations.push({
-      update: {
-        _index: LINKS_ALIAS,
-        _id: update.link_id,
-        routing: String(update.repository_id),
-        retry_on_conflict: 3,
-      },
-    });
-    operations.push(
-      update.resolution === null
-        ? { script: { lang: 'painless', source: UNRESOLVE_SCRIPT } }
-        : {
-            doc: {
-              resolved: true,
-              to_type: update.resolution.to_type,
-              to_id: update.resolution.to_id,
-              to_repository_id: update.resolution.to_repository_id,
-            },
+  return sendLinkBulk(
+    client,
+    targets,
+    updates.length,
+    (index) => {
+      const operations: unknown[] = [];
+      for (const update of updates) {
+        operations.push({
+          update: {
+            _index: index,
+            _id: update.link_id,
+            routing: String(update.repository_id),
+            retry_on_conflict: 3,
           },
-    );
-  }
-
-  const response = await client.bulk({
-    operations: operations as estypes.BulkRequest['operations'],
-    ...(options.refresh === true ? { refresh: true } : {}),
-  });
-
-  const failures: LinkWriteFailure[] = [];
-  for (const item of response.items) {
-    const outcome = item.update;
-    if (outcome?.error === undefined || outcome.error === null) continue;
-    failures.push({
-      link_id: outcome._id ?? '',
-      status: outcome.status ?? 0,
-      reason: outcome.error.type,
-    });
-  }
-  return { written: updates.length - failures.length, failures };
+        });
+        operations.push(
+          update.resolution === null
+            ? { script: { lang: 'painless', source: UNRESOLVE_SCRIPT } }
+            : {
+                doc: {
+                  resolved: true,
+                  to_type: update.resolution.to_type,
+                  to_id: update.resolution.to_id,
+                  to_repository_id: update.resolution.to_repository_id,
+                },
+              },
+        );
+      }
+      return operations;
+    },
+    options.refresh === true,
+  );
 }
 
 /* ------------------------------------------------------------------------- */
@@ -588,15 +627,48 @@ export type LinkSummaryResult = 'updated' | 'noop' | 'missing';
 export async function updateLinkSummary(
   client: Client,
   input: LinkSummaryUpdate,
+  targets: WriteTargets,
   options: { readonly refresh?: boolean } = {},
+): Promise<LinkSummaryResult> {
+  const served = await sendSummary(client, input.alias, input, options.refresh === true);
+
+  /*
+   * shadow에도 같은 요약을 보낸다 (WP-035, DEV-295).
+   *
+   * **`missing`을 실패로 세지 않는다** — 정본 스캔이 아직 그 문서에 닿지 않았을
+   * 뿐이고, 닿으면 요약이 함께 실린다. 실패로 세면 정상 진행이 전환을 막는다.
+   */
+  const shadow = targets.shadows[input.alias];
+  if (shadow !== undefined) {
+    try {
+      await sendSummary(client, shadow, input, options.refresh === true);
+    } catch (error) {
+      reportShadowFailure(targets, {
+        alias: input.alias,
+        index: shadow,
+        operation: 'update',
+        reason: String(error),
+      });
+    }
+  }
+
+  return served;
+}
+
+/** 한 인덱스에 요약을 반영한다. 서비스와 shadow가 **같은 경로**를 쓴다. */
+async function sendSummary(
+  client: Client,
+  index: string,
+  input: LinkSummaryUpdate,
+  refresh: boolean,
 ): Promise<LinkSummaryResult> {
   try {
     const response = await client.update({
-      index: input.alias,
+      index,
       id: input.docId,
       routing: String(input.repositoryId),
       retry_on_conflict: 3,
-      ...(options.refresh === true ? { refresh: true } : {}),
+      ...(refresh ? { refresh: true } : {}),
       script: {
         lang: 'painless',
         source: LINK_SUMMARY_SCRIPT,
@@ -695,30 +767,27 @@ function toDerivedSource(doc: DerivedLinkDoc): Record<string, unknown> {
 export async function writeDerivedLinks(
   client: Client,
   docs: readonly DerivedLinkDoc[],
+  targets: WriteTargets,
   options: { readonly refresh?: boolean } = {},
 ): Promise<LinkWriteResult> {
   if (docs.length === 0) return { written: 0, failures: [] };
 
-  const operations: unknown[] = [];
-  for (const doc of docs) {
-    operations.push({
-      index: { _index: LINKS_ALIAS, _id: doc.link_id, routing: String(doc.scope.repository_id) },
-    });
-    operations.push(toDerivedSource(doc));
-  }
-
-  const response = await client.bulk({
-    operations: operations as estypes.BulkRequest['operations'],
-    ...(options.refresh === true ? { refresh: true } : {}),
-  });
-
-  const failures: LinkWriteFailure[] = [];
-  for (const item of response.items) {
-    const outcome = item.index;
-    if (outcome?.error === undefined || outcome.error === null) continue;
-    failures.push({ link_id: outcome._id ?? '', status: outcome.status ?? 0, reason: outcome.error.type });
-  }
-  return { written: docs.length - failures.length, failures };
+  return sendLinkBulk(
+    client,
+    targets,
+    docs.length,
+    (index) => {
+      const operations: unknown[] = [];
+      for (const doc of docs) {
+        operations.push({
+          index: { _index: index, _id: doc.link_id, routing: String(doc.scope.repository_id) },
+        });
+        operations.push(toDerivedSource(doc));
+      }
+      return operations;
+    },
+    options.refresh === true,
+  );
 }
 
 /**
@@ -743,27 +812,30 @@ export async function deleteStaleDerivedLinks(
     readonly fromId: string;
     readonly keep: readonly string[];
   },
+  targets: WriteTargets,
 ): Promise<number> {
-  await client.indices.refresh({ index: LINKS_ALIAS });
-
-  const response = await client.deleteByQuery({
-    index: LINKS_ALIAS,
-    routing: String(input.repositoryId),
-    conflicts: 'proceed',
-    refresh: true,
-    query: {
-      bool: {
-        filter: [
-          { term: { repository_id: input.repositoryId } },
-          { term: { link_type: input.linkType } },
-          { term: { from_type: input.fromType } },
-          { term: { from_id: input.fromId } },
-        ],
-        ...(input.keep.length === 0 ? {} : { must_not: [{ ids: { values: [...input.keep] } }] }),
+  // **삭제도 이중으로 한다** (WP-035, DEV-295).
+  return dualWrite(targets, LINKS_ALIAS, 'delete_by_query', async (index) => {
+    await client.indices.refresh({ index });
+    const response = await client.deleteByQuery({
+      index,
+      routing: String(input.repositoryId),
+      conflicts: 'proceed',
+      refresh: true,
+      query: {
+        bool: {
+          filter: [
+            { term: { repository_id: input.repositoryId } },
+            { term: { link_type: input.linkType } },
+            { term: { from_type: input.fromType } },
+            { term: { from_id: input.fromId } },
+          ],
+          ...(input.keep.length === 0 ? {} : { must_not: [{ ids: { values: [...input.keep] } }] }),
+        },
       },
-    },
+    });
+    return response.deleted ?? 0;
   });
-  return response.deleted ?? 0;
 }
 
 /** 간선 하나의 최소 정보. 조정과 요약 재계산이 읽는다. */
@@ -888,35 +960,32 @@ export async function findLinksTo(
 export async function setLinkDetached(
   client: Client,
   updates: readonly { readonly link_id: string; readonly repository_id: number; readonly detached: boolean }[],
+  targets: WriteTargets,
   options: { readonly refresh?: boolean } = {},
 ): Promise<LinkWriteResult> {
   if (updates.length === 0) return { written: 0, failures: [] };
 
-  const operations: unknown[] = [];
-  for (const update of updates) {
-    operations.push({
-      update: {
-        _index: LINKS_ALIAS,
-        _id: update.link_id,
-        routing: String(update.repository_id),
-        retry_on_conflict: 3,
-      },
-    });
-    operations.push({ doc: { detached: update.detached } });
-  }
-
-  const response = await client.bulk({
-    operations: operations as estypes.BulkRequest['operations'],
-    ...(options.refresh === true ? { refresh: true } : {}),
-  });
-
-  const failures: LinkWriteFailure[] = [];
-  for (const item of response.items) {
-    const outcome = item.update;
-    if (outcome?.error === undefined || outcome.error === null) continue;
-    failures.push({ link_id: outcome._id ?? '', status: outcome.status ?? 0, reason: outcome.error.type });
-  }
-  return { written: updates.length - failures.length, failures };
+  return sendLinkBulk(
+    client,
+    targets,
+    updates.length,
+    (index) => {
+      const operations: unknown[] = [];
+      for (const update of updates) {
+        operations.push({
+          update: {
+            _index: index,
+            _id: update.link_id,
+            routing: String(update.repository_id),
+            retry_on_conflict: 3,
+          },
+        });
+        operations.push({ doc: { detached: update.detached } });
+      }
+      return operations;
+    },
+    options.refresh === true,
+  );
 }
 
 /**
@@ -929,35 +998,32 @@ export async function setLinkDetached(
 export async function setLinkResolved(
   client: Client,
   updates: readonly { readonly link_id: string; readonly repository_id: number; readonly resolved: boolean }[],
+  targets: WriteTargets,
   options: { readonly refresh?: boolean } = {},
 ): Promise<LinkWriteResult> {
   if (updates.length === 0) return { written: 0, failures: [] };
 
-  const operations: unknown[] = [];
-  for (const update of updates) {
-    operations.push({
-      update: {
-        _index: LINKS_ALIAS,
-        _id: update.link_id,
-        routing: String(update.repository_id),
-        retry_on_conflict: 3,
-      },
-    });
-    operations.push({ doc: { resolved: update.resolved } });
-  }
-
-  const response = await client.bulk({
-    operations: operations as estypes.BulkRequest['operations'],
-    ...(options.refresh === true ? { refresh: true } : {}),
-  });
-
-  const failures: LinkWriteFailure[] = [];
-  for (const item of response.items) {
-    const outcome = item.update;
-    if (outcome?.error === undefined || outcome.error === null) continue;
-    failures.push({ link_id: outcome._id ?? '', status: outcome.status ?? 0, reason: outcome.error.type });
-  }
-  return { written: updates.length - failures.length, failures };
+  return sendLinkBulk(
+    client,
+    targets,
+    updates.length,
+    (index) => {
+      const operations: unknown[] = [];
+      for (const update of updates) {
+        operations.push({
+          update: {
+            _index: index,
+            _id: update.link_id,
+            routing: String(update.repository_id),
+            retry_on_conflict: 3,
+          },
+        });
+        operations.push({ doc: { resolved: update.resolved } });
+      }
+      return operations;
+    },
+    options.refresh === true,
+  );
 }
 
 /* ------------------------------------------------------------------------- */

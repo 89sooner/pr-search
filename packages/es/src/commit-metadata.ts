@@ -27,6 +27,10 @@
  */
 
 import type { Client } from '@elastic/elasticsearch';
+import { reportShadowFailure, type WriteTargets } from './write-targets.js';
+
+/** 이 경로가 쓰는 유일한 별칭. */
+const COMMITS_ALIAS = 'prs-commits';
 
 /**
  * 메타데이터만 대입하고 **`document_version`은 건드리지 않는다.**
@@ -110,6 +114,7 @@ export interface CommitMetadataResult {
 export async function upsertCommitMetadata(
   client: Client,
   input: CommitMetadataUpsert,
+  targets: WriteTargets,
 ): Promise<CommitMetadataResult> {
   const { fields } = input;
   const meta: Record<string, unknown> = {
@@ -157,9 +162,42 @@ export async function upsertCommitMetadata(
     body['scripted_upsert'] = false;
   }
 
+  const served = await sendMetadata(client, COMMITS_ALIAS, input, body);
+
+  /*
+   * shadow에도 같은 갱신을 보낸다 (WP-035, DEV-295).
+   *
+   * **404를 실패로 세지 않는다.** `createWith`가 없는 회차는 문서를 만들지
+   * 않기로 한 것이고, 그 사실은 shadow에서도 그대로다 — 정본 스캔이 아직 그
+   * 커밋에 닿지 않았을 뿐이다. 실패로 세면 정상 진행이 전환을 막는다.
+   */
+  const shadow = targets.shadows[COMMITS_ALIAS];
+  if (shadow !== undefined) {
+    try {
+      await sendMetadata(client, shadow, input, body);
+    } catch (error) {
+      reportShadowFailure(targets, {
+        alias: COMMITS_ALIAS,
+        index: shadow,
+        operation: 'update',
+        reason: String(error),
+      });
+    }
+  }
+
+  return served;
+}
+
+/** 한 인덱스에 메타데이터를 반영한다. 서비스와 shadow가 **같은 경로**를 쓴다. */
+async function sendMetadata(
+  client: Client,
+  index: string,
+  input: CommitMetadataUpsert,
+  body: Record<string, unknown>,
+): Promise<CommitMetadataResult> {
   try {
     const response = await client.update({
-      index: 'prs-commits',
+      index,
       id: input.docId,
       routing: String(input.repositoryId),
       retry_on_conflict: 3,

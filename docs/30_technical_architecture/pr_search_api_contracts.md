@@ -1827,6 +1827,7 @@ POST /api/v1/admin/reindex
 | `NO_SEQUENCE` | 409 | 미머지 PR에 시퀀스 요청 | 머지 후 재시도 |
 | `BISECT_CONTRADICTION` | 409 | good/bad 표시 모순 | 탐색 초기화 |
 | `JOB_CONFLICT` | 409 | 동일 대상 잡 실행 중 | 기존 잡 확인 |
+| `REINDEX_BUSY` | 409 | 다른 별칭이 재색인 중 (동시 실행 상한 1) | 실행 중인 재색인 완료 대기 |
 | `SAVED_SEARCH_LIMIT` | 409 | 저장 100건 초과 | 기존 항목 삭제 |
 | `PAYLOAD_TOO_LARGE` | 413 | 웹훅 25MB 초과 | (GHE 측) |
 | `PERMISSION_UNAVAILABLE` | 503 | 접근 범위 조회 실패 | 잠시 후 재시도 |

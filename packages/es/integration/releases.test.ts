@@ -17,6 +17,7 @@
 import type { Client } from '@elastic/elasticsearch';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMappings } from '../src/bootstrap.js';
+import { SERVING_ONLY } from '../src/write-targets.js';
 import {
   RELEASE_TAGS_LIMIT,
   applyReleaseTagsToDocuments,
@@ -135,7 +136,7 @@ function denorm(releases: readonly { tagName: string; mergeSeq: number }[]): Pro
     baseBranch: BRANCH,
     seqEpoch: 1,
     releases,
-  });
+  }, SERVING_ONLY);
 }
 
 beforeAll(async () => {
@@ -165,8 +166,7 @@ describe('릴리스 문서 투영 (ENT-REL-001)', () => {
       es,
       SCOPE,
       [release('v1.0', 2, '2026-08-14T09:00:00Z')],
-      1_000,
-    );
+      1_000, SERVING_ONLY);
     expect(result.hasFailures).toBe(false);
 
     const doc = await releaseDoc('v1.0');
@@ -178,7 +178,7 @@ describe('릴리스 문서 투영 (ENT-REL-001)', () => {
   });
 
   it('체인 밖 태그는 서수 셋 **키 자체가 없다** — null 반쪽 상태를 만들지 않는다', async () => {
-    await upsertReleaseDocuments(es, SCOPE, [release('off-chain', null, '2026-08-16T09:00:00Z')], 1_000);
+    await upsertReleaseDocuments(es, SCOPE, [release('off-chain', null, '2026-08-16T09:00:00Z')], 1_000, SERVING_ONLY);
     const doc = await releaseDoc('off-chain');
     expect(doc).toBeDefined();
     expect(doc).not.toHaveProperty('base_branch');
@@ -187,14 +187,13 @@ describe('릴리스 문서 투영 (ENT-REL-001)', () => {
   });
 
   it('**늦게 도착한 옛 스냅숏이 새 값을 되돌리지 않는다** — document_version=동기화 시각', async () => {
-    await upsertReleaseDocuments(es, SCOPE, [release('v1.0', 2, '2026-08-14T09:00:00Z')], 2_000);
+    await upsertReleaseDocuments(es, SCOPE, [release('v1.0', 2, '2026-08-14T09:00:00Z')], 2_000, SERVING_ONLY);
     // 같은 태그가 다른 커밋을 가리키던 **옛** 스냅숏의 재생.
     const replay = await upsertReleaseDocuments(
       es,
       SCOPE,
       [{ ...release('v1.0', 9, '2026-08-14T09:00:00Z'), commitSha: 'f'.repeat(40) }],
-      1_000,
-    );
+      1_000, SERVING_ONLY);
     expect(replay.hasFailures).toBe(false);
     expect((await releaseDoc('v1.0'))?.['merge_seq']).toBe(2);
   });
@@ -204,22 +203,20 @@ describe('릴리스 문서 투영 (ENT-REL-001)', () => {
       es,
       SCOPE,
       [release('keep-me', 2, '2026-08-14T09:00:00Z'), release('doomed', 3, '2026-08-15T09:00:00Z')],
-      1_000,
-    );
-    await pruneReleaseDocuments(es, REPOSITORY_ID, ['keep-me']);
+      1_000, SERVING_ONLY);
+    await pruneReleaseDocuments(es, REPOSITORY_ID, ['keep-me'], SERVING_ONLY);
     expect(await releaseDoc('doomed')).toBeUndefined();
     expect((await releaseDoc('keep-me'))?.['tag_name']).toBe('keep-me');
   });
 
   it('남길 것이 없으면 저장소의 릴리스 문서가 전부 걷힌다 — 다른 저장소는 그대로다', async () => {
-    await upsertReleaseDocuments(es, SCOPE, [release('only', 1, '2026-08-14T09:00:00Z')], 1_000);
+    await upsertReleaseDocuments(es, SCOPE, [release('only', 1, '2026-08-14T09:00:00Z')], 1_000, SERVING_ONLY);
     await upsertReleaseDocuments(
       es,
       { ...SCOPE, repositoryId: OTHER_REPOSITORY_ID },
       [release('other-repo-tag', 1, '2026-08-14T09:00:00Z')],
-      1_000,
-    );
-    await pruneReleaseDocuments(es, REPOSITORY_ID, []);
+      1_000, SERVING_ONLY);
+    await pruneReleaseDocuments(es, REPOSITORY_ID, [], SERVING_ONLY);
     expect(await releaseDoc('only')).toBeUndefined();
 
     const other = await es.get<Record<string, unknown>>(

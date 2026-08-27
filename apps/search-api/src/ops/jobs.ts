@@ -54,17 +54,20 @@ export type CreateJobOutcome =
  * 여기서 미리 보는 것은 409를 돌려주기 위한 것이지 정합성을 위한 것이 아니다.
  */
 /**
- * 운영자가 API-ADM-002로 만들 수 있는 잡 유형.
+ * **집는 러너가 있는** 잡 유형 (CR-045, DEV-301).
  *
- * **집는 러너가 있는 것만 연다** — 러너 없는 유형을 받으면 아무도 잡지 않는
- * 유령 잡이 큐에 남고, 운영자는 진행률이 영원히 0인 이유를 알 수 없다.
+ * 러너 없는 유형이 큐에 들어가면 아무도 잡지 않는 유령 잡이 남고, 운영자는
+ * 진행률이 영원히 0인 이유를 알 수 없다 (DEV-178).
  *
  * - `backfill`: JOB-ING-004 (WP-019)
- * - `link_rebuild`: JOB-REL-006 참조 간선 전량 재파생 (WP-029 / CR-039).
- *   PostgreSQL 정본에서 색인을 복구하는 유일한 경로다 — 이것이 없으면 과거
- *   엔티티와 재구축한 인덱스가 간선을 영원히 얻지 못한다 (PR #44 리뷰 P1)
+ * - `link_rebuild`: JOB-REL-006 참조 간선 전량 재파생 (WP-029 / CR-039)
+ * - `reindex`: JOB-ING-006 무중단 재색인 (WP-035 / CR-045). **러너와 같은
+ *   커밋에서 등재한다** — 먼저 등재하면 DEV-178이 된다
+ *
+ * 이 목록은 "운영자가 목록·진행률·중단·취소를 쓸 수 있다"는 뜻이지
+ * "API-ADM-002로 만들 수 있다"는 뜻이 **아니다.** 생성 가능 목록은 아래 것이다.
  */
-export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild'] as const;
+export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild', 'reindex'] as const;
 
 export type OperatorJobType = (typeof OPERATOR_JOB_TYPES)[number];
 
@@ -72,9 +75,28 @@ export function isOperatorJobType(value: unknown): value is OperatorJobType {
   return typeof value === 'string' && (OPERATOR_JOB_TYPES as readonly string[]).includes(value);
 }
 
+/**
+ * API-ADM-002의 **일반 잡 생성**이 받는 유형 (CR-045, DEV-301·302).
+ *
+ * `reindex`는 여기 없다. SRS가 API-ADM-004를 재색인의 진입점으로 이미 정했고,
+ * **enqueue seam은 하나여야** 하기 때문이다 — 두 진입점이 각자 대상 버전을
+ * 고르면 한쪽만 상한을 보거나 한쪽만 다른 번호를 고른다. API-ADM-002는
+ * 목록·진행률·중단·취소라는 공통 표면을 계속 소유하고 **생성만** 이 경로가 갖는다.
+ *
+ * 두 목록을 하나로 두면 러너 등재(위)가 곧 생성 개방이 되어, 이 경계가
+ * 다음 잡 유형에서 조용히 사라진다.
+ */
+export const CREATABLE_GENERIC_JOB_TYPES = ['backfill', 'link_rebuild'] as const;
+
+export type CreatableGenericJobType = (typeof CREATABLE_GENERIC_JOB_TYPES)[number];
+
+export function isCreatableGenericJobType(value: unknown): value is CreatableGenericJobType {
+  return typeof value === 'string' && (CREATABLE_GENERIC_JOB_TYPES as readonly string[]).includes(value);
+}
+
 export async function createJob(
   pool: Pool,
-  type: OperatorJobType,
+  type: CreatableGenericJobType,
   target: string,
   requestedBy: string,
 ): Promise<CreateJobOutcome> {

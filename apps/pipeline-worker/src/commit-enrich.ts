@@ -44,6 +44,7 @@ import {
   type SequenceAssigned,
   type SequenceReassigned,
 } from '@prs/domain';
+import { registryOwnedFields } from './documents.js';
 import {
   TOPICS,
   consumerGroup,
@@ -53,9 +54,9 @@ import {
   type SubscribeOptions,
   type Subscription,
 } from '@prs/bus';
-import { commitSnapshotRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo } from '@prs/db';
+import { commitSnapshotRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, withReindexWrite } from '@prs/db';
 import type { Pool, RepositoryRow } from '@prs/db';
-import { upsertCommitMetadata } from '@prs/es';
+import { upsertCommitMetadata, type CommitMetadataFields } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
 import type { CommitGraph, RepoRef } from '@prs/github';
 import type { WorkerMetrics } from './metrics.js';
@@ -131,14 +132,78 @@ function refOf(repository: RepositoryRow): RepoRef {
  * 투영의 `repositoryScope()`와 **같은 필드**다. 여기가 어긋나면 이 경로로 만든
  * 문서만 강제 필터의 판정이 달라진다.
  */
-function scopeFields(repository: RepositoryRow): Readonly<Record<string, unknown>> {
+/** 레지스트리 소유 필드. **`documents.ts`의 것 하나만 쓴다** (PR #52 리뷰 P1). */
+const scopeFields = registryOwnedFields;
+
+/**
+ * 커밋 문서를 만드는 데 필요한 사실 (WP-035, DEV-295의 뒷면).
+ *
+ * 보강(`enrichCommit`)은 이것을 **git 그래프**에서 얻고, 재색인 재구축은
+ * **`commit_snapshot`**에서 얻는다. 근거가 다를 뿐 문서는 같아야 하므로
+ * 필드 구성은 아래 두 함수 하나로 모은다 — 따로 만들면 재구축 결과와 평시
+ * 결과가 갈라지고, 그 차이는 전환 뒤에 드러난다.
+ */
+export interface CommitFactSource {
+  readonly parentShas: readonly string[];
+  readonly message: string;
+  readonly author: string | null;
+  readonly committer: string | null;
+  readonly authoredAt: string;
+  readonly committedAt: string;
+  readonly changedPaths: readonly string[];
+  readonly changedPathsTruncated: boolean;
+  readonly patchId: string | null;
+  readonly patchIdUnavailable: string | null;
+  /** first-parent 체인에서 판정했을 때만. PR 유래 커밋의 역할을 덮지 않는다 (DEV-207). */
+  readonly role?: string;
+}
+
+/** 커밋 문서의 메타데이터 필드 한 벌. **보강과 재구축이 같은 함수를 쓴다.** */
+export function commitMetadataFields(fact: CommitFactSource): CommitMetadataFields {
   return {
-    repository_id: repository.repository_id,
-    repository: `${repository.owner}/${repository.name}`,
-    org_id: repository.org_id,
-    visibility: repository.visibility,
-    allowed_team_ids: [...repository.allowed_team_ids],
-    repository_archived: repository.status === 'archived',
+    parent_shas: fact.parentShas.map((one) => one.toLowerCase()),
+    message: fact.message,
+    author: fact.author,
+    committer: fact.committer,
+    authored_at: fact.authoredAt,
+    committed_at: fact.committedAt,
+    changed_paths: [...fact.changedPaths],
+    changed_paths_truncated: fact.changedPathsTruncated,
+    ...(fact.patchId === null
+      ? fact.patchIdUnavailable === null
+        ? {}
+        : { patch_id_unavailable: fact.patchIdUnavailable }
+      : { patch_id: fact.patchId }),
+    ...(fact.role === undefined ? {} : { role: fact.role }),
+  };
+}
+
+/**
+ * 문서를 **새로 만들 때만** 쓰는 본문.
+ *
+ * 접근 통제 material이 여기 함께 실린다 — 먼저 만들고 나중에 채우면 그 사이
+ * 문서를 강제 필터가 거를 수 없다 (DEV-213, fail closed).
+ *
+ * 초기 `document_version`은 **커밋 시각**이다 (DEV-209). `Date.now()`를 쓰면 그 뒤
+ * 도착하는 정상 투영이 전부 밀려나 이 문서가 PR 정보를 영영 받지 못한다.
+ */
+export function commitCreateFields(
+  repository: RepositoryRow,
+  fact: CommitFactSource,
+  extra: {
+    readonly pullRequestNumber: number | null;
+    readonly baseBranch?: string;
+    readonly indexedAt: string;
+  },
+): Readonly<Record<string, unknown>> & { readonly document_version: number } {
+  return {
+    ...scopeFields(repository),
+    document_version: Date.parse(fact.committedAt),
+    ...(extra.pullRequestNumber === null ? {} : { pull_request_numbers: [extra.pullRequestNumber] }),
+    ...(extra.baseBranch === undefined ? {} : { base_branch: extra.baseBranch }),
+    enrichment_pending: false,
+    link_summary: { has_revert: false, is_reverted: false, has_cherry_pick: false },
+    indexed_at: extra.indexedAt,
   };
 }
 
@@ -202,41 +267,46 @@ export async function enrichCommit(
       : 'merge_commit'
     : undefined;
 
-  const result = await upsertCommitMetadata(deps.es, {
-    repositoryId: repository.repository_id,
-    commitSha: sha,
-    docId: commitDocId(repository.repository_id, sha),
-    fields: {
-      parent_shas: meta.parentShas.map((one) => one.toLowerCase()),
-      message: meta.message,
-      author: meta.author,
-      committer: meta.committer,
-      authored_at: meta.authoredAt,
-      committed_at: meta.committedAt,
-      changed_paths: [...changed.paths],
-      changed_paths_truncated: changed.truncated,
-      ...(patch.patchId === null ? { patch_id_unavailable: patch.unavailable } : { patch_id: patch.patchId }),
-      ...(role === undefined ? {} : { role }),
-    },
-    ...(target.firstParent
-      ? {
-          createWith: {
-            ...scopeFields(repository),
-            /*
-             * **커밋 시각이 초기 버전이다** (DEV-209). `Date.now()`를 쓰면 그 뒤
-             * 도착하는 정상 웹훅 투영이 전부 "오래된 이벤트"로 밀려나, 이 문서가
-             * PR 정보를 영영 받지 못한다.
-             */
-            document_version: Date.parse(meta.committedAt),
-            ...(target.pullRequestNumber === null ? {} : { pull_request_numbers: [target.pullRequestNumber] }),
-            ...(target.baseBranch === undefined ? {} : { base_branch: target.baseBranch }),
-            enrichment_pending: false,
-            link_summary: { has_revert: false, is_reverted: false, has_cherry_pick: false },
-            indexed_at: (deps.now ?? ((): Date => new Date()))().toISOString(),
-          },
-        }
-      : {}),
-  });
+  const fact: CommitFactSource = {
+    parentShas: meta.parentShas,
+    message: meta.message,
+    author: meta.author,
+    committer: meta.committer,
+    authoredAt: meta.authoredAt,
+    committedAt: meta.committedAt,
+    changedPaths: changed.paths,
+    changedPathsTruncated: changed.truncated,
+    patchId: patch.patchId,
+    patchIdUnavailable: patch.patchId === null ? patch.unavailable : null,
+    ...(role === undefined ? {} : { role }),
+  };
+
+  const result = await withReindexWrite(deps.pool, (targets) =>
+    upsertCommitMetadata(
+      deps.es,
+      {
+        repositoryId: repository.repository_id,
+        commitSha: sha,
+        docId: commitDocId(repository.repository_id, sha),
+        fields: commitMetadataFields(fact),
+        /*
+         * 없는 문서는 **first-parent 커밋일 때만** 만든다 (DEV-206·213).
+         * 체인에 있다는 것이 "이 저장소의 대상 브랜치 히스토리에 실제로 있다"는
+         * 뜻이고, 그때에만 역할과 접근 범위를 확신을 갖고 실을 수 있다.
+         */
+        ...(target.firstParent
+          ? {
+              createWith: commitCreateFields(repository, fact, {
+                pullRequestNumber: target.pullRequestNumber,
+                ...(target.baseBranch === undefined ? {} : { baseBranch: target.baseBranch }),
+                indexedAt: (deps.now ?? ((): Date => new Date()))().toISOString(),
+              }),
+            }
+          : {}),
+      },
+      targets,
+    ),
+  );
 
   /*
    * ---- 관계 파생에 "이 커밋을 다시 보라"고 알린다 (CR-039, DEV-215).

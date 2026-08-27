@@ -55,6 +55,7 @@ import {
   trySequenceSpaceLock,
   type Pool,
   type RepositoryRow,
+  withReindexWrite,
 } from '@prs/db';
 import { applyEpochBump, applySequenceToDocuments, findPullRequestByMergeCommit } from '@prs/es';
 import { CommitGraphError, type CommitGraph, type RepoRef } from '@prs/github';
@@ -247,13 +248,20 @@ export async function assignSequence(
 
   if (applied.length > 0) {
     try {
-      await applySequenceToDocuments(deps.es, {
-        repositoryId,
-        baseBranch,
-        seqEpoch: epoch,
-        sequenceSpace: sequenceSpaceLabel(`${repository.owner}/${repository.name}`, baseBranch),
-        assignments: applied.map((entry) => ({ commitSha: entry.sha, mergeSeq: entry.mergeSeq })),
-      });
+      // 재색인 울타리 안에서 쓴다 (WP-035, DEV-296·308).
+      await withReindexWrite(deps.pool, (targets) =>
+        applySequenceToDocuments(
+          deps.es,
+          {
+            repositoryId,
+            baseBranch,
+            seqEpoch: epoch,
+            sequenceSpace: sequenceSpaceLabel(`${repository.owner}/${repository.name}`, baseBranch),
+            assignments: applied.map((entry) => ({ commitSha: entry.sha, mergeSeq: entry.mergeSeq })),
+          },
+          targets,
+        ),
+      );
     } catch (error) {
       /*
        * **던지지 않는다.** 시퀀스는 PostgreSQL에 이미 커밋됐고 그것이 정본이다.
@@ -488,18 +496,28 @@ export async function reassignSequence(
   });
 
   try {
-    await applyEpochBump(deps.es, {
-      repositoryId,
-      baseBranch,
-      newEpoch: outcome.newEpoch,
-      sequenceSpace: label,
-    });
-    await applySequenceToDocuments(deps.es, {
-      repositoryId,
-      baseBranch,
-      seqEpoch: outcome.newEpoch,
-      sequenceSpace: label,
-      assignments: applied.map((entry) => ({ commitSha: entry.sha, mergeSeq: entry.mergeSeq })),
+    /*
+     * 에폭 전환과 서수 반영을 **한 울타리 안에서** 한다 (WP-035, DEV-296·308).
+     * 둘로 나누면 그 사이에 전환이 끼어들어 새 인덱스가 에폭만 받고 서수를
+     * 못 받는 반쪽 상태가 될 수 있다.
+     */
+    await withReindexWrite(deps.pool, async (targets) => {
+      await applyEpochBump(
+        deps.es,
+        { repositoryId, baseBranch, newEpoch: outcome.newEpoch, sequenceSpace: label },
+        targets,
+      );
+      await applySequenceToDocuments(
+        deps.es,
+        {
+          repositoryId,
+          baseBranch,
+          seqEpoch: outcome.newEpoch,
+          sequenceSpace: label,
+          assignments: applied.map((entry) => ({ commitSha: entry.sha, mergeSeq: entry.mergeSeq })),
+        },
+        targets,
+      );
     });
   } catch (error) {
     log({
@@ -1048,18 +1066,28 @@ export async function repairSequence(
   });
 
   try {
-    await applyEpochBump(deps.es, {
-      repositoryId,
-      baseBranch,
-      newEpoch: outcome.newEpoch,
-      sequenceSpace: label,
-    });
-    await applySequenceToDocuments(deps.es, {
-      repositoryId,
-      baseBranch,
-      seqEpoch: outcome.newEpoch,
-      sequenceSpace: label,
-      assignments: applied.map((entry) => ({ commitSha: entry.sha, mergeSeq: entry.mergeSeq })),
+    /*
+     * 에폭 전환과 서수 반영을 **한 울타리 안에서** 한다 (WP-035, DEV-296·308).
+     * 둘로 나누면 그 사이에 전환이 끼어들어 새 인덱스가 에폭만 받고 서수를
+     * 못 받는 반쪽 상태가 될 수 있다.
+     */
+    await withReindexWrite(deps.pool, async (targets) => {
+      await applyEpochBump(
+        deps.es,
+        { repositoryId, baseBranch, newEpoch: outcome.newEpoch, sequenceSpace: label },
+        targets,
+      );
+      await applySequenceToDocuments(
+        deps.es,
+        {
+          repositoryId,
+          baseBranch,
+          seqEpoch: outcome.newEpoch,
+          sequenceSpace: label,
+          assignments: applied.map((entry) => ({ commitSha: entry.sha, mergeSeq: entry.mergeSeq })),
+        },
+        targets,
+      );
     });
   } catch (error) {
     deps.metrics.sequenceIndexFailed.inc();

@@ -33,6 +33,7 @@ import {
   type Pool,
   type ReleaseRow,
   type RepositoryRow,
+  withReindexWrite,
 } from '@prs/db';
 import {
   applyReleaseTagsToDocuments,
@@ -268,20 +269,28 @@ export async function refreshReleases(
   const syncedAtMs = (deps.now ?? ((): Date => new Date()))().getTime();
 
   try {
-    const result = await upsertReleaseDocuments(
-      deps.es,
-      {
-        repositoryId,
-        orgId: repository.org_id,
-        visibility: repository.visibility,
-        repository: `${repository.owner}/${repository.name}`,
-      },
-      rows.map(toDocInput(repository)),
-      syncedAtMs,
-    );
-    if (result.hasFailures) throw new Error('release_index_partial_failure');
-    // 지운 태그가 아니라 **현재 스냅숏**을 넘긴다 — 이전 회차가 놓친 삭제도 함께 아문다.
-    await pruneReleaseDocuments(deps.es, repositoryId, rows.map((row) => row.tag_name));
+    /*
+     * 업서트와 걷어내기를 **한 울타리 안에서** 한다 (WP-035, DEV-295·296).
+     * 삭제도 이중 쓰기 대상이며, 둘을 나누면 그 사이에 전환이 끼어들어 새
+     * 인덱스에 지워야 할 문서가 남는다.
+     */
+    await withReindexWrite(deps.pool, async (targets) => {
+      const result = await upsertReleaseDocuments(
+        deps.es,
+        {
+          repositoryId,
+          orgId: repository.org_id,
+          visibility: repository.visibility,
+          repository: `${repository.owner}/${repository.name}`,
+        },
+        rows.map(toDocInput(repository)),
+        syncedAtMs,
+        targets,
+      );
+      if (result.hasFailures) throw new Error('release_index_partial_failure');
+      // 지운 태그가 아니라 **현재 스냅숏**을 넘긴다 — 이전 회차가 놓친 삭제도 함께 아문다.
+      await pruneReleaseDocuments(deps.es, repositoryId, rows.map((row) => row.tag_name), targets);
+    });
   } catch {
     log({
       level: 'error',
@@ -315,12 +324,13 @@ export async function refreshReleases(
     }
 
     try {
-      await applyReleaseTagsToDocuments(deps.es, {
-        repositoryId,
-        baseBranch: space.branch,
-        seqEpoch: space.epoch,
-        releases: denorm,
-      });
+      await withReindexWrite(deps.pool, (targets) =>
+        applyReleaseTagsToDocuments(
+          deps.es,
+          { repositoryId, baseBranch: space.branch, seqEpoch: space.epoch, releases: denorm },
+          targets,
+        ),
+      );
     } catch {
       log({
         level: 'error',
@@ -346,7 +356,13 @@ export async function refreshReleases(
   return { kind: 'refreshed', tagCount: tags.length, deletedCount: deletedTags.length, resolvedCount };
 }
 
-function toDocInput(repository: RepositoryRow): (row: ReleaseRow) => ReleaseDocInput {
+/**
+ * 정본 행 → 색인 문서 입력.
+ *
+ * **재색인 재구축도 이 함수를 쓴다** (WP-035, DEV-295). 따로 만들면 재구축
+ * 결과와 평시 결과가 갈라지고, 그 차이는 전환 뒤에 드러난다.
+ */
+export function toDocInput(repository: RepositoryRow): (row: ReleaseRow) => ReleaseDocInput {
   return (row) => ({
     tagName: row.tag_name,
     commitSha: row.commit_sha,

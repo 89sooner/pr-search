@@ -17,6 +17,8 @@ export type AdminErrorCode = Extract<
   | 'NOT_FOUND'
   // 같은 대상에 활성 잡이 이미 있다 (API-ADM-002, WP-019).
   | 'JOB_CONFLICT'
+  // 다른 별칭이 재색인 중이다 — 동시 실행 상한 1 (API-ADM-004, WP-035 / DEV-300).
+  | 'REINDEX_BUSY'
 >;
 
 export const ADMIN_ERROR_STATUS: Readonly<Record<AdminErrorCode, number>> = {
@@ -27,6 +29,7 @@ export const ADMIN_ERROR_STATUS: Readonly<Record<AdminErrorCode, number>> = {
   FORBIDDEN_ROLE: 403,
   NOT_FOUND: 404,
   JOB_CONFLICT: 409,
+  REINDEX_BUSY: 409,
 };
 
 export class AdminRejected extends Error {
