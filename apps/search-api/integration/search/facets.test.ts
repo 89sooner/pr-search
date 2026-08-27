@@ -733,15 +733,22 @@ describe('전문 검색 (FR-SRCH-011)', () => {
     expect(idsOf(desc.body).length).toBeGreaterThan(1);
     // 같은 집합이다 — 방향만 바뀐다.
     expect([...idsOf(asc.body)].sort()).toEqual([...idsOf(desc.body)].sort());
+
     /*
-     * **정확한 역순을 요구하지 않는다.**
+     * **정확한 역순도, 특정 자리도 요구하지 않는다.**
      *
-     * 동률은 어느 방향에서도 `doc_id` 오름차순으로 갈리므로(AC-4의 결정론)
-     * 점수가 같은 무리의 내부 순서는 뒤집히지 않는다. 확인할 것은 방향이 실제로
-     * 답을 바꾼다는 사실이다 — 가장 높은 점수가 맨 앞이었다가 맨 뒤로 간다.
+     * 처음에는 `asc`의 마지막이 `desc`의 첫 항목이라고 단언했다. **CI가 그것을
+     * 깼다** — 로컬에서는 최상위 점수가 유일했지만 CI에서는 동률이었다. BM25의
+     * term statistics는 샤드 분포와 문서 수에 따라 달라지므로 "누가 1등인가"는
+     * 환경마다 다를 수 있고, 동률 무리는 어느 방향에서도 `doc_id` 오름차순으로
+     * 갈린다(AC-4의 결정론) — 그 무리의 내부 순서는 뒤집히지 않는다.
+     *
+     * 이 계층이 실제로 걸 것은 **방향이 API를 지나 적용된다**는 사실이다.
+     * `_score`에 요청한 방향이 실린다는 주장은 `packages/es/src/sort.test.ts`가
+     * 결정론적으로 핀으로 박는다 — 여기서 그것을 다시 재려 하면 점수 계산에
+     * 시험을 매다는 셈이 된다.
      */
     expect(idsOf(asc.body)[0]).not.toBe(idsOf(desc.body)[0]);
-    expect(idsOf(asc.body).at(-1)).toBe(idsOf(desc.body)[0]);
   });
 
   it('코드 포인트 한 글자는 `QUERY_TOO_SHORT`다 (QA-W001-28, DEV-284)', async () => {
