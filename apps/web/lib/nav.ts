@@ -44,6 +44,7 @@ export const OPS_ROLES: ReadonlySet<Role> = new Set<Role>(['operator', 'security
  */
 export const NAV_ENTRIES: readonly NavEntry[] = [
   { id: 'search', label: '통합 검색', href: '/search', section: 'search' },
+  { id: 'saved-searches', label: '저장된 검색', href: '/saved-searches', section: 'search' },
   { id: 'ranges', label: '범위 조사', href: '/ranges', section: 'analysis' },
   { id: 'releases', label: '릴리스', href: '/releases', section: 'analysis' },
   { id: 'stats', label: '통계', href: '/stats', section: 'analysis' },

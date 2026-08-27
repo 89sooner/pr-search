@@ -396,7 +396,8 @@ CREATE INDEX permission_cache_orgs_idx  ON permission_cache USING GIN (org_ids);
 ```sql
 CREATE TABLE saved_search (
   saved_search_id BIGSERIAL   PRIMARY KEY,
-  owner_user_id   TEXT        NOT NULL REFERENCES app_user(user_id),
+  -- 사용자 삭제 시 함께 사라진다 (보존 표의 정책. 마이그레이션 015, DEV-347)
+  owner_user_id   TEXT        NOT NULL REFERENCES app_user(user_id) ON DELETE CASCADE,
   name            TEXT        NOT NULL,
   query           TEXT        NOT NULL,
   visibility      TEXT        NOT NULL DEFAULT 'private',  -- private | team

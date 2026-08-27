@@ -12,6 +12,8 @@ export * as pipelineRepo from './pipeline.js';
 export * as rawEventRepo from './raw-event.js';
 export * as releaseRepo from './release.js';
 export * as repositoryRepo from './repository.js';
+/** 저장된 검색 (WP-033 / ENT-CORE-006, CR-049). */
+export * as savedSearchRepo from './saved-search.js';
 export { MAX_SEQUENCE_BRANCHES } from './repository.js';
 export * as sequenceSpaceRepo from './sequence-space.js';
 
@@ -54,3 +56,14 @@ export type {
   TeamRow,
 } from './auth.js';
 export type { SequenceSpaceRow, SequenceSpaceState } from './sequence-space.js';
+export type {
+  CreateSavedSearchInput,
+  CreateSavedSearchOutcome,
+  SavedSearchKeyset,
+  SavedSearchRow,
+  SavedSearchVisibility,
+  ShareTargetTeam,
+  UpdateSavedSearchInput,
+  UpdateSavedSearchOutcome,
+} from './saved-search.js';
+export { SAVED_SEARCH_LIMIT } from './saved-search.js';

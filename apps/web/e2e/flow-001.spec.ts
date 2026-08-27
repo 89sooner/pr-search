@@ -159,7 +159,7 @@ test.describe('히스토리 규율 (WP-016 DoD)', () => {
     await expect(page.getByTestId('search-view')).toHaveAttribute('data-screen-state', 'ready');
 
     await page.getByRole('searchbox').fill('repo:acme/other');
-    await page.getByRole('button', { name: '검색' }).click();
+    await page.getByRole('button', { name: '검색', exact: true }).click();
     await expect(page).toHaveURL(/acme%2Fother/);
 
     // 제출은 `push`이므로 뒤로가기가 직전 질의로 돌아간다.
@@ -191,7 +191,7 @@ test.describe('클라이언트가 먼저 거절한다 (QA-W001-04)', () => {
     await page.goto('/search');
 
     await page.getByRole('searchbox').fill('abc12');
-    await expect(page.getByRole('button', { name: '검색' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '검색', exact: true })).toBeDisabled();
     expect(calls).toEqual([]);
   });
 
@@ -200,7 +200,7 @@ test.describe('클라이언트가 먼저 거절한다 (QA-W001-04)', () => {
     await page.goto('/search');
 
     await page.getByRole('searchbox').fill('a1b2c3d');
-    await expect(page.getByRole('button', { name: '검색' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '검색', exact: true })).toBeEnabled();
   });
 });
 
