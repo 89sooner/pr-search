@@ -442,6 +442,49 @@ describe('team 패싯은 slug으로 해석된다 (DEV-281)', () => {
     const narrowed = await get('q=team%3Apayments-core&size=200');
     expect(narrowed.body.total.value).toBe(bucket?.count);
   });
+
+  /*
+   * **slug은 조직 안에서만 유일하다** (`UNIQUE (org_id, slug)`) — PR #57 리뷰 P2.
+   *
+   * 서로 다른 조직의 같은 이름 팀이 각각 bucket이 되면, 표시값으로 옮긴 뒤
+   * 같은 이름이 두 줄로 나온다. 화면에서는 중복된 체크박스 ID가 되고, 어느
+   * 쪽을 눌러도 질의는 `team:<slug>` 하나다 — **누른 것과 나온 것이 달라진다.**
+   */
+  it('다른 조직의 같은 slug을 한 bucket으로 합치고, 눌렀을 때 그 건수가 나온다', async () => {
+    const OTHER_ORG_TEAM = 8_012;
+    await authRepo.upsertTeam(pool, { team_id: OTHER_ORG_TEAM, slug: 'payments-core', org_id: HIDDEN_ORG });
+    // 접근 범위 **안**의 문서 하나에 그 팀을 더한다 — 두 ID가 함께 세어져야 한다.
+    await es.update({
+      index: 'prs-pull-requests',
+      id: 'facet-pr-5',
+      routing: String(BILLING),
+      refresh: true,
+      doc: { allowed_team_ids: [BILLING_TEAM, OTHER_ORG_TEAM] },
+    });
+
+    try {
+      const { body } = await get('facets=true&size=200');
+      const teams = (body.facets?.['team'] ?? []).map((one) => one.value);
+      // 같은 이름이 두 줄로 나오지 않는다.
+      expect(teams.filter((one) => one === 'payments-core')).toHaveLength(1);
+
+      const bucket = (body.facets?.['team'] ?? []).find((one) => one.value === 'payments-core');
+      // 합친 건수가 그 이름으로 좁힌 조회와 같다 — `resolveTeamIds`가 ID를 전부 준다.
+      const narrowed = await get('q=team%3Apayments-core&size=200');
+      expect(narrowed.body.total.value).toBe(bucket?.count);
+      // 두 팀에 걸친 문서가 실제로 포함된다.
+      expect(idsOf(narrowed.body)).toContain('pr:5');
+    } finally {
+      await es.update({
+        index: 'prs-pull-requests',
+        id: 'facet-pr-5',
+        routing: String(BILLING),
+        refresh: true,
+        doc: { allowed_team_ids: [BILLING_TEAM] },
+      });
+      await pool.query('DELETE FROM team WHERE team_id = $1', [OTHER_ORG_TEAM]);
+    }
+  });
 });
 
 describe('커서 페이지네이션 (FR-SRCH-008)', () => {

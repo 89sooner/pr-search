@@ -122,7 +122,14 @@ describe('저장소 팀 접근 범위 (WP-068)', () => {
 
       // `team:` 질의가 slug를 ID로 옮길 수 있어야 한다 — 그 표가 비어 있어서 못 맞혔다.
       const ids = await authRepo.resolveTeamIds(pool, ['payments-core']);
-      expect(ids.get('payments-core')).toBe(TEAM_CORE);
+      /*
+       * **ID 목록이다** (WP-032, PR #57 리뷰 P2).
+       *
+       * slug은 조직 안에서만 유일하므로(`UNIQUE (org_id, slug)`) 이름 하나가 팀
+       * 여럿을 가리킬 수 있다. 이 함수의 주석이 오래 "전부 돌려준다"고 적어
+       * 왔으나 구현은 하나만 남기고 있었고, 패싯이 그 차이를 사용자에게 드러냈다.
+       */
+      expect(ids.get('payments-core')).toEqual([TEAM_CORE]);
     });
 
     it('**값이 바뀔 때만 색인을 만진다**', async () => {

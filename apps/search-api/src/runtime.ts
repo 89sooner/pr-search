@@ -38,7 +38,11 @@ export interface SearchDepsLike {
   readonly resolveNames: (names: {
     readonly orgs: readonly string[];
     readonly teams: readonly string[];
-  }) => Promise<{ readonly orgIds: Map<string, number>; readonly teamIds: Map<string, number> }>;
+  }) => Promise<{
+    readonly orgIds: ReadonlyMap<string, number>;
+    // 이름 하나가 팀 여럿을 가리킬 수 있다 (WP-032, PR #57 리뷰 P2).
+    readonly teamIds: ReadonlyMap<string, readonly number[]>;
+  }>;
   readonly timeoutMs?: number;
 }
 

@@ -85,8 +85,15 @@ const DERIVED_STATE: Readonly<Record<string, estypes.QueryDslQueryContainer>> = 
 export interface NameResolution {
   /** `owner` → `org_id`. 못 찾은 이름은 담지 않는다. */
   readonly orgIds: ReadonlyMap<string, number>;
-  /** `team.slug` → `team_id`. */
-  readonly teamIds: ReadonlyMap<string, number>;
+  /**
+   * `team.slug` → `team_id` **목록** (WP-032, PR #57 리뷰 P2).
+   *
+   * slug은 조직 안에서만 유일하다(`UNIQUE (org_id, slug)`). 이름 하나가 팀
+   * 여럿을 가리킬 수 있으므로 목록이며, `terms`로 묶으면 OR가 되어 "그 이름의
+   * 팀 중 어느 것이든"이라는 사용자의 뜻과 맞는다. 하나만 고르면 패싯을
+   * 눌렀을 때 나오는 건수가 bucket과 다르다.
+   */
+  readonly teamIds: ReadonlyMap<string, readonly number[]>;
 }
 
 export const EMPTY_RESOLUTION: NameResolution = { orgIds: new Map(), teamIds: new Map() };
@@ -236,7 +243,8 @@ function equalityClause(
   }
 
   if (filter.key === 'team') {
-    const ids = values.map((value) => resolution.teamIds.get(value)).filter((id): id is number => id !== undefined);
+    // 이름 하나가 팀 여럿을 가리킬 수 있다 — 전부 실어 OR로 만든다.
+    const ids = values.flatMap((value) => [...(resolution.teamIds.get(value) ?? [])]);
     for (const value of values) {
       if (!resolution.teamIds.has(value)) unresolved.push({ key: 'team', value });
     }

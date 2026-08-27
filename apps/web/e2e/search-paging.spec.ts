@@ -214,6 +214,32 @@ test.describe('패싯 상태 (C-012 / FR-SRCH-009)', () => {
     expect(failed).not.toBe(omitted);
   });
 
+  /*
+   * **첫 페이지에서도 재시도가 실제로 요청을 낸다** (PR #57 리뷰 P2).
+   *
+   * 커서만으로는 "다시 불러라"를 표현할 수 없다 — 첫 페이지에서 분포가 실패한
+   * 뒤 버튼을 누르면 커서는 이미 `null`이라 상태가 달라지지 않고, React가
+   * 갱신을 건너뛰어 조회 효과가 다시 돌지 않는다. 버튼이 아무 일도 하지 않는다.
+   */
+  test('**분포 다시 계산이 첫 페이지에서도 요청을 낸다**', async ({ page }) => {
+    const calls = await stubPages(page, [
+      { items: [row(1)], next_cursor: null, facets: {}, facets_omitted: true, facets_status: 'failed' },
+      { items: [row(1)], next_cursor: null, ...FACETS },
+    ]);
+
+    await page.goto('/search?q=repo%3Aacme%2Fpayments');
+    await expect(page.getByTestId('facet-notice')).toHaveAttribute('data-facet-state', 'failed');
+    expect(calls).toHaveLength(1);
+
+    await page.getByTestId('facet-retry').click();
+
+    await expect.poll(() => calls.length).toBe(2);
+    // 다시 부를 때도 첫 페이지이므로 분포를 함께 요청한다.
+    expect(new URL(calls[1] ?? '').searchParams.get('facets')).toBe('true');
+    expect(new URL(calls[1] ?? '').searchParams.get('cursor')).toBeNull();
+    await expect(page.getByTestId('facet-notice')).toHaveCount(0);
+  });
+
   test('패싯을 누르면 질의가 갱신되고 첫 페이지부터 다시 연다 (DEV-280)', async ({ page }) => {
     const calls = await stubPages(page, [
       { items: [row(1)], next_cursor: 'CURSOR-A', ...FACETS },

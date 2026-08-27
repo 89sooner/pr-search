@@ -76,9 +76,20 @@ interface PageState {
   readonly facets: FacetSource;
   /** 직전 요청이 커서 때문에 실패했는가. */
   readonly failure: CursorFailure | null;
+  /**
+   * 요청 세대 (PR #57 리뷰 P2).
+   *
+   * **커서만으로는 "다시 불러라"를 표현할 수 없다.** 첫 페이지에서 분포가
+   * `failed`·`budget_omitted`로 온 뒤 "분포 다시 계산"을 누르면 커서는 이미
+   * `null`이라 상태가 달라지지 않고, React가 갱신을 건너뛰어 조회 효과가 다시
+   * 돌지 않는다 — 버튼이 아무 일도 하지 않는다.
+   *
+   * 세대를 올리면 같은 커서라도 새 요청이 된다.
+   */
+  readonly nonce: number;
 }
 
-const FIRST_PAGE: PageState = { carried: [], cursor: null, facets: {}, failure: null };
+const FIRST_PAGE: PageState = { carried: [], cursor: null, facets: {}, failure: null, nonce: 0 };
 
 interface ResolveResponse {
   readonly candidates?: readonly ResolutionCandidate[];
@@ -231,7 +242,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     return () => {
       controller.abort();
     };
-  }, [state, parsed.error, gheBaseUrl, page.cursor]);
+  }, [state, parsed.error, gheBaseUrl, page.cursor, page.nonce]);
 
   const candidates = outcome.resolve?.candidates ?? null;
   /*
@@ -262,13 +273,15 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         cursor,
         facets: current.cursor === null ? (outcome.search ?? {}) : current.facets,
         failure: null,
+        nonce: current.nonce + 1,
       }));
     },
     [items, outcome.search],
   );
 
+  /** 첫 페이지를 **다시 연다.** 이미 첫 페이지여도 세대가 올라 조회가 다시 돈다. */
   const backToFirst = useCallback(() => {
-    setPage(FIRST_PAGE);
+    setPage((current) => ({ ...FIRST_PAGE, nonce: current.nonce + 1 }));
   }, []);
 
   const screen = resolveScreenState({

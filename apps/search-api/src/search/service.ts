@@ -302,6 +302,19 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
   // 부분 결과를 내보내지 않는다 (CR-016, DEV-054).
   assertNoShardFailures(response);
 
+  /*
+   * **응답이 준 PIT을 다음 요청에 쓴다** (PR #57 리뷰 P1).
+   *
+   * Elasticsearch는 검색 응답에 `pit_id`를 실어 주며 그것이 **바뀔 수 있다** —
+   * 계약이 "다음 요청에는 응답의 값을 쓰라"고 정한다. 처음 받은 값을 계속 쓰면
+   * 성공한 페이지 뒤에 이어 보기가 실패할 수 있고, 마지막 페이지의 정리도
+   * 이미 지나간 식별자를 닫는다.
+   *
+   * 지금 이 버전에서는 두 값이 같다 — 실측했다. 그러나 그것은 **우연이지
+   * 계약이 아니며**, 우연에 기대는 코드는 판올림 한 번에 조용히 깨진다.
+   */
+  const livePitId = response.pit_id ?? pitId;
+
   const total = response.hits.total;
   const value = typeof total === 'number' ? total : (total?.value ?? 0);
   const relation = typeof total === 'number' ? 'eq' : (total?.relation ?? 'eq');
@@ -320,10 +333,10 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
   const lastSort = page[page.length - 1]?.sort;
   const nextCursor =
     hasMore && lastSort !== undefined && lastSort.length > 0
-      ? encodeSearchCursor({ pitId, searchAfter: lastSort }, fingerprint, deps.cursorSigner, now)
+      ? encodeSearchCursor({ pitId: livePitId, searchAfter: lastSort }, fingerprint, deps.cursorSigner, now)
       : null;
 
-  if (nextCursor === null) await closePointInTime(deps.es, pitId);
+  if (nextCursor === null) await closePointInTime(deps.es, livePitId);
 
   /*
    * 패싯은 **별도 요청**이고 던지지 않는다 (FR-SRCH-009 예외 처리).

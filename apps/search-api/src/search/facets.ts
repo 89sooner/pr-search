@@ -132,6 +132,30 @@ interface TermsAggregation {
 const OMITTED: FacetOutcome = { facets: {}, omitted: true, status: 'budget_omitted' };
 const FAILED: FacetOutcome = { facets: {}, omitted: true, status: 'failed' };
 
+/**
+ * 같은 표시값으로 접힌 bucket을 합친다 (PR #57 리뷰 P2).
+ *
+ * ## 왜 필요한가
+ *
+ * 팀 slug은 **조직 안에서만** 유일하다(`UNIQUE (org_id, slug)`). 서로 다른 조직의
+ * `payments-core` 둘이 각각 bucket이 되고, 표시값으로 옮기면 같은 이름이 두 줄로
+ * 나온다. 화면에서는 중복된 체크박스 ID가 되고, 어느 쪽을 눌러도 질의는
+ * `team:payments-core` 하나다.
+ *
+ * 합치면 **누른 것과 나온 것이 같아진다** — `resolveTeamIds`가 그 이름의 팀
+ * ID를 전부 돌려주므로(`terms`가 OR가 된다) 그 질의의 건수가 합친 count와 같다.
+ *
+ * 순서는 건수 내림차순으로 다시 세운다. 합치기 전의 상위 20이 합친 뒤에도
+ * 상위 20이라는 보장은 없지만, 상한이 이미 근사라는 것은 계약이 적어 둔 사실이다
+ * (`sum(buckets) == total`로 검증하지 않는 이유와 같다).
+ */
+function coalesceByValue(values: readonly FacetValue[]): readonly FacetValue[] {
+  const merged = new Map<string, number>();
+  for (const entry of values) merged.set(entry.value, (merged.get(entry.value) ?? 0) + entry.count);
+  if (merged.size === values.length) return values;
+  return [...merged].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
+}
+
 function aggregationsOf(axes: readonly FacetAxis[]): Record<string, estypes.AggregationsAggregationContainer> {
   return Object.fromEntries(
     axes.map((axis) => [axis.key, { terms: { field: axis.field, size: FACET_TOP } }]),
@@ -214,10 +238,12 @@ export async function computeFacets(request: FacetRequest, deps: FacetDeps): Pro
        * `team:<숫자>`가 되어 `unresolved_names` 경고로 드러난다. 조용히 적게
        * 답하는 쪽을 고르지 않는다 (DEV-052가 정한 규칙과 같다).
        */
-      facets[axis.key] = values.map((entry) => {
-        const slug = slugs.get(Number(entry.value));
-        return slug === undefined ? entry : { value: slug, count: entry.count };
-      });
+      facets[axis.key] = coalesceByValue(
+        values.map((entry) => {
+          const slug = slugs.get(Number(entry.value));
+          return slug === undefined ? entry : { value: slug, count: entry.count };
+        }),
+      );
     }
   }
 

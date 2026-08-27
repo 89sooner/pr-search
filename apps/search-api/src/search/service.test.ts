@@ -132,3 +132,65 @@ describe('order', () => {
     expect(parseOrder('ASC')).toBe('desc');
   });
 });
+
+describe('PIT을 응답이 준 값으로 잇는다 (PR #57 리뷰 P1)', () => {
+  /*
+   * Elasticsearch는 검색 응답에 `pit_id`를 실어 주며 **그것이 바뀔 수 있다** —
+   * 계약이 "다음 요청에는 응답의 값을 쓰라"고 정한다. 처음 받은 값을 계속 쓰면
+   * 성공한 페이지 뒤에 이어 보기가 실패할 수 있고, 마지막 페이지의 정리도
+   * 이미 지나간 식별자를 닫는다.
+   *
+   * **실 Elasticsearch 8.19에서는 두 값이 같았다** — 실측했다. 그래서 통합
+   * 계층으로는 이 규율을 관측할 수 없고(변이가 등가로 살아남는다), 여기서
+   * 대역이 값을 바꿔 준다. 우연에 기대는 코드는 판올림 한 번에 조용히 깨진다.
+   */
+  const ROTATED = 'pit-after-rotation';
+
+  function rotatingClient(hits: number): { client: Client; closed: string[] } {
+    const closed: string[] = [];
+    const search = vi.fn().mockResolvedValue({
+      _shards: { failed: 0, total: 1, successful: 1, skipped: 0 },
+      pit_id: ROTATED,
+      hits: {
+        total: { value: hits, relation: 'eq' },
+        hits: Array.from({ length: hits }, (_, i) => ({
+          _index: 'prs-pull-requests-v2',
+          _id: `p${String(i)}`,
+          _source: { repository: 'acme/payments', pr_number: i },
+          sort: [i, `p${String(i)}`],
+        })),
+      },
+    });
+    return {
+      client: {
+        search,
+        msearch: vi.fn().mockResolvedValue({ responses: [] }),
+        openPointInTime: vi.fn().mockResolvedValue({ id: 'pit-original' }),
+        closePointInTime: vi.fn().mockImplementation(({ id }: { id: string }) => {
+          closed.push(id);
+          return Promise.resolve({ succeeded: true });
+        }),
+      } as unknown as Client,
+      closed,
+    };
+  }
+
+  it('발급하는 커서가 **갱신된** PIT을 싣는다', async () => {
+    // `size + 1`을 돌려주면 다음 페이지가 있다고 판정된다.
+    const { client } = rotatingClient(3);
+    const result = await runSearch({ ...request('repo:acme/payments'), size: 2 }, { es: client, ...DEPS });
+
+    expect(result.nextCursor).not.toBeNull();
+    const body = (result.nextCursor as string).split('.')[0] as string;
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as { p: string };
+    expect(payload.p).toBe(ROTATED);
+  });
+
+  it('마지막 페이지에서 닫는 것도 갱신된 PIT이다 — 지나간 식별자를 닫지 않는다', async () => {
+    const { client, closed } = rotatingClient(1);
+    const result = await runSearch({ ...request('repo:acme/payments'), size: 2 }, { es: client, ...DEPS });
+
+    expect(result.nextCursor).toBeNull();
+    expect(closed).toEqual([ROTATED]);
+  });
+});

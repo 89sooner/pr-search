@@ -305,6 +305,12 @@ export async function listTeamMembers(db: Queryable, teamId: number): Promise<st
  * slug이 있으면 그 이름 하나가 팀 여럿을 가리킨다. 하나를 골라 나머지를 조용히
  * 버리는 대신 **전부 돌려준다** — 호출 측이 `terms`로 묶으면 OR가 되어
  * "그 이름의 팀 중 어느 것이든"이라는 사용자의 뜻과 맞는다.
+ *
+ * **WP-032가 그 약속을 실재시켰다** (PR #57 리뷰 P2). 그때까지 이 함수는
+ * `Map<string, number>`를 돌려주며 **가장 작은 `team_id` 하나만** 남기고 있었고,
+ * 주석은 "전부 돌려준다"고 적고 있었다 — 문서가 코드보다 앞서 있었다.
+ * 패싯이 `allowed_team_ids`를 세면서 같은 slug의 서로 다른 팀이 각각 bucket이
+ * 되자 그 차이가 사용자에게 드러났다: 눌렀는데 건수가 다르다.
  */
 /**
  * 팀 ID를 slug으로 — **일괄** (WP-032 / FR-SRCH-009, CR-043 DEV-281).
@@ -333,7 +339,10 @@ export async function resolveTeamSlugs(
   return resolved;
 }
 
-export async function resolveTeamIds(db: Queryable, slugs: readonly string[]): Promise<Map<string, number>> {
+export async function resolveTeamIds(
+  db: Queryable,
+  slugs: readonly string[],
+): Promise<Map<string, readonly number[]>> {
   if (slugs.length === 0) return new Map();
 
   const { rows } = await db.query<{ slug: string; team_id: number }>(
@@ -341,12 +350,13 @@ export async function resolveTeamIds(db: Queryable, slugs: readonly string[]): P
     [[...slugs]],
   );
 
-  // 같은 slug이 여럿이면 가장 작은 `team_id`가 남는다 — `ORDER BY`가 그것을
-  // 결정론적으로 만든다. 여러 조직에 걸친 동명 팀은 WP-032의 패싯이 조직과
-  // 함께 보여 줄 때 제대로 다룬다.
-  const resolved = new Map<string, number>();
+  // `ORDER BY team_id`가 목록 순서를 결정론으로 만든다 — 같은 질의가 늘 같은
+  // 절이 되어야 커서 지문이 흔들리지 않는다.
+  const resolved = new Map<string, number[]>();
   for (const row of rows) {
-    if (!resolved.has(row.slug)) resolved.set(row.slug, row.team_id);
+    const found = resolved.get(row.slug);
+    if (found === undefined) resolved.set(row.slug, [row.team_id]);
+    else found.push(row.team_id);
   }
   return resolved;
 }

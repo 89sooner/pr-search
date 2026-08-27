@@ -20,7 +20,8 @@ import {
 
 const RESOLUTION: NameResolution = {
   orgIds: new Map([['acme', 1]]),
-  teamIds: new Map([['payments-core', 77]]),
+  // slug 하나가 팀 여럿을 가리킬 수 있다 (WP-032, PR #57 리뷰 P2).
+  teamIds: new Map([['payments-core', [77]]]),
 };
 
 function queryFor(input: string, resolution: NameResolution = RESOLUTION) {
