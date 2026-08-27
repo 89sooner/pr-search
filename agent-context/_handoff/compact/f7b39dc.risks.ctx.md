@@ -1,7 +1,7 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=e88e1608fb652e996daf19d551a895c15f3e805f7249814654f677c2c77930d1 bytes=40737 lines=618 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;DISTINCT;pull_request_number;NOT;NULL
+@kv sha256=752462fafb650dd146987ba433eb281824074508e21bc60d9dbe5837fe007032 bytes=46948 lines=693 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;DISTINCT
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
 @h3 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다
@@ -234,7 +234,7 @@
 |...cut 70 lines
 @p bash set -o pipefail
 @cmd pnpm run test:integration 2>&1 | tee /tmp/.../baseline-integration.log
-@code lang=txt sha=40f6dae3bac2 lines=129 kept=80
+@code lang=txt sha=f751e8bd53cf lines=137 kept=80
 |## 43. 금지를 거는 회귀는 **주석을 걷어 낸 코드**만 봐야 한다
 |"이 필드를 쓰지 않는다"를 파일 전문에 `not.toContain`으로 걸었더니 **그 사실을 설명한 주석**에 걸렸다. 문서 검증기가 자기 검색어를 세는 것과 같은 함정이다(risks 35).
 |→ 검사 범위를 좁힌다. `codeOf()` 헬퍼로 `/* */`와 `//`를 걷어 낸 뒤 건다.
@@ -280,4 +280,43 @@
 |## 52. **회귀의 방향을 물어라** — 없는 것은 물음의 대상이 아니다
 |CR-034가 세운 운영 도달성 계층이 `batch` 미배포를 놓친 이유는 방향이다. 그 검사는 **"존재하는 manifest가 적용 순서에 있는가"**를 묻는데, CR-038 때의 문제가 "파일은 있고 목록에 없다"였기 때문이다. 이번은 한 겹 아래 — **파일 자체가 없었다.**
 |→ **검사를 만들 때 "이것이 덮지 못하는 면은 무엇인가"를 함께 적어라.** 이 세션은 그것을 두 번 배웠다(DEV-293 → DEV-310 → DEV-312, 같은 검사가 세 번 넓어졌다).
-|...cut 49 lines
+|...cut 57 lines
+@p python io.open(path, 'w', encoding='utf-8', newline='\\r\\n') # ← 이스케이프가 깨진 값
+@code lang=txt sha=fb1c236a1093 lines=63 kept=63
+|`ValueError: illegal newline value`가 나기 **전에 파일이 이미 0바이트가 됐다.** 파일은 신규(untracked)라 git으로도 복구할 수 없었고, 540줄을 전부 다시 썼다.
+|→ **truncate하는 open에 계산된 인자를 넣지 마라.** 값을 먼저 검증하거나, 임시 파일에 쓰고 옮긴다. `risks.md` 53번(`git checkout`은 원복 수단이 아니다)의 이웃 사례다 — 둘 다 "되돌릴 수 있다고 가정한 자리가 되돌릴 수 없었다".
+|## 61. **`git checkout --`를 원복이 아니라 "복구"에 쓰다가 또 잃었다**
+|변이 실험 뒤 `git checkout -- deploy/k8s/README.md`로 되돌렸는데, 그 파일에는 **아직 커밋하지 않은 이번 CR의 편집**이 함께 있었다. 53번이 적어 둔 것을 그대로 밟았다.
+|그리고 복구하려고 **같은 편집 스크립트를 다시 돌렸다.** 그 스크립트가 멱등이 아니었고 앵커가 여전히 맞아 인프라 3장 배포 단위 표에 **같은 행이 두 줄** 들어갔다 (DEV-321). 기존 검사 셋이 전부 통과했다 — 파싱한 역할을 `Set`으로 다뤄 중복을 삼켰다.
+|→ **편집 스크립트를 복구 수단으로 재실행하지 마라.** 재실행할 거면 먼저 멱등인지 확인한다(이미 적용됐으면 앵커가 안 맞아야 한다). 그리고 되돌릴 일이 있으면 **역방향 치환**이다.
+|## 62. **변이에 치환 건수 검증이 없으면 "SURVIVED"가 오독이 된다**
+|README 적용 순서에서 한 줄을 지우는 변이를 걸었는데 `SURVIVED`가 나왔다. 실제로는 **CRLF 때문에 치환이 아예 걸리지 않았다** — 변이가 없었으니 시험이 통과한 것이 당연했다.
+|건수 검증을 붙여 다시 걸자 즉시 `KILLED`였다.
+|→ **변이 하니스는 `count != 1`이면 반드시 멈춰야 한다.** 그 검증이 없는 일회성 치환은 "살아남았다"를 증거로 쓸 수 없다. 이 저장소의 `mut.py` 계열은 이미 그렇게 돼 있고, 급해서 인라인으로 쓴 것이 함정이었다.
+|## 63. **로컬 통합 전량이 통과한 것을 CI가 잡았다**
+|통합 계층은 공유 `prs_test`·공유 Elasticsearch를 쓰고, **그 안에 무엇이 들어 있는지는 환경마다 다르다.** 로컬에는 `document_version`이 본문에 없는 PR 스냅숏이 없었고 CI에는 `worker/link.test.ts`의 픽스처가 만든 그것이 있었다. 재구축이 본문을 믿었기 때문에 그 한 행이 저장소 전체의 재구축을 막았다 (DEV-320).
+|더 나쁜 것은 **그 실패가 "전환 거절"로만 보였다는 것**이다. 원인은 잡의 `error`에만 있었고 시험은 별칭만 단언하고 있었다.
+|→ 둘을 배웠다. **① 통합 시험은 우연히 존재하는 데이터에 기대지 말고 그 형태를 직접 만든다.** **② 결과를 단언하기 전에 그 결과를 만든 상태(잡 상태·실패 수)를 먼저 단언한다** — 실패했을 때 원인이 로그에 보여야 한다.
+|## 64. **"정본"은 축마다 다르고, 스냅숏은 정본이 아니다**
+|PR #52 리뷰 P1 둘과 CI가 잡은 것 하나가 **같은 뿌리**였다. `pull_request_snapshot`을 정본으로 읽었는데:
+|| 무엇 | 실제 정본 | 스냅숏을 믿으면 |
+|| --- | --- | --- |
+|| `allowed_team_ids` · `repository_archived` | `repository` 행 (색인에만 소급 반영, 스냅숏에 되쓰지 않는다) | **회수된 팀의 접근이 전환으로 되살아난다** |
+|| PR 원본 커밋 문서 | PR 스냅숏의 `source_commit_shas` (`commit_snapshot`은 first-parent만 덮는다) | 그 커밋들이 색인에서 사라진다 |
+|| `document_version` | `pull_request_snapshot.document_version` **열** | 본문에 그 키가 없는 행이 재구축을 막는다 |
+|→ **정본 재구축을 쓸 때 축마다 "이 필드의 정본이 정확히 무엇인가"를 다시 물어라.** "스냅숏에서 읽는다"는 답이 아니다 — 스냅숏은 **투영 시점의 사본**이고, 그 뒤에 그 문서를 바꾼 경로가 있으면 그것이 정본이다.
+|## 65. **판정의 재료가 그 판정이 뜻하는 것과 같은가**
+|리뷰 셋(DEV-316·318·319)이 모양은 달랐지만 같은 규율에 걸렸다.
+|- 처리한 *source* 수는 **문서 수가 아니다** → 간선 재색인이 언제나 거절된다
+|- 지우지 못한 것은 **처리한 것이 아니다** → 롤백 중인 인덱스가 영영 회수되지 않는다
+|- 기록하지 못한 전환은 **일어나지 않은 전환이 아니다** → 옛 인덱스가 보관 대상에 오르지 않는다
+|→ 검사·판정을 쓸 때 **"이 값이 내가 판정하려는 것과 같은 단위인가"**를 묻는다. 다르면 그 검사는 통과하거나 실패하는 것이 아니라 **다른 것을 재고 있다.**
+|## 66. 문서 검사는 표만 보고 산문을 보지 않는다
+|배포 단위 표에 `authz`를 올리면서 표 **바로 아래**의 "authz·release·backfill 셋은 아직 배포되지 않으며"를 그대로 뒀다 (DEV-322). 표를 읽는 검사 셋이 전부 통과했다.
+|→ **문서를 고칠 때 그 사실을 말하는 다른 문장이 근처에 있는지 본다.** 그리고 검사를 만들 때 "이것이 덮지 못하는 면은 무엇인가"를 함께 적는다(risks 52번의 재확인).
+|## 환경 (변경 없음, 재확인)
+|- Node **v22.23.2** 필수. **셸 기본값은 v20.12.0이다** — 같은 명령줄에서 `export`한 뒤 재면 "기본값이 v22"로 잘못 읽힌다
+|- **마이그레이션은 014까지** — WP-035·CR-048 둘 다 만들지 않았다
+|- 컨테이너 3종 healthy. `prs`·`prs_test` 존재
+|- **전사가 `.gitignore` 밖에 있다** — `pr-search/202608271346.md`. `exports/`만 무시되며 저장소 루트는 아니다 (`git check-ignore`로 실측)
+|- CI는 이 세션 세 라운드 모두 정상 기동했다 (76분 큐 대기 재현 없음)

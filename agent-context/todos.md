@@ -1,5 +1,91 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
+> **최신 기준 (2026-08-27 WP-035 · CR-048 종료 시점)**
+> main `df9f569` · SRS **`baseline v2.8`**(변경 없음) · PRD `v1.3` · 원장 `review v3.7` · 작업 패키지 `v1.2` ·
+> 인프라 `v0.5` · API 계약 `v0.8` · 로드맵 `v0.5` · 추적 매트릭스 `v0.5`
+> **CR-048 · DEV-323까지** · **마이그레이션 014까지**(이 세션은 만들지 않았다)
+> **REL-004 구현 4/8** (WP-029·030·031·**035** done). **WP-032 차단 해제**
+> **REL-003 릴리스 게이트는 여전히 미통과 — 베타 공개 승인 안 됨.**
+> 미해결 리뷰 **0건** (PR #52·#53·#54 전부 resolve). 열린 PR 0건. 로컬 브랜치는 `main` 하나
+> **open DEV 7건** — 기존 5(`DEV-001·006·010·016·026`) + `DEV-304·305` (**DEV-306은 CR-048로 resolved**)
+> ⚠️ **미추적 1건** — `202608271346.md`(전사, 99KB)가 **저장소 루트**에 있다. 아래 E절 참조
+
+## A. 지금 당장 — WP-032 (패싯 · 커서 페이지네이션 · 전문 검색)
+
+**착수 전 감사를 다시 하지 않는다.** WP-032의 계약은 CR-043(SRS v2.7)·CR-044(SRS v2.8)에서 이미 닫혔다 — 커서 계약(재료·봉인 값·불안정성 처분·동률), 패싯 계약(bucket 단위 검증·별도 요청 1.5초·`facets_status` 넷), 전문 검색 계약(강조 평문·커밋 축 first-parent·`query_too_short` 코드 포인트), ADR-010 Amendment(**모든 순회에 PIT**)가 전부 서 있다.
+
+**WP-035가 차단을 풀었다.** `edge_ngram`은 `index.analysis`의 비동적 설정이라 열린 인덱스에 못 넣고 `putMapping`으로 더한 서브필드는 기존 문서에서 비어 있는데, 이제 그것을 배포하는 기계가 있다. 시험용 v2로 실제 증명까지 했다(통합 `WP-032 선행 조건 증명`).
+
+**CR은 지시서 §0 기준으로만 연다** — 승인된 계약으로 구현이 불가능 / 정본이 실제로 없음 / 새 제품 결정 필요, 셋 중 하나가 **실물로 증명**될 때만. 단순 구현·리팩터·파일 배치·시험 편의로는 열지 않는다.
+
+next-free는 **실측할 것** — `CR-049` / `DEV-324` / 마이그레이션 `015`가 예상이지만 추측해 쓰지 않는다:
+
+```bash
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -2
+grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -2
+grep -rohE 'API-SRCH-[0-9]{3}' docs/ | sort -u   # 새 API ID는 충돌부터
+ls packages/db/migrations/*.up.sql | tail -1
+```
+
+**WP-035가 깔아 둔 자리 — 다시 만들지 말 것**
+
+- `packages/es/src/versioned-index.ts` — 버전 인덱스 생성·원자 전환. **WP-032의 실제 `edge_ngram` 필드는 여기 없다** — 통합 시험이 `wp035_probe`라는 임시 이름으로 능력만 증명했고 이름을 선점하지 않았다. WP-032가 `ENTITY_INDICES`의 매핑을 바꾸면 이 기계가 그것을 배포한다
+- `packages/es/src/write-targets.ts` — 새 쓰기 경로를 만들면 **`WriteTargets`를 인자로 받아야** 하고 `packages/es/src/dual-write.test.ts`의 `DUAL_WRITE_PATHS`(현재 17)에 등재해야 한다. 등재하지 않으면 아키텍처 시험이 잡는다
+- `packages/db/src/reindex-fence.ts` — 운영 쓰기는 전부 `withReindexWrite`를 지난다. 새 호출부는 `DUAL_WRITE_CALLERS`에도 올린다
+- `apps/pipeline-worker/src/documents.ts` — `registryOwnedFields`(레지스트리 소유 필드)와 `buildProjectedCommitDocument`(PR 유래 커밋 문서). **투영과 재구축이 같은 함수를 쓴다** — 사본을 만들지 않는다
+- `apps/search-api/src/ops/jobs.ts` — `OPERATOR_JOB_TYPES`("러너가 있다")와 `CREATABLE_GENERIC_JOB_TYPES`("API-ADM-002로 만들 수 있다")가 갈려 있다. 새 잡 유형은 **어느 쪽인지 정해서** 넣는다
+
+## B. 별도 CR 둘 — 남은 미배포 역할
+
+`authz`는 CR-048로 닫혔다. 둘 남았고 회귀 예외 목록(`regression/runtime-reachability.test.ts`의 `UNDEPLOYED_ROLE_ALLOWLIST`)에 사유·DEV와 함께 있다.
+
+| DEV | 역할 | 영향 | 왜 아직 안 고쳤나 |
+| --- | --- | --- | --- |
+| 305 | `release` (JOB-REL-007) | 릴리스 수집이 안 돌아 `prs-releases`가 비고 W-005·API-REL-002·005가 빈 상태 — WP-024·WP-026이 만든 기능 전부 | 이 역할은 **미러 볼륨을 요구한다**(DEV-143). PVC 배치가 함께 정해져야 해 다른 manifest 복사로 못 만든다. WP-024 소관 |
+| 304 | `backfill` (JOB-ING-004) | 백필 잡을 만들면 아무도 집지 않고 `job_active_uk`가 이후 요청을 막는다 — DEV-178과 같은 모양 | `enrich` 파드의 역할 구성을 바꾸는 일이라 그 워커의 확장 축(실시간 유량) 판단이 필요하다. WP-019 소관 |
+
+**정상 경로 (CR-048이 처음으로 밟았다)**: manifest를 만들고 → 예외 목록에서 지우고 → 인프라 3장 배포 단위 표에 올린다. 표에 먼저 올리는 길은 시험이 막는다(DEV-312). 그리고 **표에 중복 행을 만들지 않는다**(DEV-321) — 검사가 생겼다.
+
+## C. 릴리스 게이트 4·5·6 (REL-003 미통과 사유 — 변화 없음)
+
+| 게이트 | 남은 일 | 이 환경에서 가능? |
+| --- | --- | --- |
+| Gate 4 보안 | 권한 78셀 중 화면 13종 축, 위협 모델 재검토, 시크릿 스캔 | 시크릿 스캔·위협 모델은 가능 |
+| Gate 5 성능 | 성능 목표 7종 (DEV-058) | **불가** — 합성 데이터셋도 `test:perf`도 없다 |
+| Gate 6 운영 | 런북 실행, 롤백 10분 실측, 대시보드·알림 | **불가** — 실제 Kubernetes 없음 |
+
+## D. 미뤄 둔 항목
+
+- **`flow-001`·`flow-003` e2e 간헐 실패** — WP-016 소관, 원장 §7. CI에서도 재현된다는 것이 확인돼 있다(PR #49). **재시도 통과를 해소로 적지 않는다**
+- 문서 검증기 `--strict`의 자기참조 오탐 — 원장 §7 기술 부채. **문서를 고쳐 게이트를 통과시키지 않는다**
+- 백필(JOB-ING-004)의 `updated` 정렬 열거, JOB-MIR-002 스윕의 배치 공정성 (원장 §7)
+- **`prs-links` 재색인의 커버리지 판정** — 지금은 하지 않는다(`expectedDocuments = null`). 재구축 포트가 처리한 source 수만 돌려주기 때문이며, 나머지 검증 6항으로만 건다. 간선 문서 수를 셀 방법이 생기면 그때 판정한다
+- **실제 운영 규모 재색인** — NOT RUN. 성능 harness가 서면 함께 잰다
+
+## E. 확인할 사항
+
+- ⚠️ **전사 파일이 `.gitignore` 밖에 있다.** `pr-search/202608271346.md`(99KB). `/export`에 상대 경로를 줘서 저장소 루트에 떨어졌고, `.gitignore` 24행은 `exports/`만 덮는다 — `git check-ignore`로 실측했다. **`git add -A`를 쓰면 커밋에 딸려 간다.** `exports/`로 옮기거나 지운다
+- **open DEV는 7건이다.** 세는 법:
+  ```bash
+  grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
+  ```
+  주의: `**open**`처럼 굵게 쓰면 이 grep에 안 잡힌다. **새 행은 `| open ...` 형식으로 쓴다**
+- 남은 오픈 결정은 **OD-008** 하나다 (안전 구간 표식 권한 범위, REL-006 착수 전 — 기한 전)
+- **새 역할을 추가하면 ① 코드 갈래 ② manifest ③ 인프라 3장 표 셋이 함께** 가야 한다. 그리고 표에 **중복 행**을 만들지 않고, 표 아래 **산문도 함께** 고친다 (DEV-321·322)
+- **문서 본문을 고치면 같은 편집 안에서 상태 헤더(`버전`·`갱신일`)를 함께 만진다** (DEV-323)
+- `agent-context/`는 main에 tracked다. `.gitignore`에 넣지 않는다. **`git add -A`·`git add .`는 쓰지 않는다** — 경로를 지목해 stage 한다
+- **CI 확인은 커밋 SHA의 check-runs로 한다** — `gh pr checks`는 옛 실행 결과를 그대로 보여 줄 수 있다
+
+---
+
+# 이전 세션 기록 (보존)
+
+> **A절은 WP-035 구현으로 해소됐다** — PR #52(`efea3c0`)가 본체를 넣었고 REL-004가 4/8이 됐다.
+> B절의 `authz`도 CR-048(PR #53, `f4e8ab6`)로 닫혔다.
+> 아래는 그때의 판단 근거를 남긴 것이다.
+
+## (2026-08-26 CR-043~047 종료 시점의 기록)
+
 > **최신 기준 (2026-08-26 CR-043~047 종료 시점)**
 > main `99e2532` · SRS **`baseline v2.8`** · PRD `v1.3` · 원장 `review v3.4` · 작업 패키지 `v1.1` · 추적 매트릭스 `v0.5`
 > CR-047 · DEV-312까지 · **마이그레이션 014까지**(이 세션은 만들지 않았다). **REL-004 구현 3/8** (WP-029·030·031 done)
@@ -79,8 +165,6 @@ ls packages/db/migrations/*.up.sql | tail -1
 - **전사는 `exports/`에 있다** (`exports/202608270742.md`). `/export` 출력은 저장소 루트를 가리키지만 실제 위치는 `exports/`이고 `.gitignore` 24행이 덮는다 — **이전 세션들이 두 번 틀리게 적은 자리다**
 
 ---
-
-# 이전 세션 기록 (보존)
 
 > **A절은 CR-043으로 해소됐다** — WP-032 착수 전 감사가 스물을 찾았고 `3248559`로 머지됐다.
 > 아래는 그때의 판단 근거를 남긴 것이다.

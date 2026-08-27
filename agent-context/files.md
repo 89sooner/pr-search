@@ -401,3 +401,91 @@
 - **새 역할을 추가하면 ① 코드 갈래 ② manifest ③ 인프라 3장 표 셋이 함께 간다** — 회귀가 양방향으로 검사한다
 - `agent-context/`는 tracked. 전사는 **`exports/`**에 둔다
 
+---
+
+# 2026-08-27 WP-035 · CR-048이 만든 것
+
+## 읽는 순서가 바뀐 문서
+
+| 경로 | 버전 | 이 세션이 바꾼 것 |
+| --- | --- | --- |
+| `docs/10_requirements/srs_final.md` | **baseline v2.8** | **변경 없음** |
+| `docs/40_delivery/pr_search_implementation_traceability.md` | **v3.7** | DEV-313~323 등재, **6.39·6.39.1장 신설**, 3장 WP-035 done · REL-004 **4/8** |
+| `docs/40_delivery/pr_search_work_packages.md` | **v1.2** | WP-035 done, DoD 20항 중 19항 체크, WP-032 "차단 해제" 표시 |
+| `docs/40_delivery/pr_search_implementation_roadmap.md` | **v0.5** | Platform 의존(WP-035 → WP-032) 해소 표시 |
+| `docs/30_technical_architecture/pr_search_api_contracts.md` | **v0.8** | 6장 오류 모델 표에 `REINDEX_BUSY | 409` (DEV-313) |
+| `docs/30_technical_architecture/pr_search_infrastructure_operations.md` | **v0.5** | 배포 단위 표에 `pipeline-worker:authz` (**1 / 4**), 표 아래 산문 정정 |
+| `docs/00_governance/change_control.md` | — | **CR-048** 대장 + 5장 반영 내역 |
+
+## WP-035가 만든 소스 (PR #52)
+
+### `@prs/es` — 색인 원시체
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/es/src/write-targets.ts` | **신규.** `WriteTargets`(`shadows`·`recordShadowFailure`) · `SERVING_ONLY` · `dualWrite` · `reportShadowFailure`. **`shadows`가 `Record<string,string>`이라 `@prs/db`의 값이 구조적으로 그대로 대입된다** — 어댑터도 역방향 의존도 없다 |
+| `packages/es/src/versioned-index.ts` | **신규.** `concreteIndexName` · `parseIndexVersion`(엄격 `^<별칭>-v<양의 정수>$`) · `listIndexVersions` · `resolveServingIndex` · **`nextUnusedVersion`**(DEV-309) · `createVersionedIndex` · **`switchAlias`(`updateAliases` 한 번)** · `deleteRetiredIndex`(`deleted`/`serving`/`absent`) · `schemaOf` · `isEntityAlias` · **`reindexIndexPort`**(API·CLI 공유) |
+| `packages/es/src/upsert.ts` | `bulkUpsert`·`upsertOne`이 대상을 받는다. **shadow 항목을 같은 벌크에** 싣고 실패는 `outcomes`에 섞지 않는다. `sendOne` 추출 |
+| `packages/es/src/commit-metadata.ts` | `upsertCommitMetadata` + `sendMetadata` 추출. shadow의 404는 실패로 세지 않는다 |
+| `packages/es/src/sequence.ts` | `applySequenceToDocuments`·`applyEpochBump`가 `dualWrite`를 지난다. **서비스 건수만 센다** |
+| `packages/es/src/registry.ts` | `markRepositoryArchived`·`applyRepositoryTeams` |
+| `packages/es/src/releases.ts` | `upsertReleaseDocuments`·`pruneReleaseDocuments`(**삭제도 이중으로**)·`applyReleaseTagsToDocuments` |
+| `packages/es/src/links.ts` | 8경로 + **`sendLinkBulk` 공통 헬퍼**(서비스 N개 뒤에 shadow N개) + `sendSummary` 추출 |
+
+### `@prs/db` — 잡 상태와 울타리
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/db/src/reindex-fence.ts` | **신규.** `withReindexWrite`(공유 락 → 대상 해석 → run → **shadow 실패 기록** → 해제) · `withReindexExclusive`(배타) · `ReindexFenceUnavailableError`. **울타리 구간이 DEV-308의 답이다** |
+| `packages/db/src/repositories/reindex.ts` | **신규.** `REINDEX_JOB_TYPE` · `ReindexPhase` · `findDualWriteShadows`(running + 활성 단계 + 미전환) · `patchReindexProgress` · `recordShadowFailures`(CAS) · **`enqueueReindex`**(API·CLI 공유 seam) · `listRetiredIndices` · **`listUnrecordedSwitches`** · `markRetired` |
+| `packages/db/src/advisory-lock.ts` | `reindexFenceKey()` · `acquireAdvisorySharedLock` · `releaseAdvisorySharedLock` 신설 |
+| `packages/db/src/repositories/job.ts` | `enqueueJob`이 `progress`를 **같은 INSERT에** 받는다 (DEV-317) |
+
+### 앱
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/pipeline-worker/src/reindex.ts` | **신규·핵심.** `runReindexJob`(prepare→dual_write→backfill→verify→cutover→retention) · `rebuildAlias` 4종 · **`rebuildProjectedCommits`**(DEV-315) · `verifyBeforeCutover`(7항) · `startReindexRunner` · `runRetentionSweep` · **`reconcileSwitchedJobs`**(DEV-319) · `LinkRebuildPort` |
+| `apps/pipeline-worker/src/reindex-cli.ts` | **신규.** `pnpm es:reindex --alias`. **직접 재색인하지 않는다** — 같은 enqueue seam으로 잡만 만든다 |
+| `apps/pipeline-worker/src/documents.ts` | **`registryOwnedFields`**(레지스트리 소유 필드, DEV-314) · **`buildProjectedCommitDocument`**(PR 유래 커밋 문서, DEV-315). **투영과 재구축이 같은 함수를 쓴다** |
+| `apps/pipeline-worker/src/commit-enrich.ts` | `CommitFactSource` · **`commitMetadataFields`** · **`commitCreateFields`** 추출. `scopeFields`는 `registryOwnedFields`에 위임 |
+| `apps/pipeline-worker/src/release.ts` | `toDocInput` **export** — 재구축이 같은 빌더를 쓴다 |
+| `apps/pipeline-worker/src/index.ts` | `batch` 역할에 `startReindexRunner`·`startRetentionSweeper` 기동 + shutdown |
+| `apps/search-api/src/ops/reindex.ts` | **신규.** API-ADM-004 본체. `alias`만 받고 `invalid_alias`/`conflict`/`busy`를 가른다 |
+| `apps/search-api/src/ops/jobs.ts` | `OPERATOR_JOB_TYPES`(+`reindex`)와 **`CREATABLE_GENERIC_JOB_TYPES`**를 분리 (DEV-301·302) |
+| `apps/search-api/src/ops/routes.ts` | `REINDEX_PATH` · `registerReindexRoutes` |
+| `apps/search-api/src/runtime.ts` | **`buildReindexDeps`** — 여기 한 줄이 빠지면 배포에서 사라진다 |
+| `apps/search-api/src/ops/errors.ts` · `packages/contracts/src/error-codes.ts` | `REINDEX_BUSY` 등재 (DEV-313) |
+| `package.json` | `es:reindex` 스크립트 |
+
+## CR-048이 만든 것 (PR #53)
+
+| 경로 | 역할 |
+| --- | --- |
+| `deploy/k8s/pipeline-worker-authz.yaml` | **신설.** `PIPELINE_WORKER_ROLES=authz` · replica 1 · grace 60s · **미러 볼륨 없음**. GHE 자격 증명이 선택인 이유와 **없을 때 색인 소급이 돌지 않는다는 결과**를 주석에 남겼다 |
+| `deploy/k8s/README.md` | 적용 순서 등재 + 신설 사유 |
+
+## 이 세션의 시험 (신규·확장)
+
+| 경로 | 무엇을 지키나 |
+| --- | --- |
+| `apps/pipeline-worker/integration/jobs/reindex.test.ts` | **신규 17건. 실 PG·ES.** T1 정상 · T2 이중 쓰기 · T3·T4 shadow 항목 실패 · T5 전환 전 취소 · T6 next-unused-version · T7 보관(+현재 별칭 보호) · **T8 정본만으로 재구축**(옛 인덱스 표식이 안 온다) · **T9 무중단**(전환 포함 전 구간 조회 실패 0) · T10 늦은 취소 · **R1 레지스트리 소유 필드·PR 원본 커밋·본문에 버전 없는 스냅숏** · R2 원자 enqueue · R3 롤백 보관 · R4 전환 재대조 · **WP-032 선행 조건 증명** |
+| `apps/search-api/integration/ops/reindex-reachability.test.ts` | **신규 2건.** `buildServerDeps`로 세운 서버에 실제 요청(401이면 있고 404면 없다) + **GHE 없이도 재색인은 선다** |
+| `packages/es/src/dual-write.test.ts` | **신규 6건.** 열일곱 목록이 계약과 같은가 · 새 쓰기 원시체가 목록 밖에 생기면 · 운영 호출부가 울타리를 지나는가 · **`SERVING_ONLY`로 재색인을 지나치지 않는가** · **구체 인덱스 이름을 박지 않는가**(FR-ING-008 AC-1) |
+| `packages/es/src/versioned-index.test.ts` | **신규 7건.** 접두가 같은 남의 인덱스를 세지 않는다 · 앞자리 0을 받지 않는다 · 별칭 판정 |
+| `packages/es/src/architecture.test.ts` | ADR-008 예외에 `apps/pipeline-worker/src/reindex.ts` 등재 (전환 전 검증이 shadow를 구체 이름으로 읽는다) |
+| `regression/runtime-reachability.test.ts` | **+43건 (151 → 194).** 재색인 도달성·계약 20 · JOB-AUTH-001 도달성 5 · 리뷰 정정 6 · **배포 단위 표 중복 행**·**표 아래 산문 모순** 2 |
+
+## 손대면 안 되는 것 (갱신)
+
+- `docs/10_requirements/srs_final.md`는 **baseline v2.8**. CR 먼저
+- 기존 마이그레이션을 수정하지 않는다. **WP-035·CR-048은 만들지 않았다 — 다음은 015**
+- 기본 consumer group 이름을 바꾸지 않는다
+- **사용자 대면 조회를 `packages/es/src/links.ts`에 넣지 않는다** (ADR-008 면제가 파일 단위)
+- **새 조회 경로는 `assertNoShardFailures`를 지나야 한다**
+- **새 쓰기 원시체는 `WriteTargets`를 받고 `DUAL_WRITE_PATHS`에 등재한다** — 아키텍처 시험이 강제한다
+- **새 운영 쓰기 호출부는 `withReindexWrite`를 지나고 `DUAL_WRITE_CALLERS`에 오른다**
+- **애플리케이션에 `prs-*-vN` 구체 이름을 박지 않는다** — 허용은 `indices.ts`·`versioned-index.ts`·`reindex.ts` 셋뿐
+- **새 역할은 ① 코드 갈래 ② manifest ③ 인프라 3장 표** 셋이 함께. 표에 **중복 행**을 만들지 않고 **표 아래 산문**도 함께 고친다 (DEV-321·322)
+- **문서 본문을 고치면 같은 편집 안에서 상태 헤더를 만진다** (DEV-323)
+- `agent-context/`는 tracked. **전사는 `exports/`에 둔다** — 이번 전사는 저장소 루트에 떨어졌고 무시되지 않는다
