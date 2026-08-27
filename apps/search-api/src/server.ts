@@ -20,6 +20,8 @@ import { registerResolveRoutes } from './resolve/routes.js';
 import { registerRelationRoutes } from './relations/routes.js';
 
 import { registerSequenceRoutes } from './sequence/routes.js';
+import { registerSavedSearchRoutes } from './saved-search/routes.js';
+import type { SavedSearchDeps } from './saved-search/service.js';
 import type { SearchDeps } from './search/service.js';
 import type { RangeDeps } from './sequence/range.js';
 import type { AuthContext } from './auth/context.js';
@@ -82,6 +84,14 @@ export interface ServerDeps {
    * 경로를 단다.
    */
   readonly sequence?: RangeDeps;
+  /**
+   * 저장된 검색 의존 (API-SRCH-005, WP-033).
+   *
+   * **PostgreSQL과 커서 서명자만 있으면 선다.** 이 자원의 정본은 관계형 표이고
+   * Elasticsearch를 거치지 않는다 — 저장된 것은 질의 문자열이지 결과가 아니다.
+   * 세션이 없으면 소유자를 정할 수 없으므로 `auth`가 있을 때만 경로를 단다.
+   */
+  readonly savedSearch?: SavedSearchDeps;
   readonly log?: (entry: { readonly level: string; readonly message: string }) => void;
 }
 
@@ -135,6 +145,26 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
 
     } else {
       log({ level: 'warn', message: 'Elasticsearch 의존이 없어 검색 경로를 등록하지 않는다 (API-SRCH-004)' });
+    }
+
+    /*
+     * 저장된 검색 (WP-033).
+     *
+     * **여기 한 줄이 빠지면 그 기능은 배포에서 사라진다** — WP-028의
+     * API-ADM-007이 정확히 그 상태였다(CR-034, DEV-177). 회귀가 이 호출 형태를
+     * 직접 건다.
+     */
+    if (deps.savedSearch !== undefined) {
+      registerSavedSearchRoutes(app, {
+        ...deps.savedSearch,
+        auth: deps.auth,
+        loginPath: config.auth.loginPath,
+      });
+    } else {
+      log({
+        level: 'warn',
+        message: 'PostgreSQL 의존이 없어 저장된 검색 경로를 등록하지 않는다 (API-SRCH-005)',
+      });
     }
 
     if (deps.sequence !== undefined) {

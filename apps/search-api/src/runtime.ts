@@ -139,6 +139,21 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
             cursorSigner: createCursorSigner(parts.config.searchCursorKey),
             resolveTeamSlugs: (ids: readonly number[]) => authRepo.resolveTeamSlugs(parts.pool, ids),
           },
+          /*
+           * 저장된 검색 (WP-033 / API-SRCH-005).
+           *
+           * **Elasticsearch를 받지 않는다.** 이 자원의 정본은 `saved_search`
+           * 표이고 순회도 PostgreSQL 키셋이다 — 색인 클라이언트를 넘기면
+           * "이미 있으니까"라는 이유로 목록을 색인에서 읽는 최적화가 언젠가
+           * 들어온다. 그러면 저장된 검색이 ADR-004의 재구축 대상이 된다.
+           *
+           * 커서 서명자는 검색·구간과 **같은 키**를 쓴다. 새 시크릿을 만들면
+           * 배포가 관리할 값이 늘고, 하나가 빠졌을 때의 실패가 늘어난다.
+           */
+          savedSearch: {
+            pool: parts.pool,
+            cursorSigner: createCursorSigner(parts.config.searchCursorKey),
+          },
         }),
     ...(integrity === undefined ? {} : { integrity }),
     reindex: buildReindexDeps(parts.pool, parts.es),

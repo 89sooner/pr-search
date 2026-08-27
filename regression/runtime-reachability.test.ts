@@ -1199,3 +1199,172 @@ describe('무중단 재색인의 도달성과 계약 (WP-035 / CR-045~047)', () 
     expect(REINDEX).toContain('export function startReindexRunner(');
   });
 });
+
+describe('저장된 검색의 도달성과 계약 (WP-033 / CR-049)', () => {
+  const SERVER = read('apps/search-api/src/server.ts');
+  const SAVED_ROUTES = read('apps/search-api/src/saved-search/routes.ts');
+  const SAVED_SERVICE = read('apps/search-api/src/saved-search/service.ts');
+  const SAVED_CURSOR = read('apps/search-api/src/saved-search/cursor.ts');
+  const SAVED_REPO = read('packages/db/src/repositories/saved-search.ts');
+
+  const codeOf = (source: string): string =>
+    source
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  it('**운영 조립이 의존을 넘긴다** — 여기 한 줄이 빠지면 배포에 이 기능이 없다 (DEV-177 계열)', () => {
+    // 호출 형태로 건다. 키 이름만 찾으면 타입 선언에도 걸린다.
+    expect(API_RUNTIME).toContain('savedSearch: {');
+    expect(API_RUNTIME).toContain('cursorSigner: createCursorSigner(parts.config.searchCursorKey)');
+  });
+
+  it('**운영 서버가 저장된 검색 라우트를 실제로 등록한다**', () => {
+    expect(SERVER).toContain('registerSavedSearchRoutes(app, {');
+  });
+
+  it('라우트가 세션 뒤에 있다 — 신원 없이 열지 않는다', () => {
+    const at = SERVER.indexOf('registerSavedSearchRoutes(app, {');
+    const guard = SERVER.indexOf('if (deps.auth !== undefined) {');
+    expect(guard).toBeGreaterThan(-1);
+    expect(at).toBeGreaterThan(guard);
+  });
+
+  it('**의존이 없으면 그 사실을 로그로 말한다** — 조용히 없는 것이 DEV-177의 원인이었다', () => {
+    expect(SERVER).toContain('저장된 검색 경로를 등록하지 않는다 (API-SRCH-005)');
+  });
+
+  it('**정적 경로가 파라미터 경로보다 먼저 등록된다**', () => {
+    const share = SAVED_ROUTES.indexOf('app.get(SHARE_TARGETS_PATH');
+    const item = SAVED_ROUTES.indexOf('app.get(SAVED_SEARCH_ITEM_PATH');
+    expect(share).toBeGreaterThan(-1);
+    expect(item).toBeGreaterThan(-1);
+    expect(share).toBeLessThan(item);
+  });
+
+  it('**소유자를 요청 본문에서 받지 않는다** (AC-1)', () => {
+    const code = codeOf(SAVED_ROUTES);
+    expect(code).toContain('ownerUserId: userId');
+    expect(code).not.toContain("body.owner_user_id");
+    expect(code).not.toContain("body['owner_user_id']");
+  });
+
+  it('**100건 상한이 소유자 행을 잠근다** (DEV-336)', () => {
+    const code = codeOf(SAVED_REPO);
+    expect(code).toContain('FOR UPDATE');
+    // 세기 전에 잠근다 — 순서가 뒤집히면 잠금이 아무것도 막지 못한다.
+    expect(code.indexOf('FOR UPDATE')).toBeLessThan(code.indexOf('count(*)::text AS count'));
+    // 상한은 트랜잭션 안에 있다.
+    expect(code).toContain('return withTransaction(pool, async (client) => {');
+  });
+
+  it('**팀 구성원 판정이 쓰기와 원자적이다** (DEV-344)', () => {
+    const code = codeOf(SAVED_REPO);
+    expect(code).toContain('FOR SHARE');
+    // 생성과 수정 **양쪽**이 같은 판정을 쓴다.
+    const create = code.split('export async function createSavedSearch')[1]?.split('export async function')[0] ?? '';
+    const update = code.split('export async function updateSavedSearch')[1]?.split('export async function')[0] ?? '';
+    expect(create).toContain('holdsMembership(client,');
+    expect(update).toContain('holdsMembership(client,');
+  });
+
+  it('**실행 갱신이 권한 조건을 다시 건다** — TOCTOU를 남기지 않는다', () => {
+    const code = codeOf(SAVED_REPO);
+    const body = code.split('export async function markSavedSearchRun')[1] ?? '';
+    expect(body).toContain('UPDATE saved_search s');
+    expect(body).toContain('visibleTo(');
+  });
+
+  it('**`/run`이 검색을 대신 수행하지 않는다** (AC-3, THR-012)', () => {
+    const code = codeOf(SAVED_SERVICE);
+    // 색인 클라이언트도 검색 서비스도 이 계층에 없다.
+    expect(code).not.toContain("from '@prs/es'");
+    expect(code).not.toContain('runSearch(');
+    expect(code).not.toContain('applyMandatoryScopeFilter');
+  });
+
+  it('**저장자의 접근 범위를 어디에도 남기지 않는다** (AC-3)', () => {
+    for (const source of [SAVED_REPO, SAVED_SERVICE, SAVED_ROUTES]) {
+      const code = codeOf(source);
+      expect(code).not.toContain('access_scope');
+      expect(code).not.toContain('repositoryIds');
+      expect(code).not.toContain('scopeVersion');
+    }
+  });
+
+  it('**커서가 W-001의 것과 갈려 있다** (DEV-340)', () => {
+    const code = codeOf(SAVED_CURSOR);
+    // PIT도 search_after도 이 자원에 뜻이 없다.
+    expect(code).not.toContain('search_after');
+    expect(code).not.toContain('pit');
+    // 봉인 방식만 공유한다.
+    expect(code).toContain("from '../cursor/envelope.js'");
+  });
+
+  it('**커서 지문에 팀 구성원 자격이 들어간다** — 순회 도중 회수를 막는다', () => {
+    const code = codeOf(SAVED_CURSOR);
+    const body = code.split('export function computeSavedSearchFingerprint')[1] ?? '';
+    expect(body).toContain('input.teamIds');
+    expect(body).toContain('input.userId');
+    // 정렬해야 같은 소속이 늘 같은 지문이다.
+    expect(body).toContain('.sort(');
+  });
+
+  it('**커서 서명 키를 새로 만들지 않는다** — 검색·구간과 같은 값이다', () => {
+    expect(codeOf(SAVED_CURSOR)).not.toContain('process.env');
+    expect(API_RUNTIME).toContain('parts.config.searchCursorKey');
+  });
+
+  it('**목록이 오프셋을 받지 않는다** (ADR-010)', () => {
+    const code = codeOf(SAVED_ROUTES);
+    expect(code).not.toContain("query['offset']");
+    expect(code).not.toContain("query['page']");
+  });
+
+  it('**타임스탬프를 밀리초로 자르지 않는다** — 키셋이 항목을 건너뛴다', () => {
+    const code = codeOf(SAVED_REPO);
+    // 마이크로초를 보존하는 형식으로 읽는다.
+    expect(code).toContain("'YYYY-MM-DD\"T\"HH24:MI:SS.USZ'");
+    // 키셋 파라미터도 같은 정밀도로 되돌린다.
+    expect(code).toContain('::timestamptz');
+  });
+
+  it('**소유하지 않은 항목의 수정·삭제가 404다** — 403은 존재를 흘린다', () => {
+    const code = codeOf(SAVED_ROUTES);
+    expect(code).not.toContain("code: 'FORBIDDEN_ROLE'");
+    const patch = code.split("app.patch(SAVED_SEARCH_ITEM_PATH")[1]?.split('app.delete')[0] ?? '';
+    expect(patch).toContain("case 'not_found':");
+    expect(patch).toContain('notFound(reply, correlationId)');
+  });
+
+  it('**질의 검증에 파서를 쓴다** — 서버가 자기 문법을 새로 만들지 않는다 (ADR-001)', () => {
+    expect(codeOf(SAVED_SERVICE)).toContain("from '@prs/query'");
+    expect(codeOf(SAVED_SERVICE)).toContain('parseQuery(query)');
+    // 라우트가 판정을 복제하지 않는다.
+    expect(codeOf(SAVED_ROUTES)).toContain('judgeQuery(');
+  });
+
+  it('**마이그레이션 015가 불변식과 목록 인덱스를 만든다**', () => {
+    const up = read('packages/db/migrations/015_saved_search_contract.up.sql');
+    const down = read('packages/db/migrations/015_saved_search_contract.down.sql');
+
+    /*
+     * **금지를 거는 검사는 주석을 걷어 낸 SQL만 봐야 한다** (risks 43).
+     * 이 마이그레이션은 왜 `CONCURRENTLY`를 쓰지 않는지 주석으로 설명하고
+     * 있고, 파일 전문에 걸면 **그 설명에 걸린다** — 검사기가 자기 검색어를
+     * 세는 것과 같은 함정이다.
+     */
+    const sqlOf = (source: string): string => source.replace(/^\s*--.*$/gm, '');
+
+    expect(up).toContain('saved_search_team_target_chk');
+    expect(up).toContain('saved_search_owner_idx');
+    expect(up).toContain('saved_search_team_idx');
+    // 새 표를 만들지 않는다.
+    expect(sqlOf(up)).not.toContain('CREATE TABLE');
+    // 트랜잭션 안에서 도는 러너라 CONCURRENTLY를 쓸 수 없다.
+    expect(sqlOf(up)).not.toContain('CONCURRENTLY');
+    // down이 up이 만든 셋을 전부 되돌린다.
+    for (const name of ['saved_search_team_target_chk', 'saved_search_owner_idx', 'saved_search_team_idx']) {
+      expect(down).toContain(name);
+    }
+  });
+});
