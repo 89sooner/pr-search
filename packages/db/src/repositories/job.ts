@@ -348,3 +348,34 @@ export async function isJobRunning(db: Queryable, jobId: number): Promise<boolea
   const result = await db.query<{ state: JobState }>('SELECT state FROM job WHERE job_id = $1', [jobId]);
   return result.rows[0]?.state === 'running';
 }
+
+/**
+ * 대상별 **가장 최근** 잡 (API-ING-002 / WP-034, CR-050).
+ *
+ * W-009의 백필 상태는 기존 `job` 모델을 그대로 읽는다 — 새 상태 enum을 만들지
+ * 않는다. 진행 중인 잡이 있으면 그것이 우선이고, 없으면 마지막 잡이며, 이력이
+ * 없으면 그 저장소는 백필을 요청받은 적이 없다.
+ *
+ * `DISTINCT ON`으로 대상마다 한 행만 남긴다. 정렬 우선순위가 곧 "무엇이 최근
+ * 인가"의 정의다 — **살아 있는 잡을 끝난 잡보다 앞에 둔다.** 그러지 않으면
+ * 재시도한 백필이 돌고 있는데 화면은 지난 실패를 보여 준다.
+ */
+export async function latestJobsByTarget(
+  db: Queryable,
+  type: JobType,
+  targets: readonly string[],
+): Promise<Map<string, JobRow>> {
+  const out = new Map<string, JobRow>();
+  if (targets.length === 0) return out;
+  const result = await db.query<JobRow>(
+    `SELECT DISTINCT ON (target) *
+       FROM job
+      WHERE type = $1 AND target = ANY($2)
+      ORDER BY target,
+               (state IN ('queued', 'running')) DESC,
+               job_id DESC`,
+    [type, targets],
+  );
+  for (const row of result.rows) out.set(row.target, row);
+  return out;
+}

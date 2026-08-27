@@ -145,3 +145,31 @@ export async function countRawEvents(db: Queryable): Promise<number> {
   const result = await db.query<{ count: string }>('SELECT count(*) AS count FROM raw_event');
   return Number(result.rows[0]?.count ?? '0');
 }
+
+/**
+ * 저장소별 **마지막으로 보관한** 원본 이벤트 시각 (API-ING-002 / WP-034, CR-050).
+ *
+ * W-009의 "마지막 수집 시각"이 뜻하는 것은 **PR Search가 마지막으로 이벤트를
+ * 받아 durable하게 보관한 시점**이다. `processed_at`과 섞지 않는다 — 받았지만
+ * 처리가 밀린 상태와 아예 받지 못한 상태는 다른 사실이고, 검색 반영 여부는
+ * 문서 수·백필·조정 스캔이 따로 말한다.
+ *
+ * `raw_event_repo_idx (repository_id, received_at DESC)`가 이 질의를 받는다.
+ * 페이지의 저장소 전체를 **한 번에** 읽는다 — 저장소마다 질의하면 N+1이다.
+ */
+export async function lastReceivedAtByRepository(
+  db: Queryable,
+  repositoryIds: readonly number[],
+): Promise<Map<number, Date>> {
+  const out = new Map<number, Date>();
+  if (repositoryIds.length === 0) return out;
+  const result = await db.query<{ repository_id: number; last_received_at: Date }>(
+    `SELECT repository_id, max(received_at) AS last_received_at
+       FROM raw_event
+      WHERE repository_id = ANY($1)
+      GROUP BY repository_id`,
+    [repositoryIds],
+  );
+  for (const row of result.rows) out.set(row.repository_id, row.last_received_at);
+  return out;
+}

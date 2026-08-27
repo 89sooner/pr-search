@@ -31,7 +31,17 @@ export interface RepositoryRow {
    * 비어 있거나 일부만 있으며, 정합성 감시가 그것을 색인 손상으로 읽으면 안 된다.
    */
   snapshot_bootstrapped_at: Date | null;
-
+  /**
+   * 최근 **완료된** 조정 스캔의 시각과 누락 건수 (WP-034 / CR-050, DEV-352).
+   *
+   * 둘이 함께 `null`이면 "완료된 조정 스캔 기록이 없다"이고, 건수 `0`은
+   * "확인했고 누락이 없다"이다. **미룬 회차(`deferred`)는 이 값을 덮지
+   * 않는다** — 한도 소진으로 창을 끝까지 읽지 못한 회차의 부분 집계는
+   * 언제나 실제보다 작고, 그것을 "최근 결과"로 보이면 사용자는 "거의 다
+   * 수집됐다"로 읽는다.
+   */
+  readonly last_reconciled_at: Date | null;
+  readonly last_reconcile_missing_count: number | null;
 }
 
 /**
@@ -289,6 +299,92 @@ export async function listSnapshotBootstrapPending(
       ORDER BY repository_id
       LIMIT $1`,
     [limit],
+  );
+  return result.rows;
+}
+
+/**
+ * 최근 **완료된** 조정 결과를 기록한다 (WP-034 / FR-ING-011 AC-6, CR-050 DEV-352).
+ *
+ * **완주한 회차만 부른다.** 한도 소진으로 미룬 회차(`ReconcileResult.deferred`)와
+ * 예외로 끝난 회차는 이 함수를 부르지 않는다 — 그 회차의 집계는 창을 끝까지
+ * 읽지 못한 부분값이라 **언제나 실제보다 작고**, 최근 결과로 표시되면 사용자는
+ * "거의 다 수집됐다"로 읽는다. W-009의 목적이 정확히 그 오독을 막는 것이다.
+ *
+ * `reconcile_missing_total` 지표를 대체하지 않는다 — 누적 counter는 운영 추세를,
+ * 이 열은 사용자 진단 시점의 상태를 나타내며 책임이 다르다.
+ */
+export async function recordCompletedReconciliation(
+  db: Queryable,
+  repositoryId: number,
+  missingCount: number,
+  completedAt: Date,
+): Promise<void> {
+  await db.query(
+    `UPDATE repository
+        SET last_reconciled_at = $2, last_reconcile_missing_count = $3
+      WHERE repository_id = $1`,
+    [repositoryId, completedAt, missingCount],
+  );
+}
+
+/** W-009 목록의 키셋 위치. 정렬 키 셋과 같은 순서다. */
+export interface RepositoryKeyset {
+  readonly owner: string;
+  readonly name: string;
+  readonly repositoryId: number;
+}
+
+export interface OverviewPageFilter {
+  /** `owner/name` 완전 일치. 진단 딥링크와 카드 단위 재시도가 쓴다. */
+  readonly slug?: { readonly owner: string; readonly name: string };
+  readonly after?: RepositoryKeyset;
+}
+
+/**
+ * W-009 목록 한 페이지 (API-ING-002 / WP-034, CR-050).
+ *
+ * **`status`로 거르지 않는다** (FR-ING-009 AC-7). 해제된 저장소도 접근 범위
+ * 안이면 등록 상태와 함께 보여 준다 — 해제는 신규 수집 중단이고 기존 문서는
+ * 남으므로(AC-3), 그 사실 자체가 사용자가 찾던 답이다. 조용히 숨기면 사용자는
+ * "등록된 적이 없다"로 오인한다.
+ *
+ * **접근 범위는 여기서 거르지 않는다.** 이 함수는 페이지 후보를 정렬 순서대로
+ * 줄 뿐이고, 판정은 `isRepositoryInScope`가 한 곳에서 한다 — 규칙을 둘로
+ * 나누면 한쪽만 고쳐지는 자리가 생긴다 (`resolveRepository`와 같은 구조).
+ * 그래서 호출자는 `limit`보다 넉넉히 읽어 거른 뒤 잘라야 한다.
+ *
+ * 정렬은 `owner, name, repository_id`다. 세 번째 키가 동률을 깬다 — 앞의 둘에
+ * UNIQUE가 걸려 있어도 정렬 안정성을 계약으로 보장하려면 결정론적 tiebreak가
+ * 필요하고, 커서가 그 세 값을 그대로 되짚는다.
+ */
+export async function listRepositoryOverviewPage(
+  db: Queryable,
+  filter: OverviewPageFilter,
+  limit: number,
+): Promise<readonly RepositoryRow[]> {
+  const params: unknown[] = [];
+  const where: string[] = [];
+
+  if (filter.slug !== undefined) {
+    params.push(filter.slug.owner, filter.slug.name);
+    where.push(`owner = $${String(params.length - 1)} AND name = $${String(params.length)}`);
+  }
+  if (filter.after !== undefined) {
+    params.push(filter.after.owner, filter.after.name, filter.after.repositoryId);
+    const n = params.length;
+    where.push(
+      `(owner, name, repository_id) > ($${String(n - 2)}, $${String(n - 1)}, $${String(n)})`,
+    );
+  }
+  params.push(limit);
+
+  const clause = where.length === 0 ? '' : ` WHERE ${where.join(' AND ')}`;
+  const result = await db.query<RepositoryRow>(
+    `SELECT * FROM repository${clause}
+      ORDER BY owner, name, repository_id
+      LIMIT $${String(params.length)}`,
+    params,
   );
   return result.rows;
 }
