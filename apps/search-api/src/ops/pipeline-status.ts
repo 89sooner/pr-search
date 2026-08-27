@@ -16,8 +16,16 @@
  */
 
 import type { Client as EsClient } from '@elastic/elasticsearch';
-import { deadLetterRepo, pipelineRepo, type Pool } from '@prs/db';
-import type { DeadLetterState, RepositoryLag } from '@prs/db';
+import { deadLetterRepo, pipelineRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
+import type { DeadLetterState, RepositoryLag, SequenceSpaceState } from '@prs/db';
+
+/** 계약이 요구하는 네 상태. 하나라도 빠지면 화면이 0과 미확인을 섞는다. */
+const SEQUENCE_SPACE_STATES: readonly SequenceSpaceState[] = [
+  'ok',
+  'stale',
+  'reassigning',
+  'unknown',
+];
 import { TOPICS, type EventBus } from '@prs/bus';
 
 /** 수신량을 세는 창. AC-1이 "분당"이라고 정했다. */
@@ -50,6 +58,18 @@ export interface PipelineStatus {
   readonly stage_latency_seconds: Readonly<Record<string, LagSummary>> | null;
   readonly dead_letter: Readonly<Record<DeadLetterState, number>> | null;
   readonly enrichment_pending: number | null;
+  /**
+   * 시퀀스 공간 상태의 **전역 요약** (FR-ADMIN-001 AC-1, CR-050 DEV-354).
+   *
+   * 네 상태의 건수만 담고 저장소도 브랜치도 식별하지 않는다 — 다른 전역
+   * 집계와 같은 성질이라 접근 범위를 거치지 않는다. AC-1이 이 항목을
+   * `Must`로 요구하는데 계약이 "WP-021 이후에 더한다"로 남아 있었고,
+   * **그 WP는 이미 완료됐다.**
+   *
+   * W-009는 이것을 읽지 않는다. 저장소별 상태는 `API-ING-002`가 접근 범위
+   * 안에서 따로 주며, 이 API는 AC-4가 정한 대로 `operator` 전용이다.
+   */
+  readonly sequence_space_state: Readonly<Record<SequenceSpaceState, number>> | null;
   readonly slowest_repositories: readonly RepositoryLag[] | null;
   /** 이번 응답에서 채우지 못한 항목. 비어 있으면 전부 정상이다. */
   readonly unavailable: readonly string[];
@@ -85,7 +105,8 @@ export async function pipelineStatus(deps: PipelineStatusDeps): Promise<Pipeline
   const intakeSince = new Date(now.getTime() - INTAKE_WINDOW_MS);
   const lagSince = new Date(now.getTime() - pipelineRepo.LAG_SAMPLE_WINDOW_MS);
 
-  const [intake, queueDepth, lag, deadLetter, enrichmentPending, slowest, stageLatency] = await Promise.all([
+  const [intake, queueDepth, lag, deadLetter, enrichmentPending, spaceState, slowest, stageLatency] =
+    await Promise.all([
     section('intake_per_minute', unavailable, deps, () =>
       pipelineRepo.countRecentIntake(deps.pool, intakeSince),
     ),
@@ -100,6 +121,7 @@ export async function pipelineStatus(deps: PipelineStatusDeps): Promise<Pipeline
     ),
     section('dead_letter', unavailable, deps, () => deadLetterRepo.countsByState(deps.pool)),
     section('enrichment_pending', unavailable, deps, () => countEnrichmentPending(deps.es)),
+    section('sequence_space_state', unavailable, deps, () => sequenceSpaceCounts(deps.pool)),
     section('slowest_repositories', unavailable, deps, () =>
       pipelineRepo.slowestRepositories(deps.pool, lagSince),
     ),
@@ -114,9 +136,27 @@ export async function pipelineStatus(deps: PipelineStatusDeps): Promise<Pipeline
     stage_latency_seconds: stageLatency,
     dead_letter: deadLetter,
     enrichment_pending: enrichmentPending,
+    sequence_space_state: spaceState,
     slowest_repositories: slowest,
     unavailable,
   };
+}
+
+/**
+ * 상태별 시퀀스 공간 수 (FR-ADMIN-001 AC-1).
+ *
+ * **네 상태를 전부 싣는다.** `countByState`는 행이 있는 상태만 돌려주므로
+ * 없는 상태의 키가 빠지는데, 그러면 화면은 "0개"와 "모른다"를 구분할 수 없다 —
+ * `unavailable`이 그 구분을 담당하는 자리이고 정상 응답의 빠진 키는 그 뜻을
+ * 흐린다.
+ */
+async function sequenceSpaceCounts(
+  pool: Pool,
+): Promise<Readonly<Record<SequenceSpaceState, number>>> {
+  const counts = await sequenceSpaceRepo.countByState(pool);
+  const summary = {} as Record<SequenceSpaceState, number>;
+  for (const state of SEQUENCE_SPACE_STATES) summary[state] = counts[state] ?? 0;
+  return summary;
 }
 
 /** 부분 보강으로 색인된 문서 수 (FR-ING-004 AC-3의 뒷면). */

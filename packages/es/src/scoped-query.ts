@@ -119,18 +119,28 @@ export function shouldUseOrgTeamScope(repositoryCount: number): boolean {
  * 그래서 두 함수를 같은 파일에 나란히 둔다. 규칙이 갈라지면 한쪽 경로만 더
  * 넓어지고, 넓어진 쪽은 아무 오류도 내지 않는다.
  *
- * @param allowedTeamIds 저장소가 팀에 개별 허용된 목록. **오늘은 언제나 비어
- * 있다** — `repository.allowed_team_ids` 열이 아직 마이그레이션에 없다(WP-068,
- * DEV-114). 그래서 팀 소속으로만 볼 수 있는 비공개 저장소는 `org_team` 범위에서
- * 거절된다. Elasticsearch 필터도 같은 필드가 비어 있어 같은 결과를 내므로 두
- * 경로가 어긋나지는 않는다. WP-068이 열을 채우면 호출 측이 그 값을 넘긴다.
+ ## `allowedTeamIds`는 선택이 아니다 (CR-050, DEV-353)
+ *
+ * 이 인자는 v0.5까지 선택이었고 기본값이 빈 배열이었다. 그래서 호출부가
+ * 빠뜨리면 **오류 없이 조용히 좁게 답했다** — `org_team` 범위에서 팀 소속으로만
+ * 허용되는 비공개 저장소가 결과에서 사라진다. fail-closed라 유출은 아니지만,
+ * 사용자에게는 "그 저장소가 없다"는 **틀린 사실**로 보이고 W-009에서는 그것이
+ * 곧 "등록되지 않았다"는 틀린 진단이 된다.
+ *
+ * WP-068이 `repository.allowed_team_ids`를 채운 뒤에도 두 호출부가 stale 주석과
+ * 함께 그 값을 넘기지 않고 있었다. **결과를 재는 시험은 이것을 잡지 못한다** —
+ * 넘어간 재료를 봐야 잡힌다. 그래서 인자를 필수로 만들어 컴파일러가 먼저
+ * 잡게 하고, 회귀가 `explicit`/`org_team` parity를 함께 건다.
+ *
+ * @param allowedTeamIds 저장소가 팀에 개별 허용된 목록(`repository.allowed_team_ids`).
+ * 팀 개별 허용이 없는 저장소는 빈 배열을 **명시적으로** 넘긴다.
  */
 export function isRepositoryInScope(
   repository: {
     readonly repositoryId: number;
     readonly orgId: number;
     readonly visibility: string;
-    readonly allowedTeamIds?: readonly number[];
+    readonly allowedTeamIds: readonly number[];
   },
   scope: AccessScope,
 ): boolean {
@@ -141,6 +151,5 @@ export function isRepositoryInScope(
   if (!scope.orgIds.includes(repository.orgId)) return false;
   if (scope.visibilities.includes(repository.visibility)) return true;
 
-  const allowed = repository.allowedTeamIds ?? [];
-  return allowed.some((teamId) => scope.teamIds.includes(teamId));
+  return repository.allowedTeamIds.some((teamId) => scope.teamIds.includes(teamId));
 }

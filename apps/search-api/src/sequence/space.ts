@@ -85,7 +85,13 @@ export async function resolveRepository(
       repositoryId: repository.repository_id,
       orgId: repository.org_id,
       visibility: repository.visibility,
-      // `repository.allowed_team_ids`는 아직 스키마에 없다 (WP-068, DEV-114).
+      /*
+       * **넷을 다 넘긴다** (CR-050, DEV-353). `allowedTeamIds`는 선택 인자라
+       * 빠지면 빈 배열로 읽히고, 그러면 `org_team` 범위에서 팀 소속으로만
+       * 허용되는 비공개 저장소가 **오류 없이 조용히 사라진다** — 유출이 아니라
+       * 누락이라 접근 통제 시험이 전부 통과한 채로 남는다.
+       */
+      allowedTeamIds: repository.allowed_team_ids,
     },
     scope,
   );

@@ -39,7 +39,8 @@ export async function listSequenceSpaces(
         repositoryId: repository.repository_id,
         orgId: repository.org_id,
         visibility: repository.visibility,
-        // `allowed_team_ids`는 아직 스키마에 없다 (WP-068, DEV-114) — 단건 판정과 같은 상태.
+        // 단건 판정과 **같은 재료**를 넘긴다 (CR-050, DEV-353).
+        allowedTeamIds: repository.allowed_team_ids,
       },
       scope,
     ),
