@@ -562,3 +562,5 @@
 - 강조에 **API가 만든 마크업**을 실지 않는다. 화면은 `dangerouslySetInnerHTML`을 쓰지 않는다
 - 새 쓰기 원시체는 `WriteTargets`를 받고 `DUAL_WRITE_PATHS`에 등재한다 (WP-035)
 - `agent-context/`는 tracked. **전사는 `exports/`에 둔다**
+- `agent-context/_handoff/`는 **생성물**이다 — 손으로 고치지 말고
+  `context_handoff.py build`로 다시 만든다. 원본은 `agent-context/*.md` 일곱이다

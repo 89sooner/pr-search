@@ -754,6 +754,15 @@ allowed`. 기본값 `action.destructive_requires_name: true`가 막는다.
 
 → 이름을 먼저 조회해 **하나하나 지목한다.** 그 설정이 있는 이유를 우회하지 않는다.
 
+## 73. **인계 기록을 PR 없이 main에 직접 push했다 — 관행 이탈**
+
+`2d28074`(agent-context 갱신)를 브랜치 없이 main에 바로 올렸다. 지시서가 "이번엔 반드시
+commit"을 요구했고 코드가 아닌 인계 기록이라 그렇게 판단했으나, **이 저장소의 다른 모든
+커밋은 PR을 거쳤다.** 브랜치 보호가 없어 막히지 않았을 뿐이다. CI는 통과했다.
+
+→ 다음 세션은 인계 기록도 브랜치를 따서 올리거나, 마지막 기능 PR에 함께 실어라. 관행이
+막아 주지 않는 자리는 사람이 지켜야 한다.
+
 ## 환경 (변경 없음, 재확인)
 
 - Node **v22.23.2** 필수, 셸 기본값 v20.12.0
@@ -761,3 +770,5 @@ allowed`. 기본값 `action.destructive_requires_name: true`가 막는다.
 - **ES 별칭이 v2로 올라갔다** — `prs-pull-requests-v2` · `prs-commits-v2`.
   links·releases는 v1 그대로
 - 컨테이너 3종 healthy, `prs`·`prs_test` 존재
+- **로컬 ES가 v2를 서비스 중이다.** 시험이 `switchAliasesForTests`로 옮겨 둔 상태이며,
+  운영에서는 그 전환이 재색인의 일이다 — 시험 헬퍼를 운영에서 부르지 않는다

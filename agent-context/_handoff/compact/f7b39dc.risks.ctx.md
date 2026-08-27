@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=304b0bae0f10dd64cafeea658fa60a54d19818aea56cbd385575ec89cd440d07 bytes=51199 lines=763 title=리스크-불확실한-가정-함정
+@kv sha256=8e25abfb6e6981445c4d84dd6bcc03823823e7f5002bc145c81f4041e7f91c7f bytes=52023 lines=774 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;DISTINCT
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -282,7 +282,7 @@
 |→ **검사를 만들 때 "이것이 덮지 못하는 면은 무엇인가"를 함께 적어라.** 이 세션은 그것을 두 번 배웠다(DEV-293 → DEV-310 → DEV-312, 같은 검사가 세 번 넓어졌다).
 |...cut 57 lines
 @p python io.open(path, 'w', encoding='utf-8', newline='\\r\\n') # ← 이스케이프가 깨진 값
-@code lang=txt sha=86d5ec79432a lines=133 kept=80
+@code lang=txt sha=5414e782e7c1 lines=144 kept=80
 |`ValueError: illegal newline value`가 나기 **전에 파일이 이미 0바이트가 됐다.** 파일은 신규(untracked)라 git으로도 복구할 수 없었고, 540줄을 전부 다시 썼다.
 |→ **truncate하는 open에 계산된 인자를 넣지 마라.** 값을 먼저 검증하거나, 임시 파일에 쓰고 옮긴다. `risks.md` 53번(`git checkout`은 원복 수단이 아니다)의 이웃 사례다 — 둘 다 "되돌릴 수 있다고 가정한 자리가 되돌릴 수 없었다".
 |## 61. **`git checkout --`를 원복이 아니라 "복구"에 쓰다가 또 잃었다**
@@ -332,4 +332,4 @@
 || M7 완결 서수를 `scannedSeq`로 | 등가 | `break`가 소비하지 않은 일치의 서수를 남기지 않는다 |
 || M7c chunk 루프 상한 | 등가 | 한 요청이 chunk를 몇 개 읽는지만 바뀐다 |
 |→ **경로를 읽어라.** 그리고 시험을 고쳤으면 **같은 변이를 다시 걸어라** — 고쳤다고 믿는
-|...cut 53 lines
+|...cut 64 lines
