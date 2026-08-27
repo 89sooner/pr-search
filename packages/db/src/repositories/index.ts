@@ -12,6 +12,8 @@ export * as pipelineRepo from './pipeline.js';
 export * as rawEventRepo from './raw-event.js';
 export * as releaseRepo from './release.js';
 export * as repositoryRepo from './repository.js';
+/** 저장소 등록 검토 요청 (WP-034 / ENT-CORE-008, CR-050). */
+export * as registrationRequestRepo from './registration-request.js';
 /** 저장된 검색 (WP-033 / ENT-CORE-006, CR-049). */
 export * as savedSearchRepo from './saved-search.js';
 export { MAX_SEQUENCE_BRANCHES } from './repository.js';
@@ -39,12 +41,18 @@ export type { LagPercentiles, RepositoryLag } from './pipeline.js';
 export type { ReleaseRow, ReleaseSource, ReleaseTimelineRow, ReleaseUpsert } from './release.js';
 export type { RawEventInsert, RawEventRow } from './raw-event.js';
 export type {
+  OverviewPageFilter,
   RepositoryFilter,
   RepositoryInput,
+  RepositoryKeyset,
   RepositoryRow,
   RepositorySettings,
   RepositoryStatus,
 } from './repository.js';
+export type {
+  RegistrationRequestInput,
+  RegistrationRequestRow,
+} from './registration-request.js';
 export type { AuditFilter, AuditRecordInput, AuditRecordRow } from './audit.js';
 export type { PullRequestSnapshotInput, PullRequestSnapshotRow, SnapshotSource } from './pr-snapshot.js';
 export type {

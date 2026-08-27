@@ -296,12 +296,26 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
         /*
          * 원인 둘을 함께 말한다 (DEV-159). 서버는 "태그가 0개"와 "아직 받지
          * 않았다"를 판별할 수 없고, 판별할 수 없는 것을 두 안내로 가르면 둘 중
-         * 하나는 반드시 거짓이 된다. 저장소 개요(W-009)는 아직 없어 링크하지 않는다.
+         * 하나는 반드시 거짓이 된다.
+         *
+         * **W-009가 서면서 저장소 진단 링크를 건다** (CR-050, DEV-159 해소).
+         * 판별할 수 없다는 사실은 그대로이므로 문구는 여전히 둘을 함께 말하고,
+         * 링크는 "수집 상태를 직접 확인할 수 있다"를 더한다.
          */
         <EmptyState
           cause="not_indexed"
           title="이 저장소의 릴리스가 없습니다"
           description="아직 태그가 만들어지지 않았거나, 릴리스 수집이 아직 이 저장소에 닿지 않았습니다. GitHub Enterprise에서 태그를 확인해 주세요."
+          actions={
+            repository === null ? undefined : (
+              <Link
+                href={`/repositories?repository=${encodeURIComponent(repository)}`}
+                data-testid="releases-open-repository-overview"
+              >
+                이 저장소의 수집 상태 보기
+              </Link>
+            )
+          }
         />
       ) : null}
 

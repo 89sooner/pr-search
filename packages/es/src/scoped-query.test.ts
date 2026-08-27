@@ -82,7 +82,7 @@ describe('isRepositoryInScope (WP-023 / ADR-008, CR-027 DEV-130)', () => {
    * 지켜 주지 않는다. 이 함수가 그 자리를 메우며, **`scopeFilter`와 같은 규칙**을
    * 표현해야 한다 — 규칙이 갈라지면 한쪽 경로만 넓어지고 아무 오류도 나지 않는다.
    */
-  const payments = { repositoryId: 1001, orgId: 1, visibility: 'internal' };
+  const payments = { repositoryId: 1001, orgId: 1, visibility: 'internal', allowedTeamIds: [] };
 
   it('명시적 범위에 있는 저장소를 통과시킨다', () => {
     expect(isRepositoryInScope(payments, { kind: 'explicit', repositoryIds: [1001, 1002] })).toBe(true);
@@ -123,13 +123,17 @@ describe('isRepositoryInScope (WP-023 / ADR-008, CR-027 DEV-130)', () => {
     ).toBe(false);
   });
 
-  it('**`allowedTeamIds`가 없으면 팀 갈래가 성립하지 않는다** (WP-068, DEV-114)', () => {
+  it('**팀 개별 허용이 비어 있으면 팀 갈래가 성립하지 않는다**', () => {
     /*
-     * 오늘의 실제 상태다 — `repository.allowed_team_ids` 열이 아직 없다. 그래서
-     * 팀 소속으로만 볼 수 있는 비공개 저장소는 거절된다. Elasticsearch 필터도
-     * 같은 필드가 비어 있어 같은 결과를 내므로 **두 경로가 어긋나지는 않는다.**
-     * 열이 생기면 이 시험이 위의 "팀이 허용됐으면 통과"와 함께 그것을 지킨다.
+     * 빈 배열은 "이 저장소를 개별 허용받은 팀이 없다"는 **사실**이지 "값을
+     * 모른다"가 아니다. 그래서 비공개 저장소는 거절된다.
+     *
+     * v0.5까지 이 인자는 선택이었고, 그래서 호출부가 빠뜨렸을 때와 실제로 빈
+     * 경우가 같은 결과를 냈다 — **두 사실이 구분되지 않았고 그 사이에 DEV-353이
+     * 살았다.** 이제 인자가 필수라 빠뜨림은 컴파일되지 않는다.
      */
-    expect(isRepositoryInScope({ ...payments, visibility: 'private' }, orgTeam)).toBe(false);
+    expect(
+      isRepositoryInScope({ ...payments, visibility: 'private', allowedTeamIds: [] }, orgTeam),
+    ).toBe(false);
   });
 });

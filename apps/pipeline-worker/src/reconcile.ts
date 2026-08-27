@@ -209,6 +209,38 @@ export async function reconcileRepository(
     }
   }
 
+  /*
+   * 최근 **완료된** 조정 결과를 남긴다 (WP-034 / FR-ING-011 AC-6, CR-050 DEV-352).
+   *
+   * **미룬 회차는 기록하지 않는다.** 한도가 소진돼 창을 끝까지 읽지 못한
+   * 회차의 `missing`은 부분값이라 언제나 실제보다 작다 — 그것을 "최근 결과"로
+   * 표시하면 W-009 사용자는 "거의 다 수집됐다"로 읽고, 이 화면의 목적이 정확히
+   * 그 오독을 막는 것이다. 예외로 끝난 회차는 이 지점에 닿지도 않는다.
+   *
+   * `reconcile_missing_total` 지표는 그대로 둔다 — 누적 추세와 시점 스냅숏은
+   * 답하는 물음이 다르고, 지표 저장소가 없는 배치에서는 조회 서비스가 그
+   * counter를 읽을 방법 자체가 없다.
+   *
+   * 기록 실패가 조정을 멈추지 않는다 — 팀 범위 동기화와 같은 처분이다.
+   */
+  if (!deferred) {
+    try {
+      await repositoryRepo.recordCompletedReconciliation(
+        deps.pool,
+        repository.repository_id,
+        missing,
+        (deps.now ?? ((): Date => new Date()))(),
+      );
+    } catch (error) {
+      log({
+        level: 'warn',
+        message: '조정 결과 기록 실패 — 다음 완주 회차가 다시 남긴다',
+        repository: slug,
+        reason: String(error).slice(0, 200),
+      });
+    }
+  }
+
   return { scanned, missing, reprojected, sequenceScheduled, deferred };
 }
 

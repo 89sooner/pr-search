@@ -135,10 +135,28 @@ export function CommitDetailView({
          * FR-AUTH-002 AC-4). W-002와 문구까지 같아야 한다 — 다르면 그 차이
          * 자체가 신호가 된다.
          */}
+        {/*
+         * **저장소 수집 상태로 가는 경로를 함께 준다** (QA-W009-13, CR-050 DEV-358).
+         *
+         * 이 화면은 "없다"와 "볼 수 없다"를 구분하지 않으므로(THR-004) 사용자는
+         * 어느 쪽인지 모른 채 남는다 — 저장소 진단이 그 답을 스스로 찾는 자리다.
+         * **링크가 존재를 주장하지 않는다**: W-009 조회도 같은 접근 범위를 지나고
+         * 미등록과 범위 밖을 같은 빈 결과로 답한다 (FR-ING-009 AC-10).
+         */}
         <EmptyState
           cause="not_found"
-          description="이 커밋을 찾을 수 없습니다. SHA가 정확한지 확인하세요."
-          actions={<a href={backHref}>검색으로 돌아가기</a>}
+          description="이 커밋을 찾을 수 없습니다. SHA가 정확한지 확인하세요. 저장소가 아직 수집되지 않았을 수도 있습니다."
+          actions={
+            <>
+              <a href={backHref}>검색으로 돌아가기</a>{' '}
+              <a
+                href={`/repositories?repository=${encodeURIComponent(repository)}`}
+                data-testid="commit-open-repository-overview"
+              >
+                이 저장소의 수집 상태 보기
+              </a>
+            </>
+          }
         />
       </div>
     );

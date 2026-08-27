@@ -9,7 +9,14 @@
 import type { Client as EsClient } from '@elastic/elasticsearch';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { deadLetterRepo, rawEventRepo, type Pool, type RawEventInsert } from '@prs/db';
+import {
+  deadLetterRepo,
+  rawEventRepo,
+  repositoryRepo,
+  sequenceSpaceRepo,
+  type Pool,
+  type RawEventInsert,
+} from '@prs/db';
 import { applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions } from '@prs/es';
 import { RedisStreamsEventBus, TOPICS, type Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
@@ -44,6 +51,7 @@ interface StatusBody {
   dead_letter: Record<string, number> | null;
   enrichment_pending: number | null;
   slowest_repositories: { repository_id: number; repository: string | null; lag_p95_seconds: number }[] | null;
+  sequence_space_state: Record<string, number> | null;
   unavailable: string[];
 }
 
@@ -269,5 +277,73 @@ describe('파이프라인 상태 (WP-010, API-ADM-006)', () => {
     } finally {
       await broken.close();
     }
+  });
+
+  /**
+   * 시퀀스 공간 상태 요약 (FR-ADMIN-001 AC-1 / CR-050, DEV-354).
+   *
+   * v0.9까지 API 계약이 "WP-021 이후에 더한다"로 남아 있었고 구현도 없었다.
+   * **WP-021은 이미 완료됐고 AC-1은 이 항목을 `Must`로 요구한다** — 이월의
+   * 조건이 충족됐는데 아무도 그것을 다시 읽지 않은 자리다.
+   */
+  describe('시퀀스 공간 상태 요약 (DEV-354)', () => {
+    const SPACE_REPOS = [90810, 90811, 90812];
+
+    beforeEach(async () => {
+      await pool.query('DELETE FROM sequence_space WHERE repository_id = ANY($1::bigint[])', [SPACE_REPOS]);
+      await pool.query('DELETE FROM repository WHERE repository_id = ANY($1::bigint[])', [SPACE_REPOS]);
+    });
+
+    async function seedSpaces(states: readonly string[]): Promise<void> {
+      for (const [index, state] of states.entries()) {
+        const id = SPACE_REPOS[index];
+        if (id === undefined) continue;
+        await repositoryRepo.upsertRepository(pool, {
+          repository_id: id,
+          owner: 'wp034s',
+          name: `space-${String(index)}`,
+          org_id: 9081,
+          visibility: 'internal',
+          sequence_branches: ['main'],
+        });
+        await sequenceSpaceRepo.ensureSequenceSpace(pool, id, 'main');
+        await pool.query('UPDATE sequence_space SET state = $2 WHERE repository_id = $1', [id, state]);
+      }
+    }
+
+    it('**네 상태를 전부 싣는다** — 없는 상태의 키가 빠지면 0과 미확인이 섞인다', async () => {
+      await seedSpaces(['ok']);
+      const body = await status();
+      expect(body.sequence_space_state).not.toBeNull();
+      expect(Object.keys(body.sequence_space_state ?? {}).sort()).toEqual([
+        'ok',
+        'reassigning',
+        'stale',
+        'unknown',
+      ]);
+    });
+
+    it('**상태별 건수가 맞는다**', async () => {
+      await seedSpaces(['ok', 'stale', 'reassigning']);
+      const body = await status();
+      const summary = body.sequence_space_state ?? {};
+      expect(summary['ok']).toBeGreaterThanOrEqual(1);
+      expect(summary['stale']).toBeGreaterThanOrEqual(1);
+      expect(summary['reassigning']).toBeGreaterThanOrEqual(1);
+    });
+
+    it('**저장소를 식별하지 않는다** — 전역 건수라 접근 범위를 거치지 않는 근거다', async () => {
+      await seedSpaces(['ok', 'stale']);
+      const body = await status();
+      const serialized = JSON.stringify(body.sequence_space_state);
+      for (const id of SPACE_REPOS) expect(serialized).not.toContain(String(id));
+      expect(serialized).not.toContain('wp034s');
+      expect(serialized).not.toContain('main');
+    });
+
+    it('**여전히 `operator` 전용이다** (AC-4) — 이 항목이 권한을 넓히지 않았다', async () => {
+      const response = await app.inject({ method: 'GET', url: PIPELINE_STATUS_PATH });
+      expect(response.statusCode).toBe(401);
+    });
   });
 });

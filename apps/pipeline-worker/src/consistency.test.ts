@@ -32,6 +32,8 @@ const REPOSITORY = {
   // 부트스트랩이 끝난 저장소다. 실제 열은 `Date | null`이며 절대 `undefined`가
   // 아니다 — 비워 두면 부트스트랩 관문이 시험되지 않는다 (CR-037, DEV-195).
   snapshot_bootstrapped_at: new Date('2026-08-20T00:00:00Z'),
+  last_reconciled_at: null,
+  last_reconcile_missing_count: null,
 } as unknown as Parameters<typeof checkRepositoryConsistency>[1];
 
 /** 정본·색인 문서. 기본 내용은 같고, 시험이 필요할 때만 어긋뜨린다. */

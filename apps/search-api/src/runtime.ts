@@ -154,6 +154,22 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
             pool: parts.pool,
             cursorSigner: createCursorSigner(parts.config.searchCursorKey),
           },
+          /*
+           * 저장소 수집 진단 (WP-034 / API-ING-002·003, CR-050).
+           *
+           * **Elasticsearch를 받는다** — 저장된 검색과 다른 점이다. 문서 수는
+           * 색인에만 있고, 그 집계도 `applyMandatoryScopeFilter`를 지난다.
+           * PostgreSQL에서 이미 접근 범위를 걸렀다는 이유로 생략하지 않는다.
+           *
+           * 커서 서명자는 검색·구간·저장 검색과 **같은 키**를 쓴다. 새 시크릿을
+           * 만들면 배포가 관리할 값이 늘고 하나가 빠졌을 때의 실패가 는다.
+           */
+          repositories: {
+            pool: parts.pool,
+            es: parts.es,
+            cursorSigner: createCursorSigner(parts.config.searchCursorKey),
+            log: (entry) => { parts.log({ ...entry }); },
+          },
         }),
     ...(integrity === undefined ? {} : { integrity }),
     reindex: buildReindexDeps(parts.pool, parts.es),
@@ -167,6 +183,8 @@ export function runtimeCapabilities(parts: RuntimeParts): Readonly<Record<string
     repository_registry: parts.registry !== undefined,
     session_auth: parts.auth !== undefined,
     sequence_integrity: buildIntegrityDeps(parts.pool, parts.github) !== undefined,
+    /** 저장소 수집 진단은 세션이 있어야 선다 — 접근 범위 없이 낼 수 없다. */
+    repository_overview: parts.auth !== undefined && parts.searchDeps !== undefined,
     reindex: true,
   };
 }
