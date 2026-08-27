@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Client } from '@elastic/elasticsearch';
 import { CONDITIONAL_UPSERT_SCRIPT, bulkUpsert, classifyFailure, type UpsertRequest } from './upsert.js';
+import { SERVING_ONLY } from './write-targets.js';
 
 const REQUEST: UpsertRequest = {
   alias: 'prs-pull-requests',
@@ -33,7 +34,7 @@ function fakeClient(response: unknown): { client: Client; bulk: ReturnType<typeo
 describe('벌크 요청 모양 (AC-2)', () => {
   it('여러 인덱스를 한 번의 벌크 호출로 보낸다', async () => {
     const { client, bulk } = fakeClient({ items: [{ update: { status: 200, result: 'updated' } }, { update: { status: 201, result: 'created' } }] });
-    await bulkUpsert(client, [REQUEST, COMMIT]);
+    await bulkUpsert(client, [REQUEST, COMMIT], SERVING_ONLY);
 
     expect(bulk).toHaveBeenCalledTimes(1);
     const operations = bulk.mock.calls[0]?.[0]?.operations as unknown[];
@@ -45,7 +46,7 @@ describe('벌크 요청 모양 (AC-2)', () => {
 
   it('상태 필드는 `doc`, 누적 필드는 `union`으로 나눠 보낸다 (CR-011)', async () => {
     const { client, bulk } = fakeClient({ items: [{ update: { status: 200, result: 'updated' } }] });
-    await bulkUpsert(client, [COMMIT]);
+    await bulkUpsert(client, [COMMIT], SERVING_ONLY);
 
     const body = (bulk.mock.calls[0]?.[0]?.operations as { script: { params: Record<string, unknown> } }[])[1];
     expect(body?.script.params['doc']).toMatchObject({ document_version: 100 });
@@ -55,7 +56,7 @@ describe('벌크 요청 모양 (AC-2)', () => {
 
   it('생성 시 본문에는 누적 필드와 생성 전용 필드가 함께 들어간다', async () => {
     const { client, bulk } = fakeClient({ items: [{ update: { status: 201, result: 'created' } }] });
-    await bulkUpsert(client, [{ ...COMMIT, createOnly: { link_summary: { has_revert: false } } }]);
+    await bulkUpsert(client, [{ ...COMMIT, createOnly: { link_summary: { has_revert: false } } }], SERVING_ONLY);
 
     const body = (bulk.mock.calls[0]?.[0]?.operations as { upsert: Record<string, unknown> }[])[1];
     // 스크립트는 생성 때 돌지 않는다. `upsert` 본문이 전량이어야 한다.
@@ -69,7 +70,7 @@ describe('벌크 요청 모양 (AC-2)', () => {
 
   it('보낼 것이 없으면 호출하지 않는다', async () => {
     const { client, bulk } = fakeClient({ items: [] });
-    const result = await bulkUpsert(client, []);
+    const result = await bulkUpsert(client, [], SERVING_ONLY);
     expect(bulk).not.toHaveBeenCalled();
     expect(result.outcomes).toEqual([]);
   });
@@ -84,7 +85,7 @@ describe('DEV-059: `doc_id`를 업서트가 자동으로 채운다', () => {
    */
   it('생성 본문에 `_id`와 같은 값이 들어간다', async () => {
     const { client, bulk } = fakeClient({ items: [{ update: { status: 201, result: 'created' } }] });
-    await bulkUpsert(client, [REQUEST]);
+    await bulkUpsert(client, [REQUEST], SERVING_ONLY);
 
     const body = (bulk.mock.calls[0]?.[0]?.operations as { upsert: Record<string, unknown> }[])[1];
     expect(body?.upsert['doc_id']).toBe(REQUEST.id);
@@ -92,7 +93,7 @@ describe('DEV-059: `doc_id`를 업서트가 자동으로 채운다', () => {
 
   it('스크립트 `params.doc`에도 들어간다 — 이미 색인된 문서가 다음 이벤트에서 채워진다', async () => {
     const { client, bulk } = fakeClient({ items: [{ update: { status: 200, result: 'updated' } }] });
-    await bulkUpsert(client, [COMMIT]);
+    await bulkUpsert(client, [COMMIT], SERVING_ONLY);
 
     const body = (bulk.mock.calls[0]?.[0]?.operations as { script: { params: Record<string, Record<string, unknown>> } }[])[1];
     expect(body?.script.params['doc']?.['doc_id']).toBe(COMMIT.id);
@@ -102,7 +103,7 @@ describe('DEV-059: `doc_id`를 업서트가 자동으로 채운다', () => {
     const { client, bulk } = fakeClient({
       items: [{ update: { status: 200, result: 'updated' } }, { update: { status: 200, result: 'updated' } }],
     });
-    await bulkUpsert(client, [REQUEST, COMMIT]);
+    await bulkUpsert(client, [REQUEST, COMMIT], SERVING_ONLY);
 
     const operations = bulk.mock.calls[0]?.[0]?.operations as { upsert: Record<string, unknown> }[];
     expect(operations[1]?.upsert['doc_id']).toBe(REQUEST.id);
@@ -118,7 +119,7 @@ describe('벌크 응답 해석 (AC-3)', () => {
         { update: { status: 400, error: { type: 'strict_dynamic_mapping_exception', reason: '매핑에 없는 필드' } } },
       ],
     });
-    const result = await bulkUpsert(client, [REQUEST, COMMIT]);
+    const result = await bulkUpsert(client, [REQUEST, COMMIT], SERVING_ONLY);
 
     expect(result.hasFailures).toBe(true);
     expect(result.outcomes[0]).toMatchObject({ kind: 'ok', result: 'noop' });
@@ -129,7 +130,7 @@ describe('벌크 응답 해석 (AC-3)', () => {
 
   it('응답 항목이 모자라면 추측하지 않고 재시도로 둔다', async () => {
     const { client } = fakeClient({ items: [{ update: { status: 200, result: 'updated' } }] });
-    const result = await bulkUpsert(client, [REQUEST, COMMIT]);
+    const result = await bulkUpsert(client, [REQUEST, COMMIT], SERVING_ONLY);
     expect(result.outcomes[1]).toMatchObject({ kind: 'retryable' });
   });
 });

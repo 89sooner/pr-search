@@ -10,6 +10,7 @@ import type { Client } from '@elastic/elasticsearch';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMappings } from '../src/bootstrap.js';
 import { ARCHIVABLE_ALIASES, markRepositoryArchived } from '../src/registry.js';
+import { SERVING_ONLY } from '../src/write-targets.js';
 import { createTestClient, waitForCluster } from './helpers.js';
 
 const REPOSITORY_ID = 90210;
@@ -72,7 +73,7 @@ describe('저장소 등록 상태 표식 (WP-010, FR-ING-009 AC-3)', () => {
   it('DEV-028: 커밋 문서도 표식을 받는다 — 매핑이 그 필드를 갖는다', async () => {
     // 매핑에 없었다면 `strict_dynamic_mapping_exception`으로 여기서 실패한다.
     await seed(REPOSITORY_ID, false);
-    const result = await markRepositoryArchived(client, REPOSITORY_ID, true);
+    const result = await markRepositoryArchived(client, REPOSITORY_ID, true, SERVING_ONLY);
 
     expect(result.total).toBe(2);
     expect(result.updated['prs-commits']).toBe(1);
@@ -89,7 +90,7 @@ describe('저장소 등록 상태 표식 (WP-010, FR-ING-009 AC-3)', () => {
   it('document_version을 올리지 않는다', async () => {
     // 올리면 뒤늦게 도착한 정상 웹훅이 "오래된 이벤트"로 밀려 사라진다.
     await seed(REPOSITORY_ID, false);
-    await markRepositoryArchived(client, REPOSITORY_ID, true);
+    await markRepositoryArchived(client, REPOSITORY_ID, true, SERVING_ONLY);
 
     const pr = await client.get<{ document_version: number }>({
       index: 'prs-pull-requests',
@@ -102,7 +103,7 @@ describe('저장소 등록 상태 표식 (WP-010, FR-ING-009 AC-3)', () => {
   it('다른 저장소의 문서는 건드리지 않는다', async () => {
     await seed(REPOSITORY_ID, false);
     await seed(OTHER_REPOSITORY_ID, false);
-    await markRepositoryArchived(client, REPOSITORY_ID, true);
+    await markRepositoryArchived(client, REPOSITORY_ID, true, SERVING_ONLY);
 
     const other = await client.get<{ repository_archived: boolean }>({
       index: 'prs-commits',
@@ -114,12 +115,12 @@ describe('저장소 등록 상태 표식 (WP-010, FR-ING-009 AC-3)', () => {
 
   it('이미 같은 값인 문서는 세지 않는다', async () => {
     await seed(REPOSITORY_ID, true);
-    expect((await markRepositoryArchived(client, REPOSITORY_ID, true)).total).toBe(0);
+    expect((await markRepositoryArchived(client, REPOSITORY_ID, true, SERVING_ONLY)).total).toBe(0);
   });
 
   it('재등록하면 표식이 풀린다', async () => {
     await seed(REPOSITORY_ID, true);
-    expect((await markRepositoryArchived(client, REPOSITORY_ID, false)).total).toBe(2);
+    expect((await markRepositoryArchived(client, REPOSITORY_ID, false, SERVING_ONLY)).total).toBe(2);
 
     const commit = await client.get<{ repository_archived: boolean }>({
       index: 'prs-commits',

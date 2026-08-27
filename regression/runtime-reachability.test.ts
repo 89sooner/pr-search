@@ -36,6 +36,33 @@ const API_INDEX = read('apps/search-api/src/index.ts');
  */
 const CAPABILITIES = [
   {
+    id: 'JOB-ING-006',
+    what: '무중단 재색인 러너',
+    process: 'pipeline-worker',
+    role: 'batch',
+    start: 'reindexRunner = startReindexRunner(',
+    stop: 'reindexRunner?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-batch.yaml',
+  },
+  {
+    id: 'JOB-ING-006-retention',
+    what: '재색인 보관 정리 스윕',
+    process: 'pipeline-worker',
+    role: 'batch',
+    start: 'retentionSweeper = startRetentionSweeper(',
+    stop: 'retentionSweeper?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-batch.yaml',
+  },
+  {
+    id: 'API-ADM-004',
+    what: '무중단 재색인 시작 API',
+    process: 'search-api',
+    role: null,
+    start: 'reindex: buildReindexDeps(',
+    stop: null,
+    manifest: 'deploy/k8s/search-api.yaml',
+  },
+  {
     id: 'API-ADM-007',
     what: '시퀀스 정합성 점검·재채번 API',
     process: 'search-api',
@@ -199,7 +226,8 @@ describe('참조 간선 파생의 도달성 (WP-029 / CR-039)', () => {
      *   있고 투영도 찍혀 두 스윕이 모두 건너뛰고, 핸들러는 ack한다. 직접 푸시
      *   커밋의 유일한 방아쇠가 사라진다
      */
-    const indexed = COMMIT_ENRICH.indexOf('await upsertCommitMetadata(');
+    // WP-035가 이 쓰기를 재색인 울타리로 감쌌다 — 앵커는 그 진입점이다.
+    const indexed = COMMIT_ENRICH.indexOf('upsertCommitMetadata(');
     const publish = COMMIT_ENRICH.indexOf('event_name: EVENT_NAMES.commitMetadataReady');
     const marked = COMMIT_ENRICH.indexOf('markCommitProjected');
     expect(indexed).toBeGreaterThan(-1);
@@ -238,8 +266,14 @@ describe('참조 간선 파생의 도달성 (WP-029 / CR-039)', () => {
      */
     const jobs = read('apps/search-api/src/ops/jobs.ts');
     const routes = read('apps/search-api/src/ops/routes.ts');
-    expect(jobs).toContain("export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild'] as const;");
-    expect(routes).toContain("if (!isOperatorJobType(body['type'])) {");
+    /*
+     * WP-035가 목록을 **둘로 갈랐다** (DEV-301). `OPERATOR_JOB_TYPES`는 "집는
+     * 러너가 있다"이고, `CREATABLE_GENERIC_JOB_TYPES`는 "API-ADM-002로 만들 수
+     * 있다"이다. `reindex`는 앞에만 있다 — 생성은 API-ADM-004가 소유한다.
+     */
+    expect(jobs).toContain("export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild', 'reindex'] as const;");
+    expect(jobs).toContain("export const CREATABLE_GENERIC_JOB_TYPES = ['backfill', 'link_rebuild'] as const;");
+    expect(routes).toContain("if (!isCreatableGenericJobType(body['type'])) {");
     // 러너와 API가 **같은 `target` 형식**을 쓴다 — 다르면 러너가 자기 행을 못 읽는다.
     expect(LINK).toContain('repositoryRepo.findRepositoryBySlug(');
   });
@@ -262,7 +296,7 @@ describe('참조 간선 파생의 도달성 (WP-029 / CR-039)', () => {
   it('**완전한 파생에 성공했을 때만 stale을 지운다** (DEV-220)', () => {
     // 실패 갈래가 제거보다 **앞에서** 돌아 나가야 한다.
     const guard = LINK.indexOf('stale 제거를 하지 않는다');
-    const remove = LINK.indexOf('deleteStaleReferenceLinks(deps.es');
+    const remove = LINK.indexOf('deleteStaleReferenceLinks(');
     expect(guard).toBeGreaterThan(-1);
     expect(remove).toBeGreaterThan(guard);
   });
@@ -277,7 +311,12 @@ describe('되돌림·체리픽·스택 파생의 도달성 (WP-030 / CR-041)', (
      * WP-028이 남긴 교훈이다: 함수도 있고 라우트도 있고 시험도 초록인데 운영이
      * 그것을 부르지 않을 수 있다. 이름 언급이 아니라 **호출 형태**로 건다.
      */
-    expect(LINK).toContain('await handleRelationsReady(deps, repository, source)');
+    /*
+     * WP-035가 이 호출을 재색인 울타리 콜백 안으로 옮겼다 (DEV-296). **여전히
+     * 호출 형태로 건다** — 이름 언급으로는 "운영이 부른다"가 증명되지 않는다.
+     */
+    expect(LINK).toContain('handleRelationsReady(deps, repository, source, targets)');
+    expect(LINK).toContain('withReindexWrite(deps.pool, (targets) =>');
   });
 
   it('**재파생이 저절로 네 계열을 덮는다** (DEV-234) — 두 번째 틀을 만들지 않았다', () => {
@@ -320,8 +359,8 @@ describe('되돌림·체리픽·스택 파생의 도달성 (WP-030 / CR-041)', (
 
   it('**재평가가 다시 재평가를 부르지 않는다** — 저장소 전체로 번지지 않는다', () => {
     const reeval = RELATIONS.slice(RELATIONS.indexOf('export async function reevaluateAffectedRelations'));
-    expect(reeval).toContain('await deriveRelations(deps, repository, target)');
-    expect(reeval).not.toContain('await handleRelationsReady(deps, repository, target)');
+    expect(reeval).toContain('await deriveRelations(deps, repository, target, writeTargets)');
+    expect(reeval).not.toContain('await handleRelationsReady(deps, repository, target');
   });
 
   it('**스택은 지우지 않고 detached로 바꾼다** (FR-REL-006 AC-3, DEV-238)', () => {
@@ -345,7 +384,7 @@ describe('되돌림·체리픽·스택 파생의 도달성 (WP-030 / CR-041)', (
 
   it('**완전한 파생에 성공했을 때만 조정한다** (DEV-233)', () => {
     const guard = RELATIONS.indexOf('조정을 하지 않는다');
-    const remove = RELATIONS.indexOf('await deleteStaleDerivedLinks(deps.es');
+    const remove = RELATIONS.indexOf('deleteStaleDerivedLinks(');
     expect(guard).toBeGreaterThan(-1);
     expect(remove).toBeGreaterThan(guard);
   });
@@ -882,5 +921,169 @@ describe('경로가 실재하는지', () => {
     }
     // 이미 배포된 역할이 예외 목록에 남아 있으면 목록이 낡은 것이다.
     expect(UNDEPLOYED_ROLE_ALLOWLIST.map((one) => one.role)).not.toContain('batch');
+  });
+});
+
+describe('무중단 재색인의 도달성과 계약 (WP-035 / CR-045~047)', () => {
+  const REINDEX = read('apps/pipeline-worker/src/reindex.ts');
+  /*
+   * **금지를 거는 검사는 주석을 걷어 낸 코드만 본다** (risks 43).
+   *
+   * 이 파일의 머리 주석이 "`client.reindex({ source, dest })`를 쓰지 않는다"고
+   * 적고 있어서, 파일 전문에 걸면 그 설명 자체에 걸린다 — 문서 검증기가 자기
+   * 검색어를 세는 것과 같은 함정이다.
+   */
+  const REINDEX_CODE = REINDEX.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const OPS_REINDEX = read('apps/search-api/src/ops/reindex.ts');
+  const OPS_ROUTES = read('apps/search-api/src/ops/routes.ts');
+  const FENCE = read('packages/db/src/reindex-fence.ts');
+  const VERSIONED = read('packages/es/src/versioned-index.ts');
+  const CLI = read('apps/pipeline-worker/src/reindex-cli.ts');
+  const ROOT_MANIFEST = read('package.json');
+
+  it('**러너가 새 큐 틀을 만들지 않는다** — `claimNextJob`을 쓴다', () => {
+    expect(REINDEX).toContain("jobRepo.claimNextJob(deps.pool, REINDEX_TYPE, REINDEX_MAX_CONCURRENT)");
+    expect(REINDEX).toContain('export const REINDEX_MAX_CONCURRENT = 1;');
+  });
+
+  it('**전환은 `updateAliases` 한 번이다** (FR-ING-008 AC-3)', () => {
+    /*
+     * `remove` → `add` 두 호출로 나누면 그 사이에 별칭이 사라지고, 그 창의
+     * 모든 읽기·쓰기가 `index_not_found_exception`으로 실패한다. 무중단이
+     * 이 WP의 목적이므로 그 창은 실패가 아니라 계약 위반이다.
+     */
+    expect(VERSIONED).toContain('client.indices.updateAliases({');
+    const switchBody = VERSIONED.slice(VERSIONED.indexOf('export async function switchAlias'));
+    const body = switchBody.slice(0, switchBody.indexOf('\n}'));
+    expect(body).toContain('remove:');
+    expect(body).toContain('add:');
+    expect((body.match(/updateAliases\(/g) ?? []).length).toBe(1);
+  });
+
+  it('**옛 인덱스를 재구축 원본으로 쓰지 않는다** (ADR-004)', () => {
+    // `client.reindex({ source, dest })`가 있으면 정본만으로의 재구축이 아니다.
+    expect(REINDEX_CODE).not.toContain('.reindex({');
+    expect(REINDEX).toContain('prSnapshotRepo.listSnapshotsAfter(');
+    expect(REINDEX).toContain('commitSnapshotRepo.listCommitSnapshotsAfter(');
+    expect(REINDEX).toContain('releaseRepo.listReleases(');
+  });
+
+  it('**두 번째 문서 빌더를 만들지 않는다** — 운영 빌더를 재사용한다', () => {
+    expect(REINDEX).toContain('commitMetadataFields(fact)');
+    expect(REINDEX).toContain('commitCreateFields(repository, fact,');
+    expect(REINDEX).toContain('rows.map(toDocInput(repository))');
+    // 간선은 JOB-REL-006의 경로를 포트로 받는다.
+    expect(REINDEX).toContain('deps.links.rebuildRepository(repository)');
+  });
+
+  it('**활성화가 정본 스캔보다 먼저다** (DEV-296)', () => {
+    const activation = REINDEX.indexOf("phase: 'dual_write'");
+    const scan = REINDEX.indexOf('const tally = await rebuildAlias(');
+    expect(activation).toBeGreaterThan(-1);
+    expect(scan).toBeGreaterThan(activation);
+  });
+
+  it('**활성화와 전환이 배타 울타리 안에서 돈다** (DEV-308)', () => {
+    expect(REINDEX).toContain('await withReindexExclusive(deps.pool,');
+    // 전환 직전에 잡 상태를 **다시** 본다 — 기다리는 동안 취소가 들어왔을 수 있다.
+    const cutover = REINDEX.slice(REINDEX.indexOf("phase: 'cutover'"));
+    expect(cutover).toContain('const latest = await reindexRepo.findReindexJob(client, jobId)');
+    expect(cutover).toContain("latest.state !== 'running'");
+    expect(cutover).toContain('switchAlias(');
+  });
+
+  it('**울타리가 shadow 실패 기록까지 덮는다** (CR-046, DEV-308)', () => {
+    /*
+     * 기록이 울타리 밖으로 밀리면 전환이 "실패 없음"을 보고 지나간다.
+     * `recordShadowFailure` 호출도, 그것을 정본에 남기는 것도 같은 구간이다.
+     */
+    const write = FENCE.slice(FENCE.indexOf('export async function withReindexWrite'));
+    const body = write.slice(0, write.indexOf('export async function withReindexExclusive'));
+    const run = body.indexOf('const result = await run(targets)');
+    const record = body.indexOf('recordShadowFailures(client, active.job_id, failures)');
+    const release = body.indexOf('releaseAdvisorySharedLock(client, key)');
+    expect(run).toBeGreaterThan(-1);
+    expect(record).toBeGreaterThan(run);
+    expect(release).toBeGreaterThan(record);
+  });
+
+  it('**논리 쓰기는 공유, 활성화·전환은 배타다**', () => {
+    // 공유가 아니면 모든 색인 쓰기가 한 줄로 직렬화된다.
+    expect(FENCE).toContain('acquireAdvisorySharedLock(client, key, FENCE_LOCK_TIMEOUT_MS)');
+    expect(FENCE).toContain('acquireAdvisorySessionLock(client, key, lockTimeoutMs)');
+  });
+
+  it('**대상 버전은 아직 쓰이지 않은 다음 번호다** (CR-046, DEV-309)', () => {
+    expect(VERSIONED).toContain('export async function nextUnusedVersion');
+    const next = VERSIONED.slice(VERSIONED.indexOf('export async function nextUnusedVersion'));
+    expect(next).toContain('const versions = await listIndexVersions(client, alias)');
+    expect(next).toContain('return highest + 1');
+  });
+
+  it('**shadow 항목 실패가 전환을 막는다** — HTTP 200이 완료가 아니다 (DEV-297)', () => {
+    const upsert = read('packages/es/src/upsert.ts');
+    expect(upsert).toContain('reportShadowFailure(targets, {');
+    // 검증이 `failures`를 본다.
+    expect(REINDEX).toContain("reasons.push(`알려진 실패 ${String(job.progress.failures)}건`)");
+  });
+
+  it('**전환 전 검증이 건수 하나로 판정하지 않는다** (DEV-297)', () => {
+    const verify = REINDEX.slice(REINDEX.indexOf('export async function verifyBeforeCutover'));
+    for (const fact of ['잡 상태가', '알려진 실패', '정본 스캔이 끝나지 않았다', '커버리지 부족', '대표 질의 실패']) {
+      expect(verify, `검증이 '${fact}'를 보지 않는다`).toContain(fact);
+    }
+  });
+
+  it('**종료가 CAS다** — 늦은 취소를 덮지 않는다 (DEV-298)', () => {
+    expect(REINDEX).toContain("jobRepo.finishJobIfRunning(deps.pool, jobId, 'completed')");
+    expect(REINDEX).not.toContain("jobRepo.finishJob(deps.pool, jobId, 'completed')");
+  });
+
+  it('**보관 정리가 현재 별칭 대상을 지우지 않는다** (FR-ING-008 AC-4)', () => {
+    const remove = VERSIONED.slice(VERSIONED.indexOf('export async function deleteRetiredIndex'));
+    const check = remove.indexOf('const serving = await client.indices.getAlias({ name: alias })');
+    const del = remove.indexOf('await client.indices.delete({ index })');
+    expect(check).toBeGreaterThan(-1);
+    expect(del).toBeGreaterThan(check);
+    expect(remove).toContain('if (Object.keys(serving).includes(index)) return false');
+  });
+
+  it('**보관 정본이 잡 `progress`다** — 새 표를 만들지 않았다 (DEV-299)', () => {
+    const repo = read('packages/db/src/repositories/reindex.ts');
+    expect(repo).toContain("progress ->> 'switched_at' IS NOT NULL");
+    expect(repo).toContain('job.progress.source_index');
+    expect(repo).toContain("progress ->> 'retired_at' IS NULL");
+    // 마이그레이션을 만들지 않았다 — 014가 마지막이다.
+    expect(existsSync(new URL('packages/db/migrations/015_reindex.up.sql', new URL('..', import.meta.url)))).toBe(false);
+  });
+
+  it('**API가 `alias`만 받는다** (DEV-294)', () => {
+    expect(OPS_ROUTES).toContain("startReindex(reindex, body['alias'], principalId(principal))");
+    expect(OPS_REINDEX).toContain('구체 인덱스는 받지 않는다');
+    // 별칭 판정은 포트가 한다 — 라우트가 다른 대상 키를 읽지 않는다.
+    expect(OPS_REINDEX).toContain("case 'invalid_alias':");
+    expect(OPS_ROUTES).not.toContain("body['target_index']");
+  });
+
+  it('**API-ADM-002의 일반 생성이 `reindex`를 받지 않는다** (DEV-301·302)', () => {
+    const jobs = read('apps/search-api/src/ops/jobs.ts');
+    expect(jobs).toContain("export const CREATABLE_GENERIC_JOB_TYPES = ['backfill', 'link_rebuild'] as const;");
+    expect(OPS_ROUTES).toContain("if (!isCreatableGenericJobType(body['type'])) {");
+  });
+
+  it('**CLI가 API와 같은 enqueue seam을 부른다** (DEV-302)', () => {
+    expect(CLI).toContain('reindexRepo.enqueueReindex(pool, reindexIndexPort(es), alias, REQUESTED_BY)');
+    expect(OPS_REINDEX).toContain('reindexRepo.enqueueReindex(deps.pool, deps.index, alias, requestedBy)');
+    // CLI가 직접 재색인하지 않는다.
+    expect(CLI).not.toContain('.reindex(');
+    expect(CLI).not.toContain('switchAlias(');
+    expect(ROOT_MANIFEST).toContain('"es:reindex"');
+  });
+
+  it('**러너가 있는 유형만 운영자 표면에 오른다** (DEV-301)', () => {
+    const jobs = read('apps/search-api/src/ops/jobs.ts');
+    expect(jobs).toContain("'reindex'");
+    // 러너가 같은 커밋에 있다 — 먼저 등재하면 DEV-178이 된다.
+    expect(REINDEX).toContain('export function startReindexRunner(');
   });
 });

@@ -20,6 +20,7 @@ import {
   createEsClient,
   resolveClientOptions,
   search,
+  SERVING_ONLY,
 } from '@prs/es';
 
 const REPO_TEAM_ONLY = 8201;
@@ -197,7 +198,7 @@ describe('팀 접근 범위가 실제 색인에서 동작한다 (WP-068 DoD)', (
       const before = await versionOf('acme/team-only#1', REPO_TEAM_ONLY);
 
       // GHE에서 core 팀의 접근이 회수됐다 → 정본 갱신 → 색인 소급 적용.
-      await applyRepositoryTeams(es, REPO_TEAM_ONLY, []);
+      await applyRepositoryTeams(es, REPO_TEAM_ONLY, [], SERVING_ONLY);
       await es.indices.refresh({ index: 'prs-pull-requests' });
 
       expect(
@@ -215,7 +216,7 @@ describe('팀 접근 범위가 실제 색인에서 동작한다 (WP-068 DoD)', (
 
     it('다시 부여하면 다시 보인다 — 소급이 양방향이다', async () => {
       const before = await versionOf('acme/team-only#1', REPO_TEAM_ONLY);
-      await applyRepositoryTeams(es, REPO_TEAM_ONLY, [TEAM_CORE]);
+      await applyRepositoryTeams(es, REPO_TEAM_ONLY, [TEAM_CORE], SERVING_ONLY);
       await es.indices.refresh({ index: 'prs-pull-requests' });
 
       expect(

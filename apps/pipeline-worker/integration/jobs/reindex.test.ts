@@ -1,0 +1,604 @@
+/**
+ * JOB-ING-006 무중단 재색인 (WP-035 / FR-ING-008, CR-045~047).
+ *
+ * **실제 PostgreSQL + 실제 Elasticsearch를 쓴다.** 이 WP가 지켜야 할 것 대부분이
+ * Elasticsearch 자체의 동작이다 — 별칭 전환의 원자성, `strict` 매핑이 만드는
+ * 항목 단위 실패, 그리고 "옛 인덱스를 읽지 않았다"는 사실.
+ *
+ * 대상 별칭으로 `prs-releases`를 고른 이유는 정본이 표 하나(`release`)라
+ * 재구축 경로가 짧고, 그래서 **무엇이 증명되는지가 흐려지지 않기** 때문이다.
+ * 이중 쓰기·울타리·전환·보관은 별칭과 무관한 기계다.
+ *
+ * 이 파일은 공유 별칭을 실제로 옮기므로 `afterAll`에서 **원래 인덱스로 되돌린다.**
+ *
+ * 검증: `pnpm test:integration reindex`
+ */
+
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  jobRepo,
+  releaseRepo,
+  reindexRepo,
+  repositoryRepo,
+  withReindexWrite,
+  type Pool,
+  type RepositoryRow,
+} from '@prs/db';
+import {
+  applyMappings,
+  concreteIndexName,
+  createEsClient,
+  listIndexVersions,
+  parseIndexVersion,
+  resolveServingIndex,
+  schemaOf,
+  switchAlias,
+  upsertReleaseDocuments,
+  type VersionedIndexSchema,
+} from '@prs/es';
+import type { Client } from '@elastic/elasticsearch';
+
+import {
+  REINDEX_TYPE,
+  runReindexJob,
+  runRetentionSweep,
+  verifyBeforeCutover,
+  type ReindexDeps,
+} from '../../src/reindex.js';
+import { migratedPool } from '../helpers.js';
+
+const ALIAS = 'prs-releases';
+const REPOSITORY_ID = 9351;
+const OWNER = 'acme';
+const NAME = 'reindex-wp035';
+
+let pool: Pool;
+let es: Client;
+let repository: RepositoryRow;
+/** 이 파일이 시작할 때 별칭이 가리키던 인덱스. `afterAll`이 여기로 되돌린다. */
+let originalIndex: string;
+/** 이 파일이 만든 인덱스. 전부 지운다. */
+const created = new Set<string>();
+
+function deps(overrides: Partial<ReindexDeps> = {}): ReindexDeps {
+  return { pool, es, ...overrides };
+}
+
+async function seedRelease(tag: string, seq: number): Promise<void> {
+  await releaseRepo.upsertRelease(pool, {
+    repository_id: REPOSITORY_ID,
+    tag_name: tag,
+    commit_sha: String(seq).padStart(40, 'e'),
+    base_branch: 'main',
+    seq_epoch: 1,
+    merge_seq: seq,
+    released_at: new Date(`2026-08-${String(10 + seq).padStart(2, '0')}T00:00:00Z`),
+    source: 'git_tag',
+  });
+}
+
+/** 이 저장소의 문서를 구체 인덱스에서 직접 읽는다. 별칭을 거치지 않는다. */
+async function docsIn(index: string): Promise<readonly Record<string, unknown>[]> {
+  await es.indices.refresh({ index });
+  const found = await es.search<Record<string, unknown>>({
+    index,
+    size: 50,
+    query: { term: { repository_id: REPOSITORY_ID } },
+  });
+  return found.hits.hits.map((hit) => hit._source as Record<string, unknown>);
+}
+
+/** 정본 릴리스를 평시 쓰기 경로로 색인한다. 재색인 중이면 이중 쓰기가 된다. */
+async function projectReleases(): Promise<{ readonly hasFailures: boolean }> {
+  const rows = await releaseRepo.listReleases(pool, REPOSITORY_ID);
+  return withReindexWrite(pool, (targets) =>
+    upsertReleaseDocuments(
+      es,
+      { repositoryId: REPOSITORY_ID, orgId: 71, visibility: 'internal', repository: `${OWNER}/${NAME}` },
+      rows.map((row) => ({
+        tagName: row.tag_name,
+        commitSha: row.commit_sha,
+        baseBranch: row.base_branch,
+        seqEpoch: row.seq_epoch,
+        mergeSeq: row.merge_seq === null ? null : Number(row.merge_seq),
+        releasedAt: row.released_at.toISOString(),
+        source: row.source,
+        sequenceSpace: `${OWNER}/${NAME}@main`,
+      })),
+      Date.now(),
+      targets,
+    ),
+  );
+}
+
+async function enqueue(): Promise<{ jobId: number; targetIndex: string; sourceIndex: string }> {
+  const outcome = await reindexRepo.enqueueReindex(
+    pool,
+    {
+      resolveServingIndex: (alias) => resolveServingIndex(es, alias),
+      async nextTargetIndex(alias) {
+        const versions = await listIndexVersions(es, alias);
+        const highest = versions.length === 0 ? 0 : (versions[versions.length - 1] as number);
+        return concreteIndexName(alias, highest + 1);
+      },
+      isAlias: (value) => value === ALIAS,
+    },
+    ALIAS,
+    'test',
+  );
+  if (outcome.kind !== 'queued') throw new Error(`큐에 넣지 못했다: ${outcome.kind}`);
+  created.add(outcome.targetIndex);
+  return { jobId: outcome.jobId, targetIndex: outcome.targetIndex, sourceIndex: outcome.sourceIndex };
+}
+
+/** 러너가 집는 것과 같은 상태로 만든다 — `claimNextJob`이 하는 일이다. */
+async function claim(jobId: number): Promise<void> {
+  await pool.query("UPDATE job SET state = 'running', started_at = now() WHERE job_id = $1", [jobId]);
+}
+
+async function runClaimed(jobId: number, overrides: Partial<ReindexDeps> = {}): Promise<void> {
+  const row = await jobRepo.findJobById(pool, jobId);
+  if (row === undefined) throw new Error('잡을 찾지 못했다');
+  await runReindexJob(deps(overrides), row);
+}
+
+async function jobRow(jobId: number): Promise<{ state: string; progress: Record<string, unknown> }> {
+  const row = await jobRepo.findJobById(pool, jobId);
+  if (row === undefined) throw new Error('잡을 찾지 못했다');
+  return { state: row.state, progress: row.progress };
+}
+
+beforeAll(async () => {
+  pool = await migratedPool();
+  es = createEsClient();
+  await applyMappings(es);
+  originalIndex = await resolveServingIndex(es, ALIAS);
+
+  await repositoryRepo.upsertRepository(pool, {
+    repository_id: REPOSITORY_ID,
+    owner: OWNER,
+    name: NAME,
+    org_id: 71,
+    visibility: 'internal',
+    sequence_branches: ['main'],
+    mirror_enabled: false,
+    status: 'active',
+  });
+  const found = await repositoryRepo.findRepositoryById(pool, REPOSITORY_ID);
+  if (found === undefined) throw new Error('시험 저장소를 만들지 못했다');
+  repository = found;
+});
+
+beforeEach(async () => {
+  // 내 저장소의 상태만 지운다 — 공유 `prs_test`의 다른 행은 건드리지 않는다 (risks 16).
+  await pool.query('DELETE FROM release WHERE repository_id = $1', [REPOSITORY_ID]);
+  await pool.query('DELETE FROM job WHERE type = $1', [REINDEX_TYPE]);
+
+  /*
+   * **색인 문서도 지운다** (risks 30). 앞선 케이스가 남긴 문서가 그대로 있으면
+   * "정본에서 재구축했다"를 확인하는 단언이 옛 케이스의 태그까지 보게 되고,
+   * 파일 하나로 돌리면 통과하고 케이스 순서를 바꾸면 깨지는 시험이 된다.
+   *
+   * 별칭이 이 파일 안에서 옮겨 다니므로 **버전 인덱스 전부**를 훑는다.
+   */
+  for (const version of await listIndexVersions(es, ALIAS)) {
+    const index = concreteIndexName(ALIAS, version);
+    if (!(await es.indices.exists({ index }))) continue;
+    // `delete_by_query`는 **검색으로** 대상을 찾는다 — 먼저 refresh 한다 (risks 17).
+    await es.indices.refresh({ index });
+    await es.deleteByQuery({
+      index,
+      refresh: true,
+      conflicts: 'proceed',
+      query: { term: { repository_id: REPOSITORY_ID } },
+    });
+  }
+});
+
+afterAll(async () => {
+  try {
+    // 별칭을 원래 자리로 되돌린다. 이 파일이 공유 상태를 옮겼기 때문이다.
+    const serving = await resolveServingIndex(es, ALIAS);
+    if (serving !== originalIndex && (await es.indices.exists({ index: originalIndex }))) {
+      await switchAlias(es, ALIAS, serving, originalIndex);
+    }
+    const current = await resolveServingIndex(es, ALIAS);
+    for (const index of created) {
+      if (index === originalIndex || index === current) continue;
+      await es.indices.delete({ index, ignore_unavailable: true });
+    }
+    await pool.query('DELETE FROM release WHERE repository_id = $1', [REPOSITORY_ID]);
+    await pool.query('DELETE FROM job WHERE type = $1', [REINDEX_TYPE]);
+  } finally {
+    await es.close();
+    await pool.end();
+  }
+});
+
+describe('T1 정상 재색인 — 정본에서 채우고 별칭을 원자적으로 옮긴다', () => {
+  it('전환 뒤 별칭이 새 인덱스를 가리키고 옛 인덱스는 남는다', async () => {
+    await seedRelease('v1.0', 1);
+    await seedRelease('v1.1', 2);
+
+    const before = await resolveServingIndex(es, ALIAS);
+    const { jobId, targetIndex } = await enqueue();
+    await claim(jobId);
+    await runClaimed(jobId);
+
+    const after = await resolveServingIndex(es, ALIAS);
+    expect(after).toBe(targetIndex);
+    expect(after).not.toBe(before);
+
+    // 옛 인덱스는 **보관 기간 동안 남는다** (FR-ING-008 AC-4).
+    expect(await es.indices.exists({ index: before })).toBe(true);
+
+    const docs = await docsIn(targetIndex);
+    expect(docs.map((one) => one['tag_name']).sort()).toEqual(['v1.0', 'v1.1']);
+
+    const row = await jobRow(jobId);
+    expect(row.state).toBe('completed');
+    expect(row.progress['phase']).toBe('retention');
+    expect(row.progress['switched_at']).toEqual(expect.any(String));
+  });
+});
+
+describe('T2 재색인 중 신규 이벤트가 양쪽에 기록된다 (FR-ING-008 AC-2)', () => {
+  it('활성화 뒤의 논리 쓰기가 serving과 shadow 둘 다에 닿는다', async () => {
+    await seedRelease('v2.0', 1);
+
+    const serving = await resolveServingIndex(es, ALIAS);
+    const { jobId, targetIndex } = await enqueue();
+    await claim(jobId);
+
+    // 대상 인덱스를 만들고 이중 쓰기를 켠다 — 러너의 prepare·dual_write와 같은 상태다.
+    const schema = schemaOf(ALIAS);
+    await es.indices.create({
+      index: targetIndex,
+      settings: { ...schema.settings, number_of_shards: schema.shards },
+      mappings: schema.mappings,
+    });
+    await reindexRepo.patchReindexProgress(pool, jobId, {
+      phase: 'dual_write',
+      dual_write_since: new Date().toISOString(),
+    });
+
+    // 평시 릴리스 반영과 **같은 경로**로 쓴다.
+    await seedRelease('v2.1', 2);
+    await projectReleases();
+
+    const servingTags = (await docsIn(serving)).map((one) => one['tag_name']).sort();
+    const shadowTags = (await docsIn(targetIndex)).map((one) => one['tag_name']).sort();
+    expect(servingTags).toEqual(['v2.0', 'v2.1']);
+    expect(shadowTags, 'shadow가 신규 쓰기를 놓쳤다').toEqual(['v2.0', 'v2.1']);
+  });
+});
+
+describe('T3·T4 shadow 실패 — 서비스는 살고 전환은 막힌다 (DEV-297·298)', () => {
+  it('항목 단위 실패가 잡을 `failed`로 만들고 별칭을 그대로 둔다', async () => {
+    await seedRelease('v3.0', 1);
+
+    const serving = await resolveServingIndex(es, ALIAS);
+    const { jobId, targetIndex } = await enqueue();
+    await claim(jobId);
+
+    /*
+     * shadow를 **빈 `strict` 매핑**으로 만든다. bulk는 HTTP 200을 주면서 항목마다
+     * `strict_dynamic_mapping_exception`을 담는다 — 그것이 "HTTP 200이 완료가
+     * 아니다"를 실물로 만드는 가장 짧은 길이다.
+     */
+    await es.indices.create({ index: targetIndex, mappings: { dynamic: 'strict', properties: {} } });
+    await reindexRepo.patchReindexProgress(pool, jobId, { phase: 'dual_write' });
+
+    const result = await projectReleases();
+
+    // 서비스 결과는 **보존된다** (불변식 6).
+    expect(result.hasFailures, '서비스 인덱스 쓰기가 shadow 실패에 끌려갔다').toBe(false);
+    expect((await docsIn(serving)).map((one) => one['tag_name'])).toEqual(['v3.0']);
+
+    // 그러나 잊지 않는다 (불변식 7).
+    const row = await jobRow(jobId);
+    expect(row.state).toBe('failed');
+    expect(Number(row.progress['failures'])).toBeGreaterThan(0);
+
+    // 그리고 그 상태에서는 전환하지 않는다.
+    const verdict = await verifyBeforeCutover(deps(), jobId, 1);
+    expect(verdict.ok).toBe(false);
+    expect(await resolveServingIndex(es, ALIAS)).toBe(serving);
+  });
+
+  it('실패한 뒤에는 shadow 쓰기를 더 하지 않는다 (DEV-298)', async () => {
+    const { jobId, targetIndex } = await enqueue();
+    await claim(jobId);
+    await es.indices.create({ index: targetIndex, mappings: { dynamic: 'strict', properties: {} } });
+    await reindexRepo.patchReindexProgress(pool, jobId, { phase: 'dual_write' });
+    await pool.query("UPDATE job SET state = 'failed' WHERE job_id = $1", [jobId]);
+
+    const shadows = await reindexRepo.findDualWriteShadows(pool);
+    expect(shadows[ALIAS], '실패한 재색인이 여전히 shadow 대상이다').toBeUndefined();
+  });
+});
+
+describe('T5 전환 전 취소 — 성공한 전환을 만들지 않는다 (DEV-298)', () => {
+  it('취소된 잡은 별칭을 옮기지 않고 `completed`로 덮이지도 않는다', async () => {
+    await seedRelease('v5.0', 1);
+
+    const serving = await resolveServingIndex(es, ALIAS);
+    const { jobId } = await enqueue();
+    await pool.query("UPDATE job SET state = 'cancelled' WHERE job_id = $1", [jobId]);
+
+    await runClaimed(jobId);
+
+    expect(await resolveServingIndex(es, ALIAS)).toBe(serving);
+    const row = await jobRow(jobId);
+    expect(row.state, '늦은 종료가 취소를 덮었다').toBe('cancelled');
+  });
+});
+
+describe('T6 대상 버전 — 아직 쓰이지 않은 다음 번호다 (CR-046, DEV-309)', () => {
+  it('실패로 남은 shadow가 다음 재색인을 막지 않는다', async () => {
+    const serving = await resolveServingIndex(es, ALIAS);
+    const servingVersion = parseIndexVersion(ALIAS, serving);
+    expect(servingVersion, '서비스 인덱스가 버전 형식이 아니다').not.toBeNull();
+
+    // 앞선 회차가 실패로 남긴 고아 shadow를 만든다.
+    const orphan = concreteIndexName(ALIAS, (servingVersion as number) + 1);
+    created.add(orphan);
+    if (!(await es.indices.exists({ index: orphan }))) {
+      await es.indices.create({ index: orphan });
+    }
+
+    const { targetIndex } = await enqueue();
+    expect(targetIndex, '고아 shadow의 번호를 다시 골랐다').not.toBe(orphan);
+    expect(parseIndexVersion(ALIAS, targetIndex)).toBeGreaterThan((servingVersion as number) + 1);
+  });
+});
+
+describe('T7 보관 — 7일 뒤에 지우되 현재 별칭은 건드리지 않는다 (FR-ING-008 AC-4)', () => {
+  it('6일째는 남고 8일째에 지워진다', async () => {
+    await seedRelease('v7.0', 1);
+    const { jobId, sourceIndex, targetIndex } = await enqueue();
+    await claim(jobId);
+    await runClaimed(jobId);
+    expect(await resolveServingIndex(es, ALIAS)).toBe(targetIndex);
+
+    const switchedAt = new Date((await jobRow(jobId)).progress['switched_at'] as string);
+    const day = 24 * 60 * 60 * 1000;
+
+    const sixth = new Date(switchedAt.getTime() + 6 * day);
+    expect(await runRetentionSweep(deps({ now: () => sixth }))).toBe(0);
+    expect(await es.indices.exists({ index: sourceIndex }), '보관 기간 안에 지웠다').toBe(true);
+
+    const eighth = new Date(switchedAt.getTime() + 8 * day);
+    expect(await runRetentionSweep(deps({ now: () => eighth }))).toBe(1);
+    expect(await es.indices.exists({ index: sourceIndex })).toBe(false);
+    // 현재 별칭 대상은 어떤 경우에도 남는다.
+    expect(await es.indices.exists({ index: targetIndex })).toBe(true);
+    expect(await resolveServingIndex(es, ALIAS)).toBe(targetIndex);
+  });
+
+  it('현재 별칭이 가리키는 인덱스는 기한이 지나도 지우지 않는다', async () => {
+    const serving = await resolveServingIndex(es, ALIAS);
+    /*
+     * 잡 `progress`가 낡아 **서비스 중인 인덱스를 보관 대상으로 가리키는** 상태를
+     * 만든다. 정본을 그대로 믿으면 서비스를 지운다 — 지우기 직전에 다시 묻는
+     * 이유다.
+     */
+    const jobId = await jobRepo.enqueueJob(pool, REINDEX_TYPE, ALIAS, 'test');
+    await reindexRepo.setReindexProgress(pool, jobId, {
+      phase: 'retention',
+      alias: ALIAS,
+      source_index: serving,
+      target_index: serving,
+      switched_at: new Date('2026-01-01T00:00:00Z').toISOString(),
+    });
+    await pool.query("UPDATE job SET state = 'completed' WHERE job_id = $1", [jobId]);
+
+    expect(await runRetentionSweep(deps({ now: () => new Date('2026-08-27T00:00:00Z') }))).toBe(0);
+    expect(await es.indices.exists({ index: serving }), '서비스 중인 인덱스를 지웠다').toBe(true);
+  });
+});
+
+describe('T8 PostgreSQL 정본만으로 재구축한다 (ADR-004)', () => {
+  it('옛 인덱스에만 있던 문서는 새 인덱스에 오지 않는다', async () => {
+    await seedRelease('v8.0', 1);
+
+    const serving = await resolveServingIndex(es, ALIAS);
+    /*
+     * **옛 인덱스에만** 있는 표식을 심는다. 정본(`release` 표)에는 대응 행이 없다.
+     * 재구축이 옛 인덱스를 읽었다면 이 문서가 따라온다 — 그러면 "색인은 정본만으로
+     * 재구축 가능하다"가 증명되지 않는다.
+     */
+    await es.index({
+      index: serving,
+      id: `${String(REPOSITORY_ID)}:es-only-marker`,
+      routing: String(REPOSITORY_ID),
+      refresh: true,
+      document: {
+        release_id: `${String(REPOSITORY_ID)}:es-only-marker`,
+        doc_id: `${String(REPOSITORY_ID)}:es-only-marker`,
+        repository_id: REPOSITORY_ID,
+        org_id: 71,
+        visibility: 'internal',
+        tag_name: 'es-only-marker',
+        display_name: 'es-only-marker',
+        commit_sha: 'f'.repeat(40),
+        released_at: '2026-08-01T00:00:00Z',
+        source: 'git_tag',
+        indexed_at: '2026-08-01T00:00:00Z',
+        document_version: 1,
+      },
+    });
+    /*
+     * 이 시점의 서비스 인덱스에는 표식뿐이다 — 정본의 `v8.0`은 아직 색인되지
+     * 않았다. 그래서 재구축 결과가 정확히 뒤집힌다: **정본에만 있는 것이 오고
+     * 색인에만 있는 것은 오지 않는다.**
+     */
+    expect((await docsIn(serving)).map((one) => one['tag_name'])).toEqual(['es-only-marker']);
+
+    const { jobId, targetIndex } = await enqueue();
+    await claim(jobId);
+    await runClaimed(jobId);
+
+    const rebuilt = (await docsIn(targetIndex)).map((one) => one['tag_name']).sort();
+    expect(rebuilt, '옛 인덱스의 문서가 따라왔다 — 정본에서 재구축한 것이 아니다').toEqual(['v8.0']);
+    expect(repository.repository_id).toBe(REPOSITORY_ID);
+  });
+});
+
+describe('T9 무중단 — 재색인 내내 별칭 조회가 실패하지 않는다 (FR-ING-008 AC-3)', () => {
+  it('전환을 포함한 전 구간에서 별칭 조회가 한 번도 실패하지 않는다', async () => {
+    await seedRelease('v9.0', 1);
+    await projectReleases();
+
+    const { jobId, targetIndex } = await enqueue();
+    await claim(jobId);
+
+    /*
+     * **전환과 조회를 실제로 겹친다.** `updateAliases`가 한 번이라는 것을 정적으로
+     * 거는 회귀는 이미 있지만, 그것이 무중단을 뜻하려면 그 사이에 들어온 조회가
+     * 살아남아야 한다. 두 호출로 나뉘면 별칭이 사라지는 창이 생기고 그 창의
+     * 조회가 `index_not_found_exception`을 받는다.
+     */
+    let stopped = false;
+    const failures: string[] = [];
+    let attempts = 0;
+
+    const poller = (async (): Promise<void> => {
+      while (!stopped) {
+        attempts += 1;
+        try {
+          await es.search({ index: ALIAS, size: 1, query: { match_all: {} } });
+        } catch (error) {
+          failures.push(String(error));
+        }
+      }
+    })();
+
+    await runClaimed(jobId);
+    stopped = true;
+    await poller;
+
+    expect(await resolveServingIndex(es, ALIAS)).toBe(targetIndex);
+    expect(attempts, '조회를 한 번도 못 던졌다 — 이 시험이 아무것도 증명하지 않는다').toBeGreaterThan(10);
+    expect(failures, `재색인 중 별칭 조회가 ${String(failures.length)}회 실패했다`).toEqual([]);
+  });
+});
+
+describe('T10 전환 뒤 늦은 취소 — 성공한 전환을 되돌리지 않는다 (DEV-298)', () => {
+  it('전환 뒤에 취소가 들어와도 별칭은 새 인덱스를 가리키고 러너가 그것을 덮지 않는다', async () => {
+    await seedRelease('v10.0', 1);
+    const { jobId, targetIndex } = await enqueue();
+    await claim(jobId);
+    await runClaimed(jobId);
+    expect(await resolveServingIndex(es, ALIAS)).toBe(targetIndex);
+
+    /*
+     * 운영자의 취소가 **전환 뒤에** 도착한 상황이다. 이미 일어난 전환은
+     * 되돌리지 않는다 — 되돌리면 그 순간이 진짜 중단이다. 대신 러너가
+     * `cancelled`를 `completed`로 덮지 않는다는 것이 CAS의 몫이다.
+     */
+    await pool.query("UPDATE job SET state = 'cancelled' WHERE job_id = $1", [jobId]);
+    const overwrote = await jobRepo.finishJobIfRunning(pool, jobId, 'completed');
+
+    expect(overwrote, '늦은 종료가 취소를 덮었다').toBe(false);
+    expect((await jobRow(jobId)).state).toBe('cancelled');
+    expect(await resolveServingIndex(es, ALIAS), '늦은 취소가 전환을 되돌렸다').toBe(targetIndex);
+  });
+});
+
+describe('WP-032 선행 조건 증명 — 새 분석기·다중 필드로 무중단 전환한다 (CR-043, DEV-266·267)', () => {
+  /**
+   * v1에 **없는** 분석기와 다중 필드를 얹은 시험용 스키마.
+   *
+   * 이름은 `wp035_probe`다 — **WP-032의 실제 필드 이름을 선점하지 않는다.**
+   * 그 WP가 `edge_ngram`의 `min_gram`·`max_gram`·`search_analyzer`를 정하며,
+   * 여기서 증명하는 것은 값이 아니라 **그 값을 배포할 기계가 있다**는 사실이다.
+   */
+  function probeSchema(): VersionedIndexSchema {
+    const base = schemaOf(ALIAS);
+    const analysis = (base.settings.analysis ?? {}) as Record<string, Record<string, unknown>>;
+    return {
+      shards: base.shards,
+      settings: {
+        ...base.settings,
+        analysis: {
+          ...analysis,
+          filter: {
+            ...(analysis['filter'] ?? {}),
+            wp035_probe_edge: { type: 'edge_ngram', min_gram: 2, max_gram: 8 },
+          },
+          analyzer: {
+            ...(analysis['analyzer'] ?? {}),
+            wp035_probe: {
+              type: 'custom',
+              tokenizer: 'standard',
+              filter: ['lowercase', 'wp035_probe_edge'],
+            },
+          },
+        },
+      },
+      mappings: {
+        ...base.mappings,
+        properties: {
+          ...(base.mappings.properties ?? {}),
+          tag_name: {
+            type: 'keyword',
+            fields: {
+              probe: { type: 'text', analyzer: 'wp035_probe', search_analyzer: 'standard' },
+            },
+          },
+        },
+      },
+    };
+  }
+
+  /** 인덱스 설정에서 분석기 이름 목록을 읽는다. */
+  async function analyzersOf(index: string): Promise<readonly string[]> {
+    const found = await es.indices.getSettings({ index });
+    const settings = found[index]?.settings as Record<string, unknown> | undefined;
+    const scope = (settings?.['index'] ?? settings) as Record<string, unknown> | undefined;
+    const analysis = scope?.['analysis'] as Record<string, unknown> | undefined;
+    const analyzer = analysis?.['analyzer'] as Record<string, unknown> | undefined;
+    return analyzer === undefined ? [] : Object.keys(analyzer);
+  }
+
+  it('전환 뒤 분석기가 실재하고 **기존 문서에도 새 필드가 채워진다**', async () => {
+    await seedRelease('payment-gateway', 1);
+
+    const before = await resolveServingIndex(es, ALIAS);
+    // v1에는 그 분석기가 없다 — 그것이 이 증명의 출발점이다.
+    expect(await analyzersOf(before)).not.toContain('wp035_probe');
+
+    const { jobId, targetIndex } = await enqueue();
+    await claim(jobId);
+    await runClaimed(jobId, { schemaFor: probeSchema });
+
+    expect(await resolveServingIndex(es, ALIAS)).toBe(targetIndex);
+
+    // 1) 새 분석기가 새 인덱스에 있다.
+    expect(await analyzersOf(targetIndex)).toContain('wp035_probe');
+
+    /*
+     * 2) **기존 문서에도 채워졌다.** 이것이 두 번째 벽이었다 (DEV-267) —
+     * `putMapping`으로 서브필드만 더하면 배포는 성공하고 과거 데이터의 그 필드는
+     * 비어 있다. 접두 세 글자로 찾히면 재색인이 실제로 그 필드를 만든 것이다.
+     */
+    await es.indices.refresh({ index: targetIndex });
+    const hit = await es.search<Record<string, unknown>>({
+      index: targetIndex,
+      query: {
+        bool: {
+          filter: [{ term: { repository_id: REPOSITORY_ID } }],
+          must: [{ match: { 'tag_name.probe': 'pay' } }],
+        },
+      },
+    });
+    expect(
+      hit.hits.hits.map((one) => (one._source as Record<string, unknown>)['tag_name']),
+      '새 다중 필드가 기존 문서에서 비어 있다 — putMapping과 다를 바 없다',
+    ).toEqual(['payment-gateway']);
+
+    // 3) 전환 내내 별칭은 정확히 하나를 가리켰다 — 무중단의 전제다.
+    expect(Object.keys(await es.indices.getAlias({ name: ALIAS }))).toHaveLength(1);
+  });
+});
