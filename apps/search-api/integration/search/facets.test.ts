@@ -516,6 +516,75 @@ describe('커서 페이지네이션 (FR-SRCH-008)', () => {
     }
   });
 
+  /*
+   * **PIT이 지키는 것은 "값이 움직이지 않는 뷰"다** (DEV-286).
+   *
+   * 처음에는 순회 중에 **새 문서**를 넣어 이것을 재려 했다. 변이(M2 — 페이지마다
+   * PIT을 새로 연다)가 살아남아 경로를 읽었더니, 새 문서가 경계보다 **앞에**
+   * 정렬되면 `search_after`가 그것을 자연히 배제한다 — PIT이 없어도 결과가
+   * 같으므로 그 시험은 PIT을 보고 있지 않았다.
+   *
+   * 실제로 깨지는 것은 **이미 본 문서의 정렬 값이 아직 안 본 구간으로 움직일
+   * 때**다. 그러면 뷰가 고정되지 않은 순회는 그 문서를 **두 번** 내준다.
+   * `updated_at`은 모든 PR 갱신 웹훅이 움직이는 값이라 이것은 가정이 아니다.
+   */
+  it('이미 본 문서의 정렬 값이 움직여도 두 번 나오지 않는다 (QA-W001-29, DEV-286)', async () => {
+    const query = 'q=repo%3Afacets%2Fpayments&size=2&sort=updated_at&order=desc';
+    const first = await get(query);
+    expect(first.body.next_cursor).not.toBeNull();
+    expect(first.body.items.length).toBe(2);
+
+    // 첫 페이지에 실린 문서 하나를 고른다 — 이미 지나간 자리다.
+    const moved = first.body.items[0];
+    const movedId = `facet-pr-${String(moved?.pr_number ?? 0)}`;
+    const original = await es.get<Record<string, unknown>>({
+      index: 'prs-pull-requests',
+      id: movedId,
+      routing: String(PAYMENTS),
+    });
+
+    try {
+      /*
+       * 그 문서를 **아직 안 본 구간**으로 밀어 넣는다.
+       *
+       * 내림차순이므로 `updated_at`을 가장 오래된 값보다 더 뒤로 보내면 순회의
+       * 끝자락에 다시 나타날 자리가 생긴다. 뷰가 고정돼 있으면 그 변경은 이
+       * 순회에 보이지 않는다.
+       */
+      await es.update({
+        index: 'prs-pull-requests',
+        id: movedId,
+        routing: String(PAYMENTS),
+        refresh: true,
+        doc: { updated_at: '1999-01-01T00:00:00Z' },
+      });
+
+      const seen = [...idsOf(first.body)];
+      let cursor: string | null = first.body.next_cursor;
+      for (let page = 0; page < 20 && cursor !== null; page += 1) {
+        const next = await get(`${query}&cursor=${encodeURIComponent(cursor)}`);
+        expect(next.status, JSON.stringify(next.body.error)).toBe(200);
+        seen.push(...idsOf(next.body));
+        cursor = next.body.next_cursor;
+      }
+
+      // **중복이 없다.** 뷰가 고정되지 않았다면 옮긴 문서가 뒤에서 다시 나온다.
+      expect(new Set(seen).size, `중복: ${seen.join(',')}`).toBe(seen.length);
+      // 그리고 아무것도 잃지 않았다.
+      const whole = await get('q=repo%3Afacets%2Fpayments&size=200');
+      expect([...seen].sort()).toEqual(idsOf(whole.body).sort());
+    } finally {
+      const source = original._source as Record<string, unknown>;
+      await es.update({
+        index: 'prs-pull-requests',
+        id: movedId,
+        routing: String(PAYMENTS),
+        refresh: true,
+        doc: { updated_at: source['updated_at'] },
+      });
+    }
+  });
+
   it('오프셋 파라미터가 존재하지 않는다 (AC-4, ADR-010)', async () => {
     // `from`·`offset`을 줘도 아무 일도 일어나지 않는다 — 무시된다.
     const plain = await get('q=repo%3Afacets%2Fpayments&size=2');
