@@ -31,6 +31,7 @@ import { FacetRail } from './FacetRail';
 import { OmniSearchInput } from './OmniSearchInput';
 import { QueryTokenBar } from './QueryTokenBar';
 import { ResolutionCandidateList, type ResolutionCandidate } from './ResolutionCandidateList';
+import { SaveSearchDialog } from './SaveSearchDialog';
 import { ResultTable, type ResultRow, type SortState } from './ResultTable';
 import {
   parseQueryState,
@@ -161,6 +162,15 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
    * 것은 고장으로 읽힌다. 세면 제출마다 값이 바뀌어 효과가 반드시 다시 돈다.
    */
   const [submitCount, setSubmitCount] = useState(0);
+
+  /*
+   * 저장 대화상자 (W-001-ACTIONS `search.save` / WP-033).
+   *
+   * **URL에 싣지 않는다.** 대화상자가 열려 있다는 것은 이 세션의 순간 상태이지
+   * 조회 조건이 아니다 — 붙여넣은 링크가 남의 화면에서 대화상자를 열 이유가 없다.
+   */
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [savedName, setSavedName] = useState<string | null>(null);
 
   /*
    * **조건이 바뀌면 페이징을 버린다** (CR-043, DEV-280).
@@ -387,6 +397,51 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         onRemove={onRemoveChip}
         error={parsed.error}
         raw={state.q}
+      />
+
+      {/*
+        * W-001-ACTIONS — 저장 (FR-SRCH-010).
+        *
+        * **질의가 있을 때만 그린다.** 빈 질의를 저장하면 "모든 결과"라는 이름
+        * 없는 조건이 남고, 그것은 사용자가 다시 열었을 때 아무것도 알려 주지
+        * 않는다. 파싱 오류가 있으면 저장해도 서버가 거절하므로 여기서 막는다 —
+        * 판정은 같은 파서가 이미 했다 (`parsed.error`).
+        */}
+      {state.q.trim() === '' ? null : (
+        <div data-testid="search-actions">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setSaveOpen(true);
+            }}
+            disabled={parsed.error !== null}
+            data-testid="search-save"
+          >
+            {/*
+              * 레이블을 «검색»과 겹치지 않게 둔다. 제출 버튼이 «검색»이라
+              * 접두가 같으면 사용자도, 접근성 이름으로 요소를 찾는 시험도
+              * 둘을 구분하지 못한다 — 실제로 기존 e2e 하나가 모호해졌다.
+              */}
+            저장
+          </Button>
+        </div>
+      )}
+
+      {savedName === null ? null : (
+        <Banner tone="info" title="저장했습니다">
+          <p data-testid="search-saved-notice">
+            «{savedName}»를 저장했습니다. 저장된 검색 화면에서 다시 실행할 수 있습니다.
+          </p>
+        </Banner>
+      )}
+
+      <SaveSearchDialog
+        open={saveOpen}
+        onOpenChange={setSaveOpen}
+        query={state.q}
+        onSaved={(name) => {
+          setSavedName(name);
+        }}
       />
 
       {/*
