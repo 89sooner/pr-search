@@ -58,6 +58,10 @@ export const ERROR_CODES = [
   'REINDEX_BUSY',
   /** 저장 100건 초과 (사용자 조치: 기존 항목 삭제) — HTTP 409 */
   'SAVED_SEARCH_LIMIT',
+  /** 같은 이름의 내 저장 검색이 이미 있음 (사용자 조치: 이름 변경) — HTTP 409 */
+  'SAVED_SEARCH_NAME_CONFLICT',
+  /** 저장된 질의가 현재 문법에서 무효인데 실행을 요청 (사용자 조치: 질의 수정(저장자)) — HTTP 409 */
+  'SAVED_SEARCH_QUERY_INVALID',
   /** 웹훅 25MB 초과 (사용자 조치: (GHE 측)) — HTTP 413 */
   'PAYLOAD_TOO_LARGE',
   /** 접근 범위 조회 실패 (사용자 조치: 잠시 후 재시도) — HTTP 503 */
@@ -137,6 +141,8 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   JOB_CONFLICT: 409,
   REINDEX_BUSY: 409,
   SAVED_SEARCH_LIMIT: 409,
+  SAVED_SEARCH_NAME_CONFLICT: 409,
+  SAVED_SEARCH_QUERY_INVALID: 409,
   PAYLOAD_TOO_LARGE: 413,
   PERMISSION_UNAVAILABLE: 503,
   SEARCH_TIMEOUT: 504,

@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.5 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.6 | 갱신일: 2026-08-27
 
 ## 1. 상태 설계 원칙
 
@@ -61,6 +61,9 @@
 | `facets_not_computed` | 응답에 패싯 키가 **없음** (패싯을 요청하지 않았거나 WP-032 전) | 레일에 "아직 분포를 세지 않습니다" | 패싯 요청 | CR-019 DEV-076 |
 | `cursor_rejected_mismatch` | 조건이 바뀐 뒤 이전 커서 사용 (`CURSOR_QUERY_MISMATCH`) | "조건이 바뀌어 처음부터 다시 봅니다" + 현재 조건의 첫 페이지 | 자동 복귀. **재시도 루프 금지** | FR-SRCH-008 AC-3 |
 | `cursor_rejected_invalid` | 커서 훼손·만료·PIT 부재 (`CURSOR_INVALID`) | "이 위치를 더 쓸 수 없어 처음부터 다시 봅니다" + 첫 페이지 | 자동 복귀. **재시도 루프 금지** | FR-SRCH-008 예외 처리 |
+| `error_save_limit` | 저장 100건 초과 (`SAVED_SEARCH_LIMIT`) | 저장 대화상자 안에 안내, **목록 결과는 유지** | 기존 항목 삭제 후 재시도 / W-008 | FR-SRCH-010 AC-4 |
+| `error_save_name_conflict` | 같은 이름의 내 검색이 이미 있음 (`SAVED_SEARCH_NAME_CONFLICT`) | 이름 입력에 오류 표시 | 이름 변경 | FR-SRCH-010 AC-1 |
+| `error_save_team_invalid` | 더 이상 구성원이 아닌 팀을 대상으로 지정 (`INVALID_PARAMETER`) | 대상 팀 선택기에 오류 표시와 목록 재조회 안내 | 대상 팀 재선택 / `private` 전환 | FR-SRCH-010 AC-7 |
 | `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | FR-AUTH-001 |
 
 ### W-002 PR 상세
@@ -164,11 +167,16 @@
 
 | 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
 | --- | --- | --- | --- | --- |
-| `loading_initial` | 진입 | 목록 skeleton | - | - |
-| `ready` | 정상 | 내 검색 / 팀 공유 구분 목록 | - | FR-SRCH-010 |
-| `empty_no_saved` | 0건 | W-001에서 저장하는 방법 안내 | W-001 | FR-SRCH-010 |
-| `error_query_syntax` | 저장 질의 파싱 실패 | 실행 버튼 비활성 + 오류 구간 | 편집 | FR-SRCH-010 |
-| `error_limit_exceeded` | 100건 상한 | 삭제 후 재시도 안내 | 삭제 | FR-SRCH-010 |
+| `loading_initial` | 진입 | 두 목록 skeleton | - | - |
+| `loading_more` | 커서 페이지 요청 | 해당 목록 유지, 하단 진행 표시 | - | FR-SRCH-010 AC-5 |
+| `ready` | 정상 | 내 검색 / 팀 공유 구분 목록. 공유받은 항목에는 편집·삭제 액션을 그리지 않는다 | - | FR-SRCH-010 AC-2 |
+| `empty_no_saved` | 내 검색 0건 | W-001에서 저장하는 방법 안내 | W-001 | FR-SRCH-010 |
+| `empty_no_shared` | 팀 공유 0건 | "공유받은 검색이 없습니다" — 내 검색 목록과 구분해 비운다 | - | FR-SRCH-010 AC-2 |
+| `error_query_syntax` | 저장 질의 파싱 실패 (**항목 단위**) | 실행 버튼 비활성 + 오류 구간. 저장자에게는 편집 경로, 공유받은 사람에게는 "소유자가 질의를 수정해야 합니다" | 편집(저장자) | FR-SRCH-010 AC-6 |
+| `error_limit_exceeded` | 100건 상한 | 삭제 후 재시도 안내 | 삭제 | FR-SRCH-010 AC-4 |
+| `error_name_conflict` | 같은 이름의 내 검색이 이미 있음 | 이름 입력에 오류 표시 | 이름 변경 | FR-SRCH-010 AC-1 |
+| `error_team_invalid` | 더 이상 구성원이 아닌 팀을 대상으로 지정 | 대상 팀 선택기에 오류 표시 | 대상 팀 재선택 / `private` 전환 | FR-SRCH-010 AC-7 |
+| `error_cursor` | 이어 보기 거절 | 사유를 구분해 알리고(`CURSOR_QUERY_MISMATCH` / `CURSOR_INVALID`) 그 목록의 첫 페이지로 복귀. **재시도 루프 금지** | 자동 복귀 | FR-SRCH-010 AC-5 |
 | `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 
 ### W-009 저장소 개요

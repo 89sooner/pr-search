@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.5 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.6 | 갱신일: 2026-08-27
 
 ## 1. 목적
 
@@ -17,7 +17,7 @@
 | ENT-CORE-003 | Commit | 커밋 검색 문서 | `commit_sha`, `message`, `author`, `role`, `merge_seq`, `patch_id`, `changed_paths[]` | Elasticsearch | projection | FR-SRCH-002, FR-SRCH-004 |
 | ENT-CORE-004 | Team | 팀 정보와 집계 그룹 단위 | `team_id`, `slug`, `org_id`, `member_ids[]` | PostgreSQL | registry | FR-AUTH-002, FR-STAT-001 |
 | ENT-CORE-005 | User | 사용자와 접근 범위 | `user_id`, `login`, `email`, `roles[]`, `access_scope_version` | PostgreSQL | auth | FR-AUTH-001, FR-AUTH-003 |
-| ENT-CORE-006 | SavedSearch | 저장된 질의 | `saved_search_id`, `name`, `query`, `visibility`, `owner_user_id` | PostgreSQL | search | FR-SRCH-010 |
+| ENT-CORE-006 | SavedSearch | 저장된 질의 | `saved_search_id`, `name`, `query`, `visibility`, `owner_user_id`, `team_id`(대상 팀, `visibility='team'`일 때만) | PostgreSQL | search | FR-SRCH-010 |
 | ENT-CORE-007 | AuditRecord | 감사 기록 | `audit_id`, `user_id`, `action`, `target`, `query`, `result_code`, `correlation_id`, `occurred_at` | PostgreSQL | audit | FR-AUTH-004 |
 | ENT-SEQ-001 | MergeSequence | 시퀀스 서수-커밋 대응 | `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `commit_sha`, `pull_request_number` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-002 |
 | ENT-SEQ-002 | SequenceSpace | 시퀀스 공간 상태 | `repository_id`, `base_branch`, `seq_epoch`, `head_sha`, `head_seq`, `state`, `last_assigned_at` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-005 |
@@ -400,12 +400,34 @@ CREATE TABLE saved_search (
   name            TEXT        NOT NULL,
   query           TEXT        NOT NULL,
   visibility      TEXT        NOT NULL DEFAULT 'private',  -- private | team
-  team_id         BIGINT      REFERENCES team(team_id),
+  team_id         BIGINT      REFERENCES team(team_id),    -- 대상 팀. team일 때만 값이 있다
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_run_at     TIMESTAMPTZ,
-  UNIQUE (owner_user_id, name)
+  UNIQUE (owner_user_id, name),
+  CONSTRAINT saved_search_visibility_chk CHECK (visibility IN ('private', 'team')),
+  -- 마이그레이션 015 (CR-049, DEV-335). 공개 범위와 대상 팀은 함께 성립하거나 함께 없다.
+  CONSTRAINT saved_search_team_target_chk CHECK (
+    (visibility = 'private' AND team_id IS NULL)
+    OR (visibility = 'team' AND team_id IS NOT NULL)
+  )
 );
+
+-- 목록 인덱스 (마이그레이션 015, CR-049). 정렬 키와 같은 쌍을 담아 키셋 순회가 정렬 없이 끝난다.
+CREATE INDEX saved_search_owner_idx ON saved_search (owner_user_id, created_at DESC, saved_search_id DESC);
+CREATE INDEX saved_search_team_idx   ON saved_search (team_id, created_at DESC, saved_search_id DESC)
+  WHERE visibility = 'team';
 -- 사용자당 100건 상한 (FR-SRCH-010 AC-4)은 애플리케이션 계층에서 검사한다.
+--
+-- **`CHECK`로 강제하지 않는다** (CR-049, DEV-336). PostgreSQL의 `CHECK`는 다른 행을 볼 수 없어
+-- "이 사용자의 행이 몇 개인가"를 물을 수 없다. 그래서 상한은 트랜잭션 안에서 소유자 행을
+-- `SELECT ... FOR UPDATE`로 잠그고 세고 넣는 순서로 지킨다 — 잠그지 않으면 99건 상태의
+-- 동시 요청 둘이 각각 "99 < 100"을 읽고 101건을 만든다.
+--
+-- **대상 팀은 `team_id`로만 식별한다** (CR-049). `slug`은 `(org_id, slug)`에서만 유일하므로
+-- 여기에 비정규화하면 같은 이름의 다른 조직 팀으로 공유가 새고, 팀 개명이 이 표를 낡게 만든다.
+--
+-- **저장자가 대상 팀에서 이탈해도 행을 자동으로 지우거나 바꾸지 않는다** (AC-7). 외래 키는
+-- 팀의 존재만 보증하며 구성원 자격은 조회·수정 시점에 `team_member`로 판정한다.
 
 CREATE TABLE job (
   job_id      BIGSERIAL   PRIMARY KEY,

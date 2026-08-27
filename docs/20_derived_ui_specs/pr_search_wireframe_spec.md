@@ -1,6 +1,6 @@
 # PR Search 와이어프레임 사양서
 
-> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.5 | 갱신일: 2026-08-27
 
 ## 0. 문서 위치와 책임
 
@@ -75,7 +75,7 @@
 | `W-001-PAGER` 페이저 | 커서 기반 더 보기. 페이지 번호 UI를 두지 않는다(WP-016이 이미 세웠다). 이어 보기는 패싯을 다시 요청하지 않으며, 커서가 거절되면(`CURSOR_QUERY_MISMATCH` / `CURSOR_INVALID`) **사유를 구분해 알리고** 현재 조건의 첫 페이지로 되돌아간다 — 자동 재시도 루프를 만들지 않는다 (CR-043) | FR-SRCH-008 |
 | `W-001-AGG` 집계 탭 | 현재 질의 조건 위의 그룹 집계 결과 | FR-STAT-006 |
 | `W-001-AMBIG` 모호성 목록 | 옴니 해석 후보가 2건 이상일 때 표시하는 후보 카드 목록 | FR-SRCH-001, FR-SRCH-004 |
-| `W-001-ACTIONS` 액션 | 저장된 검색으로 저장, 결과 내보내기 | FR-SRCH-010, FR-SRCH-012 |
+| `W-001-ACTIONS` 액션 | 저장된 검색으로 저장, 결과 내보내기. **저장 대화상자는 현재 URL의 정본 질의 문자열을 그대로 담는다** — 질의를 다시 조립하지 않는다(구현 메모의 "질의 문자열이 URL의 단일 진실"과 같은 규율). 받는 것은 이름과 공개 범위이며, 공개 범위가 `team`이면 **대상 팀 하나를 선택기로 고른다**. 선택지는 현재 사용자가 구성원인 팀뿐이고 같은 slug이 여러 조직에 있으면 조직으로 구분해 표시하되 값은 언제나 `team_id`다. 소속 팀이 없으면 `team` 선택지를 비활성화하고 사유를 적는다. 정렬·패싯 선택·커서는 저장하지 않는다 (CR-049) | FR-SRCH-010, FR-SRCH-012 |
 
 ### 주요 컴포넌트
 
@@ -83,7 +83,7 @@
 
 ### 상태 정의
 
-`loading_initial`, `loading_more`, `ready`, `empty_no_result`, `empty_no_query`, `ambiguous`, `partial_failure_facets`, `error_query_syntax`, `error_search_timeout`, `error_prefix_too_short`, `no_permission`, `auth_expired`, `offline`
+`loading_initial`, `loading_more`, `ready`, `empty_no_result`, `empty_no_query`, `ambiguous`, `partial_failure_facets`, `error_query_syntax`, `error_search_timeout`, `error_prefix_too_short`, `error_save_limit`(저장 100건 초과), `error_save_name_conflict`(같은 이름의 내 검색이 이미 있다), `error_save_team_invalid`(더 이상 구성원이 아닌 팀을 대상으로 골랐다) — 셋 다 저장 대화상자 안에서 표시하고 목록 결과를 버리지 않는다 (CR-049), `no_permission`, `auth_expired`, `offline`
 
 ### 이벤트 정의
 
@@ -94,7 +94,7 @@
 | `search.sort_change` | 정렬 선택기 변경 | 커서 초기화 후 재조회 |
 | `search.load_more` | 더 보기 클릭 | 커서 기반 다음 페이지 병합 |
 | `search.candidate_select` | 모호성 후보 선택 | 해당 상세 화면 이동 |
-| `search.save` | 저장 클릭 | 저장된 검색 생성 다이얼로그 |
+| `search.save` | 저장 클릭 | 저장된 검색 생성 다이얼로그. 공개 범위를 `team`으로 고르면 공유 대상 목록을 1회 조회한다 (CR-049) |
 | `search.export` | 내보내기 클릭 | 동기 다운로드 또는 비동기 잡 생성 |
 | `search.aggregate` | 집계 탭 선택 | 동일 질의로 집계 조회 |
 
@@ -103,6 +103,7 @@
 - 인증 필요. 미인증 요청은 OIDC로 리다이렉트한다 (FR-AUTH-001).
 - 결과는 서버가 접근 범위를 강제 결합한 것만 표시한다. 클라이언트는 접근 범위 필터를 조작할 수 없다 (FR-AUTH-002).
 - 내보내기는 감사 기록 대상이며 실행 전 대상 건수를 확인 다이얼로그로 표시한다 (FR-SRCH-012, FR-AUTH-004).
+- 저장된 검색을 팀에 공유하는 것은 **그 검색의 이름과 질의 문자열을 대상 팀에 보이게 하는 일**이며, 질의에 적힌 저장소에 대한 접근 권한을 주지 않는다. 공유받은 사람이 그것을 실행해도 결과는 언제나 실행한 사람의 접근 범위로 계산된다 (FR-SRCH-010 AC-3, THR-012, CR-049).
 
 ### 구현 메모
 
@@ -536,8 +537,9 @@ PR 1건의 전체 맥락 — 커밋 집합, 시퀀스 위치, 선행·후행, �
 
 | 섹션 | 내용 | 관련 FR |
 | --- | --- | --- |
-| `W-008-LIST` 목록 | 내 검색 / 팀 공유 검색 구분, 이름·질의 요약·최종 실행 시각 | FR-SRCH-010 |
-| `W-008-EDIT` 편집 | 이름, 질의 문자열, 공개 범위(`private`/`team`) | FR-SRCH-010 |
+| `W-008-LIST` 목록 | **두 논리 목록을 나눈다** — "내 검색"(내가 소유한 것, `private`·`team` 모두)과 "팀 공유 검색"(남이 소유하고 내가 구성원인 팀에 공유한 것). 같은 항목이 양쪽에 나타나지 않는다. 각 행은 이름·질의 요약·공개 범위·대상 팀(해당할 때)·최종 실행 시각·질의 유효성을 보인다 (CR-049) | FR-SRCH-010 |
+| `W-008-PAGER` 페이저 | **커서 기반 더 보기.** 두 목록이 각자의 커서를 갖는다. 페이지 번호를 두지 않으며 커서가 거절되면 사유를 알리고 그 목록의 첫 페이지로 되돌아간다 — 자동 재시도 루프를 만들지 않는다 (ADR-010, CR-049) | FR-SRCH-010 |
+| `W-008-EDIT` 편집 | 이름, 질의 문자열, 공개 범위(`private`/`team`), 공개 범위가 `team`이면 대상 팀 선택기. **내가 소유한 검색에서만 열린다** (CR-049) | FR-SRCH-010 |
 
 ### 주요 컴포넌트
 
@@ -545,23 +547,29 @@ PR 1건의 전체 맥락 — 커밋 집합, 시퀀스 위치, 선행·후행, �
 
 ### 상태 정의
 
-`loading_initial`, `ready`, `empty_no_saved`, `error_query_syntax` (저장된 질의가 현재 문법에서 파싱 실패), `error_limit_exceeded` (100건 상한), `no_permission`, `auth_expired`, `offline`
+`loading_initial`, `loading_more`, `ready`, `empty_no_saved`(내 검색 0건), `empty_no_shared`(팀 공유 0건), `error_query_syntax` (저장된 질의가 현재 문법에서 파싱 실패 — **항목 단위 상태다**), `error_limit_exceeded` (100건 상한), `error_name_conflict`(같은 이름의 내 검색이 이미 있다), `error_team_invalid`(더 이상 구성원이 아닌 팀을 대상으로 골랐다), `error_cursor`(이어 보기 거절 — `CURSOR_QUERY_MISMATCH`와 `CURSOR_INVALID`를 사유로 구분한다), `no_permission`, `auth_expired`, `offline` (CR-049)
 
 ### 이벤트 정의
 
 | 이벤트 | 트리거 | 결과 |
 | --- | --- | --- |
-| `saved.list` | 화면 진입 | 목록 조회 |
-| `saved.run` | 실행 클릭 | W-001로 이동 |
-| `saved.create` / `saved.update` / `saved.delete` | 편집 액션 | 저장·갱신·삭제 |
+| `saved.list` | 화면 진입 | 두 목록의 첫 페이지 조회 |
+| `saved.load_more` | 더 보기 클릭 | 해당 목록의 커서로 다음 페이지 병합 (CR-049) |
+| `saved.run` | 실행 클릭 | 실행 권한·질의 유효성을 서버가 다시 확인하고, 통과하면 최종 실행 시각을 갱신한 뒤 W-001로 이동 (CR-049) |
+| `saved.share_targets` | 편집에서 `team` 선택 | 내가 구성원인 팀 목록 조회 (CR-049) |
+| `saved.create` / `saved.update` / `saved.delete` | 편집 액션 | 저장·갱신·삭제. **삭제는 확인 대화상자를 거친다** (CR-049) |
 
 ### 권한/정책
 
 - 저장된 검색 실행 시 실행 사용자의 접근 범위가 적용된다. 저장자의 권한을 승계하지 않는다 (FR-SRCH-010 AC-3).
+- **공유는 읽기·실행 권한이지 소유권이 아니다** (CR-049). 대상 팀의 구성원은 조회와 실행만 하며, 이름 변경·질의 수정·공개 범위 변경·삭제는 저장자만 수행한다. 공유받은 항목에는 그 액션을 그리지 않고, **화면이 그리지 않는 것에 의존하지 않는다** — 서버가 같은 규칙을 다시 강제한다.
+- 목록·상세에서 볼 수 없는 항목과 존재하지 않는 항목을 구분해 알리지 않는다 (`NOT_FOUND` 하나로 답한다). 구분하면 남의 저장 검색이 있다는 사실 자체가 새어 나간다 (CR-049).
 
 ### 구현 메모
 
-- 파싱 실패 질의는 실행 버튼을 비활성화하고 오류 구간을 표시한 채 편집으로 유도한다.
+- 파싱 실패 질의는 실행 버튼을 비활성화하고 오류 구간을 표시한 채 편집으로 유도한다. **편집 경로는 저장자에게만 제시한다** — 공유받은 사람에게는 저장자가 고쳐야 한다는 사실을 알린다 (CR-049).
+- 유효성 판정은 서버가 한다. 화면은 `@prs/query`로 입력을 미리 검증할 수 있으나 그것이 판정의 정본이 아니다 — 저장·수정·실행 모두 서버가 현재 문법으로 다시 검증한다 (CR-049).
+- 무효가 된 질의를 화면이 자동으로 고치지 않는다. 고치는 것은 저장자의 뜻이다 (FR-SRCH-010 AC-6, CR-049).
 
 ## W-009 저장소 개요
 
