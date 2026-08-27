@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Documentation-first product planning repository for PR Search. This repo holds governance and change-control rules, PRD/SRS requirements, a domain glossary, traceability, derived UI specifications, technical architecture, delivery planning, work packages, an implementation traceability ledger, QA gates, and AI-agent execution briefs.
+Documentation-first product planning repository for PR Search, which also holds the implementation code derived from those documents. This repo holds governance and change-control rules, PRD/SRS requirements, a domain glossary, traceability, derived UI specifications, technical architecture, delivery planning, work packages, an implementation traceability ledger, QA gates, and AI-agent execution briefs.
 
 ## What the product is
 
@@ -15,7 +15,12 @@ PR Search collects pull requests and commits from an internal GitHub Enterprise 
 
 Stack: TypeScript everywhere, PostgreSQL as the system of record, Elasticsearch as a rebuildable derived search view, and the internal `design-system` (Conductor) for UI. The settled decisions live in ADR-001 through ADR-012; implementation agents follow them rather than re-deciding.
 
-Current state: **documentation only.** No code yet. `srs_final.md` is `review` and needs user approval to become `baseline` before implementation starts.
+This file states rules, not status. Do not read current state here — any snapshot written into an entry point goes stale the moment a work package lands (DEV-324, DEV-325). Read status from the source of truth at the current `HEAD`:
+
+- SRS status and version — the status header of `docs/10_requirements/srs_final.md`.
+- What is done and what is next — the status table in `docs/40_delivery/pr_search_work_packages.md`.
+- Progress, deviations (`DEV-###`), and verification records — `docs/40_delivery/pr_search_implementation_traceability.md` (chapter 3 is the single canonical progress table).
+- Change requests and release gates — `docs/00_governance/change_control.md`.
 
 ## Key Files
 
