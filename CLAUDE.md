@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Repository Type
 
-This repository is a documentation-first SRS/PRD product planning environment for PR Search. It supports full product implementation planning across product, UX, frontend, backend, API, data, infrastructure, security, operations, QA, delivery, and post-handoff implementation tracking.
+This repository is a documentation-first SRS/PRD product planning environment for PR Search, and it also holds the implementation code derived from those documents. Planning covers product, UX, frontend, backend, API, data, infrastructure, security, operations, QA, delivery, and post-handoff implementation tracking. The document hierarchy stays authoritative in both directions: code implements approved scope, it never redefines it.
 
 ## Product Context
 
@@ -24,7 +24,13 @@ Three invariants matter more than anything else when reviewing or writing docs h
 2. Every Elasticsearch read passes through the mandatory access-scope filter; the type system enforces it (ADR-008).
 3. Elasticsearch is rebuildable from PostgreSQL alone. Nothing may exist only in the search index (ADR-004).
 
-Current state: documentation only, no code. `docs/10_requirements/srs_final.md` is `review`; it needs user approval to reach `baseline` before implementation starts.
+Do not read current state out of this file. This file states rules, not status — any snapshot written here goes stale the moment a work package lands. Read status from the source of truth at the current `HEAD`:
+
+- SRS status and version — the status header of `docs/10_requirements/srs_final.md`.
+- What is done and what is next — the status table in `docs/40_delivery/pr_search_work_packages.md`.
+- Progress, deviations (`DEV-###`), and verification records — `docs/40_delivery/pr_search_implementation_traceability.md` (chapter 3 is the single canonical progress table).
+- Change requests and release gates — `docs/00_governance/change_control.md`.
+- Next-free IDs — measure them, never guess: `grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1`.
 
 ## Core Working Principle
 
@@ -96,7 +102,7 @@ Planning deliverables carry `> 상태: draft | 버전: vX.Y | 갱신일: YYYY-MM
 
 ## Verification
 
-Since this may be a documentation-only repository, verification is manual and link-based unless code tooling exists.
+Document verification is manual and link-based:
 
 ```bash
 rg "FR-[A-Z0-9]+-[0-9]+" docs/
@@ -105,9 +111,22 @@ rg "\b(API|ENT|JOB|EVT)-[A-Z0-9]+-[0-9]{3}|\b(REL|WP|CR|DEV|OD|FLOW)-[0-9]{3}" d
 rg "TODO|TBD|미정|결정 필요" docs/
 ```
 
-## Application Code Guidelines
+Code verification runs through the workspace scripts. Node 22 is required (`.nvmrc`); the shell default may be older:
 
-Apply this section once application source code exists.
+```bash
+pnpm typecheck
+pnpm lint                    # re-run after the last file is written
+pnpm run lint:deps
+pnpm run test                # unit
+pnpm run test:integration    # needs live PostgreSQL, Redis, Elasticsearch
+pnpm run test:regression
+pnpm --filter @prs/web run build   # required before test:e2e when apps/web changed
+pnpm run test:e2e
+pnpm run test:a11y
+pnpm build
+```
+
+## Application Code Guidelines
 
 - Code implements the approved scope from `srs_final.md`; candidate-only ideas in `feature.md` are not implementable.
 - Work through `docs/40_delivery/pr_search_work_packages.md` one WP at a time; respect each WP's 제외 list.
