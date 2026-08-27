@@ -14,20 +14,33 @@
 import {
   applyMandatoryScopeFilter,
   assertNoShardFailures,
+  buildHighlight,
   buildQuery,
   buildSort,
+  closePointInTime,
   collectNames,
-  search,
+  openPointInTime,
+  searchWithPit,
+  toPlainHighlight,
   type AccessScope,
+  type HighlightMap,
   type NameResolution,
   type SearchTarget,
   type SortKey,
   type SortOrder,
   type UnresolvedName,
 } from '@prs/es';
-import type { QueryAst } from '@prs/query';
+import { serializeQuery, type QueryAst } from '@prs/query';
 import type { Client } from '@elastic/elasticsearch';
 import type { estypes } from '@elastic/elasticsearch';
+import type { CursorSigner } from '../cursor/envelope.js';
+import { computeFingerprint, decodeSearchCursor, encodeSearchCursor } from './cursor.js';
+import {
+  SEARCH_FACET_AXES,
+  computeFacets,
+  type FacetOutcome,
+  type TeamSlugResolver,
+} from './facets.js';
 import { computeRelaxationHints, NO_RELAXATION, type RelaxationResult } from './relaxation.js';
 
 /** W-001의 결과 표가 PR과 커밋을 한 목록에 보여 준다 (CR-016, DEV-054). */
@@ -57,6 +70,10 @@ export function clampSize(raw: unknown): number {
 export function parseOrder(raw: unknown): SortOrder {
   return raw === 'asc' ? 'asc' : 'desc';
 }
+
+/** 문서에서 목록에 필요한 만큼만 꺼낸 모양. */
+/** ES가 돌려주는 강조 원문 — 표식이 박힌 조각들. 경계를 넘기 전에 걷어 낸다. */
+type RawHighlight = Readonly<Record<string, readonly string[]>>;
 
 /** 문서에서 목록에 필요한 만큼만 꺼낸 모양. */
 export interface SearchHitSource {
@@ -96,6 +113,14 @@ export interface SearchItem {
   readonly deletions: number | null;
   readonly labels: readonly string[];
   readonly link_summary: Readonly<Record<string, unknown>> | null;
+  /**
+   * 강조 조각 (FR-SRCH-011 AC-5).
+   *
+   * **평문과 구간이다** — 마크업은 API 경계를 넘지 않는다 (THR-018, DEV-282).
+   * 일치가 없으면 키 자체가 없다: 빈 객체는 "강조가 없다"가 아니라 "강조를
+   * 계산했는데 아무것도 없었다"로 읽힌다.
+   */
+  readonly highlight?: HighlightMap;
   readonly url: string | null;
 }
 
@@ -106,6 +131,10 @@ export interface SearchResult {
   readonly relaxation: RelaxationResult;
   /** 레지스트리에서 찾지 못한 `org`·`team` 이름 (CR-016, DEV-052). */
   readonly unresolved: readonly UnresolvedName[];
+  /** 다음 페이지 커서. **마지막 페이지에서 `null`이다** (FR-SRCH-008 AC-1). */
+  readonly nextCursor: string | null;
+  /** 패싯. 요청하지 않았으면 `null` — 세 키를 응답에서 통째로 뺀다. */
+  readonly facets: FacetOutcome | null;
 }
 
 /** 인덱스 이름으로 문서 유형을 가른다. 별칭이 아니라 실제 인덱스가 온다. */
@@ -117,8 +146,10 @@ function toItem(hit: estypes.SearchHit<SearchHitSource>): SearchItem {
   const source = hit._source ?? {};
   const kind = kindOf(hit._index);
   const repository = source.repository ?? null;
+  const highlight = toPlainHighlight(hit.highlight as RawHighlight | undefined);
 
   return {
+    ...(highlight === null ? {} : { highlight }),
     kind,
     repository,
     ...(source.pr_number === undefined ? {} : { pr_number: source.pr_number }),
@@ -169,46 +200,159 @@ export interface SearchDeps {
   readonly target?: SearchTarget;
   /** ES 조회 마감 시간. 넘기면 504 `SEARCH_TIMEOUT` (백엔드 아키텍처 8장). */
   readonly timeoutMs?: number;
+  /**
+   * 커서 서명 (WP-032).
+   *
+   * **선택이 아니다.** 없으면 `runSearch`가 던진다 — 서명 없는 커서를 발급하는
+   * 대신 배포가 잘못됐음을 말한다 (fail closed). 기동 시점의 방어는
+   * `resolveSearchApiConfig`가 하고 여기는 그 값이 실제로 도달했는지를 본다.
+   */
+  readonly cursorSigner: CursorSigner;
+  /** 팀 ID → slug 일괄 해석. 없으면 팀 패싯이 숫자로 나간다 (DEV-281). */
+  readonly resolveTeamSlugs?: TeamSlugResolver;
+  /** 패싯 예산. 시험이 `budget_omitted`를 재현할 때만 넘긴다. */
+  readonly facetBudgetMs?: number;
+  readonly now?: () => number;
 }
 
 export interface SearchRequest {
   readonly ast: QueryAst;
   readonly scope: AccessScope;
+  /**
+   * `app_user.access_scope_version` (FR-AUTH-003).
+   *
+   * 지문의 재료다 — 권한이 회수되면 진행 중이던 페이징이 죽는 것이 옳다.
+   * 같은 요청 안에서 접근 범위를 두 번 산출하지 않으려고 라우트가 한 번에
+   * 얻은 값을 `scope`와 함께 넘긴다 (CR-043, DEV-272).
+   */
+  readonly scopeVersion: number;
   readonly sortKey: SortKey;
   readonly order: SortOrder;
   readonly size: number;
+  /** 이어 보기 커서. 첫 페이지면 `null`. */
+  readonly cursor: string | null;
+  /** 패싯을 함께 셀 것인가 (`facets=true`). */
+  readonly facets: boolean;
 }
 
 /**
- * 목록을 조회한다.
+ * 목록을 조회한다 (WP-013 + WP-032).
+ *
+ * ## 왜 PIT을 늘 여는가
+ *
+ * `search_after`는 "정렬 값이 이 커서보다 뒤"라는 조건이라, 정렬 값이 페이지
+ * **사이에** 움직이면 항목이 두 번 나오거나 영영 나오지 않는다. 첫 페이지를
+ * 만들 때는 사용자가 이어 볼지 알 수 없으므로, 그때 뷰를 고정해 두지 않으면
+ * 커서를 발급할 자격이 없다 (ADR-010 Amendment).
+ *
+ * 대가는 조회마다 PIT 왕복 하나다. 마지막 페이지에서 best-effort로 닫고,
+ * 닫지 못해도 `keep_alive`(5분)가 지나면 스스로 사라진다.
+ *
+ * ## 한 건 더 읽어 마지막 페이지를 **안다**
+ *
+ * `size`만 읽으면 "더 있는가"를 알 수 없어, 결과가 정확히 `size`의 배수일 때
+ * 빈 페이지를 한 번 더 내주게 된다. AC-1이 "마지막 페이지에서 `next_cursor`가
+ * null"을 요구하므로 한 건을 더 읽어 판정하고 그 한 건은 버린다.
  *
  * @throws {AccessScopeUnavailableError} 접근 범위가 비어 있으면 (기본 거부).
  * @throws {PartialSearchError} 샤드가 하나라도 실패하면. 부분 결과를 내보내지
  * 않는다 — 한 인덱스가 통째로 빠진 결과가 정상처럼 보이기 때문이다.
+ * @throws {CursorInvalidError} 커서를 쓸 수 없으면.
+ * @throws {CursorQueryMismatchError} 커서가 현재 조건과 다르면.
  */
 export async function runSearch(request: SearchRequest, deps: SearchDeps): Promise<SearchResult> {
   const target = deps.target ?? SEARCH_TARGET;
+  const now = (deps.now ?? Date.now)();
   const resolution = await deps.resolveNames(collectNames(request.ast));
   const built = buildQuery(request.ast, resolution);
 
   // 4. 강제 필터 결합. 우회 경로가 없다 (ADR-008).
   const scoped = applyMandatoryScopeFilter(built.query, request.scope);
 
-  const response = await search<SearchHitSource>(deps.es, target, scoped, {
-    size: request.size,
+  /*
+   * 지문은 **한 번만** 만든다. 커서 검증과 다음 커서 발급이 같은 값을 쓴다 —
+   * 두 번 계산하면 그 사이에 재료가 달라질 여지가 생긴다.
+   */
+  const fingerprint = computeFingerprint({
+    query: serializeQuery(request.ast),
+    sortKey: request.sortKey,
+    order: request.order,
+    scope: request.scope,
+    scopeVersion: request.scopeVersion,
+  });
+
+  const resumed =
+    request.cursor === null
+      ? null
+      : decodeSearchCursor(request.cursor, fingerprint, deps.cursorSigner, now);
+
+  const pitId = resumed?.pitId ?? (await openPointInTime(deps.es, target));
+
+  const hasText = request.ast.text !== null && request.ast.text !== '';
+  const response = await searchWithPit<SearchHitSource>(deps.es, pitId, scoped, {
+    // 한 건을 더 읽어 "다음이 있는가"를 판정한다. 그 한 건은 목록에 실리지 않는다.
+    size: request.size + 1,
     sort: buildSort(request.sortKey, request.order),
     track_total_hits: TRACK_TOTAL_HITS,
+    ...(resumed === null ? {} : { search_after: [...resumed.searchAfter] }),
+    ...(hasText ? { highlight: buildHighlight() } : {}),
     ...(deps.timeoutMs === undefined ? {} : { timeout: `${String(deps.timeoutMs)}ms` }),
   });
 
   // 부분 결과를 내보내지 않는다 (CR-016, DEV-054).
   assertNoShardFailures(response);
 
+  /*
+   * **응답이 준 PIT을 다음 요청에 쓴다** (PR #57 리뷰 P1).
+   *
+   * Elasticsearch는 검색 응답에 `pit_id`를 실어 주며 그것이 **바뀔 수 있다** —
+   * 계약이 "다음 요청에는 응답의 값을 쓰라"고 정한다. 처음 받은 값을 계속 쓰면
+   * 성공한 페이지 뒤에 이어 보기가 실패할 수 있고, 마지막 페이지의 정리도
+   * 이미 지나간 식별자를 닫는다.
+   *
+   * 지금 이 버전에서는 두 값이 같다 — 실측했다. 그러나 그것은 **우연이지
+   * 계약이 아니며**, 우연에 기대는 코드는 판올림 한 번에 조용히 깨진다.
+   */
+  const livePitId = response.pit_id ?? pitId;
+
   const total = response.hits.total;
   const value = typeof total === 'number' ? total : (total?.value ?? 0);
   const relation = typeof total === 'number' ? 'eq' : (total?.relation ?? 'eq');
 
-  const items = response.hits.hits.map(toItem);
+  const hits = response.hits.hits;
+  const hasMore = hits.length > request.size;
+  const page = hasMore ? hits.slice(0, request.size) : hits;
+  const items = page.map(toItem);
+
+  /*
+   * 마지막 페이지의 정렬 값이 다음 커서의 재료다.
+   *
+   * `hasMore`가 거짓이면 커서를 발급하지 않고 PIT을 닫는다 — 발급하지 않은
+   * 커서는 아무도 쓸 수 없으므로 그 뷰를 붙잡고 있을 이유가 없다.
+   */
+  const lastSort = page[page.length - 1]?.sort;
+  const nextCursor =
+    hasMore && lastSort !== undefined && lastSort.length > 0
+      ? encodeSearchCursor({ pitId: livePitId, searchAfter: lastSort }, fingerprint, deps.cursorSigner, now)
+      : null;
+
+  if (nextCursor === null) await closePointInTime(deps.es, livePitId);
+
+  /*
+   * 패싯은 **별도 요청**이고 던지지 않는다 (FR-SRCH-009 예외 처리).
+   *
+   * 목록은 이미 만들어졌다. 분포 하나 때문에 그것을 버리지 않는다.
+   */
+  const facets = request.facets
+    ? await computeFacets(
+        { target, query: scoped, axes: SEARCH_FACET_AXES },
+        {
+          es: deps.es,
+          ...(deps.resolveTeamSlugs === undefined ? {} : { resolveTeamSlugs: deps.resolveTeamSlugs }),
+          ...(deps.facetBudgetMs === undefined ? {} : { budgetMs: deps.facetBudgetMs }),
+        },
+      )
+    : null;
 
   // 0건일 때만 완화 후보를 센다 (FR-SRCH-006 AC-3).
   const relaxation =
@@ -222,5 +366,7 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
     items,
     relaxation,
     unresolved: built.unresolved,
+    nextCursor,
+    facets,
   };
 }

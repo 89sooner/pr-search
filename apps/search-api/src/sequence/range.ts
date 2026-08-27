@@ -29,16 +29,31 @@ import { mergeSequenceRepo } from '@prs/db';
 import type { MergeSequenceRow, Pool } from '@prs/db';
 import {
   applyMandatoryScopeFilter,
+  assertNoShardFailures,
   buildQuery,
   collectNames,
   multiSearch,
+  search,
   type AccessScope,
   type NameResolution,
   type UnresolvedName,
 } from '@prs/es';
-import type { QueryAst } from '@prs/query';
+import { serializeQuery, type QueryAst } from '@prs/query';
 import type { Client } from '@elastic/elasticsearch';
 import type { estypes } from '@elastic/elasticsearch';
+import type { CursorSigner } from '../cursor/envelope.js';
+import {
+  RANGE_FACET_AXES,
+  computeFacets,
+  type FacetOutcome,
+  type TeamSlugResolver,
+} from '../search/facets.js';
+import {
+  computeRangeFingerprint,
+  decodeRangeCursor,
+  encodeRangeCursor,
+  type RangeCursorAnchor,
+} from './range-cursor.js';
 import type { ResolvedSpace } from './space.js';
 
 /** FR-SEQ-002 AC-4의 상한. 이 수를 넘으면 조회하지 않고 400이다. */
@@ -50,6 +65,19 @@ export const MAX_RANGE_SIZE = 200;
 
 /** 변경 경로 상위 N (FR-SEQ-002 AC-2). */
 export const TOP_PATHS = 20;
+
+/**
+ * 정본 구간을 읽는 한 번의 크기 (WP-032, CR-043).
+ *
+ * **구간 전체를 메모리에 올리지 않는다.** 구간은 5만 건까지 허용되므로 한 번에
+ * 읽으면 응답 하나가 그 전부를 든다. 반대로 너무 작으면 일치가 드문 구간에서
+ * 왕복이 폭증한다 — 300이면 5만 건 최악에도 167회이고, 그 최악은 "일치가
+ * 거의 없는 5만 건 구간을 끝까지 훑는" 경우다.
+ *
+ * 상한이 이미 5만이므로 전체 스캔의 최악은 **유계**다. 일치가 적다는 이유로
+ * 순회를 중간에서 끝내지 않는다 (FR-SEQ-002 AC-6).
+ */
+export const RANGE_SCAN_CHUNK = 300;
 
 export function clampRangeSize(raw: unknown): number {
   if (typeof raw !== 'string' || raw.trim() === '') return DEFAULT_RANGE_SIZE;
@@ -105,6 +133,10 @@ export interface RangeResult {
   readonly items: readonly RangeItem[];
   readonly items_missing_in_index: number;
   readonly unresolved: readonly UnresolvedName[];
+  /** 다음 페이지 커서. 구간 끝까지 검사했으면 `null`이다 (FR-SEQ-002 AC-6). */
+  readonly nextCursor: string | null;
+  /** 패싯. 요청하지 않았으면 `null`. */
+  readonly facets: FacetOutcome | null;
 }
 
 export interface RangeRequest {
@@ -123,6 +155,12 @@ export interface RangeRequest {
    * 없다.
    */
   readonly rangeTotal: number;
+  /** `app_user.access_scope_version`. 커서 지문의 재료다 (WP-032). */
+  readonly scopeVersion: number;
+  /** 이어 보기 커서. 첫 페이지면 `null`. */
+  readonly cursor: string | null;
+  /** 패싯을 함께 셀 것인가. */
+  readonly facets: boolean;
 }
 
 export interface RangeDeps {
@@ -133,6 +171,14 @@ export interface RangeDeps {
     readonly teams: readonly string[];
   }) => Promise<NameResolution>;
   readonly timeoutMs?: number;
+  /** 커서 서명 (WP-032). 없으면 커서를 발급하지 않는 것이 아니라 던진다. */
+  readonly cursorSigner: CursorSigner;
+  /** 팀 ID → slug 일괄 해석 (DEV-281). */
+  readonly resolveTeamSlugs?: TeamSlugResolver;
+  readonly facetBudgetMs?: number;
+  /** 정본 스캔 chunk 크기. 시험이 DEV-287의 반례를 재현할 때 줄인다. */
+  readonly chunkSize?: number;
+  readonly now?: () => number;
 }
 
 /** 구간 크기 검증의 결과. 조회를 시작하기 전에 끝난다. */
@@ -252,51 +298,178 @@ function buildUrl(space: ResolvedSpace, row: MergeSequenceRow): string | null {
     : `/pr/${owner}/${name}/${String(row.pull_request_number)}`;
 }
 
+/** 정본에서 읽은 페이지와, 그 페이지를 만들며 알아낸 것. */
+interface ScannedPage {
+  readonly rows: readonly MergeSequenceRow[];
+  readonly sources: ReadonlyMap<number, PullRequestSource>;
+  /**
+   * 완결 서수 — **그 이하에 아직 내주지 않은 일치가 없는 지점** (AC-7).
+   *
+   * 구간을 끝까지 검사했으면 `null`이다. 그때는 다음 페이지가 없다.
+   */
+  readonly completeSeq: number | null;
+}
+
+/**
+ * 정본 구간을 **chunk로 훑으며** 페이지를 만든다 (CR-043 DEV-270, CR-044 DEV-287).
+ *
+ * ## 순서를 뒤집은 이유
+ *
+ * 예전 구현은 정본에서 첫 `size` 행을 읽고 **그 안에서만** `q`를 판정했다.
+ * 요약은 구간 **전체**를 세므로 두 수가 같은 응답 안에서 어긋났고, 커서가 없어
+ * 사용자는 잘린 쪽 항목에 **도달할 수 없었다.**
+ *
+ * > 실측: 구간 1~60, `size=10`, 일치가 서수 51 하나뿐인 `q` →
+ * > `summary.pull_request_count: 1`, `items: []`, `next_cursor: null`.
+ *
+ * 그래서 "먼저 자르고 판정한다"를 "판정하며 채운다"로 바꾼다. 페이지가 찰
+ * 때까지, 또는 구간이 끝날 때까지 chunk를 읽는다.
+ *
+ * ## 완결 서수를 정하는 자리가 여기다
+ *
+ * 페이지가 차서 멈췄으면 **실제로 실은 마지막 일치**의 서수를 봉인한다. 그
+ * 위에는 아직 안 내준 일치가 있을 수 있기 때문이다. chunk 끝까지 밀면 같은
+ * chunk의 남은 일치가 사라진다 — 고치려던 결함이 반대 방향으로 재현된다.
+ */
+async function scanPage(
+  request: RangeRequest,
+  deps: RangeDeps,
+  extra: estypes.QueryDslQueryContainer | null,
+  startAfter: number,
+  scoped: (extraClause: estypes.QueryDslQueryContainer | null, numbers: readonly number[]) => ScopedRequest,
+): Promise<ScannedPage> {
+  const { space } = request;
+  const chunkSize = deps.chunkSize ?? RANGE_SCAN_CHUNK;
+  const timeout = deps.timeoutMs === undefined ? {} : { timeout: `${String(deps.timeoutMs)}ms` };
+  const routing = String(space.repositoryId);
+
+  const rows: MergeSequenceRow[] = [];
+  const sources = new Map<number, PullRequestSource>();
+
+  let scannedSeq = startAfter;
+  /** 목록에 실제로 실은 마지막 일치의 서수. */
+  let returnedSeq: number | null = null;
+  /** 페이지가 찬 뒤에 **또 다른 일치**를 봤는가. 봤으면 다음 페이지가 있다. */
+  let sawMoreAfterFull = false;
+  /** 정본 구간을 끝까지 읽었는가. */
+  let exhausted = false;
+
+  while (rows.length <= request.size) {
+    const chunk = await mergeSequenceRepo.findRangePage(
+      deps.pool,
+      space.repositoryId,
+      space.baseBranch,
+      space.seqEpoch,
+      scannedSeq,
+      request.toInclusive,
+      chunkSize,
+    );
+    if (chunk.length === 0) {
+      exhausted = true;
+      break;
+    }
+
+    /*
+     * chunk 하나를 한 왕복으로 판정한다.
+     *
+     * `q`가 없으면 판정할 것이 없으므로 부르지 않는다 — 표시 필드는 페이지가
+     * 정해진 뒤에 한 번에 가져온다. `q`가 있으면 판정과 표시를 **같은 응답**에서
+     * 얻는다: 어차피 매치된 문서를 읽는 참이다.
+     */
+    if (extra !== null) {
+      const numbers = [
+        ...new Set(
+          chunk.filter((row) => row.pull_request_number !== null).map((row) => row.pull_request_number!),
+        ),
+      ];
+      if (numbers.length > 0) {
+        const response = await search<PullRequestSource>(
+          deps.es,
+          'prs-pull-requests',
+          scoped(extra, numbers),
+          {
+            size: numbers.length,
+            routing,
+            _source: PAGE_SOURCE_FIELDS,
+            ...timeout,
+          },
+        );
+        assertNoShardFailures(response);
+        for (const hit of response.hits.hits) {
+          const source = hit._source;
+          if (source?.pr_number !== undefined) sources.set(source.pr_number, source);
+        }
+      }
+    }
+
+    for (const row of chunk) {
+      const matched =
+        extra === null || (row.pull_request_number !== null && sources.has(row.pull_request_number));
+
+      if (matched) {
+        if (rows.length >= request.size) {
+          /*
+           * 페이지가 찼는데 일치가 또 나왔다 — 다음 페이지가 있다.
+           *
+           * **이 행을 소비하지 않고 멈춘다.** `scannedSeq`도 올리지 않는다:
+           * 커서는 `returnedSeq`를 봉인하므로 다음 페이지가 이 행부터 다시
+           * 판정한다.
+           */
+          sawMoreAfterFull = true;
+          break;
+        }
+        rows.push(row);
+        returnedSeq = Number(row.merge_seq);
+      }
+      scannedSeq = Number(row.merge_seq);
+    }
+
+    if (sawMoreAfterFull) break;
+    if (chunk.length < chunkSize) {
+      exhausted = true;
+      break;
+    }
+  }
+
+  /*
+   * 완결 서수 — 규칙은 하나이고 결과가 둘로 갈린다 (AC-7).
+   *
+   *   - 끝까지 검사했다 → 다음 페이지가 없다 (`null`)
+   *   - 페이지가 차서 멈췄다 → 실제로 실은 마지막 일치의 서수
+   *
+   * 두 번째에서 `scannedSeq`(마지막으로 **검사한** 서수)를 쓰면 같은 chunk의
+   * 남은 일치가 영영 사라진다 (DEV-287).
+   */
+  const completeSeq = exhausted || !sawMoreAfterFull ? null : returnedSeq;
+
+  return { rows, sources, completeSeq };
+}
+
+/** 색인에서 꺼내는 표시용 필드. 정본이 주지 않는 것만 담는다. */
+const PAGE_SOURCE_FIELDS: string[] = [
+  'pr_number',
+  'title',
+  'author',
+  'merged_at',
+  'changed_files_count',
+  'additions',
+  'deletions',
+];
+
 /**
  * 반개구간 `(from, to]`를 조회한다.
  *
  * 순서는 바꿀 수 없다: 정본에서 멤버십을 읽고 → 색인에서 채운다. 반대로 하면
  * 색인이 목록의 길이를 정하게 된다.
+ *
+ * @throws {CursorInvalidError} 커서를 쓸 수 없으면.
+ * @throws {CursorQueryMismatchError} 공간·에폭·경계·지문이 다르면.
  */
 export async function runRange(request: RangeRequest, deps: RangeDeps): Promise<RangeResult> {
   const { space, scope } = request;
+  const now = (deps.now ?? Date.now)();
 
-  /*
-   * 1. 정본. 이 둘이 구간의 정의다.
-   *
-   * **행 전체를 올리지 않는다.** 구간은 5만 건까지 허용되는데 응답에 실리는 것은
-   * `size`(최대 200)뿐이다. 필요한 것은 보여 줄 페이지와, 요약 질의에 실을 PR
-   * 번호 목록 둘이다.
-   */
-  /*
-   * `size: 0`은 **요약만** 필요한 호출이다 (API-SEQ-003의 릴리스 상세, CR-030
-   * DEV-156). 0건을 요청하는 왕복도 돌지 않는다 — 안 그릴 목록을 위해 PostgreSQL을
-   * 부르지 않는다. 요약 질의는 그대로 돈다: 요약이 그 호출의 목적이다.
-   */
-  const emptyPage: MergeSequenceRow[] = [];
-  const [page, prNumbers] = await Promise.all([
-    request.size === 0
-      ? emptyPage
-      : mergeSequenceRepo.findRangePage(
-          deps.pool,
-          space.repositoryId,
-          space.baseBranch,
-          space.seqEpoch,
-          request.fromExclusive,
-          request.toInclusive,
-          request.size,
-        ),
-    mergeSequenceRepo.listPullRequestNumbersInRange(
-      deps.pool,
-      space.repositoryId,
-      space.baseBranch,
-      space.seqEpoch,
-      request.fromExclusive,
-      request.toInclusive,
-    ),
-  ]);
-
-  // 2. `q`를 ES 절로 옮긴다. 없으면 `null` — `match_all`을 끼워 넣지 않는다.
+  // 1. `q`를 ES 절로 옮긴다. 없으면 `null` — `match_all`을 끼워 넣지 않는다.
   let extra: estypes.QueryDslQueryContainer | null = null;
   let unresolved: readonly UnresolvedName[] = [];
   if (request.ast !== null) {
@@ -306,31 +479,89 @@ export async function runRange(request: RangeRequest, deps: RangeDeps): Promise<
     unresolved = built.unresolved;
   }
 
-  if (prNumbers.length === 0) {
-    /*
-     * 구간에 PR이 하나도 없다 — 직접 푸시만 있는 구간이거나 빈 구간이다.
-     * `terms`에 빈 목록을 넣으면 아무것도 매치하지 않지만, 그 왕복은 답을
-     * 바꾸지 않으므로 하지 않는다.
-     */
-    return {
-      // `q`가 있으면 판정할 PR이 하나도 없으므로 0건이다 (DEV-136).
-      summary: { ...EMPTY_SUMMARY_AGGS, commit_count: extra === null ? request.rangeTotal : 0 },
-      items: extra === null ? page.map((row) => toUnindexedItem(space, row)) : [],
-      // PR이 없는 항목은 커밋 문서로만 존재하고, 그 문서에는 표시할 값이 없다.
-      items_missing_in_index: 0,
-      unresolved,
-    };
-  }
+  /*
+   * 2. 커서를 먼저 연다 — **조회를 시작하기 전에.**
+   *
+   * 에폭·경계·지문이 어긋난 커서로 조회를 돌리면 그 왕복이 통째로 버려지고,
+   * 더 나쁘게는 옛 공간의 서수부터 새 공간을 훑게 된다.
+   */
+  const anchor: RangeCursorAnchor = {
+    repositoryId: space.repositoryId,
+    baseBranch: space.baseBranch,
+    seqEpoch: space.seqEpoch,
+    fromExclusive: request.fromExclusive,
+    toInclusive: request.toInclusive,
+  };
+  const fingerprint = computeRangeFingerprint({
+    query: request.ast === null ? '' : serializeQuery(request.ast),
+    scope,
+    scopeVersion: request.scopeVersion,
+  });
+  const resumed =
+    request.cursor === null
+      ? null
+      : decodeRangeCursor(request.cursor, anchor, fingerprint, deps.cursorSigner, now);
 
-  // 3. 한 왕복으로 셋을 묻는다 (ADR-008: 셋 다 강제 필터를 지난다).
-  const pagePrNumbers = [
-    ...new Set(page.filter((row) => row.pull_request_number !== null).map((row) => row.pull_request_number!)),
-  ];
+  /*
+   * 3. 요약과 패싯이 볼 구간 **전체**의 PR 번호.
+   *
+   * 페이지가 아니라 구간이 기준이다 — 페이지 1이 50건이고 일치가 4,000건이면
+   * 패싯은 4,000건 기준이다 (FR-SEQ-002 AC-8).
+   */
+  const prNumbers = await mergeSequenceRepo.listPullRequestNumbersInRange(
+    deps.pool,
+    space.repositoryId,
+    space.baseBranch,
+    space.seqEpoch,
+    request.fromExclusive,
+    request.toInclusive,
+  );
 
   const timeout = deps.timeoutMs === undefined ? {} : { timeout: `${String(deps.timeoutMs)}ms` };
   const routing = String(space.repositoryId);
   const scoped = (extraClause: estypes.QueryDslQueryContainer | null, numbers: readonly number[]): ScopedRequest =>
     applyMandatoryScopeFilter(prNumbersQuery(space, numbers, extraClause), scope);
+
+  const startAfter = resumed?.completeSeq ?? request.fromExclusive;
+
+  if (prNumbers.length === 0) {
+    /*
+     * 구간에 PR이 하나도 없다 — 직접 푸시만 있는 구간이거나 빈 구간이다.
+     * `terms`에 빈 목록을 넣으면 아무것도 매치하지 않지만, 그 왕복은 답을
+     * 바꾸지 않으므로 하지 않는다.
+     *
+     * `q`가 없으면 정본 행은 그대로 목록이 된다 — 커서도 여기서 성립한다.
+     */
+    const bare =
+      request.size === 0 || extra !== null
+        ? { rows: [], completeSeq: null }
+        : await scanPage(request, deps, null, startAfter, scoped);
+
+    return {
+      // `q`가 있으면 판정할 PR이 하나도 없으므로 0건이다 (DEV-136).
+      summary: { ...EMPTY_SUMMARY_AGGS, commit_count: extra === null ? request.rangeTotal : 0 },
+      items: bare.rows.map((row) => toUnindexedItem(space, row)),
+      // PR이 없는 항목은 커밋 문서로만 존재하고, 그 문서에는 표시할 값이 없다.
+      items_missing_in_index: 0,
+      unresolved,
+      nextCursor:
+        bare.completeSeq === null
+          ? null
+          : encodeRangeCursor(bare.completeSeq, anchor, fingerprint, deps.cursorSigner, now),
+      /*
+       * 패싯을 셀 문서가 없다. `null`이 아니라 빈 분포를 준다 — 요청했고
+       * 계산했으며 결과가 비었다는 사실이 "세지 않았다"와 다르다.
+       */
+      facets: request.facets ? { facets: {}, omitted: false, status: 'ready' } : null,
+    };
+  }
+
+  /*
+   * 4. 요약·패싯(구간 전체)과 페이지(chunk 순회)를 함께 돌린다.
+   *
+   * 셋 다 강제 필터를 지난다 (ADR-008). 패싯은 **별도 요청**이라 목록·요약과
+   * 실패 도메인이 갈린다 — 분포 하나가 예산을 넘겨도 구간 결과는 나간다.
+   */
 
   /*
    * `q`가 있으면 **거르지 않은 건수**를 따로 센다.
@@ -362,20 +593,25 @@ export async function runRange(request: RangeRequest, deps: RangeDeps): Promise<
       ...timeout,
     } as estypes.MsearchRequestItem,
   });
-  requests.push({
-    target: 'prs-pull-requests',
-    query: scoped(extra, pagePrNumbers),
-    options: {
-      size: pagePrNumbers.length,
-      routing,
-      _source: ['pr_number', 'title', 'author', 'merged_at', 'changed_files_count', 'additions', 'deletions'],
-      ...timeout,
-    } as estypes.MsearchRequestItem,
-  });
 
-  const response = await multiSearch<PullRequestSource>(deps.es, requests);
+  const [response, scanned, facets] = await Promise.all([
+    multiSearch<PullRequestSource>(deps.es, requests),
+    request.size === 0
+      ? Promise.resolve<ScannedPage>({ rows: [], sources: new Map(), completeSeq: null })
+      : scanPage(request, deps, extra, startAfter, scoped),
+    request.facets
+      ? computeFacets(
+          { target: 'prs-pull-requests', query: scoped(extra, prNumbers), axes: RANGE_FACET_AXES, routing },
+          {
+            es: deps.es,
+            ...(deps.resolveTeamSlugs === undefined ? {} : { resolveTeamSlugs: deps.resolveTeamSlugs }),
+            ...(deps.facetBudgetMs === undefined ? {} : { budgetMs: deps.facetBudgetMs }),
+          },
+        )
+      : Promise.resolve(null),
+  ]);
+
   const summaryResponse = asResult(response.responses[summaryIndex]);
-  const pageResponse = asResult(response.responses[summaryIndex + 1]);
 
   const aggs = (summaryResponse?.aggregations ?? {}) as SummaryAggregations;
   /** `q`를 지난 PR 수. 구간 전체 기준이다. */
@@ -383,22 +619,45 @@ export async function runRange(request: RangeRequest, deps: RangeDeps): Promise<
   /** 색인에 문서가 있는 PR 수. `q`와 무관하다. */
   const indexedTotal = extra === null ? matchedTotal : totalOf(asResult(response.responses[0]));
 
-  const sources = new Map<number, PullRequestSource>();
-  for (const hit of pageResponse?.hits.hits ?? []) {
-    const source = hit._source;
-    if (source?.pr_number !== undefined) sources.set(source.pr_number, source);
+  /*
+   * `q`가 없으면 표시 필드를 **페이지가 정해진 뒤에** 한 번에 가져온다.
+   *
+   * `q`가 있는 경로에서는 `scanPage`가 판정하며 이미 읽었다 — 같은 문서를 두 번
+   * 읽지 않는다.
+   */
+  const sources = new Map<number, PullRequestSource>(scanned.sources);
+  if (extra === null && scanned.rows.length > 0) {
+    const pagePrNumbers = [
+      ...new Set(
+        scanned.rows.filter((row) => row.pull_request_number !== null).map((row) => row.pull_request_number!),
+      ),
+    ];
+    if (pagePrNumbers.length > 0) {
+      const pageResponse = await search<PullRequestSource>(
+        deps.es,
+        'prs-pull-requests',
+        scoped(null, pagePrNumbers),
+        { size: pagePrNumbers.length, routing, _source: PAGE_SOURCE_FIELDS, ...timeout },
+      );
+      assertNoShardFailures(pageResponse);
+      for (const hit of pageResponse.hits.hits) {
+        const source = hit._source;
+        if (source?.pr_number !== undefined) sources.set(source.pr_number, source);
+      }
+    }
   }
 
   /*
-   * `q`가 있으면 목록도 요약도 그것을 지난 집합을 말한다 (DEV-136). 필터에 걸리지
-   * 않은 행은 목록에서 빠지며, 그 사실은 `pull_request_count`가 함께 줄어드는
-   * 것으로 드러난다.
+   * `q`가 있으면 목록도 요약도 그것을 지난 집합을 말한다 (DEV-136).
+   *
+   * **거르는 자리가 바뀌었다** — 예전에는 정본 페이지를 먼저 자른 뒤 여기서
+   * 걸렀고, 그래서 첫 `size` 행 밖의 일치에 도달할 수 없었다 (DEV-270). 이제
+   * `scanPage`가 판정하며 채우므로 여기 오는 행은 이미 전부 일치다.
    *
    * `q`가 없으면 정본의 모든 행이 목록에 남는다 — 색인에 없어도 서수와 SHA는
    * 확정값이므로 보여 줄 것이 있다.
    */
-  const filtered = extra === null ? page : page.filter((row) => hasSource(row, sources));
-  const items = filtered.map((row) => toItem(space, row, sources));
+  const items = scanned.rows.map((row) => toItem(space, row, sources));
 
   /*
    * 커밋 수의 뜻 (DEV-139): 구간의 **first-parent 커밋 수**다. PR의 원본 커밋까지
@@ -429,6 +688,11 @@ export async function runRange(request: RangeRequest, deps: RangeDeps): Promise<
     items,
     items_missing_in_index: Math.max(0, prNumbers.length - indexedTotal),
     unresolved,
+    nextCursor:
+      scanned.completeSeq === null
+        ? null
+        : encodeRangeCursor(scanned.completeSeq, anchor, fingerprint, deps.cursorSigner, now),
+    facets,
   };
 }
 
@@ -447,10 +711,6 @@ function totalOf(result: estypes.SearchResponse<PullRequestSource> | null): numb
   const total = result?.hits.total;
   if (total === undefined) return 0;
   return typeof total === 'number' ? total : total.value;
-}
-
-function hasSource(row: MergeSequenceRow, sources: ReadonlyMap<number, PullRequestSource>): boolean {
-  return row.pull_request_number !== null && sources.has(row.pull_request_number);
 }
 
 function toUnindexedItem(space: ResolvedSpace, row: MergeSequenceRow): RangeItem {

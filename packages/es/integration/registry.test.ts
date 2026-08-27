@@ -8,7 +8,7 @@
 
 import type { Client } from '@elastic/elasticsearch';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { applyMappings } from '../src/bootstrap.js';
+import { applyMappings, switchAliasesForTests } from '../src/bootstrap.js';
 import { ARCHIVABLE_ALIASES, markRepositoryArchived } from '../src/registry.js';
 import { SERVING_ONLY } from '../src/write-targets.js';
 import { createTestClient, waitForCluster } from './helpers.js';
@@ -23,6 +23,8 @@ describe('저장소 등록 상태 표식 (WP-010, FR-ING-009 AC-3)', () => {
     client = createTestClient();
     await waitForCluster(client);
     await applyMappings(client);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(client);
   }, 90_000);
 
   afterAll(async () => {

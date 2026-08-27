@@ -31,6 +31,7 @@ import { ME_PATH } from '../../src/auth/routes.js';
 import { DEAD_LETTER_PATH } from '../../src/ops/routes.js';
 import type { AuthContext, AuthRedis } from '../../src/auth/context.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
+import { TEST_CURSOR_KEY } from '../_cursor-fixture.js';
 
 const AUTH_CONFIG = {
   enabled: true,
@@ -108,7 +109,7 @@ beforeAll(async () => {
 
   app = buildServer({
     // 세션이 서면 토큰 목록은 비어 있어야 한다 (DEV-048).
-    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG },
+    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY },
     ops: { pool, bus: undefined as never },
     auth,
   });
@@ -336,7 +337,7 @@ describe('DEV-048: 세션과 토큰은 배타다', () => {
           port: 0,
           adminTokens: [{ name: 'alice', token: 'tok' }],
           metricsQueryUrl: null, gheBaseUrl: null,
-          auth: AUTH_CONFIG,
+          auth: AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY,
         },
         ops: { pool, bus: undefined as never },
         auth: { sessions, scopes: {} as never, forget: async () => {} },

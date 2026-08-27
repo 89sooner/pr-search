@@ -12,8 +12,9 @@
  * 부정(`-key:value`)은 `must_not`이다. `filter` 안의 `bool.must_not`은 점수를
  * 만들지 않으므로 캐시된다.
  *
- * **점수를 만들지 않는다.** 전부 `filter` 문맥이다. 전문 검색이 서는 WP-032가
- * 점수를 내는 절을 더한다 (DEV-056).
+ * **구조화 필터는 점수를 만들지 않는다.** 전부 `filter` 문맥이다. 점수를 내는
+ * 것은 전문 검색어(`ast.text`) 하나뿐이며 그것은 `must`에 선다 (WP-032,
+ * FR-SRCH-011). 접근 범위 필터도 `filter`이므로 권한이 점수에 섞이지 않는다.
  */
 
 import type { estypes } from '@elastic/elasticsearch';
@@ -84,8 +85,15 @@ const DERIVED_STATE: Readonly<Record<string, estypes.QueryDslQueryContainer>> = 
 export interface NameResolution {
   /** `owner` → `org_id`. 못 찾은 이름은 담지 않는다. */
   readonly orgIds: ReadonlyMap<string, number>;
-  /** `team.slug` → `team_id`. */
-  readonly teamIds: ReadonlyMap<string, number>;
+  /**
+   * `team.slug` → `team_id` **목록** (WP-032, PR #57 리뷰 P2).
+   *
+   * slug은 조직 안에서만 유일하다(`UNIQUE (org_id, slug)`). 이름 하나가 팀
+   * 여럿을 가리킬 수 있으므로 목록이며, `terms`로 묶으면 OR가 되어 "그 이름의
+   * 팀 중 어느 것이든"이라는 사용자의 뜻과 맞는다. 하나만 고르면 패싯을
+   * 눌렀을 때 나오는 건수가 bucket과 다르다.
+   */
+  readonly teamIds: ReadonlyMap<string, readonly number[]>;
 }
 
 export const EMPTY_RESOLUTION: NameResolution = { orgIds: new Map(), teamIds: new Map() };
@@ -100,6 +108,65 @@ export interface BuiltQuery {
   readonly query: estypes.QueryDslQueryContainer;
   /** 레지스트리에 없던 이름. 비어 있지 않으면 그만큼 결과가 좁아진 것이다. */
   readonly unresolved: readonly UnresolvedName[];
+}
+
+/**
+ * 전문 검색이 인정하는 커밋의 역할 (FR-SRCH-011 AC-1, CR-043 DEV-283).
+ *
+ * AC-1이 정한 커밋 축은 **머지 커밋 메시지**다. `/search`는 `prs-commits`를
+ * 함께 도는데 그 인덱스에는 `source_commit`도 들어 있으므로, 자유 텍스트를
+ * `message`에 조건 없이 걸면 **PR에 딸린 원본 커밋 메시지까지** 검색 대상이
+ * 된다 — 승인된 범위를 넘는다.
+ *
+ * 직접 푸시(`direct_push`)를 함께 넣는 것은 그것도 first-parent 체인에 실제로
+ * 나타난 메시지이기 때문이다. 셋 중 빠지는 것은 `source_commit` 하나다.
+ */
+export const FIRST_PARENT_COMMIT_ROLES = ['merge_commit', 'direct_push'] as const;
+
+/**
+ * 자유 텍스트가 점수를 얻는 필드와 가중치 (FR-SRCH-011 AC-1·AC-2).
+ *
+ * **제목이 본문보다 위다** — AC-2가 그렇게 정한다. `partial`(부분 일치 조각)은
+ * 같은 축의 절반 가중치를 준다: 토큰이 통째로 맞은 문서가 접두만 맞은 문서보다
+ * 위에 서야 한다.
+ *
+ * 브랜치명은 `keyword` 본체가 아니라 분석된 서브필드를 본다 — 본체로 걸면
+ * `feature/pay-retry` 전체와 정확히 같을 때만 매치된다.
+ */
+export const FULL_TEXT_FIELDS: readonly string[] = [
+  'title^3',
+  'title.partial^1.5',
+  'body',
+  'message',
+  'message.partial^0.5',
+  'base_branch.text',
+  'base_branch.partial^0.5',
+  'head_branch.text',
+  'head_branch.partial^0.5',
+];
+
+/**
+ * first-parent 체인 밖의 커밋 (= `source_commit`).
+ *
+ * `role`이 **있으면서** 승인된 값이 아닌 문서다. PR 문서에는 `role`이 아예
+ * 없으므로 `exists`가 걸러 준다 — 이 절이 PR을 배제하지 않는 근거다.
+ */
+const NON_FIRST_PARENT_COMMIT: estypes.QueryDslQueryContainer = {
+  bool: {
+    filter: [{ exists: { field: 'role' } }],
+    must_not: [{ terms: { role: [...FIRST_PARENT_COMMIT_ROLES] } }],
+  },
+};
+
+/**
+ * 자유 텍스트 절 (FR-SRCH-011).
+ *
+ * `best_fields`는 "한 필드에서 가장 잘 맞은 점수"를 쓴다. 제목과 본문에 같은
+ * 낱말이 있다고 점수를 더하지 않는 것이 옳다 — 그러면 긴 본문이 제목 가중치를
+ * 이긴다.
+ */
+export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
+  return { multi_match: { query: text, fields: [...FULL_TEXT_FIELDS], type: 'best_fields' } };
 }
 
 /**
@@ -176,7 +243,8 @@ function equalityClause(
   }
 
   if (filter.key === 'team') {
-    const ids = values.map((value) => resolution.teamIds.get(value)).filter((id): id is number => id !== undefined);
+    // 이름 하나가 팀 여럿을 가리킬 수 있다 — 전부 실어 OR로 만든다.
+    const ids = values.flatMap((value) => [...(resolution.teamIds.get(value) ?? [])]);
     for (const value of values) {
       if (!resolution.teamIds.has(value)) unresolved.push({ key: 'team', value });
     }
@@ -203,16 +271,22 @@ function isNegated(filter: QueryFilter): boolean {
 }
 
 /**
- * AST를 ES 질의로 옮긴다.
+ * AST를 ES 질의로 옮긴다 (WP-013 + WP-032).
  *
- * 전문 검색어(`ast.text`)는 이 WP에서 쓰지 않는다 — WP-032가 점수를 내는
- * 절로 더한다. 지금 무시하는 것을 조용히 하지 않기 위해 반환값에 남기지는
- * 않는다: 파서가 이미 `parsed.text`로 응답에 싣고 있어 사용자가 볼 수 있다.
+ * 자유 텍스트가 있으면 두 가지가 더해진다.
+ *
+ *   1. `must`에 점수를 내는 절 — 구조화 필터는 그대로 `filter`에 남는다
+ *   2. `must_not`에 first-parent 체인 밖 커밋 배제 (DEV-283)
+ *
+ * **둘 다 자유 텍스트가 있을 때만이다.** `repo:acme/a` 하나로 커밋을 찾는
+ * 기존 동작은 바뀌지 않는다 — 원본 커밋을 배제하는 것은 "무엇이 검색 대상
+ * 메시지인가"에 대한 답이지 "무엇이 이 저장소의 커밋인가"에 대한 답이 아니다.
  */
 export function buildQuery(ast: QueryAst, resolution: NameResolution = EMPTY_RESOLUTION): BuiltQuery {
   const unresolved: UnresolvedName[] = [];
   const filter: estypes.QueryDslQueryContainer[] = [];
   const mustNot: estypes.QueryDslQueryContainer[] = [];
+  const must: estypes.QueryDslQueryContainer[] = [];
 
   for (const one of ast.filters) {
     const clause = toClause(one, resolution, unresolved);
@@ -220,13 +294,19 @@ export function buildQuery(ast: QueryAst, resolution: NameResolution = EMPTY_RES
     else filter.push(clause);
   }
 
-  if (filter.length === 0 && mustNot.length === 0) {
+  if (ast.text !== null && ast.text !== '') {
+    must.push(buildTextClause(ast.text));
+    mustNot.push(NON_FIRST_PARENT_COMMIT);
+  }
+
+  if (filter.length === 0 && mustNot.length === 0 && must.length === 0) {
     return { query: { match_all: {} }, unresolved };
   }
 
   return {
     query: {
       bool: {
+        ...(must.length === 0 ? {} : { must }),
         ...(filter.length === 0 ? {} : { filter }),
         ...(mustNot.length === 0 ? {} : { must_not: mustNot }),
       },

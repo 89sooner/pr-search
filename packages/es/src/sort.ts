@@ -71,8 +71,55 @@ const SORT_FIELDS: Readonly<Record<Exclude<SortKey, 'relevance'>, { field: strin
  */
 export const TIEBREAK_FIELD = 'doc_id' as const;
 
+/*
+ * 동률 키는 `_last`를 그대로 쓴다 (DEV-329의 예외).
+ *
+ * 숫자·날짜 축과 달리 keyword의 누락 값은 응답에 `null`로 나오고, 실제
+ * Elasticsearch 8이 `search_after`에서 그 `null`을 받는다 — 되먹임이 성립하므로
+ * 명시적 센티널이 필요 없다. 그리고 `upsert`가 모든 문서에 `doc_id`를 채우므로
+ * (CR-016, DEV-059) 운영에서는 이 갈래에 닿지도 않는다.
+ */
 const TIEBREAK: estypes.SortCombinations = {
   [TIEBREAK_FIELD]: { order: 'asc', missing: '_last', unmapped_type: 'keyword' },
+};
+
+/**
+ * 누락 문서를 뒤로 보내는 값 (WP-032 / DEV-329).
+ *
+ * ## 왜 `missing: '_last'`가 아닌가
+ *
+ * `_last`는 Elasticsearch가 내부적으로 `Long.MIN_VALUE`/`MAX_VALUE`를 정렬 값으로
+ * 쓰게 만든다. 조회만 할 때는 아무 문제가 없다 — 그 값은 응답의 `sort` 배열에만
+ * 나타나고 아무도 보지 않는다.
+ *
+ * **커서가 그 값을 되먹이는 순간 깨진다.** 실제 Elasticsearch 8로 셋 다 확인했다.
+ *
+ * | 시도 | 결과 |
+ * | --- | --- |
+ * | 날짜 축, `format` 없음 | `parse_exception: failed to parse date field [-9223372036854776000]` |
+ * | 날짜 축, `format: strict_date_optional_time` | 센티널이 `-292275055-05-16T…`로 나오고 **그것을 자기가 못 읽는다** |
+ * | 날짜 축, `format: epoch_millis` | `date_time_exception: … cannot be negative according to the SignStyle` |
+ *
+ * 게다가 그 값은 `Number.MAX_SAFE_INTEGER`를 넘어 **JSON 왕복에서 정밀도를
+ * 잃는다**(`-9223372036854775808` → `-9223372036854776000`). 숫자 축은 우연히
+ * 동작하지만 그것은 Elasticsearch가 범위를 잘라 준 결과이지 우리가 보낸 값이
+ * 맞아서가 아니다.
+ *
+ * 그래서 **표현 가능하고 충돌할 수 없는 값**을 명시한다. 방향마다 다른 것은
+ * `_last`가 방향과 무관하게 뒤로 보내기 때문이다 — 그 뜻을 값으로 옮기면
+ * 내림차순에서는 가장 작은 값, 오름차순에서는 가장 큰 값이 된다.
+ *
+ * 충돌 가능성: 날짜 축은 서기 1년/9999년, 숫자 축은 음수/`MAX_SAFE_INTEGER`다.
+ * PR의 머지 시각이나 변경 파일 수가 그 값이 되는 일은 없고, 설령 된다 해도
+ * 결과는 **동률**이며 `doc_id`가 그것을 가른다 — 중복도 누락도 생기지 않는다.
+ */
+const MISSING_SENTINEL: Readonly<Record<'long' | 'date' | 'integer', Readonly<Record<SortOrder, number>>>> = {
+  // 0001-01-01T00:00:00Z / 9999-12-31T23:59:59Z — `strict_date_optional_time`이 읽을 수 있는 양 끝.
+  date: { desc: -62_135_596_800_000, asc: 253_402_300_799_000 },
+  // 서수·리드타임은 음수가 되지 않는다. 위쪽은 JSON이 정확히 나르는 상한이다.
+  long: { desc: -1, asc: Number.MAX_SAFE_INTEGER },
+  // `integer` 매핑의 상한은 2^31-1이다. `MAX_SAFE_INTEGER`를 넣으면 범위 밖이다.
+  integer: { desc: -1, asc: 2_147_483_647 },
 };
 
 function fieldSort(
@@ -83,8 +130,8 @@ function fieldSort(
   return {
     [field]: {
       order,
-      // 정렬 대상 필드가 없는 문서는 마지막에 (FR-SRCH-007 예외 처리).
-      missing: '_last',
+      // 정렬 대상 필드가 없는 문서는 마지막에 (FR-SRCH-007 예외 처리, DEV-329).
+      missing: MISSING_SENTINEL[type][order],
       // 그 필드가 아예 없는 **인덱스**를 위한 것 (CR-016, DEV-054).
       unmapped_type: type,
     },
@@ -100,15 +147,17 @@ function fieldSort(
 export function buildSort(key: SortKey, order: SortOrder): estypes.SortCombinations[] {
   if (key === 'relevance') {
     /*
-     * WP-013에는 점수를 만드는 절이 없다 (CR-016, DEV-056).
+     * **요청한 방향을 그대로 쓴다** (WP-032, CR-043 DEV-275).
      *
-     * 접근 범위 필터도 사용자 필터도 전부 `filter` 문맥이라 모든 문서의
-     * 점수가 같다. 그러면 `_score` 정렬은 아무 순서도 만들지 않고 동점
-     * 처리만 남는다 — 실질적으로 문서 ID 순이다. 그래도 `_score`를 앞에
-     * 두는 것은 WP-032가 점수 절을 더하는 순간 이 코드를 고치지 않고도
-     * 뜻이 생기게 하기 위해서다.
+     * 여기는 오래 `order`를 무시하고 `desc`로 고정돼 있었다. WP-013에는 점수를
+     * 내는 절이 없어 모든 문서의 점수가 같았고, 그래서 방향이 아무 차이도
+     * 만들지 않았기 때문이다 (CR-016, DEV-056). 이제 자유 텍스트가 점수를
+     * 내므로 방향이 실제 순서를 바꾼다.
+     *
+     * `asc`를 "쓸모없으니 막는다"고 판단하지 않는다 — FR-SRCH-007 AC-1이 키와
+     * 방향을 함께 승인했고, 지원하지 않기로 정하는 것은 SRS 변경이다.
      */
-    return [{ _score: { order: 'desc' } }, TIEBREAK];
+    return [{ _score: { order } }, TIEBREAK];
   }
 
   const spec = SORT_FIELDS[key];

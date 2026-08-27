@@ -24,7 +24,7 @@ import {
   type Pool,
   type RepositoryRow,
 } from '@prs/db';
-import { applyMappings, createEsClient, resolveClientOptions } from '@prs/es';
+import { applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions } from '@prs/es';
 import { findReferencesTo } from '@prs/es';
 import {
   deriveReferenceLinks,
@@ -204,6 +204,8 @@ describe('참조 간선 파생과 해결 (WP-029 / CR-039)', () => {
     await es.cluster.health({ wait_for_status: 'yellow', timeout: '60s' });
     // 인덱스를 지우지 않는다 — 다른 파일의 데이터를 밟는다. 매핑만 제자리 갱신한다.
     await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
   }, 180_000);
 
   afterAll(async () => {

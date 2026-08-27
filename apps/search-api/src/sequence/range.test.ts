@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import type { Pool } from '@prs/db';
 import type { Client } from '@elastic/elasticsearch';
 import { runRange } from './range.js';
+import { createCursorSigner } from '../cursor/envelope.js';
 import type { ResolvedSpace } from './space.js';
 
 const SPACE: ResolvedSpace = {
@@ -49,24 +50,30 @@ function stubPool(): { pool: Pool; queries: string[] } {
   return { pool, queries };
 }
 
+const SIGNER = createCursorSigner('range-unit-test-key-0123456789abcdef');
+
 const request = (size: number): Parameters<typeof runRange>[0] => ({
   space: SPACE,
   scope: SCOPE,
+  scopeVersion: 1,
   fromExclusive: 2,
   toInclusive: 5,
   size,
   ast: null,
   rangeTotal: 3,
+  cursor: null,
+  facets: false,
 });
+
+const DEPS = {
+  resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }),
+  cursorSigner: SIGNER,
+};
 
 describe('runRange size=0 (API-SEQ-003의 요약 전용 호출)', () => {
   it('**항목 질의를 아예 돌리지 않는다** — 안 그릴 목록을 위해 PostgreSQL을 부르지 않는다', async () => {
     const { pool, queries } = stubPool();
-    const result = await runRange(request(0), {
-      pool,
-      es: ES,
-      resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }),
-    });
+    const result = await runRange(request(0), { pool, es: ES, ...DEPS });
 
     expect(result.items).toEqual([]);
     expect(queries.some((sql) => sql.includes('LIMIT'))).toBe(false);
@@ -77,12 +84,13 @@ describe('runRange size=0 (API-SEQ-003의 요약 전용 호출)', () => {
 
   it('size가 1 이상이면 항목 질의가 돈다 — 이 시험이 위 단언의 대조군이다', async () => {
     const { pool, queries } = stubPool();
-    await runRange(request(50), {
-      pool,
-      es: ES,
-      resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }),
-    });
+    await runRange(request(50), { pool, es: ES, ...DEPS });
 
+    /*
+     * WP-032가 페이지를 만드는 방식을 바꿨다 — 첫 `size` 행을 자르는 것이 아니라
+     * **chunk로 훑으며 판정한다** (DEV-270). 대역 pool이 빈 결과를 주므로 첫
+     * chunk에서 순회가 끝나고, 질의는 PR 번호 하나 + chunk 하나로 둘이다.
+     */
     expect(queries).toHaveLength(2);
     expect(queries.some((sql) => sql.includes('LIMIT'))).toBe(true);
   });

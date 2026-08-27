@@ -6,6 +6,7 @@
  */
 
 import { resolveSessionReaderConfig, type SessionReaderConfig } from '@prs/authz';
+import { MIN_CURSOR_KEY_LENGTH, ephemeralCursorKey } from './cursor/envelope.js';
 
 export interface SearchApiEnv {
   readonly [key: string]: string | undefined;
@@ -54,6 +55,48 @@ export interface SearchApiConfig {
    * 없으면(`null`) URL 해석을 **하지 않는다**. 추측하느니 안 하는 편이 낫다.
    */
   readonly gheBaseUrl: string | null;
+  /**
+   * 커서 서명 키 (WP-032 / ADR-010 Amendment).
+   *
+   * **`null`이 될 수 없다.** 없으면 운영에서는 기동이 막히고, 개발에서는
+   * 프로세스 수명짜리 임시 키가 선다 — 어느 쪽도 서명 없는 커서를 발급하지
+   * 않는다. 커서가 조용히 사라지면 사용자는 5만 건 구간을 끝까지 훑을 방법이
+   * 없어지는데, 그 실패는 오류로 드러나지 않고 "결과가 이게 전부"로 보인다.
+   */
+  readonly searchCursorKey: string;
+}
+
+/**
+ * 커서 서명 키를 정한다 — **fail closed** (WP-032).
+ *
+ * 운영에서 키가 없으면 던진다. `SESSION_COOKIE_SECURE=false`를 운영에서 막는
+ * 것과 같은 자리이며 같은 이유다 (FR-AUTH-001 AC-2의 선례): 보안·정확성 속성이
+ * 조용히 꺼진 배포를 기동시키지 않는다.
+ *
+ * 개발·시험에서는 임시 키를 만든다. 재기동하면 이전 커서가 `CURSOR_INVALID`가
+ * 되고 화면은 첫 페이지로 돌아간다 — 계약이 정한 답이다.
+ */
+export function resolveSearchCursorKey(env: SearchApiEnv = process.env): string {
+  const key = (env['SEARCH_CURSOR_HMAC_KEY'] ?? '').trim();
+  const production = (env['NODE_ENV'] ?? 'development') === 'production';
+
+  if (key === '') {
+    if (production) {
+      throw new Error(
+        'SEARCH_CURSOR_HMAC_KEY가 설정되지 않았다 — 서명 없는 커서를 발급하지 않는다 (WP-032, ADR-010)',
+      );
+    }
+    return ephemeralCursorKey();
+  }
+
+  if (key.length < MIN_CURSOR_KEY_LENGTH) {
+    // 짧은 키는 서명이 있다는 사실만 남기고 그 뜻을 없앤다. 배포가 값을 넣기만
+    // 하고 넘어가는 것을 막으려면 경계가 코드에 있어야 한다.
+    throw new Error(
+      `SEARCH_CURSOR_HMAC_KEY가 너무 짧다 (${String(key.length)}자, 최소 ${String(MIN_CURSOR_KEY_LENGTH)}자)`,
+    );
+  }
+  return key;
 }
 
 /** `"alice:tok1,bob:tok2"`를 주체 목록으로. 이름이 없으면 `unnamed`. */
@@ -97,6 +140,7 @@ export function resolveSearchApiConfig(env: SearchApiEnv = process.env): SearchA
     metricsQueryUrl: metricsUrl === '' ? null : metricsUrl,
     auth: resolveSessionReaderConfig(env),
     gheBaseUrl: gheBaseUrl === '' ? null : gheBaseUrl,
+    searchCursorKey: resolveSearchCursorKey(env),
   };
 }
 

@@ -6,7 +6,13 @@
  */
 
 import type { estypes } from '@elastic/elasticsearch';
-import { LOWERCASE_NORMALIZER, PATH_ANALYZER, TEXT_ANALYZER } from '../settings.js';
+import {
+  LOWERCASE_NORMALIZER,
+  PARTIAL_TEXT_FIELD,
+  PATH_ANALYZER,
+  SEARCHABLE_KEYWORD_FIELDS,
+  TEXT_ANALYZER,
+} from '../settings.js';
 
 export const PULL_REQUEST_MAPPING: estypes.MappingTypeMapping = {
   dynamic: 'strict',
@@ -28,10 +34,21 @@ export const PULL_REQUEST_MAPPING: estypes.MappingTypeMapping = {
     allowed_team_ids: { type: 'long' },
 
     pr_number: { type: 'integer' },
+    /**
+     * `partial`은 전문 검색의 부분 일치 축이다 (WP-032, FR-SRCH-011 AC-4).
+     *
+     * 본문(`body`)에는 붙이지 않는다. AC-1이 본문을 검색 대상으로 정하지만
+     * **모든 접두 조각을 색인하라고 요구하지는 않는다** — 본문은 제목보다
+     * 두 자릿수 크고, 조각을 다 넣으면 색인이 그만큼 부푼다. 본문은
+     * `TEXT_ANALYZER`의 토큰 일치로 답한다.
+     */
     title: {
       type: 'text',
       analyzer: TEXT_ANALYZER,
-      fields: { raw: { type: 'keyword', ignore_above: 512 } },
+      fields: {
+        raw: { type: 'keyword', ignore_above: 512 },
+        partial: PARTIAL_TEXT_FIELD,
+      },
     },
     body: { type: 'text', analyzer: TEXT_ANALYZER },
     state: { type: 'keyword' },
@@ -43,8 +60,12 @@ export const PULL_REQUEST_MAPPING: estypes.MappingTypeMapping = {
     approved_by: { type: 'keyword' },
     labels: { type: 'keyword' },
 
-    base_branch: { type: 'keyword' },
-    head_branch: { type: 'keyword' },
+    /*
+     * 브랜치명은 `keyword`가 정본이다 — `base:main`이 정확 일치를 요구한다
+     * (FR-SRCH-006). 전문 검색(FR-SRCH-011 AC-1)은 서브필드를 본다.
+     */
+    base_branch: { type: 'keyword', fields: SEARCHABLE_KEYWORD_FIELDS },
+    head_branch: { type: 'keyword', fields: SEARCHABLE_KEYWORD_FIELDS },
     base_sha: { type: 'keyword', normalizer: LOWERCASE_NORMALIZER },
     head_sha: { type: 'keyword', normalizer: LOWERCASE_NORMALIZER },
     merge_commit_sha: { type: 'keyword', normalizer: LOWERCASE_NORMALIZER },

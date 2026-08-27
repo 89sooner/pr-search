@@ -17,6 +17,7 @@ import { RedisStreamsEventBus, type Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { JOBS_PATH } from '../../src/ops/routes.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
+import { TEST_CURSOR_KEY } from '../_cursor-fixture.js';
 
 const TEST_AUTH_CONFIG = {
   enabled: false,
@@ -47,7 +48,7 @@ beforeAll(async () => {
       adminTokens: [{ name: 'alice', token: TOKEN }],
       metricsQueryUrl: null,
       gheBaseUrl: null,
-      auth: TEST_AUTH_CONFIG,
+      auth: TEST_AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY,
     },
     ops: { pool, bus },
     registry: { pool, es, lookup: async () => null },

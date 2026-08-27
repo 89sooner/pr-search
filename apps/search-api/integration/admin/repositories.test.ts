@@ -12,12 +12,13 @@ import type { Client as EsClient } from '@elastic/elasticsearch';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { auditRepo, repositoryRepo, type Pool } from '@prs/db';
-import { ARCHIVABLE_ALIASES, applyMappings, createEsClient, resolveClientOptions } from '@prs/es';
+import { ARCHIVABLE_ALIASES, applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions } from '@prs/es';
 import { RedisStreamsEventBus, type Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { REPOSITORIES_PATH } from '../../src/ops/routes.js';
 import type { GheRepositoryFacts } from '../../src/ops/repositories.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
+import { TEST_CURSOR_KEY } from '../_cursor-fixture.js';
 
 /** WP-012 이전과 같은 조건: OIDC 미구성 → 이름 붙은 토큰이 통제한다 (CR-015, DEV-048). */
 const TEST_AUTH_CONFIG = {
@@ -74,10 +75,12 @@ describe('저장소 등록 관리 (WP-010, API-ADM-001)', () => {
     pool = await migratedPool();
     es = createEsClient(resolveClientOptions());
     await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
     redis = createTestRedis();
     bus = new RedisStreamsEventBus(redis);
     app = buildServer({
-      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG },
+      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY },
       ops: { pool, bus },
       registry: {
         pool,

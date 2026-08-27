@@ -24,6 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useRouter, useSearchParams } from 'next/navigation';
 import { serializeQuery } from '@prs/query';
 import { Banner, Button, Spinner } from '@conductor-by-89soone/react';
+import { CursorPager, toCursorFailure, type CursorFailure } from './CursorPager';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { FacetRail } from './FacetRail';
@@ -55,6 +56,40 @@ interface SearchResponse extends FacetSource {
   readonly unresolved_names?: readonly { readonly key: string; readonly value: string }[];
   readonly next_cursor?: string | null;
 }
+
+/**
+ * 이어 보기 상태 (WP-032 / FR-SRCH-008).
+ *
+ * **URL에 싣지 않는다.** 커서는 발급자의 접근 범위와 색인 스냅숏으로 봉인돼
+ * 있어(ADR-010 Amendment) 남에게 붙여넣어 봤자 `CURSOR_QUERY_MISMATCH`다.
+ * URL이 나르는 것은 조건이고, 위치는 이 세션의 것이다.
+ *
+ * `q`·정렬·필터가 바뀌면 **커서와 패싯 상태를 함께 버린다** (DEV-280) — 그
+ * 폐기는 `state`를 의존값으로 갖는 조회 효과가 한다.
+ */
+interface PageState {
+  /** 이어 보기로 쌓은 앞 페이지들의 항목. 첫 페이지면 비어 있다. */
+  readonly carried: readonly ResultRow[];
+  /** 지금 요청에 실을 커서. `null`이면 첫 페이지다. */
+  readonly cursor: string | null;
+  /** 첫 페이지의 패싯. 이어 보기는 다시 세지 않고 이것을 그대로 쓴다. */
+  readonly facets: FacetSource;
+  /** 직전 요청이 커서 때문에 실패했는가. */
+  readonly failure: CursorFailure | null;
+  /**
+   * 요청 세대 (PR #57 리뷰 P2).
+   *
+   * **커서만으로는 "다시 불러라"를 표현할 수 없다.** 첫 페이지에서 분포가
+   * `failed`·`budget_omitted`로 온 뒤 "분포 다시 계산"을 누르면 커서는 이미
+   * `null`이라 상태가 달라지지 않고, React가 갱신을 건너뛰어 조회 효과가 다시
+   * 돌지 않는다 — 버튼이 아무 일도 하지 않는다.
+   *
+   * 세대를 올리면 같은 커서라도 새 요청이 된다.
+   */
+  readonly nonce: number;
+}
+
+const FIRST_PAGE: PageState = { carried: [], cursor: null, facets: {}, failure: null, nonce: 0 };
 
 interface ResolveResponse {
   readonly candidates?: readonly ResolutionCandidate[];
@@ -95,6 +130,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
 
   const [outcome, setOutcome] = useState<FetchOutcome>(IDLE);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState<PageState>(FIRST_PAGE);
 
   /*
    * 진행 중인 요청을 세대(generation)로 센다.
@@ -126,6 +162,18 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
    */
   const [submitCount, setSubmitCount] = useState(0);
 
+  /*
+   * **조건이 바뀌면 페이징을 버린다** (CR-043, DEV-280).
+   *
+   * `state`는 URL에서 온 조건 전부다. 그것이 달라졌는데 커서를 들고 있으면
+   * 서버가 `CURSOR_QUERY_MISMATCH`로 답하고, 사용자는 자기가 만들지 않은
+   * 오류를 본다. 커서·쌓인 항목·패싯을 **함께** 버린다 — 셋이 같은 질의의
+   * 산물이라 하나만 남기면 화면이 서로 다른 조건의 조각을 섞어 그린다.
+   */
+  useEffect(() => {
+    setPage(FIRST_PAGE);
+  }, [state]);
+
   useEffect(() => {
     const route = chooseRoute(state, gheBaseUrl);
 
@@ -139,7 +187,16 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     const controller = new AbortController();
     setLoading(true);
 
-    const url = route.kind === 'resolve' ? resolveUrl(route.input) : searchUrl(state);
+    const url =
+      route.kind === 'resolve'
+        ? resolveUrl(route.input)
+        : /*
+           * **첫 페이지만 패싯을 요청한다** (QA-W001-27, DEV-280).
+           *
+           * 이어 보기는 같은 질의의 같은 분포를 다시 세는 것이라 예산만 쓴다.
+           * 첫 페이지가 센 것을 `page.facets`가 나른다.
+           */
+          searchUrl(state, { cursor: page.cursor, facets: page.cursor === null });
 
     void (async () => {
       try {
@@ -148,11 +205,25 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         if (mine !== generation.current) return;
 
         if (!response.ok) {
-          setOutcome({
-            ...IDLE,
-            errorBody: body as ApiErrorBody,
-            status: response.status,
-          });
+          const errorBody = body as ApiErrorBody;
+          const failure = toCursorFailure(errorBody.error?.code);
+          if (failure !== null) {
+            /*
+             * 커서 실패는 **화면 오류가 아니다** (C-016 사용 규칙, DEV-273).
+             *
+             * **아무것도 다시 부르지 않는다.** 여기서 `page.cursor`를 비우면
+             * 이 효과의 의존값이 바뀌어 **첫 페이지가 자동으로 다시 조회된다** —
+             * 그러면 사용자는 목록이 처음으로 돌아간 것만 보고 이유를 모른다.
+             * e2e가 실제로 그 세 번째 요청을 잡았다.
+             *
+             * 그래서 `failure`만 세우고 나머지는 그대로 둔다. 지금까지 본
+             * 목록이 남아 있어야 사용자가 자기 위치를 잃지 않는다. 첫 페이지로
+             * 돌아가는 것은 그 버튼을 누를 때다.
+             */
+            setPage((current) => ({ ...current, failure }));
+            return;
+          }
+          setOutcome({ ...IDLE, errorBody, status: response.status });
         } else if (route.kind === 'resolve') {
           setOutcome({ ...IDLE, resolve: body as ResolveResponse, status: response.status });
         } else {
@@ -171,10 +242,47 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     return () => {
       controller.abort();
     };
-  }, [state, parsed.error, gheBaseUrl]);
+  }, [state, parsed.error, gheBaseUrl, page.cursor, page.nonce]);
 
   const candidates = outcome.resolve?.candidates ?? null;
-  const items = outcome.search?.items ?? null;
+  /*
+   * **쌓아서 보여 준다** (C-016: "커서 기반 다음 페이지 로딩").
+   *
+   * 페이지를 갈아 끼우면 사용자는 앞 페이지에서 본 것을 다시 찾을 수 없다 —
+   * 번호가 없어 돌아갈 길이 없기 때문이다. "첫 페이지로"가 그 되돌리기다.
+   */
+  const fetched = outcome.search?.items ?? null;
+  const items = fetched === null ? null : [...page.carried, ...fetched];
+
+  /** 첫 페이지가 센 분포를 이어 보기에도 쓴다 (QA-W001-27). */
+  const facetSource: FacetSource =
+    page.cursor === null ? (outcome.search ?? {}) : page.facets;
+
+  /*
+   * 실패한 커서를 다시 내주지 않는다.
+   *
+   * 직전 응답의 `next_cursor`는 방금 거절된 바로 그 값이다. 그대로 두면
+   * "다음 페이지"가 같은 오류를 반복해서 만든다.
+   */
+  const nextCursor = page.failure === null ? (outcome.search?.next_cursor ?? null) : null;
+
+  const loadMore = useCallback(
+    (cursor: string) => {
+      setPage((current) => ({
+        carried: items ?? current.carried,
+        cursor,
+        facets: current.cursor === null ? (outcome.search ?? {}) : current.facets,
+        failure: null,
+        nonce: current.nonce + 1,
+      }));
+    },
+    [items, outcome.search],
+  );
+
+  /** 첫 페이지를 **다시 연다.** 이미 첫 페이지여도 세대가 올라 조회가 다시 돈다. */
+  const backToFirst = useCallback(() => {
+    setPage((current) => ({ ...FIRST_PAGE, nonce: current.nonce + 1 }));
+  }, []);
 
   const screen = resolveScreenState({
     rawQuery: state.q,
@@ -295,7 +403,13 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
       )}
 
       <div>
-        <FacetRail source={outcome.search ?? {}} ast={parsed.ast} onToggle={onToggleFacet} />
+        <FacetRail
+          source={facetSource}
+          ast={parsed.ast}
+          onToggle={onToggleFacet}
+          /* 분포를 다시 세는 길은 첫 페이지를 다시 여는 것이다 — `facets=true`가 거기 붙는다. */
+          onRetry={backToFirst}
+        />
         <ScreenBody
           screen={screen}
           items={items}
@@ -307,6 +421,22 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
           loginPath={loginPath}
         />
       </div>
+
+      {/*
+       * 이어 보기는 결과가 있을 때만 뜻이 있다. 커서 실패는 결과가 없어도
+       * 알려야 하므로 그 조건을 따로 둔다.
+       */}
+      {screen.kind === 'ready' || page.failure !== null ? (
+        <CursorPager
+          nextCursor={nextCursor}
+          resumed={page.cursor !== null || page.carried.length > 0}
+          loadedCount={items?.length ?? 0}
+          loading={loading}
+          onLoadMore={loadMore}
+          onFirst={backToFirst}
+          failure={page.failure}
+        />
+      ) : null}
     </div>
   );
 }

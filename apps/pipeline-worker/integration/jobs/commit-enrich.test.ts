@@ -24,7 +24,7 @@ import {
   type Pool,
   type RepositoryRow,
 } from '@prs/db';
-import { applyMappings, createEsClient, dropEntityIndices, resolveClientOptions } from '@prs/es';
+import { applyMappings, switchAliasesForTests, createEsClient, dropEntityIndices, resolveClientOptions } from '@prs/es';
 import { FallbackCommitGraph, MirrorCommitGraph, MirrorSync, type CommitGraph } from '@prs/github';
 import {
   enrichCommit,
@@ -143,6 +143,8 @@ describe('커밋 메타데이터 보강 (WP-067 / CR-038)', () => {
     await es.cluster.health({ wait_for_status: 'yellow', timeout: '60s' });
     await dropEntityIndices(es);
     await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
 
     origin = await createSequenceFixture();
     mirrorRoot = await makeTempDir('prs-enrich-mirror-');

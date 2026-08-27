@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { buildServer } from '../../src/server.js';
 import { buildServerDeps } from '../../src/runtime.js';
 import { CO_CHANGES_PATH, RELATIONS_PATH } from '../../src/relations/routes.js';
+import { TEST_CURSOR_KEY } from '../_cursor-fixture.js';
 
 type RuntimeParts = Parameters<typeof buildServerDeps>[0];
 
@@ -29,6 +30,8 @@ const CONFIG = {
   auth: { enabled: true, cookieSecure: false, loginPath: '/auth/login', groupRoleMap: new Map() },
   gheBaseUrl: null,
   metricsQueryUrl: null,
+  // `buildServerDeps`가 이 값으로 커서 서명자를 만든다 (WP-032). 없으면 조립이 던진다.
+  searchCursorKey: TEST_CURSOR_KEY,
 } as unknown as RuntimeParts['config'];
 
 function partsWithSearch(): RuntimeParts {

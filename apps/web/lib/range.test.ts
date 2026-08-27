@@ -38,7 +38,15 @@ describe('딥링크 파라미터 (CR-029, DEV-153)', () => {
     const params = parseRangeParams(
       new URLSearchParams('repo=acme%2Fpayments&branch=main&from=%23100&to=v1.2&epoch=3'),
     );
-    expect(params).toEqual({ repo: 'acme/payments', branch: 'main', from: '#100', to: 'v1.2', epoch: 3 });
+    // `q`는 WP-032가 더한 축이다 — 없으면 `null`이지 키가 빠지지 않는다.
+    expect(params).toEqual({
+      repo: 'acme/payments',
+      branch: 'main',
+      from: '#100',
+      to: 'v1.2',
+      epoch: 3,
+      q: null,
+    });
   });
 
   it('owner/name 모양이 아니면 repo를 버린다 — 검증 없이 API로 흘리지 않는다', () => {
@@ -55,7 +63,35 @@ describe('딥링크 파라미터 (CR-029, DEV-153)', () => {
   it('URL 왕복이 값을 보존한다 — 딥링크가 곧 조사 상태다', () => {
     const query = formatRangeQuery({ repo: 'acme/payments', branch: 'main', from: 'seq:1', to: '#42', epoch: 2 });
     const back = parseRangeParams(new URLSearchParams(query));
-    expect(back).toEqual({ repo: 'acme/payments', branch: 'main', from: 'seq:1', to: '#42', epoch: 2 });
+    expect(back).toEqual({
+      repo: 'acme/payments',
+      branch: 'main',
+      from: 'seq:1',
+      to: '#42',
+      epoch: 2,
+      q: null,
+    });
+  });
+
+  /*
+   * **`q`는 URL에 있고 커서는 없다** (WP-032).
+   *
+   * 조건은 공유할 수 있다 — 같은 구간에 같은 필터를 건 화면이 열린다. 반면
+   * 커서는 발급자의 접근 범위와 색인 스냅숏으로 봉인돼 있어(ADR-010 Amendment)
+   * 남에게 붙여넣어 봤자 `CURSOR_QUERY_MISMATCH`다.
+   */
+  it('패싯이 만든 `q`가 딥링크에 실린다 — 조건은 공유된다', () => {
+    const query = formatRangeQuery({
+      repo: 'acme/payments',
+      branch: 'main',
+      from: 'seq:1',
+      to: '#42',
+      epoch: 2,
+      q: 'author:kim label:backend',
+    });
+    expect(parseRangeParams(new URLSearchParams(query)).q).toBe('author:kim label:backend');
+    // 커서는 조사 상태가 아니다 — 이 세션의 위치다.
+    expect(query).not.toContain('cursor');
   });
 
   it('빈 앵커는 URL에 싣지 않는다', () => {

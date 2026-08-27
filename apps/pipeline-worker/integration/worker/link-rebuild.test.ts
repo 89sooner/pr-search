@@ -30,7 +30,7 @@ import {
   type Pool,
   type RepositoryRow,
 } from '@prs/db';
-import { applyMappings, createEsClient, resolveClientOptions } from '@prs/es';
+import { applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions } from '@prs/es';
 import { MirrorCommitGraph, MirrorSync, type CommitGraph } from '@prs/github';
 import {
   COMMIT_ENRICH_CONSUMER,
@@ -210,6 +210,8 @@ describe('직접 푸시 종단과 전량 재파생 (WP-029 / CR-039)', () => {
     es = createEsClient(resolveClientOptions());
     await es.cluster.health({ wait_for_status: 'yellow', timeout: '60s' });
     await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
 
     origin = await createSequenceFixture();
 

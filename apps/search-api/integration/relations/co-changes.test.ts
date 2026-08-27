@@ -13,7 +13,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Client } from '@elastic/elasticsearch';
-import { applyMappings, createEsClient, resolveClientOptions, type AccessScope } from '@prs/es';
+import { applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions, type AccessScope } from '@prs/es';
 import { getCoChanges } from '../../src/relations/co-changes.js';
 
 const ORG = 1;
@@ -100,6 +100,8 @@ const SOURCE_PATHS = ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts'];
 beforeAll(async () => {
   es = createEsClient(resolveClientOptions(process.env));
   await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
   await clearFixtures();
 
   const decoys: PrFixture[] = [];

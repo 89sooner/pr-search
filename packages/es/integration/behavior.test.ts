@@ -1,6 +1,6 @@
 import type { Client } from '@elastic/elasticsearch';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { applyMappings } from '../src/bootstrap.js';
+import { applyMappings, switchAliasesForTests } from '../src/bootstrap.js';
 import { applyMandatoryScopeFilter } from '../src/scoped-query.js';
 import { search } from '../src/search.js';
 import { createTestClient, waitForCluster } from './helpers.js';
@@ -12,6 +12,8 @@ describe('매핑 동작 (WP-003 DoD 3·5)', () => {
     client = createTestClient();
     await waitForCluster(client);
     await applyMappings(client);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(client);
   }, 90_000);
 
   afterAll(async () => {

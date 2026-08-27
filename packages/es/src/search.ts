@@ -42,6 +42,70 @@ export async function search<TDocument>(
   return client.search<TDocument>({ ...options, index: toIndex(target), query });
 }
 
+/**
+ * 커서 순회가 딛고 서는 색인 스냅숏 (WP-032 / ADR-010 Amendment, CR-044 DEV-286).
+ *
+ * ## 왜 정렬 키와 무관하게 필요한가
+ *
+ * `search_after`는 "정렬 값이 이 커서보다 뒤"라는 조건이다. 어떤 문서의 정렬
+ * 값이 페이지 **사이에** 움직이면 그 문서는 두 번 나오거나 영영 나오지 않는다.
+ *
+ * 정렬 키가 문서 자신의 필드라는 것은 그 값이 불변이라는 뜻이 아니다. 여덟 키
+ * 중 움직이지 않는 것은 `created_at` 하나뿐이다 — `updated_at`은 모든 PR 갱신
+ * 웹훅이, `changed_files_count`·`additions`는 보강 완료가, `lead_time_seconds`는
+ * 머지 시각 확정이, `merged_at`은 미머지 PR의 머지가(`missing: _last` 무리에서
+ * 정렬 구간으로 들어온다), `merge_seq`는 에폭 상향이 움직인다. `relevance`에는
+ * 이유가 하나 더 있다: 값이 아니라 **계산 근거**(BM25 term statistics)가 움직인다.
+ *
+ * CR-043은 처음에 키별로 갈랐다가 CR-044에서 되물렸다 — 판정이 필요한 규칙은
+ * 판정하는 사람이 틀릴 때마다 깨지고, 그 판정의 첫 시도가 이미 틀렸다.
+ */
+export const PIT_KEEP_ALIVE = '5m' as const;
+
+export async function openPointInTime(client: Client, target: SearchTarget): Promise<string> {
+  const response = await client.openPointInTime({
+    index: toIndex(target),
+    keep_alive: PIT_KEEP_ALIVE,
+  });
+  return response.id;
+}
+
+/**
+ * PIT을 닫는다. **실패해도 던지지 않는다.**
+ *
+ * 마지막 페이지를 이미 만든 뒤에 부르는 정리 작업이다. 여기서 던지면 완성된
+ * 응답이 500이 된다 — 사용자가 받을 결과를 청소 실패 때문에 버리는 셈이다.
+ * 닫지 못한 PIT은 `keep_alive`가 지나면 스스로 사라진다.
+ */
+export async function closePointInTime(client: Client, id: string): Promise<boolean> {
+  try {
+    const response = await client.closePointInTime({ id });
+    return response.succeeded;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * PIT 위에서 조회한다 (WP-032).
+ *
+ * **`index`를 함께 주지 않는다.** PIT이 이미 대상을 담고 있어 둘을 함께 주면
+ * Elasticsearch가 요청을 거절한다. 그래서 `search`와 별도 함수다 — 하나로 묶고
+ * 분기하면 다음 호출부가 둘 다 넘긴다.
+ */
+export async function searchWithPit<TDocument>(
+  client: Client,
+  pitId: string,
+  query: ScopedQuery,
+  options: ScopedSearchOptions = {},
+): Promise<estypes.SearchResponse<TDocument>> {
+  return client.search<TDocument>({
+    ...options,
+    pit: { id: pitId, keep_alive: PIT_KEEP_ALIVE },
+    query,
+  });
+}
+
 /** `msearch`의 한 갈래. 질의마다 대상과 옵션이 다를 수 있다. */
 export interface ScopedSearchRequest {
   readonly target: SearchTarget;

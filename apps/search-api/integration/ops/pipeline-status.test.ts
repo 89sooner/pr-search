@@ -10,11 +10,12 @@ import type { Client as EsClient } from '@elastic/elasticsearch';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { deadLetterRepo, rawEventRepo, type Pool, type RawEventInsert } from '@prs/db';
-import { applyMappings, createEsClient, resolveClientOptions } from '@prs/es';
+import { applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions } from '@prs/es';
 import { RedisStreamsEventBus, TOPICS, type Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { PIPELINE_STATUS_PATH } from '../../src/ops/routes.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
+import { TEST_CURSOR_KEY } from '../_cursor-fixture.js';
 
 /** WP-012 이전과 같은 조건: OIDC 미구성 → 이름 붙은 토큰이 통제한다 (CR-015, DEV-048). */
 const TEST_AUTH_CONFIG = {
@@ -81,10 +82,12 @@ describe('파이프라인 상태 (WP-010, API-ADM-006)', () => {
     pool = await migratedPool();
     es = createEsClient(resolveClientOptions());
     await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
     redis = createTestRedis();
     bus = new RedisStreamsEventBus(redis);
     app = buildServer({
-      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG },
+      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY },
       ops: { pool, bus },
       pipeline: { pool, bus, es, metricsQueryUrl: null },
     });
@@ -237,7 +240,7 @@ describe('파이프라인 상태 (WP-010, API-ADM-006)', () => {
 
   it('한 출처가 죽어도 나머지는 정상 반환한다 (예외 처리)', async () => {
     const broken = buildServer({
-      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG },
+      config: { port: 0, adminTokens: [{ name: 'alice', token: TOKEN }], metricsQueryUrl: null, gheBaseUrl: null, auth: TEST_AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY },
       ops: { pool, bus },
       pipeline: {
         pool,

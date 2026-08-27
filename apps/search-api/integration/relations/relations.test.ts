@@ -15,7 +15,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Client } from '@elastic/elasticsearch';
-import { applyMappings, createEsClient, resolveClientOptions, type AccessScope } from '@prs/es';
+import { applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions, type AccessScope } from '@prs/es';
 import { getRelations } from '../../src/relations/service.js';
 
 const ORG = 1;
@@ -142,6 +142,8 @@ async function clearFixtures(): Promise<void> {
 beforeAll(async () => {
   es = createEsClient(resolveClientOptions(process.env));
   await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
   await clearFixtures();
 
   await indexPullRequests([

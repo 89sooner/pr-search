@@ -36,6 +36,7 @@ import { buildServer } from '../../src/server.js';
 import { SEQUENCE_NEIGHBORS_PATH } from '../../src/sequence/routes.js';
 import type { AuthContext, AuthRedis } from '../../src/auth/context.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
+import { TEST_CURSOR_KEY, TEST_CURSOR_SIGNER } from '../_cursor-fixture.js';
 
 const AUTH_CONFIG = {
   enabled: true,
@@ -351,10 +352,10 @@ beforeAll(async () => {
 
   const es = stubEsClient();
   app = buildServer({
-    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG },
+    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY },
     auth,
-    search: { es, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
-    sequence: { pool, es, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
+    search: { es, cursorSigner: TEST_CURSOR_SIGNER, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
+    sequence: { pool, es, cursorSigner: TEST_CURSOR_SIGNER, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
   });
   await app.ready();
 }, 180_000);

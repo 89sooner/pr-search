@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Client } from '@elastic/elasticsearch';
 import {
   applyMandatoryScopeFilter,
-  applyMappings,
+  applyMappings, switchAliasesForTests,
   applyRepositoryTeams,
   createEsClient,
   resolveClientOptions,
@@ -113,6 +113,8 @@ describe('팀 접근 범위가 실제 색인에서 동작한다 (WP-068 DoD)', (
   beforeAll(async () => {
     es = createEsClient(resolveClientOptions());
     await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
     await es.deleteByQuery({
       index: 'prs-pull-requests',
       refresh: true,

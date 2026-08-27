@@ -10,7 +10,7 @@ import type { Client } from '@elastic/elasticsearch';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applyMandatoryScopeFilter, type AccessScope } from '../src/scoped-query.js';
 import { search } from '../src/search.js';
-import { applyMappings } from '../src/bootstrap.js';
+import { applyMappings, switchAliasesForTests } from '../src/bootstrap.js';
 import { createTestClient, waitForCluster } from './helpers.js';
 
 let es: Client;
@@ -48,6 +48,8 @@ beforeAll(async () => {
   es = createTestClient();
   await waitForCluster(es);
   await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
 
   await es.deleteByQuery({ index: ALIAS, query: { match_all: {} }, refresh: true, conflicts: 'proceed' });
 

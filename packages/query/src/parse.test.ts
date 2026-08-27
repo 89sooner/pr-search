@@ -233,6 +233,35 @@ describe('전문 검색어', () => {
     expect(error.detail.offset_end).toBe(1);
   });
 
+  /*
+   * **코드 포인트로 센다** (WP-032 / CR-043, DEV-284).
+   *
+   * `String.length`는 UTF-16 코드 단위 수다. BMP 밖 문자는 서로게이트 쌍이라
+   * **한 글자인데 2로 세어져** 최소 길이 검사를 그냥 통과했다. 사용자가 보는
+   * "한 글자"와 검사가 세는 수가 달랐다.
+   */
+  it('DEV-284: BMP 밖 한 글자도 QUERY_TOO_SHORT다 — `𠮷`', () => {
+    // `.length === 2`라 예전 구현은 통과시켰다.
+    expect('\u{20BB7}'.length).toBe(2);
+    expect(reject('\u{20BB7}').code).toBe('QUERY_TOO_SHORT');
+  });
+
+  it('DEV-284: 이모지 한 글자도 QUERY_TOO_SHORT다', () => {
+    expect('\u{1F600}'.length).toBe(2);
+    expect(reject('\u{1F600}').code).toBe('QUERY_TOO_SHORT');
+  });
+
+  it('DEV-284: BMP 밖 두 글자는 통과한다 — 하한을 코드 포인트로 옮겼을 뿐이다', () => {
+    const two = '\u{20BB7}\u{20BB7}';
+    expect(two.length).toBe(4);
+    expect(parseQuery(two).text).toBe(two);
+  });
+
+  it('DEV-284: 구조화 필터만 있으면 이 규칙을 적용하지 않는다', () => {
+    // 자유 텍스트가 없으면 최소 길이를 물을 대상 자체가 없다.
+    expect(parseQuery('repo:a/b').text).toBeNull();
+  });
+
   it('1자라도 필터가 있으면 오프셋이 검색어 자리를 가리킨다', () => {
     const input = 'repo:x 가';
     const error = reject(input);

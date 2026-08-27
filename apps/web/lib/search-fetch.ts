@@ -70,13 +70,33 @@ export function chooseRoute(state: QueryState, gheBaseUrl?: string): SearchRoute
   return { kind: 'search' };
 }
 
+/** 이어 보기·패싯 요청 옵션 (WP-032). */
+export interface SearchPageOptions {
+  /** 이어 보기 커서. 첫 페이지면 `null`. */
+  readonly cursor?: string | null;
+  /**
+   * 분포를 함께 셀 것인가.
+   *
+   * **첫 페이지만 `true`다** (CR-043, DEV-280 / QA-W001-27). 이어 보기는 같은
+   * 질의의 같은 분포를 다시 세는 것이라 예산만 쓴다.
+   */
+  readonly facets?: boolean;
+}
+
 /** 목록 조회 URL. 프록시를 지나 `search-api`의 `/api/v1/search`가 된다. */
-export function searchUrl(state: QueryState): string {
+export function searchUrl(state: QueryState, options: SearchPageOptions = {}): string {
   const params = new URLSearchParams();
   params.set(PARAM.query, state.q.trim());
   if (state.sort !== null) params.set(PARAM.sort, state.sort);
   if (state.order !== null) params.set(PARAM.order, state.order);
   if (state.size !== null) params.set(PARAM.size, String(state.size));
+  /*
+   * 커서를 **URL에 넣지 않는다** — 이것은 `fetch` 대상 주소이고 브라우저 주소
+   * 표시줄이 아니다. 커서가 주소에 실리면 붙여넣은 링크가 남의 페이징 위치를
+   * 나르게 되고, 그 위치는 **발급자의 접근 범위**로 봉인돼 있어 뜻이 없다.
+   */
+  if (options.cursor != null && options.cursor !== '') params.set('cursor', options.cursor);
+  if (options.facets === true) params.set('facets', 'true');
   return `/api/search?${params.toString()}`;
 }
 

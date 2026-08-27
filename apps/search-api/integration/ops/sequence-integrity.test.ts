@@ -34,6 +34,7 @@ import { buildServerDeps } from '../../src/runtime.js';
 import type { GitHubClient } from '@prs/github';
 import type { OpsDeps } from '../../src/ops/dead-letters.js';
 import { migratedPool } from '../helpers.js';
+import { TEST_CURSOR_KEY } from '../_cursor-fixture.js';
 
 const TEST_AUTH_CONFIG = {
   enabled: false,
@@ -123,7 +124,7 @@ describe('API-ADM-007 시퀀스 정합성 점검 (WP-028)', () => {
         adminTokens: [{ name: 'tester', token: TOKEN }],
         metricsQueryUrl: null,
         gheBaseUrl: null,
-        auth: TEST_AUTH_CONFIG,
+        auth: TEST_AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY,
       },
       /*
        * `ops`는 관리 경로 전체의 관문이다 (`deps.ops === undefined`면 등록하지
@@ -404,7 +405,7 @@ describe('운영 조립이 실제로 경로를 세운다 (CR-034, DEV-177)', () 
         adminTokens: [{ name: 'tester', token: TOKEN }],
         metricsQueryUrl: null,
         gheBaseUrl: null,
-        auth: TEST_AUTH_CONFIG,
+        auth: TEST_AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY,
       } as unknown as Parameters<typeof buildServerDeps>[0]['config'],
       pool,
       bus: { publish: () => Promise.reject(new Error('버스를 쓰지 않는다')) } as unknown as OpsDeps['bus'],
@@ -440,7 +441,7 @@ describe('운영 조립이 실제로 경로를 세운다 (CR-034, DEV-177)', () 
         adminTokens: [{ name: 'tester', token: TOKEN }],
         metricsQueryUrl: null,
         gheBaseUrl: null,
-        auth: TEST_AUTH_CONFIG,
+        auth: TEST_AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY,
       } as unknown as Parameters<typeof buildServerDeps>[0]['config'],
       pool,
       bus: { publish: () => Promise.reject(new Error('버스를 쓰지 않는다')) } as unknown as OpsDeps['bus'],
