@@ -16,7 +16,12 @@
 
 기술 스택은 전 계층 TypeScript, 저장은 PostgreSQL(시스템 오브 레코드) + Elasticsearch(파생 검색 뷰), UI는 사내 `design-system`(Conductor)이다. 확정 결정은 ADR-001~012에 있으며 구현 에이전트는 이를 재결정하지 않는다.
 
-현재 상태: **문서 단계.** 코드는 아직 없다. `srs_final.md`는 `review`이며 사용자 승인으로 `baseline`이 되어야 구현에 착수한다.
+이 문서는 규칙을 적지 상태를 적지 않는다. **현재 상태를 여기서 읽지 마라** — 진입점에 박아 둔 스냅숏은 WP 하나가 끝나는 순간 낡는다 (DEV-324·DEV-325). 현재 `HEAD` 기준으로 정본에서 읽는다.
+
+- SRS 상태와 버전 — `10_requirements/srs_final.md`의 상태 헤더
+- 무엇이 done이고 무엇이 다음인지 — `40_delivery/pr_search_work_packages.md`의 상태 표
+- 진행률·편차(`DEV-###`)·검증 기록 — `40_delivery/pr_search_implementation_traceability.md` (**3장이 진행률의 유일한 정본**)
+- 변경 요청과 릴리스 게이트 — `00_governance/change_control.md`
 
 ## 1. 목적
 
