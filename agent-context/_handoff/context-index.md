@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-08-27T08:50:33+00:00
+generated=2026-08-27T08:58:22+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -42,8 +42,8 @@ sig=agent-context/files.md;docs/10_requirements/srs_final.md;docs/00_governance/
 ### f7b39dc
 src=agent-context/risks.md
 compact=agent-context/_handoff/compact/f7b39dc.risks.ctx.md
-sha256=8e25abfb6e6981445c4d84dd6bcc03823823e7f5002bc145c81f4041e7f91c7f
-bytes=52023 compact_bytes=38789 lines=774 priority=45
+sha256=6623bda6869cb7fcbde3b4943e50bdad0bc150de24fdc10e67f1375bbc960b46
+bytes=52958 compact_bytes=40493 lines=794 priority=45
 heads=리스크 · 불확실한 가정 · 함정 > 절차 함정 (이 세션에서 실제로 밟은 것들) > 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다 > lint는 마지막 파일을 쓴 뒤에 다시 돌려라 > 대역(mock)이 실제보다 관대하면 그만큼이 사각지대다 > 임시 컨테이너에서는 슬라이스마다 커밋하라
 sig=agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;DISTINCT
 

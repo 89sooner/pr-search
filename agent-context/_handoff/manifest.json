@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-08-27T08:50:33+00:00",
+  "generated": "2026-08-27T08:58:22+00:00",
   "root": "/home/roqkf/pr-search",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -176,10 +176,10 @@
       "id": "f7b39dc",
       "source_path": "agent-context/risks.md",
       "compact_path": "agent-context/_handoff/compact/f7b39dc.risks.ctx.md",
-      "sha256": "8e25abfb6e6981445c4d84dd6bcc03823823e7f5002bc145c81f4041e7f91c7f",
-      "bytes": 52023,
-      "lines": 774,
-      "compact_bytes": 38789,
+      "sha256": "6623bda6869cb7fcbde3b4943e50bdad0bc150de24fdc10e67f1375bbc960b46",
+      "bytes": 52958,
+      "lines": 794,
+      "compact_bytes": 40493,
       "headings": [
         "리스크 · 불확실한 가정 · 함정",
         "절차 함정 (이 세션에서 실제로 밟은 것들)",
