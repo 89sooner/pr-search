@@ -21,6 +21,7 @@ import { registerRelationRoutes } from './relations/routes.js';
 
 import { registerSequenceRoutes } from './sequence/routes.js';
 import { registerSavedSearchRoutes } from './saved-search/routes.js';
+import { registerRepositoryRoutes, type RepositoryRouteOptions } from './repositories/routes.js';
 import type { SavedSearchDeps } from './saved-search/service.js';
 import type { SearchDeps } from './search/service.js';
 import type { RangeDeps } from './sequence/range.js';
@@ -92,6 +93,15 @@ export interface ServerDeps {
    * 세션이 없으면 소유자를 정할 수 없으므로 `auth`가 있을 때만 경로를 단다.
    */
   readonly savedSearch?: SavedSearchDeps;
+  /**
+   * 저장소 수집 진단 의존 (API-ING-002·003, WP-034 / CR-050).
+   *
+   * **`ops`와 별개다.** 이 경로는 일반 사용자용이고 `/admin` 아래가 아니며,
+   * 관리자 토큰으로 열리지 않는다 — 세션이 있어야만 접근 범위를 채울 수 있다
+   * (ADR-008). Elasticsearch가 필요한 이유는 문서 수 집계 하나 때문이고,
+   * 그 집계도 필수 접근 범위 필터를 지난다.
+   */
+  readonly repositories?: Omit<RepositoryRouteOptions, 'auth' | 'loginPath'>;
   readonly log?: (entry: { readonly level: string; readonly message: string }) => void;
 }
 
@@ -164,6 +174,25 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
       log({
         level: 'warn',
         message: 'PostgreSQL 의존이 없어 저장된 검색 경로를 등록하지 않는다 (API-SRCH-005)',
+      });
+    }
+
+    /*
+     * 저장소 수집 진단 (API-ING-002·003, WP-034).
+     *
+     * 세션 블록 안에 둔다 — 접근 범위 없이는 이 목록을 낼 수 없고,
+     * 관리자 토큰 대체 경로를 만들지 않는다 (CR-050, DEV-350).
+     */
+    if (deps.repositories !== undefined) {
+      registerRepositoryRoutes(app, {
+        ...deps.repositories,
+        auth: deps.auth,
+        loginPath: config.auth.loginPath,
+      });
+    } else {
+      log({
+        level: 'warn',
+        message: '의존이 없어 저장소 진단 경로를 등록하지 않는다 (API-ING-002, API-ING-003)',
       });
     }
 
