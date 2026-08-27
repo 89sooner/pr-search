@@ -160,7 +160,20 @@ function scan(
     if (allowed.includes(file)) continue;
     if (options.includeTests !== true && isTestFile(file)) continue;
 
-    const lines = readFileSync(absolute, 'utf8').split('\n');
+    /*
+     * **`\r`를 함께 자른다** (WP-032, DEV-327).
+     *
+     * `split('\n')`만 하면 CRLF 파일의 각 줄 끝에 `\r`가 남는다. 그리고 JS
+     * 정규식에서 `.`는 `\r`를 매치하지 않으므로 아래 주석 제거의 `.*$`가 줄
+     * 끝에 닿지 못하고 **치환이 통째로 실패한다.**
+     *
+     * 이 저장소의 소스는 거의 전부 CRLF다(`core.autocrlf=true`). 즉 "주석에
+     * 규칙을 적어 두는 것은 위반이 아니다"라는 규칙이 지금까지 한 번도 참이
+     * 아니었다 — 금지된 모양을 **설명하는 주석**이 위반으로 잡힌다. 검사가
+     * 의도보다 엄격했던 것이라 유출은 없었지만, 다음 사람에게 "설명을 쓰지
+     * 마라"를 가르치는 검사였다.
+     */
+    const lines = readFileSync(absolute, 'utf8').split(/\r?\n/);
     lines.forEach((text, index) => {
       // 주석에 규칙을 적어 두는 것은 위반이 아니다.
       const code = text.replace(/^\s*(\/\/|\*|\/\*).*$/, '');

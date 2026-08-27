@@ -141,8 +141,27 @@ describe('DEV-056: `relevance`', () => {
     expect(fieldsOf(buildSort('relevance', 'desc'))).toEqual(['_score', TIEBREAK_FIELD]);
   });
 
-  it('order를 무시한다 — 점수는 늘 내림차순이 뜻이 있다', () => {
-    expect(buildSort('relevance', 'asc')).toEqual(buildSort('relevance', 'desc'));
+  /*
+   * **이 시험은 뒤집혔다** (WP-032 / CR-043 DEV-275).
+   *
+   * 예전 형태는 "order를 무시한다 — 점수는 늘 내림차순이 뜻이 있다"를 단언하며
+   * **틀린 계약을 굳히고 있었다.** 그 판단이 성립했던 것은 WP-013에 점수를 내는
+   * 절이 없어 모든 문서의 점수가 같았기 때문이고(DEV-056), 그때는 방향이 아무
+   * 차이도 만들지 않았다.
+   *
+   * FR-SRCH-007 AC-1은 키와 방향을 **함께** 승인했다. 지원하지 않기로 정하려면
+   * 그것은 SRS 변경이지 편의로 고정할 일이 아니다.
+   */
+  it('요청한 방향을 존중한다 (FR-SRCH-007 AC-1, DEV-275)', () => {
+    expect(specOf(buildSort('relevance', 'asc'), 0)['order']).toBe('asc');
+    expect(specOf(buildSort('relevance', 'desc'), 0)['order']).toBe('desc');
+    expect(buildSort('relevance', 'asc')).not.toEqual(buildSort('relevance', 'desc'));
+  });
+
+  it('방향과 무관하게 동점은 늘 같은 키로 가른다 — 결정론이 방향에 딸리지 않는다', () => {
+    for (const order of ['asc', 'desc'] as const) {
+      expect(fieldsOf(buildSort('relevance', order)).at(-1)).toBe(TIEBREAK_FIELD);
+    }
   });
 
   it('결정론이 성립한다 — 점수가 모두 같아도 ID가 순서를 만든다', () => {

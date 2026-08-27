@@ -25,6 +25,8 @@ import type { RegistryDeps } from './ops/repositories.js';
 import type { IntegrityDeps } from './ops/sequence-integrity.js';
 import type { ReindexDeps } from './ops/reindex.js';
 import { reindexIndexPort } from '@prs/es';
+import { authRepo } from '@prs/db';
+import { createCursorSigner } from './cursor/envelope.js';
 
 /** 운영이 자격 증명으로 만든 GHE 접근. 없으면 GHE에 닿는 기능이 서지 않는다. */
 export interface RuntimeGitHub {
@@ -115,8 +117,24 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
       ? {}
       : {
           auth: parts.auth,
-          search: parts.searchDeps,
-          sequence: { ...parts.searchDeps, pool: parts.pool },
+          /*
+           * 커서 서명과 팀 이름 해석을 **여기서** 붙인다 (CR-034, DEV-177).
+           *
+           * `index.ts`가 직접 만들면 "무엇을 넘기는가"가 어떤 시험에도 걸리지
+           * 않는 자리로 남는다. 서명자가 빠지면 커서가 조용히 사라지고, 그
+           * 실패는 오류가 아니라 "결과가 이게 전부"로 보인다.
+           */
+          search: {
+            ...parts.searchDeps,
+            cursorSigner: createCursorSigner(parts.config.searchCursorKey),
+            resolveTeamSlugs: (ids: readonly number[]) => authRepo.resolveTeamSlugs(parts.pool, ids),
+          },
+          sequence: {
+            ...parts.searchDeps,
+            pool: parts.pool,
+            cursorSigner: createCursorSigner(parts.config.searchCursorKey),
+            resolveTeamSlugs: (ids: readonly number[]) => authRepo.resolveTeamSlugs(parts.pool, ids),
+          },
         }),
     ...(integrity === undefined ? {} : { integrity }),
     reindex: buildReindexDeps(parts.pool, parts.es),

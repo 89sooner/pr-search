@@ -100,15 +100,17 @@ function fieldSort(
 export function buildSort(key: SortKey, order: SortOrder): estypes.SortCombinations[] {
   if (key === 'relevance') {
     /*
-     * WP-013에는 점수를 만드는 절이 없다 (CR-016, DEV-056).
+     * **요청한 방향을 그대로 쓴다** (WP-032, CR-043 DEV-275).
      *
-     * 접근 범위 필터도 사용자 필터도 전부 `filter` 문맥이라 모든 문서의
-     * 점수가 같다. 그러면 `_score` 정렬은 아무 순서도 만들지 않고 동점
-     * 처리만 남는다 — 실질적으로 문서 ID 순이다. 그래도 `_score`를 앞에
-     * 두는 것은 WP-032가 점수 절을 더하는 순간 이 코드를 고치지 않고도
-     * 뜻이 생기게 하기 위해서다.
+     * 여기는 오래 `order`를 무시하고 `desc`로 고정돼 있었다. WP-013에는 점수를
+     * 내는 절이 없어 모든 문서의 점수가 같았고, 그래서 방향이 아무 차이도
+     * 만들지 않았기 때문이다 (CR-016, DEV-056). 이제 자유 텍스트가 점수를
+     * 내므로 방향이 실제 순서를 바꾼다.
+     *
+     * `asc`를 "쓸모없으니 막는다"고 판단하지 않는다 — FR-SRCH-007 AC-1이 키와
+     * 방향을 함께 승인했고, 지원하지 않기로 정하는 것은 SRS 변경이다.
      */
-    return [{ _score: { order: 'desc' } }, TIEBREAK];
+    return [{ _score: { order } }, TIEBREAK];
   }
 
   const spec = SORT_FIELDS[key];

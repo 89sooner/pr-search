@@ -51,5 +51,5 @@ export type {
   IdentifierRejection,
 } from './identifier.js';
 
-export { MIN_TEXT_LENGTH, parseQuery } from './parse.js';
+export { MIN_TEXT_LENGTH, countCodePoints, parseQuery } from './parse.js';
 export { serializeQuery } from './serialize.js';

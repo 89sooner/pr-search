@@ -306,6 +306,33 @@ export async function listTeamMembers(db: Queryable, teamId: number): Promise<st
  * 버리는 대신 **전부 돌려준다** — 호출 측이 `terms`로 묶으면 OR가 되어
  * "그 이름의 팀 중 어느 것이든"이라는 사용자의 뜻과 맞는다.
  */
+/**
+ * 팀 ID를 slug으로 — **일괄** (WP-032 / FR-SRCH-009, CR-043 DEV-281).
+ *
+ * 패싯이 세는 것은 `allowed_team_ids`라 bucket 키가 숫자다. 사용자는 이름으로
+ * 읽고 이름으로 다시 묻는다(`team:<slug>`). 그 사이를 여기서 잇는다.
+ *
+ * **bucket마다 조회하지 않는다.** 상위 20개면 왕복 20번이고, 그것이 패싯 예산
+ * 1.5초를 그대로 먹는다. `resolveTeamIds`의 반대 방향이며 같은 표를 본다.
+ *
+ * 찾지 못한 ID는 담지 않는다 — 호출 측이 숫자를 그대로 남길지 정한다.
+ */
+export async function resolveTeamSlugs(
+  db: Queryable,
+  teamIds: readonly number[],
+): Promise<Map<number, string>> {
+  if (teamIds.length === 0) return new Map();
+
+  const { rows } = await db.query<{ team_id: number; slug: string }>(
+    'SELECT team_id, slug FROM team WHERE team_id = ANY($1::bigint[])',
+    [[...teamIds]],
+  );
+
+  const resolved = new Map<number, string>();
+  for (const row of rows) resolved.set(Number(row.team_id), row.slug);
+  return resolved;
+}
+
 export async function resolveTeamIds(db: Queryable, slugs: readonly string[]): Promise<Map<string, number>> {
   if (slugs.length === 0) return new Map();
 

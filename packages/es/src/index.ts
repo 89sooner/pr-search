@@ -17,8 +17,14 @@ export {
   ENTITY_INDEX_SETTINGS,
   UNSORTED_INDEX_SETTINGS,
   LOWERCASE_NORMALIZER,
+  PARTIAL_MAX_GRAM,
+  PARTIAL_MIN_GRAM,
+  PARTIAL_NGRAM_FILTER,
+  PARTIAL_TEXT_FIELD,
   PATH_ANALYZER,
+  SEARCHABLE_KEYWORD_FIELDS,
   TEXT_ANALYZER,
+  TEXT_PARTIAL_ANALYZER,
 } from './settings.js';
 
 export { COMMIT_MAPPING, LINK_MAPPING, PULL_REQUEST_MAPPING, RELEASE_MAPPING } from './mappings/index.js';
@@ -45,8 +51,28 @@ export {
 } from './releases.js';
 export type { ApplyReleaseTagsInput, DenormRelease, ReleaseDocInput, ReleaseScope } from './releases.js';
 
-export { multiSearch, search } from './search.js';
+export {
+  PIT_KEEP_ALIVE,
+  closePointInTime,
+  multiSearch,
+  openPointInTime,
+  search,
+  searchWithPit,
+} from './search.js';
 export type { ScopedSearchOptions, ScopedSearchRequest, SearchTarget } from './search.js';
+
+export {
+  HIGHLIGHT_CLOSE,
+  HIGHLIGHT_FIELDS,
+  HIGHLIGHT_FRAGMENTS,
+  HIGHLIGHT_FRAGMENT_SIZE,
+  HIGHLIGHT_OPEN,
+  buildHighlight,
+  containsHighlightMarker,
+  toPlainFragment,
+  toPlainHighlight,
+} from './highlight.js';
+export type { HighlightFragment, HighlightMap } from './highlight.js';
 
 export {
   RELATION_LIMIT_DEFAULT,
@@ -69,7 +95,14 @@ export {
   shaFallbackQuery,
 } from './resolve-query.js';
 
-export { EMPTY_RESOLUTION, buildQuery, collectNames } from './query-builder.js';
+export {
+  EMPTY_RESOLUTION,
+  FIRST_PARENT_COMMIT_ROLES,
+  FULL_TEXT_FIELDS,
+  buildQuery,
+  buildTextClause,
+  collectNames,
+} from './query-builder.js';
 export type { BuiltQuery, NameResolution, UnresolvedName } from './query-builder.js';
 
 export {

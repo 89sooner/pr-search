@@ -24,6 +24,21 @@ import { tokenize, type RawToken } from './tokenizer.js';
 /** 전문 검색어 최소 길이. API 계약 6장의 `QUERY_TOO_SHORT`가 1자를 거절한다. */
 export const MIN_TEXT_LENGTH = 2;
 
+/**
+ * **코드 포인트로 센다** (WP-032, CR-043 DEV-284).
+ *
+ * `String.length`는 UTF-16 코드 단위 수다. BMP 밖 문자(`𠮷`, 대부분의 이모지)는
+ * 서로게이트 쌍이라 **한 글자인데 2로 세어져** 최소 길이 검사를 그냥 통과한다.
+ * 사용자가 보는 "한 글자"와 검사가 세는 수가 달랐다.
+ *
+ * 자소 군집(grapheme cluster)이 아니라 코드 포인트인 것은 계약이 코드 포인트를
+ * 정하기 때문이다. 그 경계를 위해 라이브러리를 새로 들이지 않는다.
+ */
+export function countCodePoints(value: string): number {
+  // `[...value]`가 서로게이트 쌍을 한 원소로 묶는다 — 그것이 코드 포인트 수다.
+  return [...value].length;
+}
+
 const RANGE_SEPARATOR = '..';
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const DATE_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?$/;
@@ -168,7 +183,7 @@ export function parseQuery(input: string): QueryAst {
   }
 
   const text = textTerms.length === 0 ? null : textTerms.join(' ');
-  if (text !== null && text.length < MIN_TEXT_LENGTH) {
+  if (text !== null && countCodePoints(text) < MIN_TEXT_LENGTH) {
     // 오프셋은 첫 검색어 낱말의 자리다. 화면이 그 한 글자를 강조한다.
     throw new QueryParseError('QUERY_TOO_SHORT', `검색어는 ${String(MIN_TEXT_LENGTH)}자 이상이어야 합니다`, {
       token: text,

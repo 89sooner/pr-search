@@ -6,7 +6,13 @@
  */
 
 import type { estypes } from '@elastic/elasticsearch';
-import { LOWERCASE_NORMALIZER, PATH_ANALYZER, TEXT_ANALYZER } from '../settings.js';
+import {
+  LOWERCASE_NORMALIZER,
+  PARTIAL_TEXT_FIELD,
+  PATH_ANALYZER,
+  SEARCHABLE_KEYWORD_FIELDS,
+  TEXT_ANALYZER,
+} from '../settings.js';
 
 export const COMMIT_MAPPING: estypes.MappingTypeMapping = {
   dynamic: 'strict',
@@ -45,10 +51,20 @@ export const COMMIT_MAPPING: estypes.MappingTypeMapping = {
      */
     patch_id_unavailable: { type: 'keyword' },
 
+    /**
+     * `partial`은 전문 검색의 부분 일치 축이다 (WP-032, FR-SRCH-011 AC-4).
+     *
+     * **이 필드가 점수를 내는 것은 `role`이 first-parent 체인일 때뿐이다** —
+     * 원본 커밋 메시지는 AC-1이 정한 범위 밖이다 (DEV-283). 그 한정은
+     * 질의 빌더가 걸고 매핑은 값을 갖는 데까지만 한다.
+     */
     message: {
       type: 'text',
       analyzer: TEXT_ANALYZER,
-      fields: { subject: { type: 'keyword', ignore_above: 512 } },
+      fields: {
+        subject: { type: 'keyword', ignore_above: 512 },
+        partial: PARTIAL_TEXT_FIELD,
+      },
     },
     author: { type: 'keyword' },
     committer: { type: 'keyword' },
@@ -59,7 +75,8 @@ export const COMMIT_MAPPING: estypes.MappingTypeMapping = {
     role: { type: 'keyword' },
     pull_request_numbers: { type: 'integer' },
 
-    base_branch: { type: 'keyword' },
+    // PR 문서와 같은 모양이다. 전문 검색이 두 인덱스를 함께 돈다 (DEV-054).
+    base_branch: { type: 'keyword', fields: SEARCHABLE_KEYWORD_FIELDS },
     merge_seq: { type: 'long' },
     seq_epoch: { type: 'integer' },
     sequence_space: { type: 'keyword' },

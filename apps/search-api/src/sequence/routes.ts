@@ -13,6 +13,7 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { QUERY_KEYS, QueryParseError, parseQuery, type QueryAst } from '@prs/query';
+import { toAccessScope } from '@prs/authz';
 import { AccessScopeUnavailableError, PartialSearchError } from '@prs/es';
 import { ERROR_HTTP_STATUS } from '@prs/contracts';
 import type { ErrorResponse } from '@prs/contracts';
@@ -20,6 +21,9 @@ import { SUPPORTED_ANCHOR_FORMATS } from '@prs/domain';
 import type { AuthContext } from '../auth/context.js';
 import { authenticateSession } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
+import { CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope.js';
+import { readCursor, readFacets } from '../cursor/params.js';
+import { facetResponseFields } from '../search/facets.js';
 import {
   MAX_ANCHORS,
   resolveAnchors,
@@ -143,7 +147,12 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
     correlationId: string,
     repository: unknown,
     baseBranch: unknown,
-  ): Promise<{ space: ResolvedSpace; scope: Awaited<ReturnType<AuthContext['scopes']['resolve']>> } | null> => {
+  ): Promise<{
+    space: ResolvedSpace;
+    scope: Awaited<ReturnType<AuthContext['scopes']['resolve']>>;
+    /** `app_user.access_scope_version`. 구간 커서 지문의 재료다 (WP-032). */
+    scopeVersion: number;
+  } | null> => {
     const userId = (await authenticateSession(request, auth.sessions)).userId;
 
     const slug = parseRepositorySlug(repository);
@@ -156,17 +165,51 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
       return null;
     }
 
-    const scope = await auth.scopes.resolve(userId);
+    /*
+     * **접근 범위를 한 번만 산출한다** (CR-043, DEV-272).
+     *
+     * 커서 지문이 `access_scope_version`을 재료로 쓰는데 `resolve()`는 그것을
+     * 버린다. 두 번 부르면 그 사이에 회수가 끼어들어 질의에 쓴 범위와 지문에
+     * 쓴 버전이 어긋날 수 있다.
+     */
+    const cached = await auth.scopes.resolveCached(userId);
+    const scope = toAccessScope(cached);
     const lookup = await resolveSpace(deps.pool, slug, baseBranch.trim(), scope);
     if (lookup.kind !== 'ok') {
       sendSpaceFailure(reply, correlationId, lookup);
       return null;
     }
-    return { space: lookup.space, scope };
+    return { space: lookup.space, scope, scopeVersion: cached.version };
   };
 
   /** 두 경로가 같은 실패 처리를 쓴다. 인증·권한·부분 결과의 응답이 갈리면 안 된다. */
   const toFailureResponse = (reply: FastifyReply, correlationId: string, error: unknown): FastifyReply => {
+    /*
+     * 커서 실패는 **400**이다 (CR-043, DEV-273).
+     *
+     * 서버 잘못이 아니라 "이 커서를 쓸 수 없다"는 사실이다. 그리고 두 코드가
+     * 다른 것을 말한다 — 에폭이 바뀐 것과 커서가 훼손된 것은 사용자가 이해할
+     * 내용이 다르다. 자동 재시도 루프를 만들지 않는다.
+     */
+    if (error instanceof CursorQueryMismatchError) {
+      return fail(reply, 400, {
+        error: {
+          code: 'CURSOR_QUERY_MISMATCH',
+          message: '구간 조건이 바뀌어 이어 보기를 계속할 수 없습니다. 첫 페이지부터 다시 봅니다.',
+        },
+        correlation_id: correlationId,
+      });
+    }
+    if (error instanceof CursorInvalidError) {
+      return fail(reply, 400, {
+        error: {
+          code: 'CURSOR_INVALID',
+          message: '이어 보기 정보를 사용할 수 없습니다. 첫 페이지부터 다시 봅니다.',
+        },
+        correlation_id: correlationId,
+      });
+    }
+
     const shape = toAuthError(error, { correlationId, loginPath });
     if (shape !== null) return sendAuthError(reply, shape);
 
@@ -318,11 +361,14 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
         {
           space,
           scope,
+          scopeVersion: entered.scopeVersion,
           fromExclusive: fromSeq,
           toInclusive: toSeq,
           size: clampRangeSize(query['size']),
           ast,
           rangeTotal: guard.total,
+          cursor: readCursor(query),
+          facets: readFacets(query),
         },
         deps,
       );
@@ -338,8 +384,10 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
         items_missing_in_index: result.items_missing_in_index,
         // 레지스트리에서 못 찾은 이름. 조용히 0건을 내지 않는다 (CR-016, DEV-052).
         ...(result.unresolved.length === 0 ? {} : { unresolved_names: result.unresolved }),
-        // WP-032 전까지 늘 `null`이다. 키를 빼면 화면이 마지막 페이지를 오해한다.
-        next_cursor: null,
+        // 세 키는 함께 나타나거나 함께 빠진다 (CR-019, DEV-076).
+        ...facetResponseFields(result.facets),
+        // 구간 끝까지 검사했으면 `null`이다 (FR-SEQ-002 AC-6).
+        next_cursor: result.nextCursor,
         correlation_id: correlationId,
       });
     } catch (error) {
@@ -613,11 +661,20 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
         {
           space,
           scope,
+          scopeVersion: entered.scopeVersion,
           fromExclusive: plan.fromSeq,
           toInclusive: plan.toSeq,
           size: clampComparisonSize(query['size']),
           ast: null,
           rangeTotal: guard.total,
+          cursor: readCursor(query),
+          /*
+           * 릴리스 비교(API-SEQ-003)에는 패싯이 없다.
+           *
+           * W-005의 승인 범위가 아니고, 패싯 축은 FR-SEQ-002 AC-8이 W-004에
+           * 대해 정한 것이다. 요청 파라미터를 받아 조용히 다른 화면에 열지 않는다.
+           */
+          facets: false,
         },
         deps,
       );
@@ -634,7 +691,15 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
         items: result.items,
         items_missing_in_index: result.items_missing_in_index,
         ...(result.unresolved.length === 0 ? {} : { unresolved_names: result.unresolved }),
-        next_cursor: null,
+        /*
+         * 릴리스 비교도 구간 커서를 쓴다 (API-SEQ-003).
+         *
+         * 두 릴리스 사이는 넓을 수 있고 `size` 상한은 200이다. 커서 기계가
+         * 이미 있는데 여기만 `null`로 두면 같은 데이터가 화면에 따라 도달
+         * 가능하기도 하고 아니기도 하다. **패싯은 열지 않는다** — W-005의
+         * 승인 범위가 아니다.
+         */
+        next_cursor: result.nextCursor,
         correlation_id: correlationId,
       });
     } catch (error) {
