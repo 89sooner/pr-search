@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-08-27
+> 상태: review | 버전: v0.9 | 갱신일: 2026-08-27
 
 ## 1. 목적
 
@@ -27,7 +27,7 @@
 | API-SRCH-002 | GET | `/commits/{repository}/{commit_sha}` | 커밋 상세와 소속 PR | 인증 + 접근 범위 | FR-SRCH-002, FR-REL-002 |
 | API-SRCH-003 | GET | `/pull-requests/{repository}/{pr_number}` | PR 상세와 커밋 집합 | 인증 + 접근 범위 | FR-SRCH-003, FR-REL-002 |
 | API-SRCH-004 | GET | `/search` | 구조화 질의 목록 조회 + 패싯 | 인증 + 접근 범위 | FR-SRCH-005~009, FR-SRCH-011 |
-| API-SRCH-005 | GET/POST/PATCH/DELETE | `/saved-searches[/{id}]` | 저장된 검색 관리 | 인증 | FR-SRCH-010 |
+| API-SRCH-005 | GET/POST/PATCH/DELETE | `/saved-searches[/{id}]`, `/saved-searches/{id}/run`, `/saved-searches/share-targets` | 저장된 검색 관리 — 목록(커서)·생성·수정·삭제·실행 준비·공유 대상 (CR-049, DEV-333) | 인증 | FR-SRCH-010 |
 | API-SRCH-006 | POST | `/exports` | 검색 결과 내보내기 | 인증 + 접근 범위 | FR-SRCH-012 |
 | API-SEQ-001 | GET | `/sequence-ranges` | 시퀀스 범위 조회 | 인증 + 접근 범위 | FR-SEQ-002 |
 | API-SEQ-002 | POST | `/sequence-anchors/resolve` | 앵커 → 시퀀스 정규화 | 인증 + 접근 범위 | FR-SEQ-003 |
@@ -550,6 +550,171 @@ Elasticsearch 내부에서 `pre_tags`·`post_tags`를 쓰는 것은 무방하다
 **전문 검색의 대상 필드를 넓히지 않는다.** FR-SRCH-011 AC-1이 정한 것은 PR 제목, PR 본문, **머지 커밋 메시지**, 대상·소스 브랜치명이다. 그런데 `/search`는 `prs-pull-requests`와 `prs-commits`를 함께 돌고(CR-016, DEV-054) 커밋 문서에는 `role`이 `merge_commit`·`source_commit`·`direct_push`로 섞여 있다. 자유 텍스트를 `message`에 조건 없이 걸면 **원본 커밋 메시지까지** 검색 대상이 되어 AC-1이 정한 범위를 넘는다. WP-032는 점수 절의 커밋 축을 **first-parent 체인에 있는 커밋**(머지 커밋과 직접 푸시 커밋)으로 한정한다 — 그것이 "이 저장소의 머지 순서에 실제로 나타난 메시지"이며 AC-1의 뜻이다. 구조화 필터의 대상 인덱스는 바뀌지 않는다.
 
 **`QUERY_TOO_SHORT`는 코드 포인트로 센다.** 현재 파서는 `String.length`(UTF-16 코드 단위)로 재므로 `𠮷`나 이모지 한 글자가 **2자로 세어져 통과한다.** trim 뒤 코드 포인트 수로 판정한다. 구조화 필터만 있고 자유 텍스트가 없으면 이 규칙을 적용하지 않는다.
+
+### API-SRCH-005 저장된 검색 관리 (CR-049, DEV-333)
+
+- 목적: 되풀이하는 조회 조건을 이름과 함께 보관하고, 필요하면 팀 하나에 공유하며, 나중에 그대로 다시 실행한다.
+- 관련 요구사항: FR-SRCH-010
+- 관련 화면/데이터: W-008, W-001 / ENT-CORE-006
+- 인증: 세션 인증. 접근 범위 필터는 **이 API가 다루는 자원에 걸리지 않는다** — 저장된 검색은 PostgreSQL의 사용자 자산이고, 접근 범위는 그 질의를 **실행할 때** `API-SRCH-004`가 적용한다 (AC-3).
+
+**하위 경로는 전부 이 ID에 속한다.** 새 `API-SRCH-###`를 만들지 않는다 — 하나의 자원(저장된 검색)에 대한 조작이며 ID를 늘리면 추적 매트릭스가 같은 것을 여러 줄로 말하게 된다.
+
+| Method | Path | 목적 |
+| --- | --- | --- |
+| `GET` | `/api/v1/saved-searches` | 목록 (커서 순회, `view`로 두 논리 목록 구분) |
+| `POST` | `/api/v1/saved-searches` | 생성 |
+| `GET` | `/api/v1/saved-searches/share-targets` | 공유 대상으로 고를 수 있는 팀 목록 |
+| `GET` | `/api/v1/saved-searches/{saved_search_id}` | 단건 조회 |
+| `PATCH` | `/api/v1/saved-searches/{saved_search_id}` | 수정 (저장자만) |
+| `DELETE` | `/api/v1/saved-searches/{saved_search_id}` | 삭제 (저장자만) |
+| `POST` | `/api/v1/saved-searches/{saved_search_id}/run` | 실행 준비 — 권한·유효성 확인, 최종 실행 시각 갱신 |
+
+**정적 경로가 파라미터 경로보다 먼저 등록되어야 한다.** `/share-targets`는 `/{saved_search_id}`와 같은 자리에서 겹치므로 등록 순서가 틀리면 `share-targets`가 ID로 해석된다. 이 사실은 산문이 아니라 **시험이 지킨다**.
+
+#### 자원 표현
+
+```json
+{
+  "saved_search_id": 42,
+  "name": "결제 월간 리뷰",
+  "query": "repo:acme/payments merged:2026-08-01..2026-08-31",
+  "visibility": "team",
+  "target_team": { "team_id": 101, "org_id": 7, "slug": "payments" },
+  "owner": { "user_id": "oidc-sub-1", "login": "alice" },
+  "is_owner": true,
+  "query_status": "valid",
+  "created_at": "2026-08-27T09:00:00Z",
+  "last_run_at": "2026-08-27T10:00:00Z"
+}
+```
+
+- `target_team`은 `visibility`가 `team`일 때만 있다. **식별자는 `team_id`다** — `slug`은 `(org_id, slug)`에서만 유일하므로 이름 하나가 팀 여럿을 가리킬 수 있고(DEV-331), 그것을 정체성으로 쓰면 다른 조직의 동명 팀으로 공유가 샌다. `org_id`와 `slug`은 화면이 사람에게 보여 주기 위한 것이다.
+- `is_owner`는 **요청한 사람 기준**이다. 화면이 편집·삭제 액션을 그릴지 정하는 값이며, 서버는 이 값을 믿지 않고 매번 다시 판정한다.
+- `query_status`는 `valid` 또는 `invalid`다. `invalid`면 `query_error`가 함께 실린다 — 파서가 낸 `token`·`offset_start`·`offset_end`를 그대로 옮긴다 (AC-6).
+- **저장하는 것은 이름과 질의 문자열뿐이다.** 정렬·패싯 선택·커서·조회 결과·저장자의 접근 범위를 담지 않는다. 필터는 이미 질의 문자열 안에 있다.
+
+#### `GET /api/v1/saved-searches`
+
+- `view` (required): `mine` 또는 `team`
+  - `mine` — 내가 소유한 것 전부(`private`와 `team` 모두)
+  - `team` — 남이 소유하고 **내가 현재 구성원인 팀**에 공유한 것
+  - 두 목록은 서로 배타다. 내가 소유한 `team` 검색은 `mine`에만 나타난다 — 같은 항목이 두 번 보이면 사용자가 그것을 두 개로 읽는다.
+- `size` (optional, 기본 50, 최대 100)
+- `cursor` (optional): 이전 응답의 `next_cursor`
+
+정렬은 `created_at DESC, saved_search_id DESC`로 고정한다. 사용자가 정렬을 고르는 화면이 아니고, 동률에서 결정론이 없으면 커서 순회가 항목을 건너뛴다.
+
+```json
+{
+  "view": "mine",
+  "items": [ /* 자원 표현 */ ],
+  "next_cursor": "eyJ2IjoxLCJ2aWV3IjoibWluZSIsLi4u.SIGNATURE",
+  "correlation_id": "..."
+}
+```
+
+`next_cursor`는 마지막 페이지에서 `null`이다. **키를 빼지 않는다** — 없는 키를 화면이 "더 있다"로 오해한다.
+
+#### 커서 (CR-049, DEV-340)
+
+ADR-010은 오프셋을 금지한다. 그러나 **W-001의 커서를 그대로 쓰지 않는다** — 저장된 검색의 정본은 PostgreSQL이고 순회하는 것이 Elasticsearch 문서가 아니다. PIT도 `search_after`도 여기에 뜻이 없다. 봉인 방식(base64url JSON + HMAC-SHA256)과 두 오류 코드만 공유하고, **순회의 뜻은 이 자원의 것이다.**
+
+봉투가 싣는 것:
+
+| 항목 | 왜 |
+| --- | --- |
+| 스키마 버전 | 형태가 바뀌면 옛 커서를 거절해야 한다 |
+| `view` | `mine` 커서를 `team` 목록에 쓰면 다른 집합을 순회하게 된다 |
+| `created_at`·`saved_search_id` | 키셋 위치. 정렬 키와 같은 쌍이다 |
+| 지문 — 사용자 ID, `view`, **현재 팀 구성원 자격**, 접근 범위 버전 | 아래 |
+| 만료 시각 | 무한히 사는 커서를 만들지 않는다 |
+
+**팀 구성원 자격을 지문에 넣는 이유가 이 커서의 핵심이다.** `view=team` 목록의 내용은 "내가 어느 팀에 속해 있는가"가 정한다. 첫 페이지를 받은 뒤 팀에서 회수되면 그 커서가 가리키는 위치는 이제 **다른 집합의 위치**다. 지문 없이 이어 보면 회수된 팀의 항목을 계속 내주게 된다 — 접근 통제가 순회 도중에 조용히 무력해진다. 팀 ID를 정렬해 지문에 담고, 달라지면 `CURSOR_QUERY_MISMATCH`로 첫 페이지부터 다시 보게 한다.
+
+서명 키는 `SEARCH_CURSOR_HMAC_KEY`를 그대로 쓴다. **새 시크릿을 만들지 않는다** — 배포가 관리할 키가 늘면 하나가 빠졌을 때의 실패가 늘어난다.
+
+- 훼손·만료·모르는 스키마·형식 오류 → `400 CURSOR_INVALID`
+- 지문 불일치(사용자·`view`·팀 구성 변경) → `400 CURSOR_QUERY_MISMATCH`
+
+**남의 커서를 건네받은 경우도 이 갈래다.** 사용자 ID가 지문에 섞여 있으므로 서명은 유효한데 지문이 다르다. "이 커서를 당신이 쓸 수 없다"에 더 가까워 보이지만 그것을 구분하려면 **사용자 ID를 봉투에 평문 필드로 실어야 하고**, 봉투는 서명될 뿐 암호화되지 않으므로 OIDC `sub`가 base64 한 번으로 읽힌다. 구분의 값보다 노출의 대가가 크다 — 두 코드의 사용자 대면 결과는 어차피 같다(첫 페이지로 복귀).
+
+둘 다 첫 페이지로 되돌리지만 **같은 사실을 말하지 않는다.** 자동 재시도 루프를 만들지 않는다.
+
+#### `POST /api/v1/saved-searches`
+
+```json
+{ "name": "결제 월간 리뷰", "query": "repo:acme/payments merged:2026-08-01..2026-08-31", "visibility": "team", "team_id": 101 }
+```
+
+- `owner_user_id`를 **본문에서 받지 않는다.** 소유자는 세션이 정한다 — 받는 순간 그것이 남의 이름으로 저장하는 문이 된다.
+- `visibility`가 `team`이면 `team_id`가 필수이고, `private`이면 `team_id`를 받지 않는다.
+- `team_id`는 **요청이 주장하는 값이므로 믿지 않는다.** 저장 시점에 요청자가 그 팀의 구성원인지 다시 확인한다 (AC-1). 아니면 `400 INVALID_PARAMETER`다.
+- **그 확인은 쓰기와 원자적이어야 한다** (CR-049 PR #59 리뷰). `READ COMMITTED`에서 각 문장은 자기 시작 시점의 스냅숏을 보므로, 멤버십을 읽고 나중에 `INSERT`하면 **그 사이에 커밋된 팀 탈퇴를 보지 못한다** — 이탈한 사람이 그 팀에 공유하는 행을 만들 수 있다. 같은 트랜잭션 안에서 `team_member` 행을 `SELECT ... FOR SHARE`로 잠근 뒤 쓴다. 잠그면 그 행을 지우려는 트랜잭션이 이쪽 커밋까지 기다리고, 반대로 삭제가 먼저 커밋했다면 이쪽 `SELECT`가 그것을 보고 거절한다 — 어느 순서든 결과가 일관된다. `/run`이 갱신 문장 자체에 권한 조건을 거는 것과 **같은 규율**이며, 판정과 쓰기 사이에 창을 남기지 않는다는 뜻이다.
+- `query`는 `@prs/query`로 검증한다. 서버와 화면이 **같은 파서**를 쓴다 (ADR-001). 실패하면 `400 QUERY_SYNTAX_ERROR`이며 파서가 낸 오프셋을 그대로 싣는다.
+- `name`은 공백만으로 이루어질 수 없다. 그 밖의 길이 상한은 이 계약이 새로 만들지 않는다 — 본문 크기 경계가 이미 있다.
+
+**상한 검사는 경쟁 조건에서도 성립해야 한다** (AC-4, DEV-336). `SELECT count(*)` 뒤에 `INSERT`하는 순서는 99건 상태에서 동시 요청 둘을 101건으로 만든다. 소유자 행을 잠그고(`SELECT ... FOR UPDATE`) 세고 넣는 것을 **한 트랜잭션 안에서** 한다. 상한을 넘으면 `409 SAVED_SEARCH_LIMIT`이다. 여러 행에 걸친 개수를 `CHECK`로 강제하지 않는다 — PostgreSQL의 `CHECK`는 다른 행을 볼 수 없다.
+
+응답 `201` + 자원 표현.
+
+#### `PATCH /api/v1/saved-searches/{saved_search_id}`
+
+`name`·`query`·`visibility`·`team_id`를 바꾼다. **저장자만 수행한다** (AC-2).
+
+- 저장자가 아니면 `404 NOT_FOUND`다. `403`으로 답하면 "그 ID의 검색이 존재한다"가 새어 나간다.
+- `query`를 바꾸면 `POST`와 같은 검증을 거친다.
+- **수정 후의 최종 상태가 `team`이면 그 대상 팀의 현재 구성원 자격을 다시 확인한다** (AC-7). 저장자가 이미 그 팀에서 이탈했다면 거절한다 — 이탈한 사람이 그 팀의 공유 자산을 계속 바꾸게 두지 않는다. `private`으로 바꾸는 것과 삭제는 언제나 가능하다.
+- **이 확인도 `POST`와 같은 잠금을 쓴다.** 검사 뒤 갱신 사이에 탈퇴가 커밋되면 같은 구멍이 열린다.
+- `visibility`를 `private`으로 바꾸면 `team_id`를 지운다.
+
+#### `DELETE /api/v1/saved-searches/{saved_search_id}`
+
+저장자만 수행한다. 저장자가 아니면 `404`다. 응답 `204`.
+
+#### `POST /api/v1/saved-searches/{saved_search_id}/run`
+
+**이 경로는 검색을 대신 실행하지 않는다.** 하는 일은 넷이다: 실행 권한 확인, 질의 재검증, 최종 실행 시각 갱신, 그리고 화면이 이동할 곳을 알려 주는 것.
+
+```json
+{
+  "saved_search_id": 42,
+  "query": "repo:acme/payments merged:2026-08-01..2026-08-31",
+  "last_run_at": "2026-08-27T10:00:00Z",
+  "navigation_url": "/search?q=repo%3Aacme%2Fpayments+merged%3A2026-08-01..2026-08-31",
+  "correlation_id": "..."
+}
+```
+
+**결과를 여기서 계산하면 AC-3이 구조적으로 위태로워진다.** 이 경로가 검색까지 수행하면 "누구의 범위로 계산했는가"가 이 핸들러의 판단이 되고, 언젠가 저장자의 범위를 캐시하는 최적화가 들어올 자리가 생긴다. 화면을 W-001로 보내고 그곳이 `API-SRCH-004`를 **실행자의 세션으로** 부르게 하면, 저장된 검색은 접근 통제 경로에 아예 참여하지 않는다.
+
+- 실행 권한: 저장자이거나 대상 팀의 현재 구성원. 아니면 `404`.
+- 질의가 현재 문법에서 무효면 `409 SAVED_SEARCH_QUERY_INVALID`이며 오류 위치를 함께 싣는다. **이때 `last_run_at`을 갱신하지 않는다** — 실행되지 않은 것을 실행했다고 적지 않는다.
+- `last_run_at`은 **유효하고 권한 있는 실행에서만** 갱신하며, 저장자든 공유받은 구성원이든 똑같이 갱신한다. 그것이 "이 검색이 마지막으로 쓰인 시각"이라는 뜻이다.
+- 권한 확인과 갱신 사이에 팀 구성이 바뀔 수 있으므로, **갱신 문장 자체가 권한 조건을 다시 건다.** 갱신된 행이 0이면 `404`다.
+
+#### `GET /api/v1/saved-searches/share-targets`
+
+```json
+{ "teams": [ { "team_id": 101, "org_id": 7, "slug": "payments" } ], "correlation_id": "..." }
+```
+
+- 요청자가 **현재 구성원인 팀만** 반환한다. 이 목록이 곧 `POST`·`PATCH`가 받아들이는 `team_id`의 집합이다.
+- 정본은 `team`·`team_member` 표다. **이 조회 때문에 GHE를 동기 호출하지 않는다** — 대화상자 하나가 외부 의존을 타면 GHE가 느릴 때 저장 자체가 막힌다.
+- 같은 `slug`이 여러 조직에 있으면 `org_id`로 구분해 표시한다. 조직 이름을 담는 정본 표가 아직 없으므로 **새로 만들지 않고** `org_id`와 `slug`으로 구분한다.
+
+#### 오류
+
+| 코드 | 상태 | 언제 |
+| --- | --- | --- |
+| `QUERY_SYNTAX_ERROR` | 400 | 저장·수정하려는 질의가 현재 문법에서 무효 |
+| `INVALID_PARAMETER` | 400 | `visibility`·`team_id` 조합이 어긋남, 구성원이 아닌 팀 지정, `view` 누락, `name`이 공백뿐 |
+| `CURSOR_INVALID` | 400 | 커서 훼손·만료·모르는 스키마 |
+| `CURSOR_QUERY_MISMATCH` | 400 | 사용자·`view`·팀 구성이 커서 발급 시점과 다름 |
+| `NOT_FOUND` | 404 | 없는 항목, 볼 수 없는 항목, 소유하지 않은 항목에 대한 수정·삭제 |
+| `SAVED_SEARCH_LIMIT` | 409 | 소유한 저장 검색이 100건 |
+| `SAVED_SEARCH_NAME_CONFLICT` | 409 | 같은 이름의 내 검색이 이미 있음 |
+| `SAVED_SEARCH_QUERY_INVALID` | 409 | 저장돼 있던 질의가 현재 문법에서 무효인데 실행을 요청 |
 
 ### API-SEQ-001 시퀀스 범위 조회
 
@@ -1829,6 +1994,8 @@ POST /api/v1/admin/reindex
 | `JOB_CONFLICT` | 409 | 동일 대상 잡 실행 중 | 기존 잡 확인 |
 | `REINDEX_BUSY` | 409 | 다른 별칭이 재색인 중 (동시 실행 상한 1) | 실행 중인 재색인 완료 대기 |
 | `SAVED_SEARCH_LIMIT` | 409 | 저장 100건 초과 | 기존 항목 삭제 |
+| `SAVED_SEARCH_NAME_CONFLICT` | 409 | 같은 이름의 내 저장 검색이 이미 있음 (CR-049) | 이름 변경 |
+| `SAVED_SEARCH_QUERY_INVALID` | 409 | 저장된 질의가 현재 문법에서 무효인데 실행을 요청 (CR-049) | 질의 수정(저장자) |
 | `PAYLOAD_TOO_LARGE` | 413 | 웹훅 25MB 초과 | (GHE 측) |
 | `PERMISSION_UNAVAILABLE` | 503 | 접근 범위 조회 실패 | 잠시 후 재시도 |
 | `SEARCH_TIMEOUT` | 504 | 검색 3초 초과 | 조건 추가 |
