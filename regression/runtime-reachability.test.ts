@@ -36,6 +36,15 @@ const API_INDEX = read('apps/search-api/src/index.ts');
  */
 const CAPABILITIES = [
   {
+    id: 'JOB-AUTH-001',
+    what: '권한 캐시 무효화 워커',
+    process: 'pipeline-worker',
+    role: 'authz',
+    start: 'authzSubscription = await startAuthzWorker(',
+    stop: 'authzSubscription?.close()',
+    manifest: 'deploy/k8s/pipeline-worker-authz.yaml',
+  },
+  {
     id: 'JOB-ING-006',
     what: '무중단 재색인 러너',
     process: 'pipeline-worker',
@@ -804,13 +813,6 @@ describe('경로가 실재하는지', () => {
         'JOB-REL-007 릴리스 수집. manifest 자체가 없다. 이 역할은 **미러 볼륨을 요구하므로**(DEV-143) ' +
         'PVC 배치가 함께 정해져야 해 복사만으로 만들 수 없다. WP-024 소관',
     },
-    {
-      role: 'authz',
-      dev: 'DEV-306',
-      why:
-        'JOB-AUTH-001 권한 캐시 무효화. manifest가 없어 `EVT-AUTH-001`을 아무도 소비하지 않는다 — ' +
-        '회수된 권한이 TTL 만료까지 캐시에 남는다 (FR-AUTH-003 AC-2). **접근 통제 축이므로 별도 CR로 다룬다.** WP-012 소관',
-    },
   ];
 
   /** manifest가 실제로 켜는 역할 집합. 파일 존재가 아니라 `PIPELINE_WORKER_ROLES` **값**을 본다. */
@@ -913,6 +915,44 @@ describe('경로가 실재하는지', () => {
     }
   });
 
+  it('**배포 단위 표에 같은 단위가 두 번 오르지 않는다** (PR #53 리뷰 P2)', () => {
+    /*
+     * 위 검사들은 파싱한 역할을 `Set`으로 다루므로 **중복 행을 보지 못한다.**
+     * 표가 용량 산정의 근거인데 같은 단위가 두 줄이면 그 수가 애매해지고,
+     * 행을 세는 도구는 배포 단위를 하나 더 있는 것으로 읽는다.
+     *
+     * 실제로 이 CR이 편집을 두 번 적용해 `authz` 행이 두 줄이 됐고, 다른 검사는
+     * 전부 통과했다 — `Set`이 그것을 삼켰다.
+     */
+    const INFRA = read('docs/30_technical_architecture/pr_search_infrastructure_operations.md');
+    const rows = [...INFRA.matchAll(/^\|\s*`(pipeline-worker:[a-z-]+)`\s*\|/gm)].map((one) => one[1]);
+    const seen = new Set<string>();
+    const duplicated = rows.filter((one) => {
+      if (seen.has(one as string)) return true;
+      seen.add(one as string);
+      return false;
+    });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(duplicated, `배포 단위 표에 중복 행이 있다: ${duplicated.join(', ')}`).toEqual([]);
+  });
+
+  it('**배포된 역할을 표 아래 산문이 미배포라고 적지 않는다** (PR #53 리뷰 P2)', () => {
+    /*
+     * 표와 그 아래 설명이 서로 다른 말을 하면 운영자는 배타적인 두 지시를 받는다.
+     * 표에 오른 역할이 "아직 배포되지 않으며"라는 문장에 남아 있으면 안 된다.
+     */
+    const INFRA = read('docs/30_technical_architecture/pr_search_infrastructure_operations.md');
+    const approved = new Set(
+      [...INFRA.matchAll(/^\|\s*`pipeline-worker:([a-z-]+)`\s*\|/gm)].map((one) => one[1] as string),
+    );
+    const note = /아직 배포되지 않으며([\s\S]{0,200})/.exec(INFRA)?.[0] ?? '';
+    expect(note, '미배포 안내 문단을 찾지 못했다').not.toBe('');
+    for (const role of approved) {
+      const mentioned = new RegExp('`' + role + '`\\(JOB-[A-Z]+-\\d{3}\\)[^.]{0,80}아직 배포되지 않으며').test(INFRA);
+      expect(mentioned, `배포 단위 표에 있는 '${role}'을 산문이 미배포로 적는다`).toBe(false);
+    }
+  });
+
   it('미배포 역할 예외는 목록에 사유와 DEV가 함께 있다', () => {
     // 예외를 늘리는 것은 **경계를 넓히는 일**이다. 비워 두면 검사가 무의미해진다.
     for (const one of UNDEPLOYED_ROLE_ALLOWLIST) {
@@ -921,6 +961,8 @@ describe('경로가 실재하는지', () => {
     }
     // 이미 배포된 역할이 예외 목록에 남아 있으면 목록이 낡은 것이다.
     expect(UNDEPLOYED_ROLE_ALLOWLIST.map((one) => one.role)).not.toContain('batch');
+    // CR-048이 `authz`를 배포했다 (DEV-306). 예외에 남아 있으면 목록이 낡은 것이다.
+    expect(UNDEPLOYED_ROLE_ALLOWLIST.map((one) => one.role)).not.toContain('authz');
   });
 });
 
