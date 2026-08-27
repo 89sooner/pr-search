@@ -28,6 +28,7 @@ import {
 import { pullRequestDocId } from '@prs/domain';
 import {
   applyMappings,
+  bulkUpsert,
   concreteIndexName,
   createEsClient,
   listIndexVersions,
@@ -593,6 +594,10 @@ describe('R1 레지스트리 소유 필드는 현재 값으로 덮는다 (PR #52
     const { jobId, targetIndex } = await enqueuePr();
     await claim(jobId);
     await runClaimed(jobId);
+
+    // 실패했으면 별칭이 아니라 **그 이유**가 먼저 보여야 한다.
+    const outcome = await jobRow(jobId);
+    expect(outcome.state, `재구축이 완료되지 않았다: ${JSON.stringify(outcome.progress)}`).toBe('completed');
     expect(await resolveServingIndex(es, PR_ALIAS)).toBe(targetIndex);
 
     await es.indices.refresh({ index: targetIndex });
@@ -615,6 +620,68 @@ describe('R1 레지스트리 소유 필드는 현재 값으로 덮는다 (PR #52
       "UPDATE repository SET allowed_team_ids = $2, status = 'active' WHERE repository_id = $1",
       [REPOSITORY_ID, []],
     );
+  });
+
+  it('**본문에 `document_version`이 없는 스냅숏도 재구축한다** (CI가 잡았다)', async () => {
+    /*
+     * 버전의 정본은 `pull_request_snapshot.document_version` **열**이다. 본문에
+     * 같은 값이 들어 있는 것은 투영이 그렇게 만들었기 때문일 뿐이고, 본문에 그
+     * 키가 없는 행도 실재한다(`worker/link.test.ts`의 픽스처가 그렇다).
+     *
+     * 본문을 믿으면 조건부 업서트 스크립트가 `null`과 비교하다
+     * `script_exception`으로 거부하고, **그 한 행이 저장소 전체의 재구축을
+     * 막는다** — 그리고 그 실패는 전환 거절로만 보여 원인이 드러나지 않는다.
+     */
+    await prSnapshotRepo.upsertPullRequestSnapshot(pool, {
+      repositoryId: REPOSITORY_ID,
+      prNumber: 503,
+      documentVersion: 3_000,
+      source: 'webhook',
+      document: { pr_number: 503, title: '버전이 본문에 없다', body: '' },
+    });
+
+    // 서비스 인덱스에 이미 그 문서가 있어야 스크립트가 실제로 비교를 한다.
+    await withReindexWrite(pool, (targets) =>
+      bulkUpsert(
+        es,
+        [
+          {
+            alias: 'prs-pull-requests' as const,
+            id: pullRequestDocId(REPOSITORY_ID, 503),
+            routing: String(REPOSITORY_ID),
+            doc: {
+              document_version: 3_000,
+              doc_id: pullRequestDocId(REPOSITORY_ID, 503),
+              pr_number: 503,
+              repository_id: REPOSITORY_ID,
+              repository: `${OWNER}/${NAME}`,
+              org_id: 71,
+              visibility: 'internal',
+              allowed_team_ids: [],
+              repository_archived: false,
+              indexed_at: '2026-08-01T00:00:00Z',
+            },
+          },
+        ],
+        targets,
+      ),
+    );
+
+    const { jobId, targetIndex } = await enqueuePr();
+    await claim(jobId);
+    await runClaimed(jobId);
+
+    const row = await jobRow(jobId);
+    expect(row.state, `재구축이 실패했다: ${String(row.progress['failures'] ?? '')}`).toBe('completed');
+    expect(await resolveServingIndex(es, PR_ALIAS)).toBe(targetIndex);
+
+    await es.indices.refresh({ index: targetIndex });
+    const found = await es.search<Record<string, unknown>>({
+      index: targetIndex,
+      query: { bool: { filter: [{ term: { repository_id: REPOSITORY_ID } }, { term: { pr_number: 503 } }] } },
+    });
+    expect(found.hits.hits.length, '버전이 본문에 없는 PR이 재구축에서 빠졌다').toBe(1);
+    expect((found.hits.hits[0]?._source as Record<string, unknown>)['document_version']).toBe(3_000);
   });
 
   it('**PR 유래 커밋 문서도 정본에서 다시 만든다**', async () => {

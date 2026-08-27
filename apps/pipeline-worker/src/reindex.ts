@@ -206,7 +206,21 @@ async function rebuildPullRequests(
       alias: 'prs-pull-requests' as const,
       id: pullRequestDocId(repositoryId, row.pr_number),
       routing: String(repositoryId),
-      doc: { ...row.document, ...scope } as UpsertRequest['doc'],
+      doc: {
+        ...row.document,
+        ...scope,
+        /*
+         * **버전의 정본은 본문이 아니라 열이다** (CI가 잡았다).
+         *
+         * `upsertPullRequestSnapshot`이 조건부 비교에 쓰는 값은
+         * `pull_request_snapshot.document_version` 열이고, 본문에 같은 값이
+         * 들어 있는 것은 투영이 그렇게 만들었기 때문일 뿐이다 — 본문에 그 키가
+         * 없는 행도 있다. 본문을 믿으면 조건부 업서트 스크립트가 `null`과
+         * 비교하다 `script_exception`으로 거부하고, 재구축 전체가 그 한 행에
+         * 막힌다.
+         */
+        document_version: Number(row.document_version),
+      } as UpsertRequest['doc'],
     }));
 
     await withReindexWrite(deps.pool, async (targets) => {
@@ -350,6 +364,7 @@ async function rebuildProjectedCommits(
       const prNumber = row.pr_number;
       const baseBranch = typeof document['base_branch'] === 'string' ? document['base_branch'] : undefined;
       const enrichmentPending = document['enrichment_pending'] === true;
+      // 버전의 정본은 본문이 아니라 열이다 (위와 같은 이유).
       const documentVersion = Number(row.document_version);
 
       // 머지 커밋이 원본 목록에도 있으면 머지 커밋이 이긴다 — 투영과 같은 규칙이다.

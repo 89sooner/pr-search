@@ -1055,7 +1055,10 @@ describe('무중단 재색인의 도달성과 계약 (WP-035 / CR-045~047)', () 
   it('**레지스트리 소유 필드를 현재 값으로 덮는다** (PR #52 리뷰 P1)', () => {
     // 스냅숏은 투영 시점의 사본이다. 그대로 쓰면 전환이 회수된 팀을 되살린다.
     expect(REINDEX).toContain('const scope = registryOwnedFields(repository);');
-    expect(REINDEX).toContain('doc: { ...row.document, ...scope }');
+    expect(REINDEX).toContain('...row.document,');
+    expect(REINDEX).toContain('...scope,');
+    // 버전의 정본은 본문이 아니라 **열**이다 (CI가 잡았다).
+    expect(REINDEX).toContain('document_version: Number(row.document_version),');
     const documents = read('apps/pipeline-worker/src/documents.ts');
     expect(documents).toContain('export function registryOwnedFields(');
     // 구현이 하나다 — `commit-enrich`가 자기 사본을 갖지 않는다.
