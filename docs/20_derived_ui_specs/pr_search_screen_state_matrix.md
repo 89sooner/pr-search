@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.6 | 갱신일: 2026-08-27
+> 상태: review | 버전: v0.7 | 갱신일: 2026-08-28
 
 ## 1. 상태 설계 원칙
 
@@ -134,7 +134,7 @@
 | --- | --- | --- | --- | --- |
 | `loading_initial` | 진입 | 타임라인 skeleton | - | - |
 | `ready` | 정상 | 릴리스 목록 + 상세 | - | FR-SEQ-004 |
-| `release_not_indexed` | 릴리스 0건 (태그가 없거나 아직 수집되지 않았거나 — 서버가 둘을 판별할 수 없다, CR-030 DEV-159) | 두 원인과 다음 행동을 함께 안내. **W-009는 P1이라 그 화면이 서기 전에는 링크를 걸지 않는다** | W-009 (REL-004~005) | FR-SEQ-004 |
+| `release_not_indexed` | 릴리스 0건 (태그가 없거나 아직 수집되지 않았거나 — 서버가 둘을 판별할 수 없다, CR-030 DEV-159) | 두 원인과 다음 행동을 함께 안내하고 **저장소 진단으로 가는 링크를 건다** (`/repositories?repository=owner/name`). WP-034가 그 화면을 세웠다 (CR-050, DEV-159 해소) | W-009 | FR-SEQ-004 |
 | `error_space_mismatch` | 비교 대상 2건이 다른 브랜치 | 비교 버튼 비활성 + 사유 | 선택 변경 | FR-SEQ-004 |
 | `not_found` / `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 
@@ -184,12 +184,16 @@
 | 상태 | 발생 조건 | 화면 처리 | 복구 경로 | 관련 FR |
 | --- | --- | --- | --- | --- |
 | `loading_initial` | 진입 | 카드 skeleton | - | - |
-| `ready` | 정상 | 저장소 카드 + 시퀀스 공간 상태 | - | FR-ING-009 |
-| `empty_no_repository` | 접근 범위 내 등록 저장소 0건 | 등록 요청 경로 | 요청 | FR-ING-009 |
-| `operation_pending` | 백필 진행 중 | 진행률 표시 | - | FR-ING-006 |
-| `sequence_stale` / `sequence_reassigning` | 시퀀스 공간 이상 | 공간별 상태 배지 | 운영자 문의 | FR-SEQ-005 |
-| `partial_failure` | 일부 저장소 상태 조회 실패 | 해당 카드만 오류 | 카드 재시도 | - |
+| `ready` | 정상 | 저장소 카드 + 시퀀스 공간 상태 + 누락 현황 | - | FR-ING-009 |
+| `loading_more` | 커서 페이저로 다음 페이지 요청 | 기존 카드 유지 + 하단 로딩 | - | FR-ING-009 |
+| `empty_no_repository` | **PR Search에 표시할 수 있는 등록 저장소가 접근 범위 안에 0건** | 등록 검토 요청 경로. "GitHub에 접근 가능한 저장소가 없다"로 말하지 않는다 | 요청 | FR-ING-009, FR-AUTH-002 |
+| `operation_pending` | 백필 진행 중 | 진행률 표시. **실행 버튼은 없다** | - | FR-ING-006 |
+| `sequence_stale` / `sequence_reassigning` | 시퀀스 공간 이상 | 공간별 상태 배지 + **마지막 확정 서수를 함께 표시**한다 (숨기면 사용자가 아무 값도 못 본다) | 운영자 문의 | FR-SEQ-005 |
+| `partial_failure` | 진단 항목 하나의 조회 실패 (문서 수 / 백필 / 시퀀스 / 누락 현황) | **해당 항목만 미확인** 표시, 같은 카드의 나머지 사실은 유지 | 카드 재시도 | FR-ING-009 |
+| `error_cursor` | 커서가 무효하거나 순회 중 접근 범위가 바뀜 | 처음부터 다시 읽도록 안내. 자동 재조회하지 않는다 | 처음부터 | FR-AUTH-002 |
 | `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
+
+**세 값을 구분한다.** `null`(아직 그런 기록이 없다) · `0`(확인했고 0이다) · `unavailable`(조회에 실패해 모른다)는 서로 다른 사실이며 같은 문구로 그리지 않는다. 마지막 수집 시각, 문서 수, 백필, 누락 현황 넷 모두에 적용된다.
 
 ### A-001 수집 파이프라인 콘솔
 

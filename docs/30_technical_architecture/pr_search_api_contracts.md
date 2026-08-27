@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.9 | 갱신일: 2026-08-27
+> 상태: review | 버전: v0.10 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -47,6 +47,8 @@
 | API-STAT-004 | POST | `/analytics/distributions` | 변경 규모 분포 | 인증 + 접근 범위 | FR-STAT-005 |
 | API-AUTH-001 | GET | `/me` | 현재 사용자, 역할, 접근 범위 요약 | 인증 | FR-AUTH-001, FR-AUTH-002 |
 | API-ING-001 | POST | `/webhooks/github` | GHE 웹훅 수신 | HMAC 서명 | FR-ING-001, FR-ING-002 |
+| API-ING-002 | GET | `/repositories` | 저장소 수집 진단 조회 — W-009. **`/admin` 아래가 아니다** (CR-050, DEV-350) | 인증 + 접근 범위 | FR-ING-006, FR-ING-009, FR-ING-011, FR-SEQ-001, FR-SEQ-005 |
+| API-ING-003 | POST | `/repository-registration-requests` | 등록 검토 요청 기록. 등록하지 않고 실재 여부도 확인하지 않는다 (CR-050, DEV-351) | 인증 | FR-ING-009 |
 | API-ADM-001 | GET/POST/PATCH/DELETE | `/admin/repositories[/{id}]` | 저장소 등록 관리 | `operator` | FR-ING-009 |
 | API-ADM-002 | GET/POST/PATCH | `/admin/jobs[/{id}]` | 잡 실행·중단·진행률 | `operator` | FR-ADMIN-002, FR-ING-006, FR-ING-008 |
 | API-ADM-003 | GET/POST | `/admin/dead-letters[/reprocess]` | 실패 대기열 조회·재처리 | `operator` | FR-ING-007 |
@@ -1551,6 +1553,105 @@ POST /api/v1/analytics/percentiles
 - 오류: 401 (서명 불일치, 본문 없음), 413 (25MB 초과), 500 (durable 저장 실패 — GHE 재전송 유도)
 - 지원 이벤트: `pull_request`, `pull_request_review`, `push`, `create`, `delete`, `release`, `member`, `team`, `repository`. 그 외는 저장만 하고 처리 대상에서 제외 (AC-5)
 
+### API-ING-002 저장소 수집 진단 조회 (CR-050, DEV-350)
+
+- 목적: W-009를 채운다 — 사용자의 접근 범위 안 등록 저장소마다 "왜 이 저장소 결과가 없는가"에 답할 진단 정보를 준다.
+- 관련 요구사항: FR-ING-009 AC-6·AC-7·AC-10, FR-ING-006, FR-ING-011 AC-6, FR-SEQ-001, FR-SEQ-005, FR-AUTH-002
+- 신설 사유: W-009는 일반 사용자 화면인데 이 정보를 가진 경로가 `API-ADM-001`·`API-ADM-006` 둘뿐이고 **둘 다 `operator` 전용**이다. 특히 `API-ADM-006`은 FR-ADMIN-001 AC-4가 그 제한을 직접 승인했고, 그 응답은 저장소를 식별하지 않는 전역 지표라 이 화면의 데이터 계약이 아니다. 권한을 완화하면 승인된 보안 계약을 뒤집으므로 **일반 사용자 경로를 따로 세운다** (DEV-350).
+
+요청: `GET /api/v1/repositories?limit=50&cursor=...&repository=acme/payments`
+
+- `limit` (optional, 기본 50, 최대 100)
+- `cursor` (optional) — 다음 페이지. **오프셋 파라미터는 없다** (ADR-010)
+- `repository` (optional) — `owner/name` **완전 일치**. W-001·W-002·W-005의 진단 딥링크와 카드 단위 재시도가 쓴다
+
+응답 200:
+
+```json
+{
+  "items": [
+    {
+      "repository_id": 4021,
+      "repository": "acme/payments",
+      "registration_state": "active",
+      "registered_at": "2026-03-02T04:11:00.000Z",
+      "last_ingested_at": "2026-08-27T23:58:12.000Z",
+      "document_counts": { "pull_requests": 1200, "commits": 2400, "total": 3600 },
+      "backfill": { "state": "running", "job_id": "914", "progress": { "processed": 820, "total": 1200 } },
+      "sequence_spaces": [
+        { "base_branch": "main", "last_sequence": 1342, "seq_epoch": 3, "sequence_state": "ok", "last_assigned_at": "2026-08-27T23:40:02.000Z" }
+      ],
+      "reconciliation": { "last_completed_at": "2026-08-27T23:00:00.000Z", "missing_count": 0 },
+      "unavailable": []
+    }
+  ],
+  "next_cursor": null,
+  "correlation_id": "..."
+}
+```
+
+**접근 범위가 이 조회의 전부다** (ADR-008·THR-004). 정본이 PostgreSQL이라 `applyMandatoryScopeFilter`의 타입 강제가 닿지 않으므로, 저장소 행은 `API-SEQ-006`과 **같은 `isRepositoryInScope` 판정**을 지난다. 범위 밖 저장소는 목록에도 집계에도 없고, **가려진 건수조차 싣지 않는다** — `API-ADM-006`의 `slowest_repositories_out_of_scope`와 다른 판단인 이유는 그쪽이 `operator` 전용 전역 지표이기 때문이다. `repository=` 완전 일치 조회도 같은 판정을 지나며, **미등록과 범위 밖은 같은 빈 결과다** (FR-ING-009 AC-10).
+
+`registration_state`는 `active | archived`다. **해제된 저장소를 숨기지 않는다** (AC-7) — 해제는 신규 수집 중단이고 기존 문서는 남으므로(FR-ING-009 AC-3) 그 사실 자체가 사용자가 찾던 답이다.
+
+`last_ingested_at`은 **그 저장소의 durable `raw_event` 중 가장 최근 `received_at`**이다. "PR Search가 마지막으로 이벤트를 받아 보관한 시각"이며 `processed_at`과 섞지 않는다 — 받았지만 처리가 밀린 상태와 아예 받지 못한 상태는 다른 사실이고, 검색 반영 여부는 문서 수·백필·조정 스캔이 따로 말한다. 받은 적이 없으면 `null`이다. 페이지의 저장소 ID 전체를 `raw_event_repo_idx`로 **한 번에** 읽는다.
+
+`document_counts`는 **검색 대상 투영 문서**만 센다 — PR과 커밋이며 릴리스·간선·원본 아카이브는 포함하지 않는다. Elasticsearch를 읽으므로 PostgreSQL에서 이미 범위를 걸렀더라도 **필수 접근 범위 필터를 다시 지난다** (ADR-008) — "앞 단계에서 확인했으니 생략한다"는 예외를 만들면 그 예외가 곧 우회 경로가 된다. 페이지 전체를 인덱스당 집계 한 번으로 세며 저장소마다 세지 않는다.
+
+`backfill`은 **기존 `job` 모델을 그대로 읽는다**(`type = backfill`, `target = owner/name`). 새 상태 enum을 만들지 않고 `job.state`와 `job.progress`를 싣는다. 진행 중 잡이 있으면 그것이 우선이고, 없으면 가장 최근 잡이며, 잡 이력이 없으면 `null`이다. 페이지 대상 전체를 한 번에 읽는다.
+
+`sequence_spaces`는 `repository.sequence_branches`가 기준이다 — **등록된 브랜치를 전부 싣는다.** 공간 행이 없으면 `sequence_state: "unknown"` · `seq_epoch: null` · `last_sequence: null`이며 `0`으로 그리지 않는다(`API-SEQ-006`과 같은 판단, CR-029 DEV-152). `stale`·`reassigning`에서도 마지막 확정 서수를 숨기지 않는다 — 경고와 함께 값을 준다.
+
+`reconciliation`은 FR-ING-011 AC-6이 보존하는 **최근 완료된 회차**의 값이다. 미룬 회차의 부분 집계는 여기 오지 않는다. 완료된 스캔 기록이 없으면 두 필드가 모두 `null`이며, **`missing_count: 0`과 `null`은 다른 사실이다.**
+
+`unavailable`은 이번 응답에서 채우지 못한 항목 이름을 담는다. **한 항목의 실패가 그 저장소의 나머지 사실을 지우지 않는다** — Elasticsearch 집계가 실패해도 등록 상태·시퀀스 공간·백필은 그대로 나간다 (FR-ING-009 예외 처리).
+
+**커서는 PostgreSQL 키셋이다.** 정본이 `repository` 표이므로 PIT도 `search_after`도 뜻이 없다 — `API-SRCH-005`와 같은 이유이며, 공유하는 것은 봉인 방식(`API-SRCH-004`의 HMAC 봉투)과 두 오류 코드뿐이다.
+
+| 재료 | 값 |
+| --- | --- |
+| `v` | 커서 스키마 버전 |
+| 정렬 위치 | 마지막 항목의 `owner` · `name` · `repository_id` |
+| `repository` 필터 | 완전 일치 값이 있으면 그것 (바뀌면 지문 불일치) |
+| 접근 범위 지문 | 정규화한 범위의 **해시**. **원본 사용자 식별자를 싣지 않는다** — 봉투는 서명돼 있을 뿐 암호화돼 있지 않다 |
+| 만료 | 봉인 시각 기준 |
+
+정렬은 `owner ASC, name ASC, repository_id ASC`다. 세 번째 키가 동률을 깨며, 앞의 둘만으로는 같은 `owner/name`이 유일하더라도 정렬 안정성을 계약으로 보장할 수 없다.
+
+- 순회 중 팀 소속·접근 범위가 바뀌어 지문이 달라지면 `CURSOR_QUERY_MISMATCH` (400). 이어 보면 회수된 범위의 저장소를 계속 내주게 된다
+- 훼손·서명 불일치·모르는 버전·만료는 `CURSOR_INVALID` (400)
+- 오류: `INVALID_PARAMETER` (400 — `limit` 범위 초과, `repository` 형식 오류), `CURSOR_INVALID` (400), `CURSOR_QUERY_MISMATCH` (400), `UNAUTHENTICATED` (401), `PERMISSION_UNAVAILABLE` (503)
+
+### API-ING-003 저장소 등록 검토 요청 (CR-050, DEV-351)
+
+- 목적: 일반 사용자가 미등록 저장소의 등록 검토를 요청한 사실을 기록한다.
+- 관련 요구사항: FR-ING-009 AC-8·AC-9·AC-10
+- 신설 사유: 와이어프레임의 `repo.request_registration` 이벤트, QA-W009-05, `A-002-REQUESTS` 섹션, 상태 매트릭스의 `empty_no_repository` 복구 경로가 모두 이 기능을 전제하고 있었는데 **정본도 API도 수명주기 계약도 없었다** — 파생 UI가 SRS 밖의 기능을 서술하던 자리다 (DEV-351).
+
+요청: `POST /api/v1/repository-registration-requests`
+
+```json
+{ "repository": "acme/payments" }
+```
+
+응답 201:
+
+```json
+{ "request_id": "318", "repository": "acme/payments", "created_at": "2026-08-28T01:20:00.000Z", "correlation_id": "..." }
+```
+
+**이 요청은 등록이 아니다.** 저장소를 등록하지 않고, 수집·채번·백필을 시작하지 않으며, 시퀀스 대상 브랜치·미러 사용 여부를 정하지 않는다. 실제 등록·해제는 `API-ADM-001`이 하고 `operator` 전용이다 (FR-ING-009 AC-1~AC-5).
+
+**대상 저장소의 실재 여부를 확인하지 않는다** (AC-10). GitHub Enterprise에 묻지 않으며, 따라서 "있다 / 없다 / 볼 수 없다"를 응답으로 구분하지 않는다 — 구분하면 이 경로가 곧 비공개 저장소의 존재 신탁이 된다 (FR-AUTH-002 AC-4, THR-004). 요청자의 GHE 접근 권한도 확인하지 않으므로 **응답은 "권한이 있다"는 뜻도 아니다.**
+
+**같은 사용자의 같은 식별자 반복 요청은 하나의 기록이다** (AC-9). 다시 보내도 실패가 아니며 기존 기록을 그대로 돌려준다 — 자연 멱등이고, 별도의 중복 오류 코드를 만들지 않는다. 다른 사용자가 같은 저장소를 요청하는 것은 각자의 기록이다.
+
+클라이언트가 `repository_id`·`org_id`·`visibility`·`sequence_branches`·`mirror_enabled`·`backfill`을 보내도 **받지 않는다.** 그 값들은 등록 시점에 운영자가 정하며, 요청자가 주장하는 값을 신뢰하면 등록 계약이 클라이언트 입력으로 열린다.
+
+**운영자가 이 요청을 보고 처리하는 경로는 이 CR의 범위가 아니다.** 승인·반려 상태, 처리자, 사유는 A-002를 세우는 WP-040이 정한다 — 지금 그 열들을 미리 만들면 그 WP가 검증하지 않은 수명주기를 선점하게 된다.
+
+- 오류: `INVALID_PARAMETER` (400 — `repository`가 `owner/name` 형식이 아니거나 길이 제한 초과), `UNAUTHENTICATED` (401)
+
 ### API-ADM-001 저장소 등록 관리
 
 - 목적: 수집 대상 저장소를 등록·변경·해제한다.
@@ -1700,6 +1801,7 @@ POST /api/v1/analytics/percentiles
   "stage_latency_seconds": { "enrich": "unavailable", "project": "unavailable" },
   "dead_letter": { "pending": 2, "reprocessing": 0, "held": 1, "resolved": 40 },
   "enrichment_pending": 7,
+  "sequence_space_state": { "ok": 41, "stale": 2, "reassigning": 1, "unknown": 6 },
   "slowest_repositories": [
     { "repository_id": 4021, "repository": "acme/payments", "lag_p95_seconds": 9.2, "sample_count": 118 }
   ],
@@ -1715,7 +1817,8 @@ POST /api/v1/analytics/percentiles
 - **나머지 집계 수치는 접근 범위를 거치지 않는다 (CR-024, DEV-051).** `intake_per_minute`·`queue_depth`·`ingestion_lag_seconds`·`dead_letter`·`enrichment_pending`은 조직 전체 값이며, FR-AUTH-002 AC-5의 명시적 예외로 SRS에 기록되어 있다. 저장소를 지목하지 않으므로 THR-003이 막으려는 저장소별 활동량 추론이 성립하지 않는다. 아키텍처 테스트의 허용 목록은 **이 두 갈래를 구분해서** 유지한다 — 새로 들어오는 전역 집계가 저장소 식별자를 담으면 통과시키지 않는다
 - **`stage_latency_seconds`는 조건부다 (CR-013, DEV-029).** 단계별 지연은 워커 프로세스의 히스토그램에만 있고 `search-api`가 읽을 수 없다. 지표 저장소(사내 Prometheus 호환)가 `METRICS_QUERY_URL`로 설정되어 있으면 질의해서 채우고, 없으면 `"unavailable"`로 둔다 — FR-ADMIN-001 예외 처리가 정한 "해당 항목만 미확인" 형태다. **워커 복제본 하나를 긁어 클러스터 전체인 양 내놓지 않는다**
 - `unavailable` 배열은 이번 응답에서 값을 채우지 못한 항목 이름을 담는다. 조회에 실패한 항목도 여기 들어가고 나머지는 정상 반환된다
-- 시퀀스 공간 상태 요약은 WP-021 이후에 더한다
+- **`sequence_space_state`는 시퀀스 공간 상태의 전역 요약이다** (FR-ADMIN-001 AC-1). `ok`·`stale`·`reassigning`·`unknown` 네 상태의 **건수만** 담고 저장소도 브랜치도 식별하지 않는다 — 다른 전역 집계와 같은 성질이므로 접근 범위를 거치지 않는다. v0.9까지 "WP-021 이후에 더한다"로 남아 있었으나 WP-021은 이미 완료됐고 AC-1이 이 항목을 `Must`로 요구한다 (CR-050, DEV-354). 조회에 실패하면 다른 항목처럼 `"unavailable"`로 두고 `unavailable` 배열에 이름을 싣는다
+- **W-009는 이 API를 부르지 않는다.** 저장소별 시퀀스 공간 상태는 `API-ING-002`가 접근 범위 안에서 따로 준다 — 이 API의 전역 건수는 `operator`가 보는 파이프라인 건강 지표이고 AC-4가 그 제한을 정한다
 
 ### API-ADM-003 실패 대기열 조회와 재처리
 
