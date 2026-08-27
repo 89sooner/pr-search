@@ -203,6 +203,20 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
+  /*
+   * **자기 픽스처를 남기지 않는다.**
+   *
+   * `saved_search`가 `app_user`를 참조하므로, 남긴 행이 있으면 뒤이어 도는
+   * 다른 파일의 `DELETE FROM app_user`가 외래 키 위반으로 실패한다 — 실제로
+   * 전 계층 통합에서 여덟 파일이 그렇게 죽었다. `team` 참조도 같다.
+   */
+  await pool?.query('DELETE FROM saved_search WHERE owner_user_id = ANY($1::text[])', [USERS]);
+  await pool?.query('DELETE FROM team_member WHERE team_id = ANY($1::bigint[])', [TEAMS]);
+  // 접근 범위 해석기가 이 표를 채운다 — 사용자를 지우기 전에 비워야 한다.
+  await pool?.query('DELETE FROM permission_cache WHERE user_id = ANY($1::text[])', [USERS]);
+  await pool?.query('DELETE FROM app_user WHERE user_id = ANY($1::text[])', [USERS]);
+  await pool?.query('DELETE FROM team WHERE team_id = ANY($1::bigint[])', [TEAMS]);
+
   await app?.close();
   await redis?.quit();
   await pool?.end();
@@ -350,6 +364,60 @@ describe('생성 (API-SRCH-005 POST / FR-SRCH-010 AC-1)', () => {
 });
 
 /* ------------------------------------------------------------------ */
+
+describe('스키마 불변식 (마이그레이션 015 / DEV-335)', () => {
+  it('**`private`인데 대상 팀이 있는 행을 거절한다**', async () => {
+    await expect(
+      pool.query(
+        `INSERT INTO saved_search (owner_user_id, name, query, visibility, team_id)
+         VALUES ($1, '뜻 없는 조합', 'repo:acme/a', 'private', $2)`,
+        [OWNER_USER, TEAM_MAIN],
+      ),
+    ).rejects.toThrow(/saved_search_team_target_chk/);
+  });
+
+  it('**`team`인데 대상이 없는 행을 거절한다** — 공유한다는데 대상이 없다', async () => {
+    await expect(
+      pool.query(
+        `INSERT INTO saved_search (owner_user_id, name, query, visibility)
+         VALUES ($1, '대상 없는 공유', 'repo:acme/a', 'team')`,
+        [OWNER_USER],
+      ),
+    ).rejects.toThrow(/saved_search_team_target_chk/);
+  });
+
+  it('올바른 두 조합은 받아들인다', async () => {
+    await pool.query(
+      `INSERT INTO saved_search (owner_user_id, name, query, visibility)
+       VALUES ($1, '정상 private', 'repo:acme/a', 'private')`,
+      [OWNER_USER],
+    );
+    await pool.query(
+      `INSERT INTO saved_search (owner_user_id, name, query, visibility, team_id)
+       VALUES ($1, '정상 team', 'repo:acme/a', 'team', $2)`,
+      [OWNER_USER, TEAM_MAIN],
+    );
+    expect(await savedSearchRepo.countOwnedSavedSearches(pool, OWNER_USER)).toBe(2);
+  });
+
+  it('**모르는 공개 범위는 015가 먼저 거절한다** — 004의 CHECK보다 촘촘하다', async () => {
+    /*
+     * `'org'`는 `private`도 `team`도 아니므로 015의 두 갈래가 모두 거짓이다.
+     * 004의 `visibility` CHECK도 같은 행을 거절하지만 **015가 먼저 걸린다** —
+     * 둘 중 어느 것이 먼저인지는 제약 평가 순서에 달려 있고, 중요한 것은
+     * 그 행이 들어가지 않는다는 사실이다. 제약 이름을 핀으로 박으면 나중에
+     * 순서가 바뀔 때 이 시험이 사실이 아니라 순서를 지키게 된다.
+     */
+    await expect(
+      pool.query(
+        `INSERT INTO saved_search (owner_user_id, name, query, visibility)
+         VALUES ($1, '없는 범위', 'repo:acme/a', 'org')`,
+        [OWNER_USER],
+      ),
+    ).rejects.toThrow(/violates check constraint/);
+    expect(await savedSearchRepo.countOwnedSavedSearches(pool, OWNER_USER)).toBe(0);
+  });
+});
 
 describe('공유 격리 (AC-2 / THR-012)', () => {
   it('**private은 남에게 보이지 않는다** — 단건도 목록도', async () => {
@@ -619,13 +687,9 @@ describe('100건 상한 (AC-4 / DEV-336)', () => {
     expect(await savedSearchRepo.countOwnedSavedSearches(pool, OWNER_USER)).toBe(100);
   }, 60_000);
 
-  it('**99건에서 동시 저장 둘이면 하나만 성공한다** — count 뒤 INSERT는 101을 만든다', async () => {
+  it('99건에서 동시 저장 둘을 보내도 최종 개수가 100이다', async () => {
     await seed(99);
 
-    /*
-     * 실제 경합을 만든다. 순차 100 → 101 시험만으로는 잠금이 없어도 통과하므로
-     * 그것으로 DoD를 닫지 않는다.
-     */
     const [first, second] = await Promise.all([
       create(ownerCookie, { name: '동시-A', query: 'repo:acme/a', visibility: 'private' }),
       create(ownerCookie, { name: '동시-B', query: 'repo:acme/b', visibility: 'private' }),
@@ -638,6 +702,60 @@ describe('100건 상한 (AC-4 / DEV-336)', () => {
     expect(rejected.body.error.code).toBe('SAVED_SEARCH_LIMIT');
 
     expect(await savedSearchRepo.countOwnedSavedSearches(pool, OWNER_USER)).toBe(100);
+  }, 60_000);
+
+  it('**소유자 행 잠금이 실제로 배타를 만든다** (DEV-336)', async () => {
+    /*
+     * ## 왜 위 시험만으로는 부족한가
+     *
+     * 두 요청을 `Promise.all`로 보내도 `count`와 `INSERT` 사이의 창이 너무 짧아
+     * **경합이 실제로 겹치지 않는다.** 잠금을 지우고 돌려도 위 시험은 통과한다 —
+     * 변이 M4가 살아남아 그것을 드러냈다. 그때 잠금 없는 구현을 직접 재현해
+     * 보니 창을 50ms만 벌려도 101건이 됐다. 등가가 아니라 시험 구멍이었다.
+     *
+     * 그래서 결과가 아니라 **잠금 자체**를 건다: 소유자 행을 밖에서 잡고 있으면
+     * 생성이 멈춰야 한다. 잠그지 않는 구현은 멈추지 않는다.
+     *
+     * ## 왜 `FOR KEY SHARE`인가
+     *
+     * 밖에서 `FOR UPDATE`로 잡으면 **잠금을 지운 구현도 멈춘다** — `saved_search`의
+     * `owner_user_id` 외래 키 때문에 `INSERT`가 부모 행에 `FOR KEY SHARE`를 잡고,
+     * 그것이 `FOR UPDATE`와 충돌하기 때문이다. 그러면 이 시험은 잠금이 아니라
+     * 외래 키의 부작용을 재게 되고, 실제로 첫 형태가 그래서 변이를 놓쳤다.
+     *
+     * `FOR KEY SHARE`는 외래 키가 잡는 것과 **같은 잠금**이라 서로 호환된다.
+     * 그래서 잠금을 지운 구현은 통과하고, `FOR UPDATE`를 잡는 구현만 멈춘다 —
+     * 이 시험이 구분하려는 그 차이다.
+     */
+    await seed(50);
+
+    const blocker = await pool.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT user_id FROM app_user WHERE user_id = $1 FOR KEY SHARE', [OWNER_USER]);
+
+      let settled = false;
+      const pending = create(ownerCookie, {
+        name: '잠금 뒤에서 기다린다',
+        query: 'repo:acme/a',
+        visibility: 'private',
+      }).then((result) => {
+        settled = true;
+        return result;
+      });
+
+      // 잠금이 없으면 이 시점에 이미 끝나 있다.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(settled).toBe(false);
+
+      await blocker.query('COMMIT');
+
+      const result = await pending;
+      expect(result.status).toBe(201);
+      expect(settled).toBe(true);
+    } finally {
+      blocker.release();
+    }
   }, 60_000);
 
   it('**남이 공유한 검색은 내 상한에 들어가지 않는다**', async () => {

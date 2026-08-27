@@ -237,6 +237,23 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
+  /*
+   * **자기 픽스처를 남기지 않는다.**
+   *
+   * `saved_search`가 `app_user`와 `team`을 참조하므로, 남긴 행이 있으면 뒤이어
+   * 도는 파일의 전역 `DELETE FROM app_user`·`DELETE FROM team`이 외래 키 위반으로
+   * 실패한다 — 전 계층 통합에서 실제로 그렇게 죽었다. 삭제 순서는 참조의 역순이다.
+   */
+  await pool?.query('DELETE FROM saved_search WHERE owner_user_id = ANY($1::text[])', [USERS]);
+  await pool?.query('DELETE FROM team_member WHERE team_id = $1', [SHARED_TEAM]);
+  // 접근 범위 해석기가 이 표를 채운다 — 사용자를 지우기 전에 비워야 한다.
+  await pool?.query('DELETE FROM permission_cache WHERE user_id = ANY($1::text[])', [USERS]);
+  await pool?.query('DELETE FROM app_user WHERE user_id = ANY($1::text[])', [USERS]);
+  await pool?.query('DELETE FROM team WHERE team_id = $1', [SHARED_TEAM]);
+  await pool?.query('DELETE FROM repository WHERE repository_id = ANY($1::bigint[])', [
+    [OPEN_REPO, SECRET_REPO],
+  ]);
+
   await app?.close();
   await es?.close();
   redis?.disconnect();
