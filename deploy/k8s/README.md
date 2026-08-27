@@ -36,8 +36,11 @@ kubectl apply -f pipeline-worker-sequence.yaml pipeline-worker-reconcile.yaml  #
 kubectl apply -f pipeline-worker-mirror.yaml                                #    워커 (REL-003, 미러 PVC 포함)
 kubectl apply -f pipeline-worker-link.yaml                                  #    워커 (REL-004, 관계 파생)
 kubectl apply -f pipeline-worker-batch.yaml                                 #    워커 (배치 잡 — JOB-ING-006 재색인 · JOB-ING-007 아웃박스 재적재)
+kubectl apply -f pipeline-worker-authz.yaml                                 #    워커 (권한 캐시 무효화 — JOB-AUTH-001, 접근 통제 축)
 kubectl apply -f search-api.yaml ingest-gateway.yaml                        # 3. API
 ```
+
+**`pipeline-worker-authz.yaml`은 CR-048이 신설했다** (DEV-306). 같은 모양이 접근 통제 축에서 한 번 더 있었다 — 구현은 WP-012부터 있었고 `index.ts`에 `authz` 갈래도 있었는데 **manifest만 없어** `EVT-AUTH-001`을 아무도 소비하지 않았다. 그 상태에서는 **회수된 사용자가 캐시 TTL 만료까지 그 범위로 조회한다** (FR-AUTH-003 AC-2). 역방향 회귀가 그것을 잡아 예외 목록에 올려 두었고, 이 CR이 그 예외를 지우고 파일을 만들었다.
 
 **`pipeline-worker-batch.yaml`은 CR-045가 신설했다** (DEV-292). 그전까지 인프라 3장은 그 배포 단위를 승인하고 있었고 워커 코드에도 `batch` 갈래가 있었는데 **manifest만 없었다** — 그래서 이미 구현된 JOB-ING-007(아웃박스 재적재)이 배포되지 않고 있었다. 아래 회귀는 "존재하는 파일이 목록에 있는가"만 물어서 이것을 놓쳤고, 이제 **배포 단위 표를 정본으로 삼는 역방향 검사**가 함께 있다 (DEV-293).
 

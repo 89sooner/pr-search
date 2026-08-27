@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.4 | 갱신일: 2026-08-26
+> 상태: review | 버전: v0.5 | 갱신일: 2026-08-26
 
 ## 1. 목적
 
@@ -44,6 +44,8 @@
 | `pipeline-worker:mirror` | git 미러 동기화·커밋 메타데이터 보강 | 저장소 수 | 1 / 2 | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:reconcile` | 조정 스캔 | 저장소 수 | 1 / 1 | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:batch` | 배치 잡 (JOB-ING-006 재색인 · JOB-ING-007 아웃박스 재적재) | 고정 | **1 / 1** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:authz` | 권한 캐시 무효화 (JOB-AUTH-001) | `prs:permission` 적체 | **1 / 4** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:authz` | 권한 캐시 무효화 (JOB-AUTH-001) | `prs:permission` 적체 | **1 / 4** | 하트비트 | 이전 이미지 재배포 |
 | `filebeat` | 원본 아카이브 적재 | DaemonSet | - | Filebeat 자체 | 설정 롤백 |
 | `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005) | 대기 중 실행 수 | 2 / 8 | `GET /healthz` (gh 버전·manifest 대조 포함) | 이전 이미지 재배포 |
 

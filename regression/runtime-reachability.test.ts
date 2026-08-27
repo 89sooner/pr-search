@@ -36,6 +36,15 @@ const API_INDEX = read('apps/search-api/src/index.ts');
  */
 const CAPABILITIES = [
   {
+    id: 'JOB-AUTH-001',
+    what: '권한 캐시 무효화 워커',
+    process: 'pipeline-worker',
+    role: 'authz',
+    start: 'authzSubscription = await startAuthzWorker(',
+    stop: 'authzSubscription?.close()',
+    manifest: 'deploy/k8s/pipeline-worker-authz.yaml',
+  },
+  {
     id: 'JOB-ING-006',
     what: '무중단 재색인 러너',
     process: 'pipeline-worker',
@@ -804,13 +813,6 @@ describe('경로가 실재하는지', () => {
         'JOB-REL-007 릴리스 수집. manifest 자체가 없다. 이 역할은 **미러 볼륨을 요구하므로**(DEV-143) ' +
         'PVC 배치가 함께 정해져야 해 복사만으로 만들 수 없다. WP-024 소관',
     },
-    {
-      role: 'authz',
-      dev: 'DEV-306',
-      why:
-        'JOB-AUTH-001 권한 캐시 무효화. manifest가 없어 `EVT-AUTH-001`을 아무도 소비하지 않는다 — ' +
-        '회수된 권한이 TTL 만료까지 캐시에 남는다 (FR-AUTH-003 AC-2). **접근 통제 축이므로 별도 CR로 다룬다.** WP-012 소관',
-    },
   ];
 
   /** manifest가 실제로 켜는 역할 집합. 파일 존재가 아니라 `PIPELINE_WORKER_ROLES` **값**을 본다. */
@@ -921,6 +923,8 @@ describe('경로가 실재하는지', () => {
     }
     // 이미 배포된 역할이 예외 목록에 남아 있으면 목록이 낡은 것이다.
     expect(UNDEPLOYED_ROLE_ALLOWLIST.map((one) => one.role)).not.toContain('batch');
+    // CR-048이 `authz`를 배포했다 (DEV-306). 예외에 남아 있으면 목록이 낡은 것이다.
+    expect(UNDEPLOYED_ROLE_ALLOWLIST.map((one) => one.role)).not.toContain('authz');
   });
 });
 

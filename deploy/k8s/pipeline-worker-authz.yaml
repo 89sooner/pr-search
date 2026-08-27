@@ -1,0 +1,75 @@
+# 권한 캐시 무효화 역할 (WP-012 / FR-AUTH-003, CR-048). JOB-AUTH-001.
+#
+# ## 왜 이 파일이 뒤늦게 생겼나
+#
+# 구현은 WP-012부터 있었다 — `startAuthzWorker`도, Redis 캐시 무효화도, 팀 변경의
+# 색인 소급 적용(WP-068 / CR-035·036)도. **없던 것은 이 파일 하나**였고, 그래서
+# `EVT-AUTH-001 permission.invalidated`를 **아무도 소비하지 않았다** (DEV-306).
+#
+# 그 상태의 뜻은 이렇다: 팀에서 제거되거나 저장소 접근이 회수된 사용자가 **캐시
+# TTL이 만료될 때까지 그 범위로 계속 조회한다.** FR-AUTH-003 AC-2가 요구하는
+# "권한 변경이 즉시 반영된다"가 성립하지 않는다. 접근 통제 축의 결함이다.
+#
+# ## 미러 볼륨이 필요 없다
+#
+# 이 역할은 git 그래프를 읽지 않는다. Redis(캐시) · PostgreSQL(`team_member`) ·
+# Elasticsearch(팀 소급 적용)만 쓴다.
+#
+# ## GHE 자격 증명은 선택이지만 **권한다**
+#
+# 없어도 뜬다 — `team_member` 표만으로 팀을 펼친다 (CR-015, DEV-046). 그러나
+# 자격 증명이 없으면 `refreshRepositoryTeams`가 **아무 문서도 갱신하지 않는다**:
+# 팀 변경의 색인 소급 적용은 GHE에서 현재 팀 목록을 다시 읽어야 성립하기 때문이다
+# (CR-036, DEV-188 — PostgreSQL의 값은 회수 사건 시점에 아직 옛 팀을 담고 있다).
+# 그래서 자격 증명 없이 뜬 배포는 **캐시는 지우되 문서의 `allowed_team_ids`는
+# 그대로 둔다.** 기동 로그가 그 사실을 경고로 남긴다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pipeline-worker-authz
+  namespace: pr-search
+  labels: { app.kubernetes.io/part-of: pr-search, app.kubernetes.io/component: pipeline-worker-authz }
+spec:
+  # `prs:permission`은 파티션 4이므로 그 이상 늘려도 일이 늘지 않는다.
+  # **1로 시작한다** — 권한 이벤트 유량을 아직 재지 않았고, 이 역할의 일은
+  # 사건당 캐시 키 삭제와 저장소별 `update_by_query` 몇 건이라 가볍다.
+  # 적체가 실측되면 그때 올린다. 먼저 올려 두고 근거를 나중에 만들지 않는다.
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/component: pipeline-worker-authz }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: pipeline-worker-authz }
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '3003'
+    spec:
+      # 처리 중인 무효화 사건을 끝내고 나간다. 중간에 끊으면 캐시는 지웠는데
+      # 색인 소급이 안 된 상태가 남고, 그 창에서 회수된 사용자가 문서를 본다.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: pipeline-worker
+          image: prs/pipeline-worker:latest
+          env:
+            - name: PIPELINE_WORKER_ROLES
+              value: authz
+          ports:
+            - name: http
+              containerPort: 3003
+          envFrom:
+            # REDIS_URL(권한 캐시) · DATABASE_URL · ELASTICSEARCH_URL이 필수다.
+            # GHE 자격 증명(GITHUB_APP_ID · GITHUB_PRIVATE_KEY · GITHUB_INSTALLATIONS)은
+            # 선택이지만 없으면 색인 소급이 돌지 않는다 — 위 주석 참조.
+            - configMapRef: { name: prs-config }
+            - secretRef: { name: prs-secrets }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { memory: 512Mi }
