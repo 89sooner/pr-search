@@ -17,6 +17,7 @@
 
 import type { Client } from '@elastic/elasticsearch';
 import { ENTITY_INDICES } from './indices.js';
+import { parseIndexVersion } from './versioned-index.js';
 import type { EntityIndexDefinition } from './indices.js';
 
 export interface BootstrapResult {
@@ -26,9 +27,53 @@ export interface BootstrapResult {
   /** 이미 있던 인덱스에 하위 호환 매핑 갱신을 적용했으면 `true`. */
   readonly mappingUpdated: boolean;
   readonly aliasAttached: boolean;
+  /**
+   * 별칭이 **다른 버전**을 가리키고 있어 아무것도 하지 않았다 (WP-032, DEV-328).
+   *
+   * 그 전환은 재색인의 일이다 — 여기서 손대면 서비스 중인 별칭이 두 인덱스를
+   * 가리키거나, 정본에서 채우지 않은 빈 인덱스가 검색 대상이 된다.
+   */
+  readonly deferredToReindex?: string;
+}
+
+/** 별칭이 이미 **다른** 인덱스를 가리키고 있으면 그 이름. 아니면 `null`. */
+async function aliasHeldElsewhere(
+  client: Client,
+  definition: EntityIndexDefinition,
+): Promise<string | null> {
+  const response = await client.indices.getAlias({ name: definition.alias }, { ignore: [404] });
+  const names = Object.keys(response).filter((name) => name !== 'status' && name !== 'error');
+  if (names.length === 0) return null;
+  if (names.includes(definition.index)) return null;
+  return names[0] as string;
 }
 
 async function ensureIndex(client: Client, definition: EntityIndexDefinition): Promise<BootstrapResult> {
+  /*
+   * **버전이 올라간 별칭에는 손대지 않는다** (WP-032, DEV-328).
+   *
+   * `definition.index`가 `-v2`로 올라갔는데 별칭이 아직 `-v1`을 가리키는 상태는
+   * 정상이다 — 그 전환은 WP-035의 재색인이 정본에서 채운 뒤에 하는 일이다.
+   *
+   * 여기서 그냥 진행하면 둘 중 하나가 된다.
+   *   1. `putAlias`가 별칭을 **두 인덱스**에 걸어 `resolveServingIndex`가 던진다
+   *   2. 빈 `-v2`를 만들어 두어 `nextUnusedVersion`이 그 번호를 건너뛰고,
+   *      재색인이 `-v3`을 만든다 (빈 `-v2`는 영영 남는다)
+   *
+   * 둘 다 조용히 일어난다. 그래서 아무것도 하지 않고 그 사실을 돌려준다.
+   */
+  const heldElsewhere = await aliasHeldElsewhere(client, definition);
+  if (heldElsewhere !== null) {
+    return {
+      alias: definition.alias,
+      index: heldElsewhere,
+      created: false,
+      mappingUpdated: false,
+      aliasAttached: false,
+      deferredToReindex: definition.index,
+    };
+  }
+
   const exists = await client.indices.exists({ index: definition.index });
 
   if (!exists) {
@@ -75,9 +120,63 @@ export async function applyMappings(client: Client): Promise<BootstrapResult[]> 
   return results;
 }
 
-/** 부트스트랩 대상 인덱스를 모두 지운다. 통합 테스트 정리용이며 운영에서 쓰지 않는다. */
+/**
+ * 부트스트랩 대상 인덱스를 모두 지운다. 통합 테스트 정리용이며 운영에서 쓰지 않는다.
+ *
+ * **버전 전부를 지운다** (WP-032). 매핑 버전이 올라간 뒤로 `definition.index`
+ * 하나만 지우면 별칭을 든 옛 버전이 살아남고, 그러면 이어지는 `applyMappings`가
+ * "별칭이 다른 버전을 가리킨다"며 물러나 부트스트랩이 아무 일도 하지 않는다.
+ */
 export async function dropEntityIndices(client: Client): Promise<void> {
   for (const definition of ENTITY_INDICES) {
-    await client.indices.delete({ index: definition.index, ignore_unavailable: true });
+    /*
+     * 이름을 **하나하나 지목한다.** Elasticsearch는 기본값
+     * `action.destructive_requires_name: true`로 와일드카드 삭제를 거절한다 —
+     * 그 설정이 있는 이유를 우회하지 않는다.
+     */
+    const found = await client.indices.get({
+      index: `${definition.alias}-v*`,
+      ignore_unavailable: true,
+      expand_wildcards: 'all',
+    });
+    const names = Object.keys(found).filter((name) => parseIndexVersion(definition.alias, name) !== null);
+    if (names.length === 0) continue;
+    await client.indices.delete({ index: names, ignore_unavailable: true });
+  }
+}
+
+/**
+ * 별칭을 현재 정의된 인덱스로 옮긴다 — **통합 시험 전용** (WP-032).
+ *
+ * ## 왜 있는가
+ *
+ * 매핑 버전이 올라가면 `applyMappings`는 아무것도 하지 않고 물러난다(위 참조).
+ * 운영에서 그 전환은 **정본에서 채우는 재색인**이며 그 경로는
+ * `apps/pipeline-worker/integration/jobs/reindex.test.ts`가 실제로 증명한다.
+ *
+ * 시험 클러스터에는 지켜야 할 데이터가 없다 — 각 스위트가 자기 픽스처를 다시
+ * 색인한다. 그러므로 여기서는 빈 새 인덱스로 별칭만 옮긴다.
+ *
+ * **운영에서 부르지 않는다.** 부르면 정본에서 채우지 않은 빈 인덱스가 검색
+ * 대상이 되고, 그것은 오류 없이 "결과가 없다"로 보인다.
+ */
+export async function switchAliasesForTests(client: Client): Promise<void> {
+  for (const definition of ENTITY_INDICES) {
+    const held = await aliasHeldElsewhere(client, definition);
+    if (held === null) continue;
+
+    if (!(await client.indices.exists({ index: definition.index }))) {
+      await client.indices.create({
+        index: definition.index,
+        settings: { ...definition.settings, number_of_shards: definition.shards },
+        mappings: definition.mappings,
+      });
+    }
+    await client.indices.updateAliases({
+      actions: [
+        { remove: { index: held, alias: definition.alias } },
+        { add: { index: definition.index, alias: definition.alias } },
+      ],
+    });
   }
 }

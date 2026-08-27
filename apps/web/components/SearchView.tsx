@@ -198,13 +198,18 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
           const failure = toCursorFailure(errorBody.error?.code);
           if (failure !== null) {
             /*
-             * 커서 실패는 **화면 오류가 아니다.** 첫 페이지 조건은 멀쩡하므로
-             * 그쪽으로 되돌리고 무엇이 일어났는지 말한다. 자동으로 다시 부르지
-             * 않는다 — 여기서 재조회하면 사용자는 목록이 처음으로 돌아간 것만
-             * 보고 이유를 모른다 (C-016 사용 규칙).
+             * 커서 실패는 **화면 오류가 아니다** (C-016 사용 규칙, DEV-273).
+             *
+             * **아무것도 다시 부르지 않는다.** 여기서 `page.cursor`를 비우면
+             * 이 효과의 의존값이 바뀌어 **첫 페이지가 자동으로 다시 조회된다** —
+             * 그러면 사용자는 목록이 처음으로 돌아간 것만 보고 이유를 모른다.
+             * e2e가 실제로 그 세 번째 요청을 잡았다.
+             *
+             * 그래서 `failure`만 세우고 나머지는 그대로 둔다. 지금까지 본
+             * 목록이 남아 있어야 사용자가 자기 위치를 잃지 않는다. 첫 페이지로
+             * 돌아가는 것은 그 버튼을 누를 때다.
              */
-            setOutcome(IDLE);
-            setPage({ ...FIRST_PAGE, failure });
+            setPage((current) => ({ ...current, failure }));
             return;
           }
           setOutcome({ ...IDLE, errorBody, status: response.status });
@@ -242,7 +247,13 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
   const facetSource: FacetSource =
     page.cursor === null ? (outcome.search ?? {}) : page.facets;
 
-  const nextCursor = outcome.search?.next_cursor ?? null;
+  /*
+   * 실패한 커서를 다시 내주지 않는다.
+   *
+   * 직전 응답의 `next_cursor`는 방금 거절된 바로 그 값이다. 그대로 두면
+   * "다음 페이지"가 같은 오류를 반복해서 만든다.
+   */
+  const nextCursor = page.failure === null ? (outcome.search?.next_cursor ?? null) : null;
 
   const loadMore = useCallback(
     (cursor: string) => {

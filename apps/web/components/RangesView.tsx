@@ -230,9 +230,11 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
              * 특히 여기서는 **에폭이 바뀐 경우**가 이 갈래로 온다 (ADR-007).
              * 자동으로 첫 페이지를 다시 부르지 않는다: 재채번이 일어났다는
              * 사실 자체를 사용자가 알아야 한다.
+             *
+             * **직전 결과를 지우지 않는다.** 지우면 사용자는 자기 위치를 잃고,
+             * 무엇을 보고 있었는지 모른 채 경고만 남는다 (W-001과 같은 규율).
              */
-            setOutcome({ kind: 'idle' });
-            setPageState({ ...RANGE_FIRST_PAGE, failure });
+            setPageState((current) => ({ ...current, failure }));
             return;
           }
           setOutcome({
@@ -519,13 +521,14 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
             )}
           </div>
           <CursorPager
-            nextCursor={outcome.result.nextCursor}
+            /* 실패한 커서를 다시 내주지 않는다 — 같은 오류가 반복된다. */
+            nextCursor={pageState.failure === null ? outcome.result.nextCursor : null}
             resumed={pageState.cursor !== null || pageState.carried.length > 0}
             loadedCount={outcome.result.items.length}
             loading={false}
             onLoadMore={loadMoreRange}
             onFirst={backToFirstRange}
-            failure={null}
+            failure={pageState.failure}
           />
         </>
       ) : null}
@@ -535,7 +538,7 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
        * 이리로 온다 (ADR-007). 조용히 첫 페이지로 되돌리면 재채번이 일어났다는
        * 사실이 사라진다.
        */}
-      {pageState.failure === null ? null : (
+      {pageState.failure === null || outcome.kind === 'ready' ? null : (
         <CursorPager
           nextCursor={null}
           resumed

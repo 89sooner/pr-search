@@ -132,7 +132,7 @@ export type { MarkArchivedResult } from './registry.js';
 export { SEQUENCE_CHUNK, applyEpochBump, applySequenceToDocuments, findPullRequestByMergeCommit } from './sequence.js';
 export type { ApplySequenceInput, ApplySequenceResult, SequenceAssignment } from './sequence.js';
 
-export { applyMappings, dropEntityIndices } from './bootstrap.js';
+export { applyMappings, dropEntityIndices, switchAliasesForTests } from './bootstrap.js';
 
 /**
  * 이중 쓰기 대상 해석 (WP-035 / CR-045, DEV-295).

@@ -35,7 +35,19 @@ export interface EntityIndexDefinition {
 export const ENTITY_INDICES: readonly EntityIndexDefinition[] = [
   {
     alias: 'prs-pull-requests',
-    index: 'prs-pull-requests-v1',
+    /*
+     * **v2 — WP-032가 올렸다** (FR-SRCH-011, CR-043 DEV-266·267).
+     *
+     * `title.partial` 등 부분 일치 서브필드가 `text_partial_index` 분석기를
+     * 참조하는데, 그 분석기는 `index.analysis` 아래의 **비동적 설정**이라 열린
+     * 인덱스에 넣을 수 없다. 그리고 분석기가 있더라도 `putMapping`으로 더한
+     * 서브필드는 **기존 문서에서 비어 있다** — 배포는 성공하고 검색만 과거
+     * 데이터에 조용히 적게 답한다.
+     *
+     * 그래서 새 번호다. 이미 v1이 서비스 중인 클러스터에서 여기로 옮기는 것은
+     * **WP-035의 재색인**이며, `applyMappings`는 그 자리를 침범하지 않는다.
+     */
+    index: 'prs-pull-requests-v2',
     settings: ENTITY_INDEX_SETTINGS,
     mappings: PULL_REQUEST_MAPPING,
     routingField: 'repository_id',
@@ -43,7 +55,8 @@ export const ENTITY_INDICES: readonly EntityIndexDefinition[] = [
   },
   {
     alias: 'prs-commits',
-    index: 'prs-commits-v1',
+    // v2 — `message.partial`·`base_branch.partial` (WP-032). 위 주석 참조.
+    index: 'prs-commits-v2',
     settings: ENTITY_INDEX_SETTINGS,
     mappings: COMMIT_MAPPING,
     routingField: 'repository_id',
