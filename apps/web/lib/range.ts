@@ -54,6 +54,14 @@ export interface RangeParams {
   readonly to: string | null;
   /** 인용의 에폭. 비교에만 쓴다 — 조회를 이 에폭으로 보내지 않는다. */
   readonly epoch: number | null;
+  /**
+   * 구간을 좁히는 질의 (WP-032 / FR-SEQ-002).
+   *
+   * **URL에 있다.** 패싯 클릭이 이 값을 갱신하고 그 변경이 조회를 유발한다 —
+   * W-001과 같은 규칙이다(URL이 단일 진실). 커서는 URL에 싣지 않는다: 조건은
+   * 공유할 수 있지만 페이징 위치는 발급자의 접근 범위로 봉인돼 있다.
+   */
+  readonly q: string | null;
 }
 
 const REPO_SLUG = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -69,6 +77,7 @@ export function parseRangeParams(searchParams: URLSearchParams): RangeParams {
     from: emptyToNull(searchParams.get('from')),
     to: emptyToNull(searchParams.get('to')),
     epoch,
+    q: emptyToNull(searchParams.get('q')),
   };
 }
 
@@ -83,6 +92,7 @@ export function formatRangeQuery(params: {
   readonly from?: string;
   readonly to?: string;
   readonly epoch?: number;
+  readonly q?: string;
 }): string {
   const query = new URLSearchParams();
   query.set('repo', params.repo);
@@ -90,6 +100,7 @@ export function formatRangeQuery(params: {
   if (params.from !== undefined && params.from !== '') query.set('from', params.from);
   if (params.to !== undefined && params.to !== '') query.set('to', params.to);
   if (params.epoch !== undefined) query.set('epoch', String(params.epoch));
+  if (params.q !== undefined && params.q !== '') query.set('q', params.q);
   return query.toString();
 }
 

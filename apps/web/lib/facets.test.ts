@@ -6,7 +6,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { FACET_FIELDS, facetNotice, facetRailState } from './facets';
+import {
+  FACET_FIELDS,
+  RANGE_FACET_FIELDS,
+  SEARCH_FACET_FIELDS,
+  facetNotice,
+  facetRailState,
+} from './facets';
 
 describe('세 경우를 가른다 (DEV-076)', () => {
   it('두 키가 **없으면** 아직 세지 않은 것이다', () => {
@@ -64,16 +70,82 @@ describe('사유 문구 — 조용히 비우지 않는다 (C-012 사용 규칙)'
   });
 });
 
-describe('레일이 다루는 필드 (FR-SRCH-006 AC-1)', () => {
-  it('FR-SRCH-009 AC-1이 정한 패싯 6종과 같다', () => {
-    expect(FACET_FIELDS.map((f) => f.key)).toEqual(['repo', 'author', 'team', 'label', 'base', 'state']);
+describe('레일이 다루는 필드 (FR-SRCH-006 AC-1, FR-SRCH-009 AC-1)', () => {
+  /*
+   * **키가 둘로 갈렸다** (WP-032).
+   *
+   * WP-016 시절에는 패싯 데이터가 오지 않아 `key`가 곧 질의 키였다. 이제 응답이
+   * 실제로 오고 그 키는 **ES 필드 이름**이다 — `repository`, `base_branch`,
+   * 그리고 `allowed_team_ids`를 센 `team`. 레일이 만드는 것은 여전히 질의
+   * 토큰이므로(`repo:`, `base:`) 둘을 같다고 두면 **패싯을 눌렀을 때 성립하지
+   * 않는 질의**가 만들어진다.
+   */
+  it('응답 키는 FR-SRCH-009 AC-1이 정한 여섯 축의 ES 필드다', () => {
+    expect(SEARCH_FACET_FIELDS.map((f) => f.key)).toEqual([
+      'repository',
+      'author',
+      'team',
+      'label',
+      'base_branch',
+      'state',
+    ]);
   });
 
-  it('전부 질의 키다 — 레일 조작이 질의 문자열을 갱신한다', () => {
+  it('질의 키는 FR-SRCH-006 AC-1의 지원 키다 — 레일 조작이 질의 문자열을 갱신한다', () => {
     // 레일이 자기 상태를 따로 가지면 URL과 두 진실이 생긴다.
-    for (const field of FACET_FIELDS) {
-      expect(field.key).toMatch(/^[a-z]+$/);
+    expect(SEARCH_FACET_FIELDS.map((f) => f.queryKey)).toEqual([
+      'repo',
+      'author',
+      'team',
+      'label',
+      'base',
+      'state',
+    ]);
+    for (const field of SEARCH_FACET_FIELDS) {
+      expect(field.queryKey, field.key).toMatch(/^[a-z]+$/);
       expect(field.label.length).toBeGreaterThan(0);
     }
+  });
+
+  it('W-004는 넷이다 — 공간이 고정한 축을 다시 묻지 않는다 (FR-SEQ-002 AC-8)', () => {
+    expect(RANGE_FACET_FIELDS.map((f) => f.key)).toEqual(['author', 'team', 'label', 'path']);
+    // 저장소·브랜치는 시퀀스 공간이 정하고, 상태는 W-004의 승인 범위가 아니다.
+    expect(RANGE_FACET_FIELDS.map((f) => f.key)).not.toContain('repository');
+    expect(RANGE_FACET_FIELDS.map((f) => f.key)).not.toContain('base_branch');
+    expect(RANGE_FACET_FIELDS.map((f) => f.key)).not.toContain('state');
+  });
+
+  it('예전 이름은 W-001 축의 별칭이다 — 참조가 한 곳으로 모인다', () => {
+    expect(FACET_FIELDS).toBe(SEARCH_FACET_FIELDS);
+  });
+});
+
+describe('생략과 실패를 가른다 (CR-043, DEV-277)', () => {
+  it('`facets_status: failed`는 실패다 — 생략과 다른 상태다', () => {
+    const state = facetRailState({ facets_omitted: true, facets_status: 'failed' });
+    expect(state.kind).toBe('failed');
+  });
+
+  it('`budget_omitted`는 생략이다', () => {
+    expect(facetRailState({ facets_omitted: true, facets_status: 'budget_omitted' }).kind).toBe('omitted');
+  });
+
+  /*
+   * 상태를 모르면 **생략으로 읽는다.**
+   *
+   * WP-032 전의 응답이 그것을 뜻했고, 실패라고 단정하면 없는 고장을 알린다.
+   */
+  it('상태가 없으면 생략이다 — 없는 고장을 알리지 않는다', () => {
+    expect(facetRailState({ facets_omitted: true }).kind).toBe('omitted');
+  });
+
+  it('셋이 서로 다른 문구다 — 사용자가 할 수 있는 일이 각각 다르다', () => {
+    const notices = [
+      facetNotice(facetRailState({})),
+      facetNotice(facetRailState({ facets_omitted: true, facets_status: 'budget_omitted' })),
+      facetNotice(facetRailState({ facets_omitted: true, facets_status: 'failed' })),
+    ];
+    expect(new Set(notices).size).toBe(3);
+    for (const notice of notices) expect(notice).not.toBeNull();
   });
 });

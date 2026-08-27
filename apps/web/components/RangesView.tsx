@@ -24,6 +24,10 @@ import { SequenceSpaceSelector, type SequenceSpaceRef } from './SequenceSpaceSel
 import { RangeSummaryCard } from './RangeSummaryCard';
 import { RangeResultTable } from './RangeResultTable';
 import { FacetRail } from './FacetRail';
+import { CursorPager, toCursorFailure, type CursorFailure } from './CursorPager';
+import { RANGE_FACET_FIELDS, type FacetSource } from '../lib/facets';
+import { addEquality, removeEquality } from '../lib/tokens';
+import { parseQuery, serializeQuery, type QueryAst } from '@prs/query';
 import { ErrorBanner } from './ErrorBanner';
 import {
   formatRangeQuery,
@@ -47,7 +51,27 @@ interface RangeSuccess {
   readonly summary: RangeSummaryView | null;
   readonly items: readonly RangeItemView[];
   readonly missingInIndex: number;
+  /** 다음 페이지 커서. 구간 끝까지 검사했으면 `null`이다 (FR-SEQ-002 AC-6). */
+  readonly nextCursor: string | null;
+  /** 이 응답이 실어 온 패싯. 첫 페이지만 값이 있다. */
+  readonly facets: FacetSource;
 }
+
+/**
+ * 이어 보기 상태 (WP-032 / FR-SEQ-002 AC-6).
+ *
+ * W-001과 **같은 규칙**이다: 커서는 URL에 싣지 않고, 조건(`q`·경계·공간)이
+ * 바뀌면 커서·쌓인 항목·패싯을 함께 버린다. 순회하는 정본은 다르지만
+ * (여기는 PostgreSQL `merge_sequence`) 화면이 지켜야 할 규율은 같다.
+ */
+interface RangePageState {
+  readonly carried: readonly RangeItemView[];
+  readonly cursor: string | null;
+  readonly facets: FacetSource;
+  readonly failure: CursorFailure | null;
+}
+
+const RANGE_FIRST_PAGE: RangePageState = { carried: [], cursor: null, facets: {}, failure: null };
 
 type QueryOutcome =
   | { readonly kind: 'idle' }
@@ -79,6 +103,9 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
   const [toState, setToState] = useState<AnchorFieldState>({ kind: 'idle' });
   const [resolveEpoch, setResolveEpoch] = useState<number | null>(null);
   const [outcome, setOutcome] = useState<QueryOutcome>({ kind: 'idle' });
+  /** 구간을 좁히는 질의. 패싯 클릭이 이것을 갱신한다 (WP-032). */
+  const [rangeQuery, setRangeQuery] = useState(initial.current.q ?? '');
+  const [pageState, setPageState] = useState<RangePageState>(RANGE_FIRST_PAGE);
   const generation = useRef(0);
 
   // 공간 목록은 이 화면의 자기 데이터다 (API-SEQ-006) — 진입 시 한 번 부른다.
@@ -146,9 +173,20 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
   const preflight = preflightRange(fromAnchor, toAnchor);
 
   const runQuery = useCallback(
-    async (options: { readonly pinEpoch: number | null }): Promise<void> => {
+    async (options: {
+      readonly pinEpoch: number | null;
+      /** 이어 보기 커서. 없으면 첫 페이지이고 그때만 패싯을 요청한다. */
+      readonly cursor?: string | null;
+      /** 이어 보기가 쌓아 온 앞 페이지들. 첫 페이지면 비어 있다. */
+      readonly carried?: readonly RangeItemView[];
+      readonly carriedFacets?: FacetSource;
+      readonly q?: string;
+    }): Promise<void> => {
       if (space === null || fromAnchor === null || toAnchor === null) return;
       const mine = (generation.current += 1);
+      const cursor = options.cursor ?? null;
+      const carried = options.carried ?? [];
+      const effectiveQuery = (options.q ?? rangeQuery).trim();
       setOutcome({ kind: 'loading' });
       const query = new URLSearchParams({
         repository: space.repository,
@@ -157,6 +195,15 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
         to_seq: String(toAnchor.mergeSeq),
       });
       if (options.pinEpoch !== null) query.set('seq_epoch', String(options.pinEpoch));
+      if (effectiveQuery !== '') query.set('q', effectiveQuery);
+      if (cursor !== null) query.set('cursor', cursor);
+      /*
+       * **첫 페이지만 분포를 센다** (QA-W001-27과 같은 규칙).
+       *
+       * 패싯의 계산 대상은 페이지가 아니라 **구간 전체**이므로(AC-8) 이어 보기가
+       * 다시 세도 같은 값이 나온다 — 예산만 쓴다.
+       */
+      if (cursor === null) query.set('facets', 'true');
       try {
         const response = await fetch(`/api/sequence-ranges?${query.toString()}`, { cache: 'no-store' });
         const body: unknown = await response.json();
@@ -175,6 +222,19 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
         }
         if (!response.ok) {
           const error = (record['error'] ?? {}) as { code?: string; message?: string };
+          const failure = toCursorFailure(error.code);
+          if (failure !== null) {
+            /*
+             * 커서 실패는 화면 오류가 아니다 — 구간 조건은 멀쩡하다.
+             *
+             * 특히 여기서는 **에폭이 바뀐 경우**가 이 갈래로 온다 (ADR-007).
+             * 자동으로 첫 페이지를 다시 부르지 않는다: 재채번이 일어났다는
+             * 사실 자체를 사용자가 알아야 한다.
+             */
+            setOutcome({ kind: 'idle' });
+            setPageState({ ...RANGE_FIRST_PAGE, failure });
+            return;
+          }
           setOutcome({
             kind: 'server_error',
             code: error.code ?? 'UNKNOWN',
@@ -187,6 +247,8 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
 
         const seqEpoch = typeof record['seq_epoch'] === 'number' ? record['seq_epoch'] : 0;
         const stateRaw = record['sequence_state'];
+        /** 첫 페이지가 센 분포를 이어 보기가 물려받는다. */
+        const facets: FacetSource = cursor === null ? (record as FacetSource) : (options.carriedFacets ?? {});
         setOutcome({
           kind: 'ready',
           result: {
@@ -194,11 +256,15 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
             sequenceState:
               stateRaw === 'ok' || stateRaw === 'stale' || stateRaw === 'reassigning' ? stateRaw : 'unknown',
             summary: judgeSummary(body),
-            items: judgeItems(body),
+            // **쌓아서 보여 준다** — 번호가 없어 앞 페이지로 돌아갈 길이 없다.
+            items: [...carried, ...judgeItems(body)],
             missingInIndex:
               typeof record['items_missing_in_index'] === 'number' ? record['items_missing_in_index'] : 0,
+            nextCursor: typeof record['next_cursor'] === 'string' ? record['next_cursor'] : null,
+            facets,
           },
         });
+        setPageState({ carried, cursor, facets, failure: null });
         /*
          * 성공한 조회의 URL이 곧 인용이다 — 현재 에폭을 URL에 남긴다. 다음에
          * 이 링크로 들어온 사람은 에폭 비교(QA-W004-21)의 보호를 받는다.
@@ -210,13 +276,14 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
             from: fromText,
             to: toText,
             epoch: seqEpoch,
+            ...(effectiveQuery === '' ? {} : { q: effectiveQuery }),
           })}`,
         );
       } catch {
         if (generation.current === mine) setOutcome({ kind: 'offline' });
       }
     },
-    [space, fromAnchor, toAnchor, fromText, toText, router],
+    [space, fromAnchor, toAnchor, fromText, toText, router, rangeQuery],
   );
 
   /*
@@ -242,6 +309,52 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
     selectedSpace?.seq_epoch != null ? judgeEpoch(initial.current.epoch, selectedSpace.seq_epoch) : 'unpinned';
 
   const canQuery = preflight.kind === 'ok';
+
+  /** 패싯 체크 상태의 유일한 출처. 파싱 실패는 "필터 없음"으로 읽는다. */
+  const rangeAst: QueryAst | null = (() => {
+    if (rangeQuery.trim() === '') return null;
+    try {
+      return parseQuery(rangeQuery);
+    } catch {
+      return null;
+    }
+  })();
+
+  /**
+   * 패싯 클릭 — 질의를 고치고 **첫 페이지부터 다시 연다.**
+   *
+   * 커서를 들고 조건을 바꾸면 서버가 `CURSOR_QUERY_MISMATCH`로 답한다. 그것은
+   * 사용자가 만든 오류가 아니라 화면이 만든 것이므로 여기서 버린다 (DEV-280).
+   */
+  const onToggleRangeFacet = useCallback(
+    (queryKey: string, value: string, next: boolean) => {
+      const base = rangeAst ?? { filters: [], text: null };
+      const updated = next ? addEquality(base, queryKey, value) : removeEquality(base, queryKey, value);
+      const serialized = serializeQuery(updated);
+      setRangeQuery(serialized);
+      setPageState(RANGE_FIRST_PAGE);
+      void runQuery({ pinEpoch: null, q: serialized });
+    },
+    [rangeAst, runQuery],
+  );
+
+  const loadMoreRange = useCallback(
+    (cursor: string) => {
+      const current = outcome.kind === 'ready' ? outcome.result : null;
+      void runQuery({
+        pinEpoch: null,
+        cursor,
+        carried: current?.items ?? [],
+        carriedFacets: current?.facets ?? pageState.facets,
+      });
+    },
+    [outcome, pageState.facets, runQuery],
+  );
+
+  const backToFirstRange = useCallback(() => {
+    setPageState(RANGE_FIRST_PAGE);
+    void runQuery({ pinEpoch: null });
+  }, [runQuery]);
 
   return (
     <div data-testid="ranges-view">
@@ -386,7 +499,17 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
           ) : null}
           {outcome.result.summary === null ? null : <RangeSummaryCard summary={outcome.result.summary} />}
           <div data-testid="range-body">
-            <FacetRail source={{}} ast={null} onToggle={() => undefined} />
+            {/*
+             * **넷이다** (FR-SEQ-002 AC-8): 작성자·팀·라벨·경로. 저장소와 대상
+             * 브랜치는 시퀀스 공간이 이미 고정하므로 패싯으로 다시 묻지 않는다.
+             */}
+            <FacetRail
+              source={outcome.result.facets}
+              ast={rangeAst}
+              onToggle={onToggleRangeFacet}
+              fields={RANGE_FACET_FIELDS}
+              onRetry={backToFirstRange}
+            />
             {space === null ? null : (
               <RangeResultTable
                 repository={space.repository}
@@ -395,8 +518,34 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
               />
             )}
           </div>
+          <CursorPager
+            nextCursor={outcome.result.nextCursor}
+            resumed={pageState.cursor !== null || pageState.carried.length > 0}
+            loadedCount={outcome.result.items.length}
+            loading={false}
+            onLoadMore={loadMoreRange}
+            onFirst={backToFirstRange}
+            failure={null}
+          />
         </>
       ) : null}
+
+      {/*
+       * 커서 실패는 결과가 없을 때도 알려야 한다 — 특히 **에폭이 바뀐 경우**가
+       * 이리로 온다 (ADR-007). 조용히 첫 페이지로 되돌리면 재채번이 일어났다는
+       * 사실이 사라진다.
+       */}
+      {pageState.failure === null ? null : (
+        <CursorPager
+          nextCursor={null}
+          resumed
+          loadedCount={0}
+          loading={outcome.kind === 'loading'}
+          onLoadMore={loadMoreRange}
+          onFirst={backToFirstRange}
+          failure={pageState.failure}
+        />
+      )}
       <span data-testid="login-path" hidden>
         {loginPath}
       </span>

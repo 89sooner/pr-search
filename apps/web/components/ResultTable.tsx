@@ -27,8 +27,10 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Badge, Table } from '@conductor-by-89soone/react';
 import { SequenceBadge } from './SequenceBadge';
+import { HighlightedText } from './HighlightedText';
 import { RelationBadgeGroup } from './RelationBadgeGroup';
 import type { LinkSummaryView } from '../lib/relations';
+import { primaryFragment, type HighlightMap } from '../lib/highlight';
 
 import { commonSpace } from '../lib/sequence';
 import { shortSha } from '../lib/format';
@@ -52,6 +54,13 @@ export interface ResultRow {
   readonly deletions: number | null;
   /** 비정규화 관계 요약 (ADR-009). **`null`은 "요약이 아직 없다"이다.** */
   readonly link_summary?: LinkSummaryView | null;
+  /**
+   * 강조 조각 (WP-032 / FR-SRCH-011 AC-5).
+   *
+   * **평문과 구간이다** — 마크업이 아니다 (THR-018). 자유 텍스트 검색이 아닐
+   * 때는 키 자체가 없다.
+   */
+  readonly highlight?: HighlightMap;
   readonly url: string | null;
 }
 
@@ -94,6 +103,20 @@ function rowHref(row: ResultRow, fromQuery: string): string | null {
    * 읽히고, 공유된 링크가 의도와 다르게 해석되기 때문이다.
    */
   return withFromQuery(row.url, fromQuery);
+}
+
+/**
+ * 제목 칸의 내용.
+ *
+ * **`dangerouslySetInnerHTML`을 쓰지 않는다** (THR-018). API가 평문과 구간을
+ * 주고 여기서 텍스트 노드와 `<mark>`로 조립한다 — 제목이 `<script>`를 담고
+ * 있어도 그것은 글자로 그려진다.
+ */
+function TitleText({ row, fallback }: { row: ResultRow; fallback: string }): ReactNode {
+  const fragment =
+    primaryFragment(row.highlight, 'title') ?? primaryFragment(row.highlight, 'message');
+  if (fragment !== null) return <HighlightedText fragment={fragment} />;
+  return <>{row.title ?? fallback}</>;
 }
 
 /** 결과 행의 표시 이름. PR은 `#번호`, 커밋은 축약 SHA(12자)다. */
@@ -174,11 +197,20 @@ export function ResultTable({
                      * **실제 링크다.** 새 탭 열기·가운데 클릭이 살아 있어야
                      * 조사 중에 여러 후보를 펼쳐 볼 수 있다 (C-013 접근성).
                      */}
+                    {/*
+                      * 강조가 있으면 그 조각을, 없으면 제목을 그린다.
+                      *
+                      * 커밋 행의 제목 칸은 메시지 첫 줄이므로 `message` 축을
+                      * 함께 본다. 조각이 없으면 지금까지와 똑같다 — 강조는
+                      * 더해지는 것이지 대체하는 것이 아니다.
+                      */}
                     {href === null ? (
-                      <span>{row.title ?? name}</span>
+                      <span>
+                        <TitleText row={row} fallback={name} />
+                      </span>
                     ) : (
                       <Link href={href} data-testid="result-link">
-                        {row.title ?? name}
+                        <TitleText row={row} fallback={name} />
                       </Link>
                     )}
                     <span className="cdt-sr-only"> ({row.repository ?? '저장소 미상'} {name})</span>
