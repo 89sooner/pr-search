@@ -8,7 +8,15 @@
 
 import { parseQuery } from '@prs/query';
 import { describe, expect, it } from 'vitest';
-import { EMPTY_RESOLUTION, buildQuery, collectNames, type NameResolution } from './query-builder.js';
+import type { estypes } from '@elastic/elasticsearch';
+import {
+  EMPTY_RESOLUTION,
+  FIRST_PARENT_COMMIT_ROLES,
+  FULL_TEXT_FIELDS,
+  buildQuery,
+  collectNames,
+  type NameResolution,
+} from './query-builder.js';
 
 const RESOLUTION: NameResolution = {
   orgIds: new Map([['acme', 1]]),
@@ -213,5 +221,78 @@ describe('나머지 키가 보는 자리 (DEV-052)', () => {
     ['release:v1.2.0', { terms: { release_tags: ['v1.2.0'] } }],
   ])('%s', (input, expected) => {
     expect(filtersOf(input)).toEqual([expected]);
+  });
+});
+
+describe('전문 검색 (WP-032 / FR-SRCH-011, CR-043 DEV-283)', () => {
+  const withText = (query: string): estypes.QueryDslBoolQuery =>
+    (buildQuery(parseQuery(query)).query as { bool: estypes.QueryDslBoolQuery }).bool;
+
+  it('자유 텍스트가 `must`에 선다 — 점수를 내는 절은 그것뿐이다', () => {
+    const bool = withText('repo:acme/payments 결제');
+    expect(bool.must).toHaveLength(1);
+    // 구조화 필터는 `filter`에 그대로 남는다 — 권한도 점수도 섞이지 않는다.
+    expect(bool.filter).toHaveLength(1);
+  });
+
+  it('제목이 본문보다 위다 (AC-2)', () => {
+    const fields = FULL_TEXT_FIELDS;
+    const title = fields.find((f) => f.startsWith('title^'));
+    expect(title).toBe('title^3');
+    // 본문에는 가중치가 없다 — 기본 1이다.
+    expect(fields).toContain('body');
+  });
+
+  it('부분 일치 필드가 같은 축의 절반 가중치다 — 통째로 맞은 문서가 위다', () => {
+    expect(FULL_TEXT_FIELDS).toContain('title.partial^1.5');
+    expect(FULL_TEXT_FIELDS).toContain('message.partial^0.5');
+  });
+
+  it('브랜치명은 `keyword` 본체가 아니라 분석된 서브필드를 본다', () => {
+    // 본체로 걸면 `feature/pay-retry` 전체와 정확히 같을 때만 매치된다.
+    expect(FULL_TEXT_FIELDS).toContain('base_branch.text');
+    expect(FULL_TEXT_FIELDS).not.toContain('base_branch');
+    expect(FULL_TEXT_FIELDS).not.toContain('head_branch');
+  });
+
+  /*
+   * **AC-1이 정한 커밋 축은 머지 커밋 메시지다** (DEV-283).
+   *
+   * `/search`는 `prs-commits`를 함께 도는데 그 인덱스에는 `source_commit`도
+   * 들어 있다. 자유 텍스트를 `message`에 조건 없이 걸면 PR에 딸린 원본 커밋
+   * 메시지까지 검색 대상이 되어 승인된 범위를 넘는다.
+   */
+  it('`source_commit`을 배제한다 — first-parent 체인만 점수를 받는다', () => {
+    const bool = withText('결제');
+    const excluded = JSON.stringify(bool.must_not);
+    expect(excluded).toContain('merge_commit');
+    expect(excluded).toContain('direct_push');
+    expect(excluded).not.toContain('source_commit');
+    expect(FIRST_PARENT_COMMIT_ROLES).toEqual(['merge_commit', 'direct_push']);
+  });
+
+  it('PR 문서는 배제 절에 걸리지 않는다 — `role`이 없으면 `exists`가 거른다', () => {
+    const bool = withText('결제');
+    const clause = (bool.must_not as estypes.QueryDslQueryContainer[])[0] as {
+      bool: { filter: { exists: { field: string } }[] };
+    };
+    expect(clause.bool.filter[0]?.exists.field).toBe('role');
+  });
+
+  /*
+   * **자유 텍스트가 있을 때만이다.**
+   *
+   * 원본 커밋을 배제하는 것은 "무엇이 검색 대상 메시지인가"에 대한 답이지
+   * "무엇이 이 저장소의 커밋인가"에 대한 답이 아니다.
+   */
+  it('구조화 필터만 있으면 배제하지 않는다 — 기존 동작이 바뀌지 않는다', () => {
+    const bool = withText('repo:acme/payments');
+    expect(bool.must).toBeUndefined();
+    expect(bool.must_not).toBeUndefined();
+  });
+
+  it('빈 텍스트는 절을 만들지 않는다', () => {
+    expect(buildQuery({ filters: [], text: null }).query).toEqual({ match_all: {} });
+    expect(buildQuery({ filters: [], text: '' }).query).toEqual({ match_all: {} });
   });
 });

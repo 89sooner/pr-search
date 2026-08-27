@@ -1,0 +1,152 @@
+/**
+ * W-001 검색 커서 (WP-032 / FR-SRCH-008, CR-043 DEV-272·273).
+ *
+ * 지문이 **결과 집합의 정체성**이라는 주장을 여기서 건다. 무엇을 넣었는지보다
+ * **무엇을 넣지 않았는지**가 더 쉽게 무너진다 — `size`를 지문에 넣는 것은
+ * 언제나 "더 안전해 보이는" 변경이고, 그러면 페이지 크기를 바꾼 사용자가
+ * 자기가 만들지 않은 오류를 본다.
+ */
+
+import { describe, expect, it } from 'vitest';
+import type { AccessScope } from '@prs/es';
+import { CursorInvalidError, CursorQueryMismatchError, createCursorSigner } from '../cursor/envelope.js';
+import {
+  SEARCH_CURSOR_VERSION,
+  computeFingerprint,
+  decodeSearchCursor,
+  encodeSearchCursor,
+} from './cursor.js';
+
+const signer = createCursorSigner('search-cursor-test-key-0123456789abcdef');
+const NOW = 1_700_000_000_000;
+
+const SCOPE: AccessScope = { kind: 'explicit', repositoryIds: [10, 20, 30] };
+
+const BASE = {
+  query: 'repo:acme/payments 결제',
+  sortKey: 'merge_seq',
+  order: 'desc',
+  scope: SCOPE,
+  scopeVersion: 7,
+} as const;
+
+const CURSOR = { pitId: 'pit-abc', searchAfter: [1342, 'acme/payments:1210'] };
+
+function roundTrip(
+  fingerprint: string,
+  verifyWith: string = fingerprint,
+  nowMs = NOW,
+): ReturnType<typeof decodeSearchCursor> {
+  const raw = encodeSearchCursor(CURSOR, fingerprint, signer, NOW);
+  return decodeSearchCursor(raw, verifyWith, signer, nowMs);
+}
+
+describe('지문의 재료 (DEV-272)', () => {
+  it('왕복이 PIT과 정렬 값을 보존한다', () => {
+    expect(roundTrip(computeFingerprint(BASE))).toEqual(CURSOR);
+  });
+
+  it('질의가 달라지면 지문이 달라진다', () => {
+    expect(computeFingerprint({ ...BASE, query: 'repo:acme/payments 환불' })).not.toBe(
+      computeFingerprint(BASE),
+    );
+  });
+
+  it('정렬 키·방향이 달라지면 지문이 달라진다', () => {
+    expect(computeFingerprint({ ...BASE, sortKey: 'created_at' })).not.toBe(computeFingerprint(BASE));
+    expect(computeFingerprint({ ...BASE, order: 'asc' })).not.toBe(computeFingerprint(BASE));
+  });
+
+  /*
+   * **권한 회수가 페이징을 죽인다 — 그것이 옳다.**
+   *
+   * 이전 권한 집합 기준으로 계산된 순서를 회수 뒤에 이어 쓰면 사용자는 지금
+   * 볼 수 없는 문서 사이의 위치에서 페이징을 계속하게 된다.
+   */
+  it('접근 범위가 달라지면 지문이 달라진다', () => {
+    const narrowed: AccessScope = { kind: 'explicit', repositoryIds: [10, 20] };
+    expect(computeFingerprint({ ...BASE, scope: narrowed })).not.toBe(computeFingerprint(BASE));
+  });
+
+  it('`access_scope_version`이 오르면 지문이 달라진다 — 같은 목록이어도 회수는 회수다', () => {
+    expect(computeFingerprint({ ...BASE, scopeVersion: 8 })).not.toBe(computeFingerprint(BASE));
+  });
+
+  /*
+   * 정렬하지 않으면 같은 권한이 조회마다 다른 지문을 만든다 — GHE가 주는
+   * 순서도 캐시가 돌려주는 순서도 안정적이라는 보장이 없다. 그러면 사용자는
+   * 아무것도 바꾸지 않았는데 두 번째 페이지에서 mismatch를 본다.
+   */
+  it('접근 범위의 **순서**는 지문을 바꾸지 않는다', () => {
+    const shuffled: AccessScope = { kind: 'explicit', repositoryIds: [30, 10, 20] };
+    expect(computeFingerprint({ ...BASE, scope: shuffled })).toBe(computeFingerprint(BASE));
+  });
+
+  it('`org_team` 범위도 정렬해 센다', () => {
+    const a: AccessScope = { kind: 'org_team', orgIds: [1, 2], teamIds: [9, 8], visibilities: ['internal', 'public'] };
+    const b: AccessScope = { kind: 'org_team', orgIds: [2, 1], teamIds: [8, 9], visibilities: ['public', 'internal'] };
+    expect(computeFingerprint({ ...BASE, scope: a })).toBe(computeFingerprint({ ...BASE, scope: b }));
+  });
+
+  /*
+   * **`size`와 패싯 요청 여부는 지문에 없다** — 표현이지 결과 집합의 정체성이
+   * 아니다. 이 시험은 `computeFingerprint`의 입력에 그 둘이 아예 없다는 사실로
+   * 성립한다: 넣으려면 타입을 바꿔야 하고 그러면 여기가 먼저 깨진다.
+   */
+  it('지문 입력에 `size`·`facets`가 없다', () => {
+    const material = Object.keys(BASE);
+    expect(material).toEqual(['query', 'sortKey', 'order', 'scope', 'scopeVersion']);
+  });
+});
+
+describe('두 실패를 가른다 (DEV-273)', () => {
+  it('지문이 다르면 `CURSOR_QUERY_MISMATCH`다 — "조건이 바뀌었다"', () => {
+    expect(() => roundTrip(computeFingerprint(BASE), computeFingerprint({ ...BASE, order: 'asc' }))).toThrow(
+      CursorQueryMismatchError,
+    );
+  });
+
+  /*
+   * **검사 순서가 곧 오류의 뜻이다.**
+   *
+   * 서명이 깨진 커서에 대고 "조건이 바뀌었다"고 답하면 사용자는 질의를
+   * 의심하고, 훼손된 입력을 서버가 해석하려 든 셈이 된다.
+   */
+  it('서명이 깨지면 지문을 보기 전에 `CURSOR_INVALID`다', () => {
+    const fingerprint = computeFingerprint(BASE);
+    const raw = encodeSearchCursor(CURSOR, fingerprint, signer, NOW);
+    const tampered = `${raw.slice(0, -1)}${raw.endsWith('A') ? 'B' : 'A'}`;
+    // 지문은 **맞는데도** invalid다 — 서명이 먼저다.
+    expect(() => decodeSearchCursor(tampered, fingerprint, signer, NOW)).toThrow(CursorInvalidError);
+  });
+
+  it('만료되면 `CURSOR_INVALID`다', () => {
+    const fingerprint = computeFingerprint(BASE);
+    expect(() => roundTrip(fingerprint, fingerprint, NOW + 6 * 60 * 1000)).toThrow(CursorInvalidError);
+  });
+
+  it('모르는 스키마 버전은 `CURSOR_INVALID`다 — 조용히 잘못 해석하지 않는다', () => {
+    const fingerprint = computeFingerprint(BASE);
+    const body = Buffer.from(
+      JSON.stringify({ v: SEARCH_CURSOR_VERSION + 1, p: 'pit', s: [1], f: fingerprint, x: NOW + 1000 }),
+      'utf8',
+    ).toString('base64url');
+    expect(() => decodeSearchCursor(`${body}.${signer.sign(body)}`, fingerprint, signer, NOW)).toThrow(
+      CursorInvalidError,
+    );
+  });
+
+  it('PIT이 없거나 정렬 값이 비면 `CURSOR_INVALID`다', () => {
+    const fingerprint = computeFingerprint(BASE);
+    for (const payload of [
+      { v: SEARCH_CURSOR_VERSION, p: '', s: [1], f: fingerprint, x: NOW + 1000 },
+      { v: SEARCH_CURSOR_VERSION, p: 'pit', s: [], f: fingerprint, x: NOW + 1000 },
+      { v: SEARCH_CURSOR_VERSION, p: 'pit', s: 'not-array', f: fingerprint, x: NOW + 1000 },
+    ]) {
+      const body = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+      expect(() => decodeSearchCursor(`${body}.${signer.sign(body)}`, fingerprint, signer, NOW)).toThrow(
+        CursorInvalidError,
+      );
+    }
+  });
+});

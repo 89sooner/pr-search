@@ -17,7 +17,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Client } from '@elastic/elasticsearch';
 import { jobRepo, repositoryRepo, type Pool, type RepositoryRow } from '@prs/db';
-import { applyMappings, createEsClient, dropEntityIndices, resolveClientOptions } from '@prs/es';
+import { applyMappings, switchAliasesForTests, createEsClient, dropEntityIndices, resolveClientOptions } from '@prs/es';
 import { runBackfillJob, type BackfillDeps } from '../../src/backfill.js';
 import { backfillDeliveryId } from '../../src/backfill-plan.js';
 import { migratedPool } from '../helpers.js';
@@ -105,6 +105,8 @@ beforeAll(async () => {
   await waitForCluster();
   await dropEntityIndices(es);
   await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
 }, 120_000);
 
 afterAll(async () => {

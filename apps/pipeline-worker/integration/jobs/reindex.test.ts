@@ -33,6 +33,7 @@ import {
   createEsClient,
   listIndexVersions,
   parseIndexVersion,
+  createVersionedIndex,
   resolveServingIndex,
   schemaOf,
   switchAlias,
@@ -924,5 +925,178 @@ describe('WP-032 선행 조건 증명 — 새 분석기·다중 필드로 무중
 
     // 3) 전환 내내 별칭은 정확히 하나를 가리켰다 — 무중단의 전제다.
     expect(Object.keys(await es.indices.getAlias({ name: ALIAS }))).toHaveLength(1);
+  });
+});
+
+describe('WP-032 매핑 이행 증명 — 실제 PR 매핑을 재색인으로 배포한다 (CR-043, DEV-266·267)', () => {
+  /*
+   * 위 「WP-032 선행 조건 증명」은 **기계가 있다**는 사실을 임시 이름으로 보였다.
+   * 여기서 보이는 것은 그 다음 단계다 — **WP-032가 실제로 정한 매핑**이 그
+   * 경로로 배포되고, 그 뒤 과거 문서가 새 필드로 찾힌다.
+   *
+   * 출발점을 WP-032 **이전** 스키마로 만든다. 지금 별칭이 이미 새 매핑을 쓰는
+   * 인덱스를 가리키고 있으면 "전환 덕분에 찾힌다"를 말할 수 없다 — 처음부터
+   * 찾혔을 뿐인지 구분되지 않는다.
+   */
+  const LEGACY_SUFFIX = 9_000;
+
+  /** WP-032 이전의 PR 스키마 — 부분 일치 분석기도 서브필드도 없다. */
+  function legacySchema(): VersionedIndexSchema {
+    const base = schemaOf(PR_ALIAS);
+    const analysis = structuredClone(base.settings.analysis ?? {}) as Record<string, Record<string, unknown>>;
+    delete analysis['analyzer']?.['text_partial_index'];
+    delete analysis['filter']?.['edge_ngram_2_20'];
+
+    const properties = structuredClone(base.mappings.properties ?? {}) as Record<string, Record<string, unknown>>;
+    // 제목에서 `partial`만 걷어 낸다 — 나머지는 그대로 두어야 정본 재구축이 돈다.
+    const title = properties['title'] as { fields?: Record<string, unknown> } | undefined;
+    if (title?.fields !== undefined) delete title.fields['partial'];
+    for (const field of ['base_branch', 'head_branch']) {
+      const spec = properties[field] as { fields?: unknown } | undefined;
+      if (spec !== undefined) delete spec.fields;
+    }
+
+    return {
+      shards: base.shards,
+      settings: { ...base.settings, analysis },
+      mappings: { ...base.mappings, properties },
+    };
+  }
+
+  /** 이 별칭의 다음 대상 인덱스. `enqueueReindex`가 쓰는 것과 같은 규칙이다. */
+  async function nextPrIndex(): Promise<string> {
+    const versions = await listIndexVersions(es, PR_ALIAS);
+    const highest = versions.length === 0 ? 0 : (versions[versions.length - 1] as number);
+    return concreteIndexName(PR_ALIAS, highest + 1);
+  }
+
+  async function partialHits(index: string, term: string): Promise<number> {
+    await es.indices.refresh({ index });
+    const found = await es.search({
+      index,
+      size: 0,
+      query: {
+        bool: {
+          filter: [{ term: { repository_id: REPOSITORY_ID } }],
+          must: [{ match: { 'title.partial': term } }],
+        },
+      },
+    });
+    const total = found.hits.total;
+    return typeof total === 'number' ? total : (total?.value ?? 0);
+  }
+
+  it('옛 매핑에서는 부분 일치 필드가 아예 없고, 전환 뒤에는 과거 문서까지 찾힌다', async () => {
+    // 1) WP-032 이전 스키마의 인덱스를 세우고 별칭을 그리로 옮긴다.
+    const legacyIndex = concreteIndexName(PR_ALIAS, LEGACY_SUFFIX);
+    await es.indices.delete({ index: legacyIndex, ignore_unavailable: true });
+    await createVersionedIndex(es, PR_ALIAS, LEGACY_SUFFIX, legacySchema());
+    created.add(legacyIndex);
+    const before = await resolveServingIndex(es, PR_ALIAS);
+    await switchAlias(es, PR_ALIAS, before, legacyIndex);
+
+    // 2) 정본에 문서를 남긴다 — 재구축이 읽을 것은 스냅숏이지 옛 색인이 아니다.
+    await prSnapshotRepo.upsertPullRequestSnapshot(pool, {
+      repositoryId: REPOSITORY_ID,
+      prNumber: 932,
+      documentVersion: 1,
+      source: 'webhook',
+      document: {
+        document_version: 1,
+        doc_id: pullRequestDocId(REPOSITORY_ID, 932),
+        pr_number: 932,
+        title: '결제 재시도 로직 retry backoff',
+        repository_id: REPOSITORY_ID,
+        repository: `${OWNER}/${NAME}`,
+        org_id: 71,
+        visibility: 'internal',
+        allowed_team_ids: [11],
+        repository_archived: false,
+        state: 'merged',
+        base_branch: 'main',
+        head_branch: 'feature/payment-retry',
+        indexed_at: '2026-08-01T00:00:00Z',
+        source_commit_shas: [],
+        merge_commit_sha: 'c'.repeat(40),
+      },
+    });
+    // 옛 인덱스에도 같은 문서를 넣는다 — 전환 전후를 비교할 대상이다.
+    await withReindexWrite(pool, (targets) =>
+      bulkUpsert(
+        es,
+        [
+          {
+            alias: PR_ALIAS,
+            id: pullRequestDocId(REPOSITORY_ID, 932),
+            routing: String(REPOSITORY_ID),
+            doc: {
+              document_version: 1,
+              doc_id: pullRequestDocId(REPOSITORY_ID, 932),
+              pr_number: 932,
+              title: '결제 재시도 로직 retry backoff',
+              repository_id: REPOSITORY_ID,
+              repository: `${OWNER}/${NAME}`,
+              org_id: 71,
+              visibility: 'internal',
+              allowed_team_ids: [11],
+              repository_archived: false,
+              state: 'merged',
+              base_branch: 'main',
+              head_branch: 'feature/payment-retry',
+              indexed_at: '2026-08-01T00:00:00Z',
+            },
+          },
+        ],
+        targets,
+      ),
+    );
+
+    /*
+     * 3) **옛 인덱스는 오류 없이 0건을 답한다.** 이것이 이 WP의 위험 그 자체다.
+     *
+     * 없는 필드에 `match`를 걸어도 Elasticsearch는 거절하지 않는다 — 조용히
+     * 0건이다. 매핑만 올리고 배포하면 전문 검색이 **과거 데이터에 대해 조용히
+     * 적게** 답하고, 아무 신호도 나지 않는다 (DEV-267). 배포가 터지는
+     * 첫 번째 벽(비동적 설정, DEV-266)보다 이쪽이 무겁다.
+     */
+    expect(await partialHits(legacyIndex, '결제')).toBe(0);
+
+    // 4) 현재 정의(= WP-032 매핑)로 재색인한다. 별도 배포 수단을 만들지 않는다.
+    const targetIndex = await nextPrIndex();
+    const outcome = await reindexRepo.enqueueReindex(
+      pool,
+      {
+        resolveServingIndex: (alias) => resolveServingIndex(es, alias),
+        nextTargetIndex: async () => nextPrIndex(),
+        isAlias: (value) => value === PR_ALIAS,
+      },
+      PR_ALIAS,
+      'wp-032-migration',
+    );
+    if (outcome.kind !== 'queued') throw new Error(`큐에 넣지 못했다: ${outcome.kind}`);
+    created.add(outcome.targetIndex);
+    await claim(outcome.jobId);
+    await runClaimed(outcome.jobId);
+
+    const job = await jobRow(outcome.jobId);
+    expect(job.state, `재구축이 완료되지 않았다: ${JSON.stringify(job.progress)}`).toBe('completed');
+
+    // 5) 별칭이 옮겨졌고 정확히 하나를 가리킨다 — 무중단의 전제다.
+    expect(await resolveServingIndex(es, PR_ALIAS)).toBe(targetIndex);
+    expect(Object.keys(await es.indices.getAlias({ name: PR_ALIAS }))).toHaveLength(1);
+
+    /*
+     * 6) **과거 문서가 새 필드로 찾힌다.**
+     *
+     * "결제"는 제목의 독립 토큰이 아니다 — `standard` 토크나이저가 "결제"를
+     * 끊어 주지 않으므로, `edge_ngram` 조각이 실제로 색인되지 않았다면 0건이다.
+     * 이것이 `nori` 없이 FR-SRCH-011 AC-4가 성립한다는 증거다 (OD-005, CR-040).
+     */
+    expect(await partialHits(targetIndex, '결제')).toBe(1);
+    expect(await partialHits(targetIndex, 'retr')).toBe(1);
+    // 무관한 질의는 여전히 0건이다 — 조각이 아무거나 끌어오지 않는다.
+    expect(await partialHits(targetIndex, '환불')).toBe(0);
+
+    await es.indices.delete({ index: legacyIndex, ignore_unavailable: true });
   });
 });

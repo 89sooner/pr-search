@@ -63,8 +63,14 @@ describe('AC-2: 기본 정렬은 두 단이다', () => {
     const sort = buildSort('merge_seq', 'desc');
 
     expect(fieldsOf(sort)).toEqual(['merge_seq', 'merged_at', TIEBREAK_FIELD]);
-    // `missing: _last`가 "뒤에"를 만든다.
-    expect(specOf(sort, 0)['missing']).toBe('_last');
+    /*
+     * 누락 센티널이 "뒤에"를 만든다.
+     *
+     * 예전에는 `'_last'`였다. 그 문자열은 커서로 되먹일 수 없어 명시적 값으로
+     * 바뀌었고(DEV-329), 여기서 확인하는 것은 **뜻**이다 — 내림차순에서
+     * 누락은 어떤 실제 서수보다 작아야 뒤로 간다.
+     */
+    expect(specOf(sort, 0)['missing']).toBeLessThan(0);
     // 두 번째 키가 그 무리 안의 순서를 만든다.
     expect(specOf(sort, 1)['order']).toBe('desc');
   });
@@ -125,13 +131,49 @@ describe('DEV-054: 여러 인덱스를 함께 도는 정렬', () => {
     expect(specOf(buildSort('additions', 'desc'), 0)['unmapped_type']).toBe('integer');
   });
 
-  it('없는 필드의 문서를 마지막에 놓는다 (예외 처리)', () => {
+  /*
+   * **`_last`가 아니라 명시적 값이다** (WP-032 / DEV-329).
+   *
+   * 예전 형태는 `missing`이 `'_last'`인지를 물었다. 그 문자열은 Elasticsearch가
+   * 내부적으로 `Long.MIN_VALUE`/`MAX_VALUE`를 쓰게 만드는데, 그 값은 커서로
+   * **되먹일 수 없다** — 날짜 축에서 `parse_exception`이 나고, `Number`의 안전
+   * 정수 범위를 넘어 JSON 왕복에서 정밀도까지 잃는다. 실제 Elasticsearch 8로
+   * 셋(`format` 없음 / `strict_date_optional_time` / `epoch_millis`)을 다 재고
+   * 확인했다.
+   *
+   * 그래서 지금 확인하는 것은 **뜻**이다: 값이 방향에 따라 갈리고, 표현
+   * 가능하며, JSON이 정확히 나른다.
+   */
+  it('없는 필드의 문서를 마지막에 놓는다 — 표현 가능한 값으로 (예외 처리, DEV-329)', () => {
     for (const key of SORT_KEYS) {
-      const sort = buildSort(key, 'desc');
-      for (const [index, field] of fieldsOf(sort).entries()) {
-        if (field.startsWith('_')) continue;
-        expect(specOf(sort, index)['missing'], `${key} → ${field}`).toBe('_last');
+      for (const order of ['asc', 'desc'] as const) {
+        const sort = buildSort(key, order);
+        for (const [index, field] of fieldsOf(sort).entries()) {
+          if (field.startsWith('_')) continue;
+          // 동률 키(keyword)는 `_last`가 그대로 옳다 — `null`이 되먹여진다.
+          if (field === TIEBREAK_FIELD) continue;
+          const missing = specOf(sort, index)['missing'];
+          expect(typeof missing, `${key}/${order} → ${field}`).toBe('number');
+          // **JSON 왕복이 값을 바꾸지 않는다.** 이것이 `_last`가 실패한 자리다.
+          expect(Number.isSafeInteger(missing), `${key}/${order} → ${field}`).toBe(true);
+        }
       }
+    }
+  });
+
+  it('방향마다 반대쪽 끝이다 — 어느 쪽이든 누락이 뒤로 간다', () => {
+    for (const key of SORT_KEYS) {
+      if (key === 'relevance') continue;
+      const desc = specOf(buildSort(key, 'desc'), 0)['missing'] as number;
+      const asc = specOf(buildSort(key, 'asc'), 0)['missing'] as number;
+      expect(desc, key).toBeLessThan(asc);
+    }
+  });
+
+  it('`integer` 축의 센티널이 32비트 범위 안이다 — 매핑이 거절하지 않는다', () => {
+    for (const key of ['changed_files_count', 'additions'] as const) {
+      const asc = specOf(buildSort(key, 'asc'), 0)['missing'] as number;
+      expect(asc, key).toBeLessThanOrEqual(2_147_483_647);
     }
   });
 });

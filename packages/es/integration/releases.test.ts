@@ -16,7 +16,7 @@
 
 import type { Client } from '@elastic/elasticsearch';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { applyMappings } from '../src/bootstrap.js';
+import { applyMappings, switchAliasesForTests } from '../src/bootstrap.js';
 import { SERVING_ONLY } from '../src/write-targets.js';
 import {
   RELEASE_TAGS_LIMIT,
@@ -143,6 +143,8 @@ beforeAll(async () => {
   es = createTestClient();
   await waitForCluster(es);
   await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
 }, 120_000);
 
 afterAll(async () => {

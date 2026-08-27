@@ -44,6 +44,7 @@ import { buildServer } from '../../src/server.js';
 import { RELEASES_PATH, RELEASE_COMPARISON_PATH } from '../../src/sequence/routes.js';
 import type { AuthContext, AuthRedis } from '../../src/auth/context.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
+import { TEST_CURSOR_KEY, TEST_CURSOR_SIGNER } from '../_cursor-fixture.js';
 
 const AUTH_CONFIG = {
   enabled: true,
@@ -223,8 +224,38 @@ function stubEsClient(): Client {
       }
       return Promise.resolve({ responses });
     },
-    search: () => {
-      throw new Error('이 경로는 msearch 한 번으로 끝나야 한다');
+    /*
+     * **단일 조회도 받는다** (WP-032, DEV-270).
+     *
+     * 릴리스 비교도 `runRange`를 지나므로 목록은 이제 정본 chunk 순회다.
+     * 요약·건수는 여전히 `msearch` 한 번이며, 그 주장은 `sequence/range.test.ts`의
+     * 왕복 수 시험이 지킨다 — 여기서 옛 모양을 강제하면 바뀐 계약을 굳히게 된다.
+     */
+    search: (body: { size?: number }) => {
+      const found = numbersOf(body).filter((n) => indexedPrNumbers.has(n));
+      return Promise.resolve({
+        _shards: { total: 1, successful: 1, failed: 0, skipped: 0 },
+        timed_out: false,
+        hits: {
+          total: { value: found.length, relation: 'eq' },
+          hits:
+            (body.size ?? 0) === 0
+              ? []
+              : found.map((n) => ({
+                  _index: 'prs-pull-requests-v2',
+                  _id: `p-${String(n)}`,
+                  _source: {
+                    pr_number: n,
+                    title: `PR ${String(n)}`,
+                    author: 'kim',
+                    merged_at: '2026-08-12T00:00:00Z',
+                    changed_files_count: 2,
+                    additions: 10,
+                    deletions: 3,
+                  },
+                })),
+        },
+      });
     },
   } as unknown as Client;
 }
@@ -358,10 +389,10 @@ beforeAll(async () => {
 
   const es = stubEsClient();
   app = buildServer({
-    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG },
+    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY },
     auth,
-    search: { es, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
-    sequence: { pool, es, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
+    search: { es, cursorSigner: TEST_CURSOR_SIGNER, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
+    sequence: { pool, es, cursorSigner: TEST_CURSOR_SIGNER, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
   });
   await app.ready();
 }, 180_000);

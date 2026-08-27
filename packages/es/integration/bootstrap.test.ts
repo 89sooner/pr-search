@@ -1,6 +1,7 @@
 import type { Client } from '@elastic/elasticsearch';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applyMappings, dropEntityIndices } from '../src/bootstrap.js';
+import { findIndexDefinition } from '../src/indices.js';
 import { ENTITY_INDICES } from '../src/indices.js';
 import { createTestClient, waitForCluster } from './helpers.js';
 
@@ -32,8 +33,10 @@ describe('인덱스 부트스트랩 (WP-003 DoD 1, FR-ING-005)', () => {
   });
 
   it('별칭에 고정 라우팅을 걸지 않는다 (ADR-003, DEV-021)', async () => {
-    const aliases = await client.indices.getAlias({ index: 'prs-commits-v1' });
-    const alias = aliases['prs-commits-v1']?.aliases['prs-commits'];
+    // 인덱스 이름을 박지 않는다 — 매핑 버전이 오르면 그 상수가 낡는다 (WP-032).
+    const commits = findIndexDefinition('prs-commits').index;
+    const aliases = await client.indices.getAlias({ index: commits });
+    const alias = aliases[commits]?.aliases['prs-commits'];
     // 별칭의 `routing`은 필드 이름이 아니라 **고정 값**이다. `repository_id`를
     // 걸면 전 문서가 문자열 하나의 샤드로 몰리고 문서별 라우팅이 거부된다.
     expect(alias).toBeDefined();
@@ -61,16 +64,21 @@ describe('인덱스 부트스트랩 (WP-003 DoD 1, FR-ING-005)', () => {
   });
 
   it('ADR-003이 정한 초기 샤드 수로 만든다 (CR-004 이후에도 불변)', async () => {
+    /*
+     * 별칭으로 적는다 — 샤드 수는 ADR-003이 정한 **불변**이고 매핑 버전과
+     * 무관하다. 인덱스 이름을 박으면 버전이 오를 때마다 이 표가 낡는다.
+     */
     const expected: Record<string, string> = {
-      'prs-pull-requests-v1': '6',
-      'prs-commits-v1': '12',
-      'prs-links-v1': '12',
-      'prs-releases-v1': '2',
+      'prs-pull-requests': '6',
+      'prs-commits': '12',
+      'prs-links': '12',
+      'prs-releases': '2',
     };
 
-    for (const [index, shards] of Object.entries(expected)) {
+    for (const [alias, shards] of Object.entries(expected)) {
+      const index = findIndexDefinition(alias as never).index;
       const settings = await client.indices.getSettings({ index });
-      expect(settings[index]?.settings?.['index']?.number_of_shards).toBe(shards);
+      expect(settings[index]?.settings?.['index']?.number_of_shards, alias).toBe(shards);
     }
   });
 

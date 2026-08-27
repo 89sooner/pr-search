@@ -38,6 +38,7 @@ import { SEQUENCE_RANGE_PATH } from '../../src/sequence/routes.js';
 import { RANGE_LIMIT } from '../../src/sequence/range.js';
 import type { AuthContext, AuthRedis } from '../../src/auth/context.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
+import { TEST_CURSOR_KEY, TEST_CURSOR_SIGNER } from '../_cursor-fixture.js';
 
 const AUTH_CONFIG = {
   enabled: true,
@@ -74,6 +75,8 @@ let sessionId: string;
 let indexedPrNumbers: Set<number>;
 /** 대역이 받은 질의. 모양 단언에 쓴다. */
 let lastSearches: unknown[];
+/** 대역이 받은 단일 조회. chunk 판정과 페이지 표시 필드가 이리로 온다 (WP-032). */
+let lastSingleSearches: unknown[];
 
 interface RangeBody {
   readonly sequence_space?: string;
@@ -193,8 +196,46 @@ function stubEsClient(): Client {
       }
       return Promise.resolve({ responses });
     },
-    search: () => {
-      throw new Error('범위 조회는 msearch 한 번으로 끝나야 한다');
+    /*
+     * **단일 조회도 받는다** (WP-032, DEV-270).
+     *
+     * 예전에는 여기서 던졌다 — "범위 조회는 msearch 한 번으로 끝나야 한다".
+     * 그 주장은 WP-023의 설계에서는 참이었지만 계약이 바뀌었다: 이제 정본
+     * 구간을 **chunk로 훑으며 판정**하고, 각 chunk가 한 왕복이다. 대역이 옛
+     * 모양을 강제하면 시험이 바뀐 계약을 굳히게 된다.
+     *
+     * 요약·건수는 여전히 `msearch` 한 번이다 — 그 주장은 아래 왕복 수 시험이
+     * 그대로 지킨다.
+     */
+    search: (body: { size?: number; aggs?: unknown }) => {
+      lastSingleSearches.push(body);
+      const authors = authorFilterOf(body);
+      const found = numbersOf(body)
+        .filter((n) => indexedPrNumbers.has(n))
+        .filter((n) => authors === null || authors.includes(authorOf(n)));
+      return Promise.resolve({
+        _shards: { total: 1, successful: 1, failed: 0, skipped: 0 },
+        timed_out: false,
+        hits: {
+          total: { value: found.length, relation: 'eq' },
+          hits:
+            (body.size ?? 0) === 0
+              ? []
+              : found.map((n) => ({
+                  _index: 'prs-pull-requests-v2',
+                  _id: `p-${String(n)}`,
+                  _source: {
+                    pr_number: n,
+                    title: `PR ${String(n)}`,
+                    author: authorOf(n),
+                    merged_at: '2026-08-12T00:00:00Z',
+                    changed_files_count: 2,
+                    additions: 10,
+                    deletions: 3,
+                  },
+                })),
+        },
+      });
     },
   } as unknown as Client;
 }
@@ -257,10 +298,10 @@ beforeAll(async () => {
 
   const es = stubEsClient();
   app = buildServer({
-    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG },
+    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY },
     auth,
-    search: { es, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
-    sequence: { pool, es, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
+    search: { es, cursorSigner: TEST_CURSOR_SIGNER, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
+    sequence: { pool, es, cursorSigner: TEST_CURSOR_SIGNER, resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }) },
   });
   await app.ready();
 }, 180_000);
@@ -268,6 +309,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   indexedPrNumbers = new Set(COMMITS.flatMap((c) => (c.pr === null ? [] : [c.pr as number])));
   lastSearches = [];
+  lastSingleSearches = [];
   await redis.del(scopeKey(USER));
   await pool.query('UPDATE sequence_space SET state = $1, seq_epoch = 1 WHERE repository_id = $2', [
     'ok',
@@ -591,30 +633,50 @@ describe('에폭과 상태 (ADR-007, FR-SEQ-002 예외 처리 / QA-W004-21·22)'
 describe('질의 모양과 계약 (ADR-008, DEV-138)', () => {
   it('**모든 색인 질의가 접근 범위 필터를 지난다**', async () => {
     await get('from_seq=0&to_seq=6');
-    const bodies = lastSearches.filter((_, index) => index % 2 === 1);
+    const bodies = [...lastSearches.filter((_, index) => index % 2 === 1), ...lastSingleSearches];
     expect(bodies).not.toHaveLength(0);
     for (const body of bodies) {
       expect(JSON.stringify(body)).toContain('repository_id');
     }
   });
 
-  it('`q`가 없으면 왕복이 둘이다 — 거르지 않은 건수를 따로 세지 않는다', async () => {
+  /*
+   * **요약은 여전히 `msearch` 한 번이다.**
+   *
+   * WP-032가 바꾼 것은 목록을 만드는 방식이지(chunk 순회) 요약을 세는 방식이
+   * 아니다. `q`가 있을 때 거르지 않은 건수를 따로 세는 규율(DEV-137)이 그대로
+   * 살아 있는지를 여기서 본다.
+   */
+  it('`q`가 없으면 요약 왕복이 하나다 — 거르지 않은 건수를 따로 세지 않는다', async () => {
     await get('from_seq=0&to_seq=6');
+    // 헤더+본문이 짝이므로 질의 하나가 두 칸이다.
+    expect(lastSearches).toHaveLength(2);
+  });
+
+  it('`q`가 있으면 요약 왕복이 둘이다 — 색인 부재를 필터와 섞지 않기 위해서다', async () => {
+    await get('from_seq=0&to_seq=6&q=author:kim');
     expect(lastSearches).toHaveLength(4);
   });
 
-  it('`q`가 있으면 왕복이 셋이다 — 색인 부재를 필터와 섞지 않기 위해서다', async () => {
+  /*
+   * **목록은 정본 chunk 순회다** (DEV-270).
+   *
+   * 픽스처 구간이 chunk 하나에 들어가므로 판정 왕복은 하나다. 예전에는 이
+   * 조회가 `msearch`의 세 번째 칸이었다 — 정본 페이지를 **먼저 자른 뒤**
+   * 그 안에서만 `q`를 판정했기 때문이며, 그것이 고친 결함이다.
+   */
+  it('`q`가 있으면 chunk를 단일 조회로 판정한다', async () => {
     await get('from_seq=0&to_seq=6&q=author:kim');
-    expect(lastSearches).toHaveLength(6);
+    expect(lastSingleSearches.length).toBeGreaterThan(0);
   });
 
-  it('`next_cursor`는 키를 두고 늘 `null`이다 (DEV-138)', async () => {
+  it('구간을 끝까지 검사했으면 `next_cursor`가 `null`이다 (FR-SEQ-002 AC-6)', async () => {
     const { body } = await get('from_seq=0&to_seq=6');
     expect(body).toHaveProperty('next_cursor');
     expect(body.next_cursor).toBeNull();
   });
 
-  it('구간에 PR이 하나도 없으면 색인을 부르지 않는다', async () => {
+  it('구간에 PR이 하나도 없으면 색인 요약을 부르지 않는다', async () => {
     const { status, body } = await get('from_seq=2&to_seq=3');
     expect(status).toBe(200);
     expect(body.items?.map((one) => one.merge_seq)).toEqual([3]);

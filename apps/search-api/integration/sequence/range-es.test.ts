@@ -29,13 +29,14 @@ import {
   scopeKey,
   type AccessScopeSource,
 } from '@prs/authz';
-import { applyMappings, createEsClient, resolveClientOptions } from '@prs/es';
+import { applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions } from '@prs/es';
 import { authRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
 import type { Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { SEQUENCE_RANGE_PATH } from '../../src/sequence/routes.js';
 import type { AuthContext, AuthRedis } from '../../src/auth/context.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
+import { TEST_CURSOR_KEY, TEST_CURSOR_SIGNER } from '../_cursor-fixture.js';
 
 const AUTH_CONFIG = {
   enabled: true,
@@ -149,6 +150,8 @@ beforeAll(async () => {
   redis = createTestRedis();
   es = createEsClient(resolveClientOptions());
   await applyMappings(es);
+  // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+  await switchAliasesForTests(es);
 
   await pool.query('DELETE FROM merge_sequence');
   await pool.query('DELETE FROM sequence_space');
@@ -234,10 +237,11 @@ beforeAll(async () => {
   };
 
   app = buildServer({
-    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG },
+    config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY },
     auth,
     search: {
       es,
+      cursorSigner: TEST_CURSOR_SIGNER,
       resolveNames: async (names) => ({
         orgIds: await repositoryRepo.resolveOrgIds(pool, names.orgs),
         teamIds: await authRepo.resolveTeamIds(pool, names.teams),
@@ -246,6 +250,7 @@ beforeAll(async () => {
     sequence: {
       pool,
       es,
+      cursorSigner: TEST_CURSOR_SIGNER,
       resolveNames: async (names) => ({
         orgIds: await repositoryRepo.resolveOrgIds(pool, names.orgs),
         teamIds: await authRepo.resolveTeamIds(pool, names.teams),

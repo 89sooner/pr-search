@@ -1,8 +1,16 @@
 import type { Client } from '@elastic/elasticsearch';
 import type { estypes } from '@elastic/elasticsearch';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { applyMappings } from '../src/bootstrap.js';
-import { ENTITY_INDICES } from '../src/indices.js';
+import { applyMappings, switchAliasesForTests } from '../src/bootstrap.js';
+import { ENTITY_INDICES, findIndexDefinition } from '../src/indices.js';
+
+/**
+ * 인덱스 이름을 상수로 박지 않는다 (WP-032).
+ *
+ * 매핑 버전이 오르면 그 상수가 낡고, 이 시험은 **없는 인덱스를 묻는다**.
+ * 정의에서 읽으면 버전이 올라도 같은 것을 본다.
+ */
+const COMMITS_INDEX = findIndexDefinition('prs-commits').index;
 import { createTestClient, waitForCluster } from './helpers.js';
 
 /**
@@ -50,6 +58,8 @@ describe('매핑 일치 검증 (WP-003 DoD 2)', () => {
     client = createTestClient();
     await waitForCluster(client);
     await applyMappings(client);
+    // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
+    await switchAliasesForTests(client);
   }, 90_000);
 
   afterAll(async () => {
@@ -71,8 +81,8 @@ describe('매핑 일치 검증 (WP-003 DoD 2)', () => {
   }
 
   it('분석기와 정규화기가 클러스터에 설정되어 있다', async () => {
-    const settings = await client.indices.getSettings({ index: 'prs-commits-v1' });
-    const analysis = settings['prs-commits-v1']?.settings?.['index']?.analysis;
+    const settings = await client.indices.getSettings({ index: COMMITS_INDEX });
+    const analysis = settings[COMMITS_INDEX]?.settings?.['index']?.analysis;
 
     expect(analysis?.analyzer).toHaveProperty('text_ko_en');
     expect(analysis?.analyzer).toHaveProperty('path_analyzer');
@@ -80,8 +90,8 @@ describe('매핑 일치 검증 (WP-003 DoD 2)', () => {
   });
 
   it('index.sort가 시퀀스 축으로 걸려 있다 (ADR-003)', async () => {
-    const settings = await client.indices.getSettings({ index: 'prs-commits-v1' });
-    const sort = settings['prs-commits-v1']?.settings?.['index']?.sort;
+    const settings = await client.indices.getSettings({ index: COMMITS_INDEX });
+    const sort = settings[COMMITS_INDEX]?.settings?.['index']?.sort;
     expect(sort?.field).toEqual(['repository_id', 'merge_seq']);
     expect(sort?.order).toEqual(['asc', 'desc']);
   });
