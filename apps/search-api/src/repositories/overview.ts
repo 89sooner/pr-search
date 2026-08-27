@@ -119,19 +119,35 @@ export function clampPageSize(raw: unknown): number | null {
   return n;
 }
 
+/** 다음 페이지가 시작할 위치. `null`이면 순회가 끝났다. */
+type ScanPosition = { readonly owner: string; readonly name: string; readonly repositoryId: number } | null;
+
 /**
  * 접근 범위 안 저장소를 정렬 순서대로 한 페이지 모은다.
  *
  * **`isRepositoryInScope`가 유일한 판정자다.** SQL에 범위 조건을 복제하면
  * 규칙이 두 곳에 살고, PostgreSQL 배열 연산과 이 함수의 해석이 어긋나는 날
  * 아무 오류 없이 한쪽만 넓어진다.
+ *
+ * ## 스캔 상한이 순회를 끊지 않는다 (PR #62 리뷰 P2, DEV-357)
+ *
+ * 판정이 SQL이 아니라 여기 있으므로 한 요청이 정본을 다 훑지 못할 수 있다.
+ * 그때 `next`를 비우면 **범위 밖 저장소가 몰려 있는 구간 뒤의 저장소가 영영
+ * 사라진다** — 사용자에게는 "그 저장소가 없다"로 보이고, 이 화면의 목적이
+ * 정확히 그 오독을 막는 것이다.
+ *
+ * 그래서 상한에서 멈출 때는 **마지막으로 검사한 위치**를 커서로 내준다.
+ * 항목이 없는 페이지에 유효한 커서가 붙는 것은 커서 순회의 정상 상태다.
  */
 async function collectVisible(deps: OverviewDeps, query: OverviewQuery): Promise<{
   readonly rows: readonly RepositoryRow[];
-  readonly hasMore: boolean;
+  readonly next: ScanPosition;
 }> {
   const visible: RepositoryRow[] = [];
   let after = query.after;
+  /** 마지막으로 **검사한** 행. 범위 밖이었더라도 여기까지는 처리했다. */
+  let scannedThrough: ScanPosition = null;
+  let reachedEnd = false;
 
   for (let round = 0; round < MAX_SCAN_ROUNDS; round += 1) {
     const batch = await repositoryRepo.listRepositoryOverviewPage(
@@ -139,7 +155,10 @@ async function collectVisible(deps: OverviewDeps, query: OverviewQuery): Promise
       { ...(query.slug === undefined ? {} : { slug: query.slug }), ...(after === undefined ? {} : { after }) },
       (query.limit + 1) * OVERSCAN,
     );
-    if (batch.length === 0) break;
+    if (batch.length === 0) {
+      reachedEnd = true;
+      break;
+    }
 
     for (const row of batch) {
       if (
@@ -161,18 +180,38 @@ async function collectVisible(deps: OverviewDeps, query: OverviewQuery): Promise
     const last = batch[batch.length - 1];
     if (last !== undefined) {
       after = { owner: last.owner, name: last.name, repositoryId: last.repository_id };
+      scannedThrough = after;
     }
     if (visible.length > query.limit) break;
     // 정본을 끝까지 읽었다 — 더 읽어도 나올 것이 없다.
-    if (batch.length < (query.limit + 1) * OVERSCAN) break;
+    if (batch.length < (query.limit + 1) * OVERSCAN) {
+      reachedEnd = true;
+      break;
+    }
   }
 
+  const rows = visible.slice(0, query.limit);
+
   /*
-   * **정본을 다 읽었는지와 무관하다.** 끝까지 읽었더라도 범위 안 저장소가
-   * `limit`보다 많으면 다음 페이지가 있다 — 두 조건을 묶으면 정본이 작은
-   * 배치에서 커서가 조용히 끊기고, 사용자는 목록이 거기서 끝났다고 읽는다.
+   * 다음 위치를 정하는 순서가 곧 정확성이다.
+   *
+   * 1. 범위 안 저장소가 `limit`보다 많으면 **이번 페이지의 마지막 항목**부터
+   *    이어야 한다. 정본을 다 읽었는지와 무관하다 — 두 조건을 묶으면 정본이
+   *    작은 배치에서 커서가 조용히 끊긴다.
+   * 2. 아니면서 정본을 다 읽지 못했다면 **마지막으로 검사한 행**부터 잇는다.
+   *    이 페이지가 비어 있어도 그렇다 (DEV-357).
+   * 3. 정본을 끝까지 읽었고 넘칠 것도 없으면 순회가 끝났다.
    */
-  return { rows: visible.slice(0, query.limit), hasMore: visible.length > query.limit };
+  if (visible.length > query.limit) {
+    const boundary = rows[rows.length - 1];
+    if (boundary !== undefined) {
+      return {
+        rows,
+        next: { owner: boundary.owner, name: boundary.name, repositoryId: boundary.repository_id },
+      };
+    }
+  }
+  return { rows, next: reachedEnd ? null : scannedThrough };
 }
 
 /**
@@ -283,8 +322,12 @@ export async function loadRepositoryOverview(
   deps: OverviewDeps,
   query: OverviewQuery,
 ): Promise<OverviewPage> {
-  const { rows, hasMore } = await collectVisible(deps, query);
-  if (rows.length === 0) return { items: [], nextCursor: null };
+  const { rows, next } = await collectVisible(deps, query);
+  /*
+   * **항목이 없어도 커서를 그대로 내보낸다** (DEV-357). 범위 밖이 몰려 있는
+   * 구간을 지나는 중일 수 있고, 여기서 커서를 버리면 그 뒤의 저장소가 사라진다.
+   */
+  if (rows.length === 0) return { items: [], nextCursor: next };
 
   const ids = rows.map((row) => row.repository_id);
   const slugs = rows.map((row) => `${row.owner}/${row.name}`);
@@ -340,11 +383,5 @@ export async function loadRepositoryOverview(
     };
   });
 
-  const last = rows[rows.length - 1];
-  const nextCursor =
-    hasMore && last !== undefined
-      ? { owner: last.owner, name: last.name, repositoryId: last.repository_id }
-      : null;
-
-  return { items, nextCursor };
+  return { items, nextCursor: next };
 }

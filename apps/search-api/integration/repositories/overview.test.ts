@@ -67,7 +67,25 @@ const OTHER_ORG_REPO = 90523;
 /** 해제됐지만 범위 안이다 — 숨기지 않는다 (AC-7). */
 const ARCHIVED = 90524;
 
-const ALL_REPOS = [TEAM_PRIVATE, FOREIGN_PRIVATE, INTERNAL, OTHER_ORG_REPO, ARCHIVED];
+/**
+ * 스캔 상한을 강제하는 범위 밖 저장소 무리 (PR #62 리뷰 P2, DEV-357).
+ *
+ * `owner`가 `wp034`보다 사전순으로 앞서므로 **정렬에서 먼저 온다** — 범위 안
+ * 저장소가 그 뒤에 있고, 스캔이 상한에서 멈추면 사용자는 자기 저장소를 영영
+ * 보지 못한다.
+ */
+const NOISE_START = 90540;
+const NOISE_COUNT = 120;
+const NOISE_REPOS = Array.from({ length: NOISE_COUNT }, (_, index) => NOISE_START + index);
+
+const ALL_REPOS = [
+  TEAM_PRIVATE,
+  FOREIGN_PRIVATE,
+  INTERNAL,
+  OTHER_ORG_REPO,
+  ARCHIVED,
+  ...NOISE_REPOS,
+];
 /** `FULL_USER`가 보는 집합. */
 const VISIBLE = [TEAM_PRIVATE, INTERNAL, ARCHIVED];
 
@@ -190,6 +208,21 @@ beforeAll(async () => {
   }
   await repositoryRepo.setRepositoryStatus(pool, ARCHIVED, 'archived');
 
+  /*
+   * 범위 밖 저장소를 정렬 앞쪽에 몰아 둔다 — 스캔 상한이 페이지네이션을
+   * 끊는지 재기 위한 재료다 (DEV-357).
+   */
+  for (const [index, id] of NOISE_REPOS.entries()) {
+    await repositoryRepo.upsertRepository(pool, {
+      repository_id: id,
+      owner: 'aaa-noise',
+      name: `repo-${String(index).padStart(4, '0')}`,
+      org_id: OTHER_ORG,
+      visibility: 'internal',
+      sequence_branches: [],
+    });
+  }
+
   // 최근 완료된 조정 결과 (FR-ING-011 AC-6).
   await repositoryRepo.recordCompletedReconciliation(
     pool,
@@ -211,7 +244,8 @@ beforeAll(async () => {
     conflicts: 'proceed',
   });
 
-  const operations = ALL_REPOS.flatMap((id, index) => [
+  const INDEXED = [TEAM_PRIVATE, FOREIGN_PRIVATE, INTERNAL, OTHER_ORG_REPO, ARCHIVED];
+  const operations = INDEXED.flatMap((id, index) => [
     { index: { _index: 'prs-pull-requests', _id: `wp034-${String(id)}`, routing: String(id) } },
     { ...prDocument(id, `wp034/repo-${String(id)}`, index + 1), doc_id: `wp034-${String(id)}` },
   ]);
@@ -448,6 +482,31 @@ describe('커서 순회 (ADR-010)', () => {
     expect(withOffset.items.map((item) => item.repository_id)).toEqual(
       without.items.map((item) => item.repository_id),
     );
+  });
+
+  it('**스캔 상한이 순회를 끊지 않는다** — 범위 밖이 몰려 있어도 끝까지 닿는다 (DEV-357)', async () => {
+    /*
+     * 정렬 앞쪽에 범위 밖 저장소 120개가 있다. 접근 범위 판정이 SQL이 아니라
+     * 애플리케이션에 있으므로 한 요청이 그것을 다 건너뛰지 못할 수 있는데,
+     * **그때 `next_cursor`를 비우면 뒤에 있는 저장소가 영영 사라진다.**
+     * 빈 페이지 + 유효한 커서는 커서 순회의 정상 상태다.
+     */
+    const seen: number[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+
+    for (; pages < 40; pages += 1) {
+      const query: string = cursor === null ? 'limit=1' : `limit=1&cursor=${encodeURIComponent(cursor)}`;
+      const body: OverviewBody = await overview(FULL_USER, query);
+      seen.push(...body.items.map((item) => item.repository_id));
+      cursor = body.next_cursor;
+      if (cursor === null) break;
+    }
+
+    expect([...seen].sort((a, b) => a - b), 'DEV-357: 범위 밖 무리 뒤의 저장소가 사라졌다').toEqual(
+      [...VISIBLE].sort((a, b) => a - b),
+    );
+    expect(new Set(seen).size, '중복이 있다').toBe(seen.length);
   });
 
   it('limit 범위를 벗어나면 400이다', async () => {

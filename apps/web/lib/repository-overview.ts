@@ -73,6 +73,8 @@ export interface ScreenStateInput {
   /** 이어 보기 중인가. 첫 조회와 다르다 — 기존 카드를 유지해야 한다. */
   readonly resumed: boolean;
   readonly items: readonly RepositoryOverview[] | null;
+  /** 다음 페이지 커서. 항목이 없어도 있을 수 있다 (DEV-357). */
+  readonly nextCursor: string | null;
   readonly cursorFailed: boolean;
   readonly loadFailed: boolean;
 }
@@ -82,8 +84,25 @@ export function resolveOverviewState(input: ScreenStateInput): OverviewScreenSta
   if (input.loadFailed) return 'error_load';
   if (input.loading) return input.resumed ? 'loading_more' : 'loading_initial';
   if (input.items === null) return 'loading_initial';
-  return input.items.length === 0 ? 'empty_no_repository' : 'ready';
+  /*
+   * **항목이 없는데 커서가 있으면 아직 끝이 아니다** (DEV-357). 서버가 범위 밖
+   * 저장소가 몰린 구간을 지나는 중이며, 이것을 `empty_no_repository`로 그리면
+   * 사용자는 "볼 수 있는 저장소가 없다"는 **틀린 사실**을 받는다.
+   */
+  if (input.items.length === 0) {
+    return input.nextCursor === null ? 'empty_no_repository' : 'loading_more';
+  }
+  return 'ready';
 }
+
+/**
+ * 항목이 없는 페이지를 자동으로 이어 읽을 상한.
+ *
+ * 서버가 한 요청에 훑는 범위에는 한계가 있으므로(DEV-357) 빈 페이지가 이어질
+ * 수 있다. 무한히 따라가지 않도록 상한을 두되, 상한에 닿으면 사용자가 직접
+ * 이어 볼 수 있게 커서는 살려 둔다.
+ */
+export const AUTO_ADVANCE_LIMIT = 20;
 
 /**
  * 빈 목록 문구.

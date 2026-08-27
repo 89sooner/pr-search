@@ -29,6 +29,7 @@ import { ErrorBanner } from './ErrorBanner';
 import { RepositoryCardGrid } from './RepositoryCardGrid';
 import { RegisterRequestDialog } from './RegisterRequestDialog';
 import {
+  AUTO_ADVANCE_LIMIT,
   EMPTY_NO_REPOSITORY_MESSAGE,
   resolveOverviewState,
   type RepositoryOverview,
@@ -45,6 +46,13 @@ interface ListState {
   readonly loadFailed: boolean;
   /** 커서만으로는 "다시 불러라"를 표현할 수 없다 (WP-032 DEV-332). */
   readonly nonce: number;
+  /**
+   * 항목 없는 페이지를 연달아 이어 읽은 횟수 (DEV-357).
+   *
+   * 범위 밖 저장소가 몰린 구간을 지날 때 서버가 빈 페이지 + 유효한 커서를 준다.
+   * 무한히 따라가지 않도록 세고, 상한에 닿으면 사용자가 직접 잇게 한다.
+   */
+  readonly autoAdvanced: number;
 }
 
 const FIRST_PAGE: ListState = {
@@ -54,6 +62,7 @@ const FIRST_PAGE: ListState = {
   failure: null,
   loadFailed: false,
   nonce: 0,
+  autoAdvanced: 0,
 };
 
 export interface RepositoriesViewProps {
@@ -112,14 +121,34 @@ export function RepositoriesView({
           return;
         }
 
-        setState((current) => ({
-          ...current,
-          items:
-            current.cursor === null ? (body.items ?? []) : [...(current.items ?? []), ...(body.items ?? [])],
-          nextCursor: body.next_cursor ?? null,
-          failure: null,
-          loadFailed: false,
-        }));
+        setState((current) => {
+          const received = body.items ?? [];
+          const merged =
+            current.cursor === null ? received : [...(current.items ?? []), ...received];
+          const nextCursor = body.next_cursor ?? null;
+
+          /*
+           * **빈 페이지가 왔는데 커서가 있으면 이어 읽는다** (DEV-357). 서버가
+           * 범위 밖 저장소가 몰린 구간을 지나는 중이며, 여기서 멈추면 사용자는
+           * 그 뒤의 저장소를 보지 못한다. 상한에 닿으면 커서를 남긴 채 멈춘다 —
+           * 무한히 따라가지 않되 사용자가 직접 이을 수 있어야 한다.
+           */
+          const shouldAdvance =
+            received.length === 0 &&
+            nextCursor !== null &&
+            current.autoAdvanced < AUTO_ADVANCE_LIMIT;
+
+          return {
+            ...current,
+            items: merged,
+            nextCursor,
+            failure: null,
+            loadFailed: false,
+            ...(shouldAdvance
+              ? { cursor: nextCursor, autoAdvanced: current.autoAdvanced + 1 }
+              : { autoAdvanced: received.length === 0 ? current.autoAdvanced : 0 }),
+          };
+        });
       } catch (error) {
         if ((error as { name?: string }).name === 'AbortError') return;
         setState((current) => ({ ...current, loadFailed: true }));
@@ -134,7 +163,7 @@ export function RepositoriesView({
   }, [state.cursor, state.nonce, repositoryFilter]);
 
   const loadMore = useCallback((cursor: string) => {
-    setState((current) => ({ ...current, cursor, failure: null }));
+    setState((current) => ({ ...current, cursor, failure: null, autoAdvanced: 0 }));
   }, []);
 
   const first = useCallback(() => {
@@ -163,6 +192,7 @@ export function RepositoriesView({
     loading,
     resumed: state.cursor !== null,
     items: state.items,
+    nextCursor: state.nextCursor,
     cursorFailed: state.failure !== null,
     loadFailed: state.loadFailed,
   });
@@ -198,7 +228,9 @@ export function RepositoriesView({
         />
       ) : null}
 
-      {screen === 'loading_initial' ? <Spinner label="저장소 목록을 불러오는 중" /> : null}
+      {screen === 'loading_initial' || screen === 'loading_more' ? (
+        <Spinner label="저장소 목록을 불러오는 중" />
+      ) : null}
 
       {screen === 'empty_no_repository' ? (
         <EmptyState

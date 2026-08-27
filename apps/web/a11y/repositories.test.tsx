@@ -22,6 +22,8 @@ vi.mock('next/navigation', () => ({
 const { RepositoryCardGrid } = await import('../components/RepositoryCardGrid');
 const { SequenceSpaceStatusList } = await import('../components/SequenceSpaceStatusList');
 const { RegisterRequestDialog } = await import('../components/RegisterRequestDialog');
+const { PrDetailView } = await import('../components/PrDetailView');
+const { CommitDetailView } = await import('../components/CommitDetailView');
 
 async function violations(container: HTMLElement): Promise<axe.Result[]> {
   const results = await axe.run(container, {
@@ -176,6 +178,43 @@ describe('QA-W009-02 시퀀스 공간 (C-039)', () => {
   it('axe 위반이 없다', async () => {
     const { container } = render(<SequenceSpaceStatusList spaces={[space]} />);
     expect(describeViolations(await violations(container))).toBe('');
+  });
+});
+
+describe('QA-W009-13 진단 진입 경로 (DEV-358)', () => {
+  /*
+   * W-002·W-003의 `not_found`는 "없다"와 "볼 수 없다"를 구분하지 않는다
+   * (THR-004). 사용자는 어느 쪽인지 모른 채 남으므로 저장소 진단으로 가는
+   * 경로가 그 답을 스스로 찾는 자리다 — PR #62 리뷰가 이 누락을 잡았다.
+   */
+  const NOT_FOUND = { status: 404, json: () => Promise.resolve({ error: { code: 'NOT_FOUND' } }) };
+
+  it('**W-002의 찾을 수 없음에서 저장소 개요로 갈 수 있다**', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(NOT_FOUND));
+    render(<PrDetailView repository="acme/payments" prNumber={7} loginPath="/auth/login" />);
+    const link = await screen.findByTestId('pr-open-repository-overview');
+    expect(link).toHaveAttribute('href', '/repositories?repository=acme%2Fpayments');
+  });
+
+  it('**W-003의 찾을 수 없음에서 저장소 개요로 갈 수 있다**', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(NOT_FOUND));
+    render(
+      <CommitDetailView repository="acme/payments" commitSha="abcdef1234567" loginPath="/auth/login" />,
+    );
+    const link = await screen.findByTestId('commit-open-repository-overview');
+    expect(link).toHaveAttribute('href', '/repositories?repository=acme%2Fpayments');
+  });
+
+  it('**링크가 존재를 주장하지 않는다** — 안내 문구가 "미등록"을 단정하지 않는다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(NOT_FOUND));
+    const { container } = render(
+      <PrDetailView repository="acme/payments" prNumber={7} loginPath="/auth/login" />,
+    );
+    await screen.findByTestId('pr-open-repository-overview');
+    const text = container.textContent ?? '';
+    expect(text).toContain('수집되지 않았을 수도');
+    expect(text).not.toContain('등록되지 않은 저장소입니다');
+    expect(text).not.toContain('권한이 없습니다');
   });
 });
 

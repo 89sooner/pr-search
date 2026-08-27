@@ -41,7 +41,14 @@ function item(overrides: Partial<RepositoryOverview> = {}): RepositoryOverview {
 }
 
 describe('화면 상태 (상태 매트릭스 W-009)', () => {
-  const base = { loading: false, resumed: false, items: [item()], cursorFailed: false, loadFailed: false };
+  const base = {
+    loading: false,
+    resumed: false,
+    items: [item()],
+    nextCursor: null,
+    cursorFailed: false,
+    loadFailed: false,
+  };
 
   it('첫 조회 중에는 loading_initial이다', () => {
     expect(resolveOverviewState({ ...base, loading: true, items: null })).toBe('loading_initial');
@@ -55,8 +62,17 @@ describe('화면 상태 (상태 매트릭스 W-009)', () => {
     expect(resolveOverviewState(base)).toBe('ready');
   });
 
-  it('빈 목록은 empty_no_repository다', () => {
+  it('빈 목록에 커서도 없으면 empty_no_repository다', () => {
     expect(resolveOverviewState({ ...base, items: [] })).toBe('empty_no_repository');
+  });
+
+  it('**빈 목록이어도 커서가 있으면 끝이 아니다** (DEV-357) — 범위 밖 구간을 지나는 중이다', () => {
+    /*
+     * 서버가 한 요청에 정본을 다 훑지 못하면 빈 페이지에 유효한 커서를 붙여
+     * 준다. 이것을 `empty_no_repository`로 그리면 사용자는 "볼 수 있는
+     * 저장소가 없다"는 틀린 사실을 받는다.
+     */
+    expect(resolveOverviewState({ ...base, items: [], nextCursor: 'NEXT' })).toBe('loading_more');
   });
 
   it('**커서 실패가 조회 실패보다 앞선다** — 사유가 다르면 안내도 달라야 한다', () => {
