@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v3.9 | 갱신일: 2026-08-27
+> 상태: review | 버전: v4.0 | 갱신일: 2026-08-27
 
 ## 1. 목적
 
@@ -55,7 +55,7 @@
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | done | 에이전트 | PR #44 | DoD 16항 전부 통과 (6.34장). 통합 37건(실 PG·ES·git·버스) + 단위 55건 + 회귀 12건. 변이 29종 + 리뷰 정정 8종 킬, 등가 2종 | **CR-039 신설·구현.** 착수 전 감사가 열다섯을 찾았고 **다섯이 같은 뿌리**다 — 계약이 "만든다"만 말하고 "다시 만든다"를 말하지 않는다(DEV-215~229). `reference_key`로 참조 간선의 정체성을 대상에서 떼어 AC-3을 성립시켰고(DEV-217), `EVT-ING-005`로 직접 푸시 커밋을 파생에 잇고(DEV-215), JOB-REL-006으로 과거 데이터와 PG-only 재구축 경로를 세웠다(DEV-221). **머지 후가 아니라 머지 전에 Codex 리뷰 6건(P1 셋)이 도착했고 전부 실결함이었다** — 잡 생성 경로 부재·발행 순서·접두 재평가·부분 실패·페이지네이션·URL 부호(6.34.1장). 실제 GHE·Kubernetes는 NOT RUN |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | done | 에이전트 | PR #46 | DoD 26항 전부 통과 (6.35장). 통합 49건(실 PG·ES) + 단위 22건 + 회귀 20건. 변이 18종 중 **하나가 살아남았고 그것이 결함이었다**(M13 깊이 상한) + 리뷰 정정 7종 킬 | **CR-041 신설·구현.** 착수 전 감사가 열여덟을 찾았고 **열둘이 같은 뿌리**다 — 계약이 source 본문만 보고 **후보(candidate)의 변화**를 보지 않는다(DEV-230~247). `EVT-ING-005`로 직접 푸시 커밋을 잇고(DEV-230·231), **상위 PR 변화가 하위 PR 간선을 바꾸는 역방향 경로**를 세웠으며(DEV-232), 체리픽 방향·상위 5건을 결정론으로 고정했다(DEV-243). 마이그레이션 014는 **인덱스만** — 새 표 없음(DEV-240). `JOB-REL-006`이 `handleSourceReady`를 거치므로 **재파생이 저절로 네 계열을 덮는다**(DEV-234). **머지 전에 Codex 리뷰 6건(P1 셋)이 도착했고 전부 실결함** — 양 끝점 요약·`links_pending` 보존·부분 실패·검색 가시성·retarget·후보 상한(6.35.1장). 실제 GHE·Kubernetes는 NOT RUN |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | done | 에이전트 | PR #47 (병합 `9084033`) | DoD 21항 전부 통과 (6.36장). 단위 38건 + 통합 31건(실 Elasticsearch) + 회귀 22건 + a11y 20건 + e2e 11건. 변이 22종 + 리뷰 정정 1종 전부 킬, **하나가 시험 구멍을 찾아 줬다**(M5) | **CR-042 신설.** 착수 전 감사가 열여덟을 찾았고 **아홉이 같은 뿌리**다 — 계약이 파생의 규칙만 정하고 **조회가 다른 질문**이라는 것을 보지 않았다(DEV-248~265). `API-REL-006` 신설, 역방향 조회의 저장소 라우팅 포기(DEV-250), THR-034 대상 내용 교집합(DEV-253), `API-REL-003` 상세 계약(DEV-249·254·255·256), `detached`·다중 후보·`links_pending` 표시 정정(DEV-257·258·261), W-001 이월 정정(DEV-262·264) |
-| WP-032 | 패싯·커서 페이지네이션·전문 검색 | REL-004 | todo | - | - | - | - |
+| WP-032 | 패싯·커서 페이지네이션·전문 검색 | REL-004 | done | 에이전트 | PR #57 | DoD 22항 전부 통과 (6.40장). 단위 +85 · 통합 +62(실 PG·ES) · e2e +11 · a11y 212. 적대적 변이 16종 — 14 킬, 2 등가, **살아남은 셋이 전부 시험 구멍을 드러냈다** | FR-SRCH-007·008·009·011, FR-SEQ-002. **매핑 v1 → v2** — WP-035의 재색인 경로로만 배포한다. 구현이 DEV-327~329를 등록·해소했다 |
 | WP-033 | 저장된 검색 | REL-004 | todo | - | - | - | - |
 | WP-034 | W-009 저장소 개요 화면 | REL-004 | todo | - | - | - | - |
 | WP-035 | 무중단 재색인 | REL-004 | done | 에이전트 | PR #52 | DoD 20항 중 19항 통과 (6.39장). 통합 18건(실 PG·ES) · 회귀 +36 · 단위 +13 · 변이 6종 + 리뷰 정정 5종 킬. **WP-032 선행 조건 증명 완료.** 머지 전 리뷰 다섯 정정 (6.39.1장, DEV-314~319) | FR-ING-008 |
@@ -98,10 +98,10 @@
 | FR-SRCH-005 | WP-011, WP-016 | `packages/query/src/{keys,errors,ast,tokenizer,parse,serialize}.ts`, `apps/web/lib/tokens.ts`, `apps/web/components/QueryTokenBar.tsx` | `packages/query/src/{parse,serialize}.test.ts`, `apps/web/lib/tokens.test.ts`, `apps/web/a11y/search.test.tsx` | verified (AC-1~AC-6 전부. 화면의 오류 구간 강조는 WP-016) |
 | FR-SRCH-006 | WP-013, WP-016 | `packages/es/src/query-builder.ts`, `apps/search-api/src/search/{routes,service,relaxation}.ts`, `packages/db/src/repositories/{repository,auth}.ts`, `apps/web/lib/facets.ts`, `apps/web/components/FacetRail.tsx` | `packages/es/src/query-builder.test.ts`, `apps/search-api/integration/search/list.test.ts`, `apps/web/lib/facets.test.ts`, `apps/web/a11y/search.test.tsx` | done (AC-1~AC-3, AC-6. 화면 쪽 결합은 WP-016) |
 | FR-SRCH-007 | WP-013, WP-016 | `packages/es/src/sort.ts`, `packages/es/src/upsert.ts` (`doc_id`), `packages/es/src/mappings/*.ts`, `apps/search-api/src/search/{routes,service}.ts`, `apps/web/components/ResultTable.tsx` (`aria-sort`, 정렬 헤더) | `packages/es/src/sort.test.ts`, `packages/es/src/upsert.test.ts`, `apps/search-api/integration/search/list.test.ts`, `apps/web/a11y/search.test.tsx`, `apps/web/e2e/flow-001.spec.ts` | done (AC-1~AC-4. AC-4의 "문서 ID"는 `_id`가 아니라 같은 값의 `doc_id` 필드다 — DEV-059) |
-| FR-SRCH-008 | WP-032 | - | - | not_started |
-| FR-SRCH-009 | WP-032 | - | - | not_started |
+| FR-SRCH-008 | WP-032 | `apps/search-api/src/cursor/{envelope,params}.ts`, `apps/search-api/src/search/{cursor,service,routes}.ts`, `packages/es/src/search.ts` (PIT), `apps/web/components/CursorPager.tsx` | `apps/search-api/src/cursor/envelope.test.ts`, `apps/search-api/src/search/cursor.test.ts`, `apps/search-api/integration/search/facets.test.ts`, `apps/web/e2e/search-paging.spec.ts` | done |
+| FR-SRCH-009 | WP-032 | `apps/search-api/src/search/facets.ts`, `packages/db/src/repositories/auth.ts` (`resolveTeamSlugs`), `apps/web/lib/facets.ts`, `apps/web/components/FacetRail.tsx` | `apps/web/lib/facets.test.ts`, `apps/search-api/integration/search/facets.test.ts`, `apps/search-api/integration/sequence/range-paging.test.ts` | done |
 | FR-SRCH-010 | WP-033 | - | - | not_started |
-| FR-SRCH-011 | WP-032 | - | - | not_started |
+| FR-SRCH-011 | WP-032 | `packages/es/src/settings.ts` (`text_partial_index`), `packages/es/src/mappings/{pull-requests,commits}.ts`, `packages/es/src/query-builder.ts` (`buildTextClause`), `packages/es/src/highlight.ts`, `packages/query/src/parse.ts` (`countCodePoints`), `apps/web/lib/highlight.ts`, `apps/web/components/HighlightedText.tsx` | `packages/es/src/highlight.test.ts`, `packages/es/src/query-builder.test.ts`, `packages/query/src/parse.test.ts`, `apps/search-api/integration/search/facets.test.ts`, `apps/pipeline-worker/integration/jobs/reindex.test.ts` | done |
 | FR-SRCH-012 | WP-044 | - | - | not_started |
 | FR-SEQ-001 | WP-002, WP-018, WP-020, WP-021 | `packages/db/migrations/002_sequence.up.sql`, `packages/db/src/advisory-lock.ts`, `packages/db/src/repositories/{merge-sequence,sequence-space}.ts`, `packages/github/src/{graph-plan,commit-graph,mirror-graph,api-graph,mirror-sync}.ts`, `apps/pipeline-worker/src/mirror-runner.ts`, `apps/web/lib/commit-detail.ts` (`sequencePositionState`), `apps/web/components/SequencePosition.tsx`, `apps/pipeline-worker/src/{sequence,sequence-plan}.ts`, `packages/domain/src/sequence.ts`, `packages/es/src/sequence.ts`, `apps/ingest-gateway/src/{ingest,server}.ts` (push → `prs:sequence`) | `packages/github/src/graph-plan.test.ts`, `packages/github/integration/graph.test.ts` (AC-2 대조), `packages/db/integration/advisory-lock.test.ts` (AC-6), `packages/db/integration/seed.test.ts` (AC-3), `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx`, `apps/pipeline-worker/src/sequence-plan.test.ts`, `packages/domain/src/sequence.test.ts`, **`apps/pipeline-worker/integration/sequence/assign.test.ts`** (AC-1~AC-6 전부, 실제 git 픽스처 대조), **`regression/sequence.test.ts`** (ACC-02), `packages/es/integration/sequence.test.ts` | **완료 (WP-021)** — AC-1~AC-6과 예외 처리가 전부 실제 PostgreSQL·git으로 판정된다. 채번은 `git rev-list --first-parent --reverse`가 낸 순서를 그대로 옮기고, 그것을 회귀 계층이 매 실행마다 git과 대조한다. **재작성 감지 후의 재채번만 WP-022로 남는다** — 여기서는 감지해서 `stale`로 두고 기존 값을 보존한다 |
 | FR-SEQ-002 | WP-023, WP-025 | `apps/search-api/src/sequence/{range,routes,space}.ts`, `packages/db/src/repositories/merge-sequence.ts` (`countRange`·`findRangePage`·`listPullRequestNumbersInRange`) | `apps/search-api/integration/sequence/range.test.ts`·`range-es.test.ts`, `regression/range-vs-git.test.ts` | api_done (화면은 WP-025). **W-004 화면 완료** (WP-025, 6.25장) — 반개구간 상시 표기·역전 교환·5만 사전 안내·에폭 경고까지 |
@@ -517,6 +517,9 @@
 | DEV-324 | 2026-08-27 | **가변 현재 상태 산문이 정본과 어긋나 다음 구현 에이전트를 잘못 안내한다.** 세 자리가 같은 계열이다. ① `CLAUDE.md`가 "Current state: documentation only, no code. `srs_final.md` is `review`"라고 적는다 — 실제로는 구현 소스가 400개를 넘고 SRS는 **baseline v2.8**이며 PR #54까지 병합됐다. 이 문장을 그대로 믿는 에이전트는 이 저장소를 문서 전용으로 취급하고 "baseline 승인 전에는 구현할 수 없다"고 판단한다. 같은 파일의 "Since this may be a documentation-only repository"와 "Apply this section once application source code exists"도 같은 가정 위에 서 있다. ② 이 문서 8장이 **"REL-004 구현 진행률 = 3/8"**을 현재형으로 적는데 3장 표와 6.39장은 **4/8**이다 — WP-035 완료가 3장·6장에만 반영되고 8장 산문에는 반영되지 않았다. ③ 같은 절이 "다음은 WP-035 구현이다"·"다음은 WP-032 착수 전 계약 감사다"·"별도 CR이 셋 열려 있다"를 현재형으로 유지한다 — 셋 다 이미 끝났다(PR #52, CR-043·044, CR-048). **DEV-322와 같은 모양이다** — 표를 고치는 pass와 그 사실을 말하는 산문을 고치는 pass가 갈렸고, 검사는 표만 본다 | WP-032 착수 / 문서 규약 | 문서 오류 | 없음 (사실 정정, 제품·계약 변경 없음) | **resolved (2026-08-27)** — 최신 스냅숏으로 갈아 끼우지 않고 **스냅숏 자체를 없앴다.** `CLAUDE.md`는 이제 상태를 적지 않고 **어디서 읽는지**를 적는다(SRS 헤더 · 작업 패키지 상태 표 · 이 문서 3장 · 변경 통제 대장 · next-free는 실측). 이 문서 8장은 진행률을 복제하지 않고 **3장 표가 정본임을 선언**하며, 그 아래 문단들을 덧붙여 온 역사 기록으로 못 박았다. 끝난 항목 셋은 취소선으로 종결 표시했다. SRS v2.8 유지 · 새 FR/NFR/ADR 없음 · 새 마이그레이션 없음 |
 | DEV-325 | 2026-08-27 | **DEV-324의 정정이 에이전트 진입점 둘을 놓쳤다** (PR #55 리뷰 P1). `CLAUDE.md`의 스냅숏은 지웠으나 루트 `AGENTS.md` 18행과 필수 시작 페이지 `docs/README.md` 19행이 **여전히 "코드는 아직 없다 · `srs_final.md`는 `review`이며 승인되어야 구현에 착수한다"**고 적는다. `CLAUDE.md`보다 이 둘을 먼저 읽는 에이전트는 정정 전과 똑같이 "baseline 승인 전이라 구현할 수 없다"고 판단한다 — **한 자리를 고치고 같은 문장을 말하는 다른 자리를 찾지 않았다**(DEV-322·risks 66번과 같은 모양) | WP-032 착수 / 문서 규약 | 문서 오류 | 없음 (사실 정정) | **resolved (2026-08-27, PR #56)** — 두 파일 모두 스냅숏을 지우고 DEV-324와 **같은 정본 안내**로 바꿨다. `AGENTS.md`의 "Documentation-first ... repository" 한 줄도 코드가 함께 있음을 적도록 고쳤다. 저장소 전체를 `documentation only`·`코드는 아직 없다`·`문서 단계`로 재스캔해 남은 자리가 없음을 확인했다 |
 | DEV-326 | 2026-08-27 | **원장 1장의 현재 상태 문단이 3장보다 먼저 읽히고 낡아 있다** (PR #55 리뷰 P2). 9행이 **"현재 상태: WP-020까지 완료 — REL-001과 REL-002가 닫혔고 REL-003의 첫 WP가 들어갔다"**로 시작해 "채번(WP-021) 자체와 관계 파생(WP-029)은 아직 없다"와 "단위 953건·통합 419건"까지 현재형으로 적는다. WP-021·029·030·031·035가 모두 done이고 시험 수도 세 배 가까이 달라졌다. DEV-324가 8장을 정본이 아니라고 선언했지만 **1장에 같은 성질의 스냅숏이 남아 있어** 그 선언이 반쪽이 됐다 | WP-032 착수 / 문서 규약 | 문서 오류 | 없음 (사실 정정) | **resolved (2026-08-27, PR #56)** — 1장의 스냅숏 문단을 지우고 **3장이 진행률의 유일한 정본**임을 그 자리에 적었다. 이로써 이 문서 안에서 현재 진행률을 주장하는 산문은 없고 표 하나만 남는다 |
+| DEV-327 | 2026-08-27 | **ADR-008 가드레일의 주석 제거가 CRLF 파일에서 무력하다.** `architecture.test.ts`의 검사기가 `readFileSync(...).split('\n')`으로 줄을 나눠 각 줄 끝에 `\r`를 남기는데, JS 정규식의 `.`는 `\r`를 매치하지 않는다 — 주석 제거 정규식 `^\s*(\/\/|\*|\/\*).*$`의 `.*$`가 줄 끝에 닿지 못해 **치환이 통째로 실패한다.** 이 저장소의 소스는 `core.autocrlf=true`로 거의 전부 CRLF이므로, 검사기가 스스로 적어 둔 "주석에 규칙을 적어 두는 것은 위반이 아니다"가 **한 번도 참이 아니었다.** WP-032가 패싯 헬퍼에 금지된 형태(`client.search({ index, aggs })`)를 **설명하는 주석**을 쓰자 그 주석이 위반으로 잡혔다 | WP-032 / ADR-008 | 기술 제약 | 없음 (구현 정정) | **resolved (2026-08-27)** — `split(/\r?\n/)`로 고쳤다. 검사가 의도보다 **엄격했던** 것이라 유출 경로는 없었다. 그러나 다음 사람에게 "설명을 쓰지 마라"를 가르치는 검사였고, 그것이 이 저장소가 주석으로 규율을 나르는 방식과 정면으로 어긋난다 |
+| DEV-328 | 2026-08-27 | **매핑 버전 상향이 `applyMappings`를 이중 별칭 경로로 만든다.** WP-032가 `ENTITY_INDICES`의 PR·커밋 인덱스를 `-v2`로 올리자, 별칭이 아직 `-v1`을 가리키는 클러스터에서 `ensureIndex`가 둘 중 하나를 **조용히** 한다 — ① `existsAlias({name, index})`가 거짓이라 `putAlias`가 별칭을 **두 인덱스**에 걸고 `resolveServingIndex`가 던진다, ② 빈 `-v2`를 만들어 `nextUnusedVersion`이 그 번호를 건너뛰고 재색인이 `-v3`을 만든다(빈 `-v2`는 영영 남는다). 그리고 버전을 올리지 **않으면** 실제 Elasticsearch 8이 `mapper_parsing_exception: analyzer [text_partial_index] has not been configured in mappings`로 부트스트랩을 거절한다 — 실측했다 | WP-032, WP-035 / FR-ING-008, ADR-003 | 범위 공백 | 없음 (구현 정정) | **resolved (2026-08-27)** — 별칭이 다른 버전을 들고 있으면 **아무것도 하지 않고 그 사실을 돌려준다**(`deferredToReindex`). 전환은 정본에서 채우는 재색인의 일이다. `dropEntityIndices`도 버전 전부를 지우게 했다(하나만 지우면 별칭을 든 옛 버전이 남아 부트스트랩이 침묵한다). 와일드카드 삭제는 `action.destructive_requires_name`이 막으므로 이름을 하나하나 지목한다. 이 상태를 재현하는 통합 시험 셋을 세웠다 — 변이 M10·M11이 처음엔 살아남았고, 시험이 **운영의 출발점을 만들지 않고 있었다** |
+| DEV-329 | 2026-08-27 | **`missing: '_last'`의 정렬 센티널은 커서로 되먹일 수 없다.** Elasticsearch가 `_last`를 `Long.MIN_VALUE`/`MAX_VALUE`로 구현하는데, 그 값은 ① 날짜 축에서 `search_after`에 넣으면 `parse_exception: failed to parse date field [-9223372036854776000]`이고 ② `Number.MAX_SAFE_INTEGER`를 넘어 **JSON 왕복에서 정밀도를 잃는다**(`…775808` → `…776000`). `format`으로 우회되지 않는다 — 실 ES 8로 셋을 다 쟀다: `format` 없음은 date parse 실패, `strict_date_optional_time`은 `-292275055-05-16T…`를 내고 **자기가 그것을 못 읽으며**, `epoch_millis`는 `date_time_exception: … cannot be negative according to the SignStyle`이다. 커밋 문서에 `merged_at`이 없으므로 `/search`가 두 인덱스를 함께 도는 한 이 경로는 **정상 사용에서 반드시 밟힌다** | WP-032 / FR-SRCH-007 예외 처리, FR-SRCH-008, ADR-010 Amendment | 기술 제약 | 없음 (구현 정정) | **resolved (2026-08-27)** — 표현 가능하고 충돌할 수 없는 값을 명시한다: 날짜는 서기 1년/9999년, `long`은 `-1`/`MAX_SAFE_INTEGER`, `integer`는 `-1`/2^31-1. 방향마다 다른 것은 `_last`가 방향과 무관하게 뒤로 보내기 때문이며, 그 뜻을 값으로 옮기면 내림차순에서는 가장 작은 값이 된다. 충돌해도 결과는 **동률**이고 `doc_id`가 그것을 가르므로 중복도 누락도 없다. 동률 키(keyword)는 `_last`를 유지한다 — 누락이 `null`로 나오고 ES가 그 `null`을 되먹임에서 받는 것을 확인했다 |
 
 ## 6. 검증 결과 기록
 
@@ -2684,6 +2687,215 @@ Elasticsearch를 쓰고, 그 안에 무엇이 들어 있는지는 **환경마다
 `document_version`이 본문에 없는 스냅숏이 없었고 CI에는 있었다. 그래서 정정은
 그 형태를 **시험이 직접 만들어** 걸었다 — 우연히 존재하는 데이터에 기대지 않는다.
 
+### 6.40 WP-032 패싯·커서 페이지네이션·전문 검색 (PR #57)
+
+**CR을 열지 않았다.** 착수 전 감사와 계약은 CR-043(SRS v2.7)·CR-044(SRS v2.8)에서
+이미 닫혔고 이 작업은 그 구현이다. 지시서 §0이 정한 세 조건 — 승인된 계약으로
+구현이 불가능하거나, 정본이 실제로 없거나, 제품 판단이 새로 있어야 하거나 —
+중 어느 것도 **실물로 증명되지 않았다.** 셋 중 하나가 증명될 때만 CR을 연다.
+
+**SRS v2.8 유지 · 새 FR/NFR 없음 · 새 ADR 없음 · 새 마이그레이션 없음(014 유지).**
+`job.type`도 새 잡 유형도 만들지 않았다.
+
+#### 매핑 — v1 → v2, 배포는 WP-035의 경로로만
+
+`edge_ngram` 색인 분석기(`text_partial_index`)를 더하고 PR 제목·대상/소스
+브랜치, 커밋 메시지·대상 브랜치에 `partial` 서브필드를 얹었다. 질의는
+`text_ko_en`으로 분석한다(`search_analyzer`) — 질의까지 자르면 "결제"가 "결"로도
+매치되어 관련 없는 문서가 딸려 온다.
+
+**본문(`body`)에는 붙이지 않았다.** AC-1이 본문을 검색 대상으로 정하지만 모든
+접두 조각을 색인하라고 요구하지는 않는다. 본문은 제목보다 두 자릿수 크고,
+조각을 다 넣으면 색인이 그만큼 부푼다. 브랜치명은 `keyword` 본체를 유지하고
+서브필드만 더했다 — `base:main`의 정확 일치가 정본이다.
+
+`min_gram: 2`인 것은 한 코드 포인트 질의가 이미 `QUERY_TOO_SHORT`로 거절되기
+때문이다. 1자 조각을 색인해도 그것을 찾을 질의가 존재하지 않는다.
+
+**이행을 실제로 증명했다** (`jobs/reindex.test.ts`). WP-032 **이전** 스키마의
+인덱스를 세우고 별칭을 그리로 옮긴 뒤 현재 정의로 재색인한다.
+
+| 단계 | 확인한 것 |
+| --- | --- |
+| 출발점 | 옛 인덱스는 없는 필드에 대해 **오류 없이 0건**을 답한다 |
+| 전환 | 별칭이 새 버전으로 옮겨지고 정확히 하나를 가리킨다 |
+| 결과 | **과거 문서가** `title.partial`로 찾힌다 (`결제`·`retr`), 무관한 질의는 0건 |
+
+출발점이 요점이다 — 배포가 터지는 첫 번째 벽(비동적 설정, DEV-266)보다
+**조용히 적게 답하는** 두 번째 벽(DEV-267)이 무겁다. 아무 신호도 나지 않는다.
+
+#### 전문 검색 — 커밋 축을 first-parent로 한정한다
+
+질의 빌더가 `ast.text`를 무시하고 있었다. 이제 자유 텍스트가 `must`에 서고
+구조화 필터는 `filter`에 그대로 남는다 — 접근 범위도 `filter`이므로 권한이
+점수에 섞이지 않는다.
+
+**자유 텍스트가 있을 때만** `source_commit`을 배제한다 (DEV-283). `role`이
+있으면서 승인된 값이 아닌 문서를 `must_not`으로 뺀다 — PR 문서에는 `role`이
+아예 없으므로 `exists`가 걸러 준다. 구조화 필터로 커밋을 찾는 기존 동작은
+바뀌지 않는다: 원본 커밋을 배제하는 것은 "무엇이 검색 대상 메시지인가"에 대한
+답이지 "무엇이 이 저장소의 커밋인가"에 대한 답이 아니다.
+
+`multi_match`의 `best_fields`를 쓴다. 제목과 본문에 같은 낱말이 있다고 점수를
+더하면 긴 본문이 제목 가중치를 이긴다.
+
+#### 강조 — 마크업이 경계를 넘지 않는다
+
+ES 안에서는 **사설 사용 영역 문자**(U+E000·U+E001)를 표식으로 쓰고 경계에서
+걷어 낸다. `<em>`을 쓰지 않는 이유는 그것이 PR 본문에 실제로 들어 있을 수 있고,
+그러면 사용자가 쓴 글자를 강조 표식으로 잘못 읽어 오프셋이 밀리기 때문이다.
+
+**원문의 마크업은 글자로 남는다.** 계약이 금지하는 것은 "API가 만들어 낸
+마크업"이지 사용자가 쓴 글자가 아니다 — 화면이 그것을 텍스트 노드로 그리는 것이
+THR-018 완화의 실체이며, e2e가 실제 DOM에서 `<script>` 요소가 없음을 확인한다.
+
+#### 커서 — PIT을 모든 순회에 연다
+
+정렬 키 여덟 중 움직이지 않는 것은 `created_at` 하나뿐이다(CR-044, DEV-286).
+첫 페이지를 만들 때 사용자가 이어 볼지 알 수 없으므로, 그때 뷰를 고정하지 않으면
+커서를 발급할 자격이 없다. 대가는 조회마다 PIT 왕복 하나이며 마지막 페이지에서
+best-effort로 닫는다.
+
+봉투는 base64url JSON + HMAC-SHA256이고 **전용 키**를 쓴다. 지문은 정규화한 질의
+(`serializeQuery`) · 정렬 키 · 방향 · **정렬한** 유효 접근 범위 ·
+`access_scope_version`이다. 접근 범위를 정렬하는 것은 GHE도 캐시도 순서를
+보장하지 않기 때문이다 — 정렬하지 않으면 사용자가 아무것도 바꾸지 않았는데
+두 번째 페이지에서 mismatch를 본다.
+
+**`size`와 패싯 요청 여부는 지문에 넣지 않았다.** 표현이지 결과 집합의 정체성이
+아니다. 그 판단이 정확성을 깨는지는 추측하지 않고 **시험이 답한다** — 페이지마다
+`size`를 바꿔 가며 훑어 중복·누락 0을 확인했다.
+
+**한 건 더 읽어 마지막 페이지를 안다.** `size`만 읽으면 결과가 정확히 `size`의
+배수일 때 빈 페이지를 한 번 더 내주게 되는데 AC-1은 마지막 페이지에서
+`next_cursor`가 null이기를 요구한다.
+
+서명 키가 없으면 **운영은 기동하지 않는다**(fail closed). 개발에서는 프로세스
+수명짜리 임시 키가 선다 — 재기동하면 옛 커서가 `CURSOR_INVALID`가 되고 화면은
+첫 페이지로 돌아간다. 어느 쪽도 서명 없는 커서를 발급하지 않는다. 보안 문서 6장이
+이미 "커서 봉인 키 · `search-api` · 90일 · 회전 시 기존 커서 무효"를 적고 있었고
+구현이 그것을 그대로 따랐다.
+
+#### W-004 — 먼저 자르지 않고 판정하며 채운다
+
+`runRange`가 정본 첫 `size` 행을 자른 뒤 그 안에서만 `q`를 판정하고 있었다.
+요약은 구간 전체를 세므로 두 수가 어긋났고, 커서가 없어 사용자는 잘린 쪽 항목에
+**도달할 수 없었다** (DEV-270).
+
+이제 chunk(300)로 훑으며 판정한다. 완결 서수는 규칙 하나에 결과가 둘이다 —
+페이지가 차서 멈췄으면 **실제로 실은 마지막 일치**, 끝까지 보고도 안 찼으면
+**마지막으로 검사한 서수**.
+
+구간 커서는 공간·에폭·경계를 지문이 아니라 **그대로 싣는다**. 어긋났을 때 무엇이
+달라졌는지 오류가 말할 수 있어야 하기 때문이다 — 에폭 불일치는 "재채번이
+일어났다"이고 경계 불일치는 "다른 구간을 보고 있다"이며 사용자가 할 일이 다르다.
+
+**W-001의 커서와 합치지 않았다.** 두 화면이 순회하는 정본이 다르다. 합치면
+"구현이 이미 `search_after`를 쓰니까"라는 이유로 W-004의 멤버십까지
+Elasticsearch가 소유하게 되고, 그러면 이 API가 존재하는 이유(DEV-130)가 그대로
+되돌아온다.
+
+#### 접근 범위를 요청당 한 번만 산출한다 (DEV-272)
+
+지문이 `access_scope_version`을 재료로 쓰는데 `resolve()`는 그것을 버린다.
+`resolveCached()`로 범위와 버전을 함께 얻는다 — 두 번 부르면 그 사이에 회수가
+끼어들어 **질의에 쓴 범위와 지문에 쓴 버전이 어긋날 수 있다.**
+
+#### 구현이 등록한 DEV 셋
+
+| DEV | 무엇 | 어떻게 드러났나 |
+| --- | --- | --- |
+| **327** | ADR-008 가드레일의 주석 제거가 CRLF에서 무력 | 금지 형태를 **설명하는 주석**이 위반으로 잡혔다 |
+| **328** | 매핑 버전 상향이 `applyMappings`를 이중 별칭 경로로 | 실 ES로 `mapper_parsing_exception` 확인 |
+| **329** | `missing: '_last'` 센티널을 커서로 되먹일 수 없다 | **통합 시험이 잡았다** — 커밋 문서에 없는 정렬 키로 2페이지가 400 |
+
+#### 검증 결과
+
+| 계층 | 결과 |
+| --- | --- |
+| typecheck · lint · lint:deps · build · web build | 통과 |
+| 단위 | **1479** (1394 → +85) |
+| 통합 (실 PG·Redis·ES) | **1014** (952 → +62) — 깨끗한 DB에서 전량 |
+| 회귀 | **194** (변화 없음) |
+| a11y | **212** (axe 0건) |
+| e2e | targeted **26** (`search-paging` 11 신규 + `flow-001` · `flow-003-range`) |
+| 문서 검증기 `--strict` | main 대비 신규 0 |
+
+#### DoD 22항
+
+| # | 항목 | 결과 |
+| --- | --- | --- |
+| 1 | QA-W001-14~19 | 통과 (커서 동작·오류 문구·bucket 검증·강조) |
+| 2 | 마지막 페이지 `next_cursor` null | 통과 — **한 건 더 읽어 판정한다** |
+| 3 | `size` 200 초과 절삭 | 통과 |
+| 4 | 질의 변경 후 `CURSOR_QUERY_MISMATCH` | 통과 |
+| 5 | 훼손·만료가 `CURSOR_INVALID`, 문구 구분 | 통과 (e2e가 두 문구를 대조) |
+| 6 | 봉투를 손으로 고친 값 거절 | 통과 — 통합에서 서명만 남기고 본문을 바꿔 확인 |
+| 7 | `access_scope_version` 변경 시 커서 거절 | 통과 |
+| 8 | 오프셋 파라미터 부재 | 통과 — `from`·`offset`·`page`를 줘도 결과가 같다 |
+| 9 | 어떤 정렬 키에서도 중복·누락 없음 | 통과 — 여섯 키, 그중 셋은 커밋 문서에 없는 필드 |
+| 10 | `relevance`의 `order` 존중 | 통과 (DEV-275) |
+| 11 | 패싯 bucket 단위 검증 | 통과 — 합으로 검증하지 않는다는 사실 자체도 확인 |
+| 12 | 패싯 실패가 목록을 막지 않음, `budget_omitted`≠`failed` | 통과 |
+| 13 | 패싯이 강제 필터를 지남 (THR-003) | 통과 — 범위 밖 팀·라벨·작성자가 bucket에 없다 |
+| 14 | 이어 보기가 패싯을 다시 계산하지 않음 | 통과 (e2e가 요청 URL로 확인) |
+| 15 | 제목 일치가 본문보다 상위 | 통과 |
+| 16 | 강조에 raw HTML 없음 | 통과 — 마크업을 담은 제목도 평문 조각 |
+| 17 | `source_commit` 메시지 배제 | 통과 — 같은 낱말·다른 `role` 두 커밋으로 |
+| 18 | 한글·영문 혼용이 `nori` 없이 성립 | 통과 (OD-005, CR-040) |
+| 19 | 코드 포인트 한 글자 거절 | 통과 (`𠮷`·이모지) |
+| 20 | QA-W004-23~29 (DEV-270·287 반례 둘) | 통과 — 실 PG·ES로 재현 |
+| 21 | W-004 패싯이 구간 전체를 셈 | 통과 — 페이지 5건에 분포 60건 |
+| 22 | 새 매핑이 WP-035 경로로 적용, `putMapping` 시도 없음 | 통과 — 이행 증명 + `applyMappings` 방어 |
+
+#### 적대적 변이 16종 — 14 킬, 2 등가
+
+**살아남은 셋이 전부 시험 구멍이었다.** 등가인지 묻기 전에 경로를 읽으라는
+규율(risks 32·46)이 세 번 값을 했다.
+
+| 변이 | 결과 |
+| --- | --- |
+| M1 `relevance`를 다시 `desc` 고정 | KILLED |
+| **M2 페이지마다 PIT을 새로 연다** | **SURVIVED → 시험을 고쳐 KILLED** |
+| M3 지문에서 `access_scope_version` 제거 | KILLED |
+| M4 패싯이 `client.search({index, aggs})`로 질의를 잊는다 | KILLED |
+| M5 패싯의 부가 실패를 목록 실패로 전파 | KILLED |
+| M6 `source_commit` 배제 제거 | KILLED |
+| M7 완결 서수를 `scannedSeq`로 | **등가** (아래) |
+| M7b 커서를 만들지 않는다 | KILLED |
+| M7c chunk 루프 상한 | **등가** |
+| **M7v2 chunk 끝까지 훑고 그 끝을 봉인** | KILLED — DEV-287의 실재현 |
+| M8a `QUERY_TOO_SHORT`를 UTF-16으로 | KILLED |
+| M8b 강조 표식을 그대로 내보낸다 | KILLED |
+| M9 구간 커서가 에폭을 보지 않는다 | KILLED |
+| **M10 매핑 버전 상향을 되돌린다** | **SURVIVED → 시험을 세워 KILLED** |
+| **M11 부트스트랩 방어를 제거한다** | **SURVIVED → 같은 시험으로 KILLED** |
+| M12 누락 센티널을 `_last`로 되돌린다 | KILLED |
+
+**M2 — 시험이 PIT을 보고 있지 않았다.** 처음 쓴 시험은 순회 중에 새 문서를 넣어
+뷰 고정을 재려 했는데, 새 문서가 경계보다 **앞에** 정렬되면 `search_after`가
+자연히 배제한다 — PIT이 없어도 결과가 같다. 실제로 깨지는 것은 **이미 본 문서의
+정렬 값이 아직 안 본 구간으로 움직일 때**다. 그렇게 고치자 즉시 킬됐다.
+
+**M7 — 등가다.** 소비하지 않은 일치에서 `break`가 `scannedSeq`를 갱신하지
+않으므로 어느 쪽을 봉인해도 그 이하에 안 내준 일치가 없다. DEV-287을 실제로
+재현하려면 **chunk 끝까지 훑고 그 끝을 봉인**해야 하며, 두 자리를 함께 바꾼
+M7v2가 킬됐다. 등가를 킬로 세지 않는다 (risks 27).
+
+**M10·M11 — 시험이 운영의 출발점을 만들지 않았다.** `bootstrap.test.ts`가 시작할
+때 모든 버전을 지우므로 "별칭이 옛 버전을 들고 있는 상태"가 한 번도 만들어지지
+않았다 — 그것이 바로 운영의 출발점인데. WP-032 이전 스키마의 인덱스를 세우고
+별칭을 옮긴 뒤 `applyMappings`를 부르는 시험 셋을 세우자 둘 다 킬됐다.
+
+#### NOT RUN
+
+- **실제 운영 규모의 패싯·커서 성능** — 합성 데이터셋도 `test:perf`도 없다
+  (DEV-058). 패싯 예산 1.5초가 실제로 어디서 걸리는지는 성능 harness가 서면 잰다
+- **PIT의 클러스터 자원 비용** — 조회마다 PIT을 여는 대가를 운영 규모로 재지
+  않았다. 열린 PIT 수·검색 컨텍스트 메모리가 관측 대상이 되어야 한다
+- 실제 GHE·Kubernetes — 이 환경에 없다
+- 전체 e2e(78+)와 전체 a11y 이외의 스위트는 targeted로 대체했다 (검증 정책)
+
 ### 6.31 릴리스 게이트
 
 릴리스별로 갱신한다.
@@ -3080,7 +3292,7 @@ CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 �
 | WP-030 되돌림·체리픽·스택 관계 파생 | done |
 | WP-031 관계 조회 API와 상세 화면 관계 섹션 | **done** |
 | **WP-035** 무중단 재색인 | **done** — 버전 인덱스·이중 쓰기 17경로·울타리·정본 재구축·JOB-ING-006·API-ADM-004·CLI·보관 (6.39장) |
-| WP-032 패싯·커서 페이지네이션·전문 검색 | **next** — WP-035가 끝나 **차단이 풀렸다** |
+| WP-032 패싯·커서 페이지네이션·전문 검색 | ~~next~~ **done (2026-08-27, PR #57)** — 6.40장 |
 | WP-033 저장된 검색 | todo |
 | WP-034 W-009 저장소 개요 화면 | todo |
 | WP-036 원본 아카이브 레인(Filebeat) | todo |
@@ -3116,6 +3328,12 @@ CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 �
 ~~**다음은 WP-031 착수 전 계약 감사다.**~~ **완료 (2026-08-26, CR-042 / PR #47).** ~~다음은 **WP-032 착수 전 계약 감사**다.~~ **완료 (2026-08-26, CR-043·CR-044).** REL-003의 WP가 연속 여섯 번, REL-004의 첫 WP가 또 한 번 "착수 전 감사에서 계약 공백이 나왔다"를 반복했다 — 일곱 번 연속이다. 같은 순서를 지킨다: **감사 → CR → 구현.** WP-030이 딛을 자리는 이미 준비돼 있다: `link_summary`의 네 leaf와 `detached`가 그 소유로 명시됐고(DEV-222·223), `commit_snapshot.patch_id`가 체리픽 판정의 근거로 보존된다(CR-038, DEV-208).
 
 ~~**OD-005(nori 플러그인)의 기한이 도래했다.**~~ **해소 (2026-08-26, CR-040).** "REL-004 착수 전"인데 WP-029가 REL-004의 첫 WP였다. CR-039는 전문 검색(WP-032) 소관이라 WP-029·WP-030을 막지 않는다는 이유로 결정하지 않고 넘겼으나, **기한이 지난 결정을 열어 두면 문서가 사실과 다른 상태로 남는다** — 실제로 SRS 14장·PRD 12장·이 문서가 모두 "기한이 아직 오지 않았다"고 적고 있었다. CR-040이 `nori`를 초기 REL-004 의존성에서 제외하고 재검토 조건 셋을 확정했다.
+
+**(2026-08-27) WP-032가 들어왔다 — 다음은 WP-033 저장된 검색이다.** 검증 기록은 6.40장이고, 구현이 DEV-327~329를 등록·해소했다. WP-032의 계약은 CR-043·CR-044에서 이미 닫혀 있었으므로 **CR을 열지 않았다** — "착수 전 감사에서 계약 공백이 나왔다"의 연속이 여기서 끊겼다.
+
+**매핑이 v1 → v2로 올라갔다.** 별칭이 아직 `-v1`을 가리키는 클러스터에서는 `applyMappings`가 물러나며(DEV-328), 전환은 `pnpm es:reindex --alias prs-pull-requests`·`--alias prs-commits`가 정본에서 채운 뒤에 한다. **먼저 부트스트랩을 돌려 해결하려 하지 않는다** — 그 길은 빈 인덱스를 만들거나 별칭을 둘로 건다.
+
+**배포에 `SEARCH_CURSOR_HMAC_KEY`가 필요하다.** 없으면 `search-api`가 운영에서 기동하지 않는다 — 서명 없는 커서를 발급하는 대신 배포가 잘못됐음을 말한다. 복제본 전부가 같은 값을 써야 한다.
 
 `srs_final.md`가 baseline이므로 그 문서의 변경은 CR을 먼저 등록해야 한다. 구현 중 문서와 현실이 어긋나면 5장에 `DEV-###`를 등록하고 CR로 연결한다. 조용한 범위 변경은 금지다.
 
