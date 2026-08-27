@@ -564,3 +564,76 @@
 - `agent-context/`는 tracked. **전사는 `exports/`에 둔다**
 - `agent-context/_handoff/`는 **생성물**이다 — 손으로 고치지 말고
   `context_handoff.py build`로 다시 만든다. 원본은 `agent-context/*.md` 일곱이다
+
+---
+
+# 2026-08-27 (3차) CR-049 · WP-033이 만든 것
+
+## 읽는 순서가 바뀐 문서
+
+| 경로 | 버전 | 이 세션이 바꾼 것 |
+| --- | --- | --- |
+| `docs/10_requirements/srs_final.md` | **baseline v2.9** | FR-SRCH-010의 AC-1·2·4 명확화, AC-5·6·7 신설. **기존 AC 번호 유지** |
+| `docs/10_requirements/prd.md` | v1.4 | SCN-005에 저장·재실행·공유 흐름 (DEV-339) |
+| `docs/10_requirements/glossary.md` | v0.3 | 「대상 팀」 신설. **「커서」 정의가 `search_after`에 묶여 있던 것을 정정** |
+| `docs/10_requirements/requirements_screen_traceability_matrix.md` | v0.6 | FR-SRCH-010의 화면별 책임 (DEV-343) |
+| `docs/20_derived_ui_specs/pr_search_wireframe_spec.md` | v0.5 | W-001 저장 대화상자, W-008 두 목록·커서·소유권 |
+| `docs/20_derived_ui_specs/pr_search_screen_state_matrix.md` | v0.6 | W-001 저장 실패 셋, W-008 상태 다섯 추가 |
+| `docs/20_derived_ui_specs/pr_search_ui_component_spec.md` | v0.5 | C-037 소유권별 액션, C-016 한 화면 두 페이저 |
+| `docs/20_derived_ui_specs/pr_search_screen_qa_checklist.md` | v0.6 | QA-W008-06~12 신설 |
+| `docs/30_technical_architecture/pr_search_api_contracts.md` | v0.9 | **API-SRCH-005 상세 절 신설** (일곱 경로·커서·오류 여덟) |
+| `docs/30_technical_architecture/pr_search_data_model.md` | v0.6 | 불변식·인덱스·CASCADE·잠금 규율 |
+| `docs/30_technical_architecture/pr_search_security_privacy_architecture.md` | v0.5 | THR-012 완화를 셋으로 |
+| `docs/40_delivery/pr_search_work_packages.md` | v1.6 | WP-033 done, DoD 17항 |
+| `docs/40_delivery/pr_search_implementation_traceability.md` | v4.3 | 6.41·6.41.1장, DEV-333~349, 7장 등재 |
+
+## 정본 계층
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/db/migrations/015_saved_search_contract.up.sql` | 불변식·목록 인덱스 둘·보존 CASCADE. **새 표 없음** |
+| `packages/db/src/repositories/saved-search.ts` | **접근 규칙이 질의 안에 있다.** `visibleTo()`가 조회·실행의 조건이고 라우트는 그 부재를 404로 옮길 뿐이다. 두 잠금(`FOR UPDATE`·`FOR SHARE`)이 여기 있다 |
+
+## search-api
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/search-api/src/saved-search/cursor.ts` | PostgreSQL 키셋. **PIT·`search_after` 없다.** 지문 = 사용자 + view + 팀 소속(정렬). 접근 범위 버전은 **넣지 않는다** |
+| `apps/search-api/src/saved-search/service.ts` | 자원 표현·질의 판정·목록·실행 준비. **`@prs/es`를 가져오지 않는다** — 회귀가 건다 |
+| `apps/search-api/src/saved-search/routes.ts` | 일곱 경로. **정적 `/share-targets`가 `/{id}`보다 먼저** |
+| `apps/search-api/src/{runtime,server}.ts` | 배선. `buildServerDeps`가 만들고 `buildServer`가 세운다 |
+
+## 화면
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/web/lib/saved-search.ts` | **판정은 전부 여기.** 액션·상태·레이블·무효 구간 가르기·실패 안내 |
+| `apps/web/components/SaveSearchDialog.tsx` | **`create`/`edit` 두 모드.** 편집에서만 질의를 고칠 수 있다. 열 때 팀 목록을 무효로 만든다 |
+| `apps/web/components/SavedSearchList.tsx` | C-037. 소유 여부가 액션을 정하고 무효 구간을 `<mark>`로 짚는다 |
+| `apps/web/components/SavedSearchesView.tsx` | W-008. 두 목록이 각자의 커서·세대(`nonce`)를 갖는다 |
+| `apps/web/app/saved-searches/page.tsx` · `lib/nav.ts` | 라우트와 내비게이션 |
+
+## 이 세션의 시험
+
+| 경로 | 무엇을 지키나 |
+| --- | --- |
+| `apps/search-api/integration/saved-search/saved-search.test.ts` | 65건. 격리·소유권·이탈 후 처분·동시 상한·**잠금 배타(`FOR KEY SHARE`)**·커서·무효 질의·실행·공유 대상·불변식 |
+| `apps/search-api/integration/saved-search/executor-scope.test.ts` | 7건. **AC-3의 실물 증명** — 공유받은 사람이 실행하면 저장자만 보는 저장소가 0건 |
+| `apps/search-api/src/saved-search/{cursor,service}.test.ts` | 37건. 봉투 거절 갈래·자원 표현 |
+| `apps/web/lib/saved-search.test.ts` | 32건. 화면 판정·무효 구간 |
+| `apps/web/a11y/saved-searches.test.tsx` | 23건. 액션 표시·프록시 경로·편집 `PATCH`·목록 갱신·axe |
+| `apps/web/e2e/saved-search.spec.ts` | 11건. 두 커서·자동 재조회 없음·이동·삭제 확인·편집·무효 구간 |
+| `regression/runtime-reachability.test.ts` | +19. 배선·경로 순서·잠금·범위 미저장·오프셋 금지·마이그레이션 |
+
+## 손대면 안 되는 것 (갱신)
+
+- `docs/10_requirements/srs_final.md`는 **baseline v2.9**. CR 먼저
+- **기존 마이그레이션을 수정하지 않는다.** 다음은 016
+- **두 잠금을 지우지 않는다** — 상한은 `FOR UPDATE`, 구성원 자격은 `FOR SHARE`
+- `SavedSearchRow.created_at`을 `Date`로 바꾸지 않는다 — 키셋이 항목을 건너뛴다
+- **`/run`이 검색을 대신하게 만들지 않는다** — AC-3이 구조로 지켜진다
+- 커서 지문에서 팀 소속을 빼지 않는다. **접근 범위 버전을 넣지도 않는다**
+- 웹은 `/api/saved-searches`를 부른다 — `/api/v1`을 적으면 `/api/v1/v1/...`이 된다
+- 새 쓰기 원시체는 `WriteTargets`를 받고 `DUAL_WRITE_PATHS`에 등재한다 (WP-035)
+- `agent-context/`는 tracked. 전사는 `exports/`에 둔다
+- `agent-context/_handoff/`는 생성물이다 — 손으로 고치지 말고 `context_handoff.py build`로 다시 만든다

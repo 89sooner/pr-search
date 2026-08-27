@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=6623bda6869cb7fcbde3b4943e50bdad0bc150de24fdc10e67f1375bbc960b46 bytes=52958 lines=794 title=리스크-불확실한-가정-함정
+@kv sha256=4523c543da5e3337d6033d235bc8a81207750cc5e1a00b6d3f062c72f2243b8f bytes=58678 lines=885 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;DISTINCT
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -335,7 +335,7 @@
 |...cut 54 lines
 @p bash
 @cmd git rev-list --first-parent --no-merges main # → 9개
-@code lang=txt sha=dd13fa80c3ea lines=25 kept=25
+@code lang=txt sha=e858733a114b lines=116 kept=80
 |아홉 중 **여덟이 docs 전용**이고 나머지 하나는 최초 커밋이다. **코드 변경은 하나도 없다.**
 || 무엇 | 실제 관행 |
 || --- | --- |
@@ -355,3 +355,42 @@
 |- 컨테이너 3종 healthy, `prs`·`prs_test` 존재
 |- **로컬 ES가 v2를 서비스 중이다.** 시험이 `switchAliasesForTests`로 옮겨 둔 상태이며,
 |  운영에서는 그 전환이 재색인의 일이다 — 시험 헬퍼를 운영에서 부르지 않는다
+|---
+|# 2026-08-27 CR-049 · WP-033 세션이 추가한 것
+|## 74. 살아남은 변이가 등가가 아니었다 — 그리고 그것을 막는 첫 시험도 틀렸다
+|이번 세션의 가장 값진 소득이다. 소유자 행 `FOR UPDATE`를 지웠는데 동시 상한 시험이
+|통과했다(M4). 등가로 세지 않고 **잠금 없는 구현을 직접 재현**해 보니 창을 50ms만 벌려도
+|99건에서 **101건이 됐다.** 시험 구멍이었다 — `Promise.all`로 보낸 두 요청이 `count`와
+|`INSERT` 사이의 짧은 창에 겹치지 않았다.
+|그래서 결과가 아니라 **잠금 자체**를 거는 시험을 세웠는데 **그것도 변이를 놓쳤다.**
+|밖에서 `FOR UPDATE`로 잡았더니 잠금을 지운 구현도 함께 멈췄다 — `saved_search`의 외래
+|키가 `INSERT` 시점에 부모 행에 `FOR KEY SHARE`를 잡고 그것이 `FOR UPDATE`와 충돌하기
+|때문이다. **시험이 잠금이 아니라 외래 키의 부작용을 재고 있었다.**
+|밖에서 `FOR KEY SHARE`로 잡자(외래 키가 잡는 것과 같은 잠금이라 호환된다) 구분이
+|성립했고 변이가 죽었다.
+|→ **초록이 사실을 뜻하려면 무엇을 재고 있는지 확인해야 한다.** 시험이 통과한다는 것과
+|그 시험이 의도한 것을 지킨다는 것은 다른 사실이다. risks 26·32·46의 세 번째 얼굴이며,
+|이번에는 **시험을 고치는 과정에서 한 번 더** 같은 함정에 빠졌다.
+|## 75. 빈 표는 어떤 정책 위반도 드러내지 않는다
+|데이터 모델 「보존과 삭제」 표는 `saved_search`를 **"영구 (사용자 삭제 시 제거)"**로
+|v2.2부터 정하고 있었다. 그런데 마이그레이션 004의 외래 키에 `ON DELETE CASCADE`가
+|없었다. **표가 비어 있는 동안에는 아무도 그 불일치를 만나지 않는다** — WP-033이 행을
+|만들자 전 계층 통합에서 전역 `DELETE FROM app_user`를 하는 여덟 파일이 함께 죽었다.
+|→ **새 표를 처음 채우는 WP는 그 표에 걸린 모든 정책을 실측하라.** 문서가 정한 것을
+|스키마가 지키는지는 데이터가 있어야만 확인된다 (DEV-347).
+|## 76. 감사 대상 FR만 읽으면 그 자원을 지목하는 다른 FR을 놓친다
+|CR-049의 착수 전 감사는 FR-SRCH-010을 촘촘히 읽고 열 개의 공백을 찾았다. 그런데
+|**FR-SEQ-005 AC-4가 "저장된 검색의 `seq:` 조건"을 명시적으로 지목한다는 것**을 보지
+|못했다. 원장 4장이 "`saved_search`가 없어(WP-033) 도달 불가"라고 **예고까지 해 두었는데도**
+|그렇다 — 감사가 FR 본문만 보고 원장의 이월 기록을 역방향으로 읽지 않았다.
+|→ **감사할 때 대상 자원의 ID를 다른 문서에서 역방향으로 grep 하라.**
+|`grep -rn "저장된 검색" docs/` 한 줄이면 나왔다 (DEV-349).
+|## 77. 결정을 적는 것과 그 결정이 성립하는 것은 다른 일이다
+|"편집은 W-001에서 한다"고 정하고 그 판단을 원장 결정 표에 적었다. **그런데 W-001에는
+|`PATCH` 경로가 없다** — 편집을 눌러도 이름을 못 바꾸고 무효 질의를 되살릴 수도 없다.
+|와이어프레임의 `W-008-EDIT`가 정한 계약을 내 결정이 덮었고, 그 결정이 성립하는지는
+|확인하지 않았다. 리뷰가 P1으로 잡았다.
+|→ risks 47의 반복이다. **계약을 대체하는 결정을 적었으면 그 대체가 실제로 같은 일을
+|하는지 물어라.** 이번에는 "그 화면에 그 동사가 있는가"라는 한 줄 질문이면 됐다.
+|## 78. 이름이 비슷한 버튼이 남의 시험을 모호하게 만든다
+|...cut 36 lines

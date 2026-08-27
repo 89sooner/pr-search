@@ -1136,3 +1136,111 @@ gh api graphql -f query='mutation($tid: ID!) {
 - Node **v22.23.2** 필수, 셸 기본값 v20.12.0
 - **ES 별칭 v2** — `prs-pull-requests-v2` · `prs-commits-v2`
 - 마이그레이션 014까지. 컨테이너 3종 healthy
+
+---
+
+# 2026-08-27 (3차) CR-049 · WP-033 세션
+
+## 검증 배터리 (main `700d825` = WP-033 병합 기준 실측)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                     # 통과
+pnpm lint                          # 통과 — 마지막 파일을 쓴 뒤 다시
+pnpm run lint:deps                 # 패키지 13, 위반 0
+pnpm run test                      # 단위 1552 통과 (1 skipped)   [1481 → +71]
+pnpm run test:integration          # 통합 1080 통과 (67 파일)     [1015 → +65]
+pnpm run test:regression           # 회귀 213                     [194 → +19]
+pnpm --filter @prs/web run build   # e2e 전에 필수 (화면을 바꿨다)
+pnpm run test:a11y                 # 235 (axe 0건)                [212 → +23]
+pnpm build
+```
+
+targeted e2e:
+
+```bash
+cd apps/web && ./node_modules/.bin/playwright test \
+  e2e/saved-search.spec.ts e2e/flow-001.spec.ts
+# 22 통과
+```
+
+## 새 표를 만들면 전 계층 통합을 돌려라
+
+`saved_search`가 `app_user`·`team`을 참조하자 **전역 삭제를 하는 여덟 파일이 함께
+죽었다.** 단일 파일 실행으로는 절대 나오지 않는다.
+
+```bash
+docker exec prs-postgres psql -U prs -d postgres -c "DROP DATABASE IF EXISTS prs_test;"
+docker exec prs-postgres psql -U prs -d postgres -c "CREATE DATABASE prs_test OWNER prs;"
+set -o pipefail
+pnpm run test:integration 2>&1 | tee /tmp/pr-search-wp033/final-integration.log
+```
+
+**시험이 전부 통과해도 exit 1일 수 있다** — `afterAll`이 실패하면 "Failed Suites"로
+잡히고 시험 수는 온전하다. `Test Files` 줄을 함께 본다.
+
+## 잠금이 실제로 배타를 만드는지 재는 법
+
+`FOR UPDATE`로 밖에서 잡으면 **외래 키의 `FOR KEY SHARE`와 충돌해** 잠금 없는 구현도
+멈춘다. 구분하려면 외래 키가 잡는 것과 **같은 잠금**으로 잡아야 한다.
+
+```sql
+-- 시험 안에서: 이것으로 잡으면 우리 FOR UPDATE만 멈춘다
+SELECT user_id FROM app_user WHERE user_id = $1 FOR KEY SHARE
+```
+
+## 경합을 실제로 만드는 법 (직접 실측)
+
+`Promise.all`로 두 요청을 보내도 창이 짧으면 겹치지 않는다. 잠금 없는 구현을 직접
+써서 창을 벌리면 재현된다.
+
+```bash
+node --input-type=module -e "
+import { createPool, resolvePoolConfig, withTransaction } from './packages/db/dist/index.js';
+// ... count → setTimeout(50) → INSERT 를 두 개 동시에
+"
+# 잠금 없음 → ["created","created"] 최종 개수: 101
+```
+
+## 변이 헬퍼 — 지우는 변이는 주석으로 치환한다
+
+```python
+# scratchpad/mut.py
+#   mutate(path, old, new, cmd, label)  — 변이 → 시험 → 원복, 건수 검증
+#   빈 문자열로 치환하지 마라: 원복 시 count가 문자 수 + 1이라 앵커 검증이 실패하고
+#   변이가 적용된 채 남아 그 뒤의 모든 판정을 오염시킨다
+```
+
+변이 실행 뒤 `git diff --stat`으로 원복을 확인한다.
+
+## Radix Select는 jsdom에서 열리지 않는다
+
+a11y에서 `Select.Trigger` 클릭 후 `findByRole('option')`을 기다리면 **멈춘다**.
+초기값을 주는 경로로 같은 사실을 걸고, 실제 열기는 e2e가 확인한다.
+
+## 문서 검증기 — main 대비 증감으로 판정한다
+
+```bash
+V=/home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py
+W=/tmp/.../main-baseline
+git worktree add -q --detach "$W" origin/main
+python3 $V --root "$W" --strict   # 기준
+python3 $V --root . --strict      # 현재 — WARN 1 · ERROR 2로 같아야 한다
+```
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 증상 | 원인·해결 |
+| --- | --- | --- |
+| `pnpm run test:integration` (전 계층) | 여덟 파일이 `violates foreign key constraint` | 새 표가 `app_user`·`team`을 참조한다. 015에 CASCADE, 시험에 `afterAll` 정리 |
+| 같은 명령 | `permission_cache_user_id_fkey` | 접근 범위 해석기가 그 표를 채운다 — 사용자보다 먼저 지운다 |
+| `pnpm run test:a11y saved-searches` | 5분 타임아웃 | Radix Select를 jsdom에서 열려 했다 |
+| `mut.py` 원복 | `ANCHOR-FAIL expected 1, found 5948` | 빈 문자열 치환은 되돌릴 수 없다 |
+| `pkill -f vitest && pnpm typecheck` | exit 144, 뒤 명령 미실행 | 같은 명령줄에서 프로세스를 죽이면 셸이 죽는다 (기록된 함정) |
+| playwright `flow-001` | strict mode violation: «검색»에 2개 매칭 | 새 «검색 저장» 버튼이 접두를 공유한다 |
+
+## 환경 (변경 없음, 재확인)
+
+- Node **v22.23.2** 필수, 셸 기본값 v20.12.0
+- **마이그레이션 015까지**. 컨테이너 3종 healthy, `prs`·`prs_test` 존재
+- ES 별칭 v2 — `prs-pull-requests-v2` · `prs-commits-v2`
