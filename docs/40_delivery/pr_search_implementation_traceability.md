@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v4.2 | 갱신일: 2026-08-27
+> 상태: review | 버전: v4.3 | 갱신일: 2026-08-27
 
 ## 1. 목적
 
@@ -56,7 +56,7 @@
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | done | 에이전트 | PR #46 | DoD 26항 전부 통과 (6.35장). 통합 49건(실 PG·ES) + 단위 22건 + 회귀 20건. 변이 18종 중 **하나가 살아남았고 그것이 결함이었다**(M13 깊이 상한) + 리뷰 정정 7종 킬 | **CR-041 신설·구현.** 착수 전 감사가 열여덟을 찾았고 **열둘이 같은 뿌리**다 — 계약이 source 본문만 보고 **후보(candidate)의 변화**를 보지 않는다(DEV-230~247). `EVT-ING-005`로 직접 푸시 커밋을 잇고(DEV-230·231), **상위 PR 변화가 하위 PR 간선을 바꾸는 역방향 경로**를 세웠으며(DEV-232), 체리픽 방향·상위 5건을 결정론으로 고정했다(DEV-243). 마이그레이션 014는 **인덱스만** — 새 표 없음(DEV-240). `JOB-REL-006`이 `handleSourceReady`를 거치므로 **재파생이 저절로 네 계열을 덮는다**(DEV-234). **머지 전에 Codex 리뷰 6건(P1 셋)이 도착했고 전부 실결함** — 양 끝점 요약·`links_pending` 보존·부분 실패·검색 가시성·retarget·후보 상한(6.35.1장). 실제 GHE·Kubernetes는 NOT RUN |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | done | 에이전트 | PR #47 (병합 `9084033`) | DoD 21항 전부 통과 (6.36장). 단위 38건 + 통합 31건(실 Elasticsearch) + 회귀 22건 + a11y 20건 + e2e 11건. 변이 22종 + 리뷰 정정 1종 전부 킬, **하나가 시험 구멍을 찾아 줬다**(M5) | **CR-042 신설.** 착수 전 감사가 열여덟을 찾았고 **아홉이 같은 뿌리**다 — 계약이 파생의 규칙만 정하고 **조회가 다른 질문**이라는 것을 보지 않았다(DEV-248~265). `API-REL-006` 신설, 역방향 조회의 저장소 라우팅 포기(DEV-250), THR-034 대상 내용 교집합(DEV-253), `API-REL-003` 상세 계약(DEV-249·254·255·256), `detached`·다중 후보·`links_pending` 표시 정정(DEV-257·258·261), W-001 이월 정정(DEV-262·264) |
 | WP-032 | 패싯·커서 페이지네이션·전문 검색 | REL-004 | done | 에이전트 | PR #57 | DoD 22항 전부 통과 (6.40장). 단위 +85 · 통합 +62(실 PG·ES) · e2e +11 · a11y 212. 적대적 변이 16종 — 14 킬, 2 등가, **살아남은 셋이 전부 시험 구멍을 드러냈다** | FR-SRCH-007·008·009·011, FR-SEQ-002. **매핑 v1 → v2** — WP-035의 재색인 경로로만 배포한다. 구현이 DEV-327~329를 등록·해소했다 |
-| WP-033 | 저장된 검색 | REL-004 | todo | - | - | - | - |
+| WP-033 | 저장된 검색 | REL-004 | done | 에이전트 | PR #60 | DoD 17항 전부 통과 (6.41장). 통합 72건(실 PG·ES·Redis) + 단위 63건 + 회귀 +19 + a11y +17 + e2e 9건. 적대적 변이 12종 — 11 킬, **살아남은 하나(M4)가 시험 구멍을 드러냈고 그것을 막는 시험이 두 번 만에 성립했다** | **CR-049 신설·구현.** 착수 전 감사가 열을 찾았고 **넷이 같은 뿌리**다 — 승인된 기능이 "누구에게 공유하는가"를 말한 적이 없었다(DEV-333~342). `team` 공개 범위를 **대상 팀 하나**로 정하자 소유권·이탈 후 처분·스키마 불변식이 함께 닫혔다. 마이그레이션 015는 불변식·목록 인덱스·보존 정책 CASCADE만 — **새 표 없음**(DEV-347). 구현 중 DEV-347·348을 등록·해소했다. 실제 GHE·Kubernetes는 NOT RUN |
 | WP-034 | W-009 저장소 개요 화면 | REL-004 | todo | - | - | - | - |
 | WP-035 | 무중단 재색인 | REL-004 | done | 에이전트 | PR #52 | DoD 20항 중 19항 통과 (6.39장). 통합 18건(실 PG·ES) · 회귀 +36 · 단위 +13 · 변이 6종 + 리뷰 정정 5종 킬. **WP-032 선행 조건 증명 완료.** 머지 전 리뷰 다섯 정정 (6.39.1장, DEV-314~319) | FR-ING-008 |
 | WP-036 | 원본 아카이브 레인(Filebeat) | REL-004 | todo | - | - | - | - |
@@ -100,7 +100,7 @@
 | FR-SRCH-007 | WP-013, WP-016 | `packages/es/src/sort.ts`, `packages/es/src/upsert.ts` (`doc_id`), `packages/es/src/mappings/*.ts`, `apps/search-api/src/search/{routes,service}.ts`, `apps/web/components/ResultTable.tsx` (`aria-sort`, 정렬 헤더) | `packages/es/src/sort.test.ts`, `packages/es/src/upsert.test.ts`, `apps/search-api/integration/search/list.test.ts`, `apps/web/a11y/search.test.tsx`, `apps/web/e2e/flow-001.spec.ts` | done (AC-1~AC-4. AC-4의 "문서 ID"는 `_id`가 아니라 같은 값의 `doc_id` 필드다 — DEV-059) |
 | FR-SRCH-008 | WP-032 | `apps/search-api/src/cursor/{envelope,params}.ts`, `apps/search-api/src/search/{cursor,service,routes}.ts`, `packages/es/src/search.ts` (PIT), `apps/web/components/CursorPager.tsx` | `apps/search-api/src/cursor/envelope.test.ts`, `apps/search-api/src/search/cursor.test.ts`, `apps/search-api/integration/search/facets.test.ts`, `apps/web/e2e/search-paging.spec.ts` | done |
 | FR-SRCH-009 | WP-032 | `apps/search-api/src/search/facets.ts`, `packages/db/src/repositories/auth.ts` (`resolveTeamSlugs`), `apps/web/lib/facets.ts`, `apps/web/components/FacetRail.tsx` | `apps/web/lib/facets.test.ts`, `apps/search-api/integration/search/facets.test.ts`, `apps/search-api/integration/sequence/range-paging.test.ts` | done |
-| FR-SRCH-010 | WP-033 | - | - | not_started |
+| FR-SRCH-010 | WP-033 | `packages/db/src/repositories/saved-search.ts`, `packages/db/migrations/015_saved_search_contract.*`, `apps/search-api/src/saved-search/{cursor,service,routes}.ts`, `apps/search-api/src/{runtime,server}.ts`, `apps/web/lib/saved-search.ts`, `apps/web/components/{SaveSearchDialog,SavedSearchList,SavedSearchesView}.tsx`, `apps/web/app/saved-searches/page.tsx` | `apps/search-api/integration/saved-search/{saved-search,executor-scope}.test.ts`, `apps/search-api/src/saved-search/{cursor,service}.test.ts`, `apps/web/lib/saved-search.test.ts`, `apps/web/a11y/saved-searches.test.tsx`, `apps/web/e2e/saved-search.spec.ts`, `regression/runtime-reachability.test.ts` | **done** (AC-1~7. 실행자 범위 격리는 실제 Elasticsearch로 증명 — 6.41장) |
 | FR-SRCH-011 | WP-032 | `packages/es/src/settings.ts` (`text_partial_index`), `packages/es/src/mappings/{pull-requests,commits}.ts`, `packages/es/src/query-builder.ts` (`buildTextClause`), `packages/es/src/highlight.ts`, `packages/query/src/parse.ts` (`countCodePoints`), `apps/web/lib/highlight.ts`, `apps/web/components/HighlightedText.tsx` | `packages/es/src/highlight.test.ts`, `packages/es/src/query-builder.test.ts`, `packages/query/src/parse.test.ts`, `apps/search-api/integration/search/facets.test.ts`, `apps/pipeline-worker/integration/jobs/reindex.test.ts` | done |
 | FR-SRCH-012 | WP-044 | - | - | not_started |
 | FR-SEQ-001 | WP-002, WP-018, WP-020, WP-021 | `packages/db/migrations/002_sequence.up.sql`, `packages/db/src/advisory-lock.ts`, `packages/db/src/repositories/{merge-sequence,sequence-space}.ts`, `packages/github/src/{graph-plan,commit-graph,mirror-graph,api-graph,mirror-sync}.ts`, `apps/pipeline-worker/src/mirror-runner.ts`, `apps/web/lib/commit-detail.ts` (`sequencePositionState`), `apps/web/components/SequencePosition.tsx`, `apps/pipeline-worker/src/{sequence,sequence-plan}.ts`, `packages/domain/src/sequence.ts`, `packages/es/src/sequence.ts`, `apps/ingest-gateway/src/{ingest,server}.ts` (push → `prs:sequence`) | `packages/github/src/graph-plan.test.ts`, `packages/github/integration/graph.test.ts` (AC-2 대조), `packages/db/integration/advisory-lock.test.ts` (AC-6), `packages/db/integration/seed.test.ts` (AC-3), `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx`, `apps/pipeline-worker/src/sequence-plan.test.ts`, `packages/domain/src/sequence.test.ts`, **`apps/pipeline-worker/integration/sequence/assign.test.ts`** (AC-1~AC-6 전부, 실제 git 픽스처 대조), **`regression/sequence.test.ts`** (ACC-02), `packages/es/integration/sequence.test.ts` | **완료 (WP-021)** — AC-1~AC-6과 예외 처리가 전부 실제 PostgreSQL·git으로 판정된다. 채번은 `git rev-list --first-parent --reverse`가 낸 순서를 그대로 옮기고, 그것을 회귀 계층이 매 실행마다 git과 대조한다. **재작성 감지 후의 재채번만 WP-022로 남는다** — 여기서는 감지해서 `stale`로 두고 기존 값을 보존한다 |
@@ -537,6 +537,8 @@
 | DEV-344 | 2026-08-27 | **팀 구성원 판정과 쓰기 사이에 창이 남는다** (PR #59 리뷰 P2). CR-049 초안은 "저장 시점에 요청자가 그 팀의 구성원인지 다시 확인한다"고만 적었다. 그런데 `READ COMMITTED`에서는 문장마다 스냅숏이 새로 잡히므로, 한 트랜잭션 안이라도 **멤버십을 읽은 뒤 커밋된 탈퇴를 `INSERT`가 보지 못한다** — 이탈한 사람이 그 팀에 공유하는 행을 만들 수 있고, `PATCH`의 AC-7 검사도 같은 모양으로 뚫린다. 같은 CR이 `/run`에 대해서는 "갱신 문장 자체가 권한 조건을 다시 건다"고 적어 두고 **쓰기 경로에는 그 규율을 적용하지 않았다** | CR-049 / FR-SRCH-010 AC-1·AC-7, THR-012 | 범위 공백 | CR-049 | **resolved (2026-08-27)** — API 계약과 데이터 모델에 `team_member` 행을 `SELECT ... FOR SHARE`로 잠근 뒤 쓰도록 명시했다. 잠그면 삭제가 이쪽 커밋까지 기다리고, 삭제가 먼저 커밋했다면 이쪽이 그것을 보고 거절한다. **100건 상한이 소유자 행을 `FOR UPDATE`로 잠그는 것과 같은 이유다** — 둘 다 검사와 쓰기 사이에 창을 남기지 않는다 |
 | DEV-345 | 2026-08-27 | **같은 CR이 한 오류 코드를 두 곳에서 다르게 적었다** (PR #59 리뷰 P2). API 계약은 지문에 사용자 ID를 넣고 "지문 불일치 → `CURSOR_QUERY_MISMATCH`"로 분류하는데, WP-033의 DoD는 "훼손·만료·**타인의 커서**는 `CURSOR_INVALID`다"라고 적었다. 남의 커서는 서명이 유효하고 지문만 다르므로 계약대로면 `CURSOR_QUERY_MISMATCH`다. **구현이 어느 한쪽을 위반할 수밖에 없는 상태**였고, 문서 우선순위상 API 아키텍처가 딜리버리 문서를 이긴다 | CR-049 / FR-SRCH-010 AC-5, API-SRCH-005 | 문서 오류 | CR-049 | **resolved (2026-08-27)** — DoD를 계약에 맞췄다. 그리고 계약에 **왜 그 갈래인지**를 남겼다: 구분하려면 사용자 ID를 봉투에 평문 필드로 실어야 하는데 봉투는 서명될 뿐 암호화되지 않아 OIDC `sub`가 base64 한 번으로 읽힌다. 구분의 값보다 노출의 대가가 크고, 두 코드의 사용자 대면 결과는 어차피 같다 |
 | DEV-346 | 2026-08-27 | **통합 시험이 "이벤트가 멎었다"를 "처리가 끝났다"로 읽었다** (CR-049 PR #59의 CI가 드러냈다, run 33073072697). `link-rebuild.test.ts`의 `settle`은 300ms 동안 새 이벤트가 없으면 사슬이 끝났다고 판정한다. 그런데 **정적은 "지금 전달 중인 이벤트가 없다"이지 "처리가 끝났다"가 아니다** — 소비자가 이벤트를 받아 목록에 적은 뒤 정본을 쓰고 색인하는 동안 버스는 조용하다. 느린 실행기에서 그 틈이 300ms를 넘자 간선이 아직 없는 상태로 단언에 들어가 `expected [] to have a length of 1`로 실패했다. **문서만 바꾼 커밋에서 났고 로컬에서는 늘 통과한다** — 이 시험이 언제부터 이랬는지는 알 수 없으나 적어도 WP-029(2026-08-26) 이후 계속 이 모양이었다 | WP-029 / FR-REL-003, JOB-REL-005 | 기술 제약 | CR-049 | **resolved (2026-08-27)** — `settle`이 완결 조건(`until`)을 받게 했다. **대기 시간을 늘려 가리지 않는다** — 늘리면 더 느린 실행기에서 같은 실패가 다시 난다. 기대하는 상태를 직접 묻고, 조건이 아직이면 정적 판정을 다시 시작한다. 루프 탐지처럼 "아무 일도 더 일어나지 않는다"를 재는 호출부는 조건 없이 그대로 둔다. 변이(조건을 참이 될 수 없게)로 그 대기가 실제로 조건을 본다는 것을 확인했다 — `기대한 상태에 이르지 못했다`로 킬됐다 |
+| DEV-347 | 2026-08-27 | **보존 정책이 정한 것을 스키마가 지키지 않았다.** 데이터 모델 「보존과 삭제」 표는 `saved_search`를 **"영구 (사용자 삭제 시 제거) · 하드 삭제"**로 정하는데, 마이그레이션 004의 외래 키에는 `ON DELETE CASCADE`가 없다. 그래서 `app_user` 삭제가 외래 키 위반으로 막힌다. **이 열을 처음 쓰는 WP가 그것을 드러냈다** — WP-033의 통합 시험이 행을 만들자 전 계층 실행에서 전역 `DELETE FROM app_user`를 하는 여덟 파일이 함께 죽었다. 문서가 정책을 적어 두고 스키마가 그것을 구현하지 않은 자리이며, 표가 비어 있는 동안에는 아무도 알 수 없었다 | WP-033 / ENT-CORE-006 | 문서 오류 | 없음 (구현 정정) | **resolved (2026-08-27)** — 마이그레이션 015가 외래 키를 `ON DELETE CASCADE`로 다시 만든다. 004는 고치지 않는다(이미 적용된 마이그레이션은 수정하지 않는다). **`team_id`는 CASCADE로 하지 않았다** — 팀이 사라졌다고 저장자의 자산을 지우는 것은 과하고 `SET NULL`은 015의 불변식을 깨뜨린다. 데이터 모델의 DDL도 같은 사실을 담게 고쳤다 |
+| DEV-348 | 2026-08-27 | **새 표가 기존 시험의 정리 순서를 바꾼다.** `saved_search`가 `app_user`·`team`·(간접적으로) `permission_cache`와 얽히면서, 저장된 검색 행을 남긴 시험 파일 뒤에 도는 파일들이 전역 삭제에서 외래 키 위반으로 죽었다. DEV-347의 CASCADE가 `app_user` 축을 풀었지만 `team` 축은 남는다 — 그쪽은 CASCADE가 옳지 않기 때문이다. **시험이 자기 픽스처를 남기지 않아야 한다는 규율이 이 표에서 처음으로 강제됐다** | WP-033 / ENT-CORE-006 | 기술 제약 | 없음 (구현 정정) | **resolved (2026-08-27)** — WP-033의 두 통합 파일이 `afterAll`에서 참조의 역순으로 정리한다(`saved_search` → `team_member` → `permission_cache` → `app_user` → `team`). 전역 삭제를 더 늘리지 않고 **자기 것만** 지운다 (risks 30). 전 계층 통합 1080건 통과로 확인했다 |
 
 ## 6. 검증 결과 기록
 
@@ -2946,6 +2948,94 @@ R3(팀 ID 하나만) · R4(세대 되돌림) — 전부 킬. R1은 처음에 통
 - 실제 GHE·Kubernetes — 이 환경에 없다
 - 전체 e2e(78+)와 전체 a11y 이외의 스위트는 targeted로 대체했다 (검증 정책)
 
+### 6.41 WP-033 저장된 검색 (PR #60)
+
+**CR-049가 계약을 먼저 닫았다.** 착수 전 감사가 열(DEV-333~342)을 찾았고 SRS가
+`baseline v2.9`가 됐다. 이 작업은 그 계약의 구현이며 새 제품 결정을 하지 않았다.
+
+**SRS v2.9 유지 · 새 FR/NFR 없음 · 새 API ID 없음(전부 API-SRCH-005 하위) · 새 ADR 없음 · 마이그레이션 015.**
+
+#### 무엇을 만들었나
+
+| 자리 | 무엇 |
+| --- | --- |
+| `packages/db/migrations/015_saved_search_contract.*` | `visibility`↔`team_id` 불변식, 목록 인덱스 둘, `owner_user_id` 외래 키의 `ON DELETE CASCADE`(DEV-347). **새 표 없음** |
+| `packages/db/src/repositories/saved-search.ts` | 정본 계층. 접근 규칙이 **질의 안에** 있다 — 라우트가 판정해 넘기는 구조로 만들지 않았다 |
+| `apps/search-api/src/saved-search/cursor.ts` | PostgreSQL 키셋 커서. 봉인 방식만 `cursor/envelope.ts`와 공유하고 순회의 뜻은 자기 것이다 |
+| `apps/search-api/src/saved-search/service.ts` | 자원 표현·질의 판정·목록·실행 준비. **`@prs/es`를 가져오지 않는다** |
+| `apps/search-api/src/saved-search/routes.ts` | 일곱 경로. 정적 `/share-targets`가 `/{id}`보다 먼저 등록된다 |
+| `apps/search-api/src/{runtime,server}.ts` | 운영 배선 — `buildServerDeps`가 의존을 만들고 `buildServer`가 경로를 세운다 |
+| `apps/web/lib/saved-search.ts` | 화면 판정(순수). 액션·상태·레이블·실패 안내 |
+| `apps/web/components/{SaveSearchDialog,SavedSearchList,SavedSearchesView}.tsx` | W-001 저장 대화상자와 W-008 화면, C-037 |
+| `apps/web/app/saved-searches/page.tsx` · `lib/nav.ts` | 라우트와 내비게이션 항목 |
+
+#### 구현 중 내린 결정 — 계약을 바꾸지 않은 선택들
+
+| 결정 | 왜 | 버린 대안 |
+| --- | --- | --- |
+| 타임스탬프를 **ISO 마이크로초 문자열**로 다룬다 | `timestamptz`는 마이크로초인데 `Date`는 밀리초다. 커서에 잘린 값을 실으면 **같은 밀리초 안의 아직 내주지 않은 행이 누락된다** — 실측으로 마이크로초가 실재함을 확인했다(`.098165`) | `Date`를 그대로 쓰기 |
+| 상한 검사에 소유자 행 `FOR UPDATE` | 여러 행에 걸친 개수는 `CHECK`로 막을 수 없다. 잠금 없이 실측하니 99건에서 **101건이 됐다** | `CHECK` 제약 / 잠금 없는 `count` |
+| 구성원 자격에 `FOR SHARE` | `READ COMMITTED`에서 문장마다 스냅숏이 새로 잡혀, 읽은 뒤 커밋된 탈퇴를 `INSERT`가 보지 못한다 (DEV-344) | 트랜잭션만으로 충분하다고 보기 |
+| `/run`이 검색을 대신하지 않는다 | 결과를 계산하면 "누구의 범위인가"가 그 핸들러의 판단이 되고, 저장자 범위를 캐시하는 최적화가 들어올 자리가 생긴다. 화면을 W-001로 보내면 저장된 검색은 접근 통제 경로에 **아예 참여하지 않는다** | `/run`이 결과까지 반환 |
+| 지문에 **접근 범위 버전을 넣지 않는다** | 이 목록의 가시성은 소유와 팀 소속이 정하지 저장소 권한이 정하지 않는다. 넣으면 무관한 권한 변경이 순회를 끊고 사용자는 자기가 만들지 않은 오류를 본다 | 검색 커서와 같은 재료 |
+| `team_id`는 CASCADE로 하지 않는다 | 팀이 사라졌다고 저장자의 자산을 지우는 것은 과하고 `SET NULL`은 015의 불변식을 깨뜨린다 | `owner_user_id`와 같은 처분 |
+| 편집을 W-001로 보낸다 | 질의를 고치려면 결과를 보면서 고쳐야 하고, 그 화면이 이미 파서·토큰 바·오류 구간을 갖고 있다 | W-008에 두 번째 질의 편집기 |
+| 버튼 레이블을 «저장»으로 | «검색 저장»은 제출 버튼 «검색»과 접두가 같아 사람도 접근성 이름도 둘을 구분하지 못한다 — 기존 e2e 하나가 실제로 모호해졌다 | 계약 문구를 그대로 레이블로 |
+
+#### 검증
+
+| 계층 | 결과 |
+| --- | --- |
+| 단위 | **1546 통과** (1 skipped) — 커서 봉투 19 · 서비스 18 · 화면 판정 26 |
+| 통합 (실 PG·ES·Redis) | **1080 통과** — WP-033은 65건(격리·소유권·이탈 후 처분·동시 상한·잠금 배타·커서·무효 질의·실행·공유 대상·불변식) + 실행자 범위 7건 |
+| 회귀 | **213 통과** (194 → +19) |
+| a11y | **229 통과** (212 → +17), axe 위반 0건 |
+| e2e | saved-search 9 · flow-001 11 · flow-003 계열 18 — 전부 통과 |
+| 빌드 | `pnpm build` · `pnpm --filter @prs/web run build` 통과 |
+
+**실행자 범위 격리를 실물로 증명했다.** `executor-scope.test.ts`가 저장자만 볼 수 있는
+저장소를 담은 질의를 만들고, 공유받은 사람이 `/run` → `/search`를 자기 세션으로
+밟았을 때 그 저장소 결과가 **0건**임을 실제 Elasticsearch로 확인한다. 같은 질의를
+저장자가 실행하면 1건이다 — **차이는 실행자뿐이다** (AC-3, THR-012).
+
+#### 적대적 변이 — 12종 중 11 킬, 하나가 시험 구멍을 드러냈다
+
+| # | 변이 | 결과 |
+| --- | --- | --- |
+| M1 | 공유 목록의 팀 소속 조건 제거 | KILLED (4건) |
+| M2 | `PATCH`의 소유자 조건 제거 | KILLED (4건) |
+| M3a·b | 생성·수정의 대상 팀 구성원 확인 제거 | KILLED (각 1건) |
+| **M4** | **소유자 행 `FOR UPDATE` 제거** | **처음 SURVIVED** — 아래 참조 |
+| M5 | 조회·실행의 권한 조건 제거 | KILLED (19건) |
+| M6 | 실행 시 무효 질의 재검사 제거 | KILLED (2건) |
+| M7 | 무효 실행에서도 `last_run_at` 갱신 | KILLED (1건) |
+| M8 | 커서 지문에서 팀 소속 제거 | KILLED (통합 1 · 단위 2) |
+| M9a | 라우트 등록 갈래 무력화 | 회귀 단독으로는 SURVIVED · **통합이 55건으로 KILL** |
+| M9b | 운영 조립에서 `savedSearch` 제거 | KILLED (회귀 1건) |
+| M10 | 마이그레이션 불변식 제거 | KILLED (회귀 1건) |
+
+**M4가 이 WP에서 가장 값진 소득이다.** 잠금을 지웠는데 동시 상한 시험이 통과했다.
+등가로 세지 않고 경로를 읽었다 — 잠금 없는 구현을 직접 재현해 보니 창을 50ms만
+벌려도 **101건이 됐다.** 등가가 아니라 **시험 구멍**이었다: `Promise.all`로 보낸 두
+요청이 `count`와 `INSERT` 사이의 짧은 창에 겹치지 않았던 것이다.
+
+그래서 결과가 아니라 **잠금 자체**를 거는 시험을 세웠다. 첫 형태는 밖에서
+`FOR UPDATE`로 잡았는데 **그것도 변이를 놓쳤다** — 외래 키가 `INSERT` 시점에 부모
+행에 `FOR KEY SHARE`를 잡고 그것이 `FOR UPDATE`와 충돌해, 잠금을 지운 구현도 함께
+멈췄기 때문이다. 시험이 잠금이 아니라 **외래 키의 부작용**을 재고 있었다.
+밖에서 `FOR KEY SHARE`로 잡자(외래 키가 잡는 것과 같은 잠금이라 호환된다) 구분이
+성립했고 변이가 죽었다.
+
+**M9a는 검사가 덮지 못하는 면을 드러냈다.** 회귀는 호출이 *존재한다*를 볼 뿐 그
+갈래가 *도달 가능한가*는 보지 않는다. 조건식의 형태를 회귀에 핀으로 박는 대신
+그 면을 통합이 덮는다는 사실을 검사 옆에 적었다 — 형태를 박으면 정당한 리팩터가
+시험을 깨고, 그 시험은 사실이 아니라 모양을 지키게 된다.
+
+#### 배포 전제
+
+- 없다. `SEARCH_CURSOR_HMAC_KEY`를 검색·구간과 **같은 값**으로 쓰므로 새 시크릿이 필요 없다.
+- 마이그레이션 015를 적용해야 한다. `pnpm run db:migrate`.
+
 ### 6.31 릴리스 게이트
 
 릴리스별로 갱신한다.
@@ -3343,7 +3433,7 @@ CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 �
 | WP-031 관계 조회 API와 상세 화면 관계 섹션 | **done** |
 | **WP-035** 무중단 재색인 | **done** — 버전 인덱스·이중 쓰기 17경로·울타리·정본 재구축·JOB-ING-006·API-ADM-004·CLI·보관 (6.39장) |
 | WP-032 패싯·커서 페이지네이션·전문 검색 | ~~next~~ **done (2026-08-27, PR #57)** — 6.40장 |
-| WP-033 저장된 검색 | todo |
+| WP-033 저장된 검색 | **done (2026-08-27, PR #60)** — 6.41장 |
 | WP-034 W-009 저장소 개요 화면 | todo |
 | WP-036 원본 아카이브 레인(Filebeat) | todo |
 
@@ -3393,6 +3483,18 @@ CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 �
 2. **이 자원의 상태를 바꾸는 것이 무엇이고 그것이 바뀔 때 무엇이 성립하는가** — 팀 구성이 바꾼다. 그런데 저장된 검색은 그것을 모르고, 이탈 후 처분(DEV-341)과 순회 중 구성 변경(DEV-340)이 함께 빈칸이었다
 3. **화면이 그릴 상태 중 데이터가 없는 것이 있는가** — 있었다. 공유 대상 선택기가 받을 팀 목록을 주는 API가 없고(DEV-337), 질의 유효성을 항목마다 알려 주는 계약도 없었다(DEV-338)
 4. **실패하면 누가 다시 하는가** — 상한 검사가 경쟁 조건에서 깨지면 아무도 되돌리지 않는다(DEV-336). `CHECK`로 막을 수 없는 종류의 불변식이라 트랜잭션 설계가 계약에 있어야 했다
+
+**(2026-08-27) WP-033이 들어왔다 — 다음은 WP-034 W-009 저장소 개요 화면이다.** 검증 기록은 6.41장이고, "
+구현이 DEV-347·348을 등록·해소했다. **CR-049가 계약을 먼저 닫았으므로 구현은 CR을 열지 않았다** — "
+지시서 §0의 세 조건 중 어느 것도 실물로 증명되지 않았다.
+
+**이 WP가 남긴 규율 둘.** (1) **살아남은 변이는 등가가 아니라 시험 구멍이었다** — 잠금을 지웠는데 동시 상한 시험이 "
+통과했고, 잠금 없는 구현을 직접 재현해 보니 101건이 됐다. 그리고 그것을 막으려 세운 **첫 시험도 변이를 놓쳤다**: "
+밖에서 `FOR UPDATE`로 잡았더니 외래 키가 잡는 `FOR KEY SHARE`와 충돌해 잠금 없는 구현도 함께 멈췄다 — "
+시험이 잠금이 아니라 외래 키의 부작용을 재고 있었다. **무엇을 재고 있는지 확인하지 않으면 초록이 사실을 뜻하지 않는다.** "
+(2) **문서가 정한 정책을 스키마가 지키지 않던 자리가 표를 처음 쓰는 순간 드러났다**(DEV-347) — "
+`saved_search`의 보존 정책은 v2.2부터 "사용자 삭제 시 제거"였고 외래 키에는 그것이 없었다. "
+빈 표는 어떤 정책 위반도 드러내지 않는다.
 
 `srs_final.md`가 baseline이므로 그 문서의 변경은 CR을 먼저 등록해야 한다. 구현 중 문서와 현실이 어긋나면 5장에 `DEV-###`를 등록하고 CR로 연결한다. 조용한 범위 변경은 금지다.
 
