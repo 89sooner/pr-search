@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-08-27T14:36:59+00:00
+generated=2026-08-27T15:32:26+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -9,7 +9,7 @@ legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd c
 - f73e2b0 p=25 src=agent-context/session-notes.md compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md title=Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료 sig=agent-context/session-notes.md,10/11,Risks/gotchas,docs/00_governance/change_control.md,exports/202608260047.md,dailywork/2026-08-25_PR-Search-WP-028,exports/202608251453.md,exports/202608260113.md
 - f3c6d32 p=25 src=agent-context/session-summary.md compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md title=세션-요약-PR-Search-구현-2026-08-25-후반 sig=agent-context/session-summary.md,10/11,CR/DEV,11/11,1/8,2/8,3/8,acme/b
 - f0b2764 p=28 src=agent-context/decisions.md compact=agent-context/_handoff/compact/f0b2764.decisions.ctx.md title=확정한-설계-결정과-이유 sig=agent-context/decisions.md,docs/00_governance/change_control.md,docs/40_delivery/pr_search_implementation_traceability.md,lib/nav.ts,packages/domain/src/anchor.ts,packages/db,prs/query,apps/search-api/src/runtime.ts
-- f54408e p=30 src=agent-context/todos.md compact=agent-context/_handoff/compact/f54408e.todos.ctx.md title=다음-작업-미해결-항목-확인할-사항 sig=agent-context/todos.md,6/8,packages/db/migrations/,packages/db/src/repositories/saved-search.ts,apps/search-api/src/saved-search/cursor.ts,apps/web/components/SaveSearchDialog.tsx,apps/web/lib/saved-search.ts,api/saved-searches
+- f54408e p=30 src=agent-context/todos.md compact=agent-context/_handoff/compact/f54408e.todos.ctx.md title=다음-작업-미해결-항목-확인할-사항 sig=agent-context/todos.md,exports/202608280030.md,6/8,packages/db/migrations/,packages/db/src/repositories/saved-search.ts,apps/search-api/src/saved-search/cursor.ts,apps/web/components/SaveSearchDialog.tsx,apps/web/lib/saved-search.ts
 - f527103 p=45 src=agent-context/commands.md compact=agent-context/_handoff/compact/f527103.commands.ctx.md title=명령어-시험-결과-실패한-명령과-원인 sig=agent-context/commands.md,HOME/.nvm/versions/node/v22.23.2/bin,prs/web,web/lib/neighbors,sequence/neighbors,apps/web,/node_modules/.bin/playwright,e2e/flow-002.spec.ts
 - f5791b0 p=45 src=agent-context/files.md compact=agent-context/_handoff/compact/f5791b0.files.ctx.md title=중요-파일-경로와-역할 sig=agent-context/files.md,docs/10_requirements/srs_final.md,docs/00_governance/change_control.md,docs/40_delivery/pr_search_implementation_traceability.md,docs/40_delivery/pr_search_work_packages.md,apps/search-api/src/runtime.ts,apps/search-api/src/runtime.test.ts,regression/runtime-reachability.test.ts
 - f7b39dc p=45 src=agent-context/risks.md compact=agent-context/_handoff/compact/f7b39dc.risks.ctx.md title=리스크-불확실한-가정-함정 sig=agent-context/risks.md,HOME/.nvm/versions/node/v22.23.2/bin,regression/runtime-reachability.test.ts,repos/89sooner/pr-search/pulls/,exports/202608260047.md,try/catch,docs/40_delivery/pr_search_implementation_traceability.md,origin/main
@@ -50,8 +50,8 @@ sig=agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runti
 ### f73e2b0
 src=agent-context/session-notes.md
 compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md
-sha256=ae0eb23a74c1b1c581e57648fcf2fb88e6bc13df9d3d1687802e1f3ebde199cf
-bytes=43232 compact_bytes=43494 lines=715 priority=25
+sha256=7fdc3680e8da8c76367717446a9188867e771876f8b9b9335cff4fd772b5f97e
+bytes=43819 compact_bytes=44061 lines=722 priority=25
 heads=Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료 > Goal > Current state > Decisions > Changed files > Commands
 sig=agent-context/session-notes.md;10/11;Risks/gotchas;docs/00_governance/change_control.md;exports/202608260047.md;dailywork/2026-08-25_PR-Search-WP-028;exports/202608251453.md;exports/202608260113.md;11/11;exports/202608261008.md;1/8;2/8;exports/202608262010.md;dailywork/2026-08-26_PR-Search-OD-005-;W-002/W-003;3/8;exports/202608262224.md;4/8;apps/search-api/integration/sequence/_repro-w004.test.ts;exports/202608270742.md;dailywork/2026-08-27_PR-Search-WP-035-;pr-search/202608271346.md;5/8;docs/README.md
 
@@ -66,10 +66,10 @@ sig=agent-context/session-summary.md;10/11;CR/DEV;11/11;1/8;2/8;3/8;acme/b;acme/
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=41a6ae207b362efd41f4bfe2af84391be69acc9f2124c40882c0b76539eb82f3
-bytes=52861 compact_bytes=36545 lines=665 priority=30
+sha256=e7a6c8a1224aa0eec1673650bccb3eef11e0e1602f4e686babe623081c303d20
+bytes=52975 compact_bytes=36648 lines=666 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > A. 지금 당장 — WP-034 W-009 저장소 개요 화면 > WP-033이 깔아 둔 자리 — 다시 만들지 말 것 > B. 남은 큰 것 — DEV-349 (별도 CR) > C. 배포에서 해야 할 것 > D. 별도 CR 둘 — 남은 미배포 역할 (변화 없음)
-sig=agent-context/todos.md;6/8;packages/db/migrations/;packages/db/src/repositories/saved-search.ts;apps/search-api/src/saved-search/cursor.ts;apps/web/components/SaveSearchDialog.tsx;apps/web/lib/saved-search.ts;api/saved-searches;api/v1;api/v1/v1/;ingest-gateway/integration/load.test.ts;docs/40_delivery/pr_search_implementation_traceability.md;5/8;apps/search-api/src/cursor/envelope.ts;apps/search-api/src/search/cursor.ts;sequence/range-cursor.ts;apps/search-api/src/search/facets.ts;packages/es/src/highlight.ts;packages/es/src/sort.ts;packages/es/src/indices.ts;4/8;packages/es/src/versioned-index.ts;packages/es/src/write-targets.ts;packages/es/src/dual-write.test.ts
+sig=agent-context/todos.md;exports/202608280030.md;6/8;packages/db/migrations/;packages/db/src/repositories/saved-search.ts;apps/search-api/src/saved-search/cursor.ts;apps/web/components/SaveSearchDialog.tsx;apps/web/lib/saved-search.ts;api/saved-searches;api/v1;api/v1/v1/;ingest-gateway/integration/load.test.ts;docs/40_delivery/pr_search_implementation_traceability.md;5/8;apps/search-api/src/cursor/envelope.ts;apps/search-api/src/search/cursor.ts;sequence/range-cursor.ts;apps/search-api/src/search/facets.ts;packages/es/src/highlight.ts;packages/es/src/sort.ts;packages/es/src/indices.ts;4/8;packages/es/src/versioned-index.ts;packages/es/src/write-targets.ts
 
 ## continuation_protocol
 read this index first; follow read_order; inspect only compact files needed for task; run reader.py search/show/restore when routing is unclear; treat compact context as lossy and repo source as final truth.

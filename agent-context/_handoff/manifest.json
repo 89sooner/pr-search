@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-08-27T14:36:59+00:00",
+  "generated": "2026-08-27T15:32:26+00:00",
   "root": "/home/roqkf/pr-search",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -231,10 +231,10 @@
       "id": "f73e2b0",
       "source_path": "agent-context/session-notes.md",
       "compact_path": "agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md",
-      "sha256": "ae0eb23a74c1b1c581e57648fcf2fb88e6bc13df9d3d1687802e1f3ebde199cf",
-      "bytes": 43232,
-      "lines": 715,
-      "compact_bytes": 43494,
+      "sha256": "7fdc3680e8da8c76367717446a9188867e771876f8b9b9335cff4fd772b5f97e",
+      "bytes": 43819,
+      "lines": 722,
+      "compact_bytes": 44061,
       "headings": [
         "Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료",
         "Goal",
@@ -341,10 +341,10 @@
       "id": "f54408e",
       "source_path": "agent-context/todos.md",
       "compact_path": "agent-context/_handoff/compact/f54408e.todos.ctx.md",
-      "sha256": "41a6ae207b362efd41f4bfe2af84391be69acc9f2124c40882c0b76539eb82f3",
-      "bytes": 52861,
-      "lines": 665,
-      "compact_bytes": 36545,
+      "sha256": "e7a6c8a1224aa0eec1673650bccb3eef11e0e1602f4e686babe623081c303d20",
+      "bytes": 52975,
+      "lines": 666,
+      "compact_bytes": 36648,
       "headings": [
         "다음 작업 · 미해결 항목 · 확인할 사항",
         "A. 지금 당장 — WP-034 W-009 저장소 개요 화면",
@@ -365,6 +365,7 @@
       ],
       "signals": [
         "agent-context/todos.md",
+        "exports/202608280030.md",
         "6/8",
         "packages/db/migrations/",
         "packages/db/src/repositories/saved-search.ts",
@@ -386,8 +387,7 @@
         "packages/es/src/indices.ts",
         "4/8",
         "packages/es/src/versioned-index.ts",
-        "packages/es/src/write-targets.ts",
-        "packages/es/src/dual-write.test.ts"
+        "packages/es/src/write-targets.ts"
       ],
       "priority": 30,
       "title": "다음-작업-미해결-항목-확인할-사항"
