@@ -18,7 +18,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { Badge, Button, Dialog, Table } from '@conductor-by-89soone/react';
-import { rowActions, visibilityLabel, type SavedSearchView } from '../lib/saved-search';
+import { rowActions, splitInvalidSpan, visibilityLabel, type SavedSearchView } from '../lib/saved-search';
 
 export interface SavedSearchListProps {
   readonly items: readonly SavedSearchView[];
@@ -33,6 +33,32 @@ function formatTime(value: string | null): string {
   if (value === null) return '실행한 적 없음';
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('ko-KR');
+}
+
+/**
+ * 질의 칸.
+ *
+ * 무효한 질의는 **어디가 문제인지** 짚는다 (AC-6). 파서가 준 오프셋을 쓰며,
+ * 오프셋이 없거나 범위를 벗어나면 가르지 않고 전체를 그대로 그린다.
+ *
+ * `<mark>`로 감싸되 **색만으로 말하지 않는다** — 그 아래 배지와 사유 문장이
+ * 같은 사실을 글로 반복한다 (NFR-006).
+ */
+function QueryCell({ item, rowId }: { item: SavedSearchView; rowId: string }): ReactNode {
+  const spans =
+    item.query_status === 'invalid'
+      ? splitInvalidSpan(item.query, item.query_error?.detail)
+      : null;
+
+  if (spans === null) return <code data-testid={`${rowId}-query`}>{item.query}</code>;
+
+  return (
+    <code data-testid={`${rowId}-query`}>
+      {spans.before}
+      <mark data-testid={`${rowId}-invalid-span`}>{spans.invalid}</mark>
+      {spans.after}
+    </code>
+  );
 }
 
 export function SavedSearchList({
@@ -66,7 +92,7 @@ export function SavedSearchList({
               <tr key={item.saved_search_id} data-testid={rowId}>
                 <td>{item.name}</td>
                 <td>
-                  <code>{item.query}</code>
+                  <QueryCell item={item} rowId={rowId} />
                   {item.query_status === 'invalid' ? (
                     <>
                       {/* 유효성은 배지와 문장 둘 다로 말한다 — 색만으로 구분하지 않는다. */}

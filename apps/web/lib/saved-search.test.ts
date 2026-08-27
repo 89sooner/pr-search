@@ -12,6 +12,7 @@ import {
   rowActions,
   saveFailureMessage,
   shareTargetLabel,
+  splitInvalidSpan,
   visibilityLabel,
   type SavedSearchView,
 } from './saved-search';
@@ -174,6 +175,53 @@ describe('저장 본문', () => {
     expect(
       createPayload({ name: 'n', query: 'repo:a/b', visibility: 'team', teamId: null })['team_id'],
     ).toBeUndefined();
+  });
+});
+
+describe('무효 구간 (AC-6)', () => {
+  const QUERY = 'repo:acme/a nosuchkey:value author:kim';
+
+  it('**파서가 준 오프셋으로 셋으로 가른다**', () => {
+    const spans = splitInvalidSpan(QUERY, { offset_start: 12, offset_end: 21 });
+    expect(spans).toEqual({
+      before: 'repo:acme/a ',
+      invalid: 'nosuchkey',
+      after: ':value author:kim',
+    });
+  });
+
+  it('가른 조각을 다시 이으면 원문이다 — 글자를 잃지 않는다', () => {
+    const spans = splitInvalidSpan(QUERY, { offset_start: 12, offset_end: 21 });
+    expect(`${spans?.before ?? ''}${spans?.invalid ?? ''}${spans?.after ?? ''}`).toBe(QUERY);
+  });
+
+  it('오프셋이 없으면 가르지 않는다', () => {
+    expect(splitInvalidSpan(QUERY, undefined)).toBeNull();
+    expect(splitInvalidSpan(QUERY, {})).toBeNull();
+  });
+
+  it('**범위를 벗어난 오프셋은 가르지 않는다** — 엉뚱한 자리를 짚느니 짚지 않는다', () => {
+    expect(splitInvalidSpan(QUERY, { offset_start: -1, offset_end: 5 })).toBeNull();
+    expect(splitInvalidSpan(QUERY, { offset_start: 0, offset_end: 9999 })).toBeNull();
+    expect(splitInvalidSpan(QUERY, { offset_start: 10, offset_end: 10 })).toBeNull();
+    expect(splitInvalidSpan(QUERY, { offset_start: 12, offset_end: 5 })).toBeNull();
+  });
+
+  it('정수가 아닌 오프셋도 가르지 않는다', () => {
+    expect(splitInvalidSpan(QUERY, { offset_start: 1.5, offset_end: 5 })).toBeNull();
+  });
+
+  it('질의 맨 앞·맨 뒤 구간도 다룬다', () => {
+    expect(splitInvalidSpan('abc def', { offset_start: 0, offset_end: 3 })).toEqual({
+      before: '',
+      invalid: 'abc',
+      after: ' def',
+    });
+    expect(splitInvalidSpan('abc def', { offset_start: 4, offset_end: 7 })).toEqual({
+      before: 'abc ',
+      invalid: 'def',
+      after: '',
+    });
   });
 });
 

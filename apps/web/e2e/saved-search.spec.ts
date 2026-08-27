@@ -173,6 +173,61 @@ test.describe('W-008 목록 (FR-SRCH-010)', () => {
     await expect(page.getByTestId('search-view')).toBeVisible();
   });
 
+  test('**편집이 PATCH로 간다** — 화면 이동이 아니다', async ({ page }) => {
+    await stubList(page, { mine: [{ items: [item()], next_cursor: null }] });
+    const methods: string[] = [];
+    await page.route('**/api/saved-searches/1', async (route) => {
+      methods.push(route.request().method());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ saved_search_id: 1, name: '새 이름' }),
+      });
+    });
+
+    await page.goto('/saved-searches');
+    await page.getByTestId('saved-mine-row-1-edit').click();
+
+    // 대화상자가 열린다 — `/search`로 떠나지 않는다.
+    await expect(page.getByTestId('save-search-dialog')).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe('/saved-searches');
+
+    // 현재 값이 담겨 있고 질의를 고칠 수 있다.
+    await expect(page.getByTestId('save-search-name')).toHaveValue('결제 월간 리뷰');
+    await expect(page.getByTestId('save-search-query')).toHaveValue('repo:acme/payments');
+    await page.getByTestId('save-search-query').fill('repo:acme/payments author:kim');
+
+    await page.getByTestId('save-search-name').fill('새 이름');
+    await page.getByTestId('save-search-submit').click();
+
+    await expect.poll(() => methods).toContain('PATCH');
+  });
+
+  test('**무효 구간을 짚는다** (AC-6)', async ({ page }) => {
+    await stubList(page, {
+      mine: [
+        {
+          items: [
+            item({
+              saved_search_id: 7,
+              query: 'repo:acme/a nosuchkey:value',
+              query_status: 'invalid',
+              // 파서가 주는 모양 그대로.
+              query_error: { message: '지원하지 않는 검색 키입니다', detail: { offset_start: 12, offset_end: 21 } },
+            } as Partial<SavedItem>),
+          ],
+          next_cursor: null,
+        },
+      ],
+    });
+
+    await page.goto('/saved-searches');
+    await expect(page.getByTestId('saved-mine-row-7-invalid-span')).toHaveText('nosuchkey');
+    // 짚되 글자를 잃지 않는다.
+    await expect(page.getByTestId('saved-mine-row-7-query')).toHaveText('repo:acme/a nosuchkey:value');
+    await expect(page.getByTestId('saved-mine-row-7-run')).toBeDisabled();
+  });
+
   test('**삭제는 확인을 거친다**', async ({ page }) => {
     await stubList(page, { mine: [{ items: [item()], next_cursor: null }] });
     let deleted = 0;

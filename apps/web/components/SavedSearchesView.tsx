@@ -22,6 +22,7 @@ import { CursorPager, toCursorFailure, type CursorFailure } from './CursorPager'
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { SavedSearchList } from './SavedSearchList';
+import { SaveSearchDialog, type SaveSearchEditTarget } from './SaveSearchDialog';
 import {
   resolveSavedSearchState,
   type SavedSearchListView,
@@ -196,17 +197,25 @@ function SavedSearchSection({ view, loginPath }: SectionProps): ReactNode {
     [backToFirst],
   );
 
-  const onEdit = useCallback(
-    (item: SavedSearchView) => {
-      /*
-       * 편집은 W-001에서 한다 — 질의를 고치려면 결과를 보면서 고쳐야 하고,
-       * 그 화면이 이미 파서·토큰 바·오류 구간을 갖고 있다. 여기에 두 번째
-       * 질의 편집기를 만들지 않는다.
-       */
-      router.push(`/search?q=${encodeURIComponent(item.query)}`);
-    },
-    [router],
-  );
+  /**
+   * 편집 대상 (PR #60 리뷰 P1).
+   *
+   * **W-001로 보내는 것은 편집이 아니었다.** 그 화면은 `POST`만 하므로 이름을
+   * 바꿀 수도, 공개 범위를 고칠 수도, 무효가 된 질의를 되살릴 수도 없었다 —
+   * 같은 이름으로 다시 저장하면 이름 충돌이 날 뿐이다. `W-008-EDIT`가 계약이
+   * 정한 자리이며 `PATCH`가 그 경로다.
+   */
+  const [editTarget, setEditTarget] = useState<SaveSearchEditTarget | null>(null);
+
+  const onEdit = useCallback((item: SavedSearchView) => {
+    setEditTarget({
+      saved_search_id: item.saved_search_id,
+      name: item.name,
+      query: item.query,
+      visibility: item.visibility,
+      team_id: item.target_team?.team_id ?? null,
+    });
+  }, []);
 
   const screen = resolveSavedSearchState({
     view,
@@ -299,6 +308,22 @@ function SavedSearchSection({ view, loginPath }: SectionProps): ReactNode {
           <Spinner label="다음 페이지를 불러오는 중" />
         </Banner>
       ) : null}
+
+      {editTarget === null ? null : (
+        <SaveSearchDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setEditTarget(null);
+          }}
+          query={editTarget.query}
+          edit={editTarget}
+          onSaved={() => {
+            setEditTarget(null);
+            // 고친 값이 목록에 보여야 한다 — 첫 페이지부터 다시 연다.
+            backToFirst();
+          }}
+        />
+      )}
     </Panel>
   );
 }

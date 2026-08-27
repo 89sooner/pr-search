@@ -56,7 +56,7 @@
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | done | 에이전트 | PR #46 | DoD 26항 전부 통과 (6.35장). 통합 49건(실 PG·ES) + 단위 22건 + 회귀 20건. 변이 18종 중 **하나가 살아남았고 그것이 결함이었다**(M13 깊이 상한) + 리뷰 정정 7종 킬 | **CR-041 신설·구현.** 착수 전 감사가 열여덟을 찾았고 **열둘이 같은 뿌리**다 — 계약이 source 본문만 보고 **후보(candidate)의 변화**를 보지 않는다(DEV-230~247). `EVT-ING-005`로 직접 푸시 커밋을 잇고(DEV-230·231), **상위 PR 변화가 하위 PR 간선을 바꾸는 역방향 경로**를 세웠으며(DEV-232), 체리픽 방향·상위 5건을 결정론으로 고정했다(DEV-243). 마이그레이션 014는 **인덱스만** — 새 표 없음(DEV-240). `JOB-REL-006`이 `handleSourceReady`를 거치므로 **재파생이 저절로 네 계열을 덮는다**(DEV-234). **머지 전에 Codex 리뷰 6건(P1 셋)이 도착했고 전부 실결함** — 양 끝점 요약·`links_pending` 보존·부분 실패·검색 가시성·retarget·후보 상한(6.35.1장). 실제 GHE·Kubernetes는 NOT RUN |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | done | 에이전트 | PR #47 (병합 `9084033`) | DoD 21항 전부 통과 (6.36장). 단위 38건 + 통합 31건(실 Elasticsearch) + 회귀 22건 + a11y 20건 + e2e 11건. 변이 22종 + 리뷰 정정 1종 전부 킬, **하나가 시험 구멍을 찾아 줬다**(M5) | **CR-042 신설.** 착수 전 감사가 열여덟을 찾았고 **아홉이 같은 뿌리**다 — 계약이 파생의 규칙만 정하고 **조회가 다른 질문**이라는 것을 보지 않았다(DEV-248~265). `API-REL-006` 신설, 역방향 조회의 저장소 라우팅 포기(DEV-250), THR-034 대상 내용 교집합(DEV-253), `API-REL-003` 상세 계약(DEV-249·254·255·256), `detached`·다중 후보·`links_pending` 표시 정정(DEV-257·258·261), W-001 이월 정정(DEV-262·264) |
 | WP-032 | 패싯·커서 페이지네이션·전문 검색 | REL-004 | done | 에이전트 | PR #57 | DoD 22항 전부 통과 (6.40장). 단위 +85 · 통합 +62(실 PG·ES) · e2e +11 · a11y 212. 적대적 변이 16종 — 14 킬, 2 등가, **살아남은 셋이 전부 시험 구멍을 드러냈다** | FR-SRCH-007·008·009·011, FR-SEQ-002. **매핑 v1 → v2** — WP-035의 재색인 경로로만 배포한다. 구현이 DEV-327~329를 등록·해소했다 |
-| WP-033 | 저장된 검색 | REL-004 | done | 에이전트 | PR #60 | DoD 17항 전부 통과 (6.41장). 통합 72건(실 PG·ES·Redis) + 단위 63건 + 회귀 +19 + a11y +17 + e2e 9건. 적대적 변이 12종 — 11 킬, **살아남은 하나(M4)가 시험 구멍을 드러냈고 그것을 막는 시험이 두 번 만에 성립했다** | **CR-049 신설·구현.** 착수 전 감사가 열을 찾았고 **넷이 같은 뿌리**다 — 승인된 기능이 "누구에게 공유하는가"를 말한 적이 없었다(DEV-333~342). `team` 공개 범위를 **대상 팀 하나**로 정하자 소유권·이탈 후 처분·스키마 불변식이 함께 닫혔다. 마이그레이션 015는 불변식·목록 인덱스·보존 정책 CASCADE만 — **새 표 없음**(DEV-347). 구현 중 DEV-347·348을 등록·해소했다. 실제 GHE·Kubernetes는 NOT RUN |
+| WP-033 | 저장된 검색 | REL-004 | done | 에이전트 | PR #60 | DoD 17항 전부 통과 (6.41장). 통합 72건(실 PG·ES·Redis) + 단위 63건 + 회귀 +19 + a11y +17 + e2e 9건. 적대적 변이 12종 — 11 킬, **살아남은 하나(M4)가 시험 구멍을 드러냈고 그것을 막는 시험이 두 번 만에 성립했다** | **CR-049 신설·구현.** 착수 전 감사가 열을 찾았고 **넷이 같은 뿌리**다 — 승인된 기능이 "누구에게 공유하는가"를 말한 적이 없었다(DEV-333~342). `team` 공개 범위를 **대상 팀 하나**로 정하자 소유권·이탈 후 처분·스키마 불변식이 함께 닫혔다. 마이그레이션 015는 불변식·목록 인덱스·보존 정책 CASCADE만 — **새 표 없음**(DEV-347). 구현 중 DEV-347·348을 등록·해소했다. **머지 전 리뷰 넷(P1 둘·P2 둘)이 전부 실결함이었고 셋을 고쳤다**(6.41.1장) — 그중 하나는 **내가 적어 둔 계약을 내 구현이 따르지 않은 자리**였다(편집을 W-001로 보냈는데 그 화면에 `PATCH`가 없다). 넷째(DEV-349, FR-SEQ-005 AC-4의 `seq:` 에폭)는 계약의 재료가 없어 **별도 CR 대상으로 열어 두었다** — 7장 등재. 실제 GHE·Kubernetes는 NOT RUN |
 | WP-034 | W-009 저장소 개요 화면 | REL-004 | todo | - | - | - | - |
 | WP-035 | 무중단 재색인 | REL-004 | done | 에이전트 | PR #52 | DoD 20항 중 19항 통과 (6.39장). 통합 18건(실 PG·ES) · 회귀 +36 · 단위 +13 · 변이 6종 + 리뷰 정정 5종 킬. **WP-032 선행 조건 증명 완료.** 머지 전 리뷰 다섯 정정 (6.39.1장, DEV-314~319) | FR-ING-008 |
 | WP-036 | 원본 아카이브 레인(Filebeat) | REL-004 | todo | - | - | - | - |
@@ -107,7 +107,7 @@
 | FR-SEQ-002 | WP-023, WP-025 | `apps/search-api/src/sequence/{range,routes,space}.ts`, `packages/db/src/repositories/merge-sequence.ts` (`countRange`·`findRangePage`·`listPullRequestNumbersInRange`) | `apps/search-api/integration/sequence/range.test.ts`·`range-es.test.ts`, `regression/range-vs-git.test.ts` | api_done (화면은 WP-025). **W-004 화면 완료** (WP-025, 6.25장) — 반개구간 상시 표기·역전 교환·5만 사전 안내·에폭 경고까지 |
 | FR-SEQ-003 | WP-023, WP-025 | `packages/domain/src/anchor.ts` (`classifyAnchor`·`boundaryOf`), `apps/search-api/src/sequence/anchors.ts`, `packages/db` `findPointBy{Seq,PullRequest,Commit}`·`findPointsByCommitPrefix`·`findPointAtOrBefore` | `packages/domain/src/anchor.test.ts`, `apps/search-api/integration/sequence/anchors.test.ts`, `apps/search-api/integration/release/containment.test.ts` (릴리스 앵커) | api_done — **AC-1 릴리스 태그 해석 완료** (WP-024, CR-028). 정본은 PostgreSQL `release` 표, 서수는 현재 에폭에서 재확인(DEV-149), `occurred_at`은 릴리스 시각. 미수집(`release_not_indexed`)·미존재(`tag_not_found`)·공간 불일치·체인 밖을 가른다. **W-004 앵커 입력(C-026) 완료** (WP-025) — 5종 정규화 표시·AC-5 넷·오류 갈래 |
 | FR-SEQ-004 | WP-024, WP-026 | `apps/search-api/src/sequence/{release-comparison,releases-list}.ts`, `packages/db/src/repositories/release.ts` (`listReleaseTimeline`·`findLatestRelease`), `apps/web/lib/release.ts`, `apps/web/components/{ReleaseTimeline,ReleasesView}.tsx`, `apps/web/app/releases/page.tsx` | `apps/search-api/integration/release/timeline.test.ts`, `apps/web/lib/release.test.ts`, `apps/web/a11y/releases.test.tsx`, `apps/web/e2e/flow-003-releases.spec.ts` | done (WP-026) — AC-1~AC-5 전부. 비교는 WP-023의 `runRange`를 그대로 딛고(같은 요약 계층), API-SEQ-003이 따로 소유하는 것은 `to=unreleased`·서수 기준 방향 정규화·`size=0`뿐이다. 화면은 저장소 스코프 목록으로 AC-3을 도달 가능하게 만든다 |
-| FR-SEQ-005 | WP-021, WP-022, WP-028 | `apps/pipeline-worker/src/sequence.ts` (`reassignSequence`), `packages/db/src/repositories/merge-sequence.ts` (`findSeqByCommit`·`copySequencesUpTo`·`countAbove`), `packages/db/src/repositories/sequence-space.ts` (`markReassigning`·`bumpEpoch`), `packages/es/src/sequence.ts` (`applyEpochBump`) | `apps/pipeline-worker/integration/sequence/reassign.test.ts` (AC-1~AC-5 전부, 실제 git 픽스처), `packages/es/integration/sequence.test.ts` (에폭 반영), `regression/sequence-rewrite.test.ts` (재작성 walk=git, 공통 접두 결정론) | **부분 (WP-022)** — 자동 감지 경로의 AC-1~AC-5가 실제 PostgreSQL·git으로 판정된다. AC-4의 저장된 검색 `seq:` 절반은 `saved_search`가 없어(WP-033) 도달 불가, 수동 재채번(API-ADM-007 POST)과 잡 유형 정정(DEV-128)은 WP-028, `epoch_stale` 화면 표시는 W-004(WP-025) 몫이다 |
+| FR-SEQ-005 | WP-021, WP-022, WP-028 | `apps/pipeline-worker/src/sequence.ts` (`reassignSequence`), `packages/db/src/repositories/merge-sequence.ts` (`findSeqByCommit`·`copySequencesUpTo`·`countAbove`), `packages/db/src/repositories/sequence-space.ts` (`markReassigning`·`bumpEpoch`), `packages/es/src/sequence.ts` (`applyEpochBump`) | `apps/pipeline-worker/integration/sequence/reassign.test.ts` (AC-1~AC-5 전부, 실제 git 픽스처), `packages/es/integration/sequence.test.ts` (에폭 반영), `regression/sequence-rewrite.test.ts` (재작성 walk=git, 공통 접두 결정론) | **부분 (WP-022)** — 자동 감지 경로의 AC-1~AC-5가 실제 PostgreSQL·git으로 판정된다. AC-4의 ~~저장된 검색 `seq:` 절반은 `saved_search`가 없어(WP-033) 도달 불가~~ → **WP-033이 그 표를 만들면서 도달 가능해졌고, 구현되지 않았다 (DEV-349, 2026-08-27)** — CR-049의 착수 전 감사가 FR-SRCH-010만 보고 이 FR이 저장된 검색을 지목한다는 것을 놓쳤다. 고치려면 계약의 세부(어느 공간의 에폭인가·여럿이면 어떻게 판정하는가·검색 응답이 `epoch_stale`을 어떻게 싣는가)가 필요하며 그것이 없어 별도 CR 대상이다. 수동 재채번(API-ADM-007 POST)과 잡 유형 정정(DEV-128)은 WP-028, `epoch_stale` 화면 표시는 W-004(WP-025) 몫이다 |
 | FR-SEQ-006 | WP-002, WP-041 | `packages/db/migrations/002_sequence.up.sql` (`safe_marker_current_uk`) | `packages/db/integration/constraints.test.ts` (AC-1) | partial (스키마만. 화면·API는 WP-041) |
 | FR-SEQ-007 | WP-042 | - | - | not_started |
 | FR-REL-001 | WP-027 | `apps/search-api/src/sequence/neighbors.ts`, `packages/db/src/repositories/merge-sequence.ts` (`findNeighbors`), `apps/web/lib/neighbors.ts`, `apps/web/components/NeighborSequenceList.tsx` (C-019 + 컨테이너), `apps/web/components/{PrDetailView,CommitDetailView}.tsx` | `apps/search-api/integration/sequence/neighbors.test.ts`, `apps/web/lib/neighbors.test.ts`, `apps/web/a11y/{pr-detail,commit-detail}.test.tsx`, `apps/web/e2e/flow-002.spec.ts` | done — AC-1~AC-5 전부. 이웃은 PostgreSQL이 고르고 색인은 표시값만 채운다(DEV-166). 직접 푸시 커밋을 포함해 서수가 건너뛰지 않는다(SRS v2.4). 앵커는 PR·커밋 둘 다이며 **`base_branch` 판별자로 시퀀스 공간을 요청이 지정한다** — 응답의 `sequence_space`는 언제나 요청한 공간이고 앵커 해석은 `findPointByPullRequest`/`findPointByCommit`(공간·에폭 한정)을 재사용한다 (CR-032, DEV-168). 색인 안 된 PR 행의 `merged_at`은 `null`이다 (DEV-169). 실패 상태에는 재시도 수단이 있다 (DEV-170) |
@@ -539,6 +539,7 @@
 | DEV-346 | 2026-08-27 | **통합 시험이 "이벤트가 멎었다"를 "처리가 끝났다"로 읽었다** (CR-049 PR #59의 CI가 드러냈다, run 33073072697). `link-rebuild.test.ts`의 `settle`은 300ms 동안 새 이벤트가 없으면 사슬이 끝났다고 판정한다. 그런데 **정적은 "지금 전달 중인 이벤트가 없다"이지 "처리가 끝났다"가 아니다** — 소비자가 이벤트를 받아 목록에 적은 뒤 정본을 쓰고 색인하는 동안 버스는 조용하다. 느린 실행기에서 그 틈이 300ms를 넘자 간선이 아직 없는 상태로 단언에 들어가 `expected [] to have a length of 1`로 실패했다. **문서만 바꾼 커밋에서 났고 로컬에서는 늘 통과한다** — 이 시험이 언제부터 이랬는지는 알 수 없으나 적어도 WP-029(2026-08-26) 이후 계속 이 모양이었다 | WP-029 / FR-REL-003, JOB-REL-005 | 기술 제약 | CR-049 | **resolved (2026-08-27)** — `settle`이 완결 조건(`until`)을 받게 했다. **대기 시간을 늘려 가리지 않는다** — 늘리면 더 느린 실행기에서 같은 실패가 다시 난다. 기대하는 상태를 직접 묻고, 조건이 아직이면 정적 판정을 다시 시작한다. 루프 탐지처럼 "아무 일도 더 일어나지 않는다"를 재는 호출부는 조건 없이 그대로 둔다. 변이(조건을 참이 될 수 없게)로 그 대기가 실제로 조건을 본다는 것을 확인했다 — `기대한 상태에 이르지 못했다`로 킬됐다 |
 | DEV-347 | 2026-08-27 | **보존 정책이 정한 것을 스키마가 지키지 않았다.** 데이터 모델 「보존과 삭제」 표는 `saved_search`를 **"영구 (사용자 삭제 시 제거) · 하드 삭제"**로 정하는데, 마이그레이션 004의 외래 키에는 `ON DELETE CASCADE`가 없다. 그래서 `app_user` 삭제가 외래 키 위반으로 막힌다. **이 열을 처음 쓰는 WP가 그것을 드러냈다** — WP-033의 통합 시험이 행을 만들자 전 계층 실행에서 전역 `DELETE FROM app_user`를 하는 여덟 파일이 함께 죽었다. 문서가 정책을 적어 두고 스키마가 그것을 구현하지 않은 자리이며, 표가 비어 있는 동안에는 아무도 알 수 없었다 | WP-033 / ENT-CORE-006 | 문서 오류 | 없음 (구현 정정) | **resolved (2026-08-27)** — 마이그레이션 015가 외래 키를 `ON DELETE CASCADE`로 다시 만든다. 004는 고치지 않는다(이미 적용된 마이그레이션은 수정하지 않는다). **`team_id`는 CASCADE로 하지 않았다** — 팀이 사라졌다고 저장자의 자산을 지우는 것은 과하고 `SET NULL`은 015의 불변식을 깨뜨린다. 데이터 모델의 DDL도 같은 사실을 담게 고쳤다 |
 | DEV-348 | 2026-08-27 | **새 표가 기존 시험의 정리 순서를 바꾼다.** `saved_search`가 `app_user`·`team`·(간접적으로) `permission_cache`와 얽히면서, 저장된 검색 행을 남긴 시험 파일 뒤에 도는 파일들이 전역 삭제에서 외래 키 위반으로 죽었다. DEV-347의 CASCADE가 `app_user` 축을 풀었지만 `team` 축은 남는다 — 그쪽은 CASCADE가 옳지 않기 때문이다. **시험이 자기 픽스처를 남기지 않아야 한다는 규율이 이 표에서 처음으로 강제됐다** | WP-033 / ENT-CORE-006 | 기술 제약 | 없음 (구현 정정) | **resolved (2026-08-27)** — WP-033의 두 통합 파일이 `afterAll`에서 참조의 역순으로 정리한다(`saved_search` → `team_member` → `permission_cache` → `app_user` → `team`). 전역 삭제를 더 늘리지 않고 **자기 것만** 지운다 (risks 30). 전 계층 통합 1080건 통과로 확인했다 |
+| DEV-349 | 2026-08-27 | **저장된 검색의 `seq:` 조건이 에폭을 들고 있지 않다** (PR #60 리뷰 P1). FR-SEQ-005 AC-4는 **저장된 검색을 명시적으로 지목한다** — "이전 에폭으로 저장된 안전 구간 표식과 **저장된 검색의 `seq:` 조건**은 무효 표시되며, 조회 시 `epoch_stale: true`를 함께 반환한다". 그런데 CR-049는 "저장하는 것은 질의 문자열뿐"로 계약했고 구현이 그것을 따랐다. 재채번으로 에폭이 오르면 **같은 서수가 다른 커밋을 가리키므로**(ADR-007) 저장된 `seq:1280..1342`가 조용히 다른 결과를 낸다. **이 문서가 이미 그 자리를 예고해 두었다** — 4장 FR-SEQ-005 행이 "저장된 검색 `seq:` 절반은 `saved_search`가 없어(WP-033) 도달 불가"라고 적고 있었고, WP-033이 그 표를 만들면서 도달 가능해졌다. **CR-049의 착수 전 감사가 FR-SRCH-010만 보고 다른 FR이 이 자원을 지목한다는 것을 놓쳤다** | WP-033, WP-025 / FR-SEQ-005 AC-4, FR-SRCH-010 | 범위 공백 | 없음 (별도 CR 대상) | open — 고치지 않았다. 구현하려면 계약의 세부가 있어야 하는데 **어디에도 없다**: (1) 어느 시퀀스 공간의 에폭을 기록하는가 — 질의에 `repo:`가 없으면 접근 범위의 모든 저장소가 대상이고, 여럿이면 공간도 여럿이다. (2) 공간이 여럿일 때 하나만 낡아도 전체를 무효로 보는가. (3) `/search` 응답이 `epoch_stale`을 어떻게 싣는가 — 지금 그 필드는 W-004 계열에만 있고 검색 응답 계약에 없다. 지시서 §0의 **"정본이 실제로 없음"**에 해당하므로 별도 CR이 옳다. **함께 볼 것**: 이 문제는 저장된 검색이 만든 것이 아니다 — W-001의 `seq:` 질의는 URL에 담는 순간 이미 같은 성질을 갖고, 저장된 검색은 그것을 더 오래 보관할 뿐이다. 그래서 해법도 저장 계층이 아니라 **조회 계층**에 있을 수 있다 |
 
 ## 6. 검증 결과 기록
 
@@ -3036,6 +3037,47 @@ R3(팀 ID 하나만) · R4(세대 되돌림) — 전부 킬. R1은 처음에 통
 - 없다. `SEARCH_CURSOR_HMAC_KEY`를 검색·구간과 **같은 값**으로 쓰므로 새 시크릿이 필요 없다.
 - 마이그레이션 015를 적용해야 한다. `pnpm run db:migrate`.
 
+#### 6.41.1 PR #60 머지 전 리뷰 라운드 (2026-08-27)
+
+자동 리뷰가 넷(P1 둘·P2 둘)을 냈고 **전부 실결함이었다.** 셋은 같은 PR에서 고쳤고
+하나는 계약이 없어 DEV로 남겼다.
+
+| # | 지적 | 실체 | 처분 |
+| --- | --- | --- | --- |
+| P1 | 저장된 `seq:` 조건이 에폭을 들고 있지 않다 | **FR-SEQ-005 AC-4가 저장된 검색을 명시적으로 지목한다.** 이 문서 4장이 "`saved_search`가 없어 도달 불가"라고 예고해 둔 자리이며, WP-033이 표를 만들면서 도달 가능해졌다 | **DEV-349, open** — 아래 |
+| P1 | 편집이 `PATCH`를 거치지 않는다 | **W-001로 보내는 것은 편집이 아니었다.** 그 화면은 `POST`만 하므로 이름도 공개 범위도 못 고치고, 무효가 된 질의를 되살릴 수도 없다 — 같은 이름으로 다시 저장하면 이름 충돌이 날 뿐이다 | 고쳤다 |
+| P2 | 파서가 준 무효 구간을 그리지 않는다 | AC-6이 요구하는 것은 *오류 위치*인데 일반 배지와 문장만 그리고 있었다. 긴 질의에서 어느 토큰이 문제인지 모르면 고칠 자리를 찾지 못한다 | 고쳤다 |
+| P2 | 공유 대상 목록이 갱신되지 않는다 | 한 번 받아 두고 세션 내내 재사용해, 소속이 바뀌어도 회수된 팀이 선택지에 남고 새 팀은 나타나지 않았다. 서버가 거절하므로 유출은 없지만 **사용자가 고칠 길이 없었다** | 고쳤다 |
+
+**P1(편집)이 가장 무겁다 — 계약을 내가 어겼다.** 와이어프레임의 `W-008-EDIT`는
+"이름, 질의 문자열, 공개 범위, 대상 팀 선택기. 내가 소유한 검색에서만 열린다"를
+정한다. 나는 그것을 "편집은 W-001에서 한다"로 옮기고 그 판단을 6.41장의 결정 표에
+적어 두었는데, **W-001에는 `PATCH` 경로가 없다.** 결정을 적는 것과 그 결정이 성립하는
+것은 다른 일이고, 성립 여부를 확인하지 않았다. CR-046이 배운 것과 같은 자리다.
+
+**고친 방법**: 저장 대화상자를 `create`/`edit` 두 모드로 넓혔다. 받는 것이 같으므로
+(이름·공개 범위·대상 팀) 갈라 두면 한쪽에만 고쳐지는 규칙이 생긴다. 편집 모드에서는
+질의도 고칠 수 있다 — 무효가 된 질의를 되살릴 길이 그것뿐이다.
+
+**그 과정에서 결함 하나를 더 찾았다.** 편집 모드로 `team` 항목을 열면 대상 팀
+선택기가 그려지는데, 목록을 「공개 범위를 고를 때」만 불러오면 **그 선택기가 빈 채로
+뜬다** — 사용자는 자기 대상 팀이 사라진 것으로 읽는다. 여는 것이 곧 그 시점이다.
+
+**DEV-349는 고치지 않았다.** FR-SEQ-005 AC-4가 결과를 정하지만 그것을 성립시키는
+재료가 어디에도 없다 — 어느 시퀀스 공간의 에폭을 기록하는가(질의에 `repo:`가 없으면
+접근 범위의 모든 저장소가 대상이다), 여럿이면 하나만 낡아도 전체를 무효로 보는가,
+`/search` 응답이 `epoch_stale`을 어떻게 싣는가. 지시서 §0의 **"정본이 실제로 없음"**에
+해당하므로 별도 CR이 옳다. 7장에 등재했다.
+
+**그리고 이 문제는 저장된 검색이 만든 것이 아니다.** W-001의 `seq:` 질의는 URL에
+담는 순간 같은 성질을 갖고, 저장은 그것을 더 오래 보관할 뿐이다 — 해법이 저장
+계층이 아니라 **조회 계층**일 수 있으므로 그 판단이 먼저다. CR-049의 착수 전 감사가
+FR-SRCH-010만 보고 **다른 FR이 이 자원을 지목한다는 것**을 놓쳤다는 사실도 함께 남긴다.
+
+**리뷰 정정의 증거**: 단위 +6(무효 구간 가르기) · a11y +6(편집 `PATCH`·질의 편집 가능·
+무효 구간·목록 갱신·`team` 항목 열기) · e2e +2(편집 흐름·무효 구간). a11y 17 → **23**,
+e2e 9 → **11**.
+
 ### 6.31 릴리스 게이트
 
 릴리스별로 갱신한다.
@@ -3100,6 +3142,13 @@ R3(팀 ID 하나만) · R4(세대 되돌림) — 전부 킬. R1은 처음에 통
 
 | 제한 | 근거 문서 | 현재 상태 | 후속 |
 | --- | --- | --- | --- |
+| **저장된 검색의 `seq:` 조건이 에폭 변경을 알리지 않는다** | FR-SEQ-005 AC-4 / DEV-349 (PR #60 리뷰 P1) "
+"| **미구현 요구** — WP-033이 `saved_search`를 채우면서 이 자리가 도달 가능해졌다. 재채번으로 에폭이 오르면 저장된 "
+"`seq:1280..1342`가 **조용히 다른 커밋을 가리킨다**(ADR-007). 실패 방향이 오답이라 눈에 띄지 않는다. "
+"**저장된 검색이 만든 문제가 아니다** — W-001의 `seq:` 질의는 URL에 담는 순간 같은 성질을 갖고, 저장은 그것을 더 오래 보관할 뿐이다 "
+"| **별도 CR.** 계약의 세부가 없다: 어느 시퀀스 공간의 에폭을 기록하는가(질의에 `repo:`가 없거나 여럿일 수 있다), "
+"여럿이면 하나만 낡아도 전체를 무효로 보는가, `/search` 응답이 `epoch_stale`을 어떻게 싣는가(지금 그 필드는 W-004 계열에만 있다). "
+"해법이 저장 계층이 아니라 **조회 계층**일 수 있으므로 그 판단이 먼저다 |
 | 시퀀스는 REL-003부터 제공 | 로드맵 4장 | **부분 해소** (2026-08-24) — 채번(WP-021)·재채번(WP-022)·앵커/범위 API(WP-023)·릴리스 수집과 포함 관계(WP-024)가 섰다. 화면(WP-025·WP-026)이 남았다 | REL-003 잔여 WP |
 | ~~릴리스 태그 앵커가 `ANCHOR_UNRESOLVABLE`을 반환~~ | FR-SEQ-003 AC-1 / CR-027 DEV-132 | **해소** (2026-08-24, WP-024) — PostgreSQL `release` 표를 근거로 해석한다. `ANCHOR_UNRESOLVABLE`은 미수집(`release_not_indexed`)·미존재(`tag_not_found`)에만 남고 사유를 가른다. 미러가 태그를 갱신하지 않는다던 기록 사유는 실측으로 반증됐다(DEV-143) | - |
 | ~~범위 요약에 `reverted_pull_request_count` 키가 없음~~ | FR-SEQ-002 AC-2 / CR-027 DEV-133 | **해소 (2026-08-26, CR-041 / WP-030, DEV-239)** — 되돌림 파생이 서면서 `link_summary.is_reverted`가 실제 값을 갖게 됐고, 요약 집계 왕복 안의 `filter` 집계로 계산한다. 그전까지 키를 넣지 않은 이유(세면 언제나 0이고 그 0이 "없다"와 구분되지 않는다)는 이제 성립하지 않는다 | 없음 |

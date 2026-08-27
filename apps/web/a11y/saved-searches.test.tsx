@@ -64,9 +64,16 @@ const INVALID_SHARED = {
   ...SHARED,
   saved_search_id: 3,
   name: '옛 문법 검색',
-  query: 'nosuchkey:value',
+  query: 'repo:acme/a nosuchkey:value',
   query_status: 'invalid' as const,
-  query_error: { message: '지원하지 않는 검색 키입니다', detail: { offset_start: 0, offset_end: 9 } },
+  query_error: { message: '지원하지 않는 검색 키입니다', detail: { offset_start: 12, offset_end: 21 } },
+};
+
+const INVALID_MINE = {
+  ...INVALID_SHARED,
+  saved_search_id: 4,
+  owner: { user_id: 'sub-alice', login: 'alice' },
+  is_owner: true,
 };
 
 /** 요청 URL에서 응답을 만든다 — 고정 응답 대역은 틀린 입력을 받아 준다 (risks 44). */
@@ -176,6 +183,36 @@ describe('C-037 목록 (QA-W008-01·02·06)', () => {
     expect(onDelete).toHaveBeenCalledWith(MINE);
   });
 
+  it('**무효 구간을 파서 오프셋으로 짚는다** (AC-6)', () => {
+    render(
+      <SavedSearchList
+        items={[INVALID_SHARED]}
+        onRun={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        testIdPrefix="t"
+      />,
+    );
+
+    const span = screen.getByTestId('t-row-3-invalid-span');
+    expect(span.textContent).toBe('nosuchkey');
+    // 짚되 글자를 잃지 않는다 — 질의 전체가 그대로 있다.
+    expect(screen.getByTestId('t-row-3-query').textContent).toBe('repo:acme/a nosuchkey:value');
+  });
+
+  it('유효한 질의에는 구간 표식이 없다', () => {
+    render(
+      <SavedSearchList
+        items={[MINE]}
+        onRun={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        testIdPrefix="t"
+      />,
+    );
+    expect(screen.queryByTestId('t-row-1-invalid-span')).toBeNull();
+  });
+
   it('axe 위반 0건', async () => {
     const { container } = render(
       <SavedSearchList
@@ -254,6 +291,57 @@ describe('W-008 화면 (QA-W008-02)', () => {
     });
   });
 
+  it('**편집이 PATCH로 간다** — W-001로 보내면 이름도 공개 범위도 못 고친다', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', (url: string, init?: { method?: string }) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`);
+      const view = url.includes('view=team') ? 'team' : 'mine';
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve(
+            (init?.method ?? 'GET') === 'GET' && url.includes('/api/saved-searches?')
+              ? { items: view === 'mine' ? [MINE] : [], next_cursor: null }
+              : {},
+          ),
+      });
+    });
+    const user = userEvent.setup();
+
+    render(<SavedSearchesView loginPath="/auth/login" />);
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-mine-row-1-edit')).toBeTruthy();
+    });
+
+    await user.click(screen.getByTestId('saved-mine-row-1-edit'));
+
+    // 대화상자가 열리고 현재 값이 담긴다 — 화면 이동이 아니다.
+    const nameField = (await screen.findByTestId('save-search-name')) as HTMLInputElement;
+    expect(nameField.value).toBe('결제 월간 리뷰');
+    expect(push).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('save-search-submit'));
+    await waitFor(() => {
+      expect(calls).toContain('PATCH /api/saved-searches/1');
+    });
+  });
+
+  it('**편집 대화상자에서는 질의를 고칠 수 있다** — 무효가 된 질의를 되살릴 길이다', async () => {
+    stubFetch({ 'view=mine': { items: [INVALID_MINE], next_cursor: null } });
+    const user = userEvent.setup();
+
+    render(<SavedSearchesView loginPath="/auth/login" />);
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-mine-row-4-edit')).toBeTruthy();
+    });
+
+    await user.click(screen.getByTestId('saved-mine-row-4-edit'));
+    const query = (await screen.findByTestId('save-search-query')) as HTMLInputElement;
+    expect(query.readOnly).toBe(false);
+    expect(query.value).toBe('repo:acme/a nosuchkey:value');
+  });
+
   it('axe 위반 0건', async () => {
     stubFetch({
       'view=mine': { items: [MINE], next_cursor: null },
@@ -295,6 +383,46 @@ describe('W-001 저장 대화상자 (QA-W008-01)', () => {
     await screen.findByTestId('save-search-dialog');
 
     expect(calls.some((one) => one.includes('share-targets'))).toBe(false);
+  });
+
+  const TEAM_EDIT = {
+    saved_search_id: 5,
+    name: '팀 공유 항목',
+    query: 'repo:acme/a',
+    visibility: 'team' as const,
+    team_id: 7,
+  };
+
+  it('**`team`인 항목을 열면 대상 목록을 곧바로 읽는다** — 선택기가 빈 채로 뜨지 않는다', async () => {
+    const calls = stubFetch({ 'share-targets': { teams: [{ team_id: 7, org_id: 1, slug: 'payments' }] } });
+
+    render(<SaveSearchDialog open onOpenChange={vi.fn()} query="repo:acme/a" edit={TEAM_EDIT} />);
+
+    await waitFor(() => {
+      expect(calls.filter((one) => one.includes('share-targets'))).toHaveLength(1);
+    });
+    expect(await screen.findByTestId('save-search-team')).toBeTruthy();
+  });
+
+  it('**다시 열면 팀 목록을 다시 읽는다** — 소속이 바뀌면 선택지도 바뀌어야 한다', async () => {
+    const calls = stubFetch({ 'share-targets': { teams: [{ team_id: 7, org_id: 1, slug: 'payments' }] } });
+
+    const { rerender } = render(
+      <SaveSearchDialog open onOpenChange={vi.fn()} query="repo:acme/a" edit={TEAM_EDIT} />,
+    );
+    await waitFor(() => {
+      expect(calls.filter((one) => one.includes('share-targets'))).toHaveLength(1);
+    });
+
+    // 닫았다 다시 연다. 한 번 받아 둔 목록을 재사용하면 여기서 늘지 않는다.
+    rerender(
+      <SaveSearchDialog open={false} onOpenChange={vi.fn()} query="repo:acme/a" edit={TEAM_EDIT} />,
+    );
+    rerender(<SaveSearchDialog open onOpenChange={vi.fn()} query="repo:acme/a" edit={TEAM_EDIT} />);
+
+    await waitFor(() => {
+      expect(calls.filter((one) => one.includes('share-targets'))).toHaveLength(2);
+    });
   });
 
   it('**저장이 프록시 경로로 간다**', async () => {

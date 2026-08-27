@@ -110,6 +110,40 @@ export function rowActions(item: SavedSearchView): RowActions {
   };
 }
 
+/** 질의를 무효 구간 기준으로 셋으로 가른다. */
+export interface QuerySpans {
+  readonly before: string;
+  readonly invalid: string;
+  readonly after: string;
+}
+
+/**
+ * 파서가 준 오프셋으로 무효 구간을 짚는다 (AC-6).
+ *
+ * **"해석할 수 없다"만으로는 부족하다.** 예외 처리 문장이 요구하는 것은
+ * *오류 위치*이며, 긴 질의에서 어느 토큰이 문제인지 모르면 사용자가 고칠
+ * 자리를 찾지 못한다.
+ *
+ * 오프셋이 없거나 범위를 벗어나면 **가르지 않고 전체를 그대로 돌려준다** —
+ * 잘못된 오프셋으로 엉뚱한 자리를 짚느니 짚지 않는 편이 낫다.
+ */
+export function splitInvalidSpan(
+  query: string,
+  detail: { readonly offset_start?: number; readonly offset_end?: number } | undefined,
+): QuerySpans | null {
+  const start = detail?.offset_start;
+  const end = detail?.offset_end;
+  if (typeof start !== 'number' || typeof end !== 'number') return null;
+  if (!Number.isInteger(start) || !Number.isInteger(end)) return null;
+  if (start < 0 || end > query.length || start >= end) return null;
+
+  return {
+    before: query.slice(0, start),
+    invalid: query.slice(start, end),
+    after: query.slice(end),
+  };
+}
+
 /** 공개 범위 레이블. **색만으로 구분하지 않는다** (NFR-006). */
 export function visibilityLabel(item: SavedSearchView): string {
   if (item.visibility === 'private') return '비공개';
