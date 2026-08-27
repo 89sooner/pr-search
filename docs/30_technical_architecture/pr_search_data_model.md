@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.6 | 갱신일: 2026-08-27
+> 상태: review | 버전: v0.7 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -19,6 +19,7 @@
 | ENT-CORE-005 | User | 사용자와 접근 범위 | `user_id`, `login`, `email`, `roles[]`, `access_scope_version` | PostgreSQL | auth | FR-AUTH-001, FR-AUTH-003 |
 | ENT-CORE-006 | SavedSearch | 저장된 질의 | `saved_search_id`, `name`, `query`, `visibility`, `owner_user_id`, `team_id`(대상 팀, `visibility='team'`일 때만) | PostgreSQL | search | FR-SRCH-010 |
 | ENT-CORE-007 | AuditRecord | 감사 기록 | `audit_id`, `user_id`, `action`, `target`, `query`, `result_code`, `correlation_id`, `occurred_at` | PostgreSQL | audit | FR-AUTH-004 |
+| ENT-CORE-008 | RepositoryRegistrationRequest | 사용자가 남긴 저장소 등록 검토 요청 | `request_id`, `requested_by`, `repository_owner`, `repository_name`, `created_at` | PostgreSQL | registry | FR-ING-009 |
 | ENT-SEQ-001 | MergeSequence | 시퀀스 서수-커밋 대응 | `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `commit_sha`, `pull_request_number` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-002 |
 | ENT-SEQ-002 | SequenceSpace | 시퀀스 공간 상태 | `repository_id`, `base_branch`, `seq_epoch`, `head_sha`, `head_seq`, `state`, `last_assigned_at` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-005 |
 | ENT-SEQ-003 | SafeMarker | 안전 구간 표식 | `marker_id`, `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `note`, `created_by` | PostgreSQL | sequence | FR-SEQ-006 |
@@ -321,6 +322,48 @@ CREATE TABLE commit_snapshot (
 **소스 코드 본문과 patch 본문은 어떤 열에도 담지 않는다** (NFR-005). 변경 경로는 파일 **이름**이고 `patch_id`는 diff의 해시이지 diff가 아니다. 이메일도 담지 않는다 — CR-038이 승인한 필드 목록에 없다.
 
 값은 전부 커밋 객체가 가진 것이라 **불변**이다. 같은 SHA면 언제 읽어도 같으므로 조건부 버전 비교가 필요 없고, 그래서 보강이 멱등하며 `document_version`을 올릴 이유도 없다 (DEV-209). 다만 **미러가 얻은 `patch_id`를 API 폴백 회차가 `no_mirror`로 덮지 않는다** — 능력이 없는 쪽이 있는 쪽을 지우면 체리픽 파생(WP-030)이 근거를 잃는다.
+
+#### `repository`의 최근 완료 조정 결과 — W-009-GAPS의 정본 (WP-034 / CR-050, DEV-352)
+
+```sql
+-- 마이그레이션 016
+ALTER TABLE repository ADD COLUMN last_reconciled_at TIMESTAMPTZ;
+ALTER TABLE repository ADD COLUMN last_reconcile_missing_count INTEGER;
+ALTER TABLE repository ADD CONSTRAINT repository_reconcile_missing_chk
+  CHECK (last_reconcile_missing_count IS NULL OR last_reconcile_missing_count >= 0);
+```
+
+**`reconcile_missing_total` 지표로는 이 물음에 답할 수 없다** (FR-ING-011 AC-6). 그것은 프로세스 수명 동안 **누적되는** Prometheus counter이고, W-009-GAPS가 묻는 것은 "가장 최근 **완료된** 회차에서 몇 건이 빠졌는가"다. 두 값은 단조 증가와 시점 스냅숏이라는 서로 다른 성질을 가지며, 게다가 지표 저장소(`METRICS_QUERY_URL`)가 설정되지 않은 배치에서는 `search-api`가 그 counter를 **읽을 방법 자체가 없다** — `API-ADM-006`의 `stage_latency_seconds`가 `"unavailable"`로 남는 것과 같은 이유다.
+
+**완주한 회차만 이 값을 덮는다.** 조정 스캔은 GitHub API 한도가 소진되면 창을 끝까지 읽지 못하고 다음 주기로 미룬다(FR-ING-011 예외 처리, `ReconcileResult.deferred`). 그 회차의 부분 집계를 최근 결과로 쓰면 **그 숫자는 언제나 실제보다 작고**, 사용자는 그것을 "거의 다 수집됐다"로 읽는다 — 이 화면의 목적이 정확히 그 오독을 막는 것이다. 스캔이 예외로 끝난 회차도 마찬가지로 덮지 않는다. 미룬 회차가 반복되는 것은 별개의 관측 대상이며 `reconcile_incomplete_cycles` 지표와 3주기 경보가 이미 담당한다.
+
+**두 값이 함께 `NULL`이면 "완료된 조정 스캔 기록이 없다"이고, `0`은 "확인했고 누락이 없다"이다.** 셋 중 어느 것도 서로를 대신하지 않으므로 화면은 세 경우를 다른 문구로 그린다.
+
+**Prometheus counter를 제거하지 않는다.** 지표는 운영 추세를, 이 열은 사용자 진단 시점의 상태를 나타내며 책임이 다르다.
+
+#### `repository_registration_request` — 등록 검토 요청 (WP-034 / CR-050, DEV-351)
+
+```sql
+-- 마이그레이션 016
+CREATE TABLE repository_registration_request (
+  request_id        BIGSERIAL   PRIMARY KEY,
+  requested_by      TEXT        NOT NULL REFERENCES app_user(user_id) ON DELETE CASCADE,
+  repository_owner  TEXT        NOT NULL,
+  repository_name   TEXT        NOT NULL,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (requested_by, repository_owner, repository_name)
+);
+CREATE INDEX repository_registration_request_slug_idx
+  ON repository_registration_request (repository_owner, repository_name, created_at DESC);
+```
+
+**행 하나가 뜻하는 것은 "이 사용자가 이 식별자의 등록 검토를 요청했다"뿐이다** (FR-ING-009 AC-8). 저장소가 실제로 존재한다는 뜻도, 요청자가 그것을 볼 수 있다는 뜻도 아니다 — 기록 시점에 GitHub Enterprise에 묻지 않기 때문이다. 그래서 `repository_id`도 `org_id`도 `visibility`도 이 표에 없다. 그 값들은 GHE에 물어야만 알 수 있고, 묻는 순간 이 경로가 비공개 저장소의 존재 신탁이 된다 (AC-10, THR-004).
+
+**UNIQUE가 멱등의 근거다** (AC-9). 같은 사용자의 같은 식별자 반복 요청은 새 행을 만들지 않고 기존 행을 돌려준다. 다른 사용자의 같은 저장소 요청은 각자의 행이며, 그래야 운영자가 "몇 사람이 요청했는가"를 셀 수 있다.
+
+**`ON DELETE CASCADE`는 보존 표의 정책이다** — 사용자를 지우면 그가 남긴 요청도 사라진다. `saved_search`가 이 정책을 스키마에 갖지 못해 표를 처음 채우는 순간 드러났던 자리(DEV-347)를 같은 방식으로 반복하지 않는다.
+
+**승인·반려 상태를 지금 만들지 않는다.** 운영자가 이 요청을 처리하는 경로는 A-002를 세우는 WP-040의 몫이고, 그 수명주기(승인·반려·처리자·사유·대상 저장소 확정)는 그 WP가 검증한다. 지금 열을 미리 만들면 검증되지 않은 수명주기를 스키마가 선점하며, 그것은 다시 "표는 있는데 뜻이 정해지지 않은 열"을 만든다 — CR-049가 `saved_search.team_id`에서 겪은 바로 그 상태다.
 
 #### `repository.snapshot_bootstrapped_at` — 정본 스냅숏 완결 표시 (CR-037, DEV-194·195)
 
@@ -1039,6 +1082,7 @@ if (!changed) { ctx.op = 'noop'; }
 | `audit_record` | 1년 (NFR-006) | 월별 파티션 드롭 (관리 롤만) | PostgreSQL 백업에 포함 |
 | 엔티티 ES 인덱스 | 영구 | 저장소 폐기 시 문서 삭제 | 백업 안 함. PostgreSQL에서 재구성 |
 | `saved_search`, `safe_marker`, `bisect_session` | 영구 (사용자 삭제 시 제거) | 하드 삭제 | PostgreSQL 백업에 포함 |
+| `repository_registration_request` | 영구 (사용자 삭제 시 제거) | 하드 삭제 | PostgreSQL 백업에 포함 |
 | `gh_execution` | 1년 (NFR-012, 감사와 동일) | 월별 파티션 드롭 (관리 롤만) | PostgreSQL 백업에 포함 |
 | `gh_execution_artifact` | 실행 기록보다 짧게 — 기본 30일 | `expires_at` 경과분 정리 잡 | 백업 안 함. 재실행으로 재생성 |
 | `github_identity_connection` | 연결 해제 또는 만료까지 | 하드 삭제 | 참조만 백업. 토큰은 비밀 저장소 소관 |

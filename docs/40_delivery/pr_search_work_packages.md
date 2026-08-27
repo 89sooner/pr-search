@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v1.6 | 갱신일: 2026-08-27
+> 상태: review | 버전: v1.7 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -1375,27 +1375,54 @@
 ### WP-034 W-009 저장소 개요 화면
 
 - 목표: "왜 이 저장소 결과가 없는가"를 사용자가 스스로 확인한다.
-- 관련 요구사항: FR-ING-006, FR-ING-009, FR-ING-011, FR-SEQ-001, FR-SEQ-005
+- 관련 요구사항: FR-ING-006, FR-ING-009(AC-6~AC-10), FR-ING-011(AC-6), FR-SEQ-001, FR-SEQ-005, **FR-AUTH-002**, FR-ADMIN-001(AC-1 — API-ADM-006의 만기 이월 정정만)
 - 관련 화면/플로우: W-009
-- 관련 API/데이터/잡: API-ADM-001 (읽기), API-ADM-006
+- 관련 API/데이터/잡: **API-ING-002**(신설), **API-ING-003**(신설), API-ADM-006(정정), **ENT-CORE-008**(신설), ENT-CORE-001(열 둘 추가), JOB-ING-005(기록 추가)
 - 선행 WP: WP-010, WP-028
+- **계약 근거: CR-050 (SRS v2.10).** 착수 전 감사가 일곱을 찾았고 `API-ADM-001`·`API-ADM-006`이 둘 다 `operator` 전용이라는 것이 그 중심이었다 (DEV-350)
 - 구현 범위:
-  - `C-038 RepositoryCardGrid`, `C-039 SequenceSpaceStatusList`
-  - 저장소별 등록 상태·마지막 수집 시각·문서 수·백필 진행률
-  - 시퀀스 공간별 마지막 시퀀스·에폭·상태
-  - 최근 조정 스캔 누락 건수
-  - 미등록 저장소 등록 요청 기록
-  - 접근 범위 내 저장소만 표시
-  - W-001·W-002·W-005의 `not_indexed` 안내에서 이 화면으로 연결
+  - **마이그레이션 016** — `repository_registration_request` 표 신설, `repository`에 `last_reconciled_at`·`last_reconcile_missing_count` 추가와 음수 금지 `CHECK`. **다른 표를 만들지 않는다**
+  - **`API-ING-002 GET /repositories`** — 접근 범위 안 저장소의 진단 조회. `/admin` 아래에 두지 않으며 `API-ADM-001`·`API-ADM-006`의 권한을 **한 글자도 완화하지 않는다**
+    - `registration_state`(`active`·`archived` 둘 다 싣는다), `last_ingested_at`(durable `raw_event`의 최근 `received_at`), `document_counts`(PR·커밋 투영 문서만), `backfill`(기존 `job` 모델 그대로), `sequence_spaces`(등록된 브랜치 전부, 행 없으면 `unknown`), `reconciliation`(최근 **완료** 회차), `unavailable`
+    - **N+1 금지** — 페이지의 저장소 전체를 축마다 한 번에 읽는다. ES 문서 수는 인덱스당 집계 한 번이다
+  - **PostgreSQL 키셋 커서** — 정렬 `owner ASC, name ASC, repository_id ASC`. 봉인은 `apps/search-api/src/cursor/envelope.ts`를 재사용하고 **순회 의미는 자기 모듈에 둔다**. 지문에 접근 범위 **해시**를 담고 원본 사용자 식별자를 싣지 않는다. PIT·`search_after`·오프셋 금지
+  - **`API-ING-003 POST /repository-registration-requests`** — `owner/name`만 받는다. GHE에 묻지 않고, 같은 사용자의 같은 식별자는 자연 멱등이다
+  - **W-009 화면** (`/repositories`) — `C-038`·`C-039`·`C-004`·`C-016`·`C-005`. 판정은 `apps/web/lib/`의 뷰 모델에 두고 컴포넌트에서 다시 하지 않는다
+  - **`null`·`0`·`unavailable` 세 값을 다른 문구로** 그린다
+  - W-001의 결과 없음 안내, W-002·W-003의 `not_indexed`, **W-005의 `release_not_indexed`**(DEV-159 만기)에서 `/repositories?repository=owner/name`으로 연결
+  - **조정 스캔 완료 결과 보존** — `apps/pipeline-worker/src/reconcile.ts`가 **완주한 회차만** 기록한다. `deferred`와 예외는 기존 값을 덮지 않는다. `reconcile_missing_total` 지표는 그대로 둔다
+  - **WP-068 접근 범위 이월 정정** (DEV-353) — `resolveRepository`·`listSequenceSpaces`가 `allowedTeamIds`를 넘기게 하고 stale 주석을 지운다. `explicit`/`org_team` parity 회귀를 세운다
+  - **`API-ADM-006`에 `sequence_space_state` 추가** (DEV-354) — 기존 `sequenceSpaceRepo.countByState()`를 재사용한 **전역 건수**. `operator` 전용은 그대로이고 저장소를 식별하지 않는다
 - 제외:
-  - 등록 실행 UI (WP-040의 A-002)
+  - 등록 실행 UI와 등록 요청 **처리** 경로 (WP-040의 A-002). 요청의 승인·반려 상태 열을 미리 만들지 않는다
+  - 백필·재채번·재색인 실행 액션 (A-003)
+  - 파이프라인 전역 지표 표시 (A-001)
+  - **DEV-349**(저장된 `seq:`의 에폭) — 계약의 재료가 없어 별도 CR이다. 이 WP에서 열 하나로 임의 해법을 만들지 않는다
+  - FR-GH-004의 Operations Plane 진입점 (REL-007 이후)
+  - FR-SEQ-006 안전 구간 표식 UI (이 화면에 없다 — 추적 정정으로 처리)
 - 완료 기준(DoD):
-  - [ ] QA-W009-01 ~ QA-W009-05가 통과한다
+  - [ ] QA-W009-01 ~ QA-W009-13이 통과한다
   - [ ] "결과 없음 / 권한 없음 / 미수집" 세 상태가 시각적으로 구분된다 (QA-COMMON-03)
   - [ ] 상태 매트릭스 W-009의 전 상태가 렌더링된다
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test web/repositories`, `pnpm test:a11y repositories`
-- 기록: 원장 WP-034 상태
+  - [ ] **`explicit`와 `org_team`이 같은 논리 권한 집합에서 같은 결과를 낸다** — 팀 소속으로만 허용되는 비공개 저장소가 두 표현 모두에서 보인다 (DEV-353)
+  - [ ] **`allowedTeamIds` 전달을 지우면 시험이 실패한다** — `API-ING-002`·`resolveRepository`·`listSequenceSpaces` 세 경로 전부
+  - [ ] **ES 문서 수 집계가 필수 접근 범위 필터를 지난다** — PostgreSQL이 이미 걸렀다는 이유로 생략하지 않는다. 범위 밖 저장소는 목록·bucket·건수 어디에도 없다
+  - [ ] **커서로 끝까지 순회해 중복·누락이 0이고**, 접근 범위가 바뀐 뒤의 옛 커서는 `CURSOR_QUERY_MISMATCH`, 훼손·만료는 `CURSOR_INVALID`다
+  - [ ] **커서 봉투에 원본 사용자 식별자가 없다**
+  - [ ] **오프셋 파라미터를 지원하지 않는다**
+  - [ ] **`archived` 저장소가 접근 범위 안이면 목록에 남는다**
+  - [ ] **등록 요청이 GHE를 조회하지 않는다** — 응답 모양이 대상의 실재 여부를 구분하지 않는다
+  - [ ] **같은 사용자의 같은 식별자 반복 요청이 행 하나로 유지되고 실패가 아니다**
+  - [ ] **계약 밖 필드(`repository_id`·`org_id`·`visibility` 등)를 보내도 신뢰하지 않는다**
+  - [ ] **사용자를 지우면 그의 등록 요청도 사라진다**
+  - [ ] **미룬 조정 회차가 최근 완료 결과를 덮지 않는다** — 완료 3 → 미룸 9 뒤에도 저장된 값은 3이고, 다음 완료 0에서 0이 된다. 예외로 끝난 회차도 덮지 않는다
+  - [ ] **`reconcile_missing_total` 지표가 그대로 증가한다** — PG 기록이 지표를 대체하지 않는다
+  - [ ] **`API-ADM-006`이 `sequence_space_state`를 반환하고 여전히 `operator` 전용이다.** 이 수치 때문에 저장소 식별자가 새로 나가지 않는다
+  - [ ] **새 라우트가 운영 조립에서 실제로 응답한다** — `runtime.ts`에서 의존을 빼거나 `server.ts`에서 등록을 빼면 회귀가 실패한다. 문자열 존재가 아니라 호출 형태로 단언한다 (DEV-177이 배운 것)
+  - [ ] `null`·`0`·`unavailable` 셋이 화면에서 구분된다
+- 검증 방법: `pnpm run test:integration repositories`(0건이 아닌지 확인), `pnpm run test:integration reconcile`, `pnpm run test:regression`, `pnpm run test:a11y repositories`, `pnpm --filter @prs/web run build && pnpm run test:e2e`
+- 기록: 원장 WP-034 상태, FR-ING-009·FR-ING-011 매핑, DEV-159 해소
 
 ### WP-035 무중단 재색인
 

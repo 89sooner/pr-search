@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.5 | 갱신일: 2026-08-27
+> 상태: review | 버전: v0.6 | 갱신일: 2026-08-28
 
 ## 1. 문서 원칙
 
@@ -166,9 +166,9 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - **커서를 해석하지 않는다.** 서버가 준 문자열을 그대로 되돌려 보낸다 — 봉투는 서명돼 있고 화면이 그 안을 읽을 이유가 없다 (ADR-010 Amendment, CR-043)
 - **이어 보기는 패싯을 다시 요청하지 않는다** (`facets=false`). 첫 페이지의 분포를 그대로 쓴다. `q`·필터·정렬이 바뀌면 커서와 패싯 상태를 **함께** 버리고 첫 페이지부터 다시 연다 (CR-043, DEV-280)
 - **두 커서 오류를 같은 안내로 그리지 않는다** (CR-043, DEV-273): `CURSOR_QUERY_MISMATCH`는 "조건이 바뀌어 처음부터 다시 봅니다", `CURSOR_INVALID`는 "이 위치를 더 쓸 수 없어 처음부터 다시 봅니다"이다. 둘 다 현재 조건의 첫 페이지로 돌아가되 **자동 재시도 루프를 만들지 않는다**
-- **W-004·W-008에서도 같은 컴포넌트를 쓴다.** 커서 문자열의 재료는 화면마다 다르지만(W-001은 검색 결과, W-004는 정본 서수, W-008은 PostgreSQL 키셋) 이 컴포넌트에게는 전부 불투명 문자열이다. **패싯에 관한 위 규칙은 패싯이 있는 화면에만 해당한다** — W-008에는 패싯이 없다 (CR-049)
+- **W-004·W-008·W-009에서도 같은 컴포넌트를 쓴다.** 커서 문자열의 재료는 화면마다 다르지만(W-001은 검색 결과, W-004는 정본 서수, W-008과 W-009는 PostgreSQL 키셋) 이 컴포넌트에게는 전부 불투명 문자열이다. **패싯에 관한 위 규칙은 패싯이 있는 화면에만 해당한다** — W-008에는 패싯이 없다 (CR-049)
 - **한 화면에 목록이 둘이면 페이저도 둘이다** (CR-049). W-008의 "내 검색"과 "팀 공유 검색"은 각자의 커서와 로딩 상태를 갖는다 — 한쪽의 더 보기가 다른 쪽을 건드리지 않는다
-- 관련 FR: FR-SRCH-008, FR-SEQ-002, FR-SRCH-010
+- 관련 FR: FR-SRCH-008, FR-SEQ-002, FR-SRCH-010, FR-ING-009
 
 ### C-017 ResolutionCandidateList
 
@@ -375,15 +375,31 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 저장소별 수집 상태 카드 표시
 - 기반: Conductor `CardGrid` + `Card` + `StatusBadge` + `Meter`
-- 필수 props: `repositories: RepositoryStatus[]`, `onOpenOps?`
+- 필수 props: `repositories: RepositoryStatus[]`, `onRetry`, `onOpenOps?`
 - 상태: `ready`, `empty_no_repository`, `operation_pending`(백필 중), `partial_failure`
-- 관련 FR: FR-ING-006, FR-ING-009
+- **세 값을 같은 문구로 그리지 않는다** (CR-050): `null`은 "아직 기록 없음", `0`은 확인된 영,
+  `unavailable`은 "조회 실패 — 모름"이다. 마지막 수집 시각·문서 수·백필·누락 현황 넷 모두에 적용된다.
+  `unavailable`을 0으로 그리면 사용자는 "수집이 안 됐다"는 **틀린 진단**을 받는다
+- **`archived` 저장소를 숨기지 않는다** (FR-ING-009 AC-7). 등록 상태 배지로 구분해 보여 준다 —
+  해제됐다는 사실 자체가 사용자가 찾던 답이다
+- **판정을 컴포넌트 안에서 하지 않는다.** 접근 범위·등록 상태·진단 값의 해석은 뷰 모델이 이미 끝낸
+  것을 받아 그린다. 여기서 다시 판정하면 같은 규칙이 두 곳에 살고 한쪽만 고쳐진다
+- **실행 액션을 두지 않는다.** 등록·해제·백필·재채번 버튼은 이 카드에 없다 (A-002·A-003 소관)
+- **항목 단위 재시도**: 진단 항목 하나가 실패하면 그 카드만 다시 조회한다 (`onRetry`).
+  자동 폴링하지 않는다
+- 관련 FR: FR-ING-006, FR-ING-009, FR-ING-011, FR-AUTH-002
 
 ### C-039 SequenceSpaceStatusList
 
 - 책임: 시퀀스 공간별 마지막 시퀀스 값, 에폭, 상태 표시
 - 기반: Conductor `Table` + `StatusBadge`
 - 필수 props: `spaces: SequenceSpaceStatus[]`
+- **네 상태 전부에 텍스트 레이블을 둔다** — `ok`·`stale`·`reassigning`·`unknown`을 색으로만
+  구분하지 않는다 (QA-COMMON 접근성 규칙)
+- **`unknown`은 "등록된 브랜치인데 아직 채번된 적 없음"이다** (CR-029, DEV-152와 같은 판단).
+  목록에서 빼면 사용자가 "등록이 안 됐다"로 오인하고, `0`으로 그리면 "0번까지 채번됐다"는 거짓이 된다
+- **`stale`·`reassigning`에서도 마지막 확정 서수와 에폭을 함께 표시한다.** 경고와 함께 값을 보여
+  주지 않으면 사용자에게 남는 정보가 없다
 - 관련 FR: FR-SEQ-001, FR-SEQ-005
 
 ### C-040 PipelineMetricGrid
