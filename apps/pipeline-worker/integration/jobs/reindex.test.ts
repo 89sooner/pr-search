@@ -17,6 +17,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   jobRepo,
+  prSnapshotRepo,
   releaseRepo,
   reindexRepo,
   repositoryRepo,
@@ -24,6 +25,7 @@ import {
   type Pool,
   type RepositoryRow,
 } from '@prs/db';
+import { pullRequestDocId } from '@prs/domain';
 import {
   applyMappings,
   concreteIndexName,
@@ -40,6 +42,7 @@ import type { Client } from '@elastic/elasticsearch';
 
 import {
   REINDEX_TYPE,
+  reconcileSwitchedJobs,
   runReindexJob,
   runRetentionSweep,
   verifyBeforeCutover,
@@ -48,6 +51,8 @@ import {
 import { migratedPool } from '../helpers.js';
 
 const ALIAS = 'prs-releases';
+/** PR 축 시험이 쓰는 별칭. 레지스트리 소유 필드의 정본성을 여기서 건다. */
+const PR_ALIAS = 'prs-pull-requests';
 const REPOSITORY_ID = 9351;
 const OWNER = 'acme';
 const NAME = 'reindex-wp035';
@@ -57,6 +62,7 @@ let es: Client;
 let repository: RepositoryRow;
 /** 이 파일이 시작할 때 별칭이 가리키던 인덱스. `afterAll`이 여기로 되돌린다. */
 let originalIndex: string;
+let originalPrIndex: string;
 /** 이 파일이 만든 인덱스. 전부 지운다. */
 const created = new Set<string>();
 
@@ -153,6 +159,7 @@ beforeAll(async () => {
   es = createEsClient();
   await applyMappings(es);
   originalIndex = await resolveServingIndex(es, ALIAS);
+  originalPrIndex = await resolveServingIndex(es, PR_ALIAS);
 
   await repositoryRepo.upsertRepository(pool, {
     repository_id: REPOSITORY_ID,
@@ -181,17 +188,21 @@ beforeEach(async () => {
    *
    * 별칭이 이 파일 안에서 옮겨 다니므로 **버전 인덱스 전부**를 훑는다.
    */
-  for (const version of await listIndexVersions(es, ALIAS)) {
-    const index = concreteIndexName(ALIAS, version);
-    if (!(await es.indices.exists({ index }))) continue;
-    // `delete_by_query`는 **검색으로** 대상을 찾는다 — 먼저 refresh 한다 (risks 17).
-    await es.indices.refresh({ index });
-    await es.deleteByQuery({
-      index,
-      refresh: true,
-      conflicts: 'proceed',
-      query: { term: { repository_id: REPOSITORY_ID } },
-    });
+  await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
+
+  for (const alias of [ALIAS, PR_ALIAS]) {
+    for (const version of await listIndexVersions(es, alias)) {
+      const index = concreteIndexName(alias, version);
+      if (!(await es.indices.exists({ index }))) continue;
+      // `delete_by_query`는 **검색으로** 대상을 찾는다 — 먼저 refresh 한다 (risks 17).
+      await es.indices.refresh({ index });
+      await es.deleteByQuery({
+        index,
+        refresh: true,
+        conflicts: 'proceed',
+        query: { term: { repository_id: REPOSITORY_ID } },
+      });
+    }
   }
 });
 
@@ -202,11 +213,18 @@ afterAll(async () => {
     if (serving !== originalIndex && (await es.indices.exists({ index: originalIndex }))) {
       await switchAlias(es, ALIAS, serving, originalIndex);
     }
+    const servingPr = await resolveServingIndex(es, PR_ALIAS);
+    if (servingPr !== originalPrIndex && (await es.indices.exists({ index: originalPrIndex }))) {
+      await switchAlias(es, PR_ALIAS, servingPr, originalPrIndex);
+    }
     const current = await resolveServingIndex(es, ALIAS);
+    const currentPr = await resolveServingIndex(es, PR_ALIAS);
     for (const index of created) {
       if (index === originalIndex || index === current) continue;
+      if (index === originalPrIndex || index === currentPr) continue;
       await es.indices.delete({ index, ignore_unavailable: true });
     }
+    await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM release WHERE repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM job WHERE type = $1', [REINDEX_TYPE]);
   } finally {
@@ -503,6 +521,245 @@ describe('T10 전환 뒤 늦은 취소 — 성공한 전환을 되돌리지 않�
     expect(overwrote, '늦은 종료가 취소를 덮었다').toBe(false);
     expect((await jobRow(jobId)).state).toBe('cancelled');
     expect(await resolveServingIndex(es, ALIAS), '늦은 취소가 전환을 되돌렸다').toBe(targetIndex);
+  });
+});
+
+describe('R1 레지스트리 소유 필드는 현재 값으로 덮는다 (PR #52 리뷰 P1)', () => {
+  /** PR 별칭에 대해 잡을 만든다. 대상 버전은 아직 쓰이지 않은 다음 번호다. */
+  async function enqueuePr(): Promise<{ jobId: number; targetIndex: string }> {
+    const outcome = await reindexRepo.enqueueReindex(
+      pool,
+      {
+        resolveServingIndex: (alias) => resolveServingIndex(es, alias),
+        async nextTargetIndex(alias) {
+          const versions = await listIndexVersions(es, alias);
+          const highest = versions.length === 0 ? 0 : (versions[versions.length - 1] as number);
+          return concreteIndexName(alias, highest + 1);
+        },
+        isAlias: (value) => value === PR_ALIAS,
+      },
+      PR_ALIAS,
+      'test',
+    );
+    if (outcome.kind !== 'queued') throw new Error(`큐에 넣지 못했다: ${outcome.kind}`);
+    created.add(outcome.targetIndex);
+    return { jobId: outcome.jobId, targetIndex: outcome.targetIndex };
+  }
+
+  it('**회수된 팀이 전환으로 되살아나지 않는다**', async () => {
+    /*
+     * 스냅숏은 투영 시점의 사본이다. 그 뒤 팀이 회수되면 `applyRepositoryTeams`가
+     * **색인에만** 소급 반영하고 스냅숏은 옛 값을 그대로 들고 있다. 재구축이
+     * 스냅숏을 그대로 쓰면 전환이 그 회수를 되돌린다 — 접근 통제 유출이다.
+     */
+    await pool.query('UPDATE repository SET allowed_team_ids = $2 WHERE repository_id = $1', [
+      REPOSITORY_ID,
+      [11, 22],
+    ]);
+    const stale = await repositoryRepo.findRepositoryById(pool, REPOSITORY_ID);
+    if (stale === undefined) throw new Error('저장소를 찾지 못했다');
+
+    // 옛 권한으로 투영된 스냅숏을 남긴다.
+    await prSnapshotRepo.upsertPullRequestSnapshot(pool, {
+      repositoryId: REPOSITORY_ID,
+      prNumber: 501,
+      documentVersion: 1_000,
+      source: 'webhook',
+      document: {
+        document_version: 1_000,
+        doc_id: pullRequestDocId(REPOSITORY_ID, 501),
+        pr_number: 501,
+        title: '결제 게이트웨이',
+        repository_id: REPOSITORY_ID,
+        repository: `${OWNER}/${NAME}`,
+        org_id: 71,
+        visibility: 'internal',
+        allowed_team_ids: [11, 22],
+        repository_archived: false,
+        state: 'merged',
+        indexed_at: '2026-08-01T00:00:00Z',
+        source_commit_shas: ['a'.repeat(40)],
+        merge_commit_sha: 'b'.repeat(40),
+        base_branch: 'main',
+      },
+    });
+
+    // 그 뒤 팀 22가 회수되고 저장소가 해제됐다 — 정본만 바뀐 상태다.
+    await pool.query(
+      "UPDATE repository SET allowed_team_ids = $2, status = 'archived' WHERE repository_id = $1",
+      [REPOSITORY_ID, [11]],
+    );
+
+    const { jobId, targetIndex } = await enqueuePr();
+    await claim(jobId);
+    await runClaimed(jobId);
+    expect(await resolveServingIndex(es, PR_ALIAS)).toBe(targetIndex);
+
+    await es.indices.refresh({ index: targetIndex });
+    const found = await es.search<Record<string, unknown>>({
+      index: targetIndex,
+      query: { term: { repository_id: REPOSITORY_ID } },
+    });
+    const doc = found.hits.hits.find(
+      (one) => (one._source as Record<string, unknown>)['pr_number'] === 501,
+    )?._source as Record<string, unknown> | undefined;
+
+    expect(doc, 'PR 문서를 재구축하지 못했다').toBeDefined();
+    expect(doc?.['allowed_team_ids'], '회수된 팀이 전환으로 되살아났다').toEqual([11]);
+    expect(doc?.['repository_archived'], '해제 상태가 되돌아갔다').toBe(true);
+    // 스냅숏이 소유한 값은 그대로다.
+    expect(doc?.['title']).toBe('결제 게이트웨이');
+
+    // 정리 — 다음 케이스가 이 저장소 상태를 물려받지 않게 한다.
+    await pool.query(
+      "UPDATE repository SET allowed_team_ids = $2, status = 'active' WHERE repository_id = $1",
+      [REPOSITORY_ID, []],
+    );
+  });
+
+  it('**PR 유래 커밋 문서도 정본에서 다시 만든다**', async () => {
+    /*
+     * `commit_snapshot`은 first-parent 체인만 덮는다. 그것만 읽으면 PR의 원본
+     * 커밋 문서가 통째로 빠진 인덱스로 전환하게 되고, FR-SRCH-002(SHA → PR)가
+     * 그 커밋들에 대해 "그런 커밋은 없다"로 답한다.
+     */
+    const source = 'c'.repeat(40);
+    await prSnapshotRepo.upsertPullRequestSnapshot(pool, {
+      repositoryId: REPOSITORY_ID,
+      prNumber: 502,
+      documentVersion: 2_000,
+      source: 'webhook',
+      document: {
+        document_version: 2_000,
+        doc_id: pullRequestDocId(REPOSITORY_ID, 502),
+        pr_number: 502,
+        repository_id: REPOSITORY_ID,
+        repository: `${OWNER}/${NAME}`,
+        org_id: 71,
+        visibility: 'internal',
+        allowed_team_ids: [],
+        repository_archived: false,
+        state: 'merged',
+        indexed_at: '2026-08-01T00:00:00Z',
+        source_commit_shas: [source],
+        base_branch: 'main',
+      },
+    });
+
+    const outcome = await reindexRepo.enqueueReindex(
+      pool,
+      {
+        resolveServingIndex: (alias) => resolveServingIndex(es, alias),
+        async nextTargetIndex(alias) {
+          const versions = await listIndexVersions(es, alias);
+          const highest = versions.length === 0 ? 0 : (versions[versions.length - 1] as number);
+          return concreteIndexName(alias, highest + 1);
+        },
+        isAlias: (value) => value === 'prs-commits',
+      },
+      'prs-commits',
+      'test',
+    );
+    if (outcome.kind !== 'queued') throw new Error(`큐에 넣지 못했다: ${outcome.kind}`);
+    created.add(outcome.targetIndex);
+    const commitsOriginal = await resolveServingIndex(es, 'prs-commits');
+
+    await claim(outcome.jobId);
+    await runClaimed(outcome.jobId);
+
+    const target = outcome.targetIndex;
+    await es.indices.refresh({ index: target });
+    const found = await es.search<Record<string, unknown>>({
+      index: target,
+      query: { bool: { filter: [{ term: { repository_id: REPOSITORY_ID } }, { term: { commit_sha: source } }] } },
+    });
+    const doc = found.hits.hits[0]?._source as Record<string, unknown> | undefined;
+
+    expect(doc, 'PR 원본 커밋 문서가 재구축에서 빠졌다').toBeDefined();
+    expect(doc?.['role']).toBe('source_commit');
+    expect(doc?.['pull_request_numbers']).toEqual([502]);
+
+    // `prs-commits` 별칭을 원래 자리로 되돌린다 — 다른 시험 파일이 쓰는 별칭이다.
+    const servingNow = await resolveServingIndex(es, 'prs-commits');
+    if (servingNow !== commitsOriginal && (await es.indices.exists({ index: commitsOriginal }))) {
+      await switchAlias(es, 'prs-commits', servingNow, commitsOriginal);
+    }
+  });
+});
+
+describe('R2 큐에 보이는 순간 잡은 완전하다 (PR #52 리뷰 P2)', () => {
+  it('`enqueueReindex`가 만든 행은 즉시 진행 상태를 갖는다', async () => {
+    const { jobId, targetIndex, sourceIndex } = await enqueue();
+    const row = await jobRepo.findJobById(pool, jobId);
+
+    expect(row?.state).toBe('queued');
+    expect(row?.progress['phase'], '초기화 전 행이 큐에 보인다 — 러너가 집으면 영구 실패다').toBe('prepare');
+    expect(row?.progress['target_index']).toBe(targetIndex);
+    expect(row?.progress['source_index']).toBe(sourceIndex);
+  });
+});
+
+describe('R3 보관 — 롤백 중인 인덱스는 다음 주기에 다시 본다 (PR #52 리뷰 P2)', () => {
+  it('별칭을 되돌려 둔 동안은 지우지도 않고 처리했다고 적지도 않는다', async () => {
+    await seedRelease('v11.0', 1);
+    const { jobId, sourceIndex, targetIndex } = await enqueue();
+    await claim(jobId);
+    await runClaimed(jobId);
+
+    const switchedAt = new Date((await jobRow(jobId)).progress['switched_at'] as string);
+    const late = new Date(switchedAt.getTime() + 9 * 24 * 60 * 60 * 1000);
+
+    // 운영자가 별칭을 옛 인덱스로 되돌렸다 (롤백).
+    await switchAlias(es, ALIAS, targetIndex, sourceIndex);
+
+    expect(await runRetentionSweep(deps({ now: () => late }))).toBe(0);
+    expect(await es.indices.exists({ index: sourceIndex }), '서비스 중인 인덱스를 지웠다').toBe(true);
+    expect(
+      (await jobRow(jobId)).progress['retired_at'],
+      '롤백 중인 인덱스를 "처리했다"고 적었다 — 다음 기회가 사라진다',
+    ).toBeUndefined();
+
+    // 다시 앞으로 옮기면 그때 회수된다.
+    await switchAlias(es, ALIAS, sourceIndex, targetIndex);
+    expect(await runRetentionSweep(deps({ now: () => late }))).toBe(1);
+    expect(await es.indices.exists({ index: sourceIndex })).toBe(false);
+  });
+});
+
+describe('R4 전환은 됐는데 기록되지 않은 잡을 스스로 고친다 (PR #52 리뷰 P2)', () => {
+  it('별칭이 실제로 그 인덱스를 가리키면 `switched_at`을 되채운다', async () => {
+    await seedRelease('v12.0', 1);
+    const { jobId, targetIndex } = await enqueue();
+    await claim(jobId);
+    await runClaimed(jobId);
+    expect(await resolveServingIndex(es, ALIAS)).toBe(targetIndex);
+
+    // Elasticsearch 전환은 성공했으나 뒤이은 PostgreSQL 기록이 실패한 상태를 만든다.
+    await pool.query(
+      `UPDATE job SET progress = progress - 'switched_at', state = 'failed' WHERE job_id = $1`,
+      [jobId],
+    );
+    expect((await jobRow(jobId)).progress['switched_at']).toBeUndefined();
+
+    expect(await reconcileSwitchedJobs(deps())).toBe(1);
+    expect(
+      (await jobRow(jobId)).progress['switched_at'],
+      '전환된 잡이 보관 대상에 영영 오르지 못한다',
+    ).toEqual(expect.any(String));
+  });
+
+  it('**별칭이 그 인덱스를 가리키지 않으면 채우지 않는다**', async () => {
+    // 전환하지 못한 잡을 전환했다고 적으면 옛 인덱스가 서비스 중에 지워진다.
+    const jobId = await jobRepo.enqueueJob(pool, REINDEX_TYPE, ALIAS, 'test', {
+      phase: 'verify',
+      alias: ALIAS,
+      source_index: await resolveServingIndex(es, ALIAS),
+      target_index: concreteIndexName(ALIAS, 9_999),
+    });
+    await pool.query("UPDATE job SET state = 'failed' WHERE job_id = $1", [jobId]);
+
+    expect(await reconcileSwitchedJobs(deps())).toBe(0);
+    expect((await jobRow(jobId)).progress['switched_at']).toBeUndefined();
   });
 });
 

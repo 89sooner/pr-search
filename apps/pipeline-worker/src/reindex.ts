@@ -49,6 +49,8 @@ import {
   createVersionedIndex,
   deleteRetiredIndex,
   isEntityAlias,
+  releaseDocId,
+  resolveServingIndex,
   schemaOf,
   switchAlias,
   upsertCommitMetadata,
@@ -61,6 +63,7 @@ import { commitDocId, pullRequestDocId } from '@prs/domain';
 import type { Client } from '@elastic/elasticsearch';
 
 import { commitCreateFields, commitMetadataFields, type CommitFactSource } from './commit-enrich.js';
+import { buildProjectedCommitDocument, registryOwnedFields } from './documents.js';
 import { toDocInput } from './release.js';
 
 /** 잡 카탈로그 이름. */
@@ -77,6 +80,8 @@ export const RETENTION_DAYS = 7;
 export const RETENTION_MS = RETENTION_DAYS * 24 * 60 * 60 * 1000;
 /** 보관 정리 스윕 주기. */
 export const RETENTION_SWEEP_MS = 60 * 60 * 1000;
+/** 전환 성공 뒤 그 사실을 정본에 남기려 다시 시도하는 횟수 (PR #52 리뷰 P2). */
+export const SWITCH_RECORD_ATTEMPTS = 3;
 /** 한 번의 정리 스윕이 지우는 인덱스 수 상한. */
 export const RETENTION_SWEEP_BATCH = 10;
 
@@ -148,6 +153,14 @@ function logOf(deps: ReindexDeps): (fields: ReindexLogFields) => void {
 interface RebuildTally {
   scanned: number;
   written: number;
+  /**
+   * 이 재구축이 쓴 **서로 다른 문서 id**.
+   *
+   * 커버리지 판정의 재료다 (PR #52 리뷰 P1). 처리한 *source* 수를 쓰면 안 된다 —
+   * 간선은 source 하나가 0개에서 여러 개의 문서를 내므로 관계가 없는 저장소에서
+   * `0 < N`이 되어 **정상적인 재색인이 영원히 전환하지 못한다.**
+   */
+  readonly documentIds: Set<string>;
 }
 
 /** 등록된 저장소 전부. 해제된 것도 포함한다 — 문서는 소프트 삭제이므로 남아 있다. */
@@ -181,11 +194,19 @@ async function rebuildPullRequests(
     const rows = await prSnapshotRepo.listSnapshotsAfter(deps.pool, repositoryId, after, REINDEX_BATCH);
     if (rows.length === 0) break;
 
+    /*
+     * **레지스트리 소유 필드는 현재 값으로 덮는다** (PR #52 리뷰 P1).
+     *
+     * 스냅숏은 투영 시점의 사본이고, `repository_archived`·`allowed_team_ids`는
+     * 그 뒤 `update_by_query`로 색인에만 소급 반영된다 — 스냅숏에는 되쓰이지
+     * 않는다. 스냅숏을 그대로 쓰면 전환이 **회수된 팀의 접근을 되살린다.**
+     */
+    const scope = registryOwnedFields(repository);
     const requests: UpsertRequest[] = rows.map((row) => ({
       alias: 'prs-pull-requests' as const,
       id: pullRequestDocId(repositoryId, row.pr_number),
       routing: String(repositoryId),
-      doc: row.document as UpsertRequest['doc'],
+      doc: { ...row.document, ...scope } as UpsertRequest['doc'],
     }));
 
     await withReindexWrite(deps.pool, async (targets) => {
@@ -198,6 +219,7 @@ async function rebuildPullRequests(
 
     tally.scanned += rows.length;
     tally.written += rows.length;
+    for (const request of requests) tally.documentIds.add(request.id);
     after = rows[rows.length - 1]?.pr_number ?? after;
     if (rows.length < REINDEX_BATCH) break;
   }
@@ -288,9 +310,90 @@ async function rebuildCommits(
 
       tally.scanned += 1;
       tally.written += 1;
+      tally.documentIds.add(commitDocId(repositoryId, sha));
       after = sha;
     }
 
+    if (rows.length < REINDEX_BATCH) break;
+  }
+
+  await rebuildProjectedCommits(deps, repository, tally, indexedAt);
+}
+
+/**
+ * PR 유래 커밋 문서를 정본에서 다시 만든다 (PR #52 리뷰 P1).
+ *
+ * `commit_snapshot`은 **first-parent 체인만** 덮는다 — 보강 대상이
+ * `merge_sequence`에서 나오기 때문이다(`listCommitsMissingSnapshot`). 그래서
+ * 스냅숏만 읽으면 **PR의 원본 커밋 문서가 통째로 빠진 인덱스**로 전환하게 되고,
+ * 그것은 FR-SRCH-002(SHA → PR)가 그 커밋들에 대해 "그런 커밋은 없다"로 답한다는 뜻이다.
+ *
+ * 재료는 전부 `pull_request_snapshot.document`에 있다. 문서는 투영과 **같은
+ * 함수**가 만든다 — 두 번째 생성 경로를 만들지 않는다.
+ */
+async function rebuildProjectedCommits(
+  deps: ReindexDeps,
+  repository: RepositoryRow,
+  tally: RebuildTally,
+  indexedAt: string,
+): Promise<void> {
+  const repositoryId = Number(repository.repository_id);
+  let after = 0;
+
+  for (;;) {
+    const rows = await prSnapshotRepo.listSnapshotsAfter(deps.pool, repositoryId, after, REINDEX_BATCH);
+    if (rows.length === 0) break;
+
+    const requests: UpsertRequest[] = [];
+    for (const row of rows) {
+      const document = row.document;
+      const prNumber = row.pr_number;
+      const baseBranch = typeof document['base_branch'] === 'string' ? document['base_branch'] : undefined;
+      const enrichmentPending = document['enrichment_pending'] === true;
+      const documentVersion = Number(row.document_version);
+
+      // 머지 커밋이 원본 목록에도 있으면 머지 커밋이 이긴다 — 투영과 같은 규칙이다.
+      const roles = new Map<string, 'source_commit' | 'merge_commit'>();
+      const sources = document['source_commit_shas'];
+      if (Array.isArray(sources)) {
+        for (const raw of sources) {
+          if (typeof raw !== 'string' || raw === '') continue;
+          roles.set(raw.toLowerCase(), 'source_commit');
+        }
+      }
+      const mergeSha = document['merge_commit_sha'];
+      if (typeof mergeSha === 'string' && mergeSha !== '') roles.set(mergeSha.toLowerCase(), 'merge_commit');
+
+      for (const [sha, role] of roles) {
+        requests.push(
+          buildProjectedCommitDocument({
+            repository,
+            commitSha: sha,
+            role,
+            pullRequestNumber: prNumber,
+            baseBranch,
+            documentVersion,
+            enrichmentPending,
+            indexedAt,
+          }),
+        );
+      }
+    }
+
+    if (requests.length > 0) {
+      await withReindexWrite(deps.pool, async (targets) => {
+        const result = await bulkUpsert(deps.es, requests, targets);
+        const rejected = result.outcomes.filter((one) => one.kind !== 'ok');
+        if (rejected.length > 0) {
+          throw new Error(`commit_rebuild_item_failure: ${rejected[0]?.reason ?? 'unknown'}`);
+        }
+      });
+      tally.written += requests.length;
+      for (const request of requests) tally.documentIds.add(request.id);
+    }
+
+    tally.scanned += rows.length;
+    after = rows[rows.length - 1]?.pr_number ?? after;
     if (rows.length < REINDEX_BATCH) break;
   }
 }
@@ -324,6 +427,7 @@ async function rebuildReleases(
 
   tally.scanned += rows.length;
   tally.written += rows.length;
+  for (const row of rows) tally.documentIds.add(releaseDocId(repositoryId, row.tag_name));
 }
 
 /** 간선을 정본 엔티티에서 다시 파생한다. JOB-REL-006과 **같은 경로**다. */
@@ -342,7 +446,7 @@ async function rebuildLinks(
 
 /** 별칭 하나의 정본 재구축. 별칭마다 정본이 다르다 (비동기 3.5장). */
 async function rebuildAlias(deps: ReindexDeps, alias: EntityAlias): Promise<RebuildTally> {
-  const tally: RebuildTally = { scanned: 0, written: 0 };
+  const tally: RebuildTally = { scanned: 0, written: 0, documentIds: new Set() };
   const repositories = await allRepositories(deps.pool);
 
   for (const repository of repositories) {
@@ -383,7 +487,7 @@ export interface VerifyOutcome {
 export async function verifyBeforeCutover(
   deps: ReindexDeps,
   jobId: number,
-  expectedScanned: number,
+  expectedDocuments: number | null,
 ): Promise<VerifyOutcome> {
   const reasons: string[] = [];
   const job = await reindexRepo.findReindexJob(deps.pool, jobId);
@@ -409,11 +513,20 @@ export async function verifyBeforeCutover(
     return { ok: false, reasons };
   }
 
-  // 5. 별칭별 기대 정본 커버리지.
+  /*
+   * 5. 커버리지 — **재구축이 쓴 서로 다른 문서 수**와 대조한다 (PR #52 리뷰 P1).
+   *
+   * 처리한 *source* 수와 대조하면 안 된다. 간선은 source 하나가 0개에서 여러
+   * 개의 문서를 내므로, 관계가 없는 저장소에서 `0 < N`이 되어 **완전하고 정상적인
+   * 재색인이 영원히 전환하지 못한다.**
+   *
+   * `null`은 "이 재구축이 쓴 문서 수를 셀 수 없다"는 뜻이며 그때는 이 항목을
+   * 판정하지 않는다 — 셀 수 없는 것을 센 척하지 않는다. 나머지 여섯 항목은 그대로다.
+   */
   const targetCount = await deps.es.count({ index: target });
   const sourceCount = await deps.es.count({ index: source });
-  if (targetCount.count < expectedScanned) {
-    reasons.push(`커버리지 부족: 정본 ${String(expectedScanned)} > 대상 ${String(targetCount.count)}`);
+  if (expectedDocuments !== null && targetCount.count < expectedDocuments) {
+    reasons.push(`커버리지 부족: 재구축 ${String(expectedDocuments)} > 대상 ${String(targetCount.count)}`);
   }
 
   // 6. 대표 질의가 새 인덱스에서 성립한다.
@@ -429,7 +542,9 @@ export async function verifyBeforeCutover(
     job_id: jobId,
     alias,
     target_index: target,
-    detail: `source=${String(sourceCount.count)} target=${String(targetCount.count)} scanned=${String(expectedScanned)}`,
+    detail:
+      `source=${String(sourceCount.count)} target=${String(targetCount.count)} ` +
+      `expected=${expectedDocuments === null ? '(셀 수 없음)' : String(expectedDocuments)}`,
   });
 
   return { ok: reasons.length === 0, reasons };
@@ -513,7 +628,12 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
 
     /* ---- verify */
     await advance(deps, jobId, { phase: 'verify' });
-    const verdict = await verifyBeforeCutover(deps, jobId, tally.scanned);
+    /*
+     * 간선은 `rebuildRepository`가 처리한 source 수만 돌려주므로 문서 수를 셀 수
+     * 없다 — 그때는 커버리지를 판정하지 않고 나머지 여섯으로 건다.
+     */
+    const expected = alias === 'prs-links' ? null : tally.documentIds.size;
+    const verdict = await verifyBeforeCutover(deps, jobId, expected);
     if (!verdict.ok) {
       const detail = verdict.reasons.join('; ');
       log({ level: 'error', message: '전환 전 검증 실패 — 별칭을 옮기지 않는다', job_id: jobId, alias, reason: 'verify_failed', detail });
@@ -535,10 +655,37 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
       if ((latest.progress.failures ?? 0) > 0) return false;
 
       await switchAlias(deps.es, alias, current.progress.source_index, target);
-      await reindexRepo.patchReindexProgress(client, jobId, {
-        phase: 'retention',
-        switched_at: nowOf(deps).toISOString(),
-      });
+
+      /*
+       * **여기서부터는 별칭이 이미 옮겨졌다** (PR #52 리뷰 P2).
+       *
+       * 이 기록이 실패하면 새 인덱스가 서비스 중인데 `switched_at`이 비고, 옛
+       * 인덱스는 보관 대상에 오르지 않아 영원히 남는다. 그래서 몇 번 다시 쓰고,
+       * 그래도 안 되면 **전환이 일어났다는 사실을 오류 메시지에 실어** 던진다 —
+       * 조용히 "실패"로만 적으면 운영자가 별칭이 옮겨진 것을 모른다.
+       *
+       * 그리고 보관 스윕이 매 주기 `reconcileSwitchedJobs`로 같은 상태를 스스로
+       * 고친다 — 사람이 손대지 않아도 다음 주기에 아문다.
+       */
+      let recorded = false;
+      let lastError: unknown;
+      for (let attempt = 1; attempt <= SWITCH_RECORD_ATTEMPTS && !recorded; attempt += 1) {
+        try {
+          await reindexRepo.patchReindexProgress(client, jobId, {
+            phase: 'retention',
+            switched_at: nowOf(deps).toISOString(),
+          });
+          recorded = true;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (!recorded) {
+        throw new Error(
+          `alias_switched_but_unrecorded: ${alias} → ${target} (옛 인덱스 ${current.progress.source_index}는 ` +
+            `보관 스윕이 재대조로 회수한다): ${String(lastError)}`,
+        );
+      }
       return true;
     });
 
@@ -637,25 +784,38 @@ export function startReindexRunner(deps: ReindexDeps, pollMs = REINDEX_POLL_MS):
 export async function runRetentionSweep(deps: ReindexDeps): Promise<number> {
   const log = logOf(deps);
   const now = nowOf(deps);
-  const cutoff = new Date(now.getTime() - (deps.retentionMs ?? RETENTION_MS));
 
+  // 먼저 "전환은 됐는데 기록되지 않은" 잡을 스스로 고친다 (PR #52 리뷰 P2).
+  await reconcileSwitchedJobs(deps);
+
+  const cutoff = new Date(now.getTime() - (deps.retentionMs ?? RETENTION_MS));
   const retired = await reindexRepo.listRetiredIndices(deps.pool, cutoff, RETENTION_SWEEP_BATCH);
   let deleted = 0;
 
   for (const one of retired) {
     try {
-      const removed = await deleteRetiredIndex(deps.es, one.alias, one.sourceIndex);
-      if (removed) deleted += 1;
-      else {
+      const outcome = await deleteRetiredIndex(deps.es, one.alias, one.sourceIndex);
+
+      if (outcome === 'serving') {
+        /*
+         * **표시하지 않고 남긴다** (PR #52 리뷰 P2). 운영자가 별칭을 이 인덱스로
+         * 되돌려 둔 상태(롤백)일 수 있고, 그때 "처리했다"고 적으면 나중에 별칭이
+         * 다시 옮겨져도 이 인덱스는 영영 지워지지 않는다. 지금 서비스 중인 것은
+         * **다음 주기에 다시 볼 대상**이지 끝난 대상이 아니다.
+         */
         log({
           level: 'warn',
-          message: '보관 대상이 현재 별칭이거나 이미 없다 — 지우지 않았다',
+          message: '보관 대상이 지금 서비스 중이다 — 다음 주기에 다시 본다',
           job_id: one.jobId,
           alias: one.alias,
           target_index: one.sourceIndex,
-          reason: 'retention_skipped',
+          reason: 'retention_serving',
         });
+        continue;
       }
+
+      if (outcome === 'deleted') deleted += 1;
+      // `absent`는 이미 없다는 뜻이니 끝난 것이다 — 표시하고 넘어간다.
       await reindexRepo.markRetired(deps.pool, one.jobId, now);
     } catch (error) {
       log({
@@ -670,6 +830,52 @@ export async function runRetentionSweep(deps: ReindexDeps): Promise<number> {
   }
 
   return deleted;
+}
+
+/**
+ * 별칭은 옮겨졌는데 그 사실이 기록되지 않은 잡을 고친다 (PR #52 리뷰 P2).
+ *
+ * Elasticsearch 전환은 성공하고 뒤이은 PostgreSQL 기록이 실패한 자리다. 그
+ * 상태를 두면 **옛 인덱스가 보관 대상에 영영 오르지 않는다.** 별칭의 현재
+ * 대상과 대조해 맞으면 `switched_at`을 채운다 — 사람이 손대지 않아도 아문다.
+ *
+ * **별칭이 실제로 그 인덱스를 가리킬 때만 채운다.** 그러지 않으면 전환하지
+ * 못한 잡을 전환했다고 적게 된다.
+ */
+export async function reconcileSwitchedJobs(deps: ReindexDeps): Promise<number> {
+  const log = logOf(deps);
+  const candidates = await reindexRepo.listUnrecordedSwitches(deps.pool, RETENTION_SWEEP_BATCH);
+  let repaired = 0;
+
+  for (const one of candidates) {
+    try {
+      if ((await resolveServingIndex(deps.es, one.alias)) !== one.targetIndex) continue;
+      await reindexRepo.patchReindexProgress(deps.pool, one.jobId, {
+        phase: 'retention',
+        switched_at: nowOf(deps).toISOString(),
+      });
+      repaired += 1;
+      log({
+        level: 'warn',
+        message: '전환은 됐으나 기록되지 않은 잡을 재대조로 고쳤다',
+        job_id: one.jobId,
+        alias: one.alias,
+        target_index: one.targetIndex,
+        reason: 'switch_reconciled',
+      });
+    } catch (error) {
+      log({
+        level: 'error',
+        message: '전환 재대조 실패',
+        job_id: one.jobId,
+        alias: one.alias,
+        reason: 'reconcile_failed',
+        detail: String(error).slice(0, 300),
+      });
+    }
+  }
+
+  return repaired;
 }
 
 export interface RetentionSweeper {

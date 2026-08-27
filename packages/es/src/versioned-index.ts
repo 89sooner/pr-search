@@ -175,21 +175,32 @@ export async function switchAlias(
  * `progress`라 그 값이 낡았을 수 있고(전환이 두 번 일어났다든지), 그때 낡은
  * 값을 그대로 믿으면 서비스 중인 인덱스를 지운다. 지우기 직전에 다시 묻는다.
  *
- * @returns 실제로 지웠으면 `true`. 서비스 중이거나 이미 없으면 `false`.
+ * ## 세 결과를 가른다 (PR #52 리뷰 P2)
+ *
+ * `serving`과 `absent`를 하나로 뭉치면 호출부가 둘을 같게 다룬다. 그러면
+ * **운영자가 별칭을 이 인덱스로 되돌려 둔 동안**(롤백) 스윕이 "처리했다"고
+ * 표시해 버리고, 나중에 별칭이 다시 옮겨져도 그 인덱스는 영영 지워지지 않는다.
+ * 지금 서비스 중인 것은 **다음 주기에 다시 볼 대상**이지 끝난 대상이 아니다.
  */
-export async function deleteRetiredIndex(client: Client, alias: string, index: string): Promise<boolean> {
+export type RetiredIndexOutcome = 'deleted' | 'serving' | 'absent';
+
+export async function deleteRetiredIndex(
+  client: Client,
+  alias: string,
+  index: string,
+): Promise<RetiredIndexOutcome> {
   if (parseIndexVersion(alias, index) === null) {
     throw new Error(`이 별칭의 버전 인덱스가 아니다: ${alias} / ${index}`);
   }
 
   const serving = await client.indices.getAlias({ name: alias });
-  if (Object.keys(serving).includes(index)) return false;
+  if (Object.keys(serving).includes(index)) return 'serving';
 
   const exists = await client.indices.exists({ index });
-  if (!exists) return false;
+  if (!exists) return 'absent';
 
   await client.indices.delete({ index });
-  return true;
+  return 'deleted';
 }
 
 /** 안정 별칭인지. API가 구체 인덱스 지정을 거절하는 근거다 (DEV-294). */

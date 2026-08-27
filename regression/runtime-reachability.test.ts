@@ -1027,6 +1027,73 @@ describe('무중단 재색인의 도달성과 계약 (WP-035 / CR-045~047)', () 
     expect(REINDEX).toContain("reasons.push(`알려진 실패 ${String(job.progress.failures)}건`)");
   });
 
+  it('**커버리지는 재구축이 쓴 문서 수로 판정한다** (PR #52 리뷰 P1)', () => {
+    /*
+     * 처리한 *source* 수로 판정하면 간선이 영원히 전환하지 못한다 — source
+     * 하나가 0개에서 여러 개의 문서를 내므로 관계가 없는 저장소에서 `0 < N`이
+     * 된다. 그리고 셀 수 없는 축은 `null`로 두어 **판정 자체를 하지 않는다.**
+     */
+    expect(REINDEX).toContain('tally.documentIds.add(');
+    expect(REINDEX).toContain("const expected = alias === 'prs-links' ? null : tally.documentIds.size;");
+    expect(REINDEX).toContain('if (expectedDocuments !== null && targetCount.count < expectedDocuments)');
+    expect(REINDEX_CODE).not.toContain('verifyBeforeCutover(deps, jobId, tally.scanned)');
+  });
+
+  it('**PR 원본 커밋도 정본에서 다시 만든다** (PR #52 리뷰 P1)', () => {
+    /*
+     * `commit_snapshot`은 first-parent 체인만 덮는다(`listCommitsMissingSnapshot`).
+     * 그것만 읽으면 PR 원본 커밋 문서가 통째로 빠진 인덱스로 전환하게 된다.
+     */
+    expect(REINDEX).toContain('await rebuildProjectedCommits(deps, repository, tally, indexedAt);');
+    // 문서는 투영과 **같은 함수**가 만든다 — 두 번째 빌더를 만들지 않는다.
+    expect(REINDEX).toContain('buildProjectedCommitDocument({');
+    expect(read('apps/pipeline-worker/src/documents.ts')).toContain(
+      'export function buildProjectedCommitDocument(',
+    );
+  });
+
+  it('**레지스트리 소유 필드를 현재 값으로 덮는다** (PR #52 리뷰 P1)', () => {
+    // 스냅숏은 투영 시점의 사본이다. 그대로 쓰면 전환이 회수된 팀을 되살린다.
+    expect(REINDEX).toContain('const scope = registryOwnedFields(repository);');
+    expect(REINDEX).toContain('doc: { ...row.document, ...scope }');
+    const documents = read('apps/pipeline-worker/src/documents.ts');
+    expect(documents).toContain('export function registryOwnedFields(');
+    // 구현이 하나다 — `commit-enrich`가 자기 사본을 갖지 않는다.
+    expect(read('apps/pipeline-worker/src/commit-enrich.ts')).toContain(
+      'const scopeFields = registryOwnedFields;',
+    );
+  });
+
+  it('**큐에 보이는 순간 잡이 완전하다** (PR #52 리뷰 P2)', () => {
+    const repo = read('packages/db/src/repositories/reindex.ts');
+    expect(repo).toContain('enqueueJob(db, REINDEX_JOB_TYPE, alias, requestedBy, { ...progress })');
+    expect(read('packages/db/src/repositories/job.ts')).toContain(
+      "VALUES ($1, $2, 'queued', $3, $4::jsonb)",
+    );
+  });
+
+  it('**롤백 중인 보관 대상을 처리했다고 적지 않는다** (PR #52 리뷰 P2)', () => {
+    expect(VERSIONED).toContain("export type RetiredIndexOutcome = 'deleted' | 'serving' | 'absent';");
+    const sweep = REINDEX.slice(REINDEX.indexOf('export async function runRetentionSweep'));
+    const serving = sweep.indexOf("if (outcome === 'serving')");
+    const mark = sweep.indexOf('await reindexRepo.markRetired(deps.pool, one.jobId, now);');
+    expect(serving).toBeGreaterThan(-1);
+    expect(mark, '`serving` 갈래가 표시보다 뒤에 있다').toBeGreaterThan(serving);
+    expect(sweep.slice(serving, mark)).toContain('continue;');
+  });
+
+  it('**전환은 됐는데 기록되지 않은 잡을 스스로 고친다** (PR #52 리뷰 P2)', () => {
+    expect(REINDEX).toContain('export async function reconcileSwitchedJobs(');
+    // 별칭이 실제로 그 인덱스를 가리킬 때만 채운다.
+    expect(REINDEX).toContain(
+      'if ((await resolveServingIndex(deps.es, one.alias)) !== one.targetIndex) continue;',
+    );
+    // 보관 스윕이 매 주기 그것을 부른다.
+    expect(REINDEX).toContain('await reconcileSwitchedJobs(deps);');
+    // 전환 뒤 기록은 다시 시도하고, 끝내 실패하면 그 사실을 오류에 싣는다.
+    expect(REINDEX).toContain('alias_switched_but_unrecorded');
+  });
+
   it('**전환 전 검증이 건수 하나로 판정하지 않는다** (DEV-297)', () => {
     const verify = REINDEX.slice(REINDEX.indexOf('export async function verifyBeforeCutover'));
     for (const fact of ['잡 상태가', '알려진 실패', '정본 스캔이 끝나지 않았다', '커버리지 부족', '대표 질의 실패']) {
@@ -1045,7 +1112,7 @@ describe('무중단 재색인의 도달성과 계약 (WP-035 / CR-045~047)', () 
     const del = remove.indexOf('await client.indices.delete({ index })');
     expect(check).toBeGreaterThan(-1);
     expect(del).toBeGreaterThan(check);
-    expect(remove).toContain('if (Object.keys(serving).includes(index)) return false');
+    expect(remove).toContain("if (Object.keys(serving).includes(index)) return 'serving'");
   });
 
   it('**보관 정본이 잡 `progress`다** — 새 표를 만들지 않았다 (DEV-299)', () => {

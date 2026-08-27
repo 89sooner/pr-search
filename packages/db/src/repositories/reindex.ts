@@ -240,8 +240,13 @@ export async function enqueueReindex(
   const sourceIndex = await port.resolveServingIndex(alias);
   const targetIndex = await port.nextTargetIndex(alias);
 
-  const jobId = await enqueueJob(db, REINDEX_JOB_TYPE, alias, requestedBy);
-  await setReindexProgress(db, jobId, {
+  /*
+   * **초기 상태를 같은 INSERT에 넣는다** (PR #52 리뷰 P2). 행을 먼저 만들고
+   * 진행 상태를 뒤에 쓰면 그 사이에 러너가 집어 초기화되지 않은 잡을 실행하고,
+   * 러너는 그것을 "진행 상태가 없다"로 읽어 **API가 받아들인 요청을 영구
+   * 실패로** 만든다. 큐에 보이는 순간 이미 완전해야 한다.
+   */
+  const progress: ReindexProgress = {
     phase: 'prepare',
     alias,
     source_index: sourceIndex,
@@ -249,7 +254,8 @@ export async function enqueueReindex(
     documents_scanned: 0,
     documents_written: 0,
     failures: 0,
-  });
+  };
+  const jobId = await enqueueJob(db, REINDEX_JOB_TYPE, alias, requestedBy, { ...progress });
 
   return { kind: 'queued', jobId, sourceIndex, targetIndex };
 }
@@ -304,6 +310,37 @@ export async function listRetiredIndices(
       sourceIndex: job.progress.source_index,
       switchedAt: new Date(switchedAt),
     });
+  }
+  return out;
+}
+
+/**
+ * 전환은 됐는데 그 사실이 기록되지 않은 잡 (PR #52 리뷰 P2).
+ *
+ * Elasticsearch 전환은 성공했으나 뒤이은 PostgreSQL 기록이 실패한 자리다. 그
+ * 상태를 두면 옛 인덱스가 **보관 대상에 영영 오르지 않는다.** 스윕이 별칭의
+ * 현재 대상과 대조해 스스로 고친다.
+ */
+export async function listUnrecordedSwitches(
+  db: Queryable,
+  limit: number,
+): Promise<readonly { readonly jobId: number; readonly alias: string; readonly targetIndex: string }[]> {
+  const result = await db.query<JobRow>(
+    `SELECT * FROM job
+      WHERE type = $1
+        AND state IN ('failed', 'completed', 'running')
+        AND progress ->> 'switched_at' IS NULL
+        AND progress ->> 'target_index' IS NOT NULL
+      ORDER BY job_id DESC
+      LIMIT $2`,
+    [REINDEX_JOB_TYPE, limit],
+  );
+
+  const out: { jobId: number; alias: string; targetIndex: string }[] = [];
+  for (const row of result.rows) {
+    const job = toReindexJob(row);
+    if (job === undefined || typeof job.progress.target_index !== 'string') continue;
+    out.push({ jobId: job.jobId, alias: job.alias, targetIndex: job.progress.target_index });
   }
   return out;
 }

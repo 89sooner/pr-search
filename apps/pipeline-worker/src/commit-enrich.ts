@@ -44,6 +44,7 @@ import {
   type SequenceAssigned,
   type SequenceReassigned,
 } from '@prs/domain';
+import { registryOwnedFields } from './documents.js';
 import {
   TOPICS,
   consumerGroup,
@@ -131,16 +132,8 @@ function refOf(repository: RepositoryRow): RepoRef {
  * 투영의 `repositoryScope()`와 **같은 필드**다. 여기가 어긋나면 이 경로로 만든
  * 문서만 강제 필터의 판정이 달라진다.
  */
-function scopeFields(repository: RepositoryRow): Readonly<Record<string, unknown>> {
-  return {
-    repository_id: repository.repository_id,
-    repository: `${repository.owner}/${repository.name}`,
-    org_id: repository.org_id,
-    visibility: repository.visibility,
-    allowed_team_ids: [...repository.allowed_team_ids],
-    repository_archived: repository.status === 'archived',
-  };
-}
+/** 레지스트리 소유 필드. **`documents.ts`의 것 하나만 쓴다** (PR #52 리뷰 P1). */
+const scopeFields = registryOwnedFields;
 
 /**
  * 커밋 문서를 만드는 데 필요한 사실 (WP-035, DEV-295의 뒷면).

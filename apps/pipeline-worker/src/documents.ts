@@ -82,6 +82,27 @@ function uniqueStrings(values: readonly (string | null)[]): string[] {
  * 네 투영이 모두 이것을 부른다 — 각자 계산하면 한 색인만 팀을 놓치는 날이 오고,
  * 그때 그 색인의 `team:` 질의만 조용히 비어 온다 (WP-068 / CR-035, DEV-114).
  */
+/**
+ * **레지스트리가 소유한** 접근 통제·등록 상태 필드 (PR #52 리뷰 P1).
+ *
+ * 이 값들의 정본은 PostgreSQL `repository` 행이고, 색인에는 소급 갱신으로
+ * 반영된다 (`markRepositoryArchived`·`applyRepositoryTeams`). **그 갱신은
+ * `pull_request_snapshot`에 되쓰이지 않는다** — 스냅숏은 투영 시점의 사본이다.
+ *
+ * 그래서 정본 재구축이 스냅숏 문서를 그대로 쓰면 **회수된 팀이 다시 보이게
+ * 된다.** 재구축은 반드시 이 함수로 덮어야 한다 (`reindex.ts`).
+ */
+export function registryOwnedFields(repository: RepositoryRow): Readonly<Record<string, unknown>> {
+  return {
+    repository_id: repository.repository_id,
+    repository: `${repository.owner}/${repository.name}`,
+    org_id: repository.org_id,
+    visibility: repository.visibility,
+    allowed_team_ids: [...repository.allowed_team_ids],
+    repository_archived: repository.status === 'archived',
+  };
+}
+
 function repositoryScope(repository: RepositoryRow): Fields {
   return {
     repository_id: repository.repository_id,
@@ -201,35 +222,76 @@ export function buildCommitDocuments(source: ProjectionSource): readonly UpsertR
 
   const requests: UpsertRequest[] = [];
   for (const [sha, role] of roles) {
-    const doc: Fields = {
-      document_version: source.documentVersion,
-      ...repositoryScope(repository),
-      commit_sha: sha,
-      role,
-      enrichment_pending: enriched.enrichment_pending,
-      // PR 문서와 같은 값이다. 커밋 문서는 FR-SRCH-002(SHA → PR)의 결과로
-      // 직접 나가므로, 표식이 없으면 해제된 저장소가 살아 있는 것처럼 보인다
-      // (CR-013, DEV-028).
-      repository_archived: repository.status === 'archived',
-      last_delivery_id: enriched.delivery_id,
-      indexed_at: source.indexedAt.toISOString(),
-    };
-    put(doc, 'base_branch', pr?.base_ref);
-
-    requests.push({
-      alias: 'prs-commits',
-      id: commitDocId(repository.repository_id, sha),
-      routing: String(repository.repository_id),
-      doc: doc as Fields & { document_version: number },
-      // 커밋 하나가 여러 PR에 속할 수 있다 (데이터 모델 5장의 N:M). 대입하면
-      // 나중 이벤트가 앞 PR 번호를 지운다 (CR-011, DEV-019).
-      union: { pull_request_numbers: [enriched.pr_number] },
-      createOnly: {
-        link_summary: { has_revert: false, is_reverted: false, has_cherry_pick: false },
-      },
-    });
+    requests.push(
+      buildProjectedCommitDocument({
+        repository,
+        commitSha: sha,
+        role,
+        pullRequestNumber: enriched.pr_number,
+        baseBranch: pr?.base_ref,
+        documentVersion: source.documentVersion,
+        enrichmentPending: enriched.enrichment_pending,
+        lastDeliveryId: enriched.delivery_id,
+        indexedAt: source.indexedAt.toISOString(),
+      }),
+    );
   }
   return requests;
+}
+
+/** PR 투영이 만드는 커밋 문서 하나에 필요한 것. */
+export interface ProjectedCommitInput {
+  readonly repository: RepositoryRow;
+  readonly commitSha: string;
+  readonly role: ProjectedCommitRole;
+  readonly pullRequestNumber: number;
+  readonly baseBranch?: string | undefined;
+  readonly documentVersion: number;
+  readonly enrichmentPending: boolean;
+  /**
+   * 운영 추적용 전달 식별자. **재구축에는 없다** — 정본이 아니라 그 회차의
+   * 흔적이므로, 없는 것을 지어내지 않고 필드를 두지 않는다.
+   */
+  readonly lastDeliveryId?: string | undefined;
+  readonly indexedAt: string;
+}
+
+/**
+ * PR 유래 커밋 문서 하나 (ENT-CORE-003).
+ *
+ * **투영과 정본 재구축이 같은 함수를 쓴다** (PR #52 리뷰 P1). 재구축이 필요한
+ * 재료는 전부 `pull_request_snapshot.document`에 있다 — `source_commit_shas` ·
+ * `pr_number` · `base_branch` · `merge_commit_sha` · `enrichment_pending`.
+ * 따로 만들면 재구축 결과와 평시 결과가 갈라진다.
+ */
+export function buildProjectedCommitDocument(input: ProjectedCommitInput): UpsertRequest {
+  const doc: Fields = {
+    document_version: input.documentVersion,
+    ...repositoryScope(input.repository),
+    commit_sha: input.commitSha,
+    role: input.role,
+    enrichment_pending: input.enrichmentPending,
+    // PR 문서와 같은 값이다. 커밋 문서는 FR-SRCH-002(SHA → PR)의 결과로
+    // 직접 나가므로, 표식이 없으면 해제된 저장소가 살아 있는 것처럼 보인다
+    // (CR-013, DEV-028).
+    repository_archived: input.repository.status === 'archived',
+    indexed_at: input.indexedAt,
+  };
+  put(doc, 'base_branch', input.baseBranch);
+  put(doc, 'last_delivery_id', input.lastDeliveryId);
+
+  return {
+    alias: 'prs-commits',
+    id: commitDocId(input.repository.repository_id, input.commitSha),
+    routing: String(input.repository.repository_id),
+    doc: doc as Fields & { document_version: number },
+    // 커밋 하나가 여러 PR에 속할 수 있다 (데이터 모델 5장의 N:M). 대입하면
+    // 나중 이벤트가 앞 PR 번호를 지운다 (CR-011, DEV-019).
+    union: { pull_request_numbers: [input.pullRequestNumber] },
+    createOnly: {
+      link_summary: { has_revert: false, is_reverted: false, has_cherry_pick: false },
+    },
+  };
 }
 
 /** 한 이벤트가 만드는 문서 전부. 벌크 1건으로 나간다 (FR-ING-005 AC-2). */

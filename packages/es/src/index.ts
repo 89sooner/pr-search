@@ -131,6 +131,7 @@ export {
   resolveServingIndex,
   schemaOf,
   switchAlias,
+  type RetiredIndexOutcome,
   type VersionedIndexSchema,
 } from './versioned-index.js';
 export type { BootstrapResult } from './bootstrap.js';
