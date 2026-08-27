@@ -27,6 +27,7 @@ import type { OpsDeps } from './ops/dead-letters.js';
 import type { RegistryDeps } from './ops/repositories.js';
 import type { PipelineStatusDeps } from './ops/pipeline-status.js';
 import type { IntegrityDeps } from './ops/sequence-integrity.js';
+import type { ReindexDeps as OpsReindexDeps } from './ops/reindex.js';
 
 export const SERVICE_NAME = 'search-api' as const;
 export const DEFAULT_PORT = 3002;
@@ -50,6 +51,13 @@ export interface ServerDeps {
    * 커밋 그래프가 있어야 대조가 성립하므로 없으면 경로를 달지 않는다.
    */
   readonly integrity?: IntegrityDeps;
+  /**
+   * 무중단 재색인 의존 (API-ADM-004, WP-035).
+   *
+   * 색인 이름을 아는 포트가 있어야 대상 버전을 정할 수 있다. 없으면 경로를 달지
+   * 않는다 — 대상을 못 정하는 프로세스가 "재색인을 시작했다"고 답하면 안 된다.
+   */
+  readonly reindex?: OpsReindexDeps;
   /**
    * 세션 인증 컨텍스트 (WP-012).
    *
@@ -165,6 +173,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
     ...(deps.registry === undefined ? {} : { registry: deps.registry }),
     ...(deps.pipeline === undefined ? {} : { pipeline: deps.pipeline }),
     ...(deps.integrity === undefined ? {} : { integrity: deps.integrity }),
+    ...(deps.reindex === undefined ? {} : { reindex: deps.reindex }),
   });
   return app;
 }
