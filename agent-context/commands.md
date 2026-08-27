@@ -1019,7 +1019,7 @@ git check-ignore -v exports/dummy.md    # .gitignore:24:exports/
 
 # 2026-08-27 (2차) WP-032 세션
 
-## 검증 배터리 (main `3237b6c` 기준 실측)
+## 검증 배터리 (main `3237b6c` = WP-032 병합 기준 실측)
 
 ```bash
 export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
@@ -1088,6 +1088,36 @@ grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -2  # → DEV-332
 ls packages/db/migrations/*.up.sql | tail -1         # → 014
 grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
 ```
+
+## CI는 **커밋 SHA의 check-runs**로 본다
+
+`gh pr checks`는 옛 실행 결과를 그대로 보여 줄 수 있다.
+
+```bash
+SHA=$(git rev-parse HEAD)
+gh api "repos/89sooner/pr-search/commits/$SHA/check-runs" \
+  --jq '.check_runs[] | "\(.name): \(.status) \(.conclusion // \"\")"'
+
+# 실패한 job의 로그
+RUN=$(gh api "repos/89sooner/pr-search/actions/runs?head_sha=$SHA" --jq '.workflow_runs[0].id')
+JOB=$(gh api "repos/89sooner/pr-search/actions/runs/$RUN/jobs" --jq '.jobs[] | select(.name=="integration") | .id')
+gh api "repos/89sooner/pr-search/actions/jobs/$JOB/logs" | grep -E 'FAIL|AssertionError|Tests ' | head -20
+```
+
+이 세션은 `verify` 약 3분 · `integration` 약 4분이었고, 큐 대기는 없었다.
+main(`2d28074`)에서도 양쪽 통과를 확인했다.
+
+## 리뷰 답변·해소 (GraphQL)
+
+```bash
+gh api graphql -f query='mutation($tid: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $tid, body: $body}) { comment { url } } }' \
+  -f tid="PRRT_..." -f body="$(cat reply.md)"
+gh api graphql -f query='mutation($tid: ID!) {
+  resolveReviewThread(input: {threadId: $tid}) { thread { isResolved } } }' -f tid="PRRT_..."
+```
+
+**코드를 고치고 CI가 초록이 된 뒤에만 reply → resolve 한다.**
 
 ## 실패했던 명령과 원인 (이 세션)
 

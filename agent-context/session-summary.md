@@ -533,6 +533,15 @@ pre-WP032 위생 정정 → WP-032 전체 → 검증 → PR → 리뷰 정정 �
 
 ## 현재 상태 한 줄
 
-**REL-004 5/8** (WP-029·030·031·035·032 done) · SRS baseline v2.8 · 원장 v4.1 ·
-open DEV 7 · 미해결 리뷰 0 · **다음은 WP-033 저장된 검색** ·
-REL-003 릴리스 게이트는 여전히 미통과.
+main `2d28074` · **REL-004 5/8** (WP-029·030·031·035·032 done) · SRS baseline v2.8 ·
+원장 v4.1 · 마이그레이션 014 · open DEV 7 · 열린 PR 0 · 미해결 리뷰 0 ·
+main CI 양쪽 통과 · **다음은 WP-033 저장된 검색** ·
+REL-003 릴리스 게이트는 여전히 미통과(베타 공개 승인 안 됨).
+
+## 다음 에이전트가 먼저 할 것
+
+1. `agent-context/_handoff/context-index.md`를 읽고 `read_order`를 따른다
+2. **실측부터** — `git rev-parse HEAD` · next-free ID · open DEV 계수. 인계 문서의 숫자를
+   그대로 옮기지 않는다 (risks 22)
+3. WP-033의 **계약이 닫힌 적이 없다**는 점을 확인하고 착수 전 감사 여부를 정한다
+4. 배포 전제 둘(`SEARCH_CURSOR_HMAC_KEY` · `es:reindex`)이 아직 남아 있다 — todos.md B절
