@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v4.4 | 갱신일: 2026-08-28
+> 상태: review | 버전: v4.5 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -57,7 +57,7 @@
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | done | 에이전트 | PR #47 (병합 `9084033`) | DoD 21항 전부 통과 (6.36장). 단위 38건 + 통합 31건(실 Elasticsearch) + 회귀 22건 + a11y 20건 + e2e 11건. 변이 22종 + 리뷰 정정 1종 전부 킬, **하나가 시험 구멍을 찾아 줬다**(M5) | **CR-042 신설.** 착수 전 감사가 열여덟을 찾았고 **아홉이 같은 뿌리**다 — 계약이 파생의 규칙만 정하고 **조회가 다른 질문**이라는 것을 보지 않았다(DEV-248~265). `API-REL-006` 신설, 역방향 조회의 저장소 라우팅 포기(DEV-250), THR-034 대상 내용 교집합(DEV-253), `API-REL-003` 상세 계약(DEV-249·254·255·256), `detached`·다중 후보·`links_pending` 표시 정정(DEV-257·258·261), W-001 이월 정정(DEV-262·264) |
 | WP-032 | 패싯·커서 페이지네이션·전문 검색 | REL-004 | done | 에이전트 | PR #57 | DoD 22항 전부 통과 (6.40장). 단위 +85 · 통합 +62(실 PG·ES) · e2e +11 · a11y 212. 적대적 변이 16종 — 14 킬, 2 등가, **살아남은 셋이 전부 시험 구멍을 드러냈다** | FR-SRCH-007·008·009·011, FR-SEQ-002. **매핑 v1 → v2** — WP-035의 재색인 경로로만 배포한다. 구현이 DEV-327~329를 등록·해소했다 |
 | WP-033 | 저장된 검색 | REL-004 | done | 에이전트 | PR #60 | DoD 17항 전부 통과 (6.41장). 통합 72건(실 PG·ES·Redis) + 단위 63건 + 회귀 +19 + a11y +17 + e2e 9건. 적대적 변이 12종 — 11 킬, **살아남은 하나(M4)가 시험 구멍을 드러냈고 그것을 막는 시험이 두 번 만에 성립했다** | **CR-049 신설·구현.** 착수 전 감사가 열을 찾았고 **넷이 같은 뿌리**다 — 승인된 기능이 "누구에게 공유하는가"를 말한 적이 없었다(DEV-333~342). `team` 공개 범위를 **대상 팀 하나**로 정하자 소유권·이탈 후 처분·스키마 불변식이 함께 닫혔다. 마이그레이션 015는 불변식·목록 인덱스·보존 정책 CASCADE만 — **새 표 없음**(DEV-347). 구현 중 DEV-347·348을 등록·해소했다. **머지 전 리뷰 넷(P1 둘·P2 둘)이 전부 실결함이었고 셋을 고쳤다**(6.41.1장) — 그중 하나는 **내가 적어 둔 계약을 내 구현이 따르지 않은 자리**였다(편집을 W-001로 보냈는데 그 화면에 `PATCH`가 없다). 넷째(DEV-349, FR-SEQ-005 AC-4의 `seq:` 에폭)는 계약의 재료가 없어 **별도 CR 대상으로 열어 두었다** — 7장 등재. 실제 GHE·Kubernetes는 NOT RUN |
-| WP-034 | W-009 저장소 개요 화면 | REL-004 | todo | - | - | - | - |
+| WP-034 | W-009 저장소 개요 화면 | REL-004 | done | 에이전트 | PR #62 | DoD 19항 전부 통과 (6.42장). 통합 50건(실 PG·ES·Redis) + 단위 43건 + a11y 14건 + e2e 7건 + 회귀 유지. **적대적 변이 12종 — 12 킬**, 그중 하나(M6)가 시험 구멍을 드러냈다 | **CR-050 신설·구현.** 착수 전 감사가 일곱을 찾았고 중심은 **일반 사용자 화면이 operator 전용 API만 지목하고 있었다**는 것이다(DEV-350) — 권한을 완화하지 않고 `API-ING-002`를 세웠다. 파생 UI 넷이 SRS 밖의 등록 요청을 서술하고 있었고(DEV-351), 최근 완료 조정 결과의 정본이 누적 counter뿐이었다(DEV-352). 마이그레이션 016은 등록 요청 표와 `repository` 열 둘만 더한다. 함께 닫은 기존 결함 셋: `allowed_team_ids` 미전달(DEV-353), FR-ADMIN-001 AC-1의 만기 이월(DEV-354), 추적·와이어프레임 stale(DEV-355·356). **DEV-159도 만기가 됐다** — W-005의 저장소 개요 링크를 실제로 걸었다. 실제 GHE·Kubernetes는 NOT RUN |
 | WP-035 | 무중단 재색인 | REL-004 | done | 에이전트 | PR #52 | DoD 20항 중 19항 통과 (6.39장). 통합 18건(실 PG·ES) · 회귀 +36 · 단위 +13 · 변이 6종 + 리뷰 정정 5종 킬. **WP-032 선행 조건 증명 완료.** 머지 전 리뷰 다섯 정정 (6.39.1장, DEV-314~319) | FR-ING-008 |
 | WP-036 | 원본 아카이브 레인(Filebeat) | REL-004 | todo | - | - | - | - |
 | WP-037 | 집계 API | REL-005 | todo | - | - | - | - |
@@ -126,9 +126,9 @@
 | FR-ING-006 | WP-019 | `packages/github/src/client.ts` (`listPullRequestsPage`), `packages/db/src/repositories/job.ts` (`claimNextJob`·`transitionJob`), `packages/db/src/advisory-lock.ts` (`jobClaimLockKey`), `apps/pipeline-worker/src/{backfill-plan,backfill,index-retry}.ts`, `apps/search-api/src/ops/jobs.ts` | `apps/pipeline-worker/src/backfill-plan.test.ts`, `packages/db/integration/job-claim.test.ts`, `apps/pipeline-worker/integration/jobs/backfill.test.ts`, `apps/search-api/integration/admin/jobs.test.ts` | partial (AC-1·AC-2·AC-4·AC-5·AC-6 구현하고 통합 시험을 썼으나 **로컬 실행은 NOT RUN**(Docker 부재) — CI가 판정한다. **AC-3(실시간 지연 미영향)은 구조로만 세웠다**: 모든 백필 호출이 `priority: 'backfill'`이고 역할 분리로 워커 풀을 나눌 수 있다. 실제 지연 p95는 운영 규모 측정이 필요해 **측정하지 않았다**, DEV-058과 같은 형태) |
 | FR-ING-007 | WP-002, WP-007, WP-008, WP-009 | `packages/db/migrations/{001_ingestion,006_dead_letter}.up.sql`, `packages/db/src/repositories/dead-letter.ts`, `packages/bus/src/{backoff,ingest}.ts`, `apps/pipeline-worker/src/{enrich,project}.ts`, `apps/search-api/src/ops/{dead-letters,routes}.ts`, `apps/search-api/src/{config,metrics}.ts` | `packages/db/integration/dead-letter.test.ts`, `apps/search-api/integration/ops/dead-letter.test.ts`, `apps/pipeline-worker/integration/worker/{enrich,project}.test.ts`, `packages/bus/integration/contract.ts` | verified (AC-1~AC-5 전부. AC-4 재처리 멱등은 재투입 payload의 `delivery_id` 보존으로, 문서 수준은 WP-008의 결정론적 ID 시험으로 각각 검증) |
 | FR-ING-008 | WP-035 | - | - | not_started |
-| FR-ING-009 | WP-008, WP-010, WP-040 | `apps/search-api/src/ops/{repositories,ghe-lookup,routes}.ts`, `packages/db/src/repositories/{repository,audit,job}.ts`, `packages/es/src/registry.ts`, `packages/es/src/mappings/commits.ts`, `apps/pipeline-worker/src/{project,documents}.ts` | `apps/search-api/integration/admin/repositories.test.ts`, `packages/es/integration/registry.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | verified (AC-1~AC-5 전부. AC-5 감사 주체는 관리 토큰 이름이며 WP-012의 OIDC 신원이 대체한다) |
+| FR-ING-009 | WP-008, WP-010, **WP-034**, WP-040 | `apps/search-api/src/repositories/{overview,routes,cursor,registration-requests}.ts` (AC-6~AC-10, WP-034), `packages/db/src/repositories/registration-request.ts`, `apps/web/{lib/repository-overview.ts,components/{RepositoryCardGrid,SequenceSpaceStatusList,RegisterRequestDialog,RepositoriesView}.tsx,app/repositories/page.tsx}` (W-009), `apps/search-api/src/ops/{repositories,ghe-lookup,routes}.ts`, `packages/db/src/repositories/{repository,audit,job}.ts`, `packages/es/src/registry.ts`, `packages/es/src/mappings/commits.ts`, `apps/pipeline-worker/src/{project,documents}.ts` | `apps/search-api/integration/repositories/{overview,scope-parity,registration-request,reachability}.test.ts`, `apps/search-api/src/repositories/cursor.test.ts`, `apps/web/lib/repository-overview.test.ts`, `apps/web/a11y/repositories.test.tsx`, `apps/web/e2e/repositories.spec.ts`, `apps/search-api/integration/admin/repositories.test.ts`, `packages/es/integration/registry.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | **verified — AC-1~AC-10 전부** (AC-6~AC-10은 WP-034가 구현했다. 6.42장). 원래 서술: (AC-1~AC-5 전부. AC-5 감사 주체는 관리 토큰 이름이며 WP-012의 OIDC 신원이 대체한다) |
 | FR-ING-010 | WP-036 | - | - | not_started |
-| FR-ING-011 | WP-028 | `apps/pipeline-worker/src/reconcile.ts` (JOB-ING-005), `packages/github/src/client.ts` (`listPullRequestsPage` `direction`), `apps/pipeline-worker/src/metrics.ts` | `apps/pipeline-worker/src/reconcile.test.ts` | done — AC-1~AC-5 전부. 주기는 설정값(기본 1시간), 창은 `updated desc` + 24시간 컷오프(`/pulls`에 `since`가 없다, DEV-175), 누락은 백필의 `projectOne`으로 되돌린다(두 번째 경로를 만들지 않는다). **head 서수가 없으면 `prs:sequence`의 `sequence.requested`로 요청한다** — 집는 러너가 없는 잡 행을 만들지 않는다 (CR-034, DEV-180). 한도 소진은 미룸이며 3주기 연속이면 경보 지표가 뜬다. **운영 기동은 전용 `reconcile` 역할이 한다** (DEV-179, `deploy/k8s/pipeline-worker-reconcile.yaml`) |
+| FR-ING-011 | WP-028, **WP-034** | `apps/pipeline-worker/src/reconcile.ts` (JOB-ING-005 + AC-6 완주 회차 보존), `packages/db/src/repositories/repository.ts` (`recordCompletedReconciliation`), `packages/github/src/client.ts` (`listPullRequestsPage` `direction`), `apps/pipeline-worker/src/metrics.ts` | `apps/pipeline-worker/src/reconcile.test.ts`, `apps/pipeline-worker/integration/reconcile/durability.test.ts` (AC-6, 실 PostgreSQL) | **done — AC-1~AC-6 전부.** AC-6은 WP-034가 더했다 — 완주한 회차만 `repository.last_reconcile_missing_count`를 덮고 미룬 회차·예외 회차는 덮지 않는다 (CR-050, DEV-352). 원래 서술: AC-1~AC-5 전부. 주기는 설정값(기본 1시간), 창은 `updated desc` + 24시간 컷오프(`/pulls`에 `since`가 없다, DEV-175), 누락은 백필의 `projectOne`으로 되돌린다(두 번째 경로를 만들지 않는다). **head 서수가 없으면 `prs:sequence`의 `sequence.requested`로 요청한다** — 집는 러너가 없는 잡 행을 만들지 않는다 (CR-034, DEV-180). 한도 소진은 미룸이며 3주기 연속이면 경보 지표가 뜬다. **운영 기동은 전용 `reconcile` 역할이 한다** (DEV-179, `deploy/k8s/pipeline-worker-reconcile.yaml`) |
 | FR-STAT-001 | WP-037, WP-038 | - | - | not_started |
 | FR-STAT-002 | WP-037, WP-038 | - | - | not_started |
 | FR-STAT-003 | WP-017, WP-037, WP-038 | `apps/web/lib/pr-detail.ts` (`timelineSteps`, `reviewerStates`), `apps/web/components/{PrTimeline,PrDetailView}.tsx` | `apps/web/lib/pr-detail.test.ts`, `apps/web/a11y/pr-detail.test.tsx` | partial (**PR 1건의 리드타임·첫 리뷰 대기·타임라인은 WP-017에서 done.** 승인 단계는 `done_at_unknown`이다 — `approved_at`이 매핑에 없어 **시각을 모른다**, DEV-084. 집계 지표(분포·추세)는 WP-037·WP-038) |
@@ -3144,6 +3144,72 @@ e2e 9 → **11**.
 **REL-004 진입 조건.** WP 기준으로는 열렸다 — 다음 WP를 시작하는 것을 막는 것은 없다. 그러나 **릴리스 게이트 4·5·6이 미통과이므로 REL-003의 베타 공개는 승인되지 않는다.** 둘을 섞지 않는다.
 
 
+### 6.42 WP-034 W-009 저장소 개요 (PR #62)
+
+**계약은 CR-050이 먼저 닫았다** (SRS baseline v2.10). 이 구현은 그 계약을 따랐고 **CR을 새로 열지 않았다** — 지시서 §0의 세 조건(승인된 계약으로 구현 불가 / 정본 부재 / 새 제품 결정 필요) 중 어느 것도 실물로 증명되지 않았다.
+
+| 계층 | 결과 |
+| --- | --- |
+| `pnpm typecheck` · `lint` · `lint:deps` | 통과 (패키지 13개, 위반 0건) |
+| 단위 | **1597 통과** (1 skipped) — 착수 전 1481 |
+| 통합 (실 PostgreSQL·Elasticsearch·Redis) | **72 파일 / 1141 통과** — 착수 전 67 / 1080 |
+| 회귀 | **213 통과** — 착수 전 194 |
+| a11y | **249 통과, axe 위반 0건** — 착수 전 235 |
+| 대비 | 80쌍 통과 |
+| e2e | **108 통과** — 착수 전 101 중 100 |
+| `pnpm build` | 통과. `/repositories`가 동적 라우트로 선다 |
+| 문서 검증기 `--strict` | `main` 대비 **증감 0** (WARN 1 · ERROR 2) |
+
+**마이그레이션 016은 실제 PostgreSQL로 up → down → up을 확인했다.** 되돌리면 표와 열이 사라지고 다시 올리면 돌아온다.
+
+#### DoD 판정
+
+19항 전부 통과. 특히 다음 다섯이 이 WP의 무게중심이다.
+
+- **`explicit`와 `org_team`이 같은 논리 권한에서 같은 결과를 낸다** — `API-ING-002`·`resolveRepository`·`listSequenceSpaces` 세 경로에 같은 범위 픽스처를 넣어 등식으로 건다 (`repositories/scope-parity.test.ts`)
+- **ES 문서 수 집계가 필수 접근 범위 필터를 지난다** — PostgreSQL이 이미 걸렀다는 이유로 생략하지 않는다
+- **커서로 끝까지 순회해 중복·누락이 0이고**, 접근 범위가 바뀐 뒤의 옛 커서는 `CURSOR_QUERY_MISMATCH`다. 봉투에 원본 사용자 식별자가 없다
+- **미룬 조정 회차가 최근 완료 결과를 덮지 않는다** — 완료 3 → 미룸 → 예외 → 다시 완료 0의 전이를 실 PostgreSQL로 확인했다
+- **새 라우트가 운영 조립에서 실제로 응답한다** — `buildServerDeps`를 그대로 불러 세운 서버에서 401이 나온다(404면 배선이 빠진 것이다). 세션 없는 조립에서는 404이며 **관리자 토큰 대체 경로가 없다**
+
+#### 적대적 변이 — 12종 12킬
+
+| 변이 | 판정 | 무엇을 드러냈나 |
+| --- | --- | --- |
+| M1 W-009 접근 범위 판정 무력화 | KILLED (9) | - |
+| M2a·b·c `allowedTeamIds`를 `[]`로 (세 경로 각각) | KILLED (각 1) | 경로마다 정확히 하나씩 죽었다 — parity 시험이 세 경로를 따로 걸고 있다는 증거다 |
+| M3 ES 집계의 필수 필터 우회 | KILLED (2) | - |
+| M4 커서 지문에서 접근 범위 제거 | KILLED (단위 5 + 통합 1) | - |
+| M5 등록 요청 멱등 제거 | KILLED (3) | - |
+| M6 등록 요청이 존재 여부로 응답을 가름 | **첫 시도 SURVIVED → 시험 구멍 → 정정 후 KILLED (1)** | 아래 |
+| M7 미룬 회차도 최근 결과에 저장 | KILLED (1) | - |
+| M8 `archived` 저장소를 목록에서 제외 | KILLED (4) | 첫 시도는 **변이가 걸리지 않았다** — 아래 |
+| M9 `runtime.ts` 배선 제거 | KILLED (3) | - |
+| M10 `API-ADM-006`에서 시퀀스 요약 제거 | KILLED (2) | - |
+
+**M6이 시험 구멍을 드러냈다.** 존재 비노출을 재는 시험이 **둘 다 존재하지 않는 슬러그**를 비교하고 있었다 — 그러면 어떤 존재 확인 분기도 같은 답을 내므로 그 시험은 통과하면서 아무것도 지키지 않는다. 실제로 등록된 저장소를 픽스처로 만들어 없는 것과 비교하도록 고쳤고, **같은 변이를 다시 걸어** 죽는 것을 확인했다. risks 74의 세 번째 얼굴이다 — 초록이 사실을 뜻하려면 무엇을 재고 있는지 확인해야 한다.
+
+**M8은 첫 시도에서 앵커가 어긋나 변이가 적용되지 않았다.** 치환 건수 검증이 그것을 잡았고(`MISMATCH 0!=1`), 그 통과를 SURVIVED로 읽지 않았다. 원인은 **혼합 줄바꿈**이었다 — `core.autocrlf=true` 환경에서 워킹 디렉터리 파일은 CRLF인데 이 세션이 `cat >>`로 덧붙인 부분이 LF로 남아 한 파일 안에 둘이 섞였다. 이 브랜치가 만진 파일 25개를 CRLF로 정규화한 뒤 변이가 걸렸고 죽었다. 커밋 결과는 어차피 LF로 정규화되므로 산출물에는 영향이 없다.
+
+#### 감사가 찾은 일곱과 그 처분
+
+| DEV | 처분 |
+| --- | --- |
+| 350 | 권한을 완화하지 않고 `API-ING-002`를 신설했다 — `API-ADM-001`·`API-ADM-006`의 역할 제한은 한 글자도 바뀌지 않았다 |
+| 351 | `ENT-CORE-008`·`API-ING-003`·마이그레이션 016. **승인·반려 수명주기는 만들지 않았다** (WP-040) |
+| 352 | `repository`에 완주 회차 결과를 보존한다. Prometheus counter는 그대로다 |
+| 353 | `allowedTeamIds`를 **필수 인자로 올려** 컴파일러가 먼저 잡게 하고, parity 회귀를 세 경로에 걸었다 |
+| 354 | `sequence_space_state`를 `API-ADM-006`에 넣었다. `operator` 전용은 그대로이고 저장소를 식별하지 않는다 |
+| 355·356 | 추적 매트릭스 여섯 행과 와이어프레임 진입 경로를 정정했다 (CR-050 문서 PR) |
+
+**DEV-159가 만기가 됐다.** W-005의 `release_not_indexed`가 화면 부재로 이월해 둔 링크를 실제로 걸었고 QA-W005-05가 온전히 통과한다.
+
+#### NOT RUN
+
+- 실제 GitHub Enterprise smoke — 사내망 자격 증명이 없다 (DEV-001 계열)
+- 실제 Kubernetes 배포 — 이 WP는 manifest를 만들지 않았다
+- 운영 규모 성능 — 합성 데이터셋도 `test:perf`도 없다 (DEV-058)
+
 ## 7. 알려진 제한 (구현 반영 기준)
 
 착수 시점의 계획상 제한이다. 구현이 진행되면 실제 반영된 내용으로 갱신한다.
@@ -3491,7 +3557,7 @@ CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 �
 | **WP-035** 무중단 재색인 | **done** — 버전 인덱스·이중 쓰기 17경로·울타리·정본 재구축·JOB-ING-006·API-ADM-004·CLI·보관 (6.39장) |
 | WP-032 패싯·커서 페이지네이션·전문 검색 | ~~next~~ **done (2026-08-27, PR #57)** — 6.40장 |
 | WP-033 저장된 검색 | **done (2026-08-27, PR #60)** — 6.41장 |
-| WP-034 W-009 저장소 개요 화면 | todo |
+| WP-034 W-009 저장소 개요 화면 | **done (2026-08-28, PR #62)** — 6.42장 |
 | WP-036 원본 아카이브 레인(Filebeat) | todo |
 
 **이 표의 순서는 ID 순이 아니라 실행 순이다** (CR-043). WP-035가 WP-032보다 앞에 있는 이유는 DEV-266·267이다 — WP-032의 `edge_ngram` 활성화가 살아 있는 인덱스에 배포될 수 없고(비동적 설정 + 기존 문서 미충전, 둘 다 실측), 그것을 배포하는 기계가 WP-035다. **WP ID를 재번호화하지 않는다.**
@@ -3567,6 +3633,16 @@ CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 �
 **참조됐다는 이유로 전부 구현하지 않았다.** `FR-SEQ-006`·`FR-ADMIN-001`·`FR-GH-004`가 W-009를 지목하지만, 안전 구간 표식 UI는 이 화면에 없고, 파이프라인 전역 지표는 `operator`의 것이며, Operations Plane 진입점은 REL-007 이후다. **역방향 참조는 구현 목록이 아니라 판정 대상이다** — 넷을 각각 "직접 구현 / 간접 의미 / 미래 WP / stale trace"로 분류하고 그 판정을 문서에 남겼다.
 
 **함께 닫은 기존 결함 하나가 무겁다**(DEV-353). `repository.allowed_team_ids`는 마이그레이션 011로 실재하는데 두 조회 경로가 그것을 `isRepositoryInScope`에 넘기지 않고 **"아직 스키마에 없다"는 stale 주석**을 달고 있었다. 그 인자는 선택이라 없으면 빈 배열로 읽히므로 **오류 없이 조용히 좁게 답한다** — 유출이 아니라 누락이고, 그래서 접근 통제 시험이 전부 통과한 채로 남아 있었다. W-009에서는 그 누락이 "등록되지 않았다"는 **틀린 진단**이 되므로, 이 화면이 바로 그 결함을 사용자에게 보여 주는 자리였다.
+
+**(2026-08-28) WP-034가 들어왔다 — 다음은 DEV-349 좁은 계약 종결이다.** 검증 기록은 6.42장이고, CR-050이 계약을 먼저 닫았으므로 구현은 **CR을 열지 않았다**. REL-004는 **7/8**이며 남은 것은 WP-036 하나다.
+
+**이 WP가 남긴 규율 셋.**
+
+(1) **선택 인자는 조용히 좁게 답한다**(DEV-353). `allowedTeamIds`가 빠졌을 때 함수는 오류를 내지 않고 빈 배열로 읽어 결과만 줄였다 — fail-closed라 접근 통제 시험이 전부 통과했고, 그래서 WP-068 이후 다섯 WP 동안 아무도 보지 못했다. **결과를 재는 시험으로는 잡히지 않는다.** 넘어간 재료를 봐야 잡히므로, 인자를 필수로 올려 컴파일러가 먼저 잡게 하고 `explicit`/`org_team` parity를 등식으로 걸었다.
+
+(2) **시험이 무엇을 재고 있는지 확인해야 초록이 사실을 뜻한다**(M6). 존재 비노출 시험이 둘 다 없는 슬러그를 비교하고 있었다 — 어떤 존재 확인 분기도 같은 답을 내므로 그 시험은 통과하면서 아무것도 지키지 않았다. 변이가 그것을 드러냈고, 고친 뒤 **같은 변이를 다시 걸어** 죽는 것을 확인했다.
+
+(3) **변이가 적용됐는지부터 확인한다**(M8). 첫 시도에서 앵커가 어긋나 변이가 걸리지 않았는데 시험은 통과했다 — 치환 건수 검증이 없었다면 그것을 SURVIVED로 읽고 "등가"라고 적었을 것이다. 원인은 `core.autocrlf` 환경에서 생긴 **혼합 줄바꿈**이었고, 이 세션이 `cat >>`로 덧붙인 부분이 LF로 남아 있었다.
 
 `srs_final.md`가 baseline이므로 그 문서의 변경은 CR을 먼저 등록해야 한다. 구현 중 문서와 현실이 어긋나면 5장에 `DEV-###`를 등록하고 CR로 연결한다. 조용한 범위 변경은 금지다.
 
