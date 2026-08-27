@@ -677,3 +677,187 @@ SHA=$(git rev-parse HEAD)
 gh api "repos/89sooner/pr-search/commits/$SHA/check-runs" \
   --jq '.check_runs[] | "\(.name): \(.status) \(.conclusion // "")"'
 ```
+
+---
+
+# 2026-08-26 CR-043~047 세션
+
+## 검증 배터리 (main `99e2532` 기준 실측)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH   # 셸 기본값은 v20.12.0이다
+pnpm typecheck                # 통과
+pnpm lint                     # 통과
+pnpm run lint:deps            # 통과 (패키지 13, 위반 0)
+pnpm run test                 # 단위 1380 통과 (1 skipped)
+pnpm run test:integration     # 통합 931 통과 (61 파일)
+pnpm run test:regression      # 회귀 151 통과              [146 → +5]
+pnpm run test:a11y            # 212 통과 (axe 0건)
+pnpm run test:contrast        # 80쌍 전부 통과
+pnpm build                    # 통과
+pnpm --filter @prs/web run build   # e2e 전에 필수
+pnpm run test:e2e             # 77 통과 / 1 실패 (flow-001 간헐)
+```
+
+**`test:contrast`의 출력 형식에 주의.** `Test Files`/`Tests` 줄이 없고 마지막이 `0 of 80 pairs checked failed contrast threshold`다 — `grep -E "Tests"`로 잡으면 **아무것도 안 나와 실패로 오해한다.**
+
+## 실제 Elasticsearch로 계약 주장을 증명하기
+
+문서만 읽고 "아마 안 될 것"이라고 적지 않았다. **probe 인덱스를 만들어 두 벽을 확인했다** (DEV-266·267).
+
+```bash
+# 벽 1 — edge_ngram은 비동적 설정이라 열린 인덱스에 못 넣는다
+curl -s -X PUT "localhost:9200/edgengram-probe" -H 'Content-Type: application/json' -d '{
+  "settings": { "analysis": { "analyzer": { "text_ko_en": {
+    "type":"custom","tokenizer":"standard","filter":["lowercase","asciifolding"] } } } },
+  "mappings": { "properties": { "title": { "type":"text","analyzer":"text_ko_en" } } } }'
+curl -s -X POST "localhost:9200/edgengram-probe/_doc/1?refresh=true" -H 'Content-Type: application/json' \
+  -d '{"title":"결제 게이트웨이 payment gateway"}'
+curl -s -X PUT "localhost:9200/edgengram-probe/_settings" -H 'Content-Type: application/json' -d '{
+  "analysis": { "filter": { "edge2_20": { "type":"edge_ngram","min_gram":2,"max_gram":20 } },
+                "analyzer": { "text_ko_en_partial": { "type":"custom","tokenizer":"standard",
+                  "filter":["lowercase","asciifolding","edge2_20"] } } } }'
+#   → illegal_argument_exception: Can't update non dynamic settings ... for open indices
+
+# 벽 2 — putMapping으로 더한 서브필드는 기존 문서에서 비어 있다
+curl -s -X POST "localhost:9200/edgengram-probe/_close"
+curl -s -X PUT  "localhost:9200/edgengram-probe/_settings" -H 'Content-Type: application/json' -d '{ ...위와 같음... }'
+curl -s -X POST "localhost:9200/edgengram-probe/_open"
+curl -s -X PUT  "localhost:9200/edgengram-probe/_mapping" -H 'Content-Type: application/json' -d '{
+  "properties": { "title": { "type":"text","analyzer":"text_ko_en",
+    "fields": { "partial": { "type":"text","analyzer":"text_ko_en_partial","search_analyzer":"text_ko_en" } } } } }'
+curl -s "localhost:9200/edgengram-probe/_search" -H 'Content-Type: application/json' \
+  -d '{"query":{"match":{"title.partial":"payme"}}}'          # → hits = 0
+curl -s -X POST "localhost:9200/edgengram-probe/_update_by_query?refresh=true"
+curl -s "localhost:9200/edgengram-probe/_search" -H 'Content-Type: application/json' \
+  -d '{"query":{"match":{"title.partial":"payme"}}}'          # → hits = 1
+curl -s -X DELETE "localhost:9200/edgengram-probe"            # 반드시 지운다
+```
+
+## 임시 통합 시험으로 결함을 재현하고 지우기
+
+DEV-270을 이렇게 재현했다. **읽어서 의심하고 실물로 확인한다.**
+
+```bash
+# 1) apps/search-api/integration/sequence/_repro-w004.test.ts 를 쓴다
+#    (range-es.test.ts를 틀로 삼는다 — 픽스처 색인에 routing 필수)
+pnpm run test:integration sequence/_repro-w004
+# 2) 로그를 보존하고 파일을 지운다
+cp apps/search-api/integration/sequence/_repro-w004.test.ts /tmp/.../repro.test.ts.txt
+rm apps/search-api/integration/sequence/_repro-w004.test.ts
+git status --porcelain    # clean 확인
+```
+
+**함정 둘**
+- `SessionStore`에 `save()`는 없다. `create({ sessionId, userId, login, email, roles, issuedAt, lastSeenAt, correlationId })`다
+- `--reporter=verbose`를 붙이면 시험이 **skip된다**(vitest 인자 처리). 증거는 기본 실행의 `Tests N passed`로 남긴다
+
+## 배포 도달성 조사 — 역할↔기동 사슬 전수
+
+`batch` 하나가 아니라 **넷**이 미배포였다. 이렇게 셌다.
+
+```bash
+# 코드가 분기하는 역할
+grep -oE "roles\.includes\('[a-z-]+'\)" apps/pipeline-worker/src/index.ts | sort -u
+# manifest가 세우는 역할 (파일 존재가 아니라 값을 본다)
+for f in deploy/k8s/pipeline-worker-*.yaml; do
+  grep -A2 "PIPELINE_WORKER_ROLES" "$f" | grep "value:" | sed 's/.*value: *//'
+done | sort -u
+# 인프라 3장이 승인한 단위
+grep -oE '`pipeline-worker:[a-z-]+`' docs/30_technical_architecture/pr_search_infrastructure_operations.md | sort -u
+```
+
+**start 호출을 감싸는 역할까지 정확히 보려면** 중첩을 세야 한다(`backfill`이 `enrich` 안에 있다). 파이썬으로 중괄호 깊이를 추적해 `roles → start*` 표를 만들었다.
+
+## 변이 시험 (이 세션에서 건 여섯, 전부 킬)
+
+| ID | 변이 | 결과 |
+| --- | --- | --- |
+| R-M1 | `pipeline-worker-batch.yaml` 삭제 | KILLED |
+| R-M2 | manifest의 `ROLES` 값을 `enrich`로 변조(파일은 남김) | KILLED — 파일 존재가 아니라 **값**을 본다는 증명 |
+| R-M3 | 예외 목록의 사유를 짧게 | KILLED |
+| R-M4 | 배포 단위 표에 만들지 않은 가짜 단위 추가 | KILLED (두 시험이 각각) |
+| R-M5 | 표에서 `mirror` 행 제거(코드에는 남김) | KILLED |
+| R-M6 | 예외 역할 `authz`를 승인 표에 올림 | KILLED (두 시험이 각각) |
+
+**원복은 역방향 치환으로 한다.** `git checkout -- <file>`을 썼다가 **아직 커밋하지 않은 회귀 추가분까지 잃었다**(148 → 146).
+
+## CI 조사 (러너가 76분간 안 잡혔다)
+
+```bash
+SHA=$(git rev-parse HEAD)
+# run이 아예 없으면 트리거가 안 된 것이다
+gh api "repos/89sooner/pr-search/actions/runs?head_sha=$SHA" --jq '.total_count'
+gh api "repos/89sooner/pr-search/actions/runs?head_sha=$SHA" \
+  --jq '.workflow_runs[] | "id=\(.id) attempt=\(.run_attempt) \(.status) \(.conclusion // "")"'
+# queued + check-run 0 = 러너 배정 문제
+gh api "repos/89sooner/pr-search/commits/$SHA/check-runs" --jq '.total_count'
+# run 수준 startup_failure인데 job은 success인 경우가 있다 — 둘 다 본다
+gh api "repos/89sooner/pr-search/actions/runs/<ID>/jobs" --jq '.jobs[] | "\(.name): \(.conclusion)"'
+```
+
+재트리거 셋을 다 써 봤다: `git push`(새 commit) · `gh pr close/reopen` · `gh run rerun <id>`. **셋 다 실패했고** 다음 PR을 여는 순간 큐가 저절로 풀렸다.
+
+**billing 확인은 `user` scope가 필요하다** — `gh api /users/<login>/settings/billing/actions`가 404 + "needs the user scope". 사용자가 `gh auth refresh -h github.com -s user`를 실행해야 한다.
+
+## 문서 편집 — 이번에 밟은 함정 셋
+
+```bash
+# 1) `after` 모드를 제목에 걸면 그 제목 *뒤*에 들어간다 (두 번 밟았다)
+#    → 새 절을 앞에 넣을 때는 다음 제목을 앵커로 `replace` 하고
+#      치환 텍스트에 그 제목을 다시 포함한다
+# 2) `replace`의 앵커에 제목을 넣고 치환 텍스트에서 빼면 그 제목과 본문이 사라진다
+#    → 편집 뒤 반드시 확인
+grep -n '^## ' docs/30_technical_architecture/pr_search_api_contracts.md
+# 3) 표 중간에 문단을 넣으면 표가 끊긴다. 기존 "표 안 빈 줄" 검사로는 안 잡힌다
+python3 - <<'PY'
+import io
+f='<file>'
+l=io.open(f,encoding='utf-8',newline='').read().replace('\r\n','\n').split('\n')
+print([i+1 for i in range(1,len(l)-1) if l[i]=='' and l[i-1].startswith('|') and l[i+1].startswith('|')])
+PY
+```
+
+## 검증기 — 작업 중간에도 돌린다
+
+```bash
+V=/home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py
+python3 "$V" --root . --strict > /tmp/.../v.log 2>&1
+diff <(grep -E '^(ERROR|WARN)' /tmp/.../validator-main.log) <(grep -E '^(ERROR|WARN)' /tmp/.../v.log)
+```
+
+**판정은 exit 0이 아니라 main 대비 증감 0이다.** 이 세션에서 `CR referenced but not registered in change_control.md: CR-045`를 잡아 줬다 — 계약 문서에서 CR을 참조하기 전에 대장에 등록해야 한다.
+
+## 리뷰 답변·해소 (GraphQL)
+
+```bash
+gh api graphql -f query='mutation($tid: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $tid, body: $body}) { comment { url } } }' \
+  -f tid="PRRT_..." -f body="$(cat reply.md)"
+gh api graphql -f query='mutation($tid: ID!) {
+  resolveReviewThread(input: {threadId: $tid}) { thread { isResolved } } }' -f tid="PRRT_..."
+```
+
+**머지된 PR의 스레드도 답변·resolve 할 수 있다.** 이 세션은 PR #48의 다섯과 PR #50의 넷을 후속 CR로 고친 뒤 각각 답변하고 닫았다.
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 증상 | 원인·해결 |
+| --- | --- | --- |
+| `pnpm run test:regression` | `ECONNREFUSED 127.0.0.1:5432` (2 파일) | **컨테이너가 죽었다.** `docker ps -a`로 `Exited (255)` 확인 → `docker start prs-postgres prs-redis prs-elasticsearch` |
+| `pnpm run test:integration sequence/_repro-w004` | `TypeError: (intermediate value).save is not a function` | `SessionStore`에 `save()`가 없다. `create({...})`다 |
+| 같은 시험 `--reporter=verbose` | `2 skipped` | vitest 인자 처리. 증거는 기본 실행의 `Tests N passed`로 |
+| `git checkout -- regression/...` | 회귀 148 → 146 | **커밋 전 변경분이 통째로 날아갔다.** 변이는 역방향 치환으로 원복 |
+| `python3 edit.py after <제목>` | 새 절이 제목 **뒤**로 | 다음 제목을 앵커로 `replace` 한다 |
+| `python3 edit.py replace <제목>` | `## 5. DTO 표준`과 본문이 사라짐 | 치환 텍스트에 앵커 제목을 다시 포함해야 한다 |
+| `grep -E "Tests"` on `test:contrast` | 아무것도 안 나옴 | 그 스크립트는 `N of 80 pairs ... failed` 형식이다 |
+| `grep -cE '\| open'` on 원장 | 새 DEV 3건이 안 세어짐 | `| **open ...**`으로 썼다. **`| open ...` 형식으로 쓴다** |
+| `gh run list --branch <name>` | `unknown flag` | 그 플래그가 없다. `--json headSha`로 걸러낸다 |
+| `bc` | `command not found` | 이 환경에 없다. 합계는 파이썬으로 |
+
+## 환경 (변경 없음, 재확인)
+
+- Node **v22.23.2** 필수, **셸 기본값은 v20.12.0**
+- 마이그레이션 **014까지**. 컨테이너 3종 healthy, `prs`·`prs_test` 존재
+- 전사는 **`exports/`**에 있다 (`exports/202608270742.md`) — `.gitignore` 24행 대상
+

@@ -332,3 +332,72 @@
 - **사용자 대면 조회를 `packages/es/src/links.ts`에 넣지 않는다** — 그 파일은 ADR-008 가드레일에서 `no_requester`로 면제돼 있어 검사가 침묵한다 (DEV-265)
 - **새 조회 경로는 `assertNoShardFailures`를 지나야 한다** — 다른 경로 일곱이 전부 지난다 (PR #47 리뷰 P1)
 - `agent-context/`는 tracked. 전사는 `exports/`에 둔다
+
+---
+
+# 2026-08-26 CR-043~047이 만든 것 (계약 경화 5연발)
+
+**코드 변경은 셋뿐이다.** 나머지는 전부 문서다 — 이 세션은 감사와 계약이었지 구현이 아니었다.
+
+## 읽는 순서가 바뀐 문서
+
+| 경로 | 버전 | 이 세션이 바꾼 것 |
+| --- | --- | --- |
+| `docs/10_requirements/srs_final.md` | **baseline v2.8** | v2.7(CR-043): FR-SEQ-002 **AC-6·7·8** 신설, FR-SRCH-009 관련 화면에 **W-004**. v2.8(CR-044): **AC-7의 봉인 값을 "완결 서수"로 정정** |
+| `docs/10_requirements/prd.md` | v1.3 | SCN-002 패싯 목록을 SRS와 맞춤 |
+| `docs/10_requirements/requirements_screen_traceability_matrix.md` | v0.5 | FR-SRCH-009에 W-004 추가, **FR-SRCH-008에서 W-004 제거**(정본이 다른 두 순회를 갈랐다), FR-SEQ-002에 커서·패싯 소유 명시 |
+| `docs/30_technical_architecture/pr_search_api_contracts.md` | **v0.7** | API-SRCH-004에 **「커서 계약」·「패싯 계약」·「전문 검색 계약」** 세 절, API-SEQ-001에 **「구간 커서와 패싯」**, **API-ADM-004 상세 절 신설** |
+| `docs/30_technical_architecture/pr_search_async_events_jobs.md` | **v0.3** | **3.5장 신설** — JOB-ING-006. 불변식 아홉 · **이중 쓰기 대상 열일곱 전수** · 울타리 · 정본 재구축 · 전환 검증 일곱 · 실패/취소 다섯 · 보관 |
+| `docs/30_technical_architecture/pr_search_architecture_decision_records.md` | v0.4 | **ADR-010 Amendment** — 이 결정이 덮는 범위(색인이 결과 집합을 소유하는 조회) · 봉투 무결성 · **모든 순회에 PIT** |
+| `docs/30_technical_architecture/pr_search_infrastructure_operations.md` | **v0.4** | 배포 단위 표에 `mirror`·`reconcile` 등재, `batch` 상한을 **`1 / 1`**로, **표와 `deploy/k8s/`가 서로를 검사한다**는 규칙 |
+| `docs/30_technical_architecture/pr_search_backend_architecture.md` | v0.3 | 깊은 페이징을 W-001·W-004로 갈랐고, 패싯을 **별도 요청 + 1.5초** |
+| `docs/30_technical_architecture/pr_search_security_privacy_architecture.md` | v0.4 | THR-003(패싯 집계도 `ScopedQuery`)·THR-014(PIT 자원)·**THR-018(강조의 raw HTML 금지)** |
+| `docs/20_derived_ui_specs/*` 4종 | v0.4~v0.5 | C-012 `failed` 상태·C-016 커서 규칙 / W-001·W-004 패싯 축 / 커서 오류 상태 넷 / QA-W001-26~29·QA-W004-23~29 |
+| `docs/40_delivery/pr_search_work_packages.md` | **v1.1** | **WP-032 전면 재작성**(선행에 WP-035), **WP-035 전면 재작성**, 3장 순서표를 **실행 순**으로 |
+| `docs/40_delivery/pr_search_implementation_roadmap.md` | v0.4 | 의존성 지도에 WP-035 → WP-032, REL-004 실행 순서 |
+| `docs/40_delivery/pr_search_implementation_traceability.md` | **v3.4** | DEV-266~312 등록, **6.37 · 6.37.1 · 6.38 · 6.38.1장 신설**, §7의 flow-001 항목 정정(**CI에서도 재현된다**) |
+| `docs/00_governance/change_control.md` | — | CR-043~047 대장 + 5장 반영 내역 |
+
+## 이 세션이 만든 소스 (셋뿐)
+
+| 경로 | 역할 |
+| --- | --- |
+| **`deploy/k8s/pipeline-worker-batch.yaml`** | **신설.** `batch` 역할 배포 단위 — JOB-ING-006(재색인)·JOB-ING-007(아웃박스 재적재). replica 1 · `Recreate` · grace 300s. **인프라 3장이 승인한 단위를 실재시킨 것**이지 새 역할이 아니다 |
+| `deploy/k8s/README.md` | 적용 순서에 `pipeline-worker-batch.yaml` 등재 + 그 파일이 없던 이유 설명 |
+| **`regression/runtime-reachability.test.ts`** | **+5건 (146 → 151).** 배포 도달성을 **양방향**으로 검사한다 (아래) |
+
+## 새 회귀 다섯의 정확한 책임
+
+| 시험 | 무엇을 지키나 |
+| --- | --- |
+| `코드가 갈래를 만든 역할은 그것을 세우는 manifest를 갖는다` | `index.ts`의 `roles.includes('X')` → manifest. **구현했는데 배포되지 않았다**를 잡는다 (DEV-292) |
+| `인프라 3장이 승인한 배포 단위는 manifest를 갖는다` | 인프라 표 → manifest. **승인했는데 만들지 않았다**를 잡는다. **예외를 적용하지 않는다** (DEV-310·312) |
+| `배포 단위 표와 코드 갈래가 서로를 덮는다` | 표가 낡았거나 코드가 앞서 갔다를 잡는다 (DEV-307) |
+| `미배포 예외 역할은 배포 단위 표에 오르지 않는다` | 인프라 3장의 규율("배포되지 않는 단위를 표에 먼저 적지 않는다")을 **강제**한다 (DEV-312) |
+| `미배포 역할 예외는 목록에 사유와 DEV가 함께 있다` | 예외를 늘리는 것이 경계를 넓히는 일임을 시험이 강제한다 (사유 40자 미만이면 실패) |
+
+`UNDEPLOYED_ROLE_ALLOWLIST`에 `backfill`(DEV-304) · `release`(DEV-305) · `authz`(DEV-306)가 사유와 함께 있다. **고칠 때는 manifest를 만들고 이 목록에서 지운 뒤 인프라 표에 올린다.**
+
+## WP-035 구현이 손댈 자리 (아직 없는 것)
+
+| 무엇 | 지금 상태 |
+| --- | --- |
+| 버전 인덱스 생성·별칭 전환 | `packages/es/src/bootstrap.ts`는 `ensureIndex`(생성 또는 `putMapping`) + `putAlias`뿐. `indices.ts`의 `ENTITY_INDICES[].index`가 상수 `'prs-*-v1'` |
+| 이중 쓰기 seam | 없다. 별칭에 쓰는 함수 **열일곱**: `upsert.ts`(`bulkUpsert`·`upsertOne`) · `commit-metadata.ts`(`upsertCommitMetadata`) · `sequence.ts`(`applySequenceToDocuments`·`applyEpochBump`) · `registry.ts`(`markRepositoryArchived`·`applyRepositoryTeams`) · `releases.ts`(`pruneReleaseDocuments`·`applyReleaseTagsToDocuments`) · `links.ts`(8) |
+| JOB-ING-006 러너 | 없다. `apps/pipeline-worker/src/index.ts`의 `roles.includes('batch')` 블록에는 `startOutboxRelay`뿐 |
+| API-ADM-004 라우트 | 없다. `apps/search-api/src/ops/`에 `reindex` 없음 |
+| CLI | `packages/es/src/cli.ts`가 `apply-mappings`만 받는다. `package.json`에 `es:reindex` 스크립트 없음 |
+| `OPERATOR_JOB_TYPES` | `apps/search-api/src/ops/jobs.ts` — `['backfill', 'link_rebuild']`. `reindex`는 **러너와 같은 커밋에서** 더한다 |
+| 정본 | 전부 있다 — `pull_request_snapshot`(010) · `commit_snapshot`(013) · `release`(008) · 간선은 JOB-REL-006 재파생 |
+| advisory lock | `packages/db/src/advisory-lock.ts`에 세션·트랜잭션 범위 둘 다 있다 |
+
+## 손대면 안 되는 것 (갱신)
+
+- `docs/10_requirements/srs_final.md`는 **baseline v2.8**. CR 먼저
+- 기존 마이그레이션을 수정하지 않는다. **CR-043~047은 새 마이그레이션을 만들지 않았다 — 다음은 015**
+- 기본 consumer group 이름을 바꾸지 않는다
+- **사용자 대면 조회를 `packages/es/src/links.ts`에 넣지 않는다** (ADR-008 가드레일 면제가 파일 단위, DEV-265)
+- **새 조회 경로는 `assertNoShardFailures`를 지나야 한다**
+- **새 역할을 추가하면 ① 코드 갈래 ② manifest ③ 인프라 3장 표 셋이 함께 간다** — 회귀가 양방향으로 검사한다
+- `agent-context/`는 tracked. 전사는 **`exports/`**에 둔다
+

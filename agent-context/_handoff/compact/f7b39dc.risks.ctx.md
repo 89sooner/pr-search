@@ -1,7 +1,7 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=5833ac5eaf06b885814e50b06317fb3f50a798f6320a99e255d0ed94b2440296 bytes=32294 lines=519 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;DISTINCT;pull_request_number;NOT;NULL;expected;Node;e2e
+@kv sha256=e88e1608fb652e996daf19d551a895c15f3e805f7249814654f677c2c77930d1 bytes=40737 lines=618 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;DISTINCT;pull_request_number;NOT;NULL
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
 @h3 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다
@@ -234,7 +234,7 @@
 |...cut 70 lines
 @p bash set -o pipefail
 @cmd pnpm run test:integration 2>&1 | tee /tmp/.../baseline-integration.log
-@code lang=txt sha=ab86ec35c173 lines=31 kept=31
+@code lang=txt sha=40f6dae3bac2 lines=129 kept=80
 |## 43. 금지를 거는 회귀는 **주석을 걷어 낸 코드**만 봐야 한다
 |"이 필드를 쓰지 않는다"를 파일 전문에 `not.toContain`으로 걸었더니 **그 사실을 설명한 주석**에 걸렸다. 문서 검증기가 자기 검색어를 세는 것과 같은 함정이다(risks 35).
 |→ 검사 범위를 좁힌다. `codeOf()` 헬퍼로 `/* */`와 `//`를 걷어 낸 뒤 건다.
@@ -252,3 +252,32 @@
 |- Node **v22.23.2** 필수. **마이그레이션은 014까지** — CR-042는 새 마이그레이션을 만들지 않았다
 |- 컨테이너 3종 healthy. `prs`·`prs_test` 존재
 |- `apps/web`을 바꾸면 **e2e 전에 `pnpm --filter @prs/web run build`**가 필요하다. 이번 세션에서 여러 번 필요했다
+|---
+|# 2026-08-26 CR-043~047 세션이 추가한 것
+|## 47. **적어 둔 규칙을 내가 어긴다** — 리뷰 라운드 넷에서 반복됐다
+|이 세션의 가장 값진 소득이다. 리뷰가 잡은 P1·P2 열이 있는데 그중 여섯이 **내가 문서에 적은 것을 내 구현·계약이 따르지 않은 자리**였다.
+|| 라운드 | 내가 적은 것 | 내가 한 것 |
+|| --- | --- | --- |
+|| PR #48 | 정렬 키 여덟의 성질을 판정했다 | `updated_at`을 **불변으로 셌다** — 리뷰 하나에도 움직인다 |
+|| PR #48 | DEV-270("실은 것과 진행한 것이 어긋난다")을 **재현까지** 했다 | 그것을 고치는 계약에 **같은 계열을 새로 만들었다** |
+|| PR #49 | baseline SRS AC-7이 봉인 값을 정한다 | **하위 문서만** 고쳐 baseline과 어긋나게 했다 |
+|| PR #50 | 막아야 할 경주 **둘을 표로** 적었다 | 울타리를 **첫 번째만** 덮게 잡았다 |
+|| PR #50 | WP-035에 "인프라 표를 정본으로 삼아"라고 적었다 | 구현은 **코드 갈래만** 읽었다 |
+|| PR #51 | 인프라 3장에 "배포되지 않는 단위를 표에 먼저 적지 않는다"를 적었다 | 예외를 **두 방향에 다** 걸어 그 규율을 강제하지 않았다 |
+|→ **문서에 규칙을 적었으면 그것을 강제하는 시험이 있는지 같은 pass에서 물어라.** 적는 것과 지키는 것은 다른 일이고, 그 차이를 잡는 것은 시험뿐이다. 이 세션의 정정은 매번 시험이었다(회귀 146 → 151).
+|## 48. **결함의 모양을 이해했다고 다시 만들지 않는 것은 아니다**
+|DEV-270을 찾고 실제 PG·ES로 **재현까지** 한 뒤, 그것을 고치는 계약(4단계 커서 갱신)에서 **같은 계열의 결함을 새로 만들었다**(DEV-287). 두 결함 모두 "실은 것과 진행한 것이 어긋난다"이다.
+|→ **커서를 다룰 때 물어라: 이 커서가 가리키는 지점보다 앞에 아직 내주지 않은 것이 있는가.** 답이 "있을 수 있다"면 커서가 너무 멀리 간 것이다.
+|## 49. **한쪽 실패만 보고 쓴 규칙은 반대쪽에서 깨진다**
+|AC-7의 첫 문장("마지막으로 반환한 항목이 아니라 검사한 지점")은 DEV-270 한쪽만 보고 쓴 것이었고 반대쪽(DEV-287)이 곧 드러났다. **완결 서수**로 재정의하니 둘이 하나의 물음으로 합쳐졌다 — *이 지점 이하에 아직 내주지 않은 일치가 있는가.*
+|같은 모양이 PIT에서도 나왔다: "이 정렬 키는 불변인가"를 매번 판정하는 규칙을 만들었다가 **첫 판정이 틀렸다.** → **판정이 필요한 규칙은 판정하는 사람이 틀릴 때마다 조용히 깨진다.** 판정을 없애는 편이 싸고 안전하다(모든 순회에 PIT).
+|## 50. **산문이 예시를 이기지 못한다**
+|새 계약을 산문으로 적고 위쪽 **정본 JSON 예시**를 그대로 두었다. `pr_search_api_contracts.md` 1장이 *"구현 에이전트는 이 예시를 그대로 fixture와 테스트에 사용한다"*고 적으므로 **예시가 계약이고 산문은 주석이다.**
+|→ **응답 형태를 바꾸는 계약은 예시부터 바꾼다.** 같은 사실을 적은 표가 둘이면 하나를 지우고, 정본이 어디인지 명시한다.
+|## 51. **예외를 두 방향에 다 걸면 예외가 검사를 삼킨다**
+|`UNDEPLOYED_ROLE_ALLOWLIST`를 `코드 → manifest`와 `승인 표 → manifest` 양쪽에 걸었더니 예외 역할에 대해 **세 검사가 모두 침묵**했다. 예외는 *알려진 미배포*를 뜻하지 *검사 면제*를 뜻하지 않는다.
+|→ **예외는 두 방향 중 한쪽에만 건다.** 그리고 예외가 무효가 되는 조건(여기서는 "승인 표에 오르면")을 별도 시험으로 건다.
+|## 52. **회귀의 방향을 물어라** — 없는 것은 물음의 대상이 아니다
+|CR-034가 세운 운영 도달성 계층이 `batch` 미배포를 놓친 이유는 방향이다. 그 검사는 **"존재하는 manifest가 적용 순서에 있는가"**를 묻는데, CR-038 때의 문제가 "파일은 있고 목록에 없다"였기 때문이다. 이번은 한 겹 아래 — **파일 자체가 없었다.**
+|→ **검사를 만들 때 "이것이 덮지 못하는 면은 무엇인가"를 함께 적어라.** 이 세션은 그것을 두 번 배웠다(DEV-293 → DEV-310 → DEV-312, 같은 검사가 세 번 넓어졌다).
+|...cut 49 lines
