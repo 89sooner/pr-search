@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=752462fafb650dd146987ba433eb281824074508e21bc60d9dbe5837fe007032 bytes=46948 lines=693 title=리스크-불확실한-가정-함정
+@kv sha256=304b0bae0f10dd64cafeea658fa60a54d19818aea56cbd385575ec89cd440d07 bytes=51199 lines=763 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;DISTINCT
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -282,7 +282,7 @@
 |→ **검사를 만들 때 "이것이 덮지 못하는 면은 무엇인가"를 함께 적어라.** 이 세션은 그것을 두 번 배웠다(DEV-293 → DEV-310 → DEV-312, 같은 검사가 세 번 넓어졌다).
 |...cut 57 lines
 @p python io.open(path, 'w', encoding='utf-8', newline='\\r\\n') # ← 이스케이프가 깨진 값
-@code lang=txt sha=fb1c236a1093 lines=63 kept=63
+@code lang=txt sha=86d5ec79432a lines=133 kept=80
 |`ValueError: illegal newline value`가 나기 **전에 파일이 이미 0바이트가 됐다.** 파일은 신규(untracked)라 git으로도 복구할 수 없었고, 540줄을 전부 다시 썼다.
 |→ **truncate하는 open에 계산된 인자를 넣지 마라.** 값을 먼저 검증하거나, 임시 파일에 쓰고 옮긴다. `risks.md` 53번(`git checkout`은 원복 수단이 아니다)의 이웃 사례다 — 둘 다 "되돌릴 수 있다고 가정한 자리가 되돌릴 수 없었다".
 |## 61. **`git checkout --`를 원복이 아니라 "복구"에 쓰다가 또 잃었다**
@@ -320,3 +320,16 @@
 |- 컨테이너 3종 healthy. `prs`·`prs_test` 존재
 |- **전사가 `.gitignore` 밖에 있다** — `pr-search/202608271346.md`. `exports/`만 무시되며 저장소 루트는 아니다 (`git check-ignore`로 실측)
 |- CI는 이 세션 세 라운드 모두 정상 기동했다 (76분 큐 대기 재현 없음)
+|# 2026-08-27 (2차) WP-032 세션이 추가한 것
+|## 67. **살아남은 변이 다섯 중 셋이 시험 구멍이었다**
+|"등가겠지"로 넘겼다면 PIT도, 매핑 버전도, 부트스트랩 방어도 **아무 시험이 지키지 않는
+|상태로** 병합됐다.
+|| 변이 | 판정 | 무엇이었나 |
+|| --- | --- | --- |
+|| M2 페이지마다 PIT 새로 열기 | **시험 구멍** | 새 문서가 경계보다 앞에 정렬되면 `search_after`가 자연히 배제한다 — 시험이 PIT을 보고 있지 않았다. 실제로 깨지는 것은 **이미 본 문서의 정렬 값이 움직일 때**다 |
+|| M10 매핑 버전 되돌림 | **시험 구멍** | `bootstrap.test.ts`가 시작할 때 모든 버전을 지워 "별칭이 옛 버전을 든 상태"가 만들어지지 않았다 — 그것이 운영의 출발점인데 |
+|| M11 부트스트랩 방어 제거 | **시험 구멍** | 같은 이유 |
+|| M7 완결 서수를 `scannedSeq`로 | 등가 | `break`가 소비하지 않은 일치의 서수를 남기지 않는다 |
+|| M7c chunk 루프 상한 | 등가 | 한 요청이 chunk를 몇 개 읽는지만 바뀐다 |
+|→ **경로를 읽어라.** 그리고 시험을 고쳤으면 **같은 변이를 다시 걸어라** — 고쳤다고 믿는
+|...cut 53 lines

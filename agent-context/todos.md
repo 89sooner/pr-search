@@ -1,5 +1,62 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
+> **최신 기준 (2026-08-27 WP-032 종료 시점)**
+> main `3237b6c` · SRS **`baseline v2.8`**(변경 없음) · PRD `v1.3` · 원장 `review v4.1` · 작업 패키지 `v1.4` ·
+> 로드맵 `v0.6` · 인프라 `v0.5` · API 계약 `v0.8` · 추적 매트릭스 `v0.5`
+> **CR-048(변화 없음) · DEV-332까지** · **마이그레이션 014까지**(WP-032는 만들지 않았다)
+> **REL-004 구현 5/8** (WP-029·030·031·035·**032** done)
+> **REL-003 릴리스 게이트는 여전히 미통과 — 베타 공개 승인 안 됨.**
+> 미해결 리뷰 **0건** (PR #55·#56·#57 전부 resolve). 열린 PR 0건. 로컬 브랜치는 `main` 하나. 미추적 0건
+> **open DEV 7건** — 기존 5(`DEV-001·006·010·016·026`) + `DEV-304·305`
+
+## A. 지금 당장 — WP-033 저장된 검색
+
+**착수 전 감사를 다시 할지부터 정한다.** WP-032는 계약이 CR-043·044에서 이미 닫혀 있어 감사 없이 구현했고 그것이 옳았다. WP-033은 계약이 닫힌 적이 없다 — `saved_search` 표도 API도 SRS 밖에서 검증된 적이 없으므로 **착수 전 감사가 필요할 가능성이 높다.**
+
+next-free는 **실측할 것** — `CR-049` / `DEV-333` / 마이그레이션 `015`가 예상이지만 추측해 쓰지 않는다:
+
+```bash
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -2
+grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -2
+ls packages/db/migrations/*.up.sql | tail -1
+```
+
+**WP-032가 깔아 둔 자리 — 다시 만들지 말 것**
+
+- `apps/search-api/src/cursor/envelope.ts` — HMAC 봉인·두 오류 타입. **순회의 뜻은 여기 없다.** 새 커서 계열이 생기면 봉인만 물려받고 순회는 자기 모듈에 둔다
+- `apps/search-api/src/search/cursor.ts`(PIT+search_after) · `sequence/range-cursor.ts`(정본 서수) — **합치지 않는다.** 합치면 W-004 멤버십이 ES로 넘어가 DEV-130이 되돌아온다
+- `apps/search-api/src/search/facets.ts` — `computeFacets`는 `ScopedQuery`만 받는다. 새 축은 `FacetAxis`에 더한다. **표시값 해석이 필요한 축은 `display`를 붙이고 일괄 해석**한다(N+1 금지)
+- `packages/es/src/highlight.ts` — 표식은 사설 사용 영역 문자다. **응답에 마크업을 내보내지 않는다**
+- `packages/es/src/sort.ts`의 `MISSING_SENTINEL` — `_last`로 되돌리지 않는다 (DEV-329). 새 정렬 키를 더하면 그 타입의 센티널이 있어야 한다
+- `packages/es/src/indices.ts` — **PR·커밋은 `-v2`다.** 매핑을 또 바꾸면 버전을 올리고 재색인으로 배포한다. `applyMappings`는 별칭이 옛 버전을 들고 있으면 물러난다
+
+## B. 배포에서 해야 할 것 (WP-032가 만든 전제)
+
+1. `SEARCH_CURSOR_HMAC_KEY`(32자 이상, **복제본 공통**)를 시크릿에 넣는다. 없으면 `search-api`가 운영에서 기동하지 않는다
+2. `pnpm es:reindex --alias prs-pull-requests` · `--alias prs-commits`로 v2에 올린다. **부트스트랩으로 먼저 해결하려 하지 않는다** — 빈 인덱스를 만들거나 별칭을 둘로 건다
+3. 그 전까지 전문 검색은 과거 데이터에 **조용히 적게** 답한다
+
+## C. 별도 CR 둘 — 남은 미배포 역할 (변화 없음)
+
+| DEV | 역할 | 왜 아직 | 소관 |
+| --- | --- | --- | --- |
+| 305 | `release` (JOB-REL-007) | 미러 PVC 배치 필요 (DEV-143) | WP-024 |
+| 304 | `backfill` (JOB-ING-004) | `enrich` 파드 역할 구성 판단 | WP-019 |
+
+## D. 릴리스 게이트 4·5·6 (변화 없음)
+
+Gate 4 보안(일부 가능) · Gate 5 성능(**불가** — 합성 데이터셋·`test:perf` 없음) · Gate 6 운영(**불가** — 실제 K8s 없음).
+
+## E. 미뤄 둔 항목
+
+- `flow-001`·`flow-003` e2e 간헐 실패 — WP-016 소관. **재시도 통과를 해소로 적지 않는다**
+- 문서 검증기 `--strict` 자기참조 오탐 — 문서를 고쳐 게이트를 통과시키지 않는다
+- **PIT의 클러스터 자원 비용** — 조회마다 PIT을 여는 대가를 운영 규모로 재지 않았다 (NOT RUN)
+- **패싯·커서의 운영 규모 성능** — 예산 1.5초가 어디서 걸리는지 (DEV-058)
+- `prs-links` 재색인 커버리지 판정
+
+---
+
 > **최신 기준 (2026-08-27 WP-035 · CR-048 종료 시점)**
 > main `df9f569` · SRS **`baseline v2.8`**(변경 없음) · PRD `v1.3` · 원장 `review v3.7` · 작업 패키지 `v1.2` ·
 > 인프라 `v0.5` · API 계약 `v0.8` · 로드맵 `v0.5` · 추적 매트릭스 `v0.5`

@@ -1016,3 +1016,93 @@ git check-ignore -v exports/dummy.md    # .gitignore:24:exports/
 - 마이그레이션 **014까지**. 컨테이너 3종 healthy, `prs`·`prs_test` 존재
 - ES 별칭 넷 정상. WP-035 통합이 별칭을 옮기지만 `afterAll`이 되돌린다
 - **전사는 저장소 루트에 있다** — `202608271346.md`. `exports/`가 아니다
+
+# 2026-08-27 (2차) WP-032 세션
+
+## 검증 배터리 (main `3237b6c` 기준 실측)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                     # 통과
+pnpm lint                          # 통과 — 마지막 파일을 쓴 뒤 다시
+pnpm run lint:deps                 # 패키지 13, 위반 0
+pnpm run test                      # 단위 1481 통과 (1 skipped)   [1394 → +87]
+pnpm run test:integration          # 통합 1015 통과 (65 파일)     [952 → +63]
+pnpm run test:regression           # 회귀 194
+pnpm --filter @prs/web run build   # e2e 전에 필수 (화면을 바꿨다)
+pnpm run test:a11y                 # 212 (axe 0건)
+pnpm build
+```
+
+**targeted e2e** (전체 78+는 생략 — 2026-08-27 검증 정책):
+
+```bash
+cd apps/web && ./node_modules/.bin/playwright test \
+  e2e/search-paging.spec.ts e2e/flow-001.spec.ts e2e/flow-003-range.spec.ts
+# 27 통과
+```
+
+## 통합 결과가 이상하면 DB를 초기화하고 **한 번만** 돌린다
+
+```bash
+docker exec prs-postgres psql -U prs -d postgres -c "DROP DATABASE IF EXISTS prs_test;"
+docker exec prs-postgres psql -U prs -d postgres -c "CREATE DATABASE prs_test OWNER prs;"
+pnpm run test:integration
+```
+
+두 실행이 겹치면 duplicate key·partition 충돌로 **수십 건이 거짓 실패**한다 (risks 69).
+
+## 실 Elasticsearch로 계약을 증명한다
+
+```bash
+# 매핑이 받아들여지는가
+node --input-type=module -e "
+import { ENTITY_INDICES } from './packages/es/dist/index.js';
+const pr = ENTITY_INDICES.find(d => d.alias === 'prs-pull-requests');
+console.log(JSON.stringify({ settings: { ...pr.settings, number_of_shards: pr.shards }, mappings: pr.mappings }));
+" > /tmp/pr-index.json
+curl -s -X PUT localhost:9200/probe -H 'Content-Type: application/json' -d @/tmp/pr-index.json
+
+# 정렬 센티널이 되먹여지는가 (DEV-329를 찾은 방법)
+node --input-type=module -e "... search_after: [센티널] ..."
+```
+
+**문서만 읽고 "아마 될 것"이라고 적지 않는다.** `format` 셋(`없음`·
+`strict_date_optional_time`·`epoch_millis`)을 다 재서 셋 다 실패한다는 것을 확인했다.
+
+## 변이 하니스 — 건수 검증 + `mutate_many`
+
+```python
+# scratchpad/mut.py
+#   swap(path, old, new)   — 정확히 1건일 때만 (ANCHOR-FAIL로 멈춘다), CRLF 보존
+#   mutate(...)            — 한 자리
+#   mutate_many(...)       — 여러 자리를 함께 (한 자리만 바꾸면 등가가 되는 결함)
+#   원복은 역방향 치환. `git checkout --`은 쓰지 않는다
+```
+
+## next-free ID 실측
+
+```bash
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -2   # → CR-048
+grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -2  # → DEV-332
+ls packages/db/migrations/*.up.sql | tail -1         # → 014
+grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
+```
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 증상 | 원인·해결 |
+| --- | --- | --- |
+| `pnpm run test:integration` (두 번 겹침) | 76건 실패 — duplicate key·partition 충돌 | `run_in_background`의 `nohup &`가 겹쳤다. DB drop/create 뒤 한 번만 |
+| `indices.delete({index:'prs-*-v*'})` | `Wildcard expressions ... not allowed` | `action.destructive_requires_name`. 이름을 지목한다 |
+| `applyMappings` (별칭이 v1) | `mapper_parsing_exception: analyzer [text_partial_index] has not been configured` | 매핑 버전을 올리고 재색인으로 배포한다 (DEV-328) |
+| `search_after: [-9223372036854776000]` | `parse_exception: failed to parse date field` | `missing:'_last'` 센티널은 되먹일 수 없다 (DEV-329) |
+| CI `integration` | `expected 'pr:3' to be 'pr:2'` | 시험이 BM25에 매달려 있었다 — 로컬은 유일, CI는 동률 |
+| 시험 픽스처 | `duplicate key ... app_user_login_key` / `repository_owner_name_key` | 공유 `prs_test`. **스위트마다 다른 login·slug을 쓴다** |
+| `2026-08-${10 + n}` | `invalid input syntax for type timestamp` | 분·일을 문자열로 더하면 60을 넘는다. `Date.UTC(...) + n * 60_000` |
+
+## 환경 (변경 없음, 재확인)
+
+- Node **v22.23.2** 필수, 셸 기본값 v20.12.0
+- **ES 별칭 v2** — `prs-pull-requests-v2` · `prs-commits-v2`
+- 마이그레이션 014까지. 컨테이너 3종 healthy

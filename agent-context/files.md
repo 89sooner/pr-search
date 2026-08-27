@@ -489,3 +489,76 @@
 - **새 역할은 ① 코드 갈래 ② manifest ③ 인프라 3장 표** 셋이 함께. 표에 **중복 행**을 만들지 않고 **표 아래 산문**도 함께 고친다 (DEV-321·322)
 - **문서 본문을 고치면 같은 편집 안에서 상태 헤더를 만진다** (DEV-323)
 - `agent-context/`는 tracked. **전사는 `exports/`에 둔다** — 이번 전사는 저장소 루트에 떨어졌고 무시되지 않는다
+
+# 2026-08-27 (2차) WP-032가 만든 것
+
+## 읽는 순서가 바뀐 문서
+
+| 경로 | 버전 | 이 세션이 바꾼 것 |
+| --- | --- | --- |
+| `CLAUDE.md` · 루트 `AGENTS.md` · `docs/README.md` | — | **현재 상태 스냅숏을 없앴다** (DEV-324·325). 어디서 읽는지를 적는다 |
+| `docs/40_delivery/pr_search_implementation_traceability.md` | **v4.1** | 1장·8장 정본 선언(DEV-326), DEV-324~332 등재, **6.40장 신설**, 3장 WP-032 done, 4장 FR 매핑 |
+| `docs/40_delivery/pr_search_work_packages.md` | **v1.4** | WP-032 done, DoD 23항 체크, 배포 전제 |
+| `docs/40_delivery/pr_search_implementation_roadmap.md` | **v0.6** | 매핑 이행 항목 해소 |
+| `deploy/k8s/secret.example.yaml` | — | `SEARCH_CURSOR_HMAC_KEY` |
+
+## `@prs/es` — 매핑·질의·강조
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/es/src/settings.ts` | `TEXT_PARTIAL_ANALYZER`(edge_ngram 2~20) · `PARTIAL_TEXT_FIELD` · `SEARCHABLE_KEYWORD_FIELDS`. **`search_analyzer`가 `TEXT_ANALYZER`인 것이 핵심** — 질의까지 자르면 "결제"가 "결"로도 매치된다 |
+| `packages/es/src/indices.ts` | **PR·커밋이 `-v2`.** links·releases는 v1 그대로 |
+| `packages/es/src/bootstrap.ts` | `aliasHeldElsewhere` — 별칭이 옛 버전을 들면 **물러난다**(DEV-328). `dropEntityIndices`가 버전 전부를 지운다. `switchAliasesForTests`는 **시험 전용** |
+| `packages/es/src/query-builder.ts` | `buildTextClause` · `FULL_TEXT_FIELDS` · `FIRST_PARENT_COMMIT_ROLES`. 자유 텍스트가 있을 때만 `source_commit`을 `must_not` |
+| `packages/es/src/highlight.ts` | **신규.** 사설 사용 영역 표식 → 평문+구간. `buildHighlight` · `toPlainHighlight` · `containsHighlightMarker` |
+| `packages/es/src/sort.ts` | `MISSING_SENTINEL` — **`_last`가 아니다**(DEV-329). `relevance`가 `order`를 존중한다 |
+| `packages/es/src/search.ts` | `openPointInTime` · `closePointInTime`(던지지 않는다) · `searchWithPit`. **PIT은 `index`를 함께 주지 않는다** |
+
+## `search-api` — 커서·패싯
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/search-api/src/cursor/envelope.ts` | **신규.** HMAC 봉인·두 오류 타입·`ephemeralCursorKey`. **순회의 뜻은 여기 없다** |
+| `apps/search-api/src/cursor/params.ts` | **신규.** `readCursor`·`readFacets` — 두 화면이 같은 해석을 쓴다 |
+| `apps/search-api/src/search/cursor.ts` | **신규.** PIT + `search_after` 봉투. 지문 재료 다섯 |
+| `apps/search-api/src/search/facets.ts` | **신규.** `computeFacets`(ScopedQuery만) · `SEARCH_FACET_AXES`(6) · `RANGE_FACET_AXES`(4) · `coalesceByValue`(DEV-331) |
+| `apps/search-api/src/sequence/range-cursor.ts` | **신규.** 정본 서수 봉투. 공간·에폭·경계를 **그대로** 싣는다 |
+| `apps/search-api/src/sequence/range.ts` | `scanPage` — chunk 순회(DEV-270)·완결 서수(DEV-287) |
+| `apps/search-api/src/config.ts` | `resolveSearchCursorKey` — 운영에서 키 없으면 **던진다** |
+| `apps/search-api/src/runtime.ts` | 커서 서명자·`resolveTeamSlugs`를 **여기서** 붙인다 |
+| `packages/db/src/repositories/auth.ts` | `resolveTeamSlugs` 신규. `resolveTeamIds`가 **ID를 전부** 돌려준다 (DEV-331) |
+
+## 화면
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/web/components/CursorPager.tsx` | **신규.** C-016. 페이지 번호 없음. 두 커서 오류를 다르게 그린다 |
+| `apps/web/components/HighlightedText.tsx` | **신규.** `<mark>` 조립. **`dangerouslySetInnerHTML` 없다** |
+| `apps/web/lib/highlight.ts` | **신규.** `splitHighlight`(던지지 않는다) · `judgeHighlight` |
+| `apps/web/lib/facets.ts` | 네 상태(+`failed`) · `SEARCH_FACET_FIELDS`/`RANGE_FACET_FIELDS`. **응답 키와 질의 키가 갈렸다** |
+| `apps/web/components/SearchView.tsx` | `PageState`(carried·cursor·facets·failure·**nonce**). 커서 실패에 **재조회하지 않는다** |
+| `apps/web/components/RangesView.tsx` | `q`가 URL에 실린다. 패싯 넷 + 커서 |
+
+## 이 세션의 시험 (신규·확장)
+
+| 경로 | 무엇을 지키나 |
+| --- | --- |
+| `apps/search-api/integration/search/facets.test.ts` | **신규 39건.** bucket 단위 검증 · THR-003 · 커서 전량 순회(여섯 정렬 키) · `size` 가변 · PIT 안정성 · 전문 검색 · 강조 · 패싯 실패 격리 · 동명 팀 합치기 |
+| `apps/search-api/integration/sequence/range-paging.test.ts` | **신규 19건.** DEV-270·287 반례 둘 · 에폭/경계/`q` 무효화 · 구간 전체 패싯 |
+| `apps/pipeline-worker/integration/jobs/reindex.test.ts` | **WP-032 매핑 이행 증명** — 옛 스키마가 조용히 0건을 답하고, 전환 뒤 과거 문서가 찾힌다 |
+| `packages/es/integration/bootstrap.test.ts` | **+3건.** 별칭이 옛 버전을 든 상태에서 물러나는가·둘로 걸지 않는가·빈 인덱스를 만들지 않는가 |
+| `apps/web/e2e/search-paging.spec.ts` | **신규 12건.** 요청 순서(커서 되돌리기·`facets` 한 번)·자동 재조회 없음·실제 DOM 이스케이프 |
+| 단위 | 커서 봉투 11 · 검색 커서 13 · 구간 커서 13 · 강조 15+12 · 전문 검색 9 · 코드 포인트 4 · PIT 회전 2 |
+| `apps/search-api/integration/_cursor-fixture.ts` | **신규.** 시험용 서명자 — 선택 필드로 만들면 "커서가 조용히 발급되지 않는" 배포를 시험이 통과시킨다 |
+
+## 손대면 안 되는 것 (갱신)
+
+- `docs/10_requirements/srs_final.md`는 **baseline v2.8**. CR 먼저
+- **PR·커밋 인덱스는 `-v2`다.** 매핑을 또 바꾸면 버전을 올리고 **재색인으로** 배포한다
+- `applyMappings`가 옛 버전을 든 별칭에 손대지 않는 방어를 지운다 → 별칭이 둘이 되거나 빈 인덱스가 남는다
+- `MISSING_SENTINEL`을 `_last`로 되돌리지 않는다 — 커서가 깨진다
+- **W-001·W-004 커서를 합치지 않는다**
+- 새 조회 경로는 `assertNoShardFailures`를 지난다. 패싯도 `ScopedQuery`만 받는다
+- 강조에 **API가 만든 마크업**을 실지 않는다. 화면은 `dangerouslySetInnerHTML`을 쓰지 않는다
+- 새 쓰기 원시체는 `WriteTargets`를 받고 `DUAL_WRITE_PATHS`에 등재한다 (WP-035)
+- `agent-context/`는 tracked. **전사는 `exports/`에 둔다**
