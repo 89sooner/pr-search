@@ -428,6 +428,11 @@ CREATE INDEX saved_search_team_idx   ON saved_search (team_id, created_at DESC, 
 --
 -- **저장자가 대상 팀에서 이탈해도 행을 자동으로 지우거나 바꾸지 않는다** (AC-7). 외래 키는
 -- 팀의 존재만 보증하며 구성원 자격은 조회·수정 시점에 `team_member`로 판정한다.
+--
+-- **그 판정은 쓰기와 원자적이어야 한다** (CR-049 PR #59 리뷰). `READ COMMITTED`에서 문장마다
+-- 스냅숏이 새로 잡히므로, 멤버십을 읽고 나중에 쓰면 그 사이에 커밋된 탈퇴를 보지 못한다.
+-- `team_member` 행을 `SELECT ... FOR SHARE`로 잠근 뒤 쓴다 — 100건 상한이 소유자 행을
+-- `FOR UPDATE`로 잠그는 것과 같은 이유이며, 둘 다 "검사와 쓰기 사이에 창을 남기지 않는다"이다.
 
 CREATE TABLE job (
   job_id      BIGSERIAL   PRIMARY KEY,
