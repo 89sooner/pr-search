@@ -64,6 +64,23 @@ export function requireRole(principal: Principal, role: Role): void {
 }
 
 /**
+ * 열거한 역할 중 **하나라도** 가지면 통과 (CR-052).
+ *
+ * 원본 아카이브 조회는 `operator`와 `security_officer` 둘 다 자격이 있다
+ * (FR-ING-010 AC-5). 라우트에서 `requireRole`을 두 번 부르고 하나라도 통과하면
+ * 넘기는 식으로 풀어 쓰면, 어느 쪽 하나를 빠뜨린 자리가 **오류 없이 조용히 좁게
+ * 답한다** — DEV-353이 선택 인자에서 겪은 것과 같은 모양이다.
+ *
+ * 자격을 넓히는 것이지 접근 범위를 넓히는 것이 아니다. 무엇이 보이는지는
+ * `ADR-008`의 필수 접근 범위 필터가 정한다 (AC-6).
+ */
+export function requireAnyRole(principal: Principal, roles: readonly Role[]): void {
+  const held = principalRoles(principal);
+  if (roles.some((role) => hasRole(held, role))) return;
+  throw new ForbiddenRoleError(roles.join(' 또는 '));
+}
+
+/**
  * 요청에서 세션을 읽는다.
  *
  * @throws {UnauthenticatedError} 쿠키가 없거나 세션이 없거나 만료됐으면.

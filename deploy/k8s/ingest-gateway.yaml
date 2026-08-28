@@ -1,3 +1,19 @@
+# 웹훅 수신 게이트웨이 (WP-004) + 원본 아카이브 적재 사이드카 (WP-036, CR-052).
+#
+# **Filebeat는 DaemonSet이 아니라 사이드카다** (DEV-373). 이 Deployment는 replica가
+# 2 이상이고 아카이브 payload는 건당 평균 8KB인데, 여러 파드가 하나의 공유 파일에
+# 덧붙이면 `PIPE_BUF`(4KB)를 넘어 `O_APPEND`의 원자성이 보장되지 않는다 — 섞인 줄은
+# **두 이벤트의 조각을 하나로 읽히게 하고**, 그 실패는 오류 없이 틀린 원본을 남긴다
+# (DEV-369). 파드마다 자기 파일을 쓰고 자기 사이드카가 읽으면 그 경합이 없다.
+#
+# **볼륨은 `emptyDir`이다.** 컨테이너 재시작에는 살아남으므로 FR-ING-010 예외 처리가
+# 정한 "적재기가 중단되면 파일은 디스크에 유지되고 재기동 시 마지막 오프셋부터"가
+# 성립한다. 파드 자체가 사라지면 미전송분도 사라지지만, 보존 보증은 `raw_event`가
+# 지고 아카이브 인덱스는 그것으로부터 재구성할 수 있다 (ADR-003: 백업 대상 아님).
+#
+# **크기 제한은 게이트웨이가 스스로 건다** (AC-7). `INGEST_ARCHIVE_MAX_BYTES` x
+# `INGEST_ARCHIVE_KEEP` = 64MiB x 5 = 320MiB가 아래 `sizeLimit` 안에 들어간다. 둘 중
+# 하나만 올리면 볼륨이 차고, 그때 레인 B의 정체가 레인 A를 멈춘다.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -42,6 +58,42 @@ spec:
           resources:
             requests: { cpu: 200m, memory: 256Mi }
             limits: { memory: 512Mi }
+          volumeMounts:
+            - name: archive
+              mountPath: /var/lib/prs/archive
+        # 원본 아카이브 적재 (FR-ING-010, ADR-002 레인 B).
+        #
+        # 이 컨테이너가 죽어도 게이트웨이는 계속 받는다 — 레인 B의 실패가 레인 A를
+        # 막지 않는다는 AC-3이 프로세스 경계로도 성립한다.
+        - name: filebeat
+          image: docker.elastic.co/beats/filebeat:8.13.4
+          args: ['-e', '-c', '/etc/filebeat/filebeat.yml']
+          env:
+            - name: ELASTICSEARCH_NODE
+              valueFrom: { configMapKeyRef: { name: prs-config, key: ELASTICSEARCH_NODE } }
+          volumeMounts:
+            - name: archive
+              mountPath: /var/lib/prs/archive
+            - name: filebeat-config
+              mountPath: /etc/filebeat
+              readOnly: true
+            - name: filebeat-state
+              mountPath: /usr/share/filebeat/data
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 256Mi }
+      volumes:
+        - name: archive
+          emptyDir:
+            # 게이트웨이의 64MiB x 5 = 320MiB + 회전 순간의 여유 (인프라 4장).
+            sizeLimit: 512Mi
+        - name: filebeat-config
+          configMap: { name: prs-filebeat }
+        - name: filebeat-state
+          # 오프셋 레지스트리. 아카이브 파일과 **같은 수명**이어야 한다 — 파일이
+          # 사라졌는데 레지스트리가 남으면 재기동 뒤 읽을 위치를 잃는다.
+          emptyDir:
+            sizeLimit: 32Mi
 ---
 apiVersion: v1
 kind: Service

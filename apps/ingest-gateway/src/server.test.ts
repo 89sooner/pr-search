@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { NULL_ARCHIVE_WRITER } from './archive.js';
+import { DEFAULT_ARCHIVE_ROTATION, NULL_ARCHIVE_WRITER } from './archive.js';
 import { MAX_BODY_BYTES, type GatewayConfig } from './config.js';
 import { createIngestMetrics } from './metrics.js';
 import { buildServer, SERVICE_NAME, WEBHOOK_PATH, type ServerDeps } from './server.js';
@@ -19,6 +19,7 @@ const config = (overrides: Partial<GatewayConfig> = {}): GatewayConfig => ({
   webhookSecrets: [SECRET],
   maxBodyBytes: MAX_BODY_BYTES,
   archivePath: null,
+  archiveRotation: DEFAULT_ARCHIVE_ROTATION,
   shutdownGraceMs: 30_000,
   enqueueTimeoutMs: 150,
   ...overrides,

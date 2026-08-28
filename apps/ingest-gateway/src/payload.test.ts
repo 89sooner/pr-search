@@ -5,6 +5,7 @@ import {
   canonicalHash,
   canonicalize,
   extractAction,
+  extractRepositoryFullName,
   extractRepositoryId,
   resolveDeliveryId,
 } from './payload.js';
@@ -59,5 +60,25 @@ describe('payload 필드 추출', () => {
     expect(extractRepositoryId({ repository: { id: 'not-a-number' } })).toBeNull();
     expect(extractAction([])).toBeNull();
     expect(extractRepositoryId(null)).toBeNull();
+  });
+
+  /*
+   * 아카이브 문서는 저장소를 **두 형태로** 담는다 (CR-052, DEV-366). `repository_id`는
+   * 접근 범위 필터의 재료이고 `full_name`은 조사자가 읽는 값이다.
+   */
+  it('repository.full_name을 읽는다', () => {
+    expect(extractRepositoryFullName({ repository: { id: 4021, full_name: 'acme/payments' } })).toBe(
+      'acme/payments',
+    );
+  });
+
+  it('빈 값과 비문자열은 null이다 — 빈 문자열을 저장소 이름으로 싣지 않는다', () => {
+    // 빈 문자열을 그대로 실으면 조사자에게 "이름이 있는데 비었다"로 보이고,
+    // `repository:` 조건이 그 값에 걸려 0건이 아니라 **엉뚱한 0건**이 된다.
+    expect(extractRepositoryFullName({ repository: { full_name: '' } })).toBeNull();
+    expect(extractRepositoryFullName({ repository: { full_name: 4021 } })).toBeNull();
+    expect(extractRepositoryFullName({ repository: { id: 4021 } })).toBeNull();
+    expect(extractRepositoryFullName({ ref: 'refs/heads/main' })).toBeNull();
+    expect(extractRepositoryFullName(null)).toBeNull();
   });
 });

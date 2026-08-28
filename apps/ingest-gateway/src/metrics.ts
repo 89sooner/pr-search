@@ -5,7 +5,7 @@
  * 무엇을 세는지만 정의한다.
  */
 
-import { Counter, Histogram, RESPONSE_BUCKETS, renderMetrics } from '@prs/metrics';
+import { Counter, Gauge, Histogram, RESPONSE_BUCKETS, renderMetrics } from '@prs/metrics';
 
 export { METRICS_CONTENT_TYPE, RESPONSE_BUCKETS } from '@prs/metrics';
 export type { Labels } from '@prs/metrics';
@@ -21,6 +21,15 @@ export interface IngestMetrics {
   readonly responseSeconds: Histogram;
   /** 아카이브 append 실패 건수. 레인 B 장애가 조용히 묻히지 않게 한다. */
   readonly archiveFailed: Counter;
+  /**
+   * 보관 한도 때문에 버린 아카이브 조각 수 (FR-ING-010 AC-7).
+   *
+   * 0이 아니면 적재기가 생산 속도를 따라가지 못했다는 뜻이고, 그 구간은
+   * 아카이브 인덱스에 남지 않는다. **버림 자체는 설계된 동작이다** —
+   * 디스크를 채워 수집을 멈추는 것보다 낫다. 그러나 계속 늘면 조각 상한이나
+   * 적재 처리량을 봐야 한다.
+   */
+  readonly archiveSegmentsDropped: Gauge;
   /** 큐 enqueue 실패 건수. 아웃박스 재적재(JOB-ING-007)가 얼마나 일하는지의 선행 지표다. */
   readonly enqueueFailed: Counter;
   /**
@@ -49,6 +58,10 @@ export function createIngestMetrics(): IngestMetrics {
   const duplicate = new Counter('ingest_duplicate_total', '중복 전달 건수');
   const responseSeconds = new Histogram('ingest_response_seconds', '수신 응답 시간(초)', RESPONSE_BUCKETS);
   const archiveFailed = new Counter('ingest_archive_failed_total', 'NDJSON 아카이브 append 실패 건수');
+  const archiveSegmentsDropped = new Gauge(
+    'ingest_archive_segments_dropped',
+    '보관 한도 때문에 버린 아카이브 조각 수',
+  );
   const enqueueFailed = new Counter('ingest_enqueue_failed_total', '큐 enqueue 실패 건수');
   const permissionPublishFailed = new Counter(
     'ingest_permission_publish_failed_total',
@@ -69,6 +82,7 @@ export function createIngestMetrics(): IngestMetrics {
     duplicate,
     responseSeconds,
     archiveFailed,
+    archiveSegmentsDropped,
     enqueueFailed,
     permissionPublishFailed,
     sequencePublishFailed,
@@ -79,6 +93,7 @@ export function createIngestMetrics(): IngestMetrics {
         rejected,
         duplicate,
         archiveFailed,
+        archiveSegmentsDropped,
         enqueueFailed,
         permissionPublishFailed,
         sequencePublishFailed,

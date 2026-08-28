@@ -12,6 +12,7 @@
 import type { Client } from '@elastic/elasticsearch';
 import type { estypes } from '@elastic/elasticsearch';
 import type { EntityAlias } from './indices.js';
+import type { ArchiveAlias } from './archive.js';
 import type { ScopedQuery } from './scoped-query.js';
 
 /** `query`는 별도 인자로 받는다. `SearchRequest.query`로 넘기면 브랜드가 지워진다. */
@@ -27,7 +28,7 @@ export type ScopedSearchOptions = Omit<estypes.SearchRequest, 'index' | 'query'>
  * 필드로 정렬하면 Elasticsearch가 HTTP 200에 샤드 부분 실패를 붙여 준다.
  * `buildSort`가 그 처리를 하고 `assertNoShardFailures`가 결과를 확인한다.
  */
-export type SearchTarget = EntityAlias | readonly EntityAlias[];
+export type SearchTarget = EntityAlias | ArchiveAlias | readonly EntityAlias[];
 
 function toIndex(target: SearchTarget): string | string[] {
   return typeof target === 'string' ? target : [...target];

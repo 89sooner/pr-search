@@ -2,7 +2,7 @@
 
 REL-001 배포 단위(`ingest-gateway`, `pipeline-worker` enrich/project, `search-api`)에
 REL-003의 두 워커 역할이 더해졌다 — `sequence`, `reconcile` (CR-034, DEV-183).
-`web`·`filebeat`·`gh-executor`와 나머지 역할은 그것을 소유한 WP가 더한다
+`web`·`gh-executor`와 나머지 역할은 그것을 소유한 WP가 더한다
 (인프라 문서 3장).
 
 **역할에 manifest가 없으면 그 기능은 배포되지 않는다.** WP-021~028이 만든
@@ -28,6 +28,7 @@ CR-034가 찾은 결함 하나다. 새 워커 역할을 만드는 WP는 manifest
 ```sh
 kubectl apply -f namespace.yaml
 kubectl apply -f configmap.yaml
+kubectl apply -f filebeat-configmap.yaml   # 아카이브 적재 사이드카 설정 (WP-036)
 # 시크릿은 저장소에 두지 않는다. secret.example.yaml을 보고 만든다.
 kubectl apply -f migrate-job.yaml   # 1. DB 마이그레이션
 kubectl wait --for=condition=complete job/prs-migrate -n pr-search --timeout=300s
@@ -39,6 +40,8 @@ kubectl apply -f pipeline-worker-batch.yaml                                 #   
 kubectl apply -f pipeline-worker-authz.yaml                                 #    워커 (권한 캐시 무효화 — JOB-AUTH-001, 접근 통제 축)
 kubectl apply -f search-api.yaml ingest-gateway.yaml                        # 3. API
 ```
+
+**`filebeat`는 별도 배포 단위가 아니라 `ingest-gateway`의 사이드카다** (CR-052, DEV-373). 그래서 적용 순서에 새 줄이 아니라 ConfigMap 하나가 늘었다. DaemonSet으로 두지 않은 이유는 게이트웨이가 replica 2 이상이고, 여러 파드가 하나의 공유 파일에 덧붙이면 8KB payload가 `PIPE_BUF`를 넘어 **줄이 섞이기** 때문이다 (DEV-369).
 
 **`pipeline-worker-authz.yaml`은 CR-048이 신설했다** (DEV-306). 같은 모양이 접근 통제 축에서 한 번 더 있었다 — 구현은 WP-012부터 있었고 `index.ts`에 `authz` 갈래도 있었는데 **manifest만 없어** `EVT-AUTH-001`을 아무도 소비하지 않았다. 그 상태에서는 **회수된 사용자가 캐시 TTL 만료까지 그 범위로 조회한다** (FR-AUTH-003 AC-2). 역방향 회귀가 그것을 잡아 예외 목록에 올려 두었고, 이 CR이 그 예외를 지우고 파일을 만들었다.
 

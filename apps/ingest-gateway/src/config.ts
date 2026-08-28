@@ -5,6 +5,8 @@
  * 않는다 (보안 문서 6장, NFR-005).
  */
 
+import { DEFAULT_ARCHIVE_ROTATION, type ArchiveRotation } from './archive.js';
+
 export interface GatewayEnv {
   readonly [key: string]: string | undefined;
 }
@@ -28,6 +30,14 @@ export interface GatewayConfig {
   readonly maxBodyBytes: number;
   /** NDJSON 원본 아카이브 파일 경로 (ADR-002 레인 B). 빈 값이면 아카이브를 끈다. */
   readonly archivePath: string | null;
+  /**
+   * 아카이브 조각 경계와 보관 개수 (FR-ING-010 AC-7, CR-052).
+   *
+   * 기본값 64MiB x 5는 게이트웨이 파드의 `emptyDir` 512MiB 안에 들어간다
+   * (인프라 4장). 늘리려면 볼륨 크기를 함께 올린다 — 그러지 않으면 파일이
+   * 볼륨을 채우고, 그때 레인 B의 정체가 레인 A를 멈춘다.
+   */
+  readonly archiveRotation: ArchiveRotation;
   readonly shutdownGraceMs: number;
   /**
    * 큐 발행 마감(ms).
@@ -50,6 +60,12 @@ export function resolveGatewayConfig(env: GatewayEnv = process.env): GatewayConf
     webhookSecrets: secrets,
     maxBodyBytes: Number(env['INGEST_MAX_BODY_BYTES'] ?? String(MAX_BODY_BYTES)),
     archivePath: archivePath === '' ? null : archivePath,
+    archiveRotation: {
+      maxBytes: Number(
+        env['INGEST_ARCHIVE_MAX_BYTES'] ?? String(DEFAULT_ARCHIVE_ROTATION.maxBytes),
+      ),
+      keep: Number(env['INGEST_ARCHIVE_KEEP'] ?? String(DEFAULT_ARCHIVE_ROTATION.keep)),
+    },
     shutdownGraceMs: Number(env['INGEST_SHUTDOWN_GRACE_MS'] ?? String(SHUTDOWN_GRACE_MS)),
     enqueueTimeoutMs: Number(env['INGEST_ENQUEUE_TIMEOUT_MS'] ?? String(ENQUEUE_TIMEOUT_MS)),
   };

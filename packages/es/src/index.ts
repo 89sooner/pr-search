@@ -27,12 +27,31 @@ export {
   TEXT_PARTIAL_ANALYZER,
 } from './settings.js';
 
-export { COMMIT_MAPPING, LINK_MAPPING, PULL_REQUEST_MAPPING, RELEASE_MAPPING } from './mappings/index.js';
+export {
+  COMMIT_MAPPING,
+  LINK_MAPPING,
+  PULL_REQUEST_MAPPING,
+  RAW_EVENT_MAPPING,
+  RELEASE_MAPPING,
+} from './mappings/index.js';
+
+export {
+  ARCHIVE_ALIAS,
+  ARCHIVE_ILM_POLICY,
+  ARCHIVE_ILM_POLICY_NAME,
+  ARCHIVE_INDEX_PATTERN,
+  ARCHIVE_INDEX_SETTINGS,
+  ARCHIVE_TEMPLATE_NAME,
+  archiveAvailable,
+  bootstrapArchive,
+} from './archive.js';
+export type { ArchiveAlias, ArchiveBootstrapResult } from './archive.js';
 
 export { ENTITY_ALIASES, ENTITY_INDICES, findIndexDefinition } from './indices.js';
 export type { EntityAlias, EntityIndexDefinition } from './indices.js';
 
 export {
+  applyArchiveScopeFilter,
   applyMandatoryScopeFilter,
   isRepositoryInScope,
   shouldUseOrgTeamScope,
