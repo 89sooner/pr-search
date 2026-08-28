@@ -12,6 +12,7 @@ import type { estypes } from '@elastic/elasticsearch';
 import {
   EMPTY_RESOLUTION,
   FIRST_PARENT_COMMIT_ROLES,
+  SequenceEpochRequiredError,
   FULL_TEXT_FIELDS,
   buildQuery,
   collectNames,
@@ -24,8 +25,18 @@ const RESOLUTION: NameResolution = {
   teamIds: new Map([['payments-core', [77]]]),
 };
 
+/**
+ * 시험용 에폭.
+ *
+ * `seq:` 범위가 있는 질의는 에폭 없이 만들 수 없다 (CR-051, DEV-361) —
+ * `buildQuery`가 던진다. 그 fail-closed가 이 헬퍼를 고치게 만들었고,
+ * 그것이 의도다: 호출부가 빠뜨리면 조용히 모든 세대를 함께 돌려주는 대신
+ * 조립 오류가 드러난다.
+ */
+const TEST_EPOCH = 3;
+
 function queryFor(input: string, resolution: NameResolution = RESOLUTION) {
-  return buildQuery(parseQuery(input), resolution).query;
+  return buildQuery(parseQuery(input), resolution, { sequenceEpoch: TEST_EPOCH }).query;
 }
 
 function filtersOf(input: string, resolution: NameResolution = RESOLUTION): unknown[] {
@@ -53,7 +64,13 @@ describe('DoD 1: 필터가 AND로 결합된다 (AC-1)', () => {
       'repo:acme/payments org:acme author:kim team:payments-core reviewer:lee label:backend ' +
       'base:main state:merged merged:2026-08-01..2026-08-19 created:2026-07-01..2026-08-01 ' +
       'seq:1280..1342 path:src/pay';
-    expect(filtersOf(input)).toHaveLength(12);
+    /*
+     * 13번째는 `seq_epoch` 필터다 (CR-051) — 사용자가 적은 조건이 아니라
+     * `seq:`가 어느 세대를 뜻하는지를 결합한 것이다.
+     */
+    const filters = filtersOf(input);
+    expect(filters).toHaveLength(13);
+    expect(filters).toContainEqual({ term: { seq_epoch: TEST_EPOCH } });
   });
 
   it('질의가 비면 `match_all`이다 — 조건 없는 조회도 성립한다', () => {
@@ -99,8 +116,12 @@ describe('부정 (AC-6)', () => {
 });
 
 describe('범위 (DEV-037)', () => {
-  it('`seq`는 `merge_seq`를 본다', () => {
-    expect(filtersOf('seq:1280..1342')).toEqual([{ range: { merge_seq: { gte: 1280, lte: 1342 } } }]);
+  it('`seq`는 `merge_seq`를 본다 — 에폭 필터와 **함께** 선다', () => {
+    expect(filtersOf('seq:1280..1342')).toEqual([
+      // 에폭이 먼저다. 서수는 한 세대 안에서만 뜻이 있다 (ADR-007, CR-051).
+      { term: { seq_epoch: TEST_EPOCH } },
+      { range: { merge_seq: { gte: 1280, lte: 1342 } } },
+    ]);
   });
 
   it('`merged`·`created`는 시각 필드를 본다', () => {
@@ -113,8 +134,46 @@ describe('범위 (DEV-037)', () => {
   });
 
   it('양끝을 포함한다', () => {
-    const range = filtersOf('seq:5..5')[0] as { range: { merge_seq: { gte: number; lte: number } } };
+    const filters = filtersOf('seq:5..5');
+    const range = filters.find((one) => 'range' in (one as object)) as {
+      range: { merge_seq: { gte: number; lte: number } };
+    };
     expect(range.range.merge_seq).toEqual({ gte: 5, lte: 5 });
+  });
+});
+
+describe('시퀀스 에폭 결합 (CR-051, DEV-361)', () => {
+  it('**`seq:` 범위가 있는데 에폭이 없으면 던진다** — 조용히 넓게 답하지 않는다', () => {
+    /*
+     * 선택 인자로 두면 호출부가 빠뜨렸을 때 오류 없이 **모든 세대의 문서를
+     * 함께** 돌려주고, 그 실패는 결과를 재는 시험에 잡히지 않는다
+     * (DEV-353이 다섯 WP를 살아남은 모양). 여기서는 fail-open이라 더 나쁘다.
+     */
+    expect(() => buildQuery(parseQuery('seq:1..5'), RESOLUTION)).toThrow(
+      SequenceEpochRequiredError,
+    );
+  });
+
+  it('부정된 `-seq:`에도 에폭이 필요하다 — 같은 서수를 참조한다', () => {
+    expect(() => buildQuery(parseQuery('-seq:1..5'), RESOLUTION)).toThrow(
+      SequenceEpochRequiredError,
+    );
+    const built = buildQuery(parseQuery('-seq:1..5'), RESOLUTION, { sequenceEpoch: 2 });
+    const bool = (built.query as { bool: { filter?: unknown[]; must_not?: unknown[] } }).bool;
+    // 에폭은 결과 집합 전체의 조건이므로 `filter`에 있고, 범위만 `must_not`이다.
+    expect(bool.filter).toContainEqual({ term: { seq_epoch: 2 } });
+    expect(bool.must_not).toEqual([{ range: { merge_seq: { gte: 1, lte: 5 } } }]);
+  });
+
+  it('**`seq:`가 없으면 에폭 필터를 넣지 않는다** — 없는 조건을 지어내지 않는다', () => {
+    const built = buildQuery(parseQuery('repo:acme/payments'), RESOLUTION, { sequenceEpoch: 9 });
+    const filters = (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
+    expect(filters).not.toContainEqual({ term: { seq_epoch: 9 } });
+  });
+
+  it('스칼라 `seq:1234`는 에폭을 요구하지 않는다 (DEV-364)', () => {
+    // SRS가 승인한 것은 범위뿐이다. 이 CR을 핑계로 동작을 바꾸지 않는다.
+    expect(() => buildQuery(parseQuery('seq:1234'), RESOLUTION)).not.toThrow();
   });
 });
 

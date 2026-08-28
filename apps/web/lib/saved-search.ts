@@ -32,8 +32,89 @@ export interface SavedSearchView {
     readonly message: string;
     readonly detail?: { readonly offset_start?: number; readonly offset_end?: number };
   };
+  /**
+   * 시퀀스 인용 상태 (CR-051, AC-8). `seq:` 질의에만 있다.
+   *
+   * **`unavailable`에는 어떤 에폭 값도 없다** — 볼 수 없는 저장소의
+   * 에폭은 저장된 것이든 현재 것이든 응답에 실리지 않는다 (THR-043).
+   */
+  readonly sequence_reference?: {
+    readonly status: 'current' | 'epoch_stale' | 'unbound' | 'unavailable';
+    readonly stored_seq_epoch?: number;
+    readonly current_seq_epoch?: number;
+    readonly sequence_state?: string;
+  };
   readonly created_at: string;
   readonly last_run_at: string | null;
+}
+
+/**
+ * 항목 하나의 시퀀스 인용을 화면이 그릴 모양으로 (CR-051).
+ *
+ * **판정을 컴포넌트에서 하지 않는다.** 저장된 값과 현재 값을 컴포넌트가
+ * 비교하면 같은 규칙이 두 곳에 살고 한쪽만 고쳐진다 — 서버가 이미 판정한
+ * 것을 여기서 문구로 옮기기만 한다.
+ */
+export interface SequenceReferenceDisplay {
+  readonly label: string;
+  readonly detail: string | null;
+  /** 실행을 막아야 하는가. `unbound`만 막는다. */
+  readonly blocksRun: boolean;
+  /** 저장자에게 「현재 에폭으로 다시 연결」을 보일 것인가. */
+  readonly offersRebind: boolean;
+}
+
+export function describeSequenceReference(
+  item: SavedSearchView,
+): SequenceReferenceDisplay | null {
+  const reference = item.sequence_reference;
+  if (reference === undefined) return null;
+
+  switch (reference.status) {
+    case 'current':
+      return {
+        label: '시퀀스 에폭 일치',
+        detail:
+          reference.stored_seq_epoch === undefined
+            ? null
+            : `에폭 ${String(reference.stored_seq_epoch)}`,
+        blocksRun: false,
+        offersRebind: false,
+      };
+    case 'epoch_stale':
+      return {
+        label: '시퀀스 에폭이 달라졌습니다',
+        detail:
+          reference.stored_seq_epoch === undefined || reference.current_seq_epoch === undefined
+            ? null
+            : `저장 당시 ${String(reference.stored_seq_epoch)} · 현재 ${String(reference.current_seq_epoch)}`,
+        /*
+         * **막지 않는다.** 실행하면 저장된 에폭 그대로 W-001로 가고 그
+         * 화면이 무효를 알린다 — 여기서 막으면 사용자가 무엇이 달라졌는지
+         * 볼 기회를 잃는다.
+         */
+        blocksRun: false,
+        offersRebind: true,
+      };
+    case 'unbound':
+      return {
+        label: '에폭 정보 없이 저장되었습니다',
+        detail: '안전하게 실행할 수 없습니다. 현재 시퀀스 공간에 다시 연결하세요',
+        blocksRun: true,
+        offersRebind: true,
+      };
+    case 'unavailable':
+      return {
+        /*
+         * 어떤 수치도 적지 않는다 (THR-043). 저장된 에폭까지 응답에 없으므로
+         * 여기서 만들 것도 없다.
+         */
+        label: '시퀀스 상태를 확인할 수 없습니다',
+        detail: '이 검색이 가리키는 저장소에 접근할 수 없습니다',
+        blocksRun: false,
+        offersRebind: false,
+      };
+  }
 }
 
 /** 두 논리 목록. 같은 항목이 양쪽에 나타나지 않는다. */
@@ -85,6 +166,8 @@ export interface RowActions {
   readonly canRun: boolean;
   readonly canEdit: boolean;
   readonly canDelete: boolean;
+  /** 「현재 에폭으로 다시 연결」을 보일 것인가 (CR-051). 저장자에게만 준다. */
+  readonly canRebindEpoch: boolean;
   /** 실행이 막힌 이유. 없으면 `null`. */
   readonly blockedReason: string | null;
 }
@@ -98,15 +181,29 @@ export interface RowActions {
  */
 export function rowActions(item: SavedSearchView): RowActions {
   const invalid = item.query_status === 'invalid';
+  /*
+   * 미연결 인용도 실행을 막는다 (CR-051). **낡은 것은 막지 않는다** —
+   * 실행하면 저장된 에폭 그대로 W-001로 가고 그 화면이 무효를 알리므로,
+   * 여기서 막으면 사용자가 무엇이 달라졌는지 볼 기회를 잃는다.
+   */
+  const sequence = describeSequenceReference(item);
+  const sequenceBlocks = sequence?.blocksRun === true;
+
   return {
-    canRun: !invalid,
+    canRun: !invalid && !sequenceBlocks,
     canEdit: item.is_owner,
     canDelete: item.is_owner,
-    blockedReason: !invalid
-      ? null
-      : item.is_owner
+    // **저장자만** 다시 연결한다 (AC-2). 공유받은 사람은 고칠 권한이 없다.
+    canRebindEpoch: item.is_owner && sequence?.offersRebind === true,
+    blockedReason: invalid
+      ? item.is_owner
         ? '질의를 현재 문법으로 해석할 수 없습니다. 편집해서 고치세요.'
-        : '질의를 현재 문법으로 해석할 수 없습니다. 소유자가 질의를 수정해야 합니다.',
+        : '질의를 현재 문법으로 해석할 수 없습니다. 소유자가 질의를 수정해야 합니다.'
+      : sequenceBlocks
+        ? item.is_owner
+          ? '시퀀스 에폭 정보 없이 저장되어 안전하게 실행할 수 없습니다. 현재 시퀀스 공간에 다시 연결하세요.'
+          : '시퀀스 에폭 정보 없이 저장되어 안전하게 실행할 수 없습니다. 저장자가 다시 연결해야 합니다.'
+        : null,
   };
 }
 
@@ -172,12 +269,24 @@ export function createPayload(input: {
   readonly query: string;
   readonly visibility: SavedSearchVisibility;
   readonly teamId: number | null;
+  /**
+   * 지금 보고 있는 조회의 시퀀스 에폭 (CR-051, AC-8).
+   *
+   * **서버가 현재 값을 대신 채우지 않는 이유가 이 필드다.** 화면이 에폭 3의
+   * 결과를 보는 사이에 재채번이 일어나면 서버가 4를 넣게 되고, 그러면
+   * 사용자가 본 것과 저장된 것이 달라진다. 자기가 보던 값을 보내고 서버가
+   * 대조한다.
+   *
+   * `seq:` 질의가 아니면 `null`이며 키를 싣지 않는다.
+   */
+  readonly seqEpoch?: number | null;
 }): Record<string, unknown> {
   return {
     name: input.name.trim(),
     query: input.query,
     visibility: input.visibility,
     ...(input.visibility === 'team' && input.teamId !== null ? { team_id: input.teamId } : {}),
+    ...(input.seqEpoch === undefined || input.seqEpoch === null ? {} : { seq_epoch: input.seqEpoch }),
   };
 }
 
@@ -191,7 +300,10 @@ export function saveFailureMessage(code: string | undefined): string {
     case 'QUERY_SYNTAX_ERROR':
       return '질의를 현재 문법으로 해석할 수 없습니다. 질의를 고친 뒤 저장하세요.';
     case 'INVALID_PARAMETER':
-      return '입력을 확인하세요. 공유 대상 팀은 현재 구성원인 팀만 고를 수 있습니다.';
+      return '입력을 확인하세요. 공유 대상 팀은 현재 구성원인 팀만 고를 수 있고, seq: 조건은 repo:와 base:를 각각 하나씩 지정해야 합니다.';
+    case 'SAVED_SEARCH_QUERY_INVALID':
+      // 저장하는 사이에 재채번이 일어났다 (CR-051). 현재 값으로 바꿔 저장하지 않는다.
+      return '조회하는 사이에 시퀀스 에폭이 바뀌었습니다. 현재 결과를 다시 확인한 뒤 저장하세요.';
     default:
       return '저장하지 못했습니다. 잠시 후 다시 시도하세요.';
   }

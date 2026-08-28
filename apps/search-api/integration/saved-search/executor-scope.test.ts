@@ -223,6 +223,7 @@ beforeAll(async () => {
     },
     auth,
     search: {
+      pool,
       es,
       cursorSigner: TEST_CURSOR_SIGNER,
       resolveNames: async (names) => ({
@@ -381,7 +382,14 @@ describe('공유받아 실행해도 저장자의 권한이 승계되지 않는�
     for (const forbidden of ['repository_ids', 'access_scope', 'scope_kind', 'visibilities']) {
       expect(serialized).not.toContain(forbidden);
     }
-    // 열 자체를 세어 둔다 — 새 열이 조용히 늘면 이 시험이 먼저 말한다.
+    /*
+     * 열 자체를 세어 둔다 — 새 열이 조용히 늘면 이 시험이 먼저 말한다.
+     *
+     * `seq_epoch`은 CR-051이 더했고 **저장자의 접근 범위가 아니다** —
+     * 질의가 인용한 시퀀스 공간의 세대 번호이며, 그 공간은 질의의
+     * `repo:`·`base:`가 이미 지목한다. 이 시험이 금지하는 것은 "저장자가
+     * 무엇을 볼 수 있었는가"를 남기는 열이고 그것은 여전히 없다.
+     */
     expect(Object.keys(row).sort()).toEqual([
       'created_at',
       'last_run_at',
@@ -389,6 +397,7 @@ describe('공유받아 실행해도 저장자의 권한이 승계되지 않는�
       'owner_user_id',
       'query',
       'saved_search_id',
+      'seq_epoch',
       'team_id',
       'visibility',
     ]);

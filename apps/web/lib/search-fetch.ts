@@ -91,6 +91,14 @@ export function searchUrl(state: QueryState, options: SearchPageOptions = {}): s
   if (state.order !== null) params.set(PARAM.order, state.order);
   if (state.size !== null) params.set(PARAM.size, String(state.size));
   /*
+   * `seq_epoch`은 **커서와 반대다** (CR-051).
+   *
+   * 커서는 발급자의 접근 범위로 봉인돼 있어 남에게 뜻이 없지만, 에폭은
+   * "이 서수가 어느 세대를 뜻했는가"라 **누가 열어도 같은 사실**이다.
+   * 그래서 브라우저 주소에도 남고 이 요청에도 실린다.
+   */
+  if (state.seqEpoch !== null) params.set(PARAM.seqEpoch, String(state.seqEpoch));
+  /*
    * 커서를 **URL에 넣지 않는다** — 이것은 `fetch` 대상 주소이고 브라우저 주소
    * 표시줄이 아니다. 커서가 주소에 실리면 붙여넣은 링크가 남의 페이징 위치를
    * 나르게 되고, 그 위치는 **발급자의 접근 범위**로 봉인돼 있어 뜻이 없다.

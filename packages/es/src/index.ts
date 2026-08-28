@@ -102,8 +102,9 @@ export {
   buildQuery,
   buildTextClause,
   collectNames,
+  SequenceEpochRequiredError,
 } from './query-builder.js';
-export type { BuiltQuery, NameResolution, UnresolvedName } from './query-builder.js';
+export type { BuildQueryOptions, BuiltQuery, NameResolution, UnresolvedName } from './query-builder.js';
 
 export {
   DEFAULT_SORT_KEY,

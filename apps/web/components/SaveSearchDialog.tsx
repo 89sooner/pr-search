@@ -39,6 +39,14 @@ export interface SaveSearchEditTarget {
   readonly query: string;
   readonly visibility: SavedSearchVisibility;
   readonly team_id: number | null;
+  /**
+   * 이 검색이 가리키는 공간의 **현재** 에폭 (CR-051). 없거나 `seq:`가 아니면 `null`.
+   *
+   * 질의를 고치면 그 인용은 새로 바인딩되므로 대상이 현재 세대다. 저장된
+   * 값이 아니라 현재 값인 이유가 그것이다 — 저장된 값은 **바꾸지 않을 때**
+   * 쓰이고, 그때는 대화상자가 에폭을 아예 보내지 않는다.
+   */
+  readonly current_seq_epoch?: number | null;
 }
 
 export interface SaveSearchDialogProps {
@@ -50,6 +58,14 @@ export interface SaveSearchDialogProps {
    * 편집 모드에서는 `edit.query`가 초기값이 되고 이 값은 쓰이지 않는다.
    */
   readonly query: string;
+  /**
+   * 지금 보고 있는 조회의 시퀀스 에폭 (CR-051).
+   *
+   * `seq:` 질의가 아니면 `null`이다. 편집 모드에서는 **질의를 실제로
+   * 바꿨거나 명시적으로 다시 연결할 때만** 보낸다 — 이름만 고치는 저장이
+   * 낡은 에폭을 현재 값으로 옮기면 그것이 자동 재해석이다.
+   */
+  readonly seqEpoch?: number | null;
   /** 있으면 편집 모드다. 없으면 새로 저장한다. */
   readonly edit?: SaveSearchEditTarget;
   /** 저장이 끝났을 때. 화면이 안내를 띄운다. */
@@ -71,6 +87,7 @@ export function SaveSearchDialog({
   open,
   onOpenChange,
   query,
+  seqEpoch,
   edit,
   onSaved,
 }: SaveSearchDialogProps): ReactNode {
@@ -152,7 +169,30 @@ export function SaveSearchDialog({
   const save = useCallback(async () => {
     setPhase({ kind: 'saving' });
     try {
-      const payload = createPayload({ name, query: draftQuery, visibility, teamId });
+      /*
+       * 편집에서는 **질의가 실제로 바뀌었을 때만** 에폭을 싣는다 (CR-051).
+       *
+       * 본문에 `query`가 들어 있다는 사실만으로 재연결 의도를 판정하지
+       * 않는다 — 이 대화상자는 전체 폼을 보내므로 이름 한 글자 수정도
+       * `query`를 담아 온다. 서버도 같은 규칙으로 판정하지만, 여기서
+       * 보내지 않는 것이 첫 번째 방어다.
+       */
+      const queryChanged = editing ? draftQuery !== edit.query : true;
+      /*
+       * 새 저장은 **지금 보고 있는** 에폭, 편집은 **현재** 에폭이다.
+       *
+       * 편집에서 질의를 고치면 그 인용은 새로 바인딩되므로 대상이 현재
+       * 세대다. 어느 쪽이든 서버가 다시 대조하며, 값이 없으면 `seq:` 질의를
+       * 저장하려 할 때 서버가 거절한다.
+       */
+      const epochToSend = editing ? (edit.current_seq_epoch ?? null) : (seqEpoch ?? null);
+      const payload = createPayload({
+        name,
+        query: draftQuery,
+        visibility,
+        teamId,
+        ...(queryChanged ? { seqEpoch: epochToSend } : {}),
+      });
       const response = await fetch(
         editing ? `/api/saved-searches/${String(edit.saved_search_id)}` : '/api/saved-searches',
         {

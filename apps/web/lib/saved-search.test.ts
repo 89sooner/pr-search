@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createPayload,
+  describeSequenceReference,
   resolveSavedSearchState,
   rowActions,
   saveFailureMessage,
@@ -38,6 +39,8 @@ describe('행 액션 (AC-2, AC-6)', () => {
       canRun: true,
       canEdit: true,
       canDelete: true,
+      // `seq:`가 없는 질의라 인용이 없다 (CR-051).
+      canRebindEpoch: false,
       blockedReason: null,
     });
   });
@@ -241,5 +244,112 @@ describe('저장 실패 안내', () => {
   it('모르는 코드에도 답이 있다 — 빈 화면을 남기지 않는다', () => {
     expect(saveFailureMessage(undefined)).not.toBe('');
     expect(saveFailureMessage('SOMETHING_NEW')).not.toBe('');
+  });
+});
+
+describe('시퀀스 인용 표시 (CR-051 / AC-8)', () => {
+  const bound = (reference: SavedSearchView['sequence_reference']): SavedSearchView => ({
+    saved_search_id: 1,
+    name: '구간 검색',
+    query: 'repo:acme/payments base:main seq:1..5',
+    visibility: 'private',
+    owner: { user_id: 'sub-a', login: 'alice' },
+    is_owner: true,
+    query_status: 'valid',
+    created_at: '2026-08-28T00:00:00Z',
+    last_run_at: null,
+    ...(reference === undefined ? {} : { sequence_reference: reference }),
+  });
+
+  it('`seq:`가 없으면 표시하지 않는다', () => {
+    expect(describeSequenceReference(bound(undefined))).toBeNull();
+  });
+
+  it('`current`는 실행을 막지 않고 재연결도 제안하지 않는다', () => {
+    const view = describeSequenceReference(
+      bound({ status: 'current', stored_seq_epoch: 3, current_seq_epoch: 3 }),
+    );
+    expect(view?.blocksRun).toBe(false);
+    expect(view?.offersRebind).toBe(false);
+  });
+
+  it('**`epoch_stale`은 실행을 막지 않는다** — W-001이 무효를 보여 줘야 한다', () => {
+    /*
+     * 여기서 막으면 사용자가 무엇이 달라졌는지 볼 기회를 잃는다. 실행하면
+     * 저장된 에폭 그대로 W-001로 가고 그 화면이 두 값을 나란히 보인다.
+     */
+    const view = describeSequenceReference(
+      bound({ status: 'epoch_stale', stored_seq_epoch: 3, current_seq_epoch: 4 }),
+    );
+    expect(view?.blocksRun).toBe(false);
+    expect(view?.offersRebind).toBe(true);
+    expect(view?.detail).toContain('3');
+    expect(view?.detail).toContain('4');
+  });
+
+  it('`unbound`는 실행을 막는다', () => {
+    const view = describeSequenceReference(bound({ status: 'unbound', current_seq_epoch: 4 }));
+    expect(view?.blocksRun).toBe(true);
+    expect(view?.offersRebind).toBe(true);
+  });
+
+  it('**`unavailable`은 아무 수치도 적지 않는다** (THR-043)', () => {
+    const view = describeSequenceReference(bound({ status: 'unavailable' }));
+    expect(view?.blocksRun).toBe(false);
+    expect(view?.offersRebind).toBe(false);
+    // 숫자가 하나라도 들어가면 그것이 유출이다.
+    expect(`${view?.label ?? ''} ${view?.detail ?? ''}`).not.toMatch(/\d/);
+  });
+
+  it('**색만으로 말하지 않는다** — 네 상태 모두 문자 레이블을 갖는다 (NFR-006)', () => {
+    for (const status of ['current', 'epoch_stale', 'unbound', 'unavailable'] as const) {
+      const view = describeSequenceReference(bound({ status }));
+      expect(view?.label.trim()).not.toBe('');
+    }
+  });
+});
+
+describe('rowActions와 시퀀스 인용 (CR-051)', () => {
+  const item = (
+    over: Partial<SavedSearchView> & { sequence_reference?: SavedSearchView['sequence_reference'] },
+  ): SavedSearchView => ({
+    saved_search_id: 1,
+    name: 'n',
+    query: 'repo:a/b base:main seq:1..5',
+    visibility: 'private',
+    owner: { user_id: 'sub-a', login: 'alice' },
+    is_owner: true,
+    query_status: 'valid',
+    created_at: '2026-08-28T00:00:00Z',
+    last_run_at: null,
+    ...over,
+  });
+
+  it('`unbound`면 실행이 막히고 사유를 준다', () => {
+    const actions = rowActions(item({ sequence_reference: { status: 'unbound' } }));
+    expect(actions.canRun).toBe(false);
+    expect(actions.blockedReason).toContain('다시 연결');
+  });
+
+  it('**공유받은 사람에게는 재연결을 그리지 않는다** — 저장자만 고친다 (AC-2)', () => {
+    const actions = rowActions(
+      item({ is_owner: false, sequence_reference: { status: 'epoch_stale', stored_seq_epoch: 1 } }),
+    );
+    expect(actions.canRebindEpoch).toBe(false);
+    expect(actions.canEdit).toBe(false);
+  });
+
+  it('공유받은 사람의 `unbound` 사유는 저장자를 가리킨다', () => {
+    const actions = rowActions(item({ is_owner: false, sequence_reference: { status: 'unbound' } }));
+    expect(actions.canRun).toBe(false);
+    expect(actions.blockedReason).toContain('저장자');
+  });
+
+  it('낡았어도 실행은 열려 있다', () => {
+    const actions = rowActions(
+      item({ sequence_reference: { status: 'epoch_stale', stored_seq_epoch: 1, current_seq_epoch: 2 } }),
+    );
+    expect(actions.canRun).toBe(true);
+    expect(actions.canRebindEpoch).toBe(true);
   });
 });

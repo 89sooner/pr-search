@@ -16,6 +16,7 @@ import {
   toHref,
   withAst,
   withFromQuery,
+  withQuery,
   writeQueryState,
   type QueryState,
 } from './query-url';
@@ -29,8 +30,26 @@ describe('왕복', () => {
     ['빈 상태', EMPTY_STATE],
     ['질의만', { ...EMPTY_STATE, q: 'repo:acme/payments author:kim' }],
     ['정렬까지', { ...EMPTY_STATE, q: 'author:kim', sort: 'merge_seq', order: 'desc' as const }],
-    ['전부', { q: 'repo:acme/payments', sort: 'merged_at', order: 'asc' as const, size: 50, repository: 'acme/payments' }],
-    ['범위 질의', { ...EMPTY_STATE, q: 'seq:1280..1342 merged:2026-08-01..2026-08-19' }],
+    [
+      '전부',
+      {
+        q: 'repo:acme/payments',
+        sort: 'merged_at',
+        order: 'asc' as const,
+        size: 50,
+        repository: 'acme/payments',
+        seqEpoch: null,
+      },
+    ],
+    // `seq:` 질의는 공간을 지목해야 하고 에폭을 함께 나른다 (CR-051).
+    [
+      '범위 질의',
+      {
+        ...EMPTY_STATE,
+        q: 'repo:acme/payments base:main seq:1280..1342 merged:2026-08-01..2026-08-19',
+        seqEpoch: '3',
+      },
+    ],
     ['부정 질의', { ...EMPTY_STATE, q: '-author:bot label:backend' }],
     ['공백이 든 값', { ...EMPTY_STATE, q: 'title:"결제 재시도"' }],
   ])('%s가 그대로 돌아온다', (_label, state) => {
@@ -38,13 +57,27 @@ describe('왕복', () => {
   });
 
   it('두 번 왕복해도 같다 — 고정점이다', () => {
-    const state: QueryState = { q: 'repo:x author:y', sort: 'additions', order: 'asc', size: 25, repository: null };
+    const state: QueryState = {
+      q: 'repo:x author:y',
+      sort: 'additions',
+      order: 'asc',
+      size: 25,
+      repository: null,
+      seqEpoch: null,
+    };
     expect(roundTrip(roundTrip(state))).toEqual(roundTrip(state));
   });
 
   it('같은 상태가 늘 같은 문자열이 된다', () => {
     // 키 순서가 흔들리면 브라우저 히스토리에 같은 조건이 여러 항목으로 쌓인다.
-    const state: QueryState = { q: 'a:b', sort: 'merge_seq', order: 'desc', size: 10, repository: 'o/r' };
+    const state: QueryState = {
+      q: 'a:b',
+      sort: 'merge_seq',
+      order: 'desc',
+      size: 10,
+      repository: 'o/r',
+      seqEpoch: null,
+    };
     expect(writeQueryState(state)).toBe(writeQueryState({ ...state }));
   });
 });
@@ -132,7 +165,14 @@ describe('AST로 상태를 고친다', () => {
   });
 
   it('나머지 상태는 건드리지 않는다', () => {
-    const state: QueryState = { q: 'old', sort: 'merge_seq', order: 'asc', size: 50, repository: 'o/r' };
+    const state: QueryState = {
+      q: 'old',
+      sort: 'merge_seq',
+      order: 'asc',
+      size: 50,
+      repository: 'o/r',
+      seqEpoch: null,
+    };
     const next = withAst(state, parseQuery('author:lee'));
 
     expect(next).toEqual({ ...state, q: 'author:lee' });
@@ -167,5 +207,72 @@ describe('`from_q` 부착 (DEV-078, DEV-097)', () => {
   it('**갈 곳이 없으면 `null`이다** — 죽은 링크를 만들지 않는다', () => {
     expect(withFromQuery(null, 'q')).toBeNull();
     expect(withFromQuery('', 'q')).toBeNull();
+  });
+});
+
+describe('시퀀스 인용 에폭 (CR-051)', () => {
+  it('`seq_epoch`이 왕복한다', () => {
+    const state: QueryState = {
+      ...EMPTY_STATE,
+      q: 'repo:acme/payments base:main seq:1280..1342',
+      seqEpoch: '3',
+    };
+    expect(roundTrip(state)).toEqual(state);
+    expect(writeQueryState(state)).toContain('seq_epoch=3');
+  });
+
+  it('**형식이 틀린 값도 원문 그대로 나른다** — 서버가 거절할 수 있어야 한다 (PR #64 리뷰 P1)', () => {
+    /*
+     * 화면이 `abc`를 `null`로 접으면 그 파라미터가 요청에서 사라지고, 서버는
+     * `INVALID_PARAMETER`를 낼 기회 없이 **현재 세대로 바인딩한다** — 붙여넣은
+     * 낡은 주소가 조용히 재해석되는 바로 그 실패다. 판정은 서버 한 곳에서 한다.
+     */
+    for (const raw of ['abc', '0', '-1', '1.5']) {
+      const state = readQueryState(`q=a%3Ab&seq_epoch=${raw}`);
+      expect(state.seqEpoch).toBe(raw);
+      expect(writeQueryState(state)).toContain(`seq_epoch=${raw}`);
+    }
+  });
+
+  it('빈 값도 사라지지 않는다 — `seq_epoch=`는 서버가 거절한다', () => {
+    // 공백만 남은 값은 `readString`이 `null`로 접는다. 그 경우만 "없음"이다.
+    expect(readQueryState('q=a%3Ab&seq_epoch=').seqEpoch).toBeNull();
+  });
+
+  it('에폭이 없으면 파라미터를 쓰지 않는다 — 빈 키가 URL에 남지 않는다', () => {
+    expect(writeQueryState({ ...EMPTY_STATE, q: 'a:b' })).not.toContain('seq_epoch');
+  });
+
+  it('**질의가 `seq:`를 잃으면 에폭도 지운다** (CR-051)', () => {
+    /*
+     * 뜻이 없어진 파라미터를 남기면 다음 조회가 그것을 근거로 400을 받는다 —
+     * 사용자는 토큰 칩 하나를 지웠을 뿐인데 오류를 보게 된다.
+     */
+    const state: QueryState = {
+      ...EMPTY_STATE,
+      q: 'repo:acme/payments base:main seq:1..5',
+      seqEpoch: '3',
+    };
+    const next = withAst(state, parseQuery('repo:acme/payments author:kim'));
+    expect(next.seqEpoch).toBeNull();
+  });
+
+  it('`seq:`가 남아 있으면 에폭을 유지한다', () => {
+    const state: QueryState = {
+      ...EMPTY_STATE,
+      q: 'repo:acme/payments base:main seq:1..5',
+      seqEpoch: '3',
+    };
+    const next = withAst(state, parseQuery('repo:acme/payments base:main seq:1..5 author:kim'));
+    expect(next.seqEpoch).toBe('3');
+  });
+
+  it('**새 질의로 갈아탈 때는 에폭을 물려주지 않는다**', () => {
+    /*
+     * 새 질의는 다른 공간을 가리킬 수 있다. 옛 에폭을 그대로 보내면 서버가
+     * 무효로 판정해 사용자가 방금 친 질의의 결과 대신 경고를 본다.
+     */
+    const state: QueryState = { ...EMPTY_STATE, q: 'repo:a/x base:main seq:1..5', seqEpoch: '3' };
+    expect(withQuery(state, 'repo:b/y base:main seq:1..5').seqEpoch).toBeNull();
   });
 });

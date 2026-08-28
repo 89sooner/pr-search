@@ -22,7 +22,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { serializeQuery } from '@prs/query';
+import { hasSequenceRangeFilter, serializeQuery } from '@prs/query';
 import { Banner, Button, Spinner } from '@conductor-by-89soone/react';
 import { CursorPager, toCursorFailure, type CursorFailure } from './CursorPager';
 import Link from 'next/link';
@@ -38,6 +38,7 @@ import {
   parseQueryState,
   readQueryState,
   toHref,
+  withQuery,
   withAst,
   withFromQuery,
   type QueryState,
@@ -57,6 +58,18 @@ interface SearchResponse extends FacetSource {
   readonly relaxation_hints?: readonly { readonly remove: string; readonly total: number }[];
   readonly unresolved_names?: readonly { readonly key: string; readonly value: string }[];
   readonly next_cursor?: string | null;
+  /**
+   * `seq:` 질의의 시퀀스 맥락 (CR-051). 다른 질의에는 키가 없다.
+   */
+  readonly sequence_context?: {
+    readonly sequence_space: string;
+    readonly repository: string;
+    readonly base_branch: string;
+    readonly seq_epoch: number;
+    readonly sequence_state: string;
+  };
+  readonly epoch_stale?: boolean;
+  readonly requested_seq_epoch?: number;
 }
 
 /**
@@ -295,6 +308,21 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     setPage((current) => ({ ...FIRST_PAGE, nonce: current.nonce + 1 }));
   }, []);
 
+  /*
+   * 시퀀스 맥락 (CR-051). 서버가 바인딩한 결과이며 화면이 계산하지 않는다.
+   */
+  const sequenceContext = outcome.search?.sequence_context ?? null;
+  const staleSequence =
+    outcome.search?.epoch_stale === true &&
+    sequenceContext !== null &&
+    outcome.search.requested_seq_epoch !== undefined
+      ? {
+          sequenceSpace: sequenceContext.sequence_space,
+          requestedEpoch: outcome.search.requested_seq_epoch,
+          currentEpoch: sequenceContext.seq_epoch,
+        }
+      : null;
+
   const screen = resolveScreenState({
     rawQuery: state.q,
     parseError: parsed.error,
@@ -306,7 +334,55 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     candidateCount: candidates === null ? null : candidates.length,
     candidatesTruncated: outcome.resolve?.truncated ?? false,
     loginPath,
+    staleSequence,
   });
+
+  /*
+   * **첫 조회가 URL을 완성한다** (CR-051, ADR-007 규칙 5).
+   *
+   * `seq_epoch` 없이 보낸 요청에 서버가 현재 에폭을 실어 주면 그 값을
+   * 주소에 새긴다. `push`가 아니라 `replace`인 이유는 에폭 고정이 새 조사
+   * 단계가 아니라 **지금 보고 있는 조회의 정본 주소를 완성하는 일**이기
+   * 때문이다 — `push`면 뒤로가기 한 번이 에폭 없는 같은 조회로 돌아가고
+   * 사용자는 자기가 두 번 조회했다고 읽는다.
+   *
+   * 컴포넌트 상태에만 두면 사용자가 곧바로 복사한 주소가 다른 세대를
+   * 가리키게 된다.
+   */
+  /**
+   * 지금 URL의 질의가 `seq:` 범위를 담고 있는가.
+   *
+   * **응답이 아니라 현재 상태를 본다.** `sequenceContext`는 직전 조회의
+   * 것이고, 사용자가 `seq:` 없는 질의를 제출한 직후에는 둘이 어긋난다 —
+   * 그때 응답만 보고 주소를 고치면 **방금 지운 파라미터가 되살아난다**
+   * (e2e가 잡았다).
+   */
+  const boundToSequence = useMemo(
+    () => (parsed.ast === null ? false : hasSequenceRangeFilter(parsed.ast)),
+    [parsed.ast],
+  );
+
+  useEffect(() => {
+    if (loading) return;
+    if (!boundToSequence) return;
+    if (sequenceContext === null) return;
+    if (state.seqEpoch === String(sequenceContext.seq_epoch)) return;
+    // 낡음 응답의 에폭은 **현재 값**이라 그것으로 주소를 덮으면 자동 재해석이 된다.
+    if (outcome.search?.epoch_stale === true) return;
+    router.replace(
+      toHref(SEARCH_PATH, { ...state, seqEpoch: String(sequenceContext.seq_epoch) }),
+      { scroll: false },
+    );
+  }, [router, sequenceContext, state, outcome.search?.epoch_stale, boundToSequence, loading]);
+
+  /** 「현재 에폭으로 다시 조회」 — 사용자의 명시적 행위로만 일어난다. */
+  const rebindEpoch = useCallback(() => {
+    if (staleSequence === null) return;
+    router.replace(
+      toHref(SEARCH_PATH, { ...state, seqEpoch: String(staleSequence.currentEpoch) }),
+      { scroll: false },
+    );
+  }, [router, state, staleSequence]);
 
   /*
    * **후보가 1건이면 상세로 이동한다** (FLOW-001 4단계, CR-021 DEV-097).
@@ -338,7 +414,13 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     (value: string) => {
       // 제출은 새 조사다 — 히스토리에 남긴다 (화면 이동은 `push`).
       setSubmitCount((n) => n + 1);
-      router.push(toHref(SEARCH_PATH, { ...state, q: value }));
+      /*
+       * **에폭을 물려주지 않는다** (CR-051). 새 질의는 다른 공간을 가리킬 수
+       * 있고, `seq:`를 아예 잃었을 수도 있다. 옛 에폭을 그대로 보내면
+       * 사용자는 방금 친 질의의 결과 대신 무효 경고를 받는다 —
+       * `withQuery`가 그 규칙을 한 곳에 둔다.
+       */
+      router.push(toHref(SEARCH_PATH, withQuery(state, value)));
     },
     [router, state],
   );
@@ -415,7 +497,16 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
             onClick={() => {
               setSaveOpen(true);
             }}
-            disabled={parsed.error !== null}
+            /*
+             * **낡은 인용은 저장할 수 없다** (CR-051, PR #64 리뷰 P1).
+             *
+             * 그 상태에서 응답의 `sequence_context.seq_epoch`은 사용자가 본 적
+             * 없는 **현재** 세대(4)다. 그대로 저장하면 "본 것을 저장한다"는
+             * 계약이 뒤집혀, 결과를 보지도 못한 세대에 묶인 검색이 조용히
+             * 만들어진다. 먼저 「현재 에폭으로 다시 조회」를 눌러 그 세대를
+             * 실제로 본 뒤에 저장한다.
+             */
+            disabled={parsed.error !== null || screen.kind === 'epoch_stale'}
             data-testid="search-save"
           >
             {/*
@@ -440,10 +531,52 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         open={saveOpen}
         onOpenChange={setSaveOpen}
         query={state.q}
+        /*
+         * 지금 **보고 있는** 조회의 에폭이다 (CR-051). 낡은 인용에서는 본 것이
+         * 없으므로 넘기지 않는다 — 위에서 저장 버튼도 막는다.
+         */
+        seqEpoch={screen.kind === 'epoch_stale' ? null : (sequenceContext?.seq_epoch ?? null)}
         onSaved={(name) => {
           setSavedName(name);
         }}
       />
+
+      {/*
+        * W-001-SEQCTX — 시퀀스 인용 배너 (CR-051, FR-SEQ-005 AC-4).
+        *
+        * **새 컴포넌트를 만들지 않는다.** 전할 것이 "무엇이 사실이고, 그래서
+        * 무엇이 안 되며, 무엇을 누르면 되는가" 셋으로 `Banner`가 이미 하는
+        * 일과 같다 (컴포넌트 명세 C-005).
+        *
+        * 액션은 **버튼 하나**이며 스스로 실행되지 않는다 — 타이머도 자동
+        * 재시도도 두지 않는다. 그것이 ADR-007이 막으려는 자동 재해석이다.
+        */}
+      {screen.kind === 'epoch_stale' ? (
+        <Banner tone="warning" title="시퀀스 번호의 의미가 바뀌었습니다">
+          <p data-testid="epoch-stale-notice">
+            이 검색은 <strong>{screen.sequenceSpace}</strong>의 시퀀스 에폭{' '}
+            {screen.requestedEpoch}을 기준으로 만들어졌습니다. 현재 에폭은{' '}
+            {screen.currentEpoch}입니다. 히스토리가 재작성되어 같은 seq 번호가 다른 커밋을
+            가리킬 수 있으므로 결과를 조회하지 않았습니다.
+          </p>
+          <Button variant="secondary" onClick={rebindEpoch} data-testid="epoch-rebind">
+            현재 에폭으로 다시 조회
+          </Button>
+        </Banner>
+      ) : null}
+
+      {/*
+        * 인용이 유효할 때도 어느 공간·세대를 보고 있는지 적는다 — 공간 상태가
+        * `ok`가 아니면 그 사실도 값과 함께 보인다. 숨기지 않는다.
+        */}
+      {screen.kind !== 'epoch_stale' && sequenceContext !== null ? (
+        <p data-testid="sequence-context">
+          시퀀스 공간 {sequenceContext.sequence_space} · 에폭 {sequenceContext.seq_epoch}
+          {sequenceContext.sequence_state === 'ok'
+            ? null
+            : ` · 상태 ${sequenceContext.sequence_state}`}
+        </p>
+      ) : null}
 
       {/*
        * 레지스트리에서 못 찾은 이름을 알린다 (CR-016, DEV-052).
@@ -459,13 +592,20 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
       )}
 
       <div>
-        <FacetRail
-          source={facetSource}
-          ast={parsed.ast}
-          onToggle={onToggleFacet}
-          /* 분포를 다시 세는 길은 첫 페이지를 다시 여는 것이다 — `facets=true`가 거기 붙는다. */
-          onRetry={backToFirst}
-        />
+        {/*
+          * 낡은 인용이면 레일도 그리지 않는다 (CR-051). 세지 않은 분포를
+          * "아직 세지 않음"으로 보이는 것은 사실이지만, 이 화면의 답은
+          * 분포가 아니라 "번호의 뜻이 달라졌다"이고 그것은 배너가 말한다.
+          */}
+        {screen.kind === 'epoch_stale' ? null : (
+          <FacetRail
+            source={facetSource}
+            ast={parsed.ast}
+            onToggle={onToggleFacet}
+            /* 분포를 다시 세는 길은 첫 페이지를 다시 여는 것이다 — `facets=true`가 거기 붙는다. */
+            onRetry={backToFirst}
+          />
+        )}
         <ScreenBody
           screen={screen}
           items={items}
@@ -594,6 +734,17 @@ function ScreenBody({
           fromQuery={fromQuery}
         />
       );
+
+    case 'epoch_stale':
+      /*
+       * **아무것도 그리지 않는다** (CR-051, FR-SEQ-005 AC-4).
+       *
+       * 서버가 조회를 실행하지 않았으므로 목록도 요약도 없다. 사실과 액션은
+       * 위의 `W-001-SEQCTX` 배너가 말하며, 여기서 `EmptyState`를 그리면
+       * 그것이 "결과가 없다"로 읽힌다 — 계산하지 않은 것을 없는 것으로
+       * 표현하지 않는다는 규율이 화면에서도 같다.
+       */
+      return null;
 
     case 'empty_no_result':
       return (

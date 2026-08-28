@@ -130,6 +130,9 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
            */
           search: {
             ...parts.searchDeps,
+            // `seq:` 질의의 시퀀스 공간을 확인한다 (CR-051). 없으면 그 질의만
+            // 조용히 실패하므로 타입이 필수로 잡는다.
+            pool: parts.pool,
             cursorSigner: createCursorSigner(parts.config.searchCursorKey),
             resolveTeamSlugs: (ids: readonly number[]) => authRepo.resolveTeamSlugs(parts.pool, ids),
           },

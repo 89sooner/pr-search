@@ -474,7 +474,14 @@ export async function runRange(request: RangeRequest, deps: RangeDeps): Promise<
   let unresolved: readonly UnresolvedName[] = [];
   if (request.ast !== null) {
     const resolution = await deps.resolveNames(collectNames(request.ast));
-    const built = buildQuery(request.ast, resolution);
+    /*
+     * `q`에 `seq:` 범위가 있으면 에폭이 필요하다 (CR-051) — 이 화면은 이미
+     * 공간을 확정했으므로 그 에폭을 그대로 넘긴다. 넘기지 않으면
+     * `buildQuery`가 던지고 이 경로가 500이 된다 (PR #64 리뷰 P2).
+     */
+    const built = buildQuery(request.ast, resolution, {
+      sequenceEpoch: request.space.seqEpoch,
+    });
     extra = built.query;
     unresolved = built.unresolved;
   }

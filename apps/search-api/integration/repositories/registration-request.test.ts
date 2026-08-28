@@ -152,6 +152,7 @@ beforeAll(async () => {
     },
     auth,
     search: {
+      pool,
       es,
       cursorSigner: TEST_CURSOR_SIGNER,
       resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }),

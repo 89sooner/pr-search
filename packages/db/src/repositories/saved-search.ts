@@ -58,6 +58,15 @@ export interface SavedSearchRow {
    * **누락된다** — 조사 도구에서 조용한 오답이다. 문자열로 받아 그대로 다시
    * 넘기면 PostgreSQL이 자기가 준 값을 그대로 파싱한다.
    */
+  /**
+   * `seq:` 조건이 딛고 선 시퀀스 에폭 (CR-051, DEV-362).
+   *
+   * 질의에 `seq:` 범위가 없으면 `null`이고, CR-051 이전에 저장된 행도
+   * `null`이다 — 뒤의 것이 **미연결 인용(unbound)**이며 실행을 막는다.
+   * 둘을 스키마가 구분하지 않는 이유는 그 판정에 질의 파서가 필요하기
+   * 때문이다 (마이그레이션 017 주석).
+   */
+  readonly seq_epoch: number | null;
   readonly created_at: string;
   readonly last_run_at: string | null;
 }
@@ -89,6 +98,14 @@ export interface CreateSavedSearchInput {
   readonly visibility: SavedSearchVisibility;
   /** `visibility`가 `team`일 때 필수. */
   readonly teamId?: number | null;
+  /**
+   * `query`에 `seq:` 범위가 있을 때 필수 (CR-051, FR-SRCH-010 AC-8).
+   *
+   * **서버가 현재 값을 대신 채우지 않는다** — 화면이 자기가 보고 있던
+   * 에폭을 보내고 라우트가 그것을 현재 값과 대조한다. 대신 채우면
+   * 사용자가 본 결과와 저장된 것이 달라진다.
+   */
+  readonly seqEpoch?: number | null;
 }
 
 export type CreateSavedSearchOutcome =
@@ -102,6 +119,16 @@ export interface UpdateSavedSearchInput {
   readonly query?: string;
   readonly visibility?: SavedSearchVisibility;
   readonly teamId?: number | null;
+  /**
+   * 시퀀스 인용의 처분 (CR-051).
+   *
+   * **키가 없는 것과 `null`이 다른 뜻이다.** 없으면 저장된 값을 그대로
+   * 두고(이름만 고치는 수정이 낡은 에폭을 옮기지 않는다), `null`이면
+   * 지운다(질의가 `seq:`를 잃었다), 숫자면 그 값으로 설정한다.
+   * `COALESCE`로 다루지 않는 이유가 이것이다 — 그 패턴에서는 `null`이
+   * "유지"를 뜻하므로 지울 방법이 없다.
+   */
+  readonly seqEpoch?: number | null;
 }
 
 export type UpdateSavedSearchOutcome =
@@ -127,6 +154,7 @@ const SELECT_COLUMNS = `
   s.team_id,
   t.slug        AS team_slug,
   t.org_id      AS team_org_id,
+  s.seq_epoch,
   to_char(s.created_at  AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.USZ') AS created_at,
   to_char(s.last_run_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.USZ') AS last_run_at`;
 
@@ -238,10 +266,10 @@ export async function createSavedSearch(
     let savedSearchId: number;
     try {
       const inserted = await client.query<{ saved_search_id: number }>(
-        `INSERT INTO saved_search (owner_user_id, name, query, visibility, team_id)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO saved_search (owner_user_id, name, query, visibility, team_id, seq_epoch)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING saved_search_id`,
-        [input.ownerUserId, input.name, input.query, input.visibility, teamId],
+        [input.ownerUserId, input.name, input.query, input.visibility, teamId, input.seqEpoch ?? null],
       );
       savedSearchId = inserted.rows[0]?.saved_search_id ?? 0;
     } catch (error) {
@@ -387,12 +415,22 @@ export async function updateSavedSearch(
     }
 
     try {
+      /*
+       * `seq_epoch`만 `COALESCE`를 쓰지 않는다 (CR-051).
+       *
+       * 그 패턴에서는 `null`이 "유지"를 뜻하는데, 여기서는 `null`이
+       * **"지운다"**여야 한다 — 질의가 `seq:`를 잃으면 에폭도 뜻을 잃기
+       * 때문이다. 그래서 "만질 것인가"를 별도 플래그로 받는다. 이름만
+       * 고치는 요청은 플래그가 거짓이므로 낡은 에폭이 그대로 남는다.
+       */
+      const touchesEpoch = patch.seqEpoch !== undefined;
       await client.query(
         `UPDATE saved_search
             SET name       = COALESCE($3, name),
                 query      = COALESCE($4, query),
                 visibility = $5,
-                team_id    = $6
+                team_id    = $6,
+                seq_epoch  = CASE WHEN $7::boolean THEN $8::int ELSE seq_epoch END
           WHERE saved_search_id = $1 AND owner_user_id = $2`,
         [
           savedSearchId,
@@ -401,6 +439,8 @@ export async function updateSavedSearch(
           patch.query ?? null,
           visibility,
           teamId,
+          touchesEpoch,
+          patch.seqEpoch ?? null,
         ],
       );
     } catch (error) {

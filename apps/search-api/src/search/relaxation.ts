@@ -20,7 +20,12 @@ import {
   type NameResolution,
   type SearchTarget,
 } from '@prs/es';
-import { serializeQuery, type QueryAst, type QueryFilter } from '@prs/query';
+import {
+  analyzeSequenceBinding,
+  serializeQuery,
+  type QueryAst,
+  type QueryFilter,
+} from '@prs/query';
 import type { Client } from '@elastic/elasticsearch';
 
 /**
@@ -62,6 +67,8 @@ export interface RelaxationDeps {
   readonly target: SearchTarget;
   readonly scope: AccessScope;
   readonly resolution: NameResolution;
+  /** 본 조회가 확정한 유효 에폭. `seq:`가 없으면 `null` (CR-051). */
+  readonly sequenceEpoch: number | null;
 }
 
 /**
@@ -80,11 +87,33 @@ export async function computeRelaxationHints(
   if (ast.filters.length < 2) return NO_RELAXATION;
 
   const truncated = ast.filters.length > MAX_RELAXATION_HINTS;
-  const candidates = ast.filters.slice(0, MAX_RELAXATION_HINTS);
+  /*
+   * **실행할 수 없는 질의를 제안하지 않는다** (CR-051).
+   *
+   * `seq:` 범위가 남은 채로 `repo:`나 `base:`를 빼면 그 질의는 시퀀스
+   * 공간을 잃어 AC-7이 400으로 거절한다. "이 필터를 빼면 N건이 나옵니다"라고
+   * 제안해 놓고 실제로 빼면 오류가 나는 것은 제안이 아니라 함정이다.
+   * 그런 후보는 세지 않고 건너뛴다.
+   */
+  const candidates = ast.filters
+    .slice(0, MAX_RELAXATION_HINTS)
+    .map((filter, index) => ({ filter, relaxed: without(ast, index) }))
+    .filter(({ relaxed }) => analyzeSequenceBinding(relaxed).kind !== 'invalid');
 
-  const requests = candidates.map((_, index) => ({
+  if (candidates.length === 0) return { hints: [], truncated };
+
+  const requests = candidates.map(({ relaxed }) => ({
     target: deps.target,
-    query: applyMandatoryScopeFilter(buildQuery(without(ast, index), deps.resolution).query, deps.scope),
+    query: applyMandatoryScopeFilter(
+      buildQuery(
+        relaxed,
+        deps.resolution,
+        // 뺀 뒤에도 `seq:`가 남았으면 같은 에폭으로 센다 — 본 조회와 다른
+        // 세대를 세면 그 건수는 아무것도 뜻하지 않는다.
+        deps.sequenceEpoch === null ? {} : { sequenceEpoch: deps.sequenceEpoch },
+      ).query,
+      deps.scope,
+    ),
     // 건수만 필요하다. 문서를 실어 오면 완화 계산이 본 조회보다 무거워진다.
     options: { size: 0, track_total_hits: true } as const,
   }));
@@ -101,9 +130,9 @@ export async function computeRelaxationHints(
     const value = typeof total === 'number' ? total : (total?.value ?? 0);
     if (value === 0) return;
 
-    const filter = candidates[index];
-    if (filter === undefined) return;
-    hints.push({ remove: describe(filter), would_yield: value });
+    const candidate = candidates[index];
+    if (candidate === undefined) return;
+    hints.push({ remove: describe(candidate.filter), would_yield: value });
   });
 
   // 많이 나오는 것부터. 사용자가 가장 크게 잘못 건 조건이 위로 온다.

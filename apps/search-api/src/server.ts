@@ -23,6 +23,7 @@ import { registerSequenceRoutes } from './sequence/routes.js';
 import { registerSavedSearchRoutes } from './saved-search/routes.js';
 import { registerRepositoryRoutes, type RepositoryRouteOptions } from './repositories/routes.js';
 import type { SavedSearchDeps } from './saved-search/service.js';
+import type { Pool } from '@prs/db';
 import type { SearchDeps } from './search/service.js';
 import type { RangeDeps } from './sequence/range.js';
 import type { AuthContext } from './auth/context.js';
@@ -75,7 +76,11 @@ export interface ServerDeps {
    * 단다. 없으면 검색이 전부 401이 되는 서비스를 띄우는 것보다 경로가
    * 없는 편이 낫다.
    */
-  readonly search?: SearchDeps;
+  /**
+   * 검색 경로 의존. `pool`을 함께 요구한다 (CR-051) — `seq:` 질의의 시퀀스
+   * 공간을 확인해야 하고 그 정본은 PostgreSQL이다.
+   */
+  readonly search?: SearchDeps & { readonly pool: Pool };
   /**
    * 시퀀스 앵커·범위 조회 의존 (API-SEQ-001·002, WP-023).
    *

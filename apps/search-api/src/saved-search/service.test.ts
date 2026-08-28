@@ -23,6 +23,7 @@ function row(overrides: Partial<SavedSearchRow> = {}): SavedSearchRow {
     owner_login: 'alice',
     name: '결제 리뷰',
     query: 'repo:acme/payments',
+    seq_epoch: null,
     visibility: 'private',
     team_id: null,
     team_slug: null,
@@ -120,17 +121,28 @@ describe('페이지 크기', () => {
 
 describe('이동 대상', () => {
   it('질의를 URL로 부호화한다', () => {
-    expect(navigationUrlFor('repo:acme/payments')).toBe('/search?q=repo%3Aacme%2Fpayments');
+    expect(navigationUrlFor('repo:acme/payments', null)).toBe('/search?q=repo%3Aacme%2Fpayments');
   });
 
   it('**공백과 한글도 안전하게 실린다**', () => {
-    expect(navigationUrlFor('repo:acme/a 결제 재시도')).toBe(
+    expect(navigationUrlFor('repo:acme/a 결제 재시도', null)).toBe(
       `/search?q=${encodeURIComponent('repo:acme/a 결제 재시도')}`,
     );
   });
 
-  it('**질의 문자열 밖으로 나가지 않는다** — 다른 파라미터를 지어내지 않는다', () => {
-    const url = navigationUrlFor('repo:acme/a');
+  it('**에폭이 없으면 파라미터를 지어내지 않는다**', () => {
+    const url = navigationUrlFor('repo:acme/a', null);
     expect(url.split('?')[1]?.split('&')).toHaveLength(1);
+  });
+
+  it('**저장된 에폭을 그대로 싣는다** — 현재 값으로 바꾸지 않는다 (CR-051)', () => {
+    /*
+     * 낡은 에폭이어도 그대로 간다. 무효를 판정하고 보이는 것은 W-001의
+     * 일이며, 여기서 현재 값을 붙이면 사용자가 그 사실을 볼 기회 없이
+     * 다른 세대의 결과에 도착한다.
+     */
+    expect(navigationUrlFor('repo:acme/a base:main seq:1..5', 3)).toBe(
+      `/search?q=${encodeURIComponent('repo:acme/a base:main seq:1..5')}&seq_epoch=3`,
+    );
   });
 });

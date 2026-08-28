@@ -21,7 +21,15 @@ import type { AuthContext } from '../auth/context.js';
 import { authenticateSession } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
 import { CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope.js';
+import { SEQUENCE_BINDING_MESSAGE } from '@prs/query';
+import { toAccessScope } from '@prs/authz';
 import { isSavedSearchView, type SavedSearchView } from './cursor.js';
+import {
+  bindEpochForWrite,
+  needsSequenceReference,
+  resolveSequenceReferences,
+  type EpochBindingOutcome,
+} from './sequence-reference.js';
 import {
   clampPageSize,
   judgeQuery,
@@ -46,10 +54,103 @@ interface CreateBody {
   readonly query?: unknown;
   readonly visibility?: unknown;
   readonly team_id?: unknown;
+  readonly seq_epoch?: unknown;
+}
+
+/** 본문의 `seq_epoch`. 보내지 않은 것과 형식이 틀린 것을 가른다 (CR-051). */
+type BodyEpoch =
+  | { readonly ok: true; readonly epoch: number | undefined }
+  | { readonly ok: false };
+
+function readBodyEpoch(raw: unknown): BodyEpoch {
+  if (raw === undefined) return { ok: true, epoch: undefined };
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) return { ok: false };
+  return { ok: true, epoch: raw };
 }
 
 function fail(reply: FastifyReply, status: number, body: ErrorResponse): FastifyReply {
   return reply.status(status).send(body);
+}
+
+/**
+ * 에폭 확정 실패를 계약이 정한 응답으로 (CR-051).
+ *
+ * **새 오류 코드를 만들지 않는다** — 저장할 수 없다는 사실은 이미
+ * `SAVED_SEARCH_QUERY_INVALID`가 말하고 있고, `detail.reason`이 사유를
+ * 가른다. 코드를 늘리면 화면이 같은 처리를 여러 갈래로 나눠 쓴다.
+ *
+ * @returns 계속해도 되면 `null`.
+ */
+function toEpochFailure(
+  outcome: EpochBindingOutcome,
+  correlationId: string,
+): { readonly status: number; readonly body: ErrorResponse } | null {
+  switch (outcome.kind) {
+    case 'none':
+    case 'bound':
+      return null;
+    case 'unbindable':
+      return {
+        status: 400,
+        body: {
+          error: {
+            code: 'INVALID_PARAMETER',
+            message: SEQUENCE_BINDING_MESSAGE[outcome.reason],
+            detail: { field: 'query', reason: outcome.reason, required_keys: ['repo', 'base'] },
+          },
+          correlation_id: correlationId,
+        },
+      };
+    case 'epoch_required':
+      return {
+        status: 400,
+        body: {
+          error: {
+            code: 'INVALID_PARAMETER',
+            message: 'seq: 조건이 있는 질의는 시퀀스 에폭과 함께 저장해야 합니다',
+            detail: { field: 'seq_epoch', reason: 'sequence_epoch_required' },
+          },
+          correlation_id: correlationId,
+        },
+      };
+    case 'epoch_not_allowed':
+      return {
+        status: 400,
+        body: {
+          error: {
+            code: 'INVALID_PARAMETER',
+            message: 'seq_epoch은 seq: 범위 조건이 있는 질의에서만 의미가 있습니다',
+            detail: { field: 'seq_epoch', reason: 'sequence_reference_absent' },
+          },
+          correlation_id: correlationId,
+        },
+      };
+    case 'epoch_stale':
+      /*
+       * 저장하는 사이에 재채번이 일어났다. 현재 값으로 바꿔 저장하지 않는다 —
+       * **사용자가 본 것과 저장된 것이 달라진다.**
+       */
+      return {
+        status: 409,
+        body: {
+          error: {
+            code: 'SAVED_SEARCH_QUERY_INVALID',
+            message: '조회하는 사이에 시퀀스 에폭이 바뀌었습니다. 현재 결과를 다시 확인한 뒤 저장하세요',
+            detail: { reason: 'epoch_stale', current_seq_epoch: outcome.current },
+          },
+          correlation_id: correlationId,
+        },
+      };
+    case 'space_unavailable':
+      // 미등록·범위 밖·미채번을 구분하지 않는다 (THR-006).
+      return {
+        status: 404,
+        body: {
+          error: { code: 'NOT_FOUND', message: '이 seq: 조건을 해석할 시퀀스 공간을 확인할 수 없습니다.' },
+          correlation_id: correlationId,
+        },
+      };
+  }
 }
 
 function invalid(
@@ -182,7 +283,35 @@ export function registerSavedSearchRoutes(
 
     try {
       const result = await listSavedSearches(
-        { userId, view, size: clampPageSize(query['size']), cursor, nowMs: Date.now() },
+        {
+          userId,
+          view,
+          size: clampPageSize(query['size']),
+          cursor,
+          nowMs: Date.now(),
+          /*
+           * 페이지 단위로 한 번에 판정한다 (CR-051). 접근 범위를 구하지
+           * 못하면 **목록 자체를 실패시키지 않는다** — 저장된 검색은
+           * 사용자 자산이고 접근 범위와 무관하다 (CR-049 AC-3). 그때는
+           * 시퀀스 상태만 모르는 것이므로 판정을 건너뛴다.
+           */
+          resolveSequenceReferences: async (rows) => {
+            /*
+             * **인용이 없으면 접근 범위를 산출하지 않는다** (CR-051).
+             *
+             * 판정에만 필요한 의존을 모든 목록 조회에 지우면, 이 자원이
+             * 접근 통제 경로에 참여하게 된다 — CR-049가 `/run`에서 피한
+             * 바로 그 자리다. `seq:`를 담은 항목이 하나라도 있을 때만 묻는다.
+             */
+            if (!rows.some(needsSequenceReference)) return new Map();
+            try {
+              const scoped = await auth.scopes.resolveCached(userId);
+              return await resolveSequenceReferences(pool, rows, toAccessScope(scoped));
+            } catch {
+              return new Map();
+            }
+          },
+        },
         deps,
       );
       return reply.send({
@@ -227,12 +356,28 @@ export function registerSavedSearchRoutes(
       });
     }
 
+    const bodyEpoch = readBodyEpoch(body.seq_epoch);
+    if (!bodyEpoch.ok) {
+      return invalid(reply, correlationId, 'seq_epoch', '시퀀스 에폭은 1 이상의 정수여야 합니다');
+    }
+
+    /*
+     * 에폭을 확정한다 (CR-051). **접근 범위는 요청한 사람의 것**이다 —
+     * 저장자가 볼 수 없는 저장소의 공간을 확인해 주지 않는다.
+     */
+    const epoch = await bindEpochForWrite(pool, body.query, bodyEpoch.epoch, async () =>
+      toAccessScope(await auth.scopes.resolveCached(userId)),
+    );
+    const epochFailure = toEpochFailure(epoch, correlationId);
+    if (epochFailure !== null) return fail(reply, epochFailure.status, epochFailure.body);
+
     const outcome = await savedSearchRepo.createSavedSearch(pool, {
       ownerUserId: userId,
       name,
       query: body.query,
       visibility: body.visibility,
       teamId: team.teamId,
+      seqEpoch: epoch.kind === 'bound' ? epoch.epoch : null,
     });
 
     switch (outcome.kind) {
@@ -268,7 +413,22 @@ export function registerSavedSearchRoutes(
 
     const row = await savedSearchRepo.findVisibleSavedSearch(pool, savedSearchId, userId);
     if (row === null) return notFound(reply, correlationId);
-    return reply.send(toResource(row, userId));
+
+    /*
+     * 단건도 목록과 같은 판정을 지난다 (CR-051). 다르게 답하면 화면이 두
+     * 경로에서 다른 상태를 그린다. 접근 범위를 못 구해도 자원 자체는
+     * 돌려준다 — 시퀀스 상태만 모르는 것이다.
+     */
+    const references = await (async () => {
+      if (!needsSequenceReference(row)) return new Map();
+      try {
+        const cached = await auth.scopes.resolveCached(userId);
+        return await resolveSequenceReferences(pool, [row], toAccessScope(cached));
+      } catch {
+        return new Map();
+      }
+    })();
+    return reply.send(toResource(row, userId, references.get(row.saved_search_id)));
   });
 
   app.patch(SAVED_SEARCH_ITEM_PATH, async (request, reply) => {
@@ -286,6 +446,7 @@ export function registerSavedSearchRoutes(
       query?: string;
       visibility?: 'private' | 'team';
       teamId?: number | null;
+      seqEpoch?: number | null;
     } = {};
 
     if (body.name !== undefined) {
@@ -329,6 +490,47 @@ export function registerSavedSearchRoutes(
       }
       patch.teamId = body.team_id;
     }
+
+    /*
+     * 시퀀스 인용의 처분 (CR-051 / API 계약 PATCH 다섯 경우).
+     *
+     * **이 블록이 이 라우트에서 가장 조심할 자리다.** 이름만 고치는 요청이
+     * 낡은 에폭을 현재 값으로 옮기면 그것이 CR-051이 막으려는 자동
+     * 재해석이고, 사용자는 자기 검색이 다른 세대를 가리키게 된 것을 알
+     * 방법이 없다.
+     *
+     * 판정의 재료는 **`seq_epoch`의 존재와 질의의 실제 변화**이지 본문
+     * 필드의 유무가 아니다 — 화면이 전체 폼을 보내는 구현이면 이름 한 글자
+     * 수정도 `query`를 담아 오기 때문이다.
+     */
+    const bodyEpoch = readBodyEpoch(body.seq_epoch);
+    if (!bodyEpoch.ok) {
+      return invalid(reply, correlationId, 'seq_epoch', '시퀀스 에폭은 1 이상의 정수여야 합니다');
+    }
+
+    const current = await savedSearchRepo.findVisibleSavedSearch(pool, savedSearchId, userId);
+    if (current === null || current.owner_user_id !== userId) return notFound(reply, correlationId);
+
+    const finalQuery = patch.query ?? current.query;
+    const queryChanged = patch.query !== undefined && patch.query !== current.query;
+
+    if (queryChanged || bodyEpoch.epoch !== undefined) {
+      /*
+       * 질의가 실제로 바뀌었거나 명시적 재연결이다. 어느 쪽이든 새 에폭을
+       * 현재 값과 대조해 확정한다.
+       */
+      const epoch = await bindEpochForWrite(pool, finalQuery, bodyEpoch.epoch, async () =>
+        toAccessScope(await auth.scopes.resolveCached(userId)),
+      );
+      const epochFailure = toEpochFailure(epoch, correlationId);
+      if (epochFailure !== null) return fail(reply, epochFailure.status, epochFailure.body);
+      // `none`이면 `null`이다 — 질의가 `seq:`를 잃었으면 에폭도 뜻을 잃는다.
+      patch.seqEpoch = epoch.kind === 'bound' ? epoch.epoch : null;
+    }
+    /*
+     * 그 밖의 경우 `patch.seqEpoch`을 **설정하지 않는다.** 리포지터리가 키의
+     * 부재를 "그대로 둔다"로 읽으므로 낡은 에폭이 낡은 채로 남는다.
+     */
 
     const outcome = await savedSearchRepo.updateSavedSearch(pool, savedSearchId, userId, patch);
     switch (outcome.kind) {
@@ -387,6 +589,20 @@ export function registerSavedSearchRoutes(
             code: 'SAVED_SEARCH_QUERY_INVALID',
             message: '저장된 질의를 현재 문법으로 해석할 수 없어 실행하지 않았습니다',
             detail: { ...outcome.error.detail },
+          },
+          correlation_id: correlationId,
+        });
+      case 'sequence_unbound':
+        /*
+         * 에폭 없이 저장된 옛 항목 (CR-051). 현재 에폭을 붙여 보내지
+         * 않는다 — 저장 당시의 값은 복원할 수 없으므로 그것은 추측이다.
+         */
+        return fail(reply, 409, {
+          error: {
+            code: 'SAVED_SEARCH_QUERY_INVALID',
+            message:
+              '이 저장된 검색은 시퀀스 에폭 정보 없이 만들어져 안전하게 실행할 수 없습니다. 현재 시퀀스 공간에 다시 연결하세요',
+            detail: { reason: 'sequence_unbound' },
           },
           correlation_id: correlationId,
         });

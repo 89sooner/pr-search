@@ -19,7 +19,7 @@ import {
   type AccessScopeSource,
 } from '@prs/authz';
 import { applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions } from '@prs/es';
-import { authRepo, repositoryRepo, type Pool } from '@prs/db';
+import { authRepo, repositoryRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
 import type { Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { SEARCH_PATH } from '../../src/search/routes.js';
@@ -163,6 +163,17 @@ beforeAll(async () => {
     });
   }
 
+  /*
+   * `seq:` 질의는 시퀀스 공간을 확인한다 (CR-051, AC-7). 픽스처 문서의
+   * `seq_epoch: 3`과 공간의 에폭을 맞춰 두지 않으면 그 조회가 낡은 인용으로
+   * 판정된다.
+   */
+  await sequenceSpaceRepo.ensureSequenceSpace(pool, PAYMENTS, 'main');
+  await pool.query(
+    'UPDATE sequence_space SET seq_epoch = 3 WHERE repository_id = $1 AND base_branch = $2',
+    [PAYMENTS, 'main'],
+  );
+
   await es.deleteByQuery({
     index: ['prs-pull-requests', 'prs-commits'],
     query: { match_all: {} },
@@ -218,6 +229,7 @@ beforeAll(async () => {
     config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY },
     auth,
     search: {
+      pool,
       es,
       cursorSigner: TEST_CURSOR_SIGNER,
       resolveNames: async (names) => ({
@@ -288,7 +300,8 @@ describe('DoD 1: 필터가 AND로 결합된다 (AC-1)', () => {
       ['state%3Aopen', ['pr:3', 'pr:4']],
       ['merged%3A2026-08-19..2026-08-20', ['pr:1']],
       ['created%3A2026-08-20..2026-08-21', ['pr:3', 'pr:4']],
-      ['seq%3A1341..1342', ['pr:1', 'pr:2']],
+      // `seq:`는 공간을 지목해야 한다 (CR-051, AC-7).
+      ['repo%3Aacme%2Fpayments+base%3Amain+seq%3A1341..1342', ['pr:1', 'pr:2']],
       ['path%3Asrc%2Fpay', ['c:' + 'a'.repeat(40), 'pr:1']],
       ['head%3Afeature%2Fsession', ['pr:2']],
     ];
@@ -331,8 +344,8 @@ describe('부정 (AC-6)', () => {
     expect(idsOf(body).sort()).toEqual(['c:' + 'a'.repeat(40), 'pr:1']);
   });
 
-  it('범위 부정도 동작한다', async () => {
-    const { body } = await get('q=repo%3Aacme%2Fpayments+-seq%3A1341..1342');
+  it('범위 부정도 동작한다 — 부정에도 공간 지목이 필요하다 (CR-051)', async () => {
+    const { body } = await get('q=repo%3Aacme%2Fpayments+base%3Amain+-seq%3A1341..1342');
     expect(idsOf(body)).toEqual(['c:' + 'a'.repeat(40)]);
   });
 });

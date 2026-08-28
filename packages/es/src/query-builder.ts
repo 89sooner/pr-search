@@ -18,7 +18,7 @@
  */
 
 import type { estypes } from '@elastic/elasticsearch';
-import { isRangeFilter, type QueryAst, type QueryFilter, type QueryKey } from '@prs/query';
+import { hasSequenceRangeFilter, isRangeFilter, type QueryAst, type QueryFilter, type QueryKey } from '@prs/query';
 
 /**
  * 키가 보는 ES 필드 (CR-016, DEV-052).
@@ -108,6 +108,27 @@ export interface BuiltQuery {
   readonly query: estypes.QueryDslQueryContainer;
   /** 레지스트리에 없던 이름. 비어 있지 않으면 그만큼 결과가 좁아진 것이다. */
   readonly unresolved: readonly UnresolvedName[];
+}
+
+export interface BuildQueryOptions {
+  /**
+   * `seq:` 범위 조건이 딛고 선 시퀀스 에폭 (CR-051, DEV-361).
+   *
+   * **AST에 `seq:` 범위가 있으면 필수다.** 없으면 `buildQuery`가 던진다 —
+   * 선택으로 두면 호출부가 빠뜨렸을 때 **오류 없이 모든 세대의 문서를
+   * 함께 돌려주고**, 그 실패는 결과를 재는 시험에 잡히지 않는다
+   * (DEV-353이 다섯 WP를 살아남은 것과 같은 모양). 여기서는 fail-closed가
+   * 아니라 fail-open이라 더 나쁘다.
+   */
+  readonly sequenceEpoch?: number;
+}
+
+/** `seq:` 범위가 있는데 에폭 없이 질의를 만들려 했다. 배포·조립 오류다. */
+export class SequenceEpochRequiredError extends Error {
+  constructor() {
+    super('seq: 범위 조건이 있는 질의에는 시퀀스 에폭이 필요하다 (CR-051)');
+    this.name = 'SequenceEpochRequiredError';
+  }
 }
 
 /**
@@ -282,11 +303,28 @@ function isNegated(filter: QueryFilter): boolean {
  * 기존 동작은 바뀌지 않는다 — 원본 커밋을 배제하는 것은 "무엇이 검색 대상
  * 메시지인가"에 대한 답이지 "무엇이 이 저장소의 커밋인가"에 대한 답이 아니다.
  */
-export function buildQuery(ast: QueryAst, resolution: NameResolution = EMPTY_RESOLUTION): BuiltQuery {
+export function buildQuery(
+  ast: QueryAst,
+  resolution: NameResolution = EMPTY_RESOLUTION,
+  options: BuildQueryOptions = {},
+): BuiltQuery {
   const unresolved: UnresolvedName[] = [];
   const filter: estypes.QueryDslQueryContainer[] = [];
   const mustNot: estypes.QueryDslQueryContainer[] = [];
   const must: estypes.QueryDslQueryContainer[] = [];
+
+  /*
+   * 서수는 한 세대 안에서만 뜻이 있다 (ADR-007, CR-051).
+   *
+   * 재채번 도중에는 옛 세대와 새 세대의 문서가 잠시 함께 있고, 이 필터가
+   * 없으면 **한 목록에 두 세대가 섞인다.** 부정된 `-seq:`도 같은 서수를
+   * 참조하므로 함께 걸린다 — `must_not`에 들어가는 것은 범위 절이고
+   * 에폭은 결과 집합 전체의 조건이다.
+   */
+  if (hasSequenceRangeFilter(ast)) {
+    if (options.sequenceEpoch === undefined) throw new SequenceEpochRequiredError();
+    filter.push({ term: { seq_epoch: options.sequenceEpoch } });
+  }
 
   for (const one of ast.filters) {
     const clause = toClause(one, resolution, unresolved);

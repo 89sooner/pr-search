@@ -153,9 +153,42 @@ export function isEpochStale(space: ResolvedSpace, requested: number | null): bo
   return requested !== null && requested !== space.seqEpoch;
 }
 
-/** 요청의 `seq_epoch`. 숫자가 아니면 `null`(지정 안 함)로 읽는다. */
-export function parseEpochParam(raw: unknown): number | null {
-  if (typeof raw !== 'string' || raw.trim() === '') return null;
+/**
+ * 요청의 `seq_epoch` — **세 상태를 구분한다** (CR-051, DEV-363).
+ *
+ * v2.10까지는 형식 오류를 `null`(지정 안 함)로 읽었고, 호출부는 그것을
+ * "에폭을 지정하지 않았다"로 해석해 **현재 에폭으로 조회했다.** 그래서
+ * `seq_epoch=3`을 의도한 URL에 오타 하나가 나면 그 요청은 오류 없이 다른
+ * 세대의 결과를 받았다 — **ADR-007이 막으려는 바로 그 자동 재해석**이며,
+ * 인용을 무효로 말해 주는 대신 조용히 옮기는 것이다.
+ */
+export type EpochParam =
+  /** 파라미터가 없다. 현재 에폭으로 조회한다. */
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'value'; readonly epoch: number }
+  /** 정수가 아니거나 1 미만이다. 거절한다. */
+  | { readonly kind: 'invalid' };
+
+export function readEpochParam(raw: unknown): EpochParam {
+  /*
+   * **진짜로 없을 때만 `absent`다** (PR #64 리뷰 P1).
+   *
+   * `seq_epoch=`(빈 값)이나 파라미터를 두 번 적어 배열이 된 경우를
+   * "지정하지 않음"으로 읽으면, 그 요청이 **조용히 현재 세대에 묶인다** —
+   * 형식 오류를 `null`로 접던 DEV-363과 같은 실패를 이름만 바꿔 되풀이하는
+   * 것이다. 값이 **있으면서** 해석되지 않으면 거절한다.
+   */
+  if (raw === undefined || raw === null) return { kind: 'absent' };
+  if (typeof raw !== 'string') return { kind: 'invalid' };
+  if (raw.trim() === '') return { kind: 'invalid' };
   const value = Number(raw);
-  return Number.isInteger(value) && value >= 1 ? value : null;
+  if (!Number.isInteger(value) || value < 1) return { kind: 'invalid' };
+  return { kind: 'value', epoch: value };
 }
+
+/*
+ * `parseEpochParam`을 남기지 않는다 (CR-051).
+ *
+ * 형식 오류를 `null`로 접는 그 함수가 DEV-363 자체였다. `@deprecated`로
+ * 표시해 두면 다음 사람이 "있으니까" 쓴다 — 세 상태를 구분하는 쪽만 남긴다.
+ */

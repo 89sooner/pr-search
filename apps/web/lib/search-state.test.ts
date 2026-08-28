@@ -233,3 +233,73 @@ describe('우선순위', () => {
     expect(state({ itemCount: null, loading: false }).kind).toBe('loading_initial');
   });
 });
+
+describe('시퀀스 인용이 낡았을 때 (CR-051)', () => {
+  const stale = {
+    sequenceSpace: 'acme/payments@main',
+    requestedEpoch: 3,
+    currentEpoch: 4,
+  };
+
+  it('`epoch_stale`로 판정하고 두 에폭을 함께 나른다', () => {
+    expect(
+      resolveScreenState({
+        ...BASE,
+        rawQuery: 'repo:acme/payments base:main seq:1..5',
+        itemCount: null,
+        staleSequence: stale,
+      }),
+    ).toEqual({
+      kind: 'epoch_stale',
+      sequenceSpace: 'acme/payments@main',
+      requestedEpoch: 3,
+      currentEpoch: 4,
+    });
+  });
+
+  it('**`loading_initial`에 멈추지 않는다**', () => {
+    /*
+     * 서버가 조회를 실행하지 않았으므로 `itemCount`가 `null`이다. 이 분기가
+     * 없으면 화면이 "검색 중"에서 영영 나오지 못한다 — 해석 후보 1건이
+     * 같은 이유로 멈췄던 자리와 같은 모양이다 (CR-021, DEV-097).
+     */
+    const screen = resolveScreenState({
+      ...BASE,
+      rawQuery: 'repo:acme/payments base:main seq:1..5',
+      itemCount: null,
+      staleSequence: stale,
+    });
+    expect(screen.kind).not.toBe('loading_initial');
+  });
+
+  it('**`empty_no_result`가 아니다** — 조회하지 않은 것과 0건은 다르다', () => {
+    const screen = resolveScreenState({
+      ...BASE,
+      rawQuery: 'repo:acme/payments base:main seq:1..5',
+      itemCount: 0,
+      staleSequence: stale,
+    });
+    expect(screen.kind).toBe('epoch_stale');
+  });
+
+  it('오류가 있으면 오류가 이긴다 — 실패를 감추지 않는다', () => {
+    const screen = resolveScreenState({
+      ...BASE,
+      rawQuery: 'repo:acme/payments base:main seq:1..5',
+      status: 401,
+      errorBody: { error: { code: 'UNAUTHENTICATED', message: '' } },
+      staleSequence: stale,
+    });
+    expect(screen.kind).toBe('auth_expired');
+  });
+
+  it('낡지 않았으면 평소대로 판정한다', () => {
+    const screen = resolveScreenState({
+      ...BASE,
+      rawQuery: 'repo:acme/payments base:main seq:1..5',
+      itemCount: 2,
+      staleSequence: null,
+    });
+    expect(screen.kind).toBe('ready');
+  });
+});
