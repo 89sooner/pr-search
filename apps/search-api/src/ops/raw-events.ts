@@ -19,6 +19,7 @@
  * **그 노출은 되돌릴 수 없다.** `include_payload=true`는 명시적 열람 의사다.
  */
 
+import { createHash } from 'node:crypto';
 import type { estypes } from '@elastic/elasticsearch';
 import type { Client } from '@elastic/elasticsearch';
 import { ARCHIVE_ALIAS, applyArchiveScopeFilter, archiveAvailable, search } from '@prs/es';
@@ -125,21 +126,31 @@ export function parseReceivedAt(raw: unknown, field: string): string | undefined
  *
  * `include_payload`가 들어가는 것은 **같은 순회 안에서 노출 범위가 조용히 바뀌지
  * 않게** 하기 위해서다. 도중에 켜면 지문이 달라져 커서가 거절된다.
+ *
+ * ## 접근 범위는 해시로 접어 넣는다 (PR #69 리뷰)
+ *
+ * **봉투는 서명될 뿐 암호화되지 않는다** — base64 한 번이면 안이 읽힌다. 첫 판은
+ * `repositoryIds` 배열을 그대로 담았고, 그 커서가 감사 기록에 남으면 **감사를 읽는
+ * 사람이 요청자의 접근 범위 전부를 복원한다.** 질의가 저장소 하나를 지목해도 그렇다.
+ *
+ * 지문은 "같은 범위가 늘 같은 값"이면 충분하고 그 안을 되읽을 필요가 없다 —
+ * `repositories/cursor.ts`가 같은 이유로 같은 판단을 이미 내렸다.
  */
 export function computeRawEventFingerprint(
   filter: RawEventFilter,
   repositoryIds: readonly number[],
 ): string {
-  return JSON.stringify([
-    filter.deliveryId ?? null,
-    filter.repository ?? null,
-    filter.eventType ?? null,
-    filter.action ?? null,
-    filter.receivedFrom ?? null,
-    filter.receivedTo ?? null,
-    filter.includePayload,
-    [...repositoryIds].sort((a, b) => a - b),
-  ]);
+  const material = [
+    filter.deliveryId ?? '',
+    filter.repository ?? '',
+    filter.eventType ?? '',
+    filter.action ?? '',
+    filter.receivedFrom ?? '',
+    filter.receivedTo ?? '',
+    String(filter.includePayload),
+    [...repositoryIds].sort((a, b) => a - b).join(','),
+  ];
+  return createHash('sha256').update(material.join('|'), 'utf8').digest('base64url');
 }
 
 function readString(raw: unknown, field: string): string | undefined {

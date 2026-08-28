@@ -78,6 +78,16 @@ describe('커서 지문', () => {
     );
   });
 
+  it('**접근 범위를 평문으로 담지 않는다** (PR #69 리뷰)', () => {
+    // 봉투는 서명될 뿐 암호화되지 않는다. 지문이 저장소 ID를 그대로 담으면
+    // 그 커서를 받은 사람도, 그것이 남은 감사 기록을 읽는 사람도 요청자의
+    // 접근 범위 전부를 복원한다.
+    const fingerprint = computeRawEventFingerprint(parseRawEventFilter({}), [90_101, 90_102]);
+    expect(fingerprint).not.toContain('90101');
+    expect(fingerprint).not.toContain('90102');
+    expect(fingerprint).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
   it('조건이 같으면 지문이 같다', () => {
     const a = parseRawEventFilter({ repository: 'seg/payments', limit: '10' });
     const b = parseRawEventFilter({ repository: 'seg/payments', limit: '10' });
