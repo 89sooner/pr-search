@@ -369,10 +369,11 @@
 
 ```json
 {
-  "query": "repo:acme/payments seq:1280..1342 -author:bot",
+  "query": "repo:acme/payments base:main seq:1280..1342 -author:bot",
   "parsed": {
     "filters": [
       { "key": "repo", "op": "eq", "values": ["acme/payments"] },
+      { "key": "base", "op": "eq", "values": ["main"] },
       { "key": "seq", "op": "range", "from": 1280, "to": 1342 },
       { "key": "author", "op": "not_eq", "values": ["bot"] }
     ],
@@ -774,9 +775,9 @@ Elasticsearch 내부에서 `pre_tags`·`post_tags`를 쓰는 것은 무방하다
 | `current` | 저장된 에폭이 현재와 같다 | 값 | 값 |
 | `epoch_stale` | 달라졌다 — 그 서수는 다른 커밋을 가리킬 수 있다 | 값 | 값 |
 | `unbound` | CR-051 이전에 에폭 없이 저장됐다 | `null` | 값 |
-| `unavailable` | **이 사용자가 그 저장소를 볼 수 없다** | 값 | **키 자체가 없다** |
+| `unavailable` | **이 사용자가 그 저장소를 볼 수 없다** | **키 자체가 없다** | **키 자체가 없다** |
 
-  `unavailable`에서 현재 에폭과 공간 상태를 싣지 않는 것이 이 계약의 보안 경계다 (THR-043). 팀 공유는 **이름과 질의 문자열을 보이게 하는 일**이지 그 저장소를 읽을 권한을 주는 일이 아니며(AC-3, THR-012), 현재 에폭은 "그 저장소에서 최근 히스토리 재작성이 있었다"를 말해 주는 활동 정보다. `stored_seq_epoch`은 저장자가 남긴 값이라 이미 이 자원의 일부이므로 그대로 둔다.
+  **`unavailable`은 `status` 하나만 싣는다** — 이것이 이 계약의 보안 경계다 (THR-043). 팀 공유는 **이름과 질의 문자열을 보이게 하는 일**이지 그 저장소를 읽을 권한을 주는 일이 아니며(AC-3, THR-012), 에폭 값은 "그 저장소의 히스토리가 몇 번 재작성됐다"를 말해 주는 활동 정보다. **`stored_seq_epoch`도 뺀다** — 저장자가 남긴 값이지만 공유된 것은 이름과 질의 문자열뿐이었고, `stored_seq_epoch: 5`는 그 저장소가 최소 다섯 세대를 거쳤다는 사실을 새로 알려 준다. FR-SRCH-010 AC-8은 "자신이 더 이상 구성원이 아닌 팀"이 아니라 **"자신이 접근할 수 없는 저장소"의 에폭·시퀀스 상태를 노출하지 않는다**고 정하며, 그 문장에는 어느 쪽 에폭인지 단서가 없다.
 - **저장하는 것은 이름과 질의 문자열, 그리고 `seq:` 조건이 딛고 선 에폭뿐이다** (CR-051). 정렬·패싯 선택·커서·조회 결과·저장자의 접근 범위를 담지 않는다. 필터는 이미 질의 문자열 안에 있고, **시퀀스 공간의 정체성도 질의가 지목한 `repo:`·`base:`에서 나오므로 따로 저장하지 않는다** — 저장소·브랜치를 열로 복사하면 질의와 그 사본이 어긋나는 날이 온다.
 
 #### `GET /api/v1/saved-searches`
@@ -885,7 +886,7 @@ ADR-010은 오프셋을 금지한다. 그러나 **W-001의 커서를 그대로 �
 ```json
 {
   "saved_search_id": 42,
-  "query": "repo:acme/payments merged:2026-08-01..2026-08-31",
+  "query": "repo:acme/payments base:main seq:1280..1342",
   "last_run_at": "2026-08-27T10:00:00Z",
   "navigation_url": "/search?q=repo%3Aacme%2Fpayments+base%3Amain+seq%3A1280..1342&seq_epoch=3",
   "correlation_id": "..."
