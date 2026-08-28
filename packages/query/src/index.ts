@@ -13,6 +13,7 @@ export {
   ENUMERATED_VALUES,
   NUMERIC_RANGE_KEYS,
   QUERY_KEYS,
+  RANGE_KEY_EXAMPLE,
   TEMPORAL_RANGE_KEYS,
   isNumericRangeKey,
   isQueryKey,

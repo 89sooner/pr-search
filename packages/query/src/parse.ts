@@ -7,10 +7,14 @@
  * 값이 열거된 키의 *값*도 거절한다(CR-014 DEV-036). 그러나 열거되지 않은 키의
  * 값은 건드리지 않는다 — `state:whatever`가 결과를 못 내는 것과 파서가 없는
  * 제약을 만드는 것은 다른 문제다.
+ *
+ * **범위 전용 키의 형태도 거절한다** (DEV-364). 이것은 위 문단의 예외가 아니라
+ * 같은 규율이다 — SRS가 `seq`·`merged`·`created`에 승인한 것은 범위뿐이므로,
+ * 스칼라를 통과시키는 쪽이야말로 승인되지 않은 문법을 지어내는 일이었다.
  */
 
 import type { EqualityFilter, QueryAst, QueryFilter, RangeFilter } from './ast.js';
-import { QueryParseError, syntaxError, unsupportedKey } from './errors.js';
+import { QueryParseError, rangeOnlyKey, syntaxError, unsupportedKey } from './errors.js';
 import {
   ENUMERATED_VALUES,
   isNumericRangeKey,
@@ -164,6 +168,21 @@ export function parseQuery(input: string): QueryAst {
 
     if (token.value === '') {
       throw syntaxError(`'${token.key}'의 값이 비었습니다`, token.raw, token.start, token.end);
+    }
+
+    /*
+     * 범위 전용 키를 스칼라로 썼다 (DEV-364, DEV-378, DEV-379).
+     *
+     * 위의 범위 분기를 타지 않고 여기 도달하는 범위 키는 `..`가 없거나
+     * 따옴표로 묶인 것뿐이며 둘 다 스칼라다. SRS가 승인한 것은 범위뿐이다 —
+     * AC-2·AC-3이 범위만 예시로 들고 AC-7은 아예 "`seq:` **범위** 조건"이라고
+     * 적는다. 그러므로 이 거절은 새 제약이 아니라 승인된 경계다.
+     *
+     * **값이 빈 경우보다 뒤에 둔다.** `seq:`는 "값이 비었습니다"가 더 정확한
+     * 사실이며, 사용자가 할 일도 다르다.
+     */
+    if (isRangeKey(token.key)) {
+      throw rangeOnlyKey(token.key, token.raw, token.start, token.end);
     }
 
     checkEnumeratedValue(token.key, token);

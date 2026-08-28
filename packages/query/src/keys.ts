@@ -60,6 +60,18 @@ export function isRangeKey(key: string): key is RangeKey {
 }
 
 /**
+ * 범위 키의 올바른 예시 (DEV-364, DEV-378, DEV-379).
+ *
+ * **키마다 다른 예를 보여 준다.** `seq`에 날짜 예시를 주면 사용자가 두 번
+ * 틀리고, 그 두 번째 오류는 우리가 만든 것이다.
+ */
+export const RANGE_KEY_EXAMPLE: Readonly<Record<RangeKey, string>> = {
+  seq: 'seq:1200..1350',
+  merged: 'merged:2026-08-10..2026-08-19',
+  created: 'created:2026-08-10..2026-08-19',
+};
+
+/**
  * 값이 열거된 키 (CR-014, DEV-036).
  *
  * **SRS가 값을 열거한 키에만 값을 검증한다.** 지금은 `is` 하나뿐이다.

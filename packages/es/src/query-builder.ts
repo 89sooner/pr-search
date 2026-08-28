@@ -132,6 +132,21 @@ export class SequenceEpochRequiredError extends Error {
 }
 
 /**
+ * 범위 전용 키가 동등 필터로 왔다. 배포·조립 오류다 (DEV-364, DEV-378, DEV-379).
+ *
+ * **조용한 실패의 방향이 부호마다 다르다.** `filter`에 놓인 `MATCH_NONE`은
+ * 0건이지만 `must_not`에 놓이면 아무것도 걸러내지 않아 **필터가 통째로
+ * 사라진다** — 하나는 너무 좁고 하나는 너무 넓은데 둘 다 오류를 내지 않는다.
+ * 그래서 `MATCH_NONE`으로 삼키지 않고 던진다.
+ */
+export class RangeKeyEqualityError extends Error {
+  constructor(readonly key: QueryKey) {
+    super(`'${key}'는 범위 전용 키다 — 동등 필터로 질의를 만들 수 없다 (DEV-364)`);
+    this.name = 'RangeKeyEqualityError';
+  }
+}
+
+/**
  * 전문 검색이 인정하는 커밋의 역할 (FR-SRCH-011 AC-1, CR-043 DEV-283).
  *
  * AC-1이 정한 커밋 축은 **머지 커밋 메시지**다. `/search`는 `prs-commits`를
@@ -247,6 +262,14 @@ function equalityClause(
   unresolved: UnresolvedName[],
 ): estypes.QueryDslQueryContainer {
   if (isRangeFilter(filter)) return MATCH_NONE;
+
+  /*
+   * 파서가 이미 거절하므로 사용자 입력으로는 도달하지 않는다 (DEV-364).
+   * 그래도 던지는 것은 AST를 직접 조립하는 경로가 생겼을 때를 위해서다 —
+   * 그 실패는 결과를 재는 시험에 잡히지 않는다.
+   */
+  if (RANGE_FIELDS[filter.key] !== undefined) throw new RangeKeyEqualityError(filter.key);
+
   const values = filter.values;
 
   const field = TERM_FIELDS[filter.key];

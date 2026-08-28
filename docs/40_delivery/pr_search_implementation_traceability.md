@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v5.0 | 갱신일: 2026-08-28
+> 상태: review | 버전: v5.1 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -95,7 +95,7 @@
 | FR-SRCH-002 | WP-014, WP-018 | `apps/search-api/src/resolve/detail.ts` (`merge_commit_sha` 포함), `packages/es/src/resolve-query.ts`, `apps/web/lib/commit-detail.ts`, `apps/web/components/{ShaChip,ChangedPathList,LinkedPrList,SequencePosition,CommitDetailView}.tsx`, `apps/web/app/commit/[owner]/[repo]/[sha]/page.tsx` | `apps/search-api/integration/resolve/resolve.test.ts`, `packages/es/src/resolve-query.test.ts`, `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx`, `apps/web/e2e/flow-003.spec.ts` | partial (AC-1·AC-2·AC-4·AC-5 충족, **화면 결합은 WP-018에서 done** — 역할 배지 셋, 소속 PR 전량 필드, `multi_pr` 목록, 체인 밖 안내와 머지 커밋 링크. **AC-3 `direct_push`는 여전히 도달 불가** — 커밋 문서가 PR 이벤트에서만 만들어진다, DEV-061 / WP-021. 화면은 매핑을 갖추고 도달하지 않음을 기록했으며, **`reason_code`를 "직접 푸시"로 부르지 않는다**, DEV-093) |
 | FR-SRCH-003 | WP-014, WP-017 | `apps/search-api/src/resolve/detail.ts`, `apps/web/lib/pr-detail.ts`, `apps/web/components/{CommitList,EntityHeader,PrDetailView}.tsx`, `apps/web/app/pr/[owner]/[repo]/[number]/page.tsx` | `apps/search-api/integration/resolve/resolve.test.ts`, `apps/web/lib/pr-detail.test.ts`, `apps/web/a11y/pr-detail.test.tsx`, `apps/web/e2e/flow-002.spec.ts` | partial (AC-1·AC-2·AC-4 충족, **화면 결합은 WP-017에서 done** — 머지 커밋이 항상 첫 행이고 미머지면 사유를 그 행에 표시한다. **AC-3의 메시지 첫 줄·작성자·작성 시각은 커밋 문서에 없다** — 배열 모양만 객체로 두고 `commit_sha`만 채웠다, DEV-062 / WP-020. AC-4의 **전체 건수**도 절삭 시 없어 `null`로 두고 "250건 이상"으로 표시한다, DEV-082·083 / WP-020) |
 | FR-SRCH-004 | WP-014, WP-016 | `packages/query/src/identifier.ts` (7자 하한), `packages/es/src/resolve-query.ts` (`prefix`), `apps/search-api/src/resolve/{service,routes}.ts`, `apps/web/lib/search-state.ts` (클라이언트 사전 판정), `apps/web/components/OmniSearchInput.tsx` | `packages/query/src/identifier.test.ts`, `packages/es/src/resolve-query.test.ts`, `apps/search-api/integration/resolve/resolve.test.ts`, `apps/web/lib/search-state.test.ts`, `apps/web/a11y/search.test.tsx`, `apps/web/e2e/flow-001.spec.ts` | done (AC-1~AC-4. 판별이 브라우저에서도 도는 순수 코드라 AC-2의 "검색을 수행하지 않는다"가 화면에서도 성립한다) |
-| FR-SRCH-005 | WP-011, WP-016 | `packages/query/src/{keys,errors,ast,tokenizer,parse,serialize}.ts`, `apps/web/lib/tokens.ts`, `apps/web/components/QueryTokenBar.tsx` | `packages/query/src/{parse,serialize}.test.ts`, `apps/web/lib/tokens.test.ts`, `apps/web/a11y/search.test.tsx` | verified (AC-1~AC-6 전부. 화면의 오류 구간 강조는 WP-016) |
+| FR-SRCH-005 | WP-011, WP-016 | `packages/query/src/{keys,errors,ast,tokenizer,parse,serialize}.ts`, `apps/web/lib/tokens.ts`, `apps/web/components/QueryTokenBar.tsx` | `packages/query/src/{parse,serialize}.test.ts`, `apps/web/lib/tokens.test.ts`, `apps/web/a11y/search.test.tsx` | verified (AC-1~AC-6 전부. 화면의 오류 구간 강조는 WP-016. **범위 전용 키 셋은 범위 형태로만 성립한다** — DEV-364, 6.45장) |
 | FR-SRCH-006 | WP-013, WP-016 | `packages/es/src/query-builder.ts`, `apps/search-api/src/search/{routes,service,relaxation}.ts`, `packages/db/src/repositories/{repository,auth}.ts`, `apps/web/lib/facets.ts`, `apps/web/components/FacetRail.tsx` | `packages/es/src/query-builder.test.ts`, `apps/search-api/integration/search/list.test.ts`, `apps/web/lib/facets.test.ts`, `apps/web/a11y/search.test.tsx` | done (AC-1~AC-3, AC-6. 화면 쪽 결합은 WP-016) |
 | FR-SRCH-007 | WP-013, WP-016 | `packages/es/src/sort.ts`, `packages/es/src/upsert.ts` (`doc_id`), `packages/es/src/mappings/*.ts`, `apps/search-api/src/search/{routes,service}.ts`, `apps/web/components/ResultTable.tsx` (`aria-sort`, 정렬 헤더) | `packages/es/src/sort.test.ts`, `packages/es/src/upsert.test.ts`, `apps/search-api/integration/search/list.test.ts`, `apps/web/a11y/search.test.tsx`, `apps/web/e2e/flow-001.spec.ts` | done (AC-1~AC-4. AC-4의 "문서 ID"는 `_id`가 아니라 같은 값의 `doc_id` 필드다 — DEV-059) |
 | FR-SRCH-008 | WP-032 | `apps/search-api/src/cursor/{envelope,params}.ts`, `apps/search-api/src/search/{cursor,service,routes}.ts`, `packages/es/src/search.ts` (PIT), `apps/web/components/CursorPager.tsx` | `apps/search-api/src/cursor/envelope.test.ts`, `apps/search-api/src/search/cursor.test.ts`, `apps/search-api/integration/search/facets.test.ts`, `apps/web/e2e/search-paging.spec.ts` | done |
@@ -554,7 +554,7 @@
 | DEV-361 | 2026-08-28 | **검색 커서 지문에 시퀀스 에폭이 없다.** `apps/search-api/src/search/cursor.ts`의 `FingerprintInput`은 질의·정렬·접근 범위·범위 버전 넷이며 `seq_epoch`은 `q` 밖의 값이라 지문에 닿지 않는다. 그래서 **질의가 같고 에폭만 다른 두 조회가 같은 지문을 갖고**, 재채번 뒤에도 옛 커서가 유효하게 받아들여져 다른 세대의 서수 위에서 순회가 계속된다. PIT은 색인 뷰를 고정할 뿐 서수의 뜻을 고정하지 않는다 | WP-032 / FR-SRCH-008 AC-3, ADR-010 | 구현 결함 | **CR-051** | **resolved (2026-08-28)** — 계약(CR-051)과 구현이 모두 들어왔다. 검증 기록은 6.43장이다. 유효 에폭을 지문 재료에 더했다. `seq:`가 없는 질의에는 이 재료가 **없다** — `null`·`0` 같은 대체값을 쓰면 그 값이 언젠가 실제 에폭과 충돌한다 |
 | DEV-362 | 2026-08-28 | **`saved_search`가 `seq:` 조건의 에폭을 저장하지 않는다** (DEV-349의 저장 계층). CR-049는 "저장하는 것은 질의 문자열뿐"으로 계약했고 구현이 그것을 따랐다. 그런데 ADR-007 규칙 5가 열거한 세 저장물 중 실제로 에폭을 저장하는 것은 `safe_marker` 하나뿐이었다 — **마이그레이션 002부터 `repository_id`·`base_branch`·`seq_epoch`을 갖고 있던 그 표가 규칙 5의 유일한 이행 사례다** | WP-033 / FR-SRCH-010 AC-8, FR-SEQ-005 AC-4, ENT-CORE-006 | 범위 공백 | **CR-051** | **resolved (2026-08-28)** — 계약(CR-051)과 구현이 모두 들어왔다. 검증 기록은 6.43장이다. 마이그레이션 017이 `seq_epoch INT`와 `>= 1` CHECK를 더한다. **저장소·브랜치는 열로 두지 않는다** — 공간의 정체성은 질의의 `repo:`·`base:`가 갖고, 복사하면 질의와 사본이 어긋난다. `safe_marker`가 열을 갖는 것은 그 자원에 질의가 없기 때문이다. **기존 행을 소급해 채우지 않는다**: 저장 당시의 에폭은 복원 불가이므로 현재 값을 넣는 것은 조용한 오답을 마이그레이션으로 영구 승인하는 일이다 |
 | DEV-363 | 2026-08-28 | **`seq_epoch` 형식 오류가 "지정하지 않음"으로 읽힌다.** `apps/search-api/src/sequence/space.ts`의 `parseEpochParam`이 정수가 아니거나 1 미만인 값을 `null`로 돌려주고, 호출부는 그것을 "에폭을 지정하지 않았다"로 해석해 **현재 에폭으로 조회한다.** 사용자가 `seq_epoch=3`을 의도한 URL에 오타가 나면 그 요청은 오류 없이 다른 세대의 결과를 받는다 — **이것이 정확히 ADR-007이 막으려는 자동 재해석이며, W-004의 세 경로가 이미 그 상태다** | WP-023 / FR-SEQ-005 AC-4 | 구현 결함 | **CR-051** | **resolved (2026-08-28)** — 계약(CR-051)과 구현이 모두 들어왔다. 검증 기록은 6.43장이다. 세 상태(없음 · 유효 · 형식 오류)를 구분하고 형식 오류는 `INVALID_PARAMETER`로 거절한다. **W-004와 검색이 같은 함수를 쓴다** — 같은 이름의 파라미터가 두 API에서 다르게 해석되면 그것이 새 함정이다 |
-| DEV-364 | 2026-08-28 | **스칼라 `seq:1234`가 파서를 통과하지만 조용히 0건이 된다.** `seq`는 `QUERY_KEYS`이면서 `NUMERIC_RANGE_KEYS`라, 범위 없이 쓰면 `EqualityFilter`가 되어 파서를 통과한다. 그런데 `query-builder.ts`의 `TERM_FIELDS`에 `seq`가 없어 `equalityClause`가 `MATCH_NONE`을 돌려준다 — 사용자는 400도 아니고 안내도 없이 **"그 서수에 아무것도 없다"로 읽히는 0건**을 받는다 | WP-011, WP-013 / FR-SRCH-005 AC-1·AC-2 | 범위 공백 | 없음 (CR-051이 판정만 기록) | open — 고치지 않는다. SRS AC-2가 승인한 것은 범위뿐이므로 **이 CR을 핑계로 스칼라 조회 기능을 만들지 않는다**(지시서 §0의 "단순 구현 편의로 CR을 열지 않는다"). CR-051의 공간 지목 규칙도 **범위 조건에만** 적용해 동작 변경을 최소로 두었다. 고치려면 두 갈래 중 하나를 제품 결정으로 골라야 한다 — 파서가 문법 오류로 거절하거나(`seq:`는 범위 전용), 스칼라를 `merge_seq` 단일값 조회로 승인하거나. **어느 쪽도 DEV-349와 같은 축이 아니다**: 스칼라는 언제나 0건이라 "다른 커밋을 가리키는" 실패가 아니다 |
+| DEV-364 | 2026-08-28 | **스칼라 `seq:1234`가 파서를 통과하지만 조용히 0건이 된다.** `seq`는 `QUERY_KEYS`이면서 `NUMERIC_RANGE_KEYS`라, 범위 없이 쓰면 `EqualityFilter`가 되어 파서를 통과한다. 그런데 `query-builder.ts`의 `TERM_FIELDS`에 `seq`가 없어 `equalityClause`가 `MATCH_NONE`을 돌려준다 — 사용자는 400도 아니고 안내도 없이 **"그 서수에 아무것도 없다"로 읽히는 0건**을 받는다 | WP-011, WP-013 / FR-SRCH-005 AC-1·AC-2 | 범위 공백 | 없음 (CR-051이 판정만 기록, 이 해소도 CR 없이) | **resolved (2026-08-28)** — 두 갈래 중 **파서가 문법 오류로 거절하는 쪽**을 골랐다. 근거를 새로 만들 필요가 없었다: SRS AC-2·AC-3이 범위만 예시로 들고 **AC-7은 아예 "`seq:` 범위 조건"이라고 적는다** — 스칼라를 승인한 문장이 어디에도 없으므로 이 거절은 새 제약이 아니라 **승인된 경계로 구현을 되돌리는 일**이며, 그래서 CR을 열지 않았다. **실측이 위 판단의 절반을 뒤집었다**: 부정형 `-seq:1234`는 0건이 아니라 필터가 통째로 사라진 전체 결과였고(DEV-378), 같은 결함이 `merged`·`created`에도 있었다(DEV-379). "언제나 0건이라 다른 커밋을 가리키는 실패가 아니다"는 긍정형에만 참이었다 |
 | DEV-365 | 2026-08-28 | **공유된 저장 검색의 시퀀스 상태가 볼 수 없는 저장소의 활동을 누설할 수 있다.** CR-051이 세우는 `sequence_reference`는 낡음을 판정하려고 **그 저장소의 현재 에폭**을 읽는데, 팀 공유는 이름과 질의 문자열을 보이게 할 뿐 저장소 접근 권한을 주지 않는다(THR-012, AC-3). 그대로 실으면 공유받은 사람이 **자기가 볼 수 없는 저장소에서 최근 히스토리 재작성이 있었다**는 사실을 알게 된다 | WP-033 / FR-SRCH-010 AC-3·AC-8, THR-012 | 범위 공백 | **CR-051** | **resolved (2026-08-28)** — 계약(CR-051)과 구현이 모두 들어왔다. 검증 기록은 6.43장이다. 계약이 서기 전에 막았다. 접근 불가면 `status: "unavailable"` 하나로 답하고 `current_seq_epoch`·`sequence_state` **키 자체를 싣지 않는다** — 값을 가리는 것이 아니라 응답에서 뺀다. THR-043으로 등재했다. 저장자가 남긴 `stored_seq_epoch`은 이미 이 자원의 일부이므로 그대로 둔다 |
 | DEV-366 | 2026-08-28 | **아카이브 문서의 저장소 식별 필드가 코드와 계약에서 어긋난다.** `apps/ingest-gateway/src/archive.ts`의 `ArchiveRecord`는 `repository_id`(숫자)를 싣는데 데이터 모델 4.5의 매핑과 `ENT-ING-003`은 `repository`(keyword)를 받는다. 매핑이 `dynamic: false`라 **`repository_id`는 색인되지 않고 `_source`에만 남는다** — 저장소로 좁히는 아카이브 조회도, `ADR-008`의 접근 범위 필터를 거는 것도 성립하지 않는다. 하나만 담는 길은 없다: `repository_id`가 없으면 필터를 걸 수 없고 `repository`가 없으면 조사자가 저장소를 알아볼 수 없어, **둘 다 담도록 계약을 고쳤다** | FR-ING-010 / WP-036 | 문서와 구현 불일치 | CR-052 | resolved |
 | DEV-367 | 2026-08-28 | **NDJSON 아카이브 파일 자체의 수명 정책이 어디에도 없다.** `createWriteStream(path, { flags: 'a' })`가 단일 파일에 무한히 덧붙이고 회전도 삭제도 없다. `ADR-003`이 정한 ILM 창(약 97일)은 **ES 인덱스의 수명**이지 파일의 수명이 아니다. 인프라 5장 산정으로 일 약 46만 건 × 8KB ≈ 3.7GB/일이 쌓이므로 Filebeat가 멈추면 며칠 만에 수집 노드의 디스크가 찬다 — **그때 레인 B의 정체가 레인 A를 멈추고, 그것이 AC-3이 지키려던 독립성이다.** `FR-ING-010`에 AC-7(크기 상한 × 보관 개수)을 신설하고 **아카이브를 잃는 쪽을 택했다**: 보존 보증은 `raw_event`가 지고 아카이브 인덱스는 그것으로부터 재구성할 수 있다 | FR-ING-010 / WP-036 | 범위 공백 | CR-052 | resolved |
@@ -568,6 +568,8 @@
 | DEV-375 | 2026-08-28 | **화면의 역할 제한이 AC-5와 어긋난다.** `A-001`은 `operator` 전용 화면이고 `QA-A001-10`이 "`operator`가 아닌 역할에게 운영 내비게이션이 렌더링되지 않는다"를 검증하는데, `FR-ING-010` AC-5는 `security_officer`도 아카이브를 조회하게 요구한다 — **그 역할은 화면에 들어갈 수 없으므로 승인된 조회 자격을 쓸 수 없다.** 권한을 화면 단위로 넓히는 대신 `A-001-ARCHIVE` **섹션만** 열고, `security_officer`가 진입하면 그 섹션만 렌더링하는 `archive_only` 상태를 정의했다. 승인된 보안 계약을 뒤집지 않고 경계를 정확히 긋는 것은 `CR-050`이 `API-ADM-001`·`API-ADM-006`에서 내린 판단과 같다 | FR-ING-010, FR-ADMIN-001 / WP-036, WP-040 | 문서 간 모순 | CR-052 | resolved |
 | DEV-376 | 2026-08-28 | **조건 변경이 히스토리를 쌓는다 — `force-dynamic` 위의 `router.replace`가 겹치기 때문이다.** W-001의 패싯·정렬 변경은 `router.replace`를 쓰는데 `/search`가 `force-dynamic` 서버 컴포넌트라 **호출마다 RSC 왕복이 일어난다.** 연달아 만지면 그 왕복이 겹치고, 겹친 내비게이션이 히스토리 항목을 하나 더 남기는 경우가 생겨 **"다섯 번 만져도 뒤로가기 한 번"이라는 계약(FLOW-001 4단계)이 깨진다.** 서버가 바쁠수록 자주 깨지므로 전량 e2e에서만 드러났고 **진단 로그 한 줄을 넣으면 타이밍이 바뀌어 사라졌다** — 그래서 오래 "간헐 실패"로 남아 있었다. 실측 재현율은 **6회 중 4회**였다. 네이티브 `history.replaceState`(Next 14.1+에서 라우터와 통합되어 `useSearchParams`를 갱신한다)로 바꿔 **서버 왕복 자체를 없앴다** — 이 화면의 데이터는 클라이언트가 API로 가져오므로 조건이 바뀔 때 서버 컴포넌트를 다시 그릴 이유가 없다. 수정 뒤 `flow-001.spec.ts:127`은 6회 전부 통과한다 | FLOW-001 / WP-016, WP-036 | 구현 결함 | CR-052 | resolved |
 | DEV-377 | 2026-08-28 | **뒤로가기 뒤 검색 화면 렌더가 병렬 부하에서 5초를 넘는다.** `flow-003.spec.ts:176`은 커밋 상세·PR 상세를 거쳐 뒤로가기 두 번으로 돌아오는데, URL은 `/search`가 되지만 `searchbox`가 5초 안에 나타나지 않는 경우가 남는다. DEV-376을 고친 뒤 재현율이 **6회 중 4회에서 1회로** 떨어졌으나 0은 아니다. `force-dynamic`이라 뒤로가기도 서버 렌더를 요구하고, 전량 e2e의 병렬 부하가 그것을 느리게 만든다 — **단독 실행에서는 4회 모두 통과한다.** **`experimental.staleTimes.dynamic = 30`을 실제로 시도했고 효과가 없었다** — 8회 중 3회 실패로 오히려 나빴다(적용 전 6회 중 1회). 뒤로가기가 클라이언트 캐시를 써도 이 실패가 남는다는 뜻이므로 원인은 라우터 캐시가 아니다. 설정을 되돌렸다 — 근거 없이 남기면 다음 사람이 그것을 원인 후보에서 지우지 못한다. `force-dynamic` 정책 자체나 화면의 마운트 경로를 봐야 하며 그것은 화면 소유 WP의 판단이다. **재시도 통과를 해소로 적지 않는다** | FLOW-002 / WP-016 | 구현 결함 | CR-052 | open |
+| DEV-378 | 2026-08-28 | **범위 전용 키의 스칼라는 0건이 아니라 방향이 둘이었다 — 부정형은 필터가 통째로 사라진다.** DEV-364는 `seq:1234`가 `MATCH_NONE`이 되어 조용히 0건이라고 적었고 그 판정 위에서 "고치지 않는다"를 결정했다. 실측하니 **부정형 `-seq:1234`는 `must_not: [match_none]`이 되어 아무것도 걸러내지 않았다** — 사용자는 서수 하나를 뺀 목록을 기대하는데 필터가 없는 전체를 받는다. `equalityClause`의 주석은 "필터를 잃는 것보다 0건이 낫다"고 적었지만 **그 논리는 `must_not`에서 뒤집힌다.** 하나는 너무 좁고 하나는 너무 넓은데 둘 다 오류를 내지 않으므로, 넓어지는 쪽이 알아채기 더 어렵다 (CR-051이 `sequenceEpoch`를 선택 인자로 두지 않은 것과 같은 자리다 — fail-open은 결과를 재는 시험에 잡히지 않는다) | WP-011, WP-013 / FR-SRCH-005 | 구현 결함 | 없음 (DEV-364와 함께 해소) | **resolved (2026-08-28)** — 파서가 거절하므로 두 방향이 함께 닫혔다. 빌더에도 `RangeKeyEqualityError`를 두어 **AST를 직접 조립하는 경로가 생겨도 `MATCH_NONE`으로 삼키지 않게** 했다 |
+| DEV-379 | 2026-08-28 | **같은 결함이 `merged`·`created`에도 있었다.** 셋 다 `RANGE_FIELDS`에만 있고 `TERM_FIELDS`에는 없다 — `merged:2026-08-10`처럼 하루를 지목하려는 입력이 `MATCH_NONE`이 되어 조용히 0건이었다. DEV-364가 `seq`만 지목한 것은 그 자리에서 `seq`만 보았기 때문이며, **키 하나가 아니라 "범위 전용 키" 부류의 문제였다.** 규칙을 키마다 다르게 두면 그 차이가 다음 결함이 되므로 셋을 하나의 규칙으로 닫는다 | WP-011, WP-013 / FR-SRCH-005 AC-1·AC-3 | 구현 결함 | 없음 (DEV-364와 함께 해소) | **resolved (2026-08-28)** — 파서가 `isRangeKey` 하나로 셋을 함께 거절하고, 오류 메시지는 `RANGE_KEY_EXAMPLE`로 **키마다 다른 예시**를 보인다 (`seq`에 날짜 예를 주면 사용자가 두 번 틀린다) |
 
 ## 6. 검증 결과 기록
 
@@ -3424,6 +3426,91 @@ risks 「대역이 실제보다 관대하면 그만큼이 사각지대다」의 
 아니라 **어느 실패를 받아들일 것인가**의 문제다. 쌓으면 디스크가 차고 그때 레인 A가 멈춘다 —
 아카이브를 잃는 쪽이 AC-3을 지킨다는 판단을 계약(AC-7)에 먼저 적고 구현이 따랐다.
 
+### 6.45 DEV-364 범위 전용 키의 스칼라 거절 (CR 없음)
+
+**CR을 열지 않았다.** SRS가 승인한 것이 범위뿐임을 세 곳이 함께 말한다 — AC-2가
+`seq:1200..1350`을, AC-3이 `merged:2026-08-10..2026-08-19`를 예시로 들고, **AC-7은 아예
+"`seq:` 범위 조건"이라고 적는다.** 스칼라를 승인한 문장이 없으므로 이 변경은 새 제약이 아니라
+**승인된 경계로 구현을 되돌리는 일**이다. 문서 변경이 없으니 DEV-107·DEV-160의 선례를 따라
+구현 결함으로 처리했다.
+
+| 계층 | 결과 |
+| --- | --- |
+| `pnpm typecheck` · `lint` · `lint:deps` | 통과 (패키지 13개, 위반 0건) |
+| 단위 | **1679 통과** (1 skipped) — 착수 전 1665 |
+| 통합 (실 PostgreSQL·Elasticsearch·Redis) | `search` 범위 **690 통과** — 착수 전 687 |
+
+#### 실측이 판정을 바꿨다
+
+DEV-364는 "스칼라는 언제나 0건이라 *다른 커밋을 가리키는* 실패가 아니다"라는 판단 위에서
+"고치지 않는다"를 결정했다. 그 판단은 **긍정형에만 참이었다.**
+
+| 질의 | 실제 ES 질의 | 사용자가 받는 것 |
+| --- | --- | --- |
+| `seq:1234` | `filter: [match_none]` | 0건 |
+| `-seq:1234` | `must_not: [match_none]` | **필터가 사라진 전체** |
+| `merged:2026-08-10` | `filter: [match_none]` | 0건 |
+| `created:2026-08-10` | `filter: [match_none]` | 0건 |
+
+`equalityClause`의 주석은 "못 옮기는 키는 `null`이 아니라 `MATCH_NONE`을 준다 — 필터를 잃는
+것보다 0건이 낫다"고 적었다. **그 논리는 `must_not`에 놓이는 순간 뒤집힌다.** 아무것도 아닌
+것을 제외하는 절은 아무것도 걸러내지 않으므로, 필터를 잃지 않으려던 장치가 정확히 필터를
+잃게 만들었다 (DEV-378). 그리고 같은 결함이 `merged`·`created`에도 있었다 (DEV-379) —
+DEV-364가 `seq`만 지목한 것은 그 자리에서 `seq`만 보았기 때문이며, **키 하나가 아니라 "범위
+전용 키" 부류의 문제였다.**
+
+→ **"조용히 좁아진다"고 적기 전에 부호를 뒤집어 본다.** 같은 절이 `filter`와 `must_not`
+양쪽에 놓일 수 있으면 실패 방향이 둘이고, 그중 넓어지는 쪽은 결과를 재는 시험에 잡히지
+않는다. CR-051이 `sequenceEpoch`를 선택 인자로 두지 않은 것과 같은 자리다.
+
+#### 고친 방식
+
+파서가 거절한다. 빌더가 아니라 파서인 것은 **오프셋을 실을 수 있는 곳이 파서뿐**이고
+(FR-SRCH-005 예외 처리: "파싱 실패 시 검색을 실행하지 않고 오류 위치를 반환한다"),
+화면과 서버가 같은 파서를 쓰기 때문이다 (ADR-001). 빌더에도 `RangeKeyEqualityError`를 두어
+**AST를 직접 조립하는 경로가 생겨도 `MATCH_NONE`으로 삼키지 않게** 했다.
+
+오류 메시지는 `RANGE_KEY_EXAMPLE`로 **키마다 다른 예시**를 보인다. `seq`에 날짜 예를 주면
+사용자가 두 번 틀리고, 그 두 번째 오류는 우리가 만든 것이다.
+
+#### 기존 시험 넷이 스칼라를 정상으로 기대하고 있었다
+
+| 시험 | 원래 의도 | 어떻게 고쳤나 |
+| --- | --- | --- |
+| `parse.test.ts` AC-1 "15종이 모두 파싱된다" | 지원 키 열다섯이 전부 파싱된다 | 범위 키 셋만 범위 형태로 넣고 `range` 필터를 기대한다 |
+| `parse.test.ts` "따옴표 안에서는 `..`가 리터럴이다" | 따옴표 규칙 | 예시를 `label:"1..2"`로 옮겼다 — 범위 키로는 이 규칙을 보일 수 없다 |
+| `sequence-binding.test.ts` "스칼라는 규칙 대상이 아니다" | 지목 규칙이 **범위 조건만** 본다 | AST를 손으로 조립해 그 경계를 그대로 건다 |
+| `query-builder.test.ts` "스칼라는 에폭을 요구하지 않는다" | 에폭 요구가 **범위에만** 걸린다 | 같은 AST로 새 방어(`RangeKeyEqualityError`)를 건다 |
+
+**넷 다 지키려던 성질은 옳았고 예시만 스칼라였다.** 시험을 지우지 않고 예시를 바꾼 것은,
+지우면 그 성질을 지키던 힘까지 함께 사라지기 때문이다.
+
+#### 적대적 변이 넷 — 4 킬
+
+| 변이 | 판정 |
+| --- | --- |
+| M-A 파서의 범위 전용 검사 제거 | KILLED |
+| M-B 빌더의 `RangeKeyEqualityError` 제거 | KILLED |
+| M-C 범위 검사를 빈 값 검사보다 앞으로 이동 | KILLED — `seq:`는 "값이 비었습니다"가 더 정확한 사실이다 |
+| M-D 오류 예시를 키마다 같게 | KILLED |
+
+#### 파서를 거치는 경로 일곱을 모두 확인했다
+
+문법이 좁아지면 **이미 저장된 질의가 무효가 될 수 있다.** 그 경우를 SRS가 이미 승인해 두었다
+(FR-SRCH-008 AC-6: "저장된 질의는 문법이 바뀌면 무효가 될 수 있다"). 호출부 일곱을 실측했다.
+
+| 호출부 | 처리 | 판정 |
+| --- | --- | --- |
+| `search/routes.ts` · `sequence/routes.ts` | `QueryParseError`를 400으로 옮긴다 | 안전 |
+| `saved-search/service.ts`(목록·실행) | `judgeQuery`가 먼저 판정해 `query_error`를 싣는다 | 안전 — AC-6이 승인한 경로 |
+| `ops/sequence-integrity.ts` | `QueryParseError`는 `continue` | 안전 |
+| `web/lib/query-url.ts` | 오류를 화면 강조로 옮긴다 | 안전 |
+| `web/components/RangesView.tsx` | 파싱 실패를 "필터 없음"으로 읽는다 | 안전 |
+
+`packages/domain/src/anchor.ts`의 `seq:1342`는 **W-004 앵커 표현이며 질의 문법이 아니다** —
+`classifyAnchor`가 해석하고 `parseQuery`를 거치지 않는다. 두 문법이 같은 접두를 쓰지만 다른
+자리에서 해석된다는 것을 실측으로 확인했다.
+
 ## 7. 알려진 제한 (구현 반영 기준)
 
 착수 시점의 계획상 제한이다. 구현이 진행되면 실제 반영된 내용으로 갱신한다.
@@ -3942,6 +4029,16 @@ Gate 4(보안)·5(성능)·6(운영)은 별개다. 특히 이 WP가 남긴 NOT R
 **아카이브의 화면은 아직 없다.** `A-001-ARCHIVE`는 `WP-040`이 세운다 (CR-052, DEV-371). 이 WP는
 `WP-010`이 같은 자리에서 내린 판단을 따라 **API까지만** 했고, 그래서 `QA-A001-08`과 새로 만든
 `QA-A001-11~14`는 `WP-040`의 DoD에 있다. 지금 상태에서 아카이브를 보려면 API를 직접 부른다.
+
+**(2026-08-28) DEV-364를 닫았다 — 스칼라 판정이 절반만 맞았다.** CR-051이 "언제나 0건이라
+다른 커밋을 가리키는 실패가 아니다"라고 판정하고 미뤄 둔 자리인데, 실측하니 **부정형은 0건이
+아니라 필터가 사라진 전체**였다(DEV-378). 같은 결함이 `merged`·`created`에도 있었다(DEV-379).
+검증 기록은 6.45장이다. **CR을 열지 않았다** — SRS AC-2·AC-3·AC-7이 이미 범위만 승인하므로
+승인된 경계로 구현을 되돌리는 일이다.
+
+→ **미뤄 두기로 한 판정도 그 근거가 실측인지 확인한다.** DEV-364의 근거는 "스칼라는 언제나
+0건"이었고 그것을 부호를 뒤집어 확인한 적이 없었다. 판정을 남기는 것과 판정의 근거를 재는
+것은 다른 일이며, 미뤄 둔 항목일수록 근거가 검증되지 않은 채로 오래 남는다.
 
 `srs_final.md`가 baseline이므로 그 문서의 변경은 CR을 먼저 등록해야 한다. 구현 중 문서와 현실이 어긋나면 5장에 `DEV-###`를 등록하고 CR로 연결한다. 조용한 범위 변경은 금지다.
 
