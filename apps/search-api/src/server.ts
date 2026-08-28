@@ -16,6 +16,7 @@ import { resolveSearchApiConfig, type SearchApiConfig } from './config.js';
 import { registerOpsRoutes } from './ops/routes.js';
 import { registerAuthRoutes } from './auth/routes.js';
 import { registerSearchRoutes } from './search/routes.js';
+import { registerAnalyticsRoutes } from './analytics/routes.js';
 import { registerResolveRoutes } from './resolve/routes.js';
 import { registerRelationRoutes } from './relations/routes.js';
 
@@ -145,6 +146,21 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
 
     if (deps.search !== undefined) {
       registerSearchRoutes(app, { ...deps.search, auth: deps.auth, loginPath: config.auth.loginPath });
+      /*
+       * 집계 API (WP-037 / API-STAT-001~004).
+       *
+       * **검색과 같은 의존을 쓰되 별도 등록이다** (FR-STAT-006 AC-4). 목록
+       * 응답이 집계 지연에 영향받지 않아야 하므로 경로가 나뉘고, 그 분리는
+       * 여기 한 줄에서 시작한다 — **빠지면 네 API가 배포에서 사라진다**
+       * (WP-028의 API-ADM-007이 정확히 그 상태였다, CR-034 DEV-177).
+       */
+      registerAnalyticsRoutes(app, {
+        es: deps.search.es,
+        pool: deps.search.pool,
+        resolveNames: deps.search.resolveNames,
+        auth: deps.auth,
+        loginPath: config.auth.loginPath,
+      });
       // 식별자 해석은 목록 조회와 같은 의존을 쓴다 (WP-014). ES 하나면 된다.
       registerResolveRoutes(app, {
         es: deps.search.es,

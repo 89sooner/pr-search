@@ -121,8 +121,10 @@ export {
   buildQuery,
   buildTextClause,
   collectNames,
+  KindFilterNotAppliedError,
   RangeKeyEqualityError,
   SequenceEpochRequiredError,
+  resolveSearchTarget,
 } from './query-builder.js';
 export type { BuildQueryOptions, BuiltQuery, NameResolution, UnresolvedName } from './query-builder.js';
 

@@ -177,6 +177,58 @@ describe('PR 문서 (ENT-CORE-002)', () => {
   });
 });
 
+describe('CR-053: 집계가 읽을 값은 색인 시점에 계산한다', () => {
+  it('`changed_lines`가 `additions + deletions`다 (DEV-386)', () => {
+    // 조회 시점에 더하면 `script`가 필요하고 NFR-001이 그것을 금지한다.
+    const doc = buildPullRequestDocument(source()).doc as Record<string, unknown>;
+    const additions = doc['additions'] as number;
+    const deletions = doc['deletions'] as number;
+    expect(doc['changed_lines']).toBe(additions + deletions);
+  });
+
+  it('매핑에 `changed_lines`가 있다', () => {
+    expect(mappedFields(PULL_REQUEST_MAPPING)).toContain('changed_lines');
+  });
+
+  it('**작성자 본인 리뷰는 첫 리뷰가 아니다** (FR-STAT-004 AC-3, DEV-387)', () => {
+    /*
+     * 자기 PR에 스스로 남긴 코멘트를 첫 리뷰로 세면 대기 시간이 실제보다
+     * 짧아진다. 그 값은 색인 시점에 저장되므로 **API도 화면도 고칠 수 없다.**
+     */
+    const withSelfReview = enriched({
+      reviews: [
+        { id: 9, state: 'COMMENTED', reviewer: PR.author, submitted_at: '2026-08-01T09:30:00.000Z' },
+        { id: 1, state: 'COMMENTED', reviewer: 'alice', submitted_at: '2026-08-01T12:00:00.000Z' },
+      ],
+    });
+    const doc = buildPullRequestDocument(source(withSelfReview)).doc as Record<string, unknown>;
+
+    // 첫 리뷰는 alice의 12:00이며 09:30이 아니다.
+    expect(doc['first_review_at']).toBe('2026-08-01T12:00:00.000Z');
+    // 09:00 생성 → 12:00 = 세 시간.
+    expect(doc['first_review_wait_seconds']).toBe(3 * 3600);
+  });
+
+  it('작성자 리뷰뿐이면 첫 리뷰가 없다', () => {
+    const onlySelf = enriched({
+      reviews: [
+        { id: 9, state: 'COMMENTED', reviewer: PR.author, submitted_at: '2026-08-01T09:30:00.000Z' },
+      ],
+    });
+    const doc = buildPullRequestDocument(source(onlySelf)).doc as Record<string, unknown>;
+    expect(doc['first_review_at']).toBeUndefined();
+    expect(doc['first_review_wait_seconds']).toBeUndefined();
+  });
+
+  it('리뷰어를 모르면 거르지 않는다 — 없는 값을 지어내지 않는다', () => {
+    const unknownReviewer = enriched({
+      reviews: [{ id: 9, state: 'COMMENTED', reviewer: null, submitted_at: '2026-08-01T09:30:00.000Z' }],
+    });
+    const doc = buildPullRequestDocument(source(unknownReviewer)).doc as Record<string, unknown>;
+    expect(doc['first_review_at']).toBe('2026-08-01T09:30:00.000Z');
+  });
+});
+
 describe('커밋 문서 (ENT-CORE-003)', () => {
   it('원본 커밋과 머지 커밋을 각각 만든다', () => {
     const requests = buildCommitDocuments(source());

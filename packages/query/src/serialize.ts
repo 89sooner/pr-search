@@ -71,3 +71,32 @@ export function serializeQuery(ast: QueryAst): string {
   if (ast.text !== null) parts.push(...renderText(ast.text));
   return parts.join(' ');
 }
+
+/**
+ * 질의에 동등 조건 값을 더한다 — 패싯 선택과 집계의 `drill_down_query`가 쓴다.
+ *
+ * **같은 키가 이미 있으면 그 노드에 값을 넣는다.** 파서가 같은 (키, op)를 한
+ * 노드로 모으므로(FR-SRCH-005 AC-5의 OR) 새 노드를 만들면 직렬화 후 다시
+ * 파싱했을 때 모양이 달라져 **왕복이 깨진다.**
+ *
+ * 화면(`apps/web/lib/tokens.ts`)에 있던 것을 여기로 올렸다 (CR-053) — 집계가
+ * 근거 목록으로 가는 질의를 만들 때 같은 판정이 필요한데, **각자 구현하면
+ * 한쪽만 고쳐지는 날이 온다.** 그때 어긋나는 것은 버킷 수와 목록 건수다.
+ */
+export function addEquality(ast: QueryAst, key: string, value: string): QueryAst {
+  const existing = ast.filters.findIndex((one) => one.key === key && one.op === 'eq');
+
+  if (existing === -1) {
+    return {
+      ...ast,
+      filters: [...ast.filters, { key, op: 'eq', values: [value] } as QueryFilter],
+    };
+  }
+
+  const filter = ast.filters[existing] as QueryFilter & { readonly values: readonly string[] };
+  // 이미 있는 값을 또 넣지 않는다 — `author:kim author:kim`은 같은 결과에 문자열만 길어진다.
+  if (filter.values.includes(value)) return ast;
+
+  const updated = { ...filter, values: [...filter.values, value] } as QueryFilter;
+  return { ...ast, filters: ast.filters.map((one, i) => (i === existing ? updated : one)) };
+}

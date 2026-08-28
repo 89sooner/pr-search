@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v5.4 | 갱신일: 2026-08-29
+> 상태: review | 버전: v5.5 | 갱신일: 2026-08-29
 
 ## 1. 목적
 
@@ -71,7 +71,7 @@
 | WP-034 | W-009 저장소 개요 화면 | REL-004 | done | 에이전트 | PR #62 | DoD 19항 전부 통과 (6.42장). 통합 51건(실 PG·ES·Redis) + 단위 44건 + a11y 17건 + e2e 7건 + 회귀 유지. **적대적 변이 15종 — 15 킬**, 그중 하나(M6)가 시험 구멍을 드러냈다 | **CR-050 신설·구현.** 착수 전 감사가 일곱을 찾았고 중심은 **일반 사용자 화면이 operator 전용 API만 지목하고 있었다**는 것이다(DEV-350) — 권한을 완화하지 않고 `API-ING-002`를 세웠다. 파생 UI 넷이 SRS 밖의 등록 요청을 서술하고 있었고(DEV-351), 최근 완료 조정 결과의 정본이 누적 counter뿐이었다(DEV-352). 마이그레이션 016은 등록 요청 표와 `repository` 열 둘만 더한다. 함께 닫은 기존 결함 셋: `allowed_team_ids` 미전달(DEV-353), FR-ADMIN-001 AC-1의 만기 이월(DEV-354), 추적·와이어프레임 stale(DEV-355·356). **DEV-159도 만기가 됐다** — W-005의 저장소 개요 링크를 실제로 걸었다. 실제 GHE·Kubernetes는 NOT RUN |
 | WP-035 | 무중단 재색인 | REL-004 | done | 에이전트 | PR #52 | DoD 20항 중 19항 통과 (6.39장). 통합 18건(실 PG·ES) · 회귀 +36 · 단위 +13 · 변이 6종 + 리뷰 정정 5종 킬. **WP-032 선행 조건 증명 완료.** 머지 전 리뷰 다섯 정정 (6.39.1장, DEV-314~319) | FR-ING-008 |
 | WP-036 | 원본 아카이브 레인(Filebeat) | REL-004 | done | 에이전트 | PR #66 | DoD 9항 전부 통과 (6.44장). 통합 16건(실 ES) + 단위 19건 + 도달성 5건. **적대적 변이 11종 중 9킬 · 2건은 시험 구멍이었고 메운 뒤 같은 변이로 KILLED** | 계약은 CR-052가 먼저 닫았다. `API-ADM-008` 신설, Filebeat 사이드카, 파일 회전 |
-| WP-037 | 집계 API | REL-005 | todo | - | - | - | - |
+| WP-037 | 집계 API | REL-005 | done | 에이전트 | (PR 대기) | DoD 11항 전부 통과 (6.48장) | **CR-053 계약 선행.** 착수 전 감사가 계약 공백 열을 찾아 계약을 먼저 닫았고 이 구현이 그것을 따랐다. 구현 중 DEV-391~394를 등록·해소했다. `pnpm test:perf` harness를 신설해 DEV-058의 절반을 닫았다 — **릴리스 규모 실측은 Gate 5로 남는다** |
 | WP-038 | W-006 통계 대시보드 | REL-005 | todo | - | - | - | - |
 | WP-039 | 감사 기록과 A-004 | REL-005 | todo | - | - | - | - |
 | WP-040 | A-002·A-003 운영 콘솔 | REL-005 | todo | - | - | - | - |
@@ -140,12 +140,12 @@
 | FR-ING-009 | WP-008, WP-010, **WP-034**, WP-040 | `apps/search-api/src/repositories/{overview,routes,cursor,registration-requests}.ts` (AC-6~AC-10, WP-034), `packages/db/src/repositories/registration-request.ts`, `apps/web/{lib/repository-overview.ts,components/{RepositoryCardGrid,SequenceSpaceStatusList,RegisterRequestDialog,RepositoriesView}.tsx,app/repositories/page.tsx}` (W-009), `apps/search-api/src/ops/{repositories,ghe-lookup,routes}.ts`, `packages/db/src/repositories/{repository,audit,job}.ts`, `packages/es/src/registry.ts`, `packages/es/src/mappings/commits.ts`, `apps/pipeline-worker/src/{project,documents}.ts` | `apps/search-api/integration/repositories/{overview,scope-parity,registration-request,reachability}.test.ts`, `apps/search-api/src/repositories/cursor.test.ts`, `apps/web/lib/repository-overview.test.ts`, `apps/web/a11y/repositories.test.tsx`, `apps/web/e2e/repositories.spec.ts`, `apps/search-api/integration/admin/repositories.test.ts`, `packages/es/integration/registry.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | **verified — AC-1~AC-10 전부** (AC-6~AC-10은 WP-034가 구현했다. 6.42장). 원래 서술: (AC-1~AC-5 전부. AC-5 감사 주체는 관리 토큰 이름이며 WP-012의 OIDC 신원이 대체한다) |
 | FR-ING-010 | WP-036 | `packages/es/src/archive.ts`, `packages/es/src/mappings/raw-events.ts`, `apps/ingest-gateway/src/archive.ts`, `apps/search-api/src/ops/raw-events.ts`, `deploy/k8s/filebeat-configmap.yaml` | `archive.test.ts`(6), `ops/raw-events.test.ts`(13), `integration/ops/raw-events.test.ts`(11), `integration/ops/raw-events-reachability.test.ts`(5) | done |
 | FR-ING-011 | WP-028, **WP-034** | `apps/pipeline-worker/src/reconcile.ts` (JOB-ING-005 + AC-6 완주 회차 보존), `packages/db/src/repositories/repository.ts` (`recordCompletedReconciliation`), `packages/github/src/client.ts` (`listPullRequestsPage` `direction`), `apps/pipeline-worker/src/metrics.ts` | `apps/pipeline-worker/src/reconcile.test.ts`, `apps/pipeline-worker/integration/reconcile/durability.test.ts` (AC-6, 실 PostgreSQL) | **done — AC-1~AC-6 전부.** AC-6은 WP-034가 더했다 — 완주한 회차만 `repository.last_reconcile_missing_count`를 덮고 미룬 회차·예외 회차는 덮지 않는다 (CR-050, DEV-352). 원래 서술: AC-1~AC-5 전부. 주기는 설정값(기본 1시간), 창은 `updated desc` + 24시간 컷오프(`/pulls`에 `since`가 없다, DEV-175), 누락은 백필의 `projectOne`으로 되돌린다(두 번째 경로를 만들지 않는다). **head 서수가 없으면 `prs:sequence`의 `sequence.requested`로 요청한다** — 집는 러너가 없는 잡 행을 만들지 않는다 (CR-034, DEV-180). 한도 소진은 미룸이며 3주기 연속이면 경보 지표가 뜬다. **운영 기동은 전용 `reconcile` 역할이 한다** (DEV-179, `deploy/k8s/pipeline-worker-reconcile.yaml`) |
-| FR-STAT-001 | WP-037, WP-038 | - | - | not_started |
-| FR-STAT-002 | WP-037, WP-038 | - | - | not_started |
+| FR-STAT-001 | WP-037, WP-038 | `apps/search-api/src/analytics/{types,prepare,execute,aggregations,routes}.ts`, `packages/es/src/query-builder.ts` (`resolveSearchTarget`), `packages/query/src/keys.ts` | `apps/search-api/integration/analytics/analytics.test.ts`, `packages/es/src/query-builder.test.ts`, `regression/runtime-reachability.test.ts`, `perf/analytics.perf.test.ts` | verified (AC-1~AC-8. 화면은 WP-038) |
+| FR-STAT-002 | WP-037, WP-038 | `apps/search-api/src/analytics/{types,prepare,execute,aggregations,routes}.ts`, `packages/es/src/query-builder.ts` (`resolveSearchTarget`), `packages/query/src/keys.ts` | `apps/search-api/integration/analytics/analytics.test.ts`, `packages/es/src/query-builder.test.ts`, `regression/runtime-reachability.test.ts`, `perf/analytics.perf.test.ts` | verified (AC-1~AC-6. 화면은 WP-038) |
 | FR-STAT-003 | WP-017, WP-037, WP-038 | `apps/web/lib/pr-detail.ts` (`timelineSteps`, `reviewerStates`), `apps/web/components/{PrTimeline,PrDetailView}.tsx` | `apps/web/lib/pr-detail.test.ts`, `apps/web/a11y/pr-detail.test.tsx` | partial (**PR 1건의 리드타임·첫 리뷰 대기·타임라인은 WP-017에서 done.** 승인 단계는 `done_at_unknown`이다 — `approved_at`이 매핑에 없어 **시각을 모른다**, DEV-084. 집계 지표(분포·추세)는 WP-037·WP-038) |
-| FR-STAT-004 | WP-017, WP-037, WP-038 | `apps/web/lib/pr-detail.ts` (`ReviewStatus`), `apps/web/components/PrDetailView.tsx` | `apps/web/lib/pr-detail.test.ts`, `apps/web/a11y/pr-detail.test.tsx` | partial (**리뷰어별 상태는 "승인함 / 아직 아님" 둘뿐이다** — 투영이 리뷰어별 상태를 저장하지 않아 "변경 요청"을 만들지 않는다, DEV-085. 집계는 WP-037·WP-038) |
-| FR-STAT-005 | WP-037, WP-038 | - | - | not_started |
-| FR-STAT-006 | WP-037, WP-038 | - | - | not_started |
+| FR-STAT-004 | WP-017, WP-037, WP-038 | `apps/web/lib/pr-detail.ts` (`ReviewStatus`), `apps/web/components/PrDetailView.tsx`, `apps/pipeline-worker/src/documents.ts` (`firstReviewAt`), `apps/search-api/src/analytics/{aggregations,routes}.ts` | `apps/web/lib/pr-detail.test.ts`, `apps/web/a11y/pr-detail.test.tsx`, `apps/pipeline-worker/src/documents.test.ts`, `apps/search-api/integration/analytics/analytics.test.ts` | partial (**리뷰어별 상태는 "승인함 / 아직 아님" 둘뿐이다** — 투영이 리뷰어별 상태를 저장하지 않아 "변경 요청"을 만들지 않는다, DEV-085. **AC-1·AC-3·AC-5는 WP-037에서 done** — 제외 사유를 `no_review`·`enrichment_pending`으로 가르고, 작성자 본인 리뷰를 첫 리뷰 판정에서 뺀다(DEV-387). 화면은 WP-038) |
+| FR-STAT-005 | WP-037, WP-038 | `apps/search-api/src/analytics/{types,prepare,execute,aggregations,routes}.ts`, `packages/es/src/query-builder.ts` (`resolveSearchTarget`), `packages/query/src/keys.ts` | `apps/search-api/integration/analytics/analytics.test.ts`, `packages/es/src/query-builder.test.ts`, `regression/runtime-reachability.test.ts`, `perf/analytics.perf.test.ts` | verified (AC-1~AC-7. 화면은 WP-038) |
+| FR-STAT-006 | WP-037, WP-038 | `apps/search-api/src/analytics/{types,prepare,execute,aggregations,routes}.ts`, `packages/es/src/query-builder.ts` (`resolveSearchTarget`), `packages/query/src/keys.ts` | `apps/search-api/integration/analytics/analytics.test.ts`, `packages/es/src/query-builder.test.ts`, `regression/runtime-reachability.test.ts`, `perf/analytics.perf.test.ts` | verified (AC-1~AC-6. **총 건수 일치는 PR 모집단 기준**, CR-053) |
 | FR-AUTH-001 | WP-012, WP-015 | `packages/authz/src/{oidc,pkce,id-token,jwks,session,session-store,roles,config}.ts`, `apps/search-api/src/auth/*`, `apps/web/app/auth/{login,callback,logout}/route.ts`, `apps/web/app/api/[...path]/route.ts`, `apps/web/lib/{oidc-state,proxy}.ts` | `packages/authz/src/{id-token,oidc,session,session-store,roles}.test.ts`, `apps/search-api/integration/authz/enforcement.test.ts`, `apps/web/lib/{oidc-state,proxy}.test.ts`, `apps/web/e2e/shell.spec.ts` | done (AC-1~AC-5. WP-015가 브라우저 왕복을 채웠다 — 인가 리다이렉트·PKCE·`state`/`nonce` 검증·세션 발급·원래 경로 복귀·로그아웃. 왕복 상태는 짧은 수명 HttpOnly 쿠키로 나른다(DEV-071). **실제 IdP 왕복은 자격 증명이 없어 NOT RUN** — e2e는 OIDC 미구성 배포의 503과 라우트 계약까지 건다) |
 | FR-AUTH-002 | WP-012 | `packages/authz/src/{scope,scope-source,scope-database}.ts`, `packages/es/src/scoped-query.ts`, `apps/search-api/src/auth/{principal,errors,me}.ts` | `packages/es/integration/scope-enforcement.test.ts`, `packages/es/src/architecture.test.ts`, `packages/authz/integration/scope.test.ts`, `apps/search-api/integration/authz/enforcement.test.ts` | done (AC-1~AC-6. 단, 검색·집계 API 자체는 WP-013·WP-014가 세운다 — 여기서는 필터와 강제 지점을 세우고 ES에 직접 물어 결과 집합을 검증했다) |
 | FR-AUTH-003 | WP-012 | `packages/authz/src/{scope,invalidation}.ts`, `packages/db/src/repositories/auth.ts`, `packages/db/migrations/007_auth.up.sql`, `apps/ingest-gateway/src/{ingest,server}.ts`, `apps/pipeline-worker/src/authz.ts` | `packages/authz/{src/invalidation.test.ts,integration/scope.test.ts}`, `apps/pipeline-worker/src/authz.test.ts`, `apps/ingest-gateway/src/ingest.test.ts` | done (AC-1~AC-5. 적중률은 `access_scope_lookup_total{outcome}`) |
@@ -241,7 +241,7 @@
 | DEV-055 | 2026-08-21 | **`relaxation_hints` 산출 방법이 없다.** FR-SRCH-006 AC-3이 "어떤 필터를 제거하면 결과가 생기는지"를 요구하지만 몇 번 질의하는지, 후보를 몇 개까지 내는지, 어떤 순서인지가 없다. 필터 N개마다 질의를 한 번씩 더 던지면 NFR-001의 p95 500ms 예산을 N배로 쓴다 | WP-013 / FR-SRCH-006 AC-3, NFR-001 | 범위 공백 | **CR-016** | **resolved (2026-08-21)** — `msearch` 한 번으로 묶어 왕복을 1회로 고정하고, 후보를 **상한 8개**로 자른다. 상한을 넘으면 잘랐다는 사실을 응답에 남긴다 — 조용한 절삭은 "이것이 전부"로 읽힌다. 0건일 때만 계산하므로 정상 경로의 지연에 영향이 없다 |
 | DEV-056 | 2026-08-21 | **`relevance` 정렬이 전문 검색 없이는 뜻이 없다.** FR-SRCH-007 AC-1이 정렬 키로 요구하지만 WP-013은 전문 검색을 제외하고(WP-032), 접근 범위 필터는 `filter` 절이라 점수를 만들지 않는다. 모든 문서의 점수가 같아진다 | WP-013, WP-032 / FR-SRCH-007 AC-1 | 범위 공백 | **CR-016** | **resolved (2026-08-21)** — 키를 받되(AC-3의 400을 내지 않는다) 이 WP에서는 문서 ID 순으로 떨어진다고 계약에 적었다. AC-4의 결정론은 그대로 성립한다. 전문 검색이 서는 WP-032에서 실제 점수가 붙는다 — **동작하는 척하지 않고 지금 무엇인지 적는다** |
 | DEV-057 | 2026-08-21 | **`facets`·`next_cursor`가 WP-013 범위 밖인데 API 계약의 응답 예시에는 늘 있다.** 화면이 "키가 없다"와 "`null`이다"를 구분하지 못하면 페이저가 마지막 페이지를 오해하고 패싯 레일이 빈 목록을 그린다 | WP-013, WP-032 / API-SRCH-004, W-001-PAGER, W-001-FACETS | 범위 공백 | **CR-016** | **resolved (2026-08-21)** — `next_cursor`는 **항상 `null`로 실어 보낸다**(키가 있고 값이 없다 = 다음 페이지가 없다). `facets`는 **키 자체를 넣지 않는다** — 빈 객체는 "패싯을 셌는데 아무것도 없다"로 읽힌다. WP-032가 둘을 채운다 |
-| DEV-058 | 2026-08-21 | **`pnpm test:perf` 스크립트가 저장소에 없다** (DEV-032와 같은 형태). WP-013의 DoD가 NFR-001의 p95 500ms를 1000만 문서 합성 데이터셋으로 요구하는데, 스크립트도 데이터셋도 이 실행 환경에 없다 | WP-013 / NFR-001, DEV-032 | 실행 환경 제약 | **CR-016** | open — 질의 **모양**이 필터 수에 비례해 커지지 않음을 시험으로 고정했다(상수 왕복 수). 그러나 **실측 p95는 NOT RUN이다.** 1000만 문서 데이터셋과 부하 시험 harness는 **REL-002 성능 게이트**에서 세운다. 측정하지 않은 것을 통과로 적지 않는다 |
+| DEV-058 | 2026-08-21 | **`pnpm test:perf` 스크립트가 저장소에 없다** (DEV-032와 같은 형태). WP-013의 DoD가 NFR-001의 p95 500ms를 1000만 문서 합성 데이터셋으로 요구하는데, 스크립트도 데이터셋도 이 실행 환경에 없다 | WP-013 / NFR-001, DEV-032 | 실행 환경 제약 | **CR-016** | open — 질의 **모양**이 필터 수에 비례해 커지지 않음을 시험으로 고정했다(상수 왕복 수). 그러나 **실측 p95는 NOT RUN이다.** 측정하지 않은 것을 통과로 적지 않는다. **(2026-08-29, WP-037) harness가 생겼다** — `pnpm test:perf`가 실제 Elasticsearch에 요청을 보내고 p50·p95·max와 **요청 수**를 낸다. 크기는 `PERF_DATASET_SIZE`로 조절하며 같은 harness가 두 규모를 모두 돈다. **열린 채로 남는 것은 릴리스 규모 실측이다** — PR 1,000,000 · 커밋 10,000,000의 합성 데이터셋이 없고 그것은 Gate 5의 몫이다. 작은 데이터셋의 수치를 `NFR-001` 통과로 적지 않는다 |
 | DEV-059 | 2026-08-21 | FR-SRCH-007 AC-4가 "동점 처리를 위해 **문서 ID를 마지막 정렬 키로** 사용해 결정론적 순서를 보장한다"고 요구하는데, **Elasticsearch 8은 `_id`로 정렬하는 것을 금지한다** — `Fielddata access on the _id field is disallowed`. 켜려면 `indices.id_field_data.enabled` 클러스터 전역 설정이 필요하고 그것은 모든 문서 ID를 힙에 올린다. AC를 문자 그대로 구현할 수 없다 | WP-013 / FR-SRCH-007 AC-4 | 도구 제약 | **CR-016** | **resolved (2026-08-21)** — `_id`와 **같은 값**을 `doc_id` keyword 필드로 문서에 함께 넣고 그 필드로 정렬한다. `upsert`가 `request.id`에서 자동으로 채우므로 투영 자리가 잊을 수 없다. AC-4의 뜻("문서 ID로 동점을 가른다")은 그대로 성립한다. `_doc`은 쓰지 않았다 — 세그먼트 내부 순서라 머지·재색인에 값이 달라져 결정론이 깨진다. **이미 색인된 문서는 다음 이벤트에서 채워진다**(스크립트 `params.doc`에도 넣었다). 그때까지는 `missing: _last`로 뒤에 선다 |
 | DEV-060 | 2026-08-21 | **API-SRCH-002의 커밋 상세가 커밋 문서에 채워지지 않는 필드 11종을 약속한다** — `message`, `author`, `committer`, `authored_at`, `committed_at`, `parent_shas`, `patch_id`, `changed_paths`, `changed_files_count`, `additions`, `deletions`. 매핑에는 자리가 있으나 투영이 채우지 않는다: `EVT-ING-002`가 커밋에 대해 SHA만 나른다(WP-008이 남긴 기존 한계). WP-014는 조회 계층이라 투영을 고칠 수 없다 | WP-014, WP-020 / FR-SRCH-002, API-SRCH-002, ENT-CORE-003 | 문서와 구현 불일치 | **CR-017** | **resolved (2026-08-21)** — 응답에서 **없는 키는 넣지 않는다**(CR-016 DEV-057이 `facets`에 세운 규칙과 같다: 키 없음 = 만들지 않았다, `null` = 만들었는데 비었다). 0이나 빈 문자열로 채우면 "파일을 하나도 안 바꾼 커밋"과 구분되지 않는다. 계약 예시를 실제 채워지는 필드만 남기도록 고치고 나머지는 WP-020(미러 기반 커밋 보강)으로 표시했다 |
 | DEV-061 | 2026-08-21 | **`role: 'direct_push'`에 도달할 수 없다.** FR-SRCH-002 AC-3과 QA-W003-03이 요구하지만 커밋 문서는 **PR 이벤트에서만** 만들어지고 투영의 `CommitRole` 타입에 값이 둘(`merge_commit`·`source_commit`)뿐이다. `push` 이벤트는 ack 후 버려진다(DEV-016). 직접 푸시 커밋은 **문서 자체가 없어** 조회가 404가 된다 | WP-014, WP-021 / FR-SRCH-002 AC-3, QA-W003-03 | 구현 공백 | **CR-017** | open — API 계약과 타입은 `direct_push`를 표현할 수 있게 그대로 둔다(값이 생겼을 때 계약을 다시 고치지 않기 위해). 그러나 **그 값이 실제로 나오려면 push 이벤트 라우팅(WP-021)이 필요하다.** 동작을 지어내지 않았고 **QA-W003-03을 NOT SATISFIED로 기록한다**. **해소 (2026-08-23, WP-021)** — 게이트웨이가 push를 `prs:sequence`에 싣고(DEV-116) 채번이 직접 푸시 커밋에도 서수를 붙이며 `pull_request_number`를 `null`로 둔다. 그 구분이 실제로 성립하는 것을 머지 커밋과 같은 히스토리에서 대조해 확인했다. 다만 **화면의 `direct_push` 표시는 커밋 문서의 `role`을 보는데 그 값을 채우는 것은 투영이므로**, W-003이 그것을 그리려면 커밋 메타데이터 보강(WP-067)이 필요하다 — 도달 불가는 풀렸고 표시는 아직이다. **(2026-08-29)** 이 행은 상태 칸이 `**open**`으로 굵게 쓰여 **표준 집계에서 빠져 있었다** — 굵기를 풀어 세어지게 했다. **상태는 `open` 그대로다.** 안쪽에 `WP-021` 해소 기록이 있어 한때 닫힌 것으로 읽었으나, `WP-067`이 `direct_push`를 판정하는 **코드 경로를 세운 것**과 `FR-SRCH-002` AC-3이 **충족되는 것**은 다른 주장이다. AC-3은 "직접 푸시 커밋 SHA를 조회하면 역할 `direct_push`를 반환한다"이고 그것을 확인하려면 그런 문서가 실제로 색인되어 조회되어야 하는데, 이 환경에는 그 데이터가 없다(ACC-06과 같은 제약). 4장 매핑·7장·8장·DEV-093·작업 패키지 다섯 곳이 "도달 불가"를 근거로 서 있으므로 **실측 없이 뒤집지 않는다** |
@@ -588,10 +588,14 @@
 | DEV-384 | 2026-08-29 | **집계 요청이 `seq:` 범위를 받을 수 있는데 에폭을 실을 자리가 없다.** `API-STAT-001~004`는 검색 질의 문자열을 그대로 받으므로 `repo:a/x base:main seq:1..100`이 들어올 수 있다. `CR-051` 이후 `buildQuery`는 `seq:` 범위가 있는데 에폭이 없으면 **던지므로**, 계약대로 구현하면 그 요청이 500이 된다. 에폭을 선택 인자로 되돌리는 길은 `CR-051`이 이미 닫았다 — 빠지면 오류 없이 모든 세대를 함께 집계하는 fail-open이다 | FR-STAT-006, FR-SEQ-005, ADR-007 / WP-037 | 범위 공백 | CR-053 | resolved (CR-053) — `FR-STAT-006` AC-6을 신설해 집계 요청도 `seq_epoch`을 받게 했다. 낡으면 **집계를 계산하지 않고** `epoch_stale`과 두 에폭을 반환한다 — 현재 에폭으로 조용히 재해석하지 않고 `total: 0`이나 빈 버킷으로 위장하지도 않는다. 처리 순서(파싱 → 공간 지목 → 접근 범위 → 시퀀스 문맥 → 에폭)를 `CR-051`이 `/search`에 세운 것과 같게 두었다 |
 | DEV-385 | 2026-08-29 | **다중값 그룹에서 버킷 합이 총계를 넘는데 계약이 그것을 말하지 않는다.** `author_team_ids`와 `labels`는 배열이라 한 PR이 여러 버킷에 들어간다. 계약이 침묵하면 구현자가 "합이 총계와 같아야 한다"고 읽고 시험을 그렇게 걸거나, 반대로 화면이 합계를 총계로 표시한다. `WP-032`가 패싯에서 같은 자리를 이미 지났다 | FR-STAT-001 / WP-037, WP-038 | 범위 공백 | CR-053 | resolved (CR-053) — `FR-STAT-001` AC-7에 "그룹 건수의 합이 총계를 넘을 수 있다"를 명시하고 `total`은 **고유 PR 수**임을 API 계약의 `group_by` 대응표에 다중값 열과 함께 적었다 |
 | DEV-386 | 2026-08-29 | **`API-STAT-004`는 상세 규격 자체가 없고 "변경 라인 수"가 무엇인지 정해지지 않았다.** API 계약의 상세 절이 `API-STAT-001`·`002`·`003`에서 끊기고 분포 집계가 없다. `FR-STAT-005`의 요구사항 문장은 "추가/삭제 라인 수"라고 둘을 말하는데 AC-2의 구간은 **하나**다 — 합인지 각각인지 알 수 없다. 합이라면 그 값은 **사전 계산 필드에도 없고**, 조회 시점에 더하려면 `script`가 필요한데 데이터 모델 6장이 그것을 금지한다 | FR-STAT-005, API-STAT-004, NFR-001 / WP-037 | 범위 공백 | CR-053 | resolved (CR-053) — `API-STAT-004` 상세를 신설하고 **`changed_lines = additions + deletions`**로 확정했다. 그 값을 **사전 계산 필드로 더하고** 기존 문서는 `update_by_query` 스크립트로 소급한다 — 색인 시점 계산이므로 6장 규율과 어긋나지 않으며, 소급하지 않으면 과거 PR이 전부 `unknown`에 들어가 `AC-5`의 뜻("보강 미완료")과 다른 사실을 화면이 말하게 된다. `WP-032`가 `put_mapping` 뒤 과거 문서가 비어 검색이 조용히 적게 답한 것과 같은 자리다 |
-| DEV-387 | 2026-08-29 | **`FR-STAT-004` AC-3이 재료가 다 있는데 구현되지 않았다.** AC-3은 "작성자 본인의 리뷰는 첫 리뷰 판정에서 제외한다"인데, `documents.ts`의 `firstReviewAt`는 **제출된 리뷰 중 가장 이른 것만** 고른다. `EnrichedReview.reviewer`와 `pr.author`가 같은 함수 호출부에 다 있어 비교할 수 있는데 비교하지 않는다. 그 결과 자기 PR에 스스로 리뷰를 남긴 경우 `first_review_wait_seconds`가 실제보다 짧게 저장되고, **색인 시점 계산이라 API도 화면도 고칠 수 없다** | FR-STAT-004 AC-3, QA-W006-11 / WP-007, WP-008, WP-037 | 구현 결함 | CR-053 | open — `WP-037`이 고친다. 소관은 투영이지만 **틀린 값을 집계하면 `API-STAT-003`의 백분위가 틀리므로** 그 API를 세우는 WP가 함께 고치는 것이 맞다. 기존 문서 소급 재계산이 함께 간다 |
+| DEV-387 | 2026-08-29 | **`FR-STAT-004` AC-3이 재료가 다 있는데 구현되지 않았다.** AC-3은 "작성자 본인의 리뷰는 첫 리뷰 판정에서 제외한다"인데, `documents.ts`의 `firstReviewAt`는 **제출된 리뷰 중 가장 이른 것만** 고른다. `EnrichedReview.reviewer`와 `pr.author`가 같은 함수 호출부에 다 있어 비교할 수 있는데 비교하지 않는다. 그 결과 자기 PR에 스스로 리뷰를 남긴 경우 `first_review_wait_seconds`가 실제보다 짧게 저장되고, **색인 시점 계산이라 API도 화면도 고칠 수 없다** | FR-STAT-004 AC-3, QA-W006-11 / WP-007, WP-008, WP-037 | 구현 결함 | CR-053 | resolved (2026-08-29, WP-037) — `firstReviewAt`가 PR 작성자를 함께 받아 본인 리뷰를 거른다. **리뷰어를 모르면(`reviewer: null`) 거르지 않는다** — 없는 값을 지어내 본인이라고 단정하지 않는다. 소관은 투영이지만 **틀린 값을 집계하면 `API-STAT-003`의 백분위가 틀리므로** 그 API를 세우는 WP가 함께 고쳤다. 기존 문서는 재색인이 소급한다 |
 | DEV-388 | 2026-08-29 | **`WP-037`의 DoD가 열여덟 중 열다섯만 적었고 그중 여덟은 API로 판정할 수 없다.** DoD 첫 줄이 `QA-W006-01~15`인데 실제 항목은 **18개**이고, `16`·`17`·`18`이 빠져 있다. 더 큰 문제는 `02`(절삭 **표시**)·`03`(**도달**)·`05`(**제안**)·`08`(**표시**)·`09`(**배지**)·`10`(**표시**)·`12`(**표시**)·`15`(**배지**)가 화면 판정이라는 것이다. `WP-036`이 `QA-A001-08`에서 밟은 자리와 같다 | QA-W006 / WP-037, WP-038 | 문서 오류 | CR-053 | resolved (CR-053) — QA 체크리스트에 **소유 계층 표**를 만들어 넷으로 갈랐다: API만으로 판정(`01`·`04`·`06`·`07`·`13`·`14`), API 몫과 화면 몫이 나뉨(일곱), 화면 판정(`03`·`16`·`17`·`18`), **투영 판정**(`11`). `WP-010`·`WP-036`처럼 `WP-037`에 "이 WP는 API까지다"를 명시했다. **제품 범위는 그대로이며 소유 WP만 정했다** |
 | DEV-389 | 2026-08-29 | **그룹 정렬의 동률 처리와 근사 방법이 없다.** `API-STAT-001`은 `size` 상한만 적고 정렬 규칙이 없어, 같은 데이터에 같은 요청이 다른 순서를 낼 수 있다 — 상위 500을 자르는 계약이라 **순서가 흔들리면 어느 그룹이 잘리는지도 흔들린다.** `FR-STAT-006` AC-3은 100만 건 초과 시 근사를 요구하지만 **방법도, 그 숫자가 무엇을 뜻하는지도** 정해지지 않았다 | FR-STAT-001, FR-STAT-006 / WP-037 | 범위 공백 | CR-053 | resolved (CR-053) — 정렬을 **건수 내림차순, 동률이면 키 오름차순**으로 고정했다(AC-8). 근사는 Elasticsearch의 `random_sampler`를 쓰고 `sample_probability`를 함께 반환하며 **그것이 보장하는 것만 주장한다** — 건수는 표본 비율로 되돌린 추정값이고 백분위는 표본 기반이다. **근거 목록으로 가는 조회는 근사하지 않는다.** ES 8.19에서 그 집계가 실제로 동작하는 것을 실측했다 |
 | DEV-390 | 2026-08-29 | **두 API가 같은 값을 다른 이름으로 낸다.** `API-STAT-001`의 지표에 `lead_time_median`이 있고 `API-STAT-003`은 같은 필드의 `p50`을 낸다. 중앙값과 p50은 같은 값이므로, 화면이 두 패널에서 같은 수를 다른 이름으로 보이거나 구현이 둘을 다르게 계산하게 된다 | FR-STAT-001 AC-2, FR-STAT-003 / WP-037 | 문서 오류 | CR-053 | resolved (CR-053) — `FR-STAT-003` AC-6에 "`FR-STAT-001` AC-2의 리드타임 중앙값은 이 요구사항의 `p50`과 같은 값"임을 적고 응답 필드 이름을 맞추도록 계약에 명시했다 |
+| DEV-391 | 2026-08-29 | **재색인이 새 사전 계산 필드를 되돌린다.** `CR-053`이 `changed_lines`를 더하고 계약은 색인 소급을 `put_mapping` + `update_by_query`로 적었는데, **재색인은 `pull_request_snapshot.document`를 `_source` 그대로 쓴다.** 그 스냅숏은 필드가 생기기 전에 남은 것이라 `changed_lines`가 없고, 색인을 소급해도 **다음 재구축이 그것을 지운다.** `WP-032`가 `put_mapping`으로 더한 서브필드가 과거 문서에서 비어 있던 것과 같은 자리이며, 이번에는 되돌리는 주체가 우리 재색인이다 | FR-STAT-005 AC-7 / WP-035, WP-037 | 구현 결함 | 없음 (WP-037이 함께 고침) | resolved (2026-08-29, WP-037) — 재색인이 스냅숏을 쓸 때 **없는 파생 필드를 그 자리에서 채운다**(`derivedFields`). `repository_archived`가 레지스트리 소유 필드를 현재 값으로 덮는 것과 같은 선례를 따랐다. **재료가 없으면 아무것도 넣지 않는다** — 0으로 채우면 `AC-5`의 `unknown`이 뜻하는 "모른다"가 "0줄 바꿨다"라는 사실 주장이 된다 |
+| DEV-392 | 2026-08-29 | **`kind:` 필터를 인덱스로 옮기고도 AST에 남겨 두면 질의 조립이 던진다.** `resolveSearchTarget`이 검색 대상만 좁히고 필터를 걷어내지 않아, `kind:pull_request` 질의가 `KindFilterNotAppliedError`로 **500**이 됐다. 그 오류의 목적은 "호출부가 대상을 좁히지 않았다"를 드러내는 것인데, **좁힌 호출부까지 함께 막았다** — 방어가 자기가 지키려던 경로를 막은 것이다. 통합 시험이 잡았다 | FR-SRCH-005, FR-STAT-001 / WP-037 | 구현 결함 | 없음 (구현 중 발견·해소) | resolved (2026-08-29, WP-037) — `resolveSearchTarget`이 **좁힌 대상과 걷어낸 AST를 함께** 돌려준다. 두 값을 따로 얻게 하면 호출부가 하나만 쓰다 어긋나며, 실제로 그렇게 만들어 겪었다 |
+| DEV-393 | 2026-08-29 | **버킷 상한을 집계 뒤에 세면 Elasticsearch가 먼저 거절한다.** `FR-STAT-002` AC-3의 400을 응답 버킷 수로 판정하도록 만들었더니, `interval=hour`로 6년을 요청했을 때 ES가 자기 `search.max_buckets`로 400을 냈고 **우리 사유 코드(`TOO_MANY_BUCKETS`)가 실리지 않았다.** 화면은 그 코드로 "간격을 넓히세요"를 그리므로 사용자는 무엇을 고쳐야 할지 알 수 없다. 통합 시험이 `error.code`가 빈 400을 받아 잡았다 | FR-STAT-002 AC-3, QA-W006-05 / WP-037 | 구현 결함 | 없음 (구현 중 발견·해소) | resolved (2026-08-29, WP-037) — 요청 파라미터에서 버킷 수를 **조회 전에** 세어 거절한다. `/search`가 정렬 키를 조회 전에 검증하는 것과 같은 규율이다 — **400이 될 요청으로 검색 클러스터를 부르지 않는다** |
+| DEV-394 | 2026-08-29 | **`readEpochParam`이 JSON 본문의 숫자를 거절한다.** 집계 API는 `POST`이고 API 계약도 `seq_epoch`을 숫자로 예시하는데, 그 함수는 쿼리 문자열을 전제로 **문자열만** 받는다(`typeof raw !== 'string'` → `invalid`). 그래서 계약대로 보낸 요청이 400이 됐다. 함수의 좁은 계약 자체는 옳다 — 파라미터가 배열이거나 빈 값일 때 `absent`로 접지 않으려는 방어이며 `DEV-363`이 그 자리에서 나왔다 | FR-STAT-006 AC-6 / WP-037 | 구현 결함 | 없음 (구현 중 발견·해소) | resolved (2026-08-29, WP-037) — **라우트가 옮긴다.** 본문의 숫자를 문자열로 바꿔 넘기고 `undefined`·`null`은 그대로 둔다(그것만이 진짜 `absent`다). `readEpochParam`의 계약을 넓히지 않은 것은 그러면 `DEV-363`의 방어가 함께 약해지기 때문이다 |
 
 ## 6. 검증 결과 기록
 
@@ -3672,6 +3676,136 @@ QA 체크리스트에 계층 표를 만들어 다음 WP가 같은 자리를 밟�
 고치지 않고 사실만 등재한 것과 같은 규율이다 — 다만 그때 배운 대로, **미뤄 두는 판정의 근거는
 실측이어야 한다.** 여기서는 "필드가 비어 있다"를 코드 전체 grep으로 확인했다.
 
+### 6.48 WP-037 집계 API (CR-053)
+
+**계약은 CR-053이 먼저 닫았다** (SRS baseline v2.13). 이 구현은 그 계약을 따랐고 **CR을 새로
+열지 않았다.** 구현 중 발견한 넷은 문서 변경이 없어 `DEV-391~394`로 등재하고 그 자리에서 닫았다.
+
+| 계층 | 결과 |
+| --- | --- |
+| `pnpm typecheck` · `lint` · `lint:deps` | 통과 (패키지 13개, 위반 0건) |
+| 단위 | **1710 통과** (1 skipped) — 착수 전 1665 |
+| 통합 (실 PostgreSQL·Elasticsearch·Redis) | **78 파일 / 1254 통과** — 착수 전 76 / 1210 |
+| 회귀 | **226 통과** — 착수 전 213 |
+| 성능 (`pnpm test:perf analytics`) | 통과. 네 집계가 각각 **1회 왕복**, 총 52회 실제 요청 |
+| `pnpm build` | 통과 |
+| 문서 검증기 `--strict` | `main` 대비 **증감 0** (WARN 1 · ERROR 2) |
+
+#### DoD 열한 항의 판정 근거
+
+| DoD | 무엇으로 증명했나 |
+| --- | --- |
+| `QA-W006-01`·`04`·`06`·`07`·`13`·`14`가 API에서 통과 | 통합이 실 Elasticsearch로 그룹 키 일곱, 간격 넷과 시간대, 빈 버킷 0 채움, 기본 30일 명시, `unknown` 구간, 총계 일치를 각각 건다 |
+| `02`·`05`·`08`·`09`·`10`·`12`·`15`의 API 몫이 응답에 실린다 | `truncated`·`TOO_MANY_BUCKETS`·백분위 값과 `unit`·`low_sample`·`excluded_count`와 사유·구간과 `ratio`·`approximate`를 통합이 확인한다. 표시·배지·이동은 `WP-038`이 소유한다 (DEV-388) |
+| 집계 총계가 PR 모집단의 목록 건수와 일치 | 같은 질의로 네 API를 불러 `total`이 같은 것을 확인. **커밋 문서를 한 건 심어 두고 그것이 세어지지 않는 것**까지 건다 |
+| 접근 범위 밖 문서가 집계에 없다 | 범위 밖 저장소에 큰 값(9000줄, 리드타임 3600초)을 심어 **그룹·백분위·분포 어디에도 나타나지 않음**을 확인 |
+| 다중값 그룹에서 버킷 합이 총계를 넘어도 `total`은 고유 PR 수 | 작성자가 두 팀인 PR을 심어 합 4 ≠ 총계 3을 확인 (AC-7) |
+| `drill_down_query`가 같은 모집단을 가리킨다 | `kind:pull_request`가 들어가고 `team` 그룹이 `author_team:`을 쓰는 것을 확인 |
+| 낡은 에폭이 0건이 아니라 `epoch_stale` | 에폭 2로 요청해 `groups`·`total` 키가 **아예 없는** 응답을 확인 — 계산하지 않은 것을 빈 값으로 채우지 않는다 |
+| 사전 계산 필드만 쓰고 조회 시점 `script` 없음 | 회귀가 `aggregations.ts`에 `script:`·`runtime_mappings`가 없음을 건다 |
+| API 계약의 예시와 실제 응답 일치 | 통합이 응답 키를 계약 모양으로 읽는다 |
+| `QA-W006-11` 작성자 본인 리뷰 제외 | 투영 단위 시험이 자기 리뷰를 첫 리뷰로 세지 않는 것과, **리뷰어를 모르면 거르지 않는 것**을 함께 건다 (DEV-387) |
+| `pnpm test:perf analytics`가 실제 요청을 보낸다 | 아래 |
+
+#### `test:perf` harness — DEV-058의 절반을 닫았다
+
+`DEV-058`은 2026-08-21부터 열려 있었다. **스크립트 자체가 없어서** `WP-013`·`WP-032`·`WP-034`가
+모두 성능 실측을 NOT RUN으로 적었고, 이 WP의 DoD가 그 스크립트를 직접 요구했다.
+
+| 집계 | p50 | p95 | 요청/회 |
+| --- | --- | --- | --- |
+| `groups` | 6.1ms | 7.4ms | **1.0** |
+| `time-series` | 5.0ms | 25.2ms | **1.0** |
+| `percentiles` | 4.2ms | 4.6ms | **1.0** |
+| `distributions` | 2.6ms | 3.0ms | **1.0** |
+
+데이터셋 2000건, 총 52회 실제 요청. **요청 수가 이 harness의 핵심이다** — 지연은 데이터 크기에
+따라 달라지지만 "그룹마다 지표를 다시 묻는가"는 크기와 무관하게 참이거나 거짓이다. 그런
+N+1은 답이 맞고 값만 비싸므로 **결과를 재는 시험에 잡히지 않는다.**
+
+→ **`DEV-058`은 열린 채로 남는다.** 여기 수치는 `NFR-001`의 p95 1500ms를 **주장하지 않는다** —
+그것은 PR 1,000,000 · 커밋 10,000,000 위에서 재야 하고 Gate 5의 몫이다. 같은 harness가
+`PERF_DATASET_SIZE`로 두 규모를 모두 돈다. 작은 픽스처의 200ms를 큰 데이터의 통과로 적는 것은
+이 세션이 `ACC-06`에서 거절한 것과 같은 일이다.
+
+#### 적대적 변이 열둘 — 12 킬 (셋은 시험을 보강한 뒤에)
+
+| 변이 | 판정 |
+| --- | --- |
+| M1 강제 접근 범위 필터 제거 | **SURVIVED → 시험 보강 후 KILLED** |
+| M2 집계 모집단에 커밋 포함 | KILLED |
+| M3 `team` 그룹을 `allowed_team_ids`로 | KILLED |
+| M4 낡은 에폭에도 집계를 계산 | KILLED |
+| M5 `drill_down_query`에서 `kind` 판별자 제거 | KILLED |
+| M7 `low_sample` 경계를 `<= 20`으로 | **SURVIVED → 단위 시험 추가 후 KILLED** |
+| M8 시간대를 무시하고 UTC로 나눔 | **SURVIVED → 픽스처 보강 후 KILLED** |
+| M11 `unknown` 구간을 없애 0에 합침 | KILLED |
+| M12 `changed_lines`에서 `deletions` 제외 | KILLED (단위) |
+| M13 결정적 정렬의 tie-break 제거 | KILLED (회귀) |
+| M14 절삭을 버킷 수로 판정 | KILLED |
+| M15 구간 상한을 제외 경계로 | KILLED |
+
+**살아남은 셋이 이 절의 값이다.**
+
+**M1이 가장 무겁다.** 접근 범위 시험이 `repo:analytics/payments`로 질의를 한정하고 있었는데,
+**그 조건 자체가 범위 밖 저장소를 이미 빼므로 강제 필터를 통째로 지워도 같은 답이 나왔다.**
+질의가 필터의 일을 대신하는 동안 그 시험은 필터를 보고 있지 않았다. 이제 접근 범위 절만
+`repo:` 없이 묻고, 전역 건수 대신 **"범위 밖 저장소·작성자가 나타나는가"**로 건다 — 그것은
+공유 인덱스 오염과 무관하게 참이거나 거짓이다.
+
+→ **필터를 검증하려면 질의가 그 일을 대신하지 않아야 한다.** `THR-003`이 걸린 자리에서
+시험이 통과하고 있었다는 사실이 이 변이 하나로만 드러났다.
+
+**M7·M8은 경계가 픽스처에 걸치지 않은 경우다.** 표본이 2건이라 `< 20`이든 `<= 20`이든 참이었고,
+머지 시각이 UTC/서울 날짜를 가르지 않아 시간대를 무시해도 같은 버킷이 나왔다. 전자는 응답
+변환 함수를 단위로 걸어 19·20을 직접 물었고, 후자는 **UTC 7/2 22:00 = 서울 7/3**인 문서를
+픽스처에 더해 두 시간대가 다른 답을 내는 것을 확인했다.
+
+→ **경계를 흔드는 변이는 경계에 걸친 입력으로만 죽는다.** 통합 시험이 "실제로 어떤 수가
+나오는가"를 보는 대신 경계를 비켜 가면, 그 규칙은 코드에만 있고 시험에는 없다.
+
+#### 시험이 잡은 실결함 넷
+
+구현 중 발견한 것들이며 모두 **조용히 틀리는 쪽**이었다.
+
+| DEV | 무엇이 | 어떻게 드러났나 |
+| --- | --- | --- |
+| 392 | `kind:` 필터를 인덱스로 옮기고도 AST에 남겨 두어 `buildQuery`가 던졌다 | 통합이 `kind:pull_request` 질의에서 500을 받았다 |
+| 393 | 버킷 상한을 집계 **뒤에** 세어 Elasticsearch가 먼저 400을 냈다 | 통합이 `error.code`가 빈 400을 받았다 |
+| 394 | `readEpochParam`이 쿼리 문자열 전제라 JSON 본문의 숫자를 거절했다 | 통합이 계약대로 보낸 요청에서 400을 받았다 |
+| 391 | 재색인이 스냅숏을 그대로 써 새 사전 계산 필드를 되돌린다 | 코드를 읽다 발견 — 시험은 아직 그 경로를 지나지 않았다 |
+
+**DEV-392가 가장 배울 것이 많다.** `KindFilterNotAppliedError`는 "호출부가 대상을 좁히지
+않았다"를 드러내려고 만든 방어인데, **좁힌 호출부까지 함께 막았다.** 두 값(좁힌 대상과 걷어낸
+AST)을 따로 얻게 만든 것이 원인이고, 함께 돌려주도록 고쳤다.
+
+→ **방어를 만들 때 그것이 정상 경로를 지나가는지 함께 확인한다.** 이 오류는 형태가
+`RangeKeyEqualityError`(DEV-364)와 같았지만 그쪽은 정상 경로가 그 자리를 지나지 않았다.
+
+#### 공유 인덱스 오염을 다시 밟았다
+
+통합 전량에서만 깨졌다. **단독 실행에서는 33건이 모두 통과했다.** 고치는 과정에서 원인이 넷으로
+드러났고, 앞의 둘을 고치자 뒤의 둘이 나왔다.
+
+| 무엇이 | 어떻게 드러났나 |
+| --- | --- |
+| 질의가 `query: ""`(전역)이라 앞선 파일이 남긴 PR을 함께 셌다 | 정렬·시간대 시험이 전량에서만 실패 |
+| `afterAll`이 `match_all`로 지워 **다른 파일의 문서까지** 없앴다 | 나중에 도는 `facets.test.ts`가 파일째 실패 |
+| `beforeAll`이 `team`·`app_user`·`repository`를 **전역 `DELETE`** 했다 | `authz/team-scope.test.ts`의 두 시험이 실패 — 내 파일이 그 픽스처를 지웠다 |
+| 팀 `slug`와 사용자 `login`이 다른 파일과 겹쳤다 | 유니크 제약 위반으로 **내 파일이 파일째 실패** |
+
+`risks` 「통합 시험이 전역 질의를 쓰면 공유 DB에 오염된다」가 **세 번 겪었다**고 적어 둔 자리이며
+이번이 네 번째다. 모든 질의를 자기 저장소로 한정했고, 삭제·정리도 자기 행만 건드리도록 고쳤으며,
+저장소 이름(`analytics/payments`)·팀 slug(`analytics-*`)·사용자 login을 전부 고유하게 바꿨다.
+
+→ **정리(teardown)도 오염이다.** 그동안의 기록은 "남긴 행"만 경계했는데 **지운 행이 더 나쁘다** —
+자기 시험은 통과하고 남의 시험이 깨지므로 **원인이 있는 곳과 증상이 나타나는 곳이 다르다.**
+그리고 전역 `DELETE`는 기존 파일들이 이미 쓰는 관행이었다. 파일 하나가 늘어 실행 순서가
+바뀌자 드러났을 뿐이며, **관행이라는 것이 안전하다는 뜻은 아니다.**
+
+→ **유니크 제약이 있는 픽스처 값은 파일마다 고유해야 한다.** `slug`·`login`처럼 사람이 읽는
+값일수록 다른 파일도 같은 이름을 고른다.
+
 ## 7. 알려진 제한 (구현 반영 기준)
 
 착수 시점의 계획상 제한이다. 구현이 진행되면 실제 반영된 내용으로 갱신한다.
@@ -4201,6 +4335,21 @@ Gate 4(보안)·5(성능)·6(운영)은 별개다. 특히 이 WP가 남긴 NOT R
 실제 표본이 없다) → `W-007`·`WP-043` **NOT ACTIVATED**. 차트 스파이크는 Conductor에 차트
 프리미티브가 없음을 확인했으나 **그것은 ADR-006이 이미 예고한 것이고**, 진짜 공백은 20계열을
 구분할 **계열 색 토큰이 264개 중 0개**라는 사실이었다(DEV-380, 기한은 WP-038 착수 전).
+
+**(2026-08-29) WP-037이 들어왔다 — REL-005 구현이 1/4이다.** 계약(CR-053)과 구현이 모두 들어왔고
+검증 기록은 6.48장이다. **`DEV-387`이 닫혔고 구현 중 등록한 `DEV-391~394` 넷도 함께 닫혔다.**
+
+**`pnpm test:perf`가 생겼다.** `DEV-058`이 2026-08-21부터 열려 있던 자리이며, 그동안 세 WP가
+성능 실측을 NOT RUN으로 적은 이유가 **스크립트 자체의 부재**였다. 네 집계가 각각 **한 번만**
+왕복하는 것을 실측했다 — 지연은 데이터 크기를 따라가지만 "그룹마다 다시 묻는가"는 크기와
+무관하게 참이거나 거짓이고, 그런 N+1은 **답이 맞고 값만 비싸므로 결과를 재는 시험에 잡히지
+않는다.** 다만 `DEV-058`은 **열린 채로 남는다** — 릴리스 규모 실측은 Gate 5의 몫이다.
+
+**공유 인덱스 오염을 네 번째로 밟았다.** 통합 전량에서만 두 시험이 깨졌고 단독 실행에서는
+통과했다. 전역 질의가 남의 문서를 세는 것이 하나, `afterAll`의 `match_all` 삭제가 **남의 문서를
+지워 나중에 도는 파일을 깨뜨린 것**이 다른 하나다. → **정리도 오염이다.** 그동안의 기록은 "남긴
+행"만 경계했는데 지운 행이 더 나쁘다 — 자기 시험은 통과하고 남의 시험이 깨지므로 **원인이 있는
+곳과 증상이 나타나는 곳이 다르다.**
 
 **(2026-08-29) WP-037 착수 전 감사가 계약 공백 열을 찾았다 — 계약을 먼저 닫았다(CR-053).** 검증
 기록은 아직 없다. 이 CR은 계약만 닫으며 구현은 `WP-037`이 한다. **REL-005 구현 수는 그대로 0/4다.**

@@ -20,9 +20,11 @@ import {
   closePointInTime,
   collectNames,
   openPointInTime,
+  resolveSearchTarget,
   searchWithPit,
   toPlainHighlight,
   type AccessScope,
+  type EntityAlias,
   type HighlightMap,
   type NameResolution,
   type SearchTarget,
@@ -45,6 +47,11 @@ import { computeRelaxationHints, NO_RELAXATION, type RelaxationResult } from './
 
 /** W-001의 결과 표가 PR과 커밋을 한 목록에 보여 준다 (CR-016, DEV-054). */
 export const SEARCH_TARGET: SearchTarget = ['prs-pull-requests', 'prs-commits'];
+
+/** `SearchTarget`은 문자열 하나도 허용한다. `resolveSearchTarget`은 목록으로 받는다. */
+function toAliases(target: SearchTarget): readonly EntityAlias[] {
+  return typeof target === 'string' ? [target as EntityAlias] : (target as readonly EntityAlias[]);
+}
 
 /** API 계약: `size` 기본 25, 최대 200 (초과 시 절삭). */
 export const DEFAULT_SIZE = 25;
@@ -269,11 +276,37 @@ export interface SearchRequest {
  * @throws {CursorQueryMismatchError} 커서가 현재 조건과 다르면.
  */
 export async function runSearch(request: SearchRequest, deps: SearchDeps): Promise<SearchResult> {
-  const target = deps.target ?? SEARCH_TARGET;
+  const base = deps.target ?? SEARCH_TARGET;
+  /*
+   * `kind:` 필터는 절이 아니라 **검색 대상**이 된다 (CR-053, DEV-383).
+   *
+   * `null`이면 어떤 유형도 남지 않은 것이다 — `kind:pull_request -kind:pull_request`
+   * 같은 질의다. 조회하지 않고 빈 결과를 낸다. **빈 인덱스 목록을 넘기면
+   * Elasticsearch가 전체를 검색하므로** 그 길을 타입이 막는다.
+   */
+  const { target, ast } = resolveSearchTarget(request.ast, toAliases(base));
   const now = (deps.now ?? Date.now)();
-  const resolution = await deps.resolveNames(collectNames(request.ast));
+
+  if (target === null) {
+    /*
+     * 남은 유형이 없다. Elasticsearch를 부르지 않고 빈 결과를 낸다 — 인덱스를
+     * 좁히다 아무것도 남지 않은 것은 **오류가 아니라 결과가 없다는 사실**이다.
+     */
+    return {
+      total: { value: 0, relation: 'eq' },
+      sort: { field: request.sortKey, order: request.order },
+      items: [],
+      relaxation: NO_RELAXATION,
+      unresolved: [],
+      nextCursor: null,
+      facets: null,
+    };
+  }
+
+  const resolution = await deps.resolveNames(collectNames(ast));
   const built = buildQuery(
-    request.ast,
+    // `kind:`가 걷어내진 AST다 — 남기면 `buildQuery`가 던진다 (CR-053).
+    ast,
     resolution,
     // `seq:`가 있는데 에폭이 없으면 `buildQuery`가 던진다 — 조용히 모든
     // 세대를 함께 돌려주는 것보다 조립 오류를 드러내는 편이 낫다.

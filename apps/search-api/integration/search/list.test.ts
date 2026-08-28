@@ -607,7 +607,8 @@ describe('문법 오류 (CR-014, DEV-038)', () => {
     const body = response.json<{ error: { code: string; detail: Record<string, unknown> } }>();
     expect(body.error.code).toBe('QUERY_SYNTAX_ERROR');
     expect(body.error.detail['offset_start']).toBe(0);
-    expect(body.error.detail['supported_keys']).toHaveLength(15);
+    // 17종이다 — CR-053이 `kind`와 `author_team`을 더했다.
+    expect(body.error.detail['supported_keys']).toHaveLength(17);
   });
 
   it('스칼라 `seq:1234`는 400이다 — 조용히 0건이 아니다 (DEV-364)', async () => {

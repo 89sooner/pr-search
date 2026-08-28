@@ -65,27 +65,11 @@ export function removeChip(ast: QueryAst, index: number): QueryAst {
 /**
  * 질의에 동등 조건 값을 더한다 — 패싯 선택이 쓰는 경로.
  *
- * **같은 키가 이미 있으면 그 노드에 값을 넣는다.** 파서가 같은 (키, op)를
- * 한 노드로 모으므로(FR-SRCH-005 AC-5의 OR) 새 노드를 만들면 직렬화 후
- * 다시 파싱했을 때 모양이 달라져 왕복이 깨진다.
+ * **구현은 `@prs/query`에 있다** (CR-053). 집계의 `drill_down_query`가 같은
+ * 판정을 필요로 하는데, 화면과 서버가 각자 구현하면 한쪽만 고쳐지는 날이 오고
+ * 그때 어긋나는 것은 **버킷 수와 목록 건수**다.
  */
-export function addEquality(ast: QueryAst, key: string, value: string): QueryAst {
-  const existing = ast.filters.findIndex((f) => f.key === key && f.op === 'eq');
-
-  if (existing === -1) {
-    return {
-      ...ast,
-      filters: [...ast.filters, { key, op: 'eq', values: [value] } as QueryFilter],
-    };
-  }
-
-  const filter = ast.filters[existing] as QueryFilter & { readonly values: readonly string[] };
-  // 이미 있는 값을 또 넣지 않는다 — `author:kim,kim`은 같은 결과에 URL만 길어진다.
-  if (filter.values.includes(value)) return ast;
-
-  const updated = { ...filter, values: [...filter.values, value] } as QueryFilter;
-  return { ...ast, filters: ast.filters.map((f, i) => (i === existing ? updated : f)) };
-}
+export { addEquality } from '@prs/query';
 
 /** 동등 조건에서 값 하나를 뺀다. 값이 없어지면 노드째 뺀다. */
 export function removeEquality(ast: QueryAst, key: string, value: string): QueryAst {

@@ -19,11 +19,14 @@
 
 import type { estypes } from '@elastic/elasticsearch';
 import { hasSequenceRangeFilter, isRangeFilter, type QueryAst, type QueryFilter, type QueryKey } from '@prs/query';
+import type { EntityAlias } from './indices.js';
 
 /**
  * 키가 보는 ES 필드 (CR-016, DEV-052).
  *
- * `org`·`team`·`is`는 여기 없다 — 필드 이름만으로 풀리지 않아 따로 다룬다.
+ * `org`·`team`·`author_team`·`is`·`kind`는 여기 없다 — 필드 이름만으로
+ * 풀리지 않아 따로 다룬다. 앞의 셋은 레지스트리 해석이 필요하고, `is`는 파생
+ * 상태이며, `kind`는 **필드가 아니라 인덱스가 답한다** (CR-053, DEV-383).
  */
 const TERM_FIELDS: Readonly<Partial<Record<QueryKey, string>>> = {
   repo: 'repository',
@@ -98,9 +101,14 @@ export interface NameResolution {
 
 export const EMPTY_RESOLUTION: NameResolution = { orgIds: new Map(), teamIds: new Map() };
 
-/** 해석하지 못한 이름. 응답에 남겨 "왜 0건인가"를 말할 수 있게 한다. */
+/**
+ * 해석하지 못한 이름. 응답에 남겨 "왜 0건인가"를 말할 수 있게 한다.
+ *
+ * **`team`과 `author_team`을 구분해 싣는다** (CR-053, DEV-382). 같은 slug라도
+ * 사용자가 물은 것이 접근 권한인지 작성자 소속인지에 따라 할 일이 다르다.
+ */
 export interface UnresolvedName {
-  readonly key: 'org' | 'team';
+  readonly key: 'org' | 'team' | 'author_team';
   readonly value: string;
 }
 
@@ -129,6 +137,74 @@ export class SequenceEpochRequiredError extends Error {
     super('seq: 범위 조건이 있는 질의에는 시퀀스 에폭이 필요하다 (CR-051)');
     this.name = 'SequenceEpochRequiredError';
   }
+}
+
+/**
+ * `kind:` 필터가 인덱스로 옮겨지지 않은 채 질의 조립에 도달했다 (CR-053, DEV-383).
+ *
+ * 호출부는 `resolveSearchTarget`으로 검색 대상을 좁힌 뒤 `buildQuery`를 부른다.
+ * **빠뜨리면 던진다** — 조용히 넘기면 `filter`에서는 0건이 되고 `must_not`에서는
+ * 조건이 통째로 사라지며, 후자는 결과를 재는 시험에 잡히지 않는다.
+ */
+export class KindFilterNotAppliedError extends Error {
+  constructor() {
+    super('kind: 필터는 resolveSearchTarget으로 검색 대상을 좁혀 적용한다 (CR-053)');
+    this.name = 'KindFilterNotAppliedError';
+  }
+}
+
+/** `kind:` 값과 엔티티 별칭의 대응. 사용자에게 인덱스 이름을 노출하지 않는다. */
+const KIND_ALIAS: Readonly<Record<string, EntityAlias>> = {
+  pull_request: 'prs-pull-requests',
+  commit: 'prs-commits',
+};
+
+/**
+ * `kind:` 필터가 정하는 검색 대상 (CR-053, DEV-383).
+ *
+ * **문서에 `kind` 필드를 두지 않고 인덱스를 좁힌다.** 인덱스가 이미 그 사실을
+ * 알고 있어 중복 저장이 되고, 두 곳이 갈라지면 한쪽만 맞는 날이 온다.
+ *
+ * **걷어낸 AST를 함께 돌려준다.** `kind:`를 남긴 채 `buildQuery`에 넘기면
+ * `KindFilterNotAppliedError`가 난다 — 그 오류의 목적은 "대상을 좁히지 않았다"를
+ * 드러내는 것이므로, 좁힌 뒤에는 필터가 사라져 있어야 한다. 두 값을 함께 주면
+ * 호출부가 하나만 쓰다 어긋날 자리가 없다.
+ *
+ * @returns `target`이 `null`이면 어떤 문서도 매치하지 않는다 — 호출부가
+ *   조회하지 않고 빈 결과를 낸다. 빈 배열을 돌려주지 않는 이유는 Elasticsearch가
+ *   빈 인덱스 목록을 **전체 검색**으로 읽기 때문이다.
+ */
+export function resolveSearchTarget(
+  ast: QueryAst,
+  base: readonly EntityAlias[],
+): { readonly target: readonly EntityAlias[] | null; readonly ast: QueryAst } {
+  let allowed = new Set<EntityAlias>(base);
+  let touched = false;
+
+  for (const filter of ast.filters) {
+    if (isRangeFilter(filter) || filter.key !== 'kind') continue;
+    touched = true;
+    // 파서가 값을 열거로 검증했으므로 여기 도달한 값은 둘 중 하나다.
+    const named = filter.values
+      .map((value) => KIND_ALIAS[value])
+      .filter((alias): alias is EntityAlias => alias !== undefined);
+
+    if (filter.op === 'eq') {
+      // 같은 키의 값 여럿은 OR다 (AC-5) — 교집합을 그 합집합으로 좁힌다.
+      const keep = new Set<EntityAlias>(named);
+      allowed = new Set([...allowed].filter((alias) => keep.has(alias)));
+    } else {
+      for (const alias of named) allowed.delete(alias);
+    }
+  }
+
+  if (!touched) return { target: base, ast };
+
+  const stripped: QueryAst = {
+    ...ast,
+    filters: ast.filters.filter((filter) => isRangeFilter(filter) || filter.key !== 'kind'),
+  };
+  return { target: allowed.size === 0 ? null : [...allowed], ast: stripped };
 }
 
 /**
@@ -286,14 +362,31 @@ function equalityClause(
     return idsClause('org_id', ids);
   }
 
-  if (filter.key === 'team') {
-    // 이름 하나가 팀 여럿을 가리킬 수 있다 — 전부 실어 OR로 만든다.
+  if (filter.key === 'team' || filter.key === 'author_team') {
+    /*
+     * 이름 하나가 팀 여럿을 가리킬 수 있다 — 전부 실어 OR로 만든다.
+     *
+     * **두 키가 같은 레지스트리를 쓰고 다른 필드를 본다** (CR-053, DEV-382).
+     * slug → team_id 해석은 같은 표가 답하지만, `team`은 저장소 접근 권한
+     * (`allowed_team_ids`)이고 `author_team`은 작성자 소속(`author_team_ids`)이다.
+     * 필드를 하나로 합치면 **권한을 성과로 읽게 된다.**
+     */
     const ids = values.flatMap((value) => [...(resolution.teamIds.get(value) ?? [])]);
     for (const value of values) {
-      if (!resolution.teamIds.has(value)) unresolved.push({ key: 'team', value });
+      if (!resolution.teamIds.has(value)) unresolved.push({ key: filter.key, value });
     }
-    return idsClause('allowed_team_ids', ids);
+    return idsClause(filter.key === 'team' ? 'allowed_team_ids' : 'author_team_ids', ids);
   }
+
+  /*
+   * `kind`는 절이 되지 않는다 — `resolveSearchTarget`이 인덱스를 좁혀 이미
+   * 처리했어야 한다 (CR-053, DEV-383).
+   *
+   * **여기 도달하면 호출부가 그것을 빠뜨린 것이므로 던진다.** `MATCH_NONE`으로
+   * 삼키면 `filter`에서는 0건이 되고 `must_not`에서는 조건이 통째로 사라진다 —
+   * DEV-378이 범위 전용 키에서 겪은 것과 같은 실패다.
+   */
+  if (filter.key === 'kind') throw new KindFilterNotAppliedError();
 
   // 파서가 `QUERY_KEYS` 밖을 이미 거절했으므로 도달하지 않는다.
   return MATCH_NONE;
@@ -376,7 +469,12 @@ export function buildQuery(
   };
 }
 
-/** 질의에 쓰인 이름들. 호출 측이 레지스트리에 물어볼 목록을 만든다. */
+/**
+ * 질의에 쓰인 이름들. 호출 측이 레지스트리에 물어볼 목록을 만든다.
+ *
+ * **`author_team`도 여기 모은다** (CR-053, DEV-382). 두 키가 같은 레지스트리를
+ * 쓰므로 목록은 하나다 — 빠뜨리면 그 필터만 해석되지 않아 **조용히 0건**이 된다.
+ */
 export function collectNames(ast: QueryAst): { readonly orgs: string[]; readonly teams: string[] } {
   const orgs = new Set<string>();
   const teams = new Set<string>();
@@ -384,7 +482,9 @@ export function collectNames(ast: QueryAst): { readonly orgs: string[]; readonly
   for (const one of ast.filters) {
     if (isRangeFilter(one)) continue;
     if (one.key === 'org') for (const value of one.values) orgs.add(value);
-    if (one.key === 'team') for (const value of one.values) teams.add(value);
+    if (one.key === 'team' || one.key === 'author_team') {
+      for (const value of one.values) teams.add(value);
+    }
   }
 
   return { orgs: [...orgs], teams: [...teams] };

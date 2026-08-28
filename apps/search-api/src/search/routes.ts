@@ -81,7 +81,14 @@ function toCursorError(error: unknown, correlationId: string): ErrorResponse | n
  *
  * @returns 조회를 계속해도 되면 `null`.
  */
-function toSequenceFailure(
+/**
+ * 시퀀스 문맥 판정을 HTTP 응답으로 옮긴다.
+ *
+ * **집계 API도 이것을 쓴다** (CR-053). 같은 판정을 각자 옮기면 `/search`와
+ * `/analytics`가 같은 상황에 다른 상태 코드를 내는 날이 오고, 그때 화면은
+ * 한쪽만 처리한다.
+ */
+export function toSequenceFailure(
   outcome: SequenceContextOutcome,
   correlationId: string,
 ): { readonly status: number; readonly body: ErrorResponse } | null {

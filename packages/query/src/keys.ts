@@ -10,6 +10,15 @@ export const QUERY_KEYS = [
   'org',
   'author',
   'team',
+  /**
+   * 작성자의 소속 팀 (CR-053, DEV-382).
+   *
+   * **`team`과 다른 것을 뜻한다.** `team`은 저장소 접근 권한을 가진 팀이고
+   * 이것은 PR을 연 사람이 속한 팀이다. 하나로 합치면 **접근 권한을 성과로
+   * 읽게 된다** — 용어집이 "권한 판정과 집계 그룹의 단위"를 한 줄에 담았던
+   * 것이 그 결함의 뿌리였다.
+   */
+  'author_team',
   'reviewer',
   'label',
   'base',
@@ -21,6 +30,15 @@ export const QUERY_KEYS = [
   'release',
   'path',
   'is',
+  /**
+   * 문서 유형 (CR-053, DEV-383).
+   *
+   * 집계는 PR만 세는데 목록은 PR과 커밋을 함께 보이므로, 집계의
+   * `drill_down_query`가 **같은 모집단을 가리킬 수단**이 필요하다.
+   * `is:merged`가 우연히 PR만 남기는 것에 기대지 않는다 — 그 뜻은
+   * "머지된 것"이지 "PR"이 아니고, 상태별 그룹은 머지되지 않은 PR도 센다.
+   */
+  'kind',
 ] as const;
 
 export type QueryKey = (typeof QUERY_KEYS)[number];
@@ -80,4 +98,7 @@ export const RANGE_KEY_EXAMPLE: Readonly<Record<RangeKey, string>> = {
  */
 export const ENUMERATED_VALUES: Readonly<Partial<Record<QueryKey, readonly string[]>>> = {
   is: ['merged', 'open', 'closed', 'reverted'],
+  // 값이 둘뿐이고 API 계약이 그대로 쓴다. 저장소의 관용어이기도 하다 —
+  // `SearchItem.kind`·`detected_kind`가 같은 낱말과 같은 값을 쓴다.
+  kind: ['pull_request', 'commit'],
 };

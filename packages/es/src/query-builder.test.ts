@@ -12,8 +12,10 @@ import type { estypes } from '@elastic/elasticsearch';
 import {
   EMPTY_RESOLUTION,
   FIRST_PARENT_COMMIT_ROLES,
+  KindFilterNotAppliedError,
   RangeKeyEqualityError,
   SequenceEpochRequiredError,
+  resolveSearchTarget,
   FULL_TEXT_FIELDS,
   buildQuery,
   collectNames,
@@ -196,6 +198,92 @@ describe('시퀀스 에폭 결합 (CR-051, DEV-361)', () => {
       text: null,
     };
     expect(() => buildQuery(scalar, RESOLUTION)).toThrow(RangeKeyEqualityError);
+  });
+});
+
+describe('CR-053: `kind`는 인덱스가 답한다 (DEV-383)', () => {
+  const BOTH = ['prs-pull-requests', 'prs-commits'] as const;
+
+  it('`kind:`가 없으면 대상을 그대로 둔다', () => {
+    const outcome = resolveSearchTarget(parseQuery('repo:acme/payments'), BOTH);
+    expect(outcome.target).toEqual(BOTH);
+    // 걷어낼 것이 없으므로 AST도 그대로다.
+    expect(outcome.ast.filters).toHaveLength(1);
+  });
+
+  it('`kind:pull_request`는 PR 인덱스만 남긴다', () => {
+    expect(resolveSearchTarget(parseQuery('kind:pull_request'), BOTH).target).toEqual([
+      'prs-pull-requests',
+    ]);
+  });
+
+  it('`kind:commit`은 커밋 인덱스만 남긴다', () => {
+    expect(resolveSearchTarget(parseQuery('kind:commit'), BOTH).target).toEqual(['prs-commits']);
+  });
+
+  it('**걷어낸 AST를 함께 준다** — 남기면 `buildQuery`가 던진다', () => {
+    /*
+     * 두 값을 따로 얻게 하면 호출부가 하나만 쓰다 어긋난다. 실제로 그렇게
+     * 만들었더니 `kind:pull_request` 질의가 500이 됐고 통합 시험이 잡았다.
+     */
+    const outcome = resolveSearchTarget(parseQuery('repo:acme/payments kind:pull_request'), BOTH);
+    expect(outcome.ast.filters.map((one) => one.key)).toEqual(['repo']);
+    expect(() => buildQuery(outcome.ast, RESOLUTION)).not.toThrow();
+  });
+
+  it('같은 키의 값 여럿은 OR다 — 둘 다 남는다 (AC-5)', () => {
+    const outcome = resolveSearchTarget(parseQuery('kind:pull_request kind:commit'), BOTH);
+    expect(new Set(outcome.target ?? [])).toEqual(new Set(BOTH));
+  });
+
+  it('부정은 뺀다', () => {
+    expect(resolveSearchTarget(parseQuery('-kind:commit'), BOTH).target).toEqual([
+      'prs-pull-requests',
+    ]);
+  });
+
+  it('**아무것도 남지 않으면 `null`이다 — 빈 배열이 아니다**', () => {
+    /*
+     * Elasticsearch는 빈 인덱스 목록을 **전체 검색**으로 읽는다. 빈 배열을
+     * 돌려주면 "아무 유형도 아닌" 질의가 오히려 전부를 보게 된다 — 부호가
+     * 뒤집힌 fail-open이며 DEV-378과 같은 모양이다.
+     */
+    expect(
+      resolveSearchTarget(parseQuery('kind:pull_request -kind:pull_request'), BOTH).target,
+    ).toBeNull();
+  });
+
+  it('이미 좁혀진 대상에서 더 좁힐 수 없으면 `null`이다', () => {
+    expect(resolveSearchTarget(parseQuery('kind:commit'), ['prs-pull-requests']).target).toBeNull();
+  });
+
+  it('**질의 조립에 도달하면 던진다** — 호출부가 대상을 좁히지 않았다는 뜻이다', () => {
+    expect(() => buildQuery(parseQuery('kind:pull_request'), RESOLUTION)).toThrow(
+      KindFilterNotAppliedError,
+    );
+  });
+});
+
+describe('CR-053: `team`과 `author_team`은 다른 필드를 본다 (DEV-382)', () => {
+  it('`team`은 접근 권한, `author_team`은 작성자 소속이다', () => {
+    const byAccess = buildQuery(parseQuery('team:payments-core'), RESOLUTION);
+    const byAuthor = buildQuery(parseQuery('author_team:payments-core'), RESOLUTION);
+
+    const filterOf = (built: { query: unknown }): unknown[] =>
+      (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
+
+    expect(filterOf(byAccess)).toContainEqual({ terms: { allowed_team_ids: [77] } });
+    expect(filterOf(byAuthor)).toContainEqual({ terms: { author_team_ids: [77] } });
+  });
+
+  it('두 키가 같은 레지스트리를 쓴다 — 이름 수집이 하나다', () => {
+    // 빠뜨리면 그 필터만 해석되지 않아 **조용히 0건**이 된다.
+    expect(collectNames(parseQuery('author_team:payments-core')).teams).toEqual(['payments-core']);
+  });
+
+  it('해석하지 못한 이름은 키를 구분해 싣는다', () => {
+    const built = buildQuery(parseQuery('author_team:없는팀'), RESOLUTION);
+    expect(built.unresolved).toEqual([{ key: 'author_team', value: '없는팀' }]);
   });
 });
 

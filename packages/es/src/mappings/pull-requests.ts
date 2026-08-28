@@ -86,6 +86,15 @@ export const PULL_REQUEST_MAPPING: estypes.MappingTypeMapping = {
     first_review_wait_seconds: { type: 'long' },
 
     changed_files_count: { type: 'integer' },
+    /**
+     * `additions + deletions` (CR-053, DEV-386).
+     *
+     * **색인 시점에 계산해 저장한다.** `FR-STAT-005` AC-2의 변경 라인 수 분포가
+     * 이 합을 구간으로 나누는데, 조회 시점에 더하려면 `script`가 필요하고
+     * 데이터 모델 6장이 그것을 금지한다 — **집계가 읽을 값을 집계가 계산하지
+     * 않는다.**
+     */
+    changed_lines: { type: 'integer' },
     additions: { type: 'integer' },
     deletions: { type: 'integer' },
     changed_paths: {
