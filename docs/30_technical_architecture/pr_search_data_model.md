@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.7 | 갱신일: 2026-08-28
+> 상태: review | 버전: v0.8 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -17,7 +17,7 @@
 | ENT-CORE-003 | Commit | 커밋 검색 문서 | `commit_sha`, `message`, `author`, `role`, `merge_seq`, `patch_id`, `changed_paths[]` | Elasticsearch | projection | FR-SRCH-002, FR-SRCH-004 |
 | ENT-CORE-004 | Team | 팀 정보와 집계 그룹 단위 | `team_id`, `slug`, `org_id`, `member_ids[]` | PostgreSQL | registry | FR-AUTH-002, FR-STAT-001 |
 | ENT-CORE-005 | User | 사용자와 접근 범위 | `user_id`, `login`, `email`, `roles[]`, `access_scope_version` | PostgreSQL | auth | FR-AUTH-001, FR-AUTH-003 |
-| ENT-CORE-006 | SavedSearch | 저장된 질의 | `saved_search_id`, `name`, `query`, `visibility`, `owner_user_id`, `team_id`(대상 팀, `visibility='team'`일 때만) | PostgreSQL | search | FR-SRCH-010 |
+| ENT-CORE-006 | SavedSearch | 저장된 질의 | `saved_search_id`, `name`, `query`, `visibility`, `owner_user_id`, `team_id`(대상 팀, `visibility='team'`일 때만), `seq_epoch`(`seq:` 조건이 딛고 선 에폭, CR-051) | PostgreSQL | search | FR-SRCH-010 |
 | ENT-CORE-007 | AuditRecord | 감사 기록 | `audit_id`, `user_id`, `action`, `target`, `query`, `result_code`, `correlation_id`, `occurred_at` | PostgreSQL | audit | FR-AUTH-004 |
 | ENT-CORE-008 | RepositoryRegistrationRequest | 사용자가 남긴 저장소 등록 검토 요청 | `request_id`, `requested_by`, `repository_owner`, `repository_name`, `created_at` | PostgreSQL | registry | FR-ING-009 |
 | ENT-SEQ-001 | MergeSequence | 시퀀스 서수-커밋 대응 | `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `commit_sha`, `pull_request_number` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-002 |
@@ -445,6 +445,10 @@ CREATE TABLE saved_search (
   query           TEXT        NOT NULL,
   visibility      TEXT        NOT NULL DEFAULT 'private',  -- private | team
   team_id         BIGINT      REFERENCES team(team_id),    -- 대상 팀. team일 때만 값이 있다
+  -- `seq:` 조건이 딛고 선 시퀀스 에폭 (마이그레이션 017, CR-051, ADR-007 규칙 5).
+  -- 질의에 `seq:` 범위가 없으면 NULL이고, CR-051 이전에 저장된 행도 NULL이다(legacy unbound).
+  -- 저장소·브랜치를 여기 복사하지 않는다 — 공간의 정체성은 질의의 `repo:`·`base:`가 갖는다.
+  seq_epoch       INT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_run_at     TIMESTAMPTZ,
   UNIQUE (owner_user_id, name),
@@ -453,7 +457,11 @@ CREATE TABLE saved_search (
   CONSTRAINT saved_search_team_target_chk CHECK (
     (visibility = 'private' AND team_id IS NULL)
     OR (visibility = 'team' AND team_id IS NOT NULL)
-  )
+  ),
+  -- 마이그레이션 017 (CR-051). 에폭은 1부터다. "질의에 `seq:`가 있으면 값이 있어야 한다"는
+  -- **`CHECK`로 강제할 수 없다** — 그 판정은 질의 파서를 실행해야 하고 SQL은 그것을 모른다.
+  -- 그 불변식은 애플리케이션 계약이며 시험이 지킨다.
+  CONSTRAINT saved_search_seq_epoch_chk CHECK (seq_epoch IS NULL OR seq_epoch >= 1)
 );
 
 -- 목록 인덱스 (마이그레이션 015, CR-049). 정렬 키와 같은 쌍을 담아 키셋 순회가 정렬 없이 끝난다.
@@ -477,6 +485,42 @@ CREATE INDEX saved_search_team_idx   ON saved_search (team_id, created_at DESC, 
 -- 스냅숏이 새로 잡히므로, 멤버십을 읽고 나중에 쓰면 그 사이에 커밋된 탈퇴를 보지 못한다.
 -- `team_member` 행을 `SELECT ... FOR SHARE`로 잠근 뒤 쓴다 — 100건 상한이 소유자 행을
 -- `FOR UPDATE`로 잠그는 것과 같은 이유이며, 둘 다 "검사와 쓰기 사이에 창을 남기지 않는다"이다.
+
+**마이그레이션 017 — `seq_epoch` (CR-051, DEV-362).**
+
+ADR-007 규칙 5는 "시퀀스를 인용하는 모든 저장물은 에폭을 함께 저장한다"를 정하고 세 저장물을
+열거한다. 그중 `safe_marker`만 실제로 그렇게 하고 있었다.
+
+| 저장물 | 공간 정체성 | 에폭 |
+| --- | --- | --- |
+| `safe_marker` | `repository_id` + `base_branch` **열** | `seq_epoch` 열 |
+| `saved_search` | 질의의 `repo:`·`base:` | **마이그레이션 017이 더한다** |
+| 공유 URL | 질의의 `repo:`·`base:` | URL의 `seq_epoch` 파라미터 |
+
+**`safe_marker`와 달리 저장소·브랜치를 열로 두지 않는다.** 저장된 검색의 정체성은 질의 문자열이고,
+`seq:` 조건이 어느 공간을 뜻하는지는 그 문자열의 `repo:`·`base:`가 이미 말한다 (FR-SRCH-005 AC-7).
+열로 복사하면 사용자가 질의를 고쳤을 때 사본이 낡고, **어느 쪽이 정본인지 아무도 모르게 된다.**
+`safe_marker`가 열을 갖는 것은 그 자원에 질의가 없기 때문이다.
+
+**만들지 않는 것.** 여러 공간의 에폭을 담는 지도, 에폭 집합의 지문, 전역 시퀀스 리비전, 서버 측
+시퀀스 맥락 스냅숏 표, 저장자의 접근 범위 사본, 에폭 이력 표를 만들지 않는다. `seq:`가 하나의
+공간만 지목하므로 **하나의 정수면 충분하다.**
+
+**기존 행을 소급해 채우지 않는다** (DEV-362). 마이그레이션이 `seq:`를 담은 기존 행을 찾아
+현재 에폭을 넣는 길이 있지만 택하지 않는다 — **저장 당시의 에폭은 어디에도 남아 있지 않으므로
+현재 값을 넣는 것은 복구가 아니라 추측이고**, 그 추측을 스키마 변경으로 못 박으면 조용한 오답을
+영구히 승인하게 된다. 그런 행은 `NULL`로 남아 `unbound` 상태가 되며, 저장자가 명시적으로
+다시 연결할 때에만 값이 생긴다.
+
+**애플리케이션이 지키는 불변식.** `CHECK`는 질의 파서를 실행할 수 없으므로 아래는 계약이고
+시험이 지킨다.
+
+| 상태 | 질의의 `seq:` | `seq_epoch` | 판정 |
+| --- | --- | --- | --- |
+| A | 없음 | `NULL` | 정상 |
+| B | 있음 | 값 | 정상 (CR-051 이후 생성·수정) |
+| C | 있음 | `NULL` | **legacy unbound** — 실행을 막는다 |
+| D | 없음 | 값 | **만들지 않는다** — 생성·수정에서 거절한다 |
 
 CREATE TABLE job (
   job_id      BIGSERIAL   PRIMARY KEY,

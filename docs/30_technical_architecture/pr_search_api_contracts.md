@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.10 | 갱신일: 2026-08-28
+> 상태: review | 버전: v0.11 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -307,7 +307,9 @@
 - 목적: 구조화 질의로 PR·커밋 목록과 패싯을 조회한다.
 - 관련 요구사항: FR-SRCH-005, FR-SRCH-006, FR-SRCH-007, FR-SRCH-008, FR-SRCH-009, FR-SRCH-011
 
-요청: `GET /api/v1/search?q=repo:acme/payments+seq:1280..1342+-author:bot&sort=merge_seq&order=desc&size=25&facets=true`
+요청: `GET /api/v1/search?q=repo:acme/payments+base:main+seq:1280..1342+-author:bot&sort=merge_seq&order=desc&size=25&facets=true&seq_epoch=3`
+
+**`seq:` 질의는 시퀀스 공간을 지목해야 하고, 그 공간의 에폭이 조회의 일부다** (CR-051, DEV-359). `seq_epoch`은 질의 문법이 아니라 **참조 맥락**이다 — 아래 「시퀀스 인용 계약」 절이 정본이다.
 
 지원 질의 키 (FR-SRCH-005 AC-1): `repo`, `org`, `author`, `team`, `reviewer`, `label`, `base`, `head`, `state`, `merged`, `created`, `seq`, `release`, `path`, `is`
 
@@ -367,10 +369,11 @@
 
 ```json
 {
-  "query": "repo:acme/payments seq:1280..1342 -author:bot",
+  "query": "repo:acme/payments base:main seq:1280..1342 -author:bot",
   "parsed": {
     "filters": [
       { "key": "repo", "op": "eq", "values": ["acme/payments"] },
+      { "key": "base", "op": "eq", "values": ["main"] },
       { "key": "seq", "op": "range", "from": 1280, "to": 1342 },
       { "key": "author", "op": "not_eq", "values": ["bot"] }
     ],
@@ -410,9 +413,19 @@
   "facets_omitted": false,
   "facets_status": "ready",
   "next_cursor": "eyJzIjpbMTMxOCwiYWNtZS9wYXltZW50czoxMjEwIl0sImYiOiJhOWYzIn0",
+  "sequence_context": {
+    "sequence_space": "acme/payments@main",
+    "repository": "acme/payments",
+    "base_branch": "main",
+    "seq_epoch": 3,
+    "sequence_state": "ok"
+  },
+  "epoch_stale": false,
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
+
+**`sequence_context`와 `epoch_stale`은 `seq:` 질의에서만 나타난다** (CR-051). `seq:`가 없는 질의는 어느 공간에도 묶이지 않으므로 두 키 다 싣지 않는다 — 빈 값이나 `null`로 실으면 화면이 "공간이 없는 시퀀스 조회"라는 없는 상태를 그린다.
 
 **패싯 세 키는 함께 나타나거나 함께 빠진다** (CR-019 DEV-076 / CR-016 DEV-057, CR-044로 `facets_status` 추가). 네 경우가 서로 다른 뜻이며 **정본 표는 아래 「패싯 계약」 절 하나뿐이다** — 응답 형태를 두 곳에 적으면 구현이 다른 쪽을 보고 만든다.
 
@@ -461,13 +474,167 @@
 }
 ```
 
-- 오류: `QUERY_SYNTAX_ERROR` (400), `SHA_PREFIX_TOO_SHORT` (400), `CURSOR_INVALID` (400), `CURSOR_QUERY_MISMATCH` (400), `QUERY_TOO_SHORT` (400), `SEARCH_TIMEOUT` (504), `PERMISSION_UNAVAILABLE` (503)
+- 오류: `QUERY_SYNTAX_ERROR` (400), `SHA_PREFIX_TOO_SHORT` (400), `CURSOR_INVALID` (400), `CURSOR_QUERY_MISMATCH` (400), `QUERY_TOO_SHORT` (400), **`INVALID_PARAMETER` (400, `seq:` 질의의 공간 지목 실패와 `seq_epoch` 형식 오류 — CR-051)**, **`NOT_FOUND` (404, `seq:`가 지목한 저장소·공간을 확인할 수 없음 — CR-051)**, `SEARCH_TIMEOUT` (504), `PERMISSION_UNAVAILABLE` (503)
+- **`seq:` 질의에 새 오류 코드를 만들지 않는다** (CR-051). 부족한 것은 파라미터이고(`INVALID_PARAMETER`), 확인할 수 없는 것은 자원이다(`NOT_FOUND`). `detail.reason`이 무엇이 부족한지를 가른다
 - **문법·값 오류는 파서가 낸다** (CR-014, DEV-038). `@prs/query`가 오류 코드와 문자 오프셋을 함께 돌려주고 API는 그대로 실어 보낸다. `QUERY_TOO_SHORT`(전문 검색어 1자)도 파서가 판정한다 — 무엇이 전문 검색어인지 아는 곳이 파서뿐이다
 - 페이지네이션: `size` 기본 25, 최대 200 (초과 시 200으로 절삭). `cursor`로 다음 페이지. **오프셋 파라미터는 없다** (공통 원칙 7, ADR-010)
 - 정렬: `merge_seq` | `merged_at` | `created_at` | `updated_at` | `changed_files_count` | `additions` | `lead_time_seconds` | `relevance`. 기본 `merge_seq` desc
 - **모든 정렬은 문서 ID를 마지막 키로 갖는다** (FR-SRCH-007 AC-4). 동점이 있어도 두 번 조회한 순서가 같다. 그 값은 `_id`가 아니라 **`doc_id` 필드**다 (CR-016, DEV-059) — Elasticsearch 8은 `_id` 정렬을 금지한다. `upsert`가 `_id`와 같은 값을 그 필드에 함께 넣는다
 - **`relevance`는 전문 검색이 서기 전까지 문서 ID 순이다** (CR-016, DEV-056). 접근 범위 필터는 `filter` 절이라 점수를 만들지 않으므로 모든 문서의 점수가 같다. 키를 거절하지는 않는다 — AC-1이 지원 키로 열거했다. 실제 점수는 WP-032가 붙인다
 - **`facets`와 `next_cursor`는 WP-032 전까지 이렇게 나간다** (CR-016, DEV-057). `next_cursor`는 **항상 `null`**로 실린다(키가 있고 값이 없다 = 다음 페이지가 없다). `facets`는 **키 자체가 없다** — 빈 객체는 "패싯을 셌는데 아무것도 없다"로 읽히기 때문이다
+
+#### 시퀀스 인용 계약 (CR-051, DEV-349를 닫는다)
+
+**시퀀스 서수는 한 공간 안에서만 뜻이 있다** (ADR-007 규칙 1). 그런데 v2.10까지 `seq:` 조건은
+어느 공간의 서수인지 말하지 않았고, 접근 범위에 저장소가 여럿이면 **같은 번호가 공간마다 다른
+커밋을 가리킨 채 한 목록에 섞였다.**
+
+**이 문제는 이 저장소가 이미 한 번 풀었다.** `API-SEQ-004`가 "`base_branch`는 필수다 — 서버가
+시퀀스 공간을 고르지 않는다"로 정한 것이 같은 판단이다 (CR-032, DEV-168). 그 절의 논리를 그대로
+옮긴다: 서버가 공간을 고르면 **사용자가 묻지 않은 브랜치의 답**이 나오고, 정렬을 더해도 결정적으로
+같은 오답일 뿐이다.
+
+**규칙 1 — `seq:`는 공간을 지목한다.**
+
+`seq:` 범위 조건(`range` 또는 `not_range`)이 있는 질의는 부정이 아닌 `repo:` 값 하나와 부정이 아닌
+`base:` 값 하나를 함께 가져야 한다. 같은 값을 여러 번 적은 것은 정규화 뒤 하나로 본다.
+
+| 질의 | 판정 |
+| --- | --- |
+| `repo:acme/payments base:main seq:1200..1350` | 통과 |
+| `repo:acme/payments repo:acme/payments base:main seq:1200..1350` | 통과 (중복은 하나) |
+| `repo:acme/payments base:main -seq:1200..1350` | 통과 (부정된 범위도 같은 규칙) |
+| `seq:1200..1350` | `INVALID_PARAMETER`, `detail.reason: "sequence_space_required"` |
+| `repo:acme/payments seq:1200..1350` | 같음 (`base` 없음) |
+| `base:main seq:1200..1350` | 같음 (`repo` 없음) |
+| `repo:a/x repo:b/y base:main seq:1200..1350` | `INVALID_PARAMETER`, `detail.reason: "sequence_space_ambiguous"` |
+| `repo:a/x base:main base:release seq:1200..1350` | 같음 |
+
+```json
+{
+  "error": {
+    "code": "INVALID_PARAMETER",
+    "message": "seq: 조건은 하나의 시퀀스 공간에서만 의미가 있습니다. repo:와 base:를 각각 하나씩 지정하세요.",
+    "detail": { "field": "q", "reason": "sequence_space_required", "required_keys": ["repo", "base"] }
+  },
+  "correlation_id": "..."
+}
+```
+
+**스칼라 `seq:1234`는 이 규칙의 대상이 아니다** (CR-051, DEV-364). SRS AC-2가 승인한 것은 범위뿐이고,
+현재 구현에서 스칼라는 `MATCH_NONE`이 되어 언제나 0건이다. **이 CR을 핑계로 스칼라 기능을 만들지
+않는다** — 다만 "조용히 0건"이라는 사실은 원장에 등재돼 있다.
+
+**규칙 2 — 첫 요청이 에폭을 바인딩한다.**
+
+`seq_epoch`이 없는 요청은 **최초 바인딩**이다. 순서가 통제다.
+
+1. `q`를 파싱한다
+2. `seq:` 범위 조건이 있는지 본다 — 없으면 아래 전부 건너뛴다
+3. 규칙 1로 `repo`·`base`를 확정한다
+4. 이 요청의 접근 범위를 **한 번만** 산출한다 (기존 규율, CR-043 DEV-272)
+5. `API-SEQ-001`이 쓰는 것과 **같은 해석 경로**로 공간을 확인한다 — 미등록과 범위 밖은 같은 `NOT_FOUND`다
+6. 그 공간의 현재 `seq_epoch`을 얻어 **유효 에폭**으로 삼는다
+7. Elasticsearch 질의에 `seq_epoch = 유효 에폭`을 결합한다
+8. 응답에 `sequence_context`를 싣는다
+
+화면은 그 값을 URL에 기록한다. **그 순간부터 그 주소는 어느 세대의 서수를 뜻했는지를 들고 다닌다**
+(ADR-007 규칙 5의 "공유 URL").
+
+**규칙 3 — 에폭이 다르면 실행하지 않는다.**
+
+요청한 `seq_epoch`이 현재와 다르면 HTTP **200**이되 조회를 실행하지 않는다. `API-SEQ-001`의
+선례를 그대로 따른다.
+
+```json
+{
+  "query": "repo:acme/payments base:main seq:1280..1342",
+  "sequence_context": {
+    "sequence_space": "acme/payments@main",
+    "repository": "acme/payments",
+    "base_branch": "main",
+    "seq_epoch": 4,
+    "sequence_state": "ok"
+  },
+  "requested_seq_epoch": 3,
+  "epoch_stale": true,
+  "next_cursor": null,
+  "correlation_id": "..."
+}
+```
+
+**`items`·`total`·`facets`·`relaxation_hints` 키를 넣지 않는다.** 실행하지 않은 것을 `items: []`,
+`total: 0`으로 표현하면 그것은 "구간이 비었다"는 거짓말이다 — `API-SEQ-001`이 같은 이유로 같은
+결정을 했다.
+
+**현재 에폭으로 자동 이동하지 않는다.** 그것이 ADR-007이 막으려는 바로 그 동작이며, 사용자가
+「현재 에폭으로 다시 조회」를 눌러 `seq_epoch`을 바꿀 때에만 새 세대의 결과가 나온다.
+
+**규칙 4 — 에폭은 결과 집합의 일부다.**
+
+`seq:` 질의의 실제 조건은 개념적으로 넷이다.
+
+```text
+repository   = 지목된 저장소 하나
+base_branch  = 지목된 브랜치 하나
+seq_epoch    = 유효 에폭
+merge_seq    ∈ 요청 범위
+```
+
+앞의 둘은 이미 `q`가 만든다. **새로 결합되는 것은 `seq_epoch`이며 PR·커밋 두 인덱스에 똑같이
+적용된다.** 재채번 도중에는 옛 세대와 새 세대의 문서가 잠시 함께 있을 수 있고, 그때 필터가 없으면
+한 목록에 두 세대가 섞인다.
+
+**목록과 패싯이 같은 에폭을 본다.** 패싯은 별도 요청이지만 같은 결과 집합의 분포이므로, 목록이
+에폭 3이고 버킷이 에폭 4까지 세면 그 수는 아무 집합도 뜻하지 않는다 (QA-W001-16과 같은 규율).
+
+**규칙 5 — 에폭은 커서 정체성의 일부다.**
+
+`seq_epoch`은 `q` 밖의 파라미터라 지문에 넣지 않으면 **질의가 같고 에폭만 다른 두 조회가 같은
+지문을 갖는다.** 그래서 유효 에폭을 지문 재료에 더한다.
+
+| 질의 | 지문에 실리는 시퀀스 재료 |
+| --- | --- |
+| `seq:` 없음 | 없음 |
+| `seq:` 있음 | 유효 에폭 |
+
+첫 요청에 `seq_epoch`이 없어도 6단계에서 유효 에폭이 확정된 **뒤에** 지문을 만든다. 그래서 첫
+페이지의 커서부터 이미 에폭에 묶인다. 에폭 3의 커서를 에폭 4 조회에 쓰면 `CURSOR_QUERY_MISMATCH`다.
+
+**PIT과 혼동하지 않는다.** PIT은 색인 뷰를 고정하지 그 서수가 무엇을 뜻하는지를 고정하지 않는다.
+두 장치는 다른 것을 지킨다.
+
+**규칙 6 — 공간을 확인할 수 없으면 존재를 알리지 않는다.**
+
+규칙 1을 만족해도 저장소가 미등록이거나, 접근 범위 밖이거나, 그 브랜치가 채번된 적이 없을 수 있다.
+셋을 구분해 답하지 않는다 — `API-SEQ-001`이 이미 같은 이유로 셋을 `NOT_FOUND` 하나로 묶었다
+(CR-027, DEV-137 / THR-006). **새로운 존재 신탁을 만들지 않는다.**
+
+```json
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "이 seq: 조건을 해석할 시퀀스 공간을 확인할 수 없습니다."
+  },
+  "correlation_id": "..."
+}
+```
+
+화면은 여기서 W-009 저장소 개요로 가는 진단 링크를 제시할 수 있다. 그 화면 역시 같은 규칙으로
+미등록과 범위 밖을 구분하지 않는다 (FR-ING-009 AC-10).
+
+**규칙 7 — `seq_epoch` 파라미터의 형식.**
+
+정수이며 1 이상이어야 한다. 아니면 `INVALID_PARAMETER`(`detail.field: "seq_epoch"`)다.
+**형식 오류를 "지정하지 않음"으로 읽지 않는다** (DEV-363) — 오타 하나가 조용히 현재 에폭 조회로
+흘러가면 그것이 이 CR이 막으려는 실패다.
+
+`q`에 `seq:` 범위 조건이 없는데 `seq_epoch`만 있으면 거절한다. 뜻이 없는 파라미터를 조용히 무시하면
+화면이 그것을 계속 보내고, 나중에 그 값이 뜻을 갖게 되는 날 아무도 그 자리를 다시 보지 않는다.
+
+**`sequence_state`는 조회를 막지 않는다.** 공간이 `stale`·`reassigning`이어도 에폭이 일치하면
+"마지막으로 확정된 값"으로 답한다 (기존 시퀀스 계약과 같다). 화면은 그 상태를 값과 함께 보인다 —
+숨기지 않는다.
 
 #### 커서 계약 (CR-043, WP-032가 구현한다)
 
@@ -490,6 +657,7 @@ ADR-010은 커서의 **재료**(정렬 키 값 + 질의 지문)와 **동률 처�
 - 정규화한 질의 문자열
 - 정렬 키와 정렬 방향
 - **유효 접근 범위**(배열을 정렬한 뒤) 와 `access_scope_version`
+- **`seq:` 질의의 유효 시퀀스 에폭** (CR-051). `seq:`가 없으면 이 재료가 없다 — `null`이나 `0` 같은 대체값을 쓰지 않는다
 
 접근 범위를 지문에 넣는 것은 ADR-010이 이미 정한 것이며, 그 결과 **권한이 회수되면 진행 중이던 페이징이 죽는다.** 그것이 옳다 — 이전 권한 집합 기준으로 계산된 순서를 회수 뒤에 이어 쓰면 사용자는 지금 볼 수 없는 문서 사이의 위치에서 페이징을 계속하게 된다. 같은 요청 안에서 접근 범위를 두 번 산출하지 않는다.
 
@@ -586,6 +754,12 @@ Elasticsearch 내부에서 `pre_tags`·`post_tags`를 쓰는 것은 무방하다
   "owner": { "user_id": "oidc-sub-1", "login": "alice" },
   "is_owner": true,
   "query_status": "valid",
+  "sequence_reference": {
+    "status": "current",
+    "stored_seq_epoch": 3,
+    "current_seq_epoch": 3,
+    "sequence_state": "ok"
+  },
   "created_at": "2026-08-27T09:00:00Z",
   "last_run_at": "2026-08-27T10:00:00Z"
 }
@@ -594,7 +768,17 @@ Elasticsearch 내부에서 `pre_tags`·`post_tags`를 쓰는 것은 무방하다
 - `target_team`은 `visibility`가 `team`일 때만 있다. **식별자는 `team_id`다** — `slug`은 `(org_id, slug)`에서만 유일하므로 이름 하나가 팀 여럿을 가리킬 수 있고(DEV-331), 그것을 정체성으로 쓰면 다른 조직의 동명 팀으로 공유가 샌다. `org_id`와 `slug`은 화면이 사람에게 보여 주기 위한 것이다.
 - `is_owner`는 **요청한 사람 기준**이다. 화면이 편집·삭제 액션을 그릴지 정하는 값이며, 서버는 이 값을 믿지 않고 매번 다시 판정한다.
 - `query_status`는 `valid` 또는 `invalid`다. `invalid`면 `query_error`가 함께 실린다 — 파서가 낸 `token`·`offset_start`·`offset_end`를 그대로 옮긴다 (AC-6).
-- **저장하는 것은 이름과 질의 문자열뿐이다.** 정렬·패싯 선택·커서·조회 결과·저장자의 접근 범위를 담지 않는다. 필터는 이미 질의 문자열 안에 있다.
+- `sequence_reference`는 **질의가 `seq:` 범위 조건을 담을 때만** 나타난다 (CR-051, AC-8). `status`는 넷이다.
+
+| `status` | 뜻 | `stored_seq_epoch` | `current_seq_epoch`·`sequence_state` |
+| --- | --- | --- | --- |
+| `current` | 저장된 에폭이 현재와 같다 | 값 | 값 |
+| `epoch_stale` | 달라졌다 — 그 서수는 다른 커밋을 가리킬 수 있다 | 값 | 값 |
+| `unbound` | CR-051 이전에 에폭 없이 저장됐다 | `null` | 값 |
+| `unavailable` | **이 사용자가 그 저장소를 볼 수 없다** | **키 자체가 없다** | **키 자체가 없다** |
+
+  **`unavailable`은 `status` 하나만 싣는다** — 이것이 이 계약의 보안 경계다 (THR-043). 팀 공유는 **이름과 질의 문자열을 보이게 하는 일**이지 그 저장소를 읽을 권한을 주는 일이 아니며(AC-3, THR-012), 에폭 값은 "그 저장소의 히스토리가 몇 번 재작성됐다"를 말해 주는 활동 정보다. **`stored_seq_epoch`도 뺀다** — 저장자가 남긴 값이지만 공유된 것은 이름과 질의 문자열뿐이었고, `stored_seq_epoch: 5`는 그 저장소가 최소 다섯 세대를 거쳤다는 사실을 새로 알려 준다. FR-SRCH-010 AC-8은 "자신이 더 이상 구성원이 아닌 팀"이 아니라 **"자신이 접근할 수 없는 저장소"의 에폭·시퀀스 상태를 노출하지 않는다**고 정하며, 그 문장에는 어느 쪽 에폭인지 단서가 없다.
+- **저장하는 것은 이름과 질의 문자열, 그리고 `seq:` 조건이 딛고 선 에폭뿐이다** (CR-051). 정렬·패싯 선택·커서·조회 결과·저장자의 접근 범위를 담지 않는다. 필터는 이미 질의 문자열 안에 있고, **시퀀스 공간의 정체성도 질의가 지목한 `repo:`·`base:`에서 나오므로 따로 저장하지 않는다** — 저장소·브랜치를 열로 복사하면 질의와 그 사본이 어긋나는 날이 온다.
 
 #### `GET /api/v1/saved-searches`
 
@@ -606,6 +790,8 @@ Elasticsearch 내부에서 `pre_tags`·`post_tags`를 쓰는 것은 무방하다
 - `cursor` (optional): 이전 응답의 `next_cursor`
 
 정렬은 `created_at DESC, saved_search_id DESC`로 고정한다. 사용자가 정렬을 고르는 화면이 아니고, 동률에서 결정론이 없으면 커서 순회가 항목을 건너뛴다.
+
+**`sequence_reference`는 페이지 단위로 한 번에 판정한다** (CR-051). 항목마다 저장소·시퀀스 공간을 조회하면 페이지 크기(최대 100)만큼 왕복이 생긴다. 순서는 이렇다: 페이지를 읽고 → `seq:`를 담은 질의들을 파싱해 `(repo, base)` 쌍을 모으고 → 저장소 행을 일괄 조회하고 → **요청자의 접근 범위로** 볼 수 있는 것을 가리고 → 시퀀스 공간을 일괄 조회해 상태를 붙인다. **자원 표현을 만드는 함수 안에서 데이터베이스를 부르지 않는다** — 그 자리에 한 번 왕복이 들어가면 그것은 언제나 항목 수만큼 늘어난다 (ADR-009와 같은 규율).
 
 ```json
 {
@@ -646,7 +832,7 @@ ADR-010은 오프셋을 금지한다. 그러나 **W-001의 커서를 그대로 �
 #### `POST /api/v1/saved-searches`
 
 ```json
-{ "name": "결제 월간 리뷰", "query": "repo:acme/payments merged:2026-08-01..2026-08-31", "visibility": "team", "team_id": 101 }
+{ "name": "결제 월간 리뷰", "query": "repo:acme/payments base:main seq:1280..1342", "visibility": "team", "team_id": 101, "seq_epoch": 3 }
 ```
 
 - `owner_user_id`를 **본문에서 받지 않는다.** 소유자는 세션이 정한다 — 받는 순간 그것이 남의 이름으로 저장하는 문이 된다.
@@ -655,6 +841,11 @@ ADR-010은 오프셋을 금지한다. 그러나 **W-001의 커서를 그대로 �
 - **그 확인은 쓰기와 원자적이어야 한다** (CR-049 PR #59 리뷰). `READ COMMITTED`에서 각 문장은 자기 시작 시점의 스냅숏을 보므로, 멤버십을 읽고 나중에 `INSERT`하면 **그 사이에 커밋된 팀 탈퇴를 보지 못한다** — 이탈한 사람이 그 팀에 공유하는 행을 만들 수 있다. 같은 트랜잭션 안에서 `team_member` 행을 `SELECT ... FOR SHARE`로 잠근 뒤 쓴다. 잠그면 그 행을 지우려는 트랜잭션이 이쪽 커밋까지 기다리고, 반대로 삭제가 먼저 커밋했다면 이쪽 `SELECT`가 그것을 보고 거절한다 — 어느 순서든 결과가 일관된다. `/run`이 갱신 문장 자체에 권한 조건을 거는 것과 **같은 규율**이며, 판정과 쓰기 사이에 창을 남기지 않는다는 뜻이다.
 - `query`는 `@prs/query`로 검증한다. 서버와 화면이 **같은 파서**를 쓴다 (ADR-001). 실패하면 `400 QUERY_SYNTAX_ERROR`이며 파서가 낸 오프셋을 그대로 싣는다.
 - `name`은 공백만으로 이루어질 수 없다. 그 밖의 길이 상한은 이 계약이 새로 만들지 않는다 — 본문 크기 경계가 이미 있다.
+- **`query`가 `seq:` 범위 조건을 담으면 `seq_epoch`이 필수다** (CR-051, AC-8). 담지 않으면 `seq_epoch`을 받지 않는다 — 있으면 `400 INVALID_PARAMETER`다. 질의는 `API-SRCH-004`의 「시퀀스 인용 계약」 규칙 1도 함께 만족해야 한다.
+
+**서버가 현재 에폭을 대신 채우지 않는다.** 이것이 이 필드를 본문에서 받는 이유다. W-001이 에폭 3의 결과를 보는 동안 히스토리가 재작성되어 현재가 4가 될 수 있는데, 서버가 무조건 "현재"를 저장하면 **사용자가 본 것은 3이고 저장된 것은 4**가 된다. 그래서 화면이 자기가 보고 있던 에폭을 보내고 서버가 그것을 현재 값과 대조한다. 다르면 `409 SAVED_SEARCH_QUERY_INVALID`(`detail.reason: "epoch_stale"`)로 거절한다 — **저장을 거절하는 편이 사용자가 보지 않은 결과를 저장하는 것보다 낫다.** 이 대조도 `team_id` 확인과 같은 트랜잭션 안에서 한다.
+
+**공간을 확인할 수 없으면 `404 NOT_FOUND`다** — `API-SRCH-004` 규칙 6과 같은 이유이며, 저장 경로가 새로운 존재 신탁이 되지 않게 한다.
 
 **상한 검사는 경쟁 조건에서도 성립해야 한다** (AC-4, DEV-336). `SELECT count(*)` 뒤에 `INSERT`하는 순서는 99건 상태에서 동시 요청 둘을 101건으로 만든다. 소유자 행을 잠그고(`SELECT ... FOR UPDATE`) 세고 넣는 것을 **한 트랜잭션 안에서** 한다. 상한을 넘으면 `409 SAVED_SEARCH_LIMIT`이다. 여러 행에 걸친 개수를 `CHECK`로 강제하지 않는다 — PostgreSQL의 `CHECK`는 다른 행을 볼 수 없다.
 
@@ -670,6 +861,20 @@ ADR-010은 오프셋을 금지한다. 그러나 **W-001의 커서를 그대로 �
 - **이 확인도 `POST`와 같은 잠금을 쓴다.** 검사 뒤 갱신 사이에 탈퇴가 커밋되면 같은 구멍이 열린다.
 - `visibility`를 `private`으로 바꾸면 `team_id`를 지운다.
 
+**`PATCH`가 시퀀스 인용을 조용히 옮기지 않는다** (CR-051). 이것이 이 절에서 가장 조심할 자리다 — 이름만 고치는 요청이 낡은 에폭을 현재 값으로 바꾸면 그것이 바로 이 CR이 막으려는 자동 재해석이다. 다섯 경우를 나눈다.
+
+| 요청 | `seq_epoch` 처분 |
+| --- | --- |
+| `query`가 오지 않았고 `seq_epoch`도 없다 (이름·공개 범위·팀만 수정) | **그대로 둔다.** 낡았어도 낡은 채로 남는다 |
+| `query`가 `seq:`를 잃었다 | `null`로 지운다. 뜻이 없어진 값을 남기지 않는다 |
+| `query`가 `seq:`를 새로 얻었다 | `seq_epoch` 필수. 현재 값과 대조해 저장한다 |
+| `query`의 `seq:`·`repo:`·`base:`가 바뀌었다 | 같음 — 인용 대상이 달라졌으므로 새 에폭을 확정해야 한다 |
+| `query`는 그대로인데 `seq_epoch`이 왔다 | **명시적 재연결이다.** 현재 값과 대조해 갱신한다 |
+
+마지막 줄이 화면의 「현재 에폭으로 다시 연결」이다. **본문에 `query`가 실려 있다는 사실만으로 재연결 의도를 판정하지 않는다** — 화면이 전체 폼을 보내는 구현이면 이름 한 글자 수정도 `query`를 담아 오기 때문이다. 판정의 재료는 `seq_epoch`의 존재와 질의의 실제 변화이지 본문 필드의 유무가 아니다.
+
+**`unbound` 항목의 복구도 이 경로다.** 저장자가 현재 에폭을 확인해 `seq_epoch`을 보내면 그때 비로소 값이 생긴다. 서버가 목록 조회나 실행 시점에 채우지 않는다.
+
 #### `DELETE /api/v1/saved-searches/{saved_search_id}`
 
 저장자만 수행한다. 저장자가 아니면 `404`다. 응답 `204`.
@@ -681,9 +886,9 @@ ADR-010은 오프셋을 금지한다. 그러나 **W-001의 커서를 그대로 �
 ```json
 {
   "saved_search_id": 42,
-  "query": "repo:acme/payments merged:2026-08-01..2026-08-31",
+  "query": "repo:acme/payments base:main seq:1280..1342",
   "last_run_at": "2026-08-27T10:00:00Z",
-  "navigation_url": "/search?q=repo%3Aacme%2Fpayments+merged%3A2026-08-01..2026-08-31",
+  "navigation_url": "/search?q=repo%3Aacme%2Fpayments+base%3Amain+seq%3A1280..1342&seq_epoch=3",
   "correlation_id": "..."
 }
 ```
@@ -691,6 +896,8 @@ ADR-010은 오프셋을 금지한다. 그러나 **W-001의 커서를 그대로 �
 **결과를 여기서 계산하면 AC-3이 구조적으로 위태로워진다.** 이 경로가 검색까지 수행하면 "누구의 범위로 계산했는가"가 이 핸들러의 판단이 되고, 언젠가 저장자의 범위를 캐시하는 최적화가 들어올 자리가 생긴다. 화면을 W-001로 보내고 그곳이 `API-SRCH-004`를 **실행자의 세션으로** 부르게 하면, 저장된 검색은 접근 통제 경로에 아예 참여하지 않는다.
 
 - 실행 권한: 저장자이거나 대상 팀의 현재 구성원. 아니면 `404`.
+- **`navigation_url`은 저장된 에폭을 그대로 싣는다** (CR-051). 현재 값으로 바꿔 보내지 않는다 — 낡았는지 판정하고 그 사실을 보이는 것은 `API-SRCH-004`와 W-001의 일이며, 여기서 현재 에폭을 붙이면 **사용자가 무효를 볼 기회 없이 다른 세대의 결과에 도착한다.**
+- **`unbound` 항목은 실행하지 않는다.** 질의에 `seq:`가 있는데 저장된 에폭이 없으면 `409 SAVED_SEARCH_QUERY_INVALID`(`detail.reason: "sequence_unbound"`)이며 `last_run_at`도 갱신하지 않는다. 여기서 현재 에폭을 붙이는 것은 복구가 아니라 추측이다 — **저장 당시의 에폭은 어디에도 남아 있지 않다.**
 - 질의가 현재 문법에서 무효면 `409 SAVED_SEARCH_QUERY_INVALID`이며 오류 위치를 함께 싣는다. **이때 `last_run_at`을 갱신하지 않는다** — 실행되지 않은 것을 실행했다고 적지 않는다.
 - `last_run_at`은 **유효하고 권한 있는 실행에서만** 갱신하며, 저장자든 공유받은 구성원이든 똑같이 갱신한다. 그것이 "이 검색이 마지막으로 쓰인 시각"이라는 뜻이다.
 - 권한 확인과 갱신 사이에 팀 구성이 바뀔 수 있으므로, **갱신 문장 자체가 권한 조건을 다시 건다.** 갱신된 행이 0이면 `404`다.
@@ -716,7 +923,8 @@ ADR-010은 오프셋을 금지한다. 그러나 **W-001의 커서를 그대로 �
 | `NOT_FOUND` | 404 | 없는 항목, 볼 수 없는 항목, 소유하지 않은 항목에 대한 수정·삭제 |
 | `SAVED_SEARCH_LIMIT` | 409 | 소유한 저장 검색이 100건 |
 | `SAVED_SEARCH_NAME_CONFLICT` | 409 | 같은 이름의 내 검색이 이미 있음 |
-| `SAVED_SEARCH_QUERY_INVALID` | 409 | 저장돼 있던 질의가 현재 문법에서 무효인데 실행을 요청 |
+| `SAVED_SEARCH_QUERY_INVALID` | 409 | 저장돼 있던 질의가 현재 문법에서 무효인데 실행을 요청. **저장 시점에 에폭이 이미 낡았거나(`detail.reason: "epoch_stale"`), 에폭 없이 저장된 항목의 실행을 요청한 경우(`"sequence_unbound"`)도 이 코드다** (CR-051) — 셋 다 "저장된 질의를 지금 그대로 쓸 수 없다"는 같은 사실이며, 새 코드를 만들면 화면이 같은 처리를 세 갈래로 나눠 쓰게 된다 |
+| `NOT_FOUND` | 404 | 볼 수 없거나 존재하지 않는 저장 검색. **`seq:` 질의가 지목한 시퀀스 공간을 확인할 수 없는 경우도 같다** (CR-051) |
 
 ### API-SEQ-001 시퀀스 범위 조회
 
@@ -2098,7 +2306,7 @@ POST /api/v1/admin/reindex
 | `REINDEX_BUSY` | 409 | 다른 별칭이 재색인 중 (동시 실행 상한 1) | 실행 중인 재색인 완료 대기 |
 | `SAVED_SEARCH_LIMIT` | 409 | 저장 100건 초과 | 기존 항목 삭제 |
 | `SAVED_SEARCH_NAME_CONFLICT` | 409 | 같은 이름의 내 저장 검색이 이미 있음 (CR-049) | 이름 변경 |
-| `SAVED_SEARCH_QUERY_INVALID` | 409 | 저장된 질의가 현재 문법에서 무효인데 실행을 요청 (CR-049) | 질의 수정(저장자) |
+| `SAVED_SEARCH_QUERY_INVALID` | 409 | 저장된 질의가 현재 문법에서 무효인데 실행을 요청 (CR-049). `detail.reason`이 `epoch_stale`·`sequence_unbound`를 가른다 (CR-051) | 질의 수정 또는 에폭 재연결(저장자) |
 | `PAYLOAD_TOO_LARGE` | 413 | 웹훅 25MB 초과 | (GHE 측) |
 | `PERMISSION_UNAVAILABLE` | 503 | 접근 범위 조회 실패 | 잠시 후 재시도 |
 | `SEARCH_TIMEOUT` | 504 | 검색 3초 초과 | 조건 추가 |
