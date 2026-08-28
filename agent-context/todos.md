@@ -180,9 +180,9 @@ Gate 6 운영(**불가** — 실제 K8s 없음).
 ## F. 확인할 사항
 
 - **open DEV는 8건이다.** 세는 법:
-  ```bash
+```bash
   grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
-  ```
+```
   주의: `**open**`처럼 굵게 쓰면 이 grep에 안 잡힌다. **새 행은 `| open ...` 형식으로 쓴다** —
   이번 세션에서도 DEV-364를 굵게 써서 한 번 놓쳤고 실측으로 잡았다
 - **호출부를 grep으로 훑을 때 glob을 믿지 마라.** `apps/search-api/src/**/*.ts`는 bash의 globstar가
@@ -329,9 +329,9 @@ Gate 6 운영(불가 — 실제 K8s 없음).
 
 - **open DEV는 8건이다.** 세는 법:
 
-  ```bash
+```bash
   grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
-  ```
+```
 
   주의: `**open**`처럼 굵게 쓰면 이 grep에 안 잡힌다. **새 행은 `| open ...` 형식으로 쓴다** —
   이번 세션에서 그 함정을 그대로 밟았고 실측으로 잡았다
@@ -473,9 +473,9 @@ ls packages/db/migrations/*.up.sql | tail -1
 
 - ⚠️ **전사 파일이 `.gitignore` 밖에 있다.** `pr-search/202608271346.md`(99KB). `/export`에 상대 경로를 줘서 저장소 루트에 떨어졌고, `.gitignore` 24행은 `exports/`만 덮는다 — `git check-ignore`로 실측했다. **`git add -A`를 쓰면 커밋에 딸려 간다.** `exports/`로 옮기거나 지운다
 - **open DEV는 7건이다.** 세는 법:
-  ```bash
+```bash
   grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
-  ```
+```
   주의: `**open**`처럼 굵게 쓰면 이 grep에 안 잡힌다. **새 행은 `| open ...` 형식으로 쓴다**
 - 남은 오픈 결정은 **OD-008** 하나다 (안전 구간 표식 권한 범위, REL-006 착수 전 — 기한 전)
 - **새 역할을 추가하면 ① 코드 갈래 ② manifest ③ 인프라 3장 표 셋이 함께** 가야 한다. 그리고 표에 **중복 행**을 만들지 않고, 표 아래 **산문도 함께** 고친다 (DEV-321·322)
@@ -562,9 +562,9 @@ ls packages/db/migrations/*.up.sql | tail -1
 ## E. 확인할 사항
 
 - **open DEV는 8건이다** (기존 5 + DEV-304·305·306). 세는 법:
-  ```bash
+```bash
   grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
-  ```
+```
   주의: `**open**`처럼 굵게 쓰면 이 grep에 안 잡힌다. **새 행은 `| open ...` 형식으로 쓴다**
 - 남은 오픈 결정은 **OD-008** 하나다 (안전 구간 표식 권한 범위, REL-006 착수 전 — 기한 전)
 - **회귀가 이제 배포 단위를 양방향으로 검사한다.** 새 역할을 추가하면 ① 코드 갈래 ② manifest ③ 인프라 3장 표 **셋이 함께** 가야 한다
@@ -647,9 +647,9 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 
 - **open DEV는 5건이다** (DEV-001·006·010·016·026). 전부 기존 환경 제약·범위 공백이다. 세는 법:
 
-  ```bash
+```bash
   grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
-  ```
+```
 
 - **남은 오픈 결정은 OD-008 하나다** (안전 구간 표식 권한 범위, REL-006 착수 전 — 기한 전). OD-005는 CR-040으로 닫혔다
 - **`link` 역할에 `GHE_BASE_URL`이 필요하다** — 없으면 URL 참조를 아예 만들지 않는다(THR-036, fail closed). 조용히 적게 만드는 것이라 눈치채기 어렵다
@@ -675,11 +675,11 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 
 - 대상: **WP-031 관계 조회 API와 상세 화면 관계 섹션** (`docs/40_delivery/pr_search_work_packages.md`)
 - next-free는 **실측할 것** — CR-042 / DEV-248이 예상이지만 추측해 쓰지 않는다:
-  ```bash
+```bash
   grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -2
   grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -2
   grep -rohE 'API-REL-[0-9]{3}' docs/ | sort -u     # 새 API ID는 충돌부터
-  ```
+```
 
 ### 이번 세션이 **이미 찾아 둔 다섯** (감사만 했고 CR은 열지 않았다)
 
@@ -725,9 +725,9 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 
 - **통합 전량 5회 중 1회 실패했고 그 회차의 실패 시험을 기록하지 못했다.** 출력을 요약 줄만 남기고 버린 명령 실수다. 이후 **4회 연속 900/900 통과**. 원인 미규명이며 원장 6.35장에 **해소하지 않은 채** 남겼다. 공유 `prs_test`·공유 ES의 파일 간 오염이 유력한 후보다 — **다음 세션이 같은 것을 보면 그때 귀속한다.** 전량 실행 시 출력을 통째로 파일에 남겨라
 - open DEV는 **5건**이다 (`DEV-001`·`006`·`010`·`016`·`026`). 전부 기존 환경 제약·범위 공백이다. 세는 법:
-  ```bash
+```bash
   grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
-  ```
+```
 - **남은 오픈 결정은 OD-008 하나**다 (안전 구간 표식 권한 범위, REL-006 착수 전 — 기한 전). OD-005는 CR-040으로 닫혔다
 - **`link` 역할에 `GHE_BASE_URL`이 필요하다** — 없으면 URL 참조를 아예 만들지 않는다(THR-036, fail closed). 조용히 적게 만드는 것이라 눈치채기 어렵다. WP-030의 세 계열은 GHE를 부르지 않으므로 이 제약과 무관하다
 - 전사는 `exports/202608262010.md`에 있다 — **실측 확인**. `/export` 출력은 저장소 루트를 가리켰으나 실제 파일은 `exports/`에 있고 `.gitignore` 24행이 덮는다. 미추적 0건. 그래도 `git add -A`·`git add .`는 쓰지 않는다 — 경로를 지목해 stage 한다
@@ -751,11 +751,11 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 
 - 대상: **WP-030 되돌림·체리픽·스택 관계 파생** (`docs/40_delivery/pr_search_work_packages.md`)
 - next-free는 **실측할 것** — CR-040 / DEV-230이 예상이지만 추측해 쓰지 않는다:
-  ```bash
+```bash
   grep -ohE 'CR-[0-9]{3}' docs/00_governance/change_control.md | sort -u | tail -2
   grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -2
   grep -rohE 'JOB-[A-Z]+-[0-9]{3}' docs/ | sort -u   # 새 ID는 충돌부터
-  ```
+```
 - **WP-029가 깔아 둔 자리** — 다시 만들지 말 것:
   - `link` 역할·`pipeline-worker-link.yaml`·README 적용 순서가 **이미 있다**
   - `link_summary`의 네 leaf(`has_revert`·`is_reverted`·`has_cherry_pick`·`has_stack`)와
@@ -798,9 +798,9 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - **open DEV는 5건이다** — DEV-001·006·010·016·026. 이전 인계가 "1건(DEV-010)"이라
   적었으나 실측은 다섯이다. 전부 기존 환경 제약·범위 공백이며 이번 작업이 만든 것이
   아니다. 세는 법:
-  ```bash
+```bash
   grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
-  ```
+```
 - **`OD-005`(nori 플러그인)의 기한이 도래했다.** "REL-004 착수 전"인데 WP-029가
   REL-004의 첫 WP였다. 전문 검색(WP-032) 소관이라 WP-029·030을 막지 않으므로
   결정하지 않았다 — **사용자 결정 항목으로 열려 있다** (`change_control.md` 6장)

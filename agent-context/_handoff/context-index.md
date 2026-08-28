@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-08-28T17:57:09+00:00
+generated=2026-08-28T18:05:57+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -42,8 +42,8 @@ sig=agent-context/files.md;docs/10_requirements/srs_final.md;docs/00_governance/
 ### f7b39dc
 src=agent-context/risks.md
 compact=agent-context/_handoff/compact/f7b39dc.risks.ctx.md
-sha256=aa5ca4c042f3da6af5f92dd381eeaeeb764435fb3c200c6c4418fa51f55dfcf8
-bytes=75882 compact_bytes=44187 lines=1149 priority=45
+sha256=6d78885402011a05367f9048c7741f9ade4ec40fd3c8ac3ac28a445f6566338f
+bytes=77029 compact_bytes=75257 lines=1165 priority=45
 heads=리스크 · 불확실한 가정 · 함정 > 절차 함정 (이 세션에서 실제로 밟은 것들) > 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다 > lint는 마지막 파일을 쓴 뒤에 다시 돌려라 > 대역(mock)이 실제보다 관대하면 그만큼이 사각지대다 > 임시 컨테이너에서는 슬라이스마다 커밋하라
 sig=agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 
@@ -66,8 +66,8 @@ sig=agent-context/session-summary.md;10/11;CR/DEV;11/11;1/8;2/8;3/8;acme/b;acme/
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=ad0537463ff22d32f632b6a09869742cf5ea30046be9b95c176b0cfc962da707
-bytes=69596 compact_bytes=49658 lines=901 priority=30
+sha256=2c208a899e7ca7ea5198074f192f62199da84f57115b4e0ae18683ebd95ff2c5
+bytes=69560 compact_bytes=69396 lines=901 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > A. 지금 당장 — WP-038 W-006 통계 대시보드 (REL-005의 화면) > B. 배포에서 해야 할 것 > C. 별도 CR 둘 — 남은 미배포 역할 (변화 없음) > D. 릴리스 게이트 4·5·6 (변화 없음) > E. 미뤄 둔 항목
 sig=agent-context/todos.md;8/8;1/4;apps/search-api/src/analytics/prepare.ts;apps/search-api/src/analytics/execute.ts;packages/db/migrations/;apps/ingest-gateway/src/archive.ts;packages/es/src/;deploy/k8s/README.md;packages/query/src/sequence-binding.ts;packages/es/src/query-builder.ts;apps/search-api/src/search/sequence-context.ts;apps/search-api/src/saved-search/sequence-reference.ts;apps/web/lib/query-url.ts;docs/40_delivery/pr_search_implementation_traceability.md;apps/search-api/src/;sequence/range.ts;7/8;apps/search-api/src/repositories/overview.ts;apps/search-api/src/repositories/cursor.ts;apps/web/lib/repository-overview.ts;api/repositories;api/v1;api/v1/v1/
 
