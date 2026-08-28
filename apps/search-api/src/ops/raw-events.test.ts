@@ -58,23 +58,23 @@ describe('조회 조건 파싱', () => {
 describe('커서 지문', () => {
   it('접근 범위가 다르면 지문이 다르다', () => {
     const filter = parseRawEventFilter({});
-    expect(computeRawEventFingerprint(filter, [1, 2])).not.toBe(
-      computeRawEventFingerprint(filter, [1, 2, 3]),
+    expect(computeRawEventFingerprint(filter, [1, 2], SIGNER)).not.toBe(
+      computeRawEventFingerprint(filter, [1, 2, 3], SIGNER),
     );
   });
 
   it('접근 범위의 순서는 지문을 바꾸지 않는다', () => {
     const filter = parseRawEventFilter({});
-    expect(computeRawEventFingerprint(filter, [2, 1])).toBe(
-      computeRawEventFingerprint(filter, [1, 2]),
+    expect(computeRawEventFingerprint(filter, [2, 1], SIGNER)).toBe(
+      computeRawEventFingerprint(filter, [1, 2], SIGNER),
     );
   });
 
   it('include_payload가 지문에 들어간다 — 순회 중 노출 범위가 조용히 바뀌지 않는다', () => {
     const closed = parseRawEventFilter({});
     const open = parseRawEventFilter({ include_payload: 'true' });
-    expect(computeRawEventFingerprint(closed, [1])).not.toBe(
-      computeRawEventFingerprint(open, [1]),
+    expect(computeRawEventFingerprint(closed, [1], SIGNER)).not.toBe(
+      computeRawEventFingerprint(open, [1], SIGNER),
     );
   });
 
@@ -82,29 +82,56 @@ describe('커서 지문', () => {
     // 봉투는 서명될 뿐 암호화되지 않는다. 지문이 저장소 ID를 그대로 담으면
     // 그 커서를 받은 사람도, 그것이 남은 감사 기록을 읽는 사람도 요청자의
     // 접근 범위 전부를 복원한다.
-    const fingerprint = computeRawEventFingerprint(parseRawEventFilter({}), [90_101, 90_102]);
+    const fingerprint = computeRawEventFingerprint(parseRawEventFilter({}), [90_101, 90_102], SIGNER);
     expect(fingerprint).not.toContain('90101');
     expect(fingerprint).not.toContain('90102');
     expect(fingerprint).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
 
+  it('**구분자가 든 값이 다른 질의를 같은 지문으로 만들지 않는다** (PR #70 리뷰)', () => {
+    /*
+     * 구분자로 이으면 `event_type=foo|bar&action=baz`와
+     * `event_type=foo&action=bar|baz`가 같은 재료가 된다. 그러면 첫 질의로 받은
+     * 커서가 두 번째 질의에 통과해 `search_after` 위치가 엉뚱한 결과 집합에
+     * 적용된다 — `CURSOR_QUERY_MISMATCH`가 나와야 할 자리에서 조용히 넘어간다.
+     */
+    const a = parseRawEventFilter({ event_type: 'foo|bar', action: 'baz' });
+    const b = parseRawEventFilter({ event_type: 'foo', action: 'bar|baz' });
+    expect(computeRawEventFingerprint(a, [1], SIGNER)).not.toBe(
+      computeRawEventFingerprint(b, [1], SIGNER),
+    );
+  });
+
+  it('**서버 비밀이 다르면 지문이 다르다** — 무열쇠 해시는 되계산으로 뚫린다', () => {
+    /*
+     * 감사 기록을 읽는 사람은 지문과 나머지 필터 값을 함께 갖는다. 무열쇠
+     * 해시라면 후보 저장소 ID를 넣어 다시 계산해 맞춰 볼 수 있고, 저장소
+     * 하나짜리 범위는 등록된 ID마다 한 번이면 된다 (PR #70 리뷰).
+     */
+    const other = createCursorSigner('yet-another-key-long-enough-for-hmac!!');
+    const filter = parseRawEventFilter({});
+    expect(computeRawEventFingerprint(filter, [1], SIGNER)).not.toBe(
+      computeRawEventFingerprint(filter, [1], other),
+    );
+  });
+
   it('조건이 같으면 지문이 같다', () => {
     const a = parseRawEventFilter({ repository: 'seg/payments', limit: '10' });
     const b = parseRawEventFilter({ repository: 'seg/payments', limit: '10' });
-    expect(computeRawEventFingerprint(a, [1])).toBe(computeRawEventFingerprint(b, [1]));
+    expect(computeRawEventFingerprint(a, [1], SIGNER)).toBe(computeRawEventFingerprint(b, [1], SIGNER));
   });
 });
 
 describe('커서 왕복', () => {
   it('같은 지문이면 정렬 위치를 되돌려 준다', () => {
-    const fingerprint = computeRawEventFingerprint(parseRawEventFilter({}), [1]);
+    const fingerprint = computeRawEventFingerprint(parseRawEventFilter({}), [1], SIGNER);
     const cursor = encodeRawEventCursor([1756382400000, 'd-9'], fingerprint, SIGNER, NOW);
     expect(decodeRawEventCursor(cursor, fingerprint, SIGNER, NOW)).toEqual([1756382400000, 'd-9']);
   });
 
   it('지문이 다르면 CURSOR_QUERY_MISMATCH다', () => {
-    const closed = computeRawEventFingerprint(parseRawEventFilter({}), [1]);
-    const open = computeRawEventFingerprint(parseRawEventFilter({ include_payload: 'true' }), [1]);
+    const closed = computeRawEventFingerprint(parseRawEventFilter({}), [1], SIGNER);
+    const open = computeRawEventFingerprint(parseRawEventFilter({ include_payload: 'true' }), [1], SIGNER);
     const cursor = encodeRawEventCursor([1, 'd-1'], closed, SIGNER, NOW);
     expect(() => decodeRawEventCursor(cursor, open, SIGNER, NOW)).toThrow(
       /조회 조건이 커서와 다르다/,
@@ -112,14 +139,14 @@ describe('커서 왕복', () => {
   });
 
   it('접근 범위가 줄면 옛 커서를 거절한다 — 권한 축소가 순회로 우회되지 않는다', () => {
-    const wide = computeRawEventFingerprint(parseRawEventFilter({}), [1, 2, 3]);
-    const narrow = computeRawEventFingerprint(parseRawEventFilter({}), [1]);
+    const wide = computeRawEventFingerprint(parseRawEventFilter({}), [1, 2, 3], SIGNER);
+    const narrow = computeRawEventFingerprint(parseRawEventFilter({}), [1], SIGNER);
     const cursor = encodeRawEventCursor([1, 'd-1'], wide, SIGNER, NOW);
     expect(() => decodeRawEventCursor(cursor, narrow, SIGNER, NOW)).toThrow(AdminRejected);
   });
 
   it('훼손된 커서는 CURSOR_INVALID다', () => {
-    const fingerprint = computeRawEventFingerprint(parseRawEventFilter({}), [1]);
+    const fingerprint = computeRawEventFingerprint(parseRawEventFilter({}), [1], SIGNER);
     expect(() => decodeRawEventCursor('not-a-cursor', fingerprint, SIGNER, NOW)).toThrow(
       /커서를 해석할 수 없다/,
     );
@@ -127,7 +154,7 @@ describe('커서 왕복', () => {
 
   it('다른 키로 서명된 커서는 받지 않는다', () => {
     const other = createCursorSigner('another-key-that-is-also-long-enough!!');
-    const fingerprint = computeRawEventFingerprint(parseRawEventFilter({}), [1]);
+    const fingerprint = computeRawEventFingerprint(parseRawEventFilter({}), [1], SIGNER);
     const cursor = encodeRawEventCursor([1, 'd-1'], fingerprint, other, NOW);
     expect(() => decodeRawEventCursor(cursor, fingerprint, SIGNER, NOW)).toThrow(AdminRejected);
   });

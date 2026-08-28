@@ -19,7 +19,6 @@
  * **그 노출은 되돌릴 수 없다.** `include_payload=true`는 명시적 열람 의사다.
  */
 
-import { createHash } from 'node:crypto';
 import type { estypes } from '@elastic/elasticsearch';
 import type { Client } from '@elastic/elasticsearch';
 import { ARCHIVE_ALIAS, applyArchiveScopeFilter, archiveAvailable, search } from '@prs/es';
@@ -127,30 +126,40 @@ export function parseReceivedAt(raw: unknown, field: string): string | undefined
  * `include_payload`가 들어가는 것은 **같은 순회 안에서 노출 범위가 조용히 바뀌지
  * 않게** 하기 위해서다. 도중에 켜면 지문이 달라져 커서가 거절된다.
  *
- * ## 접근 범위는 해시로 접어 넣는다 (PR #69 리뷰)
+ * ## 접근 범위는 열쇠 있는 해시로 접어 넣는다 (PR #69·#70 리뷰)
  *
  * **봉투는 서명될 뿐 암호화되지 않는다** — base64 한 번이면 안이 읽힌다. 첫 판은
  * `repositoryIds` 배열을 그대로 담았고, 그 커서가 감사 기록에 남으면 **감사를 읽는
- * 사람이 요청자의 접근 범위 전부를 복원한다.** 질의가 저장소 하나를 지목해도 그렇다.
+ * 사람이 요청자의 접근 범위 전부를 복원한다.**
  *
- * 지문은 "같은 범위가 늘 같은 값"이면 충분하고 그 안을 되읽을 필요가 없다 —
- * `repositories/cursor.ts`가 같은 이유로 같은 판단을 이미 내렸다.
+ * 두 번째 판은 무열쇠 SHA-256이었는데 그것으로도 부족하다: 감사 기록을 읽는 사람은
+ * 지문과 **나머지 필터 값을 전부** 함께 갖고 있으므로, 후보 저장소 ID를 넣어 다시
+ * 계산해 맞춰 볼 수 있다 — 저장소 하나짜리 범위면 등록된 ID마다 한 번이면 된다.
+ * 그래서 **서버 비밀을 쓰는 HMAC**으로 접는다. 커서 서명자가 이미 그 비밀을 들고 있다.
+ *
+ * ## 구분자로 잇지 않는다
+ *
+ * 값에 구분자가 들어 있으면 **서로 다른 질의가 같은 지문을 만든다** —
+ * `event_type=foo|bar&action=baz`와 `event_type=foo&action=bar|baz`가 그렇다.
+ * 그러면 첫 질의로 받은 커서가 두 번째 질의에 통과해 `search_after` 위치가
+ * 엉뚱한 결과 집합에 적용된다. `JSON.stringify`는 그 모호함을 만들지 않는다.
  */
 export function computeRawEventFingerprint(
   filter: RawEventFilter,
   repositoryIds: readonly number[],
+  signer: CursorSigner,
 ): string {
-  const material = [
-    filter.deliveryId ?? '',
-    filter.repository ?? '',
-    filter.eventType ?? '',
-    filter.action ?? '',
-    filter.receivedFrom ?? '',
-    filter.receivedTo ?? '',
-    String(filter.includePayload),
-    [...repositoryIds].sort((a, b) => a - b).join(','),
-  ];
-  return createHash('sha256').update(material.join('|'), 'utf8').digest('base64url');
+  const material = JSON.stringify([
+    filter.deliveryId ?? null,
+    filter.repository ?? null,
+    filter.eventType ?? null,
+    filter.action ?? null,
+    filter.receivedFrom ?? null,
+    filter.receivedTo ?? null,
+    filter.includePayload,
+    [...repositoryIds].sort((a, b) => a - b),
+  ]);
+  return signer.sign(material);
 }
 
 function readString(raw: unknown, field: string): string | undefined {
@@ -238,7 +247,7 @@ export async function listRawEvents(
     return { items: [], next_cursor: null, index_available: false };
   }
 
-  const fingerprint = computeRawEventFingerprint(filter, repositoryIds);
+  const fingerprint = computeRawEventFingerprint(filter, repositoryIds, deps.cursorSigner);
   const searchAfter = filter.cursor === undefined
     ? undefined
     : decodeRawEventCursor(filter.cursor, fingerprint, deps.cursorSigner, nowMs);
