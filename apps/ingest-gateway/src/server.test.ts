@@ -105,6 +105,9 @@ describe('QA-A001-01: 수신 지표 노출', () => {
         'ingest_rejected_total',
         'ingest_duplicate_total',
         'ingest_response_seconds',
+        // 버린 조각 수는 조용히 사라지면 안 된다 (FR-ING-010 AC-7, CR-052).
+        // 이 값이 없으면 "설계된 버림"과 "적재기가 못 따라간다"를 구분할 수 없다.
+        'ingest_archive_segments_dropped',
       ]) {
         expect(response.body).toContain(name);
       }

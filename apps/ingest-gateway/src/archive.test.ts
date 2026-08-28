@@ -90,6 +90,32 @@ describe('FR-ING-010 AC-7: 아카이브 파일은 스스로를 제한한다', ()
     expect(segments()).toContain('raw-events.ndjson.1');
   });
 
+  /*
+   * PR #66 리뷰 P1. 게이트웨이는 초당 200건을 지속으로 받으므로 여러 요청이
+   * `append`의 `await` 경계에서 인터리빙된다. 직렬화가 없으면 경계를 넘는 순간
+   * 여럿이 같은 `written`을 읽고 동시에 회전해 **한 번의 경계 통과가 여러 조각을
+   * 버린다.** 그 실패는 오류를 내지 않고 지표에도 설계된 버림과 같은 모양으로 남는다.
+   */
+  it('동시 append가 조각을 겹쳐 밀지 않는다 (PR #66 리뷰 P1)', async () => {
+    const writer = createArchiveWriter(path, { maxBytes: 250, keep: 4 });
+    await Promise.all(
+      Array.from({ length: 16 }, (_, i) => writer.append(record(`d-${String(i)}`, 'q'.repeat(150)))),
+    );
+    await writer.close();
+
+    // 상한을 넘지도, 과다 삭제로 모자라지도 않는다.
+    expect(segments()).toHaveLength(4);
+
+    // 남은 줄은 모두 온전한 JSON이고, 버린 조각 수가 실제 회전 횟수와 맞는다.
+    const lines = segments()
+      .flatMap((name) => readFileSync(join(dir, name), 'utf8').split('\n'))
+      .filter((line) => line.length > 0);
+    for (const line of lines) expect(() => JSON.parse(line) as unknown).not.toThrow();
+
+    // 16줄 중 마지막 것은 반드시 남아 있다.
+    expect(lines.some((line) => line.includes('d-15'))).toBe(true);
+  });
+
   it('보관 개수 1은 거절한다 — 밀 자리가 없으면 회전이 곧 유실이다', () => {
     expect(() => createArchiveWriter(path, { maxBytes: 100, keep: 1 })).toThrow(/2 이상/);
   });

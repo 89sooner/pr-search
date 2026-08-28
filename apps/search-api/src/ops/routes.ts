@@ -273,7 +273,34 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
         // 접근 범위는 캐시된 저장소 목록을 그대로 쓴다 (AC-6). `toAccessScope`의
         // 조직·팀 치환은 아카이브 문서에 그 재료가 없어 쓸 수 없다.
         const cached = await scopes.resolveCached(principalId(principal));
-        return reply.send(await listRawEvents(rawEvents, filter, cached.repositoryIds));
+        const result = await listRawEvents(rawEvents, filter, cached.repositoryIds);
+
+        /*
+         * **원본 열람은 감사에 남는다** (PR #66 리뷰 P1 / 보안 문서 7장).
+         *
+         * 계약이 "`include_payload=true`는 명시적 열람 의사이며 감사 기록에 그대로
+         * 남는다"라고 정했는데 구현이 그것을 따르지 않았다 — 내가 적은 계약을 내
+         * 구현이 지키지 않은 자리다. 목록 조회 자체는 남기지 않는다: 원본을 펼친
+         * 요청만이 되돌릴 수 없는 노출이고, 모든 조회를 남기면 그 신호가 묻힌다.
+         */
+        if (filter.includePayload) {
+          await auditRepo.recordAudit(deps.pool, {
+            userId: principalId(principal),
+            action: 'raw_event.view_payload',
+            target: filter.deliveryId ?? filter.repository ?? '(범위 전체)',
+            query: JSON.stringify({
+              delivery_id: filter.deliveryId ?? null,
+              repository: filter.repository ?? null,
+              event_type: filter.eventType ?? null,
+              received_from: filter.receivedFrom ?? null,
+              received_to: filter.receivedTo ?? null,
+            }),
+            resultCode: String(result.items.length),
+            correlationId,
+          });
+        }
+
+        return reply.send(result);
       } catch (error) {
         if (error instanceof AdminRejected) {
           return fail(

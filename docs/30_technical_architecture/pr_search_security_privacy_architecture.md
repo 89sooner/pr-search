@@ -1,6 +1,6 @@
 # PR Search 보안 및 개인정보 아키텍처
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-08-28
+> 상태: review | 버전: v0.9 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -174,6 +174,7 @@ export function search(q: ScopedQuery): Promise<EsResponse>;   // ScopedQuery만
 | 재색인 | `reindex.start` | 인덱스 별칭 |
 | 시퀀스 재채번 | `sequence.reassign` | 시퀀스 공간 + 신규 에폭 |
 | 감사 로그 조회 | `audit.view` | 필터 조건 |
+| **원본 아카이브 payload 열람** | `raw_event.view_payload` | 전달 식별자 또는 저장소 (범위 전체면 그 사실) |
 | 시크릿 회전 | `secret.rotate` | 시크릿 이름 (값 제외) |
 | 원본 보존 만료 삭제 | `retention.purge` | 파티션명 + 건수 |
 

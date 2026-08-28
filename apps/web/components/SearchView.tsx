@@ -402,13 +402,27 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     router.push(singleHref);
   }, [singleHref, submitCount, router]);
 
-  /** 조건 변경은 히스토리를 쌓지 않는다 — 뒤로가기 1회로 이전 화면이어야 한다. */
-  const replaceState = useCallback(
-    (next: QueryState) => {
-      router.replace(toHref(SEARCH_PATH, next), { scroll: false });
-    },
-    [router],
-  );
+  /**
+   * 조건 변경은 히스토리를 쌓지 않는다 — 뒤로가기 1회로 이전 화면이어야 한다.
+   *
+   * ## 왜 `router.replace`가 아닌가 (DEV-376)
+   *
+   * `/search`는 `force-dynamic` 서버 컴포넌트라 `router.replace`가 부를 때마다
+   * **RSC 왕복을 일으킨다.** 패싯을 연달아 만지면 그 왕복이 겹치고, 겹친 내비게이션이
+   * 히스토리 항목을 하나 더 남기는 경우가 생긴다 — 그러면 "다섯 번 만져도 뒤로가기
+   * 한 번"이라는 이 화면의 계약이 깨진다. 서버가 바쁠수록 자주 깨지므로 전량 e2e에서만
+   * 드러났고, 로그 한 줄을 넣으면 타이밍이 바뀌어 사라졌다 (6회 중 4회 실패).
+   *
+   * 네이티브 `history.replaceState`는 Next 14.1부터 라우터와 통합되어 `useSearchParams`를
+   * 갱신하면서 **서버를 부르지 않는다.** 이 화면의 데이터는 클라이언트가 API로 가져오므로
+   * 조건이 바뀔 때 서버 컴포넌트를 다시 그릴 이유가 없다 — 왕복이 없으면 겹칠 것도 없다.
+   *
+   * **화면 이동은 여전히 `router.push`다.** 그쪽은 실제로 다른 라우트로 가고 히스토리를
+   * 쌓아야 하므로 라우터를 지나야 한다.
+   */
+  const replaceState = useCallback((next: QueryState) => {
+    window.history.replaceState(null, '', toHref(SEARCH_PATH, next));
+  }, []);
 
   const submit = useCallback(
     (value: string) => {

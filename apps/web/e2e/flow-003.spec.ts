@@ -189,7 +189,15 @@ test.describe('FLOW-002 전 경로: SHA 입력 → 커밋 상세 → PR 상세',
     /*
      * 자동 이동은 `push`라 히스토리가 쌓인다 — 뒤로가기 한 번으로 검색
      * 화면과 **원래 입력**이 함께 돌아와야 한다 (FLOW-001 4단계).
+     *
+     * **도착을 먼저 확인한다** (DEV-376). App Router의 뒤로가기는 클라이언트
+     * 내비게이션이라 URL이 바뀐 뒤에도 화면이 그려질 때까지 시간이 걸린다.
+     * 곧바로 `searchbox`를 찾으면 아직 커밋 상세가 서 있는 순간을 만나
+     * `element(s) not found`로 끝난다 — 이 시험이 CI와 로컬에서 반복해서
+     * 실패한 자리다. URL을 먼저 기다리면 **어디에 도착했는지도 함께 판정된다**:
+     * 뒤로가기가 검색이 아닌 곳으로 갔다면 그 사실이 여기서 드러난다.
      */
+    await expect(page).toHaveURL(/\/search/);
     await expect(page.getByRole('searchbox')).toHaveValue(MERGE_SHA);
   });
 
