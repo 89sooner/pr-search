@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.9 | 갱신일: 2026-08-28
+> 상태: review | 버전: v0.10 | 갱신일: 2026-08-28
 
 ## 1. 상태 설계 원칙
 
@@ -210,7 +210,10 @@
 | `degraded` | 검색 엔진 장애 | "검색 실패·수집 계속" 명시 배너 | 상태 페이지 | NFR-004 |
 | `partial_failure` | 일부 지표 조회 실패 | 해당 항목만 미확인 표시 | 재시도 | FR-ADMIN-001 |
 | `operation_pending` | 일괄 재처리 진행 중 | 진행률 + 취소 | 취소 | FR-ING-007 |
-| `no_permission` | `operator` 아님 | 필요 역할 표시 | - | FR-ADMIN-001 |
+| `archive_unavailable` | 아카이브 인덱스가 없거나 ILM이 전 구간을 지웠다 | `A-001-ARCHIVE`만 "아카이브 없음"을 명시하고 **나머지 섹션은 정상 동작한다** | 적재 확인 | FR-ING-010 AC-3 |
+| `archive_scope_empty` | 조회 조건이 요청자의 접근 범위 안에서 0건 | 빈 결과. **범위 밖 건수를 세어 보여 주지 않는다** | 조건 변경 | FR-ING-010 AC-6, THR-044 |
+| `no_permission` | `operator`도 `security_officer`도 아님 | 필요 역할 표시 | - | FR-ADMIN-001 |
+| `archive_only` | `security_officer`이며 `operator`가 아님 | **`A-001-ARCHIVE`만 렌더링한다** — 지표·실패 대기열·조정 스캔은 보이지 않는다 | - | FR-ING-010 AC-5 |
 | `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 
 ### A-002 저장소 등록 관리

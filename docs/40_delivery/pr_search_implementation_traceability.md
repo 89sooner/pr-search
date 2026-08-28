@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v4.8 | 갱신일: 2026-08-28
+> 상태: review | 버전: v4.9 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -127,7 +127,7 @@
 | FR-ING-007 | WP-002, WP-007, WP-008, WP-009 | `packages/db/migrations/{001_ingestion,006_dead_letter}.up.sql`, `packages/db/src/repositories/dead-letter.ts`, `packages/bus/src/{backoff,ingest}.ts`, `apps/pipeline-worker/src/{enrich,project}.ts`, `apps/search-api/src/ops/{dead-letters,routes}.ts`, `apps/search-api/src/{config,metrics}.ts` | `packages/db/integration/dead-letter.test.ts`, `apps/search-api/integration/ops/dead-letter.test.ts`, `apps/pipeline-worker/integration/worker/{enrich,project}.test.ts`, `packages/bus/integration/contract.ts` | verified (AC-1~AC-5 전부. AC-4 재처리 멱등은 재투입 payload의 `delivery_id` 보존으로, 문서 수준은 WP-008의 결정론적 ID 시험으로 각각 검증) |
 | FR-ING-008 | WP-035 | - | - | not_started |
 | FR-ING-009 | WP-008, WP-010, **WP-034**, WP-040 | `apps/search-api/src/repositories/{overview,routes,cursor,registration-requests}.ts` (AC-6~AC-10, WP-034), `packages/db/src/repositories/registration-request.ts`, `apps/web/{lib/repository-overview.ts,components/{RepositoryCardGrid,SequenceSpaceStatusList,RegisterRequestDialog,RepositoriesView}.tsx,app/repositories/page.tsx}` (W-009), `apps/search-api/src/ops/{repositories,ghe-lookup,routes}.ts`, `packages/db/src/repositories/{repository,audit,job}.ts`, `packages/es/src/registry.ts`, `packages/es/src/mappings/commits.ts`, `apps/pipeline-worker/src/{project,documents}.ts` | `apps/search-api/integration/repositories/{overview,scope-parity,registration-request,reachability}.test.ts`, `apps/search-api/src/repositories/cursor.test.ts`, `apps/web/lib/repository-overview.test.ts`, `apps/web/a11y/repositories.test.tsx`, `apps/web/e2e/repositories.spec.ts`, `apps/search-api/integration/admin/repositories.test.ts`, `packages/es/integration/registry.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | **verified — AC-1~AC-10 전부** (AC-6~AC-10은 WP-034가 구현했다. 6.42장). 원래 서술: (AC-1~AC-5 전부. AC-5 감사 주체는 관리 토큰 이름이며 WP-012의 OIDC 신원이 대체한다) |
-| FR-ING-010 | WP-036 | - | - | not_started |
+| FR-ING-010 | WP-036 | - | - | not_started (계약은 CR-052로 확정 — AC-6·AC-7 신설, `API-ADM-008`) |
 | FR-ING-011 | WP-028, **WP-034** | `apps/pipeline-worker/src/reconcile.ts` (JOB-ING-005 + AC-6 완주 회차 보존), `packages/db/src/repositories/repository.ts` (`recordCompletedReconciliation`), `packages/github/src/client.ts` (`listPullRequestsPage` `direction`), `apps/pipeline-worker/src/metrics.ts` | `apps/pipeline-worker/src/reconcile.test.ts`, `apps/pipeline-worker/integration/reconcile/durability.test.ts` (AC-6, 실 PostgreSQL) | **done — AC-1~AC-6 전부.** AC-6은 WP-034가 더했다 — 완주한 회차만 `repository.last_reconcile_missing_count`를 덮고 미룬 회차·예외 회차는 덮지 않는다 (CR-050, DEV-352). 원래 서술: AC-1~AC-5 전부. 주기는 설정값(기본 1시간), 창은 `updated desc` + 24시간 컷오프(`/pulls`에 `since`가 없다, DEV-175), 누락은 백필의 `projectOne`으로 되돌린다(두 번째 경로를 만들지 않는다). **head 서수가 없으면 `prs:sequence`의 `sequence.requested`로 요청한다** — 집는 러너가 없는 잡 행을 만들지 않는다 (CR-034, DEV-180). 한도 소진은 미룸이며 3주기 연속이면 경보 지표가 뜬다. **운영 기동은 전용 `reconcile` 역할이 한다** (DEV-179, `deploy/k8s/pipeline-worker-reconcile.yaml`) |
 | FR-STAT-001 | WP-037, WP-038 | - | - | not_started |
 | FR-STAT-002 | WP-037, WP-038 | - | - | not_started |
@@ -556,6 +556,16 @@
 | DEV-363 | 2026-08-28 | **`seq_epoch` 형식 오류가 "지정하지 않음"으로 읽힌다.** `apps/search-api/src/sequence/space.ts`의 `parseEpochParam`이 정수가 아니거나 1 미만인 값을 `null`로 돌려주고, 호출부는 그것을 "에폭을 지정하지 않았다"로 해석해 **현재 에폭으로 조회한다.** 사용자가 `seq_epoch=3`을 의도한 URL에 오타가 나면 그 요청은 오류 없이 다른 세대의 결과를 받는다 — **이것이 정확히 ADR-007이 막으려는 자동 재해석이며, W-004의 세 경로가 이미 그 상태다** | WP-023 / FR-SEQ-005 AC-4 | 구현 결함 | **CR-051** | **resolved (2026-08-28)** — 계약(CR-051)과 구현이 모두 들어왔다. 검증 기록은 6.43장이다. 세 상태(없음 · 유효 · 형식 오류)를 구분하고 형식 오류는 `INVALID_PARAMETER`로 거절한다. **W-004와 검색이 같은 함수를 쓴다** — 같은 이름의 파라미터가 두 API에서 다르게 해석되면 그것이 새 함정이다 |
 | DEV-364 | 2026-08-28 | **스칼라 `seq:1234`가 파서를 통과하지만 조용히 0건이 된다.** `seq`는 `QUERY_KEYS`이면서 `NUMERIC_RANGE_KEYS`라, 범위 없이 쓰면 `EqualityFilter`가 되어 파서를 통과한다. 그런데 `query-builder.ts`의 `TERM_FIELDS`에 `seq`가 없어 `equalityClause`가 `MATCH_NONE`을 돌려준다 — 사용자는 400도 아니고 안내도 없이 **"그 서수에 아무것도 없다"로 읽히는 0건**을 받는다 | WP-011, WP-013 / FR-SRCH-005 AC-1·AC-2 | 범위 공백 | 없음 (CR-051이 판정만 기록) | open — 고치지 않는다. SRS AC-2가 승인한 것은 범위뿐이므로 **이 CR을 핑계로 스칼라 조회 기능을 만들지 않는다**(지시서 §0의 "단순 구현 편의로 CR을 열지 않는다"). CR-051의 공간 지목 규칙도 **범위 조건에만** 적용해 동작 변경을 최소로 두었다. 고치려면 두 갈래 중 하나를 제품 결정으로 골라야 한다 — 파서가 문법 오류로 거절하거나(`seq:`는 범위 전용), 스칼라를 `merge_seq` 단일값 조회로 승인하거나. **어느 쪽도 DEV-349와 같은 축이 아니다**: 스칼라는 언제나 0건이라 "다른 커밋을 가리키는" 실패가 아니다 |
 | DEV-365 | 2026-08-28 | **공유된 저장 검색의 시퀀스 상태가 볼 수 없는 저장소의 활동을 누설할 수 있다.** CR-051이 세우는 `sequence_reference`는 낡음을 판정하려고 **그 저장소의 현재 에폭**을 읽는데, 팀 공유는 이름과 질의 문자열을 보이게 할 뿐 저장소 접근 권한을 주지 않는다(THR-012, AC-3). 그대로 실으면 공유받은 사람이 **자기가 볼 수 없는 저장소에서 최근 히스토리 재작성이 있었다**는 사실을 알게 된다 | WP-033 / FR-SRCH-010 AC-3·AC-8, THR-012 | 범위 공백 | **CR-051** | **resolved (2026-08-28)** — 계약(CR-051)과 구현이 모두 들어왔다. 검증 기록은 6.43장이다. 계약이 서기 전에 막았다. 접근 불가면 `status: "unavailable"` 하나로 답하고 `current_seq_epoch`·`sequence_state` **키 자체를 싣지 않는다** — 값을 가리는 것이 아니라 응답에서 뺀다. THR-043으로 등재했다. 저장자가 남긴 `stored_seq_epoch`은 이미 이 자원의 일부이므로 그대로 둔다 |
+| DEV-366 | 2026-08-28 | **아카이브 문서의 저장소 식별 필드가 코드와 계약에서 어긋난다.** `apps/ingest-gateway/src/archive.ts`의 `ArchiveRecord`는 `repository_id`(숫자)를 싣는데 데이터 모델 4.5의 매핑과 `ENT-ING-003`은 `repository`(keyword)를 받는다. 매핑이 `dynamic: false`라 **`repository_id`는 색인되지 않고 `_source`에만 남는다** — 저장소로 좁히는 아카이브 조회도, `ADR-008`의 접근 범위 필터를 거는 것도 성립하지 않는다. 하나만 담는 길은 없다: `repository_id`가 없으면 필터를 걸 수 없고 `repository`가 없으면 조사자가 저장소를 알아볼 수 없어, **둘 다 담도록 계약을 고쳤다** | FR-ING-010 / WP-036 | 문서와 구현 불일치 | CR-052 | open (계약 확정 · 구현 대기) |
+| DEV-367 | 2026-08-28 | **NDJSON 아카이브 파일 자체의 수명 정책이 어디에도 없다.** `createWriteStream(path, { flags: 'a' })`가 단일 파일에 무한히 덧붙이고 회전도 삭제도 없다. `ADR-003`이 정한 ILM 창(약 97일)은 **ES 인덱스의 수명**이지 파일의 수명이 아니다. 인프라 5장 산정으로 일 약 46만 건 × 8KB ≈ 3.7GB/일이 쌓이므로 Filebeat가 멈추면 며칠 만에 수집 노드의 디스크가 찬다 — **그때 레인 B의 정체가 레인 A를 멈추고, 그것이 AC-3이 지키려던 독립성이다.** `FR-ING-010`에 AC-7(크기 상한 × 보관 개수)을 신설하고 **아카이브를 잃는 쪽을 택했다**: 보존 보증은 `raw_event`가 지고 아카이브 인덱스는 그것으로부터 재구성할 수 있다 | FR-ING-010 / WP-036 | 범위 공백 | CR-052 | open (계약 확정 · 구현 대기) |
+| DEV-368 | 2026-08-28 | **아카이브 파일이 Filebeat에 도달할 볼륨 배선이 없다.** `deploy/k8s/configmap.yaml`은 `INGEST_ARCHIVE_PATH: /var/lib/prs/archive/raw-events.ndjson`을 지정하는데 `deploy/k8s/ingest-gateway.yaml`에 **`volume`도 `volumeMount`도 하나 없다.** 파일은 컨테이너의 쓰기 레이어에 쓰여 파드 재시작과 함께 사라지고, 어떤 적재기도 그 경로를 읽을 수 없다. 인프라 문서의 환경별 볼륨 표와 영속 볼륨 표 어디에도 아카이브 볼륨이 없었다 — **승인된 레인 하나가 물리적으로 연결되어 있지 않았다** | FR-ING-010 / WP-036 | 구현 공백 | CR-052 | open (계약 확정 · 구현 대기) |
+| DEV-369 | 2026-08-28 | **여러 replica가 한 파일에 덧붙이면 줄이 섞인다.** `ingest-gateway`는 replica 2 이상이고 아카이브 payload는 건당 평균 8KB인데, 이는 `PIPE_BUF`(4KB)를 넘어 **`O_APPEND`의 원자성이 보장되지 않는 크기다.** 섞인 줄은 Filebeat가 파싱에 실패하거나, 더 나쁘게는 **두 이벤트의 조각을 하나로 읽는다** — 후자는 오류 없이 잘못된 원본을 아카이브에 남긴다. 그래서 공유 볼륨(ReadWriteMany + DaemonSet) 경로를 배제하고 **파드마다 자기 파일을 쓰고 자기 사이드카가 읽는** 배선으로 확정했다 | FR-ING-010 / WP-036 | 기술 제약 | CR-052 | open (계약 확정 · 구현 대기) |
+| DEV-370 | 2026-08-28 | **AC-5가 요구하는 조회를 제공할 API가 계약에 없다.** `FR-ING-010` AC-5는 아카이브 조회를 `operator`·`security_officer`로 제한하라고 요구하고 `QA-A001-08`이 그것을 검증 항목으로 두는데, API 계약의 `API-ADM` 표 일곱 행 어디에도 아카이브가 없다(`API-ADM-005`는 `FR-AUTH-004` 감사 기록이다). **제한할 조회 자체가 없으면 그 AC는 통과 판정이 불가능하다.** `API-ADM-008 GET /admin/raw-events`를 신설했고, 역할 제한은 `ADR-008`의 필수 접근 범위 필터에 **더해지는** 조건으로 정했다(AC-6 신설, THR-044) | FR-ING-010 / WP-036 | 범위 공백 | CR-052 | open (계약 확정 · 구현 대기) |
+| DEV-371 | 2026-08-28 | **`WP-036`의 완료 기준이 자기 범위 밖의 화면을 요구한다.** DoD 첫 줄이 `QA-A001-08`인데 그것은 A-001 화면 항목이고, A-001을 완성하는 것은 `WP-040`이며 그 DoD도 `QA-A001-01~10`으로 같은 항목을 담는다 — **같은 QA 항목이 두 작업 패키지의 완료 기준에 걸려 있었다.** `WP-010`이 똑같은 자리에서 "A-001 화면 (WP-015 웹 셸과 Conductor가 선 뒤). 이 WP는 API까지다"라고 명시적으로 제외했는데 `WP-036`에는 그 제외가 없었고, 선행 WP도 `WP-004` 하나뿐이라 화면 의존이 표에 나타나지 않았다. `WP-036`을 API까지로 좁히고 화면을 `WP-040`에 남겼다 | FR-ING-010 / WP-036, WP-040 | 문서 간 모순 | CR-052 | resolved |
+| DEV-372 | 2026-08-28 | **`A-001-ARCHIVE`의 화면 계약이 와이어프레임 한 줄뿐이었다.** 와이어프레임 섹션 표에 "아카이브 인덱스 적재 상태와 조회 진입"이 있을 뿐, 상태 매트릭스의 A-001 상태 목록에도 컴포넌트 명세에도 아카이브 항목이 없고 `API-ADM-006` 응답에도 아카이브 필드가 없다. **"적재 상태"가 무슨 값인지 정한 곳이 없었다.** 상태 매트릭스에 `archive_unavailable`·`archive_scope_empty`·`archive_only` 셋을 더하고 QA 항목 넷을 신설했다 | FR-ING-010 / WP-036, WP-040 | 범위 공백 | CR-052 | resolved |
+| DEV-373 | 2026-08-28 | **두 아키텍처 문서가 Filebeat의 배포 형태를 다르게 적는다.** 인프라 3장의 배포 단위 표는 `DaemonSet`으로, 시스템 아키텍처 4.1장의 배포 형태 표는 `DaemonSet/사이드카`로 적어 **어느 쪽이 계약인지 정해진 적이 없다.** DEV-369가 공유 파일 경로를 배제하므로 사이드카로 확정하고 두 문서를 맞췄다 | FR-ING-010 / WP-036 | 문서 간 모순 | CR-052 | resolved |
+| DEV-374 | 2026-08-28 | **아카이브 조회 진입을 두 화면 중 어느 쪽도 소유하지 않는다.** 추적 매트릭스는 `FR-ING-010`의 보조 화면으로 `A-004`를 지목하고 "원본 아카이브 조회 진입"이라 적는데, `WP-039`(A-004)의 구현 범위에도 `QA-A004-01~05`에도 **아카이브가 없다.** A-004는 `FR-AUTH-004` 감사 기록 전용 화면이고 원본 웹훅 이벤트는 조사 **대상**이지 조회 **이력**이 아니다. 조회를 `A-001`로 일원화하고 매트릭스에서 `A-004`를 뺐다 | FR-ING-010 / WP-039, WP-040 | 문서 간 모순 | CR-052 | resolved |
+| DEV-375 | 2026-08-28 | **화면의 역할 제한이 AC-5와 어긋난다.** `A-001`은 `operator` 전용 화면이고 `QA-A001-10`이 "`operator`가 아닌 역할에게 운영 내비게이션이 렌더링되지 않는다"를 검증하는데, `FR-ING-010` AC-5는 `security_officer`도 아카이브를 조회하게 요구한다 — **그 역할은 화면에 들어갈 수 없으므로 승인된 조회 자격을 쓸 수 없다.** 권한을 화면 단위로 넓히는 대신 `A-001-ARCHIVE` **섹션만** 열고, `security_officer`가 진입하면 그 섹션만 렌더링하는 `archive_only` 상태를 정의했다. 승인된 보안 계약을 뒤집지 않고 경계를 정확히 긋는 것은 `CR-050`이 `API-ADM-001`·`API-ADM-006`에서 내린 판단과 같다 | FR-ING-010, FR-ADMIN-001 / WP-036, WP-040 | 문서 간 모순 | CR-052 | resolved |
 
 ## 6. 검증 결과 기록
 
@@ -3789,6 +3799,36 @@ CR-005는 문서 범위만 확장했다. 구현 순서는 바뀌지 않는다 �
 핑계로 새 조회 기능을 만들지 않는다. **찾은 것을 전부 고치는 것이 감사의 목적이 아니다** —
 CR-050이 역방향 참조 넷을 "직접 구현 / 간접 의미 / 미래 WP / stale trace"로 분류한 것과 같은
 규율이며, 판정 자체를 5장에 남겼다.
+
+**(2026-08-28) WP-036 착수 전 감사가 계약 공백 열을 찾았다 — 계약을 먼저 닫았다(CR-052).** 검증 기록은
+아직 없다. 이 CR은 계약만 닫으며 구현은 `WP-036`이 한다. **REL-004 구현 수는 그대로 7/8이다.**
+
+**승인된 레인 하나가 어디에도 연결되어 있지 않았다.** `ADR-002`가 레인 B(NDJSON → Filebeat → ES 아카이브)를
+정하고 `ADR-003`이 `prs-raw-events-{yyyy.MM}`와 ILM 창을, 데이터 모델 4.5가 매핑을, 인프라 3장이 `filebeat`
+배포 단위를, QA 체크리스트가 `QA-A001-08`을 올려 둔 것이 2026-08-19다. **계약은 다섯 문서에 걸쳐 충실히
+적혀 있었고 어느 것도 틀리지 않았다.** 그런데 그 사이의 이음매가 비어 있었다 — 파일이 파드 밖으로 나갈
+볼륨이 없고(DEV-368), 파일의 저장소 필드가 매핑과 다르며(DEV-366), 인덱스를 읽을 API가 없다(DEV-370).
+`WP-004`는 "파일까지가 범위"라고 정확히 적고 나머지를 `WP-036`에 맡겼는데, 그 나머지를 성립시킬 재료가
+어디에도 없었다.
+
+**`CR-051`이 배운 것의 다른 얼굴이다.** 그때는 옳게 적힌 결정 하나(`ADR-007` 규칙 5)가 열거한 세 저장물 중
+하나에만 닿아 있었다. 이번에는 **옳게 적힌 계약 다섯이 서로에게 닿지 않았다.** 각 문서는 자기 몫을 적었고
+그것들을 잇는 자리는 아무의 소관도 아니었다. → **문서를 하나씩 읽어 "이 문서가 맞는가"를 묻는 것으로는 이
+종류를 찾지 못한다. 물어야 할 것은 "A에서 B로 가는 길이 실제로 있는가"다** — 이번에는 파일에서 ES까지와
+ES에서 사람까지 두 구간이 비어 있었다.
+
+**같은 모양이 소유권에서 세 번 반복됐다.** `WP-036`의 DoD가 `WP-040`의 화면을 요구했고(DEV-371), 추적
+매트릭스가 지목한 `A-004`를 `WP-039`가 맡지 않았으며(DEV-374), `A-001`의 `operator` 전용 규칙이 AC-5의
+`security_officer`와 어긋났다(DEV-375). 셋 다 **"누가 소유하는가"를 적지 않아 생긴 공백**이며, `WP-010`이
+같은 자리에서 "이 WP는 API까지다"라고 적어 둔 것이 유일한 선례였다. 그 선례를 따라 `WP-036`을 API까지로
+좁혔다.
+
+**결정 넷을 남긴다.** (1) Filebeat는 사이드카다 — replica 2 이상에서 8KB payload를 공유 파일에 덧붙이면
+`PIPE_BUF`를 넘어 줄이 섞인다(DEV-369). (2) 아카이브 조회도 필수 접근 범위 필터를 지난다 — AC-5의 역할
+제한은 필터에 **더해지는** 조건이며, 원본 payload에 예외를 두면 접근 통제가 가장 민감한 자리에서만 풀린다
+(AC-6 신설, THR-044). (3) `payload`는 기본으로 싣지 않는다 — 목록의 기본값으로 두면 조사자가 원본을 보려던
+것이 아닐 때도 내주게 되고 그 노출은 되돌릴 수 없다. (4) 파일은 크기 상한 × 보관 개수로 스스로를 제한하며
+한도를 넘으면 오래된 조각부터 버린다 — **아카이브를 잃는 쪽이 AC-3을 지킨다**(AC-7 신설, DEV-367).
 
 `srs_final.md`가 baseline이므로 그 문서의 변경은 CR을 먼저 등록해야 한다. 구현 중 문서와 현실이 어긋나면 5장에 `DEV-###`를 등록하고 CR로 연결한다. 조용한 범위 변경은 금지다.
 

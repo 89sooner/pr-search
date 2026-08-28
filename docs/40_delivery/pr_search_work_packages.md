@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v1.8 | 갱신일: 2026-08-28
+> 상태: review | 버전: v1.9 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -1483,24 +1483,29 @@
 - 목표: 원본 이벤트가 애플리케이션과 독립적으로 검색 가능하게 보관된다.
 - 관련 요구사항: FR-ING-010
 - 관련 화면/플로우: A-001
-- 관련 API/데이터/잡: ENT-ING-003
+- 관련 API/데이터/잡: API-ADM-008 / ENT-ING-003
 - 선행 WP: WP-004
 - 구현 범위:
-  - `prs-raw-events-{yyyy.MM}` 매핑 (`payload`는 `enabled: false`), ILM 정책
-  - Filebeat 설정: 게이트웨이 NDJSON 아카이브 tail → ES
+  - `prs-raw-events-{yyyy.MM}` 매핑 (`payload`는 `enabled: false`, `repository`와 `repository_id`를 함께 담는다), ILM 정책
+  - 게이트웨이 아카이브 레코드의 필드를 계약에 맞춘다 (CR-052, DEV-366)
+  - 아카이브 파일 회전: 크기 상한 × 보관 개수, 초과 시 오래된 조각부터 삭제 (AC-7)
+  - Filebeat **사이드카** 설정과 `emptyDir` 볼륨 배선 (CR-052, DEV-368·369·373)
   - 오프셋 상태 유지, 재기동 시 이어서 적재
-  - 조회는 `operator`·`security_officer` 한정
-  - A-001에 아카이브 적재 상태 표시
+  - `API-ADM-008 GET /admin/raw-events` — 역할 제한 + 필수 접근 범위 필터, `payload`는 기본 미포함
 - 제외:
   - 아카이브 전문 검색 (payload는 색인하지 않음)
+  - **A-001 화면 (WP-040).** 이 WP는 API까지다 — `WP-010`이 같은 자리에서 내린 판단과 같다 (CR-052, DEV-371)
 - 완료 기준(DoD):
-  - [ ] QA-A001-08이 통과한다
   - [ ] 아카이브 인덱스의 별칭·매핑·ILM이 엔티티 인덱스와 분리된다 (FR-ING-010 AC-1)
   - [ ] ILM으로 기간 경과 문서가 자동 삭제된다 (AC-2)
   - [ ] Filebeat를 정지시켜도 엔티티 색인이 정상 동작한다 (AC-3)
+  - [ ] 아카이브 인덱스가 없어도 `API-ADM-008`이 500이 아니라 `index_available: false`를 반환한다 (AC-3)
   - [ ] `delivery_id`로 `raw_event`와 대조된다 (AC-4)
+  - [ ] `API-ADM-008`이 `operator`·`security_officer` 외의 역할에 403을 반환한다 (AC-5)
+  - [ ] `API-ADM-008`이 접근 범위 밖 저장소와 미등록 저장소의 원본을 반환하지 않는다 (AC-6)
+  - [ ] 보관 개수 한도를 넘기면 가장 오래된 조각부터 삭제되어 디스크가 차지 않는다 (AC-7)
   - [ ] Filebeat 재기동 시 마지막 오프셋부터 이어서 적재한다 (예외 처리)
-- 검증 방법: `pnpm test:integration archive`, 수동 Filebeat 중단·재기동 시나리오
+- 검증 방법: `pnpm test:integration archive`, `pnpm test:integration admin/raw-events`, 수동 Filebeat 중단·재기동 시나리오
 - 기록: 원장 WP-036 상태, FR-ING-010 매핑
 
 ---
@@ -1598,7 +1603,7 @@
 - 관련 API/데이터/잡: API-ADM-001~004, API-ADM-006~007
 - 선행 WP: WP-010, WP-019, WP-028, WP-035
 - 구현 범위:
-  - A-001 완성: `C-040 PipelineMetricGrid`, `C-041 DeadLetterTable`, `C-042 ScanResultCard`
+  - A-001 완성: `C-040 PipelineMetricGrid`, `C-041 DeadLetterTable`, `C-042 ScanResultCard`, `A-001-ARCHIVE` (CR-052 — `API-ADM-008`은 WP-036이 낸다)
   - A-002: `C-043 RepositoryRegistrationForm`, 등록 요청 목록
   - A-003: `C-044 JobTable`, `C-045 JobRunForm`, `C-046 IndexStatusPanel`, `C-047 IntegrityReportCard`
   - 30초 폴링 (조작 중 보류, 백그라운드 탭 중단)
@@ -1607,7 +1612,7 @@
 - 제외:
   - A-004 (WP-039)
 - 완료 기준(DoD):
-  - [ ] QA-A001-01 ~ QA-A001-10, QA-A002-01 ~ QA-A002-05, QA-A003-01 ~ QA-A003-11이 통과한다
+  - [ ] QA-A001-01 ~ QA-A001-14, QA-A002-01 ~ QA-A002-05, QA-A003-01 ~ QA-A003-11이 통과한다
   - [ ] 재채번 다이얼로그가 영향 범위를 표시하고 저장소명 직접 입력을 요구한다 (QA-A003-10)
   - [ ] 조작 중 자동 갱신이 보류된다 (QA-A001-09)
   - [ ] `operator`가 아닌 역할에게 내비게이션이 렌더링되지 않고 직접 진입 시 차단된다
