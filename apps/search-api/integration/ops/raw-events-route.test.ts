@@ -247,11 +247,30 @@ describe('PR #66 리뷰 P1: 원본 열람이 감사에 남는다', () => {
     expect(status).toBe(200);
     expect(JSON.stringify(body)).toContain('do-not-leak');
 
-    const rows = await pool.query<{ action: string; target: string }>(
-      'select action, target from audit_record where user_id = $1 order by occurred_at desc limit 1',
+    const rows = await pool.query<{ action: string; target: string; query: string }>(
+      'select action, target, query from audit_record where user_id = $1 order by occurred_at desc limit 1',
       [OFFICER],
     );
     expect(rows.rows[0]?.action).toBe('raw_event.view_payload');
+
+    /*
+     * 질의는 **적용된 조건 전부**를 담아야 재구성이 된다 (FR-AUTH-004 AC-2,
+     * PR #67·#68 리뷰). 특히 `cursor`는 어느 페이지를 열람했는지를 정하므로
+     * 없으면 같은 조건의 2쪽과 5쪽이 구분되지 않는다.
+     */
+    const recorded = JSON.parse(rows.rows[0]?.query ?? '{}') as Record<string, unknown>;
+    for (const key of [
+      'delivery_id',
+      'repository',
+      'event_type',
+      'action',
+      'received_from',
+      'received_to',
+      'limit',
+      'cursor',
+    ]) {
+      expect(recorded, `감사 질의에 ${key}가 없다`).toHaveProperty(key);
+    }
   });
 
   it('**기본 조회는 남기지 않는다** — 모든 조회를 남기면 열람 신호가 묻힌다', async () => {

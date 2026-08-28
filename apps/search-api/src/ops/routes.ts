@@ -316,7 +316,16 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
                 received_from: filter.receivedFrom ?? null,
                 received_to: filter.receivedTo ?? null,
                 limit: filter.limit,
-                paged: filter.cursor !== undefined,
+                /*
+                 * **커서 원문을 남긴다** (PR #68 리뷰 P2). `paged: true`만 두면
+                 * 같은 조건의 2쪽과 5쪽이 **구분되지 않는 기록**을 남기는데,
+                 * 그 둘은 서로 다른 payload를 내준다. 커서는 `search_after`
+                 * 위치를 담으므로 그것이 곧 "어느 페이지를 열람했는가"다.
+                 *
+                 * 봉투는 서명될 뿐 비밀을 담지 않는다 — 지문은 해시이고 위치는
+                 * 요청자가 이미 들고 있던 값이다.
+                 */
+                cursor: filter.cursor ?? null,
               }),
               resultCode: String(result.items.length),
               correlationId,
