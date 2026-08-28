@@ -1338,3 +1338,127 @@ build                             통과 — /repositories가 동적 라우트�
 test:e2e                          108 통과
 validate_srs_prd_env.py --strict  main 대비 증감 0 (WARN 1 · ERROR 2)
 ```
+
+---
+
+# 2026-08-28 CR-051 · DEV-349 세션이 배운 명령
+
+## 이번 세션 최종 배터리 결과
+
+```text
+typecheck · lint · lint:deps      통과 (패키지 13개, 위반 0건)
+test                              1644 통과 (1 skipped)   [1598 → +46]
+test:integration                  74 파일 / 1194 통과      [72/1142 → +52]
+test:regression                   213 통과                 [변화 없음]
+test:a11y                         262 통과 (axe 0건)       [252 → +10]
+test:contrast                     80쌍 통과
+build                             통과
+test:e2e                          113 통과                 [108 → +5]
+validate_srs_prd_env.py --strict  main 대비 증감 0 (WARN 1 · ERROR 2)
+```
+
+## 마이그레이션 왕복 (실 PostgreSQL)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm --filter @prs/db run build            # dist/cli.js가 필요하다
+pnpm run db:migrate                        # 적용: 017
+pnpm --filter @prs/db exec node dist/cli.js migrate --down --step 1   # 회수: 017
+pnpm run db:migrate                        # 다시 적용
+docker exec prs-postgres psql -U prs -d prs -tAc \
+  "select column_name, is_nullable, data_type from information_schema.columns \
+   where table_name='saved_search' and column_name='seq_epoch';"
+```
+
+CHECK가 실제로 막는지도 확인한다 — `seq_epoch = 0` 삽입이 거절돼야 한다.
+
+## 부분 실행 selector (이 작업)
+
+```bash
+pnpm run test sequence-binding
+pnpm run test query-builder
+pnpm run test search/cursor
+pnpm run test web/lib/query-url
+pnpm run test web/lib/saved-search
+pnpm run test:integration search/sequence-epoch
+pnpm run test:integration saved-search/sequence-reference
+pnpm run test:integration sequence/range-es
+pnpm run test:a11y saved-searches
+cd apps/web && ./node_modules/.bin/playwright test e2e/sequence-epoch.spec.ts --reporter=line
+```
+
+## 호출부를 훑을 때 glob을 믿지 마라
+
+```bash
+# 틀렸다 — globstar가 꺼져 있으면 한 단계만 매칭한다
+grep -rn 'buildQuery(' apps/search-api/src/**/*.ts
+
+# 옳다 — 디렉터리를 통째로 준다
+grep -rn 'buildQuery(' --include='*.ts' apps packages | grep -v '/dist/'
+```
+
+첫 형태를 써서 `sequence/range.ts`를 놓쳤고 그 경로가 500이 됐다. 리뷰가 잡았다.
+
+## 변이 헬퍼에 CRLF 처리가 필요하다
+
+저장소가 CRLF라 `\n`을 담은 앵커가 걸리지 않는다. 헬퍼가 파일의 개행을 보고 앵커를 맞춰야 한다.
+
+```python
+crlf = b'\r\n' in data
+ob = old.replace('\n', '\r\n').encode() if crlf else old.encode()
+```
+
+이것이 없으면 **변이가 안 걸렸는데 시험은 통과**하고, 치환 건수 검증이 없으면 그것을 SURVIVED로
+읽는다 (risks 84의 재확인 — 이번에는 M1·M2가 그렇게 나왔다).
+
+## 변이 판정을 세는 법
+
+```text
+KILLED       시험이 죽는다
+SURVIVED     경로를 읽어라 — 등가인가, 시험 구멍인가, 둘 다 틀린가
+무효 변이     동작을 바꾸지 않았다 (같은 값 / 주석만). 킬로 세지 않고 다시 설계한다
+```
+
+이번 15종 중 M4(같은 값 표현 교체)와 M8(주석만 삽입)이 무효였다. **킬로 세면 커버리지를
+과대평가한다.**
+
+## 공유 prs_test — 픽스처 이름은 유일해야 한다
+
+```bash
+# app_user.login과 repository(owner, name)이 유니크다
+docker exec prs-postgres psql -U prs -d prs_test -tAc \
+  "select conname from pg_constraint where conname like '%_key';"
+```
+
+새 시험이 `acme/payments`나 `login: 'kim'`을 쓰면 다른 파일과 충돌한다. **파일 전용 접두**를 쓴다
+(`seqepoch/payments`, `sub-cr051-owner`).
+
+그리고 `afterAll`에서 **자기 픽스처를 치우고 나간다** — 남기면 다른 파일의 전역
+`DELETE FROM app_user`가 외래 키로 막힌다(이번에 43건이 그렇게 죽었다).
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 증상 | 원인·해결 |
+| --- | --- |
+| `ANCHOR-FAIL expected 1, found 0` (변이) | CRLF 저장소에 LF 앵커. 헬퍼가 개행을 맞추게 고쳤다 |
+| `duplicate key ... app_user_login_key` | 새 시험이 `login: 'kim'`을 썼다. 파일 전용 접두로 |
+| `duplicate key ... repository_owner_name_key` | 같은 이유. `acme/payments` → `seqepoch/payments` |
+| `violates foreign key ... team_member_user_id_fkey` | 내 픽스처를 안 치우고 나갔다. `afterAll` 추가 |
+| 통합 76건 실패 (전 계층) | 기존 시험의 `seq:` 질의가 AC-7에 걸렸다. **의도된 계약 변경**이라 시험을 갱신 |
+| `Cannot read properties of undefined (reading 'map')` | 위와 같음 — 400이라 `items`가 없다 |
+| a11y `import() type annotations are forbidden` | `type X = import('...')` 대신 `import type`을 쓴다 |
+| `AccessScopeSource.fetch`가 문자열을 안 받는다 | `{ userId, login }` 객체다. 시그니처를 확인하고 넘긴다 |
+
+## CI 확인 (변화 없음)
+
+```bash
+# 커밋 SHA의 check-runs로 본다 — `gh pr checks`는 옛 실행을 보여 줄 수 있다
+gh api repos/89sooner/pr-search/commits/$(git rev-parse HEAD)/check-runs \
+  --jq '.check_runs[] | "\(.name)=\(.conclusion)"'
+```
+
+## 환경 (재확인)
+
+- Node **v22.23.2** 필수, 셸 기본값 v20.12.0
+- 마이그레이션 **017까지**. 컨테이너 3종 healthy, `prs`·`prs_test` 존재
+- ES 별칭 v2 (`prs-pull-requests-v2` · `prs-commits-v2`)

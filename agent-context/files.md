@@ -687,3 +687,61 @@
 | `apps/web/lib/repository-overview.test.ts` | 세 값 구분·화면 상태 |
 | `apps/web/a11y/repositories.test.tsx` | 렌더·접근성·QA-W009-13 |
 | `apps/web/e2e/repositories.spec.ts` | 실제 브라우저에서만 확인되는 넷 |
+
+---
+
+# CR-051 · DEV-349 시퀀스 인용 에폭 (2026-08-28)
+
+## 신규 소스
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/query/src/sequence-binding.ts` | **`seq:`가 어느 공간을 뜻하는지 판정하는 유일한 자리.** 순수 함수 — DB도 ES도 모른다(브라우저가 같은 코드를 쓴다). `analyzeSequenceBinding`이 `none`/`bound`/`invalid` 셋을 준다. `hasSequenceRangeFilter`는 "이 질의에 `seq:` **범위**가 있는가" |
+| `packages/db/migrations/017_saved_search_seq_epoch.{up,down}.sql` | `saved_search.seq_epoch INT` + `>= 1` CHECK. **소급 채움을 하지 않는 이유가 주석에 있다** |
+| `apps/search-api/src/search/sequence-context.ts` | 검색의 **4-1단계**. `resolveSequenceContext`가 바인딩·공간 해석·에폭 확정을 한 번에 하고 라우트가 그 결과로 분기한다. HTTP를 모른다 |
+| `apps/search-api/src/saved-search/sequence-reference.ts` | 저장된 검색의 인용 상태. `resolveSequenceReferences`는 **페이지 단위 일괄**, `bindEpochForWrite`는 쓰기 경로(POST·PATCH 공용), `needsSequenceReference`는 접근 범위 산출을 아낄지 정한다 |
+
+## 고친 기존 소스
+
+| 경로 | 무엇 |
+| --- | --- |
+| `packages/es/src/query-builder.ts` | `buildQuery`에 `BuildQueryOptions.sequenceEpoch`. **`seq:` 범위가 있는데 없으면 `SequenceEpochRequiredError`를 던진다** |
+| `apps/search-api/src/search/cursor.ts` | `FingerprintInput.sequenceEpoch` 추가. `seq:`가 없으면 재료가 **없다**(`0` 같은 대체값 금지) |
+| `apps/search-api/src/search/service.ts` | `SearchRequest.sequenceEpoch`. `pool`은 여기 **없다** — 라우트 옵션에 있다 |
+| `apps/search-api/src/search/routes.ts` | 4-1단계 삽입, `toSequenceFailure`, stale 응답(결과 키 없음), `SearchRouteOptions.pool` |
+| `apps/search-api/src/search/relaxation.ts` | 완화 후보에서 `repo:`·`base:` 제외 + 같은 에폭으로 센다 |
+| `apps/search-api/src/sequence/space.ts` | `readEpochParam` 신설(세 상태). **옛 `parseEpochParam`은 지웠다** |
+| `apps/search-api/src/sequence/routes.ts` | W-004 세 경로가 엄격 파서를 쓴다 |
+| `apps/search-api/src/sequence/range.ts` | `runRange`의 `q`에 `request.space.seqEpoch` 전달 (**빠뜨리면 500**) |
+| `apps/search-api/src/saved-search/{routes,service}.ts` | POST·PATCH 에폭 계약, `sequence_reference`, `/run`의 `unbound` 차단, `navigationUrlFor(query, epoch)` |
+| `packages/db/src/repositories/saved-search.ts` | `SavedSearchRow.seq_epoch`, Create/Update 입력. UPDATE는 **`COALESCE`가 아니라 플래그**(null이 "지움"이어야 한다) |
+| `apps/search-api/src/{runtime,server}.ts` | `search`에 `pool` 연결. `ServerDeps.search`가 `SearchDeps & { pool }` |
+| `apps/web/lib/query-url.ts` | `PARAM.seqEpoch`, `QueryState.seqEpoch`(**문자열 원문**), `withQuery` 신설, `withAst`가 `seq:` 상실 시 에폭 제거 |
+| `apps/web/lib/search-fetch.ts` | `searchUrl`이 `seq_epoch`을 싣는다 (커서와 반대 — 에폭은 누가 열어도 같은 사실) |
+| `apps/web/lib/search-state.ts` | `epoch_stale` 상태. **결과 판정보다 먼저 본다**(안 그러면 `loading_initial`에 멈춘다) |
+| `apps/web/lib/saved-search.ts` | `describeSequenceReference`, `rowActions.canRebindEpoch`, `createPayload`의 `seqEpoch` |
+| `apps/web/components/SearchView.tsx` | 시퀀스 배너, URL 완성(`replace`), `rebindEpoch`, **낡음 상태 저장 차단** |
+| `apps/web/components/SaveSearchDialog.tsx` | `seqEpoch`·`edit.current_seq_epoch`. **질의가 실제로 바뀌었을 때만** 에폭을 싣는다 |
+| `apps/web/components/{SavedSearchList,SavedSearchesView}.tsx` | 인용 상태 배지, 「현재 에폭으로 다시 연결」(저장자만) |
+
+## 시험
+
+| 경로 | 무엇을 거는가 |
+| --- | --- |
+| `packages/query/src/sequence-binding.test.ts` | 공간 지목 16종 — 다섯 실패 형태, 중복 값, 부정된 `-seq:`, 스칼라 제외 |
+| `apps/search-api/integration/search/sequence-epoch.test.ts` | **계약 일곱 규칙의 정본.** 같은 서수에 두 세대를 색인한 픽스처가 핵심 — 없으면 `seq_epoch` 필터를 지워도 아무 시험이 안 깨진다 |
+| `apps/search-api/integration/saved-search/sequence-reference.test.ts` | 저장·낡음·**미연결 보존**·PATCH 다섯 경우·THR-043 비노출·N+1 |
+| `apps/web/e2e/sequence-epoch.spec.ts` | 브라우저에서만 드러나는 것 — URL `replace`, 자동 이동 없음, 저장 차단, `seq:` 상실 시 정리 |
+| `packages/es/src/query-builder.test.ts` | 에폭 필터 결합 + fail-closed |
+| `apps/search-api/src/search/cursor.test.ts` | 지문 재료와 에폭 불일치 거절 |
+| `apps/web/a11y/saved-searches.test.tsx` | 인용 상태 넷의 문자 레이블, 재연결 권한, **편집이 에폭을 싣는 두 갈래** |
+| `apps/search-api/integration/sequence/range-es.test.ts` | `/sequence-ranges?q=seq:…`가 500이 아니다 (PR #64 리뷰 P2 회귀) |
+
+## 손대면 안 되는 것 (갱신)
+
+- `sequence-binding.ts`의 **첫 검사를 지우지 마라** — 아래 타입 가드가 같은 답을 내지만
+  `required`/`ambiguous` 구분을 잃는다(변이 M1이 등가로 살아남아 그 사실을 드러냈다)
+- `buildQuery`의 fail-closed를 선택 인자로 되돌리지 않는다
+- `toResource()` 안에서 DB를 부르지 않는다 — 그 자리에 한 번 왕복이 들어가면 항목 수만큼 늘어난다
+- `QueryState.seqEpoch`을 숫자로 되돌리지 않는다 — 화면이 형식을 판정하면 서버가 거절할 기회를 잃는다
+- 커서 계열 넷을 합치지 않는다 (W-001 PIT · W-004 정본 서수 · W-008·W-009 키셋)

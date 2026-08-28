@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=74c0ad8efb6ec0083e83ad48042f01c6ce9473f6e55c701f78d49d1a857a9137 bytes=63019 lines=947 title=리스크-불확실한-가정-함정
+@kv sha256=b53cc84dc249f6f271197244df2687b2b951fff343d52a8d3dd9e25147f0d060 bytes=68584 lines=1035 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -335,7 +335,7 @@
 |...cut 54 lines
 @p bash
 @cmd git rev-list --first-parent --no-merges main # → 9개
-@code lang=txt sha=0380949c1270 lines=178 kept=80
+@code lang=txt sha=961b363458fd lines=266 kept=80
 |아홉 중 **여덟이 docs 전용**이고 나머지 하나는 최초 커밋이다. **코드 변경은 하나도 없다.**
 || 무엇 | 실제 관행 |
 || --- | --- |
@@ -393,4 +393,4 @@
 |→ risks 47의 반복이다. **계약을 대체하는 결정을 적었으면 그 대체가 실제로 같은 일을
 |하는지 물어라.** 이번에는 "그 화면에 그 동사가 있는가"라는 한 줄 질문이면 됐다.
 |## 78. 이름이 비슷한 버튼이 남의 시험을 모호하게 만든다
-|...cut 98 lines
+|...cut 186 lines
