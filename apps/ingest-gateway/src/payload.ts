@@ -67,3 +67,17 @@ export function extractRepositoryId(payload: unknown): number | null {
   const id = repository?.['id'];
   return typeof id === 'number' && Number.isSafeInteger(id) ? id : null;
 }
+
+/**
+ * 저장소 전체 이름(`owner/name`) — 아카이브 문서가 담는 사람이 읽는 값이다
+ * (ENT-ING-003, CR-052 DEV-366).
+ *
+ * `repository_id`는 접근 범위 필터가 결합하는 재료이고 이 값은 조사자가 읽는
+ * 것이라 **하나만 담는 길이 없다**: 전자가 없으면 필터를 걸 수 없고, 후자가
+ * 없으면 조사자가 어느 저장소인지 알아볼 수 없다.
+ */
+export function extractRepositoryFullName(payload: unknown): string | null {
+  const repository = readObject(readObject(payload)?.['repository']);
+  const fullName = repository?.['full_name'];
+  return typeof fullName === 'string' && fullName.length > 0 ? fullName : null;
+}

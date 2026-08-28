@@ -13,6 +13,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import type { ErrorResponse } from '@prs/contracts';
+import { AccessScopeUnavailableError } from '@prs/es';
 import { deadLetterRepo } from '@prs/db';
 import type { DeadLetterFilter, DeadLetterState, RepositoryRow, RepositoryStatus } from '@prs/db';
 import type { AdminPrincipal } from '../config.js';
@@ -21,6 +22,7 @@ import {
   authenticateSession,
   authenticateToken,
   principalId,
+  requireAnyRole,
   requireRole,
   type Principal,
 } from '../auth/principal.js';
@@ -58,6 +60,7 @@ import {
   JOB_ACTIONS,
 } from './jobs.js';
 import { startReindex, type ReindexDeps } from './reindex.js';
+import { listRawEvents, parseRawEventFilter, type RawEventsDeps } from './raw-events.js';
 import { auditRepo, jobRepo, repositoryRepo } from '@prs/db';
 import {
   confirmationMatches,
@@ -76,6 +79,8 @@ export const JOBS_PATH = '/api/v1/admin/jobs';
 export const SEQUENCE_INTEGRITY_PATH = '/api/v1/admin/sequence-integrity';
 /** API-ADM-004 (WP-035). */
 export const REINDEX_PATH = '/api/v1/admin/reindex';
+/** API-ADM-008 (WP-036, CR-052). */
+export const RAW_EVENTS_PATH = '/api/v1/admin/raw-events';
 
 function fail(
   reply: FastifyReply,
@@ -116,10 +121,20 @@ export interface OpsRouteOptions extends OpsDeps {
    * 않는다 — 대상을 못 정하는 프로세스가 "재색인을 시작했다"고 답하는 것이 최악이다.
    */
   readonly reindex?: ReindexDeps;
+  /**
+   * 원본 아카이브 조회 의존 (API-ADM-008).
+   *
+   * 없으면 경로를 달지 않는다. **세션 인증이 없는 배포에서도 달지 않는다** —
+   * 이름 붙은 관리 토큰은 사용자가 아니라 접근 범위를 산출할 대상이 없고,
+   * 범위 없는 조회는 AC-6을 만족시킬 수 없다. 등록해 두고 매번 거절하는 것보다
+   * 없는 편이 정직하다.
+   */
+  readonly rawEvents?: RawEventsDeps;
 }
 
 export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions): void {
-  const { adminTokens, auth, loginPath, registry, pipeline, integrity, reindex, ...deps } = options;
+  const { adminTokens, auth, loginPath, registry, pipeline, integrity, reindex, rawEvents, ...deps } =
+    options;
 
   /**
    * 주체를 세우고 `operator` 역할을 확인한다.
@@ -221,6 +236,67 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
       const correlationId = randomUUID();
       if ((await authorize(request, reply, correlationId)) === null) return reply;
       return reply.send(await pipelineStatus(pipeline));
+    });
+  }
+
+  /**
+   * API-ADM-008 원본 아카이브 조회 (FR-ING-010, CR-052).
+   *
+   * `authorize`를 쓰지 않는다 — 그것은 `operator` 전용이고 세션이 없으면 토큰을
+   * 받는다. 아카이브는 **두 역할이 보되**(AC-5) **접근 범위 필터를 함께 지나야**
+   * 하므로(AC-6) 세션만 받는다. 토큰 주체는 접근 범위를 산출할 대상이 없다.
+   */
+  if (rawEvents !== undefined && auth !== undefined) {
+    const sessions = auth.sessions;
+    const scopes = auth.scopes;
+
+    app.get(RAW_EVENTS_PATH, async (request, reply) => {
+      const correlationId = randomUUID();
+
+      let principal: Principal;
+      try {
+        principal = await authenticateSession(request, sessions);
+        requireAnyRole(principal, ['operator', 'security_officer']);
+      } catch (error) {
+        const shape = toAuthError(error, {
+          correlationId,
+          ...(loginPath === undefined ? {} : { loginPath }),
+        });
+        if (shape !== null) return sendAuthError(reply, shape);
+        throw error;
+      }
+
+      const query = (request.query ?? {}) as Record<string, unknown>;
+      try {
+        const filter = parseRawEventFilter(query);
+
+        // 접근 범위는 캐시된 저장소 목록을 그대로 쓴다 (AC-6). `toAccessScope`의
+        // 조직·팀 치환은 아카이브 문서에 그 재료가 없어 쓸 수 없다.
+        const cached = await scopes.resolveCached(principalId(principal));
+        return reply.send(await listRawEvents(rawEvents, filter, cached.repositoryIds));
+      } catch (error) {
+        if (error instanceof AdminRejected) {
+          return fail(
+            reply,
+            ADMIN_ERROR_STATUS[error.code],
+            error.code,
+            error.message,
+            correlationId,
+            error.detail,
+          );
+        }
+        if (error instanceof AccessScopeUnavailableError) {
+          // 볼 수 있는 저장소가 하나도 없다. 빈 목록이 아니라 명시적 실패다.
+          return fail(
+            reply,
+            503,
+            'PERMISSION_UNAVAILABLE',
+            '접근 권한을 확인할 수 없어 조회를 거부한다',
+            correlationId,
+          );
+        }
+        throw error;
+      }
     });
   }
 

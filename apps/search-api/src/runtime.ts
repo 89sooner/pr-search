@@ -173,6 +173,24 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
             cursorSigner: createCursorSigner(parts.config.searchCursorKey),
             log: (entry) => { parts.log({ ...entry }); },
           },
+          /*
+           * 원본 아카이브 조회 (WP-036 / API-ADM-008, CR-052).
+           *
+           * **세션이 있을 때만 선다.** 이 블록 안에 있는 것이 그 뜻이다 —
+           * 조회는 역할 제한에 더해 요청자의 접근 범위 필터를 지나야 하는데
+           * (AC-6), 이름 붙은 관리 토큰은 접근 범위를 산출할 대상이 없다.
+           *
+           * `pool`을 받지 않는다. 이 자원의 정본은 `raw_event`(PostgreSQL)지만
+           * 조회 대상은 그것으로부터 만들어진 **파생 사본**이고, 두 곳을 함께
+           * 넘기면 "정본이 여기 있으니까"라는 이유로 PostgreSQL을 직접 훑는
+           * 경로가 언젠가 들어온다. 그 경로에는 ILM도 접근 범위 필터도 없다.
+           *
+           * 커서 서명자는 검색·구간·저장 검색·저장소 개요와 **같은 키**를 쓴다.
+           */
+          rawEvents: {
+            es: parts.es,
+            cursorSigner: createCursorSigner(parts.config.searchCursorKey),
+          },
         }),
     ...(integrity === undefined ? {} : { integrity }),
     reindex: buildReindexDeps(parts.pool, parts.es),
@@ -188,6 +206,8 @@ export function runtimeCapabilities(parts: RuntimeParts): Readonly<Record<string
     sequence_integrity: buildIntegrityDeps(parts.pool, parts.github) !== undefined,
     /** 저장소 수집 진단은 세션이 있어야 선다 — 접근 범위 없이 낼 수 없다. */
     repository_overview: parts.auth !== undefined && parts.searchDeps !== undefined,
+    /** 원본 아카이브 조회도 같다 (FR-ING-010 AC-6). 토큰만으로는 서지 않는다. */
+    raw_event_archive: parts.auth !== undefined && parts.searchDeps !== undefined,
     reindex: true,
   };
 }

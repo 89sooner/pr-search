@@ -32,6 +32,7 @@ import type { RegistryDeps } from './ops/repositories.js';
 import type { PipelineStatusDeps } from './ops/pipeline-status.js';
 import type { IntegrityDeps } from './ops/sequence-integrity.js';
 import type { ReindexDeps as OpsReindexDeps } from './ops/reindex.js';
+import type { RawEventsDeps } from './ops/raw-events.js';
 
 export const SERVICE_NAME = 'search-api' as const;
 export const DEFAULT_PORT = 3002;
@@ -62,6 +63,14 @@ export interface ServerDeps {
    * 않는다 — 대상을 못 정하는 프로세스가 "재색인을 시작했다"고 답하면 안 된다.
    */
   readonly reindex?: OpsReindexDeps;
+  /**
+   * 원본 아카이브 조회 의존 (API-ADM-008, WP-036 / CR-052).
+   *
+   * 없으면 경로를 달지 않는다. `runtime.ts`는 **세션이 있을 때만** 이것을
+   * 만든다 — 조회가 역할 제한에 더해 접근 범위 필터를 지나야 하므로(AC-6)
+   * 접근 범위를 산출할 주체가 없으면 성립하지 않는다.
+   */
+  readonly rawEvents?: RawEventsDeps;
   /**
    * 세션 인증 컨텍스트 (WP-012).
    *
@@ -238,6 +247,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
     ...(deps.pipeline === undefined ? {} : { pipeline: deps.pipeline }),
     ...(deps.integrity === undefined ? {} : { integrity: deps.integrity }),
     ...(deps.reindex === undefined ? {} : { reindex: deps.reindex }),
+    ...(deps.rawEvents === undefined ? {} : { rawEvents: deps.rawEvents }),
   });
   return app;
 }

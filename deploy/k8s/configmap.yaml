@@ -18,6 +18,12 @@ data:
   # 아웃박스가 받으므로 발행 마감을 짧게 둔다 (NFR-002의 300ms 예산 안)
   INGEST_ENQUEUE_TIMEOUT_MS: '150'
   INGEST_ARCHIVE_PATH: /var/lib/prs/archive/raw-events.ndjson
+  # 아카이브 조각 경계와 보관 개수 (FR-ING-010 AC-7, CR-052).
+  #
+  # 곱한 값이 `ingest-gateway.yaml`의 `emptyDir.sizeLimit`보다 작아야 한다.
+  # 한쪽만 올리면 파일이 볼륨을 채우고, 그때 레인 B의 정체가 레인 A를 멈춘다.
+  INGEST_ARCHIVE_MAX_BYTES: '67108864'
+  INGEST_ARCHIVE_KEEP: '5' 
 
   SEARCH_API_PORT: '3002'
   PIPELINE_WORKER_PORT: '3003'

@@ -21,7 +21,13 @@ import { extractInvalidationTarget, isEmptyTarget, type InvalidationTarget } fro
 import type { ArchiveWriter } from './archive.js';
 import { eventTypeLabel, isSupportedEventType } from './events.js';
 import type { IngestMetrics } from './metrics.js';
-import { canonicalHash, extractAction, extractRepositoryId, resolveDeliveryId } from './payload.js';
+import {
+  canonicalHash,
+  extractAction,
+  extractRepositoryFullName,
+  extractRepositoryId,
+  resolveDeliveryId,
+} from './payload.js';
 import type { RawEventStore } from './store.js';
 
 export interface WebhookRequest {
@@ -289,6 +295,7 @@ export async function ingestWebhook(deps: IngestDeps, request: WebhookRequest): 
       delivery_id: deliveryId,
       event_type: eventType,
       action: event.action,
+      repository: extractRepositoryFullName(payload),
       repository_id: repositoryId,
       received_at: receivedAt.toISOString(),
       correlation_id: correlationId,

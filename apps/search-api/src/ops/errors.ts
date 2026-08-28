@@ -19,6 +19,10 @@ export type AdminErrorCode = Extract<
   | 'JOB_CONFLICT'
   // 다른 별칭이 재색인 중이다 — 동시 실행 상한 1 (API-ADM-004, WP-035 / DEV-300).
   | 'REINDEX_BUSY'
+  // 아카이브 조회 커서 (API-ADM-008, CR-052). 검색 쪽과 **같은 코드를 쓴다** —
+  // 같은 실패에 다른 이름을 붙이면 화면이 두 갈래를 각자 처리하게 된다.
+  | 'CURSOR_INVALID'
+  | 'CURSOR_QUERY_MISMATCH'
 >;
 
 export const ADMIN_ERROR_STATUS: Readonly<Record<AdminErrorCode, number>> = {
@@ -30,6 +34,8 @@ export const ADMIN_ERROR_STATUS: Readonly<Record<AdminErrorCode, number>> = {
   NOT_FOUND: 404,
   JOB_CONFLICT: 409,
   REINDEX_BUSY: 409,
+  CURSOR_INVALID: 400,
+  CURSOR_QUERY_MISMATCH: 400,
 };
 
 export class AdminRejected extends Error {

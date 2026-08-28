@@ -11,7 +11,15 @@ import { ingestWebhook, type IngestDeps, type LogEntry, type WebhookRequest } fr
 import { createIngestMetrics } from './metrics.js';
 import { MAX_BODY_BYTES } from './config.js';
 
-const BODY = Buffer.from('{"action":"opened","repository":{"id":4021}}', 'utf8');
+/*
+ * 실제 웹훅은 `repository.full_name`을 언제나 담는다. 이전 픽스처는 `id`만
+ * 담았고, 그래서 아카이브 레코드의 `repository`를 `null`로 고정하는 변이가
+ * **살아남았다** — 픽스처가 실제보다 빈약하면 그만큼이 사각지대다.
+ */
+const BODY = Buffer.from(
+  '{"action":"opened","repository":{"id":4021,"full_name":"acme/payments"}}',
+  'utf8',
+);
 
 interface Harness {
   readonly deps: IngestDeps;
@@ -31,6 +39,7 @@ function harness(overrides: Partial<IngestDeps> = {}): Harness {
       archived.push(record);
     },
     close: NULL_ARCHIVE_WRITER.close,
+    droppedSegments: NULL_ARCHIVE_WRITER.droppedSegments,
   };
 
   const deps: IngestDeps = {
@@ -233,6 +242,10 @@ describe('FR-ING-003 / API-ING-001: 원본 보관과 화이트리스트', () => 
       delivery_id: '72d1e0f3-a4b5-4c6d-8e7f-90a1b2c3d4e5',
       event_type: 'pull_request',
       action: 'opened',
+      // 저장소를 **두 형태로** 담는다 (CR-052, DEV-366). `repository_id`는 접근
+      // 범위 필터의 재료이고 `repository`는 조사자가 읽는 값이며, 하나만 담으면
+      // 각각 필터를 걸 수 없거나 저장소를 알아볼 수 없다.
+      repository: 'acme/payments',
       repository_id: 4021,
       received_at: '2026-08-20T00:00:00.000Z',
     });
@@ -245,6 +258,7 @@ describe('FR-ING-003 / API-ING-001: 원본 보관과 화이트리스트', () => 
           throw new Error('disk full');
         },
         close: NULL_ARCHIVE_WRITER.close,
+        droppedSegments: NULL_ARCHIVE_WRITER.droppedSegments,
       },
     });
     const outcome = await ingestWebhook(deps, request());

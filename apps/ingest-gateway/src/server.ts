@@ -216,7 +216,10 @@ export function createServerDeps(pool: Pool, config: GatewayConfig, bus: EventBu
     checkDatabase: async (): Promise<void> => {
       await pool.query('SELECT 1');
     },
-    archive: config.archivePath === null ? NULL_ARCHIVE_WRITER : createArchiveWriter(config.archivePath),
+    archive:
+      config.archivePath === null
+        ? NULL_ARCHIVE_WRITER
+        : createArchiveWriter(config.archivePath, config.archiveRotation),
     metrics: createIngestMetrics(),
   };
 }
@@ -314,6 +317,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   /** 수신 지표 노출 (QA-A001-01). 스크레이프·집계 배선은 WP-010이 맡는다. */
   app.get('/metrics', async (_request, reply): Promise<string> => {
+    // 버린 조각 수는 쓰기 쪽이 세고 스크레이프 시점에 읽는다 (FR-ING-010 AC-7).
+    deps.metrics.archiveSegmentsDropped.set(deps.archive.droppedSegments());
     return reply.type(METRICS_CONTENT_TYPE).send(deps.metrics.render());
   });
 

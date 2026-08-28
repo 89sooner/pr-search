@@ -96,6 +96,46 @@ export function applyMandatoryScopeFilter(
   } as ScopedQuery;
 }
 
+/**
+ * 아카이브 인덱스용 접근 범위 필터 (FR-ING-010 AC-6, CR-052).
+ *
+ * ## 왜 `applyMandatoryScopeFilter`를 그대로 쓰지 않는가
+ *
+ * 그 함수의 `org_team` 갈래는 `org_id`·`visibility`·`allowed_team_ids`를 읽는데
+ * **아카이브 문서에는 그 셋이 없다.** 웹훅 수신 시점에 알 수 없는 값이고, 담아
+ * 두더라도 저장소의 가시성이나 팀 허용이 바뀌는 순간 낡는다 — 낡은 접근 통제
+ * 재료는 그 자체가 유출 경로다.
+ *
+ * 그래서 **같은 저장소 집합을 `explicit` 표현으로 고정해서** 건다. `CachedScope`는
+ * 크기와 무관하게 언제나 `repositoryIds`를 들고 있고, `toAccessScope`가 500개를
+ * 넘을 때만 조직·팀 조건으로 치환하는데 그 치환은 **결과 집합이 같아야 한다**는
+ * 규칙 아래 있다 (보안 문서 5.2). 따라서 규칙이 두 곳에 사는 것이 아니다 —
+ * 같은 집합의 다른 표현이며, 아카이브는 그중 하나만 쓸 수 있을 뿐이다.
+ *
+ * 미등록 저장소의 문서는 `repository_id`가 없어 이 `terms`에 걸리지 않는다.
+ * 그것이 옳다 — 어떤 접근 범위에도 속하지 않으므로 조회되면 안 되고, 내주면
+ * 그 응답이 곧 존재 신탁이 된다 (`FR-AUTH-002` AC-4).
+ */
+export function applyArchiveScopeFilter(
+  query: estypes.QueryDslQueryContainer,
+  repositoryIds: readonly number[],
+): ScopedQuery {
+  if (repositoryIds.length === 0) {
+    throw new AccessScopeUnavailableError('접근 가능한 저장소가 없다');
+  }
+
+  const filter: estypes.QueryDslQueryContainer = {
+    terms: { repository_id: [...repositoryIds] },
+  };
+
+  return {
+    bool: {
+      must: [query],
+      filter: [filter],
+    },
+  } as ScopedQuery;
+}
+
 /** 접근 범위가 명시적 목록으로 표현 가능한 크기인지 판정한다 (ADR-008 AC-6). */
 export function shouldUseOrgTeamScope(repositoryCount: number): boolean {
   return repositoryCount > EXPLICIT_SCOPE_LIMIT;
