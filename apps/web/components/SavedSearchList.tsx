@@ -18,13 +18,26 @@
 
 import { useState, type ReactNode } from 'react';
 import { Badge, Button, Dialog, Table } from '@conductor-by-89soone/react';
-import { rowActions, splitInvalidSpan, visibilityLabel, type SavedSearchView } from '../lib/saved-search';
+import {
+  describeSequenceReference,
+  rowActions,
+  splitInvalidSpan,
+  visibilityLabel,
+  type SavedSearchView,
+} from '../lib/saved-search';
 
 export interface SavedSearchListProps {
   readonly items: readonly SavedSearchView[];
   readonly onRun: (item: SavedSearchView) => void;
   readonly onEdit: (item: SavedSearchView) => void;
   readonly onDelete: (item: SavedSearchView) => void;
+  /**
+   * 「현재 에폭으로 다시 연결」 (CR-051, AC-8).
+   *
+   * **목록을 여는 것만으로는 일어나지 않는다.** 이 콜백은 사용자가 버튼을
+   * 눌렀을 때에만 불리며, 그것이 자동 재해석과 명시적 복구를 가르는 선이다.
+   */
+  readonly onRebindEpoch: (item: SavedSearchView) => void;
   /** 목록 구분용 접두. 두 목록이 같은 화면에 있으므로 testid가 겹치면 안 된다. */
   readonly testIdPrefix: string;
 }
@@ -66,6 +79,7 @@ export function SavedSearchList({
   onRun,
   onEdit,
   onDelete,
+  onRebindEpoch,
   testIdPrefix,
 }: SavedSearchListProps): ReactNode {
   /** 삭제 확인 대상. 되돌릴 수 없으므로 한 번 묻는다. */
@@ -87,6 +101,7 @@ export function SavedSearchList({
         <tbody>
           {items.map((item) => {
             const actions = rowActions(item);
+            const sequence = describeSequenceReference(item);
             const rowId = `${testIdPrefix}-row-${String(item.saved_search_id)}`;
             return (
               <tr key={item.saved_search_id} data-testid={rowId}>
@@ -102,6 +117,30 @@ export function SavedSearchList({
                       <p data-testid={`${rowId}-blocked`}>{actions.blockedReason}</p>
                     </>
                   ) : null}
+
+                  {/*
+                    * 시퀀스 인용 상태 (CR-051, AC-8).
+                    *
+                    * **문자 레이블을 반드시 둔다** — 색이나 아이콘만으로
+                    * 낡음을 말하지 않는다 (NFR-006). 판정은 뷰 모델이 끝냈고
+                    * 여기서는 그리기만 한다.
+                    */}
+                  {sequence === null ? null : (
+                    <>
+                      <Badge
+                        tone={sequence.blocksRun ? 'danger' : 'warning'}
+                        data-testid={`${rowId}-sequence-status`}
+                      >
+                        {sequence.label}
+                      </Badge>
+                      {sequence.detail === null ? null : (
+                        <p data-testid={`${rowId}-sequence-detail`}>{sequence.detail}</p>
+                      )}
+                      {actions.blockedReason !== null && item.query_status !== 'invalid' ? (
+                        <p data-testid={`${rowId}-blocked`}>{actions.blockedReason}</p>
+                      ) : null}
+                    </>
+                  )}
                 </td>
                 <td data-testid={`${rowId}-visibility`}>{visibilityLabel(item)}</td>
                 <td>{item.is_owner ? '나' : item.owner.login}</td>
@@ -131,6 +170,22 @@ export function SavedSearchList({
                       data-testid={`${rowId}-edit`}
                     >
                       편집
+                    </Button>
+                  ) : null}
+
+                  {/*
+                    * 저장자에게만 그린다 (CR-051, AC-2). 공유받은 사람에게는
+                    * 사유 문장이 "저장자가 다시 연결해야 합니다"를 말한다.
+                    */}
+                  {actions.canRebindEpoch ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        onRebindEpoch(item);
+                      }}
+                      data-testid={`${rowId}-rebind-epoch`}
+                    >
+                      현재 에폭으로 다시 연결
                     </Button>
                   ) : null}
 

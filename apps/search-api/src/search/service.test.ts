@@ -64,6 +64,8 @@ function request(query: string) {
     size: 25,
     cursor: null,
     facets: false,
+    // `seq:`가 없는 질의다 (CR-051).
+    sequenceEpoch: null,
   } as const;
 }
 

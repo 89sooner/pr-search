@@ -19,8 +19,19 @@
 
 import type { Pool } from '@prs/db';
 import { savedSearchRepo, type SavedSearchRow } from '@prs/db';
-import { QUERY_KEYS, QueryParseError, parseQuery, type QueryErrorDetail } from '@prs/query';
+import {
+  QUERY_KEYS,
+  QueryParseError,
+  hasSequenceRangeFilter,
+  parseQuery,
+  type QueryErrorDetail,
+} from '@prs/query';
 import type { CursorSigner } from '../cursor/envelope.js';
+import {
+  NO_SEQUENCE_REFERENCES,
+  type SequenceReferenceMap,
+  type SequenceReferenceView,
+} from './sequence-reference.js';
 import {
   computeSavedSearchFingerprint,
   decodeSavedSearchCursor,
@@ -60,6 +71,14 @@ export interface SavedSearchResource {
   readonly is_owner: boolean;
   readonly query_status: 'valid' | 'invalid';
   readonly query_error?: QueryErrorInfo;
+  /**
+   * `seq:` 범위 조건을 담은 질의에만 나타난다 (CR-051, AC-8).
+   *
+   * `query_status`와 섞지 않는다 — 그쪽은 **문법**이 유효한가이고 이쪽은
+   * **인용이 아직 같은 것을 가리키는가**다. 두 사실이 독립이므로 문법이
+   * 맞는 질의도 낡을 수 있다.
+   */
+  readonly sequence_reference?: SequenceReferenceView;
   readonly created_at: string;
   readonly last_run_at: string | null;
 }
@@ -90,7 +109,18 @@ export function judgeQuery(query: string): QueryErrorInfo | null {
   }
 }
 
-export function toResource(row: SavedSearchRow, viewerUserId: string): SavedSearchResource {
+export function toResource(
+  row: SavedSearchRow,
+  viewerUserId: string,
+  /**
+   * 시퀀스 인용 상태. **여기서 계산하지 않는다** (CR-051).
+   *
+   * 판정에는 저장소·시퀀스 공간 조회가 필요하고, 이 함수는 목록의 항목마다
+   * 불린다 — 안에서 데이터베이스를 부르면 그 왕복이 언제나 항목 수만큼
+   * 늘어난다. 호출부가 페이지 단위로 한 번에 판정해 넘긴다.
+   */
+  sequenceReference?: SequenceReferenceView,
+): SavedSearchResource {
   const queryError = judgeQuery(row.query);
   return {
     saved_search_id: row.saved_search_id,
@@ -110,6 +140,7 @@ export function toResource(row: SavedSearchRow, viewerUserId: string): SavedSear
     is_owner: row.owner_user_id === viewerUserId,
     query_status: queryError === null ? 'valid' : 'invalid',
     ...(queryError === null ? {} : { query_error: queryError }),
+    ...(sequenceReference === undefined ? {} : { sequence_reference: sequenceReference }),
     created_at: row.created_at,
     last_run_at: row.last_run_at,
   };
@@ -129,6 +160,19 @@ export interface ListSavedSearchesInput {
   readonly size: number;
   readonly cursor: string | null;
   readonly nowMs: number;
+  /**
+   * 이 페이지의 시퀀스 인용 상태를 **한 번에** 판정한다 (CR-051).
+   *
+   * 함수로 받는 이유가 둘이다. 첫째, 판정에는 **요청한 사람의** 접근
+   * 범위가 필요한데 그것은 라우트가 쥐고 있다 — 이 서비스에 접근 범위를
+   * 들이면 저장된 검색이 접근 통제 경로에 참여하게 되고, 그것이 CR-049가
+   * 피한 자리다. 둘째, 페이지를 읽은 **뒤**에야 무엇을 판정할지 알 수 있다.
+   *
+   * 없으면 `sequence_reference`를 싣지 않는다.
+   */
+  readonly resolveSequenceReferences?: (
+    rows: readonly SavedSearchRow[],
+  ) => Promise<SequenceReferenceMap>;
 }
 
 export interface ListSavedSearchesResult {
@@ -192,9 +236,14 @@ export async function listSavedSearches(
         )
       : null;
 
+  const references =
+    input.resolveSequenceReferences === undefined
+      ? NO_SEQUENCE_REFERENCES
+      : await input.resolveSequenceReferences(page);
+
   return {
     view: input.view,
-    items: page.map((row) => toResource(row, input.userId)),
+    items: page.map((row) => toResource(row, input.userId, references.get(row.saved_search_id))),
     nextCursor,
   };
 }
@@ -208,11 +257,27 @@ export type RunSavedSearchOutcome =
       readonly navigationUrl: string;
     }
   | { readonly kind: 'not_found' }
-  | { readonly kind: 'query_invalid'; readonly error: QueryErrorInfo };
+  | { readonly kind: 'query_invalid'; readonly error: QueryErrorInfo }
+  /**
+   * 질의에 `seq:`가 있는데 저장된 에폭이 없다 (CR-051, AC-8).
+   *
+   * 여기서 현재 에폭을 붙여 보내는 것은 복구가 아니라 추측이다 —
+   * **저장 당시의 에폭은 어디에도 남아 있지 않다.** 저장자가 명시적으로
+   * 다시 연결할 때까지 실행하지 않는다.
+   */
+  | { readonly kind: 'sequence_unbound' };
 
-/** W-001이 여는 주소. 화면이 여기서 다시 조립하지 않도록 서버가 만든다. */
-export function navigationUrlFor(query: string): string {
-  return `/search?q=${encodeURIComponent(query)}`;
+/**
+ * W-001이 여는 주소. 화면이 여기서 다시 조립하지 않도록 서버가 만든다.
+ *
+ * **저장된 에폭을 그대로 싣는다** (CR-051). 현재 값으로 바꿔 보내지 않는다 —
+ * 낡았는지 판정하고 그 사실을 보이는 것은 `API-SRCH-004`와 W-001의 일이고,
+ * 여기서 현재 에폭을 붙이면 **사용자가 무효를 볼 기회 없이 다른 세대의
+ * 결과에 도착한다.**
+ */
+export function navigationUrlFor(query: string, seqEpoch: number | null): string {
+  const base = `/search?q=${encodeURIComponent(query)}`;
+  return seqEpoch === null ? base : `${base}&seq_epoch=${String(seqEpoch)}`;
 }
 
 /**
@@ -234,6 +299,14 @@ export async function runSavedSearch(
   if (queryError !== null) return { kind: 'query_invalid', error: queryError };
 
   /*
+   * 미연결 인용은 실행하지 않는다 (CR-051). `last_run_at`도 갱신하지 않는다 —
+   * 실행되지 않은 것을 실행했다고 적지 않는다는 규율이 여기서도 같다.
+   */
+  if (row.seq_epoch === null && hasSequenceRangeFilter(parseQuery(row.query))) {
+    return { kind: 'sequence_unbound' };
+  }
+
+  /*
    * 갱신 문장이 권한 조건을 **다시** 건다.
    *
    * 위의 조회와 이 갱신 사이에 팀 구성이 바뀔 수 있다. 그 창에서 회수된 사람이
@@ -248,6 +321,6 @@ export async function runSavedSearch(
     savedSearchId: updated.saved_search_id,
     query: updated.query,
     lastRunAt: updated.last_run_at,
-    navigationUrl: navigationUrlFor(updated.query),
+    navigationUrl: navigationUrlFor(updated.query, updated.seq_epoch),
   };
 }

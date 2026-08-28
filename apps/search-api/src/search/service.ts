@@ -233,6 +233,14 @@ export interface SearchRequest {
   readonly cursor: string | null;
   /** 패싯을 함께 셀 것인가 (`facets=true`). */
   readonly facets: boolean;
+  /**
+   * `seq:` 범위 질의의 유효 에폭. `seq:`가 없으면 `null` (CR-051).
+   *
+   * 라우트가 시퀀스 공간을 해석해 확정한 값이며, 여기서 다시 조회하지
+   * 않는다 — 접근 통제를 지나는 해석은 라우트의 일이고 이 함수는 그
+   * 결과를 질의와 지문에 반영할 뿐이다 (백엔드 아키텍처 6.1의 4-1단계).
+   */
+  readonly sequenceEpoch: number | null;
 }
 
 /**
@@ -264,7 +272,13 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
   const target = deps.target ?? SEARCH_TARGET;
   const now = (deps.now ?? Date.now)();
   const resolution = await deps.resolveNames(collectNames(request.ast));
-  const built = buildQuery(request.ast, resolution);
+  const built = buildQuery(
+    request.ast,
+    resolution,
+    // `seq:`가 있는데 에폭이 없으면 `buildQuery`가 던진다 — 조용히 모든
+    // 세대를 함께 돌려주는 것보다 조립 오류를 드러내는 편이 낫다.
+    request.sequenceEpoch === null ? {} : { sequenceEpoch: request.sequenceEpoch },
+  );
 
   // 4. 강제 필터 결합. 우회 경로가 없다 (ADR-008).
   const scoped = applyMandatoryScopeFilter(built.query, request.scope);
@@ -279,6 +293,7 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
     order: request.order,
     scope: request.scope,
     scopeVersion: request.scopeVersion,
+    sequenceEpoch: request.sequenceEpoch,
   });
 
   const resumed =
@@ -357,7 +372,13 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
   // 0건일 때만 완화 후보를 센다 (FR-SRCH-006 AC-3).
   const relaxation =
     value === 0
-      ? await computeRelaxationHints(request.ast, { es: deps.es, target, scope: request.scope, resolution })
+      ? await computeRelaxationHints(request.ast, {
+          es: deps.es,
+          target,
+          scope: request.scope,
+          resolution,
+          sequenceEpoch: request.sequenceEpoch,
+        })
       : NO_RELAXATION;
 
   return {

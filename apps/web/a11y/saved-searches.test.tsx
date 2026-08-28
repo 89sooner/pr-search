@@ -12,6 +12,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
+import type { SavedSearchView } from '../lib/saved-search';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const push = vi.fn();
@@ -106,6 +107,7 @@ describe('C-037 목록 (QA-W008-01·02·06)', () => {
         onRun={vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        onRebindEpoch={vi.fn()}
         testIdPrefix="t"
       />,
     );
@@ -121,6 +123,7 @@ describe('C-037 목록 (QA-W008-01·02·06)', () => {
         onRun={vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        onRebindEpoch={vi.fn()}
         testIdPrefix="t"
       />,
     );
@@ -137,6 +140,7 @@ describe('C-037 목록 (QA-W008-01·02·06)', () => {
         onRun={vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        onRebindEpoch={vi.fn()}
         testIdPrefix="t"
       />,
     );
@@ -155,6 +159,7 @@ describe('C-037 목록 (QA-W008-01·02·06)', () => {
         onRun={vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        onRebindEpoch={vi.fn()}
         testIdPrefix="t"
       />,
     );
@@ -171,6 +176,7 @@ describe('C-037 목록 (QA-W008-01·02·06)', () => {
         onRun={vi.fn()}
         onEdit={vi.fn()}
         onDelete={onDelete}
+        onRebindEpoch={vi.fn()}
         testIdPrefix="t"
       />,
     );
@@ -190,6 +196,7 @@ describe('C-037 목록 (QA-W008-01·02·06)', () => {
         onRun={vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        onRebindEpoch={vi.fn()}
         testIdPrefix="t"
       />,
     );
@@ -207,6 +214,7 @@ describe('C-037 목록 (QA-W008-01·02·06)', () => {
         onRun={vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        onRebindEpoch={vi.fn()}
         testIdPrefix="t"
       />,
     );
@@ -220,6 +228,7 @@ describe('C-037 목록 (QA-W008-01·02·06)', () => {
         onRun={vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        onRebindEpoch={vi.fn()}
         testIdPrefix="t"
       />,
     );
@@ -469,6 +478,94 @@ describe('W-001 저장 대화상자 (QA-W008-01)', () => {
 
     // 대화상자는 포털로 body에 붙는다 — `container`만 보면 아무것도 검사하지 않는다.
     const found = await violations(baseElement);
+    expect(describeViolations(found)).toBe('');
+  });
+});
+
+describe('시퀀스 인용 상태 (QA-W008-13~19 / CR-051)', () => {
+  const withReference = (
+    reference: NonNullable<SavedSearchView['sequence_reference']>,
+    over: Partial<SavedSearchView> = {},
+  ): SavedSearchView => ({
+    ...MINE,
+    query: 'repo:acme/payments base:main seq:10..20',
+    sequence_reference: reference,
+    ...over,
+  });
+
+  function draw(item: SavedSearchView, onRebindEpoch = vi.fn()) {
+    return render(
+      <SavedSearchList
+        items={[item]}
+        onRun={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onRebindEpoch={onRebindEpoch}
+        testIdPrefix="t"
+      />,
+    );
+  }
+
+  it('낡은 인용을 **글로** 알린다 — 색만으로 말하지 않는다 (NFR-006)', () => {
+    draw(withReference({ status: 'epoch_stale', stored_seq_epoch: 3, current_seq_epoch: 4 }));
+
+    expect(screen.getByTestId('t-row-1-sequence-status').textContent).toContain('달라졌');
+    const detail = screen.getByTestId('t-row-1-sequence-detail').textContent ?? '';
+    expect(detail).toContain('3');
+    expect(detail).toContain('4');
+  });
+
+  it('낡았어도 실행 버튼은 열려 있다 — W-001이 무효를 보여 준다', () => {
+    draw(withReference({ status: 'epoch_stale', stored_seq_epoch: 3, current_seq_epoch: 4 }));
+    expect(screen.getByTestId<HTMLButtonElement>('t-row-1-run').disabled).toBe(false);
+  });
+
+  it('**미연결 인용은 실행을 막고 사유를 준다**', () => {
+    draw(withReference({ status: 'unbound', current_seq_epoch: 4 }));
+
+    expect(screen.getByTestId<HTMLButtonElement>('t-row-1-run').disabled).toBe(true);
+    expect(screen.getByTestId('t-row-1-blocked').textContent).toContain('다시 연결');
+  });
+
+  it('저장자에게 재연결 버튼을 그리고, 누르면 콜백이 불린다', async () => {
+    const user = userEvent.setup();
+    const onRebindEpoch = vi.fn();
+    draw(withReference({ status: 'unbound', current_seq_epoch: 4 }), onRebindEpoch);
+
+    await user.click(screen.getByTestId('t-row-1-rebind-epoch'));
+    expect(onRebindEpoch).toHaveBeenCalledTimes(1);
+  });
+
+  it('**공유받은 사람에게는 재연결을 그리지 않는다** (AC-2)', () => {
+    draw(
+      withReference(
+        { status: 'epoch_stale', stored_seq_epoch: 3, current_seq_epoch: 4 },
+        { is_owner: false, saved_search_id: 1 },
+      ),
+    );
+    expect(screen.queryByTestId('t-row-1-rebind-epoch')).toBeNull();
+  });
+
+  it('**`unavailable`에는 어떤 숫자도 나오지 않는다** (THR-043)', () => {
+    draw(withReference({ status: 'unavailable' }, { is_owner: false }));
+
+    const status = screen.getByTestId('t-row-1-sequence-status').textContent ?? '';
+    const detail = screen.getByTestId('t-row-1-sequence-detail').textContent ?? '';
+    // 에폭 값이 하나라도 화면에 나오면 그것이 유출이다.
+    expect(`${status} ${detail}`).not.toMatch(/\d/);
+    expect(screen.queryByTestId('t-row-1-rebind-epoch')).toBeNull();
+  });
+
+  it('`seq:`가 없는 항목에는 인용 표시가 없다', () => {
+    draw(MINE);
+    expect(screen.queryByTestId('t-row-1-sequence-status')).toBeNull();
+  });
+
+  it('axe 위반 0건', async () => {
+    const { container } = draw(
+      withReference({ status: 'epoch_stale', stored_seq_epoch: 3, current_seq_epoch: 4 }),
+    );
+    const found = await violations(container);
     expect(describeViolations(found)).toBe('');
   });
 });

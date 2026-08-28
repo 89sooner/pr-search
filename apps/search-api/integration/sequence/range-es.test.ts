@@ -240,6 +240,7 @@ beforeAll(async () => {
     config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY },
     auth,
     search: {
+      pool,
       es,
       cursorSigner: TEST_CURSOR_SIGNER,
       resolveNames: async (names) => ({

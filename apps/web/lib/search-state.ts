@@ -34,6 +34,20 @@ export type SearchScreenState =
    */
   | { readonly kind: 'resolved_single' }
   | { readonly kind: 'ready' }
+  /**
+   * 인용한 에폭이 현재와 다르다 (CR-051, FR-SEQ-005 AC-4).
+   *
+   * **`empty_no_result`와 구분하는 것이 이 상태의 전부다.** 조회가
+   * 실행되지 않았으므로 "결과가 없다"가 아니라 "이 번호가 무엇을
+   * 뜻하는지 달라졌다"이며, 사용자가 할 일도 다르다 — 필터를 완화하는
+   * 것이 아니라 현재 세대로 다시 조회하는 것이다.
+   */
+  | {
+      readonly kind: 'epoch_stale';
+      readonly sequenceSpace: string;
+      readonly requestedEpoch: number;
+      readonly currentEpoch: number;
+    }
   | { readonly kind: 'empty_no_result' }
   | { readonly kind: 'error_search_timeout' }
   | { readonly kind: 'no_permission' }
@@ -93,6 +107,16 @@ export interface SearchStateInput {
   /** 해석 후보가 절삭되었나 (FR-SRCH-004 AC-3). */
   readonly candidatesTruncated: boolean;
   readonly loginPath: string;
+  /**
+   * 응답의 `epoch_stale`·`sequence_context`·`requested_seq_epoch` (CR-051).
+   *
+   * `seq:` 질의가 아니거나 인용이 유효하면 `null`이다.
+   */
+  readonly staleSequence?: {
+    readonly sequenceSpace: string;
+    readonly requestedEpoch: number;
+    readonly currentEpoch: number;
+  } | null;
 }
 
 /**
@@ -158,7 +182,24 @@ export function resolveScreenState(input: SearchStateInput): SearchScreenState {
     };
   }
 
-  // 5. 성공. 해석 후보가 2건 이상이면 자동 이동하지 않는다 (FR-SRCH-001 AC-5).
+  /*
+   * 5. 성공. **낡은 인용이 결과 판정보다 먼저다** (CR-051).
+   *
+   * 서버가 조회를 실행하지 않았으므로 `itemCount`는 `null`이고, 그대로
+   * 아래로 내려가면 `loading_initial`이 되어 화면이 영영 멈춘다. 그리고
+   * `0`으로 읽히면 "구간이 비었다"라는 거짓말을 그린다.
+   */
+  const stale = input.staleSequence ?? null;
+  if (stale !== null) {
+    return {
+      kind: 'epoch_stale',
+      sequenceSpace: stale.sequenceSpace,
+      requestedEpoch: stale.requestedEpoch,
+      currentEpoch: stale.currentEpoch,
+    };
+  }
+
+  // 해석 후보가 2건 이상이면 자동 이동하지 않는다 (FR-SRCH-001 AC-5).
   if (input.candidateCount !== null && input.candidateCount >= 2) {
     return { kind: 'ambiguous', truncated: input.candidatesTruncated };
   }

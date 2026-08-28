@@ -292,6 +292,7 @@ beforeAll(async () => {
     },
     auth,
     search: {
+      pool,
       es,
       cursorSigner: TEST_CURSOR_SIGNER,
       resolveNames: async (names) => ({
@@ -881,6 +882,7 @@ describe('패싯 실패가 목록을 막지 않는다 (FR-SRCH-009 예외 처리
       },
       auth: narrowAuth(),
       search: {
+        pool,
         es,
         cursorSigner: TEST_CURSOR_SIGNER,
         resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }),
@@ -917,6 +919,7 @@ describe('패싯 실패가 목록을 막지 않는다 (FR-SRCH-009 예외 처리
       },
       auth: narrowAuth(),
       search: {
+        pool,
         es,
         cursorSigner: TEST_CURSOR_SIGNER,
         resolveNames: async () => ({ orgIds: new Map(), teamIds: new Map() }),

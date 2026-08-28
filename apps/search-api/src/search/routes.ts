@@ -11,10 +11,11 @@
 
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { QUERY_KEYS, QueryParseError, parseQuery } from '@prs/query';
+import { QUERY_KEYS, QueryParseError, SEQUENCE_BINDING_MESSAGE, parseQuery } from '@prs/query';
 import { toAccessScope } from '@prs/authz';
 import { AccessScopeUnavailableError, PartialSearchError, SORT_KEYS, isSortKey } from '@prs/es';
 import type { ErrorResponse } from '@prs/contracts';
+import type { Pool } from '@prs/db';
 import type { AuthContext } from '../auth/context.js';
 import { authenticateSession } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
@@ -22,6 +23,7 @@ import { DEFAULT_SORT_KEY } from '@prs/es';
 import { CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope.js';
 import { readCursor, readFacets } from '../cursor/params.js';
 import { facetResponseFields } from './facets.js';
+import { resolveSequenceContext, type SequenceContextOutcome } from './sequence-context.js';
 import {
   clampSize,
   parseOrder,
@@ -71,7 +73,86 @@ function toCursorError(error: unknown, correlationId: string): ErrorResponse | n
   return null;
 }
 
+/**
+ * 시퀀스 인용 판정을 계약이 정한 응답으로 (CR-051).
+ *
+ * **새 오류 코드를 만들지 않는다.** 부족한 것은 파라미터이고(`INVALID_PARAMETER`),
+ * 확인할 수 없는 것은 자원이다(`NOT_FOUND`). `detail.reason`이 사유를 가른다.
+ *
+ * @returns 조회를 계속해도 되면 `null`.
+ */
+function toSequenceFailure(
+  outcome: SequenceContextOutcome,
+  correlationId: string,
+): { readonly status: number; readonly body: ErrorResponse } | null {
+  if (outcome.kind === 'unbindable') {
+    return {
+      status: 400,
+      body: {
+        error: {
+          code: 'INVALID_PARAMETER',
+          message: SEQUENCE_BINDING_MESSAGE[outcome.reason],
+          detail: { field: 'q', reason: outcome.reason, required_keys: ['repo', 'base'] },
+        },
+        correlation_id: correlationId,
+      },
+    };
+  }
+  if (outcome.kind === 'bad_epoch_param') {
+    return {
+      status: 400,
+      body: {
+        error: {
+          code: 'INVALID_PARAMETER',
+          message: '시퀀스 에폭은 1 이상의 정수여야 합니다',
+          detail: { field: 'seq_epoch' },
+        },
+        correlation_id: correlationId,
+      },
+    };
+  }
+  if (outcome.kind === 'orphan_epoch_param') {
+    return {
+      status: 400,
+      body: {
+        error: {
+          code: 'INVALID_PARAMETER',
+          message: 'seq_epoch은 seq: 범위 조건이 있는 질의에서만 의미가 있습니다',
+          detail: { field: 'seq_epoch', reason: 'sequence_reference_absent' },
+        },
+        correlation_id: correlationId,
+      },
+    };
+  }
+  if (outcome.kind === 'space_unavailable') {
+    /*
+     * 미등록·범위 밖·미채번을 구분하지 않는다 (THR-006, CR-027 DEV-137).
+     * 구분하는 순간 이 경로가 비공개 저장소의 존재 신탁이 된다.
+     */
+    return {
+      status: 404,
+      body: {
+        error: { code: 'NOT_FOUND', message: '이 seq: 조건을 해석할 시퀀스 공간을 확인할 수 없습니다.' },
+        correlation_id: correlationId,
+      },
+    };
+  }
+  return null;
+}
+
+/**
+ * 라우트가 조회 서비스보다 하나 더 갖는 것 (CR-051).
+ *
+ * `pool`이 `SearchDeps`가 아니라 여기 있는 이유는 **`runSearch`가 그것을
+ * 쓰지 않기 때문**이다. 시퀀스 공간 해석은 접근 통제를 지나는 일이라
+ * 라우트의 4-1단계이고, 조회 서비스는 확정된 에폭만 받는다 (백엔드
+ * 아키텍처 6.1). 의존을 쓰지 않는 계층에 얹으면 그 계층의 시험이 쓰지도
+ * 않을 대역을 만들게 된다.
+ *
+ * **선택이 아니다** — 빠지면 `seq:` 질의만 조용히 실패한다.
+ */
 export interface SearchRouteOptions extends SearchDeps {
+  readonly pool: Pool;
   readonly auth: AuthContext;
   readonly loginPath: string;
 }
@@ -138,6 +219,42 @@ export function registerSearchRoutes(app: FastifyInstance, options: SearchRouteO
        */
       const cached = await auth.scopes.resolveCached(userId);
       const scope = toAccessScope(cached);
+
+      /*
+       * 4-1. 시퀀스 인용 바인딩 (CR-051, 백엔드 아키텍처 6.1).
+       *
+       * **접근 범위 산출 뒤에 온다** — 공간 해석이 접근 통제를 지나야 하고,
+       * 미등록과 범위 밖이 같은 404가 되어야 하기 때문이다.
+       */
+      const sequence = await resolveSequenceContext(deps.pool, {
+        ast,
+        rawEpoch: query['seq_epoch'],
+        scope,
+      });
+
+      const sequenceFailure = toSequenceFailure(sequence, correlationId);
+      if (sequenceFailure !== null) return fail(reply, sequenceFailure.status, sequenceFailure.body);
+
+      if (sequence.kind === 'stale') {
+        /*
+         * **조회를 실행하지 않는다** (ADR-007, FR-SEQ-005 AC-4).
+         *
+         * `items`·`total`·`facets`·`relaxation_hints` 키를 넣지 않는다 —
+         * 계산하지 않은 것을 빈 값으로 채우면 "구간이 비었다"로 읽힌다.
+         * `API-SEQ-001`이 같은 이유로 같은 모양을 쓴다.
+         */
+        return reply.send({
+          query: raw,
+          parsed: ast,
+          sequence_context: sequence.context,
+          requested_seq_epoch: sequence.requested,
+          epoch_stale: true,
+          next_cursor: null,
+          correlation_id: correlationId,
+        });
+      }
+
+      const sequenceEpoch = sequence.kind === 'bound' ? sequence.epoch : null;
       const result = await runSearch(
         {
           ast,
@@ -148,6 +265,7 @@ export function registerSearchRoutes(app: FastifyInstance, options: SearchRouteO
           size: clampSize(query['size']),
           cursor: readCursor(query),
           facets: readFacets(query),
+          sequenceEpoch,
         },
         deps,
       );
@@ -155,6 +273,11 @@ export function registerSearchRoutes(app: FastifyInstance, options: SearchRouteO
       return reply.send({
         query: raw,
         parsed: ast,
+        // `seq:` 질의에서만 나타난다. 없는 질의에 빈 값을 실으면 화면이
+        // "공간이 없는 시퀀스 조회"라는 없는 상태를 그린다.
+        ...(sequence.kind === 'bound'
+          ? { sequence_context: sequence.context, epoch_stale: false }
+          : {}),
         total: result.total,
         sort: result.sort,
         items: result.items,

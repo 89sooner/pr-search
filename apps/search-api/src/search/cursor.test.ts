@@ -28,6 +28,8 @@ const BASE = {
   order: 'desc',
   scope: SCOPE,
   scopeVersion: 7,
+  // `seq:`가 없는 질의다. 시퀀스 재료가 **없다** (CR-051).
+  sequenceEpoch: null,
 } as const;
 
 const CURSOR = { pitId: 'pit-abc', searchAfter: [1342, 'acme/payments:1210'] };
@@ -95,7 +97,39 @@ describe('지문의 재료 (DEV-272)', () => {
    */
   it('지문 입력에 `size`·`facets`가 없다', () => {
     const material = Object.keys(BASE);
-    expect(material).toEqual(['query', 'sortKey', 'order', 'scope', 'scopeVersion']);
+    // `sequenceEpoch`은 CR-051이 더했다 — 에폭이 바뀌면 같은 서수가 다른 커밋을 가리킨다.
+    expect(material).toEqual([
+      'query',
+      'sortKey',
+      'order',
+      'scope',
+      'scopeVersion',
+      'sequenceEpoch',
+    ]);
+  });
+
+  it('**에폭이 달라지면 지문이 달라진다** (CR-051, DEV-361)', () => {
+    /*
+     * `seq_epoch`은 `q` 밖의 파라미터라 지문에 넣지 않으면 질의가 같고
+     * 에폭만 다른 두 조회가 같은 지문을 갖는다. 그러면 재채번 뒤에도 옛
+     * 커서가 받아들여져 다른 세대의 서수 위에서 순회가 이어진다.
+     */
+    expect(computeFingerprint({ ...BASE, sequenceEpoch: 3 })).not.toBe(
+      computeFingerprint({ ...BASE, sequenceEpoch: 4 }),
+    );
+  });
+
+  it('`seq:`가 없는 질의와 에폭 있는 질의의 지문이 다르다', () => {
+    expect(computeFingerprint(BASE)).not.toBe(computeFingerprint({ ...BASE, sequenceEpoch: 1 }));
+  });
+
+  it('에폭 3 커서를 에폭 4 조회에 쓰면 거절된다', () => {
+    expect(() =>
+      roundTrip(
+        computeFingerprint({ ...BASE, sequenceEpoch: 3 }),
+        computeFingerprint({ ...BASE, sequenceEpoch: 4 }),
+      ),
+    ).toThrow(CursorQueryMismatchError);
   });
 });
 

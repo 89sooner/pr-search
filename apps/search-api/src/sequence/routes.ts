@@ -33,7 +33,7 @@ import {
 import { RANGE_LIMIT, clampRangeSize, guardRange, runRange, type RangeDeps } from './range.js';
 import {
   isEpochStale,
-  parseEpochParam,
+  readEpochParam,
   parseRepositorySlug,
   resolveRepository,
   resolveSpace,
@@ -317,7 +317,18 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
        * 요구다. `summary`와 `items` 키는 **넣지 않는다**: 계산하지 않은 것을
        * 빈 값으로 채우면 "구간이 비었다"로 읽힌다.
        */
-      const requestedEpoch = parseEpochParam(query['seq_epoch']);
+      const epochParam = readEpochParam(query['seq_epoch']);
+      // 형식 오류를 "지정 안 함"으로 접지 않는다 (CR-051, DEV-363) — 오타 하나가
+      // 조용히 현재 에폭 조회로 흘러가면 그것이 ADR-007이 막으려는 재해석이다.
+      if (epochParam.kind === 'invalid') {
+        return invalidParameter(
+          reply,
+          correlationId,
+          'seq_epoch',
+          '시퀀스 에폭은 1 이상의 정수여야 합니다',
+        );
+      }
+      const requestedEpoch = epochParam.kind === 'value' ? epochParam.epoch : null;
       if (isEpochStale(space, requestedEpoch)) {
         return reply.send({
           sequence_space: space.sequenceSpace,
@@ -503,7 +514,18 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
       }
 
       // 에폭 봉투는 API-SEQ-001과 같다 (ADR-007). 인용이 다르면 결과를 내지 않는다.
-      const requestedEpoch = parseEpochParam(query['seq_epoch']);
+      const epochParam = readEpochParam(query['seq_epoch']);
+      // 형식 오류를 "지정 안 함"으로 접지 않는다 (CR-051, DEV-363) — 오타 하나가
+      // 조용히 현재 에폭 조회로 흘러가면 그것이 ADR-007이 막으려는 재해석이다.
+      if (epochParam.kind === 'invalid') {
+        return invalidParameter(
+          reply,
+          correlationId,
+          'seq_epoch',
+          '시퀀스 에폭은 1 이상의 정수여야 합니다',
+        );
+      }
+      const requestedEpoch = epochParam.kind === 'value' ? epochParam.epoch : null;
       if (requestedEpoch !== null && requestedEpoch !== outcome.seqEpoch) {
         return reply.send({
           sequence_space: `${repositorySlug}@${outcome.baseBranch}`,
@@ -602,7 +624,18 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
       const { space, scope } = entered;
 
       // 에폭 봉투는 API-SEQ-001과 같다 (ADR-007). 인용이 다른 에폭이면 실행하지 않는다.
-      const requestedEpoch = parseEpochParam(query['seq_epoch']);
+      const epochParam = readEpochParam(query['seq_epoch']);
+      // 형식 오류를 "지정 안 함"으로 접지 않는다 (CR-051, DEV-363) — 오타 하나가
+      // 조용히 현재 에폭 조회로 흘러가면 그것이 ADR-007이 막으려는 재해석이다.
+      if (epochParam.kind === 'invalid') {
+        return invalidParameter(
+          reply,
+          correlationId,
+          'seq_epoch',
+          '시퀀스 에폭은 1 이상의 정수여야 합니다',
+        );
+      }
+      const requestedEpoch = epochParam.kind === 'value' ? epochParam.epoch : null;
       if (isEpochStale(space, requestedEpoch)) {
         return reply.send({
           sequence_space: space.sequenceSpace,

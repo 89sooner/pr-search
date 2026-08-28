@@ -9,7 +9,13 @@
  * 잇는다 — 문법을 다시 해석하지 않는다.
  */
 
-import { parseQuery, serializeQuery, QueryParseError, type QueryAst } from '@prs/query';
+import {
+  hasSequenceRangeFilter,
+  parseQuery,
+  serializeQuery,
+  QueryParseError,
+  type QueryAst,
+} from '@prs/query';
 
 /** URL 파라미터 이름. 한 곳에 모아 화면과 라우트가 같은 철자를 쓰게 한다. */
 export const PARAM = {
@@ -18,6 +24,14 @@ export const PARAM = {
   order: 'order',
   size: 'size',
   repository: 'repository',
+  /**
+   * `seq:` 조건이 딛고 선 시퀀스 에폭 (CR-051, ADR-007 규칙 5).
+   *
+   * **질의 문법이 아니라 참조 맥락이다.** 사용자가 고른 조건이 아니라 그
+   * 조건이 **어느 히스토리 세대를 뜻했는지**를 보존하는 값이며, 질의 문법에
+   * 넣으면 파서·직렬화·토큰 칩·패싯이 전부 그것을 조건으로 다루게 된다.
+   */
+  seqEpoch: 'seq_epoch',
 } as const;
 
 /** 화면이 다루는 조회 상태 전부. URL에 실리는 것과 1:1이다. */
@@ -27,6 +41,8 @@ export interface QueryState {
   readonly order: 'asc' | 'desc' | null;
   readonly size: number | null;
   readonly repository: string | null;
+  /** `seq:` 질의에서만 값이 있다. 없으면 서버가 현재 에폭으로 바인딩한다. */
+  readonly seqEpoch: number | null;
 }
 
 export const EMPTY_STATE: QueryState = {
@@ -35,6 +51,7 @@ export const EMPTY_STATE: QueryState = {
   order: null,
   size: null,
   repository: null,
+  seqEpoch: null,
 };
 
 function readString(params: URLSearchParams, key: string): string | null {
@@ -57,6 +74,8 @@ export function readQueryState(search: string | URLSearchParams): QueryState {
   const order = readString(params, PARAM.order);
   const rawSize = readString(params, PARAM.size);
   const size = rawSize === null ? null : Number(rawSize);
+  const rawEpoch = readString(params, PARAM.seqEpoch);
+  const epoch = rawEpoch === null ? null : Number(rawEpoch);
 
   return {
     q: params.get(PARAM.query) ?? '',
@@ -64,6 +83,7 @@ export function readQueryState(search: string | URLSearchParams): QueryState {
     order: order === 'asc' || order === 'desc' ? order : null,
     size: size !== null && Number.isInteger(size) && size > 0 ? size : null,
     repository: readString(params, PARAM.repository),
+    seqEpoch: epoch !== null && Number.isInteger(epoch) && epoch >= 1 ? epoch : null,
   };
 }
 
@@ -85,6 +105,7 @@ export function writeQueryState(state: QueryState): string {
   if (state.order !== null) params.set(PARAM.order, state.order);
   if (state.size !== null) params.set(PARAM.size, String(state.size));
   if (state.repository !== null) params.set(PARAM.repository, state.repository);
+  if (state.seqEpoch !== null) params.set(PARAM.seqEpoch, String(state.seqEpoch));
 
   return params.toString();
 }
@@ -126,7 +147,28 @@ export function parseQueryState(state: QueryState): ParsedQuery {
  * 사용자가 친 질의와 화면이 만든 질의가 같은 문법을 쓴다.
  */
 export function withAst(state: QueryState, ast: QueryAst): QueryState {
-  return { ...state, q: serializeQuery(ast) };
+  /*
+   * **질의가 `seq:`를 잃으면 에폭도 함께 지운다** (CR-051).
+   *
+   * 뜻이 없어진 파라미터를 남기면 다음 조회가 그것을 근거로 400을 받는다 —
+   * 사용자는 토큰 칩 하나를 지웠을 뿐인데 오류를 보게 된다.
+   */
+  return {
+    ...state,
+    q: serializeQuery(ast),
+    ...(hasSequenceRangeFilter(ast) ? {} : { seqEpoch: null }),
+  };
+}
+
+/**
+ * 사용자가 친 새 질의로 상태를 바꾼다 (CR-051).
+ *
+ * **에폭을 물려주지 않는다.** 새 질의는 다른 공간을 가리킬 수 있고, 그때
+ * 옛 에폭을 그대로 보내면 서버가 그것을 무효로 판정해 사용자가 방금 친
+ * 질의의 결과 대신 경고를 본다. 에폭은 서버가 다시 바인딩한다.
+ */
+export function withQuery(state: QueryState, q: string): QueryState {
+  return { ...state, q, seqEpoch: null };
 }
 
 /**

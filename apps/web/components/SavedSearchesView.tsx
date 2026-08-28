@@ -198,6 +198,31 @@ function SavedSearchSection({ view, loginPath }: SectionProps): ReactNode {
   );
 
   /**
+   * 「현재 에폭으로 다시 연결」 (CR-051, AC-8).
+   *
+   * **질의를 바꾸지 않고 에폭만 보낸다.** API 계약의 PATCH 다섯 경우 중
+   * "질의는 그대로인데 `seq_epoch`이 왔다"에 해당하며, 서버가 그것을
+   * 현재 값과 다시 대조한다 — 여기서 읽은 값과 쓰기 사이에 재채번이
+   * 끼어들어도 안전한 이유다.
+   *
+   * `current_seq_epoch`이 없으면 부르지 않는다: `unavailable`이면 그 값이
+   * 아예 응답에 없고, 그때 이 사람은 재연결할 수 있는 사람이 아니다.
+   */
+  const onRebindEpoch = useCallback(
+    async (item: SavedSearchView) => {
+      const current = item.sequence_reference?.current_seq_epoch;
+      if (current === undefined) return;
+      await fetch(`${SAVED_SEARCHES_API}/${String(item.saved_search_id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ seq_epoch: current }),
+      });
+      backToFirst();
+    },
+    [backToFirst],
+  );
+
+  /**
    * 편집 대상 (PR #60 리뷰 P1).
    *
    * **W-001로 보내는 것은 편집이 아니었다.** 그 화면은 `POST`만 하므로 이름을
@@ -286,6 +311,9 @@ function SavedSearchSection({ view, loginPath }: SectionProps): ReactNode {
           onEdit={onEdit}
           onDelete={(item) => {
             void onDelete(item);
+          }}
+          onRebindEpoch={(item) => {
+            void onRebindEpoch(item);
           }}
           testIdPrefix={`saved-${view}`}
         />

@@ -51,5 +51,12 @@ export type {
   IdentifierRejection,
 } from './identifier.js';
 
+export {
+  SEQUENCE_BINDING_MESSAGE,
+  analyzeSequenceBinding,
+  hasSequenceRangeFilter,
+} from './sequence-binding.js';
+export type { SequenceBindingAnalysis, SequenceBindingProblem } from './sequence-binding.js';
+
 export { MIN_TEXT_LENGTH, countCodePoints, parseQuery } from './parse.js';
 export { serializeQuery } from './serialize.js';
