@@ -1244,3 +1244,97 @@ python3 $V --root . --strict      # 현재 — WARN 1 · ERROR 2로 같아야 �
 - Node **v22.23.2** 필수, 셸 기본값 v20.12.0
 - **마이그레이션 015까지**. 컨테이너 3종 healthy, `prs`·`prs_test` 존재
 - ES 별칭 v2 — `prs-pull-requests-v2` · `prs-commits-v2`
+
+---
+
+# 2026-08-28 CR-050 · WP-034 세션이 배운 명령
+
+## 재부팅 뒤에는 컨테이너부터 확인한다
+
+이 세션은 PC 재부팅으로 중단됐다. **작업 파일은 전부 살아 있었지만 컨테이너가 내려가 있었다** —
+그 상태로 통합 시험을 돌리면 전부 실패한다.
+
+```bash
+docker ps -a --format '{{.Names}}\t{{.Status}}'          # Exited (255)로 보인다
+docker start prs-postgres prs-redis prs-elasticsearch
+# elasticsearch가 healthy가 될 때까지 기다린다 (약 30초)
+docker inspect --format '{{.State.Health.Status}}' prs-elasticsearch
+```
+
+## CRLF 저장소에 `cat >>`로 덧붙이지 마라
+
+`core.autocrlf=true`라 워킹 디렉터리 파일은 CRLF인데 `cat >>`로 덧붙인 부분은 LF로 남는다.
+**한 파일 안에 둘이 섞이면 편집 앵커가 조용히 어긋난다** — 변이가 걸리지 않았는데 시험은
+통과했고, 치환 건수 검증이 없었다면 그것을 SURVIVED로 읽었을 것이다.
+
+```bash
+# 혼합 여부 실측
+for f in <paths>; do
+  printf "%-50s CRLF=%s TOTAL=%s\n" "$f" "$(grep -c $'\r$' "$f")" "$(wc -l < "$f")"
+done
+```
+
+정규화는 파이썬으로 한다(`data.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')`).
+**커밋 결과는 어차피 LF로 정규화되므로 산출물에는 영향이 없다** — 워킹 디렉터리의 일관성 문제다.
+
+## `toAccessScope`는 500개 이하를 언제나 `explicit`으로 준다
+
+```bash
+grep -n 'export function shouldUseOrgTeamScope' -A 3 packages/es/src/scoped-query.ts
+# return repositoryCount > EXPLICIT_SCOPE_LIMIT   (= 500)
+```
+
+HTTP 경로로 `org_team` 표현을 만들려면 픽스처에 저장소 **501개**가 필요하다. 그렇게 만든 시험은
+무엇이 실패했는지 읽기 어려우므로, **parity는 함수 수준에서 `AccessScope`를 직접 만들어 건다**
+(`repositories/scope-parity.test.ts`). 기존 `authz/team-scope-es.test.ts`도 같은 방식이다.
+
+## 마이그레이션 up → down → up
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm --filter @prs/db run build          # dist/cli.js가 필요하다
+pnpm run db:migrate                       # up
+pnpm --filter @prs/db exec node dist/cli.js migrate --down --step 1
+pnpm run db:migrate                       # 다시 up
+docker exec prs-postgres psql -U prs -d prs -c "select to_regclass('<table>');"
+```
+
+## 부분 실행 selector (이 WP)
+
+```bash
+pnpm run test repositories/cursor
+pnpm run test web/lib/repository-overview
+pnpm run test:integration repositories/overview
+pnpm run test:integration repositories/scope-parity
+pnpm run test:integration repositories/registration-request
+pnpm run test:integration repositories/reachability
+pnpm run test:integration reconcile/durability
+pnpm run test:integration ops/pipeline-status
+pnpm run test:a11y repositories
+cd apps/web && ./node_modules/.bin/playwright test e2e/repositories.spec.ts
+```
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 증상 | 원인·해결 |
+| --- | --- |
+| 통합 시험이 목록을 전부 빈 배열로 돌려줌 | `source.fetch`가 `repositoryIds: []`를 줬는데 `toAccessScope`가 그것을 **빈 `explicit`**으로 만든다. `org_team`을 받으려면 501개가 필요하다 |
+| `deps.graphFor is not a function` | `reconcileRepository`는 `sequence_branches`가 비어도 `graphFor`를 부른다. 목을 넣어야 한다 |
+| `GitHubApiError`가 안 잡힘 | 생성자가 `(kind, message, options)` 순서다. `('rate_limited', '한도 소진')` |
+| 변이 `MISMATCH 0!=1` | CRLF 혼합 (위 참조). **이 통과를 SURVIVED로 읽지 않는다** |
+| `no-unused-vars` on rest destructuring | `const { a: _a, ...rest }`는 lint가 잡는다. `Object.fromEntries(Object.entries(x).filter(...))`로 |
+| `gheBaseUrl={null}` 타입 오류 | props가 `string | undefined`다. vitest는 통과하지만 `tsc --noEmit`이 잡는다 |
+
+## 이번 세션 최종 배터리 결과
+
+```text
+typecheck · lint · lint:deps      통과 (패키지 13개, 위반 0건)
+test                              1598 통과 (1 skipped)
+test:integration                  72 파일 / 1142 통과
+test:regression                   213 통과
+test:a11y                         252 통과 (axe 0건)
+test:contrast                     80쌍 통과
+build                             통과 — /repositories가 동적 라우트로 섬
+test:e2e                          108 통과
+validate_srs_prd_env.py --strict  main 대비 증감 0 (WARN 1 · ERROR 2)
+```

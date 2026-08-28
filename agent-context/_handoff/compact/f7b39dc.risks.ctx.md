@@ -1,7 +1,7 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=4523c543da5e3337d6033d235bc8a81207750cc5e1a00b6d3f062c72f2243b8f bytes=58678 lines=885 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;DISTINCT
+@kv sha256=74c0ad8efb6ec0083e83ad48042f01c6ce9473f6e55c701f78d49d1a857a9137 bytes=63019 lines=947 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
 @h3 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다
@@ -335,7 +335,7 @@
 |...cut 54 lines
 @p bash
 @cmd git rev-list --first-parent --no-merges main # → 9개
-@code lang=txt sha=e858733a114b lines=116 kept=80
+@code lang=txt sha=0380949c1270 lines=178 kept=80
 |아홉 중 **여덟이 docs 전용**이고 나머지 하나는 최초 커밋이다. **코드 변경은 하나도 없다.**
 || 무엇 | 실제 관행 |
 || --- | --- |
@@ -393,4 +393,4 @@
 |→ risks 47의 반복이다. **계약을 대체하는 결정을 적었으면 그 대체가 실제로 같은 일을
 |하는지 물어라.** 이번에는 "그 화면에 그 동사가 있는가"라는 한 줄 질문이면 됐다.
 |## 78. 이름이 비슷한 버튼이 남의 시험을 모호하게 만든다
-|...cut 36 lines
+|...cut 98 lines

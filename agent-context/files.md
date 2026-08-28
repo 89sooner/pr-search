@@ -3,13 +3,15 @@
 ## 이 저장소를 읽는 순서 (문서)
 
 1. `CLAUDE.md` — 충돌 해결 우선순위, 캐스케이드 순서, ID 규약
-2. `docs/10_requirements/srs_final.md` — **baseline v2.5.** 변경은 CR 먼저
-3. `docs/00_governance/change_control.md` — CR-001~036
-4. `docs/40_delivery/pr_search_implementation_traceability.md` — **원장 v1.8.**
-   3장(WP 상태), 4장(FR↔코드 매핑), 5장(DEV-001~190), 6장(WP별 검증 기록),
+2. `docs/10_requirements/srs_final.md` — **baseline v2.10** (2026-08-28 기준). 변경은 CR 먼저
+3. `docs/00_governance/change_control.md` — CR-001~**050**
+4. `docs/40_delivery/pr_search_implementation_traceability.md` — **원장 review v4.6.**
+   3장(WP 상태), 4장(FR↔코드 매핑), 5장(DEV-001~**358**), 6장(WP별 검증 기록 — 최신 **6.42**),
    7장(알려진 제한), 8장(다음 작업)
-5. `docs/40_delivery/pr_search_work_packages.md` — WP별 범위·제외·DoD
-   (**주의: 순서표가 WP-028·068을 아직 `todo`로 표시한다 — `todos.md` 0번**)
+5. `docs/40_delivery/pr_search_work_packages.md` — **v1.8.** WP별 범위·제외·DoD
+
+> **이 절의 버전 숫자는 갱신일 기준의 스냅숏이다.** 상태는 언제나 `HEAD`의 문서 헤더에서 읽는다 —
+> CLAUDE.md가 같은 규율을 정한다.
 
 원장의 이 세션 관련 장: **6.27.1**(WP-027 머지 후) · **6.28**(WP-028) ·
 **6.28.1**(WP-028 머지 후 + 운영 도달성 표) · **6.30**(WP-068) ·
@@ -637,3 +639,51 @@
 - 새 쓰기 원시체는 `WriteTargets`를 받고 `DUAL_WRITE_PATHS`에 등재한다 (WP-035)
 - `agent-context/`는 tracked. 전사는 `exports/`에 둔다
 - `agent-context/_handoff/`는 생성물이다 — 손으로 고치지 말고 `context_handoff.py build`로 다시 만든다
+
+---
+
+# WP-034 W-009 저장소 개요 (CR-050, 2026-08-28)
+
+## 신규 소스
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/db/migrations/016_repository_overview.{up,down}.sql` | 등록 요청 표 + `repository` 열 둘. **왜 그렇게 정했는지가 주석에 있다** |
+| `packages/db/src/repositories/registration-request.ts` | `ENT-CORE-008`. `recordRequest`가 `ON CONFLICT DO UPDATE`로 자연 멱등을 만든다 — `DO NOTHING`은 동시 요청에서 아직 커밋 안 된 행을 못 본다 |
+| `apps/search-api/src/repositories/overview.ts` | `API-ING-002` 서비스. **접근 범위 판정이 SQL이 아니라 여기 있다.** `collectVisible`이 스캔 상한에서도 커서를 남긴다(DEV-357) |
+| `apps/search-api/src/repositories/cursor.ts` | PostgreSQL 키셋 커서. 지문에 접근 범위 **해시** |
+| `apps/search-api/src/repositories/registration-requests.ts` | `API-ING-003`. **GitHub 클라이언트를 주입하지 않는다** |
+| `apps/search-api/src/repositories/routes.ts` | 두 라우트. `/admin` 밖이고 세션 인증만 받는다 |
+| `apps/web/lib/repository-overview.ts` | **화면 판정 전부.** `null`·`0`·`unavailable` 구분이 핵심 |
+| `apps/web/components/RepositoryCardGrid.tsx` | C-038. 판정을 다시 하지 않고 그린다 |
+| `apps/web/components/SequenceSpaceStatusList.tsx` | C-039. 네 상태에 텍스트 레이블 |
+| `apps/web/components/RegisterRequestDialog.tsx` | `owner/name`만 받는다 |
+| `apps/web/components/RepositoriesView.tsx` | 커서 순회 + 빈 페이지 자동 진행(상한 20) |
+| `apps/web/app/repositories/page.tsx` | `/repositories`. `?repository=`로 진단 딥링크 |
+
+## 고친 기존 소스
+
+| 경로 | 무엇 |
+| --- | --- |
+| `packages/es/src/scoped-query.ts` | `isRepositoryInScope`의 `allowedTeamIds`를 **필수 인자로** (DEV-353) |
+| `apps/search-api/src/sequence/{space,spaces-list}.ts` | 그 인자를 실제로 넘긴다 + stale 주석 제거 |
+| `apps/pipeline-worker/src/reconcile.ts` | 완주한 회차만 `recordCompletedReconciliation` |
+| `apps/search-api/src/ops/pipeline-status.ts` | `sequence_space_state` 전역 요약 (DEV-354) |
+| `apps/search-api/src/{runtime,server}.ts` | `repositories` 의존 조립·등록. **세션 블록 안**이라 관리자 토큰으로 안 열린다 |
+| `apps/web/components/{ReleasesView,SearchView,PrDetailView,CommitDetailView}.tsx` | W-009 진단 경로 (DEV-159·358) |
+| `apps/web/lib/nav.ts` | `/repositories`를 `analysis` 그룹에 등재 |
+| `packages/db/src/repositories/{repository,job,raw-event}.ts` | 배치 조회 셋 — N+1을 막는 자리 |
+
+## 시험
+
+| 경로 | 무엇을 거는가 |
+| --- | --- |
+| `apps/search-api/integration/repositories/scope-parity.test.ts` | **DEV-353의 정본.** 세 경로에 같은 범위 픽스처를 넣어 `explicit`/`org_team` 등식을 건다 |
+| `apps/search-api/integration/repositories/overview.test.ts` | 접근 범위·진단 축·커서 순회·**스캔 상한**(DEV-357) |
+| `apps/search-api/integration/repositories/registration-request.test.ts` | 멱등·존재 비노출·계약 밖 필드·CASCADE |
+| `apps/search-api/integration/repositories/reachability.test.ts` | 운영 조립이 실제로 세우는가 (401 vs 404) |
+| `apps/pipeline-worker/integration/reconcile/durability.test.ts` | 완주/미룸/예외 전이를 실 PostgreSQL로 |
+| `apps/search-api/src/repositories/cursor.test.ts` | 봉투가 무엇을 거절하는가 |
+| `apps/web/lib/repository-overview.test.ts` | 세 값 구분·화면 상태 |
+| `apps/web/a11y/repositories.test.tsx` | 렌더·접근성·QA-W009-13 |
+| `apps/web/e2e/repositories.spec.ts` | 실제 브라우저에서만 확인되는 넷 |
