@@ -10,7 +10,7 @@
  */
 
 import type { ErrorCode } from '@prs/contracts';
-import { QUERY_KEYS } from './keys.js';
+import { QUERY_KEYS, RANGE_KEY_EXAMPLE, type RangeKey } from './keys.js';
 
 export type QueryErrorCode = Extract<ErrorCode, 'QUERY_SYNTAX_ERROR' | 'QUERY_TOO_SHORT'>;
 
@@ -45,6 +45,22 @@ export function unsupportedKey(key: string, token: string, start: number, end: n
     offset_end: end,
     supported_keys: QUERY_KEYS,
   });
+}
+
+/**
+ * 범위 전용 키를 스칼라로 썼다 (DEV-364, DEV-378, DEV-379).
+ *
+ * **거절하는 것이 조용히 답하는 것보다 정직하다.** 고치기 전에는 `seq:1234`가
+ * `match_none`이 되어 0건이었고, 부정형 `-seq:1234`는 `must_not: [match_none]`이
+ * 되어 **필터가 통째로 사라진 전체 결과**였다 — 하나는 너무 좁고 하나는 너무
+ * 넓은데 둘 다 오류를 내지 않았다.
+ */
+export function rangeOnlyKey(key: RangeKey, token: string, start: number, end: number): QueryParseError {
+  return new QueryParseError(
+    'QUERY_SYNTAX_ERROR',
+    `'${key}'는 범위 형식만 지원합니다 (예: ${RANGE_KEY_EXAMPLE[key]})`,
+    { token, offset_start: start, offset_end: end },
+  );
 }
 
 export function syntaxError(message: string, token: string, start: number, end: number): QueryParseError {

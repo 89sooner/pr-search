@@ -6,6 +6,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { QueryAst } from './ast.js';
+import { QueryParseError } from './errors.js';
 import { parseQuery } from './parse.js';
 import { analyzeSequenceBinding, hasSequenceRangeFilter } from './sequence-binding.js';
 
@@ -84,14 +86,27 @@ describe('seq: 범위가 없는 질의', () => {
     expect(hasSequenceRangeFilter(parseQuery(query))).toBe(false);
   });
 
-  it('**스칼라 `seq:1234`는 이 규칙의 대상이 아니다** (DEV-364)', () => {
+  it('**스칼라 `seq:1234`는 파서가 먼저 거절한다** (DEV-364)', () => {
     /*
-     * SRS AC-2가 승인한 것은 범위뿐이다. 스칼라는 파서를 통과하지만 질의
-     * 빌더에서 `MATCH_NONE`이 되어 언제나 0건이며, 여기에 지목 규칙을
-     * 적용하면 그 동작이 400으로 바뀐다 — 승인받지 않은 제품 결정이다.
-     * 그 사실은 원장 5장에 판정으로 남겼다.
+     * CR-051 시점에는 스칼라가 파서를 통과했고, 지목 규칙을 거기에 적용하면
+     * 동작이 400으로 바뀌는 것이 승인 범위 밖이라 사실만 등재했다. 이후 실측이
+     * 부정형 `-seq:1234`는 0건이 아니라 **필터가 사라진 전체 결과**임을
+     * 드러냈고(DEV-378), SRS가 승인한 것이 범위뿐이므로 파서에서 닫았다.
      */
-    expect(analyze('seq:1234')).toEqual({ kind: 'none' });
-    expect(hasSequenceRangeFilter(parseQuery('seq:1234'))).toBe(false);
+    expect(() => parseQuery('seq:1234')).toThrow(QueryParseError);
+  });
+
+  it('AST를 직접 조립해도 범위 조건만 본다', () => {
+    /*
+     * 이 함수의 계약은 **"범위 필터인가"이지 "seq 키인가"가 아니다.** 파서를
+     * 거치지 않는 조립 경로가 생겨도 그 경계는 그대로여야 하므로, 파서가
+     * 거절하는 모양을 손으로 만들어 건다.
+     */
+    const scalarAst: QueryAst = {
+      filters: [{ key: 'seq', op: 'eq', values: ['1234'] }],
+      text: null,
+    };
+    expect(hasSequenceRangeFilter(scalarAst)).toBe(false);
+    expect(analyzeSequenceBinding(scalarAst)).toEqual({ kind: 'none' });
   });
 });

@@ -121,6 +121,7 @@ export {
   buildQuery,
   buildTextClause,
   collectNames,
+  RangeKeyEqualityError,
   SequenceEpochRequiredError,
 } from './query-builder.js';
 export type { BuildQueryOptions, BuiltQuery, NameResolution, UnresolvedName } from './query-builder.js';

@@ -610,6 +610,44 @@ describe('문법 오류 (CR-014, DEV-038)', () => {
     expect(body.error.detail['supported_keys']).toHaveLength(15);
   });
 
+  it('스칼라 `seq:1234`는 400이다 — 조용히 0건이 아니다 (DEV-364)', async () => {
+    /*
+     * 고치기 전 이 요청은 200에 0건을 돌려줬다. **사용자가 읽는 뜻은 "그
+     * 서수에는 결과가 없다"이고 그것이 거짓이었다.** 여기서 400을 거는 것은
+     * 단위 시험이 파서만 보기 때문이다 — 라우트가 오류를 삼키면 그 실패는
+     * 파서 시험에 잡히지 않는다.
+     */
+    const response = await app.inject({
+      method: 'GET',
+      url: `${SEARCH_PATH}?q=seq%3A1234`,
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${sessionId}` },
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = response.json<{ error: { code: string; message: string } }>();
+    expect(body.error.code).toBe('QUERY_SYNTAX_ERROR');
+    expect(body.error.message).toContain('범위 형식');
+  });
+
+  it('부정형 `-seq:1234`도 400이다 — 이쪽이 전체를 돌려줬다 (DEV-378)', async () => {
+    // `must_not: [match_none]`은 아무것도 걸러내지 않는다. 0건보다 나쁘다.
+    const response = await app.inject({
+      method: 'GET',
+      url: `${SEARCH_PATH}?q=-seq%3A1234`,
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${sessionId}` },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('시각 키의 스칼라도 400이다 (DEV-379)', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `${SEARCH_PATH}?q=merged%3A2026-08-10`,
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${sessionId}` },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
   it('`is`의 열거 밖 값은 400이다 (DEV-036)', async () => {
     const response = await app.inject({
       method: 'GET',

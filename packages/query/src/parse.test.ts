@@ -32,10 +32,21 @@ describe('AC-1: 지원 키 15종', () => {
   });
 
   it('DoD: 15종이 모두 파싱된다', () => {
-    // `is`는 값이 열거돼 있고 `seq`는 숫자다. 나머지는 아무 문자열이나 받는다.
-    const values: Record<string, string> = { is: 'merged', seq: '1200' };
+    // `is`는 값이 열거돼 있고, 범위 전용 키 셋은 **범위 형태로만** 성립한다
+    // (DEV-364). 나머지는 아무 문자열이나 받는다.
+    const ranges: Record<string, string> = {
+      seq: '1200..1350',
+      merged: '2026-08-10..2026-08-19',
+      created: '2026-08-10..2026-08-19',
+    };
+    const scalars: Record<string, string> = { is: 'merged' };
     for (const key of QUERY_KEYS) {
-      const value = values[key] ?? 'x';
+      const range = ranges[key];
+      if (range !== undefined) {
+        expect(parseQuery(`${key}:${range}`).filters).toMatchObject([{ key, op: 'range' }]);
+        continue;
+      }
+      const value = scalars[key] ?? 'x';
       expect(parseQuery(`${key}:${value}`).filters).toEqual([{ key, op: 'eq', values: [value] }]);
     }
   });
@@ -77,7 +88,11 @@ describe('AC-2·AC-3: 범위', () => {
   });
 
   it('따옴표 안에서는 `..`가 리터럴이다', () => {
-    expect(parseQuery('seq:"1..2"').filters).toEqual([{ key: 'seq', op: 'eq', values: ['1..2'] }]);
+    // 범위 전용 키로는 이 규칙을 보일 수 없다 — 따옴표가 `..`를 리터럴로
+    // 만들면 남는 것이 스칼라라서 거절되기 때문이다(DEV-364). 규칙 자체는
+    // 범위를 받지 않는 키에서 확인한다.
+    expect(parseQuery('label:"1..2"').filters).toEqual([{ key: 'label', op: 'eq', values: ['1..2'] }]);
+    expect(reject('seq:"1..2"').message).toContain('범위 형식');
   });
 
   it('열린 범위는 거절한다 — 지어내지 않는다', () => {
@@ -102,6 +117,59 @@ describe('AC-2·AC-3: 범위', () => {
 
   it('날짜 형식이 아니면 거절하고 예를 보여 준다', () => {
     expect(reject('merged:어제..오늘').message).toContain('2026-08-10');
+  });
+});
+
+describe('DEV-364: 범위 전용 키의 스칼라를 거절한다', () => {
+  it('`seq:1234`가 문법 오류다 — 조용히 0건이 되지 않는다', () => {
+    const error = reject('seq:1234');
+    expect(error.code).toBe('QUERY_SYNTAX_ERROR');
+    expect(error.message).toContain('범위 형식');
+    expect(error.message).toContain('seq:1200..1350');
+  });
+
+  it('부정형도 거절한다 — 이쪽이 더 나빴다', () => {
+    /*
+     * 고치기 전 `-seq:1234`는 `must_not: [match_none]`이 되어 **아무것도
+     * 걸러내지 않았다**. 사용자는 서수 하나를 뺀 목록을 기대하는데 필터가
+     * 통째로 사라진 전체가 돌아왔다 — 스칼라 결함의 두 방향 중 넓어지는 쪽이며
+     * 0건보다 알아채기 어렵다.
+     */
+    expect(reject('-seq:1234').code).toBe('QUERY_SYNTAX_ERROR');
+  });
+
+  it('따옴표로 감싸도 스칼라는 스칼라다', () => {
+    expect(reject('seq:"1234"').message).toContain('범위 형식');
+  });
+
+  it('시각 키 둘도 같은 규칙이다', () => {
+    // `merged`·`created`도 `RANGE_FIELDS`에만 있어 스칼라가 `MATCH_NONE`이
+    // 되었다. 규칙을 키마다 다르게 두면 그 차이가 다음 결함이 된다.
+    expect(reject('merged:2026-08-10').message).toContain('범위 형식');
+    expect(reject('created:2026-08-10').message).toContain('범위 형식');
+  });
+
+  it('예시는 키마다 다르다 — 사용자를 두 번 틀리게 하지 않는다', () => {
+    expect(reject('merged:2026-08-10').message).toContain('merged:2026-08-10..2026-08-19');
+    expect(reject('created:2026-08-10').message).toContain('created:2026-08-10..2026-08-19');
+  });
+
+  it('오프셋이 문제 토큰을 가리킨다', () => {
+    const error = reject('repo:acme/payments seq:1234');
+    expect(error.detail.token).toBe('seq:1234');
+    expect(error.detail.offset_start).toBe(19);
+    expect(error.detail.offset_end).toBe(27);
+  });
+
+  it('값이 비면 그 사실을 먼저 말한다', () => {
+    // 사용자가 할 일이 다르다 — 값을 적는 것과 형식을 고치는 것.
+    expect(reject('seq:').message).toContain('비었습니다');
+  });
+
+  it('범위 형태는 그대로 성립한다', () => {
+    expect(parseQuery('seq:1..5').filters).toMatchObject([{ key: 'seq', op: 'range' }]);
+    expect(parseQuery('-seq:1..5').filters).toMatchObject([{ key: 'seq', op: 'not_range' }]);
+    expect(parseQuery('repo:acme/payments base:main seq:1..5').filters).toHaveLength(3);
   });
 });
 

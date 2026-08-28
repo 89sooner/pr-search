@@ -6,12 +6,13 @@
  * 필드 이름이 어긋나면 아무것도 거르지 못하기 때문이다.
  */
 
-import { parseQuery } from '@prs/query';
+import { parseQuery, type QueryAst } from '@prs/query';
 import { describe, expect, it } from 'vitest';
 import type { estypes } from '@elastic/elasticsearch';
 import {
   EMPTY_RESOLUTION,
   FIRST_PARENT_COMMIT_ROLES,
+  RangeKeyEqualityError,
   SequenceEpochRequiredError,
   FULL_TEXT_FIELDS,
   buildQuery,
@@ -171,9 +172,30 @@ describe('시퀀스 에폭 결합 (CR-051, DEV-361)', () => {
     expect(filters).not.toContainEqual({ term: { seq_epoch: 9 } });
   });
 
-  it('스칼라 `seq:1234`는 에폭을 요구하지 않는다 (DEV-364)', () => {
-    // SRS가 승인한 것은 범위뿐이다. 이 CR을 핑계로 동작을 바꾸지 않는다.
-    expect(() => buildQuery(parseQuery('seq:1234'), RESOLUTION)).not.toThrow();
+  it('스칼라 `seq:`가 AST로 들어오면 던진다 (DEV-364)', () => {
+    /*
+     * 파서가 이미 거절하므로 사용자 입력으로는 오지 않는다. 그래도 거는 것은
+     * `MATCH_NONE`의 실패 **방향이 부호마다 다르기** 때문이다 — `filter`에서는
+     * 0건이지만 `must_not`에서는 아무것도 걸러내지 않아 필터가 통째로
+     * 사라진다(DEV-378). 조립 경로가 새로 생기면 그 실패는 결과를 재는 시험에
+     * 잡히지 않는다.
+     */
+    const scalar: QueryAst = { filters: [{ key: 'seq', op: 'eq', values: ['1234'] }], text: null };
+    expect(() => buildQuery(scalar, RESOLUTION)).toThrow(RangeKeyEqualityError);
+
+    const negated: QueryAst = {
+      filters: [{ key: 'seq', op: 'not_eq', values: ['1234'] }],
+      text: null,
+    };
+    expect(() => buildQuery(negated, RESOLUTION)).toThrow(RangeKeyEqualityError);
+  });
+
+  it('시각 키의 스칼라도 같은 자리에서 막힌다 (DEV-379)', () => {
+    const scalar: QueryAst = {
+      filters: [{ key: 'merged', op: 'eq', values: ['2026-08-10'] }],
+      text: null,
+    };
+    expect(() => buildQuery(scalar, RESOLUTION)).toThrow(RangeKeyEqualityError);
   });
 });
 
