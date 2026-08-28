@@ -1462,3 +1462,95 @@ gh api repos/89sooner/pr-search/commits/$(git rev-parse HEAD)/check-runs \
 - Node **v22.23.2** 필수, 셸 기본값 v20.12.0
 - 마이그레이션 **017까지**. 컨테이너 3종 healthy, `prs`·`prs_test` 존재
 - ES 별칭 v2 (`prs-pull-requests-v2` · `prs-commits-v2`)
+
+
+---
+
+# 2026-08-29 세션 갱신
+
+## 검증 배터리 (마지막 실행 결과 — main `d3b2590`)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                # 통과
+pnpm lint                     # 통과 — 마지막 파일까지 쓴 뒤 다시 돌릴 것
+pnpm run lint:deps            # 패키지 13개, 위반 0건
+pnpm run test                 # 단위 1710 통과 (1 skipped)   [1665 → +45]
+pnpm run test:integration     # 78 파일 / 1254 통과           [76/1210 → +2/+44]
+pnpm run test:regression      # 231 통과                      [213 → +18]
+pnpm run test:perf analytics  # 5 통과 — 요청/회 2.0, 총 104회
+pnpm build                    # 통과
+```
+
+## `pnpm test:perf` — 이 세션이 만들었다 (DEV-058)
+
+```bash
+pnpm run test:perf analytics
+PERF_DATASET_SIZE=50000 pnpm run test:perf analytics   # 큰 규모
+PERF_WARMUP=5 PERF_MEASURE=20 pnpm run test:perf analytics
+```
+
+**요청 수가 핵심이다.** 지연은 데이터 크기를 따라가지만 "그룹마다 다시 묻는가"는 크기와
+무관하게 참이거나 거짓이다. 클러스터를 부르는 모든 길(`search`·`count`·`msearch`)을 센다 —
+`search`만 세다가 `_count` 왕복을 놓친 적이 있다.
+
+**여기 수치를 `NFR-001` 통과로 적지 않는다.** 릴리스 규모(PR 1,000,000)는 Gate 5의 몫이다.
+
+## 통합 시험을 새로 쓸 때 — 공유 자원 규율
+
+```bash
+# 단독으로 통과해도 전량에서 깨질 수 있다. 둘 다 돌린다.
+pnpm run test:integration analytics       # 단독
+pnpm run test:integration apps/search-api # 이웃과 함께
+pnpm run test:integration                 # 전량 (약 2분 40초)
+```
+
+- 질의를 **자기 저장소로 한정**한다. `query: ''`(전역)는 남의 문서를 센다
+- 삭제도 **자기 행만** — `match_all`이나 `DELETE FROM x`는 남의 픽스처를 지운다
+- 유니크 값(`slug`·`login`·`github_user_id`)을 **파일마다 고유하게**. `github_user_id`는
+  로컬에 없어도 CI에서 충돌한 적이 있다
+
+## 변이 시험 — 스코프를 맞춰야 죽는다
+
+같은 변이가 스코프에 따라 살거나 죽는다. `analytics` 통합만 돌려 `M12`(투영)·`M13`(회귀)이
+살아남았고, 올바른 스코프에서 둘 다 죽었다.
+
+```bash
+pnpm run test <경로>                  # 투영·순수 함수
+pnpm run test:regression              # 도달성·계약 문자열
+pnpm run test:integration <범위>      # 실제 인덱스 위의 수
+```
+
+## ES 동작 실측 (근사 설계에 필요했다)
+
+```bash
+# `track_total_hits`는 상한까지만 센다 — 문서 5건에 3을 걸면 { value: 3, relation: 'gte' }
+curl -s -X POST "localhost:9200/prs-pull-requests/_search?size=0" -H 'Content-Type: application/json' \
+  -d '{"track_total_hits": 3, "query": {"match_all": {}}}'
+
+# `_count`는 정확하다
+curl -s -X POST "localhost:9200/prs-pull-requests/_count" -H 'Content-Type: application/json' \
+  -d '{"query": {"match_all": {}}}'
+
+# `random_sampler`가 이 클러스터(8.19)에서 도는가
+curl -s -X POST "localhost:9200/prs-pull-requests/_search?size=0" -H 'Content-Type: application/json' \
+  -d '{"aggs":{"s":{"random_sampler":{"probability":0.5},"aggs":{"c":{"value_count":{"field":"pr_number"}}}}}}'
+```
+
+## `gh` 사용 시 주의 (이 환경의 버전)
+
+```bash
+gh pr checks 76 --json name,bucket        # ✗ unknown flag: --json
+gh pr view 76 --json statusCheckRollup    # ✓
+gh run list --branch <name>               # ✗ unknown flag: --branch
+gh api "repos/OWNER/REPO/commits/$SHA/check-runs"  # ✓ 커밋 SHA로 확인
+```
+
+CI 실패 로그:
+
+```bash
+SHA=$(git rev-parse <branch>)
+RUN=$(gh api "repos/89sooner/pr-search/commits/$SHA/check-runs" \
+  --jq '.check_runs[] | select(.conclusion=="failure") | .details_url' | head -1)
+gh api "repos/89sooner/pr-search/actions/jobs/${RUN##*/}/logs" | grep -E 'FAIL|Error'
+```
