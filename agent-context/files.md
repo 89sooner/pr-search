@@ -745,3 +745,46 @@
 - `toResource()` 안에서 DB를 부르지 않는다 — 그 자리에 한 번 왕복이 들어가면 항목 수만큼 늘어난다
 - `QueryState.seqEpoch`을 숫자로 되돌리지 않는다 — 화면이 형식을 판정하면 서버가 거절할 기회를 잃는다
 - 커서 계열 넷을 합치지 않는다 (W-001 PIT · W-004 정본 서수 · W-008·W-009 키셋)
+
+
+---
+
+# 2026-08-29 세션이 만든 소스 (CR-053 · WP-037 · DEV-364)
+
+## 집계 API — `apps/search-api/src/analytics/`
+
+| 파일 | 역할 |
+| --- | --- |
+| `types.ts` | 모집단(`ANALYTICS_TARGET`)·상한·그룹 키 대응표·분포 구간. **`team`이 `author_team_ids`를 가리키는 자리가 여기다** |
+| `prepare.ts` | 질의 준비의 **유일한 자리**. 파싱 → 모집단 → 접근 범위 → 시퀀스 문맥 → 에폭. `CR-051`이 `/search`에 세운 순서와 같다 |
+| `execute.ts` | 근사 판정과 실행. `_count`로 세고 `timed_out`·샤드 실패를 함께 본다 |
+| `aggregations.ts` | 네 집계의 ES 질의와 응답 변환. **접근 통제가 없다** — `prepare`가 이미 `ScopedQuery`를 만들었다 |
+| `routes.ts` | 네 엔드포인트. `runCommon`이 공통 앞단을 갖는다 |
+| `aggregations.test.ts` | **경계를 겨냥한 단위 시험.** 통합이 경계를 비켜 가면 그 규칙은 시험에 없다 |
+
+## 성능 harness — `perf/`
+
+| 파일 | 역할 |
+| --- | --- |
+| `vitest.perf.config.ts` | `PERF_DATASET_SIZE`로 두 규모를 모두 돈다. Level A(알고리즘 회귀)와 Level B(Gate 5)를 **한 harness로** |
+| `perf/analytics.perf.test.ts` | 왕복 수와 지연 분포. `search`·`count`·`msearch`를 모두 센다 |
+
+## 이 세션이 고친 기존 파일
+
+| 파일 | 무엇을 |
+| --- | --- |
+| `packages/query/src/keys.ts` | 질의 키 17종 (`kind`·`author_team` 신설), `RANGE_KEY_EXAMPLE` |
+| `packages/query/src/parse.ts` | 범위 전용 키의 스칼라 거절 (DEV-364) |
+| `packages/query/src/serialize.ts` | `addEquality`를 화면에서 올려 왔고 `replaceEquality`를 신설 |
+| `packages/es/src/query-builder.ts` | `resolveSearchTarget`(대상과 걷어낸 AST를 함께), `RangeKeyEqualityError`, `KindFilterNotAppliedError`, `author_team` 필드 |
+| `packages/es/src/search.ts` | `countDocuments` — **`ScopedQuery`만 받는다** |
+| `packages/es/src/bootstrap.ts` | `backfillDerivedFields` — `changed_lines` 소급 |
+| `packages/es/src/mappings/pull-requests.ts` | `changed_lines` |
+| `packages/db/src/repositories/repository.ts` | `resolveOrgOwners`(`resolveOrgIds`의 역방향) |
+| `apps/pipeline-worker/src/documents.ts` | `changed_lines` 계산, `firstReviewAt`가 작성자 본인 리뷰 제외 |
+| `apps/pipeline-worker/src/reindex.ts` | `derivedFields` — 옛 스냅숏에 없는 파생 필드를 채운다 |
+| `apps/search-api/src/search/service.ts` | `resolveSearchTarget` 배선 |
+| `apps/search-api/src/search/routes.ts` | `toSequenceFailure`를 export (집계가 같은 판정을 쓴다) |
+| `apps/search-api/src/server.ts` | `registerAnalyticsRoutes` 등록, `analyticsDisplay` |
+| `apps/web/lib/tokens.ts` | `addEquality`를 `@prs/query`에서 재export |
+| `regression/runtime-reachability.test.ts` | 집계 도달성 18건 |
