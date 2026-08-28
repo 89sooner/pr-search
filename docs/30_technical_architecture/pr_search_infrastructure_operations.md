@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.5 | 갱신일: 2026-08-27
+> 상태: review | 버전: v0.6 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -24,6 +24,7 @@
 | PostgreSQL | 컨테이너 | 관리형 (소형) | 관리형 | 관리형 + 대기 복제본 |
 | Redis | 컨테이너 | 관리형 (소형) | 관리형 | 관리형 (HA) |
 | 미러 볼륨 | 로컬 디렉터리 | PVC 20GB | PVC 200GB | PVC (5장 산정) |
+| 아카이브 볼륨 | 로컬 디렉터리 | `emptyDir` 512MiB | `emptyDir` 512MiB | `emptyDir` 512MiB (64MiB × 5 + 여유) |
 | GHE 연결 | 목(mock) | 개발 조직 | 운영 조직 (읽기) | 운영 조직 |
 | OIDC | 목 | 사내 IdP (dev 클라이언트) | 사내 IdP | 사내 IdP |
 | 웹훅 | 목 이벤트 주입 | 개발 조직 웹훅 | 운영 웹훅 미러링 | 운영 웹훅 |
@@ -45,7 +46,7 @@
 | `pipeline-worker:reconcile` | 조정 스캔 | 저장소 수 | 1 / 1 | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:batch` | 배치 잡 (JOB-ING-006 재색인 · JOB-ING-007 아웃박스 재적재) | 고정 | **1 / 1** | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:authz` | 권한 캐시 무효화 (JOB-AUTH-001) | `prs:permission` 적체 | **1 / 4** | 하트비트 | 이전 이미지 재배포 |
-| `filebeat` | 원본 아카이브 적재 | DaemonSet | - | Filebeat 자체 | 설정 롤백 |
+| `filebeat` | 원본 아카이브 적재 | `ingest-gateway` 파드 수를 따른다 (사이드카) | 게이트웨이와 동일 | Filebeat 자체 | 설정 롤백 |
 | `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005) | 대기 중 실행 수 | 2 / 8 | `GET /healthz` (gh 버전·manifest 대조 포함) | 이전 이미지 재배포 |
 
 **`batch`의 상한은 3이 아니라 1이다** (CR-046, DEV-311). 이 표가 3을 허용하면 운영자가 문서를 따라 늘릴 수 있는데, JOB-ING-007은 리더 선출이 없는 주기 스윕이라 파드마다 같은 아웃박스 행을 다시 발행하고 JOB-ING-006은 동시 실행 상한이 1이다. `pipeline-worker-batch.yaml`의 주석은 replica 1을 요구하는데 이 표가 3을 승인하고 있었다 — **아키텍처가 배포 계약이 경고하는 형상을 허가하고 있었다.** 조정 수단이 생기면 그때 올린다.
@@ -71,6 +72,7 @@
 | Object storage | 사용하지 않음 | - | 시스템 아키텍처 10장 참조 |
 | Secret store | Kubernetes Secret (+ 사내 시크릿 관리 연동) | 시크릿 (보안 문서 6장) | 클러스터 기본 |
 | Git mirror | PVC (ReadWriteMany 또는 워커별 ReadWriteOnce) | 커밋 그래프 (ADR-005) | 재구성 가능한 캐시. 백업 없음 |
+| 원본 아카이브 파일 | `emptyDir` (게이트웨이 파드 내부) | NDJSON 원본, 레인 B (ADR-002) | 크기 상한 × 보관 개수로 스스로를 제한한다 (FR-ING-010 AC-7). 백업 없음 — `raw_event`가 정본이다 |
 | Metrics | 사내 Prometheus 호환 | 지표 | 사내 표준 |
 | Logs | 사내 로그 수집 | 구조화 로그 | 사내 표준 |
 | Traces | OpenTelemetry → 사내 수집기 | 분산 추적 | 사내 표준 |
@@ -142,6 +144,8 @@ ES 아카이브(약 700GB)와 `raw_event`(4TB)는 같은 payload를 담지만 �
 - `pipeline-worker`는 인바운드 연결을 받지 않는다.
 - `ingest-gateway`는 아웃바운드로 PostgreSQL·Redis에만 접근한다. GHE API를 호출하지 않는다.
 - Filebeat는 Elasticsearch로만 아웃바운드한다.
+- **`filebeat`는 DaemonSet이 아니라 `ingest-gateway`의 사이드카다** (CR-052, DEV-373). 이전 판은 DaemonSet으로 적었고 시스템 아키텍처는 "DaemonSet/사이드카" 둘을 열어 두어 **두 문서가 어긋나 있었다.** 사이드카로 확정하는 이유는 `ingest-gateway`가 replica 2 이상이기 때문이다 — 여러 파드가 하나의 공유 파일에 덧붙이면 평균 8KB인 payload가 `PIPE_BUF`(4KB)를 넘어 `O_APPEND`의 원자성이 보장되지 않고, **섞인 줄은 두 이벤트의 조각을 하나로 읽히게 한다**(DEV-369). 파드마다 자기 파일을 쓰고 자기 사이드카가 읽으면 그 경합이 성립하지 않으며, `hostPath` 권한도 필요 없다.
+- **아카이브 볼륨은 `emptyDir`이다.** 컨테이너 재시작에는 살아남으므로 예외 처리가 정한 "적재기가 중단되면 파일은 디스크에 유지되고 재기동 시 마지막 오프셋부터"가 성립한다. 파드 자체가 사라지면 미전송분도 사라지지만, 보존 보증은 `raw_event`가 지고 아카이브 인덱스는 그것으로부터 재구성할 수 있다 (`ADR-003`: 백업 대상 아님).
 - `gh-executor`는 구성된 GitHub Enterprise 호스트로만 아웃바운드한다. 그 외 목적지는 네트워크 정책에서 차단한다 (NFR-010).
 - `gh-executor`는 PostgreSQL과 Redis에 접속하되 Elasticsearch에는 접속하지 않는다.
 - `web`은 OIDC IdP와 Redis로만 아웃바운드한다 (CR-018, DEV-071). PostgreSQL·Elasticsearch에는 접속하지 않는다 — 조회는 전부 `search-api`를 거친다.

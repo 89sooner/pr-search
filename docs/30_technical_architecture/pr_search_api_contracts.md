@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-08-28
+> 상태: review | 버전: v0.13 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -56,6 +56,7 @@
 | API-ADM-005 | GET | `/admin/audit-records` | 감사 기록 조회 | `security_officer` | FR-AUTH-004 |
 | API-ADM-006 | GET | `/admin/pipeline-status` | 파이프라인 지표 | `operator` | FR-ADMIN-001 |
 | API-ADM-007 | GET/POST | `/admin/sequence-integrity` | 정합성 점검·재채번 | `operator` | FR-ADMIN-003, FR-SEQ-005 |
+| API-ADM-008 | GET | `/admin/raw-events` | 원본 아카이브 조회 | `operator` 또는 `security_officer` + 접근 범위 | FR-ING-010 |
 
 **GitHub Operations Plane (CR-005 신규).** 아래 API는 `search-api`가 아니라 Operations 경로에 속하며, 인증은 세션 인증에 더해 사용자 위임 GitHub 신원(FR-GH-008)을 요구한다.
 
@@ -2263,6 +2264,54 @@ POST /api/v1/admin/reindex
 
 - **부분 재색인이 없다.** 별칭 하나가 단위다. "이 저장소만" 같은 요청을 받으면 정본과 색인의 대조 가능성이 대상마다 갈린다.
 - **자동 트리거가 없다.** 매핑이 바뀌었다는 것을 시스템이 스스로 판정해 재색인을 걸지 않는다 — 배포와 재색인의 순서는 운영자가 정한다.
+
+### API-ADM-008 원본 아카이브 조회
+
+- 목적: 운영자와 보안 담당자가 수신된 원본 웹훅 이벤트를 조사한다.
+- 관련 요구사항: FR-ING-010
+- 관련 화면: A-001 (`A-001-ARCHIVE`, 화면은 WP-040)
+
+요청: `GET /api/v1/admin/raw-events`
+
+| 파라미터 | 필수 | 설명 |
+| --- | --- | --- |
+| `delivery_id` | 아니오 | 전달 식별자 정확 일치. 주면 나머지 조건은 무시한다 (AC-4의 대조 경로) |
+| `repository` | 아니오 | `owner/name` 정확 일치 |
+| `event_type` | 아니오 | 웹훅 이벤트 유형 |
+| `action` | 아니오 | 이벤트 동작 |
+| `received_from`, `received_to` | 아니오 | 수신 시각 범위 (ISO 8601) |
+| `include_payload` | 아니오 | 기본 `false`. `true`면 항목마다 원본 payload를 싣는다 |
+| `limit` | 아니오 | 기본 25, 최대 100 |
+| `cursor` | 아니오 | 다음 페이지 |
+
+권한: `operator` **또는** `security_officer`. **그리고** 요청자의 접근 범위 필터를 지난다 (FR-ING-010 AC-6).
+
+응답 200:
+
+```json
+{
+  "items": [
+    {
+      "delivery_id": "8f2c1e40-...",
+      "event_type": "pull_request",
+      "action": "closed",
+      "repository": "acme/payments",
+      "repository_id": 4021,
+      "received_at": "2026-08-28T11:02:44.000Z",
+      "correlation_id": "0f1d..."
+    }
+  ],
+  "next_cursor": null,
+  "index_available": true
+}
+```
+
+- **역할 제한은 접근 범위 필터를 대체하지 않는다** (AC-6, THR-044). 역할은 이 엔드포인트를 부를 **자격**을 정하고, 무엇이 보이는지는 `ADR-008`의 필수 접근 범위 필터가 정한다. 접근 범위 밖 저장소의 원본과 **미등록 저장소의 원본**(`repository_id`가 없다)은 조회되지 않는다 — 후자는 어떤 접근 범위에도 속하지 않으며, 그 존재를 내주면 `FR-AUTH-002` AC-4가 막는 존재 신탁이 된다
+- **`payload`는 기본으로 싣지 않는다.** 아카이브는 5억 건 규모(NFR-003)이고 payload는 건당 평균 8KB인 임의 JSON이다. 목록 응답의 기본값으로 두면 조사자가 원본을 보려던 것이 아닐 때도 그것을 내주게 되고, 그 노출은 되돌릴 수 없다. `include_payload=true`는 **명시적 열람 의사**이며 감사 기록에 그대로 남는다
+- **`repository_id`는 필터의 재료이고 `repository`는 사람이 읽는 값이다.** 아카이브 문서는 둘을 함께 담는다 (`ENT-ING-003`). 하나만 담으면 접근 범위 필터를 걸 수 없거나(전자가 없을 때) 조사자가 저장소를 알아볼 수 없다(후자가 없을 때)
+- **`index_available: false`는 오류가 아니다.** 아카이브 인덱스가 아직 없거나 ILM이 전 구간을 지운 상태에서는 빈 목록과 함께 이 값을 `false`로 준다. 500을 내지 않는다 — **레인 B의 부재가 운영 콘솔을 막으면 두 레인의 독립(AC-3)이 조회 쪽에서 깨진다**
+- **정렬은 `received_at` 내림차순이며 커서는 `search_after` 키셋이다. PIT을 쓰지 않는다** — 아카이브는 append-only 시계열이라 순회 중 앞쪽에 문서가 끼어들지 않고, ILM이 지우는 것은 순회의 꼬리다. PIT은 클러스터 자원을 쓰고 그 비용은 아직 운영 규모로 측정되지 않았다(DEV-058). **W-001의 PIT 커서와 합치지 않는다** — 재료도 수명도 다르다
+- 커서 지문에는 질의 조건과 접근 범위, `include_payload`가 들어간다. `include_payload`를 도중에 켜면 지문이 달라져 `CURSOR_QUERY_MISMATCH`가 된다 — 같은 순회 안에서 노출 범위가 조용히 바뀌지 않는다
 
 ## 5. DTO 표준
 

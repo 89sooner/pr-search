@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-08-28
+> 상태: review | 버전: v0.9 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -29,7 +29,7 @@
 | ENT-ING-001 | RawEvent | 원본 웹훅 이벤트 | `delivery_id`, `event_type`, `repository_id`, `received_at`, `payload`, `queued_at`, `processed_at` | PostgreSQL | ingestion | FR-ING-001, FR-ING-003 |
 | ENT-ING-002 | DeadLetter | 실패 이벤트 격리 | `dead_letter_id`, `delivery_id`, `stage`, `error`, `retry_count`, `state` | PostgreSQL | ingestion | FR-ING-007 |
 <!-- CR-010(DEV-013): 보강 결과 전용 테이블은 두지 않는다. EVT-ING-002가 투영에 필요한 것을 self-contained bounded 이벤트로 나른다. 원본이 필요하면 raw_event가 시스템 오브 레코드다 (ADR-004). -->
-| ENT-ING-003 | RawEventArchive | 원본 아카이브 검색 문서 | `delivery_id`, `event_type`, `repository`, `received_at`, `payload` | Elasticsearch | filebeat | FR-ING-010 |
+| ENT-ING-003 | RawEventArchive | 원본 아카이브 검색 문서 | `delivery_id`, `event_type`, `action`, `repository`, `repository_id`, `received_at`, `correlation_id`, `payload` | Elasticsearch | filebeat | FR-ING-010 |
 | ENT-ING-004 | Job | 잡 실행 상태 | `job_id`, `type`, `target`, `state`, `progress`, `cursor`, `started_at`, `finished_at` | PostgreSQL | jobs | FR-ADMIN-002, FR-ING-006 |
 | ENT-GH-001 | GitHubIdentityConnection | 사용자별 Operations App 위임 연결 | `user_id`, `github_login`, `token_ref`, `scopes[]`, `connected_at`, `expires_at`, `revoked_at` | PostgreSQL | gh-identity | FR-GH-008 |
 | ENT-GH-002 | GhExecution | gh 실행 요청과 결과 | `execution_id`, `user_id`, `capability_id`, `invocation`(ENT-GH-008 구조화 원본 — 재실행의 근거), `context_snapshot`, `redacted_argv[]`, `risk_level`, `state`, `gh_version`, `manifest_version`, `exit_code`, `output_hash`, `output_truncated`, `idempotency_key` | PostgreSQL | gh-exec | FR-GH-002, FR-GH-006, FR-GH-012 |
@@ -951,6 +951,7 @@ ALTER TABLE gh_capability_snapshot
       "event_type":   { "type": "keyword" },
       "action":       { "type": "keyword" },
       "repository":   { "type": "keyword" },
+      "repository_id": { "type": "long" },
       "received_at":  { "type": "date" },
       "correlation_id": { "type": "keyword" },
       "payload":      { "type": "object", "enabled": false }
@@ -960,6 +961,10 @@ ALTER TABLE gh_capability_snapshot
 ```
 
 `payload`는 `enabled: false`로 저장만 하고 색인하지 않는다. 원본 보존과 `delivery_id` 대조가 목적이며 payload 내부 검색은 요구되지 않는다. 색인하면 5억 건의 임의 JSON이 매핑 폭발을 일으킨다.
+
+**`repository_id`와 `repository`를 둘 다 담는다 (CR-052, DEV-366).** 전자는 `ADR-008`의 필수 접근 범위 필터가 결합하는 재료이고 후자는 조사자가 읽는 값이다. 이전 판은 `repository`만 두었는데 게이트웨이가 실제로 기록하는 것은 `repository_id`였고, 매핑이 `dynamic: false`라 그 값은 **색인되지 않은 채 `_source`에만 남았다** — 아카이브를 저장소로 좁히는 조회도, 접근 범위 필터를 거는 것도 성립하지 않는 상태였다. **하나만 담는 길은 없다**: `repository_id`가 없으면 필터를 걸 수 없고, `repository`가 없으면 조사자가 저장소를 알아볼 수 없다.
+
+**미등록 저장소 이벤트는 `repository_id`가 비어 있다.** `WP-010`이 정한 대로 미등록 저장소의 웹훅도 원본 보관 대상이기 때문이다. 그 문서는 어떤 접근 범위에도 속하지 않으므로 `API-ADM-008`이 내주지 않는다 — 내주면 그 응답이 곧 "이 저장소에서 웹훅이 오고 있다"는 존재 신탁이 된다 (`FR-AUTH-002` AC-4와 같은 규칙).
 
 ## 5. 관계 및 일관성
 
@@ -1137,6 +1142,7 @@ if (!changed) { ctx.op = 'noop'; }
 원본 이벤트의 3년 보존 보증은 `raw_event`(PostgreSQL)가 진다. ES 아카이브 인덱스의 ILM 창은 FR-ING-010 AC-1이 요구하는 대로 분리된 값이며, 아카이브는 백업 대상이 아니라 `raw_event`에서 재구성한다. 두 값을 같게 맞출 의무는 없다 — ILM 창을 줄여도 보존 보증은 영향받지 않는다.
 | `job`, `dead_letter` | 90일 | 배치 삭제 | PostgreSQL 백업에 포함 |
 | git 미러 | 캐시 | 재클론 가능 | 백업 안 함 |
+| NDJSON 아카이브 파일 | 크기 상한 × 보관 개수 (기본 64MiB × 5) | 한도 초과 시 가장 오래된 조각부터 삭제 | 백업 안 함. `raw_event`가 정본이다 |
 
 **소프트 삭제 원칙**: 저장소 등록 해제는 문서를 삭제하지 않는다. `repository.status = 'archived'`, ES 문서에 `repository_archived: true`를 세팅한다 (FR-ING-009 AC-3). 조사 이력의 보존이 이 제품의 목적이므로, 데이터 삭제는 저장소 폐기라는 명시적 결정에서만 일어난다.
 

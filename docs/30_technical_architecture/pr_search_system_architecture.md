@@ -1,6 +1,6 @@
 # PR Search 시스템 아키텍처
 
-> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+> 상태: review | 버전: v0.3 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -83,7 +83,7 @@
 | `pipeline-worker` | 워커 (역할별 소비자 그룹) | 무상태 (진행 상태는 PostgreSQL) | 큐 적체 길이 | FR-ING-004~008, FR-SEQ-001, FR-REL-003~006 |
 | `search-api` | HTTP 서비스 | 무상태 | 동시 검색 세션 수 | FR-SRCH-*, FR-STAT-*, FR-SEQ-002~007, FR-REL-001~008 |
 | `web` | Next.js 서버 + 정적 자산 | 무상태 | 동시 사용자 수 | 전 화면 |
-| `filebeat` | DaemonSet/사이드카 | 파일 오프셋 상태 | 아카이브 파일 증가량 | FR-ING-010 |
+| `filebeat` | `ingest-gateway` 사이드카 (CR-052) | 파일 오프셋 상태 | 아카이브 파일 증가량 | FR-ING-010 |
 | PostgreSQL | 관리형 스토어 | 상태 | 데이터량 | FR-ING-003, FR-SEQ-001 |
 | Elasticsearch | 관리형 클러스터 | 상태 | 문서 수, 질의량 | FR-SRCH-*, FR-STAT-* |
 | Redis | 관리형 캐시/스트림 | 상태(휘발 가능) | 큐 길이 | FR-AUTH-003, ADR-002 |
