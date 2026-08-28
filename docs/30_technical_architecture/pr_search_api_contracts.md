@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.14 | 갱신일: 2026-08-28
+> 상태: review | 버전: v0.15 | 갱신일: 2026-08-29
 
 ## 1. 목적
 
@@ -312,7 +312,7 @@
 
 **`seq:` 질의는 시퀀스 공간을 지목해야 하고, 그 공간의 에폭이 조회의 일부다** (CR-051, DEV-359). `seq_epoch`은 질의 문법이 아니라 **참조 맥락**이다 — 아래 「시퀀스 인용 계약」 절이 정본이다.
 
-지원 질의 키 (FR-SRCH-005 AC-1): `repo`, `org`, `author`, `team`, `reviewer`, `label`, `base`, `head`, `state`, `merged`, `created`, `seq`, `release`, `path`, `is`
+지원 질의 키 (FR-SRCH-005 AC-1): `repo`, `org`, `author`, `team`, `author_team`, `reviewer`, `label`, `base`, `head`, `state`, `merged`, `created`, `seq`, `release`, `path`, `is`, `kind`
 
 **질의 문법 (CR-014).** 파서는 `@prs/query`가 갖고 서버와 클라이언트가 같은 코드를 쓴다 (ADR-001).
 
@@ -320,7 +320,7 @@
 | --- | --- | --- |
 | 동등 | `key:value` | 같은 키 반복은 OR, 다른 키는 AND (AC-5) |
 | 부정 | `-key:value` | 범위에도 붙는다 (AC-6) |
-| 범위 | `key:a..b` | **`seq`·`merged`·`created` 세 키만** (DEV-037). 양끝이 모두 있어야 한다 |
+| 범위 | `key:a..b` | **`seq`·`merged`·`created` 세 키만** (DEV-037). 양끝이 모두 있어야 한다. **이 셋은 범위 형태로만 성립하며 스칼라는 400이다** (DEV-364) |
 | 인용 | `key:"두 낱말"` | `"`와 `\`는 `\`로 escape한다 |
 | 전문 검색어 | 키 없는 남은 문자열 | 공백 하나로 이어 붙인다 |
 
@@ -330,14 +330,15 @@
 
 **`key`가 세 범위 키가 아니면 `..`는 리터럴이다.** `path:src/a..b`는 범위가 아니라 그 문자열을 찾는 조건이다.
 
-**질의 키가 가 닿는 자리 (CR-016, DEV-052).** 파서는 키를 15종으로 알지만 그것이 어느 필드를 보는지는 별개다.
+**질의 키가 가 닿는 자리 (CR-016, DEV-052).** 파서는 키를 17종으로 알지만 그것이 어느 필드를 보는지는 별개다.
 
 | 키 | 대상 | 비고 |
 | --- | --- | --- |
 | `repo` | `repository` | `owner/name` 그대로 |
 | `org` | `org_id` | **레지스트리 해석** — 문서에 조직 이름이 없다. `repository.owner`로 `org_id`를 찾는다 |
 | `author` | `author` | |
-| `team` | `allowed_team_ids` | **레지스트리 해석** — `team.slug` → `team_id`. **지금은 결과를 내지 못한다** (문서의 팀 ID가 비어 있다) |
+| `team` | `allowed_team_ids` | **레지스트리 해석** — `team.slug` → `team_id`. **저장소 접근 권한 팀이다.** 지금은 결과를 내지 못한다 (문서의 팀 ID가 비어 있다) |
+| `author_team` | `author_team_ids` | **레지스트리 해석.** **작성자의 소속 팀이며 `team`과 다르다** (CR-053, DEV-382). 집계의 `group_by=team`이 이 필드를 보고 `drill_down_query`도 이 키를 쓴다. 투영이 아직 채우지 않아 결과가 비어 있다 |
 | `reviewer` | `reviewers` | |
 | `label` | `labels` | 커밋 문서에는 없다 → 커밋은 매치되지 않는다 (정상) |
 | `base` | `base_branch` | |
@@ -349,6 +350,7 @@
 | `release` | `release_tags` | |
 | `path` | `changed_paths` | `path_hierarchy` 토크나이저라 `match`가 곧 접두 매칭이다 (AC-1의 "변경 경로 접두") |
 | `is` | 파생 상태 | 아래 |
+| `kind` | **문서 유형** | `pull_request` \\| `commit`. 값이 열거되어 있으므로 그 밖은 400이다. 집계의 `drill_down_query`가 모집단을 유지하는 수단이며(CR-053, DEV-383), `is:merged`가 우연히 PR만 남기는 것에 기대지 않는다 — 그 뜻은 "머지된 것"이지 "PR"이 아니다 |
 
 **`is`는 파생 상태다 (CR-016, DEV-053).** `state`가 GitHub이 준 값을 그대로 보는 반면 `is`는 이 시스템이 계산한 것까지 본다.
 
@@ -452,8 +454,8 @@
       "token": "assignee:kim",
       "offset_start": 24,
       "offset_end": 36,
-      "supported_keys": ["repo","org","author","team","reviewer","label","base",
-                         "head","state","merged","created","seq","release","path","is"]
+      "supported_keys": ["repo","org","author","team","author_team","reviewer","label","base",
+                         "head","state","merged","created","seq","release","path","is","kind"]
     }
   },
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
@@ -1618,10 +1620,10 @@ POST /api/v1/analytics/groups
   "groups": [
     { "key": "payments-core", "count": 412, "changed_files_sum": 2841,
       "additions_sum": 51240, "lead_time_median": 61200,
-      "drill_down_query": "org:acme merged:2026-07-01..2026-08-01 team:payments-core" },
+      "drill_down_query": "kind:pull_request org:acme merged:2026-07-01..2026-08-01 author_team:payments-core" },
     { "key": "session", "count": 288, "changed_files_sum": 1522,
       "additions_sum": 29110, "lead_time_median": 44100,
-      "drill_down_query": "org:acme merged:2026-07-01..2026-08-01 team:session" }
+      "drill_down_query": "kind:pull_request org:acme merged:2026-07-01..2026-08-01 author_team:session" }
   ],
   "truncated": false,
   "approximate": false,
@@ -1629,9 +1631,26 @@ POST /api/v1/analytics/groups
 }
 ```
 
-- `group_by`: `repository` | `org` | `team` | `author` | `label` | `base_branch` | `state`
+- **집계 대상은 `prs-pull-requests` 단독이다** (FR-STAT-001 AC-6, CR-053). 목록 조회(`API-SRCH-004`)는 PR과 커밋을 함께 보므로 화면 총계와 이 응답의 `total`은 같지 않을 수 있다
+- `group_by`와 ES 필드의 대응 (CR-053, DEV-382)
+
+  | `group_by` | ES 필드 | 다중값 |
+  | --- | --- | --- |
+  | `repository` | `repository` | 아니오 |
+  | `org` | `org_id` (표시명은 레지스트리에서 일괄 해석) | 아니오 |
+  | `team` | **`author_team_ids`** (작성자 소속 팀. `allowed_team_ids`가 **아니다**) | **예** |
+  | `author` | `author` | 아니오 |
+  | `label` | `labels` | **예** |
+  | `base_branch` | `base_branch` | 아니오 |
+  | `state` | `state` | 아니오 |
+
+- **다중값 그룹에서는 한 PR이 여러 버킷에 들어간다.** 따라서 `sum(groups[].count)`가 `total`을 넘을 수 있으며 이는 정상이다 (FR-STAT-001 AC-7, DEV-385). `total`은 언제나 **고유 PR 수**다
+- **`author_team_ids`는 현재 투영이 채우지 않는다** (원장 7장). 계약은 이 필드를 지목하고, 값이 비어 있는 동안 `team` 그룹이 비는 것을 그대로 드러낸다 — 없는 값을 다른 필드로 대신 채우지 않는다
 - `size` 최대 500. 초과 시 상위 500 + `truncated: true` (AC-3)
-- 대상 100만 건 초과 시 `approximate: true` (FR-STAT-006 AC-3)
+- **정렬은 `count` 내림차순, 동률이면 그룹 키 오름차순이다** (FR-STAT-001 AC-8, DEV-389). 같은 데이터에 같은 요청이 다른 순서를 내지 않는다
+- `drill_down_query`는 **집계와 같은 모집단을 가리킨다** — `kind:pull_request`를 포함하며, `team` 그룹의 경우 `team:`이 아니라 **`author_team:`**을 쓴다 (FR-STAT-001 AC-5, DEV-383)
+- 질의에 `seq:` 범위가 있으면 요청에 `seq_epoch`이 필요하다 (아래 공통 규칙)
+- 대상 100만 건 초과 시 `approximate: true` (FR-STAT-006 AC-3, 아래 공통 규칙)
 - 오류: `AGGREGATION_TIMEOUT` (504)
 
 ### API-STAT-002 시계열 집계
@@ -1668,9 +1687,13 @@ POST /api/v1/analytics/time-series
 }
 ```
 
+- **집계 대상은 `prs-pull-requests` 단독이고 버킷 기준 시각은 `merged_at`이다** (FR-STAT-002 AC-6, CR-053). 커밋 문서에는 그 필드가 없다
 - `interval`: `hour` | `day` | `week` | `month`. 버킷 400개 초과 시 `TOO_MANY_BUCKETS` (400)
+- `timezone` 기본값은 `Asia/Seoul`이며 **버킷 경계를 그 시간대에서 계산한다** (FR-STAT-002 AC-2). UTC로 나눈 뒤 이름만 바꾸지 않는다 — 날짜 경계가 다른 지역에서 하루가 어긋난다
+- `from`·`to` 미지정 시 최근 30일이며 `applied_range`에 실제 적용 구간을 명시한다
 - 데이터 없는 버킷도 0으로 채워 반환한다 (AC-4)
-- `group_by` 지정 시 계열 최대 20개 (AC-5)
+- `group_by` 지정 시 계열 최대 20개 (AC-5). 그룹 선택 규칙과 다중값 의미는 `API-STAT-001`과 같다
+- 질의에 `seq:` 범위가 있으면 요청에 `seq_epoch`이 필요하다 (아래 공통 규칙)
 
 ### API-STAT-003 백분위 집계
 
@@ -1703,9 +1726,96 @@ POST /api/v1/analytics/percentiles
 }
 ```
 
-- `field`: `lead_time_seconds` | `first_review_wait_seconds`
-- 표본 20건 미만이면 `low_sample: true`와 원값 목록 (`raw_values`)을 반환한다
-- `first_review_wait_seconds`는 리뷰 없는 PR을 제외하고 `excluded_count`에 집계한다 (FR-STAT-004 AC-1)
+- **집계 대상은 `prs-pull-requests` 단독이며 `lead_time_seconds`는 머지된 PR로 한정한다** (FR-STAT-003 AC-2)
+- `field`: `lead_time_seconds` | `first_review_wait_seconds`. 둘 다 **색인 시점 사전 계산 필드**이며 조회 시점 `script`를 쓰지 않는다 (AC-5)
+- 표본 20건 미만이면 `low_sample: true`와 원값 목록 (`raw_values`)을 반환한다. **경계는 20이며 19는 `true`, 20은 `false`다**
+- `raw_values`도 접근 범위를 지난 문서에서만 나온다
+- `first_review_wait_seconds`는 리뷰 없는 PR을 제외하고 `excluded_count`에 집계한다 (FR-STAT-004 AC-1). **제외 사유를 구분한다** — 리뷰가 없어서 값이 없는 것과 보강이 끝나지 않아 모르는 것은 다른 사실이므로 `excluded_reasons`에 `no_review`·`enrichment_pending`으로 나눈다
+- **`API-STAT-001`의 `lead_time_median`은 여기의 `p50`과 같은 값이다** (FR-STAT-003 AC-6, DEV-390). 두 API가 같은 것을 다른 이름으로 내지 않는다
+- 질의에 `seq:` 범위가 있으면 요청에 `seq_epoch`이 필요하다 (아래 공통 규칙)
+
+### API-STAT-004 분포 집계 (CR-053, DEV-386)
+
+- 목적: 현재 질의 조건 위에서 변경 규모의 구간별 문서 수와 비율을 반환한다.
+- 관련 요구사항: FR-STAT-005
+
+요청:
+
+```json
+POST /api/v1/analytics/distributions
+{
+  "query": "org:acme merged:2026-07-01..2026-08-01",
+  "dimension": "changed_files"
+}
+```
+
+응답 200:
+
+```json
+{
+  "dimension": "changed_files",
+  "total": { "value": 1842, "relation": "eq" },
+  "buckets": [
+    { "key": "1",       "from": 1,    "to": 1,    "count": 402, "ratio": 0.2183,
+      "drill_down_query": "kind:pull_request org:acme merged:2026-07-01..2026-08-01" },
+    { "key": "2-5",     "from": 2,    "to": 5,    "count": 731, "ratio": 0.3968, "drill_down_query": "..." },
+    { "key": "6-20",    "from": 6,    "to": 20,   "count": 508, "ratio": 0.2758, "drill_down_query": "..." },
+    { "key": "21-100",  "from": 21,   "to": 100,  "count": 173, "ratio": 0.0939, "drill_down_query": "..." },
+    { "key": "100+",    "from": 101,  "to": null, "count": 21,  "ratio": 0.0114, "drill_down_query": "..." },
+    { "key": "unknown", "from": null, "to": null, "count": 7,   "ratio": 0.0038, "drill_down_query": null }
+  ],
+  "approximate": false,
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+- `dimension`: `changed_files` | `changed_lines`
+- 구간은 `FR-STAT-005` AC-1·AC-2가 정한 그대로다. 파일 수는 `1` / `2-5` / `6-20` / `21-100` / `100 초과`, 라인 수는 `1-50` / `51-200` / `201-1000` / `1000 초과`
+- **`changed_lines`는 `additions + deletions`다** (FR-STAT-005 AC-2, DEV-386). 두 값을 따로 세지 않으며, **그 합은 색인 시점에 사전 계산해 저장한다** — 조회 시점 `script`로 더하는 구현은 `NFR-001`이 금지한다 (AC-7)
+- **`unknown` 구간은 값이 없는 문서다** (AC-5). 보강이 끝나지 않아 모르는 것이며 **0과 다르다** — 파일 0개인 PR은 `unknown`이 아니라 자기 구간에 들어간다. `unknown`에는 근거 목록으로 갈 질의가 없으므로 `drill_down_query`는 `null`이다
+- `ratio`는 `count / total`이며 `total`이 0이면 모든 구간이 `count: 0`·`ratio: 0`이다 (예외/실패 처리)
+- 집계 대상은 `prs-pull-requests` 단독이다 (FR-STAT-005 AC-6)
+- 오류: `AGGREGATION_TIMEOUT` (504)
+
+### API-STAT 공통 규칙 (CR-053)
+
+네 집계 API가 함께 지키는 것이다. 하나씩 다시 적지 않는다.
+
+**모집단.** 넷 다 `prs-pull-requests` 단독을 집계한다. 목록 조회는 PR과 커밋을 함께 보므로 화면
+총계와 집계 총계가 다를 수 있고, 그 차이는 오류가 아니라 **다른 것을 세기 때문**이다.
+
+**질의 해석.** 검색과 **같은 파서**(`@prs/query`)를 쓴다. 집계 전용 문법을 따로 두지 않는다 —
+같은 문자열을 두 파서가 해석하면 한쪽만 넓어지는 날 아무 오류도 나지 않는다.
+
+**접근 범위.** 모든 집계 질의는 `ScopedQuery`를 지난다 (ADR-008). 목록에서 이미 걸렀다는 이유로
+집계에서 생략하지 않는다 — **건수도 정보다.** 부분 샤드 실패(`_shards.failed > 0`)를 정상 집계로
+반환하지 않는다.
+
+**시퀀스 에폭.** 질의에 `seq:` 범위가 있으면 요청은 `seq_epoch`을 함께 싣는다 (FR-STAT-006 AC-6,
+ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 → 접근 범위 산출 → 시퀀스 문맥 해석 →
+에폭 유효성 → 집계**다. 요청 에폭이 현재와 다르면 집계를 **계산하지 않고** 아래를 반환한다.
+
+```json
+{
+  "epoch_stale": true,
+  "requested_seq_epoch": 3,
+  "current_seq_epoch": 4,
+  "correlation_id": "..."
+}
+```
+
+현재 에폭으로 조용히 다시 해석하지 않으며 `total: 0`이나 빈 버킷으로 위장하지 않는다. 에폭은
+질의 문자열의 토큰이 아니라 **질의 밖의 별도 재료**이므로 `drill_down_query`에 숫자로 끼워 넣지
+않는다 — 근거 목록으로 갈 때는 유효 에폭을 응답의 별도 필드로 전달한다.
+
+**근사 집계.** 대상이 100만 건을 넘으면 Elasticsearch의 `random_sampler` 집계로 표본을 잡고
+`approximate: true`와 함께 `sample_probability`를 반환한다. **그것이 보장하는 것만 주장한다** —
+건수는 표본 비율로 되돌린 추정값이고 백분위는 표본 기반이다. **근거 목록으로 가는 조회는
+근사하지 않는다** (`drill_down_query`를 실행하면 정확한 목록이 나온다). 설명할 수 없는 숫자를
+정확한 숫자처럼 반환하지 않는다.
+
+**타임아웃.** 5초를 넘으면 `AGGREGATION_TIMEOUT` (504)과 함께 기간 축소를 안내한다
+(FR-STAT-001 예외/실패 처리).
 
 ### API-AUTH-001 현재 사용자
 

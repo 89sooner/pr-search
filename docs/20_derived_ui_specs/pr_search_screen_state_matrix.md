@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.10 | 갱신일: 2026-08-28
+> 상태: review | 버전: v0.11 | 갱신일: 2026-08-29
 
 ## 1. 상태 설계 원칙
 
@@ -151,6 +151,7 @@
 | `approximate` | 100만 건 초과 | 근사값 배지 | - | FR-STAT-006 |
 | `error_too_many_buckets` | 400개 초과 | 간격 확대 제안 | 간격 변경 | FR-STAT-002 |
 | `error_aggregation_timeout` | 5초 초과 | 기간 축소 제안 | 기간 변경 | FR-STAT-001 |
+| `epoch_stale` | 질의의 `seq:` 범위가 딛고 선 에폭이 현재와 다르다 | **집계를 그리지 않고 그 사실을 말한다.** 빈 결과나 0으로 그리지 않는다 — 재채번 뒤의 같은 서수는 다른 커밋을 가리킨다 | 범위를 다시 지정 | FR-STAT-006 AC-6, ADR-007 |
 | `partial_failure` | 일부 패널 실패 | 실패 패널만 오류 표시 | 패널 재시도 | - |
 | `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 

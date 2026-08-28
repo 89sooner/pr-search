@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.10 | 갱신일: 2026-08-28
+> 상태: review | 버전: v0.11 | 갱신일: 2026-08-29
 
 ## 1. 목적
 
@@ -774,6 +774,7 @@ ALTER TABLE gh_capability_snapshot
       "changed_files_count": { "type": "integer" },
       "additions":           { "type": "integer" },
       "deletions":           { "type": "integer" },
+      "changed_lines":       { "type": "integer" },
       "changed_paths":       { "type": "text", "analyzer": "path_analyzer",
                                "fields": { "raw": { "type": "keyword", "ignore_above": 1024 } } },
       "files_truncated":     { "type": "boolean" },
@@ -1078,12 +1079,13 @@ if (!changed) { ctx.op = 'noop'; }
 
 **선행·후행도 멤버십은 PostgreSQL이다** (CR-031, DEV-166 — 범위 조회와 같은 이유, DEV-130). 색인에서 `range(merge_seq)`로 이웃을 고르면 **색인 반영이 늦은 이웃이 오류 없이 빠지고**, 그 자리에 더 먼 항목이 올라와 "인접"이 거짓이 된다. 정본에서 앞뒤를 고른 뒤 표시값만 색인에서 채우며, 채워지지 않은 항목은 `indexed: false`로 밝힌다. 직접 푸시 커밋은 커밋 메타데이터 보강(WP-067) 전까지 언제나 그 상태다.
 
-| 다차원 필터 목록 | `prs-pull-requests` | 복합 `bool.filter` + `search_after` | p95 500ms @ 1000만 | FR-SRCH-006 |
+| 다차원 필터 목록 | `prs-pull-requests` **+ `prs-commits`** | 복합 `bool.filter` + `search_after` | p95 500ms @ 1000만 | FR-SRCH-006 |
 | 패싯 | `prs-pull-requests` | `terms` 집계 6종, size 20 | 목록과 동일 요청 | FR-SRCH-009 |
 | 전문 검색 | `prs-pull-requests` | `multi_match` (title^3, body, message) + highlight | p95 500ms | FR-SRCH-011 |
 | 그룹 집계 | `prs-pull-requests` | `terms` 집계, size 500 | p95 1500ms | FR-STAT-001 |
 | 시계열 | `prs-pull-requests` | `date_histogram(merged_at)` + timezone | p95 1500ms | FR-STAT-002 |
 | 백분위 | `prs-pull-requests` | `percentiles(lead_time_seconds)` | p95 1500ms | FR-STAT-003 |
+| 분포 | `prs-pull-requests` | `range` 집계 (`changed_files_count`, `changed_lines`) | p95 1500ms | FR-STAT-005 |
 | 관계 조회 (정방향) | `prs-links` | `term(from_type) + term(from_id)` | p95 150ms | FR-REL-003 |
 | 관계 조회 (역방향) | `prs-links` | `term(to_type) + term(to_id)` | p95 150ms | FR-REL-004 |
 | 릴리스 포함 | `prs-releases` | **`term(repository_id) + term(base_branch)`** + `range(merge_seq >= C.merge_seq)` | p95 150ms | FR-REL-002 |
@@ -1102,7 +1104,16 @@ if (!changed) { ctx.op = 'noop'; }
 
 **라우팅**: 모든 엔티티 문서를 `repository_id`로 라우팅한다. 저장소가 지정된 질의는 단일 샤드에서 끝난다. 저장소 미지정 전역 질의는 전 샤드 팬아웃이며 이는 의도된 동작이다.
 
-**사전 계산 필드**: `lead_time_seconds`, `first_review_wait_seconds`, `changed_files_count`, `additions`, `deletions`, `link_summary.*`, `unreleased`는 모두 색인 시점에 계산해 저장한다. 조회 시점 `script` 필드나 runtime field를 집계에 사용하지 않는다 (NFR-001).
+**사전 계산 필드**: `lead_time_seconds`, `first_review_wait_seconds`, `changed_files_count`, `additions`, `deletions`, **`changed_lines`**, `link_summary.*`, `unreleased`는 모두 색인 시점에 계산해 저장한다. 조회 시점 `script` 필드나 runtime field를 집계에 사용하지 않는다 (NFR-001).
+
+**`changed_lines`는 `additions + deletions`다** (CR-053, DEV-386). 변경 규모 분포(`FR-STAT-005` AC-2)가
+그 합을 구간으로 나누는데, 두 필드를 조회 시점에 더하면 `script`가 필요하고 그것은 위 규율이
+금지한다. **집계가 읽을 값은 집계가 계산하지 않는다.**
+
+**집계 셋의 대상이 `prs-pull-requests` 단독인 것은 계약이다** (CR-053, `FR-STAT-001` AC-6). 목록은
+PR과 커밋을 함께 보지만(`W-001-RESULTS`의 유형 열) 집계는 PR만 센다 — 그룹 키 일곱 중 팀·라벨·PR
+상태와 지표 넷 중 변경 파일 수·리드타임이 **커밋 매핑에 없기 때문**이며, 커밋을 넣으면 그 다섯이
+조용히 0이나 `unknown`이 된다. 두 총계가 다른 것은 오류가 아니라 **다른 것을 세는 것**이다.
 
 ## 7. 마이그레이션 정책
 
@@ -1151,6 +1162,14 @@ if (!changed) { ctx.op = 'noop'; }
 **표식은 PR 문서와 커밋 문서 양쪽에 붙는다 (CR-013, DEV-028).** 4.2의 `prs-commits` 매핑에 `repository_archived`가 없었다. 매핑이 `dynamic: strict`라 없는 필드를 쓰려는 시도는 **거부되므로**, 그대로는 해제한 저장소의 커밋 문서에 표식을 붙일 방법이 없었다. FR-SRCH-002(SHA → PR)는 커밋 문서를 직접 결과로 내놓기 때문에, 표식 없는 커밋 문서는 해제된 저장소를 살아 있는 것처럼 보여 준다.
 
 **필드 추가에는 재색인이 필요 없다 (CR-013, DEV-034).** 부트스트랩이 이미 있는 인덱스에 `put_mapping`으로 제자리 갱신한다. Elasticsearch에서 매핑에 새 필드를 더하는 것은 하위 호환 변경이기 때문이다. 재색인(FR-ING-008)이 필요한 것은 기존 필드의 **타입이나 분석기**를 바꿀 때이며, 그런 변경은 `put_mapping`이 거부하므로 조용히 통과하지 않는다.
+
+**`changed_lines`도 같은 길로 더한다 (CR-053, DEV-386).** 매핑은 `put_mapping`으로 더하고, **이미
+색인된 문서는 `update_by_query`에 `ctx._source.changed_lines = additions + deletions` 스크립트를
+실어 소급한다.** 이것은 **색인 시점 계산**이므로 "조회 시점 `script`를 집계에 쓰지 않는다"는 6장
+규율과 어긋나지 않는다. 소급하지 않으면 과거 PR이 전부 `unknown` 구간에 들어가는데, 그것은
+"보강이 끝나지 않았다"는 `FR-STAT-005` AC-5의 뜻과 다른 사실이라 **화면이 거짓을 말하게 된다.**
+`WP-032`가 `put_mapping`으로 더한 서브필드가 과거 문서에서 비어 있어 검색이 조용히 적게 답한
+것과 같은 자리다.
 
 **표식은 기존 문서에도 소급된다.** 해제 시점에 이미 색인된 문서를 `update_by_query`로 갱신한다. 이때 `document_version`은 건드리지 않는다 — 등록 상태는 웹훅이 나르는 엔티티 상태가 아니라 이 시스템이 소유한 운영 상태라, 버전 비교의 대상이 아니다 (CR-011의 상태 필드 / 누적 필드 구분과 같은 원리다).
 

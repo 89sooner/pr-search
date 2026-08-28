@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.7 | 갱신일: 2026-08-28
+> 상태: review | 버전: v0.8 | 갱신일: 2026-08-29
 
 ## 1. 문서 원칙
 
@@ -334,7 +334,7 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 날짜 히스토그램 시계열 표시
 - 필수 props: `series: Series[]`, `interval`, `timezone`, `onBucketSelect`
-- 사용 규칙: 계열 최대 20개. 색은 계열 구분에만 사용하고 값 크기는 위치·길이로 표현한다. 색상 대비는 라이트·다크 두 테마 모두에서 검증한다
+- 사용 규칙: 계열 최대 20개. 색은 계열 구분에만 사용하고 값 크기는 위치·길이로 표현한다. 색상 대비는 라이트·다크 두 테마 모두에서 검증한다. **계열 색 자체가 미결이다** — Conductor에 계열용 토큰이 없고 `status`·`severity`를 돌려 쓰는 것은 ADR-006이 금지한다 (`DEV-380`, WP-038 착수 전 결정)
 - 접근성: 차트와 동일 데이터를 표 형태로 제공한다(`Table`, 시각적으로 접힘 가능)
 - 관련 FR: FR-STAT-002
 
@@ -342,6 +342,7 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 구간별 분포 표시(변경 파일 수, 라인 수)
 - 필수 props: `buckets: Bucket[]`, `onBucketSelect`
+- 사용 규칙: **`unknown` 구간은 0과 다르게 그린다** — 값이 없는 것과 0인 것은 다른 사실이며, `unknown`에는 근거 목록으로 갈 길이 없다 (CR-053, FR-STAT-005 AC-5)
 - 접근성: C-033과 동일한 표 대체 제공 규칙
 - 관련 FR: FR-STAT-005
 
