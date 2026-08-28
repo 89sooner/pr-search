@@ -35,6 +35,8 @@ const AUTH_CONFIG = {
 } as const;
 
 const USER = 'sub-analytics';
+/** `app_user`의 유니크 열. 다른 시험 파일과 겹치지 않는 대역을 쓴다. */
+const GITHUB_USER_ID = 980_001;
 const ORG = 1;
 const PAYMENTS = 201;
 const HIDDEN = 999;
@@ -188,6 +190,8 @@ interface Body {
   readonly applied_range?: { readonly from: string; readonly to: string };
   readonly unit?: string;
   readonly overall?: Readonly<Record<string, number | null>>;
+  /** `low_sample`일 때만. 백분위 **대신** 온다 (FR-STAT-003 예외/실패 처리). */
+  readonly raw_values?: readonly number[];
   readonly sample_size?: number;
   readonly low_sample?: boolean;
   readonly excluded_count?: number;
@@ -232,7 +236,18 @@ beforeAll(async () => {
    * `authz/team-scope.test.ts`를 깨뜨렸다 (risks 「공유 DB 오염」).
    */
   await pool.query('DELETE FROM permission_cache WHERE user_id = $1', [USER]);
-  await pool.query('DELETE FROM app_user WHERE user_id = $1', [USER]);
+  /*
+   * **`user_id`뿐 아니라 유니크 열 전부로 지운다.**
+   *
+   * `app_user`는 `user_id`·`login`·`github_user_id` 셋이 각각 유니크다.
+   * `user_id`만 지우면 다른 `user_id`가 내 `github_user_id`를 들고 있을 때
+   * 삽입이 거절된다 — CI에서 실제로 그렇게 깨졌고 **로컬에서는 통과했다.**
+   * 내가 쓰려는 식별자를 선점한 행을 치우는 것이 이 정리의 일이다.
+   */
+  await pool.query(
+    'DELETE FROM app_user WHERE user_id = $1 OR login = $2 OR github_user_id = $3',
+    [USER, 'analytics-user', GITHUB_USER_ID],
+  );
   await pool.query('DELETE FROM team_member WHERE team_id = ANY($1)', [
     [TEAM_CORE, TEAM_PLATFORM, TEAM_ACCESS_ONLY],
   ]);
@@ -249,7 +264,7 @@ beforeAll(async () => {
   await authRepo.upsertUserOnLogin(pool, {
     user_id: USER,
     login: 'analytics-user',
-    github_user_id: 8001,
+    github_user_id: GITHUB_USER_ID,
   });
   await authRepo.upsertTeam(pool, { team_id: TEAM_CORE, slug: 'analytics-core', org_id: ORG });
   await authRepo.upsertTeam(pool, { team_id: TEAM_PLATFORM, slug: 'analytics-platform', org_id: ORG });
@@ -437,9 +452,11 @@ describe('접근 범위가 어느 숫자에도 새지 않는다 (FR-AUTH-002 AC-
     // 숨은 PR의 리드타임은 3600초다. 범위 안 최솟값(10800)보다 작으므로
     // 섞이면 p50이 그 아래로 내려간다.
     const { body } = await post('/percentiles', { query: SCOPE_QUERY, field: 'lead_time_seconds' });
+    // `is:merged`로 좁혀 머지된 셋이 대상이다 (FR-STAT-003 AC-2).
     expect(body.sample_size).toBe(3);
     // 숨은 PR(3600초)이 섞이면 p50이 7200 아래로 내려간다.
-    expect(body.overall?.p50).toBeGreaterThanOrEqual(7_200);
+    expect(body.raw_values).toBeDefined();
+    expect((body.raw_values ?? []).every((one) => one >= 7_200)).toBe(true);
   });
 
   it('분포에 범위 밖 문서가 나타나지 않는다', async () => {
@@ -467,8 +484,13 @@ describe('그룹 집계 (API-STAT-001)', () => {
      */
     const { body } = await post('/groups', { query: SCOPE_QUERY, group_by: 'team' });
     const keys = groupsOf(body).map((one) => String(one.key)).sort();
-    expect(keys).toEqual([String(TEAM_CORE), String(TEAM_PLATFORM)]);
-    expect(keys).not.toContain(String(TEAM_ACCESS_ONLY));
+    /*
+     * **버킷 키는 slug다** (PR #76 리뷰 P1). 집계는 `author_team_ids`(숫자)로
+     * 묶지만 질의는 slug를 받으므로, 숫자를 그대로 내보내면 근거 질의가
+     * `author_team:21`이 되어 아무것도 찾지 못한다.
+     */
+    expect(keys).toEqual(['analytics-core', 'analytics-platform']);
+    expect(keys).not.toContain('analytics-access');
   });
 
   it('**다중 소속이면 버킷 합이 총계를 넘는다** (AC-7, DEV-385)', async () => {
@@ -504,7 +526,7 @@ describe('그룹 집계 (API-STAT-001)', () => {
 
   it('**`drill_down_query`가 같은 모집단을 가리킨다** (AC-5, DEV-383)', async () => {
     const { body } = await post('/groups', { query: 'repo:analytics/payments', group_by: 'team' });
-    const core = groupsOf(body).find((one) => String(one.key) === String(TEAM_CORE));
+    const core = groupsOf(body).find((one) => String(one.key) === 'analytics-core');
     // `team:`이 아니라 `author_team:`이다 — 그 키는 접근 권한을 뜻한다.
     expect(core?.drill_down_query).toContain('kind:pull_request');
     expect(core?.drill_down_query).toContain('author_team:');
@@ -587,6 +609,12 @@ describe('백분위 (API-STAT-003·API-STAT-004)', () => {
     expect(body.sample_size).toBe(3);
     expect(body.low_sample).toBe(true);
     expect(body.unit).toBe('seconds');
+    /*
+     * **백분위 대신 원값이 온다** (FR-STAT-003 예외/실패 처리, PR #76 리뷰 P2).
+     * 둘을 함께 실으면 화면이 흔들리는 백분위를 그릴 여지가 남는다.
+     */
+    expect(body.raw_values).toHaveLength(3);
+    expect(body.overall).toBeUndefined();
   });
 
   it('**제외 사유를 구분한다** — 리뷰 없음과 보강 대기는 다른 사실이다', async () => {
@@ -594,7 +622,20 @@ describe('백분위 (API-STAT-003·API-STAT-004)', () => {
      * `pr:3`은 머지되지 않아 리드타임이 없고 보강도 끝나지 않았다. 두 사유를
      * 하나로 묶으면 운영자가 "리뷰 문화"와 "파이프라인 지연"을 구분할 수 없다.
      */
-    const { body } = await post('/percentiles', { query: SCOPE_QUERY, field: 'lead_time_seconds' });
+    /*
+     * **리드타임은 머지된 PR로 한정되므로 제외가 없다** (PR #76 리뷰 P1).
+     * 좁히지 않으면 열린 PR이 `total`에 들어가 값이 없다는 이유로 제외되고,
+     * 그것이 `no_review`로 잘못 분류된다 — 리뷰가 없어서가 아니라 아직
+     * 머지되지 않은 것이다.
+     */
+    const merged = await post('/percentiles', { query: SCOPE_QUERY, field: 'lead_time_seconds' });
+    expect(merged.body.excluded_count).toBe(0);
+
+    // 리뷰 대기는 머지 여부와 무관하다 (FR-STAT-004). 보강 대기인 pr:3이 제외된다.
+    const { body } = await post('/percentiles', {
+      query: SCOPE_QUERY,
+      field: 'first_review_wait_seconds',
+    });
     expect(body.excluded_count).toBe(1);
     expect(body.excluded_reasons?.enrichment_pending).toBe(1);
     expect(body.excluded_reasons?.no_review).toBe(0);
@@ -687,7 +728,11 @@ describe('총 건수 일치 (FR-STAT-006 AC-2, QA-W006-14)', () => {
 
     expect(groups.body.total?.value).toBe(4);
     expect(distributions.body.total?.value).toBe(4);
-    expect(percentiles.body.total?.value).toBe(4);
+    /*
+     * **백분위만 다르다.** `lead_time_seconds`는 `FR-STAT-003` AC-2가 머지된
+     * PR로 한정하므로 모집단이 좁다 — 오류가 아니라 승인된 계약이다.
+     */
+    expect(percentiles.body.total?.value).toBe(3);
   });
 
   it('근사가 아니다 — 문턱 아래에서는 정확한 수다 (AC-3)', async () => {

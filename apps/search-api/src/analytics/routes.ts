@@ -37,9 +37,10 @@ import {
   toPercentilesOutcome,
   toTimeSeriesOutcome,
 } from './aggregations.js';
-import { executeAggregation } from './execute.js';
+import { AggregationTimedOutError, executeAggregation } from './execute.js';
 import { prepareAnalyticsQuery, type PrepareOutcome } from './prepare.js';
 import {
+  ANALYTICS_BUDGET_MS,
   DEFAULT_PERCENTILES,
   DEFAULT_RANGE_DAYS,
   DEFAULT_TIMEZONE,
@@ -68,6 +69,39 @@ export interface AnalyticsRouteOptions {
     readonly orgs: readonly string[];
     readonly teams: readonly string[];
   }) => Promise<NameResolution>;
+  /**
+   * 숫자 그룹 키를 사용자가 읽고 질의에 쓰는 값으로 (PR #76 리뷰 P1).
+   *
+   * `resolveNames`의 **역방향**이다. 집계는 `org_id`·`author_team_ids`로 묶는데
+   * 질의는 이름·slug를 받으므로, 그 숫자를 그대로 근거 질의에 넣으면 눌러도
+   * 0건이 나온다.
+   */
+  readonly resolveGroupDisplay: (input: {
+    readonly orgIds: readonly number[];
+    readonly teamIds: readonly number[];
+  }) => Promise<{ readonly orgs: ReadonlyMap<number, string>; readonly teams: ReadonlyMap<number, string> }>;
+}
+
+/**
+ * 버킷 키를 표시값으로 옮길 표를 만든다.
+ *
+ * **숫자 키를 쓰는 두 그룹에만 필요하다.** 나머지는 문서에 있는 값이 곧
+ * 사용자가 쓰는 값이라 해석할 것이 없다.
+ */
+async function displayFor(
+  groupBy: GroupKey | null,
+  keys: readonly string[],
+  options: AnalyticsRouteOptions,
+): Promise<ReadonlyMap<string, string> | undefined> {
+  if (groupBy !== 'org' && groupBy !== 'team') return undefined;
+  const ids = keys.map(Number).filter((one) => Number.isFinite(one));
+  if (ids.length === 0) return undefined;
+
+  const resolved = await options.resolveGroupDisplay(
+    groupBy === 'org' ? { orgIds: ids, teamIds: [] } : { orgIds: [], teamIds: ids },
+  );
+  const source = groupBy === 'org' ? resolved.orgs : resolved.teams;
+  return new Map([...source].map(([id, name]) => [String(id), name]));
 }
 
 function fail(reply: FastifyReply, status: number, body: ErrorResponse): FastifyReply {
@@ -138,6 +172,23 @@ function toFailure(error: unknown, correlationId: string): { status: number; bod
       },
     };
   }
+  if (error instanceof AggregationTimedOutError) {
+    /*
+     * **200에 붙어 온 `timed_out`도 부분 결과다** (PR #76 리뷰 P1).
+     * 샤드 실패가 아니므로 위 갈래가 잡지 못한다.
+     */
+    return {
+      status: 504,
+      body: {
+        error: {
+          code: 'AGGREGATION_TIMEOUT',
+          message: '집계가 예산을 넘겨 부분 결과만 얻었다. 기간을 줄이거나 조건을 좁히세요.',
+          detail: { budget_ms: ANALYTICS_BUDGET_MS },
+        },
+        correlation_id: correlationId,
+      },
+    };
+  }
   return null;
 }
 
@@ -198,6 +249,14 @@ async function runCommon(
   reply: FastifyReply,
   options: AnalyticsRouteOptions,
   correlationId: string,
+  /**
+   * 질의를 덮어쓴다. 시계열이 요청 구간을 **모집단에** 반영할 때 쓴다.
+   *
+   * `extended_bounds`는 빈 버킷을 더할 뿐 범위 밖 문서를 빼지 않는다 —
+   * 그것에 기대면 `applied_range`가 말하는 구간과 `total`이 세는 구간이
+   * 어긋난다 (PR #76 리뷰 P1).
+   */
+  queryOverride?: string,
 ): Promise<Handled | null> {
   let userId: string;
   try {
@@ -220,7 +279,7 @@ async function runCommon(
   const scope = toAccessScope(await options.auth.scopes.resolveCached(userId));
 
   const prepared = await prepareAnalyticsQuery(
-    { rawQuery: readString(body, 'query'), rawEpoch: readEpoch(body), scope },
+    { rawQuery: queryOverride ?? readString(body, 'query'), rawEpoch: readEpoch(body), scope },
     { pool: options.pool, resolveNames: options.resolveNames },
   );
 
@@ -325,10 +384,17 @@ export function registerAnalyticsRoutes(app: FastifyInstance, options: Analytics
         scoped: handled.prepared.scoped,
         aggs: buildGroupsAggs(groupBy, metrics, size),
       });
+      const rawKeys = (
+        (outcome.aggregations['groups'] as { buckets?: readonly { key?: unknown }[] } | undefined)
+          ?.buckets ?? []
+      ).map((one) => String(one.key));
+      const display = await displayFor(groupBy, rawKeys, options);
+
       const groups = toGroupsOutcome(outcome.aggregations, {
         ast: handled.prepared.ast,
         groupBy,
         metrics,
+        ...(display === undefined ? {} : { display }),
       });
 
       return reply.send({
@@ -391,6 +457,16 @@ export function registerAnalyticsRoutes(app: FastifyInstance, options: Analytics
 
     const timezone = typeof body['timezone'] === 'string' ? body['timezone'] : DEFAULT_TIMEZONE;
 
+    /*
+     * **요청 구간을 모집단에 넣는다** (PR #76 리뷰 P1).
+     *
+     * 질의 문자열에 `merged:` 범위를 더해 파서를 그대로 지나게 한다 — 별도
+     * 경로를 만들면 `total`이 세는 것과 버킷이 담는 것이 달라진다. 사용자가
+     * 이미 `merged:`를 줬으면 두 범위가 AND로 결합해 교집합이 되며, 그것이
+     * "이 구간 안에서"라는 요청의 뜻과 같다.
+     */
+    const rangeQuery = `${readString(body, 'query')} merged:${from}..${to}`.trim();
+
     const buckets = bucketCount(from, to, interval);
     if (buckets > MAX_BUCKETS) {
       return fail(reply, 400, {
@@ -403,7 +479,7 @@ export function registerAnalyticsRoutes(app: FastifyInstance, options: Analytics
       });
     }
 
-    const handled = await runCommon(request, reply, options, correlationId);
+    const handled = await runCommon(request, reply, options, correlationId, rangeQuery);
     if (handled === null) return reply;
 
     try {
@@ -461,7 +537,21 @@ export function registerAnalyticsRoutes(app: FastifyInstance, options: Analytics
       });
     }
 
-    const handled = await runCommon(request, reply, options, correlationId);
+    /*
+     * **리드타임은 머지된 PR로 한정한다** (FR-STAT-003 AC-2, PR #76 리뷰 P1).
+     *
+     * 모집단을 좁히지 않으면 열린 PR이 `total`에 들어가고, 그 문서에는
+     * `lead_time_seconds`가 없으므로 **제외 건수로 세어져 `no_review`로
+     * 잘못 분류된다** — 리뷰가 없어서가 아니라 아직 머지되지 않은 것이다.
+     *
+     * `first_review_wait_seconds`는 머지 여부와 무관하다 (FR-STAT-004).
+     */
+    const populationQuery =
+      field === 'lead_time_seconds'
+        ? `${readString(body, 'query')} is:merged`.trim()
+        : undefined;
+
+    const handled = await runCommon(request, reply, options, correlationId, populationQuery);
     if (handled === null) return reply;
 
     try {
@@ -474,20 +564,26 @@ export function registerAnalyticsRoutes(app: FastifyInstance, options: Analytics
         percentiles,
         groupBy,
         total: outcome.total.value,
+        field,
+      });
+
+      /*
+       * **`low_sample`이면 백분위 대신 원값을 낸다** (FR-STAT-003 예외/실패 처리,
+       * PR #76 리뷰 P2). 둘을 함께 실으면 화면이 흔들리는 백분위를 그릴 여지가
+       * 남는다 — 계약의 낱말이 "대신"이다.
+       */
+      const shape = (row: (typeof result.groups)[number] | typeof result.overall) => ({
+        ...(row.low_sample ? { raw_values: row.raw_values ?? [] } : row.values),
+        sample_size: row.sample_size,
+        low_sample: row.low_sample,
       });
 
       return reply.send({
         field,
         unit: 'seconds',
-        overall: result.overall.values,
-        sample_size: result.overall.sample_size,
-        low_sample: result.overall.low_sample,
-        groups: result.groups.map((row) => ({
-          key: row.key,
-          ...row.values,
-          sample_size: row.sample_size,
-          low_sample: row.low_sample,
-        })),
+        ...shape(result.overall),
+        overall: result.overall.low_sample ? undefined : result.overall.values,
+        groups: result.groups.map((row) => ({ key: row.key, ...shape(row) })),
         excluded_count: result.excludedCount,
         excluded_reasons: result.excludedReasons,
         total: outcome.total,

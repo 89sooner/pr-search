@@ -11,7 +11,7 @@
  */
 
 import type { estypes } from '@elastic/elasticsearch';
-import { addEquality, serializeQuery, type QueryAst } from '@prs/query';
+import { replaceEquality, serializeQuery, type QueryAst } from '@prs/query';
 import {
   DEFAULT_PERCENTILES,
   DISTRIBUTION_BUCKETS,
@@ -49,13 +49,20 @@ function groupOrder(): estypes.AggregationsAggregateOrder {
  * `author_team:`이 되는 자리가 여기다 (DEV-382).
  */
 export function drillDownQuery(base: QueryAst, key: GroupKey, value: string): string {
-  const withKind = addEquality(base, 'kind', 'pull_request');
-  return serializeQuery(addEquality(withKind, GROUP_QUERY_KEYS[key], value));
+  /*
+   * **더하지 않고 대체한다** (PR #76 리뷰 P2).
+   *
+   * 버킷을 누르는 것은 그 버킷으로 **좁히는** 일이다. `author:alice author:bob`에서
+   * alice를 눌렀는데 OR가 남으면 목록이 버킷보다 큰 수를 보인다. `kind`도 같다 —
+   * 질의에 `kind:commit`이 있으면 더하기만 해서는 커밋이 그대로 남는다.
+   */
+  const withKind = replaceEquality(base, 'kind', 'pull_request');
+  return serializeQuery(replaceEquality(withKind, GROUP_QUERY_KEYS[key], value));
 }
 
 /** 구간 하나에 대한 근거 질의. 구간 조건은 질의 문법에 없으므로 유형만 좁힌다. */
 export function distributionDrillDown(base: QueryAst): string {
-  return serializeQuery(addEquality(base, 'kind', 'pull_request'));
+  return serializeQuery(replaceEquality(base, 'kind', 'pull_request'));
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +126,20 @@ export interface GroupsOutcome {
 
 export function toGroupsOutcome(
   aggregations: Record<string, estypes.AggregationsAggregate>,
-  input: { readonly ast: QueryAst; readonly groupBy: GroupKey; readonly metrics: readonly MetricKey[] },
+  input: {
+    readonly ast: QueryAst;
+    readonly groupBy: GroupKey;
+    readonly metrics: readonly MetricKey[];
+    /**
+     * 버킷 키 → 사용자가 읽고 질의에 쓰는 값 (PR #76 리뷰 P1).
+     *
+     * `org`와 `team`의 버킷 키는 `org_id`·`author_team_ids`라 **숫자**인데
+     * 질의는 이름·slug를 받는다. 그 숫자를 그대로 근거 질의에 넣으면
+     * `org:77`이 되어 아무것도 찾지 못한다 — 버킷은 건수를 보이는데 눌러 보면
+     * 0건인 자리다. **일괄로 해석해 넘긴다** (버킷마다 조회하면 N+1이다).
+     */
+    readonly display?: ReadonlyMap<string, string>;
+  },
 ): GroupsOutcome {
   const agg = aggregations['groups'] as
     | { buckets?: readonly Record<string, unknown>[]; sum_other_doc_count?: number }
@@ -127,7 +147,14 @@ export function toGroupsOutcome(
   const buckets = agg?.buckets ?? [];
 
   const groups = buckets.map((bucket): GroupRow => {
-    const key = String(bucket['key']);
+    const raw = String(bucket['key']);
+    /*
+     * 해석하지 못한 키는 **그대로 둔다.** 레지스트리에서 사라진 조직·팀이
+     * 문서에는 남아 있을 수 있고, 그때 이름을 지어내면 없는 것을 있다고
+     * 말하게 된다. 근거 질의는 그 값으로도 0건이지만 **버킷이 거짓말하지는
+     * 않는다.**
+     */
+    const key = input.display?.get(raw) ?? raw;
     const row: Record<string, unknown> = {
       key,
       count: Number(bucket['doc_count'] ?? 0),
@@ -278,6 +305,18 @@ export function buildPercentilesAggs(input: {
      * 구분할 수 없다.
      */
     enrichment_pending: { filter: { term: { enrichment_pending: true } } },
+    /*
+     * 표본이 적을 때 돌려줄 원값 (FR-STAT-003 예외/실패 처리, PR #76 리뷰 P2).
+     *
+     * **계약은 "백분위 **대신** 원값 목록"이다.** 표본 20건 미만에서 백분위는
+     * 흔들리는 수이고, 그것을 그대로 내보내면 화면이 의미 있는 값처럼 그린다.
+     *
+     * 상한까지만 모으므로 표본이 많으면 이 값은 쓰이지 않는다. `_source`를
+     * 그 필드 하나로 좁혀 문서 본문이 딸려 나오지 않게 한다.
+     */
+    raw_values: {
+      top_hits: { size: LOW_SAMPLE_THRESHOLD, _source: [input.field], sort: [{ [input.field]: 'asc' }] },
+    },
   };
 
   if (input.groupBy === null) return stats;
@@ -296,12 +335,30 @@ export interface PercentileRow {
   readonly values: Readonly<Record<string, number | null>>;
   readonly sample_size: number;
   readonly low_sample: boolean;
+  /**
+   * 표본이 적을 때의 원값 (FR-STAT-003 예외/실패 처리).
+   *
+   * **`low_sample`일 때만 채운다.** 계약이 "백분위 대신"이라 말하므로, 둘을
+   * 함께 내보내면 화면이 흔들리는 백분위를 그릴 여지가 남는다.
+   */
+  readonly raw_values?: readonly number[];
+}
+
+/** `top_hits`가 담아 온 원값. 그 필드 하나만 실려 있다. */
+function rawValues(source: Record<string, unknown>, field: string): readonly number[] {
+  const hits = (source['raw_values'] as { hits?: { hits?: readonly { _source?: Record<string, unknown> }[] } })
+    ?.hits?.hits;
+  if (hits === undefined) return [];
+  return hits
+    .map((hit) => hit._source?.[field])
+    .filter((value): value is number => typeof value === 'number');
 }
 
 function percentileRow(
   source: Record<string, unknown>,
   key: string,
   percentiles: readonly number[],
+  field: string,
 ): PercentileRow {
   const sampleSize = Number((source['sample_size'] as { value?: number })?.value ?? 0);
   const agg = source['percentiles'] as estypes.AggregationsAggregate;
@@ -309,12 +366,14 @@ function percentileRow(
   for (const percent of percentiles) {
     values[`p${String(percent)}`] = percentileValue(agg, percent);
   }
+  // **경계는 20이다.** 19는 `true`, 20은 `false` (FR-STAT-003 예외/실패 처리).
+  const low = sampleSize < LOW_SAMPLE_THRESHOLD;
   return {
     key,
     values,
     sample_size: sampleSize,
-    // **경계는 20이다.** 19는 `true`, 20은 `false` (FR-STAT-003 예외/실패 처리).
-    low_sample: sampleSize < LOW_SAMPLE_THRESHOLD,
+    low_sample: low,
+    ...(low ? { raw_values: rawValues(source, field) } : {}),
   };
 }
 
@@ -327,9 +386,14 @@ export interface PercentilesOutcome {
 
 export function toPercentilesOutcome(
   aggregations: Record<string, estypes.AggregationsAggregate>,
-  input: { readonly percentiles: readonly number[]; readonly groupBy: GroupKey | null; readonly total: number },
+  input: {
+    readonly percentiles: readonly number[];
+    readonly groupBy: GroupKey | null;
+    readonly total: number;
+    readonly field: string;
+  },
 ): PercentilesOutcome {
-  const overall = percentileRow(aggregations, 'overall', input.percentiles);
+  const overall = percentileRow(aggregations, 'overall', input.percentiles, input.field);
   const pending = Number(
     (aggregations['enrichment_pending'] as { doc_count?: number } | undefined)?.doc_count ?? 0,
   );
@@ -349,7 +413,9 @@ export function toPercentilesOutcome(
       ? []
       : (
           (aggregations['groups'] as { buckets?: readonly Record<string, unknown>[] }).buckets ?? []
-        ).map((bucket) => percentileRow(bucket, String(bucket['key']), input.percentiles));
+        ).map((bucket) =>
+          percentileRow(bucket, String(bucket['key']), input.percentiles, input.field),
+        );
 
   return {
     overall,

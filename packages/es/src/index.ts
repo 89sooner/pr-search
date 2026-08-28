@@ -73,6 +73,7 @@ export type { ApplyReleaseTagsInput, DenormRelease, ReleaseDocInput, ReleaseScop
 export {
   PIT_KEEP_ALIVE,
   closePointInTime,
+  countDocuments,
   multiSearch,
   openPointInTime,
   search,

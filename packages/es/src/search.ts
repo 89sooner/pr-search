@@ -44,6 +44,29 @@ export async function search<TDocument>(
 }
 
 /**
+ * 대상 문서 수 (WP-037 / CR-053, PR #76 리뷰 P1).
+ *
+ * **`track_total_hits`로 세지 않는다.** 그 옵션은 상한까지만 세고 `relation: 'gte'`로
+ * 답하므로, 5천만 건이 `1,000,001`로 돌아온다 — 그 값을 모집단 크기로 쓰면 표본
+ * 비율이 1에 가까워져 **근사가 근사가 아니게 된다.** 실측으로 확인했다: 문서 5건에
+ * `track_total_hits: 3`을 걸면 `{ value: 3, relation: 'gte' }`가 온다.
+ *
+ * 집계를 함께 싣지 않는 것도 같은 이유다. `track_total_hits`는 **히트 계수만**
+ * 제한하고 집계 순회는 제한하지 않으므로, 근사 여부를 정하려고 부른 요청이
+ * 전수 집계를 수행하게 된다.
+ *
+ * `ScopedQuery`만 받는다 — 접근 범위를 지나지 않은 수는 이 제품에서 정보다.
+ */
+export async function countDocuments(
+  client: Client,
+  target: SearchTarget,
+  query: ScopedQuery,
+): Promise<number> {
+  const response = await client.count({ index: toIndex(target), query });
+  return response.count;
+}
+
+/**
  * 커서 순회가 딛고 서는 색인 스냅숏 (WP-032 / ADR-010 Amendment, CR-044 DEV-286).
  *
  * ## 왜 정렬 키와 무관하게 필요한가

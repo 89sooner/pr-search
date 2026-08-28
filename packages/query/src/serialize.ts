@@ -83,6 +83,19 @@ export function serializeQuery(ast: QueryAst): string {
  * 근거 목록으로 가는 질의를 만들 때 같은 판정이 필요한데, **각자 구현하면
  * 한쪽만 고쳐지는 날이 온다.** 그때 어긋나는 것은 버킷 수와 목록 건수다.
  */
+/**
+ * 그 키의 동등 조건을 **값 하나로 대체한다** (CR-053, PR #76 리뷰 P2).
+ *
+ * `addEquality`와 다른 것을 한다. 패싯 선택은 조건을 **넓히지만**, 집계 버킷을
+ * 누르는 것은 **그 버킷으로 좁히는** 일이다. 더하기만 하면 `author:alice author:bob`
+ * 질의에서 alice를 눌러도 OR가 남아 **두 사람의 결과가 그대로 돌아온다** —
+ * 버킷이 말한 수와 목록이 보여 주는 수가 어긋난다.
+ */
+export function replaceEquality(ast: QueryAst, key: string, value: string): QueryAst {
+  const kept = ast.filters.filter((one) => !(one.key === key && one.op === 'eq'));
+  return { ...ast, filters: [...kept, { key, op: 'eq', values: [value] } as QueryFilter] };
+}
+
 export function addEquality(ast: QueryAst, key: string, value: string): QueryAst {
   const existing = ast.filters.findIndex((one) => one.key === key && one.op === 'eq');
 

@@ -1448,7 +1448,42 @@ describe('집계 API의 도달성과 계약 (WP-037 / CR-053)', () => {
 
   it('**`drill_down_query`가 모집단을 유지한다** (FR-STAT-001 AC-5, DEV-383)', () => {
     // 이 조건이 없으면 사용자가 누른 수보다 목록이 더 크게 나온다.
-    expect(AGGREGATIONS).toContain("addEquality(base, 'kind', 'pull_request')");
+    expect(AGGREGATIONS).toContain("replaceEquality(base, 'kind', 'pull_request')");
+  });
+
+  it('**근거 질의가 기존 조건을 대체한다** — 더하기만 하면 OR가 남는다', () => {
+    /*
+     * `author:alice author:bob`에서 alice를 눌렀는데 OR가 남으면 목록이 버킷보다
+     * 큰 수를 보인다 (PR #76 리뷰 P2). 버킷을 누르는 것은 **좁히는** 일이다.
+     */
+    expect(AGGREGATIONS).toContain('replaceEquality');
+    expect(AGGREGATIONS).not.toContain('addEquality');
+  });
+
+  it('**근사 여부를 집계 없이 센 수로 정한다** (PR #76 리뷰 P1)', () => {
+    /*
+     * `track_total_hits`는 히트 계수만 제한하고 집계 순회는 제한하지 않는다 —
+     * 근사할지 정하려던 요청이 전수 집계를 수행한다. 그리고 상한까지만 센 수를
+     * 모집단 크기로 쓰면 표본 비율이 1에 가까워져 근사가 근사가 아니게 된다.
+     */
+    expect(EXECUTE).toContain('countDocuments(');
+    expect(EXECUTE).toContain('track_total_hits: false');
+  });
+
+  it('**200에 붙어 온 `timed_out`도 부분 결과다** (PR #76 리뷰 P1)', () => {
+    // 샤드 실패가 아니라 `assertNoShardFailures`가 잡지 못한다. `facets.ts`가
+    // 같은 자리에서 이미 `timed_out`을 본다.
+    expect(EXECUTE).toContain('timed_out');
+  });
+
+  it('**시계열이 요청 구간을 모집단에 넣는다** (PR #76 리뷰 P1)', () => {
+    // `extended_bounds`는 빈 버킷을 더할 뿐 범위 밖 문서를 빼지 않는다.
+    expect(ROUTES).toContain('merged:${from}..${to}');
+  });
+
+  it('**리드타임은 머지된 PR로 한정한다** (FR-STAT-003 AC-2, PR #76 리뷰 P1)', () => {
+    // 좁히지 않으면 열린 PR이 제외 건수로 세어져 `no_review`로 잘못 분류된다.
+    expect(ROUTES).toContain('is:merged');
   });
 
   it('**낡은 에폭에서 집계를 계산하지 않는다** (FR-STAT-006 AC-6, DEV-384)', () => {

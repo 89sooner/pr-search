@@ -60,4 +60,4 @@ export {
 export type { SequenceBindingAnalysis, SequenceBindingProblem } from './sequence-binding.js';
 
 export { MIN_TEXT_LENGTH, countCodePoints, parseQuery } from './parse.js';
-export { addEquality, serializeQuery } from './serialize.js';
+export { addEquality, replaceEquality, serializeQuery } from './serialize.js';

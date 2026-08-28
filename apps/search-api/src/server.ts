@@ -24,7 +24,7 @@ import { registerSequenceRoutes } from './sequence/routes.js';
 import { registerSavedSearchRoutes } from './saved-search/routes.js';
 import { registerRepositoryRoutes, type RepositoryRouteOptions } from './repositories/routes.js';
 import type { SavedSearchDeps } from './saved-search/service.js';
-import type { Pool } from '@prs/db';
+import { authRepo, repositoryRepo, type Pool } from '@prs/db';
 import type { SearchDeps } from './search/service.js';
 import type { RangeDeps } from './sequence/range.js';
 import type { AuthContext } from './auth/context.js';
@@ -39,6 +39,20 @@ export const SERVICE_NAME = 'search-api' as const;
 export const DEFAULT_PORT = 3002;
 
 const VERSION = process.env['npm_package_version'] ?? '0.1.0';
+
+/**
+ * 숫자 그룹 키를 표시값으로 옮기는 해석기 (WP-037 / CR-053, PR #76 리뷰 P1).
+ *
+ * **`SearchDeps`에 넣지 않는다.** 검색은 이 방향의 해석을 쓰지 않으며, 쓰지
+ * 않는 계층에 얹으면 그 계층의 시험이 쓰지도 않을 대역을 만들게 된다
+ * (CR-051이 `pool`을 라우트에 둔 것과 같은 판단).
+ */
+function analyticsDisplay(pool: Pool) {
+  return async (input: { readonly orgIds: readonly number[]; readonly teamIds: readonly number[] }) => ({
+    orgs: await repositoryRepo.resolveOrgOwners(pool, input.orgIds),
+    teams: await authRepo.resolveTeamSlugs(pool, input.teamIds),
+  });
+}
 
 export interface ServerDeps {
   readonly config?: SearchApiConfig;
@@ -158,6 +172,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
         es: deps.search.es,
         pool: deps.search.pool,
         resolveNames: deps.search.resolveNames,
+        resolveGroupDisplay: analyticsDisplay(deps.search.pool),
         auth: deps.auth,
         loginPath: config.auth.loginPath,
       });

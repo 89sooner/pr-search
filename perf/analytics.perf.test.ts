@@ -54,13 +54,25 @@ let es: Client;
 /** 요청 수를 세는 껍데기. N+1과 버킷 비례 왕복을 잡는 유일한 재료다. */
 let requests = 0;
 
+/**
+ * 왕복을 세는 껍데기.
+ *
+ * **`search`만 세면 안 된다.** 리뷰 정정으로 `_count`가 앞에 붙었을 때 이
+ * harness가 그것을 보지 못하고 "요청/회 1.0"을 그대로 냈다 — **왕복 수를 재는
+ * 도구가 왕복 하나를 놓쳤다.** 클러스터를 부르는 모든 길을 센다.
+ */
+const COUNTED = new Set(['search', 'count', 'msearch']);
+
 function countingClient(inner: Client): Client {
   return new Proxy(inner, {
     get(target, property, receiver) {
-      if (property === 'search') {
+      if (typeof property === 'string' && COUNTED.has(property)) {
+        const original = Reflect.get(target, property, receiver) as (
+          ...a: unknown[]
+        ) => Promise<unknown>;
         return async (...args: unknown[]) => {
           requests += 1;
-          return (target.search as (...a: unknown[]) => Promise<unknown>)(...args);
+          return original.call(target, ...args);
         };
       }
       return Reflect.get(target, property, receiver) as unknown;
@@ -189,10 +201,12 @@ describe('집계 성능 (Level A — 알고리즘 회귀 감지)', () => {
       }),
     );
     /*
-     * **한 번이어야 한다.** 그룹마다 지표를 따로 물으면 N+1이 되고, 그 실패는
-     * 결과를 재는 시험에 잡히지 않는다 — 답은 맞고 값만 비싸다.
+     * **둘이어야 한다** — 근사 여부를 정하는 `_count` 하나와 집계 하나.
+     *
+     * 그룹마다 지표를 따로 물으면 N+1이 되고, 그 실패는 결과를 재는 시험에
+     * 잡히지 않는다 — 답은 맞고 값만 비싸다. 이 수가 늘면 그것이 신호다.
      */
-    expect(perCall).toBe(1);
+    expect(perCall).toBe(2);
   });
 
   it('시계열이 버킷 수에 비례해 왕복하지 않는다 (API-STAT-002)', async () => {
@@ -210,7 +224,7 @@ describe('집계 성능 (Level A — 알고리즘 회귀 감지)', () => {
         }),
       }),
     );
-    expect(perCall).toBe(1);
+    expect(perCall).toBe(2);
   });
 
   it('백분위가 그룹마다 다시 묻지 않는다 (API-STAT-003)', async () => {
@@ -226,7 +240,7 @@ describe('집계 성능 (Level A — 알고리즘 회귀 감지)', () => {
         }),
       }),
     );
-    expect(perCall).toBe(1);
+    expect(perCall).toBe(2);
   });
 
   it('분포가 구간마다 다시 묻지 않는다 (API-STAT-004)', async () => {
@@ -238,7 +252,7 @@ describe('집계 성능 (Level A — 알고리즘 회귀 감지)', () => {
         aggs: buildDistributionsAggs('changed_lines'),
       }),
     );
-    expect(perCall).toBe(1);
+    expect(perCall).toBe(2);
   });
 
   it('**측정이 실제 요청 위에서 이뤄졌다**', () => {

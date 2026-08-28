@@ -1,15 +1,23 @@
 /**
  * 집계 실행 (WP-037 / CR-053 `API-STAT 공통 규칙`).
  *
- * ## 근사는 두 단계로 정한다
+ * ## 근사 여부는 세어 본 뒤에 정한다
  *
- * 대상 수를 모르면 근사 여부를 정할 수 없다. 그래서 집계 요청에
- * `track_total_hits`를 **문턱 +1로 제한해** 함께 싣는다 — Elasticsearch가 거기까지만
- * 세고 `relation: 'gte'`로 답하므로, 큰 결과에서 전수를 세는 값을 치르지 않는다.
- * 문턱을 넘었으면 그 결과를 **버리고** `random_sampler`로 다시 묻는다.
+ * 대상 수를 모르면 근사 여부도 표본 비율도 정할 수 없다. **그 수는 `_count`로
+ * 따로 묻는다.**
  *
- * 작은 결과는 한 번, 큰 결과만 두 번이다. **정확한 답을 낼 수 있을 때 근사하지
- * 않는 것**이 이 순서의 목적이다.
+ * 처음에는 집계 요청에 `track_total_hits`를 얹어 한 번에 얻으려 했고, 그것이
+ * 두 가지를 함께 틀리게 했다 (PR #76 리뷰 P1 둘).
+ *
+ * 1. **`track_total_hits`는 히트 계수만 제한하고 집계 순회는 제한하지 않는다.**
+ *    근사할지 정하려고 부른 요청이 전수 집계를 수행했다 — 값을 아끼려던 장치가
+ *    정확히 그 값을 치르게 했다.
+ * 2. **상한까지만 센 수는 모집단 크기가 아니다.** 문서 5건에 `track_total_hits: 3`을
+ *    걸면 `{ value: 3, relation: 'gte' }`가 온다(실측). 5천만 건이 `1,000,001`로
+ *    돌아오면 표본 비율이 1에 가까워져 **근사가 근사가 아니게 된다.**
+ *
+ * `_count`는 정확한 수를 주고 문서를 만들지 않는다. 한 번 더 왕복하지만 그것이
+ * 이 판단의 값이다.
  *
  * ## 보장하는 것만 주장한다
  *
@@ -18,16 +26,37 @@
  * 다니게 한다 (FR-STAT-006 AC-3).
  */
 
-import { assertNoShardFailures, search, type ScopedQuery, type EntityAlias } from '@prs/es';
+import {
+  assertNoShardFailures,
+  countDocuments,
+  search,
+  type ScopedQuery,
+  type EntityAlias,
+} from '@prs/es';
 import type { Client, estypes } from '@elastic/elasticsearch';
 import { ANALYTICS_BUDGET_MS, APPROXIMATE_THRESHOLD } from './types.js';
 
 /** 표본 안에서 집계가 놓이는 자리. 근사일 때만 한 겹 더 들어간다. */
 const SAMPLER_NAME = 'sample';
 
+/**
+ * 예산을 넘겨 부분 결과가 왔다 (PR #76 리뷰 P1).
+ *
+ * Elasticsearch는 검색 타임아웃에 걸리면 **HTTP 200에 `timed_out: true`를 붙여**
+ * 그때까지 모은 것을 돌려준다. 샤드 실패가 아니므로 `assertNoShardFailures`가
+ * 잡지 못하고, 그대로 내보내면 **적게 나온 수가 사실처럼 보인다.**
+ * `facets.ts`가 같은 자리에서 이미 `timed_out`을 본다.
+ */
+export class AggregationTimedOutError extends Error {
+  constructor() {
+    super('집계가 예산 안에 끝나지 않아 부분 결과만 얻었다');
+    this.name = 'AggregationTimedOutError';
+  }
+}
+
 export interface AggregationOutcome {
-  /** 고유 PR 수. 근사면 표본에서 되돌린 추정값이다. */
-  readonly total: { readonly value: number; readonly relation: 'eq' | 'gte' };
+  /** 고유 PR 수. `_count`가 준 정확한 값이다. */
+  readonly total: { readonly value: number; readonly relation: 'eq' };
   readonly approximate: boolean;
   /** 근사일 때만. 응답에 실어 숫자와 함께 다니게 한다. */
   readonly sampleProbability?: number;
@@ -78,65 +107,46 @@ function unwrap(
   return inner;
 }
 
-function totalOf(response: estypes.SearchResponse<unknown>): {
-  value: number;
-  relation: 'eq' | 'gte';
-} {
-  const hits = response.hits.total;
-  if (typeof hits === 'number') return { value: hits, relation: 'eq' };
-  return { value: hits?.value ?? 0, relation: hits?.relation === 'gte' ? 'gte' : 'eq' };
+/** 부분 결과를 정상으로 받지 않는다. 두 실패 모양을 함께 본다. */
+function assertComplete(response: estypes.SearchResponse<unknown>): void {
+  assertNoShardFailures(response);
+  if (response.timed_out === true) throw new AggregationTimedOutError();
 }
 
 /**
  * 집계를 실행한다.
  *
- * **부분 샤드 실패를 정상 집계로 반환하지 않는다** — 일부 샤드가 답하지 못한
- * 수는 "적게 나온 수"이고 그것을 사실처럼 내보내면 조사자가 없는 것을 없다고
- * 읽는다 (`assertNoShardFailures`).
+ * **부분 결과를 정상 집계로 반환하지 않는다** — 일부 샤드가 답하지 못했거나
+ * 예산을 넘겨 중간에 끊긴 수는 "적게 나온 수"이고, 그것을 사실처럼 내보내면
+ * 조사자가 없는 것을 없다고 읽는다.
  */
 export async function executeAggregation(
   client: Client,
   input: ExecuteInput,
 ): Promise<AggregationOutcome> {
-  const first = await search(client, [...input.target], input.scoped, {
-    size: 0,
-    // 문턱을 넘는지만 알면 된다. 전수를 세는 값을 치르지 않는다.
-    track_total_hits: APPROXIMATE_THRESHOLD + 1,
-    timeout: `${String(ANALYTICS_BUDGET_MS)}ms`,
-    aggs: input.aggs,
-  });
-  assertNoShardFailures(first);
-
-  const total = totalOf(first);
-  if (total.value <= APPROXIMATE_THRESHOLD) {
-    return { total, approximate: false, aggregations: unwrap(first, false) };
-  }
-
   /*
-   * 문턱을 넘었다. 위 결과를 **버리고** 표본으로 다시 묻는다.
-   *
-   * 위 응답의 집계는 전수 위에서 계산됐으므로 그 자체로 정확하지만, 그것을
-   * 그대로 쓰면 **예산을 이미 초과한 계산에 의존하게 된다.** 문턱의 목적은
-   * 답을 얻는 것이 아니라 그 값을 치르지 않는 것이다.
+   * **집계보다 먼저, 집계 없이 센다.** 이 수 하나가 근사 여부와 표본 비율,
+   * 그리고 응답의 `total`을 모두 정한다.
    */
-  const probability = sampleProbabilityFor(total.value);
-  const sampled = await search(client, [...input.target], input.scoped, {
+  const total = await countDocuments(client, [...input.target], input.scoped);
+  const probability = sampleProbabilityFor(total);
+  const approximate = probability < 1;
+
+  const response = await search(client, [...input.target], input.scoped, {
     size: 0,
-    track_total_hits: APPROXIMATE_THRESHOLD + 1,
+    // 수는 이미 안다. 다시 세지 않는다.
+    track_total_hits: false,
     timeout: `${String(ANALYTICS_BUDGET_MS)}ms`,
-    aggs: {
-      [SAMPLER_NAME]: {
-        random_sampler: { probability },
-        aggs: input.aggs,
-      },
-    },
+    aggs: approximate
+      ? { [SAMPLER_NAME]: { random_sampler: { probability }, aggs: input.aggs } }
+      : input.aggs,
   });
-  assertNoShardFailures(sampled);
+  assertComplete(response);
 
   return {
-    total: totalOf(sampled),
-    approximate: true,
-    sampleProbability: probability,
-    aggregations: unwrap(sampled, true),
+    total: { value: total, relation: 'eq' },
+    approximate,
+    ...(approximate ? { sampleProbability: probability } : {}),
+    aggregations: unwrap(response, approximate),
   };
 }

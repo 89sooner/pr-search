@@ -37,6 +37,7 @@ describe('백분위 표본 경계 (FR-STAT-003 예외/실패 처리)', () => {
     const outcome = toPercentilesOutcome(percentileAggs(LOW_SAMPLE_THRESHOLD - 1), {
       percentiles: [50, 95],
       groupBy: null,
+      field: 'lead_time_seconds',
       total: LOW_SAMPLE_THRESHOLD - 1,
     });
     expect(outcome.overall.low_sample).toBe(true);
@@ -51,6 +52,7 @@ describe('백분위 표본 경계 (FR-STAT-003 예외/실패 처리)', () => {
     const outcome = toPercentilesOutcome(percentileAggs(LOW_SAMPLE_THRESHOLD), {
       percentiles: [50, 95],
       groupBy: null,
+      field: 'lead_time_seconds',
       total: LOW_SAMPLE_THRESHOLD,
     });
     expect(outcome.overall.low_sample).toBe(false);
@@ -61,6 +63,7 @@ describe('백분위 표본 경계 (FR-STAT-003 예외/실패 처리)', () => {
     const outcome = toPercentilesOutcome(percentileAggs(4, 2), {
       percentiles: [50],
       groupBy: null,
+      field: 'lead_time_seconds',
       total: 10,
     });
     expect(outcome.excludedCount).toBe(6);
@@ -73,6 +76,7 @@ describe('백분위 표본 경계 (FR-STAT-003 예외/실패 처리)', () => {
     const outcome = toPercentilesOutcome(percentileAggs(12), {
       percentiles: [50],
       groupBy: null,
+      field: 'lead_time_seconds',
       total: 10,
     });
     expect(outcome.excludedCount).toBe(0);
