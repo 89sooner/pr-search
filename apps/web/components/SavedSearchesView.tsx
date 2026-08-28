@@ -239,6 +239,16 @@ function SavedSearchSection({ view, loginPath }: SectionProps): ReactNode {
       query: item.query,
       visibility: item.visibility,
       team_id: item.target_team?.team_id ?? null,
+      /*
+       * 질의를 **실제로 고쳤을 때** 대화상자가 실을 에폭 (CR-051, PR #64 리뷰 P2).
+       *
+       * 없으면 `seq:` 검색에 필터 하나를 더하는 편집조차
+       * `sequence_epoch_required`로 막힌다. 고친 질의는 **새로 바인딩**하는
+       * 것이므로 대상은 현재 세대이며, 서버가 그 값을 다시 대조한다.
+       * 저장소를 볼 수 없으면 값이 없고 그때는 서버가 404로 답한다 —
+       * 그것이 정확한 답이다.
+       */
+      current_seq_epoch: item.sequence_reference?.current_seq_epoch ?? null,
     });
   }, []);
 

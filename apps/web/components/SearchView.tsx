@@ -366,20 +366,22 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     if (loading) return;
     if (!boundToSequence) return;
     if (sequenceContext === null) return;
-    if (state.seqEpoch === sequenceContext.seq_epoch) return;
+    if (state.seqEpoch === String(sequenceContext.seq_epoch)) return;
     // 낡음 응답의 에폭은 **현재 값**이라 그것으로 주소를 덮으면 자동 재해석이 된다.
     if (outcome.search?.epoch_stale === true) return;
-    router.replace(toHref(SEARCH_PATH, { ...state, seqEpoch: sequenceContext.seq_epoch }), {
-      scroll: false,
-    });
+    router.replace(
+      toHref(SEARCH_PATH, { ...state, seqEpoch: String(sequenceContext.seq_epoch) }),
+      { scroll: false },
+    );
   }, [router, sequenceContext, state, outcome.search?.epoch_stale, boundToSequence, loading]);
 
   /** 「현재 에폭으로 다시 조회」 — 사용자의 명시적 행위로만 일어난다. */
   const rebindEpoch = useCallback(() => {
     if (staleSequence === null) return;
-    router.replace(toHref(SEARCH_PATH, { ...state, seqEpoch: staleSequence.currentEpoch }), {
-      scroll: false,
-    });
+    router.replace(
+      toHref(SEARCH_PATH, { ...state, seqEpoch: String(staleSequence.currentEpoch) }),
+      { scroll: false },
+    );
   }, [router, state, staleSequence]);
 
   /*
@@ -495,7 +497,16 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
             onClick={() => {
               setSaveOpen(true);
             }}
-            disabled={parsed.error !== null}
+            /*
+             * **낡은 인용은 저장할 수 없다** (CR-051, PR #64 리뷰 P1).
+             *
+             * 그 상태에서 응답의 `sequence_context.seq_epoch`은 사용자가 본 적
+             * 없는 **현재** 세대(4)다. 그대로 저장하면 "본 것을 저장한다"는
+             * 계약이 뒤집혀, 결과를 보지도 못한 세대에 묶인 검색이 조용히
+             * 만들어진다. 먼저 「현재 에폭으로 다시 조회」를 눌러 그 세대를
+             * 실제로 본 뒤에 저장한다.
+             */
+            disabled={parsed.error !== null || screen.kind === 'epoch_stale'}
             data-testid="search-save"
           >
             {/*
@@ -520,8 +531,11 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         open={saveOpen}
         onOpenChange={setSaveOpen}
         query={state.q}
-        // 지금 보고 있는 조회의 에폭이다. 저장 시점의 현재 값이 아니다 (CR-051).
-        seqEpoch={sequenceContext?.seq_epoch ?? null}
+        /*
+         * 지금 **보고 있는** 조회의 에폭이다 (CR-051). 낡은 인용에서는 본 것이
+         * 없으므로 넘기지 않는다 — 위에서 저장 버튼도 막는다.
+         */
+        seqEpoch={screen.kind === 'epoch_stale' ? null : (sequenceContext?.seq_epoch ?? null)}
         onSaved={(name) => {
           setSavedName(name);
         }}

@@ -465,6 +465,25 @@ describe('규칙 6·7: 확인할 수 없는 공간과 파라미터 형식', () =
     expect(body.error?.detail?.['field']).toBe('seq_epoch');
   });
 
+  it('**빈 값도 거절한다** — `seq_epoch=`를 "지정 안 함"으로 읽지 않는다 (PR #64 리뷰 P1)', async () => {
+    /*
+     * 빈 값을 `absent`로 읽으면 그 요청이 **조용히 현재 세대에 묶인다** —
+     * 형식 오류를 `null`로 접던 DEV-363과 같은 실패를 이름만 바꿔 되풀이하는
+     * 것이다.
+     */
+    const { status, body } = await get(`q=${encodeURIComponent(BOUND)}&seq_epoch=`);
+    expect(status).toBe(400);
+    expect(body.error?.detail?.['field']).toBe('seq_epoch');
+  });
+
+  it('**같은 파라미터를 두 번 적어도 거절한다** — 배열이 되어 조용히 통과하지 않는다', async () => {
+    const { status, body } = await get(
+      `q=${encodeURIComponent(BOUND)}&seq_epoch=1&seq_epoch=2`,
+    );
+    expect(status).toBe(400);
+    expect(body.error?.detail?.['field']).toBe('seq_epoch');
+  });
+
   it('`seq:`가 없는데 `seq_epoch`만 오면 거절한다', async () => {
     const { status, body } = await get(
       `q=${encodeURIComponent('repo:seqepoch/payments author:kim')}&seq_epoch=1`,

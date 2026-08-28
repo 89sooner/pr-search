@@ -569,3 +569,57 @@ describe('시퀀스 인용 상태 (QA-W008-13~19 / CR-051)', () => {
     expect(describeViolations(found)).toBe('');
   });
 });
+
+describe('편집이 시퀀스 인용을 다루는 법 (CR-051, PR #64 리뷰 P2)', () => {
+  const EDIT_TARGET = {
+    saved_search_id: 7,
+    name: '구간 검색',
+    query: 'repo:acme/payments base:main seq:10..20',
+    visibility: 'private' as const,
+    team_id: null,
+    current_seq_epoch: 4,
+  };
+
+  function captureBody(): { last: Record<string, unknown> | null } {
+    const box: { last: Record<string, unknown> | null } = { last: null };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.body !== undefined) box.last = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return { ok: true, status: 200, json: async () => ({ teams: [] }) } as Response;
+      }),
+    );
+    return box;
+  }
+
+  it('**질의를 고치면 현재 에폭을 함께 보낸다** — 없으면 편집 자체가 막힌다', async () => {
+    const user = userEvent.setup();
+    const box = captureBody();
+    render(<SaveSearchDialog open onOpenChange={vi.fn()} query="" edit={EDIT_TARGET} />);
+
+    const queryInput = await screen.findByTestId('save-search-query');
+    await user.clear(queryInput);
+    await user.type(queryInput, 'repo:acme/payments base:main seq:10..20 author:kim');
+    await user.click(screen.getByTestId('save-search-submit'));
+
+    /*
+     * 이 값이 없으면 PATCH가 `sequence_epoch_required`로 거절해, 사용자는
+     * `seq:` 검색에 필터 하나를 더하는 것조차 못 한다.
+     */
+    expect(box.last?.['seq_epoch']).toBe(4);
+  });
+
+  it('**이름만 고치면 에폭을 보내지 않는다** — 낡은 값이 그대로 남는다', async () => {
+    const user = userEvent.setup();
+    const box = captureBody();
+    render(<SaveSearchDialog open onOpenChange={vi.fn()} query="" edit={EDIT_TARGET} />);
+
+    const nameInput = await screen.findByTestId('save-search-name');
+    await user.clear(nameInput);
+    await user.type(nameInput, '새 이름');
+    await user.click(screen.getByTestId('save-search-submit'));
+
+    // 키 자체가 없어야 한다. 있으면 서버가 그것을 명시적 재연결로 읽는다.
+    expect(box.last).not.toHaveProperty('seq_epoch');
+  });
+});

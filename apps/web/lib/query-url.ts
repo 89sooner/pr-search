@@ -41,8 +41,16 @@ export interface QueryState {
   readonly order: 'asc' | 'desc' | null;
   readonly size: number | null;
   readonly repository: string | null;
-  /** `seq:` 질의에서만 값이 있다. 없으면 서버가 현재 에폭으로 바인딩한다. */
-  readonly seqEpoch: number | null;
+  /**
+   * `seq:` 질의에서만 값이 있다. 없으면 서버가 현재 에폭으로 바인딩한다.
+   *
+   * **원문을 그대로 나른다** (PR #64 리뷰 P1). 붙여넣은 주소의
+   * `seq_epoch=abc`를 화면이 `null`로 접으면 그 파라미터가 요청에서
+   * 사라지고, 서버는 거절할 기회 없이 **현재 세대로 바인딩한다** —
+   * 화면의 관대함이 서버의 엄격함을 무력화하는 자리다. 판정은 한 곳,
+   * 서버에서 한다.
+   */
+  readonly seqEpoch: string | null;
 }
 
 export const EMPTY_STATE: QueryState = {
@@ -74,8 +82,7 @@ export function readQueryState(search: string | URLSearchParams): QueryState {
   const order = readString(params, PARAM.order);
   const rawSize = readString(params, PARAM.size);
   const size = rawSize === null ? null : Number(rawSize);
-  const rawEpoch = readString(params, PARAM.seqEpoch);
-  const epoch = rawEpoch === null ? null : Number(rawEpoch);
+
 
   return {
     q: params.get(PARAM.query) ?? '',
@@ -83,7 +90,8 @@ export function readQueryState(search: string | URLSearchParams): QueryState {
     order: order === 'asc' || order === 'desc' ? order : null,
     size: size !== null && Number.isInteger(size) && size > 0 ? size : null,
     repository: readString(params, PARAM.repository),
-    seqEpoch: epoch !== null && Number.isInteger(epoch) && epoch >= 1 ? epoch : null,
+    // 형식을 판정하지 않는다 — 서버가 `INVALID_PARAMETER`로 답할 수 있어야 한다.
+    seqEpoch: readString(params, PARAM.seqEpoch),
   };
 }
 
@@ -105,7 +113,7 @@ export function writeQueryState(state: QueryState): string {
   if (state.order !== null) params.set(PARAM.order, state.order);
   if (state.size !== null) params.set(PARAM.size, String(state.size));
   if (state.repository !== null) params.set(PARAM.repository, state.repository);
-  if (state.seqEpoch !== null) params.set(PARAM.seqEpoch, String(state.seqEpoch));
+  if (state.seqEpoch !== null) params.set(PARAM.seqEpoch, state.seqEpoch);
 
   return params.toString();
 }

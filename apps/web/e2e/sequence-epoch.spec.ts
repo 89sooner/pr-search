@@ -184,6 +184,24 @@ test.describe('시퀀스 인용 URL (CR-051)', () => {
     await expect(page.getByTestId('epoch-stale-notice')).toHaveCount(0);
   });
 
+  test('**낡은 인용에서는 저장할 수 없다** (CR-051, PR #64 리뷰 P1)', async ({ page }) => {
+    await stubSearch(page);
+    await page.goto(`/search?q=${encodeURIComponent(BOUND)}&seq_epoch=1`);
+    await expect(page.getByTestId('epoch-stale-notice')).toBeVisible();
+
+    /*
+     * 이 상태에서 응답의 `sequence_context.seq_epoch`은 사용자가 본 적 없는
+     * **현재** 세대(3)다. 저장을 열어 두면 결과를 보지도 못한 세대에 묶인
+     * 검색이 조용히 만들어진다 — "본 것을 저장한다"는 계약이 뒤집힌다.
+     */
+    await expect(page.getByTestId('search-save')).toBeDisabled();
+
+    // 현재 세대를 실제로 본 뒤에는 저장할 수 있다.
+    await page.getByTestId('epoch-rebind').click();
+    await expect(page.getByTestId('search-view')).toHaveAttribute('data-screen-state', 'ready');
+    await expect(page.getByTestId('search-save')).toBeEnabled();
+  });
+
   test('**질의에서 `seq:`를 지우면 주소에서 에폭도 사라진다** (QA-W001-36)', async ({ page }) => {
     await stubSearch(page);
     await page.goto(`/search?q=${encodeURIComponent(BOUND)}&seq_epoch=3`);

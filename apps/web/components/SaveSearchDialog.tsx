@@ -39,6 +39,14 @@ export interface SaveSearchEditTarget {
   readonly query: string;
   readonly visibility: SavedSearchVisibility;
   readonly team_id: number | null;
+  /**
+   * 이 검색이 가리키는 공간의 **현재** 에폭 (CR-051). 없거나 `seq:`가 아니면 `null`.
+   *
+   * 질의를 고치면 그 인용은 새로 바인딩되므로 대상이 현재 세대다. 저장된
+   * 값이 아니라 현재 값인 이유가 그것이다 — 저장된 값은 **바꾸지 않을 때**
+   * 쓰이고, 그때는 대화상자가 에폭을 아예 보내지 않는다.
+   */
+  readonly current_seq_epoch?: number | null;
 }
 
 export interface SaveSearchDialogProps {
@@ -170,12 +178,20 @@ export function SaveSearchDialog({
        * 보내지 않는 것이 첫 번째 방어다.
        */
       const queryChanged = editing ? draftQuery !== edit.query : true;
+      /*
+       * 새 저장은 **지금 보고 있는** 에폭, 편집은 **현재** 에폭이다.
+       *
+       * 편집에서 질의를 고치면 그 인용은 새로 바인딩되므로 대상이 현재
+       * 세대다. 어느 쪽이든 서버가 다시 대조하며, 값이 없으면 `seq:` 질의를
+       * 저장하려 할 때 서버가 거절한다.
+       */
+      const epochToSend = editing ? (edit.current_seq_epoch ?? null) : (seqEpoch ?? null);
       const payload = createPayload({
         name,
         query: draftQuery,
         visibility,
         teamId,
-        ...(queryChanged ? { seqEpoch: seqEpoch ?? null } : {}),
+        ...(queryChanged ? { seqEpoch: epochToSend } : {}),
       });
       const response = await fetch(
         editing ? `/api/saved-searches/${String(edit.saved_search_id)}` : '/api/saved-searches',

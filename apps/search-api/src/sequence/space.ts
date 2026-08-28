@@ -170,8 +170,17 @@ export type EpochParam =
   | { readonly kind: 'invalid' };
 
 export function readEpochParam(raw: unknown): EpochParam {
+  /*
+   * **진짜로 없을 때만 `absent`다** (PR #64 리뷰 P1).
+   *
+   * `seq_epoch=`(빈 값)이나 파라미터를 두 번 적어 배열이 된 경우를
+   * "지정하지 않음"으로 읽으면, 그 요청이 **조용히 현재 세대에 묶인다** —
+   * 형식 오류를 `null`로 접던 DEV-363과 같은 실패를 이름만 바꿔 되풀이하는
+   * 것이다. 값이 **있으면서** 해석되지 않으면 거절한다.
+   */
   if (raw === undefined || raw === null) return { kind: 'absent' };
-  if (typeof raw !== 'string' || raw.trim() === '') return { kind: 'absent' };
+  if (typeof raw !== 'string') return { kind: 'invalid' };
+  if (raw.trim() === '') return { kind: 'invalid' };
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 1) return { kind: 'invalid' };
   return { kind: 'value', epoch: value };

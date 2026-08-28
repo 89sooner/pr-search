@@ -47,7 +47,7 @@ describe('왕복', () => {
       {
         ...EMPTY_STATE,
         q: 'repo:acme/payments base:main seq:1280..1342 merged:2026-08-01..2026-08-19',
-        seqEpoch: 3,
+        seqEpoch: '3',
       },
     ],
     ['부정 질의', { ...EMPTY_STATE, q: '-author:bot label:backend' }],
@@ -215,16 +215,28 @@ describe('시퀀스 인용 에폭 (CR-051)', () => {
     const state: QueryState = {
       ...EMPTY_STATE,
       q: 'repo:acme/payments base:main seq:1280..1342',
-      seqEpoch: 3,
+      seqEpoch: '3',
     };
     expect(roundTrip(state)).toEqual(state);
     expect(writeQueryState(state)).toContain('seq_epoch=3');
   });
 
-  it('**형식이 틀린 값은 없는 것으로 읽는다** — 화면이 그것을 서버에 넘기지 않는다', () => {
+  it('**형식이 틀린 값도 원문 그대로 나른다** — 서버가 거절할 수 있어야 한다 (PR #64 리뷰 P1)', () => {
+    /*
+     * 화면이 `abc`를 `null`로 접으면 그 파라미터가 요청에서 사라지고, 서버는
+     * `INVALID_PARAMETER`를 낼 기회 없이 **현재 세대로 바인딩한다** — 붙여넣은
+     * 낡은 주소가 조용히 재해석되는 바로 그 실패다. 판정은 서버 한 곳에서 한다.
+     */
     for (const raw of ['abc', '0', '-1', '1.5']) {
-      expect(readQueryState(`q=a%3Ab&seq_epoch=${raw}`).seqEpoch).toBeNull();
+      const state = readQueryState(`q=a%3Ab&seq_epoch=${raw}`);
+      expect(state.seqEpoch).toBe(raw);
+      expect(writeQueryState(state)).toContain(`seq_epoch=${raw}`);
     }
+  });
+
+  it('빈 값도 사라지지 않는다 — `seq_epoch=`는 서버가 거절한다', () => {
+    // 공백만 남은 값은 `readString`이 `null`로 접는다. 그 경우만 "없음"이다.
+    expect(readQueryState('q=a%3Ab&seq_epoch=').seqEpoch).toBeNull();
   });
 
   it('에폭이 없으면 파라미터를 쓰지 않는다 — 빈 키가 URL에 남지 않는다', () => {
@@ -239,7 +251,7 @@ describe('시퀀스 인용 에폭 (CR-051)', () => {
     const state: QueryState = {
       ...EMPTY_STATE,
       q: 'repo:acme/payments base:main seq:1..5',
-      seqEpoch: 3,
+      seqEpoch: '3',
     };
     const next = withAst(state, parseQuery('repo:acme/payments author:kim'));
     expect(next.seqEpoch).toBeNull();
@@ -249,10 +261,10 @@ describe('시퀀스 인용 에폭 (CR-051)', () => {
     const state: QueryState = {
       ...EMPTY_STATE,
       q: 'repo:acme/payments base:main seq:1..5',
-      seqEpoch: 3,
+      seqEpoch: '3',
     };
     const next = withAst(state, parseQuery('repo:acme/payments base:main seq:1..5 author:kim'));
-    expect(next.seqEpoch).toBe(3);
+    expect(next.seqEpoch).toBe('3');
   });
 
   it('**새 질의로 갈아탈 때는 에폭을 물려주지 않는다**', () => {
@@ -260,7 +272,7 @@ describe('시퀀스 인용 에폭 (CR-051)', () => {
      * 새 질의는 다른 공간을 가리킬 수 있다. 옛 에폭을 그대로 보내면 서버가
      * 무효로 판정해 사용자가 방금 친 질의의 결과 대신 경고를 본다.
      */
-    const state: QueryState = { ...EMPTY_STATE, q: 'repo:a/x base:main seq:1..5', seqEpoch: 3 };
+    const state: QueryState = { ...EMPTY_STATE, q: 'repo:a/x base:main seq:1..5', seqEpoch: '3' };
     expect(withQuery(state, 'repo:b/y base:main seq:1..5').seqEpoch).toBeNull();
   });
 });

@@ -392,6 +392,17 @@ describe('`q` 필터가 진짜 색인에서 도는가 (DEV-136)', () => {
     const all = await get('from_seq=0&to_seq=4');
     expect(filtered.body.items_missing_in_index).toBe(all.body.items_missing_in_index);
   });
+
+  it('**`q`에 `seq:` 범위가 있어도 500이 되지 않는다** (CR-051, PR #64 리뷰 P2)', async () => {
+    /*
+     * 이 화면은 이미 공간을 확정했으므로 그 에폭을 질의 빌더에 넘긴다.
+     * 넘기지 않으면 `buildQuery`의 fail-closed가 던지고 이 경로가 **처리되지
+     * 않은 500**이 된다 — 기존에 되던 조회가 새 계약 때문에 깨지는 자리다.
+     */
+    const { status, body } = await get('from_seq=0&to_seq=4&q=seq:1..4');
+    expect(status).toBe(200);
+    expect(body.items).toBeDefined();
+  });
 });
 
 describe('접근 범위 필터 (ADR-008)', () => {
