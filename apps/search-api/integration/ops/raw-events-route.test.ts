@@ -61,6 +61,7 @@ let pool: Pool;
 let redis: Redis;
 let es: Client;
 let app: FastifyInstance;
+let authContext: AuthContext;
 const cookies = new Map<string, string>();
 
 function redisPort(): AuthRedis {
@@ -114,13 +115,14 @@ beforeAll(async () => {
       visibilities: [],
     }),
   };
-  const auth: AuthContext = {
+  authContext = {
     sessions,
     scopes: new AccessScopeResolver({ redis: redisPort(), db: createScopeDatabase(pool), source }),
     forget: async (ids) => {
       if (ids.length > 0) await redis.del(...ids.map(scopeKey));
     },
   };
+  const auth = authContext;
 
   for (const user of USERS) {
     const sessionId = createSessionId();
@@ -189,6 +191,53 @@ describe('AC-5: 두 역할이 조회한다', () => {
   it('둘 다 아닌 역할은 403이다', async () => {
     const { status } = await get(DEVELOPER);
     expect(status).toBe(403);
+  });
+});
+
+describe('PR #67 리뷰 P1: 감사 적재 실패가 조회를 막지 않는다', () => {
+  it('감사 쓰기가 거절돼도 200과 결과를 돌려준다', async () => {
+    /*
+     * `audit_record` 쓰기만 실패시킨다. 스프레드로 감싸면 클래스 메서드가
+     * 사라지므로(risks) `Proxy`로 `query`만 가로챈다.
+     */
+    const brokenPool = new Proxy(pool, {
+      get(target, prop, receiver) {
+        if (prop !== 'query') return Reflect.get(target, prop, receiver) as unknown;
+        return (text: unknown, params?: unknown) => {
+          if (typeof text === 'string' && text.includes('audit_record')) {
+            return Promise.reject(new Error('audit down'));
+          }
+          return (target.query as (t: unknown, p?: unknown) => unknown)(text, params);
+        };
+      },
+    });
+
+    const broken = buildServer({
+      config: {
+        port: 0,
+        adminTokens: [],
+        metricsQueryUrl: null,
+        gheBaseUrl: null,
+        auth: AUTH_CONFIG,
+        searchCursorKey: TEST_CURSOR_KEY,
+      },
+      auth: authContext,
+      ops: { pool: brokenPool, bus: undefined, log: () => undefined },
+      rawEvents: { es, cursorSigner: TEST_CURSOR_SIGNER },
+    } as unknown as ServerDeps);
+
+    try {
+      const response = await broken.inject({
+        method: 'GET',
+        url: `${RAW_EVENTS_PATH}?include_payload=true`,
+        headers: { cookie: cookies.get(OFFICER) as string },
+      });
+      // 감사는 조회의 부수 기록이지 전제가 아니다.
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toContain('do-not-leak');
+    } finally {
+      await broken.close();
+    }
   });
 });
 

@@ -27,7 +27,7 @@ import {
   type Principal,
 } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
-import { Gauge, METRICS_CONTENT_TYPE, renderMetrics } from '../metrics.js';
+import { Counter, Gauge, METRICS_CONTENT_TYPE, renderMetrics } from '../metrics.js';
 import { ADMIN_ERROR_STATUS, AdminRejected } from './errors.js';
 import {
   DEFAULT_LIST_STATES,
@@ -81,6 +81,14 @@ export const SEQUENCE_INTEGRITY_PATH = '/api/v1/admin/sequence-integrity';
 export const REINDEX_PATH = '/api/v1/admin/reindex';
 /** API-ADM-008 (WP-036, CR-052). */
 export const RAW_EVENTS_PATH = '/api/v1/admin/raw-events';
+
+/**
+ * 감사 기록 적재 실패 건수 (PR #67 리뷰 P1).
+ *
+ * **모듈 수준이다.** 요청마다 새로 만들면 스크레이프가 언제나 0을 본다.
+ * 0이 아니면 조회는 되는데 그 조회가 남지 않고 있다는 뜻이라 경보 대상이다.
+ */
+const auditFailed = new Counter('audit_record_failed_total', '감사 기록 적재 실패 건수');
 
 function fail(
   reply: FastifyReply,
@@ -284,20 +292,44 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
          * 요청만이 되돌릴 수 없는 노출이고, 모든 조회를 남기면 그 신호가 묻힌다.
          */
         if (filter.includePayload) {
-          await auditRepo.recordAudit(deps.pool, {
-            userId: principalId(principal),
-            action: 'raw_event.view_payload',
-            target: filter.deliveryId ?? filter.repository ?? '(범위 전체)',
-            query: JSON.stringify({
-              delivery_id: filter.deliveryId ?? null,
-              repository: filter.repository ?? null,
-              event_type: filter.eventType ?? null,
-              received_from: filter.receivedFrom ?? null,
-              received_to: filter.receivedTo ?? null,
-            }),
-            resultCode: String(result.items.length),
-            correlationId,
-          });
+          /*
+           * **감사 적재 실패가 조회를 막지 않는다** (PR #67 리뷰 P1 / WP-039 규율).
+           *
+           * 파티션이 없거나 쓰기가 일시적으로 실패하면 이 await가 거절되고, 감싸지
+           * 않으면 **이미 가져온 결과를 버리고 500이 된다.** 감사는 조회의 부수
+           * 기록이지 전제가 아니다. 대신 실패를 세어 경보에 올린다.
+           *
+           * **질의는 적용된 조건 전부를 담는다** (PR #67 리뷰 P2). 일부만 담으면
+           * 그 기록으로 무엇을 열람했는지 재구성할 수 없고, `FR-AUTH-004` AC-2가
+           * 요구하는 것이 바로 재구성 가능한 질의 문자열이다.
+           */
+          try {
+            await auditRepo.recordAudit(deps.pool, {
+              userId: principalId(principal),
+              action: 'raw_event.view_payload',
+              target: filter.deliveryId ?? filter.repository ?? '(범위 전체)',
+              query: JSON.stringify({
+                delivery_id: filter.deliveryId ?? null,
+                repository: filter.repository ?? null,
+                event_type: filter.eventType ?? null,
+                action: filter.action ?? null,
+                received_from: filter.receivedFrom ?? null,
+                received_to: filter.receivedTo ?? null,
+                limit: filter.limit,
+                paged: filter.cursor !== undefined,
+              }),
+              resultCode: String(result.items.length),
+              correlationId,
+            });
+          } catch (error) {
+            auditFailed.inc();
+            deps.log?.({
+              level: 'error',
+              message: 'raw_event.view_payload 감사 기록 적재 실패',
+              correlation_id: correlationId,
+              reason: error instanceof Error ? error.message : String(error),
+            });
+          }
         }
 
         return reply.send(result);
@@ -347,7 +379,7 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
       '아직 열려 있는 실패 대기열 항목 수. 100건 초과가 경보 임계다',
     );
     open.set(counts.pending + counts.reprocessing);
-    return reply.type(METRICS_CONTENT_TYPE).send(renderMetrics([byState, open]));
+    return reply.type(METRICS_CONTENT_TYPE).send(renderMetrics([byState, open, auditFailed]));
   });
 }
 
