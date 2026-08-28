@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.0 | 갱신일: 2026-08-28
+> 상태: review | 버전: v2.1 | 갱신일: 2026-08-28
 
 ## 1. 목적
 
@@ -1488,7 +1488,8 @@
 - 구현 범위:
   - `prs-raw-events-{yyyy.MM}` 매핑 (`payload`는 `enabled: false`, `repository`와 `repository_id`를 함께 담는다), ILM 정책
   - 게이트웨이 아카이브 레코드의 필드를 계약에 맞춘다 (CR-052, DEV-366)
-  - 아카이브 파일 회전: 크기 상한 × 보관 개수, 초과 시 오래된 조각부터 삭제 (AC-7)
+  - 아카이브 파일 회전: 크기 상한 × 보관 개수, 초과 시 오래된 조각부터 삭제하고 **버린 조각 수를 지표로 노출** (AC-7)
+  - `payload` 명시적 열람을 감사 기록에 남긴다 (`raw_event.view_payload`, 보안 문서 7장)
   - Filebeat **사이드카** 설정과 `emptyDir` 볼륨 배선 (CR-052, DEV-368·369·373)
   - 오프셋 상태 유지, 재기동 시 이어서 적재
   - `API-ADM-008 GET /admin/raw-events` — 역할 제한 + 필수 접근 범위 필터, `payload`는 기본 미포함
@@ -1504,6 +1505,8 @@
   - [ ] `API-ADM-008`이 `operator`·`security_officer` 외의 역할에 403을 반환한다 (AC-5)
   - [ ] `API-ADM-008`이 접근 범위 밖 저장소와 미등록 저장소의 원본을 반환하지 않는다 (AC-6)
   - [ ] 보관 개수 한도를 넘기면 가장 오래된 조각부터 삭제되어 디스크가 차지 않는다 (AC-7)
+  - [ ] 버린 조각 수가 `/metrics`에 나온다 (AC-7 — 조용히 잃지 않는다)
+  - [ ] `include_payload=true`가 감사 기록을 남기고 기본 조회는 남기지 않는다
   - [ ] Filebeat 재기동 시 마지막 오프셋부터 이어서 적재한다 (예외 처리)
 - 검증 방법: `pnpm test:integration archive`, `pnpm test:integration admin/raw-events`, 수동 Filebeat 중단·재기동 시나리오
 - 기록: 원장 WP-036 상태, FR-ING-010 매핑
@@ -1608,7 +1611,7 @@
   - A-003: `C-044 JobTable`, `C-045 JobRunForm`, `C-046 IndexStatusPanel`, `C-047 IntegrityReportCard`
   - 30초 폴링 (조작 중 보류, 백그라운드 탭 중단)
   - 파괴적 확인 다이얼로그: 해제("문서 유지" 명시), 일괄 재처리(100건 초과 재확인), 재채번(영향 범위 + 저장소명 입력)
-  - `operator` 역할 제한
+  - `operator` 역할 제한. **예외는 `A-001-ARCHIVE`이며 `security_officer`도 진입한다**(`archive_only` 상태, CR-052 DEV-375)
 - 제외:
   - A-004 (WP-039)
 - 완료 기준(DoD):

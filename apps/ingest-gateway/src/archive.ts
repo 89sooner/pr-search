@@ -123,25 +123,56 @@ export function createArchiveWriter(
     written = 0;
   }
 
+  async function appendOne(record: ArchiveRecord): Promise<void> {
+    if (streamError !== null) throw streamError;
+
+    const line = `${JSON.stringify(record)}\n`;
+    const size = Buffer.byteLength(line);
+
+    // 이 줄을 쓰면 상한을 넘는 경우에만 민다. 넘긴 뒤에 밀면 조각이 상한보다
+    // 커지고, 그 초과분이 보관 개수만큼 곱해진다.
+    if (written > 0 && written + size > rotation.maxBytes) {
+      await rotate();
+    }
+
+    // 배압이 걸리면 drain을 기다린다. 기다리지 않고 계속 밀어 넣으면 버스트
+    // 구간에서 메모리가 무한정 늘어난다 (지속 200/s, 버스트 2000/s).
+    if (!stream.write(line)) {
+      await once(stream, 'drain');
+    }
+    written += size;
+  }
+
+  /**
+   * 직전 append가 끝난 뒤에 다음 append가 시작한다 (PR #66 리뷰 P1).
+   *
+   * ## 왜 필요한가
+   *
+   * `appendOne`은 `await` 경계를 둘 갖는다(회전, 배압). 게이트웨이는 초당 200건을
+   * 지속으로 받으므로 여러 요청이 그 경계에서 인터리빙된다. 직렬화가 없으면
+   * **경계를 넘는 순간 여러 append가 같은 `written`을 읽고 동시에 `rotate()`에
+   * 들어간다** — 조각 사슬이 여러 번 밀리고 같은 자리가 반복해서 삭제되어
+   * 보관 개수보다 많이 잃으며, 교체된 스트림이 닫히지 않은 채 남는다.
+   *
+   * 한 번의 경계 통과가 여러 조각을 버리는 이 실패는 **오류를 내지 않는다.**
+   * 지표에는 "버렸다"만 남고 그것은 설계된 동작과 구분되지 않는다.
+   *
+   * 체인은 실패로 끊기지 않는다 — 한 요청의 append 실패가 다음 요청의 append를
+   * 막으면 레인 B의 일시 장애가 영구 장애가 된다.
+   */
+  let tail: Promise<void> = Promise.resolve();
+
   return {
     async append(record: ArchiveRecord): Promise<void> {
-      if (streamError !== null) throw streamError;
-
-      const line = `${JSON.stringify(record)}\n`;
-      const size = Buffer.byteLength(line);
-
-      // 이 줄을 쓰면 상한을 넘는 경우에만 민다. 넘긴 뒤에 밀면 조각이 상한보다
-      // 커지고, 그 초과분이 보관 개수만큼 곱해진다.
-      if (written > 0 && written + size > rotation.maxBytes) {
-        await rotate();
-      }
-
-      // 배압이 걸리면 drain을 기다린다. 기다리지 않고 계속 밀어 넣으면 버스트
-      // 구간에서 메모리가 무한정 늘어난다 (지속 200/s, 버스트 2000/s).
-      if (!stream.write(line)) {
-        await once(stream, 'drain');
-      }
-      written += size;
+      const run = tail.then(
+        () => appendOne(record),
+        () => appendOne(record),
+      );
+      tail = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return run;
     },
     async close(): Promise<void> {
       await endStream();
