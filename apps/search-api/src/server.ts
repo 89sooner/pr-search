@@ -16,6 +16,7 @@ import { resolveSearchApiConfig, type SearchApiConfig } from './config.js';
 import { registerOpsRoutes } from './ops/routes.js';
 import { registerAuthRoutes } from './auth/routes.js';
 import { registerSearchRoutes } from './search/routes.js';
+import { registerAnalyticsRoutes } from './analytics/routes.js';
 import { registerResolveRoutes } from './resolve/routes.js';
 import { registerRelationRoutes } from './relations/routes.js';
 
@@ -23,7 +24,7 @@ import { registerSequenceRoutes } from './sequence/routes.js';
 import { registerSavedSearchRoutes } from './saved-search/routes.js';
 import { registerRepositoryRoutes, type RepositoryRouteOptions } from './repositories/routes.js';
 import type { SavedSearchDeps } from './saved-search/service.js';
-import type { Pool } from '@prs/db';
+import { authRepo, repositoryRepo, type Pool } from '@prs/db';
 import type { SearchDeps } from './search/service.js';
 import type { RangeDeps } from './sequence/range.js';
 import type { AuthContext } from './auth/context.js';
@@ -38,6 +39,20 @@ export const SERVICE_NAME = 'search-api' as const;
 export const DEFAULT_PORT = 3002;
 
 const VERSION = process.env['npm_package_version'] ?? '0.1.0';
+
+/**
+ * 숫자 그룹 키를 표시값으로 옮기는 해석기 (WP-037 / CR-053, PR #76 리뷰 P1).
+ *
+ * **`SearchDeps`에 넣지 않는다.** 검색은 이 방향의 해석을 쓰지 않으며, 쓰지
+ * 않는 계층에 얹으면 그 계층의 시험이 쓰지도 않을 대역을 만들게 된다
+ * (CR-051이 `pool`을 라우트에 둔 것과 같은 판단).
+ */
+function analyticsDisplay(pool: Pool) {
+  return async (input: { readonly orgIds: readonly number[]; readonly teamIds: readonly number[] }) => ({
+    orgs: await repositoryRepo.resolveOrgOwners(pool, input.orgIds),
+    teams: await authRepo.resolveTeamSlugs(pool, input.teamIds),
+  });
+}
 
 export interface ServerDeps {
   readonly config?: SearchApiConfig;
@@ -145,6 +160,22 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
 
     if (deps.search !== undefined) {
       registerSearchRoutes(app, { ...deps.search, auth: deps.auth, loginPath: config.auth.loginPath });
+      /*
+       * 집계 API (WP-037 / API-STAT-001~004).
+       *
+       * **검색과 같은 의존을 쓰되 별도 등록이다** (FR-STAT-006 AC-4). 목록
+       * 응답이 집계 지연에 영향받지 않아야 하므로 경로가 나뉘고, 그 분리는
+       * 여기 한 줄에서 시작한다 — **빠지면 네 API가 배포에서 사라진다**
+       * (WP-028의 API-ADM-007이 정확히 그 상태였다, CR-034 DEV-177).
+       */
+      registerAnalyticsRoutes(app, {
+        es: deps.search.es,
+        pool: deps.search.pool,
+        resolveNames: deps.search.resolveNames,
+        resolveGroupDisplay: analyticsDisplay(deps.search.pool),
+        auth: deps.auth,
+        loginPath: config.auth.loginPath,
+      });
       // 식별자 해석은 목록 조회와 같은 의존을 쓴다 (WP-014). ES 하나면 된다.
       registerResolveRoutes(app, {
         es: deps.search.es,

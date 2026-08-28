@@ -117,7 +117,47 @@ export async function applyMappings(client: Client): Promise<BootstrapResult[]> 
   for (const definition of ENTITY_INDICES) {
     results.push(await ensureIndex(client, definition));
   }
+  await backfillDerivedFields(client);
   return results;
+}
+
+/**
+ * 나중에 더해진 사전 계산 필드를 **이미 색인된 문서에 소급한다**
+ * (CR-053, PR #76 리뷰 P1).
+ *
+ * `put_mapping`은 매핑만 바꾸고 기존 문서를 채우지 않는다. 그대로 두면
+ * `changed_lines`가 없는 과거 PR이 전부 `FR-STAT-005` AC-5의 `unknown` 구간에
+ * 들어가는데, **그 구간의 뜻은 "보강이 끝나지 않아 모른다"이지 "필드를 나중에
+ * 더했다"가 아니다.** 화면이 거짓을 말하게 된다.
+ *
+ * 데이터 모델 7장이 `repository_archived`에 같은 길을 이미 적어 두었다 —
+ * 매핑은 `put_mapping`, 기존 문서는 `update_by_query`.
+ *
+ * **재료가 없는 문서는 건드리지 않는다.** `exists` 조건이 그 일을 하며, 0으로
+ * 채우면 "모른다"가 "0줄 바꿨다"라는 사실 주장이 된다.
+ *
+ * 여기 스크립트는 **색인 시점 계산**이므로 "조회 시점 `script`를 집계에 쓰지
+ * 않는다"는 데이터 모델 6장의 규율과 어긋나지 않는다.
+ */
+export async function backfillDerivedFields(client: Client): Promise<void> {
+  await client.updateByQuery({
+    index: 'prs-pull-requests',
+    // 값이 없는 문서만. 이미 채워진 것을 다시 쓰지 않는다.
+    query: {
+      bool: {
+        must_not: [{ exists: { field: 'changed_lines' } }],
+        filter: [{ exists: { field: 'additions' } }, { exists: { field: 'deletions' } }],
+      },
+    },
+    script: {
+      source: 'ctx._source.changed_lines = ctx._source.additions + ctx._source.deletions',
+      lang: 'painless',
+    },
+    conflicts: 'proceed',
+    refresh: true,
+    // 인덱스가 아직 없을 수 있다 (첫 부트스트랩).
+    ignore_unavailable: true,
+  });
 }
 
 /**

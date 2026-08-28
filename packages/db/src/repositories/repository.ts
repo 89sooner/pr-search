@@ -233,6 +233,29 @@ export async function resolveOrgIds(db: Queryable, owners: readonly string[]): P
 }
 
 /**
+ * `org_id` → `owner` (WP-037 / CR-053, PR #76 리뷰 P1).
+ *
+ * 집계는 `org_id`로 묶고 사용자는 `org:acme`로 묻는다. **그 숫자를 그대로
+ * 근거 질의에 넣으면 `org:77`이 되어 아무 저장소도 찾지 못한다** — 버킷은
+ * 건수를 보이는데 눌러 보면 0건인 자리다.
+ *
+ * `resolveOrgIds`의 역방향이며 같은 표를 본다. 한 조직이 여러 `owner`를 갖는
+ * 일은 없으므로 `DISTINCT`로 하나를 취한다.
+ */
+export async function resolveOrgOwners(
+  db: Queryable,
+  orgIds: readonly number[],
+): Promise<Map<number, string>> {
+  if (orgIds.length === 0) return new Map();
+
+  const { rows } = await db.query<{ owner: string; org_id: number }>(
+    'SELECT DISTINCT org_id, owner FROM repository WHERE org_id = ANY($1::bigint[])',
+    [[...orgIds]],
+  );
+  return new Map(rows.map((row) => [Number(row.org_id), row.owner]));
+}
+
+/**
  * 저장소를 볼 수 있는 팀을 갈아 끼운다 (WP-068 / CR-035, DEV-114).
  *
  * **등록·갱신과 분리된 함수다.** `upsertRepository`에 넣으면 팀을 모르는 호출

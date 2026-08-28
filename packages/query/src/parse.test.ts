@@ -22,13 +22,29 @@ function reject(input: string): QueryParseError {
   throw new Error(`거절했어야 한다: ${input}`);
 }
 
-describe('AC-1: 지원 키 15종', () => {
+describe('AC-1: 지원 키 17종', () => {
   it('SRS가 정한 목록 그대로다', () => {
-    expect(QUERY_KEYS).toHaveLength(15);
+    expect(QUERY_KEYS).toHaveLength(17);
     expect([...QUERY_KEYS]).toEqual([
-      'repo', 'org', 'author', 'team', 'reviewer', 'label', 'base',
-      'head', 'state', 'merged', 'created', 'seq', 'release', 'path', 'is',
+      'repo', 'org', 'author', 'team', 'author_team', 'reviewer', 'label', 'base',
+      'head', 'state', 'merged', 'created', 'seq', 'release', 'path', 'is', 'kind',
     ]);
+  });
+
+  it('**`team`과 `author_team`은 다른 키다** (CR-053, DEV-382)', () => {
+    // 하나로 합치면 접근 권한을 성과로 읽게 된다. 파서 층에서 그 둘이
+    // 별개 필터로 남는 것이 그 구분의 시작이다.
+    const ast = parseQuery('team:payments-core author_team:payments-core');
+    expect(ast.filters).toHaveLength(2);
+    expect(ast.filters.map((one) => one.key).sort()).toEqual(['author_team', 'team']);
+  });
+
+  it('`kind`는 값이 열거되어 있다', () => {
+    expect(parseQuery('kind:pull_request').filters).toEqual([
+      { key: 'kind', op: 'eq', values: ['pull_request'] },
+    ]);
+    expect(reject('kind:release').code).toBe('QUERY_SYNTAX_ERROR');
+    expect(reject('kind:release').detail.allowed_values).toEqual(['pull_request', 'commit']);
   });
 
   it('DoD: 15종이 모두 파싱된다', () => {
@@ -39,7 +55,7 @@ describe('AC-1: 지원 키 15종', () => {
       merged: '2026-08-10..2026-08-19',
       created: '2026-08-10..2026-08-19',
     };
-    const scalars: Record<string, string> = { is: 'merged' };
+    const scalars: Record<string, string> = { is: 'merged', kind: 'pull_request' };
     for (const key of QUERY_KEYS) {
       const range = ranges[key];
       if (range !== undefined) {

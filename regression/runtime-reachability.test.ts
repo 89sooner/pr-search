@@ -1378,3 +1378,126 @@ describe('저장된 검색의 도달성과 계약 (WP-033 / CR-049)', () => {
     }
   });
 });
+
+describe('집계 API의 도달성과 계약 (WP-037 / CR-053)', () => {
+  const SERVER = read('apps/search-api/src/server.ts');
+  const ROUTES = read('apps/search-api/src/analytics/routes.ts');
+  const PREPARE = read('apps/search-api/src/analytics/prepare.ts');
+  const EXECUTE = read('apps/search-api/src/analytics/execute.ts');
+  const AGGREGATIONS = read('apps/search-api/src/analytics/aggregations.ts');
+  const TYPES = read('apps/search-api/src/analytics/types.ts');
+
+  it('**운영 서버가 집계 라우트를 실제로 등록한다**', () => {
+    /*
+     * 호출 형태로 건다 — 이름만 찾으면 `import` 줄이 남아 있는 한 통과한다.
+     * WP-028의 `API-ADM-007`이 정확히 그 상태로 원장에 `done`으로 적혀 있었다
+     * (CR-034, DEV-177).
+     */
+    expect(SERVER).toContain('registerAnalyticsRoutes(app, {');
+  });
+
+  it('집계 라우트가 검색과 **같은 조건** 뒤에 있다 — 세션 없이 열지 않는다', () => {
+    const at = SERVER.indexOf('registerAnalyticsRoutes(app, {');
+    const guard = SERVER.indexOf('if (deps.search !== undefined) {');
+    expect(guard).toBeGreaterThan(-1);
+    expect(at).toBeGreaterThan(guard);
+  });
+
+  it('네 엔드포인트가 모두 선언되어 있다 (API-STAT-001~004)', () => {
+    for (const path of ['/groups', '/time-series', '/percentiles', '/distributions']) {
+      expect(ROUTES).toContain(`\`\${ANALYTICS_BASE}${path}\``);
+    }
+  });
+
+  it('**집계 모집단이 PR 단독이다** (FR-STAT-001 AC-6, DEV-381)', () => {
+    // 커밋을 넣으면 그룹 키 셋과 지표 둘이 조용히 0이나 `unknown`이 된다.
+    expect(TYPES).toContain("ANALYTICS_TARGET: readonly EntityAlias[] = ['prs-pull-requests']");
+    expect(TYPES).not.toContain('prs-commits');
+  });
+
+  it('**모든 집계가 강제 접근 범위 필터를 지난다** (ADR-008)', () => {
+    // 목록에서 이미 걸렀다는 이유로 생략하지 않는다 — 건수도 정보다.
+    expect(PREPARE).toContain('applyMandatoryScopeFilter(');
+    // 실행 계층은 `ScopedQuery`만 받는다. 원시 클라이언트를 직접 부르지 않는다.
+    expect(EXECUTE).toContain('scoped: ScopedQuery');
+    expect(EXECUTE).not.toContain('client.search(');
+  });
+
+  it('**부분 샤드 실패를 정상 집계로 반환하지 않는다**', () => {
+    // 일부 샤드가 답하지 못한 수를 200으로 내보내면 "적게 나온 수"가 사실이 된다.
+    expect(EXECUTE).toContain('assertNoShardFailures(');
+  });
+
+  it('**조회 시점 `script`를 쓰지 않는다** (NFR-001, FR-STAT-005 AC-7)', () => {
+    // 집계가 읽는 값은 전부 색인 시점 계산 필드다. `changed_lines`가 그래서 생겼다.
+    expect(AGGREGATIONS).not.toContain('script:');
+    expect(AGGREGATIONS).not.toContain('runtime_mappings');
+  });
+
+  it('**그룹 정렬이 결정적이다** (FR-STAT-001 AC-8, DEV-389)', () => {
+    // 상한으로 자르는 계약이라 순서가 흔들리면 어느 그룹이 잘리는지도 흔들린다.
+    expect(AGGREGATIONS).toContain("{ _count: 'desc' }, { _key: 'asc' }");
+  });
+
+  it('**`team` 그룹이 작성자 팀을 본다** (DEV-382)', () => {
+    // `allowed_team_ids`는 저장소 접근 권한이다. 섞으면 권한을 성과로 읽는다.
+    expect(TYPES).toContain("team: 'author_team_ids'");
+    expect(TYPES).not.toContain("team: 'allowed_team_ids'");
+    expect(TYPES).toContain("team: 'author_team',");
+  });
+
+  it('**`drill_down_query`가 모집단을 유지한다** (FR-STAT-001 AC-5, DEV-383)', () => {
+    // 이 조건이 없으면 사용자가 누른 수보다 목록이 더 크게 나온다.
+    expect(AGGREGATIONS).toContain("replaceEquality(base, 'kind', 'pull_request')");
+  });
+
+  it('**근거 질의가 기존 조건을 대체한다** — 더하기만 하면 OR가 남는다', () => {
+    /*
+     * `author:alice author:bob`에서 alice를 눌렀는데 OR가 남으면 목록이 버킷보다
+     * 큰 수를 보인다 (PR #76 리뷰 P2). 버킷을 누르는 것은 **좁히는** 일이다.
+     */
+    expect(AGGREGATIONS).toContain('replaceEquality');
+    expect(AGGREGATIONS).not.toContain('addEquality');
+  });
+
+  it('**근사 여부를 집계 없이 센 수로 정한다** (PR #76 리뷰 P1)', () => {
+    /*
+     * `track_total_hits`는 히트 계수만 제한하고 집계 순회는 제한하지 않는다 —
+     * 근사할지 정하려던 요청이 전수 집계를 수행한다. 그리고 상한까지만 센 수를
+     * 모집단 크기로 쓰면 표본 비율이 1에 가까워져 근사가 근사가 아니게 된다.
+     */
+    expect(EXECUTE).toContain('countDocuments(');
+    expect(EXECUTE).toContain('track_total_hits: false');
+  });
+
+  it('**200에 붙어 온 `timed_out`도 부분 결과다** (PR #76 리뷰 P1)', () => {
+    // 샤드 실패가 아니라 `assertNoShardFailures`가 잡지 못한다. `facets.ts`가
+    // 같은 자리에서 이미 `timed_out`을 본다.
+    expect(EXECUTE).toContain('timed_out');
+  });
+
+  it('**시계열이 요청 구간을 모집단에 넣는다** (PR #76 리뷰 P1)', () => {
+    // `extended_bounds`는 빈 버킷을 더할 뿐 범위 밖 문서를 빼지 않는다.
+    expect(ROUTES).toContain('merged:${from}..${to}');
+  });
+
+  it('**리드타임은 머지된 PR로 한정한다** (FR-STAT-003 AC-2, PR #76 리뷰 P1)', () => {
+    // 좁히지 않으면 열린 PR이 제외 건수로 세어져 `no_review`로 잘못 분류된다.
+    expect(ROUTES).toContain('is:merged');
+  });
+
+  it('**낡은 에폭에서 집계를 계산하지 않는다** (FR-STAT-006 AC-6, DEV-384)', () => {
+    // 0건이나 빈 버킷으로 위장하지 않는다 — 재채번 뒤의 같은 서수는 다른 커밋이다.
+    expect(PREPARE).toContain('resolveSequenceContext(');
+    expect(ROUTES).toContain('epoch_stale: true');
+  });
+
+  it('시퀀스 판정을 `/search`와 **같은 함수로** 옮긴다', () => {
+    // 각자 옮기면 같은 상황에 다른 상태 코드를 내는 날이 온다.
+    expect(ROUTES).toContain("import { toSequenceFailure } from '../search/routes.js'");
+  });
+
+  it('**`kind:`가 PR을 남기지 않으면 400이다** — 조용한 0건이 아니다', () => {
+    expect(ROUTES).toContain('analytics_population_empty');
+  });
+});

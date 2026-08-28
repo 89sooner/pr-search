@@ -24,6 +24,7 @@
     "db:partitions": "pnpm --filter @prs/db exec node dist/cli.js partitions",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:regression": "vitest run --config vitest.regression.config.ts",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
     "test:a11y": "pnpm --filter @prs/web run test:a11y",
     "test:e2e": "pnpm --filter @prs/web run test:e2e",
     "test:contrast": "pnpm --filter @prs/web run test:contrast",

@@ -182,6 +182,25 @@ async function allRepositories(pool: Pool): Promise<readonly RepositoryRow[]> {
  * (`recordProjectionSnapshot`이 그렇게 남긴다). 그래서 여기서 문서를 다시
  * 조립하지 않는다 — 조립하면 그것이 두 번째 빌더다.
  */
+/**
+ * 나중에 더해진 사전 계산 필드를 옛 스냅숏에 채운다 (CR-053, DEV-391).
+ *
+ * `changed_lines`는 `CR-053`이 더한 필드라 **그 전에 남긴 스냅숏에는 없다.**
+ * 여기서 채우지 않으면 색인을 `update_by_query`로 소급해도 **다음 재구축이
+ * 그것을 되돌린다** — 스냅숏이 `_source`의 정본이기 때문이다.
+ *
+ * 재료가 없으면(절삭 등으로 `additions`·`deletions`가 없는 문서) **아무것도
+ * 넣지 않는다.** 0으로 채우면 `FR-STAT-005` AC-5의 `unknown`이 뜻하는
+ * "모른다"가 "0줄 바꿨다"라는 사실 주장으로 바뀐다.
+ */
+function derivedFields(document: Readonly<Record<string, unknown>>): Record<string, number> {
+  if (typeof document['changed_lines'] === 'number') return {};
+  const additions = document['additions'];
+  const deletions = document['deletions'];
+  if (typeof additions !== 'number' || typeof deletions !== 'number') return {};
+  return { changed_lines: additions + deletions };
+}
+
 async function rebuildPullRequests(
   deps: ReindexDeps,
   repository: RepositoryRow,
@@ -208,6 +227,7 @@ async function rebuildPullRequests(
       routing: String(repositoryId),
       doc: {
         ...row.document,
+        ...derivedFields(row.document as Readonly<Record<string, unknown>>),
         ...scope,
         /*
          * **버전의 정본은 본문이 아니라 열이다** (CI가 잡았다).

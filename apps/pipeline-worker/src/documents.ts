@@ -61,12 +61,28 @@ function seconds(from: string | null | undefined, to: string | null | undefined)
   return delta < 0 ? undefined : delta;
 }
 
-/** 가장 이른 리뷰 제출 시각. 제출되지 않은 리뷰(`submitted_at: null`)는 세지 않는다. */
-export function firstReviewAt(reviews: readonly EnrichedReview[]): string | undefined {
+/**
+ * 가장 이른 리뷰 제출 시각. 제출되지 않은 리뷰(`submitted_at: null`)는 세지 않는다.
+ *
+ * **작성자 본인의 리뷰는 첫 리뷰가 아니다** (FR-STAT-004 AC-3, CR-053 DEV-387).
+ * 자기 PR에 스스로 남긴 코멘트를 첫 리뷰로 세면 `first_review_wait_seconds`가
+ * 실제보다 짧아지고, 그 값은 **색인 시점에 저장되므로 API도 화면도 고칠 수
+ * 없다.** 재료(`reviewer`와 작성자)는 처음부터 같은 호출부에 있었다.
+ *
+ * @param author PR 작성자. 모르면 `undefined` — 그때는 거를 수 없으므로 전부
+ *   센다. **없는 값을 지어내 거르지 않는다.**
+ */
+export function firstReviewAt(
+  reviews: readonly EnrichedReview[],
+  author?: string | null,
+): string | undefined {
   let earliest: string | undefined;
   for (const review of reviews) {
     const submitted = review.submitted_at;
     if (submitted === null) continue;
+    // 작성자를 아는 경우에만 거른다. `reviewer`가 `null`이면 누구인지 모르므로
+    // 본인이라고 단정하지 않는다.
+    if (author != null && review.reviewer === author) continue;
     if (earliest === undefined || Date.parse(submitted) < Date.parse(earliest)) earliest = submitted;
   }
   return earliest;
@@ -125,7 +141,7 @@ export function buildPullRequestDocument(source: ProjectionSource): UpsertReques
   const { enriched, repository } = source;
   const pr = enriched.pull_request;
   const files = enriched.changed_files;
-  const reviewedAt = firstReviewAt(enriched.reviews);
+  const reviewedAt = firstReviewAt(enriched.reviews, pr?.author);
 
   const doc: Fields = {
     document_version: source.documentVersion,
@@ -139,6 +155,13 @@ export function buildPullRequestDocument(source: ProjectionSource): UpsertReques
     changed_files_count: files.length,
     additions: files.reduce((sum, file) => sum + file.additions, 0),
     deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+    /*
+     * `additions + deletions` (CR-053, DEV-386).
+     *
+     * **여기서 더한다.** 조회 시점에 더하면 `script`가 필요하고 데이터 모델
+     * 6장이 그것을 금지한다. 위 둘을 다시 세지 않고 같은 순회의 결과를 쓴다.
+     */
+    changed_lines: files.reduce((sum, file) => sum + file.additions + file.deletions, 0),
     changed_paths: files.map((file) => file.filename),
     files_truncated: enriched.files_truncated,
 
