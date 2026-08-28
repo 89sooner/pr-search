@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.2 | 갱신일: 2026-08-28
+> 상태: review | 버전: v2.3 | 갱신일: 2026-08-29
 
 ## 1. 목적
 
@@ -1523,23 +1523,37 @@
 - 관련 API/데이터/잡: API-STAT-001~004
 - 선행 WP: WP-013
 - 구현 범위:
-  - `POST /analytics/groups`: 그룹 키 7종, 지표 4종, 500개 상한, `drill_down_query` 산출
+  - **집계 모집단은 `prs-pull-requests` 단독이다** (CR-053, FR-STAT-001 AC-6)
+  - `POST /analytics/groups`: 그룹 키 7종, 지표 4종, 500개 상한, 결정적 정렬, `drill_down_query` 산출
   - `POST /analytics/time-series`: 간격 4종, 시간대 반영, 400 버킷 상한, 빈 버킷 0 채움, 계열 20개 상한
-  - `POST /analytics/percentiles`: `lead_time_seconds`·`first_review_wait_seconds`, 백분위 5종, 표본 20건 미만 `low_sample`, 제외 건수 반환
+  - `POST /analytics/percentiles`: `lead_time_seconds`·`first_review_wait_seconds`, 백분위 5종, 표본 20건 미만 `low_sample`, 제외 건수와 **사유별 구분**
   - `POST /analytics/distributions`: 파일 수·라인 수 구간, 비율, `unknown` 구간
-  - 100만 건 초과 시 근사 + `approximate: true`
+  - **질의 키 `kind`·`author_team` 신설** (CR-053, DEV-382·DEV-383). 검색과 같은 파서를 쓰며 집계 전용 문법을 만들지 않는다
+  - **`changed_lines` 사전 계산 필드** 추가와 기존 문서 소급 (`put_mapping` + `update_by_query`, CR-053 DEV-386)
+  - **`seq:` 범위 질의의 에폭 바인딩** — 낡은 에폭이면 집계를 계산하지 않는다 (CR-053, DEV-384)
+  - 100만 건 초과 시 `random_sampler` 근사 + `approximate: true` + `sample_probability`
   - 5초 타임아웃
   - 검색과 별도 엔드포인트 (지연 격리)
-  - 강제 권한 필터 결합
+  - 강제 권한 필터 결합 — 건수·그룹·백분위·분포·시계열 어느 숫자에도 예외가 없다
+  - **작성자 본인 리뷰를 첫 리뷰 판정에서 제외**하고 기존 문서를 소급 재계산한다 (FR-STAT-004 AC-3, CR-053 DEV-387). 투영 코드지만 이 WP가 고친다 — **틀린 값을 집계하면 이 WP의 백분위가 틀린다**
+  - **`pnpm test:perf` harness 신설** (DEV-058). 이 WP가 그 자리를 만든다
 - 제외:
-  - 화면 (WP-038)
+  - 화면 (WP-038). **이 WP는 API까지다** — `WP-010`·`WP-036`이 같은 자리에서 내린 판단과 같다
+  - `QA-W006-03`·`16`·`17`·`18` — 전부 화면 판정이다 (WP-038)
+  - `author_team_ids`를 실제로 채우는 일 — GHE에서 작성자 팀을 읽는 별도 작업이다. 이 WP는 그 필드를 지목하고, 비어 있으면 비어 있는 대로 답한다
+  - 릴리스 규모 성능 실측 (Gate 5)
 - 완료 기준(DoD):
-  - [ ] QA-W006-01 ~ QA-W006-15가 API 계층에서 통과한다
-  - [ ] 집계 총 건수와 목록 총 건수가 일치한다 (FR-STAT-006 AC-2)
+  - [ ] `QA-W006-01`·`04`·`06`·`07`·`13`·`14`가 API 계층에서 통과한다
+  - [ ] `QA-W006-02`·`05`·`08`·`09`·`10`·`12`·`15`의 **API 몫**이 응답에 실린다 — `truncated`, 400과 사유 코드, 백분위 값과 단위, `low_sample`과 `raw_values`, `excluded_count`와 사유, 구간과 비율, `approximate`. 표시·배지·이동은 `WP-038`이 소유한다
+  - [ ] 집계 총 건수가 **같은 질의·같은 접근 범위를 PR 모집단에 적용한 목록 건수**와 일치한다 (FR-STAT-006 AC-2)
   - [ ] 접근 범위 밖 문서가 집계 건수에 포함되지 않는다 (FR-AUTH-002 AC-5, THR-003)
-  - [ ] 집계 p95가 1500ms 이하다 (NFR-001)
-  - [ ] 사전 계산 필드를 사용하고 조회 시점 script를 쓰지 않는다 (FR-STAT-003 AC-5)
+  - [ ] 다중값 그룹에서 버킷 합이 총계를 넘어도 `total`은 고유 PR 수다 (FR-STAT-001 AC-7)
+  - [ ] `drill_down_query`가 집계와 같은 모집단을 가리킨다 — 실행한 결과가 그 버킷의 PR과 일치한다 (FR-STAT-001 AC-5)
+  - [ ] 낡은 에폭의 `seq:` 질의가 0건이 아니라 `epoch_stale`을 낸다 (FR-STAT-006 AC-6)
+  - [ ] 사전 계산 필드를 사용하고 조회 시점 script를 쓰지 않는다 (FR-STAT-003 AC-5, FR-STAT-005 AC-7)
   - [ ] API 계약의 응답 예시와 실제 응답이 일치한다
+  - [ ] `QA-W006-11`이 통과한다 — 작성자 본인 리뷰가 첫 리뷰로 세어지지 않고, 기존 문서도 소급된다 (FR-STAT-004 AC-3)
+  - [ ] `pnpm test:perf analytics`가 실제 요청을 보내고 p95를 낸다. **작은 데이터셋의 수치를 NFR-001 통과로 적지 않는다** (DEV-058)
 - 검증 방법: `pnpm test:integration analytics`, `pnpm test:perf analytics`
 - 기록: 원장 WP-037 상태, FR-STAT-001~006 매핑
 
@@ -1550,9 +1564,12 @@
 - 관련 화면/플로우: W-006, W-001 / FLOW-005
 - 관련 API/데이터/잡: API-STAT-001~004
 - 선행 WP: WP-037, WP-015
+- **착수 전 결정**: `DEV-380` — Conductor 토큰에 계열 구분 색이 없다(264개 중 0개). 20계열을 어떻게 구분할지 정한 뒤에 착수한다 (원장 6.46장)
 - 구현 범위:
   - `C-030 AggregationPanel`, `C-033 TimeSeriesChart`, `C-034 DistributionChart`, `C-035 PercentileCardRow`
   - 차트는 Conductor semantic 토큰만 사용, 동적 import
+  - **집계가 PR을 대상으로 함을 화면이 밝힌다** — 목록 총계와 집계 총계가 다를 수 있고 그것은 오류가 아니다 (CR-053, FR-STAT-006 AC-2)
+  - `epoch_stale` 응답을 빈 결과가 아니라 **그 사실로** 그린다 (CR-053, DEV-384)
   - 모든 차트에 표 대체 제공
   - 패널별 독립 조회·실패 격리
   - 그룹·버킷·구간 클릭 시 W-001로 이동
