@@ -273,6 +273,22 @@ describe('PR #66 리뷰 P1: 원본 열람이 감사에 남는다', () => {
     }
   });
 
+  it('**두 번째 페이지는 그 커서를 남긴다** (PR #69 리뷰)', async () => {
+    // 첫 페이지만 재면 `cursor: null`이라, **언제나 null을 적는 구현도 통과한다.**
+    const first = await get(OFFICER, '?include_payload=true&limit=1');
+    const cursor = (first.body as { next_cursor: string | null }).next_cursor;
+    expect(cursor, '두 번째 페이지가 없으면 이 시험은 아무것도 재지 않는다').not.toBeNull();
+
+    await get(OFFICER, `?include_payload=true&limit=1&cursor=${encodeURIComponent(cursor as string)}`);
+
+    const rows = await pool.query<{ query: string }>(
+      'select query from audit_record where user_id = $1 order by occurred_at desc limit 1',
+      [OFFICER],
+    );
+    const recorded = JSON.parse(rows.rows[0]?.query ?? '{}') as { cursor?: string | null };
+    expect(recorded.cursor).toBe(cursor);
+  });
+
   it('**기본 조회는 남기지 않는다** — 모든 조회를 남기면 열람 신호가 묻힌다', async () => {
     await pool.query('delete from audit_record where user_id = $1', [OPERATOR]);
     const { status, body } = await get(OPERATOR);
