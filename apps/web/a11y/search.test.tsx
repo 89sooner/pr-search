@@ -17,6 +17,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 
 const params = { current: new URLSearchParams() };
+/**
+ * 조건 변경이 남긴 URL.
+ *
+ * **라우터가 아니라 네이티브 `history.replaceState`를 감시한다** (DEV-376).
+ * `/search`가 `force-dynamic`이라 `router.replace`는 호출마다 RSC 왕복을
+ * 일으키고, 연달아 만지면 그 왕복이 겹쳐 히스토리가 쌓였다. 검증하는 계약은
+ * 그대로다 — **조건 변경은 히스토리를 쌓지 않는다.** 그것을 지키는 수단이
+ * 바뀌었으므로 감시 지점도 함께 옮긴다.
+ */
 const replaced: string[] = [];
 const pushed: string[] = [];
 
@@ -97,6 +106,9 @@ beforeEach(() => {
   params.current = new URLSearchParams();
   replaced.length = 0;
   pushed.length = 0;
+  vi.spyOn(window.history, 'replaceState').mockImplementation((_state, _title, url) => {
+    replaced.push(String(url));
+  });
 });
 
 afterEach(() => {
