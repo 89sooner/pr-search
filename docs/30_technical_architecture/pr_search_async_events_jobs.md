@@ -86,7 +86,7 @@
 무효화는 Redis 키 삭제 + `permission_cache` 행 삭제 + `app_user.access_scope_version` 증가다. **버전 증가가 울타리다** — 회수 직전에 시작된 GHE 조회가 회수 뒤에 끝나 회수 이전 범위를 캐시에 다시 써 넣는 것을 막는다 (DEV-044). 대량 무효화 시 사용자 단위 요청 병합과 동시 요청 상한 20을 적용한다 (FR-AUTH-003 예외 처리).
 
 | JOB-SRCH-001 | 검색 결과 비동기 내보내기 | 수동 (API-SRCH-006) | batch | 없음 | 30분 | EVT-JOB-001 | FR-SRCH-012 |
-| JOB-AUD-001 | 감사·원본 보존 만료 파티션 드롭 | 스케줄 (일 1회) | batch | 3회 | 10분 | - | FR-ING-003, FR-AUTH-004 |
+| JOB-AUD-001 | 감사·원본 파티션 수명 (다가올 파티션 보장 + 만료 드롭) | 스케줄 (일 1회) | batch | 3회 | 10분 | - | FR-ING-003, FR-AUTH-004 |
 | JOB-MIR-001 | 미러 fetch 동기화 | `push` 이벤트 / 스케줄 (6시간) | **mirror** (CR-023, DEV-113 — `sequence` 역할은 WP-021이 세운다) | 3회 | 15분 | - | ADR-005 |
 | JOB-MIR-002 | 커밋 메타데이터 보강 | EVT-ING-003 (`entity_kind: commit`) / 백필 항목 / 수동 재보강 (API-ADM-002) | **mirror** | 항목별 3회 | 30초 (항목) | EVT-JOB-001 (배치 실행 시) | FR-SRCH-002, FR-REL-005, ENT-CORE-003 (CR-024, DEV-112) |
 
@@ -597,7 +597,7 @@ JOB-MIR-002는 **`commit.metadata_ready`를 받아 `commit.metadata_ready`를 �
 | JOB-SEQ-003 정합성 점검 (표본) | 1일 | 04:00 KST | 시퀀스 공간별 최근 1000개 대조. **그래프를 읽지 못하면 공간 상태를 바꾸지 않고 실패로 끝낸다** (CR-033, DEV-171) |
 | JOB-MIR-001 미러 동기화 (보정) | 6시간 | - | push 이벤트 누락 대비 |
 | JOB-MIR-002 커밋 메타데이터 재보강 | 수시 | - | 스케줄 잡이 아니다. `EVT-ING-003`으로 상시 구동되며, 스케줄 항목에 적는 것은 **미보강 잔여분 스윕**뿐이다 (일 1회, 05:00 KST) |
-| JOB-AUD-001 보존 만료 | 1일 | 03:00 KST | 파티션 드롭. **대상은 `raw_event`(3년, FR-ING-003 AC-4)와 `audit_record`(1년, NFR-006) 둘뿐이다** — 인프라 9.6이 같은 잡에 얹었던 "완료 잡·해소된 DLQ 90일 정리"는 승인한 FR이 없어 CR-054가 그 귀속을 제거했다(DEV-407). **행 단위 DELETE가 아니라 파티션 DROP이며 관리 롤이 수행한다** (FR-AUTH-004 AC-3). 드롭한 파티션마다 `retention.purge`를 남긴다 |
+| JOB-AUD-001 보존 만료 | 1일 | 03:00 KST | **다가올 파티션을 먼저 보장한 뒤** 만료 파티션을 드롭한다 (CR-054, DEV-417). **대상은 `raw_event`(3년, FR-ING-003 AC-4)와 `audit_record`(1년, NFR-006) 둘뿐이다** — 인프라 9.6이 같은 잡에 얹었던 "완료 잡·해소된 DLQ 90일 정리"는 승인한 FR이 없어 CR-054가 그 귀속을 제거했다(DEV-407). **행 단위 DELETE가 아니라 파티션 DROP이며 관리 롤이 수행한다** (FR-AUTH-004 AC-3). 드롭한 파티션마다 `retention.purge`를 남긴다 |
 
 ## 10. 운영 지표
 

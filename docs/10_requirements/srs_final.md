@@ -956,29 +956,31 @@ CR-005로 재분류된 항목이 있다. 아래 표는 재분류 후의 최종 �
 
 **감사 대상 액션 정본 (CR-054).** 이 표가 AC-1의 목록이다. 하위 문서는 이 표를 인용하며 **넓히지 않는다.** `상태`가 `활성`인 액션은 그 소유 WP가 완료된 시점에 실제 도달 가능한 경로에서 기록되어야 하고, `미활성`은 소유 WP가 그 기능을 만들 때 함께 배선한다 — **미활성을 누락으로 세지 않는다.**
 
-| `action` | 무엇을 기록하는가 | `target` | 승인 근거 | 소유 WP | 상태 |
-| --- | --- | --- | --- | --- | --- |
-| `search.execute` | 검색 실행 | 질의 문자열 | AC-1 | WP-039 | 활성 |
-| `entity.view` | PR·커밋 상세 조회 | `{kind}:{repository}:{id}` | AC-1 | WP-039 | 활성 |
-| `saved_search.create` | 저장된 검색 생성 | 저장된 검색 ID | FR-SRCH-010 AC-9 | WP-039 | 활성 |
-| `saved_search.update` | 저장된 검색 수정 | 저장된 검색 ID | FR-SRCH-010 AC-9 | WP-039 | 활성 |
-| `saved_search.delete` | 저장된 검색 삭제 | 저장된 검색 ID | FR-SRCH-010 AC-9 | WP-039 | 활성 |
-| `repository.register` | 저장소 등록 | `owner/repo` | FR-ING-009 AC-5 | WP-039 | 활성 |
-| `repository.update` | 저장소 설정 변경 | `owner/repo` | FR-ING-009 AC-5 | WP-039 | 활성 |
-| `repository.unregister` | 저장소 해제 | `owner/repo` | FR-ING-009 AC-5 | WP-039 | 활성 |
-| `job.run` | 잡 실행 요청 | 잡 유형 + 대상 | FR-ADMIN-002 AC-5 | WP-039 | 활성 |
-| `job.pause` | 잡 일시 중지 | 잡 ID + 유형 | FR-ADMIN-002 AC-5 | WP-039 | 활성 |
-| `job.resume` | 잡 재개 | 잡 ID + 유형 | FR-ADMIN-002 AC-5 | WP-039 | 활성 |
-| `job.cancel` | 잡 취소 | 잡 ID + 유형 | FR-ADMIN-002 AC-5 | WP-039 | 활성 |
-| `dead_letter.reprocess` | 실패 대기열 재처리 | 전달 식별자 목록 | AC-1 | WP-039 | 활성 |
-| `reindex.start` | 재색인 실행 | 인덱스 별칭 | AC-1 | WP-039 | 활성 |
-| `sequence_integrity.check` | 시퀀스 정합성 점검 | 시퀀스 공간 | FR-ADMIN-003 AC-5 | WP-039 | 활성 |
-| `sequence.reassign` | 시퀀스 재채번 | 시퀀스 공간 + 신규 에폭 | FR-SEQ-005 AC-5 | WP-039 | 활성 |
-| `raw_event.view_payload` | 원본 payload 열람 | 전달 식별자 또는 저장소 (범위 전체면 그 사실) | FR-ING-010 AC-8 | WP-039 | 활성 |
-| `audit.view` | 감사 기록 조회 | 필터 조건 | AC-8 | WP-039 | 활성 |
-| `retention.purge` | 보존 만료 파티션 드롭 | 파티션명 | FR-ING-003 AC-5 | WP-039 | 활성 |
-| `export.create` | 내보내기 실행 | 잡 ID + 질의 | AC-1 / FR-SRCH-012 AC-4 | **WP-044** | **미활성** |
-| `safe_marker.set` | 안전 구간 표식 등록 | 시퀀스 공간 + 시퀀스 값 | AC-1 / FR-SEQ-006 AC-5 | **WP-041** | **미활성** |
+| `action` | 무엇을 기록하는가 | `target` | `query` | 승인 근거 | 소유 WP | 상태 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `search.execute` | 검색 실행 | `null` | 질의 문자열 | AC-1 | WP-039 | 활성 |
+| `entity.view` | PR·커밋 상세 조회 | `{kind}:{repository}:{id}` | `null` | AC-1 | WP-039 | 활성 |
+| `saved_search.create` | 저장된 검색 생성 | 저장된 검색 ID | 저장한 질의 문자열 | FR-SRCH-010 AC-9 | WP-039 | 활성 |
+| `saved_search.update` | 저장된 검색 수정 | 저장된 검색 ID | 바뀐 뒤의 질의 문자열 | FR-SRCH-010 AC-9 | WP-039 | 활성 |
+| `saved_search.delete` | 저장된 검색 삭제 | 저장된 검색 ID | `null` | FR-SRCH-010 AC-9 | WP-039 | 활성 |
+| `repository.register` | 저장소 등록 | `owner/repo` | `null` | FR-ING-009 AC-5 | WP-039 | 활성 |
+| `repository.update` | 저장소 설정 변경 | `owner/repo` | `null` | FR-ING-009 AC-5 | WP-039 | 활성 |
+| `repository.unregister` | 저장소 해제 | `owner/repo` | `null` | FR-ING-009 AC-5 | WP-039 | 활성 |
+| `job.run` | 잡 실행 요청 | `{잡 유형}:{대상}` | `null` | FR-ADMIN-002 AC-5 | WP-039 | 활성 |
+| `job.pause` | 잡 일시 중지 | `{잡 유형}:{잡 ID}` | `null` | FR-ADMIN-002 AC-5 | WP-039 | 활성 |
+| `job.resume` | 잡 재개 | `{잡 유형}:{잡 ID}` | `null` | FR-ADMIN-002 AC-5 | WP-039 | 활성 |
+| `job.cancel` | 잡 취소 | `{잡 유형}:{잡 ID}` | `null` | FR-ADMIN-002 AC-5 | WP-039 | 활성 |
+| `dead_letter.reprocess` | 실패 대기열 재처리 | 전달 식별자 목록 | `null` | AC-1 | WP-039 | 활성 |
+| `reindex.start` | 재색인 실행 | 인덱스 별칭 | `null` | AC-1 | WP-039 | 활성 |
+| `sequence_integrity.check` | 시퀀스 정합성 점검 | 시퀀스 공간 | `null` | FR-ADMIN-003 AC-5 | WP-039 | 활성 |
+| `sequence.reassign` | 시퀀스 재채번 | `{시퀀스 공간}@{신규 에폭}` | `null` | FR-SEQ-005 AC-5 | WP-039 | 활성 |
+| `raw_event.view_payload` | 원본 payload 열람 | 전달 식별자 또는 저장소 (범위 전체면 그 사실) | 적용된 필터 전부 | FR-ING-010 AC-8 | WP-039 | 활성 |
+| `audit.view` | 감사 기록 조회 | `null` | 적용된 필터 전부 | AC-8 | WP-039 | 활성 |
+| `retention.purge` | 보존 만료 파티션 드롭 | 파티션명 | `null` | FR-ING-003 AC-5 | WP-039 | 활성 |
+| `export.create` | 내보내기 실행 | 잡 ID | 질의 문자열 | AC-1 / FR-SRCH-012 AC-4 | **WP-044** | **미활성** |
+| `safe_marker.set` | 안전 구간 표식 등록 | `{시퀀스 공간}@{시퀀스 값}` | `null` | AC-1 / FR-SEQ-006 AC-5 | **WP-041** | **미활성** |
+
+**두 칸은 서로 다른 것을 담는다 (CR-054, PR #83 리뷰).** `target`은 **행위가 가리킨 대상 하나의 식별자**이고 `query`는 **그 행위가 적용한 조건**이다. 검색은 대상이 하나가 아니므로 `target`이 비고, 상세 조회는 조건이 없으므로 `query`가 빈다. **둘을 섞어 적으면 구현마다 다른 컬럼을 채우고 액션별 시험이 서로 어긋난다.** `ENT-CORE-007`이 두 컬럼을 따로 두는 이유가 그것이다.
 
 **읽기 전용 legacy 값 (CR-054, DEV-405).** `sequence_integrity.reassign`은 `WP-028`이 쓴 값이고 이미 저장된 기록에 남아 있다. AC-3이 갱신을 금지하므로 **그 행을 다시 쓰지 않으며**, 신규 기록은 `sequence.reassign`만 쓴다. `API-ADM-005`의 `action` 필터는 이 값도 받는다.
 
