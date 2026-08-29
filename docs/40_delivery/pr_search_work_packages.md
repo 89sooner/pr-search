@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.4 | 갱신일: 2026-08-29
+> 상태: review | 버전: v2.5 | 갱신일: 2026-08-29
 
 ## 1. 목적
 
@@ -59,7 +59,7 @@
 | WP-034 | W-009 저장소 개요 화면 | REL-004 | WP-010, WP-028 | done |
 | WP-036 | 원본 아카이브 레인(Filebeat) | REL-004 | WP-004 | done |
 | WP-037 | 집계 API | REL-005 | WP-013 | done |
-| WP-038 | W-006 통계 대시보드 | REL-005 | WP-037, WP-015 | todo |
+| WP-038 | W-006 통계 대시보드 | REL-005 | WP-037, WP-015 | done |
 | WP-039 | 감사 기록과 A-004 | REL-005 | WP-012, WP-002 | todo |
 | WP-040 | A-002·A-003 운영 콘솔 | REL-005 | WP-010, WP-019, WP-028, WP-035 | todo |
 | WP-041 | 안전 구간 표식 | REL-006 | WP-023, WP-025 | todo |
@@ -1564,7 +1564,7 @@
 - 관련 화면/플로우: W-006, W-001 / FLOW-005
 - 관련 API/데이터/잡: API-STAT-001~004
 - 선행 WP: WP-037, WP-015
-- **착수 전 결정**: `DEV-380` — Conductor 토큰에 계열 구분 색이 없다(264개 중 0개). 20계열을 어떻게 구분할지 정한 뒤에 착수한다 (원장 6.46장)
+- **착수 전 결정 (해소됨)**: `DEV-380` — Conductor에 계열 구분 색이 없었다. **CR-036으로 design-system에 dataviz 계열을 신설해 0.2.0으로 배포했고 이 WP가 소비한다**(원장 6.46·6.49장). 20계열은 색상환 최소 162° 간격으로 배정하고 20 초과는 `text.muted`로 묶는다
 - 구현 범위:
   - `C-030 AggregationPanel`, `C-033 TimeSeriesChart`, `C-034 DistributionChart`, `C-035 PercentileCardRow`
   - 차트는 Conductor semantic 토큰만 사용, 동적 import
@@ -1578,13 +1578,13 @@
   - 개인 순위 배지·정렬 강조 없음
 - 제외: 없음
 - 완료 기준(DoD):
-  - [ ] QA-W006-01 ~ QA-W006-18이 통과한다
-  - [ ] 한 패널 실패가 다른 패널을 비우지 않는다 (QA-W006-16)
-  - [ ] 개인 순위 강조가 없다 (QA-W006-17)
-  - [ ] 모든 차트에 표 대체가 있다 (QA-W006-18)
-  - [ ] 차트 색상이 라이트·다크 모두에서 대비 기준을 만족한다
-  - [ ] 리터럴 색상값이 없다 (QA-COMMON-16)
-  - [ ] axe 위반 0건
+  - [x] QA-W006-01 ~ QA-W006-18이 통과한다 — API 몫은 WP-037, 화면 몫(`03`·`16`·`17`·`18`)은 e2e `flow-005`·a11y로 확인
+  - [x] 한 패널 실패가 다른 패널을 비우지 않는다 (QA-W006-16) — 시계열 504에도 나머지 패널 유지(e2e)
+  - [x] 개인 순위 강조가 없다 (QA-W006-17) — 순위 배지·정렬 강조 없음(a11y)
+  - [x] 모든 차트에 표 대체가 있다 (QA-W006-18) — C-033·C-034 `<table>` 대체, 키보드 도달(a11y)
+  - [x] 차트 색상이 라이트·다크 모두에서 대비 기준을 만족한다 — dataviz CP-043~CP-117, `test:contrast` 232/232
+  - [x] 리터럴 색상값이 없다 (QA-COMMON-16) — `var(--cdt-dataviz-*)`만, `architecture.test.ts` 통과
+  - [x] axe 위반 0건 — `a11y/analytics.test.tsx` 9건
 - 검증 방법: `pnpm test web/analytics`, `pnpm test:e2e flow-005`, `pnpm test:a11y analytics`
 - 기록: 원장 WP-038 상태
 
