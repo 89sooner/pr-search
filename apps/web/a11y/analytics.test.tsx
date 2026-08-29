@@ -148,6 +148,9 @@ describe('TimeSeriesChart (QA-W006-18, FR-STAT-002)', () => {
     expect(screen.getAllByTestId('bucket-drilldown')).toHaveLength(3);
     // 색은 계열 구분에만 — 범례가 색과 이름을 함께 싣는다 (색 단독 금지)
     expect(screen.getByTestId('series-legend')).toHaveTextContent('payments-core');
+    // M8: 계열 색은 dataviz 토큰이어야 한다 (status/severity 돌려쓰기 금지, ADR-006)
+    const swatch = container.querySelector('[data-testid="series-legend"] span[aria-hidden="true"]');
+    expect((swatch as HTMLElement).style.backgroundColor).toContain('--cdt-dataviz-series-');
     expect(await violations(container)).toEqual([]);
   });
 });
