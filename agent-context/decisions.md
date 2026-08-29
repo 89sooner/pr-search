@@ -930,3 +930,24 @@ URL 파라미터다.
 | `W-007`·`WP-043` = **NOT ACTIVATED** | 미달이 아니라 **측정하지 못했으므로** 활성화 조건이 성립하지 않는다 |
 | 차트 라이브러리를 더하지 않는다 | ADR-006이 "Conductor에 없는 프리미티브는 semantic 토큰만 사용해 구현하고 DEV로 기록해 기여를 제안한다"고 이미 정했다 |
 | 계열 색은 `WP-038` 착수 전 결정 | 토큰 264개에 계열용이 0개인데 화면 계약은 20계열을 요구한다. `status`·`severity`를 돌려 쓰는 길은 ADR-006이 **어휘 오염**으로 금지한다 (DEV-380) |
+
+# 2026-08-29 (2차) 세션 — CR-036 dataviz · DEV-380 · WP-038
+
+## DEV-380을 design-system 기여로 풀었다 (A안)
+| 결정 | 왜 |
+| --- | --- |
+| Conductor에 dataviz 계열을 신설(CR-036) | ADR-006의 "semantic 토큰만" 규칙을 지키고 대비를 Conductor 도구로 증명한다. 제품 측 파생(B)은 제품이 스타일을 새로 정의하는 셈이라 거절, status/severity 재사용은 어휘 오염이라 거절 |
+| 범주형 20 + 순서형 5, 두 테마 nonText | 화면 계약(20계열)을 색으로 얼버무리지 않는다. 순서형은 단일 색조 명도 램프 |
+| 색을 대비 목표 명도로 역산 | 손으로 고르면 3:1을 놓친다. 다크 결속=raised(가장 밝음), 라이트 결속=base(가장 어두움). 인접 계열 162° 간격 |
+| FIXED_GROUP_SIZES에 dataviz:25 | 개수를 빌드에서 강제(FR-TOK-005 증보) |
+
+## WP-038 구현 결정
+| 결정 | 왜 |
+| --- | --- |
+| 시계열 버킷 드릴다운은 클라이언트가 기간만(DEV-396) | 서버가 시계열엔 drill_down_query를 안 준다. merged: 범위 하나이지 그룹 인코딩 재조립이 아니다 |
+| 버킷 상한 nextStart-1ms | merged:는 lte(포함)인데 버킷은 [start,nextStart) 반열림 |
+| Tabs를 Button 조합으로(DEV-397) | Conductor에 Tabs 없음. 외부 라이브러리 안 더한다(ADR-006). Conductor 기여 후보 |
+| 백분위는 p 접두·중첩 overall/groups | 서버 계약이 그렇다(API-STAT-003). "50"을 읽으면 전부 — (Codex 리뷰가 잡음) |
+| groups는 group_by 있을 때만 조회 | 서버가 필수로 요구, 없으면 400 |
+| 집계 탭은 활성일 때만 마운트 | 숨은 채 조회하면 검색 탭의 "서버 안 부름" 계약을 깬다 |
+| audit high를 pnpm.overrides로 | 게이트를 약화하지 않고 패치 버전 고정. dataviz와 무관한 기존 이슈 |

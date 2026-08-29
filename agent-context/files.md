@@ -788,3 +788,30 @@
 | `apps/search-api/src/server.ts` | `registerAnalyticsRoutes` 등록, `analyticsDisplay` |
 | `apps/web/lib/tokens.ts` | `addEquality`를 `@prs/query`에서 재export |
 | `regression/runtime-reachability.test.ts` | 집계 도달성 18건 |
+
+# 2026-08-29 (2차) 세션이 만든 것 (CR-036 · WP-038)
+
+## design-system (CR-036, 0.2.0 배포)
+| 파일 | 무엇 |
+| --- | --- |
+| packages/tokens/src/palette.dark.ts | dataviz 배열 25(정본, nonText hex) |
+| packages/tokens/src/palette.light.ts | dataviz 25 override(라이트 진한 값) |
+| packages/tokens/src/schema.ts | FIXED_GROUP_SIZES.dataviz=25 |
+| packages/tokens/src/contrast-pairs.ts | datavizPairs CP-043~117(25키×3표면) |
+| packages/tokens/etc/tokens.api.md | check:api 스냅숏 갱신 |
+| package.json | pnpm.overrides 9(audit high 해소) |
+
+## PR Search (WP-038)
+| 파일 | 역할 |
+| --- | --- |
+| apps/web/lib/analytics.ts | 순수 계층. URL 상태·요청·패널 상태 판정·드릴다운. 백분위 p 접두, seq_epoch은 seq: 있을 때만 |
+| apps/web/components/AnalyticsView.tsx | 조율. 패널 6개 독립 조회(usePanel enabled), 차트 동적 import |
+| apps/web/components/{AggregationPanel,TimeSeriesChart,DistributionChart,PercentileCardRow}.tsx | C-030·033·034·035 |
+| apps/web/components/Tabs.tsx | WAI-ARIA 탭(DEV-397). roving tabindex, 화살표·Home·End |
+| apps/web/components/SearchAggregationTab.tsx | W-001 집계 탭. 기본 그룹 author, 활성일 때만 조회 |
+| apps/web/app/analytics/page.tsx | /analytics 라우트 |
+| apps/web/lib/nav.ts | /stats → /analytics |
+| apps/web/lib/analytics.test.ts, a11y/analytics.test.tsx, e2e/flow-005.spec.ts | 시험(변이 M1~M10 킬) |
+
+## 손대면 안 되는 것 (갱신)
+집계 서버(apps/search-api/src/analytics/*)는 WP-037이 세웠다 — WP-038은 화면만. 계약은 API-STAT-003(백분위 p 접두)이 정본.

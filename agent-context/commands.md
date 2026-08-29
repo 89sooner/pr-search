@@ -1554,3 +1554,36 @@ RUN=$(gh api "repos/89sooner/pr-search/commits/$SHA/check-runs" \
   --jq '.check_runs[] | select(.conclusion=="failure") | .details_url' | head -1)
 gh api "repos/89sooner/pr-search/actions/jobs/${RUN##*/}/logs" | grep -E 'FAIL|Error'
 ```
+
+# 2026-08-29 (2차) 세션 — design-system 배포 · WP-038
+
+## design-system 토큰 추가 배터리 (전부 돌려야 CI와 맞는다)
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+cd /home/roqkf/design-system
+pnpm --filter @conductor-by-89soone/tokens run build   # 검증+생성물+대비 한 번에
+pnpm typecheck && pnpm test && pnpm lint && pnpm lint:tokens
+pnpm check:api            # ★ 놓치기 쉽다. 드리프트면 --update
+pnpm check:contrast       # 새 쌍 자동 포함
+pnpm size && pnpm check:changesets
+pnpm audit --audit-level high   # ★ 릴리스 전제. 실패하면 pnpm.overrides
+```
+
+## Conductor 릴리스 (changesets)
+```bash
+# CR PR 병합 → version PR(#N) 자동 생성 → squash 병합(봇 저자 유지) →
+gh workflow run release.yml --ref main          # publish 잡 수동 실행(승인 게이트)
+gh api "repos/89sooner/design-system/actions/runs/<RID>/jobs" --jq '.jobs[]|"\(.name):\(.status)/\(.conclusion)"'
+npm view @conductor-by-89soone/tokens version   # 0.2.0 확인
+```
+
+## WP-038 검증
+```bash
+cd /home/roqkf/pr-search
+pnpm --filter @prs/web run typecheck && pnpm lint
+pnpm run test web/lib/analytics && pnpm run test:a11y analytics
+pnpm run test:contrast          # dataviz 포함 232/232
+pnpm --filter @prs/web run build   # e2e 전 필수
+cd apps/web && ./node_modules/.bin/playwright test e2e/flow-005.spec.ts --reporter=line
+```
+gh 주의: `gh run view --json jobs`는 이 버전에서 실패 → `gh api .../runs/<id>/jobs`.
