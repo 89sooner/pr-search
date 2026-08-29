@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=4def3d5d63ff00bd3e81789d57e94414ff088f0b0b399438e80e88ce85b0fe34 bytes=78915 lines=1185 title=리스크-불확실한-가정-함정
+@kv sha256=b3e58d00b338af152ef6b56004b248c95cee97ce0e4ccf907dba843e5d7849ee bytes=84798 lines=1290 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -573,3 +573,52 @@
 @path query-builder.ts:326이 gte/lte. 히스토그램 버킷 [start,nextStart)를 그대로 merged:start..nextStart로 드릴하면 경계를 겹쳐 센다. 상한을 -1ms.
 @h2 design-system version PR엔 CI가 없다
 @path changesets/action이 GITHUB_TOKEN으로 만들어 워크플로를 재트리거하지 않는다. 품질 게이트는 publish 잡이 재빌드하며 다시 본다. squash 시 봇 저자가 유지돼야 version-commit 분류기가 인식한다.
+@p ---
+@h1 2026-08-29 (3차) 세션이 추가한 것 (CR-054 · WP-039)
+@h2 "0건"이라고 적어 온 수를 실제로 세어 보라
+@p "미해결 리뷰 0건"은 세어 본 적이 없는 수였다. 근거는 "후속 PR에서 고쳤다"였고, GitHub 스레드 상태(isResolved)를 본 적이 없었다. 실측하니 병합된 PR 여덟에 22건이
+@path 남아 있었다(DEV-414).
+@code lang=bash sha=813a1895de16 lines=3 kept=3
+|gh api graphql -f query='{ repository(owner:"89sooner",name:"pr-search"){
+|  pullRequests(last:25, states:[OPEN,MERGED]){
+|    nodes{ number state reviewThreads(first:50){nodes{isResolved}} } } } }'
+@p → "고쳤다"와 "스레드가 닫혔다"는 다른 사실이다. 머지 후에는 이 명령으로 센다.
+@h2 계약에 개수를 적으면 그 수가 낡는 자리를 아무도 모른다
+@path WP-039 "13종" · 보안 문서 표 14행 · 액션 문자열 18개. 셋 중 어느 것도 틀리지 않았고
+@path 셋이 서로 다른 것을 세고 있었다. CR-052가 표에 한 행을 더할 때 WP-039의 문구는
+@p 함께 가지 않았고, 그 사실을 드러내는 검사가 없었다.
+@p → 목록으로 적고 개수가 필요하면 그때 센다. 목록에는 소유자와 상태를 함께 적어 "왜 이것이 여기 있는가"를 다음 사람이 다시 묻지 않게 한다.
+@h2 문서가 가리키는 곳을 실제로 열어 보라
+@path RB-18이 파티션 부재 대응으로 JOB-ING-006을 지목했는데 그것은 Elasticsearch 재색인
+@p 잡이었다. 지적은 런북 한 줄이었지만 실제 경로를 찾으러 가니 ensureMonthlyPartitions가
+@path 부트스트랩에서만 호출되고 정기 잡이 어디에도 없었다(DEV-417).
+@p 기본이 3개월치이므로 배포 후 세 달이면 raw_event·audit_record의 INSERT가 전부 거부된다. 코드 주석은 "정기 잡뿐 아니라 부트스트랩에서도 호출되어야 한다"고 적고 있었다 — 그 정기 잡이 존재하지 않는데도.
+@h2 권한은 GRANT로 다 되지 않는다
+@p GRANT ALL ON ALL TABLES TO prs_admin이 있어도
+@b 파티션 생성에는 스키마 CREATE 권한이 필요하고
+@b 테이블 드롭에는 소유권이 필요하다 (어떤 GRANT도 주지 않는다)
+@p 실측하면 SET ROLE prs_admin 뒤의 CREATE TABLE ... PARTITION OF가 permission denied for schema public으로 거절된다.
+@p 부모의 소유권만 옮기면 기존 자식 파티션이 옛 소유자에게 남아 드롭할 수 없다. 마이그레이션이 자식도 함께 옮겨야 한다.
+@h2 시험이 통과하는 조건과 운영이 도는 조건이 다르면 그만큼이 사각지대다
+@p partition-retention.test.ts 열셋이 전부 초록인 동안 운영에서는 그 잡이 아무 일도 하지 못했을 것이다 — 시험이 마이그레이션 소유자 풀로 돌았기 때문이다. 그 연결은 이미 소유자라 위의 두 제약을 아예 만나지 않는다.
+@p → 권한 경계를 지나는 코드는 그 경계를 실제로 지나는 주체로 시험한다. retention-role.test.ts가 로그인 주체 + 멤버십 + SET ROLE로 다시 묻는다.
+@h2 PostgreSQL이 내는 문자열을 JavaScript로 조립하지 마라
+@p pg_get_expr(relpartbound, ...)은 FOR VALUES FROM ('2026-01-01 00:00:00+00') TO (...)를 낸다. 거기서 뽑은 값 뒤에 T00:00:00Z를 붙이면 NaN이 되고, NaN인 경계는 판정에서
+@path 조용히 빠진다(DEV-418).
+@p → regexp_match(...)[1]::timestamptz로 서버가 자기 형식을 읽게 한다. 파싱 갈래가 사라진다. 지우지 못하는 실패는 눈에 띄지만 지워야 할 것을 빠뜨리는 실패는 디스크가 찰 때까지 드러나지 않는다.
+@h2 살아남은 변이는 시험 구멍의 이름이다 — 이번에도 그랬다
+@p M7(감사 조회 응답의 items를 자기 기록에 담음)이 살아남았다. 「응답 본문을 남기지 않는다」 시험이 검색만 호출하고 감사 조회 경로를 부르지 않아 audit.view 기록이 아예 만들어지지 않았다 — 볼 대상 자체가 없었다.
+@p → 두 경로를 모두 지나게 하고 두 액션이 실제로 있는지 먼저 단언한 뒤 같은 변이로 KILLED를 확인했다. 커버리지 시험은 "무엇이 없는가"를 묻기 전에 "무엇이 있는가"를 먼저 단언해야 뜻을 갖는다.
+@h2 귀속하지 못한 실패를 닫지 마라
+@path DEV-420(전량 4회 중 1회)을 열어 두었더니 리뷰 수정 도중 재현됐다. 원인은
+@path ops/sequence-integrity.test.ts가 마지막 시험이 만든 sequence_reassign 잡 행을
+@p 치우지 않은 것 — 뒤에 도는 migrate.test.ts의 migrateDown이 마이그레이션 009를 되돌리면 그 유형을 허용하지 않는 옛 job_type_chk가 복원된다.
+@p 파일 순서가 바뀔 때만 드러난다. 자기 시험은 통과하고 남의 시험이 깨지므로 원인이 있는 곳과 증상이 나타나는 곳이 다르다 — 공유 자원 오염의 다섯 번째 얼굴이다. 닫아 두었으면 이 재현을 "새 결함"으로 보았을 것이다.
+@h2 자기가 지적한 결함을 자기가 다시 만든다
+@path DEV-399를 쓰면서 그 행 자체에 이스케이프하지 않은 파이프를 넣었다. "아홉이
+@p 남았다"고 적으면서 스스로 열 번째가 됐고, 리뷰가 잡았다.
+@p → 사람이 표를 눈으로 세지 않으므로 검사가 없으면 반복된다. 위생 작업에 칸 수를 세는 회귀 시험을 함께 둔다.
+@h2 e2e 플레이크는 e2e가 늘수록 나빠진다
+@path DEV-377(flow-003 뒤로가기)의 재현율이 6회 중 1회에서 3회 중 2회로 올랐다 — 이
+@p 세션이 e2e에 9건을 더해 병렬 부하가 커졌기 때문이다. 단독 실행 3회는 전부 통과한다.
+@p → 미루면 게이트가 먼저 무너진다. 다음 WP가 e2e를 더할 때마다 나빠진다.
