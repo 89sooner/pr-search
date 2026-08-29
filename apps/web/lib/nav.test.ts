@@ -29,6 +29,32 @@ describe('QA-A001-10: 운영 그룹은 역할이 있어야 보인다', () => {
     expect(idsFor('developer', 'security_officer')).toContain('ops-audit');
   });
 
+  /*
+   * QA-A004-06·07 (CR-054, DEV-408).
+   *
+   * 이전 판은 `ops` 섹션을 통째로 두 역할에 열어 **권한 매트릭스와 어긋났다** —
+   * `operator`가 감사 화면을, `security_officer`가 저장소 등록을 보았다.
+   * 두 역할은 서로의 화면에서 403을 받으므로, 보이는 것 자체가 거짓 안내다.
+   */
+  it('QA-A004-06: `operator`에게 감사 항목이 렌더링되지 않는다', () => {
+    const ids = idsFor('developer', 'operator');
+    expect(ids).not.toContain('ops-audit');
+    // 나머지 운영 항목은 그대로 본다 — 항목 단위 판정이지 역할 차단이 아니다.
+    expect(ids).toEqual(expect.arrayContaining(['ops-pipeline', 'ops-repositories']));
+  });
+
+  it('QA-A004-07: `security_officer`에게 저장소 등록 항목이 렌더링되지 않는다', () => {
+    const ids = idsFor('developer', 'security_officer');
+    expect(ids).not.toContain('ops-repositories');
+    // A-001은 CR-052가 연 아카이브 진입점이라 보인다 (DEV-375).
+    expect(ids).toContain('ops-pipeline');
+  });
+
+  it('두 역할을 함께 가지면 둘의 합집합을 본다', () => {
+    const ids = idsFor('operator', 'security_officer');
+    expect(ids).toEqual(expect.arrayContaining(['ops-pipeline', 'ops-repositories', 'ops-audit']));
+  });
+
   it('나머지 역할에게는 **렌더링되지 않는다**', () => {
     // 비활성으로 보여 주면 "여기에 운영 콘솔이 있다"를 알려 준다 (C-002 사용 규칙).
     for (const role of ['developer', 'manager', 'qa', 'release_manager'] as const) {
@@ -74,6 +100,30 @@ describe('그룹 판정이 기본적으로 안전하다', () => {
     for (const entry of NAV_ENTRIES) {
       expect(['search', 'analysis', 'ops'], entry.id).toContain(entry.section);
     }
+  });
+
+  /*
+   * **새 운영 항목의 기본값은 "보이지 않음"이다** (CR-054, DEV-408).
+   *
+   * `allowedRoles`를 빠뜨린 `ops` 항목은 아무에게도 보이지 않는다. 이 시험이
+   * 없으면 그 사실이 "새 화면이 왜 안 보이지"로만 드러나고, 반대 방향의
+   * 실수(모두에게 보임)와 구분되지 않는다.
+   */
+  it('`ops` 항목은 모두 허용 역할을 선언한다', () => {
+    for (const entry of NAV_ENTRIES.filter((e) => e.section === 'ops')) {
+      expect(entry.allowedRoles, entry.id).toBeDefined();
+      expect(entry.allowedRoles?.length, entry.id).toBeGreaterThan(0);
+    }
+  });
+
+  it('허용 역할을 선언하지 않은 `ops` 항목은 아무에게도 보이지 않는다', () => {
+    // 실제 목록을 건드리지 않고 규칙만 확인한다.
+    const orphan: NavEntry = { id: 'ops-new', label: '새 화면', href: '/ops/new', section: 'ops' };
+    const held = new Set<Role>(['operator', 'security_officer']);
+    const visible = [orphan].filter(
+      (entry) => entry.section !== 'ops' || (entry.allowedRoles ?? []).some((r) => held.has(r)),
+    );
+    expect(visible).toHaveLength(0);
   });
 
   it('id와 경로가 겹치지 않는다', () => {

@@ -137,6 +137,9 @@ importers:
       '@prs/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@prs/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@prs/query':
         specifier: workspace:*
         version: link:../../packages/query

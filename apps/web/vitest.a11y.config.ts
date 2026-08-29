@@ -26,6 +26,7 @@ export default defineConfig({
     alias: {
       // 서브패스가 먼저다 — `@prs/authz`가 앞서면 `/roles`가 진입점으로 잡힌다.
       '@prs/authz/roles': fileURLToPath(new URL('../../packages/authz/src/roles.ts', import.meta.url)),
+      '@prs/domain/audit': fileURLToPath(new URL('../../packages/domain/src/audit.ts', import.meta.url)),
       '@prs/contracts': resolvePackage('contracts'),
       '@prs/query': resolvePackage('query'),
     },

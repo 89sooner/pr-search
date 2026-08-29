@@ -21,6 +21,7 @@ import { authenticateSession } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
 import { DEFAULT_SORT_KEY } from '@prs/es';
 import { CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope.js';
+import { recordAuditBestEffort } from '../audit/recorder.js';
 import { readCursor, readFacets } from '../cursor/params.js';
 import { facetResponseFields } from './facets.js';
 import { resolveSequenceContext, type SequenceContextOutcome } from './sequence-context.js';
@@ -164,6 +165,33 @@ export interface SearchRouteOptions extends SearchDeps {
   readonly loginPath: string;
 }
 
+/**
+ * 검색 실행 감사 (`FR-AUTH-004` AC-1 "검색 실행", WP-039).
+ *
+ * **`target`은 `null`이다** (AC-2, CR-054 DEV-415). 검색은 대상이 하나가
+ * 아니므로 그 칸에 담을 식별자가 없고, 질의 문자열은 `query`가 담는다 —
+ * 두 칸은 서로 다른 것을 담으며 `ENT-CORE-007`이 따로 둔 이유가 그것이다.
+ *
+ * **에폭이 낡아 조회를 실행하지 않은 경우도 남긴다.** 사용자가 무엇을 물었는지가
+ * 감사의 대상이지 서버가 답했는지가 아니다.
+ */
+async function recordSearchAudit(
+  pool: Pool,
+  userId: string,
+  raw: string,
+  resultCode: string,
+  correlationId: string,
+): Promise<void> {
+  await recordAuditBestEffort(pool, {
+    userId,
+    action: 'search.execute',
+    target: null,
+    query: raw,
+    resultCode,
+    correlationId,
+  });
+}
+
 export function registerSearchRoutes(app: FastifyInstance, options: SearchRouteOptions): void {
   const { auth, loginPath, ...deps } = options;
 
@@ -250,6 +278,7 @@ export function registerSearchRoutes(app: FastifyInstance, options: SearchRouteO
          * 계산하지 않은 것을 빈 값으로 채우면 "구간이 비었다"로 읽힌다.
          * `API-SEQ-001`이 같은 이유로 같은 모양을 쓴다.
          */
+        await recordSearchAudit(deps.pool, userId, raw, 'epoch_stale', correlationId);
         return reply.send({
           query: raw,
           parsed: ast,
@@ -276,6 +305,9 @@ export function registerSearchRoutes(app: FastifyInstance, options: SearchRouteO
         },
         deps,
       );
+
+
+      await recordSearchAudit(deps.pool, userId, raw, String(result.total.value), correlationId);
 
       return reply.send({
         query: raw,

@@ -8,6 +8,8 @@ export default defineConfig({
   resolve: {
     // 테스트는 빌드 산출물이 아니라 소스를 직접 읽는다. pnpm build 없이도 pnpm test가 돈다.
     alias: {
+      // 서브패스가 먼저다 — 진입점 별칭이 앞서면 `/audit`이 그것으로 잡힌다.
+      '@prs/domain/audit': fileURLToPath(new URL('./packages/domain/src/audit.ts', import.meta.url)),
       '@prs/domain': resolvePackage('domain'),
       '@prs/metrics': resolvePackage('metrics'),
       '@prs/contracts': resolvePackage('contracts'),

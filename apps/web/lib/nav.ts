@@ -26,13 +26,25 @@ export interface NavEntry {
   readonly label: string;
   readonly href: string;
   readonly section: NavSection;
+  /**
+   * 이 항목을 볼 수 있는 역할.
+   *
+   * **`ops` 항목은 반드시 지정한다** (CR-054, DEV-408). 없으면
+   * `visibleNavEntries`가 그 항목을 아무에게도 보이지 않는다 — 새 운영 화면의
+   * 기본값이 **보이지 않음**이어야 하기 때문이다. `ops`가 아닌 항목은 역할
+   * 제한이 없으므로 비워 둔다.
+   */
+  readonly allowedRoles?: readonly Role[];
 }
 
 /**
- * 운영 그룹을 볼 수 있는 역할.
+ * 운영 그룹 전체를 볼 자격이 있는 역할.
  *
- * `security_officer`가 들어 있는 이유는 감사 화면(A-004)이 같은 그룹에
- * 있기 때문이다 — `operator`만 두면 보안 담당자가 자기 화면을 못 본다.
+ * **어느 항목이 보이는가는 이 집합이 정하지 않는다** (CR-054, DEV-408).
+ * 이전 판은 이 집합 하나로 `ops` 섹션을 통째로 열어 **`operator`에게 감사
+ * 화면(A-004)이, `security_officer`에게 저장소 등록(A-002)이 보였다** — 권한
+ * 매트릭스가 둘 다 막는 자리다. 지금은 항목마다 `allowedRoles`가 정하고 이
+ * 집합은 **섹션 머리글을 그릴지**만 판정한다.
  */
 export const OPS_ROLES: ReadonlySet<Role> = new Set<Role>(['operator', 'security_officer']);
 
@@ -49,9 +61,34 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { id: 'ranges', label: '범위 조사', href: '/ranges', section: 'analysis' },
   { id: 'releases', label: '릴리스', href: '/releases', section: 'analysis' },
   { id: 'analytics', label: '통계', href: '/analytics', section: 'analysis' },
-  { id: 'ops-pipeline', label: '파이프라인', href: '/ops/pipeline', section: 'ops' },
-  { id: 'ops-repositories', label: '저장소 등록', href: '/ops/repositories', section: 'ops' },
-  { id: 'ops-audit', label: '감사 기록', href: '/ops/audit', section: 'ops' },
+  /*
+   * A-001 파이프라인. `security_officer`도 보되 그 역할에게는 `A-001-ARCHIVE`
+   * 섹션만 렌더링된다 (CR-052, DEV-375). 진입점은 열고 내용은 화면이 가른다 —
+   * 권한을 화면 단위로 넓히지 않는 것이 `CR-050`부터의 규율이다.
+   */
+  {
+    id: 'ops-pipeline',
+    label: '파이프라인',
+    href: '/ops/pipeline',
+    section: 'ops',
+    allowedRoles: ['operator', 'security_officer'],
+  },
+  /* A-002 저장소 등록. `operator` 전용이다 (권한 매트릭스). */
+  {
+    id: 'ops-repositories',
+    label: '저장소 등록',
+    href: '/ops/repositories',
+    section: 'ops',
+    allowedRoles: ['operator'],
+  },
+  /* A-004 감사 기록. `security_officer` 전용이다 (FR-AUTH-004 AC-5). */
+  {
+    id: 'ops-audit',
+    label: '감사 기록',
+    href: '/ops/audit',
+    section: 'ops',
+    allowedRoles: ['security_officer'],
+  },
 ];
 
 export const SECTION_LABELS: Readonly<Record<NavSection, string>> = {
@@ -66,15 +103,22 @@ export function canSeeOps(roles: readonly Role[]): boolean {
 }
 
 /**
- * 역할에 따라 보이는 항목만 남긴다 (QA-A001-10).
+ * 역할에 따라 보이는 항목만 남긴다 (QA-A001-10, QA-A004-06·07).
  *
- * 제한이 걸린 그룹은 `ops` 하나뿐이지만, 판정을 `section`으로 하는 이유는
- * 항목이 늘 때 **기본이 안전한 쪽**이기 때문이다 — 새 운영 화면을 `ops`에
- * 넣으면 필터를 고치지 않아도 저절로 가려진다.
+ * **`ops` 항목은 `allowedRoles`에 자기 역할이 있을 때만 보인다** (CR-054,
+ * DEV-408). 목록을 비워 두거나 필드를 빠뜨리면 **아무에게도 보이지 않는다** —
+ * 새 운영 화면의 기본값이 "보이지 않음"이어야 하고, 그것이 섹션 단위 판정이
+ * 주지 못한 안전성이다. 이전 판은 `ops`이기만 하면 두 역할 모두에게 열려
+ * 권한 매트릭스와 어긋났다.
+ *
+ * `ops`가 아닌 항목은 역할 제한이 없다.
  */
 export function visibleNavEntries(roles: readonly Role[]): readonly NavEntry[] {
-  const ops = canSeeOps(roles);
-  return NAV_ENTRIES.filter((entry) => entry.section !== 'ops' || ops);
+  const held = new Set(roles);
+  return NAV_ENTRIES.filter((entry) => {
+    if (entry.section !== 'ops') return true;
+    return (entry.allowedRoles ?? []).some((role) => held.has(role));
+  });
 }
 
 /**

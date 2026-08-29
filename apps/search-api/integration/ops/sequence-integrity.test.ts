@@ -143,6 +143,21 @@ describe('API-ADM-007 시퀀스 정합성 점검 (WP-028)', () => {
   }, 180_000);
 
   afterAll(async () => {
+    /*
+     * **자기가 만든 잡 행을 치운다** (WP-039 / DEV-420).
+     *
+     * 이 파일은 재채번 잡을 큐에 넣고 `beforeEach`에서만 지운다 — 마지막
+     * 시험이 남긴 행은 그대로 남는다. 그 행 하나가 뒤에 도는
+     * `packages/db/integration/migrate.test.ts`를 깨뜨린다: 그 시험의
+     * `migrateDown`이 **마이그레이션 009를 되돌리면 `sequence_reassign`을
+     * 허용하지 않는 옛 `job_type_chk`가 복원되고**, 남은 행이 그 제약을
+     * 위반한다.
+     *
+     * **파일 순서가 바뀔 때만 드러난다** — 전량 실행 네 번 중 한 번 실패한
+     * 자리가 여기였다. 자기 시험은 통과하고 남의 시험이 깨지므로 원인이
+     * 있는 곳과 증상이 나타나는 곳이 다르다. 오염을 만든 쪽이 치운다.
+     */
+    await pool?.query("DELETE FROM job WHERE type IN ('sequence_reassign', 'sequence_integrity')");
     await app?.close();
     await pool?.end();
   });
@@ -349,11 +364,29 @@ describe('API-ADM-007 시퀀스 정합성 점검 (WP-028)', () => {
       expect((second.body['error'] as Record<string, unknown>)['code']).toBe('JOB_CONFLICT');
     });
 
-    it('재채번 실행이 감사 기록에 남는다', async () => {
+    /*
+     * **`sequence.reassign`이 정본이다** (CR-054, DEV-405).
+     *
+     * `WP-028`이 세운 이 경로는 `sequence_integrity.reassign`을 썼고 자동
+     * 경로(`pipeline-worker`)는 처음부터 `sequence.reassign`을 썼다 —
+     * **같은 사실이 두 이름으로 남았다.** 신규 쓰기를 하나로 모았고, 이미
+     * 저장된 옛 행은 고치지 않는다 (`FR-AUTH-004` AC-3).
+     */
+    it('재채번 실행이 감사 기록에 남는다 — 정본 어휘로', async () => {
       await seedSequence([{ seq: 1, sha: shaOf(1) }]);
       await post({ repository: SLUG, base_branch: MAIN, action: 'reassign', confirmation: SLUG });
       const records = await auditRepo.listAuditRecords(pool, {}, 20);
-      expect(records.some((row) => row.action === 'sequence_integrity.reassign')).toBe(true);
+      expect(records.some((row) => row.action === 'sequence.reassign')).toBe(true);
+      // 옛 이름으로는 더 쓰지 않는다.
+      expect(records.some((row) => row.action === 'sequence_integrity.reassign')).toBe(false);
+    });
+
+    it('대상에 신규 에폭이 함께 남는다 (FR-SEQ-005 AC-5)', async () => {
+      await seedSequence([{ seq: 1, sha: shaOf(1) }]);
+      await post({ repository: SLUG, base_branch: MAIN, action: 'reassign', confirmation: SLUG });
+      const records = await auditRepo.listAuditRecords(pool, { action: 'sequence.reassign' }, 5);
+      // `{공간}@{신규 에폭}` — 어느 공간이 어느 에폭으로 갔는지가 기록의 값이다.
+      expect(records[0]?.target).toMatch(/@\d+$/);
     });
   });
 

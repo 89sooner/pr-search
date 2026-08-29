@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v5.9 | 갱신일: 2026-08-29
+> 상태: review | 버전: v6.0 | 갱신일: 2026-08-29
 
 ## 1. 목적
 
@@ -73,7 +73,7 @@
 | WP-036 | 원본 아카이브 레인(Filebeat) | REL-004 | done | 에이전트 | PR #66 | DoD 9항 전부 통과 (6.44장). 통합 16건(실 ES) + 단위 19건 + 도달성 5건. **적대적 변이 11종 중 9킬 · 2건은 시험 구멍이었고 메운 뒤 같은 변이로 KILLED** | 계약은 CR-052가 먼저 닫았다. `API-ADM-008` 신설, Filebeat 사이드카, 파일 회전 |
 | WP-037 | 집계 API | REL-005 | done | 에이전트 | PR #76 (병합 `d3b2590`) | DoD 11항 전부 통과 (6.48장) | **CR-053 계약 선행.** 착수 전 감사가 계약 공백 열을 찾아 계약을 먼저 닫았고 이 구현이 그것을 따랐다. 구현 중 DEV-391~394를 등록·해소했다. `pnpm test:perf` harness를 신설해 DEV-058의 절반을 닫았다 — **릴리스 규모 실측은 Gate 5로 남는다** |
 | WP-038 | W-006 통계 대시보드 | REL-005 | done | 에이전트 | PR #80 (병합 `b5ae933`) | DoD 통과 (6.49장) | **DEV-380 선행 해소.** Conductor dataviz 토큰을 CR-036으로 신설·0.2.0 배포한 뒤 착수했다. 패널 6개 독립 조회·실패 격리, epoch_stale·approximate·truncated를 사실대로, 그룹·분포 드릴다운은 서버 질의 그대로, 시계열 버킷은 클라이언트가 기간만(DEV-396). Conductor에 Tabs가 없어 WAI-ARIA 탭을 조합했다(DEV-397). `/stats`→`/analytics` 경로 정정 |
-| WP-039 | 감사 기록과 A-004 | REL-005 | todo | - | - | - | - |
+| WP-039 | 감사 기록과 A-004 | REL-005 | done | 에이전트 | (PR 대기) | DoD 12항 전부 통과 (6.51장). 단위 +54 · 통합 +70(실 PG·ES) · 회귀 +36 · a11y +11 · e2e +9. **적대적 변이 11종 중 10 즉시 킬 · 1건(M7)이 시험 구멍을 드러냈고 메운 뒤 KILLED.** 머지 전 리뷰 셋도 전부 실결함이었다 (6.51.3장, DEV-421~423) | **CR-054 계약 선행.** 착수 전 감사가 계약 공백 열넷을 찾아 계약을 먼저 닫았다. 구현 중 `DEV-418~420`을 등록했다 — `418`은 파티션 경계 파싱이 조용히 전부 빠지던 결함(통합 시험이 잡았다), `419`는 `C-013` 재사용의 뜻, `420`은 **귀속하지 못한 전량 실패 1건으로 열어 둔다** |
 | WP-040 | A-002·A-003 운영 콘솔 | REL-005 | todo | - | - | - | - |
 | WP-041 | 안전 구간 표식 | REL-006 | todo | - | - | - | - |
 | WP-042 | 이분 탐색 보조 | REL-006 | todo | - | - | - | - |
@@ -149,7 +149,7 @@
 | FR-AUTH-001 | WP-012, WP-015 | `packages/authz/src/{oidc,pkce,id-token,jwks,session,session-store,roles,config}.ts`, `apps/search-api/src/auth/*`, `apps/web/app/auth/{login,callback,logout}/route.ts`, `apps/web/app/api/[...path]/route.ts`, `apps/web/lib/{oidc-state,proxy}.ts` | `packages/authz/src/{id-token,oidc,session,session-store,roles}.test.ts`, `apps/search-api/integration/authz/enforcement.test.ts`, `apps/web/lib/{oidc-state,proxy}.test.ts`, `apps/web/e2e/shell.spec.ts` | done (AC-1~AC-5. WP-015가 브라우저 왕복을 채웠다 — 인가 리다이렉트·PKCE·`state`/`nonce` 검증·세션 발급·원래 경로 복귀·로그아웃. 왕복 상태는 짧은 수명 HttpOnly 쿠키로 나른다(DEV-071). **실제 IdP 왕복은 자격 증명이 없어 NOT RUN** — e2e는 OIDC 미구성 배포의 503과 라우트 계약까지 건다) |
 | FR-AUTH-002 | WP-012 | `packages/authz/src/{scope,scope-source,scope-database}.ts`, `packages/es/src/scoped-query.ts`, `apps/search-api/src/auth/{principal,errors,me}.ts` | `packages/es/integration/scope-enforcement.test.ts`, `packages/es/src/architecture.test.ts`, `packages/authz/integration/scope.test.ts`, `apps/search-api/integration/authz/enforcement.test.ts` | done (AC-1~AC-6. 단, 검색·집계 API 자체는 WP-013·WP-014가 세운다 — 여기서는 필터와 강제 지점을 세우고 ES에 직접 물어 결과 집합을 검증했다) |
 | FR-AUTH-003 | WP-012 | `packages/authz/src/{scope,invalidation}.ts`, `packages/db/src/repositories/auth.ts`, `packages/db/migrations/007_auth.up.sql`, `apps/ingest-gateway/src/{ingest,server}.ts`, `apps/pipeline-worker/src/authz.ts` | `packages/authz/{src/invalidation.test.ts,integration/scope.test.ts}`, `apps/pipeline-worker/src/authz.test.ts`, `apps/ingest-gateway/src/ingest.test.ts` | done (AC-1~AC-5. 적중률은 `access_scope_lookup_total{outcome}`) |
-| FR-AUTH-004 | WP-002, WP-039 | `packages/db/migrations/004_app_state.up.sql`, `packages/db/migrations/005_roles.up.sql` | `packages/db/integration/audit-grants.test.ts` (AC-3) | partial (감사 테이블과 롤 권한. 기록·조회는 WP-039) |
+| FR-AUTH-004 | WP-002, WP-039 | `packages/domain/src/audit.ts` (정본 어휘), `apps/search-api/src/audit/{recorder,routes,cursor}.ts`, `apps/pipeline-worker/src/retention.ts`, `packages/db/src/{partitions,pool,config}.ts`, `packages/db/src/repositories/audit.ts`, `packages/db/migrations/{004,005,018}_*.sql`, `apps/web/{lib/audit.ts,components/Audit*.tsx,app/ops/audit/page.tsx,lib/nav.ts}` | `integration/audit/{audit-records,failure-isolation,action-coverage}.test.ts`, `pipeline-worker/integration/retention/*.test.ts`, `packages/db/integration/audit-grants.test.ts` (AC-3), `apps/web/{lib/audit.test.ts,a11y/audit.test.tsx,e2e/audit.spec.ts}`, `regression/runtime-reachability.test.ts` | done — AC-1~8. **미활성 액션 둘**(`export.create`/WP-044, `safe_marker.set`/WP-041)은 소유 WP가 활성화할 때 배선한다. 누락이 아니다 (CR-054) |
 | FR-ADMIN-001 | WP-010, WP-040 | `apps/search-api/src/ops/pipeline-status.ts`, `packages/db/src/repositories/pipeline.ts`, `packages/bus/src/{types,redis-streams,in-memory}.ts`, `packages/metrics/src/index.ts` | `apps/search-api/integration/ops/pipeline-status.test.ts`, `packages/bus/integration/contract.ts` | partial (AC-1의 단계별 지연을 뺀 전 항목과 AC-2·AC-3 충족. 단계별 지연은 지표 저장소가 설정된 경우에만(DEV-029), 시퀀스 공간 요약은 WP-021 이후. AC-4 `operator` 역할 판정은 WP-012) |
 | FR-ADMIN-002 | WP-002, WP-019, WP-040 | `packages/db/migrations/004_app_state.up.sql` (`job_active_uk`), `packages/db/src/repositories/job.ts` | `packages/db/integration/constraints.test.ts` (AC-4) | partial (동시 실행 제약. 콘솔은 WP-040) |
 | FR-ADMIN-003 | WP-028, WP-040 | `apps/search-api/src/ops/sequence-integrity.ts` (API-ADM-007), `apps/search-api/src/ops/routes.ts`, `apps/pipeline-worker/src/integrity.ts` (JOB-SEQ-003), `packages/domain/src/integrity.ts` (대조 규칙), `packages/db/src/repositories/integrity.ts`, `packages/db/migrations/009_job_type_reassign.up.sql` | `apps/search-api/integration/ops/sequence-integrity.test.ts`, `apps/search-api/src/ops/sequence-integrity.test.ts`, `packages/domain/src/integrity.test.ts`, `apps/pipeline-worker/src/integrity.test.ts`, `packages/db/integration/job-type-reassign.test.ts` | done — AC-1~AC-5 전부. **점검은 관찰이며 시퀀스 공간 상태를 바꾸지 않는다** (SRS v2.5, CR-033 DEV-171). 비교 규칙은 `firstSequenceMismatch` 하나를 API와 잡이 함께 쓴다. **운영 배선은 CR-034가 세웠다**: `apps/search-api/src/runtime.ts`(조립 이음매, DEV-177), `apps/pipeline-worker/src/sequence-repair-runner.ts`(JOB-SEQ-002 러너, DEV-178), `repairSequence`(검증 prefix + 최초 불일치 재계산, DEV-182), `deploy/k8s/pipeline-worker-sequence.yaml`(DEV-183). A-003 화면은 WP-040 몫이다 |
@@ -578,7 +578,7 @@
 | DEV-374 | 2026-08-28 | **아카이브 조회 진입을 두 화면 중 어느 쪽도 소유하지 않는다.** 추적 매트릭스는 `FR-ING-010`의 보조 화면으로 `A-004`를 지목하고 "원본 아카이브 조회 진입"이라 적는데, `WP-039`(A-004)의 구현 범위에도 `QA-A004-01~05`에도 **아카이브가 없다.** A-004는 `FR-AUTH-004` 감사 기록 전용 화면이고 원본 웹훅 이벤트는 조사 **대상**이지 조회 **이력**이 아니다. 조회를 `A-001`로 일원화하고 매트릭스에서 `A-004`를 뺐다 | FR-ING-010 / WP-039, WP-040 | 문서 간 모순 | CR-052 | resolved |
 | DEV-375 | 2026-08-28 | **화면의 역할 제한이 AC-5와 어긋난다.** `A-001`은 `operator` 전용 화면이고 `QA-A001-10`이 "`operator`가 아닌 역할에게 운영 내비게이션이 렌더링되지 않는다"를 검증하는데, `FR-ING-010` AC-5는 `security_officer`도 아카이브를 조회하게 요구한다 — **그 역할은 화면에 들어갈 수 없으므로 승인된 조회 자격을 쓸 수 없다.** 권한을 화면 단위로 넓히는 대신 `A-001-ARCHIVE` **섹션만** 열고, `security_officer`가 진입하면 그 섹션만 렌더링하는 `archive_only` 상태를 정의했다. 승인된 보안 계약을 뒤집지 않고 경계를 정확히 긋는 것은 `CR-050`이 `API-ADM-001`·`API-ADM-006`에서 내린 판단과 같다 | FR-ING-010, FR-ADMIN-001 / WP-036, WP-040 | 문서 간 모순 | CR-052 | resolved |
 | DEV-376 | 2026-08-28 | **조건 변경이 히스토리를 쌓는다 — `force-dynamic` 위의 `router.replace`가 겹치기 때문이다.** W-001의 패싯·정렬 변경은 `router.replace`를 쓰는데 `/search`가 `force-dynamic` 서버 컴포넌트라 **호출마다 RSC 왕복이 일어난다.** 연달아 만지면 그 왕복이 겹치고, 겹친 내비게이션이 히스토리 항목을 하나 더 남기는 경우가 생겨 **"다섯 번 만져도 뒤로가기 한 번"이라는 계약(FLOW-001 4단계)이 깨진다.** 서버가 바쁠수록 자주 깨지므로 전량 e2e에서만 드러났고 **진단 로그 한 줄을 넣으면 타이밍이 바뀌어 사라졌다** — 그래서 오래 "간헐 실패"로 남아 있었다. 실측 재현율은 **6회 중 4회**였다. 네이티브 `history.replaceState`(Next 14.1+에서 라우터와 통합되어 `useSearchParams`를 갱신한다)로 바꿔 **서버 왕복 자체를 없앴다** — 이 화면의 데이터는 클라이언트가 API로 가져오므로 조건이 바뀔 때 서버 컴포넌트를 다시 그릴 이유가 없다. 수정 뒤 `flow-001.spec.ts:127`은 6회 전부 통과한다 | FLOW-001 / WP-016, WP-036 | 구현 결함 | CR-052 | resolved |
-| DEV-377 | 2026-08-28 | **뒤로가기 뒤 검색 화면 렌더가 병렬 부하에서 5초를 넘는다.** `flow-003.spec.ts:176`은 커밋 상세·PR 상세를 거쳐 뒤로가기 두 번으로 돌아오는데, URL은 `/search`가 되지만 `searchbox`가 5초 안에 나타나지 않는 경우가 남는다. DEV-376을 고친 뒤 재현율이 **6회 중 4회에서 1회로** 떨어졌으나 0은 아니다. `force-dynamic`이라 뒤로가기도 서버 렌더를 요구하고, 전량 e2e의 병렬 부하가 그것을 느리게 만든다 — **단독 실행에서는 4회 모두 통과한다.** **`experimental.staleTimes.dynamic = 30`을 실제로 시도했고 효과가 없었다** — 8회 중 3회 실패로 오히려 나빴다(적용 전 6회 중 1회). 뒤로가기가 클라이언트 캐시를 써도 이 실패가 남는다는 뜻이므로 원인은 라우터 캐시가 아니다. 설정을 되돌렸다 — 근거 없이 남기면 다음 사람이 그것을 원인 후보에서 지우지 못한다. `force-dynamic` 정책 자체나 화면의 마운트 경로를 봐야 하며 그것은 화면 소유 WP의 판단이다. **재시도 통과를 해소로 적지 않는다** | FLOW-002 / WP-016 | 구현 결함 | CR-052 | open |
+| DEV-377 | 2026-08-28 | **뒤로가기 뒤 검색 화면 렌더가 병렬 부하에서 5초를 넘는다.** `flow-003.spec.ts:176`은 커밋 상세·PR 상세를 거쳐 뒤로가기 두 번으로 돌아오는데, URL은 `/search`가 되지만 `searchbox`가 5초 안에 나타나지 않는 경우가 남는다. DEV-376을 고친 뒤 재현율이 **6회 중 4회에서 1회로** 떨어졌으나 0은 아니다. `force-dynamic`이라 뒤로가기도 서버 렌더를 요구하고, 전량 e2e의 병렬 부하가 그것을 느리게 만든다 — **단독 실행에서는 4회 모두 통과한다.** **`experimental.staleTimes.dynamic = 30`을 실제로 시도했고 효과가 없었다** — 8회 중 3회 실패로 오히려 나빴다(적용 전 6회 중 1회). 뒤로가기가 클라이언트 캐시를 써도 이 실패가 남는다는 뜻이므로 원인은 라우터 캐시가 아니다. 설정을 되돌렸다 — 근거 없이 남기면 다음 사람이 그것을 원인 후보에서 지우지 못한다. `force-dynamic` 정책 자체나 화면의 마운트 경로를 봐야 하며 그것은 화면 소유 WP의 판단이다. **재시도 통과를 해소로 적지 않는다** | FLOW-002 / WP-016 | 구현 결함 | CR-052 | open — **2026-08-29 재현율이 올랐다.** `WP-039`가 e2e에 9건을 더한 뒤 전량 3회 중 **2회**에서 실패했고 단독 실행 3회는 전부 통과했다. 병렬 부하가 원인이라는 기존 판정과 같은 방향이며 **부하가 늘자 재현율이 함께 올랐다** — 6회 중 1회에서 3회 중 2회로. `WP-016` 소관이고 `WP-039`와 무관하나, 다음 WP가 e2e를 더할 때마다 나빠질 것이므로 **미루면 게이트가 먼저 무너진다** |
 | DEV-378 | 2026-08-28 | **범위 전용 키의 스칼라는 0건이 아니라 방향이 둘이었다 — 부정형은 필터가 통째로 사라진다.** DEV-364는 `seq:1234`가 `MATCH_NONE`이 되어 조용히 0건이라고 적었고 그 판정 위에서 "고치지 않는다"를 결정했다. 실측하니 **부정형 `-seq:1234`는 `must_not: [match_none]`이 되어 아무것도 걸러내지 않았다** — 사용자는 서수 하나를 뺀 목록을 기대하는데 필터가 없는 전체를 받는다. `equalityClause`의 주석은 "필터를 잃는 것보다 0건이 낫다"고 적었지만 **그 논리는 `must_not`에서 뒤집힌다.** 하나는 너무 좁고 하나는 너무 넓은데 둘 다 오류를 내지 않으므로, 넓어지는 쪽이 알아채기 더 어렵다 (CR-051이 `sequenceEpoch`를 선택 인자로 두지 않은 것과 같은 자리다 — fail-open은 결과를 재는 시험에 잡히지 않는다) | WP-011, WP-013 / FR-SRCH-005 | 구현 결함 | 없음 (DEV-364와 함께 해소) | **resolved (2026-08-28)** — 파서가 거절하므로 두 방향이 함께 닫혔다. 빌더에도 `RangeKeyEqualityError`를 두어 **AST를 직접 조립하는 경로가 생겨도 `MATCH_NONE`으로 삼키지 않게** 했다 |
 | DEV-379 | 2026-08-28 | **같은 결함이 `merged`·`created`에도 있었다.** 셋 다 `RANGE_FIELDS`에만 있고 `TERM_FIELDS`에는 없다 — `merged:2026-08-10`처럼 하루를 지목하려는 입력이 `MATCH_NONE`이 되어 조용히 0건이었다. DEV-364가 `seq`만 지목한 것은 그 자리에서 `seq`만 보았기 때문이며, **키 하나가 아니라 "범위 전용 키" 부류의 문제였다.** 규칙을 키마다 다르게 두면 그 차이가 다음 결함이 되므로 셋을 하나의 규칙으로 닫는다 | WP-011, WP-013 / FR-SRCH-005 AC-1·AC-3 | 구현 결함 | 없음 (DEV-364와 함께 해소) | **resolved (2026-08-28)** — 파서가 `isRangeKey` 하나로 셋을 함께 거절하고, 오류 메시지는 `RANGE_KEY_EXAMPLE`로 **키마다 다른 예시**를 보인다 (`seq`에 날짜 예를 주면 사용자가 두 번 틀린다) |
 | DEV-380 | 2026-08-29 | **차트가 20계열을 색으로 구분하라고 요구하는데 승인된 디자인 시스템에 계열 색이 없다.** 와이어프레임 `W-006-TIMESERIES`는 "그룹별 최대 20계열"을, 8장 차트 원칙은 "색을 **계열 구분에만** 사용한다"를, `C-033`은 "색상 대비는 라이트·다크 두 테마 모두에서 검증한다"를 정한다. 그런데 `@conductor-by-89soone/tokens@0.1.0`의 **토큰 264개를 전부 훑어도 `chart`·`viz`·`series`·`categorical` 어느 이름도 0건**이다. 가장 가까운 `accent`는 넷뿐이라 20계열에 모자라고, `status`(일곱)·`severity`(넷)를 돌려 쓰는 길은 **ADR-006이 금지한다** — "Conductor의 `Status`/`Tone`/`Severity` 어휘를 그대로 쓴다"이므로 초록이 "정상"을 뜻하는 자리에서 그것을 팀 이름에 쓰면 색에 없는 뜻을 사용자가 읽는다. **차트 프리미티브가 없다는 것은 공백이 아니다** — ADR-006이 "Conductor에 없는 프리미티브는 semantic 토큰만 사용해 구현하고 DEV로 기록해 기여를 제안한다"고 이미 정했고 이 등재가 그 절차다. 공백은 **그 토큰이 실제로는 없다는 것**이다 | FR-STAT-002 / WP-038, C-033, C-034 / ADR-006 | 범위 공백 | 없음 — `WP-038` 착수 전 결정 | resolved (2026-08-29) — **CR-036으로 Conductor에 dataviz 계열(`series.1~20`·`sequential.1~5`, 두 테마 nonText, CP-043~CP-117로 3:1 검사)을 신설해 0.2.0으로 배포했고 WP-038이 그 CSS 변수(`--cdt-dataviz-*`)를 소비한다.** design-system 기여를 택했다 — ADR-006의 semantic-토큰-만 규칙을 지키고 대비를 Conductor 도구로 증명한다. `WP-037`(집계 API)은 색을 쓰지 않으므로 이 미결이 그 작업을 막지 않았다. 결정은 design-system 기여(계열 팔레트 신설)와 제품 측 파생(기존 토큰에서 파생한 스케일) 중 하나이며, 어느 쪽이든 ADR-006의 의미를 건드리면 CR이 먼저다. 완화는 이미 계약 안에 있다 — `C-033`·`C-034`가 표 대체를 요구하므로 색만으로 정보를 주는 화면은 승인되지 않았다(NFR-007) |
@@ -619,6 +619,12 @@
 | DEV-415 | 2026-08-29 | **정본 표가 `target`과 `query` 두 컬럼을 구분하지 않았다.** `CR-054`가 만든 표는 옛 보안 문서의 `target` 열을 그대로 옮겨 `search.execute`의 대상을 "질의 문자열"이라 적었는데, 같은 CR이 쓴 `API-ADM-005` 예시는 `target: null`에 `query`로 질의를 담는다. `audit.view`도 같다 — 표는 "필터 조건"을 `target`이라 적고 API는 `query`로 설명한다. **`WP-039`가 이 표를 유일한 정본으로 삼도록 지시받았으므로, 구현과 액션별 시험이 서로 다른 컬럼을 채우게 된다** | FR-AUTH-004 / ENT-CORE-007, API-ADM-005 | 문서 오류 | **CR-054** | resolved (2026-08-29) — 표에 `query` 열을 분리하고 액션마다 두 값을 명시했다. **`target`은 행위가 가리킨 대상 하나의 식별자이고 `query`는 그 행위가 적용한 조건이다** — 검색은 대상이 하나가 아니라 `target`이 비고, 상세 조회는 조건이 없어 `query`가 빈다. `ENT-CORE-007`이 두 컬럼을 따로 둔 이유가 그것이다. **PR #83 리뷰가 잡았다** |
 | DEV-416 | 2026-08-29 | **`prs_admin`이 `NOLOGIN`이라 `ADMIN_DATABASE_URL`만으로는 그 권한에 닿을 수 없다.** `DEV-411`을 닫으며 관리 연결을 별도 설정으로 열었는데, 마이그레이션 005는 `prs_app`·`prs_admin`을 둘 다 `NOLOGIN` 그룹 롤로 만들고 로그인 롤 멤버십도 부여하지 않는다(실측: `rolcanlogin = f`, `pg_auth_members` 0행). **`prs_admin`으로 접속하면 인증이 거부되고, 다른 사용자로 접속하면 그 권한을 쓰지 못한다** — 남는 길은 전권을 가진 소유자 계정뿐인데 그것은 최소 권한이 아니다 | JOB-AUD-001 / FR-AUTH-004 AC-3 | 기술 제약 | **CR-054** | resolved (계약, 2026-08-29) — 관리 연결의 인증 주체를 명시했다: **로그인 가능한 주체가 `prs_admin` 멤버십을 갖고 접속한 뒤 `SET ROLE prs_admin`으로 권한을 집는다.** 그 주체 생성은 비밀번호가 시크릿이므로 마이그레이션이 아니라 운영 프로비저닝의 몫이다. **소유자 계정을 그대로 쓰지 않는다** — `SET ROLE`은 필요한 권한만 집는 경계다. **PR #83 리뷰가 잡았다** |
 | DEV-417 | 2026-08-29 | **파티션 생성이 정기 잡으로 배선돼 있지 않다.** `RB-18`이 파티션 부재 대응으로 `JOB-ING-006`을 지목했는데 그것은 Elasticsearch 재색인 잡이다. 실제 생성 경로를 찾으니 `ensureMonthlyPartitions`는 **부트스트랩(`seed.ts`)에서만 호출되고** 잡 카탈로그·인프라 9.6 어디에도 정기 생성 항목이 없다. 기본이 3개월치이므로 **배포 후 세 달이면 `raw_event`와 `audit_record`의 INSERT가 전부 거부된다** — `WP-039`가 감사를 전면 배선하는 순간 이것이 실질 위험이 된다. `partitions.ts` 주석은 "정기 잡뿐 아니라 부트스트랩에서도 호출되어야 한다"고 적는데 **그 정기 잡이 존재하지 않는다** | JOB-AUD-001 / FR-ING-003, FR-AUTH-004, NFR-006 | 범위 공백 | **CR-054** | resolved (계약, 2026-08-29) — `JOB-AUD-001`이 **만료 드롭 전에 다가올 파티션을 먼저 보장**하도록 범위를 명시했다. 파티션 수명 전체를 한 잡이 소유하는 것이 자연스럽고, **드롭할 권한이 있는 잡이 생성도 한다.** 새 잡 ID를 만들지 않는다 — 같은 관리 롤·같은 주기·같은 대상 표다. `RB-18`은 `pnpm db:partitions`를 가리키도록 고쳤다. **PR #83 리뷰가 잡았다** |
+| DEV-418 | 2026-08-29 | **파티션 경계를 JavaScript `Date`로 조립하다 전부 `NaN`이 됐다.** `listPartitionBounds`의 첫 구현이 `pg_get_expr`의 결과에서 정규식으로 상한을 뽑아 문자열 뒤에 `T00:00:00Z`를 붙였는데, PostgreSQL이 내는 값은 이미 `2020-04-01 00:00:00+00`이라 그 조립이 `2020-04-01 00:00:00+00T00:00:00Z`가 됐다. `NaN`인 경계는 `continue`로 건너뛰어 **모든 파티션이 조용히 판정 대상에서 빠졌다** — 지우지 못하는 실패는 눈에 띄지만 **지워야 할 것을 빠뜨리는 실패는 디스크가 찰 때까지 드러나지 않는다** | JOB-AUD-001 / WP-039 | 기술 제약 | 불필요 (구현 결함) | resolved (2026-08-29) — 경계 문자열을 **PostgreSQL이 `timestamptz`로 캐스팅하게** 바꿨다(`regexp_match(...)[1]::timestamptz`). 서버가 자기 형식을 읽으면 파싱 갈래가 사라진다. **통합 시험이 잡았다** — 실제 카탈로그를 읽는 시험이었기에 잡혔고, 목이었다면 우리가 상상한 형식만 확인했을 것이다 |
+| DEV-419 | 2026-08-29 | **`C-013 ResultTable`을 A-004에 재사용할 수 없다.** 와이어프레임과 `WP-039`가 그 재사용을 적지만, 실제 컴포넌트는 정렬 컨트롤(정렬 변경 = 서버 재조회)을 갖고 행 타입이 `ResultRow`(PR·커밋)에 묶여 있다. 감사 기록은 정렬이 고정(`occurred_at DESC, audit_id DESC` — `API-ADM-005`가 그 순서로만 순회한다)이고 열도 전혀 다르다 | A-004 / C-013, WP-039 | 문서 오류 | 불필요 (선례가 있다) | resolved (2026-08-29) — `AuditRecordTable`을 따로 만들되 **같은 시각 규칙**(조밀한 행, 표 캡션, 링크 없는 셀)을 따랐다. `W-004`의 `RangeResultTable`이 `CR-029`에서 같은 판단을 한 선례가 있다 — **재사용의 뜻은 같은 시각 규칙이지 같은 컴포넌트가 아니다.** 계약을 고치지 않은 것은 그 문장이 뜻하는 바가 이미 그것이기 때문이다 |
+| DEV-420 | 2026-08-29 | **통합 전량 4회 중 1회에서 1건이 실패했고 귀속하지 못했다.** `pnpm run test:integration` 첫 실행이 실패 1건·통과 1314건을 냈으나 실패 파일을 기록하지 못했고, 이어진 3회(로그 파일 보존 2회 포함)는 전부 1315건 통과였다. **재시도 통과를 해소로 적지 않는다** — 무엇이 실패했는지 모르는 채로 닫으면 다음에 같은 자리가 깨져도 새 결함으로 보인다 | WP-039 검증 | 기술 제약 | 불필요 (시험 격리) | resolved (2026-08-29) — **PR #84 리뷰를 고치다 재현했고 귀속했다.** `ops/sequence-integrity.test.ts`가 마지막 시험이 만든 `sequence_reassign` 잡 행을 `afterAll`에서 지우지 않았고, 뒤에 도는 `packages/db/integration/migrate.test.ts`의 `migrateDown`이 **마이그레이션 009를 되돌리면 그 유형을 허용하지 않는 옛 `job_type_chk`가 복원되어** 남은 행이 제약을 위반했다. **파일 순서가 바뀔 때만 드러난다** — 자기 시험은 통과하고 남의 시험이 깨지므로 원인이 있는 곳과 증상이 나타나는 곳이 다르다. 오염을 만든 쪽이 `afterAll`에서 치우도록 고쳤다. 예상대로 공유 자원 오염이었다 |
+| DEV-421 | 2026-08-29 | **관리 롤이 파티션을 만들지도 지우지도 못한다.** `DEV-411`을 닫으며 `ADMIN_DATABASE_URL`과 `SET ROLE prs_admin`을 세웠는데, 마이그레이션 005가 그 롤에 준 것은 `USAGE ON SCHEMA public`과 `GRANT ALL ON ALL TABLES`뿐이다. PostgreSQL은 **파티션 생성에 스키마 `CREATE` 권한**을, **테이블 드롭에 소유권**을 요구하며 어떤 `GRANT`도 후자를 주지 않는다. 실측하니 `SET ROLE` 뒤의 `CREATE TABLE ... PARTITION OF`가 `permission denied for schema public`으로 거절됐다 — **`JOB-AUD-001`이 자기 일의 어느 절반도 하지 못한다.** 통합 시험이 놓친 이유는 **마이그레이션 소유자 풀로 돌았기 때문**이다: 그 연결은 이미 소유자라 두 제약을 아예 만나지 않는다 | JOB-AUD-001 / FR-AUTH-004 AC-3, WP-039 | 기술 제약 | 불필요 (구현 결함) | resolved (2026-08-29) — 마이그레이션 019가 `prs_admin`에 스키마 `CREATE`를 주고 `raw_event`·`audit_record`와 **기존 자식 파티션들의 소유권을 옮긴다**(부모만 옮기면 옛 자식이 드롭 불가로 남는다). **감사 불변성은 그대로다** — 실측으로 확인했다: 소유권 이전 뒤에도 `prs_app`은 `INSERT`·`SELECT`만 갖고 소유자도 아니다. `retention-role.test.ts`가 **실제 로그인 주체 + 멤버십 + `SET ROLE`**로 일곱을 건다. **PR #84 리뷰 P1이 잡았다** |
+| DEV-422 | 2026-08-29 | **`dead_letter.reprocess`가 전달 식별자를 남기지 않았다.** 정본 표는 그 액션의 `target`을 **전달 식별자 목록**으로 정하는데, 구현은 `dead_letter_ids`가 오면 내부 행 ID를, 필터로 고르면 문자열 `(필터)`를 넣었다. **필터의 일치 집합은 직후에 달라질 수 있으므로** 조건만 남기면 무엇이 재처리됐는지 재구성할 수 없다 — `FR-AUTH-004` AC-2가 요구하는 것이 바로 그 재구성이다 | FR-AUTH-004 / API-ADM-003, WP-039 | 문서 오류 | 불필요 (구현 결함) | resolved (2026-08-29) — `ReprocessResult`에 `delivery_ids`를 더해 **서버가 확정한 대상**을 돌려주고 감사가 그것을 기록한다. 어떻게 골랐는지는 조건이므로 `query`가 담는다. 건너뛴 항목도 포함한다 — 그것도 이 요청이 손댄 대상이며 건너뛴 사실은 `skipped`가 따로 말한다. **PR #84 리뷰 P1이 잡았다** |
+| DEV-423 | 2026-08-29 | **`saved_search.update`가 이름만 고친 수정에서 질의를 남기지 않았다.** `patch.query`를 그대로 실어, 이름·공개 범위·대상 팀만 바꾼 수정이 `query = null`을 기록했다. 정본 표는 **바뀐 뒤의 질의 문자열**을 정한다 — 그것이 없으면 나중에 그 질의가 또 바뀌거나 항목이 삭제됐을 때 **어떤 공유 검색을 건드렸는지 재구성할 수 없다** | FR-SRCH-010 AC-9 / WP-039 | 문서 오류 | 불필요 (구현 결함) | resolved (2026-08-29) — 성공한 수정은 `finalQuery`(패치 뒤의 질의)를 남긴다. 실패한 수정은 바뀐 것이 없으므로 `null`이다 — 일어나지 않은 상태를 기록하지 않는다. **PR #84 리뷰 P2가 잡았다** |
 
 ## 6. 검증 결과 기록
 
@@ -3977,6 +3983,69 @@ Codex 리뷰가 다섯을 지적했고 **전부 실결함**이었다. 셋이 "�
 
 **신규 FR·NFR 없음, 새 ADR 없음, 안정 ID 재번호화 0건.** 새로 생긴 것은 용어집의 `AuditAction` 항목 넷과 `API-ADM-005`의 상세 규격이다 — API ID 자체는 이미 있었고 상세만 없었다.
 
+### 6.51 WP-039 감사 기록과 A-004 (CR-054)
+
+**계약은 CR-054가 먼저 닫았다** (SRS baseline v2.14). 이 구현은 그 계약을 따랐고 **CR을 새로 열지 않았다.** 구현 중 발견한 셋은 `DEV-418~420`으로 등재했으며, 그중 둘은 그 자리에서 닫혔고 하나(`420`)는 **귀속하지 못해 열어 둔다.**
+
+**만든 것.** 공유 어휘 `packages/domain/src/audit.ts`(활성·미활성·legacy 셋을 가른다), 공용 실패 격리 경계 `audit/recorder.ts`, 조회 API `audit/routes.ts`와 키셋 커서 `audit/cursor.ts`, 파티션 수명 `pipeline-worker/src/retention.ts`, 화면 `lib/audit.ts`·`AuditView`·`AuditRecordTable`·`app/ops/audit/page.tsx`, 마이그레이션 018.
+
+**개수를 계약으로 쓰지 않는다.** `ACTIVE_AUDIT_ACTIONS`는 배열이고 시험은 `arrayContaining`으로 건다 — 개수를 단언하면 액션을 하나 더할 때마다 그 이유 없이 깨진다. `CR-054`가 문서에서 없앤 것을 코드에서도 없앴다.
+
+**실패 격리를 한 자리에 모았다.** 착수 전 감사에서 호출부 넷 중 하나만 격리돼 있었고(DEV-406), 지금은 여섯 자리가 모두 `recordAuditBestEffort`를 지난다. 회귀가 `auditRepo.recordAudit(`의 직접 호출을 다섯 파일에서 금지해 **각자 구현으로 되돌아가는 길을 막는다.**
+
+**"비동기"를 fire-and-forget으로 만들지 않았다.** `await`하되 절대 던지지 않는다 — 감사가 늦으면 응답이 늦을 뿐이고, 실패하면 지표만 오른다. 통합 시험이 실제 DB에 CHECK 제약을 걸어 INSERT를 거절시키고 **200이 200으로, 403이 403으로 남는지**를 직접 증명한다.
+
+**어휘를 하나로 모으되 과거를 지우지 않았다.** 신규 재채번 기록은 `sequence.reassign`이고 `sequence_integrity.reassign`은 legacy로 남는다. `API-ADM-005`의 `action` 필터가 그 값을 그대로 받으며, **정본 enum으로 좁히지 않는 것**을 회귀가 건다.
+
+### 6.51.1 검증 결과 (마지막 실행)
+
+| 게이트 | 결과 |
+| --- | --- |
+| `pnpm typecheck` · `lint` · `lint:deps` | 통과 (패키지 13개, 위반 0건) |
+| `pnpm run test` | **1790 통과** (1 skipped) — 착수 전 1736 |
+| `pnpm run test:integration` | **1324 통과** (84 파일) — 착수 전 1254 |
+| `pnpm run test:regression` | **267 통과** — 착수 전 231 |
+| `pnpm run test:a11y` | **283 통과** (`a11y/audit.test.tsx` 9건, axe 0) — 착수 전 272 |
+| `pnpm run test:contrast` | 232/232 통과 |
+| `pnpm --filter @prs/web run build` · `pnpm build` | 통과 (`/ops/audit` 라우트 포함) |
+| `pnpm run test:e2e` | **131 통과** (`e2e/audit.spec.ts` 9건). **전량 3회 중 2회에서 `flow-003.spec.ts:176`이 실패했다** — `DEV-377`의 기존 플레이크이며 단독 3회는 전부 통과했다. `WP-016` 소관이고 이 WP와 무관하나 **재현율이 6회 중 1회에서 3회 중 2회로 올랐다**(e2e가 9건 늘어 병렬 부하가 커졌다). 통과로 세지 않고 그 사실을 적는다 |
+
+**DoD 12항 전부 통과.** `QA-A004-01~10`, 활성 액션의 실제 도달성(통합 증거), 필수 필드 일곱과 `null` 정직성, DB 롤 불변성, `operator` 403, 실패 격리, legacy 조회, 자기 기록 순서, 응답 본문 미기록, 파티션 수명 두 표, 배치 진입점 도달성, 역할별 내비게이션.
+
+### 6.51.2 적대적 변이 열하나 — 열은 즉시 킬, 하나가 시험 구멍을 드러냈다
+
+| # | 변이 | 결과 |
+| --- | --- | --- |
+| M1 | `search.execute` 감사 호출 제거 | KILLED — 액션 커버리지 2건 |
+| M2 | best-effort의 `catch`가 다시 던지게 | KILLED — 실패 격리 4건 |
+| M3 | 수동 재채번을 legacy 어휘로 되돌림 | KILLED — 통합 2건 + 회귀 1건 |
+| M4 | `API-ADM-005`를 `operator`에게도 염 | KILLED — 통합 2건 + 회귀 1건 |
+| M5 | 커서 지문 검사 제거 | KILLED — 단위 1건 + 통합 1건 |
+| M6 | `target` 필터 제거 | KILLED — 통합 1건 |
+| **M7** | **감사 조회 응답의 `items`를 자기 기록에 담음** | **SURVIVED → 시험 보강 후 KILLED** |
+| M8 | 보존 기준을 한 달 앞으로 (12 → 11개월) | KILLED — 단위 4건 + 통합 2건 |
+| M9 | `retention.purge` 기록 제거 | KILLED — 통합 3건 + 회귀 1건 |
+| M10 | 배치 진입점에서 `JOB-AUD-001` 배선 제거 | KILLED — 회귀 1건 |
+| M11 | `operator`에게 감사 내비게이션 노출 | KILLED — 단위 1건 + a11y 1건 + 회귀 1건 |
+
+**M7이 이 라운드의 값이다.** 「응답 본문을 남기지 않는다」 시험이 검색만 호출하고 **감사 조회 경로를 부르지 않아** `audit.view` 기록이 아예 만들어지지 않았다 — 그 액션의 유출을 볼 대상 자체가 없었다. 두 경로를 모두 지나게 하고 **두 액션이 실제로 있는지 먼저 단언한** 뒤 같은 변이로 KILLED를 확인했다. `WP-032`·`WP-035`가 배운 것과 같은 모양이다: **살아남은 변이는 시험 구멍의 이름이다.**
+
+`M2`가 확인한 것도 값이 크다. 그것이 없으면 "실패를 잡는다"와 "실패를 삼킨다"가 구분되지 않는다 — `AC-6`이 요구하는 것은 후자가 아니라 **주 동작의 결과를 바꾸지 않는 것**이고, 실제 DB가 실제로 거절하게 만들어야 그 차이가 드러난다.
+
+### 6.51.3 머지 전 리뷰 셋 — 전부 실결함, 그리고 그것을 고치다 `DEV-420`을 귀속했다 (PR #84)
+
+| # | 지적 | 판정 |
+| --- | --- | --- |
+| P1 | **관리 롤이 파티션을 만들지도 지우지도 못한다** — `GRANT ALL`은 스키마 `CREATE`도 소유권도 주지 않는다 | 실결함. 실측하니 `permission denied for schema public`이었다. 마이그레이션 019가 스키마 `CREATE`와 두 표(및 기존 자식)의 소유권을 옮긴다 (DEV-421) |
+| P1 | **`dead_letter.reprocess`가 전달 식별자를 남기지 않는다** — 내부 행 ID나 `(필터)` 문자열뿐 | 실결함. `ReprocessResult`에 `delivery_ids`를 더해 서버가 확정한 대상을 기록한다 (DEV-422) |
+| P2 | **`saved_search.update`가 이름만 고친 수정에서 질의를 잃는다** | 실결함. 성공한 수정은 `finalQuery`를 남긴다 (DEV-423) |
+
+**첫 지적이 드러낸 것은 시험의 사각지대다.** `partition-retention.test.ts` 열셋이 전부 초록인 동안 운영에서는 그 잡이 아무 일도 하지 못했을 것이다 — **마이그레이션 소유자 풀로 돌았기 때문**이다. 그 연결은 이미 소유자라 두 제약을 아예 만나지 않는다. `retention-role.test.ts`가 **실제 로그인 주체 + `prs_admin` 멤버십 + `SET ROLE`**로 다시 묻는다. `WP-028`이 배운 것과 같은 모양이다: **시험이 통과하는 조건과 운영이 도는 조건이 다르면 그 차이만큼이 사각지대다.**
+
+**그리고 그 수정 도중 `DEV-420`이 재현됐다.** 마이그레이션 019를 넣고 `migrate.test.ts`를 돌리자 `job_type_chk` 위반이 나왔고, **019 없이도 같은 실패가 났다.** 원인은 `ops/sequence-integrity.test.ts`가 마지막 시험이 만든 `sequence_reassign` 잡 행을 치우지 않은 것이었다 — 그 뒤 `migrateDown`이 마이그레이션 009를 되돌리면 그 유형을 허용하지 않는 옛 제약이 복원된다. **파일 순서가 바뀔 때만 드러나므로** 전량 네 번 중 한 번만 실패했다. 오염을 만든 쪽이 `afterAll`에서 치우도록 고쳤다.
+
+**귀속하지 못한 실패를 열어 둔 것이 값을 냈다.** 닫아 두었으면 이 재현을 "새 결함"으로 보았을 것이다.
+
 ## 7. 알려진 제한 (구현 반영 기준)
 
 착수 시점의 계획상 제한이다. 구현이 진행되면 실제 반영된 내용으로 갱신한다.
@@ -4024,7 +4093,7 @@ Codex 리뷰가 다섯을 지적했고 **전부 실결함**이었다. 셋이 "�
 | PR 이외 이벤트 중 `push`·`release`·`create`·`delete`를 아무도 진행시키지 않음 | WP-007 범위 (PR 보강만) / DEV-016 | 실제 상태 — `enrich`가 ack만 하고 넘긴다. 원본은 `raw_event`에 남아 유실이 아니다. **`member`·`team`·`repository`는 해소** (2026-08-21) — 게이트웨이가 `prs:permission`에도 발행하고 `authz` 워커가 소비한다 (CR-015, DEV-042) | 라우팅을 소유한 WP-021(시퀀스) |
 | ~~`enrichment_pending` 문서가 아직 색인되지 않음~~ | WP-007 제외 목록 | 해소 (2026-08-20) — WP-008이 `enrichment_pending`을 문서에 그대로 옮겨 색인한다 | 없음 |
 | ~~실패 대기열에 쌓인 이벤트를 재처리할 길이 없음~~ | WP-007 범위 밖 (재처리는 WP-009) | 해소 (2026-08-20) — API-ADM-003이 조회·재처리를 연다 | 없음 |
-| 재처리 실행이 감사 기록에 남지 않음 | WP-009 범위 밖 | 실제 상태 — WP-010이 감사 적재(`auditRepo`)와 이름 붙은 토큰을 세웠으나 실패 대기열 재처리 경로에는 아직 붙이지 않았다. 저장소 등록·변경·해제만 남는다 | 재처리에도 같은 방식으로 붙이면 된다 (다음 WP에서 함께) |
+| ~~재처리 실행이 감사 기록에 남지 않음~~ | WP-009 범위 밖 → **WP-039가 해소** | **해소 (2026-08-29)** — `dead_letter.reprocess`가 공용 경계를 지나 기록된다. 함께 `job.{run,pause,resume,cancel}`·`reindex.start`·`search.execute`·`entity.view`·`saved_search.*`도 붙었다 (CR-054) | 없음 |
 | ~~관리 API가 `operator` 역할이 아니라 이름 붙은 토큰으로 보호됨~~ | CR-012 DEV-025 / CR-013 DEV-030 / CR-015 DEV-048 | 해소 (2026-08-21) — OIDC 세션이 구성되면 통제는 `operator` 역할이다. 이름 붙은 토큰은 OIDC **미구성** 배포에만 남고, 둘을 함께 구성하면 기동을 거부한다 | 없음 |
 | 재처리 진행률(`EVT-JOB-001`)이 보고되지 않음 | JOB-ING-009의 `batch` 워커가 WP-019 소관 / DEV-024 | 실제 상태 — 1회 500건 상한 안에서 요청이 끝나고 결과는 응답 본문이 알려 준다 | WP-019가 `batch`를 세운 뒤 |
 | `EVT-ING-004 ingestion.failed`가 발행되지 않음 | 카탈로그의 소비자 `ops`가 스트림이 아니라 테이블을 읽음 / DEV-026 | 실제 상태 — 워커가 `dead_letter` 행을 동기적으로 남기므로 기록 유실은 없다 | 실시간 알림 소비자가 생기는 REL-005 |
@@ -4045,7 +4114,7 @@ Codex 리뷰가 다섯을 지적했고 **전부 실결함**이었다. 셋이 "�
 | k8s 매니페스트가 클러스터에 적용된 적 없음 | WP-010 구현 범위 / 이 환경에 Kubernetes·`kubectl` 없음 | 실제 제약 — YAML 파싱만 확인했다. 이미지 이름(`prs/*:latest`)과 백킹 서비스 호스트는 자리표시자다 | **REL-001 프로비저닝 때 실제 클러스터에서 검증** |
 | 단계별 지연 p50/p95가 기본적으로 `unavailable` | CR-013 / DEV-029 | 실제 상태 — 지표 저장소(사내 Prometheus 호환)가 `METRICS_QUERY_URL`로 설정된 경우에만 채운다. 워커 복제본 하나를 긁어 클러스터 전체인 양 내놓지 않는다 | REL-001 프로비저닝에서 주소 주입 |
 | ~~`test:e2e`·`test:a11y` 스크립트가 없음~~ | DEV-032 / DEV-069 | 해소 (2026-08-21) — WP-015가 harness를 세웠다. `pnpm test:a11y`(vitest + axe, jsdom), `pnpm test:e2e`(Playwright, 실제 Chromium), `pnpm test:contrast`(Conductor `checkContrast`)가 저장소 루트에서 돈다 | 없음 |
-| A-001 운영 콘솔 화면 없음 | 사용자 결정 (WP-010은 API까지) | 실제 상태 — **셸은 섰고 경로도 있다**(`/ops/pipeline`·`/ops/repositories`·`/ops/audit`, `operator`·`security_officer`에게만 렌더링). 그 경로의 **화면 내용이 아직 없어 404다** | WP-017 이후 (셸이 경로 구조를 소유하고 각 화면은 자기 WP에서 붙는다) |
+| A-001·A-002 운영 콘솔 화면 없음 | 사용자 결정 (WP-010은 API까지) | 실제 상태 — **셸과 경로가 있고 `/ops/audit`는 WP-039가 채웠다.** `/ops/pipeline`·`/ops/repositories`는 아직 화면 내용이 없어 404다. 내비게이션은 이제 **항목마다 허용 역할을 본다**(CR-054, DEV-408) — `operator`에게 파이프라인·저장소 등록이, `security_officer`에게 감사 기록과 파이프라인(아카이브 섹션)이 보인다 | **WP-040** (A-001·A-002·A-003) |
 | 저장소 등록이 GHE 자격 증명 없이는 열리지 않음 | FR-ING-009 예외 처리 (접근 권한 확인이 필수) | 실제 상태 — `GHE_APP_ID`/`GHE_INSTALLATIONS`가 없으면 등록 경로를 달지 않고 기동 로그에 남긴다. 확인 없이 등록을 받으면 수집이 영영 비어 있는 저장소가 "등록됨"으로 남는다 | 없음 (의도된 동작) |
 | ~~OIDC 로그인·콜백·로그아웃 라우트가 없음~~ | WP-012 제외 목록 (화면은 WP-015) | 해소 (2026-08-21) — WP-015가 `/auth/login`·`/auth/callback`·`/auth/logout`을 붙였다. 왕복 상태 넷은 짧은 수명 HttpOnly 쿠키로 나르고(DEV-071), 로그아웃은 `POST`만 받는다(`<img src>` 하나로 로그아웃되지 않게). OIDC 미구성 배포에서는 IdP 대신 503을 낸다 | 없음 |
 | 실제 사내 IdP 대상 OIDC 왕복 미실행 | 이 실행 환경에 IdP 자격 증명 없음 | **NOT RUN** — 테스트가 생성한 RSA 키쌍으로 다섯 검사를 각각 무너뜨려 확인했다. 실제 IdP의 그룹 클레임 이름과 JWKS 회전 동작은 확인하지 못했다 | **REL-002 게이트 전 필수** |
@@ -4565,6 +4634,15 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 → **미뤄 두기로 한 판정도 그 근거가 실측인지 확인한다.** DEV-364의 근거는 "스칼라는 언제나
 0건"이었고 그것을 부호를 뒤집어 확인한 적이 없었다. 판정을 남기는 것과 판정의 근거를 재는
 것은 다른 일이며, 미뤄 둔 항목일수록 근거가 검증되지 않은 채로 오래 남는다.
+
+**(2026-08-29) WP-039 착수 전 감사가 계약 공백 열넷을 찾았고 CR-054가 닫았다 (SRS baseline v2.14).** 이번에 드러난 것은 **계약이 자기 대상을 개수로 말하고 있었다**는 것이다(DEV-400) — `WP-039`가 "13종", 보안 문서 표가 14행, 그 행들이 담은 `action` 문자열이 18개였고 **셋 중 어느 것도 틀리지 않았다.** `CR-052`가 표에 한 행을 더할 때 `WP-039`의 문구는 함께 가지 않았다. 개수를 목록으로 바꾸고 그 목록에 **소유 WP와 활성화 상태**를 실어 정본을 하나로 만들었다. 같은 뿌리에서 아홉이 함께 닫혔고(402·404~412), PR #83 리뷰가 셋을 더 찾았다(415~417) — 그중 `417`은 **런북 한 줄의 잘못된 참조를 확인하러 갔다가 파티션 생성 정기 잡이 아예 없다는 사실**을 드러냈다. 기본이 3개월치이므로 배포 후 세 달이면 감사와 원본의 INSERT가 전부 거부되는 자리였다.
+
+**(2026-08-29) WP-039가 들어왔다 — 다음은 WP-040 A-002·A-003 운영 콘솔이다.** 검증 기록은 6.51장이고 변이 열하나 중 열이 즉시 킬됐다. **`REL-005`가 3/4이 되었다.** 남은 것은 `WP-040` 하나이며 그 WP가 `A-001`·`A-002`·`A-003` 화면을 채운다 — `WP-039`가 정정한 역할별 내비게이션이 그 화면들의 진입점을 이미 올바르게 가른다.
+
+**미활성 감사 액션 둘을 추적한다.** `export.create`는 `WP-044`, `safe_marker.set`은 `WP-041` 소관이며 둘 다 `REL-006`이다. 그 WP가 기능을 만들 때 정본 표의 상태를 `활성`으로 바꾸고 배선을 함께 넣는다. **지금 그것이 기록되지 않는 것은 누락이 아니다** — 합성 경로를 만들어 감사만 남기는 길을 `DEV-403`이 막았다.
+
+**배포 전제가 하나 늘었다.** `ADMIN_DATABASE_URL`이 없으면 `JOB-AUD-001`만 서지 않고 나머지 배치 역할은 정상 동작한다. 그러나 다가올 파티션이 소진되면 `raw_event`·`audit_record`의 INSERT가 전부 거부되므로 **비워 두는 것은 임시 상태여야 한다.** 그 값은 `prs_admin`이 아니라 그 롤의 멤버십을 가진 로그인 주체를 가리킨다(DEV-416).
+
 
 `srs_final.md`가 baseline이므로 그 문서의 변경은 CR을 먼저 등록해야 한다. 구현 중 문서와 현실이 어긋나면 5장에 `DEV-###`를 등록하고 CR로 연결한다. 조용한 범위 변경은 금지다.
 

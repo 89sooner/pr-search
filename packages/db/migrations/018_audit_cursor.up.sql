@@ -1,0 +1,30 @@
+-- 감사 기록 전역 목록의 커서 인덱스 (WP-039 / CR-054, DEV-412).
+--
+-- ## 왜 기존 셋으로 부족한가
+--
+-- `audit_record`에는 이미 인덱스가 셋 있다.
+--
+--   audit_record_pkey  (audit_id, occurred_at)
+--   audit_user_idx     (user_id, occurred_at DESC)
+--   audit_action_idx   (action,  occurred_at DESC)
+--
+-- 뒤의 둘은 **앞 컬럼이 필터**라 `user_id`나 `action` 조건이 있을 때만 쓰인다.
+-- 기본 키는 정렬 키의 순서가 반대다 — `API-ADM-005`가 정한 순회 순서는
+-- `occurred_at DESC, audit_id DESC`이고 그 첫 키가 `audit_id`가 아니다.
+--
+-- **A-004의 기본 조회에는 필터가 없다.** 보안 담당자가 화면을 열면 최근
+-- 기록부터 훑는 것이 첫 동작이고, 그 질의가 셋 중 어느 것도 쓰지 못한다.
+--
+-- ## `target`·`result_code` 인덱스를 함께 만들지 않는다
+--
+-- 두 필터도 계약에 있지만 **추측으로 인덱스를 더하지 않는다.** 인덱스는 쓰기
+-- 비용을 그대로 늘리고, `audit_record`는 감사 대상 액션이 전면 배선된 뒤
+-- 초당 여러 건이 들어오는 표가 된다. 필터 성능 실측이 필요성을 보일 때
+-- 판단한다 — `DEV-004`가 중복 인덱스를 뺀 것과 같은 규율이다.
+--
+-- ## 파티션 로컬 인덱스다
+--
+-- 파티션 테이블에 만든 인덱스는 각 파티션에 자동으로 생성된다. 기간 조건이
+-- 함께 오면 가지치기가 먼저 일어나고 그 안에서 이 인덱스가 쓰인다.
+
+CREATE INDEX audit_cursor_idx ON audit_record (occurred_at DESC, audit_id DESC);

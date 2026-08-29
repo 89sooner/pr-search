@@ -24,6 +24,7 @@ import { CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope
 import { SEQUENCE_BINDING_MESSAGE } from '@prs/query';
 import { toAccessScope } from '@prs/authz';
 import { isSavedSearchView, type SavedSearchView } from './cursor.js';
+import { recordAuditBestEffort } from '../audit/recorder.js';
 import {
   bindEpochForWrite,
   needsSequenceReference,
@@ -380,6 +381,23 @@ export function registerSavedSearchRoutes(
       seqEpoch: epoch.kind === 'bound' ? epoch.epoch : null,
     });
 
+    /*
+     * **저장된 검색의 생성·수정·삭제는 감사 기록 대상이다** (`FR-SRCH-010` AC-9,
+     * CR-054). `team` 공개 범위 검색은 팀 구성원이 함께 실행하는 자산이고, 그
+     * 질의를 바꾸는 것은 다른 사람이 보는 결과를 바꾸는 일이다.
+     *
+     * **거절도 남긴다** — 상한에 걸렸다는 사실이 "왜 저장이 안 됐는가"의 답이다.
+     * `target`은 생성에 성공했을 때만 ID를 갖는다.
+     */
+    await recordAuditBestEffort(pool, {
+      userId,
+      action: 'saved_search.create',
+      target: outcome.kind === 'created' ? String(outcome.row.saved_search_id) : null,
+      query: body.query,
+      resultCode: outcome.kind,
+      correlationId,
+    });
+
     switch (outcome.kind) {
       case 'created':
         return reply.status(201).send(toResource(outcome.row, userId));
@@ -533,6 +551,26 @@ export function registerSavedSearchRoutes(
      */
 
     const outcome = await savedSearchRepo.updateSavedSearch(pool, savedSearchId, userId, patch);
+
+    await recordAuditBestEffort(pool, {
+      userId,
+      action: 'saved_search.update',
+      target: String(savedSearchId),
+      /*
+       * **바뀐 뒤의 질의다** (정본 표, PR #84 리뷰 P2).
+       *
+       * `patch.query`만 담으면 이름·공개 범위만 고친 수정이 `null`을 남기고,
+       * 나중에 그 질의가 또 바뀌거나 항목이 삭제되면 **그때 어떤 공유 검색을
+       * 건드렸는지 재구성할 수 없다.** 감사의 값은 그 재구성이다.
+       *
+       * 실패한 수정은 바뀐 것이 없으므로 `null`이다 — 일어나지 않은 상태를
+       * 기록하지 않는다.
+       */
+      query: outcome.kind === 'updated' ? finalQuery : null,
+      resultCode: outcome.kind,
+      correlationId,
+    });
+
     switch (outcome.kind) {
       case 'updated':
         return reply.send(toResource(outcome.row, userId));
@@ -558,6 +596,16 @@ export function registerSavedSearchRoutes(
     if (savedSearchId === null) return notFound(reply, correlationId);
 
     const deleted = await savedSearchRepo.deleteSavedSearch(pool, savedSearchId, userId);
+
+    await recordAuditBestEffort(pool, {
+      userId,
+      action: 'saved_search.delete',
+      target: String(savedSearchId),
+      query: null,
+      resultCode: deleted ? 'deleted' : 'not_found',
+      correlationId,
+    });
+
     if (!deleted) return notFound(reply, correlationId);
     return reply.status(204).send();
   });

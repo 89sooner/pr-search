@@ -60,40 +60,112 @@ export async function recordAudit(db: Queryable, input: AuditRecordInput): Promi
 
 export interface AuditFilter {
   readonly userId?: string;
+  /**
+   * `action` 정확 일치.
+   *
+   * **정본 유니온(`ActiveAuditAction`)으로 좁히지 않는다** (FR-AUTH-004 AC-7).
+   * `AC-3`이 과거 기록의 갱신을 금지하므로 저장소에는 현재 어휘에 없는 값이
+   * 남아 있다 — `sequence_integrity.reassign`이 그것이다. 타입으로 막으면
+   * **감사의 목적인 과거 조사가 불가능해진다.**
+   */
   readonly action?: string;
+  readonly target?: string;
+  readonly resultCode?: string;
   readonly from?: Date;
   readonly to?: Date;
+}
+
+/**
+ * 키셋 순회의 위치.
+ *
+ * 두 값을 함께 쓴다 — 감사는 초당 여러 건이 같은 밀리초에 들어오고,
+ * `occurred_at` 하나로 자르면 그 무리를 페이지 경계가 가를 때 기록이 빠지거나
+ * 겹친다 (`API-ADM-005`).
+ */
+export interface AuditCursorPosition {
+  readonly occurredAt: Date;
+  readonly auditId: number;
+}
+
+export interface AuditPage {
+  readonly items: readonly AuditRecordRow[];
+  /** 다음 페이지가 있으면 그 시작 직전 위치. 없으면 `null`. */
+  readonly next: AuditCursorPosition | null;
+}
+
+/** 기본·최대 페이지 크기 (`API-ADM-005`). */
+export const AUDIT_DEFAULT_LIMIT = 50;
+export const AUDIT_MAX_LIMIT = 100;
+
+function buildFilterClauses(filter: AuditFilter, params: unknown[]): string[] {
+  const parts: string[] = [];
+  const push = (value: unknown, sql: (placeholder: string) => string): void => {
+    params.push(value);
+    parts.push(sql(`$${String(params.length)}`));
+  };
+
+  if (filter.userId !== undefined) push(filter.userId, (p) => `user_id = ${p}`);
+  if (filter.action !== undefined) push(filter.action, (p) => `action = ${p}`);
+
+  if (filter.target !== undefined) push(filter.target, (p) => `target = ${p}`);
+  if (filter.resultCode !== undefined) push(filter.resultCode, (p) => `result_code = ${p}`);
+  if (filter.from !== undefined) push(filter.from, (p) => `occurred_at >= ${p}`);
+  if (filter.to !== undefined) push(filter.to, (p) => `occurred_at < ${p}`);
+  return parts;
 }
 
 export async function listAuditRecords(
   db: Queryable,
   filter: AuditFilter = {},
-  limit = 50,
+  limit = AUDIT_DEFAULT_LIMIT,
 ): Promise<AuditRecordRow[]> {
-  const params: unknown[] = [];
-  const parts: string[] = [];
+  const page = await listAuditRecordPage(db, filter, limit, null);
+  return [...page.items];
+}
 
-  if (filter.userId !== undefined) {
-    params.push(filter.userId);
-    parts.push(`user_id = $${String(params.length)}`);
-  }
-  if (filter.action !== undefined) {
-    params.push(filter.action);
-    parts.push(`action = $${String(params.length)}`);
-  }
-  if (filter.from !== undefined) {
-    params.push(filter.from);
-    parts.push(`occurred_at >= $${String(params.length)}`);
-  }
-  if (filter.to !== undefined) {
-    params.push(filter.to);
-    parts.push(`occurred_at < $${String(params.length)}`);
+/**
+ * 키셋 순회 한 페이지 (`ADR-010` — 오프셋을 두지 않는다).
+ *
+ * **`limit + 1`을 읽어 다음 페이지의 유무를 판정한다.** 별도 `count`를 돌리지
+ * 않는 이유는 그 수가 답에 쓰이지 않기 때문이다 — 화면이 묻는 것은 "더 있는가"
+ * 하나이고, 5억 행 규모에서 전체 건수를 세는 비용은 그 답의 값보다 크다.
+ *
+ * 정렬은 `occurred_at DESC, audit_id DESC`이며 `audit_cursor_idx`가 그 순서를
+ * 그대로 덮는다 (마이그레이션 018).
+ */
+export async function listAuditRecordPage(
+  db: Queryable,
+  filter: AuditFilter,
+  limit: number,
+  after: AuditCursorPosition | null,
+): Promise<AuditPage> {
+  const size = Math.min(Math.max(1, limit), AUDIT_MAX_LIMIT);
+  const params: unknown[] = [];
+  const parts = buildFilterClauses(filter, params);
+
+  if (after !== null) {
+    // 행 값 비교. `(a, b) < (x, y)`는 두 키를 사전식으로 함께 보므로,
+    // 같은 `occurred_at` 안에서도 `audit_id`가 이어진다.
+    params.push(after.occurredAt, after.auditId);
+    parts.push(
+      `(occurred_at, audit_id) < ($${String(params.length - 1)}, $${String(params.length)})`,
+    );
   }
 
   const where = parts.length === 0 ? '' : ` WHERE ${parts.join(' AND ')}`;
+  params.push(size + 1);
   const result = await db.query<AuditRecordRow>(
-    `SELECT * FROM audit_record${where} ORDER BY occurred_at DESC, audit_id DESC LIMIT $${String(params.length + 1)}`,
-    [...params, limit],
+    `SELECT * FROM audit_record${where} ORDER BY occurred_at DESC, audit_id DESC LIMIT $${String(params.length)}`,
+    params,
   );
-  return result.rows;
+
+  const rows = result.rows;
+  if (rows.length <= size) return { items: rows, next: null };
+
+  const items = rows.slice(0, size);
+  const last = items[items.length - 1];
+  // `items`는 비어 있지 않다 — `rows.length > size >= 1`이기 때문이다.
+  const next: AuditCursorPosition | null =
+    last === undefined ? null : { occurredAt: last.occurred_at, auditId: last.audit_id };
+  return { items, next };
 }

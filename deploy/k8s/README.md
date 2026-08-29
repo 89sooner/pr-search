@@ -67,6 +67,21 @@ JOB-MIR-001·JOB-MIR-002를 **끝내 만들지 않았다** (CR-038 / PR #42 리�
 | `GHE_INSTALLATIONS` | `org → installationId` (CR-010, DEV-015) | 위와 같다 |
 | `DATABASE_URL` | 전 서비스 | 기동 실패 |
 | `ADMIN_API_TOKENS` | 관리 API (CR-013, DEV-030) | **관리 경로를 등록하지 않는다** |
+| `ADMIN_DATABASE_URL` | `JOB-AUD-001` 파티션 수명 (WP-039 / CR-054) | **보존 잡만 서지 않는다.** 나머지 배치 역할은 정상 동작한다 — 설정 하나로 워커 전체를 죽이지 않는다. 다만 다가올 파티션이 소진되면 `raw_event`·`audit_record`의 INSERT가 전부 거부되므로 임시 상태여야 한다 |
+
+**`ADMIN_DATABASE_URL`은 `prs_admin`으로 접속하지 않는다** (DEV-416). 그 롤은
+마이그레이션 005가 만든 `NOLOGIN` **그룹 롤**이며 권한의 묶음이지 접속 주체가
+아니다. 배포는 로그인 가능한 주체를 만들고 그 주체에 멤버십을 준다.
+
+```sql
+CREATE ROLE prs_retention LOGIN PASSWORD :secret;
+GRANT prs_admin TO prs_retention;
+```
+
+잡이 연결 직후 `SET ROLE prs_admin`을 걸어 필요한 권한만 집는다. **소유자
+계정(`prs`)을 그대로 쓰지 않는다** — 그 계정은 모든 표에 전권을 갖고 있어 잡
+하나의 실수가 어디에나 닿는다. `prs_app`에 `DROP`을 주는 길도 택하지 않는다:
+그것이 감사 기록 불변성의 마지막 방어선이다 (FR-AUTH-004 AC-3).
 
 `ADMIN_API_TOKENS`는 `이름:토큰` 쌍을 쉼표로 잇는다. 이름이 감사 기록의
 주체가 되므로 사람마다 다른 값을 준다 — 하나를 공유하면 "누가 했는가"에

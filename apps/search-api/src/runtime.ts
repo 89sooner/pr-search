@@ -191,6 +191,25 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
             es: parts.es,
             cursorSigner: createCursorSigner(parts.config.searchCursorKey),
           },
+          /*
+           * 감사 기록 조회 (WP-039 / API-ADM-005, CR-054).
+           *
+           * **세션이 있을 때만 선다.** 이 경로는 `security_officer` 전용이고
+           * 역할은 세션에만 있다 — 이름 붙은 관리 토큰에는 그 역할이 없으며,
+           * 있다고 가정해 열면 감사 평면이 토큰 하나로 열린다.
+           *
+           * **Elasticsearch를 받지 않는다.** 정본은 `audit_record`이고 순회도
+           * PostgreSQL 키셋이다. 색인 클라이언트를 넘기면 "이미 있으니까"라는
+           * 이유로 감사를 색인에서 읽는 최적화가 언젠가 들어오고, 그러면 감사
+           * 기록이 `ADR-004`의 재구축 대상이 된다 — 재구축 가능한 감사는 감사가
+           * 아니다.
+           *
+           * 커서 서명자는 다른 경로와 **같은 키**를 쓴다.
+           */
+          audit: {
+            pool: parts.pool,
+            cursorSigner: createCursorSigner(parts.config.searchCursorKey),
+          },
         }),
     ...(integrity === undefined ? {} : { integrity }),
     reindex: buildReindexDeps(parts.pool, parts.es),
@@ -208,6 +227,8 @@ export function runtimeCapabilities(parts: RuntimeParts): Readonly<Record<string
     repository_overview: parts.auth !== undefined && parts.searchDeps !== undefined,
     /** 원본 아카이브 조회도 같다 (FR-ING-010 AC-6). 토큰만으로는 서지 않는다. */
     raw_event_archive: parts.auth !== undefined && parts.searchDeps !== undefined,
+    /** 감사 기록 조회는 `security_officer` 역할이 필요하고 역할은 세션에만 있다. */
+    audit_records: parts.auth !== undefined && parts.searchDeps !== undefined,
     reindex: true,
   };
 }
