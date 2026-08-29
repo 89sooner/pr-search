@@ -66,6 +66,19 @@ export interface ReprocessResult {
   readonly requested: number;
   readonly reinjected: number;
   readonly skipped: readonly SkippedItem[];
+  /**
+   * 실제로 재처리 대상이 된 전달 식별자 (WP-039 / PR #84 리뷰 P1).
+   *
+   * **감사가 이것을 기록한다.** 내부 `dead_letter_id`는 그 행을 가리킬 뿐이고,
+   * `FR-AUTH-004`의 정본 표가 `dead_letter.reprocess`의 대상으로 정한 것은
+   * **전달 식별자 목록**이다. 특히 필터로 고른 요청은 그 일치 집합이 직후에
+   * 달라질 수 있어, 필터 문자열만 남기면 **무엇이 재처리됐는지 재구성할 수
+   * 없다.**
+   *
+   * 원본이 없어 건너뛴 항목도 포함한다 — 그것도 "이 요청이 손댄 대상"이며,
+   * 건너뛴 사실은 `skipped`가 따로 말한다.
+   */
+  readonly delivery_ids: readonly string[];
 }
 
 export async function listDeadLetters(
@@ -193,7 +206,12 @@ export async function reprocessDeadLetters(
     }
   }
 
-  return { requested: targets.length, reinjected, skipped };
+  return {
+    requested: targets.length,
+    reinjected,
+    skipped,
+    delivery_ids: targets.map((target) => target.delivery_id),
+  };
 }
 
 async function revertToPending(deps: OpsDeps, deadLetterId: number): Promise<void> {

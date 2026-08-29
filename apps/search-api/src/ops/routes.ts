@@ -232,7 +232,16 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
         {
           userId: principalId(principal),
           action: 'dead_letter.reprocess',
-          target: deadLetterIds === undefined ? '(필터)' : deadLetterIds.join(','),
+          /*
+           * **전달 식별자 목록이다** (`FR-AUTH-004` 정본 표, PR #84 리뷰 P1).
+           *
+           * 내부 `dead_letter_id`는 그 행을 가리킬 뿐이고, 필터 문자열은
+           * 무엇이 재처리됐는지 말하지 않는다 — **필터의 일치 집합은 직후에
+           * 달라질 수 있으므로** 그 조건만 남기면 재구성이 불가능하다. 서버가
+           * 확정한 대상을 그대로 적는다.
+           */
+          target: result.delivery_ids.join(','),
+          // 어떻게 골랐는지는 조건이므로 `query`가 담는다.
           query: JSON.stringify({
             dead_letter_ids: deadLetterIds ?? null,
             filter: filter ?? null,

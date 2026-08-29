@@ -1682,4 +1682,31 @@ describe('감사 기록의 도달성과 계약 (WP-039 / CR-054)', () => {
   it('감사 항목이 `security_officer` 전용이다', () => {
     expect(NAV).toContain("allowedRoles: ['security_officer']");
   });
+
+  /*
+   * PR #84 리뷰가 찾은 셋 (DEV-421~423).
+   */
+  it('**관리 롤이 파티션을 만들고 지울 수 있다** (DEV-421)', () => {
+    // `GRANT ALL ON TABLE`은 스키마 `CREATE`도 소유권도 주지 않는다 —
+    // 둘 다 없으면 `JOB-AUD-001`이 자기 일의 어느 절반도 하지 못한다.
+    const roleGrants = read('packages/db/migrations/019_retention_role.up.sql');
+    expect(roleGrants).toContain('GRANT CREATE ON SCHEMA public TO prs_admin');
+    expect(roleGrants).toContain('ALTER TABLE audit_record OWNER TO prs_admin');
+    expect(roleGrants).toContain('ALTER TABLE raw_event OWNER TO prs_admin');
+  });
+
+  it('**실제 관리 롤로 도는 시험이 있다** — 소유자 풀은 제약을 만나지 않는다', () => {
+    const roleTest = read('apps/pipeline-worker/integration/retention/retention-role.test.ts');
+    expect(roleTest).toContain('createAdminPool(');
+    expect(roleTest).toContain('GRANT prs_admin TO');
+  });
+
+  it('`dead_letter.reprocess`가 **전달 식별자**를 남긴다 (DEV-422)', () => {
+    expect(OPS_ROUTES).toContain('target: result.delivery_ids.join');
+    expect(read('apps/search-api/src/ops/dead-letters.ts')).toContain('readonly delivery_ids:');
+  });
+
+  it('`saved_search.update`가 **바뀐 뒤의 질의**를 남긴다 (DEV-423)', () => {
+    expect(SAVED_SEARCH_ROUTES).toContain("outcome.kind === 'updated' ? finalQuery : null");
+  });
 });

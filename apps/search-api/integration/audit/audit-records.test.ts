@@ -337,6 +337,44 @@ describe('QA-A004-02·10: 필수 필드와 `null` 정직성', () => {
   });
 });
 
+describe('감사 대상 값의 정본 (PR #84 리뷰)', () => {
+  it('`dead_letter.reprocess`의 대상은 **전달 식별자**다', async () => {
+    // 내부 `dead_letter_id`는 그 행을 가리킬 뿐이고, 필터 문자열은 무엇이
+    // 재처리됐는지 말하지 않는다 — 일치 집합이 직후에 달라질 수 있다.
+    await seed([
+      {
+        action: 'dead_letter.reprocess',
+        target: '8f2c1e40-aaaa-4bbb-8ccc-000000000001,8f2c1e40-aaaa-4bbb-8ccc-000000000002',
+        query: JSON.stringify({ dead_letter_ids: [11, 12], filter: null }),
+        resultCode: '2',
+      },
+    ]);
+    const session = await login(OFFICER, ['developer', 'security_officer']);
+    const { body } = await list(session, 'action=dead_letter.reprocess');
+    const row = body.items.find((item) => item.user_id.startsWith(NS));
+    expect(row?.target).toContain('8f2c1e40');
+    // 어떻게 골랐는지는 조건이므로 `query`가 담는다.
+    expect(row?.query).toContain('dead_letter_ids');
+  });
+
+  it('`saved_search.update`는 **바뀐 뒤의 질의**를 남긴다', async () => {
+    // `patch.query`만 담으면 이름만 고친 수정이 `null`을 남기고, 나중에
+    // 그 항목이 삭제되면 어떤 공유 검색을 건드렸는지 알 수 없다.
+    await seed([
+      {
+        action: 'saved_search.update',
+        target: '77',
+        query: 'repo:acme/payments is:merged',
+        resultCode: 'updated',
+      },
+    ]);
+    const session = await login(OFFICER, ['developer', 'security_officer']);
+    const { body } = await list(session, 'action=saved_search.update');
+    const row = body.items.find((item) => item.user_id.startsWith(NS));
+    expect(row?.query).toBe('repo:acme/payments is:merged');
+  });
+});
+
 describe('QA-A004-08: legacy 어휘도 조회할 수 있다 (AC-7)', () => {
   it('정본 표에 없는 `sequence_integrity.reassign`을 찾는다', async () => {
     // WP-028이 기록한 값. AC-3이 갱신을 금지하므로 그대로 남아 있다.

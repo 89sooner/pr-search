@@ -143,6 +143,21 @@ describe('API-ADM-007 시퀀스 정합성 점검 (WP-028)', () => {
   }, 180_000);
 
   afterAll(async () => {
+    /*
+     * **자기가 만든 잡 행을 치운다** (WP-039 / DEV-420).
+     *
+     * 이 파일은 재채번 잡을 큐에 넣고 `beforeEach`에서만 지운다 — 마지막
+     * 시험이 남긴 행은 그대로 남는다. 그 행 하나가 뒤에 도는
+     * `packages/db/integration/migrate.test.ts`를 깨뜨린다: 그 시험의
+     * `migrateDown`이 **마이그레이션 009를 되돌리면 `sequence_reassign`을
+     * 허용하지 않는 옛 `job_type_chk`가 복원되고**, 남은 행이 그 제약을
+     * 위반한다.
+     *
+     * **파일 순서가 바뀔 때만 드러난다** — 전량 실행 네 번 중 한 번 실패한
+     * 자리가 여기였다. 자기 시험은 통과하고 남의 시험이 깨지므로 원인이
+     * 있는 곳과 증상이 나타나는 곳이 다르다. 오염을 만든 쪽이 치운다.
+     */
+    await pool?.query("DELETE FROM job WHERE type IN ('sequence_reassign', 'sequence_integrity')");
     await app?.close();
     await pool?.end();
   });

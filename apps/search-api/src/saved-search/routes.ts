@@ -556,9 +556,17 @@ export function registerSavedSearchRoutes(
       userId,
       action: 'saved_search.update',
       target: String(savedSearchId),
-      // 질의를 고치지 않은 수정(이름·공개 범위만)은 `null`이다 — 바뀌지 않은
-      // 값을 실으면 감사가 "질의를 바꿨다"고 말하게 된다.
-      query: patch.query ?? null,
+      /*
+       * **바뀐 뒤의 질의다** (정본 표, PR #84 리뷰 P2).
+       *
+       * `patch.query`만 담으면 이름·공개 범위만 고친 수정이 `null`을 남기고,
+       * 나중에 그 질의가 또 바뀌거나 항목이 삭제되면 **그때 어떤 공유 검색을
+       * 건드렸는지 재구성할 수 없다.** 감사의 값은 그 재구성이다.
+       *
+       * 실패한 수정은 바뀐 것이 없으므로 `null`이다 — 일어나지 않은 상태를
+       * 기록하지 않는다.
+       */
+      query: outcome.kind === 'updated' ? finalQuery : null,
       resultCode: outcome.kind,
       correlationId,
     });
