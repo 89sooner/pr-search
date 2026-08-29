@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-08-29T10:21:21+00:00
+generated=2026-08-29T10:52:31+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -18,8 +18,8 @@ legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd c
 ### f527103
 src=agent-context/commands.md
 compact=agent-context/_handoff/compact/f527103.commands.ctx.md
-sha256=aab59995a48d8462599e2cf0b2955af9aec5c8c39265d1fb774c5b2cc5931457
-bytes=83875 compact_bytes=85182 lines=1705 priority=45
+sha256=94899deaf905c40db513e3b43dc35020fcbb311822d9c7d7b2cd31e81862192b
+bytes=84513 compact_bytes=85801 lines=1714 priority=45
 heads=명령어 · 시험 결과 · 실패한 명령과 원인 > 필수 전제 — Node PATH > 검증 배터리 (전 계층, 마지막 실행 결과) > 함정: e2e는 빌드를 하지 않는다 > 실패했던 명령과 원인 > 환경 준비 (새 머신이라면)
 sig=agent-context/commands.md;HOME/.nvm/versions/node/v22.23.2/bin;prs/web;web/lib/neighbors;sequence/neighbors;apps/web;/node_modules/.bin/playwright;e2e/flow-002.spec.ts;prs-postgres/redis/elasticsearch;dist/cli.js;9200/_cat/indices;repos/89sooner/pr-search/pulls/33/comments;pass/fail;dev/null;docs/00_governance/change_control.md;home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py;ops/sequence-integrity;pipeline-worker/integration/sequence/repair;authz/team-scope;packages/authz/src/team-scope;search-api/src/runtime;repos/89sooner/pr-search/pulls/;acme/payments;acme/integrity-wp028
 
@@ -42,8 +42,8 @@ sig=agent-context/files.md;docs/10_requirements/srs_final.md;docs/00_governance/
 ### f7b39dc
 src=agent-context/risks.md
 compact=agent-context/_handoff/compact/f7b39dc.risks.ctx.md
-sha256=b3e58d00b338af152ef6b56004b248c95cee97ce0e4ccf907dba843e5d7849ee
-bytes=84798 compact_bytes=82990 lines=1290 priority=45
+sha256=ff9f97a3f54b6673cb8d2136a0c80cad655eb9c0c84100666c365f3f7ffb700a
+bytes=85409 compact_bytes=83583 lines=1298 priority=45
 heads=리스크 · 불확실한 가정 · 함정 > 절차 함정 (이 세션에서 실제로 밟은 것들) > 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다 > lint는 마지막 파일을 쓴 뒤에 다시 돌려라 > 대역(mock)이 실제보다 관대하면 그만큼이 사각지대다 > 임시 컨테이너에서는 슬라이스마다 커밋하라
 sig=agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 

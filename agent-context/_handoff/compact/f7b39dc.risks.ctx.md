@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=b3e58d00b338af152ef6b56004b248c95cee97ce0e4ccf907dba843e5d7849ee bytes=84798 lines=1290 title=리스크-불확실한-가정-함정
+@kv sha256=ff9f97a3f54b6673cb8d2136a0c80cad655eb9c0c84100666c365f3f7ffb700a bytes=85409 lines=1298 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -583,6 +583,9 @@
 |  pullRequests(last:25, states:[OPEN,MERGED]){
 |    nodes{ number state reviewThreads(first:50){nodes{isResolved}} } } } }'
 @p → "고쳤다"와 "스레드가 닫혔다"는 다른 사실이다. 머지 후에는 이 명령으로 센다.
+@path 그리고 세는 명령 자체가 조용히 틀릴 수 있다. 처음 쓴 것이 last:25라 PR #32·#49를
+@p 빼고 22건이라 답했다(실제 24건). 고치려고 --paginate를 시도했더니 더 나빴다 — PR 다섯을 두 번 세고 하나를 빼먹고 cannot iterate over: null로 끝났다. 중복은 과다를, 누락은 과소를 만들고 둘이 섞이면 어느 쪽으로 틀렸는지도 모른다.
+@p → 계수 도구는 잘렸는지를 스스로 말해야 한다. pageInfo를 읽지 않는 계수는 그것이 막으려던 "0건"을 다른 숫자로 다시 만든다.
 @h2 계약에 개수를 적으면 그 수가 낡는 자리를 아무도 모른다
 @path WP-039 "13종" · 보안 문서 표 14행 · 액션 문자열 18개. 셋 중 어느 것도 틀리지 않았고
 @path 셋이 서로 다른 것을 세고 있었다. CR-052가 표에 한 행을 더할 때 WP-039의 문구는
