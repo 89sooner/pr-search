@@ -1163,3 +1163,23 @@ PR #76 리뷰 열 건 중 다섯이 그 자리였다. 목록은 항목을 세어
 
 `CR-052`가 리뷰 수를 정정하며 배운 것과 같은 뿌리다 — **원장은 검증 기록의 정본이므로 그 안의
 수가 실측과 달라서는 안 된다.**
+
+# 2026-08-29 (2차) 세션이 추가한 것 (CR-036 · WP-038)
+
+## 토큰 추가는 check:api를 깬다 — 로컬 배터리가 놓쳤다
+design-system에 토큰을 더하면 생성 tokens.ts의 공개 타입이 바뀌어 `etc/tokens.api.md`와 드리프트한다. test/build는 초록인데 CI verify가 `error[API-REPORT-DRIFT]`로 실패한다. `pnpm check:api --update`로 갱신·커밋. 토큰 추가 배터리에 check:api 필수.
+
+## 릴리스 audit 게이트가 배포를 막는다 (기능과 무관)
+지난 릴리스 후 새 보안 권고가 올라오면 `pnpm audit --audit-level high`가 실패해 publish 잡이 죽는다. 전부 devDep 전이라 배포물엔 안 들어가지만 게이트는 트리 전체를 본다. pnpm.overrides로 패치 버전 고정(게이트 약화 아님).
+
+## 집계는 "적게 나옴"과 "정확함"이 같은 모양 — mock이 계약 버그를 숨긴다
+백분위 API는 `p50` 접두·`overall`/`groups[]` 중첩인데 `"50"`을 읽어 **모든 백분위가 —로 비었다.** e2e mock이 응답을 지어내 못 잡았고 Codex 리뷰가 잡았다. 화면이 오류를 안 낸다. → mock은 서버 계약과 키까지 맞춰야 계약 버그를 드러낸다.
+
+## groups 엔드포인트는 group_by 필수
+없이 부르면 400. 초기 로드가 깨진다. 자기 리뷰가 잡았다. usePanel에 enabled를 두어 그룹 키 없으면 안 부른다.
+
+## merged: 범위는 lte(포함)
+query-builder.ts:326이 gte/lte. 히스토그램 버킷 [start,nextStart)를 그대로 merged:start..nextStart로 드릴하면 경계를 겹쳐 센다. 상한을 -1ms.
+
+## design-system version PR엔 CI가 없다
+changesets/action이 GITHUB_TOKEN으로 만들어 워크플로를 재트리거하지 않는다. 품질 게이트는 publish 잡이 재빌드하며 다시 본다. squash 시 봇 저자가 유지돼야 version-commit 분류기가 인식한다.

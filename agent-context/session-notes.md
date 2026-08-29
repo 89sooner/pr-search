@@ -998,3 +998,75 @@ main `651b1ad` · 작업 트리 깨끗 · 로컬 브랜치 `main` 하나(병합�
 실수로 커밋될 위험이 없다. 전사를 저장소 루트에 두지 않는다: 루트 경로는 어떤 무시 규칙에도
 걸리지 않아 `git add`에 휩쓸릴 수 있고, 그것이 PR #77·#78이 기록해 둔 실패 양식이다. 새 전사가
 필요하면 반드시 `exports/` 아래에 둔다.
+
+# Session: 2026-08-29 (2차) — PR #79 종결 · CR-036 dataviz 배포 · WP-038 완주
+
+## Goal
+
+사용자 지시: PR #79 P1 정정·병합 → DEV-380을 design-system 기여(A안)로 해소 →
+Conductor dataviz 토큰 0.2.0 배포 → PR Search 의존성 올림 → WP-038 W-006 통계
+대시보드 완주. Codex 호출 0.
+
+## 무엇을 했나
+
+두 저장소, 다섯 PR.
+
+| repo | PR | 무엇 | 병합 |
+| --- | --- | --- | --- |
+| pr-search | #79 | 전사 경로를 exports/ 무시 경계 안으로 정정 (Codex P1) | 4a3f0a1 |
+| design-system | #9 | CR-036 dataviz 색 계열 (series.1~20·sequential.1~5) | 756b4e5 |
+| design-system | #10 | Version packages → 0.2.0 (linked) | e13e790 |
+| design-system | #11 | 릴리스 audit high 권고를 pnpm.overrides로 해소 | eb986a3 |
+| pr-search | #80 | WP-038 W-006 통계 대시보드 | b5ae933 |
+
+Conductor 0.2.0 npm 배포됨(tokens·css·react). PR Search apps/web 0.2.0 소비.
+
+## 핵심 발견
+
+- **dataviz 색은 두 테마가 다른 hex다.** 다크 결속 표면은 raised #141d2a(가장 밝음),
+  라이트 결속은 base #e8ecf2(가장 어두움). 라이트 색은 명도 ≤0.225여야 3:1. 계산으로
+  역산해 6표면 전부 통과(최악 3.28), 인접 계열 162° 간격.
+- **토큰 추가는 check:api를 깬다.** CI verify가 API 스냅숏 드리프트로 실패 → `--update`.
+  로컬 배터리에 check:api 포함해야 한다. (메모리에 남김)
+- **릴리스 audit 게이트가 dataviz와 무관하게 막았다.** 지난 릴리스 후 새 권고(brace-expansion
+  등, 전부 devDep 전이). pnpm.overrides로 패치 버전 고정(게이트 약화 아님).
+- **백분위 API 키는 p 접두다** — `p50`, `overall`/`groups[]` 중첩. `"50"`을 읽으면 전부 `—`.
+  Codex 리뷰가 잡았다. 집계는 "적게 나옴"과 "정확함"이 같은 모양이라 화면이 오류를 안 낸다.
+- **groups 엔드포인트는 group_by 필수.** 없이 부르면 400. 자기 리뷰가 잡았다.
+- **merged: 범위는 lte(포함)** — 히스토그램 버킷 [start, nextStart)의 상한을 -1ms로.
+
+## 확정 결정
+
+- DEV-380 = design-system 기여(A). ADR-006의 semantic-토큰-만 지키고 대비를 Conductor
+  도구로 증명. 제품 측 파생(B)·status 재사용은 거절.
+- 시계열 버킷 드릴다운은 클라이언트가 기간만 만든다(DEV-396) — 그룹 인코딩 재조립과 다르다.
+- Conductor Tabs 없음 → WAI-ARIA 탭 조합(DEV-397, 기여 후보).
+- /stats → /analytics (프런트엔드 아키텍처 정본).
+
+## 검증 (WP-038, 마지막)
+
+typecheck·lint·lint:deps / 단위 1736 / a11y 272(analytics 10) / 대비 232·232(dataviz) /
+regression 231 / web build / e2e flow-005 8 + flow-001·paging 23. 변이 M1~M10 전부 시험이 킬.
+
+## 리뷰
+
+- PR #79: Codex P1 하나(전사 경로) — 실결함, 정정.
+- design-system #9: Codex P2 둘(캐스케이드 미완·대비 총계) — 실결함, 정정.
+- PR #80: Codex 다섯(P1 둘·P2 셋) — 전부 실결함. 백분위 p 접두·group_by 필수·그룹 행·
+  기간 컨트롤·배타 상한. 셋이 "숫자가 조용히 틀리는" 자리.
+
+## 현재 상태 한 줄
+
+Conductor 0.2.0 배포·DEV-380 resolved. REL-005 2/4(WP-037·038 done). 다음은 WP-039(감사)·
+WP-040(운영 콘솔). 릴리스 게이트는 여전히 미통과(REL-003, Gate 5 성능).
+
+## Next steps
+
+1. WP-039 감사 기록과 A-004 (FR-AUTH-004).
+2. WP-040 A-002·A-003 운영 콘솔.
+3. 배포: es:apply-mappings(changed_lines 백필), 마이그레이션 017 — 아직 실환경 미적용.
+
+## References
+
+pr-search PR #79·#80, design-system PR #9·#10·#11, CR-036, DEV-380·396·397, 원장 6.49·6.49.1.
+

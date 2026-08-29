@@ -807,3 +807,23 @@ handoff 준비 → DEV-364 → ACC-06 → 차트 스파이크 → 감사 → 계
 
 main = `d3b2590`, SRS `baseline v2.13`, 원장 `review v5.6`, CR-053 · DEV-395까지.
 **REL-005 1/4.** 다음은 `WP-038`이며 **착수 전에 `DEV-380`(계열 색)을 정해야 한다.**
+
+# 세션 요약 — PR #79 · CR-036 dataviz 배포 · WP-038 (2026-08-29 2차)
+
+## 목표
+PR #79 정정·병합 → DEV-380을 design-system 기여로 해소 → Conductor dataviz 0.2.0 배포 → WP-038 완주. Codex 호출 0.
+
+## 완료 (두 저장소, 다섯 PR 전부 병합)
+PR #79(전사 경로) · design-system #9(CR-036 dataviz) · #10(0.2.0 version) · #11(audit overrides) · pr-search #80(WP-038, b5ae933).
+
+## 핵심 발견
+- 색을 대비 목표 명도로 역산해야 6표면 3:1을 보장한다(두 테마 결속 표면이 반대).
+- 토큰 추가는 check:api를 깬다. audit 게이트는 기능과 무관하게 배포를 막는다.
+- 백분위 p 접두 키를 놓치면 전부 —인데 화면은 오류를 안 낸다(Codex가 잡음).
+- 집계 mock이 서버 계약과 키를 안 맞추면 계약 버그를 숨긴다.
+
+## 리뷰
+PR #79 P1 하나, design-system #9 P2 둘, PR #80 다섯(P1 둘·P2 셋) — 전부 실결함, 전부 정정.
+
+## 현재 상태 한 줄
+Conductor 0.2.0 배포·DEV-380 resolved. REL-005 2/4(WP-037·038 done). 다음 WP-039·040. 릴리스 게이트 미통과(Gate 5 성능).
