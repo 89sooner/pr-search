@@ -12,7 +12,8 @@
  * 조사 이력의 보존이 이 제품의 목적이다.
  */
 
-import { auditRepo, jobRepo, repositoryRepo, withReindexWrite, type Pool, type RepositoryRow } from '@prs/db';
+import { jobRepo, repositoryRepo, withReindexWrite, type Pool, type RepositoryRow } from '@prs/db';
+import { recordAuditBestEffort } from '../audit/recorder.js';
 import { MAX_SEQUENCE_BRANCHES } from '@prs/db';
 import { applyRepositoryTeams, markRepositoryArchived, type MarkArchivedResult } from '@prs/es';
 import type { Client as EsClient } from '@elastic/elasticsearch';
@@ -185,13 +186,17 @@ export async function registerRepository(
   if (facts === null) {
     // 접근할 수 없는 저장소를 등록하면 수집이 영영 비어 있는 채로 "등록됨"으로
     // 보인다. 필요한 권한을 함께 돌려준다 (FR-ING-009 예외 처리).
-    await auditRepo.recordAudit(deps.pool, {
-      userId: actor,
-      action: 'repository.register',
-      target: `${owner}/${name}`,
-      resultCode: 'FORBIDDEN_ROLE',
-      correlationId,
-    });
+    await recordAuditBestEffort(
+      deps.pool,
+      {
+        userId: actor,
+        action: 'repository.register',
+        target: `${owner}/${name}`,
+        resultCode: 'FORBIDDEN_ROLE',
+        correlationId,
+      },
+      deps.log,
+    );
     throw new AdminRejected('FORBIDDEN_ROLE', `${owner}/${name}에 접근할 수 없다`, {
       required_permissions: [...REQUIRED_APP_PERMISSIONS],
     });
@@ -226,13 +231,17 @@ export async function registerRepository(
 
   const backfillJobId = input.backfill === true ? await enqueueBackfill(deps, owner, name, actor) : null;
 
-  await auditRepo.recordAudit(deps.pool, {
-    userId: actor,
-    action: 'repository.register',
-    target: `${owner}/${name}`,
-    resultCode: existing === undefined ? 'created' : 'updated',
-    correlationId,
-  });
+  await recordAuditBestEffort(
+    deps.pool,
+    {
+      userId: actor,
+      action: 'repository.register',
+      target: `${owner}/${name}`,
+      resultCode: existing === undefined ? 'created' : 'updated',
+      correlationId,
+    },
+    deps.log,
+  );
 
   const repository = await repositoryRepo.findRepositoryById(deps.pool, facts.repository_id);
   if (repository === undefined) throw new Error('등록 직후 저장소를 찾지 못했다');
@@ -282,13 +291,17 @@ export async function updateRepository(
     throw new AdminRejected('NOT_FOUND', `등록되지 않은 저장소다: ${String(repositoryId)}`);
   }
 
-  await auditRepo.recordAudit(deps.pool, {
-    userId: actor,
-    action: 'repository.update',
-    target: `${updated.owner}/${updated.name}`,
-    resultCode: 'updated',
-    correlationId,
-  });
+  await recordAuditBestEffort(
+    deps.pool,
+    {
+      userId: actor,
+      action: 'repository.update',
+      target: `${updated.owner}/${updated.name}`,
+      resultCode: 'updated',
+      correlationId,
+    },
+    deps.log,
+  );
   return updated;
 }
 
@@ -305,13 +318,17 @@ export async function unregisterRepository(
 
   const marked = await markDocuments(deps, repositoryId, true, correlationId);
 
-  await auditRepo.recordAudit(deps.pool, {
-    userId: actor,
-    action: 'repository.unregister',
-    target: `${archived.owner}/${archived.name}`,
-    resultCode: 'archived',
-    correlationId,
-  });
+  await recordAuditBestEffort(
+    deps.pool,
+    {
+      userId: actor,
+      action: 'repository.unregister',
+      target: `${archived.owner}/${archived.name}`,
+      resultCode: 'archived',
+      correlationId,
+    },
+    deps.log,
+  );
 
   deps.log?.({
     level: 'info',

@@ -1,4 +1,5 @@
-# 배치 잡 역할 (JOB-ING-006 재색인 / JOB-ING-007 아웃박스 재적재).
+# 배치 잡 역할 (JOB-ING-006 재색인 / JOB-ING-007 아웃박스 재적재 /
+# JOB-AUD-001 감사·원본 파티션 수명).
 #
 # **이 파일이 없었다** (CR-045, DEV-292). 인프라 3장의 배포 단위 표는
 # `pipeline-worker:batch`를 1/3 replica로 승인하고 있었고 `index.ts`도

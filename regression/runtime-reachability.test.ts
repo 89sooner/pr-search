@@ -63,6 +63,24 @@ const CAPABILITIES = [
     manifest: 'deploy/k8s/pipeline-worker-batch.yaml',
   },
   {
+    id: 'JOB-AUD-001',
+    what: '감사·원본 파티션 수명 (생성 + 만료 드롭)',
+    process: 'pipeline-worker',
+    role: 'batch',
+    start: 'partitionRetention = startRetentionRunner(',
+    stop: 'partitionRetention?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-batch.yaml',
+  },
+  {
+    id: 'API-ADM-005',
+    what: '감사 기록 조회 API',
+    process: 'search-api',
+    role: null,
+    start: 'audit: {',
+    stop: null,
+    manifest: 'deploy/k8s/search-api.yaml',
+  },
+  {
     id: 'API-ADM-004',
     what: '무중단 재색인 시작 API',
     process: 'search-api',
@@ -1499,5 +1517,169 @@ describe('집계 API의 도달성과 계약 (WP-037 / CR-053)', () => {
 
   it('**`kind:`가 PR을 남기지 않으면 400이다** — 조용한 0건이 아니다', () => {
     expect(ROUTES).toContain('analytics_population_empty');
+  });
+});
+
+
+/**
+ * 감사 기록의 도달성과 계약 (WP-039 / CR-054).
+ *
+ * **`grep`으로 액션 문자열이 있는지 세지 않는다** — 그것은 "코드에 이름이
+ * 있다"이지 "사용자 경로가 감사된다"가 아니다. 실제 기록은 통합 시험이
+ * 확인하고, 여기서는 **배선이 끊기면 죽는 자리**만 건다.
+ */
+describe('감사 기록의 도달성과 계약 (WP-039 / CR-054)', () => {
+  const RECORDER = read('apps/search-api/src/audit/recorder.ts');
+  const AUDIT_ROUTES = read('apps/search-api/src/audit/routes.ts');
+  const OPS_ROUTES = read('apps/search-api/src/ops/routes.ts');
+  const SEARCH_ROUTES = read('apps/search-api/src/search/routes.ts');
+  const RESOLVE_ROUTES = read('apps/search-api/src/resolve/routes.ts');
+  const SAVED_SEARCH_ROUTES = read('apps/search-api/src/saved-search/routes.ts');
+  const REPOSITORY_OPS = read('apps/search-api/src/ops/repositories.ts');
+  const RETENTION = read('apps/pipeline-worker/src/retention.ts');
+  const NAV = read('apps/web/lib/nav.ts');
+  const SERVER = read('apps/search-api/src/server.ts');
+
+  it('**운영 서버가 감사 라우트를 실제로 등록한다**', () => {
+    expect(SERVER).toContain('registerAuditRoutes(app, {');
+  });
+
+  it('감사 라우트가 세션 블록 안에 있다 — 토큰으로 열리지 않는다', () => {
+    // 역할은 세션에만 있다. 토큰 주체에게 열면 감사 평면이 토큰 하나로 열린다.
+    const sessionBlock = SERVER.slice(SERVER.indexOf('deps.auth !== undefined'));
+    expect(sessionBlock).toContain('registerAuditRoutes');
+  });
+
+  it('**`security_officer` 전용이다** (FR-AUTH-004 AC-5)', () => {
+    expect(AUDIT_ROUTES).toContain("requireRole(principal, 'security_officer')");
+    // `operator`를 함께 받는 형태가 아니어야 한다.
+    expect(AUDIT_ROUTES).not.toContain("requireAnyRole(principal, ['operator'");
+  });
+
+  it('**접근 범위 필터를 걸지 않는다** — 감사는 행위의 기록이다', () => {
+    expect(AUDIT_ROUTES).not.toContain('applyMandatoryScopeFilter');
+    expect(AUDIT_ROUTES).toContain('접근 범위 필터를 걸지 않는다');
+  });
+
+  it('**갱신·삭제 경로가 없다** (AC-3)', () => {
+    expect(AUDIT_ROUTES).not.toMatch(/app\.(patch|delete|put)\(/);
+  });
+
+  it('공용 실패 격리 경계가 하나다 (AC-6, DEV-406)', () => {
+    expect(RECORDER).toContain('export async function recordAuditBestEffort');
+    expect(RECORDER).toContain('auditFailedTotal.inc({ action: entry.action })');
+  });
+
+  it('**호출부가 각자 `try`/`catch`를 두지 않는다**', () => {
+    // 각자 구현하면 빠뜨린 자리가 리뷰에서 눈에 띄지 않는다.
+    for (const [name, source] of [
+      ['ops/routes', OPS_ROUTES],
+      ['ops/repositories', REPOSITORY_OPS],
+      ['search/routes', SEARCH_ROUTES],
+      ['resolve/routes', RESOLVE_ROUTES],
+      ['saved-search/routes', SAVED_SEARCH_ROUTES],
+    ] as const) {
+      expect(source, name).not.toContain('auditRepo.recordAudit(');
+    }
+  });
+
+  it('지표 라벨이 `action` 하나다 — 고카디널리티 값을 담지 않는다', () => {
+    expect(RECORDER).not.toContain('userId: entry.userId,\n      target');
+    expect(RECORDER).toContain("auditFailedTotal.inc({ action: entry.action })");
+  });
+
+  it('**`audit.view`를 응답 확정 뒤에 기록한다** (AC-8)', () => {
+    const bodyIndex = AUDIT_ROUTES.indexOf('const body = {');
+    const auditIndex = AUDIT_ROUTES.indexOf("action: 'audit.view'");
+    expect(bodyIndex).toBeGreaterThan(0);
+    expect(auditIndex).toBeGreaterThan(bodyIndex);
+  });
+
+  it('신규 재채번 기록이 `sequence.reassign`이다 (DEV-405)', () => {
+    expect(OPS_ROUTES).toContain("action: 'sequence.reassign'");
+    expect(OPS_ROUTES).not.toContain("action: 'sequence_integrity.reassign'");
+  });
+
+  it('**legacy 값을 조회에서 막지 않는다** (AC-7)', () => {
+    // `action` 필터를 정본 enum으로 좁히면 과거를 조사할 수 없다.
+    expect(AUDIT_ROUTES).not.toContain('isActiveAuditAction');
+  });
+
+  it('잡 제어 넷이 모두 기록된다 (DEV-404)', () => {
+    expect(OPS_ROUTES).toContain("action: 'job.run'");
+    expect(OPS_ROUTES).toContain('action: `job.${action}`');
+  });
+
+  it('재색인이 `reindex.start` 하나만 남긴다 — 두 번 세지 않는다', () => {
+    expect(OPS_ROUTES).toContain("action: 'reindex.start'");
+  });
+
+  it('DLQ 재처리가 기록된다', () => {
+    expect(OPS_ROUTES).toContain("action: 'dead_letter.reprocess'");
+  });
+
+  it('검색·상세·저장된 검색이 기록된다', () => {
+    expect(SEARCH_ROUTES).toContain("action: 'search.execute'");
+    expect(RESOLVE_ROUTES).toContain("action: 'entity.view'");
+    expect(SAVED_SEARCH_ROUTES).toContain("action: 'saved_search.create'");
+    expect(SAVED_SEARCH_ROUTES).toContain("action: 'saved_search.update'");
+    expect(SAVED_SEARCH_ROUTES).toContain("action: 'saved_search.delete'");
+  });
+
+  it('**`saved_search.run`을 만들지 않는다** — 실행은 `search.execute`가 남긴다', () => {
+    expect(SAVED_SEARCH_ROUTES).not.toContain("action: 'saved_search.run'");
+  });
+
+  it('**검색의 `target`이 `null`이다** (AC-2, DEV-415)', () => {
+    expect(SEARCH_ROUTES).toContain('target: null');
+  });
+
+  it('보존 잡이 드롭 전에 파티션을 만든다 (DEV-417)', () => {
+    const partitions = read('packages/db/src/partitions.ts');
+    const createIndex = partitions.indexOf('const created = await ensureAllPartitions(');
+    const dropIndex = partitions.indexOf('DROP TABLE IF EXISTS ${bound.name}');
+    expect(createIndex).toBeGreaterThan(0);
+    expect(dropIndex).toBeGreaterThan(createIndex);
+  });
+
+  it('**파티션 경계를 이름이 아니라 카탈로그에서 읽는다** (§41)', () => {
+    const partitions = read('packages/db/src/partitions.ts');
+    expect(partitions).toContain('pg_get_expr(c.relpartbound, c.oid)');
+  });
+
+  it('보존이 `retention.purge`를 남긴다 (FR-ING-003 AC-5)', () => {
+    expect(RETENTION).toContain("action: 'retention.purge'");
+    expect(RETENTION).toContain('AUDIT_RETENTION_PRINCIPAL');
+  });
+
+  it('**관리 연결이 `prs_app`과 다르다** (AC-3, DEV-411)', () => {
+    const pool = read('packages/db/src/pool.ts');
+    expect(pool).toContain('SET ROLE ${ADMIN_DB_ROLE}');
+    expect(read('packages/db/src/config.ts')).toContain('ADMIN_DATABASE_URL');
+  });
+
+  it('**애플리케이션 롤에 `DROP` 권한을 주지 않는다**', () => {
+    const roles = read('packages/db/migrations/005_roles.up.sql');
+    expect(roles).toContain('GRANT SELECT, INSERT ON audit_record TO prs_app');
+    expect(roles).not.toMatch(/GRANT[^;]*\bDELETE\b[^;]*audit_record[^;]*prs_app/);
+  });
+
+  it('커서 인덱스 마이그레이션이 있다 (DEV-412)', () => {
+    expect(read('packages/db/migrations/018_audit_cursor.up.sql')).toContain(
+      'CREATE INDEX audit_cursor_idx ON audit_record (occurred_at DESC, audit_id DESC)',
+    );
+    expect(read('packages/db/migrations/018_audit_cursor.down.sql')).toContain(
+      'DROP INDEX IF EXISTS audit_cursor_idx',
+    );
+  });
+
+  it('**내비게이션이 항목마다 역할을 본다** (DEV-408)', () => {
+    expect(NAV).toContain('allowedRoles');
+    // 섹션 하나로 통째로 여는 형태가 남아 있으면 안 된다.
+    expect(NAV).not.toContain("entry.section !== 'ops' || ops");
+  });
+
+  it('감사 항목이 `security_officer` 전용이다', () => {
+    expect(NAV).toContain("allowedRoles: ['security_officer']");
   });
 });

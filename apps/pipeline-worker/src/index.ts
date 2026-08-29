@@ -8,7 +8,7 @@
  * 참조 간선 파생, JOB-REL-005 미해결 참조 해결, JOB-REL-006 전량 재파생.
  */
 
-import { createPool, jobRepo, repositoryRepo, withReindexWrite } from '@prs/db';
+import { createAdminPool, createPool, jobRepo, repositoryRepo, withReindexWrite, type Pool } from '@prs/db';
 import { deterministicEventId } from '@prs/domain';
 import {
   refreshTeamScope,
@@ -36,6 +36,7 @@ import {
 } from '@prs/github';
 import { buildServer, DEFAULT_PORT, SERVICE_NAME } from './server.js';
 import { startOutboxRelay, type OutboxRelay } from './outbox-relay.js';
+import { startRetentionRunner, type RetentionRunner } from './retention.js';
 import { createWorkerMetrics } from './metrics.js';
 import { startEnrichWorker, type EnrichLogEntry } from './enrich.js';
 import { startProjectWorker, type ProjectLogEntry } from './project.js';
@@ -134,6 +135,9 @@ let esClient: Client | undefined;
 /** JOB-ING-006 (WP-035 / CR-045). `batch` 역할이 세운다. */
 let reindexRunner: ReindexRunner | undefined;
 let retentionSweeper: RetentionSweeper | undefined;
+/** JOB-AUD-001 (WP-039 / CR-054). `batch` 역할이 세우되 관리 연결이 있어야 한다. */
+let adminPool: Pool | undefined;
+let partitionRetention: RetentionRunner | undefined;
 
 if (roles.includes('batch')) {
   relay = startOutboxRelay(pool, bus, {
@@ -183,6 +187,36 @@ if (roles.includes('batch')) {
 
   reindexRunner = startReindexRunner(reindexDeps);
   retentionSweeper = startRetentionSweeper(reindexDeps);
+
+  /*
+   * JOB-AUD-001 파티션 수명 (WP-039 / FR-ING-003 AC-5, NFR-006, CR-054).
+   *
+   * **관리 연결이 없으면 이 잡만 서지 않는다.** 기동을 거부하지 않는 이유는
+   * `BACKFILL_MAX_CONCURRENCY`와 같다 — 설정 하나가 없어서 워커 전체가 뜨지
+   * 않으면 실시간 수집까지 함께 죽는다. 대신 **없다는 사실을 로그로 드러낸다**:
+   * 조용히 넘어가면 세 달 뒤 파티션이 소진될 때까지 아무도 모른다.
+   */
+  const admin = createAdminPool();
+  if (admin === null) {
+    process.stderr.write(
+      `${JSON.stringify({
+        service: SERVICE_NAME,
+        job: 'JOB-AUD-001',
+        level: 'warn',
+        message:
+          'ADMIN_DATABASE_URL이 없어 파티션 수명 잡을 세우지 않는다 — 다가올 파티션이 소진되면 raw_event·audit_record의 INSERT가 거부된다',
+      })}\n`,
+    );
+  } else {
+    adminPool = admin;
+    partitionRetention = startRetentionRunner({
+      admin,
+      pool,
+      log: (entry) => {
+        process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, ...entry })}\n`);
+      },
+    });
+  }
 }
 
 if (roles.includes('enrich')) {
@@ -913,6 +947,10 @@ const shutdown = (): void => {
       await relay?.stop();
       await reindexRunner?.stop();
       await retentionSweeper?.stop();
+      // JOB-AUD-001은 회차 중간에 끊어도 안전하다 — 파티션 드롭은 개별
+      // 트랜잭션이고 다음 기동이 멱등하게 이어받는다.
+      await partitionRetention?.stop();
+      await adminPool?.end();
       /*
        * 러너는 **현재 페이지를 마치고** 나간다. 중간에 끊으면 커서가 가리키는
        * 지점과 실제 처리 지점이 어긋나 재개가 처리하지 않은 PR을 건너뛴다.

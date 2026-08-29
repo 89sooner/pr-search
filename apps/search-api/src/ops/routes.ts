@@ -27,7 +27,8 @@ import {
   type Principal,
 } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
-import { Counter, Gauge, METRICS_CONTENT_TYPE, renderMetrics } from '../metrics.js';
+import { Gauge, METRICS_CONTENT_TYPE, renderMetrics } from '../metrics.js';
+import { auditFailedTotal, recordAuditBestEffort } from '../audit/recorder.js';
 import { ADMIN_ERROR_STATUS, AdminRejected } from './errors.js';
 import {
   DEFAULT_LIST_STATES,
@@ -61,7 +62,7 @@ import {
 } from './jobs.js';
 import { startReindex, type ReindexDeps } from './reindex.js';
 import { listRawEvents, parseRawEventFilter, type RawEventsDeps } from './raw-events.js';
-import { auditRepo, jobRepo, repositoryRepo } from '@prs/db';
+import { jobRepo, repositoryRepo } from '@prs/db';
 import {
   confirmationMatches,
   expectedNewEpoch,
@@ -82,13 +83,6 @@ export const REINDEX_PATH = '/api/v1/admin/reindex';
 /** API-ADM-008 (WP-036, CR-052). */
 export const RAW_EVENTS_PATH = '/api/v1/admin/raw-events';
 
-/**
- * 감사 기록 적재 실패 건수 (PR #67 리뷰 P1).
- *
- * **모듈 수준이다.** 요청마다 새로 만들면 스크레이프가 언제나 0을 본다.
- * 0이 아니면 조회는 되는데 그 조회가 남지 않고 있다는 뜻이라 경보 대상이다.
- */
-const auditFailed = new Counter('audit_record_failed_total', '감사 기록 적재 실패 건수');
 
 function fail(
   reply: FastifyReply,
@@ -206,7 +200,8 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
 
   app.post(REPROCESS_PATH, async (request, reply) => {
     const correlationId = randomUUID();
-    if ((await authorize(request, reply, correlationId)) === null) return reply;
+    const principal = await authorize(request, reply, correlationId);
+    if (principal === null) return reply;
 
     const body = (request.body ?? {}) as Record<string, unknown>;
     try {
@@ -226,6 +221,28 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
         },
         correlationId,
       );
+      /*
+       * **재처리 실행은 감사 기록 대상이다** (`FR-AUTH-004` AC-1 "재처리 실행").
+       * 원장 7장이 "재처리 실행이 감사 기록에 남지 않음"을 알려진 제한으로
+       * 등재해 두었던 자리다 — `WP-010`이 감사 적재를 세우고도 이 경로에
+       * 붙이지 않았다.
+       */
+      await recordAuditBestEffort(
+        deps.pool,
+        {
+          userId: principalId(principal),
+          action: 'dead_letter.reprocess',
+          target: deadLetterIds === undefined ? '(필터)' : deadLetterIds.join(','),
+          query: JSON.stringify({
+            dead_letter_ids: deadLetterIds ?? null,
+            filter: filter ?? null,
+          }),
+          resultCode: String(result.reinjected),
+          correlationId,
+        },
+        deps.log,
+      );
+
       return reply.status(202).send({ ...result, correlation_id: correlationId });
     } catch (error) {
       if (error instanceof AdminRejected) {
@@ -303,8 +320,9 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
            * 그 기록으로 무엇을 열람했는지 재구성할 수 없고, `FR-AUTH-004` AC-2가
            * 요구하는 것이 바로 재구성 가능한 질의 문자열이다.
            */
-          try {
-            await auditRepo.recordAudit(deps.pool, {
+          await recordAuditBestEffort(
+            deps.pool,
+            {
               userId: principalId(principal),
               action: 'raw_event.view_payload',
               target: filter.deliveryId ?? filter.repository ?? '(범위 전체)',
@@ -329,16 +347,9 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
               }),
               resultCode: String(result.items.length),
               correlationId,
-            });
-          } catch (error) {
-            auditFailed.inc();
-            deps.log?.({
-              level: 'error',
-              message: 'raw_event.view_payload 감사 기록 적재 실패',
-              correlation_id: correlationId,
-              reason: error instanceof Error ? error.message : String(error),
-            });
-          }
+            },
+            deps.log,
+          );
         }
 
         return reply.send(result);
@@ -388,7 +399,7 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
       '아직 열려 있는 실패 대기열 항목 수. 100건 초과가 경보 임계다',
     );
     open.set(counts.pending + counts.reprocessing);
-    return reply.type(METRICS_CONTENT_TYPE).send(renderMetrics([byState, open, auditFailed]));
+    return reply.type(METRICS_CONTENT_TYPE).send(renderMetrics([byState, open, auditFailedTotal]));
   });
 }
 
@@ -536,7 +547,7 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
   );
 
   app.post(JOBS_PATH, async (request, reply) =>
-    handle(request, reply, async (principal) => {
+    handle(request, reply, async (principal, correlationId) => {
       const body = (request.body ?? {}) as Record<string, unknown>;
       /*
        * **집는 러너가 있는 유형만 받는다.** 다른 값을 조용히 큐에 넣으면 아무
@@ -563,6 +574,29 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
       }
 
       const outcome = await createJob(registry.pool, body['type'], target, principalId(principal));
+
+      /*
+       * **잡 제어는 감사 기록 대상이다** (`FR-ADMIN-002` AC-5). 거절도 남긴다 —
+       * "왜 그 백필이 돌지 않았는가"를 나중에 추적하려면 요청이 있었다는 사실이
+       * 있어야 한다.
+       *
+       * **`reindex.start`를 함께 남기지 않는다.** 이 경로는 `reindex`를 아예
+       * 받지 않고(`API-ADM-004`가 그 진입점이다) 저장소 등록의 `backfill=true`도
+       * 여기를 지나지 않는다 — **사용자가 누른 것 하나만 기록한다** (CR-054).
+       */
+      await recordAuditBestEffort(
+        registry.pool,
+        {
+          userId: principalId(principal),
+          action: 'job.run',
+          target: `${body['type']}:${target}`,
+          resultCode:
+            outcome.kind === 'created' ? 'created' : outcome.kind === 'conflict' ? 'JOB_CONFLICT' : 'NOT_FOUND',
+          correlationId,
+        },
+        registry.log,
+      );
+
       if (outcome.kind === 'unknown_repository') {
         throw new AdminRejected('NOT_FOUND', '등록되지 않은 저장소다', { target });
       }
@@ -574,14 +608,33 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
   );
 
   app.patch(`${JOBS_PATH}/:job_id`, async (request, reply) =>
-    handle(request, reply, async () => {
+    handle(request, reply, async (principal, correlationId) => {
       const body = (request.body ?? {}) as Record<string, unknown>;
       const action = body['action'];
       if (!isJobAction(action)) {
         throw new AdminRejected('INVALID_PARAMETER', `action은 ${JOB_ACTIONS.join('·')} 중 하나여야 한다`);
       }
 
-      const outcome = await applyJobAction(registry.pool, jobIdOf(request), action);
+      const jobId = jobIdOf(request);
+      const outcome = await applyJobAction(registry.pool, jobId, action);
+
+      /*
+       * **셋 다 기록한다** (`FR-ADMIN-002` AC-5, CR-054 DEV-404). 이전 계약은
+       * `job.{run,cancel}` 둘만 적어 **`pause`·`resume`가 승인된 채로 감사에서
+       * 사라졌다** — 실제 API가 받는 값이 어휘의 정본이다.
+       */
+      await recordAuditBestEffort(
+        registry.pool,
+        {
+          userId: principalId(principal),
+          action: `job.${action}`,
+          target: outcome.kind === 'ok' ? `${outcome.job.type}:${String(jobId)}` : String(jobId),
+          resultCode: outcome.kind === 'ok' ? outcome.job.state : outcome.kind,
+          correlationId,
+        },
+        registry.log,
+      );
+
       if (outcome.kind === 'not_found') throw new AdminRejected('NOT_FOUND', '잡을 찾을 수 없다');
       if (outcome.kind === 'invalid_transition') {
         // 현재 상태를 함께 준다 — 운영자가 왜 안 되는지 알아야 다음을 고른다.
@@ -654,6 +707,24 @@ function registerReindexRoutes(app: FastifyInstance, reindex: ReindexDeps, autho
     try {
       const body = (request.body ?? {}) as Record<string, unknown>;
       const result = await startReindex(reindex, body['alias'], principalId(principal));
+
+      /*
+       * **`reindex.start` 하나만 남긴다** (CR-054). 이 경로가 `job` 행을 만들지만
+       * `job.run`을 함께 기록하지 않는다 — 사용자가 누른 것은 재색인 하나이고,
+       * 같은 행위를 두 번 세면 감사 로그에서 실제 실행 횟수를 알 수 없게 된다.
+       */
+      await recordAuditBestEffort(
+        reindex.pool,
+        {
+          userId: principalId(principal),
+          action: 'reindex.start',
+          target: typeof body['alias'] === 'string' ? body['alias'] : String(body['alias']),
+          resultCode: 'accepted',
+          correlationId,
+        },
+        reindex.log,
+      );
+
       return reply.status(202).send({ ...result, correlation_id: correlationId });
     } catch (error) {
       if (error instanceof AdminRejected) {
@@ -723,14 +794,19 @@ function registerIntegrityRoutes(app: FastifyInstance, integrity: IntegrityDeps,
        * **점검 결과는 감사 기록 대상이다** (FR-ADMIN-003 AC-5). 실패도 남긴다 —
        * 운영자가 "점검했는데 답이 없었다"를 나중에 추적할 수 있어야 한다.
        */
-      await auditRepo.recordAudit(integrity.pool, {
-        userId: principalId(principal),
-        action: 'sequence_integrity.check',
-        target: space,
-        query: mode,
-        resultCode: outcome.kind === 'failed' ? outcome.reason : outcome.consistent ? 'consistent' : 'mismatch',
-        correlationId,
-      });
+      await recordAuditBestEffort(
+        integrity.pool,
+        {
+          userId: principalId(principal),
+          action: 'sequence_integrity.check',
+          target: space,
+          query: mode,
+          resultCode:
+            outcome.kind === 'failed' ? outcome.reason : outcome.consistent ? 'consistent' : 'mismatch',
+          correlationId,
+        },
+        integrity.log,
+      );
 
       if (outcome.kind === 'failed') {
         return {
@@ -806,13 +882,24 @@ function registerIntegrityRoutes(app: FastifyInstance, integrity: IntegrityDeps,
         space,
         principalId(principal),
       );
-      await auditRepo.recordAudit(integrity.pool, {
-        userId: principalId(principal),
-        action: 'sequence_integrity.reassign',
-        target: space,
-        resultCode: 'queued',
-        correlationId,
-      });
+      /*
+       * **`sequence.reassign`이 정본이다** (CR-054, DEV-405). 이 자리는
+       * `WP-028`이 `sequence_integrity.reassign`을 썼고 자동 경로(`pipeline-worker`)는
+       * 처음부터 `sequence.reassign`을 썼다 — **같은 사실이 두 이름으로 남았다.**
+       * 신규 쓰기를 하나로 모으되 **이미 저장된 옛 행은 고치지 않는다**
+       * (`FR-AUTH-004` AC-3). `API-ADM-005`의 `action` 필터가 그 값도 받는다.
+       */
+      await recordAuditBestEffort(
+        integrity.pool,
+        {
+          userId: principalId(principal),
+          action: 'sequence.reassign',
+          target: `${space}@${String(newEpoch)}`,
+          resultCode: 'queued',
+          correlationId,
+        },
+        integrity.log,
+      );
 
       return {
         status: 202,

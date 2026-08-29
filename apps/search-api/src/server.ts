@@ -22,6 +22,7 @@ import { registerRelationRoutes } from './relations/routes.js';
 
 import { registerSequenceRoutes } from './sequence/routes.js';
 import { registerSavedSearchRoutes } from './saved-search/routes.js';
+import { registerAuditRoutes, type AuditRouteOptions } from './audit/routes.js';
 import { registerRepositoryRoutes, type RepositoryRouteOptions } from './repositories/routes.js';
 import type { SavedSearchDeps } from './saved-search/service.js';
 import { authRepo, repositoryRepo, type Pool } from '@prs/db';
@@ -131,6 +132,14 @@ export interface ServerDeps {
    * 그 집계도 필수 접근 범위 필터를 지난다.
    */
   readonly repositories?: Omit<RepositoryRouteOptions, 'auth' | 'loginPath'>;
+  /**
+   * 감사 기록 조회 의존 (API-ADM-005, WP-039 / CR-054).
+   *
+   * **`ops`와 별개다.** 그 관문은 `operator`를 통과시키고 세션이 없으면 토큰을
+   * 받는데, 이 경로는 `security_officer` **전용**이며 역할은 세션에만 있다
+   * (FR-AUTH-004 AC-5).
+   */
+  readonly audit?: Omit<AuditRouteOptions, 'auth' | 'loginPath' | 'log'>;
   readonly log?: (entry: { readonly level: string; readonly message: string }) => void;
 }
 
@@ -179,6 +188,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
       // 식별자 해석은 목록 조회와 같은 의존을 쓴다 (WP-014). ES 하나면 된다.
       registerResolveRoutes(app, {
         es: deps.search.es,
+        pool: deps.search.pool,
         ...(deps.search.timeoutMs === undefined ? {} : { timeoutMs: deps.search.timeoutMs }),
         auth: deps.auth,
         loginPath: config.auth.loginPath,
@@ -219,6 +229,26 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
       log({
         level: 'warn',
         message: 'PostgreSQL 의존이 없어 저장된 검색 경로를 등록하지 않는다 (API-SRCH-005)',
+      });
+    }
+
+    /*
+     * 감사 기록 조회 (API-ADM-005, WP-039 / CR-054).
+     *
+     * 세션 블록 안에 둔다 — `security_officer` 역할 없이는 이 경로가 어떤
+     * 답도 내지 않으며 그 역할은 세션에만 있다 (FR-AUTH-004 AC-5).
+     */
+    if (deps.audit !== undefined) {
+      registerAuditRoutes(app, {
+        ...deps.audit,
+        auth: deps.auth,
+        loginPath: config.auth.loginPath,
+        log: (entry) => { log({ level: entry.level, message: entry.message }); },
+      });
+    } else {
+      log({
+        level: 'warn',
+        message: 'PostgreSQL 의존이 없어 감사 기록 조회 경로를 등록하지 않는다 (API-ADM-005)',
       });
     }
 

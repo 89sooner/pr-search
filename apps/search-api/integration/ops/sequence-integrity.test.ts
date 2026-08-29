@@ -349,11 +349,29 @@ describe('API-ADM-007 시퀀스 정합성 점검 (WP-028)', () => {
       expect((second.body['error'] as Record<string, unknown>)['code']).toBe('JOB_CONFLICT');
     });
 
-    it('재채번 실행이 감사 기록에 남는다', async () => {
+    /*
+     * **`sequence.reassign`이 정본이다** (CR-054, DEV-405).
+     *
+     * `WP-028`이 세운 이 경로는 `sequence_integrity.reassign`을 썼고 자동
+     * 경로(`pipeline-worker`)는 처음부터 `sequence.reassign`을 썼다 —
+     * **같은 사실이 두 이름으로 남았다.** 신규 쓰기를 하나로 모았고, 이미
+     * 저장된 옛 행은 고치지 않는다 (`FR-AUTH-004` AC-3).
+     */
+    it('재채번 실행이 감사 기록에 남는다 — 정본 어휘로', async () => {
       await seedSequence([{ seq: 1, sha: shaOf(1) }]);
       await post({ repository: SLUG, base_branch: MAIN, action: 'reassign', confirmation: SLUG });
       const records = await auditRepo.listAuditRecords(pool, {}, 20);
-      expect(records.some((row) => row.action === 'sequence_integrity.reassign')).toBe(true);
+      expect(records.some((row) => row.action === 'sequence.reassign')).toBe(true);
+      // 옛 이름으로는 더 쓰지 않는다.
+      expect(records.some((row) => row.action === 'sequence_integrity.reassign')).toBe(false);
+    });
+
+    it('대상에 신규 에폭이 함께 남는다 (FR-SEQ-005 AC-5)', async () => {
+      await seedSequence([{ seq: 1, sha: shaOf(1) }]);
+      await post({ repository: SLUG, base_branch: MAIN, action: 'reassign', confirmation: SLUG });
+      const records = await auditRepo.listAuditRecords(pool, { action: 'sequence.reassign' }, 5);
+      // `{공간}@{신규 에폭}` — 어느 공간이 어느 에폭으로 갔는지가 기록의 값이다.
+      expect(records[0]?.target).toMatch(/@\d+$/);
     });
   });
 

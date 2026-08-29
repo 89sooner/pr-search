@@ -16,7 +16,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { AccessScopeUnavailableError, PartialSearchError } from '@prs/es';
 import { detectIdentifier } from '@prs/query';
 import type { ErrorResponse } from '@prs/contracts';
+import type { Pool } from '@prs/db';
 import type { AuthContext } from '../auth/context.js';
+import { recordAuditBestEffort } from '../audit/recorder.js';
 import { authenticateSession } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
 import { clampLimit, runResolve, type ResolveDeps } from './service.js';
@@ -81,6 +83,8 @@ function toErrorResponse(
 export interface ResolveRouteOptions extends ResolveDeps, DetailDeps {
   readonly auth: AuthContext;
   readonly loginPath: string;
+  /** 감사 기록의 정본 저장소 (WP-039 / FR-AUTH-004 AC-1 "상세 조회"). */
+  readonly pool: Pool;
   /**
    * 이 GHE 인스턴스의 기준 URL (CR-017, DEV-064).
    *
@@ -91,7 +95,37 @@ export interface ResolveRouteOptions extends ResolveDeps, DetailDeps {
 }
 
 export function registerResolveRoutes(app: FastifyInstance, options: ResolveRouteOptions): void {
-  const { auth, loginPath, gheBaseUrl, ...deps } = options;
+  const { auth, loginPath, gheBaseUrl, pool, ...deps } = options;
+
+  /*
+   * 상세 조회 감사 (`FR-AUTH-004` AC-1 "상세 조회", WP-039).
+   *
+   * **찾지 못한 조회도 남긴다.** 범위 밖과 부재를 화면에는 구분해 주지 않지만
+   * (THR-004) **감사에는 시도 자체가 남아야 한다** — 보안 담당자가 조사하는 것이
+   * 바로 "누가 무엇을 열어 보려 했는가"이고, 실패한 시도를 지우면 그 물음에
+   * 답할 수 없다.
+   *
+   * **`/resolve`는 기록하지 않는다.** 그것은 식별자 해석이지 상세 조회가
+   * 아니며, 후보 목록을 받은 뒤 실제로 연 화면이 여기를 지난다. 둘 다 남기면
+   * 한 번의 조사가 두 번으로 세어진다 (CR-054).
+   */
+  const recordView = async (
+    userId: string,
+    kind: 'commit' | 'pull_request',
+    repository: string,
+    id: string,
+    found: boolean,
+    correlationId: string,
+  ): Promise<void> => {
+    await recordAuditBestEffort(pool, {
+      userId,
+      action: 'entity.view',
+      target: `${kind}:${repository}:${id}`,
+      query: null,
+      resultCode: found ? 'ok' : 'not_found',
+      correlationId,
+    });
+  };
 
   /** 세션을 검증하고 사용자 ID를 준다. 실패하면 응답을 보내고 `null`. */
   async function authenticate(
@@ -204,6 +238,7 @@ export function registerResolveRoutes(app: FastifyInstance, options: ResolveRout
     try {
       const scope = await auth.scopes.resolve(userId);
       const detail = await getCommitDetail(repository, commitSha, scope, deps);
+      await recordView(userId, 'commit', repository, commitSha, detail !== null, correlationId);
       if (detail === null) {
         // 범위 밖인지 없는지를 구분하지 않는다 — 구분하면 존재가 샌다 (THR-004).
         return notFound(reply, correlationId, '커밋을 찾을 수 없습니다');
@@ -241,6 +276,7 @@ export function registerResolveRoutes(app: FastifyInstance, options: ResolveRout
     try {
       const scope = await auth.scopes.resolve(userId);
       const detail = await getPullRequestDetail(repository, prNumber, scope, deps);
+      await recordView(userId, 'pull_request', repository, rawNumber, detail !== null, correlationId);
       if (detail === null) {
         return notFound(reply, correlationId, 'PR을 찾을 수 없습니다');
       }

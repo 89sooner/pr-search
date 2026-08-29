@@ -22,6 +22,8 @@ const resolvePackage = (name: string): string =>
 export default defineConfig({
   resolve: {
     alias: {
+      // 서브패스가 먼저다 — 진입점 별칭이 앞서면 `/audit`이 그것으로 잡힌다.
+      '@prs/domain/audit': fileURLToPath(new URL('./packages/domain/src/audit.ts', import.meta.url)),
       '@prs/domain': resolvePackage('domain'),
       '@prs/metrics': resolvePackage('metrics'),
       '@prs/contracts': resolvePackage('contracts'),

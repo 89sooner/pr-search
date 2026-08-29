@@ -7,10 +7,10 @@
 
 export const PACKAGE_NAME = '@prs/db' as const;
 
-export { resolvePoolConfig } from './config.js';
+export { resolvePoolConfig, resolveAdminPoolConfig, ADMIN_DB_ROLE } from './config.js';
 export type { DatabaseEnv } from './config.js';
 
-export { createPool, withTransaction } from './pool.js';
+export { createPool, createAdminPool, withTransaction } from './pool.js';
 export { installTypeParsers } from './type-parsers.js';
 // 앱이 pg에 직접 의존하지 않도록 타입만 다시 내보낸다 (의존 방향: apps → packages).
 export type { Pool, PoolClient } from 'pg';
@@ -39,8 +39,23 @@ export {
  * 마이그레이션은 운영 도구이지 조회 경로가 아니므로 경계가 여기 있는 것이 옳다.
  */
 
-export { ensureAllPartitions, ensureMonthlyPartitions, partitionName, PARTITIONED_TABLES } from './partitions.js';
-export type { PartitionedTable } from './partitions.js';
+export {
+  ensureAllPartitions,
+  ensureMonthlyPartitions,
+  listPartitionBounds,
+  partitionName,
+  retentionCutoff,
+  runPartitionRetention,
+  PARTITIONED_TABLES,
+  RETENTION_MONTHS,
+} from './partitions.js';
+export type {
+  DroppedPartition,
+  PartitionBound,
+  PartitionDropFailure,
+  PartitionedTable,
+  RetentionResult,
+} from './partitions.js';
 
 export { seed, SEED_TARGET } from './seed.js';
 export type { SeedCounts } from './seed.js';

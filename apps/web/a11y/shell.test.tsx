@@ -163,15 +163,46 @@ describe('QA-A001-10: 운영 항목이 DOM에 없다', () => {
     expect(screen.queryByRole('link', { name: '감사 기록' })).toBeNull();
   });
 
-  it('`operator`에게는 렌더링된다', () => {
+  /*
+   * **역할마다 보이는 항목이 다르다** (CR-054, DEV-408).
+   *
+   * 이전 판은 `ops` 섹션을 통째로 두 역할에 열어 **권한 매트릭스와 어긋났다** —
+   * `operator`에게 감사 화면이, `security_officer`에게 저장소 등록이 보였다.
+   * 두 역할은 서로의 화면에서 403을 받으므로 **보이는 것 자체가 거짓 안내다.**
+   */
+  it('`operator`에게는 파이프라인·저장소 등록이 렌더링된다', () => {
     render(
       <Shell roles={['developer', 'operator']} user={null} title="파이프라인">
         <h1>x</h1>
       </Shell>,
     );
-    // `getByRole`은 없으면 던지므로 그 자체가 단언이지만, 명시적으로 건다.
     expect(screen.getByRole('link', { name: '파이프라인' })).toHaveAttribute('href', '/ops/pipeline');
+    expect(screen.getByRole('link', { name: '저장소 등록' })).toHaveAttribute(
+      'href',
+      '/ops/repositories',
+    );
+  });
+
+  it('QA-A004-06: **`operator`에게 감사 기록은 렌더링되지 않는다**', () => {
+    render(
+      <Shell roles={['developer', 'operator']} user={null} title="파이프라인">
+        <h1>x</h1>
+      </Shell>,
+    );
+    expect(screen.queryByRole('link', { name: '감사 기록' })).toBeNull();
+  });
+
+  it('QA-A004-07: `security_officer`에게 감사 기록과 파이프라인만 보인다', () => {
+    render(
+      <Shell roles={['developer', 'security_officer']} user={null} title="감사 기록">
+        <h1>x</h1>
+      </Shell>,
+    );
     expect(screen.getByRole('link', { name: '감사 기록' })).toHaveAttribute('href', '/ops/audit');
+    // A-001은 CR-052가 연 아카이브 진입점이다 (DEV-375).
+    expect(screen.getByRole('link', { name: '파이프라인' })).toHaveAttribute('href', '/ops/pipeline');
+    // A-002는 `operator` 전용이다.
+    expect(screen.queryByRole('link', { name: '저장소 등록' })).toBeNull();
   });
 });
 

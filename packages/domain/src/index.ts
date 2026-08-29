@@ -12,3 +12,4 @@ export * from './link/cherry.js';
 export * from './anchor.js';
 export * from './release.js';
 export * from './integrity.js';
+export * from './audit.js';

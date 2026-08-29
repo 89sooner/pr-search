@@ -17,6 +17,7 @@
 
 import { integrityRepo, sequenceSpaceRepo } from '@prs/db';
 import type { Pool, RepositoryRow } from '@prs/db';
+import type { AuditLog } from '../audit/recorder.js';
 import { firstSequenceMismatch, sampleFromSeq, type SequenceMismatch } from '@prs/domain';
 import { CommitGraphError, type CommitGraph } from '@prs/github';
 import { QueryParseError, parseQuery, type QueryAst } from '@prs/query';
@@ -31,6 +32,8 @@ export function parseIntegrityMode(raw: unknown): IntegrityMode | null {
 
 export interface IntegrityDeps {
   readonly pool: Pool;
+  /** 감사 기록 실패를 남길 곳. 없으면 지표만 오른다 (WP-039). */
+  readonly log?: AuditLog;
   /** 저장소별로 미러/API 중 무엇을 쓸지 고른 그래프 (ADR-005, `selectCommitGraph`). */
   readonly graphFor: (repository: RepositoryRow) => CommitGraph;
 }

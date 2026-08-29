@@ -17,9 +17,12 @@
 import { jobRepo, reindexRepo, type Pool, type ReindexIndexPort } from '@prs/db';
 
 import { AdminRejected } from './errors.js';
+import type { AuditLog } from '../audit/recorder.js';
 
 export interface ReindexDeps {
   readonly pool: Pool;
+  /** 감사 기록 실패를 남길 곳. 없으면 지표만 오른다 (WP-039). */
+  readonly log?: AuditLog;
   /** 색인 이름을 아는 쪽. `@prs/db`가 Elasticsearch를 의존하지 않게 한다. */
   readonly index: ReindexIndexPort;
 }
