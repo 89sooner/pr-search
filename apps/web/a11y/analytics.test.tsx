@@ -59,6 +59,24 @@ describe('PercentileCardRow', () => {
     expect(await violations(container)).toEqual([]);
   });
 
+  it('그룹별 백분위 비교 행을 표로 그린다 (P2 리뷰)', async () => {
+    const { container } = render(
+      <PercentileCardRow
+        percentiles={[50, 90, 95]}
+        overall={{ lowSample: false, values: { '50': 61200, '90': 120000, '95': 200000 }, rawValues: null, sampleSize: 412 }}
+        groups={[
+          { key: 'payments-core', lowSample: false, values: { '50': 54000, '90': 216000, '95': 388800 }, rawValues: null, sampleSize: 412 },
+          { key: 'session', lowSample: true, values: null, rawValues: [1000, 2000], sampleSize: 2 },
+        ]}
+        excludedCount={0}
+      />,
+    );
+    expect(screen.getByText('payments-core')).toBeInTheDocument();
+    // low_sample 그룹은 백분위 대신 표본 부족 배지
+    expect(screen.getByText('session')).toBeInTheDocument();
+    expect(await violations(container)).toEqual([]);
+  });
+
   it('FR-STAT-003: low_sample이면 백분위 대신 원값을 그린다', async () => {
     const { container } = render(
       <PercentileCardRow

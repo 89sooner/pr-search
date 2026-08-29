@@ -341,7 +341,10 @@ export function bucketDrillDownHref(
 ): string | null {
   const start = new Date(bucketStartIso);
   if (Number.isNaN(start.getTime())) return null;
-  const end = addInterval(start, interval);
+  // 히스토그램 버킷은 `[start, nextStart)` 반열림인데 `merged:` 범위는 `lte`로 양끝을
+  // 포함한다(query-builder.ts). 상한을 nextStart 직전(-1ms)으로 두어 다음 버킷의
+  // 경계 문서를 겹쳐 세지 않는다 (PR #80 리뷰 P2).
+  const end = new Date(addInterval(start, interval).getTime() - 1);
   const range = `merged:${start.toISOString()}..${end.toISOString()}`;
   const q = baseQuery.trim() === '' ? range : `${baseQuery.trim()} ${range}`;
 
@@ -415,7 +418,8 @@ export function readPercentileValues(
 ): Readonly<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const p of percentiles) {
-    const raw = source[String(p)];
+    // 서버는 `p50`처럼 **p 접두** 키로 방출한다 (API-STAT-003, aggregations.ts).
+    const raw = source[`p${String(p)}`];
     if (typeof raw === 'number' && Number.isFinite(raw)) out[String(p)] = raw;
   }
   return out;

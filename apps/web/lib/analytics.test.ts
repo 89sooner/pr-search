@@ -176,12 +176,13 @@ describe('드릴다운 (근거 목록으로)', () => {
     expect(href).not.toBe(null);
     // 하루 뒤까지의 merged: 범위를 포함한다.
     expect(href).toContain('merged');
-    expect(decodeURIComponent(href ?? '')).toContain('2026-07-02T00:00:00.000Z');
+    // 배타 상한: 다음 버킷 시작 직전(-1ms)
+    expect(decodeURIComponent(href ?? '')).toContain('2026-07-01T23:59:59.999Z');
   });
 
   it('DEV-396: 월 간격은 한 달 뒤로 경계를 잡는다', () => {
     const href = bucketDrillDownHref('', '2026-01-15T00:00:00.000Z', 'month', null);
-    expect(decodeURIComponent(href ?? '')).toContain('2026-02-15T00:00:00.000Z');
+    expect(decodeURIComponent(href ?? '')).toContain('2026-02-14T23:59:59.999Z');
   });
 
   it('잘못된 버킷 시각은 링크를 만들지 않는다', () => {
@@ -191,12 +192,12 @@ describe('드릴다운 (근거 목록으로)', () => {
 
 describe('백분위 응답 읽기', () => {
   it('FR-STAT-003: spread된 백분위 값에서 요청한 것만 읽는다', () => {
-    const values = readPercentileValues({ '50': 61200, '75': 80000, '90': 120000, '95': 200000, '99': 400000 });
+    const values = readPercentileValues({ p50: 61200, p75: 80000, p90: 120000, p95: 200000, p99: 400000 });
     expect(values).toEqual({ '50': 61200, '75': 80000, '90': 120000, '95': 200000, '99': 400000 });
   });
 
   it('없는 백분위 키는 건너뛴다 (undefined를 0으로 만들지 않는다)', () => {
-    const values = readPercentileValues({ '50': 61200 }, [50, 90]);
+    const values = readPercentileValues({ p50: 61200 }, [50, 90]);
     expect(values).toEqual({ '50': 61200 });
     expect('90' in values).toBe(false);
   });

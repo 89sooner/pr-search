@@ -40,6 +40,7 @@ import {
   GROUP_KEYS,
   INTERVALS,
   DEFAULT_PERCENTILES,
+  DEFAULT_TIMEZONE,
   type AnalyticsUrlState,
   type PanelState,
   type AnalyticsBody,
@@ -269,6 +270,37 @@ function AnalyticsControls({
           ))}
         </select>
       </label>
+      <label>
+        시작
+        <input
+          type="date"
+          value={state.from ?? ''}
+          onChange={(event) => {
+            onChange({ from: event.target.value === '' ? null : event.target.value });
+          }}
+        />
+      </label>
+      <label>
+        끝
+        <input
+          type="date"
+          value={state.to ?? ''}
+          onChange={(event) => {
+            onChange({ to: event.target.value === '' ? null : event.target.value });
+          }}
+        />
+      </label>
+      <label>
+        시간대
+        <input
+          type="text"
+          defaultValue={state.timezone}
+          onBlur={(event) => {
+            onChange({ timezone: event.target.value === '' ? DEFAULT_TIMEZONE : event.target.value });
+          }}
+          placeholder="Asia/Seoul"
+        />
+      </label>
     </Panel>
   );
 }
@@ -358,6 +390,20 @@ function PercentilesSlot({
     isEmpty: !result.loading && result.status === 200 && sampleSize === 0 && !lowSample,
   });
 
+  // 서버는 백분위를 `overall: { p50, ... }`(중첩)로, 그룹별은 `groups: [{ key, p50, ... }]`로 준다.
+  const overallSource = (body['overall'] as Record<string, unknown> | undefined) ?? body;
+  const rawGroups = (body['groups'] as readonly Record<string, unknown>[] | undefined) ?? [];
+  const groups = rawGroups.map((g) => {
+    const groupLow = g['low_sample'] === true;
+    return {
+      key: String(g['key'] ?? ''),
+      lowSample: groupLow,
+      values: groupLow ? null : readPercentileValues(g, percentiles),
+      rawValues: (g['raw_values'] as readonly number[] | undefined) ?? null,
+      sampleSize: typeof g['sample_size'] === 'number' ? g['sample_size'] : 0,
+    };
+  });
+
   return (
     <Panel as="section" aria-label={title}>
       <h3>{title}</h3>
@@ -368,10 +414,11 @@ function PercentilesSlot({
           percentiles={percentiles}
           overall={{
             lowSample,
-            values: lowSample ? null : readPercentileValues(body, percentiles),
+            values: lowSample ? null : readPercentileValues(overallSource, percentiles),
             rawValues: (body['raw_values'] as readonly number[] | undefined) ?? null,
             sampleSize,
           }}
+          groups={groups}
           excludedCount={typeof body['excluded_count'] === 'number' ? body['excluded_count'] : 0}
           excludedReasons={body['excluded_reasons'] as Readonly<Record<string, number>> | undefined}
         />
