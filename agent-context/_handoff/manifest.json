@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-08-29T00:42:44+00:00",
+  "generated": "2026-08-29T01:33:26+00:00",
   "root": "/home/roqkf/pr-search",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -231,10 +231,10 @@
       "id": "f73e2b0",
       "source_path": "agent-context/session-notes.md",
       "compact_path": "agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md",
-      "sha256": "062ef63c6de443f4bf105490ff0648b8b760743f5d04e21549d539c4dfc9dfc3",
-      "bytes": 59950,
-      "lines": 997,
-      "compact_bytes": 60171,
+      "sha256": "36b33b3462688943b2be31cea340a16d24fb0844b0d70bcbffe85e66e27a0c2c",
+      "bytes": 60256,
+      "lines": 1000,
+      "compact_bytes": 60489,
       "headings": [
         "Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료",
         "Goal",
