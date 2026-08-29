@@ -51,7 +51,7 @@ describe('QA-A001-10: 운영 그룹은 역할이 있어야 보인다', () => {
 
   it('운영 외 항목은 역할과 무관하게 보인다', () => {
     for (const role of ROLES) {
-      expect(idsFor(role), role).toEqual(expect.arrayContaining(['search', 'ranges', 'releases', 'stats']));
+      expect(idsFor(role), role).toEqual(expect.arrayContaining(['search', 'ranges', 'releases', 'analytics']));
     }
   });
 

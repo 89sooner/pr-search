@@ -48,7 +48,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   { id: 'repositories', label: '저장소', href: '/repositories', section: 'analysis' },
   { id: 'ranges', label: '범위 조사', href: '/ranges', section: 'analysis' },
   { id: 'releases', label: '릴리스', href: '/releases', section: 'analysis' },
-  { id: 'stats', label: '통계', href: '/stats', section: 'analysis' },
+  { id: 'analytics', label: '통계', href: '/analytics', section: 'analysis' },
   { id: 'ops-pipeline', label: '파이프라인', href: '/ops/pipeline', section: 'ops' },
   { id: 'ops-repositories', label: '저장소 등록', href: '/ops/repositories', section: 'ops' },
   { id: 'ops-audit', label: '감사 기록', href: '/ops/audit', section: 'ops' },

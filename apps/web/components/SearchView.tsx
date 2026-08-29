@@ -22,6 +22,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { TabList, TabPanel } from './Tabs';
+import { SearchAggregationTab } from './SearchAggregationTab';
 import { hasSequenceRangeFilter, serializeQuery } from '@prs/query';
 import { Banner, Button, Spinner } from '@conductor-by-89soone/react';
 import { CursorPager, toCursorFailure, type CursorFailure } from './CursorPager';
@@ -184,6 +186,8 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
    * 조회 조건이 아니다 — 붙여넣은 링크가 남의 화면에서 대화상자를 열 이유가 없다.
    */
   const [saveOpen, setSaveOpen] = useState(false);
+  // W-001-AGG: 결과 목록과 집계를 가르는 탭 (FR-STAT-006). 기본은 결과.
+  const [activeTab, setActiveTab] = useState<'results' | 'aggregation'>('results');
   const [savedName, setSavedName] = useState<string | null>(null);
 
   /*
@@ -605,6 +609,16 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         </Banner>
       )}
 
+      <TabList
+        tabs={[{ id: 'results', label: '결과' }, { id: 'aggregation', label: '집계' }]}
+        activeId={activeTab}
+        onChange={(id) => {
+          setActiveTab(id as 'results' | 'aggregation');
+        }}
+        label="검색 결과 보기 방식"
+      />
+
+      <TabPanel id="results" active={activeTab === 'results'}>
       <div>
         {/*
           * 낡은 인용이면 레일도 그리지 않는다 (CR-051). 세지 않은 분포를
@@ -647,6 +661,23 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
           failure={page.failure}
         />
       ) : null}
+      </TabPanel>
+
+      <TabPanel id="aggregation" active={activeTab === 'aggregation'}>
+        {/* 집계 탭은 **활성일 때만** 마운트한다 — 숨은 채로 조회하면 결과 탭의
+            "서버를 부르지 않는다" 계약을 깨고 경합을 만든다 (FR-STAT-006은 요청 시 집계). */}
+        {activeTab === 'aggregation' ? (
+          <SearchAggregationTab
+            q={state.q}
+            seqEpoch={
+              screen.kind === 'epoch_stale' || sequenceContext?.seq_epoch == null
+                ? null
+                : String(sequenceContext.seq_epoch)
+            }
+            loginPath={loginPath}
+          />
+        ) : null}
+      </TabPanel>
     </div>
   );
 }
