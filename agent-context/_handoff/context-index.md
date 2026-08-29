@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-08-28T18:05:57+00:00
+generated=2026-08-29T00:42:44+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -50,8 +50,8 @@ sig=agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runti
 ### f73e2b0
 src=agent-context/session-notes.md
 compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md
-sha256=248a2e6f7a07b7ff7320bc7a91e10d483e504f5bb0e88656efc326ba2fe0ecc3
-bytes=59165 compact_bytes=59399 lines=984 priority=25
+sha256=062ef63c6de443f4bf105490ff0648b8b760743f5d04e21549d539c4dfc9dfc3
+bytes=59950 compact_bytes=60171 lines=997 priority=25
 heads=Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료 > Goal > Current state > Decisions > Changed files > Commands
 sig=agent-context/session-notes.md;10/11;Risks/gotchas;docs/00_governance/change_control.md;exports/202608260047.md;dailywork/2026-08-25_PR-Search-WP-028;exports/202608251453.md;exports/202608260113.md;11/11;exports/202608261008.md;1/8;2/8;exports/202608262010.md;dailywork/2026-08-26_PR-Search-OD-005-;W-002/W-003;3/8;exports/202608262224.md;4/8;apps/search-api/integration/sequence/_repro-w004.test.ts;exports/202608270742.md;dailywork/2026-08-27_PR-Search-WP-035-;pr-search/202608271346.md;5/8;docs/README.md
 
