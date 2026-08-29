@@ -1587,3 +1587,87 @@ pnpm --filter @prs/web run build   # e2e 전 필수
 cd apps/web && ./node_modules/.bin/playwright test e2e/flow-005.spec.ts --reporter=line
 ```
 gh 주의: `gh run view --json jobs`는 이 버전에서 실패 → `gh api .../runs/<id>/jobs`.
+
+---
+
+# 2026-08-29 (3차) 세션 — CR-054 · WP-039
+
+## 검증 배터리 (마지막 실행 결과 — main `6bdf395`)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                # 통과
+pnpm lint                     # 통과 — 마지막 파일까지 쓴 뒤 다시 돌릴 것
+pnpm run lint:deps            # 패키지 13개, 위반 0건
+pnpm run test                 # 단위 1790 통과 (1 skipped)   [1736 → +54]
+pnpm run test:integration     # 84 파일 / 1324 통과           [83/1254 → +1/+70]
+pnpm run test:regression      # 267 통과                      [231 → +36]
+pnpm run test:a11y            # 283 통과 (audit 9, axe 0)     [272 → +11]
+pnpm run test:contrast        # 232/232
+pnpm --filter @prs/web run build   # e2e 전 필수
+pnpm run test:e2e             # 131 통과 (audit 9)
+pnpm build                    # 통과
+```
+
+## 미해결 리뷰를 세는 법 (이 세션이 배운 것)
+
+```bash
+gh api graphql -f query='{ repository(owner:"89sooner",name:"pr-search"){
+  pullRequests(last:25, states:[OPEN,MERGED]){
+    nodes{ number state reviewThreads(first:50){nodes{isResolved}} } } } }'
+```
+
+**"고쳤다"와 "스레드가 닫혔다"는 다른 사실이다.** 머지 후 이것으로 센다.
+
+## 리뷰 답변·해소 (GraphQL)
+
+```bash
+gh api graphql -f query='mutation { addPullRequestReviewThreadReply(input: {
+  pullRequestReviewThreadId: "PRRT_...", body: "..." }) { comment { id } } }'
+gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "PRRT_..."}) {
+  thread { isResolved } } }'
+```
+
+병합된 PR의 스레드도 resolve된다 — `PR #81`에서 실제로 확인했다.
+
+## 관리 롤 실측 (DEV-421)
+
+```bash
+# prs_admin은 NOLOGIN 그룹 롤이다. 로그인 주체 + 멤버십 + SET ROLE.
+docker exec prs-postgres psql -U prs -d prs_test -c "
+  CREATE ROLE prs_ret LOGIN PASSWORD 'x'; GRANT prs_admin TO prs_ret;"
+docker exec -e PGPASSWORD=x prs-postgres psql -U prs_ret -h localhost -d prs_test -c "
+  SET ROLE prs_admin;
+  CREATE TABLE t PARTITION OF audit_record FOR VALUES FROM ('2019-01-01') TO ('2019-02-01');"
+# GRANT ALL만으로는: ERROR: permission denied for schema public
+```
+
+## 변이 시험 — 치환 건수를 반드시 확인한다
+
+```bash
+python3 mutate.py <path> "<old>" "<new>"   # 정확히 1건일 때만 치환, CRLF 보존
+```
+
+`APPLIED (1)`이 아니면 그 변이는 **걸리지 않은 것**이며 "SURVIVED"가 오독이 된다.
+
+## 통합 전량은 출력을 파일로 남긴다
+
+```bash
+pnpm run test:integration > /tmp/integration-$(date +%s).log 2>&1
+grep -E "^ FAIL" /tmp/integration-*.log
+```
+
+`DEV-420`이 그 규율이 없어 세 세션을 떠돌았다. 파일 순서가 바뀔 때만 드러나는 오염은
+**실패한 회차의 로그가 없으면 귀속할 수 없다.**
+
+## 문서 검증기 — 판정은 언제나 main 대비 diff
+
+```bash
+python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --strict \
+  2>&1 | grep -E "^(WARN|ERROR)" | sort > /tmp/branch.txt
+git stash -q && python3 ...같은 명령... > /tmp/main.txt && git stash pop -q
+comm -13 /tmp/main.txt /tmp/branch.txt   # 새로 생긴 것만
+```
+
+**주의: `미정정`처럼 `미정`을 포함하는 낱말이 placeholder 검사에 걸린다.**
+"아직 고쳐지지 않은"으로 바꿔 쓴다.

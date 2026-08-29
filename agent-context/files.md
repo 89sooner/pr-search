@@ -815,3 +815,70 @@
 
 ## 손대면 안 되는 것 (갱신)
 집계 서버(apps/search-api/src/analytics/*)는 WP-037이 세웠다 — WP-038은 화면만. 계약은 API-STAT-003(백분위 p 접두)이 정본.
+
+---
+
+# 2026-08-29 (3차) 세션이 만든 것 (CR-054 · WP-039)
+
+## 공유 어휘
+
+| 파일 | 역할 |
+| --- | --- |
+| `packages/domain/src/audit.ts` | **감사 액션의 정본 어휘.** 활성 19 · 미활성 2 · legacy 1을 가른다. `AUDIT_RETENTION_PRINCIPAL`도 여기. **개수를 세지 않는다** |
+| `packages/domain/package.json` | `./audit` 서브패스 신설 — 브라우저가 진입점 전체를 끌어오지 않게 |
+
+## 감사 서버 (search-api)
+
+| 파일 | 역할 |
+| --- | --- |
+| `src/audit/recorder.ts` | **공용 실패 격리 경계 하나.** `auditFailedTotal`(라벨 `action` 하나)도 여기. 절대 던지지 않는다 |
+| `src/audit/routes.ts` | `API-ADM-005`. `security_officer` 전용, **접근 범위 필터 없음**, `audit.view`를 응답 확정 뒤에 |
+| `src/audit/cursor.ts` | PostgreSQL 키셋. 여섯 필터 지문, 접근 범위는 넣지 않는다 |
+
+## 배선한 호출부 (전부 `recordAuditBestEffort`를 지난다)
+
+`search/routes.ts`(`search.execute`) · `resolve/routes.ts`(`entity.view`) ·
+`saved-search/routes.ts`(`saved_search.*`) · `ops/repositories.ts`(`repository.*`) ·
+`ops/routes.ts`(`job.*`·`dead_letter.reprocess`·`reindex.start`·`sequence_integrity.check`·
+`sequence.reassign`·`raw_event.view_payload`)
+
+## 파티션 수명
+
+| 파일 | 역할 |
+| --- | --- |
+| `packages/db/src/partitions.ts` | `runPartitionRetention` — **만들고 나서 지운다.** 경계는 카탈로그에서 읽는다(`::timestamptz` 캐스팅) |
+| `packages/db/src/{config,pool}.ts` | `resolveAdminPoolConfig` · `createAdminPool`(연결마다 `SET ROLE prs_admin`) |
+| `apps/pipeline-worker/src/retention.ts` | `JOB-AUD-001`. 기동 직후 한 번 돌고 일 1회 |
+| `packages/db/migrations/018` | `audit_cursor_idx (occurred_at DESC, audit_id DESC)` |
+| `packages/db/migrations/019` | 스키마 `CREATE` + **두 표와 기존 자식 파티션의 소유권 이전** |
+
+## A-004 화면
+
+| 파일 | 역할 |
+| --- | --- |
+| `apps/web/lib/audit.ts` | 순수 계층. URL 상태·요청·응답 변환·상태 판정. **`null`을 지어내지 않는다** |
+| `apps/web/components/AuditView.tsx` | 조율. 필터 적용은 **명시적**(입력마다 조회하면 감사 로그가 자기 조사로 찬다) |
+| `apps/web/components/AuditRecordTable.tsx` | `C-013`을 쓰지 않는다(DEV-419). 수정·삭제 컨트롤 0 |
+| `apps/web/app/ops/audit/page.tsx` | `/ops/audit` |
+| `apps/web/lib/nav.ts` | **항목마다 `allowedRoles`.** 새 항목의 기본값은 보이지 않음 |
+
+## 시험
+
+| 파일 | 무엇 |
+| --- | --- |
+| `search-api/integration/audit/audit-records.test.ts` | `API-ADM-005` 26건 — 역할·필터·커서·자기 기록 순서 |
+| `search-api/integration/audit/failure-isolation.test.ts` | 7건 — **실제 DB에 CHECK 제약을 걸어** INSERT를 거절시킨다 |
+| `search-api/integration/audit/action-coverage.test.ts` | 9건 — 실제 요청이 실제 기록을 만드는가. **`grep`으로 증명하지 않는다** |
+| `pipeline-worker/integration/retention/partition-retention.test.ts` | 13건 — 경계 판정 |
+| `pipeline-worker/integration/retention/retention-audit.test.ts` | 7건 — `retention.purge` |
+| `pipeline-worker/integration/retention/retention-role.test.ts` | 7건 — **실제 `prs_admin` 권한으로** (DEV-421) |
+| `apps/web/{lib/audit.test.ts, a11y/audit.test.tsx, e2e/audit.spec.ts}` | 23 · 9 · 9 |
+| `regression/runtime-reachability.test.ts` | 감사 도달성 +36 |
+
+## 손대면 안 되는 것 (갱신)
+
+- **감사 대상의 정본은 `srs_final.md` FR-AUTH-004 AC-1의 표 하나다.** 하위 문서와 코드는
+  그것을 인용하며 넓히지 않는다. 새 액션을 더하기 전에 **승인하는 FR을 먼저 찾는다.**
+- `recordAuditBestEffort`를 우회해 `auditRepo.recordAudit`를 직접 부르지 않는다 — 회귀가 막는다.
+- `API-ADM-005`의 `action` 필터를 정본 enum으로 좁히지 않는다 (AC-7).
+- `prs_app`에 `UPDATE`·`DELETE`·`DROP`을 주지 않는다 — 감사 불변성의 마지막 방어선이다.
