@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-08-29T10:04:00+00:00
+generated=2026-08-29T10:21:21+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -66,8 +66,8 @@ sig=agent-context/session-summary.md;10/11;CR/DEV;11/11;1/8;2/8;3/8;acme/b;acme/
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=cfbb45c64b055cad333af2168c21197311acc60e2e1b31f72bb22aaa7a19df52
-bytes=77317 compact_bytes=77181 lines=1029 priority=30
+sha256=78f7d03f24b970185fb3f19a21ebf1bf4c45c8fe7c85cb0a4b7bf091e5d1fc77
+bytes=77506 compact_bytes=77367 lines=1031 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > A. 지금 당장 — WP-040 A-002·A-003 운영 콘솔 (REL-005 마지막) > WP-039가 깔아 둔 자리 — 다시 만들지 말 것 > B. 그 뒤 — REL-006 (WP-041·042·044) > C. 미해결 리뷰 24건 (DEV-414) > D. 배포에서 해야 할 것
 sig=agent-context/todos.md;8/8;3/4;packages/domain/src/audit.ts;prs/domain/audit;apps/search-api/src/audit/recorder.ts;apps/search-api/src/audit/cursor.ts;packages/db/src/partitions.ts;apps/web/lib/nav.ts;apps/search-api/src/analytics/prepare.ts;apps/search-api/src/analytics/execute.ts;1/4;packages/db/migrations/;apps/ingest-gateway/src/archive.ts;packages/es/src/;deploy/k8s/README.md;packages/query/src/sequence-binding.ts;packages/es/src/query-builder.ts;apps/search-api/src/search/sequence-context.ts;apps/search-api/src/saved-search/sequence-reference.ts;apps/web/lib/query-url.ts;docs/40_delivery/pr_search_implementation_traceability.md;apps/search-api/src/;sequence/range.ts
 

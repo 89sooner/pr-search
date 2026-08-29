@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-08-29T10:04:00+00:00",
+  "generated": "2026-08-29T10:21:21+00:00",
   "root": "/home/roqkf/pr-search",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -341,10 +341,10 @@
       "id": "f54408e",
       "source_path": "agent-context/todos.md",
       "compact_path": "agent-context/_handoff/compact/f54408e.todos.ctx.md",
-      "sha256": "cfbb45c64b055cad333af2168c21197311acc60e2e1b31f72bb22aaa7a19df52",
-      "bytes": 77317,
-      "lines": 1029,
-      "compact_bytes": 77181,
+      "sha256": "78f7d03f24b970185fb3f19a21ebf1bf4c45c8fe7c85cb0a4b7bf091e5d1fc77",
+      "bytes": 77506,
+      "lines": 1031,
+      "compact_bytes": 77367,
       "headings": [
         "다음 작업 · 미해결 항목 · 확인할 사항",
         "A. 지금 당장 — WP-040 A-002·A-003 운영 콘솔 (REL-005 마지막)",
