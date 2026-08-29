@@ -41,7 +41,8 @@ interface Result {
 }
 
 export function SearchAggregationTab({ q, seqEpoch, loginPath }: SearchAggregationTabProps): ReactNode {
-  const state = { ...EMPTY_ANALYTICS_STATE, q, seqEpoch };
+  // 그룹 엔드포인트는 group_by가 필수다. 검색 위 집계의 기본 그룹은 작성자로 둔다.
+  const state = { ...EMPTY_ANALYTICS_STATE, q, seqEpoch, groupBy: 'author' as const };
   const requestKey = JSON.stringify(buildGroupsRequest(state));
   const [result, setResult] = useState<Result>({ loading: true, networkFailed: false, status: null, body: null });
 

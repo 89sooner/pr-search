@@ -67,13 +67,23 @@ interface FetchResult {
 }
 
 const PENDING: FetchResult = { loading: true, networkFailed: false, status: null, body: null };
+const DISABLED: FetchResult = { loading: false, networkFailed: false, status: null, body: null };
 
-/** 한 패널의 조회. URL 상태가 바뀌면 다시 부른다. 실패는 이 훅 안에 갇힌다. */
-function usePanel(path: string, requestBody: Record<string, unknown>): FetchResult {
-  const [result, setResult] = useState<FetchResult>(PENDING);
+/**
+ * 한 패널의 조회. URL 상태가 바뀌면 다시 부른다. 실패는 이 훅 안에 갇힌다.
+ *
+ * `enabled`가 거짓이면 부르지 않는다 — 그룹 집계는 서버가 `group_by`를 필수로
+ * 요구하므로(routes.ts) 그룹 키가 없을 때 부르면 400을 받는다.
+ */
+function usePanel(path: string, requestBody: Record<string, unknown>, enabled = true): FetchResult {
+  const [result, setResult] = useState<FetchResult>(enabled ? PENDING : DISABLED);
   const key = JSON.stringify(requestBody);
 
   useEffect(() => {
+    if (!enabled) {
+      setResult(DISABLED);
+      return;
+    }
     const controller = new AbortController();
     setResult(PENDING);
     void (async () => {
@@ -100,7 +110,7 @@ function usePanel(path: string, requestBody: Record<string, unknown>): FetchResu
     return () => {
       controller.abort();
     };
-  }, [path, key]);
+  }, [path, key, enabled]);
 
   return result;
 }
@@ -272,12 +282,22 @@ function GroupsSlot({
   readonly loginPath: string;
   readonly hrefFor: (q: string) => string | null;
 }): ReactNode {
-  const result = usePanel('groups', buildGroupsRequest(state));
+  // 그룹 키가 없으면 조회하지 않는다 — 그룹 엔드포인트는 group_by가 필수다.
+  const enabled = state.groupBy !== null;
+  const result = usePanel('groups', buildGroupsRequest(state), enabled);
   const groups = (result.body?.['groups'] as readonly AggregationGroup[] | undefined) ?? [];
   // 빈 그룹은 AggregationPanel이 자기 문구로 그린다(team 미투영 = 정상 빈 결과). slot에서
   // empty_no_data로 접으면 그 구분이 사라진다.
   const panel = resolvePanelState({ ...result, loginPath });
 
+  if (!enabled) {
+    return (
+      <Panel as="section" aria-label="그룹 집계">
+        <h3>그룹 집계</h3>
+        <p data-testid="group-prompt">그룹 키를 선택하면 그룹별 집계가 나타납니다.</p>
+      </Panel>
+    );
+  }
   if (!isRenderable(panel)) return <Panel as="section" aria-label="그룹 집계"><PanelStatus state={panel} /></Panel>;
   return (
     <AggregationPanel

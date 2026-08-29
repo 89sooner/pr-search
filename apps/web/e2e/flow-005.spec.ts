@@ -133,6 +133,27 @@ test.describe('FLOW-005 통계 대시보드', () => {
     await expect(page.getByTestId('epoch-stale').first()).toContainText('에폭');
   });
 
+  test('그룹 키가 없으면 그룹 패널은 조회하지 않고 안내를 그린다', async ({ page }) => {
+    const groupsCalls: string[] = [];
+    await page.route('**/api/analytics/**', async (route: Route) => {
+      const url = route.request().url();
+      if (url.includes('/analytics/groups')) groupsCalls.push(url);
+      const json = (status: number, body: unknown): Promise<void> =>
+        route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+      if (url.includes('/analytics/time-series')) return json(200, TIME_SERIES);
+      if (url.includes('/analytics/percentiles')) return json(200, PERCENTILES);
+      if (url.includes('/analytics/distributions')) return json(200, DISTRIBUTIONS);
+      return json(200, GROUPS);
+    });
+    // group_by 없이 진입한다.
+    await page.goto('/analytics?q=org%3Aacme');
+    await expect(page.getByTestId('group-prompt')).toBeVisible();
+    // 다른 패널은 뜬다 — 그룹만 조회를 미룬다.
+    await expect(page.getByTestId('pr-population-note')).toBeVisible();
+    // 그룹 엔드포인트는 부르지 않았다(400을 받지 않는다).
+    expect(groupsCalls).toHaveLength(0);
+  });
+
   test('team 빈 그룹을 데이터 없음으로 그린다', async ({ page }) => {
     await installRoutes(page, { timeSeriesStatus: 200, groupsBody: { ...GROUPS, groups: [], total: { value: 0, relation: 'eq' } } });
     await page.goto('/analytics?q=org%3Aacme&group_by=team');
