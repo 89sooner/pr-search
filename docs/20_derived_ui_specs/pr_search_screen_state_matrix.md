@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.11 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.12 | 갱신일: 2026-08-29
 
 ## 1. 상태 설계 원칙
 
@@ -246,7 +246,8 @@
 | --- | --- | --- | --- | --- |
 | `loading_initial` / `loading_more` / `ready` | - | 필터 + 목록 + 커서 페이저 | - | FR-AUTH-004 |
 | `empty_no_result` | 조건 결과 0건 | 필터 완화 제안 | 필터 변경 | FR-AUTH-004 |
-| `no_permission` | `security_officer` 아님 | 필요 역할 표시(HTTP 403) | - | NFR-006 |
+| `no_permission` | `security_officer` 아님 | 필요 역할 표시(HTTP 403). **문구에 `security_officer`를 그대로 적는다** — `operator`도 여기서 막히므로 "운영자 권한이 필요합니다"는 거짓이다 (CR-054, DEV-408) | - | NFR-006 |
+| `cursor_invalid` | 커서가 위조·만료되었거나 조건이 바뀐 뒤의 옛 커서 | 첫 페이지로 복귀하고 그 사실을 알린다. `CURSOR_INVALID`와 `CURSOR_QUERY_MISMATCH`를 **다른 문구로** 구분한다 — 하나는 "커서를 쓸 수 없다"이고 다른 하나는 "조건이 바뀌었다"이다 | 재조회 | API-ADM-005 |
 | `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 
 ## 4. 상태 전이 규칙

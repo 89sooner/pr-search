@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.11 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.12 | 갱신일: 2026-08-29
 
 ## 1. 목적
 
@@ -555,9 +555,18 @@ CREATE TABLE audit_record (
 ) PARTITION BY RANGE (occurred_at);      -- 월별 파티션, 1년 보존 (NFR-006)
 CREATE INDEX audit_user_idx   ON audit_record (user_id, occurred_at DESC);
 CREATE INDEX audit_action_idx ON audit_record (action, occurred_at DESC);
+
+-- CR-054(DEV-412): 필터 없는 전역 목록의 정렬 키를 그대로 덮는다.
+-- 위 둘은 앞 컬럼이 필터라 `user_id`·`action` 조건이 있을 때만 쓰인다.
+-- A-004의 기본 조회는 조건이 없고 `API-ADM-005`의 커서가 이 순서를 봉인한다.
+CREATE INDEX audit_cursor_idx ON audit_record (occurred_at DESC, audit_id DESC);
 ```
 
 `audit_record`에는 UPDATE·DELETE 권한을 애플리케이션 롤에 부여하지 않는다 (FR-AUTH-004 AC-3). 보존 만료 삭제는 별도 관리 롤이 파티션 드롭으로 수행한다.
+
+**관리 롤로 접속할 경로를 함께 연다 (CR-054, DEV-411).** `prs_admin`은 마이그레이션 005부터 있었으나 **그 롤로 접속하는 코드 경로가 없었다** — `createPool()`은 `DATABASE_URL` 하나만 읽는다. `JOB-AUD-001`이 파티션을 드롭하려면 그 권한이 필요한데, `prs_app`에 `DROP`을 주는 길은 **감사 불변성의 마지막 방어선을 없앤다.** 그래서 관리 연결을 **별도 설정값**(`ADMIN_DATABASE_URL`)으로 열고, 없으면 보존 잡이 **기동하지 않되 나머지 배치 역할은 정상 동작한다** — 설정 하나가 없어서 워커 전체가 뜨지 않으면 실시간 경로까지 함께 죽는다. 이 연결은 보존 잡만 쓰며 일반 조회·쓰기 경로에 노출하지 않는다.
+
+**`target`·`query`는 nullable이다** (FR-AUTH-004 AC-2). 의미상 대상이 없는 액션이 있고, 빈 문자열로 채우면 "없다"와 "빈 값으로 기록됐다"가 구분되지 않는다.
 
 ### 3.5 GitHub Operations (CR-005 신규)
 
