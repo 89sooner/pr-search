@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.9 | 갱신일: 2026-08-29
 
 ## 1. 문서 원칙
 
@@ -67,7 +67,7 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - 상태: `default`, `collapsed`
 - 이벤트: `nav.open`, `nav.select`
 - 접근성: `navigation` landmark, 현재 항목에 `aria-current="page"`, 키보드 순회 지원
-- 사용 규칙: `operator`·`security_officer`가 아니면 운영 그룹 항목을 렌더링하지 않는다. 비활성으로 보여 주지 않는다(존재를 노출하지 않음)
+- 사용 규칙: 운영 항목은 **항목마다** 허용 역할을 본다 (CR-054, DEV-408). 그룹 단위로 열면 `operator`가 감사 화면을, `security_officer`가 저장소 등록을 보게 된다 — 권한 매트릭스가 둘 다 막는 자리다. **허용 역할에 없으면 렌더링하지 않는다. 비활성으로 보여 주지 않는다**(존재를 노출하지 않음). 새 항목이나 새 역할의 기본값은 **보이지 않음**이다
 
 ### C-003 InspectorPanel
 
