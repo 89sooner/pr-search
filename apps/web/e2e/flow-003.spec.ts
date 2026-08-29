@@ -183,7 +183,20 @@ test.describe('FLOW-002 전 경로: SHA 입력 → 커밋 상세 → PR 상세',
     await page.getByTestId('linked-pr-link').click();
     await expect(page.getByTestId('pr-detail')).toBeVisible();
 
+    /*
+     * **URL을 먼저 기다린 뒤 다음 뒤로가기를 부른다** (DEV-424).
+     *
+     * 렌더 확인(`commit-detail`)만으로 다음 내비게이션을 시작하면 **첫
+     * 뒤로가기의 히스토리 전이가 아직 끝나지 않은 순간을 만난다** — 그때
+     * 두 번째 `goBack()`이 아무 일도 하지 않고 반환하고, 시험은 커밋 상세에
+     * 머문 URL을 보며 실패한다. CI 로그가 정확히 그 모양이었다:
+     * `9 × unexpected value ".../commit/acme/payments/...?from_q=..."`.
+     *
+     * URL이 바뀐 것을 먼저 확인하면 그 경합이 사라진다. **렌더보다 히스토리가
+     * 먼저다** — 판정의 재료를 그 순서에 맞춘다.
+     */
     await page.goBack();
+    await expect(page).toHaveURL(/\/commit\//);
     await expect(page.getByTestId('commit-detail')).toBeVisible();
     await page.goBack();
     /*

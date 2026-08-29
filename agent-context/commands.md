@@ -1611,11 +1611,43 @@ pnpm build                    # 통과
 
 ## 미해결 리뷰를 세는 법 (이 세션이 배운 것)
 
+**잘림을 드러내지 않는 계수는 "0건"을 다시 만든다.** 처음 쓴 명령이 `last:25`였고
+그것으로 22건이 나왔는데, `last:100`으로 다시 세니 **26건**이었다 — `PR #32`·`#49`가
+조용히 빠져 있었다(PR #86 리뷰 P2가 예측한 그대로다).
+
 ```bash
-gh api graphql -f query='{ repository(owner:"89sooner",name:"pr-search"){
-  pullRequests(last:25, states:[OPEN,MERGED]){
-    nodes{ number state reviewThreads(first:50){nodes{isResolved}} } } } }'
+gh api graphql -f query='
+{ repository(owner: "89sooner", name: "pr-search") {
+    pullRequests(last: 100, states: [OPEN, MERGED]) {
+      pageInfo { hasPreviousPage }
+      nodes { number state
+        reviewThreads(first: 100) { pageInfo { hasNextPage } nodes { isResolved } } } } } }' \
+  > /tmp/t.json
 ```
+
+그 뒤 두 `pageInfo`를 읽어 **잘렸는지 먼저 판정한다.**
+
+```python
+import json
+d = json.load(open('/tmp/t.json'))
+prs = d['data']['repository']['pullRequests']
+total, truncated = 0, []
+for pr in prs['nodes']:
+    rt = pr['reviewThreads']
+    un = [t for t in rt['nodes'] if not t['isResolved']]
+    if rt['pageInfo']['hasNextPage']:
+        truncated.append(pr['number'])
+    if un:
+        print(f"PR #{pr['number']} ({pr['state']}): {len(un)}")
+        total += len(un)
+print('총 미해결:', total)
+print('PR 목록이 잘렸나:', prs['pageInfo']['hasPreviousPage'])
+print('스레드가 잘린 PR:', truncated or '없음')
+```
+
+**두 `pageInfo`를 반드시 읽는다.** 하나라도 참이면 그 수는 **하한**이며 그 사실을 함께
+말한다. `--paginate`는 이 저장소 규모에서 4분을 넘겨 쓰지 못했다 — 대신 상한을 100으로
+올리고 **잘렸는지를 검사한다.**
 
 **"고쳤다"와 "스레드가 닫혔다"는 다른 사실이다.** 머지 후 이것으로 센다.
 
