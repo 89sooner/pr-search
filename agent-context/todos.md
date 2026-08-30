@@ -1,5 +1,87 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
+> **최신 기준 (2026-08-31 · DEV-414 종결, 리뷰 부채 0건)**
+> main — **실측하라.** 이 인계 커밋이 한 번 더 옮긴다
+> SRS **`baseline v2.16`** (CR-056) · 원장 `review v6.7` · 작업 패키지 `v2.10` · API 계약 `v0.20` · 데이터 모델 `v0.14` · 비동기 잡 `v0.7`
+> **REL-005 4/4 DONE.** 릴리스는 승인되지 않았다 — Gate 4·5·6 그대로
+> open DEV **14건** — `DEV-001·006·010·016·026·058·061·304·305·395·399·427·433·447`
+> 다음 빈 ID: **CR-057 · DEV-458 · WP-070 · 마이그레이션 021 · C-072** (측정값. 쓰기 전 다시 잰다)
+> **미해결 리뷰 0건** — pr-search 95개·design-system 11개 전수, 두 `pageInfo` 잘림 없음
+> **design-system CI는 정상이다.** 결제 차단은 pr-search에만 해당한다
+
+이 세션이 배운 것 넷.
+
+- **정정한 자리가 다음 리뷰의 첫 자리다.** 세 번 반복됐다 — `PR #94`가 `#91`의 정정에, `PR #95`가 `CR-056`의 구현에, design-system `PR #12`가 그 자체의 정정에 새 지적을 받았고 **전부 실결함**이었다. 그중 둘은 이 세션의 판단을 정면으로 뒤집었다.
+- **문장으로 쓴 근거는 코드로 확인하기 전까지 결함 후보다.** `DEV-455`가 그 예다 — 드릴다운을 "갈아 끼운다"고 정하며 그 이유를 적었는데 집계가 세는 것이 이미 교집합이라 **정확히 반대**였다. 같은 세션의 `DEV-443`에서는 반대 방향으로 이겼다: 이전 주석의 "부분으로 남는다"를 코드로 확인해 **그 근거가 틀렸음**을 밝혔다.
+- **개수를 세는 단언은 무엇이 늘었는지 말하지 않는다.** 지원 키를 "17종"으로 세는 자리가 단위 하나와 통합 둘에 흩어져 있었다. `CR-054`가 감사 대상에서, `DEV-438`이 열 목록에서 내린 판단이 세 번째로 값을 냈다.
+- **판정 재료를 좁히는 일은 한 번에 끝나지 않는다.** 모름의 재료가 `enrichment_pending && files.length === 0` → `enrichment_pending` → `enrichment_errors`의 `files` 항목으로 두 번 좁혀졌다. 첫 번째는 기존 시험이, 두 번째는 리뷰가 잡았다.
+
+## 시작하기 전에 — 이 인계의 값을 실측하라
+
+```bash
+git -C . rev-parse --short HEAD
+gh pr list --state open --json number --jq 'length'
+grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
+```
+
+미해결 리뷰 계수는 `commands.md`의 「미해결 리뷰를 세는 법」이 정본이다. **`last: 100`과 두 `pageInfo`를 함께 읽는 형태여야 한다** — `DEV-425`가 고친 결함이 인계 문서에서 되살아나 `DEV-446`이 됐다.
+
+## A. 지금 당장 — REL-006 (WP-041 → WP-042 → WP-044)
+
+`REL-005`가 끝났고 리뷰 부채도 0건이므로 다음은 이것이다.
+
+- `WP-041`(안전 구간 표식)과 `WP-044`(내보내기)가 감사 액션 `safe_marker.set`·`export.create`를 각자 활성으로 옮긴다. `WP-040`이 미리 활성화하지 않았다
+- `WP-043`은 착수하지 않는다 — `ACC-06`이 NOT RUN이라 활성화 조건이 성립하지 않는다
+- **착수 전 계약 감사가 이 저장소의 관행이다.** `CR-055`가 열다섯 번째였고 `CR-056`이 열여섯 번째다 — 두 번 모두 승인된 AC가 남긴 빈칸을 찾았다
+
+## B. 새로 열린 WP — WP-069 작성자 소속 팀 채우기
+
+`CR-056`이 신설했다(REL-006, 선행 `WP-068`·`WP-037`). `author_team_ids`가 비어 있어 `group_by=team`과 `author_team:`이 언제나 빈 결과를 낸다 — **누락이 아니라 미구현**이며 화면이 그 사실을 그대로 말한다.
+
+## C. 배포에서 해야 할 것
+
+- **`clearUnknownSizes` 소급** (신규, CR-056 / DEV-456) — 부트스트랩이 함께 돌린다. `pnpm es:apply-mappings`가 그 경로다
+- 마이그레이션 020 (CR-055), 018·019 (WP-039), 017 (WP-037) — `pnpm run db:migrate`
+- `ADMIN_DATABASE_URL` (WP-039) — 없으면 JOB-AUD-001만 서지 않는다
+- `SEARCH_CURSOR_HMAC_KEY`, `pnpm es:reindex`
+- Prometheus 경보 규칙 적용은 여전히 NOT RUN
+
+## D. GitHub Actions — pr-search만 결제 차단이다
+
+`verify`·`integration` 모두 `steps=0`이고 주석이 `The job was not started because recent account payments have failed`를 말한다. **잡이 뜨지도 않은 것이지 시험이 실패한 것이 아니다.**
+
+- 재시도를 누르지 않는다 — 이 세션이 다섯 PR에서 같은 상태를 확인했다
+- **design-system은 다르다.** `PR #12`가 `verify`(node 20·22) 각 27단계와 visual regression 10단계를 실제로 통과했다. 그 저장소에서는 CI가 판정 근거다
+- pr-search에서는 로컬 배터리가 유일한 판정이며 그 사실을 원장·PR·인계에 적는다
+
+## E. 미뤄 둔 항목
+
+- **`DEV-447` open** — 조정 스캔의 30초 강제 종료가 증명되지 않았다. `DEV-443`·`448`이 넣은 것은 **협조적 중단**이고, 이미 시작한 PR 하나의 보강은 끝까지 간다. 상한을 실제로 걸려면 `GitHubTransport`·`GitHubClient`가 외부 취소 신호를 받아야 하고 그것은 모든 호출부를 다시 세는 작업이다. **`Promise.race`로 감싸 "강제 종료했다"고 보고하지 마라** — 실제 작업은 계속 도는데 기록만 거짓이 된다
+- `DEV-433` open — `API-ADM-001`·`API-ADM-003`의 오프셋. 두 API의 소비자를 전부 다시 세는 별도 작업
+- `DEV-427` open — CI 통합의 link-rebuild 되먹임. CI가 돌지 않아 확인할 길이 없다
+- `DEV-395`·`DEV-399`·`DEV-058`·`DEV-061` — 변화 없음
+
+## F. 릴리스 게이트 4·5·6 — 릴리스는 승인되지 않았다
+
+Gate 4 보안(일부 가능) · Gate 5 성능(불가 — 1,000만 문서 합성 데이터셋 부재) · Gate 6 운영(불가 — 실제 K8s 없음). `ACC-06`은 NOT RUN이고 `W-007`·`WP-043`은 NOT ACTIVATED다.
+
+## G. 이 세션이 깔아 둔 자리 — 다시 만들지 말 것
+
+- `packages/query/src/serialize.ts`의 `intersectNumericRange` — 분포 드릴다운이 기준 범위와 **교차**한다. 갈아 끼우면 자기가 센 구간보다 넓어진다 (DEV-455)
+- `apps/pipeline-worker/src/documents.ts`의 `filesUnknown` — 모름의 판정 재료는 `enrichment_errors`의 `files` 항목 하나다. `enrichment_pending`으로 되돌리지 마라 (DEV-457)
+- `packages/es/src/upsert.ts`의 `UpsertRequest.remove` — 부재로 판정하는 필드는 부재를 실제로 만들 수 있어야 한다. 조건부 대입은 실린 키만 본다 (DEV-454)
+- `apps/pipeline-worker/src/reconcile.ts`의 `shouldStop` — 확인 지점 셋(페이지 앞·되돌리기 앞·후속 단계 앞). 루프 안에만 두면 마지막 단위 뒤를 놓친다 (DEV-448)
+- `apps/search-api/src/ops/jobs.ts`의 `CreateJobOutcome.conflict.jobId: number` — `null`을 되살리지 마라. 충돌이라는 판정 자체가 활성 잡의 존재를 뜻한다 (DEV-444)
+- design-system `packages/react/src/form.tsx`의 `SelectRoot` — 반환 타입은 `ReactElement`다. `ReactNode`는 React 18 타입에서 JSX 컴포넌트로 부적격이다
+- design-system `scripts/check-release-tags.mjs` — 태그는 릴리스 HEAD를 가리켜야 한다. "산출물에 영향을 주는 입력" 목록으로 되돌리지 마라 — 완전해야만 옳은 목록은 낡는다
+
+---
+
+# 이전 세션 기록 (보존)
+
+## (2026-08-30 2차 · WP-040 병합 + 머지 후 리뷰 정정 시점)
+
 > **최신 기준 (2026-08-30 2차 · WP-040 병합 + 머지 후 리뷰 정정)**
 > main `1df0191` (PR #89·#90·#91·#92 병합) — **이 인계 커밋이 한 번 더 옮긴다. HEAD를 실측하라**
 > **main CI는 판정에 쓰지 못했다** — 아래 D절
@@ -99,7 +181,7 @@ grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1   # next-free는 이 값 + 1
 
 ---
 
-# 이전 세션 기록 (보존)
+---
 
 ## (2026-08-30 · CR-055 병합 · WP-040 구현 중 시점)
 

@@ -2095,3 +2095,100 @@ gh api graphql -f query='
 ## `.gitignore`를 자를 때 규칙을 놓친다
 
 `head -20`으로 읽었더니 24행의 `exports/`를 못 봤다. 무시 여부는 **파일을 읽어 추측하지 말고** `git check-ignore -v <경로>`로 판정한다.
+
+---
+
+# 2026-08-31 세션 — DEV-414 청산
+
+## 미해결 리뷰를 세는 법 (정본, 다시 확정)
+
+`DEV-446`이 정정했다. **상한 100과 두 `pageInfo`가 함께 있어야 한다** — `last: 30`으로 돌아간 명령이 24건을 22건이라 답했다.
+
+```bash
+for repo in pr-search design-system; do
+  echo "=== $repo ==="
+  gh api graphql -f query="
+  { repository(owner: \"89sooner\", name: \"$repo\") {
+      pullRequests(last: 100, states: MERGED) {
+        totalCount
+        pageInfo { hasPreviousPage }
+        nodes { number reviewThreads(first: 100) {
+          pageInfo { hasNextPage } nodes { isResolved } } } } } }" \
+    --jq '.data.repository.pullRequests as $prs
+      | "조회 \($prs.totalCount)개 · 앞쪽 잘림=\($prs.pageInfo.hasPreviousPage) · 스레드 잘림=\([$prs.nodes[]|select(.reviewThreads.pageInfo.hasNextPage)]|length)건",
+        ([$prs.nodes[] | {n: .number, u: ([.reviewThreads.nodes[]|select(.isResolved|not)]|length)} | select(.u > 0)]
+         | "총 \([.[].u]|add // 0)건: " + ([.[] | "#\(.n)(\(.u))"] | join(" ")))'
+done
+```
+
+2026-08-31 최종 실측: **양쪽 0건** (pr-search 95개 · design-system 11개, 잘림 없음).
+
+## 스레드 본문을 한 번에 모아 판정한다
+
+전수 대조는 스레드마다 GitHub을 여는 것보다 한 번에 받아 파일로 두는 편이 빠르다.
+
+```bash
+gh api graphql -f query='
+{ repository(owner:"89sooner",name:"pr-search"){
+    pullRequests(last: 100, states: MERGED) {
+      nodes { number reviewThreads(first: 100) {
+        nodes { id isResolved path line
+          comments(first: 1) { nodes { author{login} createdAt body } } } } } } } }' > threads.json
+```
+
+`id`가 곧 답변·해소의 인자다. 판정 결과를 같은 JSON에 적어 두면 그것이 매트릭스가 된다.
+
+## 답변·해소를 일괄로 돌릴 때
+
+**한 스레드씩 `inspect → reply → resolve`를 끝내고 다음으로 간다.** 실패해도 같은 mutation을 반복하지 않는다 (secondary rate limit).
+
+```bash
+for f in replies/*.md; do
+  tid=$(basename "$f" .md)
+  gh api graphql -f query='mutation($t: ID!, $b: String!) {
+    addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $t, body: $b}) { comment { id } } }' \
+    -f t="$tid" -f b="$(cat "$f")" > /dev/null \
+  && gh api graphql -f query='mutation($t: ID!) {
+    resolveReviewThread(input: {threadId: $t}) { thread { isResolved } } }' \
+    -f t="$tid" --jq '.data.resolveReviewThread.thread.isResolved'
+done
+```
+
+이 세션이 33건을 이 방식으로 처리했고 rate limit에 걸리지 않았다.
+
+## design-system 검증 배터리
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+cd ~/design-system
+pnpm typecheck && pnpm lint && pnpm lint:deps && pnpm lint:tokens
+pnpm test                 # 530
+pnpm test:a11y            # 165 (1 skipped)
+pnpm check:contrast       # 232/232
+pnpm build                # tokens → css → react → docs
+pnpm check:api            # 빌드 뒤에 돌린다
+pnpm check:changesets
+```
+
+**`check:api`는 빌드 뒤에 돌린다** — `.d.ts`를 읽으므로 빌드 전에는 옛 결과를 본다. 공개 API를 넓혔으면 `pnpm check:api --update`로 기준을 갱신하고 그 파일을 함께 커밋한다.
+
+**`check:release-tags`는 릴리스 잡에서만 돈다.** 개발 브랜치에서 돌리면 마지막 릴리스와의 거리를 보고하며 그것이 정상이다.
+
+## CI 상태는 저장소마다 다르다
+
+```bash
+gh run list --repo 89sooner/<repo> --limit 5 --json databaseId,headSha,conclusion
+gh api "repos/89sooner/<repo>/actions/runs/<RID>/jobs" --jq '.jobs[] | "\(.name) \(.conclusion) steps=\(.steps|length)"'
+```
+
+`steps=0`이면 잡이 뜨지도 않은 것이다. **pr-search는 결제 차단, design-system은 정상**이며 그 둘을 같이 묶어 말하지 않는다.
+
+## 원장 표 행을 넣을 때 칸 수를 먼저 센다
+
+```python
+for line in rows.split('\n'):
+    if len(line.split('|')) != 9:   # 7칸 + 양끝
+        print('칸 수 이상'); sys.exit(1)
+```
+
+`DEV-399`가 남긴 결함 유형이며, 이 세션이 DEV 행 열셋을 넣으면서 매번 확인했다.
