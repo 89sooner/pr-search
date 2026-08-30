@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-08-30T23:24:11+00:00",
+  "generated": "2026-08-30T23:28:15+00:00",
   "root": "/home/roqkf/pr-search",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -341,10 +341,10 @@
       "id": "f54408e",
       "source_path": "agent-context/todos.md",
       "compact_path": "agent-context/_handoff/compact/f54408e.todos.ctx.md",
-      "sha256": "057714523eb2775cc3ee365896c7d7a0f3f2297ddc1495b9196f459282b2a3fb",
-      "bytes": 103921,
-      "lines": 1321,
-      "compact_bytes": 103140,
+      "sha256": "3ff7cf80ee70e4b55387497ac3ed97cc89396915231b643213061f74d59d7a4e",
+      "bytes": 104207,
+      "lines": 1328,
+      "compact_bytes": 103434,
       "headings": [
         "다음 작업 · 미해결 항목 · 확인할 사항",
         "시작하기 전에 — 이 인계의 값을 실측하라",
@@ -368,6 +368,7 @@
         "4/4",
         "docs/40_delivery/pr_search_implementation_traceability.md",
         "apps/web/package.json",
+        "prs/web",
         "packages/query/src/serialize.ts",
         "apps/pipeline-worker/src/documents.ts",
         "packages/es/src/upsert.ts",
@@ -386,8 +387,7 @@
         "apps/web/app/ops/",
         "apps/web/app/ops/audit/page.tsx",
         "up/down/up",
-        "packages/db/src/repositories/job.ts",
-        "packages/domain/src/sequence.ts"
+        "packages/db/src/repositories/job.ts"
       ],
       "priority": 30,
       "title": "다음-작업-미해결-항목-확인할-사항"

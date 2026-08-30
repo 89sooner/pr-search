@@ -52,7 +52,14 @@ grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
 | `IconButton loading`의 글리프 둘 | `AppTopBar.tsx:153`, `QueryTokenBar.tsx:95` | **아니다** — 둘 다 `loading`을 넘기지 않는다 |
 | `Field required` → `Select.Root` | `SaveSearchDialog.tsx:271` | **아니다** — `Field` 밖에 있고 `<label>`을 직접 쓴다 |
 
-이 저장소의 관행은 **필요한 WP에서 함께 올리는 것**이다 — `0.2.0` 소비도 `WP-038`이 dataviz 토큰을 실제로 요구하면서 그 커밋에 들어갔다. 그 컴포넌트를 그 조건으로 쓰는 WP가 생길 때 `apps/web/package.json`의 세 줄을 함께 올린다.
+이 저장소의 관행은 **필요한 WP에서 함께 올리는 것**이다 — `0.2.0` 소비도 `WP-038`이 dataviz 토큰을 실제로 요구하면서 그 커밋에 들어갔다.
+
+올릴 때는 **`apps/web/package.json`의 세 줄과 `pnpm-lock.yaml`을 함께 커밋한다.** CI 두 잡이 `pnpm install --frozen-lockfile`로 도므로 잠금 파일이 낡으면 설치 단계에서 멈춘다 — `d3031b6`(0.2.0 소비)도 둘을 함께 바꿨다.
+
+```bash
+pnpm --filter @prs/web add @conductor-by-89soone/{tokens,css,react}@0.2.1
+git add apps/web/package.json pnpm-lock.yaml
+```
 
 ## C. 배포에서 해야 할 것
 
