@@ -22,7 +22,14 @@ export type PipelineAccess = 'full' | 'archive_only' | 'none';
  *
  * `operator`가 둘 다 가진 경우 `full`이다 — 넓은 쪽이 이긴다.
  */
-export function pipelineAccess(roles: readonly OpsRole[]): PipelineAccess {
+export function pipelineAccess(roles: readonly OpsRole[], authEnabled = true): PipelineAccess {
+  /*
+   * **인증이 구성되지 않은 배포에서는 역할을 알 수 없다.** 빈 목록을 "자격
+   * 없음"으로 읽으면 이 화면만 다른 화면과 다르게 굴고(다른 화면은 서되 조회가
+   * 401을 받는다), 개발 배포에서 운영 콘솔만 통째로 사라진다. 조회는 여전히
+   * 프록시가 막으므로 이 완화가 데이터를 열지 않는다.
+   */
+  if (!authEnabled) return 'full';
   if (roles.includes('operator')) return 'full';
   if (roles.includes('security_officer')) return 'archive_only';
   return 'none';

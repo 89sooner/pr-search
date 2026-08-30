@@ -34,7 +34,6 @@ import { migratedPool } from '../helpers.js';
 const REPOSITORY_ID = 904110;
 const OWNER = 'wp040mr';
 const NAME = 'reconcile';
-const SLUG = `${OWNER}/${NAME}`;
 const ACTOR = 'sub-wp040-manual-operator';
 
 let pool: Pool;

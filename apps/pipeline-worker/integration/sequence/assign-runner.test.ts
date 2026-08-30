@@ -252,7 +252,7 @@ describe('대상 판정', () => {
      * 정확성과 무관하다 — 여기서 물어야 하는 것은 `release/@next`가 통째로
      * 넘어갔는가이며, 첫 `@`가 아니라 마지막 `@`에서 자르면 `next`가 된다.
      */
-    let branches: string[] = [];
+    const branches: string[] = [];
     await runAssignJob(
       deps({
         assign: async (_deps, _repositoryId, baseBranch): Promise<AssignOutcome> => {
