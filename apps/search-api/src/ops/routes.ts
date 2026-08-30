@@ -688,7 +688,7 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
          */
         throw new AdminRejected('JOB_CONFLICT', '같은 대상에 활성 잡이 이미 있다', {
           target,
-          ...(outcome.jobId === null ? {} : { job_id: outcome.jobId }),
+          job_id: outcome.jobId,
         });
       }
       return { status: 201, body: toJobResponse(outcome.job) };

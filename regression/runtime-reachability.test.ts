@@ -318,10 +318,28 @@ describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () 
     expect(OPS_JOBS).toContain("kind: 'unsupported_action'");
   });
 
-  /* **409는 실행 중 잡 식별자를 함께 준다** (FR-ADMIN-002 AC-4, QA-A003-03). */
+  /*
+   * **409는 실행 중 잡 식별자를 함께 준다** (FR-ADMIN-002 AC-4, QA-A003-03).
+   *
+   * 리터럴 전문을 걸지 않는다 (DEV-438이 같은 자리에서 배운 것). 재는 성질은
+   * **"식별자 없는 충돌이 존재할 수 없다"**이며, 그것은 타입에 `null`이 없다는
+   * 사실로 표현된다 (DEV-444). `| null`을 걸어 두면 이 성질이 강해졌을 때
+   * 시험이 그것을 결함으로 신고한다.
+   */
   it('JOB_CONFLICT가 잡 식별자를 싣는다', () => {
-    expect(OPS_JOBS).toMatch(/kind: 'conflict'; readonly jobId: number \| null/);
+    expect(OPS_JOBS).toMatch(/kind: 'conflict'; readonly jobId: number/);
+    expect(OPS_JOBS).not.toMatch(/jobId: number \| null/);
     expect(read('apps/search-api/src/ops/routes.ts')).toContain('job_id: outcome.jobId');
+  });
+
+  /*
+   * **취소 신호가 저장소 안까지 닿는다** (PR #91 리뷰 P1, DEV-443). 스윕이
+   * 신호를 받아 두고 저장소 조정에 넘기지 않으면 활성 저장소가 하나일 때
+   * 확인 지점이 사라진다.
+   */
+  it('스윕이 취소 신호를 저장소 조정에 넘긴다', () => {
+    expect(RECONCILE).toContain('await reconcileRepository(deps, repository, cancelled)');
+    expect(RECONCILE).toContain('if (await shouldStop()) break scan;');
   });
 
   it('reconcile이 대상을 받으면 거절한다', () => {

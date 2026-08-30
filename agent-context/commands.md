@@ -1946,21 +1946,31 @@ pnpm run db:migrate                          # 다시 up — 그 행이 기본�
 
 ## 미해결 리뷰를 세는 법 (두 저장소)
 
+**상한을 30으로 두면 안 된다** (DEV-446). `DEV-425`가 이미 고친 결함이 이 문서에서
+되살아났다 — 병합 PR이 90개를 넘은 지금 `last: 30`은 `PR #32`·`#49`를 조용히 빼고
+**24건을 22건이라 답한다.** 두 `pageInfo`를 함께 읽어 **잘렸는지 먼저 판정한다.**
+
 ```bash
 for repo in pr-search design-system; do
   echo "=== $repo ==="
   gh api graphql -f query="
   { repository(owner: \"89sooner\", name: \"$repo\") {
-      pullRequests(last: 30, states: MERGED) {
-        nodes { number reviewThreads(first: 100) { nodes { isResolved } } } } } }" \
-    --jq '[.data.repository.pullRequests.nodes[]
-           | {n: .number, u: ([.reviewThreads.nodes[]|select(.isResolved|not)]|length)}
-           | select(.u > 0)]
-          | "총 \([.[].u]|add // 0)건: " + ([.[] | "#\(.n)(\(.u))"] | join(" "))'
+      pullRequests(last: 100, states: MERGED) {
+        totalCount
+        pageInfo { hasPreviousPage }
+        nodes { number reviewThreads(first: 100) {
+          pageInfo { hasNextPage } nodes { isResolved } } } } } }" \
+    --jq '.data.repository.pullRequests as $prs
+      | "조회 \($prs.totalCount)개 · 앞쪽 잘림=\($prs.pageInfo.hasPreviousPage) · 스레드 잘림=\([$prs.nodes[]|select(.reviewThreads.pageInfo.hasNextPage)]|length)건",
+        ([$prs.nodes[] | {n: .number, u: ([.reviewThreads.nodes[]|select(.isResolved|not)]|length)} | select(.u > 0)]
+         | "총 \([.[].u]|add // 0)건: " + ([.[] | "#\(.n)(\(.u))"] | join(" ")))'
 done
 ```
 
-2026-08-30 2차 실측: pr-search 22건 · design-system 9건.
+`앞쪽 잘림=true`이거나 `스레드 잘림`이 0이 아니면 **그 수는 하한이며 그 사실을 함께
+말한다.** `--paginate`는 이 저장소 규모에서 4분을 넘겨 쓰지 못한다.
+
+2026-08-30 3차 실측(잘림 없음): pr-search 26건 · design-system 9건.
 
 ## CI가 "실패"인데 코드 문제가 아닐 때
 

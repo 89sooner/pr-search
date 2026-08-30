@@ -74,8 +74,13 @@ export type CreateJobOutcome =
    * 대상 문자열만 돌려주면 운영자는 "이미 돌고 있다"까지만 알고 **그 잡을 찾아갈
    * 수 없다** — 화면이 가리킬 곳이 없어 `QA-A003-03`이 요구하는 경로가 끊긴다.
    * 경합으로 졌을 때도 이긴 행을 다시 읽어 채운다.
+   *
+   * **식별자는 선택 값이 아니다** (DEV-444, PR #91 리뷰 P2). `number | null`로
+   * 두면 라우트가 그 `null`을 필드 누락으로 옮겨 AC-4가 요구하는 409를 조용히
+   * 어긴다. `conflict`라는 판정 자체가 **활성 잡이 실재한다**는 뜻이 되도록
+   * 타입에서 그 상태를 없앤다 — 활성 잡이 없으면 그것은 충돌이 아니다.
    */
-  | { readonly kind: 'conflict'; readonly jobId: number | null };
+  | { readonly kind: 'conflict'; readonly jobId: number };
 
 /**
  * 잡을 큐에 넣는다.
@@ -237,6 +242,16 @@ export async function resolveJobTarget(
 }
 
 /**
+ * 잡 생성 경합을 다시 시도하는 상한 (DEV-444).
+ *
+ * 유니크 위반과 재조회 사이에서 이긴 행이 끝나는 창은 한 번 지나가면 다시
+ * 같은 모양으로 열리기 어렵다. **무한 재시도는 두지 않는다** — 그 창이 계속
+ * 열린다는 것은 다른 문제가 있다는 뜻이고, 그때 요청을 영원히 붙잡는 것은
+ * 운영자에게 아무것도 알려 주지 않는다.
+ */
+const CREATE_JOB_RACE_ATTEMPTS = 3;
+
+/**
  * 잡 행을 만든다. **대상은 `resolveJobTarget`이 이미 검증한 값이다** — 여기서
  * 다시 저장소를 찾지 않는다. `reconcile`의 대상은 저장소가 아니므로 그 조회가
  * 남아 있으면 그 유형이 언제나 `unknown_repository`로 거절된다.
@@ -247,26 +262,43 @@ export async function createJob(
   target: string,
   requestedBy: string,
 ): Promise<CreateJobOutcome> {
-  const existing = await jobRepo.findActiveJob(pool, type, target);
-  if (existing !== undefined) return { kind: 'conflict', jobId: existing.job_id };
+  for (let attempt = 1; ; attempt += 1) {
+    const existing = await jobRepo.findActiveJob(pool, type, target);
+    if (existing !== undefined) return { kind: 'conflict', jobId: existing.job_id };
 
-  try {
-    const jobId = await jobRepo.enqueueJob(pool, type, target, requestedBy);
-    const job = await jobRepo.findJobById(pool, jobId);
-    // 방금 넣은 행을 못 읽는 것은 있을 수 없다 — 있으면 그것이 진짜 오류다.
-    if (job === undefined) throw new Error('생성한 잡을 다시 읽지 못했다');
-    return { kind: 'created', job };
-  } catch (error) {
-    // 검사와 삽입 사이에 다른 요청이 넣었다. 유니크 위반이 그것을 말해 준다.
-    if (isUniqueViolation(error)) {
+    try {
+      const jobId = await jobRepo.enqueueJob(pool, type, target, requestedBy);
+      const job = await jobRepo.findJobById(pool, jobId);
+      // 방금 넣은 행을 못 읽는 것은 있을 수 없다 — 있으면 그것이 진짜 오류다.
+      if (job === undefined) throw new Error('생성한 잡을 다시 읽지 못했다');
+      return { kind: 'created', job };
+    } catch (error) {
+      // 검사와 삽입 사이에 다른 요청이 넣었다. 유니크 위반이 그것을 말해 준다.
+      if (!isUniqueViolation(error)) throw error;
+
       /*
        * 경합에서 졌다. **이긴 행을 다시 읽는다** — 그 행이 운영자가 찾아가야 할
        * 잡이고, 여기서 포기하면 경합으로 진 요청만 잡 식별자를 잃는다.
        */
       const winner = await jobRepo.findActiveJob(pool, type, target);
-      return { kind: 'conflict', jobId: winner?.job_id ?? null };
+      if (winner !== undefined) return { kind: 'conflict', jobId: winner.job_id };
+
+      /*
+       * 이긴 행이 **이 사이에 끝났다** (DEV-444, PR #91 리뷰 P2). 유니크 인덱스는
+       * 활성 상태에만 걸리므로 그 행이 종료되는 순간 제약도 사라진다 —
+       * **지금은 충돌이 없다.** 식별자 없는 409를 내면 운영자는 "이미 돌고 있다"는
+       * 말을 듣고도 갈 곳이 없고, 실제로는 아무것도 돌고 있지 않다.
+       * 요청이 원래 하려던 일을 한다.
+       */
+      if (attempt >= CREATE_JOB_RACE_ATTEMPTS) {
+        /*
+         * 활성 잡이 이 짧은 창에서 계속 생겼다 사라진다. 드물지만 실재할 수 있고,
+         * 그때 **없는 제품 오류 코드를 지어내지 않는다** — 재시도 가능한 내부
+         * 실패로 올려 기존 처리 정책이 답하게 한다.
+         */
+        throw new Error(`잡 생성 경합이 ${String(CREATE_JOB_RACE_ATTEMPTS)}회 연속 갈렸다: ${type}:${target}`);
+      }
     }
-    throw error;
   }
 }
 

@@ -120,6 +120,14 @@ export interface ReconcileResult {
   readonly sequenceScheduled: boolean;
   /** 한도 소진 등으로 창을 끝까지 읽지 못했다. 다음 주기로 미룬다. */
   readonly deferred: boolean;
+  /**
+   * 중단 지시로 이 저장소의 조정을 끝내지 못했다 (DEV-443).
+   *
+   * **미룸과 다르다.** 미룸은 다음 주기가 이어받으라는 신호이고 연속 미완주를
+   * 세는 근거가 되지만, 취소는 운영자가 일을 멈추라고 말한 것이다 — 그것을
+   * 저장소의 건강 지표로 세면 취소할 때마다 경보가 울린다.
+   */
+  readonly stopped: boolean;
 }
 
 /** 색인에 이 PR 문서가 있는가. */
@@ -152,6 +160,25 @@ async function isIndexed(deps: ReconcileDeps, repositoryId: number, prNumber: nu
 export async function reconcileRepository(
   deps: ReconcileDeps,
   repository: RepositoryRow,
+  /**
+   * 중단 지시가 들어왔는가 (DEV-443, PR #91 리뷰 P1).
+   *
+   * 저장소 **사이**에서만 보면 활성 저장소가 하나뿐이거나 그 저장소의 창이
+   * 넓을 때 취소가 사실상 무시된다 — 화면은 "취소됨"을 보이는데 스캔은 남은
+   * 페이지를 계속 읽고 GHE를 태운다.
+   *
+   * ## 저장소 안에서 끊어도 안전한 이유
+   *
+   * 이 스캔에는 **재개 커서가 없다.** 매 회차가 `RECONCILE_WINDOW_MS` 창을
+   * 처음부터 다시 읽고, 이미 색인된 PR은 `isIndexed`가 걸러 낸다. PR 하나의
+   * 되돌리기는 그 자체로 완결되며 다음 회차가 남은 것만 다시 집는다. 끊어서
+   * 부분으로 남는 것은 **"이번 회차가 창을 끝까지 읽었다"는 사실 하나뿐**이고,
+   * 그것은 아래에서 `recordCompletedReconciliation`을 부르지 않는 것으로 지킨다.
+   *
+   * 백필이 페이지 사이에서만 멈추는 것은 그쪽이 커서를 저장하기 때문이다.
+   * 여기에는 저장할 커서가 없으므로 같은 제약이 성립하지 않는다.
+   */
+  cancelled?: () => Promise<boolean>,
 ): Promise<ReconcileResult> {
   const log = deps.log ?? ((): void => undefined);
   const now = (deps.now ?? ((): Date => new Date()))();
@@ -163,8 +190,24 @@ export async function reconcileRepository(
   let missing = 0;
   let reprojected = 0;
   let deferred = false;
+  let stopped = false;
+
+  /**
+   * 한 번 참이면 그대로 남는다 — 확인 지점마다 답이 흔들리면 절반은 멈추고
+   * 절반은 계속하는 상태가 된다.
+   */
+  const shouldStop = async (): Promise<boolean> => {
+    if (stopped) return true;
+    if (cancelled === undefined) return false;
+    if (!(await cancelled())) return false;
+    stopped = true;
+    log({ level: 'info', message: '중단 지시로 저장소 조정을 멈춘다', repository: slug, reason: 'cancelled' });
+    return true;
+  };
 
   scan: for (let page = 1; ; page += 1) {
+    // 다음 GHE 왕복을 시작하기 전에 본다.
+    if (await shouldStop()) break;
     let items;
     try {
       const result = await deps.client.listPullRequestsPage(ref, page, {
@@ -194,6 +237,12 @@ export async function reconcileRepository(
 
       missing += 1;
       deps.metrics.reconcileMissing.inc({ repository: slug, kind: 'pull_request' });
+      /*
+       * 되돌리기 직전이 이 순회에서 가장 비싼 지점이다 — PR 하나의 보강이 GHE를
+       * 여러 번 부른다. 이미 색인된 PR은 여기에 닿지 않으므로 확인 횟수는 실제
+       * 누락 건수만큼이며, 그만큼이 취소가 기다리는 최대 단위다.
+       */
+      if (await shouldStop()) break scan;
       // 되돌리기는 백필과 같은 경로다 — 두 번째 방식을 만들지 않는다.
       const reproject = deps.reproject ?? ((d, r, sm) => projectOne(d, null, r, sm));
       // 출처를 남긴다 — 스냅숏이 어느 경로에서 왔는지가 조사에 필요하다 (DEV-184).
@@ -202,6 +251,22 @@ export async function reconcileRepository(
     }
 
     if (items.length < PAGE_SIZE) break;
+  }
+
+  /*
+   * 중단 뒤에는 후속 단계를 실행하지 않는다 (DEV-443). 채번 예약도 팀 범위
+   * 동기화도 **이 회차가 하기로 한 일**이며, 취소는 그 일을 멈추라는 뜻이다.
+   * 완주 기록은 더욱 그렇다 — 창을 끝까지 읽지 못한 회차의 `missing`은 부분값이라
+   * 미룸과 똑같은 이유로 "최근 결과"가 될 수 없다.
+   *
+   * **여기서 다시 묻는다** (PR #94 리뷰 P1, DEV-448). 루프 안의 확인만으로는
+   * 마지막 단위를 처리하는 동안 들어온 취소를 놓친다 — 그 뒤로 확인 지점이 없고
+   * 루프는 `items.length < PAGE_SIZE`로 **정상 종료**하므로 `stopped`가 거짓인
+   * 채로 후속 GHE 작업과 완주 기록이 그대로 실행된다. 협조적 중단이 감수하는
+   * 것은 **진행 중이던 단위 하나**까지이며 그 뒤의 새 작업이 아니다.
+   */
+  if (await shouldStop()) {
+    return { scanned, missing, reprojected, sequenceScheduled: false, deferred, stopped: true };
   }
 
   const sequenceScheduled = await scheduleHeadSequence(deps, repository);
@@ -255,7 +320,7 @@ export async function reconcileRepository(
     }
   }
 
-  return { scanned, missing, reprojected, sequenceScheduled, deferred };
+  return { scanned, missing, reprojected, sequenceScheduled, deferred, stopped: false };
 }
 
 /**
@@ -351,8 +416,12 @@ export async function runReconcileSweep(
    * `FR-ADMIN-002`의 중단 계약은 **요청을 반영하라**고 말하며 그것은 일을
    * 멈추라는 뜻이다.
    *
-   * 저장소 **사이**에서만 본다 — 한 저장소의 조정 중간에 끊으면 그 저장소의
-   * 되돌리기가 부분으로 남는다 (백필이 페이지 사이에서만 멈추는 것과 같은 이유).
+   * **저장소 안까지 전달한다** (DEV-443, PR #91 리뷰 P1). 저장소 사이에서만
+   * 보면 활성 저장소가 하나뿐일 때 취소가 사실상 무시된다. 안전한 경계는
+   * `reconcileRepository`가 정하며 그 인자 주석이 근거를 적어 둔다.
+   *
+   * **이것은 협조적 중단이지 30초 강제 종료가 아니다** (DEV-447). 이미 시작한
+   * PR 하나의 보강은 끝까지 가며, 그 시간에 상한을 거는 재료가 아직 없다.
    */
   cancelled?: () => Promise<boolean>,
 ): Promise<{
@@ -398,8 +467,18 @@ export async function runReconcileSweep(
     }
     const slug = `${repository.owner}/${repository.name}`;
     try {
-      const result = await reconcileRepository(deps, repository);
+      const result = await reconcileRepository(deps, repository, cancelled);
       missing += result.missing;
+      if (result.stopped) {
+        /*
+         * 저장소 **안에서** 멈췄다 (DEV-443). 남은 저장소를 돌지 않으며
+         * **연속 미완주로 세지도 않는다** — 취소는 그 저장소의 건강 문제가
+         * 아니라 운영자의 지시이고, 그것을 미룸과 같이 세면 취소할 때마다
+         * 경보가 울린다.
+         */
+        stopped = true;
+        break;
+      }
       if (result.deferred) {
         deferred += 1;
         const streak = (incompleteCycles.get(slug) ?? 0) + 1;

@@ -16,6 +16,7 @@ import { createEsClient, resolveClientOptions } from '@prs/es';
 import { RedisStreamsEventBus, type Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { JOBS_PATH } from '../../src/ops/routes.js';
+import { createJob } from '../../src/ops/jobs.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
 import { TEST_CURSOR_KEY } from '../_cursor-fixture.js';
 
@@ -57,6 +58,13 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
+  /*
+   * **남긴 상태를 지우고 끝낸다.** 이 파일은 `beforeEach`의 `TRUNCATE`에 기대는데
+   * 그것은 파일 안에서만 성립한다 — 마지막 시험이 만든 `queued` 잡은 그대로
+   * 남아 **다른 파일의 `claimNextJob`이 유형만 보고 집는다.** 실제로
+   * `cancel-race.test.ts`가 자기 잡 대신 이 파일의 잔여를 집어 실패했다.
+   */
+  await pool.query('TRUNCATE repository, job, audit_record RESTART IDENTITY CASCADE');
   await app.close();
   await bus.close();
   redis.disconnect();
@@ -360,5 +368,86 @@ describe('PATCH — 중단·재개', () => {
 
   it('없는 잡은 404다', async () => {
     expect((await patch(999999, { action: 'cancel' })).statusCode).toBe(404);
+  });
+});
+
+describe('**잡 생성 경합** (DEV-444, PR #91 리뷰 P2)', () => {
+  /*
+   * 유니크 인덱스는 **활성 상태에만** 걸린다(`job_active_uk`). 유니크 위반과
+   * 그 뒤의 재조회 사이에서 이긴 행이 끝나면 제약도 함께 사라진다 — 그때
+   * `409`를 내면 운영자는 "이미 돌고 있다"는 말을 듣고도 갈 곳이 없고,
+   * **실제로는 아무것도 돌고 있지 않다.**
+   *
+   * 경합을 **결정적으로** 만든다. 동시 요청 둘을 실제로 띄우면 어느 쪽이
+   * 이길지 정해지지 않아 이 창을 재현하지 못한다.
+   */
+  const RACE_REQUESTER = 'alice';
+
+  /** `seq`번째 쿼리 **직전**에 개입하는 대역 풀. 훅 안의 조회는 세지 않는다. */
+  const poolWithHook = (hook: (sql: string, seq: number) => Promise<void>): Pool => {
+    let seq = 0;
+    return {
+      query: async (text: unknown, values?: unknown): Promise<unknown> => {
+        seq += 1;
+        await hook(String(text), seq);
+        return (pool.query as (t: unknown, v?: unknown) => Promise<unknown>)(text, values);
+      },
+    } as unknown as Pool;
+  };
+
+  const insertCompetitor = async (): Promise<number> =>
+    jobRepo.enqueueJob(pool, 'backfill', TARGET, 'competitor');
+
+  it('**이긴 잡이 그 사이 끝나면 409가 아니라 새 잡을 만든다**', async () => {
+    let competitorId = 0;
+    const racing = poolWithHook(async (_sql, seq) => {
+      // 2 = INSERT 직전. 경쟁자가 활성 잡을 만들어 유니크 위반을 일으킨다.
+      if (seq === 2) competitorId = await insertCompetitor();
+      // 3 = 위반 뒤 재조회 직전. 경쟁자가 끝나 활성 잡이 사라진다.
+      if (seq === 3) await jobRepo.transitionJob(pool, competitorId, 'cancel');
+    });
+
+    const outcome = await createJob(racing, 'backfill', TARGET, RACE_REQUESTER);
+
+    expect(outcome.kind).toBe('created');
+    if (outcome.kind !== 'created') throw new Error('created가 아니다');
+    expect(outcome.job.job_id).not.toBe(competitorId);
+    expect(outcome.job.state).toBe('queued');
+  });
+
+  it('이긴 잡이 아직 살아 있으면 그 식별자로 충돌을 낸다 — 대칭', async () => {
+    let competitorId = 0;
+    const racing = poolWithHook(async (_sql, seq) => {
+      if (seq === 2) competitorId = await insertCompetitor();
+    });
+
+    const outcome = await createJob(racing, 'backfill', TARGET, RACE_REQUESTER);
+
+    expect(outcome).toEqual({ kind: 'conflict', jobId: competitorId });
+  });
+
+  it('**충돌은 식별자 없이 나올 수 없다** — 창이 계속 갈리면 오류를 올린다', async () => {
+    /*
+     * 무한 재시도를 두지 않는다. 활성 잡이 이 짧은 창에서 계속 생겼다
+     * 사라진다면 다른 문제가 있다는 뜻이고, 그때 요청을 영원히 붙잡는 것은
+     * 운영자에게 아무것도 알려 주지 않는다. **없는 제품 오류 코드를 지어내지도
+     * 않는다** — 기존 처리 정책이 답한다.
+     */
+    let competitorId = 0;
+    const racing = poolWithHook(async (sql) => {
+      if (/INSERT INTO job/i.test(sql)) {
+        competitorId = await insertCompetitor();
+      } else if (/FROM job/i.test(sql) && competitorId > 0) {
+        await jobRepo.transitionJob(pool, competitorId, 'cancel');
+        competitorId = 0;
+      }
+    });
+
+    await expect(createJob(racing, 'backfill', TARGET, RACE_REQUESTER)).rejects.toThrow(/경합/);
+  });
+
+  it('경합이 없으면 평소대로 만든다', async () => {
+    const outcome = await createJob(pool, 'backfill', TARGET, RACE_REQUESTER);
+    expect(outcome.kind).toBe('created');
   });
 });
