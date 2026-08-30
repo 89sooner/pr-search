@@ -11,7 +11,7 @@
 import type { Client as EsClient } from '@elastic/elasticsearch';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { auditRepo, repositoryRepo, type Pool } from '@prs/db';
+import { auditRepo, jobRepo, repositoryRepo, type Pool } from '@prs/db';
 import { ARCHIVABLE_ALIASES, applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions } from '@prs/es';
 import { RedisStreamsEventBus, type Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
@@ -257,6 +257,12 @@ describe('저장소 등록 관리 (WP-010, API-ADM-001)', () => {
     });
   });
 
+  /** 지금 큐에 있는 채번 대상. 변경 전후의 차이가 "이 조작이 더한 것"이다. */
+  async function targets(): Promise<readonly string[]> {
+    const jobs = await jobRepo.listJobs(pool, { type: 'sequence_assign' });
+    return jobs.map((job) => job.target);
+  }
+
   describe('변경', () => {
     it('시퀀스 브랜치와 미러 설정만 바꾼다', async () => {
       await register({ owner: 'acme', name: 'payments', sequence_branches: ['main'] });
@@ -284,6 +290,54 @@ describe('저장소 등록 관리 (WP-010, API-ADM-001)', () => {
         payload: { mirror_enabled: false },
       });
       expect(response.statusCode).toBe(404);
+    });
+
+    /*
+     * **새 브랜치는 그 자리에서 채번을 요청한다** (FR-ING-009 AC-12, CR-055).
+     *
+     * 백필이 대신하지 않는다 — 백필은 PR 문서를 채우고 채번은 first-parent
+     * 커밋에 서수를 붙이는 별개의 책임이다. 조정 스캔이 다음 주기에 결국
+     * 복구하지만, 그때까지 운영자는 **자기가 방금 더한 브랜치의 공간이 비어
+     * 있는 이유를 알 수 없다.**
+     *
+     * 이 시험이 없던 동안 `enqueueSequenceAssign`의 인자를 빈 배열로 바꾸는
+     * 변이가 살아남았다 (WP-040 변이 M8).
+     */
+    it('**새로 더한 브랜치의 채번 잡이 생긴다** (AC-12)', async () => {
+      await register({ owner: 'acme', name: 'payments', sequence_branches: ['main'] });
+      // 등록 자체가 `main`을 이미 예약했다. 여기서 세는 것은 **변경이 더한 것**이다.
+      const before = await targets();
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `${REPOSITORIES_PATH}/${String(REPOSITORY_ID)}`,
+        headers: AUTH,
+        payload: { sequence_branches: ['main', 'release'] },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const added = (await targets()).filter((target) => !before.includes(target));
+      expect(added).toEqual(['acme/payments@release']);
+    });
+
+    it('이미 대상이던 브랜치는 채번 잡을 만들지 않는다', async () => {
+      await register({ owner: 'acme', name: 'payments', sequence_branches: ['main'] });
+      const before = await targets();
+
+      await app.inject({
+        method: 'PATCH',
+        url: `${REPOSITORIES_PATH}/${String(REPOSITORY_ID)}`,
+        headers: AUTH,
+        payload: { sequence_branches: ['main'], mirror_enabled: false },
+      });
+
+      expect(await targets()).toEqual(before);
+    });
+
+    it('등록 시점의 브랜치도 채번을 예약한다 (AC-12)', async () => {
+      await register({ owner: 'acme', name: 'payments', sequence_branches: ['main'] });
+      const jobs = await jobRepo.listJobs(pool, { type: 'sequence_assign' });
+      expect(jobs.map((job) => job.target)).toEqual(['acme/payments@main']);
     });
 
     it('브랜치 상한은 변경에도 적용된다', async () => {

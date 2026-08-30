@@ -280,6 +280,27 @@ describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () 
   ])('%s — 무방비 finishJob을 쓰지 않는다', (path) => {
     expect(read(path)).not.toMatch(/jobRepo\.finishJob\(/);
   });
+
+  /*
+   * **한 함수 안에서 두 갈래가 갈리지 않는다** (DEV-437). `resolveJobTarget`의
+   * `sequence_assign` 갈래는 슬러그 형식을 검사하는데 일반 갈래가 그것을
+   * 빠뜨려, 슬래시 없는 값이 저장소 조회로 내려가 404가 되었다 — 운영자는
+   * 자기 오타를 "그 저장소가 없다"로 읽는다. **형식이 틀린 것과 등록되지 않은
+   * 것은 다른 오류다.**
+   */
+  it('resolveJobTarget의 두 갈래가 모두 슬러그 형식을 검사한다 (DEV-437)', () => {
+    const checks = OPS_JOBS.match(/if \(owner === '' \|\| name === ''\)/g) ?? [];
+    expect(checks).toHaveLength(2);
+  });
+
+  /*
+   * **`reconcile`은 대상을 받지 않는다.** 받아서 무시하면 운영자는 자기가 지정한
+   * 저장소만 스캔됐다고 믿는다 — 전량 스캔이 돌았는데도 그렇다.
+   */
+  it('reconcile이 대상을 받으면 거절한다', () => {
+    expect(OPS_JOBS).toContain("body['target'] !== undefined || body['repository'] !== undefined");
+    expect(OPS_JOBS).toContain('RECONCILE_TARGET');
+  });
 });
 describe('주기 스윕을 가진 역할은 replica 1이다', () => {
   // 리더 선출이 없다 — 여러 파드가 같은 주기에 같은 대상을 중복 처리한다.

@@ -211,6 +211,15 @@ export async function resolveJobTarget(
   }
   const [owner, name] = splitTarget(target);
   /*
+   * **형식이 틀린 것과 등록되지 않은 것은 다른 오류다** (DEV-437). 형식
+   * 검사를 빠뜨리면 `payments`처럼 슬래시 없는 값이 조회로 내려가 404를
+   * 받고, 운영자는 **자기 오타를 "그 저장소가 없다"로 읽는다.**
+   * `sequence_assign` 갈래는 이 검사를 갖고 있었고 이쪽만 빠져 있었다.
+   */
+  if (owner === '' || name === '') {
+    return { kind: 'invalid_parameter', message: 'target은 owner/repo 형식의 문자열이다' };
+  }
+  /*
    * 등록되지 않은 저장소에 백필을 걸 수 없다. 걸어 두면 워커가 잡을 때마다
    * 실패하고, 운영자는 **저장소를 등록하지 않은 것**이 원인임을 알 수 없다.
    */
