@@ -703,7 +703,9 @@ PR 1건의 전체 맥락 — 커밋 집합, 시퀀스 위치, 선행·후행, �
 
 ### 주요 컴포넌트
 
-`C-043 RepositoryRegistrationForm`, `C-013 ResultTable`, `C-004 EmptyState`
+`C-043 RepositoryRegistrationForm`, **`C-071 RegistrationRequestQueue`**, `C-013 ResultTable`, `C-004 EmptyState`
+
+`C-013`은 `A-002-LIST`(등록 저장소 목록)의 것이고, `A-002-REQUESTS`는 **`C-071`을 쓴다** — `C-013`은 정렬 컨트롤을 갖고 행 타입이 `ResultRow`에 묶여 있어 요청 큐의 `onPrefill`·`onDismiss` 계약을 담지 못한다 (CR-055, PR #88 리뷰 P2)
 
 ### 상태 정의
 
