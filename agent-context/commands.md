@@ -2040,3 +2040,48 @@ cd apps/web && ./node_modules/.bin/playwright test e2e/flow-007.spec.ts e2e/flow
 - `pr_search_api_contracts.md` `v0.18` — 409의 `detail.job_id`, `PATCH`의 유형별 제한
 - `pr_search_async_events_jobs.md` `v0.6` — "중단은 상태 보존이 아니라 실행 정지다"
 - 원장 `v6.3` — 6.52.4장, `DEV-439`~`442`
+
+## 세션 종료 절차 (2026-08-30 2차에 실제로 쓴 순서)
+
+```bash
+# 1. 병합 후 재확인 — 병합으로 끝내지 않는다
+git rev-parse --short HEAD
+gh pr list --state open --json number --jq 'length'
+for n in <이번 세션 PR들>; do
+  gh api graphql -f query="{ repository(owner:\"89sooner\",name:\"pr-search\"){
+    pullRequest(number:$n){ reviewThreads(first:100){ totalCount nodes{isResolved} } } } }" \
+    --jq "\"#$n: total=\(.data.repository.pullRequest.reviewThreads.totalCount) unresolved=\([.data.repository.pullRequest.reviewThreads.nodes[]|select(.isResolved|not)]|length)\""
+done
+
+# 2. worklog (Obsidian)
+python3 ~/.claude/skills/obsidian-second-brain/scripts/worklog.py path --title "<제목>" --json
+python3 ~/.claude/skills/obsidian-second-brain/scripts/worklog.py check "<경로>"
+python3 ~/.claude/skills/obsidian-second-brain/scripts/worklog.py index
+
+# 3. 인계 팩
+python3 ~/.claude/skills/agent-context-handoff/scripts/context_handoff.py \
+  build --root . --source agent-context --output agent-context/_handoff
+
+# 4. 전사 — exports/ 아래에 두고 **무시 규칙을 실측한다**
+#    /export exports/YYYYMMDDhhmm.md   (클라이언트 슬래시 명령)
+git check-ignore -v exports/<파일>.md      # .gitignore:24의 exports/가 잡아야 한다
+```
+
+## 리뷰 스레드 답변·해소 (이번 세션이 넷에 썼다)
+
+```bash
+gh api graphql -f query='
+  mutation($t: ID!, $b: String!) {
+    addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $t, body: $b}) { comment { id } } }' \
+  -f t="$THREAD_ID" -f b="$BODY"
+
+gh api graphql -f query='
+  mutation($t: ID!) { resolveReviewThread(input: {threadId: $t}) { thread { isResolved } } }' \
+  -f t="$THREAD_ID"
+```
+
+스레드 ID는 `reviewThreads(first: 100) { nodes { id path } }`로 얻는다. **일괄 resolve하지 않는다** — 답변에 근거를 적고 하나씩 닫는다.
+
+## `.gitignore`를 자를 때 규칙을 놓친다
+
+`head -20`으로 읽었더니 24행의 `exports/`를 못 봤다. 무시 여부는 **파일을 읽어 추측하지 말고** `git check-ignore -v <경로>`로 판정한다.

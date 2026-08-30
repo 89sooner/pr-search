@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=67fa5d7b96099dfb46c6f6f120c2c7e5c9e1c24e59530df23a7065d690e3387f bytes=103921 lines=1550 title=리스크-불확실한-가정-함정
+@kv sha256=b22fd88a1f29770dd64f13d9810e0c67c35dfcffedf98f4af5d30d9a1c8f43af bytes=104998 lines=1563 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -743,6 +743,12 @@
 @h2 PR 병합이 미해결 리뷰 0건을 뜻하지 않는다 — 또 확인했다
 @path 병합 직전에는 스레드가 0건이었고 병합 뒤에 넷이 도착했다. WP-039가 배운 것과 같은 자리이며, 병합 후 재확인이 그것을 잡았다.
 @p → 병합으로 세션을 끝내지 마라. main HEAD·열린 PR·병합한 PR의 스레드·CI를 다시 실측한다.
+@h2 인계에 적은 SHA는 그 인계 커밋이 다시 옮긴다
+@path 세션 종료 인계는 자기 자신이 main을 한 번 더 옮긴다. PR #91까지를 적은 인계가 PR #92로 병합되자 그 안의 main 값이 즉시 낡았고, 이 인계도 같은 일을 겪는다.
+@p → 인계에 SHA를 적되 "이 커밋이 옮긴다"를 함께 적는다. 다음 에이전트는 git rev-parse HEAD로 실측하며, 그 안내를 todos.md 0절에 두었다.
+@h2 전사는 저장소 루트에 두지 마라 — 규칙을 실측으로 확인한다
+@path .gitignore:24의 exports/가 전사를 무시한다. 루트 경로는 어떤 무시 규칙에도 걸리지 않아 git add에 휩쓸리며 PR #77·#78·#79가 그 실패를 기록해 두었다.
+@p → /export 뒤 git check-ignore -v <경로>로 실제로 무시되는지 확인한다. "규칙이 있을 것이다"로 넘기지 않는다. .gitignore를 head -20으로 잘라 보면 24행의 규칙을 놓친다 — 이번에 실제로 한 번 놓쳤다가 전문을 다시 읽고 찾았다.
 @h2 여전히 유효한 것
 @b CRLF 저장소 — 새 파일은 LF로 생기고, 파이썬 치환도 개행을 맞추지 않으면 조용히 0건이 된다. 이번 세션에서 멀티라인 치환 하나가 SKIPPED (0)으로 실패했고 그것을 확인하지 않았다면 "고쳤다"가 거짓이 되었을 것이다
 @path e2e는 빌드를 하지 않는다 — 화면을 만든 뒤 pnpm --filter @prs/web run build가 먼저다
