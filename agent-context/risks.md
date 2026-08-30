@@ -1626,3 +1626,15 @@ design-system은 React 19 타입으로 개발하는데 peer range에 React 18이
 - **`git add -A`를 쓰지 않는다** — `agent-context/`가 tracked다
 - **ID는 실측한다**
 - 통합 시험 파일은 **자기가 남긴 상태를 지우고 끝낸다** — `beforeEach`의 `TRUNCATE`는 파일 안에서만 성립하며, 남은 `queued` 잡을 다른 파일의 `claimNextJob`이 집는다
+
+## 사용처가 있다는 것과 그 조건에 닿는다는 것은 다르다
+
+design-system 정정 뒤 "PR Search가 `Select.Root`와 `IconButton`을 쓴다"만 확인하고 **결함 조건**은 보지 않았다. 실측하니 `IconButton` 두 곳 모두 `loading`을 넘기지 않고 `Select.Root`는 `Field` 밖이라 **어느 쪽도 닿지 않았다.** 그 문구를 그대로 뒀다면 다음 작업자가 불필요한 npm 게시와 의존성 갱신을 사용자에게 요청했을 것이다.
+
+→ 소비 영향을 말할 때는 **그 props/context가 실제로 전달되는지**까지 본다. import 목록은 사용처이지 조건이 아니다.
+
+## 릴리스 불변식은 실제 릴리스로 확인한다
+
+`check-release-tags.mjs`를 "태그가 릴리스 HEAD를 가리켜야 한다"로 바꿨는데, 개발 브랜치에서 돌리면 실패하므로 **정당한 릴리스를 막는지는 알 수 없었다.** `0.2.1` 게시가 그것을 확인했다 — `verify local release tags`와 `verify pushed release tags`가 모두 통과했고, `linked` 설정 덕에 세 태그가 같은 커밋에 생긴다는 근거가 실제로 성립했다.
+
+→ 릴리스 경로의 검사는 **릴리스가 한 번 돌아야 검증된다.** 그때까지는 "막지 않을 것이다"가 아니라 "막는지 아직 모른다"로 적는다.
