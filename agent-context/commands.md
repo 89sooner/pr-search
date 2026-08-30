@@ -1646,8 +1646,17 @@ print('스레드가 잘린 PR:', truncated or '없음')
 ```
 
 **두 `pageInfo`를 반드시 읽는다.** 하나라도 참이면 그 수는 **하한**이며 그 사실을 함께
-말한다. `--paginate`는 이 저장소 규모에서 4분을 넘겨 쓰지 못했다 — 대신 상한을 100으로
-올리고 **잘렸는지를 검사한다.**
+말한다.
+
+**`--paginate`를 쓰지 마라 — 느린 것이 아니라 틀린 답을 낸다.** 이 저장소에서 실제로
+돌려 보니 4분을 넘겨 타임아웃했고, 백그라운드에서 끝까지 돌린 결과는 **PR 다섯
+(`#49`·`#65`·`#66`·`#67`·`#68`)을 두 번 세고 `#32`를 아예 빼먹었으며
+`cannot iterate over: null`로 끝났다.** 중첩 연결(`reviewThreads`)에도 `pageInfo`가 있으면
+`gh`가 어느 커서를 따라갈지 정하지 못한다.
+
+**중복은 과다 계수를, 누락은 과소 계수를 만든다 — 둘이 섞이면 어느 쪽으로 틀렸는지도
+알 수 없다.** 상한을 100으로 올리고 **잘렸는지를 검사하는** 쪽이 정직하다: 잘리지 않았으면
+그 수가 정확하고, 잘렸으면 그 사실이 드러난다.
 
 **"고쳤다"와 "스레드가 닫혔다"는 다른 사실이다.** 머지 후 이것으로 센다.
 
@@ -1666,12 +1675,15 @@ gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "PRRT_
 
 ```bash
 # prs_admin은 NOLOGIN 그룹 롤이다. 로그인 주체 + 멤버십 + SET ROLE.
-docker exec prs-postgres psql -U prs -d prs_test -c "
-  CREATE ROLE prs_ret LOGIN PASSWORD 'x'; GRANT prs_admin TO prs_ret;"
-docker exec -e PGPASSWORD=x prs-postgres psql -U prs_ret -h localhost -d prs_test -c "
+# `<PW>`는 이 실측에서만 쓰고 바로 지우는 값이다 — 문서에 리터럴로 남기지 않는다.
+PW=$(openssl rand -hex 8)
+docker exec prs-postgres psql -U prs -d prs_test -c \
+  "CREATE ROLE prs_ret LOGIN PASSWORD '$PW'; GRANT prs_admin TO prs_ret;"
+docker exec -e PGPASSWORD="$PW" prs-postgres psql -U prs_ret -h localhost -d prs_test -c "
   SET ROLE prs_admin;
   CREATE TABLE t PARTITION OF audit_record FOR VALUES FROM ('2019-01-01') TO ('2019-02-01');"
 # GRANT ALL만으로는: ERROR: permission denied for schema public
+docker exec prs-postgres psql -U prs -d prs_test -c "DROP ROLE IF EXISTS prs_ret;"
 ```
 
 ## 변이 시험 — 치환 건수를 반드시 확인한다

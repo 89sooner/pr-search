@@ -16,8 +16,11 @@
 **이 세션이 배운 것 셋.**
 
 1. **"미해결 리뷰 0건"은 세어 본 적이 없는 수였다.** 근거는 "후속 PR에서 고쳤다"였지
-   GitHub 스레드 상태가 아니었다. 이제 GraphQL로 `isResolved`를 직접 센다:
-   `gh api graphql -f query='{repository(...){pullRequests(last:25,states:[OPEN,MERGED]){nodes{number reviewThreads(first:50){nodes{isResolved}}}}}}'`
+   GitHub 스레드 상태가 아니었다. 이제 GraphQL로 `isResolved`를 직접 센다.
+   **명령 전문은 `commands.md`의 「미해결 리뷰를 세는 법」에 있다** — 여기 옮겨 적지 않는다.
+   처음 쓴 `last:25`가 `PR #32`·`#49`를 조용히 빼고 22건이라 답했고(실제 24건), `--paginate`는
+   **더 나빴다**(중복 다섯·누락 하나·오류 종료). **상한을 100으로 올리고 두 `pageInfo`를 읽어
+   잘림을 드러내는** 것이 정답이다 (`DEV-425`).
 2. **개수를 계약에 적지 말라.** `WP-039`가 "13종", 보안 문서 표가 14행, 액션 문자열이 18개였고
    **셋 중 어느 것도 틀리지 않았다.** `CR-054`가 정본을 목록으로 바꿨다.
 3. **문서가 가리키는 곳을 실제로 열어 보라.** `RB-18`의 잘못된 잡 참조를 확인하러 갔다가
