@@ -297,6 +297,33 @@ describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () 
    * **`reconcile`은 대상을 받지 않는다.** 받아서 무시하면 운영자는 자기가 지정한
    * 저장소만 스캔됐다고 믿는다 — 전량 스캔이 돌았는데도 그렇다.
    */
+  /*
+   * **중단은 상태 보존이 아니라 실행 정지다** (PR #89 리뷰 P1). 조건부 종료
+   * 전이만으로는 잡 행이 `cancelled`로 남을 뿐, 전량 스윕이 계속 돌며 GHE를
+   * 부른다 — 화면은 "취소됨"을 보이는데 비싼 스캔이 진행 중이다.
+   */
+  it('runReconcileSweep가 취소 신호를 받고 루프가 그것을 본다', () => {
+    expect(RECONCILE).toMatch(/cancelled\?: \(\) => Promise<boolean>/);
+    expect(RECONCILE).toContain('if (cancelled !== undefined && (await cancelled()))');
+    // 수동 잡이 실제로 그 신호를 넘긴다.
+    expect(RECONCILE).toContain('jobRepo.isJobRunning(deps.pool, job.job_id)');
+  });
+
+  /*
+   * **`allowed_actions`는 안내이자 판정 그 자체다** (PR #89 리뷰 P2). 응답에서만
+   * 빼고 변이 경로가 일반 전이표로 받으면 직접 호출이 그것을 지나간다.
+   */
+  it('applyJobAction이 잡 유형의 좁힌 목록을 강제한다', () => {
+    expect(OPS_JOBS).toContain('allowedActionsForJob(before.type, before.state)');
+    expect(OPS_JOBS).toContain("kind: 'unsupported_action'");
+  });
+
+  /* **409는 실행 중 잡 식별자를 함께 준다** (FR-ADMIN-002 AC-4, QA-A003-03). */
+  it('JOB_CONFLICT가 잡 식별자를 싣는다', () => {
+    expect(OPS_JOBS).toMatch(/kind: 'conflict'; readonly jobId: number \| null/);
+    expect(read('apps/search-api/src/ops/routes.ts')).toContain('job_id: outcome.jobId');
+  });
+
   it('reconcile이 대상을 받으면 거절한다', () => {
     expect(OPS_JOBS).toContain("body['target'] !== undefined || body['repository'] !== undefined");
     expect(OPS_JOBS).toContain('RECONCILE_TARGET');

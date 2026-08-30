@@ -283,6 +283,39 @@ describe('운영자 대기열 (API-ADM-009)', () => {
     expect(items[0]).toHaveProperty('resolution_note');
   });
 
+  /*
+   * **기본 필터가 `pending`이다** (API-ADM-009 계약, PR #89 리뷰 P2). 이 목록은
+   * 처리 대기열이고, 필터가 없으면 종료된 이력이 쌓일수록 페이지를 채워
+   * **처리할 것이 그 아래로 묻힌다.**
+   */
+  it('`status`를 주지 않으면 `pending`만 돌려준다', async () => {
+    await userRequest(ALICE, SLUG);
+    await userRequest(BOB, SLUG);
+    const listed = await adminList('?status=pending');
+    const requestId = String(
+      (listed.body['items'] as readonly Record<string, unknown>[]).find((item) => item['requested_by'] === ALICE)?.[
+        'request_id'
+      ],
+    );
+    await adminDismiss(requestId, { action: 'dismiss', reason: '종료한다' });
+
+    const { body } = await adminList();
+    const items = body['items'] as readonly Record<string, unknown>[];
+    expect(items).toHaveLength(1);
+    expect(items[0]?.['requested_by']).toBe(BOB);
+    expect(items.every((item) => item['status'] === 'pending')).toBe(true);
+  });
+
+  it('이력을 보려면 `status`를 명시한다', async () => {
+    await userRequest(ALICE, SLUG);
+    const listed = await adminList('?status=pending');
+    const requestId = String((listed.body['items'] as readonly Record<string, unknown>[])[0]?.['request_id']);
+    await adminDismiss(requestId, { action: 'dismiss', reason: '종료한다' });
+
+    const dismissed = await adminList('?status=dismissed');
+    expect((dismissed.body['items'] as readonly unknown[])).toHaveLength(1);
+  });
+
   it('`operator`가 아니면 목록을 볼 수 없다', async () => {
     await userRequest(ALICE, SLUG);
     const denied = await call(ALICE, 'GET', REGISTRATION_REQUESTS_ADMIN_PATH);

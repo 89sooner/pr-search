@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=847ea601b08270eb20d15cc46077dd8985da57de4acec2ce387438c6726ccec7 bytes=101023 lines=1519 title=리스크-불확실한-가정-함정
+@kv sha256=67fa5d7b96099dfb46c6f6f120c2c7e5c9e1c24e59530df23a7065d690e3387f bytes=103921 lines=1550 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -728,6 +728,21 @@
 @h2 Radix 컴포넌트는 jsdom에 없는 API를 부른다
 @path Switch가 use-size를 지나며 ResizeObserver를 만든다. a11y/setup.ts의 기존 포인터 API 폴리필과 같은 자리에 대역을 더했다.
 @p → 대역은 아무것도 관찰하지 않는다. 크기 반응을 흉내 내면 그 흉내가 실제와 다른 순간 시험이 거짓말을 한다 — 실제 동작은 e2e가 본다.
+@h2 취소 시험을 상태 단언으로만 쓰면 절반만 지킨다 (PR #89 리뷰 P1)
+@p 이 세션은 "취소가 완료로 덮이지 않는다"를 잡 유형 다섯 전부에 걸고 통합 열여덟으로 증명했다. 그런데 그것은 잡 행의 라벨에 관한 성질이었고, 일이 실제로 멈추는가는 묻지 않았다. 조정 스캔은 취소된 뒤에도 저장소를 계속 돌며 GHE를 불렀다 — 화면은 "취소됨"을 보이는데 비싼 스캔이 진행 중이었다.
+@path → DEV-436이 고친 것과 DEV-439가 고친 것은 같은 조작의 서로 다른 절반이다. 하나는 기록을 지키고 다른 하나는 실행을 멈춘다. 취소를 다룰 때는 둘 다 묻는다: "상태가 보존되는가"와 "일이 멈추는가".
+@h2 응답 필드를 좁히는 것과 변이를 막는 것은 다르다 (PR #89 리뷰 P2)
+@p allowedActionsForJob가 reconcile에서 pause를 뺐지만 PATCH는 일반 전이표로 받았다. 직접 호출하는 클라이언트가 그것을 지나간다.
+@p → 응답 필드가 "화면이 무엇을 그릴지"만 정하면 그것은 안내다. 화면이 그것을 믿어도 되게 하려면 서버가 같은 판정을 변이 경로에서 강제해야 한다. 판정을 한 곳에 모으는 것의 뜻은 "한 함수가 계산한다"가 아니라 "모든 경로가 그 함수를 지난다"이다.
+@h2 양쪽을 같은 세션에서 만들면 어긋남이 시험에 나타나지 않는다 (PR #89 리뷰 P2)
+@path 화면이 detail.job_id를 읽도록 썼고 서버는 그것을 싣지 않았다. e2e 목이 계약이 아니라 내 가정을 그대로 흉내 냈기 때문에 시험이 초록이었다. FR-ADMIN-002 AC-4가 명시적으로 그 필드를 요구하는데도 그랬다.
+@p → 목은 계약 문서의 필드 이름을 보고 만든다. 구현을 보고 만들면 구현의 실수를 그대로 복제한다. 그리고 서버 응답을 직접 단언하는 통합 시험을 화면과 같은 세션에 둔다.
+@h2 계약이 정한 기본값을 구현이 빠뜨릴 수 있다 (PR #89 리뷰 P2)
+@todo API-ADM-009 계약이 "목록의 기본 필터가 pending"이라 적었는데 parseRequestFilter가 그것을 구현하지 않았다. 화면도 보내지 않아 두 자리가 함께 비어 있었다.
+@p → 계약의 "기본값"·"optional"은 구현해야 할 동작이지 생략해도 되는 것이 아니다. 파서를 쓸 때 계약 문서의 그 줄을 열어 대조한다.
+@h2 PR 병합이 미해결 리뷰 0건을 뜻하지 않는다 — 또 확인했다
+@path 병합 직전에는 스레드가 0건이었고 병합 뒤에 넷이 도착했다. WP-039가 배운 것과 같은 자리이며, 병합 후 재확인이 그것을 잡았다.
+@p → 병합으로 세션을 끝내지 마라. main HEAD·열린 PR·병합한 PR의 스레드·CI를 다시 실측한다.
 @h2 여전히 유효한 것
 @b CRLF 저장소 — 새 파일은 LF로 생기고, 파이썬 치환도 개행을 맞추지 않으면 조용히 0건이 된다. 이번 세션에서 멀티라인 치환 하나가 SKIPPED (0)으로 실패했고 그것을 확인하지 않았다면 "고쳤다"가 거짓이 되었을 것이다
 @path e2e는 빌드를 하지 않는다 — 화면을 만든 뒤 pnpm --filter @prs/web run build가 먼저다

@@ -340,10 +340,27 @@ export function resetReconcileCycles(): void {
 }
 
 /** 등록된 저장소를 한 바퀴 조정한다. */
-export async function runReconcileSweep(deps: ReconcileDeps): Promise<{
+export async function runReconcileSweep(
+  deps: ReconcileDeps,
+  /**
+   * 중단 지시가 들어왔는가 (PR #89 리뷰 P1).
+   *
+   * **상태를 보존하는 것만으로는 중단이 아니다.** 조건부 종료 전이는 잡 행이
+   * `cancelled`로 남는 것까지만 보장하고, 그동안 전량 스윕은 저장소를 계속
+   * 돌며 GHE를 부른다 — 화면은 "취소됨"을 보이는데 비싼 스캔이 진행 중이다.
+   * `FR-ADMIN-002`의 중단 계약은 **요청을 반영하라**고 말하며 그것은 일을
+   * 멈추라는 뜻이다.
+   *
+   * 저장소 **사이**에서만 본다 — 한 저장소의 조정 중간에 끊으면 그 저장소의
+   * 되돌리기가 부분으로 남는다 (백필이 페이지 사이에서만 멈추는 것과 같은 이유).
+   */
+  cancelled?: () => Promise<boolean>,
+): Promise<{
   readonly repositories: number;
   readonly missing: number;
   readonly deferred: number;
+  /** 중단 지시로 남은 저장소를 돌지 않았다. */
+  readonly stopped: boolean;
 }> {
   const log = deps.log ?? ((): void => undefined);
   const repositories = await repositoryRepo.listRepositories(deps.pool, { status: 'active' });
@@ -372,7 +389,13 @@ export async function runReconcileSweep(deps: ReconcileDeps): Promise<{
     }
   }
 
+  let stopped = false;
   for (const repository of repositories) {
+    if (cancelled !== undefined && (await cancelled())) {
+      stopped = true;
+      log({ level: 'info', message: '중단 지시로 조정 스캔을 멈춘다', reason: 'cancelled' });
+      break;
+    }
     const slug = `${repository.owner}/${repository.name}`;
     try {
       const result = await reconcileRepository(deps, repository);
@@ -403,7 +426,7 @@ export async function runReconcileSweep(deps: ReconcileDeps): Promise<{
     }
   }
 
-  return { repositories: repositories.length, missing, deferred };
+  return { repositories: repositories.length, missing, deferred, stopped };
 }
 
 export interface ReconcileSweeper {
@@ -468,7 +491,13 @@ export function startReconcileSweeper(
         const job = await jobRepo.claimNextJob(deps.pool, RECONCILE_JOB_TYPE, 1);
         if (job !== undefined) {
           try {
-            const result = await runReconcileSweep(deps);
+            /*
+             * **취소를 스윕 안까지 전달한다** (PR #89 리뷰 P1). 종료 상태만
+             * 보존하면 잡은 `cancelled`인데 전량 스캔이 계속 돌아 GHE를 태운다.
+             */
+            const result = await runReconcileSweep(deps, async () => {
+              return !(await jobRepo.isJobRunning(deps.pool, job.job_id));
+            });
             /*
              * **`running`일 때만 종료 상태를 쓴다** (DEV-196). 스캔이 도는 동안
              * 운영자가 취소했으면 그 사실을 덮지 않는다.

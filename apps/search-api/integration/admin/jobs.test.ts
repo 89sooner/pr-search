@@ -157,6 +157,23 @@ describe('POST — 잡 실행', () => {
     expect((await post({ type: 'backfill', target: 42 })).statusCode).toBe(400);
   });
 
+  /*
+   * **409는 실행 중 잡 식별자를 함께 준다** (AC-4, QA-A003-03, PR #89 리뷰 P2).
+   * 대상만 돌려주면 화면이 "이미 돌고 있다"까지만 말하고 **운영자가 그 잡을
+   * 찾아갈 곳이 없다.**
+   */
+  it('중복 요청의 409가 실행 중 잡 ID를 담는다 (AC-4)', async () => {
+    const first = await post({ type: 'backfill', target: TARGET });
+    expect(first.statusCode).toBe(201);
+    const runningId = first.json<{ job_id: number }>().job_id;
+
+    const second = await post({ type: 'backfill', target: TARGET });
+    expect(second.statusCode).toBe(409);
+    const body = second.json<{ error: { code: string; detail?: Record<string, unknown> } }>();
+    expect(body.error.code).toBe('JOB_CONFLICT');
+    expect(body.error.detail?.['job_id']).toBe(runningId);
+  });
+
   it('**상한을 넘겨도 거절하지 않는다** — 큐에 넣는다 (AC-6)', async () => {
     /*
      * 상한은 *동시에 도는 수*의 제약이지 *요청받을 수 있는 수*의 제약이
@@ -175,6 +192,49 @@ describe('POST — 잡 실행', () => {
       expect((await post({ type: 'backfill', target: `acme/${name}` })).statusCode).toBe(201);
     }
     expect(await jobRepo.listJobs(pool, { state: 'queued' })).toHaveLength(4);
+  });
+
+  /*
+   * **응답 필드가 유일한 방어선이 아니다** (AC-7, PR #89 리뷰 P2).
+   * `allowed_actions`에서 뺀 동작을 변이 경로가 그대로 받으면, 직접 호출하는
+   * 클라이언트가 `reconcile`을 `paused`로 옮길 수 있다 — 러너에 멈출 지점이
+   * 없어 전량 스윕은 완주하고 행만 `paused`가 되며, `resume`이 같은 스캔을
+   * 다시 큐에 넣는다.
+   */
+  it('`reconcile`의 `pause`를 PATCH가 거절한다 (AC-7)', async () => {
+    const created = await post({ type: 'reconcile' });
+    expect(created.statusCode).toBe(201);
+    const jobId = created.json<{ job_id: number; allowed_actions: readonly string[] }>();
+    // 응답이 이미 좁혀져 있다.
+    expect(jobId.allowed_actions).toEqual(['cancel']);
+
+    const paused = await app.inject({
+      method: 'PATCH',
+      url: `${JOBS_PATH}/${String(jobId.job_id)}`,
+      headers: AUTH,
+      payload: { action: 'pause' },
+    });
+
+    expect(paused.statusCode).toBe(400);
+    const body = paused.json<{ error: { detail?: Record<string, unknown> } }>();
+    expect(body.error.detail?.['allowed_actions']).toEqual(['cancel']);
+    // 행은 그대로다 — 거절이 조용한 무시가 아니다.
+    expect(await jobRepo.findJobState(pool, jobId.job_id)).toBe('queued');
+  });
+
+  it('`cancel`은 `reconcile`에서도 받는다', async () => {
+    const created = await post({ type: 'reconcile' });
+    const jobId = created.json<{ job_id: number }>().job_id;
+
+    const cancelled = await app.inject({
+      method: 'PATCH',
+      url: `${JOBS_PATH}/${String(jobId)}`,
+      headers: AUTH,
+      payload: { action: 'cancel' },
+    });
+
+    expect(cancelled.statusCode).toBe(200);
+    expect(await jobRepo.findJobState(pool, jobId)).toBe('cancelled');
   });
 
   it('인증 없이는 401이다', async () => {

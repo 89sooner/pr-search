@@ -217,6 +217,48 @@ describe('주기와 수동이 겹치지 않는다 (FR-ING-011 AC-7)', () => {
   });
 });
 
+describe('**취소가 스캔을 실제로 멈춘다** (PR #89 리뷰 P1)', () => {
+  /*
+   * 상태를 보존하는 것만으로는 중단이 아니다. 종료 상태가 `cancelled`로 남아도
+   * 전량 스윕이 저장소를 계속 돌면 **화면은 "취소됨"을 보이는데 비싼 GHE 스캔이
+   * 진행 중이다.** `FR-ADMIN-002`의 중단 계약은 일을 멈추라는 뜻이다.
+   */
+  it('저장소 여럿 중 첫 번째에서 취소하면 나머지를 돌지 않는다', async () => {
+    // 저장소를 넷으로 늘린다 — 하나면 "멈췄다"와 "원래 하나였다"를 가르지 못한다.
+    const extra = [904111, 904112, 904113];
+    for (const id of extra) {
+      await repositoryRepo.upsertRepository(pool, {
+        repository_id: id,
+        owner: OWNER,
+        name: `extra-${String(id)}`,
+        org_id: 9041,
+        visibility: 'internal',
+        sequence_branches: [],
+        status: 'active',
+      });
+    }
+
+    try {
+      const jobId = await enqueueManual();
+      // 첫 저장소를 스캔하는 순간 취소한다.
+      probe.onEnter = async () => {
+        if (probe.entries === 1) await jobRepo.transitionJob(pool, jobId, 'cancel');
+      };
+      sweeper = startReconcileSweeper(deps(), { intervalMs: 60 * 60 * 1000, pollMs: 10 });
+      await until(reachedTerminal(jobId));
+
+      expect(await stateOf(jobId)).toBe('cancelled');
+      /*
+       * **남은 저장소를 돌지 않았다.** 이 저장소들은 이 시험이 만든 것이고
+       * 활성 저장소가 넷이므로, 멈추지 않았다면 진입이 넷이 된다.
+       */
+      expect(probe.entries).toBeLessThan(4);
+    } finally {
+      await pool.query('DELETE FROM repository WHERE repository_id = ANY($1::int[])', [extra]);
+    }
+  });
+});
+
 describe('취소가 완료로 덮이지 않는다 (DEV-196의 자리)', () => {
   it('스캔이 도는 중에 취소하면 종료 상태가 `cancelled`로 남는다', async () => {
     const jobId = await enqueueManual();
