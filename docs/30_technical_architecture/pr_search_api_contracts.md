@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.16 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.17 | 갱신일: 2026-08-30
 
 ## 1. 목적
 
@@ -52,11 +52,12 @@
 | API-ADM-001 | GET/POST/PATCH/DELETE | `/admin/repositories[/{id}]` | 저장소 등록 관리 | `operator` | FR-ING-009 |
 | API-ADM-002 | GET/POST/PATCH | `/admin/jobs[/{id}]` | 잡 실행·중단·진행률 | `operator` | FR-ADMIN-002, FR-ING-006, FR-ING-008 |
 | API-ADM-003 | GET/POST | `/admin/dead-letters[/reprocess]` | 실패 대기열 조회·재처리 | `operator` | FR-ING-007 |
-| API-ADM-004 | POST | `/admin/reindex` | 재색인 실행 | `operator` | FR-ING-008 |
+| API-ADM-004 | GET/POST | `/admin/reindex` | 인덱스 상태 조회·재색인 실행 | `operator` | FR-ING-008 |
 | API-ADM-005 | GET | `/admin/audit-records` | 감사 기록 조회 | `security_officer` | FR-AUTH-004 |
 | API-ADM-006 | GET | `/admin/pipeline-status` | 파이프라인 지표 | `operator` | FR-ADMIN-001 |
 | API-ADM-007 | GET/POST | `/admin/sequence-integrity` | 정합성 점검·재채번 | `operator` | FR-ADMIN-003, FR-SEQ-005 |
 | API-ADM-008 | GET | `/admin/raw-events` | 원본 아카이브 조회 | `operator` 또는 `security_officer` + 접근 범위 | FR-ING-010 |
+| API-ADM-009 | GET/PATCH | `/admin/repository-registration-requests[/{id}]` | 등록 검토 요청 조회·종료 | `operator` | FR-ING-009 AC-11 |
 
 **GitHub Operations Plane (CR-005 신규).** 아래 API는 `search-api`가 아니라 Operations 경로에 속하며, 인증은 세션 인증에 더해 사용자 위임 GitHub 신원(FR-GH-008)을 요구한다.
 
@@ -1987,6 +1988,8 @@ ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 →
 
 요청 (목록): `GET /api/v1/admin/repositories?status=active&limit=50&offset=0`
 
+> **`offset`은 공통 원칙 7·ADR-010과 어긋난다 (CR-055, DEV-433).** 이 경로와 `API-ADM-003`의 목록은 `WP-010`·`WP-009` 시점에 오프셋으로 섰고 지금도 그렇게 동작한다. **이 CR은 그것을 걷어 내지 않는다** — `A-002`·`A-001`이 필요로 하는 것은 경계 있는 첫 페이지이고, 커서로 옮기는 일은 두 API의 소비자를 전부 다시 세는 별도 작업이다. 대신 사실을 여기 등재하고, **이 CR이 신설하는 `API-ADM-009`에는 처음부터 오프셋을 두지 않는다.**
+
 응답 200:
 
 ```json
@@ -2066,12 +2069,15 @@ ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 →
       "requested_by": "alice",
       "started_at": "2026-08-22T09:00:00Z",
       "finished_at": null,
-      "error": null
+      "error": null,
+      "allowed_actions": ["pause", "cancel"]
     }
   ],
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
+
+**`allowed_actions`는 서버가 산출한다** (`FR-ADMIN-002` AC-7, CR-055). 화면은 이 목록을 그대로 렌더링하고 `state` 문자열로 가능한 동작을 추론하지 않는다 — 추론하면 전이 규칙이 서버와 화면 두 곳에 살고, 한쪽만 넓어지는 날 아무 오류도 나지 않는다. 기본은 전이 규칙 그대로이며(`queued`·`running` → `pause`·`cancel`, `paused` → `resume`·`cancel`, 종료 상태 → 빈 목록), **러너가 실제로 지원하는 범위가 그보다 좁으면 서버가 더 좁은 목록을 준다.** 빈 목록은 "이 잡은 지금 제어할 수 없다"는 뜻이고 화면은 버튼을 그리지 않는다.
 
 **`cursor`는 내보내지 않는다.** 재개 지점은 워커의 내부 상태이고, 운영자가 그것을 읽을 이유가 없다 — 읽을 수 있으면 고치고 싶어지고, 고치면 재개가 무엇을 이어받는지 아무도 보장하지 못한다.
 
@@ -2083,11 +2089,28 @@ ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 →
 { "type": "backfill", "target": "acme/payments" }
 ```
 
-**`type`은 집는 러너가 있는 것만 받는다** — `backfill`(JOB-ING-004)과 **`link_rebuild`(JOB-REL-006 참조 간선 전량 재파생, CR-039)**. 다른 값을 조용히 큐에 넣으면 아무 워커도 잡지 않는 유령 잡이 남고, 운영자는 진행률이 영원히 0인 이유를 알 수 없다 (CR-022, DEV-103).
+**`type`은 집는 러너가 있는 것만 받는다** (`FR-ADMIN-002` AC-6). 다른 값을 조용히 큐에 넣으면 아무 워커도 잡지 않는 유령 잡이 남고, 운영자는 진행률이 영원히 0인 이유를 알 수 없으며, `job_active_uk`가 그 행을 보고 같은 대상의 이후 시도까지 막는다 (CR-022, DEV-103). **잡 유형이 `job_type_chk`에 있다는 것은 실행 가능한 잡이라는 뜻이 아니다.**
+
+받는 유형과 그 `target` 형식은 다음과 같다. **`target` 형식은 잡 유형이 소유하는 대상의 정체성을 따른다** — 저장소를 대상으로 하는 잡은 저장소 식별자이고, 시퀀스 공간을 대상으로 하는 잡은 공간 식별자다. `API-ADM-007`의 `sequence_reassign`이 이미 `owner/repo@브랜치`를 쓰고 있으며 그것이 선례다 (CR-055).
+
+| `type` | 잡 | `target` | 요청 본문이 정하는 것 |
+| --- | --- | --- | --- |
+| `backfill` | JOB-ING-004 | `owner/repo` | `target` |
+| `link_rebuild` | JOB-REL-006 참조 간선 전량 재파생 (CR-039) | `owner/repo` | `target` |
+| `reconcile` | JOB-ING-005 조정 스캔 즉시 실행 (CR-055) | `all` — **서버가 정한다** | 없다 |
+| `sequence_assign` | JOB-SEQ-001 시퀀스 채번 (CR-055) | `owner/repo@{기준 브랜치}` — **서버가 조립한다** | `repository`, `base_branch` |
+
+`link_rebuild`가 열려 있어야 하는 이유는 그것이 **PostgreSQL 정본에서 `prs-links`를 복구하는 유일한 경로**이기 때문이다 (ADR-004).
+
+**`reconcile`의 대상은 클라이언트가 고르지 않는다.** `FR-ING-011` AC-2가 스캔 대상을 "등록된 각 저장소"로 정했으므로 이 잡의 대상은 언제나 등록 저장소 전체이며, 서버가 `all`을 쓴다. 저장소 식별자는 언제나 `/`를 포함하므로 충돌하지 않는다. 주기 실행과 이 수동 실행은 **같은 스캔 구현을 지나고 동시에 돌지 않는다** (`FR-ING-011` AC-7) — 활성 잡 하나 제약(AC-4)이 수동 중복을 막고, 주기 스윕과의 직렬화는 `reconcile` 역할의 단일 복제본 배치가 보장한다.
+
+**`sequence_assign`의 `target`은 서버가 조립한다.** 요청은 `repository`(`owner/repo`)와 `base_branch`를 주고, 서버가 저장소 등록 여부와 그 브랜치가 `sequence_branches`에 있는지를 확인한 뒤 공간 식별자를 만든다. 클라이언트가 `target` 문자열을 직접 보내면 서로 다른 공간이 같은 문자열로 충돌하거나 등록되지 않은 브랜치가 큐에 들어간다. 러너가 행을 다시 파싱하지 않도록 **`progress`의 초기값에 `repository_id`와 `base_branch`를 함께 싣는다** — 잡 행은 enqueue 순간부터 실행에 필요한 것이 갖춰져 있어야 한다.
+
+**두 번째 채번 실행 구조를 만들지 않는다.** 이 경로의 러너와 `prs:sequence` 이벤트 소비자는 같은 `assignSequence`에 모인다. `CR-034`(DEV-180)가 `sequence_assign` 잡 행을 한 번 거절했던 근거는 "그 유형을 집는 러너가 없다"였고, `CR-055`가 그 러너를 세워 전제를 없앤다. **조정 스캔이 누락 공간을 복구할 때는 계속 이벤트로 보낸다** — 그 경로는 공간마다 멱등이고 활성 잡 제약에 걸리지 않아야 하며, 잡 행으로 바꾸면 `DEV-180`이 적어 둔 자물쇠가 그대로 돌아온다.
 
 `link_rebuild`가 열려 있어야 하는 이유는 그것이 **PostgreSQL 정본에서 `prs-links`를 복구하는 유일한 경로**이기 때문이다 (ADR-004). Redis stream retention은 정본이 아니고, WP-029 이전의 직접 푸시 커밋에는 `EVT-ING-003`이 애초에 없었다 — 이 경로가 없으면 과거 엔티티와 재구축한 인덱스가 간선을 영원히 얻지 못한다.
 
-`target`은 두 유형 모두 **`owner/repo`**다. 잡 유형마다 다른 형식을 쓰면 러너가 자기 행을 해석하지 못한다.
+`target`은 위 표가 정한다. **한 유형 안에서 형식이 갈리지 않는 것이 규칙이다** — 러너는 자기 유형의 형식 하나만 알면 되고, 유형마다 형식이 다른 것은 대상의 정체성이 다르기 때문이지 일관성이 없어서가 아니다.
 
 - 응답 201: `{ "job_id": 88, "state": "queued", "correlation_id": "..." }`
 - 오류: **`JOB_CONFLICT`** (409) — 같은 `(type, target)`에 활성 잡이 이미 있다. 부분 유니크 인덱스가 DB에서 강제하므로 경합에서도 둘이 뜨지 않는다
@@ -2355,6 +2378,43 @@ POST /api/v1/admin/reindex
 
 **API-ADM-002의 일반 잡 생성 목록에 `reindex`를 넣지 않는다.** SRS가 API-ADM-004를 재색인의 진입점으로 이미 정했다. API-ADM-002는 목록·진행률·중단·취소라는 **공통 잡 표면**을 계속 소유하고, 생성만 이 경로가 갖는다. 두 진입점이 각자 알고리즘을 만들지 않도록 **enqueue seam은 하나**다 — CLI(`pnpm es:reindex --alias <별칭>`)도 같은 seam을 부른다 (CR-045, DEV-302).
 
+#### `GET /api/v1/admin/reindex` — 인덱스 상태 (CR-055, DEV-432)
+
+`A-003-INDEX`가 그릴 값을 준다 (`FR-ING-008` AC-7). **새 API ID를 만들지 않고 같은 자원의 읽기로 연다** — 별칭의 현재 상태와 그 별칭을 바꾸는 실행은 같은 것을 다루므로 자원이 하나다.
+
+응답 200:
+
+```json
+{
+  "generated_at": "2026-08-30T04:12:09.000Z",
+  "aliases": [
+    {
+      "alias": "prs-pull-requests",
+      "current_index": "prs-pull-requests-v2",
+      "document_count": 4128663,
+      "store_size_bytes": 39128441856,
+      "active_reindex": { "job_id": 9114, "phase": "backfill", "target_index": "prs-pull-requests-v3", "dual_write_since": "2026-08-30T03:58:00.000Z" },
+      "last_reindex": { "job_id": 8802, "state": "completed", "switched_at": "2026-08-24T02:11:40.000Z" }
+    },
+    {
+      "alias": "prs-links",
+      "current_index": "prs-links-v1",
+      "document_count": null,
+      "store_size_bytes": null,
+      "active_reindex": null,
+      "last_reindex": null
+    }
+  ],
+  "unavailable": ["prs-links.document_count", "prs-links.store_size_bytes"],
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+- Authz: `operator` 전용. `API-ADM-006`과 같은 갈래의 전역 운영 지표이며 저장소를 식별하지 않는다.
+- **읽지 못한 값은 `null`이고 그 이름이 `unavailable`에 들어간다.** `0`으로 채우지 않는다 — 크기를 모르는 것과 인덱스가 빈 것은 다른 사실이고, 후자로 적으면 운영자가 재색인이 실패했다고 읽는다. 별칭 하나의 조회가 실패해도 나머지 별칭은 정상 반환한다 (`API-ADM-006`의 부분 실패 규칙과 같다).
+- **재색인 이력은 `job` 정본에서 도출한다.** `type: reindex` 행의 `progress`가 `source_index`·`target_index`·`switched_at`을 이미 갖고 있으므로 **새 이력 표를 만들지 않는다** (CR-045, DEV-299의 판단을 그대로 따른다). `last_reindex`는 그 별칭의 가장 최근 종료 잡이고 `active_reindex`는 활성 잡이다.
+- `active_reindex.phase`·`dual_write_since`는 `A-003`이 `reindex_dual_write` 상태를 상시 표시하는 재료다 (`QA-A003-07`).
+
 #### 진행 단계 (`job.progress`)
 
 **`job.state`에 새 값을 만들지 않는다.** 기존 여섯(`queued`·`running`·`paused`·`completed`·`failed`·`cancelled`)을 그대로 쓰고, 세부 단계는 `progress`에 둔다 — 상태 기계를 늘리면 이미 그 여섯으로 판정하는 모든 운영 경로가 새 값을 모른다.
@@ -2473,6 +2533,70 @@ POST /api/v1/admin/reindex
 - **커서는 `(occurred_at, audit_id)`와 필터 지문을 함께 봉인한다.** 지문에는 `user_id`·`action`·`target`·`from`·`to`·`result_code`가 모두 들어간다. 조건을 바꾸고 옛 커서를 쓰면 `CURSOR_QUERY_MISMATCH`, 위조·만료·형식 오류는 `CURSOR_INVALID`다 — 기존 커서 계열과 같은 두 오류를 쓰며 **같은 봉투(base64url JSON + HMAC-SHA256)를 재사용하고 새 서명 키를 만들지 않는다**
 - **이 조회 자체가 감사 대상이다** (`audit.view`, FR-AUTH-004 AC-8). **기록은 응답을 확정한 뒤에 남긴다** — 질의보다 먼저 넣으면 그 기록이 자기 응답의 첫 페이지에 나타나 같은 요청이 같은 답을 주지 않는다. 자기 자신은 다음 조회부터 보인다 (CR-054)
 - **갱신·삭제 엔드포인트를 두지 않는다** (AC-3). 감사 기록의 불변성은 UI에 버튼이 없는 것이 아니라 **DB 롤에 `UPDATE`/`DELETE` 권한이 없는 것**으로 지켜진다 (마이그레이션 005)
+
+### API-ADM-009 등록 검토 요청 조회·종료 (CR-055)
+
+- 목적: 운영자가 접수된 등록 검토 요청을 보고 처리한다.
+- 관련 요구사항: FR-ING-009 AC-11
+- 관련 화면: A-002 (`A-002-REQUESTS`)
+- Authz: `operator` 전용
+
+**`API-ING-003`과 같은 표를 읽되 평면이 다르다.** `API-ING-003`은 일반 사용자가 요청을 남기는 자리이고 그 응답은 `FR-ING-009` AC-10의 비공개 경계를 지킨다. 이 API는 운영자 평면이며 처리 상태와 처리 이력을 준다. **두 평면을 한 엔드포인트로 합치지 않는다** — 합치면 역할에 따라 응답 모양이 달라지고, 그 분기 하나가 빠지는 날 처리 상태가 요청자에게 새어 나간다.
+
+#### `GET /api/v1/admin/repository-registration-requests`
+
+- 질의: `status` (optional, `pending`·`fulfilled`·`dismissed`), `repository` (optional, `owner/name`), `requested_by` (optional), `limit` (기본 25, 최대 100), `cursor` (optional)
+
+```json
+{
+  "items": [
+    {
+      "request_id": 318,
+      "requested_by": "alice",
+      "repository": "acme/payments",
+      "created_at": "2026-08-28T02:14:07.000Z",
+      "status": "pending",
+      "resolved_at": null,
+      "resolved_by": null,
+      "resolution_note": null
+    }
+  ],
+  "next_cursor": null,
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+- **오프셋 파라미터를 두지 않는다** (공통 원칙 7, ADR-010). `API-ADM-001`·`API-ADM-003`이 오프셋으로 선 것은 그 시점의 부채이며(DEV-433) 새 자원이 그것을 따라가지 않는다.
+- **커서는 PostgreSQL 키셋이다.** 순회하는 것이 Elasticsearch 문서가 아니므로 PIT도 `search_after`도 뜻이 없다 — `API-ADM-005`(감사 기록)와 같은 형태이며 봉인 방식(base64url JSON + HMAC-SHA256)과 두 오류 코드를 공유한다.
+- 정렬은 `created_at DESC, request_id DESC`로 결정론적이다. **`status`로 정렬하지 않는다** — 목록의 기본 필터가 `pending`이므로 화면이 처리할 것을 먼저 보는 목적은 필터가 달성하고, 정렬 키에 상태를 넣으면 상태가 바뀌는 순간 그 행이 커서 순회 안에서 움직인다.
+- **커서 지문에 접근 범위를 넣지 않는다.** 이 목록은 저장소 권한이 답을 바꾸지 않는다 — 등록 검토 요청은 아직 등록되지 않은 저장소에 대한 것이고, 운영자가 처리해야 할 대기열이다. 넣으면 무관한 권한 변경이 순회를 끊는다 (`API-ADM-005`가 같은 이유로 넣지 않는다).
+- **`status` 필터를 바꾸면 이전 커서는 무효다.** 지문이 필터를 담으므로 `CURSOR_INVALID`로 거절한다 — 조용히 새 필터로 이어 붙이면 건너뛴 행이 생긴다.
+- **`total`을 내지 않는다.** 세려면 전량을 훑어야 하고, 화면이 필요로 하는 것은 처리할 것이 남았는지이며 그것은 `next_cursor`가 답한다. 화면은 현재 페이지의 행 수를 전체 수처럼 표시하지 않는다.
+- 이 조회 자체는 감사 대상이 아니다. `FR-AUTH-004` AC-1의 정본 표가 감사 대상을 정하며 운영 목록 조회는 그 표에 없다.
+
+#### `PATCH /api/v1/admin/repository-registration-requests/{request_id}`
+
+```json
+{ "action": "dismiss", "reason": "사내 저장소가 아니다" }
+```
+
+- `action`: **`dismiss` 하나만 받는다** (CR-055). `approve`·`accept`·`reopen`·`delete`를 만들지 않는다.
+- `reason`: 운영자가 남기는 처리 메모. 길이 상한이 있고 **`operator` 평면에만 존재한다** — 요청자에게 어떤 경로로도 돌려주지 않는다 (`FR-ING-009` AC-10).
+- 응답 200: 갱신된 요청 1건.
+- 오류: `NOT_FOUND` (404), `INVALID_PARAMETER` (400 — 알 수 없는 `action`, 상한 초과 `reason`), **`INVALID_TRANSITION`** (400 — 이미 `fulfilled`·`dismissed`인 요청. 현재 상태를 `detail`에 싣는다).
+- 감사: `repository_registration_request.dismiss`. `target`은 요청 ID이고 `detail`은 운영자가 남긴 메모다.
+
+#### 승인은 별도 동작이 아니라 성공한 등록이다
+
+**`fulfilled`로 옮기는 경로를 이 API가 갖지 않는다.** 요청받은 식별자의 저장소 등록이 `API-ADM-001`의 `POST`로 성공하면, **같은 정규화 식별자의 `pending` 요청 전부가** 그 처리에서 `fulfilled`가 된다 (`FR-ING-009` AC-11). 여러 사용자가 같은 저장소를 요청했으면 실제 등록 하나가 그 전부의 목적을 충족하므로 하나만 닫지 않는다.
+
+**등록과 요청 종료는 같은 PostgreSQL 트랜잭션 경계 안에 둔다.** 저장소가 `active`인데 그 식별자의 요청이 `pending`으로 남는 상태를 성공한 등록 하나가 만들어서는 안 된다. 다만 **GHE 조회·Elasticsearch 갱신·팀 동기화·백필 큐잉은 그 경계 안에 넣지 않는다** — 외부 호출을 트랜잭션에 담으면 GHE 일시 오류가 정본 쓰기를 되돌린다.
+
+**등록이 실패하면 요청은 `pending`으로 남는다.** 화면의 "등록" 버튼은 `A-002-FORM`을 채우기만 하며 그 조작만으로는 어떤 상태도 바뀌지 않는다.
+
+#### 재요청은 종료된 요청을 되돌리지 않는다
+
+`FR-ING-009` AC-9의 멱등은 그대로다 — 같은 사용자의 같은 식별자 반복 요청은 새 행을 만들지 않고 실패도 아니다. 그러나 이미 `fulfilled`·`dismissed`인 행을 그 반복 요청이 `pending`으로 되돌리지 않는다. **운영자의 처리 결과를 보지도 못하는 일반 API 호출 하나가 그것을 조용히 다시 여는 동작을 만들지 않는다** — 재검토가 필요해지면 그것은 별도 요구사항이다. 요청 기록은 삭제하지 않는다.
 
 ## 5. DTO 표준
 

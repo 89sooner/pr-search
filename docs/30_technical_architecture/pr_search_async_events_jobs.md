@@ -1,6 +1,6 @@
 # PR Search 비동기 작업 및 이벤트
 
-> 상태: review | 버전: v0.4 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.5 | 갱신일: 2026-08-30
 
 ## 1. 목적
 
@@ -56,14 +56,14 @@
 **마이그레이션이 이 일을 하지 않는다.** 스냅숏 내용은 GHE만 답할 수 있고, 마이그레이션 안에서 네트워크를 부르면 되돌릴 수도 재개할 수도 없는 배포 단계가 된다. 012는 스키마만 넓힌다.
 
 **백필은 웹훅이 아니라 델리버리 ID가 없다 (CR-022, DEV-100).** `backfill:{repository_id}:{pr_number}`를 만들어 쓴다. **결정론적**이라야 재개·재시도에서 같은 PR이 같은 키를 갖고 실패 대기열(`(delivery_id, stage)` 유니크)에 중복이 쌓이지 않으며, **접두**가 있어야 운영자가 UUID 사이에서 출처를 안다. `job_id`는 넣지 않는다 — 넣으면 잡을 다시 실행할 때 같은 PR이 다른 키를 갖는다.
-| JOB-ING-005 | 조정 스캔 | 스케줄 (기본 1시간) / 수동 | **`reconcile` 역할** (CR-034, DEV-179) | 3회 | 30분 | EVT-JOB-001 · `sequence.requested`(head 복구, DEV-180) | FR-ING-011 |
+| JOB-ING-005 | 조정 스캔 | 스케줄 (기본 1시간) / **수동 (API-ADM-002, `type: reconcile`, CR-055)** | **`reconcile` 역할** (CR-034, DEV-179) | 3회 | 30분 | EVT-JOB-001 · `sequence.requested`(head 복구, DEV-180) | FR-ING-011 AC-1·AC-7 |
 | JOB-ING-006 | 재색인 | 수동 (API-ADM-004) | batch | 없음 (실패 시 별칭 미전환) | 없음 | EVT-JOB-001 | FR-ING-008 |
 | JOB-ING-007 | 아웃박스 재적재 | 스케줄 (5분) | batch | 3회 | 5분 | - | ADR-002 follow-up |
 | JOB-ING-008 | PostgreSQL↔ES 정합성 감시 | 스케줄 (6시간) | **`project` 역할** | 3회 | 30분 | EVT-JOB-001 | ADR-004 follow-up |
 | JOB-ING-009 | 실패 대기열 재처리 | 수동 (API-ADM-003) | ops (WP-009) → batch (WP-019 이후) | 이벤트별 누적 | 10분 | EVT-JOB-001 (batch 이후) | FR-ING-007 |
 | JOB-ING-010 | 정본 스냅숏 부트스트랩 | 조정 스캔이 예약 (JOB-ING-005) / 수동 | **`reconcile` 역할** (CR-037, DEV-194) | 항목별 3회, 잡 전체는 재개 | 없음 (중단·재개) | EVT-JOB-001 | ADR-004 follow-up |
 | EVT-REL-001 | `release.refresh_requested` | ingest-gateway, sequence(재채번 후) | release | `prs:release` | `{ repository_id, correlation_id }` — **태그 이름·SHA를 싣지 않는다**: 정본은 미러의 refs/tags 스냅숏이고(DEV-143), 이벤트는 "이 저장소의 태그가 바뀌었으니 다시 봐라"라는 신호일 뿐이다. payload를 신뢰하면 이벤트 순서 역전이 스냅숏을 되돌린다 | 파티션 `repository_id`, 저장소당 직렬 |
-| JOB-SEQ-001 | 시퀀스 증분 채번 | `push` 웹훅 → 게이트웨이가 `prs:sequence`에 발행 (CR-025, DEV-116) / 백필 완료 | sequence | 락 실패는 `defer`, 그 밖은 5회 지수 백오프 | 10분 | EVT-SEQ-001 | FR-SEQ-001 |
+| JOB-SEQ-001 | 시퀀스 증분 채번 | `push` 웹훅 → 게이트웨이가 `prs:sequence`에 발행 (CR-025, DEV-116) / 백필 완료 / **수동 (API-ADM-002, `type: sequence_assign`, CR-055)** | sequence | 락 실패는 `defer`, 그 밖은 5회 지수 백오프 | 10분 | EVT-SEQ-001 | FR-SEQ-001, FR-ADMIN-002 AC-1 |
 | JOB-SEQ-002 | 시퀀스 재채번 | 재작성 감지(자동) / 수동 (API-ADM-007 → `sequence_reassign` 잡) | `sequence` 역할 — 자동은 버스 소비자, **수동은 `startSequenceRepairRunner`가 잡을 claim한다** (CR-034, DEV-178) | 없음 (실패 시 `stale`) | 60분 | EVT-SEQ-002, EVT-JOB-001 | FR-SEQ-005, FR-ADMIN-003 AC-4 |
 | JOB-SEQ-003 | 시퀀스 정합성 점검 | 수동 / 스케줄 (일 1회, 표본) | **`sequence` 역할** | 3회 | 30분 | EVT-JOB-001 | FR-ADMIN-003 |
 | JOB-REL-001 | 참조 간선 추출 | **EVT-ING-003 / EVT-ING-005** (CR-039, DEV-215) | link | 3회 (**핸들러가 `delivery_count`로 집행한다**, DEV-228) | 30초 | - | FR-REL-003 |
@@ -572,6 +572,22 @@ JOB-MIR-002는 **`commit.metadata_ready`를 받아 `commit.metadata_ready`를 �
 - 중복 요청은 409 `JOB_CONFLICT`와 실행 중 잡 ID를 반환한다.
 - 동시 실행 백필 잡 수는 설정값이며 기본 3이다 (FR-ING-006 AC-6). `prs:batch` 소비자 동시성으로 강제한다.
 - 중단 요청 후 30초 안에 잡이 멈추지 않으면 강제 종료하고 `cancelled`로 기록한다 (FR-ADMIN-002).
+- **잡 유형은 그 유형을 집는 러너가 배포에 있을 때만 실행 요청을 받는다** (FR-ADMIN-002 AC-6, CR-055). `job_type_chk`에 이름이 있다는 것으로는 부족하다.
+
+### 7.1 수동 실행이 자동 실행과 만나는 자리 (CR-055)
+
+`FR-ADMIN-002` AC-1의 제어 대상 중 **조정 스캔과 시퀀스 채번은 원래 자동 경로만 갖고 있었다.** `CR-055`가 수동 진입점을 열면서 각 잡의 실행 경로가 둘이 되었고, 그 둘이 만나는 자리를 여기서 정한다.
+
+| 잡 | 자동 경로 | 수동 경로 | 두 경로가 만나는 자리 |
+| --- | --- | --- | --- |
+| JOB-ING-005 조정 스캔 | `reconcile` 역할의 주기 스윕 (기본 1시간) | `job` 행 `type: reconcile`, `target: all` | **같은 `runReconcileSweep` 구현 하나.** 수동끼리는 `job_active_uk`가 막고, 주기 스윕과의 직렬화는 `reconcile` 역할의 **단일 복제본 배치**가 보장한다 |
+| JOB-SEQ-001 시퀀스 채번 | `prs:sequence` 이벤트 소비 (`push` 웹훅·백필 완료·조정 스캔의 head 복구) | `job` 행 `type: sequence_assign`, `target: owner/repo@브랜치` | **같은 `assignSequence` 구현 하나.** 시퀀스 공간의 직렬은 기존 PostgreSQL advisory lock이 이미 강제하며(8장), 락 실패는 양쪽 모두 재시도로 처리한다 |
+
+**두 번째 실행 구조를 만들지 않는다.** 수동 경로는 새 알고리즘이 아니라 기존 실행에 도달하는 다른 문이다. 러너가 자기 유형의 잡 행을 `claimNextJob`으로 집어 그 함수를 부르며, 그 함수는 자기가 어느 문으로 불렸는지 알지 못한다.
+
+**분산 락을 새로 발명하기 전에 배포 불변식을 쓴다.** `reconcile`·`sequence` 역할은 각각 복제본 1개로 배치되어 있고(`deploy/k8s/pipeline-worker-{reconcile,sequence}.yaml`), 운영 도달성 회귀 시험이 그 사실을 계속 고정한다. 그 불변식이 무너지는 날에는 락이 필요해지지만, **필요해지기 전에 만들면 그 락이 실제로 무엇을 막는지 아무도 검증하지 못한다.**
+
+**조정 스캔의 head 복구는 계속 이벤트로 보낸다.** `sequence_assign` 잡 유형에 러너가 생겼다고 해서 `CR-034`(DEV-180)의 판단을 되돌리지 않는다 — 그 경로는 공간마다 멱등해야 하고 활성 잡 제약에 걸리면 안 된다. 잡 행으로 바꾸면 복구하려고 만든 행이 **이후의 모든 복구를 막는 자물쇠**가 되며, 그것이 DEV-180이 실제로 밟은 함정이다.
 
 ## 8. 순서 보장
 
