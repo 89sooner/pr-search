@@ -39,15 +39,21 @@ grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
 
 `CR-056`이 신설했다(REL-006, 선행 `WP-068`·`WP-037`). `author_team_ids`가 비어 있어 `group_by=team`과 `author_team:`이 언제나 빈 결과를 낸다 — **누락이 아니라 미구현**이며 화면이 그 사실을 그대로 말한다.
 
-## B-2. design-system 릴리스가 대기 중이다 — 사용자 결정
+## B-2. design-system version PR이 열려 있다 — 급하지 않다
 
-`PR #12`의 정정 여섯이 `@conductor-by-89soone/react`·`tokens`에 들어갔고, Changesets가 **version PR `#13`(`Version packages`)을 자동으로 열었다.**
+`PR #12`의 정정 여섯이 `@conductor-by-89soone/react`·`tokens`에 들어갔고, Changesets가 version PR `#13`(`Version packages`)을 자동으로 열었다.
 
-**PR Search가 고친 두 컴포넌트를 실제로 쓴다** — `SaveSearchDialog.tsx`의 `Select.Root`와 `AppTopBar`·`QueryTokenBar`의 `IconButton`이다. 즉 `Field required`가 Radix에 닿지 않는 결함과 로딩 글리프 둘이 **지금 소비 버전에 남아 있다.**
+**PR Search의 현재 사용처는 고친 조건에 닿지 않는다** — 실측 결과다.
+
+| 정정 | PR Search 사용처 | 조건에 닿는가 |
+| --- | --- | --- |
+| `IconButton loading`의 글리프 둘 | `AppTopBar.tsx:153`, `QueryTokenBar.tsx:95` | **아니다** — 둘 다 `loading`을 넘기지 않는다 |
+| `Field required` → `Select.Root` | `SaveSearchDialog.tsx:271` | **아니다** — `Field` 밖에 있고 `<label>`을 직접 쓴다 |
+
+즉 **지금 사용자에게 드러나는 결함은 없다.** 게시는 그 컴포넌트를 그 조건으로 쓰기 시작할 때 필요하며, **리뷰 스레드를 닫기 위해 npm 게시를 서두르지 않는다.**
 
 - version PR을 병합해도 자동 게시되지 않는다 — 워크플로가 `await the approved manual publish`에서 멈춘다
-- **게시 시점은 사용자의 결정이다.** npm 게시는 외부로 나가는 되돌리기 어려운 행위다
-- 게시한 뒤 PR Search가 그 버전을 소비해야 정정이 실제로 닿는다
+- npm 게시는 외부로 나가는 되돌리기 어려운 행위이므로 시점은 사용자가 정한다
 
 ## C. 배포에서 해야 할 것
 

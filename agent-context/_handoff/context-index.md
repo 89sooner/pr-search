@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-08-30T16:14:14+00:00
+generated=2026-08-30T16:17:31+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -66,9 +66,9 @@ sig=agent-context/session-summary.md;10/11;CR/DEV;11/11;1/8;2/8;3/8;acme/b;acme/
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=a8e79bef695f6fa33b4f3f56ae383d6017621e43b05884206f9f807ec39a69b4
-bytes=103396 compact_bytes=102685 lines=1316 priority=30
-heads=다음 작업 · 미해결 항목 · 확인할 사항 > 시작하기 전에 — 이 인계의 값을 실측하라 > A. 지금 당장 — REL-006 (WP-041 → WP-042 → WP-044) > B. 새로 열린 WP — WP-069 작성자 소속 팀 채우기 > B-2. design-system 릴리스가 대기 중이다 — 사용자 결정 > C. 배포에서 해야 할 것
+sha256=e72efd8c3f7f3e05fc639162a3b3046df11762247c80059bd5873bd75e17f797
+bytes=103687 compact_bytes=102929 lines=1322 priority=30
+heads=다음 작업 · 미해결 항목 · 확인할 사항 > 시작하기 전에 — 이 인계의 값을 실측하라 > A. 지금 당장 — REL-006 (WP-041 → WP-042 → WP-044) > B. 새로 열린 WP — WP-069 작성자 소속 팀 채우기 > B-2. design-system version PR이 열려 있다 — 급하지 않다 > C. 배포에서 해야 할 것
 sig=agent-context/todos.md;4/4;docs/40_delivery/pr_search_implementation_traceability.md;conductor-by-89soone/react;packages/query/src/serialize.ts;apps/pipeline-worker/src/documents.ts;packages/es/src/upsert.ts;apps/pipeline-worker/src/reconcile.ts;apps/search-api/src/ops/jobs.ts;packages/react/src/form.tsx;scripts/check-release-tags.mjs;89sooner/pr-search;89sooner/design-system;apps/web/lib/;apps/web/components/JobStatusBadge.tsx;apps/search-api/integration/admin/repositories.test.ts;apps/web/a11y/setup.ts;claude/wp-040-operations-console;3/4;apps/web/app/ops/;apps/web/app/ops/audit/page.tsx;up/down/up;packages/db/src/repositories/job.ts;packages/domain/src/sequence.ts
 
 ## continuation_protocol
