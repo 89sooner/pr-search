@@ -39,6 +39,16 @@ grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
 
 `CR-056`이 신설했다(REL-006, 선행 `WP-068`·`WP-037`). `author_team_ids`가 비어 있어 `group_by=team`과 `author_team:`이 언제나 빈 결과를 낸다 — **누락이 아니라 미구현**이며 화면이 그 사실을 그대로 말한다.
 
+## B-2. design-system 릴리스가 대기 중이다 — 사용자 결정
+
+`PR #12`의 정정 여섯이 `@conductor-by-89soone/react`·`tokens`에 들어갔고, Changesets가 **version PR `#13`(`Version packages`)을 자동으로 열었다.**
+
+**PR Search가 고친 두 컴포넌트를 실제로 쓴다** — `SaveSearchDialog.tsx`의 `Select.Root`와 `AppTopBar`·`QueryTokenBar`의 `IconButton`이다. 즉 `Field required`가 Radix에 닿지 않는 결함과 로딩 글리프 둘이 **지금 소비 버전에 남아 있다.**
+
+- version PR을 병합해도 자동 게시되지 않는다 — 워크플로가 `await the approved manual publish`에서 멈춘다
+- **게시 시점은 사용자의 결정이다.** npm 게시는 외부로 나가는 되돌리기 어려운 행위다
+- 게시한 뒤 PR Search가 그 버전을 소비해야 정정이 실제로 닿는다
+
 ## C. 배포에서 해야 할 것
 
 - **`clearUnknownSizes` 소급** (신규, CR-056 / DEV-456) — 부트스트랩이 함께 돌린다. `pnpm es:apply-mappings`가 그 경로다
