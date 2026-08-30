@@ -108,6 +108,15 @@ const CAPABILITIES = [
     manifest: 'deploy/k8s/pipeline-worker-sequence.yaml',
   },
   {
+    id: 'JOB-SEQ-001-manual',
+    what: '수동 채번 러너 (CR-055)',
+    process: 'pipeline-worker',
+    role: 'sequence',
+    start: 'assignRunner = startSequenceAssignRunner(',
+    stop: 'assignRunner?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-sequence.yaml',
+  },
+  {
     id: 'JOB-SEQ-003',
     what: '정합성 점검 스윕',
     process: 'pipeline-worker',
@@ -219,6 +228,59 @@ describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () 
   );
 });
 
+describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () => {
+  const RECONCILE = read('apps/pipeline-worker/src/reconcile.ts');
+  const ASSIGN = read('apps/pipeline-worker/src/sequence-assign-runner.ts');
+  const OPS_JOBS = read('apps/search-api/src/ops/jobs.ts');
+
+  /*
+   * **잡 유형을 여는 것과 러너가 있는 것은 다르다** (FR-ADMIN-002 AC-6).
+   * `DEV-178`·`DEV-180`이 그 함정을 두 번 밟았다 — 생성만 열려 있으면 아무도
+   * 집지 않는 행이 남고, 그 행이 활성 잡 제약에 걸려 이후의 복구까지 막는다.
+   */
+  it.each([
+    ['reconcile', RECONCILE],
+    ['sequence_assign', ASSIGN],
+  ])('%s 잡을 집는 러너가 있다', (type, source) => {
+    expect(OPS_JOBS).toContain(`'${type}'`);
+    expect(source).toContain('claimNextJob');
+  });
+
+  /*
+   * **조정 스캔은 두 방아쇠가 한 루프다** (FR-ING-011 AC-7, PR #88 리뷰 P2).
+   * 단일 복제본 배치는 프로세스 수를 제한할 뿐 한 프로세스 안의 독립적인 비동기
+   * 루프 둘을 직렬화하지 못한다. `runReconcileSweep`를 부르는 자리가 하나여야
+   * 겹칠 수 있는 구조가 없다.
+   */
+  it('runReconcileSweep를 부르는 자리가 루프 안에 둘뿐이다 — 수동과 주기', () => {
+    const calls = RECONCILE.match(/await runReconcileSweep\(/g) ?? [];
+    expect(calls).toHaveLength(2);
+    expect(RECONCILE).toContain('claimNextJob(deps.pool, RECONCILE_JOB_TYPE, 1)');
+  });
+
+  it('별도의 조정 스캔 러너 파일을 만들지 않았다', () => {
+    // 두 번째 루프가 생기면 그 파일 이름이 먼저 나타난다.
+    expect(existsSync(new URL('apps/pipeline-worker/src/reconcile-runner.ts', new URL('..', import.meta.url)))).toBe(
+      false,
+    );
+  });
+
+  /*
+   * **종료 상태는 조건부 전이여야 한다** (DEV-196·DEV-436). 무방비 `finishJob`은
+   * 운영자의 취소를 완료로 덮는다 — 백필만 이 규율을 채택하지 않아 세 세션을
+   * 떠돌았다.
+   */
+  it.each([
+    'apps/pipeline-worker/src/backfill.ts',
+    'apps/pipeline-worker/src/link.ts',
+    'apps/pipeline-worker/src/reindex.ts',
+    'apps/pipeline-worker/src/sequence-repair-runner.ts',
+    'apps/pipeline-worker/src/sequence-assign-runner.ts',
+    'apps/pipeline-worker/src/reconcile.ts',
+  ])('%s — 무방비 finishJob을 쓰지 않는다', (path) => {
+    expect(read(path)).not.toMatch(/jobRepo\.finishJob\(/);
+  });
+});
 describe('주기 스윕을 가진 역할은 replica 1이다', () => {
   // 리더 선출이 없다 — 여러 파드가 같은 주기에 같은 대상을 중복 처리한다.
   it.each(['deploy/k8s/pipeline-worker-sequence.yaml', 'deploy/k8s/pipeline-worker-reconcile.yaml'])(
@@ -297,9 +359,16 @@ describe('참조 간선 파생의 도달성 (WP-029 / CR-039)', () => {
      * WP-035가 목록을 **둘로 갈랐다** (DEV-301). `OPERATOR_JOB_TYPES`는 "집는
      * 러너가 있다"이고, `CREATABLE_GENERIC_JOB_TYPES`는 "API-ADM-002로 만들 수
      * 있다"이다. `reindex`는 앞에만 있다 — 생성은 API-ADM-004가 소유한다.
+     *
+     * **목록의 리터럴 전문을 단언하지 않는다** (CR-055). 목록이 자라는 것은
+     * 정상이고(`reconcile`·`sequence_assign`이 그렇게 들어왔다), 전문을 걸면
+     * 유형을 더할 때마다 이 시험이 **성질과 무관하게** 깨져 시험의 뜻이 흐려진다.
+     * 걸어야 하는 것은 `link_rebuild`가 두 목록에 다 있고 `reindex`는 앞에만
+     * 있다는 것이다.
      */
-    expect(jobs).toContain("export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild', 'reindex'] as const;");
-    expect(jobs).toContain("export const CREATABLE_GENERIC_JOB_TYPES = ['backfill', 'link_rebuild'] as const;");
+    expect(jobs).toMatch(/OPERATOR_JOB_TYPES = \[[^\]]*'link_rebuild'/);
+    expect(jobs).toMatch(/OPERATOR_JOB_TYPES = \[[^\]]*'reindex'/);
+    expect(jobs).toMatch(/CREATABLE_GENERIC_JOB_TYPES = \[[^\]]*'link_rebuild'/);
     expect(routes).toContain("if (!isCreatableGenericJobType(body['type'])) {");
     // 러너와 API가 **같은 `target` 형식**을 쓴다 — 다르면 러너가 자기 행을 못 읽는다.
     expect(LINK).toContain('repositoryRepo.findRepositoryBySlug(');
@@ -1197,7 +1266,14 @@ describe('무중단 재색인의 도달성과 계약 (WP-035 / CR-045~047)', () 
 
   it('**API-ADM-002의 일반 생성이 `reindex`를 받지 않는다** (DEV-301·302)', () => {
     const jobs = read('apps/search-api/src/ops/jobs.ts');
-    expect(jobs).toContain("export const CREATABLE_GENERIC_JOB_TYPES = ['backfill', 'link_rebuild'] as const;");
+    /*
+     * **없다는 것을 단언한다.** 리터럴 전문을 걸면 목록이 자랄 때마다 깨지고,
+     * 그때 사람은 성질을 다시 보지 않고 문자열만 갱신한다 — 그 갱신이 언젠가
+     * `reindex`를 함께 들여보낸다 (CR-055).
+     */
+    const creatable = /CREATABLE_GENERIC_JOB_TYPES = \[([^\]]*)\]/.exec(jobs)?.[1] ?? '';
+    expect(creatable).not.toContain("'reindex'");
+    expect(creatable).toContain("'backfill'");
     expect(OPS_ROUTES).toContain("if (!isCreatableGenericJobType(body['type'])) {");
   });
 

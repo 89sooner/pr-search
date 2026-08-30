@@ -20,7 +20,7 @@
  * 생긴다.
  */
 
-import { mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo } from '@prs/db';
+import { jobRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo } from '@prs/db';
 import type { Pool, RepositoryRow } from '@prs/db';
 import { GitHubApiError, type CommitGraph, type GitHubClient } from '@prs/github';
 import { TOPICS, type EventBus } from '@prs/bus';
@@ -36,6 +36,18 @@ import type { WorkerMetrics } from './metrics.js';
 
 /** 스케줄 기본값 (FR-ING-011 AC-1 — 설정값이며 기본 1시간). */
 export const RECONCILE_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * 한 루프가 두 방아쇠를 함께 볼 때의 순회 간격 (CR-055).
+ *
+ * 주기 간격(기본 1시간)과 다른 값인 이유는 **수동 요청이 그만큼 지연되면 안
+ * 되기 때문**이다. 매 순회에서 대기 중인 잡을 먼저 보고, 주기 스윕은 마지막
+ * 실행 시각으로 판정한다.
+ */
+export const RECONCILE_POLL_MS = 5_000;
+
+/** 수동 조정 스캔의 잡 유형과 대상. 서버가 정한 값과 같아야 한다. */
+export const RECONCILE_JOB_TYPE = 'reconcile' as const;
 /** 대조 창 (AC-2). */
 export const RECONCILE_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** 이 수 이상 연속으로 완주하지 못하면 경보다 (예외 처리). */
@@ -47,6 +59,8 @@ export interface ReconcileLogFields {
   readonly message: string;
   readonly repository?: string;
   readonly reason?: string;
+  /** 수동 실행일 때의 잡 식별자 (CR-055). 주기 실행에는 없다. */
+  readonly job_id?: number;
 }
 
 export interface ReconcileDeps {
@@ -396,14 +410,34 @@ export interface ReconcileSweeper {
   stop(): Promise<void>;
 }
 
-/** 주기 조정 스캔. `startReleaseSweeper`와 같은 형태다 (깨울 수 있는 sleep). */
+/**
+ * 조정 스캔 루프 (JOB-ING-005 / FR-ING-011 AC-1·AC-7).
+ *
+ * ## 두 방아쇠를 한 루프가 처리한다 (CR-055, PR #88 리뷰 P2)
+ *
+ * 주기 실행과 운영자의 즉시 실행은 **같은 스캔 구현을 지나며 동시에 돌지
+ * 않는다.** 그것을 락으로 보장하지 않고 **구조로** 보장한다 — 이 파일에
+ * `runReconcileSweep`를 부르는 자리가 하나뿐이면 겹칠 수 있는 형태가 없다.
+ *
+ * **두 루프를 두고 배포로 막으려던 설계를 버렸다.** `reconcile` 역할이 복제본
+ * 1개로 배치되어 있다는 사실은 프로세스 수를 제한할 뿐, 한 프로세스 안의
+ * 독립적인 비동기 루프 둘을 직렬화하지 못한다 — 주기 스윕이 GHE 응답을
+ * 기다리는 `await` 지점에서 잡 러너가 깨어나면 같은 전량 스캔이 겹친다.
+ *
+ * 순회 간격은 주기 간격보다 짧다. 수동 요청이 최대 한 시간 지연되면 "즉시
+ * 실행"이 아니기 때문이며, 주기 스윕은 마지막 실행 시각으로 판정한다.
+ */
 export function startReconcileSweeper(
   deps: ReconcileDeps,
-  options: { readonly intervalMs?: number } = {},
+  options: { readonly intervalMs?: number; readonly pollMs?: number } = {},
 ): ReconcileSweeper {
   const interval = options.intervalMs ?? RECONCILE_INTERVAL_MS;
+  const poll = options.pollMs ?? RECONCILE_POLL_MS;
+  const now = deps.now ?? ((): Date => new Date());
   const log = deps.log ?? ((): void => undefined);
   let stopped = false;
+  /** 마지막 주기 스윕 시각. `null`이면 아직 한 번도 돌지 않았다. */
+  let lastScheduledAt: number | null = null;
 
   let wake: () => void = () => undefined;
   const interruptibleSleep = (ms: number): Promise<void> =>
@@ -420,19 +454,59 @@ export function startReconcileSweeper(
     });
   const sleep = deps.sleep ?? interruptibleSleep;
 
+  const describe = (result: { repositories: number; missing: number; deferred: number }): string =>
+    `저장소 ${String(result.repositories)}개, 누락 ${String(result.missing)}, 미룸 ${String(result.deferred)}`;
+
   const loop = (async (): Promise<void> => {
     while (!stopped) {
       try {
-        const result = await runReconcileSweep(deps);
-        log({
-          level: result.missing > 0 ? 'warn' : 'info',
-          message: `조정 스캔 완료 — 저장소 ${String(result.repositories)}개, 누락 ${String(result.missing)}, 미룸 ${String(result.deferred)}`,
-        });
+        /*
+         * **수동 잡을 먼저 본다.** 상한은 1이다 — 활성 잡 하나 제약(AC-4)이
+         * 이미 수동 중복을 막지만, claim 자체도 하나로 묶어 두어야 이 루프가
+         * 한 순회에 스캔을 두 번 돌 수 없다.
+         */
+        const job = await jobRepo.claimNextJob(deps.pool, RECONCILE_JOB_TYPE, 1);
+        if (job !== undefined) {
+          try {
+            const result = await runReconcileSweep(deps);
+            /*
+             * **`running`일 때만 종료 상태를 쓴다** (DEV-196). 스캔이 도는 동안
+             * 운영자가 취소했으면 그 사실을 덮지 않는다.
+             */
+            const moved = await jobRepo.finishJobIfRunning(deps.pool, job.job_id, 'completed', null);
+            log({
+              level: result.missing > 0 ? 'warn' : 'info',
+              message: moved
+                ? `수동 조정 스캔 완료 — ${describe(result)}`
+                : `수동 조정 스캔이 끝났으나 잡 상태가 이미 바뀌어 있어 덮지 않았다 — ${describe(result)}`,
+              job_id: job.job_id,
+            });
+          } catch (error) {
+            await jobRepo.finishJobIfRunning(deps.pool, job.job_id, 'failed', String(error).slice(0, 500));
+            log({
+              level: 'error',
+              message: '수동 조정 스캔 실패',
+              job_id: job.job_id,
+              reason: String(error).slice(0, 200),
+            });
+          }
+        } else if (lastScheduledAt === null || now().getTime() - lastScheduledAt >= interval) {
+          /*
+           * 주기 스윕. **시작 시각을 먼저 찍는다** — 끝나고 찍으면 스캔에 걸린
+           * 시간만큼 다음 주기가 밀려 간격이 조금씩 길어진다.
+           */
+          lastScheduledAt = now().getTime();
+          const result = await runReconcileSweep(deps);
+          log({
+            level: result.missing > 0 ? 'warn' : 'info',
+            message: `조정 스캔 완료 — ${describe(result)}`,
+          });
+        }
       } catch (error) {
         log({ level: 'error', message: '조정 스캔 스윕 실패', reason: String(error).slice(0, 200) });
       }
       if (stopped) break;
-      await sleep(interval);
+      await sleep(poll);
     }
   })();
 
