@@ -33,6 +33,14 @@ export const ACTIVE_AUDIT_ACTIONS = [
   'repository.register',
   'repository.update',
   'repository.unregister',
+  /*
+   * 등록 검토 요청을 **등록 없이** 종료한 것 (WP-040 / CR-055, FR-ING-009 AC-11).
+   *
+   * 성공한 등록에 의한 종료는 이 액션을 쓰지 않는다 — 그 자리는
+   * `repository.register`가 이미 기록하고, 같은 행위를 두 번 세면 감사
+   * 로그에서 실제 등록 횟수를 알 수 없게 된다.
+   */
+  'repository_registration_request.dismiss',
   'job.run',
   'job.pause',
   'job.resume',

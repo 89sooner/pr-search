@@ -24,7 +24,7 @@ import type { AuthContext } from './auth/context.js';
 import type { RegistryDeps } from './ops/repositories.js';
 import type { IntegrityDeps } from './ops/sequence-integrity.js';
 import type { ReindexDeps } from './ops/reindex.js';
-import { reindexIndexPort } from '@prs/es';
+import { indexStatsPort, reindexIndexPort } from '@prs/es';
 import { authRepo } from '@prs/db';
 import { createCursorSigner } from './cursor/envelope.js';
 
@@ -213,6 +213,29 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
         }),
     ...(integrity === undefined ? {} : { integrity }),
     reindex: buildReindexDeps(parts.pool, parts.es),
+    /*
+     * 색인 상태 조회 (WP-040 / API-ADM-004 `GET`, CR-055).
+     *
+     * **세션과 무관하다.** `API-ADM-006`과 같은 갈래의 전역 운영 지표이며 저장소를
+     * 식별하지 않으므로 접근 범위를 산출할 대상이 필요 없다 — `reindex`와 같은
+     * 자리에 선다.
+     */
+    indexStatus: { pool: parts.pool, stats: indexStatsPort(parts.es) },
+    /*
+     * 등록 검토 요청 대기열 (WP-040 / API-ADM-009, CR-055).
+     *
+     * **커서 서명자는 다른 경로와 같은 키를 쓴다.** 새 시크릿을 만들면 배포가
+     * 관리할 값이 늘고 하나가 빠졌을 때의 실패가 는다.
+     *
+     * `es`를 받지 않는다. 이 자원의 정본은 `repository_registration_request`이고
+     * 순회도 PostgreSQL 키셋이다 — 색인 클라이언트를 넘기면 "이미 있으니까"라는
+     * 이유로 대기열을 색인에서 읽는 최적화가 언젠가 들어온다.
+     */
+    requestQueue: {
+      pool: parts.pool,
+      cursorSigner: createCursorSigner(parts.config.searchCursorKey),
+      log: (entry) => { parts.log({ ...entry }); },
+    },
     log: (entry) => { parts.log({ ...entry }); },
   };
 }
@@ -230,5 +253,9 @@ export function runtimeCapabilities(parts: RuntimeParts): Readonly<Record<string
     /** 감사 기록 조회는 `security_officer` 역할이 필요하고 역할은 세션에만 있다. */
     audit_records: parts.auth !== undefined && parts.searchDeps !== undefined,
     reindex: true,
+    /** 색인 상태 조회는 재색인과 같은 자리에 선다 (API-ADM-004 `GET`). */
+    index_status: true,
+    /** 등록 검토 요청 대기열. 커서 서명 키는 다른 경로와 같은 값이다. */
+    registration_request_queue: true,
   };
 }

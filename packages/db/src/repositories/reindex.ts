@@ -265,6 +265,28 @@ export async function findActiveReindexFor(db: Queryable, alias: string): Promis
   return findActiveJob(db, REINDEX_JOB_TYPE, alias);
 }
 
+/**
+ * 이 별칭의 **가장 최근 종료된** 재색인 잡 (API-ADM-004 `GET` / CR-055).
+ *
+ * **새 이력 표를 만들지 않는다** — `job` 행의 `progress`가 `source_index`·
+ * `target_index`·`switched_at`을 이미 갖고 있으므로 이력의 정본은 그것이다
+ * (DEV-299의 판단을 그대로 따른다).
+ *
+ * `finished_at`이 아니라 `job_id`로 정렬한다. `BIGSERIAL`이라 단조 증가하고,
+ * `finished_at`은 같은 시각에 끝난 둘의 순서를 정하지 못한다.
+ */
+export async function findLastReindexFor(db: Queryable, alias: string): Promise<JobRow | undefined> {
+  const result = await db.query<JobRow>(
+    `SELECT * FROM job
+      WHERE type = $1 AND target = $2
+        AND state IN ('completed', 'failed', 'cancelled')
+      ORDER BY job_id DESC
+      LIMIT 1`,
+    [REINDEX_JOB_TYPE, alias],
+  );
+  return result.rows[0];
+}
+
 /** 보관 기한이 지난 옛 인덱스 하나. */
 export interface RetiredIndex {
   readonly jobId: number;
