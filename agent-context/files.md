@@ -946,3 +946,63 @@
 - `apps/web/components/` 의 `C-040`~`C-047`, `C-071`
 - `apps/web/e2e/flow-007.spec.ts` · `flow-008.spec.ts`
 - 통합 시험 — 등록 요청 수명주기, 러너 둘, 취소 경합
+
+---
+
+# 2026-08-30 (2차) 세션이 만든 것 (WP-040 완주)
+
+## 읽는 순서가 바뀐 문서
+
+- `docs/40_delivery/pr_search_implementation_traceability.md` — 원장 `review v6.2`. **3장 `WP-040` = done**, 6.52장(검증·변이 열넷·결함 둘), 5장에 `DEV-437`·`DEV-438`, `DEV-436` 종결
+
+## 신규 시험 (백엔드 수직 증명)
+
+| 경로 | 무엇을 증명하나 |
+| --- | --- |
+| `apps/search-api/integration/admin/registration-request-lifecycle.test.ts` | 등록 요청 수명주기 22건. **두 평면을 한 서버에서 세운다** — 처리 상태 비공개(THR-045)와 조용한 재개방 금지를 함께 재려면 그래야 한다. 정본 쓰기와 요청 종료의 트랜잭션 경계도 실 DB로 본다 |
+| `apps/pipeline-worker/integration/reconcile/manual-run.test.ts` | 수동 조정 스캔 8건. 두 방아쇠를 함께 걸어 **동시 진입 최댓값이 1**임을 센다. 집힘은 스캔 횟수가 아니라 `started_at`으로 잰다 — 주기 스윕은 첫 순회에 곧바로 돌기 때문이다 |
+| `apps/pipeline-worker/integration/sequence/assign-runner.test.ts` | 수동 채번 14건. **실제 git 픽스처**로 서수가 `git rev-list --first-parent --reverse`와 같음을 대조한다. 기본 이음매가 진짜 `assignSequence`임을 그 통과가 증명한다 |
+| `apps/pipeline-worker/integration/jobs/cancel-race.test.ts` | 취소 경합 18건 (DEV-436). `OPERATOR_JOB_TYPES` **다섯 전부**에 성질을 걸고, 백필의 마지막 페이지 창을 실제로 재현한다 |
+
+## 신규 화면 (A-001·A-002·A-003)
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/web/components/JobTable.tsx` | `C-044`. **서버의 `allowed_actions`를 그대로 그린다** — 목록이 비면 버튼이 없다 |
+| `apps/web/components/JobStatusBadge.tsx` | 잡 상태 여섯 → Conductor `Status` 일곱. **두 화면이 같은 매핑을 쓰는 유일한 자리** |
+| `apps/web/components/JobRunForm.tsx` | `C-045`. 유형마다 재료가 다르고 경로도 다르다(`RUN_OPTIONS.path`) |
+| `apps/web/components/IndexStatusPanel.tsx` | `C-046`. 읽지 못한 값을 `0`·`0B`로 대신하지 않는다 |
+| `apps/web/components/IntegrityReportCard.tsx` | `C-047`. **확인이 끝난 뒤에만 `onReassign`을 부른다** |
+| `apps/web/components/RepositoryRegistrationForm.tsx` | `C-043`. 해제 문구는 `ops-repositories.ts`가 소유한다 |
+| `apps/web/components/RegistrationRequestQueue.tsx` | `C-071`. **"등록 폼 채우기"가 요청 상태를 바꾸지 않는다** |
+| `apps/web/components/PipelineMetricGrid.tsx` | `C-040`. 축 전체와 값 하나의 미확인을 각각 그린다 |
+| `apps/web/components/DeadLetterTable.tsx` | `C-041`. 100건 초과는 확인을 **두 번** 거친다 |
+| `apps/web/components/ScanResultCard.tsx` | `C-042`. **버튼을 누른 사실은 스캔 완료가 아니다** — 잡으로 지켜본다 |
+| `apps/web/components/Ops{Jobs,Repositories,Pipeline}View.tsx` | 세 화면의 조회·폴링·조작. 타이머는 하나이며 조작 중과 백그라운드 탭에서 회차를 건너뛴다 |
+| `apps/web/app/ops/{pipeline,repositories,jobs}/page.tsx` | 라우트 셋. `/ops/audit`와 같은 구조(`GuardedPage` + 클라이언트 뷰 + `force-dynamic`) |
+
+## 고친 기존 소스
+
+| 경로 | 무엇이 바뀌었나 |
+| --- | --- |
+| `apps/search-api/src/ops/jobs.ts` | `resolveJobTarget` 일반 갈래에 슬러그 형식 검사 (DEV-437) |
+| `apps/web/lib/server/page-guard.tsx` | `GuardedPageContext` — 관문이 역할과 인증 구성 여부를 본문에 넘긴다. `A-001`만 역할로 **무엇을 요청할지**가 갈린다 |
+| `apps/web/lib/ops-pipeline.ts` | `pipelineAccess(roles, authEnabled)` — 인증 미구성 배포에서 빈 역할을 "자격 없음"으로 읽지 않는다 |
+| `apps/web/a11y/setup.ts` | `ResizeObserver` 대역 (Radix `Switch`) |
+| `apps/search-api/integration/admin/repositories.test.ts` | 채번 예약 시험 셋 — **차분으로 센다** (변이 M8이 드러낸 구멍) |
+| `apps/search-api/integration/repositories/registration-request.test.ts` | 열 목록 전문 단언 → 성질 단언 (DEV-438) |
+| `regression/runtime-reachability.test.ts` | `resolveJobTarget` 두 갈래의 대칭, `reconcile`의 대상 거절 |
+
+## 신규 a11y·e2e
+
+- `apps/web/a11y/ops-{jobs,repositories,pipeline}.test.tsx` — 63건, axe 위반 0
+- `apps/web/e2e/flow-007.spec.ts` · `flow-008.spec.ts` — 16건. **확인 전 네트워크 호출 수가 0임을 실제 호출로 증명한다**
+
+## 손대면 안 되는 것 (갱신)
+
+- **파괴적 조작의 방어선은 핸들러 안의 조건이지 `disabled`가 아니다.** 네 곳이 같은 모양이며 e2e가 호출 수로 센다
+- `apps/web/lib/{ops-jobs,ops-repositories,ops-pipeline}.ts`는 **화면 판정의 전부**다. 컴포넌트 안에 판정을 흩뿌리지 않는다
+- 라우트가 세션을 직접 읽지 않는다 — `architecture.test.ts`가 `SESSION_COOKIE_NAME`·`sessionStore(`를 금지한다. 역할이 필요하면 관문에서 받는다
+- `resolveJobTarget`의 두 갈래가 **모두** 슬러그 형식을 검사한다. 회귀가 그 수를 센다
+- 채번 예약 시험을 절대값으로 바꾸지 마라 — 등록이 이미 예약한 것과 이 조작이 더한 것을 가른다
+- `apps/pipeline-worker/src/reconcile.ts`의 루프를 둘로 가르지 마라. `runReconcileSweep` 호출 지점이 둘뿐임을 회귀가 센다

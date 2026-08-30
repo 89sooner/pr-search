@@ -1895,3 +1895,123 @@ gh api graphql -f query='
 | open DEV 계수 | 13에서 늘지 않음 | `DEV-433`의 상태를 굵게 썼다 |
 
 일곱 모두 **명령의 문제가 아니라 내가 만든 문제**였고, 셋은 기존 시험이 잡았다.
+
+---
+
+# 2026-08-30 (2차) 세션 — WP-040 완주
+
+## 검증 배터리 (마지막 실행 결과 — main `7e462e9`)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                     # 통과
+pnpm lint                          # 통과 — 마지막 파일까지 쓴 뒤 다시 돌릴 것
+pnpm run lint:deps                 # 패키지 13개, 위반 0건
+pnpm run test                      # 단위 1856 통과 (1 skipped)   [1850 → +6]
+pnpm run test:integration          # 1389 통과 (88 파일)          [1324 → +65]
+pnpm run test:regression           # 284 통과                     [282 → +2]
+pnpm run test:a11y                 # 346 통과 (axe 0)             [283 → +63]
+pnpm run test:contrast             # 232/232
+pnpm --filter @prs/web run build   # e2e 전에 필수
+pnpm run test:e2e                  # 147 통과 (플레이크 0)         [131 → +16]
+pnpm build                         # 통과
+```
+
+## 마이그레이션 왕복 + 제약 실증 (실 PostgreSQL)
+
+`up → down → up`만으로는 부족하다. **제약이 실제로 막는지**와 **기존 행을 소급하지 않는지**를 함께 본다.
+
+```bash
+pnpm --filter @prs/db run build              # dist/cli.js가 필요하다
+pnpm run db:migrate                          # up
+docker exec prs-postgres psql -U prs -d prs -tAc \
+  "select conname, pg_get_constraintdef(oid) from pg_constraint
+    where conrelid='repository_registration_request'::regclass order by conname;"
+pnpm --filter @prs/db exec node dist/cli.js migrate --down --step 1
+# down 상태에서 기존 행을 하나 넣고
+pnpm run db:migrate                          # 다시 up — 그 행이 기본값을 갖는지 본다
+```
+
+제약 검증은 `BEGIN … SAVEPOINT … ROLLBACK`으로 감싼 `DO $$ … EXCEPTION WHEN check_violation`을 쓴다. 데이터를 남기지 않고 "정말 거절하는가"를 잰다.
+
+## 변이가 살아남으면 등가인지 먼저 묻는다
+
+```text
+살아남음 → "이 변이가 실제로 무엇을 바꾸는가"
+         ├─ 성질을 안 바꾼다 → 등가. 그 성질을 정말 깨는 변이를 따로 만들어 시험이 잡는지 확인
+         └─ 성질을 바꾼다   → 시험 구멍. 시험을 더한 뒤 같은 변이로 킬 확인
+```
+
+이번 세션의 `M6`이 전자, `M8`이 후자였다. **둘을 가르지 않으면 하나는 반드시 잘못 처리된다.**
+
+## 미해결 리뷰를 세는 법 (두 저장소)
+
+```bash
+for repo in pr-search design-system; do
+  echo "=== $repo ==="
+  gh api graphql -f query="
+  { repository(owner: \"89sooner\", name: \"$repo\") {
+      pullRequests(last: 30, states: MERGED) {
+        nodes { number reviewThreads(first: 100) { nodes { isResolved } } } } } }" \
+    --jq '[.data.repository.pullRequests.nodes[]
+           | {n: .number, u: ([.reviewThreads.nodes[]|select(.isResolved|not)]|length)}
+           | select(.u > 0)]
+          | "총 \([.[].u]|add // 0)건: " + ([.[] | "#\(.n)(\(.u))"] | join(" "))'
+done
+```
+
+2026-08-30 2차 실측: pr-search 22건 · design-system 9건.
+
+## CI가 "실패"인데 코드 문제가 아닐 때
+
+```bash
+gh run view <RID> | grep -A 3 ANNOTATIONS
+gh api "repos/89sooner/pr-search/actions/runs/<RID>/jobs" --jq '.jobs[] | {name, conclusion, steps: [.steps[]|.name]}'
+```
+
+`steps`가 **비어 있고** 주석이 `The job was not started because recent account payments have failed`를 말하면 **잡이 뜨지도 않은 것**이다. 재시도 1회(`gh run rerun <RID>`)로 확인한 뒤 로컬 배터리로 판정하고 그 사실을 적는다. **실제 시험 실패를 이것으로 부르지 않는다.**
+
+## Playwright 목은 한 핸들러로 합친다
+
+라우트는 **나중에 등록한 것이 먼저** 매칭된다. `**/jobs**`를 `**/jobs/*`보다 뒤에 두면 그것이 `/jobs/11`의 `PATCH`까지 삼킨다.
+
+```ts
+await page.route('**/api/admin/jobs**', async (route) => {
+  const jobId = /\/jobs\/(\d+)$/.exec(new URL(route.request().url()).pathname)?.[1];
+  if (jobId !== undefined) { /* 제어 */ }
+  return /* 목록 */;
+});
+```
+
+## Conductor 계약은 `.d.ts`를 열어 본다
+
+```bash
+cat apps/web/node_modules/@conductor-by-89soone/react/dist/{status,feedback,form,overlay,surface,data,action,types}.d.ts
+```
+
+이번에 틀렸던 것: `StatusBadge`는 `children` 대신 `status`·`icon`·`label`, `Meter`는 `valueText` 필수, `Table`은 `caption` prop, `Button.size`는 `sm`·`md`뿐이고 `danger`는 `variant`가 아니라 `tone`이다.
+
+## 부분 실행 selector (이 WP)
+
+```bash
+pnpm run test web/lib/ops-jobs
+pnpm run test:integration admin/registration-request-lifecycle
+pnpm run test:integration reconcile/manual-run
+pnpm run test:integration sequence/assign-runner
+pnpm run test:integration jobs/cancel-race
+pnpm run test:integration admin/repositories
+pnpm run test:a11y ops-
+cd apps/web && ./node_modules/.bin/playwright test e2e/flow-007.spec.ts e2e/flow-008.spec.ts --reporter=line
+```
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 증상 | 원인·해결 |
+| --- | --- |
+| 멀티라인 치환 `SKIPPED (0)` | 파일이 CRLF인데 파이썬 문자열이 LF였다. 개행을 맞춘 뒤 재실행 |
+| `enqueueJob`이 `null value in column "target"` | 시그니처를 객체로 가정했다. 실제는 `(db, type, target, requestedBy, progress?)` |
+| 시험이 `probe.entries === 0`을 기대했는데 4 | 주기 스윕은 첫 순회에 곧바로 돈다(`lastScheduledAt === null` 갈래). 집힘은 `started_at`으로 잰다 |
+| 채번 예약 시험이 "잡 하나"를 기대했는데 둘 | 등록 자체가 이미 하나를 예약했다. 차분으로 세도록 고침 |
+| `ResizeObserver is not defined` | Radix `Switch`가 `use-size`를 지난다. `a11y/setup.ts`에 대역 추가 |
+| e2e 제어 요청이 목록 응답을 받음 | Playwright 라우트가 나중 등록 우선이다. 한 핸들러로 합침 |
+| `gh pr merge --admin`이 차단됨 | `--admin` 없이 실행하면 통과한다 |
