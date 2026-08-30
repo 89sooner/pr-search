@@ -449,3 +449,47 @@ describe('스윕이 내부 중단을 존중한다 (DEV-443)', () => {
     expect(h.listCalls).toHaveLength(2);
   });
 });
+
+describe('**마지막 단위 뒤에도 취소를 다시 본다** (PR #94 리뷰 P1, DEV-448)', () => {
+  /*
+   * 루프 안의 확인만으로는 부족하다. 마지막 페이지의 마지막 단위를 처리하는
+   * 동안 취소가 들어오면 그 뒤로 확인 지점이 없고, 루프는 `items.length <
+   * PAGE_SIZE`로 **정상 종료**한다 — `stopped`가 거짓인 채 후속 GHE 작업과
+   * 완주 기록이 그대로 실행된다.
+   */
+  const IN_WINDOW = '2026-08-25T11:00:00Z';
+
+  it('진행 중이던 단위는 끝내되 후속 단계는 실행하지 않는다', async () => {
+    const h = harness({
+      prs: [{ number: 10, updated_at: IN_WINDOW }],
+      indexed: [],
+      headSeq: null,
+    });
+
+    // 확인 1 = 페이지 앞, 확인 2 = PR 10 되돌리기 앞, 확인 3 = 후속 단계 앞.
+    const result = await reconcileRepository(h.deps, REPOSITORY, cancelAfter(2));
+
+    // 협조적 중단이 감수하는 것은 진행 중이던 단위 하나까지다.
+    expect(h.projected).toEqual([10]);
+    expect(result.stopped).toBe(true);
+    expect(result.sequenceScheduled).toBe(false);
+    expect(h.published).toEqual([]);
+    expect(h.syncedTeams).toEqual([]);
+    expect(h.completedWrites).toEqual([]);
+  });
+
+  it('되돌릴 것이 없는 회차에서도 마지막에 다시 본다', async () => {
+    // 전부 색인돼 있어 루프 안의 두 번째 확인 지점에 닿지 않는다.
+    const h = harness({
+      prs: [{ number: 10, updated_at: IN_WINDOW }],
+      indexed: [10],
+      headSeq: null,
+    });
+
+    // 확인 1 = 페이지 앞, 확인 2 = 후속 단계 앞.
+    const result = await reconcileRepository(h.deps, REPOSITORY, cancelAfter(1));
+
+    expect(result.stopped).toBe(true);
+    expect(h.completedWrites).toEqual([]);
+  });
+});

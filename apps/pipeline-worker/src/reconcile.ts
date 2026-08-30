@@ -258,8 +258,14 @@ export async function reconcileRepository(
    * 동기화도 **이 회차가 하기로 한 일**이며, 취소는 그 일을 멈추라는 뜻이다.
    * 완주 기록은 더욱 그렇다 — 창을 끝까지 읽지 못한 회차의 `missing`은 부분값이라
    * 미룸과 똑같은 이유로 "최근 결과"가 될 수 없다.
+   *
+   * **여기서 다시 묻는다** (PR #94 리뷰 P1, DEV-448). 루프 안의 확인만으로는
+   * 마지막 단위를 처리하는 동안 들어온 취소를 놓친다 — 그 뒤로 확인 지점이 없고
+   * 루프는 `items.length < PAGE_SIZE`로 **정상 종료**하므로 `stopped`가 거짓인
+   * 채로 후속 GHE 작업과 완주 기록이 그대로 실행된다. 협조적 중단이 감수하는
+   * 것은 **진행 중이던 단위 하나**까지이며 그 뒤의 새 작업이 아니다.
    */
-  if (stopped) {
+  if (await shouldStop()) {
     return { scanned, missing, reprojected, sequenceScheduled: false, deferred, stopped: true };
   }
 
