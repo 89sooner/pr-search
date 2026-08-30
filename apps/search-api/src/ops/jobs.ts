@@ -67,7 +67,15 @@ export function allowedActionsForJob(type: string, state: JobState): readonly Jo
  */
 export type CreateJobOutcome =
   | { readonly kind: 'created'; readonly job: JobRow }
-  | { readonly kind: 'conflict' };
+  /**
+   * 같은 대상에 활성 잡이 이미 있다.
+   *
+   * **실행 중 잡의 식별자를 함께 준다** (FR-ADMIN-002 AC-4, PR #89 리뷰 P2).
+   * 대상 문자열만 돌려주면 운영자는 "이미 돌고 있다"까지만 알고 **그 잡을 찾아갈
+   * 수 없다** — 화면이 가리킬 곳이 없어 `QA-A003-03`이 요구하는 경로가 끊긴다.
+   * 경합으로 졌을 때도 이긴 행을 다시 읽어 채운다.
+   */
+  | { readonly kind: 'conflict'; readonly jobId: number | null };
 
 /**
  * 잡을 큐에 넣는다.
@@ -240,7 +248,7 @@ export async function createJob(
   requestedBy: string,
 ): Promise<CreateJobOutcome> {
   const existing = await jobRepo.findActiveJob(pool, type, target);
-  if (existing !== undefined) return { kind: 'conflict' };
+  if (existing !== undefined) return { kind: 'conflict', jobId: existing.job_id };
 
   try {
     const jobId = await jobRepo.enqueueJob(pool, type, target, requestedBy);
@@ -250,7 +258,14 @@ export async function createJob(
     return { kind: 'created', job };
   } catch (error) {
     // 검사와 삽입 사이에 다른 요청이 넣었다. 유니크 위반이 그것을 말해 준다.
-    if (isUniqueViolation(error)) return { kind: 'conflict' };
+    if (isUniqueViolation(error)) {
+      /*
+       * 경합에서 졌다. **이긴 행을 다시 읽는다** — 그 행이 운영자가 찾아가야 할
+       * 잡이고, 여기서 포기하면 경합으로 진 요청만 잡 식별자를 잃는다.
+       */
+      const winner = await jobRepo.findActiveJob(pool, type, target);
+      return { kind: 'conflict', jobId: winner?.job_id ?? null };
+    }
     throw error;
   }
 }
@@ -258,7 +273,22 @@ export async function createJob(
 export type TransitionOutcome =
   | { readonly kind: 'ok'; readonly job: JobRow }
   | { readonly kind: 'not_found' }
-  | { readonly kind: 'invalid_transition'; readonly state: JobRow['state'] };
+  | { readonly kind: 'invalid_transition'; readonly state: JobRow['state'] }
+  /**
+   * 상태로는 가능하지만 **이 잡 유형의 러너가 지원하지 않는** 동작이다
+   * (PR #89 리뷰 P2).
+   *
+   * `allowedActionsForJob`가 응답에서 빼는 것만으로는 부족하다 — 그 필드는
+   * 화면을 위한 안내이고, **변이 경로가 같은 판정을 강제하지 않으면 직접
+   * 호출하는 클라이언트가 그것을 지나간다.** `reconcile`을 `pause`로 옮기면
+   * 러너에 멈출 지점이 없어 전량 스윕은 완주하고 행만 `paused`가 되며,
+   * `resume`이 같은 스캔을 다시 큐에 넣는다.
+   */
+  | {
+      readonly kind: 'unsupported_action';
+      readonly type: string;
+      readonly allowed: readonly JobAction[];
+    };
 
 /**
  * 상태를 전이한다.
@@ -272,6 +302,25 @@ export async function applyJobAction(
   jobId: number,
   action: JobAction,
 ): Promise<TransitionOutcome> {
+  /*
+   * **응답 필드가 유일한 방어선이 아니다** (PR #89 리뷰 P2). 잡 유형이 좁힌
+   * 목록을 여기서 먼저 확인한다 — 상태 전이보다 앞이어야 한다. 뒤에 두면
+   * `transitionJob`이 이미 행을 옮겨 놓은 뒤가 된다.
+   */
+  const before = await jobRepo.findJobById(pool, jobId);
+  if (before === undefined) return { kind: 'not_found' };
+
+  const allowed = allowedActionsForJob(before.type, before.state);
+  if (!allowed.includes(action)) {
+    /*
+     * 상태가 막는 것과 유형이 막는 것을 가른다. 전자는 "지금은 안 된다"이고
+     * 후자는 "이 잡에는 그 동작이 없다"이며, 운영자의 다음 행동이 다르다.
+     */
+    return jobRepo.allowedActionsFor(before.state).includes(action)
+      ? { kind: 'unsupported_action', type: before.type, allowed }
+      : { kind: 'invalid_transition', state: before.state };
+  }
+
   const updated = await jobRepo.transitionJob(pool, jobId, action);
   if (updated !== undefined) return { kind: 'ok', job: updated };
 

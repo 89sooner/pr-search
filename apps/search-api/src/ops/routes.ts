@@ -681,7 +681,15 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
       );
 
       if (outcome.kind === 'conflict') {
-        throw new AdminRejected('JOB_CONFLICT', '같은 대상에 활성 잡이 이미 있다', { target });
+        /*
+         * **실행 중 잡 식별자를 함께 준다** (FR-ADMIN-002 AC-4, QA-A003-03,
+         * PR #89 리뷰 P2). 대상만 돌려주면 화면이 "이미 돌고 있다"까지만 말하고
+         * **운영자가 그 잡을 찾아갈 곳이 없다.**
+         */
+        throw new AdminRejected('JOB_CONFLICT', '같은 대상에 활성 잡이 이미 있다', {
+          target,
+          ...(outcome.jobId === null ? {} : { job_id: outcome.jobId }),
+        });
       }
       return { status: 201, body: toJobResponse(outcome.job) };
     }),
@@ -716,6 +724,16 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
       );
 
       if (outcome.kind === 'not_found') throw new AdminRejected('NOT_FOUND', '잡을 찾을 수 없다');
+      if (outcome.kind === 'unsupported_action') {
+        /*
+         * 러너가 지원하지 않는 동작이다 (PR #89 리뷰 P2). 허용 목록을 함께
+         * 줘서 클라이언트가 무엇을 할 수 있는지 바로 알게 한다.
+         */
+        throw new AdminRejected('INVALID_PARAMETER', `${outcome.type} 잡은 ${action}을 지원하지 않는다`, {
+          type: outcome.type,
+          allowed_actions: [...outcome.allowed],
+        });
+      }
       if (outcome.kind === 'invalid_transition') {
         // 현재 상태를 함께 준다 — 운영자가 왜 안 되는지 알아야 다음을 고른다.
         throw new AdminRejected('INVALID_PARAMETER', `${outcome.state} 상태에서는 ${action}할 수 없다`, {

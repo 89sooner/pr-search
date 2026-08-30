@@ -80,14 +80,23 @@ export interface RequestPage {
   readonly nextCursor: string | null;
 }
 
-/** 질의에서 필터를 읽는다. 알 수 없는 값은 조용히 무시하지 않고 거절한다. */
+/**
+ * 질의에서 필터를 읽는다. 알 수 없는 값은 조용히 무시하지 않고 거절한다.
+ *
+ * **`status`의 기본값은 `pending`이다** (API 계약 `API-ADM-009`, PR #89 리뷰 P2).
+ * 이 목록은 **처리 대기열**이고 화면도 그렇게 말한다. 필터를 걸지 않으면
+ * 종료된 이력이 쌓일수록 25행 페이지를 채워 **처리할 것이 그 아래로 묻힌다** —
+ * 운영자는 대기열을 열고 아무것도 할 일이 없다고 읽는다. 이력을 보려면
+ * `status`를 명시한다. 전부 보는 값은 두지 않았다: 그것이 필요해지는 화면이
+ * 아직 없고, 미리 만들면 기본값의 뜻이 흐려진다.
+ */
 export function parseRequestFilter(query: Record<string, unknown>): RequestFilterInput {
   const filter: {
     status?: registrationRequestRepo.RegistrationRequestStatus;
     owner?: string;
     name?: string;
     requestedBy?: string;
-  } = {};
+  } = { status: 'pending' };
 
   const status = query['status'];
   if (status !== undefined) {
