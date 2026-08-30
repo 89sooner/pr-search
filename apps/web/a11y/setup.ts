@@ -16,4 +16,16 @@ if (typeof window !== 'undefined') {
   window.HTMLElement.prototype.setPointerCapture ??= () => undefined;
   window.HTMLElement.prototype.releasePointerCapture ??= () => undefined;
   window.HTMLElement.prototype.scrollIntoView ??= () => undefined;
+
+  /*
+   * Radix `Switch`가 `use-size`를 지나며 `ResizeObserver`를 만든다 (WP-040).
+   * jsdom에는 없어 렌더 자체가 죽는다 — 위의 포인터 API와 같은 자리이며,
+   * **크기를 재는 동작을 흉내 내지 않는다**: 이 대역은 아무것도 관찰하지 않고,
+   * 실제 크기 반응은 e2e가 본다.
+   */
+  globalThis.ResizeObserver ??= class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  };
 }

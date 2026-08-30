@@ -184,10 +184,12 @@ export {
   listIndexVersions,
   nextUnusedVersion,
   parseIndexVersion,
+  indexStatsPort,
   reindexIndexPort,
   resolveServingIndex,
   schemaOf,
   switchAlias,
+  type AliasIndexStats,
   type RetiredIndexOutcome,
   type VersionedIndexSchema,
 } from './versioned-index.js';

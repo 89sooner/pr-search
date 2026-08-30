@@ -64,6 +64,7 @@ import {
   startSnapshotBootstrapRunner,
 } from './snapshot-bootstrap.js';
 import { startSequenceRepairRunner, type RepairRunner } from './sequence-repair-runner.js';
+import { startSequenceAssignRunner, type AssignRunner } from './sequence-assign-runner.js';
 import {
   runReferenceRebuild,
   startLinkWorker,
@@ -469,6 +470,8 @@ if (roles.includes('mirror')) {
 
 let integritySweeper: IntegritySweeper | undefined;
 let repairRunner: RepairRunner | undefined;
+/** JOB-SEQ-001 수동 채번 러너 (WP-040 / CR-055). 재채번 러너와 같은 역할에 선다. */
+let assignRunner: AssignRunner | undefined;
 
 if (roles.includes('sequence')) {
   /*
@@ -594,6 +597,24 @@ if (roles.includes('sequence')) {
     sequence: sequenceDeps,
     log: (fields) => {
       process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-002', ...fields })}\n`);
+    },
+  });
+
+  /*
+   * 수동 채번 러너 (JOB-SEQ-001 / WP-040, CR-055).
+   *
+   * **버스 소비자와 같은 역할에 선다.** 둘 다 `assignSequence`로 모이고 공간
+   * 직렬은 그 함수의 advisory lock이 지키므로, 같은 프로세스에서 함께 깨어나도
+   * 안전하다 — `JOB-ING-005`처럼 루프를 합칠 이유가 없는 것이 그 때문이다.
+   *
+   * **러너 없이 잡 유형만 여는 일을 하지 않았다** (FR-ADMIN-002 AC-6). 이
+   * 러너와 `CREATABLE_GENERIC_JOB_TYPES`의 등재가 같은 변경에서 들어왔다.
+   */
+  assignRunner = startSequenceAssignRunner({
+    pool,
+    sequence: sequenceDeps,
+    log: (fields) => {
+      process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-001', ...fields })}\n`);
     },
   });
 
@@ -971,6 +992,7 @@ const shutdown = (): void => {
       await referenceRebuildRunner?.stop();
       await linkSubscription?.close();
       await repairRunner?.stop();
+      await assignRunner?.stop();
       await authzSubscription?.close();
       await authzRedisClient?.quit();
       await bus.close();

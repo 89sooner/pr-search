@@ -100,3 +100,50 @@ export function sequencePartitionKey(repositoryId: number, baseBranch: string): 
 export function sequenceSpaceLabel(repositorySlug: string, baseBranch: string): string {
   return `${repositorySlug}@${baseBranch}`;
 }
+
+/**
+ * `sequenceSpaceLabel`이 만든 문자열의 조각들.
+ *
+ * **`SequenceSpaceRef`라 부르지 않는다** — 그 이름은 `apps/web/lib/sequence.ts`가
+ * 이미 **라벨 문자열 자체**를 가리키는 데 쓴다. 같은 이름이 한쪽에서는 문자열,
+ * 다른 쪽에서는 그 문자열을 쪼갠 객체를 뜻하면 읽는 사람이 매번 어느 쪽인지
+ * 확인해야 한다.
+ */
+export interface SequenceSpaceParts {
+  readonly owner: string;
+  readonly name: string;
+  readonly baseBranch: string;
+}
+
+/**
+ * `owner/name@branch` → 조각들. `sequenceSpaceLabel`의 역함수다 (CR-055).
+ *
+ * ## 왜 여기 있나
+ *
+ * 이 형식을 만드는 자리가 `sequenceSpaceLabel` 하나이므로 **읽는 자리도 하나여야
+ * 한다.** `sequence_reassign` 잡의 러너와 `sequence_assign` 잡의 러너가 같은
+ * `target` 형식을 받는데 각자 파서를 두면, 한쪽만 고쳐지는 날 두 러너가 같은
+ * 문자열을 다르게 읽고 **오류 없이 다른 시퀀스 공간을 가리킨다.**
+ *
+ * ## 첫 `@`에서 자른다
+ *
+ * 브랜치 이름에는 `@`가 들어갈 수 있다(`release/@next`는 유효한 ref다). 저장소
+ * 소유자·이름에는 들어갈 수 없으므로 **첫 `@`가 경계다** — 마지막 `@`에서 자르면
+ * 그런 브랜치의 이름이 잘린다.
+ *
+ * @returns 형식이 아니면 `null`. 호출부는 그것을 잡의 실패로 옮긴다 — 던지지
+ *   않는 이유는 러너가 개별 잡 실패로 죽으면 큐가 멈추기 때문이다.
+ */
+export function parseSequenceSpaceLabel(label: string): SequenceSpaceParts | null {
+  const at = label.indexOf('@');
+  if (at < 0) return null;
+  const slug = label.slice(0, at);
+  const baseBranch = label.slice(at + 1);
+  if (baseBranch === '') return null;
+  const slash = slug.indexOf('/');
+  if (slash < 0) return null;
+  const owner = slug.slice(0, slash);
+  const name = slug.slice(slash + 1);
+  if (owner === '' || name === '') return null;
+  return { owner, name, baseBranch };
+}

@@ -24,9 +24,9 @@ import type { AuthContext } from './auth/context.js';
 import type { RegistryDeps } from './ops/repositories.js';
 import type { IntegrityDeps } from './ops/sequence-integrity.js';
 import type { ReindexDeps } from './ops/reindex.js';
-import { reindexIndexPort } from '@prs/es';
+import { indexStatsPort, reindexIndexPort } from '@prs/es';
 import { authRepo } from '@prs/db';
-import { createCursorSigner } from './cursor/envelope.js';
+import { MIN_CURSOR_KEY_LENGTH, createCursorSigner } from './cursor/envelope.js';
 
 /** 운영이 자격 증명으로 만든 GHE 접근. 없으면 GHE에 닿는 기능이 서지 않는다. */
 export interface RuntimeGitHub {
@@ -213,8 +213,52 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
         }),
     ...(integrity === undefined ? {} : { integrity }),
     reindex: buildReindexDeps(parts.pool, parts.es),
+    /*
+     * 색인 상태 조회 (WP-040 / API-ADM-004 `GET`, CR-055).
+     *
+     * **세션과 무관하다.** `API-ADM-006`과 같은 갈래의 전역 운영 지표이며 저장소를
+     * 식별하지 않으므로 접근 범위를 산출할 대상이 필요 없다 — `reindex`와 같은
+     * 자리에 선다.
+     */
+    indexStatus: { pool: parts.pool, stats: indexStatsPort(parts.es) },
+    /*
+     * 등록 검토 요청 대기열 (WP-040 / API-ADM-009, CR-055).
+     *
+     * **커서 서명 키가 있을 때만 선다.** 없으면 경로를 달지 않는다 — 서명하지
+     * 못하는 프로세스가 커서를 내면 그것은 위조 가능한 값이다. 조건 없이
+     * 만들면 `createCursorSigner`가 기동 중에 던져 **관리 경로 전체가 뜨지
+     * 못한다**: 이 자원 하나 때문에 저장소 등록·잡 제어까지 잃는 것은 없는
+     * 편보다 나쁘다.
+     *
+     * **커서 서명자는 다른 경로와 같은 키를 쓴다.** 새 시크릿을 만들면 배포가
+     * 관리할 값이 늘고 하나가 빠졌을 때의 실패가 는다.
+     *
+     * `es`를 받지 않는다. 이 자원의 정본은 `repository_registration_request`이고
+     * 순회도 PostgreSQL 키셋이다 — 색인 클라이언트를 넘기면 "이미 있으니까"라는
+     * 이유로 대기열을 색인에서 읽는 최적화가 언젠가 들어온다.
+     */
+    ...(hasCursorKey(parts.config.searchCursorKey)
+      ? {
+          requestQueue: {
+            pool: parts.pool,
+            cursorSigner: createCursorSigner(parts.config.searchCursorKey),
+            log: (entry): void => { parts.log({ ...entry }); },
+          },
+        }
+      : {}),
     log: (entry) => { parts.log({ ...entry }); },
   };
+}
+
+/**
+ * 커서를 서명할 수 있는가.
+ *
+ * `MIN_CURSOR_KEY_LENGTH`를 여기서 다시 세지 않는다 — 길이 판정은
+ * `createCursorSigner`의 것이고, 두 곳에서 세면 한쪽만 고쳐지는 날 서명자가
+ * 던지는 것을 이 검사가 통과시킨다. 여기서 묻는 것은 **값이 있는가** 하나다.
+ */
+function hasCursorKey(key: string | undefined): key is string {
+  return typeof key === 'string' && key.length >= MIN_CURSOR_KEY_LENGTH;
 }
 
 /** 기동 로그·헬스에 실을 기능 가용성. 없는 것을 없다고 말하기 위한 값이다. */
@@ -230,5 +274,9 @@ export function runtimeCapabilities(parts: RuntimeParts): Readonly<Record<string
     /** 감사 기록 조회는 `security_officer` 역할이 필요하고 역할은 세션에만 있다. */
     audit_records: parts.auth !== undefined && parts.searchDeps !== undefined,
     reindex: true,
+    /** 색인 상태 조회는 재색인과 같은 자리에 선다 (API-ADM-004 `GET`). */
+    index_status: true,
+    /** 등록 검토 요청 대기열. 커서 서명 키가 없으면 서지 않는다. */
+    registration_request_queue: hasCursorKey(parts.config.searchCursorKey),
   };
 }

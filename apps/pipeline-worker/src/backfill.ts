@@ -210,7 +210,20 @@ export async function runBackfillJob(
       if (!page.hasMore) break;
     }
 
-    await jobRepo.finishJob(deps.pool, job.job_id, 'completed');
+    /*
+     * **`running`일 때만 옮긴다** (DEV-436 / CR-037, DEV-196의 규율).
+     *
+     * 루프는 페이지 **사이**에서 `isJobRunning`을 보지만, 마지막 페이지를
+     * 처리하는 동안 취소가 들어오면 `!page.hasMore`로 빠져나와 여기 닿는다.
+     * 무방비 `finishJob`은 그때 `cancelled`를 `completed`로 덮어 **취소가
+     * 반영되지도 존중되지도 않는다.** 읽고 나서 쓰는 방식으로는 못 고친다 —
+     * 전이 조건이 `UPDATE`의 `WHERE` 절에 있어야 데이터베이스가 한 번에
+     * 판정한다.
+     *
+     * 러너 넷 중 셋(`link_rebuild`·`reindex`·`sequence_reassign`)은 이미 이
+     * 규율을 따르고 있었고 백필만 남아 있었다.
+     */
+    await finishBackfillIfRunning(deps, job.job_id, 'completed', null);
     deps.log({
       level: 'info',
       message: '백필 완료',
@@ -221,7 +234,7 @@ export async function runBackfillJob(
     return { jobId: job.job_id, processed: cursor.done, failed, outcome: 'completed' };
   } catch (error) {
     const detail = error instanceof GitHubApiError ? error.message : String(error);
-    await jobRepo.finishJob(deps.pool, job.job_id, 'failed', detail.slice(0, 500));
+    await finishBackfillIfRunning(deps, job.job_id, 'failed', detail.slice(0, 500));
     deps.log({ level: 'error', message: '백필 실패', job_id: job.job_id, target: job.target, detail });
     return { jobId: job.job_id, processed: cursor.done, failed, outcome: 'failed' };
   } finally {
@@ -465,6 +478,30 @@ async function tune(deps: BackfillDeps, action: 'relax' | 'restore'): Promise<vo
 }
 
 /** `owner/repo` → `[owner, repo]`. 잡의 `target`이 그 모양이다. */
+/**
+ * 종료 상태를 **`running`일 때만** 쓴다 (DEV-436).
+ *
+ * 옮기지 못했다는 것은 그 사이 운영자가 취소했다는 뜻이다. 그때 덮으면 취소가
+ * 반영되지도 존중되지도 않는다 — 그대로 두고 소리만 낸다. `sequence_reassign`
+ * 러너가 같은 모양의 헬퍼를 갖고 있으며 그것이 선례다.
+ */
+async function finishBackfillIfRunning(
+  deps: BackfillDeps,
+  jobId: number,
+  state: 'completed' | 'failed',
+  error: string | null,
+): Promise<void> {
+  const moved = await jobRepo.finishJobIfRunning(deps.pool, jobId, state, error);
+  if (moved) return;
+  const current = await jobRepo.findJobState(deps.pool, jobId);
+  deps.log({
+    level: 'warn',
+    message: '실행 중 잡의 상태가 이미 바뀌어 있어 종료 상태를 덮지 않았다',
+    job_id: jobId,
+    detail: `요청한 상태 ${state}, 현재 ${current ?? 'missing'}`,
+  });
+}
+
 function splitTarget(target: string): readonly [string, string] {
   const slash = target.indexOf('/');
   if (slash < 0) return [target, ''];
@@ -533,7 +570,7 @@ export function startBackfillRunner(
          * 등록이 해제된 저장소다. **잡을 남겨 두지 않는다** — 활성 잡이
          * 남으면 재등록 시 `job_active_uk`가 새 백필을 막는다.
          */
-        await jobRepo.finishJob(deps.pool, job.job_id, 'failed', '등록되지 않은 저장소');
+        await finishBackfillIfRunning(deps, job.job_id, 'failed', '등록되지 않은 저장소');
         deps.log({
           level: 'warn',
           message: '등록되지 않은 저장소라 잡을 종료한다',

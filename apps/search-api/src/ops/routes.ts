@@ -54,6 +54,7 @@ import {
 import {
   applyJobAction,
   createJob,
+  resolveJobTarget,
   isCreatableGenericJobType,
   isJobAction,
   toJobResponse,
@@ -62,6 +63,17 @@ import {
 } from './jobs.js';
 import { startReindex, type ReindexDeps } from './reindex.js';
 import { listRawEvents, parseRawEventFilter, type RawEventsDeps } from './raw-events.js';
+import { indexStatus, type IndexStatusDeps } from './index-status.js';
+import {
+  dismissRequest,
+  listRequests,
+  parseRequestFilter,
+  parseRequestLimit,
+  parseResolutionNote,
+  toAdminRequestView,
+  type RequestQueueDeps,
+} from './registration-requests.js';
+import { CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope.js';
 import { jobRepo, repositoryRepo } from '@prs/db';
 import {
   confirmationMatches,
@@ -80,6 +92,9 @@ export const JOBS_PATH = '/api/v1/admin/jobs';
 export const SEQUENCE_INTEGRITY_PATH = '/api/v1/admin/sequence-integrity';
 /** API-ADM-004 (WP-035). */
 export const REINDEX_PATH = '/api/v1/admin/reindex';
+
+/** API-ADM-009 등록 검토 요청 대기열 (WP-040 / CR-055). */
+export const REGISTRATION_REQUESTS_ADMIN_PATH = '/api/v1/admin/repository-registration-requests';
 /** API-ADM-008 (WP-036, CR-052). */
 export const RAW_EVENTS_PATH = '/api/v1/admin/raw-events';
 
@@ -132,11 +147,36 @@ export interface OpsRouteOptions extends OpsDeps {
    * 없는 편이 정직하다.
    */
   readonly rawEvents?: RawEventsDeps;
+  /**
+   * 등록 검토 요청 대기열 의존 (API-ADM-009).
+   *
+   * 커서 서명 키가 있어야 순회가 성립한다. 없으면 경로를 달지 않는다 —
+   * 서명하지 못하는 프로세스가 커서를 내면 그것은 위조 가능한 값이다.
+   */
+  readonly requestQueue?: RequestQueueDeps;
+  /**
+   * 색인 상태 조회 의존 (API-ADM-004 `GET`).
+   *
+   * 별칭 통계를 읽는 포트가 있어야 답할 수 있다. 없으면 경로를 달지 않는다 —
+   * 등록해 두고 매번 전부 미확인으로 답하는 것보다 없는 편이 정직하다.
+   */
+  readonly indexStatus?: IndexStatusDeps;
 }
 
 export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions): void {
-  const { adminTokens, auth, loginPath, registry, pipeline, integrity, reindex, rawEvents, ...deps } =
-    options;
+  const {
+    adminTokens,
+    auth,
+    loginPath,
+    registry,
+    pipeline,
+    integrity,
+    reindex,
+    rawEvents,
+    requestQueue,
+    indexStatus: indexStatusDeps,
+    ...deps
+  } = options;
 
   /**
    * 주체를 세우고 `operator` 역할을 확인한다.
@@ -264,6 +304,8 @@ export function registerOpsRoutes(app: FastifyInstance, options: OpsRouteOptions
   if (registry !== undefined) registerRegistryRoutes(app, registry, authorize);
   if (integrity !== undefined) registerIntegrityRoutes(app, integrity, authorize);
   if (reindex !== undefined) registerReindexRoutes(app, reindex, authorize);
+  if (indexStatusDeps !== undefined) registerIndexStatusRoute(app, indexStatusDeps, authorize);
+  if (requestQueue !== undefined) registerRequestQueueRoutes(app, requestQueue, authorize);
 
   if (pipeline !== undefined) {
     app.get(PIPELINE_STATUS_PATH, async (request, reply) => {
@@ -524,6 +566,13 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
           ...result.repository,
           documents_marked: result.documentsMarked,
           backfill_job_id: result.backfillJobId,
+          /*
+           * **종료된 요청은 목록이다** (FR-ING-009 AC-11, CR-055). 개수만 주면
+           * 화면이 어느 요청이 닫혔는지 알 수 없어 대기열을 통째로 다시 읽어야
+           * 한다. ID만 싣는다 — 요청자·사유는 A-002의 대기열이 이미 갖고 있다.
+           */
+          fulfilled_request_ids: result.fulfilledRequests.map((one) => String(one.request_id)),
+          sequence_job_ids: result.sequenceJobIds,
         },
       };
     }),
@@ -577,10 +626,36 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
           `type은 ${CREATABLE_GENERIC_JOB_TYPES.map((one) => `'${one}'`).join(' 또는 ')} 중 하나여야 한다`,
         );
       }
-      const target = body['target'];
-      if (typeof target !== 'string' || !target.includes('/')) {
-        throw new AdminRejected('INVALID_PARAMETER', 'target은 owner/repo 형식이어야 한다');
+      /*
+       * **`target`은 유형마다 다른 재료에서 서버가 만든다** (CR-055).
+       * `reconcile`은 대상이 하나뿐이고 `sequence_assign`은 저장소와 브랜치
+       * 둘을 받는다 — 문자열을 그대로 받으면 서로 다른 시퀀스 공간이 같은
+       * 문자열로 충돌하거나 채번 대상이 아닌 브랜치가 큐에 들어간다.
+       */
+      const resolved = await resolveJobTarget(registry.pool, body['type'], body);
+      if (resolved.kind === 'invalid_parameter') {
+        throw new AdminRejected('INVALID_PARAMETER', resolved.message, resolved.detail);
       }
+      if (resolved.kind === 'unknown_repository') {
+        /*
+         * 여기서도 감사를 남긴다 — 아래 `job.run` 기록은 잡 생성까지 간 요청만
+         * 지나므로, 대상 해석에서 거절된 요청이 흔적 없이 사라지면 "왜 그
+         * 잡이 돌지 않았는가"를 추적할 수 없다 (FR-ADMIN-002 AC-5).
+         */
+        await recordAuditBestEffort(
+          registry.pool,
+          {
+            userId: principalId(principal),
+            action: 'job.run',
+            target: `${body['type']}:${typeof body['repository'] === 'string' ? body['repository'] : String(body['target'])}`,
+            resultCode: 'NOT_FOUND',
+            correlationId,
+          },
+          registry.log,
+        );
+        throw new AdminRejected('NOT_FOUND', '등록되지 않은 저장소다');
+      }
+      const target = resolved.target;
 
       const outcome = await createJob(registry.pool, body['type'], target, principalId(principal));
 
@@ -599,16 +674,12 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
           userId: principalId(principal),
           action: 'job.run',
           target: `${body['type']}:${target}`,
-          resultCode:
-            outcome.kind === 'created' ? 'created' : outcome.kind === 'conflict' ? 'JOB_CONFLICT' : 'NOT_FOUND',
+          resultCode: outcome.kind === 'created' ? 'created' : 'JOB_CONFLICT',
           correlationId,
         },
         registry.log,
       );
 
-      if (outcome.kind === 'unknown_repository') {
-        throw new AdminRejected('NOT_FOUND', '등록되지 않은 저장소다', { target });
-      }
       if (outcome.kind === 'conflict') {
         throw new AdminRejected('JOB_CONFLICT', '같은 대상에 활성 잡이 이미 있다', { target });
       }
@@ -671,7 +742,15 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
         principalId(principal),
         correlationId,
       );
-      return { status: 200, body: updated };
+      /*
+       * **응답 모양은 `POST`와 같다** — 저장소 필드를 펼치고 이번 조작이 만든
+       * 것을 곁들인다. 다른 모양으로 만들면 두 경로를 함께 쓰는 화면이 응답마다
+       * 다르게 읽어야 한다.
+       */
+      return {
+        status: 200,
+        body: { ...updated.repository, sequence_job_ids: updated.sequenceJobIds },
+      };
     }),
   );
 
@@ -916,4 +995,149 @@ function registerIntegrityRoutes(app: FastifyInstance, integrity: IntegrityDeps,
       };
     }),
   );
+}
+
+/**
+ * API-ADM-004 `GET` 색인 상태 (WP-040 / FR-ING-008 AC-7, CR-055).
+ *
+ * 재색인 실행과 **같은 자원**이므로 새 경로가 아니라 같은 경로의 `GET`이다.
+ */
+function registerIndexStatusRoute(
+  app: FastifyInstance,
+  deps: IndexStatusDeps,
+  authorize: Authorize,
+): void {
+  app.get(REINDEX_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    if ((await authorize(request, reply, correlationId)) === null) return reply;
+    return reply.send({ ...(await indexStatus(deps)), correlation_id: correlationId });
+  });
+}
+
+/**
+ * API-ADM-009 등록 검토 요청 조회·종료 (WP-040 / FR-ING-009 AC-11, CR-055).
+ *
+ * **`API-ING-003`과 합치지 않는다.** 그쪽은 일반 사용자가 요청을 남기는 자리이고
+ * 응답은 "기록했다"뿐이다 (AC-10). 한 엔드포인트가 역할에 따라 다른 모양을
+ * 내면 그 분기 하나가 빠지는 날 처리 상태가 요청자에게 새어 나간다 (THR-045).
+ */
+function registerRequestQueueRoutes(
+  app: FastifyInstance,
+  queue: RequestQueueDeps,
+  authorize: Authorize,
+): void {
+  const handle = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    run: (
+      principal: Principal,
+      correlationId: string,
+    ) => Promise<{ readonly status: number; readonly body: unknown }>,
+  ): Promise<FastifyReply> => {
+    const correlationId = randomUUID();
+    const principal = await authorize(request, reply, correlationId);
+    if (principal === null) return reply;
+
+    try {
+      const result = await run(principal, correlationId);
+      return reply.status(result.status).send(result.body);
+    } catch (error) {
+      if (error instanceof AdminRejected) {
+        return fail(reply, ADMIN_ERROR_STATUS[error.code], error.code, error.message, correlationId, error.detail);
+      }
+      /*
+       * 커서 오류 둘을 여기서 가른다. **지문 불일치는 `CURSOR_QUERY_MISMATCH`**
+       * 이며 `CURSOR_INVALID`가 아니다 — 커서 자체는 멀쩡하고 조건이 달라진
+       * 것이므로, 코드를 섞으면 클라이언트가 "첫 페이지로"라는 정해진 처리를
+       * 하지 못한다 (PR #88 리뷰 P2).
+       */
+      if (error instanceof CursorQueryMismatchError) {
+        return fail(reply, 400, 'CURSOR_QUERY_MISMATCH', error.message, correlationId);
+      }
+      if (error instanceof CursorInvalidError) {
+        return fail(reply, 400, 'CURSOR_INVALID', error.message, correlationId);
+      }
+      throw error;
+    }
+  };
+
+  app.get(REGISTRATION_REQUESTS_ADMIN_PATH, async (request, reply) =>
+    handle(request, reply, async (_principal, correlationId) => {
+      const query = (request.query ?? {}) as Record<string, unknown>;
+      const page = await listRequests(
+        queue,
+        parseRequestFilter(query),
+        parseRequestLimit(query['limit']),
+        typeof query['cursor'] === 'string' ? query['cursor'] : undefined,
+      );
+      /*
+       * **`total`을 내지 않는다.** 세려면 전량을 훑어야 하고, 화면이 필요로 하는
+       * 것은 "처리할 것이 남았는가"이며 그것은 `next_cursor`가 답한다.
+       *
+       * **이 조회 자체는 감사 대상이 아니다** — `FR-AUTH-004` AC-1의 정본 표가
+       * 감사 대상을 정하고 운영 목록 조회는 그 표에 없다.
+       */
+      return {
+        status: 200,
+        body: { items: page.items, next_cursor: page.nextCursor, correlation_id: correlationId },
+      };
+    }),
+  );
+
+  app.patch(`${REGISTRATION_REQUESTS_ADMIN_PATH}/:request_id`, async (request, reply) =>
+    handle(request, reply, async (principal, correlationId) => {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      /*
+       * **`dismiss` 하나만 받는다** (CR-055). `approve`를 만들지 않는 이유는
+       * 승인이 성공한 등록 그 자체이기 때문이다 — `API-ADM-001`의 `POST`가
+       * 같은 식별자의 대기 중 요청을 종료한다.
+       */
+      if (body['action'] !== 'dismiss') {
+        throw new AdminRejected('INVALID_PARAMETER', "action은 'dismiss'여야 한다");
+      }
+      const note = parseResolutionNote(body['reason']);
+      const requestId = requestIdOf(request);
+      const outcome = await dismissRequest(queue, requestId, note, principalId(principal));
+
+      /*
+       * **감사에는 `query` 칸에 메모가 간다** (`FR-AUTH-004` AC-1의 정본 표).
+       * `audit_record`의 자유 칸은 `target`과 `query` 둘뿐이라 다른 이름을 쓰면
+       * 저장할 수 없는 필드를 가리키게 된다 (PR #88 리뷰 P1).
+       *
+       * 거절도 남긴다 — "왜 그 요청이 아직 열려 있는가"를 추적하려면 시도가
+       * 있었다는 사실이 있어야 한다.
+       */
+      await recordAuditBestEffort(
+        queue.pool,
+        {
+          userId: principalId(principal),
+          action: 'repository_registration_request.dismiss',
+          target: String(requestId),
+          ...(note === null ? {} : { query: note }),
+          resultCode: outcome.kind === 'ok' ? 'dismissed' : outcome.kind,
+          correlationId,
+        },
+        queue.log,
+      );
+
+      if (outcome.kind === 'not_found') throw new AdminRejected('NOT_FOUND', '등록 검토 요청을 찾을 수 없다');
+      if (outcome.kind === 'invalid_transition') {
+        // 현재 상태를 함께 준다 — 운영자가 왜 안 되는지 알아야 다음을 고른다.
+        throw new AdminRejected('INVALID_PARAMETER', `${outcome.status} 상태의 요청은 종료할 수 없다`, {
+          status: outcome.status,
+        });
+      }
+      return { status: 200, body: toAdminRequestView(outcome.request) };
+    }),
+  );
+}
+
+/** 경로 파라미터의 요청 식별자. 정수가 아니면 400이다. */
+function requestIdOf(request: FastifyRequest): number {
+  const raw = (request.params as { request_id?: string }).request_id;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new AdminRejected('INVALID_PARAMETER', 'request_id는 양의 정수다');
+  }
+  return value;
 }

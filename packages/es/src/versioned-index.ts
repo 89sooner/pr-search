@@ -232,3 +232,54 @@ export function reindexIndexPort(client: Client): {
     isAlias: (value) => isEntityAlias(value),
   };
 }
+
+/** 별칭 하나의 색인 상태. **읽지 못한 값은 `null`이고 `0`으로 채우지 않는다.** */
+export interface AliasIndexStats {
+  readonly currentIndex: string | null;
+  readonly documentCount: number | null;
+  readonly storeSizeBytes: number | null;
+}
+
+/**
+ * 별칭별 색인 상태를 읽는 포트 (API-ADM-004 `GET` / FR-ING-008 AC-7, CR-055).
+ *
+ * `reindexIndexPort`와 같은 자리에 두는 이유도 같다 — API와 CLI가 같은 구현을
+ * 써야 하고, 앱끼리는 서로를 가져올 수 없으므로 패키지가 유일한 자리다.
+ *
+ * **크기를 모르는 것과 인덱스가 빈 것은 다른 사실이다.** 조회에 실패한 값을
+ * `0`으로 채우면 운영자가 재색인이 실패했다고 읽는다. 그래서 값마다 `null`을
+ * 허용하고, 별칭 하나가 실패해도 나머지는 정상 반환한다.
+ */
+export function indexStatsPort(client: Client): {
+  aliases(): readonly string[];
+  stats(alias: string): Promise<AliasIndexStats>;
+} {
+  return {
+    aliases: () => ENTITY_ALIASES,
+    async stats(alias) {
+      let currentIndex: string | null = null;
+      try {
+        currentIndex = await resolveServingIndex(client, alias);
+      } catch {
+        // 별칭이 아직 없거나 둘 이상을 가리킨다. 나머지 값도 읽을 수 없다.
+        return { currentIndex: null, documentCount: null, storeSizeBytes: null };
+      }
+
+      try {
+        const response = await client.indices.stats({ index: currentIndex, metric: ['docs', 'store'] });
+        const stats = response.indices?.[currentIndex]?.primaries;
+        return {
+          currentIndex,
+          documentCount: stats?.docs?.count ?? null,
+          storeSizeBytes: stats?.store?.size_in_bytes ?? null,
+        };
+      } catch {
+        /*
+         * 별칭이 가리키는 인덱스는 알아냈다. **그 사실까지 버리지 않는다** —
+         * 화면은 "어느 인덱스가 서비스 중인가"만으로도 재색인 판단을 한다.
+         */
+        return { currentIndex, documentCount: null, storeSizeBytes: null };
+      }
+    },
+  };
+}

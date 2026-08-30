@@ -81,6 +81,19 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     section: 'ops',
     allowedRoles: ['operator'],
   },
+  /*
+   * A-003 인덱스·잡 운영. `operator` 전용이다 (권한 매트릭스).
+   *
+   * 와이어프레임의 진입 경로가 "운영 > 잡"이고, 경로 규칙은 다른 `ops` 항목과
+   * 같은 형태를 따른다 (CR-055).
+   */
+  {
+    id: 'ops-jobs',
+    label: '잡',
+    href: '/ops/jobs',
+    section: 'ops',
+    allowedRoles: ['operator'],
+  },
   /* A-004 감사 기록. `security_officer` 전용이다 (FR-AUTH-004 AC-5). */
   {
     id: 'ops-audit',

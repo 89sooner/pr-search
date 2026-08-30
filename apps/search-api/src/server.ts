@@ -34,6 +34,8 @@ import type { RegistryDeps } from './ops/repositories.js';
 import type { PipelineStatusDeps } from './ops/pipeline-status.js';
 import type { IntegrityDeps } from './ops/sequence-integrity.js';
 import type { ReindexDeps as OpsReindexDeps } from './ops/reindex.js';
+import type { IndexStatusDeps } from './ops/index-status.js';
+import type { RequestQueueDeps } from './ops/registration-requests.js';
 import type { RawEventsDeps } from './ops/raw-events.js';
 
 export const SERVICE_NAME = 'search-api' as const;
@@ -79,6 +81,20 @@ export interface ServerDeps {
    * 않는다 — 대상을 못 정하는 프로세스가 "재색인을 시작했다"고 답하면 안 된다.
    */
   readonly reindex?: OpsReindexDeps;
+  /**
+   * 색인 상태 조회 의존 (API-ADM-004 `GET`, WP-040 / CR-055).
+   *
+   * 별칭 통계를 읽는 포트가 있어야 답할 수 있다. 없으면 경로를 달지 않는다 —
+   * 등록해 두고 매번 전부 미확인으로 답하는 것보다 없는 편이 정직하다.
+   */
+  readonly indexStatus?: IndexStatusDeps;
+  /**
+   * 등록 검토 요청 대기열 의존 (API-ADM-009, WP-040 / CR-055).
+   *
+   * 커서 서명 키가 있어야 순회가 성립한다. 없으면 경로를 달지 않는다 —
+   * 서명하지 못하는 프로세스가 커서를 내면 그것은 위조 가능한 값이다.
+   */
+  readonly requestQueue?: RequestQueueDeps;
   /**
    * 원본 아카이브 조회 의존 (API-ADM-008, WP-036 / CR-052).
    *
@@ -309,6 +325,8 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
     ...(deps.integrity === undefined ? {} : { integrity: deps.integrity }),
     ...(deps.reindex === undefined ? {} : { reindex: deps.reindex }),
     ...(deps.rawEvents === undefined ? {} : { rawEvents: deps.rawEvents }),
+    ...(deps.indexStatus === undefined ? {} : { indexStatus: deps.indexStatus }),
+    ...(deps.requestQueue === undefined ? {} : { requestQueue: deps.requestQueue }),
   });
   return app;
 }

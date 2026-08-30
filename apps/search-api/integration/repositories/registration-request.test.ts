@@ -293,20 +293,30 @@ describe('입력 검증', () => {
      * **표에 그 값들을 담을 열 자체가 없다.** 열 목록을 실측해서 건다 —
      * `SELECT`가 고른 열만 보면 "안 담겼다"가 아니라 "안 물어봤다"를 재는 것이
      * 되고, 나중에 누가 열을 더해도 이 시험이 통과한다.
+     *
+     * **전문을 걸지 않는다** (WP-040). 마이그레이션 020이 처리 결과 열 넷을
+     * 정당하게 더했고 그때 이 단언이 성질과 무관하게 깨졌다 — 사람은 성질을
+     * 다시 보지 않고 목록만 갱신하며, 그 갱신이 언젠가 금지 열을 함께
+     * 들여보낸다. 무엇이 **없어야 하는가**를 거는 편이 오래간다.
      */
     const columns = await pool.query<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns
         WHERE table_name = 'repository_registration_request'`,
     );
     const names = columns.rows.map((one) => one.column_name).sort();
-    expect(names).toEqual([
-      'created_at',
-      'repository_name',
-      'repository_owner',
-      'request_id',
-      'requested_by',
-    ]);
-    for (const forbidden of ['repository_id', 'org_id', 'visibility', 'sequence_branches']) {
+    // 요청 계약이 요구하는 열은 있다.
+    expect(names).toEqual(
+      expect.arrayContaining(['created_at', 'repository_name', 'repository_owner', 'request_id', 'requested_by']),
+    );
+    // **등록 계약의 필드는 하나도 없다** — 이 요청이 보낸 값 전부를 건다.
+    for (const forbidden of [
+      'repository_id',
+      'org_id',
+      'visibility',
+      'sequence_branches',
+      'mirror_enabled',
+      'backfill',
+    ]) {
       expect(names, `${forbidden} 열이 생기면 등록 계약이 클라이언트 입력으로 열린다`).not.toContain(
         forbidden,
       );

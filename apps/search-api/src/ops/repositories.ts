@@ -12,7 +12,17 @@
  * 조사 이력의 보존이 이 제품의 목적이다.
  */
 
-import { jobRepo, repositoryRepo, withReindexWrite, type Pool, type RepositoryRow } from '@prs/db';
+import {
+  jobRepo,
+  registrationRequestRepo,
+  repositoryRepo,
+  withReindexWrite,
+  withTransaction,
+  type Pool,
+  type RegistrationRequestRow,
+  type RepositoryRow,
+} from '@prs/db';
+import { sequenceSpaceLabel } from '@prs/domain';
 import { recordAuditBestEffort } from '../audit/recorder.js';
 import { MAX_SEQUENCE_BRANCHES } from '@prs/db';
 import { applyRepositoryTeams, markRepositoryArchived, type MarkArchivedResult } from '@prs/es';
@@ -65,6 +75,7 @@ export interface RegistryLogEntry {
   readonly repository?: string;
   readonly actor?: string;
   readonly reason?: string;
+  readonly base_branch?: string;
 }
 
 export interface RegisterInput {
@@ -82,6 +93,16 @@ export interface RegisterResult {
   readonly documentsMarked: number;
   /** 백필 잡을 큐에 넣었으면 잡 식별자. */
   readonly backfillJobId: number | null;
+  /**
+   * 이 등록이 종료시킨 등록 검토 요청들 (FR-ING-009 AC-11).
+   *
+   * **하나가 아니라 목록이다** — 여러 사용자가 같은 저장소를 요청했으면 실제
+   * 등록 하나가 그 전부의 목적을 충족한다. 0건은 정상이다(요청 없이 등록할 수
+   * 있다).
+   */
+  readonly fulfilledRequests: readonly RegistrationRequestRow[];
+  /** 새로 대상이 된 브랜치의 채번 잡 식별자들 (AC-12). */
+  readonly sequenceJobIds: readonly number[];
 }
 
 export interface UnregisterResult {
@@ -203,15 +224,32 @@ export async function registerRepository(
   }
 
   const existing = await repositoryRepo.findRepositoryById(deps.pool, facts.repository_id);
-  await repositoryRepo.upsertRepository(deps.pool, {
-    repository_id: facts.repository_id,
-    owner,
-    name,
-    org_id: facts.org_id,
-    visibility: facts.visibility,
-    sequence_branches: branches,
-    mirror_enabled: input.mirrorEnabled ?? true,
-    status: 'active',
+
+  /*
+   * **정본 쓰기와 요청 종료를 한 트랜잭션에 둔다** (FR-ING-009 AC-11, CR-055).
+   *
+   * 저장소가 `active`인데 그 식별자의 등록 검토 요청이 `pending`으로 남는
+   * 상태를 **성공한 등록 하나가 만들어서는 안 된다.** 둘을 따로 쓰면 그 사이의
+   * 실패가 정확히 그 상태를 남기고, 운영자는 이미 등록된 저장소를 대기열에서
+   * 다시 본다.
+   *
+   * **GHE 조회·팀 동기화·ES 갱신·백필 큐잉은 이 경계 밖이다.** 외부 호출을
+   * 트랜잭션에 담으면 그 호출이 느린 동안 락이 잡혀 있고, GHE 일시 오류가
+   * 정본 쓰기를 통째로 되돌린다 — `assignSequence`가 같은 이유로 커밋 뒤에
+   * Elasticsearch를 만진다.
+   */
+  const fulfilled = await withTransaction(deps.pool, async (client) => {
+    await repositoryRepo.upsertRepository(client, {
+      repository_id: facts.repository_id,
+      owner,
+      name,
+      org_id: facts.org_id,
+      visibility: facts.visibility,
+      sequence_branches: branches,
+      mirror_enabled: input.mirrorEnabled ?? true,
+      status: 'active',
+    });
+    return registrationRequestRepo.fulfillPendingForSlug(client, owner, name, actor);
   });
 
   /*
@@ -230,6 +268,22 @@ export async function registerRepository(
     existing?.status === 'archived' ? (await markDocuments(deps, facts.repository_id, false, correlationId)).total : 0;
 
   const backfillJobId = input.backfill === true ? await enqueueBackfill(deps, owner, name, actor) : null;
+
+  /*
+   * **새로 대상이 된 브랜치의 채번을 요청한다** (FR-ING-009 AC-12, CR-055).
+   *
+   * 백필이 대신하지 않는다 — 백필은 PR 문서를 채우고 채번은 first-parent
+   * 커밋에 서수를 붙이는 별개의 책임이다. 조정 스캔이 다음 주기에 결국
+   * 복구하지만, 그때까지 운영자는 자기가 방금 더한 브랜치의 공간이 비어 있는
+   * 이유를 알 수 없다.
+   */
+  const sequenceJobIds = await enqueueSequenceAssign(
+    deps,
+    owner,
+    name,
+    newBranches(existing?.sequence_branches, branches),
+    actor,
+  );
 
   await recordAuditBestEffort(
     deps.pool,
@@ -255,7 +309,59 @@ export async function registerRepository(
     actor,
   });
 
-  return { repository, created: existing === undefined, documentsMarked, backfillJobId };
+  return {
+    repository,
+    created: existing === undefined,
+    documentsMarked,
+    backfillJobId,
+    fulfilledRequests: fulfilled,
+    sequenceJobIds,
+  };
+}
+
+/**
+ * 이번 변경으로 **새로 대상이 된** 브랜치.
+ *
+ * 빠진 브랜치는 돌려주지 않는다 — 대상 목록에서 빼는 것은 기존 시퀀스를 지우는
+ * 일이 아니고(FR-ING-009 AC-12), 그 커밋들의 서수는 이미 인용된 값이다.
+ */
+function newBranches(before: readonly string[] | undefined, after: readonly string[]): readonly string[] {
+  const had = new Set(before ?? []);
+  return after.filter((branch) => !had.has(branch));
+}
+
+/**
+ * 브랜치마다 `sequence_assign` 잡을 넣는다 (JOB-SEQ-001 / CR-055).
+ *
+ * **`target`은 `API-ADM-002`가 만드는 것과 같은 형식이다** — 러너 하나가 두
+ * 경로의 행을 모두 읽으므로 형식이 갈리면 한쪽을 해석하지 못한다.
+ *
+ * 실패해도 등록·변경을 되돌리지 않는다. 같은 공간에 활성 잡이 있으면
+ * `job_active_uk`가 막는데 그것은 **이미 채번이 예약돼 있다는 뜻**이라 오류가
+ * 아니고, 그 밖의 실패도 조정 스캔이 다음 주기에 복구한다.
+ */
+async function enqueueSequenceAssign(
+  deps: RegistryDeps,
+  owner: string,
+  name: string,
+  branches: readonly string[],
+  actor: string,
+): Promise<readonly number[]> {
+  const ids: number[] = [];
+  for (const baseBranch of branches) {
+    const target = sequenceSpaceLabel(`${owner}/${name}`, baseBranch);
+    try {
+      ids.push(await jobRepo.enqueueJob(deps.pool, 'sequence_assign', target, actor));
+    } catch {
+      deps.log?.({
+        level: 'warn',
+        message: '채번 잡이 이미 큐에 있어 새로 넣지 않았다',
+        repository: `${owner}/${name}`,
+        base_branch: baseBranch,
+      });
+    }
+  }
+  return ids;
 }
 
 /**
@@ -279,13 +385,25 @@ async function enqueueBackfill(
   }
 }
 
+export interface UpdateResult {
+  readonly repository: RepositoryRow;
+  /** 새로 대상이 된 브랜치의 채번 잡 식별자들 (FR-ING-009 AC-12). */
+  readonly sequenceJobIds: readonly number[];
+}
+
 export async function updateRepository(
   deps: RegistryDeps,
   repositoryId: number,
   settings: repositoryRepo.RepositorySettings,
   actor: string,
   correlationId: string,
-): Promise<RepositoryRow> {
+): Promise<UpdateResult> {
+  /*
+   * **바꾸기 전 목록을 먼저 읽는다** (CR-055). 갱신 뒤에 읽으면 무엇이 새로
+   * 들어왔는지 알 수 없고, 그러면 브랜치를 더할 때마다 전부 다시 채번하거나
+   * 아무것도 채번하지 않는 둘 중 하나가 된다.
+   */
+  const before = await repositoryRepo.findRepositoryById(deps.pool, repositoryId);
   const updated = await repositoryRepo.updateRepositorySettings(deps.pool, repositoryId, settings);
   if (updated === undefined) {
     throw new AdminRejected('NOT_FOUND', `등록되지 않은 저장소다: ${String(repositoryId)}`);
@@ -302,7 +420,21 @@ export async function updateRepository(
     },
     deps.log,
   );
-  return updated;
+
+  /*
+   * **감사는 `repository.update` 하나만 남긴다** (CR-054의 규율). 사용자가 누른
+   * 것은 설정 변경 하나이고, 그 결과로 생긴 채번 잡을 `job.run`으로 함께
+   * 기록하면 **같은 행위가 두 번 세어져** 감사 로그에서 실제 실행 횟수를 알 수
+   * 없게 된다. 운영자가 A-003에서 직접 채번을 실행한 경우만 `job.run`이다.
+   */
+  const sequenceJobIds = await enqueueSequenceAssign(
+    deps,
+    updated.owner,
+    updated.name,
+    newBranches(before?.sequence_branches, updated.sequence_branches),
+    actor,
+  );
+  return { repository: updated, sequenceJobIds };
 }
 
 export async function unregisterRepository(

@@ -286,6 +286,27 @@ const NEXT_STATE: Readonly<Record<JobAction, JobState>> = {
   cancel: 'cancelled',
 };
 
+/** 순서가 정해진 액션 목록. 응답의 배열 순서가 흔들리지 않게 한다. */
+const JOB_ACTION_ORDER: readonly JobAction[] = ['pause', 'resume', 'cancel'];
+
+/**
+ * 이 상태에서 수행할 수 있는 제어 동작 (FR-ADMIN-002 AC-7, CR-055).
+ *
+ * **`ALLOWED_FROM`에서 파생한다 — 표를 두 벌 만들지 않는다.** 화면이 상태
+ * 문자열로 가능한 동작을 추론하면 전이 규칙이 서버와 화면 두 곳에 살고, 한쪽만
+ * 넓어지는 날 화면이 서버가 거절할 버튼을 그린다. 그렇다고 서버 안에서 목록을
+ * 따로 적으면 같은 갈라짐이 한 파일 안으로 옮겨 올 뿐이다.
+ *
+ * 종료 상태(`completed`·`failed`·`cancelled`)는 빈 배열이다 — 끝난 잡을
+ * 되살리는 것은 새 잡이지 전이가 아니다.
+ *
+ * **여기서 나오는 것은 상태만 보고 정한 상한이다.** 잡 유형마다 러너가 실제로
+ * 지원하는 범위가 그보다 좁으면 호출부가 더 좁힌다.
+ */
+export function allowedActionsFor(state: JobState): readonly JobAction[] {
+  return JOB_ACTION_ORDER.filter((action) => ALLOWED_FROM[action].includes(state));
+}
+
 /**
  * @returns 전이한 행. 현재 상태에서 불가능한 전이면 `undefined` —
  * 호출 측이 400으로 옮긴다. **조용히 무시하지 않는다**: 운영자가 중단을

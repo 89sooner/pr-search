@@ -40,12 +40,14 @@ describe('QA-A001-10: 운영 그룹은 역할이 있어야 보인다', () => {
     const ids = idsFor('developer', 'operator');
     expect(ids).not.toContain('ops-audit');
     // 나머지 운영 항목은 그대로 본다 — 항목 단위 판정이지 역할 차단이 아니다.
-    expect(ids).toEqual(expect.arrayContaining(['ops-pipeline', 'ops-repositories']));
+    expect(ids).toEqual(expect.arrayContaining(['ops-pipeline', 'ops-repositories', 'ops-jobs']));
   });
 
   it('QA-A004-07: `security_officer`에게 저장소 등록 항목이 렌더링되지 않는다', () => {
     const ids = idsFor('developer', 'security_officer');
     expect(ids).not.toContain('ops-repositories');
+    // A-003도 `operator` 전용이다 (CR-055).
+    expect(ids).not.toContain('ops-jobs');
     // A-001은 CR-052가 연 아카이브 진입점이라 보인다 (DEV-375).
     expect(ids).toContain('ops-pipeline');
   });
@@ -61,6 +63,7 @@ describe('QA-A001-10: 운영 그룹은 역할이 있어야 보인다', () => {
       const ids = idsFor(role);
       expect(ids, role).not.toContain('ops-pipeline');
       expect(ids, role).not.toContain('ops-repositories');
+      expect(ids, role).not.toContain('ops-jobs');
       expect(ids, role).not.toContain('ops-audit');
     }
   });

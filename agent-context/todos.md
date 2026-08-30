@@ -1,5 +1,93 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
+> **최신 기준 (2026-08-30 · CR-055 병합 · WP-040 구현 중)**
+> main `5475249` (PR #88 병합) · main CI `verify`·`integration` 통과
+> **구현 브랜치 `claude/wp-040-operations-console`이 로컬에만 있다** — 커밋 셋(`d877b1b`·`1c41e11`·`35b9ff0`), **push 안 됨, PR 없음**
+> SRS **`baseline v2.15`** · 원장 `review v6.1` · 작업 패키지 `v2.8`
+> **REL-005 3/4.** WP-040은 **진행 중**이며 완료가 아니다 — 백엔드와 판정 계층은 섰고 화면 셋이 남았다
+> open DEV **15건** — 기존 13 + `DEV-433`·`DEV-436`
+> 다음 빈 ID: **CR-056 · DEV-437 · 마이그레이션 021 · C-072** (측정값. 쓰기 전 다시 잰다)
+> 미해결 리뷰 **33건** (pr-search 24 · design-system 9, `DEV-414`). 실측한 수이며 잘림 없음
+
+**이 세션이 배운 것 셋.**
+
+1. **인계 문서의 판정을 실측 없이 믿지 마라.** 이전 팩이 "백엔드는 이미 전부 서 있으므로 WP-040은 사실상 프런트엔드 전용"이라 적었는데 **틀렸다.** 화면이 누르라고 정한 동작 다섯이 정본에서 도달할 곳을 갖고 있지 않았다. 팩은 의도를 복원하지 진실을 복원하지 않는다.
+2. **배포 경계와 실행 경계는 다르다.** 조정 스캔의 직렬화 근거로 "복제본 1개"를 들었는데, 그것은 **프로세스 수**를 제한할 뿐 한 프로세스 안의 독립적인 비동기 루프 둘을 직렬화하지 못한다. 락을 더하는 대신 **루프를 하나로** 만들었다 — 겹칠 수 있는 구조를 만든 뒤 막는 것보다 겹칠 수 없는 구조가 낫다.
+3. **전제가 사라졌다고 결론까지 뒤집지 마라.** `CR-034`(DEV-180)가 `sequence_assign` 잡 행을 거절한 근거는 둘이었다. 러너를 세워 첫 번째("러너가 없다")는 없앴지만 두 번째("영원히 `queued`인 행이 이후의 모든 복구를 막는다")는 그대로라, **수동 실행만 잡 행을 쓰고 조정 스캔의 자동 복구는 계속 버스 이벤트로 간다.**
+
+## A. 지금 당장 — WP-040 화면 셋 (구현 브랜치를 이어받는다)
+
+**브랜치가 로컬에만 있다.** `git checkout claude/wp-040-operations-console`으로 이어받고, 세션 후반의 rate limit을 고려해 **초기 골격이 서면 PR을 먼저 연다** (risks.md의 「GitHub secondary rate limit」).
+
+이미 선 것을 다시 만들지 말 것 — 아래 「WP-040이 깔아 둔 자리」.
+
+남은 작업은 순서대로 다음과 같다.
+
+1. **컴포넌트 아홉** — `C-040 PipelineMetricGrid`, `C-041 DeadLetterTable`, `C-042 ScanResultCard`, `C-043 RepositoryRegistrationForm`, `C-044 JobTable`, `C-045 JobRunForm`, `C-046 IndexStatusPanel`, `C-047 IntegrityReportCard`, `C-071 RegistrationRequestQueue`. 계약은 `pr_search_ui_component_spec.md` v0.10이 정본이다.
+2. **화면 셋** — `apps/web/app/ops/{pipeline,repositories,jobs}/page.tsx`. `apps/web/app/ops/audit/page.tsx`가 구조 선례다(`GuardedPage` + 클라이언트 뷰, `export const dynamic = 'force-dynamic'`).
+3. **통합 시험** — 등록 요청 수명주기, 러너 둘의 도달, 취소 경합. 실 PostgreSQL이 필요하다.
+4. **e2e `FLOW-007`·`FLOW-008`** — 확인 다이얼로그는 **실제 네트워크 호출 수**로 증명한다. 버튼 비활성 스냅숏은 증명이 아니다.
+5. **a11y·대비** — axe 위반 0건.
+6. **변이 시험** — 지시서의 M1~M12. 치환 건수가 `APPLIED (1)`인지 반드시 확인한다.
+7. **원장 갱신** — `WP-040` 상태와 검증 기록, `DEV-436` 종결.
+8. **마이그레이션 020 왕복** — 실 PostgreSQL에서 up/down/up.
+
+### WP-040이 깔아 둔 자리 — 다시 만들지 말 것
+
+- `apps/search-api/src/ops/jobs.ts`의 `resolveJobTarget` — 잡 유형마다 다른 요청 본문을 `target` 하나로 옮기는 **유일한 자리**다. `reconcile`은 대상을 받지 않고 `sequence_assign`은 저장소·브랜치를 받아 서버가 조립한다. 라우트가 문자열을 직접 만들지 않는다.
+- `apps/search-api/src/ops/jobs.ts`의 `allowedActionsForJob` — 상태가 정한 상한을 잡 유형이 더 좁힌다. `reconcile`은 `pause`를 지원하지 않는다. **화면이 이 판정을 다시 하지 않는다.**
+- `packages/db/src/repositories/job.ts`의 `allowedActionsFor` — 전이 표(`ALLOWED_FROM`)에서 파생한다. 표를 두 벌 만들지 않는다.
+- `packages/domain/src/sequence.ts`의 `parseSequenceSpaceLabel` — `sequenceSpaceLabel`의 역함수이며 **첫 `@`에서 자른다**(브랜치 이름에 `@`가 있을 수 있다). 러너마다 파서를 두지 않는다.
+- `apps/search-api/src/ops/registration-request-cursor.ts` — PostgreSQL 키셋. 지문에 접근 범위를 넣지 않는다. **지문 불일치는 `CURSOR_QUERY_MISMATCH`이며 `CURSOR_INVALID`가 아니다.**
+- `apps/search-api/src/ops/repositories.ts`의 `enqueueSequenceAssign`·`newBranches` — 브랜치 추가의 채번 예약. 빠진 브랜치는 돌려주지 않는다.
+- `apps/pipeline-worker/src/reconcile.ts` — 주기와 수동이 **한 루프**다. `runReconcileSweep` 호출 지점이 둘(수동·주기)뿐이며 회귀 시험이 그 수를 센다. **두 번째 루프를 만들지 마라.**
+- `apps/web/lib/{ops-jobs,ops-repositories,ops-pipeline}.ts` — 화면 판정의 전부. 컴포넌트 안에 판정을 흩뿌리지 않는다.
+
+## B. 그 뒤 — DEV-414 미해결 리뷰 33건
+
+WP-040이 병합되면 REL-005가 4/4이며, 그 다음이 이것이다. pr-search 24건과 design-system 9건을 HEAD와 대조해 하나씩 실측한다. 이미 정정된 것은 근거와 함께 답변하고 resolve하며, 아직 고쳐지지 않은 지적은 새 DEV로 등록한다. **일괄 resolve하지 않는다.**
+
+계수 명령 전문은 `commands.md`의 「미해결 리뷰를 세는 법」에 있다.
+
+## C. 그 뒤 — REL-006 (WP-041 → WP-042 → WP-044)
+
+`WP-041`(안전 구간 표식)과 `WP-044`(내보내기)가 감사 액션 `safe_marker.set`·`export.create`를 각자 활성으로 옮긴다. **WP-040이 미리 활성화하지 않았다.** `WP-043`은 `ACC-06`이 NOT RUN이라 착수하지 않는다.
+
+## D. 배포에서 해야 할 것
+
+- **마이그레이션 020** (신규, CR-055) — 등록 검토 요청의 처리 결과 열. `pnpm run db:migrate`
+- `ADMIN_DATABASE_URL` (WP-039) — 없으면 `JOB-AUD-001`만 서지 않는다
+- 마이그레이션 018·019 (WP-039), 017 (WP-037)
+- `pnpm es:apply-mappings` (`changed_lines` 백필), `SEARCH_CURSOR_HMAC_KEY`, `pnpm es:reindex`
+- Prometheus 경보 규칙 적용은 여전히 NOT RUN
+
+**새 환경 변수는 없다** — `API-ADM-009`의 커서 서명자가 기존 `SEARCH_CURSOR_HMAC_KEY`를 그대로 쓴다.
+
+## E. 별도 CR 둘 — 남은 미배포 역할 (변화 없음)
+
+| DEV | 역할 | 왜 아직 | 소관 |
+| --- | --- | --- | --- |
+| 305 | release (JOB-REL-007) | 미러 PVC 배치 필요 (DEV-143) | WP-024 |
+| 304 | backfill (JOB-ING-004) | enrich 파드 역할 구성 판단 | WP-019 |
+
+## F. 릴리스 게이트 4·5·6 (변화 없음)
+
+Gate 4 보안(일부 가능) · Gate 5 성능(불가 — 1,000만 문서 합성 데이터셋 부재) · Gate 6 운영(불가 — 실제 K8s 없음). `ACC-06`은 NOT RUN이고 `W-007`·`WP-043`은 NOT ACTIVATED다.
+
+## G. 미뤄 둔 항목
+
+- `DEV-433` **open** — `API-ADM-001`·`API-ADM-003` 목록의 오프셋이 공통 원칙 7·ADR-010과 어긋난다. **CR-055가 걷어 내지 않고 등재만 했다** — 두 API의 소비자를 전부 다시 세는 별도 작업이다. 신설한 `API-ADM-009`에는 처음부터 오프셋이 없다.
+- `DEV-436` **open** — 백필 러너의 취소 경합. **코드는 고쳤으나 원장 상태를 닫지 않았다.** 구현 PR 병합 시 닫는다.
+- `DEV-427` **open** — CI 통합의 `link-rebuild` 되먹임 시험. 이번 세션에서 재현되지 않았으나 **그것을 해소로 적지 않는다.**
+- `DEV-395` 자기 리뷰 소급 · `DEV-399` 원장 5장 파이프 이스케이프 회귀 · `DEV-058` test:perf(Gate 5) · `DEV-061` direct_push — 변화 없음
+- 문서 검증기 `--strict` 자기참조 오탐 — 문서를 고쳐 게이트를 통과시키지 않는다. 판정은 언제나 main 대비 diff다
+
+---
+
+# 이전 세션 기록 (보존)
+
+## (2026-08-29 3차 · CR-054 · WP-039 종료 시점)
+
 > **최신 기준 (2026-08-29 3차 · CR-054 · WP-039 종료 시점)**
 > main `6bdf395` · main CI `verify`·`integration` 통과
 > SRS **`baseline v2.14`** · 원장 `review v6.0` · 작업 패키지 `v2.7`

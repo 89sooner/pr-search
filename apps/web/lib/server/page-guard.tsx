@@ -30,6 +30,20 @@ import { Shell } from '../../components/Shell';
 import { resolveWebConfig } from './config';
 import { sessionStore } from './session';
 
+/** 관문이 화면에 넘기는 세션 정보. */
+export interface GuardedPageContext {
+  readonly roles: readonly Role[];
+  /**
+   * 이 배포에 인증이 구성되어 있는가.
+   *
+   * **`false`일 때 빈 `roles`를 "권한 없음"으로 읽으면 안 된다** — 그것은
+   * 역할을 알 수 없다는 뜻이지 자격이 없다는 뜻이 아니다. 이 저장소의 관행은
+   * "인증 없이도 화면은 서고 조회만 프록시가 401로 막는다"이며, 역할로 요청
+   * 여부를 가르는 화면(`A-001`)이 그 관행에서 혼자 벗어나지 않게 한다.
+   */
+  readonly authEnabled: boolean;
+}
+
 export interface GuardedPageProps {
   /** 셸의 제목. 라우트 전환 알림이 이 값을 읽는다 (QA-COMMON-14). */
   readonly title: string;
@@ -38,7 +52,16 @@ export interface GuardedPageProps {
    * 보내면 사용자가 하던 조사를 잃는다 (FLOW-000 3단계, QA-COMMON-18).
    */
   readonly returnTo: string;
-  readonly children: ReactNode;
+  /**
+   * 화면 본문.
+   *
+   * **함수로 주면 세션의 역할을 받는다** (WP-040 / CR-052 DEV-375). `A-001`은
+   * `security_officer`에게 아카이브 섹션만 열고 `operator` 전용 조회를
+   * **보내지도 않아야** 하는데, 그 판정을 클라이언트에서 하려면 역할을 알아야
+   * 한다. 라우트가 세션을 직접 읽으면 관문이 둘이 되므로 관문이 넘긴다 —
+   * 세션에 관한 결정은 여기 하나에 모여 있다.
+   */
+  readonly children: ReactNode | ((context: GuardedPageContext) => ReactNode);
   /**
    * 인증이 **구성되지 않은** 배포에서 대신 그릴 것.
    *
@@ -65,6 +88,10 @@ export async function GuardedPage({
 }: GuardedPageProps): Promise<ReactNode> {
   const config = resolveWebConfig();
 
+  /** 본문을 편다. 함수면 세션 정보를 넘긴다. */
+  const render = (roles: readonly Role[]): ReactNode =>
+    typeof children === 'function' ? children({ roles, authEnabled: config.authEnabled }) : children;
+
   /*
    * 로그인 경로가 없는데 리다이렉트하면 **무한 루프**가 된다 — WP-012가
    * `search-api`에서 같은 판단을 한 것과 같은 이유다.
@@ -72,7 +99,7 @@ export async function GuardedPage({
   if (!config.authEnabled) {
     return (
       <Shell roles={[]} user={null} title={title}>
-        {whenAuthDisabled ?? children}
+        {whenAuthDisabled ?? render([])}
       </Shell>
     );
   }
@@ -85,13 +112,10 @@ export async function GuardedPage({
   }
 
   const { session } = loaded;
+  const roles = session.roles as readonly Role[];
   return (
-    <Shell
-      roles={session.roles as readonly Role[]}
-      user={{ login: session.login, email: session.email }}
-      title={title}
-    >
-      {children}
+    <Shell roles={roles} user={{ login: session.login, email: session.email }} title={title}>
+      {render(roles)}
     </Shell>
   );
 }
