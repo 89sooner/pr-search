@@ -11,7 +11,7 @@
  */
 
 import type { estypes } from '@elastic/elasticsearch';
-import { replaceEquality, replaceNumericRange, serializeQuery, type QueryAst } from '@prs/query';
+import { intersectNumericRange, replaceEquality, serializeQuery, type QueryAst } from '@prs/query';
 import {
   DEFAULT_PERCENTILES,
   DISTRIBUTION_BUCKETS,
@@ -71,9 +71,10 @@ export function drillDownQuery(base: QueryAst, key: GroupKey, value: string): st
  * 문자열을 받고, 실행 결과가 그 구간의 근거가 아니라 전체가 된다 — 사용자는
  * 분포에서 본 수와 목록의 수가 다른 이유를 알 수 없다.
  *
- * 같은 키의 범위가 기준 질의에 이미 있으면 **갈아 끼운다.** 겹쳐 두면 둘을
- * 모두 만족하는 문서만 남아 그 수가 또 달라진다 — 사용자가 고른 것은 이
- * 구간이다.
+ * 같은 키의 범위가 기준 질의에 이미 있으면 **교차시킨다** (PR #95 리뷰 P1).
+ * 집계는 이미 그 교집합을 셌으므로 갈아 끼우면 드릴다운이 자기가 센 구간보다
+ * 넓어져 무관한 문서를 함께 돌려준다 — `changed_files:900..1000`을 건 분포의
+ * `100+` 버킷이 `101..2147483647`로 가는 것이 그 예다.
  */
 export function distributionDrillDown(
   base: QueryAst,
@@ -81,7 +82,7 @@ export function distributionDrillDown(
   spec: DistributionBucketSpec,
 ): string {
   const withKind = replaceEquality(base, 'kind', 'pull_request');
-  const ranged = replaceNumericRange(
+  const ranged = intersectNumericRange(
     withKind,
     DIMENSION_QUERY_KEYS[dimension],
     spec.from,

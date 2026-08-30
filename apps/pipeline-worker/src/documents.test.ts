@@ -317,21 +317,67 @@ describe('**변경 규모를 모르면 값을 쓰지 않는다** (CR-056, DEV-45
    */
   const SIZE_FIELDS = ['changed_files_count', 'additions', 'deletions', 'changed_lines'] as const;
 
-  it('보강이 끝나지 않았고 파일 목록도 비었으면 넷 다 없다', () => {
+  const filesFailed = { component: 'files', kind: 'http_500', message: 'boom' } as const;
+
+  it('**파일 보강이 실패하면 넷 다 없다** — 빈 목록이 0을 뜻하지 않는다', () => {
     const doc = buildPullRequestDocument(
-      source(enriched({ pull_request: null, changed_files: [], enrichment_pending: true })),
+      source(
+        enriched({
+          pull_request: null,
+          changed_files: [],
+          enrichment_pending: true,
+          enrichment_errors: [filesFailed],
+        }),
+      ),
     ).doc;
     for (const field of SIZE_FIELDS) {
       expect(doc, `${field}가 남아 있다`).not.toHaveProperty(field);
     }
   });
 
-  it('**파일 목록을 받았으면 그 수는 사실이다** — 일부만 아는 것은 모름이 아니다', () => {
-    const doc = buildPullRequestDocument(
-      source(enriched({ pull_request: null, enrichment_pending: true })),
-    ).doc;
-    expect(doc['changed_files_count']).toBe(2);
-    expect(doc['changed_lines']).toBe(42);
+  it('**옛 값을 실제로 지운다** — 싣지 않는 것만으로는 남는다 (PR #95 리뷰 P1)', () => {
+    /*
+     * 조건부 업서트는 `params.doc`에 실린 키만 대입한다. 이미 색인된 수가
+     * 그대로 남으면 그 PR은 계속 숫자 구간에 머문다.
+     */
+    const request = buildPullRequestDocument(
+      source(
+        enriched({
+          pull_request: null,
+          changed_files: [],
+          enrichment_pending: true,
+          enrichment_errors: [filesFailed],
+        }),
+      ),
+    );
+    expect(request.remove).toEqual([...SIZE_FIELDS]);
+  });
+
+  it('**파일 보강이 성공했으면 다른 실패는 규모를 건드리지 않는다** (PR #95 리뷰 P2)', () => {
+    // `enrichment_pending`은 네 구성 요소 중 하나만 실패해도 참이다. 리뷰 조회가
+    // 실패했다고 실제로 받은 파일 목록을 버리면 아는 것을 잃는다.
+    const request = buildPullRequestDocument(
+      source(
+        enriched({
+          pull_request: null,
+          enrichment_pending: true,
+          enrichment_errors: [{ component: 'reviews', kind: 'http_500', message: 'boom' }],
+        }),
+      ),
+    );
+    expect(request.doc['changed_files_count']).toBe(2);
+    expect(request.doc['changed_lines']).toBe(42);
+    expect(request.remove).toBeUndefined();
+  });
+
+  it('**파일이 비었어도 그 조회가 성공했으면 0은 사실이다**', () => {
+    const request = buildPullRequestDocument(
+      source(enriched({ changed_files: [], enrichment_pending: true, enrichment_errors: [
+        { component: 'commits', kind: 'http_500', message: 'boom' },
+      ] })),
+    );
+    expect(request.doc['changed_files_count']).toBe(0);
+    expect(request.remove).toBeUndefined();
   });
 
   it('**보강이 끝난 0은 그대로 쓴다** — 하나도 바꾸지 않은 PR은 실재한다', () => {

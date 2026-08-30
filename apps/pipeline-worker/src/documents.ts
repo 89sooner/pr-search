@@ -142,6 +142,13 @@ export function buildPullRequestDocument(source: ProjectionSource): UpsertReques
   const pr = enriched.pull_request;
   const files = enriched.changed_files;
   const reviewedAt = firstReviewAt(enriched.reviews, pr?.author);
+  /**
+   * 파일 보강이 실패했는가 (CR-056, DEV-450 / PR #95 리뷰 P2).
+   *
+   * 실패했으면 `changed_files`가 비어 있어도 그것은 **0이 아니라 모름**이다.
+   * 성공했다면 빈 목록은 사실이다.
+   */
+  const filesUnknown = enriched.enrichment_errors.some((error) => error.component === 'files');
 
   const doc: Fields = {
     document_version: source.documentVersion,
@@ -161,17 +168,18 @@ export function buildPullRequestDocument(source: ProjectionSource): UpsertReques
      * 같은 판정을 두 곳에 두는 일이고, 그 둘이 어긋나는 날 화면이 조용히
      * 거짓을 말한다.
      *
-     * **가져온 파일 목록이 있으면 그 수는 사실이다.** 보강은 PR 본문·커밋·
-     * 리뷰·파일을 각각 시도하므로 일부만 실패할 수 있고, 그때 실제로 받은
-     * 파일 둘을 "모름"으로 버리면 아는 것을 잃는다. 모름은 **보강이 끝나지
-     * 않았고 파일 목록도 비어 있을 때**다.
+     * **판정 재료는 파일 보강의 결과다** (PR #95 리뷰 P2). `enrichment_pending`은
+     * 네 구성 요소(PR 본문·커밋·파일·리뷰) 중 **하나라도** 실패하면 참이므로,
+     * 그것으로 판정하면 리뷰 조회만 실패한 PR의 **진짜 빈 목록**까지 모름으로
+     * 버린다. `enrichment_errors`가 실패한 구성 요소를 그대로 담고 있으니
+     * 파일 쪽만 본다.
      *
      * 보강이 끝난 문서의 0은 그대로 쓴다. **파일을 하나도 바꾸지 않은 PR은
      * 실재하고, 그것은 모르는 것이 아니다.**
      *
      * 절삭됐다면 이 수는 "가져온 만큼"이다. `files_truncated`가 그 사실을 말한다.
      */
-    ...(enriched.enrichment_pending && files.length === 0
+    ...(filesUnknown
       ? {}
       : {
           changed_files_count: files.length,
@@ -229,6 +237,16 @@ export function buildPullRequestDocument(source: ProjectionSource): UpsertReques
     id: pullRequestDocId(repository.repository_id, enriched.pr_number),
     routing: String(repository.repository_id),
     doc: doc as Fields & { document_version: number },
+    /*
+     * 모르게 됐으면 **옛 값을 지운다** (PR #95 리뷰 P1).
+     *
+     * 필드를 싣지 않는 것만으로는 부족하다 — 조건부 대입은 실린 키만 건드리므로
+     * 이미 색인된 수가 그대로 남고, 그 PR은 계속 숫자 구간에 머문다. **부재로
+     * 판정하는 필드는 부재를 실제로 만들 수 있어야 한다.**
+     */
+    ...(filesUnknown
+      ? { remove: ['changed_files_count', 'additions', 'deletions', 'changed_lines'] }
+      : {}),
     createOnly: {
       // 관계 파생은 WP-029의 일이다. 투영은 "아직"이라고만 적고 값은 건드리지
       // 않는다 — `doc`에 넣으면 투영이 돌 때마다 WP-029의 결과를 되돌린다.

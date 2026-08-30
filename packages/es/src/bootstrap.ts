@@ -158,6 +158,52 @@ export async function backfillDerivedFields(client: Client): Promise<void> {
     // 인덱스가 아직 없을 수 있다 (첫 부트스트랩).
     ignore_unavailable: true,
   });
+
+  await clearUnknownSizes(client);
+}
+
+/**
+ * 모르는 변경 규모를 **0에서 부재로 되돌린다** (CR-056 DEV-450 / PR #95 리뷰 P1).
+ *
+ * `CR-056` 전의 투영은 파일 목록을 받지 못한 PR에도 `changed_files_count: 0`을
+ * 썼다. 새 투영은 그 자리를 비우지만 **이미 색인된 문서는 그대로 남고**, 그 PR은
+ * 계속 숫자 구간에 머문다 — 화면이 모름을 "0줄 바꿨다"는 사실 주장으로 바꿔
+ * 말하는 상태가 배포 뒤에도 이어진다.
+ *
+ * ## 왜 조건이 이것뿐인가
+ *
+ * 판정의 정확한 재료는 `enrichment_errors`의 `files` 항목인데 **그 필드는 색인에
+ * 없다.** 색인이 아는 것은 `enrichment_pending`과 수 자체뿐이라, 보강이 끝나지
+ * 않았고 파일을 하나도 세지 못한 문서를 지운다.
+ *
+ * **이 조건은 과잉이다** — 파일 조회가 성공했고 실제로 0개인 PR도 함께 걸린다.
+ * 그쪽을 택한 이유는 그 PR이 어차피 `enrichment_pending`이라 재투영 대상이고,
+ * 백필·조정 스캔이 다시 돌면 정확한 0이 되돌아오기 때문이다. **그 사이 모른다고
+ * 말하는 것이 0이라고 잘못 말하는 것보다 안전하다.**
+ */
+export async function clearUnknownSizes(client: Client): Promise<void> {
+  await client.updateByQuery({
+    index: 'prs-pull-requests',
+    query: {
+      bool: {
+        filter: [
+          { term: { enrichment_pending: true } },
+          { term: { changed_files_count: 0 } },
+        ],
+      },
+    },
+    script: {
+      source: [
+        "for (def k : ['changed_files_count', 'additions', 'deletions', 'changed_lines']) {",
+        '  if (ctx._source.containsKey(k)) { ctx._source.remove(k); }',
+        '}',
+      ].join('\n'),
+      lang: 'painless',
+    },
+    conflicts: 'proceed',
+    refresh: true,
+    ignore_unavailable: true,
+  });
 }
 
 /**

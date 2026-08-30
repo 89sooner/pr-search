@@ -219,15 +219,31 @@ describe('분포 (FR-STAT-005)', () => {
     );
   });
 
-  it('기준 질의에 같은 범위가 있으면 갈아 끼운다 — 겹치면 그 수가 또 달라진다', () => {
-    const rows = toDistributionsOutcome(distributionAggs({ '2-5': 4 }, 0), {
+  it('**기준 질의에 같은 범위가 있으면 교차시킨다** (PR #95 리뷰 P1)', () => {
+    /*
+     * 집계는 이미 그 교집합을 셌다. 갈아 끼우면 드릴다운이 자기가 센 구간보다
+     * 넓어져 무관한 문서를 함께 돌려준다 — `900..1000`을 건 분포의 `100+`
+     * 버킷이 `101..2147483647`로 가는 것이 그 예다.
+     */
+    const rows = toDistributionsOutcome(distributionAggs({ '100+': 4 }, 0), {
       ast: parseQuery('changed_files:900..1000'),
       dimension: 'changed_files',
       total: 4,
     });
+    const query = rows.find((one) => one.key === '100+')?.drill_down_query ?? '';
+    expect(query).toContain('changed_files:900..1000');
+    expect(query).not.toContain('2147483647');
+  });
+
+  it('교집합이 비면 빈 범위를 그대로 싣는다 — 조건을 빼면 전체로 넓어진다', () => {
+    const rows = toDistributionsOutcome(distributionAggs({}, 0), {
+      ast: parseQuery('changed_files:900..1000'),
+      dimension: 'changed_files',
+      total: 0,
+    });
+    // `2-5`와 `900..1000`은 겹치지 않는다. 그 구간의 문서는 실제로 0건이다.
     const query = rows.find((one) => one.key === '2-5')?.drill_down_query ?? '';
-    expect(query).toContain('changed_files:2..5');
-    expect(query).not.toContain('900..1000');
+    expect(query).toContain('changed_files:900..5');
   });
 });
 
