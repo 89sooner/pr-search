@@ -1063,3 +1063,53 @@
 ## 다음
 
 `DEV-414` 미해결 리뷰 31건 대조. 그 다음이 `REL-006`(`WP-041` → `WP-042` → `WP-044`)이며 `WP-043`은 착수하지 않는다. **GitHub Actions 결제 문제가 풀리기 전까지 CI는 판정 근거가 되지 못한다.**
+
+---
+
+# 2026-08-31 세션이 만든 것 (CR-056 · DEV-414 청산)
+
+## 읽는 순서가 바뀐 문서
+
+- `docs/10_requirements/srs_final.md` — **`baseline v2.16`** (CR-056). `FR-STAT-005` AC-1·2·4·5와 `FR-SRCH-005` AC-1
+- `docs/40_delivery/pr_search_implementation_traceability.md` — `review v6.7`. 6.52.5(PR #91 리뷰) · 6.53(CR-056) · 6.53.1(PR #95 리뷰) · **6.54(DEV-414 종결)**, `DEV-443`~`457`
+- `docs/00_governance/change_control.md` — `CR-056` 행과 반영 내역
+- `docs/40_delivery/pr_search_work_packages.md` — `v2.10`. **`WP-069` 신설**, `WP-040` done
+
+## 고친 소스 (pr-search)
+
+| 경로 | 무엇 |
+| --- | --- |
+| `apps/pipeline-worker/src/reconcile.ts` | 취소 확인 지점 셋 — 페이지 앞·되돌리기 앞·**후속 단계 앞** (DEV-443·448) |
+| `apps/search-api/src/ops/jobs.ts` | `conflict.jobId: number` — `null` 제거, 승자 없으면 재시도 (DEV-444) |
+| `packages/query/src/keys.ts` | `changed_files`·`changed_lines` 범위 키 (DEV-451) |
+| `packages/query/src/serialize.ts` | `intersectNumericRange` — 갈아 끼우지 않고 **교차**한다 (DEV-455) |
+| `packages/es/src/query-builder.ts` | 두 키의 필드 매핑 |
+| `packages/es/src/upsert.ts` | `UpsertRequest.remove` — 부재를 실제로 만든다 (DEV-454) |
+| `packages/es/src/bootstrap.ts` | `clearUnknownSizes` — 기존 색인 소급 (DEV-456) |
+| `apps/search-api/src/analytics/types.ts` | `0` 구간, `DIMENSION_QUERY_KEYS`, `RANGE_UPPER_BOUND` (DEV-449) |
+| `apps/search-api/src/analytics/aggregations.ts` | 구간별 드릴다운 (DEV-451·455) |
+| `apps/pipeline-worker/src/documents.ts` | `filesUnknown` — 판정 재료는 `enrichment_errors`의 `files` (DEV-450·457) |
+
+## 고친 소스 (design-system)
+
+| 경로 | 무엇 |
+| --- | --- |
+| `packages/react/src/form.tsx` | `SelectRoot` 래퍼 — `FieldContext.required`를 Radix까지, 반환 `ReactElement` |
+| `packages/react/src/action.tsx` | `IconButton`이 아이콘을 `iconStart`로 |
+| `packages/tokens/src/contrast-pairs.ts` | `ForbiddenPair.usages`, `FP-002`를 `body`로 |
+| `packages/tokens/src/contrast/check.ts` | `assertNotForbidden`이 `pair.usage`를 본다 |
+| `packages/tokens/src/lint/rules.ts` | `rem`·`px`·`ms`가 선행 점 소수를 잡는다 |
+| `scripts/check-release-tags.mjs` | 태그가 릴리스 HEAD를 가리켜야 한다 |
+| `.github/workflows/release.yml` | 버전 커밋이 소비한 범위를 제외한다 |
+| `docs/00_governance/change_control.md` | `CR-035`에 사용자 승인 기록 |
+| `docs/20_derived_ui_specs/conductor_design_system_tokens.md` | `v0.10`. `neutralEnd` 산문 일곱 자리 |
+
+## 손대면 안 되는 것 (갱신)
+
+- `intersectNumericRange` — 드릴다운은 기준 범위와 **교차**한다. 갈아 끼우면 자기가 센 구간보다 넓어진다
+- `filesUnknown` — 모름의 판정 재료는 `enrichment_errors`의 `files` 하나다
+- `UpsertRequest.remove` — 부재로 판정하는 필드는 부재를 만들 수 있어야 한다
+- `reconcile.ts`의 확인 지점 **셋** — 루프 안에만 두면 마지막 단위 뒤를 놓친다
+- `CreateJobOutcome.conflict.jobId: number` — `null`을 되살리지 마라
+- design-system `SelectRoot`의 반환 타입 `ReactElement`
+- design-system `check-release-tags.mjs`의 **불변식** — 입력 목록으로 되돌리지 마라
