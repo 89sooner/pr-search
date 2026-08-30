@@ -20,6 +20,7 @@ import {
 } from '@prs/authz';
 import { applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions } from '@prs/es';
 import { authRepo, repositoryRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
+import { QUERY_KEYS } from '@prs/query';
 import type { Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { ANALYTICS_BASE } from '../../src/analytics/routes.js';
@@ -654,7 +655,7 @@ describe('분포 (API-STAT-004)', () => {
     });
     expect(status).toBe(200);
     expect(rowsOf(body).map((one) => one.key)).toEqual([
-      '1', '2-5', '6-20', '21-100', '100+', 'unknown',
+      '0', '1', '2-5', '6-20', '21-100', '100+', 'unknown',
     ]);
     // pr:1은 파일 1개, pr:2는 4개, pr:3은 값이 없다.
     const one = rowsOf(body).find((one) => one.key === '1');
@@ -757,7 +758,12 @@ describe('인증과 문법 (공통)', () => {
     const { status, body } = await post('/groups', { query: 'assignee:kim', group_by: 'author' });
     expect(status).toBe(400);
     expect(body.error?.code).toBe('QUERY_SYNTAX_ERROR');
-    expect(body.error?.detail?.supported_keys).toHaveLength(17);
+    /*
+     * **개수를 걸지 않는다** (CR-054·CR-056의 교훈). 키가 늘 때마다 그 수가
+     * 낡고, 다음 사람은 무엇이 늘었는지 모른 채 숫자만 고친다. 재야 하는 성질은
+     * "파서가 아는 목록을 그대로 돌려준다"이며 그것은 정본과의 일치다.
+     */
+    expect(body.error?.detail?.supported_keys).toEqual([...QUERY_KEYS]);
   });
 
   it('범위 전용 키의 스칼라도 400이다 (DEV-364)', async () => {

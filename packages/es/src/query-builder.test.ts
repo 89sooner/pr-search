@@ -466,3 +466,34 @@ describe('전문 검색 (WP-032 / FR-SRCH-011, CR-043 DEV-283)', () => {
     expect(buildQuery({ filters: [], text: '' }).query).toEqual({ match_all: {} });
   });
 });
+
+describe('변경 규모 범위 (CR-056, DEV-451)', () => {
+  /*
+   * 분포 구간의 드릴다운이 이 조건으로 그 구간을 가리킨다. `seq`와 달리
+   * 시퀀스 공간을 지목할 필요가 없다 — 변경 규모는 저장소를 건너 비교해도
+   * 뜻이 유지되는 값이다.
+   */
+  it('`changed_files`는 `changed_files_count`를 본다', () => {
+    expect(filtersOf('changed_files:2..5')).toEqual([
+      { range: { changed_files_count: { gte: 2, lte: 5 } } },
+    ]);
+  });
+
+  it('`changed_lines`는 사전 계산된 합을 본다 — 조회 시점에 더하지 않는다', () => {
+    expect(filtersOf('changed_lines:51..200')).toEqual([
+      { range: { changed_lines: { gte: 51, lte: 200 } } },
+    ]);
+  });
+
+  it('**공간 지목을 요구하지 않는다** — `repo`·`base` 없이도 선다', () => {
+    // `seq`는 하나의 시퀀스 공간 안에서만 뜻이 있어 AC-7이 지목을 강제한다.
+    // 변경 규모에는 그 제약이 없으며, 있다고 착각하면 분포 드릴다운이 서지 못한다.
+    expect(() => filtersOf('changed_files:0..0')).not.toThrow();
+  });
+
+  it('양끝을 포함한다 — `0..0`은 0인 문서를 찾는다', () => {
+    expect(filtersOf('changed_files:0..0')).toEqual([
+      { range: { changed_files_count: { gte: 0, lte: 0 } } },
+    ]);
+  });
+});

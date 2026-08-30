@@ -161,6 +161,90 @@ describe('분포 (FR-STAT-005)', () => {
     // 위로 열린 구간에는 `to`가 없다.
     expect(ranges.find((one) => one.key === '100+')).toEqual({ key: '100+', from: 101 });
   });
+
+  it('**`0` 구간이 있다** — 0인 문서가 어디에도 없으면 집계에서 사라진다 (CR-056, DEV-449)', () => {
+    for (const dimension of ['changed_files', 'changed_lines'] as const) {
+      const aggs = buildDistributionsAggs(dimension);
+      const ranges = (aggs['ranges'] as { range: { ranges: { key: string; from: number; to?: number }[] } })
+        .range.ranges;
+      // ES의 `to`는 제외이므로 0만 담는 구간의 `to`는 1이다.
+      expect(ranges.find((one) => one.key === '0'), `${dimension}에 0 구간이 없다`).toMatchObject({
+        from: 0,
+        to: 1,
+      });
+    }
+  });
+
+  it('**0을 첫 구간에 흡수하지 않는다** — 하나도 바꾸지 않음과 하나 바꿈은 다른 사실이다', () => {
+    const ranges = (
+      buildDistributionsAggs('changed_files') as {
+        ranges: { range: { ranges: { key: string; from: number }[] } };
+      }
+    ).ranges.range.ranges;
+    expect(ranges.find((one) => one.key === '1')?.from).toBe(1);
+  });
+
+  it('**구간마다 그 구간을 거는 질의를 준다** (AC-4, CR-056 DEV-451)', () => {
+    const rows = toDistributionsOutcome(distributionAggs({ '0': 1, '2-5': 7 }, 0), {
+      ast: parseQuery('org:acme'),
+      dimension: 'changed_files',
+      total: 8,
+    });
+
+    expect(rows.find((one) => one.key === '0')?.drill_down_query).toContain('changed_files:0..0');
+    expect(rows.find((one) => one.key === '2-5')?.drill_down_query).toContain('changed_files:2..5');
+    // 기준 조건과 모집단은 그대로 실린다.
+    expect(rows.find((one) => one.key === '2-5')?.drill_down_query).toContain('org:acme');
+    expect(rows.find((one) => one.key === '2-5')?.drill_down_query).toContain('kind:pull_request');
+  });
+
+  it('구간 질의가 서로 다르다 — 하나를 만들어 돌려 쓰면 그것이 이 결함이다', () => {
+    const rows = toDistributionsOutcome(distributionAggs({}, 0), {
+      ast: parseQuery(''),
+      dimension: 'changed_lines',
+      total: 0,
+    });
+    const queries = rows.filter((one) => one.key !== 'unknown').map((one) => one.drill_down_query);
+    expect(new Set(queries).size).toBe(queries.length);
+  });
+
+  it('상한이 없는 구간은 `integer` 최댓값을 끝으로 쓴다 — 열린 범위 문법을 만들지 않는다', () => {
+    const rows = toDistributionsOutcome(distributionAggs({ '100+': 3 }, 0), {
+      ast: parseQuery(''),
+      dimension: 'changed_files',
+      total: 3,
+    });
+    expect(rows.find((one) => one.key === '100+')?.drill_down_query).toContain(
+      'changed_files:101..2147483647',
+    );
+  });
+
+  it('**기준 질의에 같은 범위가 있으면 교차시킨다** (PR #95 리뷰 P1)', () => {
+    /*
+     * 집계는 이미 그 교집합을 셌다. 갈아 끼우면 드릴다운이 자기가 센 구간보다
+     * 넓어져 무관한 문서를 함께 돌려준다 — `900..1000`을 건 분포의 `100+`
+     * 버킷이 `101..2147483647`로 가는 것이 그 예다.
+     */
+    const rows = toDistributionsOutcome(distributionAggs({ '100+': 4 }, 0), {
+      ast: parseQuery('changed_files:900..1000'),
+      dimension: 'changed_files',
+      total: 4,
+    });
+    const query = rows.find((one) => one.key === '100+')?.drill_down_query ?? '';
+    expect(query).toContain('changed_files:900..1000');
+    expect(query).not.toContain('2147483647');
+  });
+
+  it('교집합이 비면 빈 범위를 그대로 싣는다 — 조건을 빼면 전체로 넓어진다', () => {
+    const rows = toDistributionsOutcome(distributionAggs({}, 0), {
+      ast: parseQuery('changed_files:900..1000'),
+      dimension: 'changed_files',
+      total: 0,
+    });
+    // `2-5`와 `900..1000`은 겹치지 않는다. 그 구간의 문서는 실제로 0건이다.
+    const query = rows.find((one) => one.key === '2-5')?.drill_down_query ?? '';
+    expect(query).toContain('changed_files:900..5');
+  });
 });
 
 describe('지표 선택 (FR-STAT-001 AC-2)', () => {

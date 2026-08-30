@@ -138,6 +138,13 @@ export interface DistributionBucketSpec {
 
 export const DISTRIBUTION_BUCKETS: Readonly<Record<Dimension, readonly DistributionBucketSpec[]>> = {
   changed_files: [
+    /*
+     * **`0`을 첫 구간에 흡수하지 않는다** (CR-056, DEV-449). 파일을 하나도
+     * 바꾸지 않은 PR과 하나 바꾼 PR은 조사에서 다른 것을 뜻하고, 합치면 그
+     * 사실이 사라진다. 이 구간이 없던 동안 0인 문서는 **어느 구간에도 속하지
+     * 않아 집계에서 사라졌고** 비율의 합이 `total`을 덮지 않았다.
+     */
+    { key: '0', from: 0, to: 0 },
     { key: '1', from: 1, to: 1 },
     { key: '2-5', from: 2, to: 5 },
     { key: '6-20', from: 6, to: 20 },
@@ -145,6 +152,7 @@ export const DISTRIBUTION_BUCKETS: Readonly<Record<Dimension, readonly Distribut
     { key: '100+', from: 101, to: null },
   ],
   changed_lines: [
+    { key: '0', from: 0, to: 0 },
     { key: '1-50', from: 1, to: 50 },
     { key: '51-200', from: 51, to: 200 },
     { key: '201-1000', from: 201, to: 1000 },
@@ -157,6 +165,26 @@ export const DIMENSION_FIELDS: Readonly<Record<Dimension, string>> = {
   changed_files: 'changed_files_count',
   changed_lines: 'changed_lines',
 };
+
+/**
+ * 분포 축이 드릴다운에 쓰는 질의 키 (CR-056, DEV-451).
+ *
+ * ES 필드 이름과 다르다 — 질의 문법은 사용자가 적는 어휘이고 필드는 색인의
+ * 이름이다. `changed_files`가 `changed_files_count`를 보는 것이 그 차이다.
+ */
+export const DIMENSION_QUERY_KEYS: Readonly<Record<Dimension, 'changed_files' | 'changed_lines'>> = {
+  changed_files: 'changed_files',
+  changed_lines: 'changed_lines',
+};
+
+/**
+ * 상한이 없는 구간의 끝 (CR-056, DEV-451).
+ *
+ * 두 필드가 `integer`이므로 그 최댓값이다. 열린 범위를 만드는 문법을 새로
+ * 두지 않는다 — 그것을 만들면 `seq`를 포함한 **모든 범위 키의 의미가 함께
+ * 넓어지고**, 그 변경은 이 결함이 요구한 것보다 훨씬 크다.
+ */
+export const RANGE_UPPER_BOUND = 2_147_483_647;
 
 /**
  * 백분위에서 제외된 사유 (FR-STAT-004 AC-1, 예외/실패 처리).

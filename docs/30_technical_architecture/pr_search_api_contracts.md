@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.19 | 갱신일: 2026-08-30
+> 상태: review | 버전: v0.20 | 갱신일: 2026-08-30
 
 ## 1. 목적
 
@@ -313,7 +313,7 @@
 
 **`seq:` 질의는 시퀀스 공간을 지목해야 하고, 그 공간의 에폭이 조회의 일부다** (CR-051, DEV-359). `seq_epoch`은 질의 문법이 아니라 **참조 맥락**이다 — 아래 「시퀀스 인용 계약」 절이 정본이다.
 
-지원 질의 키 (FR-SRCH-005 AC-1): `repo`, `org`, `author`, `team`, `author_team`, `reviewer`, `label`, `base`, `head`, `state`, `merged`, `created`, `seq`, `release`, `path`, `is`, `kind`
+지원 질의 키 (FR-SRCH-005 AC-1): `repo`, `org`, `author`, `team`, `author_team`, `reviewer`, `label`, `base`, `head`, `state`, `merged`, `created`, `seq`, `release`, `path`, `is`, `kind`, `changed_files`, `changed_lines`
 
 **질의 문법 (CR-014).** 파서는 `@prs/query`가 갖고 서버와 클라이언트가 같은 코드를 쓴다 (ADR-001).
 
@@ -321,7 +321,7 @@
 | --- | --- | --- |
 | 동등 | `key:value` | 같은 키 반복은 OR, 다른 키는 AND (AC-5) |
 | 부정 | `-key:value` | 범위에도 붙는다 (AC-6) |
-| 범위 | `key:a..b` | **`seq`·`merged`·`created` 세 키만** (DEV-037). 양끝이 모두 있어야 한다. **이 셋은 범위 형태로만 성립하며 스칼라는 400이다** (DEV-364) |
+| 범위 | `key:a..b` | **`seq`·`merged`·`created`·`changed_files`·`changed_lines` 다섯 키만** (DEV-037 / CR-056 DEV-451). 양끝이 모두 있어야 한다. **범위 형태로만 성립하며 스칼라는 400이다** (DEV-364). `changed_files`·`changed_lines`는 시퀀스 공간을 지목할 필요가 없다 — 변경 규모는 저장소를 건너 비교해도 뜻이 유지된다 |
 | 인용 | `key:"두 낱말"` | `"`와 `\`는 `\`로 escape한다 |
 | 전문 검색어 | 키 없는 남은 문자열 | 공백 하나로 이어 붙인다 |
 
@@ -348,6 +348,8 @@
 | `merged` | `merged_at` 범위 | |
 | `created` | `created_at` 범위 | |
 | `seq` | `merge_seq` 범위 | |
+| `changed_files` | `changed_files_count` 범위 | 분포 드릴다운의 재료 (CR-056). 값이 없는 문서는 범위 조건에 걸리지 않는다 — 그것이 `unknown`이 질의를 갖지 않는 이유다 |
+| `changed_lines` | `changed_lines` 범위 | 같음. 사전 계산된 합을 보며 조회 시점에 더하지 않는다 |
 | `release` | `release_tags` | |
 | `path` | `changed_paths` | `path_hierarchy` 토크나이저라 `match`가 곧 접두 매칭이다 (AC-1의 "변경 경로 접두") |
 | `is` | 파생 상태 | 아래 |
@@ -1757,12 +1759,14 @@ POST /api/v1/analytics/distributions
   "dimension": "changed_files",
   "total": { "value": 1842, "relation": "eq" },
   "buckets": [
+    { "key": "0",       "from": 0,    "to": 0,    "count": 3,   "ratio": 0.0016,
+      "drill_down_query": "kind:pull_request org:acme merged:2026-07-01..2026-08-01 changed_files:0..0" },
     { "key": "1",       "from": 1,    "to": 1,    "count": 402, "ratio": 0.2183,
-      "drill_down_query": "kind:pull_request org:acme merged:2026-07-01..2026-08-01" },
-    { "key": "2-5",     "from": 2,    "to": 5,    "count": 731, "ratio": 0.3968, "drill_down_query": "..." },
-    { "key": "6-20",    "from": 6,    "to": 20,   "count": 508, "ratio": 0.2758, "drill_down_query": "..." },
-    { "key": "21-100",  "from": 21,   "to": 100,  "count": 173, "ratio": 0.0939, "drill_down_query": "..." },
-    { "key": "100+",    "from": 101,  "to": null, "count": 21,  "ratio": 0.0114, "drill_down_query": "..." },
+      "drill_down_query": "kind:pull_request org:acme merged:2026-07-01..2026-08-01 changed_files:1..1" },
+    { "key": "2-5",     "from": 2,    "to": 5,    "count": 731, "ratio": 0.3968, "drill_down_query": "... changed_files:2..5" },
+    { "key": "6-20",    "from": 6,    "to": 20,   "count": 508, "ratio": 0.2758, "drill_down_query": "... changed_files:6..20" },
+    { "key": "21-100",  "from": 21,   "to": 100,  "count": 173, "ratio": 0.0939, "drill_down_query": "... changed_files:21..100" },
+    { "key": "100+",    "from": 101,  "to": null, "count": 21,  "ratio": 0.0114, "drill_down_query": "... changed_files:101..2147483647" },
     { "key": "unknown", "from": null, "to": null, "count": 7,   "ratio": 0.0038, "drill_down_query": null }
   ],
   "approximate": false,
@@ -1771,9 +1775,11 @@ POST /api/v1/analytics/distributions
 ```
 
 - `dimension`: `changed_files` | `changed_lines`
-- 구간은 `FR-STAT-005` AC-1·AC-2가 정한 그대로다. 파일 수는 `1` / `2-5` / `6-20` / `21-100` / `100 초과`, 라인 수는 `1-50` / `51-200` / `201-1000` / `1000 초과`
+- 구간은 `FR-STAT-005` AC-1·AC-2가 정한 그대로다. 파일 수는 `0` / `1` / `2-5` / `6-20` / `21-100` / `100 초과`, 라인 수는 `0` / `1-50` / `51-200` / `201-1000` / `1000 초과` (CR-056, DEV-449). **`0`을 첫 구간에 흡수하지 않는다** — 하나도 바꾸지 않은 PR과 하나 바꾼 PR은 조사에서 다른 것을 뜻한다
 - **`changed_lines`는 `additions + deletions`다** (FR-STAT-005 AC-2, DEV-386). 두 값을 따로 세지 않으며, **그 합은 색인 시점에 사전 계산해 저장한다** — 조회 시점 `script`로 더하는 구현은 `NFR-001`이 금지한다 (AC-7)
-- **`unknown` 구간은 값이 없는 문서다** (AC-5). 보강이 끝나지 않아 모르는 것이며 **0과 다르다** — 파일 0개인 PR은 `unknown`이 아니라 자기 구간에 들어간다. `unknown`에는 근거 목록으로 갈 질의가 없으므로 `drill_down_query`는 `null`이다
+- **`unknown` 구간은 값이 없는 문서다** (AC-5). 보강이 끝나지 않아 모르는 것이며 **0과 다르다** — 파일 0개인 PR은 `unknown`이 아니라 `0` 구간에 들어간다. `unknown`에는 근거 목록으로 갈 질의가 없으므로 `drill_down_query`는 `null`이다 — **값이 없다는 사실을 거는 조건은 만들지 않는다**
+- **모름은 필드를 쓰지 않는 것으로 표현한다** (CR-056, DEV-450). 투영은 **파일 조회가 실패한** 문서에 `changed_files_count`·`additions`·`deletions`·`changed_lines`를 색인하지 않으며, 집계의 `unknown`은 그 부재를 센다. 판정 재료는 `enrichment_errors`의 `files` 항목이다 — `enrichment_pending`은 네 구성 요소 중 하나만 실패해도 참이라 그것으로 판정하면 **리뷰 조회만 실패한 PR의 진짜 빈 목록까지 버린다.** 이미 색인된 값이 있으면 함께 **지운다**: 싣지 않는 것만으로는 옛 수가 남는다. **자리를 0으로 채운 뒤 다른 표식으로 되돌려 읽지 않는다** — 같은 판정이 두 곳에 살면 한쪽이 낡고, 그 순간 화면이 모름을 "0줄 바꿨다"는 사실 주장으로 바꿔 말한다
+- **구간마다 그 구간을 거는 질의를 준다** (AC-4, CR-056 DEV-451). `changed_files:2..5`처럼 범위 조건을 기준 질의에 더한다. 기준 질의에 같은 키의 범위가 이미 있으면 **교차시킨다** (DEV-455) — 집계가 이미 그 교집합을 셌으므로 갈아 끼우면 드릴다운이 자기가 센 구간보다 넓어진다. 상한이 없는 구간은 `2147483647`(부호 있는 32비트 최댓값, 매핑이 `integer`다)을 끝으로 쓴다 — 열린 범위를 만드는 문법이 없고, 그것을 만들면 `seq`를 포함한 모든 범위 키의 의미가 함께 넓어진다
 - `ratio`는 `count / total`이며 `total`이 0이면 모든 구간이 `count: 0`·`ratio: 0`이다 (예외/실패 처리)
 - 집계 대상은 `prs-pull-requests` 단독이다 (FR-STAT-005 AC-6)
 - 오류: `AGGREGATION_TIMEOUT` (504)

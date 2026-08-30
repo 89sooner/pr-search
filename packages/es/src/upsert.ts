@@ -31,6 +31,15 @@ export const CONDITIONAL_UPSERT_SCRIPT = [
   " || ctx._source.document_version < params.doc.document_version;",
   "boolean changed = fresh;",
   "if (fresh) { for (e in params.doc.entrySet()) { ctx._source[e.getKey()] = e.getValue(); } }",
+  /*
+   * 값을 **지우는** 것도 갱신이다 (CR-056 DEV-450 / PR #95 리뷰 P1).
+   *
+   * 위 대입은 `params.doc`에 있는 키만 건드리므로, 새 이벤트가 어떤 필드를
+   * 싣지 않기로 해도 **이미 색인된 옛 값이 그대로 남는다.** 변경 규모를 모르게
+   * 된 PR이 계속 숫자 구간에 머무는 것이 그 결과였다 — 부재로 판정하는 필드는
+   * 부재를 실제로 만들 수 있어야 한다.
+   */
+  "if (fresh) { for (k in params.remove) { if (ctx._source.containsKey(k)) { ctx._source.remove(k); } } }",
   "for (e in params.union.entrySet()) {",
   "  def current = ctx._source[e.getKey()];",
   "  def merged = new HashSet();",
@@ -62,6 +71,14 @@ export interface UpsertRequest {
    * 들어간다. `doc`에 넣으면 투영이 돌 때마다 그 워커의 결과를 되돌린다.
    */
   readonly createOnly?: Readonly<Record<string, unknown>>;
+  /**
+   * 이 갱신이 **지우는** 필드 (CR-056, DEV-450).
+   *
+   * `doc`에서 빼는 것만으로는 옛 값이 남는다 — 조건부 대입은 실린 키만 본다.
+   * 부재를 판정 재료로 쓰는 필드(변경 규모 넷)는 여기 이름을 적어야 실제로
+   * 사라진다. `document_version`이 낮으면 지우지도 않는다.
+   */
+  readonly remove?: readonly string[];
 }
 
 export type BulkItemOutcome =
@@ -165,7 +182,11 @@ function scriptBody(request: UpsertRequest): Record<string, unknown> {
       lang: 'painless',
       source: CONDITIONAL_UPSERT_SCRIPT,
       // `doc_id`를 여기에도 넣어 이미 색인된 문서가 다음 이벤트에서 채워지게 한다.
-      params: { doc: withDocId(request, request.doc), union: toArrays(request.union) },
+      params: {
+        doc: withDocId(request, request.doc),
+        union: toArrays(request.union),
+        remove: request.remove ?? [],
+      },
     },
     upsert: initialDocument(request),
   };

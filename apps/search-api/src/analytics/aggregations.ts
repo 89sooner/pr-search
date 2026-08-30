@@ -11,17 +11,20 @@
  */
 
 import type { estypes } from '@elastic/elasticsearch';
-import { replaceEquality, serializeQuery, type QueryAst } from '@prs/query';
+import { intersectNumericRange, replaceEquality, serializeQuery, type QueryAst } from '@prs/query';
 import {
   DEFAULT_PERCENTILES,
   DISTRIBUTION_BUCKETS,
   DIMENSION_FIELDS,
+  DIMENSION_QUERY_KEYS,
+  RANGE_UPPER_BOUND,
   GROUP_FIELDS,
   GROUP_QUERY_KEYS,
   LOW_SAMPLE_THRESHOLD,
   MAX_GROUPS,
   MAX_SERIES,
   type Dimension,
+  type DistributionBucketSpec,
   type GroupKey,
   type Interval,
   type MetricKey,
@@ -61,8 +64,31 @@ export function drillDownQuery(base: QueryAst, key: GroupKey, value: string): st
 }
 
 /** 구간 하나에 대한 근거 질의. 구간 조건은 질의 문법에 없으므로 유형만 좁힌다. */
-export function distributionDrillDown(base: QueryAst): string {
-  return serializeQuery(replaceEquality(base, 'kind', 'pull_request'));
+/**
+ * 구간 하나로 가는 질의 (FR-STAT-005 AC-4, CR-056 DEV-451).
+ *
+ * **구간 조건을 함께 건다.** 기준 질의에 `kind`만 더하면 모든 구간 행이 같은
+ * 문자열을 받고, 실행 결과가 그 구간의 근거가 아니라 전체가 된다 — 사용자는
+ * 분포에서 본 수와 목록의 수가 다른 이유를 알 수 없다.
+ *
+ * 같은 키의 범위가 기준 질의에 이미 있으면 **교차시킨다** (PR #95 리뷰 P1).
+ * 집계는 이미 그 교집합을 셌으므로 갈아 끼우면 드릴다운이 자기가 센 구간보다
+ * 넓어져 무관한 문서를 함께 돌려준다 — `changed_files:900..1000`을 건 분포의
+ * `100+` 버킷이 `101..2147483647`로 가는 것이 그 예다.
+ */
+export function distributionDrillDown(
+  base: QueryAst,
+  dimension: Dimension,
+  spec: DistributionBucketSpec,
+): string {
+  const withKind = replaceEquality(base, 'kind', 'pull_request');
+  const ranged = intersectNumericRange(
+    withKind,
+    DIMENSION_QUERY_KEYS[dimension],
+    spec.from,
+    spec.to ?? RANGE_UPPER_BOUND,
+  );
+  return serializeQuery(ranged);
 }
 
 // ---------------------------------------------------------------------------
@@ -487,7 +513,7 @@ export function toDistributionsOutcome(
   );
   // `total`이 0이면 모든 구간이 0이다 (예외/실패 처리). 0으로 나누지 않는다.
   const ratioOf = (count: number): number => (input.total === 0 ? 0 : count / input.total);
-  const drillDown = distributionDrillDown(input.ast);
+  // 구간마다 다른 질의다 — 하나를 만들어 돌려 쓰면 그것이 이 결함 자체다.
 
   const rows: DistributionRow[] = specs.map((spec) => ({
     key: spec.key,
@@ -495,7 +521,7 @@ export function toDistributionsOutcome(
     to: spec.to,
     count: counted.get(spec.key) ?? 0,
     ratio: ratioOf(counted.get(spec.key) ?? 0),
-    drill_down_query: drillDown,
+    drill_down_query: distributionDrillDown(input.ast, input.dimension, spec),
   }));
 
   rows.push({

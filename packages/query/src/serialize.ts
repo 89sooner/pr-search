@@ -96,6 +96,28 @@ export function replaceEquality(ast: QueryAst, key: string, value: string): Quer
   return { ...ast, filters: [...kept, { key, op: 'eq', values: [value] } as QueryFilter] };
 }
 
+/**
+ * 수치 범위 조건을 기존 범위와 **교차시킨다** (CR-056, DEV-451 / PR #95 리뷰 P1).
+ *
+ * 분포 드릴다운이 구간마다 다른 범위를 걸어야 하는데, 기준 질의에 같은 키의
+ * 범위가 이미 있으면 **집계는 이미 그 교집합을 세고 있다.** 갈아 끼우면
+ * 드릴다운이 자기가 센 구간보다 넓어져 무관한 문서를 함께 돌려준다 —
+ * `changed_files:900..1000`을 건 분포의 `100+` 버킷이 `101..2147483647`로
+ * 가는 것이 그 예다.
+ *
+ * 교집합이 비면(`from > to`) 그 구간에 속한 문서가 없다는 뜻이고, 집계도
+ * 0을 셌을 것이다. 빈 범위를 그대로 실어 **질의가 0건을 답하게 둔다** —
+ * 조건을 빼면 그 자리가 전체로 넓어진다.
+ */
+export function intersectNumericRange(ast: QueryAst, key: string, from: number, to: number): QueryAst {
+  const existing = ast.filters.find((one) => one.key === key && one.op === 'range');
+  const base = existing !== undefined && isRangeFilter(existing) && typeof existing.from === 'number'
+    ? { from: Math.max(existing.from, from), to: Math.min(existing.to as number, to) }
+    : { from, to };
+  const kept = ast.filters.filter((one) => !(one.key === key && one.op === 'range'));
+  return { ...ast, filters: [...kept, { key, op: 'range', ...base } as QueryFilter] };
+}
+
 export function addEquality(ast: QueryAst, key: string, value: string): QueryAst {
   const existing = ast.filters.findIndex((one) => one.key === key && one.op === 'eq');
 
