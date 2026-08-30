@@ -96,6 +96,19 @@ export function replaceEquality(ast: QueryAst, key: string, value: string): Quer
   return { ...ast, filters: [...kept, { key, op: 'eq', values: [value] } as QueryFilter] };
 }
 
+/**
+ * 수치 범위 조건을 갈아 끼운다 (CR-056, DEV-451).
+ *
+ * 분포 드릴다운이 구간마다 다른 범위를 걸어야 하는데, 기준 질의에 같은 키의
+ * 범위가 이미 있으면 둘이 AND로 겹쳐 **두 조건을 모두 만족하는 문서만** 남고
+ * 그 수는 분포가 보여 준 수와 다르다. 사용자가 고른 것은 이 구간이므로
+ * 갈아 끼운다 — `replaceEquality`가 `kind`에 하는 것과 같다.
+ */
+export function replaceNumericRange(ast: QueryAst, key: string, from: number, to: number): QueryAst {
+  const kept = ast.filters.filter((one) => !(one.key === key && one.op === 'range'));
+  return { ...ast, filters: [...kept, { key, op: 'range', from, to } as QueryFilter] };
+}
+
 export function addEquality(ast: QueryAst, key: string, value: string): QueryAst {
   const existing = ast.filters.findIndex((one) => one.key === key && one.op === 'eq');
 

@@ -308,3 +308,35 @@ describe('한 이벤트가 만드는 문서 전부', () => {
     }
   });
 });
+
+describe('**변경 규모를 모르면 값을 쓰지 않는다** (CR-056, DEV-450)', () => {
+  /*
+   * 빈 파일 목록을 세어 0을 쓰면 그 값이 사실의 진술이 되고, `FR-STAT-005`
+   * AC-5가 가르라고 한 모름과 0이 같은 구간에 들어간다. 집계의 `unknown`은
+   * 이 필드들의 **부재**를 세므로 판정 재료가 한 곳에만 있다.
+   */
+  const SIZE_FIELDS = ['changed_files_count', 'additions', 'deletions', 'changed_lines'] as const;
+
+  it('보강이 끝나지 않았고 파일 목록도 비었으면 넷 다 없다', () => {
+    const doc = buildPullRequestDocument(
+      source(enriched({ pull_request: null, changed_files: [], enrichment_pending: true })),
+    ).doc;
+    for (const field of SIZE_FIELDS) {
+      expect(doc, `${field}가 남아 있다`).not.toHaveProperty(field);
+    }
+  });
+
+  it('**파일 목록을 받았으면 그 수는 사실이다** — 일부만 아는 것은 모름이 아니다', () => {
+    const doc = buildPullRequestDocument(
+      source(enriched({ pull_request: null, enrichment_pending: true })),
+    ).doc;
+    expect(doc['changed_files_count']).toBe(2);
+    expect(doc['changed_lines']).toBe(42);
+  });
+
+  it('**보강이 끝난 0은 그대로 쓴다** — 하나도 바꾸지 않은 PR은 실재한다', () => {
+    const doc = buildPullRequestDocument(source(enriched({ changed_files: [] }))).doc;
+    expect(doc['changed_files_count']).toBe(0);
+    expect(doc['changed_lines']).toBe(0);
+  });
+});

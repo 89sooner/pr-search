@@ -151,17 +151,41 @@ export function buildPullRequestDocument(source: ProjectionSource): UpsertReques
     source_commit_shas: enriched.source_commit_shas.map((sha) => sha.toLowerCase()),
     source_commits_truncated: enriched.source_commits_truncated,
 
-    // 절삭됐다면 이 수는 "가져온 만큼"이다. `files_truncated`가 그 사실을 말한다.
-    changed_files_count: files.length,
-    additions: files.reduce((sum, file) => sum + file.additions, 0),
-    deletions: files.reduce((sum, file) => sum + file.deletions, 0),
     /*
-     * `additions + deletions` (CR-053, DEV-386).
+     * **보강이 끝나지 않았으면 변경 규모 넷을 쓰지 않는다** (CR-056, DEV-450).
      *
-     * **여기서 더한다.** 조회 시점에 더하면 `script`가 필요하고 데이터 모델
-     * 6장이 그것을 금지한다. 위 둘을 다시 세지 않고 같은 순회의 결과를 쓴다.
+     * 빈 파일 목록을 세어 0을 쓰면 그 값이 **사실의 진술**이 되고,
+     * `FR-STAT-005` AC-5가 가르라고 한 모름과 0이 같은 구간에 들어간다.
+     * 집계의 `unknown`은 이 필드들의 **부재**를 세므로 판정 재료가 한 곳에만
+     * 있다 — 0으로 채운 뒤 `enrichment_pending`을 다시 읽어 되돌리는 방식은
+     * 같은 판정을 두 곳에 두는 일이고, 그 둘이 어긋나는 날 화면이 조용히
+     * 거짓을 말한다.
+     *
+     * **가져온 파일 목록이 있으면 그 수는 사실이다.** 보강은 PR 본문·커밋·
+     * 리뷰·파일을 각각 시도하므로 일부만 실패할 수 있고, 그때 실제로 받은
+     * 파일 둘을 "모름"으로 버리면 아는 것을 잃는다. 모름은 **보강이 끝나지
+     * 않았고 파일 목록도 비어 있을 때**다.
+     *
+     * 보강이 끝난 문서의 0은 그대로 쓴다. **파일을 하나도 바꾸지 않은 PR은
+     * 실재하고, 그것은 모르는 것이 아니다.**
+     *
+     * 절삭됐다면 이 수는 "가져온 만큼"이다. `files_truncated`가 그 사실을 말한다.
      */
-    changed_lines: files.reduce((sum, file) => sum + file.additions + file.deletions, 0),
+    ...(enriched.enrichment_pending && files.length === 0
+      ? {}
+      : {
+          changed_files_count: files.length,
+          additions: files.reduce((sum, file) => sum + file.additions, 0),
+          deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+          /*
+           * `additions + deletions` (CR-053, DEV-386).
+           *
+           * **여기서 더한다.** 조회 시점에 더하면 `script`가 필요하고 데이터
+           * 모델 6장이 그것을 금지한다. 위 둘을 다시 세지 않고 같은 순회의
+           * 결과를 쓴다.
+           */
+          changed_lines: files.reduce((sum, file) => sum + file.additions + file.deletions, 0),
+        }),
     changed_paths: files.map((file) => file.filename),
     files_truncated: enriched.files_truncated,
 

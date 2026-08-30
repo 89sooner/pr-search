@@ -20,6 +20,7 @@ import {
 } from '@prs/authz';
 import { applyMappings, switchAliasesForTests, createEsClient, resolveClientOptions } from '@prs/es';
 import { authRepo, repositoryRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
+import { QUERY_KEYS } from '@prs/query';
 import type { Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { SEARCH_PATH } from '../../src/search/routes.js';
@@ -607,8 +608,9 @@ describe('문법 오류 (CR-014, DEV-038)', () => {
     const body = response.json<{ error: { code: string; detail: Record<string, unknown> } }>();
     expect(body.error.code).toBe('QUERY_SYNTAX_ERROR');
     expect(body.error.detail['offset_start']).toBe(0);
-    // 17종이다 — CR-053이 `kind`와 `author_team`을 더했다.
-    expect(body.error.detail['supported_keys']).toHaveLength(17);
+    // **개수가 아니라 정본 목록과 대조한다** (CR-056). 키가 늘 때마다 숫자를
+    // 고치는 대신 목록이 어긋난 자리를 실패 메시지가 보여 준다.
+    expect(body.error.detail['supported_keys']).toEqual([...QUERY_KEYS]);
   });
 
   it('스칼라 `seq:1234`는 400이다 — 조용히 0건이 아니다 (DEV-364)', async () => {

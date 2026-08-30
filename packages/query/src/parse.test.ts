@@ -22,12 +22,19 @@ function reject(input: string): QueryParseError {
   throw new Error(`거절했어야 한다: ${input}`);
 }
 
-describe('AC-1: 지원 키 17종', () => {
+describe('AC-1: 지원 질의 키', () => {
+  /*
+   * **개수를 걸지 않는다** (CR-054의 교훈). 키가 하나 늘 때마다 그 수가 낡고,
+   * 개수 단언은 *무엇이* 늘었는지 말하지 않아 다음 사람이 숫자만 고친다.
+   * 목록을 통째로 거는 것은 그 자체가 이 시험의 목적이다 — **키를 늘리려면
+   * SRS를 먼저 고치고 여기도 함께 고치라**는 강제이며, 목록이 어긋나면
+   * 어느 키가 문제인지 실패 메시지가 그대로 보여 준다.
+   */
   it('SRS가 정한 목록 그대로다', () => {
-    expect(QUERY_KEYS).toHaveLength(17);
     expect([...QUERY_KEYS]).toEqual([
       'repo', 'org', 'author', 'team', 'author_team', 'reviewer', 'label', 'base',
       'head', 'state', 'merged', 'created', 'seq', 'release', 'path', 'is', 'kind',
+      'changed_files', 'changed_lines',
     ]);
   });
 
@@ -47,13 +54,15 @@ describe('AC-1: 지원 키 17종', () => {
     expect(reject('kind:release').detail.allowed_values).toEqual(['pull_request', 'commit']);
   });
 
-  it('DoD: 15종이 모두 파싱된다', () => {
-    // `is`는 값이 열거돼 있고, 범위 전용 키 셋은 **범위 형태로만** 성립한다
+  it('DoD: 지원 키가 모두 파싱된다', () => {
+    // `is`는 값이 열거돼 있고, 범위 전용 키는 **범위 형태로만** 성립한다
     // (DEV-364). 나머지는 아무 문자열이나 받는다.
     const ranges: Record<string, string> = {
       seq: '1200..1350',
       merged: '2026-08-10..2026-08-19',
       created: '2026-08-10..2026-08-19',
+      changed_files: '2..5',
+      changed_lines: '51..200',
     };
     const scalars: Record<string, string> = { is: 'merged', kind: 'pull_request' };
     for (const key of QUERY_KEYS) {

@@ -44,6 +44,16 @@ const RANGE_FIELDS: Readonly<Partial<Record<QueryKey, string>>> = {
   seq: 'merge_seq',
   merged: 'merged_at',
   created: 'created_at',
+  /*
+   * 변경 규모 (CR-056, DEV-451). 분포 구간의 드릴다운이 이 조건으로 그 구간을
+   * 가리킨다.
+   *
+   * **값이 없는 문서는 여기 걸리지 않는다** — 보강이 끝나지 않은 문서는 이
+   * 필드를 갖지 않으며(DEV-450), 그것이 `unknown` 구간에 질의를 주지 않는
+   * 이유이기도 하다. 없는 값을 거는 조건은 만들지 않는다.
+   */
+  changed_files: 'changed_files_count',
+  changed_lines: 'changed_lines',
 };
 
 /**

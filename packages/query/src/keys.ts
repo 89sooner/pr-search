@@ -1,8 +1,9 @@
 /**
  * 지원 질의 키 (FR-SRCH-005 AC-1).
  *
- * 목록은 SRS가 정한 15종 그대로다. 여기서 늘리면 API 계약의
- * `supported_keys`와 어긋나므로, 키를 더하려면 SRS부터 고친다.
+ * 목록은 SRS가 정한 그대로다. 여기서 늘리면 API 계약의 `supported_keys`와
+ * 어긋나므로, 키를 더하려면 SRS부터 고친다. **개수를 여기 적지 않는다** —
+ * 키가 하나 늘 때마다 그 수가 낡고 누가 낡게 했는지 아무도 모른다 (CR-054).
  */
 
 export const QUERY_KEYS = [
@@ -39,6 +40,18 @@ export const QUERY_KEYS = [
    * "머지된 것"이지 "PR"이 아니고, 상태별 그룹은 머지되지 않은 PR도 센다.
    */
   'kind',
+  /**
+   * 변경 규모 (CR-056, DEV-451).
+   *
+   * 분포의 구간을 선택하면 그 구간의 문서로 가야 하는데(`FR-STAT-005` AC-4)
+   * 그 조건을 표현할 문법이 없었다 — 모든 구간이 기준 질의를 그대로 받아
+   * **실행하면 전체가 나왔다.** 두 키가 그 재료다.
+   *
+   * `seq`와 달리 시퀀스 공간을 지목할 필요가 없다. 변경 규모는 저장소를
+   * 건너 비교해도 뜻이 유지되는 값이다.
+   */
+  'changed_files',
+  'changed_lines',
 ] as const;
 
 export type QueryKey = (typeof QUERY_KEYS)[number];
@@ -50,12 +63,12 @@ export function isQueryKey(value: string): value is QueryKey {
 }
 
 /**
- * 범위 문법 `a..b`를 받는 키 (CR-014, DEV-037).
+ * 범위 문법 `a..b`를 받는 키 (CR-014, DEV-037 / CR-056, DEV-451).
  *
- * 셋뿐이다. 그 밖의 키에서 `..`는 리터럴이다 — `path:src/a..b`는 범위가
- * 아니라 그 문자열을 찾는 조건이다.
+ * 여기 없는 키에서 `..`는 리터럴이다 — `path:src/a..b`는 범위가 아니라 그
+ * 문자열을 찾는 조건이다.
  */
-export const NUMERIC_RANGE_KEYS = ['seq'] as const;
+export const NUMERIC_RANGE_KEYS = ['seq', 'changed_files', 'changed_lines'] as const;
 export const TEMPORAL_RANGE_KEYS = ['merged', 'created'] as const;
 
 export type NumericRangeKey = (typeof NUMERIC_RANGE_KEYS)[number];
@@ -87,6 +100,8 @@ export const RANGE_KEY_EXAMPLE: Readonly<Record<RangeKey, string>> = {
   seq: 'seq:1200..1350',
   merged: 'merged:2026-08-10..2026-08-19',
   created: 'created:2026-08-10..2026-08-19',
+  changed_files: 'changed_files:2..5',
+  changed_lines: 'changed_lines:51..200',
 };
 
 /**
