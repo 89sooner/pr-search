@@ -39,21 +39,27 @@ grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
 
 `CR-056`이 신설했다(REL-006, 선행 `WP-068`·`WP-037`). `author_team_ids`가 비어 있어 `group_by=team`과 `author_team:`이 언제나 빈 결과를 낸다 — **누락이 아니라 미구현**이며 화면이 그 사실을 그대로 말한다.
 
-## B-2. design-system version PR이 열려 있다 — 급하지 않다
+## B-2. design-system `0.2.1`이 게시됐다 — PR Search 소비는 아직이다
 
-`PR #12`의 정정 여섯이 `@conductor-by-89soone/react`·`tokens`에 들어갔고, Changesets가 version PR `#13`(`Version packages`)을 자동으로 열었다.
+`PR #12`의 정정 여섯이 version PR `#13`으로 묶여 병합됐고, 사용자 승인으로 `workflow_dispatch`를 돌려 **`0.2.1`이 npm에 게시됐다**(tokens·css·react). 태그 셋은 모두 릴리스 HEAD `702cf0b`을 가리킨다.
 
-**PR Search의 현재 사용처는 고친 조건에 닿지 않는다** — 실측 결과다.
+**이 세션이 고친 `check-release-tags.mjs`가 실제 릴리스 경로에서 두 번 통과했다** — `verify local release tags`와 `verify pushed release tags`다. 태그가 릴리스 HEAD를 가리켜야 한다는 불변식이 정당한 릴리스를 막지 않는다는 것이 그 실행으로 확인됐다.
+
+**PR Search는 `0.2.0`에 고정되어 있고 지금 올리지 않는다.**
 
 | 정정 | PR Search 사용처 | 조건에 닿는가 |
 | --- | --- | --- |
 | `IconButton loading`의 글리프 둘 | `AppTopBar.tsx:153`, `QueryTokenBar.tsx:95` | **아니다** — 둘 다 `loading`을 넘기지 않는다 |
 | `Field required` → `Select.Root` | `SaveSearchDialog.tsx:271` | **아니다** — `Field` 밖에 있고 `<label>`을 직접 쓴다 |
 
-즉 **지금 사용자에게 드러나는 결함은 없다.** 게시는 그 컴포넌트를 그 조건으로 쓰기 시작할 때 필요하며, **리뷰 스레드를 닫기 위해 npm 게시를 서두르지 않는다.**
+이 저장소의 관행은 **필요한 WP에서 함께 올리는 것**이다 — `0.2.0` 소비도 `WP-038`이 dataviz 토큰을 실제로 요구하면서 그 커밋에 들어갔다.
 
-- version PR을 병합해도 자동 게시되지 않는다 — 워크플로가 `await the approved manual publish`에서 멈춘다
-- npm 게시는 외부로 나가는 되돌리기 어려운 행위이므로 시점은 사용자가 정한다
+올릴 때는 **`apps/web/package.json`의 세 줄과 `pnpm-lock.yaml`을 함께 커밋한다.** CI 두 잡이 `pnpm install --frozen-lockfile`로 도므로 잠금 파일이 낡으면 설치 단계에서 멈춘다 — `d3031b6`(0.2.0 소비)도 둘을 함께 바꿨다.
+
+```bash
+pnpm --filter @prs/web add @conductor-by-89soone/{tokens,css,react}@0.2.1
+git add apps/web/package.json pnpm-lock.yaml
+```
 
 ## C. 배포에서 해야 할 것
 

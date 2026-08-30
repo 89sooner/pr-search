@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=bb18fd6be368ef1c648030ead421c623c8d35b43ae9c1426a35c5dc5514ae533 bytes=109393 lines=1628 title=리스크-불확실한-가정-함정
+@kv sha256=02f50646347f44501b778fbddf1e621e7e1508c2937463a533bd0d265cbfac60 bytes=110721 lines=1640 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -789,3 +789,9 @@
 @b git add -A를 쓰지 않는다 — agent-context/가 tracked다
 @b ID는 실측한다
 @b 통합 시험 파일은 자기가 남긴 상태를 지우고 끝낸다 — beforeEach의 TRUNCATE는 파일 안에서만 성립하며, 남은 queued 잡을 다른 파일의 claimNextJob이 집는다
+@h2 사용처가 있다는 것과 그 조건에 닿는다는 것은 다르다
+@cmd design-system 정정 뒤 "PR Search가 Select.Root와 IconButton을 쓴다"만 확인하고 결함 조건은 보지 않았다. 실측하니 IconButton 두 곳 모두 loading을 넘기지 않고 Select.Root는 Field 밖이라 어느 쪽도 닿지 않았다. 그 문구를 그대로 뒀다면 다음 작업자가 불필요한 npm 게시와 의존성 갱신을 사용자에게 요청했을 것이다.
+@path → 소비 영향을 말할 때는 그 props/context가 실제로 전달되는지까지 본다. import 목록은 사용처이지 조건이 아니다.
+@h2 릴리스 불변식은 실제 릴리스로 확인한다
+@p check-release-tags.mjs를 "태그가 릴리스 HEAD를 가리켜야 한다"로 바꿨는데, 개발 브랜치에서 돌리면 실패하므로 정당한 릴리스를 막는지는 알 수 없었다. 0.2.1 게시가 그것을 확인했다 — verify local release tags ... shed release tags가 모두 통과했고, linked 설정 덕에 세 태그가 같은 커밋에 생긴다는 근거가 실제로 성립했다.
+@p → 릴리스 경로의 검사는 릴리스가 한 번 돌아야 검증된다. 그때까지는 "막지 않을 것이다"가 아니라 "막는지 아직 모른다"로 적는다.
