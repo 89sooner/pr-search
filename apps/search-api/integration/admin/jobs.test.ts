@@ -58,6 +58,13 @@ beforeAll(async () => {
 }, 90_000);
 
 afterAll(async () => {
+  /*
+   * **남긴 상태를 지우고 끝낸다.** 이 파일은 `beforeEach`의 `TRUNCATE`에 기대는데
+   * 그것은 파일 안에서만 성립한다 — 마지막 시험이 만든 `queued` 잡은 그대로
+   * 남아 **다른 파일의 `claimNextJob`이 유형만 보고 집는다.** 실제로
+   * `cancel-race.test.ts`가 자기 잡 대신 이 파일의 잔여를 집어 실패했다.
+   */
+  await pool.query('TRUNCATE repository, job, audit_record RESTART IDENTITY CASCADE');
   await app.close();
   await bus.close();
   redis.disconnect();
