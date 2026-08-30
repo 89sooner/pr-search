@@ -1675,12 +1675,15 @@ gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "PRRT_
 
 ```bash
 # prs_admin은 NOLOGIN 그룹 롤이다. 로그인 주체 + 멤버십 + SET ROLE.
-docker exec prs-postgres psql -U prs -d prs_test -c "
-  CREATE ROLE prs_ret LOGIN PASSWORD 'x'; GRANT prs_admin TO prs_ret;"
-docker exec -e PGPASSWORD=x prs-postgres psql -U prs_ret -h localhost -d prs_test -c "
+# `<PW>`는 이 실측에서만 쓰고 바로 지우는 값이다 — 문서에 리터럴로 남기지 않는다.
+PW=$(openssl rand -hex 8)
+docker exec prs-postgres psql -U prs -d prs_test -c \
+  "CREATE ROLE prs_ret LOGIN PASSWORD '$PW'; GRANT prs_admin TO prs_ret;"
+docker exec -e PGPASSWORD="$PW" prs-postgres psql -U prs_ret -h localhost -d prs_test -c "
   SET ROLE prs_admin;
   CREATE TABLE t PARTITION OF audit_record FOR VALUES FROM ('2019-01-01') TO ('2019-02-01');"
 # GRANT ALL만으로는: ERROR: permission denied for schema public
+docker exec prs-postgres psql -U prs -d prs_test -c "DROP ROLE IF EXISTS prs_ret;"
 ```
 
 ## 변이 시험 — 치환 건수를 반드시 확인한다

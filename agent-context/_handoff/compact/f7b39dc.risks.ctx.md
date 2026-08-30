@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=ff9f97a3f54b6673cb8d2136a0c80cad655eb9c0c84100666c365f3f7ffb700a bytes=85409 lines=1298 title=리스크-불확실한-가정-함정
+@kv sha256=e92d8046cb9c92cec783a55f0967f1a9251405e12294a409ec8bf3b2defa1ce9 bytes=87083 lines=1321 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -625,3 +625,13 @@
 @path DEV-377(flow-003 뒤로가기)의 재현율이 6회 중 1회에서 3회 중 2회로 올랐다 — 이
 @p 세션이 e2e에 9건을 더해 병렬 부하가 커졌기 때문이다. 단독 실행 3회는 전부 통과한다.
 @p → 미루면 게이트가 먼저 무너진다. 다음 WP가 e2e를 더할 때마다 나빠진다.
+@h2 GitHub secondary rate limit이 세션 끝을 막는다
+@p gh pr create가 API rate limit already exceeded로 세 번 거부됐다. 그런데
+@path gh api rate_limit은 모든 한도가 여유롭다고 보고한다(core 5000/5000, graphql 5000/5000).
+@p 그 API에 나타나지 않는 secondary rate limit이다 — 짧은 시간에 몰린 쓰기 작업(PR 생성, 머지, 리뷰 답변·resolve)이 abuse detection에 걸린다. 이 세션은 PR 6개 생성 · 5회 머지 · 리뷰 답변과 resolve 열몇 번을 했고, 마지막 PR 하나를 열지 못한 채 끝났다.
+@p → 읽기 API로 한도를 확인하고 안심하지 마라. 쓰기가 거부되면 그것이 실제 상태다. → 세션 후반에 남길 PR이 있으면 먼저 연다. 브랜치를 push해 두는 것만으로는 다음 사람이 그 존재를 알지 못하며, 그래서 todos.md 0절에 그 사실을 적었다. → 회복은 보통 수 분에서 한 시간이다. 2분 간격 재시도 두 번으로는 풀리지 않았다.
+@h2 인계 문서에 옮겨 적은 값은 그 순간부터 낡는다
+@path todos.md가 WP-040의 요구사항 목록을 옮겨 적었다가 정합성 점검과 인덱스 동작을 빼고 없는
+@path 둘을 넣었다(DEV-426). 같은 파일이 미해결 리뷰 계수 명령도 옮겨 적었는데 그것이 잘리는
+@p 버전이었다 — commands.md에서 고친 뒤에도 todos.md에는 옛 명령이 남아 있었다.
+@p → 인계 문서는 라우팅이지 계약이 아니다. 목록과 명령은 정본을 지목하고, 옮겨 적지 않는다. → 옮겨 적어야 할 만큼 짧으면 그것이 정본이어야 한다.
