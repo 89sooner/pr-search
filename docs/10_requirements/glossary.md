@@ -1,6 +1,6 @@
 # PR Search 용어집
 
-> 상태: review | 버전: v0.6 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.7 | 갱신일: 2026-08-30
 
 ## 1. 목적
 
@@ -83,7 +83,8 @@
 | 검색 문서 | `search_document` | Elasticsearch에 저장되는 정규화 문서 1건 | 인덱스 문서, ES 도큐먼트 | ENT-CORE-002 |
 | 인덱스 별칭 | `index_alias` | 애플리케이션이 참조하는 논리 인덱스 이름. 재색인 시 실제 인덱스를 원자적으로 교체한다 | alias, 별명 | FR-ING-008 |
 | 백필 | `backfill` | 웹훅 이전 과거 데이터를 GitHub API로 채우는 일괄 수집 | 초기 적재, 마이그레이션 | JOB-ING-004, FR-ING-006 |
-| 조정 스캔 | `reconciliation_scan` | 수집 결과와 GHE 실제 상태를 주기적으로 대조해 누락을 찾는 처리 | 정합성 검사, 싱크 체크 | JOB-ING-005, FR-ING-011 |
+| 조정 스캔 | `reconciliation_scan` | 수집 결과와 GHE 실제 상태를 대조해 누락을 찾는 처리. 주기 실행과 운영자의 즉시 실행 둘 다 같은 구현을 지나며 동시에 돌지 않는다 | 정합성 검사, 싱크 체크 | JOB-ING-005, FR-ING-011 |
+| 등록 검토 요청 | `repository_registration_request` | 미등록 저장소를 등록해 달라고 사용자가 남기는 기록. 저장소를 등록하지 않으며 대상의 실재 여부도 확인하지 않는다. 처리 상태는 `pending`·`fulfilled`·`dismissed` 셋이고 `operator`만 본다 — 승인은 성공한 등록 그 자체이므로 그 사이의 상태를 두지 않는다 | 등록 요청, 등록 신청 | FR-ING-009 AC-8·AC-11, ENT-CORE-008, API-ADM-009 |
 | 재색인 | `reindex` | 새 매핑으로 인덱스를 다시 만들고 별칭을 전환하는 처리 | 리인덱싱, 재구축 | JOB-ING-006, FR-ING-008 |
 | 실패 대기열 | `dead_letter_queue` | 재시도 상한을 넘긴 이벤트를 격리 보관하는 큐 | DLQ, 오류 큐 | FR-ING-007 |
 | 수집 지연 | `ingestion_lag` | 웹훅 수신 시각과 검색 반영 시각의 차이 | 처리 지연, 랙 | NFR-002 |

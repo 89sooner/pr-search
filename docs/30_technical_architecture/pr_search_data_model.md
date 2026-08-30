@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.13 | 갱신일: 2026-08-30
 
 ## 1. 목적
 
@@ -19,7 +19,7 @@
 | ENT-CORE-005 | User | 사용자와 접근 범위 | `user_id`, `login`, `email`, `roles[]`, `access_scope_version` | PostgreSQL | auth | FR-AUTH-001, FR-AUTH-003 |
 | ENT-CORE-006 | SavedSearch | 저장된 질의 | `saved_search_id`, `name`, `query`, `visibility`, `owner_user_id`, `team_id`(대상 팀, `visibility='team'`일 때만), `seq_epoch`(`seq:` 조건이 딛고 선 에폭, CR-051) | PostgreSQL | search | FR-SRCH-010 |
 | ENT-CORE-007 | AuditRecord | 감사 기록 | `audit_id`, `user_id`, `action`, `target`, `query`, `result_code`, `correlation_id`, `occurred_at` | PostgreSQL | audit | FR-AUTH-004 |
-| ENT-CORE-008 | RepositoryRegistrationRequest | 사용자가 남긴 저장소 등록 검토 요청 | `request_id`, `requested_by`, `repository_owner`, `repository_name`, `created_at` | PostgreSQL | registry | FR-ING-009 |
+| ENT-CORE-008 | RepositoryRegistrationRequest | 사용자가 남긴 저장소 등록 검토 요청과 운영자의 처리 결과 | `request_id`, `requested_by`, `repository_owner`, `repository_name`, `created_at`, `status`, `resolved_at`, `resolved_by`, `resolution_note` | PostgreSQL | registry | FR-ING-009 AC-8·AC-11 |
 | ENT-SEQ-001 | MergeSequence | 시퀀스 서수-커밋 대응 | `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `commit_sha`, `pull_request_number` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-002 |
 | ENT-SEQ-002 | SequenceSpace | 시퀀스 공간 상태 | `repository_id`, `base_branch`, `seq_epoch`, `head_sha`, `head_seq`, `state`, `last_assigned_at` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-005 |
 | ENT-SEQ-003 | SafeMarker | 안전 구간 표식 | `marker_id`, `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `note`, `created_by` | PostgreSQL | sequence | FR-SEQ-006 |
@@ -363,7 +363,42 @@ CREATE INDEX repository_registration_request_slug_idx
 
 **`ON DELETE CASCADE`는 보존 표의 정책이다** — 사용자를 지우면 그가 남긴 요청도 사라진다. `saved_search`가 이 정책을 스키마에 갖지 못해 표를 처음 채우는 순간 드러났던 자리(DEV-347)를 같은 방식으로 반복하지 않는다.
 
-**승인·반려 상태를 지금 만들지 않는다.** 운영자가 이 요청을 처리하는 경로는 A-002를 세우는 WP-040의 몫이고, 그 수명주기(승인·반려·처리자·사유·대상 저장소 확정)는 그 WP가 검증한다. 지금 열을 미리 만들면 검증되지 않은 수명주기를 스키마가 선점하며, 그것은 다시 "표는 있는데 뜻이 정해지지 않은 열"을 만든다 — CR-049가 `saved_search.team_id`에서 겪은 바로 그 상태다.
+**처리 결과 열은 CR-055가 더한다.** CR-050이 "운영자가 이 요청을 처리하는 경로는 WP-040의 몫"이라며 미뤄 둔 자리이며, 그 WP의 계약을 여는 이 CR이 수명주기를 확정했으므로 이제 스키마가 그것을 담는다.
+
+```sql
+-- 마이그레이션 020 (CR-055, DEV-428)
+ALTER TABLE repository_registration_request
+  ADD COLUMN status          TEXT        NOT NULL DEFAULT 'pending',
+  ADD COLUMN resolved_at     TIMESTAMPTZ,
+  ADD COLUMN resolved_by     TEXT        REFERENCES app_user(user_id) ON DELETE SET NULL,
+  ADD COLUMN resolution_note TEXT;
+
+ALTER TABLE repository_registration_request
+  ADD CONSTRAINT repository_registration_request_status_chk
+    CHECK (status IN ('pending', 'fulfilled', 'dismissed'));
+
+-- 종료된 요청은 종료 시각을 갖고 대기 중 요청은 갖지 않는다. 둘을 함께 걸어야
+-- "닫혔는데 언제 닫혔는지 모르는 행"과 "열려 있는데 종료 시각이 있는 행"이 둘 다 막힌다.
+ALTER TABLE repository_registration_request
+  ADD CONSTRAINT repository_registration_request_resolution_chk
+    CHECK ((status = 'pending') = (resolved_at IS NULL));
+
+ALTER TABLE repository_registration_request
+  ADD CONSTRAINT repository_registration_request_note_chk
+    CHECK (resolution_note IS NULL OR length(resolution_note) <= 500);
+
+-- 운영자 대기열의 키셋 순회 (API-ADM-009). 정렬 키를 그대로 담는다.
+CREATE INDEX repository_registration_request_queue_idx
+  ON repository_registration_request (status, created_at DESC, request_id DESC);
+```
+
+**세 상태뿐이며 그 사이에 승인 상태를 두지 않는다** (FR-ING-009 AC-11). 등록되지 않은 채 승인된 행은 아무것도 보장하지 못한다 — 수집도 채번도 시작되지 않았고 요청자에게 보이는 것도 달라지지 않는다. 승인은 성공한 등록 그 자체이며, `API-ADM-001`의 등록이 같은 정규화 식별자의 `pending` 행 전부를 `fulfilled`로 옮긴다.
+
+**기존 행을 `fulfilled`로 소급하지 않는다.** 같은 식별자의 저장소가 지금 `active`라는 사실은 **그 등록이 이 요청 때문에 일어났다는 뜻이 아니다** — 요청보다 먼저 등록됐을 수도 있고, 그렇다면 이 행을 닫는 것은 일어나지 않은 인과를 정본에 적는 일이다. 게다가 `resolved_at`·`resolved_by`를 채울 진짜 값이 없으므로 위 제약을 만족시키려면 시각과 처리자를 지어내야 한다. **모르는 것을 지어내지 않고 `pending`으로 둔다** — 운영자가 대기열에서 한 번에 정리하며, 그 처리는 실제 시각과 실제 처리자를 갖는다.
+
+**`resolved_by`는 `ON DELETE SET NULL`이다.** `requested_by`의 `CASCADE`와 다른 이유는 지우는 대상이 다르기 때문이다 — 요청자를 지우면 그의 요청도 사라지는 것이 보존 표의 정책이지만, **처리한 운영자가 퇴사했다고 그가 처리한 요청 기록까지 사라지면 안 된다.** 그래서 처리자만 비우고 행은 남긴다. 상태와 종료 시각은 그대로이므로 "언제 닫혔는지"는 여전히 알 수 있다.
+
+**`resolution_note`는 운영자 평면에만 있다.** `API-ING-003`의 어느 응답에도 실리지 않는다 — 실리면 그 문장이 곧 비공개 저장소의 존재·정책 신탁이 된다 (AC-10).
 
 #### `repository.snapshot_bootstrapped_at` — 정본 스냅숏 완결 표시 (CR-037, DEV-194·195)
 

@@ -1,6 +1,6 @@
 # PR Search 와이어프레임 사양서
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.13 | 갱신일: 2026-08-30
 
 ## 0. 문서 위치와 책임
 
@@ -699,15 +699,17 @@ PR 1건의 전체 맥락 — 커밋 집합, 시퀀스 위치, 선행·후행, �
 | --- | --- | --- |
 | `A-002-LIST` 등록 목록 | 저장소, 등록 상태, 시퀀스 대상 브랜치, 미러 사용 여부, 백필 상태 | FR-ING-009 |
 | `A-002-FORM` 등록·편집 | 저장소 식별자, 대상 브랜치(최대 10), 미러 사용, 백필 실행 여부 | FR-ING-009 |
-| `A-002-REQUESTS` 등록 요청 | W-009에서 접수된 사용자 요청 목록. 정본은 `ENT-CORE-008`이며 WP-034가 그 표와 기록 경로(`API-ING-003`)를 세웠다. **운영자가 요청을 보고 처리하는 경로는 WP-040 소관이다** — 승인·반려 상태와 처리 이력은 그 WP가 정한다 (CR-050) | FR-ING-009 |
+| `A-002-REQUESTS` 등록 요청 | W-009에서 접수된 사용자 요청 목록과 그 처리. 정본은 `ENT-CORE-008`이며 WP-034가 그 표와 기록 경로(`API-ING-003`)를 세웠다. 운영자는 `pending` 요청을 먼저 보고, 요청받은 식별자로 `A-002-FORM`을 채워 실제 등록을 하거나 사유를 적어 종료한다. 처리 상태는 `pending`·`fulfilled`·`dismissed` 셋이고 처리자·처리 시각·처리 메모를 함께 보인다. **등록되지 않은 채 승인된 상태를 화면이 만들지 않는다** — "등록"은 `A-002-FORM`의 제출이며, 성공한 등록이 같은 식별자의 `pending` 요청 전부를 종료한다 (FR-ING-009 AC-11, CR-055) | FR-ING-009 |
 
 ### 주요 컴포넌트
 
-`C-043 RepositoryRegistrationForm`, `C-013 ResultTable`, `C-004 EmptyState`
+`C-043 RepositoryRegistrationForm`, **`C-071 RegistrationRequestQueue`**, `C-013 ResultTable`, `C-004 EmptyState`
+
+`C-013`은 `A-002-LIST`(등록 저장소 목록)의 것이고, `A-002-REQUESTS`는 **`C-071`을 쓴다** — `C-013`은 정렬 컨트롤을 갖고 행 타입이 `ResultRow`에 묶여 있어 요청 큐의 `onPrefill`·`onDismiss` 계약을 담지 못한다 (CR-055, PR #88 리뷰 P2)
 
 ### 상태 정의
 
-`loading_initial`, `ready`, `empty_no_repository`, `error_no_access` (등록 대상에 접근 권한 없음), `error_branch_limit` (브랜치 10개 초과), `no_permission`, `auth_expired`, `offline`
+`loading_initial`, `ready`, `empty_no_repository`, `error_no_access` (등록 대상에 접근 권한 없음), `error_branch_limit` (브랜치 10개 초과), `operation_pending` (등록·해제·요청 처리를 서버가 받는 중), `requests_empty` (처리할 등록 요청이 없음), `no_permission`, `auth_expired`, `offline`
 
 ### 이벤트 정의
 
@@ -715,7 +717,9 @@ PR 1건의 전체 맥락 — 커밋 집합, 시퀀스 위치, 선행·후행, �
 | --- | --- | --- |
 | `repo.register` | 등록 제출 | 저장소 등록, 선택 시 백필 잡 생성 |
 | `repo.unregister` | 해제 클릭 | 수집 중단 (문서 유지, 확인 다이얼로그) |
-| `repo.update_branches` | 브랜치 변경 | 시퀀스 대상 브랜치 갱신, 신규 브랜치 채번 잡 생성 |
+| `repo.update_branches` | 브랜치 변경 | 시퀀스 대상 브랜치 갱신, 신규 브랜치마다 채번 잡 생성 (FR-ING-009 AC-12) |
+| `request.prefill` | 요청 목록의 "등록" 클릭 | 요청받은 식별자로 `A-002-FORM`을 채운다. **이 조작만으로는 요청 상태가 바뀌지 않는다** — 등록이 성공해야 종료된다 |
+| `request.dismiss` | 요청 목록의 "종료" 클릭 | 확인 뒤 그 요청을 `dismissed`로 종료하고 사유를 함께 기록한다 (감사 대상) |
 
 ### 권한/정책
 
@@ -724,7 +728,8 @@ PR 1건의 전체 맥락 — 커밋 집합, 시퀀스 위치, 선행·후행, �
 ### 구현 메모
 
 - 해제는 문서를 삭제하지 않는다는 사실을 확인 다이얼로그에 명시한다. 사용자가 "삭제"로 오해하면 데이터 손실을 우려해 해제를 회피한다.
-- 시퀀스 대상 브랜치를 추가하면 그 브랜치의 전체 채번이 필요하다. 예상 소요를 폼에 표시한다.
+- 시퀀스 대상 브랜치를 추가하면 그 브랜치의 전체 채번이 필요하다. **생성된 채번 잡과 그 진행률을 보이고, 예상 소요 시간을 지어내 표시하지 않는다** (CR-055, DEV-435) — 채번 시간은 브랜치의 커밋 수와 미러 상태에 달려 있어 폼이 그것을 알 수 없고, 근거 없는 예상치는 그것이 빗나가는 만큼 운영자의 판단을 망친다. 진행률은 A-003의 잡 목록과 같은 값이다.
+- **등록 요청의 처리 메모는 `operator` 평면에만 있다.** 요청자에게 돌려주는 응답은 FR-ING-009 AC-10 그대로이며 처리 상태도 사유도 담지 않는다.
 
 ## A-003 인덱스·잡 운영
 
@@ -752,13 +757,15 @@ PR 1건의 전체 맥락 — 커밋 집합, 시퀀스 위치, 선행·후행, �
 
 ### 상태 정의
 
-`loading_initial`, `ready`, `job_running`, `error_job_conflict` (동일 대상 잡 중복), `error_job_failed`, `reindex_dual_write` (재색인 이중 쓰기 중), `no_permission`, `auth_expired`, `offline`
+`loading_initial`, `ready`, `job_running`, `error_job_conflict` (동일 대상 잡 중복), `error_job_failed`, `reindex_dual_write` (재색인 이중 쓰기 중), `index_status_unavailable` (별칭 상태를 읽지 못했다 — 값이 0이 아니라 미확인이다, FR-ING-008 AC-7), `no_permission`, `auth_expired`, `offline`
 
 ### 이벤트 정의
 
 | 이벤트 | 트리거 | 결과 |
 | --- | --- | --- |
-| `job.run` | 실행 제출 | 잡 생성 (중복 시 409와 실행 중 잡 ID) |
+| `job.run` | 실행 제출 | 잡 생성 (중복 시 409와 실행 중 잡 ID). **`A-003-RUN`이 제시하는 유형은 러너가 있는 것뿐이다** (FR-ADMIN-002 AC-6) |
+| `job.pause` | 일시 중지 클릭 | 잡을 `paused`로 옮긴다 |
+| `job.resume` | 재개 클릭 | 잡을 `queued`로 되돌린다 — 곧바로 `running`이 되지 않는다 |
 | `job.cancel` | 중단 클릭 | 중단 요청 (30초 안에 멈추지 않으면 강제 종료) |
 | `job.progress` | 30초 주기 | 진행률 갱신 |
 | `sequence.integrity_check` | 점검 실행 | 표본/전량 점검 잡 생성 |
@@ -772,6 +779,9 @@ PR 1건의 전체 맥락 — 커밋 집합, 시퀀스 위치, 선행·후행, �
 
 - 재채번은 비가역이며 기존 범위 인용을 무효화한다. 실행 전 영향 범위(무효화되는 안전 구간 표식 수, 영향받는 저장된 검색 수)를 산출해 확인 다이얼로그에 표시하고, 저장소 이름을 직접 입력하게 하는 2단계 확인을 요구한다.
 - 재색인 진행 중에는 인덱스 상태 패널에 이중 쓰기 중임을 상시 표시한다.
+- **잡마다 보이는 제어 버튼은 서버가 준 `allowed_actions`를 그대로 그린다** (FR-ADMIN-002 AC-7, CR-055). 화면이 상태 문자열로 가능한 동작을 추론하지 않는다 — 추론하면 전이 규칙이 두 곳에 살고, 러너가 실제로 지원하지 않는 동작을 화면이 제시한다.
+- **인덱스 상태의 값 중 읽지 못한 것은 미확인으로 적는다** (FR-ING-008 AC-7). 크기를 모르는 것을 `0B`로 적으면 운영자가 인덱스가 비었다고 읽는다.
+- **조정 스캔의 즉시 실행도 잡이다** (FR-ING-011 AC-7). 버튼을 누른 사실을 "스캔 완료"로 표시하지 않고 `queued`·`running`·진행률·종료 상태를 그대로 보인다.
 
 ## A-004 감사 로그
 

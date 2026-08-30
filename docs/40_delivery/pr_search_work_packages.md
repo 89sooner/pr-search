@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.7 | 갱신일: 2026-08-29
+> 상태: review | 버전: v2.8 | 갱신일: 2026-08-30
 
 ## 1. 목적
 
@@ -1631,27 +1631,47 @@
 ### WP-040 A-002·A-003 운영 콘솔
 
 - 목표: 운영자가 저장소·잡·인덱스·시퀀스를 화면에서 제어한다.
-- 관련 요구사항: FR-ING-009, FR-ADMIN-002, FR-ADMIN-003, FR-ING-006, FR-ING-008
+- 관련 요구사항: FR-ING-009, FR-ADMIN-001, FR-ADMIN-002, FR-ADMIN-003, FR-ING-006, FR-ING-007, FR-ING-008, FR-ING-010, FR-ING-011
+- **관련 요구사항이 넓어진 이유 (CR-055, DEV-434)**: `CR-052`가 `A-001` 완성을 이 WP로 옮겼는데 그 화면의 근거인 `FR-ADMIN-001`·`FR-ING-007`·`FR-ING-010`·`FR-ING-011`이 목록에 없었다. **기능 추가가 아니라 추적 정정이다** — 세 화면이 이미 그 요구사항을 렌더링하기로 되어 있었다.
 - 관련 화면/플로우: A-001, A-002, A-003 / FLOW-007, FLOW-008
-- 관련 API/데이터/잡: API-ADM-001~004, API-ADM-006~007
+- 관련 API/데이터/잡: API-ADM-001~004, API-ADM-006~007, **API-ADM-009**(CR-055 신설) / ENT-CORE-008 / JOB-ING-005, JOB-SEQ-001
 - 선행 WP: WP-010, WP-019, WP-028, WP-035
+- **계약 선행**: `CR-055`. 착수 전 감사가 화면이 누르라고 정한 동작 넷의 도달 경로가 없다는 것을 찾아 계약을 먼저 닫았고(SRS `v2.15`), 이 구현이 그것을 따른다.
 - 구현 범위:
+  - **백엔드 — 계약이 연 자리를 실재시킨다** (CR-055):
+    - `API-ADM-009` 등록 검토 요청 조회·종료. 커서 키셋이며 오프셋을 두지 않는다
+    - 마이그레이션 `020` — `repository_registration_request`의 처리 결과 열. **기존 행을 소급하지 않는다**
+    - 저장소 등록 성공이 같은 정규화 식별자의 `pending` 요청 전부를 종료한다. 정본 쓰기 하나의 트랜잭션 경계 안에서 하고, GHE 조회·ES 갱신·팀 동기화·백필 큐잉은 그 밖에 둔다
+    - `JOB-ING-005` 수동 실행 — `API-ADM-002`의 `type: reconcile`. **주기 스윕과 잡 러너를 두 루프로 만들지 않는다** — `runReconcileSweep` 호출 지점이 하나뿐인 루프가 매 순회에서 수동 잡을 먼저 집어 본다. 단일 복제본 배치는 프로세스 안의 두 루프를 직렬화하지 못한다 (PR #88 리뷰 P2)
+    - `JOB-SEQ-001` 수동 실행 — `API-ADM-002`의 `type: sequence_assign`과 **`sequence` 역할의 러너**. 기존 `assignSequence`를 부른다
+    - 시퀀스 대상 브랜치 추가가 그 브랜치의 채번을 요청한다 (FR-ING-009 AC-12)
+    - `API-ADM-004`의 `GET` — 별칭별 인덱스 상태. **재색인 이력은 `job` 정본에서 도출하고 새 표를 만들지 않는다**
+    - 잡 응답의 `allowed_actions` (FR-ADMIN-002 AC-7)
   - A-001 완성: `C-040 PipelineMetricGrid`, `C-041 DeadLetterTable`, `C-042 ScanResultCard`, `A-001-ARCHIVE` (CR-052 — `API-ADM-008`은 WP-036이 낸다)
-  - A-002: `C-043 RepositoryRegistrationForm`, 등록 요청 목록
+  - A-002: `C-043 RepositoryRegistrationForm`, **`C-071 RegistrationRequestQueue`**
   - A-003: `C-044 JobTable`, `C-045 JobRunForm`, `C-046 IndexStatusPanel`, `C-047 IntegrityReportCard`
+  - 내비게이션에 **A-003 항목**을 더한다 — `id: ops-jobs`, `href: /ops/jobs`, `allowedRoles: ['operator']`. 새 `ops` 항목은 `allowedRoles`를 반드시 지정한다 (CR-054, DEV-408)
   - 30초 폴링 (조작 중 보류, 백그라운드 탭 중단)
-  - 파괴적 확인 다이얼로그: 해제("문서 유지" 명시), 일괄 재처리(100건 초과 재확인), 재채번(영향 범위 + 저장소명 입력)
+  - 파괴적 확인 다이얼로그: 해제("신규 수집 중단·문서 유지" 명시), 일괄 재처리(100건 초과 재확인), 재채번(영향 범위 + 저장소명 입력), **등록 요청 종료(사유 입력)**
   - `operator` 역할 제한. **예외는 `A-001-ARCHIVE`이며 `security_officer`도 진입한다**(`archive_only` 상태, CR-052 DEV-375)
 - 제외:
   - A-004 (WP-039)
+  - **`API-ADM-001`·`API-ADM-003` 목록의 오프셋을 커서로 옮기는 일** (DEV-433). 두 API의 소비자를 전부 다시 세는 별도 작업이며, 이 WP의 화면은 경계 있는 첫 페이지로 성립한다. **신설하는 `API-ADM-009`에는 오프셋을 두지 않는다**
+  - `export.create`·`safe_marker.set`의 활성화 (WP-044·WP-041). 이 WP가 감사 어휘의 활성 상태를 앞당기지 않는다
 - 완료 기준(DoD):
-  - [ ] QA-A001-01 ~ QA-A001-14, QA-A002-01 ~ QA-A002-05, QA-A003-01 ~ QA-A003-11이 통과한다
-  - [ ] 재채번 다이얼로그가 영향 범위를 표시하고 저장소명 직접 입력을 요구한다 (QA-A003-10)
+  - [ ] QA 체크리스트의 `QA-A001-*`·`QA-A002-*`·`QA-A003-*`가 **전부** 통과한다. **개수를 여기 적지 않는다** — 항목이 늘면 그 수가 낡고 누가 낡게 했는지 아무도 모른다 (CR-054). 정본은 `pr_search_screen_qa_checklist.md`다
+  - [ ] 재채번 다이얼로그가 영향 범위를 표시하고 저장소명 직접 입력을 요구한다 (QA-A003-10). **확인 전에는 서버로 요청이 나가지 않는다** — 버튼 비활성 스냅숏이 아니라 실제 네트워크 호출 수로 증명한다
+  - [ ] 해제·일괄 재처리·등록 요청 종료도 같은 방식으로 증명한다
   - [ ] 조작 중 자동 갱신이 보류된다 (QA-A001-09)
-  - [ ] `operator`가 아닌 역할에게 내비게이션이 렌더링되지 않고 직접 진입 시 차단된다. **`security_officer`는 예외이며 진입하되 `A-001-ARCHIVE`만 보인다**(`archive_only`, CR-052 DEV-375 / PR #67 리뷰)
+  - [ ] `operator`가 아닌 역할에게 내비게이션이 렌더링되지 않고 직접 진입 시 차단된다. **`security_officer`는 예외이며 진입하되 `A-001-ARCHIVE`만 보인다**(`archive_only`, CR-052 DEV-375 / PR #67 리뷰). **그 역할일 때 화면이 `operator` 전용 데이터를 요청하지도 않는다** — 403을 받아 숨기는 방식은 권한 판정을 화면 뒤로 미루는 일이다
+  - [ ] **수동 조정 스캔과 수동 시퀀스 채번이 실제로 실행된다** — 잡 행이 만들어지고 러너가 그것을 집어 기존 구현을 부르며 종료 상태에 도달한다. `queued`에 머무는 유령 잡이 없다 (FR-ADMIN-002 AC-6). 운영 도달성 회귀 시험에 두 러너의 행이 있다
+  - [ ] **주기 스캔과 수동 스캔이 겹치지 않는다** (FR-ING-011 AC-7). 시험은 두 방아쇠를 동시에 걸고 `runReconcileSweep`가 겹쳐 실행되지 않았음을 센다 — 단일 복제본 배치를 근거로 삼지 않는다
+  - [ ] **취소가 완료로 덮이지 않는다** — 러너가 종료를 기록할 때 이미 `cancelled`인 잡을 `completed`로 만들지 않는다. **백필 러너가 무방비 `finishJob`을 쓰고 있어 실제로 덮는다**(DEV-436). `A-003`이 노출하는 모든 잡 유형에 대해 이 성질을 시험으로 건다
+  - [ ] 등록 성공이 같은 식별자의 `pending` 요청 전부를 종료하고, **등록이 실패하면 요청은 `pending`으로 남는다**
+  - [ ] **일반 사용자 응답에 처리 상태·사유·처리자가 없다** (FR-ING-009 AC-10, THR-045)
   - [ ] FLOW-007, FLOW-008이 E2E로 통과한다
   - [ ] axe 위반 0건
-- 검증 방법: `pnpm test web/ops`, `pnpm test:e2e flow-007 flow-008`, `pnpm test:a11y ops`
+- 검증 방법: `pnpm test web/ops`, `pnpm run test:integration`(등록 요청 수명주기·두 러너), `pnpm run test:regression`(운영 도달성), `pnpm test:e2e flow-007 flow-008`, `pnpm test:a11y ops`
 - 기록: 원장 WP-040 상태, FR-ADMIN-002 매핑
 
 ---

@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.13 | 갱신일: 2026-08-30
 
 ## 1. 상태 설계 원칙
 
@@ -225,7 +225,8 @@
 | `empty_no_repository` | 등록 0건 | 첫 등록 안내 | 등록 | FR-ING-009 |
 | `error_no_access` | 대상 저장소 접근 권한 없음 | 필요 권한 표시 | 권한 요청 | FR-ING-009 |
 | `error_branch_limit` | 브랜치 10개 초과 | 상한 명시 | 브랜치 축소 | FR-ING-009 |
-| `operation_pending` | 등록 후 백필 진행 | 진행률 | - | FR-ING-006 |
+| `operation_pending` | 등록·해제·요청 처리를 서버가 받는 중이거나 등록 후 백필이 진행 중 | 진행률. 확인이 필요한 조작은 확인 전에는 이 상태로 들어가지 않는다 | - | FR-ING-006, FR-ING-009 |
+| `requests_empty` | 처리할 등록 검토 요청이 없다 | `A-002-REQUESTS`만 빈 상태로 그리고 **나머지 섹션은 정상 동작한다** | - | FR-ING-009 AC-11 |
 | `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 
 ### A-003 인덱스·잡 운영
@@ -238,6 +239,7 @@
 | `error_job_failed` | 잡 실패 | 실패 사유와 재실행 경로 | 재실행 | FR-ADMIN-002 |
 | `reindex_dual_write` | 재색인 이중 쓰기 중 | 인덱스 패널에 상시 표시 | - | FR-ING-008 |
 | `operation_pending` | 재채번 진행 | 진행률 + 영향 범위 | - | FR-SEQ-005 |
+| `index_status_unavailable` | 별칭별 인덱스 상태를 읽지 못했다 | `A-003-INDEX`의 해당 값만 **미확인**으로 적는다 — `0`도 `0B`도 쓰지 않는다. 잡 목록과 실행 폼은 정상 동작한다 | 재시도 | FR-ING-008 AC-7 |
 | `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 
 ### A-004 감사 로그

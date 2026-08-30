@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.9 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.10 | 갱신일: 2026-08-30
 
 ## 1. 문서 원칙
 
@@ -435,16 +435,19 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - 책임: 저장소 등록·편집 폼
 - 기반: Conductor `Field` + `TextField` + `Select` + `Switch` + `Checkbox`
 - 필수 props: `value`, `onSubmit`, `maxBranches: 10`
+- 선택 props: `prefill` — `C-071`의 요청 목록이 넘긴 `owner/name`. **이 값이 들어와도 요청 상태를 바꾸지 않는다**: 폼을 채울 뿐이고, 요청은 등록이 성공해야 종료된다 (FR-ING-009 AC-11)
 - 상태: `idle`, `submitting`, `error_no_access`, `error_branch_limit`
-- 사용 규칙: 해제 시 "문서는 유지됩니다"를 확인 다이얼로그에 명시한다
+- 사용 규칙: 해제 시 **"신규 이벤트 수집은 중단되고 기존 검색 문서는 유지됩니다"**를 확인 다이얼로그에 명시한다. **"삭제"라는 낱말을 쓰지 않는다** — 사용자가 데이터 손실로 오해하면 해제를 회피한다
+- 사용 규칙: 브랜치를 더해 제출하면 그 브랜치의 채번 잡이 생기며(FR-ING-009 AC-12), **예상 소요 시간을 지어내지 않고 생성된 잡과 진행률을 보인다** (CR-055, DEV-435)
 - 관련 FR: FR-ING-009
 
 ### C-044 JobTable
 
 - 책임: 잡 목록, 상태, 진행률, 중단
 - 기반: Conductor `Table` + `StatusBadge` + `Meter` + `Button`
-- 필수 props: `jobs: Job[]`, `onCancel`
+- 필수 props: `jobs: Job[]`, `onAction(jobId, action)`
 - 사용 규칙: 잡 상태는 Conductor `Status` 어휘를 그대로 사용한다
+- 사용 규칙: **각 행이 보이는 제어 버튼은 서버가 준 `allowed_actions`를 그대로 그린다** (FR-ADMIN-002 AC-7). 상태 문자열로 가능한 동작을 추론하지 않는다 — 추론하면 전이 규칙이 서버와 화면 두 곳에 살고, 잡 유형마다 러너가 실제로 지원하는 범위가 다를 때 화면이 없는 능력을 제시한다. 목록이 비면 그 잡은 제어할 수 없다는 뜻이며 버튼을 그리지 않는다
 - 관련 FR: FR-ADMIN-002
 
 ### C-045 JobRunForm
@@ -458,7 +461,8 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 별칭-실제 인덱스 매핑, 문서 수, 크기, 재색인 이력, 이중 쓰기 상태
 - 기반: Conductor `Panel` + `Table` + `Badge`
-- 상태: `ready`, `reindex_dual_write`
+- 상태: `ready`, `reindex_dual_write`, `index_status_unavailable`
+- 사용 규칙: **읽지 못한 값은 미확인으로 적고 `0`이나 `0B`로 대체하지 않는다** (FR-ING-008 AC-7). 크기를 모르는 것과 인덱스가 빈 것은 다른 사실이며, 후자로 적으면 운영자가 재색인이 실패했다고 읽는다. 값 하나를 읽지 못해도 나머지 행은 정상 표시한다
 - 관련 FR: FR-ING-008
 
 ### C-047 IntegrityReportCard
@@ -468,6 +472,20 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - 필수 props: `report: IntegrityReport`, `onReassign`
 - 사용 규칙: 재채번 다이얼로그는 영향 범위(무효화 표식 수, 영향 저장 검색 수, 대상 커밋 수)를 표시하고 저장소 이름 직접 입력으로 2단계 확인을 요구한다
 - 관련 FR: FR-ADMIN-003, FR-SEQ-005
+
+> **번호가 순서 밖인 이유.** `C-048`~`C-070`은 `CR-005`·`CR-008`이 GitHub Operations 축에 이미 배정했다. 안정 ID는 문서 전체가 인용하는 값이므로 재번호화하지 않고, 이 축의 신규 컴포넌트를 마지막 번호 뒤에 이어 붙인다 (CR-055).
+
+### C-071 RegistrationRequestQueue
+
+- 책임: 운영자 평면의 등록 검토 요청 목록과 그 처리 (`A-002-REQUESTS`)
+- 기반: Conductor `Table` + `StatusBadge` + `Button` + `Dialog` + `TextField`
+- 필수 props: `requests: RegistrationRequest[]`, `onPrefill(request)`, `onDismiss(requestId, reason)`
+- 상태: `loading_initial`, `ready`, `requests_empty`, `submitting`
+- 사용 규칙: **`C-013 ResultTable`을 쓰지 않는다** — `C-013`은 정렬 컨트롤을 갖고 행 타입이 `ResultRow`에 묶여 있다. 재사용의 뜻은 같은 시각 규칙이지 같은 컴포넌트가 아니다 (`C-035 AuditRecordTable`·`C-029 RangeResultTable` 선례, DEV-419)
+- 사용 규칙: **"등록" 버튼은 `C-043`의 폼을 채우기만 한다.** 이 컴포넌트가 요청을 `fulfilled`로 바꾸지 않는다 — 승인은 성공한 등록 그 자체다 (FR-ING-009 AC-11)
+- 사용 규칙: 종료는 사유 입력과 확인을 거친다. **처리 메모는 `operator` 평면에만 있다** — 요청자에게 돌려주지 않는다 (FR-ING-009 AC-10)
+- 사용 규칙: 현재 페이지의 행 수를 전체 요청 수처럼 표시하지 않는다. 서버가 전체 수를 보장하지 않으면 화면도 그것을 전체라고 말하지 않는다
+- 관련 FR: FR-ING-009 AC-8·AC-11
 
 ## 5. 중복 방지 규칙
 
@@ -482,6 +500,7 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 | 오류 표시 | C-005 ErrorBanner | 화면별 자체 배너 |
 | 진행률 | Conductor `Meter` / `ProgressRing` | 자체 프로그레스 바 |
 | 확인 다이얼로그 | Conductor `Dialog` | 자체 모달 |
+| 운영자의 등록 요청 처리 | C-071 RegistrationRequestQueue | `C-013`을 이 목록에 재사용하는 것 (행 타입이 `ResultRow`에 묶여 있다) |
 
 ## 6. 접근성 공통 책임
 
