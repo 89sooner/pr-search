@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-08-30T16:07:19+00:00",
+  "generated": "2026-08-30T16:17:31+00:00",
   "root": "/home/roqkf/pr-search",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -341,15 +341,16 @@
       "id": "f54408e",
       "source_path": "agent-context/todos.md",
       "compact_path": "agent-context/_handoff/compact/f54408e.todos.ctx.md",
-      "sha256": "a2b52fd0bac7b64b916406b44ea48cab21fcbcfc73053626a0d7844756c000d8",
-      "bytes": 102533,
-      "lines": 1306,
-      "compact_bytes": 101879,
+      "sha256": "e72efd8c3f7f3e05fc639162a3b3046df11762247c80059bd5873bd75e17f797",
+      "bytes": 103687,
+      "lines": 1322,
+      "compact_bytes": 102929,
       "headings": [
         "다음 작업 · 미해결 항목 · 확인할 사항",
         "시작하기 전에 — 이 인계의 값을 실측하라",
         "A. 지금 당장 — REL-006 (WP-041 → WP-042 → WP-044)",
         "B. 새로 열린 WP — WP-069 작성자 소속 팀 채우기",
+        "B-2. design-system version PR이 열려 있다 — 급하지 않다",
         "C. 배포에서 해야 할 것",
         "D. GitHub Actions — pr-search만 결제 차단이다",
         "E. 미뤄 둔 항목",
@@ -360,13 +361,13 @@
         "시작하기 전에 — 이 인계의 값을 실측하라",
         "A. 지금 당장 — DEV-414 미해결 리뷰 31건",
         "B. 그 뒤 — REL-006 (WP-041 → WP-042 → WP-044)",
-        "C. 배포에서 해야 할 것",
-        "D. GitHub Actions가 돌지 않는다 — 사용자 조치가 필요하다"
+        "C. 배포에서 해야 할 것"
       ],
       "signals": [
         "agent-context/todos.md",
         "4/4",
         "docs/40_delivery/pr_search_implementation_traceability.md",
+        "conductor-by-89soone/react",
         "packages/query/src/serialize.ts",
         "apps/pipeline-worker/src/documents.ts",
         "packages/es/src/upsert.ts",
@@ -386,8 +387,7 @@
         "apps/web/app/ops/audit/page.tsx",
         "up/down/up",
         "packages/db/src/repositories/job.ts",
-        "packages/domain/src/sequence.ts",
-        "apps/search-api/src/ops/registration-request-cursor.ts"
+        "packages/domain/src/sequence.ts"
       ],
       "priority": 30,
       "title": "다음-작업-미해결-항목-확인할-사항"
