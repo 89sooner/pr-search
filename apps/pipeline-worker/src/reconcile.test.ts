@@ -16,6 +16,7 @@ import {
   RECONCILE_WINDOW_MS,
   reconcileRepository,
   resetReconcileCycles,
+  runReconcileSweep,
 } from './reconcile.js';
 import type { ReconcileDeps } from './reconcile.js';
 
@@ -33,6 +34,10 @@ interface Options {
   readonly rateLimited?: boolean;
   readonly headSeq?: number | null;
   readonly activeAssign?: boolean;
+  /** 페이지별 응답. 주면 `prs`를 대신한다 — 페이지 경계 취소를 재는 데 쓴다. */
+  readonly pages?: readonly (readonly { number: number; updated_at: string }[])[];
+  /** 스윕이 돌 저장소 목록. `runReconcileSweep`를 부르는 시험만 쓴다. */
+  readonly repositories?: readonly unknown[];
 }
 
 function harness(options: Options): {
@@ -41,11 +46,17 @@ function harness(options: Options): {
   readonly projected: number[];
   readonly enqueued: { type: string; target: string }[];
   readonly published: { topic: string; partitionKey: string; eventName: string; payload: unknown }[];
+  readonly syncedTeams: string[];
+  readonly completedWrites: number[];
+  readonly incompleteSets: { value: number; repository: string }[];
 } {
   const listCalls: { page: number; direction: string | undefined }[] = [];
   const projected: number[] = [];
   const enqueued: { type: string; target: string }[] = [];
   const published: { topic: string; partitionKey: string; eventName: string; payload: unknown }[] = [];
+  const syncedTeams: string[] = [];
+  const completedWrites: number[] = [];
+  const incompleteSets: { value: number; repository: string }[] = [];
 
   const pool = {
     query: (text: string, values?: readonly unknown[]) => {
@@ -54,6 +65,14 @@ function harness(options: Options): {
         // 이 경로가 다시 살아나면(DEV-180 회귀) 시험이 본다.
         enqueued.push({ type: String(values?.[0]), target: String(values?.[1]) });
         return Promise.resolve({ rows: [{ job_id: 1 }] });
+      }
+      if (/^\s*UPDATE repository/i.test(sql)) {
+        // 완주 기록 (FR-ING-011 AC-6). 취소된 회차는 여기에 닿으면 안 된다.
+        completedWrites.push(Number(values?.[0]));
+        return Promise.resolve({ rows: [] });
+      }
+      if (/FROM repository/i.test(sql)) {
+        return Promise.resolve({ rows: options.repositories ?? [] });
       }
       if (/FROM job/i.test(sql)) {
         return Promise.resolve({ rows: options.activeAssign === true ? [{ job_id: 9, type: 'sequence_assign' }] : [] });
@@ -88,6 +107,10 @@ function harness(options: Options): {
       if (options.rateLimited === true) {
         return Promise.reject(new GitHubApiError('rate_limited', '한도 소진'));
       }
+      if (options.pages !== undefined) {
+        const items = options.pages[page - 1] ?? [];
+        return Promise.resolve({ items, hasMore: items.length >= 100 });
+      }
       return Promise.resolve({ items: page === 1 ? options.prs : [], hasMore: false });
     },
   } as unknown as ReconcileDeps['client'];
@@ -98,7 +121,11 @@ function harness(options: Options): {
 
   const metrics = {
     reconcileMissing: { inc: (): void => undefined },
-    reconcileIncompleteCycles: { set: (): void => undefined },
+    reconcileIncompleteCycles: {
+      set: (value: number, labels: { repository: string }): void => {
+        incompleteSets.push({ value, repository: labels.repository });
+      },
+    },
   } as unknown as ReconcileDeps['metrics'];
 
   const backfill = {} as unknown as ReconcileDeps['backfill'];
@@ -125,11 +152,32 @@ function harness(options: Options): {
         projected.push((summary as { number: number }).number);
         return Promise.resolve(true);
       },
+      syncTeams: (repository) => {
+        syncedTeams.push(`${repository.owner}/${repository.name}`);
+        return Promise.resolve();
+      },
     },
     listCalls,
     projected,
     enqueued,
     published,
+    syncedTeams,
+    completedWrites,
+    incompleteSets,
+  };
+}
+
+/**
+ * `n`번째 확인까지는 계속하고 그 뒤로는 멈추라고 답한다.
+ *
+ * 확인 지점을 **호출 횟수로** 지목하므로, 어느 경계에서 끊었는지가 시험 본문에
+ * 드러난다.
+ */
+function cancelAfter(n: number): () => Promise<boolean> {
+  let calls = 0;
+  return (): Promise<boolean> => {
+    calls += 1;
+    return Promise.resolve(calls > n);
   };
 }
 
@@ -256,5 +304,148 @@ describe('되돌리기 경로 (DEV-176)', () => {
     const result = await reconcileRepository(h.deps, REPOSITORY);
     expect(h.projected).toEqual([11]);
     expect(result.reprojected).toBe(1);
+  });
+});
+
+describe('**취소가 저장소 안에서도 멈춘다** (DEV-443, PR #91 리뷰 P1)', () => {
+  /*
+   * 저장소 **사이**에서만 보면 활성 저장소가 하나뿐이거나 그 저장소의 창이
+   * 넓을 때 취소가 사실상 무시된다. 잡 행이 `cancelled`로 남는 것은 라벨이고,
+   * 여기서 재는 것은 **일이 실제로 멈추는가**다.
+   */
+  const IN_WINDOW = '2026-08-25T11:00:00Z';
+
+  it('다음 페이지를 요청하지 않는다', async () => {
+    // 첫 페이지가 꽉 차야 루프가 두 번째 페이지로 넘어간다.
+    const full = Array.from({ length: 100 }, (_, i) => ({ number: i + 1, updated_at: IN_WINDOW }));
+    const h = harness({
+      prs: [],
+      indexed: full.map((pr) => pr.number),
+      pages: [full, [{ number: 500, updated_at: IN_WINDOW }]],
+    });
+
+    // 확인 1 = 페이지 1 앞, 확인 2 = 페이지 2 앞.
+    const result = await reconcileRepository(h.deps, REPOSITORY, cancelAfter(1));
+
+    expect(h.listCalls.map((call) => call.page)).toEqual([1]);
+    expect(result.stopped).toBe(true);
+  });
+
+  it('한 페이지 안에서도 남은 PR을 되돌리지 않는다', async () => {
+    const h = harness({
+      prs: [
+        { number: 10, updated_at: IN_WINDOW },
+        { number: 11, updated_at: IN_WINDOW },
+        { number: 12, updated_at: IN_WINDOW },
+      ],
+      indexed: [],
+    });
+
+    // 확인 1 = 페이지 앞, 확인 2 = PR 10 되돌리기 앞, 확인 3 = PR 11 되돌리기 앞.
+    const result = await reconcileRepository(h.deps, REPOSITORY, cancelAfter(2));
+
+    expect(h.projected).toEqual([10]);
+    expect(result.stopped).toBe(true);
+  });
+
+  it('후속 단계를 실행하지 않는다 — 채번 예약·팀 동기화·완주 기록', async () => {
+    const h = harness({
+      prs: [
+        { number: 10, updated_at: IN_WINDOW },
+        { number: 11, updated_at: IN_WINDOW },
+      ],
+      indexed: [],
+      // 채번이 필요한 상태를 만든다 — 취소가 없었다면 예약이 나갔을 자리다.
+      headSeq: null,
+    });
+
+    const result = await reconcileRepository(h.deps, REPOSITORY, cancelAfter(2));
+
+    expect(result.stopped).toBe(true);
+    expect(result.sequenceScheduled).toBe(false);
+    expect(h.published).toEqual([]);
+    expect(h.syncedTeams).toEqual([]);
+    /*
+     * 창을 끝까지 읽지 못한 회차의 `missing`은 부분값이다 — 미룸과 같은 이유로
+     * "최근 결과"가 될 수 없다.
+     */
+    expect(h.completedWrites).toEqual([]);
+  });
+
+  it('취소가 없으면 후속 단계가 모두 실행된다 — 대칭', async () => {
+    const h = harness({
+      prs: [{ number: 10, updated_at: IN_WINDOW }],
+      indexed: [],
+      headSeq: null,
+    });
+
+    const result = await reconcileRepository(h.deps, REPOSITORY);
+
+    expect(result.stopped).toBe(false);
+    expect(result.sequenceScheduled).toBe(true);
+    expect(h.syncedTeams).toEqual(['acme/payments']);
+    expect(h.completedWrites).toEqual([1]);
+  });
+
+  it('신호를 주지 않으면 아무것도 달라지지 않는다', async () => {
+    const h = harness({ prs: [{ number: 10, updated_at: IN_WINDOW }], indexed: [] });
+    const result = await reconcileRepository(h.deps, REPOSITORY);
+    expect(result.stopped).toBe(false);
+    expect(h.projected).toEqual([10]);
+  });
+});
+
+describe('스윕이 내부 중단을 존중한다 (DEV-443)', () => {
+  const IN_WINDOW = '2026-08-25T11:00:00Z';
+  const TWO_REPOSITORIES = [
+    { repository_id: 1, owner: 'acme', name: 'payments', sequence_branches: ['main'] },
+    { repository_id: 2, owner: 'acme', name: 'billing', sequence_branches: ['main'] },
+  ];
+
+  it('첫 저장소 안에서 멈추면 남은 저장소를 돌지 않는다', async () => {
+    const h = harness({
+      prs: [{ number: 10, updated_at: IN_WINDOW }],
+      indexed: [],
+      repositories: TWO_REPOSITORIES,
+    });
+
+    // 확인 1 = 저장소 1 앞, 확인 2 = 페이지 앞, 확인 3 = PR 10 되돌리기 앞.
+    const result = await runReconcileSweep(h.deps, cancelAfter(2));
+
+    expect(result.stopped).toBe(true);
+    // 페이지를 요청한 저장소가 하나다 — 멈추지 않았다면 둘이었다.
+    expect(h.listCalls).toHaveLength(1);
+    expect(h.projected).toEqual([]);
+  });
+
+  it('**취소를 연속 미완주로 세지 않는다** — 미룸과 다른 상태다', async () => {
+    const h = harness({
+      prs: [{ number: 10, updated_at: IN_WINDOW }],
+      indexed: [],
+      repositories: TWO_REPOSITORIES,
+    });
+
+    await runReconcileSweep(h.deps, cancelAfter(2));
+
+    /*
+     * 취소는 그 저장소의 건강 문제가 아니라 운영자의 지시다. 미룸으로 세면
+     * 세 번 취소할 때마다 경보가 울리고, 0으로 되돌리면 실제 미완주 이력이
+     * 취소로 지워진다 — 어느 쪽도 하지 않는다.
+     */
+    expect(h.incompleteSets).toEqual([]);
+  });
+
+  it('취소가 없으면 저장소를 모두 돈다 — 대칭', async () => {
+    const h = harness({
+      prs: [],
+      indexed: [],
+      repositories: TWO_REPOSITORIES,
+    });
+
+    const result = await runReconcileSweep(h.deps);
+
+    expect(result.stopped).toBe(false);
+    expect(result.repositories).toBe(2);
+    expect(h.listCalls).toHaveLength(2);
   });
 });
