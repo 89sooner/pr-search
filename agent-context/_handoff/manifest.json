@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-08-30T01:43:54+00:00",
+  "generated": "2026-08-30T01:49:56+00:00",
   "root": "/home/roqkf/pr-search",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -231,10 +231,10 @@
       "id": "f73e2b0",
       "source_path": "agent-context/session-notes.md",
       "compact_path": "agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md",
-      "sha256": "19d3ebccfd34484e4c4a8cf0e0763a187971dfa31d6a1ac9c0ace1a1ef586765",
-      "bytes": 69884,
-      "lines": 1175,
-      "compact_bytes": 70203,
+      "sha256": "043411fef1873f99696474c4c7ff2823cd51f011c2b17d0a194a7f77e6518df3",
+      "bytes": 70063,
+      "lines": 1177,
+      "compact_bytes": 70390,
       "headings": [
         "Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료",
         "Goal",
@@ -341,13 +341,12 @@
       "id": "f54408e",
       "source_path": "agent-context/todos.md",
       "compact_path": "agent-context/_handoff/compact/f54408e.todos.ctx.md",
-      "sha256": "39104504158bb39ec55eddf77cf609254ba579d0a8ff298267331f5f0275c7ae",
-      "bytes": 78894,
-      "lines": 1055,
-      "compact_bytes": 78787,
+      "sha256": "cfba14c075481bfccf87a0c1144497ec340ae5b8b4f7df589b3e96eaed9a989b",
+      "bytes": 77780,
+      "lines": 1034,
+      "compact_bytes": 77623,
       "headings": [
         "다음 작업 · 미해결 항목 · 확인할 사항",
-        "먼저 — 머지되지 않은 브랜치 하나가 있다",
         "A. 지금 당장 — WP-040 A-002·A-003 운영 콘솔 (REL-005 마지막)",
         "WP-039가 깔아 둔 자리 — 다시 만들지 말 것",
         "B. 그 뒤 — REL-006 (WP-041·042·044)",
@@ -361,13 +360,13 @@
         "A. 지금 당장 — WP-039 감사 기록과 A-004 (REL-005)",
         "B. 그 다음 — WP-040 A-002·A-003 운영 콘솔 (REL-005 마지막)",
         "C. 배포에서 해야 할 것 (WP-037·CR-053이 남긴 것 — 아직 실환경 미적용)",
-        "D. 릴리스 게이트 4·5·6 (변화 없음)"
+        "D. 릴리스 게이트 4·5·6 (변화 없음)",
+        "(완료) WP-038 W-006 통계 대시보드 — 2026-08-29 (2차) done (원장 6.49장, PR #80 b5ae933)"
       ],
       "signals": [
         "agent-context/todos.md",
         "8/8",
         "3/4",
-        "claude/paginate-caveat",
         "packages/domain/src/audit.ts",
         "prs/domain/audit",
         "apps/search-api/src/audit/recorder.ts",
@@ -387,7 +386,8 @@
         "apps/search-api/src/saved-search/sequence-reference.ts",
         "apps/web/lib/query-url.ts",
         "docs/40_delivery/pr_search_implementation_traceability.md",
-        "apps/search-api/src/"
+        "apps/search-api/src/",
+        "sequence/range.ts"
       ],
       "priority": 30,
       "title": "다음-작업-미해결-항목-확인할-사항"

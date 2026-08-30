@@ -1161,9 +1161,11 @@ PR #82·#83·#84·#85 · CR-054 · SRS v2.14 · 원장 6.50·6.51·6.51.1~3장 �
 
 `main` = `f2e3320` · 작업 트리 깨끗 · 열린 PR 0건.
 
-**머지되지 않은 브랜치 하나가 남았다** — `claude/paginate-caveat` (`88b05b3`). 원격에 push됐고
-내용은 `--paginate`가 틀린 답을 낸다는 사실을 `commands.md`·`risks.md`에 적는 것이다. **PR 생성이
-GitHub secondary rate limit으로 세 번 거부됐다.** `todos.md` 0절이 그 브랜치와 여는 명령을 담는다.
+**세션 후반에 PR 하나가 rate limit으로 막혔다가 나중에 열렸다.** `claude/paginate-caveat`의
+`--paginate` 정정은 `PR #87`로 통합됐다. 그 사이 `todos.md`에 "이 브랜치를 먼저 열라"는 절을
+두었는데, **그 지시가 자기 자신을 가리키는 순환**이라 리뷰가 잡았다 — 통합되는 순간 그 절은
+이미 끝난 일을 다음 사람에게 시킨다. 절을 지웠고, 남길 값이 있는 교훈("세션 후반에 남길 PR이
+있으면 먼저 연다")은 `risks.md`에 있다.
 
 이 세션의 작업 기록은 Obsidian vault에도 남겼다 —
 `dailywork/2026-08-29_PR-Search-감사-계약-정본화와-WP-039-감사-기록-구현.md`
