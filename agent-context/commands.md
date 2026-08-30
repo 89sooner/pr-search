@@ -1715,3 +1715,183 @@ comm -13 /tmp/main.txt /tmp/branch.txt   # 새로 생긴 것만
 
 **주의: `미정정`처럼 `미정`을 포함하는 낱말이 placeholder 검사에 걸린다.**
 "아직 고쳐지지 않은"으로 바꿔 쓴다.
+
+---
+
+# 2026-08-30 세션 — CR-055 · WP-040
+
+## 검증 배터리 (마지막 실행 결과 — 브랜치 `35b9ff0`)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                # 통과
+pnpm lint                     # 통과 — 마지막 파일까지 쓴 뒤 다시 돌릴 것
+pnpm run lint:deps            # 패키지 13개, 위반 0건
+pnpm run test                 # 단위 1850 통과 (1 skipped)   [1790 → +60]
+pnpm run test:regression      # 282 통과                      [267 → +15]
+```
+
+**돌리지 않은 것**: `test:integration` · `test:e2e` · `test:a11y` · `test:contrast` ·
+`pnpm build`. 화면이 서지 않아 그 계층의 검증이 성립하지 않는다 — **통과가 아니라
+미실행이다.** 다음 에이전트가 화면을 세운 뒤 전량을 돌린다.
+
+## 인계 팩 신선도 판정 — LF로 정규화한 뒤 비교한다
+
+원시 바이트 해시로 비교하면 **일곱 파일 전부 STALE로 오판**된다. 저장소가 CRLF이고
+`core.autocrlf=true`이기 때문이다.
+
+```python
+import json, hashlib
+m = json.load(open('agent-context/_handoff/manifest.json'))
+for f in m['files']:
+    raw = open(f['source_path'], 'rb').read()
+    lf = raw.replace(b'\r\n', b'\n')
+    state = ('FRESH(raw)' if hashlib.sha256(raw).hexdigest() == f['sha256']
+             else 'FRESH(lf)' if hashlib.sha256(lf).hexdigest() == f['sha256']
+             else 'STALE')
+    print(state, f['source_path'])
+```
+
+manifest의 키는 `source_path`이지 `src`가 아니다.
+
+## CRLF를 보존하는 편집 헬퍼
+
+파일이 CRLF면 **인자의 개행도 CRLF로 맞춘 뒤** 찾아야 한다. 그러지 않으면 멀티라인
+검색이 조용히 0건이 되고 "고쳤다"가 거짓이 된다.
+
+```python
+import sys
+path, old, new = sys.argv[1], sys.argv[2], sys.argv[3]
+raw = open(path, 'rb').read()
+crlf = b'\r\n' in raw
+enc = lambda s: s.encode('utf-8').replace(b'\n', b'\r\n') if crlf else s.encode('utf-8')
+ob, nb = enc(old), enc(new)
+n = raw.count(ob)
+if n != 1:
+    print(f'SKIPPED ({n}) {path}'); sys.exit(1)
+open(path, 'wb').write(raw.replace(ob, nb, 1))
+print(f'APPLIED (1) {path}')
+```
+
+`APPLIED (1)`이 아니면 그 편집은 **일어나지 않은 것**이다.
+
+## 새 파일을 만든 뒤에는 개행을 정규화한다
+
+`Write` 도구가 만든 파일은 LF다. 저장소 작업 트리는 CRLF이므로 맞춰 둔다.
+
+```python
+import re
+raw = open(path, 'rb').read()
+open(path, 'wb').write(re.sub(rb'(?<!\r)\n', b'\r\n', raw))
+```
+
+## 셸 heredoc과 인용의 함정 둘 — 이번에 둘 다 밟았다
+
+**1. SQL의 작은따옴표가 사라진다.** 셸의 작은따옴표 문자열로 SQL을 넘기면
+`DEFAULT 'pending'`이 `DEFAULT pending`이 된다. bash에서 `'...''...'`는 두 문자열의
+연결이라 따옴표가 소실된다. 파이썬 heredoc 안의 문자열로 쓰고 **넣은 뒤 눈으로
+확인한다.**
+
+**2. 본문에 구분자와 같은 낱말이 있으면 heredoc이 일찍 끝난다.** 이 파일에 넣을
+내용 안에 heredoc 구분자와 같은 문자열이 있어 스크립트가 잘렸고, 셸이 입력을
+기다리다 2분 타임아웃으로 죽었다. **긴 문서를 넣을 때는 heredoc 대신 파일로 쓴 뒤
+읽어 붙인다.**
+
+```bash
+# 안전한 형태: 내용을 파일로 먼저 쓰고 짧은 스크립트로 붙인다
+python3 -c "
+import re
+add = open('/tmp/.../append.md','rb').read()
+raw = open('agent-context/commands.md','rb').read()
+open('agent-context/commands.md','wb').write(
+    raw.rstrip(b'\r\n') + b'\r\n' + re.sub(rb'(?<!\r)\n', b'\r\n', add))
+"
+```
+
+## ID는 실측한다 — 연속의 다음이 비어 있다고 가정하지 마라
+
+```bash
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
+grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -1
+grep -rohE '\bC-0[0-9]{2}\b' docs/ | sort -u | tail -1
+ls packages/db/migrations/*.up.sql | tail -1
+```
+
+`C-047` 다음이 `C-048`이라고 가정했다가 그것이 이미 `GhContextHeader`임을 발견했다.
+실측한 next-free는 `C-071`이었다 — 다른 축(GitHub Operations)이 중간 대역을 배정해
+두었다.
+
+## open DEV 계수 — 상태를 굵게 쓰면 안 잡힌다
+
+```bash
+grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
+grep -E '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md \
+  | sed -E 's/^\| (DEV-[0-9]{3}) .*/\1/' | tr '\n' ' '
+```
+
+두 번째 명령은 **행의 첫 칸만** 뽑는다. `grep -oE 'DEV-[0-9]{3}'`로 뽑으면 행 본문의
+참조까지 딸려 나와 목록이 부풀어 오른다.
+
+## 문서 검증기 — 판정은 언제나 main 대비 diff
+
+```bash
+python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --strict \
+  2>&1 | grep -E "^(WARN|ERROR)" | sort > /tmp/branch.txt
+git stash -q && python3 ...같은 명령... > /tmp/main.txt && git stash pop -q
+comm -13 /tmp/main.txt /tmp/branch.txt   # 새로 생긴 것만
+```
+
+이번 결과: **새 ERROR 0건 · 새 WARN 0건.** 기존 경고 3건은 그대로 두었다.
+
+## 추가한 표 행의 칸 수를 센다 (DEV-399가 남긴 결함 유형)
+
+```python
+import re, subprocess
+diff = subprocess.run(['git','diff','-U0'], capture_output=True, text=True).stdout
+for line in diff.splitlines():
+    if not line.startswith('+') or line.startswith('+++'): continue
+    s = line[1:]
+    if not (s.startswith('| ') and s.rstrip().endswith('|')): continue
+    cols = re.sub(r'`[^`]*`', '`X`', s).count('|') - 1
+    print(cols, s[:70])
+```
+
+코드 스팬 안의 파이프를 먼저 지워야 오탐이 없다.
+
+## CI 확인 — 커밋 SHA의 check-runs로 본다
+
+```bash
+SHA=$(git rev-parse HEAD)
+gh api "repos/89sooner/pr-search/commits/$SHA/check-runs" \
+  --jq '.check_runs[] | "\(.name)\t\(.status)\t\(.conclusion // "-")"'
+```
+
+PR #88은 `verify`·`integration` 둘 다 success였다.
+
+## 리뷰 스레드 읽기·답변·해소
+
+```bash
+gh api graphql -f query='
+{ repository(owner: "89sooner", name: "pr-search") {
+    pullRequest(number: 88) {
+      reviewThreads(first: 100) {
+        nodes { id isResolved path line
+          comments(first:1){ nodes { author{login} body } } } } } } }'
+```
+
+답변과 해소는 `addPullRequestReviewThreadReply`·`resolveReviewThread` 뮤테이션이다
+(전문은 위 「리뷰 답변·해소」 절). PR #88의 네 스레드를 그렇게 처리했다.
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 실패 | 원인 |
+| --- | --- | --- |
+| 신선도 판정 스크립트 | `MISSING None` 일곱 | manifest 키가 `src`가 아니라 `source_path`다 |
+| 멀티라인 치환 | `SKIPPED (0)` | 헬퍼가 CRLF를 몰랐다. 인자의 개행을 맞춰 고쳤다 |
+| 마이그레이션 020 DDL 삽입 | 작은따옴표 소실 | 셸의 작은따옴표 문자열 안에서 연결로 해석됐다 |
+| 인계 문서 append | 2분 타임아웃 | 본문에 heredoc 구분자와 같은 낱말이 있었다 |
+| `pnpm run test` | `runtime.test.ts` 넷 실패 | `requestQueue`를 조건 없이 만들어 `createCursorSigner`가 기동 중에 던졌다 |
+| `pnpm run test:regression` | 둘 실패 | 기존 시험이 잡 유형 목록의 리터럴 전문을 단언하고 있었다 |
+| open DEV 계수 | 13에서 늘지 않음 | `DEV-433`의 상태를 굵게 썼다 |
+
+일곱 모두 **명령의 문제가 아니라 내가 만든 문제**였고, 셋은 기존 시험이 잡았다.

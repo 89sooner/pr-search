@@ -882,3 +882,67 @@
 - `recordAuditBestEffort`를 우회해 `auditRepo.recordAudit`를 직접 부르지 않는다 — 회귀가 막는다.
 - `API-ADM-005`의 `action` 필터를 정본 enum으로 좁히지 않는다 (AC-7).
 - `prs_app`에 `UPDATE`·`DELETE`·`DROP`을 주지 않는다 — 감사 불변성의 마지막 방어선이다.
+
+---
+
+# 2026-08-30 세션이 만든 것 (CR-055 · WP-040)
+
+## 읽는 순서가 바뀐 문서
+
+1. `docs/10_requirements/srs_final.md` — **baseline v2.15**. `FR-ING-009` AC-11·AC-12, `FR-ADMIN-002` AC-6·AC-7, `FR-ING-008` AC-7, `FR-ING-011` AC-7이 신규
+2. `docs/00_governance/change_control.md` — CR-001~**055**. CR-055 반영 내역 15항과 리뷰 라운드 기록
+3. `docs/40_delivery/pr_search_implementation_traceability.md` — **원장 review v6.1.** 5장에 `DEV-428`~`DEV-436`
+4. `docs/40_delivery/pr_search_work_packages.md` — **v2.8.** WP-040을 다시 썼다
+5. `docs/30_technical_architecture/pr_search_api_contracts.md` — **v0.17.** `API-ADM-009` 신설, `API-ADM-002` 유형 표, `API-ADM-004` `GET`
+
+## 신규 소스 (구현 브랜치 `claude/wp-040-operations-console`)
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/db/migrations/020_registration_request_lifecycle.{up,down}.sql` | 등록 검토 요청의 처리 결과 열. 종료 상태와 종료 시각의 **등가 제약**, 메모 길이 상한, 대기열 인덱스 |
+| `apps/search-api/src/ops/registration-requests.ts` | `API-ADM-009`의 순수 로직. 목록·종료·필터 파싱. **`fulfilled`로 옮기는 경로가 여기 없다** |
+| `apps/search-api/src/ops/registration-request-cursor.ts` | PostgreSQL 키셋 커서. 지문에 접근 범위를 넣지 않고, 불일치는 `CURSOR_QUERY_MISMATCH` |
+| `apps/search-api/src/ops/index-status.ts` | `API-ADM-004` `GET`. 이력은 `job` 정본에서 도출하고 **새 표를 만들지 않는다** |
+| `apps/pipeline-worker/src/sequence-assign-runner.ts` | `JOB-SEQ-001` 수동 채번 러너. 기존 `assignSequence`로 모인다 |
+| `apps/web/lib/ops-jobs.ts` | A-003 화면 판정. `allowed_actions` 통과, 진행률, 인덱스 값 표시, 재채번 확인 |
+| `apps/web/lib/ops-repositories.ts` | A-002 화면 판정. 요청 처리 가능 여부, 브랜치 입력, 해제 문구 |
+| `apps/web/lib/ops-pipeline.ts` | A-001 화면 판정. **역할을 먼저 판정**해 `archive_only`가 `operator` 데이터를 요청조차 하지 않는다 |
+
+## 확장한 소스
+
+| 경로 | 무엇이 바뀌었나 |
+| --- | --- |
+| `packages/db/src/repositories/registration-request.ts` | 행 타입에 처리 결과 넷. `listRequestPage`·`findRequestById`·`dismissRequest`·`fulfillPendingForSlug` |
+| `packages/db/src/repositories/job.ts` | `allowedActionsFor` — `ALLOWED_FROM`에서 파생. 표를 두 벌 만들지 않는다 |
+| `packages/db/src/repositories/reindex.ts` | `findLastReindexFor` — 별칭의 가장 최근 종료 잡. `job_id`로 정렬한다 |
+| `packages/domain/src/sequence.ts` | `parseSequenceSpaceLabel`·`SequenceSpaceParts`. **첫 `@`에서 자른다** |
+| `packages/domain/src/audit.ts` | `repository_registration_request.dismiss`를 활성으로 |
+| `packages/es/src/versioned-index.ts` | `indexStatsPort` — 별칭별 문서 수·크기. 읽지 못한 값은 `null` |
+| `apps/search-api/src/ops/jobs.ts` | `RECONCILE_TARGET`·`resolveJobTarget`·`allowedActionsForJob`. `CreateJobOutcome`에서 `unknown_repository` 제거 |
+| `apps/search-api/src/ops/repositories.ts` | `withTransaction`으로 등록+요청 종료, `enqueueSequenceAssign`·`newBranches` |
+| `apps/search-api/src/ops/routes.ts` | `API-ADM-009` 라우트 둘, `API-ADM-004` `GET`, `resolveJobTarget` 배선, 커서 오류 두 갈래 |
+| `apps/search-api/src/runtime.ts` · `server.ts` | `indexStatus`·`requestQueue` 배선. `hasCursorKey` 게이트 |
+| `apps/pipeline-worker/src/reconcile.ts` | 주기와 수동이 **한 루프**. `RECONCILE_POLL_MS`·`RECONCILE_JOB_TYPE` |
+| `apps/pipeline-worker/src/backfill.ts` | `finishBackfillIfRunning` — 무방비 `finishJob` 셋을 조건부 전이로 (`DEV-436`) |
+| `apps/pipeline-worker/src/index.ts` | `assignRunner` 기동과 종료 |
+| `apps/web/lib/nav.ts` | `ops-jobs` 항목 (`/ops/jobs`, `operator` 전용) |
+
+## 이 세션의 시험 (신규)
+
+- `apps/web/lib/ops-{jobs,repositories,pipeline}.test.ts` — 60건
+- `regression/runtime-reachability.test.ts` — `JOB-SEQ-001-manual` 도달성 행, 「수동 실행이 실제로 러너에 닿는다」 절(`runReconcileSweep` 호출 지점 계수, 러너 여섯의 무방비 종료 금지)
+
+## 손대면 안 되는 것 (갱신)
+
+- **`apps/pipeline-worker/src/reconcile.ts`의 루프를 둘로 가르지 마라.** `runReconcileSweep` 호출 지점이 둘뿐임을 회귀가 센다
+- **조정 스캔의 head 복구를 잡 행으로 바꾸지 마라** — `DEV-180`의 자물쇠가 그대로 돌아온다
+- **`recordRequest`의 `ON CONFLICT ... DO UPDATE SET`에 다른 열을 더하지 마라** — 종료된 요청이 반복 호출로 다시 열린다
+- **`toRequestView`를 행 펼치기로 바꾸지 마라** — 허용 목록이라서 열이 늘어도 처리 상태가 새지 않는다 (`THR-045`)
+- `CREATABLE_GENERIC_JOB_TYPES`에 유형을 더할 때는 **러너와 같은 변경에서** 더한다 (`FR-ADMIN-002` AC-6)
+
+## 아직 없는 것 (다음 에이전트가 만든다)
+
+- `apps/web/app/ops/pipeline/page.tsx` · `repositories/page.tsx` · `jobs/page.tsx`
+- `apps/web/components/` 의 `C-040`~`C-047`, `C-071`
+- `apps/web/e2e/flow-007.spec.ts` · `flow-008.spec.ts`
+- 통합 시험 — 등록 요청 수명주기, 러너 둘, 취소 경합
