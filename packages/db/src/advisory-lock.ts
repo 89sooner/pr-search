@@ -29,6 +29,22 @@ export function sequenceLockKey(repositoryId: number, baseBranch: string): strin
 }
 
 /**
+ * 안전 구간 표식 쓰기 락 키 (WP-041 / API-SEQ-004의 「멱등과 동시성」).
+ *
+ * **`sequenceLockKey`를 함께 쓰지 않는다.** 그 키는 채번 잡의 것이고 그쪽은
+ * `try` + 재큐 방식이라, 표식 쓰기가 그것을 쥐고 있으면 **채번이 미뤄진다** —
+ * 사람이 누르는 동기 요청이 파이프라인을 밀어내는 모양이 된다. 반대 방향도
+ * 같다: 채번이 도는 동안 표식 등록이 막힐 이유가 없다. 표식과 채번은 같은
+ * 공간을 가리키지만 **같은 행을 겨루지 않는다.**
+ *
+ * 공간 단위인 이유는 `safe_marker_current_uk`가 `(repository_id, base_branch)`에
+ * 걸려 있기 때문이다 — 겨루는 것이 그 쌍이므로 줄을 서는 단위도 그것이다.
+ */
+export function safeMarkerLockKey(repositoryId: number, baseBranch: string): string {
+  return `safe-marker:${String(repositoryId)}:${baseBranch}`;
+}
+
+/**
  * 릴리스 스냅숏 갱신 락 키 (WP-024 / JOB-REL-007).
  *
  * 저장소 단위다 — 갱신이 전량 diff(upsert + 스냅숏 밖 삭제)라, 두 갱신이

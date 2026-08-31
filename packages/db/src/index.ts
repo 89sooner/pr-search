@@ -23,6 +23,7 @@ export {
   releaseAdvisorySessionLock,
   releaseLockKey,
   repositoryScopeLockKey,
+  safeMarkerLockKey,
   sequenceLockKey,
   tryAdvisoryXactLock,
   trySequenceSpaceLock,

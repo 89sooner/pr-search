@@ -16,6 +16,8 @@ export * as repositoryRepo from './repository.js';
 export * as registrationRequestRepo from './registration-request.js';
 /** 저장된 검색 (WP-033 / ENT-CORE-006, CR-049). */
 export * as savedSearchRepo from './saved-search.js';
+/** 안전 구간 표식 (WP-041 / ENT-SEQ-003, CR-057). */
+export * as safeMarkerRepo from './safe-marker.js';
 export { MAX_SEQUENCE_BRANCHES } from './repository.js';
 export * as sequenceSpaceRepo from './sequence-space.js';
 
@@ -54,6 +56,8 @@ export type {
   RegistrationRequestRow,
 } from './registration-request.js';
 export type { AuditFilter, AuditRecordInput, AuditRecordRow } from './audit.js';
+export type { ReplaceMarkerInput, ReplaceMarkerOutcome, SafeMarkerRow } from './safe-marker.js';
+export { SAFE_MARKER_NOTE_LIMIT } from './safe-marker.js';
 export type { PullRequestSnapshotInput, PullRequestSnapshotRow, SnapshotSource } from './pr-snapshot.js';
 export type {
   AppUserRow,

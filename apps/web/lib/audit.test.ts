@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { NOT_ACTIVATED_AUDIT_ACTIONS } from '@prs/domain';
 import {
   ACTION_OPTIONS,
   EMPTY_FILTER,
@@ -135,9 +136,21 @@ describe('QA-A004-08: 화면이 제시하는 행위 후보', () => {
     );
   });
 
+  /*
+   * **정본 목록과 대조한다.** 문자열을 여기 적으면 액션이 활성으로 옮겨갈
+   * 때 이 시험이 그 사실을 결함으로 신고한다 — `WP-041`이 `safe_marker.set`을
+   * 세우자 실제로 그렇게 됐다. 확인할 성질은 "미활성인 것이 목록에 없다"이지
+   * "이 두 문자열이 없다"가 아니다.
+   */
   it('**미활성 액션은 넣지 않는다** — 언제나 0건이라 "없다"와 구분되지 않는다', () => {
-    expect(ACTION_OPTIONS).not.toContain('export.create');
-    expect(ACTION_OPTIONS).not.toContain('safe_marker.set');
+    expect(NOT_ACTIVATED_AUDIT_ACTIONS.length).toBeGreaterThan(0);
+    for (const action of NOT_ACTIVATED_AUDIT_ACTIONS) {
+      expect(ACTION_OPTIONS, action).not.toContain(action);
+    }
+  });
+
+  it('활성으로 옮겨간 액션은 목록에 있다 (WP-041)', () => {
+    expect(ACTION_OPTIONS).toContain('safe_marker.set');
   });
 });
 

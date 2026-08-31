@@ -18,9 +18,11 @@ import { AccessScopeUnavailableError, PartialSearchError } from '@prs/es';
 import { ERROR_HTTP_STATUS } from '@prs/contracts';
 import type { ErrorResponse } from '@prs/contracts';
 import { SUPPORTED_ANCHOR_FORMATS } from '@prs/domain';
+import { SAFE_MARKER_NOTE_LIMIT } from '@prs/db';
 import type { AuthContext } from '../auth/context.js';
-import { authenticateSession } from '../auth/principal.js';
+import { authenticateSession, requireRole, type SessionPrincipal } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
+import { recordAuditBestEffort } from '../audit/recorder.js';
 import { CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope.js';
 import { readCursor, readFacets } from '../cursor/params.js';
 import { facetResponseFields } from '../search/facets.js';
@@ -48,6 +50,7 @@ import {
 import { listSequenceSpaces } from './spaces-list.js';
 import { clampReleaseLimit, listReleases } from './releases-list.js';
 import { clampNeighborCount, findNeighbors } from './neighbors.js';
+import { markerAuditTarget, readSafeMarker, writeSafeMarker } from './safe-marker.js';
 import {
   UNRELEASED,
   clampComparisonSize,
@@ -62,6 +65,7 @@ export const SEQUENCE_SPACES_PATH = '/api/v1/sequence-spaces';
 export const RELEASES_PATH = '/api/v1/releases';
 export const RELEASE_COMPARISON_PATH = '/api/v1/release-comparisons';
 export const SEQUENCE_NEIGHBORS_PATH = '/api/v1/sequence-neighbors';
+export const SAFE_MARKERS_PATH = '/api/v1/safe-markers';
 
 export interface SequenceRouteOptions extends RangeDeps {
   readonly auth: AuthContext;
@@ -120,6 +124,110 @@ function parseAnchorInputs(raw: unknown): readonly AnchorInput[] | null {
   return inputs;
 }
 
+/**
+ * `PUT /safe-markers` 본문 (`API-SEQ-004` 검사 3).
+ *
+ * **`expected_marker_seq`는 키가 있어야 한다.** 키를 빼는 것("확인하지
+ * 않았다")과 `null`을 보내는 것("없는 것을 봤다")은 다른 뜻이며, 앞엣것을
+ * 뒤엣것으로 접으면 **아무것도 확인하지 않은 요청이 첫 등록으로 통과한다**
+ * (DEV-464). `seq_epoch`가 세 상태를 구분하는 것과 같은 규율이다.
+ */
+interface SafeMarkerBody {
+  readonly repository: unknown;
+  readonly baseBranch: unknown;
+  readonly mergeSeq: number;
+  readonly seqEpoch: number;
+  readonly note: string | null;
+  readonly expectedMarkerSeq: number | null;
+}
+
+type SafeMarkerBodyParse =
+  | { readonly kind: 'ok'; readonly body: SafeMarkerBody }
+  | { readonly kind: 'invalid'; readonly field: string; readonly message: string };
+
+/** 1 이상의 정수인가. 서수도 에폭도 0을 갖지 않는다. */
+function positiveInt(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : null;
+}
+
+function parseSafeMarkerBody(raw: unknown): SafeMarkerBodyParse {
+  if (typeof raw !== 'object' || raw === null) {
+    return { kind: 'invalid', field: 'body', message: '본문이 JSON 객체여야 합니다.' };
+  }
+  const record = raw as Record<string, unknown>;
+
+  if (parseRepositorySlug(record['repository']) === null) {
+    return { kind: 'invalid', field: 'repository', message: 'repository는 owner/name 형식이어야 합니다.' };
+  }
+  const baseBranch = record['base_branch'];
+  if (typeof baseBranch !== 'string' || baseBranch.trim() === '') {
+    return { kind: 'invalid', field: 'base_branch', message: 'base_branch가 필요합니다.' };
+  }
+
+  const mergeSeq = positiveInt(record['merge_seq']);
+  if (mergeSeq === null) {
+    return { kind: 'invalid', field: 'merge_seq', message: 'merge_seq는 1 이상의 정수여야 합니다.' };
+  }
+  const seqEpoch = positiveInt(record['seq_epoch']);
+  if (seqEpoch === null) {
+    return { kind: 'invalid', field: 'seq_epoch', message: 'seq_epoch는 1 이상의 정수여야 합니다.' };
+  }
+
+  const rawNote = record['note'];
+  let note: string | null = null;
+  if (rawNote !== undefined && rawNote !== null) {
+    if (typeof rawNote !== 'string') {
+      return { kind: 'invalid', field: 'note', message: 'note는 문자열이어야 합니다.' };
+    }
+    if (rawNote.length > SAFE_MARKER_NOTE_LIMIT) {
+      return {
+        kind: 'invalid',
+        field: 'note',
+        message: `note는 ${String(SAFE_MARKER_NOTE_LIMIT)}자 이하여야 합니다.`,
+      };
+    }
+    note = rawNote;
+  }
+
+  /*
+   * 키의 부재와 `null`을 가른다. `'expected_marker_seq' in record`가 그
+   * 판정이며, `record['expected_marker_seq'] === undefined`로는 갈리지
+   * 않는다 — 명시적 `undefined`가 키 없음과 같은 값을 준다.
+   */
+  if (!('expected_marker_seq' in record)) {
+    return {
+      kind: 'invalid',
+      field: 'expected_marker_seq',
+      message: '현재 표식을 확인했다는 것을 expected_marker_seq로 밝혀야 합니다 (없으면 null).',
+    };
+  }
+  const rawExpected = record['expected_marker_seq'];
+  let expectedMarkerSeq: number | null = null;
+  if (rawExpected !== null) {
+    const parsed = positiveInt(rawExpected);
+    if (parsed === null) {
+      return {
+        kind: 'invalid',
+        field: 'expected_marker_seq',
+        message: 'expected_marker_seq는 1 이상의 정수이거나 null이어야 합니다.',
+      };
+    }
+    expectedMarkerSeq = parsed;
+  }
+
+  return {
+    kind: 'ok',
+    body: {
+      repository: record['repository'],
+      baseBranch: baseBranch.trim(),
+      mergeSeq,
+      seqEpoch,
+      note,
+      expectedMarkerSeq,
+    },
+  };
+}
+
 /** 앵커 실패 하나를 400으로. 여럿이 실패해도 **첫 번째만** 낸다 — 오류는 하나씩 고친다. */
 function sendAnchorFailure(
   reply: FastifyReply,
@@ -147,13 +255,21 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
     correlationId: string,
     repository: unknown,
     baseBranch: unknown,
+    /**
+     * 이미 인증한 주체. 넘기면 세션을 다시 읽지 않는다 (WP-041).
+     *
+     * `PUT /safe-markers`는 **역할을 접근 범위보다 먼저** 봐야 해서
+     * (`API-SEQ-004` 검사 순서) 이 함수 밖에서 인증을 끝낸다. 그것을
+     * 넘기지 않으면 같은 요청이 Redis를 두 번 읽는다.
+     */
+    authenticated?: SessionPrincipal,
   ): Promise<{
     space: ResolvedSpace;
     scope: Awaited<ReturnType<AuthContext['scopes']['resolve']>>;
     /** `app_user.access_scope_version`. 구간 커서 지문의 재료다 (WP-032). */
     scopeVersion: number;
   } | null> => {
-    const userId = (await authenticateSession(request, auth.sessions)).userId;
+    const userId = (authenticated ?? (await authenticateSession(request, auth.sessions))).userId;
 
     const slug = parseRepositorySlug(repository);
     if (slug === null) {
@@ -180,6 +296,36 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
       return null;
     }
     return { space: lookup.space, scope, scopeVersion: cached.version };
+  };
+
+  /**
+   * 거절된 표식 등록을 감사에 남긴다 (`API-SEQ-004`의 「감사」).
+   *
+   * **거절도 남기되 성공으로 남기지 않는다.** 저장된 검색이 상한 거절을
+   * 기록하는 것과 같은 이유다 — 그 사실이 "왜 등록되지 않았는가"의 답이다.
+   * `result_code`가 사유를 담으므로 성공(`created`)과 섞이지 않는다.
+   *
+   * **401·403은 부르지 않는다.** 세션이 없으면 남길 주체가 없고, 자격 없는
+   * 사용자의 반복 요청을 기록하면 그것이 감사 평면을 채운다.
+   *
+   * `target`은 공간과 서수를 확정한 뒤에만 값을 갖는다 — 그전의 거절(본문
+   * 형식·404)은 무엇을 가리켰는지 알 수 없으므로 `null`이다. 지어내지 않는다
+   * (FR-AUTH-004 AC-2).
+   */
+  const recordMarkerRejection = async (
+    userId: string,
+    correlationId: string,
+    target: string | null,
+    resultCode: string,
+  ): Promise<void> => {
+    await recordAuditBestEffort(deps.pool, {
+      userId,
+      action: 'safe_marker.set',
+      target,
+      query: null,
+      resultCode,
+      correlationId,
+    });
   };
 
   /** 두 경로가 같은 실패 처리를 쓴다. 인증·권한·부분 결과의 응답이 갈리면 안 된다. */
@@ -420,6 +566,170 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
   });
 
   // API-REL-001: W-002 선행·후행과 W-003 시퀀스 위치 (CR-031, DEV-161~166).
+  /**
+   * `GET /safe-markers` — 그 공간의 현재 표식 (API-SEQ-004, FR-SEQ-006).
+   *
+   * **`release_manager`를 요구하지 않는다.** AC-3이 403으로 정한 것은 쓰기
+   * 요청이고, 표식은 조직이 공유하는 판정이라 볼 수 없으면 공유가 성립하지
+   * 않는다 (CR-057, DEV-461).
+   */
+  app.get(SAFE_MARKERS_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    try {
+      const query = request.query as Record<string, unknown>;
+      const entered = await enter(request, reply, correlationId, query['repository'], query['base_branch']);
+      if (entered === null) return reply;
+
+      const result = await readSafeMarker(deps.pool, entered.space);
+      return await reply.send({ ...result, correlation_id: correlationId });
+    } catch (error) {
+      return toFailureResponse(reply, correlationId, error);
+    }
+  });
+
+  /**
+   * `PUT /safe-markers` — 표식 등록 (API-SEQ-004, FR-SEQ-006).
+   *
+   * 검사 순서가 계약이다. **역할이 접근 범위보다 먼저인 것**이 그중 하나다:
+   * 역할은 저장소와 무관한 성질이라 그 판정이 저장소의 존재를 흘리지 않지만,
+   * 순서를 뒤집으면 자격 없는 사용자가 403과 404의 차이로 **비공개 저장소의
+   * 존재를 탐지한다** (ADR-008).
+   *
+   * 화면의 `canWrite`는 보안 경계가 아니다 — 직접 보낸 요청도 여기를 지난다.
+   */
+  app.put(SAFE_MARKERS_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    try {
+      // 1·2. 세션과 역할.
+      const principal = await authenticateSession(request, auth.sessions);
+      requireRole(principal, 'release_manager');
+
+      // 3. 본문 형식.
+      const parsed = parseSafeMarkerBody(request.body);
+      if (parsed.kind === 'invalid') {
+        await recordMarkerRejection(principal.userId, correlationId, null, `invalid:${parsed.field}`);
+        return invalidParameter(reply, correlationId, parsed.field, parsed.message);
+      }
+      const body = parsed.body;
+
+      // 4. 저장소·접근 범위·시퀀스 공간.
+      const entered = await enter(
+        request,
+        reply,
+        correlationId,
+        body.repository,
+        body.baseBranch,
+        principal,
+      );
+      if (entered === null) {
+        await recordMarkerRejection(principal.userId, correlationId, null, 'not_found');
+        return reply;
+      }
+
+      // 5~8. 판정은 서비스가 한다.
+      const outcome = await writeSafeMarker(deps.pool, entered.space, {
+        mergeSeq: body.mergeSeq,
+        seqEpoch: body.seqEpoch,
+        note: body.note,
+        expectedMarkerSeq: body.expectedMarkerSeq,
+        createdBy: principal.userId,
+      });
+
+      const target = markerAuditTarget(entered.space, body.mergeSeq);
+      const envelope = {
+        sequence_space: entered.space.sequenceSpace,
+        seq_epoch: entered.space.seqEpoch,
+      };
+
+      switch (outcome.kind) {
+        case 'epoch_stale':
+          await recordMarkerRejection(principal.userId, correlationId, target, 'epoch_stale');
+          return fail(reply, 409, {
+            error: {
+              code: 'SEQUENCE_EPOCH_STALE',
+              message: '조회하는 사이에 시퀀스 에폭이 바뀌었습니다. 현재 값을 다시 확인한 뒤 등록하세요',
+              detail: {
+                reason: 'epoch_stale',
+                current_seq_epoch: outcome.currentEpoch,
+                requested_seq_epoch: outcome.requestedEpoch,
+              },
+            },
+            correlation_id: correlationId,
+          });
+
+        case 'space_missing':
+          /*
+           * 그 사이 공간이 사라졌다 (DEV-471). **404이며 미등록과 메시지가
+           * 같다** — 접근 범위 밖과 구분되면 존재가 샌다 (ADR-008).
+           */
+          await recordMarkerRejection(principal.userId, correlationId, target, 'not_found');
+          return fail(reply, 404, {
+            error: { code: 'NOT_FOUND', message: '채번된 적이 없는 시퀀스 공간이다' },
+            correlation_id: correlationId,
+          });
+
+        case 'sequence_not_found':
+          await recordMarkerRejection(principal.userId, correlationId, target, 'sequence_not_found');
+          return fail(reply, 400, {
+            error: {
+              code: 'SEQUENCE_NOT_FOUND',
+              message: '그 서수는 이 시퀀스 공간에 없습니다.',
+              detail: { merge_seq: outcome.mergeSeq, seq_epoch: outcome.seqEpoch },
+            },
+            correlation_id: correlationId,
+          });
+
+        case 'conflict':
+          await recordMarkerRejection(principal.userId, correlationId, target, 'marker_conflict');
+          return fail(reply, 409, {
+            error: {
+              code: 'SAFE_MARKER_CONFLICT',
+              message: '그 사이 다른 사람이 표식을 옮겼습니다. 현재 값을 확인한 뒤 다시 결정하세요',
+              detail: {
+                current_marker_seq: outcome.currentMarkerSeq,
+                expected_marker_seq: outcome.expectedMarkerSeq,
+              },
+            },
+            correlation_id: correlationId,
+          });
+
+        case 'unchanged':
+          /*
+           * **감사를 남기지 않는다** (API-SEQ-004의 「멱등과 동시성」).
+           * 아무것도 바뀌지 않았으므로 남길 사실이 없고, 남기면 재시도
+           * 횟수가 등록 횟수로 보인다.
+           */
+          return await reply.send({
+            ...envelope,
+            outcome: 'unchanged',
+            marker: outcome.marker,
+            replaced_merge_seq: null,
+            correlation_id: correlationId,
+          });
+
+        case 'created':
+          await recordAuditBestEffort(deps.pool, {
+            userId: principal.userId,
+            action: 'safe_marker.set',
+            target,
+            // `query`는 `null`이다 (FR-AUTH-004 AC-1 정본 표). 메모는 조건이 아니다.
+            query: null,
+            resultCode: 'created',
+            correlationId,
+          });
+          return await reply.send({
+            ...envelope,
+            outcome: 'created',
+            marker: outcome.marker,
+            replaced_merge_seq: outcome.replacedMergeSeq,
+            correlation_id: correlationId,
+          });
+      }
+    } catch (error) {
+      return toFailureResponse(reply, correlationId, error);
+    }
+  });
+
   app.get(SEQUENCE_NEIGHBORS_PATH, async (request, reply) => {
     const correlationId = randomUUID();
     const query = (request.query ?? {}) as Record<string, unknown>;
