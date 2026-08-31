@@ -1,6 +1,6 @@
 # PR Search 구현 로드맵
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-08-31
+> 상태: review | 버전: v0.9 | 갱신일: 2026-08-31
 
 ## 1. 목적
 
@@ -34,7 +34,7 @@
 | REL-002 | 양방향 식별자 해석과 권한 | FR-SRCH-001, FR-SRCH-002, FR-SRCH-003, FR-SRCH-004, FR-SRCH-005, FR-SRCH-006, FR-SRCH-007, FR-AUTH-001, FR-AUTH-002, FR-AUTH-003, FR-ING-006, NFR-001, NFR-005 | `search-api`, `web` 셸(Conductor), W-001, W-002, W-003, 백필 잡 | SHA로 PR을, PR로 커밋을 찾을 수 있다. 권한 매트릭스 테스트가 통과한다. 백필로 과거 데이터를 채울 수 있다. 단건 해석 p95 200ms |
 | REL-003 | 머지 시퀀스와 범위 조사 | FR-SEQ-001, FR-SEQ-002, FR-SEQ-003, FR-SEQ-004, FR-SEQ-005, FR-REL-001, FR-REL-002, FR-ADMIN-003, FR-ING-011 | git 미러, `pipeline-worker:sequence`, W-004, W-005, 정합성 점검, 조정 스캔 | 시퀀스 값이 `git log --first-parent`와 일치한다. 두 릴리스 구간 비교가 동작한다. 강제 푸시 시 에폭이 증가하고 알림이 발생한다 |
 | REL-004 | 관계 파생과 전문 검색 (실행 순서: WP-029 → WP-030 → WP-031 → **WP-035** → WP-032 → WP-033 → WP-034 → WP-036, CR-043) | FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006, FR-REL-007, FR-SRCH-008, FR-SRCH-009, FR-SRCH-010, FR-SRCH-011, FR-ING-008, FR-ING-010 | `pipeline-worker:link`, W-008, W-009, 패싯·커서·전문 검색, 재색인, Filebeat 원본 레인 | 되돌림·체리픽·참조 관계가 표시되고 신뢰도가 구분된다. 무중단 재색인이 검증된다. 관계 정확도 표본 200건 검수 결과가 기록된다(ACC-06 — W-007 활성화 판단 근거) |
-| REL-005 | 통계와 운영 고도화 | FR-STAT-001, FR-STAT-002, FR-STAT-003, FR-STAT-004, FR-STAT-005, FR-STAT-006, FR-ADMIN-002, FR-AUTH-004 | W-006, A-002, A-003, A-004, 감사 조회 | 그룹·시계열·백분위·분포 집계가 동작하고 근거 목록으로 이동한다. 운영 콘솔에서 백필·재색인·재채번을 제어한다. 감사 조회가 `security_officer`로 제한된다. **WP 네 개(037·038·039·040)의 구현은 완료됐다.** 다만 `FR-STAT-006`·`FR-SRCH-005`의 **author-team 축은 `CR-056`에서 후발 발견된 carryover이며 `WP-069`(REL-006)가 종결한다** (CR-058, DEV-479) — 그때까지 `group_by=team`과 `author_team:`은 데이터가 없어 빈 결과이고, **"WP 4/4 done"과 "author-team 행위까지 충족"은 같은 주장이 아니다** |
+| REL-005 | 통계와 운영 고도화 | FR-STAT-001, FR-STAT-002, FR-STAT-003, FR-STAT-004, FR-STAT-005, FR-STAT-006, FR-ADMIN-002, FR-AUTH-004 | W-006, A-002, A-003, A-004, 감사 조회 | 그룹·시계열·백분위·분포 집계가 동작하고 근거 목록으로 이동한다. 운영 콘솔에서 백필·재색인·재채번을 제어한다. 감사 조회가 `security_officer`로 제한된다. **WP 네 개(037·038·039·040)의 구현은 완료됐다.** 다만 `FR-STAT-006`·`FR-SRCH-005`의 **author-team 축은 `CR-056`에서 후발 발견된 carryover이며 `WP-069`(REL-006)가 2026-08-31에 종결했다** (CR-058, DEV-479 / 원장 6.58장) — 그전까지 `group_by=team`과 `author_team:`은 데이터가 없어 빈 결과였고, **"WP 4/4 done"과 "author-team 행위까지 충족"은 같은 주장이 아니었다** |
 | REL-006 | 조사 보조와 관계 시각화 | FR-SEQ-006, FR-SEQ-007, FR-REL-008, FR-SRCH-012, **FR-STAT-006·FR-SRCH-005 (author-team carryover — REL-005·REL-002 소유는 그대로다)** | W-007(조건부), 이분 탐색, 안전 구간 표식, 내보내기, **작성자 소속 팀 채우기(WP-069)** | 이분 탐색이 후보를 절반씩 줄인다. 안전 구간 표식이 저장·표시된다. **`group_by=team` 집계와 `author_team:` 질의가 실제 소속으로 답한다** (CR-058, WP-069). W-007은 REL-004의 ACC-06(관계 간선 정확도 표본 200건 검수 95% 이상)을 충족할 때만 포함한다 |
 | REL-007 | GitHub CLI 실행 기반 | FR-GH-001, FR-GH-002, FR-GH-003, FR-GH-006, FR-GH-008, FR-GH-009, FR-GH-011, FR-GH-012 | `@prs/gh-cli`, capability manifest와 검증 도구, 의미 제약 엔진(WP-061), 출력·파일 안전 경계(WP-062), 결과 계약·capability 그래프(WP-066), `gh-executor`, Operations App 연동, W-010, A-006, A-007 | 사용자가 웹에서 저장소를 고르고 R0 capability를 골라 옵션을 넣고 실행될 argv를 확인한 뒤 실행하고 결과와 이력을 볼 수 있다. capability 분류 커버리지 100%, 미분류 0. gh 출력이 무해화 경계를 통과한다 (CR-008) |
 | REL-008 | PR·Issue·Discussion 작업 | FR-GH-004, FR-GH-009 | W-011, W-012, R1·R2 쓰기 capability 개방 | PR 머지가 전략·자동 머지·관리자 강제·head 일치·커밋 메시지·브랜치 삭제를 선택해 실행된다. R2 확인과 대상 재조회가 동작한다 |

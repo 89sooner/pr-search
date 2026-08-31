@@ -1958,3 +1958,150 @@ describe('안전 구간 표식 (WP-041)', () => {
     expect(audit).toContain("NOT_ACTIVATED_AUDIT_ACTIONS = ['export.create']");
   });
 });
+
+describe('작성자 소속 팀의 도달성과 계약 (WP-069 / CR-058)', () => {
+  const AUTHOR_TEAMS = read('apps/pipeline-worker/src/author-teams.ts');
+  const DOCUMENTS = read('apps/pipeline-worker/src/documents.ts');
+  const PROJECT = read('apps/pipeline-worker/src/project.ts');
+  const BACKFILL = read('apps/pipeline-worker/src/backfill.ts');
+  const REINDEX = read('apps/pipeline-worker/src/reindex.ts');
+  const MEMBERSHIP_REPO = read('packages/db/src/repositories/team-membership.ts');
+  const codeOf = (source: string): string =>
+    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  /** "`a`가 `b`보다 먼저 온다" — 둘 다 있는지 먼저 본다 (DEV-474). */
+  const expectOrder = (code: string, first: string, second: string): void => {
+    expect(code, first).toContain(first);
+    expect(code, second).toContain(second);
+    expect(code.indexOf(first), `${first} < ${second}`).toBeLessThan(code.indexOf(second));
+  };
+
+  it('**조직 팀 스윕이 `authz` 역할에서 실제로 기동하고 종료한다**', () => {
+    expect(WORKER_INDEX).toContain('orgTeamSweeper = startOrgTeamSweeper(');
+    expect(WORKER_INDEX).toContain('await orgTeamSweeper?.stop()');
+    // 기동이 `authz` 역할 블록 안에 있어야 그 배포에서 돈다.
+    const authzBlock = WORKER_INDEX.slice(WORKER_INDEX.indexOf("roles.includes('authz')"));
+    expect(authzBlock).toContain('startOrgTeamSweeper(');
+  });
+
+  it('**그 역할의 매니페스트가 실재한다** — 배포되지 않는 역할에 기능을 얹지 않는다 (DEV-304·305)', () => {
+    expect(existsSync(new URL('deploy/k8s/pipeline-worker-authz.yaml', new URL('..', import.meta.url)))).toBe(true);
+  });
+
+  it('**투영이 작성자 팀을 판정한다** — 부르지 않으면 필드가 영영 비어 있다', () => {
+    expect(PROJECT).toContain("from './author-teams.js'");
+    expectOrder(codeOf(PROJECT), 'resolveAuthorTeam(', 'buildUpsertRequests({');
+    expect(codeOf(PROJECT)).toContain('authorTeams,');
+  });
+
+  it('**투영은 GHE를 쓰지 않는다** — 접근 범위와 같은 모양으로 PostgreSQL만 읽는다', () => {
+    expect(PROJECT).not.toContain('GitHubClient');
+    expect(codeOf(PROJECT)).not.toContain('syncOrgTeamsIfStale');
+  });
+
+  it('**백필은 잡 시작에 조직 팀을 갱신한 뒤 투영한다** — 순서가 뒤집히면 옛 소속을 다시 박는다', () => {
+    const code = codeOf(BACKFILL);
+    expectOrder(code, 'syncOrgTeamsIfStale(', 'resolveAuthorTeam(');
+    expectOrder(code, 'resolveAuthorTeam(', 'buildUpsertRequests({');
+  });
+
+  it('**재색인은 정본에서 다시 계산하고 GHE를 부르지 않는다** (ADR-004, DEV-485)', () => {
+    expect(REINDEX).toContain('resolveAuthorTeams(');
+    expect(REINDEX).not.toContain('syncOrgTeamsIfStale');
+    expect(REINDEX).not.toContain('GitHubClient');
+    // 스냅숏이 실어 온 옛 값을 **명시적으로** 지운다.
+    expect(codeOf(REINDEX)).toContain("delete doc['author_team_ids']");
+  });
+
+  it('**모름은 필드를 지운다** — 부재로 판정하는 필드는 부재를 만들 수 있어야 한다 (DEV-484)', () => {
+    const code = codeOf(DOCUMENTS);
+    expect(code).toContain("authorTeams.kind === 'unknown' ? ['author_team_ids'] : []");
+    expectOrder(code, 'const removed = [', 'remove: removed');
+  });
+
+  it('**작성자를 모르면 소속도 모름이다** — 호출부의 값보다 이 판정이 먼저다 (DEV-487)', () => {
+    const code = codeOf(DOCUMENTS);
+    expectOrder(code, "pr?.author == null", 'source.authorTeams');
+  });
+
+  it('**`allowed_team_ids`와 다른 필드에 쓴다** — 접근 권한을 성과로 읽지 않는다 (DEV-382)', () => {
+    const code = codeOf(DOCUMENTS);
+    expect(code).toContain("doc['author_team_ids'] =");
+    expect(code).toContain('allowed_team_ids: [...repository.allowed_team_ids]');
+  });
+
+  it('**동기화가 조회한 팀을 레지스트리에 등재한다** — 하지 않으면 slug 해석이 빈다 (DEV-483)', () => {
+    const code = codeOf(MEMBERSHIP_REPO);
+    expectOrder(code, 'upsertTeam(pool', 'DELETE FROM team_membership');
+    expectOrder(code, 'INSERT INTO team_membership', 'INSERT INTO org_team_sync');
+  });
+
+  it('**등재를 트랜잭션 밖에서 한다** — 23505 재시도가 중단된 트랜잭션 안에서는 성립하지 않는다', () => {
+    /*
+     * `upsertTeam`은 `(org_id, slug)` 충돌을 **한 번 다시 시도해** 넘긴다 — 그 사이
+     * 상대가 커밋해 행이 존재한다는 전제다. 트랜잭션 안에서는 오류가 트랜잭션을
+     * 중단시키므로 그 재시도가 25P02로 다시 실패하고, **회복 가능한 경합이 동기화
+     * 전체의 실패가 된다.** 저장소 팀 동기화가 같은 표에 다른 잠금 아래에서 쓰므로
+     * 그 경합은 실재한다 — 조직 잠금은 이쪽 경로끼리만 줄을 세운다.
+     */
+    const code = codeOf(MEMBERSHIP_REPO);
+    expectOrder(code, 'upsertTeam(pool', 'withTransaction(pool');
+    expect(code, '잠긴 클라이언트로 등재하면 재시도가 성립하지 않는다').not.toContain('upsertTeam(client');
+  });
+
+  it('**동기화 시각을 같은 트랜잭션에서 찍는다** — 실패한 조직이 신선해 보이면 모름이 빈 배열이 된다', () => {
+    const code = codeOf(MEMBERSHIP_REPO);
+    expect(code).toContain('withTransaction(pool');
+    expectOrder(code, 'withTransaction(pool', 'INSERT INTO org_team_sync');
+  });
+
+  it('**낡음 판정이 조회 앞에 온다** — 낡았으면 표를 읽지 않고 모름이다 (DEV-486)', () => {
+    const code = codeOf(AUTHOR_TEAMS);
+    expectOrder(code, 'findOrgSyncedAt(deps.pool, orgId)', 'findAuthorTeamIds(deps.pool, orgId, named)');
+    expect(code).toContain('AUTHOR_TEAMS_UNKNOWN');
+  });
+
+  it('**잠금을 얻은 뒤 신선도를 다시 본다** — 기다리는 동안 상대가 끝냈으면 두 번 훑지 않는다', () => {
+    const code = codeOf(AUTHOR_TEAMS);
+    expectOrder(code, 'acquireAdvisorySessionLock(client, orgTeamSyncLockKey', 'readOrgTeams(github, org.owner)');
+    // 잠금 뒤에도 신선도 확인이 한 번 더 있다.
+    const afterLock = code.slice(code.indexOf('acquireAdvisorySessionLock(client, orgTeamSyncLockKey'));
+    expect(afterLock).toContain('findOrgSyncedAt');
+  });
+
+  it('**채번 락·저장소 범위 락과 다른 키를 쓴다** — 조직 동기화가 다른 일을 밀어내지 않는다', () => {
+    const LOCKS = read('packages/db/src/advisory-lock.ts');
+    expect(LOCKS).toContain('export function orgTeamSyncLockKey');
+    expect(LOCKS).toContain('`org:teams:${String(orgId)}`');
+  });
+
+  it('**계약의 두 자리가 같은 사실을 말한다** — 하나만 갱신하면 읽는 쪽이 어느 것이 사실인지 모른다 (DEV-488)', () => {
+    /*
+     * `WP-069`가 `author_team_ids`를 채운 뒤, 계약 3장의 검색 키 표와 4장의
+     * `API-STAT-001` 절이 **같은 필드를 서로 다르게 설명하고 있었다.** 한쪽만
+     * 고친 것이 원인이며, 리뷰가 잡았다.
+     *
+     * 문자열 검사라 정교하지 않다. 그래도 **"둘 중 하나만 갱신했는데 아무 시험도
+     * 안 죽는 상태"보다는 낫다** — 그 상태가 이 DEV의 원인이었다.
+     */
+    const CONTRACTS = read('docs/30_technical_architecture/pr_search_api_contracts.md');
+    const lines = CONTRACTS.split('\n');
+
+    const keyRow = lines.find((line) => line.startsWith('| `author_team` |'));
+    expect(keyRow, '검색 키 표에 `author_team` 행이 없다').toBeDefined();
+    expect(keyRow).toContain('WP-069');
+    expect(keyRow).not.toContain('투영이 아직 채우지 않');
+
+    const analytics = lines.find((line) => line.includes('`author_team_ids`는'));
+    expect(analytics, '집계 절에 `author_team_ids` 설명이 없다').toBeDefined();
+    expect(analytics).toContain('WP-069');
+    expect(analytics).not.toContain('투영이 채우지 않는다');
+  });
+
+  it('**마이그레이션 021이 실재하고 되돌릴 수 있다**', () => {
+    const dir = new URL('packages/db/migrations/', new URL('..', import.meta.url));
+    const files = readdirSync(dir);
+    expect(files).toContain('021_author_team.up.sql');
+    expect(files).toContain('021_author_team.down.sql');
+  });
+});

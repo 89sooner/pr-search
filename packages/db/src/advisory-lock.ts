@@ -56,6 +56,21 @@ export function releaseLockKey(repositoryId: number): string {
 }
 
 /**
+ * 조직 팀 동기화 락 키 (WP-069 / CR-058, DEV-482).
+ *
+ * 조직 단위다 — 동기화가 그 조직의 팀 구성원을 **전량 교체**하므로, 두 동기화가
+ * 겹치면 한쪽이 지운 자리에 다른 쪽이 옛 스냅숏을 넣는다.
+ *
+ * **`repositoryScopeLockKey`와 나눈다.** 그쪽은 저장소가 겨루는 단위이고
+ * (`repository.allowed_team_ids` 한 행), 이쪽은 조직이 겨루는 단위다
+ * (`team_membership`의 그 조직 몫 전체). 하나로 묶으면 같은 조직의 저장소
+ * 등록 여럿이 서로의 팀 동기화를 막는다.
+ */
+export function orgTeamSyncLockKey(orgId: number): string {
+  return `org:teams:${String(orgId)}`;
+}
+
+/**
  * 저장소 접근 범위 동기화 락 키 (CR-037, DEV-191).
  *
  * 저장소 단위다. 같은 저장소의 팀 목록을 GHE에서 읽어 정본과 색인에 쓰는 일이

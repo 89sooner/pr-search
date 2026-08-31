@@ -64,6 +64,8 @@ import type { Client } from '@elastic/elasticsearch';
 
 import { commitCreateFields, commitMetadataFields, type CommitFactSource } from './commit-enrich.js';
 import { buildProjectedCommitDocument, registryOwnedFields } from './documents.js';
+import { resolveAuthorTeams } from './author-teams.js';
+import type { AuthorTeamResolution } from './documents.js';
 import { toDocInput } from './release.js';
 
 /** 잡 카탈로그 이름. */
@@ -136,6 +138,8 @@ export interface ReindexDeps {
   readonly retentionMs?: number;
   /** 시험이 색인 가시성을 기다리지 않게 한다. 운영은 기본값(끔)이다. */
   readonly refresh?: boolean;
+  /** 작성자 팀 동기화를 낡은 것으로 보는 기준 (WP-069 / CR-058). 시험이 좁힌다. */
+  readonly authorTeamStalenessMs?: number;
 }
 
 function nowOf(deps: ReindexDeps): Date {
@@ -201,6 +205,24 @@ function derivedFields(document: Readonly<Record<string, unknown>>): Record<stri
   return { changed_lines: additions + deletions };
 }
 
+/**
+ * 재구축이 쓸 작성자 팀 (WP-069 / CR-058, DEV-485).
+ *
+ * 아는 값이면 그 배열을, 모르면 `null`을 돌려준다. **`undefined`를 쓰지 않는다** —
+ * 그것은 `JSON.stringify`가 키를 버리는 것에 기대는 암묵적 표현이고, 지운다는
+ * 뜻을 코드가 말하지 않는다. 호출부가 `null`을 보고 키를 **명시적으로 지운다.**
+ */
+function authorTeamIdsFor(
+  document: Readonly<Record<string, unknown>>,
+  teams: ReadonlyMap<string, AuthorTeamResolution>,
+): readonly number[] | null {
+  const author = document['author'];
+  if (typeof author !== 'string' || author === '') return null;
+  const resolved = teams.get(author);
+  if (resolved === undefined || resolved.kind === 'unknown') return null;
+  return [...new Set(resolved.teamIds)].sort((a, b) => a - b);
+}
+
 async function rebuildPullRequests(
   deps: ReindexDeps,
   repository: RepositoryRow,
@@ -221,11 +243,35 @@ async function rebuildPullRequests(
      * 않는다. 스냅숏을 그대로 쓰면 전환이 **회수된 팀의 접근을 되살린다.**
      */
     const scope = registryOwnedFields(repository);
-    const requests: UpsertRequest[] = rows.map((row) => ({
-      alias: 'prs-pull-requests' as const,
-      id: pullRequestDocId(repositoryId, row.pr_number),
-      routing: String(repositoryId),
-      doc: {
+
+    /*
+     * **작성자 팀도 스냅숏이 아니라 현재 값으로 쓴다** (WP-069 / CR-058, DEV-485).
+     *
+     * 스냅숏은 투영 시점의 사본이라 소속이 박제되어 있다. 그대로 재생하면 재구축이
+     * **떠난 팀을 되살린다** — `allowed_team_ids`를 `scope`가 덮는 것과 같은 이유이며,
+     * `registryOwnedFields`에 넣지 않는 것은 그 함수의 정본이 `repository` 행이고
+     * 이 값의 정본은 `team_membership`이기 때문이다.
+     *
+     * **GHE를 부르지 않는다.** `ADR-004`의 불변 조건이 "PostgreSQL 데이터만으로
+     * 재구성 가능"이므로 재구축이 외부 API에 기대면 그 조건이 깨진다. 표가 낡아
+     * 있으면 모름이 되고, 그때는 **스냅숏의 옛 값을 지운다** — 모르는 것을 아는
+     * 것처럼 되살리지 않는다.
+     */
+    const authors = rows.map((row) =>
+      typeof row.document['author'] === 'string' ? row.document['author'] : null,
+    );
+    const teams = await resolveAuthorTeams(
+      {
+        pool: deps.pool,
+        ...(deps.now === undefined ? {} : { now: deps.now }),
+        ...(deps.authorTeamStalenessMs === undefined ? {} : { stalenessMs: deps.authorTeamStalenessMs }),
+      },
+      Number(repository.org_id),
+      authors,
+    );
+
+    const requests: UpsertRequest[] = rows.map((row) => {
+      const doc: Record<string, unknown> = {
         ...row.document,
         ...derivedFields(row.document as Readonly<Record<string, unknown>>),
         ...scope,
@@ -240,8 +286,25 @@ async function rebuildPullRequests(
          * 막힌다.
          */
         document_version: Number(row.document_version),
-      } as UpsertRequest['doc'],
-    }));
+      };
+
+      const teamIds = authorTeamIdsFor(row.document, teams);
+      if (teamIds === null) delete doc['author_team_ids'];
+      else doc['author_team_ids'] = teamIds;
+
+      return {
+        alias: 'prs-pull-requests' as const,
+        id: pullRequestDocId(repositoryId, row.pr_number),
+        routing: String(repositoryId),
+        doc: doc as UpsertRequest['doc'],
+        /*
+         * 모르면 **지운다.** 재구축은 보통 빈 인덱스를 채우지만 같은 별칭을 다시
+         * 훑는 경로가 있으므로, 키를 빼는 것만으로는 이미 색인된 옛 소속이 남는다
+         * (DEV-484와 같은 규율).
+         */
+        ...(teamIds === null ? { remove: ['author_team_ids'] } : {}),
+      };
+    });
 
     await withReindexWrite(deps.pool, async (targets) => {
       const result = await bulkUpsert(deps.es, requests, targets);

@@ -32,6 +32,7 @@ describe('마이그레이션 (WP-002 DoD 1: migrate 후 --down이 스키마를 �
       'raw_event', 'dead_letter',
       'sequence_space', 'merge_sequence', 'safe_marker', 'bisect_session',
       'repository', 'app_user', 'team', 'team_member', 'permission_cache',
+      'team_membership', 'org_team_sync',
       'saved_search', 'job', 'audit_record',
     ];
 

@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.22 | 갱신일: 2026-08-31
+> 상태: review | 버전: v0.23 | 갱신일: 2026-08-31
 
 ## 1. 목적
 
@@ -339,7 +339,7 @@
 | `org` | `org_id` | **레지스트리 해석** — 문서에 조직 이름이 없다. `repository.owner`로 `org_id`를 찾는다 |
 | `author` | `author` | |
 | `team` | `allowed_team_ids` | **레지스트리 해석** — `team.slug` → `team_id`. **저장소 접근 권한 팀이다.** 지금은 결과를 내지 못한다 (문서의 팀 ID가 비어 있다) |
-| `author_team` | `author_team_ids` | **레지스트리 해석.** **작성자의 소속 팀이며 `team`과 다르다** (CR-053, DEV-382). 집계의 `group_by=team`이 이 필드를 보고 `drill_down_query`도 이 키를 쓴다. 투영이 아직 채우지 않아 결과가 비어 있다 |
+| `author_team` | `author_team_ids` | **레지스트리 해석.** **작성자의 소속 팀이며 `team`과 다르다** (CR-053, DEV-382). 집계의 `group_by=team`이 이 필드를 보고 `drill_down_query`도 이 키를 쓴다. **`WP-069`가 그 필드를 채운다** (2026-08-31, CR-058) — 값의 범위·부재의 뜻은 `API-STAT-001` 절이 정본이다 |
 | `reviewer` | `reviewers` | |
 | `label` | `labels` | 커밋 문서에는 없다 → 커밋은 매치되지 않는다 (정상) |
 | `base` | `base_branch` | |
@@ -1787,7 +1787,7 @@ POST /api/v1/analytics/groups
   | `state` | `state` | 아니오 |
 
 - **다중값 그룹에서는 한 PR이 여러 버킷에 들어간다.** 따라서 `sum(groups[].count)`가 `total`을 넘을 수 있으며 이는 정상이다 (FR-STAT-001 AC-7, DEV-385). `total`은 언제나 **고유 PR 수**다
-- **`author_team_ids`는 현재 투영이 채우지 않는다** (원장 7장). 계약은 이 필드를 지목하고, 값이 비어 있는 동안 `team` 그룹이 비는 것을 그대로 드러낸다 — 없는 값을 다른 필드로 대신 채우지 않는다
+- **`author_team_ids`는 `WP-069`가 채운다** (CR-058). 값은 **그 PR 저장소의 조직에서 작성자가 속한 팀**이며, `allowed_team_ids`(저장소를 볼 수 있는 팀)와 다른 것이다. **세 값이 서로 다른 사실이다**: 팀이 있으면 그 ID들, 조직 동기화가 신선한데 어느 팀에도 없으면 `[]`, 동기화가 낡았거나 작성자를 모르면 **필드가 없다**. `team` 그룹의 `missing` 버킷이 그 부재를 센다 — 없는 값을 다른 필드로 대신 채우지 않는다
 - `size` 최대 500. 초과 시 상위 500 + `truncated: true` (AC-3)
 - **정렬은 `count` 내림차순, 동률이면 그룹 키 오름차순이다** (FR-STAT-001 AC-8, DEV-389). 같은 데이터에 같은 요청이 다른 순서를 내지 않는다
 - `drill_down_query`는 **집계와 같은 모집단을 가리킨다** — `kind:pull_request`를 포함하며, `team` 그룹의 경우 `team:`이 아니라 **`author_team:`**을 쓴다 (FR-STAT-001 AC-5, DEV-383)

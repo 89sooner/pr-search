@@ -48,6 +48,7 @@ import { bulkUpsert, classifyFailure, type BulkItemOutcome, type UpsertRequest }
 import { withReindexWrite } from '@prs/db';
 import type { Client } from '@elastic/elasticsearch';
 import { buildUpsertRequests } from './documents.js';
+import { resolveAuthorTeam } from './author-teams.js';
 import { recordProjectionSnapshot } from './snapshot.js';
 import { parseEnriched } from './enriched-payload.js';
 import { defaultSleep, retryFailedItems } from './index-retry.js';
@@ -78,6 +79,10 @@ export interface ProjectDeps {
   readonly now?: () => Date;
   /** 항목 재시도 사이 대기. 시험이 실제로 기다리지 않게 하려고 뚫어 둔다. */
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * 작성자 팀 동기화를 낡은 것으로 보는 기준 (WP-069 / CR-058). 시험이 좁힌다.
+   */
+  readonly authorTeamStalenessMs?: number;
 }
 
 export interface ProjectOutcome {
@@ -203,12 +208,32 @@ async function projectDocuments(
   context: ProjectContext,
 ): Promise<ProjectOutcome> {
   const indexedAt = context.now();
+
+  /*
+   * 작성자 소속 팀 (WP-069 / CR-058).
+   *
+   * **PostgreSQL만 읽는다.** 이 워커에는 GHE 자격이 없고 있을 이유도 없다 —
+   * `allowed_team_ids`를 `repository` 행에서 읽는 것과 같은 모양이다. 표를 채우는
+   * 것은 `authz` 역할의 조직 팀 스윕이며, 아직이면 **모름으로 남고** 다음 투영이나
+   * 백필·재색인이 채운다. 팀을 모르는 것이 PR을 색인하지 못할 이유는 아니다.
+   */
+  const authorTeams = await resolveAuthorTeam(
+    {
+      pool: deps.pool,
+      ...(deps.now === undefined ? {} : { now: deps.now }),
+      ...(deps.authorTeamStalenessMs === undefined ? {} : { stalenessMs: deps.authorTeamStalenessMs }),
+    },
+    repository.org_id,
+    enriched.pull_request?.author,
+  );
+
   const requests = buildUpsertRequests({
     enriched,
     repository,
     // AC-1. 웹훅 수신 시각이 사실의 순서다.
     documentVersion: row.received_at.getTime(),
     indexedAt,
+    authorTeams,
   });
 
   /*

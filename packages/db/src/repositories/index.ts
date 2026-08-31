@@ -20,6 +20,7 @@ export * as savedSearchRepo from './saved-search.js';
 export * as safeMarkerRepo from './safe-marker.js';
 export { MAX_SEQUENCE_BRANCHES } from './repository.js';
 export * as sequenceSpaceRepo from './sequence-space.js';
+export * as teamMembershipRepo from './team-membership.js';
 
 export type {
   DeadLetterFilter,
@@ -68,6 +69,7 @@ export type {
   TeamRow,
 } from './auth.js';
 export type { SequenceSpaceRow, SequenceSpaceState } from './sequence-space.js';
+export type { OrgTeamSnapshot } from './team-membership.js';
 export type {
   CreateSavedSearchInput,
   CreateSavedSearchOutcome,
