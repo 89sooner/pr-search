@@ -4296,6 +4296,8 @@ Codex 리뷰가 다섯을 지적했고 **전부 실결함**이었다. 셋이 "�
 
 **반영 문서.** `srs_final.md` baseline v2.17(OD-008 resolved, FR 행위 변경 없음) · `prd.md` v1.9 · `pr_search_api_contracts.md` v0.21(`API-SEQ-004` 상세 절 신설, 오류 코드 둘 등재, 카탈로그 권한 분리) · `pr_search_wireframe_spec.md` v0.14 · `pr_search_screen_state_matrix.md` v0.14(표식 상태 셋) · `pr_search_ui_component_spec.md` v0.11(`C-031` props·상태·사용 규칙) · `pr_search_screen_qa_checklist.md` v0.13(`QA-W004-12`~`14` 정밀화, 새 ID 없음) · `pr_search_backend_architecture.md` v0.5(멱등 키의 뜻) · `pr_search_work_packages.md` v2.11(WP-041 계약 선행·제외·DoD).
 
+**이 CR은 문서만 바꾸지 않는다 — 시험 하나가 그것을 허락하지 않았다.** `packages/contracts/src/error-codes.test.ts`는 계약 6장을 **직접 파싱해** `ERROR_CODES`와 1:1로 대조하며, 그 파일 주석이 "문서에 코드가 추가되면 이 테스트가 먼저 깨진다"고 적어 둔 그대로 깨졌다. 그래서 `SEQUENCE_NOT_FOUND`·`SEQUENCE_EPOCH_STALE` 두 줄을 enum과 상태 매핑에 함께 넣었다. **이것은 결함이 아니라 설계된 장치가 동작한 것이므로 DEV를 발급하지 않는다** — `WP-001`이 세운 그 시험의 목적이 계약과 코드가 갈라지는 것을 막는 일이고, 여기서 정확히 그 일을 했다. 다만 **"문서 CR은 코드를 건드리지 않는다"는 가정이 이 저장소에서 성립하지 않는다**는 것은 다음 계약 감사가 알아야 할 사실이다: 계약 6장에 오류 코드를 더하는 CR은 언제나 `@prs/contracts`를 함께 바꾼다.
+
 **신규 FR·NFR 없음, 새 ADR 없음, 새 화면·API·엔티티·컴포넌트 ID 없음, 안정 ID 재번호화 0건, 신규 마이그레이션 없음.**
 
 ## 7. 알려진 제한 (구현 반영 기준)

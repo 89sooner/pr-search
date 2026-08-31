@@ -24,6 +24,14 @@ export const ERROR_CODES = [
   'RANGE_TOO_LARGE',
   /** 앵커가 서로 다른 시퀀스 공간 (사용자 조치: 브랜치 통일) — HTTP 400 */
   'SEQUENCE_SPACE_MISMATCH',
+  /**
+   * 지정한 서수가 그 `(시퀀스 공간, 에폭)`에 실재하지 않음 — HTTP 400 (CR-057).
+   *
+   * `FR-SEQ-006` 예외 처리가 지목한 사유 코드다. `ANCHOR_UNRESOLVABLE`과 다르다 —
+   * 저쪽은 표현을 어떤 앵커 유형으로도 해석하지 못한 것이고, 이쪽은 **해석은
+   * 됐는데 그 값이 그 세대에 없는** 것이다.
+   */
+  'SEQUENCE_NOT_FOUND',
   /** 앵커가 first-parent 체인 밖 (사용자 조치: 제안된 머지 커밋 사용) — HTTP 400 */
   'ANCHOR_NOT_ON_BRANCH',
   /** 미머지 PR 앵커 (사용자 조치: 다른 앵커 사용) — HTTP 400 */
@@ -50,6 +58,14 @@ export const ERROR_CODES = [
   'RELEASE_NOT_INDEXED',
   /** 미머지 PR에 시퀀스 요청 (사용자 조치: 머지 후 재시도) — HTTP 409 */
   'NO_SEQUENCE',
+  /**
+   * 쓰기 요청이 딛고 선 시퀀스 에폭이 현재와 다름 — HTTP 409 (CR-057).
+   *
+   * 조회 경로가 200에 `epoch_stale: true`를 실어 답하는 것과 **짝이되 같지
+   * 않다**: 읽기는 무효를 알리고 끝나지만 쓰기는 그 세대에 값을 남기는 일이라
+   * 실행하면 안 된다. 현재 에폭으로 조용히 옮겨 저장하지 않는다 (ADR-007).
+   */
+  'SEQUENCE_EPOCH_STALE',
   /** good/bad 표시 모순 (사용자 조치: 탐색 초기화) — HTTP 409 */
   'BISECT_CONTRADICTION',
   /** 동일 대상 잡 실행 중 (사용자 조치: 기존 잡 확인) — HTTP 409 */
@@ -124,6 +140,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   RANGE_INVERTED: 400,
   RANGE_TOO_LARGE: 400,
   SEQUENCE_SPACE_MISMATCH: 400,
+  SEQUENCE_NOT_FOUND: 400,
   ANCHOR_NOT_ON_BRANCH: 400,
   ANCHOR_NOT_MERGED: 400,
   ANCHOR_UNRESOLVABLE: 400,
@@ -137,6 +154,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   NOT_FOUND: 404,
   RELEASE_NOT_INDEXED: 404,
   NO_SEQUENCE: 409,
+  SEQUENCE_EPOCH_STALE: 409,
   BISECT_CONTRADICTION: 409,
   JOB_CONFLICT: 409,
   REINDEX_BUSY: 409,
