@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.14 | 갱신일: 2026-08-30
+> 상태: review | 버전: v0.15 | 갱신일: 2026-08-31
 
 ## 1. 목적
 
@@ -434,6 +434,52 @@ CREATE TABLE team_member (
   team_id BIGINT NOT NULL REFERENCES team(team_id),
   user_id TEXT   NOT NULL REFERENCES app_user(user_id),
   PRIMARY KEY (team_id, user_id)
+);
+
+-- 마이그레이션 021 (CR-058, DEV-482·485) — 작성자 소속 팀.
+--
+-- ## `team_member`와 무엇이 다른가
+--
+-- `team_member.user_id`는 `app_user(user_id)`를 참조한다. 그 뜻은 **"이 팀에
+-- 속한 PR Search 사용자"**이고 `JOB-AUTH-001`의 무효화가 그 뜻으로 읽는다.
+-- PR 작성자는 대부분 PR Search에 로그인한 적이 없어 `app_user`에 없고,
+-- 그러므로 그 표에 들어갈 수 없다 — `replaceTeamMembers`가 외래 키에 걸리는
+-- 사람을 조용히 버리는 것이 설계대로다.
+--
+-- 여기 담는 것은 **"이 팀에 속한 GHE 사용자"**다. 둘을 한 표에 담으면
+-- `allowed_team_ids`와 `author_team_ids`를 한 필드로 합치는 것과 같은 오류가
+-- 된다 — 접근 권한과 작성자 소속은 다른 사실이다 (CR-053, DEV-382).
+--
+-- ## 왜 PostgreSQL인가
+--
+-- `ADR-004`의 불변 조건은 "모든 엔티티 문서는 PostgreSQL 데이터만으로 재구성
+-- 가능해야 한다"이고 재색인 경로는 GHE를 한 번도 부르지 않는다. `WP-069`의
+-- DoD가 "소속 변경이 재색인으로 반영된다"를 요구하므로, 소속은 재색인이 읽을
+-- 수 있는 곳에 있어야 한다.
+--
+-- ## login으로 키를 잡는 이유
+--
+-- 문서의 `author`가 login이다. GHE 숫자 id가 개명에 강하지만 투영이 손에 쥐고
+-- 있는 값은 login 하나이며, 없는 값을 지어내 맞추지 않는다. 개명은 다음 조직
+-- 동기화가 교체로 흡수한다.
+CREATE TABLE team_membership (
+  team_id BIGINT NOT NULL REFERENCES team(team_id) ON DELETE CASCADE,
+  login   TEXT   NOT NULL,
+  PRIMARY KEY (team_id, login)
+);
+
+-- 작성자 하나로 팀을 찾는 조회가 이 색인을 탄다. 없으면 투영마다 전량 스캔이다.
+CREATE INDEX team_membership_login_idx ON team_membership (login);
+
+-- 조직별 동기화 시각 (CR-058, DEV-486).
+--
+-- **이 값이 아는 것과 모르는 것의 경계다.** 신선하면 그 조직에서 작성자가
+-- 어느 팀에도 없다는 것이 **사실**이므로 `author_team_ids: []`를 쓴다. 낡았거나
+-- 행이 없으면 **모름**이므로 필드를 쓰지 않고 이미 있던 값을 지운다.
+-- 그러므로 이 표를 지우는 것은 "팀이 없다"가 아니라 "다시 물어봐야 한다"이다.
+CREATE TABLE org_team_sync (
+  org_id    BIGINT      PRIMARY KEY,
+  synced_at TIMESTAMPTZ NOT NULL
 );
 
 CREATE TABLE permission_cache (            -- Redis 미스 시 백업 (ADR-008)
@@ -1164,6 +1210,21 @@ if (!changed) { ctx.op = 'noop'; }
 **`changed_lines`는 `additions + deletions`다** (CR-053, DEV-386). 변경 규모 분포(`FR-STAT-005` AC-2)가
 그 합을 구간으로 나누는데, 두 필드를 조회 시점에 더하면 `script`가 필요하고 그것은 위 규율이
 금지한다. **집계가 읽을 값은 집계가 계산하지 않는다.**
+
+**`author_team_ids`의 정본은 `team_membership`이고 그 신선도는 `org_team_sync`가 말한다** (CR-058,
+DEV-481·486). 투영은 **그 PR 저장소의 조직**에서 작성자의 팀을 읽는다 — 등록된 모든 조직으로
+넓히면 한 조직의 동기화 실패가 모든 문서를 모름으로 만들고, `team.slug`이 `UNIQUE (org_id, slug)`라
+조직을 정하지 않으면 같은 이름이 조직마다 다른 팀을 가리킨다.
+
+**세 값이 서로 다른 사실이다.** 그 조직의 동기화가 신선하고 작성자가 팀 여럿에 있으면 그 ID들을
+싣고, 신선한데 어느 팀에도 없으면 **`[]`가 사실의 진술**이며, 동기화가 낡았거나 없거나 문서에
+`author` 자체가 없으면 **부재**다. 부재는 `UpsertRequest.remove`로 실제 부재를 만든다 — 이미 색인된
+옛 소속이 남으면 그 작성자가 떠난 팀의 버킷에 계속 세어진다 (DEV-484, `DEV-454`와 같은 규율).
+
+**재색인은 이 표에서 다시 계산한다** (DEV-485). `pull_request_snapshot`은 투영 시점의 사본이라
+소속이 박제되어 있고, 그것을 그대로 재생하면 재색인이 **옛 팀을 되살린다** — `allowed_team_ids`가
+`registryOwnedFields`로 덮이는 것과 같은 이유다. **GHE를 부르지 않는다**: `ADR-004`의 불변 조건이
+"PostgreSQL 데이터만으로 재구성 가능"이므로 재구축이 외부 API에 기대면 그 조건이 깨진다.
 
 **변경 규모를 모르는 문서에는 그 넷을 쓰지 않는다** (CR-056, DEV-450). `changed_files_count`·
 `additions`·`deletions`·`changed_lines`는 보강이 끝나지 않았고 **파일 목록도 비어 있는** 문서에서
