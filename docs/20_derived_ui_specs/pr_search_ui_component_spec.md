@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.10 | 갱신일: 2026-08-30
+> 상태: review | 버전: v0.11 | 갱신일: 2026-08-31
 
 ## 1. 문서 원칙
 
@@ -314,9 +314,18 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 안전 구간 표식 표시와 등록
 - 기반: Conductor `Card` + `Button` + `TextArea`
-- 필수 props: `marker: SafeMarker | null`, `canWrite: boolean`, `onSubmit`
-- 사용 규칙: `canWrite`가 false면 Conductor `Button`의 `blockedReason`에 필요 역할명을 넣는다
+- 필수 props: `marker: SafeMarker | null`, `canWrite: boolean`, `onSubmit`, **`targetSeq: number | null`**, **`currentEpoch: number`** (CR-057, DEV-462)
+- 상태: `ready`, `marker_absent`, `marker_epoch_stale`, `marker_target_unresolved`, `marker_conflict`, `no_permission`, `submitting`, `submit_failed`
+- 사용 규칙:
+  - `canWrite`가 false면 Conductor `Button`의 `blockedReason`에 필요 역할명(`release_manager`)을 넣는다. **새 역할 이름을 만들지 않는다** — 보안 문서 5.1의 여섯 중 하나를 그대로 쓴다
+  - **`targetSeq`는 조사 구간의 끝 앵커 서수다.** 이 카드는 등록할 서수를 스스로 고르지 않고 받는다 — 숫자 입력창을 두면 사용자가 조사하지 않은 구간을 표식할 수 있다 (와이어프레임 `W-004-MARKER`). `null`이면 `marker_target_unresolved`이며 등록 액션이 사유와 함께 비활성이다
+  - **`marker.seq_epoch !== currentEpoch`이면 무효로 표시한다.** 카드를 감추지 않고, 현재 에폭의 같은 서수로 옮겨 읽지도 않는다 (ADR-007, FR-SEQ-006 AC-4). 무효 표식과 등록 액션은 함께 보인다 — 무효를 본 사용자의 다음 행동이 재등록이기 때문이다
+  - `marker`가 `null`이면 카드를 **감추지 않고** "표식 없음"을 말한다. 감추면 이 공간에 그 기능이 없는 것으로 읽힌다
+  - 메모는 500자 상한이며 남은 글자 수를 보인다 (FR-SEQ-006 AC-2). **서수를 옮기지 않고 메모만 고치는 것도 등록이다** — 그것은 변경이며 감사에 남는다 (CR-057, DEV-465). 메모 수정 경로를 따로 만들지 않는다
+  - **`onSubmit`은 카드가 받은 `marker`의 서수를 `expected_marker_seq`로 함께 보낸다** (CR-057, DEV-464). 표식이 없었으면 `null`이다 — 카드가 이미 현재 표식을 알고 있으므로 새 조회가 필요 없다. 서버가 `SAFE_MARKER_CONFLICT`(409)로 거절하면 `marker_conflict`이며, 응답이 준 현재 표식을 보이고 **자동으로 다시 보내지 않는다**: 사용자가 그 값을 보고 다시 결정한다
+- 접근성: 무효 상태를 색만으로 말하지 않는다 — 배지 문구와 `aria-describedby`로 등록 버튼에 사유를 연결한다. 비활성 버튼도 그 사유를 읽을 수 있어야 한다
 - 관련 FR: FR-SEQ-006
+- 사용 화면: W-004
 
 ### C-032 ReleaseTimeline
 
