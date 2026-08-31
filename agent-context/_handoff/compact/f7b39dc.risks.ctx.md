@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=02f50646347f44501b778fbddf1e621e7e1508c2937463a533bd0d265cbfac60 bytes=110721 lines=1640 title=리스크-불확실한-가정-함정
+@kv sha256=460c5ec6b8e41a1548d4b35215777fcbdf962c2eb114cccea9f56ae82838e5e6 bytes=115303 lines=1696 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -795,3 +795,34 @@
 @h2 릴리스 불변식은 실제 릴리스로 확인한다
 @p check-release-tags.mjs를 "태그가 릴리스 HEAD를 가리켜야 한다"로 바꿨는데, 개발 브랜치에서 돌리면 실패하므로 정당한 릴리스를 막는지는 알 수 없었다. 0.2.1 게시가 그것을 확인했다 — verify local release tags ... shed release tags가 모두 통과했고, linked 설정 덕에 세 태그가 같은 커밋에 생긴다는 근거가 실제로 성립했다.
 @p → 릴리스 경로의 검사는 릴리스가 한 번 돌아야 검증된다. 그때까지는 "막지 않을 것이다"가 아니라 "막는지 아직 모른다"로 적는다.
+@p ---
+@h1 2026-08-31 (2차)가 추가한 것
+@h2 "검사했다"는 "검사한 값이 쓸 때까지 유효하다"가 아니다
+@path WP-041은 계약이 정한 검사 순서 여덟을 세웠고, 그 순서가 한 트랜잭션 안에 있다고 여겼다. 실제로는 에폭·서수 검사가 라우트의 읽기였고 트랜잭션 안에는 마지막 둘만 있었다. 재채번이 그 사이에 커밋하면 과거 merge_sequence 행이 그대로 남아 서수 확인도 통과하고, 무효한 표식이 created로 저장되며, 응답의 epoch_stale은 옛 값과 비교하므로 false가 된다.
+@path → 판정에 쓴 값이 어느 트랜잭션에서 읽혔는지 세어라. 쓰기 직전에 다시 읽지 않으면 그 판정은 "그때는 맞았다"일 뿐이다. DEV-464(멱등)와 같은 모양이며, 그때는 표식이, 여기서는 에폭이 시간에 걸쳐 바뀐다.
+@h2 잠그지 않은 읽기는 직후 커밋을 놓친다
+@p 재검증을 넣고도 FOR SHARE를 빼면 READ COMMITTED에서 읽은 직후에 커밋한 갱신을 보지 못한다. 변이로 그것만 뺐을 때 통합 32건이 전부 살아남았다.
+@p → 그 창은 타이밍 제어가 필요해 재현이 어렵다. 전제와 사용을 나눠 잰다 — 통합이 "이 잠금이 그 갱신을 막는가"를, 회귀가 "코드가 그 잠금을 쓰는가"를 본다. 하나만 있으면 변이가 산다.
+@h2 상한을 키우는 방식은 언젠가 그 상한에 닿는다
+@path DEV-425가 계수 창을 30에서 100으로 넓혔고 DEV-446이 그것이 되돌아간 것을 잡았는데, 병합 PR이 101개가 되자 그 창 자체를 넘어섰다.
+@path → 창을 키우지 말고 끝까지 순회하고 센 수를 totalCount와 대조하라. 그리고 창이 하나라고 가정하지 마라 — 여기서는 둘이었고(PR 목록·스레드 목록) 바깥만 고친 것이 DEV-469다.
+@h2 순서 단언은 존재 확인을 먼저 해야 한다
+@p indexOf는 없는 문자열에 -1을 준다. expect(code.indexOf(a)).toBeLessThan(code.indexOf(b))만 걸면 a를 통째로 지운 변이가 통과한다 — -1 < N이 참이기 때문이다.
+@p → expectOrder(code, a, b)처럼 둘 다 있는지 먼저 확인하는 헬퍼로 묶어라. 이 저장소의 회귀는 소스 문자열 검사가 많아 같은 함정이 여러 자리에 있다.
+@h2 통합 시험은 한 번에 하나만 돌린다
+@p 원인을 찾으려고 두 번째 통합 실행을 띄웠는데 첫 번째가 아직 돌고 있었고, 공유 PostgreSQL·Elasticsearch가 오염되어 103건·30건이 실패한 로그가 나왔다. 그 실패들은 코드의 사실이 아니라 진단 절차의 산물이다.
+@p → 돌리기 전에 ps aux | grep vitest로 확인하라. 그리고 실패를 조사할 때는 전문 로그를 파일로 남겨라 — 요약만 남기면 어느 시험이 실패했는지 확인할 수 없다(이 세션이 실제로 그렇게 됐고, 통합 2건의 원인을 특정하지 못한 채 남겼다).
+@h2 대역이 실제보다 관대하면 그만큼이 사각지대다 — 또
+@p a11y·e2e의 등록 시험이 GET에 같은 표식을 돌려주고 있어, 결과 메시지를 지우는 결함이 보이지 않았다. 실제 응답에서는 성공이 서수나 메모를 바꾸므로 거의 언제나 지워졌다.
+@p → 쓰기 뒤에 읽는 경로를 시험할 때는 그 읽기가 다른 값을 주는 경우를 만들어라. 같은 값을 주는 스텁은 "바뀌지 않았다"는 상태만 시험한다.
+@h2 정정이 다른 결함을 만들 수 있다
+@p "공간이 바뀌면 비운다"를 loadMarker 안에 넣었더니 등록 직후에도 그것을 부르므로 방금 등록한 결과를 보여 줄 카드가 사라졌다. e2e가 즉시 잡았다.
+@p → 정정한 뒤 관련 계층을 다시 돌려라. 특히 같은 함수를 여러 경로가 부르면, 그 함수를 고치는 것은 모든 경로를 고치는 것이다.
+@h2 여전히 유효한 것
+@b 정정한 자리가 다음 리뷰의 첫 자리다 — 이제 다섯 번째다
+@b CRLF 저장소 — 치환은 APPLIED (1)을 확인한다
+@b e2e는 빌드를 하지 않는다
+@b git add -A를 쓰지 않는다 — agent-context/가 tracked다
+@b ID는 실측한다
+@b 통합 시험 파일은 자기 이름 공간만 정리한다. 전역 DELETE는 다른 파일의 픽스처를 지우고, (owner, name) 유일 제약 때문에 저장소 이름도 겹치면 안 된다
+@b CI 상태는 저장소마다 확인한다 — pr-search는 결제 차단, design-system은 정상

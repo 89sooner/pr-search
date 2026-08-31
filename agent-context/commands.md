@@ -2207,3 +2207,113 @@ for line in rows.split('\n'):
 ```
 
 `DEV-399`가 남긴 결함 유형이며, 이 세션이 DEV 행 열셋을 넣으면서 매번 확인했다.
+
+---
+
+# 2026-08-31 (2차) — CR-057 · WP-041
+
+## 검증 배터리 (마지막 실행 결과 — main `5dab7f0`)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                     # 통과
+pnpm lint                          # 통과 — 마지막 파일까지 쓴 뒤 다시 돌릴 것
+pnpm run lint:deps                 # 패키지 13개, 위반 0건
+pnpm run test                      # 단위 1903 통과 (1 skipped)   [1883 → +20]
+pnpm run test:integration          # 1432 통과 (89 파일)          [1399 → +33]
+pnpm run test:regression           # 299 통과                     [288 → +11]
+pnpm run test:a11y                 # 358 통과 (axe 0)             [346 → +12]
+pnpm run test:contrast             # 232/232
+pnpm --filter @prs/web run build   # e2e 전에 필수
+pnpm run test:e2e                  # 155 통과                     [147 → +8]
+pnpm build                         # 통과
+```
+
+targeted: `pnpm run test:integration safe-marker` 33 · `pnpm run test:e2e safe-marker` 8.
+
+## 통합은 한 번에 하나만 돌린다
+
+두 실행이 겹치면 공유 PostgreSQL·Elasticsearch가 오염되어 **103건·30건이 실패하는 로그**가 나온다. 그것은 코드의 사실이 아니다.
+
+```bash
+ps aux | grep "[v]itest" | wc -l    # 0이어야 한다
+pkill -9 -f vitest                  # 겹쳤으면 전부 정리하고 다시
+```
+
+**실패를 조사할 때는 전문 로그를 파일로 남겨라.** 요약만 남기면 어느 시험이 실패했는지 확인할 수 없다 — 이 세션이 실제로 그렇게 됐고 통합 2건의 원인을 특정하지 못했다.
+
+```bash
+pnpm run test:integration > /tmp/int.log 2>&1; echo "exit=$?"
+grep -A20 "Failed Tests" /tmp/int.log | head -40
+```
+
+## 변이 시험 헬퍼 (정확히 1건일 때만 치환, CRLF 보존)
+
+```bash
+# mutate.sh <파일> <옛 문자열> <새 문자열> <라벨>
+#   → 치환 → 대상 스위트 실행 → 원복 → 결과 한 줄
+```
+
+**살아남으면 등가인지 먼저 물어라.** 이 세션에서 `FOR SHARE`만 빼는 변이가 통합 32건을 전부 통과했는데 **등가가 아니라 실제 구멍**이었다 — 잠그지 않은 읽기는 읽은 직후 커밋한 갱신을 놓친다. 그 창은 타이밍 제어가 필요해 재현이 어려우므로 **전제(통합)와 사용(회귀)을 나눠** 걸었다.
+
+## 문서 편집 — CRLF 보존 치환
+
+`docs/**`와 `agent-context/**`가 전부 CRLF다. 파이썬으로 `newline=''`로 읽고 쓰며, 삽입 블록도 `\r\n`으로 맞춘다. **`APPLIED (1)`을 확인하라** — `SKIPPED (0)`이면 앵커가 안 맞은 것이고, `SKIPPED (N)`이면 여러 곳에 있다.
+
+앵커가 여러 번 나오는 경우가 실제로 있다 — 원장의 DEV 표 행과 6.x장 요약 표가 같은 ID로 시작할 수 있으므로 **줄 번호로 겨냥**한다.
+
+```bash
+LINE=$(grep -n '^| DEV-467 | 2026' docs/40_delivery/pr_search_implementation_traceability.md | head -1 | cut -d: -f1)
+sed -n "${LINE}p" <파일> > old.txt
+```
+
+## 표 행을 넣을 때 칸 수를 먼저 센다
+
+```bash
+awk -F'|' '/^\| DEV-47[1-4] \| 2026/ {print $2, NF}' docs/40_delivery/pr_search_implementation_traceability.md
+# DEV 표는 9 (7칸 + 양끝), CR 표는 10, WP 진행 표는 10, 매트릭스는 6
+```
+
+## 미해결 리뷰 — 스크립트가 정본이다 (DEV-468·469)
+
+```bash
+python3 agent-context/count-unresolved-reviews.py              # 두 저장소
+python3 agent-context/count-unresolved-reviews.py pr-search    # 하나만
+```
+
+한 줄 명령으로 되돌아가지 마라. **창이 둘이고 둘 다 넘칠 수 있다.**
+
+## 리뷰 답변·해소
+
+```bash
+for f in replies/*.md; do
+  tid=$(basename "$f" .md)
+  gh api graphql -f query='mutation($t: ID!, $b: String!) {
+    addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $t, body: $b}) { comment { id } } }' \
+    -f t="$tid" -f b="$(cat "$f")" > /dev/null \
+  && gh api graphql -f query='mutation($t: ID!) {
+    resolveReviewThread(input: {threadId: $t}) { thread { isResolved } } }' \
+    -f t="$tid" --jq '.data.resolveReviewThread.thread.isResolved'
+done
+```
+
+## PR 본문 수정 — `gh pr edit`이 실패할 수 있다
+
+Projects classic 사용 중단 경고로 `gh pr edit`이 조용히 실패한다. REST로 직접 건다.
+
+```bash
+gh api -X PATCH repos/89sooner/pr-search/pulls/103 -F body=@body.md --jq '.number'
+```
+
+## 리뷰 대기
+
+리뷰는 푸시 후 **약 12분**에 도착한다. 백그라운드 폴링이 중단될 수 있으므로 Monitor로 거는 편이 낫다.
+
+```bash
+prev=0; end=$(( $(date +%s) + 1500 ))
+while [ "$(date +%s)" -lt "$end" ]; do
+  n=$(gh api graphql -f query='...reviewThreads...' --jq '[...|select(.isResolved|not)]|length')
+  [ "$n" != "$prev" ] && { echo "미해결 $n건"; prev=$n; [ "$n" != "0" ] && break; }
+  sleep 60
+done
+```

@@ -1113,3 +1113,51 @@
 - `CreateJobOutcome.conflict.jobId: number` — `null`을 되살리지 마라
 - design-system `SelectRoot`의 반환 타입 `ReactElement`
 - design-system `check-release-tags.mjs`의 **불변식** — 입력 목록으로 되돌리지 마라
+
+---
+
+# 2026-08-31 (2차)가 만든 것 (CR-057 · WP-041)
+
+## 읽는 순서가 바뀐 문서
+
+- `docs/10_requirements/srs_final.md` — **baseline v2.18.** `OD-008` resolved(v2.17), `safe_marker.set` 활성(v2.18). **오픈 결정 0건**
+- `docs/30_technical_architecture/pr_search_api_contracts.md` — **v0.22.** `API-SEQ-004` 상세 절 신설, 오류 코드 셋, `result_code` 표
+- `docs/40_delivery/pr_search_implementation_traceability.md` — **v6.11.** 6.55(CR-057 감사) · 6.56(WP-041) · DEV-458~474
+- `docs/10_requirements/requirements_screen_traceability_matrix.md` — v1.2
+- `docs/20_derived_ui_specs/pr_search_screen_flow_spec.md` — v0.5. `FLOW-003`에 표식 등록 단계
+
+## 새 소스
+
+| 경로 | 무엇 |
+| --- | --- |
+| `packages/db/src/repositories/safe-marker.ts` | 표식 리포지터리. **`FOR SHARE` 에폭 재검증 → 완전 일치(7) → `expected` 대조(8) → 이력 → 삽입**을 한 트랜잭션에서 |
+| `apps/search-api/src/sequence/safe-marker.ts` | 판정과 응답 모양. `toMarkerView`가 `epoch_stale`을 비교로 만든다 |
+| `apps/web/lib/safe-marker.ts` | 화면 판정 (순수). `mayWriteMarker`·`markerCardState`·`judgeMarkerSubmit` |
+| `apps/web/components/SafeMarkerCard.tsx` | `C-031`. 서수를 고르지 않고 `targetSeq`로 받는다 |
+| `apps/search-api/integration/sequence/safe-marker.test.ts` | 통합 33건 |
+| `apps/web/lib/safe-marker.test.ts` | 단위 20건 |
+| `apps/web/e2e/safe-marker.spec.ts` | e2e 8건 |
+| `agent-context/count-unresolved-reviews.py` | **미해결 리뷰 계수 정본.** 창 둘을 다 순회한다 |
+
+## 고친 소스
+
+| 경로 | 무엇 |
+| --- | --- |
+| `packages/db/src/advisory-lock.ts` | `safeMarkerLockKey` — 채번 락과 **다른 키** |
+| `apps/search-api/src/sequence/routes.ts` | `GET/PUT /safe-markers`, `parseSafeMarkerBody`, `recordMarkerRejection`. `enter`가 인증된 주체를 받는다 |
+| `packages/domain/src/audit.ts` | `safe_marker.set`을 **활성으로** |
+| `packages/contracts/src/error-codes.ts` | `SEQUENCE_NOT_FOUND`·`SEQUENCE_EPOCH_STALE`·`SAFE_MARKER_CONFLICT` |
+| `apps/web/components/RangesView.tsx` | 표식 상태와 제출. **공간 변경 effect가 비운다** |
+| `apps/web/app/ranges/page.tsx` | `GuardedPage` 함수 형태로 역할 전달 |
+| `regression/runtime-reachability.test.ts` | 도달성 11건 + `expectOrder` 헬퍼 |
+| `apps/web/lib/audit.test.ts` · `apps/web/e2e/audit.spec.ts` | 미활성 단언을 **정본 목록 대조로** |
+
+## 손대면 안 되는 것 (갱신)
+
+- `safe-marker.ts`의 **`FOR SHARE` 재검증** — 라우트의 검사만 믿으면 재채번이 그 사이에 커밋한다
+- 같은 파일의 **검사 순서 7 → 8** — 뒤집으면 정직한 재시도가 409를 받는다
+- **`safeMarkerLockKey`** — 채번 락을 함께 쓰면 사람이 누르는 요청이 파이프라인을 밀어낸다
+- `RangesView`의 **공간 변경 effect** — `loadMarker` 안으로 옮기면 등록 결과가 사라진다
+- `SafeMarkerCard`의 **제출 앞 `setResult(null)`** — 표식 변화를 보는 effect로 되돌리지 마라
+- `expectOrder` — 순서 단언은 존재 확인을 먼저 한다
+- `count-unresolved-reviews.py` — 창이 둘이다
