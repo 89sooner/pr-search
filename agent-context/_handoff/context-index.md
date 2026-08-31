@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-08-30T23:28:15+00:00
+generated=2026-08-31T02:30:08+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -50,16 +50,16 @@ sig=agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runti
 ### f73e2b0
 src=agent-context/session-notes.md
 compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md
-sha256=6b51ac9bb841e8a2b4176668157ee927d1ff334e249fcb323d64a6e369f1f045
-bytes=88203 compact_bytes=87935 lines=1456 priority=25
+sha256=6fd8fa358bc073622db157c72852c5333dd1c3c053187db9297e36ace719d69e
+bytes=90926 compact_bytes=90584 lines=1495 priority=25
 heads=Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료 > Goal > Current state > Decisions > Changed files > Commands
 sig=agent-context/session-notes.md;10/11;Risks/gotchas;docs/00_governance/change_control.md;exports/202608260047.md;dailywork/2026-08-25_PR-Search-WP-028;exports/202608251453.md;exports/202608260113.md;11/11;exports/202608261008.md;1/8;2/8;exports/202608262010.md;dailywork/2026-08-26_PR-Search-OD-005-;W-002/W-003;3/8;exports/202608262224.md;4/8;apps/search-api/integration/sequence/_repro-w004.test.ts;exports/202608270742.md;dailywork/2026-08-27_PR-Search-WP-035-;pr-search/202608271346.md;5/8;docs/README.md
 
 ### f3c6d32
 src=agent-context/session-summary.md
 compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md
-sha256=9e409c200865d8a5b16781bafe022b66042d966f7ace23cbaff3f8b82d9ebadf
-bytes=62897 compact_bytes=62639 lines=1093 priority=25
+sha256=8195a84db7bf063a67c3aa243bae0e53008d2c10730253bc957634e4bf774391
+bytes=63212 compact_bytes=62950 lines=1099 priority=25
 heads=세션 요약 — PR Search 구현 (2026-08-25 후반) > 이 세션의 목표 > 이 세션의 핵심 발견 > 완료한 것 (전부 main 병합) > 반복해서 나타난 패턴 — 머지 후 리뷰 > 현재 상태 한 줄
 sig=agent-context/session-summary.md;10/11;CR/DEV;11/11;1/8;2/8;3/8;acme/b;acme/a;900/900;66/67;apps/web;4/4;7/7;4/8;25/200;close/reopen;Docker/WSL;5/8;agent-context/_handoff/context-index.md;W-001/W-008;6/8;API-ADM-001/006;7/8
 
