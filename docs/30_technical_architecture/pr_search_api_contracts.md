@@ -1289,12 +1289,14 @@ POST /api/v1/sequence-anchors/resolve
 | --- | --- | --- |
 | 1 | 세션 | 401 `UNAUTHENTICATED` |
 | 2 | `release_manager` 역할 | 403 `FORBIDDEN_ROLE` |
-| 3 | 본문 형식 (`repository` 형식, `base_branch` 비어 있지 않음, `merge_seq` 1 이상 정수, `seq_epoch` 1 이상 정수, `note` 500자 이하, `expected_marker_seq` 키 존재) | 400 `INVALID_PARAMETER` |
+| 3 | 본문 형식 (`repository` 형식, `base_branch` 비어 있지 않음, `merge_seq` 1 이상 정수, `seq_epoch` 1 이상 정수, `note` 500자 이하, `expected_marker_seq`가 **키로 존재하며 1 이상 정수이거나 `null`**) | 400 `INVALID_PARAMETER` |
 | 4 | 저장소 존재 + 접근 범위 + 시퀀스 공간 존재 | 404 `NOT_FOUND` |
 | 5 | 요청 `seq_epoch` == 현재 에폭 | 409 `SEQUENCE_EPOCH_STALE` |
 | 6 | `merge_seq`가 그 `(공간, 에폭)`에 실재 | 400 `SEQUENCE_NOT_FOUND` |
 | 7 | 요청이 현재 표식과 **완전히 같은가** (`merge_seq`·`seq_epoch`·`note`) | 같으면 여기서 끝 — 200 `unchanged`, 아무것도 쓰지 않는다 |
 | 8 | `expected_marker_seq` == 현재 표식의 서수 (표식이 없으면 `null`) | 409 `SAFE_MARKER_CONFLICT` (`detail.current_marker_seq`) |
+
+**8은 에폭이 아니라 서수만 비교한다.** 에폭은 5가 이미 현재 값으로 고정했으므로 남는 자유도는 현재 표식이 낡은 에폭에 저장돼 있는 경우 하나인데, 그때도 요청자가 본 서수와 현재 서수가 같으면 그 요청이 만들려는 상태와 이미 만들어진 상태가 같다 — `note`까지 같으면 7이 `unchanged`로 끝내고, 다르면 그 메모로 갱신하는 것이 요청자의 의도다. `marker_id`나 `created_at`을 싣는 더 엄격한 형태는 그 자유도를 없애지만, **가르지 못하는 경우가 해를 만들지 않으므로** 계약을 그만큼 넓히지 않는다.
 
 **역할을 접근 범위보다 먼저 본다.** 역할은 저장소와 무관한 성질이라 그 판정이 저장소의 존재를 흘리지 않는다. 순서를 뒤집으면 자격 없는 사용자가 403과 404의 차이로 **비공개 저장소의 존재를 탐지한다** — `ADR-008`이 404로 감추려던 사실이 다른 문으로 새어 나가는 것이다. 운영 경로(`API-ADM-001`)가 이미 같은 순서다.
 
