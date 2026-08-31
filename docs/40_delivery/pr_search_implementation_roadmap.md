@@ -1,6 +1,6 @@
 # PR Search 구현 로드맵
 
-> 상태: review | 버전: v0.7 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.8 | 갱신일: 2026-08-31
 
 ## 1. 목적
 
@@ -34,8 +34,8 @@
 | REL-002 | 양방향 식별자 해석과 권한 | FR-SRCH-001, FR-SRCH-002, FR-SRCH-003, FR-SRCH-004, FR-SRCH-005, FR-SRCH-006, FR-SRCH-007, FR-AUTH-001, FR-AUTH-002, FR-AUTH-003, FR-ING-006, NFR-001, NFR-005 | `search-api`, `web` 셸(Conductor), W-001, W-002, W-003, 백필 잡 | SHA로 PR을, PR로 커밋을 찾을 수 있다. 권한 매트릭스 테스트가 통과한다. 백필로 과거 데이터를 채울 수 있다. 단건 해석 p95 200ms |
 | REL-003 | 머지 시퀀스와 범위 조사 | FR-SEQ-001, FR-SEQ-002, FR-SEQ-003, FR-SEQ-004, FR-SEQ-005, FR-REL-001, FR-REL-002, FR-ADMIN-003, FR-ING-011 | git 미러, `pipeline-worker:sequence`, W-004, W-005, 정합성 점검, 조정 스캔 | 시퀀스 값이 `git log --first-parent`와 일치한다. 두 릴리스 구간 비교가 동작한다. 강제 푸시 시 에폭이 증가하고 알림이 발생한다 |
 | REL-004 | 관계 파생과 전문 검색 (실행 순서: WP-029 → WP-030 → WP-031 → **WP-035** → WP-032 → WP-033 → WP-034 → WP-036, CR-043) | FR-REL-003, FR-REL-004, FR-REL-005, FR-REL-006, FR-REL-007, FR-SRCH-008, FR-SRCH-009, FR-SRCH-010, FR-SRCH-011, FR-ING-008, FR-ING-010 | `pipeline-worker:link`, W-008, W-009, 패싯·커서·전문 검색, 재색인, Filebeat 원본 레인 | 되돌림·체리픽·참조 관계가 표시되고 신뢰도가 구분된다. 무중단 재색인이 검증된다. 관계 정확도 표본 200건 검수 결과가 기록된다(ACC-06 — W-007 활성화 판단 근거) |
-| REL-005 | 통계와 운영 고도화 | FR-STAT-001, FR-STAT-002, FR-STAT-003, FR-STAT-004, FR-STAT-005, FR-STAT-006, FR-ADMIN-002, FR-AUTH-004 | W-006, A-002, A-003, A-004, 감사 조회 | 그룹·시계열·백분위·분포 집계가 동작하고 근거 목록으로 이동한다. 운영 콘솔에서 백필·재색인·재채번을 제어한다. 감사 조회가 `security_officer`로 제한된다 |
-| REL-006 | 조사 보조와 관계 시각화 | FR-SEQ-006, FR-SEQ-007, FR-REL-008, FR-SRCH-012 | W-007(조건부), 이분 탐색, 안전 구간 표식, 내보내기 | 이분 탐색이 후보를 절반씩 줄인다. 안전 구간 표식이 저장·표시된다. W-007은 REL-004의 ACC-06(관계 간선 정확도 표본 200건 검수 95% 이상)을 충족할 때만 포함한다 |
+| REL-005 | 통계와 운영 고도화 | FR-STAT-001, FR-STAT-002, FR-STAT-003, FR-STAT-004, FR-STAT-005, FR-STAT-006, FR-ADMIN-002, FR-AUTH-004 | W-006, A-002, A-003, A-004, 감사 조회 | 그룹·시계열·백분위·분포 집계가 동작하고 근거 목록으로 이동한다. 운영 콘솔에서 백필·재색인·재채번을 제어한다. 감사 조회가 `security_officer`로 제한된다. **WP 네 개(037·038·039·040)의 구현은 완료됐다.** 다만 `FR-STAT-006`·`FR-SRCH-005`의 **author-team 축은 `CR-056`에서 후발 발견된 carryover이며 `WP-069`(REL-006)가 종결한다** (CR-058, DEV-479) — 그때까지 `group_by=team`과 `author_team:`은 데이터가 없어 빈 결과이고, **"WP 4/4 done"과 "author-team 행위까지 충족"은 같은 주장이 아니다** |
+| REL-006 | 조사 보조와 관계 시각화 | FR-SEQ-006, FR-SEQ-007, FR-REL-008, FR-SRCH-012, **FR-STAT-006·FR-SRCH-005 (author-team carryover — REL-005·REL-002 소유는 그대로다)** | W-007(조건부), 이분 탐색, 안전 구간 표식, 내보내기, **작성자 소속 팀 채우기(WP-069)** | 이분 탐색이 후보를 절반씩 줄인다. 안전 구간 표식이 저장·표시된다. **`group_by=team` 집계와 `author_team:` 질의가 실제 소속으로 답한다** (CR-058, WP-069). W-007은 REL-004의 ACC-06(관계 간선 정확도 표본 200건 검수 95% 이상)을 충족할 때만 포함한다 |
 | REL-007 | GitHub CLI 실행 기반 | FR-GH-001, FR-GH-002, FR-GH-003, FR-GH-006, FR-GH-008, FR-GH-009, FR-GH-011, FR-GH-012 | `@prs/gh-cli`, capability manifest와 검증 도구, 의미 제약 엔진(WP-061), 출력·파일 안전 경계(WP-062), 결과 계약·capability 그래프(WP-066), `gh-executor`, Operations App 연동, W-010, A-006, A-007 | 사용자가 웹에서 저장소를 고르고 R0 capability를 골라 옵션을 넣고 실행될 argv를 확인한 뒤 실행하고 결과와 이력을 볼 수 있다. capability 분류 커버리지 100%, 미분류 0. gh 출력이 무해화 경계를 통과한다 (CR-008) |
 | REL-008 | PR·Issue·Discussion 작업 | FR-GH-004, FR-GH-009 | W-011, W-012, R1·R2 쓰기 capability 개방 | PR 머지가 전략·자동 머지·관리자 강제·head 일치·커밋 메시지·브랜치 삭제를 선택해 실행된다. R2 확인과 대상 재조회가 동작한다 |
 | REL-009 | 저장소·Actions·Release·Project 작업 | FR-GH-004, FR-GH-006, FR-GH-007 | W-013, W-014, W-015, W-016, 임시 workspace, 아티팩트 | 워크플로 수동 실행과 실행 로그 스트리밍이 동작한다. 릴리스 자산 업로드·내려받기가 동작한다. 로컬 git이 필요한 명령이 임시 workspace에서 수행된다 |
@@ -51,7 +51,7 @@
 | REL-003 | W-004, W-005, 시퀀스 배지, 선행·후행 섹션 | sequence 워커, **mirror 워커**, API-SEQ-001~003, API-REL-001~002, API-ADM-007 | `sequence_space`, `merge_sequence`, `repository.allowed_team_ids` / `prs-releases` 매핑 | 미러 PVC, git 도구 이미지 | ~~미러 접근 정책(OD-001)~~ **해소 (CR-024)** | 시퀀스 회귀 테스트(git 대조), FLOW-003 E2E |
 | REL-004 | W-008, W-009, 패싯 레일, 커서 페이저, 관계 섹션 | link 워커, API-SRCH-005, API-REL-003~004, API-ADM-004 | `prs-links` 매핑, `saved_search` 테이블 | Filebeat 배포, 아카이브 ILM | 저장된 검색 권한 미승계 | 관계 정확도 표본 검수, 재색인 무중단 검증, FLOW-006 E2E |
 | REL-005 | W-006, A-002, A-003, A-004, 차트 컴포넌트 | analytics 모듈, API-STAT-001~004, API-ADM-001~005 | `audit_record` 파티션 | 감사 보존 잡, 대시보드·알림 구성 | 감사 역할 제한, 집계 권한 반영 | 집계 정확성 테스트, FLOW-005·FLOW-007 E2E |
-| REL-006 | W-007(조건부), 이분 탐색 패널, 표식 카드, 내보내기 | API-SEQ-004~005, API-SRCH-006 | `safe_marker`, `bisect_session` 테이블 | 내보내기 잡 | 표식 역할 제한, 내보내기 감사 | FLOW-004 E2E, 그래프 접근성 검증 |
+| REL-006 | W-007(조건부), 이분 탐색 패널, 표식 카드, 내보내기 | API-SEQ-004~005, API-SRCH-006, 작성자 팀 해석(투영·백필·재색인) | `safe_marker`, `bisect_session`, **`team_membership`·`org_team_sync` 테이블 (마이그레이션 021)** | 내보내기 잡 | 표식 역할 제한, 내보내기 감사, **작성자 팀은 접근 범위가 아니다 — `allowed_team_ids`와 섞지 않는다** | FLOW-004 E2E, 그래프 접근성 검증, **팀 집계 통합 검증** |
 
 ## 6. 의존성 지도
 
@@ -87,7 +87,7 @@
 | **QA** | 합성 데이터셋 (1000만 문서) | REL-002 성능 검증 |
 | **QA** | 시퀀스 회귀 픽스처 (강제 푸시·리베이스 포함 히스토리) | REL-003 검증 |
 
-**차단 없는 오픈 결정은 모두 닫혔다.** OD-001·OD-004는 2026-08-22 CR-024로, OD-005는 2026-08-26 CR-040으로 결정됐다. 셋 다 "두 경로 모두 구현하거나 대체 경로가 있어" 착수를 막지 않았지만, **두 경로를 유지하는 비용은 결정이 날 때까지 계속 들었다** — 그것이 기한을 정해 두는 이유이고, 기한이 도래하면 닫는 이유다. 남은 오픈 결정은 OD-008(REL-006 착수 전) 하나다.
+**차단 없는 오픈 결정은 모두 닫혔다.** OD-001·OD-004는 2026-08-22 CR-024로, OD-005는 2026-08-26 CR-040으로 결정됐다. 셋 다 "두 경로 모두 구현하거나 대체 경로가 있어" 착수를 막지 않았지만, **두 경로를 유지하는 비용은 결정이 날 때까지 계속 들었다** — 그것이 기한을 정해 두는 이유이고, 기한이 도래하면 닫는 이유다. **오픈 결정은 하나도 남지 않았다** — OD-008은 2026-08-31 CR-057로 `(a) release_manager 전용`으로 닫혔다 (CR-058, DEV-480).
 
 ## 7. 위험과 완화
 
