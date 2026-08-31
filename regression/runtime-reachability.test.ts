@@ -2062,6 +2062,29 @@ describe('작성자 소속 팀의 도달성과 계약 (WP-069 / CR-058)', () => 
     expect(LOCKS).toContain('`org:teams:${String(orgId)}`');
   });
 
+  it('**계약의 두 자리가 같은 사실을 말한다** — 하나만 갱신하면 읽는 쪽이 어느 것이 사실인지 모른다 (DEV-488)', () => {
+    /*
+     * `WP-069`가 `author_team_ids`를 채운 뒤, 계약 3장의 검색 키 표와 4장의
+     * `API-STAT-001` 절이 **같은 필드를 서로 다르게 설명하고 있었다.** 한쪽만
+     * 고친 것이 원인이며, 리뷰가 잡았다.
+     *
+     * 문자열 검사라 정교하지 않다. 그래도 **"둘 중 하나만 갱신했는데 아무 시험도
+     * 안 죽는 상태"보다는 낫다** — 그 상태가 이 DEV의 원인이었다.
+     */
+    const CONTRACTS = read('docs/30_technical_architecture/pr_search_api_contracts.md');
+    const lines = CONTRACTS.split('\n');
+
+    const keyRow = lines.find((line) => line.startsWith('| `author_team` |'));
+    expect(keyRow, '검색 키 표에 `author_team` 행이 없다').toBeDefined();
+    expect(keyRow).toContain('WP-069');
+    expect(keyRow).not.toContain('투영이 아직 채우지 않');
+
+    const analytics = lines.find((line) => line.includes('`author_team_ids`는'));
+    expect(analytics, '집계 절에 `author_team_ids` 설명이 없다').toBeDefined();
+    expect(analytics).toContain('WP-069');
+    expect(analytics).not.toContain('투영이 채우지 않는다');
+  });
+
   it('**마이그레이션 021이 실재하고 되돌릴 수 있다**', () => {
     const dir = new URL('packages/db/migrations/', new URL('..', import.meta.url));
     const files = readdirSync(dir);

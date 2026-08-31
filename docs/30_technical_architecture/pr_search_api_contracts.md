@@ -339,7 +339,7 @@
 | `org` | `org_id` | **레지스트리 해석** — 문서에 조직 이름이 없다. `repository.owner`로 `org_id`를 찾는다 |
 | `author` | `author` | |
 | `team` | `allowed_team_ids` | **레지스트리 해석** — `team.slug` → `team_id`. **저장소 접근 권한 팀이다.** 지금은 결과를 내지 못한다 (문서의 팀 ID가 비어 있다) |
-| `author_team` | `author_team_ids` | **레지스트리 해석.** **작성자의 소속 팀이며 `team`과 다르다** (CR-053, DEV-382). 집계의 `group_by=team`이 이 필드를 보고 `drill_down_query`도 이 키를 쓴다. 투영이 아직 채우지 않아 결과가 비어 있다 |
+| `author_team` | `author_team_ids` | **레지스트리 해석.** **작성자의 소속 팀이며 `team`과 다르다** (CR-053, DEV-382). 집계의 `group_by=team`이 이 필드를 보고 `drill_down_query`도 이 키를 쓴다. **`WP-069`가 그 필드를 채운다** (2026-08-31, CR-058) — 값의 범위·부재의 뜻은 `API-STAT-001` 절이 정본이다 |
 | `reviewer` | `reviewers` | |
 | `label` | `labels` | 커밋 문서에는 없다 → 커밋은 매치되지 않는다 (정상) |
 | `base` | `base_branch` | |

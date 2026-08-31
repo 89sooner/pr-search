@@ -8,7 +8,7 @@
  * 검증: `pnpm test:integration author-teams`
  */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Client } from '@elastic/elasticsearch';
 import { rawEventRepo, repositoryRepo, teamMembershipRepo, type Pool } from '@prs/db';
 import { applyMappings, switchAliasesForTests, createEsClient, dropEntityIndices, resolveClientOptions } from '@prs/es';
@@ -20,6 +20,7 @@ import {
   AUTHOR_TEAMS_UNKNOWN,
   resolveAuthorTeam,
   resolveAuthorTeams,
+  startOrgTeamSweeper,
   syncOrgTeamsIfStale,
 } from '../../src/author-teams.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
@@ -456,5 +457,165 @@ describe('**소속 변경은 새 이벤트가 있어야 문서에 닿는다** (F
     await project(enrichedPayload(), 'delivery-noop-b');
 
     expect((await indexedDoc())['author_team_ids']).toEqual([CORE, PLATFORM]);
+  });
+});
+
+describe('조직 팀 스윕 (WP-069 / CR-058) — `authz` 역할이 표를 채운다', () => {
+  it('등록된 조직을 전부 훑는다', async () => {
+    const { client } = githubStub(TEAMS);
+    const seen: number[] = [];
+    const sweeper = startOrgTeamSweeper(
+      {
+        pool,
+        github: client,
+        listOrgs: async () => {
+          seen.push(ORG);
+          return [{ orgId: ORG, owner: 'authorteams' }];
+        },
+        sleep: async (): Promise<void> => undefined,
+      },
+      { intervalMs: 0 },
+    );
+
+    // 첫 회차가 곧바로 돈다 — 시작 직후의 투영이 빈 표를 보는 구간을 짧게 만든다.
+    await vi.waitFor(async () => {
+      expect(await teamMembershipRepo.findOrgSyncedAt(pool, ORG)).not.toBeNull();
+    });
+    await sweeper.stop();
+
+    expect(seen.length).toBeGreaterThan(0);
+    expect((await teamMembershipRepo.findAuthorTeamIds(pool, ORG, ['alice'])).get('alice')).toEqual([
+      CORE,
+      PLATFORM,
+    ]);
+  });
+
+  it('**첫 회차는 잠들기 전에 돈다** — 시작 직후의 투영이 빈 표를 보고 모름을 답하는 구간을 짧게 만든다', async () => {
+    /*
+     * 순서를 뒤집으면(잠든 뒤 훑기) 냉시작 후 한 주기 내내 모든 문서가 모름이
+     * 된다. 간격을 0으로 두고 잠을 즉시 끝내는 대역으로는 그 차이가 드러나지
+     * 않는다 — 변이가 실제로 살아남아 그 사실을 보였다.
+     */
+    const { client } = githubStub(TEAMS);
+    const order: string[] = [];
+    let releaseSleep: (() => void) | undefined;
+
+    const sweeper = startOrgTeamSweeper(
+      {
+        pool,
+        github: client,
+        listOrgs: async () => {
+          order.push('sweep');
+          return [{ orgId: ORG, owner: 'authorteams' }];
+        },
+        sleep: async (): Promise<void> => {
+          order.push('sleep');
+          await new Promise<void>((resolve) => {
+            releaseSleep = resolve;
+          });
+        },
+      },
+      { intervalMs: 60_000 },
+    );
+
+    try {
+      await vi.waitFor(() => {
+        expect(order[0], '잠든 뒤에 훑었다 — 첫 주기가 통째로 모름이 된다').toBe('sweep');
+      });
+      // 잠들기 전에 그 회차의 쓰기가 끝나 있다.
+      await vi.waitFor(async () => {
+        expect(await teamMembershipRepo.findOrgSyncedAt(pool, ORG)).not.toBeNull();
+      });
+    } finally {
+      const stopping = sweeper.stop();
+      releaseSleep?.();
+      await stopping;
+    }
+  });
+
+  it('**`stop()`이 진행 중인 동기화를 기다린다** — 기다리지 않으면 종료가 풀을 닫고 그 실패가 코드의 사실처럼 남는다', async () => {
+    let release: (() => void) | undefined;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered = false;
+    let finished = false;
+
+    const client = {
+      async listOrgTeams() {
+        entered = true;
+        await blocked;
+        return TEAMS.map((team) => ({ id: team.id, slug: team.slug, name: team.slug }));
+      },
+      async listTeamMembers(_org: string, slug: string) {
+        const found = TEAMS.find((team) => team.slug === slug);
+        return (found?.members ?? []).map((login, index) => ({ id: index + 1, login }));
+      },
+    } as unknown as GitHubClient;
+
+    const sweeper = startOrgTeamSweeper(
+      {
+        pool,
+        github: client,
+        listOrgs: async () => [{ orgId: ORG, owner: 'authorteams' }],
+        sleep: async (): Promise<void> => undefined,
+      },
+      { intervalMs: 0 },
+    );
+
+    await vi.waitFor(() => {
+      expect(entered).toBe(true);
+    });
+
+    const stopping = sweeper.stop().then(() => {
+      finished = true;
+    });
+
+    /*
+     * **단언이 실패해도 반드시 풀어 준다.** 풀지 않으면 대역이 영영 기다리고
+     * 시험 파일이 끝나지 않는다 — 변이를 걸었을 때 실제로 그렇게 됐고, 그
+     * 멈춤은 "변이가 살아남았다"와 구분되지 않는다.
+     */
+    try {
+      // 아직 GHE 응답을 받지 못했으므로 `stop()`이 끝나 있으면 안 된다.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(finished, 'stop()이 진행 중인 동기화를 기다리지 않았다').toBe(false);
+    } finally {
+      release?.();
+      await stopping;
+    }
+    expect(finished).toBe(true);
+    // 기다렸으므로 그 회차의 쓰기가 끝나 있다.
+    expect(await teamMembershipRepo.findOrgSyncedAt(pool, ORG)).not.toBeNull();
+  });
+
+  it('조직 목록 조회가 실패해도 스윕이 죽지 않는다 — 다음 회차가 다시 한다', async () => {
+    const { client } = githubStub(TEAMS);
+    let calls = 0;
+    const errors: string[] = [];
+    const sweeper = startOrgTeamSweeper(
+      {
+        pool,
+        github: client,
+        listOrgs: async () => {
+          calls += 1;
+          if (calls === 1) throw new Error('PG 연결 끊김');
+          return [{ orgId: ORG, owner: 'authorteams' }];
+        },
+        sleep: async (): Promise<void> => undefined,
+        log: (entry) => {
+          if (entry.level === 'error') errors.push(entry.message);
+        },
+      },
+      { intervalMs: 0 },
+    );
+
+    await vi.waitFor(async () => {
+      expect(await teamMembershipRepo.findOrgSyncedAt(pool, ORG)).not.toBeNull();
+    });
+    await sweeper.stop();
+
+    expect(errors.some((one) => one.includes('스윕이 실패했다'))).toBe(true);
+    expect(calls).toBeGreaterThan(1);
   });
 });

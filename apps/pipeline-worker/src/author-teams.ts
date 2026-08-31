@@ -245,12 +245,19 @@ export interface OrgTeamSweeper {
  * 그 사이 투영이 전부 모름을 답한다.
  */
 export function startOrgTeamSweeper(
-  deps: AuthorTeamDeps & { readonly listOrgs: () => Promise<readonly { readonly orgId: number; readonly owner: string }[]> },
+  deps: AuthorTeamDeps & {
+    readonly listOrgs: () => Promise<readonly { readonly orgId: number; readonly owner: string }[]>;
+    readonly sleep?: (ms: number) => Promise<void>;
+  },
   options: { readonly intervalMs?: number } = {},
 ): OrgTeamSweeper {
   let stopped = false;
-  let timer: NodeJS.Timeout | undefined;
   const intervalMs = options.intervalMs ?? ORG_TEAM_SWEEP_MS;
+  const sleep = deps.sleep ?? ((ms: number): Promise<void> => new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    // 스윕이 프로세스를 살려 두지 않는다.
+    timer.unref?.();
+  }));
 
   const sweep = async (): Promise<void> => {
     try {
@@ -268,22 +275,27 @@ export function startOrgTeamSweeper(
     }
   };
 
-  const loop = (): void => {
-    if (stopped) return;
-    timer = setTimeout(() => {
-      void sweep().finally(loop);
-    }, intervalMs);
-    timer.unref?.();
-  };
-
-  // 첫 회차는 곧바로 돈다 — 시작 직후의 투영이 빈 표를 보고 모름을 답하는
-  // 구간을 짧게 만든다.
-  void sweep().finally(loop);
+  /*
+   * 첫 회차는 곧바로 돈다 — 시작 직후의 투영이 빈 표를 보고 모름을 답하는
+   * 구간을 짧게 만든다.
+   *
+   * **루프를 promise로 들고 `stop()`이 그것을 기다린다** (`startBackfillRunner`와
+   * 같은 형태). 기다리지 않으면 종료가 진행 중인 동기화 위로 풀을 닫고, 그
+   * 실패가 종료 로그에 코드의 사실인 것처럼 남는다.
+   */
+  const loop = (async (): Promise<void> => {
+    for (;;) {
+      await sweep();
+      if (stopped) return;
+      await sleep(intervalMs);
+      if (stopped) return;
+    }
+  })();
 
   return {
     async stop(): Promise<void> {
       stopped = true;
-      if (timer !== undefined) clearTimeout(timer);
+      await loop;
     },
   };
 }
