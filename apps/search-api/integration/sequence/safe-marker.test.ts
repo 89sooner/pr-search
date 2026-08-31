@@ -599,6 +599,89 @@ describe('동시성 (API-SEQ-004의 「멱등과 동시성」)', () => {
     expect(current[0]).toMatchObject({ merge_seq: 2, note: '지켜져야 한다' });
   });
 
+  it('**대체 트랜잭션이 에폭을 다시 본다** — 재채번이 끼어들어도 무효를 저장하지 않는다 (DEV-471)', async () => {
+    /*
+     * 라우트의 사전 검사(5)는 **다른 트랜잭션에서 읽은 값**으로 판정한다.
+     * 여기서는 그 사이에 재채번이 커밋한 상황을 만든다 — 리포지터리에
+     * 옛 에폭을 그대로 넘기고, 공간의 에폭은 이미 올라가 있다.
+     */
+    await pool.query('UPDATE sequence_space SET seq_epoch = 2 WHERE repository_id = $1', [PAYMENTS]);
+
+    const outcome = await safeMarkerRepo.replaceMarker(pool, {
+      repositoryId: PAYMENTS,
+      baseBranch: BRANCH,
+      mergeSeq: 2,
+      seqEpoch: 1,
+      note: null,
+      createdBy: MANAGER,
+      expectedMarkerSeq: null,
+    });
+
+    expect(outcome).toEqual({ kind: 'epoch_stale', currentEpoch: 2 });
+    // 무효한 표식이 저장되지 않았다.
+    expect(await allRows()).toHaveLength(0);
+  });
+
+  it('**이 스키마에서 `FOR SHARE`가 `bumpEpoch`를 실제로 막는다** — 재검증이 딛고 선 전제 (DEV-471)', async () => {
+    /*
+     * 재검증만으로는 부족하다. 잠그지 않고 읽으면 `READ COMMITTED`에서
+     * **읽은 직후에 커밋한 재채번**을 보지 못하고, 그 창으로 무효한 표식이
+     * 들어간다.
+     *
+     * **이 시험은 우리 코드가 아니라 그 전제를 잰다** — `sequence_space` 행에
+     * `FOR SHARE`를 걸면 `bumpEpoch`의 `UPDATE`가 기다린다는 것. 리포지터리가
+     * 실제로 그 잠금을 쓰는지는 `regression/runtime-reachability.test.ts`가
+     * 소스에서 확인한다. **둘 중 하나만 있으면 변이가 살아남는다** — `FOR
+     * SHARE`만 뺀 변이가 통합 32건을 전부 통과한 것이 그 자리였다.
+     */
+    const holder = await pool.connect();
+    const bumper = await pool.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query(
+        `SELECT seq_epoch FROM sequence_space
+          WHERE repository_id = $1 AND base_branch = $2 FOR SHARE`,
+        [PAYMENTS, BRANCH],
+      );
+
+      await bumper.query('BEGIN');
+      await bumper.query('SET LOCAL lock_timeout = 400');
+      const bump = bumper.query(
+        `UPDATE sequence_space SET seq_epoch = seq_epoch + 1
+          WHERE repository_id = $1 AND base_branch = $2`,
+        [PAYMENTS, BRANCH],
+      );
+
+      await expect(bump).rejects.toThrow(/lock timeout|55P03|canceling statement/i);
+      await bumper.query('ROLLBACK');
+      await holder.query('ROLLBACK');
+    } finally {
+      holder.release();
+      bumper.release();
+    }
+
+    // 에폭은 그대로다 — 대기가 취소된 갱신은 아무것도 바꾸지 않았다.
+    const { rows } = await pool.query<{ seq_epoch: number }>(
+      'SELECT seq_epoch FROM sequence_space WHERE repository_id = $1 AND base_branch = $2',
+      [PAYMENTS, BRANCH],
+    );
+    expect(rows[0]?.seq_epoch).toBe(1);
+  });
+
+  it('공간이 사라지면 `space_missing`이며 아무것도 쓰지 않는다 (DEV-471)', async () => {
+    const outcome = await safeMarkerRepo.replaceMarker(pool, {
+      repositoryId: ID_CEIL, // 등록된 적 없는 ID
+      baseBranch: BRANCH,
+      mergeSeq: 1,
+      seqEpoch: 1,
+      note: null,
+      createdBy: MANAGER,
+      expectedMarkerSeq: null,
+    });
+    expect(outcome).toEqual({ kind: 'space_missing' });
+    expect(await allRows(ID_CEIL)).toHaveLength(0);
+  });
+
   it('리포지터리 계층에서도 같은 불변식이 성립한다', async () => {
     // 라우트를 지나지 않고 직접 겨루게 해서 트랜잭션 자체를 확인한다.
     await safeMarkerRepo.replaceMarker(pool, {

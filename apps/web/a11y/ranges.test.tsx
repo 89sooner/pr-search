@@ -638,6 +638,48 @@ describe('안전 구간 표식 (QA-W004-12·13·14)', () => {
     expect(puts).toBe(1);
   });
 
+  it('**등록 결과가 표식 새로고침에 지워지지 않는다** (DEV-473)', async () => {
+    /*
+     * **응답 뒤의 `GET`이 다른 표식을 준다.** 성공한 등록은 보통 서수·에폭·
+     * 메모 중 하나를 바꾸므로 그것이 실제 모양이며, 정적 스텁은 그 변화를
+     * 만들지 않아 이 결함을 보지 못했다.
+     */
+    let read = 0;
+    vi.stubGlobal('fetch', (url: string, init?: { body?: string; method?: string }) => {
+      const isPut = init?.method === 'PUT';
+      if (url.includes('/api/safe-markers') && !isPut) read += 1;
+      const after = {
+        ...MARKER_OK,
+        marker: { ...MARKER_OK.marker, merge_seq: 5, note: '새로 적은 근거' },
+      };
+      const body = url.includes('/api/sequence-spaces')
+        ? SPACES
+        : url.includes('/api/sequence-anchors/resolve')
+          ? resolvedBody('to', 'seq:5', 5)
+          : url.includes('/api/safe-markers')
+            ? isPut
+              ? { ...after, outcome: 'created', replaced_merge_seq: 4 }
+              : // 첫 조회는 옛 표식, 등록 뒤 조회는 새 표식.
+                read <= 1
+                ? MARKER_OK
+                : after
+            : RANGE_OK;
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response);
+    });
+
+    view(`${SPACE}&from=seq%3A2&to=seq%3A5`);
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-submit')).toHaveTextContent('seq 5');
+    });
+    await userEvent.click(screen.getByTestId('safe-marker-submit'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-result')).toHaveTextContent('등록했습니다');
+    });
+    // 표식은 실제로 바뀌었다 — 그럼에도 결과 문구가 남는다.
+    expect(screen.getByTestId('safe-marker-seq')).toHaveTextContent('seq 5');
+  });
+
   it('표식 카드에 axe 위반이 없다 — 막힌 상태에서도', async () => {
     stubFetch();
     const { container } = view(SPACE, { roles: ['developer'] });

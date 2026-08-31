@@ -26,6 +26,13 @@ const SPACES = {
       seq_epoch: 3,
       sequence_state: 'ok',
     },
+    {
+      repository: 'acme/ledger',
+      base_branch: 'main',
+      sequence_space: 'acme/ledger@main',
+      seq_epoch: 9,
+      sequence_state: 'ok',
+    },
   ],
 };
 
@@ -217,6 +224,41 @@ test.describe('W-004 안전 구간 표식', () => {
 
     await expect(page.getByTestId('safe-marker-card')).toBeVisible();
     await expect(page.getByTestId('safe-marker-absent')).toBeVisible();
+  });
+
+  test('**공간을 바꾸면 이전 표식이 새 저장소의 것으로 보이지 않는다** (DEV-472)', async ({ page }) => {
+    /*
+     * 옛 값을 남긴 채 새 조회를 시작하면 카드가 **이전 저장소의 검증 경계를
+     * 새 저장소의 것으로** 보인다. 두 번째 조회를 붙잡아 그 창을 관측한다.
+     */
+    let reads = 0;
+    await page.route('**/api/**', async (route) => {
+      const url = route.request().url();
+      if (url.includes('/api/safe-markers')) {
+        reads += 1;
+        if (reads > 1) {
+          // 두 번째 공간의 조회는 답하지 않는다 — 그 사이를 본다.
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(MARKER),
+        });
+        return;
+      }
+      const body = url.includes('/api/sequence-spaces') ? SPACES : {};
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+
+    await page.goto('/ranges?repo=acme%2Fpayments&branch=main');
+    await expect(page.getByTestId('safe-marker-seq')).toHaveText('seq 4');
+
+    await page.getByTestId('space-repo-trigger').click();
+    await page.getByRole('option', { name: 'acme/ledger' }).click();
+
+    // 카드가 사라진다 — 옛 경계가 새 저장소의 것으로 남지 않는다.
+    await expect(page.getByTestId('safe-marker-card')).toHaveCount(0);
   });
 
   test('메모 상한이 화면에 보인다 (AC-2)', async ({ page }) => {

@@ -1869,6 +1869,19 @@ describe('안전 구간 표식 (WP-041)', () => {
   const codeOf = (source: string): string =>
     source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
+  /**
+   * "`a`가 `b`보다 먼저 온다" — **둘 다 있는지 먼저 본다** (DEV-474).
+   *
+   * `indexOf`는 없는 문자열에 `-1`을 주므로, 존재 확인 없이 `toBeLessThan`만
+   * 걸면 **그 코드를 통째로 지운 변이가 통과한다.** 실제로 에폭 대조를
+   * 지우는 변이가 그렇게 살아남았다.
+   */
+  const expectOrder = (code: string, first: string, second: string): void => {
+    expect(code, first).toContain(first);
+    expect(code, second).toContain(second);
+    expect(code.indexOf(first), `${first} < ${second}`).toBeLessThan(code.indexOf(second));
+  };
+
   it('**두 경로가 실제로 등록된다**', () => {
     expect(SEQUENCE_ROUTES).toContain('app.get(SAFE_MARKERS_PATH');
     expect(SEQUENCE_ROUTES).toContain('app.put(SAFE_MARKERS_PATH');
@@ -1877,11 +1890,7 @@ describe('안전 구간 표식 (WP-041)', () => {
   it('**역할 검사가 공간 해석보다 먼저 온다** — 403이 저장소의 존재를 흘리지 않는다', () => {
     const code = codeOf(SEQUENCE_ROUTES);
     const put = code.slice(code.indexOf('app.put(SAFE_MARKERS_PATH'));
-    const role = put.indexOf("requireRole(principal, 'release_manager')");
-    const space = put.indexOf('const entered = await enter(');
-    expect(role).toBeGreaterThan(-1);
-    expect(space).toBeGreaterThan(-1);
-    expect(role).toBeLessThan(space);
+    expectOrder(put, "requireRole(principal, 'release_manager')", 'const entered = await enter(');
   });
 
   it('**GET은 역할을 요구하지 않는다** — 막히는 것은 쓰기뿐이다 (DEV-461)', () => {
@@ -1894,17 +1903,15 @@ describe('안전 구간 표식 (WP-041)', () => {
   });
 
   it('**에폭 검사가 서수 실재 검사보다 먼저다** — 낡은 세대에서 서수를 찾지 않는다', () => {
-    const code = codeOf(MARKER_SERVICE);
-    expect(code.indexOf('input.seqEpoch !== space.seqEpoch')).toBeLessThan(
-      code.indexOf('findPointBySeq'),
-    );
+    expectOrder(codeOf(MARKER_SERVICE), 'input.seqEpoch !== space.seqEpoch', 'findPointBySeq');
   });
 
   it('**완전 일치 검사가 `expected` 대조보다 먼저다** (DEV-464)', () => {
-    const code = codeOf(MARKER_REPO);
     // 뒤집히면 정직한 재시도가 자기가 만든 상태 때문에 409를 받는다.
-    expect(code.indexOf("return { kind: 'unchanged'")).toBeLessThan(
-      code.indexOf('currentSeq !== input.expectedMarkerSeq'),
+    expectOrder(
+      codeOf(MARKER_REPO),
+      "return { kind: 'unchanged'",
+      'currentSeq !== input.expectedMarkerSeq',
     );
   });
 
@@ -1913,13 +1920,26 @@ describe('안전 구간 표식 (WP-041)', () => {
   });
 
   it('**대체가 공간 단위 락 뒤에 있다** — 유일 제약을 직렬화 수단으로 쓰지 않는다', () => {
-    const code = codeOf(MARKER_REPO);
-    expect(code).toContain('advisoryXactLock(client, safeMarkerLockKey(');
-    expect(code.indexOf('advisoryXactLock')).toBeLessThan(code.indexOf('findCurrentMarker(client'));
+    expect(codeOf(MARKER_REPO)).toContain('advisoryXactLock(client, safeMarkerLockKey(');
+    expectOrder(codeOf(MARKER_REPO), 'advisoryXactLock', 'findCurrentMarker(client');
   });
 
   it('**채번 락을 함께 쓰지 않는다** — 사람이 누르는 요청이 파이프라인을 밀지 않는다', () => {
     expect(codeOf(MARKER_REPO)).not.toContain('sequenceLockKey');
+  });
+
+  it('**대체 트랜잭션이 에폭을 `FOR SHARE`로 다시 읽는다** (DEV-471)', () => {
+    const code = codeOf(MARKER_REPO);
+    /*
+     * 잠그지 않고 읽으면 읽은 **직후에** 커밋한 재채번을 보지 못한다.
+     * 통합 시험은 그 잠금이 `bumpEpoch`를 막는다는 **전제**를 재고, 여기서는
+     * 리포지터리가 실제로 그 잠금을 쓰는지를 본다 — 둘 중 하나만 있으면
+     * `FOR SHARE`를 뺀 변이가 살아남는다.
+     */
+    expect(code).toContain('FROM sequence_space');
+    // 읽고 대조한 뒤에 쓴다. 순서가 뒤집히면 잠금이 아무것도 막지 못한다.
+    expectOrder(code, 'FOR SHARE', 'INSERT INTO safe_marker');
+    expectOrder(code, 'currentEpoch !== input.seqEpoch', 'INSERT INTO safe_marker');
   });
 
   it('**멱등 재시도에 감사를 남기지 않는다** — 재시도가 등록으로 보인다', () => {

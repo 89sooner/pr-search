@@ -18,7 +18,7 @@
  * 에폭으로 다시 등록하는 행위다.
  */
 
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Badge, Button, Card, TextArea } from '@conductor-by-89soone/react';
 import {
   MARKER_NOTE_LIMIT,
@@ -57,19 +57,26 @@ export function SafeMarkerCard({
   const noteId = useId();
   const reasonId = useId();
 
-  /*
-   * 표식이 바뀌면 이전 결과 메시지를 버린다. 남겨 두면 방금 성공한 등록의
-   * 문구가 다른 사람이 옮긴 표식 옆에 그대로 남는다.
-   */
-  useEffect(() => {
-    setResult(null);
-  }, [marker?.merge_seq, marker?.seq_epoch, marker?.note]);
+
 
   const state = markerCardState(marker);
   const blockedReason = markerBlockedReason(canWrite, targetSeq);
 
   const submit = async (): Promise<void> => {
     if (blockedReason !== null || busy) return;
+    /*
+     * **제출 전에 이전 결과를 지운다** (DEV-473, PR #103 리뷰 P2).
+     *
+     * 표식이 바뀌면 결과를 버리는 `useEffect`를 두었더니, `onSubmit`이
+     * **결과를 돌려주기 전에 표식을 다시 읽으므로** 그 effect가 방금 설정한
+     * 성공·충돌 메시지를 즉시 지웠다. 성공은 보통 서수·에폭·메모 중 하나를
+     * 바꾸고 충돌은 남이 옮긴 표식을 실어 오므로 **실제 응답에서는 거의
+     * 언제나 지워졌고**, 정적 스텁을 쓰는 시험만 그것을 보지 못했다.
+     *
+     * 지우는 시점을 제출 앞으로 옮기면 "이전 행동의 결과"와 "방금 행동의
+     * 결과"가 섞이지 않으면서 피드백이 남는다.
+     */
+    setResult(null);
     setBusy(true);
     try {
       const outcome = await onSubmit(note.trim() === '' ? null : note);

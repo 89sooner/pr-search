@@ -657,6 +657,17 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
             correlation_id: correlationId,
           });
 
+        case 'space_missing':
+          /*
+           * 그 사이 공간이 사라졌다 (DEV-471). **404이며 미등록과 메시지가
+           * 같다** — 접근 범위 밖과 구분되면 존재가 샌다 (ADR-008).
+           */
+          await recordMarkerRejection(principal.userId, correlationId, target, 'not_found');
+          return fail(reply, 404, {
+            error: { code: 'NOT_FOUND', message: '채번된 적이 없는 시퀀스 공간이다' },
+            correlation_id: correlationId,
+          });
+
         case 'sequence_not_found':
           await recordMarkerRejection(principal.userId, correlationId, target, 'sequence_not_found');
           return fail(reply, 400, {

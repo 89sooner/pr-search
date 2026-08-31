@@ -76,8 +76,15 @@ export interface WriteSafeMarkerInput {
 }
 
 export type WriteSafeMarkerOutcome =
-  /** 5. 요청이 딛고 선 에폭이 현재가 아니다. */
+  /**
+   * 5. 요청이 딛고 선 에폭이 현재가 아니다.
+   *
+   * **두 자리에서 난다** (DEV-471): 라우트 앞의 빠른 거절과, 대체
+   * 트랜잭션 안의 재검증. 뒤엣것이 최종 판정이며 사용자에게는 같은 답이다.
+   */
   | { readonly kind: 'epoch_stale'; readonly currentEpoch: number; readonly requestedEpoch: number }
+  /** 그 사이 시퀀스 공간이 사라졌다. 404로 옮긴다. */
+  | { readonly kind: 'space_missing' }
   /** 6. 그 서수가 이 `(공간, 에폭)`에 없다. */
   | { readonly kind: 'sequence_not_found'; readonly mergeSeq: number; readonly seqEpoch: number }
   /** 8. 요청자가 본 표식이 더 이상 현재가 아니다. */
@@ -137,6 +144,15 @@ export async function writeSafeMarker(
   });
 
   switch (outcome.kind) {
+    case 'space_missing':
+      return { kind: 'space_missing' };
+    case 'epoch_stale':
+      // 트랜잭션 안에서 잡힌 재채번. 사용자에게는 사전 거절과 같은 답이다.
+      return {
+        kind: 'epoch_stale',
+        currentEpoch: outcome.currentEpoch,
+        requestedEpoch: input.seqEpoch,
+      };
     case 'unchanged':
       return { kind: 'unchanged', marker: toMarkerView(outcome.row, space.seqEpoch) };
     case 'conflict':

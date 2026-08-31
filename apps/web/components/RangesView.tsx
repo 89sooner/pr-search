@@ -342,12 +342,27 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
   const [markerEpoch, setMarkerEpoch] = useState<number | null>(null);
   const markerGeneration = useRef(0);
 
+  /*
+   * **공간이 바뀌면 즉시 비운다** (DEV-472, PR #103 리뷰 P2).
+   *
+   * 옛 값을 남긴 채 새 조회를 시작하면 카드가 잠시 **이전 저장소의 검증
+   * 경계를 새 저장소의 것으로 보인다.** 더 나쁜 것은 쓰기다 — 느린 조회
+   * 중에 새 끝 앵커가 먼저 해석되면 `PUT` 본문이 새 저장소에 **옛 에폭과
+   * 옛 `expected_marker_seq`**를 실어 보낸다. `markerEpoch`가 `null`인
+   * 동안은 카드가 서지 않고 `submitMarker`도 막히므로, 비우는 것이 그
+   * 조합을 원천에서 없앤다.
+   *
+   * **`loadMarker` 안에서 비우지 않는다.** 등록 직후에도 그것을 부르므로,
+   * 거기서 비우면 **방금 등록한 결과를 보여 줄 카드가 사라진다** — 공간이
+   * 바뀐 것과 같은 값을 다시 읽는 것은 다른 일이다.
+   */
+  useEffect(() => {
+    setMarker(null);
+    setMarkerEpoch(null);
+  }, [space?.repository, space?.baseBranch]);
+
   const loadMarker = useCallback(async (): Promise<void> => {
-    if (space === null) {
-      setMarker(null);
-      setMarkerEpoch(null);
-      return;
-    }
+    if (space === null) return;
     const generation = (markerGeneration.current += 1);
     try {
       const response = await fetch(markerRequestUrl(space.repository, space.baseBranch), {

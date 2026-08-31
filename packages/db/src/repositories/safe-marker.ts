@@ -98,7 +98,16 @@ export type ReplaceMarkerOutcome =
   /** 대체했다. `replacedMergeSeq`는 직전 표식의 서수이며 첫 등록이면 `null`. */
   | { readonly kind: 'created'; readonly row: SafeMarkerRow; readonly replacedMergeSeq: number | null }
   /** 요청자가 본 표식이 더 이상 현재가 아니다. */
-  | { readonly kind: 'conflict'; readonly currentMergeSeq: number | null };
+  | { readonly kind: 'conflict'; readonly currentMergeSeq: number | null }
+  /**
+   * 요청이 딛고 선 에폭이 **이 트랜잭션 안에서 본 현재 값과 다르다** (DEV-471).
+   *
+   * 라우트가 이미 한 번 걸렀지만 그 판정은 다른 트랜잭션에서 읽은 값이다.
+   * 재채번이 그 사이에 커밋하면 **이미 무효인 표식이 `created`로 저장된다.**
+   */
+  | { readonly kind: 'epoch_stale'; readonly currentEpoch: number }
+  /** 그 사이 시퀀스 공간이 사라졌다. 라우트가 404로 옮긴다. */
+  | { readonly kind: 'space_missing' };
 
 /**
  * 현재 표식을 대체한다 (`API-SEQ-004` `PUT`).
@@ -130,6 +139,37 @@ export async function replaceMarker(
      */
     await advisoryXactLock(client, safeMarkerLockKey(input.repositoryId, input.baseBranch));
 
+    /*
+     * **에폭을 이 트랜잭션 안에서 다시 본다** (DEV-471, PR #103 리뷰 P1).
+     *
+     * 라우트가 이미 한 번 걸렀지만 그 값은 **다른 트랜잭션에서 읽은 것**이다.
+     * 재채번이 그 사이에 `bumpEpoch`를 커밋하면, 과거 `merge_sequence` 행이
+     * 그대로 남아 있으므로 서수 실재 확인도 통과하고 **이미 무효인 표식이
+     * `created`로 저장된다.** 응답의 `epoch_stale`도 옛 값과 비교하므로
+     * `false`가 되어 사용자에게 거짓을 말한다.
+     *
+     * `FOR SHARE`가 그 창을 닫는다. 재채번의 `UPDATE sequence_space`가 이
+     * 커밋을 기다리거나, 먼저 커밋했다면 이 `SELECT`가 새 값을 본다. 어느
+     * 순서든 결과가 일관된다 — `saved_search`가 팀 구성원 자격에 쓰는 것과
+     * 같은 패턴이다.
+     *
+     * **채번의 advisory lock을 함께 쥐지 않는다.** 그것을 쥐면 사람이 누르는
+     * 요청이 파이프라인을 밀어낸다. 여기서 생기는 것은 짧은 행 대기뿐이다.
+     */
+    const spaceRows = await client.query<{ seq_epoch: number }>(
+      `SELECT seq_epoch FROM sequence_space
+        WHERE repository_id = $1 AND base_branch = $2 FOR SHARE`,
+      [input.repositoryId, input.baseBranch],
+    );
+    const currentEpoch = spaceRows.rows[0]?.seq_epoch;
+    if (currentEpoch === undefined) return { kind: 'space_missing' };
+    if (currentEpoch !== input.seqEpoch) return { kind: 'epoch_stale', currentEpoch };
+
+    /*
+     * 서수 실재 확인은 라우트가 트랜잭션 밖에서 했다. **에폭이 같으면 그
+     * 세대의 `merge_sequence` 행은 불변이므로** 그 판정이 여기서도 유효하다 —
+     * 재채번은 새 에폭 행을 더할 뿐 과거 세대를 고치지 않는다 (ADR-007).
+     */
     const current = await findCurrentMarker(client, input.repositoryId, input.baseBranch);
 
     // 7. 완전 일치 — 아무것도 쓰지 않는다. 감사도 남기지 않는다.
