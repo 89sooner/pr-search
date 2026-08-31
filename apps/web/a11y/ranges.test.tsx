@@ -98,15 +98,32 @@ const RANGE_OK = {
   correlation_id: 'r',
 };
 
+/** 표식 응답 하나 (WP-041 / API-SEQ-004). */
+const MARKER_OK = {
+  sequence_space: 'acme/payments@main',
+  seq_epoch: 3,
+  marker: {
+    merge_seq: 4,
+    seq_epoch: 3,
+    note: '결제 회귀 통과',
+    created_by: 'kim',
+    created_at: '2026-08-14T09:12:44Z',
+    epoch_stale: false,
+  },
+  correlation_id: 'm',
+};
+
 interface StubRoute {
   readonly resolve?: (payload: { position: 'from' | 'to'; expression: string }) => { status: number; body: unknown };
   readonly range?: { status: number; body: unknown };
+  readonly marker?: { status: number; body: unknown };
+  readonly markerPut?: { status: number; body: unknown };
 }
 
 /** URL별 응답 라우터. `calls`가 실제 네트워크 계수의 근거다 (QA-W004-21). */
 function stubFetch(routes: StubRoute = {}): string[] {
   const calls: string[] = [];
-  vi.stubGlobal('fetch', (url: string, init?: { body?: string }) => {
+  vi.stubGlobal('fetch', (url: string, init?: { body?: string; method?: string }) => {
     calls.push(url);
     let status = 200;
     let body: unknown = {};
@@ -131,15 +148,29 @@ function stubFetch(routes: StubRoute = {}): string[] {
     } else if (url.includes('/api/sequence-ranges')) {
       status = routes.range?.status ?? 200;
       body = routes.range?.body ?? RANGE_OK;
+    } else if (url.includes('/api/safe-markers')) {
+      // `PUT`과 `GET`을 가른다 — 등록 뒤 다시 읽는 경로가 둘을 함께 쓴다.
+      const isWrite = init?.method === 'PUT';
+      status = (isWrite ? routes.markerPut?.status : routes.marker?.status) ?? 200;
+      body = (isWrite ? routes.markerPut?.body : routes.marker?.body) ?? MARKER_OK;
     }
     return Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) } as Response);
   });
   return calls;
 }
 
-function view(query = 'repo=acme%2Fpayments&branch=main'): ReturnType<typeof render> {
+function view(
+  query = 'repo=acme%2Fpayments&branch=main',
+  session: { roles?: readonly string[]; authEnabled?: boolean } = {},
+): ReturnType<typeof render> {
   params.current = new URLSearchParams(query);
-  return render(<RangesView loginPath="/auth/login" />);
+  return render(
+    <RangesView
+      loginPath="/auth/login"
+      roles={session.roles ?? ['developer', 'release_manager']}
+      authEnabled={session.authEnabled ?? true}
+    />,
+  );
 }
 
 afterEach(() => {
@@ -427,6 +458,191 @@ describe('접근성 (DoD: axe 위반 0건)', () => {
     const { container } = view('repo=acme%2Fpayments&branch=main&epoch=2');
     await waitFor(() => {
       expect(screen.getByTestId('epoch-stale-banner')).toBeInTheDocument();
+    });
+    const found = await violations(container);
+    expect(found, describeViolations(found)).toEqual([]);
+  });
+});
+
+/**
+ * 안전 구간 표식 (WP-041 / FR-SEQ-006, C-031).
+ *
+ * `QA-W004-12`~`14`를 여기서 증명한다. 판정 자체는 `lib/safe-marker.test.ts`가
+ * 걸었고, 여기서는 **그 판정이 실제로 그려지는가**와 **막힌 버튼이 사유를
+ * 말하는가**를 본다.
+ */
+describe('안전 구간 표식 (QA-W004-12·13·14)', () => {
+  const SPACE = 'repo=acme%2Fpayments&branch=main';
+
+  it('QA-W004-13: 시퀀스·등록자·시각·메모·에폭이 표시된다', async () => {
+    stubFetch();
+    view(SPACE);
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-card')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('safe-marker-seq')).toHaveTextContent('seq 4');
+    expect(screen.getByTestId('safe-marker-author')).toHaveTextContent('kim');
+    expect(screen.getByTestId('safe-marker-epoch')).toHaveTextContent('3');
+    expect(screen.getByTestId('safe-marker-note')).toHaveTextContent('결제 회귀 통과');
+    expect(screen.getByTestId('safe-marker-time')).not.toBeEmptyDOMElement();
+  });
+
+  it('QA-W004-12: `release_manager`가 아니면 등록이 사유와 함께 막힌다', async () => {
+    stubFetch();
+    view(SPACE, { roles: ['developer'] });
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-card')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('safe-marker-blocked')).toHaveTextContent('release_manager');
+    expect(screen.getByTestId('safe-marker-submit')).toBeDisabled();
+  });
+
+  it('QA-W004-12: **표식 자체는 그 사용자에게도 보인다** — 막히는 것은 쓰기뿐이다', async () => {
+    stubFetch();
+    view(SPACE, { roles: ['developer'] });
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-seq')).toHaveTextContent('seq 4');
+    });
+  });
+
+  it('인증이 구성되지 않은 배포에서는 빈 역할을 "자격 없음"으로 읽지 않는다', async () => {
+    stubFetch();
+    // 앵커까지 주어 **역할 말고는 막을 것이 없는 상태**를 만든다.
+    view(`${SPACE}&from=seq%3A2&to=seq%3A5`, { roles: [], authEnabled: false });
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-submit')).toHaveTextContent('seq 5');
+    });
+    expect(screen.queryByTestId('safe-marker-blocked')).toBeNull();
+  });
+
+  it('인증이 구성된 배포에서 빈 역할은 막힌다 — 완화는 미구성 배포에만 적용된다', async () => {
+    stubFetch();
+    view(`${SPACE}&from=seq%3A2&to=seq%3A5`, { roles: [], authEnabled: true });
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-blocked')).toHaveTextContent('release_manager');
+    });
+  });
+
+  it('QA-W004-14: 에폭이 다르면 무효로 표시하고 **감추지 않는다**', async () => {
+    stubFetch({
+      marker: {
+        status: 200,
+        body: {
+          sequence_space: 'acme/payments@main',
+          seq_epoch: 5,
+          marker: {
+            merge_seq: 4,
+            seq_epoch: 3,
+            note: null,
+            created_by: 'kim',
+            created_at: '2026-08-14T09:12:44Z',
+            epoch_stale: true,
+          },
+          correlation_id: 'm',
+        },
+      },
+    });
+    view(SPACE);
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-stale')).toBeInTheDocument();
+    });
+    // 저장된 에폭이 그대로 보인다 — 현재 값으로 갈아 끼우면 무효가 사라진다.
+    expect(screen.getByTestId('safe-marker-epoch')).toHaveTextContent('3');
+    expect(screen.getByTestId('safe-marker-stale')).toHaveTextContent('무효');
+  });
+
+  it('끝 앵커가 없으면 등록이 사유와 함께 막힌다 (`marker_target_unresolved`)', async () => {
+    stubFetch();
+    view(SPACE);
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-card')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('safe-marker-blocked')).toHaveTextContent('끝 앵커');
+  });
+
+  it('끝 앵커가 해석되면 그 서수를 대상으로 삼는다 (DEV-462)', async () => {
+    stubFetch();
+    view(`${SPACE}&from=seq%3A2&to=seq%3A5`);
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-submit')).toHaveTextContent('seq 5');
+    });
+    expect(screen.queryByTestId('safe-marker-blocked')).toBeNull();
+  });
+
+  it('**본 표식을 `expected_marker_seq`로 함께 보낸다** (DEV-464)', async () => {
+    const bodies: string[] = [];
+    vi.stubGlobal('fetch', (url: string, init?: { body?: string; method?: string }) => {
+      if (init?.method === 'PUT') bodies.push(init.body ?? '');
+      const body = url.includes('/api/sequence-spaces')
+        ? SPACES
+        : url.includes('/api/sequence-anchors/resolve')
+          ? resolvedBody('to', 'seq:5', 5)
+          : url.includes('/api/safe-markers')
+            ? init?.method === 'PUT'
+              ? { ...MARKER_OK, outcome: 'created', replaced_merge_seq: 4 }
+              : MARKER_OK
+            : RANGE_OK;
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response);
+    });
+
+    view(`${SPACE}&from=seq%3A2&to=seq%3A5`);
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-submit')).toHaveTextContent('seq 5');
+    });
+    await userEvent.click(screen.getByTestId('safe-marker-submit'));
+    await waitFor(() => {
+      expect(bodies).toHaveLength(1);
+    });
+    const sent = JSON.parse(bodies[0] ?? '{}') as Record<string, unknown>;
+    expect(sent['expected_marker_seq']).toBe(4);
+    expect(sent['merge_seq']).toBe(5);
+  });
+
+  it('충돌은 사유를 말하고 **자동으로 다시 보내지 않는다** (DEV-464)', async () => {
+    let puts = 0;
+    vi.stubGlobal('fetch', (url: string, init?: { body?: string; method?: string }) => {
+      const isPut = init?.method === 'PUT';
+      if (isPut) puts += 1;
+      const body = url.includes('/api/sequence-spaces')
+        ? SPACES
+        : url.includes('/api/sequence-anchors/resolve')
+          ? resolvedBody('to', 'seq:5', 5)
+          : url.includes('/api/safe-markers')
+            ? isPut
+              ? {
+                  error: {
+                    code: 'SAFE_MARKER_CONFLICT',
+                    message: '그 사이 다른 사람이 표식을 옮겼습니다',
+                    detail: { current_marker_seq: 9, expected_marker_seq: 4 },
+                  },
+                  correlation_id: 'c',
+                }
+              : MARKER_OK
+            : RANGE_OK;
+      return Promise.resolve({
+        ok: !isPut,
+        status: isPut ? 409 : 200,
+        json: () => Promise.resolve(body),
+      } as Response);
+    });
+
+    view(`${SPACE}&from=seq%3A2&to=seq%3A5`);
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-submit')).toHaveTextContent('seq 5');
+    });
+    await userEvent.click(screen.getByTestId('safe-marker-submit'));
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-result')).toHaveTextContent('seq 9');
+    });
+    // 한 번만 보냈다. 자동 재시도는 남의 판정을 말없이 덮는 일이다.
+    expect(puts).toBe(1);
+  });
+
+  it('표식 카드에 axe 위반이 없다 — 막힌 상태에서도', async () => {
+    stubFetch();
+    const { container } = view(SPACE, { roles: ['developer'] });
+    await waitFor(() => {
+      expect(screen.getByTestId('safe-marker-card')).toBeInTheDocument();
     });
     const found = await violations(container);
     expect(found, describeViolations(found)).toEqual([]);

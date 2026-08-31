@@ -29,6 +29,15 @@ import { RANGE_FACET_FIELDS, type FacetSource } from '../lib/facets';
 import { addEquality, removeEquality } from '../lib/tokens';
 import { parseQuery, serializeQuery, type QueryAst } from '@prs/query';
 import { ErrorBanner } from './ErrorBanner';
+import { SafeMarkerCard } from './SafeMarkerCard';
+import {
+  judgeMarkerSubmit,
+  markerRequestUrl,
+  mayWriteMarker,
+  type MarkerResponse,
+  type MarkerSubmitOutcome,
+  type MarkerView,
+} from '../lib/safe-marker';
 import {
   formatRangeQuery,
   judgeAnchorFailure,
@@ -83,9 +92,19 @@ type QueryOutcome =
 
 export interface RangesViewProps {
   readonly loginPath: string;
+  /**
+   * 세션의 역할. 관문(`GuardedPage`)이 넘긴다 (WP-041).
+   *
+   * 이 화면이 역할을 받는 이유는 **표식 등록이 자격에 따라 막히는 것을
+   * 사용자에게 미리 말해 주기 위해서**다 (`FR-SEQ-006` AC-3). 조회는 역할과
+   * 무관하며, 쓰기 판정은 서버가 독립적으로 한다.
+   */
+  readonly roles?: readonly string[];
+  /** 이 배포에 인증이 구성되어 있는가. `false`면 빈 역할을 "자격 없음"으로 읽지 않는다. */
+  readonly authEnabled?: boolean;
 }
 
-export function RangesView({ loginPath }: RangesViewProps): ReactNode {
+export function RangesView({ loginPath, roles = [], authEnabled = true }: RangesViewProps): ReactNode {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initial = useRef(parseRangeParams(new URLSearchParams(searchParams.toString())));
@@ -312,6 +331,94 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
 
   const canQuery = preflight.kind === 'ok';
 
+  /*
+   * 안전 구간 표식 (WP-041 / FR-SEQ-006).
+   *
+   * **공간이 정해지면 읽는다** — 구간을 조회하기 전에도 그 공간의 현재
+   * 표식은 사실이며, "여기까지 검증됐다"를 먼저 보고 조사 범위를 정하는
+   * 것이 이 화면의 쓰임이다.
+   */
+  const [marker, setMarker] = useState<MarkerView | null>(null);
+  const [markerEpoch, setMarkerEpoch] = useState<number | null>(null);
+  const markerGeneration = useRef(0);
+
+  const loadMarker = useCallback(async (): Promise<void> => {
+    if (space === null) {
+      setMarker(null);
+      setMarkerEpoch(null);
+      return;
+    }
+    const generation = (markerGeneration.current += 1);
+    try {
+      const response = await fetch(markerRequestUrl(space.repository, space.baseBranch), {
+        cache: 'no-store',
+      });
+      if (generation !== markerGeneration.current) return;
+      if (!response.ok) {
+        // 표식을 못 읽는 것이 구간 조회를 막지 않는다 — 카드만 비운다.
+        setMarker(null);
+        setMarkerEpoch(null);
+        return;
+      }
+      const body = (await response.json()) as MarkerResponse;
+      if (generation !== markerGeneration.current) return;
+      setMarker(body.marker ?? null);
+      setMarkerEpoch(body.seq_epoch ?? null);
+    } catch {
+      if (generation !== markerGeneration.current) return;
+      setMarker(null);
+      setMarkerEpoch(null);
+    }
+  }, [space]);
+
+  useEffect(() => {
+    void loadMarker();
+  }, [loadMarker]);
+
+  /**
+   * 등록 대상은 **끝 앵커**다 (CR-057, DEV-462).
+   *
+   * 이 화면의 목적이 "검증 완료 지점을 기록한다"이고 구간이 반개구간
+   * `(from, to]`이므로, 검증을 마친 마지막 지점이 곧 끝 앵커다. 숫자를
+   * 따로 받는 입력창을 두지 않는다.
+   */
+  const markerTargetSeq = toAnchor?.mergeSeq ?? null;
+
+  const submitMarker = useCallback(
+    async (note: string | null): Promise<MarkerSubmitOutcome> => {
+      if (space === null || markerTargetSeq === null || markerEpoch === null) {
+        return { kind: 'error', code: 'INVALID_PARAMETER', message: '표식 대상을 확인할 수 없습니다.' };
+      }
+      try {
+        const response = await fetch('/api/safe-markers', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({
+            repository: space.repository,
+            base_branch: space.baseBranch,
+            merge_seq: markerTargetSeq,
+            seq_epoch: markerEpoch,
+            note,
+            /*
+             * **본 값을 함께 보낸다** (DEV-464). 이것이 없으면 응답을 잃은
+             * 재시도가 그 사이의 갱신을 조용히 되돌린다.
+             */
+            expected_marker_seq: marker?.merge_seq ?? null,
+          }),
+        });
+        const body = (await response.json()) as MarkerResponse;
+        const outcome = judgeMarkerSubmit(response.status, body);
+        // 성공이든 충돌이든 현재 값을 다시 읽는다 — 화면이 남의 판정을 덮어 보이지 않는다.
+        await loadMarker();
+        return outcome;
+      } catch {
+        return { kind: 'error', code: 'OFFLINE', message: '네트워크 오류로 등록하지 못했습니다.' };
+      }
+    },
+    [space, markerTargetSeq, markerEpoch, marker, loadMarker],
+  );
+
   /** 패싯 체크 상태의 유일한 출처. 파싱 실패는 "필터 없음"으로 읽는다. */
   const rangeAst: QueryAst | null = (() => {
     if (rangeQuery.trim() === '') return null;
@@ -457,6 +564,21 @@ export function RangesView({ loginPath }: RangesViewProps): ReactNode {
           조회
         </Button>
       </Panel>
+
+      {/*
+       * `W-004-MARKER` (FR-SEQ-006). **공간이 정해지면 보인다** — 구간을
+       * 조회하기 전에도 "여기까지 검증됐다"는 사실은 유효하고, 그것을 보고
+       * 조사 범위를 정하는 것이 이 화면의 쓰임이다.
+       */}
+      {space === null || markerEpoch === null ? null : (
+        <SafeMarkerCard
+          marker={marker}
+          canWrite={mayWriteMarker(roles, authEnabled)}
+          targetSeq={markerTargetSeq}
+          currentEpoch={markerEpoch}
+          onSubmit={submitMarker}
+        />
+      )}
 
       {outcome.kind === 'idle' && fromAnchor === null && toAnchor === null ? (
         <p data-testid="range-empty">앵커 두 개를 지정하면 구간을 조회합니다.</p>

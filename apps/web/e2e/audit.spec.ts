@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { NOT_ACTIVATED_AUDIT_ACTIONS } from '@prs/domain';
 
 /**
  * A-004 감사 로그 (WP-039 / FR-AUTH-004, NFR-006, CR-054).
@@ -211,7 +212,16 @@ test.describe('A-004 감사 로그', () => {
     );
     expect(values).toContain('sequence_integrity.reassign');
     expect(values).toContain('audit.view');
-    expect(values).not.toContain('export.create');
-    expect(values).not.toContain('safe_marker.set');
+    /*
+     * **정본 목록과 대조한다** (WP-041). 문자열을 여기 적으면 액션이 활성으로
+     * 옮겨갈 때 이 시험이 그 사실을 결함으로 신고한다 — `safe_marker.set`이
+     * 실제로 그렇게 됐다. 확인할 성질은 "미활성인 것이 후보에 없다"이지
+     * "이 두 문자열이 없다"가 아니다.
+     */
+    for (const action of NOT_ACTIVATED_AUDIT_ACTIONS) {
+      expect(values, action).not.toContain(action);
+    }
+    // 활성으로 옮겨간 것은 후보에 있어야 한다.
+    expect(values).toContain('safe_marker.set');
   });
 });
