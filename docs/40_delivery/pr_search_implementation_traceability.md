@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.13 | 갱신일: 2026-08-31
+> 상태: review | 버전: v6.14 | 갱신일: 2026-08-31
 
 ## 1. 목적
 
@@ -79,7 +79,7 @@
 | WP-042 | 이분 탐색 보조 | REL-006 | todo | - | - | - | - |
 | WP-043 | 관계 그래프 API와 W-007 | REL-006 | todo | - | - | - | 조건부 — **착수하지 않는다.** ACC-06이 NOT RUN이라 활성화 조건이 성립하지 않는다 (6.46장) |
 | WP-044 | 검색 결과 내보내기 | REL-006 | todo | - | - | - | - |
-| WP-069 | 작성자 소속 팀 채우기 | REL-006 | todo | - | - | - | **CR-058 계약 선행 (2026-08-31).** 착수 전 감사가 계약 공백 일곱과 릴리스 회계 공백 넷을 찾았다 (DEV-477~487). **이 행 자체가 그 감사의 첫 발견이다** — `CR-056`이 `WP-069`을 신설하면서 이 표에 담지 않아 `REL-006`이 4개짜리 슬라이스로 읽히고 있었다. 작업 패키지 문서는 요약 표와 커버리지 표(5) 둘 다에 담고 있었다 |
+| WP-069 | 작성자 소속 팀 채우기 | REL-006 | done | 에이전트 | PR #106 | DoD 13항 전부 통과 · 변이 19종 전부 킬 (6.58장) | **CR-058 계약 선행 (2026-08-31).** 착수 전 감사가 계약 공백 일곱과 릴리스 회계 공백 넷을 찾았다 (DEV-477~487). **이 행 자체가 그 감사의 첫 발견이다** — `CR-056`이 `WP-069`을 신설하면서 이 표에 담지 않아 `REL-006`이 4개짜리 슬라이스로 읽히고 있었다. 작업 패키지 문서는 요약 표와 커버리지 표(5) 둘 다에 담고 있었다 |
 | WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 | todo | - | - | - | CR-005 신규 |
 | WP-046 | 위임 GitHub 신원과 Operations App | REL-007 | todo | - | - | - | CR-005 신규 |
 | WP-047 | 격리 gh 실행기와 실행 수명주기 | REL-007 | todo | - | - | - | CR-005 신규 |
@@ -107,7 +107,7 @@
 | FR-SRCH-002 | WP-014, WP-018 | `apps/search-api/src/resolve/detail.ts` (`merge_commit_sha` 포함), `packages/es/src/resolve-query.ts`, `apps/web/lib/commit-detail.ts`, `apps/web/components/{ShaChip,ChangedPathList,LinkedPrList,SequencePosition,CommitDetailView}.tsx`, `apps/web/app/commit/[owner]/[repo]/[sha]/page.tsx` | `apps/search-api/integration/resolve/resolve.test.ts`, `packages/es/src/resolve-query.test.ts`, `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx`, `apps/web/e2e/flow-003.spec.ts` | partial (AC-1·AC-2·AC-4·AC-5 충족, **화면 결합은 WP-018에서 done** — 역할 배지 셋, 소속 PR 전량 필드, `multi_pr` 목록, 체인 밖 안내와 머지 커밋 링크. **AC-3 `direct_push`는 여전히 도달 불가** — 커밋 문서가 PR 이벤트에서만 만들어진다, DEV-061 / WP-021. 화면은 매핑을 갖추고 도달하지 않음을 기록했으며, **`reason_code`를 "직접 푸시"로 부르지 않는다**, DEV-093) |
 | FR-SRCH-003 | WP-014, WP-017 | `apps/search-api/src/resolve/detail.ts`, `apps/web/lib/pr-detail.ts`, `apps/web/components/{CommitList,EntityHeader,PrDetailView}.tsx`, `apps/web/app/pr/[owner]/[repo]/[number]/page.tsx` | `apps/search-api/integration/resolve/resolve.test.ts`, `apps/web/lib/pr-detail.test.ts`, `apps/web/a11y/pr-detail.test.tsx`, `apps/web/e2e/flow-002.spec.ts` | partial (AC-1·AC-2·AC-4 충족, **화면 결합은 WP-017에서 done** — 머지 커밋이 항상 첫 행이고 미머지면 사유를 그 행에 표시한다. **AC-3의 메시지 첫 줄·작성자·작성 시각은 커밋 문서에 없다** — 배열 모양만 객체로 두고 `commit_sha`만 채웠다, DEV-062 / WP-020. AC-4의 **전체 건수**도 절삭 시 없어 `null`로 두고 "250건 이상"으로 표시한다, DEV-082·083 / WP-020) |
 | FR-SRCH-004 | WP-014, WP-016 | `packages/query/src/identifier.ts` (7자 하한), `packages/es/src/resolve-query.ts` (`prefix`), `apps/search-api/src/resolve/{service,routes}.ts`, `apps/web/lib/search-state.ts` (클라이언트 사전 판정), `apps/web/components/OmniSearchInput.tsx` | `packages/query/src/identifier.test.ts`, `packages/es/src/resolve-query.test.ts`, `apps/search-api/integration/resolve/resolve.test.ts`, `apps/web/lib/search-state.test.ts`, `apps/web/a11y/search.test.tsx`, `apps/web/e2e/flow-001.spec.ts` | done (AC-1~AC-4. 판별이 브라우저에서도 도는 순수 코드라 AC-2의 "검색을 수행하지 않는다"가 화면에서도 성립한다) |
-| FR-SRCH-005 | WP-011, WP-016 | `packages/query/src/{keys,errors,ast,tokenizer,parse,serialize}.ts`, `apps/web/lib/tokens.ts`, `apps/web/components/QueryTokenBar.tsx` | `packages/query/src/{parse,serialize}.test.ts`, `apps/web/lib/tokens.test.ts`, `apps/web/a11y/search.test.tsx` | verified (AC-1~AC-6 전부. 화면의 오류 구간 강조는 WP-016. **범위 전용 키 셋은 범위 형태로만 성립한다** — DEV-364, 6.45장) |
+| FR-SRCH-005 | WP-011, WP-016, **WP-069** | `packages/query/src/{keys,errors,ast,tokenizer,parse,serialize}.ts`, `apps/web/lib/tokens.ts`, `apps/web/components/QueryTokenBar.tsx`, **`apps/pipeline-worker/src/author-teams.ts`**, **`packages/db/src/repositories/team-membership.ts`** | `packages/query/src/{parse,serialize}.test.ts`, `apps/web/lib/tokens.test.ts`, `apps/web/a11y/search.test.tsx`, **`apps/pipeline-worker/integration/worker/author-teams.test.ts`** | verified (AC-1~AC-6 전부. 화면의 오류 구간 강조는 WP-016. **범위 전용 키 셋은 범위 형태로만 성립한다** — DEV-364, 6.45장). **AC-1의 `author_team`은 `WP-069`가 데이터까지 세웠다** (2026-08-31, 6.58장) — 그전까지 그 키는 파싱되고 질의로 변환됐으나 문서에 값이 없어 언제나 빈 결과였다 |
 | FR-SRCH-006 | WP-013, WP-016 | `packages/es/src/query-builder.ts`, `apps/search-api/src/search/{routes,service,relaxation}.ts`, `packages/db/src/repositories/{repository,auth}.ts`, `apps/web/lib/facets.ts`, `apps/web/components/FacetRail.tsx` | `packages/es/src/query-builder.test.ts`, `apps/search-api/integration/search/list.test.ts`, `apps/web/lib/facets.test.ts`, `apps/web/a11y/search.test.tsx` | done (AC-1~AC-3, AC-6. 화면 쪽 결합은 WP-016) |
 | FR-SRCH-007 | WP-013, WP-016 | `packages/es/src/sort.ts`, `packages/es/src/upsert.ts` (`doc_id`), `packages/es/src/mappings/*.ts`, `apps/search-api/src/search/{routes,service}.ts`, `apps/web/components/ResultTable.tsx` (`aria-sort`, 정렬 헤더) | `packages/es/src/sort.test.ts`, `packages/es/src/upsert.test.ts`, `apps/search-api/integration/search/list.test.ts`, `apps/web/a11y/search.test.tsx`, `apps/web/e2e/flow-001.spec.ts` | done (AC-1~AC-4. AC-4의 "문서 ID"는 `_id`가 아니라 같은 값의 `doc_id` 필드다 — DEV-059) |
 | FR-SRCH-008 | WP-032 | `apps/search-api/src/cursor/{envelope,params}.ts`, `apps/search-api/src/search/{cursor,service,routes}.ts`, `packages/es/src/search.ts` (PIT), `apps/web/components/CursorPager.tsx` | `apps/search-api/src/cursor/envelope.test.ts`, `apps/search-api/src/search/cursor.test.ts`, `apps/search-api/integration/search/facets.test.ts`, `apps/web/e2e/search-paging.spec.ts` | done |
@@ -146,7 +146,7 @@
 | FR-STAT-003 | WP-017, WP-037, WP-038 | `apps/web/lib/pr-detail.ts` (`timelineSteps`, `reviewerStates`), `apps/web/components/{PrTimeline,PrDetailView}.tsx` | `apps/web/lib/pr-detail.test.ts`, `apps/web/a11y/pr-detail.test.tsx` | partial (**PR 1건의 리드타임·첫 리뷰 대기·타임라인은 WP-017에서 done.** 승인 단계는 `done_at_unknown`이다 — `approved_at`이 매핑에 없어 **시각을 모른다**, DEV-084. 집계 지표(분포·추세)는 WP-037·WP-038) |
 | FR-STAT-004 | WP-017, WP-037, WP-038 | `apps/web/lib/pr-detail.ts` (`ReviewStatus`), `apps/web/components/PrDetailView.tsx`, `apps/pipeline-worker/src/documents.ts` (`firstReviewAt`), `apps/search-api/src/analytics/{aggregations,routes}.ts` | `apps/web/lib/pr-detail.test.ts`, `apps/web/a11y/pr-detail.test.tsx`, `apps/pipeline-worker/src/documents.test.ts`, `apps/search-api/integration/analytics/analytics.test.ts` | partial (**리뷰어별 상태는 "승인함 / 아직 아님" 둘뿐이다** — 투영이 리뷰어별 상태를 저장하지 않아 "변경 요청"을 만들지 않는다, DEV-085. **AC-1·AC-3·AC-5는 WP-037에서 done** — 제외 사유를 `no_review`·`enrichment_pending`으로 가르고, 작성자 본인 리뷰를 첫 리뷰 판정에서 뺀다(DEV-387). 화면 done (WP-038, 6.49장)) |
 | FR-STAT-005 | WP-037, WP-038 | `apps/search-api/src/analytics/{types,prepare,execute,aggregations,routes}.ts`, `packages/es/src/query-builder.ts` (`resolveSearchTarget`), `packages/query/src/keys.ts`, `apps/web/lib/analytics.ts`, `apps/web/components/{AnalyticsView,AggregationPanel,TimeSeriesChart,DistributionChart,PercentileCardRow,Tabs,SearchAggregationTab}.tsx`, `apps/web/app/analytics/page.tsx`, `apps/web/lib/nav.ts` | `apps/search-api/integration/analytics/analytics.test.ts`, `packages/es/src/query-builder.test.ts`, `regression/runtime-reachability.test.ts`, `perf/analytics.perf.test.ts`, `apps/web/lib/analytics.test.ts`, `apps/web/a11y/analytics.test.tsx`, `apps/web/e2e/flow-005.spec.ts`, `apps/web/lib/nav.test.ts` | verified (AC-1~AC-7. 화면 done (WP-038, 6.49장)) |
-| FR-STAT-006 | WP-037, WP-038 | `apps/search-api/src/analytics/{types,prepare,execute,aggregations,routes}.ts`, `packages/es/src/query-builder.ts` (`resolveSearchTarget`), `packages/query/src/keys.ts`, `apps/web/lib/analytics.ts`, `apps/web/components/{AnalyticsView,AggregationPanel,TimeSeriesChart,DistributionChart,PercentileCardRow,Tabs,SearchAggregationTab}.tsx`, `apps/web/app/analytics/page.tsx`, `apps/web/lib/nav.ts` | `apps/search-api/integration/analytics/analytics.test.ts`, `packages/es/src/query-builder.test.ts`, `regression/runtime-reachability.test.ts`, `perf/analytics.perf.test.ts`, `apps/web/lib/analytics.test.ts`, `apps/web/a11y/analytics.test.tsx`, `apps/web/e2e/flow-005.spec.ts`, `apps/web/lib/nav.test.ts` | verified (AC-1~AC-6. **총 건수 일치는 PR 모집단 기준**, CR-053) |
+| FR-STAT-006 | WP-037, WP-038, **WP-069** | **`apps/pipeline-worker/src/author-teams.ts`**, **`apps/pipeline-worker/src/documents.ts`** (`author_team_ids`), **`packages/db/src/repositories/team-membership.ts`**, **`packages/db/migrations/021_author_team.up.sql`**, `apps/search-api/src/analytics/{types,prepare,execute,aggregations,routes}.ts`, `packages/es/src/query-builder.ts` (`resolveSearchTarget`), `packages/query/src/keys.ts`, `apps/web/lib/analytics.ts`, `apps/web/components/{AnalyticsView,AggregationPanel,TimeSeriesChart,DistributionChart,PercentileCardRow,Tabs,SearchAggregationTab}.tsx`, `apps/web/app/analytics/page.tsx`, `apps/web/lib/nav.ts` | `apps/search-api/integration/analytics/analytics.test.ts`, `packages/es/src/query-builder.test.ts`, `regression/runtime-reachability.test.ts`, `perf/analytics.perf.test.ts`, `apps/web/lib/analytics.test.ts`, `apps/web/a11y/analytics.test.tsx`, `apps/web/e2e/flow-005.spec.ts`, `apps/web/lib/nav.test.ts` | verified (AC-1~AC-6. **총 건수 일치는 PR 모집단 기준**, CR-053) |
 | FR-AUTH-001 | WP-012, WP-015 | `packages/authz/src/{oidc,pkce,id-token,jwks,session,session-store,roles,config}.ts`, `apps/search-api/src/auth/*`, `apps/web/app/auth/{login,callback,logout}/route.ts`, `apps/web/app/api/[...path]/route.ts`, `apps/web/lib/{oidc-state,proxy}.ts` | `packages/authz/src/{id-token,oidc,session,session-store,roles}.test.ts`, `apps/search-api/integration/authz/enforcement.test.ts`, `apps/web/lib/{oidc-state,proxy}.test.ts`, `apps/web/e2e/shell.spec.ts` | done (AC-1~AC-5. WP-015가 브라우저 왕복을 채웠다 — 인가 리다이렉트·PKCE·`state`/`nonce` 검증·세션 발급·원래 경로 복귀·로그아웃. 왕복 상태는 짧은 수명 HttpOnly 쿠키로 나른다(DEV-071). **실제 IdP 왕복은 자격 증명이 없어 NOT RUN** — e2e는 OIDC 미구성 배포의 503과 라우트 계약까지 건다) |
 | FR-AUTH-002 | WP-012 | `packages/authz/src/{scope,scope-source,scope-database}.ts`, `packages/es/src/scoped-query.ts`, `apps/search-api/src/auth/{principal,errors,me}.ts` | `packages/es/integration/scope-enforcement.test.ts`, `packages/es/src/architecture.test.ts`, `packages/authz/integration/scope.test.ts`, `apps/search-api/integration/authz/enforcement.test.ts` | done (AC-1~AC-6. 단, 검색·집계 API 자체는 WP-013·WP-014가 세운다 — 여기서는 필터와 강제 지점을 세우고 ES에 직접 물어 결과 집합을 검증했다) |
 | FR-AUTH-003 | WP-012 | `packages/authz/src/{scope,invalidation}.ts`, `packages/db/src/repositories/auth.ts`, `packages/db/migrations/007_auth.up.sql`, `apps/ingest-gateway/src/{ingest,server}.ts`, `apps/pipeline-worker/src/authz.ts` | `packages/authz/{src/invalidation.test.ts,integration/scope.test.ts}`, `apps/pipeline-worker/src/authz.test.ts`, `apps/ingest-gateway/src/ingest.test.ts` | done (AC-1~AC-5. 적중률은 `access_scope_lookup_total{outcome}`) |
@@ -4509,6 +4509,104 @@ targeted: `pnpm run test:integration safe-marker` **33 통과** · `pnpm run tes
 
 **신규 FR·NFR 없음, 새 ADR 없음, 새 화면·API·엔티티·컴포넌트 ID 없음, 안정 ID 재번호화 0건, 새 ES 인덱스 버전 없음.**
 
+### 6.58 WP-069 작성자 소속 팀 채우기 (CR-058)
+
+**승인된 `Must` 둘이 데이터 없이 서 있던 자리를 닫았다.** `FR-SRCH-005` AC-1의 `author_team:`과 `FR-STAT-006`의 `group_by=team`은 매핑도 질의 빌더도 집계도 갖추고 있었으나 **투영이 `author_team_ids`를 쓰지 않아** 언제나 빈 결과였다.
+
+#### 6.58.1 착수 전에 현재 실패를 실행으로 증명했다
+
+문서를 읽어 그럴 것 같다고 적지 않고, 네 계층을 각각 걸어 확인했다.
+
+| 확인 | 결과 |
+| --- | --- |
+| PR 매핑에 `author_team_ids`가 있는가 | 있다 (`packages/es/src/mappings/pull-requests.ts`) |
+| 질의 빌더가 `author_team:`을 그 필드로 옮기는가 | 옮긴다 (`query-builder.ts`) |
+| 집계 `group_by=team`이 그 필드를 세는가 | 센다 (`analytics/types.ts`) |
+| **투영이 그 필드를 쓰는가** | **쓰지 않는다** — `buildPullRequestDocument`의 결과에 키가 없고 `remove`에도 없다 |
+
+`author: 'alice'`인 문서를 만들어 `allowed_team_ids`는 실리고 `author_team_ids`는 부재인 것을 함께 확인했다 — **둘이 다른 값이라는 것과 끊긴 쪽이 어디인지가 같은 실행에서 드러난다.**
+
+#### 6.58.2 이 구현이 내린 판단 다섯
+
+| 결정 | 왜 | 버린 대안 |
+| --- | --- | --- |
+| 조회는 **조직 단위**로 모은다 | `listOrgTeams` + 팀별 `listTeamMembers`로 login에서 team_id로 가는 표를 만든다. 비용이 **조직당 팀 수이고 작성자 수와 무관하다** | 작성자마다 팀 수만큼 `isTeamMember` — 작성자 곱하기 팀이라 PR이 늘수록 선형으로 는다 |
+| 저장은 **마이그레이션 021**의 `team_membership` | `team_member`는 `app_user` 외래 키가 미로그인 작성자를 버린다. `ADR-004`가 재구축을 PostgreSQL만으로 요구하므로 소속이 여기 있어야 한다 | `team_member`의 외래 키 풀기 — 그 표의 뜻은 "이 팀의 PR Search 사용자"이고 무효화가 그 뜻으로 읽는다 |
+| 동기화는 **`authz` 역할**이 소유한다 | 팀 데이터를 이미 소유하고 GHE 자격을 쥐고 있으며 **배포되어 있다** | 새 역할·새 잡 — `DEV-304`·`DEV-305`가 기록한 "코드에는 있으나 배포되지 않는 역할"을 하나 더 만든다 |
+| 투영은 **PostgreSQL만 읽는다** | `allowed_team_ids`를 `repository` 행에서 읽는 것과 같은 모양이다. 표가 아직이면 모름으로 남고 다음 투영·백필·재색인이 채운다 | 투영에 GHE 자격 주기 — 팀을 못 읽는 것이 PR을 색인하지 못할 이유가 된다 |
+| 재색인은 **정본에서 다시 계산한다** | 스냅숏은 투영 시점의 사본이라 소속이 박제되어 있다. 그대로 재생하면 **떠난 팀을 되살린다** | `registryOwnedFields`에 넣기 — 그 함수의 정본은 `repository` 행이고 이 값의 정본은 `team_membership`이다 |
+
+**세 값이 서로 다른 사실이다.** 동기화가 신선하고 작성자가 팀에 있으면 그 ID들, 신선한데 어느 팀에도 없으면 **빈 배열이 사실의 진술**, 낡았거나 없거나 작성자를 모르면 **부재**다. 부재는 `UpsertRequest.remove`가 실제로 만든다 — `DEV-450`이 변경 규모 넷에서 세운 규율 그대로다.
+
+#### 6.58.3 적대적 변이 열아홉 — 열여덟은 즉시 킬, 하나가 시험 구멍을 드러냈다
+
+| 변이 | 무엇을 지웠나 | 결과 |
+| --- | --- | --- |
+| M1 | `author_team_ids` 쓰기 | KILL (단위 4건) |
+| M2 | 그 자리에 `allowed_team_ids`를 쓴다 | KILL (단위 3건) |
+| M3 | 모름을 빈 배열로 기록 | KILL (단위 3건) |
+| M4 | 모름에서 옛 값을 지우지 않음 | KILL (단위 3건) |
+| M5 | 백필의 조직 동기화 | KILL (통합) |
+| M6 | 재색인의 재계산 (스냅숏 값 재생) | KILL (통합) |
+| M6b | 재색인이 모름을 지우지 않음 | KILL (통합) |
+| M7 | `author_team` 질의를 `allowed_team_ids`로 | KILL (단위) |
+| M8 | `group_by=team`을 `allowed_team_ids`로 | KILL (통합) |
+| M9 | 낡음 판정 (언제나 신선) | KILL (통합) |
+| M9b | 표에 있으면 무조건 앎 | KILL (통합 5건) |
+| **M10** | **잠금 뒤 신선도 재확인** | **처음에 살아남았다** — 아래 |
+| M11 | `team` 레지스트리 등재 | KILL (통합) |
+| M12 | 작성자 없음 판정 | KILL (단위) |
+| M13 | 정렬·중복 제거 | KILL (단위) |
+| M14 | 조직 경계 (`org_id` 조건) | KILL (통합) |
+| M15 | 교체 (`DELETE` 제거 → 추가) | KILL (통합) |
+| M16 | 조회 실패를 신선으로 기록 | KILL (통합) |
+| M17 | `team` 질의를 `author_team_ids`로 (역방향) | KILL (단위) |
+
+**M10이 등가가 아니라 실제 구멍이었다.** 잠금은 줄을 세울 뿐이고, 기다리던 쪽이 잠금을 얻은 뒤 신선도를 다시 보지 않으면 **방금 끝난 동기화를 그대로 한 번 더 한다** — 조직 팀 전체를 훑는 조회라 그 중복이 곧 GHE 요청 폭증이다. `WP-069`이 요구하는 "같은 작성자를 연달아 처리해도 요청이 폭증하지 않는다"가 그것인데, 그 성질을 거는 시험이 없었다. **동시 호출 둘이 `listOrgTeams`를 한 번만 부르는 시험**을 채운 뒤 다시 걸어 킬했다.
+
+**변이 하나를 원복하지 못한 사고가 있었다.** M10의 첫 형태가 블록을 **빈 문자열로** 치환해서, 역방향 치환이 앵커를 찾지 못했다. 소스를 직접 확인해 복구했고 이후 변이는 전부 **같은 길이의 무해한 형태**(`if (false)`, `void x;`)로 바꿨다 — 원복이 언제나 정확히 1건을 맞히는 형태여야 한다.
+
+#### 6.58.4 검증 결과 (현재 HEAD에서 실측)
+
+```text
+typecheck · lint · lint:deps 통과 (패키지 13개, 위반 0건)
+단위        1911 (1 skipped)   [1903 → +8]
+통합        1467 (91 파일)      [1432 → +35]
+회귀        314                [299 → +15]
+a11y        358 (axe 0)        [변화 없음]
+대비        232/232
+e2e         155                [변화 없음]
+빌드        통과
+적대적 변이  19종 전부 킬
+```
+
+targeted: `pnpm run test:integration team-membership` 9 · `author-teams` 18 · `jobs/reindex` 24 · `jobs/backfill` 17 · `analytics` 35.
+
+**전량 통합을 한 번에 돌려 1467건이 모두 통과했다** — 겹쳐 돌리지 않았고 실패 로그를 파일로 남겼다(`/tmp/pr-search-int.log`).
+
+**e2e 전량 첫 실행에서 1건이 실패했고 원인을 특정하지 못했다.** `flow-003.spec.ts:176`(뒤로가기로 커밋 상세를 거쳐 검색으로 돌아온다)이 `getByRole('searchbox')`를 5초 안에 찾지 못했다. 단독 재실행 14/14 통과, 전량 재실행 155/155 통과로 재현되지 않았다. **플레이크라고 단정하지 않는다** — 다만 이 WP는 `apps/web` 아래 어떤 파일도 건드리지 않았고(변경 목록이 그것을 보인다), 실패 모양이 뒤로가기 뒤 요소 대기 시간 초과라 병렬 실행의 타이밍에 가깝다. 다음 세션이 같은 자리를 다시 만나면 그 사실을 여기에 이어 적는다.
+
+**CI는 판정에 쓰지 못했다** — `pr-search`는 계정 결제로 잡이 시작조차 하지 않는다(`steps=0`).
+
+#### 6.58.5 구현 위치
+
+| 경로 | 무엇 |
+| --- | --- |
+| `packages/db/migrations/021_author_team.{up,down}.sql` | `team_membership`(팀 ↔ GHE login) · `org_team_sync`(조직별 동기화 시각) |
+| `packages/db/src/repositories/team-membership.ts` | 조직 단위 교체, 낡음 판정의 재료, 일괄 소속 조회 |
+| `packages/db/src/advisory-lock.ts` | `orgTeamSyncLockKey` — 저장소 범위 락과 나눈다 |
+| `packages/db/src/repositories/repository.ts` | `listRegisteredOrgs` — 스윕이 훑을 목록 |
+| `apps/pipeline-worker/src/author-teams.ts` | 판정(`resolveAuthorTeams`) · 동기화(`syncOrgTeamsIfStale`) · 스윕 |
+| `apps/pipeline-worker/src/documents.ts` | `AuthorTeamResolution` 타입, 필드 적재, `remove` 합류 |
+| `apps/pipeline-worker/src/project.ts` · `backfill.ts` · `reindex.ts` | 세 경로의 배선 |
+| `apps/pipeline-worker/src/index.ts` | `authz` 역할의 스윕 기동·종료 |
+
+#### 6.58.6 구현 중 드러난 것 둘
+
+**`document_version` 조건부 대입이 소속 변경을 막는다.** 같은 이벤트를 다시 투영하면 버전이 같아 `noop`이 되므로, 소속이 바뀌어도 **새 웹훅이 없으면 문서는 그대로다.** 이것이 결함이 아니라 `WP-069`의 DoD가 반영 경로를 **재색인·백필**로 정한 이유이며, 그 사실을 시험 하나로 고정했다. 처음 쓴 시험 셋이 같은 수신 시각을 두 번 써서 실패했고, 그 실패가 이 성질을 드러냈다.
+
+**`remove`를 두 판정이 함께 쓴다.** 변경 규모 넷과 작성자 팀 하나가 같은 배열에 들어가므로, 규모를 보는 기존 시험이 전체를 그대로 단언하면 상관없는 변화에 깨진다. 그 시험들을 **규모 몫만 거르도록** 좁혔다 — 소음이 진짜 회귀를 가리지 않게 하는 자리다.
+
 ## 7. 알려진 제한 (구현 반영 기준)
 
 착수 시점의 계획상 제한이다. 구현이 진행되면 실제 반영된 내용으로 갱신한다.
@@ -4572,7 +4670,7 @@ targeted: `pnpm run test:integration safe-marker` **33 통과** · `pnpm run tes
 | 미등록 저장소 이벤트도 그대로 저장됨 | FR-ING-009 AC-4는 "투영하지 않음"이지 "저장하지 않음"이 아님 | 실제 상태 (의도된 동작) — 투영이 걸러 ack하고(DEV-020), 이제 API-ADM-001로 등록하면 백필(WP-019)이 원본에서 채운다 | 없음 |
 | 서명이 맞는데 JSON이 깨진 요청은 500 (GHE 재전송 유도) | API-ING-001 오류 코드가 401·413·500으로 한정 | 실제 상태 | 없음 (서명 유효 시 발생하지 않는 경로) |
 | 커밋 문서에 메시지·작성자·부모 SHA가 없음 | WP-008 입력이 `EVT-ING-002`이고 그 이벤트는 커밋 SHA만 나른다 | 실제 상태 — SHA → PR 해석(FR-SRCH-002)에 필요한 만큼만 채운다. 조건부 업서트가 키 단위로 대입하므로 나중에 채워도 덮이지 않는다 | WP-020 미러 기반 커밋 보강 |
-| `allowed_team_ids`·`author_team_ids`가 비어 있음 | WP-008 범위 밖 (투영이 채워야 함) | **실제 상태 — WP-012가 해소하지 못했다.** 접근 범위 쪽(`org_team` 조건 생성, 팀 소속 조회, 무효화)은 세웠으나 **문서에 팀 ID를 쓰는 것은 투영의 일**이고 `EVT-ING-002`가 팀 정보를 나르지 않는다. `explicit` 범위는 `repository_id`만으로 동작하므로 조회는 성립한다. 통합 시험은 fixture로 팀 ID를 직접 넣어 `org_team` 조건을 검증했다 | **`allowed_team_ids`는 `WP-068`이 해소했다** (2026-08-26, PR #39). `author_team_ids`는 **`WP-069`가 해소한다** — 소유 WP는 `CR-056`이 정했고 계약은 `CR-058`이 채웠다 (DEV-478·481~487). 그때까지 `group_by=team`과 `author_team:`이 빈 결과인 것은 **누락이 아니라 미구현이다** |
+| `allowed_team_ids`·`author_team_ids`가 비어 있음 | WP-008 범위 밖 (투영이 채워야 함) | **실제 상태 — WP-012가 해소하지 못했다.** 접근 범위 쪽(`org_team` 조건 생성, 팀 소속 조회, 무효화)은 세웠으나 **문서에 팀 ID를 쓰는 것은 투영의 일**이고 `EVT-ING-002`가 팀 정보를 나르지 않는다. `explicit` 범위는 `repository_id`만으로 동작하므로 조회는 성립한다. 통합 시험은 fixture로 팀 ID를 직접 넣어 `org_team` 조건을 검증했다 | **둘 다 해소됐다** — `allowed_team_ids`는 `WP-068`(2026-08-26, PR #39), `author_team_ids`는 **`WP-069`**(2026-08-31, 6.58장). 소유 WP는 `CR-056`이 정했고 계약은 `CR-058`이 채웠다 (DEV-478·481~487) |
 | 작성자 소속 변경이 문서에 **실시간으로** 소급되지 않음 | CR-058 — `WP-069`의 DoD가 정한 반영 경로가 재색인·백필이다 | 실제 상태 (의도된 범위) — `JOB-AUTH-001`이 `member`·`team` 웹훅을 이미 받아 권한 캐시를 무효화하므로 **같은 사건에서 문서를 소급하는 것이 가능하지만 승인된 요구사항이 아니다.** 여기서 만들면 검증하지 않을 경로를 계약에 쓰게 된다. 그동안 `author_team_ids`는 **조직 동기화 시각까지의 사실**이며, 낡으면 부재로 답하지 조용히 틀린 값을 주지 않는다 | 별도 CR (실시간 소급이 필요하다는 운영 근거가 생기면) |
 | `links_pending`이 영영 `true` | 관계 파생이 WP-029 | 실제 상태 — 투영이 생성 시점에만 `true`로 두고 이후 건드리지 않는다. 화면은 이 표식으로 "관계 미확정"을 표시한다 | WP-029 |
 | k8s 매니페스트가 클러스터에 적용된 적 없음 | WP-010 구현 범위 / 이 환경에 Kubernetes·`kubectl` 없음 | 실제 제약 — YAML 파싱만 확인했다. 이미지 이름(`prs/*:latest`)과 백킹 서비스 호스트는 자리표시자다 | **REL-001 프로비저닝 때 실제 클러스터에서 검증** |

@@ -20,6 +20,7 @@ export {
   advisoryXactLock,
   jobClaimLockKey,
   deliveryLockKey,
+  orgTeamSyncLockKey,
   releaseAdvisorySessionLock,
   releaseLockKey,
   repositoryScopeLockKey,

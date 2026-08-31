@@ -9,7 +9,12 @@ import { describe, expect, it } from 'vitest';
 import { COMMIT_MAPPING, PULL_REQUEST_MAPPING } from '@prs/es';
 import type { EnrichedPullRequest, IngestionEnriched } from '@prs/domain';
 import type { RepositoryRow } from '@prs/db';
-import { buildCommitDocuments, buildPullRequestDocument, buildUpsertRequests } from './documents.js';
+import {
+  buildCommitDocuments,
+  buildPullRequestDocument,
+  buildUpsertRequests,
+  type AuthorTeamResolution,
+} from './documents.js';
 
 const REPOSITORY: RepositoryRow = {
   repository_id: 4021,
@@ -73,12 +78,20 @@ function enriched(overrides: Partial<IngestionEnriched> = {}): IngestionEnriched
   };
 }
 
-function source(event: IngestionEnriched = enriched()): Parameters<typeof buildUpsertRequests>[0] {
+function source(
+  event: IngestionEnriched = enriched(),
+  authorTeams: AuthorTeamResolution = { kind: 'unknown' },
+): Parameters<typeof buildUpsertRequests>[0] {
   return {
     enriched: event,
     repository: REPOSITORY,
     documentVersion: 1_754_042_400_000,
     indexedAt: new Date('2026-08-02T10:30:05.000Z'),
+    /**
+     * 기본값은 **모름**이다 (WP-069 / CR-058). 소속을 시험하지 않는 시험이
+     * 조용히 팀을 갖게 되면, 필드를 싣는 조건이 무엇인지 그 시험들이 흐린다.
+     */
+    authorTeams,
   };
 }
 
@@ -319,6 +332,16 @@ describe('**변경 규모를 모르면 값을 쓰지 않는다** (CR-056, DEV-45
 
   const filesFailed = { component: 'files', kind: 'http_500', message: 'boom' } as const;
 
+  /*
+   * **규모 몫만 본다** (WP-069 / CR-058).
+   *
+   * `remove`는 이제 두 판정이 함께 쓴다 — 변경 규모 넷과 작성자 팀 하나. 이 절의
+   * 시험은 규모를 보는 것이므로 그 몫만 걸러 낸다. 전체를 그대로 단언하면 다른
+   * 판정이 바뀔 때마다 상관없는 시험이 깨지고, 그 소음이 **진짜 회귀를 가린다.**
+   */
+  const sizeRemovals = (request: { readonly remove?: readonly string[] }): readonly string[] =>
+    (request.remove ?? []).filter((field) => (SIZE_FIELDS as readonly string[]).includes(field));
+
   it('**파일 보강이 실패하면 넷 다 없다** — 빈 목록이 0을 뜻하지 않는다', () => {
     const doc = buildPullRequestDocument(
       source(
@@ -350,7 +373,7 @@ describe('**변경 규모를 모르면 값을 쓰지 않는다** (CR-056, DEV-45
         }),
       ),
     );
-    expect(request.remove).toEqual([...SIZE_FIELDS]);
+    expect(sizeRemovals(request)).toEqual([...SIZE_FIELDS]);
   });
 
   it('**파일 보강이 성공했으면 다른 실패는 규모를 건드리지 않는다** (PR #95 리뷰 P2)', () => {
@@ -367,7 +390,7 @@ describe('**변경 규모를 모르면 값을 쓰지 않는다** (CR-056, DEV-45
     );
     expect(request.doc['changed_files_count']).toBe(2);
     expect(request.doc['changed_lines']).toBe(42);
-    expect(request.remove).toBeUndefined();
+    expect(sizeRemovals(request)).toEqual([]);
   });
 
   it('**파일이 비었어도 그 조회가 성공했으면 0은 사실이다**', () => {
@@ -377,12 +400,80 @@ describe('**변경 규모를 모르면 값을 쓰지 않는다** (CR-056, DEV-45
       ] })),
     );
     expect(request.doc['changed_files_count']).toBe(0);
-    expect(request.remove).toBeUndefined();
+    expect(sizeRemovals(request)).toEqual([]);
   });
 
   it('**보강이 끝난 0은 그대로 쓴다** — 하나도 바꾸지 않은 PR은 실재한다', () => {
     const doc = buildPullRequestDocument(source(enriched({ changed_files: [] }))).doc;
     expect(doc['changed_files_count']).toBe(0);
     expect(doc['changed_lines']).toBe(0);
+  });
+});
+
+describe('**작성자 소속 팀** (WP-069 / CR-058, FR-STAT-006 · FR-SRCH-005)', () => {
+  const AUTHOR_FIELD = 'author_team_ids';
+
+  it('아는 소속은 그대로 싣는다', () => {
+    const doc = buildPullRequestDocument(source(enriched(), { kind: 'known', teamIds: [101] })).doc;
+    expect(doc[AUTHOR_FIELD]).toEqual([101]);
+  });
+
+  it('여러 팀을 실으며 중복을 접고 오름차순으로 고정한다 — 같은 소속이 늘 같은 배열이어야 `noop`이 성립한다', () => {
+    const doc = buildPullRequestDocument(
+      source(enriched(), { kind: 'known', teamIds: [303, 101, 303, 202] }),
+    ).doc;
+    expect(doc[AUTHOR_FIELD]).toEqual([101, 202, 303]);
+  });
+
+  it('**조회에 성공했고 팀이 0개면 빈 배열이 사실의 진술이다** — 부재가 아니다', () => {
+    const request = buildPullRequestDocument(source(enriched(), { kind: 'known', teamIds: [] }));
+    expect(request.doc[AUTHOR_FIELD]).toEqual([]);
+    expect(request.remove ?? []).not.toContain(AUTHOR_FIELD);
+  });
+
+  it('**모르면 필드를 쓰지 않고 옛 값을 지운다** — 부재로 판정하는 필드는 부재를 만들 수 있어야 한다 (DEV-484)', () => {
+    const request = buildPullRequestDocument(source(enriched(), { kind: 'unknown' }));
+    expect(Object.keys(request.doc)).not.toContain(AUTHOR_FIELD);
+    expect(request.remove ?? []).toContain(AUTHOR_FIELD);
+  });
+
+  it('**작성자를 모르면 소속도 모름이다** — 호출부가 앎을 넘겨도 문서가 거짓을 말하지 않는다 (DEV-487)', () => {
+    const request = buildPullRequestDocument(
+      source(enriched({ pull_request: null }), { kind: 'known', teamIds: [101] }),
+    );
+    expect(Object.keys(request.doc)).not.toContain('author');
+    expect(Object.keys(request.doc)).not.toContain(AUTHOR_FIELD);
+    expect(request.remove ?? []).toContain(AUTHOR_FIELD);
+  });
+
+  it('**`allowed_team_ids`와 다른 값이다** — 하나로 합치면 접근 권한을 성과로 읽게 된다 (DEV-382)', () => {
+    const doc = buildPullRequestDocument(source(enriched(), { kind: 'known', teamIds: [101] })).doc;
+    expect(doc[AUTHOR_FIELD]).toEqual([101]);
+    expect(doc['allowed_team_ids']).not.toEqual([101]);
+  });
+
+  it('매핑이 이 필드를 이미 선언하고 있다 — 새 인덱스 버전이 필요 없는 이유다', () => {
+    expect(mappedFields(PULL_REQUEST_MAPPING)).toContain(AUTHOR_FIELD);
+  });
+
+  it('두 판정이 같은 `remove`를 함께 쓴다 — 규모 넷과 작성자 팀 하나', () => {
+    const request = buildPullRequestDocument(
+      source(
+        enriched({
+          pull_request: null,
+          changed_files: [],
+          enrichment_pending: true,
+          enrichment_errors: [{ component: 'files', kind: 'http_500', message: 'boom' }],
+        }),
+        { kind: 'unknown' },
+      ),
+    );
+    expect(request.remove).toEqual([
+      'changed_files_count',
+      'additions',
+      'deletions',
+      'changed_lines',
+      AUTHOR_FIELD,
+    ]);
   });
 });

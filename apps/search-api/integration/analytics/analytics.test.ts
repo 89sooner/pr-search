@@ -460,6 +460,18 @@ describe('접근 범위가 어느 숫자에도 새지 않는다 (FR-AUTH-002 AC-
     expect((body.raw_values ?? []).every((one) => one >= 7_200)).toBe(true);
   });
 
+  it('**팀 그룹에도 범위 밖 문서가 기여하지 않는다** (WP-069 / CR-058)', async () => {
+    /*
+     * 숨은 PR의 `author_team_ids`는 범위 안 PR과 **같은 팀**이라 존재로는 걸리지
+     * 않는다. 그래서 그 PR만 고르는 조건을 걸어 **버킷이 아예 없는 것**으로 건다 —
+     * 작성자 `hidden-author`는 범위 안에 없으므로, 필터가 빠지면 그 이름 하나로
+     * 팀 버킷이 나타난다. 전역 건수로 걸지 않는 이유는 다른 시험 파일의 문서가
+     * 섞일 수 있기 때문이다.
+     */
+    const { body } = await post('/groups', { query: 'author:hidden-author', group_by: 'team' });
+    expect(groupsOf(body)).toEqual([]);
+  });
+
   it('분포에 범위 밖 문서가 나타나지 않는다', async () => {
     // 숨은 PR은 10000줄을 바꿨다. `1000+` 구간에 나타나면 유출이다.
     const { body } = await post('/distributions', { query: '', dimension: 'changed_lines' });

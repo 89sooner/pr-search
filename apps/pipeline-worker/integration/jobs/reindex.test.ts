@@ -14,11 +14,12 @@
  * 검증: `pnpm test:integration reindex`
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   jobRepo,
   prSnapshotRepo,
   releaseRepo,
+  teamMembershipRepo,
   reindexRepo,
   repositoryRepo,
   withReindexWrite,
@@ -1098,5 +1099,141 @@ describe('WP-032 매핑 이행 증명 — 실제 PR 매핑을 재색인으로 �
     expect(await partialHits(targetIndex, '환불')).toBe(0);
 
     await es.indices.delete({ index: legacyIndex, ignore_unavailable: true });
+  });
+});
+
+describe('R2 작성자 소속 팀도 현재 값으로 다시 쓴다 (WP-069 / CR-058, DEV-485)', () => {
+  const ORG = 71;
+  const CORE = 71_001;
+  const PLATFORM = 71_002;
+
+  /** PR 별칭에 대해 잡을 만든다. R1과 같은 형태다. */
+  async function enqueuePr(): Promise<{ jobId: number; targetIndex: string }> {
+    const outcome = await reindexRepo.enqueueReindex(
+      pool,
+      {
+        resolveServingIndex: (alias) => resolveServingIndex(es, alias),
+        async nextTargetIndex(alias) {
+          const versions = await listIndexVersions(es, alias);
+          const highest = versions.length === 0 ? 0 : (versions[versions.length - 1] as number);
+          return concreteIndexName(alias, highest + 1);
+        },
+        isAlias: (value) => value === PR_ALIAS,
+      },
+      PR_ALIAS,
+      'test',
+    );
+    if (outcome.kind !== 'queued') throw new Error(`큐에 넣지 못했다: ${outcome.kind}`);
+    created.add(outcome.targetIndex);
+    return { jobId: outcome.jobId, targetIndex: outcome.targetIndex };
+  }
+
+  async function snapshotWithTeams(prNumber: number, authorTeamIds: readonly number[]): Promise<void> {
+    await prSnapshotRepo.upsertPullRequestSnapshot(pool, {
+      repositoryId: REPOSITORY_ID,
+      prNumber,
+      documentVersion: 9_000 + prNumber,
+      source: 'webhook',
+      document: {
+        document_version: 9_000 + prNumber,
+        doc_id: pullRequestDocId(REPOSITORY_ID, prNumber),
+        pr_number: prNumber,
+        title: '작성자 팀 재구축',
+        repository_id: REPOSITORY_ID,
+        repository: `${OWNER}/${NAME}`,
+        org_id: ORG,
+        visibility: 'internal',
+        allowed_team_ids: [],
+        repository_archived: false,
+        author: 'alice',
+        author_team_ids: [...authorTeamIds],
+        state: 'merged',
+        indexed_at: '2026-08-01T00:00:00Z',
+        source_commit_shas: [],
+        base_branch: 'main',
+      },
+    });
+  }
+
+  async function rebuiltDoc(targetIndex: string, prNumber: number): Promise<Record<string, unknown> | undefined> {
+    await es.indices.refresh({ index: targetIndex });
+    const found = await es.search<Record<string, unknown>>({
+      index: targetIndex,
+      query: { term: { repository_id: REPOSITORY_ID } },
+    });
+    return found.hits.hits.find(
+      (one) => (one._source as Record<string, unknown>)['pr_number'] === prNumber,
+    )?._source as Record<string, unknown> | undefined;
+  }
+
+  afterEach(async () => {
+    await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1 AND pr_number >= 600', [
+      REPOSITORY_ID,
+    ]);
+    await pool.query('DELETE FROM team_membership WHERE team_id = ANY($1::bigint[])', [[CORE, PLATFORM]]);
+    await pool.query('DELETE FROM org_team_sync WHERE org_id = $1', [ORG]);
+    await pool.query('DELETE FROM team WHERE team_id = ANY($1::bigint[])', [[CORE, PLATFORM]]);
+  });
+
+  it('**스냅숏이 박제한 옛 소속이 재구축으로 되살아나지 않는다**', async () => {
+    // 투영 시점에는 core에 있었다.
+    await snapshotWithTeams(601, [CORE]);
+    // 그 뒤 platform으로 옮겼다 — 정본만 바뀐 상태다.
+    await teamMembershipRepo.replaceOrgTeamMembership(
+      pool,
+      ORG,
+      [
+        { teamId: CORE, slug: 'wp069-core', logins: ['bob'] },
+        { teamId: PLATFORM, slug: 'wp069-platform', logins: ['alice'] },
+      ],
+      new Date(),
+    );
+
+    const { jobId, targetIndex } = await enqueuePr();
+    await claim(jobId);
+    await runClaimed(jobId);
+    expect((await jobRow(jobId)).state).toBe('completed');
+
+    const doc = await rebuiltDoc(targetIndex, 601);
+    expect(doc, 'PR 문서를 재구축하지 못했다').toBeDefined();
+    expect(doc?.['author_team_ids'], '옛 소속이 재구축으로 되살아났다').toEqual([PLATFORM]);
+  });
+
+  it('**동기화가 낡았으면 스냅숏의 옛 소속을 지운다** — 모르는 것을 아는 것처럼 되살리지 않는다', async () => {
+    await snapshotWithTeams(602, [CORE, PLATFORM]);
+    // `org_team_sync` 행이 없다 = 한 번도 물어본 적이 없다 = 모름.
+
+    const { jobId, targetIndex } = await enqueuePr();
+    await claim(jobId);
+    await runClaimed(jobId);
+    expect((await jobRow(jobId)).state).toBe('completed');
+
+    const doc = await rebuiltDoc(targetIndex, 602);
+    expect(doc, 'PR 문서를 재구축하지 못했다').toBeDefined();
+    expect(Object.keys(doc ?? {}), '모름인데 옛 소속이 남았다').not.toContain('author_team_ids');
+  });
+
+  it('**소속이 없어지면 빈 배열로 재구축한다** — 부재와 다르다', async () => {
+    await snapshotWithTeams(603, [CORE]);
+    await teamMembershipRepo.replaceOrgTeamMembership(
+      pool,
+      ORG,
+      [{ teamId: CORE, slug: 'wp069-core', logins: ['bob'] }],
+      new Date(),
+    );
+
+    const { jobId, targetIndex } = await enqueuePr();
+    await claim(jobId);
+    await runClaimed(jobId);
+    expect((await jobRow(jobId)).state).toBe('completed');
+
+    expect((await rebuiltDoc(targetIndex, 603))?.['author_team_ids']).toEqual([]);
+  });
+
+  it('**재구축이 GHE를 부르지 않는다** — `ReindexDeps`에 GitHub 자격이 없다 (ADR-004)', async () => {
+    // 타입이 그것을 강제한다. 이 시험은 그 사실을 회귀로 고정한다.
+    const keys = Object.keys(deps());
+    expect(keys).not.toContain('github');
+    expect(keys).not.toContain('client');
   });
 });

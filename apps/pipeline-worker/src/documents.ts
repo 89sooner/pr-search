@@ -30,6 +30,20 @@ import type { UpsertRequest } from '@prs/es';
  */
 type ProjectedCommitRole = Extract<CommitRole, 'merge_commit' | 'source_commit'>;
 
+/**
+ * 작성자 소속 팀의 세 상태 중 둘 (WP-069 / CR-058, DEV-486·487).
+ *
+ * **이 타입을 순수 계층이 소유한다.** 판정의 재료(조직 동기화 시각, 소속 표)는
+ * PostgreSQL에 있지만 **판정의 결과**는 문서 모양을 정하는 값이라, 여기 두어야
+ * 실제 데이터베이스 없이 문서를 시험할 수 있다.
+ *
+ * `known`의 빈 배열은 **사실의 진술**이다 — 그 조직에서 이 작성자는 어느 팀에도
+ * 속하지 않는다. `unknown`은 그것과 다르며 필드를 쓰지 않는 것으로 표현한다.
+ */
+export type AuthorTeamResolution =
+  | { readonly kind: 'known'; readonly teamIds: readonly number[] }
+  | { readonly kind: 'unknown' };
+
 export interface ProjectionSource {
   readonly enriched: IngestionEnriched;
   /** 접근 범위 필드의 유일한 출처다. 미등록 저장소면 애초에 투영하지 않는다. */
@@ -42,6 +56,16 @@ export interface ProjectionSource {
    */
   readonly documentVersion: number;
   readonly indexedAt: Date;
+  /**
+   * 이 PR 작성자의 소속 팀 (WP-069 / CR-058).
+   *
+   * **선택 항목이 아니다.** 기본값을 두면 호출부가 빠뜨렸을 때 그 사실이 드러나지
+   * 않고, 모름과 앎의 경계가 조용히 한쪽으로 기운다. 부르는 쪽이 언제나 판정한다.
+   *
+   * 범위는 **이 PR 저장소의 조직**이다 (DEV-481). 등록된 모든 조직으로 넓히면
+   * 한 조직의 동기화 실패가 모든 문서를 모름으로 만든다.
+   */
+  readonly authorTeams: AuthorTeamResolution;
 }
 
 type Fields = Record<string, unknown>;
@@ -149,6 +173,16 @@ export function buildPullRequestDocument(source: ProjectionSource): UpsertReques
    * 성공했다면 빈 목록은 사실이다.
    */
   const filesUnknown = enriched.enrichment_errors.some((error) => error.component === 'files');
+  /**
+   * **작성자를 모르면 소속도 모름이다** (CR-058, DEV-487).
+   *
+   * 보강이 PR을 가져오지 못하면 문서에 `author` 자체가 없다. 그것은 "소속을 읽지
+   * 못한 것"과 다른 사실이지만 답은 같다 — 없는 작성자의 팀을 지어내지 않는다.
+   * 판정을 여기서 한 번 더 거는 이유는 **재료가 이미 이 함수 안에 있기 때문**이며,
+   * 호출부가 빠뜨려도 문서가 거짓을 말하지 않는다.
+   */
+  const authorTeams: AuthorTeamResolution =
+    pr?.author == null || pr.author === '' ? { kind: 'unknown' } : source.authorTeams;
 
   const doc: Fields = {
     document_version: source.documentVersion,
@@ -212,6 +246,23 @@ export function buildPullRequestDocument(source: ProjectionSource): UpsertReques
 
   put(doc, 'first_review_at', reviewedAt);
 
+  /*
+   * **작성자 소속 팀** (WP-069 / CR-058, FR-STAT-006 · FR-SRCH-005).
+   *
+   * `allowed_team_ids`와 **다른 값이다** — 그쪽은 이 저장소를 볼 수 있는 팀이고
+   * 이것은 작성자가 속한 팀이다. 하나로 합치면 **접근 권한을 성과로 읽게 된다**
+   * (CR-053, DEV-382).
+   *
+   * **빈 배열을 그대로 쓴다.** 동기화가 신선한데 어느 팀에도 없다면 그것은 사실의
+   * 진술이며, 모름은 위에서 `unknown`이 되어 여기 오지 않는다 (DEV-486).
+   *
+   * 중복을 접고 오름차순으로 고정한다. 제품 의미는 아니지만 **같은 소속이 늘 같은
+   * 배열이어야** 조건부 업서트가 바뀌지 않은 문서를 `noop`으로 접는다.
+   */
+  if (authorTeams.kind === 'known') {
+    doc['author_team_ids'] = [...new Set(authorTeams.teamIds)].sort((a, b) => a - b);
+  }
+
   if (pr !== null) {
     put(doc, 'title', pr.title);
     put(doc, 'body', pr.body);
@@ -232,6 +283,11 @@ export function buildPullRequestDocument(source: ProjectionSource): UpsertReques
     put(doc, 'first_review_wait_seconds', seconds(pr.created_at, reviewedAt));
   }
 
+  const removed = [
+    ...(filesUnknown ? ['changed_files_count', 'additions', 'deletions', 'changed_lines'] : []),
+    ...(authorTeams.kind === 'unknown' ? ['author_team_ids'] : []),
+  ];
+
   return {
     alias: 'prs-pull-requests',
     id: pullRequestDocId(repository.repository_id, enriched.pr_number),
@@ -244,9 +300,15 @@ export function buildPullRequestDocument(source: ProjectionSource): UpsertReques
      * 이미 색인된 수가 그대로 남고, 그 PR은 계속 숫자 구간에 머문다. **부재로
      * 판정하는 필드는 부재를 실제로 만들 수 있어야 한다.**
      */
-    ...(filesUnknown
-      ? { remove: ['changed_files_count', 'additions', 'deletions', 'changed_lines'] }
-      : {}),
+    /*
+     * 모르게 됐으면 **옛 값을 지운다** (PR #95 리뷰 P1 / CR-058 DEV-484).
+     *
+     * 두 판정이 같은 규율을 따르고 지우는 이름만 다르다. `author_team_ids`는
+     * 작성자가 팀을 옮기거나 조직 동기화가 낡으면 부재가 되어야 하는데, 필드를
+     * 싣지 않는 것만으로는 이미 색인된 팀 ID가 남아 **떠난 팀의 버킷이 계속
+     * 답한다.**
+     */
+    ...(removed.length > 0 ? { remove: removed } : {}),
     createOnly: {
       // 관계 파생은 WP-029의 일이다. 투영은 "아직"이라고만 적고 값은 건드리지
       // 않는다 — `doc`에 넣으면 투영이 돌 때마다 WP-029의 결과를 되돌린다.

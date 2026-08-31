@@ -24,6 +24,7 @@ import type { Client } from '@elastic/elasticsearch';
 import { bulkUpsert } from '@prs/es';
 import { withReindexWrite } from '@prs/db';
 import { buildUpsertRequests } from './documents.js';
+import { resolveAuthorTeam, syncOrgTeamsIfStale, type AuthorTeamDeps } from './author-teams.js';
 import { recordProjectionSnapshot } from './snapshot.js';
 import { toEnrichedPullRequest } from './enriched-payload.js';
 import { describeFailedItems, retryFailedItems } from './index-retry.js';
@@ -60,6 +61,8 @@ export interface BackfillDeps {
   readonly log: (entry: BackfillLogEntry) => void;
   readonly now?: () => Date;
   readonly sleep?: (ms: number) => Promise<void>;
+  /** 작성자 팀 동기화를 낡은 것으로 보는 기준 (WP-069 / CR-058). 시험이 좁힌다. */
+  readonly authorTeamStalenessMs?: number;
   /** 색인 설정을 조정한다. 없으면 조정하지 않는다 (CR-022, DEV-105). */
   readonly indexTuning?: IndexTuning;
   /** 정본 스냅숏에 남길 출처. 조정 스캔이 `reconcile`로 바꾼다 (CR-034, DEV-184). */
@@ -107,6 +110,19 @@ const defaultSleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+/** 작성자 팀 해석·동기화가 쓰는 의존성만 좁혀 넘긴다. */
+function authorTeamDeps(deps: BackfillDeps): AuthorTeamDeps {
+  return {
+    pool: deps.pool,
+    github: deps.client,
+    ...(deps.now === undefined ? {} : { now: deps.now }),
+    ...(deps.authorTeamStalenessMs === undefined ? {} : { stalenessMs: deps.authorTeamStalenessMs }),
+    log: (entry) => {
+      deps.log({ level: entry.level, message: entry.message, ...(entry.reason === undefined ? {} : { reason: entry.reason }) });
+    },
+  };
+}
+
 /**
  * 잡 하나를 끝까지(또는 중단될 때까지) 돌린다.
  *
@@ -122,6 +138,21 @@ export async function runBackfillJob(
   const sleep = deps.sleep ?? defaultSleep;
   const [owner, repo] = splitTarget(job.target);
   const ref = { owner, repo };
+
+  /*
+   * 조직 팀 소속을 **잡 시작에 한 번** 신선하게 만든다 (WP-069 / CR-058).
+   *
+   * `WP-069`의 DoD가 "소속 변경이 백필로 반영된다"를 요구하는데, 낡은 표를 그대로
+   * 읽으면 백필이 **옛 소속을 다시 박아 넣는다.** 여기에는 GHE 자격이 있으므로
+   * 투영과 달리 직접 갱신할 수 있다.
+   *
+   * **PR마다 부르지 않는다.** 낡지 않았으면 곧장 돌아오지만, 판정 자체가 조회
+   * 한 번이라 수천 건의 백필에서 그만큼 늘어난다. 한 잡이 도는 동안 소속이
+   * 바뀌면 다음 백필·재색인이 잡는다.
+   *
+   * 실패해도 잡을 멈추지 않는다 — 그때 작성자 팀은 모름으로 남는다.
+   */
+  await syncOrgTeamsIfStale(authorTeamDeps(deps), { orgId: repository.org_id, owner: repository.owner });
 
   let cursor = readCursor(job.cursor);
   if (job.cursor !== null && cursor.page === 1 && cursor.done === 0) {
@@ -280,12 +311,19 @@ export async function projectOne(
   const enriched = await enrichForBackfill(deps, repository, ref, summary);
 
   try {
+    const authorTeams = await resolveAuthorTeam(
+      authorTeamDeps(deps),
+      repository.org_id,
+      enriched.pull_request?.author,
+    );
+
     const requests = buildUpsertRequests({
       enriched,
       repository,
       // 엔티티가 갱신된 시각이다. 지금 시각이 아니다 (CR-022, DEV-099).
       documentVersion,
       indexedAt: (deps.now ?? ((): Date => new Date()))(),
+      authorTeams,
     });
 
     /*

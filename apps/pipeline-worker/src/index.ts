@@ -40,6 +40,7 @@ import { startRetentionRunner, type RetentionRunner } from './retention.js';
 import { createWorkerMetrics } from './metrics.js';
 import { startEnrichWorker, type EnrichLogEntry } from './enrich.js';
 import { startProjectWorker, type ProjectLogEntry } from './project.js';
+import { startOrgTeamSweeper, type OrgTeamSweeper } from './author-teams.js';
 import { startAuthzWorker, type AuthzLogEntry } from './authz.js';
 import { startBackfillRunner, BACKFILL_JOB, type BackfillLogEntry, type BackfillRunner } from './backfill.js';
 import { startMirrorSweeper, type MirrorLogEntry, type MirrorRunner } from './mirror-runner.js';
@@ -127,6 +128,7 @@ let projectSubscription: Subscription | undefined;
 let authzSubscription: Subscription | undefined;
 let authzRedisClient: { quit(): Promise<unknown> } | undefined;
 let backfillRunner: BackfillRunner | undefined;
+let orgTeamSweeper: OrgTeamSweeper | undefined;
 let mirrorRunner: MirrorRunner | undefined;
 /** JOB-MIR-002 (WP-067 / CR-038). 미러 역할이 함께 세운다. */
 let commitEnrichSubscription: Subscription | undefined;
@@ -955,6 +957,33 @@ if (roles.includes('authz')) {
       process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-AUTH-001', ...entry })}\n`);
     },
   });
+
+  /*
+   * 작성자 소속 팀 스윕 (WP-069 / CR-058).
+   *
+   * **이 역할이 소유한다.** 팀 데이터를 이미 소유하고 GHE 자격을 쥐고 있으며
+   * 배포되어 있다 — 새 역할을 만들면 `DEV-304`·`DEV-305`가 기록한 "코드에는
+   * 있으나 배포되지 않는 역할"을 하나 더 만드는 일이 된다.
+   *
+   * `refreshTeamMembers`와 **다른 것을 채운다.** 그쪽은 `team_member`(로그인한
+   * PR Search 사용자)를 팀 이벤트마다 갱신하고, 이쪽은 `team_membership`(GHE
+   * 사용자)을 조직 단위로 훑는다. 둘의 뜻이 다르므로 표도 다르다 (DEV-482).
+   *
+   * 자격이 없으면 스윕이 돌지 않는다 — 그때 작성자 팀은 언제나 모름이고, 위의
+   * 경고가 그 사실을 이미 말한다.
+   */
+  if (authzGithub !== undefined) {
+    orgTeamSweeper = startOrgTeamSweeper({
+      pool,
+      github: authzGithub,
+      listOrgs: () => repositoryRepo.listRegisteredOrgs(pool),
+      log: (entry) => {
+        process.stdout.write(
+          `${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-AUTH-001', component: 'org-team-sweep', ...entry })}\n`,
+        );
+      },
+    });
+  }
 }
 
 let shuttingDown = false;
@@ -977,6 +1006,7 @@ const shutdown = (): void => {
        * 지점과 실제 처리 지점이 어긋나 재개가 처리하지 않은 PR을 건너뛴다.
        */
       await backfillRunner?.stop();
+      await orgTeamSweeper?.stop();
       await mirrorRunner?.stop();
       await commitEnrichSweeper?.stop();
       await commitEnrichSubscription?.close();

@@ -233,6 +233,23 @@ export async function resolveOrgIds(db: Queryable, owners: readonly string[]): P
 }
 
 /**
+ * 등록된 조직 전부 (WP-069 / CR-058).
+ *
+ * 조직 팀 동기화가 무엇을 훑을지 정하는 목록이다. **보관된 저장소만 남은 조직도
+ * 담는다** — 그 저장소의 과거 PR이 여전히 검색되고 집계되므로 작성자 팀도
+ * 답해야 한다. 조직 하나가 여러 `owner`를 갖는 일은 없어 `DISTINCT`가 짝을
+ * 하나로 만든다.
+ */
+export async function listRegisteredOrgs(
+  db: Queryable,
+): Promise<readonly { readonly orgId: number; readonly owner: string }[]> {
+  const { rows } = await db.query<{ owner: string; org_id: string }>(
+    'SELECT DISTINCT org_id, owner FROM repository ORDER BY org_id',
+  );
+  return rows.map((row) => ({ orgId: Number(row.org_id), owner: row.owner }));
+}
+
+/**
  * `org_id` → `owner` (WP-037 / CR-053, PR #76 리뷰 P1).
  *
  * 집계는 `org_id`로 묶고 사용자는 `org:acme`로 묻는다. **그 숫자를 그대로

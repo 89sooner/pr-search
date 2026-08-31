@@ -14,9 +14,9 @@
  * 검증: `pnpm test:integration jobs/backfill`
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Client } from '@elastic/elasticsearch';
-import { jobRepo, repositoryRepo, type Pool, type RepositoryRow } from '@prs/db';
+import { jobRepo, repositoryRepo, teamMembershipRepo, type Pool, type RepositoryRow } from '@prs/db';
 import { applyMappings, switchAliasesForTests, createEsClient, dropEntityIndices, resolveClientOptions } from '@prs/es';
 import { runBackfillJob, type BackfillDeps } from '../../src/backfill.js';
 import { backfillDeliveryId } from '../../src/backfill-plan.js';
@@ -530,5 +530,107 @@ describe('색인 설정 (DEV-105)', () => {
 
     expect(result.outcome).toBe('completed');
     void jobId;
+  });
+});
+
+describe('작성자 소속 팀 (WP-069 / CR-058) — 백필이 현재 소속으로 다시 쓴다', () => {
+  const ORG = 77;
+  const CORE = 77_001;
+  const PLATFORM = 77_002;
+
+  /** 조직 팀 API까지 답하는 대역. 그것을 답하지 않으면 소속은 언제나 모름이다. */
+  function clientWithTeams(
+    pages: readonly (readonly FakePr[])[],
+    teams: readonly { id: number; slug: string; members: readonly string[] }[],
+    calls: string[] = [],
+  ): BackfillDeps['client'] {
+    const base = fakeClient({ pages }) as unknown as Record<string, unknown>;
+    return {
+      ...base,
+      async listOrgTeams(org: string) {
+        calls.push(`teams:${org}`);
+        return teams.map((team) => ({ id: team.id, slug: team.slug, name: team.slug }));
+      },
+      async listTeamMembers(org: string, slug: string) {
+        calls.push(`members:${org}/${slug}`);
+        const found = teams.find((team) => team.slug === slug);
+        return (found?.members ?? []).map((login, index) => ({ id: index + 1, login }));
+      },
+    } as unknown as BackfillDeps['client'];
+  }
+
+  afterEach(async () => {
+    await pool.query('DELETE FROM team_membership WHERE team_id = ANY($1::bigint[])', [[CORE, PLATFORM]]);
+    await pool.query('DELETE FROM org_team_sync WHERE org_id = $1', [ORG]);
+    await pool.query('DELETE FROM team WHERE team_id = ANY($1::bigint[])', [[CORE, PLATFORM]]);
+  });
+
+  async function docFor(prNumber: number): Promise<Record<string, unknown> | undefined> {
+    await es.indices.refresh({ index: 'prs-pull-requests' });
+    const found = await es.search<Record<string, unknown>>({
+      index: 'prs-pull-requests',
+      query: {
+        bool: { filter: [{ term: { repository_id: REPOSITORY_ID } }, { term: { pr_number: prNumber } }] },
+      },
+    });
+    return found.hits.hits[0]?._source as Record<string, unknown> | undefined;
+  }
+
+  it('**잡 시작에 조직 팀을 한 번 갱신하고 그 소속을 문서에 싣는다**', async () => {
+    const jobId = await enqueue();
+    const claimed = await jobRepo.claimNextJob(pool, 'backfill');
+    const calls: string[] = [];
+    const client = clientWithTeams(
+      [[{ number: 7001, updated_at: '2026-08-19T05:02:11Z' }]],
+      [{ id: CORE, slug: 'bf-core', members: ['kim'] }],
+      calls,
+    );
+
+    const result = await runBackfillJob(deps(client), claimed!, repository);
+    expect(result.outcome).toBe('completed');
+    expect(jobId).toBeGreaterThan(0);
+
+    expect((await docFor(7001))?.['author_team_ids']).toEqual([CORE]);
+    // PR마다가 아니라 **잡마다** 한 번이다.
+    expect(calls.filter((one) => one.startsWith('teams:'))).toHaveLength(1);
+  });
+
+  it('**옛 소속을 다시 박아 넣지 않는다** — 그것이 잡 시작에 갱신하는 이유다 (DEV-485)', async () => {
+    // 낡은 정본: kim이 core에 있는 것으로 되어 있다.
+    await teamMembershipRepo.replaceOrgTeamMembership(
+      pool,
+      ORG,
+      [{ teamId: CORE, slug: 'bf-core', logins: ['kim'] }],
+      new Date(Date.now() - 24 * 60 * 60 * 1000),
+    );
+
+    await enqueue();
+    const claimed = await jobRepo.claimNextJob(pool, 'backfill');
+    // GHE의 현재 사실: kim은 platform으로 옮겼다.
+    const client = clientWithTeams(
+      [[{ number: 7002, updated_at: '2026-08-19T05:02:11Z' }]],
+      [
+        { id: CORE, slug: 'bf-core', members: [] },
+        { id: PLATFORM, slug: 'bf-platform', members: ['kim'] },
+      ],
+    );
+
+    await runBackfillJob(deps(client), claimed!, repository);
+
+    expect((await docFor(7002))?.['author_team_ids']).toEqual([PLATFORM]);
+  });
+
+  it('**팀 API가 답하지 않아도 PR은 색인된다** — 실패 격리 (WP-069)', async () => {
+    await enqueue();
+    const claimed = await jobRepo.claimNextJob(pool, 'backfill');
+    // 팀 API 없는 대역 — `syncOrgTeamsIfStale`이 던지고 잡히며 모름으로 남는다.
+    const client = fakeClient({ pages: [[{ number: 7003, updated_at: '2026-08-19T05:02:11Z' }]] });
+
+    const result = await runBackfillJob(deps(client), claimed!, repository);
+    expect(result.outcome).toBe('completed');
+
+    const doc = await docFor(7003);
+    expect(doc, 'PR이 색인되지 않았다').toBeDefined();
+    expect(Object.keys(doc ?? {})).not.toContain('author_team_ids');
   });
 });
