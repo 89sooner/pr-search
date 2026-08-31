@@ -59,11 +59,26 @@ export async function replaceOrgTeamMembership(
   teams: readonly OrgTeamSnapshot[],
   syncedAt: Date,
 ): Promise<{ readonly teams: number; readonly members: number }> {
-  return withTransaction(pool, async (client) => {
-    for (const team of teams) {
-      await upsertTeam(client, { team_id: team.teamId, slug: team.slug, org_id: orgId });
-    }
+  /*
+   * **레지스트리 등재는 트랜잭션 밖에서 한다** (WP-069 / CR-058).
+   *
+   * `upsertTeam`은 `(org_id, slug)` 유일 인덱스 충돌(23505)을 **한 번 다시 시도해**
+   * 넘긴다 — 그 사이 상대가 커밋해 행이 존재하므로 두 번째 시도가 갱신 경로를
+   * 탄다는 전제다. **트랜잭션 안에서는 그 전제가 깨진다**: PostgreSQL은 오류가
+   * 나면 트랜잭션을 중단시키므로 재시도의 `INSERT`가 25P02로 다시 실패하고,
+   * 회복 가능한 경합이 **동기화 전체의 실패**가 된다.
+   *
+   * 저장소 팀 동기화(`team-scope.ts`)가 같은 표에 다른 잠금 아래에서 쓰므로
+   * 그 경합은 실재한다 — 조직 잠금은 이쪽 경로끼리만 줄을 세운다.
+   *
+   * 밖으로 빼도 잃는 것이 없다. 등재는 멱등이고, 아래 트랜잭션이 실패하면
+   * `org_team_sync`가 갱신되지 않아 **판정은 그대로 모름이다.**
+   */
+  for (const team of teams) {
+    await upsertTeam(pool, { team_id: team.teamId, slug: team.slug, org_id: orgId });
+  }
 
+  return withTransaction(pool, async (client) => {
     /*
      * 이 조직의 **알려진 팀 전부**에서 지운다. 이번에 받은 팀만 지우면 조직에서
      * 사라진 팀의 구성원이 그대로 남아, 없어진 팀의 버킷이 계속 답한다.

@@ -2032,8 +2032,21 @@ describe('작성자 소속 팀의 도달성과 계약 (WP-069 / CR-058)', () => 
 
   it('**동기화가 조회한 팀을 레지스트리에 등재한다** — 하지 않으면 slug 해석이 빈다 (DEV-483)', () => {
     const code = codeOf(MEMBERSHIP_REPO);
-    expectOrder(code, 'upsertTeam(client', 'DELETE FROM team_membership');
+    expectOrder(code, 'upsertTeam(pool', 'DELETE FROM team_membership');
     expectOrder(code, 'INSERT INTO team_membership', 'INSERT INTO org_team_sync');
+  });
+
+  it('**등재를 트랜잭션 밖에서 한다** — 23505 재시도가 중단된 트랜잭션 안에서는 성립하지 않는다', () => {
+    /*
+     * `upsertTeam`은 `(org_id, slug)` 충돌을 **한 번 다시 시도해** 넘긴다 — 그 사이
+     * 상대가 커밋해 행이 존재한다는 전제다. 트랜잭션 안에서는 오류가 트랜잭션을
+     * 중단시키므로 그 재시도가 25P02로 다시 실패하고, **회복 가능한 경합이 동기화
+     * 전체의 실패가 된다.** 저장소 팀 동기화가 같은 표에 다른 잠금 아래에서 쓰므로
+     * 그 경합은 실재한다 — 조직 잠금은 이쪽 경로끼리만 줄을 세운다.
+     */
+    const code = codeOf(MEMBERSHIP_REPO);
+    expectOrder(code, 'upsertTeam(pool', 'withTransaction(pool');
+    expect(code, '잠긴 클라이언트로 등재하면 재시도가 성립하지 않는다').not.toContain('upsertTeam(client');
   });
 
   it('**동기화 시각을 같은 트랜잭션에서 찍는다** — 실패한 조직이 신선해 보이면 모름이 빈 배열이 된다', () => {
