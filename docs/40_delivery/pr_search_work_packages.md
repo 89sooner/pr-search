@@ -1690,7 +1690,8 @@
 - 구현 범위:
   - `GET/PUT /safe-markers` — `API-SEQ-004` 상세 절대로. **기존 시퀀스 경로의 공간 해석·접근 통제를 재사용한다** (`resolveSpace`): 저장소 slug를 직접 조회하는 두 번째 접근 통제 경로를 만들면 한쪽만 넓어지는 날 아무 오류도 나지 않는다
   - 시퀀스 공간당 현재 표식 1개, 이전 표식은 `superseded_at`으로 이력 보존. 대체는 원자적이며 실패한 쓰기가 직전 current를 잃지 않는다
-  - 멱등 재시도가 이력도 감사도 만들지 않는다 (`outcome: "unchanged"`)
+  - 멱등 재시도가 이력도 감사도 만들지 않는다 (`outcome: "unchanged"`). **`note`만 다르면 변경이다** (DEV-465)
+  - `expected_marker_seq` 조건부 갱신 — 요청자가 본 표식이 현재가 아니면 409 (DEV-464)
   - 메모 500자 상한, 에폭 함께 저장. `created_by`·`created_at`은 서버가 만든다
   - `release_manager` **쓰기** 제한, 그 외는 `blockedReason` 비활성. **조회는 제한하지 않는다** (DEV-461)
   - 에폭 변경 시 무효 표시 — 조회가 현재 에폭과 대조해 판정하며 저장된 행을 고치지 않는다
@@ -1708,6 +1709,8 @@
   - [ ] 존재하지 않는 시퀀스 지정 시 400 `SEQUENCE_NOT_FOUND`다 (예외 처리)
   - [ ] 낡은 에폭 쓰기가 409 `SEQUENCE_EPOCH_STALE`이며 저장하지 않는다 (CR-057)
   - [ ] 같은 요청의 재시도가 이력·감사를 늘리지 않는다 (CR-057)
+  - [ ] **메모만 고친 등록은 재시도가 아니라 변경이다** — 이력과 감사가 남는다 (DEV-465)
+  - [ ] **요청자가 본 표식이 더 이상 현재가 아니면 409 `SAFE_MARKER_CONFLICT`다** — 응답 유실 뒤의 재시도가 그 사이의 갱신을 되돌리지 않는다 (DEV-464)
   - [ ] 동시 `PUT`에서도 현재 표식이 둘이 되거나 영구히 0개가 되지 않는다 (CR-057)
 - 검증 방법: `pnpm run test:integration safe-marker`, `pnpm run test:e2e safe-marker`
 - 기록: 원장 WP-041 상태, FR-SEQ-006 매핑, DEV-458~463 종결

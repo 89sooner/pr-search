@@ -70,6 +70,14 @@ export const ERROR_CODES = [
   'BISECT_CONTRADICTION',
   /** 동일 대상 잡 실행 중 (사용자 조치: 기존 잡 확인) — HTTP 409 */
   'JOB_CONFLICT',
+  /**
+   * 요청자가 본 안전 구간 표식이 더 이상 현재가 아님 — HTTP 409 (CR-057).
+   *
+   * 표식을 뒤로 옮기는 것 자체는 정당하므로(AC-1은 단조 증가를 요구하지
+   * 않는다) 값만으로는 사고와 의도를 가를 수 없다. **요청자가 무엇을 보고
+   * 눌렀는가**가 그 둘을 가르는 유일한 재료다.
+   */
+  'SAFE_MARKER_CONFLICT',
   /** 다른 별칭이 재색인 중 (사용자 조치: 실행 중인 재색인 완료 대기) — HTTP 409 */
   'REINDEX_BUSY',
   /** 저장 100건 초과 (사용자 조치: 기존 항목 삭제) — HTTP 409 */
@@ -157,6 +165,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   SEQUENCE_EPOCH_STALE: 409,
   BISECT_CONTRADICTION: 409,
   JOB_CONFLICT: 409,
+  SAFE_MARKER_CONFLICT: 409,
   REINDEX_BUSY: 409,
   SAVED_SEARCH_LIMIT: 409,
   SAVED_SEARCH_NAME_CONFLICT: 409,
