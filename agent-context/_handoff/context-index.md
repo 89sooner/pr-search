@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-08-31T07:11:12+00:00
+generated=2026-08-31T07:20:52+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -18,8 +18,8 @@ legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd c
 ### f527103
 src=agent-context/commands.md
 compact=agent-context/_handoff/compact/f527103.commands.ctx.md
-sha256=7d3229114cdbc3884552f4f64e8b049491c547f42da996091e37d647d24f599b
-bytes=114098 compact_bytes=115920 lines=2319 priority=45
+sha256=bb84044e0ec576f92ce36a43c652072eac4609e214000efbc1eae9f0e62a1b3c
+bytes=115649 compact_bytes=117527 lines=2351 priority=45
 heads=명령어 · 시험 결과 · 실패한 명령과 원인 > 필수 전제 — Node PATH > 검증 배터리 (전 계층, 마지막 실행 결과) > 함정: e2e는 빌드를 하지 않는다 > 실패했던 명령과 원인 > 환경 준비 (새 머신이라면)
 sig=agent-context/commands.md;HOME/.nvm/versions/node/v22.23.2/bin;prs/web;web/lib/neighbors;sequence/neighbors;apps/web;/node_modules/.bin/playwright;e2e/flow-002.spec.ts;prs-postgres/redis/elasticsearch;dist/cli.js;9200/_cat/indices;repos/89sooner/pr-search/pulls/33/comments;pass/fail;dev/null;docs/00_governance/change_control.md;home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py;ops/sequence-integrity;pipeline-worker/integration/sequence/repair;authz/team-scope;packages/authz/src/team-scope;search-api/src/runtime;repos/89sooner/pr-search/pulls/;acme/payments;acme/integrity-wp028
 
@@ -42,8 +42,8 @@ sig=agent-context/files.md;docs/10_requirements/srs_final.md;docs/00_governance/
 ### f7b39dc
 src=agent-context/risks.md
 compact=agent-context/_handoff/compact/f7b39dc.risks.ctx.md
-sha256=460c5ec6b8e41a1548d4b35215777fcbdf962c2eb114cccea9f56ae82838e5e6
-bytes=115303 compact_bytes=112933 lines=1696 priority=45
+sha256=36894f39f412670d8487fa16b105808898a9096e8165c6f3379d6ba17ebcebb8
+bytes=116612 compact_bytes=114202 lines=1708 priority=45
 heads=리스크 · 불확실한 가정 · 함정 > 절차 함정 (이 세션에서 실제로 밟은 것들) > 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다 > lint는 마지막 파일을 쓴 뒤에 다시 돌려라 > 대역(mock)이 실제보다 관대하면 그만큼이 사각지대다 > 임시 컨테이너에서는 슬라이스마다 커밋하라
 sig=agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 
@@ -66,7 +66,7 @@ sig=agent-context/session-summary.md;10/11;CR/DEV;11/11;1/8;2/8;3/8;acme/b;acme/
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=bd6c5ea0436404d80cdd9408fc703d1c369b6c45f3c99ef5b8192f17d8d94c04
+sha256=76e1a90fd18a7d0a978c853971d34a9382e7980f459d12cfe2c5f40ab6c26311
 bytes=102605 compact_bytes=101945 lines=1312 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > 시작하기 전에 — 이 인계의 값을 실측하라 > A. 지금 당장 — WP-042 착수 전 API-SEQ-005 계약 감사 > B. 그 뒤 — WP-044 · WP-069 > C. 배포에서 해야 할 것 > D. GitHub Actions — pr-search만 결제 차단이다
 sig=agent-context/todos.md;1/4;docs/40_delivery/pr_search_implementation_traceability.md;agent-context/count-unresolved-reviews.py;packages/db/src/repositories/safe-marker.ts;apps/web/components/RangesView.tsx;apps/web/components/SafeMarkerCard.tsx;regression/runtime-reachability.test.ts;4/4;89sooner/pr-search;89sooner/design-system;apps/web/lib/;apps/web/components/JobStatusBadge.tsx;apps/search-api/integration/admin/repositories.test.ts;apps/web/a11y/setup.ts;claude/wp-040-operations-console;3/4;apps/web/app/ops/;apps/web/app/ops/audit/page.tsx;up/down/up;apps/search-api/src/ops/jobs.ts;packages/db/src/repositories/job.ts;packages/domain/src/sequence.ts;apps/search-api/src/ops/registration-request-cursor.ts

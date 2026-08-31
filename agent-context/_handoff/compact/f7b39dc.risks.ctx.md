@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=460c5ec6b8e41a1548d4b35215777fcbdf962c2eb114cccea9f56ae82838e5e6 bytes=115303 lines=1696 title=리스크-불확실한-가정-함정
+@kv sha256=36894f39f412670d8487fa16b105808898a9096e8165c6f3379d6ba17ebcebb8 bytes=116612 lines=1708 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -818,9 +818,15 @@
 @h2 정정이 다른 결함을 만들 수 있다
 @p "공간이 바뀌면 비운다"를 loadMarker 안에 넣었더니 등록 직후에도 그것을 부르므로 방금 등록한 결과를 보여 줄 카드가 사라졌다. e2e가 즉시 잡았다.
 @p → 정정한 뒤 관련 계층을 다시 돌려라. 특히 같은 함수를 여러 경로가 부르면, 그 함수를 고치는 것은 모든 경로를 고치는 것이다.
+@h2 내 환경의 사실을 저장소의 사실로 적지 마라
+@p 인계에 "docs/와 agent-context/가 전부 CRLF다"라고 단정했는데, 커밋된 blob은 전부 LF다. 작업 트리가 CRLF인 것은 core.autocrlf가 전역 ~/.gitconfig에 true로 잡혀 있기 때문이며, 그 설정이 없는 클론에서는 작업 트리도 LF다. .gitattributes도 없다.
+@p → 개행은 강제하지 말고 파일에서 감지한다. 그대로 따르면 LF 클론에서 혼재 개행이나 전체 파일 diff가 된다. 편집 헬퍼는 이미 감지 방식이었고 문서만 단정하고 있었다 — 도구가 옳아도 인계가 틀리면 다음 사람이 도구를 고친다.
+@h2 자리표시자를 남긴 명령은 실패하면서 성공처럼 보인다
+@p 인계의 리뷰 폴링 스니펫에 -f query='...reviewThreads...'를 남겼다. 그것은 유효한 GraphQL이 아니라 gh가 실패하는데, 루프가 종료 상태를 보지 않으므로 n이 빈 문자열이 되고 "" != "0"이 참이 되어 리뷰가 도착한 것처럼 빠져나온다.
+@p → 인계에 넣는 명령은 줄이지 말고 그대로 돌아가는 것을 적고, 실패를 이전 값으로 접는 폴백을 함께 둔다. 값이 비면 판정하지 않는다.
 @h2 여전히 유효한 것
-@b 정정한 자리가 다음 리뷰의 첫 자리다 — 이제 다섯 번째다
-@b CRLF 저장소 — 치환은 APPLIED (1)을 확인한다
+@b 정정한 자리가 다음 리뷰의 첫 자리다 — 이제 여섯 번째다
+@b 개행은 파일에서 감지한다 — 치환은 APPLIED (1)을 확인한다
 @b e2e는 빌드를 하지 않는다
 @b git add -A를 쓰지 않는다 — agent-context/가 tracked다
 @b ID는 실측한다
