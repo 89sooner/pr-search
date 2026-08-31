@@ -1,20 +1,21 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
-> **최신 기준 (2026-08-31 · DEV-414 종결, 리뷰 부채 0건)**
-> main — **실측하라.** 이 인계 커밋이 한 번 더 옮긴다
-> SRS **`baseline v2.16`** (CR-056) · 원장 `review v6.7` · 작업 패키지 `v2.10` · API 계약 `v0.20` · 데이터 모델 `v0.14` · 비동기 잡 `v0.7`
-> **REL-005 4/4 DONE.** 릴리스는 승인되지 않았다 — Gate 4·5·6 그대로
+> **최신 기준 (2026-08-31 · WP-041 완료, REL-006 1/4)**
+> main = `5dab7f0` — **실측하라.** 이 인계 커밋이 한 번 더 옮긴다
+> SRS **`baseline v2.18`** (CR-057) · 원장 `review v6.11` · 작업 패키지 `v2.11` · API 계약 `v0.22` · 추적 매트릭스 `v1.2` · 화면 흐름 `v0.5`
+> **REL-006 1/4.** `WP-041` done · `WP-042`·`WP-044`·`WP-069` todo · `WP-043` 착수 금지
+> 릴리스는 승인되지 않았다 — Gate 4·5·6 그대로
 > open DEV **14건** — `DEV-001·006·010·016·026·058·061·304·305·395·399·427·433·447`
-> 다음 빈 ID: **CR-057 · DEV-458 · WP-070 · 마이그레이션 021 · C-072** (측정값. 쓰기 전 다시 잰다)
-> **미해결 리뷰 0건** — pr-search 95개·design-system 11개 전수, 두 `pageInfo` 잘림 없음
-> **design-system CI는 정상이다.** 결제 차단은 pr-search에만 해당한다
+> 다음 빈 ID: **CR-058 · DEV-477 · WP-070 · 마이그레이션 021 · C-072** (측정값. 쓰기 전 다시 잰다)
+> **미해결 리뷰 0건** — pr-search 103개·design-system 12개 **전량 순회**
+> **오픈 결정 0건** — `OD-008`이 `CR-057`로 닫혔고 그것이 마지막이었다
 
 이 세션이 배운 것 넷.
 
-- **정정한 자리가 다음 리뷰의 첫 자리다.** 세 번 반복됐다 — `PR #94`가 `#91`의 정정에, `PR #95`가 `CR-056`의 구현에, design-system `PR #12`가 그 자체의 정정에 새 지적을 받았고 **전부 실결함**이었다. 그중 둘은 이 세션의 판단을 정면으로 뒤집었다.
-- **문장으로 쓴 근거는 코드로 확인하기 전까지 결함 후보다.** `DEV-455`가 그 예다 — 드릴다운을 "갈아 끼운다"고 정하며 그 이유를 적었는데 집계가 세는 것이 이미 교집합이라 **정확히 반대**였다. 같은 세션의 `DEV-443`에서는 반대 방향으로 이겼다: 이전 주석의 "부분으로 남는다"를 코드로 확인해 **그 근거가 틀렸음**을 밝혔다.
-- **개수를 세는 단언은 무엇이 늘었는지 말하지 않는다.** 지원 키를 "17종"으로 세는 자리가 단위 하나와 통합 둘에 흩어져 있었다. `CR-054`가 감사 대상에서, `DEV-438`이 열 목록에서 내린 판단이 세 번째로 값을 냈다.
-- **판정 재료를 좁히는 일은 한 번에 끝나지 않는다.** 모름의 재료가 `enrichment_pending && files.length === 0` → `enrichment_pending` → `enrichment_errors`의 `files` 항목으로 두 번 좁혀졌다. 첫 번째는 기존 시험이, 두 번째는 리뷰가 잡았다.
+- **"검사했다"와 "검사한 값이 쓸 때까지 유효하다"는 다른 주장이다.** `WP-041`은 계약이 정한 검사 순서 여덟을 세웠지만 **그 순서가 한 트랜잭션 안에 있다고 착각했다** — 5·6은 라우트의 읽기였고 7·8만 트랜잭션 안이었다. 재채번이 그 사이에 커밋하면 무효한 표식이 `created`로 저장되며 응답은 `epoch_stale: false`를 말한다(DEV-471). `DEV-464`(멱등이 시간을 건너 성립하지 않는다)와 같은 모양이며, 그때는 표식이, 여기서는 에폭이 시간에 걸쳐 바뀐다.
+- **정정한 자리가 다음 리뷰의 첫 자리다 — 이제 다섯 번째다.** `PR #101`이 자기 계약에서 넷, `#102`가 자기 정정에서 하나, `#103`이 자기 구현에서 셋. 전부 실결함이었다.
+- **상한을 키우는 방식은 언젠가 반드시 그 상한에 닿는다.** 병합 PR이 101개가 되자 `last: 100`이 앞쪽을 잘랐다(DEV-468). 그리고 **창은 둘이었다** — 바깥만 고치고 안쪽(스레드)을 탐지만 한 것이 DEV-469다.
+- **순서 단언은 존재 확인을 먼저 해야 한다.** `indexOf`가 없는 문자열에 `-1`을 주므로, `toBeLessThan`만 걸면 **그 코드를 통째로 지운 변이가 통과한다**(DEV-474). `expectOrder` 헬퍼가 그 자리다.
 
 ## 시작하기 전에 — 이 인계의 값을 실측하라
 
@@ -23,47 +24,30 @@ git -C . rev-parse --short HEAD
 gh pr list --state open --json number --jq 'length'
 grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
 grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
+python3 agent-context/count-unresolved-reviews.py
 ```
 
-미해결 리뷰 계수는 `commands.md`의 「미해결 리뷰를 세는 법」이 정본이다. **`last: 100`과 두 `pageInfo`를 함께 읽는 형태여야 한다** — `DEV-425`가 고친 결함이 인계 문서에서 되살아나 `DEV-446`이 됐다.
+**미해결 리뷰는 스크립트가 정본이다** (DEV-468·469). 한 줄 명령으로 되돌아가지 마라 — 창이 둘이고 둘 다 넘칠 수 있으며, 그 스크립트는 순회한 수를 각 `totalCount`와 대조해 **"전량 순회=아니다"면 종료 코드 1**을 낸다.
 
-## A. 지금 당장 — REL-006 (WP-041 → WP-042 → WP-044)
+## A. 지금 당장 — WP-042 착수 전 `API-SEQ-005` 계약 감사
 
-`REL-005`가 끝났고 리뷰 부채도 0건이므로 다음은 이것이다.
+`WP-041`이 끝났고 `REL-006`의 다음은 `WP-042`(이분 탐색 보조)다.
 
-- `WP-041`(안전 구간 표식)과 `WP-044`(내보내기)가 감사 액션 `safe_marker.set`·`export.create`를 각자 활성으로 옮긴다. `WP-040`이 미리 활성화하지 않았다
-- `WP-043`은 착수하지 않는다 — `ACC-06`이 NOT RUN이라 활성화 조건이 성립하지 않는다
-- **착수 전 계약 감사가 이 저장소의 관행이다.** `CR-055`가 열다섯 번째였고 `CR-056`이 열여섯 번째다 — 두 번 모두 승인된 AC가 남긴 빈칸을 찾았다
+**`API-SEQ-005`도 계약 4장에 상세 절이 없다.** `CR-057`이 `API-SEQ-004`를 채우면서 그 사실을 확인했고 **의도적으로 함께 채우지 않았다** — 그것은 이 WP의 감사 대상이며, "SEQ API 전부 정리"로 만들면 검증하지 않을 계약을 함께 쓰게 된다. 착수 전 감사가 이 저장소의 관행이며 `CR-057`이 열일곱 번째였다.
 
-## B. 새로 열린 WP — WP-069 작성자 소속 팀 채우기
+**`CR-057`이 세운 것을 그대로 쓸 자리가 많다.** 이분 탐색 세션도 시퀀스 공간에 붙고 에폭을 저장하므로, `SEQUENCE_EPOCH_STALE`·`FOR SHARE` 재검증·`expected_*` 조건부 갱신이 같은 모양으로 필요할 수 있다. **다만 그대로 복사하지 말고 `FR-SEQ-007`이 요구하는 것을 먼저 읽어라** — 탐색 상태는 사용자별이라 겨루는 것이 다르다.
 
-`CR-056`이 신설했다(REL-006, 선행 `WP-068`·`WP-037`). `author_team_ids`가 비어 있어 `group_by=team`과 `author_team:`이 언제나 빈 결과를 낸다 — **누락이 아니라 미구현**이며 화면이 그 사실을 그대로 말한다.
+## B. 그 뒤 — WP-044 · WP-069
 
-## B-2. design-system `0.2.1`이 게시됐다 — PR Search 소비는 아직이다
-
-`PR #12`의 정정 여섯이 version PR `#13`으로 묶여 병합됐고, 사용자 승인으로 `workflow_dispatch`를 돌려 **`0.2.1`이 npm에 게시됐다**(tokens·css·react). 태그 셋은 모두 릴리스 HEAD `702cf0b`을 가리킨다.
-
-**이 세션이 고친 `check-release-tags.mjs`가 실제 릴리스 경로에서 두 번 통과했다** — `verify local release tags`와 `verify pushed release tags`다. 태그가 릴리스 HEAD를 가리켜야 한다는 불변식이 정당한 릴리스를 막지 않는다는 것이 그 실행으로 확인됐다.
-
-**PR Search는 `0.2.0`에 고정되어 있고 지금 올리지 않는다.**
-
-| 정정 | PR Search 사용처 | 조건에 닿는가 |
-| --- | --- | --- |
-| `IconButton loading`의 글리프 둘 | `AppTopBar.tsx:153`, `QueryTokenBar.tsx:95` | **아니다** — 둘 다 `loading`을 넘기지 않는다 |
-| `Field required` → `Select.Root` | `SaveSearchDialog.tsx:271` | **아니다** — `Field` 밖에 있고 `<label>`을 직접 쓴다 |
-
-이 저장소의 관행은 **필요한 WP에서 함께 올리는 것**이다 — `0.2.0` 소비도 `WP-038`이 dataviz 토큰을 실제로 요구하면서 그 커밋에 들어갔다.
-
-올릴 때는 **`apps/web/package.json`의 세 줄과 `pnpm-lock.yaml`을 함께 커밋한다.** CI 두 잡이 `pnpm install --frozen-lockfile`로 도므로 잠금 파일이 낡으면 설치 단계에서 멈춘다 — `d3031b6`(0.2.0 소비)도 둘을 함께 바꿨다.
-
-```bash
-pnpm --filter @prs/web add @conductor-by-89soone/{tokens,css,react}@0.2.1
-git add apps/web/package.json pnpm-lock.yaml
-```
+- `WP-044` 검색 결과 내보내기 — 감사 액션 `export.create`를 활성으로 옮긴다. **`safe_marker.set`이 그 전환의 선례다**(SRS v2.18): 상태 칸은 "계약이 승인했으나 기능이 아직 없다"를 뜻하므로 기능이 서는 순간 이전 값이 거짓이 된다.
+- `WP-069` 작성자 소속 팀 채우기 — `author_team_ids`가 비어 있어 `group_by=team`과 `author_team:`이 언제나 빈 결과를 낸다.
+- **`WP-043`은 착수하지 않는다** — `ACC-06`이 NOT RUN이라 활성화 조건이 성립하지 않는다.
 
 ## C. 배포에서 해야 할 것
 
-- **`clearUnknownSizes` 소급** (신규, CR-056 / DEV-456) — 부트스트랩이 함께 돌린다. `pnpm es:apply-mappings`가 그 경로다
+**`WP-041`이 더한 항목은 없다** — 신규 마이그레이션이 없다.
+
+- `clearUnknownSizes` 소급 (CR-056 / DEV-456) — `pnpm es:apply-mappings`
 - 마이그레이션 020 (CR-055), 018·019 (WP-039), 017 (WP-037) — `pnpm run db:migrate`
 - `ADMIN_DATABASE_URL` (WP-039) — 없으면 JOB-AUD-001만 서지 않는다
 - `SEARCH_CURSOR_HMAC_KEY`, `pnpm es:reindex`
@@ -73,14 +57,14 @@ git add apps/web/package.json pnpm-lock.yaml
 
 `verify`·`integration` 모두 `steps=0`이고 주석이 `The job was not started because recent account payments have failed`를 말한다. **잡이 뜨지도 않은 것이지 시험이 실패한 것이 아니다.**
 
-- 재시도를 누르지 않는다 — 이 세션이 다섯 PR에서 같은 상태를 확인했다
-- **design-system은 다르다.** `PR #12`가 `verify`(node 20·22) 각 27단계와 visual regression 10단계를 실제로 통과했다. 그 저장소에서는 CI가 판정 근거다
+- 재시도를 누르지 않는다 — 이 세션이 세 PR에서 같은 상태를 확인했다
+- design-system은 다르다. 그 저장소에서는 CI가 판정 근거다
 - pr-search에서는 로컬 배터리가 유일한 판정이며 그 사실을 원장·PR·인계에 적는다
 
 ## E. 미뤄 둔 항목
 
-- **`DEV-447` open** — 조정 스캔의 30초 강제 종료가 증명되지 않았다. `DEV-443`·`448`이 넣은 것은 **협조적 중단**이고, 이미 시작한 PR 하나의 보강은 끝까지 간다. 상한을 실제로 걸려면 `GitHubTransport`·`GitHubClient`가 외부 취소 신호를 받아야 하고 그것은 모든 호출부를 다시 세는 작업이다. **`Promise.race`로 감싸 "강제 종료했다"고 보고하지 마라** — 실제 작업은 계속 도는데 기록만 거짓이 된다
-- `DEV-433` open — `API-ADM-001`·`API-ADM-003`의 오프셋. 두 API의 소비자를 전부 다시 세는 별도 작업
+- `DEV-447` open — 조정 스캔의 30초 강제 종료가 증명되지 않았다. `Promise.race`로 감싸 "강제 종료했다"고 보고하지 마라
+- `DEV-433` open — `API-ADM-001`·`API-ADM-003`의 오프셋
 - `DEV-427` open — CI 통합의 link-rebuild 되먹임. CI가 돌지 않아 확인할 길이 없다
 - `DEV-395`·`DEV-399`·`DEV-058`·`DEV-061` — 변화 없음
 
@@ -90,13 +74,13 @@ Gate 4 보안(일부 가능) · Gate 5 성능(불가 — 1,000만 문서 합성 
 
 ## G. 이 세션이 깔아 둔 자리 — 다시 만들지 말 것
 
-- `packages/query/src/serialize.ts`의 `intersectNumericRange` — 분포 드릴다운이 기준 범위와 **교차**한다. 갈아 끼우면 자기가 센 구간보다 넓어진다 (DEV-455)
-- `apps/pipeline-worker/src/documents.ts`의 `filesUnknown` — 모름의 판정 재료는 `enrichment_errors`의 `files` 항목 하나다. `enrichment_pending`으로 되돌리지 마라 (DEV-457)
-- `packages/es/src/upsert.ts`의 `UpsertRequest.remove` — 부재로 판정하는 필드는 부재를 실제로 만들 수 있어야 한다. 조건부 대입은 실린 키만 본다 (DEV-454)
-- `apps/pipeline-worker/src/reconcile.ts`의 `shouldStop` — 확인 지점 셋(페이지 앞·되돌리기 앞·후속 단계 앞). 루프 안에만 두면 마지막 단위 뒤를 놓친다 (DEV-448)
-- `apps/search-api/src/ops/jobs.ts`의 `CreateJobOutcome.conflict.jobId: number` — `null`을 되살리지 마라. 충돌이라는 판정 자체가 활성 잡의 존재를 뜻한다 (DEV-444)
-- design-system `packages/react/src/form.tsx`의 `SelectRoot` — 반환 타입은 `ReactElement`다. `ReactNode`는 React 18 타입에서 JSX 컴포넌트로 부적격이다
-- design-system `scripts/check-release-tags.mjs` — 태그는 릴리스 HEAD를 가리켜야 한다. "산출물에 영향을 주는 입력" 목록으로 되돌리지 마라 — 완전해야만 옳은 목록은 낡는다
+- `packages/db/src/repositories/safe-marker.ts`의 **`FOR SHARE` 에폭 재검증** — 대체 트랜잭션 안에서 다시 읽는다. 라우트의 검사만 믿으면 재채번이 그 사이에 커밋한다 (DEV-471)
+- 같은 파일의 **검사 순서 7 → 8** — 완전 일치가 `expected` 대조보다 **먼저**다. 뒤집으면 정직한 재시도가 자기가 만든 상태로 409를 받는다 (DEV-464)
+- 같은 파일의 **`safeMarkerLockKey`** — 채번 락(`sequenceLockKey`)을 함께 쓰지 마라. 사람이 누르는 요청이 파이프라인을 밀어낸다
+- `apps/web/components/RangesView.tsx`의 **공간 변경 effect** — 비우는 것은 공간이 바뀔 때다. `loadMarker` 안으로 옮기면 **등록 결과를 보여 줄 카드가 사라진다** (DEV-472)
+- `apps/web/components/SafeMarkerCard.tsx`의 **제출 앞 `setResult(null)`** — 표식 변화를 보는 effect로 되돌리지 마라 (DEV-473)
+- `regression/runtime-reachability.test.ts`의 **`expectOrder`** — 순서 단언은 존재 확인을 먼저 한다 (DEV-474)
+- `agent-context/count-unresolved-reviews.py` — **창이 둘이다.** 한 줄 명령으로 되돌아가지 마라 (DEV-468·469)
 
 ---
 

@@ -2207,3 +2207,145 @@ for line in rows.split('\n'):
 ```
 
 `DEV-399`가 남긴 결함 유형이며, 이 세션이 DEV 행 열셋을 넣으면서 매번 확인했다.
+
+---
+
+# 2026-08-31 (2차) — CR-057 · WP-041
+
+## 검증 배터리 (마지막 실행 결과 — main `5dab7f0`)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                     # 통과
+pnpm lint                          # 통과 — 마지막 파일까지 쓴 뒤 다시 돌릴 것
+pnpm run lint:deps                 # 패키지 13개, 위반 0건
+pnpm run test                      # 단위 1903 통과 (1 skipped)   [1883 → +20]
+pnpm run test:integration          # 1432 통과 (89 파일)          [1399 → +33]
+pnpm run test:regression           # 299 통과                     [288 → +11]
+pnpm run test:a11y                 # 358 통과 (axe 0)             [346 → +12]
+pnpm run test:contrast             # 232/232
+pnpm --filter @prs/web run build   # e2e 전에 필수
+pnpm run test:e2e                  # 155 통과                     [147 → +8]
+pnpm build                         # 통과
+```
+
+targeted: `pnpm run test:integration safe-marker` 33 · `pnpm run test:e2e safe-marker` 8.
+
+## 통합은 한 번에 하나만 돌린다
+
+두 실행이 겹치면 공유 PostgreSQL·Elasticsearch가 오염되어 **103건·30건이 실패하는 로그**가 나온다. 그것은 코드의 사실이 아니다.
+
+```bash
+ps aux | grep "[v]itest" | wc -l    # 0이어야 한다
+pkill -9 -f vitest                  # 겹쳤으면 전부 정리하고 다시
+```
+
+**실패를 조사할 때는 전문 로그를 파일로 남겨라.** 요약만 남기면 어느 시험이 실패했는지 확인할 수 없다 — 이 세션이 실제로 그렇게 됐고 통합 2건의 원인을 특정하지 못했다.
+
+```bash
+pnpm run test:integration > /tmp/int.log 2>&1; echo "exit=$?"
+grep -A20 "Failed Tests" /tmp/int.log | head -40
+```
+
+## 변이 시험 헬퍼 (정확히 1건일 때만 치환, CRLF 보존)
+
+```bash
+# mutate.sh <파일> <옛 문자열> <새 문자열> <라벨>
+#   → 치환 → 대상 스위트 실행 → 원복 → 결과 한 줄
+```
+
+**살아남으면 등가인지 먼저 물어라.** 이 세션에서 `FOR SHARE`만 빼는 변이가 통합 32건을 전부 통과했는데 **등가가 아니라 실제 구멍**이었다 — 잠그지 않은 읽기는 읽은 직후 커밋한 갱신을 놓친다. 그 창은 타이밍 제어가 필요해 재현이 어려우므로 **전제(통합)와 사용(회귀)을 나눠** 걸었다.
+
+## 문서 편집 — 개행은 **강제하지 말고 감지한다**
+
+**저장소에 커밋된 파일은 전부 LF다.** `.gitattributes`가 없고, 작업 트리가 CRLF로 보이는 것은 **`core.autocrlf`가 전역(`~/.gitconfig`)에 `true`로 잡혀 있기 때문**이다. 그 설정이 없거나 `false`인 클론에서는 작업 트리도 LF다.
+
+```bash
+git config core.autocrlf                              # 이 환경의 값
+git show HEAD:docs/10_requirements/srs_final.md | \
+  python3 -c "import sys;b=sys.stdin.buffer.read();print('blob CRLF' if b'\\r\\n' in b else 'blob LF')"
+```
+
+그러므로 **"CRLF다"를 전제로 편집하지 마라.** 파일을 `newline=''`로 읽어 `'\r\n' in raw`를 보고, 삽입 블록의 개행을 **그 파일에 맞춘다**. 강제로 `\r\n`을 넣으면 LF 클론에서 혼재 개행이나 전체 파일 diff가 된다.
+
+```python
+raw = io.open(path, 'r', encoding='utf-8', newline='').read()
+nl = '\r\n' if '\r\n' in raw else '\n'
+block = block.replace('\n', nl)      # 파일을 따라간다
+```
+
+**`APPLIED (1)`을 확인하라** — `SKIPPED (0)`이면 앵커가 안 맞은 것이고, `SKIPPED (N)`이면 여러 곳에 있다.
+
+앵커가 여러 번 나오는 경우가 실제로 있다 — 원장의 DEV 표 행과 6.x장 요약 표가 같은 ID로 시작할 수 있으므로 **줄 번호로 겨냥**한다.
+
+```bash
+LINE=$(grep -n '^| DEV-467 | 2026' docs/40_delivery/pr_search_implementation_traceability.md | head -1 | cut -d: -f1)
+sed -n "${LINE}p" <파일> > old.txt
+```
+
+## 표 행을 넣을 때 칸 수를 먼저 센다
+
+```bash
+awk -F'|' '/^\| DEV-47[1-4] \| 2026/ {print $2, NF}' docs/40_delivery/pr_search_implementation_traceability.md
+# DEV 표는 9 (7칸 + 양끝), CR 표는 10, WP 진행 표는 10, 매트릭스는 6
+```
+
+## 미해결 리뷰 — 스크립트가 정본이다 (DEV-468·469)
+
+```bash
+python3 agent-context/count-unresolved-reviews.py              # 두 저장소
+python3 agent-context/count-unresolved-reviews.py pr-search    # 하나만
+```
+
+한 줄 명령으로 되돌아가지 마라. **창이 둘이고 둘 다 넘칠 수 있다.**
+
+## 리뷰 답변·해소
+
+```bash
+for f in replies/*.md; do
+  tid=$(basename "$f" .md)
+  gh api graphql -f query='mutation($t: ID!, $b: String!) {
+    addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $t, body: $b}) { comment { id } } }' \
+    -f t="$tid" -f b="$(cat "$f")" > /dev/null \
+  && gh api graphql -f query='mutation($t: ID!) {
+    resolveReviewThread(input: {threadId: $t}) { thread { isResolved } } }' \
+    -f t="$tid" --jq '.data.resolveReviewThread.thread.isResolved'
+done
+```
+
+## PR 본문 수정 — `gh pr edit`이 실패할 수 있다
+
+Projects classic 사용 중단 경고로 `gh pr edit`이 조용히 실패한다. REST로 직접 건다.
+
+```bash
+gh api -X PATCH repos/89sooner/pr-search/pulls/103 -F body=@body.md --jq '.number'
+```
+
+## 리뷰 대기
+
+리뷰는 푸시 후 **약 12분**에 도착한다. 백그라운드 폴링이 중단될 수 있으므로 Monitor로 거는 편이 낫다.
+
+```bash
+PR=103
+prev=0
+end=$(( $(date +%s) + 1500 ))
+while [ "$(date +%s)" -lt "$end" ]; do
+  n=$(gh api graphql -F pr="$PR" -f query='
+    query($pr: Int!) {
+      repository(owner: "89sooner", name: "pr-search") {
+        pullRequest(number: $pr) {
+          reviewThreads(first: 100) { nodes { isResolved } }
+        }
+      }
+    }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[]|select(.isResolved|not)]|length' 2>/dev/null) || n="$prev"
+  [ -z "$n" ] && n="$prev"
+  if [ "$n" != "$prev" ]; then
+    echo "미해결 $n건"
+    prev="$n"
+    [ "$n" != "0" ] && break
+  fi
+  sleep 60
+done
+```
+
+**질의를 자리표시자로 줄이지 마라.** `gh api graphql`은 `query` 값을 그대로 API에 보내므로 축약형은 실패하고, **그 실패를 걸러 내지 않으면 `n`이 빈 문자열이 되어 `"" != "0"`이 참이 되고 리뷰가 도착한 것처럼 루프를 빠져나온다.** 위 두 줄(`|| n="$prev"`와 빈 값 폴백)이 그 자리다.
