@@ -37,7 +37,7 @@ let bus: RedisStreamsEventBus;
 let es: Client;
 
 beforeAll(async () => {
-  pool = await migratedPool();
+  pool = await migratedPool({ fixtureMonths: ['2026-08'] });
   redis = createTestRedis();
   bus = new RedisStreamsEventBus(redis);
   es = createEsClient(resolveClientOptions());

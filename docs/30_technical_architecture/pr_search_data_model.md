@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.15 | 갱신일: 2026-08-31
+> 상태: review | 버전: v0.16 | 갱신일: 2026-09-01
 
 ## 1. 목적
 
@@ -495,6 +495,24 @@ CREATE TABLE permission_cache (            -- Redis 미스 시 백업 (ADR-008)
 -- 없으면 전량 스캔이고, org_team 모드 사용자는 저장소를 나열하지 않아 아예 찾히지 않는다.
 CREATE INDEX permission_cache_repos_idx ON permission_cache USING GIN (repository_ids);
 CREATE INDEX permission_cache_orgs_idx  ON permission_cache USING GIN (org_ids);
+
+-- 마이그레이션 022 (CR-060, DEV-517) — 005 이후 만들어진 표의 애플리케이션 롤 권한.
+--
+-- **005는 표 이름을 열거해 권한을 준다.** 그 뒤 만들어진 표는 자기 마이그레이션이
+-- `GRANT`를 함께 적지 않으면 아무 권한도 갖지 못했고, 실제로 다섯이 `SELECT`조차
+-- 없었다. **통합 시험이 소유자 롤로 돌아** 그 사각지대를 한 번도 묻지 않았으며
+-- (`019`가 `prs_admin`에서 겪은 것과 같다), `prs_app`으로 실제 접속하는 배포가
+-- 생기자 재색인이 `permission denied`로 죽었다.
+--
+-- **`ALTER DEFAULT PRIVILEGES`는 쓰지 않는다** — 앞으로 만들어지는 모든 표에
+-- `UPDATE`·`DELETE`가 자동으로 붙어, 감사 성격의 표가 하나 더 생기면
+-- `FR-AUTH-004` AC-3의 방어선이 조용히 사라진다. 자동 부여는 그 예외를 표현할 수 없다.
+-- 대신 권한 시험이 **모든 표를 훑고** 제외는 사유와 함께 선언한다.
+GRANT SELECT, INSERT, UPDATE, DELETE ON
+  pull_request_snapshot, commit_snapshot,
+  repository_registration_request,
+  team_membership, org_team_sync
+TO prs_app;
 ```
 
 **모든 검색 문서는 `doc_id`를 갖는다 (CR-016, DEV-059).** `_id`와 같은 값이다. Elasticsearch 8이 `_id` 정렬을 금지하므로 FR-SRCH-007 AC-4의 "문서 ID를 마지막 정렬 키로"를 성립시키려면 그 값이 정렬 가능한 필드로 문서 안에 있어야 한다. `@prs/es`의 `upsert`가 자동으로 채우므로 투영이 잊을 수 없다.

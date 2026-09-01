@@ -15,27 +15,38 @@ describe('월별 파티션 (데이터 모델 3.1·3.4)', () => {
   });
 
   /*
-   * **시험 픽스처의 시간 의존을 건다** (DEV-500).
+   * **`fixtureMonths`가 실제로 그 달의 파티션을 만든다** (DEV-509).
    *
-   * 통합 시험 여럿이 `audit_record`·`raw_event`에 **고정된 과거 날짜**로 쓴다 —
-   * 커서 순회와 범위 필터를 검증하려면 결정적인 시각이 필요하기 때문이다.
-   * 헬퍼가 현재 월부터만 파티션을 만들면 **달이 바뀌는 순간** 그 삽입이 `23514`로
-   * 죽는데, 개발자 DB에는 지난달 파티션이 남아 있어 **로컬에서 재현되지 않는다.**
-   * 2026-09-01에 CI가 실제로 그렇게 터졌다.
+   * 고정 과거 날짜를 쓰는 통합 시험은 그 달을 `migratedPool({ fixtureMonths })`로
+   * 직접 넘긴다. 헬퍼가 과거를 향해 **롤링 창**을 열던 이전 방식은 픽스처를
+   * 오늘 통과시키고 몇 달 뒤에 깨지게 만들었고(`DEV-500` → `DEV-509`), 그 실패는
+   * 개발자 DB에 지난달 파티션이 남아 있어 **CI에서만** 드러났다.
    *
-   * 이 시험이 없으면 헬퍼의 파티션 창을 좁혀도 **아무것도 죽지 않고**, 그 사실은
-   * 다음 달 1일에야 드러난다.
+   * **먼 과거 달로 건다.** 오늘이 언제든 결과가 같아야 이 시험 자체가 시간에
+   * 의존하지 않는다 — 직전 몇 달을 확인하는 형태는 롤링 창 아래에서 **언제나
+   * 초록이라** 그 회귀를 잡지 못했다(리뷰가 지적한 자리다).
    */
-  it('헬퍼가 지난 3개월 파티션까지 만든다 — 시험이 고정 과거 날짜를 쓴다 (DEV-500)', async () => {
-    const now = new Date();
-    for (const monthsAgo of [1, 2, 3]) {
-      const past = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsAgo, 1));
-      for (const table of PARTITIONED_TABLES) {
-        const name = partitionName(table, past);
-        const result = await pool.query<{ oid: string | null }>('SELECT to_regclass($1) AS oid', [name]);
-        expect(result.rows[0]?.oid, `${monthsAgo}개월 전 파티션 ${name}이 없다`).not.toBeNull();
+  it('fixtureMonths가 먼 과거 달의 파티션을 만든다 (DEV-509)', async () => {
+    const month = '2019-05';
+    const names = PARTITIONED_TABLES.map((table) => partitionName(table, new Date(`${month}-01T00:00:00.000Z`)));
+    await pool.query(`DROP TABLE IF EXISTS ${names.join(', ')}`);
+    let scoped: Pool | undefined;
+    try {
+      scoped = await migratedPool({ fixtureMonths: [month] });
+      for (const name of names) {
+        const found = await pool.query<{ oid: string | null }>('SELECT to_regclass($1) AS oid', [name]);
+        expect(found.rows[0]?.oid, `${name}이 없다`).not.toBeNull();
       }
+    } finally {
+      await scoped?.end();
+      await pool.query(`DROP TABLE IF EXISTS ${names.join(', ')}`);
     }
+  });
+
+  it('fixtureMonths가 YYYY-MM이 아니면 거절한다', async () => {
+    // 형식을 조용히 흘려보내면 파티션이 만들어지지 않은 채 시험이 23514로 죽고,
+    // 그 오류는 원인에서 멀다.
+    await expect(migratedPool({ fixtureMonths: ['2019/05'] })).rejects.toThrow(/YYYY-MM/);
   });
 
   it('raw_event와 audit_record가 파티션 테이블이다', async () => {

@@ -49,4 +49,52 @@ describe('감사 기록 권한 (WP-002 DoD 6)', () => {
     expect(await privilege('prs_app', 'job', 'UPDATE')).toBe(true);
     expect(await privilege('prs_app', 'dead_letter', 'DELETE')).toBe(true);
   });
+
+  /*
+   * **표를 열거하지 않고 전수로 묻는다** (CR-060, DEV-517).
+   *
+   * 마이그레이션 005는 `prs_app`에게 **표 이름을 열거해** 권한을 준다. 그 뒤에
+   * 만들어진 표는 자기 마이그레이션이 `GRANT`를 함께 적지 않으면 아무 권한도 갖지
+   * 못하는데, **그것을 묻는 시험이 없었다** — 이 파일도 특정 표 넷만 확인했다.
+   * 그 사이 다섯 표가 권한 없이 서 있었고, `prs_app`으로 실제 접속하는 배포가
+   * 처음 생기자(`WP-070` Profile A) 재색인이 `permission denied`로 죽었다.
+   *
+   * **통합 시험이 소유자 롤로 도는 것이 사각지대의 원인이다** — 마이그레이션을
+   * 실행한 연결이 곧 소유자라 권한 제약을 만나지 않는다. `019`가 `prs_admin`에서
+   * 겪은 것과 같은 모양이며, 그래서 카탈로그를 직접 읽어 묻는다.
+   */
+  const NO_APP_GRANT: ReadonlyMap<string, string> = new Map([
+    // 스키마 이력은 마이그레이션 실행기(소유자)만 읽고 쓴다. 애플리케이션이
+    // 자기 스키마 이력을 고칠 이유가 없다.
+    ['schema_migration', '마이그레이션 실행기 전용'],
+  ]);
+
+  it('**모든 표가 애플리케이션 롤에 SELECT를 준다** — 제외는 사유와 함께 선언한다 (DEV-517)', async () => {
+    const result = await pool.query<{ relname: string }>(`
+      SELECT c.relname
+        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relispartition = false
+       ORDER BY 1`);
+    const tables = result.rows.map((row) => row.relname);
+    expect(tables.length, '표를 하나도 찾지 못했다').toBeGreaterThan(10);
+
+    const missing: string[] = [];
+    for (const table of tables) {
+      if (NO_APP_GRANT.has(table)) continue;
+      if (!(await privilege('prs_app', table, 'SELECT'))) missing.push(table);
+    }
+    expect(
+      missing,
+      `애플리케이션 롤이 읽지 못하는 표가 있다 — 그 표를 만든 마이그레이션이 GRANT를 빠뜨렸거나, ` +
+        `쓰지 않는 표라면 NO_APP_GRANT에 사유와 함께 올려라: ${missing.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('제외 목록이 실재하지 않는 표를 담지 않는다', async () => {
+    // 표가 사라졌는데 예외만 남으면 그 예외가 다음 표를 조용히 덮는다.
+    for (const table of NO_APP_GRANT.keys()) {
+      const found = await pool.query<{ oid: string | null }>('SELECT to_regclass($1) AS oid', [table]);
+      expect(found.rows[0]?.oid, `제외 목록의 '${table}'이 실재하지 않는다`).not.toBeNull();
+    }
+  });
 });
