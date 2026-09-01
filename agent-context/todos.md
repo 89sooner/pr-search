@@ -1,5 +1,198 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
+최신 기준 (2026-09-01 · **CR-059·WP-070·CR-060·CR-061 완료 — 첫 사내 반입 가능선이 섰다**)
+
+`main` = `4aeb64f` — 실측하라. 이 인계 커밋이 한 번 더 옮긴다.
+
+SRS baseline **v2.20** · 원장 review **v6.23** · 작업 패키지 v2.17 · 인프라 v0.10 · 데이터 모델 v0.17 · 보안 v1.2 · 로드맵 v0.11 · 릴리스 검증 v0.6 · 추적 매트릭스 v1.3 · **ADR v0.6 (ADR-021 신설)**
+
+- **`WP-070` done — 배포 마일스톤이다.** `REL`이 아니므로 `REL-006`의 진행률(2/4)은 그대로다
+- `REL-006`: `WP-041`·`WP-069` done · `WP-042`·`WP-044` todo · `WP-043` 착수 금지(`ACC-06` NOT RUN)
+- 릴리스는 승인되지 않았다 — Gate 4·5·6 그대로
+- open DEV 16건 — `DEV-006`·`010`·`016`·`026`·`058`·`061`·`304`·`305`·`395`·`399`·`427`·`433`·`447`·`492`·`494`·`502`
+- 미해결 리뷰 **0건** — pr-search 113개·design-system 12개 전량 순회
+- **다음 빈 ID: `CR-062` · `DEV-522` · `WP-071` · 마이그레이션 `024` · `C-072`** (측정값. 쓰기 전 다시 잰다)
+- **CI가 실제로 돈다.** 인계에 적혀 있던 `BILLING_BLOCKED`는 해소됐다 — `verify`·`integration` 둘 다 판정 근거다
+- 오픈 결정 0건
+
+**이 세션이 배운 것 다섯.**
+
+- **실제로 세워 보지 않으면 배포 문서는 검증되지 않는다.** `WP-070`이 단일 호스트에서 실제 기동을 시도하자 넷이 드러났다 — 접속 주체 미정의(`DEV-503`), Next.js standalone 기동 실패, `pg_restore --clean`의 파티션 부분 실패, alpine의 `localhost` IPv6 우선 해석. **문서를 읽거나 시험을 돌리는 것으로는 하나도 나오지 않았을 것들이다.**
+- **정정이 시한폭탄을 옮길 수 있다.** `DEV-500`은 롤링 과거 3개월 창으로 고쳤는데 2026-12-01에 같은 실패를 되살리고 **그때도 회귀는 초록**이었다(`DEV-509`). 롤링 창을 없애고 픽스처가 자기 달을 선언하게 하자 **실패가 즉시** 오게 됐다.
+- **전수 검사를 만들 때 "무엇의 전수인가"를 먼저 물어라.** `022`가 표의 권한 공백을 메우며 **시퀀스를 세지 않아** 한 겹 아래에 같은 결함이 남았다(`DEV-517` → `DEV-518`).
+- **실패를 출력만 하고 종료 코드 0으로 끝내지 마라.** 복구가 색인 넷을 지우고 **하나만** 다시 만들면서 성공으로 보고했다(`DEV-519`). 그 증상("재색인 예약 2/4")을 이미 보고 있었으면서 **왜 실패했는지 쫓지 않은 것**이 원인이다.
+- **`set -e`는 진단 앞에서 스크립트를 죽인다.** 스모크 변이가 exit 1을 내면서 **어느 검사가 실패했는지 말하지 않았다** — 실패를 말하지 않는 실패는 성공으로 접는 것과 같다.
+
+## 이번 세션이 세운 것 — 첫 사내 반입 가능선
+
+```text
+외부망: main의 커밋 → 이미지 6종 → 오프라인 번들 2.6GB
+  → checksum 검증 → 이미지 적재(pull 없음) → migration → 접속 주체
+  → ES mapping → compose up(18 서비스) → health → 조회 왕복 스모크
+  → 계보 확인(vendor/upstream fetch → manifest의 커밋과 일치)
+```
+
+**전부 실제 실행으로 검증했다.** `deploy/single-host/RUNBOOK.md`가 정본이며 번들 안에 함께 들어간다.
+
+## A. 지금 당장 — 실제 사내 반입
+
+**외부 저장소에서 더 만들 것이 없다.** 다음 단계는 **사내 환경에서만** 실행할 수 있다.
+
+1. `./deploy/single-host/build-bundle.sh <version>` 으로 번들을 만든다 (작업 트리가 깨끗해야 한다 — 미추적 파일도 검사한다)
+2. 사내 호스트로 옮긴다
+3. `RUNBOOK.md`의 반입 절차를 따른다
+4. **사내에서만 검증 가능한 것**을 그때 실행한다: 실제 GHE App·웹훅·저장소 권한, 사내 OIDC와 그룹 클레임, 사내 CA·프록시·DNS, 실서버 성능, 실제 롤백 소요
+
+**`WP-042`·`WP-044`는 그 뒤다.** 둘의 요구사항은 `Could` 등급이고, 지금 우선순위는 **지금까지 만든 것을 사내에서 실제로 쓰는 것**이다 (로드맵 4.1장).
+
+## B. 사내 반입을 막는 것 — 정확히 무엇인가
+
+**기술적 blocker는 없다.** 남은 것은 조직의 결정과 사내 환경 접근이다.
+
+| 항목 | 상태 |
+| --- | --- |
+| 번들 생성·반입·기동·복구 | **VERIFIED (external)** |
+| 사내 GHE App 등록·웹훅 | 사내 조치 필요 |
+| 사내 OIDC 클라이언트 등록 | 사내 조치 필요 |
+| 사내 CA (있다면) | `NODE_EXTRA_CA_CERTS`로 **코드 변경 없이** 성립한다 |
+| **사내 프록시 (있다면)** | **`DEV-494` open — Node 22의 `fetch`가 프록시 환경 변수를 보지 않는다.** `git`은 받는다. 사내망이 프록시를 강제하면 `GitHubTransport`의 `fetchImpl` 주입 지점으로 최소 수정이 필요하다 |
+| 호스트 사양 | RAM 8GB 이상 · 디스크 이미지 2GB + 데이터 |
+| **`RPO 0`을 지키려면** | 연속 WAL 아카이빙을 **독립 저장소로** 보내는 구성이 필요하다 (`DEV-504`) — 없으면 실효 RPO는 마지막 백업 이후 경과 시간이다 |
+
+## C. 배포에서 해야 할 것
+
+- 마이그레이션 **023**(CR-061)·**022**(CR-060)·021(WP-069)·020(CR-055)·018·019(WP-039)·017(WP-037)
+- **`POSTGRES_APP_USER`에 `prs_app`을 주지 마라** — `NOLOGIN` 그룹 롤이다. `prsctl install`이 다른 이름의 주체를 만든다 (`DEV-503`)
+- `clearUnknownSizes` 소급 (CR-056 / DEV-456) — `pnpm es:apply-mappings`
+- `ADMIN_DATABASE_URL` (WP-039) — 없으면 `JOB-AUD-001`만 서지 않는다
+- Prometheus 경보 규칙 적용은 여전히 NOT RUN
+- **`authz` 역할에 GHE 자격이 없으면 작성자 팀이 언제나 모름이다**
+
+## D. 미뤄 둔 항목
+
+- `DEV-492` open — **Profile B의 `web` 매니페스트가 없다.** 클러스터가 없어 검증할 수 없는 매니페스트를 지금 만들지 않는다. Profile B 승격 시
+- `DEV-494` open — 프록시 (위 B절)
+- `DEV-502` resolved지만 `DEV-447` open — 조정 스캔의 30초 강제 종료는 여전히 증명되지 않았다. `Promise.race`로 감싸 "강제 종료했다"고 보고하지 마라
+- `DEV-433` open — `API-ADM-001`·`API-ADM-003`의 오프셋
+- `DEV-427` open — CI 통합의 link-rebuild 되먹임. **이제 CI가 도니 확인할 수 있다**
+- `DEV-304`·`DEV-305` — Profile A에서 해소, **Profile B는 그대로 열려 있다**
+- `DEV-058`의 머리글을 그대로 믿지 마라 — 스크립트도 설정도 실재한다. open인 이유는 1,000만 문서 합성 데이터셋 부재다
+
+## E. 릴리스 게이트 4·5·6 — 릴리스는 승인되지 않았다
+
+Gate 4 보안(일부 가능) · Gate 5 성능(불가) · Gate 6 운영(**Profile A에서는 롤백 10분을 실측해 판정한다** — `CR-060`이 그 면제를 되돌렸다). `ACC-06`은 NOT RUN이고 `W-007`·`WP-043`은 NOT ACTIVATED다.
+
+## F. 이 세션이 깔아 둔 자리 — 다시 만들지 말 것
+
+- **`deploy/single-host/prsctl`의 `provision_app_role`** — 마이그레이션 **뒤에** 부른다. 앞으로 옮기면 `prs_app`이 아직 없어 `GRANT`가 실패한다 (`DEV-510`)
+- **같은 파일의 `|| true`** — 명령 치환 넷에 붙어 있다. 빼면 `set -e`가 **진단 앞에서** 스크립트를 죽여 무엇이 실패했는지 말하지 않는다
+- **같은 파일의 재색인 직렬화** — 동시 실행 상한이 1이라 연달아 예약하면 셋이 거절된다 (`DEV-519`)
+- **`build-bundle.sh`의 `git status --porcelain`** — `git diff --quiet`로 되돌리지 마라. 미추적 파일을 보지 못해 계보 증명이 거짓이 된다 (`DEV-512`)
+- **통합 헬퍼 넷의 `fixtureMonths`** — 롤링 과거 창으로 되돌리지 마라. 실패가 미래로 미뤄진다 (`DEV-509`)
+- **`audit-grants.test.ts`의 전수 검사 둘** — 표와 **시퀀스** 양쪽이다 (`DEV-517`·`DEV-518`)
+- **`compose.yml`의 `127.0.0.1` healthcheck** — `localhost`로 되돌리면 alpine이 `::1`로 풀어 서비스가 멀쩡한데 unhealthy로 보인다
+- **`.gitattributes`** — 셸 스크립트가 CRLF로 커밋되면 리눅스에서 `bad interpreter`로 죽는다. 사내 반입 뒤에는 고칠 방법이 그 자리에 없다
+- 이전 세션 것 그대로: `team-membership.ts`의 `upsertTeam` 위치, `author-teams.ts`의 잠금 뒤 재확인·루프 순서·`stop()`의 `await`, `documents.ts`의 `pr?.author == null` 판정, `reindex.ts`의 명시적 `delete`
+
+---
+
+## 시작하기 전에 — 이 인계의 값을 실측하라
+
+```bash
+git -C . rev-parse --short HEAD
+gh pr list --state open --json number --jq 'length'
+grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
+python3 agent-context/count-unresolved-reviews.py
+```
+
+미해결 리뷰는 **스크립트가 정본이다** (DEV-468·469). 한 줄 명령으로 되돌아가지 마라 — 창이 둘이고 둘 다 넘칠 수 있으며, 그 스크립트는 순회한 수를 각 `totalCount`와 대조해 "전량 순회=아니다"면 종료 코드 1을 낸다.
+
+## A. 지금 당장 — WP-042 착수 전 API-SEQ-005 계약 감사 (CR-059)
+
+`WP-069`이 끝났고 `REL-006`의 다음은 `WP-042`(이분 탐색 보조)다.
+
+**`API-SEQ-005`도 계약 4장에 상세 절이 없다.** `CR-057`이 `API-SEQ-004`를 채우면서 그 사실을 확인했고 **의도적으로 함께 채우지 않았다** — 그것은 이 WP의 감사 대상이며, "SEQ API 전부 정리"로 만들면 검증하지 않을 계약을 함께 쓰게 된다. 착수 전 감사가 이 저장소의 관행이며 `CR-058`이 열여덟 번째였다.
+
+**감사 후보 (이전 세션이 실측으로 모아 둔 것. 확정 결함이 아니라 판정 대상이다).**
+
+| 후보 | 무엇이 비어 있는가 | 근거 |
+| --- | --- | --- |
+| 상세 절 전체 | 요청·응답·오류 정의가 없다 | 4장에 `### API-SEQ-005` 0건, 3장 카탈로그 36행 한 줄뿐 |
+| 권한 구분 | 카탈로그가 `인증`만 말하고 접근 범위를 요구하지 않는다 | 이분 탐색은 저장소의 시퀀스 공간을 읽는다. `DEV-461`과 같은 모양 |
+| 초기 구간의 출처 | `good_seq`·`bad_seq`가 nullable인데 null의 뜻과 초기 구간이 정의되지 않았다 | `bisect_session`에 조사 구간 경계 열이 없고 W-004의 구간은 URL 파라미터에만 있다 |
+| 후보 구간의 경계 | 열린 구간인지 닫힌 구간인지 없다 | AC-4의 "올림 log2"가 이 정의에 따라 값이 달라진다 |
+| 중앙값 동점 처리 | 같은 거리에 커밋이 둘이면 무엇을 고르는지 없다 | AC-2가 "가장 가까운"만 말한다 |
+| 에폭 무효화의 응답 모양 | 읽기에서 에폭이 바뀌었을 때 200 봉투인지 409인지 없다 | `SEQUENCE_EPOCH_STALE`은 **쓰기 요청**으로 정의되어 있다 |
+| DELETE의 멱등성 | 세션이 없을 때 무엇을 반환하는지 없다 | 카탈로그가 `GET/POST/DELETE`만 적는다 |
+| 응답 필드 대응 | `C-029`의 `remaining`·`estimatedSteps`·`nextSeq`에 대응하는 정의가 없다 | `pr_search_ui_component_spec.md:295` |
+
+**이미 서 있는 것 (다시 만들지 마라).**
+
+- `bisect_session` 표가 **마이그레이션 002에 이미 있다.** `005_roles.up.sql`에 권한 부여도 있다
+- `BISECT_CONTRADICTION`(409)이 `packages/contracts/src/error-codes.ts`와 계약 6장에 **이미 등재돼 있다**
+- 백엔드 6.2가 이분 탐색을 **감사 미기록**으로 정했고 멱등 키를 `(user, repo, branch)`로 정했다
+- 재채번은 이분 탐색 세션에 **아무것도 쓰지 않는다** (CR-026, DEV-126). 조회가 현재 에폭과 비교해 `epoch_stale`을 계산한다
+
+`CR-058`이 세운 것을 그대로 쓸 자리가 많지만 **복사하지 말고 `FR-SEQ-007`이 요구하는 것을 먼저 읽어라** — 탐색 상태는 사용자별이라 겨루는 것이 다르다.
+
+## B. 그 뒤 — WP-044
+
+`WP-044` 검색 결과 내보내기 — 감사 액션 `export.create`를 활성으로 옮긴다. **`safe_marker.set`이 그 전환의 선례다** (SRS v2.18): 상태 칸은 "계약이 승인했으나 기능이 아직 없다"를 뜻하므로 기능이 서는 순간 이전 값이 거짓이 된다. **남은 미활성은 `export.create` 하나뿐이다.**
+
+`WP-043`은 착수하지 않는다 — `ACC-06`이 NOT RUN이라 활성화 조건이 성립하지 않는다.
+
+## C. 배포에서 해야 할 것
+
+**`WP-069`이 마이그레이션 021을 더했다.**
+
+- 마이그레이션 **021**(WP-069), 020(CR-055), 018·019(WP-039), 017(WP-037) — `pnpm run db:migrate`
+- `clearUnknownSizes` 소급 (CR-056 / DEV-456) — `pnpm es:apply-mappings`
+- `ADMIN_DATABASE_URL` (WP-039) — 없으면 `JOB-AUD-001`만 서지 않는다
+- `SEARCH_CURSOR_HMAC_KEY`, `pnpm es:reindex`
+- Prometheus 경보 규칙 적용은 여전히 NOT RUN
+- **`authz` 역할에 GHE 자격이 없으면 작성자 팀이 언제나 모름이다.** 스윕이 돌지 않고 기동 로그가 그 사실을 경고한다
+
+## D. GitHub Actions — pr-search만 결제 차단이다
+
+`verify`·`integration` 모두 `steps=0`이고 주석이 `The job was not started because recent account payments have failed`를 말한다. **잡이 뜨지도 않은 것이지 시험이 실패한 것이 아니다.**
+
+- 재시도를 누르지 않는다 — 이 세션이 PR 둘에서 같은 상태를 확인했다
+- design-system은 다르다. 그 저장소에서는 CI가 판정 근거다
+- pr-search에서는 로컬 배터리가 유일한 판정이며 그 사실을 원장·PR·인계에 적는다
+
+## E. 미뤄 둔 항목
+
+- `DEV-447` open — 조정 스캔의 30초 강제 종료가 증명되지 않았다. `Promise.race`로 감싸 "강제 종료했다"고 보고하지 마라
+- `DEV-433` open — `API-ADM-001`·`API-ADM-003`의 오프셋
+- `DEV-427` open — CI 통합의 link-rebuild 되먹임. CI가 돌지 않아 확인할 길이 없다
+- `DEV-395`·`DEV-399`·`DEV-058`·`DEV-061` — 변화 없음
+- **`DEV-058`의 머리글을 그대로 믿지 마라.** "`pnpm test:perf` 스크립트가 저장소에 없다"고 적혀 있으나 스크립트도 `vitest.perf.config.ts`도 `perf/analytics.perf.test.ts`도 **실재한다.** 여전히 open인 이유는 1,000만 문서 합성 데이터셋이 없어 실측 p95가 NOT RUN이기 때문이다
+
+## F. 릴리스 게이트 4·5·6 — 릴리스는 승인되지 않았다
+
+Gate 4 보안(일부 가능) · Gate 5 성능(불가 — 1,000만 문서 합성 데이터셋 부재) · Gate 6 운영(불가 — 실제 K8s 없음). `ACC-06`은 NOT RUN이고 `W-007`·`WP-043`은 NOT ACTIVATED다.
+
+## G. 이 세션이 깔아 둔 자리 — 다시 만들지 말 것
+
+- **`packages/db/src/repositories/team-membership.ts`의 `upsertTeam(pool, ...)`** — 트랜잭션 **밖**이다. 안으로 옮기면 23505 재시도가 25P02로 죽는다 (DEV-489)
+- **같은 파일의 `org_team_sync` 갱신** — 교체와 **같은 트랜잭션 안**이다. 밖으로 빼면 실패한 조직이 신선해 보이고 모름이 빈 배열로 바뀐다
+- **`apps/pipeline-worker/src/author-teams.ts`의 잠금 뒤 신선도 재확인** — 지우면 동시 요청이 조직 팀 전체를 두 번 훑는다 (M10)
+- **같은 파일의 루프 순서 (`sweep` → `sleep`)** — 뒤집으면 냉시작 후 한 주기 내내 모든 문서가 모름을 답한다 (M19)
+- **같은 파일의 `stop()`의 `await loop`** — 빼면 종료가 진행 중인 동기화 위로 풀을 닫는다 (M18)
+- **`apps/pipeline-worker/src/documents.ts`의 `pr?.author == null` 판정** — 호출부의 값보다 **먼저**다. 작성자를 모르면 소속도 모름이다 (DEV-487)
+- **같은 파일의 `removed` 배열** — 변경 규모 넷과 작성자 팀 하나가 **함께** 쓴다. 규모를 보는 시험은 `sizeRemovals`로 자기 몫만 거른다
+- **`apps/pipeline-worker/src/reindex.ts`의 `delete doc['author_team_ids']`** — `undefined` 스프레드로 되돌리지 마라. `JSON.stringify`가 키를 버리는 것에 기대는 암묵적 표현이다
+- **`regression/runtime-reachability.test.ts`의 계약 정합 시험** — 계약 두 자리가 같은 사실을 말하는지 본다. 한쪽만 갱신하면 이것이 먼저 깨진다 (DEV-488)
+
+---
+
+# 이전 세션 기록 (보존)
+
+## (2026-08-31 2차 · CR-057 · WP-041 종료 시점)
+
+
+
 > **최신 기준 (2026-08-31 · WP-041 완료, REL-006 1/4)**
 > main = `5dab7f0` — **실측하라.** 이 인계 커밋이 한 번 더 옮긴다
 > SRS **`baseline v2.18`** (CR-057) · 원장 `review v6.11` · 작업 패키지 `v2.11` · API 계약 `v0.22` · 추적 매트릭스 `v1.2` · 화면 흐름 `v0.5`

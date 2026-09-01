@@ -1161,3 +1161,113 @@
 - `SafeMarkerCard`의 **제출 앞 `setResult(null)`** — 표식 변화를 보는 effect로 되돌리지 마라
 - `expectOrder` — 순서 단언은 존재 확인을 먼저 한다
 - `count-unresolved-reviews.py` — 창이 둘이다
+
+---
+
+# 2026-08-31 (3차)가 만든 것 (CR-058 · WP-069)
+
+## 읽는 순서가 바뀐 문서
+
+- `docs/10_requirements/srs_final.md` — baseline **v2.18, 변경 없음.** `CR-058`은 요구사항이 아니라 그것이 딛고 설 계약을 채웠다
+- `docs/40_delivery/pr_search_implementation_traceability.md` — **v6.15.** 3장에 `WP-069` 행 신설, 4장 `FR-SRCH-005`·`FR-STAT-006` 매핑 갱신, `DEV-477`~`489`, **6.57장**(감사) · **6.58장**(검증) · **6.58.7장**(리뷰), 7장 제한 행 해소
+- `docs/40_delivery/pr_search_work_packages.md` — **v2.13.** `WP-069` 구현 범위 여덟·제외 넷·DoD 열셋, 상태 `done`
+- `docs/40_delivery/pr_search_implementation_roadmap.md` — **v0.9.** `REL-005`·`REL-006`의 author-team carryover, 오픈 결정 문장 정정
+- `docs/30_technical_architecture/pr_search_api_contracts.md` — **v0.23.** 3장 검색 키 표와 4장 `API-STAT-001` 절이 **같은 사실을 말한다** (DEV-488)
+- `docs/30_technical_architecture/pr_search_data_model.md` — **v0.15.** 마이그레이션 021 DDL, 6장에 `author_team_ids`의 출처·신선도·부재의 뜻
+- `docs/30_technical_architecture/pr_search_backend_architecture.md` — **v0.6.** 6.3절 신설 — 조회 단위, 낡음 판정, 재색인이 GHE를 부르지 않는 이유
+- `docs/00_governance/change_control.md` — `CR-058` 등록과 반영 내역
+
+## 새 소스
+
+| 경로 | 무엇 |
+| --- | --- |
+| `packages/db/migrations/021_author_team.{up,down}.sql` | `team_membership`(팀 ↔ **GHE login**) · `org_team_sync`(조직별 동기화 시각). `team_member`와 다른 이유를 DDL 주석이 설명한다 |
+| `packages/db/src/repositories/team-membership.ts` | `replaceOrgTeamMembership`(조직 단위 교체) · `findOrgSyncedAt`(낡음 판정 재료) · `findAuthorTeamIds`(일괄 조회) |
+| `apps/pipeline-worker/src/author-teams.ts` | `resolveAuthorTeams`·`resolveAuthorTeam`(PostgreSQL만) · `syncOrgTeamsIfStale`(GHE) · `startOrgTeamSweeper` |
+| `packages/db/integration/team-membership.test.ts` | 리포지터리 통합 9건 |
+| `apps/pipeline-worker/integration/worker/author-teams.test.ts` | 판정·동기화·투영·스윕 통합 22건 |
+
+## 고친 소스
+
+| 경로 | 무엇 |
+| --- | --- |
+| `apps/pipeline-worker/src/documents.ts` | `AuthorTeamResolution` 타입(**순수 계층이 소유**), `ProjectionSource.authorTeams`(필수), 필드 적재, `removed` 배열 |
+| `apps/pipeline-worker/src/project.ts` | `resolveAuthorTeam`을 `buildUpsertRequests` **앞에서** 부른다. GHE 의존 없음 |
+| `apps/pipeline-worker/src/backfill.ts` | `authorTeamDeps` 헬퍼, 잡 시작에 `syncOrgTeamsIfStale` → PR마다 `resolveAuthorTeam` |
+| `apps/pipeline-worker/src/reindex.ts` | `authorTeamIdsFor` — 아는 값이면 덮고 모르면 `null`을 돌려 호출부가 **명시적으로 `delete`** 한다 |
+| `apps/pipeline-worker/src/index.ts` | `authz` 역할에 `startOrgTeamSweeper` 기동, 종료 훅에 `orgTeamSweeper?.stop()` |
+| `packages/db/src/advisory-lock.ts` | `orgTeamSyncLockKey` — 저장소 범위 락과 나눈다 |
+| `packages/db/src/repositories/repository.ts` | `listRegisteredOrgs` — 스윕이 훑을 목록 |
+| `packages/db/src/{index,repositories/index}.ts` | `teamMembershipRepo`·`OrgTeamSnapshot`·`orgTeamSyncLockKey` 내보내기 |
+| `packages/db/integration/migrate.test.ts` | 기대 표 목록에 `team_membership`·`org_team_sync` |
+| `apps/pipeline-worker/src/documents.test.ts` | 단위 8건 추가. 기존 규모 시험을 **`sizeRemovals`로 자기 몫만 거르게** 좁혔다 |
+| `apps/pipeline-worker/integration/jobs/reindex.test.ts` | R2 절 신설 — 스냅숏의 옛 소속이 되살아나지 않음 등 4건 |
+| `apps/pipeline-worker/integration/jobs/backfill.test.ts` | 작성자 팀 3건. 팀 API를 답하는 대역을 따로 만든다 |
+| `apps/search-api/integration/analytics/analytics.test.ts` | 팀 그룹의 접근 범위 격리 1건 |
+| `regression/runtime-reachability.test.ts` | 도달성·계약 16건. `expectOrder`를 이 절에서도 쓴다 |
+
+## 손대면 안 되는 것 (갱신)
+
+- **`team-membership.ts`의 `upsertTeam(pool, ...)`** — 트랜잭션 **밖**이다. 안으로 옮기면 23505 재시도가 25P02로 죽는다 (DEV-489)
+- **같은 파일의 `org_team_sync` 갱신** — 교체와 **같은 트랜잭션 안**이다. 밖으로 빼면 실패한 조직이 신선해 보인다
+- **`author-teams.ts`의 잠금 뒤 신선도 재확인** — 지우면 동시 요청이 조직 팀 전체를 두 번 훑는다 (M10)
+- **같은 파일의 루프 순서 `sweep` → `sleep`** — 뒤집으면 냉시작 후 한 주기가 통째로 모름이다 (M19)
+- **같은 파일의 `stop()`의 `await loop`** — 빼면 종료가 진행 중인 동기화 위로 풀을 닫는다 (M18)
+- **`documents.ts`의 `pr?.author == null` 판정** — 호출부의 값보다 **먼저**다 (DEV-487)
+- **같은 파일의 `removed` 배열** — 두 판정이 함께 쓴다. 규모 시험은 `sizeRemovals`로 자기 몫만 거른다
+- **`reindex.ts`의 `delete doc['author_team_ids']`** — `undefined` 스프레드로 되돌리지 마라
+- **`runtime-reachability.test.ts`의 계약 정합 시험** — 계약 두 자리가 같은 사실을 말하는지 본다 (DEV-488)
+- 이전 세션 것 그대로: `safe-marker.ts`의 `FOR SHARE` 재검증과 검사 순서 7 → 8, `safeMarkerLockKey`, `RangesView`의 공간 변경 effect, `SafeMarkerCard`의 제출 앞 `setResult(null)`, `expectOrder`, `count-unresolved-reviews.py`
+
+# 2026-09-01이 만든 것 (CR-059 · WP-070 · CR-060 · CR-061)
+
+## 읽는 순서가 바뀐 문서
+
+- `docs/10_requirements/srs_final.md` — **baseline v2.20.** 5.2 기술 제약 6번(배포 수단)과 `NFR-004`의 프로파일·`RPO 0` 조건. **이 CR들이 SRS를 건드린 자리는 그 둘뿐이다**
+- `docs/30_technical_architecture/pr_search_architecture_decision_records.md` — **v0.6. `ADR-021` 신설**
+- `docs/30_technical_architecture/pr_search_infrastructure_operations.md` — **v0.10.** 2장 `pilot` 환경, **3.0장 배포 프로파일**, 3.1장 Profile A 열, 4.1장 `OD-006` 좁힘, 6·7·8·9장
+- `docs/30_technical_architecture/pr_search_data_model.md` — **v0.17.** 마이그레이션 022·023 DDL
+- `docs/30_technical_architecture/pr_search_security_privacy_architecture.md` — **v1.2.** 프로파일별 시크릿 저장, **DB 접속 주체**
+- `docs/40_delivery/pr_search_release_validation_plan.md` — **v0.6. 3.1장 프로파일별 게이트 판정**
+- `docs/40_delivery/pr_search_implementation_roadmap.md` — **v0.11. 4.1장 첫 사내 반입 마일스톤**
+- `docs/40_delivery/pr_search_work_packages.md` — **v2.17. `WP-070`**
+- `docs/40_delivery/pr_search_implementation_traceability.md` — **v6.22.** `DEV-490`~`520`, 6.59~6.62장
+
+## 새 소스
+
+| 경로 | 무엇 |
+| --- | --- |
+| `Dockerfile` · `.dockerignore` | 타깃 여섯(web·search-api·ingest-gateway·pipeline-worker·migrate·es-bootstrap). **저장소에 이미지 정의가 하나도 없었다** |
+| `.gitattributes` | 셸·YAML을 LF로 고정. CRLF면 리눅스에서 `bad interpreter` |
+| `deploy/single-host/compose.yml` | Profile A — 서비스 18종, 역할당 1, 백킹 미노출 |
+| `deploy/single-host/prsctl` | verify·load·install·upgrade·health·smoke·backup·restore·lineage |
+| `deploy/single-host/build-bundle.sh` | 오프라인 번들 생성 (외부망 전용) |
+| `deploy/single-host/.env.example` | 구성 표면 전수 (40값) |
+| `deploy/single-host/filebeat.yml` | K8s ConfigMap과 같은 내용, 전달 방식만 다르다 |
+| `deploy/single-host/RUNBOOK.md` | 반입 절차 + **영구 다운스트림 형상 승계**. 번들에 함께 들어간다 |
+| `packages/db/migrations/022_app_role_grants.{up,down}.sql` | 005 이후 표의 `prs_app` 권한 |
+| `packages/db/migrations/023_app_role_sequence.{up,down}.sql` | 그 시퀀스 권한 |
+
+## 고친 소스
+
+| 경로 | 무엇 |
+| --- | --- |
+| `apps/search-api/src/server.ts` · `runtime.ts` | `/healthz`가 PG·ES를 실제로 확인한다 (DEV-495) |
+| `regression/runtime-reachability.test.ts` | 프로파일 인식 검사 여섯 (316 → 335) |
+| `packages/db/integration/audit-grants.test.ts` | **표·시퀀스 전수** 권한 검사 |
+| `packages/db/integration/partitions.test.ts` | 시간 비의존 회귀 + 자기 파티션 정리 |
+| 통합 헬퍼 넷 | 롤링 과거 창 제거 · `fixtureMonths` |
+| 통합 시험 여섯 | 자기 달 선언 |
+| `apps/pipeline-worker/integration/retention/retention-role.test.ts` | `failed`를 자기 몫만 센다 |
+| `apps/pipeline-worker/integration/reconcile/manual-run.test.ts` | 냉시작 스윕을 먼저 흘려보낸다 (DEV-502) |
+
+## 손대면 안 되는 것 (갱신)
+
+- **`prsctl`의 `provision_app_role` 위치** — 마이그레이션 **뒤**다 (DEV-510)
+- **`prsctl`의 `|| true` 넷** — 빼면 `set -e`가 진단 앞에서 죽인다
+- **`prsctl`의 재색인 직렬화** — 동시 실행 상한이 1이다 (DEV-519)
+- **`build-bundle.sh`의 `git status --porcelain`** — `git diff --quiet`는 미추적을 못 본다 (DEV-512)
+- **헬퍼의 `fixtureMonths`** — 롤링 과거 창으로 되돌리지 마라 (DEV-509)
+- **`audit-grants.test.ts`의 전수 검사 둘** — 표와 **시퀀스** 양쪽 (DEV-517·518)
+- **`compose.yml`의 `127.0.0.1` healthcheck** — `localhost`는 alpine에서 `::1`이다
+- **`.gitattributes`** — 지우면 사내 반입 뒤에 드러난다
