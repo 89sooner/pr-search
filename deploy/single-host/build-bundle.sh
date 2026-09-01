@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+#
+# 오프라인 반입 번들을 만든다 (WP-070 / CR-059 / ADR-021).
+#
+# **외부망에서만 실행한다.** 저장소 소스와 컨테이너 레지스트리가 필요하다.
+# 사내에서 쓰는 것은 이 스크립트가 아니라 그 산출물이다.
+#
+#   ./build-bundle.sh <version> [출력 디렉터리]
+#
+# 산출물은 사내에서 `git clone`도 `pnpm install`도 레지스트리 접근도 요구하지
+# 않는다. **요구하는 순간 그 절차는 사내망에서 실행 불가능하다.**
+
+set -Eeuo pipefail
+
+VERSION="${1:?사용법: build-bundle.sh <version> [출력 디렉터리]}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+OUT_ROOT="${2:-${REPO_ROOT}/deploy/single-host/bundle}"
+BUNDLE="${OUT_ROOT}/pr-search-${VERSION}-offline"
+
+die() { printf '오류: %s\n' "$*" >&2; exit 1; }
+step() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
+
+command -v docker >/dev/null || die "docker가 없다"
+command -v git    >/dev/null || die "git이 없다"
+
+cd "$REPO_ROOT"
+
+# ── 계보를 먼저 확정한다 ────────────────────────────────────────
+# **더러운 작업 트리로 번들을 만들지 않는다.** 그러면 `upstream_commit`이
+# 실제로 담긴 코드를 가리키지 않고, 그 순간 계보 증명이 거짓이 된다.
+if ! git diff --quiet HEAD -- ':(exclude)agent-context'; then
+  die "작업 트리가 깨끗하지 않다 — 계보를 증명할 수 없다. 커밋하거나 되돌린 뒤 다시 실행하라"
+fi
+
+UPSTREAM_REMOTE="$(git remote get-url origin 2>/dev/null || echo 'unknown')"
+UPSTREAM_COMMIT="$(git rev-parse HEAD)"
+UPSTREAM_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+
+step "번들 준비 — ${BUNDLE}"
+rm -rf "$BUNDLE"
+mkdir -p "$BUNDLE"/{source,images,deploy,manifest,checksums}
+
+# ── 애플리케이션 이미지 ─────────────────────────────────────────
+APP_TARGETS=(web search-api ingest-gateway pipeline-worker migrate es-bootstrap)
+declare -A IMAGE_NAME=(
+  [web]="prs/web"                         [search-api]="prs/search-api"
+  [ingest-gateway]="prs/ingest-gateway"   [pipeline-worker]="prs/pipeline-worker"
+  [migrate]="prs/db"                      [es-bootstrap]="prs/es"
+)
+
+for target in "${APP_TARGETS[@]}"; do
+  step "이미지 빌드 — ${IMAGE_NAME[$target]}:${VERSION}"
+  docker build --target "$target" -t "${IMAGE_NAME[$target]}:${VERSION}" "$REPO_ROOT"
+done
+
+# ── 백킹 이미지 ─────────────────────────────────────────────────
+# **번들에 함께 담는다.** 사내에서 Docker Hub·Elastic 레지스트리에 닿지 않는다.
+# 태그는 compose가 참조하는 값과 정확히 같아야 한다.
+BACKING_IMAGES=(
+  "postgres:16-alpine"
+  "docker.elastic.co/elasticsearch/elasticsearch:8.19.0"
+  "redis:7-alpine"
+  "docker.elastic.co/beats/filebeat:8.13.4"
+)
+for image in "${BACKING_IMAGES[@]}"; do
+  step "백킹 이미지 확보 — ${image}"
+  docker image inspect "$image" >/dev/null 2>&1 || docker pull "$image"
+done
+
+# ── 이미지 tar ──────────────────────────────────────────────────
+step "이미지 저장"
+APP_IMAGES=()
+for target in "${APP_TARGETS[@]}"; do APP_IMAGES+=("${IMAGE_NAME[$target]}:${VERSION}"); done
+docker save "${APP_IMAGES[@]}"    -o "${BUNDLE}/images/pr-search-app.tar"
+docker save "${BACKING_IMAGES[@]}" -o "${BUNDLE}/images/backing-services.tar"
+
+# ── 소스 계보 ───────────────────────────────────────────────────
+# **git bundle이다.** tarball과 달리 커밋 그래프를 담으므로 사내에서
+# `vendor/upstream`으로 fetch할 수 있고, 다음 반입의 merge 기반이 된다.
+step "소스 계보 생성"
+git bundle create "${BUNDLE}/source/pr-search-${VERSION}.bundle" HEAD >/dev/null
+
+# ── 배포 정의 ───────────────────────────────────────────────────
+step "배포 정의 복사"
+mkdir -p "${BUNDLE}/deploy/single-host"
+for f in compose.yml .env.example prsctl filebeat.yml RUNBOOK.md; do
+  [ -e "${REPO_ROOT}/deploy/single-host/${f}" ] && cp "${REPO_ROOT}/deploy/single-host/${f}" "${BUNDLE}/deploy/single-host/"
+done
+chmod +x "${BUNDLE}/deploy/single-host/prsctl" 2>/dev/null || true
+
+# ── manifest ────────────────────────────────────────────────────
+step "release-manifest 생성"
+sha256_of() { sha256sum "$1" | cut -d' ' -f1; }
+digest_of() { docker image inspect "$1" --format '{{index .RepoDigests 0}}' 2>/dev/null || docker image inspect "$1" --format '{{.Id}}'; }
+
+MIGRATION_LEVEL="$(ls "${REPO_ROOT}/packages/db/migrations"/*.up.sql | sed -E 's#.*/([0-9]+)_.*#\1#' | sort -n | tail -1)"
+ES_INDEX_VERSION="$(grep -rhoE "INDEX_VERSION[^=]*= *'[^']+'" "${REPO_ROOT}/packages/es/src" 2>/dev/null | head -1 | sed -E "s/.*'([^']+)'.*/\1/" || echo 'unknown')"
+NODE_VERSION="$(cat "${REPO_ROOT}/.nvmrc" 2>/dev/null | tr -d '[:space:]')"
+PNPM_VERSION="$(node -e "process.stdout.write(require('${REPO_ROOT}/package.json').packageManager||'')" 2>/dev/null)"
+
+{
+  printf '{\n'
+  printf '  "release_version": "%s",\n' "$VERSION"
+  printf '  "upstream": {\n'
+  printf '    "repository": "%s",\n' "$UPSTREAM_REMOTE"
+  printf '    "commit": "%s",\n'     "$UPSTREAM_COMMIT"
+  printf '    "branch": "%s",\n'     "$UPSTREAM_BRANCH"
+  printf '    "bundle_sha256": "%s"\n' "$(sha256_of "${BUNDLE}/source/pr-search-${VERSION}.bundle")"
+  printf '  },\n'
+  printf '  "toolchain": {\n'
+  printf '    "node": "%s",\n' "$NODE_VERSION"
+  printf '    "package_manager": "%s",\n' "$PNPM_VERSION"
+  printf '    "lockfile_sha256": "%s"\n' "$(sha256_of "${REPO_ROOT}/pnpm-lock.yaml")"
+  printf '  },\n'
+  printf '  "schema": {\n'
+  printf '    "migration_level": "%s",\n' "$MIGRATION_LEVEL"
+  printf '    "elasticsearch_index_version": "%s"\n' "$ES_INDEX_VERSION"
+  printf '  },\n'
+  printf '  "images": {\n'
+  printf '    "application": [\n'
+  local_first=1
+  for target in "${APP_TARGETS[@]}"; do
+    [ $local_first -eq 1 ] || printf ',\n'
+    local_first=0
+    printf '      { "name": "%s", "tag": "%s", "id": "%s" }' \
+      "${IMAGE_NAME[$target]}" "$VERSION" "$(digest_of "${IMAGE_NAME[$target]}:${VERSION}")"
+  done
+  printf '\n    ],\n'
+  printf '    "backing": [\n'
+  local_first=1
+  for image in "${BACKING_IMAGES[@]}"; do
+    [ $local_first -eq 1 ] || printf ',\n'
+    local_first=0
+    printf '      { "reference": "%s", "id": "%s" }' "$image" "$(digest_of "$image")"
+  done
+  printf '\n    ]\n'
+  printf '  },\n'
+  printf '  "deployment_profile": "A",\n'
+  printf '  "contains_secrets": false\n'
+  printf '}\n'
+} > "${BUNDLE}/manifest/release-manifest.json"
+
+# ── 릴리스 노트 ─────────────────────────────────────────────────
+{
+  printf '# PR Search %s — 오프라인 반입 번들\n\n' "$VERSION"
+  printf '외부 커밋 `%s` (`%s`)에서 만들었다.\n\n' "$UPSTREAM_COMMIT" "$UPSTREAM_BRANCH"
+  printf '반입 절차는 `deploy/single-host/RUNBOOK.md`가 정본이다.\n\n'
+  printf '## 담긴 것\n\n'
+  printf -- '- 애플리케이션 이미지 %d종 (`images/pr-search-app.tar`)\n' "${#APP_TARGETS[@]}"
+  printf -- '- 백킹 이미지 %d종 (`images/backing-services.tar`)\n' "${#BACKING_IMAGES[@]}"
+  printf -- '- 소스 계보 (`source/*.bundle`) — `vendor/upstream`의 기반\n'
+  printf -- '- 배포 정의와 런북 (`deploy/single-host/`)\n'
+  printf -- '- 계보·스키마·이미지 신원 (`manifest/release-manifest.json`)\n\n'
+  printf '## 담기지 않은 것\n\n'
+  printf -- '- **시크릿·토큰·개인 키.** 값이 채워진 `.env`는 반입 대상이 아니라 사내에서 만드는 것이다\n'
+  printf -- '- 개발 의존성, 시험 픽스처, 문서 전체\n'
+} > "${BUNDLE}/RELEASE_NOTES.md"
+
+# ── checksum ────────────────────────────────────────────────────
+step "checksum 생성"
+( cd "$BUNDLE" && find . -type f ! -name 'SHA256SUMS' -print0 | sort -z | xargs -0 sha256sum > checksums/SHA256SUMS )
+
+# ── 시크릿 혼입 검사 ────────────────────────────────────────────
+# **번들이 시크릿을 담으면 그것이 새 노출 경로다** (NFR-005, DEV-499).
+step "시크릿 혼입 검사"
+if find "$BUNDLE" -type f \( -name '.env' -o -name '*.pem' -o -name '*.key' -o -name 'id_rsa*' \) | grep -q .; then
+  die "번들에 시크릿으로 보이는 파일이 있다"
+fi
+if grep -rlE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' "${BUNDLE}/deploy" "${BUNDLE}/manifest" 2>/dev/null | grep -q .; then
+  die "번들의 배포 정의에 개인 키가 있다"
+fi
+
+printf '\n번들 완료: %s\n' "$BUNDLE"
+du -sh "$BUNDLE"
+printf '반입 절차: deploy/single-host/RUNBOOK.md\n'

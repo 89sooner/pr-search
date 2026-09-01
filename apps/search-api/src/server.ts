@@ -57,8 +57,39 @@ function analyticsDisplay(pool: Pool) {
   });
 }
 
+/** 헬스 프로브 상한. 게이트웨이와 같은 값이다 (인프라 3장). */
+const HEALTH_PROBE_MS = 2_000;
+
+async function withHealthTimeout<T>(work: Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => { reject(new Error('health probe timeout')); }, HEALTH_PROBE_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 export interface ServerDeps {
   readonly config?: SearchApiConfig;
+
+  /**
+   * 백킹 서비스 연결 확인 (CR-059, DEV-495).
+   *
+   * 인프라 3장 표가 이 서비스의 헬스체크를 **`GET /healthz` (ES·PG 연결 확인)**로
+   * 적어 두었는데 오랫동안 그 확인이 없었다 — 무조건 `ok`를 답했다. 배포 Profile A는
+   * 오케스트레이터가 없어 **health가 유일한 기동 판정 수단**이고, 그 형상에서
+   * "DB가 죽어도 ok"는 운영자에게 거짓을 말한다.
+   *
+   * 선택 필드인 이유는 단위 시험이 백킹 서비스 없이 이 서버를 세우기 때문이다.
+   * **운영 배선이 이것을 빠뜨리지 않는지는 회귀가 묻는다** — 선택으로 두고
+   * 아무도 검사하지 않으면 `CR-034`가 찾은 결함이 여기서 재현된다.
+   */
+  readonly checkBackingServices?: () => Promise<void>;
   /**
    * `ops` 모듈 의존. 없으면 관리 경로를 등록하지 않는다 — 헬스체크만 있는
    * 프로세스로 뜬다.
@@ -165,11 +196,20 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   const log = deps.log ?? ((): void => undefined);
 
   /**
-   * 인프라 3장이 정의한 헬스체크 경로.
+   * 인프라 3장이 정의한 헬스체크 경로 — **ES·PG 연결까지 확인한다** (CR-059, DEV-495).
    *
-   * 백킹 서비스 연결 확인은 각 연결을 실제로 여는 WP에서 더한다.
+   * 확인에 상한을 건다. 백킹 서비스가 느리게 죽으면 health 자체가 매달려
+   * **판정이 오지 않는 것과 실패가 구분되지 않는다.**
    */
-  app.get('/healthz', async (): Promise<HealthResponse> => {
+  app.get('/healthz', async (_request, reply): Promise<HealthResponse | { status: string }> => {
+    if (deps.checkBackingServices !== undefined) {
+      try {
+        await withHealthTimeout(deps.checkBackingServices());
+      } catch {
+        // 이유는 본문에 싣지 않는다 — 인증 없이 닿는 경로다 (게이트웨이와 같은 규칙).
+        return reply.status(503).send({ status: 'error', service: SERVICE_NAME, version: VERSION });
+      }
+    }
     return { status: 'ok', service: SERVICE_NAME, version: VERSION };
   });
 

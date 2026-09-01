@@ -22,3 +22,9 @@ dump.rdb
 # 세션 전사 아카이브. `/export`가 떨어뜨리는 원본 대화 기록이며 소스가 아니다.
 # 사람이 읽는 사본이라 압축하지 않고, 내용을 검토하기 전에는 올리지 않는다.
 exports/
+
+# 단일 호스트 배포의 실제 구성과 산출물 (WP-070). 값이 채워진 `.env`는
+# 시크릿이고, 번들과 백업은 반입 산출물이지 소스가 아니다.
+deploy/single-host/.env
+deploy/single-host/bundle/
+deploy/single-host/backups/

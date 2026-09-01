@@ -1,0 +1,281 @@
+#!/usr/bin/env bash
+#
+# PR Search 단일 호스트 운영 도구 (WP-070 / CR-059 / ADR-021).
+#
+# **사내에서 실행한다.** 저장소 소스도 pnpm도 필요 없다 — 반입한 번들 안에서 돈다.
+#
+#   ./prsctl verify     번들 checksum 검증
+#   ./prsctl load       이미지 tar 적재
+#   ./prsctl install    migration → ES mapping → up → health
+#   ./prsctl upgrade    새 버전으로 교체 (migration 포함)
+#   ./prsctl health     전 서비스 health 판정
+#   ./prsctl smoke      read-only 검색 스모크
+#   ./prsctl backup     PostgreSQL 논리 백업
+#   ./prsctl restore    백업 복원 + 전량 재색인
+#   ./prsctl lineage    이 형상이 어느 외부 커밋에서 왔는가
+#
+# **fail-fast다.** checksum 불일치·이미지 부재·필수 환경 변수 부재·마이그레이션
+# 실패·health 실패를 성공으로 접지 않는다.
+
+set -Eeuo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUNDLE_ROOT="$(cd "${HERE}/../.." && pwd)"
+ENV_FILE="${PRS_ENV_FILE:-${HERE}/.env}"
+COMPOSE_FILE="${HERE}/compose.yml"
+PROJECT="${PRS_PROJECT:-pr-search}"
+
+die()  { printf '\033[31m오류:\033[0m %s\n' "$*" >&2; exit 1; }
+step() { printf '\n\033[1m[%s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
+ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+bad()  { printf '  \033[31m✗\033[0m %s\n' "$*"; }
+
+compose() {
+  docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+require_env() {
+  [ -f "$ENV_FILE" ] || die "$ENV_FILE 이 없다. .env.example을 복사해 값을 채워라"
+  # **값이 비어 있으면 기동하지 않는다.** 조용히 기본값으로 도는 것보다 낫다.
+  local missing=()
+  for key in PRS_VERSION POSTGRES_DB POSTGRES_OWNER_USER POSTGRES_OWNER_PASSWORD \
+             POSTGRES_APP_USER POSTGRES_APP_PASSWORD GHE_BASE_URL GHE_WEBHOOK_SECRET \
+             SEARCH_CURSOR_HMAC_KEY; do
+    grep -qE "^${key}=.+" "$ENV_FILE" || missing+=("$key")
+  done
+  [ ${#missing[@]} -eq 0 ] || die "필수 값이 비어 있다: ${missing[*]}"
+  # **셸로 소싱하지 않는다.** `ES_JAVA_OPTS=-Xms2g -Xmx2g`처럼 값에 공백이 있으면
+  # `. file`이 뒷부분을 명령으로 해석해 죽는다. Compose의 `.env` 파싱은 셸과 달라
+  # 공백을 값의 일부로 보므로, 이 스크립트가 쓰는 몇 개만 같은 규칙으로 읽는다.
+  env_value() { sed -nE "s/^$1=(.*)\$/\\1/p" "$ENV_FILE" | tail -1; }
+  PRS_VERSION="$(env_value PRS_VERSION)"
+  POSTGRES_DB="$(env_value POSTGRES_DB)"
+  POSTGRES_OWNER_USER="$(env_value POSTGRES_OWNER_USER)"
+  SEARCH_CURSOR_HMAC_KEY="$(env_value SEARCH_CURSOR_HMAC_KEY)"
+  [ "${#SEARCH_CURSOR_HMAC_KEY}" -ge 32 ] || die "SEARCH_CURSOR_HMAC_KEY는 32자 이상이어야 한다 (ADR-010 Amendment)"
+}
+
+cmd_verify() {
+  local sums="${BUNDLE_ROOT}/checksums/SHA256SUMS"
+  [ -f "$sums" ] || die "checksum 파일이 없다: $sums"
+  step "번들 checksum 검증"
+  ( cd "$BUNDLE_ROOT" && sha256sum --quiet --check checksums/SHA256SUMS ) \
+    || die "checksum 불일치 — 반입 파일이 변조되었거나 손상됐다. 설치를 멈춘다"
+  ok "$(wc -l < "$sums")개 파일 전부 일치"
+}
+
+cmd_load() {
+  step "이미지 적재"
+  local tars=("${BUNDLE_ROOT}/images/pr-search-app.tar" "${BUNDLE_ROOT}/images/backing-services.tar")
+  for tar in "${tars[@]}"; do
+    [ -f "$tar" ] || die "이미지 tar이 없다: $tar"
+    docker load -i "$tar" | sed 's/^/  /'
+  done
+  require_env
+  # **적재 뒤 실제로 있는지 확인한다.** compose가 pull을 시도하면 사내에서 실패한다.
+  local missing=()
+  for image in "prs/web:${PRS_VERSION}" "prs/search-api:${PRS_VERSION}" \
+               "prs/ingest-gateway:${PRS_VERSION}" "prs/pipeline-worker:${PRS_VERSION}" \
+               "prs/db:${PRS_VERSION}" "prs/es:${PRS_VERSION}"; do
+    docker image inspect "$image" >/dev/null 2>&1 || missing+=("$image")
+  done
+  [ ${#missing[@]} -eq 0 ] || die "적재 뒤에도 없는 이미지: ${missing[*]}"
+  ok "이미지 전부 로컬에 있다 — compose가 pull하지 않는다"
+}
+
+cmd_install() {
+  require_env
+  step "구성 검사"
+  compose config >/dev/null || die "compose 정의가 유효하지 않다"
+  compose config | grep -qE 'image: .*:latest' && die "\`:latest\` 의존이 있다 — 릴리스 신원이 아니다 (DEV-491)"
+  ok "compose 정의 유효 · \`:latest\` 의존 없음"
+
+  step "백킹 서비스 기동"
+  compose up -d postgres elasticsearch redis
+  wait_healthy postgres elasticsearch redis
+
+  step "데이터베이스 마이그레이션"
+  compose --profile setup run --rm migrate || die "마이그레이션 실패 — 애플리케이션을 띄우지 않는다"
+  ok "스키마 적용"
+
+  step "Elasticsearch 매핑·부트스트랩"
+  compose --profile setup run --rm es-bootstrap || die "ES 매핑 적용 실패"
+  ok "인덱스·별칭·ILM 적용"
+
+  step "애플리케이션 기동"
+  compose up -d
+  cmd_health
+}
+
+cmd_upgrade() {
+  require_env
+  step "업그레이드 — ${PRS_VERSION}"
+  compose config >/dev/null || die "compose 정의가 유효하지 않다"
+  # **마이그레이션이 먼저다** (인프라 3장 배포 순서). 하위 호환이므로 옛 코드가
+  # 새 스키마 위에서 돈다.
+  compose --profile setup run --rm migrate || die "마이그레이션 실패 — 교체하지 않는다"
+  compose --profile setup run --rm es-bootstrap || die "ES 매핑 적용 실패"
+  compose up -d
+  cmd_health
+}
+
+wait_healthy() {
+  local deadline=$(( $(date +%s) + 300 ))
+  for svc in "$@"; do
+    printf '  %s ' "$svc"
+    while :; do
+      local cid state
+      cid="$(compose ps -q "$svc" 2>/dev/null || true)"
+      if [ -n "$cid" ]; then
+        state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || echo unknown)"
+        case "$state" in
+          healthy|running) printf '\033[32m%s\033[0m\n' "$state"; break ;;
+          exited|dead)     printf '\033[31m%s\033[0m\n' "$state"; die "$svc 가 죽었다" ;;
+        esac
+      fi
+      [ "$(date +%s)" -lt "$deadline" ] || { printf '\033[31mtimeout\033[0m\n'; die "$svc 가 준비되지 않았다"; }
+      printf '.'; sleep 5
+    done
+  done
+}
+
+cmd_health() {
+  require_env
+  step "health 판정"
+  local failed=0
+
+  # 백킹 서비스는 컴포즈 healthcheck가 정본이다.
+  for svc in postgres elasticsearch redis; do
+    local cid state
+    cid="$(compose ps -q "$svc" 2>/dev/null || true)"
+    state="$([ -n "$cid" ] && docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || echo absent)"
+    if [ "$state" = healthy ] || [ "$state" = running ]; then ok "$svc ($state)"; else bad "$svc ($state)"; failed=1; fi
+  done
+
+  # 애플리케이션은 자기 `/healthz`가 정본이다 (인프라 3장).
+  # **컨테이너 안에서 부른다** — 호스트에 발행하지 않는 포트가 있기 때문이다.
+  for pair in "search-api:3002" "ingest-gateway:3001" "web:3000"; do
+    local svc="${pair%%:*}" port="${pair##*:}" body
+    # **`127.0.0.1`이지 `localhost`가 아니다.** alpine에서 `localhost`는 `::1`로 먼저
+    # 해석되는데 Fastify 기본 바인딩은 IPv4라 `wget`이 곧바로 거부된다 — 서비스는
+    # 멀쩡한데 health만 빨갛게 보인다.
+    if body="$(compose exec -T "$svc" wget -qO- "http://127.0.0.1:${port}/healthz" 2>/dev/null)"; then
+      case "$body" in *'"status":"ok"'*) ok "$svc /healthz — $body" ;; *) bad "$svc /healthz — $body"; failed=1 ;; esac
+    else
+      bad "$svc /healthz 응답 없음"; failed=1
+    fi
+  done
+
+  # 워커는 인바운드를 받지 않으므로 프로세스 상태와 기동 로그로 본다.
+  for svc in worker-enrich worker-project worker-sequence worker-link worker-mirror \
+             worker-reconcile worker-batch worker-authz worker-release; do
+    local cid state
+    cid="$(compose ps -q "$svc" 2>/dev/null || true)"
+    state="$([ -n "$cid" ] && docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo absent)"
+    if [ "$state" = running ]; then ok "$svc ($state)"; else bad "$svc ($state)"; failed=1; fi
+  done
+
+  [ $failed -eq 0 ] || die "health 판정 실패 — 위 항목을 확인하라"
+  printf '\n전 서비스 정상\n'
+}
+
+cmd_smoke() {
+  require_env
+  step "read-only 검색 스모크"
+  # 조회 경로가 실제로 답하는지만 본다. **데이터를 쓰지 않는다.**
+  local code
+  code="$(compose exec -T web wget -qO- --server-response "http://127.0.0.1:3000/healthz" 2>&1 | awk '/HTTP\//{print $2}' | tail -1)"
+  [ "$code" = 200 ] || die "web /healthz 가 $code 를 답한다"
+  ok "web 응답"
+
+  code="$(compose exec -T search-api wget -qO- --server-response "http://127.0.0.1:3002/healthz" 2>&1 | awk '/HTTP\//{print $2}' | tail -1)"
+  [ "$code" = 200 ] || die "search-api /healthz 가 $code 를 답한다"
+  ok "search-api 응답"
+
+  # Elasticsearch 별칭이 실제로 서 있는지 — 매핑 부트스트랩의 결과다.
+  local aliases
+  aliases="$(compose exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/aliases?h=alias' 2>/dev/null | tr -d '\r' | sort | tr '\n' ' ')"
+  case "$aliases" in
+    *prs-pull-requests*) ok "ES 별칭: $aliases" ;;
+    *) die "ES 별칭에 prs-pull-requests가 없다 — 매핑 부트스트랩이 서지 않았다" ;;
+  esac
+
+  # 워커 역할이 실제로 기동 로그에 나타나는지 (CR-034의 도달성 규율).
+  local roles_seen=0
+  for svc in worker-enrich worker-project worker-sequence worker-link worker-mirror \
+             worker-reconcile worker-batch worker-authz worker-release; do
+    compose logs --tail 200 "$svc" 2>/dev/null | grep -q 'roles:' && roles_seen=$((roles_seen+1))
+  done
+  [ "$roles_seen" -ge 1 ] || die "워커 기동 로그에서 역할을 하나도 확인하지 못했다"
+  ok "워커 기동 로그 확인 (${roles_seen}/9)"
+  printf '\n스모크 통과\n'
+}
+
+cmd_backup() {
+  require_env
+  local dir="${PRS_BACKUP_DIR:-${HERE}/backups}"
+  mkdir -p "$dir"
+  local out="${dir}/prs-$(date +%Y%m%d-%H%M%S).dump"
+  step "PostgreSQL 논리 백업 — $out"
+  # **`pg_dump`다.** 실행 중 데이터 디렉터리 파일 복사는 일관성이 없다 (인프라 9.4장).
+  # Elasticsearch·Redis·미러·아카이브는 백업하지 않는다 — 전부 재구성 가능하다.
+  compose exec -T postgres pg_dump -U "$POSTGRES_OWNER_USER" -d "$POSTGRES_DB" -Fc > "$out" \
+    || { rm -f "$out"; die "백업 실패"; }
+  sha256sum "$out" > "${out}.sha256"
+  ok "$(du -h "$out" | cut -f1) · checksum 기록"
+  printf '\n**Elasticsearch는 백업하지 않는다** — PostgreSQL에서 재색인해 복구한다 (ADR-004).\n'
+}
+
+cmd_restore() {
+  require_env
+  local file="${1:?사용법: prsctl restore <백업 파일>}"
+  [ -f "$file" ] || die "백업 파일이 없다: $file"
+  if [ -f "${file}.sha256" ]; then
+    sha256sum --quiet --check "${file}.sha256" || die "백업 checksum 불일치 — 복원하지 않는다"
+    ok "백업 checksum 일치"
+  fi
+  step "복원 — 애플리케이션을 먼저 멈춘다"
+  compose stop web search-api ingest-gateway $(compose config --services | grep '^worker-') >/dev/null
+  step "PostgreSQL 복원 — 데이터베이스를 다시 만든다"
+  #
+  # **`pg_restore --clean`을 쓰지 않는다.** 이 스키마는 `raw_event`·`audit_record`가
+  # 파티션 테이블이고 그 파티션의 제약은 **부모에서 상속된 것**이라 개별로 드롭할 수
+  # 없다 — `--clean`이 `DROP CONSTRAINT`를 시도하다 파티션 수만큼 오류를 내고
+  # `errors ignored on restore`로 끝난다. **일부만 복원된 상태를 성공으로 접지 않는다.**
+  # 빈 데이터베이스에 복원하는 것이 파티션 스키마에서 유일하게 결정적인 경로다.
+  compose exec -T postgres psql -U "$POSTGRES_OWNER_USER" -d postgres -v ON_ERROR_STOP=1 -c \
+    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${POSTGRES_DB}' AND pid <> pg_backend_pid()" >/dev/null \
+    || die "기존 연결을 끊지 못했다"
+  compose exec -T postgres psql -U "$POSTGRES_OWNER_USER" -d postgres -v ON_ERROR_STOP=1 \
+    -c "DROP DATABASE IF EXISTS ${POSTGRES_DB}" -c "CREATE DATABASE ${POSTGRES_DB} OWNER ${POSTGRES_OWNER_USER}" >/dev/null \
+    || die "데이터베이스를 다시 만들지 못했다"
+  compose exec -T postgres pg_restore -U "$POSTGRES_OWNER_USER" -d "$POSTGRES_DB" --exit-on-error < "$file" \
+    || die "복원 실패 — 데이터베이스가 비어 있다. 백업 파일을 확인하라"
+  ok "스키마·데이터 복원"
+  step "Elasticsearch 매핑 재적용"
+  compose --profile setup run --rm es-bootstrap || die "ES 매핑 적용 실패"
+  step "애플리케이션 재기동"
+  compose up -d
+  cmd_health
+  printf '\n**색인은 비어 있다.** 운영 콘솔에서 전량 재색인(JOB-ING-006)을 실행하라 — PostgreSQL이 정본이다 (ADR-004).\n'
+}
+
+cmd_lineage() {
+  local m="${BUNDLE_ROOT}/manifest/release-manifest.json"
+  [ -f "$m" ] || die "release-manifest.json이 없다: $m"
+  step "이 형상의 계보"
+  cat "$m"
+}
+
+case "${1:-}" in
+  verify)  cmd_verify ;;
+  load)    cmd_verify; cmd_load ;;
+  install) cmd_install ;;
+  upgrade) cmd_upgrade ;;
+  health)  cmd_health ;;
+  smoke)   cmd_smoke ;;
+  backup)  cmd_backup ;;
+  restore) shift; cmd_restore "$@" ;;
+  lineage) cmd_lineage ;;
+  *) sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac
