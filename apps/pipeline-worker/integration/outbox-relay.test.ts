@@ -20,7 +20,7 @@ let bus: RedisStreamsEventBus;
 const NOW = new Date('2026-08-20T12:00:00.000Z');
 
 beforeAll(async () => {
-  pool = await migratedPool();
+  pool = await migratedPool({ fixtureMonths: ['2026-08'] });
   redis = createTestRedis();
   bus = new RedisStreamsEventBus(redis);
 });

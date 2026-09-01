@@ -114,7 +114,16 @@ describe('관리 롤이 파티션을 만들고 지운다 (PR #84 리뷰 P1)', ()
     for (const name of result.created) created.push(name);
 
     expect(result.created.length).toBeGreaterThan(0);
-    expect(result.failed).toHaveLength(0);
+    /*
+     * **자기 몫만 센다** (DEV-509). `failed` 전체를 단언하면 이 시험과 무관한
+     * 파티션 때문에 깨진다 — 통합 헬퍼가 만든 고정 픽스처 파티션은 소유자가
+     * `prs`라 `prs_admin`이 드롭하지 못하고, 그것이 이 시험의 `far` 기준 보존
+     * 구간에 걸리면 그대로 `failed`에 쌓인다. **실제로 그렇게 깨졌다**
+     * (2026-09-01, 헬퍼 창을 12개월로 열었을 때 실패 9건). 그 소음이 진짜
+     * 회귀를 가리므로 `DEV-484`의 `sizeRemovals`와 같은 방식으로 좁힌다.
+     */
+    const mine = result.failed.filter((one) => created.includes(one.name));
+    expect(mine).toHaveLength(0);
   });
 
   it('**만료 파티션을 지운다** — 소유권이 있다', async () => {

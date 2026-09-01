@@ -28,8 +28,18 @@ cd "$REPO_ROOT"
 # ── 계보를 먼저 확정한다 ────────────────────────────────────────
 # **더러운 작업 트리로 번들을 만들지 않는다.** 그러면 `upstream_commit`이
 # 실제로 담긴 코드를 가리키지 않고, 그 순간 계보 증명이 거짓이 된다.
-if ! git diff --quiet HEAD -- ':(exclude)agent-context'; then
-  die "작업 트리가 깨끗하지 않다 — 계보를 증명할 수 없다. 커밋하거나 되돌린 뒤 다시 실행하라"
+# **추적되는 변경과 추적되지 않는 파일을 함께 본다** (DEV-512).
+#
+# `git diff --quiet HEAD`는 **미추적 파일을 보지 못한다.** 그런데 Dockerfile의
+# `COPY . .`은 `.dockerignore`에 걸리지 않는 미추적 파일을 그대로 이미지에 넣는다 —
+# 그러면 manifest가 `upstream_commit`을 신원으로 주장하는데 **이미지 내용이 그 커밋과
+# 다르다.** 계보 증명이 거짓이 되는 자리이므로 둘 다 막는다.
+#
+# `agent-context/`는 `.dockerignore`가 제외하므로 이미지에 들어가지 않는다.
+DIRTY="$(git status --porcelain -- . ':(exclude)agent-context')"
+if [ -n "$DIRTY" ]; then
+  printf '%s\n' "$DIRTY" >&2
+  die "작업 트리가 깨끗하지 않다 (미추적 파일 포함) — 계보를 증명할 수 없다. 커밋하거나 되돌린 뒤 다시 실행하라"
 fi
 
 UPSTREAM_REMOTE="$(git remote get-url origin 2>/dev/null || echo 'unknown')"

@@ -113,6 +113,19 @@ services:
     depends_on:
       elasticsearch: { condition: service_healthy }
 
+  # 전량 재색인 **예약**용 일회성 실행 (JOB-ING-006 / DEV-511).
+  #
+  # 실행 자체는 `batch` 역할이 큐에서 집어 한다 — 여기서 인라인으로 돌리면
+  # 동시 실행 상한(1)을 우회하고 진행 상태가 운영 콘솔에 나타나지 않는다.
+  reindex:
+    image: prs/pipeline-worker:${PRS_VERSION:?}
+    profiles: ['setup']
+    environment:
+      <<: *app-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      elasticsearch: { condition: service_healthy }
+
   # ---------- 사용자 접점 ----------
   #
   # **호스트에 발행하는 포트는 이 둘뿐이다.** `search-api`는 발행하지 않는다 —
@@ -157,6 +170,8 @@ services:
       SEARCH_CURSOR_HMAC_KEY: ${SEARCH_CURSOR_HMAC_KEY:?}
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
       METRICS_QUERY_URL: ${METRICS_QUERY_URL:-}
+      # OIDC 세션과 함께 구성하면 **기동을 거부한다** (DEV-048). 둘 중 하나다.
+      ADMIN_API_TOKENS: ${ADMIN_API_TOKENS:-}
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}

@@ -14,7 +14,7 @@ import { createRawEventStore } from '../src/store.js';
 let pool: Pool;
 
 beforeAll(async () => {
-  pool = await migratedPool();
+  pool = await migratedPool({ fixtureMonths: ['2026-08'] });
 });
 
 afterAll(async () => {

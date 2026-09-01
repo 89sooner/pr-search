@@ -43,28 +43,30 @@ cd pr-search-<version>-offline/deploy/single-host
 # 2) 이미지 적재 (verify를 포함해 실행한다)
 ./prsctl load
 
-# 3) 데이터베이스 접속 주체를 만든다 (DEV-503)
-#    `prs_app`은 NOLOGIN 그룹 롤이라 그대로는 접속할 수 없다.
-#    install이 백킹 서비스를 띄운 뒤 한 번만 실행한다.
-#      CREATE ROLE prs_app_login LOGIN PASSWORD '<시크릿>' IN ROLE prs_app;
-#      ALTER ROLE prs_app_login SET role = 'prs_app';
-
-# 4) 구성 작성
+# 3) 구성 작성
 cp .env.example .env
 chmod 600 .env
 $EDITOR .env          # 필수 값을 채운다. 비어 있으면 install이 거부한다
 
-# 5) 설치 — migration → ES mapping → 기동 → health
+# 4) 설치 — migration → 접속 주체 → ES mapping → 기동 → health
 ./prsctl install
 
-# 6) 스모크
+# 5) 스모크 — health가 아니라 실제 조회 왕복을 건다
 ./prsctl smoke
 
-# 7) 이 형상의 출처 확인
+# 6) 이 형상의 출처 확인
 ./prsctl lineage
 ```
 
 **각 단계는 실패하면 멈춘다.** checksum 불일치·이미지 부재·필수 값 부재·마이그레이션 실패·health 실패를 성공으로 접지 않는다.
+
+### 데이터베이스 접속 주체는 `prsctl install`이 만든다
+
+`.env`의 `POSTGRES_APP_USER`에 **`prs_app`이 아닌 이름**을 준다 (예: `prs_app_login`). `prs_app`은 마이그레이션 005가 만드는 `NOLOGIN` 그룹 롤이라 **그대로는 접속할 수 없다** (`DEV-503`).
+
+`install`이 마이그레이션을 적용한 **뒤에** 그 주체를 만들고 `prs_app` 멤버십을 주며 세션 기본 역할을 `prs_app`으로 둔다 — 접속하면 `current_user = prs_app`이 되어 감사 기록 불변성의 제약이 그대로 걸린다. **순서가 중요하다**: `prs_app`은 마이그레이션이 만들므로 그전에는 멤버십을 줄 수 없다 (`DEV-510`).
+
+`upgrade`도 같은 일을 다시 한다. 비밀번호를 회전했다면 `.env`만 고치고 `upgrade`를 돌리면 맞춰진다.
 
 ### 반입 후 데이터를 채운다
 
@@ -94,9 +96,15 @@ $EDITOR .env          # 필수 값을 채운다. 비어 있으면 install이 거
 
 ```bash
 # 새 번들에서
+# **이전 설치의 .env를 먼저 가져온다** (DEV-513) — 번들은 값이 채워진 .env를
+# 담지 않으므로(시크릿이다) `prsctl load`가 그것 없이는 멈춘다.
+cp <이전 설치 경로>/deploy/single-host/.env .env
+chmod 600 .env
+# 또는 복사하지 않고 지정한다:  export PRS_ENV_FILE=<이전 .env 절대경로>
+
 ./prsctl verify && ./prsctl load
 $EDITOR .env          # PRS_VERSION을 새 값으로
-./prsctl upgrade      # migration → ES mapping → 컨테이너 교체 → health
+./prsctl upgrade      # migration → 접속 주체 → ES mapping → 컨테이너 교체 → health
 ```
 
 **마이그레이션이 먼저다.** 하위 호환이므로 옛 코드가 새 스키마 위에서 돈다(데이터 모델 7장). 롤백은 `.env`의 `PRS_VERSION`을 이전 값으로 되돌리고 `./prsctl upgrade`를 다시 실행한다 — **이전 이미지가 로컬에 남아 있어야 하므로 번들을 지우지 마라.**
@@ -118,7 +126,9 @@ $EDITOR .env          # PRS_VERSION을 새 값으로
 
 **모든 볼륨을 tar로 묶는 구현은 하지 않는다** — 재구성 가능한 캐시를 백업하는 것은 복구 시간을 늘릴 뿐이다.
 
-복구 뒤 **색인은 비어 있다.** 운영 콘솔에서 전량 재색인(`JOB-ING-006`)을 실행한다.
+**복구는 파생 색인을 지우고 다시 만든다** (`DEV-511`). 복원한 정본보다 새로운 문서가 색인에 남아 있으면 검색이 **정본에 없는 것을 답한다** — 되돌린 데이터가 조회로 되살아나는 것이다. `restore`가 엔티티 색인을 삭제하고 매핑을 다시 적용한 뒤 전량 재색인을 예약하므로, **재색인이 끝날 때까지 검색 결과는 부분적이다.** 진행 상태는 운영 콘솔의 재색인 화면에서 본다.
+
+**복구는 마이그레이션도 다시 적용한다** (`DEV-514`). 백업이 현재 릴리스보다 이전이면 복원된 스키마도 그 시점의 것이라 현재 코드가 없는 열을 읽다 죽는다.
 
 ---
 
@@ -208,7 +218,9 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | 항목 | 상태 |
 | --- | --- |
 | 이미지 빌드·오프라인 번들·checksum·이미지 적재 | `VERIFIED (external)` |
-| 마이그레이션 → ES 매핑 → 기동 → health → 스모크 | `VERIFIED (external)` |
+| 마이그레이션 → 접속 주체 → ES 매핑 → 기동 → health | `VERIFIED (external)` |
+| 스모크의 **조회 왕복**(PostgreSQL·Elasticsearch, 관리 토큰) | `VERIFIED (external)` |
+| 스모크의 **`/search`** | `NOT RUN — internal environment required` — 세션 인증이 사내 OIDC를 요구한다 |
 | 재기동 후 데이터 잔존 · pull 없이 기동 | `VERIFIED (external)` |
 | 백업 → 파괴적 복구 | `VERIFIED (external)` |
 | 실제 사내 GHE App·웹훅·저장소 권한 | `NOT RUN — internal environment required` |
@@ -232,4 +244,8 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | 검색 결과가 비어 있다 | 백필을 실행했는가. `worker-project` 로그에 색인 기록이 있는가 |
 | `group_by=team`이 빈 결과 | `authz` 역할에 GHE 자격이 있는가 — 없으면 작성자 팀이 언제나 모름이다 |
 | 로그인 후 다시 로그인 화면 | TLS 없이 HTTP로 서비스하면서 `SESSION_COOKIE_SECURE=true`인가 |
+| `install`이 접속 주체 프로비저닝에서 멈춘다 | `POSTGRES_APP_USER`가 `prs_app`인가 — 그것은 그룹 롤이라 접속할 수 없다. 다른 이름을 준다 (DEV-503) |
+| 업그레이드에서 `load`가 `.env`가 없다고 멈춘다 | 이전 설치의 `.env`를 복사했는가. 번들은 시크릿을 담지 않는다 (DEV-513) |
+| 복구 뒤 검색 결과가 비어 있거나 부분적 | **정상이다.** 재색인이 도는 중이며 진행은 운영 콘솔에서 본다 (DEV-511) |
+| 재색인이 `permission denied`로 실패 | 마이그레이션 022가 적용됐는가 (DEV-517). 005 이후 만들어진 표에 애플리케이션 롤 권한이 없었다 |
 | `ingest-gateway`가 503 | **DB 접속 주체가 `prs_app`인가** (DEV-503). 그것은 `NOLOGIN` 그룹 롤이라 접속이 거부된다. 로그인 주체를 만들었는지 확인하라 — 이 엔드포인트만 실제로 PostgreSQL을 확인하므로 **여기서 먼저 드러난다** |

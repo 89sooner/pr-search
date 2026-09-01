@@ -34,8 +34,42 @@ compose() {
   docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
+# **애플리케이션 접속 주체를 만든다** (DEV-503 · DEV-510).
+#
+# `prs_app`은 마이그레이션 005가 만드는 `NOLOGIN` 그룹 롤이라 **그대로는 접속할 수
+# 없다.** 로그인 가능한 주체에 그 멤버십을 주고 세션 기본 역할을 `prs_app`으로 둔다 —
+# 접속하면 `current_user = prs_app`이 되고 감사 기록 불변성의 제약이 그대로 걸린다.
+#
+# **마이그레이션 뒤에 부른다.** `prs_app`이 그때 생기므로 그전에는 `GRANT`가 실패한다 —
+# 런북이 설치 전 단계로 적어 두었던 것이 실행 불가능했던 이유다(DEV-510).
+provision_app_role() {
+  [ "$POSTGRES_APP_USER" != 'prs_app' ] || die \
+    "POSTGRES_APP_USER가 'prs_app'이다 — 그것은 NOLOGIN 그룹 롤이라 접속할 수 없다 (DEV-503).
+  'prs_app_login'처럼 다른 이름을 주면 이 명령이 만들고 멤버십까지 준다"
+  printf '%s' "$POSTGRES_APP_USER" | grep -qE '^[a-z_][a-z0-9_]{0,62}$' \
+    || die "POSTGRES_APP_USER가 PostgreSQL 식별자 형태가 아니다: $POSTGRES_APP_USER"
+
+  step "애플리케이션 접속 주체 프로비저닝 — ${POSTGRES_APP_USER}"
+  # 식별자는 바인딩할 수 없으므로 `format %I`로 조립해 `\gexec`가 실행한다.
+  # 비밀번호는 psql 변수로 넘겨 셸·SQL 어느 쪽에도 리터럴로 남지 않는다.
+  compose exec -T postgres psql -U "$POSTGRES_OWNER_USER" -d "$POSTGRES_DB" \
+    -v ON_ERROR_STOP=1 -v role="$POSTGRES_APP_USER" -v pw="$POSTGRES_APP_PASSWORD" <<'SQL' >/dev/null \
+    || die "접속 주체 프로비저닝 실패 — 애플리케이션이 인증에 실패한다"
+SELECT format('CREATE ROLE %I LOGIN', :'role')
+ WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role')
+\gexec
+ALTER ROLE :"role" WITH LOGIN PASSWORD :'pw';
+GRANT prs_app TO :"role";
+ALTER ROLE :"role" SET role = 'prs_app';
+SQL
+  ok "${POSTGRES_APP_USER} → prs_app (세션 기본 역할)"
+}
+
 require_env() {
-  [ -f "$ENV_FILE" ] || die "$ENV_FILE 이 없다. .env.example을 복사해 값을 채워라"
+  [ -f "$ENV_FILE" ] || die "$ENV_FILE 이 없다.
+  최초 설치라면 .env.example을 복사해 값을 채운다.
+  **업그레이드라면 이전 설치의 .env를 이 디렉터리로 복사하거나** (DEV-513)
+  PRS_ENV_FILE=<이전 .env 경로>로 지정한다 — 번들은 값이 채워진 .env를 담지 않는다"
   # **값이 비어 있으면 기동하지 않는다.** 조용히 기본값으로 도는 것보다 낫다.
   local missing=()
   for key in PRS_VERSION POSTGRES_DB POSTGRES_OWNER_USER POSTGRES_OWNER_PASSWORD \
@@ -51,6 +85,10 @@ require_env() {
   PRS_VERSION="$(env_value PRS_VERSION)"
   POSTGRES_DB="$(env_value POSTGRES_DB)"
   POSTGRES_OWNER_USER="$(env_value POSTGRES_OWNER_USER)"
+  POSTGRES_APP_USER="$(env_value POSTGRES_APP_USER)"
+  POSTGRES_APP_PASSWORD="$(env_value POSTGRES_APP_PASSWORD)"
+  ADMIN_API_TOKENS="$(env_value ADMIN_API_TOKENS)"
+  AUTH_ENABLED="$(env_value AUTH_ENABLED)"
   SEARCH_CURSOR_HMAC_KEY="$(env_value SEARCH_CURSOR_HMAC_KEY)"
   [ "${#SEARCH_CURSOR_HMAC_KEY}" -ge 32 ] || die "SEARCH_CURSOR_HMAC_KEY는 32자 이상이어야 한다 (ADR-010 Amendment)"
 }
@@ -98,6 +136,8 @@ cmd_install() {
   compose --profile setup run --rm migrate || die "마이그레이션 실패 — 애플리케이션을 띄우지 않는다"
   ok "스키마 적용"
 
+  provision_app_role
+
   step "Elasticsearch 매핑·부트스트랩"
   compose --profile setup run --rm es-bootstrap || die "ES 매핑 적용 실패"
   ok "인덱스·별칭·ILM 적용"
@@ -114,6 +154,8 @@ cmd_upgrade() {
   # **마이그레이션이 먼저다** (인프라 3장 배포 순서). 하위 호환이므로 옛 코드가
   # 새 스키마 위에서 돈다.
   compose --profile setup run --rm migrate || die "마이그레이션 실패 — 교체하지 않는다"
+  # 비밀번호가 회전됐을 수 있으므로 업그레이드마다 다시 맞춘다. 멱등이다.
+  provision_app_role
   compose --profile setup run --rm es-bootstrap || die "ES 매핑 적용 실패"
   compose up -d
   cmd_health
@@ -181,33 +223,82 @@ cmd_health() {
 
 cmd_smoke() {
   require_env
-  step "read-only 검색 스모크"
-  # 조회 경로가 실제로 답하는지만 본다. **데이터를 쓰지 않는다.**
-  local code
-  code="$(compose exec -T web wget -qO- --server-response "http://127.0.0.1:3000/healthz" 2>&1 | awk '/HTTP\//{print $2}' | tail -1)"
-  [ "$code" = 200 ] || die "web /healthz 가 $code 를 답한다"
-  ok "web 응답"
+  step "read-only 조회 스모크"
 
-  code="$(compose exec -T search-api wget -qO- --server-response "http://127.0.0.1:3002/healthz" 2>&1 | awk '/HTTP\//{print $2}' | tail -1)"
-  [ "$code" = 200 ] || die "search-api /healthz 가 $code 를 답한다"
-  ok "search-api 응답"
+  # **health는 스모크가 아니다** (DEV-515). 이전 판은 `/healthz` 둘과 별칭 존재만
+  # 보고 "검색 스모크 통과"라고 말했는데, 그 셋이 전부 초록이어도 **라우팅·인증
+  # 배선·질의 구성·결과 디코딩이 통째로 깨져 있을 수 있다.** 실제 조회 왕복을 건다.
 
-  # Elasticsearch 별칭이 실제로 서 있는지 — 매핑 부트스트랩의 결과다.
+  local failed=0
+  for pair in "web:3000" "search-api:3002"; do
+    local svc="${pair%%:*}" port="${pair##*:}" code
+    code="$(compose exec -T "$svc" wget -qO- --server-response "http://127.0.0.1:${port}/healthz" 2>&1 \
+      | awk '/HTTP\//{print $2}' | tail -1 || true)"
+    if [ "$code" = 200 ]; then ok "$svc /healthz"; else bad "$svc /healthz → ${code:-무응답}"; failed=1; fi
+  done
+
+  # 엔티티 별칭 — 매핑 부트스트랩의 결과다.
   local aliases
-  aliases="$(compose exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/aliases?h=alias' 2>/dev/null | tr -d '\r' | sort | tr '\n' ' ')"
+  aliases="$(compose exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/aliases?h=alias' 2>/dev/null \
+    | tr -d '\r' | sort | tr '\n' ' ' || true)"
   case "$aliases" in
     *prs-pull-requests*) ok "ES 별칭: $aliases" ;;
-    *) die "ES 별칭에 prs-pull-requests가 없다 — 매핑 부트스트랩이 서지 않았다" ;;
+    *) bad "ES 별칭에 prs-pull-requests가 없다 — 매핑 부트스트랩이 서지 않았다"; failed=1 ;;
   esac
 
+  # ── 실제 조회 왕복 ─────────────────────────────────────────
+  #
+  # 관리 토큰이 있으면 그것으로 건다. **`/search`는 세션 인증을 요구하고**
+  # 세션은 사내 OIDC를 요구하므로 외부망에서 실행할 수 없다 — 그 사실을
+  # 통과로 적지 않고 NOT RUN으로 남긴다.
+  if [ -n "${ADMIN_API_TOKENS:-}" ]; then
+    local token="${ADMIN_API_TOKENS%%,*}"
+    token="${token#*:}"
+    local body
+    # PostgreSQL 왕복: 라우팅 → 토큰 인증 → 질의 → 응답 디코딩
+    # **`|| true`가 없으면 `set -e`가 진단 앞에서 스크립트를 죽인다.** 401이든
+    # 무응답이든 종료 코드는 1이고, 그 상태로 끝나면 운영자는 **무엇이 실패했는지
+    # 듣지 못한다** — 실패를 말하지 않는 실패는 성공으로 접는 것과 같다.
+    body="$(compose exec -T search-api wget -qO- --header="Authorization: Bearer ${token}" \
+      'http://127.0.0.1:3002/api/v1/admin/repositories?limit=1' 2>/dev/null || true)"
+    case "$body" in
+      *'"items"'*'"total"'*) ok "조회 왕복 (PostgreSQL) — /api/v1/admin/repositories" ;;
+      '') bad "조회 왕복 (PostgreSQL) 무응답 — 인증 또는 라우팅이 깨졌다"; failed=1 ;;
+      *) bad "조회 왕복 (PostgreSQL) 응답이 예상 모양이 아니다: $(printf '%.120s' "$body")"; failed=1 ;;
+    esac
+    # Elasticsearch 왕복: 색인 상태를 실제로 읽는다
+    body="$(compose exec -T search-api wget -qO- --header="Authorization: Bearer ${token}" \
+      'http://127.0.0.1:3002/api/v1/admin/reindex' 2>/dev/null || true)"
+    case "$body" in
+      *'"correlation_id"'*) ok "조회 왕복 (Elasticsearch) — /api/v1/admin/reindex" ;;
+      '') bad "조회 왕복 (Elasticsearch) 무응답"; failed=1 ;;
+      *) bad "조회 왕복 (Elasticsearch) 응답이 예상 모양이 아니다: $(printf '%.120s' "$body")"; failed=1 ;;
+    esac
+  else
+    printf '  \033[33m—\033[0m 조회 왕복: NOT RUN — ADMIN_API_TOKENS가 없다\n'
+  fi
+
+  # `/search`는 세션 인증 뒤에 있다 (ADR-011). 사내 OIDC 없이는 실행할 수 없다.
+  if [ "${AUTH_ENABLED:-true}" = 'false' ]; then
+    printf '  \033[33m—\033[0m /search: NOT RUN — AUTH_ENABLED=false면 검색 라우트가 등록되지 않는다\n'
+  else
+    printf '  \033[33m—\033[0m /search: NOT RUN — internal environment required (사내 OIDC 세션 필요)\n'
+  fi
+
   # 워커 역할이 실제로 기동 로그에 나타나는지 (CR-034의 도달성 규율).
-  local roles_seen=0
-  for svc in worker-enrich worker-project worker-sequence worker-link worker-mirror \
-             worker-reconcile worker-batch worker-authz worker-release; do
-    compose logs --tail 200 "$svc" 2>/dev/null | grep -q 'roles:' && roles_seen=$((roles_seen+1))
+  local roles_seen=0 roles_total=0
+  for svc in $(compose config --services | grep '^worker-'); do
+    roles_total=$((roles_total + 1))
+    compose logs --tail 200 "$svc" 2>/dev/null | grep -q 'roles:' && roles_seen=$((roles_seen + 1))
   done
-  [ "$roles_seen" -ge 1 ] || die "워커 기동 로그에서 역할을 하나도 확인하지 못했다"
-  ok "워커 기동 로그 확인 (${roles_seen}/9)"
+  if [ "$roles_seen" -eq "$roles_total" ] && [ "$roles_total" -gt 0 ]; then
+    ok "워커 기동 로그 ${roles_seen}/${roles_total}"
+  else
+    bad "워커 기동 로그 ${roles_seen}/${roles_total} — 로그에서 역할을 확인하지 못한 워커가 있다"
+    failed=1
+  fi
+
+  [ $failed -eq 0 ] || die "스모크 실패 — 위 항목을 확인하라"
   printf '\n스모크 통과\n'
 }
 
@@ -252,12 +343,55 @@ cmd_restore() {
   compose exec -T postgres pg_restore -U "$POSTGRES_OWNER_USER" -d "$POSTGRES_DB" --exit-on-error < "$file" \
     || die "복원 실패 — 데이터베이스가 비어 있다. 백업 파일을 확인하라"
   ok "스키마·데이터 복원"
+
+  # **마이그레이션을 다시 적용한다** (DEV-514). 백업이 현재 릴리스보다 이전이면
+  # 복원된 스키마도 그 시점의 것이고, 현재 코드가 없는 열·표를 읽다 죽는다.
+  # 설치·업그레이드가 이미 하는 일을 복구 경로만 빠뜨리고 있었다.
+  step "마이그레이션 재적용 — 백업이 현재 릴리스보다 이전일 수 있다"
+  compose --profile setup run --rm migrate || die "마이그레이션 실패 — 애플리케이션을 띄우지 않는다"
+  provision_app_role
+
+  # **파생 색인을 비우고 다시 만든다** (DEV-511).
+  #
+  # 복원한 정본보다 **새로운 문서가 색인에 남아 있으면** 검색이 정본에 없는 것을
+  # 답한다 — 되돌린 데이터가 조회로 되살아나는 것이며, 매핑만 다시 적용하는
+  # `es-bootstrap`은 기존 인덱스를 그대로 둔다. 비어 있는 색인이 **틀린 색인보다
+  # 낫다**: 전자는 "아직 없다"이고 후자는 거짓이다 (ADR-004).
+  step "파생 색인 삭제 — 정본에 없는 문서를 답하지 않는다"
+  local indices
+  indices="$(compose exec -T elasticsearch curl -fsS \
+    'http://localhost:9200/_cat/indices/prs-pull-requests*,prs-commits*,prs-links*,prs-releases*?h=index&ignore_unavailable=true' \
+    2>/dev/null | tr -d '\r' | tr '\n' ',' | sed 's/,\+/,/g; s/^,//; s/,$//')"
+  if [ -n "$indices" ]; then
+    # 와일드카드로 지우지 않는다 — ES 8의 `destructive_requires_name`이 막고,
+    # 이름을 세어 두어야 무엇을 지웠는지 로그가 말한다.
+    compose exec -T elasticsearch curl -fsS -XDELETE "http://localhost:9200/${indices}" >/dev/null \
+      || die "파생 색인을 지우지 못했다 — 낡은 문서가 남은 채 서비스를 띄우지 않는다"
+    ok "삭제: ${indices}"
+  else
+    ok "지울 엔티티 색인이 없다"
+  fi
+
   step "Elasticsearch 매핑 재적용"
   compose --profile setup run --rm es-bootstrap || die "ES 매핑 적용 실패"
+
   step "애플리케이션 재기동"
   compose up -d
   cmd_health
-  printf '\n**색인은 비어 있다.** 운영 콘솔에서 전량 재색인(JOB-ING-006)을 실행하라 — PostgreSQL이 정본이다 (ADR-004).\n'
+
+  # **재색인을 예약한다.** `batch` 역할이 그것을 집어 PostgreSQL에서 다시 만든다.
+  step "전량 재색인 예약 (JOB-ING-006)"
+  local queued=0
+  for alias in prs-pull-requests prs-commits prs-links prs-releases; do
+    if compose --profile setup run --rm reindex node dist/reindex-cli.js --alias "$alias" >/dev/null 2>&1; then
+      queued=$((queued + 1))
+    else
+      bad "재색인 예약 실패: ${alias} — 운영 콘솔에서 직접 실행하라"
+    fi
+  done
+  ok "재색인 예약 ${queued}/4"
+  printf '\n**색인은 지금 비어 있고 재색인이 끝날 때까지 검색 결과가 부분적이다.**\n'
+  printf '진행 상태는 운영 콘솔의 재색인 화면에서 본다 — PostgreSQL이 정본이다 (ADR-004).\n'
 }
 
 cmd_lineage() {

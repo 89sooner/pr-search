@@ -141,7 +141,7 @@ async function list(sessionId: string, search = ''): Promise<{ status: number; b
 }
 
 beforeAll(async () => {
-  pool = await migratedPool();
+  pool = await migratedPool({ fixtureMonths: ['2026-08'] });
   redis = createTestRedis();
 
   const redisPort = authRedis(redis);

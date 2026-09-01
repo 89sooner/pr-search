@@ -1,6 +1,6 @@
 # PR Search 구현 로드맵
 
-> 상태: review | 버전: v0.10 | 갱신일: 2026-09-01
+> 상태: review | 버전: v0.11 | 갱신일: 2026-09-01
 
 ## 1. 목적
 
@@ -73,7 +73,7 @@ WP-070  단일 호스트 오프라인 배포·반입 기반          ← 이번 
 | REL-003 | W-004, W-005, 시퀀스 배지, 선행·후행 섹션 | sequence 워커, **mirror 워커**, API-SEQ-001~003, API-REL-001~002, API-ADM-007 | `sequence_space`, `merge_sequence`, `repository.allowed_team_ids` / `prs-releases` 매핑 | 미러 PVC, git 도구 이미지 | ~~미러 접근 정책(OD-001)~~ **해소 (CR-024)** | 시퀀스 회귀 테스트(git 대조), FLOW-003 E2E |
 | REL-004 | W-008, W-009, 패싯 레일, 커서 페이저, 관계 섹션 | link 워커, API-SRCH-005, API-REL-003~004, API-ADM-004 | `prs-links` 매핑, `saved_search` 테이블 | Filebeat 배포, 아카이브 ILM | 저장된 검색 권한 미승계 | 관계 정확도 표본 검수, 재색인 무중단 검증, FLOW-006 E2E |
 | REL-005 | W-006, A-002, A-003, A-004, 차트 컴포넌트 | analytics 모듈, API-STAT-001~004, API-ADM-001~005 | `audit_record` 파티션 | 감사 보존 잡, 대시보드·알림 구성 | 감사 역할 제한, 집계 권한 반영 | 집계 정확성 테스트, FLOW-005·FLOW-007 E2E |
-| REL-006 | W-007(조건부), 이분 탐색 패널, 표식 카드, 내보내기 | API-SEQ-004~005, API-SRCH-006, 작성자 팀 해석(투영·백필·재색인) | `safe_marker`, `bisect_session`, **`team_membership`·`org_team_sync` 테이블 (마이그레이션 021)** | 내보내기 잡 | 표식 역할 제한, 내보내기 감사, **작성자 팀은 접근 범위가 아니다 — `allowed_team_ids`와 섞지 않는다** | FLOW-004 E2E, 그래프 접근성 검증, **팀 집계 통합 검증** |
+| REL-006 | W-007(조건부), 이분 탐색 패널, 표식 카드, 내보내기 | API-SEQ-004~005, API-SRCH-006, 작성자 팀 해석(투영·백필·재색인) | `safe_marker`, `bisect_session`, **`team_membership`·`org_team_sync` 테이블 (마이그레이션 021)**, **애플리케이션 롤 권한 (마이그레이션 022, CR-060)** | 내보내기 잡 | 표식 역할 제한, 내보내기 감사, **작성자 팀은 접근 범위가 아니다 — `allowed_team_ids`와 섞지 않는다** | FLOW-004 E2E, 그래프 접근성 검증, **팀 집계 통합 검증** |
 
 ## 6. 의존성 지도
 
