@@ -379,19 +379,49 @@ cmd_restore() {
   compose up -d
   cmd_health
 
-  # **재색인을 예약한다.** `batch` 역할이 그것을 집어 PostgreSQL에서 다시 만든다.
-  step "전량 재색인 예약 (JOB-ING-006)"
-  local queued=0
+  # **재색인을 하나씩 끝까지 돌린다** (DEV-519).
+  #
+  # `enqueueReindex`는 **전역 동시 실행 상한이 1이다** — 다른 별칭이 도는 중이면
+  # `busy`를 돌려준다(재색인이 클러스터를 통째로 쓰기 때문이며 의도된 계약이다).
+  # 그래서 넷을 연달아 예약하면 **첫 하나만 서고 나머지 셋은 거절된다.** 그런데
+  # 위에서 **넷을 모두 지웠으므로**, 그 상태로 끝내면 커밋·간선·릴리스 색인이
+  # **빈 채로 서비스된다.** 실패를 출력만 하고 성공으로 끝내지 않는다.
+  #
+  # 하나를 예약하고 **끝날 때까지 기다린 뒤** 다음을 예약한다. 상한은
+  # `PRS_REINDEX_TIMEOUT_S`가 정하며, 넘기면 **남은 별칭을 이름으로 말하고
+  # 종료 코드 1을 낸다** — 절반만 선 상태를 완료로 보고하지 않는다.
+  step "전량 재색인 (JOB-ING-006) — 동시 실행 상한이 1이라 하나씩 돌린다"
+  local timeout_s="${PRS_REINDEX_TIMEOUT_S:-3600}"
+  local pending=() alias
   for alias in prs-pull-requests prs-commits prs-links prs-releases; do
-    if compose --profile setup run --rm reindex node dist/reindex-cli.js --alias "$alias" >/dev/null 2>&1; then
-      queued=$((queued + 1))
-    else
-      bad "재색인 예약 실패: ${alias} — 운영 콘솔에서 직접 실행하라"
+    printf '  %s ' "$alias"
+    if ! compose --profile setup run --rm reindex node dist/reindex-cli.js --alias "$alias" >/dev/null 2>&1; then
+      printf '\033[31m예약 실패\033[0m\n'; pending+=("$alias"); continue
     fi
+    local deadline=$(( $(date +%s) + timeout_s )) state=''
+    while :; do
+      state="$(compose exec -T postgres psql -U "$POSTGRES_OWNER_USER" -d "$POSTGRES_DB" -tAc \
+        "SELECT state FROM job WHERE type='reindex' AND target='${alias}' ORDER BY job_id DESC LIMIT 1" \
+        2>/dev/null | tr -d '[:space:]' || true)"
+      case "$state" in
+        completed) printf '\033[32m완료\033[0m\n'; break ;;
+        failed|cancelled) printf '\033[31m%s\033[0m\n' "$state"; pending+=("$alias"); break ;;
+      esac
+      if [ "$(date +%s)" -ge "$deadline" ]; then
+        printf '\033[31m시간 초과(%ss)\033[0m\n' "$timeout_s"; pending+=("$alias"); break
+      fi
+      printf '.'; sleep 10
+    done
   done
-  ok "재색인 예약 ${queued}/4"
-  printf '\n**색인은 지금 비어 있고 재색인이 끝날 때까지 검색 결과가 부분적이다.**\n'
-  printf '진행 상태는 운영 콘솔의 재색인 화면에서 본다 — PostgreSQL이 정본이다 (ADR-004).\n'
+
+  if [ ${#pending[@]} -gt 0 ]; then
+    printf '\n'
+    bad "재색인이 끝나지 않은 별칭: ${pending[*]}"
+    die "**그 색인은 지금 비어 있다.** 운영 콘솔의 재색인 화면에서 남은 것을 실행하라 — 정본은 PostgreSQL이다 (ADR-004).
+  오래 걸리는 것이 원인이면 PRS_REINDEX_TIMEOUT_S를 늘려 다시 실행한다"
+  fi
+  ok "재색인 4/4 완료"
+  printf '\n복구가 끝났다. 검색이 복원된 정본을 답한다.\n'
 }
 
 cmd_lineage() {
