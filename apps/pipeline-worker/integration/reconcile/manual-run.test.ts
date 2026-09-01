@@ -239,12 +239,30 @@ describe('**취소가 스캔을 실제로 멈춘다** (PR #89 리뷰 P1)', () =>
     }
 
     try {
+      /*
+       * **주기 스윕을 먼저 흘려보낸다** (DEV-502).
+       *
+       * `intervalMs`를 1시간으로 크게 잡아도 **첫 회차는 간격을 보지 않는다** —
+       * `lastScheduledAt`이 `null`이라 즉시 돈다(냉시작을 없애려는 의도된 동작이며
+       * `DEV-500` 세션의 `M19`가 지킨 성질이다). 그리고 그 주기 스윕은
+       * `runReconcileSweep(deps)`를 **취소 콜백 없이** 부른다 — 취소할 잡이 없으니
+       * 당연하다. `probe`는 GHE 대역이라 **두 스윕의 진입을 구분하지 못하므로**,
+       * 잡을 먼저 넣으면 어느 쪽이 훑었는지에 따라 진입 수가 달라진다.
+       * CI에서 7회 중 2회가 그렇게 깨졌다.
+       *
+       * 그래서 **잡 없이 먼저 띄워 냉시작 스윕이 끝나기를 기다린 뒤** 계수를 0으로
+       * 되돌리고 잡을 넣는다. 그러면 세는 것이 수동 스윕의 진입뿐이다.
+       */
+      sweeper = startReconcileSweeper(deps(), { intervalMs: 60 * 60 * 1000, pollMs: 10 });
+      await until(async () => probe.entries >= 4 && probe.active === 0);
+      probe.entries = 0;
+      probe.peak = 0;
+
       const jobId = await enqueueManual();
       // 첫 저장소를 스캔하는 순간 취소한다.
       probe.onEnter = async () => {
         if (probe.entries === 1) await jobRepo.transitionJob(pool, jobId, 'cancel');
       };
-      sweeper = startReconcileSweeper(deps(), { intervalMs: 60 * 60 * 1000, pollMs: 10 });
       await until(reachedTerminal(jobId));
 
       expect(await stateOf(jobId)).toBe('cancelled');
