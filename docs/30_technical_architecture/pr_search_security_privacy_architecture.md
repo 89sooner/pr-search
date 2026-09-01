@@ -1,6 +1,6 @@
 # PR Search 보안 및 개인정보 아키텍처
 
-> 상태: review | 버전: v1.1 | 갱신일: 2026-08-30
+> 상태: review | 버전: v1.2 | 갱신일: 2026-09-01
 
 ## 1. 목적
 
@@ -138,17 +138,38 @@ export function search(q: ScopedQuery): Promise<EsResponse>;   // ScopedQuery만
 
 ## 6. 시크릿 관리
 
-| Secret | 저장 위치 | 접근 주체 | 회전 | 감사 |
-| --- | --- | --- | --- | --- |
-| GHE 웹훅 시크릿 | Kubernetes Secret | `ingest-gateway` | 90일. 회전 중 구·신 두 값 동시 허용 | 회전 이벤트 기록 |
-| GitHub App 개인 키 | Kubernetes Secret | `pipeline-worker`, `search-api` | 180일 | 회전 이벤트 기록 |
-| GitHub App 설치 토큰 | 메모리 전용 (파생 값) | 워커 프로세스 | 1시간 (자동 갱신) | 미기록 |
-| OIDC 클라이언트 시크릿 | Kubernetes Secret | `web` | 180일 | 회전 이벤트 기록 |
-| 세션 서명 키 | Kubernetes Secret | `web` | 90일. 회전 시 구 키로 검증 유예 | 회전 이벤트 기록 |
-| PostgreSQL 자격 증명 | Kubernetes Secret | 전 백엔드 | 180일 | 회전 이벤트 기록 |
-| Elasticsearch API 키 | Kubernetes Secret | 전 백엔드, Filebeat | 180일 | 회전 이벤트 기록 |
-| Redis 암호 | Kubernetes Secret | 전 백엔드 | 180일 | 회전 이벤트 기록 |
-| 커서 봉인 키 | Kubernetes Secret | `search-api` | 90일. 회전 시 기존 커서 무효 | 미기록 |
+| Secret | 저장 위치 (Profile B) | 저장 위치 (Profile A) | 접근 주체 | 회전 | 감사 |
+| --- | --- | --- | --- | --- | --- |
+| GHE 웹훅 시크릿 | Kubernetes Secret | 시크릿 파일 | `ingest-gateway` | 90일. 회전 중 구·신 두 값 동시 허용 | 회전 이벤트 기록 |
+| GitHub App 개인 키 | Kubernetes Secret | 시크릿 파일 | `pipeline-worker`, `search-api` | 180일 | 회전 이벤트 기록 |
+| GitHub App 설치 토큰 | 메모리 전용 (파생 값) | 메모리 전용 (파생 값) | 워커 프로세스 | 1시간 (자동 갱신) | 미기록 |
+| OIDC 클라이언트 시크릿 | Kubernetes Secret | 시크릿 파일 | `web` | 180일 | 회전 이벤트 기록 |
+| 세션 서명 키 | Kubernetes Secret | 시크릿 파일 | `web` | 90일. 회전 시 구 키로 검증 유예 | 회전 이벤트 기록 |
+| PostgreSQL 자격 증명 | Kubernetes Secret | 시크릿 파일 | 전 백엔드 | 180일 | 회전 이벤트 기록 |
+| Elasticsearch API 키 | Kubernetes Secret | 시크릿 파일 | 전 백엔드, Filebeat | 180일 | 회전 이벤트 기록 |
+| Redis 암호 | Kubernetes Secret | 시크릿 파일 | 전 백엔드 | 180일 | 회전 이벤트 기록 |
+| 커서 봉인 키 | Kubernetes Secret | 시크릿 파일 | `search-api` | 90일. 회전 시 기존 커서 무효 | 미기록 |
+
+**데이터베이스 접속 주체** (CR-059, DEV-503). `prs_app`과 `prs_admin`은 **둘 다 `NOLOGIN` 그룹 롤**이다 (마이그레이션 005) — 권한의 묶음이지 접속 주체가 아니다. `DEV-416`이 관리 연결에 대해 이미 정한 규칙을 **애플리케이션 연결에도 그대로 적용한다.**
+
+| 연결 | 접속 주체 | 권한을 집는 방법 |
+| --- | --- | --- |
+| `DATABASE_URL` (전 서비스) | `prs_app` 멤버십을 가진 **로그인 롤** | 그 주체의 **세션 기본 역할**을 `prs_app`으로 둔다 |
+| `ADMIN_DATABASE_URL` (`JOB-AUD-001`) | `prs_admin` 멤버십을 가진 **로그인 롤** | 연결 직후 `SET ROLE prs_admin` (DEV-416) |
+
+```sql
+CREATE ROLE prs_app_login LOGIN PASSWORD :secret IN ROLE prs_app;
+ALTER ROLE prs_app_login SET role = 'prs_app';
+```
+
+**소유자 계정을 그대로 쓰지 않는다.** 그 계정은 모든 표에 전권을 가지므로 `prs_app`이 지키는 제약(감사 기록 `UPDATE`·`DELETE` 금지, `FR-AUTH-004` AC-3)을 통째로 우회한다. **주체 생성은 마이그레이션이 아니라 운영 프로비저닝의 몫이다** — 비밀번호가 시크릿이기 때문이다.
+
+**Profile A의 시크릿 파일** (CR-059 / ADR-021, DEV-499). Kubernetes Secret이 없는 형상이므로 저장 수단을 여기서 정한다 — **정하지 않으면 운영자가 임의로 정하고, 그 임의값이 반입 번들에 섞여 나가는 것이 `NFR-005`가 막으려는 경로다.**
+
+- 호스트의 별도 파일에 두고 **소유자만 읽도록 권한을 좁힌다.** 값은 사내 시크릿 관리에서 주입한다.
+- **저장소에 커밋하지 않으며, 어떤 오프라인 번들에도 담지 않는다.** 번들이 담는 것은 `.env.example`뿐이고 값이 채워진 파일은 반입 대상이 아니라 사내에서 만드는 것이다.
+- 회전 주기와 감사 규칙은 프로파일과 무관하게 위 표 그대로다. 회전 수단만 `kubectl`에서 파일 교체 + 컨테이너 재시작으로 바뀐다.
+- **Compose 정의 파일 자체에 시크릿 리터럴을 쓰지 않는다.** 모든 값이 환경 참조(`${VAR}`)여야 하며 `WP-070`이 그 검사를 자동화한다. **`docker compose config` 출력으로 판정하지 않는다** — 그 명령은 정의상 `.env` 값을 치환해 보여 주므로 시크릿이 나타나는 것이 정상이고, 그것을 위반으로 세면 통과할 수 없는 검사가 된다.
 
 규칙:
 
@@ -205,7 +226,7 @@ export function search(q: ScopedQuery): Promise<EsResponse>;   // ScopedQuery만
 | 사내 구성원 식별자 | GHE 로그인, 표시명, 이메일 | PostgreSQL, ES(로그인만) | 사내 한정. 외부 반출 금지 |
 | 조직 구조 | 팀, 조직, 멤버십 | PostgreSQL | 권한 판정에만 사용 |
 | 접근 이력 | 감사 기록 | PostgreSQL | `security_officer` 한정, 1년 |
-| 인증 정보 | 토큰·시크릿 | Kubernetes Secret | 6장 규칙 |
+| 인증 정보 | 토큰·시크릿 | Kubernetes Secret (Profile B) / 시크릿 파일 (Profile A) | 6장 규칙 |
 | 운영 데이터 | 잡 상태, 큐 길이, 지표 | PostgreSQL, 메트릭 저장소 | `operator` 한정 |
 
 개인정보 관련 규칙:
