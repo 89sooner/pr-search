@@ -89,6 +89,13 @@ require_env() {
   POSTGRES_APP_PASSWORD="$(env_value POSTGRES_APP_PASSWORD)"
   ADMIN_API_TOKENS="$(env_value ADMIN_API_TOKENS)"
   AUTH_ENABLED="$(env_value AUTH_ENABLED)"
+  # **`.env`에서도 읽는다** (DEV-520). 런북이 "늘린다"고만 적어 두면 운영자는
+  # 설치의 구성 파일에 넣는데, 그때 셸 환경만 보면 그 조정이 **조용히 무시된다.**
+  # 셸에 명시한 값이 우선이다 — 한 번만 다르게 돌리는 경우를 막지 않는다.
+  PRS_REINDEX_TIMEOUT_S="${PRS_REINDEX_TIMEOUT_S:-$(env_value PRS_REINDEX_TIMEOUT_S)}"
+  PRS_REINDEX_TIMEOUT_S="${PRS_REINDEX_TIMEOUT_S:-3600}"
+  printf '%s' "$PRS_REINDEX_TIMEOUT_S" | grep -qE '^[1-9][0-9]*$' \
+    || die "PRS_REINDEX_TIMEOUT_S가 양의 정수가 아니다: $PRS_REINDEX_TIMEOUT_S"
   SEARCH_CURSOR_HMAC_KEY="$(env_value SEARCH_CURSOR_HMAC_KEY)"
   [ "${#SEARCH_CURSOR_HMAC_KEY}" -ge 32 ] || die "SEARCH_CURSOR_HMAC_KEY는 32자 이상이어야 한다 (ADR-010 Amendment)"
 }
@@ -391,7 +398,7 @@ cmd_restore() {
   # `PRS_REINDEX_TIMEOUT_S`가 정하며, 넘기면 **남은 별칭을 이름으로 말하고
   # 종료 코드 1을 낸다** — 절반만 선 상태를 완료로 보고하지 않는다.
   step "전량 재색인 (JOB-ING-006) — 동시 실행 상한이 1이라 하나씩 돌린다"
-  local timeout_s="${PRS_REINDEX_TIMEOUT_S:-3600}"
+  local timeout_s="$PRS_REINDEX_TIMEOUT_S"
   local pending=() alias
   for alias in prs-pull-requests prs-commits prs-links prs-releases; do
     printf '  %s ' "$alias"
