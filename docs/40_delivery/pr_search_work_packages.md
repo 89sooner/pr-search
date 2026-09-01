@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.13 | 갱신일: 2026-08-31
+> 상태: review | 버전: v2.14 | 갱신일: 2026-09-01
 
 ## 1. 목적
 
@@ -51,6 +51,7 @@
 | WP-067 | 커밋 메타데이터 보강 (JOB-MIR-002) | REL-003 | WP-020, WP-008 | done |
 | WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | WP-010, WP-012 | done |
 | WP-069 | 작성자 소속 팀 채우기 | REL-006 | WP-068, WP-037 | done |
+| WP-070 | 단일 호스트 오프라인 배포·반입 기반 | **배포 (CR-059)** | WP-001, WP-010 | todo |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003, **WP-067** | done |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020, **WP-067** | done |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | WP-030, WP-017, WP-016 | done |
@@ -1839,6 +1840,76 @@
   - [x] API 계약의 "`author_team_ids`는 현재 투영이 채우지 않는다"와 원장 7장의 같은 제한을 **사실에 맞게 고친다** — 기능이 서면 이전 값이 거짓이 된다
 - 검증 방법: `pnpm run test:integration analytics`, `pnpm run test:integration search`, `pnpm run test` (투영)
 - 기록: 원장 WP-069 상태, FR-STAT-006·FR-SRCH-005 매핑, DEV-453 종결
+
+---
+
+### WP-070 단일 호스트 오프라인 배포·반입 기반
+
+- 목표: **외부망에서 만든 오프라인 번들 하나로, 사내 Linux 호스트 1대에서 외부 레지스트리·npm 없이 read-only PR Search를 세울 수 있다.**
+- 관련 요구사항: 신규 없음. `NFR-004`(가용성 — 프로파일 조건), `NFR-005`(시크릿 노출 0건), `NFR-008`(운영성), SRS 5.2 기술 제약 6
+- 관련 화면/플로우: 없음 (화면 행위가 바뀌지 않는다)
+- 관련 API/데이터/잡: 없음 — **신규 API·엔티티·잡·마이그레이션을 만들지 않는다**
+- 선행 WP: WP-001, WP-010
+- **이 WP는 수평 작업이 아니라 하나의 사용자 여정이다.** 아래 경로가 **한 번에 이어져야** done이다.
+
+```text
+external main의 특정 커밋
+  → 이미지 빌드 (versioned tag + digest)
+  → 오프라인 번들 생성 (이미지 tar · 소스 계보 · compose · manifest · checksum)
+  → clean host로 전달
+  → checksum 검증 → 이미지 load
+  → .env 작성 → migration → ES mapping/bootstrap
+  → compose up → health → read-only search smoke
+  → down/up 후 데이터 잔존 · pull 없이 재기동
+  → 이 형상이 어느 external commit에서 왔는지 manifest로 확인
+```
+
+- 구현 범위:
+  - **컨테이너 이미지 빌드 경로를 만든다** (DEV-490). `web`·`search-api`·`ingest-gateway`·`pipeline-worker`와 마이그레이션 실행용 이미지. pnpm 워크스페이스를 멀티스테이지로 빌드하며 **런타임 이미지가 외부 네트워크를 요구하지 않는다.**
+  - **이미지 신원은 버전 태그와 digest다** (DEV-491). `latest`를 릴리스 신원으로 쓰지 않으며, 반입 후 `compose up`이 **새 pull을 시도하지 않는다.**
+  - `deploy/single-host/` — Compose 정의, `.env.example`, 운영 스크립트, 런북. **기존 `docker-compose.yml`을 운영용으로 변형하지 않는다** (인프라 3.0장).
+  - 인프라 3.1장 표의 **Profile A 열이 세우는 단위 전부**를 담는다. 역할당 인스턴스 1이며, 프로세스 경계를 합치지 않는다.
+  - **백킹 서비스 포트를 호스트에 발행하지 않는다.** 발행하는 것은 `web`과 `ingest-gateway` 둘뿐이다 (인프라 6장).
+  - **영속 볼륨을 정본별로 나눈다** — PostgreSQL 데이터, Elasticsearch 데이터, Redis AOF, git 미러, 원본 아카이브. 컨테이너 재생성으로 데이터가 사라지지 않는다.
+  - **`backfill`을 실행 가능하게 한다** (DEV-304). 코드가 `enrich` 안에서 그 갈래를 세우고 주석이 "같은 파드에서 함께 켜도 안전하다"고 적으므로, Profile A에서는 그 역할을 함께 켠다 — 서버가 하나라 워커 풀을 나눌 이유가 없다. **첫 반입 후 기존 PR 히스토리를 채우지 못하면 시스템이 사실상 비어 있다.**
+  - **`release`를 실행 가능하게 한다** (DEV-305). 미러 볼륨을 요구하므로 `mirror`와 같은 볼륨을 공유한다. GHE 자격은 선택이며 없으면 `git_tag` 소스만으로 돈다.
+  - **`.env.example`을 실제 구성 표면 전수로 갱신한다** (DEV-493). 코드가 소비하는 값과 소비 지점을 대조해 만들며, **지원되지 않는 값을 추측으로 넣지 않는다.**
+  - **사설 CA seam을 연다** — `NODE_EXTRA_CA_CERTS`는 Node 런타임이 이미 지원하므로 **코드 변경 없이** CA 파일 마운트와 환경 변수로 성립한다. `git` 서브프로세스도 환경 변수로 받는다. 이것을 `.env.example`과 런북에 드러낸다.
+  - **`search-api`의 `/healthz`가 백킹 서비스를 실제로 확인한다** (DEV-495). 인프라 3장 표가 이미 그렇게 적고 있으며, 오케스트레이터가 없는 형상에서 health가 유일한 기동 판정 수단이다.
+  - **운영 스크립트** — 번들 생성, 이미지 적재, 최초 설치, 업그레이드, health, smoke, backup, restore. **fail-fast여야 한다**: checksum 불일치·이미지 부재·필수 환경 변수 부재·마이그레이션 실패·health 실패를 성공으로 접지 않는다.
+  - **`release-manifest.json`** — upstream 저장소·커밋·소스 아티팩트 checksum·`pnpm-lock.yaml` checksum·Node/pnpm 버전·마이그레이션 수준·ES 매핑 버전·이미지 태그와 digest·번들 checksum 집합. **"지금 이 형상의 출발점이 어디인가"에 파일 하나로 답한다.**
+  - **`SHA256SUMS`** — 반입되는 모든 파일의 checksum.
+  - **`deploy/single-host/RUNBOOK.md`** — 반입 절차와 **영구 다운스트림 형상 승계 절차**(`vendor/upstream` / `company/main`, merge 우선, 내부 변경 분류 셋). 내부 수정을 외부로 반출하는 절차는 **적지 않는다.**
+  - **운영 도달성 회귀를 프로파일 인식으로 확장한다** (DEV-498). `CAPABILITIES` 표가 K8s 매니페스트만 묻던 자리에서 **Profile A의 배포 산출물도 같은 역할을 켜는지** 함께 묻는다. 두 프로파일이 같은 단위 집합을 세운다는 3.0장의 계약이 시험으로 강제된다.
+  - **구성 검사** — `docker compose config`로 `:latest` 의존 0건·필요한 서비스 전부 존재·백킹 서비스가 호스트에 노출되지 않음을 보고, **시크릿 리터럴은 compose 정의 파일 자체에서** 본다. `config` 출력은 정의상 `.env` 값을 치환하므로 그것으로 판정하면 통과할 수 없는 검사가 된다.
+- 제외:
+  - **Kubernetes 매니페스트의 재설계·삭제** — Profile B의 자산이며 손대지 않는다 (ADR-021). Profile B의 `web.yaml` 부재(DEV-492)도 이 WP가 만들지 않는다: 클러스터가 없어 검증할 수 없는 매니페스트를 하나 더 만드는 일이고, 첫 반입에 기여하지 않는다. **DEV로 열어 둔다.**
+  - **HTTP(S) 프록시 지원 코드** (DEV-494) — Node 22의 `fetch`는 프록시 환경 변수를 보지 않으므로 `undici` 디스패처를 세워야 하는데, **사내망이 프록시를 강제하는지가 실증되지 않았다.** 런북이 그 비대칭(`git`은 환경 변수로 되고 `fetch`는 안 된다)을 정확히 적고, 실제 요구가 확인되면 그때 최소 수정으로 연다. **추측으로 설정 표면을 만들지 않는다.**
+  - **리버스 프록시·TLS 종료** — Next.js가 이미 그 자리에 있고 사내 요구가 실증되지 않았다 (인프라 6장).
+  - **`gh-executor`** — REL-007 이후이며 첫 반입 대상이 아니다 (결정 · 인프라 3.1장).
+  - **다중 호스트·HA·리더 선출** — Profile B의 것이다.
+  - **실제 사내 환경 검증** — 사내 GHE·OIDC·CA·프록시·DNS·레지스트리·실서버 성능. 합성으로 통과시키지 않는다.
+  - **신규 마이그레이션** — 스키마 공백이 증명되지 않았다. 다음 빈 번호가 022라는 것은 이유가 아니다.
+- 완료 기준(DoD):
+  - [ ] 애플리케이션 이미지가 **저장소 안의 정의로** 빌드된다 (DEV-490)
+  - [ ] 이미지가 버전 태그와 digest로 식별되고 `latest`가 릴리스 신원이 아니다 (DEV-491)
+  - [ ] 오프라인 번들이 애플리케이션 이미지와 **백킹 이미지 셋을 함께** 담는다
+  - [ ] 번들의 모든 파일에 checksum이 있고 **검증이 실패하면 설치가 멈춘다**
+  - [ ] 번들에 **시크릿·토큰·개인 키가 하나도 없다** (자동 검사)
+  - [ ] `release-manifest.json`이 upstream 커밋·lockfile checksum·마이그레이션 수준·ES 매핑 버전·이미지 digest를 담는다
+  - [ ] 적재한 이미지만으로 `compose up`이 서고 **pull을 시도하지 않는다**
+  - [ ] 마이그레이션 → ES 매핑 → 기동 → health가 **런북 한 흐름으로** 재현된다
+  - [ ] PostgreSQL·Elasticsearch·Redis·`search-api`·`ingest-gateway`·`web`이 health를 답한다
+  - [ ] Profile A 표의 워커 역할이 **전부 기동 로그에 나타난다**
+  - [ ] 합성 시드로 **read-only 검색 스모크**가 통과한다
+  - [ ] `down` 후 `up`에 필요한 데이터가 남는다
+  - [ ] `docker compose config`에 `:latest` 의존 0건 · 백킹 서비스 호스트 노출 0건, **compose 정의 파일에 시크릿 리터럴 0건**(모든 값이 환경 참조)
+  - [ ] 백업 → **파괴적 복구**가 실제로 돌고 데이터가 되돌아온다
+  - [ ] 운영 도달성 회귀가 **두 프로파일 모두**에 대해 역할 도달성을 묻는다 (DEV-498)
+  - [ ] `deploy/single-host/RUNBOOK.md`가 반입 절차와 **단방향 형상 승계**를 적고, 외부 반출 절차를 적지 않는다
+  - [ ] 외부에서 증명한 것과 `NOT RUN — internal environment required`가 **구분되어 기록된다**
+- 검증 방법: 실제 실행. `pnpm typecheck` · `lint` · `lint:deps` · `test` · 관련 `test:integration` · `test:regression` · `build` · 문서 validator, 그리고 **위 여정 전체를 로컬에서 한 번 관통한다.**
+- 기록: 원장 WP-070 상태, DEV-490~499 판정, DEV-001·DEV-304·DEV-305 재판정
 
 ---
 

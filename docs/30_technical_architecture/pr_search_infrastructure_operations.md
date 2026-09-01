@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.7 | 갱신일: 2026-08-29
+> 상태: review | 버전: v0.8 | 갱신일: 2026-09-01
 
 ## 1. 목적
 
@@ -14,44 +14,71 @@
 | `dev` | 통합 확인 | 개발용 GHE 조직의 소수 저장소 | 개발팀 | main 병합 시 자동 배포 |
 | `staging` | 검증·부하 시험 | 운영 저장소의 부분 집합 (실데이터) | 개발팀 + QA | 릴리스 태그 배포 |
 | `production` | 운영 | 전체 실데이터 | 운영 정책 | 릴리스 태그 수동 승인 배포 |
+| `pilot` | **첫 사내 반입** | 사내 GHE 저장소 소수의 실데이터 | 파일럿 참여자 | **오프라인 번들 반입 + 단일 호스트 Compose** (CR-059 / ADR-021) |
+
+**`pilot`은 `local`도 `production`도 아니다** (DEV-497). 실데이터를 쓰지만 `production`의 HA 구성을 갖지 않고, Compose를 쓰지만 `local`의 합성 픽스처가 아니다. 배포 방식도 다르다 — 나머지 넷은 저장소에서 배포하지만 `pilot`은 **네트워크가 끊긴 상태에서 반입된 번들**로 선다.
 
 환경 간 차이는 의도된 것만 둔다.
 
-| 항목 | local | dev | staging | production |
-| --- | --- | --- | --- | --- |
-| Elasticsearch 노드 | 1 (단일) | 1 | 3 | 3 (전용 클러스터, OD-006 / 4.1장) |
-| 인덱스 복제본 | 0 | 0 | 1 | 1 |
-| PostgreSQL | 컨테이너 | 관리형 (소형) | 관리형 | 관리형 + 대기 복제본 |
-| Redis | 컨테이너 | 관리형 (소형) | 관리형 | 관리형 (HA) |
-| 미러 볼륨 | 로컬 디렉터리 | PVC 20GB | PVC 200GB | PVC (5장 산정) |
-| 아카이브 볼륨 | 로컬 디렉터리 | `emptyDir` 512MiB | `emptyDir` 512MiB | `emptyDir` 512MiB (64MiB × 5 + 여유) |
-| GHE 연결 | 목(mock) | 개발 조직 | 운영 조직 (읽기) | 운영 조직 |
-| OIDC | 목 | 사내 IdP (dev 클라이언트) | 사내 IdP | 사내 IdP |
-| 웹훅 | 목 이벤트 주입 | 개발 조직 웹훅 | 운영 웹훅 미러링 | 운영 웹훅 |
+| 항목 | local | pilot | dev | staging | production |
+| --- | --- | --- | --- | --- | --- |
+| 배포 프로파일 | A | **A** | B | B | B |
+| Elasticsearch 노드 | 1 (단일) | **1 (single-node)** | 1 | 3 | 3 (전용 클러스터, OD-006 / 4.1장) |
+| 인덱스 복제본 | 0 | **0** | 0 | 1 | 1 |
+| PostgreSQL | 컨테이너 | **컨테이너 (영속 볼륨)** | 관리형 (소형) | 관리형 | 관리형 + 대기 복제본 |
+| Redis | 컨테이너 | **컨테이너 (AOF 영속)** | 관리형 (소형) | 관리형 | 관리형 (HA) |
+| 미러 볼륨 | 로컬 디렉터리 | **명명 볼륨** | PVC 20GB | PVC 200GB | PVC (5장 산정) |
+| 아카이브 볼륨 | 로컬 디렉터리 | **명명 볼륨** | `emptyDir` 512MiB | `emptyDir` 512MiB | `emptyDir` 512MiB (64MiB × 5 + 여유) |
+| GHE 연결 | 목(mock) | **사내 조직 (읽기)** | 개발 조직 | 운영 조직 (읽기) | 운영 조직 |
+| OIDC | 목 | **사내 IdP** | 사내 IdP (dev 클라이언트) | 사내 IdP | 사내 IdP |
+| 웹훅 | 목 이벤트 주입 | **사내 조직 웹훅** | 개발 조직 웹훅 | 운영 웹훅 미러링 | 운영 웹훅 |
+| 역할당 인스턴스 | 1 | **1** | 3장 표의 최소 | 3장 표의 최소 | 3장 표 범위 |
 
 `staging`은 운영 웹훅을 **미러링**해서 받는다. 운영 GHE에 웹훅 대상을 하나 더 등록하는 방식이며, staging의 장애가 운영 수집에 영향을 주지 않는다.
 
 ## 3. 배포 단위
 
-| Unit | 책임 | Scale 기준 | 최소/최대 | Health Check | Rollback |
-| --- | --- | --- | --- | --- | --- |
-| `web` | Next.js UI + 프록시 | 동시 사용자, CPU | 2 / 6 | `GET /healthz` | 이전 이미지 재배포 |
-| `search-api` | 조회 API | RPS, p95 지연 | 2 / 8 | `GET /healthz` (ES·PG 연결 확인) | 이전 이미지 재배포 |
-| `ingest-gateway` | 웹훅 수신 | 수신 RPS | 2 / 10 | `GET /healthz` (PG 연결 확인) | 이전 이미지 재배포 |
-| `pipeline-worker:enrich` | 보강 | `prs:ingest` 적체 | 2 / 8 | 하트비트 | 이전 이미지 재배포 |
-| `pipeline-worker:project` | 투영 | `prs:enriched` 적체 | 2 / 8 | 하트비트 | 이전 이미지 재배포 |
-| `pipeline-worker:sequence` | 채번 | `prs:sequence` 적체 | 1 / 4 | 하트비트 | 이전 이미지 재배포 |
-| `pipeline-worker:link` | 관계 파생 | `prs:projected` 적체 | 1 / 4 | 하트비트 | 이전 이미지 재배포 |
-| `pipeline-worker:mirror` | git 미러 동기화·커밋 메타데이터 보강 | 저장소 수 | 1 / 2 | 하트비트 | 이전 이미지 재배포 |
-| `pipeline-worker:reconcile` | 조정 스캔 | 저장소 수 | 1 / 1 | 하트비트 | 이전 이미지 재배포 |
-| `pipeline-worker:batch` | 배치 잡 (JOB-ING-006 재색인 · JOB-ING-007 아웃박스 재적재) | 고정 | **1 / 1** | 하트비트 | 이전 이미지 재배포 |
-| `pipeline-worker:authz` | 권한 캐시 무효화 (JOB-AUTH-001) | `prs:permission` 적체 | **1 / 4** | 하트비트 | 이전 이미지 재배포 |
-| `filebeat` | 원본 아카이브 적재 | `ingest-gateway` 파드 수를 따른다 (사이드카) | 게이트웨이와 동일 | Filebeat 자체 | 설정 롤백 |
-| `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005) | 대기 중 실행 수 | 2 / 8 | `GET /healthz` (gh 버전·manifest 대조 포함) | 이전 이미지 재배포 |
+### 3.0 배포 프로파일 (CR-059 / ADR-021)
+
+배포 프로파일은 둘이며, **환경마다 어느 것을 쓰는지는 2장 표가 정한다.**
+
+| | Profile A | Profile B |
+| --- | --- | --- |
+| 오케스트레이션 | 단일 호스트 **Docker Compose** | **Kubernetes** |
+| 산출물 | `deploy/single-host/` | `deploy/k8s/` |
+| 역할당 인스턴스 | **1** | 아래 표의 최소/최대 |
+| Backing service | 같은 호스트의 컨테이너 (영속 볼륨) | 관리형 / 전용 클러스터 |
+| Elasticsearch | **single-node, 복제본 0** | 전용 3노드, 복제본 1 (OD-006 / 4.1장) |
+| 가용성 | **호스트 장애 = 전체 장애** (파일럿 승인 trade-off) | HA |
+| 현재 용도 | **첫 사내 파일럿의 기본** | 다중 서버·HA가 필요해질 때 |
+
+**두 프로파일은 같은 배포 단위 집합을 세운다.** 프로파일이 바꾸는 것은 인스턴스 수와 실행 수단이지 **무엇이 도는가**가 아니다. 역할을 더하는 WP는 **두 산출물 모두**에 그 단위를 더하며, 운영 도달성 회귀가 프로파일마다 그것을 묻는다 (DEV-498).
+
+**서버가 하나라는 이유로 프로세스를 합치지 않는다.** `pipeline-worker`의 역할 분리는 배포 형상이 아니라 "워커 풀을 나눌 수 있어야 한다"는 요구(FR-ING-006 AC-3)에서 나온 것이고, 합치면 Profile B로 돌아갈 수 없다. 반대로 Profile B의 복제본 수를 Compose에 기계적으로 번역하지도 않는다 — **기본은 역할당 하나**이며, 동시 실행 자체가 위험한 `batch`·`reconcile`은 그것이 곧 상한이다.
+
+### 3.1 배포 단위 표
+
+| Unit | 책임 | Scale 기준 | 최소/최대 (B) | **A** | Health Check | Rollback |
+| --- | --- | --- | --- | --- | --- | --- |
+| `web` | Next.js UI + 프록시 | 동시 사용자, CPU | 2 / 6 | **1** | `GET /healthz` | 이전 이미지 재배포 |
+| `search-api` | 조회 API | RPS, p95 지연 | 2 / 8 | **1** | `GET /healthz` (ES·PG 연결 확인) | 이전 이미지 재배포 |
+| `ingest-gateway` | 웹훅 수신 | 수신 RPS | 2 / 10 | **1** | `GET /healthz` (PG 연결 확인) | 이전 이미지 재배포 |
+| `pipeline-worker:enrich` | 보강 | `prs:ingest` 적체 | 2 / 8 | **1** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:project` | 투영 | `prs:enriched` 적체 | 2 / 8 | **1** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:sequence` | 채번 | `prs:sequence` 적체 | 1 / 4 | **1** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:link` | 관계 파생 | `prs:projected` 적체 | 1 / 4 | **1** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:mirror` | git 미러 동기화·커밋 메타데이터 보강 | 저장소 수 | 1 / 2 | **1** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:reconcile` | 조정 스캔 | 저장소 수 | 1 / 1 | **1** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:batch` | 배치 잡 (JOB-ING-006 재색인 · JOB-ING-007 아웃박스 재적재) | 고정 | **1 / 1** | **1** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:authz` | 권한 캐시 무효화 (JOB-AUTH-001) | `prs:permission` 적체 | **1 / 4** | **1** | 하트비트 | 이전 이미지 재배포 |
+| `filebeat` | 원본 아카이브 적재 | `ingest-gateway` 파드 수를 따른다 (사이드카) | 게이트웨이와 동일 | **1** (사이드카) | Filebeat 자체 | 설정 롤백 |
+| `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005) | 대기 중 실행 수 | 2 / 8 | **미포함** | `GET /healthz` (gh 버전·manifest 대조 포함) | 이전 이미지 재배포 |
 
 **`batch`의 상한은 3이 아니라 1이다** (CR-046, DEV-311). 이 표가 3을 허용하면 운영자가 문서를 따라 늘릴 수 있는데, JOB-ING-007은 리더 선출이 없는 주기 스윕이라 파드마다 같은 아웃박스 행을 다시 발행하고 JOB-ING-006은 동시 실행 상한이 1이다. `pipeline-worker-batch.yaml`의 주석은 replica 1을 요구하는데 이 표가 3을 승인하고 있었다 — **아키텍처가 배포 계약이 경고하는 형상을 허가하고 있었다.** 조정 수단이 생기면 그때 올린다.
 
-**이 표는 `deploy/k8s/`와 서로를 검사한다** (CR-045, DEV-293·307). `mirror`(CR-038)·`reconcile`(CR-034)은 manifest가 신설됐는데 이 표에 오르지 않았고, 반대로 `batch`는 이 표에 있는데 **manifest가 없었다** — 그 결과 이미 구현된 JOB-ING-007이 배포되지 않았다(DEV-292). 이제 운영 도달성 회귀가 **코드가 갈래를 만든 역할마다 그것을 세우는 manifest가 있는지** 묻는다. `authz`(JOB-AUTH-001)는 **CR-048이 배포했다**(DEV-306 resolved) — 예외를 지우고 manifest를 만든 뒤 이 표에 올렸다. `release`(JOB-REL-007)·`backfill`(JOB-ING-004) 둘은 **아직 배포되지 않으며** DEV-304·305로 열려 있다 — **배포되지 않는 단위를 이 표에 먼저 적지 않는다.** 그러면 표가 다시 사실과 어긋난다.
+**이 표는 두 프로파일의 배포 산출물과 서로를 검사한다** (CR-045, DEV-293·307 / CR-059, DEV-498). `mirror`(CR-038)·`reconcile`(CR-034)은 manifest가 신설됐는데 이 표에 오르지 않았고, 반대로 `batch`는 이 표에 있는데 **manifest가 없었다** — 그 결과 이미 구현된 JOB-ING-007이 배포되지 않았다(DEV-292). 이제 운영 도달성 회귀가 **코드가 갈래를 만든 역할마다 그것을 세우는 manifest가 있는지** 묻는다. `authz`(JOB-AUTH-001)는 **CR-048이 배포했다**(DEV-306 resolved) — 예외를 지우고 manifest를 만든 뒤 이 표에 올렸다. `release`(JOB-REL-007)·`backfill`(JOB-ING-004) 둘은 **아직 배포되지 않으며** DEV-304·305로 열려 있다 — **배포되지 않는 단위를 이 표에 먼저 적지 않는다.** 그러면 표가 다시 사실과 어긋난다. **`WP-070`이 Profile A에서 그 둘의 실행 경로를 세우면 그때 이 표에 올린다** (CR-059) — 이 CR은 계약만 세우므로 표를 미리 채우지 않는다.
+
+**`gh-executor`는 Profile A에 포함하지 않는다** (CR-059). REL-007 이후의 GitHub Operations Plane이고 첫 사내 반입 대상은 read-only Search/Investigation Plane이다 — **장래의 선택 프로파일 때문에 지금 서비스를 세우지 않는다.** `filebeat`는 반대로 **포함한다**: 이미 구현·배포 계약이 있고(CR-052), Profile A는 게이트웨이 인스턴스가 하나라 `DEV-369`의 `PIPE_BUF` 경합이 아예 성립하지 않아 Profile B보다 배선이 단순하다.
 
 배포 순서 규칙:
 
@@ -78,6 +105,8 @@
 | Traces | OpenTelemetry → 사내 수집기 | 분산 추적 | 사내 표준 |
 
 ### 4.1 Elasticsearch 토폴로지 (OD-006 결정, CR-004)
+
+> **좁힘 기록 (CR-059, 2026-09-01).** 아래 3노드 결정은 **`production` 환경의 결정이며 그대로 유효하다** — 당시 범위에서 옳았고 이 CR은 그것을 다시 쓰지 않는다. 다만 **첫 사내 파일럿(`pilot` 환경 / 배포 Profile A)에서는 `CR-059`가 정한 single-node·복제본 0이 우선한다.** 서버가 1대이므로 노드 3개를 세워도 장애 도메인이 하나이고, 아래 표가 이미 경고하는 "컨테이너 3개가 곧 장애 도메인 3개는 아니다"가 그 형상에서 **언제나 참**이기 때문이다 — 마스터 quorum과 복제본 1이 아무것도 지켜 주지 못하면서 메모리만 3배 쓴다. 다중 서버로 승격할 때 이 결정이 다시 정본이 된다 (ADR-021).
 
 | 항목 | 결정값 |
 | --- | --- |
@@ -139,6 +168,12 @@ ES 아카이브(약 700GB)와 `raw_event`(4TB)는 같은 payload를 담지만 �
 
 인터넷 노출은 없다. 아웃바운드는 허용 목록 방식이며, 목록에 없는 목적지로의 연결을 차단한다.
 
+**Profile A의 노출 규칙** (CR-059 / ADR-021). 오케스트레이터의 네트워크 정책이 없으므로 **노출 자체를 줄이는 것이 통제 수단이다.**
+
+- 서비스 사이 통신은 **Compose 사설 네트워크 안에서만** 이루어진다. PostgreSQL·Elasticsearch·Redis는 **호스트 포트를 발행하지 않는다** — 개발용 `docker-compose.yml`이 5432·9200·6379를 여는 것과 반대이며, 그 차이가 두 파일을 합치지 않는 이유 중 하나다.
+- 호스트에 발행하는 포트는 **사용자 접점 둘뿐이다**: `web`(사용자)과 `ingest-gateway`(GHE 웹훅). `search-api`는 발행하지 않는다 — 조회는 전부 `web`을 거치므로(ADR-011) 외부에서 직접 닿을 이유가 없다.
+- **리버스 프록시를 자동으로 세우지 않는다.** Next.js가 이미 그 자리에 있고, TLS 종료나 단일 엔드포인트 통합이 사내 요구로 실증되기 전에 nginx·Caddy·Traefik 의존을 새로 만들 이유가 없다. 필요해지면 근거와 함께 가장 단순한 선택을 한다.
+
 네트워크 정책:
 
 - `pipeline-worker`는 인바운드 연결을 받지 않는다.
@@ -166,6 +201,16 @@ ES 아카이브(약 700GB)와 `raw_event`(4TB)는 같은 payload를 담지만 �
 | API 경로·DTO | 코드 | 아니오 |
 | 시크릿 | Secret | 예 (파드 재시작 필요) |
 | 로그 레벨 | ConfigMap | 예 |
+
+**Profile A의 저장 수단** (CR-059 / ADR-021). ConfigMap도 Kubernetes Secret도 없으므로 둘 다 **호스트 파일**로 내려온다.
+
+| 구분 | Profile B | Profile A |
+| --- | --- | --- |
+| 비밀 아닌 설정 | ConfigMap | `deploy/single-host/.env` (저장소에 커밋하지 않는다) |
+| 시크릿 | Kubernetes Secret | 호스트의 별도 파일. 소유자만 읽도록 권한을 좁히고 사내 시크릿 관리에서 주입한다 |
+| 재배포 없이 반영 | 파드 재시작 | 컨테이너 재시작 (`prsctl` 재적용) |
+
+**시크릿 파일은 어떤 번들에도 들어가지 않는다** (DEV-499). 번들에는 `.env.example`만 담기며, 값이 채워진 파일은 반입 대상이 아니라 사내에서 만드는 것이다 — `NFR-005`의 "시크릿 노출 0건"이 막으려는 것이 정확히 그 경로다.
 
 "재배포 없이 반영"되는 항목을 명시하는 것이 운영성 요구(NFR-008)의 일부다. 운영자가 장애 중에 무엇을 바꿀 수 있는지 알아야 한다.
 
@@ -204,6 +249,15 @@ pnpm es:apply-mappings            # 엔티티 인덱스 4종 생성 + 별칭 부
 pnpm test:e2e                     # Playwright                                   — WP-020
 pnpm test:a11y                    # axe 검사                                     — WP-020
 pnpm es:reindex --alias <별칭>    # 재색인 + 별칭 전환                           — WP-035
+
+# --- 단일 호스트 프로파일 (CR-059 / ADR-021) — WP-070 ---
+pnpm release:bundle               # 이미지 빌드 + 오프라인 번들 생성 (외부망에서)   — WP-070
+deploy/single-host/prsctl load    # 번들의 이미지 tar를 로컬 daemon에 적재 (사내)   — WP-070
+deploy/single-host/prsctl install # migration → mapping → up → health              — WP-070
+deploy/single-host/prsctl health  # 전 서비스 health 판정                          — WP-070
+deploy/single-host/prsctl smoke   # read-only 검색 스모크                          — WP-070
+deploy/single-host/prsctl backup  # PostgreSQL 논리 백업 (9.4장)                   — WP-070
+deploy/single-host/prsctl restore # 백업 복원 + 재색인                             — WP-070
 ```
 
 DB 접속 정보는 환경 변수에서만 읽는다 (`@prs/db`의 `resolvePoolConfig`). 우선순위는 `DATABASE_URL` → 개별 `POSTGRES_*` → 로컬 기본값이다. 통합 테스트는 `POSTGRES_TEST_DB`(기본 `prs_test`)를 써서 개발용 DB와 분리한다.
@@ -234,6 +288,21 @@ Elasticsearch 접속도 같은 원칙이다 (`@prs/es`의 `resolveClientOptions`
 ## 9. 운영 절차
 
 ### 9.1 배포
+
+**Profile A — 첫 사내 반입** (CR-059 / ADR-021). 외부망에서 만든 번들 하나가 사내로 건너간다.
+
+```text
+[외부망]  main의 특정 커밋
+            → 이미지 빌드 (versioned tag + digest)
+            → 오프라인 번들 생성 (이미지 tar · 소스 계보 · compose · manifest · checksum)
+──────────  물리적 반입 (네트워크 없음)  ──────────
+[사내망]  checksum 검증 → 이미지 load → .env 작성 → migration → ES mapping
+            → compose up → health → smoke
+```
+
+**사내에서 `git clone`·`pnpm install`·레지스트리 접근을 요구하지 않는다.** 요구하는 순간 그 절차는 사내망에서 실행 불가능하다. 반입된 형상이 어느 외부 커밋에서 나왔는지는 `release-manifest.json`이 답한다 — **그 질문에 답하지 못하면 다음 반입에서 무엇을 합쳐야 하는지도 알 수 없다.**
+
+**Profile B — 다중 호스트**
 
 1. 릴리스 태그 생성 → CI가 이미지 빌드·스캔
 2. staging 자동 배포 → E2E + 성능 스모크
@@ -268,6 +337,19 @@ Elasticsearch 접속도 같은 원칙이다 (`@prs/es`의 `resolveClientOptions`
 | git 미러 | 백업하지 않음 | - | 재클론으로 복구 |
 | ConfigMap/Secret | GitOps 저장소 (시크릿은 봉인 형태) | 커밋 시 | - |
 
+**Profile A(단일 호스트)의 백업 경로는 다르다** (CR-059 / ADR-021). 관리형 서비스도 스냅샷 저장소도 없으므로 **정본별로 다른 수단을 쓰며, 모든 볼륨을 tar로 묶는 방식은 택하지 않는다** — 재구성 가능한 캐시를 백업하는 것은 복구 시간을 늘릴 뿐이고, 실행 중인 데이터 디렉터리의 파일 복사는 일관성을 보장하지 않는다.
+
+| 대상 | Profile A 방식 | 근거 |
+| --- | --- | --- |
+| PostgreSQL | `pg_dump`(논리 백업)를 컨테이너 안에서 실행해 호스트로 내린다 | **유일한 정본이다** (ADR-004). 실행 중 파일 복사는 일관성이 없다 |
+| Elasticsearch | **백업하지 않는다.** PostgreSQL에서 재색인해 복구한다 | ADR-004가 전량 재구성 가능을 보장한다. RTO 30분 목표는 Profile A에 적용되지 않으므로(NFR-004) 스냅샷 저장소를 세울 이유가 없다 |
+| Redis | **백업하지 않는다.** 재기동 후 `JOB-ING-007` 아웃박스 재적재가 미처리 이벤트를 되살린다 | 큐 내용은 유실되어도 데이터 유실이 아니다 (11장). 세션은 재로그인으로 복구된다 |
+| git 미러 | **백업하지 않는다.** 재클론으로 복구한다 | 재구성 가능한 캐시다 (4장) |
+| 원본 아카이브 볼륨 | **백업하지 않는다.** `raw_event`가 보존 보증을 진다 | ADR-003: 백업 대상 아님 |
+| 구성(`.env`)·시크릿 | **백업 대상이 아니다.** 사내 시크릿 관리에서 다시 주입한다 | 6장 규칙. 백업에 시크릿을 담으면 그것이 새 노출 경로가 된다 |
+
+**복구는 `pg_dump` 산출물 하나에서 시작한다** — PostgreSQL 복원 → 마이그레이션 수준 확인 → ES 매핑 적용 → 전량 재색인. 이 경로가 실제로 도는지는 `WP-070`이 destructive restore로 검증한다.
+
 **Elasticsearch 스냅샷은 RTO를 위한 것이다.** 데이터 자체는 PostgreSQL에서 재구성 가능하지만(ADR-004) 재색인이 4시간 걸리므로, RTO 30분(NFR-004)을 지키려면 스냅샷 복원이 필요하다. 재색인은 스냅샷도 손상된 경우의 최종 수단이다.
 
 ### 9.5 재해 복구
@@ -281,6 +363,8 @@ Elasticsearch 접속도 같은 원칙이다 (`@prs/es`의 `resolveClientOptions`
 | Redis 손실 | 0 (아웃박스 보존) | 5분 | 재기동 후 `JOB-ING-007`이 미처리 이벤트 재적재 |
 | 미러 볼륨 손실 | 0 | 저장소 수에 비례 | 재클론. 그동안 API 폴백 경로로 동작 |
 | GHE 장애 | - | GHE 복구에 종속 | 수집 중단, 검색은 정상. 복구 후 조정 스캔으로 누락 보정 |
+
+**Profile A의 재해 복구는 하나로 수렴한다** (CR-059). 대기 복제본도 스냅샷 저장소도 없으므로 **호스트가 살아 있으면 컨테이너 재기동, 호스트를 잃으면 `pg_dump` 복원 + 전량 재색인**이다. Elasticsearch·Redis·미러·아카이브 볼륨은 전부 재구성 가능하므로 복구 경로에 PostgreSQL 하나만 남는다 — 그것이 9.4장이 정본별로 수단을 가른 이유다. 소요는 저장소 규모에 비례하며 **RTO 30분을 약속하지 않는다.**
 
 **RPO 0의 근거**: 웹훅 수신 시 `raw_event` durable 저장 후에만 202를 반환한다. 저장 실패 시 500을 반환해 GHE가 재전송한다. 따라서 GHE가 성공으로 간주한 이벤트는 반드시 PostgreSQL에 있다.
 
@@ -320,6 +404,9 @@ Elasticsearch 접속도 같은 원칙이다 (`@prs/es`의 `resolveClientOptions`
 | 미러 볼륨 150GB 추정의 편차가 큼 | 대형 저장소 몇 개가 대부분을 차지할 수 있음 | 저장소별 미러 크기 지표화, 상위 저장소는 API 폴백 전환 검토 |
 | Redis 유실 시 큐 내용 손실 | 처리 지연 | 아웃박스 재적재로 복구 (데이터 유실 아님) |
 | 단일 리전 배포 | 리전 장애 시 전체 중단 | 사내 시스템이며 GHE도 같은 리전이다. 별도 DR 리전을 두지 않는다 |
+| **Profile A는 호스트 장애가 곧 전체 장애다** | `NFR-004`의 가용성 목표와 RTO 30분을 그 형상에서 보장하지 않는다 | **파일럿 단계에서 승인된 trade-off다** (CR-059 / ADR-021). 대신 재기동·영속 볼륨·백업/복구·재구축 가능성을 보장한다. 다중 서버가 필요해지면 Profile B로 승격한다 |
+| **Profile A에서 실측할 수 없는 항목이 있다** | 사내 GHE·OIDC·CA·프록시·DNS·실서버 성능·실데이터 규모 | 외부망에서 합성해 통과로 만들지 않는다. 릴리스 검증 계획이 `NOT RUN — internal environment required`로 구분하며, 사내 반입 뒤 실행한다 (CR-059) |
+| **사내 프록시와 사설 CA를 받을 자리가 코드에 없다** | 사내망이 프록시를 강제하거나 사설 CA를 쓰면 GHE·OIDC 연결이 실패한다 | `DEV-494` open. 고칠 자리가 core code가 되면 그 수정은 외부로 되돌아올 수 없으므로(ADR-021), 필요가 실증되면 configuration seam으로 연다 — **추측으로 미리 만들지 않는다** |
 | staging이 운영 웹훅을 미러링 | GHE 웹훅 대상이 2개 | GHE 측 부하 미미. staging 장애가 운영에 영향 없음 |
 
 ## 12. gh 실행기 런타임 (CR-005 신규)
