@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.16 | 갱신일: 2026-09-01
+> 상태: review | 버전: v0.17 | 갱신일: 2026-09-01
 
 ## 1. 목적
 
@@ -513,6 +513,14 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
   repository_registration_request,
   team_membership, org_team_sync
 TO prs_app;
+
+-- 마이그레이션 023 (CR-061, DEV-518) — 시퀀스도 같은 사각지대에 있었다.
+--
+-- 005의 `ON ALL SEQUENCES`도 **그 시점에 존재하는 것**만 뜻한다. 022가 표에
+-- 대해 같은 공백을 메우면서 시퀀스를 세지 않아, `repository_registration_request`의
+-- `INSERT`가 **표 권한을 통과한 뒤 `nextval`에서** `permission denied for sequence`로
+-- 막혔다. 전수 검사를 만들 때 **"무엇의 전수인가"를 먼저 물어야 한다.**
+GRANT USAGE, SELECT ON SEQUENCE repository_registration_request_request_id_seq TO prs_app;
 ```
 
 **모든 검색 문서는 `doc_id`를 갖는다 (CR-016, DEV-059).** `_id`와 같은 값이다. Elasticsearch 8이 `_id` 정렬을 금지하므로 FR-SRCH-007 AC-4의 "문서 ID를 마지막 정렬 키로"를 성립시키려면 그 값이 정렬 가능한 필드로 문서 안에 있어야 한다. `@prs/es`의 `upsert`가 자동으로 채우므로 투영이 잊을 수 없다.

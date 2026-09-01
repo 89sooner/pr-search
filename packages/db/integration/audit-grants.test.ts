@@ -90,6 +90,38 @@ describe('감사 기록 권한 (WP-002 DoD 6)', () => {
     ).toEqual([]);
   });
 
+  /*
+   * **시퀀스도 함께 묻는다** (CR-061, DEV-518).
+   *
+   * 005의 `GRANT ... ON ALL SEQUENCES`도 **그 시점에 존재하는 것**만 뜻한다.
+   * 022가 같은 사각지대를 표에 대해 메우면서 **시퀀스는 세지 않았고**, 그래서
+   * `repository_registration_request`의 `INSERT`가 표 권한을 통과한 뒤
+   * `permission denied for sequence`로 막혔다 — **한 겹 더 아래에 같은 결함이
+   * 있었던 것이며**, 표만 보는 검사는 그것을 잡지 못한다.
+   */
+  it('**모든 시퀀스가 애플리케이션 롤에 USAGE를 준다** (DEV-518)', async () => {
+    const result = await pool.query<{ relname: string }>(`
+      SELECT c.relname
+        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relkind = 'S'
+       ORDER BY 1`);
+    const sequences = result.rows.map((row) => row.relname);
+    expect(sequences.length, '시퀀스를 하나도 찾지 못했다').toBeGreaterThan(0);
+
+    const missing: string[] = [];
+    for (const sequence of sequences) {
+      const granted = await pool.query<{ granted: boolean }>(
+        'SELECT has_sequence_privilege($1, $2, $3) AS granted',
+        ['prs_app', `public.${sequence}`, 'USAGE'],
+      );
+      if (granted.rows[0]?.granted !== true) missing.push(sequence);
+    }
+    expect(
+      missing,
+      `애플리케이션 롤이 쓰지 못하는 시퀀스가 있다 — 그 시퀀스를 만든 마이그레이션이 GRANT를 빠뜨렸다: ${missing.join(', ')}`,
+    ).toEqual([]);
+  });
+
   it('제외 목록이 실재하지 않는 표를 담지 않는다', async () => {
     // 표가 사라졌는데 예외만 남으면 그 예외가 다음 표를 조용히 덮는다.
     for (const table of NO_APP_GRANT.keys()) {
