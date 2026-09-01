@@ -226,6 +226,92 @@ describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () 
       expect(read(manifest)).toContain(`value: ${role as string}`);
     },
   );
+
+  /*
+   * **배포 프로파일이 둘이면 도달성도 둘이다** (CR-059 / ADR-021, DEV-498).
+   *
+   * 위 검사들은 `deploy/k8s/`만 본다. 인프라 3.0장이 "두 프로파일은 같은 배포 단위
+   * 집합을 세운다"고 정했으므로, Profile A의 산출물이 같은 역할을 켜지 않으면
+   * **그 기능은 첫 사내 반입에서 배포되지 않는다** — `CR-034`가 찾은 결함이
+   * 프로파일 축에서 그대로 재현되는 자리다.
+   */
+  it.each(CAPABILITIES.filter((entry) => entry.role !== null))(
+    '$id $what — Profile A(단일 호스트)도 그 역할을 켠다',
+    ({ role }) => {
+      const compose = read('deploy/single-host/compose.yml');
+      const roles = [...compose.matchAll(/PIPELINE_WORKER_ROLES: *([a-z,]+)/g)]
+        .flatMap((match) => (match[1] ?? '').split(','));
+      expect(roles, `Profile A가 '${role as string}' 역할을 세우지 않는다`).toContain(role);
+    },
+  );
+
+  /*
+   * 미배포 예외였던 둘을 Profile A가 실제로 세운다 (DEV-304 · DEV-305).
+   *
+   * `backfill`은 첫 반입 후 기존 PR 히스토리를 채우는 유일한 경로이고,
+   * `release`는 포함 관계 조회(W-005)의 데이터를 만든다. **둘이 없으면
+   * 반입된 시스템이 사실상 비어 있다.**
+   */
+  it('Profile A가 backfill과 release를 세운다 (DEV-304 · DEV-305)', () => {
+    const compose = read('deploy/single-host/compose.yml');
+    const roles = [...compose.matchAll(/PIPELINE_WORKER_ROLES: *([a-z,]+)/g)]
+      .flatMap((match) => (match[1] ?? '').split(','));
+    expect(roles).toContain('backfill');
+    expect(roles).toContain('release');
+  });
+
+  /*
+   * **`latest`는 릴리스 신원이 아니다** (DEV-491). Profile A의 애플리케이션
+   * 이미지는 버전을 가리켜야 하며, 그래야 반입된 형상이 어느 외부 커밋에서
+   * 왔는지 답할 수 있다.
+   */
+  it('Profile A가 애플리케이션 이미지에 `latest`를 쓰지 않는다 (DEV-491)', () => {
+    const compose = read('deploy/single-host/compose.yml');
+    const appImages = [...compose.matchAll(/image: *(prs\/[a-z-]+:[^\s]+)/g)].map((m) => m[1] ?? '');
+    expect(appImages.length).toBeGreaterThan(0);
+    for (const image of appImages) {
+      expect(image, `${image}가 버전을 가리키지 않는다`).toMatch(/:\$\{PRS_VERSION/);
+    }
+  });
+
+  /*
+   * **백킹 서비스를 호스트에 노출하지 않는다** (인프라 6장 Profile A 규칙).
+   * 오케스트레이터의 네트워크 정책이 없으므로 노출을 줄이는 것이 통제 수단이다.
+   */
+  it('Profile A가 백킹 서비스 포트를 호스트에 발행하지 않는다', () => {
+    const compose = read('deploy/single-host/compose.yml');
+    for (const service of ['postgres', 'elasticsearch', 'redis']) {
+      const start = compose.indexOf(`\n  ${service}:\n`);
+      expect(start, `${service} 서비스가 없다`).toBeGreaterThan(0);
+      const next = compose.indexOf('\n  ', compose.indexOf('\n', start + 4));
+      const block = compose.slice(start, next > start ? compose.indexOf('\n\n', start) : undefined);
+      expect(block, `${service}가 호스트 포트를 발행한다`).not.toContain('ports:');
+    }
+  });
+
+  /*
+   * **compose 정의 파일 자체에 시크릿 리터럴이 없다** (DEV-499).
+   * `docker compose config` 출력은 정의상 `.env` 값을 치환하므로 그것으로 판정하지
+   * 않는다 — 그렇게 하면 통과할 수 없는 검사가 된다.
+   */
+  it('Profile A의 compose 정의에 시크릿 리터럴이 없다 (DEV-499)', () => {
+    const compose = read('deploy/single-host/compose.yml');
+    const assignments = [...compose.matchAll(/^\s*([A-Z_]*(?:SECRET|PASSWORD|TOKEN|KEY))[A-Z_]*: *(.+)$/gm)];
+    expect(assignments.length).toBeGreaterThan(0);
+    for (const match of assignments) {
+      expect(match[2] ?? '', `${match[1] ?? ''}가 환경 참조가 아니다`).toMatch(/\$\{/);
+    }
+  });
+
+  /*
+   * **`search-api`의 헬스체크가 백킹 서비스를 실제로 확인한다** (DEV-495).
+   * 인프라 3장 표가 그렇게 적어 두었는데 오랫동안 무조건 `ok`를 답했다.
+   */
+  it('search-api 운영 배선이 헬스체크에 백킹 서비스 확인을 넘긴다 (DEV-495)', () => {
+    expect(API_RUNTIME).toContain('checkBackingServices:');
+    expect(API_RUNTIME).toContain("await parts.pool.query('SELECT 1')");
+    expect(API_RUNTIME).toContain('await parts.es.ping()');
+  });
 });
 
 describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () => {

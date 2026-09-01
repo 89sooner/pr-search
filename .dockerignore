@@ -1,0 +1,16 @@
+# 빌드 컨텍스트에서 제외 (WP-070).
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/*.tsbuildinfo
+.git
+agent-context
+exports
+docs
+var
+test-results
+playwright-report
+coverage
+dump.rdb
+deploy/single-host/bundle

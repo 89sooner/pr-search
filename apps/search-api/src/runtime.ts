@@ -108,6 +108,20 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
 
   return {
     config: parts.config,
+    /*
+     * **헬스체크가 백킹 서비스를 실제로 확인한다** (CR-059, DEV-495).
+     *
+     * 인프라 3장 표가 이 서비스의 헬스체크를 "ES·PG 연결 확인"으로 적어 두었는데
+     * 서버는 무조건 `ok`를 답하고 있었다. 배포 Profile A에는 오케스트레이터가 없어
+     * **health가 유일한 기동 판정 수단**이다 — 거기서 거짓을 말하면 운영자가
+     * 죽은 배포를 정상으로 읽는다.
+     *
+     * 둘을 함께 본다. 하나만 보면 다른 하나가 죽었을 때 여전히 `ok`다.
+     */
+    checkBackingServices: async (): Promise<void> => {
+      await parts.pool.query('SELECT 1');
+      await parts.es.ping();
+    },
     ops: { pool: parts.pool, bus: parts.bus, log: (entry) => { parts.log({ ...entry }); } },
     pipeline: {
       pool: parts.pool,

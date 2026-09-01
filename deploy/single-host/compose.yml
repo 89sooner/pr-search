@@ -1,0 +1,319 @@
+# PR Search — 단일 호스트 운영 형상 (WP-070 / CR-059 / ADR-021).
+#
+# **저장소 루트의 `docker-compose.yml`과 다른 파일이다.** 그것은 로컬 개발용이라
+# 백킹 서비스만 띄우고 포트를 호스트에 열며 보안을 끈다 — 셋 다 운영에서 반대다.
+# 한 파일이 두 뜻을 가지면 읽는 쪽이 어느 것이 사실인지 알 수 없다.
+#
+# 인프라 3.1장 표의 **Profile A 열이 세우는 단위 전부**를 담는다.
+# 역할당 인스턴스는 **하나**이며, 서버가 하나라는 이유로 프로세스 경계를 합치지 않는다.
+#
+#   docker compose --env-file .env -f compose.yml up -d
+#
+# 이미지 태그는 `.env`의 `PRS_VERSION`이 정한다. **`latest`를 쓰지 않는다** — 그것은
+# 릴리스 신원이 아니다 (DEV-491).
+
+name: pr-search
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgres://${POSTGRES_APP_USER:?}:${POSTGRES_APP_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+  ELASTICSEARCH_NODE: http://elasticsearch:9200
+  REDIS_URL: redis://redis:6379
+  # 사내 사설 CA. Node 런타임이 직접 읽으므로 코드 변경이 필요 없다 (CR-059).
+  # 값이 비어 있으면 Node가 무시한다 — 기본 신뢰 저장소를 그대로 쓴다.
+  NODE_EXTRA_CA_CERTS: ${NODE_EXTRA_CA_CERTS:-}
+
+x-ghe-env: &ghe-env
+  GHE_BASE_URL: ${GHE_BASE_URL:?}
+  GHE_API_URL: ${GHE_API_URL:-}
+  GHE_APP_ID: ${GHE_APP_ID:-}
+  GHE_APP_PRIVATE_KEY: ${GHE_APP_PRIVATE_KEY:-}
+  GHE_INSTALLATIONS: ${GHE_INSTALLATIONS:-}
+
+x-worker-base: &worker-base
+  image: prs/pipeline-worker:${PRS_VERSION:?}
+  restart: unless-stopped
+  # **워커는 인바운드 연결을 받지 않는다** (인프라 6장). 하트비트 포트는
+  # 컴포즈 네트워크 안에만 있으며 호스트에 발행하지 않는다.
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    elasticsearch: { condition: service_healthy }
+
+services:
+  # ---------- backing services ----------
+  #
+  # **호스트 포트를 발행하지 않는다** (인프라 6장 Profile A 규칙). 오케스트레이터의
+  # 네트워크 정책이 없으므로 노출 자체를 줄이는 것이 통제 수단이다.
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POSTGRES_USER: ${POSTGRES_OWNER_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD:?}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_OWNER_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.0
+    restart: unless-stopped
+    environment:
+      # **single-node가 파일럿의 결정이다** (CR-059). `OD-006`의 전용 3노드는
+      # `production` 환경의 결정이며 그대로 유효하다 — 서버가 하나면 노드를 셋
+      # 세워도 장애 도메인이 하나이고 복제본이 아무것도 지켜 주지 못한다.
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms2g -Xmx2g}
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9200/_cluster/health || exit 1']
+      interval: 15s
+      timeout: 10s
+      retries: 40
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # AOF를 켠다. 큐 내용이 유실되어도 아웃박스가 복구하지만(인프라 11장),
+    # 재기동마다 세션이 끊기는 것은 사용자가 겪는 사실이다.
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  # ---------- one-shot 잡 ----------
+  #
+  # `--profile setup`으로만 뜬다. 항상 켜진 서비스가 아니다.
+  migrate:
+    image: prs/db:${PRS_VERSION:?}
+    profiles: ['setup']
+    environment:
+      # **스키마 소유자로 접속한다.** 애플리케이션 롤(`prs_app`)에는 DDL 권한이
+      # 없으며, 그것이 감사 기록 불변성의 방어선이다 (마이그레이션 005).
+      DATABASE_URL: postgres://${POSTGRES_OWNER_USER:?}:${POSTGRES_OWNER_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  es-bootstrap:
+    image: prs/es:${PRS_VERSION:?}
+    profiles: ['setup']
+    environment:
+      ELASTICSEARCH_NODE: http://elasticsearch:9200
+    depends_on:
+      elasticsearch: { condition: service_healthy }
+
+  # ---------- 사용자 접점 ----------
+  #
+  # **호스트에 발행하는 포트는 이 둘뿐이다.** `search-api`는 발행하지 않는다 —
+  # 조회는 전부 `web`을 거치므로(ADR-011) 외부에서 직접 닿을 이유가 없다.
+  # **healthcheck는 `127.0.0.1`이지 `localhost`가 아니다.** alpine에서 `localhost`는
+  # `::1`로 먼저 해석되는데 Fastify 기본 바인딩은 IPv4라 곧바로 거부된다 —
+  # 서비스는 멀쩡한데 컨테이너가 unhealthy로 보이고, `depends_on`이 그것을 기다린다.
+  web:
+    image: prs/web:${PRS_VERSION:?}
+    restart: unless-stopped
+    ports:
+      - '${WEB_BIND:-0.0.0.0}:${WEB_PORT:-3000}:3000'
+    environment:
+      <<: *app-env
+      WEB_PORT: '3000'
+      SEARCH_API_URL: http://search-api:3002
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_AUTHORIZATION_ENDPOINT: ${OIDC_AUTHORIZATION_ENDPOINT:-}
+      OIDC_TOKEN_ENDPOINT: ${OIDC_TOKEN_ENDPOINT:-}
+      OIDC_JWKS_URI: ${OIDC_JWKS_URI:-}
+      OIDC_SCOPES: ${OIDC_SCOPES:-}
+      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
+      OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/healthz >/dev/null || exit 1']
+      interval: 20s
+      timeout: 10s
+      retries: 15
+    depends_on:
+      search-api: { condition: service_started }
+
+  search-api:
+    image: prs/search-api:${PRS_VERSION:?}
+    restart: unless-stopped
+    environment:
+      <<: [*app-env, *ghe-env]
+      SEARCH_API_PORT: '3002'
+      SEARCH_CURSOR_HMAC_KEY: ${SEARCH_CURSOR_HMAC_KEY:?}
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      METRICS_QUERY_URL: ${METRICS_QUERY_URL:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_AUTHORIZATION_ENDPOINT: ${OIDC_AUTHORIZATION_ENDPOINT:-}
+      OIDC_TOKEN_ENDPOINT: ${OIDC_TOKEN_ENDPOINT:-}
+      OIDC_JWKS_URI: ${OIDC_JWKS_URI:-}
+      OIDC_SCOPES: ${OIDC_SCOPES:-}
+      OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
+      OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3002/healthz >/dev/null || exit 1']
+      interval: 20s
+      timeout: 10s
+      retries: 15
+    depends_on:
+      postgres: { condition: service_healthy }
+      elasticsearch: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  ingest-gateway:
+    image: prs/ingest-gateway:${PRS_VERSION:?}
+    restart: unless-stopped
+    ports:
+      - '${INGEST_BIND:-0.0.0.0}:${INGEST_GATEWAY_PORT:-3001}:3001'
+    environment:
+      <<: *app-env
+      INGEST_GATEWAY_PORT: '3001'
+      GHE_WEBHOOK_SECRET: ${GHE_WEBHOOK_SECRET:?}
+      GHE_WEBHOOK_SECRET_PREVIOUS: ${GHE_WEBHOOK_SECRET_PREVIOUS:-}
+      INGEST_SHUTDOWN_GRACE_MS: ${INGEST_SHUTDOWN_GRACE_MS:-30000}
+      INGEST_ENQUEUE_TIMEOUT_MS: ${INGEST_ENQUEUE_TIMEOUT_MS:-150}
+      INGEST_ARCHIVE_PATH: /var/lib/prs/archive/raw-events.ndjson
+      INGEST_ARCHIVE_MAX_BYTES: ${INGEST_ARCHIVE_MAX_BYTES:-67108864}
+      INGEST_ARCHIVE_KEEP: ${INGEST_ARCHIVE_KEEP:-5}
+    volumes:
+      - archive-data:/var/lib/prs/archive
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3001/healthz >/dev/null || exit 1']
+      interval: 20s
+      timeout: 10s
+      retries: 15
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  # **`filebeat`는 게이트웨이의 사이드카다** (CR-052). Profile A는 게이트웨이가
+  # 하나뿐이라 `DEV-369`의 `PIPE_BUF` 경합이 아예 성립하지 않는다 — 이 형상에서는
+  # Kubernetes보다 배선이 단순하다.
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.13.4
+    restart: unless-stopped
+    user: root
+    command: ['filebeat', '-e', '--strict.perms=false']
+    volumes:
+      - archive-data:/var/lib/prs/archive:ro
+      - filebeat-data:/usr/share/filebeat/data
+      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+    depends_on:
+      elasticsearch: { condition: service_healthy }
+
+  # ---------- pipeline-worker 역할 ----------
+  #
+  # 역할마다 컨테이너 하나다. **합치지 않는 이유**는 워커 풀을 나눌 수 있어야
+  # 한다는 요구(FR-ING-006 AC-3)에서 나왔고, 합치면 Profile B로 돌아갈 수 없다.
+  worker-enrich:
+    <<: *worker-base
+    environment:
+      <<: [*app-env, *ghe-env]
+      # **`backfill`을 함께 켠다** (DEV-304). 코드가 이 갈래를 `enrich` 안에서
+      # 세우고 모든 백필 호출이 `priority: 'backfill'`이라 실시간이 먼저 비워진다.
+      # 서버가 하나라 워커 풀을 나눌 이유가 없으며, **첫 반입 후 기존 PR 히스토리를
+      # 채우지 못하면 시스템이 사실상 비어 있다.**
+      PIPELINE_WORKER_ROLES: enrich,backfill
+      PIPELINE_WORKER_PORT: '3003'
+      BACKFILL_MAX_CONCURRENCY: ${BACKFILL_MAX_CONCURRENCY:-2}
+
+  worker-project:
+    <<: *worker-base
+    environment:
+      <<: *app-env
+      PIPELINE_WORKER_ROLES: project
+      PIPELINE_WORKER_PORT: '3003'
+
+  worker-sequence:
+    <<: *worker-base
+    environment:
+      <<: [*app-env, *ghe-env]
+      PIPELINE_WORKER_ROLES: sequence
+      PIPELINE_WORKER_PORT: '3003'
+      MIRROR_ROOT: /var/lib/prs/mirrors
+      MIRROR_ALLOW_BLOB_FETCH: ${MIRROR_ALLOW_BLOB_FETCH:-false}
+    volumes:
+      - mirror-data:/var/lib/prs/mirrors
+
+  worker-mirror:
+    <<: *worker-base
+    environment:
+      <<: [*app-env, *ghe-env]
+      PIPELINE_WORKER_ROLES: mirror
+      PIPELINE_WORKER_PORT: '3003'
+      MIRROR_ROOT: /var/lib/prs/mirrors
+      MIRROR_ALLOW_BLOB_FETCH: ${MIRROR_ALLOW_BLOB_FETCH:-false}
+    volumes:
+      - mirror-data:/var/lib/prs/mirrors
+
+  # **`release`를 세운다** (DEV-305). 태그의 정본이 미러이므로(DEV-143) 이 역할은
+  # 미러 볼륨을 요구한다 — 그것이 Profile B에서 manifest를 만들지 못한 이유였고,
+  # 단일 호스트에서는 같은 명명 볼륨을 함께 마운트하면 성립한다.
+  worker-release:
+    <<: *worker-base
+    environment:
+      <<: [*app-env, *ghe-env]
+      PIPELINE_WORKER_ROLES: release
+      PIPELINE_WORKER_PORT: '3003'
+      MIRROR_ROOT: /var/lib/prs/mirrors
+      MIRROR_ALLOW_BLOB_FETCH: ${MIRROR_ALLOW_BLOB_FETCH:-false}
+    volumes:
+      - mirror-data:/var/lib/prs/mirrors
+
+  worker-link:
+    <<: *worker-base
+    environment:
+      <<: *app-env
+      PIPELINE_WORKER_ROLES: link
+      PIPELINE_WORKER_PORT: '3003'
+
+  worker-reconcile:
+    <<: *worker-base
+    environment:
+      <<: [*app-env, *ghe-env]
+      PIPELINE_WORKER_ROLES: reconcile
+      PIPELINE_WORKER_PORT: '3003'
+
+  # **`batch`와 `reconcile`은 인스턴스가 하나여야 한다.** 리더 선출이 없는 주기
+  # 스윕을 갖기 때문이며, Profile B의 replica 1과 같은 이유다 (CR-046, DEV-311).
+  worker-batch:
+    <<: *worker-base
+    environment:
+      <<: *app-env
+      PIPELINE_WORKER_ROLES: batch
+      PIPELINE_WORKER_PORT: '3003'
+      # 없으면 `JOB-AUD-001`만 서지 않는다. 나머지 배치 역할은 정상 동작한다.
+      ADMIN_DATABASE_URL: ${ADMIN_DATABASE_URL:-}
+
+  worker-authz:
+    <<: *worker-base
+    environment:
+      <<: [*app-env, *ghe-env]
+      PIPELINE_WORKER_ROLES: authz
+      PIPELINE_WORKER_PORT: '3003'
+
+volumes:
+  # **정본과 재구성 가능한 캐시를 나눈다** (인프라 9.4장). 백업 전략이 볼륨마다
+  # 다르므로 하나로 묶지 않는다.
+  postgres-data:      # 정본 — 백업 대상
+  elasticsearch-data: # 파생 — PostgreSQL에서 재색인 가능
+  redis-data:         # 큐·세션 — 아웃박스가 복구한다
+  mirror-data:        # 캐시 — 재클론 가능
+  archive-data:       # 원본 아카이브 — `raw_event`가 보존 보증을 진다
+  filebeat-data:      # 적재 오프셋

@@ -1,0 +1,46 @@
+# 원본 아카이브 적재 설정 — 단일 호스트 (WP-070 / CR-059).
+#
+# **`deploy/k8s/filebeat-configmap.yaml`과 같은 내용이다.** 두 프로파일이 같은
+# 레인을 세우므로 설정도 같아야 한다 — 달라지면 한쪽 색인만 매핑을 잃는다.
+# 바뀐 것은 전달 방식뿐이다: ConfigMap이 아니라 파일 마운트이고,
+# `ELASTICSEARCH_NODE`가 환경 변수가 아니라 컴포즈 네트워크 이름이다.
+filebeat.inputs:
+  - type: filestream
+    id: prs-raw-events
+    enabled: true
+    paths:
+      # 회전된 조각(`.1`~`.4`)까지 읽는다. 게이트웨이가 밀어낸 파일에는
+      # 아직 보내지 않은 줄이 남아 있을 수 있다.
+      - /var/lib/prs/archive/raw-events.ndjson*
+    parsers:
+      - ndjson:
+          # 게이트웨이가 쓴 필드를 문서의 최상위로 올린다. 중첩하면
+          # `prs-raw-events` 매핑(데이터 모델 4.5)과 어긋나 색인되지 않는다.
+          target: ""
+          add_error_key: true
+          overwrite_keys: true
+    # 회전으로 사라진 파일의 상태를 정리한다. 남겨 두면 레지스트리가
+    # 무한히 커지고, 그 볼륨도 결국 찬다.
+    clean_removed: true
+    close.on_state_change.removed: true
+
+# 우리가 만든 템플릿과 ILM을 쓴다 (`@prs/es`의 bootstrapArchive).
+#
+# Filebeat가 자기 템플릿을 만들게 두면 매핑이 두 곳에서 정의되고, 그때
+# `repository_id`가 빠지면 **접근 범위 필터를 걸 재료가 없어진다**
+# (CR-052, DEV-366). 색인 이름만 여기서 정한다.
+setup.template.enabled: false
+setup.ilm.enabled: false
+setup.kibana.enabled: false
+
+output.elasticsearch:
+  hosts: ['http://elasticsearch:9200']
+  index: "prs-raw-events-%{+yyyy.MM}"
+  # 아카이브는 순서가 무관하고 재구성 가능하므로(ADR-003) 재시도를 길게
+  # 끌지 않는다. 계속 실패하면 게이트웨이가 조각을 버리고 지표에 남긴다.
+  max_retries: 3
+  bulk_max_size: 200
+
+# 적재기 자신의 로그는 stdout으로. 파일로 쓰면 아카이브 볼륨을 나눠 쓴다.
+logging.to_files: false
+logging.level: info
