@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-09-01T06:42:19+00:00
+generated=2026-09-01T06:43:41+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -66,8 +66,8 @@ sig=agent-context/session-summary.md;10/11;CR/DEV;11/11;1/8;2/8;3/8;acme/b;acme/
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=16e27382bd82a1fe3a40484e86bf9fb066ed308fd2bd909793a3476589907067
-bytes=119002 compact_bytes=117981 lines=1505 priority=30
+sha256=d16029bc6fa696959a4cc67e9bd8a07dd6db16b3dfe734397d48a8783f53c0b5
+bytes=119141 compact_bytes=118116 lines=1506 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > 이번 세션이 세운 것 — 첫 사내 반입 가능선 > A. 지금 당장 — 실제 사내 반입 > B. 사내 반입을 막는 것 — 정확히 무엇인가 > C. 배포에서 해야 할 것 > D. 미뤄 둔 항목
 sig=agent-context/todos.md;2/4;vendor/upstream;deploy/single-host/RUNBOOK.md;/deploy/single-host/build-bundle.sh;deploy/single-host/prsctl;docs/40_delivery/pr_search_implementation_traceability.md;agent-context/count-unresolved-reviews.py;GET/POST/DELETE;packages/contracts/src/error-codes.ts;perf/analytics.perf.test.ts;packages/db/src/repositories/team-membership.ts;apps/pipeline-worker/src/author-teams.ts;apps/pipeline-worker/src/documents.ts;apps/pipeline-worker/src/reindex.ts;regression/runtime-reachability.test.ts;1/4;packages/db/src/repositories/safe-marker.ts;apps/web/components/RangesView.tsx;apps/web/components/SafeMarkerCard.tsx;4/4;89sooner/pr-search;89sooner/design-system;apps/web/lib/
 

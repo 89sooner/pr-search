@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-09-01T06:42:19+00:00",
+  "generated": "2026-09-01T06:43:41+00:00",
   "root": "/home/roqkf/pr-search",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -341,10 +341,10 @@
       "id": "f54408e",
       "source_path": "agent-context/todos.md",
       "compact_path": "agent-context/_handoff/compact/f54408e.todos.ctx.md",
-      "sha256": "16e27382bd82a1fe3a40484e86bf9fb066ed308fd2bd909793a3476589907067",
-      "bytes": 119002,
-      "lines": 1505,
-      "compact_bytes": 117981,
+      "sha256": "d16029bc6fa696959a4cc67e9bd8a07dd6db16b3dfe734397d48a8783f53c0b5",
+      "bytes": 119141,
+      "lines": 1506,
+      "compact_bytes": 118116,
       "headings": [
         "다음 작업 · 미해결 항목 · 확인할 사항",
         "이번 세션이 세운 것 — 첫 사내 반입 가능선",
