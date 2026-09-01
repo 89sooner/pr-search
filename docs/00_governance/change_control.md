@@ -570,7 +570,7 @@ DEV-001(컨테이너 레지스트리 차단), DEV-006(testcontainers 대신 환�
 1. `30_technical_architecture/pr_search_data_model.md` — **v0.16 → v0.17.** 마이그레이션 023 DDL과 "전수 검사를 만들 때 **무엇의 전수인가**를 먼저 물어야 한다"(DEV-518).
 2. `30_technical_architecture/pr_search_infrastructure_operations.md` — **v0.9 → v0.10.** 9.4장 복구 절차에 **별칭마다 순차 완료**와 그 이유(DEV-519).
 3. `40_delivery/pr_search_implementation_traceability.md` — **v6.20 → v6.21.** `DEV-518`·`DEV-519` 등록, 6.62장.
-4. **구현** — `packages/db/migrations/023_*`, `audit-grants.test.ts`(시퀀스 전수), `deploy/single-host/prsctl`(재색인 직렬화), `RUNBOOK.md`.
+4. **구현** — `packages/db/migrations/023_*`, `audit-grants.test.ts`(시퀀스 전수), `deploy/single-host/prsctl`(재색인 직렬화), `deploy/single-host/RUNBOOK.md`.
 
 **`DEV-519`의 증상은 `CR-060`의 검증에서 이미 보고 있었다.** "재색인 예약 2/4"를 "예약 실패 둘"로만 적고 **왜 실패했는지 쫓지 않았다.** 쫓았다면 동시 실행 상한이 나왔고, 넷을 지운 뒤 하나만 세운 상태가 성공으로 보고되고 있다는 것도 나왔을 것이다.
 
