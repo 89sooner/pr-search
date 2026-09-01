@@ -91,10 +91,19 @@ chmod +x "${BUNDLE}/deploy/single-host/prsctl" 2>/dev/null || true
 # ── manifest ────────────────────────────────────────────────────
 step "release-manifest 생성"
 sha256_of() { sha256sum "$1" | cut -d' ' -f1; }
-digest_of() { docker image inspect "$1" --format '{{index .RepoDigests 0}}' 2>/dev/null || docker image inspect "$1" --format '{{.Id}}'; }
+# **로컬 빌드에는 `RepoDigests`가 없다** — 레지스트리에 push한 적이 없기 때문이다.
+# 그때 이미지 ID(내용 해시)가 신원이며, 개행이 섞이지 않게 마지막 줄만 집는다.
+digest_of() {
+  local d
+  d="$(docker image inspect "$1" --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{else}}{{.Id}}{{end}}' 2>/dev/null | tr -d '\r\n')"
+  printf '%s' "${d:-unknown}"
+}
 
 MIGRATION_LEVEL="$(ls "${REPO_ROOT}/packages/db/migrations"/*.up.sql | sed -E 's#.*/([0-9]+)_.*#\1#' | sort -n | tail -1)"
-ES_INDEX_VERSION="$(grep -rhoE "INDEX_VERSION[^=]*= *'[^']+'" "${REPO_ROOT}/packages/es/src" 2>/dev/null | head -1 | sed -E "s/.*'([^']+)'.*/\1/" || echo 'unknown')"
+# **인덱스 버전이 아니라 매핑의 내용 해시다.** 구체 인덱스 버전(`<alias>-v<n>`)은
+# 클러스터가 들고 있는 런타임 값이라 빌드 시점에 알 수 없다. 재색인이 필요한지를
+# 정하는 실제 재료는 **매핑 정의가 바뀌었는가**이므로 그것을 해시한다.
+ES_MAPPING_SHA="$(cat "${REPO_ROOT}/packages/es/src/mappings"/*.ts "${REPO_ROOT}/packages/es/src/indices.ts" "${REPO_ROOT}/packages/es/src/settings.ts" 2>/dev/null | sha256sum | cut -d' ' -f1)"
 NODE_VERSION="$(cat "${REPO_ROOT}/.nvmrc" 2>/dev/null | tr -d '[:space:]')"
 PNPM_VERSION="$(node -e "process.stdout.write(require('${REPO_ROOT}/package.json').packageManager||'')" 2>/dev/null)"
 
@@ -114,7 +123,7 @@ PNPM_VERSION="$(node -e "process.stdout.write(require('${REPO_ROOT}/package.json
   printf '  },\n'
   printf '  "schema": {\n'
   printf '    "migration_level": "%s",\n' "$MIGRATION_LEVEL"
-  printf '    "elasticsearch_index_version": "%s"\n' "$ES_INDEX_VERSION"
+  printf '    "elasticsearch_mapping_sha256": "%s"\n' "$ES_MAPPING_SHA"
   printf '  },\n'
   printf '  "images": {\n'
   printf '    "application": [\n'
