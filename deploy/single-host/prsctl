@@ -94,8 +94,14 @@ require_env() {
   # 셸에 명시한 값이 우선이다 — 한 번만 다르게 돌리는 경우를 막지 않는다.
   PRS_REINDEX_TIMEOUT_S="${PRS_REINDEX_TIMEOUT_S:-$(env_value PRS_REINDEX_TIMEOUT_S)}"
   PRS_REINDEX_TIMEOUT_S="${PRS_REINDEX_TIMEOUT_S:-3600}"
-  printf '%s' "$PRS_REINDEX_TIMEOUT_S" | grep -qE '^[1-9][0-9]*$' \
-    || die "PRS_REINDEX_TIMEOUT_S가 양의 정수가 아니다: $PRS_REINDEX_TIMEOUT_S"
+  # **자릿수까지 제한한다** (DEV-521). 숫자 형태만 보면 `9223372036854775807` 같은
+  # 값이 통과하는데, 그러면 `$(date +%s) + timeout_s`가 **음수로 넘쳐** 상한이
+  # 즉시 지난 것으로 판정된다 — 늘리려고 넣은 값이 **0초처럼 동작한다.**
+  # 30일이면 `NFR-008`의 전량 재색인 목표(1,000만 문서 4시간)보다 180배 여유다.
+  printf '%s' "$PRS_REINDEX_TIMEOUT_S" | grep -qE '^[1-9][0-9]{0,6}$' \
+    || die "PRS_REINDEX_TIMEOUT_S는 1~9999999(약 115일) 범위의 정수여야 한다: $PRS_REINDEX_TIMEOUT_S"
+  [ "$PRS_REINDEX_TIMEOUT_S" -le 2592000 ] \
+    || die "PRS_REINDEX_TIMEOUT_S가 30일(2592000초)을 넘는다: $PRS_REINDEX_TIMEOUT_S"
   SEARCH_CURSOR_HMAC_KEY="$(env_value SEARCH_CURSOR_HMAC_KEY)"
   [ "${#SEARCH_CURSOR_HMAC_KEY}" -ge 32 ] || die "SEARCH_CURSOR_HMAC_KEY는 32자 이상이어야 한다 (ADR-010 Amendment)"
 }
