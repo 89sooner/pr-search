@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.14 | 갱신일: 2026-09-01
+> 상태: review | 버전: v2.15 | 갱신일: 2026-09-01
 
 ## 1. 목적
 
@@ -51,7 +51,7 @@
 | WP-067 | 커밋 메타데이터 보강 (JOB-MIR-002) | REL-003 | WP-020, WP-008 | done |
 | WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | WP-010, WP-012 | done |
 | WP-069 | 작성자 소속 팀 채우기 | REL-006 | WP-068, WP-037 | done |
-| WP-070 | 단일 호스트 오프라인 배포·반입 기반 | **배포 (CR-059)** | WP-001, WP-010 | todo |
+| WP-070 | 단일 호스트 오프라인 배포·반입 기반 | **배포 (CR-059)** | WP-001, WP-010 | done |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003, **WP-067** | done |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020, **WP-067** | done |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | WP-030, WP-017, WP-016 | done |
@@ -1891,23 +1891,23 @@ external main의 특정 커밋
   - **실제 사내 환경 검증** — 사내 GHE·OIDC·CA·프록시·DNS·레지스트리·실서버 성능. 합성으로 통과시키지 않는다.
   - **신규 마이그레이션** — 스키마 공백이 증명되지 않았다. 다음 빈 번호가 022라는 것은 이유가 아니다.
 - 완료 기준(DoD):
-  - [ ] 애플리케이션 이미지가 **저장소 안의 정의로** 빌드된다 (DEV-490)
-  - [ ] 이미지가 버전 태그와 digest로 식별되고 `latest`가 릴리스 신원이 아니다 (DEV-491)
-  - [ ] 오프라인 번들이 애플리케이션 이미지와 **백킹 이미지 셋을 함께** 담는다
-  - [ ] 번들의 모든 파일에 checksum이 있고 **검증이 실패하면 설치가 멈춘다**
-  - [ ] 번들에 **시크릿·토큰·개인 키가 하나도 없다** (자동 검사)
-  - [ ] `release-manifest.json`이 upstream 커밋·lockfile checksum·마이그레이션 수준·ES 매핑 버전·이미지 digest를 담는다
-  - [ ] 적재한 이미지만으로 `compose up`이 서고 **pull을 시도하지 않는다**
-  - [ ] 마이그레이션 → ES 매핑 → 기동 → health가 **런북 한 흐름으로** 재현된다
-  - [ ] PostgreSQL·Elasticsearch·Redis·`search-api`·`ingest-gateway`·`web`이 health를 답한다
-  - [ ] Profile A 표의 워커 역할이 **전부 기동 로그에 나타난다**
-  - [ ] 합성 시드로 **read-only 검색 스모크**가 통과한다
-  - [ ] `down` 후 `up`에 필요한 데이터가 남는다
-  - [ ] `docker compose config`에 `:latest` 의존 0건 · 백킹 서비스 호스트 노출 0건, **compose 정의 파일에 시크릿 리터럴 0건**(모든 값이 환경 참조)
-  - [ ] 백업 → **파괴적 복구**가 실제로 돌고 데이터가 되돌아온다
-  - [ ] 운영 도달성 회귀가 **두 프로파일 모두**에 대해 역할 도달성을 묻는다 (DEV-498)
-  - [ ] `deploy/single-host/RUNBOOK.md`가 반입 절차와 **단방향 형상 승계**를 적고, 외부 반출 절차를 적지 않는다
-  - [ ] 외부에서 증명한 것과 `NOT RUN — internal environment required`가 **구분되어 기록된다**
+  - [x] 애플리케이션 이미지가 **저장소 안의 정의로** 빌드된다 (DEV-490)
+  - [x] 이미지가 버전 태그와 digest로 식별되고 `latest`가 릴리스 신원이 아니다 (DEV-491)
+  - [x] 오프라인 번들이 애플리케이션 이미지와 **백킹 이미지 셋을 함께** 담는다
+  - [x] 번들의 모든 파일에 checksum이 있고 **검증이 실패하면 설치가 멈춘다**
+  - [x] 번들에 **시크릿·토큰·개인 키가 하나도 없다** (자동 검사)
+  - [x] `release-manifest.json`이 upstream 커밋·lockfile checksum·마이그레이션 수준·ES 매핑 버전·이미지 digest를 담는다
+  - [x] 적재한 이미지만으로 `compose up`이 서고 **pull을 시도하지 않는다**
+  - [x] 마이그레이션 → ES 매핑 → 기동 → health가 **런북 한 흐름으로** 재현된다
+  - [x] PostgreSQL·Elasticsearch·Redis·`search-api`·`ingest-gateway`·`web`이 health를 답한다
+  - [x] Profile A 표의 워커 역할이 **전부 기동 로그에 나타난다**
+  - [x] 합성 시드로 **read-only 검색 스모크**가 통과한다
+  - [x] `down` 후 `up`에 필요한 데이터가 남는다
+  - [x] `docker compose config`에 `:latest` 의존 0건 · 백킹 서비스 호스트 노출 0건, **compose 정의 파일에 시크릿 리터럴 0건**(모든 값이 환경 참조)
+  - [x] 백업 → **파괴적 복구**가 실제로 돌고 데이터가 되돌아온다
+  - [x] 운영 도달성 회귀가 **두 프로파일 모두**에 대해 역할 도달성을 묻는다 (DEV-498)
+  - [x] `deploy/single-host/RUNBOOK.md`가 반입 절차와 **단방향 형상 승계**를 적고, 외부 반출 절차를 적지 않는다
+  - [x] 외부에서 증명한 것과 `NOT RUN — internal environment required`가 **구분되어 기록된다**
 - 검증 방법: 실제 실행. `pnpm typecheck` · `lint` · `lint:deps` · `test` · 관련 `test:integration` · `test:regression` · `build` · 문서 validator, 그리고 **위 여정 전체를 로컬에서 한 번 관통한다.**
 - 기록: 원장 WP-070 상태, DEV-490~499 판정, DEV-001·DEV-304·DEV-305 재판정
 
