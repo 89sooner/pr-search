@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.20 | 갱신일: 2026-09-02
+> 상태: review | 버전: v2.21 | 갱신일: 2026-09-02
 
 ## 1. 목적
 
@@ -53,7 +53,7 @@
 | WP-069 | 작성자 소속 팀 채우기 | REL-006 | WP-068, WP-037 | done |
 | WP-070 | 단일 호스트 오프라인 배포·반입 기반 | **배포 (CR-059)** | WP-001, WP-010 | done |
 | WP-071 | 사내 반입 운반 아카이브와 실행 절차 정본화 | **배포 (CR-062)** | WP-070 | done |
-| WP-072 | 사내 반입 운반 경로 — GitHub Release 발행과 다운로드 | **배포 (CR-063)** | WP-071 | todo |
+| WP-072 | 사내 반입 운반 경로 — GitHub Release 발행과 다운로드 | **배포 (CR-063)** | WP-071 | done |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003, **WP-067** | done |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020, **WP-067** | done |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | WP-030, WP-017, WP-016 | done |
@@ -2013,7 +2013,10 @@ external main의 특정 커밋
   - **런북 1장을 정정한다.** 네트워크 행은 "설치·운영에는 인터넷이 필요 없고 번들을 받는 단계만 github.com에 닿는다"로, 디스크 행은 운반 아카이브·풀린 번들·이미지 저장소가 함께 놓이는 실제 소요로(`DEV-529`).
   - **런북 7장에 이 WP가 외부에서 증명한 것과 사내에서만 증명 가능한 것을 나눠 적는다** — 발행·다운로드·digest 대조·풀린 사본 검증은 `VERIFIED (external)`, 사내 위치에서 github.com 도달은 결정자 확인이며 실측은 사내에서.
   - **회귀 시험이 문서와 실행의 정합을 묻는다** — 발행이 아카이브 재독 뒤인가, `--target`이 manifest의 커밋인가, 발행 뒤 digest 대조가 있는가, 런북 2.B 1단계가 받기 → digest 대조 → 풀기 순서인가, `.env.example`에 토큰 키가 없는가.
+  - **릴리스는 저절로 불변이 아니다** (`DEV-530`, PR #119 머지 후 리뷰). 정본은 **담당자가 릴리스와 별도 채널로 전달하는 자산 SHA-256**이다 — 런북 2.A가 전달할 것 셋(버전·토큰·SHA-256)을 적고 2.B 1단계가 그 값·자산 digest·`sha256sum` 셋을 대조한다. 스크립트는 저장소의 immutable releases 상태를 읽어 출력하고 켜기를 권한다.
+  - **발행은 초안 → 자산 → 발행 순서다** (`DEV-530`). immutable releases가 켜진 저장소에서는 발행 뒤 자산을 붙일 수 없으므로 자산이 전부 붙은 초안을 발행한다. 같은 태그를 예약한 초안 잔재가 있으면 빌드 전에 멈춘다. 되돌리기는 릴리스 id로 한다.
 - 제외:
+  - **immutable releases 설정 켜기** — 저장소 설정이라 결정자의 몫이다. 스크립트가 상태를 출력하고 런북이 권한다. 켜져 있어도 전달받은 SHA-256과의 대조는 그대로다.
   - **번들 형식·압축 방식 변경** (zstd 등) — 채널의 파일 상한이 없어졌으므로 필요가 실증되지 않았다. 실측값(gzip 1,067MB · zstd 745MB)은 원장 6.65장에 남긴다.
   - **백킹 이미지를 뺀 업그레이드 번들** — 같은 이유. 필요가 실증되면 별도 CR.
   - **사내에서 직접 `docker pull`·`git clone`** — `ADR-021` 결정 3의 유지. 이유는 ADR-021 정정 절.
@@ -2024,21 +2027,22 @@ external main의 특정 커밋
   - **HTTP(S) 프록시 지원** (DEV-494) — `gh`·curl은 프록시 환경 변수를 읽으므로 취득 단계는 영향이 없다. 앱의 프록시는 별개다.
   - **실제 사내 환경 검증** — 사내 위치에서 github.com 도달 실측, 사내 GHE·OIDC·CA·DNS·실서버 성능·`ACC-06`.
 - 완료 기준(DoD):
-  - [ ] `./deploy/single-host/build-bundle.sh <version> --release`가 성공하면 GitHub Release `<version>`이 존재하고, 태그가 manifest의 `upstream.commit`을 가리키며, 자산이 `pr-search-<version>-offline.tar.gz` 하나다
-  - [ ] 발행 뒤 스크립트가 API로 자산을 다시 읽어 이름·크기·digest를 로컬과 대조하고, 어긋나면 종료 코드 1이다
-  - [ ] 같은 버전의 릴리스가 이미 있거나 태그가 다른 커밋을 가리키면 발행하지 않고 종료 코드 1이다
-  - [ ] `--release` 없이 실행하면 산출물과 출력이 `WP-071`과 같다
-  - [ ] 릴리스 본문에 운반 아카이브의 파일명·크기·SHA-256이 있고 그 값이 자산의 digest와 같다
-  - [ ] **토큰만 있는 환경(gh 설정 없음)에서** `gh release download <version> -R <owner>/<repo> -p '*.tar.gz'`로 받은 파일의 `sha256sum`이 자산의 digest와 같다
-  - [ ] 받은 파일을 별도 임시 디렉터리에 풀어 나온 사본에서 `prsctl verify`·`load`·`lineage`가 통과하고 git bundle의 `vendor/upstream`이 manifest의 커밋과 같다
-  - [ ] 런북 2장이 A. 외부망(발행 포함) → 경계(GitHub Release) → B. 사내망(받기 → digest 대조 → 풀기 → verify → …) 구조이고, 2.B의 단계 번호가 바뀌지 않았다
-  - [ ] 런북이 토큰의 종류·권한·소재와 두지 않는 곳을 적고, `.env.example`에 토큰 키가 없다
-  - [ ] 런북이 `gh` 없는 경로(curl)와 github.com에 닿지 않는 환경의 대체 경로를 적는다
-  - [ ] 런북 1장의 네트워크·디스크 행이 실측과 같다 (`DEV-528`·`DEV-529`)
-  - [ ] 인프라 8장·9.1장이 발행·다운로드 경로를 실재하는 명령으로 적는다
-  - [ ] 회귀 시험이 위 정합 다섯을 걸고, 각 변이(발행을 재독 앞으로 · `--target` 제거 · digest 대조 제거 · 런북 1단계 순서 뒤집기 · `.env.example`에 토큰 키)가 실제로 잡힌다
-  - [ ] 시험 릴리스와 태그를 검증 뒤 삭제했다
-  - [ ] `WP-070`·`WP-071`의 상태와 DoD를 되돌리지 않는다
+  - [x] `./deploy/single-host/build-bundle.sh <version> --release`가 성공하면 GitHub Release `<version>`이 존재하고, 태그가 manifest의 `upstream.commit`을 가리키며, 자산이 `pr-search-<version>-offline.tar.gz` 하나다
+  - [x] 발행 뒤 스크립트가 API로 자산을 다시 읽어 이름·크기·digest를 로컬과 대조하고, 어긋나면 종료 코드 1이다
+  - [x] 같은 버전의 릴리스가 이미 있거나 태그가 다른 커밋을 가리키면 발행하지 않고 종료 코드 1이다
+  - [x] `--release` 없이 실행하면 산출물과 출력이 `WP-071`과 같다
+  - [x] 릴리스 본문에 운반 아카이브의 파일명·크기·SHA-256이 있고 그 값이 자산의 digest와 같다
+  - [x] **토큰만 있는 환경(gh 설정 없음)에서** `gh release download <version> -R <owner>/<repo> -p '*.tar.gz'`로 받은 파일의 `sha256sum`이 자산의 digest와 같다
+  - [x] 받은 파일을 별도 임시 디렉터리에 풀어 나온 사본에서 `prsctl verify`·`load`·`lineage`가 통과하고 git bundle의 `vendor/upstream`이 manifest의 커밋과 같다
+  - [x] 런북 2장이 A. 외부망(발행 포함) → 경계(GitHub Release) → B. 사내망(받기 → digest 대조 → 풀기 → verify → …) 구조이고, 2.B의 단계 번호가 바뀌지 않았다
+  - [x] 런북이 토큰의 종류·권한·소재와 두지 않는 곳을 적고, `.env.example`에 토큰 키가 없다
+  - [x] 런북이 `gh` 없는 경로(curl)와 github.com에 닿지 않는 환경의 대체 경로를 적는다
+  - [x] 런북 1장의 네트워크·디스크 행이 실측과 같다 (`DEV-528`·`DEV-529`)
+  - [x] 인프라 8장·9.1장이 발행·다운로드 경로를 실재하는 명령으로 적는다
+  - [x] 자산 SHA-256이 릴리스와 별도 채널로 전달되고 사내가 그 값·자산 digest·`sha256sum` 셋을 대조하며, 발행이 초안 → 자산 → 발행 순서이고 immutable releases 상태를 출력한다 (`DEV-530`)
+  - [x] 회귀 시험이 위 정합 여섯을 걸고, 각 변이(`--target`을 다른 커밋으로 · digest 대조 제거 · 같은 버전 검사 제거 · 런북 1단계 순서 뒤집기 · `.env.example`에 토큰 키 · digest 불일치 시 되돌리기 제거 · 단계 번호 변경 · 별도 채널 전달 문구 제거)가 실제로 잡힌다
+  - [x] 시험 릴리스와 태그를 검증 뒤 삭제했다
+  - [x] `WP-070`·`WP-071`의 상태와 DoD를 되돌리지 않는다
 - 검증 방법: 실제 실행. `bash -n` · 문서 validator · `pnpm typecheck` · `lint` · `lint:deps` · `test` · `test:regression` · `build`, 그리고 **깨끗한 커밋에서 시험 버전으로 실제 릴리스를 만들고, 토큰만 있는 환경에서 받아 digest를 대조하고 임시 디렉터리에 풀어 verify·load·lineage·git fetch를 관통한 뒤 시험 릴리스를 지운다.**
 - 기록: 원장 WP-072 상태, DEV-528·DEV-529 판정
 

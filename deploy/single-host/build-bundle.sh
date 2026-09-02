@@ -83,12 +83,13 @@ if [ "$RELEASE" -eq 1 ]; then
     */*) ;;
     *) die "origin이 github.com 저장소가 아니다: $UPSTREAM_REMOTE" ;;
   esac
-  if gh release view "$VERSION" -R "$REPO_SLUG" >/dev/null 2>&1; then
-    die "릴리스 ${VERSION}이 이미 있다 — 릴리스는 불변이다. 새 버전으로 만든다"
-  fi
-  # 같은 태그를 예약한 초안(draft)이 남아 있으면 그것도 막는다 — 실패한 실행의 잔재다.
+  # 같은 태그를 예약한 초안(draft)이 남아 있으면 먼저 막는다 — 실패한 실행의 잔재이며 처방이
+  # 다르다(지우고 다시 실행). 발행된 릴리스가 있으면 처방은 새 버전이다.
   LEFTOVER_DRAFT="$(gh api "repos/${REPO_SLUG}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"${VERSION}\") | .id" 2>/dev/null | head -1 || true)"
   [ -z "$LEFTOVER_DRAFT" ] || die "태그 ${VERSION}을 예약한 초안 릴리스(id ${LEFTOVER_DRAFT})가 남아 있다 — 지우고 다시 실행한다"
+  if gh release view "$VERSION" -R "$REPO_SLUG" >/dev/null 2>&1; then
+    die "릴리스 ${VERSION}이 이미 있다 — 같은 버전을 다시 발행하지 않는다. 새 버전으로 만든다"
+  fi
   TAG_TARGET="$(git ls-remote --tags origin "refs/tags/${VERSION}" "refs/tags/${VERSION}^{}" | tail -1 | cut -f1)"
   if [ -n "$TAG_TARGET" ]; then
     TAG_EXISTED=1

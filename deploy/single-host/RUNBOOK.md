@@ -397,6 +397,9 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | 운반 아카이브 생성 → 별도 디렉터리에 풀기 → 그 사본에서 `verify` (WP-071) | `VERIFIED (external)` |
 | `.env` 없이 `load` → **이미지 저장소를 바꾸기 전에** 멈춤 · `.env` 뒤 `load` 통과 (WP-071) | `VERIFIED (external)` |
 | 풀린 번들의 git bundle → `vendor/upstream`이 manifest의 `upstream.commit`과 일치 (WP-071) | `VERIFIED (external)` |
+| `--release` 발행(초안 → 자산 → 발행) → 발행한 자산을 API로 다시 읽어 이름·크기·digest 대조 · 같은 버전·초안 잔재는 빌드 전에 거부 (WP-072) | `VERIFIED (external)` — 시험 릴리스 둘, 검증 뒤 삭제 |
+| 토큰만 있는 환경에서 `gh release download` → `sha256sum` == 자산 digest == 전달받은 SHA-256 → 별도 디렉터리에 풀어 `verify`·`load`·`lineage`·`git fetch` (WP-072) | `VERIFIED (external)` — 시험 릴리스 둘 |
+| 사내 위치에서 github.com 도달 | `NOT RUN — internal environment required` — 결정자 확인(2026-09-02)이며 실측은 사내에서 한다 |
 | 실제 사내 GHE App·웹훅·저장소 권한 | `NOT RUN — internal environment required` |
 | 실제 사내 OIDC와 그룹 클레임 | `NOT RUN — internal environment required` |
 | 사내 CA·프록시·DNS·레지스트리·보안 스캔 | `NOT RUN — internal environment required` |
