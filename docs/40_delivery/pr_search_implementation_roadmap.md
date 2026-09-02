@@ -57,7 +57,7 @@ WP-071  사내 반입 운반 아카이브와 실행 절차 정본화    done (20
         ↓
 ──────── 사내에서 그대로 실행 가능한 반입 지침 ────────
         ↓
-WP-072  운반 경로 — GitHub Release 발행·사내 다운로드     todo (CR-063 · 사내 outbound 확인 2026-09-02)
+WP-072  운반 경로 — GitHub Release 발행·사내 다운로드     done (2026-09-02, CR-063)
         ↓
 실제 사내 single-host bring-up (사내에서만 실행 가능)
         ↓

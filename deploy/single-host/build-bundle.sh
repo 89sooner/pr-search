@@ -5,27 +5,43 @@
 # **외부망에서만 실행한다.** 저장소 소스와 컨테이너 레지스트리가 필요하다.
 # 사내에서 쓰는 것은 이 스크립트가 아니라 그 산출물이다.
 #
-#   ./build-bundle.sh <version> [출력 디렉터리]
+#   ./build-bundle.sh <version> [출력 디렉터리] [--release]
 #
 # 산출물 둘 (출력 디렉터리 기본값 deploy/single-host/bundle/):
 #   pr-search-<version>-offline/          번들 디렉터리 (검사·확인용)
 #   pr-search-<version>-offline.tar.gz    운반 아카이브 — 사내로 가져갈 파일 (CR-062 / WP-071)
 #
+# `--release`를 주면 운반 아카이브를 GitHub Release <version>의 자산으로 발행한다
+# (CR-063 / WP-072). 태그 = 버전, target = 이 커밋, 자산은 아카이브 하나. 발행한
+# 자산을 API로 다시 읽어 이름·크기·digest를 로컬과 대조하며, 어긋나면 방금 만든
+# 릴리스와 태그를 지우고 실패한다. 사내는 이 저장소 한정 읽기 토큰으로 받는다.
+#
 # 산출물은 사내에서 `git clone`도 `pnpm install`도 레지스트리 접근도 요구하지
-# 않는다. **요구하는 순간 그 절차는 사내망에서 실행 불가능하다.**
+# 않는다. **요구하는 순간 그 절차는 사내망에서 실행 불가능하다.** 번들을 받는
+# 단계만 github.com에 닿는다 (DEV-528).
 
 set -Eeuo pipefail
 
-VERSION="${1:?사용법: build-bundle.sh <version> [출력 디렉터리]}"
+die() { printf '오류: %s\n' "$*" >&2; exit 1; }
+step() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
+
+VERSION="${1:?사용법: build-bundle.sh <version> [출력 디렉터리] [--release]}"
+shift
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-OUT_ROOT="${2:-${REPO_ROOT}/deploy/single-host/bundle}"
+OUT_ROOT=""
+RELEASE=0
+for arg in "$@"; do
+  case "$arg" in
+    --release) RELEASE=1 ;;
+    --*) die "알 수 없는 옵션: $arg (사용법: build-bundle.sh <version> [출력 디렉터리] [--release])" ;;
+    *) [ -z "$OUT_ROOT" ] || die "출력 디렉터리가 둘이다: $OUT_ROOT · $arg"; OUT_ROOT="$arg" ;;
+  esac
+done
+OUT_ROOT="${OUT_ROOT:-${REPO_ROOT}/deploy/single-host/bundle}"
 BUNDLE="${OUT_ROOT}/pr-search-${VERSION}-offline"
 # **사내로 가져갈 파일은 이것 하나다** (CR-062 / WP-071, DEV-523). 번들 디렉터리의
 # **형제** 위치라 아카이브가 자기 자신을 담지 않는다.
 ARCHIVE="${BUNDLE}.tar.gz"
-
-die() { printf '오류: %s\n' "$*" >&2; exit 1; }
-step() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 
 command -v docker >/dev/null || die "docker가 없다"
 command -v git    >/dev/null || die "git이 없다"
@@ -52,6 +68,39 @@ fi
 UPSTREAM_REMOTE="$(git remote get-url origin 2>/dev/null || echo 'unknown')"
 UPSTREAM_COMMIT="$(git rev-parse HEAD)"
 UPSTREAM_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+
+# ── 발행 전제 검사 (--release) ──────────────────────────────────
+# **이미지를 빌드하기 전에 묻는다.** 릴리스는 불변이라 같은 버전을 다시 발행하지 않고,
+# 태그가 다른 커밋을 가리키면 그 릴리스의 계보 증명이 거짓이 된다. 두 검사가 몇 분짜리
+# 빌드 뒤에 있으면 fail-fast가 아니다 — 검사의 위치다 (DEV-524가 가르친 것).
+REPO_SLUG=""
+TAG_EXISTED=0
+if [ "$RELEASE" -eq 1 ]; then
+  command -v gh >/dev/null || die "gh가 없다 — --release는 GitHub CLI가 필요하다"
+  gh auth status >/dev/null 2>&1 || die "gh가 인증되지 않았다 (gh auth status)"
+  REPO_SLUG="$(printf '%s' "$UPSTREAM_REMOTE" | sed -E 's#^(https://github\.com/|git@github\.com:)##; s#\.git$##')"
+  case "$REPO_SLUG" in
+    */*) ;;
+    *) die "origin이 github.com 저장소가 아니다: $UPSTREAM_REMOTE" ;;
+  esac
+  # 같은 태그를 예약한 초안(draft)이 남아 있으면 먼저 막는다 — 실패한 실행의 잔재이며 처방이
+  # 다르다(지우고 다시 실행). 발행된 릴리스가 있으면 처방은 새 버전이다.
+  LEFTOVER_DRAFT="$(gh api "repos/${REPO_SLUG}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"${VERSION}\") | .id" 2>/dev/null | head -1 || true)"
+  [ -z "$LEFTOVER_DRAFT" ] || die "태그 ${VERSION}을 예약한 초안 릴리스(id ${LEFTOVER_DRAFT})가 남아 있다 — 지우고 다시 실행한다"
+  if gh release view "$VERSION" -R "$REPO_SLUG" >/dev/null 2>&1; then
+    die "릴리스 ${VERSION}이 이미 있다 — 같은 버전을 다시 발행하지 않는다. 새 버전으로 만든다"
+  fi
+  TAG_TARGET="$(git ls-remote --tags origin "refs/tags/${VERSION}" "refs/tags/${VERSION}^{}" | tail -1 | cut -f1)"
+  if [ -n "$TAG_TARGET" ]; then
+    TAG_EXISTED=1
+    [ "$TAG_TARGET" = "$UPSTREAM_COMMIT" ] || die "태그 ${VERSION}이 다른 커밋(${TAG_TARGET})을 가리킨다 — 이 커밋(${UPSTREAM_COMMIT})의 릴리스가 될 수 없다"
+  fi
+  # **릴리스는 저절로 불변이 아니다** (DEV-530). immutable releases가 켜진 저장소에서만 발행 뒤
+  # 자산이 잠기고 태그가 고정된다 — 꺼져 있으면 쓰기 권한자가 발행 뒤에도 자산을 바꾸거나 태그를
+  # 옮길 수 있고, 사내가 같은 릴리스의 현재 digest와만 대조해서는 그것을 알 수 없다. 그래서
+  # 자산 SHA-256은 릴리스와 **별도 채널**로 사내에 전달한다(런북 2.A). 설정 상태는 출력에 적는다.
+  IMMUTABLE="$(gh api "repos/${REPO_SLUG}/immutable-releases" --jq '.enabled' 2>/dev/null || echo unknown)"
+fi
 
 step "번들 준비 — ${BUNDLE}"
 rm -rf "$BUNDLE"
@@ -186,7 +235,8 @@ PNPM_VERSION="$(node -e "process.stdout.write(require('${REPO_ROOT}/package.json
   printf '## 운반\n\n'
   printf -- '- 이 디렉터리는 운반 아카이브 `%s` 하나로 사내에 들어온다 — `tar -xzf`로 풀면 이 디렉터리가 나온다\n' "$(basename "$ARCHIVE")"
   printf -- '- `images/*.tar`는 `prsctl load`가 `docker load`로 읽는다. **직접 풀지 않는다**\n'
-  printf -- '- `source/*.bundle`은 `git fetch`로 사내 Git에 들여온다. 절차는 런북 2장이다\n\n'
+  printf -- '- `source/*.bundle`은 `git fetch`로 사내 Git에 들여온다. 절차는 런북 2장이다\n'
+  printf -- '- `--release`로 발행되면 이 아카이브가 GitHub Release `%s`의 자산이 된다 (CR-063 / WP-072). 사내에서는 이 저장소 한정 읽기 토큰으로 받아 자산 digest와 대조한다 — 런북 2.B 1단계\n\n' "$VERSION"
   printf '## 담기지 않은 것\n\n'
   printf -- '- **시크릿·토큰·개인 키.** 값이 채워진 `.env`는 반입 대상이 아니라 사내에서 만드는 것이다\n'
   printf -- '- 개발 의존성, 시험 픽스처, 문서 전체\n'
@@ -220,8 +270,74 @@ tar -czf "$ARCHIVE" -C "$OUT_ROOT" "$(basename "$BUNDLE")"
 # **만든 것을 다시 읽어 본다.** 읽지 못하는 아카이브를 완료로 보고하지 않는다 (DEV-519의 규율).
 tar -tzf "$ARCHIVE" >/dev/null || die "운반 아카이브를 다시 읽지 못한다: $ARCHIVE"
 
+# ── GitHub Release 발행 (--release) ─────────────────────────────
+# **운반 경로다** (CR-063 / WP-072, DEV-528). 태그 = 버전, target = manifest의
+# upstream.commit, 자산 = 운반 아카이브 하나. 아카이브를 다시 읽은 **뒤**에만 발행한다 —
+# 읽지 못하는 것을 발행하지 않는다. 릴리스 본문은 번들의 RELEASE_NOTES.md에 아카이브의
+# 파일명·크기·SHA-256을 덧붙인 것이다: 번들 안의 파일은 자기 아카이브의 해시를 담을 수
+# 없으므로 그 값은 여기에만 있고, 같은 실행이 같은 값으로 만든다.
+ARCHIVE_SHA256=""
+if [ "$RELEASE" -eq 1 ]; then
+  step "GitHub Release 발행 — ${REPO_SLUG} ${VERSION}"
+  ARCHIVE_SHA256="$(sha256_of "$ARCHIVE")"
+  ARCHIVE_BYTES="$(stat -c %s "$ARCHIVE")"
+  NOTES="$(mktemp)"
+  {
+    cat "${BUNDLE}/RELEASE_NOTES.md"
+    printf '\n## 운반 아카이브 — 이 릴리스의 자산\n\n'
+    printf -- '- 파일: `%s` · %s 바이트\n' "$(basename "$ARCHIVE")" "$ARCHIVE_BYTES"
+    printf -- '- SHA-256: `%s` — 받은 파일의 `sha256sum`과 같아야 하고, GitHub API가 주는 자산 `digest`와도 같다\n' "$ARCHIVE_SHA256"
+    printf -- '- 사내 취득: `GH_TOKEN=<읽기 토큰> gh release download %s -R %s -p '"'"'*.tar.gz'"'"'` — 절차는 번들 안 `deploy/single-host/RUNBOOK.md` 2.B 1단계\n' "$VERSION" "$REPO_SLUG"
+  } > "$NOTES"
+  # 실패하면 방금 만든 것을 되돌린다 — 반쯤 발행된 릴리스를 남기지 않는다.
+  RELEASE_ID=""
+  undo_release() {
+    printf '되돌린다: 릴리스 %s 삭제\n' "$VERSION" >&2
+    [ -n "$RELEASE_ID" ] && { gh api -X DELETE "repos/${REPO_SLUG}/releases/${RELEASE_ID}" >/dev/null 2>&1 || printf '경고: 릴리스 삭제 실패 — 직접 지워야 한다\n' >&2; }
+    if [ "$TAG_EXISTED" -eq 0 ]; then
+      git push origin ":refs/tags/${VERSION}" >/dev/null 2>&1 || true   # 발행 전에 실패했으면 태그는 아직 없다
+    fi
+  }
+  # **초안 → 자산 → 발행 순서다.** immutable releases가 켜진 저장소에서는 발행 뒤 자산을 붙일 수
+  # 없으므로(GitHub가 권하는 순서), 자산이 전부 붙은 초안을 발행한다. 태그는 발행 시점에 만들어진다.
+  gh release create "$VERSION" -R "$REPO_SLUG" --draft --target "$UPSTREAM_COMMIT" \
+    --title "PR Search ${VERSION}" --notes-file "$NOTES" "$ARCHIVE" >/dev/null \
+    || { rm -f "$NOTES"; die "릴리스 초안 생성에 실패했다"; }
+  rm -f "$NOTES"
+  RELEASE_ID="$(gh api "repos/${REPO_SLUG}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"${VERSION}\") | .id" | head -1)"
+  [ -n "$RELEASE_ID" ] || die "만든 초안을 찾지 못했다 — GitHub에서 초안을 확인하라"
+  gh api -X PATCH "repos/${REPO_SLUG}/releases/${RELEASE_ID}" -F draft=false >/dev/null \
+    || { undo_release; die "초안을 발행하지 못했다"; }
+
+  # **발행한 것을 다시 읽어 본다** (DEV-519의 규율). 이름·크기·digest가 로컬과 다르면
+  # 되돌리고 실패한다. digest는 GitHub가 자산마다 계산해 API로 주는 값이다.
+  step "발행한 자산 대조"
+  ASSET_LINE="$(gh api "repos/${REPO_SLUG}/releases/tags/${VERSION}" \
+    --jq '.assets[] | select(.name | endswith(".tar.gz")) | "\(.name) \(.size) \(.digest // "none")"' 2>/dev/null || true)"
+  REMOTE_NAME="${ASSET_LINE%% *}"; REST="${ASSET_LINE#* }"; REMOTE_SIZE="${REST%% *}"; REMOTE_DIGEST="${REST#* }"
+  if [ "$REMOTE_NAME" != "$(basename "$ARCHIVE")" ]; then undo_release; die "발행된 자산 이름이 다르다: ${REMOTE_NAME:-없음}"; fi
+  if [ "$REMOTE_SIZE" != "$ARCHIVE_BYTES" ]; then undo_release; die "발행된 자산 크기가 다르다: 원격 ${REMOTE_SIZE} · 로컬 ${ARCHIVE_BYTES}"; fi
+  if [ "$REMOTE_DIGEST" != "sha256:${ARCHIVE_SHA256}" ]; then undo_release; die "발행된 자산 digest가 다르다: 원격 ${REMOTE_DIGEST} · 로컬 sha256:${ARCHIVE_SHA256}"; fi
+fi
+
 printf '\n번들 완료\n'
 printf '  번들 디렉터리 : %s  (%s)\n' "$BUNDLE"  "$(du -sh "$BUNDLE"  | cut -f1)"
 printf '  운반 아카이브 : %s  (%s)\n' "$ARCHIVE" "$(du -sh "$ARCHIVE" | cut -f1)"
 printf '\n사내 반입 파일 : %s\n' "$(basename "$ARCHIVE")"
 printf '반입 절차      : 아카이브 안의 deploy/single-host/RUNBOOK.md\n'
+if [ "$RELEASE" -eq 1 ]; then
+  printf '\nGitHub Release : https://github.com/%s/releases/tag/%s  (태그 %s → %s)\n' "$REPO_SLUG" "$VERSION" "$VERSION" "$UPSTREAM_COMMIT"
+  printf '자산 SHA-256   : %s\n' "$ARCHIVE_SHA256"
+  case "$IMMUTABLE" in
+    true)  printf 'immutable releases : 켜짐 — 발행 뒤 자산·태그가 잠긴다\n' ;;
+    false) printf 'immutable releases : 꺼짐 — 쓰기 권한자가 발행 뒤에도 자산·태그를 바꿀 수 있다. 켜는 것을 권한다 (런북 2장 「경계」)\n' ;;
+    *)     printf 'immutable releases : 알 수 없음 (API 응답 없음)\n' ;;
+  esac
+  printf '\n사내 운영자에게 릴리스와 별도 채널로 전달할 것 셋: 버전 %s · 읽기 토큰 · 자산 SHA-256 (위 값) — DEV-530\n' "$VERSION"
+  printf '\n사내에서 받는 명령 (런북 2.B 1단계):\n'
+  printf '  GH_TOKEN=<읽기 토큰> gh release download %s -R %s -p '"'"'*.tar.gz'"'"'\n' "$VERSION" "$REPO_SLUG"
+  printf '  sha256sum %s   # 위 SHA-256과 같아야 한다\n' "$(basename "$ARCHIVE")"
+  printf '  tar -xzf %s\n' "$(basename "$ARCHIVE")"
+else
+  printf '\n발행하지 않았다 (--release 없음). github.com에 닿는 사내라면 --release로 발행해 받게 한다.\n'
+fi

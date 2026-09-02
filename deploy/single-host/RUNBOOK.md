@@ -1,7 +1,7 @@
 # PR Search 사내 반입·운영 런북 (Profile A)
 
-> 대상: 단일 Linux 호스트 · Docker Compose · 오프라인 반입
-> 근거: `CR-059` / `ADR-021` / `WP-070` · 인프라 문서 3.0장
+> 대상: 단일 Linux 호스트 · Docker Compose · 오프라인 번들 · 운반은 GitHub Release
+> 근거: `CR-059` / `ADR-021` / `WP-070` · `CR-063` / `WP-072` · 인프라 문서 3.0장
 
 이 문서는 **번들 안에 함께 들어온다.** 사내에서 저장소 문서를 열 수 없어도 이것만으로 반입과 운영이 성립해야 한다.
 
@@ -23,22 +23,22 @@
 | --- | --- |
 | OS | Linux (x86_64) |
 | Docker Engine | 24 이상 · Compose v2 |
-| 디스크 | 이미지 약 2GB + 데이터 (저장소 수에 비례) |
+| 디스크 | **첫 설치 시점에 6GB 이상** — 운반 아카이브 약 1.1GB + 풀린 번들 약 2.6GB + Docker 이미지 저장소 약 2~3.5GB + 데이터(저장소 수에 비례). 롤백을 위해 번들을 지우지 않으므로(3장) 그 몫은 남는다 (`DEV-529`) |
 | RAM | 최소 8GB (Elasticsearch 힙 2GB 기준) |
-| 네트워크 | **인터넷 불필요.** 사내 GHE와 사내 OIDC로만 나간다 |
+| 네트워크 | **설치·운영에는 인터넷이 필요 없다.** 서비스는 사내 GHE와 사내 OIDC로만 나간다. **번들을 받는 단계(2.B 1단계)만 github.com에 닿는다** — 호스트가 직접 닿지 못하면 닿는 사내 위치에서 받아 호스트로 옮긴다 (`CR-063`, `DEV-528`) |
 
-**컨테이너 레지스트리에 접근하지 않는다.** 필요한 이미지는 전부 번들 안에 있다.
+**컨테이너 레지스트리에 접근하지 않는다.** 필요한 이미지는 전부 번들 안에 있다. github.com에 닿는 것은 번들 파일을 받기 위해서이지 이미지를 받기 위해서가 아니다.
 
 ---
 
 ## 2. 반입 절차
 
-**경계가 둘이다.** A는 외부망(저장소가 있는 곳)에서, B~D는 사내망(번들만 있는 곳)에서 실행한다. 사내 운영자는 A를 볼 필요가 없고 **A의 결과 파일 하나**만 받는다.
+**경계가 둘이다.** A는 외부망(저장소가 있는 곳)에서, B~D는 사내망(번들만 있는 곳)에서 실행한다. 사내 운영자는 A를 볼 필요가 없고 **A가 발행한 GitHub Release에서 파일 하나**를 받는다 (`CR-063`).
 
 ```text
-A. 외부망                 1. 소스 커밋 확인 → 2. build-bundle → 3. 운반 아카이브 위치 확인
-──────── 조직의 반입 절차 / 물리적 이동 ────────
-B. 사내망 — 설치          1. extract → 2. verify → 3. .env 작성 → 4. load → 5. install → 6. smoke → 7. lineage
+A. 외부망                 1. 소스 커밋 확인 → 2. build-bundle --release → 3. 릴리스·자산 확인
+──────── GitHub Release (github.com · 이 저장소 한정 읽기 토큰) — 닿지 않으면 조직의 반입 채널 ────────
+B. 사내망 — 설치          1. download → digest 대조 → extract → 2. verify → 3. .env 작성 → 4. load → 5. install → 6. smoke → 7. lineage
 C. 사내망 — 초기 데이터   1. GHE App → 2. 저장소 등록 → 3. 웹훅 → 4. 백필
 D. 사내망 — 소스 계보     1. vendor/upstream → 2. company/main
 ```
@@ -50,15 +50,19 @@ D. 사내망 — 소스 계보     1. vendor/upstream → 2. company/main
 ```bash
 cd <pr-search checkout>
 git status                     # 깨끗해야 한다 (미추적 파일 포함)
-git rev-parse HEAD             # 이 커밋이 manifest의 upstream.commit이 된다
+git rev-parse HEAD             # 이 커밋이 manifest의 upstream.commit이 되고, 릴리스 태그가 가리키는 커밋이 된다
 
 VERSION=<실제 버전>             # 예: 0.1.0-pilot.2 — 예시일 뿐이며 저장소의 릴리스 버전 규칙이 우선한다
-./deploy/single-host/build-bundle.sh "$VERSION"
+./deploy/single-host/build-bundle.sh "$VERSION" --release
 ```
 
-`docker`·`git`·Node가 필요하고 컨테이너 레지스트리에 닿아야 한다 (백킹 이미지를 pull한다). **`pnpm release:bundle` 같은 별도 스크립트는 없다** — 정본은 이 스크립트 하나다 (`DEV-523`).
+`docker`·`git`·Node가 필요하고 컨테이너 레지스트리에 닿아야 한다 (백킹 이미지를 pull한다). `--release`에는 인증된 `gh`가 더 필요하다 (`gh auth status`). **`pnpm release:bundle` 같은 별도 스크립트는 없다** — 정본은 이 스크립트 하나다 (`DEV-523`).
 
-**결과는 둘이고, 사내로 가져가는 것은 둘째다.** 출력 디렉터리 기본값은 `<checkout>/deploy/single-host/bundle/`이며 두 번째 인자로 바꿀 수 있다 (`./deploy/single-host/build-bundle.sh "$VERSION" /some/output`). 어느 쪽이든 그 위치에 아래 둘이 함께 만들어진다.
+**`--release`가 운반을 맡는다** (`CR-063` / `WP-072`). 번들과 운반 아카이브를 만들고 아카이브를 다시 읽은 **뒤** GitHub Release `<version>`을 발행한다 — 태그가 곧 버전이고 위 커밋을 가리키며, 자산은 운반 아카이브 하나, 본문은 번들의 릴리스 노트에 아카이브의 파일명·크기·SHA-256을 덧붙인 것이다. 발행 뒤 스크립트가 API로 자산을 다시 읽어 이름·크기·digest를 로컬과 대조하고, 어긋나면 방금 만든 릴리스와 태그를 지우고 종료 코드 1로 끝낸다. **릴리스는 불변이다** — 같은 버전의 릴리스가 이미 있거나 태그가 다른 커밋을 가리키면 이미지를 빌드하기 전에 멈춘다. 다시 만들려면 새 버전이다. `--release` 없이 실행하면 발행 없이 번들과 아카이브만 만든다 — github.com에 닿지 않는 환경으로 옮길 때 쓴다.
+
+**사내 운영자에게 전달할 것은 셋이다** — 릴리스 버전(= 태그), 이 저장소 한정 읽기 토큰(아래 「경계」), 그리고 **자산 SHA-256**. SHA-256은 **릴리스와 별개의 채널**(반입 요청서 등)로 전달한다 — 릴리스는 저절로 불변이 아니어서 저장소 쓰기 권한자가 발행 뒤에도 자산을 바꾸거나 태그를 옮길 수 있고, 그러면 사내가 같은 릴리스의 현재 digest와만 대조해서는 바뀐 것을 알 수 없다 (`DEV-530`). 스크립트의 성공 출력이 세 값 중 버전과 SHA-256을 그대로 보여 준다.
+
+**결과는 둘이고, 사내로 가져가는 것은 둘째다.** 출력 디렉터리 기본값은 `<checkout>/deploy/single-host/bundle/`이며 두 번째 인자로 바꿀 수 있다 (`./deploy/single-host/build-bundle.sh "$VERSION" /some/output --release`). 어느 쪽이든 그 위치에 아래 둘이 함께 만들어지고, `--release`가 둘째를 자산으로 올린다.
 
 ```text
 <checkout>/deploy/single-host/bundle/
@@ -103,14 +107,48 @@ pr-search-<version>-offline/
 
 `.bundle`은 Docker 이미지도 일반 tar도 아니다. **`.tar`가 보인다고 전부 `tar`로 푸는 것이 아니다** — 이 번들에서 운영자가 `tar`로 푸는 것은 운반 아카이브 하나뿐이다.
 
+### 경계 — 번들은 GitHub Release에서 받는다 (CR-063)
+
+**사내 어느 위치에서든 github.com에 닿는다** (결정자 확인, 2026-09-02 — 사내에서의 실측은 7장에 적는다). 그래서 운반 아카이브는 물리 매체가 아니라 GitHub Release의 자산으로 건너간다. 저장소가 비공개이므로 **이 저장소 한정 읽기 토큰**이 필요하다.
+
+| 무엇 | 값 |
+| --- | --- |
+| 토큰 종류 | GitHub fine-grained personal access token. 대상 저장소는 이 저장소 하나, 권한은 **Contents: Read-only** 하나 |
+| 누가 | 반입 담당자(사람). 서비스 계정이 아니다 |
+| 어디에 두는가 | 담당자의 자격 저장소. `gh release download`를 실행하는 순간에만 환경 변수 `GH_TOKEN`으로 준다 |
+| 어디에 두지 않는가 | **`.env`·번들·저장소·호스트의 시크릿 파일.** 서비스는 이 토큰을 읽지 않으며 `.env.example`에 그 키가 없다 (보안 문서 6장) |
+| 회전 | 90일. 담당자가 바뀌면 즉시 폐기 |
+
+받는 명령은 2.B 1단계에 있다. `gh`가 없는 위치에서는 API로 받는다 — `Accept` 헤더가 없으면 파일 대신 JSON이 온다.
+
+```bash
+# 자산 id와 digest를 읽는다
+curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
+  https://api.github.com/repos/<owner>/<repo>/releases/tags/<version> \
+  | grep -E '"(id|name|digest)"'
+# 자산을 받는다
+curl -fL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" \
+  -o pr-search-<version>-offline.tar.gz \
+  https://api.github.com/repos/<owner>/<repo>/releases/assets/<asset id>
+```
+
+**받은 파일은 담당자가 전달한 SHA-256과 같아야 하고, 자산 digest와도 같아야 한다.** GitHub는 자산마다 SHA-256 digest를 계산해 API로 주고, 릴리스 본문에도 발행 시점의 같은 값이 적혀 있다. 그러나 **릴리스는 저절로 불변이 아니다** (`DEV-530`) — 저장소의 immutable releases 설정이 꺼져 있으면 쓰기 권한자가 발행 뒤에도 자산을 바꾸거나 지우고 태그를 옮길 수 있고, 켜져 있어도 제목과 본문은 편집할 수 있다. 그래서 정본은 **담당자가 릴리스와 별개의 채널로 전달한 SHA-256**이며, 본문의 값은 참고일 뿐이다. `sha256sum`이 전달받은 값과 다르거나 자산 digest가 전달받은 값과 다르면 그 파일을 쓰지 않는다 — 손상이든 변조든 발행 뒤 변경이든 같은 결론이다. 프록시 환경이면 `gh`와 curl은 `HTTPS_PROXY`를 읽는다.
+
+**immutable releases를 켜는 것을 권한다.** 켜면 발행된 릴리스의 자산을 바꾸거나 지울 수 없고 태그가 그 커밋에 잠긴다. 이 저장소는 2026-09-02 기준 꺼져 있으며(`gh api repos/<owner>/<repo>/immutable-releases`), `build-bundle.sh --release`가 발행할 때 그 상태를 출력한다. 켜는 것은 저장소 설정이라 결정자의 몫이다 — 켜져 있어도 전달받은 SHA-256과의 대조는 그대로 한다.
+
+**github.com에 닿지 않는 환경이면** 담당자가 외부망에서 같은 파일(`--release`가 올린 것과 같은 아카이브)을 조직의 반입 채널로 옮긴다. 그 뒤의 검증과 절차는 같다 — 1단계의 대조는 담당자가 전달한 SHA-256으로 한다.
+
 ### 2.B 사내망 — 설치
 
 **순서가 절차다.** 각 단계는 실패하면 멈추며, checksum 불일치·필수 값 부재·이미지 부재·마이그레이션 실패·health 실패를 성공으로 접지 않는다.
 
 ```bash
-# 1) 운반 아카이브를 푼다 — /opt/pr-search/import 는 권장 예시이며 제품이 강제하지 않는다
+# 1) 운반 아카이브를 받고, digest와 대조한 뒤 푼다 — /opt/pr-search/import 는 권장 예시이며 제품이 강제하지 않는다
 mkdir -p /opt/pr-search/import
 cd /opt/pr-search/import
+GH_TOKEN=<읽기 토큰> gh release download <version> -R <owner>/<repo> -p '*.tar.gz'
+GH_TOKEN=<읽기 토큰> gh api repos/<owner>/<repo>/releases/tags/<version> --jq '.assets[].digest'   # sha256:… — 자산 digest. 릴리스가 발행 뒤 바뀌었으면 여기서 드러난다
+sha256sum pr-search-<version>-offline.tar.gz      # 담당자가 별도 채널로 전달한 SHA-256, 그리고 위 digest — 셋이 같아야 한다. 하나라도 다르면 쓰지 않는다 (DEV-530)
 tar -xzf pr-search-<version>-offline.tar.gz
 cd pr-search-<version>-offline/deploy/single-host
 
@@ -228,7 +266,7 @@ grep '"commit"' /opt/pr-search/import/pr-search-<version>-offline/manifest/relea
 ### 업그레이드
 
 ```bash
-# 새 번들에서
+# 새 릴리스를 2.B 1단계와 같은 방법으로 받아 푼 번들에서
 # **이전 설치의 .env를 먼저 가져온다** (DEV-513) — 번들은 값이 채워진 .env를
 # 담지 않으므로(시크릿이다) `prsctl load`가 그것 없이는 멈춘다.
 cp <이전 설치 경로>/deploy/single-host/.env .env
@@ -340,6 +378,10 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 
 사내망이 프록시를 강제한다면 그 사실을 먼저 확인한 뒤 `GitHubTransport`의 `fetchImpl` 주입 지점으로 최소 수정한다. **추측으로 설정 표면을 만들어 두지 않았다** (`DEV-494`).
 
+### github.com 접근 — 번들을 받는 단계만
+
+**서비스는 github.com에 나가지 않는다.** 나가는 것은 2.B 1단계의 `gh`·curl뿐이며, 둘은 `HTTPS_PROXY`를 읽고 호스트의 시스템 CA 저장소를 쓴다 — 사설 CA를 끼우는 프록시라면 그 CA를 시스템 CA 저장소에 등록한다(`NODE_EXTRA_CA_CERTS`는 서비스용이며 여기에 쓰이지 않는다). 받는 위치가 호스트가 아니어도 된다 — 닿는 사내 위치에서 받아 호스트로 옮기고, 1단계의 digest 대조는 호스트에서 한다.
+
 ---
 
 ## 7. 무엇이 외부에서 검증됐고 무엇이 사내에서만 검증 가능한가
@@ -355,6 +397,9 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | 운반 아카이브 생성 → 별도 디렉터리에 풀기 → 그 사본에서 `verify` (WP-071) | `VERIFIED (external)` |
 | `.env` 없이 `load` → **이미지 저장소를 바꾸기 전에** 멈춤 · `.env` 뒤 `load` 통과 (WP-071) | `VERIFIED (external)` |
 | 풀린 번들의 git bundle → `vendor/upstream`이 manifest의 `upstream.commit`과 일치 (WP-071) | `VERIFIED (external)` |
+| `--release` 발행(초안 → 자산 → 발행) → 발행한 자산을 API로 다시 읽어 이름·크기·digest 대조 · 같은 버전·초안 잔재는 빌드 전에 거부 (WP-072) | `VERIFIED (external)` — 시험 릴리스 둘, 검증 뒤 삭제 |
+| 토큰만 있는 환경에서 `gh release download` → `sha256sum` == 자산 digest == 전달받은 SHA-256 → 별도 디렉터리에 풀어 `verify`·`load`·`lineage`·`git fetch` (WP-072) | `VERIFIED (external)` — 시험 릴리스 둘 |
+| 사내 위치에서 github.com 도달 | `NOT RUN — internal environment required` — 결정자 확인(2026-09-02)이며 실측은 사내에서 한다 |
 | 실제 사내 GHE App·웹훅·저장소 권한 | `NOT RUN — internal environment required` |
 | 실제 사내 OIDC와 그룹 클레임 | `NOT RUN — internal environment required` |
 | 사내 CA·프록시·DNS·레지스트리·보안 스캔 | `NOT RUN — internal environment required` |
@@ -387,3 +432,8 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | 저장소 등록 요청이 `permission denied for sequence` | 마이그레이션 023이 적용됐는가 (DEV-518). `BIGSERIAL` 시퀀스에 권한이 없었다 |
 | `restore`가 재색인 시간 초과로 끝난다 | `.env`의 `PRS_REINDEX_TIMEOUT_S`를 늘려 다시 실행하거나 운영 콘솔에서 남은 별칭을 실행한다 (DEV-519·520) |
 | `ingest-gateway`가 503 | **DB 접속 주체가 `prs_app`인가** (DEV-503). 그것은 `NOLOGIN` 그룹 롤이라 접속이 거부된다. 로그인 주체를 만들었는지 확인하라 — 이 엔드포인트만 실제로 PostgreSQL을 확인하므로 **여기서 먼저 드러난다** |
+| `gh release download`가 `release not found`·404 | 토큰에 이 저장소의 Contents 읽기 권한이 있는가, 저장소 이름과 버전(태그)이 스크립트 성공 출력의 명령과 같은가. 비공개 저장소는 토큰 없이 404다 (CR-063) |
+| 받은 파일의 `sha256sum`이 자산 digest와 다르다 | **그 파일을 쓰지 않는다.** 다시 받는다. 두 번째도 다르면 담당자에게 알린다 — 발행 시 스크립트가 같은 대조를 통과했으므로 전송 경로의 문제다 |
+| 자산 digest가 **담당자가 전달한 SHA-256**과 다르다 | **릴리스가 발행 뒤 바뀐 것이다** (`DEV-530`). 그 릴리스를 쓰지 않고 담당자에게 알린다 — 새 버전으로 다시 발행한다 |
+| `gh`가 없다 | 2장 「경계」의 curl 경로로 받는다 |
+| `tar -xzf`가 `not in gzip format`으로 실패 | 파일이 JSON이다 — curl에 `Accept: application/octet-stream`이 빠졌거나 토큰 오류 응답을 저장했다. `head -c 200 <파일>`로 확인한다 |
