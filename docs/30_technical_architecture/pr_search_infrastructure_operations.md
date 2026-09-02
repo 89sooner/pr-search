@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.10 | 갱신일: 2026-09-01
+> 상태: review | 버전: v0.11 | 갱신일: 2026-09-02
 
 ## 1. 목적
 
@@ -250,9 +250,12 @@ pnpm test:e2e                     # Playwright                                  
 pnpm test:a11y                    # axe 검사                                     — WP-020
 pnpm es:reindex --alias <별칭>    # 재색인 + 별칭 전환                           — WP-035
 
-# --- 단일 호스트 프로파일 (CR-059 / ADR-021) — WP-070 ---
-pnpm release:bundle               # 이미지 빌드 + 오프라인 번들 생성 (외부망에서)   — WP-070
-deploy/single-host/prsctl load    # 번들의 이미지 tar를 로컬 daemon에 적재 (사내)   — WP-070
+# --- 단일 호스트 프로파일 (CR-059 / ADR-021) — WP-070 · WP-071 ---
+./deploy/single-host/build-bundle.sh <version> [출력 디렉터리]
+#                                 # 이미지 빌드 + 오프라인 번들 + 운반 아카이브 (외부망에서) — WP-070·WP-071
+#                                 # `pnpm release:bundle`이라는 스크립트는 없다 (DEV-523). 정본은 이 스크립트 하나다
+deploy/single-host/prsctl verify  # 번들 checksum 검증 (사내)                        — WP-070
+deploy/single-host/prsctl load    # 번들의 이미지 tar를 로컬 daemon에 적재 (사내). .env가 먼저다 (DEV-524) — WP-070
 deploy/single-host/prsctl install # migration → mapping → up → health              — WP-070
 deploy/single-host/prsctl health  # 전 서비스 health 판정                          — WP-070
 deploy/single-host/prsctl smoke   # read-only 검색 스모크                          — WP-070
@@ -289,16 +292,19 @@ Elasticsearch 접속도 같은 원칙이다 (`@prs/es`의 `resolveClientOptions`
 
 ### 9.1 배포
 
-**Profile A — 첫 사내 반입** (CR-059 / ADR-021). 외부망에서 만든 번들 하나가 사내로 건너간다.
+**Profile A — 첫 사내 반입** (CR-059 / ADR-021). 외부망에서 만든 **운반 아카이브 하나**(`pr-search-<version>-offline.tar.gz`, CR-062 / WP-071)가 사내로 건너간다.
 
 ```text
 [외부망]  main의 특정 커밋
             → 이미지 빌드 (versioned tag + digest)
             → 오프라인 번들 생성 (이미지 tar · 소스 계보 · compose · manifest · checksum)
+            → 운반 아카이브 pr-search-<version>-offline.tar.gz  (사내로 가져갈 파일 하나)
 ──────────  물리적 반입 (네트워크 없음)  ──────────
-[사내망]  checksum 검증 → 이미지 load → .env 작성 → migration → ES mapping
-            → compose up → health → smoke
+[사내망]  아카이브 extract → checksum 검증 → .env 작성 → 이미지 load → migration → ES mapping
+            → compose up → health → smoke → lineage
 ```
+
+**`.env`가 `load`보다 먼저다** (CR-062, DEV-524). `load`는 적재 뒤 `PRS_VERSION`의 이미지가 실제로 있는지 검증하므로 그 값을 먼저 알아야 하고, 필수 구성의 부재는 **이미지 저장소를 바꾸기 전에** 말해야 한다. 번들 안의 아카이브는 세 종류이며 다루는 명령이 다르다 — 운반 아카이브는 `tar -xzf`, 이미지 tar(`images/*.tar`)는 `prsctl load`가 `docker load`로 읽으며 **직접 풀지 않는다**, 소스 계보(`source/*.bundle`)는 `git fetch`다. 절차의 정본은 번들 안에 함께 들어가는 `deploy/single-host/RUNBOOK.md`다.
 
 **사내에서 `git clone`·`pnpm install`·레지스트리 접근을 요구하지 않는다.** 요구하는 순간 그 절차는 사내망에서 실행 불가능하다. 반입된 형상이 어느 외부 커밋에서 나왔는지는 `release-manifest.json`이 답한다 — **그 질문에 답하지 못하면 다음 반입에서 무엇을 합쳐야 하는지도 알 수 없다.**
 
