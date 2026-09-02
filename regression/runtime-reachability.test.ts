@@ -441,7 +441,7 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
     expectOrder(BUILD, 'gh release create', 'releases/tags/${VERSION}');
     expect(BUILD).toContain('.digest');
     expect(BUILD).toContain('발행된 자산 digest가 다르다');
-    expect(BUILD).toContain('undo_release');
+    expect(BUILD).toContain('undo_release; die "발행된 자산 digest가 다르다');
   });
 
   /*
