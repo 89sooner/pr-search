@@ -404,6 +404,83 @@ describe('사내 반입 절차가 실행 도구와 같은 말을 한다 (WP-071 
   });
 });
 
+describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072 / CR-063)', () => {
+  /*
+   * **운반 경계는 "물리적 이동"이라는 문장 하나였다** (DEV-528). 결정자가 사내 어느
+   * 위치에서든 github.com에 닿는다고 확인하면서 운반은 GitHub Release 자산이 됐다.
+   * 발행은 아카이브를 다시 읽은 뒤여야 하고, 태그는 manifest의 커밋을 가리켜야 하며,
+   * 발행한 자산은 다시 읽어 대조해야 한다. 사내 쪽은 받기 → digest 대조 → 풀기 순서다.
+   *
+   * 실제 발행·다운로드·대조는 실행으로 검증하며(원장 6.66장), 이 시험은 그 계약이
+   * 조용히 되돌아가는 것을 막는 자리다.
+   */
+  const BUILD = read('deploy/single-host/build-bundle.sh');
+  const RUNBOOK = read('deploy/single-host/RUNBOOK.md');
+  const ENV_EXAMPLE = read('deploy/single-host/.env.example');
+
+  const expectOrder = (text: string, first: string, second: string): void => {
+    expect(text, first).toContain(first);
+    expect(text, second).toContain(second);
+    expect(text.indexOf(first), `${first} < ${second}`).toBeLessThan(text.indexOf(second));
+  };
+
+  /*
+   * **읽지 못하는 아카이브를 발행하지 않는다.** 발행은 `tar -tzf` 재독 뒤이고, 태그는
+   * manifest가 적는 바로 그 커밋을 가리킨다 — 다른 커밋이면 릴리스의 계보 증명이 거짓이다.
+   */
+  it('build-bundle.sh가 아카이브를 다시 읽은 뒤에만 발행하고 태그가 manifest의 커밋을 가리킨다 (DEV-528)', () => {
+    expectOrder(BUILD, 'tar -tzf "$ARCHIVE"', 'gh release create');
+    expect(BUILD).toContain('--target "$UPSTREAM_COMMIT"');
+  });
+
+  /*
+   * **발행한 것을 다시 읽어 본다** (DEV-519의 규율). 이름·크기·digest 셋을 로컬과
+   * 대조하고, 어긋나면 되돌리고 실패한다. 검사가 없으면 "올렸다"가 "같은 것을 올렸다"로 읽힌다.
+   */
+  it('build-bundle.sh가 발행한 자산을 다시 읽어 이름·크기·digest를 대조한다 (DEV-519)', () => {
+    expectOrder(BUILD, 'gh release create', 'releases/tags/${VERSION}');
+    expect(BUILD).toContain('.digest');
+    expect(BUILD).toContain('발행된 자산 digest가 다르다');
+    expect(BUILD).toContain('undo_release');
+  });
+
+  /*
+   * **릴리스는 불변이고 검사는 빌드 앞이다** (DEV-524가 가르친 것 — 검사의 위치).
+   * 같은 버전의 릴리스가 있으면 몇 분짜리 이미지 빌드를 시작하기 전에 멈춘다.
+   */
+  it('build-bundle.sh가 같은 버전의 릴리스가 있으면 이미지를 빌드하기 전에 멈춘다', () => {
+    expectOrder(BUILD, 'gh release view "$VERSION"', 'docker build --target');
+  });
+
+  /*
+   * **사내 쪽은 받기 → digest 대조 → 풀기다.** 대조가 풀기 뒤에 있으면 손상된 파일을
+   * 이미 풀어 놓은 뒤에 알게 된다. 2.B의 단계 번호는 그대로다 — 2.C·8장이 그 번호를 가리킨다.
+   */
+  it('런북 2.B 1단계가 받기 → digest 대조 → 풀기 순서이고 단계 번호는 그대로다', () => {
+    const start = RUNBOOK.indexOf('### 2.B');
+    const end = RUNBOOK.indexOf('### 2.C');
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const install = RUNBOOK.slice(start, end);
+    expectOrder(install, 'gh release download <version>', "--jq '.assets[].digest'");
+    expectOrder(install, "--jq '.assets[].digest'", 'sha256sum pr-search-<version>-offline.tar.gz');
+    expectOrder(install, 'sha256sum pr-search-<version>-offline.tar.gz', 'tar -xzf pr-search-<version>-offline.tar.gz');
+    expect(install).toContain('# 3) 구성 작성');
+    expect(install).toContain('# 5) 설치');
+  });
+
+  /*
+   * **읽기 토큰이 `.env`에 들어갈 자리가 없다** (NFR-005). 서비스는 그 토큰을 읽지 않고,
+   * 런북은 토큰을 실행 순간의 환경 변수로만 준다.
+   */
+  it('읽기 토큰이 .env에 들어갈 자리가 없고 런북이 소재를 적는다 (NFR-005)', () => {
+    expect(ENV_EXAMPLE).not.toMatch(/GH_TOKEN|GITHUB_TOKEN/);
+    expect(RUNBOOK).toContain('GH_TOKEN=<읽기 토큰> gh release download');
+    expect(RUNBOOK).toContain('Contents: Read-only');
+    expect(RUNBOOK).toContain('`.env`·번들·저장소·호스트의 시크릿 파일');
+  });
+});
+
 describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () => {
   const RECONCILE = read('apps/pipeline-worker/src/reconcile.ts');
   const ASSIGN = read('apps/pipeline-worker/src/sequence-assign-runner.ts');
