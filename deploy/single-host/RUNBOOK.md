@@ -120,7 +120,7 @@ cd pr-search-<version>-offline/deploy/single-host
 # 3) 구성 작성 — load보다 먼저다 (아래 「.env는 어디에 있는가」)
 cp .env.example .env
 chmod 600 .env
-$EDITOR .env          # 필수 값을 채운다. 비어 있으면 load가 거부한다
+$EDITOR .env          # 필수 값과 GHE App 자격을 채운다 (아래 「.env는 어디에 있는가」). 필수 값이 비면 load가 거부한다
 
 # 4) 이미지 적재 — verify를 다시 포함해 실행하고, 적재 뒤 PRS_VERSION의 이미지가 실제로 있는지 검증한다
 ./prsctl load
@@ -162,6 +162,8 @@ SEARCH_CURSOR_HMAC_KEY       32자 이상
 
 `PRS_REINDEX_TIMEOUT_S`는 선택이며 두면 1~2592000(30일)의 정수여야 한다. 나머지 값의 뜻은 `.env.example`의 주석이 설명한다.
 
+**`install` 전에 함께 채워야 하는 값 — GHE App 자격 셋** (`DEV-527`). `GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`는 `require_env`의 필수 목록에 없지만, **없으면 `worker-enrich`·`worker-reconcile`이 기동을 거부한다** (의도된 거부다 — 자격 없이 돌면 모든 이벤트가 실패 대기열에 쌓인다). Compose는 컨테이너를 만들 때 `.env`의 값을 굳히므로 `install` 뒤에 `.env`만 고쳐서는 도는 컨테이너에 반영되지 않고, 그 상태로는 5단계 `install`의 health와 6단계 `smoke`의 워커 검사가 실패한다. 사내 GHE에 App을 먼저 등록하고 그 자격을 **이 3단계에서** 넣는다. 나중에 넣거나 바꿨다면 `./prsctl upgrade`를 실행한다 — 같은 `PRS_VERSION`이면 마이그레이션은 no-op이고 값이 바뀐 컨테이너만 다시 만든다. **`restart`는 `.env`를 다시 읽지 않는다.**
+
 **`.env`는 LF 개행이어야 한다.** `prsctl`은 값을 줄 단위로 읽으므로 CRLF면 모든 값 끝에 `\r`이 붙어 `3600` 같은 멀쩡한 값이 거부된다 (`DEV-526`). 번들의 `.env.example`은 LF이며(빌드가 보장한다) 그것을 `cp`해 리눅스 편집기로 고치면 LF가 유지된다. Windows에서 편집해 옮겼다면 `sed -i 's/\r$//' .env`로 되돌린다.
 
 ### 데이터베이스 접속 주체는 `prsctl install`이 만든다
@@ -176,7 +178,7 @@ SEARCH_CURSOR_HMAC_KEY       32자 이상
 
 기동 직후 시스템은 **비어 있다.** 웹훅은 앞으로 오는 것만 받는다.
 
-1. GHE App을 등록하고 자격(`GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`)을 `.env`에 넣는다 — 없으면 `enrich`·`reconcile` 역할이 기동을 거부한다 (의도된 거부다).
+1. GHE App 자격(`GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`)은 **2.B 3단계에서 이미 넣었다** (`DEV-527`) — 여기서 처음 넣는 것이 아니다. 나중에 바꿨다면 `./prsctl upgrade`로 컨테이너를 다시 만든다.
 2. 운영 콘솔(`A-001`)에서 저장소를 등록한다.
 3. GHE에 웹훅을 등록한다 — 대상은 `http://<호스트>:3001/webhooks/github`, 시크릿은 `.env`의 `GHE_WEBHOOK_SECRET`.
 4. **백필을 실행한다** — 과거 PR 이력은 백필이 채운다(`JOB-ING-004`). `worker-enrich`가 그 역할을 함께 켜고 있다.
@@ -215,7 +217,8 @@ grep '"commit"' /opt/pr-search/import/pr-search-<version>-offline/manifest/relea
 | --- | --- |
 | 상태 확인 | `./prsctl health` |
 | 로그 | `docker compose -p pr-search --env-file .env -f compose.yml logs -f <서비스>` |
-| 재기동 | `docker compose -p pr-search --env-file .env -f compose.yml restart <서비스>` |
+| 재기동 | `docker compose -p pr-search --env-file .env -f compose.yml restart <서비스>` — **`.env`를 다시 읽지 않는다** |
+| 구성(`.env`) 변경 반영 | `./prsctl upgrade` — 같은 `PRS_VERSION`이면 값이 바뀐 컨테이너만 다시 만든다 (`DEV-527`) |
 | 전체 정지 | `docker compose -p pr-search --env-file .env -f compose.yml down` (볼륨은 남는다) |
 | 백업 | `./prsctl backup` |
 | 복구 | `./prsctl restore <백업 파일>` |
@@ -372,7 +375,7 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | `git fetch`가 `.bundle`을 읽지 못한다 | 경로가 2.B에서 푼 위치를 가리키는가. `.bundle`은 `tar`나 `docker load`의 대상이 아니다 |
 | `load`가 `PRS_REINDEX_TIMEOUT_S … 정수여야 한다: 3600`처럼 **멀쩡해 보이는 값을 거부한다** | `.env`가 CRLF다 — Windows 편집기로 고쳤거나 그렇게 저장된 파일을 복사했다. `prsctl`은 값을 줄 단위로 읽어 끝의 `\r`이 값에 붙는다. `sed -i 's/\r$//' .env`로 LF로 만든다 (DEV-526) |
 | compose가 이미지를 pull하려 한다 | `./prsctl load`를 실행했는가. `PRS_VERSION`이 적재한 태그와 같은가 |
-| `enrich`·`reconcile`이 기동을 거부한다 | `GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`가 있는가. **의도된 거부다** — 자격 없이 돌면 모든 이벤트가 실패 대기열에 쌓인다 |
+| `enrich`·`reconcile`이 기동을 거부한다 (`install`의 health가 그 둘에서 실패) | `GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`가 있는가. **의도된 거부다** — 자격 없이 돌면 모든 이벤트가 실패 대기열에 쌓인다. `install` 뒤에 넣었다면 `.env`만으로는 반영되지 않는다 — `./prsctl upgrade`로 컨테이너를 다시 만든다 (DEV-527) |
 | 웹훅이 전부 401 | `GHE_WEBHOOK_SECRET`이 GHE 쪽 설정과 같은가 |
 | 검색 결과가 비어 있다 | 백필을 실행했는가. `worker-project` 로그에 색인 기록이 있는가 |
 | `group_by=team`이 빈 결과 | `authz` 역할에 GHE 자격이 있는가 — 없으면 작성자 팀이 언제나 모름이다 |
