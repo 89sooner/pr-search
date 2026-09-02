@@ -515,6 +515,9 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
     // "발행했는가" 플래그가 아니라 원격에 태그가 있는지를 묻는다 — 응답만 잃은 발행도 잡는다 (DEV-535)
     expect(BUILD).toMatch(/undo_release\(\) \{[\s\S]*?git ls-remote --tags origin "refs\/tags\/\$\{VERSION\}"[\s\S]*?git push origin ":refs\/tags\/\$\{VERSION\}"/);
     expect(BUILD).not.toContain('PUBLISHED');
+    // 이 실행이 만든 태그만 지운다 — 다른 커밋을 가리키는 태그는 남의 것이다 (DEV-537)
+    expect(BUILD).toMatch(/undo_release\(\) \{[\s\S]*?"\$TAG_NOW" != "\$UPSTREAM_COMMIT"[\s\S]*?git push origin ":refs\/tags\/\$\{VERSION\}"/);
+    expect(BUILD).toContain('이 실행이 만든 것이 아니므로 지우지 않는다');
     expect(BUILD).toContain('릴리스는 지웠으나 태그');
     expect(BUILD).not.toMatch(/git push origin ":refs\/tags\/\$\{VERSION\}"[^\n]*\|\| true/);
     expect(RUNBOOK).toContain('json.load(sys.stdin)["assets"]');
