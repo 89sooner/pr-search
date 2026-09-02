@@ -298,10 +298,10 @@ if [ "$RELEASE" -eq 1 ]; then
   # 되돌리기의 결과를 남긴다 — 지우지 못한 것이 하나라도 있으면 "되돌렸다"고 보고하지 않는다
   # (DEV-533·DEV-534). 태그는 발행(draft=false)이 만들지만, 발행 요청이 서버에는 적용되고 응답만
   # 잃을 수 있으므로 "발행했는가"라는 플래그를 믿지 않고 원격에 태그가 있는지를 직접 묻는다 (DEV-535).
-  UNDONE=0; RELEASE_DELETED=0; TAG_LEFT=0; TAG_DELETED=0
+  UNDONE=0; RELEASE_DELETED=0; TAG_LEFT=0; TAG_DELETED=0; TAG_FOREIGN=""
   undo_release() {
     printf '되돌린다: 릴리스 %s 삭제\n' "$VERSION" >&2
-    UNDONE=0; RELEASE_DELETED=0; TAG_LEFT=0; TAG_DELETED=0
+    UNDONE=0; RELEASE_DELETED=0; TAG_LEFT=0; TAG_DELETED=0; TAG_FOREIGN=""
     # id를 모르면(생성 뒤 조회가 실패한 경우) 태그로 다시 찾는다 — 초안 잔재를 남기면 같은 버전의
     # 재실행이 전제 검사에서 막힌다 (DEV-531).
     [ -n "$RELEASE_ID" ] || RELEASE_ID="$(lookup_draft_id)"
@@ -317,9 +317,15 @@ if [ "$RELEASE" -eq 1 ]; then
     # 이 실행 전에 없던 태그가 지금 원격에 있으면 발행이 만든 것이다 — 릴리스를 지운 뒤 태그도 지운다.
     # 있는지를 원격에 직접 묻고(DEV-535), 못 물었거나 못 지웠으면 남았다고 말한다 (DEV-534).
     if [ "$TAG_EXISTED" -eq 0 ]; then
-      if REMOTE_TAG="$(git ls-remote --tags origin "refs/tags/${VERSION}" 2>/dev/null)"; then
+      if REMOTE_TAG="$(git ls-remote --tags origin "refs/tags/${VERSION}" "refs/tags/${VERSION}^{}" 2>/dev/null)"; then
         if [ -n "$REMOTE_TAG" ]; then
-          if git push origin ":refs/tags/${VERSION}" >/dev/null 2>&1; then
+          # **이 실행이 만든 태그만 지운다** (DEV-537). 전제 검사 뒤 빌드가 도는 몇 분 사이에 다른 주체가
+          # 같은 이름의 태그를 만들 수 있다 — 그 태그가 이 실행의 커밋을 가리키지 않으면 남의 것이다.
+          TAG_NOW="$(printf '%s\n' "$REMOTE_TAG" | tail -1 | cut -f1)"
+          if [ "$TAG_NOW" != "$UPSTREAM_COMMIT" ]; then
+            TAG_FOREIGN="$TAG_NOW"
+            printf '경고: 태그 %s가 다른 커밋(%s)을 가리킨다 — 이 실행이 만든 것이 아니므로 지우지 않는다\n' "$VERSION" "$TAG_NOW" >&2
+          elif git push origin ":refs/tags/${VERSION}" >/dev/null 2>&1; then
             TAG_DELETED=1
           else
             TAG_LEFT=1
@@ -331,13 +337,15 @@ if [ "$RELEASE" -eq 1 ]; then
         printf '경고: 태그 %s가 원격에 남았는지 확인하지 못했다 — git ls-remote --tags origin refs/tags/%s 로 확인해 지운다\n' "$VERSION" "$VERSION" >&2
       fi
     fi
-    if [ "$RELEASE_DELETED" -eq 1 ] && [ "$TAG_LEFT" -eq 0 ]; then UNDONE=1; fi
+    if [ "$RELEASE_DELETED" -eq 1 ] && [ "$TAG_LEFT" -eq 0 ] && [ -z "$TAG_FOREIGN" ]; then UNDONE=1; fi
     return 0
   }
   # die 메시지의 꼬리 — 무엇을 되돌렸고 무엇이 남았는지를 사실대로 말한다.
   undo_note() {
     if [ "$UNDONE" -eq 1 ]; then
       if [ "$TAG_DELETED" -eq 1 ]; then printf '릴리스와 태그를 되돌렸다'; else printf '릴리스를 되돌렸다 (태그는 만들어지지 않았다)'; fi
+    elif [ "$RELEASE_DELETED" -eq 1 ] && [ -n "$TAG_FOREIGN" ]; then
+      printf '릴리스는 지웠다. 태그 %s는 다른 커밋(%s)을 가리켜 이 실행의 것이 아니므로 지우지 않았다 — 같은 버전을 다른 주체가 만들었는지 확인한 뒤 새 버전으로 다시 실행한다' "$VERSION" "$TAG_FOREIGN"
     elif [ "$RELEASE_DELETED" -eq 1 ]; then
       printf '릴리스는 지웠으나 태그 %s가 남았거나 확인하지 못했다 — git ls-remote --tags origin refs/tags/%s 로 확인하고 git push origin :refs/tags/%s 로 지운 뒤 다시 실행한다' "$VERSION" "$VERSION" "$VERSION"
     else
