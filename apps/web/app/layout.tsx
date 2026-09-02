@@ -9,8 +9,9 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
-// 순서가 뜻을 갖는다: 토큰이 먼저 서고 그 위에 컴포넌트 스타일이 온다.
-import '@conductor-by-89soone/tokens/tokens.css';
+// Conductor CSS 하나로 충분하다: 그 번들이 토큰을 @layer cdt.base 안에 함께 싣는다.
+// tokens.css를 여기서 다시 가져오면 레이어 밖 선언이 되어 축소 모션(prefers-reduced-motion)
+// 재정의를 무력화한다 (DEV-538).
 import '@conductor-by-89soone/css';
 
 export const metadata: Metadata = {

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 /**
  * 셸과 인증 라우트 (WP-015 DoD / FLOW-000, QA-COMMON).
@@ -164,5 +164,55 @@ test.describe('인증 라우트 (FLOW-000)', () => {
 test.describe('헬스체크', () => {
   test('`/healthz`가 200이다', async ({ request }) => {
     expect((await request.get('/healthz')).status()).toBe(200);
+  });
+});
+
+test.describe('축소 모션 설정을 존중한다 (NFR-007 · Conductor FR-CSS-005)', () => {
+  /*
+   * 계산된 CSS 값은 jsdom이 흉내 내지 못한다. 레이어 밖에서 토큰을 한 번 더
+   * 가져오면 @layer cdt.base 안의 0s 재정의가 무력화되므로(DEV-538), 실제
+   * 브라우저에서 루트 토큰과 요소의 transition-duration을 직접 읽는다.
+   *
+   * Next 빌드는 Conductor CSS를 압축하면서 `140ms`를 `.14s`로 바꿔 쓴다.
+   * 표기에 기대지 않도록 지속시간을 ms 숫자로 정규화해 비교한다.
+   */
+  function durationMs(value: string): number | null {
+    const match = /^(\d*\.?\d+)(ms|s)\b/.exec(value.trim());
+    if (match === null) return null;
+    const amount = Number(match[1]);
+    return match[2] === 's' ? Math.round(amount * 1000) : amount;
+  }
+
+  async function readMotion(page: Page) {
+    return page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+      const item = document.querySelector('.cdt-nav-list__item');
+      return {
+        fast: root.getPropertyValue('--cdt-motion-fast').trim(),
+        standard: root.getPropertyValue('--cdt-motion-standard').trim(),
+        itemDurations: item === null ? null : getComputedStyle(item).transitionDuration,
+      };
+    });
+  }
+
+  test('reduce에서는 모션 토큰과 전환 지속시간이 0s다', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/');
+
+    const motion = await readMotion(page);
+    expect(durationMs(motion.fast)).toBe(0);
+    expect(durationMs(motion.standard)).toBe(0);
+    expect(motion.itemDurations).not.toBeNull();
+    expect(motion.itemDurations?.split(',').every((d) => d.trim() === '0s')).toBe(true);
+  });
+
+  test('no-preference에서는 토큰이 살아 있다 — 축소가 토큰 소실로 통과하지 않게 한다', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.goto('/');
+
+    const motion = await readMotion(page);
+    expect(durationMs(motion.fast)).toBe(140);
+    expect(durationMs(motion.standard)).toBe(240);
+    expect(motion.itemDurations?.split(',').every((d) => d.trim() === '0.14s')).toBe(true);
   });
 });
