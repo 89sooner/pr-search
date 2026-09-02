@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=a77ebaa50ed4136a4c144691168e513a01ff755236a1bf0d7f62747091593b06 bytes=132763 lines=1886 title=리스크-불확실한-가정-함정
+@kv sha256=6c5901030df687fa088cb85e651c126cebd1d2a10ca26858b29ba05bdb2de24c bytes=132876 lines=1886 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -927,6 +927,6 @@
 @h2 Codex 자동 리뷰는 머지 뒤에 온다 — 호출하지 않아도
 @path PR #116이 머지된 직후 P1 하나가 왔고 실결함이었다(DEV-525). 호출을 금지해도 저장소 정책의 자동 리뷰는 온다. 머지 직후 count-unresolved-reviews.py로 확인하고, 실결함이면 후속 PR에서 정정한 뒤 스레드에 답하고 해소한다.
 @h2 여전히 유효한 것
-@b Node 22 PATH, e2e 전 빌드, lint는 마지막 파일 뒤에, agent-context/는 tracked, git add -A 금지, 전사는 exports/
+@b Node 22 PATH, e2e 전 빌드, lint는 마지막 파일 뒤에, agent-context/는 tracked, git add -A 금지, 전사는 exports/ — 2026-09-02에도 호스트 출력(루트)과 실제 위치(exports/)가 달랐다. 만든 뒤 실측한다
 @b 파일럿 스택(prs-pilot-*, restart=unless-stopped)은 호스트 재시작 뒤 자동 복귀하고 개발용(prs-*, restart=no)은 죽은 채 남는다 — 통합 시험 전에 docker compose up -d
 @b count-unresolved-reviews.py가 미해결 리뷰의 정본이다

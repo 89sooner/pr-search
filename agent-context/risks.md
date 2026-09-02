@@ -1881,6 +1881,6 @@ PR #116이 머지된 직후 P1 하나가 왔고 실결함이었다(`DEV-525`). �
 
 ## 여전히 유효한 것
 
-- Node 22 PATH, e2e 전 빌드, lint는 마지막 파일 뒤에, `agent-context/`는 tracked, `git add -A` 금지, 전사는 `exports/`
+- Node 22 PATH, e2e 전 빌드, lint는 마지막 파일 뒤에, `agent-context/`는 tracked, `git add -A` 금지, 전사는 `exports/` — 2026-09-02에도 호스트 출력(루트)과 실제 위치(`exports/`)가 달랐다. 만든 뒤 실측한다
 - 파일럿 스택(`prs-pilot-*`, `restart=unless-stopped`)은 호스트 재시작 뒤 자동 복귀하고 개발용(`prs-*`, `restart=no`)은 죽은 채 남는다 — 통합 시험 전에 `docker compose up -d`
 - `count-unresolved-reviews.py`가 미해결 리뷰의 정본이다

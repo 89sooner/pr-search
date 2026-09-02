@@ -1864,7 +1864,7 @@ risks.md의 2026-09-02 절. 가장 큰 것: 번들 내용이 빌더의 checkout 
 
 - PR #116 <https://github.com/89sooner/pr-search/pull/116> (CR-062, `8a7fac7`) · PR #117 <https://github.com/89sooner/pr-search/pull/117> (WP-071, `8c22626`) · PR #118 <https://github.com/89sooner/pr-search/pull/118> (DEV-527, `7a58fd9`)
 - `CR-062`: `docs/00_governance/change_control.md` · `DEV-523`~`527`: 원장 5장 · 검증: 원장 6.63·6.63.1·6.64·6.64.1장
-- 전사(transcript): `exports/202609021300.md` — pending /export (사용자가 실행해야 확정된다)
+- 전사(transcript): `exports/202609021324.md` (102,116바이트, 실측 확인 — 사용자가 `/export 202609021324.md`로 만들었고 호스트는 저장소 루트를 출력했으나 실제 위치는 `exports/`, `.gitignore:24` 대상)
 
 ## 세션 종료 기록 (2026-09-02)
 
@@ -1904,7 +1904,8 @@ typecheck · lint · lint:deps 통과 (패키지 13개, 위반 0건)
 
 ### 산출물
 
-- 전사(/export): `exports/202609021300.md` — pending. 호스트가 저장소 루트를 출력해도 실제 위치는 `exports/`이며 `.gitignore:24`가 무시한다 (만든 뒤 `git check-ignore -v`로 실측)
+- 전사(/export): `exports/202609021324.md` (102,116바이트, 확인 완료). 호스트는 `/home/roqkf/pr-search/202609021324.md`를 출력했으나 실제 위치는 `exports/`였고 `.gitignore:24`가 무시한다 — `git check-ignore -v`와 `git status --untracked-files=all`(0건)로 실측. 예고했던 이름 `202609021300.md`와 다른 것은 사용자가 이름을 직접 정했기 때문이다
+- worklog: `<Obsidian Vault>/dailywork/2026-09-02_PR-Search-사내-반입-운반-아카이브와-실행-절차-정본화-(WP-071-·-CR-062).md` — `worklog.py check` 오류·경고 0건, 인덱스 48건
 - 인계 팩: `agent-context/_handoff/` 재생성
 - 확인용으로 남긴 산출물: `deploy/single-host/bundle/pr-search-import-procedure-test-offline{,.tar.gz}` (무시 대상, 2.6G + 1.1G). 지워도 된다
 

@@ -2676,3 +2676,16 @@ python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --roo
 ```
 
 번들은 다시 만들지 않았다 — 런북 문장만 바뀌었다.
+
+## 전사 위치 실측 (2026-09-02, 세 번째 확인)
+
+`/export 202609021324.md` → 호스트 출력은 `/home/roqkf/pr-search/202609021324.md`, 실제 파일은 `exports/202609021324.md`(102,116바이트). `git check-ignore -v`로 `.gitignore:24`가 무시함을 확인했고 미추적 0건. 절대경로를 주지 않으면 이름은 그대로, 위치는 `exports/`다.
+
+## worklog 저장 (2026-09-02)
+
+```bash
+cd ~/.claude/skills/obsidian-second-brain
+python3 scripts/worklog.py path --title "PR Search 사내 반입 운반 아카이브와 실행 절차 정본화 (WP-071 · CR-062)" --json
+python3 scripts/worklog.py check "<경로>"    # 오류 0 · 경고 0
+python3 scripts/worklog.py index              # 48건
+```

@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-09-02T04:00:32+00:00
+generated=2026-09-02T04:26:02+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -18,8 +18,8 @@ legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd c
 ### f527103
 src=agent-context/commands.md
 compact=agent-context/_handoff/compact/f527103.commands.ctx.md
-sha256=93f5210183d4822bfb8028af7dc037afd4a4f9d9015fac8957a284ee5ce9c812
-bytes=130975 compact_bytes=133737 lines=2678 priority=45
+sha256=5357af044dd6dbbfbc9d22e90577bfba226c38ad9e81c44ab8ec9300b6305f84
+bytes=131701 compact_bytes=134513 lines=2691 priority=45
 heads=명령어 · 시험 결과 · 실패한 명령과 원인 > 필수 전제 — Node PATH > 검증 배터리 (전 계층, 마지막 실행 결과) > 함정: e2e는 빌드를 하지 않는다 > 실패했던 명령과 원인 > 환경 준비 (새 머신이라면)
 sig=agent-context/commands.md;HOME/.nvm/versions/node/v22.23.2/bin;prs/web;web/lib/neighbors;sequence/neighbors;apps/web;/node_modules/.bin/playwright;e2e/flow-002.spec.ts;prs-postgres/redis/elasticsearch;dist/cli.js;9200/_cat/indices;repos/89sooner/pr-search/pulls/33/comments;pass/fail;dev/null;docs/00_governance/change_control.md;home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py;ops/sequence-integrity;pipeline-worker/integration/sequence/repair;authz/team-scope;packages/authz/src/team-scope;search-api/src/runtime;repos/89sooner/pr-search/pulls/;acme/payments;acme/integrity-wp028
 
@@ -42,16 +42,16 @@ sig=agent-context/files.md;docs/10_requirements/srs_final.md;docs/00_governance/
 ### f7b39dc
 src=agent-context/risks.md
 compact=agent-context/_handoff/compact/f7b39dc.risks.ctx.md
-sha256=a77ebaa50ed4136a4c144691168e513a01ff755236a1bf0d7f62747091593b06
-bytes=132763 compact_bytes=129793 lines=1886 priority=45
+sha256=6c5901030df687fa088cb85e651c126cebd1d2a10ca26858b29ba05bdb2de24c
+bytes=132876 compact_bytes=129904 lines=1886 priority=45
 heads=리스크 · 불확실한 가정 · 함정 > 절차 함정 (이 세션에서 실제로 밟은 것들) > 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다 > lint는 마지막 파일을 쓴 뒤에 다시 돌려라 > 대역(mock)이 실제보다 관대하면 그만큼이 사각지대다 > 임시 컨테이너에서는 슬라이스마다 커밋하라
 sig=agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 
 ### f73e2b0
 src=agent-context/session-notes.md
 compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md
-sha256=be434ac66e3c2366c544d57c40b3378a266d44587ab6afb4c4cbe249f043ea39
-bytes=118238 compact_bytes=117792 lines=1913 priority=25
+sha256=dd859dd617593250b306ef73bc5855238d8b0dfb8fba14670cf1d9a18dfe80cf
+bytes=118767 compact_bytes=118309 lines=1914 priority=25
 heads=Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료 > Goal > Current state > Decisions > Changed files > Commands
 sig=agent-context/session-notes.md;10/11;Risks/gotchas;docs/00_governance/change_control.md;exports/202608260047.md;dailywork/2026-08-25_PR-Search-WP-028;exports/202608251453.md;exports/202608260113.md;11/11;exports/202608261008.md;1/8;2/8;exports/202608262010.md;dailywork/2026-08-26_PR-Search-OD-005-;W-002/W-003;3/8;exports/202608262224.md;4/8;apps/search-api/integration/sequence/_repro-w004.test.ts;exports/202608270742.md;dailywork/2026-08-27_PR-Search-WP-035-;pr-search/202608271346.md;5/8;docs/README.md
 
