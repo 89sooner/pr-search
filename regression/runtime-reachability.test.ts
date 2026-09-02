@@ -511,6 +511,10 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
     expect(BUILD).toContain('UNDONE=1');
     expect(BUILD).toContain('릴리스를 되돌리지 못했다');
     expect(BUILD).not.toMatch(/die "[^"]*초안을 되돌렸다/);
+    // 발행이 만든 태그의 삭제 결과도 보고에 들어간다 — 릴리스만 지우고 "되돌렸다"고 하지 않는다 (DEV-534)
+    expectOrder(BUILD, '-F draft=false', 'PUBLISHED=1');
+    expect(BUILD).toContain('릴리스는 지웠으나 태그');
+    expect(BUILD).not.toMatch(/git push origin ":refs\/tags\/\$\{VERSION\}"[^\n]*\|\| true/);
     expect(RUNBOOK).toContain('json.load(sys.stdin)["assets"]');
     expect(RUNBOOK).not.toMatch(/\|\s*grep -E '"\(id\|name\|digest\)"'/);
   });
