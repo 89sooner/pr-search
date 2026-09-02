@@ -1,6 +1,6 @@
 # PR Search 보안 및 개인정보 아키텍처
 
-> 상태: review | 버전: v1.2 | 갱신일: 2026-09-01
+> 상태: review | 버전: v1.3 | 갱신일: 2026-09-02
 
 ## 1. 목적
 
@@ -149,6 +149,7 @@ export function search(q: ScopedQuery): Promise<EsResponse>;   // ScopedQuery만
 | Elasticsearch API 키 | Kubernetes Secret | 시크릿 파일 | 전 백엔드, Filebeat | 180일 | 회전 이벤트 기록 |
 | Redis 암호 | Kubernetes Secret | 시크릿 파일 | 전 백엔드 | 180일 | 회전 이벤트 기록 |
 | 커서 봉인 키 | Kubernetes Secret | 시크릿 파일 | `search-api` | 90일. 회전 시 기존 커서 무효 | 미기록 |
+| GitHub Release 읽기 토큰 (반입용, CR-063) | 해당 없음 — Profile B는 CI가 레지스트리에 push·pull한다 | **반입 담당자의 자격 저장소.** 호스트의 시크릿 파일·`.env`·번들·저장소 어디에도 두지 않는다 | 반입 담당자(사람). 번들을 받는 단계에서만 환경 변수로 준다 | 90일. 담당자가 바뀌면 즉시 폐기 | GitHub 계정 감사 로그 |
 
 **데이터베이스 접속 주체** (CR-059, DEV-503). `prs_app`과 `prs_admin`은 **둘 다 `NOLOGIN` 그룹 롤**이다 (마이그레이션 005) — 권한의 묶음이지 접속 주체가 아니다. `DEV-416`이 관리 연결에 대해 이미 정한 규칙을 **애플리케이션 연결에도 그대로 적용한다.**
 
@@ -170,6 +171,7 @@ ALTER ROLE prs_app_login SET role = 'prs_app';
 - **저장소에 커밋하지 않으며, 어떤 오프라인 번들에도 담지 않는다.** 번들이 담는 것은 `.env.example`뿐이고 값이 채워진 파일은 반입 대상이 아니라 사내에서 만드는 것이다.
 - 회전 주기와 감사 규칙은 프로파일과 무관하게 위 표 그대로다. 회전 수단만 `kubectl`에서 파일 교체 + 컨테이너 재시작으로 바뀐다.
 - **Compose 정의 파일 자체에 시크릿 리터럴을 쓰지 않는다.** 모든 값이 환경 참조(`${VAR}`)여야 하며 `WP-070`이 그 검사를 자동화한다. **`docker compose config` 출력으로 판정하지 않는다** — 그 명령은 정의상 `.env` 값을 치환해 보여 주므로 시크릿이 나타나는 것이 정상이고, 그것을 위반으로 세면 통과할 수 없는 검사가 된다.
+- **번들을 받는 데 쓰는 GitHub 읽기 토큰은 `.env`에 넣지 않는다** (CR-063 / `WP-072`). 이 저장소 한정 fine-grained PAT(Contents: Read-only)이며 `gh release download`를 실행하는 순간에만 환경 변수(`GH_TOKEN`)로 준다. 서비스는 그 토큰을 읽지 않고, `.env.example`·번들·런북에 값이 들어갈 자리가 없다 — 회귀 시험이 `.env.example`에 그 키가 없음을 확인한다.
 
 규칙:
 

@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.11 | 갱신일: 2026-09-02
+> 상태: review | 버전: v0.12 | 갱신일: 2026-09-02
 
 ## 1. 목적
 
@@ -254,6 +254,10 @@ pnpm es:reindex --alias <별칭>    # 재색인 + 별칭 전환                 
 ./deploy/single-host/build-bundle.sh <version> [출력 디렉터리]
 #                                 # 이미지 빌드 + 오프라인 번들 + 운반 아카이브 (외부망에서) — WP-070·WP-071
 #                                 # `pnpm release:bundle`이라는 스크립트는 없다 (DEV-523). 정본은 이 스크립트 하나다
+./deploy/single-host/build-bundle.sh <version> --release
+#                                 # 위에 더해 운반 아카이브를 GitHub Release <version>의 자산으로 발행하고 다시 읽어 digest 대조 (외부망) — WP-072 (CR-063)
+GH_TOKEN=<읽기 토큰> gh release download <version> -R <owner>/<repo> -p '*.tar.gz'
+#                                 # 사내에서 받는다 — 이 저장소 한정 읽기 토큰. sha256sum을 자산 digest와 대조한 뒤 tar -xzf — WP-072
 deploy/single-host/prsctl verify  # 번들 checksum 검증 (사내)                        — WP-070
 deploy/single-host/prsctl load    # 번들의 이미지 tar를 로컬 daemon에 적재 (사내). .env가 먼저다 (DEV-524) — WP-070
 deploy/single-host/prsctl install # migration → mapping → up → health              — WP-070
@@ -292,17 +296,21 @@ Elasticsearch 접속도 같은 원칙이다 (`@prs/es`의 `resolveClientOptions`
 
 ### 9.1 배포
 
-**Profile A — 첫 사내 반입** (CR-059 / ADR-021). 외부망에서 만든 **운반 아카이브 하나**(`pr-search-<version>-offline.tar.gz`, CR-062 / WP-071)가 사내로 건너간다.
+**Profile A — 첫 사내 반입** (CR-059 / ADR-021). 외부망에서 만든 **운반 아카이브 하나**(`pr-search-<version>-offline.tar.gz`, CR-062 / WP-071)가 **GitHub Release 자산**으로 발행되고 사내에서 받는다 (CR-063 / WP-072).
 
 ```text
 [외부망]  main의 특정 커밋
             → 이미지 빌드 (versioned tag + digest)
             → 오프라인 번들 생성 (이미지 tar · 소스 계보 · compose · manifest · checksum)
             → 운반 아카이브 pr-search-<version>-offline.tar.gz  (사내로 가져갈 파일 하나)
-──────────  물리적 반입 (네트워크 없음)  ──────────
-[사내망]  아카이브 extract → checksum 검증 → .env 작성 → 이미지 load → migration → ES mapping
-            → compose up → health → smoke → lineage
+            → GitHub Release <version> 발행 (태그 = 버전 · target = manifest의 커밋 · 자산 = 아카이브)
+            → 발행한 자산을 다시 읽어 이름·크기·digest 대조
+──────────  github.com (HTTPS · 이 저장소 한정 읽기 토큰) — 닿지 않는 환경이면 조직의 반입 채널  ──────────
+[사내망]  gh release download → sha256sum == 자산 digest → 아카이브 extract → checksum 검증 → .env 작성
+            → 이미지 load → migration → ES mapping → compose up → health → smoke → lineage
 ```
+
+**번들을 받는 단계만 github.com에 닿는다** (CR-063, DEV-528). 설치·운영은 여전히 인터넷 없이 성립한다. 사내가 github.com에 닿는다고 해서 사내에서 직접 `docker pull`·`git clone`하는 방식으로 바꾸지 않는다 — 번들 경로는 검증됐고, 직접 pull은 설치와 롤백을 외부 가용성에 묶으며, Docker 데몬의 프록시·CA 경로는 미검증이다(`ADR-021` 정정 절). 받는 데 쓰는 읽기 토큰은 `.env`·번들·저장소 어디에도 두지 않는다(보안 문서 6장).
 
 **`.env`가 `load`보다 먼저다** (CR-062, DEV-524). `load`는 적재 뒤 `PRS_VERSION`의 이미지가 실제로 있는지 검증하므로 그 값을 먼저 알아야 하고, 필수 구성의 부재는 **이미지 저장소를 바꾸기 전에** 말해야 한다. 번들 안의 아카이브는 세 종류이며 다루는 명령이 다르다 — 운반 아카이브는 `tar -xzf`, 이미지 tar(`images/*.tar`)는 `prsctl load`가 `docker load`로 읽으며 **직접 풀지 않는다**, 소스 계보(`source/*.bundle`)는 `git fetch`다. 절차의 정본은 번들 안에 함께 들어가는 `deploy/single-host/RUNBOOK.md`다.
 
