@@ -295,19 +295,31 @@ if [ "$RELEASE" -eq 1 ]; then
   lookup_draft_id() {
     gh api "repos/${REPO_SLUG}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"${VERSION}\") | .id" 2>/dev/null | head -1 || true
   }
+  # 되돌리기의 결과를 UNDONE에 남긴다 — 지우지 못했으면 "되돌렸다"고 보고하지 않는다 (DEV-533).
+  UNDONE=0
   undo_release() {
     printf '되돌린다: 릴리스 %s 삭제\n' "$VERSION" >&2
+    UNDONE=0
     # id를 모르면(생성 뒤 조회가 실패한 경우) 태그로 다시 찾는다 — 초안 잔재를 남기면 같은 버전의
     # 재실행이 전제 검사에서 막힌다 (DEV-531).
     [ -n "$RELEASE_ID" ] || RELEASE_ID="$(lookup_draft_id)"
     if [ -n "$RELEASE_ID" ]; then
-      gh api -X DELETE "repos/${REPO_SLUG}/releases/${RELEASE_ID}" >/dev/null 2>&1 || printf '경고: 릴리스 삭제 실패 — GitHub에서 태그 %s의 릴리스(초안)를 직접 지운다\n' "$VERSION" >&2
+      if gh api -X DELETE "repos/${REPO_SLUG}/releases/${RELEASE_ID}" >/dev/null 2>&1; then
+        UNDONE=1
+      else
+        printf '경고: 릴리스 삭제 실패 — GitHub에서 태그 %s의 릴리스(초안)를 직접 지운다\n' "$VERSION" >&2
+      fi
     else
       printf '경고: 되돌릴 릴리스를 찾지 못했다 — GitHub에서 태그 %s의 초안이 남았는지 확인해 지운다\n' "$VERSION" >&2
     fi
     if [ "$TAG_EXISTED" -eq 0 ]; then
       git push origin ":refs/tags/${VERSION}" >/dev/null 2>&1 || true   # 발행 전에 실패했으면 태그는 아직 없다
     fi
+    return 0
+  }
+  # die 메시지의 꼬리 — 되돌렸는지 못 했는지를 사실대로 말한다.
+  undo_note() {
+    if [ "$UNDONE" -eq 1 ]; then printf '릴리스를 되돌렸다'; else printf '릴리스를 되돌리지 못했다 — GitHub에서 태그 %s의 릴리스(초안)를 지운 뒤 다시 실행한다' "$VERSION"; fi
   }
   # **초안 → 자산 → 발행 순서다.** immutable releases가 켜진 저장소에서는 발행 뒤 자산을 붙일 수
   # 없으므로(GitHub가 권하는 순서), 자산이 전부 붙은 초안을 발행한다. 태그는 발행 시점에 만들어진다.
@@ -324,10 +336,10 @@ if [ "$RELEASE" -eq 1 ]; then
   done
   if [ -z "$RELEASE_ID" ]; then
     undo_release
-    die "만든 초안의 id를 얻지 못했다 — 초안을 되돌렸다. 잠시 뒤 다시 실행한다"
+    die "만든 초안의 id를 얻지 못했다 — $(undo_note)"
   fi
   gh api -X PATCH "repos/${REPO_SLUG}/releases/${RELEASE_ID}" -F draft=false >/dev/null \
-    || { undo_release; die "초안을 발행하지 못했다"; }
+    || { undo_release; die "초안을 발행하지 못했다 — $(undo_note)"; }
 
   # **발행한 것을 다시 읽어 본다** (DEV-519의 규율). 이름·크기·digest가 로컬과 다르면
   # 되돌리고 실패한다. digest는 GitHub가 자산마다 계산해 API로 주는 값이다.
@@ -335,9 +347,9 @@ if [ "$RELEASE" -eq 1 ]; then
   ASSET_LINE="$(gh api "repos/${REPO_SLUG}/releases/tags/${VERSION}" \
     --jq '.assets[] | select(.name | endswith(".tar.gz")) | "\(.name) \(.size) \(.digest // "none")"' 2>/dev/null || true)"
   REMOTE_NAME="${ASSET_LINE%% *}"; REST="${ASSET_LINE#* }"; REMOTE_SIZE="${REST%% *}"; REMOTE_DIGEST="${REST#* }"
-  if [ "$REMOTE_NAME" != "$(basename "$ARCHIVE")" ]; then undo_release; die "발행된 자산 이름이 다르다: ${REMOTE_NAME:-없음}"; fi
-  if [ "$REMOTE_SIZE" != "$ARCHIVE_BYTES" ]; then undo_release; die "발행된 자산 크기가 다르다: 원격 ${REMOTE_SIZE} · 로컬 ${ARCHIVE_BYTES}"; fi
-  if [ "$REMOTE_DIGEST" != "sha256:${ARCHIVE_SHA256}" ]; then undo_release; die "발행된 자산 digest가 다르다: 원격 ${REMOTE_DIGEST} · 로컬 sha256:${ARCHIVE_SHA256}"; fi
+  if [ "$REMOTE_NAME" != "$(basename "$ARCHIVE")" ]; then undo_release; die "발행된 자산 이름이 다르다: ${REMOTE_NAME:-없음} — $(undo_note)"; fi
+  if [ "$REMOTE_SIZE" != "$ARCHIVE_BYTES" ]; then undo_release; die "발행된 자산 크기가 다르다: 원격 ${REMOTE_SIZE} · 로컬 ${ARCHIVE_BYTES} — $(undo_note)"; fi
+  if [ "$REMOTE_DIGEST" != "sha256:${ARCHIVE_SHA256}" ]; then undo_release; die "발행된 자산 digest가 다르다: 원격 ${REMOTE_DIGEST} · 로컬 sha256:${ARCHIVE_SHA256} — $(undo_note)"; fi
 fi
 
 printf '\n번들 완료\n'
