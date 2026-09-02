@@ -2602,3 +2602,77 @@ python3 scripts/worklog.py index                            # dailywork-index.md
 ls -la exports/<파일>.md                    # 실제 위치
 git check-ignore -v exports/<파일>.md       # .gitignore:24가 무시한다
 ```
+
+---
+
+# 2026-09-02 — CR-062 · WP-071 (사내 반입 운반 아카이브)
+
+## 검증 배터리 (마지막 실행 — 브랜치 b8cca64, PR #117)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck                # 통과
+pnpm lint                     # 통과
+pnpm run lint:deps            # 패키지 13개, 위반 0건
+pnpm run test                 # 단위 1911 (1 skipped)
+pnpm run test:regression      # 340 [335 → +5]
+pnpm build                    # 통과
+bash -n deploy/single-host/build-bundle.sh deploy/single-host/prsctl
+python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --root .   # main 대비 새 경고 0건
+```
+
+통합은 돌리지 않았다 — TS 런타임 코드를 바꾸지 않았고 CI의 `integration`이 판정 근거다 (PR #116·#117 둘 다 통과).
+
+## 번들 생성과 풀린 사본 검증 (실제 실행)
+
+```bash
+# 깨끗한 트리에서만. 두 번째 인자는 출력 디렉터리 (기본 deploy/single-host/bundle/)
+./deploy/single-host/build-bundle.sh import-procedure-test <임시 출력>     # 281초 (이미지 재빌드 포함)
+./deploy/single-host/build-bundle.sh import-procedure-test                # 기본 위치, 132초 (캐시)
+
+# 아카이브 → 별도 디렉터리 → 사본에서
+tar -tzf <아카이브> | cut -d/ -f1 | sort -u                # 최상위 하나 · .tar.gz 자기 포함 없음
+mkdir <임시> && cd <임시> && tar -xzf <아카이브>
+cd pr-search-<v>-offline/deploy/single-host
+./prsctl verify                                           # 10개 파일 일치
+for f in .env.example RUNBOOK.md prsctl compose.yml filebeat.yml; do grep -q $'\r' "$f" && echo "$f CR"; done
+rm -f .env && ./prsctl load; echo rc=$?                   # rc=1, docker images | grep :<v> → 0개 (fail-fast)
+cp .env.example .env && chmod 600 .env && $EDITOR .env && ./prsctl load   # rc=0, 이미지 6개
+./prsctl lineage
+git init <빈 저장소> && git -C <빈 저장소> fetch <사본>/source/pr-search-<v>.bundle HEAD:vendor/upstream
+git -C <빈 저장소> rev-parse vendor/upstream              # == manifest upstream.commit
+```
+
+정정 전 대조: `git show 8a7fac7:deploy/single-host/prsctl > prsctl.old` 를 같은 사본에서 `.env` 없이 실행 → rc=1인데 이미지 6개 적재.
+
+시험용 이미지 정리: `docker image rm prs/{web,search-api,ingest-gateway,pipeline-worker,db,es}:import-procedure-test` — 파일럿 태그(`0.1.0-pilot.1`)는 건드리지 않는다.
+
+## 변이 (회귀 시험 필터)
+
+```bash
+pnpm exec vitest run --config vitest.regression.config.ts -t 'WP-071'
+```
+
+원복은 역방향 치환으로. **커밋 전 파일에 `git checkout --`을 쓰지 마라** — 파일 전체가 되돌아간다 (이번에 겪었다).
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 증상 | 원인·해결 |
+| --- | --- | --- |
+| 풀린 사본에서 `./prsctl load` (`.env` 작성 뒤) | `PRS_REINDEX_TIMEOUT_S는 … 정수여야 한다: 3600` | 번들의 `.env.example`이 CRLF → `.env`의 값 끝에 `\r`. 빌드가 LF로 정규화하고 속성으로 고정 (DEV-526) |
+| `git checkout -- deploy/single-host/build-bundle.sh` (변이 원복) | 이후 회귀에서 아카이브 시험이 계속 빨강 | 커밋 전이라 파일 전체가 브랜치 A 상태로. 편집 다섯을 다시 적용 |
+| 문서 검증기 | `RUNBOOK.md`·`RELEASE_NOTES.md` "does not resolve" | 백틱 안의 맨 파일명. 경로를 붙여 쓴다 |
+
+## 리뷰 답변·해소 (PR #116의 P1 → DEV-525 · PR #117의 P1 → DEV-527)
+
+`addPullRequestReviewThreadReply` 뒤 `resolveReviewThread` — 정정이 머지된 뒤에만. 스레드 id는 GraphQL `reviewThreads`에서 `isResolved==false`로 뽑는다.
+
+## PR #118 (런북만, DEV-527)
+
+```bash
+pnpm run test:regression      # 340 — 런북 2.B 순서 검사 포함
+bash -n deploy/single-host/prsctl deploy/single-host/build-bundle.sh
+python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --root .
+```
+
+번들은 다시 만들지 않았다 — 런북 문장만 바뀌었다.

@@ -1271,3 +1271,35 @@
 - **`audit-grants.test.ts`의 전수 검사 둘** — 표와 **시퀀스** 양쪽 (DEV-517·518)
 - **`compose.yml`의 `127.0.0.1` healthcheck** — `localhost`는 alpine에서 `::1`이다
 - **`.gitattributes`** — 지우면 사내 반입 뒤에 드러난다
+
+---
+
+# 2026-09-02이 만든 것 (CR-062 · WP-071)
+
+## 읽는 순서가 바뀐 문서
+
+- `deploy/single-host/RUNBOOK.md` — **정본.** 2장이 A. 외부망 → 경계 → B. 사내망 설치 → C. 초기 데이터 → D. 소스 계보로 재구성됐다. 번들 트리·아카이브 세 종류의 표·`.env`의 소재·필수 키·LF 요건이 여기 있다. 8장에 CRLF 증상 행
+- `docs/40_delivery/pr_search_work_packages.md` — v2.19. `WP-071` 절(DoD 16항, FR 집합 명시)
+- `docs/40_delivery/pr_search_implementation_traceability.md` — v6.26. 3장 `WP-071` 행, 5장 `DEV-523`~`526`, 6.63·6.63.1·6.64장, 8장
+- `docs/00_governance/change_control.md` — `CR-062` closed, 반영 내역
+- `docs/30_technical_architecture/pr_search_infrastructure_operations.md` — v0.11. 8장 외부망 명령(`build-bundle.sh`), 9.1장 흐름에 운반 아카이브와 `.env → load`
+- `docs/40_delivery/pr_search_implementation_roadmap.md` — v0.13. 4.1장 흐름도에 `WP-071` done
+
+## 고친 소스
+
+| 경로 | 무엇 |
+| --- | --- |
+| `deploy/single-host/build-bundle.sh` | `ARCHIVE` 정의 · 시작 시 이전 아카이브 제거 · 복사한 텍스트 LF 정규화(DEV-526) · `RELEASE_NOTES` 운반 절 · checksum·시크릿 검사 뒤 `tar -czf` + `tar -tzf` 재독 · 사람 중심 성공 출력 |
+| `deploy/single-host/prsctl` | `cmd_load`의 첫 줄이 `require_env` (DEV-524). 그 밖에는 머리글 한 줄 |
+| `deploy/single-host/RUNBOOK.md` | 2장 전면 재구성, 3장 업그레이드 순서(`PRS_VERSION` → `load`), 5장 첫 반입은 2.D를 가리킴, 7장 검증 표 셋, 8장 행 다섯. PR #118: 2.B 3단계에 GHE App 자격(`install` 전), 2.C 1번, 3장 표의 `.env` 변경 반영 행, 8장 행 (DEV-527) |
+| `.gitattributes` | `deploy/single-host/.env.example`·`RUNBOOK.md` `text eol=lf` |
+| `regression/runtime-reachability.test.ts` | `describe('사내 반입 절차가 실행 도구와 같은 말을 한다 (WP-071 / CR-062)')` — 시험 다섯 (335 → 340) |
+
+## 손대면 안 되는 것 (갱신)
+
+- `build-bundle.sh`의 `tar -czf "$ARCHIVE" -C "$OUT_ROOT" "$(basename "$BUNDLE")"` — checksum·시크릿 검사 뒤, 형제 위치. 앞으로 옮기거나 `-C`를 빼지 마라
+- 같은 파일 복사 루프의 `sed -i 's/\r$//'` — 빼면 빌더가 `autocrlf`일 때 CRLF 번들이 나간다 (DEV-526)
+- `prsctl` `cmd_load`의 첫 줄 `require_env` — 뒤로 옮기면 side effect 뒤 실패다 (DEV-524)
+- 런북 2.A 표의 `prsctl load`(`./` 없음)와 2.B의 `./prsctl …` 순서 — 회귀가 2.B 안에서 순서를 잰다
+- 런북 2.B 3단계의 GHE App 자격 — `install` 전이다. 2.C로 되돌리지 마라 (DEV-527)
+- 이전 세션 것 그대로: `provision_app_role` 위치, `|| true` 넷, 재색인 직렬화, `git status --porcelain`, `fixtureMonths`, `audit-grants.test.ts`의 전수 검사 둘, `compose.yml`의 `127.0.0.1`

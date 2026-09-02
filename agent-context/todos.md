@@ -1,5 +1,91 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
+최신 기준 (2026-09-02 · **CR-062·WP-071 완료 — 사내에서 그대로 실행 가능한 반입 지침이 섰다**)
+
+`main` = `7a58fd9` — 실측하라. 이 인계 커밋이 한 번 더 옮긴다.
+
+SRS baseline **v2.20**(변경 없음) · 원장 review **v6.26** · 작업 패키지 v2.19 · 인프라 v0.11 · 로드맵 v0.13 · 데이터 모델 v0.17 · 보안 v1.2 · ADR v0.6(변경 없음)
+
+- **`WP-071` done — 배포 마일스톤 후속이다.** `REL`이 아니므로 `REL-006`은 그대로 2/4
+- 릴리스는 승인되지 않았다 — Gate 4·5·6 그대로
+- open DEV **15건** — 목록은 어제와 같다(`DEV-006`·`010`·`016`·`026`·`058`·`061`·`304`·`305`·`395`·`399`·`427`·`433`·`447`·`492`·`494`). 이 세션이 연 `DEV-523`~`527` 다섯은 전부 resolved
+- 미해결 리뷰 **0건 — pr-search 118개·design-system 12개 전량 순회 (PR #117·#118의 마지막 리뷰까지 해소)**
+- **다음 빈 ID: `CR-063` · `DEV-527` · `WP-072` · 마이그레이션 `024` · `C-072`** (측정값. 쓰기 전 다시 잰다)
+- CI 정상 — `verify`·`integration` 둘 다 판정 근거로 썼다 (PR #116·#117·#118)
+- **Codex는 호출하지 않았다.** 자동 리뷰가 머지 뒤에 오면 소스로 검증해 정정한다 — PR #116의 P1(`DEV-525`)과 PR #117의 P1(`DEV-527`)이 그랬고 둘 다 실결함이었다
+
+이 세션이 배운 것 다섯.
+
+1. **번들 내용이 빌더의 checkout 상태에 따라 달라졌다** (`DEV-526`). `.gitattributes`가 고정하지 않은 텍스트는 `autocrlf` 트리에서 CRLF로 복사되고, 어제의 번들이 LF였던 것은 우연이었다. 산출물이 커밋을 가리키면서 내용이 커밋과 다른 자리다 — 빌드가 정규화하고 속성이 고정한다.
+2. **운반 아카이브의 정합은 풀어 나온 사본에서만 증명된다.** 원래 디렉터리에서 verify하면 아카이브가 아예 없어도 통과한다.
+3. **fail-fast는 검사의 존재가 아니라 위치다** (`DEV-524`). `require_env`는 있었다 — `docker load` 뒤에.
+4. **커밋 전 파일에 `git checkout --`을 쓰지 마라.** 변이 원복에 썼다가 파일 전체가 정정 전으로 돌아갔고, 이후 변이 셋의 결과에 그 실수가 섞였다. 원복은 역방향 치환으로 한다.
+5. **검증에서 돌리지 않은 단계가 결함이 숨은 자리였다** (`DEV-527`). `install`을 돌리지 않았고, 런북의 GHE App 자격 순서 결함은 정확히 `install`에서 드러나는 것이었다. 머지 후 리뷰가 찾았다. 건너뛴 단계는 "바꾸지 않았다"가 아니라 "검증하지 않았다"로 적는다.
+
+## 이번 세션이 세운 것 — 사내에서 그대로 실행 가능한 반입 지침
+
+```text
+외부망: 깨끗한 checkout → ./deploy/single-host/build-bundle.sh <version>
+  → pr-search-<version>-offline/  +  pr-search-<version>-offline.tar.gz   (사내 반입 파일은 둘째)
+사내망: tar -xzf → cd deploy/single-host → prsctl verify → cp .env.example .env → prsctl load
+  → prsctl install → prsctl smoke → prsctl lineage → git fetch <bundle> HEAD:vendor/upstream → company/main
+```
+
+풀어 나온 사본에서 24/24로 검증했다 (원장 6.64장). `deploy/single-host/RUNBOOK.md`가 정본이며 번들 안에 함께 들어간다. `install`·`smoke`는 이 세션이 바꾸지 않았고 `WP-070`이 관통한 것이다.
+
+## A. 지금 당장 — 실제 사내 반입
+
+외부 저장소에서 더 만들 것이 없다. **이 작업이 끝났다고 다음 외부 WP를 자동으로 시작하지 않는다** — 반입이 바로 진행되지 못하는 상황에서만 결정자가 `WP-042`·`WP-044`를 고른다. `WP-043`은 `ACC-06` NOT RUN이라 여전히 착수 금지다.
+
+1. 깨끗한 트리에서 `./deploy/single-host/build-bundle.sh <version>` → `deploy/single-host/bundle/pr-search-<version>-offline.tar.gz`
+2. 그 파일 **하나**를 사내 호스트로 옮긴다
+3. 런북 2.B → 2.C → 2.D를 위에서 아래로 실행한다
+4. 사내에서만 검증 가능한 것을 그때 실행한다 — 실제 GHE App·웹훅·OIDC·CA·프록시·DNS·실서버 성능·실제 롤백 소요·`ACC-06`
+
+## B. 사내 반입을 막는 것 — 어제와 같다
+
+기술적 blocker는 없다. 사내 GHE App·OIDC 클라이언트 등록은 사내 조치이고, 사설 CA는 `NODE_EXTRA_CA_CERTS`로 코드 변경 없이 성립하며, 프록시는 `DEV-494` open(사내망이 강제한다는 증거가 나오면 `GitHubTransport`의 `fetchImpl` 주입 지점으로 최소 수정)이다. RPO 0은 WAL 아카이빙 구성이 있어야 성립한다(`DEV-504`).
+
+## C. 배포에서 해야 할 것 — 어제와 같다
+
+마이그레이션 023까지 · `POSTGRES_APP_USER`에 `prs_app` 금지(`DEV-503`) · `clearUnknownSizes` 소급(`pnpm es:apply-mappings`) · `ADMIN_DATABASE_URL` 없으면 `JOB-AUD-001`만 서지 않는다 · Prometheus 경보 규칙 NOT RUN · authz 역할에 GHE 자격이 없으면 작성자 팀이 언제나 모름.
+
+## D. 미뤄 둔 항목 — 어제와 같다
+
+`DEV-492`(Profile B `web` 매니페스트) · `DEV-494`(프록시) · `DEV-447`(조정 스캔 30초 강제 종료 미증명) · `DEV-433` · `DEV-427`(이제 CI가 도니 확인 가능) · `DEV-304`·`305`(Profile B) · `DEV-058`(합성 데이터셋 부재).
+
+## E. 릴리스 게이트 4·5·6 — 릴리스는 승인되지 않았다
+
+Gate 4 보안(일부 가능) · Gate 5 성능(불가) · Gate 6 운영(Profile A에서는 롤백 10분을 실측해 판정한다). `ACC-06` NOT RUN → `W-007`·`WP-043` NOT ACTIVATED.
+
+## F. 이 세션이 깔아 둔 자리 — 다시 만들지 말 것
+
+- `build-bundle.sh`의 `ARCHIVE="${BUNDLE}.tar.gz"`와 `tar -czf "$ARCHIVE" -C "$OUT_ROOT" "$(basename "$BUNDLE")"` — checksum·시크릿 검사 **뒤**다. 앞으로 옮기면 검사 전 내용이 담긴다. `-C "$OUT_ROOT"`를 빼면 아카이브가 절대 경로를 담는다. 뒤의 `tar -tzf`는 "만든 것을 다시 읽어 본다"이며 빼지 않는다
+- 같은 파일의 복사 루프 안 `sed -i 's/\r$//'` — 빼면 빌더의 checkout이 CRLF일 때 `.env.example`이 CRLF로 나가 `load`가 멀쩡한 값을 거부한다 (`DEV-526`). checksum은 그 뒤에 계산된다
+- `.gitattributes`의 `deploy/single-host/.env.example`·`RUNBOOK.md` `eol=lf`
+- `prsctl` `cmd_load`의 첫 줄 `require_env` — `docker load` 뒤로 옮기면 fail-fast가 아니다 (`DEV-524`). `require_env`의 파서(`env_value`)는 `\r`을 지우지 않는다 — 의도적으로 건드리지 않았고 런북 8장이 안내한다
+- 런북 2.B의 명령 순서와, 2.A 표에서 `prsctl load`를 `./` 없이 쓴 것 — 회귀 시험이 2.B 안에서 `./prsctl` 형태의 순서를 잰다
+- 회귀 `describe('사내 반입 절차가 실행 도구와 같은 말을 한다')` 다섯 — 문자열 검사이며 실행 검증(6.64장)과 짝이다. 하나만 있으면 변이가 살아남는다
+- 바깥 checksum sidecar를 만들지 마라 — 정본이 둘이 된다. 사내 정책이 요구한다는 증거가 나올 때만 별도로 연다
+- 런북 2.B 3단계의 **GHE App 자격은 `install` 전**이다 — 2.C로 되돌리면 `enrich`·`reconcile`이 기동을 거부해 `install`의 health에서 깨진다 (`DEV-527`). `restart`는 `.env`를 다시 읽지 않는다
+- 이전 세션 것 그대로: `prsctl`의 `provision_app_role` 위치·`|| true` 넷·재색인 직렬화, `build-bundle.sh`의 `git status --porcelain`, 통합 헬퍼의 `fixtureMonths`, `audit-grants.test.ts`의 전수 검사 둘, `compose.yml`의 `127.0.0.1`
+
+---
+
+## 시작하기 전에 — 이 인계의 값을 실측하라
+
+```bash
+git -C . rev-parse --short HEAD
+gh pr list --state open --json number --jq 'length'
+grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
+python3 agent-context/count-unresolved-reviews.py
+```
+
+---
+
+## (2026-09-01 · CR-059·WP-070·CR-060·CR-061 종료 시점의 기록)
+
 최신 기준 (2026-09-01 · **CR-059·WP-070·CR-060·CR-061 완료 — 첫 사내 반입 가능선이 섰다**)
 
 `main` = `e1603b2` — 실측하라. 이 인계 커밋이 한 번 더 옮긴다.

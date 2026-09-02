@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=8ce90eb2abeb562db8bb7ec6a101cd275db160295328f77419297bf2cc629379 bytes=128680 lines=1846 title=리스크-불확실한-가정-함정
+@kv sha256=a77ebaa50ed4136a4c144691168e513a01ff755236a1bf0d7f62747091593b06 bytes=132763 lines=1886 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -909,3 +909,24 @@
 @h2 계수를 세는 표의 칸에 그 계수 패턴을 리터럴로 쓰지 마라
 @path DEV-522가 "상태 칸이 두 가지를 말한다"는 문제를 설명하려고 계수 패턴을 인용했더니 그 인용문이 패턴에 걸려 자기 행이 open으로 세어졌다 — 방금 고친 것과 같은 결함을 설명하는 문장이 그 결함을 다시 만들었다.
 @p → 표를 세는 도구와 그 표의 내용이 같은 문자열을 공유하면 세는 쪽과 읽는 쪽이 갈린다. 인용 대신 서술로 적는다.
+@p ---
+@h1 2026-09-02 세션이 추가한 것
+@h2 번들 내용이 빌더의 checkout 상태에 따라 달라진다 (DEV-526)
+@p .gitattributes가 *.sh·prsctl·*.yml만 LF로 고정한다. 나머지 텍스트(.env.example·RUNBOOK.md)는 이 머신의 core.autocrlf=true 때문에 체크아웃 시점에 따라 CRLF일 수 있고, build-bundl ... 다. 사내에서 cp .env.example .env를 하면 모든 값 끝에 \r이 붙어 require_env가 3600을 거부한다.
+@p → 빌드가 복사본을 LF로 정규화하고 속성이 둘을 고정한다. 번들에 새 텍스트 파일을 더하면 .gitattributes에도 더하라. 그리고 "어제 됐다"는 오늘의 증거가 아니다 — 파일을 새로 쓴 직후의 작업 트리는 다음 체크아웃과 다르다.
+@h2 아카이브 검증은 풀어 나온 사본에서
+@p 원래 생성 디렉터리에서 prsctl verify를 돌리면 운반 아카이브가 아예 없어도 통과한다. 아카이브가 옳은지는 tar -tzf(자기 포함 없음·최상위 하나) → 별도 디렉터리에 풀기 → 그 사본에서 verify·load·lineage·git fetch로만 증명된다.
+@h2 커밋 전 파일에 git checkout --을 쓰지 마라
+@p 변이 M1을 되돌리며 썼다가 build-bundle.sh가 커밋 전(브랜치 A) 상태로 통째로 돌아갔고, 이후 변이 셋의 결과에 그 실수가 섞였다(아카이브 시험이 함께 빨강). 변이 넷은 각각 의도한 시험에 잡혔지만 그것을 가리기 위해 다시 봐야 했다. 원복은 역방향 치환(edit.py new→old)으로 한다. 커밋한 뒤라면 git checkout --이 안전하다.
+@h2 fail-fast는 검사의 위치다 (DEV-524)
+@path require_env는 cmd_load에 있었다 — docker load 뒤에. "필수 환경 변수 부재를 성공으로 접지 않는다"는 참이었고 "fast"만 거짓이었다. 도구의 머리글이 주장하는 성질을 볼 때 검사가 어느 side effect 뒤에 있는지를 본다. 같은 모양이 DEV-513(업그레이드 절)에서 닫혔는데 최초 설치 절은 그대로였다 — 정정한 자리 옆에 같은 결함이 있는지 묻는다.
+@h2 검증에서 건너뛴 단계가 결함이 숨은 자리다 (DEV-527)
+@p install·smoke를 "이 WP가 바꾸지 않았다"는 이유로 돌리지 않았는데, 런북이 GHE App 자격을 install 뒤에 넣게 한 결함은 정확히 install에서 드러나는 것이었다. 머지 후 리뷰가 찾았다. 건너뛴 단계는 원장에 "바꾸지 않았다"가 아니라 "검증하지 않았다"로 적고, 런북의 순서를 바꿨다면 그 순서가 닿는 단계는 돌린다.
+@h2 문서 검증기는 백틱 안의 맨 *.md를 문서 참조로 본다
+@path RUNBOOK.md·RELEASE_NOTES.md처럼 docs/·루트에 없는 파일명을 백틱으로 쓰면 "Referenced path does not resolve" 경고가 난다. 경로를 붙이면(deploy/single-host/RUNBOOK.md, pr-search-<version>-offline/RELEASE_NOTES.md) 매치하지 않는다. 이번에 세 번 걸렸다.
+@h2 Codex 자동 리뷰는 머지 뒤에 온다 — 호출하지 않아도
+@path PR #116이 머지된 직후 P1 하나가 왔고 실결함이었다(DEV-525). 호출을 금지해도 저장소 정책의 자동 리뷰는 온다. 머지 직후 count-unresolved-reviews.py로 확인하고, 실결함이면 후속 PR에서 정정한 뒤 스레드에 답하고 해소한다.
+@h2 여전히 유효한 것
+@b Node 22 PATH, e2e 전 빌드, lint는 마지막 파일 뒤에, agent-context/는 tracked, git add -A 금지, 전사는 exports/
+@b 파일럿 스택(prs-pilot-*, restart=unless-stopped)은 호스트 재시작 뒤 자동 복귀하고 개발용(prs-*, restart=no)은 죽은 채 남는다 — 통합 시험 전에 docker compose up -d
+@b count-unresolved-reviews.py가 미해결 리뷰의 정본이다
