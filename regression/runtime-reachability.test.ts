@@ -439,6 +439,10 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
    */
   it('build-bundle.sh가 발행한 자산을 다시 읽어 이름·크기·digest를 대조한다 (DEV-519)', () => {
     expectOrder(BUILD, 'gh release create', 'releases/tags/${VERSION}');
+    // 초안 → 자산 → 발행. immutable releases가 켜진 저장소에서는 발행 뒤 자산을 붙일 수 없다 (DEV-530)
+    expect(BUILD).toContain('--draft');
+    expectOrder(BUILD, 'gh release create', '-F draft=false');
+    expectOrder(BUILD, '-F draft=false', 'releases/tags/${VERSION}');
     expect(BUILD).toContain('.digest');
     expect(BUILD).toContain('발행된 자산 digest가 다르다');
     expect(BUILD).toContain('undo_release; die "발행된 자산 digest가 다르다');
@@ -478,6 +482,20 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
     expect(RUNBOOK).toContain('GH_TOKEN=<읽기 토큰> gh release download');
     expect(RUNBOOK).toContain('Contents: Read-only');
     expect(RUNBOOK).toContain('`.env`·번들·저장소·호스트의 시크릿 파일');
+  });
+
+  /*
+   * **릴리스는 저절로 불변이 아니다** (DEV-530, PR #119 머지 후 리뷰). 쓰기 권한자가 발행 뒤에도
+   * 자산·태그를 바꿀 수 있으므로, 같은 릴리스의 현재 digest와만 대조하는 것은 검증이 아니다.
+   * 정본은 담당자가 별도 채널로 전달한 SHA-256이며, 스크립트 출력과 런북 2.A·2.B가 그것을 말한다.
+   */
+  it('자산 SHA-256이 릴리스와 별도 채널로 전달되고 사내가 그것과 대조한다 (DEV-530)', () => {
+    expect(BUILD).toContain('별도 채널로 전달할 것 셋');
+    expect(BUILD).toContain('immutable-releases');
+    expect(RUNBOOK).toContain('**사내 운영자에게 전달할 것은 셋이다**');
+    const start = RUNBOOK.indexOf('### 2.B');
+    const end = RUNBOOK.indexOf('### 2.C');
+    expect(RUNBOOK.slice(start, end)).toContain('담당자가 별도 채널로 전달한 SHA-256');
   });
 });
 

@@ -86,11 +86,19 @@ if [ "$RELEASE" -eq 1 ]; then
   if gh release view "$VERSION" -R "$REPO_SLUG" >/dev/null 2>&1; then
     die "릴리스 ${VERSION}이 이미 있다 — 릴리스는 불변이다. 새 버전으로 만든다"
   fi
+  # 같은 태그를 예약한 초안(draft)이 남아 있으면 그것도 막는다 — 실패한 실행의 잔재다.
+  LEFTOVER_DRAFT="$(gh api "repos/${REPO_SLUG}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"${VERSION}\") | .id" 2>/dev/null | head -1 || true)"
+  [ -z "$LEFTOVER_DRAFT" ] || die "태그 ${VERSION}을 예약한 초안 릴리스(id ${LEFTOVER_DRAFT})가 남아 있다 — 지우고 다시 실행한다"
   TAG_TARGET="$(git ls-remote --tags origin "refs/tags/${VERSION}" "refs/tags/${VERSION}^{}" | tail -1 | cut -f1)"
   if [ -n "$TAG_TARGET" ]; then
     TAG_EXISTED=1
     [ "$TAG_TARGET" = "$UPSTREAM_COMMIT" ] || die "태그 ${VERSION}이 다른 커밋(${TAG_TARGET})을 가리킨다 — 이 커밋(${UPSTREAM_COMMIT})의 릴리스가 될 수 없다"
   fi
+  # **릴리스는 저절로 불변이 아니다** (DEV-530). immutable releases가 켜진 저장소에서만 발행 뒤
+  # 자산이 잠기고 태그가 고정된다 — 꺼져 있으면 쓰기 권한자가 발행 뒤에도 자산을 바꾸거나 태그를
+  # 옮길 수 있고, 사내가 같은 릴리스의 현재 digest와만 대조해서는 그것을 알 수 없다. 그래서
+  # 자산 SHA-256은 릴리스와 **별도 채널**로 사내에 전달한다(런북 2.A). 설정 상태는 출력에 적는다.
+  IMMUTABLE="$(gh api "repos/${REPO_SLUG}/immutable-releases" --jq '.enabled' 2>/dev/null || echo unknown)"
 fi
 
 step "번들 준비 — ${BUNDLE}"
@@ -281,17 +289,24 @@ if [ "$RELEASE" -eq 1 ]; then
     printf -- '- 사내 취득: `GH_TOKEN=<읽기 토큰> gh release download %s -R %s -p '"'"'*.tar.gz'"'"'` — 절차는 번들 안 `deploy/single-host/RUNBOOK.md` 2.B 1단계\n' "$VERSION" "$REPO_SLUG"
   } > "$NOTES"
   # 실패하면 방금 만든 것을 되돌린다 — 반쯤 발행된 릴리스를 남기지 않는다.
+  RELEASE_ID=""
   undo_release() {
     printf '되돌린다: 릴리스 %s 삭제\n' "$VERSION" >&2
-    gh release delete "$VERSION" -R "$REPO_SLUG" -y >/dev/null 2>&1 || printf '경고: 릴리스 삭제 실패 — 직접 지워야 한다\n' >&2
+    [ -n "$RELEASE_ID" ] && { gh api -X DELETE "repos/${REPO_SLUG}/releases/${RELEASE_ID}" >/dev/null 2>&1 || printf '경고: 릴리스 삭제 실패 — 직접 지워야 한다\n' >&2; }
     if [ "$TAG_EXISTED" -eq 0 ]; then
-      git push origin ":refs/tags/${VERSION}" >/dev/null 2>&1 || printf '경고: 태그 삭제 실패 — 직접 지워야 한다\n' >&2
+      git push origin ":refs/tags/${VERSION}" >/dev/null 2>&1 || true   # 발행 전에 실패했으면 태그는 아직 없다
     fi
   }
-  gh release create "$VERSION" -R "$REPO_SLUG" --target "$UPSTREAM_COMMIT" \
+  # **초안 → 자산 → 발행 순서다.** immutable releases가 켜진 저장소에서는 발행 뒤 자산을 붙일 수
+  # 없으므로(GitHub가 권하는 순서), 자산이 전부 붙은 초안을 발행한다. 태그는 발행 시점에 만들어진다.
+  gh release create "$VERSION" -R "$REPO_SLUG" --draft --target "$UPSTREAM_COMMIT" \
     --title "PR Search ${VERSION}" --notes-file "$NOTES" "$ARCHIVE" >/dev/null \
-    || { rm -f "$NOTES"; die "릴리스 생성에 실패했다"; }
+    || { rm -f "$NOTES"; die "릴리스 초안 생성에 실패했다"; }
   rm -f "$NOTES"
+  RELEASE_ID="$(gh api "repos/${REPO_SLUG}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"${VERSION}\") | .id" | head -1)"
+  [ -n "$RELEASE_ID" ] || die "만든 초안을 찾지 못했다 — GitHub에서 초안을 확인하라"
+  gh api -X PATCH "repos/${REPO_SLUG}/releases/${RELEASE_ID}" -F draft=false >/dev/null \
+    || { undo_release; die "초안을 발행하지 못했다"; }
 
   # **발행한 것을 다시 읽어 본다** (DEV-519의 규율). 이름·크기·digest가 로컬과 다르면
   # 되돌리고 실패한다. digest는 GitHub가 자산마다 계산해 API로 주는 값이다.
@@ -312,6 +327,12 @@ printf '반입 절차      : 아카이브 안의 deploy/single-host/RUNBOOK.md\n
 if [ "$RELEASE" -eq 1 ]; then
   printf '\nGitHub Release : https://github.com/%s/releases/tag/%s  (태그 %s → %s)\n' "$REPO_SLUG" "$VERSION" "$VERSION" "$UPSTREAM_COMMIT"
   printf '자산 SHA-256   : %s\n' "$ARCHIVE_SHA256"
+  case "$IMMUTABLE" in
+    true)  printf 'immutable releases : 켜짐 — 발행 뒤 자산·태그가 잠긴다\n' ;;
+    false) printf 'immutable releases : 꺼짐 — 쓰기 권한자가 발행 뒤에도 자산·태그를 바꿀 수 있다. 켜는 것을 권한다 (런북 2장 「경계」)\n' ;;
+    *)     printf 'immutable releases : 알 수 없음 (API 응답 없음)\n' ;;
+  esac
+  printf '\n사내 운영자에게 릴리스와 별도 채널로 전달할 것 셋: 버전 %s · 읽기 토큰 · 자산 SHA-256 (위 값) — DEV-530\n' "$VERSION"
   printf '\n사내에서 받는 명령 (런북 2.B 1단계):\n'
   printf '  GH_TOKEN=<읽기 토큰> gh release download %s -R %s -p '"'"'*.tar.gz'"'"'\n' "$VERSION" "$REPO_SLUG"
   printf '  sha256sum %s   # 위 SHA-256과 같아야 한다\n' "$(basename "$ARCHIVE")"

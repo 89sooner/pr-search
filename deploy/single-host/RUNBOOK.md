@@ -60,7 +60,7 @@ VERSION=<실제 버전>             # 예: 0.1.0-pilot.2 — 예시일 뿐이며
 
 **`--release`가 운반을 맡는다** (`CR-063` / `WP-072`). 번들과 운반 아카이브를 만들고 아카이브를 다시 읽은 **뒤** GitHub Release `<version>`을 발행한다 — 태그가 곧 버전이고 위 커밋을 가리키며, 자산은 운반 아카이브 하나, 본문은 번들의 릴리스 노트에 아카이브의 파일명·크기·SHA-256을 덧붙인 것이다. 발행 뒤 스크립트가 API로 자산을 다시 읽어 이름·크기·digest를 로컬과 대조하고, 어긋나면 방금 만든 릴리스와 태그를 지우고 종료 코드 1로 끝낸다. **릴리스는 불변이다** — 같은 버전의 릴리스가 이미 있거나 태그가 다른 커밋을 가리키면 이미지를 빌드하기 전에 멈춘다. 다시 만들려면 새 버전이다. `--release` 없이 실행하면 발행 없이 번들과 아카이브만 만든다 — github.com에 닿지 않는 환경으로 옮길 때 쓴다.
 
-**사내 운영자에게 전달할 것은 둘이다** — 릴리스 버전(= 태그)과 이 저장소 한정 읽기 토큰(아래 「경계」). 저장소 이름과 받는 명령은 스크립트의 성공 출력이 그대로 보여 준다.
+**사내 운영자에게 전달할 것은 셋이다** — 릴리스 버전(= 태그), 이 저장소 한정 읽기 토큰(아래 「경계」), 그리고 **자산 SHA-256**. SHA-256은 **릴리스와 별개의 채널**(반입 요청서 등)로 전달한다 — 릴리스는 저절로 불변이 아니어서 저장소 쓰기 권한자가 발행 뒤에도 자산을 바꾸거나 태그를 옮길 수 있고, 그러면 사내가 같은 릴리스의 현재 digest와만 대조해서는 바뀐 것을 알 수 없다 (`DEV-530`). 스크립트의 성공 출력이 세 값 중 버전과 SHA-256을 그대로 보여 준다.
 
 **결과는 둘이고, 사내로 가져가는 것은 둘째다.** 출력 디렉터리 기본값은 `<checkout>/deploy/single-host/bundle/`이며 두 번째 인자로 바꿀 수 있다 (`./deploy/single-host/build-bundle.sh "$VERSION" /some/output --release`). 어느 쪽이든 그 위치에 아래 둘이 함께 만들어지고, `--release`가 둘째를 자산으로 올린다.
 
@@ -132,9 +132,11 @@ curl -fL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stre
   https://api.github.com/repos/<owner>/<repo>/releases/assets/<asset id>
 ```
 
-**받은 파일은 digest와 같아야 한다.** GitHub는 자산마다 SHA-256 digest를 계산해 API로 주고, 릴리스 본문에도 발행 시점의 같은 값이 적혀 있다. `sha256sum`이 그 값과 다르면 그 파일을 쓰지 않고 다시 받는다 — 손상이든 변조든 같은 결론이다. 프록시 환경이면 `gh`와 curl은 `HTTPS_PROXY`를 읽는다.
+**받은 파일은 담당자가 전달한 SHA-256과 같아야 하고, 자산 digest와도 같아야 한다.** GitHub는 자산마다 SHA-256 digest를 계산해 API로 주고, 릴리스 본문에도 발행 시점의 같은 값이 적혀 있다. 그러나 **릴리스는 저절로 불변이 아니다** (`DEV-530`) — 저장소의 immutable releases 설정이 꺼져 있으면 쓰기 권한자가 발행 뒤에도 자산을 바꾸거나 지우고 태그를 옮길 수 있고, 켜져 있어도 제목과 본문은 편집할 수 있다. 그래서 정본은 **담당자가 릴리스와 별개의 채널로 전달한 SHA-256**이며, 본문의 값은 참고일 뿐이다. `sha256sum`이 전달받은 값과 다르거나 자산 digest가 전달받은 값과 다르면 그 파일을 쓰지 않는다 — 손상이든 변조든 발행 뒤 변경이든 같은 결론이다. 프록시 환경이면 `gh`와 curl은 `HTTPS_PROXY`를 읽는다.
 
-**github.com에 닿지 않는 환경이면** 담당자가 외부망에서 같은 파일(`--release`가 올린 것과 같은 아카이브)을 조직의 반입 채널로 옮긴다. 그 뒤의 검증과 절차는 같다 — 1단계의 digest 대조만 릴리스 본문의 값으로 한다.
+**immutable releases를 켜는 것을 권한다.** 켜면 발행된 릴리스의 자산을 바꾸거나 지울 수 없고 태그가 그 커밋에 잠긴다. 이 저장소는 2026-09-02 기준 꺼져 있으며(`gh api repos/<owner>/<repo>/immutable-releases`), `build-bundle.sh --release`가 발행할 때 그 상태를 출력한다. 켜는 것은 저장소 설정이라 결정자의 몫이다 — 켜져 있어도 전달받은 SHA-256과의 대조는 그대로 한다.
+
+**github.com에 닿지 않는 환경이면** 담당자가 외부망에서 같은 파일(`--release`가 올린 것과 같은 아카이브)을 조직의 반입 채널로 옮긴다. 그 뒤의 검증과 절차는 같다 — 1단계의 대조는 담당자가 전달한 SHA-256으로 한다.
 
 ### 2.B 사내망 — 설치
 
@@ -145,8 +147,8 @@ curl -fL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stre
 mkdir -p /opt/pr-search/import
 cd /opt/pr-search/import
 GH_TOKEN=<읽기 토큰> gh release download <version> -R <owner>/<repo> -p '*.tar.gz'
-GH_TOKEN=<읽기 토큰> gh api repos/<owner>/<repo>/releases/tags/<version> --jq '.assets[].digest'   # sha256:… (릴리스 본문의 SHA-256과 같은 값)
-sha256sum pr-search-<version>-offline.tar.gz      # 위 값과 같아야 한다. 다르면 쓰지 않고 다시 받는다
+GH_TOKEN=<읽기 토큰> gh api repos/<owner>/<repo>/releases/tags/<version> --jq '.assets[].digest'   # sha256:… — 자산 digest. 릴리스가 발행 뒤 바뀌었으면 여기서 드러난다
+sha256sum pr-search-<version>-offline.tar.gz      # 담당자가 별도 채널로 전달한 SHA-256, 그리고 위 digest — 셋이 같아야 한다. 하나라도 다르면 쓰지 않는다 (DEV-530)
 tar -xzf pr-search-<version>-offline.tar.gz
 cd pr-search-<version>-offline/deploy/single-host
 
@@ -428,6 +430,7 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | `restore`가 재색인 시간 초과로 끝난다 | `.env`의 `PRS_REINDEX_TIMEOUT_S`를 늘려 다시 실행하거나 운영 콘솔에서 남은 별칭을 실행한다 (DEV-519·520) |
 | `ingest-gateway`가 503 | **DB 접속 주체가 `prs_app`인가** (DEV-503). 그것은 `NOLOGIN` 그룹 롤이라 접속이 거부된다. 로그인 주체를 만들었는지 확인하라 — 이 엔드포인트만 실제로 PostgreSQL을 확인하므로 **여기서 먼저 드러난다** |
 | `gh release download`가 `release not found`·404 | 토큰에 이 저장소의 Contents 읽기 권한이 있는가, 저장소 이름과 버전(태그)이 스크립트 성공 출력의 명령과 같은가. 비공개 저장소는 토큰 없이 404다 (CR-063) |
-| 받은 파일의 `sha256sum`이 digest와 다르다 | **그 파일을 쓰지 않는다.** 다시 받는다. 두 번째도 다르면 담당자에게 알린다 — 발행 시 스크립트가 같은 대조를 통과했으므로 전송 경로의 문제다 |
+| 받은 파일의 `sha256sum`이 자산 digest와 다르다 | **그 파일을 쓰지 않는다.** 다시 받는다. 두 번째도 다르면 담당자에게 알린다 — 발행 시 스크립트가 같은 대조를 통과했으므로 전송 경로의 문제다 |
+| 자산 digest가 **담당자가 전달한 SHA-256**과 다르다 | **릴리스가 발행 뒤 바뀐 것이다** (`DEV-530`). 그 릴리스를 쓰지 않고 담당자에게 알린다 — 새 버전으로 다시 발행한다 |
 | `gh`가 없다 | 2장 「경계」의 curl 경로로 받는다 |
 | `tar -xzf`가 `not in gzip format`으로 실패 | 파일이 JSON이다 — curl에 `Accept: application/octet-stream`이 빠졌거나 토큰 오류 응답을 저장했다. `head -c 200 <파일>`로 확인한다 |
