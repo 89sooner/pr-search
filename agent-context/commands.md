@@ -2582,3 +2582,23 @@ docker exec prs-postgres psql -U prs -d prs_test -c "DELETE FROM job;"
 
 `agent-context/`의 헬퍼 형태를 그대로 썼다 — `addPullRequestReviewThreadReply` 뒤 `resolveReviewThread`.
 **jq 키에 한글을 쓰지 마라** (변함없음).
+
+## worklog 저장 (2026-09-01)
+
+```bash
+cd ~/.claude/skills/obsidian-second-brain
+python3 scripts/worklog.py path --title "<제목>" --json    # 경로 해석 (WSL 변환 포함)
+python3 scripts/worklog.py check "<경로>"                   # 형식·다이어그램·10줄 요약 검사
+python3 scripts/worklog.py index                            # dailywork-index.md 재생성
+```
+
+**결과**: `check` 오류 0·경고 0, `index` 46건. 노트는 `dailywork/2026-09-01_PR-Search-첫-사내-반입-가능선-구축-(WP-070-·-CR-059~061).md`.
+
+**제목에 엠대시를 넣지 마라** — 슬러그가 `-—-`가 되어 읽기 어렵다. 첫 시도에서 그렇게 나와 `(WP-070 · CR-059~061)` 형태로 바꿨다.
+
+## 전사 위치 실측 (호스트 출력을 믿지 않는다)
+
+```bash
+ls -la exports/<파일>.md                    # 실제 위치
+git check-ignore -v exports/<파일>.md       # .gitignore:24가 무시한다
+```

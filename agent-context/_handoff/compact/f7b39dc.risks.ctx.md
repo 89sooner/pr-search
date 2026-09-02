@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=650f9bd5f700d97a106457fc0c4fa0df21b51d8bf06e2af298b88adf404ea225 bytes=127539 lines=1834 title=리스크-불확실한-가정-함정
+@kv sha256=8ce90eb2abeb562db8bb7ec6a101cd275db160295328f77419297bf2cc629379 bytes=128680 lines=1846 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -903,3 +903,9 @@
 @b git add -A를 쓰지 않는다 — agent-context/가 tracked다
 @b ID는 실측한다
 @b CI가 실제로 돈다 — BILLING_BLOCKED는 해소됐다
+@h2 /export가 출력한 경로와 실제 위치가 또 달랐다 (2026-09-01 재확인)
+@path 호스트는 /home/roqkf/pr-search/202609011607.md를 출력했으나 실제 파일은 exports/202609011607.md에 있었다. 이전 세션이 기록한 성질이 그대로 재현됐다.
+@path → 만든 뒤 ls와 git check-ignore -v로 실측하라. 이번에는 .gitignore:24의 exports/가 무시하는 것을 확인했다. 저장소 루트에 떨어졌다면 어떤 무시 규칙에도 걸리지 않아 git add에 휩쓸렸을 것이다(PR #77·#78·#79가 그 실패를 기록해 두었다).
+@h2 계수를 세는 표의 칸에 그 계수 패턴을 리터럴로 쓰지 마라
+@path DEV-522가 "상태 칸이 두 가지를 말한다"는 문제를 설명하려고 계수 패턴을 인용했더니 그 인용문이 패턴에 걸려 자기 행이 open으로 세어졌다 — 방금 고친 것과 같은 결함을 설명하는 문장이 그 결함을 다시 만들었다.
+@p → 표를 세는 도구와 그 표의 내용이 같은 문자열을 공유하면 세는 쪽과 읽는 쪽이 갈린다. 인용 대신 서술로 적는다.
