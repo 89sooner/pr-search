@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.18 | 갱신일: 2026-09-02
+> 상태: review | 버전: v2.19 | 갱신일: 2026-09-02
 
 ## 1. 목적
 
@@ -52,7 +52,7 @@
 | WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | WP-010, WP-012 | done |
 | WP-069 | 작성자 소속 팀 채우기 | REL-006 | WP-068, WP-037 | done |
 | WP-070 | 단일 호스트 오프라인 배포·반입 기반 | **배포 (CR-059)** | WP-001, WP-010 | done |
-| WP-071 | 사내 반입 운반 아카이브와 실행 절차 정본화 | **배포 (CR-062)** | WP-070 | todo |
+| WP-071 | 사내 반입 운반 아카이브와 실행 절차 정본화 | **배포 (CR-062)** | WP-070 | done |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003, **WP-067** | done |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020, **WP-067** | done |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | WP-030, WP-017, WP-016 | done |
@@ -1918,7 +1918,7 @@ external main의 특정 커밋
 ### WP-071 사내 반입 운반 아카이브와 실행 절차 정본화
 
 - 목표: **외부망의 깨끗한 checkout에서 `build-bundle.sh <version>` 하나로 사내 반입에 쓸 단일 운반 아카이브가 만들어지고, 사내 운영자는 저장소를 알 필요 없이 그 아카이브를 풀어 런북의 명령을 위에서 아래로 그대로 실행해 checksum 검증 → 구성 → 이미지 적재 → 설치 → 스모크 → 계보 확인 → 사내 Git baseline 생성까지 간다.**
-- 관련 요구사항: **신규 없음.** `WP-070`이 보존한 행위 그대로이며(DEV-507), 품질 기준은 `NFR-005`(시크릿 노출 0건 — 운반 아카이브가 새 노출 경로를 열지 않는다)·`NFR-008`(운영성). SRS 5.2 기술 제약 6
+- 관련 요구사항: **신규 없음 — 이 WP는 `WP-070`이 세운 것을 사람이 실제로 반입할 수 있게 한다.** 설치 여정이 보존해야 하는 기능 행위는 `WP-070`의 집합 그대로다(DEV-507, DEV-525): `FR-ING-001`·`FR-ING-002`·`FR-ING-003`(웹훅 수신·멱등·원본 보존 — 2.C 웹훅 등록), `FR-ING-004`·`FR-ING-006`(보강·백필 — 2.C 백필), `FR-SEQ-001`(채번), `FR-SRCH-001`~`FR-SRCH-004`(식별자 해석·검색 — `smoke`의 조회 왕복), `FR-AUTH-001`·`FR-AUTH-002`·`FR-AUTH-003`(인증·접근 범위·권한 캐시), `FR-ADMIN-001`(저장소 등록 — 2.C). 품질 기준: `NFR-005`(시크릿 노출 0건 — 운반 아카이브가 새 노출 경로를 열지 않는다), `NFR-008`(운영성), SRS 5.2 기술 제약 6
 - 관련 화면/플로우: 없음
 - 관련 API/데이터/잡: 없음 — **신규 API·엔티티·잡·마이그레이션을 만들지 않는다**
 - 선행 WP: WP-070
@@ -1958,22 +1958,22 @@ external main의 특정 커밋
   - **신규 마이그레이션** — 포장과 절차의 변경이며 스키마를 건드릴 이유가 없다. 다음 빈 번호가 024라는 것은 이유가 아니다.
   - **실제 사내 환경 검증** — 사내 GHE·OIDC·CA·프록시·DNS·실서버 성능·`ACC-06`. 합성으로 통과시키지 않는다.
 - 완료 기준(DoD):
-  - [ ] `./deploy/single-host/build-bundle.sh <version>`이 성공하면 기본 출력 위치에 `pr-search-<version>-offline/`과 `pr-search-<version>-offline.tar.gz`가 **함께** 존재한다
-  - [ ] 두 번째 인자로 출력 디렉터리를 주면 그 위치에 같은 둘이 만들어진다
-  - [ ] 운반 아카이브는 checksum 생성과 시크릿 검사가 끝난 **뒤** 만들어지고 자기 자신을 담지 않는다 (`tar -tzf`로 목록 확인)
-  - [ ] **별도 임시 디렉터리에 아카이브를 풀어 나온 사본에서** `prsctl verify`가 통과한다 — 원래 생성 디렉터리에서 verify한 결과로 대신하지 않는다
-  - [ ] 풀어 나온 사본에서 `.env`를 만든 뒤 `prsctl load`가 통과하고, **`.env`가 없으면 `load`가 이미지 저장소를 바꾸기 전에 실패한다** (실제 실행으로 확인)
-  - [ ] 풀어 나온 사본의 `source/*.bundle`을 빈 저장소에 `git fetch`한 `vendor/upstream`이 `manifest/release-manifest.json`의 `upstream.commit`과 같다
-  - [ ] 풀어 나온 사본에서 `prsctl lineage`가 그 manifest를 보여 준다
-  - [ ] 풀린 아카이브에 값이 채워진 `.env`·`*.pem`·`*.key`·개인 키 리터럴이 없다 (`.env.example`은 허용)
-  - [ ] `build-bundle.sh`의 성공 출력이 번들 디렉터리·운반 아카이브·사내 반입 파일을 보여 준다
-  - [ ] 런북이 외부망(A) → 경계 → 사내망(B) → 사내 초기 데이터(C) → 사내 소스 계보(D) 구조이고, 최초 설치 순서가 `extract → verify → .env → load → install → smoke → lineage`다
-  - [ ] 런북의 번들 트리가 실제 생성 결과와 같다
-  - [ ] 런북이 아카이브 세 종류의 뜻과 사용법을 표로 가르고, 이미지 tar를 `tar -x` 대상으로 적지 않는다
-  - [ ] 런북이 `.env`의 소재(번들·사내·외부 Git·번들 안의 값 채워진 파일)와 `require_env`의 필수 키를 적는다
-  - [ ] 인프라 8장의 외부망 명령이 실재하는 스크립트를 가리킨다
-  - [ ] 회귀 시험이 위 정합 넷을 걸고, 각 변이(아카이브 생성 제거 · `require_env`를 `docker load` 뒤로 · 런북 순서 뒤집기 · 이미지 tar를 extract 대상으로 서술)가 실제로 잡힌다
-  - [ ] `WP-070`의 상태와 DoD를 되돌리지 않는다
+  - [x] `./deploy/single-host/build-bundle.sh <version>`이 성공하면 기본 출력 위치에 `pr-search-<version>-offline/`과 `pr-search-<version>-offline.tar.gz`가 **함께** 존재한다
+  - [x] 두 번째 인자로 출력 디렉터리를 주면 그 위치에 같은 둘이 만들어진다
+  - [x] 운반 아카이브는 checksum 생성과 시크릿 검사가 끝난 **뒤** 만들어지고 자기 자신을 담지 않는다 (`tar -tzf`로 목록 확인)
+  - [x] **별도 임시 디렉터리에 아카이브를 풀어 나온 사본에서** `prsctl verify`가 통과한다 — 원래 생성 디렉터리에서 verify한 결과로 대신하지 않는다
+  - [x] 풀어 나온 사본에서 `.env`를 만든 뒤 `prsctl load`가 통과하고, **`.env`가 없으면 `load`가 이미지 저장소를 바꾸기 전에 실패한다** (실제 실행으로 확인)
+  - [x] 풀어 나온 사본의 `source/*.bundle`을 빈 저장소에 `git fetch`한 `vendor/upstream`이 `manifest/release-manifest.json`의 `upstream.commit`과 같다
+  - [x] 풀어 나온 사본에서 `prsctl lineage`가 그 manifest를 보여 준다
+  - [x] 풀린 아카이브에 값이 채워진 `.env`·`*.pem`·`*.key`·개인 키 리터럴이 없다 (`.env.example`은 허용)
+  - [x] `build-bundle.sh`의 성공 출력이 번들 디렉터리·운반 아카이브·사내 반입 파일을 보여 준다
+  - [x] 런북이 외부망(A) → 경계 → 사내망(B) → 사내 초기 데이터(C) → 사내 소스 계보(D) 구조이고, 최초 설치 순서가 `extract → verify → .env → load → install → smoke → lineage`다
+  - [x] 런북의 번들 트리가 실제 생성 결과와 같다
+  - [x] 런북이 아카이브 세 종류의 뜻과 사용법을 표로 가르고, 이미지 tar를 `tar -x` 대상으로 적지 않는다
+  - [x] 런북이 `.env`의 소재(번들·사내·외부 Git·번들 안의 값 채워진 파일)와 `require_env`의 필수 키를 적는다
+  - [x] 인프라 8장의 외부망 명령이 실재하는 스크립트를 가리킨다
+  - [x] 회귀 시험이 위 정합 넷을 걸고, 각 변이(아카이브 생성 제거 · `require_env`를 `docker load` 뒤로 · 런북 순서 뒤집기 · 이미지 tar를 extract 대상으로 서술)가 실제로 잡힌다
+  - [x] `WP-070`의 상태와 DoD를 되돌리지 않는다
 - 검증 방법: 실제 실행. `bash -n` 둘 · 문서 validator · `pnpm typecheck` · `lint` · `lint:deps` · `test` · `test:regression` · `build`, 그리고 **깨끗한 커밋에서 번들을 실제로 만들어 임시 디렉터리에 풀고 verify·load·lineage·git fetch를 관통한다.** dirty guard를 약화하지 않는다.
 - 기록: 원장 WP-071 상태, DEV-523·DEV-524 판정
 

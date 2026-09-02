@@ -314,6 +314,96 @@ describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () 
   });
 });
 
+describe('사내 반입 절차가 실행 도구와 같은 말을 한다 (WP-071 / CR-062)', () => {
+  /*
+   * **런북은 번들 안에 들어가 사내 운영자가 위에서 아래로 그대로 실행한다.**
+   * 그래서 문서의 순서와 실행 도구의 검사가 어긋나면 그것은 오타가 아니라
+   * 설치 실패다 — `DEV-524`가 정확히 그 모양이었고(`load`가 `.env`보다 앞),
+   * `DEV-513`이 업그레이드 절에서 같은 결함을 닫은 직후였다.
+   *
+   * 여기서는 스크립트와 런북을 **문자열로** 대조한다. 실제 아카이브 생성과
+   * `load`의 fail-fast는 실행으로 검증하며(원장 6.64장), 이 시험은 그 계약이
+   * 조용히 되돌아가는 것을 막는 자리다.
+   */
+  const BUILD = read('deploy/single-host/build-bundle.sh');
+  const PRSCTL = read('deploy/single-host/prsctl');
+  const RUNBOOK = read('deploy/single-host/RUNBOOK.md');
+
+  /** "`a`가 `b`보다 먼저 온다" — 둘 다 있는지 먼저 본다 (DEV-474). */
+  const expectOrder = (text: string, first: string, second: string): void => {
+    expect(text, first).toContain(first);
+    expect(text, second).toContain(second);
+    expect(text.indexOf(first), `${first} < ${second}`).toBeLessThan(text.indexOf(second));
+  };
+
+  /*
+   * **사내로 가져갈 파일은 하나다** (DEV-523). 번들 디렉터리 옆에 운반 아카이브를
+   * 만들되, checksum 생성과 시크릿 검사가 **끝난 뒤**여야 검사를 통과한 내용만
+   * 담는다. `-C "$OUT_ROOT"`로 형제 위치에 두므로 아카이브가 자기 자신을 담지 않는다.
+   */
+  it('build-bundle.sh가 운반 아카이브를 checksum·시크릿 검사 뒤에 만든다 (DEV-523)', () => {
+    expect(BUILD).toContain('ARCHIVE="${BUNDLE}.tar.gz"');
+    expectOrder(BUILD, 'sha256sum > checksums/SHA256SUMS', 'tar -czf "$ARCHIVE"');
+    expectOrder(BUILD, '번들에 시크릿으로 보이는 파일이 있다', 'tar -czf "$ARCHIVE"');
+    expect(BUILD).toContain('tar -czf "$ARCHIVE" -C "$OUT_ROOT" "$(basename "$BUNDLE")"');
+    expect(BUILD).toContain('tar -tzf "$ARCHIVE"');
+  });
+
+  /*
+   * **`load`는 이미지 저장소를 바꾸기 전에 `.env`를 요구한다** (DEV-524).
+   * 검사가 `docker load` 뒤에 있으면 fail-fast가 아니다.
+   */
+  it('prsctl load가 docker load보다 먼저 .env를 요구한다 (DEV-524)', () => {
+    const start = PRSCTL.indexOf('cmd_load() {');
+    const end = PRSCTL.indexOf('cmd_install() {');
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    expectOrder(PRSCTL.slice(start, end), 'require_env', 'docker load -i');
+  });
+
+  /*
+   * **런북의 최초 설치 순서가 실행 도구의 검사와 같다** (DEV-524).
+   * extract → verify → .env → load → install → smoke → lineage.
+   */
+  it('런북의 최초 설치가 .env 작성을 load보다 앞에 둔다 (DEV-524)', () => {
+    const start = RUNBOOK.indexOf('### 2.B');
+    const end = RUNBOOK.indexOf('### 2.C');
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const install = RUNBOOK.slice(start, end);
+    expectOrder(install, 'tar -xzf pr-search-<version>-offline.tar.gz', './prsctl verify');
+    expectOrder(install, './prsctl verify', 'cp .env.example .env');
+    expectOrder(install, 'cp .env.example .env', './prsctl load');
+    expectOrder(install, './prsctl load', './prsctl install');
+    expectOrder(install, './prsctl install', './prsctl smoke');
+    expectOrder(install, './prsctl smoke', './prsctl lineage');
+  });
+
+  /*
+   * **이미지 tar는 `docker load`의 대상이지 `tar`로 푸는 것이 아니다** (DEV-523).
+   * `.tar`를 보고 `tar -xf`를 치도록 읽히는 문장이 런북에 있으면 안 된다.
+   */
+  it('런북이 이미지 tar를 직접 푸는 대상으로 적지 않는다 (DEV-523)', () => {
+    expect(RUNBOOK).not.toMatch(/tar\s+-?x\w*\s+\S*(?:images\/|pr-search-app\.tar|backing-services\.tar)/);
+    expect(RUNBOOK).toContain('`docker load`');
+    expect(RUNBOOK).toContain('직접 풀지 않는다');
+    expect(RUNBOOK).toContain('git fetch <파일> HEAD:vendor/upstream');
+  });
+
+  /*
+   * **번들에 들어가는 텍스트는 LF다** (DEV-526). 빌더의 checkout이 `core.autocrlf=true`면
+   * `.gitattributes`가 고정하지 않은 `.env.example`이 CRLF로 복사되고, 사내에서 `cp`한
+   * `.env`의 모든 값 끝에 `\r`이 붙어 `require_env`가 `3600` 같은 멀쩡한 값을 거부한다.
+   * 실제 검증 실행에서 그렇게 실패했다 — 속성으로 고정하고 빌드가 한 번 더 정규화한다.
+   */
+  it('번들의 배포 정의 텍스트가 LF로 고정된다 (DEV-526)', () => {
+    const attributes = read('.gitattributes');
+    expect(attributes).toContain('deploy/single-host/.env.example text eol=lf');
+    expect(attributes).toContain('deploy/single-host/RUNBOOK.md text eol=lf');
+    expect(BUILD).toContain("sed -i 's/\\r$//'");
+  });
+});
+
 describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () => {
   const RECONCILE = read('apps/pipeline-worker/src/reconcile.ts');
   const ASSIGN = read('apps/pipeline-worker/src/sequence-assign-runner.ts');
