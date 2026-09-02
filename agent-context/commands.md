@@ -2689,3 +2689,107 @@ python3 scripts/worklog.py path --title "PR Search 사내 반입 운반 아카�
 python3 scripts/worklog.py check "<경로>"    # 오류 0 · 경고 0
 python3 scripts/worklog.py index              # 48건
 ```
+
+---
+
+# 2026-09-02 (2차) — CR-063 · WP-072 · 0.1.0-pilot.2 발행
+
+## 검증 배터리 (마지막 실행 — 브랜치 `3da0711`, PR #125 · 병합 후 main `0a73065`)
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH
+pnpm typecheck && pnpm lint && pnpm run lint:deps      # 통과, 패키지 13개 위반 0
+pnpm run test                                           # 단위 1911 (1 skipped)
+pnpm run test:regression                                # 347 [340 → +7]
+pnpm build                                              # 통과
+bash -n deploy/single-host/build-bundle.sh              # 통과
+python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --root . 2>&1 | grep -c WARN   # 1 == main
+pnpm exec vitest run --config vitest.regression.config.ts -t 'WP-072'   # 부분 실행 7
+```
+
+통합은 로컬에서 돌리지 않았다 — TS 런타임을 바꾸지 않았고 CI `integration`이 판정 근거다(PR #119~#125 통과. #124는 시간 의존 시험으로 두 번 실패 뒤 통과).
+
+## 발행과 수신 (실제 실행)
+
+```bash
+# 외부망 — 깨끗한 main에서. 백그라운드 + 로그, 실행 중 스크립트·deploy/single-host/* 편집 금지
+(setsid nohup bash -c './deploy/single-host/build-bundle.sh 0.1.0-pilot.2 --release; echo "EXIT=$?"' > <log> 2>&1 &)
+# 시험 릴리스: release-transport-test(4d84e4e) · release-transport-test-2(773b75b) — 검증 뒤 삭제
+# 소요: 이미지 빌드 2~3분(캐시면 초 단위) · 아카이브 85초 · 업로드 76~84초 · 대조 수 초
+
+# 사내 쪽 시뮬레이션 — gh 설정을 비우고 토큰만으로 (토큰 값은 출력하지 않는다)
+TOKEN="$(awk '/oauth_token:/{print $2; exit}' ~/.config/gh/hosts.yml)"   # gh 2.4.0에는 gh auth token이 없다
+export GH_CONFIG_DIR="$(mktemp -d)" GH_TOKEN="$TOKEN"
+gh release download <v> -R 89sooner/pr-search -p '*.tar.gz' -D <작업 디렉터리>
+gh api repos/89sooner/pr-search/releases/tags/<v> --jq '.assets[].digest'          # == sha256sum == 본문 SHA-256
+gh release view <v> -R 89sooner/pr-search --json body --jq .body | grep -oE 'SHA-256: `[0-9a-f]{64}`'
+tar -tzf <파일> | cut -d/ -f1 | sort -u                                              # 최상위 하나
+tar -xzf <파일> && cd pr-search-<v>-offline/deploy/single-host
+./prsctl verify && sed "s/^PRS_VERSION=.*/PRS_VERSION=<v>/" <파일럿 .env> > .env && chmod 600 .env && ./prsctl load && ./prsctl lineage
+git init <빈 저장소> && git -C <빈 저장소> fetch <사본>/source/pr-search-<v>.bundle HEAD:vendor/upstream   # == manifest commit
+
+# 발행된 릴리스 실측
+gh api repos/89sooner/pr-search/releases/tags/<v> --jq '{draft, immutable, target_commitish, assets: [.assets[] | {name, size, digest}]}'
+gh api repos/89sooner/pr-search/immutable-releases --jq .enabled                    # false
+
+# 실패 경로 (깨끗한 트리에서만 — dirty guard가 먼저 잡는다)
+./deploy/single-host/build-bundle.sh <있는 버전> --release        # rc=1, 이미지 빌드 0회, "릴리스 … 이미 있다"
+gh api -X POST repos/89sooner/pr-search/releases -f tag_name=<v> -f name=x -F draft=true --jq .id   # 초안 잔재 만들기
+./deploy/single-host/build-bundle.sh <v> --release                # rc=1, "초안 릴리스(id …)가 남아 있다 — 지우고 다시 실행한다"
+gh api -X DELETE repos/89sooner/pr-search/releases/<id>
+./deploy/single-host/build-bundle.sh x --bogus                    # rc=1, "알 수 없는 옵션"
+
+# 시험 릴리스 정리 (정식 릴리스는 지우지 않는다)
+gh release delete <v> -R 89sooner/pr-search -y && git push origin :refs/tags/<v>
+docker image rm -f $(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E ':<v>$')
+```
+
+## 가짜 gh·git 시나리오 (되돌리기 경로 검증)
+
+```bash
+# PATH 앞에 가짜 디렉터리. 가짜 gh는 호출을 calls.log에 적고, releases?per_page=100은 첫 호출(전제 검사)만 비운다
+FAKE_MODE=A PATH="<가짜 디렉터리>:$PATH" ./deploy/single-host/build-bundle.sh fake-undo-A <임시 출력> --release 2>&1 | grep -E '^오류|되돌린다|경고'
+# 가짜 git은 ls-remote(refs/tags/fake-*)와 push origin :refs/tags/*만 가로채고 나머지는 /usr/bin/git으로 exec
+# 시나리오: A 조회 전부 실패 / B 5회째 성공 / C1·C2 태그 push 실패·성공 / D1·D2 응답 유실 태그 있음·없음 / E1·E2 남의 태그·자기 태그
+# 각 실행은 실제 이미지 빌드를 거친다(캐시 3~4분). 실행 전에 커밋해 트리를 깨끗하게 둔다
+```
+
+## 리뷰·CI·PR
+
+```bash
+python3 agent-context/count-unresolved-reviews.py                 # 정본. 머지 직후와 몇 분 뒤 다시
+gh api graphql -f query='query($n:Int!){repository(owner:"89sooner",name:"pr-search"){pullRequest(number:$n){reviewThreads(first:20){nodes{id isResolved path line comments(first:2){nodes{author{login} body}}}}}}}' -F n=<PR> --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)'
+# 답변 뒤 해소 — addPullRequestReviewThreadReply → resolveReviewThread (정정이 머지된 뒤에만)
+gh pr merge <n> --squash --delete-branch                          # 단독 실행. 로컬 브랜치도 지운다
+git rebase --onto origin/main <병합된 커밋 해시> <내 브랜치>          # 브랜치 이름은 이미 없다
+gh api -X PATCH repos/89sooner/pr-search/pulls/<n> -F body=@<파일>   # gh pr edit --body-file은 GraphQL 오류로 실패
+gh api -X POST repos/89sooner/pr-search/actions/runs/<run>/rerun-failed-jobs   # gh run rerun --failed 없음
+gh api repos/89sooner/pr-search/actions/jobs/<job>/logs > <로그>; grep -nE '×| FAIL |AssertionError' <로그>
+```
+
+## 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 증상 | 원인·해결 |
+| --- | --- | --- |
+| 실행 중인 `build-bundle.sh` 편집 | `line 263: ─────: command not found`, EXIT=127 | bash가 스크립트를 읽으면서 실행한다. 실행이 끝난 뒤 편집하고 재실행 |
+| 시나리오 도중 `docs/` 편집 → 다음 시나리오 | "작업 트리가 깨끗하지 않다" | dirty guard. `git stash`로 치우고 재실행, 이후에는 실행 전에 커밋 |
+| 가짜 `gh`가 전제 검사에도 id 반환 | "초안 릴리스(id 777)가 남아 있다"로 빌드 전 종료 | 시험 장치 오류. 첫 조회만 비우게 수정 |
+| `gh auth token` | `unknown command "token"` | gh 2.4.0. `hosts.yml`의 `oauth_token`을 awk로 읽는다 |
+| `git rebase --onto main claude/cr-063-release-transport …` | `invalid upstream` | `gh pr merge --delete-branch`가 로컬 브랜치를 지웠다. 커밋 해시로 |
+| `gh pr edit 120 --body-file` | Projects(classic) GraphQL 오류, 본문 미갱신 | REST PATCH로 |
+| `gh run rerun <id> --failed` | 사용법 출력 | 플래그 없음. REST `rerun-failed-jobs` |
+| `printf '%s' '… toContain('UNDONE=1') …'` | 시험 파일에 `toContain(UNDONE=1)` — ReferenceError | 작은따옴표 안의 작은따옴표. 인용 heredoc으로 |
+| `gh pr merge … 2>&1 \| tail`, 병합+빌드 묶음 | auto mode 분류기 거절 | 병합 명령을 단독으로 |
+| CI `integration` (PR #124, 2회) | `load.test.ts` p95 329ms > 300 · `link-rebuild.test.ts` 되먹임 0≠3 | 시간 의존 시험(DEV-536·DEV-427). 런타임 미변경 확인 후 재실행, 세 번째 통과. 원장에 기록 |
+| `gh pr checks` 직후 `gh pr view --json headRefOid` | Unknown JSON field | 2.4.0에 없음 |
+
+## worklog·메모리
+
+```bash
+cd ~/.claude/skills/obsidian-second-brain
+python3 scripts/worklog.py path --title "PR Search 사내 반입 운반 경로를 GitHub Release로 정하고 0.1.0-pilot.2 발행 (WP-072 · CR-063)" --json
+python3 scripts/worklog.py check "<경로>"     # 오류 0 · 경고 0
+python3 scripts/worklog.py index               # 52건
+```
+
+메모리 노트 둘을 `~/.claude/projects/-home-roqkf-pr-search/memory/`에 남겼다 — `build-bundle-run-do-not-edit-inputs`, `gh-cli-2-4-0-quirks`.

@@ -1303,3 +1303,45 @@
 - 런북 2.A 표의 `prsctl load`(`./` 없음)와 2.B의 `./prsctl …` 순서 — 회귀가 2.B 안에서 순서를 잰다
 - 런북 2.B 3단계의 GHE App 자격 — `install` 전이다. 2.C로 되돌리지 마라 (DEV-527)
 - 이전 세션 것 그대로: `provision_app_role` 위치, `|| true` 넷, 재색인 직렬화, `git status --porcelain`, `fixtureMonths`, `audit-grants.test.ts`의 전수 검사 둘, `compose.yml`의 `127.0.0.1`
+
+---
+
+# 2026-09-02 (2차)가 만든 것 (CR-063 · WP-072 · 0.1.0-pilot.2)
+
+## 읽는 순서가 바뀐 문서
+
+- `deploy/single-host/RUNBOOK.md` — 정본. 1장 네트워크·디스크 행, 2장 경계(「경계 — 번들은 GitHub Release에서 받는다」: 토큰 종류·소재, curl 경로, digest 대조, immutable 권고, 닿지 않는 환경의 대체 경로), 2.A(`--release`, 전달할 것 셋), 2.B 1단계(받기 → digest 대조 → 풀기, 단계 번호 유지), 3장 업그레이드, 6장 github.com 접근, 7장 검증 표 셋, 8장 행 다섯
+- `docs/00_governance/change_control.md` — CR-063 행(closed)과 반영 내역, 영향 ID DEV-528~537
+- `docs/30_technical_architecture/pr_search_architecture_decision_records.md` — v0.7, ADR-021 「정정 — 사내 outbound 전제」
+- `docs/30_technical_architecture/pr_search_infrastructure_operations.md` — v0.12, 8장 발행·다운로드 명령, 9.1장 경계
+- `docs/30_technical_architecture/pr_search_security_privacy_architecture.md` — v1.3, 6장 GitHub Release 읽기 토큰 행과 Profile A 규칙
+- `docs/40_delivery/pr_search_work_packages.md` — v2.21, WP-072 절(구현 범위 14, 제외 10, DoD 16 전부 [x])
+- `docs/40_delivery/pr_search_implementation_traceability.md` — v6.34. 3장 WP-072 행, 5장 DEV-528~537, 6.65(감사)·6.65.1(DEV-530)·6.66(검증)·6.66.1~6.66.5(머지 후 리뷰 정정), 8장
+- `docs/40_delivery/pr_search_implementation_roadmap.md` — v0.14, 4.1장 WP-072 done
+- `docs/README.md` — 첫 사내 반입 문단에 발행·취득 경로
+
+## 고친 소스
+
+| 경로 | 무엇 |
+| --- | --- |
+| `deploy/single-host/build-bundle.sh` | 인자 파싱 `<version> [출력 디렉터리] [--release]` · 발행 전제 검사 블록(`gh` 인증 → `REPO_SLUG` → 초안 잔재 `LEFTOVER_DRAFT` → `gh release view` → 태그 `TAG_TARGET`/`TAG_EXISTED` → `IMMUTABLE`) · RELEASE_NOTES 운반 절 · 발행 블록(`sha256_of`·`stat` → 본문 `NOTES` → `lookup_draft_id()` · `undo_release()` · `undo_note()` → `gh release create --draft` → id 조회 3회 → `PATCH draft=false` → `releases/tags/<v>` 재독으로 이름·크기·digest 대조) · 성공 출력(Release URL, SHA-256, immutable 상태, 별도 채널 전달 셋, 사내 명령 셋) |
+| `regression/runtime-reachability.test.ts` | `describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072 / CR-063)')` — 시험 일곱: 재독 뒤 발행·`--target` · 초안 발행·발행 뒤 대조·`undo_release; die` · 같은 버전 검사가 빌드 앞 · 런북 2.B 1단계 순서와 단계 번호 · 토큰이 `.env.example`에 없음 · 별도 채널 SHA-256 · DEV-531~537 되돌리기 규칙(`lookup_draft_id`, `for attempt in 1 2 3`, `UNDONE=1`, `ls-remote` → `push`, `"$TAG_NOW" != "$UPSTREAM_COMMIT"`, `PUBLISHED` 부재, 옛 `grep` 부재) |
+
+## 산출물 (저장소 밖 · 무시 대상)
+
+- `deploy/single-host/bundle/pr-search-0.1.0-pilot.2-offline/`(2.6GB)와 `pr-search-0.1.0-pilot.2-offline.tar.gz`(1,132,734,876바이트) — 정식 발행분. 지우지 않았다. 옆의 `pr-search-0.1.0-pilot.1-offline`·`pr-search-import-procedure-test-offline{,.tar.gz}`는 이전 세션의 잔재(낡음, 지워도 된다)
+- GitHub Release `0.1.0-pilot.2` — 태그 → `0a73065`
+- 로컬 Docker 이미지 `prs/*:0.1.0-pilot.2` 6종
+- worklog·메모리 노트는 session-notes.md 참조
+
+## 손대면 안 되는 것 (갱신)
+
+- `build-bundle.sh`의 전제 검사 순서: `LEFTOVER_DRAFT` → `gh release view` → 태그. 뒤집으면 초안 잔재에 "새 버전으로 만든다"는 틀린 처방이 나온다
+- 같은 파일의 발행 순서: `tar -tzf` 재독 → `gh release create --draft` → id 조회 3회(실패 시 `undo_release`) → `PATCH draft=false` → 자산 재독 대조(실패 시 `undo_release` + `undo_note`). `--draft`를 빼면 immutable 저장소에서 자산을 붙이지 못한다
+- `undo_release()`의 규칙: id를 모르면 `lookup_draft_id`로 재조회 · 태그는 `TAG_EXISTED=0`이고 `ls-remote`(peeled 포함)가 있고 대상 커밋이 `UPSTREAM_COMMIT`과 같을 때만 push로 지운다 · 결과는 `UNDONE`·`RELEASE_DELETED`·`TAG_LEFT`·`TAG_DELETED`·`TAG_FOREIGN` · `PUBLISHED` 플래그를 되살리지 마라(DEV-535)
+- `undo_note()`가 모든 되돌리기 뒤의 `die`에 붙는다 — "되돌렸다"를 단정하는 문구를 `die`에 직접 쓰지 마라(회귀가 `die "[^"]*초안을 되돌렸다`를 금지한다)
+- 런북 2.B 1단계의 순서(`gh release download` → `--jq '.assets[].digest'` → `sha256sum` → `tar -xzf`)와 단계 번호(`# 3) 구성 작성`, `# 5) 설치`) — 회귀가 잰다
+- 런북 2.A의 "전달할 것은 셋이다"와 2.B의 "담당자가 별도 채널로 전달한 SHA-256" — 회귀가 잰다
+- `.env.example`에 `GH_TOKEN`·`GITHUB_TOKEN`을 넣지 마라
+- 런북 curl 경로의 `python3 -c 'import json,sys; …["assets"]…'` — 옛 `grep -E '"(id|name|digest)"'`로 되돌리지 마라
+- 이전 세션 것 그대로: 아카이브 생성 위치(checksum·시크릿 검사 뒤)·`-C "$OUT_ROOT"`·`sed -i 's/\r$//'`·`.gitattributes`·`cmd_load`의 `require_env` 위치·런북 2.B 3단계의 GHE App 자격·`provision_app_role` 위치·`|| true` 넷·재색인 직렬화·`git status --porcelain`·`fixtureMonths`·`audit-grants.test.ts` 전수 검사·`compose.yml`의 `127.0.0.1`

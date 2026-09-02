@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=6c5901030df687fa088cb85e651c126cebd1d2a10ca26858b29ba05bdb2de24c bytes=132876 lines=1886 title=리스크-불확실한-가정-함정
+@kv sha256=96206de07aaa6772fad70e134d19f449c8cc8fcc7b578b20619ba1d5c038db77 bytes=138597 lines=1946 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
@@ -929,4 +929,38 @@
 @h2 여전히 유효한 것
 @b Node 22 PATH, e2e 전 빌드, lint는 마지막 파일 뒤에, agent-context/는 tracked, git add -A 금지, 전사는 exports/ — 2026-09-02에도 호스트 출력(루트)과 실제 위치(exports/)가 달랐다. 만든 뒤 실측한다
 @b 파일럿 스택(prs-pilot-*, restart=unless-stopped)은 호스트 재시작 뒤 자동 복귀하고 개발용(prs-*, restart=no)은 죽은 채 남는다 — 통합 시험 전에 docker compose up -d
+@b count-unresolved-reviews.py가 미해결 리뷰의 정본이다
+@p ---
+@h1 2026-09-02 (2차) 세션이 추가한 것
+@h2 실행 중인 스크립트와 번들에 복사되는 파일을 편집하지 마라
+@path build-bundle.sh를 백그라운드로 돌려 둔 채 같은 파일을 편집했더니 bash가 바뀐 바이트를 읽어 line 263: ─────: command not found(종료 코드 127)로 죽었다. deploy/single-host/*도 "배포 정의 복사" 단계에서 번들에 들어가므로 실행 중에 고치면 번들 내용이 커밋과 달라진다 — dirty guard는 시작 시점에만 돈다.
+@path → 번들 생성·릴리스 발행·가짜 도구 시나리오가 도는 동안에는 스크립트와 deploy/single-host/*를 건드리지 않는다. 문서(docs/)는 산출물에 영향이 없지만 작업 트리를 더럽혀 다음 시나리오의 dirty guard를 막는다 — 백그라운드 실행 전에 커밋하거나, 문서 편집은 실행이 끝난 뒤 하거나, git stash로 치운다(실제로 시나리오 B가 그렇게 막혔다).
+@h2 가짜 도구는 전제 검사의 호출까지 설계하라
+@p 가짜 gh가 releases?per_page=100에 언제나 id를 돌려주자 전제 검사의 초안 잔재 검사가 그것을 잡아 두 시나리오가 빌드 전에 "초안 잔재"로 멈췄다 — 스크립트가 옳았고 시험 장치가 틀렸다. 호출 횟수를 세어 첫 호출은 비우고 그다음부터 답하게 했다.
+@h2 릴리스는 저절로 불변이 아니다 (DEV-530)
+@path immutable releases가 꺼진 저장소에서는 쓰기 권한자가 발행 뒤에도 자산·태그를 바꿀 수 있고, 켜져도 제목·본문은 편집 가능하다. "받은 파일의 sha256sum == 자산 digest"만 확인하면 바뀐 릴리스도 통과한다. 정본은 담당자가 별도 채널로 전달하는 SHA-256이다. 설정은 켜지 않았다(결정자 판단).
+@h2 되돌리기의 경계 다섯
+@path id 조회 실패 · 릴리스 삭제 실패 · 태그 삭제 실패 · 발행 응답 유실 · 남의 태그 — 다섯 경계마다 "되돌렸다"가 거짓이 되는 자리가 있었고 리뷰가 하나씩 찾았다(DEV-531·533·534·535·537). 되돌리기를 고칠 때는 "무엇을 되돌렸는가"를 사실대로 말하는가와 이 실행이 만든 것만 지우는가를 함께 묻는다. 남은 하나(#125, 같은 버전·같은 커밋의 겹친 발행)는 결정 대기다.
+@h2 머지 후 자동 리뷰는 정정할수록 좁은 경계 사례로 이어진다
+@p 이 세션에서 여섯 번 연속으로 왔고 전부 앞 정정의 한 겹 아래였다. 실결함이 아닌 것은 하나뿐이었다(PR 중간 커밋 기준의 지적). 각 정정 PR은 CI 6분 + 시나리오 실행 4~8분이 든다. 결정자에게 정지 규칙을 제안했다 — 반입 절차에 영향 없는 지적은 DEV로 등록만 하고 다음 세션으로.
+@h2 CI 통합에 시간 의존 시험이 둘 있다
+@path load.test.ts의 수신 p95(기준 300ms, 러너에서 329ms — DEV-536)와 link-rebuild.test.ts의 되먹임 계수(DEV-427). 런타임을 바꾸지 않은 PR에서 연달아 실패했다가 세 번째에 통과했다. 재실행은 gh api -X POST repos/<slug>/actions/runs/<id>/rerun-failed-jobs로 한다(gh 2.4.0에는 gh run rerun --failed가 없다). 빨간 통합을 병합하지 않고, 실패한 시험 이름과 값을 원장에 적는다.
+@h2 이 머신의 gh는 2.4.0이다
+@path gh auth token 없음(토큰은 ~/.config/gh/hosts.yml의 oauth_token을 awk로 읽되 출력하지 않는다) · gh release delete --cleanup-tag 없음(태그는 git push origin :refs/tags/<tag>) · gh pr edit --body-file은 Projects(classic) GraphQL 오류로 본문을 갱신하지 못한다(REST PATCH repos/<slug>/pulls/<n> -F body=@file) · gh pr merge --delete-branch가 로컬 브랜치도 지운다(그 브랜치를 기준으로 한 git rebase --onto가 실패하므로 커밋 해시를 쓴다) · gh pr view --json headRefOid 없음. 메모리 노트 gh-cli-2-4-0-quirks에 정리했다.
+@h2 셸 인용 안의 따옴표는 먹힌다
+@p printf '%s' '... toContain('UNDONE=1') ...'처럼 작은따옴표 안에 작은따옴표를 쓰면 따옴표와 공백이 사라져 시험 파일이 깨졌다(두 번). 파일 내용은 cat > f <<'EOF' 인용 heredoc으로 쓴다.
+@h2 auto mode 분류기가 막는 조합
+@p gh pr merge ... 2>&1 | tail이나 병합과 빌드를 한 명령에 묶으면 거절됐다. gh pr merge <n> --squash --delete-branch를 단독으로 실행하면 통과한다.
+@h2 크기를 말하기 전에 잰다
+@p "3.7GB"는 검사용 사본 2.6GB와 아카이브 1.1GB를 합친 오기였고 결정자의 첫 질문이 거기서 나왔다. 운반 파일은 1,073MB 하나다.
+@h2 검토자 서브에이전트는 세션 한도에 걸릴 수 있다
+@p 문서 diff 검토를 맡긴 서브에이전트가 "session limit"으로 중단됐다. 그때는 직접 검토한다 — 버전 헤더 6개와 반영 내역 대조, 표 열 개수(tr -cd '|' | wc -c), 수치 일치, "실측"으로 적힌 자리 grep.
+@h2 여전히 유효한 것
+@b 정정한 자리가 다음 리뷰의 첫 자리다 — 이 세션에서 여섯 번
+@b 커밋 전 파일에 git checkout -- 금지 · 커밋한 뒤라면 변이 원복에 안전하다
+@b Node 22 PATH · e2e 전 빌드 · lint는 마지막 파일 뒤 · 통합 시험은 한 번에 하나
+@b agent-context/는 tracked, git add -A 금지
+@b 전사는 exports/(.gitignore:24) — 만든 뒤 실측
+@path ID는 실측한다 — 인계가 적은 "다음 빈 DEV"가 이미 쓰인 값이었다(DEV-527)
+@b 문서 검증기는 백틱 안의 맨 *.md를 문서 참조로 본다 — 경로를 붙인다
 @b count-unresolved-reviews.py가 미해결 리뷰의 정본이다
