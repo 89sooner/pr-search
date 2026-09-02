@@ -5,7 +5,7 @@
 # **사내에서 실행한다.** 저장소 소스도 pnpm도 필요 없다 — 반입한 번들 안에서 돈다.
 #
 #   ./prsctl verify     번들 checksum 검증
-#   ./prsctl load       이미지 tar 적재
+#   ./prsctl load       이미지 tar 적재 (.env가 먼저 있어야 한다)
 #   ./prsctl install    migration → ES mapping → up → health
 #   ./prsctl upgrade    새 버전으로 교체 (migration 포함)
 #   ./prsctl health     전 서비스 health 판정
@@ -116,13 +116,17 @@ cmd_verify() {
 }
 
 cmd_load() {
+  # **`.env`가 먼저다** (DEV-524). 적재 뒤 `PRS_VERSION`의 이미지를 검증하려면 그 값을
+  # 먼저 알아야 하고, 필수 구성의 부재는 **이미지 저장소를 바꾸기 전에** 말해야 한다 —
+  # 이 검사가 `docker load` 뒤에 있으면 fail-fast가 아니다. 런북의 최초 설치 절차가
+  # `load`를 `.env`보다 앞에 두어 두 번째 명령에서 멈추던 자리다.
+  require_env
   step "이미지 적재"
   local tars=("${BUNDLE_ROOT}/images/pr-search-app.tar" "${BUNDLE_ROOT}/images/backing-services.tar")
   for tar in "${tars[@]}"; do
     [ -f "$tar" ] || die "이미지 tar이 없다: $tar"
     docker load -i "$tar" | sed 's/^/  /'
   done
-  require_env
   # **적재 뒤 실제로 있는지 확인한다.** compose가 pull을 시도하면 사내에서 실패한다.
   local missing=()
   for image in "prs/web:${PRS_VERSION}" "prs/search-api:${PRS_VERSION}" \

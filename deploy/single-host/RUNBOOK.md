@@ -33,32 +33,134 @@
 
 ## 2. 반입 절차
 
+**경계가 둘이다.** A는 외부망(저장소가 있는 곳)에서, B~D는 사내망(번들만 있는 곳)에서 실행한다. 사내 운영자는 A를 볼 필요가 없고 **A의 결과 파일 하나**만 받는다.
+
+```text
+A. 외부망                 1. 소스 커밋 확인 → 2. build-bundle → 3. 운반 아카이브 위치 확인
+──────── 조직의 반입 절차 / 물리적 이동 ────────
+B. 사내망 — 설치          1. extract → 2. verify → 3. .env 작성 → 4. load → 5. install → 6. smoke → 7. lineage
+C. 사내망 — 초기 데이터   1. GHE App → 2. 저장소 등록 → 3. 웹훅 → 4. 백필
+D. 사내망 — 소스 계보     1. vendor/upstream → 2. company/main
+```
+
+### 2.A 외부망 — 번들 생성
+
+**깨끗한 checkout에서 실행한다.** 스크립트가 작업 트리를 검사하며 추적되는 변경이든 미추적 파일이든 하나라도 있으면 거부한다 — 그 상태로 만들면 `release-manifest.json`의 커밋이 실제로 담긴 코드를 가리키지 않아 계보 증명이 거짓이 된다 (`DEV-512`).
+
 ```bash
-# 0) 번들을 호스트에 옮긴 뒤 풀어 놓는다
+cd <pr-search checkout>
+git status                     # 깨끗해야 한다 (미추적 파일 포함)
+git rev-parse HEAD             # 이 커밋이 manifest의 upstream.commit이 된다
+
+VERSION=<실제 버전>             # 예: 0.1.0-pilot.2 — 예시일 뿐이며 저장소의 릴리스 버전 규칙이 우선한다
+./deploy/single-host/build-bundle.sh "$VERSION"
+```
+
+`docker`·`git`·Node가 필요하고 컨테이너 레지스트리에 닿아야 한다 (백킹 이미지를 pull한다). **`pnpm release:bundle` 같은 별도 스크립트는 없다** — 정본은 이 스크립트 하나다 (`DEV-523`).
+
+**결과는 둘이고, 사내로 가져가는 것은 둘째다.** 출력 디렉터리 기본값은 `<checkout>/deploy/single-host/bundle/`이며 두 번째 인자로 바꿀 수 있다 (`./deploy/single-host/build-bundle.sh "$VERSION" /some/output`). 어느 쪽이든 그 위치에 아래 둘이 함께 만들어진다.
+
+```text
+<checkout>/deploy/single-host/bundle/
+├─ pr-search-<version>-offline/          번들 디렉터리 (검사·확인용. 옮기지 않는다)
+└─ pr-search-<version>-offline.tar.gz    운반 아카이브 — 사내로 가져갈 파일
+```
+
+스크립트의 마지막 출력이 두 경로와 **사내 반입 파일**의 이름을 그대로 보여 준다. `.gitignore`가 `deploy/single-host/bundle/`을 무시하므로 산출물이 저장소에 들어가지 않는다.
+
+### 번들 안에 무엇이 있는가
+
+운반 아카이브를 풀면 아래 디렉터리 하나가 나온다. **이 트리와 다르게 도착했다면 그 번들을 쓰지 않는다.**
+
+```text
+pr-search-<version>-offline/
+├─ images/
+│  ├─ pr-search-app.tar             애플리케이션 이미지 6종 — docker load 대상
+│  └─ backing-services.tar          백킹 이미지 4종 — docker load 대상
+├─ source/
+│  └─ pr-search-<version>.bundle    소스 계보 (git bundle) — git fetch 대상
+├─ deploy/
+│  └─ single-host/
+│     ├─ compose.yml
+│     ├─ .env.example
+│     ├─ prsctl
+│     ├─ filebeat.yml
+│     └─ RUNBOOK.md                 이 문서
+├─ manifest/
+│  └─ release-manifest.json         이 형상의 출처 (upstream 커밋 · 이미지 id · 스키마 수준)
+├─ checksums/
+│  └─ SHA256SUMS                    모든 파일의 checksum — prsctl verify가 검증한다
+└─ RELEASE_NOTES.md
+```
+
+### 아카이브가 셋이다 — 다루는 명령이 다르다
+
+| 무엇 | 파일 | 목적 | 다루는 명령 |
+| --- | --- | --- | --- |
+| **운반 아카이브** | `pr-search-<version>-offline.tar.gz` | 외부망 → 사내망으로 번들 전체를 **한 파일로** 운반 | `tar -xzf <파일>` |
+| **Docker 이미지 아카이브** | `images/pr-search-app.tar` · `images/backing-services.tar` | Docker 이미지 저장소로 오프라인 적재 | **`prsctl load`** — 그 안에서 `docker load`가 읽는다. **`tar`로 직접 풀지 않는다.** 풀어 봐야 레이어 파일 더미가 나올 뿐이고 Docker는 그것을 쓰지 못한다 |
+| **git bundle** | `source/pr-search-<version>.bundle` | 외부 Git 이력·계보를 사내 Git으로 반입 | `git fetch <파일> HEAD:vendor/upstream` (2.D) |
+
+`.bundle`은 Docker 이미지도 일반 tar도 아니다. **`.tar`가 보인다고 전부 `tar`로 푸는 것이 아니다** — 이 번들에서 운영자가 `tar`로 푸는 것은 운반 아카이브 하나뿐이다.
+
+### 2.B 사내망 — 설치
+
+**순서가 절차다.** 각 단계는 실패하면 멈추며, checksum 불일치·필수 값 부재·이미지 부재·마이그레이션 실패·health 실패를 성공으로 접지 않는다.
+
+```bash
+# 1) 운반 아카이브를 푼다 — /opt/pr-search/import 는 권장 예시이며 제품이 강제하지 않는다
+mkdir -p /opt/pr-search/import
+cd /opt/pr-search/import
+tar -xzf pr-search-<version>-offline.tar.gz
 cd pr-search-<version>-offline/deploy/single-host
 
-# 1) 변조·손상 검증 — 실패하면 여기서 멈춘다
+# 2) 변조·손상 검증 — 실패하면 여기서 멈춘다. 그 번들은 쓰지 않는다
 ./prsctl verify
 
-# 2) 이미지 적재 (verify를 포함해 실행한다)
-./prsctl load
-
-# 3) 구성 작성
+# 3) 구성 작성 — load보다 먼저다 (아래 「.env는 어디에 있는가」)
 cp .env.example .env
 chmod 600 .env
-$EDITOR .env          # 필수 값을 채운다. 비어 있으면 install이 거부한다
+$EDITOR .env          # 필수 값을 채운다. 비어 있으면 load가 거부한다
 
-# 4) 설치 — migration → 접속 주체 → ES mapping → 기동 → health
+# 4) 이미지 적재 — verify를 다시 포함해 실행하고, 적재 뒤 PRS_VERSION의 이미지가 실제로 있는지 검증한다
+./prsctl load
+
+# 5) 설치 — migration → 접속 주체 → ES mapping → 기동 → health
 ./prsctl install
 
-# 5) 스모크 — health가 아니라 실제 조회 왕복을 건다
+# 6) 스모크 — health가 아니라 실제 조회 왕복을 건다
 ./prsctl smoke
 
-# 6) 이 형상의 출처 확인
+# 7) 이 형상의 출처 확인 — manifest의 upstream.commit이 2.D의 vendor/upstream이 된다
 ./prsctl lineage
 ```
 
-**각 단계는 실패하면 멈춘다.** checksum 불일치·이미지 부재·필수 값 부재·마이그레이션 실패·health 실패를 성공으로 접지 않는다.
+**`.env`가 `load`보다 먼저인 이유.** `load`는 적재 뒤 `.env`의 `PRS_VERSION`으로 이미지가 실제로 있는지 검증하므로 그 값을 먼저 알아야 하고, 필수 구성의 부재는 **이미지 저장소를 바꾸기 전에** 말해야 한다 (`DEV-524`). `.env` 없이 `load`를 실행하면 **아무것도 적재하지 않고** 멈춘다.
+
+### `.env`는 어디에 있는가
+
+| 어디 | 파일 | 있는가 |
+| --- | --- | --- |
+| 번들 | `deploy/single-host/.env.example` | **있음** — 구성 표면 전수이며 값은 비어 있다 |
+| 사내 운영자가 생성 | `deploy/single-host/.env` | **있음** — 2.B 3단계에서 만든다. `chmod 600`, 소유자만 읽는다 |
+| 외부 Git | `.env` | **없음** — `.gitignore`가 `deploy/single-host/.env`·`bundle/`·`backups/`를 무시한다 |
+| 오프라인 번들 | 값이 채워진 `.env` | **없음** — 시크릿이라 어떤 번들에도 담지 않는다. `build-bundle.sh`가 `.env`·`*.pem`·`*.key`를 찾으면 번들을 만들지 않는다 |
+
+**`prsctl`이 요구하는 필수 값** — 정본은 `prsctl`의 `require_env`이며 아래는 그것을 옮겨 적은 것이다. 비어 있으면 `load`·`install`·`upgrade`·`smoke`·`backup`·`restore` 전부 멈춘다.
+
+```text
+PRS_VERSION                  번들의 manifest/release-manifest.json이 적은 release_version 그대로
+POSTGRES_DB
+POSTGRES_OWNER_USER          마이그레이션을 실행하는 소유자
+POSTGRES_OWNER_PASSWORD
+POSTGRES_APP_USER            prs_app이 아닌 로그인 주체 (예: prs_app_login) — 아래 「데이터베이스 접속 주체」
+POSTGRES_APP_PASSWORD
+GHE_BASE_URL
+GHE_WEBHOOK_SECRET
+SEARCH_CURSOR_HMAC_KEY       32자 이상
+```
+
+`PRS_REINDEX_TIMEOUT_S`는 선택이며 두면 1~2592000(30일)의 정수여야 한다. 나머지 값의 뜻은 `.env.example`의 주석이 설명한다.
 
 ### 데이터베이스 접속 주체는 `prsctl install`이 만든다
 
@@ -68,14 +170,40 @@ $EDITOR .env          # 필수 값을 채운다. 비어 있으면 install이 거
 
 `upgrade`도 같은 일을 다시 한다. 비밀번호를 회전했다면 `.env`만 고치고 `upgrade`를 돌리면 맞춰진다.
 
-### 반입 후 데이터를 채운다
+### 2.C 사내망 — 초기 데이터
 
 기동 직후 시스템은 **비어 있다.** 웹훅은 앞으로 오는 것만 받는다.
 
-1. 운영 콘솔(`A-001`)에서 저장소를 등록한다.
-2. GHE에 웹훅을 등록한다 — 대상은 `http://<호스트>:3001/webhooks/github`, 시크릿은 `.env`의 `GHE_WEBHOOK_SECRET`.
-3. **백필을 실행한다** — 과거 PR 이력은 백필이 채운다(`JOB-ING-004`). `worker-enrich`가 그 역할을 함께 켜고 있다.
-4. 시퀀스 채번과 관계 파생은 미러 동기화 뒤에 따라온다.
+1. GHE App을 등록하고 자격(`GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`)을 `.env`에 넣는다 — 없으면 `enrich`·`reconcile` 역할이 기동을 거부한다 (의도된 거부다).
+2. 운영 콘솔(`A-001`)에서 저장소를 등록한다.
+3. GHE에 웹훅을 등록한다 — 대상은 `http://<호스트>:3001/webhooks/github`, 시크릿은 `.env`의 `GHE_WEBHOOK_SECRET`.
+4. **백필을 실행한다** — 과거 PR 이력은 백필이 채운다(`JOB-ING-004`). `worker-enrich`가 그 역할을 함께 켜고 있다.
+5. 시퀀스 채번과 관계 파생은 미러 동기화 뒤에 따라온다.
+
+### 2.D 사내망 — 소스 계보
+
+**반입은 코드로도 이루어진다.** 이미지만 세우면 다음 반입에서 무엇을 합쳐야 하는지 알 수 없다. 번들의 git bundle을 사내 Git에 들여와 baseline을 만든다 — 5장의 형상 정책(`vendor/upstream` / `company/main`, merge 우선)이 그 위에 선다.
+
+```bash
+# 사내 Git 저장소를 만든다 (이미 있으면 그 안에서 fetch만 한다)
+git init pr-search
+cd pr-search
+
+# 번들의 소스 계보를 vendor/upstream으로 들여온다 — 경로는 2.B에서 푼 위치 기준이다
+git fetch \
+  /opt/pr-search/import/pr-search-<version>-offline/source/pr-search-<version>.bundle \
+  HEAD:vendor/upstream
+
+# 운영 형상 브랜치를 그 위에 세운다
+git branch company/main vendor/upstream
+git checkout company/main
+
+# 확인 — 아래 둘이 같아야 한다
+git rev-parse vendor/upstream
+grep '"commit"' /opt/pr-search/import/pr-search-<version>-offline/manifest/release-manifest.json
+```
+
+**불변식**: `vendor/upstream`은 외부에서 반입한 baseline이며 **내부 수정을 넣지 않는다.** `company/main`은 실제 사내 수정이 누적되는 다운스트림이다. 다음 반입의 절차와 내부 변경의 분류는 5장이다.
 
 ---
 
@@ -102,8 +230,9 @@ cp <이전 설치 경로>/deploy/single-host/.env .env
 chmod 600 .env
 # 또는 복사하지 않고 지정한다:  export PRS_ENV_FILE=<이전 .env 절대경로>
 
+$EDITOR .env          # PRS_VERSION을 새 값으로 — **load보다 먼저다** (DEV-524).
+                      # load가 적재 뒤 이 값의 이미지가 있는지 검증하므로, 이전 값이면 옛 이미지를 보고 통과해 버린다
 ./prsctl verify && ./prsctl load
-$EDITOR .env          # PRS_VERSION을 새 값으로
 ./prsctl upgrade      # migration → 접속 주체 → ES mapping → 컨테이너 교체 → health
 ```
 
@@ -155,12 +284,7 @@ Internal repository = permanent downstream product line
 
 ### 첫 반입
 
-```bash
-git init pr-search && cd pr-search
-git fetch ../pr-search-<version>-offline/source/pr-search-<version>.bundle HEAD:vendor/upstream
-git branch company/main vendor/upstream
-git checkout company/main
-```
+**2.D가 정본이다** — 반입 절차의 일부이지 별개 작업이 아니다. `vendor/upstream`을 만들고 `company/main`을 그 위에 세우며, `git rev-parse vendor/upstream`이 manifest의 `upstream.commit`과 같은지 확인한다. 여기서는 그 다음 반입만 다룬다.
 
 ### 다음 반입
 
@@ -223,6 +347,9 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | 스모크의 **`/search`** | `NOT RUN — internal environment required` — 세션 인증이 사내 OIDC를 요구한다 |
 | 재기동 후 데이터 잔존 · pull 없이 기동 | `VERIFIED (external)` |
 | 백업 → 파괴적 복구 | `VERIFIED (external)` |
+| 운반 아카이브 생성 → 별도 디렉터리에 풀기 → 그 사본에서 `verify` (WP-071) | `VERIFIED (external)` |
+| `.env` 없이 `load` → **이미지 저장소를 바꾸기 전에** 멈춤 · `.env` 뒤 `load` 통과 (WP-071) | `VERIFIED (external)` |
+| 풀린 번들의 git bundle → `vendor/upstream`이 manifest의 `upstream.commit`과 일치 (WP-071) | `VERIFIED (external)` |
 | 실제 사내 GHE App·웹훅·저장소 권한 | `NOT RUN — internal environment required` |
 | 실제 사내 OIDC와 그룹 클레임 | `NOT RUN — internal environment required` |
 | 사내 CA·프록시·DNS·레지스트리·보안 스캔 | `NOT RUN — internal environment required` |
@@ -237,7 +364,10 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 
 | 증상 | 확인 |
 | --- | --- |
-| `install`이 필수 값 부재로 멈춘다 | `.env`에 값이 실제로 채워졌는가. `KEY=`만 있으면 비어 있는 것이다 |
+| `load`가 `.env`가 없다고 멈춘다 (최초 설치) | **정상이다.** `.env`가 `load`보다 먼저다 (2.B 3단계, DEV-524). 아무것도 적재되지 않았으니 `.env`를 만들고 다시 실행한다 |
+| `load`·`install`이 필수 값 부재로 멈춘다 | `.env`에 값이 실제로 채워졌는가. `KEY=`만 있으면 비어 있는 것이다. 필수 키 목록은 2.B 「`.env`는 어디에 있는가」 |
+| `images/*.tar`를 `tar`로 풀었더니 파일 더미가 나온다 | 그것은 Docker 이미지 아카이브다. 풀지 말고 `./prsctl load`를 쓴다 (2.A 「아카이브가 셋이다」). 풀어 놓은 더미는 지워도 된다 |
+| `git fetch`가 `.bundle`을 읽지 못한다 | 경로가 2.B에서 푼 위치를 가리키는가. `.bundle`은 `tar`나 `docker load`의 대상이 아니다 |
 | compose가 이미지를 pull하려 한다 | `./prsctl load`를 실행했는가. `PRS_VERSION`이 적재한 태그와 같은가 |
 | `enrich`·`reconcile`이 기동을 거부한다 | `GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`가 있는가. **의도된 거부다** — 자격 없이 돌면 모든 이벤트가 실패 대기열에 쌓인다 |
 | 웹훅이 전부 401 | `GHE_WEBHOOK_SECRET`이 GHE 쪽 설정과 같은가 |

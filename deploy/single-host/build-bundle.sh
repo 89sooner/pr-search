@@ -7,6 +7,10 @@
 #
 #   ./build-bundle.sh <version> [출력 디렉터리]
 #
+# 산출물 둘 (출력 디렉터리 기본값 deploy/single-host/bundle/):
+#   pr-search-<version>-offline/          번들 디렉터리 (검사·확인용)
+#   pr-search-<version>-offline.tar.gz    운반 아카이브 — 사내로 가져갈 파일 (CR-062 / WP-071)
+#
 # 산출물은 사내에서 `git clone`도 `pnpm install`도 레지스트리 접근도 요구하지
 # 않는다. **요구하는 순간 그 절차는 사내망에서 실행 불가능하다.**
 
@@ -16,6 +20,9 @@ VERSION="${1:?사용법: build-bundle.sh <version> [출력 디렉터리]}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT_ROOT="${2:-${REPO_ROOT}/deploy/single-host/bundle}"
 BUNDLE="${OUT_ROOT}/pr-search-${VERSION}-offline"
+# **사내로 가져갈 파일은 이것 하나다** (CR-062 / WP-071, DEV-523). 번들 디렉터리의
+# **형제** 위치라 아카이브가 자기 자신을 담지 않는다.
+ARCHIVE="${BUNDLE}.tar.gz"
 
 die() { printf '오류: %s\n' "$*" >&2; exit 1; }
 step() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -48,6 +55,7 @@ UPSTREAM_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
 step "번들 준비 — ${BUNDLE}"
 rm -rf "$BUNDLE"
+rm -f "$ARCHIVE"   # 이전 실행의 아카이브가 새 디렉터리 옆에 남아 짝이 어긋나지 않게
 mkdir -p "$BUNDLE"/{source,images,deploy,manifest,checksums}
 
 # ── 애플리케이션 이미지 ─────────────────────────────────────────
@@ -170,6 +178,10 @@ PNPM_VERSION="$(node -e "process.stdout.write(require('${REPO_ROOT}/package.json
   printf -- '- 소스 계보 (`source/*.bundle`) — `vendor/upstream`의 기반\n'
   printf -- '- 배포 정의와 런북 (`deploy/single-host/`)\n'
   printf -- '- 계보·스키마·이미지 신원 (`manifest/release-manifest.json`)\n\n'
+  printf '## 운반\n\n'
+  printf -- '- 이 디렉터리는 운반 아카이브 `%s` 하나로 사내에 들어온다 — `tar -xzf`로 풀면 이 디렉터리가 나온다\n' "$(basename "$ARCHIVE")"
+  printf -- '- `images/*.tar`는 `prsctl load`가 `docker load`로 읽는다. **직접 풀지 않는다**\n'
+  printf -- '- `source/*.bundle`은 `git fetch`로 사내 Git에 들여온다. 절차는 런북 2장이다\n\n'
   printf '## 담기지 않은 것\n\n'
   printf -- '- **시크릿·토큰·개인 키.** 값이 채워진 `.env`는 반입 대상이 아니라 사내에서 만드는 것이다\n'
   printf -- '- 개발 의존성, 시험 픽스처, 문서 전체\n'
@@ -189,6 +201,22 @@ if grep -rlE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' "${BUNDLE}/deploy" "${BUNDL
   die "번들의 배포 정의에 개인 키가 있다"
 fi
 
-printf '\n번들 완료: %s\n' "$BUNDLE"
-du -sh "$BUNDLE"
-printf '반입 절차: deploy/single-host/RUNBOOK.md\n'
+# ── 운반 아카이브 ───────────────────────────────────────────────
+# 번들 디렉터리는 파일 여럿이라 옮기는 사람마다 다르게 묶었고, 런북은 "풀어
+# 놓는다"고 적으면서 무엇을 푸는지 정한 적이 없었다 (DEV-523). 이제 **사내로
+# 가져갈 파일은 이 아카이브 하나**다.
+#
+# checksum과 시크릿 검사가 **끝난 뒤** 만든다 — 검사를 통과한 내용만 담는다.
+# 바깥 checksum sidecar는 만들지 않는다: 정본은 번들 안의 `checksums/SHA256SUMS`
+# 하나이고 `prsctl verify`가 그것을 검증한다. 아카이브가 손상되면 `tar`가 풀지
+# 못하고, 풀리는데 변조됐으면 `verify`가 잡는다.
+step "운반 아카이브 생성 — ${ARCHIVE}"
+tar -czf "$ARCHIVE" -C "$OUT_ROOT" "$(basename "$BUNDLE")"
+# **만든 것을 다시 읽어 본다.** 읽지 못하는 아카이브를 완료로 보고하지 않는다 (DEV-519의 규율).
+tar -tzf "$ARCHIVE" >/dev/null || die "운반 아카이브를 다시 읽지 못한다: $ARCHIVE"
+
+printf '\n번들 완료\n'
+printf '  번들 디렉터리 : %s  (%s)\n' "$BUNDLE"  "$(du -sh "$BUNDLE"  | cut -f1)"
+printf '  운반 아카이브 : %s  (%s)\n' "$ARCHIVE" "$(du -sh "$ARCHIVE" | cut -f1)"
+printf '\n사내 반입 파일 : %s\n' "$(basename "$ARCHIVE")"
+printf '반입 절차      : 아카이브 안의 deploy/single-host/RUNBOOK.md\n'
