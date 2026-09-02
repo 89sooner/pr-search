@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.17 | 갱신일: 2026-09-01
+> 상태: review | 버전: v2.18 | 갱신일: 2026-09-02
 
 ## 1. 목적
 
@@ -52,6 +52,7 @@
 | WP-068 | 저장소 팀 접근 범위 채우기 | REL-003 | WP-010, WP-012 | done |
 | WP-069 | 작성자 소속 팀 채우기 | REL-006 | WP-068, WP-037 | done |
 | WP-070 | 단일 호스트 오프라인 배포·반입 기반 | **배포 (CR-059)** | WP-001, WP-010 | done |
+| WP-071 | 사내 반입 운반 아카이브와 실행 절차 정본화 | **배포 (CR-062)** | WP-070 | todo |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003, **WP-067** | done |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020, **WP-067** | done |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | WP-030, WP-017, WP-016 | done |
@@ -1911,6 +1912,70 @@ external main의 특정 커밋
   - [x] 외부에서 증명한 것과 `NOT RUN — internal environment required`가 **구분되어 기록된다**
 - 검증 방법: 실제 실행. `pnpm typecheck` · `lint` · `lint:deps` · `test` · 관련 `test:integration` · `test:regression` · `build` · 문서 validator, 그리고 **위 여정 전체를 로컬에서 한 번 관통한다.**
 - 기록: 원장 WP-070 상태, DEV-490~499 판정, DEV-001·DEV-304·DEV-305 재판정
+
+---
+
+### WP-071 사내 반입 운반 아카이브와 실행 절차 정본화
+
+- 목표: **외부망의 깨끗한 checkout에서 `build-bundle.sh <version>` 하나로 사내 반입에 쓸 단일 운반 아카이브가 만들어지고, 사내 운영자는 저장소를 알 필요 없이 그 아카이브를 풀어 런북의 명령을 위에서 아래로 그대로 실행해 checksum 검증 → 구성 → 이미지 적재 → 설치 → 스모크 → 계보 확인 → 사내 Git baseline 생성까지 간다.**
+- 관련 요구사항: **신규 없음.** `WP-070`이 보존한 행위 그대로이며(DEV-507), 품질 기준은 `NFR-005`(시크릿 노출 0건 — 운반 아카이브가 새 노출 경로를 열지 않는다)·`NFR-008`(운영성). SRS 5.2 기술 제약 6
+- 관련 화면/플로우: 없음
+- 관련 API/데이터/잡: 없음 — **신규 API·엔티티·잡·마이그레이션을 만들지 않는다**
+- 선행 WP: WP-070
+- **`WP-070`의 "반입 가능성"과 사람이 실제로 수행할 "반입 절차" 사이의 빈칸을 닫는다** (CR-062). `WP-070`은 여정을 로컬에서 관통했으나 그 여정의 운반 단위와 사내 쪽 첫 명령들은 실행자가 그때그때 조립했다. 이 WP가 끝나면 다음 열 질문에 문서와 실행이 같은 답을 한다: ① 외부망에서 어떤 명령을 실행하는가 ② 결과 파일이 정확히 어디 생기는가 ③ 사내로 가져갈 파일은 무엇인가 ④ 번들 안의 `*.tar` 둘은 무엇인가 ⑤ 그것을 `tar -xf`로 푸는가 `docker load`로 읽는가 ⑥ `*.bundle`은 무엇이고 어떻게 사내 Git으로 가져오는가 ⑦ `.env`는 언제 만들고 어디에 존재하는가 ⑧ `verify`/`load`/`install`/`smoke`/`lineage`의 정확한 순서는 무엇인가 ⑨ 외부 커밋과 사내 `vendor/upstream`의 관계를 어떻게 증명하는가 ⑩ 문서에 적힌 순서를 실제 `prsctl`이 그대로 받아들이는가.
+
+```text
+[외부망]  깨끗한 checkout → ./deploy/single-host/build-bundle.sh <version>
+            → <출력>/pr-search-<version>-offline/          (번들 디렉터리)
+            → <출력>/pr-search-<version>-offline.tar.gz    (운반 아카이브 — 사내로 가져갈 파일)
+──────────  조직의 반입 절차 / 물리적 이동  ──────────
+[사내망]  tar -xzf → cd deploy/single-host → prsctl verify → .env 작성 → prsctl load
+            → prsctl install → prsctl smoke → prsctl lineage
+            → git fetch <bundle> HEAD:vendor/upstream → company/main
+```
+
+- 구현 범위:
+  - **운반 아카이브를 정식 산출물로 승격한다** (DEV-523). `build-bundle.sh`가 성공하면 번들 디렉터리 옆에 `pr-search-<version>-offline.tar.gz`가 함께 존재한다. 두 번째 인자로 출력 디렉터리를 주어도 같은 형태다. **checksum 생성과 시크릿 검사가 끝난 뒤** 만들며, 아카이브는 번들 디렉터리의 형제 위치라 자기 자신을 담지 않는다. 기존 셸 관용구를 따른다.
+  - **바깥 checksum sidecar를 만들지 않는다.** 번들 안 `checksums/SHA256SUMS`가 정본이고 `prsctl verify`가 검증한다. 아카이브가 손상되면 `tar`가 실패하고, 풀리는데 변조됐으면 `verify`가 잡는다.
+  - **Docker 이미지 tar와 git bundle은 그대로 둔다.** 바깥 아카이브를 도입했다고 안쪽 tar를 gzip하거나 구조를 다시 설계하지 않는다. `prsctl load`의 `docker load -i` 경로를 유지한다.
+  - **`build-bundle.sh`의 성공 출력이 사람에게 답한다** — 번들 디렉터리, 운반 아카이브, **사내 반입 파일** 셋을 보여 준다. 운영자가 로그만 보고 어느 파일을 가져갈지 알 수 있어야 한다.
+  - **`prsctl load`의 `require_env`를 `docker load`보다 앞으로 옮긴다** (DEV-524). 필수 `.env` 부재는 이미지 저장소를 바꾸기 전에 알 수 있다. **검사 위치 하나만 옮긴다** — `require_env`의 의미와 필수 키 집합, `provision_app_role`, `|| true` 넷, 복구의 재색인 직렬화, `DEV-510`·`513`·`519`·`520`·`521`이 고정한 다른 순서는 건드리지 않는다.
+  - **최초 설치 순서를 `extract → verify → .env → load → install → smoke → lineage`로 통일한다.** 업그레이드 절도 `PRS_VERSION`을 **`load` 앞에** 고치도록 순서를 바로잡아 `load`의 적재 후 검증이 새 태그를 보게 한다.
+  - **런북을 외부망/사내망 경계로 다시 쓴다.** A. 외부망(소스 커밋 확인·번들 생성·운반 아카이브 위치) → 경계 → B. 사내망(extract·verify·`.env`·load·install·smoke·lineage) → C. 사내 초기 데이터(GHE App·저장소 등록·웹훅·백필) → D. 사내 소스 계보(`vendor/upstream`·`company/main`). **저장소에 접근할 수 없는 사내 운영자가 번들 안의 런북 하나로 수행 가능해야 한다.**
+  - **번들 트리를 실제 생성 결과와 대조해 런북에 넣는다.** 실제 출력과 다른 이름을 문서에 쓰지 않는다.
+  - **아카이브 세 종류의 뜻을 표로 가른다** — 운반 아카이브(`tar -xzf`), Docker 이미지 tar(`prsctl load` → `docker load`, **직접 풀지 않는다**), git bundle(`git fetch`). `.tar`를 보고 `tar -xf`를 치도록 읽히는 문장을 남기지 않는다.
+  - **`.env`의 소재를 명시한다** — 번들에는 `.env.example`만, 사내 운영자가 `deploy/single-host/.env`를 만들며, 외부 Git과 어떤 번들에도 값이 채워진 `.env`는 없다. `.gitignore`가 `deploy/single-host/.env`·`bundle/`·`backups/`를 무시하는 것을 실제 파일과 대조해 적는다.
+  - **`require_env`가 실제 요구하는 키를 런북이 정본으로 가리킨다.** `POSTGRES_APP_USER=prs_app`은 금지(`DEV-503`)이며 예시는 별도 로그인 주체를 쓴다.
+  - **최초 반입의 사내 Git 계보 생성을 같은 흐름 안에 둔다.** `git fetch <bundle> HEAD:vendor/upstream` → `company/main`. 불변식(`vendor/upstream`은 내부 수정 금지, `company/main`은 다운스트림)과 merge 우선은 그대로다.
+  - **번들 루트의 `pr-search-<version>-offline/RELEASE_NOTES.md`가 운반 아카이브와의 관계를 짧게 적는다.** 운영 절차 전체를 복제하지 않는다 — 정본은 런북이다.
+  - **회귀 시험이 문서와 실행의 정합을 묻는다** — `build-bundle.sh`가 운반 아카이브를 만드는가, `cmd_load`에서 `require_env`가 `docker load`보다 앞인가, 런북 최초 설치 절에서 `.env` 작성이 `prsctl load`보다 앞인가, 런북이 이미지 tar를 `tar -x` 대상으로 적지 않는가.
+- 제외:
+  - **바깥 checksum sidecar** — 위. 사내 반입 정책이 요구한다는 증거가 나올 때 별도로 연다.
+  - **`build-bundle.sh`의 dirty worktree 검사 완화** — 미커밋 상태에서 번들을 만들기 위한 예외를 만들지 않는다. 검증은 커밋 뒤 깨끗한 트리에서 한다.
+  - **`require_env` 재설계·필수 키 변경** — 검사 위치 하나만 옮긴다.
+  - **HTTP(S) 프록시 지원** (DEV-494) — 사내망이 프록시를 강제한다는 증거가 없다. `NODE_EXTRA_CA_CERTS`와 프록시를 섞어 적지 않는다.
+  - **Profile B·Kubernetes·`gh-executor`·RPO 정책** — 이 WP의 것이 아니다.
+  - **신규 마이그레이션** — 포장과 절차의 변경이며 스키마를 건드릴 이유가 없다. 다음 빈 번호가 024라는 것은 이유가 아니다.
+  - **실제 사내 환경 검증** — 사내 GHE·OIDC·CA·프록시·DNS·실서버 성능·`ACC-06`. 합성으로 통과시키지 않는다.
+- 완료 기준(DoD):
+  - [ ] `./deploy/single-host/build-bundle.sh <version>`이 성공하면 기본 출력 위치에 `pr-search-<version>-offline/`과 `pr-search-<version>-offline.tar.gz`가 **함께** 존재한다
+  - [ ] 두 번째 인자로 출력 디렉터리를 주면 그 위치에 같은 둘이 만들어진다
+  - [ ] 운반 아카이브는 checksum 생성과 시크릿 검사가 끝난 **뒤** 만들어지고 자기 자신을 담지 않는다 (`tar -tzf`로 목록 확인)
+  - [ ] **별도 임시 디렉터리에 아카이브를 풀어 나온 사본에서** `prsctl verify`가 통과한다 — 원래 생성 디렉터리에서 verify한 결과로 대신하지 않는다
+  - [ ] 풀어 나온 사본에서 `.env`를 만든 뒤 `prsctl load`가 통과하고, **`.env`가 없으면 `load`가 이미지 저장소를 바꾸기 전에 실패한다** (실제 실행으로 확인)
+  - [ ] 풀어 나온 사본의 `source/*.bundle`을 빈 저장소에 `git fetch`한 `vendor/upstream`이 `manifest/release-manifest.json`의 `upstream.commit`과 같다
+  - [ ] 풀어 나온 사본에서 `prsctl lineage`가 그 manifest를 보여 준다
+  - [ ] 풀린 아카이브에 값이 채워진 `.env`·`*.pem`·`*.key`·개인 키 리터럴이 없다 (`.env.example`은 허용)
+  - [ ] `build-bundle.sh`의 성공 출력이 번들 디렉터리·운반 아카이브·사내 반입 파일을 보여 준다
+  - [ ] 런북이 외부망(A) → 경계 → 사내망(B) → 사내 초기 데이터(C) → 사내 소스 계보(D) 구조이고, 최초 설치 순서가 `extract → verify → .env → load → install → smoke → lineage`다
+  - [ ] 런북의 번들 트리가 실제 생성 결과와 같다
+  - [ ] 런북이 아카이브 세 종류의 뜻과 사용법을 표로 가르고, 이미지 tar를 `tar -x` 대상으로 적지 않는다
+  - [ ] 런북이 `.env`의 소재(번들·사내·외부 Git·번들 안의 값 채워진 파일)와 `require_env`의 필수 키를 적는다
+  - [ ] 인프라 8장의 외부망 명령이 실재하는 스크립트를 가리킨다
+  - [ ] 회귀 시험이 위 정합 넷을 걸고, 각 변이(아카이브 생성 제거 · `require_env`를 `docker load` 뒤로 · 런북 순서 뒤집기 · 이미지 tar를 extract 대상으로 서술)가 실제로 잡힌다
+  - [ ] `WP-070`의 상태와 DoD를 되돌리지 않는다
+- 검증 방법: 실제 실행. `bash -n` 둘 · 문서 validator · `pnpm typecheck` · `lint` · `lint:deps` · `test` · `test:regression` · `build`, 그리고 **깨끗한 커밋에서 번들을 실제로 만들어 임시 디렉터리에 풀고 verify·load·lineage·git fetch를 관통한다.** dirty guard를 약화하지 않는다.
+- 기록: 원장 WP-071 상태, DEV-523·DEV-524 판정
 
 ---
 
