@@ -291,9 +291,20 @@ if [ "$RELEASE" -eq 1 ]; then
   } > "$NOTES"
   # 실패하면 방금 만든 것을 되돌린다 — 반쯤 발행된 릴리스를 남기지 않는다.
   RELEASE_ID=""
+  # 이 태그를 예약한 초안의 id — 조회 자체가 실패하면 빈 값이다 (set -e에 걸리지 않게 || true).
+  lookup_draft_id() {
+    gh api "repos/${REPO_SLUG}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"${VERSION}\") | .id" 2>/dev/null | head -1 || true
+  }
   undo_release() {
     printf '되돌린다: 릴리스 %s 삭제\n' "$VERSION" >&2
-    [ -n "$RELEASE_ID" ] && { gh api -X DELETE "repos/${REPO_SLUG}/releases/${RELEASE_ID}" >/dev/null 2>&1 || printf '경고: 릴리스 삭제 실패 — 직접 지워야 한다\n' >&2; }
+    # id를 모르면(생성 뒤 조회가 실패한 경우) 태그로 다시 찾는다 — 초안 잔재를 남기면 같은 버전의
+    # 재실행이 전제 검사에서 막힌다 (DEV-531).
+    [ -n "$RELEASE_ID" ] || RELEASE_ID="$(lookup_draft_id)"
+    if [ -n "$RELEASE_ID" ]; then
+      gh api -X DELETE "repos/${REPO_SLUG}/releases/${RELEASE_ID}" >/dev/null 2>&1 || printf '경고: 릴리스 삭제 실패 — GitHub에서 태그 %s의 릴리스(초안)를 직접 지운다\n' "$VERSION" >&2
+    else
+      printf '경고: 되돌릴 릴리스를 찾지 못했다 — GitHub에서 태그 %s의 초안이 남았는지 확인해 지운다\n' "$VERSION" >&2
+    fi
     if [ "$TAG_EXISTED" -eq 0 ]; then
       git push origin ":refs/tags/${VERSION}" >/dev/null 2>&1 || true   # 발행 전에 실패했으면 태그는 아직 없다
     fi
@@ -304,8 +315,17 @@ if [ "$RELEASE" -eq 1 ]; then
     --title "PR Search ${VERSION}" --notes-file "$NOTES" "$ARCHIVE" >/dev/null \
     || { rm -f "$NOTES"; die "릴리스 초안 생성에 실패했다"; }
   rm -f "$NOTES"
-  RELEASE_ID="$(gh api "repos/${REPO_SLUG}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"${VERSION}\") | .id" | head -1)"
-  [ -n "$RELEASE_ID" ] || die "만든 초안을 찾지 못했다 — GitHub에서 초안을 확인하라"
+  # 초안은 올라갔는데 id 조회가 일시적으로 실패할 수 있다 — 세 번 묻고, 그래도 없으면 초안을
+  # 되돌린 뒤 실패한다. 조회 실패로 초안 잔재를 남기지 않는다 (DEV-531).
+  for attempt in 1 2 3; do
+    RELEASE_ID="$(lookup_draft_id)"
+    [ -n "$RELEASE_ID" ] && break
+    sleep 2
+  done
+  if [ -z "$RELEASE_ID" ]; then
+    undo_release
+    die "만든 초안의 id를 얻지 못했다 — 초안을 되돌렸다. 잠시 뒤 다시 실행한다"
+  fi
   gh api -X PATCH "repos/${REPO_SLUG}/releases/${RELEASE_ID}" -F draft=false >/dev/null \
     || { undo_release; die "초안을 발행하지 못했다"; }
 
