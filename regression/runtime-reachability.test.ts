@@ -506,7 +506,11 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
   it('초안 id 조회 실패가 초안을 되돌리고, curl 경로가 assets[]에서 id를 뽑는다 (DEV-531 · DEV-532)', () => {
     expect(BUILD).toContain('lookup_draft_id()');
     expect(BUILD).toContain('[ -n "$RELEASE_ID" ] || RELEASE_ID="$(lookup_draft_id)"');
-    expect(BUILD).toMatch(/for attempt in 1 2 3; do[\s\S]*?undo_release\n\s+die "만든 초안의 id를 얻지 못했다/);
+    expect(BUILD).toMatch(/for attempt in 1 2 3; do[\s\S]*?undo_release\n\s+die "만든 초안의 id를 얻지 못했다 — \$\(undo_note\)"/);
+    // 되돌리기의 결과를 사실대로 말한다 — 지우지 못했으면 "되돌렸다"고 보고하지 않는다 (DEV-533)
+    expect(BUILD).toContain('UNDONE=1');
+    expect(BUILD).toContain('릴리스를 되돌리지 못했다');
+    expect(BUILD).not.toMatch(/die "[^"]*초안을 되돌렸다/);
     expect(RUNBOOK).toContain('json.load(sys.stdin)["assets"]');
     expect(RUNBOOK).not.toMatch(/\|\s*grep -E '"\(id\|name\|digest\)"'/);
   });
