@@ -295,31 +295,44 @@ if [ "$RELEASE" -eq 1 ]; then
   lookup_draft_id() {
     gh api "repos/${REPO_SLUG}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"${VERSION}\") | .id" 2>/dev/null | head -1 || true
   }
-  # 되돌리기의 결과를 UNDONE에 남긴다 — 지우지 못했으면 "되돌렸다"고 보고하지 않는다 (DEV-533).
-  UNDONE=0
+  # 되돌리기의 결과를 남긴다 — 지우지 못한 것이 하나라도 있으면 "되돌렸다"고 보고하지 않는다
+  # (DEV-533·DEV-534). 태그는 발행(draft=false)이 만들므로 PUBLISHED 뒤에만 지울 것이 있다.
+  UNDONE=0; RELEASE_DELETED=0; TAG_LEFT=0; PUBLISHED=0
   undo_release() {
     printf '되돌린다: 릴리스 %s 삭제\n' "$VERSION" >&2
-    UNDONE=0
+    UNDONE=0; RELEASE_DELETED=0; TAG_LEFT=0
     # id를 모르면(생성 뒤 조회가 실패한 경우) 태그로 다시 찾는다 — 초안 잔재를 남기면 같은 버전의
     # 재실행이 전제 검사에서 막힌다 (DEV-531).
     [ -n "$RELEASE_ID" ] || RELEASE_ID="$(lookup_draft_id)"
     if [ -n "$RELEASE_ID" ]; then
       if gh api -X DELETE "repos/${REPO_SLUG}/releases/${RELEASE_ID}" >/dev/null 2>&1; then
-        UNDONE=1
+        RELEASE_DELETED=1
       else
         printf '경고: 릴리스 삭제 실패 — GitHub에서 태그 %s의 릴리스(초안)를 직접 지운다\n' "$VERSION" >&2
       fi
     else
       printf '경고: 되돌릴 릴리스를 찾지 못했다 — GitHub에서 태그 %s의 초안이 남았는지 확인해 지운다\n' "$VERSION" >&2
     fi
-    if [ "$TAG_EXISTED" -eq 0 ]; then
-      git push origin ":refs/tags/${VERSION}" >/dev/null 2>&1 || true   # 발행 전에 실패했으면 태그는 아직 없다
+    # 발행 뒤에 되돌리는 것이고 이 실행 전에 없던 태그면, 릴리스를 지운 뒤 태그도 지운다. 실패하면
+    # 남았다고 말한다 — 릴리스만 지우고 "되돌렸다"고 하지 않는다 (DEV-534).
+    if [ "$PUBLISHED" -eq 1 ] && [ "$TAG_EXISTED" -eq 0 ]; then
+      if ! git push origin ":refs/tags/${VERSION}" >/dev/null 2>&1; then
+        TAG_LEFT=1
+        printf '경고: 태그 %s 삭제 실패 — git push origin :refs/tags/%s 로 지운다\n' "$VERSION" "$VERSION" >&2
+      fi
     fi
+    if [ "$RELEASE_DELETED" -eq 1 ] && [ "$TAG_LEFT" -eq 0 ]; then UNDONE=1; fi
     return 0
   }
-  # die 메시지의 꼬리 — 되돌렸는지 못 했는지를 사실대로 말한다.
+  # die 메시지의 꼬리 — 무엇을 되돌렸고 무엇이 남았는지를 사실대로 말한다.
   undo_note() {
-    if [ "$UNDONE" -eq 1 ]; then printf '릴리스를 되돌렸다'; else printf '릴리스를 되돌리지 못했다 — GitHub에서 태그 %s의 릴리스(초안)를 지운 뒤 다시 실행한다' "$VERSION"; fi
+    if [ "$UNDONE" -eq 1 ]; then
+      if [ "$PUBLISHED" -eq 1 ] && [ "$TAG_EXISTED" -eq 0 ]; then printf '릴리스와 태그를 되돌렸다'; else printf '릴리스를 되돌렸다'; fi
+    elif [ "$RELEASE_DELETED" -eq 1 ]; then
+      printf '릴리스는 지웠으나 태그 %s가 남았다 — git push origin :refs/tags/%s 로 지운 뒤 다시 실행한다' "$VERSION" "$VERSION"
+    else
+      printf '릴리스를 되돌리지 못했다 — GitHub에서 태그 %s의 릴리스(초안)를 지운 뒤 다시 실행한다' "$VERSION"
+    fi
   }
   # **초안 → 자산 → 발행 순서다.** immutable releases가 켜진 저장소에서는 발행 뒤 자산을 붙일 수
   # 없으므로(GitHub가 권하는 순서), 자산이 전부 붙은 초안을 발행한다. 태그는 발행 시점에 만들어진다.
@@ -340,6 +353,7 @@ if [ "$RELEASE" -eq 1 ]; then
   fi
   gh api -X PATCH "repos/${REPO_SLUG}/releases/${RELEASE_ID}" -F draft=false >/dev/null \
     || { undo_release; die "초안을 발행하지 못했다 — $(undo_note)"; }
+  PUBLISHED=1   # 이제 태그가 있다 — 이 뒤의 되돌리기는 태그까지 지운다
 
   # **발행한 것을 다시 읽어 본다** (DEV-519의 규율). 이름·크기·digest가 로컬과 다르면
   # 되돌리고 실패한다. digest는 GitHub가 자산마다 계산해 API로 주는 값이다.
