@@ -162,6 +162,8 @@ SEARCH_CURSOR_HMAC_KEY       32자 이상
 
 `PRS_REINDEX_TIMEOUT_S`는 선택이며 두면 1~2592000(30일)의 정수여야 한다. 나머지 값의 뜻은 `.env.example`의 주석이 설명한다.
 
+**`.env`는 LF 개행이어야 한다.** `prsctl`은 값을 줄 단위로 읽으므로 CRLF면 모든 값 끝에 `\r`이 붙어 `3600` 같은 멀쩡한 값이 거부된다 (`DEV-526`). 번들의 `.env.example`은 LF이며(빌드가 보장한다) 그것을 `cp`해 리눅스 편집기로 고치면 LF가 유지된다. Windows에서 편집해 옮겼다면 `sed -i 's/\r$//' .env`로 되돌린다.
+
 ### 데이터베이스 접속 주체는 `prsctl install`이 만든다
 
 `.env`의 `POSTGRES_APP_USER`에 **`prs_app`이 아닌 이름**을 준다 (예: `prs_app_login`). `prs_app`은 마이그레이션 005가 만드는 `NOLOGIN` 그룹 롤이라 **그대로는 접속할 수 없다** (`DEV-503`).
@@ -368,6 +370,7 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | `load`·`install`이 필수 값 부재로 멈춘다 | `.env`에 값이 실제로 채워졌는가. `KEY=`만 있으면 비어 있는 것이다. 필수 키 목록은 2.B 「`.env`는 어디에 있는가」 |
 | `images/*.tar`를 `tar`로 풀었더니 파일 더미가 나온다 | 그것은 Docker 이미지 아카이브다. 풀지 말고 `./prsctl load`를 쓴다 (2.A 「아카이브가 셋이다」). 풀어 놓은 더미는 지워도 된다 |
 | `git fetch`가 `.bundle`을 읽지 못한다 | 경로가 2.B에서 푼 위치를 가리키는가. `.bundle`은 `tar`나 `docker load`의 대상이 아니다 |
+| `load`가 `PRS_REINDEX_TIMEOUT_S … 정수여야 한다: 3600`처럼 **멀쩡해 보이는 값을 거부한다** | `.env`가 CRLF다 — Windows 편집기로 고쳤거나 그렇게 저장된 파일을 복사했다. `prsctl`은 값을 줄 단위로 읽어 끝의 `\r`이 값에 붙는다. `sed -i 's/\r$//' .env`로 LF로 만든다 (DEV-526) |
 | compose가 이미지를 pull하려 한다 | `./prsctl load`를 실행했는가. `PRS_VERSION`이 적재한 태그와 같은가 |
 | `enrich`·`reconcile`이 기동을 거부한다 | `GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`가 있는가. **의도된 거부다** — 자격 없이 돌면 모든 이벤트가 실패 대기열에 쌓인다 |
 | 웹훅이 전부 401 | `GHE_WEBHOOK_SECRET`이 GHE 쪽 설정과 같은가 |

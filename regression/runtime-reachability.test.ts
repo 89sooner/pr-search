@@ -389,6 +389,19 @@ describe('사내 반입 절차가 실행 도구와 같은 말을 한다 (WP-071 
     expect(RUNBOOK).toContain('직접 풀지 않는다');
     expect(RUNBOOK).toContain('git fetch <파일> HEAD:vendor/upstream');
   });
+
+  /*
+   * **번들에 들어가는 텍스트는 LF다** (DEV-526). 빌더의 checkout이 `core.autocrlf=true`면
+   * `.gitattributes`가 고정하지 않은 `.env.example`이 CRLF로 복사되고, 사내에서 `cp`한
+   * `.env`의 모든 값 끝에 `\r`이 붙어 `require_env`가 `3600` 같은 멀쩡한 값을 거부한다.
+   * 실제 검증 실행에서 그렇게 실패했다 — 속성으로 고정하고 빌드가 한 번 더 정규화한다.
+   */
+  it('번들의 배포 정의 텍스트가 LF로 고정된다 (DEV-526)', () => {
+    const attributes = read('.gitattributes');
+    expect(attributes).toContain('deploy/single-host/.env.example text eol=lf');
+    expect(attributes).toContain('deploy/single-host/RUNBOOK.md text eol=lf');
+    expect(BUILD).toContain("sed -i 's/\\r$//'");
+  });
 });
 
 describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () => {

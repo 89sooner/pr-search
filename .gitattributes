@@ -10,3 +10,9 @@ deploy/single-host/prsctl text eol=lf
 # Compose·Filebeat 설정도 컨테이너 안에서 읽힌다. LF로 고정한다.
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# `.env.example`은 사내에서 `cp`로 `.env`가 되고 `prsctl`이 줄 단위로 읽는다. CRLF면
+# 모든 값 끝에 `\r`이 붙어 `3600` 같은 멀쩡한 값이 거부된다 (DEV-526). 런북도 번들에
+# 들어가는 텍스트라 함께 고정한다.
+deploy/single-host/.env.example text eol=lf
+deploy/single-host/RUNBOOK.md text eol=lf

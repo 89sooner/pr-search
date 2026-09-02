@@ -103,6 +103,11 @@ step "배포 정의 복사"
 mkdir -p "${BUNDLE}/deploy/single-host"
 for f in compose.yml .env.example prsctl filebeat.yml RUNBOOK.md; do
   [ -e "${REPO_ROOT}/deploy/single-host/${f}" ] && cp "${REPO_ROOT}/deploy/single-host/${f}" "${BUNDLE}/deploy/single-host/"
+  # **텍스트는 LF로 맞춘다** (DEV-526). 빌더의 checkout이 `core.autocrlf=true`면 `.gitattributes`가
+  # 고정하지 않은 파일이 CRLF로 복사되는데, 사내 운영자가 `cp .env.example .env`를 하는 순간
+  # 모든 값 끝에 `\r`이 붙어 `require_env`가 `3600` 같은 멀쩡한 값을 거부한다. 번들의 내용이
+  # 빌더의 git 설정에 따라 달라지면 안 된다 — checksum은 이 정규화 뒤에 계산된다.
+  [ -f "${BUNDLE}/deploy/single-host/${f}" ] && sed -i 's/\r$//' "${BUNDLE}/deploy/single-host/${f}"
 done
 chmod +x "${BUNDLE}/deploy/single-host/prsctl" 2>/dev/null || true
 
