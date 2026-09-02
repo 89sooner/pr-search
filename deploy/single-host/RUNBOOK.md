@@ -119,14 +119,14 @@ pr-search-<version>-offline/
 | 어디에 두지 않는가 | **`.env`·번들·저장소·호스트의 시크릿 파일.** 서비스는 이 토큰을 읽지 않으며 `.env.example`에 그 키가 없다 (보안 문서 6장) |
 | 회전 | 90일. 담당자가 바뀌면 즉시 폐기 |
 
-받는 명령은 2.B 1단계에 있다. `gh`가 없는 위치에서는 API로 받는다 — `Accept` 헤더가 없으면 파일 대신 JSON이 온다.
+받는 명령은 2.B 1단계에 있다. `gh`가 없는 위치에서는 API로 받는다 — `Accept` 헤더가 없으면 파일 대신 JSON이 온다. 응답 JSON에는 `id`가 릴리스·작성자·자산·업로더에 각각 있으므로 `grep`으로는 자산 id를 가려낼 수 없다 — `python3`(또는 `jq`)로 `assets[]`의 항목을 읽는다 (`DEV-532`).
 
 ```bash
-# 자산 id와 digest를 읽는다
+# 자산 id · 이름 · digest를 읽는다 (python3가 없으면 jq: jq -r '.assets[] | "\(.id) \(.name) \(.digest)"')
 curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
   https://api.github.com/repos/<owner>/<repo>/releases/tags/<version> \
-  | grep -E '"(id|name|digest)"'
-# 자산을 받는다
+  | python3 -c 'import json,sys; [print(a["id"], a["name"], a["digest"]) for a in json.load(sys.stdin)["assets"]]'
+# 자산을 받는다 — 위 줄이 출력한 id를 쓴다
 curl -fL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" \
   -o pr-search-<version>-offline.tar.gz \
   https://api.github.com/repos/<owner>/<repo>/releases/assets/<asset id>

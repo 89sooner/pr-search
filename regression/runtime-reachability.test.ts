@@ -497,6 +497,19 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
     const end = RUNBOOK.indexOf('### 2.C');
     expect(RUNBOOK.slice(start, end)).toContain('담당자가 별도 채널로 전달한 SHA-256');
   });
+
+  /*
+   * **초안 잔재를 남기지 않는다** (DEV-531, PR #120 머지 후 리뷰). 초안을 올린 뒤 id 조회가
+   * 실패하면 되돌려야 한다 — 남기면 같은 버전의 재실행이 전제 검사에서 막힌다.
+   * **curl 경로는 자산 id를 실제로 뽑아야 한다** (DEV-532). 한 줄 JSON에 id가 넷이라 grep은 답이 아니다.
+   */
+  it('초안 id 조회 실패가 초안을 되돌리고, curl 경로가 assets[]에서 id를 뽑는다 (DEV-531 · DEV-532)', () => {
+    expect(BUILD).toContain('lookup_draft_id()');
+    expect(BUILD).toContain('[ -n "$RELEASE_ID" ] || RELEASE_ID="$(lookup_draft_id)"');
+    expect(BUILD).toMatch(/for attempt in 1 2 3; do[\s\S]*?undo_release\n\s+die "만든 초안의 id를 얻지 못했다/);
+    expect(RUNBOOK).toContain('json.load(sys.stdin)["assets"]');
+    expect(RUNBOOK).not.toMatch(/\|\s*grep -E '"\(id\|name\|digest\)"'/);
+  });
 });
 
 describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () => {
