@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-09-03T12:29:01+00:00",
+  "generated": "2026-09-03T12:37:01+00:00",
   "root": "/home/roqkf/pr-search",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -231,10 +231,10 @@
       "id": "f73e2b0",
       "source_path": "agent-context/session-notes.md",
       "compact_path": "agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md",
-      "sha256": "f3920498a566fdeae0f03c7429f7bf09e5befb36d775e356ff88333cdd06ecb1",
-      "bytes": 134037,
-      "lines": 2124,
-      "compact_bytes": 133492,
+      "sha256": "5c02d42f227d829ecd45e82134291798b35ff61add99c2a73f133f8ded3d87cb",
+      "bytes": 134379,
+      "lines": 2128,
+      "compact_bytes": 133788,
       "headings": [
         "Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료",
         "Session: 2026-09-03 (2차) — 리뷰 부채 종결과 Conductor 0.3.1",
@@ -258,6 +258,7 @@
         "agent-context/count-unresolved-reviews.py",
         "Risks/gotchas",
         "home/roqkf/design-system",
+        "origin/main",
         "exports/202609032106.md",
         "10/11",
         "docs/00_governance/change_control.md",
@@ -276,8 +277,7 @@
         "exports/202608262224.md",
         "4/8",
         "apps/search-api/integration/sequence/_repro-w004.test.ts",
-        "exports/202608270742.md",
-        "dailywork/2026-08-27_PR-Search-WP-035-"
+        "exports/202608270742.md"
       ],
       "priority": 25,
       "title": "Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료"
