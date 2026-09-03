@@ -75,6 +75,9 @@ UPSTREAM_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 # 빌드 뒤에 있으면 fail-fast가 아니다 — 검사의 위치다 (DEV-524가 가르친 것).
 REPO_SLUG=""
 TAG_EXISTED=0
+# 이 실행이 태그를 **원자적으로 만들어** 소유를 얻었는가 (DEV-541). 되돌리기가 태그를
+# 지울 수 있는 유일한 근거이며, 전제 검사의 "지금 없더라"는 근거가 되지 못한다.
+TAG_CREATED_BY_THIS_RUN=0
 if [ "$RELEASE" -eq 1 ]; then
   command -v gh >/dev/null || die "gh가 없다 — --release는 GitHub CLI가 필요하다"
   gh auth status >/dev/null 2>&1 || die "gh가 인증되지 않았다 (gh auth status)"
@@ -314,27 +317,26 @@ if [ "$RELEASE" -eq 1 ]; then
     else
       printf '경고: 되돌릴 릴리스를 찾지 못했다 — GitHub에서 태그 %s의 초안이 남았는지 확인해 지운다\n' "$VERSION" >&2
     fi
-    # 이 실행 전에 없던 태그가 지금 원격에 있으면 발행이 만든 것이다 — 릴리스를 지운 뒤 태그도 지운다.
-    # 있는지를 원격에 직접 묻고(DEV-535), 못 물었거나 못 지웠으면 남았다고 말한다 (DEV-534).
-    if [ "$TAG_EXISTED" -eq 0 ]; then
-      if REMOTE_TAG="$(git ls-remote --tags origin "refs/tags/${VERSION}" "refs/tags/${VERSION}^{}" 2>/dev/null)"; then
-        if [ -n "$REMOTE_TAG" ]; then
-          # **이 실행이 만든 태그만 지운다** (DEV-537). 전제 검사 뒤 빌드가 도는 몇 분 사이에 다른 주체가
-          # 같은 이름의 태그를 만들 수 있다 — 그 태그가 이 실행의 커밋을 가리키지 않으면 남의 것이다.
-          TAG_NOW="$(printf '%s\n' "$REMOTE_TAG" | tail -1 | cut -f1)"
-          if [ "$TAG_NOW" != "$UPSTREAM_COMMIT" ]; then
-            TAG_FOREIGN="$TAG_NOW"
-            printf '경고: 태그 %s가 다른 커밋(%s)을 가리킨다 — 이 실행이 만든 것이 아니므로 지우지 않는다\n' "$VERSION" "$TAG_NOW" >&2
-          elif git push origin ":refs/tags/${VERSION}" >/dev/null 2>&1; then
-            TAG_DELETED=1
-          else
-            TAG_LEFT=1
-            printf '경고: 태그 %s 삭제 실패 — git push origin :refs/tags/%s 로 지운다\n' "$VERSION" "$VERSION" >&2
-          fi
-        fi
+    # **소유를 증명한 실행만 태그를 지운다** (DEV-541). 커밋이 같다는 것은 대상을 증명하지
+    # 소유를 증명하지 않는다 — 전제 검사 뒤 빌드가 도는 몇 분 사이에 다른 주체가 같은 버전을
+    # 같은 커밋으로 발행하면, "이 실행 전에 없었고 지금 내 커밋을 가리킨다"는 조건이 남의
+    # 태그에도 참이 된다 (DEV-537의 판정이 닿지 못한 자리다).
+    #
+    # 삭제에도 기대값을 건다. 만든 뒤 누군가 태그를 옮겼으면 그것은 더 이상 이 실행이 만든
+    # 상태가 아니므로 지우지 않는다.
+    if [ "$TAG_CREATED_BY_THIS_RUN" -eq 1 ]; then
+      if git push --force-with-lease="refs/tags/${VERSION}:${UPSTREAM_COMMIT}" origin ":refs/tags/${VERSION}" >/dev/null 2>&1; then
+        TAG_DELETED=1
       else
         TAG_LEFT=1
-        printf '경고: 태그 %s가 원격에 남았는지 확인하지 못했다 — git ls-remote --tags origin refs/tags/%s 로 확인해 지운다\n' "$VERSION" "$VERSION" >&2
+        printf '경고: 태그 %s를 지우지 못했다 — 기대한 커밋(%s)에서 옮겨졌거나 삭제가 거부됐다. git ls-remote --tags origin refs/tags/%s 로 확인한 뒤 판단한다\n' "$VERSION" "$UPSTREAM_COMMIT" "$VERSION" >&2
+      fi
+    elif [ "$TAG_EXISTED" -eq 0 ]; then
+      # 발행 전에는 없었는데 이 실행이 만들지도 않았다 — 원자적 생성이 거부됐다는 뜻이고,
+      # 그렇다면 다른 주체의 것이다. 커밋이 같더라도 지우지 않는다.
+      if REMOTE_TAG="$(git ls-remote --tags origin "refs/tags/${VERSION}" "refs/tags/${VERSION}^{}" 2>/dev/null)" && [ -n "$REMOTE_TAG" ]; then
+        TAG_FOREIGN="$(printf '%s\n' "$REMOTE_TAG" | tail -1 | cut -f1)"
+        printf '경고: 태그 %s(%s)는 이 실행이 만든 것이 아니다 — 지우지 않는다\n' "$VERSION" "$TAG_FOREIGN" >&2
       fi
     fi
     if [ "$RELEASE_DELETED" -eq 1 ] && [ "$TAG_LEFT" -eq 0 ] && [ -z "$TAG_FOREIGN" ]; then UNDONE=1; fi
@@ -343,9 +345,9 @@ if [ "$RELEASE" -eq 1 ]; then
   # die 메시지의 꼬리 — 무엇을 되돌렸고 무엇이 남았는지를 사실대로 말한다.
   undo_note() {
     if [ "$UNDONE" -eq 1 ]; then
-      if [ "$TAG_DELETED" -eq 1 ]; then printf '릴리스와 태그를 되돌렸다'; else printf '릴리스를 되돌렸다 (태그는 만들어지지 않았다)'; fi
+      if [ "$TAG_DELETED" -eq 1 ]; then printf '릴리스와 태그를 되돌렸다'; else printf '릴리스를 되돌렸다 (이 실행은 태그를 만들지 않았다)'; fi
     elif [ "$RELEASE_DELETED" -eq 1 ] && [ -n "$TAG_FOREIGN" ]; then
-      printf '릴리스는 지웠다. 태그 %s는 다른 커밋(%s)을 가리켜 이 실행의 것이 아니므로 지우지 않았다 — 같은 버전을 다른 주체가 만들었는지 확인한 뒤 새 버전으로 다시 실행한다' "$VERSION" "$TAG_FOREIGN"
+      printf '릴리스는 지웠다. 태그 %s(%s)는 이 실행이 만든 것이 아니므로 지우지 않았다 — 같은 버전을 다른 주체가 발행하고 있는지 확인한 뒤 새 버전으로 다시 실행한다' "$VERSION" "$TAG_FOREIGN"
     elif [ "$RELEASE_DELETED" -eq 1 ]; then
       printf '릴리스는 지웠으나 태그 %s가 남았거나 확인하지 못했다 — git ls-remote --tags origin refs/tags/%s 로 확인하고 git push origin :refs/tags/%s 로 지운 뒤 다시 실행한다' "$VERSION" "$VERSION" "$VERSION"
     else
@@ -369,6 +371,34 @@ if [ "$RELEASE" -eq 1 ]; then
     undo_release
     die "만든 초안의 id를 얻지 못했다 — $(undo_note)"
   fi
+  # **태그를 발행에 맡기지 않고 이 실행이 원자적으로 만든다** (DEV-541). 발행(`draft=false`)이
+  # 태그를 만들면 되돌리기가 "내가 만들었는가"를 알 길이 없어, 같은 커밋을 가리키는 남의 태그를
+  # 지운다. GitHub의 ref 생성은 이미 있으면 `422 Reference already exists`를 내므로 create-if-absent가
+  # 원자적이다 — 성공한 실행이 소유자다.
+  #
+  # `git push --force-with-lease=refs/tags/<v>:` (빈 기대값 = 부재)는 답이 아니다. 원격이 이미
+  # 같은 커밋이면 git이 보낼 것이 없다고 판단해 lease를 검사하지 않고 `Everything up-to-date`로
+  # 통과한다(로컬 bare 원격으로 실측). 정확히 이 P1이 문제 삼는 "같은 버전·같은 커밋" 경쟁에서
+  # 무력하다. 삭제 쪽 lease(기대값이 SHA인 경우)는 정상 동작하므로 되돌리기에서 쓴다.
+  if [ "$TAG_EXISTED" -eq 0 ]; then
+    if gh api "repos/${REPO_SLUG}/git/refs" -f "ref=refs/tags/${VERSION}" -f "sha=${UPSTREAM_COMMIT}" >/dev/null 2>&1; then
+      TAG_CREATED_BY_THIS_RUN=1
+    else
+      # 만들지 못했다 — 이 실행 중에 다른 주체가 먼저 만들었거나 API가 거부했다. 어느 쪽이든
+      # 이 실행은 태그를 소유하지 않는다.
+      TAG_RACED="$(git ls-remote --tags origin "refs/tags/${VERSION}" "refs/tags/${VERSION}^{}" 2>/dev/null | tail -1 | cut -f1 || true)"
+      if [ -z "$TAG_RACED" ]; then
+        undo_release
+        die "태그 ${VERSION}을 만들지 못했고 원격에도 없다 — $(undo_note)"
+      fi
+      if [ "$TAG_RACED" != "$UPSTREAM_COMMIT" ]; then
+        undo_release
+        die "태그 ${VERSION}이 이 실행 중에 다른 커밋(${TAG_RACED})으로 만들어졌다 — 이 커밋(${UPSTREAM_COMMIT})의 릴리스가 될 수 없다. $(undo_note)"
+      fi
+      printf '경고: 태그 %s를 다른 실행이 먼저 만들었다 (같은 커밋 %s) — 이 실행은 그 태그를 소유하지 않으며 되돌리기에서 지우지 않는다\n' "$VERSION" "$UPSTREAM_COMMIT" >&2
+    fi
+  fi
+
   gh api -X PATCH "repos/${REPO_SLUG}/releases/${RELEASE_ID}" -F draft=false >/dev/null \
     || { undo_release; die "초안을 발행하지 못했다(서버에는 적용됐을 수 있다) — $(undo_note)"; }
 

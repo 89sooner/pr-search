@@ -16,3 +16,9 @@ deploy/single-host/prsctl text eol=lf
 # 들어가는 텍스트라 함께 고정한다.
 deploy/single-host/.env.example text eol=lf
 deploy/single-host/RUNBOOK.md text eol=lf
+
+# 회귀가 PATH에 두고 실제로 실행하는 대역이다. 확장자가 없어 위의 `*.sh`에 걸리지
+# 않으므로 여기서 고정한다 — CRLF가 되면 `#!/usr/bin/env bash\r`이 되어 CI에서
+# `bad interpreter`로 죽는다 (DEV-541의 시험이 여기에 의존한다).
+regression/fixtures/release-tag/fake-gh text eol=lf
+regression/fixtures/release-tag/fake-docker text eol=lf

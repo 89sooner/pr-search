@@ -512,14 +512,23 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
     expect(BUILD).toContain('릴리스를 되돌리지 못했다');
     expect(BUILD).not.toMatch(/die "[^"]*초안을 되돌렸다/);
     // 발행이 만든 태그의 삭제 결과도 보고에 들어간다 — 릴리스만 지우고 "되돌렸다"고 하지 않는다 (DEV-534)
-    // "발행했는가" 플래그가 아니라 원격에 태그가 있는지를 묻는다 — 응답만 잃은 발행도 잡는다 (DEV-535)
-    expect(BUILD).toMatch(/undo_release\(\) \{[\s\S]*?git ls-remote --tags origin "refs\/tags\/\$\{VERSION\}"[\s\S]*?git push origin ":refs\/tags\/\$\{VERSION\}"/);
     expect(BUILD).not.toContain('PUBLISHED');
-    // 이 실행이 만든 태그만 지운다 — 다른 커밋을 가리키는 태그는 남의 것이다 (DEV-537)
-    expect(BUILD).toMatch(/undo_release\(\) \{[\s\S]*?"\$TAG_NOW" != "\$UPSTREAM_COMMIT"[\s\S]*?git push origin ":refs\/tags\/\$\{VERSION\}"/);
-    expect(BUILD).toContain('이 실행이 만든 것이 아니므로 지우지 않는다');
+    /*
+     * **소유는 원자적 생성의 성공으로만 얻는다** (DEV-541이 DEV-537을 넓힌다). 같은 버전을
+     * 같은 커밋으로 두 실행이 겹치면 "이 실행 전에 없었고 지금 내 커밋을 가리킨다"가 남의
+     * 태그에도 참이 되므로, 커밋 일치를 소유 근거로 쓰지 않는다. 실제 동시성 시나리오는
+     * `release-tag-ownership.test.ts`가 스크립트를 돌려 확인한다.
+     */
+    expect(BUILD).toMatch(/TAG_CREATED_BY_THIS_RUN=0/);
+    expect(BUILD).toMatch(/gh api "repos\/\$\{REPO_SLUG\}\/git\/refs"[^\n]*ref=refs\/tags\/\$\{VERSION\}[\s\S]*?TAG_CREATED_BY_THIS_RUN=1/);
+    expect(BUILD).toMatch(/undo_release\(\) \{[\s\S]*?\[ "\$TAG_CREATED_BY_THIS_RUN" -eq 1 \][\s\S]*?git push --force-with-lease="refs\/tags\/\$\{VERSION\}:\$\{UPSTREAM_COMMIT\}" origin ":refs\/tags\/\$\{VERSION\}"/);
+    // 소유하지 않은 태그는 확인만 하고 남긴다 — 커밋이 같아도 지우지 않는다
+    expect(BUILD).toMatch(/undo_release\(\) \{[\s\S]*?git ls-remote --tags origin "refs\/tags\/\$\{VERSION\}"[\s\S]*?TAG_FOREIGN=/);
+    expect(BUILD).toContain('이 실행이 만든 것이 아니다 — 지우지 않는다');
     expect(BUILD).toContain('릴리스는 지웠으나 태그');
-    expect(BUILD).not.toMatch(/git push origin ":refs\/tags\/\$\{VERSION\}"[^\n]*\|\| true/);
+    // 기대값 없는 삭제로 되돌아가지 않는다
+    expect(BUILD).not.toMatch(/git push origin ":refs\/tags\/\$\{VERSION\}"/);
+    expect(BUILD).not.toMatch(/git push[^\n]*refs\/tags\/\$\{VERSION\}[^\n]*\|\| true/);
     expect(RUNBOOK).toContain('json.load(sys.stdin)["assets"]');
     expect(RUNBOOK).not.toMatch(/\|\s*grep -E '"\(id\|name\|digest\)"'/);
   });

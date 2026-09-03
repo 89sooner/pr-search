@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# build-bundle.sh --release가 부르는 gh를 흉내낸다 (DEV-541 동시성 시험용).
+#
+# GitHub의 두 성질을 그대로 재현한다.
+#   1. `POST /git/refs`는 ref가 이미 있으면 422를 내고 아무것도 바꾸지 않는다 (원자적 create-if-absent).
+#   2. 그 판정의 근거는 원격의 실제 상태다 — 여기서는 $FAKE_REMOTE(bare 저장소)를 직접 본다.
+#
+# 시나리오는 환경 변수로 준다.
+#   FAKE_REMOTE          bare 원격 경로 (필수)
+#   FAKE_COMMIT          이 실행이 발행하려는 커밋
+#   FAKE_RACE_AT_DRAFT   1이면 초안 생성 직후에 다른 주체가 같은 태그를 만든다 (같은 커밋)
+#   FAKE_RETARGET_AFTER_REF 1이면 이 실행이 ref를 만든 직후 다른 주체가 태그를 옮긴다
+#   FAKE_ASSET_MISMATCH  1이면 발행 자산 대조가 어긋나 되돌리기가 돈다
+set -euo pipefail
+state="${FAKE_REMOTE}/../fake-gh.state"
+tag_of() { git --git-dir="$FAKE_REMOTE" rev-parse --verify -q "refs/tags/$1" 2>/dev/null || true; }
+
+case "$1" in
+  auth) exit 0 ;;
+  release)
+    case "${2:-}" in
+      view) exit 1 ;;   # 같은 버전의 릴리스는 없다
+      create)
+        echo "draft-created" > "$state"
+        if [ "${FAKE_RACE_AT_DRAFT:-0}" = "1" ]; then
+          # 다른 주체가 같은 버전을 같은 커밋으로 먼저 발행한다.
+          git --git-dir="$FAKE_REMOTE" update-ref "refs/tags/${FAKE_VERSION}" "$FAKE_COMMIT"
+        fi
+        exit 0 ;;
+      *) exit 1 ;;
+    esac ;;
+  api)
+    shift
+    method="GET"; path=""; fields=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -X) method="$2"; shift 2 ;;
+        -f|-F) fields+=("$2"); shift 2 ;;
+        --jq) shift 2 ;;
+        *) [ -z "$path" ] && path="$1"; shift ;;
+      esac
+    done
+    case "$path" in
+      *"/git/refs")
+        ref=""; sha=""
+        for f in "${fields[@]}"; do
+          case "$f" in ref=*) ref="${f#ref=}" ;; sha=*) sha="${f#sha=}" ;; esac
+        done
+        name="${ref#refs/tags/}"
+        if [ -n "$(tag_of "$name")" ]; then
+          printf '{"message":"Reference already exists","status":"422"}\n' >&2
+          exit 1
+        fi
+        git --git-dir="$FAKE_REMOTE" update-ref "$ref" "$sha"
+        if [ "${FAKE_RETARGET_AFTER_REF:-0}" = "1" ]; then
+          git --git-dir="$FAKE_REMOTE" update-ref "$ref" "$FAKE_OTHER_COMMIT"
+        fi
+        printf '{"ref":"%s"}\n' "$ref"
+        exit 0 ;;
+      *"/immutable-releases") printf 'false\n'; exit 0 ;;
+      *"/releases/tags/"*)
+        if [ "${FAKE_ASSET_MISMATCH:-0}" = "1" ]; then
+          printf 'wrong-name.tar.gz 1 sha256:deadbeef\n'
+        else
+          printf '%s %s sha256:%s\n' "${FAKE_ASSET_NAME:-x.tar.gz}" "${FAKE_ASSET_SIZE:-0}" "${FAKE_ASSET_SHA:-0}"
+        fi
+        exit 0 ;;
+      *"/releases/"*)
+        [ "$method" = "DELETE" ] && { echo "deleted" > "$state"; exit 0; }
+        exit 0 ;;   # PATCH draft=false
+      *"/releases"*)
+        # lookup_draft_id / 초안 잔재 조회
+        [ "$(cat "$state" 2>/dev/null || true)" = "draft-created" ] && printf '4242\n'
+        exit 0 ;;
+      *) exit 0 ;;
+    esac ;;
+  *) exit 0 ;;
+esac

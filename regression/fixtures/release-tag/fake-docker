@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# 이미지 단계를 통과시키는 최소 docker. 내용은 이 시험의 관심사가 아니다.
+set -euo pipefail
+case "${1:-}" in
+  build|pull) exit 0 ;;
+  image) [ "${2:-}" = "inspect" ] && { printf 'sha256:0000000000000000000000000000000000000000000000000000000000000000\n'; exit 0; }; exit 0 ;;
+  save)
+    out=""; prev=""
+    for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
+    [ -n "$out" ] && printf 'fake-image-tar\n' > "$out"
+    exit 0 ;;
+  *) exit 0 ;;
+esac
