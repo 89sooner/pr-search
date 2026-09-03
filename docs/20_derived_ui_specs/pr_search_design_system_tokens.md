@@ -1,6 +1,6 @@
 # PR Search 디자인 시스템 토큰 문서
 
-> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+> 상태: review | 버전: v0.3 | 갱신일: 2026-09-03
 
 ## 1. 디자인 원칙
 
@@ -174,15 +174,30 @@ Conductor `Status` 어휘(`queued` / `running` / `waiting` / `success` / `partia
 
 ## 9. Motion
 
+**이 표는 Conductor 컴포넌트가 쓰는 토큰을 적는다.** 제품이 직접 만드는 전환의 목록이 아니다 — 아래 마지막 규칙이 그것을 금지하고, 실제로 `apps/web`에는 CSS 파일이 0건이며 루트 레이아웃이 Conductor CSS만 가져온다(ADR-006). 제품이 쓸 수 있는 모션은 Conductor가 이미 컴포넌트 안에 넣어 둔 것뿐이다.
+
 | 용도 | Conductor 토큰 |
 | --- | --- |
 | 즉시 피드백(hover, focus) | `motion.fast` |
-| 일반 전환(섹션 확장, 탭 전환) | `motion.standard` |
-| 오버레이 등장 | `motion.standard` |
+| 오버레이 등장·퇴장 | `motion.standard` (Tooltip은 팝오버 예산 `motion.fast`) |
 | 강조 등장 | `motion.bounce` (사용 최소화) |
+| 무한 회전(Spinner) | `motion.spin` |
 
 - 30초 주기 지표 갱신에는 전환 애니메이션을 쓰지 않는다. 값이 계속 움직이면 읽기를 방해한다.
 - `prefers-reduced-motion` 설정 시 모든 전환을 제거한다. Conductor CSS가 이를 처리하므로 제품에서 별도 애니메이션을 추가하지 않는다.
+
+### 9.1 제품이 직접 만드는 전환 — 섹션 확장과 탭 전환은 즉시다 (CR-064)
+
+이전 판은 위 표에 "일반 전환(섹션 확장, 탭 전환) → `motion.standard`"를 넣었는데, **같은 절의 마지막 규칙과 어긋났다.** 섹션 확장과 탭 전환은 Conductor 프리미티브가 아니라 제품이 직접 만드는 동작이다 — Conductor에 `Tabs`도 `Accordion`도 없다(`Tabs.tsx`가 `Button` 조합으로 WAI-ARIA 탭을 직접 구현한다). 그 둘에 모션을 주려면 제품이 자체 CSS를 두어야 하는데 바로 그것을 금지하는 규칙이 아래에 있다.
+
+**두 동작을 따로 감사해 각각 즉시로 확정한다.**
+
+| 동작 | 현재 구현 | 판단 |
+| --- | --- | --- |
+| 탭 전환 (`Tabs.tsx`) | 선택 탭이 `variant="secondary"`, 나머지가 `ghost`. 패널은 즉시 교체 | **즉시를 유지한다.** 분석 화면의 탭은 고빈도 조작이고, 전환을 넣으면 연속 조작에서 지연이 누적된다. 선택 상태의 시각 피드백은 Conductor `Button`이 `motion.fast`로 이미 준다 |
+| 섹션 확장 (`hidden` 토글, 다섯 곳) | `hidden={!expanded}`. `NeighborSequenceList`·`ReleaseContainmentList`·`CoChangeSection`·`PendingSection`·`RelationSection` | **즉시를 유지한다.** `hidden`은 `display: none`이라 높이 전환이 성립하지 않고, 전환을 넣으려면 제품이 자체 CSS를 두어야 한다 — 위 규칙이 금지한다. 상위 요구사항도 이 모션을 요구하지 않는다: SRS에 섹션 확장 모션 요구가 없고 `NFR-007`은 접근성만 정한다 |
+
+**상위 요구사항을 낮춘 것이 아니다.** SRS·PRD 어디에도 이 두 전환의 모션 요구가 없었고, 파생 문서인 이 표가 상위 근거 없이 배정한 뒤 구현이 그것을 지키지 못한 상태로 남아 있었다. 정정 방향은 표 쪽이다.
 
 ## 10. 차트 색상
 

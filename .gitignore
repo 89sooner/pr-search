@@ -28,3 +28,9 @@ exports/
 deploy/single-host/.env
 deploy/single-host/bundle/
 deploy/single-host/backups/
+
+# 작업 계획서. 감사·설계 과정의 개인 산출물이며 정본이 아니다 — 결정과 결과는
+# `docs/00_governance/change_control.md`와 원장이 갖는다. **추적하지 않으면서
+# 무시하지도 않으면 번들 빌드가 막힌다**: `build-bundle.sh`의 계보 검사가
+# `agent-context/`만 제외하고 나머지 미추적 파일을 "깨끗하지 않음"으로 본다.
+plans/

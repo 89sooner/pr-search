@@ -12,8 +12,8 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@conductor-by-89soone/css": "0.3.0",
-    "@conductor-by-89soone/react": "0.3.0",
+    "@conductor-by-89soone/css": "0.3.1",
+    "@conductor-by-89soone/react": "0.3.1",
     "@conductor-by-89soone/tokens": "0.3.0",
     "@prs/authz": "workspace:*",
     "@prs/bus": "workspace:*",
