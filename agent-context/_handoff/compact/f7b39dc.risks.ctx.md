@@ -1,8 +1,36 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=62b32be948cd88a8fc140e2147d500ac4e94fcab4963317f0632ca27b1bc9785 bytes=142598 lines=1984 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;origin/main;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
+@kv sha256=c855a9542f071687c9e2162493a43d8d48b696d360128fa4d56960f03dbfbd58 bytes=148105 lines=2038 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;refs/tags/;usr/bin/env;origin/main;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-03 2차 라운드가 새로 배운 함정
+@h3 게이트의 위치가 실패의 대가를 정한다 — 가장 값비쌌던 것
+@p Conductor의 check:release-tags가 changeset publish 뒤에 있었다. 게이트가 막은 시점에 npm은 이미 css@0.3.1·react@0.3.1을 받은 뒤였고, git push origin --tags가 실행되지 않아 발행은 됐는데 릴리스 태그가 원격에 없는 상태가 남았다. 태그를 손으로 만들어 push해 복구했다.
+@path → 되돌릴 수 없는 부작용(발행) 앞에 있어야 할 검사가 뒤에 있으면, 그 검사가 옳게 잡아도 이미 늦다. DEV-524가 "fail-fast는 검사의 존재가 아니라 위치다"를 가르쳤는데 같은 교훈이 릴리스 쪽에서 다시 나왔다.
+@h3 지시받은 해법이 통하지 않을 수 있다 — 쓰기 전에 재라
+@path git push --force-with-lease=refs/tags/<v>:(빈 기대값 = "ref가 없어야 한다")로 원자적 create를 하라는 지시를 로컬 bare 원격으로 재현했다:
+@p | 원격 상태 | 결과 | | --- | --- | | 태그 없음 | [new tag] 생성 | | 태그가 같은 커밋 | Everything up-to-date (성공) — git이 보낼 것이 없다고 판단해 lease를 검사하지 않는다 |
+@dec | 태그가 다른 커밋 | [rejected] (stale info) |
+@p 둘째 줄이 정확히 문제 삼는 경쟁이다. 재지 않고 구현했으면 통하지 않는 것을 고쳤다고 보고했을 것이다. 삭제 쪽 lease(기대값이 SHA)는 정상 동작하므로 그것만 썼다.
+@h3 한 정정이 다음 구멍을 연다 — 릴리스 게이트를 네 번 고쳤다
+@p | 차수 | 무엇이 틀렸나 | 어떻게 고쳤나 | | --- | --- | --- |
+@path | DEV-040 | 세 패키지 전부에 release HEAD를 요구해 정상 patch 릴리스를 막았다. linked는 "함께 오를 때 같은 번호"이지 "항상 함께 오른다"가 아니다 | 태그 대상 커밋의 manifest가 이 버전을 담고 있는지로 판정 |
+@path | DEV-041 | 그 판정이 "이번 실행이 발행했는가"를 답하지 못한다 — 버전이 오른 뒤 npm에 없는 채로 소스가 움직이면 두 커밋이 같은 버전을 선언한다 | 발행 전 레지스트리 스냅숏으로 판정 |
+@path | DEV-042 | 스냅숏 단계가 기록만 하고 돌아와 어긋남이 발행 뒤에 보고됐다. npm view의 404 아닌 실패를 "미발행"으로 셌다 | 스냅숏 단계가 그 자리에서 거부. 404만 미발행으로 |
+@path | DEV-043 | 게시 전 판정이 위치만 보고 종류를 안 봤다 — 가벼운 태그가 HEAD에 있으면 통과하는데 Changesets는 그것을 대체하지 못한다 | cat-file -t를 위치 검사 앞에 |
+@p 네 번 다 머지 후 리뷰가 찾았다. 고친 자리의 바로 옆에 다음 구멍이 있었다 — 고침 자체를 다시 감사하지 않으면 보이지 않는 자리다.
+@h3 문서가 코드보다 넓게 말하면 그것도 결함이다
+@path DEV-044를 두 번 고쳤다. 처음에는 "게시하지 않은 패키지의 태그는 판정 대상이 아니다"라고 코드보다 넓게 적었고(실제로는 "태그 대상 == HEAD" 요구만 면제된다), 그것을 고치자 이번에는 모드를 뭉뚱그렸다(--snapshot은 그 태그를 아예 보지 않는다). 막힌 재실행을 진단하는 운영자가 검사되지 않은 자리를 들여다보게 되는 오진 경로였다.
+@h3 검사가 자기 검색어를 센다 — Conductor에서도 재현됐다
+@risk validate_srs_prd_env.py --strict의 미결 표식 게이트가 "정렬되지 않음"을 뜻하는 한 낱말 안의 부분 문자열을 세어 ERROR 2건을 냈다. 그 낱말을 설명에 그대로 적으면 그 문장까지 세어 재현된다 — 실제로 CR cascade를 쓰다가 한 번 더 밟았다. 뜻을 잃지 않는 표현으로 바꿔 해소했고, 그 사실 자체를 CR에 적을 때는 낱말을 적지 않았다.
+@h3 다른 저장소의 ID를 자기 추적 칸에 넣지 마라
+@path Conductor 원장의 DEV-034가 PR Search의 접근성 NFR ID를 관련 ID 칸에 적어 validator가 unknown requirement ID로 잡고 있었다 — CR-037 이전부터 있던 오류다. CR-036이 소비처 DEV-380을 본문 서술로만 인용한 것이 옳은 선례다.
+@h3 변이 원복이 실패하면 파일이 오염된 채로 남는다
+@p inline-size: var(--cdt-badge-line-height)로 변이를 걸었더니 그 문자열이 파일에 둘이 되어 역방향 치환의 "정확히 1건" 검사가 실패했고, 변이가 원복되지 않은 채 다음 변이가 돌았다. 변이 문자열은 파일 안에서 유일해야 한다 — 주석까지 포함해 고르면 안전하다. 원복 실패를 조용히 넘기지 말고 전량 시험으로 확인한다.
+@h3 확장자 없는 실행 파일은 *.sh 규칙에 걸리지 않는다
+@path 회귀가 PATH에 두고 실제로 실행하는 대역 fake-gh·fake-docker는 확장자가 없어 .gitattributes의 *.sh text eol=lf가 덮지 않는다. CRLF로 checkout되면 #!/usr/bin/env bash\r이 되어 CI에서 bad interpreter로 죽는다. 경로를 명시해 고정했다.
+@h3 plans/처럼 추적하지도 무시하지도 않은 디렉터리
+@p build-bundle.sh의 계보 검사는 agent-context/만 제외하고 나머지 미추적 파일을 "작업 트리가 깨끗하지 않다"로 본다. plans/가 그대로 있으면 다음 반입 번들을 만들 수 없다(실측). 양쪽 저장소의 .gitignore에 넣었다.
 @h2 2026-09-03 라운드가 새로 배운 함정
 @h3 스택 PR을 연달아 병합하면 main에 닿지 않는다 — 가장 값비쌌던 것
 @path #14(base=main)·#15(base=#14 브랜치)·#16(base=#15 브랜치)을 25초 간격으로 병합했더니 #15·#16이 각자의 부모 브랜치로 들어가고 main에는 #14만 남았다. GitHub이 자식 PR의 base를 main으로 재지정하기 전에 병합됐기 때문이다. "순서대로 머지했다"를 그대로 믿고 다음 단계(발행)로 갔으면 잘못된 것을 발행했을 것이다.

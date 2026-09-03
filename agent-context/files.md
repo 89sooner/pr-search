@@ -1,5 +1,37 @@
 # 중요 파일 경로와 역할
 
+## 2026-09-03 2차 라운드가 만지거나 만든 것
+
+**pr-search** (`main` = `503cc64`)
+
+- `deploy/single-host/build-bundle.sh` — 발행 직전 `gh api …/git/refs`로 태그를 원자적으로 만들고, 성공했을 때만 `TAG_CREATED_BY_THIS_RUN=1`. 되돌리기는 `--force-with-lease="refs/tags/<v>:<UPSTREAM_COMMIT>"`. **빈 기대값 lease로 되돌리지 마라** (`DEV-541`)
+- `regression/release-tag-ownership.test.ts` — 스크립트를 실제로 돌리는 동시성 시험 넷. `git`은 진짜, 원격은 로컬 bare
+- `regression/fixtures/release-tag/{fake-gh,fake-docker}` — 대역. `.gitattributes`가 LF로 고정한다(확장자가 없어 `*.sh`에 안 걸린다)
+- `regression/runtime-reachability.test.ts` — WP-072 describe의 되돌리기 계약을 새 판정에 맞췄다
+- `apps/web/package.json` — css·react 0.3.1, tokens 0.3.0. 셋을 각각 정확 고정한다
+- `docs/20_derived_ui_specs/pr_search_design_system_tokens.md` v0.3 — §9를 "Conductor 컴포넌트가 쓰는 토큰"으로 한정하고 §9.1에 섹션 확장·탭 전환의 감사 결과 (`CR-064`)
+- `.gitignore` — `plans/`. 되돌리면 번들 빌드가 막힌다 (`DEV-543`)
+- 원장 6.66.6(0.1.0-pilot.2 발행 사실) · 6.67.1·6.67.2(`DEV-539`·`540`) · 6.67.1(`DEV-541`) · 6.68(`CR-064`) · 6.69(0.3.1 반영)
+
+**design-system**
+
+- `packages/css/src/components.css` — `.cdt-meter__fill:dir(rtl)`(원점 뒤집기) · `.cdt-drawer`의 `--cdt-drawer-shift`와 keyframe 넷 · `.cdt-badge__dismiss.cdt-btn::after`(34×34 투명 적중 영역) · `aria-sort` 값별 셀렉터
+- `packages/css/test/bundle.test.ts` — describe 셋·시험 여덟 추가. 기존 `aria-sort` 시험도 새 계약에 맞췄다
+- `scripts/check-release-tags.mjs` — `--snapshot`·`--published-before`. 소유를 **발행 전 레지스트리 상태**로 가른다 (`CR-038`)
+- `scripts/check-release-tags.test.mjs` — 임시 git 저장소로 도는 시험 일곱
+- `.github/workflows/release.yml` — `changeset publish` **앞**에 스냅숏 단계. 지우지 마라
+- `vitest.config.ts` — `scripts` project 신설
+- `docs/10_requirements/srs_final.md` v1.6 — FR-CMP-004·005에 AC-6 (`CR-037`)
+- `docs/20_derived_ui_specs/conductor_ui_component_spec.md` v0.9 — "칩" 표현을 배지 범위로
+- `docs/00_governance/change_control.md` — `CR-037`·`CR-038`
+- `docs/40_delivery/conductor_implementation_traceability.md` v0.28 — `DEV-035`~`041`
+- `.gitignore` — `plans/`
+
+**손대면 안 되는 것 (갱신)**
+
+- 릴리스 워크플로의 스냅숏 단계 순서 — 발행 뒤에는 건너뛴 패키지와 발행된 패키지를 구분할 수 없다
+- `build-bundle.sh`의 원자적 태그 생성 — `gh api …/git/refs`를 `git push`로 되돌리지 마라
+- 파생 토큰 문서 §9 — 섹션 확장·탭 전환을 다시 넣지 마라
 
 ## 2026-09-03 라운드가 만지거나 만든 것
 
