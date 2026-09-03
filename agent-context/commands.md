@@ -11,10 +11,12 @@ gh api graphql -f query='{ repository(owner:"89sooner", name:"design-system") {
     comments(first:20) { nodes { author{login} body } } } } } } }'
 
 # 라운드가 처리한 스레드를 **두 저장소 전수로** 센다 (resolved 포함).
-# 번호를 주지 않고 `gh pr list --state merged`로 돌리면 저장소 이력 전체를 센다
-# (실측: design-system 33건, pr-search 82건) — 라운드 경계는 사람이 준다.
+# **번호도 총계도 문서에 박지 않는다** — 라운드가 진행되는 동안 둘 다 늘어나므로
+# 박아 두면 다음 사람이 읽는 시점에 반드시 어긋난다. 자리표시자에 그 라운드의
+# PR 번호를 직접 넣어 돌린다. 번호를 주지 않고 `gh pr list --state merged`로 돌리면
+# 저장소 이력 전체를 센다.
 # `session-notes.md`의 같은 명령과 형태를 맞춘다 — 한쪽만 세면 총계가 또 어긋난다.
-for repo_nums in "design-system 14 15 16 18 20 23 24 25 26 27 28" "pr-search 125 131 132 134 135 136"; do
+for repo_nums in "design-system <이 라운드에 병합된 design-system PR 번호들>" "pr-search <이 라운드에 병합된 pr-search PR 번호들>"; do
   set -- $repo_nums; repo=$1; shift
   total=0; rows=""
   for n in "$@"; do
