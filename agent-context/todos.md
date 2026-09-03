@@ -8,7 +8,7 @@
 SRS baseline **v2.20**(변경 없음) · 원장 review **v6.40** · 파생 토큰 문서 **v0.3**(CR-064) · 그 밖 변경 없음.
 Conductor(`/home/roqkf/design-system`) `main` = `49675ea` — SRS baseline **v1.6**, 원장 **v0.32**, `CR-040`·`DEV-044`까지. 패키지는 **css 0.3.1 · react 0.3.1 · tokens 0.3.0**이고 릴리스 태그 셋이 원격 검증을 통과한다.
 
-**미해결 리뷰 0건** — 양쪽 저장소 전량 순회로 확인했다(`python3 agent-context/count-unresolved-reviews.py`). 이 라운드가 **열여덟 건**을 처리했다(시작 시점 아홉 + 라운드 중 도착 아홉).
+**미해결 리뷰 0건** — 양쪽 저장소 전량 순회로 확인했다(`python3 agent-context/count-unresolved-reviews.py`). 이 라운드가 **스물세 건**을 처리했다 — design-system 20(#14·15·16·18·20·23·24·25·26·27·28) · pr-search 3(#125·131·132). 시작 시점이 아홉이고 나머지 열넷이 이 라운드의 수정에 대해 도착했다.
 
 이 라운드가 연 것 (pr-search): `CR-064` · `DEV-541`(태그 소유권) · `DEV-542`(0.3.1 반영) · `DEV-543`(plans/). 셋 다 resolved.
 이 라운드가 연 것 (Conductor): `CR-037`~`CR-040` 넷 · `DEV-035`~`DEV-044` 열. 전부 closed. **Conductor의 open DEV는 0건이다.**
