@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.38 | 갱신일: 2026-09-03
+> 상태: review | 버전: v6.40 | 갱신일: 2026-09-03
 
 ## 1. 목적
 
@@ -189,6 +189,8 @@
 
 | DEV ID | 발견일 | 발견 내용 | 관련 FR/WP | 유형 | 연결 CR | 상태 |
 | --- | --- | --- | --- | --- | --- | --- |
+| DEV-543 | 2026-09-03 | **추적하지도 무시하지도 않은 디렉터리가 번들 빌드를 막았다.** `plans/`(2026-09-02 감사 계획서)가 미추적으로 남아 있는데 `build-bundle.sh`의 계보 검사는 `agent-context/`만 제외하고 나머지 미추적 파일을 "작업 트리가 깨끗하지 않다"로 본다(DEV-512가 세운 규율이며 그 자체는 옳다 — `COPY . .`이 미추적 파일을 이미지에 넣기 때문이다). 실측: `git status --porcelain -- . ':(exclude)agent-context'`가 `?? plans/`를 낸다. 즉 이 상태로는 다음 반입 번들을 만들 수 없다. `.gitignore`에 넣어 해소했다 — 계획서는 감사 과정의 개인 산출물이고 결정과 결과의 정본은 CR과 이 원장이 갖는다 | WP-070 / WP-072 | 환경·도구 | 불필요 — 저장소 위생 문제이며 요구사항 변경이 없다 | resolved |
+| DEV-542 | 2026-09-03 | **Conductor 0.3.1 반영.** `DEV-035`~`DEV-038`(RTL 미터·서랍, 배지 제거 버튼 조작 대상, `aria-sort` 표시기)이 0.3.1에 담겼다. `css`·`react`만 올랐고 `tokens`는 바뀐 것이 없어 0.3.0에 머문다 — `apps/web/package.json`이 셋을 각각 정확 고정한다. 앱은 `Meter`(JobTable·RepositoryCardGrid)와 `aria-sort`(검색 결과 표)를 쓰고 `Drawer`·제거 가능한 배지는 쓰지 않으며 `dir` 속성을 두지 않아 LTR이다 — 따라서 이번 수정은 앱의 시각 동작을 바꾸지 않는다. 설치본에 네 수정이 모두 들어 있음을 확인했다 | WP-015 / NFR-007 | 의존성 | 불필요 | resolved |
 | DEV-541 | 2026-09-03 | **발행 되돌리기가 다른 실행이 만든 태그를 지울 수 있었다.** `build-bundle.sh`의 `undo_release()`가 "전제 검사 때 태그가 없었고(`TAG_EXISTED=0`) 지금 원격 태그가 이 커밋을 가리킨다"를 소유 근거로 썼는데, 같은 버전을 같은 커밋으로 두 작업이 겹치면 그 조건이 **남의 태그에도 참**이 된다 — OID 일치는 대상을 증명하지 소유를 증명하지 않는다. DEV-537이 "다른 커밋이면 남의 것"까지는 갈랐으나 같은 커밋 경쟁은 남아 있었다. 소유를 **원자적 생성의 성공**으로만 얻게 고쳤다: `POST /git/refs`는 ref가 이미 있으면 `422 Reference already exists`를 내고 아무것도 바꾸지 않는다(실측). `git push --force-with-lease=refs/tags/<v>:`(빈 기대값=부재)는 대안이 아니다 — 원격이 이미 같은 커밋이면 git이 보낼 것이 없다고 판단해 lease를 검사하지 않고 `Everything up-to-date`로 통과한다(로컬 bare 원격으로 실측). 삭제에는 기대값이 SHA인 lease를 걸어 만든 뒤 태그가 옮겨졌으면 지우지 않는다. PR #125 머지 후 리뷰 P1이 찾았다 | WP-072 / CR-063 | 구현 결함 | 불필요 — 승인된 운반 계약(릴리스 실패 시 자기 산출물만 되돌린다)의 구현이 그 계약을 지키지 못한 것이며 문서 변경이 없다 | resolved |
 | DEV-001 | 2026-08-19 | `docker compose up -d`를 WP-001 환경에서 실행 검증하지 못했다. 컨테이너 레지스트리 블롭 호스트(`production.cloudfront.docker.com`)와 `docker.elastic.co`가 실행 환경의 이그레스 정책에서 403으로 차단된다. `docker compose config`는 통과하고 compose 정의 자체는 인프라 4장·8장과 일치한다. 우회하지 않았고 이미지 태그도 바꾸지 않았다 | WP-001 | 기술 제약 | 불필요 (설계 변경 없음) | **resolved (2026-09-01, WP-070)** — 레지스트리 접근이 되는 환경에서 실제로 돌았다. 저장소 루트의 `docker-compose.yml`이 띄운 백킹 3종이 이 세션 내내 `healthy`였고, `WP-070`이 그 위에 **애플리케이션까지 포함한 18개 서비스**를 Compose로 세워 전 서비스 health를 확인했다. **우회하지 않았고 이미지 태그도 바꾸지 않았다** — 그때 막혔던 것은 이그레스 정책이었고 그 정책이 이 환경에 없다 |
 | DEV-002 | 2026-08-19 | 인프라 3장은 `pipeline-worker`의 health check를 "하트비트"로 적었으나 WP-001 DoD는 "각 앱 헬스체크가 200을 반환한다"를 요구한다. 워커에 `node:http` 기반 `GET /healthz`를 두어 둘을 모두 만족시켰다. ADR-001의 "워커는 순수 Node 프로세스" 결정을 지키려고 Fastify를 넣지 않았다 | WP-001 | 문서 오류 | 불필요 (인프라 8장에 표기 반영) | resolved |
@@ -5145,6 +5147,58 @@ E1이 정정 전에는 남의 태그를 지우고 "릴리스와 태그를 되돌
 
 **회귀 시험을 넓혔다** (347) — 되돌리기 안에서 `"$TAG_NOW" != "$UPSTREAM_COMMIT"` 대조가 `push`보다 앞이고, "이 실행이 만든 것이 아니므로 지우지 않는다"가 있는지 묻는다.
 
+### 6.66.6 0.1.0-pilot.2 발행 사실 (2026-09-02)
+
+**발행은 6.66장에서 끝났으나 그 사실이 원장에 없었다.** 이 절이 실제 값을 남긴다 — GitHub API로 다시 읽어 적었고, 기억이나 인계 문서의 값을 옮기지 않았다.
+
+| 항목 | 값 |
+| --- | --- |
+| 버전 · 태그 | `0.1.0-pilot.2` (lightweight, `refs/tags/0.1.0-pilot.2`) |
+| 대상 커밋 | `0a7306592be2ab32edc93d17555abc7f26e8b141` |
+| 릴리스 이름 | PR Search 0.1.0-pilot.2 |
+| 상태 | `draft: false` · `prerelease: false` |
+| 초안 생성 | 2026-09-02T08:47:55Z |
+| 발행 | 2026-09-02T08:51:55Z |
+| 자산 | `pr-search-0.1.0-pilot.2-offline.tar.gz` · 1,132,734,876바이트 · `application/x-gtar` |
+| 자산 digest | `sha256:4b07415682ec3c2bce3e020d8e10657886e12f6b386ecb6026554c544f5fb2a3` |
+| 내려받은 횟수 | 0 — 사내 반입이 아직 시작되지 않았다는 뜻이다 |
+| immutable releases | **꺼짐**. 그래서 정본은 담당자가 별도 채널로 전달하는 자산 SHA-256이다 (DEV-530) |
+
+이 저장소의 원격 태그와 릴리스는 이것 하나뿐이다(`git ls-remote --tags origin` 1행, `gh release list` 1행).
+
+### 6.67.1 맨 요소를 Conductor 컴포넌트로 (DEV-539)
+
+`reset` 레이어는 `button`에 `font: inherit`와 `cursor: pointer`만 준다. 그래서 맨 `<button>` 11곳이 브라우저 기본(`background: rgb(239,239,239)`)으로 그려졌고 맨 `<code>` 15곳은 글꼴만 달랐다.
+
+| 범위 | 실제 결과 |
+| --- | --- |
+| 버튼 | `apps/web/components/*.tsx` 열둘에서 맨 `<button>` 11곳이 Conductor `Button`으로. `Tabs.tsx`는 `data-active` 대신 `variant`로 선택 상태를 그린다 |
+| 코드 | 맨 `<code>` 15곳이 `className="cdt-mono"`로. `ShaChip.tsx:86`만 `cdt-num`이다 — `cdt-mono`는 `--cdt-text-mono-payload`로 색까지 강제하는데 그 색은 페이지 배경을 전제하므로 `tone="accent"` 배지 위에서 대비가 2.79:1로 AA에 미달한다(실측) |
+| 잔여 | `apps/web/components`에 맨 `<button>`·맨 `<code>` 0건 (2026-09-03 재확인) |
+
+### 6.67.2 Conductor 0.3.0 반영 (DEV-540)
+
+디자인 시스템 쪽 교정 아홉(`DEV-028`~`DEV-034`)이 앱에 닿으려면 버전을 올려야 했다. `apps/web/package.json`이 `@conductor-by-89soone/{css,react,tokens}` 셋을 `0.3.0`으로 정확 고정한다(범위 지정자 없음).
+
+| 확인 | 결과 |
+| --- | --- |
+| npm 발행 | 셋 다 `0.3.0` (`npm view … version`) |
+| 앱 고정 | `package.json` 셋 다 `"0.3.0"` |
+| e2e | `apps/web/e2e/shell.spec.ts`의 축소 모션 둘이 `durationMs`로 ms를 정규화해 비교한다 — Next 빌드가 `140ms`를 `.14s`로 압축하므로 문자열 비교로는 깨진다 |
+
+### 6.68 파생 모션 스펙 정정 (CR-064)
+
+토큰 문서 §9가 "일반 전환(섹션 확장, 탭 전환) → `motion.standard`"를 배정하면서 같은 절에서 "제품에서 별도 애니메이션을 추가하지 않는다"를 규칙으로 두어, 두 문장이 어긋난 채 있었다.
+
+| 확인 | 실측 |
+| --- | --- |
+| 제품이 자체 전환을 만들 수단 | **없다.** `apps/web`에 CSS 파일 0건, `layout.tsx`가 `@conductor-by-89soone/css` 하나만 가져온다 |
+| 탭 전환 | `Tabs.tsx`가 `variant`로 선택을 그리고 패널을 즉시 교체한다. Conductor에 `Tabs` 프리미티브가 없다 |
+| 섹션 확장 | `hidden={!expanded}` 다섯 곳. `hidden`은 `display: none`이라 높이 전환이 성립하지 않는다 |
+| 상위 요구사항 | SRS·PRD에 두 전환의 모션 요구가 없다. `NFR-007`은 접근성만 정한다 |
+
+두 동작을 따로 감사해 각각 즉시로 확정하고 표를 정정했다. **코드 변경 0** — 구현이 이미 §9의 규칙 쪽을 지키고 있었다.
+
 ### 6.67 축소 모션 복원 — 레이어 밖 토큰 import 제거 (DEV-538)
 
 **레이어 밖 선언은 레이어 안 선언을 항상 이긴다.** `layout.tsx:13`의 직접 import가 Conductor의 `@layer cdt.base` 재정의를 무력화하고 있었다. 수정 전후를 실제 브라우저에서 같은 방법(`emulateMedia({ reducedMotion: 'reduce' })` 뒤 계산값 읽기)으로 쟀다.
@@ -5190,6 +5244,18 @@ E1이 정정 전에는 남의 태그를 지우고 "릴리스와 태그를 되돌
 변이 셋 전부 킬 — 소유 판정을 커밋 일치로 되돌림(2 failed, 이 P1의 정확한 재현) · 삭제에서 기대값 제거(1 failed) · 원자적 생성 제거(3 failed).
 
 검증: `test:regression` 351/351 통과.
+
+### 6.69 Conductor 0.3.1 반영과 저장소 위생 (DEV-542 · DEV-543)
+
+| 확인 | 결과 |
+| --- | --- |
+| npm | `@conductor-by-89soone/css@0.3.1`·`react@0.3.1` 발행 확인. `tokens`는 0.3.0 — 이번 릴리스에서 오르지 않았다 |
+| 앱 고정 | `apps/web/package.json`이 `css` 0.3.1 · `react` 0.3.1 · `tokens` 0.3.0으로 각각 정확 고정 |
+| lockfile | `pnpm install`로 갱신, 설치 경로 `node_modules/.pnpm/@conductor-by-89soone+css@0.3.1` 확인 |
+| 설치본 내용 | `cdt-drawer-shift`·`dir(rtl)`·`aria-sort=none`·`cdt-badge__dismiss.cdt-btn:after` 넷 모두 존재 |
+| 앱이 쓰는 표면 | `Meter` 사용(JobTable·RepositoryCardGrid) · `aria-sort` 사용(검색 결과 표, a11y 시험이 `descending`·`none`을 검사) · `Drawer` 미사용 · 제거 가능한 배지 미사용 · `dir` 속성 없음(LTR) |
+| 영향 판정 | **앱의 시각 동작은 바뀌지 않는다.** RTL 수정 둘은 LTR에서 무변화이고, `aria-sort` 수정은 `none`·`ascending`·`descending`을 그대로 그린다. 배지 제거 버튼은 앱이 쓰지 않는다 |
+| 저장소 위생 | `plans/`를 `.gitignore`에 넣었다. 미추적으로 두면 `build-bundle.sh`의 계보 검사가 막는다(실측) |
 
 ## 7. 알려진 제한 (구현 반영 기준)
 
