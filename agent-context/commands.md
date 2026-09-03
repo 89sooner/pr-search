@@ -10,6 +10,13 @@ gh api graphql -f query='{ repository(owner:"89sooner", name:"design-system") {
   pullRequest(number:20) { reviewThreads(first:100) { nodes { id isResolved path line
     comments(first:20) { nodes { author{login} body } } } } } } }'
 
+# 라운드가 처리한 스레드를 전수로 센다 (resolved 포함). 번호를 주지 않고
+# `gh pr list --state merged`로 돌리면 저장소 이력 전체를 센다 — 라운드 경계는 사람이 준다.
+for n in 14 15 16 18 20 23 24 25 26 27 28; do
+  gh api graphql -f query="{repository(owner:\"89sooner\",name:\"design-system\"){pullRequest(number:$n){reviewThreads(first:100){totalCount}}}}" \
+    --jq "\"#$n: \(.data.repository.pullRequest.reviewThreads.totalCount)\""
+done
+
 # 답변 + resolve (scratchpad의 reply.py)
 gh api graphql -f query='mutation($threadId:ID!,$body:String!){
   addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId, body:$body}){comment{id}}}' \
