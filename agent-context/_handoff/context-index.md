@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-09-03T08:09:27+00:00
+generated=2026-09-03T08:16:55+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -50,8 +50,8 @@ sig=agent-context/risks.md;refs/tags/;usr/bin/env;origin/main;HOME/.nvm/versions
 ### f73e2b0
 src=agent-context/session-notes.md
 compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md
-sha256=79e0dae20165e41ca7b9f5aa0e3d2443ecb9e8b589265c6237c7cb9bd9dad72b
-bytes=131060 compact_bytes=130469 lines=2080 priority=25
+sha256=75a052a828b88c3cf89e6ecf33e00f7e591a5de2dfd4d8f18d6b8a16a8bfce91
+bytes=131589 compact_bytes=130983 lines=2080 priority=25
 heads=Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료 > Session: 2026-09-03 (2차) — 리뷰 부채 종결과 Conductor 0.3.1 > Goal > Current state > 리뷰는 아홉 건에서 끝나지 않았다 > 리뷰 아홉 건의 판정 (시작 시점)
 sig=agent-context/session-notes.md;Risks/gotchas;agent-context/count-unresolved-reviews.py;10/11;docs/00_governance/change_control.md;exports/202608260047.md;dailywork/2026-08-25_PR-Search-WP-028;exports/202608251453.md;exports/202608260113.md;11/11;exports/202608261008.md;1/8;2/8;exports/202608262010.md;dailywork/2026-08-26_PR-Search-OD-005-;W-002/W-003;3/8;exports/202608262224.md;4/8;apps/search-api/integration/sequence/_repro-w004.test.ts;exports/202608270742.md;dailywork/2026-08-27_PR-Search-WP-035-;pr-search/202608271346.md;5/8
 
