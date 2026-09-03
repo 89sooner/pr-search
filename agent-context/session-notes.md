@@ -10,7 +10,7 @@
 
 끝났다. **양쪽 미해결 리뷰 0건**, 양쪽 작업 트리 깨끗, open PR 0.
 
-- pr-search `main` = `1896f9b`(이 인계 커밋), 원장 review v6.40, `CR-064`·`DEV-541`~`543`
+- pr-search `main` = `c81f363` — 이 인계 커밋이 한 번 더 옮긴다. 원장 review v6.41, `CR-064`·`DEV-541`~`543`
 - design-system `main` = `49675ea`, SRS baseline v1.6, 원장 v0.32, `CR-037`~`CR-040` 넷, `DEV-035`~`DEV-044` 열. **open DEV 0건**
 - npm: css 0.3.1 · react 0.3.1 · tokens 0.3.0. 릴리스 태그 셋 전부 원격 검증 통과
 - open DEV는 이전과 같은 16건. 이 라운드가 새로 연 open은 없다
@@ -81,7 +81,9 @@ python3 agent-context/count-unresolved-reviews.py
 
 ### References
 
-pr-search PR #129 #130 #131 #132 / design-system PR #20 #21 #22(version) #23 #24 #25 #26 #27 #28 #29
+pr-search PR #129 이후 · design-system PR #20 이후 — 정확한 목록은 `gh pr list --state merged`로 잰다.
+
+**전사(transcript)**: `exports/202609032106.md` — **`pending /export`**. `.gitignore` 대상이고 compact 하지 않는다. 인계 pack의 입력이 아니다.
 
 ## Session: 2026-09-03 — 애니메이션 감사부터 Conductor 0.3.0 반영까지
 
