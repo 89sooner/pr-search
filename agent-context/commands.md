@@ -1,5 +1,68 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
 
+## 2026-09-03 2차 라운드에서 쓴 것
+
+**리뷰 스레드를 읽고 답하고 닫는다.** GraphQL이어야 한다 — REST는 스레드 id도 resolve도 주지 않는다.
+
+```bash
+# 미해결 스레드의 id·경로·본문을 전량 덤프 (scratchpad의 threads.py)
+gh api graphql -f query='{ repository(owner:"89sooner", name:"design-system") {
+  pullRequest(number:20) { reviewThreads(first:100) { nodes { id isResolved path line
+    comments(first:20) { nodes { author{login} body } } } } } } }'
+
+# 답변 + resolve (scratchpad의 reply.py)
+gh api graphql -f query='mutation($threadId:ID!,$body:String!){
+  addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId, body:$body}){comment{id}}}' \
+  -f threadId=PRRT_... -f body="..."
+gh api graphql -f query='mutation($threadId:ID!){resolveReviewThread(input:{threadId:$threadId}){thread{isResolved}}}' \
+  -f threadId=PRRT_...
+```
+
+**git push 의미론을 로컬 bare 원격으로 재현한다.** 이 라운드의 핵심 실측이다.
+
+```bash
+git init -q --bare remote.git && git init -q work && cd work
+git remote add origin ../remote.git && git push -q origin HEAD:refs/heads/main
+C=$(git rev-parse HEAD)
+git push --force-with-lease=refs/tags/v1: origin "$C:refs/tags/v1"   # 없으면 [new tag]
+git push --force-with-lease=refs/tags/v1: origin "$C:refs/tags/v1"   # 같은 커밋이면 Everything up-to-date (!)
+git push --force-with-lease="refs/tags/v1:$C" origin ":refs/tags/v1" # 기대값 삭제는 정상 동작
+```
+
+**파이프 뒤의 `$?`는 파이프의 마지막 명령 코드다.** `git push ... | tail -3` 뒤에 `$?`를 읽으면 언제나 0이다. 종료 코드를 볼 때는 파이프를 걸지 마라.
+
+**GitHub ref API의 원자성 확인 (부작용 없음).**
+
+```bash
+# 이미 있는 태그로 시도하면 422를 내고 아무것도 바꾸지 않는다
+gh api repos/89sooner/pr-search/git/refs -f ref=refs/tags/0.1.0-pilot.2 -f sha=<sha>
+```
+
+**가짜 도구로 실제 스크립트를 돌린다.** `regression/release-tag-ownership.test.ts`가 이 형태다 — `git`은 진짜, 원격은 로컬 bare, `gh`·`docker`만 대역을 PATH 앞에 둔다. 대역 `gh`가 원격의 실제 상태를 보고 422를 내면 GitHub의 원자성이 재현된다.
+
+**Conductor 릴리스 흐름.**
+
+```bash
+pnpm changeset publish           # 레지스트리에 없는 버전만 발행, 발행한 것에만 태그를 만든다
+pnpm check:release-tags -- --snapshot <file>          # 발행 **전에** 부른다
+pnpm check:release-tags -- --published-before <file>  # 그 기록으로 판정
+pnpm check:release-tags -- --remote origin --published-before <file>
+gh workflow run release.yml --ref main               # publish는 workflow_dispatch다
+gh api -X POST repos/<slug>/actions/runs/<id>/approve # 봇 PR의 CI는 승인이 필요하다
+```
+
+**문서 validator (스킬 디렉터리에 있다, 저장소에 없다).**
+
+```bash
+V=~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py
+python3 $V --root .            # 구조·추적성
+python3 $V --root . --report   # 단계 판정
+python3 $V --root . --strict   # 핸드오프 게이트
+# 판정은 exit 0이 아니라 "이 변경이 새 issue를 만들지 않았는가"로 쓴다 — 이전 커밋을 worktree로 꺼내 비교한다
+git worktree add -q --detach /tmp/before <이전커밋> && python3 $V --root /tmp/before --strict
+```
+
+**변이 헬퍼 주의.** 변이 문자열은 파일 안에서 유일해야 한다. 원복이 "정확히 1건" 검사에 걸려 실패하면 파일이 오염된 채 다음 변이가 돈다 — 원복 뒤 전량 시험으로 확인한다.
 
 ## 2026-09-03 라운드에서 쓴 것
 
