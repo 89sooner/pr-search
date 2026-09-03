@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-09-03T08:09:27+00:00",
+  "generated": "2026-09-03T08:16:55+00:00",
   "root": "/home/roqkf/pr-search",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -231,10 +231,10 @@
       "id": "f73e2b0",
       "source_path": "agent-context/session-notes.md",
       "compact_path": "agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md",
-      "sha256": "79e0dae20165e41ca7b9f5aa0e3d2443ecb9e8b589265c6237c7cb9bd9dad72b",
-      "bytes": 131060,
+      "sha256": "75a052a828b88c3cf89e6ecf33e00f7e591a5de2dfd4d8f18d6b8a16a8bfce91",
+      "bytes": 131589,
       "lines": 2080,
-      "compact_bytes": 130469,
+      "compact_bytes": 130983,
       "headings": [
         "Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료",
         "Session: 2026-09-03 (2차) — 리뷰 부채 종결과 Conductor 0.3.1",
