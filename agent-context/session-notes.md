@@ -81,7 +81,19 @@ python3 agent-context/count-unresolved-reviews.py
 
 ### References
 
-pr-search PR #129 이후 · design-system PR #20 이후 — 정확한 목록은 `gh pr list --state merged`로 잰다.
+이 라운드의 경계는 **시작 커밋**이 정한다. 라운드가 끝났으므로 이 값들은 더 이상 늘어나지 않는다 — 진행 중일 때 건수를 박지 말라는 규율과 다른 자리다.
+
+```bash
+# pr-search: 이 라운드의 커밋과 PR 번호 (시작 커밋은 직전 인계 커밋이다)
+git log --oneline 2a4921f..origin/main
+
+# design-system: 같은 방식
+git -C /home/roqkf/design-system log --oneline 2549675..origin/main
+```
+
+`gh pr list --state merged`만으로는 재현되지 않는다 — 현재 저장소만 보고, 하한이 없으며, 기본 `--limit 30`에서 잘린다.
+
+병합된 PR: pr-search `#129`~(이 인계 커밋까지) · design-system `#20`~`#29`(`#17`·`#19`·`#22`는 봇이 연 version PR).
 
 **전사(transcript)**: `exports/202609032106.md` — **`pending /export`**. `.gitignore` 대상이고 compact 하지 않는다. 인계 pack의 입력이 아니다.
 

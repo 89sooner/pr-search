@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-09-03T12:07:01+00:00",
+  "generated": "2026-09-03T12:13:49+00:00",
   "root": "/home/roqkf/pr-search",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -231,10 +231,10 @@
       "id": "f73e2b0",
       "source_path": "agent-context/session-notes.md",
       "compact_path": "agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md",
-      "sha256": "230caad14970f6861775ad36aac5f81ef9c393fbda19272d55023ef029496367",
-      "bytes": 133150,
-      "lines": 2110,
-      "compact_bytes": 132590,
+      "sha256": "f05d9f0215e053cf1766e86637cbada9759bf1bfec223c8a45cf18537da64e8b",
+      "bytes": 133780,
+      "lines": 2122,
+      "compact_bytes": 133222,
       "headings": [
         "Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료",
         "Session: 2026-09-03 (2차) — 리뷰 부채 종결과 Conductor 0.3.1",
@@ -251,12 +251,15 @@
         "Next steps",
         "Risks/gotchas",
         "References",
-        "Session: 2026-09-03 — 애니메이션 감사부터 Conductor 0.3.0 반영까지"
+        "pr-search: 이 라운드의 커밋과 PR 번호 (시작 커밋은 직전 인계 커밋이다)"
       ],
       "signals": [
         "agent-context/session-notes.md",
         "agent-context/count-unresolved-reviews.py",
         "Risks/gotchas",
+        "2a4921f..origin/main",
+        "home/roqkf/design-system",
+        "2549675..origin/main",
         "exports/202609032106.md",
         "10/11",
         "docs/00_governance/change_control.md",
@@ -274,10 +277,7 @@
         "3/8",
         "exports/202608262224.md",
         "4/8",
-        "apps/search-api/integration/sequence/_repro-w004.test.ts",
-        "exports/202608270742.md",
-        "dailywork/2026-08-27_PR-Search-WP-035-",
-        "pr-search/202608271346.md"
+        "apps/search-api/integration/sequence/_repro-w004.test.ts"
       ],
       "priority": 25,
       "title": "Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료"
