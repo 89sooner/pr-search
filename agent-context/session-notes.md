@@ -81,19 +81,20 @@ python3 agent-context/count-unresolved-reviews.py
 
 ### References
 
-이 라운드의 경계는 **시작 커밋**이 정한다. 라운드가 끝났으므로 이 값들은 더 이상 늘어나지 않는다 — 진행 중일 때 건수를 박지 말라는 규율과 다른 자리다.
+이 라운드의 경계는 **양 끝이 고정된 커밋 범위**다.
 
 ```bash
-# pr-search: 이 라운드의 커밋과 PR 번호 (시작 커밋은 직전 인계 커밋이다)
-git log --oneline 2a4921f..origin/main
+# design-system — 양 끝이 확정됐다 (이 저장소의 작업은 끝났다)
+git -C /home/roqkf/design-system log --oneline 2549675..49675ea
 
-# design-system: 같은 방식
-git -C /home/roqkf/design-system log --oneline 2549675..origin/main
+# pr-search — 하한은 직전 인계 커밋이고, 상한은 **이 파일을 담은 커밋 자신**이다.
+# 그 커밋에서 실행하면 정확하다. `origin/main`을 쓰면 이후 병합까지 딸려 온다.
+git log --oneline 2a4921f..HEAD
 ```
 
 `gh pr list --state merged`만으로는 재현되지 않는다 — 현재 저장소만 보고, 하한이 없으며, 기본 `--limit 30`에서 잘린다.
 
-병합된 PR: pr-search `#129`~(이 인계 커밋까지) · design-system `#20`~`#29`(`#17`·`#19`·`#22`는 봇이 연 version PR).
+병합된 PR: pr-search `#129`부터 이 인계 커밋까지 · design-system `#20`~`#29`(그중 `#22`는 봇이 연 version PR). **`#17`·`#19`는 이 라운드가 아니다** — 하한 커밋 `2549675`가 이미 그 둘을 담고 있다.
 
 **전사(transcript)**: `exports/202609032106.md` — **`pending /export`**. `.gitignore` 대상이고 compact 하지 않는다. 인계 pack의 입력이 아니다.
 
