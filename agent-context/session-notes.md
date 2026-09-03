@@ -21,13 +21,23 @@
 
 **건수를 문서에 박지 마라.** 이 문단이 **네 판 연속으로 틀렸다** — "열여덟" → "열아홉"(산술 오류) → 총계는 고쳤는데 상세가 안 따라옴 → 상세에 아직 처리 중인 PR을 넣음. 매번 리뷰가 잡았다. 원인은 단순하다: **진행 중인 라운드의 건수는 그 문서를 쓰는 동안에도 늘어난다.** 인계 문서에 리뷰 건수를 고정값으로 적는 것 자체가 틀린 형태다.
 
-세려면 실측하라:
+세려면 실측하라. 아래는 **라운드 전체를 세는** 명령이다 — 한 PR만 묻는 예시가 아니다. 라운드 경계는 사람이 정하므로 그 PR 번호를 직접 준다.
 
 ```bash
-# 각 PR의 reviewThreads.totalCount를 더한다 (resolved 포함)
-gh api graphql -f query='{ repository(owner:"89sooner",name:"design-system"){
-  pullRequest(number:20){ reviewThreads(first:100){ totalCount } } } }'
-# 미해결만 세려면
+# 이 라운드가 처리한 스레드를 전수로 센다 (resolved 포함).
+# 번호를 주지 않고 `gh pr list --state merged`로 돌리면 저장소 이력 전체를 세게 된다.
+for repo_nums in "design-system 14 15 16 18 20 23 24 25 26 27 28" "pr-search 125 131 132 134 135 136"; do
+  set -- $repo_nums; repo=$1; shift
+  total=0; rows=""
+  for n in "$@"; do
+    c=$(gh api graphql -f query="{repository(owner:\"89sooner\",name:\"$repo\"){pullRequest(number:$n){reviewThreads(first:100){totalCount}}}}" \
+        --jq '.data.repository.pullRequest.reviewThreads.totalCount')
+    rows="$rows #$n($c)"; total=$((total + c))
+  done
+  printf '%s: %d건 —%s\n' "$repo" "$total" "$rows"
+done
+
+# 미해결만 세려면 (정본)
 python3 agent-context/count-unresolved-reviews.py
 ```
 
