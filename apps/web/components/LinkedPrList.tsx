@@ -21,7 +21,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Panel, Table } from '@conductor-by-89soone/react';
 import type { LinkedPrState, LinkedPullRequest } from '../lib/commit-detail';
 
 export interface LinkedPrListProps {
@@ -61,9 +61,9 @@ export function LinkedPrList({
         <div data-testid="pr-enrichment-pending">
           <Badge tone="warning">수집 중</Badge>
           <p>이 PR의 보강이 아직 끝나지 않았습니다. 목록이 나중에 늘 수 있습니다.</p>
-          <button type="button" onClick={onRefetch} disabled={refetching} data-testid="pr-refetch">
+          <Button variant="secondary" size="sm" type="button" onClick={onRefetch} disabled={refetching} data-testid="pr-refetch">
             다시 조회
-          </button>
+          </Button>
         </div>
       ) : null}
 

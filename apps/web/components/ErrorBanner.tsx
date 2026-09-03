@@ -65,7 +65,7 @@ export function ErrorBanner({
       <p>{impact}</p>
       {id === null ? null : (
         <p data-testid="correlation-id">
-          문의 시 이 값을 함께 알려 주세요: <code>{id}</code>
+          문의 시 이 값을 함께 알려 주세요: <code className="cdt-mono">{id}</code>
         </p>
       )}
     </Banner>

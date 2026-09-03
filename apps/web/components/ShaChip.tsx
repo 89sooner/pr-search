@@ -75,7 +75,15 @@ export function ShaChip({ commitSha, abbreviate = DEFAULT_ABBREVIATE, tone = 'ne
        * 막힌 환경에서 손으로 옮겨 적을 근거가 된다.
        */}
       <Badge tone={tone}>
-        <code title={commitSha} data-testid="sha-short">
+        {/*
+         * 배지 **안**이라 `cdt-mono`가 아니라 `cdt-num`을 쓴다. `cdt-mono`는
+         * 글꼴과 함께 `--cdt-text-mono-payload`로 색까지 강제하는데, 그 색은
+         * 페이지 배경을 전제한 값이라 `tone="accent"` 배지 위에서 대비비가
+         * 2.79:1(다크)·2.77:1(라이트)로 떨어져 WCAG AA에 미달한다(실측).
+         * `cdt-num`은 같은 모노 글꼴을 주면서 색은 배지가 정한 것을 물려받아
+         * 5.39:1·5.16:1로 통과한다. 배지 글자 크기(12px)도 따른다.
+         */}
+        <code className="cdt-num" title={commitSha} data-testid="sha-short">
           {commitSha.slice(0, abbreviate)}
         </code>
       </Badge>
@@ -94,7 +102,7 @@ export function ShaChip({ commitSha, abbreviate = DEFAULT_ABBREVIATE, tone = 'ne
         {outcome === 'failed' ? (
           <>
             복사하지 못했습니다. 이 브라우저가 클립보드를 허용하지 않습니다. 전체 SHA:{' '}
-            <code data-testid="sha-full">{commitSha}</code>
+            <code className="cdt-mono" data-testid="sha-full">{commitSha}</code>
           </>
         ) : null}
       </span>

@@ -46,11 +46,11 @@ function CloseGlyph(): ReactNode {
 function Highlighted({ raw, error }: { raw: string; error: QueryParseError }): ReactNode {
   const { offset_start: start, offset_end: end } = error.detail;
   if (start < 0 || end > raw.length || start >= end) {
-    return <code data-testid="query-echo">{raw}</code>;
+    return <code className="cdt-mono" data-testid="query-echo">{raw}</code>;
   }
 
   return (
-    <code data-testid="query-echo">
+    <code className="cdt-mono" data-testid="query-echo">
       {raw.slice(0, start)}
       <mark data-testid="query-error-range">{raw.slice(start, end)}</mark>
       {raw.slice(end)}

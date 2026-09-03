@@ -816,7 +816,7 @@ function ScreenBody({
             <ul data-testid="relaxation-hints">
               {relaxationHints.map((hint) => (
                 <li key={hint.remove}>
-                  <code>{hint.remove}</code>을(를) 빼면 {hint.total}건
+                  <code className="cdt-mono">{hint.remove}</code>을(를) 빼면 {hint.total}건
                 </li>
               ))}
             </ul>

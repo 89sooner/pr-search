@@ -73,7 +73,7 @@ export function ChangedPathList({
                 <Table.Row key={one.path} data-testid="path-row">
                   {/* 경로 문자열뿐이다. 내용을 여는 링크도 두지 않는다. */}
                   <Table.Cell>
-                    <code>{one.path}</code>
+                    <code className="cdt-mono">{one.path}</code>
                   </Table.Cell>
                   <Table.Cell>{one.additions === undefined ? '—' : `+${String(one.additions)}`}</Table.Cell>
                   <Table.Cell>{one.deletions === undefined ? '—' : `-${String(one.deletions)}`}</Table.Cell>

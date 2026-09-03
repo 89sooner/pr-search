@@ -59,7 +59,7 @@ export function EntityHeader({
     <Panel as="section" aria-labelledby="entity-title" data-testid="entity-header">
       <p data-testid="entity-identifier">
         <span className="cdt-sr-only">{KIND_LABEL[kind]} </span>
-        <code>{identifier}</code>
+        <code className="cdt-mono">{identifier}</code>
       </p>
       <h1 id="entity-title">{title}</h1>
       {badges === undefined ? null : <div data-testid="entity-badges">{badges}</div>}

@@ -25,7 +25,7 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { Badge, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Table } from '@conductor-by-89soone/react';
 import { SequenceBadge } from './SequenceBadge';
 import { HighlightedText } from './HighlightedText';
 import { RelationBadgeGroup } from './RelationBadgeGroup';
@@ -146,14 +146,16 @@ export function ResultTable({
                * 헤더 자체를 버튼으로 만든다 — 키보드로 정렬할 수 있어야 한다.
                * `aria-sort`는 `th`에 있어야 스크린 리더가 열의 정렬을 읽는다.
                */}
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 type="button"
                 onClick={() => {
                   onSortChange(column.field);
                 }}
               >
                 {column.label}
-              </button>
+              </Button>
             </Table.HeaderCell>
           ))}
           <Table.HeaderCell scope="col">유형</Table.HeaderCell>

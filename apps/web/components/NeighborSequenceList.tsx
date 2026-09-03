@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { Badge, Banner, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Banner, Button, Panel, Table } from '@conductor-by-89soone/react';
 import {
   DEFAULT_NEIGHBOR_COUNT,
   NEIGHBOR_COUNT_OPTIONS,
@@ -290,8 +290,10 @@ export function NeighborSection({
     <Panel as="section" aria-labelledby={`${sectionId}-heading`} data-testid={`section-${sectionId}`}>
       <h2 id={`${sectionId}-heading`}>선행·후행</h2>
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         aria-expanded={expanded}
         aria-controls={`${sectionId}-body`}
         data-testid={`toggle-${sectionId}`}
@@ -303,7 +305,7 @@ export function NeighborSection({
         }}
       >
         {expanded ? '접기' : '펼치기'}
-      </button>
+      </Button>
 
       <div id={`${sectionId}-body`} hidden={!expanded} data-testid={`body-${sectionId}`}>
         {unavailable !== undefined ? (
@@ -323,9 +325,9 @@ export function NeighborSection({
         {outcome.phase === 'error' ? (
           <>
             <p data-testid="neighbors-error">선행·후행을 불러오지 못했습니다.</p>
-            <button type="button" data-testid="neighbors-retry" onClick={() => { load(count); }}>
+            <Button variant="secondary" size="sm" type="button" data-testid="neighbors-retry" onClick={() => { load(count); }}>
               다시 시도
-            </button>
+            </Button>
           </>
         ) : null}
         {outcome.phase === 'no_sequence' ? <NeighborUnavailable reason={outcome.reason} /> : null}
