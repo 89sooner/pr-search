@@ -87,14 +87,15 @@ python3 agent-context/count-unresolved-reviews.py
 # design-system — 양 끝이 확정됐다 (이 저장소의 작업은 끝났다)
 git -C /home/roqkf/design-system log --oneline 2549675..49675ea
 
-# pr-search — 하한은 직전 인계 커밋이고, 상한은 **이 파일을 담은 커밋 자신**이다.
-# 그 커밋에서 실행하면 정확하다. `origin/main`을 쓰면 이후 병합까지 딸려 온다.
-git log --oneline 2a4921f..HEAD
+# pr-search — 라운드의 **실질 작업**은 503cc64에서 끝났다. 그 뒤 커밋은 전부
+# 이 인계 문서 자신의 정정이며, 상한을 그것들로 잡으면 문서가 자기를 가리키는
+# 순환에 빠진다(`HEAD`도 checkout 위치에 따라 달라져 같은 문제를 남긴다).
+git log --oneline 2a4921f..503cc64
 ```
 
 `gh pr list --state merged`만으로는 재현되지 않는다 — 현재 저장소만 보고, 하한이 없으며, 기본 `--limit 30`에서 잘린다.
 
-병합된 PR: pr-search `#129`부터 이 인계 커밋까지 · design-system `#20`~`#29`(그중 `#22`는 봇이 연 version PR). **`#17`·`#19`는 이 라운드가 아니다** — 하한 커밋 `2549675`가 이미 그 둘을 담고 있다.
+병합된 PR: pr-search `#129`·`#130`(실질 작업) 그리고 `#131` 이후의 인계 정정들 · design-system `#20`~`#29`(그중 `#22`는 봇이 연 version PR). **`#17`·`#19`는 이 라운드가 아니다** — 하한 커밋 `2549675`가 이미 그 둘을 담고 있다.
 
 **전사(transcript)**: `exports/202609032106.md` — **`pending /export`**. `.gitignore` 대상이고 compact 하지 않는다. 인계 pack의 입력이 아니다.
 
