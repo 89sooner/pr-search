@@ -10,11 +10,19 @@ gh api graphql -f query='{ repository(owner:"89sooner", name:"design-system") {
   pullRequest(number:20) { reviewThreads(first:100) { nodes { id isResolved path line
     comments(first:20) { nodes { author{login} body } } } } } } }'
 
-# 라운드가 처리한 스레드를 전수로 센다 (resolved 포함). 번호를 주지 않고
-# `gh pr list --state merged`로 돌리면 저장소 이력 전체를 센다 — 라운드 경계는 사람이 준다.
-for n in 14 15 16 18 20 23 24 25 26 27 28; do
-  gh api graphql -f query="{repository(owner:\"89sooner\",name:\"design-system\"){pullRequest(number:$n){reviewThreads(first:100){totalCount}}}}" \
-    --jq "\"#$n: \(.data.repository.pullRequest.reviewThreads.totalCount)\""
+# 라운드가 처리한 스레드를 **두 저장소 전수로** 센다 (resolved 포함).
+# 번호를 주지 않고 `gh pr list --state merged`로 돌리면 저장소 이력 전체를 센다
+# (실측: design-system 33건, pr-search 82건) — 라운드 경계는 사람이 준다.
+# `session-notes.md`의 같은 명령과 형태를 맞춘다 — 한쪽만 세면 총계가 또 어긋난다.
+for repo_nums in "design-system 14 15 16 18 20 23 24 25 26 27 28" "pr-search 125 131 132 134 135 136"; do
+  set -- $repo_nums; repo=$1; shift
+  total=0; rows=""
+  for n in "$@"; do
+    c=$(gh api graphql -f query="{repository(owner:\"89sooner\",name:\"$repo\"){pullRequest(number:$n){reviewThreads(first:100){totalCount}}}}" \
+        --jq '.data.repository.pullRequest.reviewThreads.totalCount')
+    rows="$rows #$n($c)"; total=$((total + c))
+  done
+  printf '%s: %d건 —%s\n' "$repo" "$total" "$rows"
 done
 
 # 답변 + resolve (scratchpad의 reply.py)

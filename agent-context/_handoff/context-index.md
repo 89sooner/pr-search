@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-09-03T09:02:21+00:00
+generated=2026-09-03T09:09:25+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
@@ -18,9 +18,9 @@ legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd c
 ### f527103
 src=agent-context/commands.md
 compact=agent-context/_handoff/compact/f527103.commands.ctx.md
-sha256=54785d1d56111e48cc73d24f80cdad7e602eda48f276868332cdf87f05472b6b
-bytes=145977 compact_bytes=149171 lines=2910 priority=45
-heads=명령어 · 시험 결과 · 실패한 명령과 원인 > 2026-09-03 2차 라운드에서 쓴 것 > 미해결 스레드의 id·경로·본문을 전량 덤프 (scratchpad의 threads.py) > 라운드가 처리한 스레드를 전수로 센다 (resolved 포함). 번호를 주지 않고 > gh pr list --state merged로 돌리면 저장소 이력 전체를 센다 — 라운드 경계는 사람이 준다. > 답변 + resolve (scratchpad의 reply.py)
+sha256=2b5956e8d940bdda7e565e07d93d4f5a633ed51cae515853113c229978417c3f
+bytes=146388 compact_bytes=149590 lines=2918 priority=45
+heads=명령어 · 시험 결과 · 실패한 명령과 원인 > 2026-09-03 2차 라운드에서 쓴 것 > 미해결 스레드의 id·경로·본문을 전량 덤프 (scratchpad의 threads.py) > 라운드가 처리한 스레드를 두 저장소 전수로 센다 (resolved 포함). > 번호를 주지 않고 gh pr list --state merged로 돌리면 저장소 이력 전체를 센다 > (실측: design-system 33건, pr-search 82건) — 라운드 경계는 사람이 준다.
 sig=agent-context/commands.md;/remote.git;refs/heads/main;refs/tags/v1;repos/89sooner/pr-search/git/refs;refs/tags/0.1.0-pilot.2;regression/release-tag-ownership.test.ts;actions/runs/;claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py;tmp/before;home/roqkf/design-system;conductor-by-89soone/tokens;tokens/dist;conductor-by-89soone/css;packages/tokens/bin/;home/roqkf/pr-search/apps/web/package.json;playwright/test;node_modules/.pnpm;esbuild/linux-x64/bin/esbuild;/node_modules/.bin/next;origin/main;HOME/.nvm/versions/node/v22.23.2/bin;prs/web;web/lib/neighbors
 
 ### f0b2764
