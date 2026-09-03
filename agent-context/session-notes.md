@@ -1,5 +1,57 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
 
+
+## Session: 2026-09-03 — 애니메이션 감사부터 Conductor 0.3.0 반영까지
+
+### Goal
+
+사용자의 말로: "improve-animations로 내 웹 프로젝트 감사 시작해" → 발견을 계획서로 만들고 → 격리 실행·검토를 거쳐 고치고 → 추가 기회를 찾고 → 컴포넌트 폴리시까지. 마지막에 "남은사항 진행"으로 발행과 소비처 반영까지 이었다.
+
+### Current state
+
+**끝났다.** pr-search PR #126·#127·#128, design-system PR #14·#18·#19가 모두 `main`에 있고 Conductor `0.3.0`이 npm에 발행돼 앱이 그것을 쓴다.
+
+- pr-search `main` = `08250a8`, 원장 review **v6.37**, `DEV-538`·`539`·`540` resolved
+- design-system `main` = `2549675`, 원장 v0.23, `DEV-028`~`DEV-034` closed, npm 0.3.0
+- open DEV는 이전과 같은 16건. 이 라운드가 새로 연 open은 없다
+- **남은 것: Conductor PR들의 머지 후 리뷰 8건** (#14·#15·#16·#18)
+
+### 무엇을 고쳤나 — 셋은 한 번도 동작한 적이 없었다
+
+| 결함 | 상태 |
+| --- | --- |
+| 스피너가 돌지 않았다 (단축 선언의 이징이 둘이라 무효) | v0.2.0까지 계속 |
+| 축소 모드에서 스피너 라벨이 드러나지 않았다 (레이어 순서) | 한 번도 없음, `FR-CMP-008` AC-5 Must 미충족 |
+| 앱의 축소 모션이 무효였다 (레이어 밖 import 한 줄) | WCAG·NFR-007 |
+| 오버레이가 한 프레임에 사라졌다 / Meter가 레이아웃을 전환했다 | — |
+| Select·Tooltip·Menu·Drawer·Banner에 모션 0건 | — |
+| `mark` 형광 노랑 · `fieldset` 3D 상자 · 맨 button 11곳 · 맨 code 15곳 | 브라우저 기본이 새어 나옴 |
+| 정렬 방향이 눈에 안 보였다 (`aria-sort`는 스크린 리더에만) | — |
+| 포커스한 버튼에 마우스가 겹치면 링이 사라졌다 | WCAG 2.4.7 AA |
+
+### Decisions
+
+`decisions.md`의 2026-09-03 절에 표로 있다. 핵심은 "명시도로 겨루는 해결책은 불변식을 시험으로 고정한다"와 "숨김과 노출은 같은 레이어에 둔다"이다.
+
+### Commands
+
+`commands.md`의 2026-09-03 절. **계산값 실측이 이 라운드의 주력 도구였다** — 코드를 읽어서는 알 수 없던 것을 브라우저가 알려 줬다.
+
+### Next steps
+
+1. design-system PR들의 머지 후 리뷰 8건 순회 (`python3 agent-context/count-unresolved-reviews.py`)
+2. 파생 스펙 §9(섹션 확장·탭 전환에 `motion.standard` 배정)와 구현(`hidden` 즉시 토글)의 불일치 — CR로 스펙 현행화 권고
+3. 사내 반입은 그대로 대기 중. 이 라운드는 영향이 없다
+
+### Risks/gotchas
+
+`risks.md`의 2026-09-03 절. 가장 값비쌌던 것은 **스택 PR을 연달아 병합하면 `main`에 닿지 않는다**는 것이다.
+
+### References
+
+- pr-search PR #126 #127 #128 / design-system PR #14 #15 #16 #17 #18 #19
+- 계획서: `plans/` (양쪽 저장소)
+
 ## Goal
 
 사용자의 말: "이어서 진행해야 하는곳을 파악해봐라" → "CR-032 + WP-027 post-merge

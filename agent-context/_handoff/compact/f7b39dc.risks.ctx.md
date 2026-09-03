@@ -1,8 +1,28 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=96206de07aaa6772fad70e134d19f449c8cc8fcc7b578b20619ba1d5c038db77 bytes=138597 lines=1946 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;origin/main;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
+@kv sha256=62b32be948cd88a8fc140e2147d500ac4e94fcab4963317f0632ca27b1bc9785 bytes=142598 lines=1984 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;origin/main;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts;pr-search/202608271346.md;acme/payments
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-03 라운드가 새로 배운 함정
+@h3 스택 PR을 연달아 병합하면 main에 닿지 않는다 — 가장 값비쌌던 것
+@path #14(base=main)·#15(base=#14 브랜치)·#16(base=#15 브랜치)을 25초 간격으로 병합했더니 #15·#16이 각자의 부모 브랜치로 들어가고 main에는 #14만 남았다. GitHub이 자식 PR의 base를 main으로 재지정하기 전에 병합됐기 때문이다. "순서대로 머지했다"를 그대로 믿고 다음 단계(발행)로 갔으면 잘못된 것을 발행했을 것이다.
+@path 병합 뒤 origin/main의 내용을 실측한다. PR이 MERGED라는 것은 "main에 들어갔다"는 뜻이 아니다. gh pr list --json baseRefName으로 base를 본다.
+@b 복구할 때 부모 브랜치를 main에 그냥 병합하면 충돌한다. 기반 PR이 스쿼시로 들어가 원래 커밋이 main에 없어 같은 변경을 다시 적용하려 들기 때문이다(파일 넷 충돌을 실제로 봤다).
+@path 안전한 복구: main에서 새 브랜치 → git checkout <완성브랜치> -- . → git diff <완성브랜치>가 비는지로 트리 동일성 확인 → git diff --stat origin/main..로 델타가 누락분과 일치하는지 확인.
+@h3 명시도로 겨루는 CSS 해결책은 나중에 조용히 무너진다
+@path DEV-034가 포커스 링을 (0,3,0)으로 올려 hover를 이기게 했는데, 같은 세션에서 내가 DEV-033으로 만든 (0,4,0) 규칙이 그것을 다시 이겼다. 배지 제거 버튼에서만 링이 사라진 채 남았고 원장에는 "닫혔다"고 적혀 있었다. 검토가 잡았다.
+@p → 명시도 싸움을 할 때는 개별 사례가 아니라 불변식을 시험으로 고정한다. "그림자를 칠하는 hover·press 규칙 중 링 규칙보다 명시도가 높거나 같으면서 뒤에 오는 것이 있으면 실패한다"를 시험으로 썼고, 되돌리는 변이와 순서를 바꾸는 변이 둘 다에서 실패하는 것을 확인했다.
+@h3 한 결함을 고치면 다음 결함이 드러난다 — 노출은 배치와 짝이다
+@p 축소 모드 라벨 노출을 고치자(레이어 이동) 스피너 원이 폭 0으로 무너졌다. 규칙이 한 번도 적용된 적이 없어 그 레이아웃 결과를 아무도 본 적이 없었기 때문이다. "규칙을 적용되게 했다"와 "적용된 결과가 옳다"는 다른 주장이다. 계산값만 재고 레이아웃을 재지 않았으면 그대로 나갔다.
+@h3 .cdt-mono는 색까지 강제한다 — 색을 가진 표면 안에 넣지 마라
+@p 글꼴 유틸리티인 줄 알고 15곳에 붙였는데 --cdt-text-mono-payload로 색도 정한다. 그 색은 페이지 배경을 전제하므로 Badge tone="accent" 안에서 대비가 2.79:1로 AA 미달이 된다. 색을 물려받는 .cdt-num이 그 자리의 답이다.
+@h3 시험이 "우연히" 통과하고 있을 수 있다
+@p 문서 사이트 e2e의 감소 모드 비교가 hover 상태를 잴 때 앞선 호출의 포커스가 남아 hover+focus를 읽고 있었다. hover가 링을 덮던 동안에는 두 실행이 우연히 같아서 통과했고, 링이 살아나자 갈렸다. 시험이 초록이라고 의도대로 재고 있다는 뜻은 아니다.
+@h3 릴리스 게이트는 코드가 아니라 의존성 권고로도 막힌다
+@path 0.3.0 발행이 pnpm audit --audit-level high에서 멈췄다. fast-uri·browserslist의 새 권고였고, 이미 있던 override(fast-uri@<3.1.5)가 낡아 고정 대상 자체가 취약 범위에 들어갔다. 개발 의존성의 전이 의존성이라 배포물에는 없지만 게이트는 막는다. #11이 세운 overrides 방식으로 해소한다.
+@h3 그 밖
+@b 프로브에서 element.focus()를 직접 부르면 Chromium이 :focus-visible로 보지 않는다. 키보드 경로(Tab)로 재야 한다.
+@b flow-003의 뒤로가기 e2e가 6워커 병렬에서 두 번 흔들렸다(단독 3회·워커1 전체·전체 재실행은 통과).
 @h2 절차 함정 (이 세션에서 실제로 밟은 것들)
 @h3 등가 변이를 킬로 착각하지 마라 — 두 WP 연속으로 나왔다
 @path WP-026 M3: "직전 대비 PR 수"에 count(DISTINCT pull_request_number)와

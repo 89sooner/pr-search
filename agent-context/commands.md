@@ -1,5 +1,50 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
 
+
+## 2026-09-03 라운드에서 쓴 것
+
+**Conductor 검증 배터리** (`/home/roqkf/design-system`, Node 22 PATH 필수)
+
+```bash
+pnpm --filter @conductor-by-89soone/tokens run build   # 새 worktree는 이것부터 — css 빌드가 tokens/dist를 읽는다
+pnpm --filter @conductor-by-89soone/css run build
+pnpm build            # tokens → css → react → docs
+pnpm typecheck        # build 뒤에 — 생성 타입이 필요하다
+pnpm test             # build 뒤에 — dist를 읽는 시험이 있다
+pnpm lint && pnpm lint:tokens && pnpm check:api && pnpm check:changesets && pnpm size
+pnpm --filter docs test:e2e
+```
+
+**함정.** 새 worktree에서 `pnpm install`은 `packages/tokens/bin/*.mjs`의 셔뱅 개행을 LF로 바꿔 `git status`를 더럽힌다 → `git checkout -- packages/tokens/bin/`. `lint:tokens`는 **주석 안의** 색·px 리터럴도 잡는다.
+
+**CSS 계산값 실측** — 이 라운드의 주력 도구다. 저장소 밖에 두고 pr-search의 Playwright를 빌린다.
+
+```js
+const require = createRequire('/home/roqkf/pr-search/apps/web/package.json');
+const { chromium } = require('@playwright/test');
+const css = fs.readFileSync('<dist>/index.css', 'utf8');
+// setContent 후 emulateMedia({ reducedMotion }) 로 두 모드를 비교한다
+```
+
+- `:focus-visible`은 **키보드 경로**로만 잡힌다. `element.focus()`가 아니라 `page.keyboard.press('Tab')`.
+- 접근성 이름은 CDP로 본다: `Accessibility.enable` → `Accessibility.getFullAXTree` → `role === 'columnheader'`의 `name`.
+- 실제 Radix 동작이 필요하면 esbuild로 하네스를 번들한다. esbuild 경로: `find node_modules/.pnpm -maxdepth 7 -path '*/@esbuild/linux-x64/bin/esbuild'`.
+
+**앱에서 재기**
+
+```bash
+AUTH_ENABLED=false ./node_modules/.bin/next start --port <포트>
+```
+백엔드가 없어 스피너·비활성 버튼은 화면에 없다. **발행본 CSS를 직접 실어 재는 편이 확실하다.**
+
+**병합 뒤 반드시**
+
+```bash
+git fetch origin && git log origin/main --oneline -3
+gh pr list --state all --json number,state,baseRefName   # base가 main인지 본다
+npm view @conductor-by-89soone/css version               # 발행 실측
+```
+
 ## 필수 전제 — Node PATH
 
 모든 `pnpm` 명령 앞에 이것이 필요하다. 셸 기본값(v20.12.0)으로는 `pnpm install`

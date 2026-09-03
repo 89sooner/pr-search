@@ -1,5 +1,29 @@
 # 중요 파일 경로와 역할
 
+
+## 2026-09-03 라운드가 만지거나 만든 것
+
+**pr-search** (`main` = `08250a8`)
+
+- `apps/web/app/layout.tsx` — 레이어 밖 `tokens.css` import를 지웠다. **다시 넣지 마라**: 그 한 줄이 축소 모션 전체를 무력화한다 (`DEV-538`).
+- `apps/web/e2e/shell.spec.ts` — 축소 모션 e2e 둘. `durationMs`로 ms 정규화해 비교한다 (Next 빌드가 `140ms`를 `.14s`로 압축한다).
+- `apps/web/components/*.tsx` 열둘 — 맨 `<button>` 11곳이 Conductor `Button`으로, 맨 `<code>` 15곳이 `className="cdt-mono"`로 바뀌었다. `Tabs.tsx`는 `data-active` 대신 `variant`로 선택 상태를 그린다. `ShaChip.tsx:86`만 `cdt-num`이다(배지 안이라 색을 덮으면 안 된다).
+- `apps/web/package.json` — Conductor 셋이 `0.3.0` 정확 고정.
+- `plans/` — 계획서 둘과 README. 추적되지 않는 디렉터리다.
+
+**design-system** (`main` = `2549675`, npm `0.3.0`)
+
+- `packages/tokens/src/primitives.ts` — `ease.linear` 추가. `scales.ts` — `motion.spin`(1000ms linear) 추가. 토큰을 더하면 `palette.dark.test.ts`의 "documented additions" 목록에도 키를 올려야 하고 `check:api --update`가 필요하다.
+- `packages/css/src/reset.css` — `fieldset`·`legend`·`mark` 리셋. UA 기본이 새어 나오던 자리다.
+- `packages/css/src/base.css` — 축소 모드 블록. 모션 토큰 넷을 `0s`로 만들고, `.cdt-spinner__label` 숨김 규칙과 오버레이 넷의 `display: none` 탈출구가 여기 있다. **숨김과 노출이 같은 레이어에 있어야 한다.**
+- `packages/css/src/components.css` — 스피너 기하(svg가 크기를 갖는다)·오버레이 진입/퇴장 keyframes 여덟·Meter의 `scaleX`·`aria-sort` 글리프·`.cdt-badge__dismiss`·포커스 링 셀렉터.
+- `packages/css/test/bundle.test.ts` — 이 라운드가 더한 시험 스물 남짓. **`specificityB` 헬퍼와 "링을 이기는 hover·press 규칙이 없다" 시험이 가장 값이 크다.**
+- `packages/css/test/class-contract.test.ts` — `CONSUMER_CLASSES`에 `cdt-badge__dismiss`. 소비자가 붙이는 클래스는 여기 선언해야 한다.
+- `apps/docs/e2e/foundations.spec.ts` — 감소 모드 비교가 hover를 잴 때 포커스를 뗀다.
+- `plans/` 여섯 + README — 계획서와 실행 결과.
+
+**읽는 순서(디자인 품질 작업)**: `plans/README.md`(양쪽) → 해당 계획서 → `packages/css/src/components.css` → `bundle.test.ts`의 대응 describe.
+
 ## 이 저장소를 읽는 순서 (문서)
 
 1. `CLAUDE.md` — 충돌 해결 우선순위, 캐스케이드 순서, ID 규약
