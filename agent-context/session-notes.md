@@ -26,7 +26,7 @@
 ```bash
 # 이 라운드가 처리한 스레드를 전수로 센다 (resolved 포함).
 # 번호를 주지 않고 `gh pr list --state merged`로 돌리면 저장소 이력 전체를 세게 된다.
-for repo_nums in "design-system 14 15 16 18 20 23 24 25 26 27 28" "pr-search 125 131 132 134 135 136"; do
+for repo_nums in "design-system <이 라운드에 병합된 design-system PR 번호들>" "pr-search <이 라운드에 병합된 pr-search PR 번호들>"; do
   set -- $repo_nums; repo=$1; shift
   total=0; rows=""
   for n in "$@"; do
