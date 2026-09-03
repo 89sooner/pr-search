@@ -80,8 +80,10 @@ export function CoChangeSection({
     <Panel as="section" aria-labelledby={`${sectionId}-heading`} data-testid={`section-${sectionId}`}>
       <h2 id={`${sectionId}-heading`}>동시 변경</h2>
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         aria-expanded={expanded}
         aria-controls={`${sectionId}-body`}
         data-testid={`toggle-${sectionId}`}
@@ -95,7 +97,7 @@ export function CoChangeSection({
         }}
       >
         {expanded ? '접기' : '펼치기'}
-      </button>
+      </Button>
 
       <div id={`${sectionId}-body`} hidden={!expanded} data-testid={`body-${sectionId}`}>
         {outcome.phase === 'loading' ? <p data-testid="cochange-loading">불러오는 중…</p> : null}

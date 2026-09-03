@@ -17,6 +17,7 @@
  */
 
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { Button } from '@conductor-by-89soone/react';
 
 export interface TabDef {
   readonly id: string;
@@ -69,7 +70,7 @@ export function TabList({ tabs, activeId, onChange, label }: TabsProps): ReactNo
       {tabs.map((tab, index) => {
         const selected = tab.id === activeId;
         return (
-          <button
+          <Button
             key={tab.id}
             ref={(node) => {
               if (node === null) refs.current.delete(tab.id);
@@ -81,8 +82,8 @@ export function TabList({ tabs, activeId, onChange, label }: TabsProps): ReactNo
             aria-selected={selected}
             aria-controls={`tabpanel-${tab.id}`}
             tabIndex={selected ? 0 : -1}
-            className="cdt-btn cdt-btn--secondary"
-            data-active={selected ? 'true' : undefined}
+            variant={selected ? 'secondary' : 'ghost'}
+            size="sm"
             onClick={() => {
               onChange(tab.id);
             }}
@@ -91,7 +92,7 @@ export function TabList({ tabs, activeId, onChange, label }: TabsProps): ReactNo
             }}
           >
             {tab.label}
-          </button>
+          </Button>
         );
       })}
     </div>

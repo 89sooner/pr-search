@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Badge, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Panel, Table } from '@conductor-by-89soone/react';
 import { judgeContainment, type ContainmentState, type ContainmentSource } from '../lib/containment';
 import { formatTimestamp } from '../lib/format';
 
@@ -146,8 +146,10 @@ export function ReleaseContainmentSection({
     <Panel as="section" aria-labelledby={`${sectionId}-heading`} data-testid={`section-${sectionId}`}>
       <h2 id={`${sectionId}-heading`}>포함 릴리스</h2>
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         aria-expanded={expanded}
         aria-controls={`${sectionId}-body`}
         data-testid={`toggle-${sectionId}`}
@@ -159,7 +161,7 @@ export function ReleaseContainmentSection({
         }}
       >
         {expanded ? '접기' : '펼치기'}
-      </button>
+      </Button>
 
       <div id={`${sectionId}-body`} hidden={!expanded} data-testid={`body-${sectionId}`}>
         {outcome.phase === 'loading' ? <p data-testid="releases-loading">불러오는 중…</p> : null}

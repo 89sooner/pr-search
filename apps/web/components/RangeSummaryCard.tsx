@@ -58,7 +58,7 @@ export function RangeSummaryCard({ summary }: RangeSummaryCardProps): ReactNode 
           <ul>
             {summary.topChangedPaths.map((entry) => (
               <li key={entry.path}>
-                <code>{entry.path}</code> — {entry.count}건
+                <code className="cdt-mono">{entry.path}</code> — {entry.count}건
               </li>
             ))}
           </ul>

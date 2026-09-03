@@ -20,7 +20,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { Badge, Panel } from '@conductor-by-89soone/react';
+import { Badge, Button, Panel } from '@conductor-by-89soone/react';
 
 export interface PendingSectionProps {
   readonly id: string;
@@ -45,8 +45,10 @@ export function PendingSection({ id, title, reason, owner, onExpand }: PendingSe
         {title} <Badge tone="neutral">준비 중</Badge>
       </h2>
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         aria-expanded={expanded}
         aria-controls={`${id}-body`}
         data-testid={`toggle-${id}`}
@@ -58,7 +60,7 @@ export function PendingSection({ id, title, reason, owner, onExpand }: PendingSe
         }}
       >
         {expanded ? '접기' : '펼치기'}
-      </button>
+      </Button>
 
       <div id={`${id}-body`} hidden={!expanded} data-testid={`body-${id}`}>
         <p data-testid={`reason-${id}`}>{reason}</p>

@@ -63,10 +63,10 @@ function QueryCell({ item, rowId }: { item: SavedSearchView; rowId: string }): R
       ? splitInvalidSpan(item.query, item.query_error?.detail)
       : null;
 
-  if (spans === null) return <code data-testid={`${rowId}-query`}>{item.query}</code>;
+  if (spans === null) return <code className="cdt-mono" data-testid={`${rowId}-query`}>{item.query}</code>;
 
   return (
-    <code data-testid={`${rowId}-query`}>
+    <code className="cdt-mono" data-testid={`${rowId}-query`}>
       {spans.before}
       <mark data-testid={`${rowId}-invalid-span`}>{spans.invalid}</mark>
       {spans.after}

@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Panel, Table } from '@conductor-by-89soone/react';
+import { Button, Panel, Table } from '@conductor-by-89soone/react';
 import { RegistrationRequestQueue } from './RegistrationRequestQueue';
 import {
   RepositoryRegistrationForm,
@@ -297,7 +297,9 @@ export function OpsRepositoriesView(): ReactNode {
                   <td>{row.mirror_enabled ? '사용' : '사용 안 함'}</td>
                   <td>{formatTimestamp(row.registered_at ?? null)}</td>
                   <td>
-                    <button
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       type="button"
                       data-testid="repository-edit"
                       onClick={() => {
@@ -312,7 +314,7 @@ export function OpsRepositoriesView(): ReactNode {
                       }}
                     >
                       편집
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}

@@ -12,7 +12,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, TextField } from '@conductor-by-89soone/react';
+import { Badge, Button, TextField } from '@conductor-by-89soone/react';
 import type { AnchorFailureView, ResolvedAnchorView } from '../lib/range';
 
 export type AnchorFieldState =
@@ -98,7 +98,7 @@ export function AnchorInput({
           <span data-testid={`anchor-${id}-resolved`}>
             {/* AC-5: 원본 표현 → 서수 · SHA(12자) · 에폭 */}
             {state.anchor.expression} → seq {state.anchor.mergeSeq} ·{' '}
-            <code>{state.anchor.commitSha.slice(0, 12)}</code>
+            <code className="cdt-mono">{state.anchor.commitSha.slice(0, 12)}</code>
             {epoch === null ? '' : ` · 에폭 ${String(epoch)}`}
           </span>
         ) : null}
@@ -109,7 +109,9 @@ export function AnchorInput({
               <>
                 {' '}
                 제안:{' '}
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   type="button"
                   data-testid={`anchor-${id}-suggested`}
                   onClick={() => {
@@ -118,7 +120,7 @@ export function AnchorInput({
                   }}
                 >
                   머지 커밋 사용
-                </button>
+                </Button>
               </>
             ) : null}
           </span>

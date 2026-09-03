@@ -75,7 +75,7 @@ export function ShaChip({ commitSha, abbreviate = DEFAULT_ABBREVIATE, tone = 'ne
        * 막힌 환경에서 손으로 옮겨 적을 근거가 된다.
        */}
       <Badge tone={tone}>
-        <code title={commitSha} data-testid="sha-short">
+        <code className="cdt-mono" title={commitSha} data-testid="sha-short">
           {commitSha.slice(0, abbreviate)}
         </code>
       </Badge>
@@ -94,7 +94,7 @@ export function ShaChip({ commitSha, abbreviate = DEFAULT_ABBREVIATE, tone = 'ne
         {outcome === 'failed' ? (
           <>
             복사하지 못했습니다. 이 브라우저가 클립보드를 허용하지 않습니다. 전체 SHA:{' '}
-            <code data-testid="sha-full">{commitSha}</code>
+            <code className="cdt-mono" data-testid="sha-full">{commitSha}</code>
           </>
         ) : null}
       </span>

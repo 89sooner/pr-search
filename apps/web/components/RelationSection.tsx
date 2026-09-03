@@ -126,8 +126,10 @@ export function RelationSection({
     <Panel as="section" aria-labelledby={`${sectionId}-heading`} data-testid={`section-${sectionId}`}>
       <h2 id={`${sectionId}-heading`}>관계</h2>
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         aria-expanded={expanded}
         aria-controls={`${sectionId}-body`}
         data-testid={`toggle-${sectionId}`}
@@ -139,7 +141,7 @@ export function RelationSection({
         }}
       >
         {expanded ? '접기' : '펼치기'}
-      </button>
+      </Button>
 
       <div id={`${sectionId}-body`} hidden={!expanded} data-testid={`body-${sectionId}`}>
         {types.map((linkType) => (

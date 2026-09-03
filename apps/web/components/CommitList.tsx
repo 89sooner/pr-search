@@ -72,7 +72,7 @@ export function CommitList({
               {mergeCommitSha === null ? (
                 <span data-testid="no-merge-commit">아직 머지되지 않았습니다</span>
               ) : (
-                <code>{shortSha(mergeCommitSha)}</code>
+                <code className="cdt-mono">{shortSha(mergeCommitSha)}</code>
               )}
             </Table.Cell>
           </Table.Row>
@@ -83,7 +83,7 @@ export function CommitList({
                 <Badge tone="neutral">원본</Badge>
               </Table.Cell>
               <Table.Cell>
-                <code>{shortSha(commit.commit_sha)}</code>
+                <code className="cdt-mono">{shortSha(commit.commit_sha)}</code>
               </Table.Cell>
             </Table.Row>
           ))}

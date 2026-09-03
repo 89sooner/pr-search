@@ -503,7 +503,7 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
 
         {/* 반개구간 규칙 상시 표기 (QA-W004-01) — 앵커 라벨의 제외/포함과 짝이다. */}
         <p data-testid="range-boundary-rule">
-          구간 규칙: <code>(시작, 끝]</code> — 시작 앵커는 <Badge tone="neutral">제외</Badge>, 끝 앵커는{' '}
+          구간 규칙: <code className="cdt-mono">(시작, 끝]</code> — 시작 앵커는 <Badge tone="neutral">제외</Badge>, 끝 앵커는{' '}
           <Badge tone="neutral">포함</Badge>됩니다.
         </p>
 
