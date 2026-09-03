@@ -3,7 +3,7 @@
 
 최신 기준 (2026-09-03 2차 · **리뷰 부채 종결 라운드 — Conductor 0.3.1 발행, unresolved review 0**)
 
-`main` = `503cc64` — 실측하라. 이 인계 커밋이 한 번 더 옮긴다.
+`main` = `c81f363` — 실측하라. 이 인계 커밋이 한 번 더 옮긴다.
 
 SRS baseline **v2.20**(변경 없음) · 원장 review **v6.40** · 파생 토큰 문서 **v0.3**(CR-064) · 그 밖 변경 없음.
 Conductor(`/home/roqkf/design-system`) `main` = `49675ea` — SRS baseline **v1.6**, 원장 **v0.32**, `CR-040`·`DEV-044`까지. 패키지는 **css 0.3.1 · react 0.3.1 · tokens 0.3.0**이고 릴리스 태그 셋이 원격 검증을 통과한다.

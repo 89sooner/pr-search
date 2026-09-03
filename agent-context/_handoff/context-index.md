@@ -1,12 +1,12 @@
 # agent-context-index:v1
-generated=2026-09-03T09:21:24+00:00
+generated=2026-09-03T12:07:01+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=7
 legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd command;@path path-ref;@code code-fence;@sig retrieval-signals;@kv metadata
 
 ## read_order
-- f73e2b0 p=25 src=agent-context/session-notes.md compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md title=Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료 sig=agent-context/session-notes.md,agent-context/count-unresolved-reviews.py,Risks/gotchas,10/11,docs/00_governance/change_control.md,exports/202608260047.md,dailywork/2026-08-25_PR-Search-WP-028,exports/202608251453.md
+- f73e2b0 p=25 src=agent-context/session-notes.md compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md title=Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료 sig=agent-context/session-notes.md,agent-context/count-unresolved-reviews.py,Risks/gotchas,exports/202609032106.md,10/11,docs/00_governance/change_control.md,exports/202608260047.md,dailywork/2026-08-25_PR-Search-WP-028
 - f3c6d32 p=25 src=agent-context/session-summary.md compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md title=세션-요약-PR-Search-구현-2026-08-25-후반 sig=agent-context/session-summary.md,refs/tags/,git/refs,10/11,CR/DEV,11/11,1/8,2/8
 - f0b2764 p=28 src=agent-context/decisions.md compact=agent-context/_handoff/compact/f0b2764.decisions.ctx.md title=확정한-설계-결정과-이유 sig=agent-context/decisions.md,refs/tags/,git/refs,apps/web,docs/00_governance/change_control.md,docs/40_delivery/pr_search_implementation_traceability.md,lib/nav.ts,packages/domain/src/anchor.ts
 - f54408e p=30 src=agent-context/todos.md compact=agent-context/_handoff/compact/f54408e.todos.ctx.md title=다음-작업-미해결-항목-확인할-사항 sig=agent-context/todos.md,home/roqkf/design-system,agent-context/count-unresolved-reviews.py,89sooner/pr-search,git/refs,refs/tags/,regression/release-tag-ownership.test.ts,docs/40_delivery/pr_search_implementation_traceability.md
@@ -50,10 +50,10 @@ sig=agent-context/risks.md;refs/tags/;usr/bin/env;origin/main;HOME/.nvm/versions
 ### f73e2b0
 src=agent-context/session-notes.md
 compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md
-sha256=e601703e1d0a48914747b92055d03653213584645e8fa429596c1c5c9648b236
-bytes=132938 compact_bytes=132369 lines=2108 priority=25
+sha256=230caad14970f6861775ad36aac5f81ef9c393fbda19272d55023ef029496367
+bytes=133150 compact_bytes=132590 lines=2110 priority=25
 heads=Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료 > Session: 2026-09-03 (2차) — 리뷰 부채 종결과 Conductor 0.3.1 > Goal > Current state > 리뷰는 아홉 건에서 끝나지 않았다 > 이 라운드가 처리한 스레드를 전수로 센다 (resolved 포함).
-sig=agent-context/session-notes.md;agent-context/count-unresolved-reviews.py;Risks/gotchas;10/11;docs/00_governance/change_control.md;exports/202608260047.md;dailywork/2026-08-25_PR-Search-WP-028;exports/202608251453.md;exports/202608260113.md;11/11;exports/202608261008.md;1/8;2/8;exports/202608262010.md;dailywork/2026-08-26_PR-Search-OD-005-;W-002/W-003;3/8;exports/202608262224.md;4/8;apps/search-api/integration/sequence/_repro-w004.test.ts;exports/202608270742.md;dailywork/2026-08-27_PR-Search-WP-035-;pr-search/202608271346.md;5/8
+sig=agent-context/session-notes.md;agent-context/count-unresolved-reviews.py;Risks/gotchas;exports/202609032106.md;10/11;docs/00_governance/change_control.md;exports/202608260047.md;dailywork/2026-08-25_PR-Search-WP-028;exports/202608251453.md;exports/202608260113.md;11/11;exports/202608261008.md;1/8;2/8;exports/202608262010.md;dailywork/2026-08-26_PR-Search-OD-005-;W-002/W-003;3/8;exports/202608262224.md;4/8;apps/search-api/integration/sequence/_repro-w004.test.ts;exports/202608270742.md;dailywork/2026-08-27_PR-Search-WP-035-;pr-search/202608271346.md
 
 ### f3c6d32
 src=agent-context/session-summary.md
@@ -66,7 +66,7 @@ sig=agent-context/session-summary.md;refs/tags/;git/refs;10/11;CR/DEV;11/11;1/8;
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=3fa93a76a53d96cbd1f55326a8b9e7b84400abc34d8a2e80a6cc8c5b6cf87137
+sha256=a46d76e65deddeb8ad70766c3604d2adcce04a1c4a4927d314ca5b71b05d82d4
 bytes=146894 compact_bytes=145234 lines=1785 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > A. 지금 당장 — 실제 사내 반입 (0.1.0-pilot.2) > B. 미뤄 둔 것 — 이전과 같다 > C. 릴리스 게이트 4·5·6 — 릴리스는 승인되지 않았다 > D. 이 라운드가 깔아 둔 자리 — 다시 만들지 말 것 > 시작하기 전에 — 이 인계의 값을 실측하라
 sig=agent-context/todos.md;home/roqkf/design-system;agent-context/count-unresolved-reviews.py;89sooner/pr-search;git/refs;refs/tags/;regression/release-tag-ownership.test.ts;docs/40_delivery/pr_search_implementation_traceability.md;conductor-by-89soone/css;2/4;deploy/single-host/;/deploy/single-host/build-bundle.sh;releases/tags/;deploy/single-host;repos/89sooner/pr-search/releases/tags/0.1.0-pilot.2;vendor/upstream;company/main;24/24;deploy/single-host/RUNBOOK.md;deploy/single-host/bundle/pr-search-;deploy/single-host/.env.example;/prsctl;deploy/single-host/prsctl;GET/POST/DELETE
