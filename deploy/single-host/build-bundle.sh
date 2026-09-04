@@ -349,7 +349,10 @@ if [ "$RELEASE" -eq 1 ]; then
     elif [ "$RELEASE_DELETED" -eq 1 ] && [ -n "$TAG_FOREIGN" ]; then
       printf '릴리스는 지웠다. 태그 %s(%s)는 이 실행이 만든 것이 아니므로 지우지 않았다 — 같은 버전을 다른 주체가 발행하고 있는지 확인한 뒤 새 버전으로 다시 실행한다' "$VERSION" "$TAG_FOREIGN"
     elif [ "$RELEASE_DELETED" -eq 1 ]; then
-      printf '릴리스는 지웠으나 태그 %s가 남았거나 확인하지 못했다 — git ls-remote --tags origin refs/tags/%s 로 확인하고 git push origin :refs/tags/%s 로 지운 뒤 다시 실행한다' "$VERSION" "$VERSION" "$VERSION"
+      # **대상을 보기 전에 지우라고 하지 않는다** (DEV-547). TAG_LEFT는 "이 실행이 만든 태그가
+      # 그대로 남았다"와 "그 사이 다른 커밋으로 옮겨졌다"를 함께 담는다. 후자에 기대값 없는
+      # 삭제를 지시하면 DEV-541이 코드에서 막은 "남의 태그 삭제"를 사람 손으로 하게 만든다.
+      printf '릴리스는 지웠으나 태그 %s를 지우지 못했다 (옮겨졌거나 삭제가 거부됐다) — git ls-remote --tags origin "refs/tags/%s" "refs/tags/%s^{}" 로 대상을 먼저 본다. 대상이 %s이면 git push --force-with-lease="refs/tags/%s:%s" origin ":refs/tags/%s" 로 지운 뒤 같은 버전으로 다시 실행하고, 다른 커밋이면 이 실행의 것이 아니므로 지우지 않고 새 버전으로 실행한다' "$VERSION" "$VERSION" "$VERSION" "$UPSTREAM_COMMIT" "$VERSION" "$UPSTREAM_COMMIT" "$VERSION"
     else
       printf '릴리스를 되돌리지 못했다 — GitHub에서 태그 %s의 릴리스(초안)를 지운 뒤 다시 실행한다' "$VERSION"
     fi
