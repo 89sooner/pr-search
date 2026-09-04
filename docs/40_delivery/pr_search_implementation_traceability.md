@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.41 | 갱신일: 2026-09-03
+> 상태: review | 버전: v6.42 | 갱신일: 2026-09-04
 
 ## 1. 목적
 
@@ -5165,6 +5165,31 @@ E1이 정정 전에는 남의 태그를 지우고 "릴리스와 태그를 되돌
 | immutable releases | **꺼짐**. 그래서 정본은 담당자가 별도 채널로 전달하는 자산 SHA-256이다 (DEV-530) |
 
 이 저장소의 원격 태그와 릴리스는 이것 하나뿐이다(`git ls-remote --tags origin` 1행, `gh release list` 1행).
+
+### 6.66.7 immutable releases 활성화 (2026-09-04)
+
+**런북 2장 「경계」가 권고한 것을 결정자가 이행했다.** 저장소 설정이므로 코드 변경은 없다.
+
+| 항목 | 값 |
+| --- | --- |
+| 조치 | `gh api -X PUT repos/89sooner/pr-search/immutable-releases` |
+| 조치 전 | `{"enabled": false, "enforced_by_owner": false}` |
+| 조치 후 | `{"enabled": true, "enforced_by_owner": false}` |
+| `0.1.0-pilot.2` | **`immutable: false` 그대로** — 설정을 켠 뒤 API로 다시 읽어 확인했다 |
+
+**소급되지 않는다는 것이 이 절의 값이다.** 설정을 켜도 그전에 발행된 릴리스는 잠기지 않는다.
+첫 사내 반입 대상인 `0.1.0-pilot.2`가 정확히 그 경우이므로, **이번 반입의 보증은 달라지지
+않는다** — 담당자가 별도 채널로 전달한 SHA-256과의 대조가 여전히 정본이다 (`DEV-530`).
+이 조치의 효과는 다음 버전을 발행할 때부터 나타난다.
+
+영향 범위를 실측했고 고칠 것이 없었다. `build-bundle.sh`는 `IMMUTABLE`을
+`true`·`false`·`unknown` 세 갈래로 이미 분기하며(424~427행), 발행 순서가 초안 → 자산 →
+발행이라 잠긴 저장소에서도 그대로 성립한다. `regression/runtime-reachability.test.ts:494`는
+스크립트에 `immutable-releases` 문자열이 있는지만 재므로 값 변화에 영향받지 않는다.
+
+`deploy/single-host/RUNBOOK.md` 2장 「경계」를 현재 상태로 고쳤다 — 켠 날짜, 소급되지
+않는다는 실측, 그래서 대조는 그대로라는 세 가지를 적었다. 6.66.6장의 `immutable releases:
+꺼짐` 행은 **2026-09-02 발행 시점의 기록이므로 고쳐 쓰지 않는다** (원장 8장의 규율).
 
 ### 6.67.1 맨 요소를 Conductor 컴포넌트로 (DEV-539)
 
