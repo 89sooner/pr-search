@@ -434,18 +434,31 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
   });
 
   /*
-   * **발행한 것을 다시 읽어 본다** (DEV-519의 규율). 이름·크기·digest 셋을 로컬과
-   * 대조하고, 어긋나면 되돌리고 실패한다. 검사가 없으면 "올렸다"가 "같은 것을 올렸다"로 읽힌다.
+   * **되돌릴 수 없는 일 앞에 검사를 둔다** (DEV-544가 DEV-519의 대조를 발행 앞으로 옮겼다).
+   * 대조가 발행 뒤에 있으면, immutable releases를 켠 저장소에서 어긋났을 때 되돌리기가
+   * 버전 이름을 영구히 태운다 — 잠긴 릴리스를 지우면 같은 이름을 다시 쓸 수 없다.
+   * 초안 상태에서도 GitHub가 name·size·digest·state를 주므로 발행 전에 잴 수 있다(실측).
    */
-  it('build-bundle.sh가 발행한 자산을 다시 읽어 이름·크기·digest를 대조한다 (DEV-519)', () => {
-    expectOrder(BUILD, 'gh release create', 'releases/tags/${VERSION}');
-    // 초안 → 자산 → 발행. immutable releases가 켜진 저장소에서는 발행 뒤 자산을 붙일 수 없다 (DEV-530)
+  it('build-bundle.sh가 발행 전에 자산을 대조하고 발행 뒤에는 되돌리지 않는다 (DEV-519 / DEV-544)', () => {
+    // 초안 → 자산 → **대조** → 발행 → 확인
     expect(BUILD).toContain('--draft');
-    expectOrder(BUILD, 'gh release create', '-F draft=false');
-    expectOrder(BUILD, '-F draft=false', 'releases/tags/${VERSION}');
+    expectOrder(BUILD, 'gh release create', 'step "초안 자산 대조 (발행 전)"');
+    expectOrder(BUILD, 'step "초안 자산 대조 (발행 전)"', '-F draft=false');
+    expectOrder(BUILD, '-F draft=false', 'step "발행 확인"');
     expect(BUILD).toContain('.digest');
-    expect(BUILD).toContain('발행된 자산 digest가 다르다');
-    expect(BUILD).toContain('undo_release; die "발행된 자산 digest가 다르다');
+    expect(BUILD).toContain('초안 자산 digest가 다르다');
+    expect(BUILD).toContain('undo_release; die "초안 자산 digest가 다르다');
+    // 업로드가 끝난 자산인지도 본다 — 초안 상태에서 GitHub가 주는 값이다
+    expect(BUILD).toContain('초안 자산이 업로드 완료가 아니다');
+    // **조회 실패를 불일치로 세지 않는다** (DEV-042가 npm 쪽에서 가르친 것)
+    expect(BUILD).toContain('초안 자산을 조회하지 못했다');
+    // 발행 요청이 실패해도 서버에 적용됐으면 되돌리지 않는다 (DEV-535의 연장)
+    expect(BUILD).toContain('서버에는 적용됐다');
+    // **불변식**: 발행 확인 구간에는 되돌리기가 없다. 개별 문구가 아니라
+    // "발행 뒤에는 되돌리지 않는다"를 고정한다.
+    const afterPublishCheck = BUILD.slice(BUILD.indexOf('step "발행 확인"'));
+    expect(afterPublishCheck).not.toContain('undo_release');
+    expect(afterPublishCheck).toContain('되돌리지 않는다');
   });
 
   /*
