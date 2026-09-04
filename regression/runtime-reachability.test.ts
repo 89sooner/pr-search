@@ -501,14 +501,40 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
     expect(halt).toContain('이 실행이 만든 것이 아니므로 지우지 않았다');
     expect(halt).toContain('그 태그를 지우지 않는다');
     expect(halt).toContain('새 버전으로');
-    expect(halt).toContain('git push origin :refs/tags/');
     expect(halt).toContain('같은 버전으로');
+
+    // **기대값 없는 삭제를 지시하지 않는다** (DEV-547). `TAG_LEFT`는 "그대로 남았다"와
+    // "옮겨졌다"를 함께 담으므로, 기대값 없이 지우라고 하면 남의 태그를 지우게 된다.
+    // 이 시험의 앞 판(PR #149)은 정반대로 그 명령이 **있어야** 한다고 요구했다 — 틀린 계약을
+    // 굳히고 있었다.
+    expect(halt).not.toMatch(/git push origin\s+:refs\/tags\//);
+    expect(halt).toContain('--force-with-lease="refs/tags/<version>:');
+    expect(halt).toContain('대상을 먼저 본다');
 
     // **두 상황이 각각의 행에 있어야 한다.** 합치면 처방이 섞인다.
     const foreignRow = halt.split(/\r?\n/).find((l) => l.includes('이 실행이 만든 것이 아니므로'));
     expect(foreignRow).toBeDefined();
-    expect(foreignRow).not.toContain('git push origin :refs/tags/');
+    expect(foreignRow).toContain('지우지 않는다');
     expect(foreignRow).not.toContain('같은 버전으로');
+  });
+
+  /*
+   * **한 함수 안에서 두 메시지가 어긋나지 않는다** (DEV-547). `undo_note()`의 `TAG_LEFT`
+   * 분기는 "그대로 남았다"와 "옮겨졌다"를 함께 다루므로, 기대값 없는 삭제를 지시하면
+   * DEV-541이 코드에서 막은 남의 태그 삭제를 사람 손으로 하게 만든다. 같은 함수의 경고는
+   * 이미 "확인한 뒤 판단한다"고 말하고 있었다.
+   */
+  it('undo_note가 기대값 없는 태그 삭제를 지시하지 않는다 (DEV-547)', () => {
+    const start = BUILD.indexOf('undo_note() {');
+    expect(start).toBeGreaterThan(-1);
+    const note = BUILD.slice(start, BUILD.indexOf('\n  }', start));
+
+    expect(note).not.toMatch(/git push origin\s+:refs\/tags\//);
+    expect(note).toContain('--force-with-lease=');
+    expect(note).toContain('대상을 먼저 본다');
+    // 다른 커밋이면 지우지 않고 새 버전으로 간다
+    expect(note).toContain('다른 커밋이면');
+    expect(note).toContain('새 버전으로');
   });
 
   /*
