@@ -134,7 +134,9 @@ curl -fL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stre
 
 **받은 파일은 담당자가 전달한 SHA-256과 같아야 하고, 자산 digest와도 같아야 한다.** GitHub는 자산마다 SHA-256 digest를 계산해 API로 주고, 릴리스 본문에도 발행 시점의 같은 값이 적혀 있다. 그러나 **릴리스는 저절로 불변이 아니다** (`DEV-530`) — 저장소의 immutable releases 설정이 꺼져 있으면 쓰기 권한자가 발행 뒤에도 자산을 바꾸거나 지우고 태그를 옮길 수 있고, 켜져 있어도 제목과 본문은 편집할 수 있다. 그래서 정본은 **담당자가 릴리스와 별개의 채널로 전달한 SHA-256**이며, 본문의 값은 참고일 뿐이다. `sha256sum`이 전달받은 값과 다르거나 자산 digest가 전달받은 값과 다르면 그 파일을 쓰지 않는다 — 손상이든 변조든 발행 뒤 변경이든 같은 결론이다. 프록시 환경이면 `gh`와 curl은 `HTTPS_PROXY`를 읽는다.
 
-**immutable releases를 켜는 것을 권한다.** 켜면 발행된 릴리스의 자산을 바꾸거나 지울 수 없고 태그가 그 커밋에 잠긴다. 이 저장소는 2026-09-02 기준 꺼져 있으며(`gh api repos/<owner>/<repo>/immutable-releases`), `build-bundle.sh --release`가 발행할 때 그 상태를 출력한다. 켜는 것은 저장소 설정이라 결정자의 몫이다 — 켜져 있어도 전달받은 SHA-256과의 대조는 그대로 한다.
+**immutable releases는 2026-09-04에 켰다** (`gh api repos/<owner>/<repo>/immutable-releases` → `enabled: true`). 켜면 발행된 릴리스의 자산을 바꾸거나 지울 수 없고 태그가 그 커밋에 잠기며, `build-bundle.sh --release`가 발행할 때 그 상태를 출력한다.
+
+**그러나 소급되지 않는다.** 켜기 전에 발행된 릴리스는 그대로 남는다 — `0.1.0-pilot.2`는 설정을 켠 뒤에도 `immutable: false`다(실측). 잠기는 것은 **켠 뒤에 발행하는 릴리스부터**이며, 그전에 발행한 것은 여전히 쓰기 권한자가 자산을 바꾸거나 태그를 옮길 수 있다. **전달받은 SHA-256과의 대조는 어느 쪽이든 그대로 한다** (`DEV-530`).
 
 **github.com에 닿지 않는 환경이면** 담당자가 외부망에서 같은 파일(`--release`가 올린 것과 같은 아카이브)을 조직의 반입 채널로 옮긴다. 그 뒤의 검증과 절차는 같다 — 1단계의 대조는 담당자가 전달한 SHA-256으로 한다.
 
