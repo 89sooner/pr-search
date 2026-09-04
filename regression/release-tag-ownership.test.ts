@@ -13,7 +13,7 @@
  * Refs: DEV-541 WP-072 CR-063
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, rmSync, chmodSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -151,5 +151,102 @@ describe('발행 되돌리기의 태그 소유권 (DEV-541)', () => {
     expect(result.output).toContain('다른 커밋');
     expect(result.output).not.toContain('이미지 빌드');
     expect(remoteTag(ws)).toBe(ws.other);
+  });
+});
+
+/**
+ * 되돌릴 수 없는 일 앞에 검사를 둔다 (DEV-544 / PR #145 머지 후 리뷰 P1).
+ *
+ * `immutable releases`를 켠 저장소에서는 발행된 릴리스를 지우면 태그는 지울 수 있으나
+ * **같은 태그 이름을 다시 쓸 수 없다**(GitHub 문서). 그래서 자산 대조가 발행 **뒤**에
+ * 있으면, 일시적인 조회 실패 하나로 그 버전이 영구히 타 버린다 — 파일은 멀쩡히 올라갔는데도.
+ *
+ * 고친 것은 둘이다. 대조를 발행 앞으로 옮겼고, 발행 뒤에는 되돌리지 않는다.
+ *
+ * Refs: DEV-544 DEV-530 WP-072
+ */
+describe('발행 전 대조와 발행 후 불가역 (DEV-544)', () => {
+  /** 대역 `gh`가 PATCH(발행)를 받으면 남기는 자국. 이것이 없으면 발행에 닿지 않은 것이다. */
+  const publishedMarker = (ws: { remote: string }): boolean =>
+    existsSync(join(ws.remote, '..', 'fake-gh.state.published'));
+
+  const archiveOf = (ws: { work: string }): string =>
+    join(ws.work, 'deploy/single-host/bundle', `pr-search-${VERSION}-offline.tar.gz`);
+
+  it('C7: 자산이 어긋나면 발행에 닿기 전에 멈춘다 — 되돌리기가 성립하는 자리다', () => {
+    const ws = makeWorkspace();
+    const result = run(ws, { FAKE_ASSET_MISMATCH: '1', FAKE_IMMUTABLE: 'true' });
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('초안 자산');
+    expect(result.output).toContain('발행하지 않았다');
+    // **발행에 닿지 않았다는 것이 이 시험의 전부다.** 닿았다면 잠긴 저장소에서 버전이 탄다.
+    expect(publishedMarker(ws)).toBe(false);
+    expect(result.output).toContain('릴리스와 태그를 되돌렸다');
+    expect(remoteTag(ws)).toBe('');
+  });
+
+  it('C8: 조회 실패를 불일치로 세지 않고, 그때도 발행하지 않는다', () => {
+    const ws = makeWorkspace();
+    const result = run(ws, { FAKE_ASSET_QUERY_FAIL: '1', FAKE_IMMUTABLE: 'true' });
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('조회하지 못했다');
+    // "이름이 다르다"로 오분류하지 않는다 — 그 둘은 다른 사실이다 (DEV-042의 교훈).
+    expect(result.output).not.toContain('이름이 다르다');
+    expect(publishedMarker(ws)).toBe(false);
+    expect(remoteTag(ws)).toBe('');
+  });
+
+  it('C9: 발행 요청이 실패해도 서버에 적용됐으면 되돌리지 않는다', () => {
+    const ws = makeWorkspace();
+    const result = run(ws, {
+      FAKE_ARCHIVE: archiveOf(ws),
+      FAKE_PUBLISH_PATCH_FAIL: '1',
+      FAKE_DRAFT_AFTER_PATCH: 'false', // 서버에는 적용됐다
+      FAKE_IMMUTABLE: 'true',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('서버에는 적용됐다');
+    expect(result.output).toContain('되돌리지 않는다');
+    // 잠긴 저장소라는 사실을 그 자리에서 말한다 — 사람이 판단할 근거다.
+    expect(result.output).toContain('다시 쓸 수 없다');
+    // 되돌리기가 돌지 않았으므로 태그가 남는다.
+    expect(remoteTag(ws)).toBe(ws.commit);
+  });
+
+  it('C9b: 발행 요청이 실패하고 서버도 초안 그대로면 되돌린다', () => {
+    const ws = makeWorkspace();
+    const result = run(ws, {
+      FAKE_ARCHIVE: archiveOf(ws),
+      FAKE_PUBLISH_PATCH_FAIL: '1',
+      FAKE_DRAFT_AFTER_PATCH: 'true', // 적용되지 않았다
+    });
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('서버도 초안 그대로다');
+    expect(result.output).toContain('릴리스와 태그를 되돌렸다');
+    expect(remoteTag(ws)).toBe('');
+  });
+
+  it('C10: 발행 뒤 확인 조회가 실패해도 되돌리지 않는다', () => {
+    const ws = makeWorkspace();
+    const result = run(ws, {
+      FAKE_ARCHIVE: archiveOf(ws),
+      FAKE_PUBLISH_CHECK_FAIL: '1',
+      FAKE_IMMUTABLE: 'true',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain('확인 조회가 실패했다');
+    expect(result.output).toContain('되돌리지 않는다');
+    expect(publishedMarker(ws)).toBe(true); // 발행은 됐다
+    expect(remoteTag(ws)).toBe(ws.commit); // 태그를 지우지 않는다
+  });
+
+  it('C11: 자산이 맞으면 발행까지 간다 — 대조를 앞으로 옮겨도 성공 경로가 성립한다', () => {
+    const ws = makeWorkspace();
+    const result = run(ws, { FAKE_ARCHIVE: archiveOf(ws), FAKE_IMMUTABLE: 'true' });
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain('번들 완료');
+    expect(result.output).toContain('immutable releases : 켜짐');
+    expect(publishedMarker(ws)).toBe(true);
+    expect(remoteTag(ws)).toBe(ws.commit);
   });
 });

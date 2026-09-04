@@ -10,7 +10,13 @@
 #   FAKE_COMMIT          이 실행이 발행하려는 커밋
 #   FAKE_RACE_AT_DRAFT   1이면 초안 생성 직후에 다른 주체가 같은 태그를 만든다 (같은 커밋)
 #   FAKE_RETARGET_AFTER_REF 1이면 이 실행이 ref를 만든 직후 다른 주체가 태그를 옮긴다
-#   FAKE_ASSET_MISMATCH  1이면 발행 자산 대조가 어긋나 되돌리기가 돈다
+#   FAKE_ASSET_MISMATCH  1이면 **발행 전** 자산 대조가 어긋나 되돌리기가 돈다 (DEV-544)
+#   FAKE_ASSET_QUERY_FAIL   1이면 초안 자산 조회가 빈 응답을 낸다 — 불일치와 구분돼야 한다
+#   FAKE_ARCHIVE            실제 아카이브 경로. 주면 그 파일의 값으로 답해 대조가 통과한다
+#   FAKE_PUBLISH_PATCH_FAIL 1이면 발행 요청이 실패한다 (서버에는 적용된 채로)
+#   FAKE_DRAFT_AFTER_PATCH  그 뒤 실제 상태 조회의 답 (true=초안 그대로 / false=이미 발행됨)
+#   FAKE_PUBLISH_CHECK_FAIL 1이면 발행 뒤 확인 조회가 빈 응답을 낸다
+#   FAKE_IMMUTABLE          immutable-releases 설정 값 (기본 false)
 set -euo pipefail
 state="${FAKE_REMOTE}/../fake-gh.state"
 tag_of() { git --git-dir="$FAKE_REMOTE" rev-parse --verify -q "refs/tags/$1" 2>/dev/null || true; }
@@ -31,12 +37,12 @@ case "$1" in
     esac ;;
   api)
     shift
-    method="GET"; path=""; fields=()
+    method="GET"; path=""; jq_expr=""; fields=()
     while [ $# -gt 0 ]; do
       case "$1" in
         -X) method="$2"; shift 2 ;;
         -f|-F) fields+=("$2"); shift 2 ;;
-        --jq) shift 2 ;;
+        --jq) jq_expr="$2"; shift 2 ;;
         *) [ -z "$path" ] && path="$1"; shift ;;
       esac
     done
@@ -57,17 +63,41 @@ case "$1" in
         fi
         printf '{"ref":"%s"}\n' "$ref"
         exit 0 ;;
-      *"/immutable-releases") printf 'false\n'; exit 0 ;;
+      *"/immutable-releases") printf '%s\n' "${FAKE_IMMUTABLE:-false}"; exit 0 ;;
       *"/releases/tags/"*)
-        if [ "${FAKE_ASSET_MISMATCH:-0}" = "1" ]; then
-          printf 'wrong-name.tar.gz 1 sha256:deadbeef\n'
-        else
-          printf '%s %s sha256:%s\n' "${FAKE_ASSET_NAME:-x.tar.gz}" "${FAKE_ASSET_SIZE:-0}" "${FAKE_ASSET_SHA:-0}"
-        fi
+        # 발행 확인 (DEV-544) — 스크립트는 여기서 `.draft`만 묻는다.
+        [ "${FAKE_PUBLISH_CHECK_FAIL:-0}" = "1" ] && exit 0          # 빈 응답 = 조회 실패
+        printf '%s\n' "${FAKE_PUBLISHED_DRAFT:-false}"
         exit 0 ;;
       *"/releases/"*)
-        [ "$method" = "DELETE" ] && { echo "deleted" > "$state"; exit 0; }
-        exit 0 ;;   # PATCH draft=false
+        case "$method" in
+          DELETE) echo "deleted" > "$state"; exit 0 ;;
+          PATCH)
+            # 발행. 실패를 흉내내도 **서버에는 적용된다** — DEV-535가 말한 "응답만 잃는" 자리다.
+            echo "published" > "${state}.published"
+            [ "${FAKE_PUBLISH_PATCH_FAIL:-0}" = "1" ] && exit 1
+            exit 0 ;;
+          *)
+            case "$jq_expr" in
+              *".draft"*)
+                # PATCH 실패 뒤 실제 상태를 묻는 자리 (DEV-544)
+                [ "${FAKE_DRAFT_QUERY_FAIL:-0}" = "1" ] && exit 1
+                printf '%s\n' "${FAKE_DRAFT_AFTER_PATCH:-true}"
+                exit 0 ;;
+            esac
+            # 초안 자산 대조 (발행 전) — name size digest state
+            [ "${FAKE_ASSET_QUERY_FAIL:-0}" = "1" ] && exit 0        # 빈 응답 = 조회 실패
+            if [ "${FAKE_ASSET_MISMATCH:-0}" = "1" ]; then
+              printf 'wrong-name.tar.gz 1 sha256:deadbeef uploaded\n'
+            elif [ -n "${FAKE_ARCHIVE:-}" ] && [ -f "${FAKE_ARCHIVE}" ]; then
+              # 실제 아카이브를 읽어 답한다 — 성공 경로를 시험하려면 값이 진짜여야 한다.
+              printf '%s %s sha256:%s %s\n' "$(basename "$FAKE_ARCHIVE")" "$(stat -c%s "$FAKE_ARCHIVE")" \
+                "$(sha256sum "$FAKE_ARCHIVE" | cut -d' ' -f1)" "${FAKE_ASSET_STATE:-uploaded}"
+            else
+              printf '%s %s sha256:%s uploaded\n' "${FAKE_ASSET_NAME:-x.tar.gz}" "${FAKE_ASSET_SIZE:-0}" "${FAKE_ASSET_SHA:-0}"
+            fi
+            exit 0 ;;
+        esac ;;
       *"/releases"*)
         # lookup_draft_id / 초안 잔재 조회
         [ "$(cat "$state" 2>/dev/null || true)" = "draft-created" ] && printf '4242\n'

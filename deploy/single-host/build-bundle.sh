@@ -354,6 +354,15 @@ if [ "$RELEASE" -eq 1 ]; then
       printf '릴리스를 되돌리지 못했다 — GitHub에서 태그 %s의 릴리스(초안)를 지운 뒤 다시 실행한다' "$VERSION"
     fi
   }
+  # **잠긴 저장소에서는 되돌리기의 대가가 다르다** (DEV-544). 발행된 immutable 릴리스를 지우면
+  # 태그는 지울 수 있으나 **같은 태그 이름을 다시 쓸 수 없다**(GitHub 문서). 그래서 발행 뒤에는
+  # 되돌리지 않고 사실만 말하며, 판단을 사람에게 넘길 때 이 문구를 붙인다.
+  immutable_note() {
+    case "$IMMUTABLE" in
+      true) printf ' (immutable releases가 켜져 있다 — 이 릴리스를 지우면 버전 %s를 다시 쓸 수 없다)' "$VERSION" ;;
+      *)    printf '' ;;
+    esac
+  }
   # **초안 → 자산 → 발행 순서다.** immutable releases가 켜진 저장소에서는 발행 뒤 자산을 붙일 수
   # 없으므로(GitHub가 권하는 순서), 자산이 전부 붙은 초안을 발행한다. 태그는 발행 시점에 만들어진다.
   gh release create "$VERSION" -R "$REPO_SLUG" --draft --target "$UPSTREAM_COMMIT" \
@@ -399,18 +408,55 @@ if [ "$RELEASE" -eq 1 ]; then
     fi
   fi
 
-  gh api -X PATCH "repos/${REPO_SLUG}/releases/${RELEASE_ID}" -F draft=false >/dev/null \
-    || { undo_release; die "초안을 발행하지 못했다(서버에는 적용됐을 수 있다) — $(undo_note)"; }
+  # **되돌릴 수 없는 일 앞에 검사를 둔다** (DEV-544). 이 대조가 발행 **뒤**에 있으면, immutable
+  # releases가 켜진 저장소에서 어긋났을 때 되돌리기가 버전 이름을 영구히 태운다 — 잠긴 릴리스를
+  # 지우면 태그는 지울 수 있으나 같은 이름을 다시 쓸 수 없다(GitHub 문서). 초안 상태에서도
+  # GitHub는 자산의 name·size·digest·state를 준다(실측). 그러니 발행 전에 잰다.
+  #
+  # 이 시점에 있는 것은 초안과 이 실행이 만든 태그뿐이라 되돌리기가 온전히 성립한다.
+  step "초안 자산 대조 (발행 전)"
+  ASSET_LINE=""
+  for attempt in 1 2 3; do
+    ASSET_LINE="$(gh api "repos/${REPO_SLUG}/releases/${RELEASE_ID}" \
+      --jq '.assets[] | select(.name | endswith(".tar.gz")) | "\(.name) \(.size) \(.digest // "none") \(.state // "unknown")"' 2>/dev/null || true)"
+    [ -n "$ASSET_LINE" ] && break
+    sleep 2
+  done
+  # **조회 실패를 불일치로 세지 않는다.** 빈 응답은 "이름이 다르다"가 아니라 "묻지 못했다"이며,
+  # 둘을 뭉뚱그리면 멀쩡한 자산을 되돌린다 — `DEV-042`가 npm 쪽에서 가르친 것이 여기에도 있었다.
+  if [ -z "$ASSET_LINE" ]; then
+    undo_release
+    die "초안 자산을 조회하지 못했다 (3회 시도) — 발행하지 않았다. $(undo_note)"
+  fi
+  read -r REMOTE_NAME REMOTE_SIZE REMOTE_DIGEST REMOTE_STATE <<<"$ASSET_LINE"
+  if [ "$REMOTE_STATE" != "uploaded" ]; then undo_release; die "초안 자산이 업로드 완료가 아니다: ${REMOTE_STATE} — 발행하지 않았다. $(undo_note)"; fi
+  if [ "$REMOTE_NAME" != "$(basename "$ARCHIVE")" ]; then undo_release; die "초안 자산 이름이 다르다: ${REMOTE_NAME:-없음} — 발행하지 않았다. $(undo_note)"; fi
+  if [ "$REMOTE_SIZE" != "$ARCHIVE_BYTES" ]; then undo_release; die "초안 자산 크기가 다르다: 원격 ${REMOTE_SIZE} · 로컬 ${ARCHIVE_BYTES} — 발행하지 않았다. $(undo_note)"; fi
+  if [ "$REMOTE_DIGEST" != "sha256:${ARCHIVE_SHA256}" ]; then undo_release; die "초안 자산 digest가 다르다: 원격 ${REMOTE_DIGEST} · 로컬 sha256:${ARCHIVE_SHA256} — 발행하지 않았다. $(undo_note)"; fi
 
-  # **발행한 것을 다시 읽어 본다** (DEV-519의 규율). 이름·크기·digest가 로컬과 다르면
-  # 되돌리고 실패한다. digest는 GitHub가 자산마다 계산해 API로 주는 값이다.
-  step "발행한 자산 대조"
-  ASSET_LINE="$(gh api "repos/${REPO_SLUG}/releases/tags/${VERSION}" \
-    --jq '.assets[] | select(.name | endswith(".tar.gz")) | "\(.name) \(.size) \(.digest // "none")"' 2>/dev/null || true)"
-  REMOTE_NAME="${ASSET_LINE%% *}"; REST="${ASSET_LINE#* }"; REMOTE_SIZE="${REST%% *}"; REMOTE_DIGEST="${REST#* }"
-  if [ "$REMOTE_NAME" != "$(basename "$ARCHIVE")" ]; then undo_release; die "발행된 자산 이름이 다르다: ${REMOTE_NAME:-없음} — $(undo_note)"; fi
-  if [ "$REMOTE_SIZE" != "$ARCHIVE_BYTES" ]; then undo_release; die "발행된 자산 크기가 다르다: 원격 ${REMOTE_SIZE} · 로컬 ${ARCHIVE_BYTES} — $(undo_note)"; fi
-  if [ "$REMOTE_DIGEST" != "sha256:${ARCHIVE_SHA256}" ]; then undo_release; die "발행된 자산 digest가 다르다: 원격 ${REMOTE_DIGEST} · 로컬 sha256:${ARCHIVE_SHA256} — $(undo_note)"; fi
+  # ── 여기부터가 되돌릴 수 없는 자리다 ──────────────────────────
+  # 발행 요청이 실패해도 서버에는 적용됐을 수 있다 (`DEV-535`). 플래그를 믿지 않고 실제 상태를
+  # 묻는다. 이미 발행됐다면 되돌리지 않는다 — 잠긴 저장소에서 그 되돌리기는 버전을 태운다.
+  if ! gh api -X PATCH "repos/${REPO_SLUG}/releases/${RELEASE_ID}" -F draft=false >/dev/null 2>&1; then
+    DRAFT_NOW="$(gh api "repos/${REPO_SLUG}/releases/${RELEASE_ID}" --jq '.draft' 2>/dev/null || echo unknown)"
+    case "$DRAFT_NOW" in
+      true)  undo_release; die "초안을 발행하지 못했다 (서버도 초안 그대로다) — $(undo_note)" ;;
+      false) die "발행 요청은 실패했으나 서버에는 적용됐다 — 릴리스 ${VERSION}이 공개돼 있다. 되돌리지 않는다$(immutable_note). 자산을 직접 대조한 뒤 판단한다" ;;
+      *)     die "초안을 발행하지 못했고 실제 상태도 확인하지 못했다 — 릴리스 ${VERSION}의 상태를 직접 확인한다. 되돌리지 않는다$(immutable_note)" ;;
+    esac
+  fi
+
+  # **발행이 반영됐는지 확인한다.** 자산은 발행 전에 이미 대조했고 발행은 자산을 바꾸지 않으므로
+  # 여기서는 공개 상태만 묻는다. **어긋나도 되돌리지 않는다** — 되돌리기의 대가가 확인 실패의
+  # 대가보다 크고, 그 판단은 사람이 한다 (DEV-544).
+  step "발행 확인"
+  DRAFT_AT_TAG="$(gh api "repos/${REPO_SLUG}/releases/tags/${VERSION}" --jq '.draft' 2>/dev/null || true)"
+  if [ -z "$DRAFT_AT_TAG" ]; then
+    die "발행 뒤 확인 조회가 실패했다 — 릴리스 ${VERSION}을 직접 확인한다. 되돌리지 않는다$(immutable_note)"
+  fi
+  if [ "$DRAFT_AT_TAG" != "false" ]; then
+    die "발행했는데 여전히 초안이다 (draft=${DRAFT_AT_TAG}) — 릴리스 ${VERSION}을 직접 확인한다. 되돌리지 않는다$(immutable_note)"
+  fi
 fi
 
 printf '\n번들 완료\n'
