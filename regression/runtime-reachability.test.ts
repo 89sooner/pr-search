@@ -486,6 +486,51 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
   });
 
   /*
+   * **남의 태그와 자기 태그는 처방이 반대다** (DEV-546 / PR #148 머지 후 리뷰 P1).
+   * `undo_note()`는 다른 주체가 만든 태그에 대해 "지우지 않았다 — 새 버전으로 다시 실행"이라
+   * 말하고, 이 실행이 만든 태그에 대해서는 "지운 뒤 다시 실행"이라 말한다. 런북이 둘을 한 행에
+   * 합치면 운영자가 남의 태그를 지우게 되고, `DEV-541`이 코드에서 막은 것을 사람 손으로 하게 된다.
+   */
+  it('런북이 남의 태그와 자기 태그의 처방을 가른다 (DEV-546 / DEV-541)', () => {
+    const start = RUNBOOK.indexOf('### 발행이 중간에 멈췄다면');
+    const end = RUNBOOK.indexOf('### 경계 —');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const halt = RUNBOOK.slice(start, end);
+
+    expect(halt).toContain('이 실행이 만든 것이 아니므로 지우지 않았다');
+    expect(halt).toContain('그 태그를 지우지 않는다');
+    expect(halt).toContain('새 버전으로');
+    expect(halt).toContain('git push origin :refs/tags/');
+    expect(halt).toContain('같은 버전으로');
+
+    // **두 상황이 각각의 행에 있어야 한다.** 합치면 처방이 섞인다.
+    const foreignRow = halt.split(/\r?\n/).find((l) => l.includes('이 실행이 만든 것이 아니므로'));
+    expect(foreignRow).toBeDefined();
+    expect(foreignRow).not.toContain('git push origin :refs/tags/');
+    expect(foreignRow).not.toContain('같은 버전으로');
+  });
+
+  /*
+   * **`target_commitish`는 태그의 현재 대상이 아니다** (DEV-546). GitHub 문서가 "태그가 이미
+   * 존재하면 사용되지 않는다"고 정하고, 이 스크립트는 태그를 먼저 원자적으로 만든 뒤 발행한다
+   * (DEV-541). 그 필드로 계보를 판정하면, 태그가 옮겨진 릴리스를 온전하다고 선언해 **버전과
+   * 소스의 계보가 거짓인 번들**을 사내로 내보낼 수 있다.
+   */
+  it('런북의 회복 절차가 태그를 역참조해 manifest와 대조한다 (DEV-546)', () => {
+    const start = RUNBOOK.indexOf('#### 공개된 릴리스를 확인한다');
+    expect(start).toBeGreaterThan(-1);
+    const recover = RUNBOOK.slice(start, RUNBOOK.indexOf('### 경계 —'));
+
+    expect(recover).toContain('refs/tags/<version>^{}');
+    expect(recover).toContain('release-manifest.json');
+    expect(recover).toContain('target_commitish');
+    expect(recover).toContain('태그가 이미 존재하면 사용되지 않는다');
+    // 온전 판정에 계보가 들어가야 한다
+    expect(recover).toContain('manifest 커밋과 같으면');
+  });
+
+  /*
    * **릴리스는 불변이고 검사는 빌드 앞이다** (DEV-524가 가르친 것 — 검사의 위치).
    * 같은 버전의 릴리스가 있으면 몇 분짜리 이미지 빌드를 시작하기 전에 멈춘다.
    */
