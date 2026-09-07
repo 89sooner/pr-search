@@ -1,6 +1,63 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
 
+최신 기준 (2026-09-08 · **첫 사내 반입의 결과를 저장소에 반영 — CR-066 / DEV-548~553**)
+
+**브랜치 `claude/first-internal-import-findings` (main = 268efa9에서 갈라짐). PR은 아직 열지 않았다.** 실측하라.
+
+- SRS baseline v2.20(변경 없음) · 원장 review **v6.48** · 인프라 **v0.13** · 런북 헤더에 첫 반입 날짜 · 작업 패키지 v2.21(변경 없음)
+- **다음 빈 ID: CR-067 · DEV-554 · WP-073 · 마이그레이션 024** (측정값. 쓰기 전 다시 잰다)
+- open DEV 16건 — 이전과 같다. 이 라운드가 연 여섯은 전부 resolved
+- **인계 pack이 하루 뒤처져 있었다.** 2026-09-04 라운드(`CR-065`·`DEV-544`~`547`, PR #145~#150)가 `agent-context/`에 없었다. 이번에 함께 적었다
+
+### A. 지금 당장 — 이 라운드를 닫는다
+
+1. **PR을 열고 CI를 통과시킨다.** 커밋 둘이 브랜치에 있다 — 코드·문서·회귀(`ac2067d`)와 `agent-context`. CI는 `verify`(약 2분 50초)와 `integration`(약 3분)이며 **둘 다** 봐야 한다
+2. ~~이미지 빌드 확인~~ — **했다.** `docker build --target web` 통과, 기동해 세 경로 200·외부 모듈 오류 0건 (원장 6.70.5)
+3. **머지 뒤 리뷰를 반드시 다시 센다.** 이 저장소에서 그것이 다음 결함을 잡은 경우가 압도적이다 (`python3 agent-context/count-unresolved-reviews.py`)
+
+### B. 사내에서 해야 할 것 — 다음 번들을 받을 때
+
+- **`company/main`에 얹었는지 확인한다** (런북 5장 새 표): `.env` 여섯 값 · `compose.yml`의 CA 마운트 **여섯 자리** · `prs_retention` 롤 · 웹훅 경유 경로
+- **web 컨테이너 안의 손 스텁은 이제 필요 없다.** 이미지가 그 일을 한다 — 다음 번들부터
+- 반입 결과의 정본은 원장 6.70장이다. 사내에서 새로 재는 값이 생기면 그 장에 덧붙인다
+
+### C. 아직 성립하지 않은 것 — 반입 성공과 게이트 통과는 다르다
+
+- `/search` 실제 검색 — `AUTH_ENABLED=false` 형상이라 비활성. OIDC와 토큰은 함께 구성할 수 없다 (`DEV-048`)
+- 사내 OIDC · 그룹 클레임 · 성능 목표 · 롤백 10분 · `ACC-06` — 전부 `NOT RUN` 그대로
+- **Gate 4·5·6 그대로. 릴리스는 승인되지 않았다**
+
+### D. 미뤄 둔 것 — 이전과 같다
+
+`DEV-536`의 소유 WP 판단 · `DEV-492` · `DEV-494`(프록시 — 첫 반입 호스트가 프록시를 강제했으나 서비스 아웃바운드는 GHE뿐이라 막히지 않았다) · `DEV-447` · `DEV-433` · `DEV-427` · `DEV-304`·`305` · `DEV-058`. 여기에 **`prs_retention`을 마이그레이션이 만들 것인지**가 추가됐다 (원장 7장, 소유 WP 판단).
+
+### E. 이 라운드가 깔아 둔 자리 — 다시 만들지 말 것
+
+- `Dockerfile`의 실체화 호출은 **`pnpm deploy` 뒤**여야 한다. 앞이면 지워질 트리에 만든다
+- 실체화 스크립트의 "못 찾으면 종료 코드 1"을 없애지 마라 — 조용히 넘기면 결함이 그대로 돌아온다. 이름을 박지도 마라
+- `serverExternalPackages`에 `pg`를 넣지 마라 — **효과가 없다**(실측). 넷을 재고 넷 다 버렸다
+- 런북 7장의 남은 `NOT RUN`을 통과로 바꾸지 마라 — 회귀가 잰다
+- 회귀는 **코드에서 값을 읽어 문서와 대조하는 형태**다. 문자열을 박는 형태로 되돌리지 마라
+- 이전 라운드 것 그대로: `build-bundle.sh`의 원자적 태그 생성과 lease 삭제 · 릴리스 워크플로의 스냅숏 단계 · 파생 토큰 문서 §9 · `plans/`는 `.gitignore`
+
+---
+
+## 시작하기 전에 — 이 인계의 값을 실측하라
+
+```bash
+git -C . rev-parse --short HEAD && git status --porcelain    # 커밋되지 않은 변경이 있다
+gh pr list --state open --json number --jq 'length'
+grep -cE '^\| DEV-[0-9]{3} .*\| open' docs/40_delivery/pr_search_implementation_traceability.md
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
+python3 agent-context/count-unresolved-reviews.py
+docker ps --format '{{.Names}}' | grep -E '^prs-(postgres|redis|elasticsearch)$'   # 없으면 docker compose up -d
+```
+
+---
+
+## (2026-09-03 2차 종료 시점의 기록)
+
 최신 기준 (2026-09-03 2차 · **리뷰 부채 종결 라운드 — Conductor 0.3.1 발행, unresolved review 0**)
 
 `main` = `c81f363` — 실측하라. 이 인계 커밋이 한 번 더 옮긴다.

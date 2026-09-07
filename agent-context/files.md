@@ -1,5 +1,31 @@
 # 중요 파일 경로와 역할
 
+## 2026-09-08 라운드가 만지거나 만든 것 (첫 사내 반입 반영)
+
+pr-search (브랜치 `claude/first-internal-import-findings`, main = 268efa9에서 갈라짐)
+
+- `packages/github/src/config.ts` — `withBlankFallback` 헬퍼 하나로 `resolveGitHubConfig`·`resolveMirrorConfig`를 모았다. **빈 문자열과 공백뿐인 값을 기본값으로 되돌린다** (`DEV-548`). 옛 `?? `형태로 되돌리지 마라 — 회귀가 잡는다
+- `packages/github/src/config.test.ts` — 「환경 값이 비어 있을 때 기본값으로 되돌린다」 다섯. 개별 키가 아니라 **불변식**을 잰다("어떤 조합에서도 절대 URL이 나온다")
+- `apps/web/next.config.ts` — `serverExternalPackages`는 그대로다. **주석만 바뀌었다** — 이 목록으로는 `DEV-551`이 안 풀린다는 실측 결과와 실제 해법의 위치(`Dockerfile`)를 적었다. `pg`를 이 목록에 넣지 마라, 효과가 없다
+- `scripts/materialize-turbopack-externals.mjs` — **신규.** `.next`의 `*.nft.json`에서 해시 이름을 읽어 배포 트리에 빈 스텁을 만든다. 이름을 박지 않으며 **하나도 못 찾으면 종료 코드 1**이다. 그 실패를 없애지 마라
+- `Dockerfile` — `deploy-web` 단계가 `pnpm deploy` **뒤에** 그 스크립트를 부른다. 순서를 뒤집으면 지워질 트리에 만든다
+- `deploy/single-host/RUNBOOK.md` — 2.C 웹훅 경로 정정 + 「GHE가 서버에 닿지 못할 때」 신설 · 5장 「첫 반입이 만든 것」 표 · 6장 「anchor는 얕게 합쳐진다」 + 확인 명령 · 7장 판정 갱신 · 8장 증상 일곱 추가 · 헤더에 첫 반입 날짜
+- `deploy/single-host/.env.example` — `GHE_API_URL`(빈 값의 뜻) · `ADMIN_DATABASE_URL`(실제 대가와 롤 재생성) · `WEB_PORT`(포트 충돌)
+- `regression/runtime-reachability.test.ts` — describe 「첫 사내 반입이 드러낸 계약 (CR-066)」 일곱. **코드에서 값을 읽어 문서와 대조하는 형태**다 — 문자열을 박은 곳은 옛 주소 금지 검사뿐이다
+- `docs/40_delivery/pr_search_implementation_traceability.md` v6.48 — 5장 `DEV-548`~`553` · **6.70장이 반입 실행 기록의 정본** · 7장 제한 넷 · 8장 반입 사실
+- `docs/00_governance/change_control.md` — `CR-066`
+- `docs/30_technical_architecture/pr_search_infrastructure_operations.md` v0.13 — 11장 리스크 표: CA 성립 · 프록시는 open 유지 · **인바운드 차단 행 신설**
+- `.gitattributes` — 새 스크립트를 LF로 고정했다. **이미지 안으로 들어가는 스크립트라서**이며, `scripts/lint-deps.mjs`(CI 전용)는 고정하지 않는 것이 선례다. CRLF에서도 `node <path>`로는 돈다(실측) — 고정은 셔뱅 실행으로 바뀔 때의 대가 때문이다
+- `agent-context/*.md` — 이 라운드와 **인계에 빠져 있던 2026-09-04 라운드**
+
+손대면 안 되는 것 (갱신)
+
+- `Dockerfile`의 실체화 호출 — 지우면 배포 이미지의 모든 SSR이 500이다. 회귀가 잡는다
+- 실체화 스크립트의 "못 찾으면 종료" — 조용히 넘기는 순간 이 결함이 그대로 돌아온다
+- 런북 2.C의 웹훅 경로 — 정본은 `apps/ingest-gateway/src/server.ts`의 `WEBHOOK_PATH`다. 문서만 고치지 말고 코드에서 읽는 회귀를 함께 본다
+- 런북 7장의 남은 `NOT RUN` — 반입이 성공했다고 통과로 바꾸지 마라. 회귀가 `/search`·OIDC·`ACC-06`이 `NOT RUN`인 것을 잰다
+- 이전 라운드 것 그대로: 릴리스 워크플로의 스냅숏 단계 순서 · `build-bundle.sh`의 원자적 태그 생성 · 파생 토큰 문서 §9
+
 ## 2026-09-03 2차 라운드가 만지거나 만든 것
 
 **pr-search** (`main` = `503cc64`)
