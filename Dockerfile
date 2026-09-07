@@ -87,9 +87,17 @@ CMD ["node", "dist/cli.js", "apply-mappings"]
 #
 # `.next/cache`는 빌드 캐시라 런타임에 필요 없다. `.next/dev`는 `next dev`가
 # 만드는 것이라 이 클린 빌드에는 아예 없다.
+#
+# **`pnpm deploy --prod`는 선택 의존성을 담지 않는다** (`DEV-551`). Turbopack이
+# `pg`의 Cloudflare 전용 선택 의존성을 해시 이름의 외부 모듈로 승격시켜 두므로,
+# 그 이름이 배포 트리에 없으면 **모든 SSR 요청이 500이 된다.** 개발 트리에서는
+# 재현되지 않아 사내 반입(2026-09-07)에 가서야 드러났다. 마지막 줄이 그 이름을
+# `.next`의 파일 추적 기록에서 읽어 실체화한다 — 이름을 추측하지 않으며, 하나도
+# 찾지 못하면 이미지 빌드가 실패한다. 근거는 그 스크립트의 주석에 있다.
 FROM build AS deploy-web
 RUN pnpm deploy --legacy --filter @prs/web --prod /out \
- && rm -rf /out/.next/cache /out/e2e /out/a11y /out/test-results
+ && rm -rf /out/.next/cache /out/e2e /out/a11y /out/test-results \
+ && node scripts/materialize-turbopack-externals.mjs /out
 
 FROM base AS web
 COPY --from=deploy-web /out /app

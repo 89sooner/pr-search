@@ -14,6 +14,11 @@ const config: NextConfig = {
    * 이 목록은 **서버 컴포넌트와 라우트 핸들러에만** 적용된다. 클라이언트
    * 컴포넌트는 여전히 이 패키지들을 가져올 수 없으므로, 역할 모델처럼
    * 클라이언트가 필요로 하는 것은 `@prs/authz/roles` 서브패스로 가져간다.
+   *
+   * **이 목록으로는 `pg`의 Cloudflare 전용 선택 의존성을 막지 못한다**
+   * (`DEV-551`). `pg`나 `pg-cloudflare`를 여기 더해도 Turbopack이 만드는 해시
+   * 이름 참조는 사라지지 않는다 — 재빌드로 확인했다. 그 결함은 이미지 빌드
+   * 단계에서 다루며 근거는 `Dockerfile`의 `deploy-web` 단계에 적혀 있다.
    */
   serverExternalPackages: ['@prs/authz', '@prs/db', '@prs/es', '@prs/bus'],
 };
