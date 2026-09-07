@@ -49,21 +49,40 @@ export interface MirrorConfig {
   readonly allowBlobFetch: boolean;
 }
 
+/**
+ * 비어 있거나 공백뿐이면 기본값을 쓰고, 끝의 `/`를 떼어 낸다.
+ *
+ * **`.env`의 `KEY=`는 미설정이 아니라 빈 문자열이다** (`DEV-548`). `??`는
+ * `undefined`만 걸러 내므로 빈 값이 그대로 값이 되고, URL 자리에서는 경로만 남은
+ * 상대 요청이 `Failed to parse URL`로 죽는다. `.env.example`이 `GHE_BASE_URL`·
+ * `GHE_API_URL`을 빈 값으로 배포하므로 **표준 GHE 배포에서도 밟는다** — 사내
+ * 반입(2026-09-07)에서 설치 토큰 발급이 이 경로로 실패했다.
+ *
+ * `resolveMirrorConfig`는 빈 문자열만 걸러 내고 있었다. 공백뿐인 값은 그대로
+ * 통과해 미러가 엉뚱한 경로에 쌓이므로 같은 규율로 모았다.
+ */
+function withBlankFallback(value: string | undefined, fallback: string): string {
+  const trimmed = (value ?? '').trim().replace(/\/+$/, '');
+  return trimmed === '' ? fallback.replace(/\/+$/, '') : trimmed;
+}
+
 export function resolveMirrorConfig(env: GitHubEnv = process.env): MirrorConfig {
-  const root = (env['MIRROR_ROOT'] ?? DEFAULT_MIRROR_ROOT).replace(/\/+$/, '');
   return {
-    root: root === '' ? DEFAULT_MIRROR_ROOT : root,
+    root: withBlankFallback(env['MIRROR_ROOT'], DEFAULT_MIRROR_ROOT),
     // 문자열 `'true'`만 켠다. 오타나 `'0'`이 켜짐으로 읽히면 조용히 소스가 볼륨에 쌓인다.
     allowBlobFetch: env['MIRROR_ALLOW_BLOB_FETCH'] === 'true',
   };
 }
 
+/** `GHE_BASE_URL`이 비었을 때 쓰는 값. 실제 배포는 이 값으로 동작하지 않는다. */
+const DEFAULT_GHE_BASE_URL = 'https://ghe.example.com';
+
 export function resolveGitHubConfig(env: GitHubEnv = process.env): GitHubAppConfig {
-  const baseUrl = (env['GHE_BASE_URL'] ?? 'https://ghe.example.com').replace(/\/+$/, '');
+  const baseUrl = withBlankFallback(env['GHE_BASE_URL'], DEFAULT_GHE_BASE_URL);
   return {
     baseUrl,
     // GHE의 REST 루트는 `/api/v3`다. 명시 설정이 있으면 그것을 쓴다.
-    apiUrl: (env['GHE_API_URL'] ?? `${baseUrl}/api/v3`).replace(/\/+$/, ''),
+    apiUrl: withBlankFallback(env['GHE_API_URL'], `${baseUrl}/api/v3`),
     appId: env['GHE_APP_ID'] ?? '',
     privateKey: (env['GHE_APP_PRIVATE_KEY'] ?? '').replace(/\\n/g, '\n'),
     requestTimeoutMs: Number(env['GHE_REQUEST_TIMEOUT_MS'] ?? '10000'),

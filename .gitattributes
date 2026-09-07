@@ -22,3 +22,10 @@ deploy/single-host/RUNBOOK.md text eol=lf
 # `bad interpreter`로 죽는다 (DEV-541의 시험이 여기에 의존한다).
 regression/fixtures/release-tag/fake-gh text eol=lf
 regression/fixtures/release-tag/fake-docker text eol=lf
+
+# **이미지 빌드 안에서 도는 스크립트다** (DEV-551). `scripts/lint-deps.mjs`와 파일 모양은
+# 같지만 그것은 CI에서만 돌고 이것은 배포 이미지로 들어간다 — 위의 `*.yml`을 고정하는
+# 것과 같은 이유다. `Dockerfile`이 `node <path>`로 부르므로 CRLF여도 지금은 돈다(실측).
+# 고정하는 것은 그 사실이 바뀔 때의 대가 때문이다: 셔뱅을 가진 파일이라 실행 비트가
+# 붙거나 호출 방식이 바뀌면 `node\r`로 죽고, 그때는 이미 이미지 안이다.
+scripts/materialize-turbopack-externals.mjs text eol=lf

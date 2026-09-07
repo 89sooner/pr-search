@@ -1,7 +1,8 @@
 # PR Search 사내 반입·운영 런북 (Profile A)
 
 > 대상: 단일 Linux 호스트 · Docker Compose · 오프라인 번들 · 운반은 GitHub Release
-> 근거: `CR-059` / `ADR-021` / `WP-070` · `CR-063` / `WP-072` · 인프라 문서 3.0장
+> 근거: `CR-059` / `ADR-021` / `WP-070` · `CR-063` / `WP-072` · `CR-066` · 인프라 문서 3.0장
+> 첫 실제 반입: 2026-09-07 — 이 문서의 절차로 성립했고, 그때 드러난 것을 반영했다 (원장 6.70장)
 
 이 문서는 **번들 안에 함께 들어온다.** 사내에서 저장소 문서를 열 수 없어도 이것만으로 반입과 운영이 성립해야 한다.
 
@@ -282,9 +283,45 @@ SEARCH_CURSOR_HMAC_KEY       32자 이상
 
 1. GHE App 자격(`GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`)은 **2.B 3단계에서 이미 넣었다** (`DEV-527`) — 여기서 처음 넣는 것이 아니다. 나중에 바꿨다면 `./prsctl upgrade`로 컨테이너를 다시 만든다.
 2. 운영 콘솔(`A-001`)에서 저장소를 등록한다.
-3. GHE에 웹훅을 등록한다 — 대상은 `http://<호스트>:3001/webhooks/github`, 시크릿은 `.env`의 `GHE_WEBHOOK_SECRET`.
+3. GHE에 웹훅을 등록한다 — 대상은 `http://<호스트>:3001/api/v1/webhooks/github`, 시크릿은 `.env`의 `GHE_WEBHOOK_SECRET`.
+   **경로에 `/api/v1`이 있다.** 정본은 `apps/ingest-gateway/src/server.ts`의 `WEBHOOK_PATH`이며, 이 문서가 한동안 그것을 빼고 적어 첫 반입에서 웹훅이 전부 404였다 (`DEV-549`).
+   **GHE가 이 주소에 닿는지 먼저 확인한다** — 닿지 않으면 4단계로 가기 전에 아래 「GHE가 서버에 닿지 못할 때」를 읽는다.
 4. **백필을 실행한다** — 과거 PR 이력은 백필이 채운다(`JOB-ING-004`). `worker-enrich`가 그 역할을 함께 켜고 있다.
 5. 시퀀스 채번과 관계 파생은 미러 동기화 뒤에 따라온다.
+
+#### GHE가 서버에 닿지 못할 때 — 방향이 반대다
+
+**백필이 되는데 웹훅이 오지 않는 상황은 설정 오류가 아니라 방향의 문제다** (`DEV-550`).
+
+| | 방향 | 연결을 시작하는 쪽 | 첫 반입(2026-09-07)에서 |
+| --- | --- | --- | --- |
+| 백필 | 서버 → GHE | 우리 서버 | **가능** — 아웃바운드가 열려 있다 |
+| 웹훅 | GHE → 서버 | GHE | **불가** — 그 포트로의 인바운드가 없다 |
+
+같은 IP 대역에 있어도 닿지 않을 수 있다. 통제가 **대역이 아니라 목적지와 포트의 허용 목록**으로 걸리기 때문이며, 첫 반입에서 이웃 호스트의 443은 이미 목록에 있고 이 서버의 수신 포트는 등록된 적이 없었다. 그래서 웹훅 주소만 바꾸는 것으로는 풀리지 않는다 — 목적지가 이 서버이면 무엇을 적어도 같은 시간 초과가 난다.
+
+**진단은 여기서 시작한다.**
+
+| 보이는 것 | 뜻 |
+| --- | --- |
+| GHE의 배달 기록이 **시간 초과** | 인바운드가 막혔다. 아래 둘 중 하나를 고른다 |
+| **404** | 주소는 닿았고 경로가 틀렸다 — 3단계의 `/api/v1/webhooks/github`인가 |
+| **401** | 경로는 맞고 서명이 다르다 — `GHE_WEBHOOK_SECRET`이 GHE 쪽과 같은가 |
+| **500 `store_failed`** | 수신은 됐고 저장이 막혔다 — 8장의 `raw_event` 파티션 항목을 본다 |
+
+**선택지는 둘이다.**
+
+1. **수신 포트를 허용 목록에 올린다.** 보안 조직에 목적지와 포트를 등록한다. 경로가 하나뿐이라 운영이 단순하다.
+2. **닿는 호스트를 경유한다.** GHE가 이미 닿는 사내 호스트에 **포워딩 전용 경로**를 만들고 그것을 웹훅 주소로 준다. 첫 반입이 택한 길이다.
+
+경유를 택한다면 지켜야 할 것이 셋이다.
+
+- **원문을 그대로 보낸다.** 서명은 본문 바이트에 대해 계산되므로, 중간에서 다시 만들면 401이 된다. 몸통과 `X-Hub-Signature-256`·`X-GitHub-Event`·`X-GitHub-Delivery` 헤더를 손대지 않고 넘긴다.
+- **기존 웹훅을 고쳐 쓰지 않는다.** 경유 호스트가 이미 쓰는 웹훅의 주소를 바꾸면 그쪽 서비스가 끊긴다. **별도 웹훅과 별도 경로**를 만들어 공존시킨다.
+- **그 경유 코드는 이 저장소 밖에 산다.** 다음 반입이 그것을 다시 만들어 주지 않으므로, 어느 서비스의 어느 경로인지를 5장의 다운스트림 형상에 **B등급(사내 배선)** 으로 적어 둔다.
+
+**경유는 단일 경로다.** 그 호스트가 멈추면 증분 수집도 멈춘다. 백필은 반대 방향이라 그때도 살아 있으므로, 복구 뒤에는 끊긴 구간을 백필로 메운다.
+
 
 ### 2.D 사내망 — 소스 계보
 
@@ -422,6 +459,20 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 
 **A로 해결할 수 있으면 A로 해결한다.** C가 쌓일수록 다음 반입이 비싸진다. 다만 **아직 필요하지 않은 격리 계층을 미리 만들지 않는다** — 실제 사내 요구가 생겼을 때 그 자리를 연다.
 
+### 첫 반입(2026-09-07)이 만든 것 — 다음 반입이 다시 만들어 주지 않는다
+
+**번들을 새로 풀면 전부 초기화된다.** 아래를 `company/main`에 얹어 두지 않으면 다음 반입이 같은 진단을 처음부터 반복한다. 시크릿 실값은 여기 적지 않는다 — 무엇을 채워야 하는지만 적는다.
+
+| 무엇 | 등급 | 번들이 덮는가 | 비고 |
+| --- | --- | --- | --- |
+| `.env` | A | **아니다** — 애초에 번들에 없다 | 값 목록은 2.B. `WEB_PORT`·`AUTH_ENABLED`·`SESSION_COOKIE_SECURE`·`GHE_API_URL`·`NODE_EXTRA_CA_CERTS`·`ADMIN_DATABASE_URL`이 기본값과 달랐다 |
+| `compose.yml`의 CA 마운트 | A | **덮는다** — 추적되는 파일이다 | 여섯 자리. 6장 「anchor는 얕게 합쳐진다」 |
+| `prs_retention` 롤 | A | 해당 없음(DB 상태) | **마이그레이션이 만들지 않는다.** 복구·재구축 뒤 손으로 다시 만든다 |
+| 웹훅 경유 경로 | B | 해당 없음(다른 저장소) | 어느 서비스의 어느 경로인지 적어 둔다. 2.C 「GHE가 서버에 닿지 못할 때」 |
+| GHE 조직 웹훅 등록 | — | 해당 없음(GHE에 영속) | 서버를 다시 세워도 남는다. 주소가 바뀌면 그때 고친다 |
+
+**C등급은 하나도 만들지 않았다.** 첫 반입에서 드러난 코드 결함 셋(`DEV-548`·`DEV-551`·`DEV-549`)은 사내에서 손대지 않고 upstream에서 고쳤다 — 그것이 이 표를 짧게 유지하는 방법이다. 사내에서 손으로 넘긴 임시 조치(웹 컨테이너 안의 스텁 모듈)는 `upgrade` 한 번에 사라지므로 **형상이 아니라 결함이다.**
+
 ---
 
 ## 6. 사내 환경 연동
@@ -435,6 +486,39 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 3. `.env`의 `NODE_EXTRA_CA_CERTS`에 **컨테이너 안 경로**를 적는다.
 
 `git` 서브프로세스는 별도로 `GIT_SSL_CAINFO`를 받는다.
+
+#### 2단계의 함정 — anchor는 얕게 합쳐진다
+
+**`x-worker-base`에만 마운트하면 워커 셋이 빠진다** (`DEV-552`). YAML의 병합 키는
+같은 이름의 키를 **통째로 덮어쓴다.** `worker-sequence`·`worker-mirror`·`worker-release`는
+자기 `volumes`로 미러 볼륨을 마운트하므로, anchor의 `volumes`가 그 셋에는 닿지 않는다.
+나머지 워커 여섯은 자기 `volumes`가 없어 anchor의 것을 그대로 받는다.
+
+그래서 CA를 거는 자리는 **여섯 곳**이다.
+
+| 자리 | 왜 |
+| --- | --- |
+| `x-worker-base` | `worker-enrich`·`project`·`link`·`reconcile`·`batch`·`authz` 여섯이 이것을 받는다 |
+| `worker-sequence` · `worker-mirror` · `worker-release` | 자기 `volumes`가 anchor의 것을 덮는다 — **개별로 더한다** |
+| `web` · `search-api` | 워커가 아니라 anchor를 받지 않는다 |
+| `ingest-gateway` | GHE로 나가지 않아 TLS는 필요 없지만, `NODE_EXTRA_CA_CERTS`가 전역이라 **없는 파일을 가리키면 기동 로그에 경고가 남는다.** 경고를 없애려면 함께 건다 |
+
+**건 뒤에 실제로 있는지 확인한다.** 마운트를 빠뜨려도 컨테이너는 뜨고, 그 역할이
+GHE로 나가는 첫 순간에야 인증서 오류로 드러난다.
+
+```bash
+for s in web search-api ingest-gateway \
+         worker-enrich worker-project worker-link worker-reconcile worker-batch worker-authz \
+         worker-sequence worker-mirror worker-release; do
+  printf '%-18s ' "$s"
+  docker compose exec -T "$s" sh -lc 'test -r "$NODE_EXTRA_CA_CERTS" && echo ok || echo MISSING' 2>/dev/null \
+    || echo '(기동하지 않음)'
+done
+```
+
+**이 수정은 `compose.yml`을 고치는 것이고 그 파일은 번들에 들어 있다.** 다음 반입이
+새 번들로 덮으면 사라지므로, 5장의 다운스트림 형상(`company/main`)에 **A등급(설정)** 으로
+남긴다.
 
 ### HTTP(S) 프록시 — 아직 지원하지 않는다
 
@@ -463,14 +547,16 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | 풀린 번들의 git bundle → `vendor/upstream`이 manifest의 `upstream.commit`과 일치 (WP-071) | `VERIFIED (external)` |
 | `--release` 발행(초안 → 자산 → **발행 전 대조** → 발행 → 발행 확인) · 초안 자산의 이름·크기·digest·`state`를 로컬과 대조하고 어긋나면 **발행하지 않는다** · 같은 버전·초안 잔재는 빌드 전에 거부 (WP-072 / DEV-544) | `VERIFIED (external)` — 시험 릴리스 둘, 검증 뒤 삭제. 발행 전 대조와 발행 후 불가역은 `regression/release-tag-ownership.test.ts`(C7~C11)가 실제 스크립트를 돌려 검증한다 |
 | 토큰만 있는 환경에서 `gh release download` → `sha256sum` == 자산 digest == 전달받은 SHA-256 → 별도 디렉터리에 풀어 `verify`·`load`·`lineage`·`git fetch` (WP-072) | `VERIFIED (external)` — 시험 릴리스 둘 |
-| 사내 위치에서 github.com 도달 | `NOT RUN — internal environment required` — 결정자 확인(2026-09-02)이며 실측은 사내에서 한다 |
-| 실제 사내 GHE App·웹훅·저장소 권한 | `NOT RUN — internal environment required` |
-| 실제 사내 OIDC와 그룹 클레임 | `NOT RUN — internal environment required` |
-| 사내 CA·프록시·DNS·레지스트리·보안 스캔 | `NOT RUN — internal environment required` |
-| 실서버 성능·실데이터 규모·실제 롤백 소요 | `NOT RUN — internal environment required` |
+| 사내 위치에서 github.com 도달 | **`FAILED — 서버에서는 닿지 않는다`** (2026-09-07). 결정자의 2026-09-02 확인은 **담당자 위치** 기준이었고 운영 서버는 아웃바운드가 막혀 있었다. 담당자 위치에서 받아 서버로 옮기는 2.A의 반입 채널 경로로 성립시켰으며, 대조는 옮긴 뒤 서버에서 다시 했다 |
+| 실제 사내 GHE App·웹훅·저장소 권한 | **`VERIFIED (internal)`** (2026-09-07) — 저장소 셋 등록·백필 완료, 웹훅 수신과 증분 색인까지 성립. **웹훅은 경유 경로다** (2.C 「GHE가 서버에 닿지 못할 때」). 그 과정에서 `DEV-549`·`DEV-550`·`DEV-553`이 드러났다 |
+| 실제 사내 OIDC와 그룹 클레임 | `NOT RUN — internal environment required` — 첫 반입은 `AUTH_ENABLED=false`에 관리 토큰만으로 섰다. 그 형상에서 **`/search`는 비활성이다**(세션 인증 뒤에 있다). 둘은 함께 구성할 수 없다(`DEV-048`) |
+| 사내 CA·프록시·DNS·레지스트리·보안 스캔 | **CA는 `VERIFIED (internal)`** (2026-09-07) — compose 여섯 자리에 걸어 GHE TLS가 섰다(`DEV-552`). **프록시는 여전히 미지원**이며(`DEV-494`) 호스트에 강제된 프록시가 진단용 `curl`까지 경유시킨다. DNS·레지스트리·보안 스캔은 `NOT RUN` |
+| 실서버 성능·실데이터 규모·실제 롤백 소요 | **실데이터 규모는 잡혔다** (2026-09-07) — 저장소 셋의 PR 2,831건과 커밋을 색인했다. **성능 목표(`NFR-001` 등)와 롤백 10분은 여전히 `NOT RUN`** — 재지 않았다 |
 | `ACC-06` 관계 정확도 표본 검수 | `NOT RUN` — **합성 데이터로 만들어 내지 않는다.** `W-007`은 계속 비활성이다 |
 
 **외부에서 증명할 수 없는 것을 통과로 적지 않는다.** 사내 반입 뒤 이 표의 아래쪽을 실제로 실행하고 그 결과를 기록한다.
+
+**첫 반입(2026-09-07)이 이 표의 아래쪽을 실제로 실행했다.** 실행 기록의 정본은 원장 6.70장이며, 그때 드러난 결함 여섯(`DEV-548`~`DEV-553`)은 5장 DEV 표에 있다. **여기 남은 `NOT RUN`은 그날 실행하지 못한 것들이다** — 하지 않은 것을 했다고 적지 않는다.
 
 ---
 
@@ -485,7 +571,14 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | `load`가 `PRS_REINDEX_TIMEOUT_S … 정수여야 한다: 3600`처럼 **멀쩡해 보이는 값을 거부한다** | `.env`가 CRLF다 — Windows 편집기로 고쳤거나 그렇게 저장된 파일을 복사했다. `prsctl`은 값을 줄 단위로 읽어 끝의 `\r`이 값에 붙는다. `sed -i 's/\r$//' .env`로 LF로 만든다 (DEV-526) |
 | compose가 이미지를 pull하려 한다 | `./prsctl load`를 실행했는가. `PRS_VERSION`이 적재한 태그와 같은가 |
 | `enrich`·`reconcile`이 기동을 거부한다 (`install`의 health가 그 둘에서 실패) | `GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`가 있는가. **의도된 거부다** — 자격 없이 돌면 모든 이벤트가 실패 대기열에 쌓인다. `install` 뒤에 넣었다면 `.env`만으로는 반영되지 않는다 — `./prsctl upgrade`로 컨테이너를 다시 만든다 (DEV-527) |
-| 웹훅이 전부 401 | `GHE_WEBHOOK_SECRET`이 GHE 쪽 설정과 같은가 |
+| 웹훅이 전부 401 | `GHE_WEBHOOK_SECRET`이 GHE 쪽 설정과 같은가. 경유 호스트를 두었다면 **본문을 다시 만들고 있지 않은가** — 서명은 원문 바이트에 대해 계산된다 (2.C 「GHE가 서버에 닿지 못할 때」) |
+| 웹훅이 전부 404 | 경로에 **`/api/v1`이 있는가** (2.C 3단계). 정본은 `apps/ingest-gateway/src/server.ts`의 `WEBHOOK_PATH`다 (`DEV-549`) |
+| 웹훅 배달이 **시간 초과** | 서명도 경로도 아니다. GHE에서 이 서버로의 **인바운드가 없는 것**이며, 주소만 바꿔서는 풀리지 않는다 (2.C 「GHE가 서버에 닿지 못할 때」, `DEV-550`) |
+| 웹훅은 받는데 **`store_failed`** | `raw_event`에 다가올 파티션이 남아 있는가. `ADMIN_DATABASE_URL`이 비면 파티션 잡이 서지 않고, 소진되면 **모든 수신이 저장에서 거부된다** (`DEV-553`). `select relname from pg_class where relname like 'raw_event_%'`로 확인하고, 값을 채운 뒤 `./prsctl upgrade` |
+| `password authentication failed` (`prs_retention`) | `ADMIN_DATABASE_URL`의 비밀번호와 롤의 비밀번호가 정확히 같은가. 이 롤은 **마이그레이션이 만들지 않으므로** 복구·재구축 뒤에는 손으로 다시 만든다 (`DEV-553`) |
+| 웹 화면이 전부 500, 로그에 `Failed to load external module` | 이미지가 `DEV-551` 이전 빌드다. 그 결함은 **배포 트리에서만** 나타나며 이미지 빌드가 고친다 — 컨테이너 안에서 손으로 스텁을 만들면 `upgrade`·`restart`마다 사라진다. 고친 버전으로 다시 받는다 |
+| GHE 호출이 인증서 오류 · 기동 로그에 CA 경고 | CA를 **여섯 자리 전부**에 걸었는가. anchor는 얕게 합쳐져 `worker-sequence`·`worker-mirror`·`worker-release`에 닿지 않는다 (6장 「anchor는 얕게 합쳐진다」, `DEV-552`) |
+| 서버 안에서 `curl`이 `HTTP/0.9` 오류 | 호스트에 프록시가 강제돼 컨테이너 IP로 가는 요청까지 경유한다. 진단할 때만 `--noproxy '*'`로 우회한다 — 서비스 쪽 프록시 지원은 별개다 (`DEV-494`) |
 | 검색 결과가 비어 있다 | 백필을 실행했는가. `worker-project` 로그에 색인 기록이 있는가 |
 | `group_by=team`이 빈 결과 | `authz` 역할에 GHE 자격이 있는가 — 없으면 작성자 팀이 언제나 모름이다 |
 | 로그인 후 다시 로그인 화면 | TLS 없이 HTTP로 서비스하면서 `SESSION_COOKIE_SECURE=true`인가 |

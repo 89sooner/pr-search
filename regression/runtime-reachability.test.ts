@@ -2519,3 +2519,185 @@ describe('작성자 소속 팀의 도달성과 계약 (WP-069 / CR-058)', () => 
     expect(files).toContain('021_author_team.down.sql');
   });
 });
+
+/**
+ * **첫 사내 반입(2026-09-07)이 드러낸 것** (`CR-066` / `DEV-548`~`DEV-553`).
+ *
+ * 이 절이 재는 것은 전부 **외부에서는 초록이었다.** 단위·통합·회귀가 다 통과했고
+ * 스모크도 통과했다. 그런데 사내에 세우자 웹 화면이 전부 500이었고, 웹훅은 404
+ * 다음에 시간 초과였고, 받기 시작하자 저장에서 거부됐다.
+ *
+ * 공통점이 하나 있다. **개발 트리와 배포 트리가 다른 것을 하는 자리**이거나,
+ * **문서가 코드와 다른 값을 적은 자리**였다. 둘 다 실행하지 않으면 보이지 않으므로,
+ * 여기서는 그 둘이 같은 말을 하는지를 소스에서 직접 잰다.
+ */
+describe('첫 사내 반입이 드러낸 계약 (CR-066)', () => {
+  const RUNBOOK = read('deploy/single-host/RUNBOOK.md');
+  const ENV_EXAMPLE = read('deploy/single-host/.env.example');
+  const COMPOSE = read('deploy/single-host/compose.yml');
+  const DOCKERFILE = read('Dockerfile');
+  const GATEWAY = read('apps/ingest-gateway/src/server.ts');
+  const GH_CONFIG = read('packages/github/src/config.ts');
+
+  /**
+   * **런북이 적는 웹훅 주소는 코드가 여는 경로여야 한다** (`DEV-549`).
+   *
+   * 런북이 `/api/v1`을 빼고 적어 첫 반입의 웹훅이 전부 404였다. 문자열을 박아 두면
+   * 코드가 옮겨갈 때 같은 일이 다시 나므로, **코드에서 읽어 문서와 대조한다.**
+   */
+  it('런북의 웹훅 주소가 `WEBHOOK_PATH`와 같다', () => {
+    const declared = /export const WEBHOOK_PATH = '([^']+)'/.exec(GATEWAY)?.[1];
+    expect(declared, '게이트웨이가 `WEBHOOK_PATH`를 선언하지 않는다').toBeDefined();
+    expect(declared).toBe('/api/v1/webhooks/github');
+
+    const registration = RUNBOOK.split('\n').filter((line) => line.includes('웹훅을 등록한다'));
+    expect(registration.length, '런북에 웹훅 등록 단계가 없다').toBeGreaterThan(0);
+    for (const line of registration) {
+      expect(line, `런북의 웹훅 주소가 코드의 경로와 다르다: ${line}`).toContain(declared as string);
+    }
+    // 옛 주소가 어디에도 남아 있으면 안 된다 — 한 곳만 고치면 다른 곳이 사람을 오도한다.
+    expect(RUNBOOK).not.toMatch(/[^1]\/webhooks\/github/);
+  });
+
+  /**
+   * **웹훅이 오지 않는 것과 서명이 틀린 것은 다른 문제다** (`DEV-550`).
+   *
+   * 백필은 아웃바운드, 웹훅은 인바운드다. 그 방향 차이를 런북이 말하지 않으면
+   * 운영자가 시간 초과를 서명·경로 문제로 오진한다.
+   */
+  it('런북이 웹훅 인바운드가 막힌 경우를 다룬다', () => {
+    expect(RUNBOOK).toContain('GHE가 서버에 닿지 못할 때');
+    // 방향이 반대라는 것이 이 절의 요지다.
+    expect(RUNBOOK).toMatch(/백필 \| 서버 → GHE/);
+    expect(RUNBOOK).toMatch(/웹훅 \| GHE → 서버/);
+    // 경유를 택할 때 지켜야 할 셋이 모두 있어야 한다.
+    expect(RUNBOOK).toContain('X-Hub-Signature-256');
+    expect(RUNBOOK).toContain('기존 웹훅을 고쳐 쓰지 않는다');
+    expect(RUNBOOK).toContain('이 저장소 밖에 산다');
+  });
+
+  /**
+   * **anchor는 얕게 합쳐진다** (`DEV-552`).
+   *
+   * `x-worker-base`에만 CA를 걸면 자기 `volumes`를 가진 워커 셋에는 닿지 않는다.
+   * compose에서 그 셋을 **직접 세어** 런북의 안내가 실제 구조와 맞는지 확인한다 —
+   * 새 워커가 자기 볼륨을 갖는 순간 이 시험이 그것을 알린다.
+   */
+  it('anchor를 덮어쓰는 워커를 런북이 빠짐없이 적는다', () => {
+    const overriding = [...COMPOSE.matchAll(/^ {2}(worker-[a-z]+):$/gm)]
+      .map(([, name]) => name)
+      .filter((name) => {
+        const body = COMPOSE.slice(COMPOSE.indexOf(`\n  ${name}:\n`));
+        const service = body.slice(0, body.indexOf('\n\n') + 1 || undefined);
+        return /^ {4}volumes:$/m.test(service);
+      });
+
+    expect(overriding, 'anchor를 덮는 워커가 하나도 없다 — 구조가 바뀌었다').not.toHaveLength(0);
+
+    const section = RUNBOOK.slice(RUNBOOK.indexOf('anchor는 얕게 합쳐진다'));
+    // **표의 그 행에서 잰다.** 문서 어딘가에 이름이 있다는 것으로는 부족하다 —
+    // 「개별로 더한다」고 지시하는 행에 빠져 있으면 운영자가 그 서비스를 건너뛴다.
+    const row = section.split('\n').find((line) => line.includes('개별로 더한다'));
+    expect(row, '개별 마운트를 지시하는 행이 없다').toBeDefined();
+    // 확인 명령도 같은 목록을 돌아야 한다 — 한쪽만 고치면 점검이 그 서비스를 지나친다.
+    // **코드 블록만 본다.** 뒤에 오는 산문에 같은 이름이 있어 구간을 넓게 잡으면
+    // 목록에서 빠진 서비스를 놓친다 (변이로 확인했다).
+    const fence = section.indexOf('```bash');
+    expect(fence, '확인 명령 블록이 없다').toBeGreaterThan(-1);
+    const check = section.slice(fence, section.indexOf('```', fence + 7));
+    expect(check).toContain('NODE_EXTRA_CA_CERTS');
+    for (const name of overriding) {
+      expect(row, `${name}이 자기 volumes를 갖는데 런북의 지시 행에 없다`).toContain(name);
+      expect(check, `${name}이 런북의 확인 명령에 없다`).toContain(name);
+    }
+  });
+
+  /**
+   * **배포 트리는 선택 의존성을 담지 않는다** (`DEV-551`).
+   *
+   * Turbopack이 외부화한 해시 이름을 실체화하지 않으면 모든 SSR이 500이다.
+   * 개별 문구가 아니라 **불변식**을 고정한다 — 배포 단계가 실체화를 부른다.
+   */
+  it('web 배포 단계가 외부 모듈을 실체화한다', () => {
+    const stage = DOCKERFILE.slice(DOCKERFILE.indexOf('FROM build AS deploy-web'));
+    const body = stage.slice(0, stage.indexOf('\nFROM '));
+    expect(body).toContain('materialize-turbopack-externals.mjs');
+    // `pnpm deploy` 뒤여야 한다 — 앞이면 지워질 트리에 만든다.
+    expect(body.indexOf('pnpm deploy')).toBeLessThan(body.indexOf('materialize-turbopack-externals.mjs'));
+
+    const script = read('scripts/materialize-turbopack-externals.mjs');
+    // **찾지 못하면 조용히 지나가지 않는다.** 그것이 이 결함의 재발 경로다.
+    // 종료가 있는지가 아니라 **`names.size === 0` 갈래가 종료하는지**를 잰다 —
+    // 파일 어딘가에 종료가 있다는 것으로는 이 계약이 지켜지는지 알 수 없다.
+    const emptyBranch = script.slice(script.indexOf('if (names.size === 0)'));
+    expect(emptyBranch.slice(0, emptyBranch.indexOf('\n}')), '이름을 찾지 못했을 때 종료하지 않는다').toContain(
+      'process.exit(1)',
+    );
+    // **이름을 박아 두지 않는다** — 해시는 빌드마다 달라질 수 있다. 주석이 실제로
+    // 본 이름을 근거로 적는 것은 옳으므로, 주석을 걷어 낸 코드만 본다 (DEV-427의 선례).
+    const code = script
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('//'))
+      .join('\n');
+    expect(code).not.toMatch(/-[0-9a-f]{16}['"`]/);
+  });
+
+  /**
+   * **`.env`의 `KEY=`는 미설정이 아니라 빈 문자열이다** (`DEV-548`).
+   *
+   * 환경에서 URL을 읽는 자리가 `??`만 쓰면 빈 값이 그대로 URL이 된다.
+   */
+  it('GHE 설정이 빈 문자열을 기본값으로 되돌린다', () => {
+    const resolver = GH_CONFIG.slice(GH_CONFIG.indexOf('export function resolveGitHubConfig'));
+    const body = resolver.slice(0, resolver.indexOf('\n}'));
+    expect(body).toContain('withBlankFallback');
+    // 옛 형태로 되돌아가면 잡는다.
+    expect(body).not.toMatch(/env\['GHE_(BASE|API)_URL'\] \?\?/);
+  });
+
+  /**
+   * **파티션이 소진되면 수신이 통째로 막힌다** (`DEV-553`).
+   *
+   * `.env.example`이 이 값을 "없으면 보존 잡만 안 선다"로만 안내하면, 채우지 않은
+   * 배포가 웹훅을 하나도 저장하지 못한 채 뜬다 — 첫 반입에서 실제로 그랬다.
+   */
+  it('`ADMIN_DATABASE_URL`의 안내가 실제 대가를 말한다', () => {
+    const section = ENV_EXAMPLE.slice(0, ENV_EXAMPLE.indexOf('\nADMIN_DATABASE_URL='));
+    const note = section.slice(section.lastIndexOf('# `JOB-AUD-001`'));
+    expect(note).toContain('store_failed');
+    expect(note).toContain('마이그레이션이 만들지 않는다');
+    // 8장이 그 증상에서 이 값으로 안내해야 한다.
+    expect(RUNBOOK).toMatch(/store_failed[\s\S]{0,200}ADMIN_DATABASE_URL/);
+  });
+
+  /**
+   * **7장은 하지 않은 것을 했다고 적지 않는다.**
+   *
+   * 반입이 성공했다고 표 전체를 통과로 바꾸면 그 표가 쓸모를 잃는다. 그날 실제로
+   * 재지 못한 셋은 `NOT RUN`으로 남아야 한다.
+   */
+  it('7장이 실행한 것과 실행하지 못한 것을 가른다', () => {
+    const table = RUNBOOK.slice(RUNBOOK.indexOf('| 사내 위치에서 github.com 도달'));
+    const section = table.slice(0, table.indexOf('\n\n## '));
+    expect(section).toContain('VERIFIED (internal)');
+    for (const stillOpen of ['실제 사내 OIDC와 그룹 클레임', 'ACC-06']) {
+      const row = section.split('\n').find((line) => line.includes(stillOpen));
+      expect(row, `${stillOpen} 행이 없다`).toBeDefined();
+      expect(row, `${stillOpen}을 실행하지 않았는데 통과로 적었다`).toContain('NOT RUN');
+    }
+  });
+
+  /**
+   * **다음 반입이 같은 진단을 반복하지 않게 한다.**
+   *
+   * 사내에서 만든 것 중 번들이 덮는 것과 덮지 않는 것을 5장이 갈라 적어야 한다.
+   */
+  it('5장이 첫 반입의 다운스트림 형상을 적는다', () => {
+    const section = RUNBOOK.slice(RUNBOOK.indexOf('첫 반입(2026-09-07)이 만든 것'));
+    expect(section.slice(0, section.indexOf('\n---'))).toContain('prs_retention');
+    for (const item of ['`.env`', 'CA 마운트', '웹훅 경유 경로']) {
+      expect(section, `${item} 행이 없다`).toContain(item);
+    }
+  });
+});

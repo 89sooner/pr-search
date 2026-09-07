@@ -1,8 +1,38 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=c855a9542f071687c9e2162493a43d8d48b696d360128fa4d56960f03dbfbd58 bytes=148105 lines=2038 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;refs/tags/;usr/bin/env;origin/main;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;apps/web;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts
+@kv sha256=91af67e2f45d0db92e8e721e547679cf2d6efa9eed3b31bf242b4f1eb9c0297b bytes=153448 lines=2098 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;apps/web;refs/tags/;usr/bin/env;origin/main;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-08 라운드가 새로 배운 함정 (첫 사내 반입이 가르친 것)
+@h3 개발 트리와 배포 트리는 다른 것을 한다 — 가장 값비쌌던 것
+@cmd pnpm deploy --prod가 만드는 트리에는 선택 의존성이 없다. Turbopack이 pg의 Cloudflare 전용 선택 의존성을 해시 이름의 외부 모듈로 승격시켜 두므로, 그 이름을 실체화하지 않으면 모든 SSR이 500이다. 개발 트리에서는 pnpm 저장소가 있어 해석이 다르게 끝나 재현되지 않는다.
+@todo → pnpm build가 초록이고 next start가 200인 것으로 배포가 선다고 말할 수 없다. 배포 트리를 만들어 거기서 기동해 봐야 안다. 이 저장소에는 그것을 재는 시험이 없었고, 그래서 외부 검증 전부가 초록인 채로 사내에 갔다.
+@h3 설정으로 풀릴 것 같은 것이 설정으로 안 풀린다 — 넷을 재고 넷 다 버렸다
+@p | 시도 | 결과 | | --- | --- | | serverExternalPackages에 pg | 해시 참조 그대로 | | serverExternalPackages에 pg-cloudflare | 그대로 | | turbopack.resolveAlias로 빈 모듈 대체 | 설정은 반영되는데 참조는 그대로 |
+@path | apps/web에 직접 의존 추가 | 패키지는 담기지만 Next는 해시 이름으로 찾는다 — 500 그대로 |
+@p | 해시 이름을 심볼릭 링크로 연결 | Node ESM이 package.json의 name을 본다 — 실패 |
+@p → 문서에 "이렇게 하면 된다"고 적기 전에 그 형태 그대로 돌려 본다. 2026-09-03 2차의 태그 lease와 정확히 같은 교훈이 다른 도구에서 다시 나왔다.
+@h3 보고된 원인 진단이 틀릴 수 있다 — 증상이 같아도 모듈이 다르다
+@p 결정자의 보고는 pg-native를 지목했으나 pg 8.23.0의 선택 의존성은 pg-cloudflare다(package.json 실측). 증상·해법이 같아서 그대로 적어도 동작은 했겠지만, 원인 모듈이 틀린 문서는 다음 사람을 엉뚱한 곳으로 보낸다.
+@p → 보고를 반영할 때 증상은 믿고 원인은 다시 잰다. 보고자는 고치는 것이 목적이었고 우리는 적는 것이 목적이라 요구되는 정확도가 다르다.
+@h3 YAML anchor는 얕게 합쳐진다 — 자기 키를 가진 서비스가 사각지대다
+@p x-worker-base에 볼륨을 걸어도 자기 volumes를 가진 워커는 그것을 받지 않는다. 컨테이너는 정상으로 뜨고, 그 역할이 외부로 나가는 첫 순간에야 인증서 오류로 드러난다.
+@p → anchor로 무언가를 배포할 때 그 키를 자기 것으로 가진 서비스를 먼저 센다. 회귀가 compose에서 그 목록을 뽑아 문서와 대조하게 했다 — 새 워커가 볼륨을 갖는 순간 알린다.
+@h3 "없으면 X만 안 된다"는 안내가 절반만 사실일 수 있다
+@p .env.example이 ADMIN_DATABASE_URL을 "없으면 보존 잡만 서지 않는다"고 적었다. 실제로는 그 잡이 파티션을 만들고, 파티션이 없으면 raw_event INSERT가 전부 거부된다. 첫 반입에서 웹훅이 서명·경로를 다 통과하고 저장에서 죽었다.
+@p → 수신은 되는데 저장이 안 되는 모양은 방화벽·서명 문제로 오진하기 쉽다. 선택적 설정을 안내할 때 "안 하면 무엇이 연쇄로 막히는가"까지 적는다.
+@h3 방향이 반대인 두 기능은 함께 성립하지 않는다
+@p 백필(아웃바운드)은 되는데 웹훅(인바운드)이 안 오는 상태는 부분적으로만 보인다. 데이터가 들어오고 있으므로 연동이 성립한 것처럼 읽힌다. 같은 IP 대역이어도 목적지·포트 허용 목록으로 통제되면 이웃 호스트는 닿고 이 서버는 닿지 않는다.
+@p → 웹훅 주소만 바꾸는 것으로는 풀리지 않는다. 그리고 경유로 우회하면 단일 경로가 생기며 그 사실을 리스크로 적어야 한다.
+@h3 벽이 하나가 아니었다 — 넷이 차례로 나왔다
+@p 시간 초과(인바운드 차단) → 404(경로 오류) → store_failed(파티션 없음) → 수신. 넷 다 다른 원인이고 앞의 것을 풀어야 뒤의 것이 보인다.
+@p → 하나를 고치고 "웹훅이 안 된다"가 여전하면 같은 원인이 남은 것이 아니라 다음 원인일 수 있다. 증상별 판정표를 런북 8장에 넣은 이유다.
+@h3 시험 구멍을 등가 변이로 착각하지 마라 — 또 나왔다
+@p 첫 변이 라운드에서 둘이 살아남았고 둘 다 시험 구멍이었다. process.exit(1)이 파일에 둘이라 하나를 지워도 toContain이 통과했고, 런북의 워커 이름이 산문에도 있어 표 행에서 빠진 것을 놓쳤다. 구간을 넓게 잡으면 놓친다 — 코드 블록·표 행처럼 계약이 실제로 사는 자리만 잘라서 잰다.
+@h3 문서 편집 함정 (재확인)
+@path 마크다운 표에서 구분선은 앵커가 될 수 없다(DEV-545). 이번에는 헤더 행과 구분선을 함께 잡아 피했다.
+@b .env.example·compose.yml·RUNBOOK.md는 LF, docs/와 Dockerfile·소스는 CRLF다. 편집 전에 잰다.
+@b python으로 파일 끝을 다시 쓸 때 export default가 잘릴 수 있다. 이번에 실제로 잘렸고 pnpm lint가 잡았다 — 편집 뒤 lint를 돌리는 이유다.
 @h2 2026-09-03 2차 라운드가 새로 배운 함정
 @h3 게이트의 위치가 실패의 대가를 정한다 — 가장 값비쌌던 것
 @p Conductor의 check:release-tags가 changeset publish 뒤에 있었다. 게이트가 막은 시점에 npm은 이미 css@0.3.1·react@0.3.1을 받은 뒤였고, git push origin --tags가 실행되지 않아 발행은 됐는데 릴리스 태그가 원격에 없는 상태가 남았다. 태그를 손으로 만들어 push해 복구했다.

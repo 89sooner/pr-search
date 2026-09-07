@@ -1,5 +1,73 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
 
+## 2026-09-08 라운드에서 쓴 것
+
+**배포 트리를 만들어 거기서 기동한다.** 이 라운드의 주력이며, `DEV-551`은 이것 없이는 판정할 수 없었다.
+
+```bash
+OUT=<scratchpad>/deploy-out
+pnpm deploy --legacy --filter @prs/web --prod "$OUT"      # Dockerfile의 deploy-web과 같은 명령
+rm -rf "$OUT/.next/cache" "$OUT/e2e" "$OUT/a11y" "$OUT/test-results"
+cd "$OUT" && AUTH_ENABLED=false NODE_ENV=production ./node_modules/.bin/next start --port 3391
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3391/     # 실체화 전 500 → 후 200
+```
+
+**함정: `pkill -f "next start"`가 자기 셸까지 잡는다.** 백그라운드 PID를 잡아 `kill "$PID"`로 끝내고, 여러 단계를 이어 붙일 때는 **스크립트 파일로 분리**한다 — 인라인 힙독에서는 출력이 통째로 사라졌다.
+
+**Turbopack이 무엇을 외부화했는지 본다.**
+
+```bash
+grep -rho "pg-[0-9a-f]\{16\}" apps/web/.next/server/ | sort -u     # 해시 이름
+python3 -c "
+import json; d=json.load(open('apps/web/.next/server/app/page.js.nft.json'))
+print([f for f in d['files'] if 'cloudflare' in f or '-' in f.split('/')[-1]][:5])"
+```
+
+**선택 의존성의 실체를 확인한다.** 보고된 모듈 이름을 그대로 믿지 않는다.
+
+```bash
+python3 -c "
+import json; d=json.load(open('node_modules/.pnpm/pg@8.23.0/node_modules/pg/package.json'))
+print(d.get('optionalDependencies'))"          # pg-native가 아니라 pg-cloudflare였다
+```
+
+**변이 헬퍼 (정확히 1건일 때만 치환, CRLF 보존).** 이 라운드는 변이 열넷을 걸었다.
+
+```bash
+python3 <scratchpad>/mutate.py <path> "<old>" "<new>"
+# 살아남으면 등가 변이인지 시험 구멍인지 먼저 가른다 — 이번엔 둘 다 시험 구멍이었다
+```
+
+**문서 검증기는 종료 코드로 판정하지 않는다.**
+
+```bash
+V=~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py
+git worktree add -q --detach /tmp/before <이전커밋>
+diff <(python3 $V --root /tmp/before --strict 2>&1 | grep -E '^(ERROR|WARN)' | sort) \
+     <(python3 $V --root .       --strict 2>&1 | grep -E '^(ERROR|WARN)' | sort)
+git worktree remove /tmp/before --force
+```
+
+**백킹 서비스는 세션 시작 시 떠 있지 않았다.** `prs-pilot-*`(파일럿 스택)이 15개 떠 있어도 호스트 포트를 열지 않으므로 **대체가 되지 않는다.**
+
+```bash
+for p in 5432 6379 9200; do (echo > /dev/tcp/127.0.0.1/$p) 2>/dev/null && echo "$p 열림" || echo "$p 닫힘"; done
+docker compose up -d          # 개발 스택. 파일럿과 충돌하지 않는다
+docker exec prs-postgres psql -U prs -lqt | cut -d'|' -f1 | grep prs   # prs, prs_test
+```
+
+**이 라운드의 검증 결과 (전 계층).**
+
+```bash
+pnpm run test                 # 단위 1919 통과 (1 skipped)
+pnpm run test:integration     # 1476 통과
+pnpm run test:regression      # 371 통과 (runtime-reachability 332)
+pnpm run test:a11y            # 358 통과
+pnpm run test:contrast        # 232쌍, 실패 0
+pnpm typecheck && pnpm lint && pnpm run lint:deps
+pnpm --filter @prs/web run build   # e2e 전에 필수
+```
+
 ## 2026-09-03 2차 라운드에서 쓴 것
 
 **리뷰 스레드를 읽고 답하고 닫는다.** GraphQL이어야 한다 — REST는 스레드 id도 resolve도 주지 않는다.
