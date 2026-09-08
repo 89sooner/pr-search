@@ -261,6 +261,7 @@ POSTGRES_APP_PASSWORD
 GHE_BASE_URL
 GHE_WEBHOOK_SECRET
 SEARCH_CURSOR_HMAC_KEY       32자 이상
+ADMIN_DATABASE_URL           postgresql://<롤>:<비밀번호>@postgres:5432/<POSTGRES_DB> — 아래 「파티션 수명 주체」
 ```
 
 `PRS_REINDEX_TIMEOUT_S`는 선택이며 두면 1~2592000(30일)의 정수여야 한다. 나머지 값의 뜻은 `.env.example`의 주석이 설명한다.
@@ -268,6 +269,21 @@ SEARCH_CURSOR_HMAC_KEY       32자 이상
 **`install` 전에 함께 채워야 하는 값 — GHE App 자격 셋** (`DEV-527`). `GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`는 `require_env`의 필수 목록에 없지만, **없으면 `worker-enrich`·`worker-reconcile`이 기동을 거부한다** (의도된 거부다 — 자격 없이 돌면 모든 이벤트가 실패 대기열에 쌓인다). Compose는 컨테이너를 만들 때 `.env`의 값을 굳히므로 `install` 뒤에 `.env`만 고쳐서는 도는 컨테이너에 반영되지 않고, 그 상태로는 5단계 `install`의 health와 6단계 `smoke`의 워커 검사가 실패한다. 사내 GHE에 App을 먼저 등록하고 그 자격을 **이 3단계에서** 넣는다. 나중에 넣거나 바꿨다면 `./prsctl upgrade`를 실행한다 — 같은 `PRS_VERSION`이면 마이그레이션은 no-op이고 값이 바뀐 컨테이너만 다시 만든다. **`restart`는 `.env`를 다시 읽지 않는다.**
 
 **`.env`는 LF 개행이어야 한다.** `prsctl`은 값을 줄 단위로 읽으므로 CRLF면 모든 값 끝에 `\r`이 붙어 `3600` 같은 멀쩡한 값이 거부된다 (`DEV-526`). 번들의 `.env.example`은 LF이며(빌드가 보장한다) 그것을 `cp`해 리눅스 편집기로 고치면 LF가 유지된다. Windows에서 편집해 옮겼다면 `sed -i 's/\r$//' .env`로 되돌린다.
+
+### 파티션 수명 주체도 `prsctl install`이 만든다
+
+**이 값은 선택이 아니다** (`DEV-556`). `raw_event`는 파티션 테이블이고 **마이그레이션은 파티션을 만들지 않는다.** 그것을 만드는 것은 `JOB-AUD-001` 하나뿐이며, 그 잡은 `ADMIN_DATABASE_URL`이 있어야 선다. 비워 두면 잡이 서지 않고 **다가올 파티션이 소진되는 순간 모든 웹훅이 저장에서 거부된다** — 수신은 되는데 저장이 안 되는 모양이라 방화벽·서명 문제로 오진하기 쉽다. 첫 사내 반입에서 실제로 그렇게 됐다(`DEV-553`).
+
+그래서 `require_env`가 이 값을 요구하고, `install`·`upgrade`·`restore`가 **그 URL이 가리키는 롤을 직접 만든다.** 접속 주체와 같은 자리이며 같은 방식이다.
+
+```text
+ADMIN_DATABASE_URL=postgresql://prs_retention:<비밀번호>@postgres:5432/prs
+```
+
+- 롤 이름은 **`prs_admin`이 아니어야 한다** — 그것은 `NOLOGIN` 그룹 롤이다. `prs_retention`처럼 다른 이름을 주면 이 명령이 만들고 `prs_admin` 멤버십까지 준다.
+- 호스트는 compose 네트워크 안의 `postgres`이고 DB는 `POSTGRES_DB`와 같아야 한다.
+- **비밀번호를 퍼센트 인코딩하지 않는다.** 인코딩된 문자열로 롤을 만들면 앱은 디코딩한 값으로 접속해 `password authentication failed`가 난다. `prsctl`이 `%`를 발견하면 멈춘다.
+- 복구·재구축 뒤에도 손으로 만들 필요가 없다 — `restore`가 마이그레이션 뒤에 다시 만든다.
 
 ### 데이터베이스 접속 주체는 `prsctl install`이 만든다
 
@@ -467,7 +483,7 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | --- | --- | --- | --- |
 | `.env` | A | **아니다** — 애초에 번들에 없다 | 값 목록은 2.B. `WEB_PORT`·`AUTH_ENABLED`·`SESSION_COOKIE_SECURE`·`GHE_API_URL`·`NODE_EXTRA_CA_CERTS`·`ADMIN_DATABASE_URL`이 기본값과 달랐다 |
 | `compose.yml`의 CA 마운트 | A | **덮는다** — 추적되는 파일이다 | 여섯 자리. 6장 「anchor는 얕게 합쳐진다」 |
-| `prs_retention` 롤 | A | 해당 없음(DB 상태) | **마이그레이션이 만들지 않는다.** 복구·재구축 뒤 손으로 다시 만든다 |
+| `prs_retention` 롤 | — | 해당 없음(DB 상태) | **더 이상 형상이 아니다** (`DEV-556`). `install`·`upgrade`·`restore`가 `ADMIN_DATABASE_URL`을 읽어 만든다 — 그 값만 `.env`에 있으면 된다 |
 | 웹훅 경유 경로 | B | 해당 없음(다른 저장소) | 어느 서비스의 어느 경로인지 적어 둔다. 2.C 「GHE가 서버에 닿지 못할 때」 |
 | GHE 조직 웹훅 등록 | — | 해당 없음(GHE에 영속) | 서버를 다시 세워도 남는다. 주소가 바뀌면 그때 고친다 |
 
@@ -574,8 +590,8 @@ done
 | 웹훅이 전부 401 | `GHE_WEBHOOK_SECRET`이 GHE 쪽 설정과 같은가. 경유 호스트를 두었다면 **본문을 다시 만들고 있지 않은가** — 서명은 원문 바이트에 대해 계산된다 (2.C 「GHE가 서버에 닿지 못할 때」) |
 | 웹훅이 전부 404 | 경로에 **`/api/v1`이 있는가** (2.C 3단계). 정본은 `apps/ingest-gateway/src/server.ts`의 `WEBHOOK_PATH`다 (`DEV-549`) |
 | 웹훅 배달이 **시간 초과** | 서명도 경로도 아니다. GHE에서 이 서버로의 **인바운드가 없는 것**이며, 주소만 바꿔서는 풀리지 않는다 (2.C 「GHE가 서버에 닿지 못할 때」, `DEV-550`) |
-| 웹훅은 받는데 **`store_failed`** | `raw_event`에 다가올 파티션이 남아 있는가. `ADMIN_DATABASE_URL`이 비면 파티션 잡이 서지 않고, 소진되면 **모든 수신이 저장에서 거부된다** (`DEV-553`). `select relname from pg_class where relname like 'raw_event_%'`로 확인하고, 값을 채운 뒤 `./prsctl upgrade` |
-| `password authentication failed` (`prs_retention`) | `ADMIN_DATABASE_URL`의 비밀번호와 롤의 비밀번호가 정확히 같은가. 이 롤은 **마이그레이션이 만들지 않으므로** 복구·재구축 뒤에는 손으로 다시 만든다 (`DEV-553`) |
+| 웹훅은 받는데 **`store_failed`** | `raw_event`에 다가올 파티션이 남아 있는가. `select relname from pg_class where relname like 'raw_event_%'`로 확인한다. `ADMIN_DATABASE_URL`은 이제 필수 값이라 비면 `load`부터 멈추므로(`DEV-556`), 이 증상이 나면 값은 있고 **잡이 돌지 않은 것**이다 — `worker-batch` 로그를 본다 |
+| `password authentication failed` (`prs_retention`) | **비밀번호를 퍼센트 인코딩했는가** — 앱은 디코딩한 값으로 접속한다. 롤 자체는 `install`·`upgrade`·`restore`가 `ADMIN_DATABASE_URL`을 읽어 만들므로(`DEV-556`), 값을 고친 뒤 `./prsctl upgrade`를 돌리면 비밀번호가 맞춰진다 |
 | 웹 화면이 전부 500, 로그에 `Failed to load external module` | 이미지가 `DEV-551` 이전 빌드다. 그 결함은 **배포 트리에서만** 나타나며 이미지 빌드가 고친다 — 컨테이너 안에서 손으로 스텁을 만들면 `upgrade`·`restart`마다 사라진다. 고친 버전으로 다시 받는다 |
 | GHE 호출이 인증서 오류 · 기동 로그에 CA 경고 | CA를 **여섯 자리 전부**에 걸었는가. anchor는 얕게 합쳐져 `worker-sequence`·`worker-mirror`·`worker-release`에 닿지 않는다 (6장 「anchor는 얕게 합쳐진다」, `DEV-552`) |
 | 서버 안에서 `curl`이 `HTTP/0.9` 오류 | 호스트에 프록시가 강제돼 컨테이너 IP로 가는 요청까지 경유한다. 진단할 때만 `--noproxy '*'`로 우회한다 — 서비스 쪽 프록시 지원은 별개다 (`DEV-494`) |
