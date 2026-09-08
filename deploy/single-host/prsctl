@@ -65,6 +65,53 @@ SQL
   ok "${POSTGRES_APP_USER} → prs_app (세션 기본 역할)"
 }
 
+# **파티션을 만드는 주체가 없으면 수신이 통째로 막힌다** (DEV-556).
+#
+# `raw_event`는 파티션 테이블이고 **마이그레이션은 파티션을 만들지 않는다.** 그것을 만드는
+# 것은 `JOB-AUD-001`뿐이며, 그 잡은 `ADMIN_DATABASE_URL`이 있어야 선다. 값이 비면 잡이 서지
+# 않고, 다가올 파티션이 소진되는 순간 **모든 웹훅이 저장에서 거부된다** — 수신은 되는데
+# 저장이 안 되는 모양이라 방화벽·서명 문제로 오진하기 쉽다. 첫 사내 반입(2026-09-07)에서
+# 실제로 그렇게 됐다(DEV-553).
+#
+# 그때의 처방은 `.env.example`의 주석이었다. **주석은 강제하지 않는다** — 롤을 만드는 것도
+# 사람 손에 남아 복구·재구축 때마다 다시 해야 했다. 여기가 `provision_app_role`과 같은
+# 자리이므로 같은 방식으로 만든다.
+provision_retention_role() {
+  local url="$ADMIN_DATABASE_URL" rest creds role pw
+  case "$url" in
+    postgres://*|postgresql://*) ;;
+    *) die "ADMIN_DATABASE_URL이 postgresql:// 형태가 아니다 — 파티션 수명 잡이 서지 못한다" ;;
+  esac
+  rest="${url#*://}"
+  case "$rest" in *@*) ;; *) die "ADMIN_DATABASE_URL에 접속 주체가 없다 (postgresql://<롤>:<비밀번호>@<호스트>/<DB>)" ;; esac
+  # **마지막 `@` 앞까지가 자격이다** — 비밀번호에 `@`가 있어도 견딘다.
+  creds="${rest%@*}"
+  case "$creds" in *:*) ;; *) die "ADMIN_DATABASE_URL에 비밀번호가 없다 — 이 롤은 LOGIN이어야 한다" ;; esac
+  role="${creds%%:*}"
+  pw="${creds#*:}"
+
+  printf '%s' "$role" | grep -qE '^[a-z_][a-z0-9_]{0,62}$' \
+    || die "ADMIN_DATABASE_URL의 롤 이름이 PostgreSQL 식별자 형태가 아니다: $role"
+  [ "$role" != 'prs_admin' ] || die \
+    "ADMIN_DATABASE_URL이 'prs_admin'으로 접속한다 — 그것은 NOLOGIN 그룹 롤이다.
+  'prs_retention'처럼 다른 이름을 주면 이 명령이 만들고 멤버십까지 준다"
+  # **비밀번호를 퍼센트 인코딩했으면 여기서 멈춘다.** 인코딩된 문자열로 롤을 만들면 앱이
+  # 디코딩한 값으로 접속해 `password authentication failed`가 난다 — 사내에서 한 번 겪었다.
+  case "$pw" in *%*) die "ADMIN_DATABASE_URL의 비밀번호에 '%'가 있다 — 퍼센트 인코딩은 지원하지 않는다. 인코딩이 필요 없는 비밀번호를 쓴다" ;; esac
+
+  step "파티션 수명 잡 접속 주체 프로비저닝 — ${role}"
+  compose exec -T postgres psql -U "$POSTGRES_OWNER_USER" -d "$POSTGRES_DB" \
+    -v ON_ERROR_STOP=1 -v role="$role" -v pw="$pw" <<'SQL' >/dev/null \
+    || die "파티션 수명 주체 프로비저닝 실패 — JOB-AUD-001이 서지 못하고 파티션이 소진되면 수신이 막힌다"
+SELECT format('CREATE ROLE %I LOGIN', :'role')
+ WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role')
+\gexec
+ALTER ROLE :"role" WITH LOGIN PASSWORD :'pw';
+GRANT prs_admin TO :"role";
+SQL
+  ok "${role} → prs_admin (JOB-AUD-001)"
+}
+
 require_env() {
   [ -f "$ENV_FILE" ] || die "$ENV_FILE 이 없다.
   최초 설치라면 .env.example을 복사해 값을 채운다.
@@ -72,9 +119,11 @@ require_env() {
   PRS_ENV_FILE=<이전 .env 경로>로 지정한다 — 번들은 값이 채워진 .env를 담지 않는다"
   # **값이 비어 있으면 기동하지 않는다.** 조용히 기본값으로 도는 것보다 낫다.
   local missing=()
+  # **`ADMIN_DATABASE_URL`이 여기 있는 것은 선택이 아니어서다** (DEV-556). 비어 있으면
+  # 파티션을 만드는 잡이 서지 않고, 소진되는 순간 모든 수신이 저장에서 거부된다.
   for key in PRS_VERSION POSTGRES_DB POSTGRES_OWNER_USER POSTGRES_OWNER_PASSWORD \
              POSTGRES_APP_USER POSTGRES_APP_PASSWORD GHE_BASE_URL GHE_WEBHOOK_SECRET \
-             SEARCH_CURSOR_HMAC_KEY; do
+             SEARCH_CURSOR_HMAC_KEY ADMIN_DATABASE_URL; do
     grep -qE "^${key}=.+" "$ENV_FILE" || missing+=("$key")
   done
   [ ${#missing[@]} -eq 0 ] || die "필수 값이 비어 있다: ${missing[*]}"
@@ -88,6 +137,7 @@ require_env() {
   POSTGRES_APP_USER="$(env_value POSTGRES_APP_USER)"
   POSTGRES_APP_PASSWORD="$(env_value POSTGRES_APP_PASSWORD)"
   ADMIN_API_TOKENS="$(env_value ADMIN_API_TOKENS)"
+  ADMIN_DATABASE_URL="$(env_value ADMIN_DATABASE_URL)"
   AUTH_ENABLED="$(env_value AUTH_ENABLED)"
   # **`.env`에서도 읽는다** (DEV-520). 런북이 "늘린다"고만 적어 두면 운영자는
   # 설치의 구성 파일에 넣는데, 그때 셸 환경만 보면 그 조정이 **조용히 무시된다.**
@@ -154,6 +204,7 @@ cmd_install() {
   ok "스키마 적용"
 
   provision_app_role
+  provision_retention_role
 
   step "Elasticsearch 매핑·부트스트랩"
   compose --profile setup run --rm es-bootstrap || die "ES 매핑 적용 실패"
@@ -173,6 +224,7 @@ cmd_upgrade() {
   compose --profile setup run --rm migrate || die "마이그레이션 실패 — 교체하지 않는다"
   # 비밀번호가 회전됐을 수 있으므로 업그레이드마다 다시 맞춘다. 멱등이다.
   provision_app_role
+  provision_retention_role
   compose --profile setup run --rm es-bootstrap || die "ES 매핑 적용 실패"
   compose up -d
   cmd_health
@@ -367,6 +419,7 @@ cmd_restore() {
   step "마이그레이션 재적용 — 백업이 현재 릴리스보다 이전일 수 있다"
   compose --profile setup run --rm migrate || die "마이그레이션 실패 — 애플리케이션을 띄우지 않는다"
   provision_app_role
+  provision_retention_role
 
   # **파생 색인을 비우고 다시 만든다** (DEV-511).
   #

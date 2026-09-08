@@ -2665,10 +2665,14 @@ describe('첫 사내 반입이 드러낸 계약 (CR-066)', () => {
   it('`ADMIN_DATABASE_URL`의 안내가 실제 대가를 말한다', () => {
     const section = ENV_EXAMPLE.slice(0, ENV_EXAMPLE.indexOf('\nADMIN_DATABASE_URL='));
     const note = section.slice(section.lastIndexOf('# `JOB-AUD-001`'));
+    // 대가를 말하는 것이 이 시험의 계약이다 — "보존 잡만 안 선다"로는 부족하다.
     expect(note).toContain('store_failed');
-    expect(note).toContain('마이그레이션이 만들지 않는다');
+    // **"손으로 만든다"는 더 이상 요구하지 않는다** (`DEV-556`이 강제 경로로 옮겼다).
+    // 옛 문구를 계속 요구하면 이 시험이 틀린 계약을 굳힌다 — 갱신하되 느슨하게 만들지
+    // 않는다. 대신 값이 강제된다는 사실을 잰다.
+    expect(note).toContain('필수 값이다');
     // 8장이 그 증상에서 이 값으로 안내해야 한다.
-    expect(RUNBOOK).toMatch(/store_failed[\s\S]{0,200}ADMIN_DATABASE_URL/);
+    expect(RUNBOOK).toMatch(/store_failed[\s\S]{0,300}ADMIN_DATABASE_URL/);
   });
 
   /**
@@ -2714,12 +2718,29 @@ describe('첫 사내 반입이 드러낸 계약 (CR-066)', () => {
  * 전환·애니메이션 선언이 없어야 한다. 파일이 늘어나도 이 시험은 따라간다.
  */
 describe('제품 스타일시트가 모션을 만들지 않는다 (DEV-555)', () => {
-  const webAppDir = new URL('apps/web/app/', new URL('..', import.meta.url));
-  const productStyles = readdirSync(webAppDir).filter((name) => name.endsWith('.css'));
+  /**
+   * **`apps/web` 전체를 재귀로 훑는다.** 처음에는 `apps/web/app`의 직계 자식만 셌는데,
+   * 그러면 라우트 지역 스타일시트(`app/search/results.css`)나 `components/` 아래의 것이
+   * 검사를 통과하며 전환을 선언할 수 있다 — "파일이 늘어나도 따라간다"는 이 절의 주장이
+   * 거짓이 되는 자리다 (`PR #152` 머지 후 리뷰).
+   */
+  const collectStyles = (dir: string): string[] => {
+    const entries = readdirSync(new URL(`${dir}/`, new URL('..', import.meta.url)), {
+      withFileTypes: true,
+    });
+    return entries.flatMap((entry) => {
+      // 생성물과 의존성은 제품 소스가 아니다.
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) return [];
+      if (entry.isDirectory()) return collectStyles(`${dir}/${entry.name}`);
+      return entry.name.endsWith('.css') ? [`${dir}/${entry.name}`] : [];
+    });
+  };
+  const productStyles = collectStyles('apps/web');
 
   it('제품 CSS에 전환·애니메이션 선언이 없다 — 모션은 Conductor가 소유한다', () => {
-    for (const name of productStyles) {
-      const css = read(`apps/web/app/${name}`)
+    for (const path of productStyles) {
+      const name = path;
+      const css = read(path)
         // 주석은 걷어 낸다. 규칙을 설명하는 문장이 그 규칙을 어겼다고 세지 않는다.
         .replace(/\/\*[\s\S]*?\*\//g, '');
       expect(css, `${name}이 transition을 선언한다`).not.toMatch(/(^|[;{\s])transition(-[a-z]+)?\s*:/);
@@ -2736,5 +2757,68 @@ describe('제품 스타일시트가 모션을 만들지 않는다 (DEV-555)', ()
     }
     // 규칙 자체는 남아 있어야 한다 — 근거를 고치면서 결론까지 지우지 않는다.
     expect(tokens).toContain('제품에서 별도 애니메이션을 추가하지 않는다');
+  });
+});
+
+/**
+ * **파티션을 만드는 주체가 강제 경로에 있다** (`DEV-556` / `CR-069`).
+ *
+ * `DEV-553`의 처방은 `.env.example`의 주석이었다. **주석은 강제하지 않는다** — 새로
+ * 설치하면 그 값이 빈 채로 모든 관문을 통과하고, 파티션이 소진되는 순간 모든 웹훅이
+ * 저장에서 거부된다. 게이트의 존재가 아니라 **위치**가 실패의 대가를 정한다는 것을
+ * 이 저장소가 세 번째로 겪은 자리다(`DEV-524` → `DEV-544` → 여기).
+ */
+describe('파티션 수명 주체가 강제 경로에 있다 (DEV-556)', () => {
+  const PRSCTL = read('deploy/single-host/prsctl');
+  const RUNBOOK = read('deploy/single-host/RUNBOOK.md');
+  const ENV_EXAMPLE = read('deploy/single-host/.env.example');
+
+  it('`require_env`가 `ADMIN_DATABASE_URL`을 필수로 센다', () => {
+    const fn = PRSCTL.slice(PRSCTL.indexOf('require_env() {'));
+    const loop = fn.slice(fn.indexOf('for key in'), fn.indexOf('; do'));
+    expect(loop, '필수 키 목록에 ADMIN_DATABASE_URL이 없다').toContain('ADMIN_DATABASE_URL');
+  });
+
+  it('롤 프로비저닝이 `install`·`upgrade`·`restore` 셋 모두에 있다', () => {
+    // **접속 주체와 같은 자리여야 한다.** 하나라도 빠지면 그 경로로 복구한 설치에서
+    // 잡이 서지 못하고, 그 사실은 파티션이 소진될 때까지 드러나지 않는다.
+    const appCalls = PRSCTL.match(/^ {2}provision_app_role$/gm) ?? [];
+    const retentionCalls = PRSCTL.match(/^ {2}provision_retention_role$/gm) ?? [];
+    expect(appCalls.length, 'provision_app_role 호출이 셋이 아니다 — 구조가 바뀌었다').toBe(3);
+    expect(retentionCalls.length).toBe(appCalls.length);
+    // 마이그레이션 뒤여야 한다 — `prs_admin`은 마이그레이션이 만든다.
+    for (const cmd of ['cmd_install()', 'cmd_upgrade()', 'cmd_restore()']) {
+      const body = PRSCTL.slice(PRSCTL.indexOf(cmd));
+      const scope = body.slice(0, body.indexOf('\n}\n'));
+      expect(scope.indexOf('run --rm migrate'), `${cmd}에 마이그레이션이 없다`).toBeGreaterThan(-1);
+      expect(
+        scope.indexOf('provision_retention_role'),
+        `${cmd}에서 롤 생성이 마이그레이션보다 앞이다`,
+      ).toBeGreaterThan(scope.indexOf('run --rm migrate'));
+    }
+  });
+
+  it('퍼센트 인코딩된 비밀번호를 거부한다 — 조용히 틀린 롤을 만들지 않는다', () => {
+    const fn = PRSCTL.slice(PRSCTL.indexOf('provision_retention_role() {'));
+    const body = fn.slice(0, fn.indexOf('\n}\n'));
+    expect(body).toMatch(/case "\$pw" in \*%\*\)/);
+    // `prs_admin` 직접 접속도 막는다 — NOLOGIN 그룹 롤이다.
+    expect(body).toContain("'prs_admin'");
+  });
+
+  it('문서가 강제 경로와 같은 말을 한다', () => {
+    // 런북의 필수 값 목록은 `require_env`를 옮겨 적은 것이다 — 한쪽만 고치면 어긋난다.
+    const list = RUNBOOK.slice(RUNBOOK.indexOf('**`prsctl`이 요구하는 필수 값**'));
+    const fenceStart = list.indexOf('```text');
+    const block = list.slice(fenceStart, list.indexOf('```', fenceStart + '```text'.length));
+    // **부분 문자열로 재지 않는다.** `ADMIN_DATABASE_URL_X`도 통과하던 자리다(변이로 확인).
+    // 키 이름이 줄 첫머리에 그대로 있어야 한다 — `require_env`가 세는 것과 같은 이름이다.
+    expect(
+      block.split('\n').some((line) => /^ADMIN_DATABASE_URL(\s|$)/.test(line)),
+      '런북의 필수 값 블록에 ADMIN_DATABASE_URL 행이 없다',
+    ).toBe(true);
+    // 옛 처방(손으로 만든다)이 남아 있으면 안 된다.
+    expect(RUNBOOK).not.toContain('이 롤은 **마이그레이션이 만들지 않으므로**');
+    expect(ENV_EXAMPLE).not.toContain('복구나 재구축 뒤에는 손으로 다시');
   });
 });
