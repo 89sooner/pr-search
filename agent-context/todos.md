@@ -1,6 +1,61 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
 
+최신 기준 (2026-09-08 2차 · **`0.1.0-pilot.3` 발행 — CR-068 · CR-069 / DEV-555~558**)
+
+**main = 139e818. `0.1.0-pilot.3`이 발행됐고 잠겼다(`immutable: true`).** 실측하라.
+
+- 원장 review **v6.54** · 파생 토큰 v0.6 · SRS baseline v2.20(변경 없음)
+- **다음 빈 ID: CR-070 · DEV-559 · WP-074 · 마이그레이션 024** (측정값. 쓰기 전 다시 잰다)
+- 릴리스: 태그 `0.1.0-pilot.3` → `139e818`, digest `sha256:b5889459a14aa0a68df4365ba490ce78ede533444007b888a3a1aa910f220893`
+
+### A. 지금 당장 — 결정자 조치
+
+1. **읽기 토큰을 발급하고 셋을 별도 채널로 전달한다** — 버전 `0.1.0-pilot.3` · 토큰 · 위 SHA-256 (`DEV-530`). 토큰 값은 어디에도 적지 않는다
+2. `PR #156`(발행 사실 기록) 병합 — CI 확인 후
+3. 병합 직후 **미해결 리뷰 재계수** (`python3 agent-context/count-unresolved-reviews.py`). 이 라운드에서만 내 PR에 셋이 왔다
+
+### B. 사내에서 — `upgrade` 절차
+
+- 이 번들도 `compose.yml`을 덮으므로 **CA 마운트 여섯 자리를 다시 얹는다**(런북 6장). `prs_retention` 롤은 이제 불필요하다(`DEV-556`)
+- **`DEV-551`이 web 손 스텁을 없앤다** — `upgrade` 뒤 500이 재발하지 않는지 확인한다
+- 마이그레이션 `023`으로 그대로이고 환경 변수 키·compose 서비스도 같다
+- 반입 결과를 원장에 기록하는 것이 다음 문서 작업이다
+
+### C. 열려 있는 것
+
+- **`PR #150`의 태그 소유 판정 리뷰** — "삭제 lease가 한 번 실패한 뒤라면 커밋 일치는 소유의 증거가 되지 못한다". 이 라운드 범위 밖이라 손대지 않았다
+- `DEV-377` — 병렬 부하에서 흔들리는 e2e 하나. 이번에도 재현됐다(단독 3회는 통과)
+- **Gate 4·5·6 그대로.** `/search`·사내 OIDC·성능·롤백·`ACC-06`은 `NOT RUN`
+- 증분 수집이 사내 경유 호스트 하나에 의존한다(`DEV-550`)
+
+### D. 이 라운드가 깔아 둔 자리 — 다시 만들지 말 것
+
+- `require_env`의 `ADMIN_DATABASE_URL`을 빼지 마라 — 그것이 `DEV-556`의 강제다
+- `provision_retention_role` 호출은 **셋**이며 마이그레이션 **뒤**여야 한다. 회귀가 잰다
+- 퍼센트 인코딩·`prs_admin` 직접 접속 거부를 없애지 마라
+- 제품 CSS 검사는 **재귀**다. 직계 자식만 세는 형태로 되돌리지 마라
+- 파생 토큰 문서의 절 번호 13·14를 지우지 마라 — 참조가 그 번호를 가리킨다
+- 이전 라운드 것 그대로: `Dockerfile`의 실체화 호출 · 실체화 스크립트의 "못 찾으면 종료" · 런북 7장의 남은 `NOT RUN`
+
+---
+
+## 시작하기 전에 — 이 인계의 값을 실측하라
+
+```bash
+git -C . rev-parse --short HEAD && git status --porcelain
+gh pr list --state open --json number --jq 'length'
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
+python3 agent-context/count-unresolved-reviews.py
+gh release list -R 89sooner/pr-search
+gh api repos/89sooner/pr-search/releases/tags/0.1.0-pilot.3 --jq '{draft,immutable,target_commitish,assets:[.assets[]|{name,size,digest,download_count}]}'
+docker ps --format '{{.Names}}' | grep -E '^prs-(postgres|redis|elasticsearch)$'   # 없으면 docker compose up -d
+```
+
+---
+
+## (2026-09-08 1차 종료 시점의 기록)
+
 최신 기준 (2026-09-08 · **첫 사내 반입의 결과를 저장소에 반영 — CR-066 / DEV-548~553**)
 
 **브랜치 `claude/first-internal-import-findings` (main = 268efa9에서 갈라짐). PR은 아직 열지 않았다.** 실측하라.
