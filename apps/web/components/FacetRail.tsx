@@ -64,7 +64,7 @@ export function FacetRail({
   const retryable = state.kind === 'omitted' || state.kind === 'failed';
 
   return (
-    <Panel as="aside" aria-label="필터">
+    <Panel as="aside" aria-label="필터" className="prs-facet-rail">
       <h2>필터</h2>
 
       {/*
@@ -96,7 +96,7 @@ export function FacetRail({
                   const checked = hasEquality(ast, field.queryKey, entry.value);
                   const id = `facet-${field.queryKey}-${entry.value}`;
                   return (
-                    <div key={entry.value}>
+                    <div key={entry.value} className="prs-facet-option">
                       <Checkbox
                         id={id}
                         checked={checked}
@@ -108,8 +108,8 @@ export function FacetRail({
                        * 건수를 이름에 포함시킨다 — 체크박스만 읽으면 "kim"만
                        * 들리고 그것이 18건인지 1건인지 알 수 없다.
                        */}
-                      <label htmlFor={id}>
-                        {entry.value} ({entry.count})
+                      <label htmlFor={id} title={entry.value}>
+                        <span>{entry.value}</span><span className="prs-facet-count"> ({entry.count})</span>
                       </label>
                     </div>
                   );

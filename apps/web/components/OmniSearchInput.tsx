@@ -16,10 +16,11 @@
  * 기록이 되는데 그것을 요구한 문서가 없다. 비면 최근 목록을 그리지 않는다.
  */
 
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Button, TextField } from '@conductor-by-89soone/react';
 import { isTooShortShaPrefix } from '../lib/search-state';
 import { MIN_SHA_PREFIX_LENGTH } from '@prs/query';
+import { WorkbenchIcon } from './WorkbenchIcon';
 
 export interface OmniSearchInputProps {
   readonly value: string;
@@ -40,8 +41,20 @@ export function OmniSearchInput({
   resultAnnouncement,
 }: OmniSearchInputProps): ReactNode {
   const [draft, setDraft] = useState(value);
-  const inputId = useId();
+  const inputId = 'omni-search-input';
+  const input = useRef<HTMLInputElement>(null);
   const errorId = useId();
+
+  useEffect(() => {
+    if (window.location.hash === '#omni-search-input') input.current?.focus();
+    const setExample = (event: Event): void => {
+      if (!(event instanceof CustomEvent) || typeof event.detail !== 'string') return;
+      setDraft(event.detail);
+      input.current?.focus();
+    };
+    document.addEventListener('prs:search-draft', setExample);
+    return () => { document.removeEventListener('prs:search-draft', setExample); };
+  }, []);
 
   // URL이 단일 진실이므로 바깥이 바뀌면 입력도 따라간다 — 뒤로가기가 성립한다.
   useEffect(() => {
@@ -66,8 +79,11 @@ export function OmniSearchInput({
   }
 
   return (
-    <form onSubmit={handleSubmit} role="search" aria-label="통합 검색">
+    <form className="prs-omni-search" onSubmit={handleSubmit} role="search" aria-label="통합 검색">
+      <span className="prs-search-glyph"><WorkbenchIcon name="search" /></span>
       <TextField
+        ref={input}
+        data-omni-input=""
         id={inputId}
         /*
          * 이름을 `aria-label`로 준다.
@@ -87,7 +103,7 @@ export function OmniSearchInput({
         invalid={tooShort}
         aria-invalid={tooShort}
         aria-describedby={tooShort ? errorId : undefined}
-        placeholder="SHA, #1234, owner/repo#1234, GHE URL 또는 repo:acme/a author:kim"
+        placeholder="SHA, PR 번호, GHE URL 또는 repo:owner/repo …"
         onChange={(event) => {
           setDraft(event.target.value);
         }}

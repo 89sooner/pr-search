@@ -1,19 +1,15 @@
 'use client';
 
 /**
- * C-001 AppTopBar — 제품명, 옴니 검색, 사용자 메뉴 (WP-015).
- *
- * ## 옴니 검색은 슬롯이다 (CR-018, DEV-070)
- *
- * C-010 `OmniSearchInput`은 W-001의 컴포넌트라 WP-016 소관이다. 그런데
- * WP-015의 DoD가 "`⌘K`로 옴니 검색에 포커스"를 요구한다. 그래서 **셸이
- * 단축키와 슬롯 계약을 소유하고** 슬롯 안의 첫 포커스 가능 요소를 잡는다 —
- * WP-016이 C-010을 슬롯에 넣으면 단축키가 저절로 그것을 가리킨다. 셸을
- * 다시 고치지 않는다.
+ * C-001 AppTopBar (WP-015·WP-073).
+ * 실제 C-010 입력 또는 주입된 슬롯에 검색 포커스를 연결하고,
+ * 입력이 없는 화면에서는 검색 라우트의 입력 앵커로 이동한다.
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import Link from 'next/link';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { IconButton, Kbd, TopBar } from '@conductor-by-89soone/react';
+import { WorkbenchIcon } from './WorkbenchIcon';
 
 /** 슬롯 안에서 포커스를 받을 수 있는 것. 순서대로 첫째를 잡는다. */
 const FOCUSABLE = 'input, textarea, select, button, [tabindex]:not([tabindex="-1"])';
@@ -24,7 +20,8 @@ export interface UserSummary {
 }
 
 export interface AppTopBarProps {
-  /** C-010이 들어올 자리. 없으면 단축키는 아무것도 잡지 않는다. */
+  readonly title?: string;
+  /** C-010을 주입할 수 있는 기존 슬롯. 실제 화면에서는 본문 입력에 연결한다. */
   readonly omniSearch?: ReactNode;
   readonly user: UserSummary | null;
   /** 시험이 `mac`/`other`를 고정할 수 있게 열어 둔다. 기본은 실제 플랫폼. */
@@ -61,6 +58,7 @@ function detectPlatform(): 'mac' | 'other' {
 }
 
 export function AppTopBar({
+  title = 'PR Search',
   omniSearch,
   user,
   platform,
@@ -69,6 +67,17 @@ export function AppTopBar({
 }: AppTopBarProps): ReactNode {
   const slot = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLButtonElement>(null);
+  const searchLink = useRef<HTMLAnchorElement>(null);
+  const [detectedPlatform, setDetectedPlatform] = useState<'mac' | 'other'>('other');
+  useEffect(() => { setDetectedPlatform(detectPlatform()); }, []);
+
+  function focusSearch(): boolean {
+    const target = document.querySelector<HTMLElement>('[data-omni-input]')
+      ?? slot.current?.querySelector<HTMLElement>(FOCUSABLE);
+    if (target == null) return false;
+    target.focus();
+    return true;
+  }
 
   /*
    * 서랍이 닫히면 포커스를 여는 버튼으로 되돌린다 (QA-COMMON-07).
@@ -116,11 +125,8 @@ export function AppTopBar({
       if (event.key !== 'k' && event.key !== 'K') return;
       if (!event.metaKey && !event.ctrlKey) return;
 
-      const target = slot.current?.querySelector<HTMLElement>(FOCUSABLE);
-      if (target === null || target === undefined) return;
-
       event.preventDefault();
-      target.focus();
+      if (!focusSearch()) searchLink.current?.click();
     }
 
     document.addEventListener('keydown', onKeyDown);
@@ -130,11 +136,12 @@ export function AppTopBar({
   }, []);
 
   // SSR과 첫 렌더가 같아야 한다. `platform`이 없으면 서버에서 `other`로 그리고,
-  // 실제 판정은 프로퍼티로 주입한다 — 렌더 중에 `navigator`를 읽으면 하이드레이션이 깨진다.
-  const modifier = (platform ?? detectPlatform()) === 'mac' ? '⌘' : 'Ctrl';
+  // 실제 플랫폼은 마운트 후 반영한다 — 렌더 중 navigator를 읽지 않는다.
+  const modifier = (platform ?? detectedPlatform) === 'mac' ? '⌘' : 'Ctrl';
 
   return (
     <TopBar
+      className="prs-topbar"
       /*
        * **좁은 화면의 유일한 내비게이션 진입점이다.**
        *
@@ -161,19 +168,26 @@ export function AppTopBar({
           }}
         />
       }
-      eyebrow="PR Search"
+      eyebrow="GitHub Enterprise"
       title={
         <div ref={slot} data-testid="omni-search-slot">
-          {omniSearch}
+          {omniSearch ?? <span className="prs-breadcrumb">작업대 <WorkbenchIcon name="chevron" /><strong>{title}</strong></span>}
         </div>
       }
       actions={
         <>
-          <Kbd>{modifier}</Kbd>
-          <Kbd>K</Kbd>
+          <Link ref={searchLink} href="/search#omni-search-input" className="prs-quick-search"
+            aria-label="빠른 검색" aria-keyshortcuts="Control+k Meta+k"
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              if (focusSearch()) event.preventDefault();
+            }}>
+            <WorkbenchIcon name="search" /><span>빠른 검색</span><Kbd>{modifier} K</Kbd>
+          </Link>
           {user === null ? null : (
-            <span data-testid="user-summary" aria-label={`로그인: ${user.login}`}>
-              {user.login}
+            <span className="prs-user" data-testid="user-summary" aria-label={`로그인: ${user.login}`}>
+              <span className="prs-avatar" aria-hidden="true">{user.login.slice(0, 2).toUpperCase()}</span>
+              <span>{user.login}</span>
             </span>
           )}
         </>

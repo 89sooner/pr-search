@@ -12,6 +12,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { NavList, type NavItem } from '@conductor-by-89soone/react';
 import type { Role } from '@prs/authz/roles';
+import { WorkbenchIcon, type WorkbenchIconName } from './WorkbenchIcon';
 import { SECTION_LABELS, visibleNavEntries } from '../lib/nav';
 
 export interface LeftNavPanelProps {
@@ -20,9 +21,16 @@ export interface LeftNavPanelProps {
   readonly activeId: string | null;
 }
 
+const ICONS: Readonly<Record<string, WorkbenchIconName>> = {
+  search: 'search', 'saved-searches': 'bookmark', repositories: 'repository',
+  ranges: 'range', releases: 'tag', analytics: 'chart', 'ops-pipeline': 'pipeline',
+  'ops-repositories': 'repository', 'ops-jobs': 'jobs', 'ops-audit': 'shield',
+};
+
 export function LeftNavPanel({ roles, activeId }: LeftNavPanelProps): ReactNode {
   const items: NavItem[] = visibleNavEntries(roles).map((entry) => ({
     id: entry.id,
+    icon: <WorkbenchIcon name={ICONS[entry.id] ?? 'repository'} />,
     label: entry.label,
     href: entry.href,
     section: SECTION_LABELS[entry.section],
@@ -30,7 +38,13 @@ export function LeftNavPanel({ roles, activeId }: LeftNavPanelProps): ReactNode 
   }));
 
   return (
+    <>
+    <Link href="/" className="prs-brand" aria-label="PR Search 홈">
+      <span className="prs-brand-mark"><WorkbenchIcon name="branch" /></span>
+      <span><strong>PR Search</strong><small>변경 이력 작업대</small></span>
+    </Link>
     <NavList
+      className="prs-nav"
       aria-label="주요 화면"
       items={items}
       /*
@@ -46,5 +60,10 @@ export function LeftNavPanel({ roles, activeId }: LeftNavPanelProps): ReactNode 
         </Link>
       )}
     />
+    <div className="prs-nav-note">
+      <WorkbenchIcon name="branch" />
+      <p><strong>머지 순서로 이어지는 이력</strong><span>PR 번호는 생성 순서,<br />시퀀스는 브랜치 반영 순서입니다.</span></p>
+    </div>
+    </>
   );
 }

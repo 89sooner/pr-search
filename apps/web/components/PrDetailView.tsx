@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Badge, Banner, Button, Panel } from '@conductor-by-89soone/react';
 import { CommitList } from './CommitList';
 import { EmptyState } from './EmptyState';
+import { DetailSectionNav } from './DetailSectionNav';
 import { EntityHeader } from './EntityHeader';
 import { ErrorBanner } from './ErrorBanner';
 import { RelationSection } from './RelationSection';
@@ -250,6 +251,7 @@ export function PrDetailView({
           </>
         }
       />
+      <DetailSectionNav sections={[{ id: 'overview-heading', label: '개요' }, { id: 'commits-heading', label: '커밋' }, { id: 'timeline-heading', label: '타임라인' }, { id: 'neighbors-heading', label: '선행·후행' }, { id: 'releases-heading', label: '포함 릴리스' }, { id: 'links-heading', label: '관계' }]} />
 
       {/*
        * 저장소가 보관됨이면 알린다 — 결과가 갱신되지 않는 이유가 된다.

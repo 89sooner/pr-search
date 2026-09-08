@@ -673,7 +673,7 @@ describe('필터 레일 (C-012, CR-019 DEV-076)', () => {
     });
     expect(screen.queryByTestId('facet-notice')).toBeNull();
     // 건수를 이름에 넣는다 — "kim"만 들리면 18건인지 1건인지 모른다.
-    expect(within(screen.getByTestId('facet-author')).getByText(/kim \(18\)/)).toBeInTheDocument();
+    expect(within(screen.getByTestId('facet-author')).getByRole('checkbox', { name: 'kim (18)' })).toBeInTheDocument();
   });
 });
 

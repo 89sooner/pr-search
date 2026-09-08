@@ -1,6 +1,6 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.4 | 갱신일: 2026-08-20
+> 상태: review | 버전: v0.5 | 갱신일: 2026-09-08
 
 ## 1. 목적
 
@@ -198,3 +198,8 @@ gh api로 정책 우회
 ```
 
 측정 기준값 (gh 2.97.0): command node 228개(실행 가능 leaf 196, 그룹 32), command 고유 flag 1,034개, positional placeholder 261개, `--json` 지원 41개. 이 수치는 고정된 버전에서 측정한 값이며 버전이 바뀌면 manifest와 함께 갱신한다.
+
+
+## WP-073 작업대 실행 규칙 (CR-067)
+
+기존 FR-SRCH-001·006~011, FR-SEQ-005, NFR-007 범위의 UI 품질 작업이다. 구현 상태는 WP 표/원장 3장·검증은 6.71장을 읽는다. Conductor·인가·URL/커서/에폭 계약을 보존하며 작업대 선택 요약에 새 API나 영구 저장을 더하지 않는다. 검증은 프로덕션 빌드로 실행하고 로컬 UI fixture와 사내 통합 검증을 구분한다.

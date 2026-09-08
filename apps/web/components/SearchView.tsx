@@ -49,6 +49,9 @@ import { chooseRoute, resolveUrl, searchUrl } from '../lib/search-fetch';
 import { resolveScreenState, type ApiErrorBody } from '../lib/search-state';
 import { addEquality, removeChip, removeEquality, toChips } from '../lib/tokens';
 import type { FacetSource } from '../lib/facets';
+import { WorkbenchIcon } from './WorkbenchIcon';
+import { SearchWelcome } from './SearchWelcome';
+import { ResultWorkbench } from './ResultWorkbench';
 
 const SEARCH_PATH = '/search';
 
@@ -148,6 +151,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
   const [outcome, setOutcome] = useState<FetchOutcome>(IDLE);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState<PageState>(FIRST_PAGE);
+  const [filtersOpen, setFiltersOpen] = useState(true);
 
   /*
    * 진행 중인 요청을 세대(generation)로 센다.
@@ -485,7 +489,8 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         : '';
 
   return (
-    <div data-testid="search-view" data-screen-state={screen.kind}>
+    <div className="prs-search-view" data-testid="search-view" data-screen-state={screen.kind}>
+      <div className="prs-search-controls">
       <OmniSearchInput
         value={state.q}
         onSubmit={submit}
@@ -532,10 +537,11 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
               * 접두가 같으면 사용자도, 접근성 이름으로 요소를 찾는 시험도
               * 둘을 구분하지 못한다 — 실제로 기존 e2e 하나가 모호해졌다.
               */}
-            저장
+            <WorkbenchIcon name="bookmark" />저장
           </Button>
         </div>
       )}
+      </div>
 
       {savedName === null ? null : (
         <Banner tone="info" title="저장했습니다">
@@ -609,6 +615,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         </Banner>
       )}
 
+      <div className="prs-results-toolbar">
       <TabList
         tabs={[{ id: 'results', label: '결과' }, { id: 'aggregation', label: '집계' }]}
         activeId={activeTab}
@@ -617,14 +624,23 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         }}
         label="검색 결과 보기 방식"
       />
+      {activeTab === 'results' ? <div className="prs-results-actions">
+        <span className="prs-result-count">{screen.kind === 'ready' && total !== null ? `${total.value.toLocaleString('ko-KR')}${total.relation === 'gte' ? '+' : ''}건` : loading ? '검색 중…' : '검색 결과'}</span>
+        <Button variant="ghost" size="sm" aria-expanded={filtersOpen} aria-controls="search-filters"
+          onClick={() => { setFiltersOpen((open) => !open); }}><WorkbenchIcon name="filter" />필터</Button>
+        <Button variant="ghost" size="sm" disabled={loading || state.q.trim() === '' || parsed.error !== null || screen.kind === 'epoch_stale'}
+          onClick={backToFirst} aria-label="결과 새로고침"><WorkbenchIcon name="refresh" />새로고침</Button>
+      </div> : <span className="prs-result-count">현재 검색 조건의 PR 집계</span>}
+      </div>
 
       <TabPanel id="results" active={activeTab === 'results'}>
-      <div>
+      <div className="prs-search-layout" data-filters-open={filtersOpen && screen.kind !== 'epoch_stale' ? '' : undefined}>
         {/*
           * 낡은 인용이면 레일도 그리지 않는다 (CR-051). 세지 않은 분포를
           * "아직 세지 않음"으로 보이는 것은 사실이지만, 이 화면의 답은
           * 분포가 아니라 "번호의 뜻이 달라졌다"이고 그것은 배너가 말한다.
           */}
+        <div id="search-filters" hidden={!filtersOpen || screen.kind === 'epoch_stale'}>
         {screen.kind === 'epoch_stale' ? null : (
           <FacetRail
             source={facetSource}
@@ -634,7 +650,10 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
             onRetry={backToFirst}
           />
         )}
+        </div>
+        <div className="prs-results-body">
         <ScreenBody
+          key={`${state.q}|${state.sort ?? ''}|${state.order ?? ''}|${state.seqEpoch ?? ''}|${page.nonce}`}
           screen={screen}
           items={items}
           candidates={candidates}
@@ -644,6 +663,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
           fromQuery={state.q}
           loginPath={loginPath}
         />
+        </div>
       </div>
 
       {/*
@@ -661,6 +681,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
           failure={page.failure}
         />
       ) : null}
+      {screen.kind === 'ready' ? <p id="result-keyboard-help" className="prs-keyboard-help"><WorkbenchIcon name="preview" />미리보기 버튼에서 ↑ ↓ 이동 · Enter 선택 · Esc 닫기<span>제목을 누르면 상세 화면으로 이동합니다.</span></p> : null}
       </TabPanel>
 
       <TabPanel id="aggregation" active={activeTab === 'aggregation'}>
@@ -725,12 +746,7 @@ function ScreenBody({
 }: ScreenBodyProps): ReactNode {
   switch (screen.kind) {
     case 'empty_no_query':
-      return (
-        <EmptyState
-          cause="no_query"
-          description="예: seq:1200..1350 · 40자 커밋 SHA · merged:2026-08-10..2026-08-19"
-        />
-      );
+      return <SearchWelcome />;
 
     case 'error_prefix_too_short':
       // 안내는 입력창이 이미 띄웠다 (C-010). 여기서 또 말하지 않는다.
@@ -772,7 +788,7 @@ function ScreenBody({
 
     case 'ready':
       return (
-        <ResultTable
+        <ResultWorkbench
           rows={items ?? []}
           sort={sort}
           onSortChange={onSortChange}

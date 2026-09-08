@@ -1,6 +1,6 @@
 # PR Search 프론트엔드 아키텍처
 
-> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+> 상태: review | 버전: v0.3 | 갱신일: 2026-09-08
 
 ## 1. 목적
 
@@ -318,3 +318,8 @@ flag 타입 → 컨트롤 매핑. 모든 컨트롤은 Conductor 프리미티브�
 실행 수명주기(FR-GH-006)의 10개 상태를 화면 상태로 매핑한다. 진행 중 출력은 SSE로 받아 append-only로 렌더링하고, 상한 초과 시 절삭 사실을 표시한다.
 
 미지원 capability는 목록에서 숨기지 않는다. 비활성 상태와 사유(`unsupported_by_host`, `policy_blocked`, `terminal_only`, `requires_extension`)를 함께 보여준다 (FR-GH-013 AC-5).
+
+
+## 작업대 표현 계층 (CR-067 / WP-073)
+
+FR-SRCH-001·006~011, FR-SEQ-005, NFR-007에 따른 표현 변경이다. Shell은 역할 기반 NavList와 빠른 검색 진입을, SearchView는 기존 URL/요청/커서/에폭 상태를, ResultWorkbench는 응답 안의 선택을 각각 소유한다. 선택 키는 문서 종류·저장소·식별자·시퀀스 공간이다. 질의/정렬/에폭/조회 세대 경계에서 선택 컴포넌트를 다시 마운트해 이전 응답이 남지 않게 한다. 미리보기는 ResultRow 데이터만 사용한다. 선택·필터 접기·초안은 영구 저장하지 않는다. API/인가/DB/ES 계약과 자동 재조회 금지 규칙은 기존 그대로다. 스타일은 Conductor 위의 `workbench.css` 제품 배치로 한정한다.

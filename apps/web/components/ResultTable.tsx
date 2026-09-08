@@ -24,8 +24,8 @@
  */
 
 import Link from 'next/link';
-import type { ReactNode } from 'react';
-import { Badge, Button, Table } from '@conductor-by-89soone/react';
+import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { Button, Table } from '@conductor-by-89soone/react';
 import { SequenceBadge } from './SequenceBadge';
 import { HighlightedText } from './HighlightedText';
 import { RelationBadgeGroup } from './RelationBadgeGroup';
@@ -33,7 +33,8 @@ import type { LinkSummaryView } from '../lib/relations';
 import { primaryFragment, type HighlightMap } from '../lib/highlight';
 
 import { commonSpace } from '../lib/sequence';
-import { shortSha } from '../lib/format';
+import { WorkbenchIcon } from './WorkbenchIcon';
+import { shortSha, formatTimestamp } from '../lib/format';
 import { withFromQuery } from '../lib/query-url';
 
 /** 목록 한 행. `/search`의 `items` 원소와 같은 모양이다. */
@@ -76,22 +77,18 @@ export interface ResultTableProps {
   readonly onSortChange: (field: string) => void;
   /** 로딩 중이면 skeleton을 그린다 (상태 매트릭스 `loading_initial`). */
   readonly loading?: boolean;
+  readonly selectedId?: string | null;
+  readonly onSelect?: (id: string | null) => void;
 }
 
-/** 정렬 가능한 열과 그 질의 키 (FR-SRCH-007 AC-1). */
-const SORTABLE: readonly { readonly field: string; readonly label: string }[] = [
-  { field: 'merge_seq', label: '시퀀스' },
-  { field: 'merged_at', label: '머지 시각' },
-  { field: 'changed_files_count', label: '변경 파일' },
-  { field: 'additions', label: '추가' },
-];
-
-/** skeleton 행 수. 상태 매트릭스가 8행으로 정했다. */
-const SKELETON_ROWS = 8;
-
+/** WP-073 / FR-SRCH-007: 헤더가 정렬 방향을 스크린 리더에 전달한다. */
 function ariaSort(sort: SortState, field: string): 'ascending' | 'descending' | 'none' {
   if (sort.field !== field) return 'none';
   return sort.order === 'asc' ? 'ascending' : 'descending';
+}
+
+export function resultIdentity(row: ResultRow): string {
+  return JSON.stringify([row.kind, row.repository, row.pr_number, row.commit_sha, row.sequence_space]);
 }
 
 /** 행이 가리키는 곳. 서버가 준 `url`을 쓰고, 없으면 링크하지 않는다. */
@@ -120,111 +117,105 @@ function TitleText({ row, fallback }: { row: ResultRow; fallback: string }): Rea
 }
 
 /** 결과 행의 표시 이름. PR은 `#번호`, 커밋은 축약 SHA(12자)다. */
-function displayName(row: ResultRow): string {
+export function resultName(row: ResultRow): string {
   if (row.kind === 'pull_request' && row.pr_number !== undefined) return `#${String(row.pr_number)}`;
   if (row.commit_sha !== undefined) return shortSha(row.commit_sha);
   return '(식별자 없음)';
 }
 
 export function ResultTable({
-  rows,
-  sort,
-  onSortChange,
-  loading = false,
-  fromQuery = '',
+  rows, sort, onSortChange, loading = false, fromQuery = '', selectedId = null, onSelect,
 }: ResultTableProps & { readonly fromQuery?: string }): ReactNode {
-  // 목록 전체가 한 공간이면 그것이 문맥이다 (QA-W001-22).
   const context = commonSpace(rows.map((r) => r.sequence_space));
+  const selections = useRef<Map<string, HTMLButtonElement>>(new Map());
+
+  function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number): void {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.key === 'Escape') { event.preventDefault(); onSelect?.(null); return; }
+    const next = event.key === 'ArrowDown' ? Math.min(rows.length - 1, index + 1)
+      : event.key === 'ArrowUp' ? Math.max(0, index - 1)
+      : event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : null;
+    if (next === null) return;
+    event.preventDefault();
+    const row = rows[next];
+    if (row === undefined) return;
+    const id = resultIdentity(row);
+    onSelect?.(id);
+    selections.current.get(id)?.focus({ preventScroll: true });
+    selections.current.get(id)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }
+
+  function sortHeader(field: string, label: string): ReactNode {
+    return <Table.HeaderCell scope="col" aria-sort={ariaSort(sort, field)}>
+      <Button variant="ghost" size="sm" className="prs-sort-button" type="button"
+        onClick={() => { onSortChange(field); }}>{label}</Button>
+    </Table.HeaderCell>;
+  }
 
   return (
-    <Table caption="검색 결과">
+    <Table className="prs-result-table" caption="검색 결과" aria-label="검색 결과"
+      scrollContainerProps={{ tabIndex: 0, role: 'region', ...(onSelect === undefined ? {} : { 'aria-describedby': 'result-keyboard-help' }) }}>
       <Table.Head>
         <Table.Row>
-          {SORTABLE.map((column) => (
-            <Table.HeaderCell key={column.field} scope="col" aria-sort={ariaSort(sort, column.field)}>
-              {/*
-               * 헤더 자체를 버튼으로 만든다 — 키보드로 정렬할 수 있어야 한다.
-               * `aria-sort`는 `th`에 있어야 스크린 리더가 열의 정렬을 읽는다.
-               */}
-              <Button
-                variant="ghost"
-                size="sm"
-                type="button"
-                onClick={() => {
-                  onSortChange(column.field);
-                }}
-              >
-                {column.label}
-              </Button>
-            </Table.HeaderCell>
-          ))}
-          <Table.HeaderCell scope="col">유형</Table.HeaderCell>
-          <Table.HeaderCell scope="col">제목</Table.HeaderCell>
+          {onSelect === undefined ? null : <Table.HeaderCell scope="col"><span className="cdt-sr-only">미리보기</span><WorkbenchIcon name="preview" /></Table.HeaderCell>}
+          {sortHeader('merge_seq', '시퀀스')}
+          <Table.HeaderCell scope="col">변경 내용</Table.HeaderCell>
           <Table.HeaderCell scope="col">작성자</Table.HeaderCell>
+          <Table.HeaderCell scope="col">상태</Table.HeaderCell>
+          {sortHeader('merged_at', '머지 시각')}
+          {sortHeader('changed_files_count', '변경 파일')}
+          {sortHeader('additions', '추가')}
           <Table.HeaderCell scope="col">관계</Table.HeaderCell>
-
         </Table.Row>
       </Table.Head>
-
       <Table.Body>
-        {loading
-          ? Array.from({ length: SKELETON_ROWS }, (_, index) => (
-              <Table.Row key={`skeleton-${String(index)}`} data-testid="result-skeleton" aria-hidden="true">
-                <Table.Cell colSpan={8}>&nbsp;</Table.Cell>
-
-              </Table.Row>
-            ))
-          : rows.map((row) => {
-              const href = rowHref(row, fromQuery);
-              const name = displayName(row);
-              return (
-                <Table.Row key={`${row.repository ?? '?'}-${name}`} data-testid="result-row">
-                  <Table.Cell numeric>
-                    <SequenceBadge
-                      merge_seq={row.merge_seq}
-                      seq_epoch={row.seq_epoch}
-                      sequence_space={row.sequence_space}
-                      state={row.state}
-                      contextSpace={context}
-                    />
-                  </Table.Cell>
-                  <Table.Cell>{row.merged_at ?? '—'}</Table.Cell>
-                  <Table.Cell numeric>{row.changed_files_count ?? '—'}</Table.Cell>
-                  <Table.Cell numeric>{row.additions === null ? '—' : `+${String(row.additions)}`}</Table.Cell>
-                  <Table.Cell>
-                    <Badge tone="neutral">{row.kind === 'pull_request' ? 'PR' : '커밋'}</Badge>
-                  </Table.Cell>
-                  <Table.Cell>
-                    {/*
-                     * **실제 링크다.** 새 탭 열기·가운데 클릭이 살아 있어야
-                     * 조사 중에 여러 후보를 펼쳐 볼 수 있다 (C-013 접근성).
-                     */}
-                    {/*
-                      * 강조가 있으면 그 조각을, 없으면 제목을 그린다.
-                      *
-                      * 커밋 행의 제목 칸은 메시지 첫 줄이므로 `message` 축을
-                      * 함께 본다. 조각이 없으면 지금까지와 똑같다 — 강조는
-                      * 더해지는 것이지 대체하는 것이 아니다.
-                      */}
-                    {href === null ? (
-                      <span>
-                        <TitleText row={row} fallback={name} />
-                      </span>
-                    ) : (
-                      <Link href={href} data-testid="result-link">
-                        <TitleText row={row} fallback={name} />
-                      </Link>
-                    )}
-                    <span className="cdt-sr-only"> ({row.repository ?? '저장소 미상'} {name})</span>
-                  </Table.Cell>
-                  <Table.Cell>{row.author ?? '—'}</Table.Cell>
-                  <Table.Cell>
-                    <RelationBadgeGroup summary={row.link_summary ?? null} />
-                  </Table.Cell>
-                </Table.Row>
-
-              );
-            })}
+        {loading ? Array.from({ length: 8 }, (_, index) => (
+          <Table.Row key={index} data-testid="result-skeleton" aria-hidden="true">
+            <Table.Cell colSpan={onSelect === undefined ? 8 : 9}><span className="prs-skeleton-line">&nbsp;</span></Table.Cell>
+          </Table.Row>
+        )) : rows.map((row, index) => {
+          const href = rowHref(row, fromQuery);
+          const name = resultName(row);
+          const id = resultIdentity(row);
+          const selected = id === selectedId;
+          return (
+            <Table.Row key={id} data-testid="result-row" data-selected={selected ? '' : undefined}
+              onClick={onSelect === undefined ? undefined : (event) => {
+                if ((event.target as HTMLElement).closest('a,button,input')) return;
+                onSelect(id);
+                selections.current.get(id)?.focus({ preventScroll: true });
+              }}>
+              {onSelect === undefined ? null : <Table.Cell>
+                <Button variant="ghost" size="sm" className="prs-row-select"
+                  ref={(node) => { if (node === null) selections.current.delete(id); else selections.current.set(id, node); }}
+                  data-result-select={id} aria-label={`${row.repository ?? ''} ${name} 미리보기`}
+                  aria-pressed={selected} aria-describedby="result-keyboard-help"
+                  tabIndex={selected || (selectedId === null && index === 0) ? 0 : -1}
+                  onKeyDown={(event) => { onKeyDown(event, index); }}
+                  onClick={() => { onSelect(selected ? null : id); }}>
+                  <WorkbenchIcon name="preview" />
+                </Button>
+              </Table.Cell>}
+              <Table.Cell numeric><SequenceBadge merge_seq={row.merge_seq} seq_epoch={row.seq_epoch}
+                sequence_space={row.sequence_space} state={row.state} contextSpace={context} /></Table.Cell>
+              <Table.Cell className="prs-result-title">
+                <div className="prs-result-title-line">
+                  <span className="prs-result-kind" title={row.kind === 'pull_request' ? 'Pull request' : '커밋'}><WorkbenchIcon name={row.kind === 'pull_request' ? 'branch' : 'commit'} /><span className="cdt-sr-only">{row.kind === 'pull_request' ? 'PR' : '커밋'}</span></span>
+                  <span className="prs-result-id prs-mono">{name}</span>
+                  {href === null ? <span><TitleText row={row} fallback={name} /></span> :
+                    <Link href={href} data-testid="result-link" title={row.title ?? name}><TitleText row={row} fallback={name} /></Link>}
+                </div>
+                <span className="prs-result-repository prs-mono">{row.sequence_space ?? row.repository ?? '저장소 미상'}</span>
+              </Table.Cell>
+              <Table.Cell><span className="prs-cell-truncate" title={row.author ?? undefined}>{row.author ?? '—'}</span></Table.Cell>
+              <Table.Cell><span className="prs-result-state" data-state={row.state ?? 'unknown'}>{row.state === 'merged' ? '머지됨' : row.state === 'open' ? '열림' : row.state === 'closed' ? '닫힘' : row.state ?? '—'}</span></Table.Cell>
+              <Table.Cell><time className="prs-timestamp" dateTime={row.merged_at ?? undefined} title={row.merged_at ?? undefined}>{formatTimestamp(row.merged_at)}</time></Table.Cell>
+              <Table.Cell numeric>{row.changed_files_count ?? '—'}</Table.Cell>
+              <Table.Cell numeric><span className="prs-diff-added">{row.additions === null ? '—' : `+${row.additions}`}</span></Table.Cell>
+              <Table.Cell><RelationBadgeGroup summary={row.link_summary ?? null} /></Table.Cell>
+            </Table.Row>
+          );
+        })}
       </Table.Body>
     </Table>
   );

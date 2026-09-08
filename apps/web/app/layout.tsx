@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 // tokens.css를 여기서 다시 가져오면 레이어 밖 선언이 되어 축소 모션(prefers-reduced-motion)
 // 재정의를 무력화한다 (DEV-538).
 import '@conductor-by-89soone/css';
+import './workbench.css';
 
 export const metadata: Metadata = {
   title: 'PR Search',

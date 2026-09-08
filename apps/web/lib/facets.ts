@@ -64,7 +64,7 @@ export function facetRailState(source: FacetSource): FacetRailState {
 export function facetNotice(state: FacetRailState): string | null {
   switch (state.kind) {
     case 'not_computed':
-      return '값 분포는 아직 계산하지 않습니다. 아래에서 조건을 직접 고를 수 있습니다.';
+      return '값 분포는 아직 계산하지 않았습니다. 검색 후 제공되는 필터로 결과를 좁힐 수 있습니다.';
     case 'omitted':
       return '이번 조회에서는 분포 계산을 생략했습니다. 조건을 좁히면 다시 계산합니다.';
     case 'failed':

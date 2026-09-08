@@ -1,6 +1,6 @@
 # PR Search 디자인 시스템 토큰 문서
 
-> 상태: review | 버전: v0.3 | 갱신일: 2026-09-03
+> 상태: review | 버전: v0.4 | 갱신일: 2026-09-08
 
 ## 1. 디자인 원칙
 
@@ -244,3 +244,10 @@ Conductor `Status` 어휘(`queued` / `running` / `waiting` / `success` / `partia
 | --- | --- | --- |
 | Conductor에 코드/argv 표시 프리미티브가 없다 | C-054 `ArgvPreview`를 제품에서 구현해야 한다 | Conductor semantic 토큰만 사용해 구현하고, 안정화 후 design-system 기여를 제안한다 |
 | Conductor에 스트리밍 로그 뷰어가 없다 | C-058의 출력 영역을 제품에서 구현해야 한다 | 동일. 가상 스크롤은 접근성 요구(NFR-007)를 함께 만족시켜야 한다 |
+
+
+## P4 작업대 소비 규칙 (CR-067 / WP-073)
+
+`apps/web/app/workbench.css`는 제품 배치의 단일 진입점이다. Conductor CSS 다음에 한 번 import하며 semantic/component 변수의 값을 재선언하지 않는다. 색·서체·간격은 `--cdt-*`를 참조한다. 글리프는 `currentColor` SVG로 두고 외부 폰트/아이콘 요청을 만들지 않는다. 시스템 테마·축소 모션을 그대로 따른다.
+
+C-013의 정보 밀도와 C-012의 체크박스는 제품 클래스 안에서 semantic 간격으로 조밀하게 배치한다. Conductor의 기존 기본 Table/Checkbox geometry가 조사 도구에 크게 그려져 소비자가 배치 클래스를 더한 것이다(DEV-554). 이후 Conductor에 밀도 API를 기여할 후보이며 토큰을 제품에서 덮어쓰지 않는다. 1440×1200의 미리보기 닫힘 상태에서 25행을 확인한다. 미리보기를 열면 결과 표의 높이를 제한해 목록과 선택 요약을 동시에 읽는다. 작은 화면에서는 표 안에서만 가로 스크롤한다. 선택 배경 위의 변경 수치는 `text.primary`로 읽으며 `+`/`−`가 의미를 유지한다. 두 테마의 실제 선택 상태까지 브라우저 axe로 검증한다.

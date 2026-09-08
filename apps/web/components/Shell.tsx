@@ -67,7 +67,10 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
      * 자식 쪽에 ref를 걸어 두면 그것은 `<main>` **안의** 요소라 스킵 링크가
      * 가리키는 대상과 달라진다 — 포커스가 두 곳으로 갈린다.
      */
-    const target = document.getElementById(MAIN_ID);
+    // 빠른 검색으로 진입한 경우 자식이 잡은 입력 포커스를 main이 빼앗지 않는다 (WP-073).
+    const target = (window.location.hash === '#omni-search-input'
+      ? document.querySelector<HTMLElement>('[data-omni-input]') : null)
+      ?? document.getElementById(MAIN_ID);
     if (target !== null) {
       /*
        * `tabIndex = -1`을 먼저 준다. `main`은 원래 포커스를 받지 못하므로
@@ -82,6 +85,8 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
 
   return (
     <AppShell
+      className="prs-shell"
+      navCloseLabel="탐색 패널 닫기"
       skipLinkLabel="본문으로 건너뛰기"
       mainId={MAIN_ID}
       navOpen={navOpen}
@@ -89,6 +94,7 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
       topBar={
         <AppTopBar
           user={user}
+          title={title}
           navOpen={navOpen}
           onNavOpenChange={setNavOpen}
           {...(omniSearch === undefined ? {} : { omniSearch })}
@@ -119,7 +125,11 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
       >
         {announcement}
       </div>
-      {children}
+      <div className="prs-page-content">{children}</div>
+      <footer className="prs-statusbar" aria-label="작업 안내">
+        <span>GitHub Enterprise · 변경 이력 탐색</span>
+        <span>시퀀스는 저장소 · 대상 브랜치 기준</span>
+      </footer>
     </AppShell>
   );
 }

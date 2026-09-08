@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Badge, Banner, Button, Panel } from '@conductor-by-89soone/react';
 import { ChangedPathList } from './ChangedPathList';
 import { EmptyState } from './EmptyState';
+import { DetailSectionNav } from './DetailSectionNav';
 import { EntityHeader } from './EntityHeader';
 import { ErrorBanner } from './ErrorBanner';
 import { LinkedPrList } from './LinkedPrList';
@@ -252,6 +253,7 @@ export function CommitDetailView({
           </>
         }
       />
+      <DetailSectionNav sections={[{ id: 'commit-meta-heading', label: '커밋' }, { id: 'linked-pr-heading', label: '연결 PR' }, { id: 'paths-heading', label: '변경 경로' }, { id: 'commit-neighbors-heading', label: '선행·후행' }, { id: 'commit-releases-heading', label: '포함 릴리스' }, { id: 'commit-links-heading', label: '관계' }]} />
 
       {commit.repository_archived === true ? (
         <Banner tone="warning" title="보관된 저장소">

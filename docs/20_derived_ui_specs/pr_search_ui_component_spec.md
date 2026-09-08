@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.11 | 갱신일: 2026-08-31
+> 상태: review | 버전: v0.12 | 갱신일: 2026-09-08
 
 ## 1. 문서 원칙
 
@@ -551,3 +551,13 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 | C-070 | `ResultContractBadge` | capability의 결과 계약 표시 — `kind`, sensitivity, bindable 여부, result adapter, composability 상태. `secret` 결과는 바인딩 불가 사유를 함께 | W-010, W-021, W-023, A-006 | CR-009. `RiskBadge`(C-055)가 실행 위험을 말한다면 이쪽은 결과를 어디까지 이을 수 있는지를 말한다 |
 
 **`GenericCommandForm`이 하나여야 하는 이유.** 명령이 196개다. 폼을 명령마다 만들면 gh가 올라갈 때마다 화면을 추가해야 하고, 빠뜨린 것을 아무도 모른다. 폼이 하나면 manifest에 command가 추가되는 순간 UI가 따라온다 (ADR-015).
+
+
+## C-001·C-002·C-010·C-012·C-013 작업대 조합 (CR-067 / WP-073)
+
+- C-001: 현재 화면 맥락, 빠른 검색 링크, 로그인 사용자. 표시한 단축키를 실제 C-010에 연결하고 SSR/첫 클라이언트 렌더의 플랫폼 표기를 일치시킨다.
+- C-002: Conductor NavList·기존 역할 필터를 유지하고 작은 inline SVG와 제품 진입점을 조합한다.
+- C-010: 검색 입력/제출을 한 줄로 배치한다. 예시는 편집 가능한 초안이며 자동 요청하지 않는다.
+- C-012: 여섯 패싯·건수·checkbox 이름·생략/실패 구분을 유지한다. 좁은 화면에서는 위쪽으로 이동한다.
+- C-013: `ResultWorkbench`가 현재 목록의 선택만 소유한다. Conductor Table과 실제 제목 링크, 미리보기 선택 버튼의 roving tabindex를 사용한다. 요약에 API를 추가하지 않는다. 각 행에서 저장소/브랜치를 식별할 수 있고 시퀀스 공간/에폭을 상세에서도 읽을 수 있어야 한다.
+- 상세 섹션 내비게이션은 기존 W-002/W-003 heading의 앵커다. 자동 확장·자동 폴링은 없다.

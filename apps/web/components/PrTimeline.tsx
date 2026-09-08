@@ -19,6 +19,7 @@
 
 import type { ReactNode } from 'react';
 import { Badge, Timeline } from '@conductor-by-89soone/react';
+import { formatTimestamp } from '../lib/format';
 import type { TimelineStatus, TimelineStep } from '../lib/pr-detail';
 
 export interface PrTimelineProps {
@@ -44,7 +45,7 @@ export function PrTimeline({ steps }: PrTimelineProps): ReactNode {
             <Timeline.Step key={step.key} data-testid={`timeline-${step.key}`} data-status={step.status}>
               <strong>{step.label}</strong>
               <Badge tone={mark.tone}>{mark.text}</Badge>
-              {step.at === null ? null : <time dateTime={step.at}>{step.at}</time>}
+              {step.at === null ? null : <time dateTime={step.at} title={step.at}>{formatTimestamp(step.at)}</time>}
               {/*
                * 사유를 반드시 보여 준다. "완료 (시각 미상)"만 보면 사용자는
                * 버그로 읽는다 — 왜 모르는지 말해야 납득한다.
