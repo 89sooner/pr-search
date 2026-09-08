@@ -2701,3 +2701,40 @@ describe('첫 사내 반입이 드러낸 계약 (CR-066)', () => {
     }
   });
 });
+
+/**
+ * **제품 스타일시트가 모션을 만들지 않는다** (`DEV-555` / `CR-068`).
+ *
+ * `CR-064`가 파생 토큰 문서 §9를 좁힐 때 근거로 든 것은 "`apps/web`에 CSS 파일이
+ * 0건"이라는 당시의 사실이었다. `CR-067`이 `workbench.css`를 들이면서 그 근거가
+ * 깨졌는데 문장은 남아 **한 문서가 스스로와 어긋났다** — `DEV-546`이 런북에서 겪은
+ * 것과 같은 형태다.
+ *
+ * 그래서 여기서는 근거가 아니라 **불변식**을 잰다. 제품 CSS가 몇 개든, 그 안에
+ * 전환·애니메이션 선언이 없어야 한다. 파일이 늘어나도 이 시험은 따라간다.
+ */
+describe('제품 스타일시트가 모션을 만들지 않는다 (DEV-555)', () => {
+  const webAppDir = new URL('apps/web/app/', new URL('..', import.meta.url));
+  const productStyles = readdirSync(webAppDir).filter((name) => name.endsWith('.css'));
+
+  it('제품 CSS에 전환·애니메이션 선언이 없다 — 모션은 Conductor가 소유한다', () => {
+    for (const name of productStyles) {
+      const css = read(`apps/web/app/${name}`)
+        // 주석은 걷어 낸다. 규칙을 설명하는 문장이 그 규칙을 어겼다고 세지 않는다.
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(css, `${name}이 transition을 선언한다`).not.toMatch(/(^|[;{\s])transition(-[a-z]+)?\s*:/);
+      expect(css, `${name}이 animation을 선언한다`).not.toMatch(/(^|[;{\s])animation(-[a-z]+)?\s*:/);
+      expect(css, `${name}이 @keyframes를 정의한다`).not.toContain('@keyframes');
+    }
+  });
+
+  it('§9가 사라진 근거를 다시 주장하지 않는다', () => {
+    const tokens = read('docs/20_derived_ui_specs/pr_search_design_system_tokens.md');
+    // 제품 CSS가 실재하는 동안 "0건"이라고 적으면 그것이 문서 결함이다.
+    if (productStyles.length > 0) {
+      expect(tokens, '§9가 아직 "CSS 파일이 0건"을 근거로 든다').not.toContain('CSS 파일이 0건');
+    }
+    // 규칙 자체는 남아 있어야 한다 — 근거를 고치면서 결론까지 지우지 않는다.
+    expect(tokens).toContain('제품에서 별도 애니메이션을 추가하지 않는다');
+  });
+});
