@@ -1,5 +1,33 @@
 # 중요 파일 경로와 역할
 
+## 2026-09-08 (2차) 라운드가 만지거나 만든 것 (0.1.0-pilot.3 발행)
+
+main = `54ff0a0` (+ `PR #157` 인계 갱신). 발행 대상은 `139e818`이다.
+
+### 배포 산출물 — 사내로 들어가는 것
+
+- `deploy/single-host/prsctl` — **`provision_retention_role()` 신설** (`DEV-556`). `require_env`의 필수 키에 `ADMIN_DATABASE_URL`을 더했고, `install`·`upgrade`·`restore` **셋 모두**에서 `provision_app_role` 바로 뒤에 부른다. URL 파싱은 **마지막 `@` 앞까지를 자격**으로 본다(비밀번호의 `@`를 견딘다). 퍼센트 인코딩과 `prs_admin` 직접 접속은 거부한다.
+  **미해결**: `prs_app`을 거부하지 않고 엔드포인트(host/db)를 검증하지 않는다 — 발행본에 그대로 있다
+- `deploy/single-host/RUNBOOK.md` — 필수 값 목록에 추가 · 2.B 「파티션 수명 주체」 신설 · 8장 증상 둘 갱신 · 5장 형상 표에서 `prs_retention` 제외
+- `deploy/single-host/.env.example` — "임시여도 된다"를 **"필수 값이다"** 로. 수동 롤 생성 안내 제거
+- `deploy/single-host/bundle/pr-search-0.1.0-pilot.3-offline{,.tar.gz}` — **`.gitignore` 대상**. 발행본과 같은 산출물이며 지워도 된다
+
+### 문서·회귀
+
+- `docs/20_derived_ui_specs/pr_search_design_system_tokens.md` v0.6 — §9의 사라진 근거 현행화(`DEV-555`) · **번호 없던 절 둘에 번호 부여(13·14)**. 참조가 그 번호를 가리키므로 지우지 마라
+- `regression/runtime-reachability.test.ts` — describe 둘 추가. 「제품 스타일시트가 모션을 만들지 않는다」는 **`apps/web` 전체를 재귀로** 훑는다(`DEV-558`). 「파티션 수명 주체가 강제 경로에 있다」는 `require_env`·호출 셋·마이그레이션 뒤 순서·퍼센트 인코딩 거부를 잰다
+- `docs/00_governance/change_control.md` — `CR-068`·`CR-069`
+- `docs/40_delivery/pr_search_implementation_traceability.md` v6.54 — `DEV-555`~`558` · **6.72장 계열이 이 라운드의 정본**(6.72.1~4 후보 감사 · 6.72.5 번들 생성 · 6.72.6 리뷰 라운드 · **6.72.7 발행 사실**) · 7장 제한 하나 해소
+- `agent-context/*.md` + `_handoff/**` — 이 라운드 (`PR #157`)
+
+### 손대면 안 되는 것 (갱신)
+
+- `require_env`의 `ADMIN_DATABASE_URL` — 그것이 `DEV-556`의 강제다. 회귀가 잰다
+- `provision_retention_role` 호출은 **셋**이며 **마이그레이션 뒤**여야 한다 (`prs_admin`은 마이그레이션이 만든다)
+- 제품 CSS 검사는 **재귀**다. 직계 자식만 세는 형태로 되돌리지 마라
+- 파생 토큰 문서의 절 번호 13·14
+- 이전 라운드 것 그대로: `Dockerfile`의 실체화 호출 · 실체화 스크립트의 "못 찾으면 종료" · 런북 7장의 남은 `NOT RUN` · `build-bundle.sh`의 원자적 태그 생성
+
 ## 2026-09-08 라운드가 만지거나 만든 것 (첫 사내 반입 반영)
 
 pr-search (브랜치 `claude/first-internal-import-findings`, main = 268efa9에서 갈라짐)
