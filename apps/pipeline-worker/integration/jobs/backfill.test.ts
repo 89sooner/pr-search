@@ -115,7 +115,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await pool.query('TRUNCATE job');
+  // `search_export`가 job 수명을 따르므로 함께 비운다 (WP-044 / migration 024).
+  await pool.query('TRUNCATE job CASCADE');
   await pool.query('TRUNCATE repository CASCADE');
   /*
    * **지우기 전에 먼저 refresh한다.**

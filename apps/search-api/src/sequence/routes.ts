@@ -18,7 +18,7 @@ import { AccessScopeUnavailableError, PartialSearchError } from '@prs/es';
 import { ERROR_HTTP_STATUS } from '@prs/contracts';
 import type { ErrorResponse } from '@prs/contracts';
 import { SUPPORTED_ANCHOR_FORMATS } from '@prs/domain';
-import { SAFE_MARKER_NOTE_LIMIT } from '@prs/db';
+import { SAFE_MARKER_NOTE_LIMIT, bisectSessionRepo } from '@prs/db';
 import type { AuthContext } from '../auth/context.js';
 import { authenticateSession, requireRole, type SessionPrincipal } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
@@ -66,6 +66,7 @@ export const RELEASES_PATH = '/api/v1/releases';
 export const RELEASE_COMPARISON_PATH = '/api/v1/release-comparisons';
 export const SEQUENCE_NEIGHBORS_PATH = '/api/v1/sequence-neighbors';
 export const SAFE_MARKERS_PATH = '/api/v1/safe-markers';
+export const BISECT_SESSIONS_PATH = '/api/v1/bisect-sessions';
 
 export interface SequenceRouteOptions extends RangeDeps {
   readonly auth: AuthContext;
@@ -148,6 +149,11 @@ type SafeMarkerBodyParse =
 /** 1 이상의 정수인가. 서수도 에폭도 0을 갖지 않는다. */
 function positiveInt(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : null;
+}
+
+/** BIGSERIAL 식별자는 문자열로 받되 PostgreSQL bigint 범위를 넘기지 않는다. */
+function validBisectSessionId(value: unknown): value is string {
+  return typeof value === 'string' && /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= 9223372036854775807n;
 }
 
 function parseSafeMarkerBody(raw: unknown): SafeMarkerBodyParse {
@@ -373,6 +379,42 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
     }
     throw error;
   };
+
+  // API-SEQ-005 / WP-042. 사용자 식별자는 본문이 아닌 인증 세션에서만 얻는다.
+  app.route({ method: ['GET', 'POST', 'DELETE'], url: BISECT_SESSIONS_PATH, handler: async (request, reply) => {
+    const correlationId = randomUUID();
+    try {
+      const principal = await authenticateSession(request, auth.sessions);
+      const raw = (request.method === 'POST' ? request.body : request.query) ?? {};
+      if (typeof raw !== 'object' || Array.isArray(raw)) return invalidParameter(reply, correlationId, 'body', 'JSON 객체가 필요합니다.');
+      const body = raw as Record<string, unknown>;
+      const entered = await enter(request, reply, correlationId, body['repository'], body['base_branch'], principal);
+      if (entered === null) return reply;
+      let action: bisectSessionRepo.BisectAction = { kind: 'read' };
+      if (request.method === 'DELETE') {
+        if (!validBisectSessionId(body['session_id'])) return invalidParameter(reply, correlationId, 'session_id', '초기화할 session_id가 필요합니다.');
+        action = { kind: 'reset', sessionId: body['session_id'] };
+      } else if (request.method === 'POST') {
+        const epoch = body['seq_epoch'];
+        if (typeof epoch !== 'number' || !Number.isSafeInteger(epoch) || epoch < 1) return invalidParameter(reply, correlationId, 'seq_epoch', '양의 정수 에폭이 필요합니다.');
+        if (body['action'] === 'start') {
+          const from = body['from_seq']; const to = body['to_seq'];
+          if (typeof from !== 'number' || !Number.isSafeInteger(from) || from < 0 || typeof to !== 'number' || !Number.isSafeInteger(to) || to < 1) return invalidParameter(reply, correlationId, 'range', 'from_seq와 to_seq는 유효한 정수여야 합니다.');
+          action = { kind: 'start', seqEpoch: epoch, fromSeq: from, toSeq: to };
+        } else if (body['action'] === 'mark') {
+          const seq = body['merge_seq']; const verdict = body['verdict']; const id = body['session_id'];
+          if (typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 1 || (verdict !== 'good' && verdict !== 'bad') || !validBisectSessionId(id)) return invalidParameter(reply, correlationId, 'mark', 'session_id, 실재 서수, good/bad 판정이 필요합니다.');
+          action = { kind: 'mark', seqEpoch: epoch, sessionId: id, mergeSeq: seq, verdict };
+        } else return invalidParameter(reply, correlationId, 'action', 'action은 start 또는 mark여야 합니다.');
+      }
+      const result = await bisectSessionRepo.applyBisectAction(deps.pool, principal.userId, entered.space.repositoryId, entered.space.baseBranch, action);
+      if (result.kind === 'ok') return reply.send({ sequence_space: entered.space.sequenceSpace, seq_epoch: result.seqEpoch, session: result.session, correlation_id: correlationId });
+      if (result.kind === 'invalid') return invalidParameter(reply, correlationId, 'sequence', result.reason);
+      if (result.kind === 'contradiction') return fail(reply, 409, { error: { code: 'BISECT_CONTRADICTION', message: '정상·이상 표시가 모순됩니다. 탐색을 초기화하세요.', detail: { reason: 'bisect_contradiction', good_seq: result.goodSeq, bad_seq: result.badSeq } }, correlation_id: correlationId });
+      if (result.kind === 'stale') return fail(reply, 409, { error: { code: 'SEQUENCE_EPOCH_STALE', message: '에폭이 바뀌었거나 재채번 중입니다. 탐색을 초기화하세요.', detail: { reason: 'epoch_stale', current_seq_epoch: result.seqEpoch } }, correlation_id: correlationId });
+      return fail(reply, 404, { error: { code: 'NOT_FOUND', message: '탐색 세션 또는 시퀀스 공간이 없습니다. 다시 조회하세요.' }, correlation_id: correlationId });
+    } catch (error) { return toFailureResponse(reply, correlationId, error); }
+  } });
 
   app.post(SEQUENCE_ANCHOR_PATH, async (request, reply) => {
     const correlationId = randomUUID();

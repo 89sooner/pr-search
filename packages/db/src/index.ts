@@ -6,6 +6,7 @@
  */
 
 export const PACKAGE_NAME = '@prs/db' as const;
+export * as searchExportRepo from './repositories/search-export.js';
 
 export { resolvePoolConfig, resolveAdminPoolConfig, ADMIN_DB_ROLE } from './config.js';
 export type { DatabaseEnv } from './config.js';

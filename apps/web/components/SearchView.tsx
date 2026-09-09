@@ -35,6 +35,7 @@ import { OmniSearchInput } from './OmniSearchInput';
 import { QueryTokenBar } from './QueryTokenBar';
 import { ResolutionCandidateList, type ResolutionCandidate } from './ResolutionCandidateList';
 import { SaveSearchDialog } from './SaveSearchDialog';
+import { ExportDialog } from './ExportDialog';
 import { ResultTable, type ResultRow, type SortState } from './ResultTable';
 import {
   parseQueryState,
@@ -625,6 +626,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         label="검색 결과 보기 방식"
       />
       {activeTab === 'results' ? <div className="prs-results-actions">
+        <ExportDialog state={state} disabled={loading || screen.kind !== 'ready'} />
         <span className="prs-result-count">{screen.kind === 'ready' && total !== null ? `${total.value.toLocaleString('ko-KR')}${total.relation === 'gte' ? '+' : ''}건` : loading ? '검색 중…' : '검색 결과'}</span>
         <Button variant="ghost" size="sm" aria-expanded={filtersOpen} aria-controls="search-filters"
           onClick={() => { setFiltersOpen((open) => !open); }}><WorkbenchIcon name="filter" />필터</Button>

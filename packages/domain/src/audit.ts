@@ -60,20 +60,16 @@ export const ACTIVE_AUDIT_ACTIONS = [
    * 않는다** — 남기면 재시도 횟수가 등록 횟수로 보인다.
    */
   'safe_marker.set',
+  'export.create',
 ] as const;
 
 /**
  * 계약이 승인했으나 그 기능을 만드는 WP가 아직 오지 않은 액션.
  *
- * **누락이 아니다.** `export.create`는 `WP-044`가 소유하며 `REL-006`이다.
- * 합성 경로를 만들어 기록만 남기지 않는다 — 없는 기능을 있다고 말하는
- * 일이기 때문이다 (DEV-403).
- *
- * `safe_marker.set`은 **`WP-041`이 실제로 세우면서 활성으로 옮겼다** — 이
- * 목록은 "계약이 승인했으나 기능이 아직 없다"를 뜻하므로, 기능이 서는
- * 순간 그 사실이 거짓이 된다.
+ * WP-044가 export.create를 실제로 배선하여 미활성 액션이 남지 않았다.
+ * 기능 활성화와 함께 이동한다는 DEV-403의 규칙은 계속 적용된다.
  */
-export const NOT_ACTIVATED_AUDIT_ACTIONS = ['export.create'] as const;
+export const NOT_ACTIVATED_AUDIT_ACTIONS = [] as const;
 
 /**
  * 과거에 기록되어 저장소에 남아 있으나 신규 쓰기에는 쓰지 않는 값.

@@ -48,6 +48,7 @@ export const FORBIDDEN_IDENTITY_HEADERS: readonly string[] = [
 
 /** 응답에서 클라이언트로 **돌려주는** 헤더. */
 const FORWARDED_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
+  'content-disposition',
   'content-type',
   'cache-control',
   CORRELATION_HEADER,

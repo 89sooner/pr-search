@@ -1,6 +1,6 @@
 # PR Search 비동기 작업 및 이벤트
 
-> 상태: review | 버전: v0.7 | 갱신일: 2026-08-30
+> 상태: review | 버전: v0.8 | 갱신일: 2026-09-09
 
 ## 1. 목적
 
@@ -672,6 +672,12 @@ JOB-MIR-002는 **`commit.metadata_ready`를 받아 `commit.metadata_ready`를 �
 | 내보내기 잡 실패 | 잡 상태 `failed` + 사유 | 재실행 |
 
 부분 파일은 제공하지 않는다. 내보내기 실패 시 완성된 파일만 다운로드 가능하다 (FR-SRCH-012 예외 처리).
+
+### 8.1 검색 내보내기 실행 상세 (JOB-SRCH-001, WP-044 / CR-072)
+
+`batch` 역할의 내보내기 러너는 기존 `job` PG 폴링·claim을 사용한다. `POST /exports`가 job과 `search_export` 요청을 원자적으로 넣으므로 불완전한 요청이 실행되지 않는다. 실행 당시 접근 범위와 시퀀스 바인딩을 고정하고 페이지마다 PG 버전을 확인한다. PIT은 한 작업 안에서 순회하고 종료 시 닫으며 실패 후 부분 파일을 재사용하지 않는다.
+
+완료는 `search_export`와 job의 원자적 공개 상태로 조회한다. 새 알림 소비자나 브라우저 스트림은 추가하지 않으며 W-001이 소유자 전용 상태 API를 폴링한다. 30분을 초과한 실행 또는 프로세스 중단으로 남은 오래된 running claim은 `failed/export_timeout`이 된다. `export_scope_changed`, `export_epoch_changed`, `export_limit_exceeded`, `export_failed`를 표시 가능한 실패 사유로 저장한다. pause/cancel이 끼어들면 running 조건부 완료가 공개를 거절하며 resume은 새로운 PIT에서 전체 파일을 다시 생성한다.
 
 ## 9. GitHub Operations Plane 잡과 이벤트 (CR-005 신규)
 

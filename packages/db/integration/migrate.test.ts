@@ -33,7 +33,7 @@ describe('마이그레이션 (WP-002 DoD 1: migrate 후 --down이 스키마를 �
       'sequence_space', 'merge_sequence', 'safe_marker', 'bisect_session',
       'repository', 'app_user', 'team', 'team_member', 'permission_cache',
       'team_membership', 'org_team_sync',
-      'saved_search', 'job', 'audit_record',
+      'saved_search', 'job', 'search_export', 'audit_record',
     ];
 
     const result = await pool.query<{ tablename: string }>(

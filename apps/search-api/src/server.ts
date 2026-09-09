@@ -16,6 +16,7 @@ import { resolveSearchApiConfig, type SearchApiConfig } from './config.js';
 import { registerOpsRoutes } from './ops/routes.js';
 import { registerAuthRoutes } from './auth/routes.js';
 import { registerSearchRoutes } from './search/routes.js';
+import { registerExportRoutes } from './export/routes.js';
 import { registerAnalyticsRoutes } from './analytics/routes.js';
 import { registerResolveRoutes } from './resolve/routes.js';
 import { registerRelationRoutes } from './relations/routes.js';
@@ -225,6 +226,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
 
     if (deps.search !== undefined) {
       registerSearchRoutes(app, { ...deps.search, auth: deps.auth, loginPath: config.auth.loginPath });
+      registerExportRoutes(app, { ...deps.search, auth: deps.auth, loginPath: config.auth.loginPath });
       /*
        * 집계 API (WP-037 / API-STAT-001~004).
        *

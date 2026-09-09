@@ -30,6 +30,7 @@ import { addEquality, removeEquality } from '../lib/tokens';
 import { parseQuery, serializeQuery, type QueryAst } from '@prs/query';
 import { ErrorBanner } from './ErrorBanner';
 import { SafeMarkerCard } from './SafeMarkerCard';
+import { BisectPanel } from './BisectPanel';
 import {
   judgeMarkerSubmit,
   markerRequestUrl,
@@ -594,6 +595,14 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
           onSubmit={submitMarker}
         />
       )}
+
+      {space === null ? null : <BisectPanel
+        key={`${space.repository}@${space.baseBranch}`}
+        repository={space.repository}
+        baseBranch={space.baseBranch}
+        range={outcome.kind === 'ready' && outcome.result.sequenceState === 'ok' && fromAnchor !== null && toAnchor !== null
+          ? { from: fromAnchor.mergeSeq, to: toAnchor.mergeSeq, epoch: outcome.result.seqEpoch } : null}
+      />}
 
       {outcome.kind === 'idle' && fromAnchor === null && toAnchor === null ? (
         <p data-testid="range-empty">앵커 두 개를 지정하면 구간을 조회합니다.</p>

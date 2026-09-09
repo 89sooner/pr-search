@@ -18,6 +18,7 @@ export * as registrationRequestRepo from './registration-request.js';
 export * as savedSearchRepo from './saved-search.js';
 /** 안전 구간 표식 (WP-041 / ENT-SEQ-003, CR-057). */
 export * as safeMarkerRepo from './safe-marker.js';
+export * as bisectSessionRepo from './bisect-session.js';
 export { MAX_SEQUENCE_BRANCHES } from './repository.js';
 export * as sequenceSpaceRepo from './sequence-space.js';
 export * as teamMembershipRepo from './team-membership.js';

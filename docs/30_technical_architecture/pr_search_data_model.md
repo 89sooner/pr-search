@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.17 | 갱신일: 2026-09-01
+> 상태: review | 버전: v0.18 | 갱신일: 2026-09-09
 
 ## 1. 목적
 
@@ -238,6 +238,8 @@ CREATE TABLE bisect_session (
 ```
 
 `bisect_session`이 `seq_epoch`를 들고 있으므로, 에폭이 바뀌면 탐색 상태를 무효화할 수 있다 (FLOW-004 예외 흐름).
+
+WP-042 / CR-071 정밀화: 기존 migration 002 테이블을 그대로 사용한다. API가 생성한 행의 `good_seq`, `bad_seq`는 항상 채워지며 `0 <= good_seq < bad_seq`를 만족한다. 첫 생성 전에는 행이 없다. 후보·다음 지점·종료 여부는 해당 에폭 `merge_sequence`의 `(good_seq, bad_seq]`에서 계산하고 중복 저장하지 않는다. 사용자·저장소·브랜치 advisory transaction lock이 첫 생성과 초기화까지 직렬화하며, `sequence_space FOR SHARE`가 같은 트랜잭션 안의 에폭 판정을 보호한다. 에폭 불일치 또는 재채번 중에는 조회가 무효 상태를 계산하며 과거 행은 사용자의 초기화까지 보존한다. 문자열로 전달한 `session_id`를 표시·삭제 시 대조하여 삭제 후 재생성된 세션에 늦은 요청이 닿지 않게 한다. 개인 상태이므로 다른 사용자에게 공유하지 않는다. 데이터·인덱스 추가 migration은 필요 없다.
 
 #### `release` (CR-028, DEV-142 — WP-024)
 
@@ -814,6 +816,12 @@ ALTER TABLE gh_capability_snapshot
 ```
 
 **저장하지 않는 것.** GitHub 액세스 토큰, 사용자가 입력한 비밀 값, 비밀이 포함된 argv 원문. `redacted_argv`는 이미 마스킹된 배열이며 원문을 복원할 수 없다.
+
+### 3. 검색 내보내기 산출물 (`search_export`, WP-044 / CR-072)
+
+`migration 024_export`는 `job(type=export)`에 딸린 산출물 표를 만든다. `job_id`가 PK이자 job FK이고 삭제는 cascade다. `user_id`는 실행자 FK이며 사용자 삭제 시에도 산출물을 지운다. `scope_version`, `repository_ids`, `format(csv|json)`, `plan(JSONB)`는 요청 시 같은 트랜잭션에 저장한다. plan에는 검증된 ES 질의·대상·정렬·scope·원문 q와 해당하는 시퀀스 바인딩을 담는다. 클라이언트가 plan을 직접 지정하지 않는다.
+
+`content(TEXT)`, `row_count(0~100000)`는 완성 전 null이다. 파일 생성 후 실행 중 job 행과 실행자 버전을 확인하고 **산출물 적재와 completed 전이를 같은 트랜잭션**으로 처리한다. 실패·취소·중단은 완성 파일을 공개하지 않는다. 새로운 영구 보존 기한을 만들지 않고 기존 job 수명을 따른다. application role `prs_app`에 이 표의 명시적 CRUD 권한을 부여한다. 대용량 원본 본문·경로 대신 API-SRCH-006에 열거한 검색 요약 projection을 사용한다.
 
 ## 4. Elasticsearch 매핑
 
