@@ -1,8 +1,33 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=91af67e2f45d0db92e8e721e547679cf2d6efa9eed3b31bf242b4f1eb9c0297b bytes=153448 lines=2098 title=리스크-불확실한-가정-함정
+@kv sha256=81080789d103b72e178efc88341c445b54b7b836b0c8704fe68102e1bcaa96db bytes=156941 lines=2148 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;apps/web;refs/tags/;usr/bin/env;origin/main;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-08 (2차) 라운드가 새로 배운 함정 (발행 라운드)
+@h3 발행은 되돌릴 수 없으므로 리뷰가 도착할 시간을 벌어 둔다 — 가장 값비쌌던 것
+@p immutable releases가 켜지면 발행한 버전 이름을 영구히 회수할 수 없다. 이 라운드는 번들을 만들고 검사까지 끝낸 뒤 발행을 미뤘고, 그 사이에 머지 후 리뷰가 P1을 잡았다. 바로 발행했다면 결함을 담은 번들이 잠긴 채 사내에 갔을 것이다.
+@p → 되돌릴 수 없는 일 앞에서는 범위를 끊어 제시한다. "빌드까지 / 발행까지"를 나누면 그 틈이 안전 여유가 된다.
+@h3 주석은 강제하지 않는다 — 앞 라운드의 내 처방이 그랬다
+@path DEV-553을 고치며 "처음부터 채운다"를 .env.example에 적었다. 그런데 require_env가 그 값을 세지 않아 새 설치는 그대로 통과한다. 문서로 막은 것은 막은 것이 아니다.
+@path → 실패를 겪고 고칠 때 그 고침이 어느 경로에 있는지 묻는다. 사람이 읽어야 작동하는 처방은 강제가 아니다. 이 저장소가 세 번째로 겪었다(DEV-524 → DEV-544 → DEV-556).
+@h3 내 시험이 틀린 계약을 굳힐 수 있다 — 두 번째다
+@path CR-066에서 쓴 시험이 .env.example에 "마이그레이션이 만들지 않는다"가 있어야 한다고 요구했는데, 같은 세션의 DEV-556이 그것을 사실이 아니게 만들었다. 시험이 초록이면 계약이 옳다는 뜻이 아니다.
+@p → 코드를 고칠 때 그 코드를 재는 시험도 함께 감사한다. 갱신하되 느슨하게 만들지 않는다.
+@h3 toContain은 부분 문자열로 통과한다
+@p ADMIN_DATABASE_URL을 검사하는 시험이 ADMIN_DATABASE_URL_X도 통과시켰다. 변이가 살아남아 드러났다.
+@p → 키 이름·식별자를 잴 때는 줄 첫머리나 경계를 포함한 정규식으로 좁힌다.
+@h3 시험이 자기 범위를 과장할 수 있다
+@p readdirSync(dir)는 직계 자식만 준다. 그런데 시험 주석에는 "파일이 늘어나도 따라간다"고 적었다. 라우트 지역 스타일시트가 그 검사를 그대로 통과했다(재현했다).
+@p → 시험이 주장하는 범위와 실제로 훑는 범위가 같은지 확인한다. 재귀가 필요하면 재귀로 쓴다.
+@h3 검사가 자기 검색어를 센다 — 세 번째다
+@p "이 문구가 있으면 안 된다"는 시험을 만들고, 그 사실을 설명하는 문장에 그 문구를 그대로 인용했다. 시험이 설명 문장을 셌다.
+@p → 금지 문구를 설명할 때는 뜻을 유지하며 표현을 바꾼다.
+@h3 스택 PR을 순서대로 병합하면 충돌한다
+@path #154가 #153의 커밋을 조상으로 담고 둘 다 base=main이었다. #153을 스쿼시 병합하면 원래 커밋이 main에 없어, #154가 같은 변경을 다시 적용하려 든다(원장에서 갈렸다).
+@p → 병합 전에 로컬 워크트리로 시뮬레이션한다. 자식이 부모를 담고 있으면 자식만 병합하고 부모는 흡수 사실을 적어 닫는다.
+@h3 번들의 값은 대상 커밋이 옮겨질 때마다 바뀐다
+@path --release는 항상 새로 만들고 git rev-parse HEAD를 계보로 박는다. PR 하나가 더 병합되면 SHA-256이 달라진다.
+@path → 사내에 전달할 SHA-256은 발행한 그 실행의 값이어야 한다. 원장에 적을 때는 API로 다시 읽는다.
 @h2 2026-09-08 라운드가 새로 배운 함정 (첫 사내 반입이 가르친 것)
 @h3 개발 트리와 배포 트리는 다른 것을 한다 — 가장 값비쌌던 것
 @cmd pnpm deploy --prod가 만드는 트리에는 선택 의존성이 없다. Turbopack이 pg의 Cloudflare 전용 선택 의존성을 해시 이름의 외부 모듈로 승격시켜 두므로, 그 이름을 실체화하지 않으면 모든 SSR이 500이다. 개발 트리에서는 pnpm 저장소가 있어 해석이 다르게 끝나 재현되지 않는다.
