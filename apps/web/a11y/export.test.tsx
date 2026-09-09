@@ -1,0 +1,21 @@
+import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import axe from 'axe-core';
+import { afterEach, expect, it, vi } from 'vitest';
+import { ExportDialog } from '../components/ExportDialog';
+import { EMPTY_STATE } from '../lib/query-url';
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+it('WP-044 export count confirmation is labelled and keyboard operable', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ total: 1001, mode: 'async' })));
+  const user = userEvent.setup();
+  render(<ExportDialog state={{ ...EMPTY_STATE, q: 'repo:wp044/visible' }} disabled={false} />);
+  await user.click(screen.getByRole('button', { name: '내보내기' }));
+  const dialog = await screen.findByRole('dialog');
+  await screen.findByText(/1,001건/);
+  const results = await axe.run(dialog, { rules: { 'color-contrast': { enabled: false } } });
+  expect(results.violations).toEqual([]);
+  await user.click(screen.getByRole('radio', { name: 'JSON' }));
+  expect((screen.getByRole('radio', { name: 'JSON' }) as HTMLInputElement).checked).toBe(true);
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog')).toBeNull();
+});

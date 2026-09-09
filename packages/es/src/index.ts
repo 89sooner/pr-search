@@ -6,6 +6,8 @@
  */
 
 export const PACKAGE_NAME = '@prs/es' as const;
+export { collectExport, serializeExport, EXPORT_LIMIT, EXPORT_FIELDS, ExportLimitError, ExportAsyncRequiredError } from './export.js';
+export type { ExportPlan, ExportFormat, ExportRow } from './export.js';
 
 export { resolveClientOptions } from './config.js';
 export type { ElasticsearchEnv } from './config.js';

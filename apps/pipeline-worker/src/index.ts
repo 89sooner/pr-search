@@ -37,6 +37,7 @@ import {
 import { buildServer, DEFAULT_PORT, SERVICE_NAME } from './server.js';
 import { startOutboxRelay, type OutboxRelay } from './outbox-relay.js';
 import { startRetentionRunner, type RetentionRunner } from './retention.js';
+import { startExportRunner } from './export.js';
 import { createWorkerMetrics } from './metrics.js';
 import { startEnrichWorker, type EnrichLogEntry } from './enrich.js';
 import { startProjectWorker, type ProjectLogEntry } from './project.js';
@@ -137,6 +138,7 @@ let sequenceSubscription: Subscription | undefined;
 let esClient: Client | undefined;
 /** JOB-ING-006 (WP-035 / CR-045). `batch` 역할이 세운다. */
 let reindexRunner: ReindexRunner | undefined;
+let exportRunner: ReturnType<typeof startExportRunner> | undefined;
 let retentionSweeper: RetentionSweeper | undefined;
 /** JOB-AUD-001 (WP-039 / CR-054). `batch` 역할이 세우되 관리 연결이 있어야 한다. */
 let adminPool: Pool | undefined;
@@ -189,6 +191,7 @@ if (roles.includes('batch')) {
   };
 
   reindexRunner = startReindexRunner(reindexDeps);
+  exportRunner = startExportRunner({ pool, es: reindexEs, log: reindexLog });
   retentionSweeper = startRetentionSweeper(reindexDeps);
 
   /*
@@ -996,6 +999,7 @@ const shutdown = (): void => {
       // 못 감은 행이 남아 다음 기동에서 한 번 더 발행된다.
       await relay?.stop();
       await reindexRunner?.stop();
+      await exportRunner?.stop();
       await retentionSweeper?.stop();
       // JOB-AUD-001은 회차 중간에 끊어도 안전하다 — 파티션 드롭은 개별
       // 트랜잭션이고 다음 기동이 멱등하게 이어받는다.

@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.23 | 갱신일: 2026-08-31
+> 상태: review | 버전: v0.24 | 갱신일: 2026-09-09
 
 ## 1. 목적
 
@@ -28,7 +28,7 @@
 | API-SRCH-003 | GET | `/pull-requests/{repository}/{pr_number}` | PR 상세와 커밋 집합 | 인증 + 접근 범위 | FR-SRCH-003, FR-REL-002 |
 | API-SRCH-004 | GET | `/search` | 구조화 질의 목록 조회 + 패싯 | 인증 + 접근 범위 | FR-SRCH-005~009, FR-SRCH-011 |
 | API-SRCH-005 | GET/POST/PATCH/DELETE | `/saved-searches[/{id}]`, `/saved-searches/{id}/run`, `/saved-searches/share-targets` | 저장된 검색 관리 — 목록(커서)·생성·수정·삭제·실행 준비·공유 대상 (CR-049, DEV-333) | 인증 | FR-SRCH-010 |
-| API-SRCH-006 | POST | `/exports` | 검색 결과 내보내기 | 인증 + 접근 범위 | FR-SRCH-012 |
+| API-SRCH-006 | POST / GET | `/exports`, `/exports/:job_id`, `/exports/:job_id/download` | 검색 결과 내보내기·상태·파일 | 인증 + 실행자 소유권 + 현재 접근 범위 | FR-SRCH-012 |
 | API-SEQ-001 | GET | `/sequence-ranges` | 시퀀스 범위 조회 | 인증 + 접근 범위 | FR-SEQ-002 |
 | API-SEQ-002 | POST | `/sequence-anchors/resolve` | 앵커 → 시퀀스 정규화 | 인증 + 접근 범위 | FR-SEQ-003 |
 | API-SEQ-003 | GET | `/release-comparisons` | 두 릴리스 구간 비교 | 인증 + 접근 범위 | FR-SEQ-004 |
@@ -2754,6 +2754,59 @@ POST /api/v1/admin/reindex
 #### 재요청은 종료된 요청을 되돌리지 않는다
 
 `FR-ING-009` AC-9의 멱등은 그대로다 — 같은 사용자의 같은 식별자 반복 요청은 새 행을 만들지 않고 실패도 아니다. 그러나 이미 `fulfilled`·`dismissed`인 행을 그 반복 요청이 `pending`으로 되돌리지 않는다. **운영자의 처리 결과를 보지도 못하는 일반 API 호출 하나가 그것을 조용히 다시 여는 동작을 만들지 않는다** — 재검토가 필요해지면 그것은 별도 요구사항이다. 요청 기록은 삭제하지 않는다.
+
+### API-SEQ-005 이분 탐색 세션 (CR-071 / WP-042 / DEV-560)
+
+FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 세션에서 사용자를 결정하고, `repository` (`owner/name`)·`base_branch`를 접근 범위 검증이 있는 `resolveSpace`로 해석한다. 다른 사용자의 `user_id`는 요청으로 받지 않는다. 범위 밖 공간은 404다.
+
+| 메서드 | 입력 | 결과 |
+| --- | --- | --- |
+| `GET /bisect-sessions` | 쿼리 `repository`, `base_branch` | 저장된 개인 세션 또는 `session: null` |
+| `POST /bisect-sessions` | JSON 공통 `repository`, `base_branch`, 양의 정수 `seq_epoch` + `action: "start"`, `from_seq`, `to_seq` | 최초 구간 저장. 이미 세션이 있으면 기존 상태를 반환하며 구간을 덮지 않는다 |
+| `POST /bisect-sessions` | JSON 공통 필드 + `action: "mark"`, `session_id`, `merge_seq`, `verdict: "good" | "bad"` | 정상은 `max(good_seq, merge_seq)`, 이상은 `min(bad_seq, merge_seq)`로 축소 |
+| `DELETE /bisect-sessions` | 쿼리 `repository`, `base_branch`, `session_id` | 지정한 개인 세션 초기화, `session: null` |
+
+서수는 안전하게 표현 가능한 정수이며, 시작 0을 제외한 시작·끝 경계와 표시 지점은 해당 에폭의 `merge_sequence`에 실재해야 한다. 초기 구간은 `0 <= from_seq < to_seq`다. 후보는 `(good_seq, bad_seq]` 안의 **실재 first-parent 커밋**이며, PR이 없는 직접 푸시도 포함한다. 다음 지점은 수치 중앙 `(good_seq + bad_seq) / 2`에 가장 가까운 실재 후보로 정하고 동률이면 낮은 서수를 택한다. 후보가 여러 건이면 이미 이상 경계인 `bad_seq`는 다음 검사에서 제외하여 매 판정이 진전하도록 한다. 후보 1건이면 `converged: true`, `next: null`, `result`를 반환한다. 연결된 PR은 `pull_request_number`로 주며, 직접 푸시는 `null`과 실제 `commit_sha`를 그대로 준다. PR을 임의 생성하거나 후보에서 버리지 않는다.
+
+정상·이상 경계가 역전되거나 같은 지점에 겹치면 409 `BISECT_CONTRADICTION`, `detail.reason: "bisect_contradiction"`, 충돌한 `good_seq`·`bad_seq`를 반환한다. 같은 지점에 정상·이상을 동시에 지정하는 것도 모순이다. 실패는 저장값을 바꾸지 않으며 화면은 충돌 지점과 초기화를 제공한다. 없는 서수·잘못된 형식은 400 `INVALID_PARAMETER`다.
+
+```json
+{
+  "sequence_space": "acme/payments@main",
+  "seq_epoch": 1,
+  "session": {
+    "session_id": "42", "seq_epoch": 1,
+    "good_seq": 1, "bad_seq": 9, "epoch_stale": false,
+    "remaining": 4, "estimated_steps": 2,
+    "next": { "merge_seq": 5, "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "pull_request_number": 4205 },
+    "result": null, "converged": false
+  },
+  "correlation_id": "uuid"
+}
+```
+
+`remaining`은 실제 후보 수이며 `estimated_steps = ceil(log2(remaining))`다. GET은 저장된 에폭이 현재와 다르거나 공간이 재채번 중이면 `epoch_stale: true`로 돌려주되 `remaining`, `estimated_steps`, `next`, `result`를 `null`로 무효화한다. POST도 같은 상태를 409 `SEQUENCE_EPOCH_STALE`로 거절한다. 기존 에폭 값을 현재 에폭에서 재해석하지 않는다. DELETE로 명시적으로 초기화한 뒤 현재 에폭 구간을 다시 조회해야 한다.
+
+생성·조회·표시·초기화는 사용자·공간별 advisory transaction lock으로 직렬화한다. 동일 트랜잭션이 `sequence_space FOR SHARE`로 현재 에폭을 재검증하여 재채번과의 틈을 막는다. `session_id`는 BIGSERIAL을 문자열로 전달한다. 삭제된 세션의 늦은 표시·초기화 요청은 새 세션을 변경하지 않고 404로 거절하며, 이미 없는 세션의 DELETE 재시도는 성공한다. 반복 start는 기존 상태를 반환하고 반복 mark는 경계를 확장하지 않아 멱등이다.
+
+### 4. 검색 결과 파일 내보내기 (API-SRCH-006, WP-044 / CR-072)
+
+`POST /api/v1/exports`는 `{q, format, sort?, order?, seq_epoch?, preview?}`를 받는다. `format`은 `csv | json`이며 질의·정렬·시퀀스 바인딩은 `/search`와 같은 파서와 규칙을 쓴다. 낡은 에폭은 `409 INVALID_PARAMETER`, 사유 `epoch_stale`로 거부한다. `preview:true`는 접근 범위를 적용한 건수와 `mode:sync | async`만 반환하며 파일·잡·감사 실행 기록을 만들지 않는다. W-001은 이 응답으로 실행 전 건수를 확인한다. 확인 후 실제 실행 시 건수는 다시 검증한다.
+
+| 조건 | 응답 |
+| --- | --- |
+| 결과 0~1000건 | `200`, CSV 또는 JSON 첨부 파일 (`Content-Disposition: attachment`, `Cache-Control: private, no-store`) |
+| 결과 1001~100000건 | `202`, `{job_id,state:"queued",status_url,download_url:null,correlation_id}` |
+| 결과 100000건 초과 | `400 EXPORT_LIMIT_EXCEEDED`, `error.detail.reason:"export_limit_exceeded"` |
+| ES timeout·조기 종료·샤드 부분 실패 | 실패 응답, 파일 미제공 |
+
+검색 대상은 PR·커밋이며 `kind:`로 좁힌다. 내보내기는 PIT에서 순회하고 마지막 PIT ID를 닫는다. 동기 사전 계수 후 PIT 결과가 1000건을 넘으면 동기 수집을 중단하고 비동기 잡으로 전환한다. 10만 건 경계는 생성 시와 순회 시 모두 검사한다.
+
+파일 열은 `kind`, `repository_id`, `repository`, `pr_number`, `commit_sha`, `title`, `author`, `state`, `merge_seq`, `seq_epoch`, `sequence_space`, `merged_at`, `committed_at`, `changed_files_count`, `additions`, `deletions`, `labels`다. 커밋의 `title`은 메시지 첫 줄이며 원문 본문·경로 배열을 내보내지 않는다. JSON은 행 배열이고 CSV는 UTF-8 BOM·CRLF·모든 셀 인용을 사용한다. CSV의 수식 접두 문자열은 작은따옴표로 중화하고 중첩 값은 JSON 문자열로 나타낸다.
+
+`GET /api/v1/exports/:job_id`는 `{job_id,state,total,error,download_url,correlation_id}`를 반환한다. 완료되지 않은 결과의 `total`·`download_url`은 null이다. `GET /api/v1/exports/:job_id/download`는 **완료 상태와 완성 파일이 함께 있을 때만** 파일을 제공한다. 없는 잡·다른 실행자·회수된 접근 범위·낡은 에폭은 404이며 운영자 역할로 다른 사용자의 파일을 열지 않는다.
+
+실행 당시 scope 형태(`explicit` 또는 `org_team`)를 유지하고 당시 repository ID 집합과 교집합을 적용한다. 동기 응답 전·워커 페이지마다·공개 직전에는 사용자 존재·PG `access_scope_version`·시퀀스 에폭을 확인한다. 상태/다운로드는 추가로 현재 접근 범위를 산출해 확인한다. 변경 시 기존 파일의 권한을 넓히거나 시퀀스를 자동 재해석하지 않고 다시 요청하게 한다. `export.create` 감사의 target은 동기 실행이면 null, 비동기면 잡 ID다.
 
 ## 5. DTO 표준
 

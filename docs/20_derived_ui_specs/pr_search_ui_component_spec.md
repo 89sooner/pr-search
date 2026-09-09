@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-09-08
+> 상태: review | 버전: v0.13 | 갱신일: 2026-09-09
 
 ## 1. 문서 원칙
 
@@ -295,9 +295,11 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 ### C-029 BisectPanel
 
 - 책임: 이분 탐색 상태 표시와 정상/이상/초기화 액션
-- 기반: Conductor `Panel` + `Button` + `Meter`
-- 필수 props: `remaining: number`, `estimatedSteps: number`, `nextSeq: number | null`, `onGood`, `onBad`, `onReset`
-- 상태: `idle`, `in_progress`, `converged`(후보 1건), `bisect_contradiction`
+- 기반: Conductor `Panel` + `Button`. 초기 후보 수를 저장하지 않으므로 분모를 추측하는 진행률 `Meter` 대신 실제 후보 수·예상 잔여 검사 횟수를 표시한다 (CR-071 / WP-042).
+- 필수 props: `repository`, `baseBranch`, `range: { from, to, epoch } | null`. 개인 세션 조회·표시·초기화는 API-SEQ-005로 수행하며 `session.remaining`, `estimated_steps`, `next`가 표시값의 정본이다.
+- 상태: `idle`, `loading`, `in_progress`, `converged`(후보 1건), `bisect_contradiction`, `epoch_stale`, 연결 오류
+- 구간 조회가 완료되면 시작을 활성화한다. 재방문 시 저장된 세션은 구간을 다시 입력하지 않아도 복원한다. 공간 변경은 컴포넌트를 새로 마운트하고 이전 조회를 취소한다. 모순은 두 경계와 초기화 경로를 보이며 실패한 표시를 자동 재시도하지 않는다. 에폭 무효 또는 재채번 중에는 검사 지점을 제공하지 않고 초기화를 요구한다.
+- 종료 결과는 PR 링크이며, 연결된 PR이 없는 직접 푸시는 실제 커밋 링크와 "연결된 PR 없음"을 표시한다.
 - 접근성: 남은 후보 수 변화는 `aria-live="polite"`로 알린다
 - 관련 FR: FR-SEQ-007
 

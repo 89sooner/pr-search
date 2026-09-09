@@ -143,7 +143,6 @@ describe('QA-A004-08: 화면이 제시하는 행위 후보', () => {
    * "이 두 문자열이 없다"가 아니다.
    */
   it('**미활성 액션은 넣지 않는다** — 언제나 0건이라 "없다"와 구분되지 않는다', () => {
-    expect(NOT_ACTIVATED_AUDIT_ACTIONS.length).toBeGreaterThan(0);
     for (const action of NOT_ACTIVATED_AUDIT_ACTIONS) {
       expect(ACTION_OPTIONS, action).not.toContain(action);
     }
@@ -151,6 +150,10 @@ describe('QA-A004-08: 화면이 제시하는 행위 후보', () => {
 
   it('활성으로 옮겨간 액션은 목록에 있다 (WP-041)', () => {
     expect(ACTION_OPTIONS).toContain('safe_marker.set');
+  });
+
+  it('WP-044 / FR-SRCH-012: 내보내기 실행을 감사 목록에서 조사할 수 있다', () => {
+    expect(ACTION_OPTIONS).toContain('export.create');
   });
 });
 

@@ -63,6 +63,15 @@ const CAPABILITIES = [
     manifest: 'deploy/k8s/pipeline-worker-batch.yaml',
   },
   {
+    id: 'JOB-SRCH-001',
+    what: '검색 결과 내보내기 러너',
+    process: 'pipeline-worker',
+    role: 'batch',
+    start: 'exportRunner = startExportRunner(',
+    stop: 'exportRunner?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-batch.yaml',
+  },
+  {
     id: 'JOB-AUD-001',
     what: '감사·원본 파티션 수명 (생성 + 만료 드롭)',
     process: 'pipeline-worker',
@@ -508,7 +517,8 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
     // 이 시험의 앞 판(PR #149)은 정반대로 그 명령이 **있어야** 한다고 요구했다 — 틀린 계약을
     // 굳히고 있었다.
     expect(halt).not.toMatch(/git push origin\s+:refs\/tags\//);
-    expect(halt).toContain('--force-with-lease="refs/tags/<version>:');
+    expect(halt).not.toContain('git push --force-with-lease=');
+    expect(halt).toContain('커밋 일치는 소유를 증명하지 않는다');
     expect(halt).toContain('대상을 먼저 본다');
 
     // **두 상황이 각각의 행에 있어야 한다.** 합치면 처방이 섞인다.
@@ -530,10 +540,9 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
     const note = BUILD.slice(start, BUILD.indexOf('\n  }', start));
 
     expect(note).not.toMatch(/git push origin\s+:refs\/tags\//);
-    expect(note).toContain('--force-with-lease=');
-    expect(note).toContain('대상을 먼저 본다');
-    // 다른 커밋이면 지우지 않고 새 버전으로 간다
-    expect(note).toContain('다른 커밋이면');
+    expect(note).not.toContain('git push');
+    expect(note).toContain('소유를 증명하지 않는다');
+    expect(note).toContain('태그를 보존하고');
     expect(note).toContain('새 버전으로');
   });
 
@@ -2369,7 +2378,9 @@ describe('안전 구간 표식 (WP-041)', () => {
       audit.indexOf('NOT_ACTIVATED_AUDIT_ACTIONS'),
     );
     expect(active).toContain("'safe_marker.set'");
-    expect(audit).toContain("NOT_ACTIVATED_AUDIT_ACTIONS = ['export.create']");
+    // WP-044가 마지막 미활성 액션을 실제로 연결했다.
+    expect(active).toContain("'export.create'");
+    expect(audit).toContain('NOT_ACTIVATED_AUDIT_ACTIONS = []');
   });
 });
 

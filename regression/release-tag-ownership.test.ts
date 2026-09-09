@@ -152,6 +152,22 @@ describe('발행 되돌리기의 태그 소유권 (DEV-541)', () => {
     expect(result.output).not.toContain('이미지 빌드');
     expect(remoteTag(ws)).toBe(ws.other);
   });
+
+  it('DEV-559: 삭제 실패 뒤 A→B→A로 돌아와도 복구 안내는 태그를 보존한다', () => {
+    const ws = makeWorkspace();
+    const result = run(ws, { FAKE_RETARGET_AFTER_REF: '1', FAKE_ASSET_MISMATCH: '1' });
+    expect(result.ok).toBe(false);
+    expect(remoteTag(ws)).toBe(ws.other);
+    execFileSync('git', ['--git-dir', ws.remote, 'update-ref', `refs/tags/${VERSION}`, ws.commit]);
+    // 같은 OID의 lease는 다른 주체가 되돌린 태그도 삭제한다.
+    execFileSync('git', ['push', `--force-with-lease=refs/tags/${VERSION}:${ws.commit}`,
+      'origin', `:refs/tags/${VERSION}`], { cwd: ws.work, stdio: 'pipe' });
+    expect(remoteTag(ws)).toBe('');
+    // 따라서 실패 뒤 안내에는 삭제 명령을 제공하지 않는다.
+    expect(result.output).not.toContain('git push --force-with-lease=');
+    expect(result.output).toContain('소유를 증명하지 않는다');
+    expect(result.output).toContain('새 버전으로');
+  });
 });
 
 /**
