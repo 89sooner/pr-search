@@ -2655,7 +2655,7 @@ describe('첫 사내 반입이 드러낸 계약 (CR-066)', () => {
     expect(code).not.toMatch(/-[0-9a-f]{16}['"`]/);
   });
 
-  it('pipeline-worker 이미지가 미러와 커밋 그래프에 필요한 git을 포함한다 (DEV-572)', () => {
+  it('WP-072: pipeline-worker 이미지가 미러와 커밋 그래프에 필요한 git을 포함한다 (DEV-572)', () => {
     const start = DOCKERFILE.indexOf('FROM base AS pipeline-worker');
     expect(start).toBeGreaterThan(-1);
     const stage = DOCKERFILE.slice(start, DOCKERFILE.indexOf('\nFROM ', start + 1));
@@ -2725,7 +2725,7 @@ describe('첫 사내 반입이 드러낸 계약 (CR-066)', () => {
     }
   });
 
-  it('업그레이드는 load 뒤 CA 일곱 자리를 복원하고 upgrade한다 (DEV-571)', () => {
+  it('WP-072: 업그레이드는 load 뒤 CA 일곱 자리를 복원하고 upgrade한다 (DEV-571)', () => {
     expect(PRSCTL).toMatch(/load\)\s+cmd_verify; cmd_load/);
     const upgrade = RUNBOOK.slice(RUNBOOK.indexOf('### 업그레이드'), RUNBOOK.indexOf('\n---', RUNBOOK.indexOf('### 업그레이드')));
     expect(upgrade).toContain('load 완료 → compose.yml 수정 → upgrade');

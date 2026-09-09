@@ -77,6 +77,7 @@
 | CR-071 | 2026-09-08 | design | 사용자 WP-042 구현 지시와 착수 전 계약 감사 | FR-SEQ-007의 저장·재개·표시·초기화 API 및 에폭·동시성 계약을 정밀화하고 이분 탐색을 구현한다 | DEV-560 · WP-042 · FR-SEQ-007 · API-SEQ-005 | API·데이터·UI·작업 패키지·구현 원장 | closed |
 | CR-072 | 2026-09-08 | design | 사용자 WP-044 구현 지시와 착수 전 계약 감사 | FR-SRCH-012의 동기 파일·비동기 잡·다운로드 및 실행자 접근 범위 계약을 정밀화하고 내보내기를 구현한다 | DEV-570 · WP-044 · FR-SRCH-012 · API-SRCH-006 · JOB-SRCH-001 | API·데이터·비동기·UI·작업 패키지·구현 원장 | closed |
 | CR-073 | 2026-09-09 | correction | `0.1.0-pilot.3` 사내 업그레이드 Upstream Feedback | `prsctl load` 전 compose 수정이 checksum 검증에 막히는 순서를 런북에 명시하고(DEV-571), `pipeline-worker` 이미지에 `git`을 포함해 미러·릴리스 색인 실패를 해소한다(DEV-572). 내부 코드는 반출하지 않고 민감정보를 제거한 운영 발견만 수동 전달하는 Upstream Feedback 경로를 ADR-021에 명시한다 | DEV-571 · DEV-572 · WP-072 · ADR-021 · JOB-MIR-001 · JOB-MIR-002 | `pr_search_architecture_decision_records.md`, `pr_search_implementation_traceability.md`, `deploy/single-host/RUNBOOK.md`, `Dockerfile`, 회귀 | closed |
+| CR-074 | 2026-09-10 | correction | PR #159 머지 후 P1 리뷰 | CR-073이 신설한 회귀 두 건의 시험 이름에 소유 WP가 없어 테스트→작업 패키지 추적이 끊겼다. 두 이름에 WP-072를 명시하고 DEV-573으로 기록한다 | DEV-573 · DEV-571 · DEV-572 · WP-072 | 회귀·구현 원장 | closed |
 
 ## 4. 게이트 통과 기록
 
@@ -1408,6 +1409,12 @@ python3 validate_srs_prd_env.py --root <origin/main worktree> --strict
 - [x] `Dockerfile` → 런북 3·5·6·7·8장 → 원장 5·6.72.8·7장 → 회귀 순서로 반영했다.
 - [x] `pipeline-worker` 이미지를 실제로 빌드해 `git --version`이 `2.54.0`을 반환함을 확인하고 관련 회귀·정적 검사를 통과시켰다.
 - [x] strict 문서 검증은 변경 전 `main`과 같은 기존 오류 3건·경고 1건이며 신규 issue 0건이다.
+
+### CR-074 cascade — CR-073 회귀의 WP 추적 태그
+
+- [x] PR #159 머지 후 리뷰를 재현 가능한 메타데이터 결함으로 판정하고 DEV-573을 등록했다.
+- [x] DEV-571·572 회귀 이름에 소유 WP-072를 추가했다. 시험 행위와 제품 계약은 바꾸지 않았다.
+- [x] 관련 회귀와 타입·린트를 다시 실행하고 원장 6.72.9장에 결과를 기록했다.
 
 ## 6. 미결 항목
 
