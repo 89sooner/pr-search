@@ -78,6 +78,7 @@
 | CR-072 | 2026-09-08 | design | 사용자 WP-044 구현 지시와 착수 전 계약 감사 | FR-SRCH-012의 동기 파일·비동기 잡·다운로드 및 실행자 접근 범위 계약을 정밀화하고 내보내기를 구현한다 | DEV-570 · WP-044 · FR-SRCH-012 · API-SRCH-006 · JOB-SRCH-001 | API·데이터·비동기·UI·작업 패키지·구현 원장 | closed |
 | CR-073 | 2026-09-09 | correction | `0.1.0-pilot.3` 사내 업그레이드 Upstream Feedback | `prsctl load` 전 compose 수정이 checksum 검증에 막히는 순서를 런북에 명시하고(DEV-571), `pipeline-worker` 이미지에 `git`을 포함해 미러·릴리스 색인 실패를 해소한다(DEV-572). 내부 코드는 반출하지 않고 민감정보를 제거한 운영 발견만 수동 전달하는 Upstream Feedback 경로를 ADR-021에 명시한다 | DEV-571 · DEV-572 · WP-072 · ADR-021 · JOB-MIR-001 · JOB-MIR-002 | `pr_search_architecture_decision_records.md`, `pr_search_implementation_traceability.md`, `deploy/single-host/RUNBOOK.md`, `Dockerfile`, 회귀 | closed |
 | CR-074 | 2026-09-10 | correction | PR #159 머지 후 P1 리뷰 | CR-073이 신설한 회귀 두 건의 시험 이름에 소유 WP가 없어 테스트→작업 패키지 추적이 끊겼다. 두 이름에 WP-072를 명시하고 DEV-573으로 기록한다 | DEV-573 · DEV-571 · DEV-572 · WP-072 | 회귀·구현 원장 | closed |
+| CR-075 | 2026-09-10 | correction | PR #160 머지 후 P2 리뷰 | CR-074 cascade가 검증 결과를 원장 6.72.9장에 기록했다고 했으나 그 절에 명령·통과 수가 없었다. 실제 로컬·CI 결과를 원장에 추가한다 | DEV-574 · DEV-573 · CR-074 | 구현 원장 | closed |
 
 ## 4. 게이트 통과 기록
 
@@ -1415,6 +1416,12 @@ python3 validate_srs_prd_env.py --root <origin/main worktree> --strict
 - [x] PR #159 머지 후 리뷰를 재현 가능한 메타데이터 결함으로 판정하고 DEV-573을 등록했다.
 - [x] DEV-571·572 회귀 이름에 소유 WP-072를 추가했다. 시험 행위와 제품 계약은 바꾸지 않았다.
 - [x] 관련 회귀와 타입·린트를 다시 실행하고 원장 6.72.9장에 결과를 기록했다.
+
+### CR-075 cascade — CR-074 검증 결과 원장 누락
+
+- [x] PR #160 머지 후 리뷰를 원장 기록 누락으로 판정하고 DEV-574를 등록했다.
+- [x] 원장 6.72.9장에 로컬 회귀 346건, typecheck·lint와 PR #160 verify·integration 성공을 기록했다.
+- [x] 기능·시험 동작·요구사항은 바꾸지 않았다.
 
 ## 6. 미결 항목
 

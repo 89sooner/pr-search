@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.58 | 갱신일: 2026-09-10
+> 상태: review | 버전: v6.59 | 갱신일: 2026-09-10
 
 ## 1. 목적
 
@@ -190,6 +190,7 @@
 
 | DEV ID | 발견일 | 발견 내용 | 관련 FR/WP | 유형 | 연결 CR | 상태 |
 | --- | --- | --- | --- | --- | --- | --- |
+| DEV-574 | 2026-09-10 | **CR-074 cascade가 원장에 검증 결과를 기록했다고 했지만 6.72.9장에는 결과가 없었다.** PR #160 머지 후 P2 리뷰가 발견했다. 로컬 회귀·typecheck·lint와 PR #160 CI 결과를 해당 절에 추가해 변경 관리 기록과 정본 원장을 일치시켰다 | CR-074 / DEV-573 / WP-072 | 문서 오류 | CR-075 | resolved |
 | DEV-573 | 2026-09-10 | **CR-073의 신규 회귀 두 건에 소유 WP 태그가 없었다.** 시험 이름은 DEV-571·572만 적고 바깥 describe는 CR-066, 파일 머리글은 WP-028을 가리켜 테스트→작업 패키지 추적이 끊겼다. PR #159 머지 후 P1 리뷰가 발견했다. 두 시험 이름에 WP-072를 명시해 태그만 정정했다 | WP-072 / DEV-571 / DEV-572 | 추적성 결함 | CR-074 | resolved |
 | DEV-572 | 2026-09-09 | **`pipeline-worker` 이미지에 `git`이 없었다.** `node:22-alpine` 기반의 runtime stage가 앱 파일만 복사해 `worker-mirror`의 미러 동기화와 커밋 그래프 명령이 `spawn git ENOENT`로 실패했고, 사내 `0.1.0-pilot.3`의 `prs-releases`가 0건이었다. REST API 기반 커밋 보강은 동작해 전체 수집 중단으로 보이지 않았으나 릴리스 탭과 git 그래프 기반 경로는 성립하지 않았다. `pipeline-worker` runtime stage에 `git`을 설치하고 실제 이미지에서 실행을 확인한다 | worker-mirror / worker-release / JOB-MIR-001 / JOB-MIR-002 | 구현 결함 | CR-073 | resolved |
 | DEV-571 | 2026-09-09 | **업그레이드의 다운스트림 compose 수정 위치가 문서에 없었다.** `prsctl load`는 내부에서 `verify`를 다시 실행하므로 새 번들을 푼 뒤 `compose.yml`의 CA 마운트를 먼저 복원하면 `SHA256SUMS` 불일치로 거부된다. 사내 업그레이드에서 `load` 완료 뒤 CA 마운트 일곱 자리(anchor·개별 서비스 6)를 복원하고 `upgrade`해야 함을 확인했다. 런북 3·5·6·7·8장에 순서와 증상을 반영했다 | WP-072 / ADR-021 | 운영 발견 | CR-073 | resolved |
@@ -5758,6 +5759,8 @@ upstream에서는 `pipeline-worker` 이미지를 실제로 다시 빌드했고 �
 ### 6.72.9 PR #159 머지 후 리뷰 — WP 추적 태그 (CR-074 / DEV-573)
 
 PR #159가 병합된 뒤 새 회귀 두 건이 각각 DEV-571·572만 적고 소유 WP를 시험 이름에 남기지 않았다는 P1 리뷰가 도착했다. 지적은 유효했다. 바깥 describe의 CR-066과 파일 수준 WP-028은 이번 Upstream Feedback의 소유를 나타내지 않으므로 두 시험 이름에 `WP-072`를 추가했다. 실행 동작과 판정은 바꾸지 않았다.
+
+검증은 로컬 `pnpm run test:regression regression/runtime-reachability.test.ts` 346건 통과, `pnpm typecheck`·`pnpm lint` 통과다. PR #160의 GitHub Actions `verify`와 `integration`도 모두 성공했다. 이 결과가 처음에는 cascade에만 “기록했다”고 쓰이고 이 절에서 빠져 있었으며, PR #160 머지 후 리뷰가 DEV-574로 잡았다.
 
 ### 6.73 PR #150 태그 복구 안내 정정 (CR-070 / DEV-559)
 
