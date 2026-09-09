@@ -76,6 +76,7 @@
 | CR-070 | 2026-09-08 | correction | PR #150 미해결 P1 리뷰 | 삭제 lease 실패 뒤 SHA 일치로 소유를 추정하는 복구 안내를 제거한다. 모호한 태그를 보존하고 새 버전을 사용한다 | DEV-559 · WP-072 | 배포 스크립트·런북·회귀·구현 원장 | closed |
 | CR-071 | 2026-09-08 | design | 사용자 WP-042 구현 지시와 착수 전 계약 감사 | FR-SEQ-007의 저장·재개·표시·초기화 API 및 에폭·동시성 계약을 정밀화하고 이분 탐색을 구현한다 | DEV-560 · WP-042 · FR-SEQ-007 · API-SEQ-005 | API·데이터·UI·작업 패키지·구현 원장 | closed |
 | CR-072 | 2026-09-08 | design | 사용자 WP-044 구현 지시와 착수 전 계약 감사 | FR-SRCH-012의 동기 파일·비동기 잡·다운로드 및 실행자 접근 범위 계약을 정밀화하고 내보내기를 구현한다 | DEV-570 · WP-044 · FR-SRCH-012 · API-SRCH-006 · JOB-SRCH-001 | API·데이터·비동기·UI·작업 패키지·구현 원장 | closed |
+| CR-073 | 2026-09-09 | correction | `0.1.0-pilot.3` 사내 업그레이드 Upstream Feedback | `prsctl load` 전 compose 수정이 checksum 검증에 막히는 순서를 런북에 명시하고(DEV-571), `pipeline-worker` 이미지에 `git`을 포함해 미러·릴리스 색인 실패를 해소한다(DEV-572). 내부 코드는 반출하지 않고 민감정보를 제거한 운영 발견만 수동 전달하는 Upstream Feedback 경로를 ADR-021에 명시한다 | DEV-571 · DEV-572 · WP-072 · ADR-021 · JOB-MIR-001 · JOB-MIR-002 | `pr_search_architecture_decision_records.md`, `pr_search_implementation_traceability.md`, `deploy/single-host/RUNBOOK.md`, `Dockerfile`, 회귀 | closed |
 
 ## 4. 게이트 통과 기록
 
@@ -1398,6 +1399,15 @@ python3 validate_srs_prd_env.py --root <origin/main worktree> --strict
 - [x] migration 024, API-SRCH-006, JOB-SRCH-001, 동기/비동기 UI와 접근 범위·에폭 fence를 구현했다.
 - [x] ES 단위 11, 실 PG·ES·Redis 통합 6, a11y 1, Chromium E2E 3과 build/type/lint를 통과했다.
 - [x] strict 문서 검증 결과는 변경 전 HEAD와 비교해 신규 issue 0건으로 판정한다.
+
+### CR-073 cascade — 0.1.0-pilot.3 사내 업그레이드 Upstream Feedback
+
+- [x] 사용자 전달문을 현재 정본과 대조하고 이미 사용된 DEV-559·560 대신 DEV-571·572를 배정했다.
+- [x] 사내 서버 주소와 자격 값은 public origin에 기록하지 않았다.
+- [x] ADR-021에 `Upstream Feedback`을 코드 역병합과 구분되는 운영 발견 전달 경로로 명시했다.
+- [x] `Dockerfile` → 런북 3·5·6·7·8장 → 원장 5·6.72.8·7장 → 회귀 순서로 반영했다.
+- [x] `pipeline-worker` 이미지를 실제로 빌드해 `git --version`이 `2.54.0`을 반환함을 확인하고 관련 회귀·정적 검사를 통과시켰다.
+- [x] strict 문서 검증은 변경 전 `main`과 같은 기존 오류 3건·경고 1건이며 신규 issue 0건이다.
 
 ## 6. 미결 항목
 
