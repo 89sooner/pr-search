@@ -53,6 +53,7 @@ FROM build AS deploy-pipeline-worker
 RUN pnpm deploy --legacy --filter @prs/pipeline-worker --prod /out
 
 FROM base AS pipeline-worker
+RUN apk add --no-cache git
 COPY --from=deploy-pipeline-worker /out /app
 EXPOSE 3003
 CMD ["node", "dist/index.js"]

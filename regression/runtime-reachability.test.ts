@@ -2546,6 +2546,7 @@ describe('첫 사내 반입이 드러낸 계약 (CR-066)', () => {
   const RUNBOOK = read('deploy/single-host/RUNBOOK.md');
   const ENV_EXAMPLE = read('deploy/single-host/.env.example');
   const COMPOSE = read('deploy/single-host/compose.yml');
+  const PRSCTL = read('deploy/single-host/prsctl');
   const DOCKERFILE = read('Dockerfile');
   const GATEWAY = read('apps/ingest-gateway/src/server.ts');
   const GH_CONFIG = read('packages/github/src/config.ts');
@@ -2654,6 +2655,14 @@ describe('첫 사내 반입이 드러낸 계약 (CR-066)', () => {
     expect(code).not.toMatch(/-[0-9a-f]{16}['"`]/);
   });
 
+  it('pipeline-worker 이미지가 미러와 커밋 그래프에 필요한 git을 포함한다 (DEV-572)', () => {
+    const start = DOCKERFILE.indexOf('FROM base AS pipeline-worker');
+    expect(start).toBeGreaterThan(-1);
+    const stage = DOCKERFILE.slice(start, DOCKERFILE.indexOf('\nFROM ', start + 1));
+    expect(stage).toContain('RUN apk add --no-cache git');
+    expect(stage.indexOf('apk add --no-cache git')).toBeLessThan(stage.indexOf('COPY --from=deploy-pipeline-worker'));
+  });
+
   /**
    * **`.env`의 `KEY=`는 미설정이 아니라 빈 문자열이다** (`DEV-548`).
    *
@@ -2714,6 +2723,19 @@ describe('첫 사내 반입이 드러낸 계약 (CR-066)', () => {
     for (const item of ['`.env`', 'CA 마운트', '웹훅 경유 경로']) {
       expect(section, `${item} 행이 없다`).toContain(item);
     }
+  });
+
+  it('업그레이드는 load 뒤 CA 일곱 자리를 복원하고 upgrade한다 (DEV-571)', () => {
+    expect(PRSCTL).toMatch(/load\)\s+cmd_verify; cmd_load/);
+    const upgrade = RUNBOOK.slice(RUNBOOK.indexOf('### 업그레이드'), RUNBOOK.indexOf('\n---', RUNBOOK.indexOf('### 업그레이드')));
+    expect(upgrade).toContain('load 완료 → compose.yml 수정 → upgrade');
+    expect(upgrade.indexOf('./prsctl verify && ./prsctl load')).toBeLessThan(upgrade.indexOf('compose.yml을 새 번들이 덮어쓰므로'));
+    expect(upgrade.indexOf('compose.yml을 새 번들이 덮어쓰므로')).toBeLessThan(upgrade.indexOf('./prsctl upgrade'));
+
+    const ca = RUNBOOK.slice(RUNBOOK.indexOf('anchor는 얕게 합쳐진다'));
+    expect(ca).toContain('CA를 거는 자리는 **일곱 곳**');
+    expect(ca).toContain('`ingest-gateway`');
+    expect(RUNBOOK).toContain('checksum 불일치로 거부된다 (`DEV-571`)');
   });
 });
 

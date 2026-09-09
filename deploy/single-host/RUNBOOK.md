@@ -385,6 +385,9 @@ chmod 600 .env
 $EDITOR .env          # PRS_VERSION을 새 값으로 — **load보다 먼저다** (DEV-524).
                       # load가 적재 뒤 이 값의 이미지가 있는지 검증하므로, 이전 값이면 옛 이미지를 보고 통과해 버린다
 ./prsctl verify && ./prsctl load
+# compose.yml을 새 번들이 덮어쓰므로 사내 환경 수정을 여기서 재적용한다.
+# prsctl load가 내부에서 verify를 재실행하므로 load 전에 compose.yml을 수정하면
+# checksum 불일치로 거부된다. 순서: load 완료 → compose.yml 수정 → upgrade.
 ./prsctl upgrade      # migration → 접속 주체 → ES mapping → 컨테이너 교체 → health
 ```
 
@@ -474,7 +477,7 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | 무엇 | 등급 | 번들이 덮는가 | 비고 |
 | --- | --- | --- | --- |
 | `.env` | A | **아니다** — 애초에 번들에 없다 | 값 목록은 2.B. `WEB_PORT`·`AUTH_ENABLED`·`SESSION_COOKIE_SECURE`·`GHE_API_URL`·`NODE_EXTRA_CA_CERTS`·`ADMIN_DATABASE_URL`이 기본값과 달랐다 |
-| `compose.yml`의 CA 마운트 | A | **덮는다** — 추적되는 파일이다 | 여섯 자리. 6장 「anchor는 얕게 합쳐진다」 |
+| `compose.yml`의 CA 마운트 | A | **덮는다** — 추적되는 파일이다 | 일곱 자리(anchor + 서비스 6). 6장 「anchor는 얕게 합쳐진다」. `prsctl load` 완료 후 `upgrade` 전에 재적용한다 — `load`가 내부에서 `verify`를 재실행하므로 그 전 수정은 checksum 불일치로 거부된다 (`DEV-571`) |
 | `prs_retention` 롤 | — | 해당 없음(DB 상태) | **더 이상 형상이 아니다** (`DEV-556`). `install`·`upgrade`·`restore`가 `ADMIN_DATABASE_URL`을 읽어 만든다 — 그 값만 `.env`에 있으면 된다 |
 | 웹훅 경유 경로 | B | 해당 없음(다른 저장소) | 어느 서비스의 어느 경로인지 적어 둔다. 2.C 「GHE가 서버에 닿지 못할 때」 |
 | GHE 조직 웹훅 등록 | — | 해당 없음(GHE에 영속) | 서버를 다시 세워도 남는다. 주소가 바뀌면 그때 고친다 |
@@ -502,7 +505,8 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 자기 `volumes`로 미러 볼륨을 마운트하므로, anchor의 `volumes`가 그 셋에는 닿지 않는다.
 나머지 워커 여섯은 자기 `volumes`가 없어 anchor의 것을 그대로 받는다.
 
-그래서 CA를 거는 자리는 **여섯 곳**이다.
+그래서 CA를 거는 자리는 **일곱 곳**이다. GHE로 나가는 여섯 자리와, 전역
+`NODE_EXTRA_CA_CERTS`가 가리키는 파일 부재 경고를 없애기 위한 `ingest-gateway` 한 자리다.
 
 | 자리 | 왜 |
 | --- | --- |
@@ -555,6 +559,7 @@ done
 | 풀린 번들의 git bundle → `vendor/upstream`이 manifest의 `upstream.commit`과 일치 (WP-071) | `VERIFIED (external)` |
 | `--release` 발행(초안 → 자산 → **발행 전 대조** → 발행 → 발행 확인) · 초안 자산의 이름·크기·digest·`state`를 로컬과 대조하고 어긋나면 **발행하지 않는다** · 같은 버전·초안 잔재는 빌드 전에 거부 (WP-072 / DEV-544) | `VERIFIED (external)` — 시험 릴리스 둘, 검증 뒤 삭제. 발행 전 대조와 발행 후 불가역은 `regression/release-tag-ownership.test.ts`(C7~C11)가 실제 스크립트를 돌려 검증한다 |
 | 토큰만 있는 환경에서 `gh release download` → `sha256sum` == 자산 digest == 전달받은 SHA-256 → 별도 디렉터리에 풀어 `verify`·`load`·`lineage`·`git fetch` (WP-072) | `VERIFIED (external)` — 시험 릴리스 둘 |
+| `0.1.0-pilot.3` 사내 서버 업그레이드 | `VERIFIED (internal)` (2026-09-09) — `load` 뒤 CA 마운트 일곱 자리를 재적용해야 함을 확인했다 (`DEV-571`) |
 | 사내 위치에서 github.com 도달 | **`FAILED — 서버에서는 닿지 않는다`** (2026-09-07). 결정자의 2026-09-02 확인은 **담당자 위치** 기준이었고 운영 서버는 아웃바운드가 막혀 있었다. 담당자 위치에서 받아 서버로 옮기는 2.A의 반입 채널 경로로 성립시켰으며, 대조는 옮긴 뒤 서버에서 다시 했다 |
 | 실제 사내 GHE App·웹훅·저장소 권한 | **`VERIFIED (internal)`** (2026-09-07) — 저장소 셋 등록·백필 완료, 웹훅 수신과 증분 색인까지 성립. **웹훅은 경유 경로다** (2.C 「GHE가 서버에 닿지 못할 때」). 그 과정에서 `DEV-549`·`DEV-550`·`DEV-553`이 드러났다 |
 | 실제 사내 OIDC와 그룹 클레임 | `NOT RUN — internal environment required` — 첫 반입은 `AUTH_ENABLED=false`에 관리 토큰만으로 섰다. 그 형상에서 **`/search`는 비활성이다**(세션 인증 뒤에 있다). 둘은 함께 구성할 수 없다(`DEV-048`) |
@@ -602,3 +607,5 @@ done
 | 자산 digest가 **담당자가 전달한 SHA-256**과 다르다 | **릴리스가 발행 뒤 바뀐 것이다** (`DEV-530`). 그 릴리스를 쓰지 않고 담당자에게 알린다 — 새 버전으로 다시 발행한다 |
 | `gh`가 없다 | 2장 「경계」의 curl 경로로 받는다 |
 | `tar -xzf`가 `not in gzip format`으로 실패 | 파일이 JSON이다 — curl에 `Accept: application/octet-stream`이 빠졌거나 토큰 오류 응답을 저장했다. `head -c 200 <파일>`로 확인한다 |
+| 업그레이드 중 `load`가 `compose.yml: FAILED — checksum 불일치`로 멈춘다 | `prsctl load`는 내부에서 `verify`를 재실행한다. `compose.yml`을 `load` 전에 수정하면 번들의 `SHA256SUMS`와 어긋난다. `load` 완료 → `compose.yml` 수정 → `upgrade` 순서로 실행한다 (`DEV-571`) |
+| `prs-releases`가 0이고 `worker-mirror` 로그에 `spawn git ENOENT`가 보인다 | `pipeline-worker` 이미지에 `git`이 없는 버전이다. `Dockerfile`의 `pipeline-worker` 스테이지가 `git`을 설치하는 upstream 버전으로 이미지를 다시 빌드해 번들을 재생성한다 (`DEV-572`) |

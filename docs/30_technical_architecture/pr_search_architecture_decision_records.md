@@ -1,6 +1,6 @@
 # PR Search Architecture Decision Records
 
-> 상태: review | 버전: v0.7 | 갱신일: 2026-09-02
+> 상태: review | 버전: v0.8 | 갱신일: 2026-09-09
 
 ## 1. 목적
 
@@ -996,6 +996,8 @@ Internal repository = permanent downstream product line
 ```
 
 내부는 `vendor/upstream`(반입 baseline, 내부 수정 금지)과 `company/main`(운영 형상)을 나눈다. 다음 반입은 `vendor/upstream`을 갱신한 뒤 `company/main`으로 **merge**한다. 매번 내부 이력을 upstream 위로 재작성하는 방식은 택하지 않는다 — 다운스트림에서는 "우리가 무엇을 바꿨는가"가 감사 대상이고, 재작성은 그 이력을 반복해서 새로 만든다. **내부 수정을 외부로 되돌리는 절차는 설계하지 않는다.** 그것이 성립하지 않는 것이 이 반입의 전제이므로, 성립하는 척하는 절차를 만드는 것이 더 나쁘다.
+
+**Upstream Feedback은 코드 반출이 아니다** (CR-073). 사내 서버는 public `github.com`에서 pull만 하고 private GHE에는 push·pull한다. 운영 중 upstream 수정이 필요한 사실이 드러나면 담당자가 증상·재현 조건·영향·필요한 정정을 텍스트로 옮겨 public origin에 전달한다. 토큰·키·사내 주소·고객 데이터·내부 코드 diff는 전달하지 않는다. public origin은 전역 ID를 다시 배정하고 실제 source에서 원인을 검증해 수정·시험·릴리스를 만든다. origin에 반영된 피드백 항목은 사내 목록에서 제거한다. 이 경로는 발견을 전달할 뿐 `company/main`을 upstream에 merge하거나 외부 저장소의 정본을 바꾸지 않는다.
 
 **6. 환경 차이는 configuration으로 흡수하는 것을 우선한다.** GHE URL·OIDC·CA·프록시·호스트명·접속 URL·저장 경로가 core code 수정 없이 들어가야 한다. 내부 divergence를 줄이는 것이 영구 다운스트림의 장기 유지비를 정하기 때문이다. 다만 **아직 필요가 실증되지 않은 설정 표면을 미리 만들지 않는다** — 사내 요구가 실제로 생겼을 때 그 자리를 연다.
 
