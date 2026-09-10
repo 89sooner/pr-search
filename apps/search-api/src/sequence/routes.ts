@@ -22,9 +22,12 @@ import { sendAuthError, toAuthError } from '../auth/errors.js';
 import {
   MAX_ANCHORS,
   resolveAnchors,
+  type AnchorFailure,
   type AnchorInput,
   type AnchorOutcome,
 } from './anchors.js';
+import { compareReleases } from './release-comparison.js';
+import { loadReleaseTimeline } from './release-timeline.js';
 import { RANGE_LIMIT, clampRangeSize, guardRange, runRange, type RangeDeps } from './range.js';
 import {
   isEpochStale,
@@ -46,6 +49,11 @@ export const SEQUENCE_RANGE_PATH = '/api/v1/sequence-ranges';
 export const SEQUENCE_ANCHOR_PATH = '/api/v1/sequence-anchors/resolve';
 export const CONTAINMENT_PATH = '/api/v1/containments';
 export const SEQUENCE_SPACES_PATH = '/api/v1/sequence-spaces';
+export const RELEASES_PATH = '/api/v1/releases';
+export const RELEASE_COMPARISON_PATH = '/api/v1/release-comparisons';
+
+/** FR-SEQ-004 예외 처리의 "저장소 등록 상태 조회 경로" — W-009의 셸 경로다. */
+export const REGISTRATION_STATUS_PATH = '/repositories';
 
 export interface SequenceRouteOptions extends RangeDeps {
   readonly auth: AuthContext;
@@ -102,6 +110,47 @@ function parseAnchorInputs(raw: unknown): readonly AnchorInput[] | null {
     inputs.push({ position, expression: expression.trim() });
   }
   return inputs;
+}
+
+/**
+ * 비교의 앵커 실패를 계약 모양으로 (API-SEQ-003, CR-030 DEV-157).
+ *
+ * **지목한 태그가 없으면 404 `RELEASE_NOT_INDEXED`다** — API-SEQ-002의 400
+ * `ANCHOR_UNRESOLVABLE`과 코드가 다른 이유는 대상이 다르기 때문이다(DEV-146):
+ * 이 API의 `from`·`to`는 표현이 아니라 릴리스 그 자체를 지목한다. detail의
+ * `reason`이 미수집(`release_not_indexed`)과 태그 부재(`tag_not_found`)를
+ * 가르고, 미수집이면 저장소 개요 경로를 함께 준다 (FR-SEQ-004 예외 처리).
+ * `supported_formats`는 싣지 않는다 — 입력이 앵커 표현이 아니다.
+ */
+function sendComparisonAnchorFailure(
+  reply: FastifyReply,
+  correlationId: string,
+  failure: AnchorFailure,
+): FastifyReply {
+  const reason = failure.detail['reason'];
+  if (
+    failure.code === 'ANCHOR_UNRESOLVABLE' &&
+    (reason === 'tag_not_found' || reason === 'release_not_indexed')
+  ) {
+    const { supported_formats: _dropped, ...detail } = failure.detail;
+    return fail(reply, 404, {
+      error: {
+        code: 'RELEASE_NOT_INDEXED',
+        message: failure.message,
+        detail: {
+          ...detail,
+          ...(reason === 'release_not_indexed'
+            ? { registration_status_path: REGISTRATION_STATUS_PATH }
+            : {}),
+        },
+      },
+      correlation_id: correlationId,
+    });
+  }
+  return fail(reply, 400, {
+    error: { code: failure.code, message: failure.message, detail: { ...failure.detail } },
+    correlation_id: correlationId,
+  });
 }
 
 /** 앵커 실패 하나를 400으로. 여럿이 실패해도 **첫 번째만** 낸다 — 오류는 하나씩 고친다. */
@@ -326,6 +375,105 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
         items_missing_in_index: result.items_missing_in_index,
         // 레지스트리에서 못 찾은 이름. 조용히 0건을 내지 않는다 (CR-016, DEV-052).
         ...(result.unresolved.length === 0 ? {} : { unresolved_names: result.unresolved }),
+        // WP-032 전까지 늘 `null`이다. 키를 빼면 화면이 마지막 페이지를 오해한다.
+        next_cursor: null,
+        correlation_id: correlationId,
+      });
+    } catch (error) {
+      return toFailureResponse(reply, correlationId, error);
+    }
+  });
+
+  // API-REL-005: W-005 릴리스 타임라인 (CR-030, DEV-155).
+  app.get(RELEASES_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const query = (request.query ?? {}) as Record<string, unknown>;
+
+    try {
+      const entered = await enter(request, reply, correlationId, query['repository'], query['base_branch']);
+      if (entered === null) return reply;
+      const { space } = entered;
+
+      const timeline = await loadReleaseTimeline(deps.pool, space);
+      if (timeline.kind === 'not_indexed') {
+        /*
+         * 릴리스 미수집은 오류가 아니라 상태다 (DEV-146) — 200 + 빈 목록 +
+         * 사유 + 저장소 개요 경로. 404로 내면 화면이 "저장소가 없다"로 읽는다.
+         */
+        return await reply.send({
+          sequence_space: space.sequenceSpace,
+          seq_epoch: space.seqEpoch,
+          sequence_state: space.state,
+          releases: [],
+          reason: 'release_not_indexed',
+          registration_status_path: REGISTRATION_STATUS_PATH,
+          correlation_id: correlationId,
+        });
+      }
+
+      return await reply.send({
+        sequence_space: space.sequenceSpace,
+        seq_epoch: space.seqEpoch,
+        sequence_state: space.state,
+        releases: timeline.releases,
+        // 서수 있는 릴리스가 없으면 "마지막 릴리스 이후"가 정의되지 않는다 — 키를 뺀다.
+        ...(timeline.unreleased === null ? {} : { unreleased: timeline.unreleased }),
+        correlation_id: correlationId,
+      });
+    } catch (error) {
+      return toFailureResponse(reply, correlationId, error);
+    }
+  });
+
+  // API-SEQ-003: 두 릴리스 구간 비교 (WP-026 / FR-SEQ-004).
+  app.get(RELEASE_COMPARISON_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const query = (request.query ?? {}) as Record<string, unknown>;
+
+    const fromTag = typeof query['from'] === 'string' ? query['from'].trim() : '';
+    const toTag = typeof query['to'] === 'string' ? query['to'].trim() : '';
+    if (fromTag === '') {
+      return invalidParameter(reply, correlationId, 'from', 'from은 릴리스 태그 이름이어야 합니다.');
+    }
+    if (toTag === '') {
+      return invalidParameter(reply, correlationId, 'to', "to는 릴리스 태그 이름 또는 'unreleased'여야 합니다.");
+    }
+
+    try {
+      const entered = await enter(request, reply, correlationId, query['repository'], query['base_branch']);
+      if (entered === null) return reply;
+      const { space, scope } = entered;
+
+      const outcome = await compareReleases(deps, space, scope, fromTag, toTag, clampRangeSize(query['size']));
+      if (outcome.kind === 'anchor_failed') {
+        return sendComparisonAnchorFailure(reply, correlationId, outcome.failure);
+      }
+      if (outcome.kind === 'too_large') {
+        // FR-SEQ-002 재사용이 상한도 데려온다 (CR-030, DEV-157) — 응답 모양은 API-SEQ-001과 같다.
+        return fail(reply, 400, {
+          error: {
+            code: 'RANGE_TOO_LARGE',
+            message:
+              `구간에 포함된 항목이 상한(${String(RANGE_LIMIT)})을 넘습니다. ` +
+              `현재 ${outcome.total.toLocaleString('en-US')}건.`,
+            detail: { estimated_count: outcome.total, limit: RANGE_LIMIT, exact: true },
+          },
+          correlation_id: correlationId,
+        });
+      }
+
+      return await reply.send({
+        sequence_space: space.sequenceSpace,
+        seq_epoch: space.seqEpoch,
+        sequence_state: space.state,
+        normalized_direction: outcome.direction,
+        from_release: { tag_name: outcome.from.expression, merge_seq: outcome.from.merge_seq },
+        to_release: { tag_name: outcome.to.expression, merge_seq: outcome.to.merge_seq },
+        range: { from_seq: outcome.from.merge_seq, to_seq: outcome.to.merge_seq, boundary: '(from, to]' },
+        // `reverted_pull_request_count`는 WP-030 전까지 이 요약에 없다 (DEV-156 — DEV-133·150의 연장).
+        summary: outcome.result.summary,
+        items: outcome.result.items,
+        items_missing_in_index: outcome.result.items_missing_in_index,
         // WP-032 전까지 늘 `null`이다. 키를 빼면 화면이 마지막 페이지를 오해한다.
         next_cursor: null,
         correlation_id: correlationId,

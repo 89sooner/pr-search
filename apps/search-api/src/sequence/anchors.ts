@@ -294,71 +294,8 @@ export async function resolveAnchor(
       return resolved(input, 'time', point);
     }
 
-    case 'release': {
-      /*
-       * 릴리스 태그 앵커 (FR-SEQ-003 AC-1 / WP-024, CR-028 DEV-142).
-       *
-       * **정본은 PostgreSQL `release` 표다.** JOB-REL-007이 미러의 refs/tags
-       * 스냅숏을 그 표로 동기화하고(DEV-143 — 미러는 태그를 갱신한다, 실측),
-       * 여기서는 태그 이름으로 그 표를 읽는다.
-       *
-       * 서수는 **현재 에폭으로 다시 확인한다.** 표의 서수는 동기화 시점 에폭에
-       * 묶이므로(DEV-149), 재채번 직후에는 낡았을 수 있다 — 태그가 가리키는
-       * 커밋의 서수를 현재 에폭 체인에서 다시 찾는 것이 늘 옳은 답이다.
-       */
-      const release = await releaseRepo.findReleaseByTag(deps.pool, repositoryId, expression.tag);
-      if (release === undefined) {
-        const indexed = await releaseRepo.hasAnyRelease(deps.pool, repositoryId);
-        return failed(
-          input,
-          'ANCHOR_UNRESOLVABLE',
-          indexed
-            ? `그런 릴리스 태그가 없습니다: ${expression.tag}`
-            : `이 저장소의 릴리스가 아직 수집되지 않았습니다: ${expression.tag}`,
-          {
-            ...(indexed ? { reason: 'tag_not_found' } : { reason: 'release_not_indexed' }),
-            supported_formats: SUPPORTED_ANCHOR_FORMATS,
-          },
-        );
-      }
-
-      const point = await mergeSequenceRepo.findPointByCommit(
-        deps.pool,
-        repositoryId,
-        baseBranch,
-        seqEpoch,
-        release.commit_sha,
-      );
-      if (point !== null) {
-        const anchor = resolved(input, 'release', point);
-        if (anchor.kind === 'resolved') {
-          // 릴리스 앵커의 시각은 커밋 시각이 아니라 릴리스 시각이다 (API-SEQ-002 예시).
-          return { kind: 'resolved', anchor: { ...anchor.anchor, occurred_at: release.released_at.toISOString() } };
-        }
-        return anchor;
-      }
-
-      /*
-       * 이 공간의 체인에 없다. 태그가 **다른** 시퀀스 브랜치의 체인에는 있으면
-       * 공간 불일치이고(브랜치를 바꾸면 된다), 어디에도 없으면 체인 밖 태그다
-       * (원본 커밋을 가리키는 태그 — 머지 커밋 제안이 다음 수다).
-       */
-      if (release.base_branch !== null && release.base_branch !== baseBranch) {
-        return failed(
-          input,
-          'SEQUENCE_SPACE_MISMATCH',
-          `이 릴리스는 ${space.sequenceSpace}가 아니라 ${release.base_branch} 브랜치에 있습니다.`,
-          { sequence_space: space.sequenceSpace, release_base_branch: release.base_branch },
-        );
-      }
-      const suggested = await suggestMergeCommit(deps, space, scope, release.commit_sha);
-      return failed(
-        input,
-        'ANCHOR_NOT_ON_BRANCH',
-        `이 릴리스의 커밋은 ${space.sequenceSpace}의 first-parent 체인에 없습니다.`,
-        suggested === null ? {} : { suggested_anchor: suggested },
-      );
-    }
+    case 'release':
+      return resolveReleaseTagAnchor(deps, space, scope, input, expression.tag);
 
     case 'ambiguous':
       return failed(input, 'ANCHOR_UNRESOLVABLE', '앵커가 두 가지 이상으로 읽힙니다.', {
@@ -439,6 +376,85 @@ async function pullRequestState(
     return { kind: 'other_branch', baseBranch };
   }
   return { kind: 'not_merged' };
+}
+
+/**
+ * 릴리스 태그 하나를 서수로 바꾼다 (FR-SEQ-003 AC-1 / WP-024, CR-028 DEV-142).
+ *
+ * **정본은 PostgreSQL `release` 표다.** JOB-REL-007이 미러의 refs/tags
+ * 스냅숏을 그 표로 동기화하고(DEV-143 — 미러는 태그를 갱신한다, 실측),
+ * 여기서는 태그 이름으로 그 표를 읽는다.
+ *
+ * 서수는 **현재 에폭으로 다시 확인한다.** 표의 서수는 동기화 시점 에폭에
+ * 묶이므로(DEV-149), 재채번 직후에는 낡았을 수 있다 — 태그가 가리키는
+ * 커밋의 서수를 현재 에폭 체인에서 다시 찾는 것이 늘 옳은 답이다.
+ *
+ * API-SEQ-002의 release 분기와 API-SEQ-003(릴리스 비교)이 **같은 판정을 쓴다**
+ * (CR-030, DEV-157). 비교 쪽은 `classifyAnchor`를 거치지 않고 태그 이름을
+ * 그대로 넣는다 — 태그에는 형식 제약이 없어 `deadbee` 같은 이름이 분류를
+ * 거치면 SHA 접두로 오독된다.
+ */
+export async function resolveReleaseTagAnchor(
+  deps: AnchorDeps,
+  space: ResolvedSpace,
+  scope: AccessScope,
+  input: AnchorInput,
+  tag: string,
+): Promise<AnchorOutcome> {
+  const { repositoryId, baseBranch, seqEpoch } = space;
+
+  const release = await releaseRepo.findReleaseByTag(deps.pool, repositoryId, tag);
+  if (release === undefined) {
+    const indexed = await releaseRepo.hasAnyRelease(deps.pool, repositoryId);
+    return failed(
+      input,
+      'ANCHOR_UNRESOLVABLE',
+      indexed
+        ? `그런 릴리스 태그가 없습니다: ${tag}`
+        : `이 저장소의 릴리스가 아직 수집되지 않았습니다: ${tag}`,
+      {
+        ...(indexed ? { reason: 'tag_not_found' } : { reason: 'release_not_indexed' }),
+        supported_formats: SUPPORTED_ANCHOR_FORMATS,
+      },
+    );
+  }
+
+  const point = await mergeSequenceRepo.findPointByCommit(
+    deps.pool,
+    repositoryId,
+    baseBranch,
+    seqEpoch,
+    release.commit_sha,
+  );
+  if (point !== null) {
+    const anchor = resolved(input, 'release', point);
+    if (anchor.kind === 'resolved') {
+      // 릴리스 앵커의 시각은 커밋 시각이 아니라 릴리스 시각이다 (API-SEQ-002 예시).
+      return { kind: 'resolved', anchor: { ...anchor.anchor, occurred_at: release.released_at.toISOString() } };
+    }
+    return anchor;
+  }
+
+  /*
+   * 이 공간의 체인에 없다. 태그가 **다른** 시퀀스 브랜치의 체인에는 있으면
+   * 공간 불일치이고(브랜치를 바꾸면 된다), 어디에도 없으면 체인 밖 태그다
+   * (원본 커밋을 가리키는 태그 — 머지 커밋 제안이 다음 수다).
+   */
+  if (release.base_branch !== null && release.base_branch !== baseBranch) {
+    return failed(
+      input,
+      'SEQUENCE_SPACE_MISMATCH',
+      `이 릴리스는 ${space.sequenceSpace}가 아니라 ${release.base_branch} 브랜치에 있습니다.`,
+      { sequence_space: space.sequenceSpace, release_base_branch: release.base_branch },
+    );
+  }
+  const suggested = await suggestMergeCommit(deps, space, scope, release.commit_sha);
+  return failed(
+    input,
+    'ANCHOR_NOT_ON_BRANCH',
+    `이 릴리스의 커밋은 ${space.sequenceSpace}의 first-parent 체인에 없습니다.`,
+    suggested === null ? {} : { suggested_anchor: suggested },
+  );
 }
 
 /** 앵커 여럿을 한 번에. 위치별로 하나씩 오는 것이 정상이지만 강제하지는 않는다. */
