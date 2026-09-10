@@ -2855,3 +2855,290 @@ describe('파티션 수명 주체가 강제 경로에 있다 (DEV-556)', () => {
     expect(ENV_EXAMPLE).not.toContain('복구나 재구축 뒤에는 손으로 다시');
   });
 });
+
+/**
+ * 초록이 거짓말하지 못하게 한다 (`CR-078` / `DEV-577`).
+ *
+ * ## 이 계층이 무엇을 잡고 무엇을 잡지 못하는가
+ *
+ * `0.1.0-pilot.3`은 **아래를 전부 통과하고** 사내에서 막혔다.
+ *
+ *   단위·통합·회귀 시험 통과 → `next build` 성공 → `docker build` 성공
+ *   → 컨테이너 healthcheck 통과 → **사람이 여는 화면은 전부 500**
+ *
+ * 그 다섯 중 어느 것도 "실제 이미지가 실제 SSR 요청을 처리하는가"를 묻지
+ * 않았다. 그 질문은 **컨테이너를 띄워야만** 물을 수 있으므로 산출물 게이트
+ * (`deploy/single-host/smoke-images.sh`)가 릴리스 시점에 묻는다.
+ *
+ * 이 파일이 하는 일은 다르다: **그 게이트가 릴리스 경로에서 사라지지 않게
+ * 하는 것**과, 게이트가 묻는 질문의 목록이 조용히 줄어들지 않게 하는 것이다.
+ * 게이트를 지우면 여기서 죽고, 게이트의 질문 하나를 지워도 여기서 죽는다.
+ *
+ * **판정 자체는 여기서 재지 않는다.** 소스를 문자열로 읽는 검사는 「토큰은
+ * 남기고 로직을 뒤집는」 변이를 놓친다 — 적대적 검토가 실제로 그렇게 통과시켰다.
+ * 그래서 판정은 실행으로 잰다:
+ *
+ *   `apps/web/instrumentation.test.ts`      기동 검증이 실제로 종료를 요청하는가
+ *   `apps/web/app/healthz/route.test.ts`    헬스체크가 실제로 5xx를 내는가
+ *   `apps/web/lib/server/config.test.ts`    판정이 실제로 이유를 돌려주는가
+ *   `packages/authz/src/config.test.ts`     계약과 배포 문서가 같은 말을 하는가
+ *   `deploy/single-host/smoke-images.sh`    실제 이미지가 실제 요청을 처리하는가
+ */
+describe('초록이 거짓말하지 못한다 (CR-078)', () => {
+  const INSTRUMENTATION = read('apps/web/instrumentation.ts');
+  const HEALTHZ = read('apps/web/app/healthz/route.ts');
+  const WEB_CONFIG = read('apps/web/lib/server/config.ts');
+  const SMOKE = read('deploy/single-host/smoke-images.sh');
+  const BUILD_BUNDLE = read('deploy/single-host/build-bundle.sh');
+  const RUNBOOK_078 = read('deploy/single-host/RUNBOOK.md');
+
+  /**
+   * **적힌 의도를 실제로 이행한다.**
+   *
+   * `resolveSessionReaderConfig`의 주석도 `playwright.config.ts`의 주석도
+   * 원장의 검증 표도 「운영에서 false면 **기동을 막는다**」고 적고 있었다.
+   * 실제로는 요청마다 던졌을 뿐이라 컨테이너가 초록으로 섰다.
+   */
+  it('web이 기동 시점에 구성을 편다', () => {
+    expect(INSTRUMENTATION, 'instrumentation이 register를 내보내지 않는다').toMatch(
+      /export\s+(?:async\s+)?function\s+register\s*\(/,
+    );
+    /*
+     * 판정은 한 곳에서 온다 — 기동과 헬스체크가 각자 판정하면 갈라진다.
+     * **부르는지를 잰다**: 이름만 남기고 `null`을 대입하는 변이가 이름 검사를
+     * 그대로 통과했다.
+     */
+    expect(INSTRUMENTATION, '기동 검증이 구성 판정을 부르지 않는다').toMatch(
+      /=\s*webConfigFailure\s*\(/,
+    );
+    expect(WEB_CONFIG).toMatch(/export function webConfigFailure\s*\(/);
+  });
+
+  /**
+   * **`throw`로는 막지 못한다.** 재 보았다: Next 16.3.1의 production 서버는
+   * `NextServer.prepare()`에서 진짜 준비를 await하지 않고 `.catch`로 로그만
+   * 남기므로, `register()`가 던져도 **프로세스가 살아서 모든 요청에 500을
+   * 낸다** — 고치려던 바로 그 모양이다. 종료만이 이 계약을 이행한다.
+   *
+   * 그래서 "파일 어딘가에 종료가 있는가"가 아니라 **실패 갈래가 종료하는가**를
+   * 잰다 (`DEV-427`·`DEV-551`이 세운 선례).
+   */
+  it('구성이 성립하지 않으면 프로세스를 종료한다 — 던지기만 하지 않는다', () => {
+    const marker = 'if (failure === null) return;';
+    expect(INSTRUMENTATION, '실패 갈래를 가르는 조기 반환이 없다').toContain(marker);
+    const failureBranch = INSTRUMENTATION.slice(INSTRUMENTATION.indexOf(marker) + marker.length);
+    expect(failureBranch, '구성이 성립하지 않는 갈래가 프로세스를 종료하지 않는다').toMatch(/\.exit\??\.?\(1\)/);
+    // 이유를 남기지 않으면 운영자가 `docker logs`를 열어도 알 수 없다.
+    expect(failureBranch).toContain('failure');
+  });
+
+  /**
+   * **헬스체크가 구성을 본다.**
+   *
+   * 옛 핸들러는 아무것도 읽지 않고 늘 `ok`를 냈다. 그래서 Docker가 `healthy`를
+   * 보고하는 동안 모든 화면이 500이었고, 운영자는 컨테이너가 정상이므로 원인을
+   * 다른 곳에서 찾았다.
+   */
+  it('/healthz가 구성 판정을 읽고 실패를 5xx로 낸다', () => {
+    const fn = HEALTHZ.slice(HEALTHZ.indexOf('export function GET('));
+    /*
+     * **부르는지를 잰다.** 이름이 파일 어딘가에 있는 것으로는 판정이 응답을
+     * 좌우한다고 말할 수 없다 — `webConfigFailure`를 import한 채 `null`을
+     * 대입하는 변이가 그 시험을 그대로 통과했다.
+     */
+    const call = /const\s+(\w+)\s*=\s*webConfigFailure\(/.exec(fn);
+    expect(call, 'GET이 구성 판정을 부르지 않는다').not.toBeNull();
+    const bound = (call as RegExpExecArray)[1] as string;
+
+    // 5xx가 **그 결과에 걸려** 있어야 한다. 죽은 갈래에 있으면 초록이 다시 거짓말한다.
+    const guard = fn.indexOf(`if (${bound} !== null)`);
+    expect(guard, '판정 결과로 갈래를 가르지 않는다').toBeGreaterThan(-1);
+    const branch = fn.slice(guard, fn.indexOf('\n  }', guard));
+    expect(branch, '판정이 실패해도 5xx를 내지 않는다').toMatch(/status:\s*5\d\d/);
+
+    // 값을 반사하면 호스트 포트에 노출된다 — 이유는 로그로만 간다 (NFR-005).
+    expect(branch, '판정 문구를 응답 본문에 싣는다').not.toMatch(/reason:\s*\w/);
+  });
+
+  /**
+   * **게이트가 릴리스 경로에 있다.**
+   *
+   * 순서가 계약이다: `docker save` **뒤**여야 tar을 건넌 이미지를 검사하고,
+   * 운반 아카이브 **앞**이어야 통과하지 못한 이미지로 반입 파일을 만들지 않는다.
+   */
+  it('번들 빌드가 이미지 런타임 검사를 거친다', () => {
+    const call = BUILD_BUNDLE.indexOf('smoke-images.sh');
+    expect(call, 'build-bundle.sh가 이미지 런타임 검사를 부르지 않는다').toBeGreaterThan(-1);
+    const save = BUILD_BUNDLE.indexOf('docker save');
+    const archive = BUILD_BUNDLE.indexOf('tar -czf');
+    expect(save, 'docker save가 없다').toBeGreaterThan(-1);
+    expect(archive, '운반 아카이브 생성이 없다').toBeGreaterThan(-1);
+    expect(save, '검사가 docker save보다 앞이다 — tar을 건넌 이미지를 보지 않는다').toBeLessThan(call);
+    expect(call, '검사가 운반 아카이브 생성보다 뒤다 — 통과 못한 이미지로 반입 파일을 만든다').toBeLessThan(archive);
+    // 실패가 빌드를 멈춰야 한다. 부르기만 하고 넘어가면 게이트가 아니다.
+    const line = BUILD_BUNDLE.slice(call, BUILD_BUNDLE.indexOf('\n\n', call));
+    expect(line, '검사 실패가 번들 생성을 멈추지 않는다').toContain('die');
+    // 검사는 **tar을 인자로** 받아야 저장·적재 경계를 건넌다.
+    expect(BUILD_BUNDLE.slice(call - 200, call + 200)).toContain('pr-search-app.tar');
+  });
+
+  /**
+   * **게이트가 묻는 질문이 줄지 않는다.**
+   *
+   * 한 줄씩 지워도 게이트는 계속 초록이므로, 질문 목록 자체를 여기서 고정한다.
+   */
+  it('이미지 런타임 검사가 다섯 차원을 모두 본다', () => {
+    // 1. `/healthz`만으로 판정하지 않는다 — 그것이 이 결함을 놓친 이유다.
+    const ssr = /^SSR_PATHS='([^']+)'/m.exec(SMOKE)?.[1];
+    expect(ssr, '대표 SSR 경로 목록이 없다').toBeDefined();
+    const paths = (ssr as string).split(/\s+/).filter((one) => one !== '');
+    expect(paths.length, '대표 SSR 화면이 너무 적다').toBeGreaterThanOrEqual(5);
+    expect(paths, '헬스체크 경로만 본다').not.toEqual(['/healthz']);
+    expect(paths).toContain('/');
+
+    // 2. 해시 외부 모듈이 **런타임에 해석되는지** 본다 (DEV-551). 디렉터리
+    //    존재가 아니라 해석이며, 이름은 `.next`의 추적 기록에서 읽는다.
+    expect(SMOKE).toContain('nft.json');
+    expect(SMOKE).toContain('require.resolve');
+    // 이름을 박아 두지 않는다 — 해시는 빌드마다 달라질 수 있다.
+    expect(SMOKE.replace(/^#.*$/gm, ''), '해시 이름이 박혀 있다').not.toMatch(/-[0-9a-f]{16}['"`]/);
+
+    // 3. 잘못된 구성이 **죽는지** 본다. 멈추는 것은 통과가 아니다 (DEV-577).
+    expect(SMOKE).toContain('SESSION_COOKIE_SECURE=false');
+    // 같은 유형의 구성 하나 더 — 인증을 켰는데 자격 증명이 없는 경우 (DEV-579).
+    expect(SMOKE, 'OIDC 불완전 구성의 거부를 재지 않는다').toContain('AUTH_ENABLED=true');
+    expect(SMOKE, '거부 검사에 시간 제한이 없다 — 고치기 전 이미지는 죽지 않고 멈춘다').toMatch(/timeout .*docker run/);
+    /*
+     * **시간 초과 갈래가 실패시키는지 본다.** `124)`가 파일에 있다는 것만으로는
+     * 부족하다 — 그 갈래를 통과로 바꾸면 죽지 않는(= 고치기 전) 이미지가 게이트를
+     * 지나가는데 검사는 초록이었다(변이로 확인).
+     */
+    const timedOut = SMOKE.slice(SMOKE.indexOf('    124)'));
+    expect(timedOut.slice(0, timedOut.indexOf(';;')), '시간 초과를 실패로 판정하지 않는다').toContain('die');
+
+    // 4. worker의 git이 실제로 실행되는지 본다 (DEV-572).
+    expect(SMOKE).toMatch(/--entrypoint git/);
+
+    // 5. 손 조치가 필요한 상태로 반입되지 않는다.
+    expect(SMOKE).toContain('package-lock.json');
+  });
+
+  /**
+   * **게이트가 빌더의 환경에 기대지 않는다.**
+   *
+   * 백킹 서비스나 IdP가 있어야 도는 게이트는 빌더마다 답이 달라진다.
+   * 그러면 게이트가 아니라 잡음이고, 잡음은 결국 꺼진다.
+   */
+  it('이미지 런타임 검사가 네트워크 없이 돈다', () => {
+    const runs = [...SMOKE.matchAll(/docker run[^\n]*/g)].map(([one]) => one);
+    expect(runs.length, 'docker run이 없다').toBeGreaterThan(0);
+    for (const run of runs) {
+      expect(run, `네트워크를 끊지 않는 실행이 있다: ${run}`).toContain('--network none');
+    }
+  });
+
+  /**
+   * **배포 정의가 인증 계약이 요구하는 키를 전부 넘긴다** (`DEV-579`).
+   *
+   * `resolveOidcConfig`가 요구하는 키를 **그 소스에서 읽어** compose가 `web`에
+   * 넘기는 목록과 대조한다. 목록을 여기 옮겨 적지 않는 이유는 단순하다 —
+   * 옮겨 적었다면 `OIDC_REDIRECT_URI`가 빠진 것을 못 잡았을 것이다. 실제로
+   * 그 키는 계약에만 있고 `compose.yml`·`.env.example`·런북 어디에도 없어서,
+   * 사내가 OIDC를 켜는 순간 모든 로그인이 500이 될 상태였다.
+   */
+  it('compose가 OIDC 계약이 요구하는 키를 web에 전부 넘긴다', () => {
+    const contract = read('packages/authz/src/config.ts');
+    const required = [...contract.matchAll(/required\(env, '([A-Z_]+)'\)/g)].map(([, key]) => key);
+    expect(required.length, '계약이 요구하는 키를 읽지 못했다').toBeGreaterThan(0);
+    expect(required, 'OIDC_REDIRECT_URI가 계약에서 사라졌다 — 이 시험의 전제가 바뀌었다').toContain(
+      'OIDC_REDIRECT_URI',
+    );
+
+    const compose = read('deploy/single-host/compose.yml');
+    const web = compose.slice(compose.indexOf('\n  web:\n'), compose.indexOf('\n  search-api:\n'));
+    const example = read('deploy/single-host/.env.example');
+    for (const key of required) {
+      /*
+       * **주석으로는 만족하지 않는다.** `KEY:` 부분 문자열만 보면 `# KEY: ...`
+       * 주석 한 줄이 검사를 통과시킨다(변이로 확인). 실제 매핑 행이어야 한다 —
+       * 줄 첫머리의 키와 `${KEY` 참조를 함께 본다.
+       */
+      const mapping = new RegExp(`^\\s+${key}:\\s*\\$\\{${key}`, 'm');
+      expect(mapping.test(web), `compose가 web에 ${key}를 넘기지 않는다 — 인증을 켜면 로그인이 500이다`).toBe(true);
+      expect(
+        example.split('\n').some((line) => line.startsWith(`${key}=`)),
+        `.env.example에 ${key} 행이 없다 — 운영자가 채워야 할 값을 모른다`,
+      ).toBe(true);
+    }
+  });
+
+  /**
+   * **인증을 켰는데 자격 증명이 없으면 서지 않는다** (`DEV-579`).
+   *
+   * `DEV-577`과 같은 모양이다 — 컨테이너는 초록인데 사람의 경로가 막힌다.
+   * 판정이 로그인 라우트가 실제로 부르는 함수를 부르는지 확인한다. 키 목록을
+   * 옮겨 적으면 한쪽이 키를 더할 때 갈라진다.
+   */
+  it('구성 판정이 OIDC 계약을 로그인 라우트와 같은 함수로 잰다', () => {
+    const login = read('apps/web/app/auth/login/route.ts');
+    expect(login, '로그인 라우트가 resolveOidcConfig를 부르지 않는다').toMatch(/resolveOidcConfig\s*\(/);
+    expect(WEB_CONFIG, '판정이 로그인 라우트와 다른 함수로 잰다').toMatch(/resolveOidcConfig\s*\(env\)/);
+    // 키 이름을 판정 쪽에 옮겨 적으면 갈라진다.
+    const judge = WEB_CONFIG.slice(WEB_CONFIG.indexOf('export function webConfigFailure'));
+    expect(judge, '판정이 OIDC 키 이름을 직접 담는다 — 계약과 갈라진다').not.toMatch(/'OIDC_[A-Z_]+'/);
+  });
+
+  /**
+   * **사내 스모크가 화면을 본다** (`DEV-577`).
+   *
+   * `prsctl smoke`는 「health가 아니라 실제 조회 왕복을 건다」는 규율로 세워졌는데
+   * (`DEV-515`), `web`에 대해서는 `/healthz`만 봤다. 그래서 사내 업그레이드에서
+   * 스모크가 통과하고도 사람이 여는 화면은 전부 500이었다 — 그 이미지와 그
+   * 구성으로 실측했다: `/healthz` 200, `/` 500.
+   *
+   * **5xx만 거른다.** 인증을 켠 배포에서 진입 화면은 로그인으로 리다이렉트하는
+   * 것이 정상이므로 200을 요구하면 정상 배포가 실패한다.
+   */
+  it('prsctl smoke가 web의 헬스체크만 보지 않는다', () => {
+    const prsctl = read('deploy/single-host/prsctl');
+    const smoke = prsctl.slice(prsctl.indexOf('cmd_smoke()'));
+    const body = smoke.slice(0, smoke.indexOf('\n}\n'));
+
+    // 진입 화면을 실제로 요청한다 — 헬스체크 경로가 아니다.
+    expect(body, 'web의 진입 화면을 요청하지 않는다').toMatch(/127\.0\.0\.1:3000\/'/);
+    // 5xx를 실패로 판정해야 한다.
+    expect(body, '5xx를 실패로 판정하지 않는다').toMatch(/5\*\|''\)/);
+    // 200을 요구하면 인증을 켠 배포가 리다이렉트 때문에 실패한다.
+    const entry = body.slice(body.indexOf('사람이 여는 화면'));
+    expect(entry.slice(0, entry.indexOf('엔티티 별칭')), '진입 화면에 200을 요구한다').not.toMatch(
+      /entry" = 200|entry" != 200/,
+    );
+  });
+
+  /**
+   * **런북이 이번 증상을 안다.**
+   *
+   * 운영자가 실제로 본 화면은 "컨테이너는 전부 정상인데 웹만 500"이었다.
+   * 그 문장으로 찾을 수 있어야 다음 반입에서 같은 시간을 쓰지 않는다.
+   */
+  it('런북이 이번 증상과 처방을 적는다', () => {
+    const table = RUNBOOK_078.slice(RUNBOOK_078.indexOf('| 증상'));
+    expect(table, '"정상인데 화면만 500" 증상 행이 없다').toMatch(/웹 화면만 \*\*500\*\*|\*\*웹 화면만 500\*\*/);
+    expect(table, '기동 거부 증상 행이 없다').toContain('web 구성이 성립하지 않아 기동할 수 없다');
+    // **손 조치를 처방으로 남기지 않는다.** 그것이 이번 반입에서 제안된 것이다.
+    expect(table).toContain('`npm install`을 실행하지 않는다');
+  });
+
+  /**
+   * **문서가 운영자를 거부당하는 값으로 보내지 않는다.**
+   *
+   * 실행 가능한 대조는 `packages/authz/src/config.test.ts`가 한다 — 문서에서
+   * 읽은 값을 실제 계약 함수에 넣는다. 여기서는 옛 문구가 되살아나지 않는지만
+   * 본다.
+   */
+  it('런북이 HTTP에서 insecure 쿠키를 권하지 않는다', () => {
+    expect(RUNBOOK_078).not.toMatch(/SESSION_COOKIE_SECURE=false[^)]{0,40}(?:로 둔다|여야|권한다)/);
+    // 대신 갈 곳을 말해야 한다.
+    expect(RUNBOOK_078).toContain('TLS를 앞에 세우거나');
+  });
+});

@@ -590,11 +590,14 @@ done
 | 웹훅은 받는데 **`store_failed`** | `raw_event`에 다가올 파티션이 남아 있는가. `select relname from pg_class where relname like 'raw_event_%'`로 확인한다. `ADMIN_DATABASE_URL`은 이제 필수 값이라 비면 `load`부터 멈추므로(`DEV-556`), 이 증상이 나면 값은 있고 **잡이 돌지 않은 것**이다 — `worker-batch` 로그를 본다 |
 | `password authentication failed` (`prs_retention`) | **비밀번호를 퍼센트 인코딩했는가** — 앱은 디코딩한 값으로 접속한다. 롤 자체는 `install`·`upgrade`·`restore`가 `ADMIN_DATABASE_URL`을 읽어 만들므로(`DEV-556`), 값을 고친 뒤 `./prsctl upgrade`를 돌리면 비밀번호가 맞춰진다 |
 | 웹 화면이 전부 500, 로그에 `Failed to load external module` | 이미지가 `DEV-551` 이전 빌드다. 그 결함은 **배포 트리에서만** 나타나며 이미지 빌드가 고친다 — 컨테이너 안에서 손으로 스텁을 만들면 `upgrade`·`restart`마다 사라진다. 고친 버전으로 다시 받는다 |
+| `docker compose ps`는 전부 정상인데 **웹 화면만 500** | 이미지가 `DEV-577` 이전 빌드다. 그 빌드는 잘못된 구성으로도 기동하고 `/healthz`에 200을 내므로 컨테이너가 `healthy`로 보이는데, 사람이 여는 화면만 500이 됐다 — 사내 반입 `0.1.0-pilot.3`이 막힌 자리다. **컨테이너 안에서 `npm install`을 실행하지 않는다**: 배포 트리의 `package.json`은 워크스페이스 참조를 담고 있어 npm이 `EUNSUPPORTEDPROTOCOL`로 거부하고, 설령 되더라도 `upgrade` 한 번에 사라진다. 고친 버전으로 다시 받는다 |
+| `web`이 재기동을 반복한다 · 로그에 `web 구성이 성립하지 않아 기동할 수 없다` | **의도된 거부다** (`DEV-577`). 로그의 다음 줄이 어느 계약을 어겼는지 적는다. 가장 잦은 것은 운영에서 `SESSION_COOKIE_SECURE=false`이며, 값을 `true`로 되돌리고 `./prsctl upgrade`를 다시 돌린다 (2.B). 이 거부가 없던 시절에는 같은 구성이 초록으로 서서 화면만 500이었다 |
+| 인증을 켠 뒤 모든 화면이 로그인으로 갔다가 500 | `OIDC_REDIRECT_URI`를 채웠는가 (`DEV-579`). 값은 `<서비스 주소>/auth/callback`이며 IdP에 등록한 것과 문자 그대로 같아야 한다. 고친 버전에서는 이 값이 비면 `web`이 아예 기동하지 않으므로 이 증상은 `DEV-579` 이전 빌드에서만 난다 |
 | GHE 호출이 인증서 오류 · 기동 로그에 CA 경고 | CA를 **여섯 자리 전부**에 걸었는가. anchor는 얕게 합쳐져 `worker-sequence`·`worker-mirror`·`worker-release`에 닿지 않는다 (6장 「anchor는 얕게 합쳐진다」, `DEV-552`) |
 | 서버 안에서 `curl`이 `HTTP/0.9` 오류 | 호스트에 프록시가 강제돼 컨테이너 IP로 가는 요청까지 경유한다. 진단할 때만 `--noproxy '*'`로 우회한다 — 서비스 쪽 프록시 지원은 별개다 (`DEV-494`) |
 | 검색 결과가 비어 있다 | 백필을 실행했는가. `worker-project` 로그에 색인 기록이 있는가 |
 | `group_by=team`이 빈 결과 | `authz` 역할에 GHE 자격이 있는가 — 없으면 작성자 팀이 언제나 모름이다 |
-| 로그인 후 다시 로그인 화면 | TLS 없이 HTTP로 서비스하면서 `SESSION_COOKIE_SECURE=true`인가 |
+| 로그인 후 다시 로그인 화면 | 평문 HTTP로 서비스하고 있는가. `Secure` 쿠키는 브라우저가 HTTP로 되돌려 보내지 않으므로 세션이 매 요청마다 사라진다. **`SESSION_COOKIE_SECURE=false`로 내리는 것은 답이 아니다** — 운영에서 그 값은 `web`의 기동을 막는다 (`DEV-577`). TLS를 앞에 세우거나, 아직 세울 수 없다면 `AUTH_ENABLED=false`로 둔다. 그 형상에서도 화면은 서고 조회만 프록시가 401로 막는다 |
 | `install`이 접속 주체 프로비저닝에서 멈춘다 | `POSTGRES_APP_USER`가 `prs_app`인가 — 그것은 그룹 롤이라 접속할 수 없다. 다른 이름을 준다 (DEV-503) |
 | 업그레이드에서 `load`가 `.env`가 없다고 멈춘다 | 이전 설치의 `.env`를 복사했는가. 번들은 시크릿을 담지 않는다 (DEV-513) |
 | 복구 뒤 검색 결과가 비어 있거나 부분적 | **정상이다.** 재색인이 도는 중이며 진행은 운영 콘솔에서 본다 (DEV-511) |

@@ -147,6 +147,10 @@ services:
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      # 브라우저가 IdP에서 돌아올 주소. **`web`만 쓴다** — `search-api`는 OIDC
+      # 왕복을 하지 않는다. `AUTH_ENABLED=true`인데 이 값이 비면 로그인이 500이다
+      # (`DEV-579`). 값은 `<서비스 주소>/auth/callback`이다.
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
       OIDC_AUTHORIZATION_ENDPOINT: ${OIDC_AUTHORIZATION_ENDPOINT:-}
       OIDC_TOKEN_ENDPOINT: ${OIDC_TOKEN_ENDPOINT:-}
       OIDC_JWKS_URI: ${OIDC_JWKS_URI:-}

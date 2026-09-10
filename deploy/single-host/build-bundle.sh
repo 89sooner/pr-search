@@ -144,6 +144,22 @@ for target in "${APP_TARGETS[@]}"; do APP_IMAGES+=("${IMAGE_NAME[$target]}:${VER
 docker save "${APP_IMAGES[@]}"    -o "${BUNDLE}/images/pr-search-app.tar"
 docker save "${BACKING_IMAGES[@]}" -o "${BUNDLE}/images/backing-services.tar"
 
+# ── 이미지 런타임 검사 ──────────────────────────────────────────
+#
+# **번들에 들어갈 그 이미지를 실제로 띄워 본다** (`CR-078` / `DEV-577`).
+#
+# `0.1.0-pilot.3`은 시험·빌드·헬스체크를 전부 통과하고 사내에서 막혔다.
+# 위의 어느 단계도 **"사람이 여는 화면이 실제로 열리는가"**를 묻지 않았기
+# 때문이다. 그 질문을 여기서 한다.
+#
+# **`docker save` 뒤에 둔다.** 사내가 받는 것은 빌드 트리가 아니라 tar이므로,
+# tar에서 다시 적재한 이미지를 검사해야 검사한 것과 반입되는 것이 같다.
+# 아카이브를 만들기 **전**이기도 하다 — 통과하지 못한 이미지로 운반 파일을
+# 만들 이유가 없다.
+step "이미지 런타임 검사"
+"${REPO_ROOT}/deploy/single-host/smoke-images.sh" "$VERSION" "${BUNDLE}/images/pr-search-app.tar" \
+  || die "번들 이미지가 런타임 검사를 통과하지 못했다 — 이 번들을 반입하지 않는다"
+
 # ── 소스 계보 ───────────────────────────────────────────────────
 # **git bundle이다.** tarball과 달리 커밋 그래프를 담으므로 사내에서
 # `vendor/upstream`으로 fetch할 수 있고, 다음 반입의 merge 기반이 된다.

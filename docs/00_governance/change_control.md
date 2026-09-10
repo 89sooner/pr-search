@@ -81,6 +81,7 @@
 | CR-075 | 2026-09-10 | correction | PR #160 머지 후 P2 리뷰 | CR-074 cascade가 검증 결과를 원장 6.72.9장에 기록했다고 했으나 그 절에 명령·통과 수가 없었다. 실제 로컬·CI 결과를 원장에 추가한다 | DEV-574 · DEV-573 · CR-074 | 구현 원장 | closed |
 | CR-076 | 2026-09-10 | correction | PR #161 머지 후 P1 리뷰 | CR-075를 닫으면서 strict document validator 결과를 cascade에 기록하지 않았다. 변경 전 main과 같은 기존 오류 3건·경고 1건, 신규 issue 0건임을 명시한다 | DEV-575 · DEV-574 · CR-075 | 변경 관리·구현 원장 | closed |
 | CR-077 | 2026-09-10 | scope | 2026-09-10 P4 회고 회의 결정 (불편사항 1·3·5 묶음) | **회의가 결정한 M 넘버를 승인 범위로 편입한다.** 회의는 불편사항 1(바이너리에 변경이 반영됐는지 확인)·3(PR 번호 순서와 base 브랜치 반영 순서 불일치)·5(히스토리 흐름 파악)를 하나로 묶고, merged_at 순서로 1부터 부여하는 M 넘버, PR 제목·본문 표기, PR 아닌 직접 푸시 제외, 저장소별 번호(`M-1900-1`), 선후관계 확인 전용(주 식별자는 여전히 PR 번호)을 정했다. **이 CR은 M 넘버를 `merge_seq` 파생으로 정의한다** — 회의가 말한 merged_at 순서는 통상 first-parent 순서와 일치하고, 어긋나는 경우(release 브랜치 경유 머지·base 강제 푸시)에 실제 반영 순서를 말하는 쪽은 first-parent이며 회의 목적이 바로 그 순서이기 때문이다. 파생으로 정의하면 ADR-007의 검증 가능성(`git log --first-parent` 대조)과 에폭 무효화가 M 넘버에도 그대로 상속되고, 늦게 도착한 웹훅이 이미 부여된 번호 사이에 끼어드는 문제와 merged_at 초 단위 동률 문제가 애초에 생기지 않는다. **두 순서의 불일치는 감시 지표로 남긴다** (사용자 결정). **제품 정의가 바뀐다**: PR 제목·본문 갱신은 GHE 쓰기이므로 Search/Data Plane의 read-only 원칙을 처음으로 연다 — CR-005가 연 Operations Plane의 쓰기는 사용자가 지시한 실행이지만 이것은 시스템이 자동으로 수행하는 쓰기라 성격이 다르다. FR-SEQ-008(M 넘버 채번)·FR-SEQ-009(PR 표기), JOB-SEQ-004·JOB-SEQ-005, EVT-SEQ-004, API-SEQ-007, ADR-007 Clarification, ADR-022, WP-074·WP-075 신설. OD-009(저장소 코드 출처)를 열었다가 2026-09-11 사용자 결정으로 같은 판에서 닫았다 — **저장소 이름의 숫자 부분**이다. PIPE DB 반영과 PR 본문 표기는 사용자 결정으로 **이번 범위에서 제외**했으며 오픈 결정으로 열지 않는다. **선행 조건**: DEV-576(push 웹훅이 미러 fetch를 부르지 않아 `merge_seq`가 최대 6시간 늦게 붙는다)을 먼저 닫아야 회의가 요구한 '거의 실시간'이 성립한다. 기존 안정 ID 재번호화 0건 | FR-SEQ-008 · FR-SEQ-009 · JOB-SEQ-004 · JOB-SEQ-005 · EVT-SEQ-004 · API-SEQ-007 · ENT-SEQ-001 · ADR-007 · ADR-022 · THR-046 · THR-047 · OD-009 · WP-074 · WP-075 · DEV-576 | **실측 21종** — 요구사항 4종, 파생 UI 7종, 아키텍처 5종, 딜리버리 4종, `change_control.md` | closed |
+| CR-078 | 2026-09-11 | correction | `0.1.0-pilot.3` 사내 반입 Upstream Feedback (ADR-021) | **운영 구성 계약이 기동을 막는다고 적혀 있었으나 실제로는 요청마다 막았다.** 사내가 평문 HTTP 때문에 `SESSION_COOKIE_SECURE=false`로 올렸고, `web`은 정상 기동해 `/healthz`에 200을 냈으며 Docker는 전 서비스를 `healthy`로 보고했는데 사람이 여는 화면은 전부 500이었다. `compose.yml`이 이 변수를 `web`에만 넘겨 `search-api`는 영향을 받지 않았고, 그 비대칭이 원인을 웹 런타임의 모듈 문제로 오진하게 했다. `.env.example`과 런북이 「HTTP면 false여야 한다」고 적어 운영자를 그 값으로 보낸 것이 문서 쪽 원인이다. **보안 계약은 그대로 두고**(운영에서 insecure 세션 쿠키 금지, FR-AUTH-001 AC-2) 그 계약이 적힌 대로 기동을 막게 한다. 릴리스 산출물에 실제 이미지 런타임 게이트를 더해 「빌드·헬스체크는 통과하는데 화면은 500」이 다시 반입되지 않게 한다 | DEV-577 · DEV-578 · DEV-579 · DEV-551 · DEV-572 · FR-AUTH-001 · NFR-005 · WP-072 · WP-015 · ADR-021 | 배포 정의·런북·web 앱·회귀·구현 원장 | closed |
 
 ## 4. 게이트 통과 기록
 
@@ -1449,6 +1450,21 @@ python3 validate_srs_prd_env.py --root <origin/main worktree> --strict
 - [x] **CR 종료.** 문서 캐스케이드와 오픈 결정 정리를 마쳤다. 구현은 `WP-074`·`WP-075`가 가져가며, 착수를 막는 유일한 조건은 `DEV-576`이다.
 
 **선행 조건.** `DEV-576`(push 웹훅이 미러 fetch를 부르지 않는다)이 미해결이며, 그 상태에서는 회의가 요구한 "거의 실시간"이 성립하지 않는다. 이 판정은 **코드 경로 확인에 근거하며 운영 환경 실측은 아직 하지 않았다.**
+### CR-078 cascade — 운영 구성이 기동을 막지 못했다
+
+- [x] 사내 Upstream Feedback을 비식별 사실로 옮기고 `0.1.0-pilot.3` 릴리스 산출물(로컬 이미지 ID가 릴리스 manifest와 일치)에서 증상을 재현했다. `SESSION_COOKIE_SECURE=false`에서 `/healthz`만 200이고 SSR 전부 500임을 요청 단위로 확인했다.
+- [x] 경쟁 가설 넷(실제 `pg` 부재 · `pg-<해시>` 재발 · stale 이미지 · 쿠키 구성)을 실험으로 각각 판정했다. 실제 `pg`를 배포 트리에서 지워도 SSR은 200이고, `pg-<해시>` 스텁은 그대로 있으며 필요했고, 사내가 제시한 `npm install pg`는 그 이미지에서 실행 자체가 불가능하다.
+- [x] DEV-577(기동을 막는다고 적힌 계약이 요청마다 막았다)과 DEV-578(`IDP_GROUP_ROLE_MAP` 이름 불일치, 관측만)을 등록했다.
+- [x] `apps/web/instrumentation.ts`를 세워 기동 시점에 구성을 편다. 실패하면 이유를 적고 프로세스를 종료한다 — `throw`로는 막히지 않음을 Next 16.3.1에서 실측했다.
+- [x] `/healthz`가 같은 판정을 읽어 실패를 503으로 낸다. 판정 문구는 로그로만 보낸다 (NFR-005).
+- [x] `deploy/single-host/.env.example`과 `deploy/single-host/RUNBOOK.md`가 코드 계약과 같은 말을 하게 고쳤다. 운영자를 거부당하는 값으로 보내던 두 자리를 정정하고 증상 행 둘을 더했다.
+- [x] 사내 `prsctl smoke`가 `web`의 진입 화면을 실제로 요청하게 했다. 그 명령은 `web`에 대해 `/healthz`만 보고 있었고, 사내가 쓴 구성에서 그것은 200이었다 — 화면은 500인데.
+- [x] `deploy/single-host/smoke-images.sh`를 세우고 `build-bundle.sh`가 `docker save` 뒤·운반 아카이브 앞에서 부르게 했다. tar에서 다시 적재한 이미지로 SSR 10종·해시 외부 모듈 해석·거부 계약·worker `git`을 실제로 검사한다.
+- [x] 회귀 11건과 단위 27건을 더했다. 판정 자체는 실행으로 잰다 — 적대적 검토가 문자열 검사를 통과하는 변이 다섯을 찾아 그 시험들을 고쳤다. 변이 28종이 전부 죽는다.
+- [x] **보안 계약(`packages/authz/src/config.ts`)은 바꾸지 않았다.** 운영에서 insecure 세션 쿠키를 금지하는 판정은 그대로다.
+- [x] 고친 이미지로 구성 행렬을 다시 재다가 같은 유형의 결함을 하나 더 찾아 DEV-579로 등록하고 함께 닫았다 — `OIDC_REDIRECT_URI`가 계약에만 있고 배포 정의에 없어, `AUTH_ENABLED=true`로 올리면 모든 로그인이 500이 될 상태였다. 키를 `compose.yml`·`.env.example`에 더하고 기동 검증이 로그인 라우트와 같은 함수로 인증 구성을 편다.
+- [x] 전체 검사와 strict document validator 결과를 원장 6.72.11장에 기록했다. validator는 변경 전 `main`과 같은 기존 오류 4건·경고 1건이며 신규 issue 0건이다.
+
 
 ## 6. 미결 항목
 
