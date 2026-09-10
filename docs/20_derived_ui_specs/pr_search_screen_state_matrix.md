@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.15 | 갱신일: 2026-09-08
+> 상태: review | 버전: v0.16 | 갱신일: 2026-09-11
 
 ## 1. 상태 설계 원칙
 
@@ -9,6 +9,7 @@
 3. 부분 실패는 전체 실패로 승격하지 않는다. 패싯 실패가 목록을 비우지 않고, 관계 조회 실패가 PR 개요를 지우지 않는다.
 4. 수집 파이프라인의 중간 상태(`enrichment_pending`, `links_pending`)는 오류가 아니다. 진행 중임을 알리고 수동 재조회 경로를 제공한다. 자동 폴링은 하지 않는다.
 5. 시퀀스 관련 상태(`sequence_stale`, `sequence_reassigning`, `epoch_stale`)는 데이터의 신뢰도에 직결된다. 값을 감추지 말고 값과 함께 신뢰도 경고를 표시한다.
+6. M 넘버 상태는 세 가지를 구분한다(CR-077, FR-SEQ-008): 채번이 끝나 값이 있는 상태, `merge_seq` 미채번이거나 앞선 항목의 PR 연결이 미확정이라 값이 아직 없는 `merge_number_pending`, 에폭 상승으로 기존 값이 무효가 된 `epoch_stale`. 세 상태를 하나로 뭉뚱그리면 사용자가 "번호가 없다"와 "번호가 틀렸다"를 구분하지 못한다.
 
 ## 2. 공통 상태 분류
 
@@ -35,6 +36,7 @@
 | `sequence_stale` | 채번 실패로 시퀀스 갱신 중단 | 마지막 확정 값과 경고 | `Banner` tone `warning` |
 | `sequence_reassigning` | 재채번 진행 중 | 마지막 확정 값과 갱신 중 표시 | `Banner` tone `info` |
 | `epoch_stale` | 인용 에폭과 현재 에폭 불일치 | 무효 경고와 현재 에폭 재조회 액션 | `Banner` tone `warning` |
+| `merge_number_pending` | PR 연결은 있으나 M 넘버가 아직 없음(`merge_seq` 미채번 또는 앞선 항목 미확정, FR-SEQ-008 예외 처리) | `pending` 배지, 잠정 번호 금지 | `Badge` tone `neutral` |
 | `approximate` | 근사 집계 결과 | 근사값 배지 | `Badge` tone `warning` |
 | `low_sample` | 표본 부족 | 백분위 대신 원값 목록 | `Badge` tone `neutral` |
 | `truncated` | 결과 절삭 | 절삭 사실과 조건 추가 안내 | `Banner` tone `info` |
@@ -50,6 +52,7 @@
 | `loading_initial` | 최초 조회 | 결과 테이블 skeleton 8행, 패싯 레일 skeleton | - | NFR-001 |
 | `loading_more` | 커서 페이지 요청 | 기존 결과 유지, 하단 진행 표시 | - | FR-SRCH-008 |
 | `ready` | 결과 1건 이상 | 결과 테이블 + 패싯 | - | FR-SRCH-006 |
+| `merge_number_pending` | 결과 행 중 PR 항목에 M 넘버가 아직 없음(`merge_seq` 미채번 또는 앞선 항목의 PR 연결 미확정) | 해당 행 M 넘버 칸에 `pending` 배지, 잠정 번호 미표시 | 채번 후 자동 표시 | FR-SEQ-008 |
 | `ambiguous` | 해석 후보 2건 이상 | 후보 카드 목록, 자동 이동 금지 | 후보 선택 | FR-SRCH-001 |
 | `empty_no_result` | 결과 0건 | 원인 후보 3종과 제거 시 결과가 생기는 필터 목록 | 필터 완화 / W-009 | FR-SRCH-006 |
 | `error_query_syntax` | 미지원 키·파싱 실패 | 입력창의 오류 구간 강조와 지원 키 목록 | 질의 수정 | FR-SRCH-005 |
@@ -86,6 +89,7 @@
 | `unknown_space` (선행·후행) | 문서가 대상 브랜치를 싣지 않았다 | 조회하지 않고 "사유를 확인하지 못했습니다"를 그린다 (CR-032, DEV-168). **`base_branch` 없이 물어 서버가 공간을 고르게 하거나 `main`으로 지어내지 않는다** — 서수는 `(저장소, 대상 브랜치)` 안에서만 의미가 있다 (ADR-007) | 문서가 브랜치를 실으면 자동 활성 | FR-REL-001, ADR-007 |
 | `not_sequenced` | 머지됐으나 아직 채번 전 | 같은 섹션, **다른 문구** — "아직 모른다"이지 "머지되지 않았다"가 아니다 (C-014의 구분, DEV-077) | 채번 후 재조회 | FR-REL-001, FR-SEQ-001 |
 | `epoch_stale` | 표시 중 에폭 변경 | 헤더 하단 경고 배너. **자동 재조회 금지** — 재조회는 사용자 클릭이다 (QA-W002-16, W-004와 같은 규칙) | 사용자 재조회 | FR-SEQ-005 |
+| `merge_number_pending` | PR은 머지됐으나 M 넘버가 아직 없음(`merge_seq` 미채번 또는 앞선 항목 미확정) | 헤더의 M 넘버 칸에 `pending` 배지, 잠정 번호 미표시 | 채번 후 자동 표시 | FR-SEQ-008 |
 | `truncated` | 원본 커밋 250건 초과 | 앞 250건과 전체 건수 표시 | GHE 링크 | FR-SRCH-003 |
 | `partial_failure` | 관계·릴리스 섹션만 실패 | 해당 섹션만 오류, 개요는 유지 | 섹션 재시도 | - |
 | `not_found` | 미존재 또는 접근 범위 밖 | 존재 여부 미노출, 검색 복귀 | W-001 | FR-AUTH-002 |
@@ -122,6 +126,7 @@
 | `sequence_reassigning` | 재채번 중 | 마지막 확정 값 + 갱신 중 배너 | 완료 후 재조회 | FR-SEQ-005 |
 | `sequence_stale` | 채번 중단 | 마지막 확정 값 + 경고 배너 | 운영자 문의 | FR-SEQ-001 |
 | `epoch_stale` | URL 에폭 ≠ 현재 에폭 | 무효 경고 + 현재 에폭 재조회 액션(자동 재조회 금지) | 재조회 | FR-SEQ-005 |
+| `merge_number_pending` | 구간 결과 중 M 넘버가 아직 없는 PR 행 존재(`merge_seq` 미채번 또는 앞선 항목 미확정) | 해당 행 M 넘버 칸에 `pending` 배지, 잠정 번호 미표시 | 채번 후 자동 표시 | FR-SEQ-008 |
 | `bisect_contradiction` | good > bad 표시 | 모순 지점 표시 | 탐색 초기화 | FR-SEQ-007 |
 | `loading_more` | 구간 커서 페이지 요청 | 기존 목록 유지, 하단 진행 표시 | - | FR-SEQ-002 AC-6 |
 | `cursor_rejected_mismatch` | 에폭·구간 경계·질의가 바뀐 뒤 이전 커서 사용 (`CURSOR_QUERY_MISMATCH`) | "조건이 바뀌어 처음부터 다시 봅니다" + 현재 조건의 첫 페이지 | 자동 복귀. **재시도 루프 금지** | FR-SEQ-002 AC-7 |

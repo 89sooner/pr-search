@@ -13,14 +13,14 @@
 | Entity ID | 엔티티 | 책임 | 주요 필드 | 소유 저장소 | 소유 모듈 | 관련 요구사항 |
 | --- | --- | --- | --- | --- | --- | --- |
 | ENT-CORE-001 | Repository | 수집 대상 저장소 등록과 정책 | `repository_id`, `owner`, `name`, `org_id`, `visibility`, `sequence_branches[]`, `mirror_enabled`, `status` | PostgreSQL | registry | FR-ING-009 |
-| ENT-CORE-002 | PullRequest | PR 검색 문서 | `pr_number`, `title`, `body`, `author`, `state`, `merged_at`, `merge_commit_sha`, `merge_seq`, `link_summary` | Elasticsearch | projection | FR-SRCH-003, FR-SRCH-006 |
+| ENT-CORE-002 | PullRequest | PR 검색 문서 | `pr_number`, `title`, `body`, `author`, `state`, `merged_at`, `merge_commit_sha`, `merge_seq`, `merge_number`, `link_summary` | Elasticsearch | projection | FR-SRCH-003, FR-SRCH-006, FR-SEQ-008 |
 | ENT-CORE-003 | Commit | 커밋 검색 문서 | `commit_sha`, `message`, `author`, `role`, `merge_seq`, `patch_id`, `changed_paths[]` | Elasticsearch | projection | FR-SRCH-002, FR-SRCH-004 |
 | ENT-CORE-004 | Team | 팀 정보와 집계 그룹 단위 | `team_id`, `slug`, `org_id`, `member_ids[]` | PostgreSQL | registry | FR-AUTH-002, FR-STAT-001 |
 | ENT-CORE-005 | User | 사용자와 접근 범위 | `user_id`, `login`, `email`, `roles[]`, `access_scope_version` | PostgreSQL | auth | FR-AUTH-001, FR-AUTH-003 |
 | ENT-CORE-006 | SavedSearch | 저장된 질의 | `saved_search_id`, `name`, `query`, `visibility`, `owner_user_id`, `team_id`(대상 팀, `visibility='team'`일 때만), `seq_epoch`(`seq:` 조건이 딛고 선 에폭, CR-051) | PostgreSQL | search | FR-SRCH-010 |
 | ENT-CORE-007 | AuditRecord | 감사 기록 | `audit_id`, `user_id`, `action`, `target`, `query`, `result_code`, `correlation_id`, `occurred_at` | PostgreSQL | audit | FR-AUTH-004 |
 | ENT-CORE-008 | RepositoryRegistrationRequest | 사용자가 남긴 저장소 등록 검토 요청과 운영자의 처리 결과 | `request_id`, `requested_by`, `repository_owner`, `repository_name`, `created_at`, `status`, `resolved_at`, `resolved_by`, `resolution_note` | PostgreSQL | registry | FR-ING-009 AC-8·AC-11 |
-| ENT-SEQ-001 | MergeSequence | 시퀀스 서수-커밋 대응 | `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `commit_sha`, `pull_request_number` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-002 |
+| ENT-SEQ-001 | MergeSequence | 시퀀스 서수-커밋 대응 | `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `commit_sha`, `pull_request_number`, `merge_number`, `annotate_state` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-002, **FR-SEQ-008, FR-SEQ-009** |
 | ENT-SEQ-002 | SequenceSpace | 시퀀스 공간 상태 | `repository_id`, `base_branch`, `seq_epoch`, `head_sha`, `head_seq`, `state`, `last_assigned_at` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-005 |
 | ENT-SEQ-003 | SafeMarker | 안전 구간 표식 | `marker_id`, `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `note`, `created_by` | PostgreSQL | sequence | FR-SEQ-006 |
 | ENT-SEQ-004 | BisectSession | 이분 탐색 상태 | `session_id`, `user_id`, `repository_id`, `base_branch`, `seq_epoch`, `good_seq`, `bad_seq` | PostgreSQL | sequence | FR-SEQ-007 |
@@ -176,6 +176,9 @@ CREATE TABLE sequence_space (
   state            TEXT        NOT NULL DEFAULT 'ok',  -- ok | stale | reassigning | unknown
   last_assigned_at TIMESTAMPTZ,
   last_error       TEXT,
+  -- M 넘버 채번 진행 지점 (마이그레이션 025, FR-SEQ-008)
+  mnumber_head_seq BIGINT      NOT NULL DEFAULT 0,  -- 여기까지의 merge_seq를 M 넘버 채번이 확인했다
+  mnumber_head     BIGINT      NOT NULL DEFAULT 0,  -- 마지막으로 부여한 M 넘버
   PRIMARY KEY (repository_id, base_branch)
 );
 
@@ -186,6 +189,9 @@ CREATE TABLE merge_sequence (
   merge_seq            BIGINT      NOT NULL,
   commit_sha           TEXT        NOT NULL,
   pull_request_number  INT,                       -- 직접 푸시 커밋은 NULL (FR-SEQ-001 AC-3)
+  merge_number         BIGINT,                    -- M 넘버. PR 있는 항목만 (FR-SEQ-008 AC-1)
+  annotate_state       TEXT,                      -- NULL(미시도) | done | mismatch | failed | disabled
+  annotated_at         TIMESTAMPTZ,
   committed_at         TIMESTAMPTZ NOT NULL,
   assigned_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (repository_id, base_branch, seq_epoch, merge_seq)
@@ -196,6 +202,16 @@ CREATE UNIQUE INDEX merge_sequence_commit_uk
 CREATE INDEX merge_sequence_pr_idx
   ON merge_sequence (repository_id, pull_request_number)
   WHERE pull_request_number IS NOT NULL;
+
+-- M 넘버는 시퀀스 공간 안에서 유일하다 (FR-SEQ-008 AC-2, 마이그레이션 025)
+CREATE UNIQUE INDEX merge_sequence_mnumber_uk
+  ON merge_sequence (repository_id, base_branch, seq_epoch, merge_number)
+  WHERE merge_number IS NOT NULL;
+
+-- 표기 잡이 아직 쓰지 못한 항목을 고른다 (FR-SEQ-009)
+CREATE INDEX merge_sequence_annotate_idx
+  ON merge_sequence (repository_id, base_branch, seq_epoch, merge_seq)
+  WHERE merge_number IS NOT NULL AND annotate_state IS DISTINCT FROM 'done';
 ```
 
 채번 동시성 제어는 PostgreSQL advisory lock을 사용한다 (FR-SEQ-001 AC-6).
@@ -821,6 +837,12 @@ ALTER TABLE gh_capability_snapshot
 
 `migration 024_export`는 `job(type=export)`에 딸린 산출물 표를 만든다. `job_id`가 PK이자 job FK이고 삭제는 cascade다. `user_id`는 실행자 FK이며 사용자 삭제 시에도 산출물을 지운다. `scope_version`, `repository_ids`, `format(csv|json)`, `plan(JSONB)`는 요청 시 같은 트랜잭션에 저장한다. plan에는 검증된 ES 질의·대상·정렬·scope·원문 q와 해당하는 시퀀스 바인딩을 담는다. 클라이언트가 plan을 직접 지정하지 않는다.
 
+`migration 025_merge_number`는 M 넘버를 얹는다 (CR-077, FR-SEQ-008). **새 표를 만들지 않는다** — M 넘버는 `merge_seq`의 파생이고 같은 행의 속성이므로, 별도 표로 떼면 두 값이 다른 트랜잭션에서 갱신되어 언젠가 어긋난다 (ADR-007 Clarification). `merge_sequence`에 `merge_number`·`annotate_state`·`annotated_at`을, `sequence_space`에 `mnumber_head_seq`·`mnumber_head`를 더하는 additive 마이그레이션이다. 기존 행의 `merge_number`는 `NULL`로 시작하고 채번 잡이 뒤에서 메운다.
+
+**M 넘버 채번은 `mnumber_head_seq`에서 멈춘 자리를 다시 잡는다.** 이 열이 있어야 `FR-SEQ-008` AC-3이 성립한다 — 채번은 `merge_seq` 오름차순으로 진행하다가 **PR 연결이 아직 확정되지 않은 항목을 만나면 그 앞에서 멈춘다.** `pull_request_number`가 `NULL`인 데에는 두 가지 이유가 있고 (직접 푸시라서 영구히 없거나, 매핑을 아직 못 찾았거나) 둘을 구분하지 못한 채 건너뛰면 나중에 매핑이 채워졌을 때 이미 나눠 준 번호 사이에 끼워야 한다 (DEV-207이 같은 구분을 이미 요구한다). 멈춘 자리는 다음 회차가 이어받으며, **한 번 부여한 `merge_number`는 어떤 경로로도 다른 행으로 옮겨 가지 않는다.**
+
+**`merge_number`는 `merge_seq`를 대신하지 않는다.** 범위 조회(`FR-SEQ-002`)와 릴리스 포함 판정(`FR-REL-002`)은 계속 `merge_seq`를 쓴다 — M 넘버는 직접 푸시 커밋을 세지 않으므로 브랜치 히스토리와 1:1 대응하지 않고, 그 위에서 구간을 인용하면 실제 히스토리 구간과 어긋난다. 색인의 `merge_number`는 **표시와 해석 전용**이며 구간 스캔의 근거가 아니다.
+
 `content(TEXT)`, `row_count(0~100000)`는 완성 전 null이다. 파일 생성 후 실행 중 job 행과 실행자 버전을 확인하고 **산출물 적재와 completed 전이를 같은 트랜잭션**으로 처리한다. 실패·취소·중단은 완성 파일을 공개하지 않는다. 새로운 영구 보존 기한을 만들지 않고 기존 job 수명을 따른다. application role `prs_app`에 이 표의 명시적 CRUD 권한을 부여한다. 대용량 원본 본문·경로 대신 API-SRCH-006에 열거한 검색 요약 projection을 사용한다.
 
 ## 4. Elasticsearch 매핑
@@ -894,6 +916,7 @@ ALTER TABLE gh_capability_snapshot
       "source_commits_truncated": { "type": "boolean" },
 
       "merge_seq":           { "type": "long" },
+      "merge_number":        { "type": "long" },
       "seq_epoch":           { "type": "integer" },
       "sequence_space":      { "type": "keyword" },
 

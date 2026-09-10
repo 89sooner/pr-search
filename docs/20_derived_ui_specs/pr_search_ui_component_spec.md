@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.13 | 갱신일: 2026-09-09
+> 상태: review | 버전: v0.14 | 갱신일: 2026-09-11
 
 ## 1. 문서 원칙
 
@@ -141,12 +141,14 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - 책임: 머지 시퀀스 값과 시퀀스 공간을 함께 표시
 - 기반: Conductor `Badge`
 - 필수 props: `seq: number | null`, `space: SequenceSpaceRef | null`, `epoch: number | null`, `contextSpace?: SequenceSpaceRef | null`
+- 선택 props: `mNumber: string | null`, `mNumberState: 'assigned' | 'pending' | 'epoch_stale' | 'not_applicable'` (CR-077, FR-SEQ-008). PR과 연결된 개체에만 넘긴다. 직접 푸시 커밋 행은 `not_applicable`이며 M 넘버 영역 자체를 그리지 않는다(실패가 아니다)
 - `SequenceSpaceRef`는 투영이 주는 `owner/repo@branch` 문자열이다 (CR-019, DEV-077)
 - 상태: `assigned`, `unassigned`(미머지), `not_computed`(**아직 계산하지 않음** — WP-021 전), `stale`, `reassigning`, `epoch_stale`
 - **`unassigned`와 `not_computed`를 절대 같이 그리지 않는다** (CR-019, DEV-077): 전자는 "머지되지 않았다"는 **사실 주장**이고 후자는 "아직 모른다"이다. 미계산을 미머지로 그리면 화면이 거짓을 말한다
+- **M 넘버는 `mNumberState`로 별도 판정한다** (CR-077, FR-SEQ-008 예외 처리): `pending`은 `merge_seq`가 아직 붙지 않았거나 앞선 항목의 PR 연결이 미확정이라 채번이 멈춘 경우이며, **잠정 번호를 지어내지 않는다.** `epoch_stale`은 `seq`의 `epoch_stale`과 같은 사건인 에폭 상승에서 함께 발생하며, 무효가 되는 값은 M 넘버 자신이다. **M 넘버는 선후관계 확인 전용이며 PR의 주 식별자를 대체하지 않는다**: 이 배지가 붙는 화면에서도 제목과 링크는 여전히 PR 번호를 기준으로 삼는다(FR-SEQ-008 AC-8)
 - 사용 규칙: `contextSpace`와 `space`가 다르면 tone을 `neutral`로 낮추고 툴팁에 공간을 명시한다. 서로 다른 공간의 시퀀스가 비교 가능한 값으로 오인되면 안 된다
 - 접근성: 툴팁 내용은 `aria-describedby`로 연결하고, 시각적 tone 차이에만 의존하지 않는다
-- 관련 FR: FR-SEQ-001, FR-SEQ-005
+- 관련 FR: FR-SEQ-001, FR-SEQ-005, FR-SEQ-008
 
 ### C-015 RelationBadgeGroup
 

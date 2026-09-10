@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.24 | 갱신일: 2026-09-09
+> 상태: review | 버전: v0.25 | 갱신일: 2026-09-11
 
 ## 1. 목적
 
@@ -35,6 +35,7 @@
 | API-SEQ-004 | GET/PUT | `/safe-markers` | 안전 구간 표식 조회·등록 | GET 인증 + 접근 범위 / PUT `release_manager` (CR-057, DEV-461) | FR-SEQ-006 |
 | API-SEQ-005 | GET/POST/DELETE | `/bisect-sessions` | 이분 탐색 상태 | 인증 | FR-SEQ-007 |
 | API-SEQ-006 | GET | `/sequence-spaces` | 접근 범위 안 시퀀스 공간 목록 (CR-029, DEV-152) | 인증 + 접근 범위 | FR-SEQ-001 |
+| API-SEQ-007 | GET | `/merge-numbers/resolve` | M 넘버 ↔ PR 양방향 해석 (CR-077) | 인증 + 접근 범위 | FR-SEQ-008 |
 | API-REL-001 | GET | `/sequence-neighbors` | 선행·후행 조회 | 인증 + 접근 범위 | FR-REL-001 |
 | API-REL-002 | GET | `/containments` | 포함 릴리스·소속 PR | 인증 + 접근 범위 | FR-REL-002 |
 | API-REL-003 | GET | `/co-changes` | 동시 변경 상관 | 인증 + 접근 범위 | FR-REL-007 |
@@ -263,6 +264,8 @@
   "merge_seq": 1342,
   "seq_epoch": 3,
   "sequence_space": "acme/payments@main",
+  "merge_number": "M-1900-1",
+  "merge_number_state": "assigned",
   "created_at": "2026-08-18T02:00:00Z",
   "first_review_at": "2026-08-18T09:15:00Z",
   "merged_at": "2026-08-19T05:02:11Z",
@@ -283,6 +286,8 @@
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
+
+**`merge_number`·`merge_number_state`는 `merge_seq` 옆에 병기한다 (CR-077, FR-SEQ-008 AC-8).** M 넘버는 선후관계 확인용이며 PR의 주 식별자를 대체하지 않으므로 `pr_number`를 밀어내지 않고 **더한다.** 두 필드는 `merge_seq`가 있을 때만 실린다 — 미머지 PR처럼 `merge_seq`가 `null`이면 M 넘버도 있을 수 없으므로 키 자체를 넣지 않는다. `merge_seq`는 있으나 아직 M 넘버가 채번되지 않았으면(`FR-SEQ-008` 예외 처리) `merge_number: null` + `merge_number_state: "pending"`이고, 채번되면 `merge_number_state: "assigned"`다. **잠정 번호를 지어내지 않는다** — `pending`인 동안 다른 값으로 채우지 않는다. 두 필드의 완전한 의미론은 `API-SEQ-007`이 정본이다.
 
 응답 200 (보강 미완료):
 
@@ -398,6 +403,8 @@
       "merge_seq": 1342,
       "seq_epoch": 3,
       "sequence_space": "acme/payments@main",
+      "merge_number": "M-1900-1",
+      "merge_number_state": "assigned",
       "merged_at": "2026-08-19T05:02:11Z",
       "changed_files_count": 2,
       "additions": 120,
@@ -430,6 +437,8 @@
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
+
+**`kind: "pull_request"` 항목에만 `merge_number`·`merge_number_state`를 싣는다 (CR-077, FR-SEQ-008 AC-8).** `kind: "commit"` 항목은 원본 커밋이며 PR 자체가 아니므로 M 넘버의 대상이 아니다(FR-SEQ-008 AC-1 — PR 연결이 있는 항목만 센다). 두 필드의 조건과 상태값은 `API-SRCH-003`이 설명한 것과 같다.
 
 **`sequence_context`와 `epoch_stale`은 `seq:` 질의에서만 나타난다** (CR-051). `seq:`가 없는 질의는 어느 공간에도 묶이지 않으므로 두 키 다 싣지 않는다 — 빈 값이나 `null`로 실으면 화면이 "공간이 없는 시퀀스 조회"라는 없는 상태를 그린다.
 
@@ -1368,6 +1377,77 @@ GET /api/v1/sequence-spaces
 - `sequence_state`는 `ok | stale | reassigning | unknown` — C-027의 `state` prop과 같은 집합이다 (WP-022가 정의).
 - 채번된 적 없는 브랜치(공간 행 부재)는 `sequence_state: "unknown"` + `seq_epoch: null`로 싣는다 — 목록에서 숨기면 사용자가 등록 부재로 오인한다 (숨기지 않는다 원칙).
 - 정렬은 `repository`, `base_branch` 오름차순. 페이지네이션 없음 — 등록 저장소는 운영상 수백 규모다 (FR-ING-009의 등록 모델).
+
+### API-SEQ-007 M 넘버 해석 (CR-077)
+
+- 목적: M 넘버로 PR을 찾고, PR로 M 넘버를 찾는 양방향 해석.
+- 관련 요구사항: FR-SEQ-008
+
+요청: `GET /api/v1/merge-numbers/resolve?repository=acme/payments&base_branch=main&pr_number=1234&seq_epoch=4`
+
+**`repository`·`base_branch` 둘 다 필수다 — 서버가 시퀀스 공간을 고르지 않는다.** 이 판단은 이미 한 번 내려졌다: `API-REL-001`이 "서버가 시퀀스 공간을 고르지 않는다"로 정했고(CR-032, DEV-168), 검색 API의 `seq:` 질의 계약(4장, CR-051)이 같은 이유로 같은 규칙을 재사용했다. 그 논리를 여기서도 그대로 옮긴다 — 서버가 공간을 고르면 사용자가 묻지 않은 브랜치의 답이 나오고, 정렬을 더해도 결정적으로 같은 오답일 뿐이다.
+
+**M 넘버 방향(`merge_number`로 조회)에서는 이 요구가 한 번 더 필요하다.** M 넘버의 시퀀스 공간은 `merge_seq`와 같은 `(repository_id, base_branch)`이고(`FR-SEQ-008` AC-2), 한 저장소가 여러 브랜치를 채번 대상으로 둘 수 있다 — 그 경우 `M-1900-1`이라는 표기 하나가 브랜치마다 따로 존재한다. 그런데 표기 형식(`FR-SEQ-008` AC-5, `M-<저장소 코드>-<번호>`)은 저장소 코드만 담고 브랜치를 담지 않는다. `merge_number` 문자열만으로 브랜치를 추측하면 위와 같은 오답이 재현되므로, `merge_number`로 조회할 때도 `base_branch`는 생략할 수 없다.
+
+**앵커는 `pr_number` 또는 `merge_number` 하나다** (`API-REL-001`의 앵커 규칙과 같다, CR-031). 둘 다 주거나 둘 다 없으면 400 `INVALID_PARAMETER`다.
+
+- `pr_number`: 정수. 이 시퀀스 공간의 PR 번호다.
+- `merge_number`: 문자열. `M-<저장소 코드>-<번호>` 형식(`FR-SEQ-008` AC-5)이며 **서버는 접미의 정수만 그 공간의 서수로 해석한다.** 가운데 저장소 코드 구간은 대조하지 않는다 — `OD-009`가 그 코드를 저장소 이름의 숫자 부분으로 확정했으나, **저장소 이름이 바뀌면 과거에 인용된 코드가 현재 이름과 어긋나므로** 그것을 대조하면 유효한 인용이 거부된다. `repository`·`base_branch`가 이미 공간을 확정하므로 코드 구간을 대조하지 않아도 다른 공간의 값과 섞이지 않는다. 형식이 `M-.+-[0-9]+`에 맞지 않으면 400 `INVALID_PARAMETER`(`detail.field: "merge_number"`)다.
+- `seq_epoch`는 선택이다 — `API-SEQ-001`과 같은 인용 계약이다. 생략하면 현재 에폭으로 조회한다.
+
+응답 200 (M 넘버 확정 — `pr_number`로 조회해도 `merge_number`로 조회해도 같은 모양이다. 이 API는 입력 방향과 무관하게 정규화된 짝을 돌려준다, `API-SEQ-002`가 앵커 방향과 무관하게 같은 `resolved` 모양을 돌려주는 것과 같은 원칙이다):
+
+```json
+{
+  "sequence_space": "acme/payments@main",
+  "seq_epoch": 4,
+  "sequence_state": "ok",
+  "epoch_stale": false,
+  "pr_number": 1234,
+  "merge_seq": 1342,
+  "merge_number": "M-1900-1",
+  "merge_number_state": "assigned",
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+응답 200 (채번 대기 — `pending`):
+
+```json
+{
+  "sequence_space": "acme/payments@main",
+  "seq_epoch": 4,
+  "sequence_state": "ok",
+  "epoch_stale": false,
+  "pr_number": 1250,
+  "merge_seq": 1360,
+  "merge_number": null,
+  "merge_number_state": "pending",
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+`merge_seq`는 이미 붙었으나 M 넘버가 아직 없는 상태다(`FR-SEQ-008` 예외 처리) — 앞선 항목의 PR 연결이 아직 확정되지 않아 그 지점에서 채번이 멈췄거나(AC-3), 미러 동기화가 채번 잡을 아직 따라잡지 못한 경우다. **잠정 번호를 지어내지 않는다** — `merge_number`는 `null`로 두고 `merge_number_state`만 상태를 말한다. `merge_number` 방향으로는 이 상태에 도달할 수 없다 — 아직 발급되지 않은 번호는 질의할 값 자체가 없다.
+
+응답 200 (에폭 불일치):
+
+```json
+{
+  "sequence_space": "acme/payments@main",
+  "seq_epoch": 4,
+  "epoch_stale": true,
+  "requested_seq_epoch": 3,
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+요청한 `seq_epoch`이 현재와 다르면 **계산하지 않는다.** `pr_number`·`merge_seq`·`merge_number`·`merge_number_state`·`sequence_state` 키를 넣지 않는다 — `API-SEQ-001`이 같은 이유로 같은 결정을 했다(DEV-138: 계산하지 않은 것은 키를 비우는 것이 아니라 없앤다). 빈 결과로 위장하지 않는다(ADR-007 규칙 5). 현재 에폭으로 자동 이동하지 않는다.
+
+**재채번 중이면** `sequence_state: "reassigning"`과 마지막 확정 값을 함께 준다 — `API-SEQ-001`·`API-REL-001`과 같은 판단이다. M 넘버 자체가 에폭에 묶여 무효화되는 것(`FR-SEQ-008` AC-4, ADR-007 규칙 5)과 별개로, 조회는 마지막으로 확정된 값을 숨기지 않는다.
+
+- 오류: `INVALID_PARAMETER` (400 — `base_branch` 누락, `pr_number`와 `merge_number`를 동시에 지정하거나 둘 다 누락, `merge_number` 형식 오류), `NOT_FOUND` (404 — 저장소 미등록·접근 범위 밖·채번된 적 없는 브랜치·그 공간에 없는 `merge_number`. 넷 모두 같은 메시지다, `ADR-008`·`THR-006`과 같은 원칙), `NO_SEQUENCE` (409 — `pr_number`로 조회했고 그 PR에 시퀀스가 없음. `detail.reason`이 `not_merged`와 `not_sequenced`를 가른다, `FR-REL-001`·CR-031과 같은 어휘)
+- Authz: 인증 + 접근 범위(ADR-008). 조회 대상 저장소가 요청자의 접근 범위 밖이면 미등록과 같은 `NOT_FOUND`다.
+- **새 오류 코드를 만들지 않았다.** 넷 다 기존 시퀀스 API가 이미 쓰는 어휘를 그대로 재사용한다.
 
 ### API-REL-001 선행·후행 조회
 
@@ -2906,7 +2986,7 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 
 | API | 상태 | 변경 정책 |
 | --- | --- | --- |
-| API-SRCH-001~004, API-SEQ-001~003, API-SEQ-006, API-REL-001~002, API-REL-005 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
+| API-SRCH-001~004, API-SEQ-001~003, API-SEQ-006, API-SEQ-007, API-REL-001~002, API-REL-005 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
 | API-STAT-001~004, API-SEQ-004~005, API-REL-003~004, API-REL-006 | stable | 위와 동일 |
 | API-ADM-* | internal | 운영 콘솔 전용. 프런트엔드와 동시 배포 전제로 변경 가능 |
 | API-ING-001 | external | GHE 계약. 변경 시 웹훅 재등록 필요 |
