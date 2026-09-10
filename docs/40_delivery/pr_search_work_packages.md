@@ -894,23 +894,24 @@
 - 목표: 릴리스 2건을 골라 그 사이 반영분을 본다.
 - 관련 요구사항: FR-SEQ-004
 - 관련 화면/플로우: W-005 / FLOW-003
-- 관련 API/데이터/잡: API-SEQ-003
+- 관련 API/데이터/잡: API-SEQ-003, API-REL-005 (CR-030 신설)
 - 선행 WP: WP-024, WP-025
 - 구현 범위:
-  - `GET /release-comparisons` API
+  - `GET /releases` API (API-REL-005, CR-030 DEV-155) — 서수 내림차순 타임라인, 구간별 실제 PR 수, 미배포 블록, `release_not_indexed` 200 자세
+  - `GET /release-comparisons` API (API-SEQ-003) — FR-SEQ-002 범위 조회 재사용, 태그를 현재 에폭에서 재해석 (DEV-157)
   - `C-032 ReleaseTimeline` (체크박스 2건 선택 상한)
-  - 릴리스 상세 요약, 미배포 구간 진입
+  - 릴리스 상세 요약(직전 릴리스 대비 비교 재사용, 되돌림 수 자리는 `준비 중(WP-030)` — DEV-156), 미배포 구간 진입
   - 시퀀스 작은 쪽을 시작 앵커로 정규화하고 방향 명시
-  - 다른 브랜치 릴리스 선택 시 비교 차단
+  - 다른 브랜치 릴리스 선택 시 비교 차단 (`select=` 복원 검증 + 서버 400 이중 방어, DEV-158)
   - `to=unreleased` 지원
   - "직전 릴리스 대비 PR 수"는 실제 PR 문서 수
-  - 딥링크 `/releases/[owner]/[repo]?branch=&select=`
-- 제외: 없음
+  - 딥링크 `/releases/[owner]/[repo]?branch=&select=`와 `/releases` 진입(공간 선택)
+- 제외: 되돌림 수 값 표시(WP-030), 패싯·커서 페이지네이션(WP-032), W-009 저장소 개요 화면 자체(경로 링크만 제공)
 - 완료 기준(DoD):
   - [ ] QA-W005-01 ~ QA-W005-06이 통과한다
   - [ ] 지정 순서와 무관하게 정규화되고 방향이 응답에 명시된다 (FR-SEQ-004 AC-4)
   - [ ] 미배포 구간 조회가 동작한다 (AC-5)
-  - [ ] 상태 매트릭스 W-005의 전 상태가 렌더링된다
+  - [ ] 상태 매트릭스 W-005의 전 상태가 렌더링된다 (`loading_initial`·`ready`·`empty_no_release`·`not_indexed`·`error_space_mismatch`·공통 4종)
   - [ ] axe 위반 0건
 - 검증 방법: `pnpm test:integration release/comparison`, `pnpm test:e2e flow-003`
 - 기록: 원장 WP-026 상태, FR-SEQ-004 매핑

@@ -39,6 +39,7 @@
 | API-REL-002 | GET | `/containments` | 포함 릴리스·소속 PR | 인증 + 접근 범위 | FR-REL-002 |
 | API-REL-003 | GET | `/co-changes` | 동시 변경 상관 | 인증 + 접근 범위 | FR-REL-007 |
 | API-REL-004 | GET | `/relation-graphs` | 관계 그래프 탐색 | 인증 + 접근 범위 | FR-REL-008 |
+| API-REL-005 | GET | `/releases` | 시퀀스 공간의 릴리스 목록 (CR-030, DEV-155) | 인증 + 접근 범위 | FR-SEQ-004, FR-REL-002 |
 | API-STAT-001 | POST | `/analytics/groups` | 그룹 집계 | 인증 + 접근 범위 | FR-STAT-001, FR-STAT-006 |
 | API-STAT-002 | POST | `/analytics/time-series` | 시계열 집계 | 인증 + 접근 범위 | FR-STAT-002 |
 | API-STAT-003 | POST | `/analytics/percentiles` | 리드타임·리뷰 대기 백분위 | 인증 + 접근 범위 | FR-STAT-003, FR-STAT-004 |
@@ -619,12 +620,16 @@ POST /api/v1/sequence-anchors/resolve
 
 `SEQUENCE_SPACE_MISMATCH`는 앵커가 요청의 `(repository, base_branch)`와 **다른 공간에 속할 때** 낸다 — 예를 들어 `#1234`의 `base_ref`가 요청의 `base_branch`와 다를 때다. 같은 브랜치 위에 있으나 first-parent 체인 밖인 커밋은 이것이 아니라 `ANCHOR_NOT_ON_BRANCH`다.
 
-### API-SEQ-003 릴리스 구간 비교
+### API-SEQ-003 릴리스 구간 비교 (CR-030 정정)
 
-- 목적: 두 릴리스 사이 반영분과 요약 통계를 반환한다.
+- 목적: 두 릴리스 사이 반영분과 요약 통계를 반환한다. **FR-SEQ-002의 범위 조회를 그대로 재사용한다** (FR-SEQ-004 AC-1) — 이 API가 하는 일은 두 릴리스 태그를 서수로 바꾸고 방향을 정규화하는 것까지이고, 그 뒤는 API-SEQ-001과 같은 판정·같은 코드다.
 - 관련 요구사항: FR-SEQ-004
 
-요청: `GET /api/v1/release-comparisons?repository=acme/payments&base_branch=main&from=build-20260812-03&to=build-20260814-01`
+요청: `GET /api/v1/release-comparisons?repository=acme/payments&base_branch=main&from=build-20260812-03&to=build-20260814-01&size=50`
+
+- `from`·`to`는 **릴리스 태그 이름 그대로**다. API-SEQ-002의 표현 분류를 거치지 않는다 — 태그 이름에는 형식 제약이 없어 `deadbee` 같은 태그가 분류를 거치면 SHA 접두로 오독된다.
+- `to=unreleased`는 마지막 릴리스 이후 브랜치 head까지를 뜻한다 (AC-5). 이때 끝 서수는 공간의 head 서수이고, `from`은 여전히 필수다 (CR-030, DEV-157).
+- 지정 순서와 무관하게 **시퀀스가 작은 쪽이 시작 앵커가 된다** (AC-4). 뒤바뀐 순서는 오류가 아니다 — W-004의 역전 판정(QA-W004-07)과 다른 이유는, 이쪽 입력이 타이핑이 아니라 체크박스 선택이라 순서에 의도가 없기 때문이다. 정규화된 방향은 `normalized_direction`에 명시된다.
 
 응답 200:
 
@@ -632,24 +637,34 @@ POST /api/v1/sequence-anchors/resolve
 {
   "sequence_space": "acme/payments@main",
   "seq_epoch": 3,
+  "sequence_state": "ok",
   "normalized_direction": "from=build-20260812-03(seq 1280) → to=build-20260814-01(seq 1318)",
+  "from_release": { "tag_name": "build-20260812-03", "merge_seq": 1280 },
+  "to_release": { "tag_name": "build-20260814-01", "merge_seq": 1318 },
   "range": { "from_seq": 1280, "to_seq": 1318, "boundary": "(from, to]" },
   "summary": {
     "pull_request_count": 38,
+    "commit_count": 38,
     "changed_files_total": 241,
     "additions_total": 5120,
     "deletions_total": 1840,
     "distinct_author_count": 12,
-    "reverted_pull_request_count": 1
+    "files_truncated_pull_request_count": 0,
+    "top_changed_paths": [{ "path": "services/payment", "count": 12 }]
   },
   "items": [],
-  "next_cursor": "eyJzIjpbMTI5MF0sImYiOiJiN2MyIn0",
+  "items_missing_in_index": 0,
+  "next_cursor": null,
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
 
-- `to=unreleased`를 지정하면 마지막 릴리스 이후 브랜치 head까지를 조회한다 (AC-5)
-- 오류: `SEQUENCE_SPACE_MISMATCH` (400), `RELEASE_NOT_INDEXED` (404)
+#### 판정과 실패의 근거 (CR-030)
+
+- **`reverted_pull_request_count`는 관계 파생(WP-030) 전까지 응답에 없다** (DEV-133·150의 연장, DEV-156). 세면 언제나 0이라 계산하지 않은 것을 계산한 척하지 않는다. 화면은 키 부재를 `준비 중(WP-030)`으로 그린다 — FR-SEQ-004 AC-2의 그 항목은 WP-030이 채운다.
+- **저장된 서수 trio를 믿지 않는다** (DEV-149의 연장, DEV-157). `release` 행의 `merge_seq`는 기록 당시 에폭의 값이다 — 재채번 직후에는 다른 커밋을 가리킬 수 있으므로, 태그의 커밋 SHA를 **현재 에폭의 `merge_sequence`에서 재해석**한 서수로 비교한다. 재해석이 실패하면(체인 밖) `ANCHOR_NOT_ON_BRANCH`(400)와 머지 커밋 제안 — API-SEQ-002의 릴리스 앵커와 같은 판정이다.
+- `summary`·`items`의 의미·한계(`indexed: false`, `items_missing_in_index`, `q` 없음)는 API-SEQ-001과 같다. `next_cursor`는 WP-032 전까지 `null`이다.
+- 오류: `SEQUENCE_SPACE_MISMATCH` (400 — 릴리스가 요청의 `base_branch`와 다른 브랜치에 속함, AC-3), `RELEASE_NOT_INDEXED` (404 — **지목한 태그가 없다.** detail에 미수집(`release_not_indexed`)과 태그 부재(`tag_not_found`)를 갈라 싣고, 미수집이면 저장소 개요 경로 `/repositories`를 함께 준다), `RANGE_TOO_LARGE` (400 — FR-SEQ-002 AC-4의 5만 상한이 재사용을 따라온다, DEV-157), `INVALID_PARAMETER` (400)
 
 ### API-SEQ-006 시퀀스 공간 목록 (CR-029, DEV-152)
 
@@ -809,6 +824,49 @@ GET /api/v1/sequence-spaces
 
 - `depth` 기본 2, 최대 3. 노드 상한 300 (AC-1, AC-2)
 - 2초 초과 시 부분 그래프 + `truncated: true` 반환
+
+### API-REL-005 릴리스 목록 (CR-030, DEV-155)
+
+- 목적: W-005 릴리스 타임라인(W-005-LIST)과 미배포 구간(W-005-UNRELEASED)을 채운다 — 한 시퀀스 공간의 릴리스 목록과, 릴리스마다 "직전 릴리스 대비 실제 PR 수".
+- 관련 요구사항: FR-SEQ-004 (비교 후보 목록), FR-REL-002 (미배포·대기 PR 수)
+- 신설 사유: API-SEQ-003은 두 릴리스의 **비교**이지 목록이 아니고, `release` 표를 읽는 사용자용 경로가 없었다 (DEV-152와 같은 유형의 공백).
+
+요청: `GET /api/v1/releases?repository=acme/payments&base_branch=main`
+
+응답 200:
+
+```json
+{
+  "sequence_space": "acme/payments@main",
+  "seq_epoch": 3,
+  "sequence_state": "ok",
+  "releases": [
+    { "tag_name": "build-20260820-01", "released_at": "2026-08-20T00:30:00Z",
+      "commit_sha": "a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5", "merge_seq": 1358,
+      "source": "git_tag", "previous_tag_name": "build-20260819-02", "pull_request_count": 16 },
+    { "tag_name": "build-20260819-02", "released_at": "2026-08-19T18:00:00Z",
+      "commit_sha": "b81f3e0a9c2d4e5f60718293a4b5c6d7e8f90a1b", "merge_seq": 1342,
+      "source": "git_tag", "previous_tag_name": null, "pull_request_count": 1342 }
+  ],
+  "unreleased": {
+    "last_release_tag": "build-20260820-01",
+    "head_seq": 1372,
+    "head_commit_sha": "c92a4f1b3d5e6f708192a3b4c5d6e7f809a1b2c3",
+    "pending_pull_request_count": 14
+  },
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+#### 판정과 실패의 근거
+
+- **정본은 PostgreSQL `release`·`merge_sequence`다** (DEV-142·130). `prs-releases`는 읽지 않는다 — 색인 반영 실패가 목록을 조용히 줄이면 안 된다.
+- **정렬은 서수 내림차순 고정이다** (CR-030, DEV-159). 태그는 과거 커밋에도 붙으므로 시각순과 서수순이 갈릴 수 있고, "직전 릴리스"가 시각 기준이면 인접 구간이 겹친다. "직전"은 **서수 선행 릴리스**이며, 같은 커밋에 태그가 둘이면 태그 이름 오름차순이 순서를 정한다(뒤 태그의 구간은 0건).
+- **`pull_request_count`는 시퀀스 차이가 아니라 실제 PR 행 수다** (QA-W005-06). `merge_sequence`에서 `(직전 서수, 이 서수]` 구간의 `pull_request_number IS NOT NULL` 행을 센다 — 직접 푸시 커밋이 섞이면 두 값이 다르다. 첫 릴리스(`previous_tag_name: null`)의 수는 히스토리 시작부터의 수다.
+- **현재 에폭의 행만 싣는다** (DEV-149). 재채번 직후 아직 재해석되지 않은 릴리스는 목록에서 빠지고, `sequence_state: "reassigning"`이 그 사정을 말한다.
+- **릴리스 미수집은 오류가 아니라 상태다** (DEV-146). 저장소에 릴리스가 하나도 수집되지 않았으면 **200** + `releases: []` + `reason: "release_not_indexed"` + `registration_status_path: "/repositories"`(FR-SEQ-004 예외 처리의 "저장소 등록 상태 조회 경로"). 수집은 됐으나 이 브랜치에 없으면 `reason` 없이 빈 목록이다 — 화면의 `empty_no_release`.
+- `unreleased`는 서수 있는 릴리스가 하나라도 있을 때만 싣는다 — 마지막 릴리스가 없으면 "그 이후"가 정의되지 않는다. `pending_pull_request_count`는 API-REL-002 AC-4와 같은 셈이다.
+- 접근 통제: 세션 인증 + `resolveSpace` (ADR-008·THR-004·THR-006). 범위 밖·미등록·미채번은 전부 404 `NOT_FOUND`다.
 
 ### API-STAT-001 그룹 집계
 
@@ -1357,7 +1415,7 @@ POST /api/v1/admin/sequence-integrity
 
 | API | 상태 | 변경 정책 |
 | --- | --- | --- |
-| API-SRCH-001~004, API-SEQ-001~003, API-SEQ-006, API-REL-001~002 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
+| API-SRCH-001~004, API-SEQ-001~003, API-SEQ-006, API-REL-001~002, API-REL-005 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
 | API-STAT-001~004, API-SEQ-004~005, API-REL-003~004 | stable | 위와 동일 |
 | API-ADM-* | internal | 운영 콘솔 전용. 프런트엔드와 동시 배포 전제로 변경 가능 |
 | API-ING-001 | external | GHE 계약. 변경 시 웹훅 재등록 필요 |
