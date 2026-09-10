@@ -1430,6 +1430,7 @@ python3 validate_srs_prd_env.py --root <origin/main worktree> --strict
 - [x] PR #161 머지 후 리뷰를 변경 관리 근거 누락으로 판정하고 DEV-575를 등록했다.
 - [x] CR-075 cascade에 실제 strict validator 비교 결과를 추가했다.
 - [x] 문서 이외의 구현·시험·요구사항은 바꾸지 않았다.
+- [x] **이 CR-076 cascade 문구까지 포함한 최종 working tree**에서 strict validator를 다시 실행했다. 변경 전 `main`과 같은 기존 오류 3건·경고 1건, 신규 issue 0건이다. 결과 기록 자체가 만드는 재귀를 피하기 위해 새 CR을 만들지 않고 CR-076의 종료 근거를 이 행으로 완성한다.
 
 ## 6. 미결 항목
 
