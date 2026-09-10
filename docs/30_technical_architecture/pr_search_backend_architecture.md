@@ -1,6 +1,8 @@
 # PR Search 백엔드 아키텍처
 
-> 상태: review | 버전: v0.6 | 갱신일: 2026-08-31
+> 상태: review | 버전: v0.7 | 갱신일: 2026-09-11
+
+CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 
 ## 1. 목적
 

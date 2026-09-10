@@ -82,6 +82,7 @@
 | CR-076 | 2026-09-10 | correction | PR #161 머지 후 P1 리뷰 | CR-075를 닫으면서 strict document validator 결과를 cascade에 기록하지 않았다. 변경 전 main과 같은 기존 오류 3건·경고 1건, 신규 issue 0건임을 명시한다 | DEV-575 · DEV-574 · CR-075 | 변경 관리·구현 원장 | closed |
 | CR-077 | 2026-09-10 | scope | 2026-09-10 P4 회고 회의 결정 (불편사항 1·3·5 묶음) | **회의가 결정한 M 넘버를 승인 범위로 편입한다.** 회의는 불편사항 1(바이너리에 변경이 반영됐는지 확인)·3(PR 번호 순서와 base 브랜치 반영 순서 불일치)·5(히스토리 흐름 파악)를 하나로 묶고, merged_at 순서로 1부터 부여하는 M 넘버, PR 제목·본문 표기, PR 아닌 직접 푸시 제외, 저장소별 번호(`M-1900-1`), 선후관계 확인 전용(주 식별자는 여전히 PR 번호)을 정했다. **이 CR은 M 넘버를 `merge_seq` 파생으로 정의한다** — 회의가 말한 merged_at 순서는 통상 first-parent 순서와 일치하고, 어긋나는 경우(release 브랜치 경유 머지·base 강제 푸시)에 실제 반영 순서를 말하는 쪽은 first-parent이며 회의 목적이 바로 그 순서이기 때문이다. 파생으로 정의하면 ADR-007의 검증 가능성(`git log --first-parent` 대조)과 에폭 무효화가 M 넘버에도 그대로 상속되고, 늦게 도착한 웹훅이 이미 부여된 번호 사이에 끼어드는 문제와 merged_at 초 단위 동률 문제가 애초에 생기지 않는다. **두 순서의 불일치는 감시 지표로 남긴다** (사용자 결정). **제품 정의가 바뀐다**: PR 제목·본문 갱신은 GHE 쓰기이므로 Search/Data Plane의 read-only 원칙을 처음으로 연다 — CR-005가 연 Operations Plane의 쓰기는 사용자가 지시한 실행이지만 이것은 시스템이 자동으로 수행하는 쓰기라 성격이 다르다. FR-SEQ-008(M 넘버 채번)·FR-SEQ-009(PR 표기), JOB-SEQ-004·JOB-SEQ-005, EVT-SEQ-004, API-SEQ-007, ADR-007 Clarification, ADR-022, WP-074·WP-075 신설. OD-009(저장소 코드 출처)를 열었다가 2026-09-11 사용자 결정으로 같은 판에서 닫았다 — **저장소 이름의 숫자 부분**이다. PIPE DB 반영과 PR 본문 표기는 사용자 결정으로 **이번 범위에서 제외**했으며 오픈 결정으로 열지 않는다. **선행 조건**: DEV-576(push 웹훅이 미러 fetch를 부르지 않아 `merge_seq`가 최대 6시간 늦게 붙는다)을 먼저 닫아야 회의가 요구한 '거의 실시간'이 성립한다. 기존 안정 ID 재번호화 0건 | FR-SEQ-008 · FR-SEQ-009 · JOB-SEQ-004 · JOB-SEQ-005 · EVT-SEQ-004 · API-SEQ-007 · ENT-SEQ-001 · ADR-007 · ADR-022 · THR-046 · THR-047 · OD-009 · WP-074 · WP-075 · DEV-576 | **실측 21종** — 요구사항 4종, 파생 UI 7종, 아키텍처 5종, 딜리버리 4종, `change_control.md` | closed |
 | CR-078 | 2026-09-11 | correction | `0.1.0-pilot.3` 사내 반입 Upstream Feedback (ADR-021) | **운영 구성 계약이 기동을 막는다고 적혀 있었으나 실제로는 요청마다 막았다.** 사내가 평문 HTTP 때문에 `SESSION_COOKIE_SECURE=false`로 올렸고, `web`은 정상 기동해 `/healthz`에 200을 냈으며 Docker는 전 서비스를 `healthy`로 보고했는데 사람이 여는 화면은 전부 500이었다. `compose.yml`이 이 변수를 `web`에만 넘겨 `search-api`는 영향을 받지 않았고, 그 비대칭이 원인을 웹 런타임의 모듈 문제로 오진하게 했다. `.env.example`과 런북이 「HTTP면 false여야 한다」고 적어 운영자를 그 값으로 보낸 것이 문서 쪽 원인이다. **보안 계약은 그대로 두고**(운영에서 insecure 세션 쿠키 금지, FR-AUTH-001 AC-2) 그 계약이 적힌 대로 기동을 막게 한다. 릴리스 산출물에 실제 이미지 런타임 게이트를 더해 「빌드·헬스체크는 통과하는데 화면은 500」이 다시 반입되지 않게 한다 | DEV-577 · DEV-578 · DEV-579 · DEV-551 · DEV-572 · FR-AUTH-001 · NFR-005 · WP-072 · WP-015 · ADR-021 | 배포 정의·런북·web 앱·회귀·구현 원장 | closed |
+| CR-079 | 2026-09-11 | correction / design | 사용자 WP-074 squash-only 지시서 및 이번 세션 설계 전용 지시 | FR-SEQ-008의 확정 근거·인용 안전성·W-004·복구·계측 계약을 정정하고 구현 에이전트용 상세 설계를 작성한다. 구현·시험 실행·PR·병합·발행은 이번 세션의 완료에 포함하지 않는다. 기존 지원 범위와 pilot.4 방어를 보존한다 | FR-SEQ-008 · API-SEQ-007 · JOB-SEQ-004 · EVT-SEQ-004 · WP-074 · DEV-576 · DEV-580 · DEV-581 · DEV-582 · DEV-583 · ADR-023 | SRS → 파생 문서 → 상세 설계 → 실행 패키지 → 원장 | review — 계약 정정·설계 작성 완료, DEV-581 및 전체 handoff gate 잔존 |
 
 ## 4. 게이트 통과 기록
 
@@ -1465,6 +1466,24 @@ python3 validate_srs_prd_env.py --root <origin/main worktree> --strict
 - [x] 고친 이미지로 구성 행렬을 다시 재다가 같은 유형의 결함을 하나 더 찾아 DEV-579로 등록하고 함께 닫았다 — `OIDC_REDIRECT_URI`가 계약에만 있고 배포 정의에 없어, `AUTH_ENABLED=true`로 올리면 모든 로그인이 500이 될 상태였다. 키를 `compose.yml`·`.env.example`에 더하고 기동 검증이 로그인 라우트와 같은 함수로 인증 구성을 편다.
 - [x] 전체 검사와 strict document validator 결과를 원장 6.72.11장에 기록했다. validator는 변경 전 `main`과 같은 기존 오류 4건·경고 1건이며 신규 issue 0건이다.
 
+
+### CR-079 cascade — WP-074 squash-only 설계 전용
+
+첨부 구현 지시서보다 이번 세션의 **설계만 작성** 지시를 우선 적용했다. 시작/원격 재확인 HEAD는 f53d28c4e3fc7e0a4b5ac189da571df05df1741f, pilot.4는 a198e12915e6795dc44e1a947073b683e9e5e47b다. 별도 브랜치 docs/wp074-squash-design에 문서만 변경했다.
+
+- SRS v2.23: 사용자 승인 보완 AC-9~14. squash-only, 영속 근거, 지연 재개, 인용 code/epoch, W-004, 읽기 전용 측정.
+- PRD·glossary·traceability: M 의미와 확정 분류, API 인용, 세 화면 및 비UI 측정 연결. OD-009의 개명 설명은 임의 코드 허용으로 해석하지 않도록 정정.
+- UI 8종: 기존 렌더 경로·상태·제한 재검증·링크 문맥·QA와 후속 브리프. tokens는 시각 정책 변경이 없어 무변경으로 검토.
+- 아키텍처 10종 + 신규 상세 설계: API-SEQ-007 배포 전 정정, 증거/work/sample ENT-SEQ-005~007, ADR-023(proposed), freshness 락·원자성·복구·숫자 경계·rollback·계측. 기존 SERVICE_UNAVAILABLE 코드가 있다는 잘못된 가정은 실제 error-codes.ts와 대조하여 제거했다.
+- 전달 문서 4종 + 신규 실행서·측정 가이드: WP-074 todo 유지, S0~S6/T01~T06, 독립 fixture/변이/실제 이미지/사내 측정 구분. WP-075 실행과 immutable 발행은 제외.
+- DEV-580·582·583은 문서/설계 공백 정정으로 resolved이며 구현 완료를 의미하지 않는다. DEV-576은 open. DEV-581은 production 직접 부재 확정 근거 미확보로 open이다. 반복 빈 응답으로 가용성을 보장하지 않고 pending으로 남기는 설계가 뒤 PR 전체를 막을 수 있음을 명시했다.
+- 공개 GitHub REST 공식 문서 3종과 실제 source를 검토했다. 사내 GHES·IdP·DB에는 접속하지 않았다. source 조사와 실제 실행 시험을 구분해 기록했다.
+
+검사기: `/home/roqkf/.codex/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py`, SHA-256 `1004095624fed9bae7a8ada7a2bbe0f4c6586dbcdf20db61b07b3b8045ca7cb2`. 별도 version 옵션을 추정하지 않고 파일 hash로 식별한다. 시작과 변경 후 `--report`는 Phase 6·오류 2/경고 1, `--strict`는 exit 1·오류 4/경고 1이며 **새 issue 0**이다. 기존 FR-CSS-005 외부 요구사항 인용, D-002 과거 정정 이력, 원장 risks.md 상대 참조와 두 원장의 placeholder 검출이다. 무관한 역사 문서를 덮어써 strict를 초록으로 만들지 않았다.
+
+수동/구조 검사: 신규 설계 3문서, WP-074 연결 28개, JSON 예제 5개, 신규 표 행 118개 확인. 임시 문서 검사 스크립트(`/tmp/wp074-document-check.mjs`)의 오류 0; 검사 범위는 링크·fence·table·JSON·API epoch 키·old unsafe rule 잔존·WP todo·DEV 등록이다. 실제 동작 검증이나 독립 에이전트 리뷰가 아니다. 최종 문서 기록 후 같은 검사기를 다시 실행한다.
+
+판정: **계약 정정과 설계 문서 작성은 완료**, 전체 strict handoff 게이트는 미통과, 직접 부재 증거의 구현 가용성 조건은 잔존한다. 그래서 CR은 review, ADR-023은 proposed이며 완료된 개발/출시 승인으로 읽지 않는다. 앱 코드·SQL migration·측정 도구 구현·애플리케이션 시험·build·PR/CI/병합·후보 번들·새 릴리스 발행은 이번 세션에서 전부 NOT RUN이다. Agent-Initiated Decisions는 상세 설계 12절이 정본이다.
 
 ## 6. 미결 항목
 

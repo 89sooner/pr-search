@@ -1,6 +1,8 @@
 # PR Search 비동기 작업 및 이벤트
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-09-09
+> 상태: review | 버전: v0.9 | 갱신일: 2026-09-11
+
+CR-079 / ADR-023: JOB-SEQ-004는 sequence 역할의 durable poll과 기존 EventBus를 사용한다. 원본 저장→refresh, snapshot 저장→reconcile, 번호 저장→materialize/announce가 각각 원자적이다. 기동/매초 poll·lease·generation CAS·retry·SIGTERM은 [설계](pr_search_wp074_design.md) 4~8절이 정본이다. 일일 스윕만으로 late mapping 재개를 대신하지 않는다. EVT-SEQ-004는 prs:projected에 발행하며 기존 link/commit-enrich는 이름 필터로 무시한다. ES는 sequence 역할의 durable materialize가 소유하고 WP-075 annotate 구독은 아직 추가하지 않는다.
 
 ## 1. 목적
 
@@ -66,7 +68,7 @@
 | JOB-SEQ-001 | 시퀀스 증분 채번 | `push` 웹훅 → 게이트웨이가 `prs:sequence`에 발행 (CR-025, DEV-116) / 백필 완료 / **수동 (API-ADM-002, `type: sequence_assign`, CR-055)** | sequence | 락 실패는 `defer`, 그 밖은 5회 지수 백오프 | 10분 | EVT-SEQ-001 | FR-SEQ-001, FR-ADMIN-002 AC-1 |
 | JOB-SEQ-002 | 시퀀스 재채번 | 재작성 감지(자동) / 수동 (API-ADM-007 → `sequence_reassign` 잡) | `sequence` 역할 — 자동은 버스 소비자, **수동은 `startSequenceRepairRunner`가 잡을 claim한다** (CR-034, DEV-178) | 없음 (실패 시 `stale`) | 60분 | EVT-SEQ-002, EVT-JOB-001 | FR-SEQ-005, FR-ADMIN-003 AC-4 |
 | JOB-SEQ-003 | 시퀀스 정합성 점검 | 수동 / 스케줄 (일 1회, 표본) | **`sequence` 역할** | 3회 | 30분 | EVT-JOB-001 | FR-ADMIN-003 |
-| JOB-SEQ-004 | M 넘버 채번 | `EVT-SEQ-001`(`sequence.assigned`) / `EVT-SEQ-002`(`sequence.reassigned`, 새 에폭 재채번) / 일 1회 잔여 스윕 | **`sequence` 역할** — 채번과 같은 공간 락을 쓰므로 다른 역할로 떼지 않는다 | 락 실패는 `defer`, 그 밖은 5회 지수 백오프 | 10분 | EVT-SEQ-004 | FR-SEQ-008 |
+| JOB-SEQ-004 | M 번호 채번 | EVT-SEQ-001·002 / PR snapshot 확정 후 durable reconcile / 기동·1초 poll / 일 1회 잔여 대조 | **sequence 역할**, 기존 공간 락 공유 | 락 5초 defer, 오류 5회 후 경보하되 durable retry 유지; 상세 설계 6.3 | 기존 회차 10분, batch 기본 100 | EVT-SEQ-004 | FR-SEQ-008 AC-9~14 |
 | JOB-SEQ-005 | PR 제목 M 넘버 표기 | `EVT-SEQ-004`(`mnumber.assigned`) / 미표기 잔여 스윕 (일 1회) | **`annotate` 역할** — GHE 쓰기 자격 증명을 가진 유일한 워커이며 조회 역할과 분리한다 (ADR-022) | 5회 지수 백오프. 403·404는 재시도하지 않고 사유를 남긴다 | 30초 | - | FR-SEQ-009 |
 | JOB-REL-001 | 참조 간선 추출 | **EVT-ING-003 / EVT-ING-005** (CR-039, DEV-215) | link | 3회 (**핸들러가 `delivery_count`로 집행한다**, DEV-228) | 30초 | - | FR-REL-003 |
 | JOB-REL-002 | 되돌림 간선 파생 | **EVT-ING-003 / EVT-ING-005** (CR-041, DEV-230) | link | 3회 (**핸들러가 `delivery_count`로 집행**) | 30초 | - | FR-REL-004 |
@@ -461,7 +463,7 @@ JOB-ING-006의 워커는 **`batch` 역할**이다. 새 역할을 만들지 않�
 | EVT-SEQ-001 | `sequence.assigned` | sequence | project, ops | **`prs:projected`** (CR-025, DEV-121) | `{ repository_id, base_branch, seq_epoch, from_seq, to_seq, head_sha }` | 시퀀스 공간별 직렬 |
 | EVT-SEQ-002 | `sequence.reassigned` | sequence | project, 알림, ops | `prs:projected` | `{ repository_id, base_branch, old_epoch, new_epoch, diverged_at_seq, affected_count }` | 시퀀스 공간별 직렬 |
 | EVT-SEQ-003 | `sequence.stale` | sequence | ops, 알림 | `prs:projected` | `{ repository_id, base_branch, reason, last_error }` | 최신 값 우선 |
-| EVT-SEQ-004 | `mnumber.assigned` | sequence | annotate, project, ops | `prs:projected` | `{ repository_id, base_branch, seq_epoch, from_mnumber, to_mnumber, pull_request_numbers[] }` — **PR 번호를 함께 싣는다**: 표기 잡이 어느 PR을 고쳐야 하는지 알려면 정본을 다시 읽어야 하는데, 그 왕복을 없애도 값이 불변이라 안전하다 (M 넘버는 한 번 부여하면 바뀌지 않는다). 제목 문자열은 싣지 않는다 — 표기 시점의 최신 제목을 GHE에서 읽어야 한다 | 시퀀스 공간별 직렬 |
+| EVT-SEQ-004 | `mnumber.assigned` | sequence의 durable announce | 현재는 기존 소비자가 무시, 향후 WP-075 annotate 전용 그룹 | `prs:projected` | `{ repository_id, base_branch, seq_epoch, from_mnumber, to_mnumber, pull_request_numbers[] }`. 상세 설계 8절의 상한/멱등 ID. **payload는 힌트이며 소비자는 현재 epoch·정본을 재검증한다.** WP-074 ES는 독립 materialize work가 소유한다 | 공간별 멱등, 전달 순서 비의존 |
 | EVT-AUTH-001 | `permission.invalidated` | ingest-gateway | authz | `prs:permission` | `{ user_ids[], team_id, repository_id, reason }` — 세 대상 필드는 모두 선택이며 **하나 이상이 있어야 한다.** `member` 웹훅은 `user_ids`, `team` 웹훅은 `team_id`, `repository` 웹훅은 `repository_id`를 채운다. 게이트웨이는 펼치지 않는다 (CR-015, DEV-041·DEV-042) | 집합 연산이라 멱등 |
 | EVT-JOB-001 | `job.progress` | 배치 워커 | ops | `prs:batch` | `{ job_id, type, target, state, progress: { done, total, unit }, cursor }` | 최신 값 우선 |
 

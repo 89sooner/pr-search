@@ -1,6 +1,14 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.18 | 갱신일: 2026-09-09
+> 상태: review | 버전: v0.19 | 갱신일: 2026-09-11
+
+CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025의 최종 필드·check·unique·FK·초기화·role grant·checkpoint/epoch·retention/rollback은 [상세 설계](pr_search_wp074_design.md) 6~7·10절이 소유한다. 아래 CR-077 DDL은 기본 다섯 필드만 보여주는 부분 예시이며 단독 구현하지 않는다.
+
+| 엔티티 ID | 이름 | 소유 / 저장 | 요구사항 |
+| --- | --- | --- | --- |
+| ENT-SEQ-005 | mnumber_evidence | PR/direct/unresolved 증거, PostgreSQL | FR-SEQ-008 AC-10 |
+| ENT-SEQ-006 | sequence_work | 고정 kind의 durable intent/outbox, PostgreSQL | FR-SEQ-008 AC-11 |
+| ENT-SEQ-007 | sequence_latency_sample | 단계별 읽기 전용 관측 자료의 원천, PostgreSQL | FR-SEQ-008 AC-14 |
 
 ## 1. 목적
 
@@ -837,9 +845,9 @@ ALTER TABLE gh_capability_snapshot
 
 `migration 024_export`는 `job(type=export)`에 딸린 산출물 표를 만든다. `job_id`가 PK이자 job FK이고 삭제는 cascade다. `user_id`는 실행자 FK이며 사용자 삭제 시에도 산출물을 지운다. `scope_version`, `repository_ids`, `format(csv|json)`, `plan(JSONB)`는 요청 시 같은 트랜잭션에 저장한다. plan에는 검증된 ES 질의·대상·정렬·scope·원문 q와 해당하는 시퀀스 바인딩을 담는다. 클라이언트가 plan을 직접 지정하지 않는다.
 
-`migration 025_merge_number`는 M 넘버를 얹는다 (CR-077, FR-SEQ-008). **새 표를 만들지 않는다** — M 넘버는 `merge_seq`의 파생이고 같은 행의 속성이므로, 별도 표로 떼면 두 값이 다른 트랜잭션에서 갱신되어 언젠가 어긋난다 (ADR-007 Clarification). `merge_sequence`에 `merge_number`·`annotate_state`·`annotated_at`을, `sequence_space`에 `mnumber_head_seq`·`mnumber_head`를 더하는 additive 마이그레이션이다. 기존 행의 `merge_number`는 `NULL`로 시작하고 채번 잡이 뒤에서 메운다.
+`migration 025_merge_number`는 M 번호를 기존 merge_sequence 행에 얹는다(CR-077 / CR-079). **번호 정본을 별도 표로 분리하지 않는다.** 추가되는 evidence/work/sample 표는 확정 근거·영속 전달·관측의 보조 자료다. CR-077 기본 다섯 필드에 M 부여 시각·blocker와 세 보조 표를 추가하며 최종 타입·제약·초기값·권한은 `pr_search_wp074_design.md` 6절이 정본이다. 기존 M 값은 NULL, checkpoint는 0이며 migration에서 GHE 조회나 과거 채번을 수행하지 않는다.
 
-**M 넘버 채번은 `mnumber_head_seq`에서 멈춘 자리를 다시 잡는다.** 이 열이 있어야 `FR-SEQ-008` AC-3이 성립한다 — 채번은 `merge_seq` 오름차순으로 진행하다가 **PR 연결이 아직 확정되지 않은 항목을 만나면 그 앞에서 멈춘다.** `pull_request_number`가 `NULL`인 데에는 두 가지 이유가 있고 (직접 푸시라서 영구히 없거나, 매핑을 아직 못 찾았거나) 둘을 구분하지 못한 채 건너뛰면 나중에 매핑이 채워졌을 때 이미 나눠 준 번호 사이에 끼워야 한다 (DEV-207이 같은 구분을 이미 요구한다). 멈춘 자리는 다음 회차가 이어받으며, **한 번 부여한 `merge_number`는 어떤 경로로도 다른 행으로 옮겨 가지 않는다.**
+**M 번호는 mnumber_head_seq에서 이어 간다(CR-079).** PR 확정은 번호와 위치를, 증서 있는 direct 확정은 위치만 증가시키고 unresolved에서는 멈춘다. 기존 NULL 또는 DEV-207의 direct_push 역할로 영구 skip하지 않는다. 현재 production 부재 증거는 DEV-581로 남아 있으며 상세 설계 2.2·3·5절을 따른다. 이미 발급한 번호를 다른 행으로 옮기지 않는다.
 
 **`merge_number`는 `merge_seq`를 대신하지 않는다.** 범위 조회(`FR-SEQ-002`)와 릴리스 포함 판정(`FR-REL-002`)은 계속 `merge_seq`를 쓴다 — M 넘버는 직접 푸시 커밋을 세지 않으므로 브랜치 히스토리와 1:1 대응하지 않고, 그 위에서 구간을 인용하면 실제 히스토리 구간과 어긋난다. 색인의 `merge_number`는 **표시와 해석 전용**이며 구간 스캔의 근거가 아니다.
 

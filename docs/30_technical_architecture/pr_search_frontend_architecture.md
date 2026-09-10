@@ -1,6 +1,8 @@
 # PR Search 프론트엔드 아키텍처
 
-> 상태: review | 버전: v0.3 | 갱신일: 2026-09-08
+> 상태: review | 버전: v0.4 | 갱신일: 2026-09-11
+
+CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설계](pr_search_wp074_design.md) 9절로 고정한다. M은 API 생성 문자열이며 PR 번호를 대체하지 않는다. 행별 resolve 없이 페이지 batch, M deep link 1회 resolve, visible pending의 bounded poll을 사용한다. 기존 인증 BFF·from_q·cursor·epoch 경고·Conductor를 보존한다.
 
 ## 1. 목적
 

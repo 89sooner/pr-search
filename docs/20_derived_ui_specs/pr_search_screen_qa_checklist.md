@@ -1,6 +1,8 @@
 # PR Search 화면 QA 체크리스트
 
-> 상태: review | 버전: v0.15 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.16 | 갱신일: 2026-09-11
+
+CR-079: QA-W001-39·QA-W002-29·QA-W004-30은 [실행서 T05](../40_delivery/pr_search_wp074_execution.md)와 함께 검증한다. 미머지/비대상/pending/unavailable 구분, 코드 불일치·M epoch 누락, 링크 네 문맥, from_q·새 탭·키보드·커서 보존, 행별 resolve 0회가 필수다. 인증 fixture만 사용하며 익명 검색을 열지 않는다. 기존 직접 commit의 M 칸 없음과 PR 식별자 유지 기준은 그대로다.
 
 ## 1. 사용 방법
 

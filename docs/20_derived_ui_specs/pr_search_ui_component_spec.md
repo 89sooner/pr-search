@@ -1,6 +1,8 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.14 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.15 | 갱신일: 2026-09-11
+
+CR-079 C-014 확장: mNumberState에 unavailable을 더하고 mNumberReason과 mNumberEpoch를 받는다. PR 공통 M 표시 모델이 API reason→한국어 문구를 매핑하며 null을 0/빈 문자열로 변환하지 않는다. 상태·번호·링크는 같은 epoch 모델에서 만들고 pending/unavailable에는 M 복사 링크 없음. Conductor Badge/기존 live region을 소비하며 새 토큰·CSS는 추가하지 않는다. [설계 9절](../30_technical_architecture/pr_search_wp074_design.md).
 
 ## 1. 문서 원칙
 
@@ -141,7 +143,7 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - 책임: 머지 시퀀스 값과 시퀀스 공간을 함께 표시
 - 기반: Conductor `Badge`
 - 필수 props: `seq: number | null`, `space: SequenceSpaceRef | null`, `epoch: number | null`, `contextSpace?: SequenceSpaceRef | null`
-- 선택 props: `mNumber: string | null`, `mNumberState: 'assigned' | 'pending' | 'epoch_stale' | 'not_applicable'` (CR-077, FR-SEQ-008). PR과 연결된 개체에만 넘긴다. 직접 푸시 커밋 행은 `not_applicable`이며 M 넘버 영역 자체를 그리지 않는다(실패가 아니다)
+- 선택 props: `mNumber: string | null`, `mNumberState: 'assigned' | 'pending' | 'epoch_stale' | 'not_applicable' | 'unavailable'`, `mNumberReason: string | null`, `mNumberEpoch: number | null` (CR-079). commit 행은 M 영역을 그리지 않고 PR의 pending/unavailable에는 M 링크를 만들지 않는다.
 - `SequenceSpaceRef`는 투영이 주는 `owner/repo@branch` 문자열이다 (CR-019, DEV-077)
 - 상태: `assigned`, `unassigned`(미머지), `not_computed`(**아직 계산하지 않음** — WP-021 전), `stale`, `reassigning`, `epoch_stale`
 - **`unassigned`와 `not_computed`를 절대 같이 그리지 않는다** (CR-019, DEV-077): 전자는 "머지되지 않았다"는 **사실 주장**이고 후자는 "아직 모른다"이다. 미계산을 미머지로 그리면 화면이 거짓을 말한다
