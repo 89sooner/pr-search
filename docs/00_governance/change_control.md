@@ -79,6 +79,7 @@
 | CR-073 | 2026-09-09 | correction | `0.1.0-pilot.3` 사내 업그레이드 Upstream Feedback | `prsctl load` 전 compose 수정이 checksum 검증에 막히는 순서를 런북에 명시하고(DEV-571), `pipeline-worker` 이미지에 `git`을 포함해 미러·릴리스 색인 실패를 해소한다(DEV-572). 내부 코드는 반출하지 않고 민감정보를 제거한 운영 발견만 수동 전달하는 Upstream Feedback 경로를 ADR-021에 명시한다 | DEV-571 · DEV-572 · WP-072 · ADR-021 · JOB-MIR-001 · JOB-MIR-002 | `pr_search_architecture_decision_records.md`, `pr_search_implementation_traceability.md`, `deploy/single-host/RUNBOOK.md`, `Dockerfile`, 회귀 | closed |
 | CR-074 | 2026-09-10 | correction | PR #159 머지 후 P1 리뷰 | CR-073이 신설한 회귀 두 건의 시험 이름에 소유 WP가 없어 테스트→작업 패키지 추적이 끊겼다. 두 이름에 WP-072를 명시하고 DEV-573으로 기록한다 | DEV-573 · DEV-571 · DEV-572 · WP-072 | 회귀·구현 원장 | closed |
 | CR-075 | 2026-09-10 | correction | PR #160 머지 후 P2 리뷰 | CR-074 cascade가 검증 결과를 원장 6.72.9장에 기록했다고 했으나 그 절에 명령·통과 수가 없었다. 실제 로컬·CI 결과를 원장에 추가한다 | DEV-574 · DEV-573 · CR-074 | 구현 원장 | closed |
+| CR-076 | 2026-09-10 | correction | PR #161 머지 후 P1 리뷰 | CR-075를 닫으면서 strict document validator 결과를 cascade에 기록하지 않았다. 변경 전 main과 같은 기존 오류 3건·경고 1건, 신규 issue 0건임을 명시한다 | DEV-575 · DEV-574 · CR-075 | 변경 관리·구현 원장 | closed |
 
 ## 4. 게이트 통과 기록
 
@@ -1422,6 +1423,13 @@ python3 validate_srs_prd_env.py --root <origin/main worktree> --strict
 - [x] PR #160 머지 후 리뷰를 원장 기록 누락으로 판정하고 DEV-574를 등록했다.
 - [x] 원장 6.72.9장에 로컬 회귀 346건, typecheck·lint와 PR #160 verify·integration 성공을 기록했다.
 - [x] 기능·시험 동작·요구사항은 바꾸지 않았다.
+- [x] strict document validator는 변경 전 `main`과 같은 기존 오류 3건·경고 1건이며 신규 issue 0건이다.
+
+### CR-076 cascade — CR-075 validator 결과 기록 누락
+
+- [x] PR #161 머지 후 리뷰를 변경 관리 근거 누락으로 판정하고 DEV-575를 등록했다.
+- [x] CR-075 cascade에 실제 strict validator 비교 결과를 추가했다.
+- [x] 문서 이외의 구현·시험·요구사항은 바꾸지 않았다.
 
 ## 6. 미결 항목
 
