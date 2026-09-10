@@ -1,5 +1,45 @@
 # 중요 파일 경로와 역할
 
+## 2026-09-11 라운드가 만진 것 (CR-077 M 넘버 — 문서 21개, 코드 0)
+
+`main = 2cd7c1c`. **코드는 한 줄도 건드리지 않았다.** 아래는 전부 `docs/` 아래다.
+
+### 정본 — 여기부터 읽는다
+
+| 경로 | 역할 |
+| --- | --- |
+| `docs/00_governance/change_control.md` | `CR-077` 행(표)과 6장 직전의 cascade 절. **closed** |
+| `docs/10_requirements/srs_final.md` | `FR-SEQ-008`(채번)·`FR-SEQ-009`(표기) 절, `v2.22` 요약, `OD-009` 행, 감사 액션 표의 `pull_request.annotate` |
+| `docs/40_delivery/pr_search_work_packages.md` | `### WP-074`·`### WP-075` 절. **구현 범위와 DoD의 정본** |
+
+### 설계
+
+| 경로 | 역할 |
+| --- | --- |
+| `docs/30_technical_architecture/pr_search_architecture_decision_records.md` | ADR-007의 **CR-077 Clarification**(M 넘버는 파생이지 두 번째 시퀀스가 아니다)과 **`ADR-022`**(자동 GHE 쓰기 경로, 제약 다섯) |
+| `docs/30_technical_architecture/pr_search_data_model.md` | 마이그레이션 025 설명, `merge_sequence`의 `merge_number`·`annotate_state`·`annotated_at`, `sequence_space`의 `mnumber_head_seq`·`mnumber_head`, 채번 멈춤 규칙 |
+| `docs/30_technical_architecture/pr_search_async_events_jobs.md` | `JOB-SEQ-004`(채번)·`JOB-SEQ-005`(표기) 행, `EVT-SEQ-004`(`mnumber.assigned`), 스케줄 표 2행, 순서 보장 절 |
+| `docs/30_technical_architecture/pr_search_api_contracts.md` | `API-SEQ-007`(M 넘버 ↔ PR 양방향 해석), PR 상세·검색 응답의 `merge_number`·`merge_number_state` |
+| `docs/30_technical_architecture/pr_search_security_privacy_architecture.md` | 13장(M 넘버 표기 쓰기 경로 보안), `THR-046`·`THR-047`, 세 번째 자격 증명 경계 |
+
+### 나머지
+
+- `docs/10_requirements/`: `glossary.md`(「M 넘버」, 정본 필드명 `merge_number`), `prd.md`, `requirements_screen_traceability_matrix.md`
+- `docs/20_derived_ui_specs/` 7종: `product_ia`·`wireframe_spec`·`ui_component_spec`(`C-014` 확장)·`screen_state_matrix`(`merge_number_pending`)·`screen_qa_checklist`, 그리고 브리프 2종의 「WP-074·WP-075 M 넘버 실행 규칙」 절
+- `docs/40_delivery/`: `pr_search_implementation_roadmap.md`(4.2장), `pr_search_release_validation_plan.md`, `pr_search_implementation_traceability.md`(WP 2행 + `DEV-576`)
+
+### 구현할 때 읽어야 할 코드 (이번에 수정하지 않았다)
+
+| 경로 | 왜 |
+| --- | --- |
+| `apps/pipeline-worker/src/mirror-runner.ts:126` | `syncByTarget` — **정의만 있고 호출부가 0건이다**(`DEV-576`) |
+| `apps/pipeline-worker/src/sequence.ts` | `assignSequence`. 공간 advisory lock과 재작성 감지가 여기 있다 |
+| `apps/pipeline-worker/src/sequence-plan.ts:30` | `numberCommits` — M 넘버 계산 함수를 그 옆에 둔다 |
+| `packages/github/src/commit-graph.ts:145` | `selectCommitGraph`, `FallbackCommitGraph` — 읽기 실패 시에만 폴백한다 |
+| `packages/github/src/mirror-graph.ts:192,232` | `resolveHead`(fetch하지 않는다), `firstParentRevList` |
+| `packages/db/migrations/` | 마지막이 `024_export`. 다음은 `025_merge_number` |
+| `apps/ingest-gateway/src/server.ts:170` | `createSequencePublisher` — push → `prs:sequence` |
+
 ## 2026-09-08 (2차) 라운드가 만지거나 만든 것 (0.1.0-pilot.3 발행)
 
 main = `54ff0a0` (+ `PR #157` 인계 갱신). 발행 대상은 `139e818`이다.

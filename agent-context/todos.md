@@ -1,5 +1,51 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
+최신 기준 (**2026-09-11 · CR-077 M 넘버 도입 — 문서 캐스케이드 완료**)
+
+**`main = 2cd7c1c`. PR #164가 머지됐고 작업 트리는 깨끗했다.** 실측하라.
+
+## 시작하기 전에 실측할 것
+
+```bash
+git log --oneline -3 origin/main            # 2cd7c1c가 맨 위여야 한다
+grep -n "^| WP-074 " docs/40_delivery/pr_search_work_packages.md   # todo — 다음 착수
+grep -rn "syncByTarget" apps/ packages/ --include=*.ts | grep -v dist   # 호출부가 여전히 0건인가
+grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -1   # 다른 세션이 DEV-577을 썼는지
+```
+
+## 다음 작업 — `WP-074` (M 넘버 채번과 조회)
+
+착수 조건은 이미 충족됐다. 선행 WP(WP-021·WP-020·WP-008)가 전부 `done`이고 오픈 결정이 차단하지 않는다.
+상세 범위·DoD는 `docs/40_delivery/pr_search_work_packages.md`의 `### WP-074` 절이 정본이다.
+
+1. **`DEV-576`을 먼저 닫는다 (이 WP의 첫 범위).** `apps/pipeline-worker/src/mirror-runner.ts:126`의
+   `syncByTarget`을 push 경로에 잇고, **미러 fetch가 끝난 뒤에 채번이 돌도록 순서를 보장한다.**
+   두 잡이 같은 push를 각각 받아 경주하면 채번이 옛 head를 읽고 조용히 "새 커밋 없음"으로 끝난다.
+2. 마이그레이션 025 (`merge_number`·`annotate_state`·`annotated_at` / `mnumber_head_seq`·`mnumber_head`).
+3. 채번 계산을 순수 함수로 분리한다 — `apps/pipeline-worker/src/sequence-plan.ts`의 `numberCommits` 옆자리.
+4. `JOB-SEQ-004` 워커를 `sequence` 역할 안에 둔다(공간 락을 `JOB-SEQ-001`과 공유).
+5. `EVT-SEQ-004` 발행 → ES 투영(`merge_number`) → `API-SEQ-007` → `W-001`·`W-002`·`W-004` 병기.
+
+## 그다음 — `WP-075` (PR 제목 M 넘버 표기)
+
+- **착수 전 확인**: 전용 GitHub App(`pull_requests:write`) 발급 절차. 조회용 Data App과 자격 증명을 공유하지 않는다.
+- 쓰기 반경은 제목 한 필드다. 본문·레이블·상태로 넓히지 마라 (`ADR-022` 결정 2).
+
+## 확인이 필요한 것
+
+- [ ] **`DEV-576`의 운영 실측.** 코드 경로 판정만 했다. 아래로 확정한다.
+      ```sql
+      SELECT percentile_disc(0.5)  WITHIN GROUP (ORDER BY assigned_at - committed_at) AS p50,
+             percentile_disc(0.95) WITHIN GROUP (ORDER BY assigned_at - committed_at) AS p95,
+             max(assigned_at - committed_at) AS worst
+      FROM merge_sequence WHERE assigned_at > now() - interval '7 days';
+      ```
+      초 단위면 놓친 경로가 있다는 뜻이고, 시간 단위면 판정이 맞다.
+- [ ] **조직이 rebase merge를 허용하는가.** 허용한다면 `WP-074`의 머지 방식 판정을 우선 검증한다 —
+      rebase는 base에 커밋 N개를 넣는데 PR은 하나만 지목하므로 나머지가 직접 푸시로 오판될 소지가 있다.
+- [ ] 원격 브랜치 `docs/cr077-m-number` 정리 여부.
+- [ ] `agent-context/` 변경분이 커밋되지 않은 채 인계된다 — 코드 작업 전에 커밋할지 정할 것. `git add -A`는 쓰지 마라.
+
 
 최신 기준 (2026-09-08 2차 · **`0.1.0-pilot.3` 발행 — CR-068 · CR-069 / DEV-555~558**)
 

@@ -1,8 +1,34 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=81080789d103b72e178efc88341c445b54b7b836b0c8704fe68102e1bcaa96db bytes=156941 lines=2148 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;apps/web;refs/tags/;usr/bin/env;origin/main;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md;worker/link.test.ts
+@kv sha256=49680237e8ca6158f7f9cedb1a37f4eaa8dd40c767ecdc742b84d0729e3e2215 bytes=159916 lines=2196 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;origin/main;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-11 라운드가 배운 함정 (CR-077 M 넘버)
+@h3 승인된 문서가 존재하지 않는 ID를 가리킬 수 있다 — 가장 값비쌌던 것
+@path FR-SEQ-008의 관련 화면에 D-002를 적었는데 이 제품은 D-### 접두를 쓰지 않는다.
+@path docs/20_derived_ui_specs/pr_search_product_ia.md가 "데스크톱 앱 표면이 없다"고 명시하고
+@path PR 상세는 W-002다. 위임한 에이전트가 추적 매트릭스의 자체 검증 규칙("모든 화면 ID는 IA 또는
+@p wireframe에 존재해야 한다")으로 잡아냈다.
+@p 교훈: 화면·API·엔티티 ID를 쓰기 전에 그 ID가 정의된 문서에서 실측하라. 이름이 그럴듯하다는 이유로 번호를 지어내지 마라.
+@h3 같은 개념에 두 이름이 붙는다
+@p 용어집과 API 계약이 필드명을 m_number로 쓰기 시작했고 데이터 모델은 merge_number였다. 병렬 위임에서 특히 잘 생긴다 — 정본 필드명을 브리핑에 명시하고, 끝난 뒤 grep으로 확인하라. UI 상태 이름(m_number_pending)까지 번져 있었고 merge_number_pending으로 통일했다.
+@h3 새 ID를 잡기 전에 반드시 실측한다 (또 걸렸다)
+@path 처음에 EVT-SEQ-003·ADR-021·API-SEQ-005를 신규로 잡았는데 셋 다 이미 쓰이고 있었다
+@p (sequence.stale / 사내 반입 결정 / 이분 탐색). 더 나쁜 것은 CR 행을 먼저 쓴 뒤에 측정하면 자기가 쓴 값이 grep에 걸린다는 점이다. 측정할 때 방금 편집한 파일을 제외하라.
+@code lang=bash sha=e81ae8dd7602 lines=1 kept=1
+|grep -rohE 'ADR-[0-9]{3}' docs/ --exclude=change_control.md | sort -u | tail -3
+@h3 결정할 사람이 없는 질문을 오픈 결정으로 열지 마라
+@path OD-009(PIPE DB)·OD-011(PR 본문)을 열었다가 사용자 지시로 제거했다. 대상 시스템의 계약이
+@p 없거나 다른 애플리케이션 몫인 질문은 각 문서의 제외 항목으로 적는 편이 낫다 — 대장에 두면 그것이 미결로 세어지고 릴리스 게이트에 걸린다.
+@h3 병렬 위임에서 파일 소유를 겹치면 마지막 쓰기가 이긴다
+@p 4갈래로 나눌 때 파일 목록을 배타적으로 지정했고 충돌 0건이었다. 브리핑에 "담당 파일 외에는 읽기만 하라"를 명시하고, 다른 담당자가 동시에 쓰고 있다는 사실도 알려라.
+@h3 아직 남아 있는 위험
+@path DEV-576은 운영 실측이 없다. grep으로 syncByTarget 호출부가 0건임을 확인하고
+@p FallbackCommitGraph가 읽기 실패 시에만 폴백하는 것을 코드로 읽었을 뿐이다.
+@path 에폭 상향 뒤 PR 제목이 정본과 어긋난다. ADR-022가 덮어쓰지 않기로 정했으므로 불일치가
+@p 남고 사람이 판단한다. 자동 일괄 갱신은 별도 CR이다.
+@path rebase merge 판정은 규칙만 적었다. 실제 로직은 WP-074 구현에서 확인해야 하고,
+@p 조직이 rebase merge를 허용하는지도 확인되지 않았다.
 @h2 2026-09-08 (2차) 라운드가 새로 배운 함정 (발행 라운드)
 @h3 발행은 되돌릴 수 없으므로 리뷰가 도착할 시간을 벌어 둔다 — 가장 값비쌌던 것
 @p immutable releases가 켜지면 발행한 버전 이름을 영구히 회수할 수 없다. 이 라운드는 번들을 만들고 검사까지 끝낸 뒤 발행을 미뤘고, 그 사이에 머지 후 리뷰가 P1을 잡았다. 바로 발행했다면 결함을 담은 번들이 잠긴 채 사내에 갔을 것이다.

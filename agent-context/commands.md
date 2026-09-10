@@ -1,5 +1,84 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
 
+## 2026-09-11 라운드에서 쓴 것 (CR-077 문서 캐스케이드)
+
+**코드 검사는 하나도 돌리지 않았다.** 코드 변경이 0건이라 `pnpm typecheck`·`lint`·`test` 계열은
+해당하지 않는다. 저장소에 문서 validator 스크립트가 없어(`scripts/`에 `lint-deps.mjs`만 있다)
+`CLAUDE.md` 6장의 링크 기반 수동 검증만 수행했다.
+
+### ID 실측 — 새 ID를 잡기 전에 반드시
+
+```bash
+# 방금 편집한 파일을 제외해야 자기가 쓴 값이 걸리지 않는다
+grep -rohE 'ADR-[0-9]{3}' docs/ --exclude=change_control.md | sort -u | tail -3
+grep -rohE 'EVT-SEQ-[0-9]{3}' docs/ --exclude=change_control.md | sort -u | tail -3
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1
+```
+
+### 캐스케이드 검증
+
+```bash
+# 신규 ID가 전부 등록되어 상호 참조되는가
+for id in FR-SEQ-008 FR-SEQ-009 JOB-SEQ-004 JOB-SEQ-005 EVT-SEQ-004 \
+          API-SEQ-007 ADR-022 THR-046 THR-047 OD-009 WP-074 WP-075 DEV-576; do
+  printf "%-12s %2d\n" "$id" "$(grep -rl "$id" docs/ | wc -l)"
+done
+
+# 표 칸 수가 기존 행과 일치하는가 (잡 8칸 · 이벤트 7칸 · WP 5칸)
+awk -F'|' '/^\| JOB-SEQ-00[1-5] /{print NF-2}' docs/30_technical_architecture/pr_search_async_events_jobs.md
+
+# 잔존 확인
+grep -ro 'OD-01[01]' docs/ | wc -l                  # 0
+grep -roE '(^|[^e_])m_number' docs/ | wc -l         # 1 (정정 이력 서술문)
+```
+
+**결과**: 신규 ID 13종 전부 등록, 표 칸 수 일치, `OD-010`·`OD-011` 잔존 0건.
+
+### 코드 경로 조사 (`DEV-576`의 근거)
+
+```bash
+grep -rn "syncByTarget" --include=*.ts apps packages | grep -v node_modules | grep -v dist
+# → 정의(mirror-runner.ts:126)와 주석 한 줄뿐. 호출부 0건 (테스트 포함)
+
+grep -n "resolveHead" -A 12 packages/github/src/mirror-graph.ts
+# → git rev-parse만 실행한다. fetch하지 않는다
+
+grep -rn "\.sync(" --include=*.ts apps packages | grep -v test
+# → 6시간 스윕과 릴리스 갱신 두 곳뿐
+```
+
+### 커밋과 머지
+
+```bash
+git checkout -b docs/cr077-m-number
+git add docs/ && git commit -F <메시지 파일>
+git push -u origin docs/cr077-m-number
+gh pr create --base main --head docs/cr077-m-number --title "..." --body-file <본문>
+gh pr merge 164 --merge        # 출력 없음 — 성공해도 조용하다
+
+# 머지는 반드시 실측한다
+gh pr view 164 --json state,mergedAt,mergeCommit --jq '{state,mergedAt,sha:.mergeCommit.oid}'
+git fetch origin && git log --oneline -3 origin/main
+```
+
+**`gh pr merge`가 아무 출력도 내지 않는다.** 성공으로 단정하지 말고 `gh pr view`와
+`git log origin/main`으로 확인하라.
+
+### worklog
+
+```bash
+python3 ~/.claude/skills/obsidian-second-brain/scripts/worklog.py path --title "..." --json
+python3 ~/.claude/skills/obsidian-second-brain/scripts/worklog.py check "<경로>"   # errors 0, warnings 0
+python3 ~/.claude/skills/obsidian-second-brain/scripts/worklog.py index            # 107건
+```
+
+### 실패하거나 막힌 것
+
+```bash
+sleep 45 && git status   # 차단됨 — 하네스가 foreground sleep 체이닝을 막는다.
+                         # 서브에이전트 완료는 알림으로 오므로 폴링하지 마라
+```
+
 ## 2026-09-08 (2차) 라운드에서 쓴 것 (발행)
 
 **번들을 만들고 발행한다.** `--release`는 항상 새로 만들고 `git rev-parse HEAD`를 계보로 박는다 — PR 하나가 더 병합되면 SHA-256이 달라진다.
