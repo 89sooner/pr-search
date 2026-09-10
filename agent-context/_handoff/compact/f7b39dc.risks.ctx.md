@@ -1,8 +1,41 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=49680237e8ca6158f7f9cedb1a37f4eaa8dd40c767ecdc742b84d0729e3e2215 bytes=159916 lines=2196 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;origin/main;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md
+@kv sha256=585fc64445a91d00b4ba5fc72554dca1de2401edd604ae49a441cac32c97fe67 bytes=165372 lines=2278 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-11 (2차) 라운드가 배운 함정 (CR-078 기동 실패-빠름)
+@h3 적힌 의도와 실제 동작이 다를 수 있다 — 가장 값비쌌던 것
+@p resolveSessionReaderConfig의 주석은 「운영에서 false면 기동을 막는다」, playwright.config.ts의 주석은 「기동을 거부한다」, 원장 6장 검증 표도 같은 말을 적고 있었다. 셋 다 거짓이었다. 그 함수를 부르는 자리가 요청 처리 경로였기 때문이다.
+@p 교훈: 「막는다」고 적힌 계약은 그것이 실제로 막는지 실행으로 재라. 주석 셋이 같은 말을 한다는 것은 근거가 아니라 같은 오해가 세 번 복사됐다는 뜻일 수 있다.
+@h3 throw가 기동을 막을 것이라고 가정하지 마라 (Next.js production)
+@todo Next 16.3.1의 NextServer.prepare()는 if (this.options.dev) 분기 때문에 production에서 진짜 준비를
+@todo await하지 않는다. 진짜 prepare()는 next-server.js 생성자에서 fire-and-forget으로 돌고 실패는
+@risk .catch(err => console.error('Failed to prepare server', err))로만 소비된다.
+@p 결과: register()가 던지면 ✓ Ready 로그가 찍히고, Failed to prepare server와 unhandledRejection이 남고, 프로세스는 살아서 이후 모든 요청에 500을 낸다. 재시작 전까지 회복되지 않는다. process.exit(1)만 실제로 종료시킨다.
+@p 소스를 얕게 읽으면 instrumentation-globals.external.js가 재throw하고 start-server.js의 최상위 catch가 process.exit(1)을 부르는 것처럼 보인다. 그 경로에 도달하지 않는다.
+@h3 「healthz 200」과 「화면이 열린다」는 다른 명제다
+@path 이 제품은 이미 DEV-515로 「health는 스모크가 아니다」를 배웠는데, prsctl smoke는 web에 대해서만
+@p /healthz를 봤다. 사내가 쓴 이미지와 구성으로 재면 /healthz는 200이고 /는 500이다. 규율을 세운 뒤 그 규율이 모든 서비스에 적용됐는지 확인하지 않으면 예외가 남는다.
+@h3 같은 외형의 500이 둘 이상 있을 수 있다
+@p SESSION_COOKIE_SECURE=false도, pg-<해시> 스텁 제거도 「/healthz 200 · SSR 500」을 낸다. 스텁 제거 쪽 메시지가 Cannot find package 'pg-71df57fbe79e18ab'라 pg처럼 읽힌다. 사내 오진이 그렇게 생겼을 가능성이 높다. 증상이 같으면 메시지를 실제로 읽어야 갈린다.
+@h3 문서가 운영자를 실행 불가능한 조합으로 보낼 수 있다
+@p .env.example이 「TLS 없이 HTTP로 서비스하면 false여야 쿠키가 전달된다」고 적었다. 브라우저 동작으로는 참이지만 이 배포의 운영 계약에서는 존재하지 않는 조합이다. 두 문장이 한 파일에 있으면 운영자는 앞 문장을 실행한다.
+@p 같은 이유로 이번에 쓴 「Pilot 사용자 흐름은 그대로 돌아간다」도 과장이었다. API 프록시는 인증을 껐는지와 무관하게 살아 있는 세션을 요구하므로 조회가 전부 401이다. 런북 7장이 이미 「/search는 비활성」이라고 적고 있었다. 문서를 고칠 때 저장소가 이미 적어 둔 사실과 대조하라.
+@h3 계약이 요구하는 키가 배포 정의에 없을 수 있다
+@p resolveOidcConfig는 넷을 요구하는데 OIDC_REDIRECT_URI는 그 계약 파일 한 곳에만 있었다. compose.yml·.env.example·런북 어디에도 없다. AUTH_ENABLED=true로 올리면 모든 로그인이 500이 된다.
+@p 방어: 회귀가 계약 소스에서 required(env, 'KEY')를 읽어 배포 정의와 대조한다. 키 목록을 시험에 옮겨 적었다면 이것을 잡지 못했을 것이다.
+@h3 소스를 문자열로 읽는 시험은 「토큰은 남기고 로직을 뒤집는」 변이를 놓친다
+@p 적대적 검토가 다섯을 통과시켰다: 실패 갈래 앞에 return 주입, NODE_ENV === 'staging'으로 변조, 게이트의 시간 초과 갈래를 통과로, webConfigFailure({})로 빈 환경 판정, compose 키 전달을 주석 처리 (주석도 KEY: 부분 문자열을 포함한다).
+@p 교훈: 판정 자체는 실행으로 재라. 존재 검사는 「게이트가 릴리스 경로에서 사라지지 않는다」까지만 보장한다.
+@h3 이 작업 디렉터리는 다른 Claude 세션과 공유된다
+@p git checkout -b가 다른 세션의 HEAD를 옮겼고, git add -A가 그 세션의 agent-context/ 14개 파일을
+@path 하마터면 담을 뻔했다. origin/main이 작업 중 두 번 이동했다(PR 머지 한 번, 직접 푸시 한 번).
+@p 방어: 착수 시 ListAgents와 ls -la /proc/*/cwd | grep pr-search로 확인하고, 브랜치 작업은 git worktree로 격리하고, 커밋은 경로를 명시해 스테이징한다.
+@h3 실행 중인 작업의 산출물을 지우지 마라
+@p 번들 시험 생성이 아직 tar -czf 단계일 때 출력 디렉터리를 지웠다. 목적(게이트 검증)은 이미 달성된 뒤였고 저장소는 손상되지 않았으나, 백그라운드 래퍼의 완료 알림이 실제 작업의 완료가 아니다. nohup ... &는 즉시 반환한다.
+@h3 문서에 「미정의」를 쓰면 validator가 placeholder로 센다
+@todo strict validator가 결정 필요|TODO|TBD|미정을 세는데 「미정의 참조」의 「미정」이 걸린다.
+@risk 「정의되지 않은 참조」로 바꿔야 신규 issue 0건이 된다.
 @h2 2026-09-11 라운드가 배운 함정 (CR-077 M 넘버)
 @h3 승인된 문서가 존재하지 않는 ID를 가리킬 수 있다 — 가장 값비쌌던 것
 @path FR-SEQ-008의 관련 화면에 D-002를 적었는데 이 제품은 D-### 접두를 쓰지 않는다.

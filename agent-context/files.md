@@ -1,5 +1,55 @@
 # 중요 파일 경로와 역할
 
+## 2026-09-11 (2차) 라운드가 만진 것 (CR-078 — 코드·배포·시험·문서 19개)
+
+`main = a198e12`. 신규 파일 다섯을 포함한다.
+
+### 이번 결함의 정본 — 여기부터 읽는다
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/web/instrumentation.ts` | **신규.** Next의 `register()`에서 구성을 펴고 실패하면 종료한다. 왜 `throw`가 아닌지가 주석에 있다 |
+| `apps/web/lib/server/config.ts` | `webConfigFailure(env)` — 기동 검증과 헬스체크가 함께 읽는 판정. `resolveOidcConfig`를 그대로 부른다 |
+| `apps/web/app/healthz/route.ts` | 같은 판정을 읽어 503. 판정 문구는 `console.error`로만 |
+| `packages/authz/src/config.ts` | **읽기만.** `resolveSessionReaderConfig`가 운영에서 던지는 자리. 이번에 바꾸지 않았다 |
+
+### 배포 정의
+
+| 경로 | 역할 |
+| --- | --- |
+| `deploy/single-host/smoke-images.sh` | **신규 215행.** 릴리스 산출물 게이트. tar 재적재 → SSR 10종 → 해시 외부 모듈 해석 → 손 조치 흔적 → 거부 계약 둘 → worker `git` |
+| `deploy/single-host/build-bundle.sh` | 160행 근처에서 게이트를 부른다. `docker save` 뒤·`tar -czf` 앞 |
+| `deploy/single-host/prsctl` | `cmd_smoke`에 「사람이 여는 화면」 블록. busybox `wget`에 `--max-redirect`가 없어 첫 상태 줄을 읽는다 |
+| `deploy/single-host/compose.yml` | `web` 서비스 153행에 `OIDC_REDIRECT_URI`. `search-api`에는 넣지 않았다 |
+| `deploy/single-host/.env.example` | 인증 절 전체를 다시 씀. `AUTH_ENABLED` 위 주의문, `OIDC_REDIRECT_URI` 신설 |
+| `deploy/single-host/RUNBOOK.md` | 8장 증상 행 셋 추가(정상인데 화면만 500 · 재기동 반복 · 인증 켠 뒤 로그인 500), 로그인 루프 처방 정정 |
+
+### 시험
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/web/instrumentation.test.ts` | **신규 7건.** `register()`를 실제로 부르고 `process.exit` spy로 종료 요청을 잰다 |
+| `apps/web/app/healthz/route.test.ts` | **신규 4건.** `GET()`을 불러 상태 코드를 잰다 |
+| `apps/web/lib/server/config.test.ts` | **신규 8건.** 판정이 이유를 돌려주는가, 삼키지 않는가 |
+| `packages/authz/src/config.test.ts` | **신규 8건.** 배포 문서에서 읽은 값을 실제 계약 함수에 넣는다 |
+| `regression/runtime-reachability.test.ts` | 「초록이 거짓말하지 못한다 (CR-078)」 블록 11건. 게이트가 릴리스 경로에서 사라지지 않게 한다 |
+| `regression/fixtures/release-tag/fake-docker` | 커진 이미지 단계를 흉내 낸다. 게이트 모양이 바뀌면 여기도 바뀌어야 한다 |
+| `regression/release-tag-ownership.test.ts` | 워크스페이스가 `smoke-images.sh`도 복사한다 |
+| `vitest.config.ts` | `apps/web/*.test.ts` 포함 (instrumentation은 프로젝트 루트에 있어야 한다) |
+
+### 문서
+
+| 경로 | 역할 |
+| --- | --- |
+| `docs/00_governance/change_control.md` | `CR-078` 행과 cascade 절 12항. **closed** |
+| `docs/40_delivery/pr_search_implementation_traceability.md` | `DEV-577`·`DEV-579` resolved, `DEV-578` **open**. 6.72.10(원인 판정)·6.72.11(검증 결과) |
+
+### 이 세션의 산출물 (저장소 밖)
+
+| 경로 | 역할 |
+| --- | --- |
+| `exports/202609110158.md` | 이 세션의 host-visible transcript. **`/export`가 보고한 경로와 다르다** — 실제로는 `exports/` 아래에 생긴다 |
+
 ## 2026-09-11 라운드가 만진 것 (CR-077 M 넘버 — 문서 21개, 코드 0)
 
 `main = 2cd7c1c`. **코드는 한 줄도 건드리지 않았다.** 아래는 전부 `docs/` 아래다.

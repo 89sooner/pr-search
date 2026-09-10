@@ -1,5 +1,68 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
 
+## Session: 2026-09-11 (2차) — CR-078 사내 pilot.3 웹 500 폐쇄와 0.1.0-pilot.4 발행
+
+### Goal
+
+결정자의 말로: 사내 `0.1.0-pilot.3` 실제 업그레이드에서 다시 발견된 웹 500을 public upstream에서
+근본적으로 폐쇄하고, 같은 실패를 다음 반입에서 다시 볼 수 없도록 배포 산출물 수준의 검증을 추가한 뒤,
+사내 재시험이 가능한 다음 pilot 번들까지 수직으로 완주할 것.
+
+브리핑이 명시적으로 경고한 것: 기존 `DEV-551`과 같은 결함이라고 가정하지 마라. `serverExternalPackages`
+추가·`turbopack.resolveAlias`·`apps/web`에 직접 의존 추가·symlink는 모두 과거에 실패로 기록돼 있다.
+
+### Current state
+
+**끝났다.** `main = a198e12`, 작업 트리 0건, 열린 PR 0건, `0.1.0-pilot.4` 발행 완료.
+남은 것은 사내 재시험뿐이며 그것은 외부에서 할 수 없다.
+
+### Decisions
+
+`agent-context/decisions.md`의 「2026-09-11 (2차)」 절이 정본이다. 핵심 셋만 적으면:
+
+1. 보안 계약을 바꾸지 않고 그 계약이 적힌 대로 기동을 막게 했다.
+2. `throw`가 아니라 `process.exit(1)`이어야 한다. Next 16.3.1 production이 예외를 삼키는 것을 실측했다.
+3. 판정은 로그인 라우트가 부르는 함수를 그대로 부른다. 키 목록을 옮겨 적었다면 `OIDC_REDIRECT_URI`
+   누락을 잡지 못했을 것이다.
+
+**기각한 것**: `apps/web`에 `pg`를 의존으로 추가하는 방향. 실제 `pg`를 배포 트리에서 지워도 SSR이
+200이므로 그 의존은 근거가 없다. 브리핑도 「소스가 직접 import하지 않는데 한 줄 추가하는 경우 그것이
+왜 정식 dependency contract인지 설명할 수 있어야 한다」고 요구했고, 설명이 성립하지 않았다.
+
+### Changed files
+
+`agent-context/files.md`의 「2026-09-11 (2차)」 절에 19개 파일이 역할과 함께 있다.
+신규 다섯: `apps/web/instrumentation.ts`, `deploy/single-host/smoke-images.sh`, 그리고 시험 셋.
+
+### Commands
+
+`agent-context/commands.md`의 「2026-09-11 (2차)」 절에 재현·실험·검증·발행 명령과 **실패한 명령 여덟 건**이
+원인과 함께 있다. 특히 PATH 조립 실패로 발행이 종료 코드 127로 죽은 건은 되풀이하기 쉽다.
+
+### Next steps
+
+`agent-context/todos.md`의 「2026-09-11 (2차) — CR-078 이후 남은 것」 절.
+다음 착수 WP는 여전히 `WP-074`(M 넘버)이며 그것은 다른 세션의 CR-077 라운드가 세운 것이다.
+
+### Risks/gotchas
+
+`agent-context/risks.md`의 「2026-09-11 (2차)」 절에 아홉 가지가 있다. 다음 에이전트가 가장 먼저 읽을 것 둘:
+
+- **이 작업 디렉터리는 다른 Claude 세션과 공유된다.** 착수 시 `ListAgents`로 확인하고 브랜치는
+  `git worktree`로 격리하며 `git add -A`를 쓰지 마라.
+- **소스를 문자열로 읽는 시험은 「토큰은 남기고 로직을 뒤집는」 변이를 놓친다.** 적대적 검토가 다섯을
+  통과시켰다. 판정 자체는 실행으로 재라.
+
+### References
+
+- PR: https://github.com/89sooner/pr-search/pull/165
+- 릴리스: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.4
+- 변경 관리: `docs/00_governance/change_control.md` CR-078
+- 구현 원장: `docs/40_delivery/pr_search_implementation_traceability.md` DEV-577~579, 6.72.10~6.72.11
+- transcript: `exports/202609110158.md` — **`/export`가 보고한 경로(`저장소 루트`)와 다르다.**
+  실제로는 `exports/` 아래에 생기며 그 디렉터리는 git 추적 대상이 아니다
+- 이 세션의 worklog: Obsidian `dailywork/2026-09-11_PR-Search-pilot.3-웹-500-원인-폐쇄와-pilot.4-발행.md`
+
 ## Session: 2026-09-08 (2차) — 0.1.0-pilot.3 발행
 
 ### Goal

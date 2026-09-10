@@ -1,5 +1,135 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
 
+## 2026-09-11 (2차) 라운드에서 쓴 것 (CR-078 · pilot.4 발행)
+
+### 전제 — Node 22와 pnpm
+
+셸 기본 Node는 v20이고 `.nvmrc`는 22를 요구한다. Node 22 경로에는 `pnpm`이 없어 `corepack` 래퍼가
+필요하다. **`pnpm -r`이 하위 셸을 만들 때 PATH에서 `pnpm`을 찾으므로** 함수 별칭으로는 안 되고
+실행 파일이 PATH에 있어야 한다.
+
+```bash
+# 스크래치패드에 pnpm 실행 파일을 만든다
+cat > "$SP/bin/pnpm" <<'EOS'
+#!/usr/bin/env bash
+exec /home/roqkf/.nvm/versions/node/v22.23.2/bin/corepack pnpm "$@"
+EOS
+chmod +x "$SP/bin/pnpm"
+export PATH="$SP/bin:/home/roqkf/.nvm/versions/node/v22.23.2/bin:$PATH"
+```
+
+### 원인 재현 — 릴리스 이미지를 직접 잰다
+
+```bash
+# 1) 사내가 받은 이미지인지 먼저 확인한다
+docker image inspect prs/web:0.1.0-pilot.3 --format '{{.Id}}'
+python3 -c "import json;print(json.load(open('<bundle>/manifest/release-manifest.json'))['images']['application'][0]['id'])"
+
+# 2) 배포 트리를 실제로 본다. `ls | grep pg`로 판정하지 마라
+docker run --rm --entrypoint sh prs/web:0.1.0-pilot.3 -c 'ls -1 /app/node_modules'
+docker run --rm --entrypoint sh prs/web:0.1.0-pilot.3 -c 'cd /app && node -p "require.resolve(\"pg/package.json\")"'
+
+# 3) 컨테이너를 띄우고 요청 단위로 잰다 (백킹 서비스 없이 된다)
+docker run -d --name probe --network none \
+  -e NODE_ENV=production -e WEB_PORT=3000 -e SEARCH_API_URL=http://127.0.0.1:9 \
+  -e AUTH_ENABLED=false -e SESSION_COOKIE_SECURE=false prs/web:0.1.0-pilot.3
+docker exec probe node -e "fetch('http://127.0.0.1:3000/').then(r=>console.log(r.status))"
+docker logs probe 2>&1 | grep -oE "⨯ Error: .*" | sort -u
+```
+
+결과: `/healthz` 200, `/`·`/search`·`/releases`·`/repositories` 전부 500.
+유일한 예외가 `운영에서 SESSION_COOKIE_SECURE=false는 허용되지 않는다 (FR-AUTH-001 AC-2)`.
+`pg` 오류 0건.
+
+### 가설 분리 실험
+
+```bash
+# 실제 pg를 지워도 SSR은 200이다 — pg는 web의 SSR 경로에 없다
+docker exec probe sh -c 'rm -rf /app/node_modules/.pnpm/pg@8.23.0' && docker restart probe
+
+# pg-<해시> 스텁을 지우면 같은 외형의 500이 난다 — 사내 오진을 설명한다
+docker exec probe sh -c 'rm -rf /app/node_modules/pg-*' && docker restart probe
+# → Cannot find package 'pg-71df57fbe79e18ab' / ERR_MODULE_NOT_FOUND
+
+# 사내가 제시한 임시 조치는 실행 자체가 불가능하다
+docker exec probe sh -c 'cd /app && npm install pg'
+# → npm error code EUNSUPPORTEDPROTOCOL
+#   npm error Unsupported URL Type "workspace:": workspace:*
+```
+
+### `throw` vs `process.exit` 실측
+
+```bash
+cd apps/web
+NODE_ENV=production AUTH_ENABLED=false SESSION_COOKIE_SECURE=false ./node_modules/.bin/next start --port 3399
+```
+
+- `throw new Error(...)` → `✓ Ready` 뒤 `Failed to prepare server`·`unhandledRejection`이 남고
+  **프로세스가 살아서 `/healthz`와 `/`가 모두 500.** 재시작 전까지 회복되지 않는다.
+- `process.exit(1)` → 이유를 출력하고 **종료 코드 1로 죽는다.**
+
+### 게이트
+
+```bash
+bash deploy/single-host/smoke-images.sh 0.1.0-pilot.3        # → exit 1 (거부 단계에서 실패)
+bash deploy/single-host/smoke-images.sh 0.1.0-pilot.4        # → exit 0
+SMOKE_REJECT_TIMEOUT_S=20 bash deploy/single-host/smoke-images.sh <ver>   # 거부 검사 대기 단축
+```
+
+### 전체 검사 (모두 통과)
+
+```bash
+pnpm typecheck && pnpm lint && pnpm run lint:deps
+pnpm test                    # 1958 통과 · 1 skip
+pnpm run test:regression     # 397 통과
+pnpm run test:integration    # 1492 통과 (93 파일) — 로컬 백킹 서비스 필요
+pnpm run test:a11y           # 361 통과
+pnpm run test:contrast       # 232쌍 중 실패 0
+pnpm run test:e2e            # 175 통과
+pnpm build
+python3 /home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --root <tree> --strict
+```
+
+validator 기준선(`c04208f`)은 오류 4건·경고 1건이고 변경 후에도 같다. **신규 issue 0건.**
+
+### 변이 검사 — 28종 전부 kill
+
+파이썬으로 파일을 바꿔치고 대상 시험을 돌린 뒤 원복하는 방식이다. 자세한 목록은 원장 6.72.11장에 있다.
+**약한 시험 다섯을 이 방법으로 찾아 실행 기반으로 바꿨다.**
+
+### 릴리스
+
+```bash
+# 반드시 --release 없이 먼저 만들고 검증한다
+./deploy/single-host/build-bundle.sh 0.1.0-pilot.4 "$SP/release"
+# 통과한 뒤에만
+./deploy/single-host/build-bundle.sh 0.1.0-pilot.4 "$SP/release" --release
+```
+
+### 실패한 명령과 원인
+
+| 명령 | 실패 | 원인 |
+| --- | --- | --- |
+| `pkill -f "smoke-images.sh"` | 내 셸이 같이 죽음 (exit 144) | `-f` 패턴이 그 문자열을 담은 **내 명령줄 자체**를 잡는다. `awk`로 PID를 골라 `kill`한다 |
+| `bash -c "export PATH='...:\$PATH'"` | `/usr/bin/env: 'bash': No such file` | 작은따옴표 안의 `\$PATH`가 확장되지 않아 PATH에서 `/usr/bin`이 사라졌다. **PATH 조립은 스크립트 파일 안에서 한 번만** 한다 |
+| `pnpm build` (첫 시도) | `sh: 1: pnpm: not found` | `pnpm -r`의 하위 셸이 PATH에서 `pnpm`을 찾는다. 셸 함수로는 안 된다 |
+| `process.env['NODE_ENV'] = 'production'` (시험) | `error TS2540: Cannot assign to 'NODE_ENV'` | 타입상 읽기 전용이다. `vi.stubEnv('NODE_ENV', 'production')`을 쓴다 |
+| `wget --max-redirect=0` (alpine) | `unrecognized option` | busybox wget에는 없다. 리다이렉트를 따라가므로 `awk '/HTTP\//{print $2}' \| head -1`로 **첫** 상태 줄을 읽는다 |
+| `docker image inspect` (게이트 직후) | `이미지가 없다` | 백그라운드 `nohup ... &` 래퍼의 완료 알림은 **실제 빌드의 완료가 아니다.** `until grep -q BUILD_OK` 로 기다린다 |
+| `git add -A` | 다른 세션의 `agent-context/` 14개 파일이 스테이징됨 | 이 디렉터리는 공유된다. **경로를 명시해 스테이징한다** |
+| `gh pr view --json headRefOid` | `Unknown JSON field` | gh 2.4.0은 필드가 적다. `gh api repos/<o>/<r>/pulls/<n> --jq` 를 쓴다 |
+
+### 유용한 조회 (gh 2.4.0)
+
+```bash
+# 릴리스 자산 digest — 1.1GB를 받지 않고 대조할 수 있다
+gh api repos/89sooner/pr-search/releases/tags/0.1.0-pilot.4 --jq '.assets[] | "\(.name) \(.size) \(.digest)"'
+# CI 결과
+gh api "repos/89sooner/pr-search/commits/<sha>/check-runs" --jq '.check_runs[] | "\(.name): \(.conclusion)"'
+# PR 본문 갱신 — pr edit는 GraphQL 오류를 낸다
+gh api -X PATCH repos/89sooner/pr-search/pulls/165 --input body.json
+```
+
 ## 2026-09-11 라운드에서 쓴 것 (CR-077 문서 캐스케이드)
 
 **코드 검사는 하나도 돌리지 않았다.** 코드 변경이 0건이라 `pnpm typecheck`·`lint`·`test` 계열은

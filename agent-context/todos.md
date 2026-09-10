@@ -1,17 +1,55 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
-최신 기준 (**2026-09-11 · CR-077 M 넘버 도입 — 문서 캐스케이드 완료**)
+최신 기준 (**2026-09-11 (2차) · CR-078 기동 실패-빠름 — `0.1.0-pilot.4` 발행 완료**)
 
-**`main = 2cd7c1c`. PR #164가 머지됐고 작업 트리는 깨끗했다.** 실측하라.
+**`main = a198e12`. PR #165가 머지됐고 작업 트리는 깨끗했다.** 실측하라.
+그 앞의 `2cd7c1c`·`c04208f`는 같은 날 다른 세션의 CR-077 라운드다.
 
 ## 시작하기 전에 실측할 것
 
 ```bash
-git log --oneline -3 origin/main            # 2cd7c1c가 맨 위여야 한다
+git log --oneline -4 origin/main            # a198e12가 맨 위여야 한다
+git status --porcelain                       # 0건. 다른 세션이 이 디렉터리를 쓰는지 먼저 확인하라
+gh release list --limit 3                    # 0.1.0-pilot.4가 Latest인가
 grep -n "^| WP-074 " docs/40_delivery/pr_search_work_packages.md   # todo — 다음 착수
 grep -rn "syncByTarget" apps/ packages/ --include=*.ts | grep -v dist   # 호출부가 여전히 0건인가
-grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -1   # 다른 세션이 DEV-577을 썼는지
+grep -rohE 'CR-[0-9]{3}|DEV-[0-9]{3}' docs/ | sort -u | tail -2      # CR-078·DEV-579가 보여야 한다
 ```
+
+**동시 세션을 먼저 확인하라.** 이 작업 디렉터리는 다른 Claude 세션과 공유된다.
+`ListAgents`와 `ls -la /proc/*/cwd | grep pr-search`로 재고, 브랜치 작업은 `git worktree`로 격리한다.
+
+## 2026-09-11 (2차) — CR-078 이후 남은 것
+
+**사내 재시험이 먼저다.** `0.1.0-pilot.4`가 발행돼 있고, 사내가 그것을 반입해야 이번 수정이 실제로
+검증된다. 아래는 사내 결과가 도착한 뒤에 판단할 것들이다.
+
+- **`DEV-578` (open)** — `resolveSessionReaderConfig`가 `IDP_GROUP_ROLE_MAP`을 읽는데 배포 정의는
+  `OIDC_GROUP_ROLE_MAP`만 준다. 로그인 시 실제 역할을 부여하는 경로(`apps/web/app/auth/callback/route.ts:109`)는
+  후자를 바르게 읽으므로 **현재 동작은 옳다.** 어긋난 쪽이 만드는 `SessionReaderConfig.groupRoleMap`은
+  어디에서도 소비되지 않는 사문 필드다. 사문을 지우는 것도 이름을 맞추는 것도 인증 표면을 건드리므로
+  **사내가 OIDC를 실제로 켜는 작업과 함께 판단한다.** 그 전까지 이 필드를 새로 읽는 코드를 더하면
+  언제나 빈 맵을 받는다.
+- **`AUTH_ENABLED=false`에서 조회가 401인 것은 기존 설계다.** 이번 수정이 바꾼 것은 「화면이 500 대신
+  열린다」뿐이다. 사용자가 실제로 검색하려면 OIDC가 필요하고 OIDC를 켜려면 TLS가 필요하다.
+  런북 7장이 이미 「`AUTH_ENABLED=false` 형상에서 `/search`는 비활성」이라고 적고 있다.
+- **`.env.example` 기본값이 `AUTH_ENABLED=true`다.** OIDC 값을 채우지 않고 그대로 쓰면 이제 최초 기동이
+  실패한다(이전에는 초록으로 뜨고 로그인만 500이었다). 의도된 트레이드오프이고 문구로 안내했으나,
+  사내에서 첫인상 문제가 보고되면 런북 2.B 절차에 명시적 단계로 넣는 것을 검토한다.
+- **릴리스의 `prerelease` 플래그.** pilot.2~4가 모두 `false`다. 버전 문자열은 프리릴리스처럼 읽히므로
+  정식 버전 체계를 정비할 때 함께 다룬다. 지금 바꾸면 이전 릴리스들과 형태가 갈라지고 `Latest`에서 빠진다.
+
+### 사내 재시험에서 확인해야 할 것
+
+1. `0.1.0-pilot.4` 업그레이드와 실제 화면 접속 (`npm install pg` 없이)
+2. `worker-mirror`에서 `spawn git ENOENT` 재발 여부 (0건이어야 한다)
+3. `prs-releases` 색인이 채워지는지
+4. `prsctl smoke`의 「웹 진입 화면」 항목이 통과하는지
+5. 실제 사내 OIDC 연결 — `OIDC_REDIRECT_URI`는 로컬에서 IdP authorize URL까지만 확인했다
+
+**사내 `.env`에 `SESSION_COOKIE_SECURE=false`가 남아 있으면 `prsctl load` 전에 `true`로 되돌려야 한다.**
+그러지 않으면 web이 기동하지 않고 `upgrade`가 health에서 멈춘다. 의도된 거부이며 `docker logs web`에
+이유가 남는다.
 
 ## 다음 작업 — `WP-074` (M 넘버 채번과 조회)
 
