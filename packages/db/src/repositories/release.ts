@@ -123,6 +123,68 @@ export async function hasAnyRelease(db: Queryable, repositoryId: number): Promis
 }
 
 /**
+ * W-005 타임라인 한 행 (API-REL-005, CR-030 DEV-155).
+ *
+ * `pull_request_count`는 `(직전 서수, 이 서수]` 구간의 **실제 PR 행 수**다
+ * (QA-W005-06) — 서수 차이가 아니다. 직접 푸시 커밋이 섞이면 두 값이 다르고,
+ * 시퀀스 차이를 PR 수로 표기하면 화면이 거짓을 말한다.
+ */
+export interface ReleaseTimelineRow {
+  readonly tag_name: string;
+  readonly commit_sha: string;
+  readonly released_at: Date;
+  readonly source: ReleaseSource;
+  readonly merge_seq: string;
+  /** 서수 선행 릴리스. 첫 릴리스면 `null`이고 수는 히스토리 시작부터다. */
+  readonly previous_tag_name: string | null;
+  readonly pull_request_count: string;
+}
+
+/**
+ * 공간의 릴리스 타임라인 — **서수 내림차순 고정이다** (CR-030, DEV-159).
+ *
+ * 시각순이 아닌 이유: 태그는 과거 커밋에도 붙는다. "직전 릴리스"가 시각 기준이면
+ * 인접 구간이 겹쳐 `git log tagA..tagB` 대조가 성립하지 않는다 — "직전"은 언제나
+ * **서수 선행** 릴리스다. 같은 커밋에 태그가 둘이면 태그 이름이 순서를 정하고,
+ * 뒤 태그의 구간은 `(seq, seq]` — 0건이다.
+ *
+ * 에폭까지 좁힌다 (DEV-149): 재채번 직후 아직 재해석되지 않은 이전 에폭 행의
+ * 서수는 다른 커밋을 가리킬 수 있다. 그런 릴리스는 목록에서 빠지고, 호출자가
+ * `sequence_state: "reassigning"`으로 그 사정을 말한다.
+ */
+export async function listReleaseTimeline(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+): Promise<ReleaseTimelineRow[]> {
+  const result = await db.query<ReleaseTimelineRow>(
+    `WITH timeline AS (
+       SELECT r.tag_name, r.commit_sha, r.released_at, r.source, r.merge_seq,
+              lag(r.merge_seq) OVER w AS previous_merge_seq,
+              lag(r.tag_name) OVER w AS previous_tag_name
+         FROM release r
+        WHERE r.repository_id = $1 AND r.base_branch = $2 AND r.seq_epoch = $3
+          AND r.merge_seq IS NOT NULL
+       WINDOW w AS (ORDER BY r.merge_seq, r.tag_name)
+     )
+     SELECT t.tag_name, t.commit_sha, t.released_at, t.source,
+            t.merge_seq::text AS merge_seq,
+            t.previous_tag_name,
+            (SELECT count(DISTINCT ms.pull_request_number)::text
+               FROM merge_sequence ms
+              WHERE ms.repository_id = $1 AND ms.base_branch = $2 AND ms.seq_epoch = $3
+                AND ms.pull_request_number IS NOT NULL
+                AND ms.merge_seq > COALESCE(t.previous_merge_seq, 0)
+                AND ms.merge_seq <= t.merge_seq) AS pull_request_count
+       FROM timeline t
+      ORDER BY t.merge_seq DESC, t.tag_name DESC`,
+    [repositoryId, baseBranch, seqEpoch],
+  );
+  return result.rows;
+}
+
+/**
  * 대상을 포함하는 릴리스 (FR-REL-002 AC-5): 같은 공간에서 `release.merge_seq >= $4`.
  *
  * **에폭까지 좁힌다** (DEV-149). 재채번 직후 아직 재해석되지 않은 이전 에폭
