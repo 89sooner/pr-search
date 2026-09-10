@@ -52,8 +52,16 @@ const makeWorkspace = (): { work: string; remote: string; commit: string; other:
   writeFileSync(join(work, 'package.json'), '{"packageManager":"pnpm@9.0.0"}\n');
   writeFileSync(join(work, 'deploy/single-host/compose.yml'), 'services: {}\n');
   writeFileSync(join(work, 'deploy/single-host/RUNBOOK.md'), '# runbook\n');
-  copyFileSync(join(REPO_ROOT, 'deploy/single-host/build-bundle.sh'), join(work, 'deploy/single-host/build-bundle.sh'));
-  chmodSync(join(work, 'deploy/single-host/build-bundle.sh'), 0o755);
+  /*
+   * **스크립트가 요구하는 것을 그대로 둔다.** `build-bundle.sh`는 이미지 런타임
+   * 게이트를 부르므로(`CR-078`) 그것도 여기 있어야 한다. 스텁이 아니라 진짜를
+   * 복사한다 — 게이트가 사라지면 이 시험도 죽는 것이 옳다. 이미지가 실제로
+   * 멀쩡한지는 `fake-docker`가 흉내 내며, 진짜 판정은 릴리스 시점에 한다.
+   */
+  for (const script of ['build-bundle.sh', 'smoke-images.sh']) {
+    copyFileSync(join(REPO_ROOT, `deploy/single-host/${script}`), join(work, `deploy/single-host/${script}`));
+    chmodSync(join(work, `deploy/single-host/${script}`), 0o755);
+  }
 
   git(work, 'add', '-A');
   git(work, 'commit', '-qm', 'init');

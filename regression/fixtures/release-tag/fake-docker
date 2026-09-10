@@ -1,13 +1,45 @@
 #!/usr/bin/env bash
 # 이미지 단계를 통과시키는 최소 docker. 내용은 이 시험의 관심사가 아니다.
+#
+# **이 픽스처는 `build-bundle.sh`의 이미지 단계 전체를 흉내 낸다** — 빌드·저장뿐
+# 아니라 `smoke-images.sh`가 하는 런타임 검사까지다 (`CR-078`). 그 검사는 컨테이너
+# 안에서 답을 받아 판정하므로, "이미지가 멀쩡하다"를 흉내 내려면 그 답도 여기서
+# 준다. 실제 이미지가 멀쩡한지는 **릴리스 시점에 진짜 docker로** 가린다.
+#
+# 게이트의 검사 모양이 바뀌면 여기도 바뀌어야 한다. 그러지 않으면 태그 소유권과
+# 무관한 이유로 이 시험이 죽는다.
 set -euo pipefail
 case "${1:-}" in
-  build|pull) exit 0 ;;
+  build|pull|load|logs|rm) exit 0 ;;
   image) [ "${2:-}" = "inspect" ] && { printf 'sha256:0000000000000000000000000000000000000000000000000000000000000000\n'; exit 0; }; exit 0 ;;
   save)
     out=""; prev=""
     for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
     [ -n "$out" ] && printf 'fake-image-tar\n' > "$out"
+    exit 0 ;;
+  ps) printf 'ffffffffffff\n'; exit 0 ;;
+  run)
+    # 거부 계약 검사는 **죽어야** 통과한다. 인자로 그 구성을 알아본다.
+    # 게이트가 재는 거부 구성은 둘이다: 운영의 insecure 쿠키(`DEV-577`)와
+    # 자격 증명 없는 인증(`DEV-579`).
+    for a in "$@"; do
+      case "$a" in
+        SESSION_COOKIE_SECURE=false|AUTH_ENABLED=true)
+          printf '  web 구성이 성립하지 않아 기동할 수 없다:\n    %s\n' "$a" >&2
+          exit 1 ;;
+        --entrypoint) ENTRY=1 ;;
+      esac
+    done
+    [ "${ENTRY:-0}" = "1" ] && { printf 'git version 0.0.0-fake\n'; exit 0; }
+    printf 'ffffffffffff\n'; exit 0 ;;
+  exec)
+    # `node -e <script>` 또는 `sh -c <조건>`이 온다. 스크립트 내용으로 무엇을
+    # 묻는지 가른다 — 게이트가 `tail -1`로 읽으므로 마지막 줄이 답이다.
+    script="${*: -1}"
+    case "$script" in
+      *fetch\(*) printf '200\n' ;;
+      *nft.json*) printf '  ✓ 해시 외부 모듈 0종 (가짜 docker)\n' ;;
+    esac
     exit 0 ;;
   *) exit 0 ;;
 esac

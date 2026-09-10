@@ -306,6 +306,28 @@ cmd_smoke() {
     if [ "$code" = 200 ]; then ok "$svc /healthz"; else bad "$svc /healthz → ${code:-무응답}"; failed=1; fi
   done
 
+  # ── 사람이 여는 화면 ───────────────────────────────────────
+  #
+  # **`/healthz`는 화면이 아니다** (`DEV-577`). `web`의 헬스체크는 라우트 하나이며,
+  # 구성이 잘못돼도 그것만 200을 내던 시절이 있었다 — 사내 반입 `0.1.0-pilot.3`이
+  # 그 상태로 초록이었고 사람이 여는 화면만 전부 500이었다. 진입 화면을 실제로
+  # 요청한다.
+  #
+  # **200을 요구하지 않는다.** 인증을 켠 배포에서 이 경로는 로그인으로 리다이렉트
+  # (3xx)하는 것이 정상이다. 여기서 거르는 것은 **5xx**다.
+  #
+  # **첫 상태 줄을 읽는다.** busybox `wget`에는 `--max-redirect`가 없어 리다이렉트를
+  # 따라가는데, 인증을 켠 배포에서 그 끝은 사내 IdP다 — 여기서 IdP에 닿는지는 이
+  # 검사의 관심사가 아니다. 첫 줄이 `/` 자신의 답이다 (`tail`이면 IdP 왕복의 답을
+  # 읽는다).
+  local entry
+  entry="$(compose exec -T web wget -qO/dev/null --server-response \
+    'http://127.0.0.1:3000/' 2>&1 | awk '/HTTP\//{print $2}' | head -1 || true)"
+  case "$entry" in
+    5*|'') bad "웹 진입 화면 / → ${entry:-무응답} — 헬스체크가 초록이어도 사람은 쓸 수 없다 (DEV-577)"; failed=1 ;;
+    *) ok "웹 진입 화면 / → ${entry}" ;;
+  esac
+
   # 엔티티 별칭 — 매핑 부트스트랩의 결과다.
   local aliases
   aliases="$(compose exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/aliases?h=alias' 2>/dev/null \

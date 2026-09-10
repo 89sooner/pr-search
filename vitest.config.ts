@@ -33,6 +33,9 @@ export default defineConfig({
       // `web`은 Next.js 관례를 따라 `src/`가 아니라 `app/`·`lib/`를 쓴다.
       'apps/web/lib/**/*.test.ts',
       'apps/web/app/**/*.test.ts',
+      // `instrumentation.ts`는 Next.js가 **프로젝트 루트**에 요구하므로 그 시험도
+      // 거기 산다 (CR-078). 깊이 1로 좁혀 `e2e/`·`a11y/`가 딸려 오지 않게 한다.
+      'apps/web/*.test.ts',
       'scripts/**/*.test.ts',
     ],
     environment: 'node',

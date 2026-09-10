@@ -192,6 +192,9 @@
 
 | DEV ID | 발견일 | 발견 내용 | 관련 FR/WP | 유형 | 연결 CR | 상태 |
 | --- | --- | --- | --- | --- | --- | --- |
+| DEV-579 | 2026-09-11 | **`OIDC_REDIRECT_URI`가 배포 정의 어디에도 없었다.** `resolveOidcConfig`는 `OIDC_ISSUER`·`OIDC_CLIENT_ID`·`OIDC_CLIENT_SECRET`·`OIDC_REDIRECT_URI` 넷을 요구하는데 `compose.yml`은 앞의 셋만 `web`에 넘기고 `.env.example`도 셋만 적었다. 넷째 키는 계약 파일 한 곳에만 존재했다. 그래서 `AUTH_ENABLED=true`로 올리면 화면이 전부 `/auth/login`으로 리다이렉트되고 그 라우트가 `resolveOidcConfig()`에서 던져 **500이 되어 아무도 로그인할 수 없다.** 컨테이너는 초록이므로 `DEV-577`과 같은 모양이다. 사내 Pilot은 `AUTH_ENABLED=false`로 돌아 아직 밟지 않았으나, **OIDC를 켜는 순간 밟는다.** `0.1.0-pilot.3` 이후 수정 이미지로 구성 행렬을 재면서 발견했다 — `AUTH_ENABLED=true`·OIDC 값 없음에서 `/`와 `/search`가 307로 `/auth/login`에 가고 그 경로가 500이었다. `compose.yml`의 `web` 서비스와 `.env.example`에 그 키를 더하고, web 기동 검증이 **로그인 라우트가 부르는 그 함수**로 인증 구성을 편다 — 키 목록을 옮겨 적으면 다음에 키가 늘 때 같은 일이 난다. 회귀가 계약 소스에서 키를 읽어 배포 정의와 대조한다 | WP-015 / FR-AUTH-001 / API-AUTH-001 | 계약 공백 | CR-078 | resolved |
+| DEV-578 | 2026-09-11 | **세션 구성이 읽는 그룹 매핑 변수 이름이 배포 정의와 다르다.** `resolveSessionReaderConfig`는 `IDP_GROUP_ROLE_MAP`을 읽는데 `compose.yml`·`.env.example`은 `OIDC_GROUP_ROLE_MAP`만 준다. 로그인 시 실제로 역할을 부여하는 경로는 `apps/web/app/auth/callback/route.ts`이며 그쪽은 `OIDC_GROUP_ROLE_MAP`을 바르게 읽으므로 **현재 동작은 옳다.** 어긋난 쪽이 만드는 `SessionReaderConfig.groupRoleMap`은 어디에서도 소비되지 않는 사문 필드다. 그래서 이번 변경에서는 **고치지 않고 관측만 기록한다** — 사문 필드를 지우는 것도 이름을 맞추는 것도 인증 표면을 건드리므로 사내가 OIDC를 실제로 켜는 작업과 함께 판단해야 한다. 그 전까지 이 필드를 새로 읽는 코드를 더하면 언제나 빈 맵을 받는다 | FR-AUTH-001 / WP-012 | 문서 간 모순 | CR-078 | open |
+| DEV-577 | 2026-09-11 | **「기동을 막는다」고 적힌 운영 계약이 실제로는 요청마다 막았다.** `resolveSessionReaderConfig`는 운영에서 `SESSION_COOKIE_SECURE=false`를 거부하고 그 주석·`playwright.config.ts` 주석·원장 6장 검증 표가 모두 「기동을 거부한다」고 적었다. 그런데 `web`에서 그 함수를 부르는 자리는 화면과 라우트 핸들러 안, 곧 **요청 처리 경로**다. 그래서 잘못된 값으로 올리면 프로세스는 서고 `/healthz`는 아무것도 읽지 않는 상수 핸들러라 200을 내며 Docker가 `healthy`를 보고하는데 **사람이 여는 화면만 전부 500**이 된다. `compose.yml`은 이 변수를 `web`에만 넘기므로 `search-api`는 멀쩡했고, 그 비대칭이 원인을 웹 런타임의 모듈 해석 문제로 오진하게 했다. 문서 쪽 원인도 있다 — `.env.example`이 「TLS 없이 HTTP로 서비스하면 false여야 쿠키가 전달된다」고, 런북이 로그인 루프 처방으로 같은 취지를 적어 운영자를 그 값으로 보냈다. `0.1.0-pilot.3` 릴리스 이미지(ID가 릴리스 manifest와 일치)에서 요청 단위로 재현했다. **보안 계약은 그대로 두고** `apps/web/instrumentation.ts`가 기동 시점에 구성을 펴 실패하면 종료하게 했다 — Next 16.3.1의 production 서버는 `register()`가 던져도 프로세스를 살려 두고 모든 요청에 500을 내므로(실측) `throw`가 아니라 종료여야 한다. `/healthz`도 같은 판정을 읽어 503을 낸다. 문서 두 자리를 정정하고, 릴리스 산출물에 실제 이미지 런타임 게이트를 세웠다. **사내 `prsctl smoke`도 진입 화면을 실제로 요청하게 했다** — 그 명령은 `DEV-515`로 「health가 아니라 실제 조회 왕복을 건다」는 규율을 얻었는데 `web`에 대해서는 `/healthz`만 보고 있었다. 사내가 쓴 이미지와 구성으로 재면 `/healthz`는 200이고 `/`는 500이므로, 이 한 줄이 있었으면 업그레이드 직후에 드러났다 | WP-072 / FR-AUTH-001 AC-2 / NFR-005 / ADR-021 | 구현 결함 | CR-078 | resolved |
 | DEV-576 | 2026-09-10 | **push 웹훅이 미러 fetch를 트리거하지 않는다.** `apps/pipeline-worker/src/mirror-runner.ts`의 `syncByTarget`은 주석에서 "`push` 이벤트가 이 경로로 온다"고 적고 `startMirrorSweeper`의 주석도 "`push` 경로는 호출 측이 `syncByTarget`으로 잇는다"고 적지만, **저장소 전체에서 이 함수를 호출하는 코드가 없다**(테스트 포함, 실측: 정의 외에 호출부 0건). `MirrorCommitGraph.resolveHead()`는 `git rev-parse`만 수행하고 fetch하지 않으며, `FallbackCommitGraph.#try()`는 미러 **읽기가 실패했을 때만** API로 넘어가므로(`packages/github/src/commit-graph.ts:170-182`) 미러가 낡은 채로도 읽기 자체는 성공하면 폴백이 일어나지 않는다. 브랜치 push는 릴리스 신호를 내지 않는다(`packages/domain/src/release.ts`는 태그 push만 다룬다). 그래서 릴리스 경로의 `sync`도 돌지 않는다. 결과로 `mirror_enabled`가 켜진 저장소에서 `merge_seq`는 6시간 보정 스윕 이후 다음 push까지 붙지 않는다. 잡 카탈로그가 `JOB-MIR-001`의 방아쇠를 "`push` 이벤트 / 스케줄(6시간)"로 적은 것과 코드가 어긋난다. **`WP-074`의 선행 조건이다.** 회의가 요구한 "거의 실시간"은 이 결함 위에서 성립하지 않는다. **운영 환경 실측은 아직 하지 않았고, 이 판정은 코드 경로 확인에 근거한다.** | WP-020 / JOB-MIR-001 / ADR-005 | 구현 결함 | CR-077 | open |
 | DEV-575 | 2026-09-10 | **CR-075를 닫으면서 필수 strict document validator 결과를 cascade에 기록하지 않았다.** 검증은 실제로 실행했으나 커밋·PR 설명에만 있고 변경 관리 정본에 없었다. PR #161 머지 후 P1 리뷰가 발견했다. CR-075 cascade에 변경 전 main과 같은 기존 오류 3건·경고 1건, 신규 issue 0건을 명시했다 | CR-075 / DEV-574 | 문서 오류 | CR-076 | resolved |
 | DEV-574 | 2026-09-10 | **CR-074 cascade가 원장에 검증 결과를 기록했다고 했지만 6.72.9장에는 결과가 없었다.** PR #160 머지 후 P2 리뷰가 발견했다. 로컬 회귀·typecheck·lint와 PR #160 CI 결과를 해당 절에 추가해 변경 관리 기록과 정본 원장을 일치시켰다 | CR-074 / DEV-573 / WP-072 | 문서 오류 | CR-075 | resolved |
@@ -5767,6 +5770,70 @@ PR #159가 병합된 뒤 새 회귀 두 건이 각각 DEV-571·572만 적고 소
 검증은 로컬 `pnpm run test:regression regression/runtime-reachability.test.ts` 346건 통과, `pnpm typecheck`·`pnpm lint` 통과다. PR #160의 GitHub Actions `verify`와 `integration`도 모두 성공했다. 이 결과가 처음에는 cascade에만 “기록했다”고 쓰이고 이 절에서 빠져 있었으며, PR #160 머지 후 리뷰가 DEV-574로 잡았다.
 
 CR-075의 strict document validator는 변경 전 `main`과 같은 기존 오류 3건·경고 1건, 신규 issue 0건이었다. 이 결과가 PR 설명에만 있고 change control cascade에서 빠진 것을 PR #161 머지 후 리뷰가 DEV-575로 잡아 CR-076에서 보완했다.
+
+### 6.72.10 `0.1.0-pilot.3` 웹 500 원인 판정과 폐쇄 (CR-078 / DEV-577)
+
+사내가 `0.1.0-pilot.3`으로 업그레이드한 뒤 Docker가 전 서비스를 `healthy`로 보고하고 검색 API도 응답하는데 웹 접점이 HTTP 500이라는 Upstream Feedback이 도착했다. 사내 진단은 웹 런타임이 `pg`를 찾지 못하는 것이었고 임시 조치로 컨테이너 안 `npm install pg`가 제시됐다.
+
+**원인은 `pg`가 아니었다.** 판정은 릴리스 산출물로 했다 — 로컬 `prs/web:0.1.0-pilot.3`의 이미지 ID `sha256:62ee9408d6cb…`가 릴리스 manifest의 값과 같고, 번들 `images/pr-search-app.tar` 안의 web 이미지 blob도 같다. 즉 사내가 받은 바로 그 이미지를 잰 것이다.
+
+| 가설 | 판정 | 근거 |
+| --- | --- | --- |
+| 실제 `pg` 패키지 부재 | **탈락** | `/app/node_modules` 최상위에 `pg`가 없는 것은 사실이나 `.pnpm/pg@8.23.0`이 있고 `@prs/db`에서 해석된다. `.pnpm`에서 실제 `pg`를 지워도 SSR 전 화면이 200이었다 — web의 SSR 경로에 `pg`가 없다 |
+| `pg-<해시>` 재발 (DEV-551) | **탈락(하지만 방어는 여전히 필요)** | 스텁 `pg-71df57fbe79e18ab`이 이미지에 있고 해석된다. 지우면 `/healthz`만 200이고 SSR이 500이 되며 `Cannot find package`가 난다 — 증상 외형이 같아 사내 오진을 설명한다 |
+| stale·다른 이미지 실행 | **판정 불가, 다만 제시된 조치가 성립하지 않는다** | 배포 트리의 `package.json`은 `workspace:*`를 담고 있어 `npm install pg`가 `EUNSUPPORTEDPROTOCOL`로 거부된다. 진짜 pilot.3 이미지에서는 그 임시 조치가 실행될 수 없다 |
+| `SESSION_COOKIE_SECURE=false` | **확정** | `NODE_ENV=production`·`AUTH_ENABLED=false`·`SESSION_COOKIE_SECURE=false`로 띄우면 `/healthz` 200, `/`·`/search`·`/releases`·`/repositories` 전부 500이고 유일한 예외 메시지가 `운영에서 SESSION_COOKIE_SECURE=false는 허용되지 않는다 (FR-AUTH-001 AC-2)`다. `pg` 관련 오류는 0건 |
+
+`SESSION_COOKIE_SECURE=true`로 바꾸면 같은 이미지가 대표 화면 18종 전부를 200으로 내고 stderr가 0바이트다. **사내는 이 값만 되돌리면 pilot.3에서도 화면이 열린다.**
+
+`search-api`가 멀쩡했던 이유도 확인했다 — `compose.yml`은 이 변수를 `web` 서비스 한 곳(146행)에만 넘긴다. `search-api`는 값을 받지 않아 `production → secure=true`로 남는다.
+
+**폐쇄 방식.** 보안 계약(`packages/authz/src/config.ts`)은 한 글자도 바꾸지 않았다. 대신 그 계약이 적힌 대로 기동을 막게 했다.
+
+- `apps/web/instrumentation.ts`가 기동 시점에 구성을 편다. `next start`에서 실제로 종료 코드 1로 죽고 이유를 로그에 남기는 것을 확인했다. **`throw`로는 안 된다** — Next 16.3.1의 production 서버는 `NextServer.prepare()`에서 진짜 준비를 await하지 않고 `.catch`로 로그만 남기므로, 던지면 프로세스가 살아서 모든 요청에 500을 낸다(실측). 고치려던 바로 그 모양이다
+- `/healthz`가 같은 판정을 읽어 실패를 503으로 낸다. 판정 문구는 호스트 포트에 노출되지 않게 로그로만 보낸다 (NFR-005)
+- `.env.example`과 `deploy/single-host/RUNBOOK.md`가 운영자를 거부당하는 값으로 보내던 두 자리를 정정하고, 이번 증상 행 둘을 더했다
+- `deploy/single-host/smoke-images.sh`를 세우고 `build-bundle.sh`가 `docker save` 뒤·운반 아카이브 앞에서 부른다
+
+**게이트가 무엇을 잡는가.** `0.1.0-pilot.3` 이미지에 걸면 종료 코드 1로 실패하고 `SESSION_COOKIE_SECURE=false로 띄웠는데 죽지 않는다`고 적는다. 고친 이미지에서는 통과한다. DEV-551 스텁을 지운 컨테이너에서도 `MODULE_NOT_FOUND`로 잡는다.
+
+**같은 유형의 결함을 하나 더 찾았다** (`DEV-579`). 고친 이미지로 구성 행렬을 다시 재는 중에 드러났다.
+
+| 구성 | `DEV-579` 수정 전 | 최종 이미지 |
+| --- | --- | --- |
+| `AUTH_ENABLED=false` · `SESSION_COOKIE_SECURE=true` (Pilot) | 화면 200 · `/auth/login` 503 (설계대로) | 같음 |
+| `AUTH_ENABLED=false` · `SESSION_COOKIE_SECURE=false` | 기동 거부 (종료 1) | 같음 |
+| `AUTH_ENABLED=true` · `SESSION_COOKIE_SECURE=true` · OIDC 값 없음 | 화면이 307로 `/auth/login`에 가고 **그 경로가 500** | **기동 거부** (종료 1) |
+| `AUTH_ENABLED=true` · `SESSION_COOKIE_SECURE=false` | 기동 거부 (종료 1) | 같음 |
+| `AUTH_ENABLED=true` · `SESSION_COOKIE_SECURE=true` · OIDC 완비 | `OIDC_REDIRECT_URI`가 배포 정의에 없어 **500** | `/auth/login`이 IdP authorize URL로 리다이렉트 |
+
+셋째 줄의 원인은 `OIDC_REDIRECT_URI`가 `compose.yml`·`.env.example`·런북 어디에도 없었다는 것이다. 계약(`resolveOidcConfig`)은 그 키를 요구하는데 배포 정의가 주지 않으므로, **값을 다 채워도 로그인이 500이었을 것이다.** 사내는 아직 `AUTH_ENABLED=false`라 밟지 않았으나 OIDC를 켜는 순간 밟는다. 키를 배포 정의에 더하고, 기동 검증이 로그인 라우트와 **같은 함수**로 인증 구성을 펴게 했다.
+
+**검증 결과는 6.72.11장에 있다.**
+
+### 6.72.11 `CR-078` 검증 결과 (2026-09-11)
+
+전부 `fix/web-config-failfast-pilot4` 최종 커밋의 워크트리에서 실행했다. Node 22, pnpm 10.33.0.
+
+| 검사 | 명령 | 결과 |
+| --- | --- | --- |
+| 타입 | `pnpm typecheck` | 통과 |
+| 린트 | `pnpm lint` · `pnpm run lint:deps` | 통과 · 패키지 13개 위반 0건 |
+| 단위 | `pnpm test` | 1958 통과 · 1 skip |
+| 회귀 | `pnpm run test:regression` | 397 통과 |
+| 통합 | `pnpm run test:integration` | 1492 통과 (93 파일) |
+| 접근성 | `pnpm run test:a11y` | 361 통과 |
+| 대비 | `pnpm run test:contrast` | 232쌍 중 실패 0 |
+| e2e | `pnpm run test:e2e` | 175 통과. 두 차례 1건씩 실패했으나 각각 다른 시험이었고 단독 재실행과 전체 재실행에서 통과했다 — 하나는 병렬 부하, 하나는 `browserType.launch` 실패로 제품과 무관하다 |
+| 빌드 | `pnpm build` · `pnpm --filter @prs/web run build` | 통과 |
+
+**신규 시험은 단위 27건·회귀 11건이다.** 단위는 `packages/authz/src/config.test.ts` 8, `apps/web/lib/server/config.test.ts` 8, `apps/web/instrumentation.test.ts` 7, `apps/web/app/healthz/route.test.ts` 4다. 판정 자체는 **실행으로 잰다** — 소스를 문자열로 읽는 검사는 「토큰은 남기고 로직을 뒤집는」 변이를 놓치며, 적대적 검토가 실제로 다섯 변이를 그렇게 통과시켜 시험을 고쳤다.
+
+**변이 검사 28종이 전부 죽는다.** 기동 종료를 `throw`로 되돌리기, 실패 갈래 앞에 `return` 주입, `NODE_ENV` 비교 변조, `/healthz`를 상수로 되돌리기, `/healthz`가 빈 환경으로 판정하기, 판정이 늘 `null`을 돌려주기, 판정에서 OIDC 검사 제거, 판정이 키 이름을 직접 담기, 게이트 호출 제거, 게이트를 아카이브 뒤로 이동, 대표 SSR 경로를 `/healthz`만 남기기, 거부 검사의 시간 제한 제거, 시간 초과 갈래를 통과로 바꾸기, worker `git` 검사 제거, 네트워크 격리 해제, 모듈 해석 검사 제거, 손 조치 흔적 검사 제거, `.env.example`을 `false`로 되돌리기, 계약의 `throw` 제거, compose에서 `OIDC_REDIRECT_URI` 제거·주석 처리, `.env.example`에서 제거, `prsctl smoke`에서 진입 화면 검사 제거·5xx 판정 무력화·진입 화면 대신 헬스체크 보기 등이다.
+
+**실제 이미지 검사.** `docker build --target web`·`--target pipeline-worker`로 다시 만든 이미지에 `deploy/single-host/smoke-images.sh`를 걸어 통과했다 — SSR 10종 200, 해시 외부 모듈 `pg-71df57fbe79e18ab` 해석, 손 조치 흔적 없음, 두 거부 구성 모두 종료 1, `git version 2.54.0`. 같은 게이트를 `0.1.0-pilot.3` 이미지에 걸면 거부 단계에서 실패한다. `DEV-551` 스텁을 지운 컨테이너에서는 모듈 해석 검사가 `MODULE_NOT_FOUND`로 잡는다.
+
+**strict document validator.** `python3 <skill-dir>/scripts/validate_srs_prd_env.py --root <tree> --strict`를 변경 전 `main`과 변경 후 워크트리에서 각각 실행해 대조했다. 양쪽 모두 오류 4건·경고 1건으로 같으며 **신규 issue 0건**이다. 기존 항목은 정의되지 않은 요구사항 ID `FR-CSS-005` 참조, 정의되지 않은 화면 ID `D-002` 참조, `risks.md` 경로 미해소, 그리고 변경 관리·구현 원장의 미해소 placeholder 집계 둘이다 — 모두 이 CR 이전부터 있었다.
 
 ### 6.73 PR #150 태그 복구 안내 정정 (CR-070 / DEV-559)
 
