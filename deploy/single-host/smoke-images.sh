@@ -196,13 +196,67 @@ expect_rejected() { # 라벨 그리고 환경 변수들
   pass "${label} → 종료 코드 ${rc}로 거부하고 이유를 로그에 남긴다"
 }
 
+# **허용해야 하는 구성이 실제로 서는가.**
+#
+# 거부 검사만 있으면 게이트가 한 방향으로만 정직하다. 계약이 넓어졌을 때 옛
+# 기대가 남아 있으면 거부 검사는 조용히 통과하는데(막고 있으니까) **서야 할
+# 배포가 서지 못한다.** 두 방향을 함께 걸어야 게이트가 계약을 따라온다.
+expect_accepted() { # 라벨 그리고 환경 변수들
+  local label="$1"; shift
+  local name="prs-smoke-accept-$$-${RANDOM}"; CONTAINERS+=("$name")
+
+  docker run -d --name "$name" --network none \
+    -e NODE_ENV=production -e WEB_PORT=3000 -e SEARCH_API_URL=http://127.0.0.1:9 \
+    "$@" "$WEB_IMAGE" >/dev/null || die "${label}: 컨테이너를 만들지 못한다"
+
+  local ready=0
+  for _ in $(seq 1 60); do
+    if ! docker ps -q -f "name=^${name}$" | grep -q .; then
+      docker logs "$name" 2>&1 | tail -20 >&2
+      die "${label} 구성으로 기동하지 못한다 — 허용해야 할 형상을 막고 있다 (CR-083)"
+    fi
+    if docker exec "$name" node -e "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
+      ready=1; break
+    fi
+    sleep 1
+  done
+  [ "$ready" -eq 1 ] || { docker logs "$name" 2>&1 | tail -20 >&2; die "${label}: 60초 안에 /healthz 200을 내지 못한다"; }
+  pass "${label} → 기동하고 /healthz 200"
+}
+
+# **기동해야 하는 구성도 실제로 기동하는지 본다** (`CR-083`, `DEV-615`).
+#
+# 거부만 검사하면 계약이 넓어졌을 때 이 게이트가 **반대 방향으로 거짓말한다** —
+# 허용해야 할 형상을 막고 있어도 아무것도 죽지 않는다. `CR-083`이 실제로 그렇게
+# 어긋났고, 그때 번들이 통째로 반입 불가 판정을 받았다.
+expect_accepted "AUTH_ENABLED=false 명시 + insecure 쿠키 (파일럿 형상)" \
+  -e AUTH_ENABLED=false -e SESSION_COOKIE_SECURE=false
+
 # 이번 사내 반입을 막은 구성.
-expect_rejected "SESSION_COOKIE_SECURE=false" -e AUTH_ENABLED=false -e SESSION_COOKIE_SECURE=false
+#
+# **의도를 적지 않은 배포는 면제되지 않는다** (`CR-083`). `AUTH_ENABLED`를 주지
+# 않으면 자격 증명을 나중에 채우는 순간 인증이 켜지므로, 그 배포는 서지 못한다.
+expect_rejected "SESSION_COOKIE_SECURE=false (의도 미선언)" -e SESSION_COOKIE_SECURE=false
+
+# **그 값을 남긴 채 인증만 켜면 다시 막는다** (`CR-083`).
+#
+# `CR-078`이 이 계약을 세울 때 적은 우려가 이것이다 — 「지금은 안 쓰니까」로 열어
+# 두면 **열린 채로 켜진다.** OIDC 값을 채워 두어 쿠키 말고 다른 이유로 거부되는
+# 일이 없게 한다.
+expect_rejected "insecure 쿠키를 남긴 채 인증을 켠다" \
+  -e AUTH_ENABLED=true -e SESSION_COOKIE_SECURE=false \
+  -e OIDC_ISSUER=https://idp.invalid -e OIDC_CLIENT_ID=c -e OIDC_CLIENT_SECRET=s \
+  -e OIDC_REDIRECT_URI=https://prs.invalid/auth/callback
 
 # **같은 유형의 구성 하나 더** (`DEV-579`). 인증을 켰는데 OIDC 값이 없으면 화면이
 # 전부 로그인으로 가고 그 라우트가 500을 낸다 — 컨테이너는 초록인데 아무도
 # 로그인할 수 없다. `OIDC_REDIRECT_URI`가 배포 정의에서 빠져 있던 자리다.
 expect_rejected "AUTH_ENABLED=true·OIDC 없음" -e AUTH_ENABLED=true -e SESSION_COOKIE_SECURE=true
+
+# **GHE 공급자도 같은 계약을 받는다** (`CR-083`). 공급자를 바꾸면 자격의 이름이
+# 바뀌지만 「켰으면 자격이 있어야 한다」는 규칙은 그대로다.
+expect_rejected "AUTH_PROVIDER=github·GHE OAuth 자격 없음" \
+  -e AUTH_ENABLED=true -e SESSION_COOKIE_SECURE=true -e AUTH_PROVIDER=github
 
 # ── 5. pipeline-worker의 git ────────────────────────────────────
 # **미러와 커밋 그래프가 `git`을 spawn한다** (`DEV-572`). 없으면 `ENOENT`로
