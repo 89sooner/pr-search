@@ -1,5 +1,105 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
 
+## 2026-09-11 (3차) 라운드에서 쓴 것 (WP-074 · CR-080·081)
+
+### 전제 — Node 22
+
+셸 기본이 20이라 매번 앞에 붙였다. `pnpm`은 20쪽 경로에 있지만 그대로 동작한다.
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"
+```
+
+### 검증 배터리 (전부 실행했고 이 수치가 원장 6.76장의 정본이다)
+
+```bash
+pnpm typecheck && pnpm lint && pnpm run lint:deps
+pnpm run test              # 2099 통과 · 1 skip (119 파일)
+pnpm run test:regression   # 422 통과 (8 파일)
+pnpm run test:integration  # 1602 통과 (99 파일) — 실제 PG
+pnpm run test:a11y         # 379 통과 · pnpm run test:contrast  232쌍 실패 0
+pnpm build && pnpm run test:e2e   # 181 통과
+```
+
+**`lint`를 검증 보고에 함께 적어라.** 돌리고는 있었으나 수치만 적어 리뷰어가 「목록에 없다」고 지적했다.
+
+### 범위를 좁혀 돌리기 (리뷰 회차마다 썼다)
+
+```bash
+pnpm exec vitest run --config vitest.integration.config.ts <파일>
+pnpm --filter @prs/web run test:a11y -- a11y/mnumber.test.tsx
+pnpm run test:e2e -- flow-003.spec.ts
+```
+
+### 변이 시험
+
+실행서 5.1의 10종은 `scratchpad/mutate.py`가 **기준 통과 → 변이 → 대상 실패 → 원복 → 기준 재통과**를
+자동으로 돌렸다. 리뷰 수정마다 손으로도 했다 — python으로 한 줄을 바꾸고 대상 시험을 돌린 뒤 원복한다.
+
+**원복에 `git checkout <파일>`을 쓰지 마라.** 그 파일의 미커밋 수정까지 함께 날아간다. 한 번 겪었다.
+
+### 측정 CLI 실제 실행
+
+```bash
+pnpm --filter @prs/pipeline-worker run build
+MEASURE_DATABASE_URL="postgresql://prs:prs@localhost:5432/prs_test" \
+  node apps/pipeline-worker/dist/measure-cli.js baseline --window 7d --format json
+```
+
+종료 코드를 실측했다 — `0` 정상 · `1` 조회 실패 · `2` 잘못된 인자 · `3` 자료 부족.
+
+### 번들과 적재 검증
+
+```bash
+git worktree add /tmp/pr-search-bundle-main origin/main --detach   # 깨끗한 워크트리에서
+cd /tmp/pr-search-bundle-main
+./deploy/single-host/build-bundle.sh 0.1.0-pilot.5 /tmp/pr-search-bundle-out   # --release 없음
+
+cd <번들 디렉터리> && sha256sum -c checksums/SHA256SUMS        # 10개 전부 OK
+tar xzf <아카이브> && sha256sum -c checksums/SHA256SUMS        # 푼 뒤에도 OK
+cd deploy/single-host && cp .env.example .env && <필수 값 채움> && ./prsctl load
+```
+
+**첫 `load`는 의도대로 멈춘다** — 체크섬을 검증한 뒤 필수 값이 비었다고 거부한다(`DEV-524`의 fail-fast).
+필수 값은 `POSTGRES_OWNER_PASSWORD`·`POSTGRES_APP_PASSWORD`·`GHE_BASE_URL`·`SEARCH_CURSOR_HMAC_KEY`를
+포함해 여덟이다. 적재 검증용 더미로 채웠고 운영 값이 아니다.
+
+매니페스트의 이미지 ID 대조는 **군마다 형식이 다르다** — 애플리케이션은 `name`·`tag`·`id`(image id),
+백킹은 `reference`·`id`(repo digest)다. `docker image inspect`의 `.Id`와 `.RepoDigests`를 각각 쓴다.
+
+### 리뷰 스레드 실측
+
+```bash
+gh api graphql -f query='{repository(owner:"89sooner",name:"pr-search"){
+  pullRequest(number:168){reviewThreads(first:50){nodes{isResolved path line
+    comments(first:1){nodes{author{login} body}}}}}}}'
+```
+
+`gh pr view --json reviews`로는 **미해결 스레드를 셀 수 없다.** `isResolved`를 직접 본다.
+
+### 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 실패 | 원인 |
+| --- | --- | --- |
+| `build-bundle.sh ... --release` | **자동 승인 분류기가 거부** (`Create Public Surface`) | 발행은 공개 노출을 만든다. 우회하지 않았다 |
+| `pnpm typecheck` | `tracked` 속성 없음 | 시험이 타입에 없는 키를 넣었다. `MergeNumberContext.canonical`은 `tracked`를 갖지 않는다 |
+| `pnpm lint` | `no-regex-spaces` | 정규식에 공백 둘을 리터럴로 썼다. `{2}`로 바꿨다 |
+| `pnpm lint` | `no-control-regex` | 세션 쿠키 검사의 제어 문자 정규식. 의도이므로 그 줄만 규칙을 껐다 |
+| 통합 전량 | `23503 ... referenced from mnumber_evidence` | 새 제약이 기존 시험의 정리를 막았다 (`DEV-590`). `clearMergeSequence`로 순서를 모았다 |
+| 회귀 3건 | 릴리스 대조 실패 | **내가 배터리와 다른 시험을 동시에 돌려** 공유 DB가 간섭했다. 순차로 돌리니 통과 |
+| `gh pr merge` | 출력 없음 | 성공했다. `gh pr view --json state`로 확인한다 |
+
+### 문서 검사기 (CR을 닫기 전에 반드시)
+
+```bash
+python3 /home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py \
+  --root <워크트리> --strict
+```
+
+**변경 전 커밋과 변경 후를 각각 돌려 대조한다.** 신규 issue 0건임을 보여야 CR을 닫을 수 있다
+(`AGENTS.md`: close the CR only after the cascade and validator pass are recorded).
+
+
 ## 2026-09-11 (2차) 라운드에서 쓴 것 (CR-078 · pilot.4 발행)
 
 ### 전제 — Node 22와 pnpm

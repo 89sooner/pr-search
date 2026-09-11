@@ -1,5 +1,63 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
 
+## Session: 2026-09-11 (3차) — WP-074 M 번호 수직 구현 (CR-080 · CR-081)
+
+### Goal — 결정자의 말로
+
+「설계 전용 범위를 너무 좁게 해석해 로컬 브랜치에만 남겼다. 이제 정정했다.」
+CR-079가 쓴 squash-only M 번호 설계를 **구현·검증·PR·리뷰·병합까지 자율적으로** 완주할 것.
+「사용자는 실시간으로 지켜보지 않는다. 계획이나 설계 검토에서 끝내지 마라.
+실행하지 않은 시험이나 사내 검증을 통과로 보고하지 마라.」
+
+### Current state
+
+- **`main = e01bce1`.** PR #168·#169·#170·#171 넷이 squash 병합됐다.
+- `CR-080`·`CR-081` closed. 편차 `DEV-584`~`DEV-611` 등록, **셋만 열림**
+  (`DEV-581`·`DEV-588`·`DEV-603` — 전부 계약 판단이 필요하거나 다른 WP 소유).
+- **`0.1.0-pilot.5` 미발행.** 번들은 만들어져 있고 적재 검증까지 끝났으나,
+  결정자의 「발행하고」 지시가 **자동 승인 분류기에 막혔다**(`Create Public Surface`). 우회하지 않았다.
+- 사내 적용·기동·마이그레이션 실행은 전부 `NOT RUN`.
+
+### Decisions — 이 세션이 고른 것
+
+`ADR-023`의 `C1`~`C6`을 잇는 `C7`~`C10`을 `change_control.md`의 CR-080 cascade에 적었다.
+핵심은 **화면이 기능 플래그를 읽지 않는다**는 것(`C9`) — 켜고 끄는 자리가 둘이면
+한쪽만 바꾼 형상을 화면 로그로 구분할 수 없다.
+
+리뷰를 거치며 바꾼 판단 다섯은 `decisions.md`의 표에 있다.
+
+### Changed files
+
+115개 파일 13,168줄. 역할별 정리는 `files.md`에 있다. 먼저 읽을 넷은
+`packages/domain/src/mnumber.ts` · `apps/pipeline-worker/src/mnumber-plan.ts` ·
+`apps/search-api/src/sequence/merge-number-view.ts` · `apps/web/lib/merge-number.ts`다.
+
+### Commands
+
+`commands.md`에 배터리·변이·번들·적재·리뷰 스레드 실측이 전부 있다. 실패한 명령 일곱도 원인과 함께 있다.
+
+### Next steps
+
+1. **`0.1.0-pilot.5` 발행.** 기술 작업은 끝났고 **승인 문제**다. 번들은 `e01bce1` 기준으로 다시 만들어야 한다.
+2. 열린 편차 셋에 대한 결정자의 판단을 기다린다.
+3. WP-075(GHE 제목 쓰기)를 **자동으로 시작하지 않는다.**
+
+### Risks/gotchas — 이 세션이 배운 것
+
+- **초록은 안전을 뜻하지 않는다.** 리뷰가 찾은 일곱 중 여섯이 시험이 전부 통과하는 채로 존재했다.
+- **검증 도구 자체가 검증 대상이다.** 대역이나 경로 선택 때문에 아무것도 증명하지 못한 시험이 넷이었다.
+- **규칙이 한 곳에만 적혀 있으면 다른 파일에서 되살아난다** (`DEV-601` → `DEV-611`).
+- **프로세스 안의 일관성이 배포의 일관성이 아니다** (`DEV-606`).
+- 자세한 것은 `risks.md`에 있다.
+
+### References
+
+- PR [#168](https://github.com/89sooner/pr-search/pull/168) 구현 · [#169](https://github.com/89sooner/pr-search/pull/169)·[#171](https://github.com/89sooner/pr-search/pull/171) 리뷰 결함 · [#170](https://github.com/89sooner/pr-search/pull/170) 번들 기록
+- 원장 `docs/40_delivery/pr_search_implementation_traceability.md` **6.76장**이 검증의 정본이다
+- 설계 `docs/30_technical_architecture/pr_search_wp074_design.md` · 실행서 `pr_search_wp074_execution.md`
+- 번들 산출물은 `/tmp/` 아래라 세션이 끝나면 사라질 수 있다. 다시 만드는 명령은 `todos.md`에 있다.
+
+
 ## Session: 2026-09-11 (2차) — CR-078 사내 pilot.3 웹 500 폐쇄와 0.1.0-pilot.4 발행
 
 ### Goal

@@ -1,8 +1,39 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=585fc64445a91d00b4ba5fc72554dca1de2401edd604ae49a441cac32c97fe67 bytes=165372 lines=2278 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL;deploy/k8s/README.md
+@kv sha256=286465081f8459d9939f97a4fd8d765c8415ce9ba684ef59b6fa90d7015e5d1d bytes=169116 lines=2331 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;deploy/single-host/;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-11 (3차) 라운드가 배운 함정 (WP-074 M 번호)
+@h3 초록은 안전을 뜻하지 않는다 — 이 판에서 여섯 번
+@risk 독립 리뷰가 찾은 blocker 1건과 major 6건 중 여섯은 시험이 전부 초록인 채로 존재했다.
+@b branch_not_tracked를 만드는 입력을 채우는 호출부가 하나도 없어 그 갈래가 죽은 코드였다
+@b 검사 순서를 고정하는 시험이 권한 밖 저장소를 pr_number로만 물어, 순서를 뒤집어도 통과했다
+@b 같은 PR에 행이 둘일 때 답이 조회 순서에 달렸는데 그것을 묻는 시험이 없었다
+@b 켜짐 판정이 세 곳에서 이미 갈라져 있었는데 철자를 세는 시험이 그것을 볼 수 없었다
+@h3 검증 도구 자체가 검증 대상이다 — 네 번
+@p 대역이나 경로 선택 때문에 시험이 아무것도 증명하지 못한 자리가 넷이다.
+@risk 리뷰어의 blocker 재측정 대역이 available_at을 무시해 「고쳐지지 않았다」고 보고할 뻔했다. 리뷰어가 자기 도구를 먼저 의심하고 고쳐 다시 재서야 맞는 값이 나왔다.
+@path 멱등 시험이 isAlreadyNumbered: () => false 대역을 써서 그 갈래가 생산 경로에서 도달 불가인 것을 덮었다 (DEV-603).
+@b 통합 시험의 SQL 감시가 pool.query만 봐서 스냅숏 안의 문장을 통째로 놓쳤다.
+@path 소진 배너 시험이 「다시 확인」 버튼을 눌렀는데 그 버튼이 어차피 표시를 지워, 수정을 되돌려도 통과했다 (DEV-609).
+@p 변이를 적용해 보기 전에는 시험이 무엇을 지키는지 알 수 없다.
+@h3 고친 것이 되살아나는 자리 — 규칙이 한 곳에만 적혀 있을 때
+@path DEV-601에서 「번호 있는 행이 이긴다」를 API 쪽에 세웠는데, 나중에 관측 루프를 배치로 바꾸며
+@path 같은 결함을 워커 쪽에 새로 만들었다(DEV-611). 같은 정본을 읽는 두 곳이 다른 행을 고르면 안 된다.
+@path 같은 모양이 DEV-608에도 있다. 켜짐 판정이 세 곳에 흩어져 있었고 이미 갈라져 있었다.
+@p 단언을 고치는 대신 정의를 하나로 모아 구조로 막았다.
+@h3 프로세스 안의 일관성이 배포의 일관성이 아니다
+@p resolveMergeNumberConfig()는 순수 함수라 한 프로세스 안에서 두 번 불러도 같은 값이다. 그런데 batch와 sequence는 서로 다른 컨테이너이고, 플래그가 batch에 전달되지 않아
+@path 가드가 언제나 참이 되어 DEV-597이 고친 것이 통째로 되돌아갔다(DEV-606).
+@p 개수를 세는 회귀는 이것을 못 잡는다. 한 곳을 빼고 다른 곳에 둘을 둬도 통과한다. 서비스 이름으로 센다.
+@h3 수정이 수정을 만든다 — 세 판
+@p 리뷰 다섯 판 중 세 판이 내 수정의 부작용이었다. 고친 것을 다시 보게 하지 않았다면 셋 다 남았고, 그중 하나는 「major를 고쳤다」는 기록이 사실과 달라지는 상태였다.
+@h3 여전히 유효한 것
+@b 공유 체크아웃이다. 브랜치는 워크트리로 격리하고 스테이징은 경로를 명시한다. git add -A를 쓰지 않는다.
+@path 실행 중 deploy/single-host/*를 편집하면 번들 실행이 무효가 된다 — bash가 바뀐 바이트를 읽는다.
+@b 번들 산출물은 기준 커밋을 매니페스트에 적는다. 그 커밋이 현재 main과 다르면 다시 만든다.
+@b 통합 시험은 fileParallelism: false로 순차 실행이다. 파일 간 간섭은 경합이 아니라 잔여 상태다.
+@path flow-003.spec.ts:176의 e2e 실패는 DEV-377이 기록한 알려진 편차다. 병렬 부하에서 렌더가 늦는다.
 @h2 2026-09-11 (2차) 라운드가 배운 함정 (CR-078 기동 실패-빠름)
 @h3 적힌 의도와 실제 동작이 다를 수 있다 — 가장 값비쌌던 것
 @p resolveSessionReaderConfig의 주석은 「운영에서 false면 기동을 막는다」, playwright.config.ts의 주석은 「기동을 거부한다」, 원장 6장 검증 표도 같은 말을 적고 있었다. 셋 다 거짓이었다. 그 함수를 부르는 자리가 요청 처리 경로였기 때문이다.

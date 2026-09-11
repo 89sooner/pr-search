@@ -1,5 +1,67 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
+최신 기준 (**2026-09-11 (3차) · WP-074 M 번호 — CR-080·081 closed, `0.1.0-pilot.5` 미발행**)
+
+**`main = e01bce1`. 실측하라.** 이 세션이 만든 커밋 넷이 그 위에 있다 —
+`4466fa1`(구현) · `7c46543`·`e01bce1`(리뷰 결함) · `7dcf06d`(번들 기록).
+
+## 시작하기 전에 실측할 것
+
+```bash
+cd /home/roqkf/pr-search && git fetch origin --quiet && git log --oneline -5 origin/main
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1      # 다음 CR 번호
+grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -1      # 다음 DEV 번호
+gh release list --limit 3                                 # pilot.5가 있는가
+```
+
+**병렬 세션이 있으면 채번 현황을 물어라.** main에서 잰 다음 번호는 열린 PR이 선점한 CR·DEV를 못 본다.
+
+## 1. `0.1.0-pilot.5` 발행 — 가장 앞에 있다
+
+**기술 작업은 끝나 있다.** 번들을 만들고 적재까지 검증했다. 남은 것은 **승인**이다.
+
+- 결정자가 「발행하고」로 지시했으나 **자동 승인 분류기가 `Create Public Surface`로 거부**했다. 우회하지 않았다.
+- 발행하려면 `Bash` 권한 규칙을 추가하거나 결정자가 직접 실행해야 한다.
+- **번들을 다시 만들어야 한다.** 기존 산출물(`/tmp/pr-search-bundle-out`)은 `4466fa1` 기준이라 리뷰 결함 셋(`DEV-609`~`611`)의 수정이 빠져 있다. 현재 main은 `e01bce1`이다.
+
+```bash
+# 깨끗한 워크트리에서. 실행 중 deploy/single-host/* 를 편집하지 마라 (실행이 무효가 된다)
+git worktree add /tmp/pr-search-bundle-main origin/main --detach
+cd /tmp/pr-search-bundle-main
+./deploy/single-host/build-bundle.sh 0.1.0-pilot.5 /tmp/pr-search-bundle-release --release
+```
+
+발행 뒤 자산 digest는 `gh api`로 확인한다 — `gh release view --json`에는 digest가 없다.
+
+## 2. 열린 편차 셋
+
+| 편차 | 무엇 | 왜 열려 있나 |
+| --- | --- | --- |
+| `DEV-581` | 직접 푸시의 영구 부재 확정 근거 | 공식 GHE 계약에 없다. **결정자의 판단이 필요하다** — 시간 기반 확정·초기 커밋 자동 제외·번호 재배치는 승인 없이 추가하지 않는다 |
+| `DEV-603` | planner의 멱등 갈래가 도달 불가 | 그 갈래와 `mapping_conflict` 중 **어느 쪽이 정본인지** 정해야 한다. 계약 판단이다 |
+| `DEV-588` | 조정 스캔 취소 시험의 경합 | `FR-ADMIN-002`를 소유한 WP의 몫이다. 이 판의 변경과 무관하다 |
+
+## 3. 고치지 않기로 한 minor (근거는 원장 6.76장)
+
+- covered 판정이 앱 시계와 DB `created_at`을 비교 — **재현되지 않은 추측**이고 영향 범위가 넓다
+- `proof`의 `resume_page` 키 — 구현이 아니라 **계약 문구**를 고칠 일이다
+- `mnumber_blocked_reason`의 DB CHECK가 길이뿐 — 읽는 쪽이 이미 enum으로 거른다
+- 증거 수집의 git 읽기가 미러 락 밖 — 실패해도 `profile_unverified`로 안전하게 퇴화한다
+- `requestWorkBatch`가 `availableAt`을 무시하고 중복 키를 방어하지 않음 — **현재 호출부가 둘 다 만들 수 없다**
+
+## 4. 사내 환경의 몫 (이 판에서 하지 않았다)
+
+- 마이그레이션 025 적용과 기동
+- `MNUMBER_ENABLED=true`로 켜는 것 — **`search-api`·`worker-sequence`·`worker-batch` 셋 다** 켜야 한다 (`web`에는 그 값이 없다)
+- 측정 CLI로 지연 재기 (런북 7.A)
+- `0.1.0-pilot.4` 사내 재시험 — 여전히 `NOT RUN`
+
+## 5. 확인할 사항
+
+- **WP-075는 자동으로 시작하지 않는다.** GHE 제목 쓰기는 이 제품이 GHE에 쓰는 최초 경로이며 별도 승인이 필요하다.
+- 병합된 PR의 미해결 리뷰 스레드는 **GraphQL `isResolved`로 직접 세라.** 후속 PR에서 고쳤다는 사실이 스레드 상태를 바꾸지 않는다 (`DEV-414`가 가르친 것).
+
+
 최신 기준 (**2026-09-11 (2차) · CR-078 기동 실패-빠름 — `0.1.0-pilot.4` 발행 완료**)
 
 **`main = a198e12`. PR #165가 머지됐고 작업 트리는 깨끗했다.** 실측하라.

@@ -1,5 +1,83 @@
 # 중요 파일 경로와 역할
 
+## 2026-09-11 (3차) 라운드가 만진 것 (WP-074 — 115개 파일, 13,168줄)
+
+`main = e01bce1`. 신규 파일이 많아 **역할별로만** 적는다. 전체 목록은 `git diff --stat c1246c5 e01bce1`이다.
+
+### 판정의 중심 (먼저 읽을 것)
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/domain/src/mnumber.ts` | 표기·파싱·저장소 코드. **양쪽 앱이 공유하는 순수 판정** |
+| `apps/pipeline-worker/src/mnumber-plan.ts` | 순수 planner. 순서·멈춤·충돌·`merged_at` 대조 |
+| `apps/search-api/src/sequence/merge-number-view.ts` | DTO 판정. **결정 순서가 계약이다** (설계 9절) |
+| `apps/web/lib/merge-number.ts` | 화면 표시 모델·URL 직렬화·재검증 정책 |
+
+### 채번과 전달
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/pipeline-worker/src/mnumber.ts` | `reconcile`·`materialize`·`announce`·관측 루프 |
+| `apps/pipeline-worker/src/mnumber-evidence.ts` | 근거 수집. **production은 `direct_confirmed`를 만들지 않는다** (`DEV-581`) |
+| `apps/pipeline-worker/src/mnumber-hint.ts` | `prs:projected`의 전용 논리 소비자 `mnumber` |
+| `apps/pipeline-worker/src/sequence-freshness.ts` | 채번 전 미러 fetch (`DEV-576` 폐쇄) |
+| `apps/pipeline-worker/src/sequence-work-runner.ts` | durable work 러너. **사유별 재시도 처분** (`DEV-598`) |
+| `apps/ingest-gateway/src/store.ts` | 수신과 refresh 의도를 **한 트랜잭션**에 |
+
+### 정본과 색인
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/db/migrations/025_merge_number.{up,down}.sql` | 번호·checkpoint·blocker·신규 표 셋 |
+| `packages/db/src/repositories/merge-sequence.ts` | `lookupMergeNumbers`가 공간·행·대상 브랜치를 함께 읽는다 |
+| `packages/db/src/repositories/{mnumber-evidence,sequence-work,sequence-latency}.ts` | 신규 표 셋 |
+| `packages/db/src/pool.ts` | `withReadSnapshot` — 읽기 전용 일관 스냅숏 (`DEV-592`) |
+| `packages/es/src/merge-number.ts` | M 필드의 **전용 소유자**. 투영이 덮지 않는다 |
+
+### API와 화면
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/search-api/src/sequence/merge-numbers.ts` | `API-SEQ-007` 양방향 해석. **검사 순서가 보안 계약이다** |
+| `apps/search-api/src/sequence/merge-number-batch.ts` | 페이지 단위 1회 정본 대조 |
+| `apps/web/components/MergeNumberBadge.tsx` | 세 화면이 공유하는 배지 |
+| `apps/web/components/MergeNumberEntry.tsx` | `/search`의 M 해석 진입. **화면을 늘리지 않는다** |
+| `apps/web/components/usePendingRevalidation.ts` | 5초 간격 · 60초 마감 자동 재검증 |
+
+### 측정
+
+`apps/pipeline-worker/src/measure/{args,stats,db,output,index}.ts` · `measure-cli.ts` ·
+`scripts/measure-sequence-latency.mjs`. **읽기 전용**이며 `BEGIN READ ONLY`로 DB가 쓰기를 막는다.
+
+### 시험 (신규 16개)
+
+단위는 `mnumber*.test.ts`·`merge-number*.test.ts`, 통합은
+`integration/sequence/{mnumber,freshness}.test.ts`·`merge-number-schema.test.ts`·`refresh-intent.test.ts`,
+회귀는 `regression/merge-number-vs-git.test.ts`(**git이 기대값을 만든다**)·`runtime-reachability.test.ts`,
+화면은 `a11y/mnumber.test.tsx`·`e2e/mnumber.spec.ts`.
+
+### 배포 정의 (셋이 같은 값을 받아야 한다)
+
+`deploy/single-host/compose.yml`의 `search-api`·`worker-sequence`·`worker-batch`,
+`deploy/k8s/pipeline-worker-{sequence,batch}.yaml`, `.env.example`, `RUNBOOK.md` 7.A.
+**`web`에는 `MNUMBER_ENABLED`가 없다** (`DEV-589`).
+
+### 문서
+
+`docs/40_delivery/pr_search_implementation_traceability.md` **6.76장**이 검증의 정본이다.
+`docs/00_governance/change_control.md`에 `CR-080`·`CR-081`과 각 cascade가 있다.
+
+### 산출물 (저장소 밖 · 무시 대상)
+
+- `/tmp/pr-search-bundle-out/` — `4466fa1` 기준 미발행 번들. **현재 main과 다르므로 다시 만들어야 한다**
+- `/tmp/pr-search-load-test/` — 적재 검증용으로 푼 사본. `.env`는 더미 값이다
+- `/tmp/pr-search-wp074-implementation/`, `/tmp/pr-search-bundle-main/` — 워크트리
+
+### 손대면 안 되는 것
+
+`0.1.0-pilot.4` 태그·자산 · 사내 운영 DB · 실제 GHE PR 제목 · `packages/authz/src/config.ts`의 보안 계약.
+
+
 ## 2026-09-11 (2차) 라운드가 만진 것 (CR-078 — 코드·배포·시험·문서 19개)
 
 `main = a198e12`. 신규 파일 다섯을 포함한다.
