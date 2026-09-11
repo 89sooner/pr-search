@@ -57,6 +57,7 @@ import {
   comparisonFailureCode,
   planComparison,
 } from './release-comparison.js';
+import { MERGE_NUMBER_RESOLVE_PATH, resolveMergeNumber } from './merge-numbers.js';
 
 export const SEQUENCE_RANGE_PATH = '/api/v1/sequence-ranges';
 export const SEQUENCE_ANCHOR_PATH = '/api/v1/sequence-anchors/resolve';
@@ -71,6 +72,8 @@ export const BISECT_SESSIONS_PATH = '/api/v1/bisect-sessions';
 export interface SequenceRouteOptions extends RangeDeps {
   readonly auth: AuthContext;
   readonly loginPath: string;
+  /** M 번호 기능 (WP-074). 꺼져 있으면 `API-SEQ-007`이 404 `feature_disabled`다. */
+  readonly mergeNumberEnabled?: boolean;
 }
 
 function fail(reply: FastifyReply, status: number, body: ErrorResponse): FastifyReply {
@@ -252,7 +255,9 @@ function sendAnchorFailure(
 }
 
 export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRouteOptions): void {
-  const { auth, loginPath, ...deps } = options;
+  const { auth, loginPath, mergeNumberEnabled = false, ...rest } = options;
+  // 범위 조회도 같은 플래그를 쓴다 — 화면마다 M이 보였다 안 보였다 하지 않는다.
+  const deps: RangeDeps = { ...rest, mergeNumberEnabled };
 
   /** 세션 → 접근 범위 → 시퀀스 공간. 두 경로가 똑같이 먼저 하는 일이다. */
   const enter = async (
@@ -764,6 +769,67 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
             outcome: 'created',
             marker: outcome.marker,
             replaced_merge_seq: outcome.replacedMergeSeq,
+            correlation_id: correlationId,
+          });
+      }
+    } catch (error) {
+      return toFailureResponse(reply, correlationId, error);
+    }
+  });
+
+  /**
+   * `GET /merge-numbers/resolve` — M 번호 ↔ PR 양방향 해석 (API-SEQ-007 / WP-074).
+   *
+   * 판정은 전부 `resolveMergeNumber`에 있다. 이 라우트가 하는 일은 세션을 확인하고,
+   * 접근 범위를 산출하고, 결과를 계약이 정한 HTTP 모양으로 옮기는 것뿐이다.
+   */
+  app.get(MERGE_NUMBER_RESOLVE_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const query = (request.query ?? {}) as Record<string, unknown>;
+    try {
+      const userId = (await authenticateSession(request, auth.sessions)).userId;
+      const scope = toAccessScope(await auth.scopes.resolveCached(userId));
+      const outcome = await resolveMergeNumber(
+        { pool: deps.pool, es: deps.es, enabled: mergeNumberEnabled },
+        {
+          repository: query['repository'],
+          baseBranch: query['base_branch'],
+          prNumber: query['pr_number'],
+          mergeNumber: query['merge_number'],
+          seqEpoch: query['seq_epoch'],
+          scope,
+        },
+      );
+
+      switch (outcome.kind) {
+        case 'ok':
+          return await reply.send({ ...outcome.body, correlation_id: correlationId });
+        case 'invalid':
+          return fail(reply, 400, {
+            error: {
+              code: 'INVALID_PARAMETER',
+              message: outcome.message,
+              detail: { field: outcome.field, ...(outcome.reason === undefined ? {} : { reason: outcome.reason }) },
+            },
+            correlation_id: correlationId,
+          });
+        case 'not_found':
+          return fail(reply, 404, {
+            error: { code: 'NOT_FOUND', message: outcome.message },
+            correlation_id: correlationId,
+          });
+        case 'no_sequence':
+          return fail(reply, ERROR_HTTP_STATUS['NO_SEQUENCE'], {
+            error: { code: 'NO_SEQUENCE', message: outcome.message, detail: { reason: outcome.reason } },
+            correlation_id: correlationId,
+          });
+        case 'feature_disabled':
+          /*
+           * 기능이 꺼진 배포다. **404이며 사유를 밝힌다** — 화면이 "찾을 수 없음"과
+           * "아직 켜지 않음"을 구분해 안내할 수 있어야 한다 (설계 9절).
+           */
+          return fail(reply, 404, {
+            error: { code: 'NOT_FOUND', message: 'M 번호 기능이 활성화되지 않았습니다.', detail: { reason: 'feature_disabled' } },
             correlation_id: correlationId,
           });
       }

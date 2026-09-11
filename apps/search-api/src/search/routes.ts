@@ -160,6 +160,8 @@ export function toSequenceFailure(
  * **선택이 아니다** — 빠지면 `seq:` 질의만 조용히 실패한다.
  */
 export interface SearchRouteOptions extends SearchDeps {
+  /** M 번호 기능 (WP-074). 꺼져 있으면 목록 응답에서 M 키가 생략된다. */
+  readonly mergeNumberEnabled?: boolean;
   readonly pool: Pool;
   readonly auth: AuthContext;
   readonly loginPath: string;
@@ -193,7 +195,13 @@ async function recordSearchAudit(
 }
 
 export function registerSearchRoutes(app: FastifyInstance, options: SearchRouteOptions): void {
-  const { auth, loginPath, ...deps } = options;
+  const { auth, loginPath, mergeNumberEnabled = false, ...rest } = options;
+  const deps: SearchRouteOptions = {
+    ...rest,
+    auth,
+    loginPath,
+    mergeNumbers: { pool: rest.pool, enabled: mergeNumberEnabled },
+  };
 
   app.get(SEARCH_PATH, async (request, reply) => {
     const correlationId = randomUUID();

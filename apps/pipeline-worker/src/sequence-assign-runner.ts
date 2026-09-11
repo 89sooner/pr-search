@@ -24,7 +24,7 @@
 
 import { jobRepo, repositoryRepo, type JobRow, type Pool } from '@prs/db';
 import { parseSequenceSpaceLabel } from '@prs/domain';
-import { assignSequence, type SequenceDeps } from './sequence.js';
+import { prepareAndAssignSequence, type SequenceDeps } from './sequence.js';
 import type { AssignOutcome } from './sequence-plan.js';
 
 export const ASSIGN_JOB = 'sequence_assign' as const;
@@ -154,7 +154,12 @@ export async function runAssignJob(deps: AssignRunnerDeps, job: JobRow): Promise
     return null;
   }
 
-  const assign = deps.assign ?? assignSequence;
+  /*
+   * 기본 경로는 **freshness 진입**이다 (WP-074 / DEV-576). 수동 채번도 fetch 뒤에 채번해야
+   * "옛 head를 읽고 새 커밋 없음"이 되지 않는다. 결과 모양은 기존 `AssignOutcome`으로
+   * 옮긴다 — fetch 실패·락 경합은 `stale`·`locked`와 같은 뜻이다.
+   */
+  const assign = deps.assign ?? prepareAsAssign;
   const correlationId = `job:${String(job.job_id)}`;
   let outcome: AssignOutcome | null = null;
 
@@ -268,4 +273,24 @@ export function startSequenceAssignRunner(
       await loop;
     },
   };
+}
+
+/** `PrepareOutcome`을 기존 `AssignOutcome`으로 옮긴다. 러너의 종료 상태 판정은 그대로다. */
+async function prepareAsAssign(
+  deps: SequenceDeps,
+  repositoryId: number,
+  baseBranch: string,
+  correlationId: string,
+): Promise<AssignOutcome> {
+  const outcome = await prepareAndAssignSequence(deps, repositoryId, baseBranch, correlationId);
+  switch (outcome.kind) {
+    case 'done':
+      return outcome.assign;
+    case 'skipped':
+      return { kind: 'skipped', reason: outcome.reason };
+    case 'defer':
+      return { kind: 'locked' };
+    case 'failed':
+      return { kind: 'stale', reason: outcome.reason };
+  }
 }

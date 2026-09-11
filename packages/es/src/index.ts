@@ -156,6 +156,14 @@ export {
 export type { MarkArchivedResult } from './registry.js';
 
 export { SEQUENCE_CHUNK, applyEpochBump, applySequenceToDocuments, findPullRequestByMergeCommit } from './sequence.js';
+/** M 번호 색인 반영·관측 (WP-074 / FR-SEQ-008, CR-079). */
+export {
+  applyMergeNumberToDocument,
+  clearMergeNumbersBelowEpoch,
+  readMergeNumberProjection,
+  readMergeNumberProjectionInternal,
+} from './merge-number.js';
+export type { MergeNumberDocOutcome, MergeNumberDocUpdate, MergeNumberProjection } from './merge-number.js';
 export type { ApplySequenceInput, ApplySequenceResult, SequenceAssignment } from './sequence.js';
 
 export { applyMappings, dropEntityIndices, switchAliasesForTests } from './bootstrap.js';

@@ -18,6 +18,7 @@
 import { repositoryRepo, type Pool, type RepositoryRow } from '@prs/db';
 import { mirrorDiskUsage, MIRROR_DISK_ALERT_RATIO, type MirrorSync, type RepoRef } from '@prs/github';
 import { Counter, Gauge } from '@prs/metrics';
+import { MirrorLockBusyError, withMirrorLock } from './mirror-lock.js';
 
 export interface MirrorLogEntry {
   readonly level: 'info' | 'warn' | 'error';
@@ -56,7 +57,17 @@ export async function syncOne(deps: MirrorRunnerDeps, repository: RepositoryRow)
   const ref: RepoRef = { owner: repository.owner, repo: repository.name };
   const target = `${repository.owner}/${repository.name}`;
   try {
-    const result = await deps.sync.sync(ref, repository.repository_id);
+    /*
+     * 저장소 단위 미러 락 아래에서 fetch한다 (WP-074 / ADR-023 C1). 채번의 선행
+     * fetch와 같은 디렉터리에 동시에 쓰지 않는다. 스윕은 잠깐 기다려도 잃는 것이
+     * 없으므로 `wait`다 — 상한을 넘기면 이번 회차는 건너뛰고 다음 스윕이 잇는다.
+     */
+    const result = await withMirrorLock(
+      deps.pool,
+      repository.repository_id,
+      () => deps.sync.sync(ref, repository.repository_id),
+      { wait: true },
+    );
     mirrorSyncTotal.inc({ action: result.action, outcome: 'ok' });
     deps.log({
       level: 'info',
@@ -67,6 +78,12 @@ export async function syncOne(deps: MirrorRunnerDeps, repository: RepositoryRow)
     });
     return true;
   } catch (error) {
+    if (error instanceof MirrorLockBusyError) {
+      // 다른 호출자가 방금 fetch했거나 하는 중이다. 실패가 아니라 "이미 최신이 되는 중"이다.
+      mirrorSyncTotal.inc({ action: 'sync', outcome: 'lock_busy' });
+      deps.log({ level: 'info', message: '미러 락 경합 — 이번 스윕은 건너뛴다', repository_id: repository.repository_id, target, reason: 'mirror_lock_busy' });
+      return false;
+    }
     /*
      * **던지지 않는다.** 저장소 하나의 동기화 실패로 스윕 전체를 버리면
      * 나머지 저장소가 전부 늦어진다. 실패는 지표와 로그로 드러나고,

@@ -38,6 +38,15 @@ spec:
           env:
             - name: PIPELINE_WORKER_ROLES
               value: sequence
+            # **이 파드에는 미러 볼륨이 없다** (WP-074 / ADR-023 C6). 그래서 채번 전
+            # 최신화를 GHE REST로 한다 — head를 호출 시점에 다시 읽으므로 낡은 로컬
+            # 캐시를 읽는 일이 없다. `mirror`로 두면 볼륨이 없어 기동을 거부한다.
+            - name: SEQUENCE_GRAPH_MODE
+              value: api
+            # M 번호는 기본 꺼짐이다. 켤 때는 search-api·web의 같은 값과 함께 바꾼다.
+            - name: MNUMBER_ENABLED
+              valueFrom:
+                configMapKeyRef: { name: prs-config, key: MNUMBER_ENABLED, optional: true }
           ports:
             - name: http
               containerPort: 3003

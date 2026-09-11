@@ -58,6 +58,10 @@ export class GitHubTransport {
    * (FR-ING-004 AC-2).
    */
   async get<T>(options: RequestOptions): Promise<T> {
+    return this.#fetchJson<T>(options, () => undefined);
+  }
+
+  async #fetchJson<T>(options: RequestOptions, observe: (response: Response) => void): Promise<T> {
     const priority = options.priority ?? 'realtime';
     const availableAt = this.#options.pool.availableAt(options.org);
     if (availableAt !== undefined) {
@@ -94,6 +98,7 @@ export class GitHubTransport {
 
       const now = this.#now();
       const snapshot = parseRateLimitHeaders(response.headers, now);
+      observe(response);
       this.#options.pool.observeResponse(lease.installationId, snapshot);
       this.#options.onResponse?.({
         org: options.org,
@@ -140,6 +145,33 @@ export class GitHubTransport {
     });
   }
 
+  /**
+   * GET 한 페이지 — **본문과 함께 `Link`·요청 ID를 돌려준다** (WP-074 / CR-079, 상세 설계 5.1).
+   *
+   * `get`은 본문만 주므로 호출 측이 "다음 페이지가 있는가"를 `batch.length < perPage`로
+   * **추측**한다. 증거 경로는 추측하지 않는다 — GitHub이 준 `Link: rel="next"`가
+   * 없을 때만 열거가 끝난 것이다. 그리고 `x-github-request-id`는 근거의 `proof`에
+   * 해시로 남는다.
+   *
+   * 오류 처리·한도·격리는 `get`과 같다. **두 번째 전송 경로를 만들지 않는다.**
+   */
+  async getPage<T>(options: RequestOptions): Promise<PageResponse<T>> {
+    let captured: { readonly link: string | null; readonly requestId: string | null; readonly status: number } | undefined;
+    const body = await this.#fetchJson<T>(options, (response) => {
+      captured = {
+        link: response.headers.get('link'),
+        requestId: response.headers.get('x-github-request-id'),
+        status: response.status,
+      };
+    });
+    return {
+      body,
+      status: captured?.status ?? 200,
+      nextPage: parseNextPage(captured?.link ?? null),
+      requestId: captured?.requestId ?? null,
+    };
+  }
+
   /** 페이지네이션. `per_page` 상한과 최대 항목 수로 폭주를 막는다. */
   async getAll<T>(options: RequestOptions & { perPage?: number; maxItems?: number }): Promise<T[]> {
     // 얕은 복사 한 번. 호출 측이 계속 가변 배열을 받도록 계약을 유지한다.
@@ -172,6 +204,37 @@ export class GitHubTransport {
     }
     return { items: collected.slice(0, maxItems), truncated: collected.length > maxItems, maxItems };
   }
+}
+
+/** `getPage`의 결과. `nextPage`가 `null`이면 GitHub이 다음 페이지를 알리지 않은 것이다. */
+export interface PageResponse<T> {
+  readonly body: T;
+  readonly status: number;
+  readonly nextPage: number | null;
+  readonly requestId: string | null;
+}
+
+/**
+ * `Link` 헤더의 `rel="next"` 페이지 번호. 없으면 `null`.
+ *
+ * GitHub은 `<url?page=N>; rel="next"` 형태로 준다. URL의 `page` 쿼리만 읽고 다른
+ * 파라미터는 무시한다 — 호출 측이 자기 쿼리를 그대로 다시 보낸다.
+ */
+export function parseNextPage(link: string | null): number | null {
+  if (link === null || link === '') return null;
+  for (const part of link.split(',')) {
+    const match = /<([^>]+)>\s*;\s*rel="next"/.exec(part.trim());
+    if (match === null) continue;
+    try {
+      const page = new URL(match[1] as string).searchParams.get('page');
+      if (page === null) return null;
+      const value = Number(page);
+      return Number.isInteger(value) && value >= 1 ? value : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 /** 상한에 걸려 잘렸는지를 호출 측이 추측하지 않도록 함께 돌려준다. */

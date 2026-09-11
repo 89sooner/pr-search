@@ -181,6 +181,35 @@ export interface ReleaseSummary {
   readonly published_at: string | null;
 }
 
+/**
+ * M 번호 근거용 PR 상세 (WP-074 / CR-079, 상세 설계 5.1).
+ *
+ * `PullRequestSummary`와 달리 **`base.repo.id`**를 보존한다 — 확정 조건이 "같은
+ * 저장소의 같은 base로 머지된 squash SHA"이고, fork에서 온 PR의 `base.repo.id`가
+ * 그것을 가른다. 제목·본문·작성자는 근거가 아니므로 타입에 두지 않는다.
+ */
+export interface PullRequestEvidence {
+  readonly number: number;
+  readonly state: string;
+  readonly merged: boolean;
+  readonly merged_at: string | null;
+  readonly merge_commit_sha: string | null;
+  readonly updated_at: string | null;
+  readonly base: {
+    readonly ref: string;
+    readonly sha: string;
+    readonly repo: { readonly id: number } | null;
+  };
+  readonly head: { readonly sha: string };
+}
+
+/** 커밋의 연결 PR 후보 한 페이지. `nextPage`는 GitHub의 `Link`가 말한 값이다. */
+export interface CommitPullRequestsPage {
+  readonly items: readonly { readonly number: number }[];
+  readonly nextPage: number | null;
+  readonly requestId: string | null;
+}
+
 /** FR-ING-004 AC-4: 변경 파일 상한. 초과분은 절삭하고 표식을 남긴다. */
 export const MAX_CHANGED_FILES = 3000;
 /** FR-SRCH-003 AC-4: 원본 커밋 상한. */
@@ -199,6 +228,67 @@ export class GitHubClient {
       path: `/repos/${ref.owner}/${ref.repo}/pulls/${String(number)}`,
       ...options,
     });
+  }
+
+  /**
+   * M 번호 근거용 PR 상세 (WP-074 / CR-079, 상세 설계 5.1의 2).
+   *
+   * **응답 모양을 검사한다.** `merged`가 boolean이 아니거나 `base`가 없으면 근거로
+   * 쓸 수 없으므로 던진다 — 빈 값으로 접으면 "머지되지 않았다"는 거짓 사실이 된다.
+   *
+   * @returns 없으면 `null`. 404는 답이지 실패가 아니다.
+   */
+  async getPullRequestEvidence(ref: RepoRef, number: number, options: CallOptions = {}): Promise<PullRequestEvidence | null> {
+    let body: unknown;
+    try {
+      body = await this.#transport.get<unknown>({
+        org: orgOf(ref),
+        path: `/repos/${ref.owner}/${ref.repo}/pulls/${String(number)}`,
+        ...options,
+      });
+    } catch (error) {
+      if (error instanceof GitHubApiError && error.kind === 'not_found') return null;
+      throw error;
+    }
+    const evidence = toPullRequestEvidence(body);
+    if (evidence === null) {
+      throw new GitHubApiError('client', `PR 상세 응답이 근거 형식이 아니다: ${ref.owner}/${ref.repo}#${String(number)}`);
+    }
+    return evidence;
+  }
+
+  /**
+   * 커밋에 연결된 PR 후보 한 페이지 (WP-074 / CR-079, 상세 설계 5.1의 3).
+   *
+   * `GET /repos/{o}/{r}/commits/{sha}/pulls`. 열거의 완결은 **`Link`의 `next` 부재**로
+   * 판정하고 배열 길이로 추측하지 않는다. 배열이 아닌 응답은 빈 배열로 접지 않고
+   * 던진다 — 기존 `listPullRequestsPage`의 non-array→[] 처리는 증거 경로에 쓰지 않는다.
+   */
+  async listPullRequestsForCommitPage(
+    ref: RepoRef,
+    sha: string,
+    page: number,
+    options: CallOptions & { readonly perPage?: number } = {},
+  ): Promise<CommitPullRequestsPage> {
+    const perPage = options.perPage ?? 100;
+    const response = await this.#transport.getPage<unknown>({
+      org: orgOf(ref),
+      path: `/repos/${ref.owner}/${ref.repo}/commits/${sha}/pulls`,
+      query: { per_page: perPage, page },
+      ...options,
+    });
+    if (!Array.isArray(response.body)) {
+      throw new GitHubApiError('client', `커밋 PR 목록 응답이 배열이 아니다: ${ref.owner}/${ref.repo}@${sha}`);
+    }
+    const items: { readonly number: number }[] = [];
+    for (const entry of response.body as unknown[]) {
+      const number = typeof entry === 'object' && entry !== null ? (entry as { number?: unknown }).number : undefined;
+      if (typeof number !== 'number' || !Number.isInteger(number) || number < 1) {
+        throw new GitHubApiError('client', `커밋 PR 목록 항목에 번호가 없다: ${ref.owner}/${ref.repo}@${sha}`);
+      }
+      items.push({ number });
+    }
+    return { items, nextPage: response.nextPage, requestId: response.requestId };
   }
 
   /**
@@ -545,4 +635,34 @@ export class GitHubClient {
       throw error;
     }
   }
+}
+
+/** PR 상세 응답을 근거 형식으로 옮긴다. 필수 필드가 빠졌으면 `null`. */
+export function toPullRequestEvidence(body: unknown): PullRequestEvidence | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const record = body as Record<string, unknown>;
+  const base = record['base'];
+  const head = record['head'];
+  if (typeof record['number'] !== 'number' || typeof record['merged'] !== 'boolean') return null;
+  if (typeof base !== 'object' || base === null || typeof head !== 'object' || head === null) return null;
+  const baseRecord = base as Record<string, unknown>;
+  const headRecord = head as Record<string, unknown>;
+  if (typeof baseRecord['ref'] !== 'string' || typeof baseRecord['sha'] !== 'string') return null;
+  if (typeof headRecord['sha'] !== 'string') return null;
+  const repo = baseRecord['repo'];
+  const repoId = typeof repo === 'object' && repo !== null ? (repo as { id?: unknown }).id : undefined;
+  return {
+    number: record['number'],
+    state: typeof record['state'] === 'string' ? record['state'] : 'unknown',
+    merged: record['merged'],
+    merged_at: typeof record['merged_at'] === 'string' ? record['merged_at'] : null,
+    merge_commit_sha: typeof record['merge_commit_sha'] === 'string' ? record['merge_commit_sha'] : null,
+    updated_at: typeof record['updated_at'] === 'string' ? record['updated_at'] : null,
+    base: {
+      ref: baseRecord['ref'],
+      sha: baseRecord['sha'],
+      repo: typeof repoId === 'number' ? { id: repoId } : null,
+    },
+    head: { sha: headRecord['sha'] },
+  };
 }

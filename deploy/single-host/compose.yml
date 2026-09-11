@@ -157,6 +157,9 @@ services:
       OIDC_SCOPES: ${OIDC_SCOPES:-}
       OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
       OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
+      # M 번호 (WP-074). **셋이 같은 값이어야 한다** — web·search-api·worker-sequence.
+      # 화면에는 공개 boolean만 간다 (설계 9절).
+      MNUMBER_ENABLED: ${MNUMBER_ENABLED:-false}
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/healthz >/dev/null || exit 1']
       interval: 20s
@@ -185,6 +188,8 @@ services:
       OIDC_SCOPES: ${OIDC_SCOPES:-}
       OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
       OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
+      # M 번호 (WP-074). 꺼져 있으면 API-SEQ-007이 404이고 목록·상세·범위에서 M 키가 생략된다.
+      MNUMBER_ENABLED: ${MNUMBER_ENABLED:-false}
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3002/healthz >/dev/null || exit 1']
       interval: 20s
@@ -267,6 +272,15 @@ services:
       PIPELINE_WORKER_PORT: '3003'
       MIRROR_ROOT: /var/lib/prs/mirrors
       MIRROR_ALLOW_BLOB_FETCH: ${MIRROR_ALLOW_BLOB_FETCH:-false}
+      # 채번 전 미러 fetch (WP-074 / DEV-576). Profile A는 `mirror`가 기본이며
+      # 아래 볼륨이 그 전제다. 볼륨이 없으면 **기동을 거부한다** — 조용히 API로
+      # 바꾸면 "설정은 mirror인데 왜 API로 도나"를 아무도 답할 수 없다.
+      SEQUENCE_GRAPH_MODE: ${SEQUENCE_GRAPH_MODE:-mirror}
+      # M 번호 (WP-074). 꺼져 있어도 위 freshness는 그대로 돈다 — DEV-576의 수정은
+      # 이 플래그와 무관하다.
+      MNUMBER_ENABLED: ${MNUMBER_ENABLED:-false}
+      MNUMBER_BATCH_SIZE: ${MNUMBER_BATCH_SIZE:-100}
+      MNUMBER_POLL_MS: ${MNUMBER_POLL_MS:-1000}
     volumes:
       - mirror-data:/var/lib/prs/mirrors
 

@@ -176,6 +176,21 @@ describe('PR 문서 (ENT-CORE-002)', () => {
     expect(request.createOnly).not.toHaveProperty('merge_seq');
   });
 
+  it('**M 번호 필드는 투영이 아예 싣지 않는다** (WP-074 / 상세 설계 8절)', () => {
+    const request = buildPullRequestDocument(source());
+    /*
+     * `merge_seq`와 같은 규율이다. `doc`에 `merge_number: null`을 실으면 투영이
+     * 돌 때마다 채번이 쓴 번호가 지워지고, 화면은 확정된 번호가 대기로 돌아가는
+     * 것을 본다. `createOnly`에 두는 것도 안 된다 — 부재가 곧 "아직 없다"이고
+     * 명시적 `null`은 "확인했는데 없다"라서 뜻이 다르다.
+     */
+    for (const field of ['merge_number', 'merge_number_epoch', 'merge_number_state', 'merge_number_reason']) {
+      expect(request.doc, field).not.toHaveProperty(field);
+      expect(request.createOnly ?? {}, field).not.toHaveProperty(field);
+      expect(request.remove ?? [], field).not.toContain(field);
+    }
+  });
+
   it('보관된 저장소를 표시한다 (FR-ING-009 AC-3)', () => {
     const archived: RepositoryRow = { ...REPOSITORY, status: 'archived' };
     const doc = buildPullRequestDocument({ ...source(), repository: archived }).doc;

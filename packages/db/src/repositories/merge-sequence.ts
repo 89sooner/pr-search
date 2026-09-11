@@ -21,6 +21,15 @@ export interface MergeSequenceInsert {
 export interface MergeSequenceRow extends Omit<MergeSequenceInsert, 'merge_seq'> {
   readonly merge_seq: string;
   readonly assigned_at: Date;
+  /**
+   * M 번호 (WP-074 / FR-SEQ-008, 마이그레이션 025). PR 항목만 갖고 직접 푸시는 NULL이다.
+   * BIGINT이지만 상한이 safe integer라 타입 파서가 숫자로 준다.
+   */
+  readonly merge_number: number | null;
+  /** WP-075 예약. WP-074에서는 언제나 NULL이다. */
+  readonly annotate_state: 'done' | 'mismatch' | 'failed' | 'disabled' | null;
+  readonly annotated_at: Date | null;
+  readonly mnumber_assigned_at: Date | null;
 }
 
 type Queryable = Pool | PoolClient;
@@ -489,4 +498,208 @@ export async function findNeighbors(
     [repositoryId, baseBranch, seqEpoch, anchorSeq, count],
   );
   return result.rows;
+}
+
+/* ------------------------------------------------------------------------- */
+/* M 번호 (WP-074 / FR-SEQ-008, CR-077 · CR-079, ADR-023)                       */
+/* ------------------------------------------------------------------------- */
+
+/** 채번 후보 행. checkpoint 다음부터 서수 오름차순이며 근거는 호출 측이 따로 읽는다. */
+export interface MergeNumberCandidateRow {
+  readonly merge_seq: number;
+  readonly commit_sha: string;
+  readonly pull_request_number: number | null;
+  readonly merge_number: number | null;
+  readonly committed_at: Date;
+}
+
+/**
+ * checkpoint 다음의 행들 (상세 설계 7절의 batch 입력).
+ *
+ * **정렬은 서수 오름차순 고정**이고 호출 측은 첫 행이 `afterSeq + 1`인지 확인한다 —
+ * 구멍이 있으면 정본이 손상된 것이며 정렬로 숨기지 않는다.
+ */
+export async function listCandidatesAfter(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  afterSeq: number,
+  limit: number,
+): Promise<MergeNumberCandidateRow[]> {
+  const result = await db.query<MergeNumberCandidateRow>(
+    `SELECT merge_seq::bigint AS merge_seq, commit_sha, pull_request_number, merge_number, committed_at
+       FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq > $4
+      ORDER BY merge_seq
+      LIMIT $5`,
+    [repositoryId, baseBranch, seqEpoch, afterSeq, limit],
+  );
+  return result.rows.map((row) => ({ ...row, merge_seq: Number(row.merge_seq) }));
+}
+
+export interface MergeNumberAssignment {
+  readonly mergeSeq: number;
+  readonly prNumber: number;
+  readonly mergeNumber: number;
+}
+
+/**
+ * 번호를 쓴다 (AC-1 · AC-3). **조건이 곧 불변식이다**:
+ *
+ * - 같은 서수에 같은 PR이 있어야 하고 (`pull_request_number = $pr`),
+ * - 번호가 아직 없거나 **같은 번호**여야 한다 (멱등 재실행).
+ *
+ * 하나라도 어긋나면 갱신 행 수가 부족하고 호출 측은 트랜잭션을 롤백한다. 이미
+ * 부여된 다른 번호를 덮는 UPDATE는 이 함수로 만들 수 없다.
+ *
+ * `pull_request_number`가 아직 NULL인 행(채번이 PR을 늦게 알게 된 경우)은 확정
+ * 근거의 PR로 **함께 채운다** — 근거가 정본이고 그 값이 곧 사실이다. 다른 non-null
+ * PR이 이미 있으면 COALESCE로 숨기지 않고 조건 불일치(0행)로 드러난다.
+ *
+ * @returns 갱신된 행 수. 입력 수와 같아야 한다.
+ */
+export async function assignMergeNumbers(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  assignments: readonly MergeNumberAssignment[],
+): Promise<number> {
+  if (assignments.length === 0) return 0;
+  const result = await db.query(
+    `UPDATE merge_sequence AS ms
+        SET merge_number        = a.merge_number,
+            pull_request_number = a.pr_number,
+            mnumber_assigned_at = COALESCE(ms.mnumber_assigned_at, clock_timestamp())
+       FROM unnest($4::bigint[], $5::int[], $6::bigint[]) AS a(merge_seq, pr_number, merge_number)
+      WHERE ms.repository_id = $1 AND ms.base_branch = $2 AND ms.seq_epoch = $3
+        AND ms.merge_seq = a.merge_seq
+        AND (ms.pull_request_number IS NULL OR ms.pull_request_number = a.pr_number)
+        AND (ms.merge_number IS NULL OR ms.merge_number = a.merge_number)`,
+    [
+      repositoryId,
+      baseBranch,
+      seqEpoch,
+      assignments.map((one) => one.mergeSeq),
+      assignments.map((one) => one.prNumber),
+      assignments.map((one) => one.mergeNumber),
+    ],
+  );
+  return result.rowCount ?? 0;
+}
+
+/** 이 에폭에서 번호를 받은 행들 (서수 오름차순, 상한). 색인 재구축·재적용이 쓴다. */
+export async function listNumberedAfter(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  afterSeq: number,
+  limit: number,
+): Promise<MergeSequenceRow[]> {
+  const result = await db.query<MergeSequenceRow>(
+    `SELECT * FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+        AND merge_seq > $4 AND merge_number IS NOT NULL
+      ORDER BY merge_seq
+      LIMIT $5`,
+    [repositoryId, baseBranch, seqEpoch, afterSeq, limit],
+  );
+  return result.rows;
+}
+
+/** M 번호 → 행 (API-SEQ-007 M 방향). 없으면 `null` — 잠정값을 지어내지 않는다. */
+export async function findRowByMergeNumber(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  mergeNumber: number,
+): Promise<MergeSequenceRow | null> {
+  const result = await db.query<MergeSequenceRow>(
+    `SELECT * FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_number = $4`,
+    [repositoryId, baseBranch, seqEpoch, mergeNumber],
+  );
+  return result.rows[0] ?? null;
+}
+
+/** 정본 batch 대조의 한 행 — 공간의 현재 상태와 PR의 서수·번호를 함께 준다. */
+export interface MergeNumberLookup {
+  readonly repository_id: number;
+  readonly base_branch: string;
+  readonly pull_request_number: number;
+  readonly merge_seq: number;
+  readonly commit_sha: string;
+  readonly merge_number: number | null;
+  readonly seq_epoch: number;
+}
+
+export interface MergeNumberSpaceState {
+  readonly repository_id: number;
+  readonly base_branch: string;
+  readonly seq_epoch: number;
+  readonly state: string;
+  readonly mnumber_head_seq: number;
+  readonly mnumber_blocked_seq: number | null;
+  readonly mnumber_blocked_reason: string | null;
+}
+
+/**
+ * 페이지의 PR 튜플을 **한 번에** 정본과 대조한다 (API 계약 8절, ADR-023 C5).
+ *
+ * 행별 HTTP 호출도, 행별 SQL도 만들지 않는다. 현재 에폭 행만 돌려주며 이전 에폭의
+ * 번호는 여기 나오지 않는다 — 옛 번호를 현재처럼 보이게 하지 않는다.
+ */
+export async function lookupMergeNumbers(
+  db: Queryable,
+  tuples: readonly { readonly repositoryId: number; readonly baseBranch: string; readonly prNumber: number }[],
+): Promise<{ readonly spaces: MergeNumberSpaceState[]; readonly rows: MergeNumberLookup[] }> {
+  if (tuples.length === 0) return { spaces: [], rows: [] };
+  const repositoryIds = tuples.map((one) => one.repositoryId);
+  const baseBranches = tuples.map((one) => one.baseBranch);
+  const prNumbers = tuples.map((one) => one.prNumber);
+
+  const spaces = await db.query<MergeNumberSpaceState>(
+    `SELECT DISTINCT s.repository_id, s.base_branch, s.seq_epoch, s.state,
+            s.mnumber_head_seq, s.mnumber_blocked_seq, s.mnumber_blocked_reason
+       FROM sequence_space s
+       JOIN unnest($1::bigint[], $2::text[]) AS k(repository_id, base_branch)
+         ON k.repository_id = s.repository_id AND k.base_branch = s.base_branch`,
+    [repositoryIds, baseBranches],
+  );
+  const rows = await db.query<MergeNumberLookup>(
+    `SELECT ms.repository_id, ms.base_branch, ms.pull_request_number, ms.merge_seq::bigint AS merge_seq,
+            ms.commit_sha, ms.merge_number, ms.seq_epoch
+       FROM merge_sequence ms
+       JOIN sequence_space s
+         ON s.repository_id = ms.repository_id AND s.base_branch = ms.base_branch AND s.seq_epoch = ms.seq_epoch
+       JOIN unnest($1::bigint[], $2::text[], $3::int[]) AS k(repository_id, base_branch, pr_number)
+         ON k.repository_id = ms.repository_id AND k.base_branch = ms.base_branch
+        AND k.pr_number = ms.pull_request_number`,
+    [repositoryIds, baseBranches, prNumbers],
+  );
+  return {
+    spaces: spaces.rows,
+    rows: rows.rows.map((row) => ({ ...row, merge_seq: Number(row.merge_seq) })),
+  };
+}
+
+/** 이 에폭에서 이미 번호를 받은 PR (후보 집합 안에서만). 같은 PR의 이중 SHA 판정에 쓴다. */
+export async function listNumberedPullRequests(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  prNumbers: readonly number[],
+): Promise<Set<number>> {
+  if (prNumbers.length === 0) return new Set();
+  const result = await db.query<{ pull_request_number: number }>(
+    `SELECT pull_request_number FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+        AND merge_number IS NOT NULL AND pull_request_number = ANY($4::int[])`,
+    [repositoryId, baseBranch, seqEpoch, prNumbers],
+  );
+  return new Set(result.rows.map((row) => row.pull_request_number));
 }

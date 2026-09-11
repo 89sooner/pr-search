@@ -21,6 +21,8 @@ export {
   advisoryXactLock,
   jobClaimLockKey,
   deliveryLockKey,
+  mirrorSyncLockKey,
+  tryAdvisorySessionLock,
   orgTeamSyncLockKey,
   releaseAdvisorySessionLock,
   releaseLockKey,

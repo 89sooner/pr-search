@@ -1,0 +1,359 @@
+/**
+ * 마이그레이션 025와 M 번호 표의 제약 (WP-074 FR-SEQ-008 / T06a, T04a 일부).
+ *
+ * ## 무엇을 묻는가
+ *
+ * 1. **024 → 025 → 024 → 025 왕복**이 기존 서수·SHA·PR·에폭을 그대로 두는가 (T06a).
+ * 2. 제약이 불변식을 **데이터베이스에서** 막는가 — 직접 푸시 행에 번호를 쓰는 것,
+ *    같은 번호를 두 PR에 주는 것, 같은 PR에 두 번호를 주는 것, checkpoint가 head를
+ *    넘는 것.
+ * 3. `sequence_work`의 claim·lease·CAS — 늦은 ack는 0행이고, 실행 중 들어온 요청은
+ *    완료로 덮이지 않는다 (T04a · T03b).
+ * 4. `prs_app`이 새 표에 권한을 갖는다 (022의 사각지대를 되풀이하지 않는다).
+ *
+ * 실행: `pnpm exec vitest run --config vitest.integration.config.ts packages/db/integration/merge-number-schema`
+ */
+
+import type { Pool } from 'pg';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { appliedVersions, migrateDown, migrateUp } from '../src/migrate.js';
+import { ensureAllPartitions } from '../src/partitions.js';
+import * as mergeSequenceRepo from '../src/repositories/merge-sequence.js';
+import * as sequenceSpaceRepo from '../src/repositories/sequence-space.js';
+import * as evidenceRepo from '../src/repositories/mnumber-evidence.js';
+import * as workRepo from '../src/repositories/sequence-work.js';
+import * as latencyRepo from '../src/repositories/sequence-latency.js';
+import { createTestPool, errorCode, truncate } from './helpers.js';
+
+const REPO = 7401;
+const BRANCH = 'main';
+const CHECK_VIOLATION = '23514';
+const UNIQUE_VIOLATION = '23505';
+
+let pool: Pool;
+
+async function seedSpace(rows: readonly { seq: number; sha: string; pr: number | null }[]): Promise<void> {
+  await sequenceSpaceRepo.ensureSequenceSpace(pool, REPO, BRANCH);
+  for (const row of rows) {
+    await mergeSequenceRepo.upsertMergeSequence(pool, {
+      repository_id: REPO,
+      base_branch: BRANCH,
+      seq_epoch: 1,
+      merge_seq: row.seq,
+      commit_sha: row.sha,
+      pull_request_number: row.pr,
+      committed_at: new Date('2026-09-01T00:00:00Z'),
+    });
+  }
+  await sequenceSpaceRepo.advanceHead(pool, REPO, BRANCH, rows[rows.length - 1]?.sha ?? 'x', rows.length);
+}
+
+const SHA = (n: number): string => n.toString(16).padStart(40, '0');
+
+beforeAll(async () => {
+  pool = createTestPool();
+  await migrateUp(pool);
+  await ensureAllPartitions(pool, 3);
+});
+
+afterAll(async () => {
+  await migrateUp(pool);
+  await ensureAllPartitions(pool, 3);
+  await pool.end();
+});
+
+beforeEach(async () => {
+  await truncate(pool, 'sequence_latency_sample', 'sequence_work', 'mnumber_evidence', 'merge_sequence', 'sequence_space');
+});
+
+describe('T06a: 024 → 025 → 024 → 025 왕복', () => {
+  it('**down이 기존 서수·SHA·PR·에폭을 보존하고 up이 M 열을 다시 만든다**', async () => {
+    await seedSpace([
+      { seq: 1, sha: SHA(1), pr: 21 },
+      { seq: 2, sha: SHA(2), pr: null },
+      { seq: 3, sha: SHA(3), pr: 25 },
+    ]);
+    // 번호 하나를 부여해 둔다 — down이 그것을 지우고 up이 NULL로 되돌리는 것이 계약이다.
+    expect(await mergeSequenceRepo.assignMergeNumbers(pool, REPO, BRANCH, 1, [{ mergeSeq: 1, prNumber: 21, mergeNumber: 1 }])).toBe(1);
+
+    const before = await pool.query(
+      'SELECT merge_seq::int AS seq, commit_sha, pull_request_number, seq_epoch FROM merge_sequence ORDER BY merge_seq',
+    );
+
+    expect(await migrateDown(pool, 1)).toEqual(['025']);
+    expect((await appliedVersions(pool)).includes('025')).toBe(false);
+    const columns = await pool.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'merge_sequence'`,
+    );
+    expect(columns.rows.map((row) => row.column_name)).not.toContain('merge_number');
+    const tables = await pool.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_tables WHERE tablename IN ('mnumber_evidence', 'sequence_work', 'sequence_latency_sample')`,
+    );
+    expect(tables.rows).toEqual([]);
+
+    const after = await pool.query(
+      'SELECT merge_seq::int AS seq, commit_sha, pull_request_number, seq_epoch FROM merge_sequence ORDER BY merge_seq',
+    );
+    expect(after.rows).toEqual(before.rows);
+
+    expect(await migrateUp(pool)).toEqual(['025']);
+    const restored = await pool.query<{ merge_number: number | null }>(
+      'SELECT merge_number FROM merge_sequence WHERE merge_seq = 1',
+    );
+    // **번호 보존 rollback이 아니다** — 다시 up하면 M 값은 초기화된다 (상세 설계 10절).
+    expect(restored.rows[0]?.merge_number).toBeNull();
+    const space = await sequenceSpaceRepo.findSequenceSpace(pool, REPO, BRANCH);
+    expect(space?.mnumber_head_seq).toBe(0);
+    expect(space?.mnumber_head).toBe(0);
+  });
+
+  it('`prs_app`이 새 표 셋에 CRUD 권한을 갖는다 (022의 규율)', async () => {
+    const result = await pool.query<{ table_name: string; privilege_type: string }>(
+      `SELECT table_name, privilege_type FROM information_schema.role_table_grants
+        WHERE grantee = 'prs_app'
+          AND table_name IN ('mnumber_evidence', 'sequence_work', 'sequence_latency_sample')`,
+    );
+    for (const table of ['mnumber_evidence', 'sequence_work', 'sequence_latency_sample']) {
+      const privileges = result.rows.filter((row) => row.table_name === table).map((row) => row.privilege_type).sort();
+      expect(privileges, table).toEqual(['DELETE', 'INSERT', 'SELECT', 'UPDATE']);
+    }
+  });
+});
+
+describe('merge_sequence 제약 (AC-1 · AC-2 · AC-3)', () => {
+  beforeEach(async () => {
+    await seedSpace([
+      { seq: 1, sha: SHA(1), pr: 21 },
+      { seq: 2, sha: SHA(2), pr: null },
+      { seq: 3, sha: SHA(3), pr: 25 },
+      { seq: 4, sha: SHA(4), pr: 25 },
+    ]);
+  });
+
+  it('**직접 푸시 행에는 번호를 쓸 수 없다** (AC-1)', async () => {
+    let code: string | undefined;
+    try {
+      await pool.query('UPDATE merge_sequence SET merge_number = 1 WHERE merge_seq = 2');
+    } catch (error) {
+      code = errorCode(error);
+    }
+    expect(code).toBe(CHECK_VIOLATION);
+  });
+
+  it('같은 번호를 두 PR에 줄 수 없다 (AC-2)', async () => {
+    await pool.query('UPDATE merge_sequence SET merge_number = 1 WHERE merge_seq = 1');
+    let code: string | undefined;
+    try {
+      await pool.query('UPDATE merge_sequence SET merge_number = 1 WHERE merge_seq = 3');
+    } catch (error) {
+      code = errorCode(error);
+    }
+    expect(code).toBe(UNIQUE_VIOLATION);
+  });
+
+  it('같은 PR이 두 번호를 가질 수 없다 — PR당 하나 (AC-1)', async () => {
+    await pool.query('UPDATE merge_sequence SET merge_number = 1 WHERE merge_seq = 3');
+    let code: string | undefined;
+    try {
+      await pool.query('UPDATE merge_sequence SET merge_number = 2 WHERE merge_seq = 4');
+    } catch (error) {
+      code = errorCode(error);
+    }
+    expect(code).toBe(UNIQUE_VIOLATION);
+  });
+
+  it('assignMergeNumbers는 다른 번호를 덮지 못한다 — 갱신 행 수로 드러난다', async () => {
+    expect(await mergeSequenceRepo.assignMergeNumbers(pool, REPO, BRANCH, 1, [{ mergeSeq: 1, prNumber: 21, mergeNumber: 1 }])).toBe(1);
+    // 같은 번호 재실행은 멱등이다.
+    expect(await mergeSequenceRepo.assignMergeNumbers(pool, REPO, BRANCH, 1, [{ mergeSeq: 1, prNumber: 21, mergeNumber: 1 }])).toBe(1);
+    // 다른 번호도, 다른 PR도 0행이다.
+    expect(await mergeSequenceRepo.assignMergeNumbers(pool, REPO, BRANCH, 1, [{ mergeSeq: 1, prNumber: 21, mergeNumber: 2 }])).toBe(0);
+    expect(await mergeSequenceRepo.assignMergeNumbers(pool, REPO, BRANCH, 1, [{ mergeSeq: 3, prNumber: 99, mergeNumber: 2 }])).toBe(0);
+  });
+
+  it('safe-integer 상한을 넘는 번호는 거부된다 (C4)', async () => {
+    let code: string | undefined;
+    try {
+      await pool.query('UPDATE merge_sequence SET merge_number = 9007199254740992 WHERE merge_seq = 1');
+    } catch (error) {
+      code = errorCode(error);
+    }
+    expect(code).toBe(CHECK_VIOLATION);
+  });
+
+  it('checkpoint는 head를 넘지 못하고 에폭 상향이 checkpoint를 0으로 돌린다', async () => {
+    expect(await sequenceSpaceRepo.advanceMergeNumberCheckpoint(pool, REPO, BRANCH, 1, { headSeq: 3, headNumber: 2, blocked: { seq: 4, reason: 'pr_evidence_pending' } })).toBe(true);
+    let code: string | undefined;
+    try {
+      await sequenceSpaceRepo.advanceMergeNumberCheckpoint(pool, REPO, BRANCH, 1, { headSeq: 5, headNumber: 2, blocked: null });
+    } catch (error) {
+      code = errorCode(error);
+    }
+    expect(code).toBe(CHECK_VIOLATION);
+    // 다른 에폭으로는 0행이다 — 락 사이에 에폭이 올랐으면 쓰지 않는다.
+    expect(await sequenceSpaceRepo.advanceMergeNumberCheckpoint(pool, REPO, BRANCH, 2, { headSeq: 1, headNumber: 1, blocked: null })).toBe(false);
+
+    const since = (await sequenceSpaceRepo.findSequenceSpace(pool, REPO, BRANCH))?.mnumber_blocked_since;
+    expect(since).not.toBeNull();
+    // 같은 blocker면 since를 보존한다.
+    await sequenceSpaceRepo.advanceMergeNumberCheckpoint(pool, REPO, BRANCH, 1, { headSeq: 3, headNumber: 2, blocked: { seq: 4, reason: 'pr_evidence_pending' } });
+    expect((await sequenceSpaceRepo.findSequenceSpace(pool, REPO, BRANCH))?.mnumber_blocked_since?.getTime()).toBe(since?.getTime());
+
+    await sequenceSpaceRepo.bumpEpoch(pool, REPO, BRANCH);
+    const space = await sequenceSpaceRepo.findSequenceSpace(pool, REPO, BRANCH);
+    expect(space?.seq_epoch).toBe(2);
+    expect(space?.mnumber_head_seq).toBe(0);
+    expect(space?.mnumber_head).toBe(0);
+    expect(space?.mnumber_blocked_seq).toBeNull();
+  });
+});
+
+describe('mnumber_evidence 제약 (AC-10)', () => {
+  beforeEach(async () => {
+    await seedSpace([{ seq: 1, sha: SHA(1), pr: 21 }]);
+  });
+
+  it('pr_confirmed는 PR 번호와 merged_at을 요구하고, unresolved는 사유를 요구한다', async () => {
+    const base = {
+      repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, mergeSeq: 1, commitSha: SHA(1),
+      sourcePrVersion: null, proof: { schema_version: 1 as const, profile: 'squash_only' as const },
+    };
+    await expect(evidenceRepo.upsertEvidence(pool, { ...base, state: 'pr_confirmed', prNumber: null, reason: null, sourceKind: 'pr_detail', mergedAt: new Date() })).rejects.toMatchObject({ code: CHECK_VIOLATION });
+    await expect(evidenceRepo.upsertEvidence(pool, { ...base, state: 'pr_confirmed', prNumber: 21, reason: null, sourceKind: 'pr_detail', mergedAt: null })).rejects.toMatchObject({ code: CHECK_VIOLATION });
+    await expect(evidenceRepo.upsertEvidence(pool, { ...base, state: 'unresolved', prNumber: null, reason: null, sourceKind: 'unresolved_lookup', mergedAt: null })).rejects.toMatchObject({ code: CHECK_VIOLATION });
+
+    const pending = await evidenceRepo.upsertEvidence(pool, { ...base, state: 'unresolved', prNumber: null, reason: 'pr_evidence_pending', sourceKind: 'unresolved_lookup', mergedAt: null });
+    expect(pending.first_pending_at).not.toBeNull();
+    const again = await evidenceRepo.upsertEvidence(pool, { ...base, state: 'unresolved', prNumber: null, reason: 'pr_evidence_pending', sourceKind: 'unresolved_lookup', mergedAt: null });
+    // 미확정이 처음 관측된 시각은 보존되고 버전은 오른다.
+    expect(again.first_pending_at?.getTime()).toBe(pending.first_pending_at?.getTime());
+    expect(again.evidence_version).toBe(2);
+    const confirmed = await evidenceRepo.upsertEvidence(pool, { ...base, state: 'pr_confirmed', prNumber: 21, reason: null, sourceKind: 'pr_detail', mergedAt: new Date('2026-09-01T00:00:00Z') });
+    expect(confirmed.first_pending_at).toBeNull();
+    expect(confirmed.evidence_version).toBe(3);
+  });
+
+  it('근거는 정본 행 없이 존재할 수 없다 (FK)', async () => {
+    await expect(
+      evidenceRepo.upsertEvidence(pool, {
+        repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, mergeSeq: 99, commitSha: SHA(99),
+        state: 'unresolved', prNumber: null, reason: 'pr_evidence_pending', sourceKind: 'unresolved_lookup',
+        sourcePrVersion: null, mergedAt: null, proof: { schema_version: 1, profile: 'squash_only' },
+      }),
+    ).rejects.toMatchObject({ code: '23503' });
+  });
+});
+
+describe('sequence_work claim · lease · CAS (T03b · T04a)', () => {
+  it('**늦은 ack는 0행이다** — lease를 잃은 워커의 완료·재시도가 아무것도 바꾸지 않는다', async () => {
+    await workRepo.requestWork(pool, { kind: 'reconcile', repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, payload: { trigger_kind: 'test' } });
+    const [claimed] = await workRepo.claimDueWork(pool, { kinds: ['reconcile'], limit: 10, leaseMs: 60_000 });
+    expect(claimed?.state).toBe('leased');
+    expect(claimed?.attempt_count).toBe(1);
+    const lease = { workKey: claimed!.work_key, leaseToken: claimed!.lease_token! };
+
+    // 두 번째 claim은 같은 행을 집지 못한다.
+    expect(await workRepo.claimDueWork(pool, { kinds: ['reconcile'], limit: 10, leaseMs: 60_000 })).toEqual([]);
+
+    // lease 만료 회수 뒤 다른 워커가 집는다.
+    await pool.query(`UPDATE sequence_work SET lease_until = now() - interval '1 second' WHERE work_key = $1`, [lease.workKey]);
+    expect(await workRepo.reclaimExpiredLeases(pool)).toBe(1);
+    const [reclaimed] = await workRepo.claimDueWork(pool, { kinds: ['reconcile'], limit: 10, leaseMs: 60_000 });
+    expect(reclaimed?.lease_token).not.toBe(lease.leaseToken);
+
+    // 옛 토큰의 ack는 0행이다.
+    expect(await workRepo.completeWork(pool, lease, claimed!.requested_generation)).toBe(false);
+    expect(await workRepo.releaseWork(pool, lease, { state: 'retry', availableAt: new Date(), reason: 'late' })).toBe(false);
+    expect(await workRepo.heartbeatWork(pool, lease, 1_000)).toBe(false);
+    expect((await workRepo.findWork(pool, lease.workKey))?.state).toBe('leased');
+  });
+
+  it('**실행 중 들어온 요청은 완료로 덮이지 않는다** — generation CAS', async () => {
+    const first = await workRepo.requestWork(pool, { kind: 'reconcile', repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, payload: {} });
+    expect(first.requested_generation).toBe(1);
+    const [claimed] = await workRepo.claimDueWork(pool, { kinds: ['reconcile'], limit: 1, leaseMs: 60_000 });
+    const lease = { workKey: claimed!.work_key, leaseToken: claimed!.lease_token! };
+
+    // 실행 중에 새 요청 — lease는 그대로이고 generation만 오른다.
+    const bumped = await workRepo.requestWork(pool, { kind: 'reconcile', repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, payload: {} });
+    expect(bumped.state).toBe('leased');
+    expect(bumped.lease_token).toBe(lease.leaseToken);
+    expect(bumped.requested_generation).toBe(2);
+
+    // claim 시점의 generation(1)으로 완료하면 done이 아니라 ready로 돌아온다.
+    expect(await workRepo.completeWork(pool, lease, claimed!.requested_generation)).toBe(true);
+    const after = await workRepo.findWork(pool, lease.workKey);
+    expect(after?.state).toBe('ready');
+    expect(after?.completed_generation).toBe(1);
+
+    // 다시 집어 generation 2로 완료하면 done이다.
+    const [second] = await workRepo.claimDueWork(pool, { kinds: ['reconcile'], limit: 1, leaseMs: 60_000 });
+    expect(await workRepo.completeWork(pool, { workKey: second!.work_key, leaseToken: second!.lease_token! }, second!.requested_generation)).toBe(true);
+    expect((await workRepo.findWork(pool, lease.workKey))?.state).toBe('done');
+  });
+
+  it('refresh intent는 전달당 하나이고 covered 완료가 lease 토큰까지 닫는다', async () => {
+    const at = (iso: string): Date => new Date(iso);
+    expect(await workRepo.enqueueRefreshWork(pool, { deliveryId: 'd-1', repositoryId: REPO, baseBranch: BRANCH, headSha: SHA(1), receivedAt: at('2026-09-11T00:00:00Z'), correlationId: 'c-1' })).toBe(true);
+    expect(await workRepo.enqueueRefreshWork(pool, { deliveryId: 'd-1', repositoryId: REPO, baseBranch: BRANCH, headSha: SHA(1), receivedAt: at('2026-09-11T00:00:00Z'), correlationId: 'c-1' })).toBe(false);
+    expect(await workRepo.enqueueRefreshWork(pool, { deliveryId: 'd-2', repositoryId: REPO, baseBranch: BRANCH, headSha: SHA(2), receivedAt: at('2026-09-11T00:00:01Z'), correlationId: 'c-2' })).toBe(true);
+    // 다른 공간의 intent는 덮이지 않는다.
+    expect(await workRepo.enqueueRefreshWork(pool, { deliveryId: 'd-3', repositoryId: REPO, baseBranch: 'release', headSha: SHA(3), receivedAt: at('2026-09-11T00:00:02Z'), correlationId: 'c-3' })).toBe(true);
+
+    const [claimed] = await workRepo.claimDueWork(pool, { kinds: ['refresh'], limit: 1, leaseMs: 60_000 });
+    const fetchStartedAt = new Date();
+    const covered = await workRepo.completeCoveredRefreshWorks(pool, { repositoryId: REPO, baseBranch: BRANCH, coveredBefore: fetchStartedAt, leaseToken: claimed!.lease_token });
+    expect(covered.map((one) => one.payload.delivery_id).sort()).toEqual(['d-1', 'd-2']);
+    expect((await workRepo.findWork(pool, 'push:d-3'))?.state).toBe('ready');
+    expect((await workRepo.findWork(pool, 'push:d-1'))?.state).toBe('done');
+
+    // fetch 시작 **뒤에** 도착한 push는 남는다.
+    await workRepo.enqueueRefreshWork(pool, { deliveryId: 'd-4', repositoryId: REPO, baseBranch: BRANCH, headSha: SHA(4), receivedAt: new Date(), correlationId: 'c-4' });
+    const late = await workRepo.completeCoveredRefreshWorks(pool, { repositoryId: REPO, baseBranch: BRANCH, coveredBefore: fetchStartedAt, leaseToken: null });
+    expect(late).toEqual([]);
+  });
+
+  it('lease 상태와 lease 필드는 함께 있거나 함께 없다 (CHECK)', async () => {
+    await workRepo.requestWork(pool, { kind: 'announce', repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, payload: {}, keyExtra: [1, 2] });
+    let code: string | undefined;
+    try {
+      await pool.query(`UPDATE sequence_work SET state = 'leased' WHERE kind = 'announce'`);
+    } catch (error) {
+      code = errorCode(error);
+    }
+    expect(code).toBe(CHECK_VIOLATION);
+  });
+});
+
+describe('sequence_latency_sample', () => {
+  it('stage 시각은 비어 있는 것만 채우고 관측은 최초 값만 남긴다', async () => {
+    const base = { workKey: 'reconcile:[1,"main",1]', attempt: 1, repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, prNumber: 21, deliveryId: null, triggerKind: 'new_squash' as const, receivedAt: null, attemptStartedAt: new Date(), reason: null };
+    const first = await latencyRepo.upsertSample(pool, { ...base, outcome: 'pending', sequenceAssignedNow: true });
+    expect(first.sequence_assigned_at).not.toBeNull();
+    expect(first.mnumber_assigned_at).toBeNull();
+    const second = await latencyRepo.upsertSample(pool, { ...base, outcome: 'assigned', mnumberAssignedNow: true });
+    expect(second.sample_id).toBe(first.sample_id);
+    expect(second.sequence_assigned_at?.getTime()).toBe(first.sequence_assigned_at?.getTime());
+    expect(second.mnumber_assigned_at).not.toBeNull();
+
+    expect((await latencyRepo.listUnobservedAssigned(pool, 10)).map((row) => row.sample_id)).toEqual([first.sample_id]);
+    await latencyRepo.markAbsent(pool, first.sample_id, 2_000);
+    await latencyRepo.markObserved(pool, first.sample_id, { indexUuid: 'idx', pollIntervalMs: 2_000 });
+    const observed = (await latencyRepo.listSamplesForSpace(pool, REPO, BRANCH))[0];
+    expect(observed?.outcome).toBe('visible');
+    expect(observed?.observation_attempts).toBe(2);
+    expect(observed?.last_search_absent_at).not.toBeNull();
+    const firstObserved = observed?.search_observed_at;
+    await latencyRepo.markObserved(pool, first.sample_id, { indexUuid: 'other', pollIntervalMs: 5_000 });
+    const again = (await latencyRepo.listSamplesForSpace(pool, REPO, BRANCH))[0];
+    expect(again?.search_observed_at?.getTime()).toBe(firstObserved?.getTime());
+    expect(again?.observed_index_uuid).toBe('idx');
+  });
+
+  it('PR이 NULL인 표본도 같은 attempt에서 중복되지 않는다 (NULLS NOT DISTINCT)', async () => {
+    const base = { workKey: 'push:d-9', attempt: 1, repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, prNumber: null, deliveryId: 'd-9', triggerKind: 'new_squash' as const, outcome: 'pending' as const, receivedAt: null, attemptStartedAt: new Date(), reason: null };
+    const a = await latencyRepo.upsertSample(pool, base);
+    const b = await latencyRepo.upsertSample(pool, base);
+    expect(b.sample_id).toBe(a.sample_id);
+  });
+});

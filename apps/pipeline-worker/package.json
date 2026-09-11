@@ -20,5 +20,8 @@
     "@prs/es": "workspace:*",
     "@prs/github": "workspace:*",
     "@prs/metrics": "workspace:*"
+  },
+  "bin": {
+    "prs-measure-sequence-latency": "./dist/measure-cli.js"
   }
 }

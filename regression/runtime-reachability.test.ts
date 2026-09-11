@@ -197,6 +197,29 @@ const CAPABILITIES = [
     stop: 'consistencySweeper?.stop()',
     manifest: 'deploy/k8s/pipeline-worker-project.yaml',
   },
+  /*
+   * WP-074. **durable 러너가 없으면 push 의도가 표에만 쌓이고 아무도 집지 않는다** —
+   * DEV-178·DEV-180이 정확히 그 모양이었다(잡 행은 만들어지는데 러너가 없었다).
+   * M 기능이 꺼져 있어도 이 러너는 refresh를 처리해 DEV-576을 닫으므로 언제나 선다.
+   */
+  {
+    id: 'JOB-SEQ-004',
+    what: 'M 번호 durable work 러너',
+    process: 'pipeline-worker',
+    role: 'sequence',
+    start: 'sequenceWorkRunner = startSequenceWorkRunner(',
+    stop: 'sequenceWorkRunner?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-sequence.yaml',
+  },
+  {
+    id: 'JOB-SEQ-004-cleanup',
+    what: 'M 운영 메타데이터 정리',
+    process: 'pipeline-worker',
+    role: 'batch',
+    start: 'sequenceMetadataCleanup = startSequenceMetadataCleanup(',
+    stop: 'sequenceMetadataCleanup?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-batch.yaml',
+  },
 ] as const;
 
 describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () => {
@@ -316,6 +339,59 @@ describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () 
    * **`search-api`의 헬스체크가 백킹 서비스를 실제로 확인한다** (DEV-495).
    * 인프라 3장 표가 그렇게 적어 두었는데 오랫동안 무조건 `ok`를 답했다.
    */
+  /*
+   * WP-074 / DEV-580. `API-SEQ-007`은 라우트 파일과 시험이 다 있어도 **등록 한 줄이
+   * 빠지면 배포에서 사라진다** — `API-ADM-007`이 그 상태였다(CR-034, DEV-177).
+   * 회귀가 그 호출 형태를 직접 건다.
+   */
+  it('API-SEQ-007이 시퀀스 라우트에 등록되고 기능 플래그가 운영 배선을 지난다 (WP-074)', () => {
+    const routes = read('apps/search-api/src/sequence/routes.ts');
+    expect(routes).toContain('app.get(MERGE_NUMBER_RESOLVE_PATH');
+    expect(routes).toContain('resolveMergeNumber(');
+    // 서버가 config의 플래그를 실제로 넘긴다 — 넘기지 않으면 언제나 404다.
+    const server = read('apps/search-api/src/server.ts');
+    expect(server).toContain('mergeNumberEnabled: config.mergeNumberEnabled === true');
+  });
+
+  it('M 번호 플래그가 세 배포 단위에 같은 이름으로 간다 (WP-074)', () => {
+    const compose = read('deploy/single-host/compose.yml');
+    const occurrences = [...compose.matchAll(/MNUMBER_ENABLED: \$\{MNUMBER_ENABLED:-false\}/g)];
+    // web · search-api · worker-sequence. 하나라도 빠지면 한쪽만 도는 배포가 된다.
+    expect(occurrences.length).toBeGreaterThanOrEqual(3);
+    expect(read('deploy/single-host/.env.example')).toContain('MNUMBER_ENABLED=false');
+  });
+
+  it('Profile A가 sequence 역할에 미러 볼륨과 mirror 모드를 함께 준다 (WP-074 / DEV-576)', () => {
+    const compose = read('deploy/single-host/compose.yml');
+    const block = /worker-sequence:[\s\S]*?\n\n/.exec(compose)?.[0] ?? '';
+    expect(block).toContain('SEQUENCE_GRAPH_MODE: ${SEQUENCE_GRAPH_MODE:-mirror}');
+    expect(block).toContain('mirror-data:/var/lib/prs/mirrors');
+    // Profile B는 볼륨이 없으므로 API 모드를 **명시**한다 (ADR-023 C6).
+    expect(read('deploy/k8s/pipeline-worker-sequence.yaml')).toContain('value: api');
+  });
+
+  it('push 수신이 채번 의도를 원본과 같은 트랜잭션에 남긴다 (WP-074 / AC-11)', () => {
+    const store = read('apps/ingest-gateway/src/store.ts');
+    expect(store).toContain('sequenceWorkRepo.enqueueRefreshWork(');
+    // 같은 `withTransaction` 안이어야 한다 — 밖이면 반쪽 커밋이 생긴다.
+    expect(store).toContain('if (inserted) await recordRefreshIntent(client, event)');
+  });
+
+  it('채번이 freshness 진입을 거친다 — 버스·수동·durable 세 경로가 같은 문을 쓴다 (DEV-576)', () => {
+    const sequence = read('apps/pipeline-worker/src/sequence.ts');
+    expect(sequence).toContain('export async function prepareAndAssignSequence(');
+    expect(sequence).toContain('await prepareAndAssignSequence(deps, repositoryId, baseBranch, event.correlation_id)');
+    expect(read('apps/pipeline-worker/src/sequence-assign-runner.ts')).toContain('prepareAndAssignSequence(');
+    expect(read('apps/pipeline-worker/src/sequence-work-runner.ts')).toContain('prepareAndAssignSequence(');
+  });
+
+  it('모든 미러 fetch 호출자가 같은 락을 지난다 (WP-074 / ADR-023 C1)', () => {
+    // sequence·mirror 스윕·release 셋이 같은 디렉터리에 동시에 fetch하지 않는다.
+    expect(read('apps/pipeline-worker/src/sequence-freshness.ts')).toContain('withMirrorLock(');
+    expect(read('apps/pipeline-worker/src/mirror-runner.ts')).toContain('withMirrorLock(');
+    expect(WORKER_INDEX).toContain('withMirrorLock(pool, repositoryId, () => relSync.sync(ref, repositoryId)');
+  });
+
   it('search-api 운영 배선이 헬스체크에 백킹 서비스 확인을 넘긴다 (DEV-495)', () => {
     expect(API_RUNTIME).toContain('checkBackingServices:');
     expect(API_RUNTIME).toContain("await parts.pool.query('SELECT 1')");

@@ -99,6 +99,18 @@ export interface WorkerMetrics {
   readonly reconcileIncompleteCycles: Gauge;
   /** PG↔ES 불일치 수 (JOB-ING-008, ADR-004). 라벨: `index`·`kind`. */
   readonly projectionConsistencyMismatch: Counter;
+  /** 부여한 M 번호 수 (JOB-SEQ-004 / WP-074). 라벨: `repository`. */
+  readonly mnumberAssignedTotal: Counter;
+  /** M 채번이 멈춘 회차 수. 라벨: `reason` (고정 enum). */
+  readonly mnumberBlockedTotal: Counter;
+  /** `merged_at` 순서가 `merge_seq` 순서와 어긋난 PR 쌍 수 (FR-SEQ-008 AC-6). 채번을 막지 않는다. */
+  readonly mnumberOrderMismatchTotal: Counter;
+  /** 지연 표본을 남기지 못한 수. 관측 실패가 번호를 되돌리지 않는다 (상세 설계 6.4). 라벨: `stage`. */
+  readonly measurementMissing: Counter;
+  /** durable work 처리 결과. 라벨: `kind`·`outcome`. */
+  readonly sequenceWorkTotal: Counter;
+  /** 목록 대조에서 ES 값이 정본과 달랐던 수 (상세 설계 8절). 라벨: `field`. */
+  readonly mnumberProjectionStale: Counter;
   render(): string;
 }
 
@@ -150,6 +162,12 @@ export function createWorkerMetrics(): WorkerMetrics {
     'projection_consistency_mismatch_total',
     'PostgreSQL↔Elasticsearch 불일치 수',
   );
+  const mnumberAssignedTotal = new Counter('mnumber_assigned_total', '부여한 M 번호 수');
+  const mnumberBlockedTotal = new Counter('mnumber_blocked_total', 'M 채번이 멈춘 회차 수');
+  const mnumberOrderMismatchTotal = new Counter('mnumber_order_mismatch_total', 'merged_at 순서와 어긋난 PR 쌍 수');
+  const measurementMissing = new Counter('measurement_missing_total', '남기지 못한 지연 표본 수');
+  const sequenceWorkTotal = new Counter('sequence_work_total', 'durable work 처리 결과');
+  const mnumberProjectionStale = new Counter('mnumber_projection_stale_total', '정본과 다른 색인 M 값 수');
 
   return {
     enrichPending,
@@ -177,6 +195,12 @@ export function createWorkerMetrics(): WorkerMetrics {
     reconcileMissing,
     reconcileIncompleteCycles,
     projectionConsistencyMismatch,
+    mnumberAssignedTotal,
+    mnumberBlockedTotal,
+    mnumberOrderMismatchTotal,
+    measurementMissing,
+    sequenceWorkTotal,
+    mnumberProjectionStale,
     render: (): string =>
       renderMetrics([
         enrichPending,
@@ -192,6 +216,12 @@ export function createWorkerMetrics(): WorkerMetrics {
         linkRelationsTotal,
         linkStackCycleTotal,
         patchIdUnavailableTotal,
+        measurementMissing,
+        mnumberAssignedTotal,
+        mnumberBlockedTotal,
+        mnumberOrderMismatchTotal,
+        mnumberProjectionStale,
+        sequenceWorkTotal,
         releaseRefreshed,
         releaseRefreshFailed,
         projectionConsistencyMismatch,

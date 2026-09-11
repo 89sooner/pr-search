@@ -29,6 +29,8 @@ import {
   type AccessScope,
 } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
+import type { Pool } from '@prs/db';
+import { resolveMergeNumberFields } from '../sequence/merge-number-batch.js';
 
 /** 원본 커밋 상한 (FR-SRCH-003 AC-4). */
 export const MAX_SOURCE_COMMITS = 250;
@@ -43,6 +45,10 @@ const SHORT_SHA_LENGTH = 12;
 export interface DetailDeps {
   readonly es: Client;
   readonly timeoutMs?: number;
+  /**
+   * M 번호 정본 대조 (WP-074 / FR-SEQ-008 AC-13). 없으면 M 키를 만들지 않는다.
+   */
+  readonly mergeNumbers?: { readonly pool: Pool; readonly enabled: boolean };
 }
 
 interface CommitSource {
@@ -115,6 +121,9 @@ interface PullRequestSource {
   readonly merge_seq?: number;
   readonly seq_epoch?: number;
   readonly sequence_space?: string;
+  /** 색인이 지금 말하는 M 값 (WP-074). 응답 값은 정본이며 이것은 관측 상태의 재료다. */
+  readonly merge_number?: number;
+  readonly merge_number_epoch?: number;
 }
 
 /** 있을 때만 키를 넣는다. `undefined`는 "만들지 않았다"이므로 키가 없어야 한다. */
@@ -420,6 +429,28 @@ export async function getPullRequestDetail(
   put(out, 'enrichment_pending', pr.enrichment_pending);
   put(out, 'links_pending', pr.links_pending);
   put(out, 'repository_archived', pr.repository_archived);
+
+  /*
+   * M 번호 (WP-074 / AC-13). 값은 정본이며 색인 값이 아니다. 기능이 꺼져 있거나
+   * 저장소·브랜치를 모르면 키를 만들지 않는다 — 기존 응답 모양이 그대로다.
+   */
+  if (deps.mergeNumbers !== undefined && deps.mergeNumbers.enabled) {
+    const [fields] = await resolveMergeNumberFields(
+      deps.mergeNumbers.pool,
+      [
+        {
+          repositoryId: pr.repository_id ?? null,
+          repositorySlug: pr.repository ?? repository,
+          baseBranch: pr.base_branch ?? null,
+          prNumber: pr.pr_number ?? prNumber,
+          state: pr.state ?? null,
+          indexed: { mergeNumber: pr.merge_number ?? null, epoch: pr.merge_number_epoch ?? null },
+        },
+      ],
+      { enabled: true },
+    );
+    if (fields !== null && fields !== undefined) Object.assign(out, fields);
+  }
 
   return out;
 }

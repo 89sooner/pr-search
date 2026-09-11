@@ -33,12 +33,20 @@ import type { LinkSummaryView } from '../lib/relations';
 import { primaryFragment, type HighlightMap } from '../lib/highlight';
 
 import { commonSpace } from '../lib/sequence';
+import { MergeNumberBadge } from './MergeNumberBadge';
+import { splitSequenceSpace, type MergeNumberFields } from '../lib/merge-number';
 import { WorkbenchIcon } from './WorkbenchIcon';
 import { shortSha, formatTimestamp } from '../lib/format';
 import { withFromQuery } from '../lib/query-url';
 
-/** 목록 한 행. `/search`의 `items` 원소와 같은 모양이다. */
-export interface ResultRow {
+/**
+ * 목록 한 행. `/search`의 `items` 원소와 같은 모양이다.
+ *
+ * M 키(`merge_number*`)는 `MergeNumberFields`에서 온다 — **전부 선택**이라
+ * 기능이 꺼진 배포와 구버전 응답에서는 키 자체가 없고 배지도 그리지 않는다
+ * (WP-074 / API-SEQ-007).
+ */
+export interface ResultRow extends MergeNumberFields {
   readonly kind: 'pull_request' | 'commit';
   readonly repository: string | null;
   readonly pr_number?: number;
@@ -202,6 +210,22 @@ export function ResultTable({
                 <div className="prs-result-title-line">
                   <span className="prs-result-kind" title={row.kind === 'pull_request' ? 'Pull request' : '커밋'}><WorkbenchIcon name={row.kind === 'pull_request' ? 'branch' : 'commit'} /><span className="cdt-sr-only">{row.kind === 'pull_request' ? 'PR' : '커밋'}</span></span>
                   <span className="prs-result-id prs-mono">{name}</span>
+                  {/*
+                    * M 배지 (WP-074 / FR-SEQ-008 AC-9 — 상세 설계 9절).
+                    *
+                    * **행마다 resolve를 부르지 않는다.** 이 목록 응답이 이미 실어 온
+                    * M 키만 읽는다 (`link_summary`와 같은 규율, ADR-009). 문맥은
+                    * `sequence_space`에서 가른다 — 목록 DTO에는 `base_branch`가 없고,
+                    * 링크에는 그 값이 있어야 한다.
+                    */}
+                  <MergeNumberBadge
+                    fields={row}
+                    context={{
+                      kind: row.kind,
+                      repository: splitSequenceSpace(row.sequence_space)?.repository ?? row.repository,
+                      baseBranch: splitSequenceSpace(row.sequence_space)?.baseBranch ?? null,
+                    }}
+                  />
                   {href === null ? <span><TitleText row={row} fallback={name} /></span> :
                     <Link href={href} data-testid="result-link" title={row.title ?? name}><TitleText row={row} fallback={name} /></Link>}
                 </div>

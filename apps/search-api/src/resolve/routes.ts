@@ -81,6 +81,8 @@ function toErrorResponse(
 }
 
 export interface ResolveRouteOptions extends ResolveDeps, DetailDeps {
+  /** M 번호 기능 (WP-074). 꺼져 있으면 PR 상세에서 M 키가 생략된다. */
+  readonly mergeNumberEnabled?: boolean;
   readonly auth: AuthContext;
   readonly loginPath: string;
   /** 감사 기록의 정본 저장소 (WP-039 / FR-AUTH-004 AC-1 "상세 조회"). */
@@ -95,7 +97,11 @@ export interface ResolveRouteOptions extends ResolveDeps, DetailDeps {
 }
 
 export function registerResolveRoutes(app: FastifyInstance, options: ResolveRouteOptions): void {
-  const { auth, loginPath, gheBaseUrl, pool, ...deps } = options;
+  const { auth, loginPath, gheBaseUrl, pool, mergeNumberEnabled = false, ...rest } = options;
+  const deps: ResolveDeps & DetailDeps = {
+    ...rest,
+    mergeNumbers: { pool, enabled: mergeNumberEnabled },
+  };
 
   /*
    * 상세 조회 감사 (`FR-AUTH-004` AC-1 "상세 조회", WP-039).

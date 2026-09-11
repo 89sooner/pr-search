@@ -50,7 +50,8 @@ export const LOGICAL_CONSUMERS: Readonly<Record<Topic, readonly string[]>> = {
   [TOPICS.ingest]: ['enrich'],
   [TOPICS.enriched]: ['project'],
   // `link`는 기본값이라 이름이 그대로 group이 된다 (WP-029). `commit-enrich`는 WP-067.
-  [TOPICS.projected]: ['link', 'commit-enrich'],
+  // `mnumber`는 WP-074 — sequence.assigned/reassigned 힌트로 durable 러너를 깨운다.
+  [TOPICS.projected]: ['link', 'commit-enrich', 'mnumber'],
   [TOPICS.sequence]: ['sequence'],
   [TOPICS.release]: ['release'],
   [TOPICS.batch]: ['batch'],
