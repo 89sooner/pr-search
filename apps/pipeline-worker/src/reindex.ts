@@ -37,6 +37,8 @@ import {
   releaseRepo,
   reindexRepo,
   repositoryRepo,
+  sequenceSpaceRepo,
+  sequenceWorkRepo,
   withReindexExclusive,
   withReindexWrite,
   type JobRow,
@@ -140,6 +142,14 @@ export interface ReindexDeps {
   readonly refresh?: boolean;
   /** 작성자 팀 동기화를 낡은 것으로 보는 기준 (WP-069 / CR-058). 시험이 좁힌다. */
   readonly authorTeamStalenessMs?: number;
+  /**
+   * M 번호가 켜진 배포인가 (WP-074 / DEV-605).
+   *
+   * **꺼져 있으면 M 복구 의도를 만들지 않는다.** 러너가 `refresh`만 집으므로 그
+   * 행들은 `ready`로 남고, `cleanupDoneWork`는 `done`만 지우므로 영영 남아 대기
+   * 지표에 잡힌다 — 아무도 처리하지 않을 일을 표에 쌓지 않는다.
+   */
+  readonly mergeNumberEnabled?: boolean;
 }
 
 function nowOf(deps: ReindexDeps): Date {
@@ -542,6 +552,62 @@ async function rebuildLinks(
   tally.written += processed;
 }
 
+/**
+ * 재구축한 PR 문서에 M 값을 다시 채울 의도를 남긴다 (WP-074 / 설계 8절, DEV-597).
+ *
+ * ## 왜 여기가 필요한가
+ *
+ * 재구축은 PostgreSQL 스냅숏에서 문서를 만드는데 **스냅숏에는 M 필드가 없다** —
+ * 투영이 그 키를 아예 싣지 않기 때문이다(그것이 옳다, `documents.test.ts`). 그래서
+ * 새 색인은 이미 확정된 번호를 하나도 모른 채 선다.
+ *
+ * `merge_seq`는 다음 채번이 `applySequenceToDocuments`로 다시 쓰지만, M에는 그에
+ * 해당하는 "재구축 뒤에 도는 경로"가 없다. 새 채번이 일어나야만 그 PR 하나가
+ * 채워지므로, **그전에 확정된 번호는 영영 색인에 없다.**
+ *
+ * 화면의 번호는 틀리지 않는다 — API가 언제나 정본을 답한다. 손상되는 것은
+ * `merge_number_projection_state`이며, 그 값에 기대는 운영 watch가 "ES 관측 완료"를
+ * 영원히 판정하지 못한다.
+ *
+ * ## 다시 쓰지 않고 의도만 남긴다
+ *
+ * `materialize` work는 **payload가 아니라 현재 정본을 읽는다.** 그래서 여기서
+ * 예약해 두면 러너가 그때의 값으로 쓰고, 그 사이 에폭이 오르면 obsolete로 접힌다.
+ * 재구축이 ES에 직접 쓰면 그 규율이 깨진다.
+ */
+async function requestMergeNumberMaterialize(deps: ReindexDeps, repository: RepositoryRow): Promise<void> {
+  // 꺼진 배포에서는 아무도 집지 않을 의도를 만들지 않는다 (DEV-605).
+  if (deps.mergeNumberEnabled !== true) return;
+  const repositoryId = Number(repository.repository_id);
+  for (const baseBranch of repository.sequence_branches) {
+    const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repositoryId, baseBranch);
+    if (space === undefined) continue;
+    let afterSeq = 0;
+    for (;;) {
+      const rows = await mergeSequenceRepo.listNumberedAfter(deps.pool, repositoryId, baseBranch, space.seq_epoch, afterSeq, 500);
+      if (rows.length === 0) break;
+      /*
+       * **페이지 하나가 문장 하나다** (DEV-605). PR마다 부르면 5만 PR 저장소에서
+       * 왕복이 5만 번이고 그 비용이 재색인 경로에 그대로 들어간다.
+       */
+      await sequenceWorkRepo.requestWorkBatch(
+        deps.pool,
+        rows
+          .filter((row) => row.pull_request_number !== null)
+          .map((row) => ({
+            kind: 'materialize' as const,
+            repositoryId,
+            baseBranch,
+            seqEpoch: space.seq_epoch,
+            keyExtra: [row.pull_request_number as number],
+            payload: { pr_number: row.pull_request_number, trigger_kind: 'reindex' },
+          })),
+      );
+      afterSeq = Number(rows[rows.length - 1]?.merge_seq ?? afterSeq);
+    }
+  }
+}
+
 /** 별칭 하나의 정본 재구축. 별칭마다 정본이 다르다 (비동기 3.5장). */
 async function rebuildAlias(deps: ReindexDeps, alias: EntityAlias): Promise<RebuildTally> {
   const tally: RebuildTally = { scanned: 0, written: 0, documentIds: new Set() };
@@ -551,6 +617,8 @@ async function rebuildAlias(deps: ReindexDeps, alias: EntityAlias): Promise<Rebu
     switch (alias) {
       case 'prs-pull-requests':
         await rebuildPullRequests(deps, repository, tally);
+        // 새 색인에는 M 값이 없다. 러너가 정본을 읽어 채우도록 의도를 남긴다 (DEV-597).
+        await requestMergeNumberMaterialize(deps, repository);
         break;
       case 'prs-commits':
         await rebuildCommits(deps, repository, tally);

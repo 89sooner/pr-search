@@ -75,6 +75,16 @@ export const PULL_REQUEST_MAPPING: estypes.MappingTypeMapping = {
     merge_seq: { type: 'long' },
     seq_epoch: { type: 'integer' },
     sequence_space: { type: 'keyword' },
+    /*
+     * M 번호 소유자 필드 (WP-074 / FR-SEQ-008, CR-079). 투영이 싣지 않고
+     * `merge-number.ts`만 쓴다. 표기 문자열은 저장하지 않는다 — API가 현재 저장소
+     * 이름으로 만든다. `merge_number_epoch`는 문서의 `seq_epoch`와 갱신 순서가
+     * 다를 수 있어 따로 둔다.
+     */
+    merge_number: { type: 'long' },
+    merge_number_epoch: { type: 'integer' },
+    merge_number_state: { type: 'keyword' },
+    merge_number_reason: { type: 'keyword' },
 
     created_at: { type: 'date' },
     updated_at: { type: 'date' },

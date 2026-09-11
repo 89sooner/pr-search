@@ -67,6 +67,13 @@ import {
 } from './snapshot-bootstrap.js';
 import { startSequenceRepairRunner, type RepairRunner } from './sequence-repair-runner.js';
 import { startSequenceAssignRunner, type AssignRunner } from './sequence-assign-runner.js';
+import { withMirrorLock } from './mirror-lock.js';
+import { resolveMergeNumberConfig, resolveMergeNumberEnabled, resolveSequenceGraphMode } from './mnumber-config.js';
+import { observeMergeNumberSamples, OBSERVE_POLL_MS, type MergeNumberDeps } from './mnumber.js';
+import { startMergeNumberHintWorker } from './mnumber-hint.js';
+import { startSequenceWorkRunner, type SequenceWorkRunner } from './sequence-work-runner.js';
+import { startSequenceMetadataCleanup, type MetadataCleanup } from './sequence-metadata-cleanup.js';
+import { statSync } from 'node:fs';
 import {
   runReferenceRebuild,
   startLinkWorker,
@@ -135,6 +142,12 @@ let mirrorRunner: MirrorRunner | undefined;
 let commitEnrichSubscription: Subscription | undefined;
 let commitEnrichSweeper: CommitEnrichSweeper | undefined;
 let sequenceSubscription: Subscription | undefined;
+/** WP-074: durable work 러너·M 힌트 구독·관측 루프. sequence 역할이 세운다. */
+let sequenceWorkRunner: SequenceWorkRunner | undefined;
+let mnumberHintSubscription: Subscription | undefined;
+let mnumberObserver: { stop(): Promise<void> } | undefined;
+/** WP-074: 운영 메타데이터 정리. batch 역할이 세운다. */
+let sequenceMetadataCleanup: MetadataCleanup | undefined;
 let esClient: Client | undefined;
 /** JOB-ING-006 (WP-035 / CR-045). `batch` 역할이 세운다. */
 let reindexRunner: ReindexRunner | undefined;
@@ -175,6 +188,19 @@ if (roles.includes('batch')) {
     pool,
     es: reindexEs,
     log: (entry) => { reindexLog({ ...entry }); },
+    /*
+     * 재색인 뒤 M 복구 의도를 남길지 (WP-074 / DEV-605·DEV-607·DEV-608).
+     *
+     * **이 한 값만 읽는다.** `resolveMergeNumberConfig()`는 `MNUMBER_BATCH_SIZE`·
+     * `MNUMBER_POLL_MS` 같은 **채번 전용 값까지 검증하고 범위를 벗어나면 던진다.**
+     * 그것을 여기서 부르면 채번과 무관한 `batch` 역할이 채번 설정 때문에 기동하지
+     * 못한다 — 정리·보존·재색인이 함께 죽는다. 그 검증은 그 값을 실제로 쓰는
+     * `sequence` 역할의 몫이다.
+     *
+     * **판정을 여기서 다시 쓰지 않는다.** `resolveMergeNumberConfig`도 같은 함수를
+     * 부르므로 두 역할이 같은 값에 다른 답을 낼 수 없다 (DEV-608).
+     */
+    mergeNumberEnabled: resolveMergeNumberEnabled(),
     links: {
       async rebuildRepository(repository) {
         let cursor: RebuildCursor | undefined;
@@ -193,6 +219,17 @@ if (roles.includes('batch')) {
   reindexRunner = startReindexRunner(reindexDeps);
   exportRunner = startExportRunner({ pool, es: reindexEs, log: reindexLog });
   retentionSweeper = startRetentionSweeper(reindexDeps);
+
+  /*
+   * WP-074 운영 메타데이터 정리 (상세 설계 6.3 · 6.4). 완료된 refresh/announce work와
+   * 30일 지난 지연 표본만 1000행씩 지운다. 기존 보존 잡·범용 job API를 확장하지 않는다.
+   */
+  sequenceMetadataCleanup = startSequenceMetadataCleanup({
+    pool,
+    log: (entry) => {
+      process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-004', component: 'cleanup', ...entry })}\n`);
+    },
+  });
 
   /*
    * JOB-AUD-001 파티션 수명 (WP-039 / FR-ING-003 AC-5, NFR-006, CR-054).
@@ -532,6 +569,42 @@ if (roles.includes('sequence')) {
   };
 
   /*
+   * 채번 전 미러 최신화 (WP-074 / CR-079, DEV-576).
+   *
+   * **mirror 모드는 미러 볼륨이 실재해야 기동한다.** 없는데 조용히 API로 바꾸면
+   * "설정은 mirror인데 왜 API로 도나"를 아무도 답할 수 없다 (`selectCommitGraph`의 규율).
+   * `repository.mirror_enabled = false`인 저장소는 어느 모드에서도 API 경로다.
+   */
+  const graphMode = resolveSequenceGraphMode();
+  let seqMirrorSync: MirrorSync | undefined;
+  if (graphMode === 'mirror') {
+    let isDirectory = false;
+    try {
+      isDirectory = statSync(seqMirrorConfig.root).isDirectory();
+    } catch {
+      isDirectory = false;
+    }
+    if (!isDirectory) {
+      throw new Error(
+        `SEQUENCE_GRAPH_MODE=mirror인데 미러 볼륨이 없다: ${seqMirrorConfig.root} — 볼륨을 마운트하거나 SEQUENCE_GRAPH_MODE=api로 명시한다 (WP-074)`,
+      );
+    }
+    seqMirrorSync = new MirrorSync({
+      root: seqMirrorConfig.root,
+      remoteUrl: (ref) => `${seqGhConfig.baseUrl}/${ref.owner}/${ref.repo}.git`,
+      allowBlobFetch: seqMirrorConfig.allowBlobFetch,
+      tokenFor: async (org: string): Promise<string | null> => {
+        try {
+          return (await seqTokenPool.lease(org)).token.token;
+        } catch {
+          return null;
+        }
+      },
+    });
+  }
+  seqLog({ level: 'info', message: 'sequence 그래프 모드', mode: graphMode, mirror_root: graphMode === 'mirror' ? seqMirrorConfig.root : null });
+
+  /*
    * 채번 소비자와 수동 복구 러너가 **같은 의존**을 쓴다 (CR-034, DEV-178).
    * 둘이 각자 그래프를 만들면 한쪽만 미러를 쓰는 날이 온다.
    */
@@ -550,22 +623,115 @@ if (roles.includes('sequence')) {
       });
     },
     graphFor: (repository) =>
-      selectCommitGraph(repository, {
-        mirror: new FallbackCommitGraph(mirrorGraph, apiGraph, (error) => {
-          seqLog({
-            level: 'warn',
-            message: '미러 조회가 실패해 API로 넘어갔다 — 계속되면 미러가 죽어 있다는 뜻이다',
-            repository: repository.repository_id,
-            reason: 'graph_fallback',
-            detail: String(error instanceof Error ? error.message : error).slice(0, 200),
-          });
-        }),
-        api: apiGraph,
-      }),
+      /*
+       * API 모드에서는 미러 그래프를 만들지 않는다 — 로컬 캐시의 존재를 가정하지 않는다
+       * (Profile B, 상세 설계 4.1의 4). mirror 모드는 기존대로 미러 우선·API 폴백이다.
+       */
+      graphMode === 'api'
+        ? apiGraph
+        : selectCommitGraph(repository, {
+            mirror: new FallbackCommitGraph(mirrorGraph, apiGraph, (error) => {
+              seqLog({
+                level: 'warn',
+                message: '미러 조회가 실패해 API로 넘어갔다 — 계속되면 미러가 죽어 있다는 뜻이다',
+                repository: repository.repository_id,
+                reason: 'graph_fallback',
+                detail: String(error instanceof Error ? error.message : error).slice(0, 200),
+              });
+            }),
+            api: apiGraph,
+          }),
     log: seqLog,
+    freshness: {
+      pool,
+      mode: graphMode,
+      ...(seqMirrorSync === undefined ? {} : { sync: seqMirrorSync }),
+      log: seqLog,
+    },
   };
 
   sequenceSubscription = await startSequenceWorker(sequenceDeps);
+
+  /*
+   * JOB-SEQ-004 M 번호 채번 (WP-074 / CR-077 · CR-079, ADR-023).
+   *
+   * **durable 러너가 정상 경로다.** push 의도(refresh)는 M 기능과 무관하게 여기서
+   * 처리되어 DEV-576을 닫는다. M 기능(`MNUMBER_ENABLED`)이 켜져 있을 때만 reconcile·
+   * materialize·announce를 집는다. 버스 구독(`link:mnumber`)은 힌트일 뿐이며 발행 전
+   * crash는 DB의 work가 복구한다 (상세 설계 5.2).
+   *
+   * 근거 출처는 채번과 같은 자격이다. 자격이 없으면 GHE 상세를 읽지 못하므로 검증된
+   * 스냅숏만 근거가 된다 (C7).
+   */
+  const mnumberConfig = resolveMergeNumberConfig();
+  const mnumberLog = (entry: Record<string, unknown>): void => {
+    process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-004', ...entry })}\n`);
+  };
+  const seqHasCredentials = hasAppCredentials(seqGhConfig) && parseInstallations().length > 0;
+  const mnumberDeps: MergeNumberDeps | null = mnumberConfig.enabled
+    ? {
+        pool,
+        es: seqEs,
+        bus,
+        metrics,
+        config: mnumberConfig,
+        evidence: {
+          pool,
+          source: seqHasCredentials
+            ? new GitHubClient(
+                new GitHubTransport({
+                  apiUrl: seqGhConfig.apiUrl,
+                  requestTimeoutMs: seqGhConfig.requestTimeoutMs,
+                  pool: seqTokenPool,
+                  scheduler: new RequestScheduler({ maxConcurrent: seqGhConfig.maxConcurrentRequests }),
+                }),
+              )
+            : null,
+          graphFor: sequenceDeps.graphFor,
+        },
+        log: (fields) => { mnumberLog({ ...fields }); },
+      }
+    : null;
+  mnumberLog({ level: 'info', message: mnumberConfig.enabled ? 'M 번호 채번 활성' : 'M 번호 채번 비활성 (MNUMBER_ENABLED=false) — push freshness는 그대로 돈다', evidence_source: seqHasCredentials ? 'pr_detail' : 'verified_snapshot' });
+
+  sequenceWorkRunner = startSequenceWorkRunner({
+    pool,
+    sequence: sequenceDeps,
+    mnumber: mnumberDeps,
+    metrics,
+    log: (fields) => { mnumberLog({ ...fields }); },
+    pollMs: mnumberConfig.pollMs,
+    retryMaxMs: mnumberConfig.retryMaxMs,
+  });
+
+  if (mnumberDeps !== null) {
+    const runner = sequenceWorkRunner;
+    mnumberHintSubscription = await startMergeNumberHintWorker({
+      pool,
+      bus,
+      wake: () => runner.wake(),
+      log: (fields) => { mnumberLog({ ...fields }); },
+    });
+
+    // 관측 루프: 번호가 실제 검색에서 보이는 시각을 남긴다 (상세 설계 7절). 실패는 번호를 되돌리지 않는다.
+    let observerStopped = false;
+    const observerLoop = (async (): Promise<void> => {
+      while (!observerStopped) {
+        try {
+          await observeMergeNumberSamples(mnumberDeps);
+        } catch (error) {
+          mnumberLog({ level: 'warn', message: 'M 관측 회차 실패', reason: 'observe_failed', detail: String(error).slice(0, 200) });
+        }
+        await new Promise<void>((resolve) => { setTimeout(resolve, OBSERVE_POLL_MS); });
+      }
+    })();
+    mnumberObserver = {
+      async stop(): Promise<void> {
+        observerStopped = true;
+        await observerLoop;
+      },
+    };
+  }
 
   // 기동 직후 한 번 세어 둔다. 세지 않으면 `stale` 공간이 있어도 게이지가 비어
   // 있고, 경보가 "값이 없음"과 "0"을 구분하지 못한다 (관측 문서 RB-10).
@@ -813,7 +979,9 @@ if (roles.includes('release')) {
     es: relEs,
     bus,
     metrics,
-    sync: (ref: { owner: string; repo: string }, repositoryId: number) => relSync.sync(ref, repositoryId),
+    // 미러 락 아래에서 fetch한다 (WP-074 / ADR-023 C1). 채번의 선행 fetch와 같은 디렉터리에 동시에 쓰지 않는다.
+    sync: (ref: { owner: string; repo: string }, repositoryId: number) =>
+      withMirrorLock(pool, repositoryId, () => relSync.sync(ref, repositoryId), { wait: true }),
     listTags: (ref: { owner: string; repo: string }) => relGraph.listTags(ref),
     ...(relListReleases === undefined ? {} : { listReleases: relListReleases }),
     log: relLog,
@@ -1016,6 +1184,14 @@ const shutdown = (): void => {
       await commitEnrichSubscription?.close();
       await enrichSubscription?.close();
       await projectSubscription?.close();
+      /*
+       * WP-074: 새 claim을 멈추고 진행 중 회차를 끝낸다. lease는 회수하지 않는다 —
+       * 미완료로 남은 lease는 만료 뒤 다른 프로세스가 회수한다 (상세 설계 10절).
+       */
+      await sequenceWorkRunner?.stop();
+      await mnumberObserver?.stop();
+      await mnumberHintSubscription?.close();
+      await sequenceMetadataCleanup?.stop();
       await sequenceSubscription?.close();
       await releaseSubscription?.close();
       await releaseSweeper?.stop();

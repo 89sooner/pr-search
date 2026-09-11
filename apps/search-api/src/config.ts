@@ -64,6 +64,19 @@ export interface SearchApiConfig {
    * 없어지는데, 그 실패는 오류로 드러나지 않고 "결과가 이게 전부"로 보인다.
    */
   readonly searchCursorKey: string;
+  /**
+   * M 번호 기능 (WP-074 / CR-079, 상세 설계 10절).
+   *
+   * **기본은 꺼짐이다.** 꺼져 있으면 `API-SEQ-007`이 404 `feature_disabled`이고 목록·
+   * 상세·범위 응답에서 M 키가 생략된다 — 기존 페이지가 그대로 동작한다. 워커의
+   * `MNUMBER_ENABLED`와 **같은 값**을 줘야 한다: API만 켜면 영원히 `pending`을 답하고,
+   * 워커만 켜면 번호가 붙어도 화면에 나오지 않는다.
+   *
+   * **선택 필드인 이유**는 `searchCursorKey`와 성격이 다르기 때문이다. 그쪽은 없으면
+   * 보안 속성이 조용히 꺼지므로 fail closed여야 하지만, 이것은 **부재가 곧 꺼짐**이며
+   * 그 상태가 기존 계약 그대로다. `resolveSearchApiConfig`는 언제나 값을 채운다.
+   */
+  readonly mergeNumberEnabled?: boolean;
 }
 
 /**
@@ -141,7 +154,21 @@ export function resolveSearchApiConfig(env: SearchApiEnv = process.env): SearchA
     auth: resolveSessionReaderConfig(env),
     gheBaseUrl: gheBaseUrl === '' ? null : gheBaseUrl,
     searchCursorKey: resolveSearchCursorKey(env),
+    mergeNumberEnabled: resolveMergeNumberEnabled(env),
   };
+}
+
+/**
+ * `MNUMBER_ENABLED` — `true`만 켠다 (WP-074).
+ *
+ * 오타를 켜짐으로 읽지 않는다. 그 밖의 값은 기동을 거부한다 — 조용히 꺼진 채로
+ * 돌면 운영자가 켰다고 믿는 기능이 없는 상태가 되고, 그것을 알아챌 신호가 없다.
+ */
+export function resolveMergeNumberEnabled(env: SearchApiEnv = process.env): boolean {
+  const raw = (env['MNUMBER_ENABLED'] ?? 'false').trim();
+  if (raw === 'true') return true;
+  if (raw === 'false' || raw === '') return false;
+  throw new Error(`MNUMBER_ENABLED는 true 또는 false여야 한다: ${raw}`);
 }
 
 /** 감사 기록에 남는 주체 식별자. 사람 계정과 섞이지 않게 접두를 둔다. */

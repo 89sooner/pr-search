@@ -197,6 +197,29 @@ const CAPABILITIES = [
     stop: 'consistencySweeper?.stop()',
     manifest: 'deploy/k8s/pipeline-worker-project.yaml',
   },
+  /*
+   * WP-074. **durable 러너가 없으면 push 의도가 표에만 쌓이고 아무도 집지 않는다** —
+   * DEV-178·DEV-180이 정확히 그 모양이었다(잡 행은 만들어지는데 러너가 없었다).
+   * M 기능이 꺼져 있어도 이 러너는 refresh를 처리해 DEV-576을 닫으므로 언제나 선다.
+   */
+  {
+    id: 'JOB-SEQ-004',
+    what: 'M 번호 durable work 러너',
+    process: 'pipeline-worker',
+    role: 'sequence',
+    start: 'sequenceWorkRunner = startSequenceWorkRunner(',
+    stop: 'sequenceWorkRunner?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-sequence.yaml',
+  },
+  {
+    id: 'JOB-SEQ-004-cleanup',
+    what: 'M 운영 메타데이터 정리',
+    process: 'pipeline-worker',
+    role: 'batch',
+    start: 'sequenceMetadataCleanup = startSequenceMetadataCleanup(',
+    stop: 'sequenceMetadataCleanup?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-batch.yaml',
+  },
 ] as const;
 
 describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () => {
@@ -316,6 +339,168 @@ describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () 
    * **`search-api`의 헬스체크가 백킹 서비스를 실제로 확인한다** (DEV-495).
    * 인프라 3장 표가 그렇게 적어 두었는데 오랫동안 무조건 `ok`를 답했다.
    */
+  /*
+   * WP-074 / DEV-580. `API-SEQ-007`은 라우트 파일과 시험이 다 있어도 **등록 한 줄이
+   * 빠지면 배포에서 사라진다** — `API-ADM-007`이 그 상태였다(CR-034, DEV-177).
+   * 회귀가 그 호출 형태를 직접 건다.
+   */
+  it('API-SEQ-007이 시퀀스 라우트에 등록되고 기능 플래그가 운영 배선을 지난다 (WP-074)', () => {
+    const routes = read('apps/search-api/src/sequence/routes.ts');
+    expect(routes).toContain('app.get(MERGE_NUMBER_RESOLVE_PATH');
+    expect(routes).toContain('resolveMergeNumber(');
+    // 서버가 config의 플래그를 실제로 넘긴다 — 넘기지 않으면 언제나 404다.
+    const server = read('apps/search-api/src/server.ts');
+    expect(server).toContain('mergeNumberEnabled: config.mergeNumberEnabled === true');
+  });
+
+  /**
+   * 플래그가 **가는 곳과 가지 않는 곳** (WP-074 / DEV-589·DEV-606).
+   *
+   * **M 코드가 도는 역할 전부**에 가야 한다. 하나라도 빠지면 그 역할만 꺼진 배포가
+   * 되고, 그 상태는 오류도 로그도 없이 조용히 나타난다.
+   *
+   * - `search-api` — 응답에 M 키를 만든다. 빠지면 번호가 생겨도 실리지 않는다.
+   * - `worker-sequence` — 채번한다. 빠지면 번호 자체가 생기지 않는다.
+   * - `worker-batch` — **재색인이 여기서 돈다.** 빠지면 재색인 뒤 M 복구 의도를
+   *   만들지 않아 새 색인의 M이 영영 빈다 (`DEV-597`이 고친 것이 되돌아온다).
+   *
+   * **`web`에는 가지 않는다.** 화면은 응답에 M 키가 있는지로만 판단하므로 그 값을
+   * 읽지 않는다. 거기 두면 켜고 끄는 자리가 하나 더 늘고, 런북의 진단이 운영자를
+   * 없는 자리로 보낸다.
+   *
+   * **서비스 이름으로 센다.** 개수만 세면 어느 역할에 갔는지 알 수 없고, 한 곳을
+   * 빼고 다른 곳에 둘을 둬도 통과한다.
+   */
+  /**
+   * `batch` 역할은 **플래그 하나만** 읽는다 (`DEV-607`).
+   *
+   * `resolveMergeNumberConfig()`는 `MNUMBER_BATCH_SIZE`·`MNUMBER_POLL_MS` 같은 채번
+   * 전용 값까지 검증하고 범위를 벗어나면 던진다. `batch`가 그것을 부르면 **채번과
+   * 무관한 역할이 채번 설정 때문에 기동하지 못한다** — 정리·보존·재색인이 함께 죽는다.
+   *
+   * 그 검증은 그 값을 실제로 쓰는 `sequence` 역할의 몫이다. 두 곳이 같은 이름을
+   * 같은 규칙(`'true'`만 켜짐)으로 읽는 것은 아래에서 함께 본다.
+   */
+  it('**`batch`가 채번 설정 전체를 검증하지 않는다** (DEV-607)', () => {
+    const index = read('apps/pipeline-worker/src/index.ts');
+    const reindexDeps = /const reindexDeps: ReindexDeps = \{[\s\S]*?\n {2}\};/.exec(index)?.[0] ?? '';
+    expect(reindexDeps).not.toBe('');
+
+    /*
+     * **주석이 아니라 실제 코드를 본다.** 주석에 그 함수 이름을 적는 것은 왜 부르지
+     * 않는지 설명하는 일이라 막을 이유가 없다.
+     */
+    const code = reindexDeps
+      .split('\n')
+      .filter((line) => !/^\s*(\*|\/\*|\/\/)/.test(line))
+      .join('\n');
+    // 채번 전용 값을 검증하는 쪽을 부르지 않는다 — 그 오타가 batch를 멈추면 안 된다.
+    expect(code).not.toContain('resolveMergeNumberConfig(');
+    expect(code).toContain('resolveMergeNumberEnabled(');
+  });
+
+  /**
+   * 켜짐의 정의가 **역할마다 같은가** (`DEV-608`).
+   *
+   * ## 왜 철자가 아니라 행동을 보는가
+   *
+   * 앞선 판에서는 두 소스에 특정 문자열이 있는지로 이것을 걸었다. 그것은 셋을
+   * 놓친다. 부분 문자열의 **존재**만 보므로 다른 규칙을 한 줄 앞에 넣어도 통과하고,
+   * 포매터가 따옴표를 바꾸면 동작이 같은데도 죽으며, **이미 갈라진 상태를 애초에
+   * 보지 못한다.**
+   *
+   * 실제로 갈라져 있었다. 독립 검토가 세 구현을 같은 입력으로 불러 일곱 중 셋에서
+   * 답이 다른 것을 보였다 — 빈 문자열에 한쪽은 `false`이고 한쪽은 던졌으며, `yes`에
+   * 두 곳은 던지는데 `batch`만 조용히 꺼졌다. **조용히 꺼지는 것**이 `DEV-606`에서
+   * 고친 실패 모양 그대로다.
+   *
+   * 그래서 **함수를 실제로 불러 표를 건다.** 리팩터링에 깨지지 않고, 한쪽 규칙만
+   * 바뀌면 반드시 잡힌다.
+   */
+  it('**M 켜짐의 정의가 두 앱에서 같다** — 입력 표로 건다 (DEV-608)', async () => {
+    const worker = await import('../apps/pipeline-worker/src/mnumber-config.js');
+    const api = await import('../apps/search-api/src/config.js');
+
+    const accepted: readonly (readonly [Record<string, string>, boolean])[] = [
+      [{}, false],
+      [{ MNUMBER_ENABLED: 'true' }, true],
+      [{ MNUMBER_ENABLED: 'false' }, false],
+      // `??`는 빈 문자열을 잡지 않는다. 그것이 꺼짐인지 오류인지가 갈렸던 자리다.
+      [{ MNUMBER_ENABLED: '' }, false],
+      [{ MNUMBER_ENABLED: ' true ' }, true],
+      [{ MNUMBER_ENABLED: ' false ' }, false],
+    ];
+
+    for (const [env, expected] of accepted) {
+      const label = JSON.stringify(env);
+      expect(worker.resolveMergeNumberEnabled(env), `worker ${label}`).toBe(expected);
+      expect(api.resolveMergeNumberEnabled(env), `search-api ${label}`).toBe(expected);
+      // 채번 설정도 같은 답을 낸다 — 정의를 다시 쓰지 않기 때문이다.
+      expect(worker.resolveMergeNumberConfig(env).enabled, `config ${label}`).toBe(expected);
+    }
+
+    // 오타를 켜짐으로도 꺼짐으로도 읽지 않는다. **세 곳이 함께 거부한다.**
+    for (const bad of ['yes', 'TRUE', 'True', '1', 'on', 'no']) {
+      const env = { MNUMBER_ENABLED: bad };
+      expect(() => worker.resolveMergeNumberEnabled(env), `worker ${bad}`).toThrow();
+      expect(() => api.resolveMergeNumberEnabled(env), `search-api ${bad}`).toThrow();
+      expect(() => worker.resolveMergeNumberConfig(env), `config ${bad}`).toThrow();
+    }
+  });
+
+  it('M 번호 플래그가 M 코드가 도는 세 역할에 가고 **web에는 가지 않는다** (DEV-589·DEV-606)', () => {
+    const compose = read('deploy/single-host/compose.yml');
+
+    /** 서비스 블록마다 그 이름이 있는가. compose의 두 칸 들여쓰기가 블록 경계다. */
+    const carriers = new Set<string>();
+    let current = '';
+    for (const line of compose.split('\n')) {
+      const header = /^ {2}([a-z][a-z0-9-]*):\s*$/.exec(line);
+      if (header?.[1] !== undefined) current = header[1];
+      if (line.includes('MNUMBER_ENABLED') && current !== '') carriers.add(current);
+    }
+
+    expect([...carriers].sort()).toEqual(['search-api', 'worker-batch', 'worker-sequence']);
+    expect(carriers.has('web')).toBe(false);
+
+    // K8s도 같다 — 배포 방식이 달라도 켜고 끄는 자리는 같아야 한다.
+    expect(read('deploy/k8s/pipeline-worker-sequence.yaml')).toContain('MNUMBER_ENABLED');
+    expect(read('deploy/k8s/pipeline-worker-batch.yaml')).toContain('MNUMBER_ENABLED');
+
+    expect(read('deploy/single-host/.env.example')).toContain('MNUMBER_ENABLED=false');
+  });
+
+  it('Profile A가 sequence 역할에 미러 볼륨과 mirror 모드를 함께 준다 (WP-074 / DEV-576)', () => {
+    const compose = read('deploy/single-host/compose.yml');
+    const block = /worker-sequence:[\s\S]*?\n\n/.exec(compose)?.[0] ?? '';
+    expect(block).toContain('SEQUENCE_GRAPH_MODE: ${SEQUENCE_GRAPH_MODE:-mirror}');
+    expect(block).toContain('mirror-data:/var/lib/prs/mirrors');
+    // Profile B는 볼륨이 없으므로 API 모드를 **명시**한다 (ADR-023 C6).
+    expect(read('deploy/k8s/pipeline-worker-sequence.yaml')).toContain('value: api');
+  });
+
+  it('push 수신이 채번 의도를 원본과 같은 트랜잭션에 남긴다 (WP-074 / AC-11)', () => {
+    const store = read('apps/ingest-gateway/src/store.ts');
+    expect(store).toContain('sequenceWorkRepo.enqueueRefreshWork(');
+    // 같은 `withTransaction` 안이어야 한다 — 밖이면 반쪽 커밋이 생긴다.
+    expect(store).toContain('if (inserted) await recordRefreshIntent(client, event)');
+  });
+
+  it('채번이 freshness 진입을 거친다 — 버스·수동·durable 세 경로가 같은 문을 쓴다 (DEV-576)', () => {
+    const sequence = read('apps/pipeline-worker/src/sequence.ts');
+    expect(sequence).toContain('export async function prepareAndAssignSequence(');
+    expect(sequence).toContain('await prepareAndAssignSequence(deps, repositoryId, baseBranch, event.correlation_id)');
+    expect(read('apps/pipeline-worker/src/sequence-assign-runner.ts')).toContain('prepareAndAssignSequence(');
+    expect(read('apps/pipeline-worker/src/sequence-work-runner.ts')).toContain('prepareAndAssignSequence(');
+  });
+
+  it('모든 미러 fetch 호출자가 같은 락을 지난다 (WP-074 / ADR-023 C1)', () => {
+    // sequence·mirror 스윕·release 셋이 같은 디렉터리에 동시에 fetch하지 않는다.
+    expect(read('apps/pipeline-worker/src/sequence-freshness.ts')).toContain('withMirrorLock(');
+    expect(read('apps/pipeline-worker/src/mirror-runner.ts')).toContain('withMirrorLock(');
+    expect(WORKER_INDEX).toContain('withMirrorLock(pool, repositoryId, () => relSync.sync(ref, repositoryId)');
+  });
+
   it('search-api 운영 배선이 헬스체크에 백킹 서비스 확인을 넘긴다 (DEV-495)', () => {
     expect(API_RUNTIME).toContain('checkBackingServices:');
     expect(API_RUNTIME).toContain("await parts.pool.query('SELECT 1')");

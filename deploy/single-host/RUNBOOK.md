@@ -566,10 +566,65 @@ done
 | 사내 CA·프록시·DNS·레지스트리·보안 스캔 | **CA는 `VERIFIED (internal)`** (2026-09-07) — compose 여섯 자리에 걸어 GHE TLS가 섰다(`DEV-552`). **프록시는 여전히 미지원**이며(`DEV-494`) 호스트에 강제된 프록시가 진단용 `curl`까지 경유시킨다. DNS·레지스트리·보안 스캔은 `NOT RUN` |
 | 실서버 성능·실데이터 규모·실제 롤백 소요 | **실데이터 규모는 잡혔다** (2026-09-07) — 저장소 셋의 PR 2,831건과 커밋을 색인했다. **성능 목표(`NFR-001` 등)와 롤백 10분은 여전히 `NOT RUN`** — 재지 않았다 |
 | `ACC-06` 관계 정확도 표본 검수 | `NOT RUN` — **합성 데이터로 만들어 내지 않는다.** `W-007`은 계속 비활성이다 |
+| M 번호 채번 (WP-074) — squash 이력에서 PR당 번호 하나, git first-parent 대조, 늦은 정보 도착 뒤 새 push 없는 재개, 에폭 재채번 | `VERIFIED (external)` — 실제 git 픽스처와 실제 PostgreSQL |
+| 채번 전 미러 fetch (`DEV-576`) — 수정 전 "옛 head를 읽고 새 커밋 없음" 재현과 수정 후 | `VERIFIED (external)` |
+| **직접 푸시의 영구 부재 확정** (`DEV-581`) | **`NOT RUN — 근거 미확보`** — 공식 GHE 읽기 계약에 완결 증서가 없다. production 판정기는 그 상태를 `negative_evidence_unavailable`로 남기며, 그 결과 **첫 미확정 항목 뒤의 PR이 전부 대기할 수 있다.** 격리 시험이 direct 분기를 통과한 것은 이 조건을 닫지 않는다 |
+| 실제 사내 GHE에서의 M 채번·지연 (`measure:sequence-latency`) | `NOT RUN — internal environment required` — 아래 7.A 절차로 사내에서 잰다 |
 
 **외부에서 증명할 수 없는 것을 통과로 적지 않는다.** 사내 반입 뒤 이 표의 아래쪽을 실제로 실행하고 그 결과를 기록한다.
 
 **첫 반입(2026-09-07)이 이 표의 아래쪽을 실제로 실행했다.** 실행 기록의 정본은 원장 6.70장이며, 그때 드러난 결함 여섯(`DEV-548`~`DEV-553`)은 5장 DEV 표에 있다. **여기 남은 `NOT RUN`은 그날 실행하지 못한 것들이다** — 하지 않은 것을 했다고 적지 않는다.
+
+### 7.A M 번호 지연 측정 (WP-074 / FR-SEQ-008 AC-14)
+
+**읽기 전용 도구다.** 운영 DB에 쓰지 않고 PR을 만들거나 머지하지도 않는다. 모든
+트랜잭션이 `READ ONLY`이며 DSN·세션·헤더·원본 payload를 출력하지 않는다.
+
+1. **버전을 확인한다.** `./prsctl status`의 `PRS_VERSION`과 마이그레이션 번호를 본다.
+   025 이전(=pilot.4 이하)에서는 `baseline`만 가능하며 "M 표가 없다"는 출력이 정상이다.
+
+2. **읽기 전용 DB 계정을 준비한다.** 기존 절차로 만들고 아래 권한만 준다.
+
+   ```sql
+   GRANT SELECT ON merge_sequence, sequence_space, sequence_latency_sample TO <계정>;
+   ```
+
+3. **도구를 실행한다.** 워커 이미지 안에서 pnpm 없이 돈다.
+
+   ```bash
+   docker compose run --rm --no-deps \
+     -e MEASURE_DATABASE_URL='postgresql://<계정>:<비밀번호>@postgres:5432/prs' \
+     worker-sequence node dist/measure-cli.js baseline --window 7d --format json
+   ```
+
+   종료 코드는 `0` 정상 · `1` 조회·권한 실패 · `2` 잘못된 인자 · `3` 자료 부족·부분·
+   시계 이상이다. **`3`이 서비스 실패를 뜻하지 않는다** — `notes`와 `capability`를 읽는다.
+
+4. **한 PR을 관측한다** (`MNUMBER_ENABLED=true`인 형상에서). 이미 승인된 소규모 시험
+   저장소에서 **평소 절차로** squash PR 하나를 머지한 뒤:
+
+   ```bash
+   docker compose run --rm --no-deps \
+     -e MEASURE_DATABASE_URL=... -e MEASURE_API_BASE_URL=http://search-api:3002 \
+     -e MEASURE_SESSION_FILE=/run/secrets/prs-measure-session \
+     worker-sequence node dist/measure-cli.js watch \
+       --repository <owner/name> --base-branch main --pr-number <n> --timeout 120s --format json
+   ```
+
+   세션 파일은 **정상 로그인으로 얻은 읽기 세션**의 cookie 헤더 한 줄이며 `chmod 600`이다.
+   이 도구는 새 로그인이나 쓰기 토큰을 발급하지 않는다.
+
+5. **M이 보이지 않으면** 순서대로 확인한다: 원본 수신(`raw_event`) → refresh 의도
+   (`sequence_work` kind=refresh) → fetch 결과 → `merge_seq` → 근거·blocker
+   (`mnumber_evidence`, `sequence_space.mnumber_blocked_reason`) → `merge_number` →
+   materialize work → 검색 가시성 → API·화면. `SEQUENCE_GRAPH_MODE=api`인 형상에서
+   미러 구간이 `unavailable`인 것은 오류가 아니다.
+
+6. **보고는 비식별로 한다.** 릴리스·커밋·스키마·코호트·창·건수·백분위수·대기 사유만
+   전달한다. 기본 출력이 이미 저장소 이름과 PR 번호를 빼고 라벨로 치환한다.
+
+**`6시간 스윕`은 코드의 보정 주기이지 운영 지연 상한이 아니다.** 다음 push가 없거나
+후속 단계가 멈췄으면 그보다 길 수 있다. 보고서에 "최대 6시간 보장"을 쓰지 않는다.
 
 ---
 
@@ -584,6 +639,8 @@ done
 | `load`가 `PRS_REINDEX_TIMEOUT_S … 정수여야 한다: 3600`처럼 **멀쩡해 보이는 값을 거부한다** | `.env`가 CRLF다 — Windows 편집기로 고쳤거나 그렇게 저장된 파일을 복사했다. `prsctl`은 값을 줄 단위로 읽어 끝의 `\r`이 값에 붙는다. `sed -i 's/\r$//' .env`로 LF로 만든다 (DEV-526) |
 | compose가 이미지를 pull하려 한다 | `./prsctl load`를 실행했는가. `PRS_VERSION`이 적재한 태그와 같은가 |
 | `enrich`·`reconcile`이 기동을 거부한다 (`install`의 health가 그 둘에서 실패) | `GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`가 있는가. **의도된 거부다** — 자격 없이 돌면 모든 이벤트가 실패 대기열에 쌓인다. `install` 뒤에 넣었다면 `.env`만으로는 반영되지 않는다 — `./prsctl upgrade`로 컨테이너를 다시 만든다 (DEV-527) |
+| `worker-sequence`가 `SEQUENCE_GRAPH_MODE=mirror인데 미러 볼륨이 없다`로 기동하지 않는다 | **의도된 거부다** (WP-074). `mirror-data` 볼륨이 그 서비스에 붙어 있는가. 미러 없이 돌려야 하면 `.env`에 `SEQUENCE_GRAPH_MODE=api`를 **명시**한다 — 조용히 API로 바꾸지 않는 것이 이 검사의 목적이다 |
+| M 번호가 영영 "대기"다 | `MNUMBER_ENABLED`가 `search-api`·`worker-sequence`·`worker-batch` **셋 다** `true`인가. 하나라도 다르면 그 역할만 꺼진 상태다 — API만 켜면 번호가 생기지 않고, 워커만 켜면 번호는 붙되 응답에 실리지 않으며, `worker-batch`가 빠지면 **재색인 뒤 새 색인의 M이 영영 빈다**(DEV-606). **`web`에는 이 값이 없다** (DEV-589): 화면은 응답에 M 키가 있는지로만 판단한다. 그다음 `sequence_space.mnumber_blocked_reason`을 본다 — `negative_evidence_unavailable`이면 직접 푸시 커밋의 부재를 확정할 근거가 없어 그 앞에서 멈춘 것이며(`DEV-581`), 이것은 알려진 제한이다 |
 | 웹훅이 전부 401 | `GHE_WEBHOOK_SECRET`이 GHE 쪽 설정과 같은가. 경유 호스트를 두었다면 **본문을 다시 만들고 있지 않은가** — 서명은 원문 바이트에 대해 계산된다 (2.C 「GHE가 서버에 닿지 못할 때」) |
 | 웹훅이 전부 404 | 경로에 **`/api/v1`이 있는가** (2.C 3단계). 정본은 `apps/ingest-gateway/src/server.ts`의 `WEBHOOK_PATH`다 (`DEV-549`) |
 | 웹훅 배달이 **시간 초과** | 서명도 경로도 아니다. GHE에서 이 서버로의 **인바운드가 없는 것**이며, 주소만 바꿔서는 풀리지 않는다 (2.C 「GHE가 서버에 닿지 못할 때」, `DEV-550`) |

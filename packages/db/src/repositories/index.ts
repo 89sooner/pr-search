@@ -21,6 +21,12 @@ export * as safeMarkerRepo from './safe-marker.js';
 export * as bisectSessionRepo from './bisect-session.js';
 export { MAX_SEQUENCE_BRANCHES } from './repository.js';
 export * as sequenceSpaceRepo from './sequence-space.js';
+/** M 번호 근거 (WP-074 / ENT-SEQ-005, CR-079). */
+export * as mnumberEvidenceRepo from './mnumber-evidence.js';
+/** M 경로의 durable work (WP-074 / ENT-SEQ-006, CR-079). */
+export * as sequenceWorkRepo from './sequence-work.js';
+/** 단계별 지연 표본 (WP-074 / ENT-SEQ-007, CR-079). */
+export * as sequenceLatencyRepo from './sequence-latency.js';
 export * as teamMembershipRepo from './team-membership.js';
 
 export type {
@@ -40,7 +46,15 @@ export type {
   ReindexProgress,
   RetiredIndex,
 } from './reindex.js';
-export type { MergeSequenceInsert, MergeSequenceRow, SequencePoint } from './merge-sequence.js';
+export type {
+  MergeNumberAssignment,
+  MergeNumberCandidateRow,
+  MergeNumberLookup,
+  MergeNumberSpaceState,
+  MergeSequenceInsert,
+  MergeSequenceRow,
+  SequencePoint,
+} from './merge-sequence.js';
 export type { LagPercentiles, RepositoryLag } from './pipeline.js';
 export type { ReleaseRow, ReleaseSource, ReleaseTimelineRow, ReleaseUpsert } from './release.js';
 export type { RawEventInsert, RawEventRow } from './raw-event.js';
@@ -69,7 +83,32 @@ export type {
   ScopeKind,
   TeamRow,
 } from './auth.js';
-export type { SequenceSpaceRow, SequenceSpaceState } from './sequence-space.js';
+export type { SequenceSpaceRow, SequenceSpaceState, MergeNumberCheckpoint } from './sequence-space.js';
+export type {
+  EvidenceProof,
+  EvidenceRow,
+  EvidenceSourceKind,
+  EvidenceState,
+  EvidenceUpsert,
+} from './mnumber-evidence.js';
+export type {
+  ClaimOptions,
+  CoveredRefresh,
+  EnqueueRefreshInput,
+  LeaseRef,
+  RefreshWorkPayload,
+  ReleaseState,
+  RequestWorkInput,
+  SequenceWorkKind,
+  SequenceWorkRow,
+  SequenceWorkState,
+} from './sequence-work.js';
+export type {
+  LatencyOutcome,
+  LatencySampleRow,
+  LatencySampleUpsert,
+  LatencyTriggerKind,
+} from './sequence-latency.js';
 export type { OrgTeamSnapshot } from './team-membership.js';
 export type {
   CreateSavedSearchInput,

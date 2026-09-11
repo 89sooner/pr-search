@@ -12,8 +12,14 @@
  * 확인할 수 있으면 판정 자체를 걸 수 없다.
  */
 
-/** `/pull-requests/{repo}/{number}` 응답 중 화면이 쓰는 것. 서버가 더 보내도 무시한다. */
-export interface PrDetailSource {
+import type { MergeNumberFields } from './merge-number';
+
+/**
+ * `/pull-requests/{repo}/{number}` 응답 중 화면이 쓰는 것. 서버가 더 보내도 무시한다.
+ *
+ * M 키는 `MergeNumberFields`에서 온다 — additive이고 전부 선택이다 (WP-074 / API-SEQ-007).
+ */
+export interface PrDetailSource extends MergeNumberFields {
   readonly repository?: string;
   readonly pr_number?: number;
   readonly title?: string;

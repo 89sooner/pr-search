@@ -35,7 +35,7 @@ import type { Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { SEQUENCE_NEIGHBORS_PATH } from '../../src/sequence/routes.js';
 import type { AuthContext, AuthRedis } from '../../src/auth/context.js';
-import { createTestRedis, migratedPool } from '../helpers.js';
+import { createTestRedis, migratedPool, clearMergeSequence } from '../helpers.js';
 import { TEST_CURSOR_KEY, TEST_CURSOR_SIGNER } from '../_cursor-fixture.js';
 
 const AUTH_CONFIG = {
@@ -257,7 +257,7 @@ beforeAll(async () => {
   pool = await migratedPool();
   redis = createTestRedis();
 
-  await pool.query('DELETE FROM merge_sequence');
+  await clearMergeSequence(pool);
   await pool.query('DELETE FROM sequence_space');
   await pool.query('DELETE FROM permission_cache');
   await pool.query('DELETE FROM app_user');

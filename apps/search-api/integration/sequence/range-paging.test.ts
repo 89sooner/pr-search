@@ -36,7 +36,7 @@ import type { Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { SEQUENCE_RANGE_PATH } from '../../src/sequence/routes.js';
 import type { AuthContext, AuthRedis } from '../../src/auth/context.js';
-import { createTestRedis, migratedPool } from '../helpers.js';
+import { createTestRedis, migratedPool, clearMergeSequence } from '../helpers.js';
 import { TEST_CURSOR_KEY, TEST_CURSOR_SIGNER } from '../_cursor-fixture.js';
 
 const AUTH_CONFIG = {
@@ -139,7 +139,7 @@ beforeAll(async () => {
   // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
   await switchAliasesForTests(es);
 
-  await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPO]);
+  await clearMergeSequence(pool, 'repository_id = $1', [REPO]);
   await pool.query('DELETE FROM sequence_space WHERE repository_id = $1', [REPO]);
   await pool.query('DELETE FROM permission_cache WHERE user_id = $1', [USER]);
   await pool.query('DELETE FROM app_user WHERE user_id = $1', [USER]);

@@ -51,9 +51,13 @@ import {
   integrityRepo,
   mergeSequenceRepo,
   repositoryRepo,
+  sequenceLatencyRepo,
   sequenceSpaceRepo,
+  sequenceWorkRepo,
   trySequenceSpaceLock,
+  type CoveredRefresh,
   type Pool,
+  type PoolClient,
   type RepositoryRow,
   withReindexWrite,
 } from '@prs/db';
@@ -62,6 +66,7 @@ import { CommitGraphError, type CommitGraph, type RepoRef } from '@prs/github';
 import { randomUUID } from 'node:crypto';
 import type { Client } from '@elastic/elasticsearch';
 import { isSequenceBranch, numberCommits, type AssignOutcome } from './sequence-plan.js';
+import { FRESHNESS_DEFER_MS, withFreshness, type FreshnessDeps } from './sequence-freshness.js';
 import type { WorkerMetrics } from './metrics.js';
 
 export const SEQUENCE_STAGE = 'sequence' as const;
@@ -98,6 +103,12 @@ export interface SequenceDeps {
    * **없어도 된다** — 릴리스 역할이 함께 뜨지 않은 배포에서는 스윕이 맡는다.
    */
   readonly requestReleaseRefresh?: (repositoryId: number, correlationId: string) => Promise<void>;
+  /**
+   * 채번 전 미러 최신화 (WP-074 / DEV-576). **없으면 API 모드처럼 동작한다** —
+   * 그래프가 호출 시점에 head를 다시 읽는 시험·배포에서는 fetch할 것이 없다.
+   * mirror 모드 배포는 기동 시 이것을 반드시 세운다.
+   */
+  readonly freshness?: FreshnessDeps;
 }
 
 function refOf(repository: RepositoryRow): RepoRef {
@@ -225,6 +236,13 @@ export async function assignSequence(
 
     const toSeq = headSeq + numbered.length;
     await sequenceSpaceRepo.advanceHead(client, repositoryId, baseBranch, newHead, toSeq);
+    /*
+     * M 채번 재개 의도를 **같은 트랜잭션**에 남긴다 (WP-074 / FR-SEQ-008 AC-11, 상세
+     * 설계 4.2). 서수 커밋과 함께 커밋되므로 이 뒤에 죽어도 durable 러너가 이어 간다.
+     * 새 커밋이 0건이어도 남긴다 — 앞선 회차가 미확정으로 멈춰 있을 수 있고, 이번
+     * push가 그 PR 정보를 실어 왔을 수 있다.
+     */
+    await requestMergeNumberReconcile(client, repositoryId, baseBranch, space.seq_epoch, 'sequence_assigned', correlationId);
     await client.query('COMMIT');
 
     committed = {
@@ -449,6 +467,8 @@ export async function reassignSequence(
 
     const toSeq = baseSeq + numbered.length;
     await sequenceSpaceRepo.advanceHead(client, repositoryId, baseBranch, newHead, toSeq);
+    // 새 에폭의 M 재채번 의도. 이전 에폭 번호는 그 행에 남고 새 근거로 다시 센다 (ADR-007 규칙 5).
+    await requestMergeNumberReconcile(client, repositoryId, baseBranch, newEpoch, 'sequence_reassigned', correlationId);
     await client.query('COMMIT');
 
     committed = {
@@ -732,12 +752,184 @@ export async function handleSequenceEvent(
     return { kind: 'ack' };
   }
 
-  const outcome = await assignSequence(deps, repositoryId, baseBranch, event.correlation_id);
-  if (outcome.kind === 'locked') {
-    const now = (deps.now ?? ((): Date => new Date()))();
-    return deferUntil(new Date(now.getTime() + SEQUENCE_LOCK_RETRY_MS), 'sequence_space_locked');
+  /*
+   * **freshness 진입을 거친다** (WP-074 / DEV-576). 버스 소비자·durable 러너·수동
+   * 러너·조정 스캔이 모두 같은 문으로 들어온다 (상세 설계 4.2).
+   */
+  const outcome = await prepareAndAssignSequence(deps, repositoryId, baseBranch, event.correlation_id);
+  if (outcome.kind === 'defer') {
+    return deferUntil(outcome.retryAt, outcome.reason);
+  }
+  /*
+   * fetch 실패는 **retry**다. ack하면 durable refresh 의도가 남아 러너가 잇지만,
+   * 버스 재전달이 더 빠르다. 예산은 버스의 표준 백오프가 집행한다.
+   */
+  if (outcome.kind === 'failed' && outcome.retryable) {
+    return { kind: 'retry', reason: outcome.reason };
   }
   return { kind: 'ack' };
+}
+
+/** 같은 트랜잭션에서 M 재개 의도를 남긴다. 키가 공간·에폭당 하나라 요청 수가 행 수가 되지 않는다. */
+async function requestMergeNumberReconcile(
+  client: PoolClient,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  trigger: string,
+  correlationId = '',
+): Promise<void> {
+  await sequenceWorkRepo.requestWork(client, {
+    kind: 'reconcile',
+    repositoryId,
+    baseBranch,
+    seqEpoch,
+    // 채번을 유발한 요청의 상관 ID를 이어 준다 — `EVT-SEQ-004`가 그것을 싣는다 (DEV-594).
+    payload: correlationId === '' ? { trigger_kind: trigger } : { trigger_kind: trigger, correlation_id: correlationId },
+  });
+}
+
+/** `prepareAndAssignSequence`의 결말. 호출부(버스·러너)가 처분으로 옮긴다. */
+export type PrepareOutcome =
+  | {
+      readonly kind: 'done';
+      readonly assign: AssignOutcome;
+      /** 이번 fetch가 덮은 refresh 의도. 측정 출처다. */
+      readonly covered: readonly CoveredRefresh[];
+      readonly fetch: {
+        readonly mode: 'mirror' | 'api';
+        readonly action: string | null;
+        readonly startedAt: Date;
+        readonly completedAt: Date;
+      };
+    }
+  | { readonly kind: 'skipped'; readonly reason: string }
+  | { readonly kind: 'defer'; readonly reason: string; readonly retryAt: Date }
+  | { readonly kind: 'failed'; readonly reason: string; readonly retryable: boolean };
+
+export interface PrepareOptions {
+  /** durable 러너가 집은 refresh work의 lease. 그 work도 covered로 함께 닫는다. */
+  readonly leaseToken?: string | null;
+}
+
+/**
+ * 워커의 freshness 진입 함수 (WP-074 / CR-079, 상세 설계 4.2).
+ *
+ * 순서가 곧 보장이다: **fetch → 채번 → 미러 락 해제 → covered 의도 완료.** 채번은
+ * 미러 락 아래에서 돌므로 그 사이 다른 fetch가 미러를 바꾸지 않고, 채번이 읽는
+ * head는 이번 fetch의 결과다. 두 잡이 같은 push를 각각 받아 경주하던 모양(DEV-576의
+ * "옛 head를 읽고 조용히 새 커밋 없음")이 여기서 사라진다.
+ *
+ * 성공한 fetch는 그 시작 전에 도착한 push 의도를 **전부** 덮는다 — fetch는 원격의
+ * 현재 상태를 읽기 때문이다. fetch 중에 도착한 push는 남아 다음 회차가 처리한다.
+ */
+export async function prepareAndAssignSequence(
+  deps: SequenceDeps,
+  repositoryId: number,
+  baseBranch: string,
+  correlationId = '',
+  options: PrepareOptions = {},
+): Promise<PrepareOutcome> {
+  const now = deps.now ?? ((): Date => new Date());
+  const repository = await repositoryRepo.findRepositoryById(deps.pool, repositoryId);
+  if (repository === undefined) return { kind: 'skipped', reason: 'repository_unregistered' };
+  if (repository.status !== 'active') return { kind: 'skipped', reason: 'repository_archived' };
+  if (!isSequenceBranch(repository.sequence_branches, baseBranch)) {
+    return { kind: 'skipped', reason: 'not_sequence_branch' };
+  }
+
+  const freshness: FreshnessDeps =
+    deps.freshness ?? { pool: deps.pool, mode: 'api', ...(deps.now === undefined ? {} : { now: deps.now }) };
+  const fresh = await withFreshness(freshness, repository, () =>
+    assignSequence(deps, repositoryId, baseBranch, correlationId),
+  );
+
+  if (fresh.kind === 'defer') {
+    return { kind: 'defer', reason: fresh.reason, retryAt: new Date(now().getTime() + FRESHNESS_DEFER_MS) };
+  }
+  if (fresh.kind === 'failed') {
+    return { kind: 'failed', reason: fresh.reason, retryable: true };
+  }
+
+  const assign = fresh.result;
+  if (assign.kind === 'locked') {
+    return {
+      kind: 'defer',
+      reason: 'sequence_space_locked',
+      retryAt: new Date(now().getTime() + SEQUENCE_LOCK_RETRY_MS),
+    };
+  }
+  if (assign.kind === 'stale') {
+    // 그래프를 읽지 못했다. 공간은 이미 `stale`로 표시됐고 기존 값은 보존된다. 의도는 남긴다.
+    return { kind: 'failed', reason: `graph_stale:${assign.reason}`.slice(0, 200), retryable: true };
+  }
+  if (assign.kind === 'rewritten') {
+    // 재작성을 감지했으나 재채번이 락 경합으로 미뤄졌다. 다음 회차가 잇는다.
+    return { kind: 'defer', reason: 'rewrite_pending', retryAt: new Date(now().getTime() + SEQUENCE_LOCK_RETRY_MS) };
+  }
+
+  /*
+   * ---- 여기부터는 fetch가 성공했고 채번이 정상 종료했다 (`assigned`·`reassigned`·
+   * `no_branch`·`skipped`). fetch 시작 전에 도착한 의도는 이번 회차가 덮었다.
+   */
+  const covered = await sequenceWorkRepo.completeCoveredRefreshWorks(deps.pool, {
+    repositoryId,
+    baseBranch,
+    coveredBefore: fresh.startedAt,
+    leaseToken: options.leaseToken ?? null,
+  });
+
+  await recordFreshnessSamples(deps, repository, baseBranch, assign, covered, fresh.mode);
+
+  return {
+    kind: 'done',
+    assign,
+    covered,
+    fetch: { mode: fresh.mode, action: fresh.action, startedAt: fresh.startedAt, completedAt: fresh.completedAt },
+  };
+}
+
+/**
+ * push 단위 지연 표본 (FR-SEQ-008 AC-14, 상세 설계 6.4). **best-effort다** — 실패해도
+ * 채번의 성공을 되돌리지 않고 `measurement_missing`으로만 센다.
+ *
+ * `received_at`은 원본 전달의 수신 시각이며 PR 번호는 아직 모르므로 NULL이다. PR 단위
+ * 표본은 M 채번이 `head_sha` 연결로 따로 만든다.
+ */
+async function recordFreshnessSamples(
+  deps: SequenceDeps,
+  repository: RepositoryRow,
+  baseBranch: string,
+  assign: AssignOutcome,
+  covered: readonly CoveredRefresh[],
+  mode: 'mirror' | 'api',
+): Promise<void> {
+  if (covered.length === 0) return;
+  const epoch = (await sequenceSpaceRepo.findSequenceSpace(deps.pool, repository.repository_id, baseBranch))?.seq_epoch;
+  if (epoch === undefined) return;
+  const assigned = assign.kind === 'assigned' || assign.kind === 'reassigned';
+  for (const one of covered) {
+    try {
+      await sequenceLatencyRepo.upsertSample(deps.pool, {
+        workKey: one.work_key,
+        attempt: 1,
+        repositoryId: repository.repository_id,
+        baseBranch,
+        seqEpoch: epoch,
+        prNumber: null,
+        deliveryId: one.payload.delivery_id,
+        triggerKind: 'new_squash',
+        outcome: assigned ? 'pending' : 'skipped',
+        receivedAt: new Date(one.payload.received_at),
+        attemptStartedAt: null,
+        mirrorCompletedNow: mode === 'mirror',
+        sequenceAssignedNow: assigned,
+        reason: assigned ? null : assign.kind,
+      });
+    } catch {
+      deps.metrics.measurementMissing.inc({ stage: 'freshness' });
+    }
+  }
 }
 
 export interface StartSequenceOptions {
@@ -1030,6 +1222,7 @@ export async function repairSequence(
     }
 
     await sequenceSpaceRepo.advanceHead(client, repositoryId, baseBranch, head, toSeq);
+    await requestMergeNumberReconcile(client, repositoryId, baseBranch, newEpoch, 'sequence_reassigned', correlationId);
     await client.query('COMMIT');
 
     committed = {

@@ -44,6 +44,8 @@ import {
   type TeamSlugResolver,
 } from './facets.js';
 import { computeRelaxationHints, NO_RELAXATION, type RelaxationResult } from './relaxation.js';
+import { resolveMergeNumberFields, type MergeNumberInput } from '../sequence/merge-number-batch.js';
+import type { Pool } from '@prs/db';
 
 /** W-001의 결과 표가 PR과 커밋을 한 목록에 보여 준다 (CR-016, DEV-054). */
 export const SEARCH_TARGET: SearchTarget = ['prs-pull-requests', 'prs-commits'];
@@ -85,6 +87,12 @@ type RawHighlight = Readonly<Record<string, readonly string[]>>;
 /** 문서에서 목록에 필요한 만큼만 꺼낸 모양. */
 export interface SearchHitSource {
   readonly repository?: string;
+  /** M 정본 대조의 키 (WP-074). 응답에는 싣지 않고 대조에만 쓴다. */
+  readonly repository_id?: number;
+  readonly base_branch?: string;
+  /** 색인이 지금 말하는 M 값. 정본과 다르면 정본이 이기고 관측 상태만 알린다. */
+  readonly merge_number?: number;
+  readonly merge_number_epoch?: number;
   readonly pr_number?: number;
   readonly commit_sha?: string;
   readonly title?: string;
@@ -129,6 +137,15 @@ export interface SearchItem {
    */
   readonly highlight?: HighlightMap;
   readonly url: string | null;
+  /**
+   * M 번호 (WP-074 / FR-SEQ-008 AC-13). **PR 항목에만 붙고** 기능이 꺼진 배포에서는
+   * 키 자체가 없다. 값은 언제나 정본이며 색인 값이 아니다 (ADR-023 C5).
+   */
+  readonly merge_number?: string | null;
+  readonly merge_number_state?: string;
+  readonly merge_number_reason?: string | null;
+  readonly merge_number_epoch?: number | null;
+  readonly merge_number_projection_state?: string;
 }
 
 export interface SearchResult {
@@ -178,6 +195,44 @@ function toItem(hit: estypes.SearchHit<SearchHitSource>): SearchItem {
   };
 }
 
+/**
+ * 페이지의 PR 항목에 M 필드를 붙인다.
+ *
+ * `kind: 'commit'` 항목은 건드리지 않는다 — 커밋은 M 번호의 대상이 아니며(AC-1),
+ * 키를 만들면 화면이 없는 영역을 그린다.
+ */
+async function attachMergeNumbers(
+  items: readonly SearchItem[],
+  hits: readonly estypes.SearchHit<SearchHitSource>[],
+  deps: SearchDeps,
+): Promise<readonly SearchItem[]> {
+  if (deps.mergeNumbers === undefined || !deps.mergeNumbers.enabled) return items;
+
+  const inputs: MergeNumberInput[] = items.map((item, index) => {
+    const source = hits[index]?._source ?? {};
+    if (item.kind !== 'pull_request') {
+      return { repositoryId: null, repositorySlug: null, baseBranch: null, prNumber: null, state: null };
+    }
+    return {
+      repositoryId: source.repository_id ?? null,
+      repositorySlug: item.repository,
+      baseBranch: source.base_branch ?? null,
+      prNumber: item.pr_number ?? null,
+      state: item.state,
+      indexed: {
+        mergeNumber: source.merge_number ?? null,
+        epoch: source.merge_number_epoch ?? null,
+      },
+    };
+  });
+
+  const fields = await resolveMergeNumberFields(deps.mergeNumbers.pool, inputs, { enabled: true });
+  return items.map((item, index) => {
+    const one = fields[index];
+    return one === null || one === undefined ? item : { ...item, ...one };
+  });
+}
+
 function firstLine(message: string | undefined): string | null {
   if (message === undefined || message === '') return null;
   const index = message.indexOf('\n');
@@ -219,6 +274,11 @@ export interface SearchDeps {
   readonly resolveTeamSlugs?: TeamSlugResolver;
   /** 패싯 예산. 시험이 `budget_omitted`를 재현할 때만 넘긴다. */
   readonly facetBudgetMs?: number;
+  /**
+   * M 번호 정본 대조 (WP-074 / ADR-023 C5). 없으면 M 키를 만들지 않는다 —
+   * 기능이 꺼진 배포에서 기존 응답 모양이 그대로 유지된다.
+   */
+  readonly mergeNumbers?: { readonly pool: Pool; readonly enabled: boolean };
   readonly now?: () => number;
 }
 
@@ -370,7 +430,13 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
   const hits = response.hits.hits;
   const hasMore = hits.length > request.size;
   const page = hasMore ? hits.slice(0, request.size) : hits;
-  const items = page.map(toItem);
+  const baseItems = page.map(toItem);
+
+  /*
+   * M 번호는 **페이지의 PR 튜플을 한 번에** 정본과 대조해 붙인다 (ADR-023 C5).
+   * 행별 조회를 만들지 않으며, 정본 조회가 실패해도 목록은 그대로 나간다.
+   */
+  const items = await attachMergeNumbers(baseItems, page, deps);
 
   /*
    * 마지막 페이지의 정렬 값이 다음 커서의 재료다.

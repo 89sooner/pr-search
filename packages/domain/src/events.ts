@@ -21,6 +21,8 @@ export const EVENT_NAMES = {
   sequenceAssigned: 'sequence.assigned',
   /** EVT-SEQ-002 */
   sequenceReassigned: 'sequence.reassigned',
+  /** EVT-SEQ-004 (WP-074 / CR-077 · CR-079) */
+  mergeNumberAssigned: 'mnumber.assigned',
   /** EVT-AUTH-001 */
   permissionInvalidated: 'permission.invalidated',
 } as const;
@@ -292,4 +294,21 @@ export interface SequenceReassigned {
   readonly new_epoch: number;
   readonly diverged_at_seq: number;
   readonly affected_count: number;
+}
+
+/**
+ * EVT-SEQ-004 `mnumber.assigned` (WP-074 / CR-077 · CR-079, ADR-023).
+ *
+ * `from_mnumber`..`to_mnumber`는 양끝 포함이고 `pull_request_numbers`는 그 번호
+ * 순서(오름차순)로 최대 1000건이다. **payload는 힌트다** — 소비자는 현재 에폭과
+ * 정본을 다시 읽어야 하며, 늦게 도착한 이전 에폭 이벤트가 현재 번호를 덮지
+ * 않는다. 이벤트 ID는 `announce` work 키로 결정론 생성한다.
+ */
+export interface MergeNumberAssigned {
+  readonly repository_id: number;
+  readonly base_branch: string;
+  readonly seq_epoch: number;
+  readonly from_mnumber: number;
+  readonly to_mnumber: number;
+  readonly pull_request_numbers: readonly number[];
 }

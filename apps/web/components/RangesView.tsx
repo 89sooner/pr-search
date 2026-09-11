@@ -661,6 +661,7 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
             {space === null ? null : (
               <RangeResultTable
                 repository={space.repository}
+                baseBranch={space.baseBranch}
                 items={outcome.result.items}
                 missingInIndex={outcome.result.missingInIndex}
               />

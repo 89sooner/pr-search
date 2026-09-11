@@ -33,7 +33,7 @@ import {
   type CommitEnrichDeps,
 } from '../../src/commit-enrich.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
-import { migratedPool } from '../helpers.js';
+import { migratedPool, clearMergeSequence } from '../helpers.js';
 import {
   createSequenceFixture,
   firstParentOf,
@@ -164,7 +164,7 @@ describe('커밋 메타데이터 보강 (WP-067 / CR-038)', () => {
   });
 
   beforeEach(async () => {
-    await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
+    await clearMergeSequence(pool, 'repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM commit_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM repository WHERE repository_id = $1', [REPOSITORY_ID]);
     await repositoryRepo.upsertRepository(pool, {

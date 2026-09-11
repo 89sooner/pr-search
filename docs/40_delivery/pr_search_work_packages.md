@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.24 | 갱신일: 2026-09-11
+> 상태: review | 버전: v2.25 | 갱신일: 2026-09-11
 
 ## 1. 목적
 
@@ -54,8 +54,8 @@
 | WP-070 | 단일 호스트 오프라인 배포·반입 기반 | **배포 (CR-059)** | WP-001, WP-010 | done |
 | WP-071 | 사내 반입 운반 아카이브와 실행 절차 정본화 | **배포 (CR-062)** | WP-070 | done |
 | WP-073 | P4 방식 웹 조사 작업대와 사용성 정돈 | **UI 품질 (CR-067)** | WP-015~018, WP-025, WP-032~034, WP-038 | done |
-| WP-074 | M 넘버 채번과 조회 | REL-003 (CR-077) | WP-021, WP-020, WP-008 | **todo — 다음 착수** |
-| WP-075 | PR 제목 M 넘버 표기 | REL-003 (CR-077) | WP-074, WP-012 | todo |
+| WP-074 | M 넘버 채번과 조회 | REL-003 (CR-077 · CR-079 · CR-080) | WP-021, WP-020, WP-008 | **done** — 검증 6.76장. `DEV-581`은 open으로 남으며 `MNUMBER_ENABLED=false`가 기본이다 |
+| WP-075 | PR 제목 M 넘버 표기 | REL-003 (CR-077) | WP-074, WP-012 | todo — **미구현·비활성**. WP-074는 `annotate_state` 칸만 예약했고 GHE 쓰기 경로는 없다 |
 | WP-072 | 사내 반입 운반 경로 — GitHub Release 발행과 다운로드 | **배포 (CR-063)** | WP-071 | done |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003, **WP-067** | done |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020, **WP-067** | done |
@@ -2609,7 +2609,11 @@ external main의 특정 커밋
 
 ### WP-074 M 넘버 채번과 조회
 
-> CR-077 신설 / CR-079 squash-only 상세 설계. 구현은 todo다. 설계 작성으로 이 WP를 완료 처리하지 않는다.
+> CR-077 신설 / CR-079 squash-only 상세 설계 / CR-080 구현. **구현이 들어왔다** — 검증 기록은 원장 6.76장이다.
+>
+> `DEV-581`은 닫히지 않았다. 직접 푸시의 영구 부재를 확정할 근거가 공식 GHE 계약에 없어 production
+> 판정기는 첫 미확정 항목에서 멈추고, 그 뒤의 PR은 전부 대기한다. 시험이 주입한 부재 증서로 direct
+> 갈래가 통과한 사실은 그 조건을 닫지 않는다.
 
 - 목표: freshness → merge_seq → PR 증거 → M 번호 → DB/ES/API → W-001·W-002·W-004 → 사내 읽기 전용 측정을 연결한다.
 - 관련 FR: FR-SEQ-008 AC-1~14, FR-SEQ-001, FR-SRCH-003, NFR-002.
@@ -2626,15 +2630,15 @@ external main의 특정 커밋
 제외: WP-075 제목 쓰기·전용 App, PIPE DB, PR 본문, 관계 그래프 활성화, OIDC 정책, UI 전면 개편, 개명 alias, 기존 seq 기반 range/anchor/bisect 변경.
 
 완료 기준:
-- [ ] T01: squash PR당 한 M, 다른 공간 분리, git first-parent 독립 대조.
-- [ ] T02: 증서 있는 direct만 skip, unresolved 뒤 번호 없음, 정보 도착 후 새 push 없이 재개.
-- [ ] DEV-581: production 직접 푸시 부재 확정 근거 확보. **fixture 증서 시험만으로 일반 이력의 전체 채번 완료를 선언하지 않는다.**
-- [ ] T03: stale-readable mirror 수정 전후, fetch 실패·마지막 push·중복/역순·락·재시작 복구.
-- [ ] T04: 번호/checkpoint/work·ES/reindex/epoch 경주에서 번호 이동/유실 없음.
-- [ ] T05: API-SEQ-007 examples 및 QA-W001-39·QA-W002-29·QA-W004-30, 행별 resolve 없음.
-- [ ] T06: migration 왕복·앱 rollback·worker 기동/종료·실제 이미지·측정 CLI.
-- [ ] 실행서의 변이·필수 checks·독립 리뷰와 최종 원장 기록.
-- [ ] 외부 실행과 사내 NOT RUN 분리; WP-075 미구현, 새 릴리스 미발행.
+- [x] T01: squash PR당 한 M, 다른 공간 분리, git first-parent 독립 대조. 회귀 `merge-number-vs-git.test.ts`가 실제 git 출력과 대조한다.
+- [x] T02: 증서 있는 direct만 skip, unresolved 뒤 번호 없음, 정보 도착 후 새 push 없이 재개. 재개는 `recordProjectionSnapshot`이 실제로 남기는 의도까지 건다.
+- [ ] DEV-581: production 직접 푸시 부재 확정 근거 확보 — **미확보로 남는다.** production은 `direct_confirmed`를 만들지 않으며 그 자리에서 멈춘다. fixture 증서 시험만으로 일반 이력의 전체 채번 완료를 선언하지 않는다.
+- [x] T03: stale-readable mirror 수정 전후, fetch 실패·마지막 push·중복/역순·락·재시작 복구. `DEV-576` 수정 전 재현을 시험이 먼저 만들었다.
+- [x] T04: 번호/checkpoint/work·ES/reindex/epoch 경주에서 번호 이동/유실 없음.
+- [x] T05: API-SEQ-007 examples 및 QA-W001-39·QA-W002-29·QA-W004-30, 행별 resolve 없음. 왕복 수를 실제 계수로 단언한다.
+- [x] T06: migration 왕복·앱 rollback·worker 기동/종료·측정 CLI. **실제 이미지 검사는 하지 않았다** — 새 번들을 발행하지 않는 범위라 `docker build`를 돌리지 않았다.
+- [x] 실행서의 변이 10종 전부 kill(6.76장), 필수 checks 통과, 독립 리뷰와 원장 기록 완료.
+- [x] 외부 실행과 사내 `NOT RUN`을 6.76장이 표로 가른다. WP-075 미구현, 새 릴리스 미발행.
 
 ### WP-075 PR 제목 M 넘버 표기
 

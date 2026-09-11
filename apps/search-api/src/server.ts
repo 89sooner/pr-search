@@ -225,7 +225,12 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
     registerAuthRoutes(app, { auth: deps.auth, loginPath: config.auth.loginPath });
 
     if (deps.search !== undefined) {
-      registerSearchRoutes(app, { ...deps.search, auth: deps.auth, loginPath: config.auth.loginPath });
+      registerSearchRoutes(app, {
+        ...deps.search,
+        auth: deps.auth,
+        loginPath: config.auth.loginPath,
+        mergeNumberEnabled: config.mergeNumberEnabled === true,
+      });
       registerExportRoutes(app, { ...deps.search, auth: deps.auth, loginPath: config.auth.loginPath });
       /*
        * 집계 API (WP-037 / API-STAT-001~004).
@@ -251,6 +256,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
         auth: deps.auth,
         loginPath: config.auth.loginPath,
         gheBaseUrl: config.gheBaseUrl,
+        mergeNumberEnabled: config.mergeNumberEnabled === true,
       });
       /*
        * 관계 조회도 같은 의존을 쓴다 (WP-031, API-REL-006·API-REL-003).
@@ -334,6 +340,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
         ...deps.sequence,
         auth: deps.auth,
         loginPath: config.auth.loginPath,
+        mergeNumberEnabled: config.mergeNumberEnabled === true,
       });
     } else {
       log({

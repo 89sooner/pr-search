@@ -18,6 +18,25 @@ export interface SequenceSpaceRow {
   readonly state: SequenceSpaceState;
   readonly last_assigned_at: Date | null;
   readonly last_error: string | null;
+  /**
+   * M 번호 진행 지점 (WP-074 / FR-SEQ-008 AC-3, 마이그레이션 025).
+   *
+   * `mnumber_head_seq`는 확인을 마친 마지막 서수, `mnumber_head`는 마지막으로 부여한
+   * M 번호다. 둘 다 BIGINT이며 타입 파서가 숫자로 준다.
+   */
+  readonly mnumber_head_seq: number;
+  readonly mnumber_head: number;
+  /** checkpoint 다음의 미확정·충돌 행. 셋은 함께 있거나 함께 NULL이다. */
+  readonly mnumber_blocked_seq: number | null;
+  readonly mnumber_blocked_reason: string | null;
+  readonly mnumber_blocked_since: Date | null;
+}
+
+/** M 채번 한 회차가 남기는 진행 지점. */
+export interface MergeNumberCheckpoint {
+  readonly headSeq: number;
+  readonly headNumber: number;
+  readonly blocked: { readonly seq: number; readonly reason: string } | null;
 }
 
 type Queryable = Pool | PoolClient;
@@ -93,8 +112,15 @@ export async function bumpEpoch(
   baseBranch: string,
 ): Promise<number> {
   const result = await db.query<{ seq_epoch: number }>(
+    /*
+     * M checkpoint도 함께 0으로 돌린다 (WP-074 / ADR-007 규칙 5). 이전 에폭의 M 번호는
+     * 그 에폭 행에 남아 무효로 해석되고, 새 에폭은 새 근거로 처음부터 다시 센다.
+     * `sequence_space_mnumber_checkpoint_chk`가 `head_seq = 0`과 함께 이것을 요구한다.
+     */
     `UPDATE sequence_space
-        SET seq_epoch = seq_epoch + 1, head_seq = 0, head_sha = NULL, state = 'reassigning'
+        SET seq_epoch = seq_epoch + 1, head_seq = 0, head_sha = NULL, state = 'reassigning',
+            mnumber_head_seq = 0, mnumber_head = 0,
+            mnumber_blocked_seq = NULL, mnumber_blocked_reason = NULL, mnumber_blocked_since = NULL
       WHERE repository_id = $1 AND base_branch = $2
       RETURNING seq_epoch`,
     [repositoryId, baseBranch],
@@ -198,4 +224,60 @@ export async function restoreSequenceState(
       WHERE repository_id = $1 AND base_branch = $2 AND state = 'reassigning'`,
     [repositoryId, baseBranch, state, lastError],
   );
+}
+
+/**
+ * M 채번 진행 지점을 옮긴다 (WP-074 / FR-SEQ-008 AC-3, 상세 설계 7절).
+ *
+ * **에폭을 조건에 둔다.** 락을 잡고 읽은 에폭과 다르면 0행이며 호출 측은 롤백한다 —
+ * 다른 에폭에서 계산한 checkpoint를 이 에폭에 쓰지 않는다.
+ *
+ * blocker가 같은 자리·같은 사유면 `mnumber_blocked_since`를 보존한다. 그래야
+ * "얼마나 오래 막혀 있는가"가 회차마다 리셋되지 않는다. 해소되면 셋 다 NULL이다.
+ *
+ * @returns 갱신됐으면 `true`.
+ */
+export async function advanceMergeNumberCheckpoint(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  checkpoint: MergeNumberCheckpoint,
+): Promise<boolean> {
+  const blockedSeq = checkpoint.blocked?.seq ?? null;
+  const blockedReason = checkpoint.blocked?.reason ?? null;
+  const result = await db.query(
+    `UPDATE sequence_space
+        SET mnumber_head_seq       = $4,
+            mnumber_head           = $5,
+            mnumber_blocked_seq    = $6,
+            mnumber_blocked_reason = $7,
+            mnumber_blocked_since  = CASE
+                                       WHEN $6::bigint IS NULL THEN NULL
+                                       WHEN mnumber_blocked_seq = $6::bigint AND mnumber_blocked_reason = $7::text
+                                         THEN mnumber_blocked_since
+                                       ELSE clock_timestamp()
+                                     END
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3`,
+    [repositoryId, baseBranch, seqEpoch, checkpoint.headSeq, checkpoint.headNumber, blockedSeq, blockedReason],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * 시퀀스 공간 여러 개를 한 번에 읽는다 — M 상태 batch 대조가 쓴다 (API 계약 8절).
+ * `(repository_id, base_branch)` 짝 목록을 배열 둘로 받는다.
+ */
+export async function listSpacesByKeys(
+  db: Queryable,
+  keys: readonly { readonly repositoryId: number; readonly baseBranch: string }[],
+): Promise<SequenceSpaceRow[]> {
+  if (keys.length === 0) return [];
+  const result = await db.query<SequenceSpaceRow>(
+    `SELECT s.* FROM sequence_space s
+       JOIN unnest($1::bigint[], $2::text[]) AS k(repository_id, base_branch)
+         ON k.repository_id = s.repository_id AND k.base_branch = s.base_branch`,
+    [keys.map((key) => key.repositoryId), keys.map((key) => key.baseBranch)],
+  );
+  return result.rows;
 }

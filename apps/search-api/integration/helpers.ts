@@ -57,3 +57,11 @@ export function createTestRedis(): Redis {
     commandTimeoutMs: 2_000,
   });
 }
+
+/**
+ * `merge_sequence` 정리를 정본 헬퍼에서 그대로 쓴다 (WP-074 / DEV-590).
+ *
+ * 의존 표(`mnumber_evidence`)를 먼저 회수하는 순서가 한 곳에만 있어야 한다 —
+ * 앱마다 다시 쓰면 한 곳이 빠진 날 CI가 그 파일에서만 깨진다.
+ */
+export { clearMergeSequence } from '../../../packages/db/integration/helpers.js';

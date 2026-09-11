@@ -29,6 +29,9 @@ import { NeighborSection } from './NeighborSequenceList';
 import { ReleaseContainmentSection } from './ReleaseContainmentList';
 import { PrTimeline } from './PrTimeline';
 import { SequenceBadge } from './SequenceBadge';
+import { COPY_MESSAGES, MergeNumberBadge, writeMergeNumberLink, type ClipboardResult } from './MergeNumberBadge';
+import { usePendingRevalidation } from './usePendingRevalidation';
+import { hasPendingMergeNumber } from '../lib/merge-number';
 import { formatDuration } from '../lib/format';
 import {
   commitListModel,
@@ -69,6 +72,8 @@ export function PrDetailView({
   const [loading, setLoading] = useState(true);
   const [nonce, setNonce] = useState(0);
   const generation = useRef(0);
+  /** M 링크 복사 결과. 기존 `ShaChip`과 같은 live region 규약을 따른다. */
+  const [copyResult, setCopyResult] = useState<ClipboardResult | null>(null);
 
   useEffect(() => {
     const mine = ++generation.current;
@@ -100,12 +105,42 @@ export function PrDetailView({
     return () => {
       controller.abort();
     };
-    // `nonce`가 바뀌면 다시 부른다 — 수동 재조회다 (자동 폴링 금지).
+    /*
+     * `nonce`가 바뀌면 다시 부른다.
+     *
+     * 기본은 수동 재조회다. 예외가 하나 있다 — M 번호가 `pending`인 동안에만
+     * `usePendingRevalidation`이 **이 요청 하나**를 5초 간격으로 60초까지 다시
+     * 보낸다 (WP-074 / 상세 설계 9절). 무한 폴링이 아니고, 행별 조회도 아니다.
+     */
   }, [repository, prNumber, nonce]);
 
   const refetch = useCallback(() => {
     setNonce((n) => n + 1);
   }, []);
+
+  /*
+   * M 번호 대기 중에만 도는 짧은 자동 재검증.
+   *
+   * `enabled`는 "지금 본문을 그리고 있는가"다 — 오류·인증 만료 화면에서
+   * 재검증하면 같은 오류를 12번 반복하고 사용자는 그 이유를 알 수 없다.
+   */
+  const detailPending = hasPendingMergeNumber(outcome.detail === null ? [] : [outcome.detail]);
+  const revalidation = usePendingRevalidation({
+    sessionKey: `${repository}#${String(prNumber)}`,
+    pending: detailPending,
+    enabled: outcome.detail !== null && outcome.errorBody === null && !outcome.networkFailed,
+    inFlight: loading,
+    onRevalidate: refetch,
+  });
+
+  const onCopyMergeNumber = useCallback(
+    (link: Parameters<typeof writeMergeNumberLink>[0]) => {
+      void (async () => {
+        setCopyResult(await writeMergeNumberLink(link));
+      })();
+    },
+    [],
+  );
 
   const screen = resolveDetailScreenState({
     loading,
@@ -248,9 +283,51 @@ export function PrDetailView({
               sequence_space={pr.sequence_space ?? null}
               state={pr.state ?? null}
             />
+            {/*
+              * M 배지와 링크 복사 (WP-074 / FR-SEQ-008 AC-9·AC-10).
+              *
+              * 복사 URL은 배지 링크와 **같은 네 query key**다 — 표기 문자열만
+              * 복사하는 것과 분명히 구분된다 (상세 설계 9절). `pending`과
+              * `unavailable`에는 링크가 없으므로 복사 단추도 그려지지 않는다.
+              */}
+            <MergeNumberBadge
+              fields={pr}
+              context={{
+                kind: 'pull_request',
+                repository: pr.repository ?? repository,
+                baseBranch: pr.base_branch ?? null,
+              }}
+              onCopy={onCopyMergeNumber}
+            />
           </>
         }
       />
+
+      {/* 복사 결과는 기존 `ShaChip`과 같은 live region 규약으로 알린다. */}
+      <span role="status" aria-live="polite" data-testid="mnumber-copy-status" className="cdt-sr-only">
+        {copyResult === null ? '' : COPY_MESSAGES[copyResult]}
+      </span>
+
+      {/*
+        * 자동 재검증이 60초를 다 썼다 (상세 설계 9절).
+        *
+        * **잠정 번호를 대신 보이지 않는다.** 기다림이 끝났다는 사실과 손으로
+        * 다시 볼 길만 준다.
+        */}
+      {revalidation.exhausted ? (
+        <Banner tone="info" data-testid="mnumber-poll-exhausted" title="M 번호가 아직 확정되지 않았습니다">
+          <p>자동 확인을 멈췄습니다. 잠시 뒤 다시 확인해 주세요.</p>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              revalidation.restart();
+              refetch();
+            }}
+          >
+            다시 확인
+          </Button>
+        </Banner>
+      ) : null}
       <DetailSectionNav sections={[{ id: 'overview-heading', label: '개요' }, { id: 'commits-heading', label: '커밋' }, { id: 'timeline-heading', label: '타임라인' }, { id: 'neighbors-heading', label: '선행·후행' }, { id: 'releases-heading', label: '포함 릴리스' }, { id: 'links-heading', label: '관계' }]} />
 
       {/*

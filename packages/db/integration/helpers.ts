@@ -73,3 +73,27 @@ export async function truncate(pool: Pool, ...tables: string[]): Promise<void> {
   if (tables.length === 0) return;
   await pool.query(`TRUNCATE ${tables.join(', ')} RESTART IDENTITY CASCADE`);
 }
+
+/**
+ * `merge_sequence` 행을 지운다. **의존 표를 먼저 회수한다** (WP-074 / DEV-590).
+ *
+ * `mnumber_evidence`가 정본 행을 `ON DELETE RESTRICT`로 참조한다 — 증거가 행과 함께
+ * 조용히 사라지면 "무엇을 근거로 확정했는가"가 흔적 없이 없어지기 때문이다. 그래서
+ * 행을 지우려는 쪽이 증거를 먼저 회수해야 하고, **시험의 정리도 예외가 아니다.**
+ *
+ * 통합 시험은 DB 하나를 공유하며 파일이 병렬로 돈다. 조건 없는 삭제는 다른 파일의
+ * 픽스처까지 지나가므로, 그쪽이 남긴 증거에 걸려 정리 자체가 실패한다 — CI가 실제로
+ * 그렇게 깨졌다. 조건을 주는 편이 언제나 낫고, 생략은 그것이 의도일 때만 한다.
+ *
+ * @param where `WHERE` 뒤에 붙일 조건. 비우면 전부 지운다.
+ * @param params 조건의 바인딩 값. 두 삭제가 **같은 조건과 같은 값**을 쓴다.
+ */
+export async function clearMergeSequence(
+  pool: Pool,
+  where = '',
+  params: readonly unknown[] = [],
+): Promise<void> {
+  const suffix = where === '' ? '' : ` WHERE ${where}`;
+  await pool.query(`DELETE FROM mnumber_evidence${suffix}`, [...params]);
+  await pool.query(`DELETE FROM merge_sequence${suffix}`, [...params]);
+}

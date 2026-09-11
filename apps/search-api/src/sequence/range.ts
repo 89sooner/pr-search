@@ -39,6 +39,8 @@ import {
   type UnresolvedName,
 } from '@prs/es';
 import { serializeQuery, type QueryAst } from '@prs/query';
+import { parseSequenceSpaceLabel } from '@prs/domain';
+import { resolveMergeNumberFields, type MergeNumberInput } from './merge-number-batch.js';
 import type { Client } from '@elastic/elasticsearch';
 import type { estypes } from '@elastic/elasticsearch';
 import type { CursorSigner } from '../cursor/envelope.js';
@@ -106,6 +108,16 @@ export interface RangeItem {
    */
   readonly indexed: boolean;
   readonly url: string | null;
+  /**
+   * M 번호 (WP-074 / FR-SEQ-008 AC-13). **PR 행에만 붙는다** — 직접 푸시 커밋 행에는
+   * 키가 없고 화면도 영역을 그리지 않는다. W-004의 구간·앵커·bisect 입력은 계속
+   * `merge_seq`이며 M은 병기일 뿐이다.
+   */
+  readonly merge_number?: string | null;
+  readonly merge_number_state?: string;
+  readonly merge_number_reason?: string | null;
+  readonly merge_number_epoch?: number | null;
+  readonly merge_number_projection_state?: string;
 }
 
 export interface RangeSummary {
@@ -165,6 +177,8 @@ export interface RangeRequest {
 
 export interface RangeDeps {
   readonly pool: Pool;
+  /** M 번호 기능 (WP-074). 꺼져 있으면 범위 항목에서 M 키가 생략된다. */
+  readonly mergeNumberEnabled?: boolean;
   readonly es: Client;
   readonly resolveNames: (names: {
     readonly orgs: readonly string[];
@@ -226,6 +240,9 @@ interface PullRequestSource {
   readonly changed_files_count?: number;
   readonly additions?: number;
   readonly deletions?: number;
+  /** 색인이 지금 말하는 M 값 (WP-074). 응답 값은 정본이다. */
+  readonly merge_number?: number;
+  readonly merge_number_epoch?: number;
 }
 
 interface SummaryAggregations {
@@ -454,6 +471,9 @@ const PAGE_SOURCE_FIELDS: string[] = [
   'changed_files_count',
   'additions',
   'deletions',
+  // M 관측 상태의 재료 (WP-074). 표시 값은 정본에서 온다.
+  'merge_number',
+  'merge_number_epoch',
 ];
 
 /**
@@ -547,7 +567,12 @@ export async function runRange(request: RangeRequest, deps: RangeDeps): Promise<
     return {
       // `q`가 있으면 판정할 PR이 하나도 없으므로 0건이다 (DEV-136).
       summary: { ...EMPTY_SUMMARY_AGGS, commit_count: extra === null ? request.rangeTotal : 0 },
-      items: bare.rows.map((row) => toUnindexedItem(space, row)),
+      items: await attachRangeMergeNumbers(
+        bare.rows.map((row) => toUnindexedItem(space, row)),
+        space,
+        new Map(),
+        deps,
+      ),
       // PR이 없는 항목은 커밋 문서로만 존재하고, 그 문서에는 표시할 값이 없다.
       items_missing_in_index: 0,
       unresolved,
@@ -664,7 +689,12 @@ export async function runRange(request: RangeRequest, deps: RangeDeps): Promise<
    * `q`가 없으면 정본의 모든 행이 목록에 남는다 — 색인에 없어도 서수와 SHA는
    * 확정값이므로 보여 줄 것이 있다.
    */
-  const items = scanned.rows.map((row) => toItem(space, row, sources));
+  const items = await attachRangeMergeNumbers(
+    scanned.rows.map((row) => toItem(space, row, sources)),
+    space,
+    sources,
+    deps,
+  );
 
   /*
    * 커밋 수의 뜻 (DEV-139): 구간의 **first-parent 커밋 수**다. PR의 원본 커밋까지
@@ -735,6 +765,45 @@ function toUnindexedItem(space: ResolvedSpace, row: MergeSequenceRow): RangeItem
     indexed: false,
     url: buildUrl(space, row),
   };
+}
+
+/**
+ * 구간 항목에 M 번호를 붙인다 (WP-074 / AC-13, ADR-023 C5).
+ *
+ * PR 행만 대상이고 **한 번의 정본 대조**로 끝낸다. 직접 푸시 커밋 행은 그대로 둔다 —
+ * 그 행에 M 키를 만들면 화면이 없는 영역을 그린다.
+ */
+async function attachRangeMergeNumbers(
+  items: readonly RangeItem[],
+  space: ResolvedSpace,
+  sources: ReadonlyMap<number, PullRequestSource>,
+  deps: RangeDeps,
+): Promise<readonly RangeItem[]> {
+  if (deps.mergeNumberEnabled !== true) return items;
+  const parts = parseSequenceSpaceLabel(space.sequenceSpace);
+  const slug = parts === null ? null : `${parts.owner}/${parts.name}`;
+
+  const inputs: MergeNumberInput[] = items.map((item) => {
+    if (item.kind !== 'pull_request' || item.pr_number === undefined) {
+      return { repositoryId: null, repositorySlug: null, baseBranch: null, prNumber: null, state: null };
+    }
+    const source = sources.get(item.pr_number);
+    return {
+      repositoryId: space.repositoryId,
+      repositorySlug: slug,
+      baseBranch: space.baseBranch,
+      prNumber: item.pr_number,
+      // 정본 행에 있다는 것은 그 PR의 머지 커밋이 체인에 있다는 뜻이다.
+      state: 'merged',
+      indexed: { mergeNumber: source?.merge_number ?? null, epoch: source?.merge_number_epoch ?? null },
+    };
+  });
+
+  const fields = await resolveMergeNumberFields(deps.pool, inputs, { enabled: true });
+  return items.map((item, index) => {
+    const one = fields[index];
+    return one === null || one === undefined ? item : { ...item, ...one };
+  });
 }
 
 function toItem(

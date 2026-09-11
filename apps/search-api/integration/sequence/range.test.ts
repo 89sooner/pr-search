@@ -37,7 +37,7 @@ import { buildServer } from '../../src/server.js';
 import { SEQUENCE_RANGE_PATH } from '../../src/sequence/routes.js';
 import { RANGE_LIMIT } from '../../src/sequence/range.js';
 import type { AuthContext, AuthRedis } from '../../src/auth/context.js';
-import { createTestRedis, migratedPool } from '../helpers.js';
+import { createTestRedis, migratedPool, clearMergeSequence } from '../helpers.js';
 import { TEST_CURSOR_KEY, TEST_CURSOR_SIGNER } from '../_cursor-fixture.js';
 
 const AUTH_CONFIG = {
@@ -244,7 +244,7 @@ beforeAll(async () => {
   pool = await migratedPool();
   redis = createTestRedis();
 
-  await pool.query('DELETE FROM merge_sequence');
+  await clearMergeSequence(pool);
   await pool.query('DELETE FROM sequence_space');
   await pool.query('DELETE FROM permission_cache');
   await pool.query('DELETE FROM app_user');
@@ -536,7 +536,7 @@ describe('구간 검증 (AC-3, AC-4 / QA-W004-07·08)', () => {
      * 함께 흔들린다.
      */
     const BULK = 3199;
-    await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [BULK]);
+    await clearMergeSequence(pool, 'repository_id = $1', [BULK]);
     await repositoryRepo.upsertRepository(pool, {
       repository_id: BULK, owner: 'acme', name: 'bulk', org_id: ORG,
       visibility: 'internal', sequence_branches: [BRANCH],
@@ -573,7 +573,7 @@ describe('구간 검증 (AC-3, AC-4 / QA-W004-07·08)', () => {
     });
     expect(atLimit.statusCode).toBe(200);
 
-    await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [BULK]);
+    await clearMergeSequence(pool, 'repository_id = $1', [BULK]);
   }, 120_000);
 
   it('음수 서수는 `INVALID_PARAMETER`다', async () => {

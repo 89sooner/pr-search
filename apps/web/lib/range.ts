@@ -13,6 +13,8 @@
  *    없다(DEV-133·150). 0으로 그리면 "되돌림이 없다"는 거짓이 된다.
  */
 
+import type { MergeNumberFields } from './merge-number';
+
 /** API-SEQ-006 응답의 공간 하나. 서버가 더 보내도 무시한다. */
 export interface SequenceSpaceOption {
   readonly repository: string;
@@ -220,7 +222,7 @@ export function judgeSummary(source: unknown): RangeSummaryView | null {
 }
 
 /** 결과 행 (DEV-154의 전용 표가 그린다). */
-export interface RangeItemView {
+export interface RangeItemView extends MergeNumberFields {
   readonly mergeSeq: number;
   readonly kind: 'pull_request' | 'commit';
   readonly prNumber: number | null;
@@ -233,6 +235,35 @@ export interface RangeItemView {
   readonly deletions: number | null;
   /** `false`면 서수·SHA·PR 번호만 확정이고 나머지는 색인 대기다 (DEV-130). */
   readonly indexed: boolean;
+}
+
+/**
+ * 항목의 M 키를 있는 그대로 옮긴다 (WP-074 / API-SEQ-007).
+ *
+ * **없는 키를 만들지 않는다.** 기능이 꺼진 배포와 구버전 응답에는 키가 없고,
+ * 그때 배지는 그려지지 않아야 한다 — `null`을 채워 넣으면 "확인했는데 값이
+ * 없다"가 되어 화면이 없는 사실을 주장한다 (`link_summary`와 같은 규율).
+ */
+function readMergeNumberFields(record: Record<string, unknown>): MergeNumberFields {
+  const fields: {
+    merge_number?: string | null;
+    merge_number_state?: string | null;
+    merge_number_reason?: string | null;
+    merge_number_epoch?: number | null;
+  } = {};
+  if ('merge_number' in record) {
+    fields.merge_number = typeof record['merge_number'] === 'string' ? record['merge_number'] : null;
+  }
+  if ('merge_number_state' in record) {
+    fields.merge_number_state = typeof record['merge_number_state'] === 'string' ? record['merge_number_state'] : null;
+  }
+  if ('merge_number_reason' in record) {
+    fields.merge_number_reason = typeof record['merge_number_reason'] === 'string' ? record['merge_number_reason'] : null;
+  }
+  if ('merge_number_epoch' in record) {
+    fields.merge_number_epoch = typeof record['merge_number_epoch'] === 'number' ? record['merge_number_epoch'] : null;
+  }
+  return fields;
 }
 
 /** 응답 항목 → 행. **순서를 바꾸지 않는다** (QA-W004-11 — 서버가 서수 오름차순을 보장한다). */
@@ -256,6 +287,7 @@ export function judgeItems(source: unknown): readonly RangeItemView[] {
       deletions: typeof record['deletions'] === 'number' ? record['deletions'] : null,
       // 키가 없으면 색인 확인이 안 된 것이다 — 있다고 지어내지 않는다.
       indexed: record['indexed'] === true,
+      ...readMergeNumberFields(record),
     });
   }
   return items;

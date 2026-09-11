@@ -23,6 +23,21 @@ export function jobClaimLockKey(type: string): string {
   return `job:claim:${type}`;
 }
 
+/**
+ * 미러 fetch 직렬화 락 키 (WP-074 / CR-079, ADR-023 C1, DEV-576).
+ *
+ * 저장소 단위 **세션** 락이다. `MirrorSync.sync`는 프로세스 간 동기화가 없어
+ * sequence·mirror 스윕·release 세 호출자가 같은 디렉터리에 동시에 fetch할 수 있다.
+ * 모든 `sync` 호출이 이 키를 지나면 한 저장소의 fetch는 언제나 하나다.
+ *
+ * `sequenceLockKey`와 나눈다 — 그 키는 트랜잭션 범위이고, fetch는 트랜잭션 밖에서
+ * 돌아야 한다(네트워크 시간만큼 스냅숏을 붙잡지 않는다). 락 순서는 **미러 → 시퀀스
+ * 트랜잭션**이며 반대 순서의 fetch를 만들지 않는다.
+ */
+export function mirrorSyncLockKey(repositoryId: number): string {
+  return `mirror-sync:${String(repositoryId)}`;
+}
+
 /** 시퀀스 공간 하나에 대응하는 락 키 문자열. */
 export function sequenceLockKey(repositoryId: number, baseBranch: string): string {
   return `seq:${String(repositoryId)}:${baseBranch}`;
@@ -178,6 +193,26 @@ export async function acquireAdvisorySessionLock(
     // 세션 설정이라 반납 후 다음 사용자에게 새어 나간다. 반드시 되돌린다.
     await client.query('RESET lock_timeout').catch(() => undefined);
   }
+}
+
+/**
+ * 세션 범위 advisory lock을 **기다리지 않고** 시도한다 (WP-074, 상세 설계 4.1).
+ *
+ * `acquireAdvisorySessionLock`은 `lock_timeout`까지 기다린다. 채번의 선행 fetch는
+ * 기다리면 워커 슬롯이 묶이므로 즉시 답을 받아 `defer`한다 — 채번 자체가
+ * `trySequenceSpaceLock`으로 같은 규율을 쓴다 (CR-025, DEV-117).
+ *
+ * 세션 락이므로 **반드시 `releaseAdvisorySessionLock`으로 푼다.** 풀지 못한
+ * 커넥션은 풀에 돌려보내지 않고 폐기한다 (`client.release(true)`).
+ *
+ * @returns 잡았으면 `true`. 다른 세션이 쥐고 있으면 즉시 `false`.
+ */
+export async function tryAdvisorySessionLock(client: PoolClient, key: string): Promise<boolean> {
+  const result = await client.query<{ locked: boolean }>(
+    'SELECT pg_try_advisory_lock(hashtext($1)) AS locked',
+    [key],
+  );
+  return result.rows[0]?.locked === true;
 }
 
 /** 세션 범위 advisory lock을 푼다. 잡지 않은 키를 풀어도 경고뿐이다. */

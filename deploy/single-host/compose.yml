@@ -157,6 +157,9 @@ services:
       OIDC_SCOPES: ${OIDC_SCOPES:-}
       OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
       OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
+      # M 번호 (WP-074)는 여기에 없다 — **web은 이 값을 읽지 않는다** (DEV-589).
+      # 화면은 응답에 M 키가 있는지로만 판단하고, 켜고 끄는 것은 search-api와
+      # worker-sequence의 같은 값이다. 여기 두면 한쪽만 바꿔 놓고 켰다고 믿게 된다.
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/healthz >/dev/null || exit 1']
       interval: 20s
@@ -185,6 +188,8 @@ services:
       OIDC_SCOPES: ${OIDC_SCOPES:-}
       OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
       OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
+      # M 번호 (WP-074). 꺼져 있으면 API-SEQ-007이 404이고 목록·상세·범위에서 M 키가 생략된다.
+      MNUMBER_ENABLED: ${MNUMBER_ENABLED:-false}
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3002/healthz >/dev/null || exit 1']
       interval: 20s
@@ -267,6 +272,15 @@ services:
       PIPELINE_WORKER_PORT: '3003'
       MIRROR_ROOT: /var/lib/prs/mirrors
       MIRROR_ALLOW_BLOB_FETCH: ${MIRROR_ALLOW_BLOB_FETCH:-false}
+      # 채번 전 미러 fetch (WP-074 / DEV-576). Profile A는 `mirror`가 기본이며
+      # 아래 볼륨이 그 전제다. 볼륨이 없으면 **기동을 거부한다** — 조용히 API로
+      # 바꾸면 "설정은 mirror인데 왜 API로 도나"를 아무도 답할 수 없다.
+      SEQUENCE_GRAPH_MODE: ${SEQUENCE_GRAPH_MODE:-mirror}
+      # M 번호 (WP-074). 꺼져 있어도 위 freshness는 그대로 돈다 — DEV-576의 수정은
+      # 이 플래그와 무관하다.
+      MNUMBER_ENABLED: ${MNUMBER_ENABLED:-false}
+      MNUMBER_BATCH_SIZE: ${MNUMBER_BATCH_SIZE:-100}
+      MNUMBER_POLL_MS: ${MNUMBER_POLL_MS:-1000}
     volumes:
       - mirror-data:/var/lib/prs/mirrors
 
@@ -319,6 +333,10 @@ services:
       PIPELINE_WORKER_PORT: '3003'
       # 없으면 `JOB-AUD-001`만 서지 않는다. 나머지 배치 역할은 정상 동작한다.
       ADMIN_DATABASE_URL: ${ADMIN_DATABASE_URL:-}
+      # M 번호 (WP-074 / DEV-606). **재색인이 이 역할에서 돈다** — 값이 없으면
+      # 재색인 뒤 M 복구 의도를 만들지 않아 새 색인의 M이 영영 비고, 그것이
+      # 오류도 로그도 없이 조용히 일어난다. search-api·worker-sequence와 같은 값이다.
+      MNUMBER_ENABLED: ${MNUMBER_ENABLED:-false}
 
   worker-authz:
     <<: *worker-base

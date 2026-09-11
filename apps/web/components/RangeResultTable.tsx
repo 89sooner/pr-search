@@ -20,9 +20,17 @@ import Link from 'next/link';
 import { Badge, Table } from '@conductor-by-89soone/react';
 import type { RangeItemView } from '../lib/range';
 import { formatTimestamp } from '../lib/format';
+import { MergeNumberBadge } from './MergeNumberBadge';
 
 export interface RangeResultTableProps {
   readonly repository: string;
+  /**
+   * 이 결과가 속한 시퀀스 공간의 base 브랜치.
+   *
+   * M 배지의 링크는 저장소와 브랜치를 모두 알아야 성립한다. 범위 응답의 항목에는
+   * 그 값이 없고 조사 조건에만 있으므로 화면이 내려 준다 — 행에서 짐작하지 않는다.
+   */
+  readonly baseBranch: string;
   readonly items: readonly RangeItemView[];
   /** 정본에는 있는데 색인에 없는 항목 수 (DEV-130) — 0이면 표기하지 않는다. */
   readonly missingInIndex: number;
@@ -36,7 +44,7 @@ function hrefOf(repository: string, item: RangeItemView): string {
   return `/commit/${owner ?? ''}/${name ?? ''}/${item.commitSha}`;
 }
 
-export function RangeResultTable({ repository, items, missingInIndex }: RangeResultTableProps): ReactNode {
+export function RangeResultTable({ repository, baseBranch, items, missingInIndex }: RangeResultTableProps): ReactNode {
   return (
     <section aria-label="구간 결과" data-testid="range-results">
       {missingInIndex > 0 ? (
@@ -63,6 +71,17 @@ export function RangeResultTable({ repository, items, missingInIndex }: RangeRes
                   {item.title ??
                     (item.prNumber !== null ? `#${String(item.prNumber)}` : item.commitSha.slice(0, 12))}
                 </Link>{' '}
+                {/*
+                  * M 병기 (WP-074 / 상세 설계 9절 — W-004는 **행 병기만** 한다).
+                  *
+                  * anchor·range·bisect의 입력은 그대로 `merge_seq`다. M 번호를 구간
+                  * 입력으로 받지 않는다 — 직접 푸시가 섞인 구간에서 두 좌표계가
+                  * 어긋나고, 인용의 근거가 무너진다.
+                  */}
+                <MergeNumberBadge
+                  fields={item}
+                  context={{ kind: item.kind, repository, baseBranch }}
+                />{' '}
                 {item.indexed ? null : (
                   <Badge tone="neutral" data-testid="range-row-unindexed">
                     색인 대기

@@ -53,6 +53,9 @@ import type { FacetSource } from '../lib/facets';
 import { WorkbenchIcon } from './WorkbenchIcon';
 import { SearchWelcome } from './SearchWelcome';
 import { ResultWorkbench } from './ResultWorkbench';
+import { MergeNumberEntry } from './MergeNumberEntry';
+import { usePendingRevalidation } from './usePendingRevalidation';
+import { hasPendingMergeNumber, readMergeNumberEntry } from '../lib/merge-number';
 
 const SEARCH_PATH = '/search';
 
@@ -149,6 +152,27 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
   );
   const parsed = useMemo(() => parseQueryState(state), [state]);
 
+  /*
+   * M 해석 진입 (WP-074 / 상세 설계 9절).
+   *
+   * 네 query key가 오면 이 화면은 **경유지**가 된다 — 보통의 검색을 부르지 않고
+   * resolve를 한 번 부른 뒤 PR 상세로 옮긴다. 원래 `q`가 함께 와도 먼저 해석하고,
+   * 그 `q`는 `from_q`로만 보존한다.
+   */
+  const mergeEntry = useMemo(
+    () => readMergeNumberEntry(new URLSearchParams(params?.toString() ?? '')),
+    [params],
+  );
+
+  /**
+   * M 번호 대기 재검증 세대.
+   *
+   * `page.nonce`와 나누어 둔다 — 그쪽은 `ScreenBody`의 `key`에 들어 있어 값이
+   * 바뀌면 본문이 통째로 다시 마운트되고 **키보드 포커스가 사라진다.** 재검증은
+   * 같은 목록을 조용히 갱신하는 일이므로 포커스를 건드리면 안 된다.
+   */
+  const [revalidateNonce, setRevalidateNonce] = useState(0);
+
   const [outcome, setOutcome] = useState<FetchOutcome>(IDLE);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState<PageState>(FIRST_PAGE);
@@ -210,7 +234,8 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
   useEffect(() => {
     const route = chooseRoute(state, gheBaseUrl);
 
-    if (route.kind === 'none' || parsed.error !== null) {
+    // M 해석 진입에서는 보통의 조회를 부르지 않는다 — resolve 한 번이 전부다.
+    if (route.kind === 'none' || parsed.error !== null || mergeEntry.kind !== 'absent') {
       setOutcome(IDLE);
       setLoading(false);
       return;
@@ -275,7 +300,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     return () => {
       controller.abort();
     };
-  }, [state, parsed.error, gheBaseUrl, page.cursor, page.nonce]);
+  }, [state, parsed.error, gheBaseUrl, page.cursor, page.nonce, revalidateNonce, mergeEntry.kind]);
 
   const candidates = outcome.resolve?.candidates ?? null;
   /*
@@ -317,6 +342,16 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     setPage((current) => ({ ...FIRST_PAGE, nonce: current.nonce + 1 }));
   }, []);
 
+  /**
+   * 지금 보고 있는 요청 하나를 그대로 다시 보낸다 (WP-074 / 상세 설계 9절).
+   *
+   * **커서도 쌓인 항목도 버리지 않는다** — 재검증은 "같은 것을 다시 본다"이지
+   * "처음으로 돌아간다"가 아니다. 첫 페이지로 되돌리면 사용자가 자기 위치를 잃는다.
+   */
+  const revalidate = useCallback(() => {
+    setRevalidateNonce((n) => n + 1);
+  }, []);
+
   /*
    * 시퀀스 맥락 (CR-051). 서버가 바인딩한 결과이며 화면이 계산하지 않는다.
    */
@@ -344,6 +379,22 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
     candidatesTruncated: outcome.resolve?.truncated ?? false,
     loginPath,
     staleSequence,
+  });
+
+  /*
+   * M 번호 대기 자동 재검증 (WP-074 / 상세 설계 9절).
+   *
+   * **행마다 부르지 않는다** — 지금 보고 있는 목록 요청 하나를 5초 간격으로
+   * 최대 60초까지 다시 보낼 뿐이다. `enabled`가 `ready`에 매여 있으므로 낡은
+   * 에폭·인증 만료·오류 화면에서는 돌지 않는다.
+   */
+  const listPending = hasPendingMergeNumber(items ?? []);
+  const revalidation = usePendingRevalidation({
+    sessionKey: `${state.q}|${page.cursor ?? ''}|${state.seqEpoch ?? ''}`,
+    pending: listPending,
+    enabled: screen.kind === 'ready',
+    inFlight: loading,
+    onRevalidate: revalidate,
   });
 
   /*
@@ -488,6 +539,21 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
       : screen.kind === 'ambiguous'
         ? `후보 ${String(candidates?.length ?? 0)}건`
         : '';
+
+  /*
+   * M 해석 진입은 **화면을 늘리지 않는다** (CR-079 — IA는 그대로다).
+   *
+   * 네 key가 오면 이 자리에서 resolve 한 번을 수행하고 결과에 따라 옮기거나
+   * 알린다. 검색 입력·필터·탭을 함께 그리지 않는 이유는 여기가 머무는 곳이
+   * 아니기 때문이다. 원래 `q`는 `from_q`로만 넘긴다.
+   */
+  if (mergeEntry.kind !== 'absent') {
+    return (
+      <div className="prs-search-view" data-testid="search-view" data-screen-state="merge_number_entry">
+        <MergeNumberEntry entry={mergeEntry} fromQuery={state.q} loginPath={loginPath} />
+      </div>
+    );
+  }
 
   return (
     <div className="prs-search-view" data-testid="search-view" data-screen-state={screen.kind}>
@@ -634,6 +700,27 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
           onClick={backToFirst} aria-label="결과 새로고침"><WorkbenchIcon name="refresh" />새로고침</Button>
       </div> : <span className="prs-result-count">현재 검색 조건의 PR 집계</span>}
       </div>
+
+      {/*
+        * 자동 재검증이 60초를 다 썼다 (상세 설계 9절).
+        *
+        * **잠정 번호를 대신 그리지 않는다.** 기다림을 멈췄다는 사실과 손으로
+        * 다시 볼 길만 준다 — 새로고침은 지금 보고 있는 요청을 그대로 다시 보낸다.
+        */}
+      {revalidation.exhausted ? (
+        <Banner tone="info" title="M 번호가 아직 확정되지 않았습니다">
+          <p data-testid="mnumber-poll-exhausted">자동 확인을 멈췄습니다. 잠시 뒤 다시 확인해 주세요.</p>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              revalidation.restart();
+              revalidate();
+            }}
+          >
+            다시 확인
+          </Button>
+        </Banner>
+      ) : null}
 
       <TabPanel id="results" active={activeTab === 'results'}>
       <div className="prs-search-layout" data-filters-open={filtersOpen && screen.kind !== 'epoch_stale' ? '' : undefined}>

@@ -77,16 +77,18 @@ export type { InstallationBinding, LeasedToken, PoolOptions } from './token-pool
 export { RequestScheduler } from './scheduler.js';
 export type { RequestPriority, SchedulerOptions } from './scheduler.js';
 
-export { GitHubTransport } from './transport.js';
-export type { PagedResult, RequestOptions, TransportEvent, TransportOptions } from './transport.js';
+export { GitHubTransport, parseNextPage } from './transport.js';
+export type { PagedResult, PageResponse, RequestOptions, TransportEvent, TransportOptions } from './transport.js';
 
-export { GitHubClient, MAX_CHANGED_FILES, MAX_PR_COMMITS, resolveVisibility } from './client.js';
+export { GitHubClient, MAX_CHANGED_FILES, MAX_PR_COMMITS, resolveVisibility, toPullRequestEvidence } from './client.js';
 export type {
   CallOptions,
   ChangedFile,
   CollaboratorSummary,
+  CommitPullRequestsPage,
   CommitSummary,
   PermissionSummary,
+  PullRequestEvidence,
   PullRequestSummary,
   ReleaseSummary,
   CompareResult,

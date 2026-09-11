@@ -15,12 +15,24 @@
  * 상태로 남는다.
  */
 
-import { prSnapshotRepo } from '@prs/db';
+import { prSnapshotRepo, sequenceSpaceRepo, sequenceWorkRepo, withTransaction } from '@prs/db';
 import type { Pool } from '@prs/db';
 import type { SnapshotSource } from '@prs/db';
 import type { UpsertRequest } from '@prs/es';
 
-/** PR 문서 하나를 골라 정본에 남긴다. 커밋 문서는 대상이 아니다. */
+/**
+ * PR 문서 하나를 골라 정본에 남긴다. 커밋 문서는 대상이 아니다.
+ *
+ * ## 스냅숏과 M 재개 의도는 한 트랜잭션이다 (WP-074 / FR-SEQ-008 AC-11, 상세 설계 5.2)
+ *
+ * 머지된 PR의 스냅숏이 **실제로 갱신됐을 때** 그 base 브랜치의 `reconcile` work를
+ * 같은 트랜잭션에서 요청한다. 늦게 도착한 PR 정보로 확정이 가능해졌는데 새 push나
+ * 일일 스윕을 기다리게 하지 않기 위해서다. 낮은 버전이라 무시된 스냅숏은 새 정보가
+ * 아니므로 요청하지 않는다. 채번된 적 없는 브랜치(공간 없음)도 요청할 것이 없다.
+ *
+ * 실시간·백필·조정·부트스트랩 네 경로가 모두 이 함수를 지난다 — 같은 primitive여야
+ * 한 경로만 재개를 빠뜨리는 날이 없다.
+ */
 export async function recordProjectionSnapshot(
   pool: Pool,
   requests: readonly UpsertRequest[],
@@ -29,11 +41,26 @@ export async function recordProjectionSnapshot(
   const pullRequest = requests.find((request) => request.alias === 'prs-pull-requests');
   if (pullRequest === undefined) return;
 
-  await prSnapshotRepo.upsertPullRequestSnapshot(pool, {
-    repositoryId: options.repositoryId,
-    prNumber: options.prNumber,
-    documentVersion: pullRequest.doc.document_version,
-    source: options.source,
-    document: pullRequest.doc,
+  await withTransaction(pool, async (client) => {
+    const updated = await prSnapshotRepo.upsertPullRequestSnapshot(client, {
+      repositoryId: options.repositoryId,
+      prNumber: options.prNumber,
+      documentVersion: pullRequest.doc.document_version,
+      source: options.source,
+      document: pullRequest.doc,
+    });
+    if (!updated) return;
+
+    const doc = pullRequest.doc as { readonly state?: unknown; readonly base_branch?: unknown };
+    if (doc.state !== 'merged' || typeof doc.base_branch !== 'string' || doc.base_branch === '') return;
+    const space = await sequenceSpaceRepo.findSequenceSpace(client, options.repositoryId, doc.base_branch);
+    if (space === undefined) return;
+    await sequenceWorkRepo.requestWork(client, {
+      kind: 'reconcile',
+      repositoryId: options.repositoryId,
+      baseBranch: doc.base_branch,
+      seqEpoch: space.seq_epoch,
+      payload: { trigger_kind: 'snapshot', pr_number: options.prNumber },
+    });
   });
 }

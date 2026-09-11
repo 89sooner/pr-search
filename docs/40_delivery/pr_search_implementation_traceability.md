@@ -1,8 +1,8 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.62 | 갱신일: 2026-09-11
+> 상태: review | 버전: v6.64 | 갱신일: 2026-09-11
 
-CR-079 설계 전용 기록: 아래 3장 WP-074는 todo를 유지한다. 새 상세 설계·후속 실행서·측정 가이드를 작성했으며 코드/migration/도구/앱 시험/PR/병합/후보 번들은 실행하지 않았다. DEV-576은 open, 직접 부재 증거는 DEV-581에 기록한다. 문서 검증 결과는 CR-079 cascade가 정본이다.
+CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 전 미러 fetch), `DEV-580`·`DEV-582`·`DEV-583`은 CR-079가 문서로 닫았고 이 판이 코드로 이행했다. **`DEV-581`은 열려 있다** — 직접 푸시의 영구 부재를 확정할 근거가 공식 GHE 계약에 없어 production 판정기가 그 자리에서 멈추며, 그 결과 첫 미확정 항목 뒤의 PR이 전부 대기할 수 있다. 격리 시험이 direct 분기를 통과한 것은 그 조건을 닫지 않는다. 검증 결과는 6.76장, 사내 실행은 `NOT RUN`이다.
 
 ## 1. 목적
 
@@ -86,7 +86,7 @@ CR-079 설계 전용 기록: 아래 3장 WP-074는 todo를 유지한다. 새 상
 | WP-071 | 사내 반입 운반 아카이브와 실행 절차 정본화 | **배포 (CR-062)** | done | 에이전트 | PR #117 | DoD 16항 전부 통과 · **번들을 실제로 만들어 임시 디렉터리에 풀고 verify·load·lineage·git fetch 관통** · 변이 6종 전부 킬 (6.64장) | **`CR-062` 계약 선행 (2026-09-02).** 착수 전 감사가 운반 단위 부재(DEV-523)와 최초 설치 순서의 실행 불가(DEV-524)를 찾았다 (6.63장). `WP-070` 다음의 배포 마일스톤 후속이며 **`REL-006` 완료율에 넣지 않는다.** `WP-070`의 `done`은 되돌리지 않는다. 실제로 풀어 보다 `DEV-526`(번들 텍스트가 빌더의 checkout 상태에 따라 CRLF)이 드러났다 — **어제의 파일럿 번들은 우연히 LF였다.** 머지 후 리뷰 1건이 실결함이었다(`DEV-527`, 런북의 GHE 자격 순서, PR #118) |
 | WP-073 | P4 방식 웹 조사 작업대와 사용성 정돈 | UI 품질 (CR-067) | done | 에이전트 | feature/p4-workbench-ui | 최종 e2e 169 · a11y 358 · 대비 232쌍 · 타입/린트/build 통과 | 6.71장, DEV-554. 기존 DEV-377 별도 유지 |
 | WP-072 | 사내 반입 운반 경로 — GitHub Release 발행과 다운로드 | **배포 (CR-063)** | done | 에이전트 | PR #120 | DoD 16항 전부 통과 · **시험 릴리스 둘을 실제로 발행해 토큰만 있는 환경에서 받아 digest 대조·풀린 사본 verify·load·lineage·git fetch 관통** · 변이 8종 전부 킬 (6.66장) | **`CR-063` 계약 선행 (2026-09-02).** 결정자가 사내 어느 위치에서든 github.com에 닿는다고 확인하면서 문서의 오프라인 전제와 어긋났다(DEV-528). 착수 전 감사(6.65장)가 운반 파일 1.07GB의 경로를 GitHub Release 자산으로 정했고 런북 디스크 요건의 과소 기재(DEV-529)를 함께 찾았다. `WP-071` 다음의 배포 마일스톤 후속이며 **`REL-006` 완료율에 넣지 않는다.** 번들·설치·계보는 그대로다. PR #119 머지 후 리뷰 1건이 실결함이었다(`DEV-530`, **릴리스는 저절로 불변이 아니다**) — 이 PR에서 닫았다 |
-| WP-074 | M 넘버 채번 | REL-003 | todo | - | - | 설계 문서 검증만, 앱 시험 NOT RUN | CR-079 상세 설계·실행서·측정 가이드 작성. DEV-576 구현 및 DEV-581 직접 푸시 확정 근거 검증이 남아 있다. 사내 재시험은 외부 작업의 착수 조건이 아니다 |
+| WP-074 | M 넘버 채번 | REL-003 (CR-077 · CR-079 · CR-080) | done | 에이전트 | feature/wp074-squash-mnumber | 6.76장 — 단위·통합·회귀·e2e·a11y 전 계층, 실제 git 픽스처와 실제 PostgreSQL | **`DEV-576` resolved**(채번 전 미러 fetch, 수정 전 재현 포함). **`DEV-581`은 open으로 남는다** — 직접 푸시 부재 확정 근거 미확보이며 production은 그 앞에서 멈춘다. 기능은 `MNUMBER_ENABLED=false`가 기본이고 꺼진 배포는 기존 응답 모양 그대로다. 사내 재시험·새 릴리스는 `NOT RUN` |
 | WP-075 | PR 제목 M 넘버 표기 | REL-003 | todo | - | - | - | `CR-077` 신규. `WP-074` 후속이며 이 제품 최초의 자동 GHE 쓰기다(로드맵 4.2장) |
 | WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 | todo | - | - | - | CR-005 신규 |
 | WP-046 | 위임 GitHub 신원과 Operations App | REL-007 | todo | - | - | - | CR-005 신규 |
@@ -194,6 +194,31 @@ CR-079 설계 전용 기록: 아래 3장 WP-074는 todo를 유지한다. 새 상
 
 | DEV ID | 발견일 | 발견 내용 | 관련 FR/WP | 유형 | 연결 CR | 상태 |
 | --- | --- | --- | --- | --- | --- | --- |
+| DEV-587 | 2026-09-11 | **planner 안에서 `number_capacity_exceeded`에 도달할 수 없다.** M 번호는 확인한 서수 이하이고 서수 자체가 safe integer를 넘으면 입력 계약(`PlanInputError`)이 먼저 걸린다. 사유 enum과 DB CHECK·API BigInt 범위 검사는 그대로 두었다 — 상한은 **정본과 전송 계층**이 지키며 planner는 그 앞단이다. 시험은 상한 값의 부여가 되는 것과 그 위가 조용히 반올림되지 않는 것을 함께 확인한다 | FR-SEQ-008 / WP-074 / ADR-023 C4 | 설계 정합 | CR-080 | resolved — 방어선의 위치를 기록, 코드 변경 없음 |
+| DEV-588 | 2026-09-11 | **조정 스캔 취소 시험이 전량 실행에서 다시 한 번 깨졌다 — `DEV-502`와 같은 경합의 다른 얼굴이다.** `apps/pipeline-worker/integration/reconcile/manual-run.test.ts`의 '저장소 여럿 중 첫 번째에서 취소하면 나머지를 돌지 않는다'가 `expected 'completed' to be 'cancelled'`로 죽었다. `DEV-502`가 고친 것은 **냉시작 스윕의 진입이 계수에 섞이는 것**이었고 이번 것은 그 뒤다 — 시험이 `enqueueManual()`을 기다리는 **동안** 러너가 10ms 폴링으로 그 잡을 집고 첫 저장소에 들어가 버리면, 그 진입은 `probe.onEnter`가 **아직 대입되기 전**이라 취소를 부르지 않는다. 그 뒤의 진입은 `entries === 1`이 아니므로 영영 취소하지 않고 잡은 정상 완료한다. **이 판의 변경과 무관하다** — `manual-run.test.ts`도 `reconcile.ts`도 이 브랜치가 건드리지 않았고, 단독 실행 1회와 전량 실행 2회가 연속 통과했다(각 1584건). **flake로 단정해 덮지 않고 메커니즘을 적는다** — 고치려면 `enqueueManual()` 전에 `probe.onEnter`를 대입하거나 취소 조건을 진입 계수가 아닌 잡 ID로 걸어야 하며, 그 판단은 `FR-ADMIN-002`를 소유한 WP의 것이다 | WP-040 / FR-ADMIN-002 / DEV-502 | 시험 결함 (경합) | 별도 판단 필요 | **open** — 이 판에서는 고치지 않았다. 남의 소유 파일이고 이 WP의 범위 밖이다 |
+| DEV-589 | 2026-09-11 | **기능 플래그를 화면에도 주라는 설계와 달리 `web`은 그 값을 읽지 않는다.** 설계 9절이 "검색 API·web server와 sequence/cleanup 역할에 동일 설정을 전달한다… 공개 boolean만 전달한다"라고 적었으나, 구현의 화면은 **응답에 M 키가 있는지로만** 판단한다 — `merge_number_state`가 없으면 영역을 그리지 않고, M 딥링크는 서버가 내는 404 `feature_disabled`를 그대로 보인다. 화면에 같은 플래그를 두면 **켜고 끄는 자리가 둘이 되어** 한쪽만 바꾼 형상이 "켰는데 안 보인다"로 나타나고, 그 상태를 화면 로그로는 구분할 수 없다. 서버 하나가 권위인 편이 낫다고 판단해 그대로 두고 **구성 쪽을 코드에 맞췄다** — compose의 `web` 서비스에서 `MNUMBER_ENABLED`를 뺐고, 런북의 진단 항목과 `.env.example`이 "둘에 같은 값, `web`에는 주지 않는다"로 바뀌었다. 처음에는 구성과 런북이 화면도 읽는다고 적고 있어 **운영자를 없는 자리로 보냈다** | FR-SEQ-008 / WP-074 / 설계 9절 | 설계 편차 (구현이 더 좁고 안전한 쪽) | CR-080 | resolved — 코드는 그대로, 구성·런북·`.env.example`을 정정 |
+| DEV-590 | 2026-09-11 | **`mnumber_evidence`의 `ON DELETE RESTRICT`가 기존 통합 시험의 정리를 막았다 — CI가 잡았다.** `apps/search-api/integration/release/{containment,timeline}.test.ts`가 `beforeAll`에서 조건 없이 `DELETE FROM merge_sequence`를 부르는데, **앞서 끝난 다른 파일**(`sequence/mnumber.test.ts`, 저장소 7431)이 남긴 증거가 그 행을 참조해 `23503 … is still referenced from table "mnumber_evidence"`로 죽는다. **외부 전량 실행 3회는 통과했다** — 통합 시험은 `fileParallelism: false`로 **순차 실행**이므로 경합이 아니라 **앞선 파일이 정리하지 않고 남긴 잔여 행**이 원인이고, 파일 실행 순서가 로컬과 CI에서 달라 CI에서만 났다. 처음에는 이것을 병렬 경합으로 적었는데 사실이 아니었고, 독립 리뷰가 `vitest.integration.config.ts:39`를 들어 바로잡았다 — 재현 조건을 잘못 적으면 같은 부류를 다음에 조사할 때 엉뚱한 곳을 보게 된다. **제약을 풀지 않았다**: 증거가 행과 함께 조용히 사라지면 "무엇을 근거로 확정했는가"가 흔적 없이 없어지므로 `RESTRICT`가 옳다. **지우는 쪽을 고쳤다** — `clearMergeSequence(pool, where?, params?)`를 `packages/db/integration/helpers.ts`에 두고 앱 헬퍼 둘이 그대로 재수출하며, `DELETE FROM merge_sequence`를 부르던 15개 시험 파일이 전부 이 헬퍼를 쓴다. 순서가 한 곳에만 있어야 한 곳이 빠진 날 그 파일에서만 깨지는 일이 없다. **반대 방향 단언을 시험으로 세웠다** — 증거가 있으면 정본 행 삭제가 거절되고 순서를 지키면 지워진다(`merge-number-schema.test.ts`) | FR-SEQ-008 / WP-074 / ENT-SEQ-005 | 시험 기반 결함 (신규 제약이 기존 정리를 막음) | CR-080 | **resolved** — 스키마는 그대로, 정리 순서를 공유 헬퍼로 모았다 |
+| DEV-598 | 2026-09-11 | **재채번 중인 공간에서 durable 러너가 백오프 없이 무한 재시도했다 — 독립 리뷰가 실행으로 재현했다.** 강제 푸시가 오면 `markReassigning`이 본 트랜잭션과 **별개로 먼저 커밋**하고(재채번 중 조회가 마지막 확정 값을 보게 하는 기존 설계다), 그 뒤 본 트랜잭션이 전체 체인을 다시 걷는다. 그 동안 `reconcileMergeNumbers`는 `space_reassigning`을 돌려주는데 러너가 그것을 `delayMs: 0`으로 놓았고, `claimed > 0`이 `pollMs` 대기를 건너뛰어 **회차마다 다섯 문장이 나가는 바쁜 루프**가 됐다. 리뷰가 가짜 pool로 재현해 3초에 claim 545회를 측정했다 — 대조군(집을 work 없음)은 3회다. 복제본 하나가 초당 약 900문장을 보낸다. 큰 저장소의 재채번이 수 분이면 그 내내 그렇고, 워커가 `markReassigning` 커밋 뒤 죽으면 상태가 남아 **사람이 개입할 때까지 끝나지 않는다**(`reassignSequence`에는 `restoreSequenceState`가 없다). **세 `retry` 사유를 갈랐다** — `checkpoint_moved`·`epoch_moved`는 남이 값을 옮긴 것이라 다음 회차가 앞으로 가므로 즉시 재시도가 옳고, `space_reassigning`은 기다림이므로 락 경합과 같은 5초 defer를 쓴다. 설계 6.3절이 정한 것도 백오프이지 지연 0이 아니다 | JOB-SEQ-004 / WP-074 / 설계 6.3 | 구현 결함 (자원 소진) | CR-080 | **resolved** — 사유별로 처분을 가른다 |
+| DEV-599 | 2026-09-11 | **`formatMergeNumber`가 되읽을 수 없는 문자열을 만들 수 있었다 — 두 번째 독립 검토가 찾았다.** `number`는 막으면서 `code`는 전혀 보지 않아 `''`가 `M--3`을, `'19-00'`이 `M-19-00-3`을 만들고 둘 다 `parseMergeNumber`가 `null`을 낸다. **이 파일이 내건 왕복 불변식이 한쪽에서만 지켜졌다.** 지금은 호출부가 `repositoryCodeOf`의 결과만 넘겨 도달하지 않지만, 불변식은 함수가 스스로 지켜야 한다 | FR-SEQ-008 / OD-009 / WP-074 | 방어 누락 | CR-080 | resolved — 코드가 숫자만으로 이루어지지 않으면 던지고, 만든 것이 언제나 되읽히는 것을 시험이 건다 |
+| DEV-600 | 2026-09-11 | **화면의 입력 판정 셋이 계약보다 느슨했다.** (1) `numberOrNull`이 `Number.isFinite`만 봐서 `pr_number: 1.5`가 `/pr/acme/pay/1.5`를, `-3`이 `/pr/acme/pay/-3`을 만들었다 — 설계 9절은 `1..2147483647`과 정수를 정한다. (2) 중복 query key를 **조용히 첫 값으로 접었다** — 서로 다른 두 번호를 담은 링크가 오류 없이 하나로 이동하고, 사용자는 자기가 무엇을 열었는지 모른 채 그 답을 인용한다. 설계 9절은 중복 key를 400으로 정하는데 클라이언트가 접으면 서버가 그 답을 낼 기회 자체가 없다. (3) `hasPendingMergeNumber`가 배지가 **숨긴 행**(커밋)까지 세어, 보이지 않는 것을 기다리느라 60초 동안 재검증이 헛돌 수 있었다 — 같은 파일의 두 함수가 "이 행에 M이 있는가"에 다른 답을 했다 | FR-SEQ-008 / 설계 9절 / WP-074 | 계약 미이행 | CR-080 | resolved — 셋을 고치고 `duplicated` 갈래를 화면에 붙였다 |
+| DEV-601 | 2026-09-11 | **한 PR에 정본 행이 둘일 때 같은 입력이 두 답을 냈다 — 두 번째 독립 검토가 실행으로 보였다.** `indexCanonical`이 PR 번호를 키로 `rows.set()`을 돌려 **나중 행이 앞 행을 덮는데**, 어느 행이 이길지는 `lookupMergeNumbers`가 돌려준 순서가 정하고 그 질의에 `ORDER BY`가 없었다. 도달 경로는 **같은 PR의 이중 squash SHA**다(설계 3절이 명시적으로 상정한다). `merge_sequence_numbered_pr_uk`가 `WHERE merge_number IS NOT NULL` 부분 인덱스라 미채번 행의 중복을 막지 않고, 그 상태는 planner가 `mapping_conflict`로 멈추는 바로 그 상태이므로 두 행이 정본에 영구히 함께 남는다. 검토가 배열 순서만 바꿔 `M-1900-42`와 `pending / mapping_conflict`가 번갈아 나오는 것을 보였다 — **데이터가 전혀 바뀌지 않았는데 새로고침마다 답이 달라진다.** `FR-SEQ-008 AC-3`("부여된 M 넘버는 어떤 경우에도 다른 항목으로 옮겨 가지 않는다")과 정면으로 어긋난다. 부여된 번호를 가진 행이 언제나 이기게 하고, 둘 다 없으면 작은 서수를 고르며, 질의에도 `ORDER BY`를 두어 조회 순서 자체를 고정했다 | FR-SEQ-008 AC-3 / API-SEQ-007 / WP-074 | 구현 결함 (비결정성) | CR-080 | **resolved** — 순서를 뒤집는 변이를 적용해 시험이 잡는 것을 확인했다 |
+| DEV-602 | 2026-09-11 | **blocker 사유를 enum 검증 없이 응답에 그대로 실었다.** `mnumber_blocked_reason`은 DTO의 `merge_number_reason`으로 나가 화면이 "사유 코드: …"로 렌더하는데, 읽는 쪽이 도메인의 `isMergeNumberBlockReason`을 쓰지 않았고 DB 제약도 길이뿐이다. 검토가 그 열에 `connect ECONNREFUSED 10.0.0.4:5432`를 넣어 **접속 주소가 화면에 그대로 실리는 것**을 실행으로 보였다. 쓰기 쪽이 타입으로 막고 있어 현재 유출 경로는 없지만, 설계 9절이 "내부 예외 메시지를 reason으로 전달하지 않는다"를 정했으므로 **읽는 쪽도 한 번 더 본다** | FR-SEQ-008 / 설계 9절 / THR-006 | 방어 누락 | CR-080 | resolved — 모르는 값은 일반 대기로 접고, 아는 사유는 그대로 전한다 |
+| DEV-603 | 2026-09-11 | **planner의 멱등 재실행 분기가 생산 호출부에서 도달할 수 없다.** `existingNumber`가 있는 행을 통과시키는 갈래는, 같은 행이 `isAlreadyNumbered`도 참으로 만들어 그 아래 `mapping_conflict`에 먼저 걸린다(`listNumberedPullRequests`가 `merge_number IS NOT NULL AND pull_request_number = ANY(...)`로 조회하므로 반드시 그렇다). 기존 시험이 `isAlreadyNumbered: () => false` 대역을 써서 이 모순을 덮었고, **그 시험은 멱등을 증명하지 못한다.** 정상 경로에서는 번호와 checkpoint가 한 트랜잭션이고 공간 락이 동시 기록을 막아 이 상태가 생기지 않으므로 남긴다 — 다만 이 갈래가 대비하려던 상황이 실제로 오면 의도한 통과가 아니라 공간 전체를 멈춘다. AC-7의 실질적 보증은 `assignMergeNumbers`의 `AND (ms.merge_number IS NULL OR ms.merge_number = a.merge_number)`와 checkpoint가 하고 있다 | FR-SEQ-008 AC-7 / WP-074 | 도달 불가 코드 | CR-080 | **open** — 이 판에서 고치지 않았다. 고치려면 두 방어 중 어느 쪽이 정본인지 정해야 하고 그것은 계약 판단이다 |
+| DEV-604 | 2026-09-11 | **`DEV-594`를 고치면서 계약에 없는 키를 이벤트 payload에 실었다 — 재검증이 잡았다.** 상관 ID를 발행 시점에 복원하려고 `announce` work의 payload에 남겼는데, 그 payload를 그대로 `EVT-SEQ-004`로 내보내 **일곱 번째 키**가 실렸다. 봉투에 이미 있는 값이 payload에 중복되고 `MergeNumberAssigned` 타입이 말하는 여섯 필드와 실제로 나가는 것이 달라진다. 기존 시험이 `toMatchObject`라 추가 키를 잡지 못했다 — 재검증이 발행을 가로채 키 목록을 세어 찾았다. 발행 직전에 상관 ID를 분리해 **봉투에만** 싣는다. 오늘 깨지는 소비자는 없다(힌트 구독이 `mnumber.assigned`를 무시한다) | EVT-SEQ-004 / WP-074 | 수정이 만든 결함 | CR-080 | resolved — 키 집합 자체를 세는 시험을 세웠다 |
+| DEV-605 | 2026-09-11 | **`DEV-597`의 재색인 복구가 PR마다 왕복을 하나씩 만들었고, 꺼진 배포에 잔여 행을 남겼다 — 재검증이 잡았다.** 5만 PR 저장소면 재색인 경로에 왕복이 5만 번 들어간다. 그리고 `MNUMBER_ENABLED=false`인 배포에서는 러너가 `refresh`만 집고 `cleanupDoneWork`가 `done`만 지우므로 그 `materialize` 행들이 **영영 `ready`로 남아** 대기 지표에 잡힌다. `requestWorkBatch`로 페이지 하나를 문장 하나로 묶고, 꺼진 배포에서는 의도를 아예 만들지 않는다 — 아무도 처리하지 않을 일을 표에 쌓지 않는다. 배치가 단건과 같은 뜻인지(키·payload·generation, 진행 중 lease 보존)를 시험이 걸고, 두 `ON CONFLICT` 절이 **문자 그대로 같음**을 정규화 대조로 확인했다. 재색인이 설정을 다시 읽는 것은 그 함수가 순수하기 때문이며 그 전제도 시험으로 고정했다 | JOB-SEQ-004 / WP-074 | 수정이 만든 결함 | CR-080 | resolved |
+| DEV-606 | 2026-09-11 | **`DEV-605`의 가드가 `DEV-597`을 배포에서 조용히 무효로 만들었다 — 재검증이 잡았다.** 꺼진 배포에 잔여 행을 남기지 않으려고 재색인에 `MNUMBER_ENABLED` 가드를 뒀는데, **재색인은 `batch` 역할에서 돌고 그 컨테이너에는 이 값이 전달되지 않는다.** compose의 `app-env` 앵커에도, K8s의 batch 매니페스트에도 그 이름이 없어 `resolveMergeNumberConfig()`가 언제나 `false`를 답한다. 결과로 M을 켠 배포에서도 재색인 뒤 복구 의도가 **한 건도 생기지 않고**, 새 색인의 M이 영영 비어 `merge_number_projection_state`가 영구 `pending`이 된다 — 오류도 로그도 없이 그렇게 된다. **내가 major로 고쳤다고 적은 것이 되돌아온 것이며, 그 기록이 사실과 달라지는 것이 이 편차의 무게다.** 값을 `worker-batch`와 K8s batch에 전달했다. **회귀가 개수가 아니라 서비스 이름으로 센다** — 개수만 세면 한 곳을 빼고 다른 곳에 둘을 둬도 통과한다. `web`에 주지 않는다는 `DEV-589`의 결정은 그대로다 | JOB-SEQ-004 / WP-074 / DEV-597 | 수정이 만든 결함 (배포 배선) | CR-080 | **resolved** — 플래그를 빼는 변이를 적용해 시험이 잡는 것을 확인했다 |
+| DEV-607 | 2026-09-11 | **`DEV-606`을 고치면서 `batch` 역할이 채번 설정 전체를 검증하게 됐다 — 내가 리뷰어에게 물으며 직접 찾았다.** 재색인이 플래그를 읽도록 `resolveMergeNumberConfig()`를 불렀는데, 그 함수는 `MNUMBER_BATCH_SIZE`·`MNUMBER_POLL_MS` 같은 **채번 전용 값까지 검증하고 범위를 벗어나면 던진다**(실측: `MNUMBER_BATCH_SIZE=9999` → `1..1000의 정수여야 한다`). 그러면 채번과 무관한 `batch` 역할이 채번 설정 때문에 기동하지 못하고 **정리·보존·재색인이 함께 죽는다.** 그 검증은 그 값을 실제로 쓰는 `sequence` 역할의 몫이다. 재색인은 **플래그 한 값만** 읽게 했고, 켜짐의 정의(`'true'` 하나)가 두 곳에서 같다는 것을 회귀가 고정한다. **주석이 아니라 실제 코드를 본다** — 왜 부르지 않는지 설명하는 주석에 그 함수 이름을 적는 것은 막을 이유가 없다 | JOB-SEQ-004 / WP-074 / DEV-606 | 수정이 만든 결함 (기동 결합) | CR-080 | **resolved** — 되돌리는 변이를 적용해 시험이 잡는 것을 확인했다 |
+| DEV-608 | 2026-09-11 | **M 켜짐의 정의가 세 곳에 흩어져 이미 갈라져 있었다 — 독립 검토가 실측 표로 보였다.** 세 구현(`search-api`의 `resolveMergeNumberEnabled`, 워커의 `resolveMergeNumberConfig`, `DEV-607`이 만든 인라인 판정)을 같은 입력으로 부르니 **일곱 중 셋에서 답이 달랐다.** 빈 문자열에 `search-api`는 `false`인데 워커는 던졌고(`??`가 `''`를 잡지 않아 그대로 내려간다), `yes`·`TRUE`에 두 곳은 던지는데 `batch`만 **조용히 꺼졌다** — 그것이 `DEV-606`에서 고친 실패 모양 그대로다. K8s는 매니페스트가 역할마다 따로라 configmap의 빈 값 하나가 `worker-sequence`만 죽이는 경로가 실재한다. **단언이 아니라 구조로 막았다** — 워커에 `resolveMergeNumberEnabled`를 두고 `resolveMergeNumberConfig`와 batch 블록이 **둘 다 그것을 부른다.** 빈 문자열은 `search-api`와 같게 꺼짐으로 맞췄다(compose가 이미 빈 값을 `false`로 접는다). `DEV-607`의 목적은 그대로다 — 이 함수는 채번 전용 값을 건드리지 않는다 | JOB-SEQ-004 / WP-074 / DEV-607 | 구현 분기 (역할 사이) | CR-080 | **resolved** — 회귀가 두 앱의 함수를 실제로 불러 입력 표로 건다 |
+| DEV-591 | 2026-09-11 | **목록·상세·범위 DTO가 `branch_not_tracked`를 한 번도 만들지 않았다 — 독립 리뷰가 찾았다.** `mergeNumberFieldsOf`의 2단계가 `context.trackedBranches`를 보는데 그 입력을 채우는 호출부가 하나도 없었다(`grep`으로 `src` 사용처 0건). 그래서 채번 대상이 아닌 브랜치에 머지된 PR이 `not_applicable / branch_not_tracked`가 아니라 `pending / not_sequenced`가 되고, 화면은 **"시퀀스 채번 대기"라고 말한다 — 그 PR은 영원히 채번되지 않으므로 거짓 안내다.** 같은 PR을 `API-SEQ-007`로 물으면 409 `branch_not_tracked`를 정확히 답하므로 **두 표면의 답이 갈렸다.** 화면의 "채번 비대상 브랜치" 갈래는 도달 불가능한 죽은 코드였다. `lookupMergeNumbers`가 같은 스냅숏에서 저장소의 `sequence_branches`를 함께 읽어 넘기게 했다 — 왕복이 하나 늘지만 행 수와 무관한 고정 1회다 | FR-SEQ-008 / WP-074 / 설계 9절 | 구현 누락 | CR-080 | **resolved** — 배치가 대상 브랜치를 함께 읽고, 두 표면이 같은 답을 하는 것을 시험이 건다 |
+| DEV-592 | 2026-09-11 | **해석·목록 API가 단일 read 스냅숏이 아니었다 — 한 응답이 두 세대를 섞을 수 있었다.** 계약이 "REPEATABLE READ read-only transaction 또는 단일 SQL snapshot"을 명시했는데(설계 9절·API-SEQ-007) 구현은 `Pool`에 문장을 따로 보냈고, `grep`으로 확인한 `REPEATABLE READ` 사용처가 **0건**이었다. 공간 조회가 에폭 4를 읽어 대조를 통과한 뒤 재채번이 커밋하면, 에폭 인자를 받지 않는 `lookupMergeNumbers`가 현재 공간을 따라가 에폭 5 행을 돌려준다 — 응답은 `seq_epoch: 4, epoch_stale: false`인데 `merge_seq`와 `merge_number_epoch`는 5다. 화면은 에폭 4를 적으면서 에폭 5의 링크를 만든다. `withReadSnapshot`을 두어 해석의 2~6단계와 목록 배치를 각각 한 스냅숏에 묶었다. **스냅숏은 정본 읽기에서 끝난다** — ES 조회는 네트워크 시간만큼 걸리므로 그 동안 읽기 커넥션을 붙잡으면 부하가 몰릴 때 그것이 병목이 된다(미러 락이 fetch 동안 시퀀스 트랜잭션을 열지 않는 것과 같은 규율). 처음 고칠 때는 주석만 그렇게 적고 ES 호출이 스냅숏 안에 남아 있었고, 자체 점검에서 그것을 잡아 밖으로 뺐다. 시험이 `ROLLBACK`이 ES 조회보다 먼저 나오는 것을 단언하며, 되돌리는 변이를 적용해 실제로 잡는 것을 확인했다 | FR-SEQ-008 / API-SEQ-007 / ADR-007 | 계약 미이행 | CR-080 | **resolved** — 두 경로가 `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` 안에서 돌고, 시험이 그 문장의 존재까지 단언한다 |
+| DEV-593 | 2026-09-11 | **한 push가 표본 두 행을 만들어 정상 채번에서도 영구 대기가 쌓였다.** 수신 시점에는 PR을 몰라 `pr_number IS NULL`로 행을 만들고, M 번호가 붙으면 `pr_number`를 채운 **새 행**을 만들었다. unique 키에 `pr_number`가 들어 있어 둘이 서로를 덮지 않으므로 push 행은 `mnumber_assigned_at` 없이 남아 `pending`으로 집계되고, `received_to_sequence`는 같은 push를 두 번 셌다. 운영자는 아무 문제 없는 배포에서 push 수만큼 대기가 쌓인 표를 본다 — **측정 도구가 실제 상태가 아니라 자기 구조를 보고한 것이다.** `promotePushSample`이 비어 있는 `pr_number`를 채워 같은 행을 잇게 했다. 한 push가 PR 여럿을 실어 오면 첫 PR이 그 행을 가져가고 나머지는 각자 새 행을 만든다 — 행 수가 PR 수와 같아진다 | FR-SEQ-008 AC-14 / WP-074 | 구현 결함 | CR-080 | **resolved** — 승격과 다중 PR 갈래를 실제 PostgreSQL로 건다 |
+| DEV-594 | 2026-09-11 | **`EVT-SEQ-004`만 상관 ID 없이 발행됐다.** `announce` work의 payload에 상관 ID가 없어 발행 시점에 복원할 수단이 없었고, 빈 문자열이 나갔다. `sequence.assigned`는 이미 싣고 있어 **한 push의 추적이 채번 직전에서 끊겼다.** 채번을 유발한 work의 상관 ID를 회차에 넘기고 `announce` payload에 실어 잇는다. 유발 요청이 없는 조정 스윕에는 그 회차의 새 ID를 만든다 — 빈 문자열보다 낫다 | EVT-SEQ-004 / WP-074 | 관측 누락 | CR-080 | resolved |
+| DEV-595 | 2026-09-11 | **`epoch_stale` 응답의 키 부재 단언이 계약이 정한 여덟 중 다섯만 셌다.** `merge_number_epoch`·`merge_number_reason`·`merge_number_projection_state`가 빠져 있었다. **구현은 올바르다** — 그 응답은 키 넷만 만든다. 단언이 좁으면 새 키 하나가 조용히 새어 나가도 시험이 통과한다 | API-SEQ-007 / WP-074 | 시험 공백 | CR-080 | resolved — 계약이 없다고 정한 키 전부를 센다 |
+| DEV-596 | 2026-09-11 | **`API-SEQ-007`의 검사 순서를 고정하는 시험이 없었다.** 계약이 보안 근거로 "권한 밖 repository의 실제 코드를 비교한 오류를 먼저 내지 않는다"를 정했는데, 기존 시험은 권한 밖 저장소를 **`pr_number`로만** 물었다. 코드 대조는 M 방향에서만 도므로 접근 범위 검사를 코드 대조 뒤로 옮겨도 시험이 전부 초록이었다. 그 순서가 뒤집히면 권한 밖 저장소에 M을 물었을 때 404 대신 400 `repository_code_mismatch`가 나오고 **그 차이만으로 비공개 저장소의 실재와 이름의 숫자를 알아낼 수 있다.** 구현은 현재 올바르다. 새 시험이 그 변이를 실제로 잡는 것을 변이 적용·원복으로 확인했다 | API-SEQ-007 / ADR-008 / WP-074 | 시험 공백 (보안 계약) | CR-080 | resolved |
+| DEV-597 | 2026-09-11 | **재색인이 M 값을 다시 채우지 않아 전환 뒤 관측이 영원히 대기로 남았다.** 재구축은 PostgreSQL 스냅숏에서 문서를 만드는데 스냅숏에는 M 필드가 없다(투영이 싣지 않으며 그것이 옳다). `merge_seq`는 다음 채번이 `applySequenceToDocuments`로 다시 쓰지만 **M에는 그에 해당하는 "재구축 뒤에 도는 경로"가 없어**, 전환 전에 확정된 번호는 새 색인에 하나도 없었다. **화면의 번호는 틀리지 않는다** — API가 언제나 정본을 답한다. 손상되는 것은 `merge_number_projection_state`이며 그 값에 기대는 운영 watch가 관측 완료를 판정하지 못한다. PR 재구축 뒤 채번된 PR마다 `materialize` 의도를 예약해 러너가 **payload가 아니라 그때의 정본을** 읽어 채우게 했다 — 에폭이 그 사이 오르면 obsolete로 접힌다 | FR-SEQ-008 / WP-074 / 설계 8절 | 구현 누락 | CR-080 | **resolved** — 재구축이 복구 의도를 남긴다 |
+| DEV-586 | 2026-09-11 | **검색 API 설정의 M 플래그를 선택 필드로 두었다.** `SearchApiConfig`에 필수로 넣으면 config 객체를 직접 만드는 기존 통합 시험 34개가 전부 깨진다. `searchCursorKey`와 달리 이 값은 **부재가 곧 꺼짐**이고 그 상태가 기존 계약 그대로라 fail closed의 대상이 아니다. `resolveSearchApiConfig`는 언제나 값을 채우며 소비처는 `=== true`로 읽는다. 그 34개가 꺼진 상태에서 통과하는 것이 곧 additive 증명이다 | API-SEQ-007 / WP-074 | 구현 판단 | CR-080 | resolved |
+| DEV-585 | 2026-09-11 | **GHE 자격이 없는 배포의 근거 출처를 `verified_snapshot`으로 정했다.** 설계 6.2가 그 `source_kind`를 열거했으나 어느 배포에서 쓰는지는 적지 않았다. PR 상세를 읽을 수 없으면 근거는 정본 스냅숏뿐이며, `state=merged`·`merge_commit_sha`·`base_branch`·`repository_id`가 모두 일치할 때만 확정한다. 스냅숏의 `state`는 투영이 만든 값이라 GHE 상세보다 약하므로 **자격이 있으면 상세를 우선**한다. 첫 사내 반입 형상(`AUTH_ENABLED=false`, GHE App 있음)에서는 상세 경로가 쓰인다 | FR-SEQ-008 AC-10 / WP-074 | 구현 판단 | CR-080 | resolved |
+| DEV-584 | 2026-09-11 | **채번이 남긴 `pull_request_number`를 M 근거로 승격하지 않는다.** 그 열은 채번이 색인에서 읽은 후보 힌트이고 늦게 도착한 PR이 나중에 채우기도 한다. 대신 확정 근거가 정해지면 `assignMergeNumbers`가 번호와 **함께** 그 PR 번호를 정본에 쓴다 — 근거가 정본이고 그 값이 곧 사실이다. 이미 다른 non-null PR이 있으면 `COALESCE`로 숨기지 않고 갱신 행 수 불일치로 드러나 `canonical_mismatch`가 된다 | FR-SEQ-008 AC-10 / ENT-SEQ-005 / WP-074 | 구현 판단 | CR-080 | resolved |
 | DEV-580 | 2026-09-11 | API-SEQ-007이 M 방향 epoch 생략과 임의 저장소 코드를 허용하며 integer bound가 없다. source/소비자가 아직 없음을 확인했고 배포 전 계약으로 공간·code·epoch·숫자 검증과 응답 예제를 정정했다 | FR-SEQ-008 / API-SEQ-007 / WP-074 | 문서 오류 | CR-079 | resolved — 문서 정정, 구현은 todo |
 | DEV-581 | 2026-09-11 | DEV-207의 교정 가능한 direct_push를 M의 영구 skip에 사용할 수 없다. 공식 GHE 읽기 API의 빈 결과·완전 열거에 미래 PR 연결까지 배제하는 부재 증서가 없고 현재 source도 그 증거를 저장하지 않는다. 설계는 typed 3상태·양성 증거·pending을 정했지만 production 직접 확정 판정기는 근거 미확보다. root/direct 하나가 이후 전체 M 채번을 막을 수 있다. 독립 fixture의 direct 증서로 운영 가용성을 검증한 것처럼 보고하지 않는다 | FR-SEQ-008 AC-10 / WP-074 / ADR-023 | 기술 제약 / 증거 공백 | CR-079 | open — 부재 확정 근거 확보 필요 |
 | DEV-582 | 2026-09-11 | 기존 raw_event outbox는 prs:ingest만 재발행한다. push의 sequence 요청, snapshot 뒤 재개, M DB commit 뒤 emit/ES gap을 닫는 상태가 없으며 freshness·M 시각과 원인 delivery 계측도 없다. 상세 설계 4~8·10절에 durable work·evidence·sample·lease·rollback 계약을 정의했다 | FR-SEQ-008 AC-11·14 / DEV-576 / WP-074 | 설계 공백 | CR-079 | resolved — 설계 계약 보완, 실행 검증은 todo |
@@ -201,7 +226,7 @@ CR-079 설계 전용 기록: 아래 3장 WP-074는 todo를 유지한다. 새 상
 | DEV-579 | 2026-09-11 | **`OIDC_REDIRECT_URI`가 배포 정의 어디에도 없었다.** `resolveOidcConfig`는 `OIDC_ISSUER`·`OIDC_CLIENT_ID`·`OIDC_CLIENT_SECRET`·`OIDC_REDIRECT_URI` 넷을 요구하는데 `compose.yml`은 앞의 셋만 `web`에 넘기고 `.env.example`도 셋만 적었다. 넷째 키는 계약 파일 한 곳에만 존재했다. 그래서 `AUTH_ENABLED=true`로 올리면 화면이 전부 `/auth/login`으로 리다이렉트되고 그 라우트가 `resolveOidcConfig()`에서 던져 **500이 되어 아무도 로그인할 수 없다.** 컨테이너는 초록이므로 `DEV-577`과 같은 모양이다. 사내 Pilot은 `AUTH_ENABLED=false`로 돌아 아직 밟지 않았으나, **OIDC를 켜는 순간 밟는다.** `0.1.0-pilot.3` 이후 수정 이미지로 구성 행렬을 재면서 발견했다 — `AUTH_ENABLED=true`·OIDC 값 없음에서 `/`와 `/search`가 307로 `/auth/login`에 가고 그 경로가 500이었다. `compose.yml`의 `web` 서비스와 `.env.example`에 그 키를 더하고, web 기동 검증이 **로그인 라우트가 부르는 그 함수**로 인증 구성을 편다 — 키 목록을 옮겨 적으면 다음에 키가 늘 때 같은 일이 난다. 회귀가 계약 소스에서 키를 읽어 배포 정의와 대조한다 | WP-015 / FR-AUTH-001 / API-AUTH-001 | 계약 공백 | CR-078 | resolved |
 | DEV-578 | 2026-09-11 | **세션 구성이 읽는 그룹 매핑 변수 이름이 배포 정의와 다르다.** `resolveSessionReaderConfig`는 `IDP_GROUP_ROLE_MAP`을 읽는데 `compose.yml`·`.env.example`은 `OIDC_GROUP_ROLE_MAP`만 준다. 로그인 시 실제로 역할을 부여하는 경로는 `apps/web/app/auth/callback/route.ts`이며 그쪽은 `OIDC_GROUP_ROLE_MAP`을 바르게 읽으므로 **현재 동작은 옳다.** 어긋난 쪽이 만드는 `SessionReaderConfig.groupRoleMap`은 어디에서도 소비되지 않는 사문 필드다. 그래서 이번 변경에서는 **고치지 않고 관측만 기록한다** — 사문 필드를 지우는 것도 이름을 맞추는 것도 인증 표면을 건드리므로 사내가 OIDC를 실제로 켜는 작업과 함께 판단해야 한다. 그 전까지 이 필드를 새로 읽는 코드를 더하면 언제나 빈 맵을 받는다 | FR-AUTH-001 / WP-012 | 문서 간 모순 | CR-078 | open |
 | DEV-577 | 2026-09-11 | **「기동을 막는다」고 적힌 운영 계약이 실제로는 요청마다 막았다.** `resolveSessionReaderConfig`는 운영에서 `SESSION_COOKIE_SECURE=false`를 거부하고 그 주석·`playwright.config.ts` 주석·원장 6장 검증 표가 모두 「기동을 거부한다」고 적었다. 그런데 `web`에서 그 함수를 부르는 자리는 화면과 라우트 핸들러 안, 곧 **요청 처리 경로**다. 그래서 잘못된 값으로 올리면 프로세스는 서고 `/healthz`는 아무것도 읽지 않는 상수 핸들러라 200을 내며 Docker가 `healthy`를 보고하는데 **사람이 여는 화면만 전부 500**이 된다. `compose.yml`은 이 변수를 `web`에만 넘기므로 `search-api`는 멀쩡했고, 그 비대칭이 원인을 웹 런타임의 모듈 해석 문제로 오진하게 했다. 문서 쪽 원인도 있다 — `.env.example`이 「TLS 없이 HTTP로 서비스하면 false여야 쿠키가 전달된다」고, 런북이 로그인 루프 처방으로 같은 취지를 적어 운영자를 그 값으로 보냈다. `0.1.0-pilot.3` 릴리스 이미지(ID가 릴리스 manifest와 일치)에서 요청 단위로 재현했다. **보안 계약은 그대로 두고** `apps/web/instrumentation.ts`가 기동 시점에 구성을 펴 실패하면 종료하게 했다 — Next 16.3.1의 production 서버는 `register()`가 던져도 프로세스를 살려 두고 모든 요청에 500을 내므로(실측) `throw`가 아니라 종료여야 한다. `/healthz`도 같은 판정을 읽어 503을 낸다. 문서 두 자리를 정정하고, 릴리스 산출물에 실제 이미지 런타임 게이트를 세웠다. **사내 `prsctl smoke`도 진입 화면을 실제로 요청하게 했다** — 그 명령은 `DEV-515`로 「health가 아니라 실제 조회 왕복을 건다」는 규율을 얻었는데 `web`에 대해서는 `/healthz`만 보고 있었다. 사내가 쓴 이미지와 구성으로 재면 `/healthz`는 200이고 `/`는 500이므로, 이 한 줄이 있었으면 업그레이드 직후에 드러났다 | WP-072 / FR-AUTH-001 AC-2 / NFR-005 / ADR-021 | 구현 결함 | CR-078 | resolved |
-| DEV-576 | 2026-09-10 | **push 웹훅이 미러 fetch를 트리거하지 않는다.** `apps/pipeline-worker/src/mirror-runner.ts`의 `syncByTarget`은 주석에서 "`push` 이벤트가 이 경로로 온다"고 적고 `startMirrorSweeper`의 주석도 "`push` 경로는 호출 측이 `syncByTarget`으로 잇는다"고 적지만, **저장소 전체에서 이 함수를 호출하는 코드가 없다**(테스트 포함, 실측: 정의 외에 호출부 0건). `MirrorCommitGraph.resolveHead()`는 `git rev-parse`만 수행하고 fetch하지 않으며, `FallbackCommitGraph.#try()`는 미러 **읽기가 실패했을 때만** API로 넘어가므로(`packages/github/src/commit-graph.ts:170-182`) 미러가 낡은 채로도 읽기 자체는 성공하면 폴백이 일어나지 않는다. 브랜치 push는 릴리스 신호를 내지 않는다(`packages/domain/src/release.ts`는 태그 push만 다룬다). 그래서 릴리스 경로의 `sync`도 돌지 않는다. 결과로 `mirror_enabled`가 켜진 저장소에서 `merge_seq`는 6시간 보정 스윕 이후 다음 push까지 붙지 않는다. 잡 카탈로그가 `JOB-MIR-001`의 방아쇠를 "`push` 이벤트 / 스케줄(6시간)"로 적은 것과 코드가 어긋난다. **`WP-074`의 선행 조건이다.** 회의가 요구한 "거의 실시간"은 이 결함 위에서 성립하지 않는다. **운영 환경 실측은 아직 하지 않았고, 이 판정은 코드 경로 확인에 근거한다.** | WP-020 / JOB-MIR-001 / ADR-005 | 구현 결함 | CR-077 | open |
+| DEV-576 | 2026-09-10 | **push 웹훅이 미러 fetch를 트리거하지 않는다.** `apps/pipeline-worker/src/mirror-runner.ts`의 `syncByTarget`은 주석에서 "`push` 이벤트가 이 경로로 온다"고 적고 `startMirrorSweeper`의 주석도 "`push` 경로는 호출 측이 `syncByTarget`으로 잇는다"고 적지만, **저장소 전체에서 이 함수를 호출하는 코드가 없다**(테스트 포함, 실측: 정의 외에 호출부 0건). `MirrorCommitGraph.resolveHead()`는 `git rev-parse`만 수행하고 fetch하지 않으며, `FallbackCommitGraph.#try()`는 미러 **읽기가 실패했을 때만** API로 넘어가므로(`packages/github/src/commit-graph.ts:170-182`) 미러가 낡은 채로도 읽기 자체는 성공하면 폴백이 일어나지 않는다. 브랜치 push는 릴리스 신호를 내지 않는다(`packages/domain/src/release.ts`는 태그 push만 다룬다). 그래서 릴리스 경로의 `sync`도 돌지 않는다. 결과로 `mirror_enabled`가 켜진 저장소에서 `merge_seq`는 6시간 보정 스윕 이후 다음 push까지 붙지 않는다. 잡 카탈로그가 `JOB-MIR-001`의 방아쇠를 "`push` 이벤트 / 스케줄(6시간)"로 적은 것과 코드가 어긋난다. **`WP-074`의 선행 조건이다.** 회의가 요구한 "거의 실시간"은 이 결함 위에서 성립하지 않는다. **운영 환경 실측은 아직 하지 않았고, 이 판정은 코드 경로 확인에 근거한다.** | WP-020 / JOB-MIR-001 / ADR-005 | 구현 결함 | CR-077 · CR-080 | **resolved (2026-09-11, CR-080)** — 수신이 원본과 같은 트랜잭션에 refresh 의도를 남기고 `prepareAndAssignSequence`가 미러 세션 락 아래에서 fetch → 채번 순서를 보장한다. 버스·수동·durable 세 경로가 같은 문을 쓴다. **수정 전 재현을 먼저 시험으로 고정했다** — 옛 head를 읽고 "새 커밋 없음"으로 정상 종료하는 모양이며, 그 뒤 같은 픽스처에서 freshness 진입이 새 서수를 붙인다. 운영 실측은 여전히 `NOT RUN` |
 | DEV-575 | 2026-09-10 | **CR-075를 닫으면서 필수 strict document validator 결과를 cascade에 기록하지 않았다.** 검증은 실제로 실행했으나 커밋·PR 설명에만 있고 변경 관리 정본에 없었다. PR #161 머지 후 P1 리뷰가 발견했다. CR-075 cascade에 변경 전 main과 같은 기존 오류 3건·경고 1건, 신규 issue 0건을 명시했다 | CR-075 / DEV-574 | 문서 오류 | CR-076 | resolved |
 | DEV-574 | 2026-09-10 | **CR-074 cascade가 원장에 검증 결과를 기록했다고 했지만 6.72.9장에는 결과가 없었다.** PR #160 머지 후 P2 리뷰가 발견했다. 로컬 회귀·typecheck·lint와 PR #160 CI 결과를 해당 절에 추가해 변경 관리 기록과 정본 원장을 일치시켰다 | CR-074 / DEV-573 / WP-072 | 문서 오류 | CR-075 | resolved |
 | DEV-573 | 2026-09-10 | **CR-073의 신규 회귀 두 건에 소유 WP 태그가 없었다.** 시험 이름은 DEV-571·572만 적고 바깥 describe는 CR-066, 파일 머리글은 WP-028을 가리켜 테스트→작업 패키지 추적이 끊겼다. PR #159 머지 후 P1 리뷰가 발견했다. 두 시험 이름에 WP-072를 명시해 태그만 정정했다 | WP-072 / DEV-571 / DEV-572 | 추적성 결함 | CR-074 | resolved |
@@ -5840,6 +5865,211 @@ CR-075의 strict document validator는 변경 전 `main`과 같은 기존 오류
 **실제 이미지 검사.** `docker build --target web`·`--target pipeline-worker`로 다시 만든 이미지에 `deploy/single-host/smoke-images.sh`를 걸어 통과했다 — SSR 10종 200, 해시 외부 모듈 `pg-71df57fbe79e18ab` 해석, 손 조치 흔적 없음, 두 거부 구성 모두 종료 1, `git version 2.54.0`. 같은 게이트를 `0.1.0-pilot.3` 이미지에 걸면 거부 단계에서 실패한다. `DEV-551` 스텁을 지운 컨테이너에서는 모듈 해석 검사가 `MODULE_NOT_FOUND`로 잡는다.
 
 **strict document validator.** `python3 <skill-dir>/scripts/validate_srs_prd_env.py --root <tree> --strict`를 변경 전 `main`과 변경 후 워크트리에서 각각 실행해 대조했다. 양쪽 모두 오류 4건·경고 1건으로 같으며 **신규 issue 0건**이다. 기존 항목은 정의되지 않은 요구사항 ID `FR-CSS-005` 참조, 정의되지 않은 화면 ID `D-002` 참조, `risks.md` 경로 미해소, 그리고 변경 관리·구현 원장의 미해소 placeholder 집계 둘이다 — 모두 이 CR 이전부터 있었다.
+
+### 6.76 WP-074 M 번호 — 검증 결과 (2026-09-11, CR-080)
+
+전부 `feature/wp074-squash-mnumber` 워크트리(`/tmp/pr-search-wp074-implementation`)에서 실행했다. Node 22.23.2, pnpm 10.33.0, 시작 `origin/main`은 `c1246c5`다. **사내 운영 환경에서는 아무것도 실행하지 않았다.**
+
+| 검사 | 명령 | 결과 |
+| --- | --- | --- |
+| 타입 | `pnpm typecheck` | 통과 |
+| 린트 | `pnpm lint` · `pnpm run lint:deps` | 통과 · 패키지 13개 위반 0건 |
+| 단위 | `pnpm test` | 2099 통과 · 1 skip (119 파일) |
+| 회귀 | `pnpm run test:regression` | 422 통과 (8 파일) |
+| 통합 | `pnpm run test:integration` | 1599 통과 (99 파일). 전량 실행 중 1회에서 `manual-run.test.ts`의 취소 시험 1건이 깨졌고 그 메커니즘을 `DEV-588`로 등록했다 — 이 판의 변경과 무관하며 이어진 전량 실행들이 통과했다. **CI의 첫 회차는 `DEV-590`으로 실패했고 그것을 고친 뒤 통과했다** |
+| 접근성 | `pnpm run test:a11y` | 378 통과 (17 파일) |
+| 대비 | `pnpm run test:contrast` | 232쌍 중 실패 0 |
+| e2e | `pnpm run test:e2e` | 181 통과. 전량 실행 중 1회에서 `flow-003.spec.ts:176`이 `searchbox` 값 대기에서 깨졌고 **이것은 `DEV-377`이 이미 기록한 알려진 편차다** — 뒤로가기 뒤 검색 화면 렌더가 병렬 부하에서 늦는 것이며 이 판의 변경과 무관하다(단독 14건 통과, 전량 재실행 2회 연속 181건 통과) |
+| 빌드 | `pnpm build` · `pnpm --filter @prs/web run build` | 통과 |
+
+**통합과 회귀는 실제 의존을 쓴다.** PostgreSQL에 마이그레이션 025를 실제로 걸었고, 회귀의 기대값은 실제 `git rev-list --first-parent --reverse`가 만든다 — 구현의 planner가 낸 값을 기대값으로 가져오지 않는다(실행서 4장). ES와 GHE는 대역이며 **실제 GHE PR 제목은 읽지도 쓰지도 않았다.**
+
+#### 계층별 신규 시험
+
+| 계층 | 파일 | 무엇을 거는가 |
+| --- | --- | --- |
+| 단위 | `packages/domain/src/mnumber.test.ts` | 표기·파싱·BigInt 범위·저장소 코드(유일 숫자 run, 선행 0 보존) |
+| 단위 | `apps/pipeline-worker/src/mnumber-plan.test.ts` | 순수 planner — 순서, 첫 미확정에서 멈춤, 직접 푸시가 번호를 소비하지 않음, 충돌, `merged_at` 대조, 정수 상한 |
+| 단위 | `apps/pipeline-worker/src/mnumber-hint.test.ts` | 소비자 그룹이 `link`·`commit-enrich`와 갈라져 있는가, 자기 발행을 되받지 않는가 |
+| 단위 | `apps/web/lib/merge-number.test.ts` | 배지 표시 모델, 네 query key 직렬화, 재검증 정책, 해석 응답 판정 |
+| 통합 | `packages/db/integration/merge-number-schema.test.ts` | 025의 제약·유일 색인·`sequence_work`의 generation CAS와 lease |
+| 통합 | `apps/pipeline-worker/integration/sequence/mnumber.test.ts` | squash 픽스처에서의 채번, 재개, 멱등, materialize·announce 의도 |
+| 통합 | `apps/pipeline-worker/integration/sequence/freshness.test.ts` | `DEV-576` — **수정 전 재현**과 수정 후 대조, fetch→채번 순서, 실패 시 비채번, 락 경합 |
+| 통합 | `apps/ingest-gateway/integration/refresh-intent.test.ts` | 수신과 refresh 의도가 같은 트랜잭션인가 |
+| 통합 | `apps/search-api/integration/sequence/merge-numbers.test.ts` | API-SEQ-007 — 양방향 해석, 검사 순서, 404 동일 문구, 에폭 필수 |
+| 통합 | `apps/pipeline-worker/integration/measure/measure.test.ts` | 측정 CLI가 읽기 전용으로 돌고 비밀을 출력하지 않는가 |
+| 회귀 | `regression/merge-number-vs-git.test.ts` | **우리 답과 git의 답 대조** — 순서·구성·증분 멱등 |
+| 접근성 | `apps/web/a11y/mnumber.test.tsx` | 세 화면 병기, 행별 조회 부재, 재검증 왕복 수, 60초 마감, 포커스 유지, axe 0건 |
+| e2e | `apps/web/e2e/mnumber.spec.ts` | 배지 링크로 실제 이동, 뒤로가기가 경유지를 건너뜀, 복사한 URL 재현, 실제 왕복 수 |
+
+#### T01~T06 수용 항목 — 실제로 어디서 걸리는가
+
+실행서 4장의 표가 지정한 시험 파일 이름 둘(`mnumber-evidence.test.ts`, `mnumber-resume.test.ts`)은 만들지 않았다. 같은 픽스처를 쓰는 항목을 `integration/sequence/mnumber.test.ts` 하나에 모았고, 파일이 갈리면 squash 픽스처를 두 번 만들어 실행이 두 배로 느려진다. **거는 내용은 표 그대로다.**
+
+| 항목 | 어디서 거는가 | 상태 |
+| --- | --- | --- |
+| T01 | `mnumber-plan.test.ts` · `integration/sequence/mnumber.test.ts` · `regression/merge-number-vs-git.test.ts` | 통과 |
+| T02a | `integration/sequence/mnumber.test.ts` — 빈 조회는 부재 증명이 아니다, 검증된 스냅숏만 근거 | 통과 |
+| T02b | 같은 파일 — 뒤늦은 스냅숏이 재개 의도를 남기고 새 push 없이 번호가 이어 붙는다 | 통과 (`DEV-590` 계기로 보강) |
+| T02c | 같은 파일 — `mapping_conflict` 둘 | 통과 |
+| T03a·T03b | `integration/sequence/freshness.test.ts` — 수정 전 재현 포함 | 통과 |
+| T03c | `apps/ingest-gateway/integration/refresh-intent.test.ts` | 통과 |
+| T04a | `integration/sequence/mnumber.test.ts` — 커밋 직전 예외 주입으로 원자성 확인 | 통과 |
+| T04b | 같은 파일 — 러너가 announce까지 가고 문서 부재는 재시도로 남는다. **ES 부분 bulk 실패는 걸지 않았다** | 부분 |
+| T04c·T04d | 같은 파일 — 에폭 상향, `merged_at` 역전 | 통과 |
+| T05a·T05b | `apps/search-api/integration/sequence/merge-numbers.test.ts` | 통과 |
+| T05c | `apps/web/a11y/mnumber.test.tsx` · `apps/web/e2e/mnumber.spec.ts` | 통과 |
+| T05d | 같은 둘 — PR 3행에 M 대조 SQL 1회, 목록의 실제 왕복 수 | 통과 |
+| T06a | `packages/db/integration/{migrate,merge-number-schema}.test.ts` — 024↔025 왕복 | 통과 |
+| T06b | — | **NOT RUN.** 실제 이미지 빌드와 컨테이너 기동은 새 번들을 만들지 않는 범위라 돌리지 않았다 |
+| T06c | `apps/pipeline-worker/integration/measure/measure.test.ts` · `src/measure/*.test.ts` | 통과 |
+
+#### 변이 시험 10종 (실행서 5.1)
+
+각 변이마다 **기준 통과 → 변이 적용 → 대상 시험 실패 → 원복 → 기준 재통과**를 순서대로 실행하고 기록했다. 하네스는 `scratchpad/mutate.py`이며 원복 뒤 기준 재통과를 매번 확인한다.
+
+| # | 변이 | 지점 | 대상 시험 | 결과 |
+| --- | --- | --- | --- | --- |
+| M1 | `unresolved`를 direct로 처리 | `mnumber-plan.ts` | `mnumber-plan.test.ts` | kill (2/16 실패) |
+| M2 | 숫자 run이 여럿이어도 첫 run을 코드로 | `packages/domain/src/mnumber.ts` | `mnumber.test.ts` | kill (1/18) |
+| M3 | M 방향의 `seq_epoch` 누락을 현재로 보완 | `search-api/sequence/merge-numbers.ts` | 통합 `merge-numbers.test.ts` | kill (1/34) |
+| M4 | freshness `await` 제거 | `pipeline-worker/sequence.ts` | 통합 `freshness.test.ts` | kill (6/9) |
+| M5 | 미러 fetch 실패를 `ready`로 | `sequence-freshness.ts` | 통합 `freshness.test.ts` | kill (1/9) |
+| M6 | 일반 PR upsert에 M `NULL` 추가 | `pipeline-worker/documents.ts` | `documents.test.ts` | **처음 미보장** → 시험 추가 후 kill (1/39) |
+| M7 | old generation finish의 CAS 제거 | `db/repositories/sequence-work.ts` | `merge-number-schema.test.ts` | kill (1/16) |
+| M8 | commit 뒤 announce(outbox) 생략 | `pipeline-worker/mnumber.ts` | 통합 `mnumber.test.ts` | kill (2/11) |
+| M9 | 뒤늦은 스냅숏의 reconcile 예약 제거 | `pipeline-worker/snapshot.ts` | 통합 `mnumber.test.ts` | **처음 SURVIVED** → 시험 추가 후 kill (1/13) |
+| M10 | 두 논리 소비자를 같은 그룹으로 | `mnumber-hint.ts` | `mnumber-hint.test.ts` | **처음 미보장** → 시험 추가 후 kill (1/3) |
+
+**변이가 커버리지 구멍 셋을 드러냈다.** M9는 실제로 살아남았다 — 기존 통합 시험이 `reconcileMergeNumbers`를 **직접 불러** "재개하면 번호가 붙는다"만 확인했고, 그 앞 단계인 **"스냅숏 저장이 재개 의도를 같은 트랜잭션에 남기는가"**를 아무도 묻지 않았다. 남기지 않으면 늦게 온 PR 정보는 다음 push나 일일 스윕까지 아무 일도 일으키지 않는다. `recordProjectionSnapshot`을 실제로 부르는 시험 둘을 더해 닫았다(재개 요청, 그리고 낮은 버전은 요청하지 않음). M6·M10은 변이를 적용해 보기 전까지 대상 시험 자체가 없었다 — 각각 `documents.test.ts`와 새 파일 `mnumber-hint.test.ts`로 채웠다.
+
+#### `DEV-581`은 이 검증으로 닫히지 않는다
+
+회귀와 통합이 `direct_confirmed` 갈래를 통과하지만, 그 증서는 **시험이 직접 주입한 것**이다(`authoritative_absence`, `proof.fixture_seeded: true`). production 판정기는 그 상태를 만들지 않으며, 주입 전에는 첫 직접 푸시에서 멈춰 아무 번호도 붙지 않는 것이 production의 답이다. 그것을 먼저 확인하는 시험이 같은 파일에 있다. **이 장의 통과는 그 게이트를 닫지 않는다.**
+
+#### 독립 리뷰가 여덟을 더 찾았다 (`DEV-591`~`DEV-598`)
+
+작성과 검토를 나누어, 이 변경을 쓰지 않은 에이전트가 계약 문서와 코드를 1:1로 대조했다. **blocker 1건·major 4건·minor 10건**을 보고했고 그중 blocker는 실행으로 재현했다. 여기서 고친 것은 여덟이며, 나머지 minor는 아래 「고치지 않은 것」에 적는다.
+
+| 등급 | 무엇 | 어디 |
+| --- | --- | --- |
+| blocker | 재채번 중 공간에서 러너가 지연 0으로 무한 재시도 | `DEV-598` |
+| major | 해석·목록 API가 단일 read 스냅숏이 아님 | `DEV-592` |
+| major | `branch_not_tracked`를 DTO가 한 번도 만들지 않음 | `DEV-591` |
+| major | 표본 이중 행으로 정상 채번에서도 영구 대기 | `DEV-593` |
+| major | 재색인 뒤 M 값 복구 경로 없음 | `DEV-597` |
+| minor | `EVT-SEQ-004`의 상관 ID가 빈 문자열 | `DEV-594` |
+| minor | `epoch_stale` 키 부재 단언이 좁음 | `DEV-595` |
+| minor | 검사 순서를 고정하는 시험 없음 | `DEV-596` |
+
+**넷은 시험이 전부 초록인 채로 존재했다.** `branch_not_tracked`는 입력을 채우는 호출부가 없어 갈래 자체가 죽어 있었고, 검사 순서는 권한 밖 저장소를 PR 번호로만 물어 뒤집혀도 통과했다. 초록이 안전을 뜻하지 않는 자리가 이 판에서만 셋째다(`DEV-588`·`DEV-590`에 이어).
+
+**리뷰가 내 기록의 사실 오류도 잡았다.** `DEV-590`을 "병렬로 도는 시험의 경합"이라고 적었으나 통합 시험은 `fileParallelism: false`로 순차 실행이며, 실제 원인은 **앞서 끝난 파일이 남긴 잔여 행**이다. 재현 조건을 잘못 적으면 같은 부류를 다음에 조사할 때 엉뚱한 곳을 본다. 해당 문구를 고쳤다.
+
+#### 두 번째 검토가 넷을 더 찾았다 (`DEV-599`~`DEV-603`)
+
+범위를 **순수 판정 네 파일로 좁혀** 별도 에이전트에게 맡겼다. 첫 검토가 구조와 계약을 보았다면 이쪽은 경계값과 결정성을 보았고, 그래서 겹치지 않는 것이 나왔다.
+
+**가장 무거운 것은 같은 입력이 두 답을 내는 자리였다**(`DEV-601`). 한 PR에 정본 행이 둘일 때 나중 행이 앞 행을 덮는데, 어느 행이 이길지는 조회 순서가 정하고 그 질의에 `ORDER BY`가 없었다. 검토가 배열 순서만 바꿔 `M-1900-42`와 "M 번호 대기"가 번갈아 나오는 것을 보였다 — **데이터가 전혀 바뀌지 않았는데 새로고침마다 답이 달라진다.** 도달 경로는 설계 3절이 명시적으로 상정한 이중 squash SHA이며, `AC-3`이 "부여된 번호는 옮겨 가지 않는다"고 정한 것과 정면으로 어긋난다.
+
+나머지 셋은 방어가 한쪽에서만 지켜진 자리다. `formatMergeNumber`가 `code`를 보지 않아 되읽을 수 없는 문자열을 만들 수 있었고, 화면의 입력 판정이 정수·범위·중복 key에서 계약보다 느슨했으며, blocker 사유가 enum 검증 없이 응답에 실렸다 — 검토가 그 열에 접속 주소를 넣어 화면에 그대로 찍히는 것을 보였다.
+
+**`merge-number-view.ts`에 단위 시험이 없었다.** 순수 판정인데 통합 시험으로만 덮여 있었다. 결정성·결정 순서·사유 검증을 거는 10건을 세웠고, 행 선택을 되돌리는 변이를 적용해 실제로 잡는 것을 확인했다.
+
+`DEV-603`(planner의 멱등 갈래가 도달 불가)은 **열어 둔다.** 정상 경로에서는 그 상태가 생기지 않아 지금 해가 없지만, 고치려면 두 방어 중 어느 쪽이 정본인지 정해야 하고 그것은 계약 판단이다.
+
+#### 재검증이 수정의 부작용 둘을 잡았다 (`DEV-604`·`DEV-605`)
+
+고친 것을 같은 리뷰어가 다시 보게 했고, 그것이 값을 했다. **내 수정이 새 결함 둘을 만들었다.**
+
+상관 ID를 이으려고 work payload에 남긴 값이 그대로 이벤트 payload로 나가 계약에 없는 일곱 번째 키가 실렸다. 기존 시험이 부분 일치라 잡지 못했고, 재검증이 발행을 가로채 **키 목록을 세어** 찾았다. 재색인 복구는 PR마다 왕복을 만들었고 기능이 꺼진 배포에 아무도 집지 않을 행을 남겼다.
+
+**리뷰어가 자기 첫 재측정이 무효였다고 먼저 밝혔다.** 대역이 `available_at`을 무시해 defer가 기록돼도 지켜지지 않았고, 그래서 수정 뒤에도 547회가 나왔다. 대역을 실제 SQL처럼 고쳐 다시 재니 6초에 2회였고 기록된 지연이 정확히 `WORK_DEFER_MS`였다. 도구가 틀렸을 가능성을 먼저 의심한 것이 이 재검증을 믿을 수 있게 한다.
+
+**재현되지 않은 관측 하나를 함께 남긴다.** 리뷰어의 회귀 연쇄 실행 첫 회차에서 `415 passed | 5 skipped`로 한 번 끝났고, 그 5가 `merge-number-vs-git.test.ts`의 시험 수와 같아 `beforeAll`의 git 픽스처 생성이 실패했을 가능성이 있다. 이후 10회가 전부 통과해 메커니즘을 특정하지 못했으므로 편차로 올리지 않는다. **CI에서 같은 모양이 나오면 flake로 덮지 않는다** — `createSquashFixture`의 실패 출력을 먼저 본다. `DEV-588`이 비슷한 부류다.
+
+#### 마지막 재검증이 내 수정의 부작용 하나를 더 잡았다 (`DEV-606`)
+
+**같은 리뷰어에게 세 번째로 보게 한 것이 값을 했다.** `DEV-605`에서 "꺼진 배포에 아무도 집지 않을 행을 쌓지 말자"고 가드를 뒀는데, **재색인이 도는 `batch` 역할에는 그 플래그가 전달되지 않는다.** 그래서 M을 켠 배포에서도 가드가 언제나 참이 되고, `DEV-597`이 고친 것이 통째로 되돌아온다. 오류도 로그도 없다.
+
+내가 리뷰어에게 "플래그를 읽는 자리가 갈리지 않는지 봐 달라"고 물었고, 리뷰어가 **한 프로세스 안에서는 갈리지 않지만 그 일관성이 배포의 일관성을 뜻하지 않는다**고 답했다. 걱정한 방향은 맞았고 층이 틀렸다.
+
+회귀를 **개수가 아니라 서비스 이름으로** 세도록 고쳤다. 이전 단언(`toHaveLength(2)`)은 한 곳을 빼고 다른 곳에 둘을 둬도 통과한다. 이제 어느 역할이 그 값을 받는지가 목록으로 고정된다.
+
+**그 수정이 또 하나를 만들었고 이번에는 내가 찾았다**(`DEV-607`). 리뷰어에게 "환경 변수를 더한 것이 기존 배치 역할의 기동을 막지 않는지"를 물으면서 그 경로를 직접 실행해 보았는데, `resolveMergeNumberConfig()`가 채번 전용 값까지 검증하고 던진다. 재색인이 그것을 부르면 채번과 무관한 `batch`가 채번 설정 때문에 서지 않는다. **물어보려고 확인하는 과정에서 나온 것**이며, 묻기 전에 스스로 재현해 보는 편이 낫다는 사례다.
+
+리뷰어가 함께 알린 minor 둘은 남긴다. `requestWorkBatch`가 타입이 허용하는 `availableAt`을 조용히 무시하는 것과, 한 배치에 같은 키가 들어가면 PostgreSQL이 거절하는 것이다. **현재 호출부는 둘 다 만들 수 없다** — 유일 인덱스가 한 페이지에 같은 PR이 두 번 나오는 것을 막고, 호출부가 예약 시각을 넘기지 않는다. 범용 헬퍼의 방어가 없다는 사실만 적어 둔다.
+
+#### 철자를 세는 시험은 이미 갈라진 것을 보지 못한다 (`DEV-608`)
+
+`DEV-607`을 고치며 두 곳이 같은 규칙으로 읽는다는 것을 **소스에 특정 문자열이 있는지로** 걸었다. 리뷰어에게 "그것으로 충분한가"를 물었고, **충분하지 않을 뿐 아니라 지금 이미 갈라져 있다**는 답을 실측 표와 함께 받았다.
+
+| 입력 | search-api | worker sequence | worker batch |
+| --- | --- | --- | --- |
+| 빈 문자열 | `false` | **던짐** | `false` |
+| `yes` | 던짐 | 던짐 | **조용히 `false`** |
+| `TRUE` | 던짐 | 던짐 | **조용히 `false`** |
+
+철자를 세는 시험이 이것을 못 보는 이유는 셋이다. 부분 문자열의 **존재**만 보므로 다른 규칙을 한 줄 앞에 넣어도 통과하고, 포매터가 따옴표를 바꾸면 동작이 같은데도 죽으며, **이미 갈라진 상태를 애초에 볼 수 없다.** 두 문자열은 그때도 둘 다 있었고 답은 이미 달랐다.
+
+**단언을 고치는 대신 구조를 고쳤다.** 워커에 켜짐 판정을 하나 두고 설정 함수와 batch 블록이 둘 다 그것을 부른다. 회귀는 **두 앱의 함수를 실제로 불러** 입력 표를 건다 — 리팩터링에 깨지지 않고, 한쪽 규칙만 바뀌면 반드시 잡힌다. 규칙을 좁히는 변이와 넓히는 변이 둘 다로 확인했다.
+
+#### 독립 리뷰 종결 (다섯 판)
+
+작성과 검토를 나눈 것이 이 판에서 가장 값이 컸다. **blocker 1건과 major 6건이 닫혔고, 그중 여섯은 시험이 전부 초록인 채로 존재했다.**
+
+| 판 | 무엇이 나왔는가 |
+| --- | --- |
+| 1 | blocker(재채번 중 바쁜 루프) 1 · major 4 · minor 10 |
+| 2 | major(같은 입력이 두 답을 냄) 1 · minor 5 — 범위를 순수 판정 네 파일로 좁힌 별도 검토 |
+| 3 | 내 수정이 만든 부작용 2 (`EVT-SEQ-004`의 여분 키, 재색인의 PR당 왕복) |
+| 4 | 내 수정이 만든 부작용 1 (`batch`에 플래그 미전달로 M4가 조용히 되돌아감) |
+| 5 | 이미 갈라진 켜짐 판정 (실측 표로 증명) |
+
+**매번 증상이 아니라 그것이 들어온 경로를 함께 고쳤다.** 느슨한 `toMatchObject`가 여분 키를 통과시켰고, 개수 단언이 자리 바꿈을 통과시켰고, 역할 사이의 전달 누락이 배포에서만 드러났고, 철자를 세는 시험이 이미 갈라진 것을 보지 못했다. 그 넷을 각각 고쳤으므로 같은 부류가 다시 들어오면 잡힌다.
+
+**세 판이 내 수정의 부작용이었다.** 고친 것을 다시 보게 하지 않았다면 셋 다 남았을 것이고, 그중 하나는 "major를 고쳤다"는 기록이 사실과 다른 상태였다.
+
+**검증 도구 자체가 검증 대상이다.** 리뷰어가 `B1` 재측정에서 "고쳐지지 않았다"고 보고할 뻔했는데, 자기 대역이 `available_at`을 무시한다는 것을 스스로 의심하고 고쳐 다시 재고서야 맞는 값(6초에 2회, 기록된 지연이 정확히 `WORK_DEFER_MS`)이 나왔다. **틀린 도구는 조용히 틀린 답을 준다** — 이 판에서 대역이 거짓 통과를 만든 자리가 둘 더 있었다. `documents.test.ts`가 `isAlreadyNumbered: () => false` 대역으로 멱등을 증명하지 못했고(`DEV-603`), 통합 시험의 SQL 감시가 `pool.query`만 봐서 스냅숏 안의 문장을 통째로 놓쳤다.
+
+**최종 확인**에서 세 구현이 일곱 입력 전부에서 일치함을 리뷰어가 같은 표로 다시 재어 확인했고, 블로킹 결함 없음으로 리뷰를 종료했다.
+
+#### 고치지 않은 것 (minor 넷)
+
+판단해서 남겼다. 각각 이유가 있다.
+
+| 무엇 | 왜 남겼는가 |
+| --- | --- |
+| covered 판정이 앱 시계와 DB `created_at`을 비교 | 편차가 fetch 소요보다 크면 fetch가 못 본 push의 의도를 닫을 수 있다. **리뷰도 추측이라고 밝혔고 재현하지 않았다.** 편차가 그보다 작으면 안전 방향이다. 시계 의존을 없애려면 fetch 직전에 `clock_timestamp()`를 읽어야 하는데 그 변경의 영향 범위가 이 판보다 넓다 |
+| `proof`에 `resume_page` 키 | 설계 6.2의 닫힌 목록에 없다. 값은 페이지 번호라 민감하지 않고 재개에 필요하다 — **구현이 아니라 계약을 좁게 고치는 쪽**이 맞고, 그것은 CR의 일이다 |
+| `mnumber_blocked_reason`의 타입이 `string` | API로 그대로 나가는 값이라 enum으로 좁히는 편이 낫다. **지금 실제 유출은 없다** — 호출부가 고정 enum만 넘긴다. 타입과 CHECK를 함께 좁히는 것은 마이그레이션을 하나 더 만드는 일이다 |
+| 증거 수집의 git 읽기가 미러 락 밖 | 설계 4.1과 문구가 다르다. 실패하면 `profile_unverified`로 **안전하게 퇴화하고** 락 순서(미러 → 시퀀스)를 어기지도 않는다 |
+
+관측 루프의 종료 지연과 복제본 중복 관측은 `markObserved`가 최초 값만 남겨 데이터가 멱등하므로 비용만 든다. 이 판에서 고치지 않았다.
+
+#### 배포 구성이 코드와 어긋난 자리 하나 (`DEV-589`)
+
+검증 중에 찾았다. compose와 런북이 `MNUMBER_ENABLED`를 **`web`에도 주라**고 적고 있었으나 화면은 그 값을 읽지 않는다 — 응답에 M 키가 있는지로만 판단하고, M 딥링크는 서버가 내는 404 `feature_disabled`를 그대로 보인다. 그대로 두면 런북의 진단 항목이 운영자를 없는 자리로 보낸다. **코드가 아니라 구성을 고쳤다** — 켜고 끄는 자리가 둘이면 한쪽만 바꾼 형상이 "켰는데 안 보인다"로 나타나고 화면 로그로는 그것을 구분할 수 없으므로, 서버 하나가 권위인 편이 낫다. compose의 `web` 서비스에서 그 변수를 뺐고 `.env.example`과 런북이 "`search-api`와 `worker-sequence` 둘에 같은 값"으로 바뀌었다. **그 정정을 회귀가 곧바로 잡았다** — `runtime-reachability.test.ts`가 "세 배포 단위"를 요구하고 있었고, 지금은 서버 둘에 가고 `web` 블록에는 없다는 것을 함께 단언한다.
+
+#### CI가 외부 전량 실행 3회가 놓친 것을 잡았다 (`DEV-590`)
+
+`mnumber_evidence`의 `ON DELETE RESTRICT`가 **기존 통합 시험의 정리를 막았다.** 두 릴리스 시험이 `beforeAll`에서 조건 없이 `merge_sequence`를 비우는데, **앞서 끝난** M 번호 시험이 남긴 증거가 그 행을 참조해 삭제가 거절된다. 통합 시험은 순차 실행(`fileParallelism: false`)이므로 경합이 아니라 잔여 상태가 원인이고, 파일 실행 순서가 로컬과 CI에서 달라 CI에서 처음 났다. 외부에서 초록이었다는 사실이 안전을 뜻하지 않는 자리가 또 하나 생겼다.
+
+**제약을 풀지 않고 지우는 쪽을 고쳤다.** 증거가 행과 함께 조용히 사라지면 확정의 근거가 흔적 없이 없어지므로 `RESTRICT`가 옳다. 정리 순서를 `clearMergeSequence`로 모아 15개 시험 파일이 같은 함수를 쓰게 했고, 반대 방향 단언(증거가 있으면 삭제가 거절되고 순서를 지키면 지워진다)을 시험으로 세웠다.
+
+#### 문서 검사기
+
+`python3 <skill-dir>/scripts/validate_srs_prd_env.py --root <tree> --strict`를 변경 전 `main`(`/home/roqkf/pr-search`)과 변경 후 워크트리에서 각각 실행해 대조했다. 검사기 SHA-256은 `1004095624fed9bae7a8ada7a2bbe0f4c6586dbcdf20db61b07b3b8045ca7cb2`다. 양쪽 모두 오류 4건·경고 1건으로 같으며 **신규 issue 0건**이다 — 정의되지 않은 요구사항 ID `FR-CSS-005` 참조, 정의되지 않은 화면 ID `D-002` 참조, `risks.md` 경로 미해소, 그리고 변경 관리·구현 원장의 placeholder 집계 둘이며 전부 이 CR 이전부터 있었다.
+
+#### 실행하지 않은 것
+
+| 항목 | 상태 | 이유 |
+| --- | --- | --- |
+| 사내 운영 DB 마이그레이션 | `NOT RUN` | 승인 범위 밖이다 |
+| `0.1.0-pilot.4` 사내 재시험 | `NOT RUN` | 외부 작업을 막지 않기로 확정했다 |
+| 새 immutable release 발행 | `NOT RUN` | `--release`를 쓰지 않았다. `0.1.0-pilot.4` 태그·자산은 건드리지 않았다 |
+| 실제 GHE PR 제목 쓰기 | 미구현·비활성 | WP-075의 일이며 이 판의 범위 밖이다 |
+| 성능 게이트(1,000만 문서) | `NOT RUN` | 합성 데이터셋이 없다. `REL-003` Gate 5는 그대로다 |
 
 ### 6.73 PR #150 태그 복구 안내 정정 (CR-070 / DEV-559)
 

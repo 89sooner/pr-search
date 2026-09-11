@@ -202,3 +202,28 @@ export async function findPullRequestSnapshot(
   );
   return result.rows[0];
 }
+
+/**
+ * 머지 커밋 SHA로 스냅숏 후보를 찾는다 (WP-074 / 상세 설계 5.1의 1).
+ *
+ * `pull_request_snapshot_merge_commit_idx`(표현식 인덱스, 마이그레이션 025)가 받는다.
+ * **후보다** — 확정은 호출 측이 원본 PR 상세 또는 문서 필드 대조로 한다. 상한을 두는
+ * 이유는 같은 SHA를 가리키는 스냅숏이 둘 이상이면 그것이 곧 `mapping_conflict`
+ * 후보이기 때문이다.
+ */
+export async function findSnapshotsByMergeCommit(
+  db: Queryable,
+  repositoryId: number,
+  mergeCommitSha: string,
+  limit = 5,
+): Promise<readonly PullRequestSnapshotRow[]> {
+  const result = await db.query<PullRequestSnapshotRow>(
+    `SELECT repository_id, pr_number, document_version, source, document
+       FROM pull_request_snapshot
+      WHERE repository_id = $1 AND document ->> 'merge_commit_sha' = $2
+      ORDER BY pr_number ASC
+      LIMIT $3`,
+    [repositoryId, mergeCommitSha.toLowerCase(), limit],
+  );
+  return result.rows;
+}
