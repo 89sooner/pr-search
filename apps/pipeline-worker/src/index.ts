@@ -188,6 +188,14 @@ if (roles.includes('batch')) {
     pool,
     es: reindexEs,
     log: (entry) => { reindexLog({ ...entry }); },
+    /*
+     * 재색인 뒤 M 복구 의도를 남길지 (WP-074 / DEV-605).
+     *
+     * 설정을 **여기서 다시 읽는다** — `mnumberConfig`는 sequence 역할 블록에서
+     * 만들어지고 이 블록이 그보다 앞이다. 같은 함수가 같은 환경을 읽으므로 두 값이
+     * 갈리지 않는다.
+     */
+    mergeNumberEnabled: resolveMergeNumberConfig().enabled,
     links: {
       async rebuildRepository(repository) {
         let cursor: RebuildCursor | undefined;

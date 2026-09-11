@@ -32,7 +32,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { migratedPool, truncate } from '../../../../packages/db/integration/helpers.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
 import { prepareAndAssignSequence, type SequenceDeps } from '../../src/sequence.js';
-import { reconcileMergeNumbers, materializeMergeNumber, type MergeNumberDeps } from '../../src/mnumber.js';
+import { announceMergeNumbers, reconcileMergeNumbers, materializeMergeNumber, type MergeNumberDeps } from '../../src/mnumber.js';
 import type { PullRequestEvidenceSource } from '../../src/mnumber-evidence.js';
 import { runSequenceWorkOnce } from '../../src/sequence-work-runner.js';
 import { recordProjectionSnapshot } from '../../src/snapshot.js';
@@ -523,7 +523,39 @@ describe('durable 러너와 materialize/announce (T04b 일부)', () => {
     expect(works.filter((w) => w.kind === 'materialize').every((w) => w.state === 'retry')).toBe(true);
     const event = published.find((one) => one.envelope.event_name === 'mnumber.assigned');
     expect(event?.topic).toBe('prs:projected');
-    expect(event?.envelope.payload).toMatchObject({ repository_id: REPOSITORY_ID, base_branch: BRANCH, seq_epoch: 1, from_mnumber: 1, to_mnumber: 4, pull_request_numbers: [21, 25, 27, 29] });
+
+    /*
+     * **`EVT-SEQ-004`가 정한 여섯 필드 그대로다** (DEV-604).
+     *
+     * `toMatchObject`는 추가 키를 잡지 못한다 — 상관 ID를 work에 남기면서 payload에도
+     * 실렸던 것이 그래서 통과했다. 키 집합 자체를 센다.
+     */
+    expect(Object.keys(event?.envelope.payload as Record<string, unknown>).sort()).toEqual([
+      'base_branch', 'from_mnumber', 'pull_request_numbers', 'repository_id', 'seq_epoch', 'to_mnumber',
+    ]);
+    expect(event?.envelope.payload).toEqual({ repository_id: REPOSITORY_ID, base_branch: BRANCH, seq_epoch: 1, from_mnumber: 1, to_mnumber: 4, pull_request_numbers: [21, 25, 27, 29] });
+  });
+
+  /**
+   * 상관 ID는 **봉투에만** 있다 (DEV-594·DEV-604).
+   *
+   * work에 남겨야 발행 시점에 복원할 수 있지만, 봉투에 이미 있는 값을 payload에
+   * 또 넣으면 타입이 말하는 것과 실제로 나가는 것이 달라진다.
+   */
+  it('**상관 ID가 봉투에 실리고 payload에는 없다** (DEV-604)', async () => {
+    await seedDirect(1, origin.rootSha);
+    await seedDirect(3, origin.directSha);
+    const deps = mnumberDeps(evidenceSource(knownPrs(origin)));
+    await reconcileMergeNumbers(deps, REPOSITORY_ID, BRANCH, { correlationId: 'c-측정-1' });
+
+    const work = (await sequenceWorkRepo.listWorkForSpace(pool, REPOSITORY_ID, BRANCH)).find((one) => one.kind === 'announce');
+    expect(work?.payload['correlation_id'], 'work는 상관 ID를 남겨야 복원할 수 있다').toBe('c-측정-1');
+
+    published = [];
+    expect(await announceMergeNumbers(deps, work as NonNullable<typeof work>)).toBe('done');
+    const event = published.find((one) => one.envelope.event_name === 'mnumber.assigned');
+    expect((event?.envelope as { correlation_id?: string }).correlation_id).toBe('c-측정-1');
+    expect(event?.envelope.payload).not.toHaveProperty('correlation_id');
   });
 
   /**

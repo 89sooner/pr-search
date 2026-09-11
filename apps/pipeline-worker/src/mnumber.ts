@@ -441,14 +441,21 @@ export async function announceMergeNumbers(
 ): Promise<'done' | 'obsolete'> {
   const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, work.repository_id, work.base_branch);
   if (space === undefined || space.seq_epoch !== work.seq_epoch) return 'obsolete';
-  const payload = work.payload as unknown as MergeNumberAssigned;
+  /*
+   * **상관 ID는 봉투에만 싣는다** (DEV-604).
+   *
+   * work에는 그 값을 남겨야 발행 시점에 복원할 수 있지만(DEV-594), payload는
+   * `EVT-SEQ-004`가 정한 여섯 필드 그대로여야 한다. 봉투에 이미 있는 값을 payload에
+   * 또 넣으면 타입이 말하는 것과 실제로 나가는 것이 달라지고, 소비자는 계약에 없는
+   * 키를 보게 된다.
+   */
+  const { correlation_id: workCorrelationId, ...rest } = work.payload as { correlation_id?: unknown };
+  const payload = rest as unknown as MergeNumberAssigned;
   await deps.bus.publish(TOPICS.projected, sequencePartitionKey(work.repository_id, work.base_branch), {
     event_id: deterministicEventId(EVENT_NAMES.mergeNumberAssigned, work.work_key),
     event_name: EVENT_NAMES.mergeNumberAssigned,
     // work가 채번 회차의 상관 ID를 실어 왔으면 그것을 잇는다 (DEV-594).
-    correlation_id: typeof (work.payload as { correlation_id?: unknown }).correlation_id === 'string'
-      ? ((work.payload as { correlation_id: string }).correlation_id)
-      : '',
+    correlation_id: typeof workCorrelationId === 'string' ? workCorrelationId : '',
     occurred_at: (deps.now ?? ((): Date => new Date()))().toISOString(),
     payload,
   });

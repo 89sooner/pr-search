@@ -142,6 +142,14 @@ export interface ReindexDeps {
   readonly refresh?: boolean;
   /** 작성자 팀 동기화를 낡은 것으로 보는 기준 (WP-069 / CR-058). 시험이 좁힌다. */
   readonly authorTeamStalenessMs?: number;
+  /**
+   * M 번호가 켜진 배포인가 (WP-074 / DEV-605).
+   *
+   * **꺼져 있으면 M 복구 의도를 만들지 않는다.** 러너가 `refresh`만 집으므로 그
+   * 행들은 `ready`로 남고, `cleanupDoneWork`는 `done`만 지우므로 영영 남아 대기
+   * 지표에 잡힌다 — 아무도 처리하지 않을 일을 표에 쌓지 않는다.
+   */
+  readonly mergeNumberEnabled?: boolean;
 }
 
 function nowOf(deps: ReindexDeps): Date {
@@ -568,6 +576,8 @@ async function rebuildLinks(
  * 재구축이 ES에 직접 쓰면 그 규율이 깨진다.
  */
 async function requestMergeNumberMaterialize(deps: ReindexDeps, repository: RepositoryRow): Promise<void> {
+  // 꺼진 배포에서는 아무도 집지 않을 의도를 만들지 않는다 (DEV-605).
+  if (deps.mergeNumberEnabled !== true) return;
   const repositoryId = Number(repository.repository_id);
   for (const baseBranch of repository.sequence_branches) {
     const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repositoryId, baseBranch);
@@ -576,17 +586,23 @@ async function requestMergeNumberMaterialize(deps: ReindexDeps, repository: Repo
     for (;;) {
       const rows = await mergeSequenceRepo.listNumberedAfter(deps.pool, repositoryId, baseBranch, space.seq_epoch, afterSeq, 500);
       if (rows.length === 0) break;
-      for (const row of rows) {
-        if (row.pull_request_number === null) continue;
-        await sequenceWorkRepo.requestWork(deps.pool, {
-          kind: 'materialize',
-          repositoryId,
-          baseBranch,
-          seqEpoch: space.seq_epoch,
-          keyExtra: [row.pull_request_number],
-          payload: { pr_number: row.pull_request_number, trigger_kind: 'reindex' },
-        });
-      }
+      /*
+       * **페이지 하나가 문장 하나다** (DEV-605). PR마다 부르면 5만 PR 저장소에서
+       * 왕복이 5만 번이고 그 비용이 재색인 경로에 그대로 들어간다.
+       */
+      await sequenceWorkRepo.requestWorkBatch(
+        deps.pool,
+        rows
+          .filter((row) => row.pull_request_number !== null)
+          .map((row) => ({
+            kind: 'materialize' as const,
+            repositoryId,
+            baseBranch,
+            seqEpoch: space.seq_epoch,
+            keyExtra: [row.pull_request_number as number],
+            payload: { pr_number: row.pull_request_number, trigger_kind: 'reindex' },
+          })),
+      );
       afterSeq = Number(rows[rows.length - 1]?.merge_seq ?? afterSeq);
     }
   }

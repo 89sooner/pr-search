@@ -353,6 +353,62 @@ describe('sequence_work claim · lease · CAS (T03b · T04a)', () => {
   });
 });
 
+/**
+ * 배치 요청이 단건과 **같은 뜻이어야 한다** (`DEV-605`).
+ *
+ * 재색인이 PR마다 부르면 왕복이 PR 수만큼이므로 한 문장으로 묶었는데, 그 과정에서
+ * 의미가 달라지면 진행 중인 work를 빼앗거나 generation을 잃는다.
+ */
+describe('requestWorkBatch (DEV-605)', () => {
+  it('**단건과 같은 행을 만든다** — 키·payload·generation이 같다', async () => {
+    await workRepo.requestWorkBatch(pool, [
+      { kind: 'materialize', repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, keyExtra: [21], payload: { pr_number: 21 } },
+      { kind: 'materialize', repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, keyExtra: [25], payload: { pr_number: 25 } },
+    ]);
+    const single = await workRepo.requestWork(pool, {
+      kind: 'materialize', repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, keyExtra: [27], payload: { pr_number: 27 },
+    });
+
+    const rows = (await workRepo.listWorkForSpace(pool, REPO, BRANCH)).filter((one) => one.kind === 'materialize');
+    expect(rows).toHaveLength(3);
+    for (const row of rows) {
+      expect(row.state).toBe('ready');
+      expect(row.requested_generation).toBe(1);
+      expect(row.completed_generation).toBe(0);
+    }
+    expect(rows.find((one) => one.work_key === single.work_key)).toBeDefined();
+  });
+
+  it('같은 키를 다시 요청하면 generation만 오른다 — 단건과 같다', async () => {
+    const input = { kind: 'materialize' as const, repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, keyExtra: [21], payload: { pr_number: 21 } };
+    await workRepo.requestWorkBatch(pool, [input]);
+    await workRepo.requestWorkBatch(pool, [input]);
+    const row = (await workRepo.listWorkForSpace(pool, REPO, BRANCH)).find((one) => one.kind === 'materialize');
+    expect(row?.requested_generation).toBe(2);
+  });
+
+  it('**진행 중인 work의 lease를 빼앗지 않는다**', async () => {
+    await workRepo.requestWorkBatch(pool, [
+      { kind: 'materialize', repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, keyExtra: [21], payload: { pr_number: 21 } },
+    ]);
+    const [claimed] = await workRepo.claimDueWork(pool, { kinds: ['materialize'], limit: 10, leaseMs: 60_000 });
+    expect(claimed?.state).toBe('leased');
+
+    await workRepo.requestWorkBatch(pool, [
+      { kind: 'materialize', repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, keyExtra: [21], payload: { pr_number: 21 } },
+    ]);
+    const after = await workRepo.findWork(pool, claimed?.work_key as string);
+    // 상태와 lease는 그대로이고 새 요청은 generation으로만 남는다.
+    expect(after?.state).toBe('leased');
+    expect(after?.lease_token).toBe(claimed?.lease_token);
+    expect(after?.requested_generation).toBe(2);
+  });
+
+  it('빈 입력은 아무 문장도 보내지 않는다', async () => {
+    expect(await workRepo.requestWorkBatch(pool, [])).toBe(0);
+  });
+});
+
 describe('sequence_latency_sample', () => {
   it('stage 시각은 비어 있는 것만 채우고 관측은 최초 값만 남긴다', async () => {
     const base = { workKey: 'reconcile:[1,"main",1]', attempt: 1, repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, prNumber: 21, deliveryId: null, triggerKind: 'new_squash' as const, receivedAt: null, attemptStartedAt: new Date(), reason: null };

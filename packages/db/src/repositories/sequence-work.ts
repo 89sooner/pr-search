@@ -126,6 +126,44 @@ export interface RequestWorkInput {
  *
  * @returns 갱신된 행.
  */
+/**
+ * 같은 종류의 work 여럿을 **한 문장으로** 요청한다 (WP-074 / DEV-605).
+ *
+ * 재색인은 채번된 PR마다 `materialize` 의도를 남기는데, 5만 PR 저장소에서 하나씩
+ * 부르면 왕복이 5만 번이다. 의미는 `requestWork`와 같다 — 같은 키가 있으면
+ * generation을 올리고, `leased` 중인 행의 진행을 빼앗지 않는다.
+ *
+ * @returns 실제로 만들어졌거나 generation이 오른 행 수.
+ */
+export async function requestWorkBatch(db: Queryable, inputs: readonly RequestWorkInput[]): Promise<number> {
+  if (inputs.length === 0) return 0;
+  const keys = inputs.map((one) => spaceWorkKey(one.kind, one.repositoryId, one.baseBranch, one.seqEpoch, ...(one.keyExtra ?? [])));
+  const result = await db.query(
+    `INSERT INTO sequence_work
+       (work_key, kind, repository_id, base_branch, seq_epoch, payload, available_at)
+     SELECT k.work_key, k.kind, k.repository_id, k.base_branch, k.seq_epoch, k.payload::jsonb, now()
+       FROM unnest($1::text[], $2::text[], $3::bigint[], $4::text[], $5::bigint[], $6::text[])
+         AS k(work_key, kind, repository_id, base_branch, seq_epoch, payload)
+     ON CONFLICT (work_key) DO UPDATE
+        SET requested_generation = sequence_work.requested_generation + 1,
+            payload              = EXCLUDED.payload,
+            state                = CASE WHEN sequence_work.state = 'leased' THEN 'leased' ELSE 'ready' END,
+            available_at         = CASE WHEN sequence_work.state = 'leased' THEN sequence_work.available_at ELSE now() END,
+            attempt_count        = CASE WHEN sequence_work.state = 'leased' THEN sequence_work.attempt_count ELSE 0 END,
+            last_reason          = CASE WHEN sequence_work.state = 'leased' THEN sequence_work.last_reason ELSE NULL END,
+            updated_at           = clock_timestamp()`,
+    [
+      keys,
+      inputs.map((one) => one.kind),
+      inputs.map((one) => one.repositoryId),
+      inputs.map((one) => one.baseBranch),
+      inputs.map((one) => one.seqEpoch),
+      inputs.map((one) => JSON.stringify(one.payload)),
+    ],
+  );
+  return result.rowCount ?? 0;
+}
+
 export async function requestWork(db: Queryable, input: RequestWorkInput): Promise<SequenceWorkRow> {
   const key = spaceWorkKey(input.kind, input.repositoryId, input.baseBranch, input.seqEpoch, ...(input.keyExtra ?? []));
   const result = await db.query<SequenceWorkRow>(
