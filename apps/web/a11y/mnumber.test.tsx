@@ -301,6 +301,73 @@ describe('자동 재검증 — 현재 요청 하나를 5초 간격으로 (설계
     expect(screen.getByTestId('mnumber-badge')).toHaveTextContent('M 번호 대기');
   });
 
+  /**
+   * 번호가 붙으면 **소진 표시도 사라진다** (`DEV-609`).
+   *
+   * 60초를 다 쓴 뒤 번호가 붙었는데 배너가 남으면, 화면이 번호를 보이면서 동시에
+   * "아직 확정되지 않았습니다"라고 말한다. 그리고 다음 대기가 와도 재검증이 아예
+   * 시작되지 않는다 — `active`가 소진 표시에 막힌다.
+   */
+  it('**대기가 끝나면 소진 배너가 사라진다** (DEV-609)', async () => {
+    /** 처음에는 대기, 이후에는 확정으로 답하는 대역. */
+    let assigned = false;
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', (url: string) => {
+      calls.push(url);
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(listBody([assigned ? ASSIGNED_ROW : PENDING_ROW])),
+      } as Response);
+    });
+
+    params.current = new URLSearchParams('q=repo:acme/smp1900');
+    render(<SearchView loginPath="/auth/login" />);
+    await settle();
+
+    await tick(12);
+    expect(screen.getByTestId('mnumber-poll-exhausted')).toBeInTheDocument();
+
+    /*
+     * **"다시 확인"을 누르지 않는다.** 그 버튼은 `restart()`를 부르므로 소진 표시를
+     * 어차피 지운다 — 그 경로로 확인하면 이 시험이 아무것도 증명하지 못한다.
+     *
+     * 여기서 보려는 것은 사용자가 아무것도 하지 않았는데 **다른 경로로 번호가 붙는**
+     * 경우다. 목록이 어떤 이유로든 갱신되어 `pending`이 사라지면(탭 복귀, 다른
+     * 상호작용이 부른 재조회) 대기가 끝난 것이고, 배너는 그 사실을 따라야 한다.
+     */
+    assigned = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // 화면이 여전히 대기를 보이고 배너도 서 있다 — 갱신이 일어나지 않았다.
+    expect(screen.getByTestId('mnumber-poll-exhausted')).toBeInTheDocument();
+
+    /*
+     * 훅을 직접 본다. `pending`이 거짓이 되면 소진 표시가 지워져야 한다 — 화면이
+     * 그것을 어떤 경로로 알게 되든 상관없다.
+     */
+    const { renderHook } = await import('@testing-library/react');
+    const { usePendingRevalidation } = await import('../components/usePendingRevalidation');
+    const { result, rerender } = renderHook(
+      ({ pending }: { pending: boolean }) =>
+        usePendingRevalidation({ sessionKey: 'k', pending, enabled: true, inFlight: false, onRevalidate: () => undefined }),
+      { initialProps: { pending: true } },
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(result.current.exhausted, '60초 뒤 소진이어야 한다').toBe(true);
+
+    // 번호가 붙어 대기가 끝났다. **버튼을 누르지 않았다.**
+    rerender({ pending: false });
+    expect(result.current.exhausted, '대기가 끝났는데 소진 표시가 남았다').toBe(false);
+  });
+
   it('**포커스를 빼앗지 않는다** — 재검증은 조용한 갱신이다', async () => {
     stubFetch(listBody([PENDING_ROW]));
     params.current = new URLSearchParams('q=repo:acme/smp1900');

@@ -477,6 +477,32 @@ export async function observeMergeNumberSamples(deps: MergeNumberDeps, limit = 1
   const now = deps.now ?? ((): Date => new Date());
   const samples = await sequenceLatencyRepo.listUnobservedAssigned(deps.pool, limit);
   let observed = 0;
+
+  /*
+   * **정본은 한 번에 묻는다** (DEV-610).
+   *
+   * 표본마다 물으면 기본 한도 100에서 왕복이 100번이고, 그것이 2초마다 돈다.
+   * `lookupMergeNumbers`는 이미 튜플 목록을 받으므로 묶는 비용이 없다 — 목록·상세가
+   * 페이지를 한 번에 묻는 것과 같은 규율이다 (ADR-023 C5).
+   *
+   * ES는 묶지 않는다. 문서마다 조회가 필요하고, 여기서 보려는 것이 **실제 검색
+   * hit**이라 그 한 번을 줄이면 관측의 뜻이 달라진다.
+   */
+  const tuples = samples
+    .filter((one) => one.pr_number !== null)
+    .map((one) => ({ repositoryId: one.repository_id, baseBranch: one.base_branch, prNumber: one.pr_number as number }));
+  let canonical: Awaited<ReturnType<typeof mergeSequenceRepo.lookupMergeNumbers>>['rows'] = [];
+  try {
+    canonical = (await mergeSequenceRepo.lookupMergeNumbers(deps.pool, tuples)).rows;
+  } catch {
+    // 정본을 읽지 못했다. 이번 회차는 아무것도 관측하지 않고 다음 회차가 다시 본다.
+    deps.metrics.measurementMissing.inc({ stage: 'observe' });
+    return 0;
+  }
+  const expectedOf = new Map(
+    canonical.map((row) => [`${String(row.repository_id)}\u0000${row.base_branch}\u0000${String(row.pull_request_number)}`, row]),
+  );
+
   for (const sample of samples) {
     if (sample.pr_number === null) continue;
     const age = now().getTime() - sample.created_at.getTime();
@@ -486,10 +512,7 @@ export async function observeMergeNumberSamples(deps: MergeNumberDeps, limit = 1
       if (sample.reason === null) await sequenceLatencyRepo.markObservationTimedOut(deps.pool, sample.sample_id, 'observation_timeout');
     }
     try {
-      const lookup = await mergeSequenceRepo.lookupMergeNumbers(deps.pool, [
-        { repositoryId: sample.repository_id, baseBranch: sample.base_branch, prNumber: sample.pr_number },
-      ]);
-      const expected = lookup.rows[0];
+      const expected = expectedOf.get(`${String(sample.repository_id)}\u0000${sample.base_branch}\u0000${String(sample.pr_number)}`);
       const projection = await readMergeNumberProjectionInternal(deps.es, sample.repository_id, sample.pr_number);
       const visible =
         expected !== undefined &&

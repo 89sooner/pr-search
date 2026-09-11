@@ -68,9 +68,21 @@ export function usePendingRevalidation(options: PendingRevalidationOptions): Pen
     setExhausted(false);
   }, [sessionKey]);
 
-  // pending이 사라지면 창도 닫는다 — 다음 pending은 새 60초를 받는다.
+  /*
+   * pending이 사라지면 창을 닫고 **소진 표시도 함께 지운다** (DEV-609).
+   *
+   * 60초를 다 쓴 뒤 사용자가 수동으로 새로고침하거나 다른 경로로 번호가 붙으면
+   * 대기가 끝난 것이다. 그런데 `exhausted`를 남겨 두면 **번호가 보이는 화면 옆에
+   * "아직 확정되지 않았습니다" 배너가 그대로 서 있다** — 화면이 두 가지를 동시에
+   * 말한다. 그리고 다음 pending이 오면 `active`가 `!exhausted`에 막혀 재검증이
+   * 아예 시작되지 않는다.
+   *
+   * 대기가 끝났다는 사실이 곧 그 표시를 지울 근거다.
+   */
   useEffect(() => {
-    if (!pending) setStartedAt(null);
+    if (pending) return;
+    setStartedAt(null);
+    setExhausted(false);
   }, [pending]);
 
   const active = pending && enabled && !exhausted;

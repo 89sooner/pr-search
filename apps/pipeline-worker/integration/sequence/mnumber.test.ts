@@ -24,6 +24,7 @@ import {
   mnumberEvidenceRepo,
   prSnapshotRepo,
   repositoryRepo,
+  sequenceLatencyRepo,
   sequenceSpaceRepo,
   sequenceWorkRepo,
   type Pool,
@@ -32,7 +33,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { migratedPool, truncate } from '../../../../packages/db/integration/helpers.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
 import { prepareAndAssignSequence, type SequenceDeps } from '../../src/sequence.js';
-import { announceMergeNumbers, reconcileMergeNumbers, materializeMergeNumber, type MergeNumberDeps } from '../../src/mnumber.js';
+import { announceMergeNumbers, observeMergeNumberSamples, reconcileMergeNumbers, materializeMergeNumber, type MergeNumberDeps } from '../../src/mnumber.js';
 import type { PullRequestEvidenceSource } from '../../src/mnumber-evidence.js';
 import { runSequenceWorkOnce } from '../../src/sequence-work-runner.js';
 import { recordProjectionSnapshot } from '../../src/snapshot.js';
@@ -653,5 +654,71 @@ describe('durable 러너와 materialize/announce (T04b 일부)', () => {
     expect(stale).toBe('obsolete');
     const missing = await materializeMergeNumber(deps, { repository_id: REPOSITORY_ID, base_branch: BRANCH, seq_epoch: 1, payload: { pr_number: 21 } });
     expect(missing).toBe('document_missing');
+  });
+});
+
+/**
+ * 관측 루프 (WP-074 / 설계 7절, `DEV-610`).
+ *
+ * ES bulk ACK는 가시성이 아니다. 실제 `_search` hit의 값이 정본과 같을 때만 관측
+ * 시각을 남긴다. 여기서 함께 거는 것은 **그 확인의 비용**이다 — 표본마다 정본을
+ * 물으면 기본 한도 100에서 왕복이 100번이고 그것이 2초마다 돈다.
+ */
+describe('관측 루프가 정본을 한 번에 묻는다 (DEV-610)', () => {
+  /** 이 회차가 실행한 SQL. 표본 수와 무관하게 고정인지 센다. */
+  function countingPool(): { pool: Pool; lookups: string[] } {
+    const lookups: string[] = [];
+    const proxy = new Proxy(pool, {
+      get(target, property, receiver) {
+        if (property === 'query') {
+          return (...args: unknown[]): unknown => {
+            const first = args[0];
+            const text = typeof first === 'string' ? first : String((first as { text?: string }).text ?? '');
+            if (text.includes('FROM merge_sequence ms') && text.includes('unnest')) lookups.push(text);
+            return (target.query as (...a: unknown[]) => unknown).apply(target, args);
+          };
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    }) as Pool;
+    return { pool: proxy, lookups };
+  }
+
+  it('**표본 셋에 정본 조회가 1회다** — 표본마다 묻지 않는다', async () => {
+    await seedDirect(1, origin.rootSha);
+    await seedDirect(3, origin.directSha);
+    await reconcileMergeNumbers(mnumberDeps(evidenceSource(knownPrs(origin))), REPOSITORY_ID, BRANCH);
+
+    // 번호를 받은 PR마다 표본이 하나씩 있다.
+    const samples = await sequenceLatencyRepo.listUnobservedAssigned(pool, 100);
+    expect(samples.length).toBeGreaterThanOrEqual(3);
+
+    const counting = countingPool();
+    const deps = mnumberDeps(evidenceSource(knownPrs(origin)), { pool: counting.pool });
+    await observeMergeNumberSamples(deps, 100);
+
+    expect(counting.lookups).toHaveLength(1);
+  });
+
+  it('정본을 읽지 못하면 아무것도 관측하지 않는다 — 없는 사실을 남기지 않는다', async () => {
+    await seedDirect(1, origin.rootSha);
+    await seedDirect(3, origin.directSha);
+    await reconcileMergeNumbers(mnumberDeps(evidenceSource(knownPrs(origin))), REPOSITORY_ID, BRANCH);
+
+    const failing = {
+      ...pool,
+      query: (...args: unknown[]): unknown => {
+        const first = args[0];
+        const text = typeof first === 'string' ? first : String((first as { text?: string }).text ?? '');
+        if (text.includes('FROM merge_sequence ms')) return Promise.reject(new Error('시험이 주입한 조회 실패'));
+        return (pool.query as (...a: unknown[]) => unknown).apply(pool, args);
+      },
+    } as unknown as Pool;
+
+    const deps = mnumberDeps(evidenceSource(knownPrs(origin)), { pool: failing });
+    expect(await observeMergeNumberSamples(deps, 100)).toBe(0);
+
+    // 표본은 그대로 미관측이다 — 다음 회차가 다시 본다.
+    expect((await sequenceLatencyRepo.listUnobservedAssigned(pool, 100)).length).toBeGreaterThan(0);
   });
 });
