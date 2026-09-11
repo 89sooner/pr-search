@@ -50,3 +50,43 @@
     compose.yml x-app-env와 .env.example에 GIT_SSL_CAINFO 항목 추가 필요 |
     worker-mirror / JOB-MIR-001 | 운영 발견 | 없음 | open |
   ```
+
+---
+
+## FR-NEW — 사내 GHE OAuth2 직접 인증 지원
+
+**요청 배경**: 사내망 배포 환경에서 별도 OIDC IdP(Keycloak 등) 없이 **이미 있는 사내 GHE 계정으로 바로 로그인**하고 싶다. 현재 코드는 표준 OIDC(JWT + JWKS 검증)만 지원하는데, 사내 GHE는 OIDC 디스커버리 엔드포인트가 없어 직접 쓸 수 없다. Dex 같은 미들웨어를 따로 띄우는 것은 운영 부담이 크다.
+
+**추가 요청**: 파일럿·개발 환경에서 TLS 없이 테스트할 수 있도록 `SESSION_COOKIE_SECURE=false` + `NODE_ENV=production` 조합을 허용하는 옵션도 함께 검토해달라. 현재 코드가 이 조합에서 web 기동을 거부한다 (DEV-577).
+
+### 필요한 변경
+
+**인증 흐름 추가**
+
+- `AUTH_PROVIDER=github` 같은 새 환경 변수로 OIDC/GHE 중 선택
+- GHE OAuth2 Authorization Code Flow 구현:
+  - 인가: `https://<GHE_BASE_URL>/login/oauth/authorize`
+  - 토큰: `https://<GHE_BASE_URL>/login/oauth/access_token`
+  - 사용자 정보: `https://<GHE_API_URL>/user` + `/user/teams`
+- 기존 OIDC 흐름은 그대로 유지 (하위 호환)
+
+**권한(Role) 매핑**
+
+- OIDC의 `OIDC_GROUP_ROLE_MAP`(그룹 클레임 기반) 대신 GHE 팀/조직 멤버십으로 역할 결정
+- 예: `GHE_TEAM_ROLE_MAP=cpswdev-team/pipe-admins=admin,cpswdev-team/pipe-users=viewer`
+- GHE App 자격(`GHE_APP_ID`, `GHE_APP_PRIVATE_KEY`)이 이미 있으므로 팀 멤버십 조회 가능
+
+**`.env.example` 추가 항목**
+
+```
+# GHE OAuth2 인증 (OIDC 대신 사내 GHE를 직접 쓸 때)
+AUTH_PROVIDER=oidc          # oidc(기본) | github
+GHE_OAUTH_CLIENT_ID=        # GHE에 등록한 OAuth App의 Client ID
+GHE_OAUTH_CLIENT_SECRET=    # GHE OAuth App의 Client Secret
+GHE_TEAM_ROLE_MAP=          # <org>/<team>=<role> 쌍, 쉼표 구분
+```
+
+**`SESSION_COOKIE_SECURE` 완화 (선택)**
+
+- `NODE_ENV=production` + `SESSION_COOKIE_SECURE=false` 조합을 `AUTH_ENABLED=false` 일 때만 허용하는 방향으로 검토
+- 또는 별도 `ALLOW_INSECURE_COOKIES=true` 명시 플래그로 분리
