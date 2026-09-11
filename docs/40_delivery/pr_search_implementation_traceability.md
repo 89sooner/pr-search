@@ -5858,7 +5858,7 @@ CR-075의 strict document validator는 변경 전 `main`과 같은 기존 오류
 | 린트 | `pnpm lint` · `pnpm run lint:deps` | 통과 · 패키지 13개 위반 0건 |
 | 단위 | `pnpm test` | 2081 통과 · 1 skip (118 파일) |
 | 회귀 | `pnpm run test:regression` | 420 통과 (8 파일) |
-| 통합 | `pnpm run test:integration` | 1585 통과 (99 파일). 전량 실행 중 1회에서 `manual-run.test.ts`의 취소 시험 1건이 깨졌고 그 메커니즘을 `DEV-588`로 등록했다 — 이 판의 변경과 무관하며 이어진 전량 실행들이 통과했다. **CI의 첫 회차는 `DEV-590`으로 실패했고 그것을 고친 뒤 통과했다** |
+| 통합 | `pnpm run test:integration` | 1587 통과 (99 파일). 전량 실행 중 1회에서 `manual-run.test.ts`의 취소 시험 1건이 깨졌고 그 메커니즘을 `DEV-588`로 등록했다 — 이 판의 변경과 무관하며 이어진 전량 실행들이 통과했다. **CI의 첫 회차는 `DEV-590`으로 실패했고 그것을 고친 뒤 통과했다** |
 | 접근성 | `pnpm run test:a11y` | 378 통과 (17 파일) |
 | 대비 | `pnpm run test:contrast` | 232쌍 중 실패 0 |
 | e2e | `pnpm run test:e2e` | 181 통과 |
@@ -5883,6 +5883,28 @@ CR-075의 strict document validator는 변경 전 `main`과 같은 기존 오류
 | 회귀 | `regression/merge-number-vs-git.test.ts` | **우리 답과 git의 답 대조** — 순서·구성·증분 멱등 |
 | 접근성 | `apps/web/a11y/mnumber.test.tsx` | 세 화면 병기, 행별 조회 부재, 재검증 왕복 수, 60초 마감, 포커스 유지, axe 0건 |
 | e2e | `apps/web/e2e/mnumber.spec.ts` | 배지 링크로 실제 이동, 뒤로가기가 경유지를 건너뜀, 복사한 URL 재현, 실제 왕복 수 |
+
+#### T01~T06 수용 항목 — 실제로 어디서 걸리는가
+
+실행서 4장의 표가 지정한 시험 파일 이름 둘(`mnumber-evidence.test.ts`, `mnumber-resume.test.ts`)은 만들지 않았다. 같은 픽스처를 쓰는 항목을 `integration/sequence/mnumber.test.ts` 하나에 모았고, 파일이 갈리면 squash 픽스처를 두 번 만들어 실행이 두 배로 느려진다. **거는 내용은 표 그대로다.**
+
+| 항목 | 어디서 거는가 | 상태 |
+| --- | --- | --- |
+| T01 | `mnumber-plan.test.ts` · `integration/sequence/mnumber.test.ts` · `regression/merge-number-vs-git.test.ts` | 통과 |
+| T02a | `integration/sequence/mnumber.test.ts` — 빈 조회는 부재 증명이 아니다, 검증된 스냅숏만 근거 | 통과 |
+| T02b | 같은 파일 — 뒤늦은 스냅숏이 재개 의도를 남기고 새 push 없이 번호가 이어 붙는다 | 통과 (`DEV-590` 계기로 보강) |
+| T02c | 같은 파일 — `mapping_conflict` 둘 | 통과 |
+| T03a·T03b | `integration/sequence/freshness.test.ts` — 수정 전 재현 포함 | 통과 |
+| T03c | `apps/ingest-gateway/integration/refresh-intent.test.ts` | 통과 |
+| T04a | `integration/sequence/mnumber.test.ts` — 커밋 직전 예외 주입으로 원자성 확인 | 통과 |
+| T04b | 같은 파일 — 러너가 announce까지 가고 문서 부재는 재시도로 남는다. **ES 부분 bulk 실패는 걸지 않았다** | 부분 |
+| T04c·T04d | 같은 파일 — 에폭 상향, `merged_at` 역전 | 통과 |
+| T05a·T05b | `apps/search-api/integration/sequence/merge-numbers.test.ts` | 통과 |
+| T05c | `apps/web/a11y/mnumber.test.tsx` · `apps/web/e2e/mnumber.spec.ts` | 통과 |
+| T05d | 같은 둘 — PR 3행에 M 대조 SQL 1회, 목록의 실제 왕복 수 | 통과 |
+| T06a | `packages/db/integration/{migrate,merge-number-schema}.test.ts` — 024↔025 왕복 | 통과 |
+| T06b | — | **NOT RUN.** 실제 이미지 빌드와 컨테이너 기동은 새 번들을 만들지 않는 범위라 돌리지 않았다 |
+| T06c | `apps/pipeline-worker/integration/measure/measure.test.ts` · `src/measure/*.test.ts` | 통과 |
 
 #### 변이 시험 10종 (실행서 5.1)
 

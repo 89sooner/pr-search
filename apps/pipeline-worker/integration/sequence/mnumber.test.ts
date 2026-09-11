@@ -429,6 +429,80 @@ describe('T04c · T04d: 에폭 상향과 merged_at 대조', () => {
   });
 });
 
+/**
+ * T04a — **번호·checkpoint·전달 의도가 전부 있거나 전부 없다.**
+ *
+ * 설계 7절이 그 셋을 한 트랜잭션에 두라고 정한 이유는, 번호만 쓰이고 checkpoint가
+ * 뒤처지면 다음 회차가 같은 서수에 **다른 번호를 다시 부여하려 하고**, 반대로
+ * checkpoint만 오르면 번호 없는 구간이 영영 건너뛰어지기 때문이다.
+ *
+ * 여기서는 커밋 직전에 예외를 주입해 그 원자성을 실제로 확인한다. 대역이 아니라
+ * **진짜 PostgreSQL 트랜잭션**이 되돌리는 것을 본다.
+ */
+describe('T04a: 번호·checkpoint·전달 의도의 원자성', () => {
+  /**
+   * 특정 문장이 지나간 **뒤** 첫 `COMMIT`에서 던지는 pool 대역. 연결은 진짜다.
+   *
+   * **놓을 때 원래 함수를 되돌린다.** 연결은 풀로 돌아가 다음 시험이 다시 받으므로,
+   * 감싼 채로 두면 그 시험이 남의 주입에 걸린다 — 실제로 그렇게 다섯 건이 깨졌다.
+   */
+  function poolFailingAfter(marker: string): Pool {
+    let armed = false;
+    return {
+      ...pool,
+      query: pool.query.bind(pool),
+      connect: async () => {
+        const client = await pool.connect();
+        const originalQuery = client.query.bind(client);
+        const originalRelease = client.release.bind(client);
+        const restore = (): void => {
+          (client as { query: unknown }).query = originalQuery;
+          (client as { release: unknown }).release = originalRelease;
+        };
+        (client as { query: unknown }).query = async (...args: unknown[]) => {
+          const text = typeof args[0] === 'string' ? args[0] : String((args[0] as { text?: string })?.text ?? '');
+          if (armed && text.trim().toUpperCase().startsWith('COMMIT')) {
+            throw new Error('시험이 주입한 커밋 실패');
+          }
+          if (text.includes(marker)) armed = true;
+          return originalQuery(...(args as Parameters<typeof originalQuery>));
+        };
+        (client as { release: unknown }).release = (...args: unknown[]) => {
+          restore();
+          return originalRelease(...(args as Parameters<typeof originalRelease>));
+        };
+        return client;
+      },
+    } as unknown as Pool;
+  }
+
+  it('**커밋이 실패하면 번호도 checkpoint도 work도 남지 않는다**', async () => {
+    await seedDirect(1, origin.rootSha);
+    await seedDirect(3, origin.directSha);
+    const deps = mnumberDeps(evidenceSource(knownPrs(origin)), { pool: poolFailingAfter('mnumber_head') });
+
+    await expect(reconcileMergeNumbers(deps, REPOSITORY_ID, BRANCH)).rejects.toThrow('시험이 주입한 커밋 실패');
+
+    // 셋 다 트랜잭션 전 상태다 — 하나라도 남으면 다음 회차가 어긋난 자리에서 시작한다.
+    expect((await numbers()).map((row) => row.m)).toEqual([null, null, null, null, null, null]);
+    expect(await space()).toMatchObject({ headSeq: 0, headNumber: 0, blockedSeq: null });
+    const works = await sequenceWorkRepo.listWorkForSpace(pool, REPOSITORY_ID, BRANCH);
+    expect(works.filter((one) => one.kind === 'materialize' || one.kind === 'announce')).toEqual([]);
+  });
+
+  it('되돌린 뒤 같은 입력으로 다시 돌리면 같은 번호가 붙는다 — 실패가 번호를 소비하지 않는다', async () => {
+    await seedDirect(1, origin.rootSha);
+    await seedDirect(3, origin.directSha);
+    await expect(
+      reconcileMergeNumbers(mnumberDeps(evidenceSource(knownPrs(origin)), { pool: poolFailingAfter('mnumber_head') }), REPOSITORY_ID, BRANCH),
+    ).rejects.toThrow();
+
+    const retry = await reconcileMergeNumbers(mnumberDeps(evidenceSource(knownPrs(origin))), REPOSITORY_ID, BRANCH);
+    expect(retry).toMatchObject({ kind: 'done', assigned: 4 });
+    expect((await numbers()).map((row) => row.m)).toEqual([null, 1, null, 2, 3, 4]);
+  });
+});
+
 describe('durable 러너와 materialize/announce (T04b 일부)', () => {
   it('러너가 reconcile → materialize → announce를 공간 순서대로 처리하고 이벤트를 낸다', async () => {
     await seedDirect(1, origin.rootSha);
