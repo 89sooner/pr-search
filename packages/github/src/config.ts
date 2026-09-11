@@ -109,9 +109,19 @@ export function hasAppCredentials(config: GitHubAppConfig): boolean {
  *
  * 장래에 저장소 등록(FR-ING-009) 기반 조회로 옮기더라도 호출 측은 이 함수
  * 하나만 바라보므로 교체 지점이 한 곳이다.
+ *
+ * ## 왜 변수 이름을 인자로 받는가 (WP-075 / CR-084)
+ *
+ * 표기 전용 App은 **자기 설치 표**를 갖는다 (`GHE_ANNOTATE_INSTALLATIONS`,
+ * `FR-SEQ-009` AC-5). 형식도 검증도 같으므로 파서를 한 벌만 둔다 — 같은 형식에
+ * 검사기가 둘이면 한쪽만 고쳐지는 날이 온다. **이 함수는 주어진 이름의 값을 읽어
+ * 형태만 확인할 뿐 어떤 자격 증명도 다른 App으로 옮기지 않는다.**
  */
-export function parseInstallations(env: GitHubEnv = process.env): InstallationBinding[] {
-  const raw = (env['GHE_INSTALLATIONS'] ?? '').trim();
+export function parseInstallations(
+  env: GitHubEnv = process.env,
+  variableName = 'GHE_INSTALLATIONS',
+): InstallationBinding[] {
+  const raw = (env[variableName] ?? '').trim();
   if (raw === '') return [];
 
   const bindings: InstallationBinding[] = [];
@@ -125,12 +135,12 @@ export function parseInstallations(env: GitHubEnv = process.env): InstallationBi
     const idText = separator === -1 ? '' : item.slice(separator + 1).trim();
     const installationId = Number(idText);
     if (org === '' || !/^[0-9]+$/.test(idText) || !Number.isSafeInteger(installationId) || installationId <= 0) {
-      throw new Error(`GHE_INSTALLATIONS 항목 형식이 잘못됐다: ${item} (org:installationId)`);
+      throw new Error(`${variableName} 항목 형식이 잘못됐다: ${item} (org:installationId)`);
     }
 
     const key = org.toLowerCase();
     if (seen.has(key)) {
-      throw new Error(`GHE_INSTALLATIONS에 조직이 두 번 나온다: ${org}`);
+      throw new Error(`${variableName}에 조직이 두 번 나온다: ${org}`);
     }
     seen.add(key);
     bindings.push({ org, installationId });

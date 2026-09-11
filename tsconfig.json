@@ -23,6 +23,9 @@
       "path": "packages/github"
     },
     {
+      "path": "packages/github-annotate"
+    },
+    {
       "path": "packages/bus"
     },
     {

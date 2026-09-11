@@ -71,6 +71,14 @@ import { withMirrorLock } from './mirror-lock.js';
 import { resolveMergeNumberConfig, resolveMergeNumberEnabled, resolveSequenceGraphMode } from './mnumber-config.js';
 import { observeMergeNumberSamples, OBSERVE_POLL_MS, type MergeNumberDeps } from './mnumber.js';
 import { startMergeNumberHintWorker } from './mnumber-hint.js';
+import {
+  startAnnotateSweeper,
+  startAnnotateWorker,
+  type AnnotateDeps,
+  type AnnotateLogFields,
+  type AnnotateSweeper,
+} from './annotate.js';
+import { AnnotateClient, annotateConfigFailure, resolveAnnotateConfig } from '@prs/github-annotate';
 import { startSequenceWorkRunner, type SequenceWorkRunner } from './sequence-work-runner.js';
 import { startSequenceMetadataCleanup, type MetadataCleanup } from './sequence-metadata-cleanup.js';
 import { statSync } from 'node:fs';
@@ -1157,6 +1165,76 @@ if (roles.includes('authz')) {
   }
 }
 
+let annotateSubscription: Subscription | undefined;
+let annotateSweeper: AnnotateSweeper | undefined;
+if (roles.includes('annotate')) {
+  /*
+   * JOB-SEQ-005 (WP-075 / FR-SEQ-009, ADR-022).
+   *
+   * **GHE 쓰기 자격을 가진 유일한 역할이다.** 조회 역할과 같은 프로세스에 두지
+   * 않는 이유는 자격이 한 프로세스에 함께 있으면 분리가 배포가 아니라 약속이
+   * 되기 때문이다 (ADR-022 결정 1). 자격도 `resolveAnnotateConfig`가 표기 전용
+   * 변수에서만 읽으며 조회용 `GHE_APP_*`은 이 블록에 등장하지 않는다.
+   */
+  const annotateConfig = resolveAnnotateConfig();
+  const annotateLog = (entry: AnnotateLogFields): void => {
+    process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-005', ...entry })}\n`);
+  };
+
+  if (!annotateConfig.enabled) {
+    /*
+     * **기본값이 꺼짐이다.** 역할이 배포돼 있어도 전역 스위치가 열리기 전에는
+     * 아무것도 쓰지 않는다 — 이 코드를 받는 것만으로 남의 PR 제목이 바뀌어서는
+     * 안 된다. 구독도 걸지 않으므로 소비자 그룹조차 만들지 않는다.
+     */
+    annotateLog({
+      level: 'info',
+      message: '표기가 꺼져 있다 — GHE에 아무것도 쓰지 않는다',
+      reason: 'MNUMBER_ANNOTATE_ENABLED=false',
+    });
+  } else {
+    /*
+     * 켜 놓고 자격이 없는 배포는 **쓰기를 시도하기 전에** 멈춘다 (CR-078이 세운
+     * 규율). 조용히 꺼진 채 돌면 운영자가 켰다고 믿는 쓰기가 일어나지 않고
+     * 그것을 알아챌 신호도 없다.
+     */
+    const failure = annotateConfigFailure(annotateConfig);
+    if (failure !== null) throw new Error(`${failure} (WP-075 / JOB-SEQ-005)`);
+
+    const annotateDeps: AnnotateDeps = {
+      pool,
+      bus,
+      config: annotateConfig,
+      metrics,
+      log: annotateLog,
+      client: new AnnotateClient({
+        config: annotateConfig,
+        onResponse: (event) => {
+          // 토큰도 제목도 넘기지 않는다. 남기는 것은 어느 경로가 무엇을 답했는지뿐이다.
+          annotateLog({
+            level: 'info',
+            message: 'GHE 표기 요청',
+            method: event.method,
+            repository: `${event.owner}/${event.repo}`,
+            pull_request_number: event.pullRequestNumber,
+            status: event.status,
+            duration_ms: event.durationMs,
+          });
+        },
+      }),
+    };
+
+    annotateSubscription = await startAnnotateWorker(annotateDeps);
+    annotateSweeper = startAnnotateSweeper(annotateDeps);
+    annotateLog({
+      level: 'info',
+      message: '표기를 시작한다',
+      installations: annotateConfig.installations.length,
+      sweep_interval_ms: annotateConfig.sweepIntervalMs,
+    });
+  }
+}
+
 let shuttingDown = false;
 const shutdown = (): void => {
   if (shuttingDown) return;
@@ -1204,6 +1282,12 @@ const shutdown = (): void => {
       await repairRunner?.stop();
       await assignRunner?.stop();
       await authzSubscription?.close();
+      /*
+       * WP-075: 진행 중인 표기 회차를 마치고 나간다. PATCH 뒤 정본 갱신 전에
+       * 끊기면 그 행은 다음 회차가 제목을 다시 읽어 호출 없이 복구한다.
+       */
+      await annotateSweeper?.stop();
+      await annotateSubscription?.close();
       await authzRedisClient?.quit();
       await bus.close();
       await esClient?.close();

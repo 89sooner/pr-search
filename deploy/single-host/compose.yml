@@ -35,6 +35,23 @@ x-ghe-env: &ghe-env
   GHE_APP_PRIVATE_KEY: ${GHE_APP_PRIVATE_KEY:-}
   GHE_INSTALLATIONS: ${GHE_INSTALLATIONS:-}
 
+# **표기 전용 App의 자격이다** (WP-075 / FR-SEQ-009 AC-5, ADR-022 결정 1).
+#
+# 위 `x-ghe-env`와 **합치지 않는다.** 그 앵커에는 조회용 Data App의 키가 들어
+# 있고, 하나로 묶는 순간 조회 자격을 가진 서비스가 쓰기 자격도 함께 받는다 —
+# `THR-047`이 막으려는 바로 그 상태다. 공유하는 것은 호스트 주소뿐이며 그것은
+# 자격이 아니다.
+#
+# `MNUMBER_ANNOTATE_ENABLED`의 기본값은 `false`다. 이 정의를 받는 것만으로
+# 남의 PR 제목이 바뀌어서는 안 된다.
+x-annotate-env: &annotate-env
+  GHE_BASE_URL: ${GHE_BASE_URL:?}
+  GHE_API_URL: ${GHE_API_URL:-}
+  MNUMBER_ANNOTATE_ENABLED: ${MNUMBER_ANNOTATE_ENABLED:-false}
+  GHE_ANNOTATE_APP_ID: ${GHE_ANNOTATE_APP_ID:-}
+  GHE_ANNOTATE_PRIVATE_KEY: ${GHE_ANNOTATE_PRIVATE_KEY:-}
+  GHE_ANNOTATE_INSTALLATIONS: ${GHE_ANNOTATE_INSTALLATIONS:-}
+
 x-worker-base: &worker-base
   image: prs/pipeline-worker:${PRS_VERSION:?}
   restart: unless-stopped
@@ -368,6 +385,23 @@ services:
     environment:
       <<: [*app-env, *ghe-env]
       PIPELINE_WORKER_ROLES: authz
+      PIPELINE_WORKER_PORT: '3003'
+
+  # **GHE에 쓰는 유일한 서비스다** (JOB-SEQ-005 / WP-075, ADR-022).
+  #
+  # 조회용 `*ghe-env`를 merge하지 **않는다** — 그 앵커에 Data App의 개인 키가 있고,
+  # 여기서 받으면 "조회 자격과 쓰기 자격을 공유하지 않는다"(FR-SEQ-009 AC-5)가
+  # 배포에서 거짓이 된다. 반대로 다른 워커에는 `*annotate-env`를 주지 않는다.
+  #
+  # **인스턴스 하나는 성능 조정이 아니라 정확성 조건이다** (DEV-629). 회차가
+  # 겹치지 않게 막는 장치가 프로세스 안에만 있어, 여러 벌이 뜨면 한쪽이 붙들고
+  # 있는 이벤트를 30초 뒤 다른 쪽이 가져가 같은 행을 동시에 처리한다. 늘리려면
+  # 먼저 분산 claim이 필요하며 이 값을 올리는 것만으로는 안 된다.
+  worker-annotate:
+    <<: *worker-base
+    environment:
+      <<: [*app-env, *annotate-env]
+      PIPELINE_WORKER_ROLES: annotate
       PIPELINE_WORKER_PORT: '3003'
 
 volumes:

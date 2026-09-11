@@ -30,6 +30,7 @@ kubectl apply -f namespace.yaml
 kubectl apply -f configmap.yaml
 kubectl apply -f filebeat-configmap.yaml   # 아카이브 적재 사이드카 설정 (WP-036)
 # 시크릿은 저장소에 두지 않는다. secret.example.yaml을 보고 만든다.
+# 표기 전용 App 자격은 **별도 시크릿**이다 — annotate-secret.example.yaml을 보고 만든다 (WP-075).
 kubectl apply -f migrate-job.yaml   # 1. DB 마이그레이션
 kubectl wait --for=condition=complete job/prs-migrate -n pr-search --timeout=300s
 kubectl apply -f pipeline-worker-enrich.yaml pipeline-worker-project.yaml   # 2. 워커 (REL-001)
@@ -38,6 +39,7 @@ kubectl apply -f pipeline-worker-mirror.yaml                                #   
 kubectl apply -f pipeline-worker-link.yaml                                  #    워커 (REL-004, 관계 파생)
 kubectl apply -f pipeline-worker-batch.yaml                                 #    워커 (배치 잡 — JOB-ING-006 재색인 · JOB-ING-007 아웃박스 재적재)
 kubectl apply -f pipeline-worker-authz.yaml                                 #    워커 (권한 캐시 무효화 — JOB-AUTH-001, 접근 통제 축)
+kubectl apply -f pipeline-worker-annotate.yaml                              #    워커 (PR 제목 M 넘버 표기 — JOB-SEQ-005, 기본 꺼짐)
 kubectl apply -f search-api.yaml ingest-gateway.yaml                        # 3. API
 ```
 
@@ -46,6 +48,8 @@ kubectl apply -f search-api.yaml ingest-gateway.yaml                        # 3.
 **`pipeline-worker-authz.yaml`은 CR-048이 신설했다** (DEV-306). 같은 모양이 접근 통제 축에서 한 번 더 있었다 — 구현은 WP-012부터 있었고 `index.ts`에 `authz` 갈래도 있었는데 **manifest만 없어** `EVT-AUTH-001`을 아무도 소비하지 않았다. 그 상태에서는 **회수된 사용자가 캐시 TTL 만료까지 그 범위로 조회한다** (FR-AUTH-003 AC-2). 역방향 회귀가 그것을 잡아 예외 목록에 올려 두었고, 이 CR이 그 예외를 지우고 파일을 만들었다.
 
 **`pipeline-worker-batch.yaml`은 CR-045가 신설했다** (DEV-292). 그전까지 인프라 3장은 그 배포 단위를 승인하고 있었고 워커 코드에도 `batch` 갈래가 있었는데 **manifest만 없었다** — 그래서 이미 구현된 JOB-ING-007(아웃박스 재적재)이 배포되지 않고 있었다. 아래 회귀는 "존재하는 파일이 목록에 있는가"만 물어서 이것을 놓쳤고, 이제 **배포 단위 표를 정본으로 삼는 역방향 검사**가 함께 있다 (DEV-293).
+
+**`pipeline-worker-annotate.yaml`은 CR-084가 신설했다** (WP-075). **자격 배선이 다른 워커와 다르다** — 이 파드만 `prs-annotate-secrets`를 받고 `prs-secrets`는 `DATABASE_URL` 한 키만 골라 받는다. `envFrom`으로 통째로 받으면 조회용 Data App의 개인 키까지 이 파드에 들어와 `FR-SEQ-009` AC-5가 배포에서 거짓이 된다. 반대로 다른 워커는 `prs-annotate-secrets`를 참조하지 않는다. **`MNUMBER_ANNOTATE_ENABLED`의 기본값이 꺼짐이므로 적용만으로는 아무 PR 제목도 바뀌지 않는다.**
 
 **여기 없는 manifest는 배포되지 않는다.** `pipeline-worker-mirror.yaml`이 그 예였다 —
 파일은 있고 회귀 시험도 그것을 확인했지만 이 목록에 없어, 절차를 따르는 운영자는

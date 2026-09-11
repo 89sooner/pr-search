@@ -690,12 +690,82 @@ done
 **`6시간 스윕`은 코드의 보정 주기이지 운영 지연 상한이 아니다.** 다음 push가 없거나
 후속 단계가 멈췄으면 그보다 길 수 있다. 보고서에 "최대 6시간 보장"을 쓰지 않는다.
 
+### 7.B PR 제목에 M 넘버를 표기하기 (WP-075 / FR-SEQ-009)
+
+**이 기능만 GHE를 고친다.** 켜면 채번이 끝난 PR의 제목이 `[M-1900-1] <원래 제목>`이
+된다. 원래 제목은 한 글자도 바뀌지 않고 접두만 앞에 붙는다. 다른 M 넘버 접두가 이미
+있으면 **덮어쓰지 않고** 불일치로 기록한다.
+
+**켜기 전에 알린다.** 제목 변경은 GHE의 PR 목록·알림·빌드 로그에 그대로 나가며, 이미
+다른 문서에 인용된 제목이 있으면 그 인용과 달라진다. 되돌리는 자동 경로는 없다
+(`ADR-022` Follow-up).
+
+1. **표기 전용 GitHub App을 새로 등록한다.** 수집용 App(`GHE_APP_ID`)과 **자격을
+   공유하지 않는다.** 권한은 **`Pull requests: write` 하나**이며 공식 문서가 제목 갱신
+   엔드포인트에 요구하는 권한이 그것뿐이다. 표기할 저장소에만 설치한다.
+
+   설치 후 설치 ID를 확인한다 — 수집용 App의 설치 ID와 **다른 값이다.**
+
+2. **`.env`에 값을 채운다.**
+
+   ```
+   MNUMBER_ANNOTATE_ENABLED=true
+   GHE_ANNOTATE_APP_ID=<표기 전용 App ID>
+   GHE_ANNOTATE_PRIVATE_KEY=<PEM, 개행은 \n으로 이스케이프>
+   GHE_ANNOTATE_INSTALLATIONS=<org>:<설치 ID>
+   ```
+
+   **켜 놓고 자격이 비어 있으면 `worker-annotate`가 기동하지 않는다.** 의도된 거부이며
+   `docker logs` 한 줄에 어느 키가 없는지 남는다.
+
+3. **`./prsctl upgrade`를 돌린다.** `.env`만 고치면 컨테이너에 반영되지 않는다.
+
+4. **먼저 한 저장소에서만 켠다.** 표기 대상은 저장소별로 끌 수 있다. 운영 콘솔의 저장소
+   설정에서 `annotate_enabled`를 끄면 그 저장소는 **채번은 계속하고 표기만 멈춘다.**
+   넓게 열기 전에 한 저장소에서 제목이 기대대로 바뀌는지 확인한다.
+
+5. **확인한다.**
+
+   ```bash
+   docker compose logs --tail 100 worker-annotate
+   ```
+
+   `표기를 시작한다`가 보이면 배선이 끝난 것이고, 표기가 일어나면 `GHE 표기 요청`이
+   메서드·저장소·PR 번호·상태 코드와 함께 남는다. 지표는 `mnumber_annotate_total{result}`와
+   `mnumber_annotate_mismatch_total`이다.
+
+**무엇이 언제 일어나는가.** 채번이 끝나면 곧바로(이벤트) 표기하고, 놓친 것은 **일 1회**
+잔여 스윕이 메운다. 그래서 이벤트가 유실되거나 쓰기 직후 프로세스가 죽어도 표기가 영영
+빠지지는 않되, 그 복구는 최대 하루가 걸린다. 급하면
+`MNUMBER_ANNOTATE_SWEEP_MS`를 줄인다.
+
+**권한 오류를 만나면 그 저장소의 표기를 스스로 멈춘다.** 권한이 없는데 반복하면 GHE
+한도만 태우기 때문이다. 이 차단은 **운영자가 적어 낸 `annotate_enabled`를 바꾸지
+않는다** — 둘은 다른 사실이고 `repository` 표의 다른 열이다. 권한을 고친 뒤에는
+쿨다운(기본 하루, `MNUMBER_ANNOTATE_BLOCK_COOLDOWN_MS`)이 지나면 스윕이 자동으로
+다시 시도한다.
+
+**차단이 권한 때문이 아닐 수도 있다.** 공식 문서가 한도로 인한 `403`과 권한 거부
+`403`을 가르는 방법을 보장하지 않아(`DEV-616`), 대기 신호가 없는 `403`은 권한으로
+다룬다. GHE의 부 한도가 그 신호 없이 오면 멀쩡한 저장소가 쿨다운만큼 멈춘다.
+그럴 때 최악 지연은 쿨다운 값과 같으므로, 표기를 처음 켜는 동안에는
+`MNUMBER_ANNOTATE_BLOCK_COOLDOWN_MS`를 짧게(예: `3600000`, 한 시간) 두었다가
+안정되면 기본값으로 돌리는 편이 낫다. `repository.annotate_blocked_reason`에 남은
+GHE 응답 문구가 두 경우를 가르는 실마리다.
+
+**끄는 방법은 둘이다.** 전체를 멈추려면 `.env`의 `MNUMBER_ANNOTATE_ENABLED=false`로
+되돌리고 `./prsctl upgrade`를, 한 저장소만 멈추려면 그 저장소의 `annotate_enabled`를
+끈다. 어느 쪽도 이미 붙은 접두를 지우지 않는다 — 지우려면 사람이 PR 제목을 직접 고친다.
+
 ---
 
 ## 8. 문제 해결
 
 | 증상 | 확인 |
 | --- | --- |
+| `worker-annotate`가 기동하지 않는다 | `MNUMBER_ANNOTATE_ENABLED=true`인데 표기 전용 App 자격이 비어 있다. `docker logs`가 없는 키 이름을 말한다. 켤 생각이 아니었다면 값을 `false`로 되돌린다 (7.B) |
+| PR 제목이 바뀌지 않는다 | 순서대로 본다 — (1) `MNUMBER_ENABLED`가 켜져 번호가 붙었는가, (2) `MNUMBER_ANNOTATE_ENABLED`가 켜졌는가, (3) 그 저장소의 `annotate_enabled`가 켜졌는가, (4) `merge_sequence.annotate_state`가 무엇인가. `mismatch`면 이미 다른 M 접두가 있어 덮지 않은 것이고, `disabled`면 저장소가 꺼진 것이며, `failed`면 다음 스윕이 다시 시도한다 |
+| 한 저장소만 표기가 멈췄다 | `repository.annotate_blocked_reason`을 본다. 표기 전용 App이 그 저장소에 설치됐는지, 권한이 `Pull requests: write`인지 확인한다. 고친 뒤에는 쿨다운이 지나면 스윕이 자동으로 다시 시도한다 — 운영자의 `annotate_enabled`는 이 차단으로 바뀌지 않았다 |
 | `load`가 `.env`가 없다고 멈춘다 (최초 설치) | **정상이다.** `.env`가 `load`보다 먼저다 (2.B 3단계, DEV-524). 아무것도 적재되지 않았으니 `.env`를 만들고 다시 실행한다 |
 | `load`·`install`이 필수 값 부재로 멈춘다 | `.env`에 값이 실제로 채워졌는가. `KEY=`만 있으면 비어 있는 것이다. 필수 키 목록은 2.B 「`.env`는 어디에 있는가」 |
 | `images/*.tar`를 `tar`로 풀었더니 파일 더미가 나온다 | 그것은 Docker 이미지 아카이브다. 풀지 말고 `./prsctl load`를 쓴다 (2.A 「아카이브가 셋이다」). 풀어 놓은 더미는 지워도 된다 |

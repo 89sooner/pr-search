@@ -34,6 +34,9 @@ const REPOSITORY = {
   snapshot_bootstrapped_at: new Date('2026-08-20T00:00:00Z'),
   last_reconciled_at: null,
   last_reconcile_missing_count: null,
+  annotate_enabled: true,
+  annotate_blocked_at: null,
+  annotate_blocked_reason: null,
 } as unknown as Parameters<typeof checkRepositoryConsistency>[1];
 
 /** 정본·색인 문서. 기본 내용은 같고, 시험이 필요할 때만 어긋뜨린다. */

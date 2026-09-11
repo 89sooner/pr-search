@@ -77,6 +77,9 @@ importers:
       '@prs/github':
         specifier: workspace:*
         version: link:../../packages/github
+      '@prs/github-annotate':
+        specifier: workspace:*
+        version: link:../../packages/github-annotate
       '@prs/metrics':
         specifier: workspace:*
         version: link:../../packages/metrics
@@ -252,6 +255,15 @@ importers:
       '@prs/domain':
         specifier: workspace:*
         version: link:../domain
+
+  packages/github-annotate:
+    dependencies:
+      '@prs/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@prs/github':
+        specifier: workspace:*
+        version: link:../github
 
   packages/metrics: {}
 

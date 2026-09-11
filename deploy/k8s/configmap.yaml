@@ -12,6 +12,13 @@ data:
   ELASTICSEARCH_NODE: http://elasticsearch.pr-search.svc.cluster.local:9200
   GHE_BASE_URL: https://ghe.example.com
 
+  # PR 제목 M 넘버 표기 (WP-075 / JOB-SEQ-005). **기본은 꺼짐이다** — 이 제품이
+  # 사람의 지시 없이 GHE를 고치는 유일한 경로이므로, 값을 켜고 표기 전용 App
+  # 자격을 채운 배포에서만 쓰기가 시작된다. 켜 놓고 자격이 없으면 그 파드는
+  # 기동을 거부한다. `MNUMBER_ENABLED`(채번)와 **다른 값이다**: 번호는 보되
+  # 제목은 아직 건드리지 않는 형상이 정상이며 사내 반입의 첫 단계가 그것이다.
+  MNUMBER_ANNOTATE_ENABLED: 'false'
+
   # 게이트웨이 (인프라 3장: graceful shutdown 30초)
   INGEST_GATEWAY_PORT: '3001'
   INGEST_SHUTDOWN_GRACE_MS: '30000'

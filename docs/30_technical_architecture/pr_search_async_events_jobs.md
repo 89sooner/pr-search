@@ -1,8 +1,8 @@
 # PR Search 비동기 작업 및 이벤트
 
-> 상태: review | 버전: v0.9 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.10 | 갱신일: 2026-09-12
 
-CR-079 / ADR-023: JOB-SEQ-004는 sequence 역할의 durable poll과 기존 EventBus를 사용한다. 원본 저장→refresh, snapshot 저장→reconcile, 번호 저장→materialize/announce가 각각 원자적이다. 기동/매초 poll·lease·generation CAS·retry·SIGTERM은 [설계](pr_search_wp074_design.md) 4~8절이 정본이다. 일일 스윕만으로 late mapping 재개를 대신하지 않는다. EVT-SEQ-004는 prs:projected에 발행하며 기존 link/commit-enrich는 이름 필터로 무시한다. ES는 sequence 역할의 durable materialize가 소유하고 WP-075 annotate 구독은 아직 추가하지 않는다.
+CR-079 / ADR-023: JOB-SEQ-004는 sequence 역할의 durable poll과 기존 EventBus를 사용한다. 원본 저장→refresh, snapshot 저장→reconcile, 번호 저장→materialize/announce가 각각 원자적이다. 기동/매초 poll·lease·generation CAS·retry·SIGTERM은 [설계](pr_search_wp074_design.md) 4~8절이 정본이다. 일일 스윕만으로 late mapping 재개를 대신하지 않는다. EVT-SEQ-004는 prs:projected에 발행하며 기존 link/commit-enrich는 이름 필터로 무시한다. ES는 sequence 역할의 durable materialize가 소유한다. **CR-084(WP-075)가 `annotate` 전용 소비자 그룹을 추가했다** — `mnumber`와 다른 group이며 전역 스위치 기본값이 꺼짐이라 켜기 전에는 구독하지 않는다.
 
 ## 1. 목적
 
@@ -463,7 +463,7 @@ JOB-ING-006의 워커는 **`batch` 역할**이다. 새 역할을 만들지 않�
 | EVT-SEQ-001 | `sequence.assigned` | sequence | project, ops | **`prs:projected`** (CR-025, DEV-121) | `{ repository_id, base_branch, seq_epoch, from_seq, to_seq, head_sha }` | 시퀀스 공간별 직렬 |
 | EVT-SEQ-002 | `sequence.reassigned` | sequence | project, 알림, ops | `prs:projected` | `{ repository_id, base_branch, old_epoch, new_epoch, diverged_at_seq, affected_count }` | 시퀀스 공간별 직렬 |
 | EVT-SEQ-003 | `sequence.stale` | sequence | ops, 알림 | `prs:projected` | `{ repository_id, base_branch, reason, last_error }` | 최신 값 우선 |
-| EVT-SEQ-004 | `mnumber.assigned` | sequence의 durable announce | 현재는 기존 소비자가 무시, 향후 WP-075 annotate 전용 그룹 | `prs:projected` | `{ repository_id, base_branch, seq_epoch, from_mnumber, to_mnumber, pull_request_numbers[] }`. 상세 설계 8절의 상한/멱등 ID. **payload는 힌트이며 소비자는 현재 epoch·정본을 재검증한다.** WP-074 ES는 독립 materialize work가 소유한다 | 공간별 멱등, 전달 순서 비의존 |
+| EVT-SEQ-004 | `mnumber.assigned` | sequence의 durable announce | `link`·`commit-enrich`·`mnumber`는 이름으로 무시하고 **`annotate` 전용 그룹이 소비한다** (WP-075 / CR-084) | `prs:projected` | `{ repository_id, base_branch, seq_epoch, from_mnumber, to_mnumber, pull_request_numbers[] }`. 상세 설계 8절의 상한/멱등 ID. **payload는 힌트이며 소비자는 현재 epoch·정본을 재검증한다.** WP-074 ES는 독립 materialize work가 소유한다 | 공간별 멱등, 전달 순서 비의존 |
 | EVT-AUTH-001 | `permission.invalidated` | ingest-gateway | authz | `prs:permission` | `{ user_ids[], team_id, repository_id, reason }` — 세 대상 필드는 모두 선택이며 **하나 이상이 있어야 한다.** `member` 웹훅은 `user_ids`, `team` 웹훅은 `team_id`, `repository` 웹훅은 `repository_id`를 채운다. 게이트웨이는 펼치지 않는다 (CR-015, DEV-041·DEV-042) | 집합 연산이라 멱등 |
 | EVT-JOB-001 | `job.progress` | 배치 워커 | ops | `prs:batch` | `{ job_id, type, target, state, progress: { done, total, unit }, cursor }` | 최신 값 우선 |
 
@@ -632,7 +632,7 @@ JOB-MIR-002는 **`commit.metadata_ready`를 받아 `commit.metadata_ready`를 �
 | JOB-SEQ-003 정합성 점검 (표본) | 1일 | 04:00 KST | 시퀀스 공간별 최근 1000개 대조. **그래프를 읽지 못하면 공간 상태를 바꾸지 않고 실패로 끝낸다** (CR-033, DEV-171) |
 | JOB-MIR-001 미러 동기화 (보정) | 6시간 | - | push 이벤트 누락 대비 |
 | JOB-SEQ-004 M 넘버 채번 (잔여 스윕) | 일 1회 | 04:30 KST | **스케줄은 보정이다.** 주 전달은 `sequence.assigned`·`sequence.reassigned`이며, 스윕은 **PR 연결이 뒤늦게 채워져 멈춰 있던 자리**를 이어받는다 (FR-SEQ-008 AC-3) |
-| JOB-SEQ-005 PR 제목 표기 (미표기 스윕) | 일 1회 | 05:30 KST | 주 전달은 `mnumber.assigned`다. 스윕은 GHE 장애·rate limit으로 밀린 표기를 메운다. `annotate_state`가 `done`·`disabled`가 아닌 행만 본다 |
+| JOB-SEQ-005 PR 제목 표기 (미표기 스윕) | 일 1회 | 05:30 KST | 주 전달은 `mnumber.assigned`다. 스윕은 GHE 장애·한도로 밀린 표기와, 쓰기 직후 프로세스가 죽어 정본에 결과를 못 남긴 행을 메운다. **`done`·`mismatch`는 끝난 상태라 다시 보지 않는다** (CR-084) — `mismatch`를 다시 보면 덮지 않기로 한 제목에 요청만 반복한다. `failed`는 일시 실패였을 수 있어 다시 보고, `disabled`는 **운영자가 저장소를 다시 켰을 때만** 대상이 된다. 다시 보는 것이 다시 쓰는 것은 아니다: 처리는 언제나 제목 조회부터이고 이미 같은 접두가 있으면 호출 없이 `done`이 된다 |
 | JOB-MIR-002 커밋 메타데이터 재보강 | 수시 | - | 스케줄 잡이 아니다. `EVT-ING-003`으로 상시 구동되며, 스케줄 항목에 적는 것은 **미보강 잔여분 스윕**뿐이다 (일 1회, 05:00 KST) |
 | JOB-AUD-001 보존 만료 | 1일 | 03:00 KST | **다가올 파티션을 먼저 보장한 뒤** 만료 파티션을 드롭한다 (CR-054, DEV-417). **대상은 `raw_event`(3년, FR-ING-003 AC-4)와 `audit_record`(1년, NFR-006) 둘뿐이다** — 인프라 9.6이 같은 잡에 얹었던 "완료 잡·해소된 DLQ 90일 정리"는 승인한 FR이 없어 CR-054가 그 귀속을 제거했다(DEV-407). **행 단위 DELETE가 아니라 파티션 DROP이며 관리 롤이 수행한다** (FR-AUTH-004 AC-3). 드롭한 파티션마다 `retention.purge`를 남긴다 |
 

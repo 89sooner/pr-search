@@ -111,6 +111,24 @@ export interface WorkerMetrics {
   readonly sequenceWorkTotal: Counter;
   /** 목록 대조에서 ES 값이 정본과 달랐던 수 (상세 설계 8절). 라벨: `field`. */
   readonly mnumberProjectionStale: Counter;
+  /**
+   * PR 제목 표기 회차 (JOB-SEQ-005 / WP-075). 라벨: `result`.
+   *
+   * 값은 고정 enum이다 — `updated`·`already_done`·`disabled`·`mismatch`·
+   * `code_unavailable`·`permission_blocked`·`rate_limited`·`superseded`·
+   * `validation_failed`·`failed`.
+   * **저장소 이름·PR 번호·제목을 라벨에 넣지 않는다**: 카디널리티가 저장소 수와
+   * PR 수만큼 늘어난다. 어느 PR이었는지는 구조화 로그와 감사 기록이 답한다.
+   */
+  readonly mnumberAnnotateTotal: Counter;
+  /**
+   * 다른 M 넘버 접두를 발견해 덮지 않은 수 (FR-SEQ-009 AC-2, ADR-022 결정 5).
+   *
+   * `mnumberAnnotateTotal{result="mismatch"}`와 같은 사실을 세지만 별도 지표로
+   * 둔다 — 이 값이 오르는 것은 조사 대상이 오염됐을 수 있다는 신호라서
+   * 라벨 필터 없이 그대로 경보에 걸 수 있어야 한다 (WP-075 지표 계약).
+   */
+  readonly mnumberAnnotateMismatchTotal: Counter;
   render(): string;
 }
 
@@ -168,6 +186,11 @@ export function createWorkerMetrics(): WorkerMetrics {
   const measurementMissing = new Counter('measurement_missing_total', '남기지 못한 지연 표본 수');
   const sequenceWorkTotal = new Counter('sequence_work_total', 'durable work 처리 결과');
   const mnumberProjectionStale = new Counter('mnumber_projection_stale_total', '정본과 다른 색인 M 값 수');
+  const mnumberAnnotateTotal = new Counter('mnumber_annotate_total', 'PR 제목 표기 회차 (JOB-SEQ-005)');
+  const mnumberAnnotateMismatchTotal = new Counter(
+    'mnumber_annotate_mismatch_total',
+    '다른 M 넘버 접두를 발견해 덮지 않은 수',
+  );
 
   return {
     enrichPending,
@@ -201,6 +224,8 @@ export function createWorkerMetrics(): WorkerMetrics {
     measurementMissing,
     sequenceWorkTotal,
     mnumberProjectionStale,
+    mnumberAnnotateTotal,
+    mnumberAnnotateMismatchTotal,
     render: (): string =>
       renderMetrics([
         enrichPending,
@@ -221,6 +246,8 @@ export function createWorkerMetrics(): WorkerMetrics {
         mnumberBlockedTotal,
         mnumberOrderMismatchTotal,
         mnumberProjectionStale,
+        mnumberAnnotateTotal,
+        mnumberAnnotateMismatchTotal,
         sequenceWorkTotal,
         releaseRefreshed,
         releaseRefreshFailed,

@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.19 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.20 | 갱신일: 2026-09-12
 
 CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025의 최종 필드·check·unique·FK·초기화·role grant·checkpoint/epoch·retention/rollback은 [상세 설계](pr_search_wp074_design.md) 6~7·10절이 소유한다. 아래 CR-077 DDL은 기본 다섯 필드만 보여주는 부분 예시이며 단독 구현하지 않는다.
 
@@ -20,7 +20,7 @@ CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025�
 
 | Entity ID | 엔티티 | 책임 | 주요 필드 | 소유 저장소 | 소유 모듈 | 관련 요구사항 |
 | --- | --- | --- | --- | --- | --- | --- |
-| ENT-CORE-001 | Repository | 수집 대상 저장소 등록과 정책 | `repository_id`, `owner`, `name`, `org_id`, `visibility`, `sequence_branches[]`, `mirror_enabled`, `status` | PostgreSQL | registry | FR-ING-009 |
+| ENT-CORE-001 | Repository | 수집 대상 저장소 등록과 정책 | `repository_id`, `owner`, `name`, `org_id`, `visibility`, `sequence_branches[]`, `mirror_enabled`, `status`, **`annotate_enabled`** | PostgreSQL | registry | FR-ING-009, **FR-SEQ-009 AC-6** |
 | ENT-CORE-002 | PullRequest | PR 검색 문서 | `pr_number`, `title`, `body`, `author`, `state`, `merged_at`, `merge_commit_sha`, `merge_seq`, `merge_number`, `link_summary` | Elasticsearch | projection | FR-SRCH-003, FR-SRCH-006, FR-SEQ-008 |
 | ENT-CORE-003 | Commit | 커밋 검색 문서 | `commit_sha`, `message`, `author`, `role`, `merge_seq`, `patch_id`, `changed_paths[]` | Elasticsearch | projection | FR-SRCH-002, FR-SRCH-004 |
 | ENT-CORE-004 | Team | 팀 정보와 집계 그룹 단위 | `team_id`, `slug`, `org_id`, `member_ids[]` | PostgreSQL | registry | FR-AUTH-002, FR-STAT-001 |
@@ -315,10 +315,25 @@ CREATE TABLE repository (
   snapshot_bootstrapped_at TIMESTAMPTZ,                  -- 정본 스냅숏이 완전하다고 확인된 시점 (CR-037, DEV-194)
   status            TEXT        NOT NULL DEFAULT 'active', -- active | archived
   registered_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- PR 제목 M 넘버 표기 (FR-SEQ-009 AC-6, 마이그레이션 026)
+  annotate_enabled  BOOLEAN     NOT NULL DEFAULT true,      -- 운영자가 적어 낸 정책
+  annotate_blocked_at     TIMESTAMPTZ,                      -- 표기 잡이 권한 오류로 스스로 멈춘 시각
+  annotate_blocked_reason TEXT,
   CONSTRAINT sequence_branches_limit CHECK (array_length(sequence_branches, 1) <= 10),
+  CONSTRAINT repository_annotate_blocked_chk
+    CHECK ((annotate_blocked_at IS NULL) = (annotate_blocked_reason IS NULL)),
+  CONSTRAINT repository_annotate_blocked_reason_len_chk
+    CHECK (annotate_blocked_reason IS NULL OR char_length(annotate_blocked_reason) <= 200),
   UNIQUE (owner, name)
 );
 CREATE INDEX repository_allowed_teams_idx ON repository USING GIN (allowed_team_ids);
+-- 잔여 스윕이 대상 저장소만 고른다 (JOB-SEQ-005).
+CREATE INDEX repository_annotate_enabled_idx ON repository (repository_id) WHERE annotate_enabled;
+```
+
+**운영자의 정책과 실행 중 차단은 다른 열이다** (WP-075 / CR-084). `annotate_enabled`는 사람이 적어 낸 값이고 이 제품은 오류를 만났다고 그 값을 바꾸지 않는다. `annotate_blocked_at`은 표기 잡이 GHE에서 `403`·`404`를 받아 **스스로** 멈춘 사실이며, 프로세스가 다시 떠도 유지되어야 하므로 메모리가 아니라 여기 남는다 — 재시작마다 권한 없는 저장소에 다시 요청하면 `FR-SEQ-009`가 막으려던 한도 소모가 그대로 일어난다. 둘을 한 열에 담으면 권한 오류 한 번이 운영자의 설정을 조용히 뒤집고, 권한이 복구된 뒤에도 운영자는 자기가 켜 둔 저장소가 왜 꺼져 있는지 알 수 없다.
+
+```sql
 
 #### `commit_snapshot` — 커밋 정본 (WP-067 / CR-038, DEV-208 / ADR-004)
 
