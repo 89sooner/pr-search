@@ -159,7 +159,7 @@ export async function resolveMergeNumber(deps: ResolveDeps, request: ResolveRequ
    * 섞는다** — `epoch_stale: false`라고 적으면서 다른 세대의 `merge_seq`를 싣게 된다.
    * ES 조회는 이 스냅숏 밖이다. 색인은 정본이 아니고 실패해도 답을 되돌리지 않는다.
    */
-  return withReadSnapshot(deps.pool, (db) =>
+  const read = await withReadSnapshot(deps.pool, (db) =>
     resolveInSnapshot(deps, request, db, {
       slug,
       baseBranch,
@@ -170,6 +170,19 @@ export async function resolveMergeNumber(deps: ResolveDeps, request: ResolveRequ
       requestedEpoch,
     }),
   );
+  return read.kind === 'canonical' ? withProjection(deps, request, read) : read;
+}
+
+/** 스냅숏이 정본에서 읽어 온 것. 여기까지가 일관된 한 시점이다. */
+interface CanonicalRead {
+  readonly kind: 'canonical';
+  readonly repository: RepositoryRow;
+  readonly baseBranch: string;
+  readonly sequenceSpace: string;
+  readonly space: { readonly seq_epoch: number; readonly state: string };
+  readonly prNumber: number;
+  readonly canonical: Awaited<ReturnType<typeof mergeSequenceRepo.lookupMergeNumbers>>;
+  readonly canonicalRow: Awaited<ReturnType<typeof mergeSequenceRepo.lookupMergeNumbers>>['rows'][number];
 }
 
 /** 1단계가 이미 판정한 입력. 스냅숏 안의 2~6단계는 이것만 본다. */
@@ -189,7 +202,7 @@ async function resolveInSnapshot(
   request: ResolveRequest,
   db: PoolClient,
   input: SnapshotInput,
-): Promise<ResolveOutcome> {
+): Promise<ResolveOutcome | CanonicalRead> {
   const { slug, baseBranch, hasMerge, mergeNumberCode, mergeNumberValue, requestedEpoch } = input;
   let prNumber = input.prNumber;
   // ---- 2. 저장소와 접근 범위. 여기를 지나야 저장소의 실재를 말할 수 있다.
@@ -290,13 +303,33 @@ async function resolveInSnapshot(
   }
 
   /*
+   * **스냅숏은 여기서 끝난다.** 정본을 다 읽었으므로 커넥션을 붙잡을 이유가 없다 —
+   * 뒤의 ES 조회는 네트워크 시간만큼 걸리고, 그 동안 읽기 커넥션 하나가 풀에서
+   * 빠져 있으면 부하가 몰릴 때 그것이 병목이 된다. 미러 락이 fetch 동안 시퀀스
+   * 트랜잭션을 열지 않는 것과 같은 규율이다.
+   */
+  return {
+    kind: 'canonical',
+    repository,
+    baseBranch,
+    sequenceSpace,
+    space,
+    prNumber: prNumber as number,
+    canonical,
+    canonicalRow,
+  };
+}
+
+/** 스냅숏 밖에서 색인 상태를 덧대고 응답을 만든다. */
+async function withProjection(deps: ResolveDeps, request: ResolveRequest, read: CanonicalRead): Promise<ResolveOutcome> {
+  /*
    * 색인 반영 상태. **번호 조회의 성공을 실패시키지 않는다** — ES를 읽지 못하면
    * `unknown`이다. 실시간 GET이 아니라 실제 검색 hit를 읽는다 (상세 설계 7절).
    */
   let indexed: { readonly mergeNumber: number | null; readonly epoch: number | null } | undefined;
-  if (canonicalRow.merge_number !== null) {
+  if (read.canonicalRow.merge_number !== null) {
     try {
-      const projection = await readMergeNumberProjection(deps.es, request.scope, repository.repository_id, prNumber as number);
+      const projection = await readMergeNumberProjection(deps.es, request.scope, read.repository.repository_id, read.prNumber);
       if (projection !== null) indexed = { mergeNumber: projection.merge_number, epoch: projection.merge_number_epoch };
     } catch {
       indexed = undefined;
@@ -305,26 +338,26 @@ async function resolveInSnapshot(
 
   const fields: MergeNumberFields = mergeNumberFieldsOf(
     {
-      repositoryId: repository.repository_id,
-      baseBranch,
-      prNumber: prNumber as number,
-      repositoryName: repository.name,
+      repositoryId: read.repository.repository_id,
+      baseBranch: read.baseBranch,
+      prNumber: read.prNumber,
+      repositoryName: read.repository.name,
       // 정본에 행이 있다는 것은 그 PR의 머지 커밋이 체인에 있다는 뜻이다 (미머지가 아니다).
       state: 'merged',
       ...(indexed === undefined ? {} : { indexed }),
     },
-    { canonical, trackedBranches: canonical.tracked },
+    { canonical: read.canonical, trackedBranches: read.canonical.tracked },
   );
 
   return {
     kind: 'ok',
     body: {
-      sequence_space: sequenceSpace,
-      seq_epoch: space.seq_epoch,
-      sequence_state: space.state,
+      sequence_space: read.sequenceSpace,
+      seq_epoch: read.space.seq_epoch,
+      sequence_state: read.space.state,
       epoch_stale: false,
-      pr_number: prNumber,
-      merge_seq: canonicalRow.merge_seq,
+      pr_number: read.prNumber,
+      merge_seq: read.canonicalRow.merge_seq,
       ...fields,
     },
   };

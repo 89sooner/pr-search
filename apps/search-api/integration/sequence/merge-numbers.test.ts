@@ -70,6 +70,8 @@ let appDisabled: FastifyInstance;
 let sessionId: string;
 /** 이 요청이 실행한 SQL. 행별 조회를 만들지 않는다는 주장을 여기서 센다. */
 let sqlLog: string[] = [];
+/** ES를 부른 시점의 SQL 기록 길이. 스냅숏이 ES를 붙잡지 않는다는 주장의 근거다. */
+const esProbe: { sqlCountAtCall: number }[] = [];
 
 interface ResolveBody {
   readonly sequence_space?: string;
@@ -146,8 +148,9 @@ function stubEsClient(): Client {
 /** 색인 관측 대역 — resolve가 부르는 `_search` 하나. */
 function stubProjectionEs(mergeNumber: number | null, epoch: number | null): Client {
   return {
-    search: () =>
-      Promise.resolve({
+    search: () => {
+      esProbe.push({ sqlCountAtCall: sqlLog.length });
+      return Promise.resolve({
         _shards: { failed: 0, total: 1 },
         hits: {
           total: { value: mergeNumber === null ? 0 : 1, relation: 'eq' },
@@ -167,7 +170,8 @@ function stubProjectionEs(mergeNumber: number | null, epoch: number | null): Cli
                   },
                 ],
         },
-      }),
+      });
+    },
     msearch: () => Promise.resolve({ responses: [] }),
   } as unknown as Client;
 }
@@ -601,6 +605,29 @@ describe('T05d: 목록은 정본을 한 번만 묻는다 (ADR-023 C5)', () => {
      * 두 세대를 섞는다 — 공간은 옛 에폭, 행은 새 에폭을 말하게 된다.
      */
     expect(sqlLog.some((sql) => sql.includes('REPEATABLE READ') && sql.includes('READ ONLY'))).toBe(true);
+  });
+
+  /**
+   * 스냅숏이 **정본 읽기에서 끝난다** (DEV-592).
+   *
+   * ES 조회는 네트워크 시간만큼 걸린다. 그 동안 읽기 커넥션 하나가 풀에서 빠져
+   * 있으면 부하가 몰릴 때 그것이 병목이 된다 — 미러 락이 fetch 동안 시퀀스
+   * 트랜잭션을 열지 않는 것과 같은 규율이다.
+   *
+   * SQL 기록에서 `ROLLBACK`(스냅숏 종료)이 ES 조회보다 **먼저** 나오는지를 본다.
+   */
+  it('**스냅숏이 ES 조회를 붙잡지 않는다** — 정본을 다 읽으면 닫는다 (DEV-592)', async () => {
+    sqlLog = [];
+    esProbe.length = 0;
+
+    const result = await resolve({ repository: 'acme/smp1900', base_branch: MAIN, pr_number: '21', seq_epoch: '1' });
+    expect(result.status).toBe(200);
+
+    const rollbackAt = sqlLog.findIndex((sql) => sql.trim().toUpperCase().startsWith('ROLLBACK'));
+    expect(rollbackAt, '스냅숏이 닫히지 않았다').toBeGreaterThanOrEqual(0);
+    // ES를 실제로 불렀고, 그 시점의 SQL 기록이 이미 `ROLLBACK`을 지나 있었다.
+    expect(esProbe.length).toBeGreaterThan(0);
+    expect(esProbe[0]?.sqlCountAtCall).toBeGreaterThan(rollbackAt);
   });
 
   it('**색인 값이 아니라 정본을 싣고, 색인이 뒤처지면 관측 상태로 알린다**', async () => {
