@@ -371,6 +371,35 @@ describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () 
    * **서비스 이름으로 센다.** 개수만 세면 어느 역할에 갔는지 알 수 없고, 한 곳을
    * 빼고 다른 곳에 둘을 둬도 통과한다.
    */
+  /**
+   * `batch` 역할은 **플래그 하나만** 읽는다 (`DEV-607`).
+   *
+   * `resolveMergeNumberConfig()`는 `MNUMBER_BATCH_SIZE`·`MNUMBER_POLL_MS` 같은 채번
+   * 전용 값까지 검증하고 범위를 벗어나면 던진다. `batch`가 그것을 부르면 **채번과
+   * 무관한 역할이 채번 설정 때문에 기동하지 못한다** — 정리·보존·재색인이 함께 죽는다.
+   *
+   * 그 검증은 그 값을 실제로 쓰는 `sequence` 역할의 몫이다. 두 곳이 같은 이름을
+   * 같은 규칙(`'true'`만 켜짐)으로 읽는 것은 아래에서 함께 본다.
+   */
+  it('**`batch`가 채번 설정 전체를 검증하지 않는다** (DEV-607)', () => {
+    const index = read('apps/pipeline-worker/src/index.ts');
+    const reindexDeps = /const reindexDeps: ReindexDeps = \{[\s\S]*?\n {2}\};/.exec(index)?.[0] ?? '';
+    expect(reindexDeps).not.toBe('');
+
+    /*
+     * **주석이 아니라 실제 코드를 본다.** 주석에 그 함수 이름을 적는 것은 왜 부르지
+     * 않는지 설명하는 일이라 막을 이유가 없다.
+     */
+    const code = reindexDeps
+      .split('\n')
+      .filter((line) => !/^\s*(\*|\/\*|\/\/)/.test(line))
+      .join('\n');
+    expect(code).not.toContain('resolveMergeNumberConfig(');
+    // 켜짐의 정의는 `sequence`와 같다 — `'true'` 하나뿐이다.
+    expect(code).toContain("(process.env['MNUMBER_ENABLED'] ?? 'false').trim() === 'true'");
+    expect(read('apps/pipeline-worker/src/mnumber-config.ts')).toContain("enabled: enabledRaw === 'true'");
+  });
+
   it('M 번호 플래그가 M 코드가 도는 세 역할에 가고 **web에는 가지 않는다** (DEV-589·DEV-606)', () => {
     const compose = read('deploy/single-host/compose.yml');
 
