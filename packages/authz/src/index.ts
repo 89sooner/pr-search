@@ -47,6 +47,24 @@ export { buildAuthorizationUrl, exchangeCode, fetchJwks, fetchTokenExchanger } f
 export type { OidcProviderConfig, TokenExchanger, TokenResponse } from './oidc.js';
 
 export {
+  buildGitHubAuthorizationUrl,
+  defaultGitHubScopes,
+  exchangeGitHubCode,
+  fetchGitHubApiReader,
+  fetchGitHubIdentity,
+  fetchGitHubTokenExchanger,
+  gitHubAuthorizationEndpoint,
+  gitHubTokenEndpoint,
+} from './github-oauth.js';
+export type {
+  GitHubApiReader,
+  GitHubAuthConfig,
+  GitHubIdentity,
+  GitHubTokenExchanger,
+  GitHubTokenResponse,
+} from './github-oauth.js';
+
+export {
   ABSOLUTE_TIMEOUT_MS,
   IDLE_TIMEOUT_MS,
   SESSION_COOKIE_NAME,
@@ -124,7 +142,17 @@ export type {
   PermissionInvalidated,
 } from './invalidation.js';
 
-export { groupsClaimName, hasOidcCredentials, resolveOidcConfig, resolveSessionReaderConfig } from './config.js';
+export {
+  groupsClaimName,
+  hasAuthCredentials,
+  hasGitHubAuthCredentials,
+  hasOidcCredentials,
+  resolveAuthProvider,
+  resolveGitHubAuthConfig,
+  resolveOidcConfig,
+  resolveSessionReaderConfig,
+  resolveTeamRoleMap,
+} from './config.js';
 export { refreshTeamScope, syncRepositoryTeamScope } from './team-scope.js';
 export type { RepositoryTeamsSource, TeamScopeDeps, TeamScopeIndex, TeamSyncOutcome } from './team-scope.js';
-export type { AuthEnv, SessionReaderConfig } from './config.js';
+export type { AuthEnv, AuthProvider, SessionReaderConfig } from './config.js';

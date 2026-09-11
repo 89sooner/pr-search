@@ -8,21 +8,30 @@
 
 import {
   AccessScopeResolver,
-  SessionStore,
   createScopeDatabase,
   scopeKey,
   type ScopeMetrics,
   type ScopeRedis,
   type SessionRedis,
+  type SessionStore,
   type AccessScopeSource,
 } from '@prs/authz';
 import type { Pool } from '@prs/db';
 import { Counter } from '@prs/metrics';
 
+import { RegisteringSessionStore } from './registration.js';
+
 /** 세션과 접근 범위가 함께 쓰는 Redis 명령. */
 export type AuthRedis = SessionRedis & ScopeRedis;
 
 export interface AuthContext {
+  /**
+   * 기반 타입으로 선언한다.
+   *
+   * 조립은 `RegisteringSessionStore`를 넣지만(`DEV-613`), **시험은 정본 없이
+   * 순수 `SessionStore`를 넣을 수 있어야 한다** — 정본 등록은 이 컨텍스트를 쓰는
+   * 쪽의 관심사가 아니고, 좁게 선언하면 세션만 필요한 시험이 DB까지 세우게 된다.
+   */
   readonly sessions: SessionStore;
   readonly scopes: AccessScopeResolver;
   /** 무효화가 Redis 캐시를 지우는 방법. `ops` 경로가 쓴다. */
@@ -56,10 +65,24 @@ export interface AuthContextOptions {
   readonly pool: Pool;
   readonly source: AccessScopeSource;
   readonly metrics?: ScopeMetrics;
+  /** 정본 등록 실패를 남길 곳 (`DEV-613`). */
+  readonly log?: ((message: string, detail: Record<string, unknown>) => void) | undefined;
 }
 
 export function createAuthContext(options: AuthContextOptions): AuthContext {
-  const sessions = new SessionStore({ redis: options.redis });
+  /*
+   * 세션을 읽는 김에 **정본에 사용자 행이 있게 한다** (`DEV-613`).
+   *
+   * 설계는 로그인이 그 행을 만드는 것이었으나 그 코드가 없었고, 그래서 로그인
+   * 직후 첫 조회가 `503 permission_unavailable`이 됐다. `web`은 DB에 닿지
+   * 않으므로 세션을 읽는 이 자리가 경계를 가장 덜 건드리는 곳이다. 자세한
+   * 근거는 `registration.ts`의 머리글에 있다.
+   */
+  const sessions = new RegisteringSessionStore({
+    redis: options.redis,
+    pool: options.pool,
+    log: options.log,
+  });
   const scopes = new AccessScopeResolver({
     redis: options.redis,
     db: createScopeDatabase(options.pool),

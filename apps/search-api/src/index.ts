@@ -121,6 +121,9 @@ function buildAuth(): AuthContext | undefined {
     redis,
     pool,
     metrics: createAuthMetrics(),
+    log: (message, detail) => {
+      log({ level: 'warn', message, ...detail });
+    },
     source: new GheAccessScopeSource({
       api: ghePermissionApi(github.client),
       // 등록된 저장소만 확인한다 — 등록되지 않은 저장소에는 문서가 없다.
