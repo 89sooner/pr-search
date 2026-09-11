@@ -18,6 +18,7 @@
  * 않고 `mnumber_blocked_total{reason}`과 공간 blocker로 드러낸다.
  */
 
+import { randomUUID } from 'node:crypto';
 import type { Client } from '@elastic/elasticsearch';
 import { EVENT_NAMES, deterministicEventId, sequencePartitionKey, type MergeNumberAssigned } from '@prs/domain';
 import { TOPICS, type EventBus } from '@prs/bus';
@@ -115,10 +116,22 @@ export async function reconcileMergeNumbers(
   deps: MergeNumberDeps,
   repositoryId: number,
   baseBranch: string,
-  options: { readonly force?: boolean; readonly trigger?: string } = {},
+  options: {
+    readonly force?: boolean;
+    readonly trigger?: string;
+    /**
+     * 이 회차를 유발한 요청의 상관 ID (`DEV-594`).
+     *
+     * `EVT-SEQ-004`가 그것을 실어 추적이 채번에서 끊기지 않게 한다. 없으면 이 회차의
+     * 새 ID를 만든다 — 빈 문자열을 싣는 것보다 낫다. 조정 스윕처럼 유발 요청이 없는
+     * 경로가 그쪽이다.
+     */
+    readonly correlationId?: string;
+  } = {},
 ): Promise<ReconcileOutcome> {
   const log = deps.log ?? ((): void => undefined);
   const now = deps.now ?? ((): Date => new Date());
+  const correlationId = options.correlationId ?? randomUUID();
 
   const repository = await repositoryRepo.findRepositoryById(deps.pool, repositoryId);
   if (repository === undefined) return { kind: 'skipped', reason: 'repository_unregistered' };
@@ -273,13 +286,21 @@ export async function reconcileMergeNumbers(
         to_mnumber: last.mergeNumber,
         pull_request_numbers: plan.assignments.map((one) => one.prNumber),
       };
+      /*
+       * **채번 회차의 상관 ID를 work에 함께 남긴다** (DEV-594).
+       *
+       * 발행은 다른 프로세스가 나중에 하므로, 여기서 남기지 않으면 그쪽이 복원할
+       * 수단이 없어 `EVT-SEQ-004`만 상관 ID 없이 나간다 — 한 push의 추적이 채번
+       * 직전에서 끊긴다. `sequence.assigned`는 이미 싣고 있다.
+       */
+      const announcePayload = { ...payload, correlation_id: correlationId } as unknown as Record<string, unknown>;
       await sequenceWorkRepo.requestWork(client, {
         kind: 'announce',
         repositoryId,
         baseBranch,
         seqEpoch: epoch,
         keyExtra: [first.mergeNumber, last.mergeNumber],
-        payload: payload as unknown as Record<string, unknown>,
+        payload: announcePayload,
       });
     }
     await client.query('COMMIT');
@@ -328,14 +349,26 @@ async function recordAssignmentSamples(
     try {
       const refresh = one.sha === '' ? undefined : await sequenceWorkRepo.findRefreshWorkByHead(deps.pool, repository.repository_id, baseBranch, one.sha);
       const payload = refresh?.payload as { delivery_id?: string; received_at?: string } | undefined;
-      const point = await mergeSequenceRepo.findPointBySeq(deps.pool, repository.repository_id, baseBranch, epoch, one.mergeSeq);
       const rowAssignedAt = await deps.pool.query<{ assigned_at: Date }>(
         'SELECT assigned_at FROM merge_sequence WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq = $4',
         [repository.repository_id, baseBranch, epoch, one.mergeSeq],
       );
-      void point;
+      const workKey = refresh?.work_key ?? sequenceWorkRepo.spaceWorkKey('reconcile', repository.repository_id, baseBranch, epoch);
+
+      /*
+       * **push 표본을 이어받는다** (DEV-593). 수신 시점에는 PR을 몰라 `pr_number`가
+       * 비어 있다. 새 행을 만들면 한 요청이 두 행이 되어 push 행이 영영 `pending`으로
+       * 집계되고 같은 push가 두 번 세어진다.
+       */
+      await sequenceLatencyRepo.promotePushSample(deps.pool, {
+        workKey,
+        attempt: 1,
+        seqEpoch: epoch,
+        prNumber: one.prNumber,
+      });
+
       await sequenceLatencyRepo.upsertSample(deps.pool, {
-        workKey: refresh?.work_key ?? sequenceWorkRepo.spaceWorkKey('reconcile', repository.repository_id, baseBranch, epoch),
+        workKey,
         attempt: 1,
         repositoryId: repository.repository_id,
         baseBranch,
@@ -412,7 +445,10 @@ export async function announceMergeNumbers(
   await deps.bus.publish(TOPICS.projected, sequencePartitionKey(work.repository_id, work.base_branch), {
     event_id: deterministicEventId(EVENT_NAMES.mergeNumberAssigned, work.work_key),
     event_name: EVENT_NAMES.mergeNumberAssigned,
-    correlation_id: '',
+    // work가 채번 회차의 상관 ID를 실어 왔으면 그것을 잇는다 (DEV-594).
+    correlation_id: typeof (work.payload as { correlation_id?: unknown }).correlation_id === 'string'
+      ? ((work.payload as { correlation_id: string }).correlation_id)
+      : '',
     occurred_at: (deps.now ?? ((): Date => new Date()))().toISOString(),
     payload,
   });

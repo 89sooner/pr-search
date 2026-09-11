@@ -161,10 +161,37 @@ async function runOne(deps: WorkRunnerDeps, row: SequenceWorkRow): Promise<strin
       case 'reconcile': {
         if (deps.mnumber === null) return finish('disabled', { state: 'parked', delayMs: WORK_PARK_MS, reason: 'mnumber_disabled' });
         const trigger = typeof (row.payload as { trigger_kind?: unknown }).trigger_kind === 'string' ? ((row.payload as { trigger_kind: string }).trigger_kind) : 'reconcile';
-        const result = await reconcileMergeNumbers(deps.mnumber, row.repository_id, row.base_branch, { force: trigger === 'snapshot', trigger });
+        // 이 work의 상관 ID를 회차에 넘긴다 — `EVT-SEQ-004`가 그것을 이어 싣는다 (DEV-594).
+        const result = await reconcileMergeNumbers(deps.mnumber, row.repository_id, row.base_branch, {
+          force: trigger === 'snapshot',
+          trigger,
+          ...(typeof (row.payload as { correlation_id?: unknown }).correlation_id === 'string'
+            ? { correlationId: (row.payload as { correlation_id: string }).correlation_id }
+            : {}),
+        });
         if (result.kind === 'skipped') return finish(`skipped:${result.reason}`, { state: 'done' });
         if (result.kind === 'locked') return finish('locked', { state: 'ready', delayMs: WORK_DEFER_MS, reason: 'sequence_space_locked', resetAttempts: true });
-        if (result.kind === 'retry') return finish('retry_immediate', { state: 'ready', delayMs: 0, reason: result.reason, resetAttempts: true });
+        if (result.kind === 'retry') {
+          /*
+           * **진전이 있는 재시도만 즉시 돈다.**
+           *
+           * `checkpoint_moved`·`epoch_moved`는 남이 값을 옮겼다는 뜻이라 다음 회차가
+           * 새 값을 읽고 앞으로 간다 — 즉시 다시 도는 것이 옳다.
+           *
+           * `space_reassigning`은 다르다. 재채번이 끝나기 전까지 **몇 번을 다시 물어도
+           * 같은 답**이고, 지연 0으로 두면 `claimed > 0`이 poll을 건너뛰어 회차마다
+           * 다섯 문장이 나가는 바쁜 루프가 된다. 재채번이 수 분이면 그 내내 그렇고,
+           * 워커가 `markReassigning` 커밋 뒤 죽으면 상태가 남아 사람이 개입할 때까지
+           * 끝나지 않는다. 락 경합과 같은 종류의 기다림이므로 같은 defer를 쓴다.
+           */
+          const immediate = result.reason !== 'space_reassigning';
+          return finish(immediate ? 'retry_immediate' : 'retry_defer', {
+            state: 'ready',
+            delayMs: immediate ? 0 : WORK_DEFER_MS,
+            reason: result.reason,
+            resetAttempts: true,
+          });
+        }
         if (result.continueImmediately) return finish('continue', { state: 'ready', delayMs: 0, reason: 'budget_exhausted', resetAttempts: true });
         if (result.blocked === null) return finish('done', { state: 'done' });
         switch (result.blocked.reason) {

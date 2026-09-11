@@ -19,7 +19,7 @@
  */
 
 import { parseMergeNumber, repositoryCodeOf } from '@prs/domain';
-import { mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, type Pool, type RepositoryRow } from '@prs/db';
+import { mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, withReadSnapshot, type Pool, type PoolClient, type RepositoryRow } from '@prs/db';
 import { isRepositoryInScope, type AccessScope } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
 import { readMergeNumberProjection } from '@prs/es';
@@ -151,8 +151,49 @@ export async function resolveMergeNumber(deps: ResolveDeps, request: ResolveRequ
   }
   const requestedEpoch = epochParam.kind === 'value' ? epochParam.epoch : null;
 
+  /*
+   * ---- 여기부터 정본 조회는 **한 스냅숏 안에서** 돈다 (설계 9절 / API-SEQ-007, DEV-592).
+   *
+   * `Pool`에 문장을 따로 보내면 각자 다른 커넥션의 다른 시점을 본다. 그 사이에
+   * 재채번이 커밋하면 공간은 옛 에폭을, 행은 새 에폭을 말해 **한 응답이 두 세대를
+   * 섞는다** — `epoch_stale: false`라고 적으면서 다른 세대의 `merge_seq`를 싣게 된다.
+   * ES 조회는 이 스냅숏 밖이다. 색인은 정본이 아니고 실패해도 답을 되돌리지 않는다.
+   */
+  return withReadSnapshot(deps.pool, (db) =>
+    resolveInSnapshot(deps, request, db, {
+      slug,
+      baseBranch,
+      hasMerge,
+      mergeNumberCode,
+      mergeNumberValue,
+      prNumber,
+      requestedEpoch,
+    }),
+  );
+}
+
+/** 1단계가 이미 판정한 입력. 스냅숏 안의 2~6단계는 이것만 본다. */
+interface SnapshotInput {
+  readonly slug: { readonly owner: string; readonly name: string };
+  readonly baseBranch: string;
+  readonly hasMerge: boolean;
+  readonly mergeNumberCode: string | null;
+  readonly mergeNumberValue: number | null;
+  readonly prNumber: number | null;
+  readonly requestedEpoch: number | null;
+}
+
+/** 한 스냅숏 안에서 도는 2~6단계. */
+async function resolveInSnapshot(
+  deps: ResolveDeps,
+  request: ResolveRequest,
+  db: PoolClient,
+  input: SnapshotInput,
+): Promise<ResolveOutcome> {
+  const { slug, baseBranch, hasMerge, mergeNumberCode, mergeNumberValue, requestedEpoch } = input;
+  let prNumber = input.prNumber;
   // ---- 2. 저장소와 접근 범위. 여기를 지나야 저장소의 실재를 말할 수 있다.
-  const repository: RepositoryRow | undefined = await repositoryRepo.findRepositoryBySlug(deps.pool, slug.owner, slug.name);
+  const repository: RepositoryRow | undefined = await repositoryRepo.findRepositoryBySlug(db, slug.owner, slug.name);
   if (repository === undefined) return notFound();
   const visible = isRepositoryInScope(
     {
@@ -191,7 +232,7 @@ export async function resolveMergeNumber(deps: ResolveDeps, request: ResolveRequ
     return { kind: 'no_sequence', reason: 'branch_not_tracked', message: '채번 대상이 아닌 브랜치입니다.' };
   }
 
-  const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repository.repository_id, baseBranch);
+  const space = await sequenceSpaceRepo.findSequenceSpace(db, repository.repository_id, baseBranch);
   if (space === undefined) {
     return { kind: 'no_sequence', reason: 'not_sequenced', message: '시퀀스 채번을 기다리고 있습니다.' };
   }
@@ -213,7 +254,7 @@ export async function resolveMergeNumber(deps: ResolveDeps, request: ResolveRequ
   // ---- 6. 값 조회.
   if (hasMerge) {
     const row = await mergeSequenceRepo.findRowByMergeNumber(
-      deps.pool,
+      db,
       repository.repository_id,
       baseBranch,
       space.seq_epoch,
@@ -229,7 +270,7 @@ export async function resolveMergeNumber(deps: ResolveDeps, request: ResolveRequ
      * 주장하게 된다 (`API-SEQ-001`이 `not_sequenced` 하나로 답하는 것과 같다).
      */
     const point = await mergeSequenceRepo.findPointByPullRequest(
-      deps.pool,
+      db,
       repository.repository_id,
       baseBranch,
       space.seq_epoch,
@@ -240,7 +281,7 @@ export async function resolveMergeNumber(deps: ResolveDeps, request: ResolveRequ
     }
   }
 
-  const canonical = await mergeSequenceRepo.lookupMergeNumbers(deps.pool, [
+  const canonical = await mergeSequenceRepo.lookupMergeNumbers(db, [
     { repositoryId: repository.repository_id, baseBranch, prNumber: prNumber as number },
   ]);
   const canonicalRow = canonical.rows[0];
@@ -272,7 +313,7 @@ export async function resolveMergeNumber(deps: ResolveDeps, request: ResolveRequ
       state: 'merged',
       ...(indexed === undefined ? {} : { indexed }),
     },
-    { canonical },
+    { canonical, trackedBranches: canonical.tracked },
   );
 
   return {

@@ -73,6 +73,39 @@ export interface LatencySampleUpsert {
  * 표본을 남긴다. 같은 `(work_key, attempt, epoch, pr)`이면 stage 시각을 **비어 있는
  * 것만** 채우고 결과를 갱신한다.
  */
+/**
+ * push 단위 표본을 PR 단위로 **승격한다** (WP-074 / DEV-593).
+ *
+ * ## 왜 승격인가
+ *
+ * push를 받은 시점에는 PR 번호를 모르므로 표본이 `pr_number IS NULL`로 시작한다.
+ * 나중에 M 번호가 붙으면 그제서야 PR을 안다. 그때 **새 행을 만들면 한 요청이 두
+ * 행이 된다** — unique 키에 `pr_number`가 들어 있어 둘이 서로를 덮지 않기 때문이다.
+ *
+ * 그 결과 push 행은 `mnumber_assigned_at`이 영영 비어 `pending`으로 집계되고,
+ * 같은 push가 `received_to_sequence`에서 두 번 세어진다. **정상 채번에서도 대기가
+ * 쌓이는 표**가 나오고, 운영자는 막히지 않은 것을 막혔다고 읽는다.
+ *
+ * 그래서 PR을 알게 된 순간 기존 행의 `pr_number`를 채워 **같은 행을 잇는다.**
+ *
+ * 한 push가 PR 여럿을 실어 오면 첫 PR이 그 행을 가져가고 나머지는 각자 새 행을
+ * 만든다 — 행 수가 PR 수와 같아지므로 그것이 옳다.
+ *
+ * @returns 승격한 행이 있었으면 `true`.
+ */
+export async function promotePushSample(
+  db: Queryable,
+  key: { readonly workKey: string; readonly attempt: number; readonly seqEpoch: number; readonly prNumber: number },
+): Promise<boolean> {
+  const result = await db.query(
+    `UPDATE sequence_latency_sample
+        SET pr_number = $4
+      WHERE work_key = $1 AND attempt = $2 AND seq_epoch = $3 AND pr_number IS NULL`,
+    [key.workKey, key.attempt, key.seqEpoch, key.prNumber],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 export async function upsertSample(db: Queryable, input: LatencySampleUpsert): Promise<LatencySampleRow> {
   const result = await db.query<LatencySampleRow>(
     `INSERT INTO sequence_latency_sample

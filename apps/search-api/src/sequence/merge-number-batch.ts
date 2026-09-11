@@ -30,7 +30,7 @@
  * 그 입력이 어느 범위 검사를 지나왔는지 먼저 확인한다.
  */
 
-import { mergeSequenceRepo, type Pool } from '@prs/db';
+import { mergeSequenceRepo, withReadSnapshot, type Pool } from '@prs/db';
 import {
   mergeNumberFieldsOf,
   repositoryNameOf,
@@ -91,7 +91,14 @@ export async function resolveMergeNumberFields(
   let canonical: Awaited<ReturnType<typeof mergeSequenceRepo.lookupMergeNumbers>> | null = null;
   if (tuples.length > 0) {
     try {
-      canonical = await mergeSequenceRepo.lookupMergeNumbers(pool, tuples);
+      /*
+       * **한 스냅숏 안에서 전부 읽는다** (설계 9절 / API-SEQ-007, DEV-592).
+       *
+       * 공간·행·대상 브랜치를 `Pool`에 따로 물으면 문장마다 다른 커넥션일 수 있고,
+       * 그 사이 재채번이 커밋하면 공간은 옛 에폭을 행은 새 에폭을 말한다. 한 응답이
+       * 두 세대를 섞으면 화면이 에폭 4를 적으면서 에폭 5의 링크를 만든다.
+       */
+      canonical = await withReadSnapshot(pool, (client) => mergeSequenceRepo.lookupMergeNumbers(client, tuples));
     } catch {
       /*
        * 정본을 읽지 못했다. **검색 결과는 그대로 나간다** — M 하나 때문에 이미 만든
@@ -100,10 +107,15 @@ export async function resolveMergeNumberFields(
       canonical = null;
     }
   } else {
-    canonical = { spaces: [], rows: [] };
+    canonical = { spaces: [], rows: [], tracked: new Map() };
   }
 
   return subjects.map((subject) =>
-    subject === null ? null : mergeNumberFieldsOf(subject, { canonical }),
+    subject === null
+      ? null
+      : mergeNumberFieldsOf(subject, {
+          canonical,
+          ...(canonical === null ? {} : { trackedBranches: canonical.tracked }),
+        }),
   );
 }

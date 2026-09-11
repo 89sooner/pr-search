@@ -35,6 +35,40 @@ export async function withTransaction<T>(pool: Pool, fn: (client: PoolClient) =>
 }
 
 /**
+ * 읽기 전용 일관 스냅숏 (WP-074 / API-SEQ-007, 상세 설계 9절).
+ *
+ * ## 왜 필요한가
+ *
+ * `Pool`에 문장을 여러 번 보내면 **문장마다 다른 커넥션**일 수 있고, 각자 자기
+ * 시점의 스냅숏을 본다. 그 사이에 재채번이 커밋하면 한 응답 안에서 공간은 옛
+ * 에폭을, 행은 새 에폭을 말하게 된다 — 화면은 에폭 4를 적으면서 에폭 5의 링크를
+ * 만든다. 계약이 "REPEATABLE READ read-only transaction 또는 단일 SQL snapshot"을
+ * 요구하는 이유가 그것이다.
+ *
+ * ## `READ ONLY`를 함께 거는 이유
+ *
+ * 조회 경로가 실수로 쓰기를 하면 **DB가 거절한다.** 규율을 주석이 아니라 엔진이
+ * 지키게 한다 — 측정 CLI가 같은 이유로 `BEGIN READ ONLY`를 쓴다.
+ *
+ * 커밋하지 않고 `ROLLBACK`으로 닫는다. 읽기만 했으므로 되돌릴 것이 없고, 성공과
+ * 실패가 같은 문장을 쓰면 한쪽만 빠뜨리는 날이 없다.
+ */
+export async function withReadSnapshot<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    return await fn(client);
+  } finally {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // 연결이 이미 끊겼다. 되돌릴 것이 없으므로 원래 오류를 가리지 않는다.
+    }
+    client.release();
+  }
+}
+
+/**
  * 관리 권한 풀 (WP-039 / CR-054, DEV-411·416).
  *
  * 연결마다 `SET ROLE prs_admin`을 건다 — 풀은 연결을 재사용하므로 한 번

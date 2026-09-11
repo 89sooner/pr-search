@@ -384,4 +384,56 @@ describe('sequence_latency_sample', () => {
     const b = await latencyRepo.upsertSample(pool, base);
     expect(b.sample_id).toBe(a.sample_id);
   });
+
+  /**
+   * 한 요청은 한 행이다 (`DEV-593`).
+   *
+   * 수신 시점에는 PR을 몰라 `pr_number`가 비어 있다. M 번호가 붙어 PR을 알게 되면
+   * **그 행을 이어받아야** 한다 — 새 행을 만들면 push 행이 영영 `mnumber_assigned_at`
+   * 없이 남아 정상 채번에서도 `pending`으로 집계되고, 같은 push가 두 번 세어진다.
+   */
+  it('**push 표본이 PR 표본으로 승격되어 한 행으로 남는다** (DEV-593)', async () => {
+    const push = {
+      workKey: 'push:d-11', attempt: 1, repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1,
+      prNumber: null, deliveryId: 'd-11', triggerKind: 'new_squash' as const, outcome: 'pending' as const,
+      receivedAt: new Date('2026-09-01T00:00:00Z'), attemptStartedAt: null, reason: null,
+    };
+    const created = await latencyRepo.upsertSample(pool, { ...push, mirrorCompletedNow: true, sequenceAssignedNow: true });
+    expect(created.pr_number).toBeNull();
+
+    expect(await latencyRepo.promotePushSample(pool, { workKey: 'push:d-11', attempt: 1, seqEpoch: 1, prNumber: 21 })).toBe(true);
+
+    const promoted = await latencyRepo.upsertSample(pool, {
+      ...push, prNumber: 21, outcome: 'assigned' as const, mnumberAssignedNow: true,
+    });
+    // 같은 행이다. 수신·미러·시퀀스 시각이 보존되고 M 시각이 채워진다.
+    expect(promoted.sample_id).toBe(created.sample_id);
+    expect(promoted.received_at?.getTime()).toBe(created.received_at?.getTime());
+    expect(promoted.mirror_completed_at?.getTime()).toBe(created.mirror_completed_at?.getTime());
+    expect(promoted.mnumber_assigned_at).not.toBeNull();
+
+    const rows = (await latencyRepo.listSamplesForSpace(pool, REPO, BRANCH)).filter((row) => row.delivery_id === 'd-11');
+    expect(rows).toHaveLength(1);
+  });
+
+  it('같은 push가 PR 둘을 실어 오면 첫 PR이 그 행을 가져가고 둘째는 새 행이다', async () => {
+    const push = {
+      workKey: 'push:d-12', attempt: 1, repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1,
+      prNumber: null, deliveryId: 'd-12', triggerKind: 'new_squash' as const, outcome: 'pending' as const,
+      receivedAt: new Date('2026-09-01T00:00:00Z'), attemptStartedAt: null, reason: null,
+    };
+    await latencyRepo.upsertSample(pool, push);
+
+    expect(await latencyRepo.promotePushSample(pool, { workKey: 'push:d-12', attempt: 1, seqEpoch: 1, prNumber: 21 })).toBe(true);
+    // 비어 있던 행을 첫 PR이 가져갔으므로 둘째는 승격할 것이 없다.
+    expect(await latencyRepo.promotePushSample(pool, { workKey: 'push:d-12', attempt: 1, seqEpoch: 1, prNumber: 25 })).toBe(false);
+
+    await latencyRepo.upsertSample(pool, { ...push, prNumber: 21, outcome: 'assigned' as const, mnumberAssignedNow: true });
+    await latencyRepo.upsertSample(pool, { ...push, prNumber: 25, outcome: 'assigned' as const, mnumberAssignedNow: true });
+
+    // 행 수가 PR 수와 같다 — 남는 빈 행이 없다.
+    const rows = (await latencyRepo.listSamplesForSpace(pool, REPO, BRANCH)).filter((row) => row.delivery_id === 'd-12');
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.pr_number !== null)).toBe(true);
+  });
 });

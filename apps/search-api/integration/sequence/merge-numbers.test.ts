@@ -28,6 +28,7 @@ import { authRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, type Po
 import type { Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { MERGE_NUMBER_RESOLVE_PATH } from '../../src/sequence/merge-numbers.js';
+import { resolveMergeNumberFields } from '../../src/sequence/merge-number-batch.js';
 import { SEARCH_PATH } from '../../src/search/routes.js';
 import type { AuthContext, AuthRedis } from '../../src/auth/context.js';
 import { createTestRedis, migratedPool, clearMergeSequence } from '../helpers.js';
@@ -171,15 +172,48 @@ function stubProjectionEs(mergeNumber: number | null, epoch: number | null): Cli
   } as unknown as Client;
 }
 
-/** `pool.query`를 감싸 실행된 SQL을 기록한다. 행별 조회를 만들지 않는다는 주장의 근거다. */
+/**
+ * `pool.query`와 **`connect()`가 준 client의 query까지** 감싸 실행된 SQL을 기록한다.
+ *
+ * 두 곳을 다 봐야 하는 이유가 있다. M 대조는 일관 스냅숏을 위해 커넥션 하나를 잡고
+ * 그 안에서 문장을 보내므로(`withReadSnapshot`, DEV-592), `pool.query`만 보면
+ * **그 문장들이 통째로 계수에서 사라진다.** 그러면 "행별 조회가 없다"는 단언이
+ * 아무것도 확인하지 않고 통과한다.
+ *
+ * 놓을 때 원래 함수를 되돌린다 — 커넥션은 풀로 돌아가 다음 요청이 다시 받는다.
+ */
+function recordSql(args: readonly unknown[]): void {
+  const first = args[0];
+  sqlLog.push(typeof first === 'string' ? first : String((first as { text?: string }).text ?? ''));
+}
+
 function recordingPool(base: Pool): Pool {
   return new Proxy(base, {
     get(target, property, receiver) {
       if (property === 'query') {
         return (...args: unknown[]): unknown => {
-          const first = args[0];
-          sqlLog.push(typeof first === 'string' ? first : String((first as { text?: string }).text ?? ''));
+          recordSql(args);
           return (target.query as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      }
+      if (property === 'connect') {
+        return async (...args: unknown[]): Promise<unknown> => {
+          const client = (await (target.connect as (...a: unknown[]) => Promise<unknown>).apply(target, args)) as {
+            query: (...a: unknown[]) => unknown;
+            release: (...a: unknown[]) => unknown;
+          };
+          const originalQuery = client.query.bind(client);
+          const originalRelease = client.release.bind(client);
+          client.query = (...inner: unknown[]): unknown => {
+            recordSql(inner);
+            return originalQuery(...inner);
+          };
+          client.release = (...inner: unknown[]): unknown => {
+            client.query = originalQuery;
+            client.release = originalRelease;
+            return originalRelease(...inner);
+          };
+          return client;
         };
       }
       return Reflect.get(target, property, receiver) as unknown;
@@ -433,6 +467,29 @@ describe('T05b: 존재·권한·에폭', () => {
     expect(unknownM.body.error?.message).toBe(unregistered.body.error?.message);
   });
 
+  /**
+   * 검사 순서를 고정한다 (`DEV-596`).
+   *
+   * `API-SEQ-007`이 "권한 밖 repository의 실제 코드를 비교한 오류를 먼저 내지
+   * 않는다"를 보안 근거로 정했다. 접근 범위 검사를 코드 대조 **뒤로** 옮기면
+   * 권한 밖 저장소에 M을 물었을 때 404 대신 400 `repository_code_mismatch`가 나오고,
+   * **그 차이만으로 비공개 저장소의 실재와 이름의 숫자를 알아낼 수 있다.**
+   *
+   * 기존 시험은 권한 밖 저장소를 `pr_number`로만 물었다 — 코드 대조는 M 방향에서만
+   * 도므로 그 순서가 뒤집혀도 초록이었다.
+   */
+  it('**권한 밖 저장소는 M 방향에서도 404다** — 코드 대조보다 접근 범위가 먼저다', async () => {
+    // `other/secret9`의 코드는 9다. 순서가 뒤집히면 이 요청이 400 code_mismatch를 받는다.
+    const mismatch = await resolve({ repository: 'other/secret9', base_branch: MAIN, merge_number: 'M-1-1', seq_epoch: '1' });
+    expect(mismatch.status).toBe(404);
+    expect(mismatch.body.error?.code).toBe('NOT_FOUND');
+
+    // 코드가 맞는 경우에도 404다 — 맞고 틀림이 응답으로 갈리면 그 자체가 신호가 된다.
+    const matching = await resolve({ repository: 'other/secret9', base_branch: MAIN, merge_number: 'M-9-1', seq_epoch: '1' });
+    expect(matching.status).toBe(404);
+    expect(matching.body.error?.message).toBe(mismatch.body.error?.message);
+  });
+
   it('비대상 브랜치는 409 `branch_not_tracked`다', async () => {
     const result = await resolve({ repository: 'acme/smp1900', base_branch: OTHER_BRANCH, pr_number: '21' });
     expect(result.status).toBe(409);
@@ -449,7 +506,17 @@ describe('T05b: 존재·권한·에폭', () => {
     const result = await resolve({ repository: 'acme/smp1900', base_branch: MAIN, pr_number: '21', seq_epoch: '7' });
     expect(result.status).toBe(200);
     expect(result.body).toMatchObject({ epoch_stale: true, requested_seq_epoch: 7, seq_epoch: 1 });
-    for (const key of ['pr_number', 'merge_seq', 'merge_number', 'merge_number_state', 'sequence_state']) {
+    /*
+     * **계약이 없다고 정한 키를 전부 센다** (DEV-595).
+     *
+     * 목록이 좁으면 새 키 하나가 조용히 새어 나가도 시험이 통과한다. `API-SEQ-007`은
+     * `merge_number_epoch`·`merge_number_reason`·`merge_number_projection_state`에
+     * 대해서도 "결과 키 자체가 없어야 한다"를 따로 적는다.
+     */
+    for (const key of [
+      'pr_number', 'merge_seq', 'sequence_state',
+      'merge_number', 'merge_number_state', 'merge_number_epoch', 'merge_number_reason', 'merge_number_projection_state',
+    ]) {
       expect(Object.hasOwn(result.body, key), key).toBe(false);
     }
   });
@@ -525,6 +592,15 @@ describe('T05d: 목록은 정본을 한 번만 묻는다 (ADR-023 C5)', () => {
     expect(lookups).toHaveLength(1);
     const spaces = sqlLog.filter((sql) => sql.includes('FROM sequence_space s') && sql.includes('unnest'));
     expect(spaces).toHaveLength(1);
+    // 채번 대상 브랜치도 같은 스냅숏에서 한 번만 읽는다 (DEV-591).
+    const tracked = sqlLog.filter((sql) => sql.includes('sequence_branches') && sql.includes('FROM repository'));
+    expect(tracked).toHaveLength(1);
+
+    /*
+     * **일관 스냅숏 안에서 돈다** (DEV-592). 셋이 서로 다른 시점을 보면 한 응답이
+     * 두 세대를 섞는다 — 공간은 옛 에폭, 행은 새 에폭을 말하게 된다.
+     */
+    expect(sqlLog.some((sql) => sql.includes('REPEATABLE READ') && sql.includes('READ ONLY'))).toBe(true);
   });
 
   it('**색인 값이 아니라 정본을 싣고, 색인이 뒤처지면 관측 상태로 알린다**', async () => {
@@ -568,5 +644,54 @@ describe('T05d: 목록은 정본을 한 번만 묻는다 (ADR-023 C5)', () => {
         expect(Object.hasOwn(item, key), key).toBe(false);
       }
     }
+  });
+});
+
+/**
+ * 비대상 브랜치의 판정 (DEV-591).
+ *
+ * 목록·상세·범위 DTO가 **`not_applicable / branch_not_tracked`를 만들 수 있는가.**
+ * 만들지 못하면 그 PR이 "시퀀스 채번 대기"로 보이는데, 그 PR은 영원히 채번되지
+ * 않으므로 화면이 거짓을 말한다. 같은 PR을 해석 API로 물으면 409 `branch_not_tracked`라
+ * 두 표면의 답이 갈린다.
+ */
+describe('비대상 브랜치는 대기가 아니라 대상 아님이다 (DEV-591)', () => {
+  it('**`develop`에 머지된 PR이 `not_applicable / branch_not_tracked`다**', async () => {
+    const [fields] = await resolveMergeNumberFields(pool, [
+      {
+        repositoryId: SMP,
+        repositorySlug: 'acme/smp1900',
+        baseBranch: 'develop',
+        prNumber: 900,
+        state: 'merged',
+      },
+    ]);
+
+    expect(fields).toMatchObject({
+      merge_number: null,
+      merge_number_state: 'not_applicable',
+      merge_number_reason: 'branch_not_tracked',
+      merge_number_epoch: null,
+    });
+  });
+
+  it('대상 브랜치는 그대로 판정된다 — 위 갈래가 정상 경로를 가로채지 않는다', async () => {
+    const [fields] = await resolveMergeNumberFields(pool, [
+      {
+        repositoryId: SMP,
+        repositorySlug: 'acme/smp1900',
+        baseBranch: MAIN,
+        prNumber: 21,
+        state: 'merged',
+      },
+    ]);
+
+    expect(fields).toMatchObject({ merge_number: 'M-1900-1', merge_number_state: 'assigned' });
+  });
+
+  it('해석 API와 목록이 **같은 답을 한다** — 표면마다 갈리지 않는다', async () => {
+    const result = await resolve({ repository: 'acme/smp1900', base_branch: 'develop', pr_number: '900' });
+    expect(result.status).toBe(409);
+    expect(result.body.error?.detail).toMatchObject({ reason: 'branch_not_tracked' });
   });
 });

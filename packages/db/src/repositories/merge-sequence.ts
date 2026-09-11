@@ -655,8 +655,13 @@ export interface MergeNumberSpaceState {
 export async function lookupMergeNumbers(
   db: Queryable,
   tuples: readonly { readonly repositoryId: number; readonly baseBranch: string; readonly prNumber: number }[],
-): Promise<{ readonly spaces: MergeNumberSpaceState[]; readonly rows: MergeNumberLookup[] }> {
-  if (tuples.length === 0) return { spaces: [], rows: [] };
+): Promise<{
+  readonly spaces: MergeNumberSpaceState[];
+  readonly rows: MergeNumberLookup[];
+  /** 저장소별 채번 대상 브랜치. 비대상 브랜치를 `pending`이 아니라 `not_applicable`로 가른다. */
+  readonly tracked: Map<number, readonly string[]>;
+}> {
+  if (tuples.length === 0) return { spaces: [], rows: [], tracked: new Map() };
   const repositoryIds = tuples.map((one) => one.repositoryId);
   const baseBranches = tuples.map((one) => one.baseBranch);
   const prNumbers = tuples.map((one) => one.prNumber);
@@ -680,7 +685,23 @@ export async function lookupMergeNumbers(
         AND k.pr_number = ms.pull_request_number`,
     [repositoryIds, baseBranches, prNumbers],
   );
+  /*
+   * 채번 대상 브랜치를 같은 스냅숏에서 함께 읽는다 (WP-074 / DEV-591).
+   *
+   * 이것이 없으면 비대상 브랜치에 머지된 PR이 `not_applicable`이 아니라
+   * **`pending / not_sequenced`로 보인다** — 화면이 "시퀀스 채번 대기"라고 말하는데
+   * 그 PR은 영원히 채번되지 않는다. 해석 API는 같은 경우에 409 `branch_not_tracked`를
+   * 답하므로 두 표면의 답이 갈린다.
+   */
+  const repositories = await db.query<{ repository_id: string; sequence_branches: string[] }>(
+    `SELECT repository_id, sequence_branches
+       FROM repository
+      WHERE repository_id = ANY($1::bigint[])`,
+    [[...new Set(repositoryIds)]],
+  );
+
   return {
+    tracked: new Map(repositories.rows.map((row) => [Number(row.repository_id), row.sequence_branches ?? []])),
     spaces: spaces.rows,
     rows: rows.rows.map((row) => ({ ...row, merge_seq: Number(row.merge_seq) })),
   };

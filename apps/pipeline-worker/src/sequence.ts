@@ -242,7 +242,7 @@ export async function assignSequence(
      * 새 커밋이 0건이어도 남긴다 — 앞선 회차가 미확정으로 멈춰 있을 수 있고, 이번
      * push가 그 PR 정보를 실어 왔을 수 있다.
      */
-    await requestMergeNumberReconcile(client, repositoryId, baseBranch, space.seq_epoch, 'sequence_assigned');
+    await requestMergeNumberReconcile(client, repositoryId, baseBranch, space.seq_epoch, 'sequence_assigned', correlationId);
     await client.query('COMMIT');
 
     committed = {
@@ -468,7 +468,7 @@ export async function reassignSequence(
     const toSeq = baseSeq + numbered.length;
     await sequenceSpaceRepo.advanceHead(client, repositoryId, baseBranch, newHead, toSeq);
     // 새 에폭의 M 재채번 의도. 이전 에폭 번호는 그 행에 남고 새 근거로 다시 센다 (ADR-007 규칙 5).
-    await requestMergeNumberReconcile(client, repositoryId, baseBranch, newEpoch, 'sequence_reassigned');
+    await requestMergeNumberReconcile(client, repositoryId, baseBranch, newEpoch, 'sequence_reassigned', correlationId);
     await client.query('COMMIT');
 
     committed = {
@@ -777,13 +777,15 @@ async function requestMergeNumberReconcile(
   baseBranch: string,
   seqEpoch: number,
   trigger: string,
+  correlationId = '',
 ): Promise<void> {
   await sequenceWorkRepo.requestWork(client, {
     kind: 'reconcile',
     repositoryId,
     baseBranch,
     seqEpoch,
-    payload: { trigger_kind: trigger },
+    // 채번을 유발한 요청의 상관 ID를 이어 준다 — `EVT-SEQ-004`가 그것을 싣는다 (DEV-594).
+    payload: correlationId === '' ? { trigger_kind: trigger } : { trigger_kind: trigger, correlation_id: correlationId },
   });
 }
 
@@ -1220,7 +1222,7 @@ export async function repairSequence(
     }
 
     await sequenceSpaceRepo.advanceHead(client, repositoryId, baseBranch, head, toSeq);
-    await requestMergeNumberReconcile(client, repositoryId, baseBranch, newEpoch, 'sequence_reassigned');
+    await requestMergeNumberReconcile(client, repositoryId, baseBranch, newEpoch, 'sequence_reassigned', correlationId);
     await client.query('COMMIT');
 
     committed = {
