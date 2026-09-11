@@ -26,6 +26,7 @@
 import { MirrorCommitGraph, MirrorSync } from '@prs/github';
 import { createPool, mergeSequenceRepo, resolvePoolConfig, type Pool } from '@prs/db';
 import { migrateUp } from '@prs/db/migrate';
+import { clearMergeSequence } from '../packages/db/integration/helpers.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   appendCommit,
@@ -100,7 +101,7 @@ beforeAll(async () => {
   if (head === null) throw new Error('대상 브랜치가 없다');
   const commits = await graph.firstParentCommits(REF, { from: null, to: head });
 
-  await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
+  await clearMergeSequence(pool, 'repository_id = $1', [REPOSITORY_ID]);
   for (const entry of numberCommits(0, commits)) {
     await mergeSequenceRepo.upsertMergeSequence(pool, {
       repository_id: REPOSITORY_ID,
@@ -119,7 +120,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  await pool?.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
+  if (pool !== undefined) await clearMergeSequence(pool, 'repository_id = $1', [REPOSITORY_ID]);
   await pool?.end();
   await removeDir(origin.dir);
   await removeDir(mirrorRoot);

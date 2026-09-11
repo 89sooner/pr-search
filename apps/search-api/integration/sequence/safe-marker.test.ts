@@ -43,7 +43,7 @@ import type { Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
 import { SAFE_MARKERS_PATH } from '../../src/sequence/routes.js';
 import type { AuthContext, AuthRedis } from '../../src/auth/context.js';
-import { createTestRedis, migratedPool } from '../helpers.js';
+import { createTestRedis, migratedPool, clearMergeSequence } from '../helpers.js';
 import { TEST_CURSOR_KEY, TEST_CURSOR_SIGNER } from '../_cursor-fixture.js';
 
 const AUTH_CONFIG = {
@@ -178,7 +178,7 @@ beforeAll(async () => {
   redis = createTestRedis();
 
   await pool.query('DELETE FROM safe_marker WHERE repository_id BETWEEN $1 AND $2', [ID_FLOOR, ID_CEIL]);
-  await pool.query('DELETE FROM merge_sequence WHERE repository_id BETWEEN $1 AND $2', [ID_FLOOR, ID_CEIL]);
+  await clearMergeSequence(pool, 'repository_id BETWEEN $1 AND $2', [ID_FLOOR, ID_CEIL]);
   await pool.query('DELETE FROM sequence_space WHERE repository_id BETWEEN $1 AND $2', [ID_FLOOR, ID_CEIL]);
   await pool.query('DELETE FROM repository WHERE repository_id BETWEEN $1 AND $2', [ID_FLOOR, ID_CEIL]);
   await pool.query('DELETE FROM audit_record WHERE user_id LIKE $1', [`${NS}%`]);
@@ -271,7 +271,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await pool.query('DELETE FROM safe_marker WHERE repository_id BETWEEN $1 AND $2', [ID_FLOOR, ID_CEIL]);
-  await pool.query('DELETE FROM merge_sequence WHERE repository_id BETWEEN $1 AND $2', [ID_FLOOR, ID_CEIL]);
+  await clearMergeSequence(pool, 'repository_id BETWEEN $1 AND $2', [ID_FLOOR, ID_CEIL]);
   await pool.query('DELETE FROM sequence_space WHERE repository_id BETWEEN $1 AND $2', [ID_FLOOR, ID_CEIL]);
   await pool.query('DELETE FROM repository WHERE repository_id BETWEEN $1 AND $2', [ID_FLOOR, ID_CEIL]);
   await pool.query('DELETE FROM audit_record WHERE user_id LIKE $1', [`${NS}%`]);

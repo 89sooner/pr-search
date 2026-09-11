@@ -196,6 +196,8 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | --- | --- | --- | --- | --- | --- | --- |
 | DEV-587 | 2026-09-11 | **planner 안에서 `number_capacity_exceeded`에 도달할 수 없다.** M 번호는 확인한 서수 이하이고 서수 자체가 safe integer를 넘으면 입력 계약(`PlanInputError`)이 먼저 걸린다. 사유 enum과 DB CHECK·API BigInt 범위 검사는 그대로 두었다 — 상한은 **정본과 전송 계층**이 지키며 planner는 그 앞단이다. 시험은 상한 값의 부여가 되는 것과 그 위가 조용히 반올림되지 않는 것을 함께 확인한다 | FR-SEQ-008 / WP-074 / ADR-023 C4 | 설계 정합 | CR-080 | resolved — 방어선의 위치를 기록, 코드 변경 없음 |
 | DEV-588 | 2026-09-11 | **조정 스캔 취소 시험이 전량 실행에서 다시 한 번 깨졌다 — `DEV-502`와 같은 경합의 다른 얼굴이다.** `apps/pipeline-worker/integration/reconcile/manual-run.test.ts`의 '저장소 여럿 중 첫 번째에서 취소하면 나머지를 돌지 않는다'가 `expected 'completed' to be 'cancelled'`로 죽었다. `DEV-502`가 고친 것은 **냉시작 스윕의 진입이 계수에 섞이는 것**이었고 이번 것은 그 뒤다 — 시험이 `enqueueManual()`을 기다리는 **동안** 러너가 10ms 폴링으로 그 잡을 집고 첫 저장소에 들어가 버리면, 그 진입은 `probe.onEnter`가 **아직 대입되기 전**이라 취소를 부르지 않는다. 그 뒤의 진입은 `entries === 1`이 아니므로 영영 취소하지 않고 잡은 정상 완료한다. **이 판의 변경과 무관하다** — `manual-run.test.ts`도 `reconcile.ts`도 이 브랜치가 건드리지 않았고, 단독 실행 1회와 전량 실행 2회가 연속 통과했다(각 1584건). **flake로 단정해 덮지 않고 메커니즘을 적는다** — 고치려면 `enqueueManual()` 전에 `probe.onEnter`를 대입하거나 취소 조건을 진입 계수가 아닌 잡 ID로 걸어야 하며, 그 판단은 `FR-ADMIN-002`를 소유한 WP의 것이다 | WP-040 / FR-ADMIN-002 / DEV-502 | 시험 결함 (경합) | 별도 판단 필요 | **open** — 이 판에서는 고치지 않았다. 남의 소유 파일이고 이 WP의 범위 밖이다 |
+| DEV-589 | 2026-09-11 | **기능 플래그를 화면에도 주라는 설계와 달리 `web`은 그 값을 읽지 않는다.** 설계 9절이 "검색 API·web server와 sequence/cleanup 역할에 동일 설정을 전달한다… 공개 boolean만 전달한다"라고 적었으나, 구현의 화면은 **응답에 M 키가 있는지로만** 판단한다 — `merge_number_state`가 없으면 영역을 그리지 않고, M 딥링크는 서버가 내는 404 `feature_disabled`를 그대로 보인다. 화면에 같은 플래그를 두면 **켜고 끄는 자리가 둘이 되어** 한쪽만 바꾼 형상이 "켰는데 안 보인다"로 나타나고, 그 상태를 화면 로그로는 구분할 수 없다. 서버 하나가 권위인 편이 낫다고 판단해 그대로 두고 **구성 쪽을 코드에 맞췄다** — compose의 `web` 서비스에서 `MNUMBER_ENABLED`를 뺐고, 런북의 진단 항목과 `.env.example`이 "둘에 같은 값, `web`에는 주지 않는다"로 바뀌었다. 처음에는 구성과 런북이 화면도 읽는다고 적고 있어 **운영자를 없는 자리로 보냈다** | FR-SEQ-008 / WP-074 / 설계 9절 | 설계 편차 (구현이 더 좁고 안전한 쪽) | CR-080 | resolved — 코드는 그대로, 구성·런북·`.env.example`을 정정 |
+| DEV-590 | 2026-09-11 | **`mnumber_evidence`의 `ON DELETE RESTRICT`가 기존 통합 시험의 정리를 막았다 — CI가 잡았다.** `apps/search-api/integration/release/{containment,timeline}.test.ts`가 `beforeAll`에서 조건 없이 `DELETE FROM merge_sequence`를 부르는데, 병렬로 도는 다른 파일(`sequence/mnumber.test.ts`, 저장소 7431)이 남긴 증거가 그 행을 참조해 `23503 … is still referenced from table "mnumber_evidence"`로 죽는다. **외부 전량 실행 3회는 통과했다** — 로컬은 파일 순서와 병렬도가 달라 그 겹침이 나지 않았고, CI의 컨테이너 형상에서만 났다. **제약을 풀지 않았다**: 증거가 행과 함께 조용히 사라지면 "무엇을 근거로 확정했는가"가 흔적 없이 없어지므로 `RESTRICT`가 옳다. **지우는 쪽을 고쳤다** — `clearMergeSequence(pool, where?, params?)`를 `packages/db/integration/helpers.ts`에 두고 앱 헬퍼 둘이 그대로 재수출하며, `DELETE FROM merge_sequence`를 부르던 15개 시험 파일이 전부 이 헬퍼를 쓴다. 순서가 한 곳에만 있어야 한 곳이 빠진 날 그 파일에서만 깨지는 일이 없다. **반대 방향 단언을 시험으로 세웠다** — 증거가 있으면 정본 행 삭제가 거절되고 순서를 지키면 지워진다(`merge-number-schema.test.ts`) | FR-SEQ-008 / WP-074 / ENT-SEQ-005 | 시험 기반 결함 (신규 제약이 기존 정리를 막음) | CR-080 | **resolved** — 스키마는 그대로, 정리 순서를 공유 헬퍼로 모았다 |
 | DEV-586 | 2026-09-11 | **검색 API 설정의 M 플래그를 선택 필드로 두었다.** `SearchApiConfig`에 필수로 넣으면 config 객체를 직접 만드는 기존 통합 시험 34개가 전부 깨진다. `searchCursorKey`와 달리 이 값은 **부재가 곧 꺼짐**이고 그 상태가 기존 계약 그대로라 fail closed의 대상이 아니다. `resolveSearchApiConfig`는 언제나 값을 채우며 소비처는 `=== true`로 읽는다. 그 34개가 꺼진 상태에서 통과하는 것이 곧 additive 증명이다 | API-SEQ-007 / WP-074 | 구현 판단 | CR-080 | resolved |
 | DEV-585 | 2026-09-11 | **GHE 자격이 없는 배포의 근거 출처를 `verified_snapshot`으로 정했다.** 설계 6.2가 그 `source_kind`를 열거했으나 어느 배포에서 쓰는지는 적지 않았다. PR 상세를 읽을 수 없으면 근거는 정본 스냅숏뿐이며, `state=merged`·`merge_commit_sha`·`base_branch`·`repository_id`가 모두 일치할 때만 확정한다. 스냅숏의 `state`는 투영이 만든 값이라 GHE 상세보다 약하므로 **자격이 있으면 상세를 우선**한다. 첫 사내 반입 형상(`AUTH_ENABLED=false`, GHE App 있음)에서는 상세 경로가 쓰인다 | FR-SEQ-008 AC-10 / WP-074 | 구현 판단 | CR-080 | resolved |
 | DEV-584 | 2026-09-11 | **채번이 남긴 `pull_request_number`를 M 근거로 승격하지 않는다.** 그 열은 채번이 색인에서 읽은 후보 힌트이고 늦게 도착한 PR이 나중에 채우기도 한다. 대신 확정 근거가 정해지면 `assignMergeNumbers`가 번호와 **함께** 그 PR 번호를 정본에 쓴다 — 근거가 정본이고 그 값이 곧 사실이다. 이미 다른 non-null PR이 있으면 `COALESCE`로 숨기지 않고 갱신 행 수 불일치로 드러나 `canonical_mismatch`가 된다 | FR-SEQ-008 AC-10 / ENT-SEQ-005 / WP-074 | 구현 판단 | CR-080 | resolved |
@@ -5856,7 +5858,7 @@ CR-075의 strict document validator는 변경 전 `main`과 같은 기존 오류
 | 린트 | `pnpm lint` · `pnpm run lint:deps` | 통과 · 패키지 13개 위반 0건 |
 | 단위 | `pnpm test` | 2081 통과 · 1 skip (118 파일) |
 | 회귀 | `pnpm run test:regression` | 420 통과 (8 파일) |
-| 통합 | `pnpm run test:integration` | 1584 통과 (99 파일). 전량 3회 중 1회에서 `manual-run.test.ts`의 취소 시험 1건이 깨졌고 그 메커니즘을 `DEV-588`로 등록했다 — 이 판의 변경과 무관하며 이어진 전량 2회가 연속 통과했다 |
+| 통합 | `pnpm run test:integration` | 1585 통과 (99 파일). 전량 실행 중 1회에서 `manual-run.test.ts`의 취소 시험 1건이 깨졌고 그 메커니즘을 `DEV-588`로 등록했다 — 이 판의 변경과 무관하며 이어진 전량 실행들이 통과했다. **CI의 첫 회차는 `DEV-590`으로 실패했고 그것을 고친 뒤 통과했다** |
 | 접근성 | `pnpm run test:a11y` | 378 통과 (17 파일) |
 | 대비 | `pnpm run test:contrast` | 232쌍 중 실패 0 |
 | e2e | `pnpm run test:e2e` | 181 통과 |
@@ -5904,6 +5906,16 @@ CR-075의 strict document validator는 변경 전 `main`과 같은 기존 오류
 #### `DEV-581`은 이 검증으로 닫히지 않는다
 
 회귀와 통합이 `direct_confirmed` 갈래를 통과하지만, 그 증서는 **시험이 직접 주입한 것**이다(`authoritative_absence`, `proof.fixture_seeded: true`). production 판정기는 그 상태를 만들지 않으며, 주입 전에는 첫 직접 푸시에서 멈춰 아무 번호도 붙지 않는 것이 production의 답이다. 그것을 먼저 확인하는 시험이 같은 파일에 있다. **이 장의 통과는 그 게이트를 닫지 않는다.**
+
+#### 배포 구성이 코드와 어긋난 자리 하나 (`DEV-589`)
+
+검증 중에 찾았다. compose와 런북이 `MNUMBER_ENABLED`를 **`web`에도 주라**고 적고 있었으나 화면은 그 값을 읽지 않는다 — 응답에 M 키가 있는지로만 판단하고, M 딥링크는 서버가 내는 404 `feature_disabled`를 그대로 보인다. 그대로 두면 런북의 진단 항목이 운영자를 없는 자리로 보낸다. **코드가 아니라 구성을 고쳤다** — 켜고 끄는 자리가 둘이면 한쪽만 바꾼 형상이 "켰는데 안 보인다"로 나타나고 화면 로그로는 그것을 구분할 수 없으므로, 서버 하나가 권위인 편이 낫다. compose의 `web` 서비스에서 그 변수를 뺐고 `.env.example`과 런북이 "`search-api`와 `worker-sequence` 둘에 같은 값"으로 바뀌었다. **그 정정을 회귀가 곧바로 잡았다** — `runtime-reachability.test.ts`가 "세 배포 단위"를 요구하고 있었고, 지금은 서버 둘에 가고 `web` 블록에는 없다는 것을 함께 단언한다.
+
+#### CI가 외부 전량 실행 3회가 놓친 것을 잡았다 (`DEV-590`)
+
+`mnumber_evidence`의 `ON DELETE RESTRICT`가 **기존 통합 시험의 정리를 막았다.** 두 릴리스 시험이 `beforeAll`에서 조건 없이 `merge_sequence`를 비우는데, 병렬로 도는 M 번호 시험이 남긴 증거가 그 행을 참조해 삭제가 거절된다. 로컬 전량 3회가 통과한 것은 **파일 순서와 병렬도가 달라 그 겹침이 나지 않았기 때문**이고, CI의 컨테이너 형상에서 처음 났다. 외부에서 초록이었다는 사실이 안전을 뜻하지 않는 자리가 또 하나 생겼다.
+
+**제약을 풀지 않고 지우는 쪽을 고쳤다.** 증거가 행과 함께 조용히 사라지면 확정의 근거가 흔적 없이 없어지므로 `RESTRICT`가 옳다. 정리 순서를 `clearMergeSequence`로 모아 15개 시험 파일이 같은 함수를 쓰게 했고, 반대 방향 단언(증거가 있으면 삭제가 거절되고 순서를 지키면 지워진다)을 시험으로 세웠다.
 
 #### 문서 검사기
 

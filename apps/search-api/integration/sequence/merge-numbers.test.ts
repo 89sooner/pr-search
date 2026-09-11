@@ -30,7 +30,7 @@ import { buildServer } from '../../src/server.js';
 import { MERGE_NUMBER_RESOLVE_PATH } from '../../src/sequence/merge-numbers.js';
 import { SEARCH_PATH } from '../../src/search/routes.js';
 import type { AuthContext, AuthRedis } from '../../src/auth/context.js';
-import { createTestRedis, migratedPool } from '../helpers.js';
+import { createTestRedis, migratedPool, clearMergeSequence } from '../helpers.js';
 import { TEST_CURSOR_KEY, TEST_CURSOR_SIGNER } from '../_cursor-fixture.js';
 
 const AUTH_CONFIG = {
@@ -195,7 +195,7 @@ beforeAll(async () => {
   await pool.query('DELETE FROM sequence_latency_sample');
   await pool.query('DELETE FROM sequence_work');
   await pool.query('DELETE FROM mnumber_evidence');
-  await pool.query('DELETE FROM merge_sequence');
+  await clearMergeSequence(pool);
   await pool.query('DELETE FROM sequence_space');
   await pool.query('DELETE FROM permission_cache');
   await pool.query('DELETE FROM app_user');

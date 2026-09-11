@@ -46,7 +46,7 @@ import {
   type LinkDeps,
 } from '../../src/link.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
-import { migratedPool } from '../helpers.js';
+import { migratedPool, clearMergeSequence } from '../helpers.js';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -283,7 +283,7 @@ describe('직접 푸시 종단과 전량 재파생 (WP-029 / CR-039)', () => {
 
   beforeEach(async () => {
     await pool.query('DELETE FROM job WHERE target = $1', [`${OWNER}/${NAME}`]);
-    await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
+    await clearMergeSequence(pool, 'repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM commit_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM repository WHERE repository_id = $1', [REPOSITORY_ID]);

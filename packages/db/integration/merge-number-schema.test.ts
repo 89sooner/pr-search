@@ -22,6 +22,7 @@ import * as mergeSequenceRepo from '../src/repositories/merge-sequence.js';
 import * as sequenceSpaceRepo from '../src/repositories/sequence-space.js';
 import * as evidenceRepo from '../src/repositories/mnumber-evidence.js';
 import * as workRepo from '../src/repositories/sequence-work.js';
+import { clearMergeSequence } from './helpers.js';
 import * as latencyRepo from '../src/repositories/sequence-latency.js';
 import { createTestPool, errorCode, truncate } from './helpers.js';
 
@@ -231,6 +232,33 @@ describe('mnumber_evidence 제약 (AC-10)', () => {
     const confirmed = await evidenceRepo.upsertEvidence(pool, { ...base, state: 'pr_confirmed', prNumber: 21, reason: null, sourceKind: 'pr_detail', mergedAt: new Date('2026-09-01T00:00:00Z') });
     expect(confirmed.first_pending_at).toBeNull();
     expect(confirmed.evidence_version).toBe(3);
+  });
+
+  /**
+   * 반대 방향 (`DEV-590`).
+   *
+   * 근거가 남아 있으면 정본 행을 지울 수 없다 — `ON DELETE RESTRICT`다. 증거가 행과
+   * 함께 조용히 사라지면 "무엇을 근거로 확정했는가"가 흔적 없이 없어지므로 그것이 옳다.
+   *
+   * **그래서 행을 지우려는 쪽이 증거를 먼저 회수해야 한다.** 시험의 정리도 예외가
+   * 아니며, 그 순서를 한 곳에 모은 것이 `clearMergeSequence`다. 이 단언이 그 헬퍼가
+   * 존재하는 이유이고, CI가 실제로 이 제약에 걸려 깨진 뒤에 생겼다.
+   */
+  it('**근거가 남아 있으면 정본 행을 지울 수 없다** — 증거를 먼저 회수해야 한다 (DEV-590)', async () => {
+    await evidenceRepo.upsertEvidence(pool, {
+      repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, mergeSeq: 1, commitSha: SHA(1),
+      state: 'unresolved', prNumber: null, reason: 'pr_evidence_pending', sourceKind: 'unresolved_lookup',
+      sourcePrVersion: null, mergedAt: null, proof: { schema_version: 1, profile: 'squash_only' },
+    });
+
+    await expect(
+      pool.query('DELETE FROM merge_sequence WHERE repository_id = $1 AND merge_seq = 1', [REPO]),
+    ).rejects.toMatchObject({ code: '23503' });
+
+    // 순서를 지키면 지워진다.
+    await clearMergeSequence(pool, 'repository_id = $1 AND merge_seq = 1', [REPO]);
+    const left = await pool.query('SELECT 1 FROM merge_sequence WHERE repository_id = $1 AND merge_seq = 1', [REPO]);
+    expect(left.rowCount).toBe(0);
   });
 
   it('근거는 정본 행 없이 존재할 수 없다 (FK)', async () => {

@@ -26,6 +26,7 @@ import {
   type Pool,
 } from '@prs/db';
 import { migrateUp } from '@prs/db/migrate';
+import { clearMergeSequence } from '../packages/db/integration/helpers.js';
 import type { Client } from '@elastic/elasticsearch';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -125,7 +126,7 @@ beforeAll(async () => {
   await sync.sync(REF, REPOSITORY_ID);
 
   await pool.query('DELETE FROM release WHERE repository_id = $1', [REPOSITORY_ID]);
-  await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
+  await clearMergeSequence(pool, 'repository_id = $1', [REPOSITORY_ID]);
   await pool.query('DELETE FROM sequence_space WHERE repository_id = $1', [REPOSITORY_ID]);
   await pool.query('DELETE FROM repository WHERE repository_id = $1', [REPOSITORY_ID]);
   await repositoryRepo.upsertRepository(pool, {
@@ -170,7 +171,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await pool?.query('DELETE FROM release WHERE repository_id = $1', [REPOSITORY_ID]);
-  await pool?.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
+  if (pool !== undefined) await clearMergeSequence(pool, 'repository_id = $1', [REPOSITORY_ID]);
   await pool?.query('DELETE FROM sequence_space WHERE repository_id = $1', [REPOSITORY_ID]);
   await pool?.query('DELETE FROM repository WHERE repository_id = $1', [REPOSITORY_ID]);
   await pool?.end();

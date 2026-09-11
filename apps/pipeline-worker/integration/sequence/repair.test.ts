@@ -21,7 +21,7 @@ import type { EventBus } from '@prs/bus';
 import { MirrorCommitGraph, MirrorSync, type CommitGraph, type RepoRef } from '@prs/github';
 import { jobRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { migratedPool } from '../../../../packages/db/integration/helpers.js';
+import { migratedPool, clearMergeSequence } from '../../../../packages/db/integration/helpers.js';
 import { reassignSequence, repairSequence, type RepairOutcome, type SequenceDeps } from '../../src/sequence.js';
 import { runRepairJob, parseRepairTarget } from '../../src/sequence-repair-runner.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
@@ -116,7 +116,7 @@ describe('수동 정합성 복구 (CR-034, DEV-182)', () => {
   });
 
   beforeEach(async () => {
-    await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
+    await clearMergeSequence(pool, 'repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM job');
     await sequenceSpaceRepo.ensureSequenceSpace(pool, REPOSITORY_ID, BRANCH);
     await pool.query(
@@ -343,7 +343,7 @@ describe('재채번 러너가 큐를 비운다 (CR-034, DEV-178)', () => {
     }
 
     beforeEach(async () => {
-      await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
+      await clearMergeSequence(pool, 'repository_id = $1', [REPOSITORY_ID]);
       await pool.query('DELETE FROM job');
       await sequenceSpaceRepo.ensureSequenceSpace(pool, REPOSITORY_ID, BRANCH);
       await pool.query(

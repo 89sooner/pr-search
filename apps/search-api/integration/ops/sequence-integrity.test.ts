@@ -33,7 +33,7 @@ import { SEQUENCE_INTEGRITY_PATH } from '../../src/ops/routes.js';
 import { buildServerDeps } from '../../src/runtime.js';
 import type { GitHubClient } from '@prs/github';
 import type { OpsDeps } from '../../src/ops/dead-letters.js';
-import { migratedPool } from '../helpers.js';
+import { migratedPool, clearMergeSequence } from '../helpers.js';
 import { TEST_CURSOR_KEY } from '../_cursor-fixture.js';
 
 const TEST_AUTH_CONFIG = {
@@ -163,7 +163,7 @@ describe('API-ADM-007 시퀀스 정합성 점검 (WP-028)', () => {
   });
 
   beforeEach(async () => {
-    await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
+    await clearMergeSequence(pool, 'repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM safe_marker WHERE repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM job');
     await pool.query('DELETE FROM saved_search');

@@ -17,6 +17,17 @@
  *
  * M 부분만 `unavailable`로 표시하고 목록은 그대로 나간다 (설계 9절). 해석 API는
  * 정본이 필수이므로 그쪽만 500이다.
+ *
+ * ## 접근 범위는 **호출부가 이미 건 것이다**
+ *
+ * 이 함수는 접근 범위를 다시 걸지 않는다. 받은 `repositoryId`가 사용자가 볼 수 있는
+ * 저장소라는 것을 **부르는 쪽이 보장한다** — 목록·범위는 필수 범위 필터를 지난 ES
+ * hit에서, 상세는 이미 권한을 확인한 PR 문서에서 그 값을 뽑는다 (ADR-008).
+ *
+ * **범위를 거치지 않은 저장소 ID를 여기에 넣지 마라.** M 번호는 "그 PR이 존재하고
+ * 언제쯤 들어왔다"를 말하므로, 권한 밖 저장소의 번호가 나가면 `API-SEQ-007`이 미등록과
+ * 권한 밖을 같은 404로 답하는 이유가 그 자리에서 무너진다. 새 호출부를 붙일 때는
+ * 그 입력이 어느 범위 검사를 지나왔는지 먼저 확인한다.
  */
 
 import { mergeSequenceRepo, type Pool } from '@prs/db';
@@ -27,7 +38,11 @@ import {
   type MergeNumberSubject,
 } from './merge-number-view.js';
 
-/** 한 PR 항목의 대조 재료. 호출부가 자기 DTO에서 뽑아 준다. */
+/**
+ * 한 PR 항목의 대조 재료. 호출부가 자기 DTO에서 뽑아 준다.
+ *
+ * `repositoryId`는 **접근 범위를 이미 지난 값**이어야 한다 (위 머리글 참고).
+ */
 export interface MergeNumberInput {
   readonly repositoryId: number | null;
   readonly repositorySlug: string | null;

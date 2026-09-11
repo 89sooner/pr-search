@@ -157,9 +157,9 @@ services:
       OIDC_SCOPES: ${OIDC_SCOPES:-}
       OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
       OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
-      # M 번호 (WP-074). **셋이 같은 값이어야 한다** — web·search-api·worker-sequence.
-      # 화면에는 공개 boolean만 간다 (설계 9절).
-      MNUMBER_ENABLED: ${MNUMBER_ENABLED:-false}
+      # M 번호 (WP-074)는 여기에 없다 — **web은 이 값을 읽지 않는다** (DEV-589).
+      # 화면은 응답에 M 키가 있는지로만 판단하고, 켜고 끄는 것은 search-api와
+      # worker-sequence의 같은 값이다. 여기 두면 한쪽만 바꿔 놓고 켰다고 믿게 된다.
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/healthz >/dev/null || exit 1']
       interval: 20s

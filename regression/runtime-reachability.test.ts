@@ -353,11 +353,26 @@ describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () 
     expect(server).toContain('mergeNumberEnabled: config.mergeNumberEnabled === true');
   });
 
-  it('M 번호 플래그가 세 배포 단위에 같은 이름으로 간다 (WP-074)', () => {
+  /**
+   * 플래그가 **가는 곳과 가지 않는 곳** (WP-074 / DEV-589).
+   *
+   * `search-api`와 `worker-sequence` 둘에 가야 한다 — 하나라도 빠지면 한쪽만 도는
+   * 배포가 되고, 그 상태는 "켰는데 번호가 안 보인다"로 나타난다.
+   *
+   * **`web`에는 가지 않는다.** 화면은 응답에 M 키가 있는지로만 판단하므로 그 값을
+   * 읽지 않는다. 거기 두면 켜고 끄는 자리가 셋이 되어 한 곳만 바꾼 형상을 만들고,
+   * 런북의 진단이 운영자를 없는 자리로 보낸다.
+   */
+  it('M 번호 플래그가 서버 둘에 가고 **web에는 가지 않는다** (WP-074 / DEV-589)', () => {
     const compose = read('deploy/single-host/compose.yml');
     const occurrences = [...compose.matchAll(/MNUMBER_ENABLED: \$\{MNUMBER_ENABLED:-false\}/g)];
-    // web · search-api · worker-sequence. 하나라도 빠지면 한쪽만 도는 배포가 된다.
-    expect(occurrences.length).toBeGreaterThanOrEqual(3);
+    expect(occurrences).toHaveLength(2);
+
+    // `web` 서비스 블록 안에는 그 이름이 없어야 한다.
+    const webBlock = /\n {2}web:\n[\s\S]*?\n {2}[a-z]/.exec(compose)?.[0] ?? '';
+    expect(webBlock).not.toBe('');
+    expect(webBlock).not.toContain('MNUMBER_ENABLED');
+
     expect(read('deploy/single-host/.env.example')).toContain('MNUMBER_ENABLED=false');
   });
 
