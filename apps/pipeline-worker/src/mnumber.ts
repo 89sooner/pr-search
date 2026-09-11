@@ -499,9 +499,25 @@ export async function observeMergeNumberSamples(deps: MergeNumberDeps, limit = 1
     deps.metrics.measurementMissing.inc({ stage: 'observe' });
     return 0;
   }
-  const expectedOf = new Map(
-    canonical.map((row) => [`${String(row.repository_id)}\u0000${row.base_branch}\u0000${String(row.pull_request_number)}`, row]),
-  );
+  /*
+   * **번호를 가진 행이 이긴다** (DEV-611).
+   *
+   * 한 PR에 정본 행이 둘일 수 있다 — 같은 PR의 이중 squash SHA다(설계 3절). 그때
+   * `lookupMergeNumbers`는 `merge_seq` 순서로 **둘 다** 돌려주므로, 그냥 `Map`에
+   * 넣으면 나중 행이 앞 행을 덮는다. 번호 있는 행이 앞이고 충돌 행이 뒤면 관측이
+   * 번호 없는 쪽을 보고 **영영 `visible`이 되지 않는다.**
+   *
+   * `merge-number-view.ts`의 `preferRow`가 API 쪽에서 세운 것과 같은 규칙이다
+   * (`DEV-601`). 같은 정본을 읽는 두 곳이 다른 행을 고르면 안 된다.
+   */
+  const expectedOf = new Map<string, (typeof canonical)[number]>();
+  for (const row of canonical) {
+    const key = `${String(row.repository_id)}\u0000${row.base_branch}\u0000${String(row.pull_request_number)}`;
+    const held = expectedOf.get(key);
+    if (held === undefined || (row.merge_number !== null && held.merge_number === null)) {
+      expectedOf.set(key, row);
+    }
+  }
 
   for (const sample of samples) {
     if (sample.pr_number === null) continue;

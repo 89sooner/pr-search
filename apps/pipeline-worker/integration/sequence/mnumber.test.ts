@@ -700,6 +700,64 @@ describe('관측 루프가 정본을 한 번에 묻는다 (DEV-610)', () => {
     expect(counting.lookups).toHaveLength(1);
   });
 
+  /**
+   * 한 PR에 정본 행이 둘일 때 **번호를 가진 행이 이긴다** (`DEV-611`).
+   *
+   * `lookupMergeNumbers`는 `merge_seq` 순서로 둘 다 돌려준다. 그냥 `Map`에 넣으면
+   * 나중 행이 덮으므로, 번호 있는 행이 앞이고 충돌 행이 뒤면 관측이 번호 없는 쪽을
+   * 보고 **영영 `visible`이 되지 않는다.** API 쪽 `preferRow`와 같은 규칙이다.
+   */
+  it('**충돌 행이 뒤에 있어도 번호를 가진 행으로 관측한다** (DEV-611)', async () => {
+    await seedDirect(1, origin.rootSha);
+    await seedDirect(3, origin.directSha);
+    await reconcileMergeNumbers(mnumberDeps(evidenceSource(knownPrs(origin))), REPOSITORY_ID, BRANCH);
+
+    // PR 21에 번호 없는 둘째 행을 더한다 — 같은 PR의 이중 squash SHA다.
+    const numbered = (await pool.query<{ merge_seq: string; merge_number: string | null; commit_sha: string }>(
+      'SELECT merge_seq, merge_number, commit_sha FROM merge_sequence WHERE repository_id = $1 AND pull_request_number = 21',
+      [REPOSITORY_ID],
+    )).rows[0];
+    expect(numbered?.merge_number, '먼저 번호가 붙어 있어야 한다').not.toBeNull();
+
+    const conflictSeq = 90;
+    await pool.query(
+      `INSERT INTO merge_sequence (repository_id, base_branch, seq_epoch, merge_seq, commit_sha, pull_request_number, committed_at)
+       VALUES ($1, $2, 1, $3, $4, 21, now())`,
+      [REPOSITORY_ID, BRANCH, conflictSeq, 'c'.repeat(40)],
+    );
+
+    /*
+     * 색인이 번호를 이미 담고 있다고 답하는 ES 대역. **번호 있는 행을 골랐다면**
+     * 값이 일치해 관측이 완료되고, 번호 없는 행을 골랐다면 `expected.merge_number`가
+     * `null`이라 `visible`이 되지 않는다.
+     */
+    const before = (await sequenceLatencyRepo.listUnobservedAssigned(pool, 100)).filter((one) => one.pr_number === 21);
+    expect(before.length, '관측 대기 표본이 있어야 한다').toBeGreaterThan(0);
+
+    const es = {
+      search: async (): Promise<unknown> => ({
+        _shards: { failed: 0, total: 1 },
+        hits: {
+          total: { value: 1, relation: 'eq' },
+          hits: [{
+            _index: 'prs-pull-requests-v1',
+            _id: 'x',
+            _source: {
+              merge_number: Number(numbered?.merge_number),
+              merge_number_epoch: 1,
+              merge_commit_sha: numbered?.commit_sha,
+            },
+          }],
+        },
+      }),
+    } as unknown as Client;
+
+    const observed = await observeMergeNumberSamples(mnumberDeps(evidenceSource(knownPrs(origin)), { es }), 100);
+    expect(observed, '번호 있는 행을 골랐다면 관측이 완료된다').toBeGreaterThan(0);
+
+    await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1 AND merge_seq = $2', [REPOSITORY_ID, conflictSeq]);
+  });
+
   it('정본을 읽지 못하면 아무것도 관측하지 않는다 — 없는 사실을 남기지 않는다', async () => {
     await seedDirect(1, origin.rootSha);
     await seedDirect(3, origin.directSha);
