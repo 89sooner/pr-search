@@ -48,17 +48,45 @@ function readBoundedInt(env: ConfigEnv, key: string, fallback: number, min: numb
   return value;
 }
 
+/**
+ * `MNUMBER_ENABLED` 하나만 읽는다 (WP-074 / DEV-607·DEV-608).
+ *
+ * ## 왜 따로 있는가
+ *
+ * `batch` 역할이 재색인 때문에 이 값을 알아야 하는데, `resolveMergeNumberConfig`를
+ * 부르면 **채번 전용 값까지 검증하고 던진다** — `MNUMBER_BATCH_SIZE`의 오타 하나가
+ * 채번과 무관한 정리·보존·재색인을 함께 멈춘다. K8s의 batch 매니페스트는
+ * `envFrom: configMapRef`로 configmap 전체를 받으므로 그 경로가 실재한다.
+ *
+ * ## 켜짐의 정의는 여기 하나뿐이다
+ *
+ * `resolveMergeNumberConfig`도 이 함수를 부른다. 두 곳이 각자 판정하면 **같은 값에
+ * 다른 답을 내는 날**이 오고, 그것이 역할 사이에서만 드러나 찾기 어렵다. 실제로
+ * 그런 상태였다 — 인라인 판정은 `yes`를 조용히 꺼짐으로 접었고 설정 함수는 던졌다.
+ *
+ * 빈 문자열은 **꺼짐이다.** `??`는 `''`를 잡지 않아 그대로 내려오는데, compose는
+ * 이미 빈 값을 `false`로 접고 있고 configmap의 빈 값 하나가 한 역할만 죽이는 것은
+ * 얻는 것이 없다. `search-api`의 같은 함수와 규칙을 맞춘다.
+ *
+ * 그 밖의 값은 **기동을 거부한다.** 조용히 꺼진 채 돌면 운영자가 켰다고 믿는 기능이
+ * 없는 상태가 되고 그것을 알아챌 신호가 없다.
+ */
+export function resolveMergeNumberEnabled(env: ConfigEnv = process.env): boolean {
+  const raw = (env['MNUMBER_ENABLED'] ?? 'false').trim();
+  if (raw === 'true') return true;
+  if (raw === 'false' || raw === '') return false;
+  throw new Error(`MNUMBER_ENABLED는 true 또는 false여야 한다: ${raw}`);
+}
+
 export function resolveMergeNumberConfig(env: ConfigEnv = process.env): MergeNumberConfig {
-  const enabledRaw = (env['MNUMBER_ENABLED'] ?? 'false').trim();
-  if (enabledRaw !== 'true' && enabledRaw !== 'false') {
-    throw new Error(`MNUMBER_ENABLED는 true 또는 false여야 한다: ${enabledRaw}`);
-  }
+  // 켜짐의 정의를 다시 쓰지 않는다 — 갈라짐을 구조로 막는다 (DEV-608).
+  const enabled = resolveMergeNumberEnabled(env);
   const profile = (env['MNUMBER_PROFILE'] ?? 'squash_only').trim();
   if (profile !== 'squash_only') {
     throw new Error(`MNUMBER_PROFILE은 squash_only만 지원한다: ${profile}`);
   }
   return {
-    enabled: enabledRaw === 'true',
+    enabled,
     batchSize: readBoundedInt(env, 'MNUMBER_BATCH_SIZE', 100, 1, 1_000),
     pollMs: readBoundedInt(env, 'MNUMBER_POLL_MS', 1_000, 100, 60_000),
     retryMaxMs: readBoundedInt(env, 'MNUMBER_RETRY_MAX_MS', 60_000, 1_000, 3_600_000),

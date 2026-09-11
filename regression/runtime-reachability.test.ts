@@ -394,10 +394,58 @@ describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () 
       .split('\n')
       .filter((line) => !/^\s*(\*|\/\*|\/\/)/.test(line))
       .join('\n');
+    // 채번 전용 값을 검증하는 쪽을 부르지 않는다 — 그 오타가 batch를 멈추면 안 된다.
     expect(code).not.toContain('resolveMergeNumberConfig(');
-    // 켜짐의 정의는 `sequence`와 같다 — `'true'` 하나뿐이다.
-    expect(code).toContain("(process.env['MNUMBER_ENABLED'] ?? 'false').trim() === 'true'");
-    expect(read('apps/pipeline-worker/src/mnumber-config.ts')).toContain("enabled: enabledRaw === 'true'");
+    expect(code).toContain('resolveMergeNumberEnabled(');
+  });
+
+  /**
+   * 켜짐의 정의가 **역할마다 같은가** (`DEV-608`).
+   *
+   * ## 왜 철자가 아니라 행동을 보는가
+   *
+   * 앞선 판에서는 두 소스에 특정 문자열이 있는지로 이것을 걸었다. 그것은 셋을
+   * 놓친다. 부분 문자열의 **존재**만 보므로 다른 규칙을 한 줄 앞에 넣어도 통과하고,
+   * 포매터가 따옴표를 바꾸면 동작이 같은데도 죽으며, **이미 갈라진 상태를 애초에
+   * 보지 못한다.**
+   *
+   * 실제로 갈라져 있었다. 독립 검토가 세 구현을 같은 입력으로 불러 일곱 중 셋에서
+   * 답이 다른 것을 보였다 — 빈 문자열에 한쪽은 `false`이고 한쪽은 던졌으며, `yes`에
+   * 두 곳은 던지는데 `batch`만 조용히 꺼졌다. **조용히 꺼지는 것**이 `DEV-606`에서
+   * 고친 실패 모양 그대로다.
+   *
+   * 그래서 **함수를 실제로 불러 표를 건다.** 리팩터링에 깨지지 않고, 한쪽 규칙만
+   * 바뀌면 반드시 잡힌다.
+   */
+  it('**M 켜짐의 정의가 두 앱에서 같다** — 입력 표로 건다 (DEV-608)', async () => {
+    const worker = await import('../apps/pipeline-worker/src/mnumber-config.js');
+    const api = await import('../apps/search-api/src/config.js');
+
+    const accepted: readonly (readonly [Record<string, string>, boolean])[] = [
+      [{}, false],
+      [{ MNUMBER_ENABLED: 'true' }, true],
+      [{ MNUMBER_ENABLED: 'false' }, false],
+      // `??`는 빈 문자열을 잡지 않는다. 그것이 꺼짐인지 오류인지가 갈렸던 자리다.
+      [{ MNUMBER_ENABLED: '' }, false],
+      [{ MNUMBER_ENABLED: ' true ' }, true],
+      [{ MNUMBER_ENABLED: ' false ' }, false],
+    ];
+
+    for (const [env, expected] of accepted) {
+      const label = JSON.stringify(env);
+      expect(worker.resolveMergeNumberEnabled(env), `worker ${label}`).toBe(expected);
+      expect(api.resolveMergeNumberEnabled(env), `search-api ${label}`).toBe(expected);
+      // 채번 설정도 같은 답을 낸다 — 정의를 다시 쓰지 않기 때문이다.
+      expect(worker.resolveMergeNumberConfig(env).enabled, `config ${label}`).toBe(expected);
+    }
+
+    // 오타를 켜짐으로도 꺼짐으로도 읽지 않는다. **세 곳이 함께 거부한다.**
+    for (const bad of ['yes', 'TRUE', 'True', '1', 'on', 'no']) {
+      const env = { MNUMBER_ENABLED: bad };
+      expect(() => worker.resolveMergeNumberEnabled(env), `worker ${bad}`).toThrow();
+      expect(() => api.resolveMergeNumberEnabled(env), `search-api ${bad}`).toThrow();
+      expect(() => worker.resolveMergeNumberConfig(env), `config ${bad}`).toThrow();
+    }
   });
 
   it('M 번호 플래그가 M 코드가 도는 세 역할에 가고 **web에는 가지 않는다** (DEV-589·DEV-606)', () => {

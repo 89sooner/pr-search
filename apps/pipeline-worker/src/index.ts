@@ -68,7 +68,7 @@ import {
 import { startSequenceRepairRunner, type RepairRunner } from './sequence-repair-runner.js';
 import { startSequenceAssignRunner, type AssignRunner } from './sequence-assign-runner.js';
 import { withMirrorLock } from './mirror-lock.js';
-import { resolveMergeNumberConfig, resolveSequenceGraphMode } from './mnumber-config.js';
+import { resolveMergeNumberConfig, resolveMergeNumberEnabled, resolveSequenceGraphMode } from './mnumber-config.js';
 import { observeMergeNumberSamples, OBSERVE_POLL_MS, type MergeNumberDeps } from './mnumber.js';
 import { startMergeNumberHintWorker } from './mnumber-hint.js';
 import { startSequenceWorkRunner, type SequenceWorkRunner } from './sequence-work-runner.js';
@@ -189,7 +189,7 @@ if (roles.includes('batch')) {
     es: reindexEs,
     log: (entry) => { reindexLog({ ...entry }); },
     /*
-     * 재색인 뒤 M 복구 의도를 남길지 (WP-074 / DEV-605·DEV-607).
+     * 재색인 뒤 M 복구 의도를 남길지 (WP-074 / DEV-605·DEV-607·DEV-608).
      *
      * **이 한 값만 읽는다.** `resolveMergeNumberConfig()`는 `MNUMBER_BATCH_SIZE`·
      * `MNUMBER_POLL_MS` 같은 **채번 전용 값까지 검증하고 범위를 벗어나면 던진다.**
@@ -197,10 +197,10 @@ if (roles.includes('batch')) {
      * 못한다 — 정리·보존·재색인이 함께 죽는다. 그 검증은 그 값을 실제로 쓰는
      * `sequence` 역할의 몫이다.
      *
-     * `mnumberConfig`는 sequence 블록에서 만들어지고 이 블록이 그보다 앞이라 여기서
-     * 쓸 수 없다. 두 곳이 같은 이름을 같은 규칙으로 읽으므로 값이 갈리지 않는다.
+     * **판정을 여기서 다시 쓰지 않는다.** `resolveMergeNumberConfig`도 같은 함수를
+     * 부르므로 두 역할이 같은 값에 다른 답을 낼 수 없다 (DEV-608).
      */
-    mergeNumberEnabled: (process.env['MNUMBER_ENABLED'] ?? 'false').trim() === 'true',
+    mergeNumberEnabled: resolveMergeNumberEnabled(),
     links: {
       async rebuildRepository(repository) {
         let cursor: RebuildCursor | undefined;
