@@ -45,3 +45,20 @@ describe('resolveMergeNumberConfig', () => {
     expect(() => resolveMergeNumberConfig({ MNUMBER_PROFILE: 'merge_commit' })).toThrow(/MNUMBER_PROFILE/);
   });
 });
+
+describe('같은 환경을 두 번 읽어도 답이 같다 (DEV-605)', () => {
+  /*
+   * 재색인은 `mnumberConfig`가 만들어지기 **전에** 구성되므로 이 함수를 한 번 더
+   * 부른다. 두 호출이 갈리면 한쪽은 M을 켠 줄 알고 의도를 남기는데 러너는 그것을
+   * 집지 않아, 아무도 처리하지 않을 행이 쌓인다.
+   */
+  it('**순수하다** — 같은 환경이면 같은 값이다', () => {
+    const env = { MNUMBER_ENABLED: 'true', MNUMBER_BATCH_SIZE: '50' };
+    expect(resolveMergeNumberConfig(env)).toEqual(resolveMergeNumberConfig(env));
+    expect(resolveMergeNumberConfig(env).enabled).toBe(true);
+  });
+
+  it('기본은 꺼짐이다 — 값이 없으면 M 경로가 서지 않는다', () => {
+    expect(resolveMergeNumberConfig({}).enabled).toBe(false);
+  });
+});
