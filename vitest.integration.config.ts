@@ -27,6 +27,8 @@ export default defineConfig({
       // 서브패스가 먼저다 — `@prs/db`가 앞서면 `/migrate`가 진입점으로 잡힌다.
       '@prs/db/migrate': fileURLToPath(new URL('./packages/db/src/migrate.ts', import.meta.url)),
       '@prs/db': resolvePackage('db'),
+      // 접두가 겹친다 — `@prs/github`가 앞서면 `@prs/github-annotate`가 그것으로 잡힌다.
+      '@prs/github-annotate': resolvePackage('github-annotate'),
       '@prs/github': resolvePackage('github'),
       '@prs/bus': resolvePackage('bus'),
       '@prs/authz': resolvePackage('authz'),

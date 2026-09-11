@@ -30,6 +30,9 @@ const REPOSITORY: RepositoryRow = {
   snapshot_bootstrapped_at: null,
   last_reconciled_at: null,
   last_reconcile_missing_count: null,
+  annotate_enabled: true,
+  annotate_blocked_at: null,
+  annotate_blocked_reason: null,
 };
 
 const PR: EnrichedPullRequest = {

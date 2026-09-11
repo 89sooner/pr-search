@@ -61,13 +61,27 @@ export const ACTIVE_AUDIT_ACTIONS = [
    */
   'safe_marker.set',
   'export.create',
+  /**
+   * PR 제목에 M 넘버를 표기 (WP-075 / FR-SEQ-009 AC-4, CR-084).
+   *
+   * **행위자가 사람이 아닌 첫 액션이다.** 나머지는 전부 사용자가 화면이나 API를
+   * 눌러 만들지만 이것은 `JOB-SEQ-005`가 스스로 기록한다 — 그래서 `user_id`가
+   * `ANNOTATE_PRINCIPAL`이고 `query`는 없다.
+   *
+   * **실제로 GHE에 쓴 경우에만 기록한다.** 이미 같은 접두가 있어 호출하지 않은
+   * 회차나 해제된 저장소를 기록하면 감사 이력의 건수가 "제목이 바뀐 횟수"를
+   * 말하지 않게 된다 — `safe_marker.set`이 멱등 재시도를 기록하지 않는 것과
+   * 같은 규율이다.
+   */
+  'pull_request.annotate',
 ] as const;
 
 /**
  * 계약이 승인했으나 그 기능을 만드는 WP가 아직 오지 않은 액션.
  *
- * WP-044가 export.create를 실제로 배선하여 미활성 액션이 남지 않았다.
- * 기능 활성화와 함께 이동한다는 DEV-403의 규칙은 계속 적용된다.
+ * WP-044가 export.create를, WP-075가 pull_request.annotate를 실제로 배선하여
+ * 미활성 액션이 남지 않았다. 기능 활성화와 함께 이동한다는 DEV-403의 규칙은
+ * 계속 적용된다.
  */
 export const NOT_ACTIVATED_AUDIT_ACTIONS = [] as const;
 
@@ -109,3 +123,11 @@ export function isActiveAuditAction(value: unknown): value is ActiveAuditAction 
  * `pipeline-worker`의 재채번 기록(`system:sequence`)이 이미 쓰는 관례다.
  */
 export const AUDIT_RETENTION_PRINCIPAL = 'system:audit-retention';
+
+/**
+ * PR 제목 표기를 수행하는 시스템 주체 (WP-075 / FR-SEQ-009 AC-4).
+ *
+ * 사람이 지시하지 않은 쓰기라 위임된 사용자가 없다. `system:` 접두는
+ * `system:sequence`·`system:audit-retention`이 이미 쓰는 관례다.
+ */
+export const ANNOTATE_PRINCIPAL = 'system:annotate';

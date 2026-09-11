@@ -726,3 +726,152 @@ export async function listNumberedPullRequests(
   );
   return new Set(result.rows.map((row) => row.pull_request_number));
 }
+
+/* ------------------------------------------------------------------ WP-075 표기 */
+
+/**
+ * 표기 대상 한 건 (WP-075 / FR-SEQ-009).
+ *
+ * `BIGINT`는 `type-parsers.ts`가 safe integer로 바꿔 주므로 숫자로 받는다.
+ */
+export interface AnnotateTargetRow {
+  readonly repository_id: number;
+  readonly owner: string;
+  readonly name: string;
+  readonly base_branch: string;
+  readonly seq_epoch: number;
+  readonly merge_seq: number;
+  readonly pull_request_number: number;
+  readonly merge_number: number;
+  readonly annotate_state: 'failed' | 'disabled' | null;
+}
+
+export interface AnnotateTargetFilter {
+  readonly limit: number;
+  /** 이벤트 경로는 공간을 좁혀 부른다. 스윕은 좁히지 않는다. */
+  readonly repositoryId?: number;
+  readonly baseBranch?: string;
+  readonly pullRequestNumbers?: readonly number[];
+  /**
+   * 권한 차단을 다시 볼 기준 시각. 이보다 **오래된** 차단만 통과시킨다.
+   *
+   * 주지 않으면 차단된 저장소를 전부 제외한다 — 이벤트 경로가 그렇게 부른다.
+   * 차단 직후 도착한 이벤트가 방금 막은 저장소를 다시 두드리지 않게 한다.
+   */
+  readonly blockedBefore?: Date;
+}
+
+/**
+ * 아직 표기하지 못한 행을 고른다 (FR-SEQ-009 AC-6·AC-7, JOB-SEQ-005).
+ *
+ * ## 에폭은 조인이 강제한다
+ *
+ * `sequence_space`와 `seq_epoch`까지 함께 조인하므로 **현재 에폭의 행만** 나온다.
+ * 늦게 도착한 이전 에폭 이벤트가 지금 제목을 고치는 경로가 애플리케이션 코드가
+ * 아니라 질의에서 막힌다 — 호출부가 깜빡할 수 있는 검사를 한 곳에 모은다.
+ *
+ * ## 무엇을 다시 보는가
+ *
+ * `done`과 `mismatch`는 끝난 상태다. `failed`는 일시 실패였을 수 있으니 다시 본다.
+ * `disabled`도 다시 보는데, 그 행을 남긴 뒤 운영자가 저장소를 **다시 켰을 수**
+ * 있기 때문이다 — 이 질의는 켜진 저장소만 내므로 꺼진 채면 애초에 나오지 않는다.
+ * 다시 보는 것이 곧 다시 쓰는 것은 아니다: 처리는 언제나 제목 조회부터 시작하고
+ * 이미 같은 접두가 있으면 호출 없이 `done`이 된다.
+ */
+export async function listAnnotateTargets(
+  db: Queryable,
+  filter: AnnotateTargetFilter,
+): Promise<AnnotateTargetRow[]> {
+  const result = await db.query<AnnotateTargetRow>(
+    `SELECT ms.repository_id, r.owner, r.name, ms.base_branch, ms.seq_epoch,
+            ms.merge_seq, ms.pull_request_number, ms.merge_number, ms.annotate_state
+       FROM merge_sequence ms
+       JOIN sequence_space sp
+         ON sp.repository_id = ms.repository_id
+        AND sp.base_branch   = ms.base_branch
+        AND sp.seq_epoch     = ms.seq_epoch
+       JOIN repository r ON r.repository_id = ms.repository_id
+      WHERE ms.merge_number IS NOT NULL
+        AND ms.pull_request_number IS NOT NULL
+        AND (ms.annotate_state IS NULL OR ms.annotate_state IN ('failed', 'disabled'))
+        AND r.status = 'active'
+        AND r.annotate_enabled
+        AND (r.annotate_blocked_at IS NULL OR ($5::timestamptz IS NOT NULL AND r.annotate_blocked_at < $5))
+        AND ($1::bigint IS NULL OR ms.repository_id = $1)
+        AND ($2::text   IS NULL OR ms.base_branch   = $2)
+        AND ($3::int[]  IS NULL OR ms.pull_request_number = ANY($3))
+      ORDER BY ms.repository_id, ms.base_branch, ms.merge_seq
+      LIMIT $4`,
+    [
+      filter.repositoryId ?? null,
+      filter.baseBranch ?? null,
+      filter.pullRequestNumbers === undefined ? null : [...filter.pullRequestNumbers],
+      filter.limit,
+      filter.blockedBefore ?? null,
+    ],
+  );
+  return result.rows;
+}
+
+export type AnnotateState = 'done' | 'mismatch' | 'failed' | 'disabled';
+
+/**
+ * 표기 결과를 남긴다.
+ *
+ * **`merge_number`를 되돌리지 않는다** (FR-SEQ-009 AC-3). 표기가 실패해도 번호는
+ * 이미 확정된 사실이며, 실패로 번호를 지우면 같은 PR이 다음 회차에 다른 번호를
+ * 받을 수 있다.
+ */
+export async function markAnnotateState(
+  db: Queryable,
+  key: {
+    readonly repositoryId: number;
+    readonly baseBranch: string;
+    readonly seqEpoch: number;
+    readonly mergeSeq: number;
+  },
+  state: AnnotateState,
+): Promise<void> {
+  await db.query(
+    `UPDATE merge_sequence
+        SET annotate_state = $5, annotated_at = now()
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq = $4`,
+    [key.repositoryId, key.baseBranch, key.seqEpoch, key.mergeSeq, state],
+  );
+}
+
+/**
+ * 해제된 저장소의 행을 `disabled`로 남긴다 (WP-075 구현 범위).
+ *
+ * **GHE를 부르지 않는다.** 운영자가 왜 이 PR에 번호만 있고 제목에는 없는지 물을 때
+ * 답이 되는 것은 이 표시뿐이다 — 아무 표시도 없으면 "아직 안 했다"와 "하지 않기로
+ * 했다"를 구분할 수 없다.
+ *
+ * 이미 `disabled`인 행은 건드리지 않아 스윕마다 같은 행을 다시 쓰지 않는다.
+ * `done`·`mismatch`도 덮지 않는다: 끈 것이 이미 쓴 사실을 지우지는 않는다.
+ *
+ * @returns 이번에 표시한 행 수.
+ */
+export async function markDisabledRepositoryTargets(db: Queryable, limit: number): Promise<number> {
+  const result = await db.query(
+    `UPDATE merge_sequence ms
+        SET annotate_state = 'disabled', annotated_at = now()
+      WHERE (ms.repository_id, ms.base_branch, ms.seq_epoch, ms.merge_seq) IN (
+        SELECT t.repository_id, t.base_branch, t.seq_epoch, t.merge_seq
+          FROM merge_sequence t
+          JOIN sequence_space sp
+            ON sp.repository_id = t.repository_id
+           AND sp.base_branch   = t.base_branch
+           AND sp.seq_epoch     = t.seq_epoch
+          JOIN repository r ON r.repository_id = t.repository_id
+         WHERE t.merge_number IS NOT NULL
+           AND t.pull_request_number IS NOT NULL
+           AND (t.annotate_state IS NULL OR t.annotate_state = 'failed')
+           AND NOT r.annotate_enabled
+         ORDER BY t.repository_id, t.base_branch, t.merge_seq
+         LIMIT $1
+      )`,
+    [limit],
+  );
+  return result.rowCount ?? 0;
+}

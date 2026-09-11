@@ -51,7 +51,10 @@ export const LOGICAL_CONSUMERS: Readonly<Record<Topic, readonly string[]>> = {
   [TOPICS.enriched]: ['project'],
   // `link`는 기본값이라 이름이 그대로 group이 된다 (WP-029). `commit-enrich`는 WP-067.
   // `mnumber`는 WP-074 — sequence.assigned/reassigned 힌트로 durable 러너를 깨운다.
-  [TOPICS.projected]: ['link', 'commit-enrich', 'mnumber'],
+  // `annotate`는 WP-075 — `mnumber.assigned`를 받아 PR 제목을 표기한다 (JOB-SEQ-005).
+  // `mnumber`와 **다른 group**이어야 한다: 같은 group이면 채번 힌트와 표기가 이벤트를
+  // 나눠 먹어 각자 절반만 본다.
+  [TOPICS.projected]: ['link', 'commit-enrich', 'mnumber', 'annotate'],
   [TOPICS.sequence]: ['sequence'],
   [TOPICS.release]: ['release'],
   [TOPICS.batch]: ['batch'],

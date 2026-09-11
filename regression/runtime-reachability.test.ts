@@ -21,6 +21,11 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+// **판정을 문자열로 세지 않고 실제로 부른다** (DEV-615). 계약 함수를 그대로 들여온다.
+import { ACTIVE_AUDIT_ACTIONS, NOT_ACTIVATED_AUDIT_ACTIONS } from '@prs/domain';
+import { LOGICAL_CONSUMERS, TOPICS, consumerGroup } from '@prs/bus';
+import { annotateConfigFailure, resolveAnnotateConfig, resolveAnnotateEnabled } from '@prs/github-annotate';
+
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (path: string): string => readFileSync(new URL(path, new URL('..', import.meta.url)), 'utf8');
 
@@ -219,6 +224,29 @@ const CAPABILITIES = [
     start: 'sequenceMetadataCleanup = startSequenceMetadataCleanup(',
     stop: 'sequenceMetadataCleanup?.stop()',
     manifest: 'deploy/k8s/pipeline-worker-batch.yaml',
+  },
+  /*
+   * WP-075 / JOB-SEQ-005. 이 제품이 사람의 지시 없이 GHE에 쓰는 유일한 경로다.
+   * 구독과 잔여 스윕이 **둘 다** 있어야 한다 — 구독만 있으면 이벤트가 유실된
+   * PR의 표기가 영영 빠지고, 스윕만 있으면 하루를 기다린다.
+   */
+  {
+    id: 'JOB-SEQ-005',
+    what: 'PR 제목 M 넘버 표기 구독',
+    process: 'pipeline-worker',
+    role: 'annotate',
+    start: 'annotateSubscription = await startAnnotateWorker(',
+    stop: 'annotateSubscription?.close()',
+    manifest: 'deploy/k8s/pipeline-worker-annotate.yaml',
+  },
+  {
+    id: 'JOB-SEQ-005-sweep',
+    what: 'PR 제목 미표기 잔여 스윕',
+    process: 'pipeline-worker',
+    role: 'annotate',
+    start: 'annotateSweeper = startAnnotateSweeper(',
+    stop: 'annotateSweeper?.stop()',
+    manifest: 'deploy/k8s/pipeline-worker-annotate.yaml',
   },
 ] as const;
 
@@ -957,7 +985,12 @@ describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () 
 });
 describe('주기 스윕을 가진 역할은 replica 1이다', () => {
   // 리더 선출이 없다 — 여러 파드가 같은 주기에 같은 대상을 중복 처리한다.
-  it.each(['deploy/k8s/pipeline-worker-sequence.yaml', 'deploy/k8s/pipeline-worker-reconcile.yaml'])(
+  it.each([
+    'deploy/k8s/pipeline-worker-sequence.yaml',
+    'deploy/k8s/pipeline-worker-reconcile.yaml',
+    // WP-075: 잔여 스윕이 리더 선출 없이 돈다. 파드가 둘이면 같은 PR에 요청이 두 번 나간다.
+    'deploy/k8s/pipeline-worker-annotate.yaml',
+  ])(
     '%s',
     (manifest) => {
       expect(read(manifest)).toMatch(/replicas:\s*1\b/);
@@ -1533,7 +1566,10 @@ describe('경로가 실재하는지', () => {
     const manifests = readdirSync(dir)
       .filter((name) => name.endsWith('.yaml'))
       // 시크릿 예시는 그대로 apply 하지 않는다 — 사내 시크릿 관리가 만든다.
-      .filter((name) => name !== 'secret.example.yaml');
+      // 접미로 거른다: WP-075가 표기 전용 자격을 **별도 시크릿**으로 나누면서
+      // `annotate-secret.example.yaml`이 생겼고, 이름 하나만 비교하면 그것이
+      // 적용 목록에 있어야 한다고 요구하게 된다.
+      .filter((name) => !name.endsWith('secret.example.yaml'));
 
     expect(manifests.length).toBeGreaterThan(0);
     for (const name of manifests) {
@@ -3329,6 +3365,105 @@ describe('초록이 거짓말하지 못한다 (CR-078)', () => {
 });
 
 /**
+ * `compose.yml`의 서비스별 **최종** 환경 키 집합.
+ *
+ * 병합 앵커(`<<: *a` 와 `<<: [*a, *b]`)를 실제로 펼쳐 명시 키와 합집합한다.
+ * 환경 키만 본다 — 앵커 정의의 소문자 키(`image`·`restart`)는 대문자 규칙으로
+ * 자연히 걸러진다.
+ */
+const composeEnvByService = (source: string): Map<string, Set<string>> => {
+  const lines = source.split('\n');
+  const anchors = new Map<string, Set<string>>();
+  const services = new Map<string, Set<string>>();
+
+  let anchorKeys: Set<string> | undefined;
+  let serviceKeys: Set<string> | undefined;
+  let serviceMerges: string[] = [];
+  let inServices = false;
+  let inEnvironment = false;
+
+  const pending: { keys: Set<string>; merges: string[] }[] = [];
+  const closeService = (): void => {
+    if (serviceKeys) pending.push({ keys: serviceKeys, merges: serviceMerges });
+  };
+
+  for (const line of lines) {
+    const anchorStart = /^x-[a-z0-9-]+: &([a-z0-9-]+)\s*$/.exec(line);
+    if (anchorStart) {
+      anchorKeys = new Set<string>();
+      anchors.set(anchorStart[1]!, anchorKeys);
+      continue;
+    }
+    if (anchorKeys) {
+      const key = /^ {2}([A-Z][A-Z0-9_]*):/.exec(line);
+      if (key) {
+        anchorKeys.add(key[1]!);
+        continue;
+      }
+      // 주석과 빈 줄은 블록을 끝내지 않는다.
+      if (/^\s*(#.*)?$/.test(line)) continue;
+      // 들여쓰기 안의 다른 줄(중첩 매핑 등)은 환경 키가 아니므로 버린다.
+      if (line.startsWith('  ')) continue;
+      // 들여쓰기를 벗어나면 앵커 블록이 끝났다. **이 줄은 버리지 않는다** —
+      // `services:`가 바로 그 자리에 오므로 아래 로직이 다시 본다.
+      anchorKeys = undefined;
+    }
+
+    if (/^services:\s*$/.test(line)) {
+      inServices = true;
+      continue;
+    }
+    if (!inServices) continue;
+
+    const serviceStart = /^ {2}([a-z][a-z0-9-]*):\s*$/.exec(line);
+    if (serviceStart) {
+      closeService();
+      serviceKeys = new Set<string>();
+      serviceMerges = [];
+      services.set(serviceStart[1]!, serviceKeys);
+      inEnvironment = false;
+      continue;
+    }
+    if (!serviceKeys) continue;
+
+    if (/^ {4}environment:\s*$/.test(line)) {
+      inEnvironment = true;
+      continue;
+    }
+    // environment 와 같은 깊이의 다른 키가 나오면 블록이 끝난다.
+    if (/^ {4}[a-z]/.test(line)) {
+      inEnvironment = false;
+      continue;
+    }
+    if (!inEnvironment) continue;
+
+    const listMerge = /^ {6}<<: \[([^\]]+)\]\s*$/.exec(line);
+    if (listMerge) {
+      for (const ref of listMerge[1]!.split(',')) {
+        const name = ref.trim().replace(/^\*/, '');
+        if (name) serviceMerges.push(name);
+      }
+      continue;
+    }
+    const singleMerge = /^ {6}<<: \*([a-z0-9-]+)\s*$/.exec(line);
+    if (singleMerge) {
+      serviceMerges.push(singleMerge[1]!);
+      continue;
+    }
+    const key = /^ {6}([A-Z][A-Z0-9_]*):/.exec(line);
+    if (key) serviceKeys.add(key[1]!);
+  }
+  closeService();
+
+  for (const entry of pending) {
+    for (const anchor of entry.merges) {
+      for (const key of anchors.get(anchor) ?? []) entry.keys.add(key);
+    }
+  }
+  return services;
+};
+
+/**
  * 사설 CA가 `git`에도 닿는가 (CR-082 / DEV-561).
  *
  * ## 무엇이 있었나
@@ -3358,104 +3493,6 @@ describe('사설 CA가 git 서브프로세스에도 닿는다 (CR-082 / DEV-561)
   const ENV_EXAMPLE_561 = read('deploy/single-host/.env.example');
   const RUNBOOK_561 = read('deploy/single-host/RUNBOOK.md');
 
-  /**
-   * `compose.yml`의 서비스별 **최종** 환경 키 집합.
-   *
-   * 병합 앵커(`<<: *a` 와 `<<: [*a, *b]`)를 실제로 펼쳐 명시 키와 합집합한다.
-   * 환경 키만 본다 — 앵커 정의의 소문자 키(`image`·`restart`)는 대문자 규칙으로
-   * 자연히 걸러진다.
-   */
-  const composeEnvByService = (source: string): Map<string, Set<string>> => {
-    const lines = source.split('\n');
-    const anchors = new Map<string, Set<string>>();
-    const services = new Map<string, Set<string>>();
-
-    let anchorKeys: Set<string> | undefined;
-    let serviceKeys: Set<string> | undefined;
-    let serviceMerges: string[] = [];
-    let inServices = false;
-    let inEnvironment = false;
-
-    const pending: { keys: Set<string>; merges: string[] }[] = [];
-    const closeService = (): void => {
-      if (serviceKeys) pending.push({ keys: serviceKeys, merges: serviceMerges });
-    };
-
-    for (const line of lines) {
-      const anchorStart = /^x-[a-z0-9-]+: &([a-z0-9-]+)\s*$/.exec(line);
-      if (anchorStart) {
-        anchorKeys = new Set<string>();
-        anchors.set(anchorStart[1]!, anchorKeys);
-        continue;
-      }
-      if (anchorKeys) {
-        const key = /^ {2}([A-Z][A-Z0-9_]*):/.exec(line);
-        if (key) {
-          anchorKeys.add(key[1]!);
-          continue;
-        }
-        // 주석과 빈 줄은 블록을 끝내지 않는다.
-        if (/^\s*(#.*)?$/.test(line)) continue;
-        // 들여쓰기 안의 다른 줄(중첩 매핑 등)은 환경 키가 아니므로 버린다.
-        if (line.startsWith('  ')) continue;
-        // 들여쓰기를 벗어나면 앵커 블록이 끝났다. **이 줄은 버리지 않는다** —
-        // `services:`가 바로 그 자리에 오므로 아래 로직이 다시 본다.
-        anchorKeys = undefined;
-      }
-
-      if (/^services:\s*$/.test(line)) {
-        inServices = true;
-        continue;
-      }
-      if (!inServices) continue;
-
-      const serviceStart = /^ {2}([a-z][a-z0-9-]*):\s*$/.exec(line);
-      if (serviceStart) {
-        closeService();
-        serviceKeys = new Set<string>();
-        serviceMerges = [];
-        services.set(serviceStart[1]!, serviceKeys);
-        inEnvironment = false;
-        continue;
-      }
-      if (!serviceKeys) continue;
-
-      if (/^ {4}environment:\s*$/.test(line)) {
-        inEnvironment = true;
-        continue;
-      }
-      // environment 와 같은 깊이의 다른 키가 나오면 블록이 끝난다.
-      if (/^ {4}[a-z]/.test(line)) {
-        inEnvironment = false;
-        continue;
-      }
-      if (!inEnvironment) continue;
-
-      const listMerge = /^ {6}<<: \[([^\]]+)\]\s*$/.exec(line);
-      if (listMerge) {
-        for (const ref of listMerge[1]!.split(',')) {
-          const name = ref.trim().replace(/^\*/, '');
-          if (name) serviceMerges.push(name);
-        }
-        continue;
-      }
-      const singleMerge = /^ {6}<<: \*([a-z0-9-]+)\s*$/.exec(line);
-      if (singleMerge) {
-        serviceMerges.push(singleMerge[1]!);
-        continue;
-      }
-      const key = /^ {6}([A-Z][A-Z0-9_]*):/.exec(line);
-      if (key) serviceKeys.add(key[1]!);
-    }
-    closeService();
-
-    for (const entry of pending) {
-      for (const anchor of entry.merges) {
-        for (const key of anchors.get(anchor) ?? []) entry.keys.add(key);
-      }
-    }
-    return services;
-  };
 
   const ENV_BY_SERVICE = composeEnvByService(COMPOSE_561);
 
@@ -3530,5 +3567,152 @@ describe('사설 CA가 git 서브프로세스에도 닿는다 (CR-082 / DEV-561)
     expect(RUNBOOK_561, 'DEV-561 근거가 런북에 없다').toContain('DEV-561');
     const table = RUNBOOK_561.slice(RUNBOOK_561.indexOf('| 증상'));
     expect(table, '미러만 실패하는 증상 행이 없다').toContain('JOB-MIR-001');
+  });
+});
+
+/**
+ * **쓰기 자격이 조회 경로로 새지 않는다** (WP-075 / CR-084, FR-SEQ-009 AC-5, ADR-022 결정 1).
+ *
+ * 이 제품이 사람의 지시 없이 GHE를 고치는 최초의 경로가 열렸다. `THR-047`이 적는
+ * 위험은 그 쓰기 토큰이 조회 경로로 새는 것이고, 완화 근거는 **두 App의 자격이
+ * 서로 다른 자리에 있다**는 사실 하나다. 그 사실이 코드와 배포에서 실제로 참인지를
+ * 여기서 잰다 — 문서에만 있으면 다음 사람이 `envFrom` 한 줄로 되돌린다.
+ *
+ * ## 양방향으로 건다
+ *
+ * 한 방향만 거는 게이트는 계약이 넓어질 때 반대로 거짓말한다 (`DEV-615`가 가르친
+ * 것이다). 그래서 "표기 파드가 조회 키를 받지 않는다"와 "조회 파드가 표기 키를
+ * 받지 않는다"를 **둘 다** 단언한다.
+ */
+describe('표기 쓰기 자격이 조회 경로로 새지 않는다 (WP-075 / CR-084)', () => {
+  const ANNOTATE_SECRET_KEYS = ['GHE_ANNOTATE_APP_ID', 'GHE_ANNOTATE_PRIVATE_KEY', 'GHE_ANNOTATE_INSTALLATIONS'];
+  const DATA_APP_SECRET_KEYS = ['GHE_APP_ID', 'GHE_APP_PRIVATE_KEY', 'GHE_INSTALLATIONS'];
+
+  it('표기 패키지를 의존하는 앱은 pipeline-worker 하나다', () => {
+    /*
+     * **의존 그래프가 경계다.** 같은 패키지에 두면 `search-api`가 `@prs/github`을
+     * 의존하는 것만으로 쓰기 코드가 그 그래프에 들어온다. 이름을 나눈 것이
+     * 아니라 패키지를 나눈 이유가 이것이고, 그 사실을 여기서 고정한다.
+     */
+    const dependents = ['apps/search-api', 'apps/web', 'apps/ingest-gateway', 'apps/pipeline-worker'].filter(
+      (dir) => read(`${dir}/package.json`).includes('@prs/github-annotate'),
+    );
+    expect(dependents).toEqual(['apps/pipeline-worker']);
+  });
+
+  it('조회 전송 계층에 쓰기 메서드가 없다', () => {
+    // `GitHubTransport`는 GET 계열만 갖는다. PATCH가 여기 생기면 조회 토큰으로
+    // 쓰기가 가능한 경로가 만들어진다.
+    const transport = read('packages/github/src/transport.ts');
+    expect(transport).not.toMatch(/method:\s*'(PATCH|POST|PUT|DELETE)'/);
+    const client = read('packages/github/src/client.ts');
+    expect(client).not.toContain('updateTitle');
+  });
+
+  it('표기 클라이언트가 조회 App의 변수를 읽지 않는다', () => {
+    const config = read('packages/github-annotate/src/config.ts');
+    for (const key of DATA_APP_SECRET_KEYS) {
+      // 주석으로 언급하는 것까지 막지는 않는다 — `env[...]` 형태의 **읽기**만 본다.
+      expect(config, `표기 설정이 ${key}를 읽는다`).not.toContain(`env['${key}']`);
+    }
+    for (const key of ANNOTATE_SECRET_KEYS) {
+      expect(config).toContain(key);
+    }
+  });
+
+  it('표기 워커만 쓰기 자격을 받는다 (Profile A)', () => {
+    const envByService = composeEnvByService(read('deploy/single-host/compose.yml'));
+    expect(envByService.has('worker-annotate'), 'worker-annotate 서비스가 없다').toBe(true);
+
+    const withAnnotateKey = [...envByService.entries()]
+      .filter(([, keys]) => keys.has('GHE_ANNOTATE_PRIVATE_KEY'))
+      .map(([name]) => name);
+    expect(withAnnotateKey).toEqual(['worker-annotate']);
+  });
+
+  it('표기 워커가 조회 App의 자격을 받지 않는다 (Profile A)', () => {
+    const envByService = composeEnvByService(read('deploy/single-host/compose.yml'));
+    const keys = envByService.get('worker-annotate');
+    expect(keys, 'worker-annotate의 환경을 읽지 못했다').toBeDefined();
+    for (const key of DATA_APP_SECRET_KEYS) {
+      expect(keys, `worker-annotate가 조회 App의 ${key}를 받는다`).not.toContain(key);
+    }
+    // 호스트 주소는 자격이 아니므로 받아야 한다 — 없으면 어디에 쓸지 모른다.
+    expect(keys).toContain('GHE_BASE_URL');
+    expect(keys).toContain('MNUMBER_ANNOTATE_ENABLED');
+  });
+
+  it('Profile B도 자격을 나눈다', () => {
+    const annotate = read('deploy/k8s/pipeline-worker-annotate.yaml');
+    // 표기 파드는 전용 시크릿만 `envFrom`으로 받는다.
+    expect(annotate).toContain('secretRef: { name: prs-annotate-secrets }');
+    expect(annotate).not.toContain('secretRef: { name: prs-secrets }');
+    // 공용 값은 키 하나만 골라 받는다.
+    expect(annotate).toContain('secretKeyRef: { name: prs-secrets, key: DATABASE_URL }');
+
+    // 반대 방향 — 표기 시크릿을 **소비하는** 다른 manifest는 없다. 시크릿을
+    // 정의하는 파일 자신은 당연히 그 이름을 담으므로 대상이 아니다.
+    const dir = new URL('deploy/k8s/', new URL('..', import.meta.url));
+    const others = readdirSync(dir)
+      .filter(
+        (name) =>
+          name.endsWith('.yaml') &&
+          name !== 'pipeline-worker-annotate.yaml' &&
+          name !== 'annotate-secret.example.yaml',
+      )
+      .filter((name) => readFileSync(new URL(name, dir), 'utf8').includes('prs-annotate-secrets'));
+    expect(others, `표기 시크릿을 참조하는 다른 manifest: ${others.join(', ')}`).toEqual([]);
+  });
+
+  it('**기본값이 꺼짐이다** — 이 변경을 받는 것만으로 제목이 바뀌지 않는다', () => {
+    expect(read('deploy/single-host/.env.example')).toContain('MNUMBER_ANNOTATE_ENABLED=false');
+    expect(read('deploy/k8s/configmap.yaml')).toContain("MNUMBER_ANNOTATE_ENABLED: 'false'");
+    // compose가 값 없는 배포에서 꺼짐으로 접는지 — `:-false`가 그 자리다.
+    expect(read('deploy/single-host/compose.yml')).toContain('MNUMBER_ANNOTATE_ENABLED: ${MNUMBER_ANNOTATE_ENABLED:-false}');
+  });
+
+  /**
+   * **게이트의 기대를 계약 함수에 넣어 대조한다** (DEV-615가 가르친 것).
+   *
+   * 문자열로 "꺼짐이 기본"이라고 세는 검사는 그 문자열이 그대로 있고 **판정만
+   * 반대로 바뀐** 상태를 못 본다. 그래서 실제 해석 함수를 불러 답의 표를 만든다.
+   */
+  it('전역 스위치의 해석이 배포 정의와 같은 말을 한다', () => {
+    expect(resolveAnnotateEnabled({})).toBe(false);
+    expect(resolveAnnotateEnabled({ MNUMBER_ANNOTATE_ENABLED: '' })).toBe(false);
+    expect(resolveAnnotateEnabled({ MNUMBER_ANNOTATE_ENABLED: 'false' })).toBe(false);
+    expect(resolveAnnotateEnabled({ MNUMBER_ANNOTATE_ENABLED: 'true' })).toBe(true);
+    // 오타는 조용히 꺼지지 않는다.
+    for (const bad of ['yes', 'True', '1', 'on']) {
+      expect(() => resolveAnnotateEnabled({ MNUMBER_ANNOTATE_ENABLED: bad }), bad).toThrow();
+    }
+  });
+
+  it('켜 놓고 자격이 없으면 쓰기 전에 멈춘다', () => {
+    const enabledWithout = resolveAnnotateConfig({ MNUMBER_ANNOTATE_ENABLED: 'true', GHE_BASE_URL: 'https://ghe.example.com' });
+    expect(annotateConfigFailure(enabledWithout)).toMatch(/GHE_ANNOTATE_APP_ID/);
+    // 꺼져 있으면 자격이 없어도 정상이다 — 기존 배포가 깨지지 않는다.
+    expect(annotateConfigFailure(resolveAnnotateConfig({}))).toBeNull();
+    // 기동을 막는 자리가 실제로 그 판정을 부르는가.
+    expect(read('apps/pipeline-worker/src/index.ts')).toContain('annotateConfigFailure(annotateConfig)');
+  });
+
+  it('표기가 `mnumber`와 다른 소비자 그룹을 쓴다', () => {
+    /*
+     * 같은 group이면 채번 힌트와 표기가 이벤트를 나눠 먹어 각자 절반만 본다
+     * (DEV-205의 규율). 철자가 아니라 **카탈로그 값**으로 확인한다.
+     */
+    expect(LOGICAL_CONSUMERS[TOPICS.projected]).toContain('annotate');
+    expect(consumerGroup(TOPICS.projected, 'annotate')).not.toBe(consumerGroup(TOPICS.projected, 'mnumber'));
+  });
+
+  it('감사 액션이 활성 어휘에 있고 미활성으로 남아 있지 않다', () => {
+    expect(ACTIVE_AUDIT_ACTIONS as readonly string[]).toContain('pull_request.annotate');
+    expect(NOT_ACTIVATED_AUDIT_ACTIONS as readonly string[]).not.toContain('pull_request.annotate');
+    // SRS의 정본 표도 같은 말을 해야 한다.
+    const srs = read('docs/10_requirements/srs_final.md');
+    const row = srs.split('\n').find((line) => line.includes('`pull_request.annotate`') && line.startsWith('|'));
+    expect(row, 'SRS 감사 표에 pull_request.annotate 행이 없다').toBeDefined();
+    expect(row, 'SRS가 아직 미활성이라고 말한다').not.toContain('미활성');
   });
 });

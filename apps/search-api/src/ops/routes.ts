@@ -756,6 +756,16 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
             ? {}
             : { sequence_branches: normalizeBranches(body['sequence_branches']) }),
           ...(typeof body['mirror_enabled'] === 'boolean' ? { mirror_enabled: body['mirror_enabled'] } : {}),
+          /*
+           * 저장소별 표기 해제 (WP-075 / FR-SEQ-009 AC-6).
+           *
+           * **기존 `repository.update` 경로에 얹는다.** 작은 토글 하나에 새 API와
+           * 새 감사 액션을 만들면 같은 행위가 두 이름으로 기록되고, 운영자는 저장소
+           * 설정을 바꾸는 자리를 둘 외워야 한다. 꺼도 채번은 계속되며 표기만 멈춘다.
+           */
+          ...(typeof body['annotate_enabled'] === 'boolean'
+            ? { annotate_enabled: body['annotate_enabled'] }
+            : {}),
         },
         principalId(principal),
         correlationId,

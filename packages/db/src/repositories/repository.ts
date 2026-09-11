@@ -42,6 +42,23 @@ export interface RepositoryRow {
    */
   readonly last_reconciled_at: Date | null;
   readonly last_reconcile_missing_count: number | null;
+  /**
+   * PR 제목에 M 넘버를 표기할 대상인가 (WP-075 / FR-SEQ-009 AC-6, 마이그레이션 026).
+   *
+   * **운영자가 적어 낸 값이다.** 이 제품은 오류를 만났다고 이 값을 바꾸지 않는다 —
+   * 그것은 아래 `annotate_blocked_at`이 따로 기록한다. 꺼진 저장소는 채번은 계속하고
+   * 표기만 멈춘다.
+   */
+  readonly annotate_enabled: boolean;
+  /**
+   * 표기 잡이 GHE 권한 오류를 받아 **스스로** 멈춘 시각과 사유.
+   *
+   * 운영자 정책과 분리해 두는 이유는 둘이 다른 사실이기 때문이다. 한 열에 담으면
+   * 권한 오류 한 번이 운영자의 설정을 조용히 뒤집고, 권한이 복구된 뒤에도 운영자는
+   * 자기가 켜 둔 저장소가 왜 꺼져 있는지 알 수 없다.
+   */
+  readonly annotate_blocked_at: Date | null;
+  readonly annotate_blocked_reason: string | null;
 }
 
 /**
@@ -180,6 +197,8 @@ export async function setRepositoryStatus(
 export interface RepositorySettings {
   readonly sequence_branches?: readonly string[];
   readonly mirror_enabled?: boolean;
+  /** FR-SEQ-009 AC-6. 운영자가 저장소별로 표기를 해제한다 (WP-075). */
+  readonly annotate_enabled?: boolean;
 }
 
 /**
@@ -196,16 +215,48 @@ export async function updateRepositorySettings(
   const result = await db.query<RepositoryRow>(
     `UPDATE repository
         SET sequence_branches = COALESCE($2, sequence_branches),
-            mirror_enabled    = COALESCE($3, mirror_enabled)
+            mirror_enabled    = COALESCE($3, mirror_enabled),
+            annotate_enabled  = COALESCE($4, annotate_enabled)
       WHERE repository_id = $1
       RETURNING *`,
     [
       repositoryId,
       settings.sequence_branches === undefined ? null : [...settings.sequence_branches],
       settings.mirror_enabled ?? null,
+      settings.annotate_enabled ?? null,
     ],
   );
   return result.rows[0];
+}
+
+/**
+ * 표기 잡이 이 저장소에서 스스로 멈춘 사실을 남긴다 (WP-075 / FR-SEQ-009 예외 처리).
+ *
+ * **`annotate_enabled`를 건드리지 않는다.** 권한 오류는 운영자의 결정이 아니므로
+ * 운영자가 적어 낸 값을 뒤집을 근거가 되지 못한다. 차단은 프로세스가 다시 떠도
+ * 유지되어야 하므로 메모리가 아니라 여기 남는다 — 재시작마다 권한 없는 저장소에
+ * 다시 요청하면 `FR-SEQ-009`가 막으려던 한도 소모가 그대로 일어난다.
+ *
+ * 같은 사유로 다시 부르면 시각만 미뤄진다. 쿨다운은 마지막 차단 시각부터 센다.
+ */
+export async function blockAnnotation(db: Queryable, repositoryId: number, reason: string): Promise<void> {
+  await db.query(
+    `UPDATE repository
+        SET annotate_blocked_at = now(), annotate_blocked_reason = $2
+      WHERE repository_id = $1`,
+    // 제약이 200자다. GHE 오류 본문이 그대로 들어오지 않도록 여기서도 자른다.
+    [repositoryId, reason.slice(0, 200)],
+  );
+}
+
+/** 차단을 푼다. 쿨다운이 지나 다시 시도할 때와 성공했을 때 부른다. */
+export async function clearAnnotationBlock(db: Queryable, repositoryId: number): Promise<void> {
+  await db.query(
+    `UPDATE repository
+        SET annotate_blocked_at = NULL, annotate_blocked_reason = NULL
+      WHERE repository_id = $1 AND annotate_blocked_at IS NOT NULL`,
+    [repositoryId],
+  );
 }
 
 /**

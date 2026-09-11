@@ -73,12 +73,15 @@ CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하
 | `pipeline-worker:reconcile` | 조정 스캔 | 저장소 수 | 1 / 1 | **1** | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:batch` | 배치 잡 (JOB-ING-006 재색인 · JOB-ING-007 아웃박스 재적재) | 고정 | **1 / 1** | **1** | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:authz` | 권한 캐시 무효화 (JOB-AUTH-001) | `prs:permission` 적체 | **1 / 4** | **1** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:annotate` | PR 제목 M 넘버 표기 (JOB-SEQ-005) — **GHE 쓰기 자격을 가진 유일한 단위** | 고정 | **1 / 1** | **1** | 하트비트 | 이전 이미지 재배포 |
 | `filebeat` | 원본 아카이브 적재 | `ingest-gateway` 파드 수를 따른다 (사이드카) | 게이트웨이와 동일 | **1** (사이드카) | Filebeat 자체 | 설정 롤백 |
 | `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005) | 대기 중 실행 수 | 2 / 8 | **미포함** | `GET /healthz` (gh 버전·manifest 대조 포함) | 이전 이미지 재배포 |
 
 **`batch`의 상한은 3이 아니라 1이다** (CR-046, DEV-311). 이 표가 3을 허용하면 운영자가 문서를 따라 늘릴 수 있는데, JOB-ING-007은 리더 선출이 없는 주기 스윕이라 파드마다 같은 아웃박스 행을 다시 발행하고 JOB-ING-006은 동시 실행 상한이 1이다. `pipeline-worker-batch.yaml`의 주석은 replica 1을 요구하는데 이 표가 3을 승인하고 있었다 — **아키텍처가 배포 계약이 경고하는 형상을 허가하고 있었다.** 조정 수단이 생기면 그때 올린다.
 
 **이 표는 두 프로파일의 배포 산출물과 서로를 검사한다** (CR-045, DEV-293·307 / CR-059, DEV-498). `mirror`(CR-038)·`reconcile`(CR-034)은 manifest가 신설됐는데 이 표에 오르지 않았고, 반대로 `batch`는 이 표에 있는데 **manifest가 없었다** — 그 결과 이미 구현된 JOB-ING-007이 배포되지 않았다(DEV-292). 이제 운영 도달성 회귀가 **코드가 갈래를 만든 역할마다 그것을 세우는 manifest가 있는지** 묻는다. `authz`(JOB-AUTH-001)는 **CR-048이 배포했다**(DEV-306 resolved) — 예외를 지우고 manifest를 만든 뒤 이 표에 올렸다. `release`(JOB-REL-007)·`backfill`(JOB-ING-004) 둘은 **아직 배포되지 않으며** DEV-304·305로 열려 있다 — **배포되지 않는 단위를 이 표에 먼저 적지 않는다.** 그러면 표가 다시 사실과 어긋난다. **`WP-070`이 Profile A에서 그 둘의 실행 경로를 세우면 그때 이 표에 올린다** (CR-059) — 이 CR은 계약만 세우므로 표를 미리 채우지 않는다.
+
+**`annotate`의 상한도 1이다** (CR-084 / WP-075). 미표기 잔여 스윕이 리더 선출 없이 도는 주기 작업이라 파드가 둘이면 같은 PR을 동시에 집어 같은 제목에 요청이 두 번 나간다 — 결과는 멱등이지만 GHE 한도를 두 배로 쓴다. **자격 배선도 다른 단위와 다르다**: 이 단위만 표기 전용 App의 개인 키를 받고, 조회용 Data App의 자격(`GHE_APP_*`)은 받지 않는다. 반대로 다른 단위는 표기 자격을 받지 않는다 (`FR-SEQ-009` AC-5, `ADR-022` 결정 1, `THR-047`). **전역 스위치 `MNUMBER_ANNOTATE_ENABLED`의 기본값이 꺼짐이므로 이 단위를 세우는 것만으로는 아무 PR 제목도 바뀌지 않는다.**
 
 **`gh-executor`는 Profile A에 포함하지 않는다** (CR-059). REL-007 이후의 GitHub Operations Plane이고 첫 사내 반입 대상은 read-only Search/Investigation Plane이다 — **장래의 선택 프로파일 때문에 지금 서비스를 세우지 않는다.** `filebeat`는 반대로 **포함한다**: 이미 구현·배포 계약이 있고(CR-052), Profile A는 게이트웨이 인스턴스가 하나라 `DEV-369`의 `PIPE_BUF` 경합이 아예 성립하지 않아 Profile B보다 배선이 단순하다.
 
