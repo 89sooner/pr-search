@@ -19,17 +19,44 @@ case "${1:-}" in
     exit 0 ;;
   ps) printf 'ffffffffffff\n'; exit 0 ;;
   run)
-    # 거부 계약 검사는 **죽어야** 통과한다. 인자로 그 구성을 알아본다.
-    # 게이트가 재는 거부 구성은 둘이다: 운영의 insecure 쿠키(`DEV-577`)와
-    # 자격 증명 없는 인증(`DEV-579`).
+    # 거부 계약 검사는 **죽어야** 통과하고, 허용 계약 검사는 **서야** 통과한다
+    # (`CR-083`). 값 하나만 보고 죽이면 허용 형상까지 죽여 게이트가 한 방향으로만
+    # 정직해진다 — 그것이 `DEV-615`에서 실제로 이 시험을 깬 모양이다.
+    #
+    # 그래서 인자에서 구성을 모아 계약대로 판정한다. 재구현이지만 대역에는 다른
+    # 방법이 없다. **판정이 갈리면 `apps/web/lib/server/config.test.ts`의 대조
+    # 시험이 먼저 죽는다** — 거기서 스모크의 기대를 실제 계약 함수에 넣는다.
+    AUTH_ENABLED=""; COOKIE_SECURE=""; PROVIDER=""; OIDC_ISSUER=""; GHE_CLIENT=""
     for a in "$@"; do
       case "$a" in
-        SESSION_COOKIE_SECURE=false|AUTH_ENABLED=true)
-          printf '  web 구성이 성립하지 않아 기동할 수 없다:\n    %s\n' "$a" >&2
-          exit 1 ;;
+        AUTH_ENABLED=*)         AUTH_ENABLED="${a#*=}" ;;
+        SESSION_COOKIE_SECURE=*) COOKIE_SECURE="${a#*=}" ;;
+        AUTH_PROVIDER=*)        PROVIDER="${a#*=}" ;;
+        OIDC_ISSUER=*)          OIDC_ISSUER="${a#*=}" ;;
+        GHE_OAUTH_CLIENT_ID=*)  GHE_CLIENT="${a#*=}" ;;
         --entrypoint) ENTRY=1 ;;
       esac
     done
+
+    reject() {
+      printf '  web 구성이 성립하지 않아 기동할 수 없다:\n    %s\n' "$1" >&2
+      exit 1
+    }
+
+    # 쿠키 계약 — **명시적으로 끈 배포만 면제된다** (`CR-083`).
+    if [ "$COOKIE_SECURE" = "false" ] && [ "$AUTH_ENABLED" != "false" ]; then
+      reject "SESSION_COOKIE_SECURE=false (AUTH_ENABLED=${AUTH_ENABLED:-미설정})"
+    fi
+
+    # 인증을 켰으면 구성한 공급자의 자격이 있어야 한다 (`DEV-579`, `CR-083`).
+    if [ "$AUTH_ENABLED" = "true" ]; then
+      if [ "$PROVIDER" = "github" ]; then
+        [ -n "$GHE_CLIENT" ] || reject "AUTH_PROVIDER=github인데 GHE OAuth 자격이 없다"
+      else
+        [ -n "$OIDC_ISSUER" ] || reject "AUTH_ENABLED=true인데 OIDC 자격이 없다"
+      fi
+    fi
+
     [ "${ENTRY:-0}" = "1" ] && { printf 'git version 0.0.0-fake\n'; exit 0; }
     printf 'ffffffffffff\n'; exit 0 ;;
   exec)
