@@ -4,6 +4,10 @@
 
 ## DEV-561 — `git` 서브프로세스가 사내 CA를 신뢰하지 않아 미러 초기화 실패
 
+> **상류 반영 완료 (2026-09-11, `CR-082`).** `compose.yml`의 `x-app-env` 앵커에 `GIT_SSL_CAINFO`를 더해 `git`을 부르는 세 서비스에 한 자리로 닿게 했고, `.env.example`과 런북 6장·8장을 갱신했다. 회귀가 서비스별 최종 환경 키 집합을 계산해 그것을 강제한다. 원장 `DEV-561` **resolved**, 검증 6.77장.
+>
+> **사내에서 할 것:** 다음 반입에서 임시 조치(`.env`와 `compose.yml` 직접 수정)를 되돌리고 번들 기본값으로 미러 초기화가 성립하는지 확인한다. `.env`의 `GIT_SSL_CAINFO`는 그대로 두면 된다 — 이제 상류가 같은 키를 읽는다. 사내 재적용은 아직 `NOT RUN`이다.
+
 **발견**: 0.1.0-pilot.4 업그레이드 중 (2026-09-11)
 **현상**: JOB-MIR-001(git clone) 실행 시 `SSL certificate problem: unable to get local issuer certificate`
 **원인**: `NODE_EXTRA_CA_CERTS`는 Node.js 런타임만 읽는다. git 서브프로세스는 별도로 `GIT_SSL_CAINFO`를 받아야 한다 (RUNBOOK 6장에 명시됨, 실제 compose.yml에는 없었다)
