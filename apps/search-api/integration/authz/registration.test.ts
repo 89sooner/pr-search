@@ -24,6 +24,7 @@ import type { Redis } from '@prs/bus';
 import { createSessionId, type SessionRecord } from '@prs/authz';
 import { authRepo, type Pool } from '@prs/db';
 
+import { createAuthContext } from '../../src/auth/context.js';
 import { RegisteringSessionStore } from '../../src/auth/registration.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
 
@@ -190,5 +191,45 @@ describe('DEV-613: 세션을 읽으면 정본에 행이 실제로 생긴다', ()
     expect(seen[0]).toContain('DEV-613');
     // 실패했으므로 행은 생기지 않는다. 그 사실은 조회의 503이 말한다.
     expect(await authRepo.findUserById(pool, GHE_USER)).toBeNull();
+  });
+});
+
+/**
+ * 조립이 그 저장소를 실제로 배선하는가 (독립 검토가 찾은 공백).
+ *
+ * **고친 결함의 봉합점이 무방비였다.** 위의 시험들은 `RegisteringSessionStore`를
+ * 직접 만들어 검증한다. 그런데 프로덕션에서 그것을 쓰게 하는 것은
+ * `createAuthContext`의 **한 줄**이고, 그 줄을 `new SessionStore(...)`로 되돌려도
+ * 모든 시험이 초록인 채 `DEV-613`이 되살아난다.
+ *
+ * `AuthContext.sessions`가 기반 타입으로 선언돼 있어 타입 검사도 그것을 막지
+ * 않는다(그 완화 자체는 의도다 — 세션만 필요한 시험이 DB까지 세우지 않게 한다).
+ * 그래서 **조립의 결과를 행으로 확인한다.**
+ */
+describe('DEV-613: createAuthContext가 등록 저장소를 배선한다', () => {
+  it('조립한 컨텍스트로 세션을 읽으면 정본에 행이 생긴다', async () => {
+    const context = createAuthContext({
+      redis: {
+        get: (key) => redis.get(key),
+        set: (key, value, mode, seconds) => redis.set(key, value, mode, seconds),
+        del: (...keys) => redis.del(...keys),
+        scan: (cursor, m, pattern, c, n) => redis.scan(cursor, m, pattern, c, n),
+      },
+      pool,
+      // 접근 범위는 이 시험의 관심이 아니다. 부르지 않는다.
+      source: { fetch: async () => ({ repositoryIds: [], orgIds: [], teamIds: [], visibilities: [] }) },
+    });
+
+    const sessionId = createSessionId();
+    await context.sessions.create({ ...baseSession(), sessionId });
+
+    expect(await authRepo.findUserById(pool, GHE_USER), '등록 전인데 행이 있다').toBeNull();
+
+    await context.sessions.load(sessionId);
+
+    expect(
+      await authRepo.findUserById(pool, GHE_USER),
+      '조립이 등록 저장소를 배선하지 않았다 — DEV-613이 되살아났다',
+    ).not.toBeNull();
   });
 });

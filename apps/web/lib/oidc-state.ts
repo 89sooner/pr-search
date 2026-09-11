@@ -109,3 +109,23 @@ export function roundTripCookie(value: string, secure: boolean): CookieAttribute
 export function clearedRoundTripCookie(secure: boolean): CookieAttributes {
   return { ...roundTripCookie('', secure), maxAge: 0 };
 }
+
+/**
+ * 쿠키 속성을 `Set-Cookie` 헤더 값으로 만든다.
+ *
+ * **`NextResponse.cookies.set`을 쓸 수 없는 자리가 있다** (`DEV-614`). 그 API는
+ * 자기가 아는 목록으로 `set-cookie` 헤더를 **다시 쓰므로**, `headers.append`로 이미
+ * 달아 둔 다른 쿠키를 지운다. 한 응답에 쿠키가 둘 이상이면 **두 쿠키를 같은 방법으로
+ * 달아야** 한다. 순서를 맞추는 것으로 고치면 다음 사람이 줄을 옮기는 순간 같은
+ * 자리가 다시 열린다.
+ *
+ * `@prs/authz`의 `serializeSessionCookie`와 같은 형식을 낸다.
+ */
+export function serializeCookie(attributes: CookieAttributes): string {
+  const parts = [`${attributes.name}=${attributes.value}`, `Path=${attributes.path}`];
+  if (attributes.maxAge !== undefined) parts.push(`Max-Age=${String(attributes.maxAge)}`);
+  if (attributes.secure) parts.push('Secure');
+  if (attributes.httpOnly) parts.push('HttpOnly');
+  parts.push(`SameSite=${attributes.sameSite === 'lax' ? 'Lax' : attributes.sameSite}`);
+  return parts.join('; ');
+}

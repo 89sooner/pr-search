@@ -331,3 +331,41 @@ describe('신원과 팀 조회', () => {
     expect((await fetchGitHubIdentity(CONFIG, ACCESS_TOKEN, read)).teams).toEqual([]);
   });
 });
+
+/**
+ * 주소 조립 (독립 검토가 찾은 것).
+ *
+ * **이어 붙이기는 오구성을 오류가 아니라 "말없이 틀린 주소"로 바꾼다.** 기반
+ * 주소에 쿼리가 섞이면 실제 경로가 쿼리 값 안으로 삼켜지고, 그 요청은 엉뚱한
+ * 곳으로 가면서 성공처럼 보인다. 운영자는 로그인 실패의 원인을 찾지 못한다.
+ */
+describe('주소 조립이 오구성을 삼키지 않는다', () => {
+  const withBase = (base: string): GitHubAuthConfig => ({ ...CONFIG, baseUrl: base });
+
+  it.each([
+    ['슬래시 없음', 'https://ghe.example.com'],
+    ['슬래시 하나', 'https://ghe.example.com/'],
+    ['슬래시 여럿', 'https://ghe.example.com///'],
+  ])('뒤 슬래시가 %s이어도 같은 주소다', (_label, base) => {
+    expect(gitHubAuthorizationEndpoint(withBase(base))).toBe('https://ghe.example.com/login/oauth/authorize');
+    expect(gitHubTokenEndpoint(withBase(base))).toBe('https://ghe.example.com/login/oauth/access_token');
+  });
+
+  it('경로가 붙은 기반 주소를 보존한다', () => {
+    expect(gitHubAuthorizationEndpoint(withBase('https://host/ghe'))).toBe('https://host/ghe/login/oauth/authorize');
+  });
+
+  /** 경로가 쿼리 안으로 삼켜지던 자리다. */
+  it('쿼리와 프래그먼트를 경로에 섞지 않는다', () => {
+    expect(gitHubAuthorizationEndpoint(withBase('https://ghe.example.com/?x=1'))).toBe(
+      'https://ghe.example.com/login/oauth/authorize',
+    );
+    expect(gitHubAuthorizationEndpoint(withBase('https://ghe.example.com#frag'))).toBe(
+      'https://ghe.example.com/login/oauth/authorize',
+    );
+  });
+
+  it.each(['', '/', 'ghe.example.com', 'not a url'])('절대 URL이 아니면 던진다: %s', (base) => {
+    expect(() => gitHubAuthorizationEndpoint(withBase(base))).toThrow(OidcError);
+  });
+});

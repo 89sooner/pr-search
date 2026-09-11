@@ -27,6 +27,7 @@ import {
   hasAuthCredentials,
   resolveAuthProvider,
   resolveGitHubAuthConfig,
+  resolveOidcConfig,
   resolveSessionReaderConfig,
   resolveTeamRoleMap,
 } from './config.js';
@@ -297,5 +298,54 @@ describe('CR-083: AUTH_ENABLED 기본값이 공급자를 따른다', () => {
       OIDC_CLIENT_SECRET: 'secret',
     };
     expect(resolveSessionReaderConfig(oidc).enabled).toBe(true);
+  });
+});
+
+/**
+ * 독립 검토가 찾은 경계 (`CR-083`).
+ *
+ * 둘 다 오구성 입력에서만 나타나지만, **오구성의 대가가 "조용히 틀린 동작"이면
+ * 안 된다**는 것이 이 저장소의 규칙이다.
+ */
+describe('CR-083: 구성 해석의 경계', () => {
+  const FULL = {
+    GHE_BASE_URL: 'https://ghe.example.com',
+    GHE_OAUTH_CLIENT_ID: 'Iv1.abc',
+    GHE_OAUTH_CLIENT_SECRET: 'secret',
+    GHE_OAUTH_REDIRECT_URI: 'https://prs.example.com/auth/callback',
+  };
+
+  /**
+   * **한 값에 정규화 규칙이 둘이면 부분 고장이 난다.**
+   *
+   * 인가 엔드포인트는 `joinUrl`이 정규화하므로 정상인데 API 주소만 이중
+   * 슬래시가 되면, 로그인은 되고 사용자 조회만 실패한다.
+   */
+  it.each([
+    ['슬래시 없음', 'https://ghe.example.com'],
+    ['슬래시 하나', 'https://ghe.example.com/'],
+    ['슬래시 둘', 'https://ghe.example.com//'],
+  ])('기반 주소의 뒤 슬래시가 %s이어도 API 주소가 같다', (_label, base) => {
+    expect(resolveGitHubAuthConfig({ ...FULL, GHE_BASE_URL: base }).apiUrl).toBe('https://ghe.example.com/api/v3');
+  });
+
+  /**
+   * **구성 오류의 대가가 「무권한 토큰」이어서는 안 된다.**
+   *
+   * 빈 문자열만 검사하면 구분자만 있는 값이 빈 배열이 되고, `scope=`로 나간
+   * 인가 요청이 만든 토큰은 `/user/teams`를 읽지 못해 로그인이 실패한다.
+   */
+  it.each([',,,', ' , , ', '   ', ''])('스코프가 %s이면 기본값으로 떨어진다', (raw) => {
+    expect(resolveGitHubAuthConfig({ ...FULL, GHE_OAUTH_SCOPES: raw }).scopes).toEqual(['read:user', 'read:org']);
+  });
+
+  it('OIDC 스코프도 같은 규칙을 쓴다', () => {
+    const oidc = {
+      OIDC_ISSUER: 'https://idp.example.com',
+      OIDC_CLIENT_ID: 'c',
+      OIDC_CLIENT_SECRET: 's',
+      OIDC_REDIRECT_URI: 'https://prs.example.com/auth/callback',
+    };
+    expect(resolveOidcConfig({ ...oidc, OIDC_SCOPES: ',,,' }).scopes).toEqual(['openid', 'profile', 'email']);
   });
 });

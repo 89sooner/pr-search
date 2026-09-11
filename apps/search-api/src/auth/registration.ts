@@ -42,15 +42,32 @@ export interface RegisteringSessionStoreOptions {
   readonly log?: ((message: string, detail: Record<string, unknown>) => void) | undefined;
 }
 
+/**
+ * 정본에 써 넣는 값 전체를 하나의 키로 만든다.
+ *
+ * 이 중 하나라도 바뀌면 다시 써야 한다 — `upsertUserOnLogin`이 갱신하는 열이
+ * 정확히 이 넷이기 때문이다.
+ */
+const registrationKey = (session: SessionRecord): string =>
+  JSON.stringify([session.userId, session.login, session.email, session.githubUserId ?? null]);
+
 export class RegisteringSessionStore extends SessionStore {
   readonly #pool: Pool;
   readonly #log: ((message: string, detail: Record<string, unknown>) => void) | undefined;
 
   /**
-   * 이미 등록한 사용자.
+   * 이미 정본에 써 넣은 내용.
    *
    * **요청마다 DB를 치지 않기 위한 것이지 정합성 장치가 아니다.** 프로세스가
    * 다시 서면 비고, 그때 한 번 더 upsert가 돌 뿐이다. 그 upsert는 멱등하다.
+   *
+   * **키가 `userId`가 아니라 정본에 쓰는 값 전체다.** `userId`만 키로 삼으면
+   * 개명한 사용자의 새 이름이 프로세스가 다시 설 때까지 정본에 반영되지 않는다 —
+   * `upsertUserOnLogin`은 매 로그인 `login`을 갱신하도록 짜여 있는데 캐시가 그
+   * 설계를 무력화하는 것이다. 그 상태에서는 `login`으로 영향 사용자를 찾는
+   * 무효화 경로(`findUserIdsByLogins`)가 개명자를 놓친다.
+   *
+   * 내용이 그대로면 여전히 한 번만 친다. 개명은 드물므로 대가가 없다.
    */
   readonly #registered = new Set<string>();
 
@@ -77,7 +94,8 @@ export class RegisteringSessionStore extends SessionStore {
    * 실패한 사용자는 캐시에 넣지 않으므로 다음 요청이 다시 시도한다.
    */
   async #ensureRegistered(session: SessionRecord): Promise<void> {
-    if (this.#registered.has(session.userId)) return;
+    const key = registrationKey(session);
+    if (this.#registered.has(key)) return;
 
     try {
       await authRepo.upsertUserOnLogin(this.#pool, {
@@ -86,7 +104,7 @@ export class RegisteringSessionStore extends SessionStore {
         github_user_id: session.githubUserId ?? null,
         email: session.email,
       });
-      this.#registered.add(session.userId);
+      this.#registered.add(key);
     } catch (error) {
       /*
        * 가장 그럴듯한 원인은 `app_user.login`의 UNIQUE 충돌이다 — 누군가

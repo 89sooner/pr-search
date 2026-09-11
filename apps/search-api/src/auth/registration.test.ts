@@ -132,6 +132,46 @@ describe('DEV-613: 세션을 읽으면 정본에 사용자 행이 있게 한다'
     expect(queries).toHaveLength(1);
   });
 
+  /**
+   * **개명이 정본에 반영된다** (독립 검토가 찾은 것).
+   *
+   * `upsertUserOnLogin`은 매 로그인 `login`을 갱신하도록 짜여 있다. 캐시를
+   * `userId`만으로 걸면 그 설계가 무력화되어, 개명한 사용자의 새 이름이 프로세스가
+   * 다시 설 때까지 정본에 들어가지 않는다. 그 상태에서는 `login`으로 영향 사용자를
+   * 찾는 무효화 경로(`findUserIdsByLogins`)가 개명자를 놓친다.
+   */
+  it('같은 사용자라도 login이 바뀌면 다시 등록한다', async () => {
+    const { pool, queries } = fakePool();
+    const store = new RegisteringSessionStore({ redis: fakeRedis(), pool });
+
+    await store.load(await seed(store, { login: 'kim' }));
+    await store.load(await seed(store, { login: 'kim-renamed' }));
+
+    expect(queries).toHaveLength(2);
+    expect(queries[1]?.values[1]).toBe('kim-renamed');
+  });
+
+  it('이메일이 바뀌어도 다시 등록한다', async () => {
+    const { pool, queries } = fakePool();
+    const store = new RegisteringSessionStore({ redis: fakeRedis(), pool });
+
+    await store.load(await seed(store, { email: 'old@example.com' }));
+    await store.load(await seed(store, { email: 'new@example.com' }));
+
+    expect(queries).toHaveLength(2);
+    expect(queries[1]?.values[3]).toBe('new@example.com');
+  });
+
+  it('내용이 그대로면 세션이 달라도 한 번만 친다', async () => {
+    const { pool, queries } = fakePool();
+    const store = new RegisteringSessionStore({ redis: fakeRedis(), pool });
+
+    await store.load(await seed(store));
+    await store.load(await seed(store));
+
+    expect(queries).toHaveLength(1);
+  });
+
   it('사용자가 다르면 각각 등록한다', async () => {
     const { pool, queries } = fakePool();
     const store = new RegisteringSessionStore({ redis: fakeRedis(), pool });

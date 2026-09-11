@@ -64,8 +64,34 @@ export function defaultGitHubScopes(): readonly string[] {
   return DEFAULT_SCOPES;
 }
 
-const joinUrl = (base: string, path: string): string =>
-  `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+/**
+ * 기반 주소에 경로를 붙인다.
+ *
+ * **문자열 이어 붙이기가 아니라 `URL`로 만든다.** 이어 붙이면 기반 주소에 쿼리나
+ * 프래그먼트가 섞였을 때 **말없이 틀린 주소**가 나온다 — `https://ghe/?x=1`에
+ * `login/oauth/authorize`를 이으면 실제 경로가 쿼리 값 안으로 삼켜지고, 그 요청은
+ * 오류가 아니라 엉뚱한 곳으로 간다. 오구성이 오류로 드러나지 않으면 운영자가
+ * 로그인 실패의 원인을 찾지 못한다.
+ *
+ * 뒤 슬래시가 몇 개든 같은 답을 낸다. **이 함수가 이 파일의 유일한 주소 조립
+ * 규칙이다** — 규칙이 둘이면 한쪽만 정규화된 주소가 생기고, 인가는 성립하는데
+ * API만 실패하는 부분 고장이 된다.
+ *
+ * @throws {OidcError} 기반 주소가 절대 URL이 아니면.
+ */
+export function joinUrl(base: string, path: string): string {
+  let origin: URL;
+  try {
+    origin = new URL(base);
+  } catch {
+    throw new OidcError(`GHE 주소가 올바른 URL이 아니다: '${base}'`);
+  }
+  // 쿼리와 프래그먼트는 기반 주소의 일부가 아니다. 남겨 두면 경로에 섞인다.
+  origin.search = '';
+  origin.hash = '';
+  origin.pathname = `${origin.pathname.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+  return origin.toString();
+}
 
 /** 인가 엔드포인트 URL (`<base>/login/oauth/authorize`). */
 export function gitHubAuthorizationEndpoint(config: GitHubAuthConfig): string {
@@ -95,8 +121,15 @@ export function buildGitHubAuthorizationUrl(
   url.searchParams.set('state', request.state);
   url.searchParams.set('code_challenge', request.codeChallenge);
   url.searchParams.set('code_challenge_method', 'S256');
-  // 계정 선택 화면을 건너뛰지 않는다. 공용 단말에서 앞 사람의 세션으로 조용히
-  // 들어가는 일이 없어야 한다.
+  /*
+   * 로그인 화면에서 **가입 안내를 띄우지 않는다.** 사내 GHE에 계정이 없는 사람은
+   * 여기서 만들 수 없고, 만들 수 있는 것처럼 보이면 안 된다.
+   *
+   * **이 값은 재인증이나 계정 선택을 강제하지 않는다.** GHE OAuth App에는 그것을
+   * 요구하는 파라미터가 없으므로, 공용 단말에 앞 사람의 GHE 세션이 남아 있으면
+   * 프롬프트 없이 그 계정으로 콜백된다. OIDC 경로도 `prompt`를 싣지 않아 같은
+   * 한계를 갖는다 — 공급자를 바꾼다고 달라지는 것이 아니다.
+   */
   url.searchParams.set('allow_signup', 'false');
   return url.toString();
 }

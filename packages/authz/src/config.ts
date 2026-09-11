@@ -8,7 +8,7 @@
 
 import { parseGroupRoleMap, type GroupRoleMap } from './roles.js';
 import type { OidcProviderConfig } from './oidc.js';
-import { defaultGitHubScopes, type GitHubAuthConfig } from './github-oauth.js';
+import { defaultGitHubScopes, joinUrl, type GitHubAuthConfig } from './github-oauth.js';
 
 export interface AuthEnv {
   readonly [key: string]: string | undefined;
@@ -138,7 +138,6 @@ export function hasGitHubAuthCredentials(env: AuthEnv = process.env): boolean {
  */
 export function resolveOidcConfig(env: AuthEnv = process.env): OidcProviderConfig {
   const issuer = required(env, 'OIDC_ISSUER');
-  const scopes = (env['OIDC_SCOPES'] ?? '').trim();
 
   return {
     issuer,
@@ -149,8 +148,23 @@ export function resolveOidcConfig(env: AuthEnv = process.env): OidcProviderConfi
     clientId: required(env, 'OIDC_CLIENT_ID'),
     clientSecret: required(env, 'OIDC_CLIENT_SECRET'),
     redirectUri: required(env, 'OIDC_REDIRECT_URI'),
-    scopes: scopes === '' ? DEFAULT_SCOPES : scopes.split(/[\s,]+/).filter((one) => one !== ''),
+    scopes: parseScopes(env['OIDC_SCOPES'], DEFAULT_SCOPES),
   };
+}
+
+/**
+ * 공백이나 쉼표로 나뉜 스코프 목록.
+ *
+ * **분해한 결과가 비면 기본값으로 떨어진다.** 빈 문자열만 검사하면 `',,,'` 같은
+ * 값이 빈 배열이 되어 `scope=`로 인가 요청이 나가고, 그 토큰은 필요한 것을 읽지
+ * 못해 로그인이 실패한다. 구성 오류의 대가가 "무권한 토큰"이어서는 안 된다.
+ */
+function parseScopes(raw: string | undefined, fallback: readonly string[]): readonly string[] {
+  const parsed = (raw ?? '')
+    .split(/[\s,]+/)
+    .map((one) => one.trim())
+    .filter((one) => one !== '');
+  return parsed.length === 0 ? fallback : parsed;
 }
 
 /**
@@ -162,18 +176,24 @@ export function resolveOidcConfig(env: AuthEnv = process.env): OidcProviderConfi
  * 자격을 나눠 쓰면 유출 시 피해 범위가 달라진다 (`ADR-022`의 같은 근거).
  */
 export function resolveGitHubAuthConfig(env: AuthEnv = process.env): GitHubAuthConfig {
-  const baseUrl = trimSlash(required(env, 'GHE_BASE_URL'));
+  const baseUrl = required(env, 'GHE_BASE_URL');
   const apiUrl = (env['GHE_API_URL'] ?? '').trim();
-  const scopes = (env['GHE_OAUTH_SCOPES'] ?? '').trim();
 
   return {
     baseUrl,
-    // 수집 경로와 같은 기본 규칙이다 (`packages/github`의 `resolveGitHubConfig`).
-    apiUrl: apiUrl === '' ? `${baseUrl}/api/v3` : trimSlash(apiUrl),
+    /*
+     * 수집 경로와 같은 기본 규칙이다 (`packages/github`의 `resolveGitHubConfig`).
+     *
+     * **주소 조립은 `joinUrl` 하나만 쓴다.** 여기서 문자열로 이어 붙이면 뒤
+     * 슬래시가 둘인 기반 주소에서 `https://host//api/v3`가 나오는데, 인가
+     * 엔드포인트는 `joinUrl`이 정규화해 정상이므로 **로그인은 되고 사용자 조회만
+     * 실패한다.** 한 값에 정규화 규칙이 둘이면 그런 부분 고장이 생긴다.
+     */
+    apiUrl: apiUrl === '' ? joinUrl(baseUrl, 'api/v3') : apiUrl.replace(/\/+$/, ''),
     clientId: required(env, 'GHE_OAUTH_CLIENT_ID'),
     clientSecret: required(env, 'GHE_OAUTH_CLIENT_SECRET'),
     redirectUri: required(env, 'GHE_OAUTH_REDIRECT_URI'),
-    scopes: scopes === '' ? defaultGitHubScopes() : scopes.split(/[\s,]+/).filter((one) => one !== ''),
+    scopes: parseScopes(env['GHE_OAUTH_SCOPES'], defaultGitHubScopes()),
   };
 }
 
