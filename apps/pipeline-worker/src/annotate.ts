@@ -39,6 +39,7 @@ import {
   type Subscription,
 } from '@prs/bus';
 import { auditRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
+import { safeMessage } from '@prs/github';
 import {
   ANNOTATE_MAX_ATTEMPTS,
   AnnotateApiError,
@@ -176,7 +177,7 @@ async function recordAnnotateAudit(
       repository_id: target.repository_id,
       pull_request_number: target.pull_request_number,
       reason: 'audit_write_failed',
-      error: error instanceof Error ? error.message : String(error),
+      error: safeMessage(error),
     });
   }
 }
@@ -293,14 +294,22 @@ export async function annotateOne(
       return 'failed';
     }
 
-    // 6. 정본 → 감사 순서다. 감사가 먼저면 실패한 표기가 기록으로 남는다.
-    await mergeSequenceRepo.markAnnotateState(deps.pool, key, 'done');
     /*
-     * **실제로 GHE에 쓴 경우에만 기록한다** (FR-SEQ-009 AC-4). 이미 접두가 있어
-     * 호출하지 않은 회차까지 남기면 감사 이력의 건수가 "제목이 바뀐 횟수"를
-     * 말하지 않게 된다. 주 동작 밖이라 실패해도 이 결과를 뒤집지 않는다.
+     * 6. **감사를 정본 표시보다 앞에 둔다** (리뷰 note).
+     *
+     * 이 지점에서 쓰기는 이미 확정됐다 — GHE가 기대한 접두를 담은 제목을
+     * 돌려줬다. 표시를 먼저 하고 그 사이에 죽으면 **제목은 바뀌었는데 감사가
+     * 없는 행**이 남고, 다음 회차는 `already_annotated`라 다시 기록하지 않는다.
+     * 순서를 뒤집으면 그 창에서 남는 것은 "감사는 있는데 표시가 없는 행"이고,
+     * 그 행은 다음 회차가 `done`으로 마무리한다 — 감사가 빠지지 않는 쪽이
+     * `AC-4`에 부합한다.
+     *
+     * **실제로 GHE에 쓴 경우에만 기록한다.** 이미 접두가 있어 호출하지 않은
+     * 회차까지 남기면 감사 이력의 건수가 "제목이 바뀐 횟수"를 말하지 않게 된다.
+     * 주 동작 밖이라 실패해도 이 결과를 뒤집지 않는다.
      */
     await recordAnnotateAudit(deps, target, correlationId);
+    await mergeSequenceRepo.markAnnotateState(deps.pool, key, 'done');
     return 'updated';
   } catch (error) {
     if (error instanceof AnnotateApiError && error.kind === 'rate_limited') throw error;
@@ -338,7 +347,7 @@ export async function annotateOne(
       pull_request_number: target.pull_request_number,
       reason: error instanceof AnnotateApiError ? error.kind : 'unknown',
       status: error instanceof AnnotateApiError ? (error.status ?? null) : null,
-      error: error instanceof Error ? error.message : String(error),
+      error: safeMessage(error),
     });
     return validation ? 'validation_failed' : 'failed';
   }
@@ -369,9 +378,19 @@ export async function runAnnotationPass(
   correlationId: string = randomUUID(),
   budgetMs?: number,
 ): Promise<PassSummary> {
-  // 앞 회차가 끝난 뒤에 시작한다. 실패한 회차가 줄을 끊지 않도록 결과는 삼킨다.
+  /*
+   * **예산은 줄을 서기 전부터 잰다.**
+   *
+   * 잔여 스윕이 상한만큼 돌면 회차가 수백 초를 쥔다. 그동안 도착한 이벤트가
+   * 줄에서 기다리는 시간도 **버스가 재는 방치 시간에 들어간다** — 락을 잡은
+   * 뒤부터 재면 30초 회수 시한을 기다리기만 하다 넘겨 버린다. 대기까지 예산에
+   * 넣어야 이벤트가 제때 손을 떼고 `defer`로 돌아간다.
+   */
+  const queuedAt = Date.now();
   const previous = passChain.catch(() => undefined);
-  const started = previous.then(async () => runAnnotationPassUnlocked(deps, filter, correlationId, budgetMs));
+  const started = previous.then(async () =>
+    runAnnotationPassUnlocked(deps, filter, correlationId, budgetMs, queuedAt),
+  );
   passChain = started;
   return started;
 }
@@ -381,11 +400,16 @@ async function runAnnotationPassUnlocked(
   filter: mergeSequenceRepo.AnnotateTargetFilter,
   correlationId: string,
   budgetMs: number | undefined,
+  startedAt: number,
 ): Promise<PassSummary> {
   const sleep = sleepOf(deps);
-  const startedAt = Date.now();
-  const targets = await mergeSequenceRepo.listAnnotateTargets(deps.pool, filter);
   const results: Partial<Record<AnnotateResult, number>> = {};
+  // 줄에서 기다리는 동안 예산이 다했으면 정본을 읽지도 않는다.
+  if (budgetMs !== undefined && Date.now() - startedAt >= budgetMs) {
+    logOf(deps)({ level: 'info', message: '줄에서 기다리다 예산이 다했다', waited_ms: Date.now() - startedAt });
+    return { processed: 0, results, budgetExhausted: true };
+  }
+  const targets = await mergeSequenceRepo.listAnnotateTargets(deps.pool, filter);
   const blocked = new Set<number>();
   let processed = 0;
 
@@ -570,7 +594,7 @@ export function startAnnotateSweeper(deps: AnnotateDeps, intervalMs = deps.confi
         log({
           level: 'error',
           message: '잔여 표기 스윕이 실패했다',
-          error: error instanceof Error ? error.message : String(error),
+          error: safeMessage(error),
         });
       }
     }

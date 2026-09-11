@@ -269,6 +269,17 @@ describe('annotateOne — 한 행의 판정 (FR-SEQ-009)', () => {
 
     const audit = pool.queries.filter((q) => q.text.includes('INSERT INTO audit_record'));
     expect(audit).toHaveLength(1);
+    /*
+     * **감사가 정본 표시보다 앞이다.** 표시를 먼저 하고 그 사이에 죽으면 제목은
+     * 바뀌었는데 감사가 없는 행이 남고, 다음 회차는 `already_annotated`라 다시
+     * 기록하지 않는다.
+     */
+    const auditIndex = pool.queries.findIndex((q) => q.text.includes('INSERT INTO audit_record'));
+    const doneIndex = pool.queries.findIndex(
+      (q) => q.text.includes('SET annotate_state') && q.values[4] === 'done',
+    );
+    expect(auditIndex).toBeGreaterThan(-1);
+    expect(doneIndex).toBeGreaterThan(auditIndex);
     expect(audit[0]?.values[0]).toBe('system:annotate');
     expect(audit[0]?.values[1]).toBe('pull_request.annotate');
     expect(audit[0]?.values[2]).toBe('acme/smp1900#1234');
@@ -491,6 +502,50 @@ describe('handleMergeNumberAssigned — 이벤트 경로 (§11)', () => {
     }
     // 예산을 넘긴 뒤로는 요청을 더 보내지 않았다.
     expect(patches().length).toBeLessThan(3);
+  });
+
+  it('줄에서 기다리다 예산이 다하면 정본을 읽지도 않는다', async () => {
+    /*
+     * 잔여 스윕이 회차를 오래 쥐면 그 뒤에 선 이벤트는 **기다리기만 하다**
+     * 버스의 회수 시한을 넘긴다. 대기 시간을 예산에 넣지 않으면 그 자리를
+     * 막을 수 없다 — 내 예산 수정이 만든 자리다.
+     */
+    mock = await startMockAnnotateGhe({ initialTitle: '제목' });
+    let now = 0;
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    // 앞 회차를 붙들어 둘 문이다. 열릴 때까지 그 회차가 줄을 쥔다.
+    let open = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const holding = fakePool({ targets: [], epoch: 3 });
+    const originalQuery = holding.query;
+    holding.query = async (text, values) => {
+      if (text.includes('FROM merge_sequence ms')) await gate;
+      return originalQuery(text, values);
+    };
+
+    try {
+      const slow = runAnnotationPass(depsFor(holding), { limit: 10 }, 'c0ffee00-0000-4000-8000-000000000000');
+      // 앞 회차가 줄을 쥔 상태에서 이벤트가 도착해 줄을 선다.
+      const queuedPass = handleMergeNumberAssigned(
+        depsFor(fakePool({ targets: [target()], epoch: 3 })),
+        event({ repository_id: 4021, base_branch: 'main', seq_epoch: 3, pull_request_numbers: [1234] }),
+      );
+      // 줄을 서는 자리까지 실제로 도달하게 둔 뒤에 시계를 민다.
+      await new Promise((resolve) => {
+        setImmediate(resolve);
+      });
+      // 기다리는 동안 회수 시한을 넘길 만큼 시간이 흐른다.
+      now += 30_000;
+      open();
+      await slow;
+      expect(await queuedPass).toMatchObject({ kind: 'defer', reason: 'annotate_budget_exhausted' });
+      // 정본을 읽지도 않았으므로 GHE 요청이 없다.
+      expect(mock.requests).toHaveLength(0);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('한도에 걸리면 ack하지 않고 다시 받는다', async () => {

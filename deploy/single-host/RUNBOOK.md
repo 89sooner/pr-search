@@ -745,6 +745,14 @@ done
 쿨다운(기본 하루, `MNUMBER_ANNOTATE_BLOCK_COOLDOWN_MS`)이 지나면 스윕이 자동으로
 다시 시도한다.
 
+**차단이 권한 때문이 아닐 수도 있다.** 공식 문서가 한도로 인한 `403`과 권한 거부
+`403`을 가르는 방법을 보장하지 않아(`DEV-616`), 대기 신호가 없는 `403`은 권한으로
+다룬다. GHE의 부 한도가 그 신호 없이 오면 멀쩡한 저장소가 쿨다운만큼 멈춘다.
+그럴 때 최악 지연은 쿨다운 값과 같으므로, 표기를 처음 켜는 동안에는
+`MNUMBER_ANNOTATE_BLOCK_COOLDOWN_MS`를 짧게(예: `3600000`, 한 시간) 두었다가
+안정되면 기본값으로 돌리는 편이 낫다. `repository.annotate_blocked_reason`에 남은
+GHE 응답 문구가 두 경우를 가르는 실마리다.
+
 **끄는 방법은 둘이다.** 전체를 멈추려면 `.env`의 `MNUMBER_ANNOTATE_ENABLED=false`로
 되돌리고 `./prsctl upgrade`를, 한 저장소만 멈추려면 그 저장소의 `annotate_enabled`를
 끈다. 어느 쪽도 이미 붙은 접두를 지우지 않는다 — 지우려면 사람이 PR 제목을 직접 고친다.
