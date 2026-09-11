@@ -488,6 +488,64 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 
 ## 6. 사내 환경 연동
 
+### 사내 GHE 계정으로 로그인하기 (`AUTH_PROVIDER=github`, `CR-083`)
+
+**별도 OIDC IdP가 없어도 로그인을 세울 수 있다.** 사내 GHE는 OIDC 디스커버리
+엔드포인트를 제공하지 않으므로 표준 OIDC 경로로는 붙지 않는데, GHE가 직접
+제공하는 OAuth2 흐름을 두 번째 공급자로 쓴다. Dex 같은 미들웨어를 따로 세우지
+않아도 된다.
+
+**기존 OIDC 배포는 아무것도 바꾸지 않아도 된다.** `AUTH_PROVIDER`를 주지 않으면
+`oidc`이고 동작이 그대로다.
+
+1. **GHE에 OAuth App을 새로 등록한다.** Settings → Developer settings → OAuth Apps.
+   - Authorization callback URL: `<서비스 주소>/auth/callback`
+   - **수집용 GitHub App(`GHE_APP_ID`)과 자격을 공유하지 않는다.** 하나가
+     유출됐을 때 피해 범위가 달라진다 (`ADR-022`의 근거와 같다).
+2. `.env`를 채운다.
+
+   ```
+   AUTH_PROVIDER=github
+   GHE_OAUTH_CLIENT_ID=<Client ID>
+   GHE_OAUTH_CLIENT_SECRET=<Client Secret>
+   GHE_OAUTH_REDIRECT_URI=<서비스 주소>/auth/callback
+   ```
+
+   `GHE_BASE_URL`은 수집 경로가 쓰는 값을 그대로 쓴다. 새로 적지 않는다.
+3. `./prsctl upgrade`로 컨테이너를 다시 만든다. `.env`만 고치면 반영되지 않는다.
+
+#### 역할을 팀으로 부여하기
+
+`GHE_TEAM_ROLE_MAP`에 `<org>/<team>:<역할>` 쌍을 쉼표로 잇는다.
+
+```
+GHE_TEAM_ROLE_MAP=cpswdev-team/pipe-admins:manager,cpswdev-team/pipe-users:qa
+```
+
+**부여할 수 있는 역할은 `manager`와 `qa` 둘뿐이다** (`CR-015`, `DEV-049`).
+`release_manager`·`operator`·`security_officer`는 관리자가 `app_user.roles[]`에
+직접 지정하며, 여기 적으면 `web`이 기동하지 않는다. GHE 팀을 만들 수 있는
+사람이 운영 권한을 발급하게 두지 않는다는 계약이고, 그것은 IdP 그룹에 세운
+제약과 같다.
+
+매핑을 비워 두면 로그인한 사용자는 전부 `developer`를 받는다. **그것으로 조회는
+성립한다** — 무엇이 보이는지는 역할이 아니라 GHE 저장소 권한이 정한다
+(`FR-AUTH-002`).
+
+#### 스코프
+
+비워 두면 `read:user read:org`다. 그것이 최소 권한이며 `/user`와 `/user/teams`를
+읽는 데 필요한 전부다. **저장소 내용을 읽는 스코프는 요구하지 않는다** — 수집은
+별도 App 자격으로 하고 이 토큰은 신원 확인에만 쓰인다.
+
+#### TLS는 여전히 필요하다
+
+`AUTH_PROVIDER=github`으로 바꾸어도 **평문 HTTP에서 로그인을 켤 수는 없다.**
+세션 쿠키 계약(`FR-AUTH-001` AC-2)은 공급자와 무관하며, `AUTH_ENABLED=true`인
+배포에서 `SESSION_COOKIE_SECURE=false`는 `web`의 기동을 막는다. 파일럿에서
+TLS 없이 화면만 띄워 보려면 `AUTH_ENABLED=false`로 두며, 그 형상에서 조회는
+전부 401이다 (7장).
+
 ### 사설 CA
 
 **코드 변경이 필요 없다.** Node 런타임이 `NODE_EXTRA_CA_CERTS`를 직접 읽는다.
@@ -655,6 +713,9 @@ done
 | 웹 화면이 전부 500, 로그에 `Failed to load external module` | 이미지가 `DEV-551` 이전 빌드다. 그 결함은 **배포 트리에서만** 나타나며 이미지 빌드가 고친다 — 컨테이너 안에서 손으로 스텁을 만들면 `upgrade`·`restart`마다 사라진다. 고친 버전으로 다시 받는다 |
 | `docker compose ps`는 전부 정상인데 **웹 화면만 500** | 이미지가 `DEV-577` 이전 빌드다. 그 빌드는 잘못된 구성으로도 기동하고 `/healthz`에 200을 내므로 컨테이너가 `healthy`로 보이는데, 사람이 여는 화면만 500이 됐다 — 사내 반입 `0.1.0-pilot.3`이 막힌 자리다. **컨테이너 안에서 `npm install`을 실행하지 않는다**: 배포 트리의 `package.json`은 워크스페이스 참조를 담고 있어 npm이 `EUNSUPPORTEDPROTOCOL`로 거부하고, 설령 되더라도 `upgrade` 한 번에 사라진다. 고친 버전으로 다시 받는다 |
 | `web`이 재기동을 반복한다 · 로그에 `web 구성이 성립하지 않아 기동할 수 없다` | **의도된 거부다** (`DEV-577`). 로그의 다음 줄이 어느 계약을 어겼는지 적는다. 가장 잦은 것은 운영에서 `SESSION_COOKIE_SECURE=false`이며, 값을 `true`로 되돌리고 `./prsctl upgrade`를 다시 돌린다 (2.B). 이 거부가 없던 시절에는 같은 구성이 초록으로 서서 화면만 500이었다 |
+| `AUTH_PROVIDER=github`인데 `web`이 기동하지 않는다 | 로그의 다음 줄이 어느 키가 비었는지 적는다 (`CR-083`). `GHE_BASE_URL`·`GHE_OAUTH_CLIENT_ID`·`GHE_OAUTH_CLIENT_SECRET`·`GHE_OAUTH_REDIRECT_URI` 넷이 필수다. `AUTH_PROVIDER` 값에 오타가 있어도 같은 자리에서 막힌다 — 오타가 조용히 `oidc`로 떨어지지 않는다 |
+| GHE 로그인은 되는데 모두 `developer`다 | `GHE_TEAM_ROLE_MAP`이 비었거나 팀 이름이 다르다. 값은 `<org>/<team>:<역할>`이고 구분자는 **콜론**이다. 팀 슬러그는 GHE의 팀 URL 마지막 구간이며 표시 이름이 아니다. 부여할 수 있는 역할은 `manager`와 `qa`뿐이다 (6장) |
+| 로그인 직후 화면은 뜨는데 조회가 503 `permission_unavailable` | `DEV-613` 이전 빌드다. 그 빌드는 로그인이 `app_user` 행을 만들지 않아 접근 범위를 산출하지 못했다. 고친 버전은 세션을 읽을 때 정본에 행을 만든다. 그래도 503이면 `docker logs search-api`에 등록 실패 이유가 남아 있는지 본다 — `app_user.login`이 UNIQUE라 GHE에서 개명한 계정이 다른 행과 부딪칠 수 있고, 그때는 사람이 정본을 정리해야 한다 |
 | 인증을 켠 뒤 모든 화면이 로그인으로 갔다가 500 | `OIDC_REDIRECT_URI`를 채웠는가 (`DEV-579`). 값은 `<서비스 주소>/auth/callback`이며 IdP에 등록한 것과 문자 그대로 같아야 한다. 고친 버전에서는 이 값이 비면 `web`이 아예 기동하지 않으므로 이 증상은 `DEV-579` 이전 빌드에서만 난다 |
 | GHE 호출이 인증서 오류 · 기동 로그에 CA 경고 | CA를 **여섯 자리 전부**에 걸었는가. anchor는 얕게 합쳐져 `worker-sequence`·`worker-mirror`·`worker-release`에 닿지 않는다 (6장 「anchor는 얕게 합쳐진다」, `DEV-552`) |
 | `JOB-MIR-001`이 SSL 오류로 실패하고 **미러 볼륨이 비어 있다** (다른 서비스는 정상) | `git`이 사내 CA를 신뢰하지 않는다. `NODE_EXTRA_CA_CERTS`는 Node 런타임만 읽으므로 `git` 서브프로세스에는 닿지 않는다 (`DEV-561`). `.env`의 `GIT_SSL_CAINFO`에 `NODE_EXTRA_CA_CERTS`와 **같은 경로**를 적고 `./prsctl upgrade`를 돌린다. 값만 넣고 컨테이너를 다시 만들지 않으면 반영되지 않는다 (6장 「사설 CA」) |

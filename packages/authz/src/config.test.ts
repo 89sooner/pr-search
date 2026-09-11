@@ -23,7 +23,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { resolveSessionReaderConfig } from './config.js';
+import {
+  hasAuthCredentials,
+  resolveAuthProvider,
+  resolveGitHubAuthConfig,
+  resolveSessionReaderConfig,
+  resolveTeamRoleMap,
+} from './config.js';
 
 const repoFile = (path: string): string =>
   readFileSync(fileURLToPath(new URL(`../../../${path}`, import.meta.url)), 'utf8');
@@ -47,16 +53,40 @@ describe('FR-AUTH-001 AC-2: 운영에서 insecure 세션 쿠키를 거부한다'
   });
 
   /**
-   * **인증을 껐다고 계약이 풀리지 않는다.**
+   * **인증을 명시적으로 끈 배포만 면제된다** (`CR-083`, 사용자 결정).
    *
-   * 사내 Pilot은 `AUTH_ENABLED=false`로 돌았고, 그 형상에서는 세션 쿠키가
-   * 아예 발급되지 않는다. 그래도 이 계약은 그대로다 — 인증을 켜는 순간
-   * 평문 HTTP로 세션이 나가기 시작하는데, 그 전환은 환경 변수 한 줄이라
-   * 「지금은 안 쓰니까」로 열어 두면 열린 채로 켜진다.
+   * `CR-078`이 이 계약을 세울 때 적은 우려는 「인증을 켜는 순간 평문 HTTP로
+   * 세션이 나가기 시작하는데, 그 전환은 환경 변수 한 줄이라 "지금은 안 쓰니까"로
+   * 열어 두면 **열린 채로 켜진다**」였고, 그 우려는 옳다. 사내가 TLS 없이 파일럿을
+   * 돌려야 한다고 요청했으므로 면제를 열되 **그 우려를 구조로 막는다.**
+   *
+   * 아래 세 시험이 한 쌍이다 — 면제는 운영자가 `AUTH_ENABLED=false`라고 적어 낸
+   * 경우뿐이고, 그 값을 남긴 채 인증만 켜면 기동이 막히며, 의도를 적지 않은
+   * 배포는 애초에 면제되지 않는다. 마지막이 중요하다: `enabled`의 계산값에
+   * 면제를 걸면 자격 증명을 아직 안 채운 배포가 면제를 받고 **나중에 자격을
+   * 채우는 순간 조용히 켜진다.**
    */
-  it('AUTH_ENABLED=false여도 운영의 insecure 쿠키는 거부한다', () => {
+  it('AUTH_ENABLED=false를 명시하면 허용한다 — 세션이 발급되지 않는 형상이다', () => {
+    const config = resolveSessionReaderConfig({
+      NODE_ENV: 'production',
+      AUTH_ENABLED: 'false',
+      SESSION_COOKIE_SECURE: 'false',
+    });
+    expect(config.cookieSecure).toBe(false);
+    expect(config.enabled).toBe(false);
+  });
+
+  it('그 값을 남긴 채 인증만 켜면 다시 거부한다 — 열린 채로 켜지지 않는다', () => {
     expect(() =>
-      resolveSessionReaderConfig({ NODE_ENV: 'production', AUTH_ENABLED: 'false', SESSION_COOKIE_SECURE: 'false' }),
+      resolveSessionReaderConfig({ NODE_ENV: 'production', AUTH_ENABLED: 'true', SESSION_COOKIE_SECURE: 'false' }),
+    ).toThrow(/SESSION_COOKIE_SECURE/);
+  });
+
+  it('AUTH_ENABLED를 적지 않으면 자격 증명이 없어도 거부한다', () => {
+    // 자격이 비어 `enabled`는 false로 계산되지만, 의도가 적혀 있지 않으므로
+    // 면제하지 않는다. 이 배포가 나중에 자격을 채우면 인증이 켜진다.
+    expect(() =>
+      resolveSessionReaderConfig({ NODE_ENV: 'production', SESSION_COOKIE_SECURE: 'false' }),
     ).toThrow(/SESSION_COOKIE_SECURE/);
   });
 
@@ -110,5 +140,162 @@ describe('DEV-577: 배포 문서의 값이 운영 계약을 통과한다', () =>
     expect(section, 'false를 권하는 문장이 남아 있다').not.toMatch(/false여야|false로 (?:둔다|바꾼다|내린다)/);
     // 대신 무엇을 해야 하는지 말해야 한다 — 금지만으로는 운영자가 갈 곳이 없다.
     expect(section).toContain('AUTH_ENABLED=false');
+  });
+});
+
+/**
+ * 인증 공급자 선택 (`CR-083`).
+ *
+ * **모르는 값을 조용히 기본값으로 떨어뜨리지 않는다.** 오타 하나가 "GHE로
+ * 설정했는데 왜 OIDC 화면이 뜨지"로 나타나면 운영자가 로그 없이 그것을 겪는다.
+ */
+describe('CR-083: AUTH_PROVIDER', () => {
+  it('값이 없으면 oidc다 — 이미 선 배포의 동작이 바뀌지 않는다', () => {
+    expect(resolveAuthProvider({})).toBe('oidc');
+    expect(resolveAuthProvider({ AUTH_PROVIDER: '' })).toBe('oidc');
+  });
+
+  it('github을 고를 수 있다', () => {
+    expect(resolveAuthProvider({ AUTH_PROVIDER: 'github' })).toBe('github');
+  });
+
+  it.each(['githubb', 'GitHub', 'ghe', 'oauth'])('모르는 값 %s이면 던진다', (value) => {
+    expect(() => resolveAuthProvider({ AUTH_PROVIDER: value })).toThrow(/AUTH_PROVIDER/);
+  });
+});
+
+/**
+ * GHE OAuth2 구성 (`CR-083`).
+ *
+ * **수집용 GitHub App과 자격을 공유하지 않는다.** `GHE_BASE_URL`은 같은 서버를
+ * 가리키므로 공유하지만 `GHE_APP_ID`/`GHE_APP_PRIVATE_KEY`는 쓰지 않는다 —
+ * 하나가 유출됐을 때 피해 범위가 달라진다 (`ADR-022`의 근거).
+ */
+describe('CR-083: resolveGitHubAuthConfig', () => {
+  const FULL = {
+    GHE_BASE_URL: 'https://ghe.example.com',
+    GHE_OAUTH_CLIENT_ID: 'Iv1.abc',
+    GHE_OAUTH_CLIENT_SECRET: 'secret',
+    GHE_OAUTH_REDIRECT_URI: 'https://prs.example.com/auth/callback',
+  };
+
+  it('필수 넷으로 구성이 선다', () => {
+    const config = resolveGitHubAuthConfig(FULL);
+    expect(config.baseUrl).toBe('https://ghe.example.com');
+    expect(config.clientId).toBe('Iv1.abc');
+    expect(config.redirectUri).toBe('https://prs.example.com/auth/callback');
+  });
+
+  it.each(Object.keys(FULL))('%s가 비면 던진다', (key) => {
+    expect(() => resolveGitHubAuthConfig({ ...FULL, [key]: '' })).toThrow(new RegExp(key));
+  });
+
+  it('API 주소를 주지 않으면 수집 경로와 같은 규칙으로 만든다', () => {
+    expect(resolveGitHubAuthConfig(FULL).apiUrl).toBe('https://ghe.example.com/api/v3');
+  });
+
+  it('API 주소를 주면 그것을 쓴다', () => {
+    const config = resolveGitHubAuthConfig({ ...FULL, GHE_API_URL: 'https://api.ghe.example.com/' });
+    expect(config.apiUrl).toBe('https://api.ghe.example.com');
+  });
+
+  it('스코프 기본값은 최소 권한이다', () => {
+    // `/user`에 read:user, `/user/teams`에 read:org. 저장소 내용 스코프는 없다.
+    expect(resolveGitHubAuthConfig(FULL).scopes).toEqual(['read:user', 'read:org']);
+  });
+
+  it('스코프를 주면 그것을 쓴다', () => {
+    const config = resolveGitHubAuthConfig({ ...FULL, GHE_OAUTH_SCOPES: 'read:user read:org user:email' });
+    expect(config.scopes).toEqual(['read:user', 'read:org', 'user:email']);
+  });
+
+  it('수집용 App 자격을 읽지 않는다', () => {
+    // 이 값들만 있고 OAuth App 자격이 없으면 구성이 서지 않아야 한다.
+    expect(() =>
+      resolveGitHubAuthConfig({ GHE_BASE_URL: 'https://ghe.example.com', GHE_APP_ID: '1', GHE_APP_PRIVATE_KEY: 'k' }),
+    ).toThrow(/GHE_OAUTH_CLIENT_ID/);
+  });
+});
+
+/**
+ * GHE 팀 → 역할 매핑 (`CR-083`).
+ *
+ * **IdP 그룹 매핑과 형식·제약을 공유한다.** 같은 개념에 두 형식을 두면 운영자가
+ * 어느 쪽이 어느 것인지 매번 확인해야 한다.
+ */
+describe('CR-083: resolveTeamRoleMap', () => {
+  it('org/team:role 쌍을 읽는다', () => {
+    const map = resolveTeamRoleMap({ GHE_TEAM_ROLE_MAP: 'acme/pipe-admins:manager,acme/qa-team:qa' });
+    expect(map.get('acme/pipe-admins')).toBe('manager');
+    expect(map.get('acme/qa-team')).toBe('qa');
+  });
+
+  it('비어 있으면 빈 매핑이다 — 모두 developer만 받는다', () => {
+    expect(resolveTeamRoleMap({}).size).toBe(0);
+  });
+
+  /**
+   * **GHE 팀을 만들 수 있는 사람이 운영 권한을 발급하게 두지 않는다.**
+   *
+   * 이 제약은 IdP 그룹에 세운 것과 같다 (CR-015, DEV-049). 사내 GHE의 팀 생성
+   * 권한과 PR Search의 운영 권한은 다른 조직이 관리한다.
+   */
+  it.each(['operator', 'security_officer', 'release_manager'])('%s는 팀으로 부여할 수 없다', (role) => {
+    expect(() => resolveTeamRoleMap({ GHE_TEAM_ROLE_MAP: `acme/team:${role}` })).toThrow(/부여할 수 없다/);
+  });
+
+  it('역할이 아닌 값은 던진다 — 사내가 제안한 admin·viewer가 여기 걸린다', () => {
+    expect(() => resolveTeamRoleMap({ GHE_TEAM_ROLE_MAP: 'acme/team:admin' })).toThrow(/역할이 아니다/);
+    expect(() => resolveTeamRoleMap({ GHE_TEAM_ROLE_MAP: 'acme/team:viewer' })).toThrow(/역할이 아니다/);
+  });
+
+  it('구분자가 콜론이 아니면 던진다', () => {
+    expect(() => resolveTeamRoleMap({ GHE_TEAM_ROLE_MAP: 'acme/team=manager' })).toThrow(/형식/);
+  });
+});
+
+/**
+ * 공급자가 바뀌면 인증 기본값도 그 공급자를 본다 (`CR-083`).
+ *
+ * **GHE 배포에서 OIDC 키 유무로 판정하면** 자격을 다 채우고도 인증이 꺼진 채로
+ * 선다. 그 배포는 화면이 뜨고 조회만 401이라 원인을 찾기 어렵다.
+ */
+describe('CR-083: AUTH_ENABLED 기본값이 공급자를 따른다', () => {
+  const GHE = {
+    NODE_ENV: 'production',
+    AUTH_PROVIDER: 'github',
+    GHE_BASE_URL: 'https://ghe.example.com',
+    GHE_OAUTH_CLIENT_ID: 'Iv1.abc',
+    GHE_OAUTH_CLIENT_SECRET: 'secret',
+  };
+
+  it('GHE 자격이 갖춰지면 인증이 켜진다', () => {
+    expect(resolveSessionReaderConfig(GHE).enabled).toBe(true);
+    expect(hasAuthCredentials(GHE)).toBe(true);
+  });
+
+  it('GHE 자격이 없으면 꺼진다', () => {
+    expect(resolveSessionReaderConfig({ NODE_ENV: 'production', AUTH_PROVIDER: 'github' }).enabled).toBe(false);
+  });
+
+  it('OIDC 키만 있고 공급자가 github이면 꺼진다', () => {
+    const mixed = {
+      NODE_ENV: 'production',
+      AUTH_PROVIDER: 'github',
+      OIDC_ISSUER: 'https://idp.example.com',
+      OIDC_CLIENT_ID: 'client',
+      OIDC_CLIENT_SECRET: 'secret',
+    };
+    expect(resolveSessionReaderConfig(mixed).enabled).toBe(false);
+  });
+
+  it('공급자를 주지 않으면 OIDC 자격을 본다 — 기존 배포 그대로', () => {
+    const oidc = {
+      NODE_ENV: 'production',
+      OIDC_ISSUER: 'https://idp.example.com',
+      OIDC_CLIENT_ID: 'client',
+      OIDC_CLIENT_SECRET: 'secret',
+    };
+    expect(resolveSessionReaderConfig(oidc).enabled).toBe(true);
   });
 });

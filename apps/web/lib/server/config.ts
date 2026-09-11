@@ -8,7 +8,14 @@ import 'server-only';
  * 경계를 사람의 주의력에 맡기지 않는다 (NFR-005).
  */
 
-import { resolveOidcConfig, resolveSessionReaderConfig, type SessionReaderConfig } from '@prs/authz';
+import {
+  resolveAuthProvider,
+  resolveGitHubAuthConfig,
+  resolveOidcConfig,
+  resolveSessionReaderConfig,
+  resolveTeamRoleMap,
+  type SessionReaderConfig,
+} from '@prs/authz';
 
 export interface WebConfig {
   /** `search-api`의 내부 주소. 브라우저에 노출되지 않는다. */
@@ -70,10 +77,34 @@ export function webConfigFailure(env: NodeJS.ProcessEnv = process.env): string |
    * 배포 정의에서 빠져 있었다.
    */
   if (config.authEnabled) {
+    /*
+     * **공급자마다 필요한 키가 다르다** (`CR-083`). GHE 배포에서 OIDC 키를
+     * 요구하면 자격을 다 채운 배포가 서지 못하고, 반대로 OIDC 배포에서 GHE 키를
+     * 요구하면 같은 일이 반대 방향으로 일어난다.
+     *
+     * 어느 쪽이든 **로그인 라우트가 실제로 부르는 함수를 그대로 부른다**는 규칙은
+     * 같다. `AUTH_PROVIDER` 자체가 모르는 값이면 `resolveAuthProvider`가 던지고
+     * 그것도 여기서 잡힌다 — 오타 하나로 GHE 설정이 OIDC로 조용히 떨어지지 않는다.
+     */
     try {
-      resolveOidcConfig(env);
+      if (resolveAuthProvider(env) === 'github') {
+        resolveGitHubAuthConfig(env);
+      } else {
+        resolveOidcConfig(env);
+      }
     } catch (cause) {
-      return `AUTH_ENABLED=true인데 OIDC 구성이 완전하지 않다 — ${reason(cause)}`;
+      return `AUTH_ENABLED=true인데 인증 구성이 완전하지 않다 — ${reason(cause)}`;
+    }
+
+    /*
+     * 팀·그룹 매핑의 형식 오류도 기동 전에 잡는다. `resolveSessionReaderConfig`가
+     * `IDP_GROUP_ROLE_MAP`을 이미 파싱하지만 **GHE 쪽 변수는 그 경로에 없다** —
+     * 여기서 부르지 않으면 형식이 틀린 매핑이 로그인 요청 시점에야 500으로 나타난다.
+     */
+    try {
+      resolveTeamRoleMap(env);
+    } catch (cause) {
+      return `GHE_TEAM_ROLE_MAP이 올바르지 않다 — ${reason(cause)}`;
     }
   }
 

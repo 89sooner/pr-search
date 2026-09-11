@@ -33,6 +33,17 @@ export interface SessionRecord {
   readonly lastSeenAt: number;
   /** 세션을 만든 요청의 상관 ID. 로그인 실패 조사에 쓴다. */
   readonly correlationId: string | null;
+  /**
+   * GHE 사용자의 숫자 `id` (CR-083).
+   *
+   * **GHE 공급자로 로그인했을 때만 있다.** OIDC는 이 값을 알 수 없다.
+   * `app_user.github_user_id`로 가며, 권한 변경 웹훅이 숫자 id로 영향 사용자를
+   * 찾을 때 쓰인다(`findUserIdsByGithubIds`). 없으면 login으로 찾는 경로가
+   * 대신 동작한다.
+   *
+   * **선택 필드다** — 이 형식이 나오기 전에 발급된 세션도 그대로 읽혀야 한다.
+   */
+  readonly githubUserId?: number | undefined;
 }
 
 export function createSessionId(): string {

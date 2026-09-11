@@ -106,3 +106,96 @@ describe('DEV-577: 구성 판정이 한 곳에 있다', () => {
     expect(webConfigFailure({ NODE_ENV: 'production', SESSION_COOKIE_SECURE: 'true' })).toBeNull();
   });
 });
+
+/**
+ * 기동 검증이 공급자마다 다른 키를 본다 (`CR-083`).
+ *
+ * **GHE 배포에서 OIDC 키를 요구하면** 자격을 다 채운 배포가 서지 못한다. 반대도
+ * 마찬가지다. 두 방향을 모두 건다 — 한쪽만 걸면 반대 방향의 회귀를 놓친다.
+ */
+describe('CR-083: 공급자별 필수 키', () => {
+  const GHE = {
+    NODE_ENV: 'production',
+    SESSION_COOKIE_SECURE: 'true',
+    AUTH_ENABLED: 'true',
+    AUTH_PROVIDER: 'github',
+    GHE_BASE_URL: 'https://ghe.example.com',
+    GHE_OAUTH_CLIENT_ID: 'Iv1.abc',
+    GHE_OAUTH_CLIENT_SECRET: 'secret',
+    GHE_OAUTH_REDIRECT_URI: 'https://prs.example.com/auth/callback',
+  } as NodeJS.ProcessEnv;
+
+  const OIDC = {
+    NODE_ENV: 'production',
+    SESSION_COOKIE_SECURE: 'true',
+    AUTH_ENABLED: 'true',
+    OIDC_ISSUER: 'https://idp.example.com',
+    OIDC_CLIENT_ID: 'client',
+    OIDC_CLIENT_SECRET: 'secret',
+    OIDC_REDIRECT_URI: 'https://prs.example.com/auth/callback',
+  } as NodeJS.ProcessEnv;
+
+  it('GHE 자격이 갖춰지면 OIDC 키가 없어도 성립한다', () => {
+    expect(webConfigFailure(GHE)).toBeNull();
+  });
+
+  it.each(['GHE_BASE_URL', 'GHE_OAUTH_CLIENT_ID', 'GHE_OAUTH_CLIENT_SECRET', 'GHE_OAUTH_REDIRECT_URI'])(
+    'GHE 배포에서 %s가 비면 이유를 돌려준다',
+    (key) => {
+      const failure = webConfigFailure({ ...GHE, [key]: '' });
+      expect(failure).not.toBeNull();
+      expect(failure).toContain(key);
+    },
+  );
+
+  it('OIDC 배포에서 GHE 키를 요구하지 않는다', () => {
+    expect(webConfigFailure(OIDC)).toBeNull();
+  });
+
+  /**
+   * **오타가 조용히 기본값으로 떨어지지 않는다.**
+   *
+   * 떨어지면 GHE 자격을 다 채운 배포가 OIDC 키 부재로 막히고, 운영자는 채운
+   * 값이 왜 안 읽히는지 묻게 된다.
+   */
+  it('AUTH_PROVIDER 오타를 기동 전에 잡는다', () => {
+    const failure = webConfigFailure({ ...GHE, AUTH_PROVIDER: 'githubb' });
+    expect(failure).toContain('AUTH_PROVIDER');
+  });
+
+  /**
+   * 팀 매핑 형식 오류도 기동 전에 잡는다.
+   *
+   * `resolveSessionReaderConfig`는 `IDP_GROUP_ROLE_MAP`만 파싱하므로 GHE 쪽
+   * 변수는 이 경로가 아니면 **로그인 요청 시점에야** 500으로 나타난다.
+   */
+  it('GHE_TEAM_ROLE_MAP 형식 오류를 기동 전에 잡는다', () => {
+    const failure = webConfigFailure({ ...GHE, GHE_TEAM_ROLE_MAP: 'acme/team=manager' });
+    expect(failure).toContain('GHE_TEAM_ROLE_MAP');
+  });
+
+  it('팀 매핑이 부여 불가 역할을 지목하면 잡는다', () => {
+    const failure = webConfigFailure({ ...GHE, GHE_TEAM_ROLE_MAP: 'acme/team:security_officer' });
+    expect(failure).toContain('GHE_TEAM_ROLE_MAP');
+  });
+
+  it('올바른 팀 매핑은 통과한다', () => {
+    expect(webConfigFailure({ ...GHE, GHE_TEAM_ROLE_MAP: 'acme/admins:manager,acme/qa:qa' })).toBeNull();
+  });
+
+  /**
+   * **인증을 끈 배포는 어느 공급자든 키를 요구받지 않는다.**
+   *
+   * 그 형상에서는 로그인 경로가 503을 내므로 자격이 쓰이지 않는다.
+   */
+  it('인증이 꺼져 있으면 공급자 키를 요구하지 않는다', () => {
+    expect(
+      webConfigFailure({
+        NODE_ENV: 'production',
+        SESSION_COOKIE_SECURE: 'true',
+        AUTH_ENABLED: 'false',
+        AUTH_PROVIDER: 'github',
+      } as NodeJS.ProcessEnv),
+    ).toBeNull();
+  });
+});

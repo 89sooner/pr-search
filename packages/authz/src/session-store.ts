@@ -170,6 +170,20 @@ export function parseSession(raw: string): SessionRecord | null {
 
   const email = value['email'];
   const correlationId = value['correlationId'];
+  /*
+   * `githubUserId`는 **선택 필드다** (CR-083). 없으면 없는 대로 둔다 — 이
+   * 형식이 나오기 전에 발급된 세션과 OIDC로 만든 세션에는 원래 없다.
+   *
+   * 모양이 이상하면(정수가 아니거나 양수가 아니거나) 세션을 버리지 않고 **그
+   * 값만 버린다.** 신원과 역할은 위의 필수 필드가 이미 정했고 이 값은 웹훅
+   * 조회의 보조 키이므로, 여기서 `null`을 돌려주면 보조 키 하나 때문에 멀쩡한
+   * 세션이 재로그인으로 밀린다.
+   */
+  const githubUserId = value['githubUserId'];
+  const validGithubUserId =
+    typeof githubUserId === 'number' && Number.isSafeInteger(githubUserId) && githubUserId > 0
+      ? githubUserId
+      : undefined;
 
   return {
     sessionId: value['sessionId'],
@@ -180,6 +194,7 @@ export function parseSession(raw: string): SessionRecord | null {
     issuedAt: value['issuedAt'],
     lastSeenAt: value['lastSeenAt'],
     correlationId: typeof correlationId === 'string' ? correlationId : null,
+    githubUserId: validGithubUserId,
   };
 }
 

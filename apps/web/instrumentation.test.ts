@@ -46,14 +46,49 @@ describe('DEV-577: 기동 검증', () => {
     expect(exits, '멀쩡한 배포를 죽였다').toEqual([]);
   });
 
-  /** 이 배포가 사내에서 막힌 그 구성이다. */
+  /**
+   * 이 배포가 사내에서 막힌 그 구성이다.
+   *
+   * **`AUTH_ENABLED`를 적지 않은 배포는 면제되지 않는다** (`CR-083`). 자격 증명을
+   * 나중에 채우는 순간 인증이 켜지기 때문이다.
+   */
   it('운영에서 SESSION_COOKIE_SECURE=false면 0이 아닌 코드로 종료한다', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('SESSION_COOKIE_SECURE', 'false');
+
+    await register();
+    expect(exits, '잘못된 구성으로 기동했다 — 초록으로 서서 화면만 500이 된다').toHaveLength(1);
+    expect(exits[0]).not.toBe(0);
+  });
+
+  /**
+   * **인증을 명시적으로 끈 파일럿은 기동한다** (`CR-083`, 사용자 결정).
+   *
+   * 그 형상에서는 로그인 경로가 503을 내고 세션이 발급되지 않으므로 보호할
+   * 쿠키가 없다.
+   */
+  it('AUTH_ENABLED=false를 명시하면 종료하지 않는다', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('SESSION_COOKIE_SECURE', 'false');
     vi.stubEnv('AUTH_ENABLED', 'false');
 
     await register();
-    expect(exits, '잘못된 구성으로 기동했다 — 초록으로 서서 화면만 500이 된다').toHaveLength(1);
+    expect(exits, '세션이 발급되지 않는 형상까지 막았다').toHaveLength(0);
+  });
+
+  /**
+   * **그 값을 남긴 채 인증만 켜면 다시 막는다.**
+   *
+   * `CR-078`이 적은 우려가 이것이다 — 「지금은 안 쓰니까」로 열어 두면 열린 채로
+   * 켜진다. 그 전환이 환경 변수 한 줄이므로 구조로 막는다.
+   */
+  it('insecure 쿠키를 남긴 채 인증을 켜면 종료한다', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('SESSION_COOKIE_SECURE', 'false');
+    vi.stubEnv('AUTH_ENABLED', 'true');
+
+    await register();
+    expect(exits, '열린 채로 켜졌다').toHaveLength(1);
     expect(exits[0]).not.toBe(0);
   });
 
