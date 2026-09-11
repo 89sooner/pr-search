@@ -42,6 +42,7 @@ import { auditRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, type P
 import {
   ANNOTATE_MAX_ATTEMPTS,
   AnnotateApiError,
+  EVENT_PASS_BUDGET_MS,
   decideTitleUpdate,
   resolveAnnotationTarget,
   type AnnotateClient,
@@ -85,6 +86,8 @@ export interface PassSummary {
   readonly results: Readonly<Partial<Record<AnnotateResult, number>>>;
   /** 한도에 걸려 회차를 멈췄다면 언제부터 다시 할 수 있는가. */
   readonly rateLimitedUntil?: Date;
+  /** 시간 예산이 다해 남은 대상을 두고 돌아왔는가. */
+  readonly budgetExhausted?: boolean;
 }
 
 /**
@@ -364,10 +367,11 @@ export async function runAnnotationPass(
   deps: AnnotateDeps,
   filter: mergeSequenceRepo.AnnotateTargetFilter,
   correlationId: string = randomUUID(),
+  budgetMs?: number,
 ): Promise<PassSummary> {
   // 앞 회차가 끝난 뒤에 시작한다. 실패한 회차가 줄을 끊지 않도록 결과는 삼킨다.
   const previous = passChain.catch(() => undefined);
-  const started = previous.then(async () => runAnnotationPassUnlocked(deps, filter, correlationId));
+  const started = previous.then(async () => runAnnotationPassUnlocked(deps, filter, correlationId, budgetMs));
   passChain = started;
   return started;
 }
@@ -376,8 +380,10 @@ async function runAnnotationPassUnlocked(
   deps: AnnotateDeps,
   filter: mergeSequenceRepo.AnnotateTargetFilter,
   correlationId: string,
+  budgetMs: number | undefined,
 ): Promise<PassSummary> {
   const sleep = sleepOf(deps);
+  const startedAt = Date.now();
   const targets = await mergeSequenceRepo.listAnnotateTargets(deps.pool, filter);
   const results: Partial<Record<AnnotateResult, number>> = {};
   const blocked = new Set<number>();
@@ -385,6 +391,20 @@ async function runAnnotationPassUnlocked(
 
   for (const target of targets) {
     if (blocked.has(target.repository_id)) continue;
+    /*
+     * **예산을 넘기면 한 것까지 남기고 돌아온다.** 이벤트 경로가 오래 붙들면
+     * 버스가 30초 방치된 항목을 회수해 같은 행을 다시 집는다. 남은 대상은
+     * 이미 정본에 있으므로 잃지 않는다.
+     */
+    if (budgetMs !== undefined && Date.now() - startedAt >= budgetMs) {
+      logOf(deps)({
+        level: 'info',
+        message: '시간 예산이 다해 이번 회차를 멈춘다',
+        processed,
+        remaining: targets.length - processed,
+      });
+      return { processed, results, budgetExhausted: true };
+    }
     let result: AnnotateResult;
     try {
       result = await annotateOne(deps, target, correlationId);
@@ -467,6 +487,7 @@ export async function handleMergeNumberAssigned(
     },
     // 채번을 유발한 요청의 상관 ID를 감사까지 잇는다 (DEV-594와 같은 근거).
     event.correlation_id,
+    EVENT_PASS_BUDGET_MS,
   );
 
   /*
@@ -475,6 +496,14 @@ export async function handleMergeNumberAssigned(
    */
   if (summary.rateLimitedUntil !== undefined) {
     return deferUntil(summary.rateLimitedUntil, 'annotate_rate_limited');
+  }
+  /*
+   * 예산이 다해 남긴 것이 있으면 **곧 다시 받는다.** ack하면 그 PR들이 잔여
+   * 스윕까지 최대 하루를 기다린다. `retry`가 아니라 `defer`인 것은 실패가
+   * 아니기 때문이다 — 재시도 횟수를 올리면 정상 동작이 dead letter로 간다.
+   */
+  if (summary.budgetExhausted === true) {
+    return deferUntil(new Date(Date.now() + 1_000), 'annotate_budget_exhausted');
   }
   return { kind: 'ack' };
 }

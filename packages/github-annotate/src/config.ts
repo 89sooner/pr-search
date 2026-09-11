@@ -40,6 +40,18 @@ export const ANNOTATE_MAX_ATTEMPTS = 5;
  * 경고하므로 설정으로도 이 아래로 내릴 수 없게 한다.
  */
 export const MIN_WRITE_SPACING_MS = 1_000;
+/**
+ * 이벤트 한 건을 붙들 수 있는 시간.
+ *
+ * **버스가 30초 방치된 항목을 회수한다**(`claimIdleMs`). 그보다 오래 붙들면 처리
+ * 중인 이벤트를 다른 소비자가 가로채 같은 행을 다시 집는다 — 멱등이라 제목이
+ * 망가지지는 않지만 요청과 일이 두 벌이 된다. `JOB-SEQ-005`가 적은 30초가 바로
+ * 그 값이며, 여기서는 여유를 두고 그 아래로 잡는다.
+ *
+ * 예산이 다하면 회차는 **한 것까지 남기고** 돌아온다. 남은 대상은 다음 전달이나
+ * 잔여 스윕이 이어받으며, 이미 표기한 행은 `done`이라 다시 쓰지 않는다.
+ */
+export const EVENT_PASS_BUDGET_MS = 25_000;
 
 export interface AnnotateConfig {
   /** `MNUMBER_ANNOTATE_ENABLED`. 기본 `false`. */

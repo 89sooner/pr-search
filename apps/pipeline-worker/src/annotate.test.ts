@@ -460,6 +460,39 @@ describe('handleMergeNumberAssigned — 이벤트 경로 (§11)', () => {
     expect(patches()).toHaveLength(1);
   });
 
+  it('예산이 다하면 ack하지 않고 곧 다시 받는다', async () => {
+    /*
+     * 버스가 30초 방치된 항목을 회수한다. 회차가 그보다 오래 붙들면 처리 중인
+     * 이벤트를 가로채 같은 행을 다시 집는다. 예산을 넘기면 한 것까지 남기고
+     * 돌아오되 **ack하지 않아** 남은 PR이 잔여 스윕까지 밀리지 않게 한다.
+     */
+    mock = await startMockAnnotateGhe({ initialTitle: '제목' });
+    const rows = Array.from({ length: 3 }, (_unused, index) =>
+      target({ merge_seq: 10 + index, pull_request_number: 1234 + index, merge_number: 1 + index }),
+    );
+    let now = 0;
+    const deps = {
+      ...depsFor(fakePool({ targets: rows, epoch: 3 })),
+      // 느린 GHE를 흉내 낸다 — 첫 쓰기에만 간격이 붙고 그것이 예산을 넘긴다.
+      sleep: async () => {
+        now += 30_000;
+      },
+      now: () => new Date(now),
+    };
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const disposition = await handleMergeNumberAssigned(
+        deps,
+        event({ repository_id: 4021, base_branch: 'main', seq_epoch: 3, pull_request_numbers: [1234, 1235, 1236] }),
+      );
+      expect(disposition).toMatchObject({ kind: 'defer', reason: 'annotate_budget_exhausted' });
+    } finally {
+      spy.mockRestore();
+    }
+    // 예산을 넘긴 뒤로는 요청을 더 보내지 않았다.
+    expect(patches().length).toBeLessThan(3);
+  });
+
   it('한도에 걸리면 ack하지 않고 다시 받는다', async () => {
     mock = await startMockAnnotateGhe({
       getScript: [{ status: 429, body: { message: 'slow down' }, headers: { 'retry-after': '30' } }],
