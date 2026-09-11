@@ -1,6 +1,8 @@
 # PR Search 보안 및 개인정보 아키텍처
 
-> 상태: review | 버전: v1.4 | 갱신일: 2026-09-11
+> 상태: review | 버전: v1.5 | 갱신일: 2026-09-11
+
+CR-079: WP-074는 기존 읽기 Data App만 사용한다. 신규 증거 proof의 허용 필드는 [설계](pr_search_wp074_design.md) 6절, 측정 read-only role·세션 파일·비식별 출력은 측정 가이드가 정본이다. 새 제목 쓰기 App, OIDC 정책 변경, 익명 조회, fixture를 production 직접 확정에 넣는 경로는 만들지 않는다. 기존 auth gate와 범위 밖=미등록 404를 유지한다.
 
 ## 1. 목적
 

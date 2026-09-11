@@ -1,6 +1,8 @@
 # PR Search 릴리스 검증 계획
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-09-10
+> 상태: review | 버전: v0.9 | 갱신일: 2026-09-11
+
+CR-079: WP-074의 수용 시험은 [실행서](pr_search_wp074_execution.md) T01~T06·변이 목록이 정본이다. migration 왕복·실제 DB/ES/Redis/git·인증 세션 UI·이미지 런타임·read-only 측정 CLI가 필요하다. 단계별 상태를 계약 정정/구현/외부 실제 실행/사내 운영/WP-075로 구분한다. 직접 부재 증거 한계를 seed fixture로 숨기지 않는다. 이번 설계 세션에서 앱 시험과 후보 번들은 NOT RUN이다.
 
 ## 1. 목적
 

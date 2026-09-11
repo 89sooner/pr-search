@@ -1,6 +1,8 @@
 # PR Search 제품 IA 문서
 
-> 상태: review | 버전: v0.4 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.5 | 갱신일: 2026-09-11
+
+CR-079: 새 화면을 추가하지 않는다. W-001의 기존 검색 진입에서 M 인용 query 네 값(repository/base/epoch/M)을 받아 해석하고 기존 W-002로 이동한다. W-001·W-002·W-004는 M 번호를 PR 번호 옆에 병기한다. W-004의 계산 기준은 merge_seq다. [상세 설계 9절](../30_technical_architecture/pr_search_wp074_design.md)의 상태·링크 계약을 따른다.
 
 ## 0. 현재 문서 세트와 사용 순서
 

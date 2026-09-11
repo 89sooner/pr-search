@@ -1,6 +1,8 @@
 # PR Search 화면 플로우 명세서
 
-> 상태: review | 버전: v0.6 | 갱신일: 2026-09-08
+> 상태: review | 버전: v0.7 | 갱신일: 2026-09-11
+
+CR-079 M 인용 흐름: 기존 /search에서 m_repository·m_base_branch·m_seq_epoch·m_number를 함께 받는다 → 기존 인증 BFF에서 API-SEQ-007 1회 → assigned면 문맥과 from_q를 보존해 기존 PR 상세로 이동. 누락/코드 불일치는 입력 오류, epoch_stale은 기존 무효 경고이며 자동 현재 이동 금지. pending에는 M 링크를 만들지 않는다. 일반 검색 query parser와 W-004 범위 입력은 변경하지 않는다. [설계 9절](../30_technical_architecture/pr_search_wp074_design.md).
 
 ## 1. 전환 규칙
 

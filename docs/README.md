@@ -25,6 +25,8 @@
 - 진행률·편차(`DEV-###`)·검증 기록 — `40_delivery/pr_search_implementation_traceability.md` (**3장이 진행률의 유일한 정본**)
 - 변경 요청과 릴리스 게이트 — `00_governance/change_control.md`
 
+WP-074 상세 설계의 진입점(CR-079): [설계 계약](30_technical_architecture/pr_search_wp074_design.md), [후속 구현 실행서](40_delivery/pr_search_wp074_execution.md), [사내 측정 가이드](40_delivery/pr_search_wp074_measurement_guide.md). 설계 문서의 작성은 구현 완료나 실행 허가를 뜻하지 않는다. 실제 진행 상태는 위 원장에서 확인한다.
+
 ## 1. 목적
 
 이 문서는 PR Search의 SRS/PRD 기반 제품 계획 문서 전체를 안내하는 최상위 인덱스다. 목표는 요구사항, UX/UI, 시스템 아키텍처, 프론트엔드, 백엔드, API, 데이터, 인프라, 보안, 운영, 릴리스 검증, 작업 패키지, 구현 추적을 하나의 추적 가능한 문서 체계로 묶는 것이다.

@@ -1,6 +1,8 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.13 | 갱신일: 2026-09-08
+> 상태: review | 버전: v0.14 | 갱신일: 2026-09-11
+
+CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하고 모든 sync 호출은 repo session lock을 공유한다. Profile B sequence에는 mirror volume이 없으므로 명시적 API mode다. 환경 키·schema 선행·boot/stop·additive 앱 rollback과 별도 DB down은 [설계](pr_search_wp074_design.md) 10절이 정본이다. pilot.4 fail-fast·SSR smoke·pg hash 보정·worker git을 보존한다. 후보는 새 버전 미발행이며 --release를 사용하지 않는다.
 
 ## 1. 목적
 

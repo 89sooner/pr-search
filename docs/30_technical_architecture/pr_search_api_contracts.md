@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.25 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.26 | 갱신일: 2026-09-11
 
 ## 1. 목적
 
@@ -287,7 +287,7 @@
 }
 ```
 
-**`merge_number`·`merge_number_state`는 `merge_seq` 옆에 병기한다 (CR-077, FR-SEQ-008 AC-8).** M 넘버는 선후관계 확인용이며 PR의 주 식별자를 대체하지 않으므로 `pr_number`를 밀어내지 않고 **더한다.** 두 필드는 `merge_seq`가 있을 때만 실린다 — 미머지 PR처럼 `merge_seq`가 `null`이면 M 넘버도 있을 수 없으므로 키 자체를 넣지 않는다. `merge_seq`는 있으나 아직 M 넘버가 채번되지 않았으면(`FR-SEQ-008` 예외 처리) `merge_number: null` + `merge_number_state: "pending"`이고, 채번되면 `merge_number_state: "assigned"`다. **잠정 번호를 지어내지 않는다** — `pending`인 동안 다른 값으로 채우지 않는다. 두 필드의 완전한 의미론은 `API-SEQ-007`이 정본이다.
+**M 번호 응답 필드(CR-079).** 검색·PR 상세·범위 PR 행에 API-SEQ-007의 M DTO를 additive로 싣는다. merge_seq 미채번과 M만 미채번은 reason으로 구분하고 미머지는 not_applicable이다. PR 번호는 주 식별자다. ES 숫자와 API 문자열을 구분하며 필드·HTTP·상태는 API-SEQ-007 절이 정본이다.
 
 응답 200 (보강 미완료):
 
@@ -1378,12 +1378,12 @@ GET /api/v1/sequence-spaces
 - 채번된 적 없는 브랜치(공간 행 부재)는 `sequence_state: "unknown"` + `seq_epoch: null`로 싣는다 — 목록에서 숨기면 사용자가 등록 부재로 오인한다 (숨기지 않는다 원칙).
 - 정렬은 `repository`, `base_branch` 오름차순. 페이지네이션 없음 — 등록 저장소는 운영상 수백 규모다 (FR-ING-009의 등록 모델).
 
-### API-SEQ-007 M 넘버 해석 (CR-077)
+### API-SEQ-007 M 넘버 해석 (CR-077 / CR-079)
 
 - 목적: M 넘버로 PR을 찾고, PR로 M 넘버를 찾는 양방향 해석.
 - 관련 요구사항: FR-SEQ-008
 
-요청: `GET /api/v1/merge-numbers/resolve?repository=acme/payments&base_branch=main&pr_number=1234&seq_epoch=4`
+요청: `GET /api/v1/merge-numbers/resolve?repository=acme/smp1900&base_branch=main&pr_number=1234&seq_epoch=4`
 
 **`repository`·`base_branch` 둘 다 필수다 — 서버가 시퀀스 공간을 고르지 않는다.** 이 판단은 이미 한 번 내려졌다: `API-REL-001`이 "서버가 시퀀스 공간을 고르지 않는다"로 정했고(CR-032, DEV-168), 검색 API의 `seq:` 질의 계약(4장, CR-051)이 같은 이유로 같은 규칙을 재사용했다. 그 논리를 여기서도 그대로 옮긴다 — 서버가 공간을 고르면 사용자가 묻지 않은 브랜치의 답이 나오고, 정렬을 더해도 결정적으로 같은 오답일 뿐이다.
 
@@ -1391,15 +1391,15 @@ GET /api/v1/sequence-spaces
 
 **앵커는 `pr_number` 또는 `merge_number` 하나다** (`API-REL-001`의 앵커 규칙과 같다, CR-031). 둘 다 주거나 둘 다 없으면 400 `INVALID_PARAMETER`다.
 
-- `pr_number`: 정수. 이 시퀀스 공간의 PR 번호다.
-- `merge_number`: 문자열. `M-<저장소 코드>-<번호>` 형식(`FR-SEQ-008` AC-5)이며 **서버는 접미의 정수만 그 공간의 서수로 해석한다.** 가운데 저장소 코드 구간은 대조하지 않는다 — `OD-009`가 그 코드를 저장소 이름의 숫자 부분으로 확정했으나, **저장소 이름이 바뀌면 과거에 인용된 코드가 현재 이름과 어긋나므로** 그것을 대조하면 유효한 인용이 거부된다. `repository`·`base_branch`가 이미 공간을 확정하므로 코드 구간을 대조하지 않아도 다른 공간의 값과 섞이지 않는다. 형식이 `M-.+-[0-9]+`에 맞지 않으면 400 `INVALID_PARAMETER`(`detail.field: "merge_number"`)다.
-- `seq_epoch`는 선택이다 — `API-SEQ-001`과 같은 인용 계약이다. 생략하면 현재 에폭으로 조회한다.
+- `pr_number`: 1..2147483647의 십진 정수. 이 시퀀스 공간의 PR 번호다.
+- `merge_number`: `^M-([0-9]+)-([1-9][0-9]*)$`. suffix는 1..9007199254740991. **코드 구간을 무시하던 CR-077 문구는 폐기한다.** 현재 repository name의 유일한 연속 숫자 run과 문자 그대로 일치해야 한다(선행 0 보존). 숫자 run이 없거나 여럿이면 임의 선택하지 않는다. 불일치는 400 INVALID_PARAMETER(detail.field=merge_number, reason=repository_code_mismatch). 개명 alias는 없다.
+- `seq_epoch`: M→PR은 필수. PR→M만 생략 시 현재 값을 허용한다. 지정값은 1..2147483647의 십진 정수다. M 조회에서 생략값을 현재로 자동 보완하지 않는다.
 
 응답 200 (M 넘버 확정 — `pr_number`로 조회해도 `merge_number`로 조회해도 같은 모양이다. 이 API는 입력 방향과 무관하게 정규화된 짝을 돌려준다, `API-SEQ-002`가 앵커 방향과 무관하게 같은 `resolved` 모양을 돌려주는 것과 같은 원칙이다):
 
 ```json
 {
-  "sequence_space": "acme/payments@main",
+  "sequence_space": "acme/smp1900@main",
   "seq_epoch": 4,
   "sequence_state": "ok",
   "epoch_stale": false,
@@ -1407,6 +1407,9 @@ GET /api/v1/sequence-spaces
   "merge_seq": 1342,
   "merge_number": "M-1900-1",
   "merge_number_state": "assigned",
+  "merge_number_epoch": 4,
+  "merge_number_reason": null,
+  "merge_number_projection_state": "in_sync",
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
@@ -1415,7 +1418,7 @@ GET /api/v1/sequence-spaces
 
 ```json
 {
-  "sequence_space": "acme/payments@main",
+  "sequence_space": "acme/smp1900@main",
   "seq_epoch": 4,
   "sequence_state": "ok",
   "epoch_stale": false,
@@ -1423,6 +1426,9 @@ GET /api/v1/sequence-spaces
   "merge_seq": 1360,
   "merge_number": null,
   "merge_number_state": "pending",
+  "merge_number_epoch": 4,
+  "merge_number_reason": "predecessor_pending",
+  "merge_number_projection_state": "unknown",
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }
 ```
@@ -1433,7 +1439,7 @@ GET /api/v1/sequence-spaces
 
 ```json
 {
-  "sequence_space": "acme/payments@main",
+  "sequence_space": "acme/smp1900@main",
   "seq_epoch": 4,
   "epoch_stale": true,
   "requested_seq_epoch": 3,
@@ -1445,9 +1451,43 @@ GET /api/v1/sequence-spaces
 
 **재채번 중이면** `sequence_state: "reassigning"`과 마지막 확정 값을 함께 준다 — `API-SEQ-001`·`API-REL-001`과 같은 판단이다. M 넘버 자체가 에폭에 묶여 무효화되는 것(`FR-SEQ-008` AC-4, ADR-007 규칙 5)과 별개로, 조회는 마지막으로 확정된 값을 숨기지 않는다.
 
-- 오류: `INVALID_PARAMETER` (400 — `base_branch` 누락, `pr_number`와 `merge_number`를 동시에 지정하거나 둘 다 누락, `merge_number` 형식 오류), `NOT_FOUND` (404 — 저장소 미등록·접근 범위 밖·채번된 적 없는 브랜치·그 공간에 없는 `merge_number`. 넷 모두 같은 메시지다, `ADR-008`·`THR-006`과 같은 원칙), `NO_SEQUENCE` (409 — `pr_number`로 조회했고 그 PR에 시퀀스가 없음. `detail.reason`이 `not_merged`와 `not_sequenced`를 가른다, `FR-REL-001`·CR-031과 같은 어휘)
+- 오류: 아래 CR-079 상태 표가 HTTP·사유 정본이다. 채번된 적 없는 대상 브랜치를 무조건 404로 합치던 문구는 정정한다.
 - Authz: 인증 + 접근 범위(ADR-008). 조회 대상 저장소가 요청자의 접근 범위 밖이면 미등록과 같은 `NOT_FOUND`다.
-- **새 오류 코드를 만들지 않았다.** 넷 다 기존 시퀀스 API가 이미 쓰는 어휘를 그대로 재사용한다.
+- 오류 envelope은 기존 코드를 재사용한다. 정본 장애는 INTERNAL_ERROR(500), 권한 자료 조회 실패는 PERMISSION_UNAVAILABLE(503), 기능 off는 NOT_FOUND(404)와 feature_disabled 사유다. 코드가 존재하지 않는 SERVICE_UNAVAILABLE을 기존 값으로 가정하지 않는다.
+
+**CR-079 배포 전 계약 정정.** f53d28c에서 route·M 소비자는 존재하지 않는다. 구현 착수 시 다시 확인한다. 세션 → query 구조/숫자 → repository 접근 범위 → 코드 대조 → branch·PR 확인 → 같은 read snapshot의 epoch 대조 → 값 조회 순서다. 권한 밖 repository의 실제 코드를 비교한 오류를 먼저 내지 않는다. 중복 query key·빈 값·부호·소수·지수·공백·parseInt prefix는 400이다. BigInt로 범위를 확인한 뒤 safe number로 변환한다.
+
+| 상황 | HTTP / 코드·reason | UI 의미 |
+| --- | --- | --- |
+| 잘못된 입력·M epoch 누락 | 400 INVALID_PARAMETER | 입력 수정 |
+| 없는 PR·PR base 불일치·없는 M | 404 NOT_FOUND | 찾을 수 없음 |
+| 저장소 미등록·권한 밖 | 동일 404 NOT_FOUND·동일 메시지 | 존재 유출 금지 |
+| 미머지 PR | 409 NO_SEQUENCE / not_merged | M 대상 아님 |
+| 비대상 branch | 409 NO_SEQUENCE / branch_not_tracked | 비대상 |
+| 대상 PR/branch의 space 또는 seq 행 없음 | 409 NO_SEQUENCE / not_sequenced | 시퀀스 대기; M 방향의 없는 번호는 404 |
+| M만 없음 | 200 pending + merge_number_reason | M 대기 |
+| 정본 장애 / 기능 off | 500 INTERNAL_ERROR / 404 NOT_FOUND(detail.reason=feature_disabled는 off에서만) | 확인 불가 / 기능 비활성 |
+| 코드 계산 불가 | M 방향 400; PR 방향 200 unavailable·merge_number=null·reason=repository_code_unavailable | 코드 확인 필요 |
+
+```text
+GET /api/v1/merge-numbers/resolve?repository=acme/smp1900&base_branch=main&merge_number=M-1900-1&seq_epoch=4
+```
+
+HTTP 409 not_sequenced의 정확한 envelope:
+
+```json
+{
+  "error": {"code": "NO_SEQUENCE", "message": "시퀀스 채번을 기다리고 있습니다.",
+    "detail": {"reason": "not_sequenced"}},
+  "correlation_id": "test-correlation"
+}
+```
+
+위 assigned/pending 예제에는 CR-079로 `merge_number_epoch`(동일 seq_epoch)와 `merge_number_reason`(assigned는 null, pending은 고정 enum)을 추가한다. pending 이유는 `pr_search_wp074_design.md` 9절에 정의하며 blocker PR/seq 식별자를 반환하지 않는다. epoch_stale 예제는 바꾸지 않는다: 결과 키 자체가 없어야 한다. 재채번 중 read는 단일 SQL snapshot 또는 READ ONLY REPEATABLE READ로 일관 epoch를 읽고 새 epoch commit 뒤 옛 값을 현재로 반환하지 않는다.
+
+기존 목록·상세·범위 PR DTO도 `merge_number:string|null`, `merge_number_state:assigned|pending|not_applicable|unavailable`, `merge_number_reason:string|null`, `merge_number_epoch:number|null`을 갖는다. ES merge_number는 long, API는 문자열이다. merge_seq 미채번은 pending/not_sequenced, 미머지는 not_applicable, 직접 commit에는 M 표시 없음. outer epoch_stale이면 기존처럼 rows를 숨긴다. 페이지 PR tuple을 DB에 1회 batch 대조하고 행별 resolve HTTP 호출을 금지한다. M batch만 실패하면 기존 검색 결과와 함께 M unavailable을 표시한다. M 링크는 /search의 m_repository·m_base_branch·m_seq_epoch·m_number 네 값을 보존한다. 자세한 UI·poll·from_q 계약은 상세 설계 9절을 따른다.
+
+M DTO의 추가 관측 필드(CR-079): `merge_number_projection_state: in_sync|pending|unknown`. 실제 검색 hit의 M 수치·epoch·SHA가 정본과 같은 경우만 in_sync다. DB 보완값만 최신이면 pending, ES hit를 대조하지 못하면 unknown이다. API-SEQ-007도 같은 PR의 ES `_search`를 최대 1회 읽어 이를 산출하되 ES 실패는 번호 조회 성공을 실패시키지 않고 unknown으로 답한다. epoch_stale 응답에는 이 키도 없다. 일반 M UI는 이 필드를 숨기고 운영 watch가 ES 관측 완료를 판정하는 데 사용한다. 실시간 ES GET이나 DB 대행 값으로 in_sync를 합성하지 않는다.
 
 ### API-REL-001 선행·후행 조회
 
@@ -2986,7 +3026,8 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 
 | API | 상태 | 변경 정책 |
 | --- | --- | --- |
-| API-SRCH-001~004, API-SEQ-001~003, API-SEQ-006, API-SEQ-007, API-REL-001~002, API-REL-005 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
+| API-SRCH-001~004, API-SEQ-001~003, API-SEQ-006, API-REL-001~002, API-REL-005 | stable | 하위 호환만. 필드 제거·의미 변경은 `/api/v2` |
+| API-SEQ-007 | planned — 미구현, CR-079 배포 전 계약 | 구현/소비자 발견 시 호환성 영향부터 재확인; 배포 후 stable 규칙 적용 |
 | API-STAT-001~004, API-SEQ-004~005, API-REL-003~004, API-REL-006 | stable | 위와 동일 |
 | API-ADM-* | internal | 운영 콘솔 전용. 프런트엔드와 동시 배포 전제로 변경 가능 |
 | API-ING-001 | external | GHE 계약. 변경 시 웹훅 재등록 필요 |

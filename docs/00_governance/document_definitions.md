@@ -59,6 +59,10 @@
 - `pr_search_ai_agent_implementation_request.md`: AI Agent용 상세 구현 요청서.
 - `pr_search_ai_agent_execution_brief.md`: AI Agent용 압축 실행 브리프.
 
+- `pr_search_wp074_design.md`: WP-074의 상세 기술 계약. FR-SEQ-008·API-SEQ-007에서 파생한 상태 전이, 데이터 사전, 트랜잭션, 전달·복구 및 측정 계약을 한곳에 정의한다. 다른 아키텍처 문서는 해당 절을 참조하며 중복 정의하지 않는다. 같은 기술 계층 내 WP-074 세부사항은 이 문서가 소유하되 SRS·API 계약보다 우선하지 않는다.
+- `pr_search_wp074_execution.md`: 후속 구현 에이전트의 필수 읽기 순서, 파일 소유, 작업 순서, 독립 검증 시나리오와 증거 양식. 설계를 재결정하거나 구현 실행 권한을 부여하는 문서가 아니다.
+- `pr_search_wp074_measurement_guide.md`: 사내 읽기 전용 측정 도구의 구현 계약과 운영 사용 안내. 계획한 명령과 현재 실행 가능한 명령을 구분하며 실제 사내 측정 결과를 대신하지 않는다.
+
 ## 4. 문서 상태 표기 규칙
 
 모든 계획 산출물 문서는 제목 아래에 상태 줄을 가진다.

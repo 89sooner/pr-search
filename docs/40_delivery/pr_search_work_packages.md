@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.23 | 갱신일: 2026-09-09
+> 상태: review | 버전: v2.24 | 갱신일: 2026-09-11
 
 ## 1. 목적
 
@@ -2609,49 +2609,32 @@ external main의 특정 커밋
 
 ### WP-074 M 넘버 채번과 조회
 
-> CR-077 신설. 2026-09-10 P4 회고 회의가 불편사항 1·3·5를 묶어 **M 넘버**를 결정했다.
->
-> **이 WP는 새 시퀀스를 만들지 않는다.** M 넘버는 `merge_seq`의 부분 열거이며(ADR-007 Clarification),
-> 그래서 이 WP가 실제로 하는 일은 이미 있는 표에서 PR 있는 행만 골라 세는 것과, **그 값이 회의가 요구한
-> '거의 실시간'으로 붙게 만드는 것** 둘이다. 후자가 이 WP의 실질적인 난제다 — 지금 `merge_seq`는
-> push 웹훅이 미러 fetch를 부르지 않아 최대 6시간 늦게 붙는다 (DEV-576).
+> CR-077 신설 / CR-079 squash-only 상세 설계. 구현은 todo다. 설계 작성으로 이 WP를 완료 처리하지 않는다.
 
-- 목표: M 넘버를 채번해 정본과 색인에 싣고, 검색·상세·해석 경로에서 조회할 수 있게 한다. **그 전에 실시간성의 전제인 미러 fetch 배선을 잇는다.**
-- 관련 요구사항: FR-SEQ-008, FR-SEQ-001 (선행 조건), FR-SRCH-003
-- 관련 API/데이터/잡: `JOB-SEQ-004`, `EVT-SEQ-004`, `API-SEQ-007` / `ENT-SEQ-001`, 마이그레이션 025, ADR-007 Clarification
-- 선행 WP: WP-021 (시퀀스 채번), WP-020 (미러 그래프), WP-008 (투영)
-- 구현 범위:
-  - **선행 결함 수정 (DEV-576)**: `syncByTarget`을 push 경로에 잇는다. 지금 그 함수는 정의만 있고 호출하는 코드가 없어 미러가 6시간 스윕으로만 갱신된다. **fetch가 끝난 뒤에 채번이 돌아야 하므로 순서를 보장한다** — 두 잡이 같은 push를 각각 받아 경주하면 채번이 옛 head를 읽고 조용히 "새 커밋 없음"으로 끝난다. 이 수정 없이는 아래의 어떤 DoD도 실시간으로 성립하지 않는다
-  - **마이그레이션 025**: `merge_sequence`에 `merge_number`·`annotate_state`·`annotated_at`, `sequence_space`에 `mnumber_head_seq`·`mnumber_head`. additive이며 기존 행은 `NULL`로 시작한다
-  - **채번 계산**: 저장소 없이 시험할 수 있는 순수 함수로 분리한다 (`sequence-plan.ts`의 `numberCommits`와 같은 자리). 입력은 `merge_seq` 오름차순 행 목록과 직전 `mnumber_head`이고, 출력은 부여할 `(merge_seq, merge_number)` 쌍과 **멈춘 지점**이다
-  - **멈춤 규칙 (AC-3)**: PR 연결이 확정되지 않은 항목을 만나면 그 앞에서 멈춘다. `pull_request_number`가 `NULL`인 이유 둘(직접 푸시 확정 / 매핑 미확정)을 구분하며, 그 구분은 DEV-207이 이미 세운 근거를 재사용한다
-  - **머지 방식 세 가지를 모두 판정한다.** merge commit과 squash는 base에 커밋을 하나만 넣지만 **rebase merge는 N개를 넣고 PR의 `merge_commit_sha`는 그중 하나만 가리킨다.** 나머지 N-1개는 `pull_request_number`가 비어 있어 위의 멈춤 규칙에서 **직접 푸시로 오판될 수 있다** — 그러면 채번이 멈추지 않아야 할 자리에서 멈추거나 그 반대가 된다. 판정은 DEV-207이 세운 근거(first-parent 커밋이고 알려진 PR 머지 매핑이 없다)를 재사용하되, **rebase로 들어온 커밋 무리를 같은 PR에 귀속시키는 근거를 명시한다.** M 넘버 자체는 PR 하나당 하나이므로 그 무리에서 번호를 한 번만 부여한다
-  - **`JOB-SEQ-004` 워커**: `sequence` 역할 안에 둔다. 시퀀스 공간 advisory lock을 `JOB-SEQ-001`과 공유하므로 다른 역할로 떼지 않는다
-  - **`EVT-SEQ-004` 발행**: `{ repository_id, base_branch, seq_epoch, from_mnumber, to_mnumber, pull_request_numbers[] }`
-  - **에폭 처리**: `sequence.reassigned`를 받으면 새 에폭에서 다시 센다. 이전 에폭의 M 넘버는 무효로 남기고 자동 재해석하지 않는다 (ADR-007 규칙 5)
-  - **`merged_at` 대조 (AC-6)**: 채번 구간에서 `merged_at` 순서와 `merge_seq` 순서를 비교해 불일치를 지표로 남긴다. **채번을 막지 않는다** — 정본은 `merge_seq`다
-  - **색인 투영**: `prs-pull-requests`의 `merge_number`. 시퀀스 필드와 같은 소유 규칙을 따른다 (투영 워커가 `params.doc`에 싣지 않는다)
-  - **`API-SEQ-007`**: M 넘버 ↔ PR 양방향 해석. `base_branch` 필수, 에폭 파라미터, `pending` 응답
-  - **화면**: `W-001` 결과 목록과 `W-002` PR 상세에 M 넘버를 **PR 번호 옆에 병기**한다. PR 번호를 대체하지 않는다
-  - 메트릭: `mnumber_assigned_total`, `mnumber_blocked_total{reason}`, `mnumber_order_mismatch_total`
-- 제외:
-  - PR 제목 표기 — WP-075. 이 WP는 GHE에 쓰지 않는다
-  - 저장소 코드 규칙의 일반화 — `OD-009`가 **저장소 이름의 숫자 부분**으로 확정했다. 이 WP는 그 규칙만 구현하고, 이름에 숫자가 없거나 여럿인 저장소의 처리는 실제 사례가 나올 때 다룬다
-  - `merge_seq`를 M 넘버로 대체하는 일 — 범위 조회·릴리스 포함 판정은 계속 `merge_seq`를 쓴다
-  - 과거 전량 소급 채번의 성능 최적화 — 스윕이 점진적으로 메운다
-- 완료 기준(DoD):
-  - [ ] **M 넘버 순서가 `git log --first-parent`에서 PR 머지 커밋만 추린 순서와 일치한다** — 실제 git 픽스처로 대조하며, `merge_seq` 회귀(ACC-02)와 같은 방식이다
-  - [ ] 직접 푸시 커밋이 M 넘버를 받지도, 번호를 소비하지도 않는다
-  - [ ] 앞선 항목의 PR 연결이 미확정이면 채번이 멈추고, 확정된 뒤 다음 회차가 **같은 번호로** 이어받는다
-  - [ ] 같은 구간에 다시 돌려도 값이 변하지 않는다 (멱등)
-  - [ ] 에폭이 오르면 이전 에폭 M 넘버가 무효로 표시되고 새 에폭에서 다시 세어진다
-  - [ ] `merged_at` 순서와 어긋나는 항목이 지표로 드러나고, 그 불일치가 채번을 막지 않는다
-  - [ ] **push 웹훅 수신 뒤 수 초 안에 M 넘버가 붙는다** — DEV-576 수정의 실제 검증이며, 미러 fetch와 채번의 순서가 보장됨을 시험이 단언한다
-  - [ ] **merge commit·squash·rebase 세 방식 모두에서 M 넘버가 PR당 하나씩 붙고 순서가 git과 일치한다** — 특히 rebase merge가 넣은 커밋 무리에서 번호가 중복되지도, 채번이 멈추지도 않는다
-  - [ ] `API-SEQ-007`이 `base_branch` 없는 요청을 거부한다
-  - [ ] 요청 에폭이 현재와 다르면 결과 키 없이 그 사실을 반환한다 — 빈 목록으로 위장하지 않는다
-  - [ ] 아직 채번되지 않은 PR이 `pending`으로 답하고 잠정 번호가 나오지 않는다
-  - [ ] `W-001`과 `W-002`에서 PR 번호가 주 식별자 자리를 유지하고 M 넘버가 병기된다
+- 목표: freshness → merge_seq → PR 증거 → M 번호 → DB/ES/API → W-001·W-002·W-004 → 사내 읽기 전용 측정을 연결한다.
+- 관련 FR: FR-SEQ-008 AC-1~14, FR-SEQ-001, FR-SRCH-003, NFR-002.
+- 관련 계약: API-SEQ-007, JOB-SEQ-004, EVT-SEQ-004, ENT-SEQ-001·002·005·006·007, ADR-023, DEV-576·DEV-580~583.
+- 선행 WP: WP-021, WP-020, WP-008. pilot.4 사내 재시험 미도착은 외부 작업의 차단 조건이 아니다.
+- 구현 계약: `../30_technical_architecture/pr_search_wp074_design.md` 전문.
+- 파일 소유·순서·검증: `pr_search_wp074_execution.md` S0~S6 / T01~T06.
+- 운영 도구: `pr_search_wp074_measurement_guide.md`. CLI는 후속 구현 산출물이다.
+
+구현 범위: DEV-576 freshness와 마지막 push 복구; 영속 PR/direct/unresolved 근거와 늦은 snapshot 재개; additive migration(025 번호 재확인); 순수 planner/번호·checkpoint·전달 의도 원자성; sequence 역할 기동/구독/종료/재시도; ES 소유/이중 쓰기/재구축/epoch; API 인용 안전성; 세 화면 PR 행 병기; 읽기 전용 계측·rollback·실제 이미지 검증.
+
+적용 프로파일은 squash-only다. 기존 merge_seq의 merge/rebase 지원과 회귀는 유지하되 M의 알려진 비스쿼시·프로파일 불명 입력은 사유를 표시하고 중단한다. DEV-207 role을 영구 skip 근거로 쓰지 않는다.
+
+제외: WP-075 제목 쓰기·전용 App, PIPE DB, PR 본문, 관계 그래프 활성화, OIDC 정책, UI 전면 개편, 개명 alias, 기존 seq 기반 range/anchor/bisect 변경.
+
+완료 기준:
+- [ ] T01: squash PR당 한 M, 다른 공간 분리, git first-parent 독립 대조.
+- [ ] T02: 증서 있는 direct만 skip, unresolved 뒤 번호 없음, 정보 도착 후 새 push 없이 재개.
+- [ ] DEV-581: production 직접 푸시 부재 확정 근거 확보. **fixture 증서 시험만으로 일반 이력의 전체 채번 완료를 선언하지 않는다.**
+- [ ] T03: stale-readable mirror 수정 전후, fetch 실패·마지막 push·중복/역순·락·재시작 복구.
+- [ ] T04: 번호/checkpoint/work·ES/reindex/epoch 경주에서 번호 이동/유실 없음.
+- [ ] T05: API-SEQ-007 examples 및 QA-W001-39·QA-W002-29·QA-W004-30, 행별 resolve 없음.
+- [ ] T06: migration 왕복·앱 rollback·worker 기동/종료·실제 이미지·측정 CLI.
+- [ ] 실행서의 변이·필수 checks·독립 리뷰와 최종 원장 기록.
+- [ ] 외부 실행과 사내 NOT RUN 분리; WP-075 미구현, 새 릴리스 미발행.
 
 ### WP-075 PR 제목 M 넘버 표기
 

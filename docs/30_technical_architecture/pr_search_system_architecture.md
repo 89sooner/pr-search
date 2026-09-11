@@ -1,6 +1,8 @@
 # PR Search 시스템 아키텍처
 
-> 상태: review | 버전: v0.4 | 갱신일: 2026-09-01
+> 상태: review | 버전: v0.5 | 갱신일: 2026-09-11
+
+CR-079 / ADR-023: WP-074의 런타임은 sequence 역할의 freshness→채번→증거→M→materialize와 기존 EventBus다. raw_event/snapshot/번호 트랜잭션의 durable intent가 마지막 이벤트 복구를 보장한다. 새 범용 orchestrator는 없다. [상세 설계](pr_search_wp074_design.md) 4~8절이 정본이며 GHE 읽기 App과 기존 권한 경계를 유지한다.
 
 ## 1. 목적
 

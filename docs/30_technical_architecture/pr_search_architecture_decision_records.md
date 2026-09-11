@@ -1,6 +1,8 @@
 # PR Search Architecture Decision Records
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-09-09
+> 상태: review | 버전: v0.9 | 갱신일: 2026-09-11
+
+CR-079: ADR-023을 아래 목록과 상세 설계에 추가한다. 새 M 번호의 적용과 세부 계약은 [상세 설계](pr_search_wp074_design.md) 전문, 선택 대안은 4절, Agent-Initiated Decisions는 12절이 소유한다. 직접 부재 증거의 가용성 한계(DEV-581)는 accepted 동작인 pending과 별개인 검증 조건이며 해결됐다고 간주하지 않는다.
 
 ## 1. 목적
 
@@ -32,6 +34,25 @@
 | ADR-020 | typed gh 결과 계약과 capability 데이터흐름 그래프 | accepted | 2026-08-20 | data, frontend, backend, security |
 | ADR-021 | 첫 사내 반입은 단일 호스트 프로파일 · 오프라인 번들 · 단방향 다운스트림 계보 | accepted | 2026-09-01 | infrastructure, security, delivery, system |
 | ADR-022 | M 넘버 표기는 Data Plane이 수행하는 유일한 자동 GHE 쓰기 | accepted | 2026-09-10 | security, backend, data |
+| ADR-023 | squash M 번호의 확정 근거·선행 freshness·영속 복구·인용 안전성 | proposed — 설계 review, DEV-581 증거 게이트 잔존 | 2026-09-11 | WP-074 상세 설계, data, async, API, UI, delivery |
+
+## ADR-023 squash M 번호의 확정 근거와 복구
+
+### Context
+
+CR-079는 사용자 squash-only 지시의 설계 반영이다. DEV-576은 stale mirror를 읽고도 정상으로 종료하는 실행 공백이며 DEV-207의 direct_push는 교정 가능한 역할이므로 영구 skip 증거가 아니다. raw_event outbox는 M 전달을 복구하지 않는다. API-SEQ-007의 code/epoch 생략은 불변 인용과 어긋난다.
+
+### Decision
+
+상세 계약은 [WP-074 설계](pr_search_wp074_design.md) 3~10절이 소유한다. sequence 역할이 freshness를 선행하고 기존 repo/sequence 락 구조와 고정 kind durable work를 사용한다. 번호/체크포인트/work는 한 transaction이다. M 필드의 ES owner를 분리하고 API는 페이지당 DB batch 대조를 한다. 미확정은 뒤 번호를 막으며 API의 공간·코드·epoch 검증을 생략하지 않는다. WP-075와 인증 정책은 범위 밖이다.
+
+### Alternatives and Consequences
+
+webhook 동기 fetch, 독립 소비자 경주, 이벤트 발행만을 복구 근거로 삼는 안을 기각했다. 단일 역할 선행 갱신이 Profile A의 기존 볼륨·읽기 자격을 활용한다. 대가로 repo session lock 동안 connection을 점유하고 영속 메타데이터와 batch DB 조회가 증가한다. Profile B는 실제 volume 부재에 맞춰 API mode로 명시한다. 직접 푸시의 영구 부재 증서는 미확보이므로 production에서는 pending이고 root/direct 뒤 전체 번호가 막힐 수 있다. 근거가 확보되기 전 이 ADR과 WP 전체를 무조건 완료로 승격하지 않는다.
+
+### Verification and Rollback
+
+후속 실행서 T01~T06 및 필수 변이를 적용한다. 이번 세션에서 실제 앱 시험은 NOT RUN이다. additive 앱 rollback을 우선하며 DB down은 번호·증거 복구자료 확보와 새 producer/consumer 중지 후 수행한다. Agent-Initiated Decisions는 상세 설계 12절의 C1~C6을 따른다.
 
 ## ADR-001 전 계층 TypeScript 단일 언어
 

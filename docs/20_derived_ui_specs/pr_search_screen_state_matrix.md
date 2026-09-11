@@ -1,15 +1,17 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.16 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.17 | 갱신일: 2026-09-11
+
+CR-079 상태 우선순위: 기존 인증/outer epoch_stale 처리 → PR 대상 여부 → sequence 존재 → M 확정 → M 조회 장애. pending은 merged PR에만 적용한다. reason=not_sequenced는 '시퀀스 채번 대기', predecessor_pending 등은 'M 번호 대기', not_applicable은 미머지/비대상, unavailable은 '확인 불가'다. commit 행에는 M 영역 없음. 기존 표의 '채번 후 자동 표시'는 [설계 9절](../30_technical_architecture/pr_search_wp074_design.md)의 visible·5초 간격·60초 상한 재검증을 뜻하며 무제한/행별 poll이 아니다.
 
 ## 1. 상태 설계 원칙
 
 1. 상태는 문구가 아니라 사용자가 다음 행동을 결정할 수 있는 UI로 표현한다.
 2. "결과 없음"과 "권한 없음"과 "아직 수집되지 않음"은 서로 다른 상태다. 하나로 뭉뚱그리지 않는다. 이 구분이 무너지면 사용자는 데이터가 없는 것인지 시스템이 고장난 것인지 판단할 수 없다.
 3. 부분 실패는 전체 실패로 승격하지 않는다. 패싯 실패가 목록을 비우지 않고, 관계 조회 실패가 PR 개요를 지우지 않는다.
-4. 수집 파이프라인의 중간 상태(`enrichment_pending`, `links_pending`)는 오류가 아니다. 진행 중임을 알리고 수동 재조회 경로를 제공한다. 자동 폴링은 하지 않는다.
+4. 수집 파이프라인의 중간 상태(`enrichment_pending`, `links_pending`)는 오류가 아니다. 진행 중임을 알리고 수동 재조회 경로를 제공한다. 이 두 상태를 위한 자동 폴링은 하지 않는다. CR-079의 M 번호 pending만 상세 설계 9절의 제한된 페이지 재검증을 사용한다.
 5. 시퀀스 관련 상태(`sequence_stale`, `sequence_reassigning`, `epoch_stale`)는 데이터의 신뢰도에 직결된다. 값을 감추지 말고 값과 함께 신뢰도 경고를 표시한다.
-6. M 넘버 상태는 세 가지를 구분한다(CR-077, FR-SEQ-008): 채번이 끝나 값이 있는 상태, `merge_seq` 미채번이거나 앞선 항목의 PR 연결이 미확정이라 값이 아직 없는 `merge_number_pending`, 에폭 상승으로 기존 값이 무효가 된 `epoch_stale`. 세 상태를 하나로 뭉뚱그리면 사용자가 "번호가 없다"와 "번호가 틀렸다"를 구분하지 못한다.
+6. M 번호 상태(CR-079, FR-SEQ-008)는 assigned, merged PR의 pending, 미머지/비대상의 not_applicable, 조회 실패의 unavailable을 구분한다. epoch_stale은 기존 바깥 시퀀스 경고가 우선한다. pending과 unavailable을 동일하게 표시하지 않고 값이 없는 사유를 알린다.
 
 ## 2. 공통 상태 분류
 
