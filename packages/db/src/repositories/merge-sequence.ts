@@ -682,7 +682,9 @@ export async function lookupMergeNumbers(
          ON s.repository_id = ms.repository_id AND s.base_branch = ms.base_branch AND s.seq_epoch = ms.seq_epoch
        JOIN unnest($1::bigint[], $2::text[], $3::int[]) AS k(repository_id, base_branch, pr_number)
          ON k.repository_id = ms.repository_id AND k.base_branch = ms.base_branch
-        AND k.pr_number = ms.pull_request_number`,
+        AND k.pr_number = ms.pull_request_number
+      -- 한 PR에 행이 둘일 수 있다(이중 squash SHA). 순서를 고정해 조회마다 답이 바뀌지 않게 한다.
+      ORDER BY ms.repository_id, ms.base_branch, ms.pull_request_number, ms.merge_seq`,
     [repositoryIds, baseBranches, prNumbers],
   );
   /*

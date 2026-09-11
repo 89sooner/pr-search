@@ -18,7 +18,7 @@
  * 내부 blocker 서수는 **응답에 넣지 않는다** — 운영 CLI만 접근 권한 안에서 본다.
  */
 
-import { formatMergeNumber, repositoryCodeOf, type MergeNumberProjectionState, type MergeNumberState } from '@prs/domain';
+import { formatMergeNumber, isMergeNumberBlockReason, repositoryCodeOf, type MergeNumberProjectionState, type MergeNumberState } from '@prs/domain';
 import type { MergeNumberLookup, MergeNumberSpaceState } from '@prs/db';
 
 /** 응답에 실리는 다섯 필드. 기능이 꺼진 배포에서는 이 객체 자체를 만들지 않는다. */
@@ -62,18 +62,54 @@ export interface CanonicalIndex {
   readonly rowOf: (repositoryId: number, baseBranch: string, prNumber: number) => MergeNumberLookup | undefined;
 }
 
+/**
+ * 같은 PR의 두 정본 행 중 어느 쪽을 답으로 쓸 것인가.
+ *
+ * 번호가 있는 행이 언제나 이긴다. 둘 다 있거나 둘 다 없으면 작은 서수가 이긴다 —
+ * **조회 순서에 기대지 않는 것**이 요점이다.
+ */
+function preferRow(candidate: MergeNumberLookup, held: MergeNumberLookup): boolean {
+  const candidateNumbered = candidate.merge_number !== null;
+  const heldNumbered = held.merge_number !== null;
+  if (candidateNumbered !== heldNumbered) return candidateNumbered;
+  return candidate.merge_seq < held.merge_seq;
+}
+
 export function indexCanonical(canonical: NonNullable<MergeNumberContext['canonical']>): CanonicalIndex {
   const spaces = new Map<string, MergeNumberSpaceState>();
   for (const space of canonical.spaces) spaces.set(keyOf(space.repository_id, space.base_branch), space);
+  /*
+   * 한 PR에 정본 행이 둘일 수 있다 — **같은 PR의 이중 squash SHA**다 (설계 3절).
+   *
+   * `merge_sequence_numbered_pr_uk`는 `WHERE merge_number IS NOT NULL` 부분 인덱스라
+   * 미채번 행의 중복을 막지 않고, 그 상태는 planner가 `mapping_conflict`로 멈추는
+   * 바로 그 상태이므로 두 행이 정본에 **영구히 함께 남는다.**
+   *
+   * 그때 **부여된 번호를 가진 행이 이긴다.** 나중 행으로 덮으면 어느 행이 이길지
+   * SQL이 돌려준 순서가 정하고, 같은 PR이 새로고침마다 `M-1900-42`와 "M 번호 대기"
+   * 사이를 오간다 — `FR-SEQ-008 AC-3`이 "부여된 번호는 어떤 경우에도 옮겨 가지
+   * 않는다"고 정한 것과 정면으로 어긋난다.
+   *
+   * 둘 다 번호가 없으면 **작은 서수**가 이긴다. 어느 쪽을 골라도 답은 같지만
+   * (둘 다 `pending`이다) 고르는 규칙이 없으면 그 사실을 말할 수 없다.
+   */
   const rows = new Map<string, MergeNumberLookup>();
   for (const row of canonical.rows) {
-    rows.set(`${keyOf(row.repository_id, row.base_branch)}\u0000${String(row.pull_request_number)}`, row);
+    const key = `${keyOf(row.repository_id, row.base_branch)}\u0000${String(row.pull_request_number)}`;
+    const held = rows.get(key);
+    if (held === undefined || preferRow(row, held)) rows.set(key, row);
   }
   return {
     spaceOf: (repositoryId, baseBranch) => spaces.get(keyOf(repositoryId, baseBranch)),
     rowOf: (repositoryId, baseBranch, prNumber) =>
       rows.get(`${keyOf(repositoryId, baseBranch)}\u0000${String(prNumber)}`),
   };
+}
+
+/** 아는 사유만 그대로 쓴다. 모르는 값은 일반 대기로 접는다 — 내부 문구를 싣지 않는다. */
+function blockReasonOf(raw: string | null): string {
+  if (raw === null) return 'pr_evidence_pending';
+  return isMergeNumberBlockReason(raw) ? raw : 'pr_evidence_pending';
 }
 
 const UNAVAILABLE = (reason: string): MergeNumberFields => ({
@@ -136,7 +172,15 @@ export function mergeNumberFieldsOf(subject: MergeNumberSubject, context: MergeN
   if (row.merge_number === null) {
     const blockedSeq = space.mnumber_blocked_seq;
     if (blockedSeq !== null && Number(blockedSeq) === row.merge_seq) {
-      return PENDING(space.mnumber_blocked_reason ?? 'pr_evidence_pending', space.seq_epoch);
+      /*
+       * **사유는 고정 enum만 나간다** (설계 6.1·9절).
+       *
+       * 이 열은 응답의 `merge_number_reason`으로 그대로 나가고 화면이 "사유 코드:
+       * …"로 렌더한다. 쓰기 쪽이 타입으로 막고 있지만 DB 제약은 길이뿐이므로,
+       * **읽는 쪽도 한 번 더 본다** — 내부 예외 메시지가 여기로 새면 접속 주소가
+       * 화면에 적힌다.
+       */
+      return PENDING(blockReasonOf(space.mnumber_blocked_reason), space.seq_epoch);
     }
     if (blockedSeq !== null && row.merge_seq > Number(blockedSeq)) {
       return PENDING('predecessor_pending', space.seq_epoch);

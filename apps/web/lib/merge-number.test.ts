@@ -321,3 +321,38 @@ describe('WP-074 FR-SEQ-008 해석 응답 판정 (API-SEQ-007 CR-079 상태 표)
     expect(judgeMergeNumberResolve(200, {}, 'a/b')).toMatchObject({ kind: 'error', code: 'UNEXPECTED_RESPONSE' });
   });
 });
+
+describe('입력 판정이 계약대로다 (DEV-600)', () => {
+  it('**중복 key를 조용히 접지 않는다** — 서로 다른 두 번호를 하나로 고르지 않는다', () => {
+    const params = new URLSearchParams(
+      'm_repository=acme%2Fsmp1900&m_base_branch=main&m_seq_epoch=3&m_number=M-1900-42&m_number=M-1900-99',
+    );
+    expect(readMergeNumberEntry(params)).toEqual({ kind: 'duplicated', keys: ['m_number'] });
+  });
+
+  it('중복이 없으면 그대로 읽는다 — 위 갈래가 정상 경로를 가로채지 않는다', () => {
+    const params = new URLSearchParams('m_repository=acme%2Fsmp1900&m_base_branch=main&m_seq_epoch=3&m_number=M-1900-42');
+    expect(readMergeNumberEntry(params)).toMatchObject({ kind: 'complete', number: 'M-1900-42' });
+  });
+
+  it('**정수가 아니거나 범위 밖인 PR 번호로 경로를 만들지 않는다** (설계 9절)', () => {
+    for (const bad of [1.5, -3, 0, 2_147_483_648, Number.NaN]) {
+      const outcome = judgeMergeNumberResolve(
+        200,
+        { pr_number: bad, merge_number: 'M-1900-1', merge_number_state: 'assigned', seq_epoch: 3 },
+        'acme/smp1900',
+      );
+      // 값이 계약 밖이면 `assigned`로 읽지 않는다 — 잘못된 경로를 만들지 않는다.
+      expect(outcome.kind, String(bad)).not.toBe('assigned');
+    }
+  });
+
+  it('**배지가 그리지 않는 행은 대기로 세지 않는다** — 보이지 않는 것을 기다리지 않는다', () => {
+    const commit = { kind: 'commit' as const, merge_number_state: 'pending' };
+    const pr = { kind: 'pull_request' as const, merge_number_state: 'pending' };
+    expect(hasPendingMergeNumber([commit])).toBe(false);
+    expect(hasPendingMergeNumber([pr])).toBe(true);
+    // 종류를 모르면 기존대로 센다 — 목록 DTO는 언제나 `kind`를 싣는다.
+    expect(hasPendingMergeNumber([{ merge_number_state: 'pending' }])).toBe(true);
+  });
+});

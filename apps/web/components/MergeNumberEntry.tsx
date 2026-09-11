@@ -114,6 +114,21 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
     </Link>
   );
 
+  if (entry.kind === 'duplicated') {
+    return (
+      <div data-testid="mnumber-entry" data-entry-state="duplicated">
+        <Banner tone="warning" title="M 번호 링크에 같은 값이 여러 번 있습니다">
+          <p data-testid="mnumber-entry-duplicated">
+            {entry.keys.map((key) => `${KEY_LABEL[key] ?? key}(${key})`).join(', ')}이(가) 여러 번 왔습니다. 어느 것이
+            뜻인지 알 수 없으므로 **하나를 골라 해석하지 않습니다** — 잘못 고르면 사용자가 자기가 무엇을 열었는지 모른 채
+            그 답을 인용하게 됩니다. 배지에서 링크를 다시 복사해 주세요.
+          </p>
+          {searchLink}
+        </Banner>
+      </div>
+    );
+  }
+
   if (entry.kind === 'partial') {
     return (
       <div data-testid="mnumber-entry" data-entry-state="partial">

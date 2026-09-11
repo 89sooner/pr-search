@@ -240,8 +240,17 @@ function shown(
  *
  * 커밋 항목은 키가 없으므로 자연히 세지 않는다.
  */
-export function hasPendingMergeNumber(items: readonly MergeNumberFields[]): boolean {
-  return items.some((item) => item.merge_number_state === 'pending');
+export function hasPendingMergeNumber(
+  items: readonly (MergeNumberFields & { readonly kind?: 'pull_request' | 'commit' })[],
+): boolean {
+  /*
+   * **배지가 그리지 않는 행은 세지 않는다.**
+   *
+   * 커밋에는 M 개념이 없어 `mergeNumberView`가 `hidden`을 낸다. 그런데도 그 행을
+   * `pending`으로 세면 **보이지 않는 것을 기다리느라** 60초 동안 재검증이 헛돈다.
+   * 같은 파일의 두 함수가 "이 행에 M이 있는가"에 다른 답을 하면 안 된다.
+   */
+  return items.some((item) => item.kind !== 'commit' && item.merge_number_state === 'pending');
 }
 
 // ---------------------------------------------------------------- 자동 재검증 정책
@@ -297,6 +306,8 @@ export type MergeNumberEntry =
   | { readonly kind: 'absent' }
   /** 일부만 있다. 오류를 보이고 **임의 branch/epoch로 메우지 않는다.** */
   | { readonly kind: 'partial'; readonly present: readonly string[]; readonly missing: readonly string[] }
+  /** 같은 key가 여러 번 왔다. 어느 것이 뜻인지 알 수 없으므로 고르지 않는다. */
+  | { readonly kind: 'duplicated'; readonly keys: readonly string[] }
   | {
       readonly kind: 'complete';
       readonly repository: string;
@@ -315,12 +326,23 @@ export function readMergeNumberEntry(params: URLSearchParams): MergeNumberEntry 
     MERGE_NUMBER_PARAM.number,
   ] as const;
   const values = new Map<string, string>();
+  const duplicated: string[] = [];
   for (const key of keys) {
-    const raw = params.get(key);
-    if (raw === null) continue;
+    const all = params.getAll(key);
+    /*
+     * **중복 키를 조용히 첫 값으로 접지 않는다** (설계 9절: 중복 query key는 400).
+     *
+     * 접으면 서로 다른 두 번호를 담은 링크가 오류 없이 하나로 이동한다 — 사용자는
+     * 자기가 무엇을 열었는지 모른 채 그 답을 인용하게 된다. 서버가 400을 낼 기회
+     * 자체가 사라지므로 여기서 말한다.
+     */
+    if (all.length > 1) duplicated.push(key);
+    const raw = all[0];
+    if (raw === undefined) continue;
     const trimmed = raw.trim();
     if (trimmed !== '') values.set(key, trimmed);
   }
+  if (duplicated.length > 0) return { kind: 'duplicated', keys: duplicated };
   if (values.size === 0) return { kind: 'absent' };
   if (values.size < keys.length) {
     return {
@@ -446,6 +468,16 @@ function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null;
 }
 
+/**
+ * 응답의 `pr_number`·`seq_epoch`를 읽는다.
+ *
+ * **정수와 범위를 본다** (설계 9절: `1..2147483647`). `Number.isFinite`만 보면
+ * `1.5`가 `/pr/acme/pay/1.5`를, `-3`이 `/pr/acme/pay/-3`을 만든다 — 서버가 낼 수
+ * 없는 값이지만, 그 계약을 판정하는 자리가 여기이므로 여기서 막는다.
+ */
+const INT4_MAX = 2_147_483_647;
+
 function numberOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
+  return value >= 1 && value <= INT4_MAX ? value : null;
 }

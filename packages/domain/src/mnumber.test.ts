@@ -64,3 +64,18 @@ describe('isMergeNumberBlockReason', () => {
     expect(isMergeNumberBlockReason('some exception text')).toBe(false);
   });
 });
+
+describe('만든 문자열은 반드시 되읽을 수 있다 (DEV-599)', () => {
+  it('**저장소 코드가 숫자가 아니면 만들지 않는다** — 되읽을 수 없는 값을 내보내지 않는다', () => {
+    for (const code of ['', '19-00', 'a', '1 9', '1.9']) {
+      expect(() => formatMergeNumber(code, 3), code).toThrow(RangeError);
+    }
+  });
+
+  it('만든 것은 언제나 되읽힌다 — 왕복이 성립한다', () => {
+    for (const [code, number] of [['1900', 1], ['007', 42], ['0', MERGE_NUMBER_MAX]] as const) {
+      const text = formatMergeNumber(code, number);
+      expect(parseMergeNumber(text), text).toEqual({ code, number });
+    }
+  });
+});

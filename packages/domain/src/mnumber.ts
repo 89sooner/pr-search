@@ -39,6 +39,17 @@ export function repositoryCodeOf(repositoryName: string): RepositoryCodeOutcome 
 
 /** 표기 문자열. `number`는 1..`MERGE_NUMBER_MAX`의 정수여야 하며 그 밖은 던진다. */
 export function formatMergeNumber(code: string, number: number): string {
+  /*
+   * **만든 문자열은 반드시 되읽을 수 있어야 한다.**
+   *
+   * `number`만 막고 `code`를 두면 `''`가 `M--3`을, `'19-00'`이 `M-19-00-3`을 만들고
+   * 둘 다 `parseMergeNumber`가 `null`을 낸다 — 이 파일이 내건 왕복 불변식이 한쪽에서만
+   * 지켜지는 셈이다. 지금은 호출부가 `repositoryCodeOf`의 결과만 넘겨 도달하지 않지만,
+   * 불변식을 함수가 스스로 지키게 한다.
+   */
+  if (!/^[0-9]+$/.test(code)) {
+    throw new RangeError(`저장소 코드가 숫자만으로 이루어지지 않았다: ${JSON.stringify(code)}`);
+  }
   if (!Number.isSafeInteger(number) || number < 1) {
     throw new RangeError(`M 번호가 1..${String(MERGE_NUMBER_MAX)} 범위의 정수가 아니다: ${String(number)}`);
   }
