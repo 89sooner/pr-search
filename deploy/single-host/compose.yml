@@ -333,6 +333,10 @@ services:
       PIPELINE_WORKER_PORT: '3003'
       # 없으면 `JOB-AUD-001`만 서지 않는다. 나머지 배치 역할은 정상 동작한다.
       ADMIN_DATABASE_URL: ${ADMIN_DATABASE_URL:-}
+      # M 번호 (WP-074 / DEV-606). **재색인이 이 역할에서 돈다** — 값이 없으면
+      # 재색인 뒤 M 복구 의도를 만들지 않아 새 색인의 M이 영영 비고, 그것이
+      # 오류도 로그도 없이 조용히 일어난다. search-api·worker-sequence와 같은 값이다.
+      MNUMBER_ENABLED: ${MNUMBER_ENABLED:-false}
 
   worker-authz:
     <<: *worker-base

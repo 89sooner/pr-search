@@ -354,24 +354,41 @@ describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () 
   });
 
   /**
-   * 플래그가 **가는 곳과 가지 않는 곳** (WP-074 / DEV-589).
+   * 플래그가 **가는 곳과 가지 않는 곳** (WP-074 / DEV-589·DEV-606).
    *
-   * `search-api`와 `worker-sequence` 둘에 가야 한다 — 하나라도 빠지면 한쪽만 도는
-   * 배포가 되고, 그 상태는 "켰는데 번호가 안 보인다"로 나타난다.
+   * **M 코드가 도는 역할 전부**에 가야 한다. 하나라도 빠지면 그 역할만 꺼진 배포가
+   * 되고, 그 상태는 오류도 로그도 없이 조용히 나타난다.
+   *
+   * - `search-api` — 응답에 M 키를 만든다. 빠지면 번호가 생겨도 실리지 않는다.
+   * - `worker-sequence` — 채번한다. 빠지면 번호 자체가 생기지 않는다.
+   * - `worker-batch` — **재색인이 여기서 돈다.** 빠지면 재색인 뒤 M 복구 의도를
+   *   만들지 않아 새 색인의 M이 영영 빈다 (`DEV-597`이 고친 것이 되돌아온다).
    *
    * **`web`에는 가지 않는다.** 화면은 응답에 M 키가 있는지로만 판단하므로 그 값을
-   * 읽지 않는다. 거기 두면 켜고 끄는 자리가 셋이 되어 한 곳만 바꾼 형상을 만들고,
-   * 런북의 진단이 운영자를 없는 자리로 보낸다.
+   * 읽지 않는다. 거기 두면 켜고 끄는 자리가 하나 더 늘고, 런북의 진단이 운영자를
+   * 없는 자리로 보낸다.
+   *
+   * **서비스 이름으로 센다.** 개수만 세면 어느 역할에 갔는지 알 수 없고, 한 곳을
+   * 빼고 다른 곳에 둘을 둬도 통과한다.
    */
-  it('M 번호 플래그가 서버 둘에 가고 **web에는 가지 않는다** (WP-074 / DEV-589)', () => {
+  it('M 번호 플래그가 M 코드가 도는 세 역할에 가고 **web에는 가지 않는다** (DEV-589·DEV-606)', () => {
     const compose = read('deploy/single-host/compose.yml');
-    const occurrences = [...compose.matchAll(/MNUMBER_ENABLED: \$\{MNUMBER_ENABLED:-false\}/g)];
-    expect(occurrences).toHaveLength(2);
 
-    // `web` 서비스 블록 안에는 그 이름이 없어야 한다.
-    const webBlock = /\n {2}web:\n[\s\S]*?\n {2}[a-z]/.exec(compose)?.[0] ?? '';
-    expect(webBlock).not.toBe('');
-    expect(webBlock).not.toContain('MNUMBER_ENABLED');
+    /** 서비스 블록마다 그 이름이 있는가. compose의 두 칸 들여쓰기가 블록 경계다. */
+    const carriers = new Set<string>();
+    let current = '';
+    for (const line of compose.split('\n')) {
+      const header = /^ {2}([a-z][a-z0-9-]*):\s*$/.exec(line);
+      if (header?.[1] !== undefined) current = header[1];
+      if (line.includes('MNUMBER_ENABLED') && current !== '') carriers.add(current);
+    }
+
+    expect([...carriers].sort()).toEqual(['search-api', 'worker-batch', 'worker-sequence']);
+    expect(carriers.has('web')).toBe(false);
+
+    // K8s도 같다 — 배포 방식이 달라도 켜고 끄는 자리는 같아야 한다.
+    expect(read('deploy/k8s/pipeline-worker-sequence.yaml')).toContain('MNUMBER_ENABLED');
+    expect(read('deploy/k8s/pipeline-worker-batch.yaml')).toContain('MNUMBER_ENABLED');
 
     expect(read('deploy/single-host/.env.example')).toContain('MNUMBER_ENABLED=false');
   });

@@ -640,7 +640,7 @@ done
 | compose가 이미지를 pull하려 한다 | `./prsctl load`를 실행했는가. `PRS_VERSION`이 적재한 태그와 같은가 |
 | `enrich`·`reconcile`이 기동을 거부한다 (`install`의 health가 그 둘에서 실패) | `GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`가 있는가. **의도된 거부다** — 자격 없이 돌면 모든 이벤트가 실패 대기열에 쌓인다. `install` 뒤에 넣었다면 `.env`만으로는 반영되지 않는다 — `./prsctl upgrade`로 컨테이너를 다시 만든다 (DEV-527) |
 | `worker-sequence`가 `SEQUENCE_GRAPH_MODE=mirror인데 미러 볼륨이 없다`로 기동하지 않는다 | **의도된 거부다** (WP-074). `mirror-data` 볼륨이 그 서비스에 붙어 있는가. 미러 없이 돌려야 하면 `.env`에 `SEQUENCE_GRAPH_MODE=api`를 **명시**한다 — 조용히 API로 바꾸지 않는 것이 이 검사의 목적이다 |
-| M 번호가 영영 "대기"다 | `MNUMBER_ENABLED`가 `search-api`와 `worker-sequence` **둘 다** `true`인가. 둘이 다르면 한쪽만 도는 상태다 — API만 켜면 번호가 생기지 않고, 워커만 켜면 번호는 붙되 응답에 실리지 않는다. **`web`에는 이 값이 없다** (DEV-589): 화면은 응답에 M 키가 있는지로만 판단한다. 그다음 `sequence_space.mnumber_blocked_reason`을 본다 — `negative_evidence_unavailable`이면 직접 푸시 커밋의 부재를 확정할 근거가 없어 그 앞에서 멈춘 것이며(`DEV-581`), 이것은 알려진 제한이다 |
+| M 번호가 영영 "대기"다 | `MNUMBER_ENABLED`가 `search-api`·`worker-sequence`·`worker-batch` **셋 다** `true`인가. 하나라도 다르면 그 역할만 꺼진 상태다 — API만 켜면 번호가 생기지 않고, 워커만 켜면 번호는 붙되 응답에 실리지 않으며, `worker-batch`가 빠지면 **재색인 뒤 새 색인의 M이 영영 빈다**(DEV-606). **`web`에는 이 값이 없다** (DEV-589): 화면은 응답에 M 키가 있는지로만 판단한다. 그다음 `sequence_space.mnumber_blocked_reason`을 본다 — `negative_evidence_unavailable`이면 직접 푸시 커밋의 부재를 확정할 근거가 없어 그 앞에서 멈춘 것이며(`DEV-581`), 이것은 알려진 제한이다 |
 | 웹훅이 전부 401 | `GHE_WEBHOOK_SECRET`이 GHE 쪽 설정과 같은가. 경유 호스트를 두었다면 **본문을 다시 만들고 있지 않은가** — 서명은 원문 바이트에 대해 계산된다 (2.C 「GHE가 서버에 닿지 못할 때」) |
 | 웹훅이 전부 404 | 경로에 **`/api/v1`이 있는가** (2.C 3단계). 정본은 `apps/ingest-gateway/src/server.ts`의 `WEBHOOK_PATH`다 (`DEV-549`) |
 | 웹훅 배달이 **시간 초과** | 서명도 경로도 아니다. GHE에서 이 서버로의 **인바운드가 없는 것**이며, 주소만 바꿔서는 풀리지 않는다 (2.C 「GHE가 서버에 닿지 못할 때」, `DEV-550`) |

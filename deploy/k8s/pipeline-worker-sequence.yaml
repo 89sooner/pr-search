@@ -43,7 +43,7 @@ spec:
             # 캐시를 읽는 일이 없다. `mirror`로 두면 볼륨이 없어 기동을 거부한다.
             - name: SEQUENCE_GRAPH_MODE
               value: api
-            # M 번호는 기본 꺼짐이다. 켤 때는 search-api·web의 같은 값과 함께 바꾼다.
+            # M 번호는 기본 꺼짐이다. 켤 때는 search-api·worker-batch의 같은 값과 함께 바꾼다 (DEV-589·DEV-606).
             - name: MNUMBER_ENABLED
               valueFrom:
                 configMapKeyRef: { name: prs-config, key: MNUMBER_ENABLED, optional: true }

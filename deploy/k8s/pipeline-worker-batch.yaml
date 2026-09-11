@@ -50,6 +50,11 @@ spec:
           env:
             - name: PIPELINE_WORKER_ROLES
               value: batch
+            # 재색인이 이 역할에서 돈다 (WP-074 / DEV-606). 값이 없으면 재색인 뒤
+            # M 복구 의도를 만들지 않아 새 색인의 M이 영영 비고, 그것이 조용히 일어난다.
+            - name: MNUMBER_ENABLED
+              valueFrom:
+                configMapKeyRef: { name: prs-config, key: MNUMBER_ENABLED, optional: true }
           ports:
             - name: http
               containerPort: 3003
