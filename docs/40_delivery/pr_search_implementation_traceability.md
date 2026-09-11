@@ -6063,13 +6063,48 @@ CR-075의 strict document validator는 변경 전 `main`과 같은 기존 오류
 
 `python3 <skill-dir>/scripts/validate_srs_prd_env.py --root <tree> --strict`를 변경 전 `main`(`/home/roqkf/pr-search`)과 변경 후 워크트리에서 각각 실행해 대조했다. 검사기 SHA-256은 `1004095624fed9bae7a8ada7a2bbe0f4c6586dbcdf20db61b07b3b8045ca7cb2`다. 양쪽 모두 오류 4건·경고 1건으로 같으며 **신규 issue 0건**이다 — 정의되지 않은 요구사항 ID `FR-CSS-005` 참조, 정의되지 않은 화면 ID `D-002` 참조, `risks.md` 경로 미해소, 그리고 변경 관리·구현 원장의 placeholder 집계 둘이며 전부 이 CR 이전부터 있었다.
 
+#### 미발행 후보 번들 `0.1.0-pilot.5` — 생성과 실제 적재 (2026-09-11)
+
+**발행하지 않았다.** `--release` 없이 실행했고 스크립트가 마지막 줄에 그 사실을 적는다. `0.1.0-pilot.4` 태그·자산은 건드리지 않았다.
+
+병합된 `main`(`4466fa1`)의 **깨끗한 워크트리**에서 만들었다. 다른 작업과 섞이지 않게 별도 워크트리를 썼다.
+
+| 항목 | 값 |
+| --- | --- |
+| 번들 디렉터리 | 2.6G |
+| 운반 아카이브 | 1.1G (`pr-search-0.1.0-pilot.5-offline.tar.gz`) |
+| 아카이브 SHA-256 | `2bcaca2dd448426529d50eb2af79cc10a6b9c6077bc73159e5e76ab3303fc625` |
+| 매니페스트의 upstream 커밋 | `4466fa1a9860eb0eb49a1c2f715abbe884685a8e` |
+| 매니페스트의 마이그레이션 수준 | `025` |
+| `contains_secrets` | `false` |
+
+**digest 대조는 세 겹으로 했다.**
+
+1. 번들 안 `checksums/SHA256SUMS`의 **10개 파일 전부 일치**(`sha256sum -c`, 종료 0).
+2. 아카이브를 **실제로 풀어** 같은 검증을 다시 했다. 불일치 0건이고 체크섬 파일 자체도 동일하다.
+3. `./prsctl load`가 적재 전에 그 검증을 스스로 한 번 더 하고 통과했다.
+
+**실제 적재까지 했다.** 푼 번들에서 런북 절차대로 `.env`를 만들고 `./prsctl load`를 돌렸다.
+
+- **첫 실행은 의도대로 멈췄다.** 번들 체크섬을 검증한 뒤 `POSTGRES_OWNER_PASSWORD`·`POSTGRES_APP_PASSWORD`·`GHE_BASE_URL`·`SEARCH_CURSOR_HMAC_KEY`가 비었다고 거부했다 — `DEV-524`가 세운 fail-fast가 **이미지 저장소를 바꾸기 전에** 작동한 것이다.
+- 값을 채운 뒤 **이미지 10개가 전부 적재**됐고 "compose가 pull하지 않는다"를 스크립트가 확인했다.
+- **매니페스트의 ID와 실제 적재된 ID를 10건 전부 대조했다 — 불일치 0건.** 애플리케이션 여섯은 image id로, 백킹 넷은 repo digest로 비교했다.
+
+**적재된 이미지가 이 판의 코드를 실제로 담고 있는지 확인했다.**
+
+- `prs/pipeline-worker`에서 `node dist/measure-cli.js`가 **실행된다**(사용법 출력).
+- `prs/db`에 `025_merge_number.{up,down}.sql`이 있다.
+- `prs/web`의 SSR 청크에 `m_repository`(M 해석 진입의 query key)가 들어 있다.
+
+`.env`에 채운 값은 **적재 검증 전용**이며 운영 값이 아니다. 이 검증은 기동·마이그레이션 적용까지 가지 않는다 — 그것은 사내 환경의 몫이고 이 판의 범위 밖이다.
+
 #### 실행하지 않은 것
 
 | 항목 | 상태 | 이유 |
 | --- | --- | --- |
 | 사내 운영 DB 마이그레이션 | `NOT RUN` | 승인 범위 밖이다 |
 | `0.1.0-pilot.4` 사내 재시험 | `NOT RUN` | 외부 작업을 막지 않기로 확정했다 |
-| 새 immutable release 발행 | `NOT RUN` | `--release`를 쓰지 않았다. `0.1.0-pilot.4` 태그·자산은 건드리지 않았다 |
+| 새 immutable release 발행 | `NOT RUN` | `--release`를 쓰지 않았다. `0.1.0-pilot.4` 태그·자산은 건드리지 않았다. 미발행 후보 번들 `0.1.0-pilot.5`는 만들어 적재까지 검증했고 그 기록은 위에 있다 |
 | 실제 GHE PR 제목 쓰기 | 미구현·비활성 | WP-075의 일이며 이 판의 범위 밖이다 |
 | 성능 게이트(1,000만 문서) | `NOT RUN` | 합성 데이터셋이 없다. `REL-003` Gate 5는 그대로다 |
 
