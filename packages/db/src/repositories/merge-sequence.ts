@@ -772,6 +772,21 @@ export interface AnnotateTargetFilter {
  *
  * ## 무엇을 다시 보는가
  *
+ * ## 방금 손댄 행을 뒤로 보낸다 (WP-075 리뷰 major)
+ *
+ * **영원히 실패하는 행이 존재한다.** 저장소 이름으로 코드를 정할 수 없으면
+ * (`no_digits`·`multiple_digit_runs`) 그 행은 몇 번을 다시 봐도 `failed`다. 정렬이
+ * `repository_id`로 시작하면 낮은 번호의 그런 저장소가 상한(`LIMIT`)을 통째로
+ * 차지해 **높은 번호 저장소의 행에 스윕이 영영 닿지 않는다** — 복구 안전망이
+ * 무력해지는 자리다.
+ *
+ * 그래서 `annotated_at`이 비어 있는 행(한 번도 시도하지 않은 것)을 먼저 보고,
+ * 그다음은 가장 오래전에 손댄 것부터 본다. 저장소 코드 규칙을 SQL에 다시 쓰지
+ * 않는 이유는 그 규칙의 정본이 `@prs/domain`의 `repositoryCodeOf` 하나여야 하기
+ * 때문이며, 공평한 순서는 **영구 실패의 종류를 몰라도** 성립한다.
+ *
+ * ## 무엇을 다시 보는가
+ *
  * `done`과 `mismatch`는 끝난 상태다. `failed`는 일시 실패였을 수 있으니 다시 본다.
  * `disabled`도 다시 보는데, 그 행을 남긴 뒤 운영자가 저장소를 **다시 켰을 수**
  * 있기 때문이다 — 이 질의는 켜진 저장소만 내므로 꺼진 채면 애초에 나오지 않는다.
@@ -792,6 +807,7 @@ export async function listAnnotateTargets(
         AND sp.seq_epoch     = ms.seq_epoch
        JOIN repository r ON r.repository_id = ms.repository_id
       WHERE ms.merge_number IS NOT NULL
+        AND sp.state <> 'reassigning'
         AND ms.pull_request_number IS NOT NULL
         AND (ms.annotate_state IS NULL OR ms.annotate_state IN ('failed', 'disabled'))
         AND r.status = 'active'
@@ -800,7 +816,7 @@ export async function listAnnotateTargets(
         AND ($1::bigint IS NULL OR ms.repository_id = $1)
         AND ($2::text   IS NULL OR ms.base_branch   = $2)
         AND ($3::int[]  IS NULL OR ms.pull_request_number = ANY($3))
-      ORDER BY ms.repository_id, ms.base_branch, ms.merge_seq
+      ORDER BY ms.annotated_at ASC NULLS FIRST, ms.repository_id, ms.base_branch, ms.merge_seq
       LIMIT $4`,
     [
       filter.repositoryId ?? null,
@@ -811,6 +827,48 @@ export async function listAnnotateTargets(
     ],
   );
   return result.rows;
+}
+
+/**
+ * **쓰기 직전에 다시 묻는다** (WP-075 / CR-084, 리뷰 P1).
+ *
+ * `listAnnotateTargets`의 조인은 **그 질의가 도는 순간**의 에폭만 증명한다. 목록을
+ * 뽑아 한 건씩 처리하는 동안 재채번이 들어와 에폭이 오르면, 그 뒤의 행은 이미
+ * 무효가 된 M 번호를 들고 GHE로 나간다. 제목은 되돌릴 수 없으므로 **외부 쓰기
+ * 경계 바로 앞에서 한 번 더 묻는다.**
+ *
+ * 이것이 경합을 완전히 없애지는 못한다 — 이 질의와 PATCH 사이의 간격은 남는다.
+ * 다만 그 창이 목록 전체의 처리 시간에서 질의 한 번으로 줄고, 재채번 중(`reassigning`)
+ * 공간은 애초에 목록에 들어오지 않는다.
+ *
+ * @returns 지금도 같은 에폭·같은 번호로 표기해도 되는가.
+ */
+export async function isAnnotationCurrent(
+  db: Queryable,
+  key: {
+    readonly repositoryId: number;
+    readonly baseBranch: string;
+    readonly seqEpoch: number;
+    readonly mergeSeq: number;
+  },
+  mergeNumber: number,
+): Promise<boolean> {
+  const result = await db.query<{ ok: boolean }>(
+    `SELECT true AS ok
+       FROM merge_sequence ms
+       JOIN sequence_space sp
+         ON sp.repository_id = ms.repository_id
+        AND sp.base_branch   = ms.base_branch
+        AND sp.seq_epoch     = ms.seq_epoch
+       JOIN repository r ON r.repository_id = ms.repository_id
+      WHERE ms.repository_id = $1 AND ms.base_branch = $2 AND ms.seq_epoch = $3 AND ms.merge_seq = $4
+        AND ms.merge_number = $5
+        AND sp.state <> 'reassigning'
+        AND r.status = 'active'
+        AND r.annotate_enabled`,
+    [key.repositoryId, key.baseBranch, key.seqEpoch, key.mergeSeq, mergeNumber],
+  );
+  return result.rows.length === 1;
 }
 
 export type AnnotateState = 'done' | 'mismatch' | 'failed' | 'disabled';

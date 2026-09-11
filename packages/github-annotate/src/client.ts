@@ -20,8 +20,14 @@
  * 수 있는 코드 경로 자체를 두지 않는다.
  */
 
-import { InstallationTokenProvider, parseRateLimitHeaders, parseRetryAfter, safeMessage } from '@prs/github';
-import type { InstallationBinding } from '@prs/github';
+import {
+  GitHubApiError,
+  InstallationTokenProvider,
+  parseRateLimitHeaders,
+  parseRetryAfter,
+  safeMessage,
+} from '@prs/github';
+import type { GitHubErrorKind, InstallationBinding } from '@prs/github';
 
 import type { AnnotateConfig } from './config.js';
 
@@ -171,7 +177,19 @@ export class AnnotateClient {
     body: { readonly title: string } | undefined,
   ): Promise<T> {
     const installationId = this.#installationFor(ref.owner);
-    const token = await this.#tokens.getToken(installationId);
+    /*
+     * **토큰 발급 실패를 이 모델로 옮긴다.**
+     *
+     * `InstallationTokenProvider`는 `GitHubApiError`를 던진다. 그대로 올리면
+     * 호출부의 재시도와 한도 유예가 `AnnotateApiError`만 알아보므로 **일시적인
+     * 토큰 엔드포인트 장애가 영구 실패로 기록되고** 회복이 다음 스윕까지 밀린다.
+     */
+    let token;
+    try {
+      token = await this.#tokens.getToken(installationId);
+    } catch (error) {
+      throw fromProviderError(error);
+    }
     const url = `${this.#config.apiUrl}/repos/${encodeURIComponent(ref.owner)}/${encodeURIComponent(ref.repo)}/pulls/${String(ref.pullRequestNumber)}`;
     const startedAt = Date.now();
 
@@ -239,6 +257,35 @@ export class AnnotateClient {
  * 한도 전용으로 정의하므로 신호가 없어도 한도이며, 그때는 문서의 마지막 문장대로
  * 최소 1분을 기다린다.
  */
+/**
+ * 토큰 발급기의 오류를 표기 오류 모델로 옮긴다.
+ *
+ * `not_found`를 권한으로 보는 이유는 공식 문서가 **비공개 자원에 대한 인증 부족을
+ * `403`이 아니라 `404`로 답한다**고 적기 때문이다 — 존재 자체를 확인해 주지 않으려는
+ * 설계이며, 우리 쪽에서는 「쓸 수 없다」로 같다.
+ */
+function fromProviderError(error: unknown): AnnotateApiError {
+  if (!(error instanceof GitHubApiError)) {
+    return new AnnotateApiError('server', `표기 토큰 발급이 실패했다: ${safeMessage(error)}`);
+  }
+  const mapping: Readonly<Record<GitHubErrorKind, AnnotateErrorKind>> = {
+    auth: 'auth',
+    not_found: 'permission',
+    rate_limited: 'rate_limited',
+    secondary_rate_limited: 'rate_limited',
+    server: 'server',
+    network: 'network',
+    timeout: 'timeout',
+    client: 'validation',
+  };
+  const kind = mapping[error.kind];
+  return new AnnotateApiError(kind, `표기 토큰 발급이 실패했다: ${error.message}`, {
+    ...(error.status === undefined ? {} : { status: error.status }),
+    // 한도 계열이면 발급기가 회복 시각을 알고 있다. 없으면 문서의 최소 대기를 쓴다.
+    ...(kind === 'rate_limited' ? { retryAt: error.retryAt ?? new Date(Date.now() + 60_000) } : {}),
+  });
+}
+
 function classifyFailure(response: Response, now: Date, detail: string): AnnotateApiError {
   const status = response.status;
   const retryAfter = parseRetryAfter(response.headers, now);

@@ -260,6 +260,112 @@ describe('listAnnotateTargets — 무엇을 고르는가', () => {
   });
 });
 
+describe('스윕의 공평성 — 영구 실패가 목록을 독점하지 않는다 (리뷰 major)', () => {
+  it('한 번도 시도하지 않은 행이 먼저다', async () => {
+    /*
+     * 코드를 정할 수 없는 저장소의 행은 몇 번을 봐도 `failed`다. 정렬이
+     * `repository_id`로 시작하면 번호가 낮은 그런 저장소가 상한을 통째로 차지해
+     * **높은 번호 저장소의 행에 스윕이 영영 닿지 않는다.**
+     */
+    await seedRepository(OTHER_REPOSITORY_ID, 'wp-annotate-nodigits');
+    // 낮은 번호 저장소에 이미 손댄(실패한) 행 둘을 둔다.
+    await seedNumberedRow({ mergeSeq: 10, pullRequestNumber: 101, mergeNumber: 1, annotateState: 'failed' });
+    await seedNumberedRow({ mergeSeq: 11, pullRequestNumber: 102, mergeNumber: 2, annotateState: 'failed' });
+    await pool.query(
+      `UPDATE merge_sequence SET annotated_at = now() - interval '1 hour'
+        WHERE repository_id = $1 AND annotate_state = 'failed'`,
+      [REPOSITORY_ID],
+    );
+    // 높은 번호 저장소에 한 번도 시도하지 않은 행 하나를 둔다.
+    await seedNumberedRow({
+      repositoryId: OTHER_REPOSITORY_ID,
+      mergeSeq: 10,
+      pullRequestNumber: 201,
+      mergeNumber: 1,
+    });
+
+    const first = await mergeSequenceRepo.listAnnotateTargets(pool, { limit: 1 });
+    expect(first).toHaveLength(1);
+    expect(first[0]?.repository_id, '이미 손댄 행이 새 행보다 앞섰다').toBe(OTHER_REPOSITORY_ID);
+  });
+
+  it('오래전에 손댄 행이 방금 손댄 행보다 앞선다', async () => {
+    await seedNumberedRow({ mergeSeq: 10, pullRequestNumber: 101, mergeNumber: 1, annotateState: 'failed' });
+    await seedNumberedRow({ mergeSeq: 11, pullRequestNumber: 102, mergeNumber: 2, annotateState: 'failed' });
+    await pool.query(
+      `UPDATE merge_sequence SET annotated_at = now() - interval '2 days' WHERE repository_id = $1 AND merge_seq = 11`,
+      [REPOSITORY_ID],
+    );
+    await pool.query(
+      `UPDATE merge_sequence SET annotated_at = now() WHERE repository_id = $1 AND merge_seq = 10`,
+      [REPOSITORY_ID],
+    );
+
+    const rows = await mergeSequenceRepo.listAnnotateTargets(pool, { limit: 10, repositoryId: REPOSITORY_ID });
+    expect(rows.map((row) => row.merge_seq)).toEqual([11, 10]);
+  });
+});
+
+describe('isAnnotationCurrent — 쓰기 직전 울타리 (리뷰 P1)', () => {
+  it('같은 에폭·같은 번호면 통과한다', async () => {
+    await seedNumberedRow({ mergeSeq: 10, pullRequestNumber: 101, mergeNumber: 1 });
+    const key = { repositoryId: REPOSITORY_ID, baseBranch: BRANCH, seqEpoch: EPOCH, mergeSeq: 10 };
+    expect(await mergeSequenceRepo.isAnnotationCurrent(pool, key, 1)).toBe(true);
+  });
+
+  it('**그 사이 에폭이 오르면 막는다**', async () => {
+    await seedNumberedRow({ mergeSeq: 10, pullRequestNumber: 101, mergeNumber: 1 });
+    const key = { repositoryId: REPOSITORY_ID, baseBranch: BRANCH, seqEpoch: EPOCH, mergeSeq: 10 };
+    expect(await mergeSequenceRepo.isAnnotationCurrent(pool, key, 1)).toBe(true);
+
+    // 재채번이 들어와 공간의 에폭이 올랐다. 뽑아 둔 행은 이제 옛 에폭이다.
+    await pool.query('UPDATE sequence_space SET seq_epoch = $2 WHERE repository_id = $1', [
+      REPOSITORY_ID,
+      EPOCH + 1,
+    ]);
+    expect(await mergeSequenceRepo.isAnnotationCurrent(pool, key, 1)).toBe(false);
+  });
+
+  it('재채번 중인 공간은 막는다', async () => {
+    await seedNumberedRow({ mergeSeq: 10, pullRequestNumber: 101, mergeNumber: 1 });
+    const key = { repositoryId: REPOSITORY_ID, baseBranch: BRANCH, seqEpoch: EPOCH, mergeSeq: 10 };
+    await pool.query(`UPDATE sequence_space SET state = 'reassigning' WHERE repository_id = $1`, [REPOSITORY_ID]);
+    expect(await mergeSequenceRepo.isAnnotationCurrent(pool, key, 1)).toBe(false);
+    // 목록에서도 빠진다 — 애초에 집지 않는다.
+    expect(await mergeSequenceRepo.listAnnotateTargets(pool, { limit: 10, repositoryId: REPOSITORY_ID })).toHaveLength(0);
+  });
+
+  it('번호가 그 사이 바뀌면 막는다', async () => {
+    await seedNumberedRow({ mergeSeq: 10, pullRequestNumber: 101, mergeNumber: 1 });
+    const key = { repositoryId: REPOSITORY_ID, baseBranch: BRANCH, seqEpoch: EPOCH, mergeSeq: 10 };
+    expect(await mergeSequenceRepo.isAnnotationCurrent(pool, key, 2)).toBe(false);
+  });
+
+  it('그 사이 저장소가 해제되면 막는다', async () => {
+    await seedNumberedRow({ mergeSeq: 10, pullRequestNumber: 101, mergeNumber: 1 });
+    const key = { repositoryId: REPOSITORY_ID, baseBranch: BRANCH, seqEpoch: EPOCH, mergeSeq: 10 };
+    await repositoryRepo.updateRepositorySettings(pool, REPOSITORY_ID, { annotate_enabled: false });
+    expect(await mergeSequenceRepo.isAnnotationCurrent(pool, key, 1)).toBe(false);
+  });
+
+  it('회차 도중 에폭이 오르면 GHE를 부르지 않는다', async () => {
+    mock = await startMockAnnotateGhe({ initialTitle: '제목' });
+    await seedNumberedRow({ mergeSeq: 10, pullRequestNumber: 1234, mergeNumber: 1 });
+    const [row] = await mergeSequenceRepo.listAnnotateTargets(pool, { limit: 1, repositoryId: REPOSITORY_ID });
+
+    // 목록을 뽑은 뒤, 처리하기 전에 재채번이 들어왔다.
+    await pool.query('UPDATE sequence_space SET seq_epoch = $2 WHERE repository_id = $1', [
+      REPOSITORY_ID,
+      EPOCH + 1,
+    ]);
+
+    const result = await annotateOne(depsFor(), row as never, '11111111-1111-4111-8111-111111111111');
+    expect(result).toBe('superseded');
+    expect(mock.requests.filter((entry) => entry.method === 'PATCH')).toHaveLength(0);
+    expect(mock.currentTitle()).toBe('제목');
+  });
+});
+
 describe('markDisabledRepositoryTargets — 해제 표시', () => {
   it('해제된 저장소의 행만 disabled로 남기고 GHE는 부르지 않는다', async () => {
     await seedNumberedRow({ mergeSeq: 10, pullRequestNumber: 101, mergeNumber: 1 });

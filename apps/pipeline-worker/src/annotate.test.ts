@@ -62,12 +62,19 @@ function target(overrides: Partial<TargetRow> = {}): TargetRow {
 }
 
 /** SQL 문장으로 갈라 답한다. 통합 시험이 같은 문장을 실제 PostgreSQL에 건다. */
-function fakePool(options: { targets?: readonly TargetRow[]; epoch?: number } = {}): FakePool {
+function fakePool(
+  options: { targets?: readonly TargetRow[]; epoch?: number; stillCurrent?: boolean } = {},
+): FakePool {
   const queries: RecordedQuery[] = [];
   return {
     queries,
     query: async (text: string, values: unknown[] = []) => {
       queries.push({ text, values });
+      // 쓰기 직전 재확인. 기본은 「그대로다」이며 시험이 명시적으로 뒤집는다.
+      if (text.includes('SELECT true AS ok')) {
+        const current = options.stillCurrent ?? true;
+        return { rows: current ? [{ ok: true }] : [], rowCount: current ? 1 : 0 };
+      }
       if (text.includes('FROM merge_sequence ms')) {
         return { rows: [...(options.targets ?? [])], rowCount: options.targets?.length ?? 0 };
       }
@@ -212,9 +219,13 @@ describe('annotateOne — 한 행의 판정 (FR-SEQ-009)', () => {
     expect(result).toBe('permission_blocked');
     const blocked = pool.queries.filter((q) => q.text.includes('annotate_blocked_at = now()'));
     expect(blocked).toHaveLength(1);
-    // 운영자의 `annotate_enabled`를 바꾸는 문장은 하나도 없어야 한다.
-    expect(pool.queries.some((q) => q.text.includes('SET annotate_enabled'))).toBe(false);
-    expect(pool.queries.some((q) => q.text.includes('annotate_enabled  ='))).toBe(false);
+    /*
+     * **운영자의 값을 쓰는 문장이 하나도 없어야 한다.** 문자열 한 형태만 보면
+     * 열 이름이나 공백이 바뀌는 것만으로 조용히 통과한다 (리뷰가 지적한 자리).
+     * `annotate_enabled`가 대입 좌변에 오는 모든 형태를 정규식으로 막는다.
+     */
+    const writesPolicy = pool.queries.filter((q) => /annotate_enabled\s*=(?!=)/.test(q.text));
+    expect(writesPolicy.map((q) => q.text), '운영자 정책을 쓰는 문장이 있다').toEqual([]);
   });
 
   it('권한 오류는 재시도하지 않는다 — 한도를 태우지 않는다', async () => {
@@ -295,6 +306,40 @@ describe('annotateOne — 한 행의 판정 (FR-SEQ-009)', () => {
   });
 });
 
+describe('차단 해제 (리뷰 minor)', () => {
+  it('이미 표기된 행에서도 GHE가 200이면 차단을 푼다', async () => {
+    /*
+     * 쓰기 성공에서만 풀면, 남은 대상이 모두 이미 표기된 저장소는 권한이
+     * 복구돼도 차단이 남아 새 PR의 표기가 다음 스윕까지 밀린다.
+     */
+    mock = await startMockAnnotateGhe({ initialTitle: '[M-1900-1] 제목' });
+    const pool = fakePool();
+    const result = await annotateOne(depsFor(pool), target(), 'c0ffee00-0000-4000-8000-000000000000');
+
+    expect(result).toBe('already_done');
+    expect(patches()).toHaveLength(0);
+    expect(pool.queries.some((q) => q.text.includes('annotate_blocked_at = NULL'))).toBe(true);
+  });
+
+  it('불일치에서도 차단을 푼다 — 읽기가 성공했기 때문이다', async () => {
+    mock = await startMockAnnotateGhe({ initialTitle: '[M-1900-77] 제목' });
+    const pool = fakePool();
+    const result = await annotateOne(depsFor(pool), target(), 'c0ffee00-0000-4000-8000-000000000000');
+
+    expect(result).toBe('mismatch');
+    expect(pool.queries.some((q) => q.text.includes('annotate_blocked_at = NULL'))).toBe(true);
+  });
+
+  it('권한 오류에서는 풀지 않는다', async () => {
+    mock = await startMockAnnotateGhe({
+      getScript: [{ status: 403, body: { message: 'Resource not accessible by integration' } }],
+    });
+    const pool = fakePool();
+    await annotateOne(depsFor(pool), target(), 'c0ffee00-0000-4000-8000-000000000000');
+    expect(pool.queries.some((q) => q.text.includes('annotate_blocked_at = NULL'))).toBe(false);
+  });
+});
+
 describe('runAnnotationPass — 회차 (§15·§16)', () => {
   it('한도에 걸리면 회차를 멈추고 다시 할 시각을 돌려준다', async () => {
     const reset = Math.floor(Date.now() / 1000) + 600;
@@ -331,11 +376,39 @@ describe('runAnnotationPass — 회차 (§15·§16)', () => {
     expect(mock.requests.filter((entry) => entry.path.includes('/pulls/'))).toHaveLength(1);
   });
 
-  it('결과를 지표로 센다', async () => {
+  it('결과를 지표와 요약에 **개수로** 센다', async () => {
+    /*
+     * 라벨이 있는지만 보면 오계상을 못 본다 — 한 행을 두 번 세거나 다른 결과를
+     * 같은 라벨에 얹어도 통과한다 (리뷰가 지적한 자리).
+     */
     mock = await startMockAnnotateGhe({ initialTitle: '제목' });
-    const deps = depsFor(fakePool({ targets: [target()] }));
-    await runAnnotationPass(deps, { limit: 10 });
-    expect(deps.metrics.mnumberAnnotateTotal.render()).toContain('result="updated"');
+    const deps = depsFor(fakePool({ targets: [target(), target({ merge_seq: 78, pull_request_number: 1235 })] }));
+    const summary = await runAnnotationPass(deps, { limit: 10 });
+
+    // 첫 행은 붙이고, 둘째 행은 같은 PR 제목을 다시 읽어 이미 붙은 것을 본다.
+    expect(summary.processed).toBe(2);
+    expect(summary.results).toEqual({ updated: 1, already_done: 1 });
+    const rendered = deps.metrics.mnumberAnnotateTotal.render();
+    expect(rendered).toContain('mnumber_annotate_total{result="updated"} 1');
+    expect(rendered).toContain('mnumber_annotate_total{result="already_done"} 1');
+  });
+
+  it('재시도 대기가 지수로 늘어난다 (JOB-SEQ-005)', async () => {
+    /*
+     * 횟수만 세면 **간격을 상수로 바꾼 변이가 살아남는다.** 수열 자체를 단언해야
+     * 「지수 백오프」가 계약으로 지켜진다. 합은 회차 예산 30초 안이어야 한다.
+     */
+    mock = await startMockAnnotateGhe({
+      getScript: Array.from({ length: 4 }, () => ({ status: 503, body: { message: 'unavailable' } })),
+      initialTitle: '제목',
+    });
+    const slept: number[] = [];
+    const deps = { ...depsFor(fakePool()), sleep: async (ms: number) => void slept.push(ms) };
+    await annotateOne(deps, target(), 'c0ffee00-0000-4000-8000-000000000000');
+
+    const backoff = slept.filter((ms) => ms !== deps.config.writeSpacingMs);
+    expect(backoff).toEqual([200, 400, 800, 1600]);
+    expect(backoff.reduce((sum, ms) => sum + ms, 0)).toBeLessThan(30_000);
   });
 });
 
@@ -406,6 +479,125 @@ describe('handleMergeNumberAssigned — 이벤트 경로 (§11)', () => {
     } as never);
     expect(disposition).toEqual({ kind: 'ack' });
     expect(mock.requests).toHaveLength(0);
+  });
+});
+
+describe('쓰기 직전 재확인과 간격 (리뷰 P1·공식 지침)', () => {
+  it('그 사이 정본이 바뀌면 PATCH하지 않고 상태도 남기지 않는다', async () => {
+    mock = await startMockAnnotateGhe({ initialTitle: '제목' });
+    const pool = fakePool({ stillCurrent: false });
+    const result = await annotateOne(depsFor(pool), target(), 'c0ffee00-0000-4000-8000-000000000000');
+
+    expect(result).toBe('superseded');
+    expect(patches()).toHaveLength(0);
+    expect(mock.currentTitle()).toBe('제목');
+    // 다음 회차가 현재 정본으로 다시 판정하도록 상태를 비워 둔다.
+    expect(pool.queries.some((q) => q.text.includes('SET annotate_state'))).toBe(false);
+  });
+
+  it('재확인은 조회 뒤·쓰기 앞에 온다', async () => {
+    mock = await startMockAnnotateGhe({ initialTitle: '제목' });
+    const pool = fakePool();
+    await annotateOne(depsFor(pool), target(), 'c0ffee00-0000-4000-8000-000000000000');
+
+    const recheck = pool.queries.findIndex((q) => q.text.includes('SELECT true AS ok'));
+    expect(recheck).toBeGreaterThan(-1);
+    // 재확인 시점에 제목 조회는 끝났고 PATCH는 아직이다.
+    const beforeRecheck = mock.requests.slice(0, mock.requests.findIndex((r) => r.method === 'PATCH'));
+    expect(beforeRecheck.some((r) => r.method === 'GET')).toBe(true);
+  });
+
+  it('응답 제목이 보낸 값과 정확히 같지 않아도 접두가 있으면 성공이다', async () => {
+    /*
+     * 공식 문서는 응답의 `title`이 보낸 값과 같다고 보장하지 않는다. 서버가 앞뒤
+     * 공백을 다듬는 것만으로 성공한 표기가 실패로 기록되면 지표가 거짓을 말한다.
+     */
+    mock = await startMockAnnotateGhe({ initialTitle: '제목  ' });
+    const pool = fakePool();
+    const trimming = depsFor(pool);
+    // 목이 저장한 값을 다듬는 서버를 흉내 낸다.
+    const original = trimming.client.updateTitle.bind(trimming.client);
+    (trimming.client as unknown as { updateTitle: unknown }).updateTitle = async (
+      ref: Parameters<typeof original>[0],
+      title: string,
+    ): Promise<string> => (await original(ref, title)).trimEnd();
+
+    const result = await annotateOne(trimming, target(), 'c0ffee00-0000-4000-8000-000000000000');
+    expect(result).toBe('updated');
+    expect(pool.queries.some((q) => q.text.includes('SET annotate_state') && q.values[4] === 'done')).toBe(true);
+  });
+
+  it('접두가 아예 없는 응답은 실패로 남긴다', async () => {
+    mock = await startMockAnnotateGhe({ initialTitle: '제목' });
+    const pool = fakePool();
+    const hostile = depsFor(pool);
+    (hostile.client as unknown as { updateTitle: unknown }).updateTitle = async (): Promise<string> => '다른 제목';
+
+    const result = await annotateOne(hostile, target(), 'c0ffee00-0000-4000-8000-000000000000');
+    expect(result).toBe('failed');
+  });
+
+  it('실제로 쓴 뒤에만 쉬고, 조회만 한 회차는 쉬지 않는다', async () => {
+    mock = await startMockAnnotateGhe({ initialTitle: '제목' });
+    const slept: number[] = [];
+    const deps = {
+      ...depsFor(fakePool({ targets: [target()] })),
+      sleep: async (ms: number) => {
+        slept.push(ms);
+      },
+    };
+    await runAnnotationPass(deps, { limit: 10 });
+    expect(slept).toEqual([deps.config.writeSpacingMs]);
+    expect(deps.config.writeSpacingMs).toBeGreaterThanOrEqual(1_000);
+
+    // 이미 표기된 행만 있으면 쓰기가 없으므로 쉬지 않는다.
+    await mock.close();
+    mock = await startMockAnnotateGhe({ initialTitle: '[M-1900-1] 제목' });
+    const idle: number[] = [];
+    const quiet = {
+      ...depsFor(fakePool({ targets: [target()] })),
+      sleep: async (ms: number) => {
+        idle.push(ms);
+      },
+    };
+    await runAnnotationPass(quiet, { limit: 10 });
+    expect(idle).toEqual([]);
+  });
+
+  it('회차는 겹치지 않는다 — 두 회차가 동시에 같은 행을 집지 않는다', async () => {
+    mock = await startMockAnnotateGhe({ initialTitle: '제목' });
+    const deps = depsFor(fakePool({ targets: [target()] }));
+    await Promise.all([
+      runAnnotationPass(deps, { limit: 10 }),
+      runAnnotationPass(deps, { limit: 10 }),
+    ]);
+    // 둘째 회차는 첫째가 붙인 접두를 보고 호출하지 않는다.
+    expect(patches()).toHaveLength(1);
+  });
+
+  it('토큰 발급이 일시 실패하면 표기 재시도가 그것을 받는다', async () => {
+    /*
+     * 발급기는 `GitHubApiError`를 던진다. 그대로 올라가면 재시도가 알아보지 못해
+     * 일시 장애가 영구 실패로 기록되고 회복이 다음 스윕까지 밀린다 (리뷰 P2).
+     */
+    mock = await startMockAnnotateGhe({
+      tokenScript: [{ status: 500, body: { message: 'token endpoint down' } }],
+      initialTitle: '제목',
+    });
+    const result = await annotateOne(depsFor(fakePool()), target(), 'c0ffee00-0000-4000-8000-000000000000');
+    expect(result).toBe('updated');
+    expect(mock.tokenIssueCount()).toBe(1);
+    expect(mock.currentTitle()).toBe('[M-1900-1] 제목');
+  });
+
+  it('토큰 발급이 계속 실패하면 failed로 남는다', async () => {
+    mock = await startMockAnnotateGhe({
+      tokenScript: Array.from({ length: 8 }, () => ({ status: 500, body: { message: 'down' } })),
+    });
+    const pool = fakePool();
+    const result = await annotateOne(depsFor(pool), target(), 'c0ffee00-0000-4000-8000-000000000000');
+    expect(result).toBe('failed');
+    expect(patches()).toHaveLength(0);
   });
 });
 

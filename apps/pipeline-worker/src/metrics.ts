@@ -115,7 +115,8 @@ export interface WorkerMetrics {
    * PR 제목 표기 회차 (JOB-SEQ-005 / WP-075). 라벨: `result`.
    *
    * 값은 고정 enum이다 — `updated`·`already_done`·`disabled`·`mismatch`·
-   * `code_unavailable`·`permission_blocked`·`rate_limited`·`failed`.
+   * `code_unavailable`·`permission_blocked`·`rate_limited`·`superseded`·
+   * `validation_failed`·`failed`.
    * **저장소 이름·PR 번호·제목을 라벨에 넣지 않는다**: 카디널리티가 저장소 수와
    * PR 수만큼 늘어난다. 어느 PR이었는지는 구조화 로그와 감사 기록이 답한다.
    */

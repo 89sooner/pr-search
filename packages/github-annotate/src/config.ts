@@ -24,8 +24,22 @@ export const DEFAULT_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1_000;
 export const DEFAULT_SWEEP_LIMIT = 200;
 /** 권한 차단을 이만큼 지난 뒤 스윕이 한 번 다시 본다. */
 export const DEFAULT_BLOCK_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
-/** JOB-SEQ-005의 재시도 횟수. 일시 실패에만 쓴다. */
+/**
+ * 한 요청의 **전체 시도 횟수**다 (첫 시도 + 재시도 넷). 일시 실패에만 쓴다.
+ *
+ * `JOB-SEQ-005`의 「5회 지수 백오프」를 시도 다섯 번으로 읽는다 — 재시도 다섯 번으로
+ * 읽으면 요청이 여섯 번 나가 회차 예산이 흔들린다.
+ */
 export const ANNOTATE_MAX_ATTEMPTS = 5;
+/**
+ * 변경 요청 사이의 최소 간격.
+ *
+ * 공식 문서가 정한 **하한이다**: 「`POST`·`PATCH`·`PUT`·`DELETE` 요청을 많이 보낼
+ * 때는 각 요청 사이에 최소 1초를 기다리라」, 「동시에 보내지 말고 직렬로 보내라」.
+ * 같은 문서가 「한도에 걸린 채로 요청을 계속하면 integration이 차단될 수 있다」고
+ * 경고하므로 설정으로도 이 아래로 내릴 수 없게 한다.
+ */
+export const MIN_WRITE_SPACING_MS = 1_000;
 
 export interface AnnotateConfig {
   /** `MNUMBER_ANNOTATE_ENABLED`. 기본 `false`. */
@@ -43,6 +57,8 @@ export interface AnnotateConfig {
   readonly sweepIntervalMs: number;
   readonly sweepLimit: number;
   readonly blockCooldownMs: number;
+  /** 실제로 쓴 뒤 다음 쓰기까지의 간격. 하한은 공식 문서가 정한 1초다. */
+  readonly writeSpacingMs: number;
 }
 
 function readBoundedInt(env: GitHubEnv, key: string, fallback: number, min: number, max: number): number {
@@ -103,6 +119,14 @@ export function resolveAnnotateConfig(env: GitHubEnv = process.env): AnnotateCon
       DEFAULT_BLOCK_COOLDOWN_MS,
       60_000,
       30 * DEFAULT_BLOCK_COOLDOWN_MS,
+    ),
+    // 하한이 곧 기본값이다. 더 길게는 둘 수 있어도 더 짧게는 둘 수 없다.
+    writeSpacingMs: readBoundedInt(
+      env,
+      'MNUMBER_ANNOTATE_WRITE_SPACING_MS',
+      MIN_WRITE_SPACING_MS,
+      MIN_WRITE_SPACING_MS,
+      60_000,
     ),
   };
 }

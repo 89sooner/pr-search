@@ -17,6 +17,7 @@ export {
   DEFAULT_BLOCK_COOLDOWN_MS,
   DEFAULT_SWEEP_INTERVAL_MS,
   DEFAULT_SWEEP_LIMIT,
+  MIN_WRITE_SPACING_MS,
   annotateConfigFailure,
   hasAnnotateCredentials,
   resolveAnnotateConfig,

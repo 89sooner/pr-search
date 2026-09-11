@@ -76,6 +76,8 @@ export type AnnotateResult =
   | 'code_unavailable'
   | 'permission_blocked'
   | 'validation_failed'
+  /** 쓰기 직전 재확인에서 정본이 바뀌었다. 상태를 남기지 않고 다음 회차에 맡긴다. */
+  | 'superseded'
   | 'failed';
 
 export interface PassSummary {
@@ -85,10 +87,15 @@ export interface PassSummary {
   readonly rateLimitedUntil?: Date;
 }
 
-/** 첫 재시도까지의 대기(ms). 이후 두 배씩 늘린다. */
+/**
+ * 첫 재시도까지의 대기(ms). 이후 두 배씩 늘린다.
+ *
+ * 다섯 번 시도하면 대기는 200·400·800·1600으로 합이 3초다. `JOB-SEQ-005`의 회차
+ * 예산 30초 안에 요청 다섯 번과 함께 들어간다. **상한 상수를 두지 않는 이유는
+ * 이 수열에서 상한이 닿지 않기 때문이다** — 닿지 않는 가지를 두면 그것이 무엇을
+ * 막는지 아무도 확인할 수 없다.
+ */
 const RETRY_BASE_MS = 200;
-/** JOB-SEQ-005의 회차 예산은 30초다. 백오프 총합이 그 안에 들어가야 한다. */
-const RETRY_CAP_MS = 4_000;
 
 function logOf(deps: AnnotateDeps): (fields: AnnotateLogFields) => void {
   return (
@@ -127,9 +134,10 @@ async function withRetry<T>(deps: AnnotateDeps, operation: () => Promise<T>): Pr
       const retryable =
         error instanceof AnnotateApiError && error.retryable && error.kind !== 'rate_limited';
       if (!retryable || attempt === ANNOTATE_MAX_ATTEMPTS) throw error;
-      await sleep(Math.min(RETRY_BASE_MS * 2 ** (attempt - 1), RETRY_CAP_MS));
+      await sleep(RETRY_BASE_MS * 2 ** (attempt - 1));
     }
   }
+  /* 루프는 반드시 반환하거나 던진다. 타입을 만족시키기 위한 줄이다. */
   throw lastError;
 }
 
@@ -214,6 +222,14 @@ export async function annotateOne(
     const currentTitle = await withRetry(deps, async () => deps.client.readTitle(ref));
 
     // 3. 순수 판정.
+    /*
+     * **여기까지 왔다는 것은 GHE가 200을 줬다는 뜻이다.** 접근이 증명됐으므로
+     * 이전의 권한 차단을 푼다 — 쓰기 성공에서만 풀면, 남은 대상이 모두 이미
+     * 표기돼 있는 저장소는 권한이 복구돼도 차단이 남아 새 PR의 표기가 다음
+     * 스윕까지 밀린다 (리뷰 minor).
+     */
+    await repositoryRepo.clearAnnotationBlock(deps.pool, target.repository_id);
+
     const decision = decideTitleUpdate(resolved.expected, currentTitle);
     if (decision.kind === 'already_annotated') {
       await mergeSequenceRepo.markAnnotateState(deps.pool, key, 'done');
@@ -234,28 +250,48 @@ export async function annotateOne(
       return 'mismatch';
     }
 
-    // 4. 제목 한 필드만 바꾼다.
+    /*
+     * 4. **외부 쓰기 바로 앞에서 정본을 한 번 더 묻는다.**
+     *
+     * 목록을 뽑은 뒤 한 건씩 처리하는 동안 재채번이 들어와 에폭이 오를 수 있다.
+     * 제목은 되돌릴 수 없으므로 무효가 된 번호를 내보내지 않는다.
+     */
+    if (!(await mergeSequenceRepo.isAnnotationCurrent(deps.pool, key, target.merge_number))) {
+      log({
+        level: 'info',
+        message: '정본이 그 사이 바뀌어 표기하지 않는다',
+        repository_id: target.repository_id,
+        pull_request_number: target.pull_request_number,
+        reason: 'canonical_moved',
+      });
+      // 상태를 남기지 않는다 — 다음 회차가 현재 정본으로 다시 판정한다.
+      return 'superseded';
+    }
+
+    // 5. 제목 한 필드만 바꾼다.
     const echoed = await withRetry(deps, async () => deps.client.updateTitle(ref, decision.nextTitle));
-    if (echoed !== decision.nextTitle) {
-      /*
-       * 서버가 저장한 값이 보낸 값과 다르다. 성공으로 기록하면 "표기했다"는 사실이
-       * 거짓이 된다 — 다음 회차가 다시 보게 남긴다.
-       */
+    /*
+     * **보낸 문자열과의 완전 일치를 성공 조건으로 삼지 않는다.**
+     *
+     * 공식 문서는 응답의 `title`이 보낸 값과 같다고 보장하지 않으며, 서버가 앞뒤
+     * 공백을 다듬기만 해도 완전 일치는 깨진다. 그때 성공한 표기가 `failed`로 남으면
+     * 지표가 거짓을 말한다. `AC-1`이 요구하는 것은 **접두가 붙었는가**이므로,
+     * 같은 순수 판정기에 응답을 넣어 그것을 묻는다.
+     */
+    if (decideTitleUpdate(resolved.expected, echoed).kind !== 'already_annotated') {
       await mergeSequenceRepo.markAnnotateState(deps.pool, key, 'failed');
       log({
         level: 'error',
-        message: 'GHE가 돌려준 제목이 보낸 값과 다르다',
+        message: 'GHE가 저장한 제목에 기대한 접두가 없다',
         repository_id: target.repository_id,
         pull_request_number: target.pull_request_number,
-        reason: 'title_echo_mismatch',
+        reason: 'title_prefix_absent',
       });
       return 'failed';
     }
 
-    // 5. 정본 → 감사 순서다. 감사가 먼저면 실패한 표기가 기록으로 남는다.
+    // 6. 정본 → 감사 순서다. 감사가 먼저면 실패한 표기가 기록으로 남는다.
     await mergeSequenceRepo.markAnnotateState(deps.pool, key, 'done');
-    // 차단됐던 저장소가 복구된 것이므로 표시를 지운다.
-    await repositoryRepo.clearAnnotationBlock(deps.pool, target.repository_id);
     /*
      * **실제로 GHE에 쓴 경우에만 기록한다** (FR-SEQ-009 AC-4). 이미 접두가 있어
      * 호출하지 않은 회차까지 남기면 감사 이력의 건수가 "제목이 바뀐 횟수"를
@@ -306,6 +342,18 @@ export async function annotateOne(
 }
 
 /**
+ * **이 프로세스 안에서 회차는 하나씩만 돈다.**
+ *
+ * 이벤트 구독과 잔여 스윕은 서로를 모르는 채 같은 프로세스에서 돈다. 둘이 겹치면
+ * 아직 표시되지 않은 같은 행을 둘 다 골라, 둘 다 제목을 읽고 둘 다 PATCH를 보낸다 —
+ * 결과 제목은 같아도 요청과 감사 기록이 두 벌이 되어 「쓴 횟수」가 거짓이 된다.
+ * 배포가 replica 1이라는 사실은 **파드 사이**를 막을 뿐 이 경합을 막지 못한다.
+ *
+ * 공식 문서의 「변경 요청은 직렬로 보내라」와도 같은 방향이다.
+ */
+let passChain: Promise<unknown> = Promise.resolve();
+
+/**
  * 대상을 훑는다. 이벤트 경로와 잔여 스윕이 같은 함수를 쓴다.
  *
  * 권한으로 멈춘 저장소는 **그 회차 안에서 더 보지 않는다** — 차단을 남겼어도
@@ -317,6 +365,19 @@ export async function runAnnotationPass(
   filter: mergeSequenceRepo.AnnotateTargetFilter,
   correlationId: string = randomUUID(),
 ): Promise<PassSummary> {
+  // 앞 회차가 끝난 뒤에 시작한다. 실패한 회차가 줄을 끊지 않도록 결과는 삼킨다.
+  const previous = passChain.catch(() => undefined);
+  const started = previous.then(async () => runAnnotationPassUnlocked(deps, filter, correlationId));
+  passChain = started;
+  return started;
+}
+
+async function runAnnotationPassUnlocked(
+  deps: AnnotateDeps,
+  filter: mergeSequenceRepo.AnnotateTargetFilter,
+  correlationId: string,
+): Promise<PassSummary> {
+  const sleep = sleepOf(deps);
   const targets = await mergeSequenceRepo.listAnnotateTargets(deps.pool, filter);
   const results: Partial<Record<AnnotateResult, number>> = {};
   const blocked = new Set<number>();
@@ -329,18 +390,21 @@ export async function runAnnotationPass(
       result = await annotateOne(deps, target, correlationId);
     } catch (error) {
       if (error instanceof AnnotateApiError && error.kind === 'rate_limited') {
+        /*
+         * 회복 시각은 언제나 있다 — `classifyFailure`가 `429`에는 문서의 최소
+         * 대기(1분)를 채우고, `403`은 대기 신호가 있을 때만 이 갈래로 온다.
+         * 그래도 기본값을 두는 것은 그 불변식이 타입에 적히지 않기 때문이며,
+         * 값이 없다고 ack해 버리면 이 회차가 못 쓴 PR이 스윕까지 밀린다.
+         */
+        const retryAt = error.retryAt ?? new Date(Date.now() + 60_000);
         deps.metrics.mnumberAnnotateTotal.inc({ result: 'rate_limited' });
         logOf(deps)({
           level: 'warn',
           message: '한도에 걸려 이번 회차를 멈춘다',
           repository_id: target.repository_id,
-          retry_at: error.retryAt?.toISOString() ?? null,
+          retry_at: retryAt.toISOString(),
         });
-        return {
-          processed,
-          results,
-          ...(error.retryAt === undefined ? {} : { rateLimitedUntil: error.retryAt }),
-        };
+        return { processed, results, rateLimitedUntil: retryAt };
       }
       throw error;
     }
@@ -348,6 +412,11 @@ export async function runAnnotationPass(
     deps.metrics.mnumberAnnotateTotal.inc({ result });
     results[result] = (results[result] ?? 0) + 1;
     processed += 1;
+    /*
+     * **실제로 쓴 뒤에만 쉰다** (공식 문서의 변경 요청 지침). 조회만 한 회차까지
+     * 늦추면 스윕이 상한만큼 도는 데 걸리는 시간이 이유 없이 늘어난다.
+     */
+    if (result === 'updated') await sleep(deps.config.writeSpacingMs);
   }
 
   return { processed, results };

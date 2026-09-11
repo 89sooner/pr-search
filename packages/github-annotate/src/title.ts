@@ -23,10 +23,12 @@ import { formatMergeNumber, parseMergeNumber, repositoryCodeOf } from '@prs/doma
  * 허용은 **탐지에만** 쓰고, 붙일 때는 원래 문자열을 그대로 둔다 — 공백을 정리하는
  * 것도 제목을 고치는 일이고 AC-1은 나머지를 바꾸지 말라고 한다.
  *
- * 줄바꿈은 제외한다. GitHub PR 제목은 한 줄이며, 여러 줄 입력에서 `[` 뒤 아무 데나
- * 있는 `]`까지 삼키면 본문 일부를 접두로 오인한다.
+ * 관용하는 공백은 **줄바꿈이 아닌 모든 공백**이다. 칸 문자와 탭만 보면 사용자가
+ * 붙여 넣은 non-breaking space 뒤의 접두를 못 알아보고 하나 더 붙인다. 줄바꿈은
+ * 제외한다 — GitHub PR 제목은 한 줄이며, 여러 줄 입력에서 `[` 뒤 아무 데나 있는
+ * `]`까지 삼키면 본문 일부를 접두로 오인한다.
  */
-const LEADING_BRACKET = /^[ \t]*\[([^\]\r\n]*)\]/;
+const LEADING_BRACKET = /^[^\S\r\n]*\[([^\]\r\n]*)\]/;
 
 export type AnnotationTarget =
   /** 표기할 문자열이 정해졌다. */

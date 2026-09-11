@@ -98,6 +98,23 @@ describe('decideTitleUpdate — 접두 판정 (FR-SEQ-009 AC-1·AC-2)', () => {
     expect(decideTitleUpdate('M-1900-1', ' [M-1900-1] 제목')).toEqual({ kind: 'already_annotated' });
   });
 
+  it('줄바꿈이 아닌 공백 뒤의 접두도 알아본다', () => {
+    /*
+     * 칸 문자와 탭만 보면 사용자가 붙여 넣은 non-breaking space 뒤의 접두를 놓쳐
+     * 하나 더 붙인다. 관용은 **탐지에만** 쓰고 붙일 때는 원문을 그대로 둔다.
+     */
+    expect(decideTitleUpdate('M-1900-1', '\u00a0[M-1900-1] 제목')).toEqual({ kind: 'already_annotated' });
+    expect(decideTitleUpdate('M-1900-1', '\t[M-1900-77] 제목')).toEqual({ kind: 'mismatch', found: 'M-1900-77' });
+  });
+
+  it('줄바꿈 뒤의 대괄호는 접두가 아니다', () => {
+    // 한 줄 제목이 계약이다. 여러 줄이 들어오면 첫 줄만 접두의 자리다.
+    expect(decideTitleUpdate('M-1900-1', '\n[M-1900-1] 제목')).toEqual({
+      kind: 'update',
+      nextTitle: '[M-1900-1] \n[M-1900-1] 제목',
+    });
+  });
+
   it('닫히지 않은 대괄호는 접두가 아니다', () => {
     expect(decideTitleUpdate('M-1900-1', '[unclosed 제목')).toEqual({
       kind: 'update',
