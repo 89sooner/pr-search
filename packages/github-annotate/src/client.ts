@@ -268,8 +268,16 @@ function fromProviderError(error: unknown): AnnotateApiError {
   if (!(error instanceof GitHubApiError)) {
     return new AnnotateApiError('server', `표기 토큰 발급이 실패했다: ${safeMessage(error)}`);
   }
+  /*
+   * **발급 경로의 `auth`는 재시도로 풀리지 않는다.**
+   *
+   * 요청 경로의 `401`은 토큰이 만료된 것이라 버리고 다시 받으면 되지만, 토큰
+   * **발급** 자체가 인증에 실패했다면 App ID나 개인 키가 틀린 것이다. 행마다
+   * 다섯 번씩 두드려도 답이 달라지지 않고 한도만 태운다. 권한 계열로 옮겨
+   * 저장소를 막고 쿨다운 뒤에 다시 보게 한다 — 자격을 고치면 그때 풀린다.
+   */
   const mapping: Readonly<Record<GitHubErrorKind, AnnotateErrorKind>> = {
-    auth: 'auth',
+    auth: 'permission',
     not_found: 'permission',
     rate_limited: 'rate_limited',
     secondary_rate_limited: 'rate_limited',

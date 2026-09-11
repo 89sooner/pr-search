@@ -275,21 +275,27 @@ export async function annotateOne(
     // 5. 제목 한 필드만 바꾼다.
     const echoed = await withRetry(deps, async () => deps.client.updateTitle(ref, decision.nextTitle));
     /*
-     * **보낸 문자열과의 완전 일치를 성공 조건으로 삼지 않는다.**
+     * **뒤 공백만 허용하고 본문은 그대로여야 한다.**
      *
-     * 공식 문서는 응답의 `title`이 보낸 값과 같다고 보장하지 않으며, 서버가 앞뒤
-     * 공백을 다듬기만 해도 완전 일치는 깨진다. 그때 성공한 표기가 `failed`로 남으면
-     * 지표가 거짓을 말한다. `AC-1`이 요구하는 것은 **접두가 붙었는가**이므로,
-     * 같은 순수 판정기에 응답을 넣어 그것을 묻는다.
+     * 공식 문서는 응답의 `title`이 보낸 값과 같다고 보장하지 않으므로 완전 일치를
+     * 요구하면 서버가 뒤 공백을 다듬는 것만으로 성공한 표기가 `failed`가 된다
+     * (`DEV-623`). 그렇다고 **접두만 보면 더 나쁘다** — 문서가 제목 길이 상한도
+     * 밝히지 않으므로 서버가 본문을 조용히 자르는 경로가 있을 수 있고, 그때
+     * 접두만 확인하면 **원래 제목이 잘린 것을 성공으로 기록한다.** 「원래 제목의
+     * 나머지 부분은 바꾸지 않는다」(`AC-1`)가 무너지는 자리다.
+     *
+     * 그래서 뒤 공백만 걷어 내고 나머지는 글자 그대로 대조한다.
      */
-    if (decideTitleUpdate(resolved.expected, echoed).kind !== 'already_annotated') {
+    if (echoed.trimEnd() !== decision.nextTitle.trimEnd()) {
       await mergeSequenceRepo.markAnnotateState(deps.pool, key, 'failed');
       log({
         level: 'error',
-        message: 'GHE가 저장한 제목에 기대한 접두가 없다',
+        message: 'GHE가 저장한 제목이 보낸 값과 다르다 — 절단이나 변형일 수 있다',
         repository_id: target.repository_id,
         pull_request_number: target.pull_request_number,
-        reason: 'title_prefix_absent',
+        sent_length: decision.nextTitle.length,
+        stored_length: echoed.length,
+        reason: 'title_body_changed',
       });
       return 'failed';
     }

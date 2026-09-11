@@ -11,7 +11,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AnnotateClient, resolveAnnotateConfig, type AnnotateConfig } from '@prs/github-annotate';
+import {
+  ANNOTATE_MAX_ATTEMPTS,
+  AnnotateClient,
+  resolveAnnotateConfig,
+  type AnnotateConfig,
+} from '@prs/github-annotate';
 import {
   generateTestKeyPair,
   startMockAnnotateGhe,
@@ -595,7 +600,54 @@ describe('쓰기 직전 재확인과 간격 (리뷰 P1·공식 지침)', () => {
     expect(beforeRecheck.some((r) => r.method === 'GET')).toBe(true);
   });
 
-  it('응답 제목이 보낸 값과 정확히 같지 않아도 접두가 있으면 성공이다', async () => {
+  it('본문이 잘려 돌아오면 성공으로 기록하지 않는다', async () => {
+    /*
+     * 공식 문서가 제목 길이 상한을 밝히지 않으므로 서버가 조용히 자르는 경로가
+     * 있을 수 있다. 접두만 확인하면 **원래 제목이 잘린 것을 성공으로 기록한다** —
+     * 「원래 제목의 나머지 부분은 바꾸지 않는다」(AC-1)가 무너지는 자리다.
+     */
+    mock = await startMockAnnotateGhe({ initialTitle: '아주 긴 원래 제목이 여기에 있다' });
+    const pool = fakePool();
+    const truncating = depsFor(pool);
+    (truncating.client as unknown as { updateTitle: unknown }).updateTitle = async (): Promise<string> =>
+      '[M-1900-1] 아주 긴 원래';
+
+    const result = await annotateOne(truncating, target(), 'c0ffee00-0000-4000-8000-000000000000');
+    expect(result).toBe('failed');
+    expect(pool.queries.some((q) => q.text.includes('SET annotate_state') && q.values[4] === 'failed')).toBe(true);
+  });
+
+  it('재시도 대기의 총합이 회차 예산 안에 들어간다', () => {
+    /*
+     * 백오프 상한 상수를 없앴으므로 「이 상수를 키우지 말라」는 암묵 계약만 남는다.
+     * 총합을 실제 상수에서 계산해 못 박아, 시도 횟수를 올리면 **그 순간** 깨지게
+     * 한다 — 닿지 않는 가지를 두는 것보다 정직하다.
+     */
+    const total = Array.from({ length: ANNOTATE_MAX_ATTEMPTS - 1 }, (_unused, index) => 200 * 2 ** index).reduce(
+      (sum, ms) => sum + ms,
+      0,
+    );
+    expect(total, `백오프 총합 ${String(total)}ms가 JOB-SEQ-005의 30초 예산을 넘는다`).toBeLessThan(30_000);
+  });
+
+  it('토큰 발급의 인증 실패는 재시도하지 않고 저장소를 막는다', async () => {
+    /*
+     * 요청 경로의 401은 만료라 다시 받으면 되지만, 발급 자체가 인증에 실패하면
+     * App ID나 개인 키가 틀린 것이다. 다섯 번을 두드려도 답이 같다.
+     */
+    mock = await startMockAnnotateGhe({
+      tokenScript: Array.from({ length: 8 }, () => ({ status: 401, body: { message: 'Bad credentials' } })),
+    });
+    const pool = fakePool();
+    const result = await annotateOne(depsFor(pool), target(), 'c0ffee00-0000-4000-8000-000000000000');
+
+    expect(result).toBe('permission_blocked');
+    // 발급 시도는 한 번뿐이다 — 반복하지 않는다.
+    expect(mock.requests.filter((entry) => entry.path.includes('/access_tokens'))).toHaveLength(1);
+    expect(pool.queries.some((q) => q.text.includes('annotate_blocked_at = now()'))).toBe(true);
+  });
+
+  it('응답 제목의 뒤 공백만 다듬어져도 성공이다', async () => {
     /*
      * 공식 문서는 응답의 `title`이 보낸 값과 같다고 보장하지 않는다. 서버가 앞뒤
      * 공백을 다듬는 것만으로 성공한 표기가 실패로 기록되면 지표가 거짓을 말한다.
