@@ -5876,7 +5876,7 @@ CR-075의 strict document validator는 변경 전 `main`과 같은 기존 오류
 | 통합 | `pnpm run test:integration` | 1599 통과 (99 파일). 전량 실행 중 1회에서 `manual-run.test.ts`의 취소 시험 1건이 깨졌고 그 메커니즘을 `DEV-588`로 등록했다 — 이 판의 변경과 무관하며 이어진 전량 실행들이 통과했다. **CI의 첫 회차는 `DEV-590`으로 실패했고 그것을 고친 뒤 통과했다** |
 | 접근성 | `pnpm run test:a11y` | 378 통과 (17 파일) |
 | 대비 | `pnpm run test:contrast` | 232쌍 중 실패 0 |
-| e2e | `pnpm run test:e2e` | 181 통과 |
+| e2e | `pnpm run test:e2e` | 181 통과. 전량 실행 중 1회에서 `flow-003.spec.ts:176`이 `searchbox` 값 대기에서 깨졌고 **이것은 `DEV-377`이 이미 기록한 알려진 편차다** — 뒤로가기 뒤 검색 화면 렌더가 병렬 부하에서 늦는 것이며 이 판의 변경과 무관하다(단독 14건 통과, 전량 재실행 2회 연속 181건 통과) |
 | 빌드 | `pnpm build` · `pnpm --filter @prs/web run build` | 통과 |
 
 **통합과 회귀는 실제 의존을 쓴다.** PostgreSQL에 마이그레이션 025를 실제로 걸었고, 회귀의 기대값은 실제 `git rev-list --first-parent --reverse`가 만든다 — 구현의 planner가 낸 값을 기대값으로 가져오지 않는다(실행서 4장). ES와 GHE는 대역이며 **실제 GHE PR 제목은 읽지도 쓰지도 않았다.**
