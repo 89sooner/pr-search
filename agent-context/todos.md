@@ -1,5 +1,68 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
+최신 기준 (**2026-09-11 (4차) · 사내 요청 두 건 반영 — `0.1.0-pilot.5` 발행 완료**)
+
+**`main = 523edae`. 실측하라.** 이 세션이 만든 커밋 넷이 그 위에 있다 —
+`a3cb046`(CA) · `1bd7b9a`(GHE 로그인) · `2795666`(게이트) · `523edae`(발행 기록).
+그 사이의 `e7593cc`·`c01f926`은 결정자가 직접 푸시한 `agent-context` 갱신이다.
+
+## 시작하기 전에 실측할 것
+
+```bash
+cd /home/roqkf/pr-search && git fetch origin --quiet && git log --oneline -5 origin/main
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1      # 다음 CR 번호 (CR-084로 보인다)
+grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -1      # 다음 DEV 번호 (DEV-616으로 보인다)
+gh release list --limit 3                                 # pilot.5가 Latest인가
+git worktree list                                         # 하나만 있어야 한다
+```
+
+병렬 세션이 있으면 채번 현황을 물어라. main에서 잰 다음 번호는 열린 PR이 선점한 CR·DEV를 못 본다.
+
+## 가장 앞에 있는 것 — 사내 반입 결과를 기다린다
+
+**외부에서 할 수 있는 일이 아니다.** `0.1.0-pilot.5`가 발행됐고 사내가 그것을 반입해야 이번 수정이 실제로
+검증된다. 자동으로 다음 기능 개발을 시작하지 않는다.
+
+결정자가 사내에 전달할 것 셋 (`DEV-530`): 버전 `0.1.0-pilot.5` · 읽기 토큰 · 자산 SHA-256
+`aa83abf91fea7f0c2511cb412c4df843564f5a7dc1b035eecd0849de4b6a6afd`. **토큰 값은 어디에도 적지 않는다.**
+
+### 사내가 먼저 해야 하는 것
+
+- GHE에 **로그인 전용 OAuth App 등록**. 수집용 App(`GHE_APP_ID`)과 자격을 공유하지 않는다.
+  callback URL은 `<서비스 주소>/auth/callback`.
+- `.env`에 `AUTH_PROVIDER=github`과 자격 셋, 사설 CA를 쓴다면 `GIT_SSL_CAINFO`.
+- `prsctl upgrade`. `.env`만 고치면 반영되지 않는다.
+
+### 사내 반입에서 확인해야 할 것 (원장 6.80장)
+
+- 임시 CA 조치(`.env`·`compose.yml` 직접 수정)를 되돌려도 미러 초기화가 성립하는가 (`DEV-561`)
+- 실제 GHE OAuth App 등록과 callback URL 일치, **거절 응답의 실제 상태 코드** (`CR-083`)
+- `/user/teams`가 돌려주는 팀 슬러그가 `GHE_TEAM_ROLE_MAP` 표기와 맞는가
+- 로그인 후 첫 조회가 503이 아닌가 (`DEV-613`), 세션 쿠키가 브라우저에 남는가 (`DEV-614`)
+- `0.1.0-pilot.4` 재시험은 이 판으로 대체된다 — pilot.5가 그 수정을 전부 포함한다
+
+## 열린 편차 셋 (앞 라운드에서 이어진다)
+
+| 편차 | 무엇 | 왜 열려 있나 |
+| --- | --- | --- |
+| `DEV-581` | 직접 푸시의 영구 부재 확정 근거 | 공식 GHE 계약에 없다. 결정자의 판단이 필요하다 |
+| `DEV-603` | planner의 멱등 갈래가 도달 불가 | 그 갈래와 `mapping_conflict` 중 어느 쪽이 정본인지 정해야 한다 |
+| `DEV-588` | 조정 스캔 취소 시험의 경합 | `FR-ADMIN-002`를 소유한 WP의 몫이다 |
+
+## 고치지 않기로 한 minor (근거는 원장 6.78·6.79장)
+
+- `AUTH_ENABLED='False'` 오탈자는 fail-closed이나 메시지가 원인을 가린다 — 고치려면 계약을 넓혀야 한다
+- `login` UNIQUE 충돌은 영구 실패인데 백오프 없이 재시도 — 실패를 캐시하면 일시 오류가 영구 장애로 굳는다
+- `teamsTruncated`는 로그로만 남는다 — 팀 2,000개는 한 사람 멤버십으로 비현실적이다
+- `IDP_GROUP_ROLE_MAP` 사문 필드(`DEV-578`)는 그대로다 — 인증 표면을 건드리므로 사내가 OIDC를 켜는 작업과 함께 판단한다
+
+## 확인할 사항
+
+- [ ] **`WP-075`(PR 제목 M 넘버 표기)는 자동으로 시작하지 않는다.** GHE 제목 쓰기는 이 제품이 GHE에 쓰는 최초 경로이며 별도 승인이 필요하다.
+- [ ] 병합된 PR의 미해결 리뷰 스레드는 GraphQL `isResolved`로 직접 세라. 후속 PR에서 고쳤다는 사실이 스레드 상태를 바꾸지 않는다 (`DEV-414`).
+- [ ] 개발 PC의 파일럿 스택은 **컨테이너를 제거했고 볼륨 여섯 개는 보존**했다. `.env`의 `PRS_VERSION`은 `0.1.0-pilot.5`로 바뀌어 있으나 `ADMIN_DATABASE_URL`이 비어 `prsctl upgrade`가 멈춘 상태다. 다시 쓰려면 그 값을 채운다 (형식은 `.env.example` 참고).
+- [ ] 원격 브랜치 정리 여부 — `fix/dev-561-git-ca-trust`, `feature/ghe-oauth-login`, `fix/smoke-gate-cr083`, `docs/pilot5-published`가 남아 있다.
+
 최신 기준 (**2026-09-11 (3차) · WP-074 M 번호 — CR-080·081 closed, `0.1.0-pilot.5` 미발행**)
 
 **`main = e01bce1`. 실측하라.** 이 세션이 만든 커밋 넷이 그 위에 있다 —

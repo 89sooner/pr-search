@@ -1,5 +1,100 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
 
+## 2026-09-11 (4차) 라운드에서 쓴 것 (CR-082 · CR-083 · 발행)
+
+### 전제 — Node 22 (앞 라운드와 같다)
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"
+```
+
+### 검증 배터리 (전부 실행했고 이 수치가 원장 6.78장의 정본이다)
+
+```bash
+pnpm typecheck && pnpm lint && pnpm run lint:deps
+pnpm run test              # 2,233 통과 · 1 skip (123 파일)
+pnpm run test:regression   # 427 통과 (8 파일)
+pnpm run test:integration  # 1,609 통과 (100 파일) — 실제 PG·Redis
+pnpm run test:a11y         # 379 통과 (17 파일)
+pnpm --filter @prs/web run build && pnpm run test:e2e   # 181 통과
+```
+
+**`lint`는 마지막 파일을 쓴 뒤에 다시 돌려라.** 이 판에서 `import type` 위반 하나가 그때 나왔다.
+
+### 변이 시험 — 여섯 곳, 23종 전부 kill
+
+손으로 돌렸다. python으로 한 줄을 바꾸고 대상 시험을 돌린 뒤 원복한다.
+**원복에 `git checkout <파일>`을 쓰지 마라** — 그 파일의 미커밋 수정까지 날아간다.
+
+```bash
+P=packages/authz/src/github-oauth.ts
+cp "$P" "$P.bak"
+python3 -c "import io,sys; p='$P'; s=io.open(p,encoding='utf-8',newline='').read(); \
+  assert s.count(sys.argv[1])==1; io.open(p,'w',encoding='utf-8',newline='').write(s.replace(sys.argv[1],sys.argv[2]))" \
+  "<옛 문자열>" "<변이>"
+pnpm exec vitest run <시험 파일>
+cp "$P.bak" "$P"; rm -f "$P.bak"
+```
+
+### 문서 검사기 (CR을 닫기 전에 반드시)
+
+```bash
+python3 /home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --root <워크트리> --strict
+```
+
+변경 전 `main`과 변경 후를 각각 돌려 대조한다. **신규 issue 0건**이어야 CR을 닫을 수 있다.
+(기존 오류 4·경고 2는 `main`에도 있다 — 숨기지 말고 같다는 것을 보여라.)
+
+### 번들과 발행
+
+```bash
+git worktree add /tmp/pr-search-bundle-main origin/main --detach   # 깨끗한 워크트리에서
+cd /tmp/pr-search-bundle-main
+./deploy/single-host/build-bundle.sh 0.1.0-pilot.5 /tmp/pr-search-bundle-release --release
+```
+
+**출력을 파이프에 넣지 마라.** `| tail -45`로 실행했다가 `tail`의 종료 코드 0이 잡혀 **게이트 실패를 성공으로
+읽었다.** 백그라운드로 돌리고 출력 파일을 읽는다.
+
+발행 값은 빌드 출력을 믿지 않고 GitHub에 다시 묻는다 — `gh release view --json`에는 `digest`가 없다.
+
+```bash
+gh api repos/89sooner/pr-search/releases/tags/0.1.0-pilot.5 \
+  --jq '{tag:.tag_name, draft:.draft, immutable:.immutable, assets:[.assets[]|{name,size,digest}]}'
+```
+
+### 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 실패 | 원인 |
+| --- | --- | --- |
+| `build-bundle.sh ... --release` (1차) | 메모리 부족으로 중단 | `prs-pilot-*` 스택 14개가 약 2GiB를 쓰고 있었다. 승인받아 `stop`(볼륨 보존) 후 재실행 |
+| `build-bundle.sh ... --release` (2차) | 게이트가 「번들을 반입하지 않는다」 | **내 계약 변경과 스모크 기대가 어긋났다**(`DEV-615`). 게이트가 옳았다 |
+| `pnpm typecheck` | `SessionStore` private 필드 불일치 | `AuthContext.sessions`를 좁게 선언해 통합 시험이 순수 `SessionStore`를 못 넣었다. 기반 타입으로 되돌렸다 |
+| `pnpm lint` | `import type` 위반 | `SessionStore`가 타입으로만 쓰인다. `type` 표기로 고쳤다 |
+| `docker compose -p prs-pilot start` | `could not find postgres: not found` | 프로젝트 이름만으로는 서비스 정의를 모른다. `docker start <이름>`을 직접 쓰거나 라벨에서 compose 경로를 읽는다 |
+| `expect_accepted` 첫 실행 | 대역 docker가 죽임 | `fake-docker`가 `SESSION_COOKIE_SECURE=false`를 보면 무조건 죽였다. 그 픽스처 주석이 예고한 상황이다 |
+| 콜백 쿠키 시험 | `getSetCookie()`에 세션 쿠키 없음 | **시험이 아니라 코드가 틀렸다** — `DEV-614`를 찾은 자리다 |
+
+### 리뷰 스레드 실측 (앞 라운드와 같다)
+
+```bash
+gh api graphql -f query='{repository(owner:"89sooner",name:"pr-search"){
+  pullRequest(number:173){reviewThreads(first:50){nodes{isResolved path line
+    comments(first:1){nodes{author{login} body}}}}}}}'
+```
+
+### 정리 (이 판에서 회수한 것 — 약 70GB)
+
+```bash
+git worktree list                         # 먼저 병합 여부를 잰다
+git merge-base --is-ancestor <head> origin/main   # squash 병합은 조상이 아니다 — PR 상태로 확인
+git worktree remove <경로> && git worktree prune
+docker builder prune -af                  # 63.46GB
+docker rmi <오래된 태그>                    # 사용 중인 이미지는 Docker가 거부한다
+```
+
+**컨테이너를 지우지 않으면 이미지도 못 지운다.** 정지된 컨테이너도 이미지를 참조한다.
+
 ## 2026-09-11 (3차) 라운드에서 쓴 것 (WP-074 · CR-080·081)
 
 ### 전제 — Node 22

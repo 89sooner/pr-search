@@ -1,8 +1,47 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=286465081f8459d9939f97a4fd8d765c8415ce9ba684ef59b6fa90d7015e5d1d bytes=169116 lines=2331 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;deploy/single-host/;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;4/4;7/7;tmp/.../baseline-integration.log;prs/web;close/reopen;actions/runs;Docker/WSL
+@kv sha256=c440f000e4a91b99f6905ff639b9b569cc9773b2ef3a30a7e9670c5c471fc7f1 bytes=174032 lines=2404 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;packages/authz/src/config.test.ts;apps/web/instrumentation.test.ts;deploy/single-host/smoke-images.sh;deploy/single-host/;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;4/4;7/7;tmp/.../baseline-integration.log;prs/web
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-11 (4차) 라운드가 배운 함정 (사내 요청 · 발행)
+@h3 계약을 바꿀 때 강제하는 자리가 몇 곳인지 세라 — 이 판에서 가장 값비쌌던 것
+@path CR-083이 쿠키 계약을 넓혔을 때 그것을 강제하는 자리가 셋이었다.
+@p | 자리 | 갱신했는가 | | --- | --- |
+@path | packages/authz/src/config.test.ts | 예 |
+@path | apps/web/instrumentation.test.ts | 예 |
+@path | deploy/single-host/smoke-images.sh | 아니오 |
+@path 결과는 번들 빌드가 「이 번들을 반입하지 않는다」로 멈춘 것이고 릴리스가 나가지 못했다(DEV-615).
+@path 앞 라운드의 DEV-606(「프로세스 안의 일관성이 배포의 일관성이 아니다」)과 같은 층위다. 그때는 환경 변수가
+@p 컨테이너에 전달되지 않은 것이었고, 이번에는 계약의 기대가 배포 게이트에 반영되지 않은 것이다.
+@h3 검사의 「존재」를 세는 회귀는 「기대가 반대인」 상태를 못 본다
+@p 그 시점에 회귀는 초록이었다. runtime-reachability.test.ts가 스모크에 그 검사가 있는지를 문자열로 보기 때문이다. 검사는 그대로 있었고 기대만 반대였다. 「검사가 자기 검색어를 센다」의 변형이다.
+@p 처방: 게이트의 기대 조합을 소스에서 뽑아 실제 계약 함수에 넣어 대조한다. .env.example을
+@path resolveSessionReaderConfig에 넣는 config.test.ts(DEV-577)와 같은 방식이다.
+@h3 한 방향만 거는 게이트는 계약이 넓어질 때 반대로 거짓말한다
+@p 거부 기대만 있던 게이트는 허용해야 할 형상을 막고 있어도 아무것도 죽지 않는다. 사내가 요청한 파일럿 형상이 정확히 그 방향이었다. expect_accepted를 처음 넣었다.
+@h3 라우트 시험이 없으면 응답 조립 결함이 영원히 안 잡힌다
+@path DEV-614가 그랬다. 라이브러리 시험은 serializeSessionCookie가 옳은 문자열을 만드는지만 물었고,
+@p 그 문자열이 응답에 남는지는 아무도 묻지 않았다. NextResponse.cookies.set이 headers.append로 넣은 set-cookie를 덮어쓴다는 사실이 그 공백 아래 숨어 있었다.
+@p 찾은 경위가 교훈이다. 검토가 지적한 것은 「userId를 login으로 되돌려도 아무것도 안 죽는다」였는데, 그 공백을 메우려고 시험을 세우자 첫 실행에서 전혀 다른 결함이 잡혔다.
+@h3 조립 한 줄이 무방비일 수 있다
+@path DEV-613을 고쳤는데 createAuthContext의 한 줄을 되돌리면 모든 시험이 초록인 채 결함이 되살아났다.
+@p 통합 시험이 대부분 인증 컨텍스트를 손으로 조립해서 실제 배선 경로가 통합 계층에서 거의 걸리지 않는다.
+@h3 대역이 실제보다 관대하면 그만큼이 사각지대다 (두 방향)
+@b 단위 시험의 Pool 대역은 query가 불렸는지만 본다. 열 이름이나 ON CONFLICT 대상이 틀려도 통과시킨다.
+@p 그래서 실제 PostgreSQL을 쓰는 통합 시험을 따로 더했다.
+@b 반대로 대역이 실제보다 엄격해도 시험이 깨진다. fake-docker가 SESSION_COOKIE_SECURE=false를 보면
+@p 무조건 죽이도록 되어 있어 허용 형상까지 죽였다. 그 픽스처의 주석이 이 상황을 예고하고 있었다 — 「게이트의 검사 모양이 바뀌면 여기도 바뀌어야 한다」.
+@h3 파이프가 종료 코드를 가린다
+@p build-bundle.sh ... | tail -45로 실행해 tail의 종료 코드 0이 잡혔다. 게이트가 실패했는데 성공으로 보였다. 긴 출력을 보려면 파일로 받고 종료 코드는 스크립트 자체의 것을 읽는다.
+@h3 빌드는 메모리를 많이 쓴다 — 남의 컨테이너를 확인하라
+@p 첫 번들 빌드가 호스트 메모리 부족으로 죽었다. 앞 라운드의 적재 검증이 남긴 prs-pilot-* 스택 14개가 약 2GiB를 쓰고 있었다. 임의로 내리지 말고 물어라 — 볼륨에 적재 데이터가 있을 수 있다. stop은 볼륨을 보존한다.
+@h3 docker compose -p <이름> start는 compose 파일이 있어야 한다
+@p 프로젝트 이름만으로는 서비스 정의를 모른다. 컨테이너 라벨 (com.docker.compose.project.config_files)에서 출처를 읽거나 docker start <이름>을 직접 쓴다.
+@h3 여전히 유효한 것
+@b 공유 체크아웃이다. 브랜치는 워크트리로 격리하고 스테이징은 경로를 명시한다. git add -A를 쓰지 않는다.
+@path 병렬 세션이 있으면 채번 현황을 먼저 알린다. 이 판에서 pr-search-03이 물어 왔고 CR-082·083, DEV-561·612·613을 알렸다.
+@b 문서 파일은 docs/가 CRLF, deploy/와 packages/가 LF다. 편집 전에 잰다.
+@b gh release view --json에 digest가 없다. 자산 해시는 gh api로 확인한다.
 @h2 2026-09-11 (3차) 라운드가 배운 함정 (WP-074 M 번호)
 @h3 초록은 안전을 뜻하지 않는다 — 이 판에서 여섯 번
 @risk 독립 리뷰가 찾은 blocker 1건과 major 6건 중 여섯은 시험이 전부 초록인 채로 존재했다.

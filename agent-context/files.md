@@ -1,5 +1,63 @@
 # 중요 파일 경로와 역할
 
+## 2026-09-11 (4차) 라운드가 만진 것 (CR-082 · CR-083 — 48개 파일, 4,583줄)
+
+`main = 523edae`. 전체 목록은 `git diff --stat e01bce1 523edae`다.
+
+### 인증 — 새로 생긴 것
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/authz/src/github-oauth.ts` | **GHE OAuth2 전부.** 인가 URL·토큰 교환·`/user`·`/user/teams` 조회. `joinUrl`이 이 파일의 **유일한 주소 조립 규칙**이다 |
+| `packages/authz/src/github-oauth.test.ts` | 39건. 200-with-error, `id` 정수 검증, 페이지 상한, NFR-005 |
+| `apps/search-api/src/auth/registration.ts` | **`RegisteringSessionStore`** — 세션을 읽을 때 `app_user`를 upsert (`DEV-613`) |
+| `apps/search-api/src/auth/registration.test.ts` | 12건. 대역 `Pool`로 호출과 인자를 본다 |
+| `apps/search-api/integration/authz/registration.test.ts` | 7건. **실제 PostgreSQL.** 행이 생기는가, 재로그인이 관리자 지정을 지우지 않는가, **조립이 배선하는가** |
+| `apps/web/app/auth/login/route.test.ts` | 13건. 공급자별 리다이렉트 대상 |
+| `apps/web/app/auth/callback/route.test.ts` | 13건. **`fetch`만 대역으로 두어 실제 경로가 전부 돈다.** 신원 키·역할 합성·쿠키·실패 로그 |
+
+### 인증 — 고친 것
+
+| 경로 | 무엇이 바뀌었나 |
+| --- | --- |
+| `packages/authz/src/config.ts` | `resolveAuthProvider`·`resolveGitHubAuthConfig`·`resolveTeamRoleMap`·`hasAuthCredentials`·`parseScopes`. 쿠키 면제는 **명시적 `AUTH_ENABLED=false`**에 걸린다 |
+| `packages/authz/src/session.ts` · `session-store.ts` | `SessionRecord.githubUserId`(선택). `parseSession`은 모양이 틀리면 **그 값만** 버린다 |
+| `apps/web/app/auth/login/route.ts` | `authorizationUrlFor` 한 함수가 분기의 전부 |
+| `apps/web/app/auth/callback/route.ts` | `identifyViaOidc`/`identifyViaGitHub`. `logAuthFailure`. **쿠키 둘을 `headers.append`로 통일**(`DEV-614`) |
+| `apps/web/lib/oidc-state.ts` | `serializeCookie` — 쿠키를 한 방법으로 달기 위해 |
+| `apps/web/lib/server/config.ts` | `webConfigFailure`가 공급자별 필수 키와 `GHE_TEAM_ROLE_MAP`을 본다 |
+| `apps/search-api/src/auth/context.ts` | `RegisteringSessionStore` 배선. `AuthContext.sessions`는 **기반 타입**으로 선언 |
+
+### 배포 정의와 게이트
+
+| 경로 | 무엇 |
+| --- | --- |
+| `deploy/single-host/compose.yml` | `x-app-env`에 `GIT_SSL_CAINFO`. `web`에 GHE OAuth 키 일곱 |
+| `deploy/single-host/.env.example` | CA 항목, GHE 로그인 절, 그룹 매핑 안내 정정(`DEV-612`) |
+| `deploy/single-host/RUNBOOK.md` | 6장 CA 4단계 · GHE 로그인 절차, 8장 증상 넷 |
+| `deploy/single-host/smoke-images.sh` | **`expect_accepted` 추가.** 거부 기대 넷을 새 계약에 맞췄다 |
+| `regression/fixtures/release-tag/fake-docker` | 값 하나가 아니라 **구성을 모아 계약대로 판정** |
+
+### 회귀 — 두 대조가 이 판의 핵심이다
+
+| 경로 | 무엇을 묻는가 |
+| --- | --- |
+| `regression/runtime-reachability.test.ts` | `describe('사설 CA가 git 서브프로세스에도 닿는다')` — **서비스마다 병합 앵커를 펼친 최종 환경 키 집합**을 만들어 `MIRROR_ROOT`를 선언한 서비스가 전부 받는지 |
+| `apps/web/lib/server/config.test.ts` | `describe('DEV-615: 릴리스 게이트가 계약과 같은 말을 한다')` — **스모크의 기대 조합을 뽑아 `webConfigFailure`에 넣는다** |
+
+### 문서
+
+- `docs/10_requirements/srs_final.md` — `v2.24`. `FR-AUTH-001` 요구사항 문장과 `AC-1`·`AC-2`·`AC-6`~`AC-9`, 10장 인터페이스 표
+- `docs/00_governance/change_control.md` — `CR-082`·`CR-083`과 각 cascade
+- `docs/40_delivery/pr_search_implementation_traceability.md` — `v6.69`. 6.77(CA)·6.78(GHE)·6.79(게이트)·6.80(발행)장
+- `docs/40_delivery/pr_search_work_packages.md` — `v2.26`. `WP-076` 신설·done
+- `agent-context/upstream-feedback.md` — 두 요청에 처리 결과와 **제안과 다르게 한 자리**를 적었다
+
+### 저장소 밖 (전부 정리했다)
+
+앞 라운드가 남긴 워크트리 일곱과 `/tmp` 산출물 넷, 빌드 캐시 63GB, 오래된 `prs/*` 이미지 19개를 제거했다.
+**남은 것**: `prs/*` 이미지는 `pilot.4`·`pilot.5`만, 파일럿 볼륨 여섯 개는 보존.
+
 ## 2026-09-11 (3차) 라운드가 만진 것 (WP-074 — 115개 파일, 13,168줄)
 
 `main = e01bce1`. 신규 파일이 많아 **역할별로만** 적는다. 전체 목록은 `git diff --stat c1246c5 e01bce1`이다.

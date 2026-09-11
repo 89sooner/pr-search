@@ -1,5 +1,65 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
 
+## Session: 2026-09-11 (4차) — 사내 요청 두 건 반영과 `0.1.0-pilot.5` 발행 (CR-082 · CR-083)
+
+### Goal — 결정자의 말로
+
+「`agent-context/upstream-feedback.md` 으로 사내망에서 이슈가 생겨 전달해온 내용을 현재 이 세션에서 해결한 후
+이것까지 포함된 release를 발행하자.」
+
+세션 중반에 쿠키 완화 방식을 물었고 **「인증이 꺼졌을 때만 허용」**을 골랐다. 선택지를 제시할 때 그것이 사내 요청의
+절반이라는 것을 명시했고, 그것을 알면서 고른 결정이다.
+
+### Current state
+
+- `main = 523edae`. PR #172·#173·#174·#175 넷이 병합됐다.
+- **`0.1.0-pilot.5` 발행 완료.** Latest이며 `immutable`이라 잠겼다.
+- `CR-082`·`CR-083` closed. `DEV-561`·`DEV-612`~`DEV-615` 전부 resolved.
+- **사내 반입과 실제 GHE OAuth App 검증은 `NOT RUN`이다.**
+
+### Decisions — 이 세션이 고른 것
+
+`decisions.md`의 표에 있다. 요약하면 넷이다.
+
+- **신규 FR을 만들지 않고 `FR-AUTH-001`을 넓혔다** — 요구사항 문장이 그대로이고 공급자만 늘어난다.
+- **갈리는 자리를 신원 획득 단계 하나로 가뒀다** — 나머지는 두 공급자가 공유한다.
+- **쿠키 면제를 계산값이 아니라 명시적 선언에 걸었다** — `CR-078`이 적은 우려를 구조로 막는다.
+- **사내 제안 둘을 그대로 쓰지 않았다** — 역할 이름과 완화 범위. 근거는 승인된 계약이다.
+
+### Changed files
+
+48개 파일 4,583줄. 역할별 정리는 `files.md`에 있다. 먼저 읽을 넷은
+`packages/authz/src/github-oauth.ts` · `packages/authz/src/config.ts` ·
+`apps/web/app/auth/callback/route.ts` · `apps/search-api/src/auth/registration.ts`다.
+
+### Commands
+
+`commands.md`에 배터리·변이·번들·발행·정리가 전부 있다. 실패한 명령 일곱도 원인과 함께 있다.
+
+### Next steps
+
+- **사내 반입 결과를 기다린다.** 외부에서 할 수 있는 일이 아니다.
+- 결정자가 사내에 셋을 전달한다 — 버전·읽기 토큰·자산 SHA-256 (`DEV-530`).
+- `WP-075`(GHE 제목 쓰기)를 자동으로 시작하지 않는다.
+- 열린 편차 셋(`DEV-581`·`588`·`603`)은 계약 판단을 기다린다.
+
+### Risks/gotchas — 이 세션이 배운 것
+
+- **계약을 바꿀 때 강제하는 자리가 몇 곳인지 세라.** 셋 중 둘만 고쳐 발행이 막혔다 (`DEV-615`).
+- **검사의 「존재」를 세는 회귀는 「기대가 반대인」 상태를 못 본다.** 게이트의 기대를 실제 계약 함수에 넣어 대조한다.
+- **한 방향만 거는 게이트는 계약이 넓어질 때 반대로 거짓말한다.** 허용 기대를 처음 넣었다.
+- **라우트 시험이 없으면 응답 조립 결함이 영원히 안 잡힌다** (`DEV-614`).
+- **파이프가 종료 코드를 가린다.** `| tail`로 게이트 실패를 성공으로 읽었다.
+- 자세한 것은 `risks.md`에 있다.
+
+### References
+
+- PR [#172](https://github.com/89sooner/pr-search/pull/172) CA · [#173](https://github.com/89sooner/pr-search/pull/173) GHE 로그인 · [#174](https://github.com/89sooner/pr-search/pull/174) 게이트 · [#175](https://github.com/89sooner/pr-search/pull/175) 발행 기록
+- 릴리스 [`0.1.0-pilot.5`](https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.5) — 태그가 `2795666`을 가리킨다
+- 원장 `docs/40_delivery/pr_search_implementation_traceability.md` 6.77~6.80장이 검증의 정본이다
+- worklog: Obsidian `dailywork/2026-09-11_사내-GHE-요청-반영과-0.1.0-pilot.5-발행.md`
+- 전사(`/export`)는 이 세션에서 **요청받지 않았다** — 필요하면 결정자가 직접 실행한다
+
 ## Session: 2026-09-11 (3차) — WP-074 M 번호 수직 구현 (CR-080 · CR-081)
 
 ### Goal — 결정자의 말로
