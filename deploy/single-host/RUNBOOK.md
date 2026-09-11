@@ -495,8 +495,14 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 1. CA 인증서를 호스트에 둔다.
 2. `compose.yml`의 해당 서비스에 그 파일을 읽기 전용으로 마운트한다.
 3. `.env`의 `NODE_EXTRA_CA_CERTS`에 **컨테이너 안 경로**를 적는다.
+4. `.env`의 `GIT_SSL_CAINFO`에 **같은 경로**를 적는다.
 
-`git` 서브프로세스는 별도로 `GIT_SSL_CAINFO`를 받는다.
+**`git` 서브프로세스는 `NODE_EXTRA_CA_CERTS`를 보지 않는다** (`DEV-561`).
+미러 초기화(`JOB-MIR-001`)와 미러 fetch는 `git`을 직접 부르므로 CA 경로를
+`GIT_SSL_CAINFO`로 따로 받아야 한다. 4단계를 빠뜨리면 **Node로 나가는 호출은
+전부 성립하는데 미러만 `SSL certificate problem`으로 실패한다** — 다른 서비스가
+정상이라 원인이 CA로 보이지 않는 것이 이 결함의 대가였다. 두 변수에 다른 값을
+주지 않는다.
 
 #### 2단계의 함정 — anchor는 얕게 합쳐진다
 
@@ -651,6 +657,7 @@ done
 | `web`이 재기동을 반복한다 · 로그에 `web 구성이 성립하지 않아 기동할 수 없다` | **의도된 거부다** (`DEV-577`). 로그의 다음 줄이 어느 계약을 어겼는지 적는다. 가장 잦은 것은 운영에서 `SESSION_COOKIE_SECURE=false`이며, 값을 `true`로 되돌리고 `./prsctl upgrade`를 다시 돌린다 (2.B). 이 거부가 없던 시절에는 같은 구성이 초록으로 서서 화면만 500이었다 |
 | 인증을 켠 뒤 모든 화면이 로그인으로 갔다가 500 | `OIDC_REDIRECT_URI`를 채웠는가 (`DEV-579`). 값은 `<서비스 주소>/auth/callback`이며 IdP에 등록한 것과 문자 그대로 같아야 한다. 고친 버전에서는 이 값이 비면 `web`이 아예 기동하지 않으므로 이 증상은 `DEV-579` 이전 빌드에서만 난다 |
 | GHE 호출이 인증서 오류 · 기동 로그에 CA 경고 | CA를 **여섯 자리 전부**에 걸었는가. anchor는 얕게 합쳐져 `worker-sequence`·`worker-mirror`·`worker-release`에 닿지 않는다 (6장 「anchor는 얕게 합쳐진다」, `DEV-552`) |
+| `JOB-MIR-001`이 SSL 오류로 실패하고 **미러 볼륨이 비어 있다** (다른 서비스는 정상) | `git`이 사내 CA를 신뢰하지 않는다. `NODE_EXTRA_CA_CERTS`는 Node 런타임만 읽으므로 `git` 서브프로세스에는 닿지 않는다 (`DEV-561`). `.env`의 `GIT_SSL_CAINFO`에 `NODE_EXTRA_CA_CERTS`와 **같은 경로**를 적고 `./prsctl upgrade`를 돌린다. 값만 넣고 컨테이너를 다시 만들지 않으면 반영되지 않는다 (6장 「사설 CA」) |
 | 서버 안에서 `curl`이 `HTTP/0.9` 오류 | 호스트에 프록시가 강제돼 컨테이너 IP로 가는 요청까지 경유한다. 진단할 때만 `--noproxy '*'`로 우회한다 — 서비스 쪽 프록시 지원은 별개다 (`DEV-494`) |
 | 검색 결과가 비어 있다 | 백필을 실행했는가. `worker-project` 로그에 색인 기록이 있는가 |
 | `group_by=team`이 빈 결과 | `authz` 역할에 GHE 자격이 있는가 — 없으면 작성자 팀이 언제나 모름이다 |
