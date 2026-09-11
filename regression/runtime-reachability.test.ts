@@ -3327,3 +3327,208 @@ describe('초록이 거짓말하지 못한다 (CR-078)', () => {
     expect(RUNBOOK_078).toContain('TLS를 앞에 세우거나');
   });
 });
+
+/**
+ * 사설 CA가 `git`에도 닿는가 (CR-082 / DEV-561).
+ *
+ * ## 무엇이 있었나
+ *
+ * 사내가 `0.1.0-pilot.4`를 올리며 사설 CA를 걸었다. Node로 나가는 호출은 전부
+ * 성립했고 컨테이너도 전부 `healthy`였는데 **미러 초기화만** 실패했다 —
+ * `SSL certificate problem: unable to get local issuer certificate`.
+ *
+ * `NODE_EXTRA_CA_CERTS`는 **Node 런타임만** 읽는다. `JOB-MIR-001`과 미러 fetch는
+ * `git`을 서브프로세스로 부르므로 그 변수를 보지 못하고 `GIT_SSL_CAINFO`를 따로
+ * 받아야 한다. 런북 6장은 그 사실을 **이미 적고 있었으나** `compose.yml`이 그
+ * 변수를 컨테이너에 넘기지 않았다 — 문서가 존재하지 않는 경로를 안내했다.
+ *
+ * ## 왜 문자열 검사가 아니라 집합 계산인가
+ *
+ * 앵커에 키를 넣는 것과 **그 키가 서비스에 닿는 것은 다른 명제다.** `DEV-552`가
+ * 볼륨에서 그것을 가르쳤다 — anchor의 `volumes`는 자기 `volumes`를 가진 서비스
+ * 셋에 닿지 않았다. 파일 어딘가에 `GIT_SSL_CAINFO`가 있는지 묻는 검사는 그 함정을
+ * 통째로 놓친다. 그래서 서비스마다 **최종 환경 키 집합을 만들어** 묻는다.
+ *
+ * 대상 목록을 손으로 적지도 않는다. `MIRROR_ROOT`를 선언한 서비스가 곧 로컬
+ * 미러를 다루는 서비스이고, 그것이 `git`을 부르는 서비스다. 새 역할이 미러를
+ * 쓰기 시작하면 그 서비스가 자동으로 이 검사의 대상이 된다.
+ */
+describe('사설 CA가 git 서브프로세스에도 닿는다 (CR-082 / DEV-561)', () => {
+  const COMPOSE_561 = read('deploy/single-host/compose.yml');
+  const ENV_EXAMPLE_561 = read('deploy/single-host/.env.example');
+  const RUNBOOK_561 = read('deploy/single-host/RUNBOOK.md');
+
+  /**
+   * `compose.yml`의 서비스별 **최종** 환경 키 집합.
+   *
+   * 병합 앵커(`<<: *a` 와 `<<: [*a, *b]`)를 실제로 펼쳐 명시 키와 합집합한다.
+   * 환경 키만 본다 — 앵커 정의의 소문자 키(`image`·`restart`)는 대문자 규칙으로
+   * 자연히 걸러진다.
+   */
+  const composeEnvByService = (source: string): Map<string, Set<string>> => {
+    const lines = source.split('\n');
+    const anchors = new Map<string, Set<string>>();
+    const services = new Map<string, Set<string>>();
+
+    let anchorKeys: Set<string> | undefined;
+    let serviceKeys: Set<string> | undefined;
+    let serviceMerges: string[] = [];
+    let inServices = false;
+    let inEnvironment = false;
+
+    const pending: { keys: Set<string>; merges: string[] }[] = [];
+    const closeService = (): void => {
+      if (serviceKeys) pending.push({ keys: serviceKeys, merges: serviceMerges });
+    };
+
+    for (const line of lines) {
+      const anchorStart = /^x-[a-z0-9-]+: &([a-z0-9-]+)\s*$/.exec(line);
+      if (anchorStart) {
+        anchorKeys = new Set<string>();
+        anchors.set(anchorStart[1]!, anchorKeys);
+        continue;
+      }
+      if (anchorKeys) {
+        const key = /^ {2}([A-Z][A-Z0-9_]*):/.exec(line);
+        if (key) {
+          anchorKeys.add(key[1]!);
+          continue;
+        }
+        // 주석과 빈 줄은 블록을 끝내지 않는다.
+        if (/^\s*(#.*)?$/.test(line)) continue;
+        // 들여쓰기 안의 다른 줄(중첩 매핑 등)은 환경 키가 아니므로 버린다.
+        if (line.startsWith('  ')) continue;
+        // 들여쓰기를 벗어나면 앵커 블록이 끝났다. **이 줄은 버리지 않는다** —
+        // `services:`가 바로 그 자리에 오므로 아래 로직이 다시 본다.
+        anchorKeys = undefined;
+      }
+
+      if (/^services:\s*$/.test(line)) {
+        inServices = true;
+        continue;
+      }
+      if (!inServices) continue;
+
+      const serviceStart = /^ {2}([a-z][a-z0-9-]*):\s*$/.exec(line);
+      if (serviceStart) {
+        closeService();
+        serviceKeys = new Set<string>();
+        serviceMerges = [];
+        services.set(serviceStart[1]!, serviceKeys);
+        inEnvironment = false;
+        continue;
+      }
+      if (!serviceKeys) continue;
+
+      if (/^ {4}environment:\s*$/.test(line)) {
+        inEnvironment = true;
+        continue;
+      }
+      // environment 와 같은 깊이의 다른 키가 나오면 블록이 끝난다.
+      if (/^ {4}[a-z]/.test(line)) {
+        inEnvironment = false;
+        continue;
+      }
+      if (!inEnvironment) continue;
+
+      const listMerge = /^ {6}<<: \[([^\]]+)\]\s*$/.exec(line);
+      if (listMerge) {
+        for (const ref of listMerge[1]!.split(',')) {
+          const name = ref.trim().replace(/^\*/, '');
+          if (name) serviceMerges.push(name);
+        }
+        continue;
+      }
+      const singleMerge = /^ {6}<<: \*([a-z0-9-]+)\s*$/.exec(line);
+      if (singleMerge) {
+        serviceMerges.push(singleMerge[1]!);
+        continue;
+      }
+      const key = /^ {6}([A-Z][A-Z0-9_]*):/.exec(line);
+      if (key) serviceKeys.add(key[1]!);
+    }
+    closeService();
+
+    for (const entry of pending) {
+      for (const anchor of entry.merges) {
+        for (const key of anchors.get(anchor) ?? []) entry.keys.add(key);
+      }
+    }
+    return services;
+  };
+
+  const ENV_BY_SERVICE = composeEnvByService(COMPOSE_561);
+
+  /**
+   * **파서가 먼저 검증 대상이다.** 이 판이 배운 것 중 하나다 — 대역이나 경로
+   * 선택 때문에 아무것도 증명하지 못하는 시험이 넷 있었다. 파서가 조용히 빈
+   * 집합을 만들면 아래 단언이 전부 무의미하게 통과한다.
+   */
+  it('파서가 compose의 서비스와 병합 결과를 실제로 읽는다', () => {
+    expect(ENV_BY_SERVICE.size, '서비스를 하나도 읽지 못했다').toBeGreaterThan(5);
+    for (const name of ['web', 'search-api', 'worker-mirror', 'worker-sequence']) {
+      expect(ENV_BY_SERVICE.has(name), `${name} 서비스를 읽지 못했다`).toBe(true);
+    }
+    // 앵커가 실제로 펼쳐졌는가 — `NODE_ENV`는 `x-app-env`에만 있고 서비스에 다시
+    // 적히지 않는다. 병합이 동작하지 않으면 이 단언이 죽는다.
+    expect(ENV_BY_SERVICE.get('worker-mirror')).toContain('NODE_ENV');
+    // 명시 키도 함께 모이는가 — `MIRROR_ROOT`는 앵커가 아니라 서비스에 직접 있다.
+    expect(ENV_BY_SERVICE.get('worker-mirror')).toContain('MIRROR_ROOT');
+    // 받지 않는 서비스를 받는다고 말하지 않는가 — `SESSION_COOKIE_SECURE`는
+    // `web`에만 간다 (`DEV-577`의 비대칭).
+    expect(ENV_BY_SERVICE.get('search-api')).not.toContain('SESSION_COOKIE_SECURE');
+  });
+
+  /**
+   * **미러를 다루는 서비스는 전부 `git`의 CA 경로를 받는다.**
+   *
+   * 목록을 손으로 적지 않는다. `MIRROR_ROOT`가 그 신호다.
+   */
+  it('미러를 다루는 서비스가 전부 GIT_SSL_CAINFO를 받는다', () => {
+    const mirrorServices = [...ENV_BY_SERVICE.entries()]
+      .filter(([, keys]) => keys.has('MIRROR_ROOT'))
+      .map(([name]) => name);
+
+    expect(mirrorServices.length, 'MIRROR_ROOT를 선언한 서비스가 없다 — 파서나 배포 정의가 바뀌었다').toBeGreaterThanOrEqual(3);
+
+    const missing = mirrorServices.filter((name) => !ENV_BY_SERVICE.get(name)?.has('GIT_SSL_CAINFO'));
+    expect(missing, `git을 부르는 서비스가 CA 경로를 받지 못한다 (DEV-561): ${missing.join(', ')}`).toEqual([]);
+  });
+
+  /**
+   * **두 CA 변수는 같은 자리에 있다.**
+   *
+   * 하나만 받는 서비스가 있으면 그 서비스에서 Node와 git의 신뢰가 갈린다. 그것이
+   * 이 결함의 모양이었다 — 한쪽만 있어서 한쪽만 붙었다.
+   */
+  it('NODE_EXTRA_CA_CERTS를 받는 서비스가 GIT_SSL_CAINFO도 받는다', () => {
+    const asymmetric = [...ENV_BY_SERVICE.entries()]
+      .filter(([, keys]) => keys.has('NODE_EXTRA_CA_CERTS') !== keys.has('GIT_SSL_CAINFO'))
+      .map(([name]) => name);
+    expect(asymmetric, `CA 변수 둘이 갈린 서비스가 있다: ${asymmetric.join(', ')}`).toEqual([]);
+  });
+
+  /**
+   * **운영자가 채울 자리가 `.env.example`에 있어야 한다.**
+   *
+   * 주석만으로는 통과하지 않게 실제 대입 행을 요구한다 — `DEV-556`이 가르친 것이다.
+   */
+  it('.env.example이 GIT_SSL_CAINFO 항목을 준다', () => {
+    expect(ENV_EXAMPLE_561, 'GIT_SSL_CAINFO 대입 행이 없다').toMatch(/^GIT_SSL_CAINFO=/m);
+    expect(ENV_EXAMPLE_561, 'NODE_EXTRA_CA_CERTS 대입 행이 없다').toMatch(/^NODE_EXTRA_CA_CERTS=/m);
+  });
+
+  /**
+   * **런북이 두 변수를 함께 안내한다.**
+   *
+   * 이 결함의 원인 절반은 문서였다. 런북은 `git`이 별도 변수를 받는다고 적고
+   * 있었으나 그 변수를 **어디에 적는지**는 말하지 않았고, 배포 정의에는 자리조차
+   * 없었다. 안내와 실행 경로가 갈리면 문서가 운영자를 없는 길로 보낸다.
+   */
+  it('런북이 git CA 경로의 설정 자리와 증상을 적는다', () => {
+    expect(RUNBOOK_561, '런북이 GIT_SSL_CAINFO를 안내하지 않는다').toContain('GIT_SSL_CAINFO');
+    expect(RUNBOOK_561, 'DEV-561 근거가 런북에 없다').toContain('DEV-561');
+    const table = RUNBOOK_561.slice(RUNBOOK_561.indexOf('| 증상'));
+    expect(table, '미러만 실패하는 증상 행이 없다').toContain('JOB-MIR-001');
+  });
+});

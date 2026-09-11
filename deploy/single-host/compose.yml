@@ -22,6 +22,11 @@ x-app-env: &app-env
   # 사내 사설 CA. Node 런타임이 직접 읽으므로 코드 변경이 필요 없다 (CR-059).
   # 값이 비어 있으면 Node가 무시한다 — 기본 신뢰 저장소를 그대로 쓴다.
   NODE_EXTRA_CA_CERTS: ${NODE_EXTRA_CA_CERTS:-}
+  # **`git` 서브프로세스는 위 변수를 보지 않는다** (DEV-561). 미러 초기화
+  # (JOB-MIR-001)와 미러 fetch는 `git`을 직접 부르므로 CA 경로를 따로 받아야
+  # 한다. 같은 값을 준다 — 두 변수가 가리키는 파일이 갈리면 같은 호스트에서
+  # Node는 붙고 git만 떨어진다. 비어 있으면 git이 무시한다.
+  GIT_SSL_CAINFO: ${GIT_SSL_CAINFO:-}
 
 x-ghe-env: &ghe-env
   GHE_BASE_URL: ${GHE_BASE_URL:?}
@@ -157,6 +162,26 @@ services:
       OIDC_SCOPES: ${OIDC_SCOPES:-}
       OIDC_GROUPS_CLAIM: ${OIDC_GROUPS_CLAIM:-}
       OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
+      # ── 사내 GHE 직접 로그인 (CR-083) ──────────────────────────
+      # `oidc`(기본) | `github`. **`github`를 고르면 위 OIDC 값은 쓰이지 않고
+      # 아래 넷이 필수가 된다.** 별도 IdP 없이 사내 GHE 계정으로 로그인한다.
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-}
+      # 수집 경로와 **같은 서버**를 가리킨다. `x-ghe-env`는 `web`에 오지 않으므로
+      # 여기 따로 준다 — `web`은 수집 자격(`GHE_APP_ID`)을 받지 않는다.
+      GHE_BASE_URL: ${GHE_BASE_URL:-}
+      GHE_API_URL: ${GHE_API_URL:-}
+      # **수집용 GitHub App과 다른 자격이다.** 로그인용 OAuth App을 따로 등록한다
+      # — 자격을 나눠 쓰면 유출 시 피해 범위가 달라진다 (`ADR-022`의 근거).
+      GHE_OAUTH_CLIENT_ID: ${GHE_OAUTH_CLIENT_ID:-}
+      GHE_OAUTH_CLIENT_SECRET: ${GHE_OAUTH_CLIENT_SECRET:-}
+      # `<서비스 주소>/auth/callback`. GHE OAuth App에 등록한 값과 문자 그대로
+      # 같아야 한다. `OIDC_REDIRECT_URI`와 같은 자리이고 같은 함정이다.
+      GHE_OAUTH_REDIRECT_URI: ${GHE_OAUTH_REDIRECT_URI:-}
+      GHE_OAUTH_SCOPES: ${GHE_OAUTH_SCOPES:-}
+      # `<org>/<team>:<역할>` 쌍을 쉼표로 잇는다. 부여할 수 있는 역할은
+      # `manager`와 `qa`뿐이다 (CR-015, DEV-049) — GHE 팀을 만들 수 있는 사람이
+      # 운영 권한을 발급하게 두지 않는다. 비워 두면 모두 `developer`다.
+      GHE_TEAM_ROLE_MAP: ${GHE_TEAM_ROLE_MAP:-}
       # M 번호 (WP-074)는 여기에 없다 — **web은 이 값을 읽지 않는다** (DEV-589).
       # 화면은 응답에 M 키가 있는지로만 판단하고, 켜고 끄는 것은 search-api와
       # worker-sequence의 같은 값이다. 여기 두면 한쪽만 바꿔 놓고 켰다고 믿게 된다.
