@@ -1,5 +1,142 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
 
+## 2026-09-12 라운드에서 쓴 것 (WP-075 · CR-084 · 병합)
+
+### 전제 — Node 22 (앞 라운드와 같다)
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"
+```
+
+### 백킹 서비스를 먼저 세운다 (통합 시험에 필요)
+
+```bash
+cd /home/roqkf/pr-search && docker compose up -d     # prs-postgres/redis/elasticsearch
+timeout 180 bash -c 'until docker exec prs-postgres pg_isready -U prs >/dev/null 2>&1; do sleep 2; done'
+timeout 300 bash -c 'until curl -sf "localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s" >/dev/null 2>&1; do sleep 3; done'
+```
+
+`prs_test`는 볼륨에 남아 있어 다시 만들 필요가 없었다.
+
+### 검증 배터리 (전부 실행했고 이 수치가 원장 6.81장의 정본이다)
+
+```bash
+pnpm typecheck && pnpm lint && pnpm run lint:deps   # 패키지 14개, 위반 0건
+pnpm run test               # 2,314 통과 · 1 skip (125 파일)
+pnpm run test:regression    # 451 통과 (8 파일)
+pnpm run test:integration   # 1,637 통과 (101 파일) — 실제 PG·Redis·ES
+pnpm run test:a11y          # 379 통과 · test:contrast 232쌍 실패 0
+pnpm --filter @prs/web run build && pnpm run test:e2e   # 181 통과
+pnpm build                  # 전체 빌드
+```
+
+**두 vitest 프로세스를 동시에 돌리지 마라.** 공유 `prs_test`에서 deadlock과 정체불명의 실패가
+났다. 한 번에 하나씩 돌린다.
+
+### 변이 시험 — 27종 전부 kill
+
+스크립트로 돌렸다: 치환 → 대상 시험 → **반드시 원복**. 치환 수가 기대와 다르면 즉시 멈춘다.
+
+```python
+# 각 항목: (이름, 경로, 옛 문자열, 새 문자열, [스위트, -t 패턴], 기대 치환 수=1)
+# 스위트: unit / integration / regression
+# 주의: merge-sequence.ts는 파일 끝 구간만 LF라 개행 치환이 어긋난다 — 한 줄짜리 앵커를 쓴다
+```
+
+겨눈 것: 자격 유출 · 옛 제목 사용 · 덮어쓰기 · 멱등 · 에폭(앱·SQL 둘 다) · 해제 · 본문 필드 ·
+권한 재시도 · 감사 실패 · 기본값 · 코드 조작 · 쓰기 직전 울타리 · 쓰기 간격 · 회차 직렬화 ·
+토큰 오류 정규화 · 성공 판정 · 재채번 제외 · 공평한 정렬 · 차단 해제 · 백오프 수열 · 공백 관용 ·
+시간 예산 · 대기 계측 · 감사 순서 · 접두 전용 판정 · 발급 인증 분류.
+
+### 문서 검사기 (CR을 닫기 전에 반드시)
+
+```bash
+python3 /home/roqkf/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --root <워크트리> --strict
+```
+
+**변경 전 `main`과 변경 후를 각각 돌려 대조한다.** 양쪽 다 6건(오류 4·경고 2)으로 같았다 —
+신규 issue 0건. 숨기지 말고 같다는 것을 보여라.
+
+### 리뷰 스레드 조작 (DEV-414: 후속 수정이 스레드 상태를 바꾸지 않는다)
+
+```bash
+# 미해결 스레드의 id와 내용
+gh api graphql -f query='{repository(owner:"89sooner",name:"pr-search"){
+  pullRequest(number:176){reviewThreads(first:40){nodes{id path line isResolved
+    comments(first:1){nodes{author{login} body}}}}}}}' \
+  --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false) | "\(.id)\t\(.path):\(.line)"'
+
+# 답변
+gh api graphql -f query='mutation($t:ID!,$b:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$t, body:$b}){clientMutationId}}' -f t="$ID" -f b="$BODY"
+# 해결 표시
+gh api graphql -f query='mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}' -f t="$ID"
+```
+
+### CI 감시와 병합
+
+```bash
+# `gh run list`에 --branch가 없다. API를 쓴다
+gh api "repos/89sooner/pr-search/actions/runs?branch=<브랜치>&per_page=10" \
+  --jq '.workflow_runs[] | "\(.head_sha[0:7])  \(.conclusion // "running")  \(.created_at)"'
+
+gh pr checks 176
+gh run view <run-id>            # ANNOTATIONS에 실패 사유가 나온다
+gh pr merge 176 --squash --subject "..." --body "..."
+```
+
+**`--delete-branch`를 쓰지 않았다** — 그 브랜치의 워크트리에서 실행하면 로컬 브랜치까지 지워
+워크트리가 깨진다(기록된 gh 2.4.0 quirk).
+
+### 개행 — git이 정규화하지 않을 수 있다
+
+`core.autocrlf=true`인데도 편집한 파일이 CRLF 그대로 인덱스에 들어가 14,000줄짜리 가짜 diff가
+났다. HEAD 블롭은 LF다.
+
+```bash
+git diff --cached --shortstat                      # 규모가 이상하면
+git diff --cached --ignore-cr-at-eol --numstat -- <파일>   # 개행만인지 내용인지 가른다
+```
+
+편집한 파일 중 **HEAD 블롭이 LF인 것만** LF로 맞춘 뒤 3,581줄로 줄었다.
+
+### 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 실패 | 원인 |
+| --- | --- | --- |
+| CI (`verify`·`integration`) | 2~3초 만에 fail | **계정 결제·한도.** 잡이 시작조차 안 됐다. 코드 무관이며 재실행도 같다 |
+| `pnpm run test:integration` (1차) | `audit-records`가 1건 실패 | 중단한 실행이 남긴 잔여 상태. 깨끗한 재실행에서 통과 |
+| `pnpm run test:integration` (2차) | 내 파일 20건 실패 | 픽스처가 `acme/smp1900`을 써서 `mnumber.test.ts`와 `(owner, name)` 충돌. **단독 실행에서는 통과했다** |
+| `merge-number-schema.test.ts` | `migrateDown(pool,1)`이 `['026']` | WP-074 시험이 025를 마지막 마이그레이션으로 가정. 단계 수가 아니라 **내려간 목록**으로 단언하도록 고쳤다 |
+| `pnpm lint` | `import()` 타입 표기 금지 | 목 서버가 `import('node:http').IncomingMessage`를 썼다. 상단 `import type`으로 옮겼다 |
+| `pnpm typecheck` | 픽스처가 새 열 셋을 요구 | `RepositoryRow`에 열을 더하면 리터럴 픽스처가 깨진다(둘) |
+| `gh run rerun --failed` | `unknown flag` | gh 2.4.0에 없다. `gh run rerun <id>`만 쓴다 |
+| `gh run list --branch` | `unknown flag` | 위의 API 호출로 대체한다 |
+| 변이 M06·M07·M18·M23 | 치환 수가 0 또는 2 | 파일 끝 구간만 LF라 개행 치환이 어긋나거나, 수정으로 같은 문자열이 둘이 됐다 |
+
+### 병합 후 재검증
+
+```bash
+git worktree add /tmp/pr-search-postmerge origin/main --detach
+cd /tmp/pr-search-postmerge && pnpm install
+pnpm typecheck && pnpm lint && pnpm run lint:deps
+pnpm run test && pnpm run test:regression && pnpm run test:integration
+python3 /home/roqkf/pr-search/agent-context/count-unresolved-reviews.py   # PR #176은 0건
+```
+
+첫 통합 실행에서 1건이 실패했으나 **어느 시험인지 잡지 못했고** 이어진 두 번의 전량 실행이
+1,637건 전부 통과했다. 재현되지 않아 잔여 상태로 보지만 **항목을 특정하지 못했다는 사실을
+그대로 적는다.**
+
+### 정리
+
+```bash
+git worktree remove <경로> --force && git worktree prune
+git merge --ff-only origin/main     # 로컬 main을 병합 결과로
+pnpm install                         # 메인 체크아웃에 새 패키지 링크
+```
+
+백킹 서비스는 **내리지 않았다** — 볼륨에 `prs_test` 데이터가 있고 다른 세션이 쓸 수 있다.
+
 ## 2026-09-11 (4차) 라운드에서 쓴 것 (CR-082 · CR-083 · 발행)
 
 ### 전제 — Node 22 (앞 라운드와 같다)

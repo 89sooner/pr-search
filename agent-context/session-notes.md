@@ -1,5 +1,79 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
 
+## Session: 2026-09-12 — WP-075 PR 제목 M 넘버 표기 수직 완주 (CR-084)
+
+### Goal — 결정자의 말로
+
+「이번 세션에서는 계획·설계 검토만 하고 멈추지 않는다. 실제 저장소를 조사한 뒤 필요한 설계
+보강 → 구현 → 테스트 → 독립 리뷰 → 리뷰 결함 수정 → CI → PR 병합 → 병합 후 재검증까지,
+승인된 범위 안에서 자율적으로 끝까지 진행하라.」
+
+`WP-075`를 명시적으로 승인했고, 사내 `0.1.0-pilot.5` 반입 대기는 **이번 세션의 blocker가
+아니라고** 못 박았다. 전역 kill switch 추가와 저장소별 해제용 additive migration도 사전
+승인했다.
+
+### Current state
+
+**`main = 918a37b`.** PR [#176](https://github.com/89sooner/pr-search/pull/176)이 squash 병합됐다.
+`CR-084` closed, `WP-075` done, `DEV-616`~`DEV-631` 등록.
+
+- 전역 스위치 `MNUMBER_ANNOTATE_ENABLED`의 기본값이 **꺼짐**이라 이 변경을 받는 것만으로는
+  아무 PR 제목도 바뀌지 않는다.
+- **사내 실제 GHE 표기는 `NOT RUN`.** public 저장소의 PR 제목도 건드리지 않았다.
+- 마이그레이션 026은 외부 DB(`prs_test`)에만 적용했다. 사내 적용은 `NOT RUN`.
+
+### Decisions — 이 세션이 고른 것
+
+`decisions.md`의 2026-09-12 절이 정본이다. 무거운 것 넷만 적으면:
+
+- **쓰기 코드를 새 패키지 `@prs/github-annotate`로 뗐다.** `search-api`가 `@prs/github`을
+  의존하므로 같은 패키지에 두면 조회 서비스의 의존 그래프가 쓰기 코드를 포함한다.
+- **순서가 계약이다** — 코드 확정 → 지금 제목 조회 → 순수 판정 → 정본 재확인 → 제목 한 필드
+  PATCH → 감사 → 정본. 조회를 먼저 두는 것이 at-least-once에서 접두가 두 번 붙지 않게 한다.
+- **운영자 정책과 실행 중 차단을 다른 열로 나눴다** (`annotate_enabled` vs `annotate_blocked_at`).
+- **저장소 코드 규칙을 SQL로 복제하지 않았다.** 굶주림은 정렬(`annotated_at NULLS FIRST`)로
+  풀었다 — 정본이 둘이 되는 대가가 더 크다.
+
+### Changed files
+
+병합 커밋 하나에 48개 파일이 들어갔다(최초 구현 기준). 역할별 정리는 `files.md`에 있다.
+먼저 읽을 넷은
+
+- `packages/github-annotate/src/title.ts` — 순수 판정
+- `packages/github-annotate/src/client.ts` — 쓰기 전용 전송
+- `apps/pipeline-worker/src/annotate.ts` — 워커
+- `packages/db/src/repositories/merge-sequence.ts` — 대상 질의와 울타리
+
+### Commands
+
+`commands.md`의 2026-09-12 절에 배터리·변이 27종·리뷰 스레드 조작·병합이 있다. 실패한 명령도
+원인과 함께 있다.
+
+### Next steps
+
+- **GitHub Actions 결제·한도를 푼 뒤 CI를 다시 돌린다.** 마지막 커밋에서 잡이 시작되지 못했다.
+- 사내 반입 시 런북 7.B로 표기 전용 App을 등록하고 **한 저장소에서 먼저** 켠다.
+- `WP-075`가 끝났으므로 자동으로 다음 기능을 시작하지 않는다. 열린 편차 다섯(`DEV-581`·
+  `DEV-588`·`DEV-603`·`DEV-618`·`DEV-629`)은 전부 판단이 필요하다.
+
+### Risks/gotchas — 이 세션이 배운 것
+
+- **수정이 수정을 만든 자리가 셋이었다** (`DEV-622`→`627`→`628`, `623`→`630`, `619`→`631`).
+  전부 「고친 것을 다시 보게 한」 검토가 잡았다.
+- **문서의 숫자가 무엇을 재는 값인지 확인하지 않고 값만 더하지 마라.** `JOB-SEQ-005`의 「30초」는
+  버스의 `claimIdleMs`였고, 1초 간격을 넣자 회차가 그것을 넘겼다.
+- **검토자의 「미해소」를 그대로 믿지 마라.** 두 검토가 미해소라 적은 둘은 그 사이 이미 닫혀
+  있었다. 코드로 확인한 뒤에 판단했다.
+- 자세한 것은 `risks.md`에 있다.
+
+### References
+
+- PR [#176](https://github.com/89sooner/pr-search/pull/176) — 병합 커밋 `918a37b`
+- 원장 `docs/40_delivery/pr_search_implementation_traceability.md` 6.81장이 검증의 정본
+- 변경 관리 `docs/00_governance/change_control.md`의 `CR-084` cascade
+- 전사: `exports/202609120849.md` — **`/export`가 보고한 저장소 루트가 아니라 `exports/` 아래에
+  생긴다.** 그 디렉터리는 `.gitignore` 대상이다(기존 기록 그대로 재확인).
+
 ## Session: 2026-09-11 (4차) — 사내 요청 두 건 반영과 `0.1.0-pilot.5` 발행 (CR-082 · CR-083)
 
 ### Goal — 결정자의 말로

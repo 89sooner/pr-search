@@ -1,5 +1,87 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
 
+최신 기준 (**2026-09-12 · `WP-075` PR 제목 표기 — `CR-084` closed, 병합 완료**)
+
+**`main = 918a37b`. 실측하라.** PR #176이 squash 병합된 결과이며 그 아래가 `8237ff5`다.
+브랜치 `feature/wp075-pr-title-annotate`는 원격·로컬 모두 남아 있다(삭제하지 않았다).
+
+## 시작하기 전에 실측할 것
+
+```bash
+cd /home/roqkf/pr-search && git fetch origin --quiet && git log --oneline -3 origin/main
+grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1      # 다음 CR 번호 (CR-085로 보인다)
+grep -rohE 'DEV-[0-9]{3}' docs/ | sort -u | tail -1      # 다음 DEV 번호 (DEV-632로 보인다)
+gh release list --limit 3                                 # pilot.5가 여전히 Latest인가
+git worktree list                                         # 하나만 있어야 한다
+gh pr checks 176                                          # CI가 여전히 결제로 막혀 있는가
+```
+
+병렬 세션이 있으면 채번 현황을 물어라. main에서 잰 다음 번호는 열린 PR이 선점한 CR·DEV를 못 본다.
+
+## 가장 앞에 있는 것 — CI 결제 문제
+
+**마지막 커밋에서 GitHub Actions 잡이 시작조차 되지 않았다.** 사유는
+`The job was not started because recent account payments have failed or your spending limit
+needs to be increased`이며 재실행도 같았다. 결정자가 로컬 전 계층 검증을 근거로 병합을
+승인해 병합은 끝났으나, **CI로 확인된 것은 `8ee26cb`까지다.**
+
+- 결정자가 Billing & plans에서 한도를 풀면 `gh run rerun`으로 다시 돌려 확인한다.
+- 그 전까지 이 저장소의 모든 PR이 같은 이유로 막힌다 — 다음 작업의 CI도 못 돈다.
+
+## 사내가 표기를 켜려면 (런북 7.B가 정본)
+
+1. GHE에 **표기 전용 GitHub App**을 새로 등록한다. 수집용 App(`GHE_APP_ID`)과 자격을 공유하지
+   않는다. 권한은 **`Pull requests: write` 하나**이며 공식 문서가 그것만 요구한다.
+2. `.env`에 `MNUMBER_ANNOTATE_ENABLED=true`와 `GHE_ANNOTATE_APP_ID`·`GHE_ANNOTATE_PRIVATE_KEY`·
+   `GHE_ANNOTATE_INSTALLATIONS`를 채운다. **켜 놓고 비어 있으면 `worker-annotate`가 기동을
+   거부한다** (의도된 거부).
+3. `prsctl upgrade`. `.env`만 고치면 반영되지 않는다.
+4. **한 저장소에서 먼저 켠다.** 넓게 열기 전에 제목이 기대대로 바뀌는지 확인한다.
+5. 켜기 전에 **제목 변경이 GHE 목록·알림·빌드 로그로 나간다는 것을 관련자에게 알린다.** 되돌리는
+   자동 경로는 없다 (`ADR-022` Follow-up).
+
+사내 반입에서 확인할 것: 실제 GHE가 제목 갱신을 받아들이는가 · 설치 권한이 하나로 충분한가 ·
+마이그레이션 026이 적용되는가 · 병합된 PR·아카이브 저장소에서 어떤 상태 코드가 오는가(문서가
+보장하지 않아 실측이 필요하다).
+
+## 열린 편차 다섯
+
+| 편차 | 무엇 | 왜 열려 있나 |
+| --- | --- | --- |
+| `DEV-618` | 제목 read-then-write 경합 | **공식 API가 비안전 메서드의 조건부 요청을 지원하지 않는다.** 창을 좁히는 것 외에 할 수 있는 것이 없다. 계약이 넓어지면 재검토 |
+| `DEV-629` | 회차 겹침 방지가 프로세스 국소 | `annotate` 역할을 늘리려면 **분산 claim이 먼저**다. 지금은 두 프로파일이 인스턴스 하나로 못 박혀 있고 회귀가 강제한다 |
+| `DEV-581` | 직접 푸시의 영구 부재 확정 근거 | 공식 GHE 계약에 없다. 결정자의 판단이 필요하다 |
+| `DEV-603` | planner의 멱등 갈래가 도달 불가 | 그 갈래와 `mapping_conflict` 중 어느 쪽이 정본인지 정해야 한다 |
+| `DEV-588` | 조정 스캔 취소 시험의 경합 | `FR-ADMIN-002`를 소유한 WP의 몫이다 |
+
+## 고치지 않기로 한 것 (근거는 원장 6.81장)
+
+- **코드 미해결 행의 재선택 순환** — 굶주림은 정렬로 풀었으나 순환 자체는 남는다. GHE 호출이 한
+  번도 없고 지표 `mnumber_annotate_total{result="code_unavailable"}`가 계속 드러낸다.
+- **부 한도 `403`의 오분류 가능성** — 대기 신호 없는 `403`은 권한으로 보므로 멀쩡한 저장소가
+  쿨다운만큼 멈출 수 있다. 런북에 쿨다운을 짧게 두는 안내를 적었다.
+- **정본 표시와 감사 사이의 crash 창** — 원자성이 불가능한 데서 오는 한계다. 감사를 앞에 두어
+  「감사가 빠지는」 쪽을 피했다.
+
+## 확인할 사항
+
+- [ ] **CI 결제가 풀렸는가.** 풀리면 PR #176의 체크를 다시 돌려 green을 확인한다.
+- [ ] 원격 브랜치 정리 여부 — `feature/wp075-pr-title-annotate`가 남아 있다. 이전 라운드의
+      넷(`fix/dev-561-git-ca-trust`·`feature/ghe-oauth-login`·`fix/smoke-gate-cr083`·
+      `docs/pilot5-published`)도 병합됐으나 그대로다.
+- [ ] `0.1.0-pilot.6` 발행 여부 — **이번 세션은 발행하지 않았다**(승인 범위 밖). 사내가
+      표기 기능을 받으려면 새 번들이 필요하다.
+- [ ] 병합된 PR의 미해결 리뷰 스레드는 GraphQL `isResolved`로 직접 세라. PR #176은 0건이지만
+      저장소 전체로는 26건이 남아 있다(전부 이전 라운드).
+- [ ] 개발 PC의 백킹 서비스(`prs-postgres`·`prs-redis`·`prs-elasticsearch`)를 이 세션이
+      띄웠고 **그대로 두었다**. 볼륨에 `prs_test` 데이터가 있다.
+
+## 그다음 후보
+
+`WP-075`가 끝나 M 넘버 계열(`WP-074`·`WP-075`)이 모두 done이다. 로드맵 4.2장의 순서는 여기서
+끝나고 그 뒤는 `REL-007` 이후 GitHub Operations Plane이다. **자동으로 시작하지 않는다** —
+결정자의 지시를 기다린다.
+
 최신 기준 (**2026-09-11 (4차) · 사내 요청 두 건 반영 — `0.1.0-pilot.5` 발행 완료**)
 
 **`main = 523edae`. 실측하라.** 이 세션이 만든 커밋 넷이 그 위에 있다 —

@@ -1,5 +1,81 @@
 # 중요 파일 경로와 역할
 
+## 2026-09-12 라운드가 만진 것 (WP-075 / CR-084 — 48개 파일)
+
+`main = 918a37b`. 전체 목록은 `git show --stat 918a37b`다.
+
+### 쓰기 경계 — 새 패키지 `packages/github-annotate/`
+
+| 경로 | 역할 |
+| --- | --- |
+| `src/title.ts` | **순수 판정.** `resolveAnnotationTarget`(코드 확정)과 `decideTitleUpdate`(접두 판정). GHE를 부르기 전에 답이 나온다. `LEADING_BRACKET` 정규식이 이중 접두를 막는 자리 |
+| `src/config.ts` | 표기 전용 자격과 전역 스위치. **조회 App의 `GHE_APP_*`를 한 번도 읽지 않는다.** `resolveAnnotateEnabled`·`annotateConfigFailure`·`EVENT_PASS_BUDGET_MS`·`MIN_WRITE_SPACING_MS` |
+| `src/client.ts` | `AnnotateClient` — `readTitle`·`updateTitle`. 본문은 언제나 `{title}` 하나다. `classifyFailure`가 공식 문서의 대기 순서를 그대로 구현하고 `fromProviderError`가 발급기 오류를 이 모델로 옮긴다 |
+| `src/index.ts` | 배럴 |
+| `src/title.test.ts` | 21건. 접두·코드·유니코드·공백·경계값 |
+| `testing/mock-annotate-ghe.ts` | **실제 `node:http` 목.** 메서드·경로·헤더·**본문 원문**을 기록한다. 조회용 목과 나눈 이유는 그쪽이 본문을 기록하지 않기 때문 |
+| `testing/client.test.ts` | 19건. `PATCH` 메서드·경로·본문 키 집합·헤더·실패 분류 |
+| `package.json` · `tsconfig.json` | 의존은 `@prs/domain`·`@prs/github` 둘 |
+
+### 워커
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/pipeline-worker/src/annotate.ts` | `JOB-SEQ-005` 전부. `annotateOne`(한 행) · `runAnnotationPass`(회차, 모듈 수준 `passChain`으로 직렬화) · `handleMergeNumberAssigned`(이벤트) · `startAnnotateSweeper`(잔여 스윕) · `withRetry` · `recordAnnotateAudit` |
+| `apps/pipeline-worker/src/annotate.test.ts` | 41건. **진짜 client + 진짜 HTTP 목 + 기록용 Pool 대역** |
+| `apps/pipeline-worker/src/index.ts` | `roles.includes('annotate')` 블록. 꺼져 있으면 구독조차 걸지 않고, 켜 놓고 자격이 없으면 **던진다** |
+| `apps/pipeline-worker/src/metrics.ts` | `mnumberAnnotateTotal{result}` · `mnumberAnnotateMismatchTotal` |
+
+### 정본과 질의
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/db/migrations/026_annotate_policy.{up,down}.sql` | `repository`에 `annotate_enabled`(운영자) · `annotate_blocked_at`·`annotate_blocked_reason`(실행 중 차단). additive |
+| `packages/db/src/repositories/merge-sequence.ts` | 파일 **끝에** 추가 — `listAnnotateTargets`(에폭 조인·공평한 정렬) · `isAnnotationCurrent`(**쓰기 직전 울타리**) · `markAnnotateState` · `markDisabledRepositoryTargets` |
+| `packages/db/src/repositories/repository.ts` | `RepositoryRow`에 세 열, `RepositorySettings`에 `annotate_enabled`, `blockAnnotation`·`clearAnnotationBlock` |
+| `packages/domain/src/audit.ts` | `pull_request.annotate`를 활성으로, `ANNOTATE_PRINCIPAL = 'system:annotate'` |
+| `packages/bus/src/topics.ts` | `LOGICAL_CONSUMERS[prs:projected]`에 `annotate` — `mnumber`와 **다른 group** |
+| `packages/github/src/config.ts` | `parseInstallations`가 변수 이름을 인자로 받는다(기본값 유지) |
+
+### API와 배포
+
+| 경로 | 무엇 |
+| --- | --- |
+| `apps/search-api/src/ops/routes.ts` | `PATCH /admin/repositories/{id}`에 `annotate_enabled`. 기존 `repository.update` 감사에 얹었다 |
+| `deploy/single-host/compose.yml` | `x-annotate-env` 앵커와 `worker-annotate`. **`*ghe-env`를 merge하지 않는다** |
+| `deploy/k8s/pipeline-worker-annotate.yaml` | 전용 시크릿만 `envFrom`, 공용 값은 `DATABASE_URL` 한 키만 |
+| `deploy/k8s/annotate-secret.example.yaml` | `prs-annotate-secrets` 자리표시자 |
+| `deploy/k8s/configmap.yaml` · `README.md` | 전역 스위치와 적용 순서 |
+| `deploy/single-host/.env.example` | 표기 절 (스위치·자격 셋·스윕·쿨다운·쓰기 간격) |
+| `deploy/single-host/RUNBOOK.md` | **7.B 「PR 제목에 M 넘버를 표기하기」**와 8장 증상 셋 |
+
+### 회귀 — 이 판의 핵심 둘
+
+| 경로 | 무엇을 묻는가 |
+| --- | --- |
+| `regression/runtime-reachability.test.ts` | `describe('표기 쓰기 자격이 조회 경로로 새지 않는다')` — 의존 그래프·전송 계층·**서비스별 최종 환경 키 집합**으로 자격 분리를 양방향으로 강제. `composeEnvByService`를 모듈 범위로 **추출**해 CR-082 블록과 공유한다 |
+| `apps/pipeline-worker/integration/sequence/annotate.test.ts` | 28건. **실제 PostgreSQL** — 에폭 조인·상태 전이·해제 표시·차단 쿨다운·공평한 정렬·감사 행 |
+
+### 문서
+
+- `docs/00_governance/change_control.md` — `CR-084`와 cascade
+- `docs/10_requirements/srs_final.md` — v2.25. 감사 표의 상태 칸 하나(미활성 → 활성)
+- `docs/30_technical_architecture/pr_search_data_model.md` v0.20 · `_async_events_jobs.md` v0.10 ·
+  `_infrastructure_operations.md` v0.15 · `_api_contracts.md`
+- `docs/40_delivery/pr_search_work_packages.md` v2.27 · `_implementation_roadmap.md` v0.18 ·
+  `_implementation_traceability.md` **v6.70 — 6.81장이 검증의 정본**
+
+### 손대면 안 되는 것
+
+`0.1.0-pilot.5` 태그·자산 · 사내 운영 DB · **실제 GHE PR 제목** · `packages/authz/src/config.ts`의
+보안 계약 · `packages/github/src/client.ts`의 읽기 전용 경계.
+
+### 저장소 밖
+
+- `exports/202609120849.md` — 이 세션의 전사. `.gitignore` 대상이며 compact 입력이 아니다.
+- 워크트리 `/tmp/pr-search-wp075`·`/tmp/pr-search-postmerge`는 **정리했다**.
+- 개발 백킹 서비스(`prs-postgres`·`prs-redis`·`prs-elasticsearch`)는 **띄운 채로 두었다**.
+
 ## 2026-09-11 (4차) 라운드가 만진 것 (CR-082 · CR-083 — 48개 파일, 4,583줄)
 
 `main = 523edae`. 전체 목록은 `git diff --stat e01bce1 523edae`다.
