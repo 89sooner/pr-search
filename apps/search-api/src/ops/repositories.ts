@@ -14,6 +14,7 @@
 
 import {
   jobRepo,
+  mergeSequenceRepo,
   registrationRequestRepo,
   repositoryRepo,
   withReindexWrite,
@@ -389,6 +390,22 @@ export interface UpdateResult {
   readonly repository: RepositoryRow;
   /** 새로 대상이 된 브랜치의 채번 잡 식별자들 (FR-ING-009 AC-12). */
   readonly sequenceJobIds: readonly number[];
+  /** 표기 재개를 요청했다면 그 결과 (WP-075 안전성 보강). */
+  readonly annotateResumed?: { readonly block_cleared: boolean; readonly targets_reopened: number };
+}
+
+export interface UpdateRepositoryOptions {
+  /**
+   * 표기를 **운영자의 판단으로** 다시 연다.
+   *
+   * 두 가지를 함께 푼다: 권한 오류로 걸린 실행 중 차단과, 서버가 본문을 바꿔 저장해
+   * 멈춘 행(`body_changed`)이다. 둘 다 **스스로는 풀리지 않는 상태**이며, 그렇게 둔
+   * 이유가 있다 — 앞의 것은 「읽을 수 있다」가 「고칠 수 있다」를 뜻하지 않기
+   * 때문이고, 뒤의 것은 자동 재시도가 이미 확인된 차이를 덮기 때문이다.
+   *
+   * 이미 GHE에 붙은 제목을 되돌리지 않는다. 여는 것은 **다음 시도의 자격**뿐이다.
+   */
+  readonly resumeAnnotation?: boolean;
 }
 
 export async function updateRepository(
@@ -397,6 +414,7 @@ export async function updateRepository(
   settings: repositoryRepo.RepositorySettings,
   actor: string,
   correlationId: string,
+  options: UpdateRepositoryOptions = {},
 ): Promise<UpdateResult> {
   /*
    * **바꾸기 전 목록을 먼저 읽는다** (CR-055). 갱신 뒤에 읽으면 무엇이 새로
@@ -434,7 +452,23 @@ export async function updateRepository(
     newBranches(before?.sequence_branches, updated.sequence_branches),
     actor,
   );
-  return { repository: updated, sequenceJobIds };
+
+  if (options.resumeAnnotation !== true) return { repository: updated, sequenceJobIds };
+
+  /*
+   * **재개는 설정 변경과 같은 감사 한 줄에 담는다** (CR-054의 규율). 운영자가 누른
+   * 것은 「이 저장소의 표기를 다시 열어라」 하나이고, 그것을 액션 둘로 쪼개면 같은
+   * 행위가 두 번 세어진다. 몇 건을 다시 열었는지는 응답이 말한다.
+   */
+  const blocked = before?.annotate_blocked_at !== null && before?.annotate_blocked_at !== undefined;
+  await repositoryRepo.clearAnnotationBlock(deps.pool, repositoryId);
+  const reopened = await mergeSequenceRepo.resumeAnnotateTargets(deps.pool, repositoryId);
+  const refreshed = await repositoryRepo.findRepositoryById(deps.pool, repositoryId);
+  return {
+    repository: refreshed ?? updated,
+    sequenceJobIds,
+    annotateResumed: { block_cleared: blocked, targets_reopened: reopened },
+  };
 }
 
 export async function unregisterRepository(

@@ -1,6 +1,6 @@
 # PR Search 비동기 작업 및 이벤트
 
-> 상태: review | 버전: v0.10 | 갱신일: 2026-09-12
+> 상태: review | 버전: v0.11 | 갱신일: 2026-09-13
 
 CR-079 / ADR-023: JOB-SEQ-004는 sequence 역할의 durable poll과 기존 EventBus를 사용한다. 원본 저장→refresh, snapshot 저장→reconcile, 번호 저장→materialize/announce가 각각 원자적이다. 기동/매초 poll·lease·generation CAS·retry·SIGTERM은 [설계](pr_search_wp074_design.md) 4~8절이 정본이다. 일일 스윕만으로 late mapping 재개를 대신하지 않는다. EVT-SEQ-004는 prs:projected에 발행하며 기존 link/commit-enrich는 이름 필터로 무시한다. ES는 sequence 역할의 durable materialize가 소유한다. **CR-084(WP-075)가 `annotate` 전용 소비자 그룹을 추가했다** — `mnumber`와 다른 group이며 전역 스위치 기본값이 꺼짐이라 켜기 전에는 구독하지 않는다.
 
@@ -69,7 +69,7 @@ CR-079 / ADR-023: JOB-SEQ-004는 sequence 역할의 durable poll과 기존 Event
 | JOB-SEQ-002 | 시퀀스 재채번 | 재작성 감지(자동) / 수동 (API-ADM-007 → `sequence_reassign` 잡) | `sequence` 역할 — 자동은 버스 소비자, **수동은 `startSequenceRepairRunner`가 잡을 claim한다** (CR-034, DEV-178) | 없음 (실패 시 `stale`) | 60분 | EVT-SEQ-002, EVT-JOB-001 | FR-SEQ-005, FR-ADMIN-003 AC-4 |
 | JOB-SEQ-003 | 시퀀스 정합성 점검 | 수동 / 스케줄 (일 1회, 표본) | **`sequence` 역할** | 3회 | 30분 | EVT-JOB-001 | FR-ADMIN-003 |
 | JOB-SEQ-004 | M 번호 채번 | EVT-SEQ-001·002 / PR snapshot 확정 후 durable reconcile / 기동·1초 poll / 일 1회 잔여 대조 | **sequence 역할**, 기존 공간 락 공유 | 락 5초 defer, 오류 5회 후 경보하되 durable retry 유지; 상세 설계 6.3 | 기존 회차 10분, batch 기본 100 | EVT-SEQ-004 | FR-SEQ-008 AC-9~14 |
-| JOB-SEQ-005 | PR 제목 M 넘버 표기 | `EVT-SEQ-004`(`mnumber.assigned`) / 미표기 잔여 스윕 (일 1회) | **`annotate` 역할** — GHE 쓰기 자격 증명을 가진 유일한 워커이며 조회 역할과 분리한다 (ADR-022) | 5회 지수 백오프. 403·404는 재시도하지 않고 사유를 남긴다 | 30초 | - | FR-SEQ-009 |
+| JOB-SEQ-005 | PR 제목 M 넘버 표기 | `EVT-SEQ-004`(`mnumber.assigned`) / 미표기 잔여 스윕 (일 1회) | **`annotate` 역할** — GHE 쓰기 자격 증명을 가진 유일한 워커이며 조회 역할과 분리한다 (ADR-022). **같은 정본 DB에서 실행자는 하나다**: `annotate:runner` advisory 세션 락을 쥔 프로세스만 쓴다 (CR-085 / DEV-629) | 시도 5회 지수 백오프. **재시도는 요청이 아니라 판단 전체를 다시 지난다** — 정본 확인 → 제목 재조회 → 순수 판정 → 간격 → 울타리 → PATCH (CR-085 / `AC-8`). 403·404는 재시도하지 않고 사유를 남긴다 | 이벤트 회차 25초 (**줄 서기부터 잰다**). 이 값은 버스의 `claimIdleMs` 30초보다 짧아야 하며, 넘기면 처리 중인 이벤트를 회수가 가로챈다. 스윕에는 시간 상한이 없고 대신 종료 신호가 진행 중인 회차를 끊는다 | - | FR-SEQ-009 |
 | JOB-REL-001 | 참조 간선 추출 | **EVT-ING-003 / EVT-ING-005** (CR-039, DEV-215) | link | 3회 (**핸들러가 `delivery_count`로 집행한다**, DEV-228) | 30초 | - | FR-REL-003 |
 | JOB-REL-002 | 되돌림 간선 파생 | **EVT-ING-003 / EVT-ING-005** (CR-041, DEV-230) | link | 3회 (**핸들러가 `delivery_count`로 집행**) | 30초 | - | FR-REL-004 |
 | JOB-REL-003 | 체리픽 간선 파생 | **EVT-ING-005** (+ `EVT-ING-003`은 트레일러 경로만) (CR-041, DEV-231) | link | 3회 (**핸들러가 집행**) | 60초 | - | FR-REL-005 |
@@ -632,7 +632,7 @@ JOB-MIR-002는 **`commit.metadata_ready`를 받아 `commit.metadata_ready`를 �
 | JOB-SEQ-003 정합성 점검 (표본) | 1일 | 04:00 KST | 시퀀스 공간별 최근 1000개 대조. **그래프를 읽지 못하면 공간 상태를 바꾸지 않고 실패로 끝낸다** (CR-033, DEV-171) |
 | JOB-MIR-001 미러 동기화 (보정) | 6시간 | - | push 이벤트 누락 대비 |
 | JOB-SEQ-004 M 넘버 채번 (잔여 스윕) | 일 1회 | 04:30 KST | **스케줄은 보정이다.** 주 전달은 `sequence.assigned`·`sequence.reassigned`이며, 스윕은 **PR 연결이 뒤늦게 채워져 멈춰 있던 자리**를 이어받는다 (FR-SEQ-008 AC-3) |
-| JOB-SEQ-005 PR 제목 표기 (미표기 스윕) | 일 1회 | 05:30 KST | 주 전달은 `mnumber.assigned`다. 스윕은 GHE 장애·한도로 밀린 표기와, 쓰기 직후 프로세스가 죽어 정본에 결과를 못 남긴 행을 메운다. **`done`·`mismatch`는 끝난 상태라 다시 보지 않는다** (CR-084) — `mismatch`를 다시 보면 덮지 않기로 한 제목에 요청만 반복한다. `failed`는 일시 실패였을 수 있어 다시 보고, `disabled`는 **운영자가 저장소를 다시 켰을 때만** 대상이 된다. 다시 보는 것이 다시 쓰는 것은 아니다: 처리는 언제나 제목 조회부터이고 이미 같은 접두가 있으면 호출 없이 `done`이 된다 |
+| JOB-SEQ-005 PR 제목 표기 (미표기 스윕) | 일 1회 | 05:30 KST | 주 전달은 `mnumber.assigned`다. 스윕은 GHE 장애·한도로 밀린 표기와, 쓰기 직후 프로세스가 죽어 정본에 결과를 못 남긴 행을 메운다. **`done`·`mismatch`는 끝난 상태라 다시 보지 않는다** (CR-084) — `mismatch`를 다시 보면 덮지 않기로 한 제목에 요청만 반복한다. `failed`는 일시 실패였을 수 있어 다시 보고, `disabled`는 **운영자가 저장소를 다시 켰을 때만** 대상이 된다. `unknown`(응답을 받지 못해 결과를 모르는 행)도 다시 본다 — 확인이 곧 제목 조회이고, 이미 붙어 있으면 호출 없이 끝난다. **`body_changed`는 다시 보지 않는다** (CR-085 / `AC-9`): 서버가 저장한 제목이 보낸 값과 달랐던 행이며, 자동으로 다시 쓰면 그 차이를 덮는다. 운영자가 `annotate_resume`으로 열 때까지 대상에서 빠진다. 다시 보는 것이 다시 쓰는 것은 아니다: 처리는 언제나 제목 조회부터이고 이미 같은 접두가 있으면 호출 없이 `done`이 된다 |
 | JOB-MIR-002 커밋 메타데이터 재보강 | 수시 | - | 스케줄 잡이 아니다. `EVT-ING-003`으로 상시 구동되며, 스케줄 항목에 적는 것은 **미보강 잔여분 스윕**뿐이다 (일 1회, 05:00 KST) |
 | JOB-AUD-001 보존 만료 | 1일 | 03:00 KST | **다가올 파티션을 먼저 보장한 뒤** 만료 파티션을 드롭한다 (CR-054, DEV-417). **대상은 `raw_event`(3년, FR-ING-003 AC-4)와 `audit_record`(1년, NFR-006) 둘뿐이다** — 인프라 9.6이 같은 잡에 얹었던 "완료 잡·해소된 DLQ 90일 정리"는 승인한 FR이 없어 CR-054가 그 귀속을 제거했다(DEV-407). **행 단위 DELETE가 아니라 파티션 DROP이며 관리 롤이 수행한다** (FR-AUTH-004 AC-3). 드롭한 파티션마다 `retention.purge`를 남긴다 |
 

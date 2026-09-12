@@ -3716,3 +3716,170 @@ describe('표기 쓰기 자격이 조회 경로로 새지 않는다 (WP-075 / CR
     expect(row, 'SRS가 아직 미활성이라고 말한다').not.toContain('미활성');
   });
 });
+
+/**
+ * 표기의 안전성 계약을 **구조로** 고정한다 (WP-075 안전성 보강).
+ *
+ * 여기 적힌 것들은 전부 「고쳐 놓으면 다음 수정에서 조용히 사라지는」 성질의 것이다.
+ * 재시도 한 줄을 옮기면 오래된 제목이 다시 나가고, 게이트 호출을 빼면 간격이
+ * 사라지며, 락을 빼도 시험 대부분은 여전히 초록이다. 그래서 시험 가능한 행동이
+ * 아니라 **코드의 모양**을 단언한다.
+ */
+describe('표기 안전성 계약 (WP-075 안전성 보강)', () => {
+  const worker = (): string => read('apps/pipeline-worker/src/annotate.ts');
+
+  it('변경 요청은 시도 함수 안에서만 나간다 — 재시도가 판단을 건너뛸 수 없다', () => {
+    /*
+     * `updateTitle` 호출이 `attemptOnce` 밖에 있으면, 그 자리는 정본 재확인과
+     * 제목 재조회를 지나지 않는 경로다. 호출이 **정확히 하나**여야 한다.
+     */
+    const source = worker();
+    const calls = source.match(/client\.updateTitle\(/g) ?? [];
+    expect(calls, '변경 요청 호출이 하나가 아니다').toHaveLength(1);
+
+    const attemptStart = source.indexOf('async function attemptOnce(');
+    const attemptEnd = source.indexOf('export async function annotateOne(');
+    const callAt = source.indexOf('client.updateTitle(');
+    expect(attemptStart).toBeGreaterThan(-1);
+    expect(callAt).toBeGreaterThan(attemptStart);
+    expect(callAt).toBeLessThan(attemptEnd);
+  });
+
+  it('변경 요청 앞에 정본 재확인과 제목 조회가 모두 있다', () => {
+    const source = worker();
+    const attempt = source.slice(
+      source.indexOf('async function attemptOnce('),
+      source.indexOf('export async function annotateOne('),
+    );
+    const readAt = attempt.indexOf('client.readTitle(');
+    const fenceAt = attempt.lastIndexOf('isAnnotationCurrent(');
+    const writeAt = attempt.indexOf('client.updateTitle(');
+    expect(readAt).toBeGreaterThan(-1);
+    // 제목 조회와 마지막 울타리가 **둘 다** 쓰기보다 앞이다.
+    expect(readAt).toBeLessThan(writeAt);
+    expect(fenceAt).toBeLessThan(writeAt);
+  });
+
+  it('쓰기 차례를 기다리는 호출이 변경 요청 앞에 있다', () => {
+    const attempt = worker().slice(
+      worker().indexOf('async function attemptOnce('),
+      worker().indexOf('export async function annotateOne('),
+    );
+    const gateAt = attempt.indexOf('gate.waitForTurn(');
+    const sentAt = attempt.indexOf('gate.markSent()');
+    const writeAt = attempt.indexOf('client.updateTitle(');
+    expect(gateAt).toBeGreaterThan(-1);
+    expect(gateAt).toBeLessThan(writeAt);
+    // 보낸 시각은 **보내기 전에** 기록한다 — 실패해도 간격이 지켜지게.
+    expect(sentAt).toBeLessThan(writeAt);
+  });
+
+  it('회차가 실행자 락을 지난다 (DEV-629)', () => {
+    const source = worker();
+    expect(source).toContain('withAnnotateRunnerLock(');
+    // 락이 준 커넥션이 시도 맥락으로 들어간다 — 그것이 소유권 확인의 자리다.
+    expect(source).toMatch(/db:\s*client/);
+  });
+
+  it('해제 표시도 실행자 락 안에서 돈다', () => {
+    /*
+     * GHE를 부르지 않는 순수 DB 쓰기라 락 밖에 두기 쉽지만, 그러면 「실행자는
+     * 하나다」가 회차에만 참인 말이 된다. 두 프로세스가 같은 행을 함께 표시하면
+     * `disabled` 지표가 부푼다.
+     */
+    const source = worker();
+    const call = source.indexOf('markDisabledRepositoryTargets(');
+    expect(call).toBeGreaterThan(-1);
+    const before = source.slice(Math.max(0, call - 300), call);
+    expect(before, '해제 표시가 락 밖에서 돈다').toContain('withAnnotateRunnerLock(');
+  });
+
+  it('HTTP 왕복에 회차의 중단 신호가 걸린다', () => {
+    const source = worker();
+    expect(source).toContain('deps.client.readTitle(ref, { signal: context.deadline.signal })');
+    expect(source).toContain('signal: context.deadline.signal');
+    // 전송 계층도 그 신호를 실제로 fetch에 건다.
+    expect(read('packages/github-annotate/src/client.ts')).toContain('AbortSignal.any([');
+  });
+
+  it('스윕 종료가 진행 중인 회차를 끊는다', () => {
+    const source = worker();
+    // 종료 컨트롤러가 회차로 전달되고, `stop`이 그것을 올린다.
+    expect(source).toContain('stopping.abort()');
+    expect(source).toContain('stopping.signal');
+  });
+
+  it('대상 질의가 `body_changed`를 다시 집지 않는다', () => {
+    /*
+     * 이 한 줄이 바뀌면 「확인된 불일치를 자동으로 덮지 않는다」가 무너진다.
+     * 상태 목록을 질의에서 직접 읽어 고정한다.
+     */
+    const repo = read('packages/db/src/repositories/merge-sequence.ts');
+    const clause = /annotate_state IN \(([^)]*)\)/.exec(repo);
+    expect(clause, '대상 질의의 상태 목록을 찾지 못했다').not.toBeNull();
+    const states = (clause?.[1] ?? '').replace(/[' ]/g, '').split(',');
+    expect(states).toContain('failed');
+    expect(states).toContain('disabled');
+    expect(states).toContain('unknown');
+    expect(states, '`body_changed`가 자동 재시도 대상이 되었다').not.toContain('body_changed');
+  });
+
+  it('마이그레이션의 상태 목록과 코드의 상태 유니온이 같다', () => {
+    const migration = read('packages/db/migrations/027_annotate_outcome.up.sql');
+    const repo = read('packages/db/src/repositories/merge-sequence.ts');
+    const inDb = (/annotate_state IN\s*\n?\s*\(([^)]*)\)/.exec(migration)?.[1] ?? '')
+      .replace(/[' \n]/g, '')
+      .split(',')
+      .filter((value) => value !== '');
+    const union = /export type AnnotateState =([^;]*);/.exec(repo)?.[1] ?? '';
+    expect(inDb.length, '마이그레이션에서 상태 목록을 읽지 못했다').toBeGreaterThan(0);
+    for (const state of inDb) {
+      // 데이터베이스가 받는 값은 **전부** 코드의 유니온에 있어야 한다.
+      expect(union, `코드의 AnnotateState가 ${state}를 모른다`).toContain(`'${state}'`);
+    }
+    // 반대 방향도 본다 — 코드만 아는 상태는 쓰는 순간 제약 위반이다.
+    for (const state of union.split('|').map((part) => part.replace(/['\s]/g, '')).filter((part) => part !== '')) {
+      expect(inDb, `데이터베이스가 ${state} 상태를 받지 않는다`).toContain(state);
+    }
+  });
+
+  it('읽기 성공만으로 차단을 풀지 않는다', () => {
+    const source = worker();
+    const clearAt = source.indexOf('clearAnnotationBlock(');
+    expect(clearAt).toBeGreaterThan(-1);
+    // 차단 해제는 「쓴 경우」 갈래 안에 있다. 조회 직후에 있으면 그 앞줄이 `readTitle`이다.
+    const before = source.slice(Math.max(0, clearAt - 600), clearAt);
+    expect(before, '차단 해제가 조회 직후에 있다').not.toContain('client.readTitle(');
+    expect(before).toContain('outcome.wrote');
+  });
+
+  it('감사 결과 코드의 어휘가 계약과 코드에서 같다', () => {
+    /*
+     * 이 저장소의 관례는 **액션마다 자신의 `result_code` 어휘를 계약 문서가 소유하는
+     * 것**이다 (`safe_marker.set`의 선례). 코드가 계약에 없는 값을 남기면 감사 로그를
+     * 읽는 사람이 사유를 복원할 수 없고, 계약에만 있고 코드가 쓰지 않는 값은 있지도
+     * 않은 상태를 문서가 약속하는 것이 된다. 양방향으로 묶는다.
+     */
+    const contract = read('docs/30_technical_architecture/pr_search_security_privacy_architecture.md');
+    const worker = read('apps/pipeline-worker/src/annotate.ts');
+    const declared = ['annotated', 'annotated_observed'];
+    for (const code of declared) {
+      expect(contract, `계약이 ${code}를 적지 않는다`).toContain(`\`${code}\``);
+      expect(worker, `코드가 ${code}를 남기지 않는다`).toContain(`'${code}'`);
+    }
+    // 코드가 쓰는 값이 정확히 그 둘인지 — 세 번째가 조용히 생기지 않게 한다.
+    const used = new Set(
+      [...worker.matchAll(/recordAnnotateAudit\([^)]*?'([a-z_]+)'\s*\)/gs)].map((match) => match[1] as string),
+    );
+    expect([...used].sort()).toEqual([...declared].sort());
+  });
+
+  it('사전 점검은 읽기 전용이다', () => {
+    const cli = read('apps/pipeline-worker/src/annotate-preview-cli.ts');
+    expect(cli).toContain('BEGIN READ ONLY');
+    // 쓰기 경로가 이 파일에 없다.
+    expect(cli).not.toContain('updateTitle');
+    expect(cli).not.toContain('markAnnotateState');
+    expect(cli).not.toContain('clearAnnotationBlock');
+  });
+});

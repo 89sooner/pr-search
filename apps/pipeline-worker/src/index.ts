@@ -78,7 +78,7 @@ import {
   type AnnotateLogFields,
   type AnnotateSweeper,
 } from './annotate.js';
-import { AnnotateClient, annotateConfigFailure, resolveAnnotateConfig } from '@prs/github-annotate';
+import { AnnotateClient, WriteGate, annotateConfigFailure, resolveAnnotateConfig } from '@prs/github-annotate';
 import { startSequenceWorkRunner, type SequenceWorkRunner } from './sequence-work-runner.js';
 import { startSequenceMetadataCleanup, type MetadataCleanup } from './sequence-metadata-cleanup.js';
 import { statSync } from 'node:fs';
@@ -1207,6 +1207,16 @@ if (roles.includes('annotate')) {
       config: annotateConfig,
       metrics,
       log: annotateLog,
+      /*
+       * **간격의 단위는 회차가 아니라 실행자다.** 프로세스마다 하나를 만들어 모든
+       * 회차가 공유해야 이벤트와 스윕이 서로의 간격을 지킨다. 한도 유예도 여기에
+       * 걸리므로 한 이벤트가 받은 429가 뒤따르는 모든 쓰기를 함께 멈춘다.
+       *
+       * `startPaused`는 **재시작 직후**를 위한 것이다. 앞선 프로세스가 방금 쓴
+       * 시각을 이 프로세스는 모르므로, 첫 쓰기를 한 간격만큼 늦춰 재시작이
+       * 간격을 건너뛰는 유일한 자리를 막는다.
+       */
+      gate: new WriteGate({ spacingMs: annotateConfig.writeSpacingMs, startPaused: true }),
       client: new AnnotateClient({
         config: annotateConfig,
         onResponse: (event) => {

@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.26 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.27 | 갱신일: 2026-09-13
 
 ## 1. 목적
 
@@ -2298,7 +2298,9 @@ ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 →
 - **`fulfilled_request_ids`는 개수가 아니라 목록이다** (CR-055). 이 등록이 종료시킨 등록 검토 요청의 ID들이며, 같은 식별자를 여러 사용자가 요청했으면 여럿이다. 0건은 정상이다 — 요청 없이 등록할 수 있다. 요청자·사유는 싣지 않는다: 그것은 `API-ADM-009`의 대기열이 이미 갖고 있고, 두 곳이 같은 사실을 실으면 한쪽만 낡는다
 - **`sequence_job_ids`는 새로 대상이 된 브랜치의 채번 잡이다** (AC-12). 이미 대상이던 브랜치는 여기 없다
 
-요청 (변경): `PATCH /api/v1/admin/repositories/{repository_id}` — `sequence_branches`, `mirror_enabled`, `annotate_enabled`만 바꾼다. 소유자·이름·가시성은 GHE가 소유한 값이라 여기서 바꾸지 않는다.
+요청 (변경): `PATCH /api/v1/admin/repositories/{repository_id}` — `sequence_branches`, `mirror_enabled`, `annotate_enabled`를 바꾸고 `annotate_resume`으로 표기를 다시 연다. 소유자·이름·가시성은 GHE가 소유한 값이라 여기서 바꾸지 않는다.
+
+**`annotate_resume`은 스스로 풀리지 않는 상태를 운영자가 여는 문이다** (`CR-085`, WP-075 안전성 보강). `true`를 주면 둘을 함께 연다: 권한 오류로 걸린 실행 중 차단(`annotate_blocked_at`)과, 서버가 제목을 다르게 저장해 멈춘 행(`annotate_state = 'body_changed'`)이다. **둘 다 자동으로 풀리지 않게 둔 이유가 있다** — 앞의 것은 조회 성공이 쓰기 권한의 증거가 아니기 때문이고(공식 API가 읽기와 쓰기를 다른 권한으로 나눈다), 뒤의 것은 자동 재시도가 이미 확인된 차이를 덮어 `AC-1`을 무너뜨리기 때문이다. **이미 GHE에 붙은 제목을 되돌리지 않는다** — 여는 것은 다음 시도의 자격뿐이다. 응답에 `annotate_resumed: { block_cleared, targets_reopened }`가 실리며, 감사는 별도 액션을 만들지 않고 기존 `repository.update` 한 줄에 담는다(`CR-054`의 규율: 사용자가 누른 것은 하나이므로 두 번 세지 않는다).
 
 **`annotate_enabled`는 PR 제목 M 넘버 표기의 저장소별 해제 스위치다** (`FR-SEQ-009` AC-6, WP-075 / CR-084). 기본값은 `true`이며 끄면 그 저장소는 **채번은 계속하고 표기만 멈춘다** — M 넘버 자체는 `API-SEQ-007`로 여전히 얻을 수 있다. `THR-046`이 실제로 일어났을 때(틀린 값이 계속 쓰일 때) 가장 먼저 쓰는 대응이며, 저장소 단위이므로 문제가 확인된 저장소만 끄고 나머지는 계속된다. **전역 스위치가 따로 있다** — 이 값이 `true`여도 배포의 `MNUMBER_ANNOTATE_ENABLED`가 꺼져 있으면 아무것도 쓰지 않는다. **이 값은 운영자만 바꾼다**: 표기 잡이 권한 오류로 저장소를 멈출 때는 `annotate_blocked_at`을 따로 남기고 이 값을 건드리지 않는다.
 

@@ -37,6 +37,8 @@ interface RecordedQuery {
 interface FakePool {
   readonly queries: RecordedQuery[];
   query: (text: string, values?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }>;
+  /** 실행자 락이 쓰는 전용 커넥션. 대역도 그 경로를 지난다. */
+  connect: () => Promise<{ query: FakePool['query']; release: (destroy?: boolean) => void }>;
 }
 
 interface TargetRow {
@@ -71,10 +73,13 @@ function fakePool(
   options: { targets?: readonly TargetRow[]; epoch?: number; stillCurrent?: boolean } = {},
 ): FakePool {
   const queries: RecordedQuery[] = [];
-  return {
+  const pool: FakePool = {
     queries,
+    connect: async () => ({ query: async (text, values) => pool.query(text, values), release: () => {} }),
     query: async (text: string, values: unknown[] = []) => {
       queries.push({ text, values });
+      if (text.includes('pg_try_advisory_lock')) return { rows: [{ locked: true }], rowCount: 1 };
+      if (text.includes('pg_advisory_unlock')) return { rows: [], rowCount: 1 };
       // 쓰기 직전 재확인. 기본은 「그대로다」이며 시험이 명시적으로 뒤집는다.
       if (text.includes('SELECT true AS ok')) {
         const current = options.stillCurrent ?? true;
@@ -92,6 +97,7 @@ function fakePool(
       return { rows: [], rowCount: 0 };
     },
   };
+  return pool;
 }
 
 function configFor(apiUrl: string, overrides: Record<string, string> = {}): AnnotateConfig {
@@ -263,8 +269,12 @@ describe('annotateOne — 한 행의 판정 (FR-SEQ-009)', () => {
     expect(result).toBe('failed');
     expect(mock.requests.filter((entry) => entry.method === 'GET')).toHaveLength(5);
     expect(pool.queries.some((q) => q.text.includes('SET annotate_state') && q.values[4] === 'failed')).toBe(true);
-    // `merge_number`를 되돌리는 문장은 없다 (AC-3).
-    expect(pool.queries.some((q) => q.text.includes('merge_number ='))).toBe(false);
+    /*
+     * `merge_number`를 되돌리는 **쓰기**는 없다 (AC-3). 읽기 질의의 `WHERE`에는
+     * 그 열이 나온다 — 쓰기 직전 울타리가 번호까지 대조하기 때문이며, 그것을
+     * 「되돌림」으로 세면 울타리를 강화할수록 이 시험이 깨진다.
+     */
+    expect(pool.queries.some((q) => /SET[\s\S]*merge_number\s*=/.test(q.text))).toBe(false);
   });
 
   it('실제로 쓴 경우에만 감사를 남긴다 (FR-SEQ-009 AC-4)', async () => {
@@ -322,11 +332,15 @@ describe('annotateOne — 한 행의 판정 (FR-SEQ-009)', () => {
   });
 });
 
-describe('차단 해제 (리뷰 minor)', () => {
-  it('이미 표기된 행에서도 GHE가 200이면 차단을 푼다', async () => {
+describe('차단 해제 — 읽을 수 있다와 고칠 수 있다는 다르다 (안전성 보강)', () => {
+  it('**제목을 읽는 데 성공해도** 차단을 풀지 않는다', async () => {
     /*
-     * 쓰기 성공에서만 풀면, 남은 대상이 모두 이미 표기된 저장소는 권한이
-     * 복구돼도 차단이 남아 새 PR의 표기가 다음 스윕까지 밀린다.
+     * 처음에는 `GET` 200을 접근의 증거로 보고 차단을 풀었다. 그러나 공식 문서는
+     * 읽기와 쓰기를 **다른 권한**으로 나눈다 — 조회만 가능한 설치에서도 200이 온다.
+     * 그 200으로 차단을 풀면 다음 회차가 다시 403을 받고 다시 막는 순환이 생기고,
+     * 그동안 운영자는 「풀렸다」는 상태를 본다.
+     *
+     * 푸는 것은 **실제 쓰기 성공**이거나 운영자의 명시적 재개다.
      */
     mock = await startMockAnnotateGhe({ initialTitle: '[M-1900-1] 제목' });
     const pool = fakePool();
@@ -334,15 +348,24 @@ describe('차단 해제 (리뷰 minor)', () => {
 
     expect(result).toBe('already_done');
     expect(patches()).toHaveLength(0);
-    expect(pool.queries.some((q) => q.text.includes('annotate_blocked_at = NULL'))).toBe(true);
+    expect(pool.queries.some((q) => q.text.includes('annotate_blocked_at = NULL'))).toBe(false);
   });
 
-  it('불일치에서도 차단을 푼다 — 읽기가 성공했기 때문이다', async () => {
+  it('불일치에서도 풀지 않는다 — 읽은 것이 쓸 수 있다는 뜻은 아니다', async () => {
     mock = await startMockAnnotateGhe({ initialTitle: '[M-1900-77] 제목' });
     const pool = fakePool();
     const result = await annotateOne(depsFor(pool), target(), 'c0ffee00-0000-4000-8000-000000000000');
 
     expect(result).toBe('mismatch');
+    expect(pool.queries.some((q) => q.text.includes('annotate_blocked_at = NULL'))).toBe(false);
+  });
+
+  it('**쓰기에 성공하면** 푼다 — 그것만이 검증된 증거다', async () => {
+    mock = await startMockAnnotateGhe({ initialTitle: '제목' });
+    const pool = fakePool();
+    const result = await annotateOne(depsFor(pool), target(), 'c0ffee00-0000-4000-8000-000000000000');
+
+    expect(result).toBe('updated');
     expect(pool.queries.some((q) => q.text.includes('annotate_blocked_at = NULL'))).toBe(true);
   });
 
@@ -482,17 +505,24 @@ describe('handleMergeNumberAssigned — 이벤트 경로 (§11)', () => {
      * 이벤트를 가로채 같은 행을 다시 집는다. 예산을 넘기면 한 것까지 남기고
      * 돌아오되 **ack하지 않아** 남은 PR이 잔여 스윕까지 밀리지 않게 한다.
      */
-    mock = await startMockAnnotateGhe({ initialTitle: '제목' });
+    let now = 0;
+    /*
+     * **느린 GHE를 요청 지점에서 흉내 낸다.** 쓰기 간격은 이제 쓰기 **앞**에서
+     * 기다리므로, 「쓴 뒤에 잔다」로 시간을 밀던 옛 방식은 새 순서를 재지 못한다.
+     * 왕복마다 10초가 흐르면 첫 행을 마치는 사이에 예산 25초가 지난다.
+     */
+    mock = await startMockAnnotateGhe({
+      initialTitle: '제목',
+      onRequest: () => {
+        now += 10_000;
+      },
+    });
     const rows = Array.from({ length: 3 }, (_unused, index) =>
       target({ merge_seq: 10 + index, pull_request_number: 1234 + index, merge_number: 1 + index }),
     );
-    let now = 0;
     const deps = {
       ...depsFor(fakePool({ targets: rows, epoch: 3 })),
-      // 느린 GHE를 흉내 낸다 — 첫 쓰기에만 간격이 붙고 그것이 예산을 넘긴다.
-      sleep: async () => {
-        now += 30_000;
-      },
+      sleep: async () => {},
       now: () => new Date(now),
     };
     const spy = vi.spyOn(Date, 'now').mockImplementation(() => now);
@@ -600,7 +630,7 @@ describe('쓰기 직전 재확인과 간격 (리뷰 P1·공식 지침)', () => {
     expect(beforeRecheck.some((r) => r.method === 'GET')).toBe(true);
   });
 
-  it('본문이 잘려 돌아오면 성공으로 기록하지 않는다', async () => {
+  it('본문이 잘려 돌아오면 성공이 아니라 **본문 변경**으로 남긴다', async () => {
     /*
      * 공식 문서가 제목 길이 상한을 밝히지 않으므로 서버가 조용히 자르는 경로가
      * 있을 수 있다. 접두만 확인하면 **원래 제목이 잘린 것을 성공으로 기록한다** —
@@ -613,8 +643,15 @@ describe('쓰기 직전 재확인과 간격 (리뷰 P1·공식 지침)', () => {
       '[M-1900-1] 아주 긴 원래';
 
     const result = await annotateOne(truncating, target(), 'c0ffee00-0000-4000-8000-000000000000');
-    expect(result).toBe('failed');
-    expect(pool.queries.some((q) => q.text.includes('SET annotate_state') && q.values[4] === 'failed')).toBe(true);
+    /*
+     * `failed`로 남기면 다음 회차가 이 행을 다시 보고, 그때 제목에는 접두가 있으므로
+     * **`done`으로 덮인다** — 원래 제목이 잘린 사실이 한 회차 만에 성공으로 사라진다.
+     * 그래서 별도 상태로 남기고 자동 재시도에서 빼 둔다.
+     */
+    expect(result).toBe('body_changed');
+    expect(
+      pool.queries.some((q) => q.text.includes('SET annotate_state') && q.values[4] === 'body_changed'),
+    ).toBe(true);
   });
 
   it('재시도 대기의 총합이 회차 예산 안에 들어간다', () => {
@@ -667,27 +704,42 @@ describe('쓰기 직전 재확인과 간격 (리뷰 P1·공식 지침)', () => {
     expect(pool.queries.some((q) => q.text.includes('SET annotate_state') && q.values[4] === 'done')).toBe(true);
   });
 
-  it('접두가 아예 없는 응답은 실패로 남긴다', async () => {
+  it('접두가 아예 없는 응답도 본문 변경으로 남긴다', async () => {
     mock = await startMockAnnotateGhe({ initialTitle: '제목' });
     const pool = fakePool();
     const hostile = depsFor(pool);
     (hostile.client as unknown as { updateTitle: unknown }).updateTitle = async (): Promise<string> => '다른 제목';
 
     const result = await annotateOne(hostile, target(), 'c0ffee00-0000-4000-8000-000000000000');
-    expect(result).toBe('failed');
+    expect(result).toBe('body_changed');
   });
 
-  it('실제로 쓴 뒤에만 쉬고, 조회만 한 회차는 쉬지 않는다', async () => {
-    mock = await startMockAnnotateGhe({ initialTitle: '제목' });
+  it('쓰기 **앞에서** 차례를 기다리고, 조회만 한 회차는 기다리지 않는다', async () => {
+    /*
+     * 간격을 「쓴 뒤에 잔다」로 두면 실패한 요청 사이가 비어 버린다 — 공식 문서의
+     * 권고는 **변경 요청 사이**의 것이므로 성공 여부와 무관해야 한다. 그래서 쓰기
+     * 앞에서 차례를 기다린다: 첫 쓰기는 기다릴 것이 없어 곧바로 나가고, 두 번째부터
+     * 간격이 붙는다. 회차 끝의 불필요한 대기 하나도 함께 사라진다.
+     */
+    mock = await startMockAnnotateGhe({
+      initialTitle: '제목',
+      // 목은 제목을 하나만 들고 있다. 두 PR이 각자 제목을 가진 상황을 만든다.
+      onRequest: (request, control) => {
+        if (request.method === 'GET') control.setTitle('제목');
+      },
+    });
     const slept: number[] = [];
+    const rows = [target(), target({ merge_seq: 78, pull_request_number: 1235, merge_number: 2 })];
     const deps = {
-      ...depsFor(fakePool({ targets: [target()] })),
+      ...depsFor(fakePool({ targets: rows })),
       sleep: async (ms: number) => {
         slept.push(ms);
       },
     };
     await runAnnotationPass(deps, { limit: 10 });
-    expect(slept).toEqual([deps.config.writeSpacingMs]);
+    // 쓰기 둘 사이에 간격 하나. 첫 쓰기 앞과 마지막 쓰기 뒤에는 대기가 없다.
+    expect(slept).toHaveLength(1);
+    expect(slept[0]).toBeGreaterThan(deps.config.writeSpacingMs - 100);
     expect(deps.config.writeSpacingMs).toBeGreaterThanOrEqual(1_000);
 
     // 이미 표기된 행만 있으면 쓰기가 없으므로 쉬지 않는다.

@@ -21,6 +21,14 @@ export interface RecordedRequest {
   readonly headers: Readonly<Record<string, string>>;
   /** 원문 그대로. 파싱 전 바이트를 봐야 "무엇을 보냈는가"를 말할 수 있다. */
   readonly rawBody: string;
+  /**
+   * 서버가 요청을 받은 시각 (`Date.now()`).
+   *
+   * **요청 사이의 실제 간격은 여기서만 잴 수 있다.** 호출부가 잰 시각은 클라이언트가
+   * 재시도를 시작한 시점이고, 공식 문서가 말하는 간격은 **요청이 서버에 닿는 사이**의
+   * 것이다. 시험이 `sleep`을 건너뛰면 둘이 크게 갈린다.
+   */
+  readonly receivedAt: number;
 }
 
 /** 한 번의 응답 지시. 목록의 앞에서부터 하나씩 소비한다. */
@@ -40,6 +48,22 @@ export interface MockAnnotateGheOptions {
   /** 토큰 발급에 순서대로 적용할 지시. */
   readonly tokenScript?: readonly ScriptedResponse[];
   readonly tokenTtlMs?: number;
+  /**
+   * 요청을 기록한 직후, 응답을 만들기 **전에** 불린다.
+   *
+   * 이것이 있어야 "첫 PATCH가 실패한 뒤 사람이 제목을 고쳤다" 같은 순서를 만들 수
+   * 있다. 비동기로 기다리면 느린 GHE도 흉내 낸다 — `setTimeout`으로 응답을 늦추는
+   * 것이 실제 네트워크 지연과 같은 자리에서 일어난다.
+   */
+  readonly onRequest?: (request: RecordedRequest, control: MockControl) => void | Promise<void>;
+}
+
+/** `onRequest`가 목의 상태를 바꿀 때 쓰는 손잡이. */
+export interface MockControl {
+  /** 지금 제목을 바꾼다. 사람이 편집한 상황을 만든다. */
+  readonly setTitle: (next: string) => void;
+  /** 지금까지 받은 요청 수. 몇 번째 요청인지 보고 갈래를 나눈다. */
+  readonly requestCount: () => number;
 }
 
 export interface MockAnnotateGhe {
@@ -49,6 +73,8 @@ export interface MockAnnotateGhe {
   readonly currentTitle: () => string;
   readonly tokenIssueCount: () => number;
   readonly issuedTokens: () => readonly string[];
+  /** 밖에서 제목을 바꾼다. 사람이 GHE에서 직접 고친 상황이다. */
+  readonly setTitle: (next: string) => void;
   close(): Promise<void>;
 }
 
@@ -86,13 +112,21 @@ export async function startMockAnnotateGhe(options: MockAnnotateGheOptions = {})
     void (async (): Promise<void> => {
       const path = request.url ?? '/';
       const rawBody = await readBody(request);
-      requests.push({
+      const recorded: RecordedRequest = {
         method: request.method ?? 'GET',
         path,
         headers: Object.fromEntries(
           Object.entries(request.headers).map(([key, value]) => [key, Array.isArray(value) ? value.join(',') : (value ?? '')]),
         ),
         rawBody,
+        receivedAt: Date.now(),
+      };
+      requests.push(recorded);
+      await options.onRequest?.(recorded, {
+        setTitle: (next: string): void => {
+          title = next;
+        },
+        requestCount: () => requests.length,
       });
 
       const send = (status: number, body: unknown, headers: Record<string, string> = {}): void => {
@@ -145,6 +179,9 @@ export async function startMockAnnotateGhe(options: MockAnnotateGheOptions = {})
     currentTitle: () => title,
     tokenIssueCount: () => tokenIssueCount,
     issuedTokens: () => issuedTokens,
+    setTitle: (next: string): void => {
+      title = next;
+    },
     close: async (): Promise<void> => {
       await new Promise<void>((resolve) => {
         server.closeAllConnections();

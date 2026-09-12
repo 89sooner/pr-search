@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.20 | 갱신일: 2026-09-12
+> 상태: review | 버전: v0.21 | 갱신일: 2026-09-13
 
 CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025의 최종 필드·check·unique·FK·초기화·role grant·checkpoint/epoch·retention/rollback은 [상세 설계](pr_search_wp074_design.md) 6~7·10절이 소유한다. 아래 CR-077 DDL은 기본 다섯 필드만 보여주는 부분 예시이며 단독 구현하지 않는다.
 
@@ -199,6 +199,11 @@ CREATE TABLE merge_sequence (
   pull_request_number  INT,                       -- 직접 푸시 커밋은 NULL (FR-SEQ-001 AC-3)
   merge_number         BIGINT,                    -- M 넘버. PR 있는 항목만 (FR-SEQ-008 AC-1)
   annotate_state       TEXT,                      -- NULL(미시도) | done | mismatch | failed | disabled
+                                                  --   | body_changed (응답 제목이 보낸 값과 다르다 — 자동 재시도 없음)
+                                                  --   | unknown (응답을 받지 못해 결과를 확정할 수 없다)
+  annotate_attempt_id      UUID,                  -- 마지막 시도의 식별자 (027, CR-085)
+  annotate_expected_digest TEXT,                  -- 쓰려 한 제목의 해시 앞 16자. **원문이 아니다**
+  annotate_result_reason   TEXT,                  -- 짧은 사유 코드. 자유 문장을 넣지 않는다
   annotated_at         TIMESTAMPTZ,
   committed_at         TIMESTAMPTZ NOT NULL,
   assigned_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -220,6 +225,15 @@ CREATE UNIQUE INDEX merge_sequence_mnumber_uk
 CREATE INDEX merge_sequence_annotate_idx
   ON merge_sequence (repository_id, base_branch, seq_epoch, merge_seq)
   WHERE merge_number IS NOT NULL AND annotate_state IS DISTINCT FROM 'done';
+
+-- **`body_changed`와 `unknown`의 뜻이 다르다** (027 / CR-085).
+--
+-- `unknown`은 「보냈는지도 모른다」이므로 다음 회차가 제목을 다시 읽어 확인한다 —
+-- 확인이 곧 조회이고 이미 붙어 있으면 호출 없이 끝난다. `body_changed`는 「보냈고
+-- 서버가 다르게 저장했다」이므로 자동으로 다시 쓰지 않는다: 다시 쓰면 `AC-1`이
+-- 지키려는 원래 제목의 나머지를 덮는다. 근거 세 열은 **제목 원문을 담지 않는다** —
+-- 해시 앞 16자와 사유 코드이며 길이 제약이 원문 유입을 막는다. 보존 기간을 새로
+-- 두지 않고 행의 수명을 따른다.
 ```
 
 채번 동시성 제어는 PostgreSQL advisory lock을 사용한다 (FR-SEQ-001 AC-6).

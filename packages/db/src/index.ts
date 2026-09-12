@@ -18,6 +18,7 @@ export type { Pool, PoolClient } from 'pg';
 
 export {
   acquireAdvisorySessionLock,
+  annotateRunnerLockKey,
   advisoryXactLock,
   jobClaimLockKey,
   deliveryLockKey,
