@@ -47,7 +47,14 @@ export type AnnotateErrorKind =
   | 'validation'
   | 'server'
   | 'network'
-  | 'timeout';
+  | 'timeout'
+  /**
+   * 우리가 끊었다 — 회차의 시간 예산이 다했거나 종료 요청이 왔다.
+   *
+   * **재시도 가능이 아니다.** 끊은 이유가 "더 할 시간이 없다"이므로 같은 회차에서
+   * 다시 보내면 끊은 뜻이 사라진다. 다음 회차가 현재 상태를 다시 읽고 이어받는다.
+   */
+  | 'aborted';
 
 export class AnnotateApiError extends Error {
   readonly kind: AnnotateErrorKind;
@@ -68,8 +75,23 @@ export class AnnotateApiError extends Error {
     this.kind = kind;
     this.status = options.status;
     this.retryAt = options.retryAt;
-    this.retryable = kind !== 'permission' && kind !== 'validation';
+    this.retryable = kind !== 'permission' && kind !== 'validation' && kind !== 'aborted';
   }
+}
+
+/**
+ * 이 실패가 **원격 상태를 모르게 만드는가**.
+ *
+ * 변경 요청에서만 뜻이 있다. 응답 본문을 받지 못한 채 끝난 실패는 서버가 이미
+ * 처리했을 수 있다 — 공식 문서가 멱등성 키나 요청 조회를 제공하지 않으므로
+ * (DEV-618과 같은 근거) 클라이언트가 확정할 방법이 없다. 5xx도 여기에 넣는 것은
+ * 게이트웨이가 답한 5xx 뒤에서 원본 요청이 처리됐을 수 있기 때문이며, 확정할 수
+ * 없는 것을 확정했다고 적지 않는 쪽을 고른다.
+ *
+ * 반대로 `permission`·`validation`은 서버가 **거절을 명시**했으므로 상태가 분명하다.
+ */
+export function leavesOutcomeUnknown(kind: AnnotateErrorKind): boolean {
+  return kind === 'timeout' || kind === 'network' || kind === 'aborted' || kind === 'server';
 }
 
 export interface PullRequestRef {
@@ -85,6 +107,11 @@ export interface AnnotateRequestEvent {
   readonly pullRequestNumber: number;
   readonly status: number;
   readonly durationMs: number;
+}
+
+export interface RequestOptions {
+  /** 회차의 예산이 다하면 이 신호가 끊긴다. 진행 중인 왕복도 함께 끊는다. */
+  readonly signal?: AbortSignal;
 }
 
 export interface AnnotateClientOptions {
@@ -136,8 +163,8 @@ export class AnnotateClient {
    *
    * 이벤트나 PostgreSQL·ES에 저장된 제목을 쓰면 그 사이의 사용자 편집을 덮는다.
    */
-  async readTitle(ref: PullRequestRef): Promise<string> {
-    const payload = await this.#request<{ title?: unknown }>('GET', ref, undefined);
+  async readTitle(ref: PullRequestRef, options: RequestOptions = {}): Promise<string> {
+    const payload = await this.#request<{ title?: unknown }>('GET', ref, undefined, options);
     if (typeof payload.title !== 'string') {
       throw new AnnotateApiError('server', 'PR 응답에 title 문자열이 없다');
     }
@@ -150,9 +177,9 @@ export class AnnotateClient {
    * 보낸 값을 성공의 근거로 삼지 않는다 — 서버가 무엇을 저장했는지는 서버가
    * 말하게 한다.
    */
-  async updateTitle(ref: PullRequestRef, title: string): Promise<string> {
+  async updateTitle(ref: PullRequestRef, title: string, options: RequestOptions = {}): Promise<string> {
     // 본문은 이 한 줄이 전부다. 다른 필드를 더할 수 있는 인자를 두지 않는다.
-    const payload = await this.#request<{ title?: unknown }>('PATCH', ref, { title });
+    const payload = await this.#request<{ title?: unknown }>('PATCH', ref, { title }, options);
     if (typeof payload.title !== 'string') {
       throw new AnnotateApiError('server', 'PR 갱신 응답에 title 문자열이 없다');
     }
@@ -175,7 +202,16 @@ export class AnnotateClient {
     method: 'GET' | 'PATCH',
     ref: PullRequestRef,
     body: { readonly title: string } | undefined,
+    options: RequestOptions = {},
   ): Promise<T> {
+    /*
+     * **보내기 전에 먼저 본다.** 이미 끊긴 신호로 요청을 시작하면 "예산이 다했는데
+     * 새 원격 요청을 시작했다"가 되고, 그 요청의 결과는 아무도 받지 않는다.
+     */
+    const callerSignal = options.signal;
+    if (callerSignal?.aborted === true) {
+      throw new AnnotateApiError('aborted', '시간 예산이 다해 요청을 보내지 않았다');
+    }
     const installationId = this.#installationFor(ref.owner);
     /*
      * **토큰 발급 실패를 이 모델로 옮긴다.**
@@ -205,11 +241,21 @@ export class AnnotateClient {
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        signal: AbortSignal.timeout(this.#config.requestTimeoutMs),
+        /*
+         * 요청 자신의 시한과 회차의 예산을 **함께** 건다. 예산만 보면 느린 한 요청이
+         * 회차를 통째로 먹고, 시한만 보면 예산이 다한 뒤에도 왕복이 이어진다.
+         */
+        signal:
+          callerSignal === undefined
+            ? AbortSignal.timeout(this.#config.requestTimeoutMs)
+            : AbortSignal.any([AbortSignal.timeout(this.#config.requestTimeoutMs), callerSignal]),
       });
     } catch (error) {
       const timedOut = error instanceof Error && error.name === 'TimeoutError';
-      throw new AnnotateApiError(timedOut ? 'timeout' : 'network', safeMessage(error));
+      // 우리가 끊은 것과 서버가 늦은 것을 가른다 — 앞의 것은 이 회차에서 다시 하지 않는다.
+      const aborted = callerSignal !== undefined && callerSignal.aborted && !timedOut;
+      const kind: AnnotateErrorKind = aborted ? 'aborted' : timedOut ? 'timeout' : 'network';
+      throw new AnnotateApiError(kind, safeMessage(error));
     }
 
     const now = this.#now();

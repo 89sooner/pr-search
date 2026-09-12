@@ -23,6 +23,7 @@
     "@prs/metrics": "workspace:*"
   },
   "bin": {
-    "prs-measure-sequence-latency": "./dist/measure-cli.js"
+    "prs-measure-sequence-latency": "./dist/measure-cli.js",
+    "prs-annotate-preview": "./dist/annotate-preview-cli.js"
   }
 }

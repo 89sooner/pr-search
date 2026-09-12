@@ -29,10 +29,13 @@ export type { AnnotateConfig } from './config.js';
 export { decideTitleUpdate, resolveAnnotationTarget } from './title.js';
 export type { AnnotationTarget, TitleDecision } from './title.js';
 
-export { AnnotateApiError, AnnotateClient } from './client.js';
+export { AnnotateApiError, AnnotateClient, leavesOutcomeUnknown } from './client.js';
 export type {
   AnnotateClientOptions,
   AnnotateErrorKind,
   AnnotateRequestEvent,
   PullRequestRef,
+  RequestOptions,
 } from './client.js';
+
+export { DeadlineExceededError, PassDeadline, WriteGate } from './pacing.js';

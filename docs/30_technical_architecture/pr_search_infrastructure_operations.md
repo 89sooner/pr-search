@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.14 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.15 | 갱신일: 2026-09-13
 
 CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하고 모든 sync 호출은 repo session lock을 공유한다. Profile B sequence에는 mirror volume이 없으므로 명시적 API mode다. 환경 키·schema 선행·boot/stop·additive 앱 rollback과 별도 DB down은 [설계](pr_search_wp074_design.md) 10절이 정본이다. pilot.4 fail-fast·SSR smoke·pg hash 보정·worker git을 보존한다. 후보는 새 버전 미발행이며 --release를 사용하지 않는다.
 
@@ -82,6 +82,10 @@ CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하
 **이 표는 두 프로파일의 배포 산출물과 서로를 검사한다** (CR-045, DEV-293·307 / CR-059, DEV-498). `mirror`(CR-038)·`reconcile`(CR-034)은 manifest가 신설됐는데 이 표에 오르지 않았고, 반대로 `batch`는 이 표에 있는데 **manifest가 없었다** — 그 결과 이미 구현된 JOB-ING-007이 배포되지 않았다(DEV-292). 이제 운영 도달성 회귀가 **코드가 갈래를 만든 역할마다 그것을 세우는 manifest가 있는지** 묻는다. `authz`(JOB-AUTH-001)는 **CR-048이 배포했다**(DEV-306 resolved) — 예외를 지우고 manifest를 만든 뒤 이 표에 올렸다. `release`(JOB-REL-007)·`backfill`(JOB-ING-004) 둘은 **아직 배포되지 않으며** DEV-304·305로 열려 있다 — **배포되지 않는 단위를 이 표에 먼저 적지 않는다.** 그러면 표가 다시 사실과 어긋난다. **`WP-070`이 Profile A에서 그 둘의 실행 경로를 세우면 그때 이 표에 올린다** (CR-059) — 이 CR은 계약만 세우므로 표를 미리 채우지 않는다.
 
 **`annotate`의 상한도 1이다** (CR-084 / WP-075). 미표기 잔여 스윕이 리더 선출 없이 도는 주기 작업이라 파드가 둘이면 같은 PR을 동시에 집어 같은 제목에 요청이 두 번 나간다 — 결과는 멱등이지만 GHE 한도를 두 배로 쓴다. **자격 배선도 다른 단위와 다르다**: 이 단위만 표기 전용 App의 개인 키를 받고, 조회용 Data App의 자격(`GHE_APP_*`)은 받지 않는다. 반대로 다른 단위는 표기 자격을 받지 않는다 (`FR-SEQ-009` AC-5, `ADR-022` 결정 1, `THR-047`). **전역 스위치 `MNUMBER_ANNOTATE_ENABLED`의 기본값이 꺼짐이므로 이 단위를 세우는 것만으로는 아무 PR 제목도 바뀌지 않는다.**
+
+**상한 1은 이제 락이 함께 지킨다** (`CR-085` / `DEV-629` resolved). 값만으로 지키면 사람이 올리는 순간 사라지므로, 같은 정본 DB를 보는 프로세스 중 `annotate:runner` advisory 세션 락을 쥔 하나만 쓴다. 락을 얻지 못한 프로세스는 표기 회차만 건너뛰고 나머지 역할은 그대로 돈다. **보장 범위를 넘겨 읽지 않는다**: 서로 다른 DB를 쓰는 두 배포가 같은 GHE를 고치는 것은 막지 못하고, GHE가 fencing token을 검증하지 않으므로 네트워크 분할에서의 exactly-once도 아니다. 그래서 쓰기 직전마다 **락 커넥션으로** 정본을 다시 묻고, 그 질의가 실패하면 요청을 보내지 않는다.
+
+**켜기 전에 읽기 전용으로 먼저 본다.** `annotate-preview-cli`가 대상 저장소의 확정 M 번호 수, 아직 표기하지 않은 수, 다음 회차가 실제로 집을 행 수, 전역·저장소 정책과 차단 상태, 그리고 **확인하지 못한 것**을 함께 낸다. 워커 이미지 안에서 도는 이유는 전역 스위치와 표기 전용 자격이 그 환경에만 있기 때문이다 — 조회 서비스에서 같은 이름의 변수를 읽으면 「그 값이 워커에도 같다」는 가정이 필요하고, 그 가정이 틀리면 사전 점검이 거짓을 말한다. **출력은 승인 토큰이 아니라 측정 시각의 사진이다**: 실제 쓰기 때 잡은 정본을 다시 읽고 현재 상태로 판정한다.
 
 **`gh-executor`는 Profile A에 포함하지 않는다** (CR-059). REL-007 이후의 GitHub Operations Plane이고 첫 사내 반입 대상은 read-only Search/Investigation Plane이다 — **장래의 선택 프로파일 때문에 지금 서비스를 세우지 않는다.** `filebeat`는 반대로 **포함한다**: 이미 구현·배포 계약이 있고(CR-052), Profile A는 게이트웨이 인스턴스가 하나라 `DEV-369`의 `PIPE_BUF` 경합이 아예 성립하지 않아 Profile B보다 배선이 단순하다.
 

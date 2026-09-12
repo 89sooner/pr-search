@@ -769,6 +769,15 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
         },
         principalId(principal),
         correlationId,
+        /*
+         * 표기 재개 (WP-075 안전성 보강).
+         *
+         * 권한 차단과 본문 불일치 정지는 **스스로 풀리지 않는다** — 앞의 것은 조회
+         * 성공을 쓰기 권한의 증거로 삼지 않기 때문이고, 뒤의 것은 자동 재시도가 이미
+         * 확인된 차이를 덮기 때문이다. 둘을 여는 유일한 문이 이 플래그이며, 여는
+         * 것은 다음 시도의 자격뿐이고 이미 붙은 제목은 그대로다.
+         */
+        { ...(body['annotate_resume'] === true ? { resumeAnnotation: true } : {}) },
       );
       /*
        * **응답 모양은 `POST`와 같다** — 저장소 필드를 펼치고 이번 조작이 만든
@@ -777,7 +786,12 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
        */
       return {
         status: 200,
-        body: { ...updated.repository, sequence_job_ids: updated.sequenceJobIds },
+        body: {
+          ...updated.repository,
+          sequence_job_ids: updated.sequenceJobIds,
+          // 재개를 요청했을 때만 실린다. 무엇이 열렸는지 운영자가 바로 본다.
+          ...(updated.annotateResumed === undefined ? {} : { annotate_resumed: updated.annotateResumed }),
+        },
       };
     }),
   );

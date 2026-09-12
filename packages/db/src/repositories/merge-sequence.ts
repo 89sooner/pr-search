@@ -27,7 +27,7 @@ export interface MergeSequenceRow extends Omit<MergeSequenceInsert, 'merge_seq'>
    */
   readonly merge_number: number | null;
   /** WP-075 예약. WP-074에서는 언제나 NULL이다. */
-  readonly annotate_state: 'done' | 'mismatch' | 'failed' | 'disabled' | null;
+  readonly annotate_state: 'done' | 'mismatch' | 'failed' | 'disabled' | 'body_changed' | 'unknown' | null;
   readonly annotated_at: Date | null;
   readonly mnumber_assigned_at: Date | null;
 }
@@ -743,7 +743,7 @@ export interface AnnotateTargetRow {
   readonly merge_seq: number;
   readonly pull_request_number: number;
   readonly merge_number: number;
-  readonly annotate_state: 'failed' | 'disabled' | null;
+  readonly annotate_state: 'failed' | 'disabled' | 'unknown' | null;
 }
 
 export interface AnnotateTargetFilter {
@@ -792,6 +792,13 @@ export interface AnnotateTargetFilter {
  * 있기 때문이다 — 이 질의는 켜진 저장소만 내므로 꺼진 채면 애초에 나오지 않는다.
  * 다시 보는 것이 곧 다시 쓰는 것은 아니다: 처리는 언제나 제목 조회부터 시작하고
  * 이미 같은 접두가 있으면 호출 없이 `done`이 된다.
+ *
+ * `unknown`도 다시 본다 — **요청을 보냈는지조차 모르는 행**이므로 확인이 필요하고,
+ * 확인은 곧 제목 조회다. 이미 붙어 있으면 호출 없이 끝난다.
+ *
+ * **`body_changed`는 다시 보지 않는다.** 서버가 저장한 제목이 우리가 보낸 값과 달랐던
+ * 행이며, 자동으로 다시 쓰면 그 차이를 덮어 「원래 제목을 지킨다」는 계약이 조용히
+ * 무너진다. 운영자가 확인하고 재개를 지시할 때까지 여기서 나오지 않는다.
  */
 export async function listAnnotateTargets(
   db: Queryable,
@@ -809,7 +816,7 @@ export async function listAnnotateTargets(
       WHERE ms.merge_number IS NOT NULL
         AND sp.state <> 'reassigning'
         AND ms.pull_request_number IS NOT NULL
-        AND (ms.annotate_state IS NULL OR ms.annotate_state IN ('failed', 'disabled'))
+        AND (ms.annotate_state IS NULL OR ms.annotate_state IN ('failed', 'disabled', 'unknown'))
         AND r.status = 'active'
         AND r.annotate_enabled
         AND (r.annotate_blocked_at IS NULL OR ($5::timestamptz IS NOT NULL AND r.annotate_blocked_at < $5))
@@ -871,7 +878,17 @@ export async function isAnnotationCurrent(
   return result.rows.length === 1;
 }
 
-export type AnnotateState = 'done' | 'mismatch' | 'failed' | 'disabled';
+export type AnnotateState = 'done' | 'mismatch' | 'failed' | 'disabled' | 'body_changed' | 'unknown';
+
+/** 결과와 함께 남기는 최소 근거 (027). 제목 원문은 담지 않는다. */
+export interface AnnotateOutcomeEvidence {
+  /** 그 시도의 식별자. 감사 기록과 이 행을 나중에 맞춰 볼 끈이다. */
+  readonly attemptId?: string;
+  /** 쓰려 한 제목의 지문(해시 앞 16자). 원문이 아니다. */
+  readonly expectedDigest?: string;
+  /** 짧은 사유 코드. 자유 문장을 넣지 않는다. */
+  readonly reason?: string;
+}
 
 /**
  * 표기 결과를 남긴다.
@@ -879,6 +896,9 @@ export type AnnotateState = 'done' | 'mismatch' | 'failed' | 'disabled';
  * **`merge_number`를 되돌리지 않는다** (FR-SEQ-009 AC-3). 표기가 실패해도 번호는
  * 이미 확정된 사실이며, 실패로 번호를 지우면 같은 PR이 다음 회차에 다른 번호를
  * 받을 수 있다.
+ *
+ * 근거를 주지 않으면 **기존 값을 지운다.** 결과가 바뀌었는데 옛 사유가 남아 있으면
+ * 운영자가 지금 상태를 옛 이유로 읽는다.
  */
 export async function markAnnotateState(
   db: Queryable,
@@ -889,13 +909,115 @@ export async function markAnnotateState(
     readonly mergeSeq: number;
   },
   state: AnnotateState,
+  evidence: AnnotateOutcomeEvidence = {},
 ): Promise<void> {
   await db.query(
     `UPDATE merge_sequence
-        SET annotate_state = $5, annotated_at = now()
+        SET annotate_state = $5, annotated_at = now(),
+            annotate_attempt_id = $6, annotate_expected_digest = $7, annotate_result_reason = $8
       WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq = $4`,
-    [key.repositoryId, key.baseBranch, key.seqEpoch, key.mergeSeq, state],
+    [
+      key.repositoryId,
+      key.baseBranch,
+      key.seqEpoch,
+      key.mergeSeq,
+      state,
+      evidence.attemptId ?? null,
+      evidence.expectedDigest ?? null,
+      evidence.reason ?? null,
+    ],
   );
+}
+
+/**
+ * 운영자가 확인을 마친 행의 표기를 다시 열어 준다 (안전성 보강 / 재개 절차).
+ *
+ * **`body_changed`만 푼다.** 그 상태만이 「자동으로는 다시 하지 않는다」는 뜻을
+ * 가지며, 나머지는 애초에 스스로 다시 시도한다. 상태를 `NULL`로 되돌려 다음 회차가
+ * 처음 보는 행처럼 다루게 하되, **근거는 지우지 않는다** — 무엇을 확인하고 열었는지
+ * 남아 있어야 같은 일이 반복될 때 앞선 판단을 볼 수 있다.
+ *
+ * 이미 GHE에 붙은 제목을 되돌리지 않는다. 여는 것은 다음 시도의 자격뿐이다.
+ *
+ * **`annotated_at`도 비운다.** 대상 정렬이 `annotated_at ASC NULLS FIRST`이므로 값을
+ * 남기면 운영자가 방금 연 행이 대기열 **뒤로** 밀린다 — 사람이 확인하고 다시 하라고
+ * 지시한 행이 가장 늦게 처리되는 것은 그 지시의 뜻과 어긋난다. 근거 세 열은 지우지
+ * 않으므로 「한 번도 시도하지 않은 행」과는 여전히 구별된다.
+ *
+ * @returns 이번에 다시 연 행 수.
+ */
+export async function resumeAnnotateTargets(
+  db: Queryable,
+  repositoryId: number,
+): Promise<number> {
+  const result = await db.query(
+    `UPDATE merge_sequence
+        SET annotate_state = NULL, annotated_at = NULL
+      WHERE repository_id = $1 AND annotate_state = 'body_changed'`,
+    [repositoryId],
+  );
+  return result.rowCount ?? 0;
+}
+
+/**
+ * 표기 현황을 저장소 하나에 대해 센다 (읽기 전용 사전 점검).
+ *
+ * **아무것도 바꾸지 않는다.** 운영자가 전역 스위치를 열기 전에 「무엇이 몇 건
+ * 바뀌는가」를 먼저 볼 수 있어야 하고, 그 답은 정본에만 있다.
+ */
+export interface AnnotateReadiness {
+  /** 번호가 확정돼 표기 대상이 될 수 있는 행. */
+  readonly numbered: number;
+  /** 아직 표기하지 않은 행 (지금 켜면 제목이 바뀔 수). */
+  readonly pending: number;
+  readonly done: number;
+  readonly mismatch: number;
+  readonly failed: number;
+  readonly disabled: number;
+  readonly body_changed: number;
+  readonly unknown: number;
+  /** 번호를 받지 못한 행. `DEV-581`이 열려 있으면 여기가 크다. */
+  readonly unnumbered: number;
+}
+
+export async function countAnnotateReadiness(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch?: string,
+): Promise<AnnotateReadiness> {
+  const result = await db.query<Record<string, string | number>>(
+    `SELECT
+       count(*) FILTER (WHERE ms.merge_number IS NOT NULL)                                  AS numbered,
+       count(*) FILTER (WHERE ms.merge_number IS NOT NULL AND ms.annotate_state IS NULL)     AS pending,
+       count(*) FILTER (WHERE ms.annotate_state = 'done')                                    AS done,
+       count(*) FILTER (WHERE ms.annotate_state = 'mismatch')                                AS mismatch,
+       count(*) FILTER (WHERE ms.annotate_state = 'failed')                                  AS failed,
+       count(*) FILTER (WHERE ms.annotate_state = 'disabled')                                AS disabled,
+       count(*) FILTER (WHERE ms.annotate_state = 'body_changed')                            AS body_changed,
+       count(*) FILTER (WHERE ms.annotate_state = 'unknown')                                 AS unknown,
+       count(*) FILTER (WHERE ms.merge_number IS NULL AND ms.pull_request_number IS NOT NULL) AS unnumbered
+       FROM merge_sequence ms
+       JOIN sequence_space sp
+         ON sp.repository_id = ms.repository_id
+        AND sp.base_branch   = ms.base_branch
+        AND sp.seq_epoch     = ms.seq_epoch
+      WHERE ms.repository_id = $1
+        AND ($2::text IS NULL OR ms.base_branch = $2)`,
+    [repositoryId, baseBranch ?? null],
+  );
+  const row = result.rows[0] ?? {};
+  const read = (key: string): number => Number(row[key] ?? 0);
+  return {
+    numbered: read('numbered'),
+    pending: read('pending'),
+    done: read('done'),
+    mismatch: read('mismatch'),
+    failed: read('failed'),
+    disabled: read('disabled'),
+    body_changed: read('body_changed'),
+    unknown: read('unknown'),
+    unnumbered: read('unnumbered'),
+  };
 }
 
 /**
