@@ -1,8 +1,33 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=5ded21a9ae82906754fa8e639f0a975dffb781ff9847e76ac71cf40483c1998b bytes=180436 lines=2505 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;packages/bus/src/redis-streams.ts;acme/smp1900;repos/.../actions/runs;packages/authz/src/config.test.ts;apps/web/instrumentation.test.ts;deploy/single-host/smoke-images.sh;deploy/single-host/;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts;4/4
+@kv sha256=8fdf762bb7f863ee462fa73996577e47d1a813e8964aac981868b4ed6b26e39d bytes=184846 lines=2552 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;packages/es/src/config.ts;packages/bus/src/redis-streams.ts;acme/smp1900;repos/.../actions/runs;packages/authz/src/config.test.ts;apps/web/instrumentation.test.ts;deploy/single-host/smoke-images.sh;deploy/single-host/;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-13 라운드가 배운 함정 (WP-075 안전성 보강)
+@h3 변이가 「살아남았다」고 하면 먼저 그 시험이 돌았는지 물어라
+@p 첫 변이 실행에서 넷이 살아남았다고 보고됐다. 그중 하나는 -t 패턴이 시험 이름과 어긋나 대상 시험이 한 건도 돌지 않은 것이었다(10건 전부 skip). 내 미실행 판정이 " 0 passed"만 찾고 있어서 "10 skipped"를 놓쳤다.
+@path 나머지 셋은 변이가 겨눈 자리를 덮는 시험이 아예 없었다. 도구를 고치고 시험 다섯을 더한 뒤에야 전부 kill이 됐다. WP-074가 「검증 도구 자체가 검증 대상」이라고 적어 둔 것을 그대로 다시 밟았다.
+@p 처방: 변이 스크립트는 통과 건수를 파싱해 0이면 오류로 세운다. skip은 통과가 아니다.
+@h3 환경 변수 이름 하나가 36개 파일을 죽였다
+@p 통합 시험 36개 파일이 ECONNREFUSED 127.0.0.1:9200으로 죽었다. 격리 ES를 59200에 띄우고 ELASTICSEARCH_URL을 줬는데 실제 변수는 ELASTICSEARCH_NODE였다. 시험은 기본값 9200을 봤다.
+@path 처방: 격리 환경을 세울 때 그 변수를 코드에서 확인한다(packages/es/src/config.ts). 이름을 짐작하지 않는다. 같은 실수가 e2e 1건의 실패로도 나타났을 가능성이 있으나 특정하지 못했고, 그 사실을 원장에 그대로 적었다.
+@h3 앞선 판이 심어 둔 시험이 이 판을 잡는다 — 좋은 신호다
+@p merge-number-schema.test.ts가 「단계 수가 아니라 내려간 목록으로 단언하므로 다음에 027이 생기면 여기서 즉시 깨진다」고 주석에 적어 두었고, 027을 더하자 정확히 거기서 깨졌다. 결함이 아니라 시험이 설계대로 동작한 것이다.
+@p 단계 수로 단언했다면 027만 내려간 상태에서 「025를 잰다고 믿는」 시험이 초록으로 남았을 것이다.
+@h3 수정이 만든 자리를 다시 본다 — 이번에는 검토가 먼저 잡았다
+@path DEV-626(조회 성공으로 차단 해제)은 앞 판의 수정이었는데, 이 판의 검토가 그 수정이 만든 새 문제(조회 권한만 있는 설치에서 풀렸다 막히는 순환)를 지목했다. 뒤집으면서 원래 문제가 일부 돌아온다는 것을 함께 적었다 — 어느 쪽도 공짜가 아닌 자리에서는 대가를 적는 것이 처방의 일부다.
+@h3 문서가 없는 기능을 안내하면 그것을 따르는 사람이 막힌다
+@path 사전 점검 CLI의 주석이 --probe 옵션을 안내했는데 파서에 그 값이 없었다. 실제 동작이 주석보다 안전한 쪽이었지만 그대로 둘 수 없었다 — CR-082가 겪은 것(런북이 존재하지 않는 환경 변수를 안내했다)과 같은 종류다.
+@h3 공식 문서를 직접 읽으면 판단이 바뀌거나 굳는다
+@path 이 판에서 네 가지를 원문으로 확인했다. 조건부 쓰기 미지원은 명시되어 있었고(DEV-618이 옳았다), 간격 권고는 성공 여부를 가리지 않았으며(내 수정이 문서에 더 충실했다), 403의 두 원인을 가르는 공식 방법은 없었고(DEV-616이 옳았다), 응답 유실 뒤의 확인 수단도 없었다(unknown 상태의 근거).
+@dec 추가로 찾은 것 둘: 권한 부족 403에는 「Resource not accessible by integration」 메시지와 X-Accepted-GitHub-Permissions 헤더라는 적극적 식별 신호가 있고, GHES는 rate limit이 기본적으로 꺼져 있다. 앞의 것은 DEV-616 재검토 때 쓸 근거이고, 뒤의 것은 Cloud 수치를 사내에 가정하면 안 된다는 뜻이다.
+@h3 격리는 이름을 명시해서 한다
+@p 시험용 백킹 서비스를 prs-wp075safety 프로젝트로 따로 띄웠고(포트 55433·56379·59200), 번들 검증은 또 다른 컨테이너 넷으로 했다. 개발용 prs-postgres와 볼륨을 공유하지 않았다. 정리도 이름을 하나씩 적어서 했다 — docker system prune이나 이름 패턴 일괄 삭제는 다른 세션의 것을 지운다.
+@h3 여전히 유효한 것
+@b 공유 체크아웃이다. 브랜치는 워크트리로 격리한다.
+@b 두 vitest 프로세스를 동시에 돌리지 마라.
+@b /export는 보고한 경로가 아니라 exports/ 아래에 만든다.
+@b gh 2.4.0에는 run list --branch와 run rerun --failed가 없다.
 @h2 2026-09-12 라운드가 배운 함정 (WP-075 자동 GHE 쓰기)
 @h3 문서의 숫자가 무엇을 재는 값인지 확인하라 — 이 판에서 가장 값비쌌던 것
 @p 공식 문서가 「변경 요청 사이에 최소 1초」를 요구해 그대로 넣었다. 그러자 한 회차가 상한

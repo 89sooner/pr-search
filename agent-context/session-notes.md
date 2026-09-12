@@ -1,5 +1,57 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
 
+## Session: 2026-09-13 — WP-075 안전성 보강 (CR-085)
+
+### Goal — 결정자의 말로
+
+「WP-075를 다시 처음부터 만드는 작업이 아니다. 이미 구현된 PR 제목 M 번호 표기에 대해 재시도·시간 제한·복구 판정·단일 실행자·제한 활성화의 안전성을 보강하고, 실제 반입 이미지까지 검증한다. 문서 작성이나 설계 검토만 하고 끝내지 않는다.」
+
+승인된 추가 작업 여덟(A~H)과 범위 밖 넷(새 Operations Plane·대형 관리 UI·범용 잡 엔진·다중 활성 워커)을 지시서가 못 박았다.
+
+### Current state
+
+main = `65caf0c`. PR #177(코드·문서)과 #178(번들 검증 기록)이 squash 병합됐다. CR-085 closed, DEV-632~DEV-649 등록, DEV-629 resolved.
+
+- 전역 스위치 `MNUMBER_ANNOTATE_ENABLED`는 **그대로 꺼짐**이다.
+- 사내 실제 GHE 표기는 여전히 NOT RUN.
+- `0.1.0-pilot.6` **후보 번들은 만들었고 발행하지 않았다** — CI가 코드를 실행하지 못한 상태다.
+
+### Decisions — 이 세션이 고른 것
+
+`decisions.md`의 2026-09-13 절이 정본이다. 무거운 것 넷:
+
+- **재시도의 단위를 요청에서 판단 전체로 넓혔다.** 다시 보낼 때마다 정본 확인 → 제목 재조회 → 순수 판정 → 간격 → 울타리 → PATCH를 다시 지난다.
+- **`body_changed`를 자동 재시도에서 뺐다.** 서버가 제목을 다르게 저장한 것을 확인하고도 다음 회차가 접두만 보고 `done`으로 덮던 자리다. `AC-3`의 예외이므로 SRS에 `AC-9`로 명시했다.
+- **결과 불명(`unknown`)을 실패와 갈랐다.** 공식 API가 응답 유실 뒤의 적용 여부를 확인할 수단을 주지 않는다.
+- **권한 차단을 조회 성공으로 풀지 않는다** — `DEV-626`의 처방을 뒤집었고 그 대가를 적었다.
+
+### Changed files
+
+PR #177이 31개 파일(3,036줄 추가). 새 파일 일곱: `packages/github-annotate/src/pacing.ts`, `apps/pipeline-worker/src/annotate-lock.ts`, `annotate-preview-cli.ts`, `annotate-safety.test.ts`, `integration/sequence/annotate-safety.test.ts`, 마이그레이션 027 두 개. 역할별 정리는 `files.md`에 있다.
+
+### Commands
+
+`commands.md`의 2026-09-13 절에 격리 환경 구성·배터리·변이 18종·번들 검증이 있다. 실패한 명령도 원인과 함께 있다.
+
+### Next steps
+
+- CI 결제·한도가 풀리면 `65caf0c`에서 다시 돌려 확인한다. 그 전까지 `0.1.0-pilot.6`은 발행하지 않는다.
+- 사내 반입 시 런북 7.B의 **0단계(읽기 전용 사전 점검)**부터 밟는다.
+- 열린 편차 일곱(DEV-581·588·603·618·647·649와 DEV-578·010·433 등 기존)은 전부 판단이 필요하다.
+
+### Risks/gotchas — 이 세션이 배운 것
+
+- **변이 도구 자체가 검증 대상이었다.** 첫 실행에서 「살아남았다」던 넷 중 하나는 `-t` 패턴이 어긋나 대상 시험이 한 건도 돌지 않은 것이었다.
+- **환경 변수 이름 하나가 36개 파일을 죽였다.** ES 접속은 `ELASTICSEARCH_NODE`인데 `ELASTICSEARCH_URL`을 줬다.
+- 앞선 판이 심어 둔 시험이 이 판의 마이그레이션을 예고한 대로 잡았다.
+- 자세한 것은 `risks.md`에 있다.
+
+### References
+
+- PR #177 https://github.com/89sooner/pr-search/pull/177 — 병합 커밋 `7e4fd63`
+- PR #178 https://github.com/89sooner/pr-search/pull/178 — 병합 커밋 `65caf0c`
+- 원장 6.82장이 검증의 정본, `CR-085` cascade가 결정의 정본
+
 ## Session: 2026-09-12 — WP-075 PR 제목 M 넘버 표기 수직 완주 (CR-084)
 
 ### Goal — 결정자의 말로
