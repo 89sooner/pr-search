@@ -1,5 +1,45 @@
 # 중요 파일 경로와 역할
 
+## 2026-09-13 라운드가 만진 것 (WP-075 안전성 보강 / CR-085 — 33개 파일)
+
+main = `65caf0c`. 전체 목록은 `git show --stat 7e4fd63`과 `65caf0c`다.
+
+### 새로 만든 것
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/github-annotate/src/pacing.ts` | `PassDeadline`(예산·중단 신호)과 `WriteGate`(실행자 전체의 쓰기 간격·한도 유예). **만료 판정은 시각 비교가 정본이고 타이머는 진행 중인 왕복을 끊는 역할** |
+| `apps/pipeline-worker/src/annotate-lock.ts` | `withAnnotateRunnerLock` — `annotate:runner` advisory 세션 락. 락이 준 커넥션을 `run`에 넘긴다 |
+| `apps/pipeline-worker/src/annotate-preview-cli.ts` | 읽기 전용 사전 점검. `BEGIN READ ONLY` 안에서 돌고 GHE를 부르지 않으며 「확인하지 못한 것」을 함께 낸다 |
+| `apps/pipeline-worker/src/annotate-safety.test.ts` | 16건. 재현 A~E와 결과 확실성·실행자 배제 |
+| `apps/pipeline-worker/integration/sequence/annotate-safety.test.ts` | 12건. 실제 PostgreSQL과 **실제 자식 프로세스**로 세션 배제 |
+| `packages/db/migrations/027_annotate_outcome.{up,down}.sql` | 상태 둘(`body_changed`·`unknown`)과 근거 세 열. **제목 원문을 담지 않는다** |
+
+### 크게 바뀐 것
+
+| 경로 | 무엇이 바뀌었나 |
+| --- | --- |
+| `apps/pipeline-worker/src/annotate.ts` | `attemptOnce`가 새로 생겼다 — **변경 요청 하나에 판단 전체가 붙는다.** `acquirePassSlot`이 줄 서기를 중단 신호와 경주시키고, 스윕이 종료 신호를 회차로 전달한다 |
+| `packages/github-annotate/src/client.ts` | `RequestOptions.signal`을 받아 `AbortSignal.any`로 fetch에 건다. `aborted` 오류 종류와 `leavesOutcomeUnknown`을 더했다 |
+| `packages/db/src/repositories/merge-sequence.ts` | 대상 질의가 `unknown`을 다시 보고 `body_changed`를 보지 않는다. `markAnnotateState`가 근거를 함께 남기고, `resumeAnnotateTargets`·`countAnnotateReadiness`가 생겼다 |
+| `packages/db/src/advisory-lock.ts` | `annotateRunnerLockKey()` — 배제하려는 것이 저장소가 아니라 **실행자**라 키가 하나다 |
+| `apps/search-api/src/ops/{repositories,routes}.ts` | `annotate_resume` 플래그. 감사는 기존 `repository.update` 한 줄에 담는다 |
+| `packages/github-annotate/testing/mock-annotate-ghe.ts` | 수신 시각·요청 훅·제목 제어. **간격은 목이 기록한 시각으로만 잴 수 있다** |
+| `regression/runtime-reachability.test.ts` | 「표기 안전성 계약」 블록 11건 — 호출 위치·순서·락·신호·상태 목록·감사 어휘를 **구조로** 고정 |
+
+### 문서
+
+`docs/00_governance/change_control.md`(CR-085) · `docs/10_requirements/srs_final.md` v2.26(AC-8~10) · 데이터 모델 v0.21 · 비동기 v0.11 · 인프라 v0.15 · API 계약 v0.27 · 보안 v1.6(**감사 어휘 표**) · 작업 패키지 v2.28 · 구현 원장 v6.71(6.82장) · 런북 7.B와 8장.
+
+### 손대면 안 되는 것
+
+`0.1.0-pilot.5` 태그·자산 · 사내 운영 DB · 실제 GHE PR 제목 · `packages/authz/src/config.ts`의 보안 계약 · `packages/github/src/client.ts`의 읽기 전용 경계 · 마이그레이션 025·026.
+
+### 저장소 밖
+
+- 후보 번들 `/tmp/pr-search-bundle-pilot6/` — **임시 경로라 재부팅에 사라진다.** 발행하려면 그때의 main에서 다시 만든다.
+- 워크트리 `/tmp/pr-search-wp075-safety`·`/tmp/pr-search-postmerge-safety`와 검증 컨테이너는 정리했다.
+
 ## 2026-09-12 라운드가 만진 것 (WP-075 / CR-084 — 48개 파일)
 
 `main = 918a37b`. 전체 목록은 `git show --stat 918a37b`다.

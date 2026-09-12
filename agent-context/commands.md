@@ -1,5 +1,95 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
 
+## 2026-09-13 라운드에서 쓴 것 (WP-075 안전성 보강 · CR-085)
+
+### 전제 — Node 22
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"
+```
+
+### 격리 백킹 서비스 — 이름·포트·볼륨을 모두 나눈다
+
+개발용 `docker-compose.yml`과 **프로젝트를 나눠** 다른 세션의 데이터를 건드리지 않는다.
+
+```bash
+docker compose -p prs-wp075safety -f <스크래치>/compose.safety.yml up -d
+# postgres 55433 · redis 56379 · elasticsearch 59200, 볼륨도 별도
+docker exec prs-safety-postgres createdb -U prs prs_test
+```
+
+**접속 변수 이름을 코드에서 확인한다.** 짐작하면 36개 파일이 연결 거부로 죽는다.
+
+```bash
+export POSTGRES_PORT=55433 POSTGRES_HOST=127.0.0.1 POSTGRES_USER=prs POSTGRES_PASSWORD=prs
+export REDIS_URL=redis://localhost:56379 ELASTICSEARCH_NODE=http://localhost:59200   # URL 아니다
+```
+
+### 검증 배터리 — 순차로 돈다
+
+두 vitest를 동시에 돌리면 공유 DB에서 deadlock이 난다. 스크립트가 하나씩 돌리고 단계마다 종료 코드와 로그를 남긴다.
+
+```
+typecheck · lint · lint:deps → test → test:regression → test:integration
+→ build → test:a11y → test:contrast → web build → test:e2e
+```
+
+### 마이그레이션 왕복 — 실제 SQL 파일로
+
+```bash
+docker exec prs-safety-postgres createdb -U prs prs_mig027
+DATABASE_URL=postgres://prs:prs@127.0.0.1:55433/prs_mig027 node packages/db/dist/cli.js migrate
+docker exec -i prs-safety-postgres psql -U prs -d prs_mig027 -v ON_ERROR_STOP=1 \
+  < packages/db/migrations/027_annotate_outcome.down.sql
+```
+
+`migrate:down` 명령은 CLI에 없다. 회수는 SQL 파일을 직접 돌린다.
+
+### 변이 시험 — 도구가 먼저 검증 대상이다
+
+```python
+# 통과 건수를 파싱해 0이면 오류로 센다. **skip은 통과가 아니다.**
+ran = re.search(r"Tests\s+(?:(\d+) failed \| )?(\d+) passed", out)
+passed = int(ran.group(2)) if ran else 0
+if passed == 0: errors.append(f"{name}: 대상 시험이 실행되지 않았다")
+```
+
+18종을 겨눴다: 제목 재조회 · 재시도 앞 정본 확인 · 본문 불일치 상태 · 줄 서기 경주 · HTTP 중단 신호 · 쓰기 차례 · 실행자 락 · 결과 불명 분류 · 대상 질의 · 차단 해제 · 보낸 시각 기록 · 종료 신호 · 만료 시각 판정 · 한도 유예 · 감사 코드 · 읽기 전용 · 종료 응답성 · 해제 표시 락.
+
+### 번들 후보와 실제 런타임 검증
+
+```bash
+./deploy/single-host/build-bundle.sh 0.1.0-pilot.6 /tmp/pr-search-bundle-pilot6   # --release 없이
+tar xzf .../pr-search-0.1.0-pilot.6-offline.tar.gz && sha256sum -c checksums/SHA256SUMS
+docker load -i images/pr-search-app.tar
+docker run --rm --network <격리망> -e DATABASE_URL=... prs/db:0.1.0-pilot.6        # 027 적용
+docker run -d --network <격리망> -e PIPELINE_WORKER_ROLES=annotate ... prs/pipeline-worker:0.1.0-pilot.6
+```
+
+**이미지에 파일이 있다는 것으로 기능 검증을 대신하지 않는다.** 목 GHE를 같은 네트워크의 컨테이너로 띄우고 `MNUMBER_ANNOTATE_SWEEP_MS=60000`으로 스윕을 기다려 실제 PATCH를 관측했다.
+
+### 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 실패 | 원인 |
+| --- | --- | --- |
+| `test:integration` (1차) | 36개 파일 `ECONNREFUSED 9200` | **내가 `ELASTICSEARCH_URL`을 줬다.** 실제는 `ELASTICSEARCH_NODE` |
+| `merge-number-schema.test.ts` | `['026','025']` 기대에 027이 섞임 | 이 판의 마이그레이션 때문이며 **시험이 의도대로 동작한 것** |
+| 변이 M01·M08·M14·M15 (1차) | 살아남았다고 보고 | `-t` 패턴 불일치(대상 미실행)와 시험 부재. 도구와 시험을 함께 고쳤다 |
+| `docker exec … wget localhost:8080` | 연결 거부 | alpine에서 `127.0.0.1`을 써야 했다 |
+| `node -e` 자식 프로세스 | `ERR_MODULE_NOT_FOUND` | pnpm 배치에서 `pg`가 `packages/db/node_modules`에 있다. `createRequire`로 경로를 풀어 넘긴다 |
+| 회귀 시험 (환경 변수 없이) | `range-vs-git` 등 실패 | 회귀 일부가 DB·ES를 쓴다. 격리 환경 변수를 함께 준다 |
+
+### 정리 — 이름을 명시해서
+
+```bash
+docker rm -f prs-pilot6-db prs-pilot6-ghe prs-pilot6-redis prs-pilot6-worker
+docker network rm prs-pilot6-net
+docker compose -p prs-wp075safety -f <스크래치>/compose.safety.yml down -v
+git worktree remove <경로> --force && git worktree prune
+```
+
+`docker system prune`이나 이름 패턴 일괄 삭제는 **다른 세션의 것을 지운다.**
+
 ## 2026-09-12 라운드에서 쓴 것 (WP-075 · CR-084 · 병합)
 
 ### 전제 — Node 22 (앞 라운드와 같다)
