@@ -6488,6 +6488,12 @@ migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기�
 
 **CI는 코드를 실행하지 못했다 — 그 사실을 근거와 함께 적는다.** PR #177의 두 잡이 **단계를 하나도 시작하지 않은 채** 2초 만에 끝났다(`steps=0`, 주석 메시지 「The job was not started because recent account payments have failed or your spending limit needs to be increased」). **시험이 돌아서 실패한 것이 아니다** — 그 구분이 조건부 예외 병합의 전제이며, `steps=0`이 그 증거다. `28d3ccf`·`918a37b`도 같은 이유로 막혀 있어 이 저장소의 모든 PR이 같은 상태다. 계정·요금 설정을 바꾸거나 다른 실행기를 만들지 않았고 가짜 성공 상태도 만들지 않았다. **CI blocked는 blocked로 남긴다.**
 
+**다만 「결제만 풀면 된다」는 아니다 (2026-09-13 추가 실측).** 이 저장소에는 **self-hosted 러너가 이미 등록돼 있고 online이다** — `DESKTOP-HMAIKJ2`, 라벨 `self-hosted,Linux,X64`, `busy=false`. 그런데 `.github/workflows/ci.yml`의 두 잡이 모두 `runs-on: ubuntu-latest`라 **그 러너를 부르지 않는다.** `ubuntu-latest`는 GitHub이 호스팅하는 러너를 지목하는 라벨이고, self-hosted는 `self-hosted` 라벨로 불러야 잡을 받는다. 즉 러너가 대기 중인데 워크플로가 과금 대상 러너를 요구했고 그것이 막힌 것이다.
+
+**왜 `design-system`은 멀쩡했는가도 이것으로 설명된다.** 이전 기록이 「계정 결제 차단은 pr-search에만 해당한다」고 적었는데, 계정 차단이 저장소별로 다를 수는 없다. 실측하니 **`design-system`은 public이고 `pr-search`는 private이다** — public 저장소의 호스팅 러너는 무료이고 private은 과금 대상이라, 한도가 막히면 private만 멈춘다.
+
+**선택지는 둘이며 결정자가 「지금은 바꾸지 않는다」를 골랐다.** (1) 결제·한도를 푼다. (2) `runs-on`을 `[self-hosted, Linux, X64]`로 바꾼다 — 저장소가 private이라 공개 저장소 fork PR의 임의 코드 실행 위험이 없고, 러너 계정이 `docker` 그룹에 있어 `services:` 컨테이너도 뜬다. 바꿀 때 **포트 충돌을 먼저 본다**: `integration` 잡의 서비스 컨테이너가 `5432`·`9200`·`6379`를 호스트에 바인딩하므로 개발용 `prs-postgres` 등이 떠 있으면 그 잡이 실패한다.
+
 로컬에서 CI가 돌았다면 실행했을 것과 같은 명령(`verify`의 여덟 단계와 `integration`)을 전부 돌렸고, 통합은 CI와 동일하게 실제 PostgreSQL·Elasticsearch·Redis에 붙였다. 그 결과가 위의 배터리다.
 
 **검토는 두 판이었다 — 자동 리뷰는 돌지 못했다.** PR #177의 자동 리뷰(`chatgpt-codex-connector`)가 「You have reached your Codex usage limits for code reviews」로 끝났다. `CR-084`는 네 판(자동 한 판 포함)을 돌렸으므로 **이 판의 검토 표면은 그만큼 좁다** — 자동 리뷰가 앞 판에서 P1 둘을 찾았던 것을 생각하면 숨길 일이 아니다. 대신 독립 검토 두 판을 서로 다른 관점으로 나눠 돌렸다.
