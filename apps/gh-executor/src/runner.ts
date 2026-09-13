@@ -71,6 +71,8 @@ export interface RunnerDeps {
    */
   readonly timeoutMsOverride?: number;
   readonly stdoutLimitOverride?: number;
+  /** 시험 전용. 재검증과 claim 사이에 끼어드는 일(취소 등)을 재현한다. 운영 배선은 넘기지 않는다. */
+  readonly beforeClaim?: () => Promise<void>;
 }
 
 export type RunOutcome =
@@ -187,8 +189,22 @@ export async function runExecution(deps: RunnerDeps, executionId: number): Promi
     return 'rejected';
   }
 
+  if (deps.beforeClaim !== undefined) await deps.beforeClaim();
   const claimed = await ghExecutionRepo.claimExecution(deps.pool, executionId, deps.config.executorId);
   if (claimed === null) {
+    /*
+     * claim이 0행이면 둘 중 하나다 — 다른 실행기가 먼저 집었거나, 재검증과 claim 사이에 **취소가
+     * 들어왔다**(claim은 `cancel_requested_at IS NULL`을 요구한다). 후자를 잔여 큐 스윕(최대
+     * `queuedStaleMs`)까지 기다리게 두지 않고 지금 닫는다 — 사용자는 취소를 눌렀고 아무것도
+     * 실행되지 않았다 (`DEV-665`).
+     */
+    const current = await ghExecutionRepo.findById(deps.pool, executionId);
+    if (current !== null && current.state === 'queued' && current.cancel_requested_at !== null) {
+      await ghExecutionRepo.cancelQueued(deps.pool, executionId);
+      deps.metrics.executions.inc({ result: 'cancelled' });
+      deps.log({ level: 'info', message: '집기 직전에 취소됐다', execution_id: executionId, correlation_id: row.correlation_id });
+      return 'cancelled_before_start';
+    }
     deps.metrics.executions.inc({ result: 'lost_claim' });
     return 'lost_claim';
   }
@@ -267,7 +283,7 @@ export async function runExecution(deps: RunnerDeps, executionId: number): Promi
     }
   }
 
-  await ghExecutionRepo.finishExecution(deps.pool, executionId, deps.config.executorId, {
+  const finished = await ghExecutionRepo.finishExecution(deps.pool, executionId, deps.config.executorId, {
     state,
     exitCode: result.exitCode,
     outputHash: result.stdoutSha256,
@@ -280,6 +296,19 @@ export async function runExecution(deps: RunnerDeps, executionId: number): Promi
     outputBinary: result.stdout.binary || result.stderr.binary,
     envKeys,
   });
+  if (finished === null) {
+    /*
+     * 회수 판정을 덮지 않는다(`gh-execution.ts`의 규율) — 다만 조용히 버리지도 않는다. 하트비트가 끊겨
+     * 고아로 회수된 뒤 돌아온 결과이며, 운영자가 「왜 실패로 보이는가」를 로그에서 찾을 수 있어야 한다 (`DEV-666`).
+     */
+    deps.log({
+      level: 'warn',
+      message: '실행 결과를 기록하지 못했다 — 이미 고아로 회수된 실행이다(executor_lost). 결과는 버려진다',
+      execution_id: executionId,
+      correlation_id: row.correlation_id,
+      state,
+    });
+  }
 
   deps.metrics.executions.inc({ result: state });
   deps.metrics.duration.observe(result.durationMs / 1000);

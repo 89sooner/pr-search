@@ -17,7 +17,10 @@
  * 실행: `pnpm test:regression`
  */
 
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, existsSync, readdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -4039,6 +4042,47 @@ describe('REL-007 R0: GitHub Operations Plane이 배포에서 실제로 돈다 (
     expect(smoke).toContain('GH_OPERATIONS_ENABLED=false');
     expect(smoke).toContain('GH_OPERATIONS_ENABLED=true');
     expect(read('deploy/single-host/.env.example')).toContain('GH_OPERATIONS_ENABLED=false');
+  });
+
+  /**
+   * `DEV-608`이 Node 축에 세운 방어(켜짐의 정의가 같은가)를 **셸·compose 경계**에도 건다 (`DEV-664`).
+   *
+   * prsctl은 `.env`를 셸로 읽어 프로파일을 켜고, search-api는 같은 값을 compose의 dotenv 파서를 지나
+   * 받는다. 두 파서가 같은 입력에 다른 답을 내면 「search-api만 켜지고 실행기는 없는 형상」이 조용히
+   * 생기고 요청이 영원히 `queued`다. 독립 검토가 `"true"`에서 그것을 실측했다.
+   */
+  it('prsctl의 켜짐 판정이 compose의 dotenv 규칙과 search-api의 판정에 같은 답을 낸다 — 입력 표로 건다 (DEV-664)', async () => {
+    const { resolveOperationsEnabled } = await import('../apps/search-api/src/gh/config.js');
+    const prsctl = read('deploy/single-host/prsctl');
+    const fn = (name: string): string => new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?\\r?\\n\\}`, 'm').exec(prsctl)?.[0] ?? '';
+    const shell = [fn('gh_operations_value'), fn('gh_operations_state')].join('\n');
+    expect(shell).toContain('gh_operations_value()');
+    expect(shell).toContain('gh_operations_state()');
+    /** compose-go dotenv가 값을 넘기는 규칙 — 실측(2026-09-13, `docker compose config`): 감싼 따옴표 제거, 공백 뒤 `#` 주석 제거, 앞뒤 공백 제거. */
+    const dotenv = (raw: string): string => raw.replace(/\s+#.*$/, '').trim().replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1').trim();
+    const classifyApi = (value: string): 'on' | 'off' | 'reject' => {
+      try {
+        return resolveOperationsEnabled({ GH_OPERATIONS_ENABLED: value }) ? 'on' : 'off';
+      } catch {
+        return 'reject';
+      }
+    };
+    const dir = mkdtempSync(join(tmpdir(), 'prs-gh-ops-'));
+    try {
+      const inputs = ['true', ' true ', '"true"', "'true'", 'true # 켠다', '"true" # 켠다', 'false', '"false"', '', 'TRUE', 'True', 'yes', '1', 'true#x'];
+      for (const raw of inputs) {
+        const envFile = join(dir, '.env');
+        writeFileSync(envFile, `PRS_VERSION=x\nGH_OPERATIONS_ENABLED=${raw}\n`);
+        const shellState = execFileSync('bash', ['-c', `${shell}\ngh_operations_state`], { env: { ...process.env, ENV_FILE: envFile }, encoding: 'utf8' }).trim();
+        expect(shellState, `prsctl ${JSON.stringify(raw)}`).toBe(classifyApi(dotenv(raw)));
+      }
+      // 스위치 줄이 아예 없으면 꺼짐이다 — 파일이 없을 때도 같다.
+      writeFileSync(join(dir, '.env'), 'PRS_VERSION=x\n');
+      expect(execFileSync('bash', ['-c', `${shell}\ngh_operations_state`], { env: { ...process.env, ENV_FILE: join(dir, '.env') }, encoding: 'utf8' }).trim()).toBe('off');
+      expect(execFileSync('bash', ['-c', `${shell}\ngh_operations_state`], { env: { ...process.env, ENV_FILE: join(dir, 'missing.env') }, encoding: 'utf8' }).trim()).toBe('off');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('gh 계열 소스에 원시 제어 문자가 없다 — 도구가 지운 ESC가 시험을 거짓 실패시켰다', () => {

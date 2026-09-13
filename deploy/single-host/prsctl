@@ -36,9 +36,25 @@ bad()  { printf '  \033[31m✗\033[0m %s\n' "$*"; }
 # 실행기가 **같은 값**을 읽어야 하며 — 한쪽만 켜지면 요청이 영원히 `queued`이거나 실행기가
 # 아무것도 받지 않는다 — 그 값을 여기서 프로파일로 옮기면 켜고 끄는 자리가 `.env` 하나가
 # 된다. `require_env` 전에도 불리므로 파일이 없으면 프로파일 없이 돈다.
-gh_operations_enabled() {
-  [ -f "$ENV_FILE" ] && sed -nE 's/^GH_OPERATIONS_ENABLED=[[:space:]]*([a-z]+)[[:space:]]*$/\1/p' "$ENV_FILE" | tail -1 | grep -qx true
+# **`.env`의 값을 compose의 dotenv 규칙대로 읽는다** (`DEV-664`). 감싼 따옴표를 벗기고, 공백 뒤 `#`부터는
+# 주석이며, 앞뒤 공백을 버린다. 실측(2026-09-13, `docker compose config`): `"true"`·`'true'`·`true # 켠다`·
+# ` true `가 전부 `true`로 search-api에 도착한다. 이 파서가 그것과 다르면 **search-api는 켜졌는데 실행기는
+# 없는 형상**이 조용히 생긴다 — 회귀(`runtime-reachability`)가 두 판정을 같은 입력 표로 대조한다.
+gh_operations_value() {
+  [ -f "$ENV_FILE" ] || return 0
+  sed -nE 's/^GH_OPERATIONS_ENABLED=(.*)$/\1/p' "$ENV_FILE" | tail -1 \
+    | sed -E 's/^[[:space:]]+//; s/[[:space:]]+#.*$//; s/[[:space:]]+$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/; s/^[[:space:]]+//; s/[[:space:]]+$//'
 }
+# on / off / reject — search-api·gh-executor의 `resolveOperationsEnabled`와 같은 분류다: `true`만 켜짐,
+# 빈 값·`false`는 꺼짐, 그 밖(`TRUE`·`yes`…)은 두 서비스가 기동을 거부하므로 여기서도 거부한다.
+gh_operations_state() {
+  case "$(gh_operations_value)" in
+    true) printf 'on' ;;
+    ''|false) printf 'off' ;;
+    *) printf 'reject' ;;
+  esac
+}
+gh_operations_enabled() { [ "$(gh_operations_state)" = on ]; }
 
 compose() {
   local profiles=()
@@ -139,6 +155,9 @@ require_env() {
     grep -qE "^${key}=.+" "$ENV_FILE" || missing+=("$key")
   done
   [ ${#missing[@]} -eq 0 ] || die "필수 값이 비어 있다: ${missing[*]}"
+  # GitHub Operations Plane의 스위치가 두 서비스가 거부하는 값이면 여기서 먼저 막는다 (CR-086 / DEV-664).
+  [ "$(gh_operations_state)" != reject ] \
+    || die "GH_OPERATIONS_ENABLED는 true 또는 false여야 한다: '$(gh_operations_value)' — search-api·gh-executor가 기동을 거부한다"
   # **셸로 소싱하지 않는다.** `ES_JAVA_OPTS=-Xms2g -Xmx2g`처럼 값에 공백이 있으면
   # `. file`이 뒷부분을 명령으로 해석해 죽는다. Compose의 `.env` 파싱은 셸과 달라
   # 공백을 값의 일부로 보므로, 이 스크립트가 쓰는 몇 개만 같은 규칙으로 읽는다.

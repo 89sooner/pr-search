@@ -817,7 +817,7 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
    ```
 
    봉인 키는 한 번 만들면 바꾸지 않는다 — 바꾸면 기존 봉인을 풀 수 없어 모든 사용자가 다시 연결해야 한다. `GHE_OPS_REDIRECT_URI`는 App에 등록한 값과 **문자 그대로** 같아야 한다. 사설 CA를 쓰면 6장의 CA 파일을 `gh-executor`에도 같은 경로로 마운트한다(6장 표).
-3. **`./prsctl upgrade`를 돌린다.** `prsctl`이 `.env`의 `GH_OPERATIONS_ENABLED=true`를 읽어 `gh-executor` 프로파일(`github-operations`)을 함께 세운다. `./prsctl health`가 `gh-executor /healthz … "execution":"enabled"`를 내야 한다. search-api만 켜지고 실행기가 없으면 요청이 영원히 `대기 중`이다 — `health`가 그 어긋남을 빨갛게 낸다.
+3. **`./prsctl upgrade`를 돌린다.** `prsctl`이 `.env`의 `GH_OPERATIONS_ENABLED=true`를 읽어 `gh-executor` 프로파일(`github-operations`)을 함께 세운다. 값은 compose와 같은 규칙으로 읽는다 — `"true"`처럼 따옴표로 감싸거나 뒤에 주석을 달아도 되고, `TRUE`·`yes`는 두 서비스가 거부하므로 `prsctl`도 거부한다(`DEV-664`). 켠 직후 `worker-batch`가 기동 첫 회차에서 `gh_execution`의 월 파티션을 만든다 — `./prsctl health`가 초록이 된 뒤에 4단계를 한다(`DEV-668`). `./prsctl health`가 `gh-executor /healthz … "execution":"enabled"`를 내야 한다. search-api만 켜지고 실행기가 없으면 요청이 영원히 `대기 중`이다 — `health`가 그 어긋남을 빨갛게 낸다.
 4. **한 사용자로 확인한다.** 로그인 → 좌측 「GitHub 작업」 → 「GitHub 계정 연결」 → GHE 인가 화면 → 돌아오면 「연결됨 @<login>」 → 저장소 선택 → 미리보기에 `gh pr list --repo <host>/<owner>/<repo> --state open --limit 30 --json …`이 보이면 「실행」 → 결과 표 → 「실행 이력」에 행이 남는다. 「같은 구성으로 다시 실행」은 새 미리보기를 만들 뿐 실행하지 않는다.
 5. **외부에서 못 본 것을 확인한다 (원장 6.83장).** (a) 실제 GHE 인가 왕복이 성립하는가 (b) `gh pr list`가 GHES에 붙는가 — 실패하면 실행 패널의 「표준 오류」를 편다 (c) 사설 CA가 gh에 닿는가 (d) GHES의 user-to-server 토큰 만료 설정.
 

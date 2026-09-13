@@ -300,6 +300,26 @@ describe('수명주기 (FR-GH-006 AC-3·AC-4·AC-5, NFR-011)', () => {
     }
   }, 60_000);
 
+  it('재검증과 claim 사이에 취소가 들어오면 스윕을 기다리지 않고 지금 cancelled로 닫는다 (DEV-665)', async () => {
+    await connectAlice();
+    const row = await enqueue();
+    mock.requests.length = 0;
+    const outcome = await runExecution(
+      executorDeps({}, {
+        beforeClaim: async () => {
+          await ghExecutionRepo.requestCancel(pool, row.execution_id, 'u-alice');
+        },
+      }),
+      row.execution_id,
+    );
+    expect(outcome).toBe('cancelled_before_start');
+    const done = await ghExecutionRepo.findById(pool, row.execution_id);
+    expect(done?.state).toBe('cancelled');
+    expect(done?.finished_at).not.toBeNull();
+    // gh는 호출되지 않았다.
+    expect(mock.graphqlRequests()).toHaveLength(0);
+  });
+
   it('시간 상한을 넘기면 timed_out이다', async () => {
     const slow = await startMockGhe({ expectedToken: TOKEN, graphqlDelayMs: 6_000 });
     try {

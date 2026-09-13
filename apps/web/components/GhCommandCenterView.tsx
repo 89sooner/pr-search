@@ -21,7 +21,9 @@
  *
  * ## 같은 버튼을 두 번 눌러도 실행은 하나다 (FR-GH-012 AC-5, QA-GH-14)
  *
- * 제출마다 `Idempotency-Key` 하나를 쓰고, **실행이 실제로 묶인 뒤에만** 다음 키를 만든다.
+ * 제출마다 `Idempotency-Key` 하나를 쓰고, **실행이 실제로 묶인 뒤에만** 다음 키를 만든다. 다만 **폼이
+ * 바뀌면 다음 제출은 다른 실행**이므로 그때도 키를 새로 만든다 — 앞선 제출의 응답을 못 받은 채 폼을
+ * 바꿔 다시 누르면, 같은 키로는 서버가 옛 구성의 실행을 돌려준다 (`DEV-667`).
  * 네트워크가 응답 직전에 끊겨도 같은 키로 다시 보내면 서버가 기존 실행 ID를 돌려주므로
  * 화면은 그 실행에 붙는다 — 새 실행을 만들지 않는다.
  *
@@ -218,6 +220,8 @@ export function GhCommandCenterView(): ReactNode {
    * (QA-GH-02): 같은 함수가 같은 답을 낼 것이고, 실행 버튼은 이미 닫혀 있다.
    */
   useEffect(() => {
+    // 폼이 바뀌었다 — 다음 제출은 다른 실행이다. 같은 폼의 재시도는 이 효과가 다시 돌지 않으므로 키를 지킨다.
+    idempotencyKey.current = null;
     if (capability === null || form === null || form.repository === '' || violations.length > 0) {
       setPreview(null);
       setPreviewLoading(false);
