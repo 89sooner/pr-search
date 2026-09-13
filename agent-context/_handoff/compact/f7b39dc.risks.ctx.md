@@ -1,8 +1,35 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=8fdf762bb7f863ee462fa73996577e47d1a813e8964aac981868b4ed6b26e39d bytes=184846 lines=2552 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;packages/es/src/config.ts;packages/bus/src/redis-streams.ts;acme/smp1900;repos/.../actions/runs;packages/authz/src/config.test.ts;apps/web/instrumentation.test.ts;deploy/single-host/smoke-images.sh;deploy/single-host/;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/;exports/202608260047.md;try/catch;docs/40_delivery/pr_search_implementation_traceability.md;900/900;exports/202608262010.md;packages/es/src/links.ts;apps/search-api/src/index.ts
+@kv sha256=f3ceec660fe0506dfb9cb9356dc764fb12a41286e8a5c72afbddb70dbd4e20e1 bytes=190394 lines=2604 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;apps/gh-executor/integration/executor.test.ts;/../search-api/src/gh/;gh/routes;9/10;prs-pinned-gh/2.97.0/gh;prs/gh-cli;fix/wp075-annotate-safety;packages/es/src/config.ts;packages/bus/src/redis-streams.ts;acme/smp1900;repos/.../actions/runs;packages/authz/src/config.test.ts;apps/web/instrumentation.test.ts;deploy/single-host/smoke-images.sh;deploy/single-host/;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-13 (2차) 라운드가 배운 함정 (REL-007 R0)
+@h3 Write 도구가 리터럴 제어 문자를 지운다 — 시험 하나가 그것으로 깨졌다
+@path const ESC = '<0x1B>'로 적은 네 파일 중 apps/gh-executor/integration/executor.test.ts는 빈 문자열로 저장됐고(grep -c $'\x1b' = 0), 나머지 셋은 바이트가 남았다. 결과는 「무해화가 안 된다」로 보이는 거짓 실패였다 — 실제로는 입력에 ESC가 없어 걷어 낼 것이 없었다. 처방: 제어 문자는 언제나 ''처럼 이스케이프로 적고, 픽스처의 바이트는 grep -c로 실측한다. Bash 도구도 명령 문자열에 제어 문자가 있으면 거부한다(「control characters that would be hidden」) — 스크립트 파일로 우회했다.
+@h3 파티션 표의 유니크 인덱스는 파티션 키를 포함해야 한다 — 문서의 DDL이 그래서 틀렸다
+@p 데이터 모델 3.5장의 gh_execution_idem_uk (user_id, idempotency_key, requested_at)는 만들어지지만 같은 키를 막지 못한다(requested_at이 매번 다르다). 통합 시험이 첫 실행에서 잡았다. 보조 표로 풀었고 DEV로 적어야 한다. 교훈: 문서의 DDL을 옮길 때 그 제약이 실제로 무엇을 막는지 시험으로 본다.
+@h3 --state closed는 GraphQL에서 [CLOSED, MERGED]다
+@p help의 열거값과 질의 변수가 1:1이 아니다. 시험이 ['CLOSED']를 기대해 깨졌다. gh의 실제 요청은 목이 기록한 것으로만 안다 — 문서로 추정하지 않는다.
+@h3 search-api가 만료 임박 연결의 요청을 거절한다 — 실행기 시험의 픽스처가 그것에 막혔다
+@p ensureLiveConnection은 만료 15분 전이면 갱신을 시도하고 갱신 토큰이 없으면 던진다. 「큐에서 기다리는 사이 만료」를 시험하려면 요청 뒤 DB의 expires_at을 앞당겨야 한다. 두 계층의 판정이 다른 시점을 보는 것은 의도이며, 시험은 그것을 따라야 한다.
+@h3 앱→앱 import가 시험에 있다
+@path executor.test.ts가 ../../search-api/src/gh/{config,executions}.ts를 상대 경로로 가져와 실제 요청 수락 함수로 큐를 채운다. lint:deps는 package.json만 보므로 통과하지만 검토가 지적할 수 있다. 대안은 픽스처를 직접 INSERT하는 것 — 그러면 「API가 남긴 행을 실행기가 그대로 집는다」는 증명이 약해진다. 남길지 결정하고 근거를 적는다.
+@h3 /tmp는 휘발이다 — 미커밋 코드 44개 경로와 고정 gh 바이너리가 거기 있다
+@p 재부팅이면 워크트리도 바이너리도 사라진다. 다음 세션의 첫 일은 커밋·push다. 바이너리는 ensurePinnedGh가 다시 내려받는다(github.com 이그레스 필요, 해시 대조).
+@h3 아직 돌리지 않은 것을 돌린 것처럼 적지 않는다
+@risk 이 판에서 실제로 돈 것: gh-cli 단위 69 · executor 단위(spawn·config) · search-api gh 단위 · db partitions 단위 · contracts · bus · db gh-schema 통합 13 · search-a ... ontrast·e2e·Docker 빌드·compose 기동·변이·validator(변경 후). 원장에는 이 구분을 그대로 적는다.
+@h3 실행기 통합 시험이 CI에서 gh를 내려받는다
+@path ensurePinnedGh는 캐시가 없으면 공식 릴리스에서 14MB를 받는다. 호스팅 러너는 이그레스가 있어 되지만, 실패하면 skip이 아니라 실패다(의도). 캐시 경로는 <tmpdir>/prs-pinned-gh/2.97.0/gh.
+@h3 compose의 read_only: true + tmpfs는 실제 기동을 보지 않았다
+@p Node가 /tmp·workspace 외에 쓰는 자리가 있으면 기동이 죽는다. smoke-images.sh에 executor 기동 검사를 넣어 실측한다. Dockerfile의 wget 내려받기도 빌드로 실측하지 않았다.
+@h3 웹 번들에 @prs/gh-cli 진입점이 들어간다
+@todo 진입점은 순수하다(TextDecoder·TextEncoder·crypto.getRandomValues만). Node 전용은 /node 서브패스뿐이다. next build가 그것을 확인한다 — 아직 안 돌렸다. sha256.ts·manifest.ts가 진입점에 재수출되므로 브라우저 번들 크기가 조금 는다.
+@h3 규제·경계에서 놓치기 쉬운 것
+@b GHE_OPS_CLIENT_SECRET은 search-api에만, GH_IDENTITY_VAULT_KEY는 search-api와 gh-executor 둘 다. 둘의 값이 다르면 실행기가 identity_unsealable로 전부 거절한다 — 런북에 적는다.
+@b GH_OPERATIONS_ENABLED가 API만 켜지면 실행이 영원히 queued, 실행기만 켜지면 요청이 없다. MNUMBER_ENABLED와 같은 함정 — 회귀로 두 서비스가 같은 변수를 받는지 건다.
+@path SSE는 출력 청크를 흘리지 않는다(상태만). FR-GH-006 AC-2와 어긋나므로 DEV 없이 「구현됐다」고 적지 않는다.
+@h3 여전히 유효한 것
+@cmd 공유 체크아웃(브랜치는 워크트리로, git add는 경로 명시) · vitest 둘을 동시에 돌리지 않는다 · ELASTICSEARCH_NODE(URL 아님) · gh 2.4.0의 없는 플래그 · /export는 exports/ 아래에 생긴다 · 채번은 원격 브랜치 전체로 재고 병렬 세션에 묻는다(이번에 두 세션이 「충돌 없음」으로 답했고, fix/wp075-annotate-safety는 PR #177로 병합돼 DEV-650 앞 구간이 비어 있음을 확인했다).
 @h2 2026-09-13 라운드가 배운 함정 (WP-075 안전성 보강)
 @h3 변이가 「살아남았다」고 하면 먼저 그 시험이 돌았는지 물어라
 @p 첫 변이 실행에서 넷이 살아남았다고 보고됐다. 그중 하나는 -t 패턴이 시험 이름과 어긋나 대상 시험이 한 건도 돌지 않은 것이었다(10건 전부 skip). 내 미실행 판정이 " 0 passed"만 찾고 있어서 "10 skipped"를 놓쳤다.

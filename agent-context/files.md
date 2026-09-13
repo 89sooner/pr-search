@@ -1,5 +1,98 @@
 # 중요 파일 경로와 역할
 
+## 2026-09-13 (2차) 라운드가 만든 것 (REL-007 R0 / WP-077 예정 — **전부 미커밋**, `/tmp/pr-search-rel007`)
+
+`git status --short`가 44개 경로(디렉터리 포함)를 낸다. 커밋 명령은 todos.md 0번.
+
+### 새 패키지 `packages/gh-cli/` — capability 모델·argv·출력 경계 (브라우저 안전 진입점 + `/node`)
+
+| 경로 | 역할 |
+| --- | --- |
+| `src/pin.ts` | `GH_PINNED_VERSION='2.97.0'`, 자산·바이너리 SHA-256, `ghPinnedAssetUrl`, `parseGhVersionOutput`. **버전·해시의 유일한 정본**(Dockerfile의 리터럴과 회귀로 대조 예정) |
+| `src/types.ts` | `GhCapabilityDefinition`·`GhInvocation`·`GhNormalizedInvocation`·`GhConstraint`(13종)·`GhResultContract`·`GhManifest*`·`GhSafeText`·`GhPrListRow`·실행 상태 유니온. `GhExecutionStatus = allowed \| not_implemented \| policy_blocked`(실행 차원) |
+| `src/help-parse.ts` | `parseHelp`·`parseFlagLine`·`splitHelpSections` — cobra help 텍스트 파서(순수). 절 이름은 열 0 대문자 줄, flag 명세와 설명 사이 공백 3칸 |
+| `src/inventory.ts` (node) | `extractInventory`(바이너리를 걸어 전 command `--help`), `readGhVersion`, `diffInventory`. exit 4는 `helpStatus:'auth_required'` |
+| `src/constraints.ts` | `evaluateInvocation` — **폼·서버 공용 판정**. `parseRepositorySlug`, `evaluateRelations` |
+| `src/argv.ts` | `buildArgv` — **유일한 argv 빌더**. `redactArgv`·`redactString`·`argvEquals`. 제어 문자 최종 방어선 |
+| `src/safe-output.ts` | `SafeOutputStream`(청크 경계 ESC·UTF-8 꼬리 보존, 상한, 바이너리 탐지), `sanitizeOutput`·`sanitizeText`·`stripEscapes`·`looksBinary` |
+| `src/result.ts` | `PR_LIST_JSON_FIELDS`(10)·기본 9, `parsePrListOutput`(허용 필드만, 값 무해화, `possiblyMore`), `safeHttpUrl` |
+| `src/env.ts` | `GH_EXECUTION_ENV_KEYS`(14), `buildExecutionEnv`, `describeExecutionEnv`(비밀은 `<redacted>`) |
+| `src/capabilities.ts` | `PR_LIST_CAPABILITY`(옵션 `--state`·`--limit`·`--json`, `timeoutMs` 30초, `requiredPermissions: ['pull_requests:read']`), `EXECUTABLE_CAPABILITIES`, `findCapability` |
+| `src/manifest.ts` | `buildManifest`(오버라이드의 path·flag·JSON 필드가 인벤토리에 있어야 함), `manifestHash`(정규 JSON SHA-256), `verifyManifestHash`, `MANIFEST_VERSION='r0.1'` |
+| `src/sha256.ts` | 순수 SHA-256 (브라우저·Node 동일) |
+| `src/manifest-file.ts` (node) | `loadManifest`(버전·해시 검증, 어긋나면 던짐), `writeManifest`, `MANIFEST_DIR` |
+| `src/vault.ts` (node) | `parseVaultKey`(64자 hex), `sealSecret`/`unsealSecret`(AES-256-GCM, AAD=user_id, 형식 `1\|iv\|tag\|ct`), `VaultUnsealError` |
+| `src/index.ts` / `src/node.ts` | 진입점 둘. `package.json` exports `.`·`./node` |
+| `manifest/gh-2.97.0.json` | 커밋되는 정본 manifest (518KB, hash `ad00027d84b9915e5127867a778df29b1d164bb88b8e5e15d6be2c9ab820dab2`) |
+| `testing/pinned-gh.ts` | `ensurePinnedGh` — `GH_PINNED_BIN` → tmp 캐시 → 내려받기, 해시 3중 대조 |
+| `testing/mock-ghe-tls.ts` | `startMockGhe` — **실제 HTTPS** 목(openssl 인증서 생성). GraphQL·토큰 교환·`/user`·revoke 기록, `expectedToken`, `graphqlDelayMs` |
+| `testing/https-json.ts` | 시험용 `HttpJson`(자체 서명 CA 신뢰) |
+| `testing/fixtures/help/*.txt` | root·pr·pr-list·co·repo-clone·api의 실제 help (파서 시험 픽스처) |
+| `src/*.test.ts` | help-parse·constraints·argv·safe-output·result·env·manifest·vault (69건) |
+
+### 새 앱 `apps/gh-executor/` — gh를 띄우는 유일한 프로세스
+
+| 경로 | 역할 |
+| --- | --- |
+| `src/config.ts` | `resolveExecutorConfig`(`GH_OPERATIONS_ENABLED`·`GHE_BASE_URL`→host·`GH_IDENTITY_VAULT_KEY`·`GH_EXECUTOR_BIN`·`_WORKSPACE_ROOT`·`_MAX_CONCURRENT`(≤파티션 4)·상한·CA·하트비트·고아·스윕), `executorConfigFailure`, `hostOfBaseUrl` |
+| `src/spawn.ts` | `runGhProcess` — **저장소 유일의 `spawn(`**, `shell:false`, `detached`, 그룹 SIGTERM→SIGKILL, 타임아웃, 취소 폴링, 하트비트, `SafeOutputStream` 둘, 원본 stdout 해시. 절대 던지지 않음 |
+| `src/workspace.ts` | `createWorkspace`(0700, home/config/tmp)·`destroyWorkspace` |
+| `src/runner.ts` | `runExecution` — `revalidate`(manifest 해시·gh 버전·capability·저장소·연결·호스트·만료·행위자·봉인 해제·**argv 재조립 대조**) → `claimExecution` → `buildExecutionEnv` → `runGhProcess` → `parsePrListOutput` → `finishExecution`. `RunnerDeps`에 시험 전용 `timeoutMsOverride`·`stdoutLimitOverride` |
+| `src/sweeper.ts` | `startSweeper` — `reclaimOrphans`(하트비트 끊긴 running→failed `executor_lost`) + `listStaleQueued` 재실행. `runOnce` |
+| `src/metrics.ts` | `gh_execution_total{result}`·`gh_execution_duration_seconds`·`gh_executor_active` |
+| `src/server.ts` | `/healthz`(execution enabled/disabled·gh 버전·manifest 해시·PG 확인)·`/metrics`, 포트 3004 |
+| `src/index.ts` | 기동: 설정 거부 → gh 버전·**바이너리 해시** 대조 → manifest 로드 → 파티션을 `maxConcurrent` 구독으로 분배 → 스윕. 종료 45초 유예 |
+| `src/spawn.test.ts`·`src/config.test.ts` | 실제 자식 프로세스로 타임아웃·취소·그룹 종료·상한·shell 미경유·환경 미상속 |
+| `integration/executor.test.ts` | 실제 gh + HTTPS 목: 요청→실행→결과, closed 상태, 잘못된 토큰, 재검증 5경로, 취소·타임아웃·상한, 스윕, spawn 실패. **`const ESC`를 `''`로 고쳐야 10/10** |
+
+### `packages/db`
+
+| 경로 | 무엇 |
+| --- | --- |
+| `migrations/028_gh_operations.{up,down}.sql` | `github_identity_connection`(PK user_id, host, token_ref, 만료·철회), `gh_identity_secret`(봉인 바이트, key_id), `gh_execution`(월별 파티션, 소유자 `prs_admin`, 상태·위험 CHECK, 발췌 상한), `gh_execution_idempotency`(PK user_id+key). down은 넷을 DROP |
+| `src/repositories/gh-identity.ts` | `connectIdentity`(트랜잭션, 옛 봉인 삭제), `findConnection`, `loadSecret`, `rotateSecret`, `revokeConnection`, `listConnections` |
+| `src/repositories/gh-execution.ts` | `insertExecution`(**트랜잭션: 보조 표 선점 → 행 → ID 기록**, `DuplicateIdempotencyKeyError`), `findById`, `findByIdempotencyKey`, `listExecutions`(키셋 `beforeId`, 상한 100), `claimExecution`, `heartbeat`, `requestCancel`, `cancelQueued`, `isCancelRequested`, `finishExecution`(집은 실행기만), `failQueued`, `reclaimOrphans`, `listStaleQueued` |
+| `src/repositories/index.ts` | `ghIdentityRepo`·`ghExecutionRepo`·타입 재수출 |
+| `src/partitions.ts` | `PARTITIONED_TABLES`에 `gh_execution`, `RETENTION_MONTHS.gh_execution = 12` (`partitions.test.ts` 갱신) |
+| `integration/gh-schema.test.ts` | 왕복·권한·파티션·CHECK·claim·finish·취소·멱등 경합·봉인 (13건) |
+| `integration/merge-number-schema.test.ts` | 내려갈 목록을 `['028','027','026','025']`로 갱신 |
+
+### `packages/bus`·`packages/contracts`
+
+`bus/src/topics.ts`: `TOPICS.ghExecutions='prs:gh:executions'`, group `gh-executor`, 파티션 4, 키 `host:owner/name` (`partition.test.ts` 갱신, 「스트림 8종」). `contracts/src/error-codes.ts`: `GH_CAPABILITY_NOT_EXECUTABLE: 409` (+ `docs/30_technical_architecture/pr_search_api_contracts.md` 6장 행).
+
+### `apps/search-api/src/gh/`
+
+| 경로 | 무엇 |
+| --- | --- |
+| `config.ts` | `resolveGhOpsConfig`·`ghOpsConfigFailure`·`resolveOperationsEnabled` |
+| `identity.ts` | `startAuthorization`(state+PKCE, Redis 10분) · `completeAuthorization`(교환→`/user`→봉인→upsert) · `statusOf`/`readStatus` · `ensureLiveConnection`(갱신) · `disconnect`(철회+best-effort revoke) · `IdentityError` |
+| `context.ts` | `scopeAllowsRepository`(explicit/org_team 두 모드), `listVisibleRepositories`, `resolveRepositoryContext` |
+| `executions.ts` | `parseInvocationBody`, `parseIdempotencyKey`(8~128 `[A-Za-z0-9_-]`), `prepare`(**미리보기·실행 공용**), `toPreview`, `requestExecution`(중복 키→준비→연결 확보→INSERT→발행), `toExecutionView`, `findVisibleExecution`, `listVisibleExecutions`, `canSeeAll`, `GhRejected` |
+| `routes.ts` | 경로 상수 `GH_*_PATH`(`/api/v1/gh/…`), `registerGhRoutes` — capabilities·contexts/repositories·identity(GET/POST/DELETE)·identity/callback·executions/preview·executions(POST/GET)·executions/:id·:id/stream(SSE)·:id/cancel |
+| `http.ts` | `fetchJson`(운영 `HttpJson`, 10초 상한) |
+| `*.test.ts` | executions(본문 파싱·뷰)·context·identity(statusOf) |
+| `../config.ts`·`server.ts`·`runtime.ts`·`index.ts` | `ghOps` 설정 필드, `ServerDeps.gh`, `buildGhDeps`(켜져 있고 세션 있을 때만; 자격 없으면 던짐; manifest 로드), `identityRedis` |
+| `integration/gh/routes.test.ts` | 실제 PG·Redis·HTTPS 목으로 14건 (인가 왕복·봉인 원문 부재·미리보기=실행 argv·우회 요청 거절 10종·중복 키·연결 없음/철회·가시성·취소·SSE) |
+
+### `apps/web`
+
+`lib/nav.ts`(섹션 `github`, 항목 `gh-command-center`→`/gh`, `gh-history`→`/gh/history`, 역할 제한 없음) · `lib/gh.ts`(뷰 타입, `validateForm`=서버와 같은 `evaluateInvocation`, `toInvocation`, `defaultFormState`, `canExecute`, `newIdempotencyKey`, `formatArgv`, `resultKind`, `describeError`, 라벨) · `components/SafeGhOutputViewer.tsx`(C-063)·`GhExecutionPanel.tsx`(C-058, 결과 종류 가름)·`GhExecutionPreview.tsx`(C-062)·`GhPrListForm.tsx`(C-061 첫 판)·`GhCapabilityList.tsx`(미구현도 사유와 함께)·`GhIdentityBanner.tsx` · `package.json`(+`@prs/gh-cli`) · `next.config.ts`(`transpilePackages`+`@prs/gh-cli`) · `vitest.a11y.config.ts`(별칭). **없는 것**: `app/gh/page.tsx`·`app/gh/history/page.tsx`·`app/gh/identity/callback/route.ts`·`GhCommandCenterView`·`GhHistoryView`·시험 전부·`LeftNavPanel` ICONS.
+
+### 배포·루트
+
+`Dockerfile`(`deploy-gh-executor`·`gh-executor` 스테이지, `ARG GH_VERSION/GH_ASSET_SHA256/GH_BINARY_SHA256`, `USER node`, EXPOSE 3004) · `deploy/single-host/compose.yml`(search-api에 `GH_OPERATIONS_ENABLED`·`GHE_OPS_*`·`GH_IDENTITY_VAULT_KEY`; 서비스 `gh-executor` read_only+tmpfs, `*ghe-env`·`*annotate-env` 미수신) · 루트 `tsconfig.json`(참조 `packages/gh-cli`·`apps/gh-executor`)·`tsconfig.tests.json`(paths)·`vitest.{,integration,regression}.config.ts`(별칭 `@prs/gh-cli/node` 먼저)·`package.json`(`gh:manifest`)·`scripts/gh-manifest.mjs`·`pnpm-lock.yaml`.
+
+### 저장소 밖 (휘발)
+
+- 워크트리 `/tmp/pr-search-rel007` — **미커밋 코드 전부**.
+- 고정 gh: `/tmp/claude-1000/-home-roqkf-pr-search/f864b845-0c6f-4ba6-9c0b-b1a332623dcf/scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh` (+ 같은 스크래치의 `compose.rel007.yml`, `mock-ghe.mjs`, `tls/`).
+- 격리 서비스: 컨테이너 `prs-rel007-postgres`(55434)·`prs-rel007-redis`(56380)·`prs-rel007-elasticsearch`(59201), 프로젝트 `prs-rel007`, DB `prs_test` 생성됨.
+
+### 손대면 안 되는 것
+
+`.github/workflows/ci.yml` · 마이그레이션 001~027 · `packages/authz/src/config.ts` 보안 계약 · `packages/github/src/client.ts` 읽기 전용 경계 · `MNUMBER_ANNOTATE_ENABLED` 기본값 · 0.1.0-pilot.5 태그.
+
 ## 2026-09-13 라운드가 만진 것 (WP-075 안전성 보강 / CR-085 — 33개 파일)
 
 main = `65caf0c`. 전체 목록은 `git show --stat 7e4fd63`과 `65caf0c`다.

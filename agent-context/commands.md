@@ -1,5 +1,89 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
 
+## 2026-09-13 (2차) 라운드에서 쓴 것 (REL-007 R0 · CI 확인)
+
+### 전제 — Node 22, 격리 서비스, 고정 gh
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"     # 셸 기본은 v20.12.0
+S=/tmp/claude-1000/-home-roqkf-pr-search/f864b845-0c6f-4ba6-9c0b-b1a332623dcf/scratchpad
+docker compose -p prs-rel007 -f $S/compose.rel007.yml up -d   # postgres 55434 · redis 56380 · es 59201 (이전 판의 compose.safety.yml에서 포트·이름만 바꿈)
+docker exec prs-rel007-postgres createdb -U prs prs_test
+export POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55434 POSTGRES_USER=prs POSTGRES_PASSWORD=prs POSTGRES_TEST_DB=prs_test
+export REDIS_URL=redis://localhost:56380 ELASTICSEARCH_NODE=http://localhost:59201   # URL 아니다
+export GH_PINNED_BIN=$S/gh/gh_2.97.0_linux_amd64/bin/gh       # 없으면 ensurePinnedGh가 내려받는다
+```
+
+`compose.rel007.yml`이 사라졌으면: 개발용 `docker-compose.yml`을 복사해 프로젝트 이름·컨테이너 이름(`prs-rel007-*`)·포트(55434/56380/59201)·볼륨 이름을 바꾼다. 다른 프로젝트 컨테이너 `katakuri-operational-postgres`가 `127.0.0.1:55432`를 쓴다.
+
+### CI 재실행과 확인 (지시 3장)
+
+```bash
+gh api repos/89sooner/pr-search --jq '"private=\(.private) visibility=\(.visibility)"'   # private=false
+gh run rerun 34705991448 -R 89sooner/pr-search            # → attempt 2, queued
+gh api repos/89sooner/pr-search/actions/runs/34705991448 --jq '"attempt=\(.run_attempt) \(.status) \(.conclusion)"'
+gh api repos/89sooner/pr-search/actions/runs/34705991448/jobs --jq '.jobs[] | "\(.name) attempt=\(.run_attempt) \(.conclusion) steps=\(.steps|length) runner=\(.runner_name) labels=\(.labels|join(","))"'
+# verify success steps=18 · integration success steps=12 · runner "GitHub Actions 1000002394/1000002395" · labels ubuntu-latest
+```
+
+`gh run list --branch`·`gh run rerun --failed`는 2.4.0에 없다(기존 기록).
+
+### 고정 gh 확보와 자가 연구 (실측)
+
+```bash
+curl -fsSL -o gh_2.97.0_linux_amd64.tar.gz https://github.com/cli/cli/releases/download/v2.97.0/gh_2.97.0_linux_amd64.tar.gz
+curl -fsSL -o gh_2.97.0_checksums.txt https://github.com/cli/cli/releases/download/v2.97.0/gh_2.97.0_checksums.txt
+sha256sum gh_2.97.0_linux_amd64.tar.gz   # a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112 (checksums.txt와 일치)
+tar xzf … && sha256sum gh_2.97.0_linux_amd64/bin/gh   # 141507c337e8b202ad398550c3b73d72f5af92e86f71665214538a81efd4c409
+docker run --rm --read-only --tmpfs /tmp -v …/bin/gh:/usr/local/bin/gh:ro --user 65534:65534 -e HOME=/tmp -e GH_CONFIG_DIR=/tmp/ghcfg node:22-alpine gh --version   # 비루트·읽기 전용에서 돈다
+# HTTPS 목(자체 서명, SAN IP:127.0.0.1)에 실제 gh를 붙였다 — 스크립트는 $S/mock-ghe.mjs
+env -i PATH=… HOME=$S/ghhome GH_CONFIG_DIR=$S/ghcfg SSL_CERT_FILE=$S/tls/cert.pem GH_ENTERPRISE_TOKEN=ghu_… GH_HOST=127.0.0.1:48443 GH_PROMPT_DISABLED=1 NO_COLOR=1 GH_PAGER= TERM=dumb GH_DEBUG=api \
+  $GH pr list --repo 127.0.0.1:48443/acme/payments --state open --limit 5 --json number,title,…   # exit 0, POST /api/graphql, Authorization: token …
+```
+
+### manifest 생성
+
+```bash
+pnpm --filter @prs/gh-cli build && GH_PINNED_BIN=$S/gh/gh_2.97.0_linux_amd64/bin/gh pnpm gh:manifest
+# manifest 작성: packages/gh-cli/manifest/gh-2.97.0.json — command 229 (leaf 196) · help topic 8 · 27초
+```
+
+첫 실행은 `gh extension exec --help`가 종료 4(인증 필요)를 내서 멈췄다 → `helpStatus:'auth_required'`로 받게 고쳤다.
+
+### 이 판에서 실제로 돌린 시험과 결과
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm vitest run packages/gh-cli` | 8 파일 69건 통과 (처음엔 `--json` 필드 수 48→46 기대치 오류 1건 고침) |
+| `pnpm vitest run packages/gh-cli apps/gh-executor apps/search-api/src/gh packages/db/src/partitions.test.ts packages/contracts packages/bus/src` | 16 파일 129건 중 128 통과 → bus 카탈로그 기대치(7종→8종) 고친 뒤 bus 16건 통과 |
+| `pnpm vitest run --config vitest.integration.config.ts packages/db/integration/gh-schema.test.ts` | **처음 실패**: 파티션 유니크가 중복 키를 막지 못함 → 보조 표로 고친 뒤 13건 통과 (DB는 `dropdb/createdb`로 초기화해 다시 마이그레이션) |
+| `… packages/db/integration/merge-number-schema.test.ts partitions.test.ts` | 통과 (내려갈 목록 028 포함으로 갱신) |
+| `… apps/search-api/integration/gh/routes.test.ts` | 14건 통과 |
+| `… apps/gh-executor/integration/executor.test.ts` | 1차 5/10 → 픽스처 고침(apiDeps 호스트·연결 host·만료 앞당김·closed→[CLOSED,MERGED]) → **9/10**. 남은 1건: 시험 파일의 `ESC` 상수가 빈 문자열(todos 1번) |
+| `pnpm --filter @prs/gh-cli build` · `@prs/db` · `@prs/bus` · `@prs/gh-executor` · `@prs/search-api` | 통과 |
+| `pnpm exec eslint packages/gh-cli apps/gh-executor apps/search-api/src/gh …` | 오류 1(`no-control-regex`)·경고 1 → 고침. **전체 `pnpm lint`는 미실행** |
+| 문서 검사기 (main 기준선) | `python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --root /home/roqkf/pr-search --strict` → 오류 4·경고 2 (FR-CSS-005, D-002, risks.md 경로 2, placeholder 12+8). 변경 후는 미실행 |
+
+**미실행**: `pnpm typecheck`(전체, web 포함) · `pnpm lint`(전체) · `lint:deps` · `pnpm test`(전체) · `test:regression` · `test:integration`(전체) · `pnpm build` · `test:a11y` · `test:contrast` · `web build` · `test:e2e` · `docker build --target gh-executor` · compose 기동 · 변이.
+
+### 실패했던 명령과 원인 (이 세션)
+
+| 명령 | 실패 | 원인 |
+| --- | --- | --- |
+| Bash 도구에 목 서버 스크립트를 heredoc으로 넣음 | 「command contains control characters」 | ESC 바이트. 파일(Write)로 옮기되 `''`로 적어야 함 |
+| `gh api … --jq '"…"; .assets[] …'` | `unexpected token ";"` | jq 표현식 둘을 `;`로 이었다. 두 번 부른다 |
+| `pnpm gh:manifest` 1차 | `gh extension exec --help` 종료 4 | 인증 필요 command. 인벤토리에 사유로 남기게 고침 |
+| gh-schema 통합 1차 | 중복 키 삽입이 성공 | 파티션 유니크 무력. 보조 표 |
+| executor 통합 1차 | `GH_IDENTITY_REQUIRED` 등 5건 | 픽스처가 호스트를 목과 다르게 두었고, 만료 임박 연결은 API가 요청 자체를 거절함 |
+| `sed … packages/bus/src/topics.test.ts` | 파일 없음 | 카탈로그 시험은 `partition.test.ts`에 있다 |
+
+### 정리 — 이름을 명시해서
+
+```bash
+docker compose -p prs-rel007 -f $S/compose.rel007.yml down -v     # 이 세션의 것만
+git worktree remove /tmp/pr-search-rel007 --force && git worktree prune   # **커밋·push 뒤에만**
+```
+
 ## 2026-09-13 라운드에서 쓴 것 (WP-075 안전성 보강 · CR-085)
 
 ### 전제 — Node 22

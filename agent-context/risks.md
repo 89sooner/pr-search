@@ -1,5 +1,57 @@
 # 리스크 · 불확실한 가정 · 함정
 
+## 2026-09-13 (2차) 라운드가 배운 함정 (REL-007 R0)
+
+### Write 도구가 리터럴 제어 문자를 지운다 — 시험 하나가 그것으로 깨졌다
+
+`const ESC = '<0x1B>'`로 적은 네 파일 중 `apps/gh-executor/integration/executor.test.ts`는 **빈 문자열**로 저장됐고(`grep -c $'\x1b'` = 0), 나머지 셋은 바이트가 남았다. 결과는 「무해화가 안 된다」로 보이는 거짓 실패였다 — 실제로는 입력에 ESC가 없어 걷어 낼 것이 없었다. 처방: 제어 문자는 언제나 `''`처럼 이스케이프로 적고, 픽스처의 바이트는 `grep -c`로 실측한다. Bash 도구도 명령 문자열에 제어 문자가 있으면 거부한다(「control characters that would be hidden」) — 스크립트 파일로 우회했다.
+
+### 파티션 표의 유니크 인덱스는 파티션 키를 포함해야 한다 — 문서의 DDL이 그래서 틀렸다
+
+데이터 모델 3.5장의 `gh_execution_idem_uk (user_id, idempotency_key, requested_at)`는 만들어지지만 **같은 키를 막지 못한다**(`requested_at`이 매번 다르다). 통합 시험이 첫 실행에서 잡았다. 보조 표로 풀었고 DEV로 적어야 한다. 교훈: 문서의 DDL을 옮길 때 그 제약이 실제로 무엇을 막는지 시험으로 본다.
+
+### `--state closed`는 GraphQL에서 `[CLOSED, MERGED]`다
+
+help의 열거값과 질의 변수가 1:1이 아니다. 시험이 `['CLOSED']`를 기대해 깨졌다. gh의 실제 요청은 **목이 기록한 것**으로만 안다 — 문서로 추정하지 않는다.
+
+### `search-api`가 만료 임박 연결의 요청을 거절한다 — 실행기 시험의 픽스처가 그것에 막혔다
+
+`ensureLiveConnection`은 만료 15분 전이면 갱신을 시도하고 갱신 토큰이 없으면 던진다. 「큐에서 기다리는 사이 만료」를 시험하려면 요청 뒤 DB의 `expires_at`을 앞당겨야 한다. 두 계층의 판정이 다른 시점을 보는 것은 의도이며, 시험은 그것을 따라야 한다.
+
+### 앱→앱 import가 시험에 있다
+
+`executor.test.ts`가 `../../search-api/src/gh/{config,executions}.ts`를 상대 경로로 가져와 실제 요청 수락 함수로 큐를 채운다. `lint:deps`는 package.json만 보므로 통과하지만 검토가 지적할 수 있다. 대안은 픽스처를 직접 INSERT하는 것 — 그러면 「API가 남긴 행을 실행기가 그대로 집는다」는 증명이 약해진다. 남길지 결정하고 근거를 적는다.
+
+### `/tmp`는 휘발이다 — 미커밋 코드 44개 경로와 고정 gh 바이너리가 거기 있다
+
+재부팅이면 워크트리도 바이너리도 사라진다. **다음 세션의 첫 일은 커밋·push다.** 바이너리는 `ensurePinnedGh`가 다시 내려받는다(github.com 이그레스 필요, 해시 대조).
+
+### 아직 돌리지 않은 것을 돌린 것처럼 적지 않는다
+
+이 판에서 실제로 돈 것: gh-cli 단위 69 · executor 단위(spawn·config) · search-api gh 단위 · db partitions 단위 · contracts · bus · **db gh-schema 통합 13** · **search-api gh/routes 통합 14** · **executor 통합 9/10**. 돌리지 않은 것: 전체 `typecheck`(web 포함)·전체 `lint`·`lint:deps`·전체 `test`·`test:regression`·전체 `test:integration`·`build`·`a11y`·`contrast`·`e2e`·Docker 빌드·compose 기동·변이·validator(변경 후). 원장에는 이 구분을 그대로 적는다.
+
+### 실행기 통합 시험이 CI에서 gh를 내려받는다
+
+`ensurePinnedGh`는 캐시가 없으면 공식 릴리스에서 14MB를 받는다. 호스팅 러너는 이그레스가 있어 되지만, 실패하면 skip이 아니라 **실패**다(의도). 캐시 경로는 `<tmpdir>/prs-pinned-gh/2.97.0/gh`.
+
+### compose의 `read_only: true` + tmpfs는 실제 기동을 보지 않았다
+
+Node가 `/tmp`·workspace 외에 쓰는 자리가 있으면 기동이 죽는다. `smoke-images.sh`에 executor 기동 검사를 넣어 실측한다. `Dockerfile`의 wget 내려받기도 빌드로 실측하지 않았다.
+
+### 웹 번들에 `@prs/gh-cli` 진입점이 들어간다
+
+진입점은 순수하다(`TextDecoder`·`TextEncoder`·`crypto.getRandomValues`만). Node 전용은 `/node` 서브패스뿐이다. `next build`가 그것을 확인한다 — 아직 안 돌렸다. `sha256.ts`·`manifest.ts`가 진입점에 재수출되므로 브라우저 번들 크기가 조금 는다.
+
+### 규제·경계에서 놓치기 쉬운 것
+
+- `GHE_OPS_CLIENT_SECRET`은 `search-api`에만, `GH_IDENTITY_VAULT_KEY`는 `search-api`와 `gh-executor` **둘 다**. 둘의 값이 다르면 실행기가 `identity_unsealable`로 전부 거절한다 — 런북에 적는다.
+- `GH_OPERATIONS_ENABLED`가 API만 켜지면 실행이 영원히 `queued`, 실행기만 켜지면 요청이 없다. MNUMBER_ENABLED와 같은 함정 — 회귀로 두 서비스가 같은 변수를 받는지 건다.
+- SSE는 출력 청크를 흘리지 않는다(상태만). FR-GH-006 AC-2와 어긋나므로 DEV 없이 「구현됐다」고 적지 않는다.
+
+### 여전히 유효한 것
+
+공유 체크아웃(브랜치는 워크트리로, `git add`는 경로 명시) · vitest 둘을 동시에 돌리지 않는다 · `ELASTICSEARCH_NODE`(URL 아님) · gh 2.4.0의 없는 플래그 · `/export`는 `exports/` 아래에 생긴다 · 채번은 원격 브랜치 전체로 재고 병렬 세션에 묻는다(이번에 두 세션이 「충돌 없음」으로 답했고, `fix/wp075-annotate-safety`는 PR #177로 병합돼 DEV-650 앞 구간이 비어 있음을 확인했다).
+
 ## 2026-09-13 라운드가 배운 함정 (WP-075 안전성 보강)
 
 ### 변이가 「살아남았다」고 하면 먼저 그 시험이 돌았는지 물어라

@@ -1,5 +1,48 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
 
+## Session: 2026-09-13 (2차) — CI 확인 + REL-007 R0 첫 수직 구현 (세션 상한으로 중단, 미커밋)
+
+### Goal — 결정자의 말로
+
+「공개 저장소로 변경된 현재 main에서 기존 CI를 실제로 실행한다. runs-on은 변경하지 않고, 실제로 발견된 실패 지점만 수정한다.」 「REL-007을 공식적으로 시작하고, 웹에서 gh pr list를 실행해 결과와 이력을 확인하는 첫 읽기 전용 수직 기능을 구현한다.」 계획만 하고 끝내지 말 것. 릴리스는 발행하지 않는다. 사내 반입은 사용자가 나중에 한다.
+
+### Current state
+
+- **CI**: run `34705991448` attempt 2 (`5128c1c`) 두 잡 success, `ubuntu-latest` 호스팅 러너. 코드 변경 0.
+- **코드**: `/tmp/pr-search-rel007` (`feature/rel007-r0-pr-list`) — 44개 경로 **미커밋·미push**. 상세는 files.md.
+- **시험**: 단위 통과(gh-cli 69 외), 통합 gh-schema 13·routes 14 통과, executor 9/10(ESC 상수).
+- **문서**: API 계약 6장 행 하나만. CR-086·WP-077·DEV-650~·6.83장 전부 남음.
+- **웹**: 컴포넌트 6개만. 페이지·콜백 라우트·컨테이너·시험 없음.
+- **격리 서비스** `prs-rel007-*` 떠 있음(내리지 않았다). 개발용 `prs-postgres`는 이 세션이 띄우지 않았다.
+
+### Decisions — 이 세션이 고른 것
+
+decisions.md의 「2026-09-13 (2차)」 절이 정본. 무거운 것: 브라우저 안전 `@prs/gh-cli` + `/node` 서브패스 · 실행 차원(`allowed/not_implemented/policy_blocked`)과 `GH_CAPABILITY_NOT_EXECUTABLE` · 봉인 토큰(AES-GCM, `.env` 키) · 멱등 보조 표 · 실행기의 큐 재검증과 argv 재조립 대조 · SSE는 상태만.
+
+### Changed files
+
+files.md 참조. 신규 디렉터리 `packages/gh-cli`, `apps/gh-executor`, `apps/search-api/src/gh`, `apps/search-api/integration/gh`; 마이그레이션 028; web 컴포넌트 6개.
+
+### Commands
+
+commands.md 참조. 격리 환경 변수와 `GH_PINNED_BIN`이 필수다.
+
+### Next steps
+
+todos.md의 0→7. **0번(커밋·push)이 가장 급하다** — `/tmp`가 휘발이다.
+
+### Risks/gotchas
+
+risks.md 참조. Write 도구의 ESC 삭제, 파티션 유니크, `--state closed` 확장, 앱→앱 시험 import, 미실행 배터리.
+
+### References
+
+- CI: https://github.com/89sooner/pr-search/actions/runs/34705991448 (attempt 2)
+- gh 2.97.0: https://github.com/cli/cli/releases/tag/v2.97.0 · 공식 매뉴얼 `gh_pr_list`·`gh_help_environment`·`gh_help_exit-codes`
+- GitHub App user access token: docs.github.com「Generating a user access token for a GitHub App」·「Refreshing user access tokens」
+- 동시 세션 답신: `202609112244_save`·`202609130137_save` 둘 다 katakuri-band 작업이며 pr-search 번호와 충돌 없음(2026-09-13)
+- 전사(`/export`)는 이 세션에서 요청받지 않았다 — 필요하면 결정자가 직접 실행한다 (`exports/` 아래에 생긴다)
+
 ## Session: 2026-09-13 — WP-075 안전성 보강 (CR-085)
 
 ### Goal — 결정자의 말로

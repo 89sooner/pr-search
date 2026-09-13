@@ -1,5 +1,53 @@
 # 확정한 설계 결정과 이유
 
+## 2026-09-13 (2차) — REL-007 R0 (CR-086 예정 / WP-077 예정)
+
+### 결정자가 확정해 준 것 (A — 다시 열지 않는다)
+
+| 결정 | 내용 |
+| --- | --- |
+| 저장소 가시성 | CI 실행을 위해 public으로 바꿨다. 다시 바꾸지 않는다 |
+| CI | `runs-on` 불변. self-hosted 전환 없음. 실패 지점만 고친다 — 실제로는 고칠 것이 없었다 |
+| REL-007 | 공식 착수 승인. 사내 반입 미실행은 차단 조건이 아니다 |
+| 첫 수직 범위 (B — 지시서가 사전 승인) | 저장소 선택 → PR 목록 조회 → 상태·건수 입력 → argv 미리보기 → 실행 → 결과·자기 이력. R0만, `pr list` 하나만. R1~R3·`gh api`·extension·Recipe·파일 입출력은 열지 않는다 |
+| 발행 | 이번에는 릴리스·태그를 만들지 않는다 |
+| 보존 | `MNUMBER_ANNOTATE_ENABLED` 기본 OFF, 025~027, Data App 읽기 전용 경계, 로그인·쿠키 계약 그대로 |
+
+### 구현이 스스로 고른 것 (C — 최종 보고의 「Agent-Initiated Decisions」에 전부 적는다)
+
+| 결정 | 왜 | 대안·되돌리기 |
+| --- | --- | --- |
+| 새 패키지 `@prs/gh-cli`의 진입점을 **브라우저 안전**하게, Node 전용(인벤토리·manifest 파일·봉인)은 `@prs/gh-cli/node` 서브패스로 | 폼 검증과 서버 검증이 **같은 함수**(`evaluateInvocation`)를 읽어야 한다 (FR-GH-003 AC-8). `next.config.ts`의 `transpilePackages`에 넣었다 | 서버 전용으로 두고 폼은 규칙을 복제 — 두 판정이 갈린다 |
+| 실행 차원 `execution: allowed \| not_implemented \| policy_blocked`를 FR-GH-001의 분류 차원과 **별도 축**으로 | 인벤토리에 있는 것과 실행을 여는 것은 다르다(지시 8장). 미구현을 `unsupported_by_host`·`policy_blocked`로 위장하지 않는다. 오류 코드 `GH_CAPABILITY_NOT_EXECUTABLE`(409)을 새로 뒀다 | 기존 코드 재사용 — 사용자가 없는 정책을 묻게 된다 |
+| manifest에 `support: 'unknown'` 195건을 **그대로 센다** | 분류하지 않은 것을 분류했다고 적지 않는다. NFR-009 게이트는 통과하지 않았고 그래서 `gh_capability_snapshot` 표(CHECK unclassified=0)를 **만들지 않았다** | 전부 `supported`로 찍기 — 거짓 |
+| `pr.list` 옵션: `--state`(열거), `--limit`(1..100, 기본 30), `--json`(허용 10필드 부분집합) | `--web`은 브라우저 금지(ADR-019), `--jq`/`--template`은 임의 표현식, `--search`·`--author`·`--label`은 자유 문자열 → 다음 판. 상한 100은 서버가 강제 | |
+| argv: `pr list --repo HOST/OWNER/REPO --state X --limit N --json f1,f2` — 호스트는 서버 설정, 저장소는 슬러그 검증값 | 사용자 문자열이 argv에 그대로 들어가는 자리를 0으로 | `GH_REPO` 환경 변수로 전달 — 미리보기와 실제가 갈릴 여지 |
+| 실행 환경 허용 목록 14키(`GH_ENTERPRISE_TOKEN`·`GH_HOST`·격리 `HOME`/`GH_CONFIG_DIR`/`TMPDIR`·headless 값·`SSL_CERT_FILE`), 부모 환경 미상속 | NFR-010. `GH_TOKEN`·`GITHUB_TOKEN`은 목록에 없다 | |
+| 위임 토큰 보관 = **PostgreSQL에 AES-256-GCM 봉인**(`gh_identity_secret`), 키는 `.env`의 `GH_IDENTITY_VAULT_KEY`(64자 hex), AAD=user_id, `keyId`로 회전 구분 | 단일 호스트에 비밀 저장소가 없다. 계약의 `token_ref`가 가리키는 자리를 DB에 두되 원문은 없게. **비밀 저장소의 대체이지 동등물이 아니다** — 호스트 전체 탈취 시 키·데이터 동시 유출 (DEV·보안 문서에 적을 것) | 인메모리만 — 재기동에 사라져 운영 불가; 외부 KMS — 사내 전제 |
+| 멱등 키 = 파티션되지 않은 보조 표 `gh_execution_idempotency`에 먼저 INSERT(ON CONFLICT DO NOTHING) → 실행 행 → 키 행에 ID | 파티션 유니크로는 강제 불가(실측). 경합 3건 동시 삽입 시험에서 1건만 성립 | 24시간 조회 후 삽입 — 경합에 뚫린다 |
+| `gh_execution`을 월별 파티션·소유자 `prs_admin`·`PARTITIONED_TABLES` 등재, 보존 12개월 | NFR-012「실행 기록 보존 1년 — 월별 파티션」, 019의 선례. `JOB-AUD-001`이 함께 만들고 지운다 | |
+| 028에서 `gh_execution_lock`·`artifact`·`recipe`·`approval`·`capability_snapshot`은 **만들지 않음** | R0 읽기에는 상충 작업·승인·파일이 없다. 필요한 판이 만든다 | |
+| 실행기 `apps/gh-executor`는 **별도 프로세스**, `prs:gh:executions` 4파티션을 `GH_EXECUTOR_MAX_CONCURRENT`(기본 2)개 구독으로 나눠 맡음 | ADR-013·016. 구독 하나가 파티션 집합 하나 → 동시 실행 수 = 구독 수 | |
+| 큐에서 꺼낼 때 **재검증**: manifest 해시·gh 버전 → capability 열림 → 저장소 활성·이름 불변 → 연결 살아 있음·호스트 일치·만료 전·행위자 일치 → 봉인 해제 → **같은 빌더로 argv 재조립해 저장값과 대조** | FR-GH-008 예외 처리, FR-GH-002 AC-4·AC-8. 변조된 `redacted_argv`는 `argv_mismatch`로 실행하지 않는다 | |
+| 취소 = DB의 `cancel_requested_at`을 500ms마다 폴링 → SIGTERM 그룹 → 1초 뒤 SIGKILL | 실행기와 API가 다른 프로세스라 DB가 신호 경로. NFR-011 3초 안에 성립(시험 실측) | Redis pub/sub — 경로 하나 더 |
+| SSE(API-GH-005)는 **상태 변화만** 1초 폴링으로 흘리고 종료 시 `done` | 출력 청크 스트리밍(FR-GH-006 AC-2)은 R0 `pr list`에 실익이 없고 EVT-GH-003 미영속 규칙과 함께 설계가 필요 → **DEV로 적고 다음 판** | |
+| 출력: stdout 상한 1MiB·stderr 64KiB(설정), 발췌 256KiB·64KiB, 원본 해시만 저장, 잘린 stdout은 결과 파싱 실패로 `failed(result_parse_failed … truncated)` | 잘린 목록을 완전한 것처럼 보이지 않게 (지시 12장) | |
+| 결과 값의 문자열은 전부 `sanitizeText` 경계를 지나고 URL은 http(s)만 링크 | ADR-018. gh는 JSON 안 제어 문자를 이스케이프하지만 파싱 뒤 문자열에는 남는다 — 우리가 걷어 낸다 | |
+| 이력 가시성: 본인만, `security_officer`는 `?all=true`; 취소는 소유자·`operator`·`security_officer`; 남의 것은 404 | FR-GH-012 AC-3, THR-004(존재 비노출) | |
+| 인가 왕복: `state`+PKCE S256, 상태는 Redis(`prs:gh:identity:<state>`, 10분, 읽자마자 삭제), 콜백은 `web`이 code·state를 `POST /api/v1/gh/identity/callback`으로 넘김 | CR-083의 규율 재사용(`createAuthorizationRequest`·`statesMatch`·`sanitizeReturnPath`). 실패 사유를 사용자에게 자세히 말하지 않는다 | |
+| 갱신: 만료 15분 전이면 실행 요청 시점에 `grant_type=refresh_token`으로 갱신하고 봉인 교체 (JOB-GH-004의 요청 시점 판) | refresh token이 1회용이라 갱신과 봉인 교체는 한 트랜잭션 | 주기 잡 — 다음 판 |
+| 철회: 봉인 삭제 + 행 유지(`revoked_at`·사유) + GitHub `DELETE /applications/{client_id}/token` best-effort | A-007이 「언제 왜 끊겼나」에 답해야 한다 | |
+| web 내비: `github` 섹션은 **역할 제한 없음**, 실행 자격은 위임 신원이 정한다. 배포가 껐으면 API 404를 화면이 「열리지 않음」으로 그린다(web은 플래그를 읽지 않는다, DEV-589의 규율) | | |
+| 설정: `GH_OPERATIONS_ENABLED`(기본 false, search-api·executor 같은 값), `GHE_OPS_CLIENT_ID/SECRET/REDIRECT_URI`(search-api만), `GH_IDENTITY_VAULT_KEY`(둘 다), `GH_EXECUTOR_*`. 켜 놓고 비면 **기동 거부** | CR-078의 규율 | |
+| 시험용 gh 확보 `ensurePinnedGh`: `GH_PINNED_BIN` → tmp 캐시 → 공식 릴리스 내려받기, **세 단계 모두 해시 대조, 실패는 skip이 아니라 실패** | 호스트의 2.4.0을 쓰지 않는다 | |
+| 시험용 목 GHE는 **실제 HTTPS**(`openssl`로 매번 인증서 생성) | gh는 GHES에 https로만 나간다. `fetch`를 가로채면 gh를 건너뛴다 | |
+
+### 아직 정하지 않은 것 (다음 세션이 정한다)
+
+- `regression/runtime-reachability.test.ts`의 `CAPABILITIES` 표에 JOB-GH-001·API-GH-* 행을 넣을지 — 그 표는 `deploy/k8s/*.yaml` 실재를 요구한다. Profile B manifest(`gh-executor.yaml`)를 최소로 두거나, 표 밖에서 compose 기준 회귀만 걸거나. **K8s를 주력으로 만들지 말라**는 지시와 충돌하지 않게.
+- `executor.test.ts`가 `apps/search-api/src/gh/*`를 상대 경로로 가져온다(앱→앱 import, 시험에서만). 검토가 지적할 수 있다 — 요청 조립 함수를 `@prs/gh-cli`로 옮기는 것은 DB 의존 때문에 불가; 시험 픽스처를 직접 INSERT로 바꾸는 것이 대안.
+- `gh_execution_idempotency`의 보존(TTL) — 지금은 영구. 실행 기록과 같은 12개월로 정리 잡을 붙일지.
+
 ## 2026-09-13 — WP-075 안전성 보강 (CR-085)
 
 ### 결정자가 확정해 준 것 (다시 열지 않는다)
