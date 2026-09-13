@@ -1,4 +1,46 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
+## Session: 2026-09-14 (4차 마감): /clear 뒤 이어받아 CR-088 후속 기록을 마감 (PR #185)
+
+### Goal (결정자의 말로)
+
+「@exports/202609140756.md 파일을 중단된 지점부터 작업을 이어서 진행해라. 8185라인정도부터 끝까지 읽으면된다 처음부터 읽지말아라 … 현재 코드 changes를 확인하고 위 export된 파일의 중단된 지점부터 빠짐없이 작업이 마무리 될 수 있도록 한다.」 마감 뒤 요청은 둘이었다. 첫째는 「worklog 모드로 이번세션 작업 내역을 이해하기 쉽게 정리하고 기록해라」였다. 둘째는 모델을 Opus 5(1M context)로 바꾼 뒤 「다음 에이전트가 이어받을 수 있도록 정리해줘」였다(소스 코드 수정 금지, 민감정보 기록 금지).
+
+### Current state
+
+- **4차 라운드는 전부 마감됐다.** CR-087(PR #183, `ce5a4b0`), CR-088(PR #184, `a996540`), 후속 기록(PR #185, `824eb57`)이 병합됐고 세 병합 커밋의 main CI가 모두 success다(run 34771011490 · 34788054624 · 34789146287).
+- main = `824eb57`이고 열린 PR은 0건, 워크트리는 하나, 격리 서비스는 없다. 통합 시험을 다시 돌리려면 commands.md 「4차 마감」 절의 복원 절차로 서비스를 띄운다.
+- 실행 허용은 `pr.list` 하나다. `GATE-GH-01d` 미달(`DEV-675`)과 호스트 확인 0건(`DEV-674`)으로 REL-007 완료 판정은 열리지 않는다.
+- 이 handoff 갱신(agent-context 7개 파일과 `_handoff/`)은 **커밋하지 않았다**. 저장소 루트의 전사 `202609140825.md`도 untracked로 남아 있다.
+
+### Decisions (이 구간이 고른 것)
+
+decisions.md 「4차 마감」 절이 정본이다. 원장에는 첫 회귀 실행의 실패까지 적었다. 격리 서비스와 워크트리는 docs 커밋 직전에 내려 문서가 과거형으로 사실을 말하게 했다. 초안은 사본에서 먼저 접합했다. 개행만 바뀐 pack 파일은 되돌렸다. 기록 PR은 check green 뒤 squash 병합했다(선례 #182). 루트 전사 이동과 기능 브랜치 삭제는 사용자 몫으로 남겼다. worklog는 라운드 전체를 한 노트로 썼다. 이번 handoff는 커밋하지 않았다.
+
+### Changed files
+
+- PR #185: `docs/40_delivery/pr_search_implementation_traceability.md`(3장 WP 행 셋, 6.85장 「병합 뒤 main CI」), `agent-context/*.md` 7개(4차 절), `agent-context/_handoff/`(context-index · manifest · compact 7개).
+- 이번 handoff(미커밋): `agent-context/*.md` 7개의 「4차 마감」 절과 4차 절의 낡은 문장 몇 곳, `agent-context/_handoff/` 재생성.
+- 저장소 밖: 메모리 1건, Obsidian worklog 1건과 `dailywork-index.md`, 전사 `202609140825.md`(저장소 루트).
+
+### Commands
+
+commands.md 「4차 마감」 절에 있다. 흐름은 CI 결과 수신 → 원장 기록 → 정리 → 사본 접합 → 적용 → pack build → 검사기 비교 → 커밋·push·PR → check 감시 → 병합 → main CI 감시 → 브랜치 정리였다.
+
+### Next steps
+
+1. `git status`로 미커밋 handoff 갱신을 확인하고 커밋 여부를 결정자에게 묻는다. 올린다면 commands.md 「4차 마감」의 워크트리 절차(미실행 제안)를 쓴다.
+2. 저장소 루트 `202609140825.md`를 `exports/`로 옮길지 결정자에게 묻는다. `exports/`만 `.gitignore:24` 대상이다.
+3. REL-007 다음 판의 순서를 결정자에게 받는다(todos.md 후보).
+4. 착수하면 CR·WP·DEV 번호를 main에서 다시 재고 열린 PR과 병렬 세션을 확인한다.
+
+### Risks/gotchas
+
+risks.md 「4차 마감」 절에 있다. 경로 없는 `/export`는 저장소 루트에 떨어지고 무시되지 않는다. 환경 변수 없이 돌린 회귀의 `ECONNREFUSED`는 결함이 아니다. pack을 재생성하면 개행만 바뀐 파일이 modified로 보인다. 삭제한 워크트리를 IDE 진단이 계속 가리킨다. `/tmp`의 고정 gh와 compose 정의는 휘발한다. 이전 세션 scratchpad는 `/clear` 뒤에도 남는다.
+
+### References
+
+PR #185 https://github.com/89sooner/pr-search/pull/185 · main CI run 34788054624(`a996540`) · 34789146287(`824eb57`) · 중단 시점 전사 `exports/202609140756.md` · 마감 뒤 전사 `202609140825.md`(저장소 루트) · 이번 handoff 뒤 전사 `exports/pr-search-2026-09-14.md`: **pending /export**. 사용자가 실행한 뒤 `ls -la exports/`와 `git check-ignore -v`로 실측한다.
+
 ## Session: 2026-09-14 (4차) — CR-087 main CI 정정 + CR-088 REL-007 R1a (PR #183·#184)
 
 ### Goal — 결정자의 말로
@@ -12,7 +54,7 @@
 - 들어온 것: leaf 196 분류 표(`classification/commands.ts`)와 flag·positional 규칙(`rules.ts`, `rules-2026-09-14.2`), manifest `r0.2`(hash `c381880e…`), 독립 검증기 `validate.ts`(변이 10종), 드리프트 `drift.ts`(동기·비동기), CLI 셋, 마이그레이션 029(`gh_capability_snapshot`·`gh_capability_verification` append-only), 실행기 `registry-check.ts`(JOB-GH-003), `API-GH-013`/`014`, web `/ops/gh-registry`(A-006), 회귀 4건, compose·`.env.example`·RUNBOOK.
 - **실행 허용은 `pr.list` 하나 그대로.** NFR-009 본표 차원(GATE-GH-01) 100%·미분류 0, GATE-GH-01b·02 통과, **GATE-GH-01d 미달**(bindability·port·자원 타입, `DEV-675`), 호스트 확인 0(`DEV-674`). REL-007 완료 판정은 열리지 않는다.
 - DEV-657 resolved, DEV-671~681 등록(open: 673·674·675·676). CR-087·CR-088 closed.
-- 격리 서비스 `prs-rel007-*`(postgres 55434·redis 56380·es 59201)와 워크트리 `/home/roqkf/pr-search-wt/{s0,cap}`는 후속 docs 커밋 직전에 내렸다(`down -v`·`worktree remove`·`prune` 전부 종료 0, commands.md 4차 절 「정리」). 후속 docs 브랜치 `docs/cr088-post-merge`의 워크트리 `/home/roqkf/pr-search-wt/post`만 남으며 그 PR 병합 뒤 제거한다.
+- 격리 서비스 `prs-rel007-*`(postgres 55434·redis 56380·es 59201)와 워크트리 `/home/roqkf/pr-search-wt/{s0,cap}`는 후속 docs 커밋 직전에 내렸다(`down -v`·`worktree remove`·`prune` 전부 종료 0, commands.md 4차 절 「정리」). 후속 docs 브랜치 `docs/cr088-post-merge`의 워크트리 `/home/roqkf/pr-search-wt/post`도 PR #185 병합 뒤 제거했고, 그 브랜치는 로컬·원격 모두 지웠다(「4차 마감」 절).
 
 ### Decisions — 이 세션이 고른 것
 
@@ -28,7 +70,7 @@ commands.md 4차 절. 격리 서비스 + `GH_PINNED_BIN`(2차 세션 scratchpad�
 
 ### Next steps
 
-todos.md 4차 절 — 병합 뒤 후속(원장 커밋/PR 열·main CI 실측), 정리, 최종 보고, 그리고 REL-007 다음 후보(`GATE-GH-01d`·호스트 판정·JOB-GH-004·A-007·DEV-651·DEV-652·DEV-656·R1 승인 흐름).
+todos.md — 병합 뒤 후속(원장 커밋/PR 열·main CI 실측)·정리·최종 보고는 「4차 마감」에서 끝났다. 남은 것은 REL-007 다음 후보(`GATE-GH-01d`·호스트 판정·JOB-GH-004·A-007·DEV-651·DEV-652·DEV-656·R1 승인 흐름).
 
 ### Risks/gotchas
 

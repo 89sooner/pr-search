@@ -1,8 +1,25 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=df85ddd7c44942ac19790cd65d1c10f5641602de5673e6ad33ce63a0c71f04c1 bytes=197931 lines=2679 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;near/far;994/1000;3/3;home/roqkf/pr-search;home/roqkf/pr-search-wt/cap;1/2;apps/gh-executor/integration/executor.test.ts;/../search-api/src/gh/;gh/routes;9/10;prs-pinned-gh/2.97.0/gh;prs/gh-cli;fix/wp075-annotate-safety;packages/es/src/config.ts;packages/bus/src/redis-streams.ts;acme/smp1900;repos/.../actions/runs;packages/authz/src/config.test.ts;apps/web/instrumentation.test.ts;deploy/single-host/smoke-images.sh;deploy/single-host/;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md
+@kv sha256=19b0682dba7d0dba6d2ec8ce6e12afe63e06a85cc3b65213fc5c70b9874df521 bytes=202419 lines=2713 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000;3/3;home/roqkf/pr-search-wt/cap;1/2;apps/gh-executor/integration/executor.test.ts;/../search-api/src/gh/;gh/routes;9/10
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-14 (4차 마감) 구간이 배운 함정
+@h3 경로 없는 /export는 저장소 루트에 떨어지고, 루트는 무시 대상이 아니다
+@path /export 202609140825.md는 exports/가 아니라 /home/roqkf/pr-search/202609140825.md에 저장됐다. .gitignore:24는 exports/만 무시하므로 이 전사는 untracked로 보이고 git add -A나 git add .에 딸려 커밋될 수 있다. 전사에는 대화 전문이 들어 있다. 명령을 안내할 때는 /export /home/roqkf/pr-search/exports/<이름>.md처럼 절대 경로를 준다(메모리 handoff-transcript-name-not-predicted). 스테이징은 늘 경로를 명시한다.
+@h3 격리 서비스 환경 변수 없이 돌린 회귀의 ECONNREFUSED는 결함이 아니다
+@risk 병합된 main에서 pnpm run test:regression을 환경 변수 없이 돌리자 DB를 쓰는 regression/range-vs-git.test.ts·regression/releases-vs-git.test.ts가 connect ECONNREFUS ... ST_DB를 격리 서비스에 맞춰 주고 두 파일만 다시 돌리면 19/19다. 실패 수치를 숨기지 말고 원인과 재실행을 함께 적는다.
+@h3 pack을 다시 만들면 내용이 같은 파일도 modified로 보인다
+@path context_handoff.py build는 LF로 쓰고, 이 환경의 작업 트리는 전역 core.autocrlf=true 때문에 CRLF다. 그래서 내용이 그대로인 agent-context/_handoff/reader.py·compact/f3df0a8.upstream-feedback.ctx.md가 M으로 뜬다. git diff --stat -- <파일>이 비어 있으면 git checkout -- <파일>로 되돌린다. manifest의 sha256은 LF 정규화 기준이라 되돌려도 신선도 판정은 그대로다(메모리 handoff-pack-hash-lf-normalized). CRLF는 저장소의 사실이 아니라 이 환경의 사실이므로 다른 클론에서는 작업 트리가 LF일 수 있다.
+@h3 삭제한 워크트리를 IDE 진단이 계속 가리킨다
+@p git worktree remove 뒤에도 IDE가 지운 경로의 signature.test.ts·sequence.ts·freshness.test.ts 등에 Cannot find module 진단을 냈다. 저장소 typecheck와 CI(824eb57 success)가 정본이다. 진단만 보고 코드를 고치지 않는다.
+@h3 /tmp에 둔 고정 gh와 compose 정의는 휘발한다
+@cmd 고정 gh 2.97.0은 옛 세션 scratchpad(/tmp/claude-1000/-home-roqkf-pr-search/f864b845-…/scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh)에만 있고, 격리 서비스 정의 compose.rel007.yml도 옛 세션 scratchpad(…/2c49681f-…/scratchpad/)에만 있다. WSL 재시작이나 /tmp 정리로 사라진다. 시험은 packages/gh-cli/testing/pinned-gh.ts의 ensurePinnedGh()가 GH_PINNED_BIN → 캐시 <tmpdir>/prs-pinned-gh/2.97.0/gh → 공식 릴리스 내려받기 순서로 스스로 확보한다. 자산과 바이너리의 sha256을 둘 다 대조하고, 네트워크가 막히면 건너뛰지 않고 실패한다. 반면 CLI scripts/gh-capabilities.mjs의 diff·inventory는 --binary <gh>나 GH_PINNED_BIN이 없으면 「바이너리 경로가 없다」로 끝난다. compose 정의는 commands.md 「4차 마감」 절에 옮겨 적었다.
+@h3 이전 세션 scratchpad는 /clear 뒤에도 남는다
+@p 알림의 <output-file> 경로가 옛 세션 ID(2c49681f-…)를 드러냈고, 그 scratchpad의 agent-context-draft/·apply-agent-context.py·post-logs/를 그대로 재사용했다. 같은 날 안에서만 믿는다(메모리 previous-session-scratchpad-survives-clear).
+@h3 긴 전사는 한 번에 읽히지 않는다
+@path exports/202609140756.md는 745,804바이트이고 줄이 길다. 900행을 한 번에 읽으려던 요청이 25,000토큰 한도를 넘었다(33,971토큰). 500~600행씩 나눠 읽는다. 전사는 handoff pack의 입력이 아니며 필요한 구간만 연다.
+@h3 미커밋 handoff 갱신이 공유 체크아웃의 main 작업 트리에 있다
+@path 이번 handoff 갱신은 /home/roqkf/pr-search(main)의 작업 트리에 커밋되지 않은 채 남아 있다. 이 체크아웃은 다른 세션과 공유될 수 있다(메모리 shared-checkout-concurrent-sessions). 다른 세션이 main에서 git checkout -- .이나 git stash를 하면 사라지고, git pull이 같은 파일을 바꾸면 충돌한다. 다음 작업을 시작하기 전에 커밋 여부부터 정한다.
 @h2 2026-09-14 (4차) 라운드가 배운 함정 (CR-087 · CR-088)
 @h3 시간을 재는 시험은 필수 CI에 두지 않는다 — 로컬 220회로 재현되지 않는 실패가 러너에서 난다
 @path signature.test.ts의 near/far 비율은 로컬 5조건(유휴·경합·GC 압박·2코어 고정)에서 전부 (0.5, 2) 안이었고 CI에서 0.4617이었다. 러너에서 단위 시험 143파일이 병렬로 도는 조건은 흉내 낼 수 없다. 처방은 범위 완화가 아니라 관찰 가능한 사실(위임)을 결정적으로 검증하고 시간은 진단으로 옮기는 것.

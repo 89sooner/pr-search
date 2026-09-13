@@ -1,4 +1,32 @@
 # 세션 요약 — PR Search 구현 (2026-08-25 후반)
+## 2026-09-14 (4차 마감): CR-088 병합 뒤 후속 기록 마감, PR #185 병합(`824eb57`)과 정리
+
+### 이 구간의 목표
+
+4차 라운드는 PR #184 병합(`a996540`) 직후 세션 한도로 끊겼다. `/clear` 뒤 export 전사(`exports/202609140756.md`)의 8185행 이후만 읽고 이어받아, 지시서 14장이 요구한 「병합 커밋의 main CI 실측」과 그 결과에 걸린 후속 셋(원장 6.85장 기록, agent-context 4차 절, handoff pack)을 빠짐없이 마감하는 것이 목표였다. 마감 뒤에는 Obsidian worklog를 쓰고 다음 에이전트용 handoff를 갱신했다.
+
+### 결과
+
+| 항목 | 결과 |
+| --- | --- |
+| 병합 커밋 `a996540`의 main CI | run 34788054624 두 잡 success(`verify` 3m22s · `integration` 5m06s) |
+| 원장 | 3장 `WP-045`·`WP-059`·`WP-078` 행의 커밋/PR 열을 `#184 · a996540`으로 채웠다. 6.85장 「병합 뒤 main CI」에 PR CI run 34787734188, main CI, 병합된 main 재검증(typecheck 0 · 회귀 477/477 · 검증기 `incomplete` 그대로)을 적었다 |
+| agent-context 4차 절과 handoff pack | 이전 세션 초안 7개를 사본에서 먼저 접합해 확인한 뒤 적용했다. pack은 8파일, 경고 0이었다 |
+| 후속 기록 PR | PR #185(head `0705d8d`) check 두 개 success(`verify` 3m22s · `integration` 5m01s) → squash 병합 `824eb57` → main CI run 34789146287 success(`verify` 3m51s · `integration` 5m17s) |
+| 문서 검사기 strict | main 기준선과 출력이 같다. 신규 0건이며 기준선의 기존 오류는 그대로다 |
+| 정리 | 격리 서비스 `prs-rel007-*`를 내렸고(`down -v`), 워크트리 `s0`·`cap`·`post`를 제거했고, 브랜치 `docs/cr088-post-merge`를 로컬·원격에서 지웠다 |
+| 저장소 밖 기록 | 메모리 `previous-session-scratchpad-survives-clear.md`를 더했고, Obsidian worklog 1건을 썼다(check 오류 0·경고 0, 색인 126건) |
+| 이번 handoff | agent-context 7개 파일에 이 절을 더하고 `_handoff/`를 재생성했다. **커밋하지 않았다** |
+
+코드 변경은 없고 릴리스도 발행하지 않았다. 실행 허용은 `pr.list` 하나다. `GATE-GH-01d` 미달(`DEV-675`)과 호스트 확인 0건(`DEV-674`) 때문에 REL-007 완료 판정은 열리지 않는다. 다음 판의 순서는 결정자가 정한다(todos.md).
+
+### 지금 저장소 상태 (2026-09-14 실측)
+
+- `main` = `origin/main` = `824eb57`이다. 열린 PR은 0건이고 워크트리는 `/home/roqkf/pr-search` 하나다.
+- `git status`에는 미커밋 handoff 갱신(`agent-context/`)과, 사용자가 저장소 루트에 남긴 전사 `202609140825.md`(untracked)가 있다.
+- 병합된 기능 브랜치 둘(`feature/rel007-capability-registry`·`fix/main-ci-s0-flaky`)이 로컬과 원격에 남아 있다.
+- 문서에서 잰 가장 큰 ID는 CR-088 · DEV-681 · WP-078 · QA-GH-44 · OD-009 · ADR-023이다. 새 번호는 착수 시점에 main을 다시 재고, 열린 PR과 병렬 세션을 확인한 뒤 정한다.
+
 ## 2026-09-14 (4차) — CR-087 main CI 정정(병합) + CR-088 REL-007 R1a: PR #184 병합 완료
 
 ### 결과 한 줄
@@ -15,7 +43,7 @@
 
 ### 기술 근거
 
-- 시작 `5369772` → CR-087 `ce5a4b0`(PR #183) → CR-088 브랜치 `feature/rel007-capability-registry` 커밋 `0a780ea`·`614dec3`·`538f543`·`2176636`(PR #184) → 병합 a996540, 병합 커밋 main CI run 34788054624 두 잡 success(`verify` 3m22s · `integration` 5m06s).
+- 시작 `5369772` → CR-087 `ce5a4b0`(PR #183) → CR-088 브랜치 `feature/rel007-capability-registry` 커밋 `0a780ea`·`614dec3`·`538f543`·`2176636`(PR #184) → 병합 a996540, 병합 커밋 main CI run 34788054624 두 잡 success(`verify` 3m22s · `integration` 5m06s) → 후속 기록 PR #185 `824eb57`(main CI run 34789146287 success, 「4차 마감」 절).
 - 바이너리 gh 2.97.0 sha256 `141507c3…` · manifest `r0.2` hash `c381880e…` · 규칙 `rules-2026-09-14.2` · 검증기 `validator-2026-09-14.1` · 마이그레이션 029 · 스냅숏 활성화 0건.
 - 분모: leaf 196 · alias 45 · positional 164 · flag 1,034(실행 가능한 그룹 포함) · inherited 312 · short 625 · repeatable 37 · json 707 · extension plane 9 · text 결과 29. support: supported 144·preview 16·policy_blocked 15·requires_extension 9·terminal_only 8·requires_local_workspace 4·unsupported_by_host 0. risk R0 80·R1 65·R2 38·R3 13. sensitivity internal 177·public 8·sensitive 7·secret 4. flag 컨트롤 typed 873·generic 326·web 38·승인 40·터미널 12·차단 6, 비밀 값 2.
 - 시험: gh-cli 단위 110(변이 10) · 드리프트 통합 4 · db 통합 26 · 실행기 통합 21 · api 통합 20 · web lib 810 · a11y 8 · e2e 2 · 회귀 REL-007 14 · 전체 배터리(검토 전) 전 단계 종료 코드 기록 · 문서 검사기 신규 0건.

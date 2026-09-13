@@ -1,4 +1,47 @@
 # 중요 파일 경로와 역할
+## 2026-09-14 (4차 마감) 구간이 만지거나 남긴 것
+
+### 저장소: PR #185 → `824eb57`
+
+| 경로 | 무엇 |
+| --- | --- |
+| `docs/40_delivery/pr_search_implementation_traceability.md` | 3장 `WP-045`·`WP-059`·`WP-078` 행의 커밋/PR 열을 `#184 · a996540`으로 채웠다. 6.85장 「병합 뒤 main CI」에 PR CI run 34787734188 · main CI run 34788054624 · 병합된 main 재검증을 적었다 |
+| `agent-context/{session-summary,session-notes,decisions,todos,files,commands,risks}.md` | 4차 절 접합(이전 세션 초안 7개) |
+| `agent-context/_handoff/{context-index.md,manifest.json,compact/*.ctx.md}` | pack 재생성(8파일, 경고 0) |
+
+### 저장소: 이번 handoff (미커밋)
+
+| 경로 | 무엇 |
+| --- | --- |
+| `agent-context/*.md` 7개 | 맨 위에 「4차 마감」 절을 더했고, 4차 절의 낡은 문장(`post` 워크트리를 「제거한다」, todos 머리와 4번 항목 등)을 실제 결과로 고쳤다 |
+| `agent-context/_handoff/` | 재생성 |
+
+### 다음 판이 먼저 열 파일 (REL-007)
+
+| 경로 | 왜 |
+| --- | --- |
+| `packages/gh-cli/src/capabilities.ts` | 실행 허용 정의 표 `EXECUTABLE_CAPABILITIES`(지금 `PR_LIST_CAPABILITY` 하나)와 `findCapability()`가 있다. 실행을 넓히는 유일한 자리이며 회귀가 리터럴로 건다 |
+| `packages/gh-cli/src/classification/commands.ts` · `rules.ts` | leaf 196 분류 표와 flag·positional 규칙(`RULES_VERSION`, `COMMAND_FLAG_OVERRIDES`)이다. `GATE-GH-01d`(bindability · 자원 타입 · port)를 채우려면 이 표나 정의를 넓힌다 |
+| `packages/gh-cli/src/validate.ts` | 독립 검증기 `validateManifest()`·`inventoryHash()`·`reportHash()`. 분류를 바꾸면 `pnpm gh:manifest`로 재생성한 뒤 `pnpm gh:validate-capabilities`를 돌린다 |
+| `packages/gh-cli/src/pin.ts` · `testing/pinned-gh.ts` | 고정 gh 2.97.0의 자산·바이너리 sha256(`binarySha256`)과 시험용 `ensurePinnedGh()` |
+| `packages/gh-cli/src/drift.ts` | 실제 바이너리 대조. `checkDrift`는 CLI·시험용 동기 판, `checkDriftAsync`는 실행기용 비동기 판이다 |
+| `apps/gh-executor/src/registry-check.ts` | JOB-GH-003의 `runRegistryCheck(deps, trigger, signal)`·`startRegistryChecker(deps, intervalMs)` |
+| `apps/search-api/src/gh/executions.ts` | `prepare()`가 정의와 manifest 둘 다 `allowed`인지 본다. 실행 요청은 `requestExecution()` |
+| `apps/search-api/src/gh/{registry,routes}.ts` · `apps/web/components/GhRegistryView.tsx` | API-GH-013·014와 A-006 화면 |
+| `scripts/gh-capabilities.mjs` · `scripts/gh-manifest.mjs` | `gh:inventory`·`gh:validate-capabilities`·`gh:diff-capabilities`·`gh:manifest` |
+| `docs/40_delivery/pr_search_work_packages.md` · `docs/40_delivery/pr_search_implementation_traceability.md`(3·5·6.85장) · `docs/00_governance/change_control.md` | 상태 · 편차 · CR의 정본이다. 새 판은 CR부터 연다 |
+
+### 저장소 밖
+
+| 경로 | 무엇 |
+| --- | --- |
+| `/home/roqkf/pr-search/202609140825.md` | 마감 뒤 전사(62,570바이트, untracked, 무시 대상 아님) |
+| `/home/roqkf/pr-search/exports/202609140756.md` | 중단 시점 전사(745,804바이트, `exports/`는 무시 대상) |
+| `/home/roqkf/.claude/projects/-home-roqkf-pr-search/memory/previous-session-scratchpad-survives-clear.md` | 메모리 1건(`MEMORY.md` 색인에 한 줄) |
+| `/mnt/c/Users/slrtt/Documents/Obsidian Vault/dailywork/2026-09-14_CR-087-main-CI-정정과-CR-088-capability-레지스트리-병합-및-후속-기록-마감.md` | 라운드 전체 worklog. `dailywork-index.md`도 재생성했다 |
+| `/tmp/claude-1000/-home-roqkf-pr-search/717f9056-…/scratchpad/` | 이 구간 scratchpad: `dryrun/`(4차 절 접합 사본), `validate-main.txt`·`validate-post.txt`(검사기 비교), `pr-post-body.md`, `handoff/`(이번 병합 스크립트 `merge_handoff.py`와 `blocks/`), `handoff-dryrun/` |
+| `/tmp/claude-1000/-home-roqkf-pr-search/2c49681f-…/scratchpad/` | 4차 앞 구간 scratchpad: `agent-context-draft/`·`apply-agent-context.py`·`post-logs/`·`compose.rel007.yml`·`ci-evidence/`·`battery/` 등 |
+
 ## 2026-09-14 (4차) 라운드가 만들거나 만진 것 (CR-087 PR #183 · CR-088 PR #184)
 
 ### CR-087 (S0) — 고친 것
@@ -43,7 +86,7 @@
 
 ### 저장소 밖 (휘발)
 
-워크트리 `/home/roqkf/pr-search-wt/{s0,cap}`와 격리 서비스 `prs-rel007-*`(둘 다 후속 docs 커밋 직전에 정리함) · `/home/roqkf/pr-search-wt/post`(후속 docs 브랜치, PR 병합 뒤 제거) · 고정 gh(2차 scratchpad) · 이 세션 scratchpad(`…/2c49681f-…/scratchpad`): `ci-evidence/`(실패 run·job JSON·로그), `s0-logs/`, `cap-logs/`, `post-logs/`(병합된 main 재검증), `battery/`(단계별 `.log`·`.exit`), `sig-ratio.mjs`, `mem-hog.mjs`, `help/`(37 command help 원문), `leaves.txt`, `pr-*-body.md`, `agent-context-draft/`·`apply-agent-context.py`(4차 절 접합 스크립트).
+워크트리 `/home/roqkf/pr-search-wt/{s0,cap}`와 격리 서비스 `prs-rel007-*`(둘 다 후속 docs 커밋 직전에 정리함) · `/home/roqkf/pr-search-wt/post`(후속 docs 브랜치, PR #185 병합 뒤 제거함) · 고정 gh(2차 scratchpad) · 이 세션 scratchpad(`…/2c49681f-…/scratchpad`): `ci-evidence/`(실패 run·job JSON·로그), `s0-logs/`, `cap-logs/`, `post-logs/`(병합된 main 재검증), `battery/`(단계별 `.log`·`.exit`), `sig-ratio.mjs`, `mem-hog.mjs`, `help/`(37 command help 원문), `leaves.txt`, `pr-*-body.md`, `agent-context-draft/`·`apply-agent-context.py`(4차 절 접합 스크립트).
 
 ## 2026-09-13 (3차) 라운드가 만들거나 만진 것 (REL-007 R0 완주, PR #181)
 

@@ -1,14 +1,23 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
-최신 기준 (**2026-09-14 4차 · CR-087 병합(`ce5a4b0`) · CR-088 PR #184 병합 완료**)
+최신 기준 (**2026-09-14 4차 마감 · CR-088 병합(`a996540`) · 후속 기록 PR #185 병합(`824eb57`) · 세 병합 커밋의 main CI 전부 success**)
 
-**main = a996540(CR-088) + 후속 docs PR(`docs/cr088-post-merge`). 실측하라.** 워크트리 `s0`·`cap`과 격리 서비스 `prs-rel007-*`는 내렸다(commands.md 4차 절 「정리」). `/home/roqkf/pr-search-wt/post`(후속 docs 브랜치)는 그 PR 병합 뒤 제거한다.
+**main = `824eb57`. 실측하라**(`git fetch -q origin && git log origin/main --oneline -1`, `gh pr list --state open`). 워크트리는 `/home/roqkf/pr-search` 하나이고 격리 서비스 `prs-rel007-*`는 없다. 이번 handoff 갱신(agent-context 7개 파일과 `_handoff/`)은 **커밋하지 않았다**.
 
-## 후속 (병합 뒤) — 이 판에서 마감
+## 먼저 할 것 (결정자 확인이 필요하다)
+
+1. [ ] 미커밋 handoff 갱신을 커밋할지 정한다. 올린다면 공유 체크아웃의 main에서 직접 커밋하지 말고 commands.md 「4차 마감」의 워크트리 절차(미실행 제안)로 옮겨 PR로 올린다(선례 PR #182·#185).
+2. [ ] 저장소 루트의 전사 `202609140825.md`(62,570바이트, untracked)를 `exports/`로 옮길지 정한다. `.gitignore:24`는 `exports/`만 무시하므로 루트에 두면 `git add -A`에 딸려 들어간다.
+3. [ ] 병합된 기능 브랜치 둘(`feature/rel007-capability-registry`·`fix/main-ci-s0-flaky`, 로컬·원격)을 지울지 정한다. squash 병합이라 `git branch --merged main`에는 잡히지 않는다.
+4. [ ] REL-007 다음 판의 순서를 받는다(아래 「REL-007 다음 판 후보」).
+5. [ ] 착수할 때 새 번호를 main에서 다시 잰다. 2026-09-14 기준 가장 큰 ID는 CR-088 · DEV-681 · WP-078 · QA-GH-44 · OD-009 · ADR-023이고 열린 PR은 0건이었다. 병렬 세션이 있으면 채번 현황을 묻는다.
+
+## 후속 (병합 뒤): 4차에서 마감함
 
 1. [x] 원장 3장 `WP-045`·`WP-059`·`WP-078` 행의 커밋/PR 열에 `#184 · a996540`, 6.85장 「병합 뒤 main CI」에 run 34788054624 두 잡 success·PR CI run 34787734188·병합된 main 재검증(typecheck 0 · 회귀 477/477 · 검증기 `incomplete` 그대로) — 후속 docs 브랜치(agent-context 4차 절·handoff pack 포함).
 2. [x] 최종 보고(지시서 17장) — session-summary.md 4차 절이 재료.
 3. [x] handoff pack 재생성.
-4. [ ] 후속 docs PR 병합 뒤 `post` 워크트리 제거(`git worktree remove /home/roqkf/pr-search-wt/post`)와 그 병합 커밋의 main CI 확인 — 이 세션이 한다.
+4. [x] PR #185(head `0705d8d`) check 두 개 success(`verify` 3m22s · `integration` 5m01s) → squash 병합 `824eb57` → main CI run 34789146287 success(`verify` 3m51s · `integration` 5m17s). `post` 워크트리를 제거하고 `docs/cr088-post-merge`를 로컬·원격에서 지웠다.
+5. [x] 메모리 `previous-session-scratchpad-survives-clear.md`를 더하고 Obsidian worklog를 썼다(check 오류 0·경고 0, 색인 126건).
 
 ## REL-007 다음 판 후보 (결정자가 순서를 정한다)
 

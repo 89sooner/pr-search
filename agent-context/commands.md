@@ -1,4 +1,149 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
+## 2026-09-14 (4차 마감) 구간에서 쓴 것 (PR #185와 handoff)
+
+### 지금 상태에서 시작하는 법
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"       # 셸 기본은 v20.12.0
+git -C /home/roqkf/pr-search fetch -q origin
+git -C /home/roqkf/pr-search log origin/main --oneline -1       # 824eb57 기대
+gh pr list --state open                                         # 2026-09-14에는 0건
+git -C /home/roqkf/pr-search status --short                     # 미커밋 agent-context 갱신 + 루트 전사 202609140825.md
+git -C /home/roqkf/pr-search worktree list                      # /home/roqkf/pr-search 하나
+docker ps --format '{{.Names}}' | grep prs-rel007 || echo none  # none
+for p in 'CR-[0-9]{3}' 'DEV-[0-9]{3}' 'WP-[0-9]{3}' 'QA-GH-[0-9]+'; do grep -rohE "$p" docs/ | sort -V -u | tail -1; done   # CR-088 · DEV-681 · WP-078 · QA-GH-44
+```
+
+### 격리 서비스를 다시 띄우는 법 (정의가 /tmp에만 있었다)
+
+아래를 scratchpad의 `compose.rel007.yml`로 저장해 쓴다. 비밀번호 값은 적지 않았다. `POSTGRES_PASSWORD`는 저장소 `docker-compose.yml`·`.github/workflows/ci.yml`의 공개 개발 기본값과 같게 환경 변수로 준다. 통합 시험의 나머지 환경 변수는 4차 절 「전제」 블록과 같다.
+
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: prs-rel007-postgres
+    environment:
+      POSTGRES_DB: prs
+      POSTGRES_USER: prs
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD를 먼저 설정한다}
+    ports:
+      - '55434:5432'
+    volumes:
+      - rel007-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U prs -d prs']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    container_name: prs-rel007-redis
+    ports:
+      - '56380:6379'
+    volumes:
+      - rel007-redis-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.0
+    container_name: prs-rel007-elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+      ES_JAVA_OPTS: '-Xms1g -Xmx1g'
+    ports:
+      - '59201:9200'
+    volumes:
+      - rel007-es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:9200/_cluster/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+volumes:
+  rel007-postgres-data:
+  rel007-redis-data:
+  rel007-es-data:
+```
+
+```bash
+docker compose -p prs-rel007 -f <scratchpad>/compose.rel007.yml up -d
+docker exec prs-rel007-postgres psql -U prs -d prs -c 'CREATE DATABASE prs_test'   # 새 볼륨에는 시험 DB가 없다
+# 끝나면: docker compose -p prs-rel007 -f <scratchpad>/compose.rel007.yml down -v
+```
+
+### 고정 gh 2.97.0
+
+```bash
+# 시험은 ensurePinnedGh()(packages/gh-cli/testing/pinned-gh.ts)가 GH_PINNED_BIN → <tmpdir>/prs-pinned-gh/2.97.0/gh → 공식 릴리스 내려받기 순서로 확보한다.
+# CLI의 diff·inventory는 경로가 꼭 필요하다(--binary <gh> 또는 GH_PINNED_BIN). 없으면 「바이너리 경로가 없다」로 끝난다.
+sha256sum "$GH_PINNED_BIN"   # 141507c337e8b202ad398550c3b73d72f5af92e86f71665214538a81efd4c409 = packages/gh-cli/src/pin.ts의 binarySha256
+GH_PINNED_BIN=<gh 2.97.0 경로> pnpm gh:diff-capabilities     # match, exit 0 기대
+# 바이너리가 없으면 이 파일에 적힌 gh_2.97.0_linux_amd64.tar.gz 내려받기 절차(curl → sha256sum → tar)를 따른다
+```
+
+### 이 구간에서 실제로 돌린 것
+
+| 명령 | 결과 |
+| --- | --- |
+| `Read exports/202609140756.md`를 offset 8185부터 500~900행씩 | 중단 지점을 확인했다. main CI를 기다리는 중이었고 원장 6.85장 한 줄 · agent-context · pack이 남아 있었다 |
+| `gh run view 34788054624` · `gh api repos/{owner}/{repo}/actions/runs/34788054624/jobs --jq …` | 두 잡 success(`verify` 22:52:24→22:55:46Z · `integration` 22:52:24→22:57:30Z) |
+| `gh api repos/{owner}/{repo}/commits/2176636…/check-runs` · `gh api repos/{owner}/{repo}/pulls/184 --jq …` | PR CI run 34787734188 success, `merge_commit_sha` = `a996540…`, 병합 22:52:20Z |
+| `docker compose -p prs-rel007 -f …/2c49681f-…/scratchpad/compose.rel007.yml down -v` | 종료 0(컨테이너 셋 · 볼륨 셋 · 네트워크 제거) |
+| `git worktree remove /home/roqkf/pr-search-wt/s0 --force` · `…/cap --force` · `git worktree prune` | 전부 종료 0 |
+| `python3 …/2c49681f-…/scratchpad/apply-agent-context.py <사본> PR184_STATE=… MERGE_SHA=a996540 MAIN_CI=… PR184_CI=…` | 7개 파일의 H1 뒤에 삽입했고 CRLF를 유지했으며 자리표시자는 0건이었다. 실제 워크트리에 적용한 결과가 사본과 `cmp`로 같았다 |
+| `python3 ~/.claude/skills/agent-context-handoff/scripts/context_handoff.py build --root . --source agent-context --output agent-context/_handoff` (post 워크트리) | `ok: true`, files 8, warnings `[]` |
+| `python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --strict`를 `--root /home/roqkf/pr-search`와 `--root /home/roqkf/pr-search-wt/post`로 | 둘 다 종료 1(기준선 ERROR 4건)이고 출력 diff는 `Root:` 줄 하나라 신규 0건이다 |
+| `git add -- <경로 17개>` → `git commit -F -` → `git push -u origin docs/cr088-post-merge` | `0705d8d` |
+| `git checkout -- agent-context/_handoff/reader.py agent-context/_handoff/compact/f3df0a8.upstream-feedback.ctx.md` | 개행만 바뀐 두 파일을 되돌려 status가 비었다 |
+| `gh pr create --base main --head docs/cr088-post-merge --title … --body-file …` | PR #185 |
+| Monitor: `gh api repos/{owner}/{repo}/commits/<sha>/check-runs`를 30초마다 | `verify` success(3m22s) · `integration` success(5m01s) |
+| `gh pr merge 185 --squash` → `git fetch -q origin` → `git pull -q --ff-only` | `824eb57`, 병합 23:14:52Z |
+| Monitor: `gh api "repos/{owner}/{repo}/actions/runs?head_sha=<sha>"` → `…/runs/<id>/jobs`를 30초마다 | run 34789146287 success(`verify` 3m51s · `integration` 5m17s) |
+| `git worktree remove /home/roqkf/pr-search-wt/post --force` · `git push -q origin --delete docs/cr088-post-merge` · `git branch -D docs/cr088-post-merge` | 전부 성공했고 워크트리는 main 하나가 남았다 |
+| `python3 ~/.claude/skills/obsidian-second-brain/scripts/worklog.py path --title … --json` · `check <노트>` · `index` | 경로 확정, check 오류 0·경고 0, 색인 126건 |
+
+### 이번 handoff 갱신에서 돌린 것
+
+| 명령 | 결과 |
+| --- | --- |
+| `git status --short -- agent-context/` (적용 전) | 0줄이었다. 사본을 뜬 뒤 실제 파일은 바뀌지 않았다 |
+| `python3 <scratchpad>/handoff/merge_handoff.py <scratchpad>/handoff-dryrun` | 7개 파일에 적용됐다(치환 수: session-summary 1 · session-notes 2 · decisions 0 · todos 4 · risks 0 · files 1 · commands 1, todos를 뺀 6개 파일은 H1 뒤 삽입). 모두 순수 CRLF를 유지했다. 같은 사본에 두 번째로 돌리면 `expected 1 occurrence, found 0`으로 거부된다(종료 1) |
+| `POSTGRES_PASSWORD=<임의 값> docker compose -p prs-rel007-check -f <추출한 yaml> config -q` | 종료 0, 서비스 `elasticsearch`·`postgres`·`redis`. 변수를 비우면 `required variable POSTGRES_PASSWORD is missing a value`로 종료 1. 서비스는 띄우지 않았다 |
+| `python3 <scratchpad>/handoff/merge_handoff.py agent-context` | 사본과 같은 출력이었고, 7개 파일이 사본과 `cmp`로 바이트 단위까지 같았다 |
+| `python3 ~/.claude/skills/agent-context-handoff/scripts/context_handoff.py build --root . --source agent-context --output agent-context/_handoff` | `ok: true`, files 8, warnings `[]` |
+| 점검: `grep -c read_order context-index.md` · manifest의 원본 경로와 디스크 대조 · `compact/*.ctx.md` 첫 줄 · `python3 agent-context/_handoff/reader.py list --output agent-context/_handoff` | read_order 2줄 · manifest 원본 8개 = 디스크 8개(누락 0 · 초과 0) · compact 8개 전부 `#hidden` · list 8행, 종료 0 |
+| 자격 증명 패턴 검사(`gh[pousr]_…` · `github_pat_…` · `PRIVATE KEY` · `AKIA…` · `xox…` · `sk-…`, 그리고 `password=값` 형태) | 토큰 형태는 0건이다. `password=값` 형태로 새로 걸린 줄은 compose 문법 `${POSTGRES_PASSWORD:?…}` 하나이며 값이 아니다. 기존 절에 있던 공개 개발 기본값 줄(commands.md 5건 · todos.md 1건)은 그대로 두었다 |
+| `git status --short` | agent-context 원본 7개와 `_handoff/` 9개(context-index · manifest · compact 7개)가 `M`, 루트 전사 `202609140825.md`가 `??`였다. 이번에는 개행만 바뀐 파일이 생기지 않았다 |
+| 이 표를 commands.md에 적은 뒤 같은 build를 한 번 더 | commands.md가 바뀌었으므로 pack을 다시 만들었다 |
+
+### 미커밋 handoff를 올리는 절차 (제안, 실행하지 않았다)
+
+공유 체크아웃의 main에서 직접 커밋하지 않는다. stash는 저장소 공용이라 새 워크트리에서 꺼낼 수 있다. 실행 전에 `git stash list`로 맨 위 항목을 확인한다.
+
+```bash
+git -C /home/roqkf/pr-search stash push -m handoff-2026-09-14 -- agent-context/
+git -C /home/roqkf/pr-search worktree add -b docs/handoff-2026-09-14 /home/roqkf/pr-search-wt/handoff origin/main
+git -C /home/roqkf/pr-search stash list | head -1            # stash@{0}: On main: handoff-2026-09-14 인지 본다
+git -C /home/roqkf/pr-search-wt/handoff stash pop
+git -C /home/roqkf/pr-search-wt/handoff add -- agent-context/
+git -C /home/roqkf/pr-search-wt/handoff commit               # 제목·본문·attribution은 선례 커밋(PR #185)을 따른다
+# push · PR 뒤 check가 green이면 병합한다. gh 2.4.0에서 PR 본문 수정은 gh api -X PATCH로 한다
+```
+
+### 실패했거나 조심할 명령
+
+| 명령 | 결과 | 원인과 처방 |
+| --- | --- | --- |
+| `Read exports/202609140756.md` offset 9085 · limit 900 | `File content (33971 tokens) exceeds maximum allowed tokens (25000)` | 줄이 긴 전사는 500~600행씩 나눠 읽는다 |
+| `/export 202609140825.md` (사용자 실행) | 저장소 루트에 저장됐다 | 절대 경로로 `exports/`를 준다 |
+| `pnpm run test:regression` (앞 구간, 환경 변수 없이) | 2파일 `ECONNREFUSED 127.0.0.1:5432`, 19 skip | 격리 서비스 환경 변수를 주고 두 파일만 재실행해 19/19 |
+| pack build 직후 `git status` | 내용 변화 없는 두 파일이 `M` | `git diff --stat`이 비면 `git checkout --`으로 되돌린다 |
+
 ## 2026-09-14 (4차) 라운드에서 쓴 것 (CR-087 · CR-088)
 
 ### 전제 — 3차와 같다 (격리 서비스 + 고정 gh). `prs_test` DB는 없으면 만든다
@@ -56,7 +201,7 @@ git -C /home/roqkf/pr-search worktree remove /home/roqkf/pr-search-wt/cap --forc
 git -C /home/roqkf/pr-search worktree prune
 ```
 
-실행했다(후속 docs 커밋 직전, 2026-09-14 08:07): `down -v` 종료 0(컨테이너 셋·볼륨 셋·네트워크 제거), `s0`·`cap` 제거와 `prune` 종료 0 — 남은 워크트리는 `post` 하나. 브랜치는 squash 병합이라 `git branch --merged main`에 잡히지 않으며 로컬에 남아 있다(지워도 된다). `post`는 후속 PR 병합 뒤 `git -C /home/roqkf/pr-search worktree remove /home/roqkf/pr-search-wt/post`.
+실행했다(후속 docs 커밋 직전, 2026-09-14 08:07): `down -v` 종료 0(컨테이너 셋·볼륨 셋·네트워크 제거), `s0`·`cap` 제거와 `prune` 종료 0 — 남은 워크트리는 `post` 하나. 브랜치는 squash 병합이라 `git branch --merged main`에 잡히지 않으며 로컬과 원격에 남아 있다(지울지는 결정자 확인, todos.md). `post`는 PR #185 병합 뒤 제거했다(「4차 마감」 절).
 
 ### 병합된 main 재검증 (post 워크트리 = a996540)
 
