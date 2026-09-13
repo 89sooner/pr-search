@@ -2,7 +2,8 @@ import type { NextConfig } from 'next';
 
 const config: NextConfig = {
   // 워크스페이스 패키지는 빌드된 ESM을 그대로 소비한다.
-  transpilePackages: ['@prs/contracts', '@prs/query'],
+  // `@prs/gh-cli`의 진입점은 브라우저 안전하다 (Node 전용은 `/node` 서브패스). 폼 검증이 서버와 같은 함수를 쓰기 위해 번들한다 (FR-GH-003 AC-8).
+  transpilePackages: ['@prs/contracts', '@prs/query', '@prs/gh-cli'],
 
   /**
    * 서버 전용 패키지는 번들하지 않고 런타임에 `require`한다 (CR-018, DEV-068).

@@ -3008,6 +3008,7 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 | `GH_RESOURCE_LOCKED` | 409 | 같은 대상에 상충 작업 진행 중 | 완료 후 재시도 |
 | `GH_EXECUTION_TIMEOUT` | 504 | 실행 시간 상한 초과 | 범위를 줄여 재시도 |
 | `GH_WORKSPACE_UNAVAILABLE` | 503 | 임시 작업 공간 확보 실패 | 잠시 후 재시도 |
+| `GH_CAPABILITY_NOT_EXECUTABLE` | 409 | manifest에는 있으나 이 배포가 실행을 열지 않은 capability (CR-086). `GH_CAPABILITY_UNKNOWN`·`GH_POLICY_BLOCKED`·`GH_HOST_UNSUPPORTED`와 다른 사실이다 — 미구현을 정책·호스트 제약으로 적지 않는다 | 열린 capability 사용. 사유는 `detail.reason` |
 
 ## 7. 내부 이벤트 계약
 

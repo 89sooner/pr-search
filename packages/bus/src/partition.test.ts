@@ -64,7 +64,7 @@ describe('파티션 키 해시', () => {
 });
 
 describe('스트림 카탈로그 (비동기 문서 2장)', () => {
-  it('스트림 7종과 소비자 그룹이 문서와 일치한다', () => {
+  it('스트림 8종과 소비자 그룹이 문서와 일치한다', () => {
     expect(Object.values(TOPICS)).toEqual([
       'prs:ingest',
       'prs:enriched',
@@ -73,6 +73,8 @@ describe('스트림 카탈로그 (비동기 문서 2장)', () => {
       'prs:release',
       'prs:batch',
       'prs:permission',
+      // REL-007 R0 / WP-077 — Operations Plane은 수집 큐와 나뉜다 (ADR-013, 비동기 9.1).
+      'prs:gh:executions',
     ]);
     expect(CONSUMER_GROUPS['prs:ingest']).toBe('enrich');
     expect(CONSUMER_GROUPS['prs:enriched']).toBe('project');
@@ -81,6 +83,7 @@ describe('스트림 카탈로그 (비동기 문서 2장)', () => {
     expect(CONSUMER_GROUPS['prs:release']).toBe('release');
     expect(CONSUMER_GROUPS['prs:batch']).toBe('batch');
     expect(CONSUMER_GROUPS['prs:permission']).toBe('authz');
+    expect(CONSUMER_GROUPS['prs:gh:executions']).toBe('gh-executor');
   });
 
   it('파티션 수가 문서의 동시성 값과 일치한다', () => {
@@ -90,6 +93,7 @@ describe('스트림 카탈로그 (비동기 문서 2장)', () => {
     expect(PARTITION_COUNTS['prs:release']).toBe(4);
     expect(PARTITION_COUNTS['prs:batch']).toBe(3);
     expect(PARTITION_COUNTS['prs:permission']).toBe(4);
+    expect(PARTITION_COUNTS['prs:gh:executions']).toBe(4);
   });
 
   it('알 수 없는 토픽을 조용히 받아들이지 않는다', () => {

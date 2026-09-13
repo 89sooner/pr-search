@@ -29,6 +29,9 @@ export default defineConfig({
       '@prs/db': resolvePackage('db'),
       // 접두가 겹친다 — `@prs/github`가 앞서면 `@prs/github-annotate`가 그것으로 잡힌다.
       '@prs/github-annotate': resolvePackage('github-annotate'),
+      // 서브패스가 먼저다 — `@prs/gh-cli`가 앞서면 `/node`가 진입점으로 잡힌다.
+      '@prs/gh-cli/node': fileURLToPath(new URL('./packages/gh-cli/src/node.ts', import.meta.url)),
+      '@prs/gh-cli': resolvePackage('gh-cli'),
       '@prs/github': resolvePackage('github'),
       '@prs/bus': resolvePackage('bus'),
       '@prs/authz': resolvePackage('authz'),

@@ -7,6 +7,7 @@
 
 import { resolveSessionReaderConfig, type SessionReaderConfig } from '@prs/authz';
 import { MIN_CURSOR_KEY_LENGTH, ephemeralCursorKey } from './cursor/envelope.js';
+import { resolveGhOpsConfig, type GhOpsConfig } from './gh/config.js';
 
 export interface SearchApiEnv {
   readonly [key: string]: string | undefined;
@@ -77,6 +78,15 @@ export interface SearchApiConfig {
    * 그 상태가 기존 계약 그대로다. `resolveSearchApiConfig`는 언제나 값을 채운다.
    */
   readonly mergeNumberEnabled?: boolean;
+  /**
+   * GitHub Operations Plane (REL-007 R0 / WP-077, CR-086).
+   *
+   * **기본은 꺼짐이다.** 꺼져 있으면 `/api/v1/gh/*`를 등록하지 않는다 — 화면은 404로
+   * 「이 배포에서는 열리지 않았다」를 안다. 켜 놓고 Operations App 자격이나 봉인 키가
+   * 없으면 **기동을 거부한다** (`ghOpsConfigFailure`, CR-078의 규율). `gh-executor`와
+   * 같은 값이어야 한다: API만 켜면 실행이 영원히 `queued`이고, 실행기만 켜면 요청이 없다.
+   */
+  readonly ghOps?: GhOpsConfig;
 }
 
 /**
@@ -155,6 +165,7 @@ export function resolveSearchApiConfig(env: SearchApiEnv = process.env): SearchA
     gheBaseUrl: gheBaseUrl === '' ? null : gheBaseUrl,
     searchCursorKey: resolveSearchCursorKey(env),
     mergeNumberEnabled: resolveMergeNumberEnabled(env),
+    ghOps: resolveGhOpsConfig(env),
   };
 }
 

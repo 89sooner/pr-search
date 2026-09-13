@@ -28,6 +28,7 @@ export default defineConfig({
       '@prs/authz/roles': fileURLToPath(new URL('../../packages/authz/src/roles.ts', import.meta.url)),
       '@prs/domain/audit': fileURLToPath(new URL('../../packages/domain/src/audit.ts', import.meta.url)),
       '@prs/contracts': resolvePackage('contracts'),
+      '@prs/gh-cli': resolvePackage('gh-cli'),
       '@prs/query': resolvePackage('query'),
     },
   },

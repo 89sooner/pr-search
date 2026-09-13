@@ -30,7 +30,8 @@
     "test:contrast": "pnpm --filter @prs/web run test:contrast",
     "es:apply-mappings": "pnpm --filter @prs/es exec node dist/cli.js apply-mappings",
     "es:reindex": "pnpm --filter @prs/pipeline-worker exec node dist/reindex-cli.js",
-    "measure:sequence-latency": "node scripts/measure-sequence-latency.mjs"
+    "measure:sequence-latency": "node scripts/measure-sequence-latency.mjs",
+    "gh:manifest": "node scripts/gh-manifest.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
