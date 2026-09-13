@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { PR_LIST_DEFAULT_JSON_FIELDS, PR_LIST_JSON_FIELDS, parsePrListOutput, safeHttpUrl } from './result.js';
 
-const ESC = '';
+const ESC = '\x1b';
 
 describe('pr_list_v1 결과 계약', () => {
   it('허용 필드만 읽고 모르는 키는 버린다', () => {

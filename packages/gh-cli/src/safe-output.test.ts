@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { SafeOutputStream, looksBinary, sanitizeOutput, sanitizeText, stripEscapes } from './safe-output.js';
 
-const ESC = '';
+const ESC = '\x1b';
 const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
 
 describe('QA-GH-22: CSI·OSC·제어 문자가 화면에 닿지 않는다', () => {

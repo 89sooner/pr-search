@@ -33,7 +33,7 @@ import { startMockGhe, type MockGhe } from '../../../packages/gh-cli/testing/moc
 import { resolveGhOpsConfig } from '../../search-api/src/gh/config.js';
 import { requestExecution, type ExecutionDeps } from '../../search-api/src/gh/executions.js';
 
-const ESC = '';
+const ESC = '\x1b';
 const VAULT_KEY = 'cd'.repeat(32);
 const TOKEN = 'ghu_mockUserToken0000000000000001';
 const REPO_ID = 4021;
@@ -179,7 +179,15 @@ describe('사용자 흐름 끝까지 (FR-GH-002 AC-1·AC-4·AC-10, FR-GH-008 AC-
     expect(result.schema).toBe('pr_list_v1');
     expect(result.row_count).toBe(2);
     expect(result.rows.map((r) => r.number)).toEqual([12, 11]);
-    expect(result.rows[0]?.title).toBe('Fix red race link <script>x</script>');
+    /*
+     * **gh 2.97.0은 `--json` 출력의 C0 제어 문자를 caret 표기(`^[`)로 바꿔 낸다** (실측 — 목이
+     * GraphQL 응답에 `\u001b`로 보낸 ESC가 stdout에는 두 글자 `^[`로 나온다). 그래서 원시 ESC는
+     * gh를 지나 우리 경계에 닿지 않고, 하이퍼링크(OSC 8)도 성립하지 않는다. 우리 경계
+     * (`sanitizeText`)는 그 뒤의 방어선이며 인쇄 가능한 텍스트는 건드리지 않는다 — 단위 시험이
+     * 실제 ESC로 그 경계를 따로 건다. 정확한 표기는 고정 버전의 동작이므로 그대로 적는다.
+     */
+    expect(result.rows[0]?.title).not.toContain(ESC);
+    expect(result.rows[0]?.title).toBe('Fix ^[[31mred^[[0m race ^[]8;;https://evil^[\\link^[]8;;^[\\ <script>x</script>');
     expect(result.rows[0]?.author).toBe('alice');
     expect(result.possibly_more).toBe(false);
     expect(done?.stdout_excerpt).not.toContain(ESC);

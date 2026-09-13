@@ -93,7 +93,7 @@ function generateCertificate(dir: string): { key: Buffer; cert: Buffer } {
   return { key: readFileSync(keyPath), cert: readFileSync(certPath) };
 }
 
-const ESC = '';
+const ESC = '\x1b';
 
 export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGhe> {
   const dir = mkdtempSync(join(tmpdir(), 'prs-mock-ghe-'));
