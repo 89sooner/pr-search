@@ -19,9 +19,9 @@ const SIGNATURE_PREFIX = 'sha256=';
  * `timingSafeEqual`은 길이가 다르면 던지므로 길이 검사를 먼저 하되, 던지지
  * 않는 경로에서도 같은 비용을 치르도록 자기 자신과 한 번 비교하고 나간다.
  *
- * 타이밍 회귀를 테스트로 잡으려고 내보낸다 — 서명 길이(71자)에서는 HMAC 계산
- * 비용이 비교 비용을 덮어 버려서 `verifyWebhookSignature` 밖에서는 조기 종료
- * 비교로 되돌아가도 드러나지 않는다.
+ * 회귀를 테스트로 잡으려고 내보낸다. 단위 시험은 시간을 재지 않고 판정이
+ * `timingSafeEqual`에 위임되는지를 본다 — 시간 측정은 러너 부하에서 흔들려 필수 CI를
+ * 떨어뜨렸다(DEV-669). 시간을 재는 진단은 `perf/signature-timing.perf.test.ts`에 있다.
  */
 export function constantTimeEquals(expected: string, actual: string): boolean {
   const expectedBytes = Buffer.from(expected, 'utf8');

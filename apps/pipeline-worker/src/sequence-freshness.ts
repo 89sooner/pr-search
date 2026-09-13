@@ -63,6 +63,16 @@ function refOf(repository: RepositoryRow): RepoRef {
   return { owner: repository.owner, repo: repository.name };
 }
 
+export interface FreshnessHooks {
+  /**
+   * 그래프를 새로 읽기 **직전**에 한 번 부른다 — mirror 모드에서는 미러 락 아래, fetch 앞이다.
+   * 호출부가 「이번 회차가 덮을 refresh 의도」의 집합을 여기서 고정한다 (DEV-670). 경계를
+   * 시각으로 자르지 않는 이유는 `sequence.ts`의 `prepareAndAssignSequence`에 있다.
+   * 던지면 그대로 전파한다.
+   */
+  readonly beforeFetch?: () => Promise<void>;
+}
+
 /**
  * 저장소의 그래프를 최신으로 만든 뒤 `run`을 **락 아래에서** 실행한다.
  *
@@ -72,11 +82,14 @@ export async function withFreshness<T>(
   deps: FreshnessDeps,
   repository: RepositoryRow,
   run: () => Promise<T>,
+  hooks: FreshnessHooks = {},
 ): Promise<FreshnessResult<T>> {
   const now = deps.now ?? ((): Date => new Date());
   const startedAt = now();
 
   if (deps.mode === 'api' || !repository.mirror_enabled) {
+    // API 모드의 「fetch」는 그래프가 호출 시점에 GHE를 읽는 것이다. 그 직전이 경계다.
+    await hooks.beforeFetch?.();
     const result = await run();
     return { kind: 'ready', mode: 'api', action: null, startedAt, completedAt: startedAt, result };
   }
@@ -89,6 +102,7 @@ export async function withFreshness<T>(
 
   try {
     return await withMirrorLock(deps.pool, repository.repository_id, async () => {
+      await hooks.beforeFetch?.();
       let action: MirrorSyncAction;
       try {
         action = (await sync.sync(refOf(repository), repository.repository_id)).action;

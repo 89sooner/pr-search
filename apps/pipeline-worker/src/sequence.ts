@@ -822,6 +822,10 @@ export interface PrepareOptions {
  *
  * 성공한 fetch는 그 시작 전에 도착한 push 의도를 **전부** 덮는다 — fetch는 원격의
  * 현재 상태를 읽기 때문이다. fetch 중에 도착한 push는 남아 다음 회차가 처리한다.
+ *
+ * 「그 전에 도착한」의 경계는 시각이 아니라 **fetch 직전에 고정한 집합**이다 (DEV-670).
+ * `created_at <= startedAt`으로 자르면 DB의 µs 시각과 애플리케이션의 ms 시각이 같은
+ * 밀리초에서 갈려 마지막 push가 남았다 — 2026-09-13 main CI가 그것을 보였다.
  */
 export async function prepareAndAssignSequence(
   deps: SequenceDeps,
@@ -840,8 +844,18 @@ export async function prepareAndAssignSequence(
 
   const freshness: FreshnessDeps =
     deps.freshness ?? { pool: deps.pool, mode: 'api', ...(deps.now === undefined ? {} : { now: deps.now }) };
-  const fresh = await withFreshness(freshness, repository, () =>
-    assignSequence(deps, repositoryId, baseBranch, correlationId),
+  const leaseToken = options.leaseToken ?? null;
+  // 이번 회차가 덮을 refresh 의도 — fetch 직전(미러 락 아래)에 집합으로 고정한다.
+  let coverable: readonly string[] = [];
+  const fresh = await withFreshness(
+    freshness,
+    repository,
+    () => assignSequence(deps, repositoryId, baseBranch, correlationId),
+    {
+      beforeFetch: async () => {
+        coverable = await sequenceWorkRepo.listCoverableRefreshWorkKeys(deps.pool, { repositoryId, baseBranch, leaseToken });
+      },
+    },
   );
 
   if (fresh.kind === 'defer') {
@@ -870,13 +884,11 @@ export async function prepareAndAssignSequence(
 
   /*
    * ---- 여기부터는 fetch가 성공했고 채번이 정상 종료했다 (`assigned`·`reassigned`·
-   * `no_branch`·`skipped`). fetch 시작 전에 도착한 의도는 이번 회차가 덮었다.
+   * `no_branch`·`skipped`). fetch 직전에 고정한 집합의 의도는 이번 회차가 덮었다.
    */
   const covered = await sequenceWorkRepo.completeCoveredRefreshWorks(deps.pool, {
-    repositoryId,
-    baseBranch,
-    coveredBefore: fresh.startedAt,
-    leaseToken: options.leaseToken ?? null,
+    workKeys: coverable,
+    leaseToken,
   });
 
   await recordFreshnessSamples(deps, repository, baseBranch, assign, covered, fresh.mode);

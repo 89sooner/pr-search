@@ -1,11 +1,29 @@
 /**
  * 웹훅 서명 검증 단위 테스트 (FR-ING-001 AC-1, 보안 문서 9장 "웹훅 서명 —
  * 유효·무효·변조·타이밍").
+ *
+ * 상수 시간 성질은 **시간을 재지 않고** 검증한다 — 비교 판정이 `timingSafeEqual`에
+ * 위임되는지를 호출로 본다. 시간을 재는 진단은 `perf/signature-timing.perf.test.ts`에
+ * 있으며 필수 CI가 아니다 (DEV-669: 러너 부하에서 비율이 0.46까지 흔들렸다).
  */
 
 import { createHmac } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import type * as NodeCrypto from 'node:crypto';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { computeSignature, constantTimeEquals, verifyWebhookSignature } from './signature.js';
+
+/**
+ * `timingSafeEqual`을 **감싸서 관찰한다** — 대체하지 않는다. 기본 구현은 실제 함수라
+ * 판정 시험은 그대로 실제 비교로 돌고, 상수 시간 절만 호출 사실과 위임 여부를 본다.
+ */
+const { timingSafeEqualSpy } = vi.hoisted(() => ({
+  timingSafeEqualSpy: vi.fn<(left: Uint8Array, right: Uint8Array) => boolean>(),
+}));
+vi.mock('node:crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeCrypto>();
+  timingSafeEqualSpy.mockImplementation(actual.timingSafeEqual);
+  return { ...actual, timingSafeEqual: timingSafeEqualSpy };
+});
 
 const SECRET = 'test-webhook-secret';
 const OTHER_SECRET = 'rotated-webhook-secret';
@@ -62,7 +80,20 @@ describe('보안 문서 6장: 시크릿 회전 중 무중단 검증', () => {
   });
 });
 
-describe('보안 문서 9장: 상수 시간 비교', () => {
+/**
+ * 조기 종료 비교(`===`, `Buffer.compare`)로 되돌아가는 회귀를 **결정적으로** 잡는다.
+ *
+ * 밖에서 보이는 boolean만으로는 `===`와 `timingSafeEqual`을 가를 수 없다 — 같은 답을
+ * 내기 때문이다. 그래서 판정이 원시 함수에 **위임되는지**를 본다: 호출이 있었는지,
+ * 무엇을 넘겼는지, 그리고 원시 함수의 답이 곧 결과인지. 시간을 재던 이전 시험은
+ * 러너 부하에서 실패했고(DEV-669) 진단용으로 옮겼다.
+ */
+describe('보안 문서 9장: 상수 시간 비교 — 원시 함수 위임', () => {
+  afterEach(() => {
+    // 구현은 남기고 호출 기록만 지운다 — `mockReset`은 실제 구현까지 지운다.
+    timingSafeEqualSpy.mockClear();
+  });
+
   it('일치 접두 길이가 달라도 같은 결과를 낸다', () => {
     const value = 'a'.repeat(71);
     expect(constantTimeEquals(value, value)).toBe(true);
@@ -71,34 +102,48 @@ describe('보안 문서 9장: 상수 시간 비교', () => {
     expect(constantTimeEquals(value, value.slice(0, 10))).toBe(false);
   });
 
-  /**
-   * 조기 종료 비교(`===`, `Buffer.compare`)로 되돌아가는 회귀를 잡는 테스트다.
-   *
-   * **왜 서명 길이가 아니라 64KB로 재는가.** 71자 서명에서는 HMAC 계산이 비교보다
-   * 수십 배 비싸서, 비교를 `===`로 바꿔도 전체 시간이 거의 그대로다. 즉 그
-   * 길이에서 잰 값은 어떤 구현이든 통과시킨다. 비교 함수만 떼어 내 입력을 키우면
-   * 차이가 드러난다 — 이 환경에서 `===`는 4KB에서 18배, 64KB에서 세 자릿수 배로
-   * 갈렸고, `timingSafeEqual`은 두 경우 모두 0.9배 언저리였다.
-   */
-  it('앞에서 틀린 값과 끝에서 틀린 값의 비교 시간이 갈리지 않는다', () => {
-    const base = 'a'.repeat(64 * 1024);
-    const nearMissCandidate = `${base.slice(0, -1)}b`;
-    const farMissCandidate = `b${base.slice(1)}`;
-    const rounds = 2_000;
+  it('같은 길이의 판정을 `timingSafeEqual`에 넘긴다 — 조기 종료 비교로 바꾸면 호출이 사라진다', () => {
+    const value = 'a'.repeat(71);
+    const nearMiss = `${value.slice(0, -1)}b`;
 
-    const measure = (candidate: string): number => {
-      const started = process.hrtime.bigint();
-      for (let index = 0; index < rounds; index += 1) {
-        constantTimeEquals(base, candidate);
-      }
-      return Number(process.hrtime.bigint() - started);
-    };
+    expect(constantTimeEquals(value, nearMiss)).toBe(false);
 
-    measure(nearMissCandidate); // 워밍업
-    measure(farMissCandidate);
-    const ratio = measure(nearMissCandidate) / measure(farMissCandidate);
+    expect(timingSafeEqualSpy).toHaveBeenCalledTimes(1);
+    const [left, right] = timingSafeEqualSpy.mock.calls[0]!;
+    expect(Buffer.from(left).equals(Buffer.from(value, 'utf8'))).toBe(true);
+    expect(Buffer.from(right).equals(Buffer.from(nearMiss, 'utf8'))).toBe(true);
+  });
 
-    expect(ratio).toBeGreaterThan(0.5);
-    expect(ratio).toBeLessThan(2);
+  it('판정은 오직 `timingSafeEqual`의 답이다 — 그 앞뒤에 `===` 지름길이 없다', () => {
+    const value = 'a'.repeat(71);
+
+    // 다른 값인데 원시 함수가 참이라 하면 참이어야 한다. 앞에 `===` 지름길이 있으면 거짓이 된다.
+    timingSafeEqualSpy.mockImplementationOnce(() => true);
+    expect(constantTimeEquals(value, `${value.slice(0, -1)}b`)).toBe(true);
+
+    // 같은 값인데 원시 함수가 거짓이라 하면 거짓이어야 한다. 뒤에 `===` 지름길이 있으면 참이 된다.
+    timingSafeEqualSpy.mockImplementationOnce(() => false);
+    expect(constantTimeEquals(value, value)).toBe(false);
+  });
+
+  it('길이가 다르면 예외 없이 거짓이고, 그래도 같은 길이의 비교를 한 번 치른다', () => {
+    const value = 'a'.repeat(71);
+
+    // 길이 검사를 없애면 `timingSafeEqual`이 RangeError를 던진다 — 이 단언이 그 변이를 잡는다.
+    expect(constantTimeEquals(value, value.slice(0, 10))).toBe(false);
+
+    expect(timingSafeEqualSpy).toHaveBeenCalledTimes(1);
+    const [left, right] = timingSafeEqualSpy.mock.calls[0]!;
+    expect(left.length).toBe(right.length);
+    expect(Buffer.from(left).equals(Buffer.from(value, 'utf8'))).toBe(true);
+  });
+
+  it('시크릿이 여럿이면 하나가 맞아도 끝까지 전부 비교한다 — 몇 번째가 맞았는지 시간에 남기지 않는다', () => {
+    const secrets = [SECRET, OTHER_SECRET, 'third-secret'];
+
+    expect(verifyWebhookSignature(BODY, computeSignature(BODY, SECRET), secrets)).toBe(true);
+
+    // 첫 시크릿에서 맞았는데도 셋 다 비교했다. 일치에서 끊는 변이는 1회로 줄어든다.
+    expect(timingSafeEqualSpy).toHaveBeenCalledTimes(secrets.length);
   });
 });

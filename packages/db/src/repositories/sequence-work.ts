@@ -317,31 +317,62 @@ export interface CoveredRefresh {
 }
 
 /**
- * 성공한 fetch가 덮은 refresh intent 전부를 완료한다 (상세 설계 4.1의 7).
+ * 성공한 fetch가 덮을 refresh intent의 집합을 **fetch 직전에** 고정한다 (상세 설계 4.1의 7, DEV-670).
  *
- * fetch는 원격의 **현재** 상태를 읽으므로 fetch 시작 전에 도착한 push는 전부
- * 덮인다. fetch 중에 도착한 push는 `created_at`이 그 뒤라 남고, 다음 회차가
- * 처리한다. 집어 든 work 자신은 lease 토큰으로 함께 닫는다.
+ * 경계는 시각이 아니라 **커밋 가시성**이다. 이 SELECT가 본 행은 그 시점에 이미 커밋된
+ * push이고, fetch는 그 뒤에 원격의 현재 상태를 읽으므로 전부 덮인다. SELECT 뒤에
+ * 커밋된 행은 이번 회차가 덮었다고 말하지 않는다 — 다음 회차가 처리한다.
+ *
+ * 시각으로 자르지 않는 이유: `created_at`은 DB의 `clock_timestamp()`(µs)이고 애플리케이션의
+ * `Date`는 ms다. 같은 밀리초 안에 들어온 마지막 push가 `created_at <= startedAt`에서 경계
+ * **뒤**로 읽혀 남았다(2026-09-13 main CI 실측). 워커와 DB가 다른 호스트면 시계 차이가
+ * 같은 자리에서 반대 방향의 오류(fetch 뒤 push를 덮음)도 만든다. 집합에는 그런 자리가 없다.
+ *
+ * 집어 든 work 자신(`leased` + 같은 토큰)도 집합에 든다.
+ */
+export async function listCoverableRefreshWorkKeys(
+  db: Queryable,
+  input: {
+    readonly repositoryId: number;
+    readonly baseBranch: string;
+    readonly leaseToken: string | null;
+  },
+): Promise<string[]> {
+  const result = await db.query<{ work_key: string }>(
+    `SELECT work_key
+       FROM sequence_work
+      WHERE kind = 'refresh' AND repository_id = $1 AND base_branch = $2
+        AND (state IN ('ready', 'retry') OR (state = 'leased' AND lease_token = $3))
+      ORDER BY work_key`,
+    [input.repositoryId, input.baseBranch, input.leaseToken],
+  );
+  return result.rows.map((row) => row.work_key);
+}
+
+/**
+ * `listCoverableRefreshWorkKeys`가 고정한 집합을 완료한다.
+ *
+ * 집합에 있어도 그 사이 상태가 바뀐 행(다른 워커가 집어 `leased`가 됐거나 `parked`)은
+ * 닫지 않는다 — 상태 조건을 다시 본다. 빈 집합은 질의 없이 빈 결과다.
  *
  * @returns 완료한 intent의 payload — 어느 전달이 이 회차에 덮였는지가 측정의 출처다.
  */
 export async function completeCoveredRefreshWorks(
   db: Queryable,
   input: {
-    readonly repositoryId: number;
-    readonly baseBranch: string;
-    readonly coveredBefore: Date;
+    readonly workKeys: readonly string[];
     readonly leaseToken: string | null;
   },
 ): Promise<CoveredRefresh[]> {
+  if (input.workKeys.length === 0) return [];
   const result = await db.query<CoveredRefresh>(
     `UPDATE sequence_work
         SET state = 'done', completed_generation = requested_generation,
             lease_until = NULL, lease_token = NULL, last_reason = 'covered', updated_at = clock_timestamp()
-      WHERE kind = 'refresh' AND repository_id = $1 AND base_branch = $2 AND created_at <= $3
-        AND (state IN ('ready', 'retry') OR (state = 'leased' AND lease_token = $4))
+      WHERE kind = 'refresh' AND work_key = ANY($1::text[])
+        AND (state IN ('ready', 'retry') OR (state = 'leased' AND lease_token = $2))
       RETURNING work_key, payload`,
-    [input.repositoryId, input.baseBranch, input.coveredBefore, input.leaseToken],
+    [input.workKeys, input.leaseToken],
   );
   return result.rows;
 }
