@@ -1,4 +1,50 @@
 # 중요 파일 경로와 역할
+## 2026-09-14 (4차) 라운드가 만들거나 만진 것 (CR-087 PR #183 · CR-088 PR #184)
+
+### CR-087 (S0) — 고친 것
+
+| 경로 | 무엇 |
+| --- | --- |
+| `apps/ingest-gateway/src/signature.test.ts` | 시간 측정 → `timingSafeEqual` 위임을 `vi.mock`으로 결정적 검증 5건 (DEV-669) |
+| `perf/signature-timing.perf.test.ts` (신규) | 시간 측정 진단(5회 중앙값), 게이트 아님 |
+| `apps/pipeline-worker/src/sequence-freshness.ts` | `withFreshness(…, hooks.beforeFetch)` — 미러 락 아래·fetch 직전 훅 |
+| `apps/pipeline-worker/src/sequence.ts` | fetch 직전 `listCoverableRefreshWorkKeys`로 집합 고정 → 채번 뒤 `completeCoveredRefreshWorks(workKeys)` (DEV-670) |
+| `packages/db/src/repositories/sequence-work.ts` | `listCoverableRefreshWorkKeys` 신설, `completeCoveredRefreshWorks`가 시각 대신 키 집합을 받음 |
+| `apps/pipeline-worker/integration/sequence/freshness.test.ts` · `packages/db/integration/merge-number-schema.test.ts` | 수정 전 코드에서 결정적으로 실패하는 재현(`now` 고정 + `created_at` +500µs), 집합 경계 시험 |
+| `docs/…/pr_search_security_privacy_architecture.md`(v1.8 12장) · change_control(CR-087) · 원장(4장 NFR-005·5장 DEV-669/670·6.84장) | cascade |
+
+### CR-088 — 새로 만든 것
+
+| 경로 | 역할 |
+| --- | --- |
+| `packages/gh-cli/src/classification/commands.ts` | leaf 196 분류 표 — support·interaction·risk·sideEffect·auth·result·sensitivity·stdin·contexts·**note(근거)** |
+| `packages/gh-cli/src/classification/rules.ts` | flag·positional 규칙(`RULES_VERSION`), `COMMAND_FLAG_OVERRIDES`, `secretInput`, USAGE 자리 파서 |
+| `packages/gh-cli/src/classification/classify.ts` · `dimensions.ts` | command 분류 조립(결정적) · NFR-009 차원별 커버리지(분모 note) |
+| `packages/gh-cli/src/validate.ts` (+ `.test.ts`) | 독립 검증기 — 재계산 대조·해시·별칭·정의·실행 확장·파생·차원·게이트·결정적 보고서; 변이 10종 |
+| `packages/gh-cli/src/drift.ts` · `integration/drift.test.ts` | 실제 바이너리 대조(동기 `checkDrift`, 비동기 `checkDriftAsync`); 실제 gh 2.97.0으로 CI integration에서 |
+| `packages/db/migrations/029_gh_capability_registry.{up,down}.sql` · `src/repositories/gh-registry.ts` · `integration/gh-registry-schema.test.ts` | 스냅숏(활성화 CHECK 네 차원)·검증 기록(append-only 트리거)·리포지터리 |
+| `apps/gh-executor/src/registry-check.ts` · `integration/registry-check.test.ts` | JOB-GH-003 — 기동·주기·재시도·abort·stale·기록 실패 분리·지표 |
+| `apps/search-api/src/gh/registry.ts` · `integration/gh/registry.test.ts` | API-GH-013·014 모델(검사 안 함, 기록 읽음) |
+| `apps/web/app/ops/gh-registry/page.tsx` · `components/GhRegistryView.tsx` · `lib/gh-registry.ts`(+`-fixtures`, `.test.ts`) · `a11y/gh-registry.test.tsx` · `e2e/gh-registry.spec.ts` | A-006 읽기 전용 |
+| `scripts/gh-capabilities.mjs` | `gh:inventory`·`gh:validate-capabilities`·`gh:diff-capabilities` |
+
+### CR-088 — 고친 것
+
+| 경로 | 무엇 |
+| --- | --- |
+| `packages/gh-cli/src/{types,manifest,inventory,index,node}.ts` · `manifest/gh-2.97.0.json` | 분류 타입·`r0.2`·정책 차단 실행 차원·정의/표 불일치 거부·비동기 추출·코드 단위 정렬·재수출; manifest 재생성(hash `c381880e…`) |
+| `apps/gh-executor/src/{index,runner,server,metrics,config}.ts` | 헬스 선개방 → 기동 검사 대기 → 구독; `registry.isStale()` → `registry_stale`; 헬스 `registry`; 지표 둘; `GH_EXECUTOR_REGISTRY_CHECK_MS` |
+| `apps/search-api/src/gh/{routes,executions}.ts` | 라우트 둘(역할 둘) + API-GH-001 분류 요약; `prepare`가 정의·manifest 둘 다 allowed |
+| `apps/web/lib/{gh,nav}.ts`(+`nav.test.ts`) | CommandView 분류 요약 필드; 내비 `ops-gh-registry` |
+| `packages/db/src/index.ts` · `integration/{gh-schema,merge-number-schema}.test.ts` | `ghRegistryRepo` 재수출; 왕복 시험 단계 수 029 |
+| `regression/runtime-reachability.test.ts` | CR-088 4건(실행 허용 1·JOB-GH-003 배선·요청 경로 무검사·A-006 역할/설정) — 공백 허용 정규식 |
+| `deploy/single-host/{compose.yml,.env.example,RUNBOOK.md}` | `GH_EXECUTOR_REGISTRY_CHECK_MS`; RUNBOOK 7.C 증상 셋·CLI 절 |
+| `docs/00_governance/change_control.md`(CR-088) · `docs/10`(무변경) · `docs/20`(와이어프레임 A-006 상태·QA-GH-44) · `docs/30`(데이터 모델·비동기·API·프런트엔드·백엔드·관측성·인프라) · `docs/40`(로드맵·WP·검증 계획·원장 3·4·5·6.85) | cascade |
+
+### 저장소 밖 (휘발)
+
+워크트리 `/home/roqkf/pr-search-wt/{s0,cap}`와 격리 서비스 `prs-rel007-*`(둘 다 후속 docs 커밋 직전에 정리함) · `/home/roqkf/pr-search-wt/post`(후속 docs 브랜치, PR 병합 뒤 제거) · 고정 gh(2차 scratchpad) · 이 세션 scratchpad(`…/2c49681f-…/scratchpad`): `ci-evidence/`(실패 run·job JSON·로그), `s0-logs/`, `cap-logs/`, `post-logs/`(병합된 main 재검증), `battery/`(단계별 `.log`·`.exit`), `sig-ratio.mjs`, `mem-hog.mjs`, `help/`(37 command help 원문), `leaves.txt`, `pr-*-body.md`, `agent-context-draft/`·`apply-agent-context.py`(4차 절 접합 스크립트).
+
 ## 2026-09-13 (3차) 라운드가 만들거나 만진 것 (REL-007 R0 완주, PR #181)
 
 ### 새로 만든 것

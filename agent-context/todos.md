@@ -1,7 +1,34 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
-최신 기준 (**2026-09-13 3차 · REL-007 R0 완주 — PR #181 병합, CR-086 closed**)
+최신 기준 (**2026-09-14 4차 · CR-087 병합(`ce5a4b0`) · CR-088 PR #184 병합 완료**)
 
-**main = `c5c8aea`. 실측하라.** 워크트리 `/tmp/pr-search-rel007`와 격리 서비스 `prs-rel007-*`는 정리 대상(commands.md 3차 절).
+**main = a996540(CR-088) + 후속 docs PR(`docs/cr088-post-merge`). 실측하라.** 워크트리 `s0`·`cap`과 격리 서비스 `prs-rel007-*`는 내렸다(commands.md 4차 절 「정리」). `/home/roqkf/pr-search-wt/post`(후속 docs 브랜치)는 그 PR 병합 뒤 제거한다.
+
+## 후속 (병합 뒤) — 이 판에서 마감
+
+1. [x] 원장 3장 `WP-045`·`WP-059`·`WP-078` 행의 커밋/PR 열에 `#184 · a996540`, 6.85장 「병합 뒤 main CI」에 run 34788054624 두 잡 success·PR CI run 34787734188·병합된 main 재검증(typecheck 0 · 회귀 477/477 · 검증기 `incomplete` 그대로) — 후속 docs 브랜치(agent-context 4차 절·handoff pack 포함).
+2. [x] 최종 보고(지시서 17장) — session-summary.md 4차 절이 재료.
+3. [x] handoff pack 재생성.
+4. [ ] 후속 docs PR 병합 뒤 `post` 워크트리 제거(`git worktree remove /home/roqkf/pr-search-wt/post`)와 그 병합 커밋의 main CI 확인 — 이 세션이 한다.
+
+## REL-007 다음 판 후보 (결정자가 순서를 정한다)
+
+- **`GATE-GH-01d`** — bindability·입출력 port·자원 타입을 leaf 196에(`DEV-675`, WP-066). 지금은 정의 1건에만 있어 1/196·0/0. 이것과 `GATE-GH-06`(쓰기 승인)·`08`(성능)이 REL-007 완료를 막는다.
+- **호스트 지원 판정**(FR-GH-011 AC-4·AC-5, `DEV-674`) — 사내 GHES 정보가 원천. 외부에서는 설계만 가능.
+- 스냅숏 **활성화** 절차와 `admin_action_required`·A-005 정책 편집(WP-059 나머지).
+- JOB-GH-004 주기 갱신 · A-007 · DEV-651 출력 스트리밍 · DEV-652 KMS · DEV-656 TTL · R1 승인 흐름(FR-GH-009).
+- SRS `NFR-009` 실측 기준 열의 `--json` command 41 → 40 정정 여부(`DEV-676`).
+
+## 열어 둔 편차 (건드리지 않는다)
+
+DEV-673·674·675·676 + 기존 DEV-651·652·655·656·666·581·588·603·618·642·647·649. `flow-003.spec.ts:176` 간헐(`DEV-377`)은 이번에도 배터리에서 1회 났고 단독 3/3 통과 — PR CI를 막으면 DEV-662처럼 대기 조건만 넓힌다.
+
+## 사내가 나중에 할 것 (NOT RUN)
+
+실제 GHES에서 command별 지원 확인(`hostSupport` → verified) · 실제 실행기 컨테이너의 기동 검사 시간과 `/healthz`의 `registry` 전이 · 사내 CA·프록시 아래에서 `gh --help` 순회 · 운영 DB 029 적용과 `prs_app` 권한 · A-006을 사내 `operator`·`security_officer`로 열어 보기 · (기존) Operations App 등록·`gh pr list` 실행·028·이미지 반입·DEV-561 재적용·CR-083 GHE 로그인.
+
+---
+
+최신 기준 (**2026-09-13 3차 · REL-007 R0 완주 — PR #181 병합, CR-086 closed**) — 아래는 3차 기준이며 4차가 대체했다.
 
 ## 후속 (병합 뒤)
 
