@@ -4107,6 +4107,56 @@ describe('REL-007 R0: GitHub Operations Plane이 배포에서 실제로 돈다 (
     }
   });
 
+  /*
+   * CR-088 — capability 분류·검증·드리프트·스냅숏·A-006 (WP-078). 아래 넷은 「분류를 늘렸다고 실행이 넓어지지
+   * 않는다」·「검사가 실제 프로세스에 배선됐다」·「요청 경로에서 검사하지 않는다」·「운영 화면의 역할」을 건다.
+   */
+  it('CR-088: 실행 허용은 여전히 pr.list 하나다 — 코드 표와 커밋된 manifest가 같은 답을 낸다', () => {
+    const capabilities = read('packages/gh-cli/src/capabilities.ts');
+    // 정의 배열의 원소가 하나다. 넓히려면 CR이 먼저다 (지시: R0 범위 유지).
+    expect(capabilities).toMatch(/EXECUTABLE_CAPABILITIES: readonly GhCapabilityDefinition\[\] = \[PR_LIST_CAPABILITY\];/);
+    const manifest = JSON.parse(read('packages/gh-cli/manifest/gh-2.97.0.json')) as {
+      manifestVersion: string;
+      coverage: { executableCommands: number; leafCommands: number; unclassifiedLeafCommands: number };
+      commands: { execution: string; id: string; group: boolean }[];
+    };
+    expect(manifest.manifestVersion).toBe('r0.2');
+    expect(manifest.coverage.executableCommands).toBe(1);
+    expect(manifest.commands.filter((command) => command.execution === 'allowed').map((command) => command.id)).toEqual(['pr.list']);
+    expect(manifest.coverage.unclassifiedLeafCommands).toBe(0);
+  });
+
+  it('CR-088: 레지스트리 검사(JOB-GH-003)는 실행기가 기동 시 기다리고 주기로 돌리며 종료에서 닫고, 러너가 stale을 읽는다', () => {
+    const index = read('apps/gh-executor/src/index.ts');
+    expect(index).toContain('registry = startRegistryChecker(');
+    expect(index).toContain("await registry.runOnce('startup')");
+    expect(index).toContain('await registry?.stop()');
+    expect(index).toContain('registry: { isStale:');
+    expect(read('apps/gh-executor/src/runner.ts')).toContain("if (deps.registry?.isStale() === true) return { ok: false, reason: 'registry_stale' };");
+    expect(read('apps/gh-executor/src/server.ts')).toContain('readonly registry?:');
+    expect(read('apps/gh-executor/src/registry-check.ts')).toContain("checkedBy: 'gh-executor'");
+  });
+
+  it('CR-088: 인벤토리 추출(gh --help 순회)은 search-api·web 요청 경로에 없다 — 검사는 실행기·CLI·시험만 한다', () => {
+    const callers = [...walk('apps/search-api/src'), ...walk('apps/web/app'), ...walk('apps/web/lib'), ...walk('apps/web/components')].filter((file) =>
+      /checkDrift\(|extractInventory\(/.test(read(file)),
+    );
+    expect(callers).toEqual([]);
+    expect(read('apps/gh-executor/src/registry-check.ts')).toContain('checkDrift({ binaryPath: deps.config.binaryPath, manifest })');
+    expect(read('scripts/gh-capabilities.mjs')).toContain('checkDrift(');
+  });
+
+  it('CR-088: A-006 조회는 operator·security_officer만이며 web 라우트·내비·배포 설정이 함께 있다', () => {
+    const routes = read('apps/search-api/src/gh/routes.ts');
+    expect(routes).toContain("requireAnyRole(principal, ['operator', 'security_officer'])");
+    expect(routes).toContain("GH_REGISTRY_PATH = '/api/v1/gh/registry'");
+    expect(routes).toContain("GH_REGISTRY_COMMAND_PATH = '/api/v1/gh/registry/commands/:id'");
+    expect(existsSync(`${root}apps/web/app/ops/gh-registry/page.tsx`)).toBe(true);
+    expect(read('apps/web/lib/nav.ts')).toMatch(/id: 'ops-gh-registry'[\s\S]{0,200}allowedRoles: \['operator', 'security_officer'\]/);
+    expect(read('deploy/single-host/compose.yml')).toContain('GH_EXECUTOR_REGISTRY_CHECK_MS: ${GH_EXECUTOR_REGISTRY_CHECK_MS:-86400000}');
+    expect(read('deploy/single-host/.env.example')).toContain('GH_EXECUTOR_REGISTRY_CHECK_MS');
+  });
+
   it('gh 계열 소스에 원시 제어 문자가 없다 — 도구가 지운 ESC가 시험을 거짓 실패시켰다', () => {
     const files = [...GH_PLANE, 'packages/gh-cli/testing', 'apps/gh-executor/integration', 'apps/search-api/integration/gh', 'apps/web/app/gh', 'apps/web/lib']
       .flatMap(walk)

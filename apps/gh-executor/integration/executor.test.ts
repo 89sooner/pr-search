@@ -253,6 +253,11 @@ describe('큐에서 꺼낼 때의 재검증 (FR-GH-008 예외 처리, FR-GH-011 
     expect(await runExecution(executorDeps({}, { manifest: { ...manifest, hash: 'different' } }), staleRow.execution_id)).toBe('rejected');
     expect((await ghExecutionRepo.findById(pool, staleRow.execution_id))?.error).toBe('registry_stale');
 
+    // 레지스트리 검사(JOB-GH-003)가 드리프트를 확인한 뒤의 대기 실행도 같은 사유로 거절한다 (FR-GH-011 AC-3, CR-088).
+    const driftedRow = await enqueue();
+    expect(await runExecution(executorDeps({}, { registry: { isStale: () => true } }), driftedRow.execution_id)).toBe('rejected');
+    expect((await ghExecutionRepo.findById(pool, driftedRow.execution_id))?.error).toBe('registry_stale');
+
     const tamperedRow = await enqueue();
     await pool.query(`UPDATE gh_execution SET redacted_argv = ARRAY['pr','list','--repo',$2,'--state','all','--limit','100','--json','number'] WHERE execution_id = $1`, [tamperedRow.execution_id, `${mock.host}/acme/payments`]);
     expect(await runExecution(executorDeps(), tamperedRow.execution_id)).toBe('rejected');

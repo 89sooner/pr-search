@@ -43,6 +43,8 @@ export interface ExecutorConfig {
   readonly orphanAfterMs: number;
   readonly queuedStaleMs: number;
   readonly sweepIntervalMs: number;
+  /** 레지스트리 검사(JOB-GH-003) 주기. 기본 1일. 기동 검사는 주기와 무관하게 한 번 돈다. */
+  readonly registryCheckMs: number;
   /** 이 프로세스의 식별자. claim에 남아 「누가 집었나」에 답한다. */
   readonly executorId: string;
 }
@@ -98,6 +100,7 @@ export function resolveExecutorConfig(env: ExecutorEnv = process.env): ExecutorC
     orphanAfterMs: integer(env, 'GH_EXECUTOR_ORPHAN_AFTER_MS', 60_000, 5_000, 3_600_000),
     queuedStaleMs: integer(env, 'GH_EXECUTOR_QUEUED_STALE_MS', 30_000, 1_000, 3_600_000),
     sweepIntervalMs: integer(env, 'GH_EXECUTOR_SWEEP_MS', 15_000, 1_000, 600_000),
+    registryCheckMs: integer(env, 'GH_EXECUTOR_REGISTRY_CHECK_MS', 86_400_000, 60_000, 7 * 86_400_000),
     executorId: `${hostname()}:${String(process.pid)}:${randomUUID().slice(0, 8)}`,
   };
 }

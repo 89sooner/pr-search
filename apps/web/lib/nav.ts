@@ -103,6 +103,18 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     allowedRoles: ['security_officer'],
   },
   /*
+   * A-006 gh capability·버전 레지스트리 (WP-078 / CR-088). 읽기 전용이며 `operator`와 `security_officer`
+   * 둘 다 본다 — 드리프트는 운영 사건이자 보안 사건이다(FR-GH-011 예외 처리 「관리자에게 보고」). A-005
+   * 정책 편집은 이 화면에 없다. 배포가 GitHub 작업을 끄면 API의 404를 「열리지 않았다」로 그린다.
+   */
+  {
+    id: 'ops-gh-registry',
+    label: 'gh 레지스트리',
+    href: '/ops/gh-registry',
+    section: 'ops',
+    allowedRoles: ['operator', 'security_officer'],
+  },
+  /*
    * GitHub Operations (REL-007 R0 / WP-077, CR-086) — 제품 IA의 두 번째 표면이다.
    *
    * **역할 제한이 없다.** 실행 자격은 역할이 아니라 **위임 신원**(Operations App 연결)이

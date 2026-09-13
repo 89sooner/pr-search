@@ -8,6 +8,9 @@
 export { diffInventory, extractInventory, readGhVersion } from './inventory.js';
 export type { InventoryDiff, InventoryOptions } from './inventory.js';
 
+export { checkDrift } from './drift.js';
+export type { DriftCheck, DriftOptions, DriftStatus } from './drift.js';
+
 export { MANIFEST_DIR, ManifestLoadError, loadManifest, manifestPath, writeManifest } from './manifest-file.js';
 
 export { VAULT_KEY_BYTES, VaultUnsealError, parseVaultKey, sealSecret, unsealSecret } from './vault.js';

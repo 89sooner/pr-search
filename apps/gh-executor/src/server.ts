@@ -19,6 +19,15 @@ export interface HealthDetail {
   readonly ghVersion: string | null;
   readonly manifestVersion: string | null;
   readonly manifestHash: string | null;
+  /**
+   * 레지스트리 검사(JOB-GH-003)의 마지막 결과. 꺼진 실행기는 `null`이다. `stale`이 참이면 초록이어도
+   * 실행을 `registry_stale`로 거절하고 있다는 뜻이다 — 그 사실을 숨기지 않는다.
+   */
+  readonly registry?: {
+    readonly status: 'unchecked' | 'passed' | 'incomplete' | 'drift' | 'failed' | 'error';
+    readonly checkedAt: string | null;
+    readonly stale: boolean;
+  } | null;
 }
 
 export interface ServerOptions {

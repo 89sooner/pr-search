@@ -455,6 +455,8 @@ services:
       GH_OPERATIONS_ENABLED: ${GH_OPERATIONS_ENABLED:-false}
       GH_IDENTITY_VAULT_KEY: ${GH_IDENTITY_VAULT_KEY:-}
       GH_EXECUTOR_PORT: '3004'
+      # 레지스트리 검사(JOB-GH-003, CR-088) 주기. 기동 시에는 주기와 무관하게 한 번 돈다.
+      GH_EXECUTOR_REGISTRY_CHECK_MS: ${GH_EXECUTOR_REGISTRY_CHECK_MS:-86400000}
       GH_EXECUTOR_MAX_CONCURRENT: ${GH_EXECUTOR_MAX_CONCURRENT:-2}
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3004/healthz >/dev/null || exit 1']

@@ -44,6 +44,10 @@ export interface CommandView {
   readonly execution: string;
   readonly execution_reason: string | null;
   readonly risk: string | null;
+  /** 분류 요약 (CR-088). 옛 배포의 응답에는 없다 — 없으면 그리지 않는다. */
+  readonly interaction?: string | null;
+  readonly side_effect?: string | null;
+  readonly host_support?: string | null;
 }
 
 export interface CapabilitiesResponse {

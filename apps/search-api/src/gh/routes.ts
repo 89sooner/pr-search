@@ -25,8 +25,9 @@ import { ghExecutionRepo } from '@prs/db';
 import { GH_PINNED_VERSION, isTerminalExecutionState } from '@prs/gh-cli';
 import type { AuthContext } from '../auth/context.js';
 import { hasRole } from '@prs/authz';
-import { authenticateSession, type SessionPrincipal } from '../auth/principal.js';
+import { authenticateSession, requireAnyRole, type SessionPrincipal } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
+import { commandDetail, registryStatus } from './registry.js';
 import {
   GhRejected,
   findVisibleExecution,
@@ -48,6 +49,11 @@ export const GH_IDENTITY_PATH = '/api/v1/gh/identity';
 export const GH_IDENTITY_CALLBACK_PATH = '/api/v1/gh/identity/callback';
 export const GH_EXECUTIONS_PATH = '/api/v1/gh/executions';
 export const GH_EXECUTION_PREVIEW_PATH = '/api/v1/gh/executions/preview';
+/** API-GH-013 — 레지스트리 상태 (A-006). `operator`·`security_officer`. */
+export const GH_REGISTRY_PATH = '/api/v1/gh/registry';
+/** API-GH-014 — command 분류 상세 (A-006). 같은 역할. */
+export const GH_REGISTRY_COMMAND_PATH = '/api/v1/gh/registry/commands/:id';
+const CAPABILITY_ID_PATTERN = /^[a-z0-9][a-z0-9.-]{0,79}$/;
 
 export interface GhRouteOptions extends ExecutionDeps {
   readonly auth: AuthContext;
@@ -134,9 +140,53 @@ export function registerGhRoutes(app: FastifyInstance, options: GhRouteOptions):
           execution_reason: command.executionReason,
           risk: command.risk,
           help_status: command.helpStatus,
+          // 분류 요약 (CR-088). 전부는 API-GH-014가 낸다 — 이 목록은 W-010이 매번 읽으므로 가볍게 둔다.
+          interaction: command.classification?.interaction ?? null,
+          side_effect: command.classification?.sideEffect ?? null,
+          host_support: command.classification?.hostSupport ?? null,
         })),
       correlation_id: correlationId,
     });
+  });
+
+  /*
+   * A-006 레지스트리 조회 (API-GH-013·014, CR-088). `operator` 또는 `security_officer`만 — 운영 화면이며
+   * 검증 기록에는 실행기 호스트명·바이너리 경로가 있다. **검사를 돌리지 않는다** — 저장된 기록을 읽는다.
+   * 역할 판정은 세션 위에서 `requireAnyRole`로 한다(CR-052의 규율 — 둘 중 하나를 빠뜨리면 조용히 좁게 답한다).
+   */
+  const registryAccess = async (request: FastifyRequest, reply: FastifyReply, correlationId: string): Promise<SessionPrincipal | null> => {
+    const principal = await session(request, reply, correlationId);
+    if (principal === null) return null;
+    try {
+      requireAnyRole(principal, ['operator', 'security_officer']);
+    } catch (error) {
+      const shape = toAuthError(error, { correlationId, loginPath });
+      if (shape !== null) {
+        await sendAuthError(reply, shape);
+        return null;
+      }
+      throw error;
+    }
+    return principal;
+  };
+
+  app.get(GH_REGISTRY_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const principal = await registryAccess(request, reply, correlationId);
+    if (principal === null) return reply;
+    const body = await registryStatus(deps.pool, deps.manifest);
+    return reply.send({ ...body, correlation_id: correlationId });
+  });
+
+  app.get(GH_REGISTRY_COMMAND_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const principal = await registryAccess(request, reply, correlationId);
+    if (principal === null) return reply;
+    const id = (request.params as { id?: unknown }).id;
+    if (typeof id !== 'string' || !CAPABILITY_ID_PATTERN.test(id)) return fail(reply, 'INVALID_PARAMETER', 'capability id 형식이 아니다', correlationId);
+    const detail = commandDetail(deps.manifest, id);
+    if (detail === null) return fail(reply, 'GH_CAPABILITY_UNKNOWN', `manifest에 없는 capability: ${id}`, correlationId);
+    return reply.send({ ...detail, correlation_id: correlationId });
   });
 
   // API-GH-003 — 고를 수 있는 저장소.

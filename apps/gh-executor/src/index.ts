@@ -24,6 +24,7 @@ import { GH_PINNED_LINUX_AMD64, GH_PINNED_VERSION, type GhCapabilityManifest } f
 import { loadManifest, readGhVersion } from '@prs/gh-cli/node';
 import { executorConfigFailure, resolveExecutorConfig } from './config.js';
 import { createExecutorMetrics } from './metrics.js';
+import { startRegistryChecker, type RegistryChecker } from './registry-check.js';
 import { runExecution, type RunnerDeps, type RunnerLogEntry } from './runner.js';
 import { buildServer, SERVICE_NAME } from './server.js';
 import { startSweeper, type Sweeper } from './sweeper.js';
@@ -47,6 +48,7 @@ let ghVersion: string | null = null;
 let bus: RedisStreamsEventBus | null = null;
 const subscriptions: Subscription[] = [];
 let sweeper: Sweeper | null = null;
+let registry: RegistryChecker | null = null;
 
 if (!config.enabled) {
   log({ level: 'info', message: 'Operations 실행이 꺼져 있다 — gh를 띄우지 않고 구독도 걸지 않는다', reason: 'GH_OPERATIONS_ENABLED=false' });
@@ -69,7 +71,21 @@ if (!config.enabled) {
 
   const vaultKey = config.vaultKey;
   if (vaultKey === null) throw new Error('unreachable: executorConfigFailure가 잡았어야 한다');
-  const deps: RunnerDeps = { pool, config, manifest, vaultKey, metrics, log };
+
+  /*
+   * 레지스트리 검사 (JOB-GH-003, FR-GH-011 AC-2·AC-3). 기동 시 한 번 **기다린 뒤** 구독을 세운다 —
+   * 드리프트가 확인된 배포는 첫 실행부터 `registry_stale`로 거절해야지, 몇 건을 돌린 뒤 멈추면 안 된다.
+   * 검사는 20~30초가 든다(command마다 `--help`). 실패해도 프로세스는 뜬다: 헬스가 `registry.stale`을
+   * 말하고 실행이 거절되는 것이 「조용히 진행하지 않는다」의 실체다. 그 뒤로는 하루에 한 번 돈다.
+   */
+  registry = startRegistryChecker({ pool, config, manifest, metrics, log });
+  const startupCheck = await registry.runOnce('startup');
+  if (startupCheck === null) {
+    log({ level: 'error', message: '기동 레지스트리 검사를 기록하지 못했다 — 다음 주기가 다시 시도한다', reason: 'record_failed' });
+  }
+
+  const checker = registry;
+  const deps: RunnerDeps = { pool, config, manifest, vaultKey, metrics, log, registry: { isStale: () => checker.state().stale } };
 
   bus = new RedisStreamsEventBus();
   const topic = TOPICS.ghExecutions;
@@ -118,12 +134,16 @@ if (!config.enabled) {
 }
 
 const server = buildServer({
-  detail: () => ({
-    execution: config.enabled ? 'enabled' : 'disabled',
-    ghVersion,
-    manifestVersion: manifest?.manifestVersion ?? null,
-    manifestHash: manifest?.hash ?? null,
-  }),
+  detail: () => {
+    const state = registry?.state() ?? null;
+    return {
+      execution: config.enabled ? 'enabled' : 'disabled',
+      ghVersion,
+      manifestVersion: manifest?.manifestVersion ?? null,
+      manifestHash: manifest?.hash ?? null,
+      registry: state === null ? null : { status: state.status, checkedAt: state.checkedAt?.toISOString() ?? null, stale: state.stale },
+    };
+  },
   /*
    * **백킹 서비스 확인은 실행이 켜졌을 때만이다.** 꺼진 실행기는 구독도 스윕도 하지 않아
    * PostgreSQL을 쓰지 않는다 — 그런데 헬스체크가 그것을 묻고 503을 내면, 번들 이미지의
@@ -160,6 +180,7 @@ const shutdown = (signal: string): void => {
     try {
       server.close();
       await sweeper?.stop();
+      await registry?.stop();
       // 진행 중인 실행이 끝날 때까지 구독을 닫는다 — 닫힌 뒤 도착한 이벤트는 다른 실행기가 집는다.
       await Promise.all(subscriptions.map((subscription) => subscription.close()));
       await bus?.close();
