@@ -1,5 +1,40 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
+## Session: 2026-09-13 (3차) — REL-007 R0 완주 (PR #181 병합)
 
+### Goal — 결정자의 말로
+
+「session limit으로 중단된 지점부터 이어서 진행해라. 답변이 필요한 질문들은 너의 제안을 최대한 반영하여 진행해라.」 2차 세션의 지시서(CI 확인 + REL-007 R0 첫 수직, 계약 정정 → 구현 → 시험 → 독립 검토 → PR → CI → 병합)를 그대로 잇는다. 릴리스는 발행하지 않는다.
+
+### Current state
+
+- **PR #181 squash 병합 → `origin/main` = `c5c8aea`.** 브랜치 `feature/rel007-r0-pr-list`의 커밋 9개: `d7ed501`(이전 세션 코드 보존) → `8c6fc62`(ESC 픽스처) → `d3b8ced`(W-010·W-021·콜백·시험) → `bc7c8a3`(선택 프로파일·회귀·실행기 헬스·제어 바이트) → `8981c91`(문서 cascade) → `9eeff48`(검토 가: 발췌·결과 행 토큰 편집, loginPathOf) → `9da8f55`(검토 나: prsctl 파서 1차·claim 직전 취소·늦은 결과 로그·폼 변경 시 키) → `35369f9`(flaky e2e 대기 조건) → `c1e790b`(prsctl 렌더 기반 판정·CR-086 cascade·closed).
+- CR-086 **closed**. WP-077 **done**(R0 범위, 사내 실검증 NOT RUN). 상위 WP 일곱 `in_progress`(부분). REL-007 `in_progress`. DEV-650~668 등록(open: 651·652·655·656·657·666).
+- 배터리(HEAD bc7c8a3) 전부 통과 + 이후 커밋마다 관련 시험 재실행. CI: PR #181 최종 커밋 두 잡 green(hosted 러너). 문서 검사기 신규 0건.
+- 병합 뒤 후속: 원장 3장 WP-077 행의 커밋/PR 열(병합 SHA), agent-context 갱신, handoff pack — `docs/cr086-post-merge` 브랜치.
+
+### Decisions — 이 세션이 고른 것
+
+decisions.md 3차 절이 정본. 무거운 것: **선택 프로파일** `github-operations`(CR-059 유지) · prsctl은 `.env`를 파싱하지 않고 **compose 렌더를 단일 근거**로 읽음(DEV-664) · 꺼진 실행기의 헬스체크는 DB를 묻지 않음 · SRS 무변경(실행 감사 정본 = `gh_execution`) · K8s manifest 미작성 · 앱→앱 시험 import 유지 · flaky e2e는 **이번 흐름을 막았으므로** 시험 대기 조건만 고침(DEV-662) · 발췌·결과 행에 토큰 편집 · claim 직전 취소 즉시 확정 · 폼 변경 시 중복 방지 키 재생성.
+
+### Changed files
+
+files.md 3차 절. 새로 만든 것: `apps/web/app/gh/**`, `GhCommandCenterView`·`GhHistoryView`, `lib/gh-test-fixtures.ts`, `lib/gh.test.ts`, `a11y/gh.test.tsx`, `e2e/gh.spec.ts`, 콜백 라우트 시험, `apps/gh-executor/src/server.test.ts`. 고친 것: prsctl·compose·build-bundle·smoke·.env.example·fake-docker·회귀·문서 12종·RUNBOOK.
+
+### Commands
+
+commands.md 3차 절. 격리 서비스 환경 변수와 `GH_PINNED_BIN`이 필수. 배터리 스크립트는 scratchpad의 `battery.sh`(로그는 휘발).
+
+### Next steps
+
+todos.md 3차 절 — 후속 docs 커밋, 정리, 최종 보고, 그리고 REL-007의 다음 판(DEV-657 분류·DEV-651 출력 스트리밍·DEV-652 KMS·JOB-GH-004 주기 갱신·A-006/A-007).
+
+### Risks/gotchas
+
+risks.md 3차 절 — 도구의 제어 문자(Write·Bash), 스캔 보고의 백틱 탈락, 여러 줄 치환의 LF 혼입, 파이썬 bytes 리터럴의 한글, grep 파이프라인이 `&&` 체인을 가림, 셸이 `.env`를 다시 파싱하면 compose와 갈림, flaky e2e가 필수 check를 막음.
+
+### References
+
+PR #181 https://github.com/89sooner/pr-search/pull/181 · CI run 34751475325(35369f9 green) · 검토 보고는 scratchpad(휘발)에서 원장 6.83장·CR-086 cascade로 옮겼다.
 ## Session: 2026-09-13 (2차) — CI 확인 + REL-007 R0 첫 수직 구현 (세션 상한으로 중단, 미커밋)
 
 ### Goal — 결정자의 말로

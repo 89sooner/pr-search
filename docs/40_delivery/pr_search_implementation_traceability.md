@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.72 | 갱신일: 2026-09-13
+> 상태: review | 버전: v6.73 | 갱신일: 2026-09-13
 
 `WP-075` 안전성 보강(`CR-085`): 자동 표기가 **실패·재시작·설정 변경 상황에서도** 원래 제목을 지키게 했다. 변경 요청의 재시도가 첫 시도의 문자열을 그대로 다시 보내던 자리, 확인된 본문 불일치를 다음 회차가 성공으로 덮던 자리, 시간 예산이 줄 서기와 한 행의 처리에 미치지 않던 자리, 실패한 요청 사이에 간격이 없던 자리를 닫았다 — **다섯 경로 전부 현재 코드에서 시험으로 재현한 뒤** 고쳤다. `DEV-629`(실행자 배제)를 advisory 세션 락으로 닫았고, 검증은 6.82장이다. **전역 기본값은 그대로 꺼짐이며 실제 GHE 표기는 여전히 `NOT RUN`이다.**
 
@@ -102,10 +102,10 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | WP-072 | 사내 반입 운반 경로 — GitHub Release 발행과 다운로드 | **배포 (CR-063)** | done | 에이전트 | PR #120 | DoD 16항 전부 통과 · **시험 릴리스 둘을 실제로 발행해 토큰만 있는 환경에서 받아 digest 대조·풀린 사본 verify·load·lineage·git fetch 관통** · 변이 8종 전부 킬 (6.66장) | **`CR-063` 계약 선행 (2026-09-02).** 결정자가 사내 어느 위치에서든 github.com에 닿는다고 확인하면서 문서의 오프라인 전제와 어긋났다(DEV-528). 착수 전 감사(6.65장)가 운반 파일 1.07GB의 경로를 GitHub Release 자산으로 정했고 런북 디스크 요건의 과소 기재(DEV-529)를 함께 찾았다. `WP-071` 다음의 배포 마일스톤 후속이며 **`REL-006` 완료율에 넣지 않는다.** 번들·설치·계보는 그대로다. PR #119 머지 후 리뷰 1건이 실결함이었다(`DEV-530`, **릴리스는 저절로 불변이 아니다**) — 이 PR에서 닫았다 |
 | WP-074 | M 넘버 채번 | REL-003 (CR-077 · CR-079 · CR-080) | done | 에이전트 | feature/wp074-squash-mnumber | 6.76장 — 단위·통합·회귀·e2e·a11y 전 계층, 실제 git 픽스처와 실제 PostgreSQL | **`DEV-576` resolved**(채번 전 미러 fetch, 수정 전 재현 포함). **`DEV-581`은 open으로 남는다** — 직접 푸시 부재 확정 근거 미확보이며 production은 그 앞에서 멈춘다. 기능은 `MNUMBER_ENABLED=false`가 기본이고 꺼진 배포는 기존 응답 모양 그대로다. 사내 재시험·새 릴리스는 `NOT RUN` |
 | WP-075 | PR 제목 M 넘버 표기 | REL-003 (CR-077 · **CR-084** · **CR-085**) | **done** | 에이전트 | feature/wp075-pr-title-annotate | 6.81장 — 순수 판정·실제 로컬 HTTP 쓰기·실제 PostgreSQL·회귀·변이 | **기본이 꺼짐이다**(`MNUMBER_ANNOTATE_ENABLED=false`). 자격은 전용 App으로 분리했고 조회용 Data App의 값을 한 자리도 읽지 않는다. `DEV-616`(403의 두 원인 구분)·`DEV-617`(감사 어휘 불일치) 등록. **사내 실제 GHE 표기는 `NOT RUN`** |
-| WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — 인벤토리 추출·manifest 조립·해시, API-GH-001 | 들어온 것: 고정 gh 2.97.0 인벤토리·manifest(hash `ad00027d…`)·`API-GH-001`. 남은 것: 분류 100%(unknown 195, `DEV-657`)·parity 검증기·`gh_capability_snapshot`·A-006 |
-| WP-046 | 위임 GitHub 신원과 Operations App | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — routes 통합 14(인가 왕복·봉인 원문 부재·철회) | 들어온 것: state+PKCE 인가·AES-256-GCM 봉인·요청 시점 갱신·철회·`API-GH-007`·web 콜백. 남은 것: 주기 갱신 잡·A-007·비밀 저장소(`DEV-652`). **사내 실제 App 검증 NOT RUN** |
-| WP-047 | 격리 gh 실행기와 실행 수명주기 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — 실행기 통합 10/10(실제 gh + HTTPS 목), spawn 단위, smoke 6절 | 들어온 것: `gh-executor`(spawn·재검증·argv 대조·취소·상한·하트비트·고아 회수·잔여 스윕·헬스)·`prs:gh:executions`·028. 남은 것: 잠금·승인 전이·출력 스트리밍(`DEV-651`) |
-| WP-048 | W-010 GitHub Command Center 수직 슬라이스 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — lib/gh 41·a11y 24·콜백 라우트 8·e2e 8 | 들어온 것: W-010 최소·W-021 최소(`WP-077`). 남은 것: 생성형 폼 일반화·Recipe·A-006·A-007 |
+| WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | #181 · c5c8aea | 6.83장 — 인벤토리 추출·manifest 조립·해시, API-GH-001 | 들어온 것: 고정 gh 2.97.0 인벤토리·manifest(hash `ad00027d…`)·`API-GH-001`. 남은 것: 분류 100%(unknown 195, `DEV-657`)·parity 검증기·`gh_capability_snapshot`·A-006 |
+| WP-046 | 위임 GitHub 신원과 Operations App | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | #181 · c5c8aea | 6.83장 — routes 통합 14(인가 왕복·봉인 원문 부재·철회) | 들어온 것: state+PKCE 인가·AES-256-GCM 봉인·요청 시점 갱신·철회·`API-GH-007`·web 콜백. 남은 것: 주기 갱신 잡·A-007·비밀 저장소(`DEV-652`). **사내 실제 App 검증 NOT RUN** |
+| WP-047 | 격리 gh 실행기와 실행 수명주기 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | #181 · c5c8aea | 6.83장 — 실행기 통합 10/10(실제 gh + HTTPS 목), spawn 단위, smoke 6절 | 들어온 것: `gh-executor`(spawn·재검증·argv 대조·취소·상한·하트비트·고아 회수·잔여 스윕·헬스)·`prs:gh:executions`·028. 남은 것: 잠금·승인 전이·출력 스트리밍(`DEV-651`) |
+| WP-048 | W-010 GitHub Command Center 수직 슬라이스 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | #181 · c5c8aea | 6.83장 — lib/gh 41·a11y 24·콜백 라우트 8·e2e 8 | 들어온 것: W-010 최소·W-021 최소(`WP-077`). 남은 것: 생성형 폼 일반화·Recipe·A-006·A-007 |
 | WP-049 | PR 작업 (W-011) | REL-008 | todo | - | - | - | CR-005 신규 |
 | WP-050 | Issue·Discussion 작업 (W-012) | REL-008 | todo | - | - | - | CR-005 신규 |
 | WP-051 | 저장소 작업 (W-013) | REL-009 | todo | - | - | - | CR-005 신규 |
@@ -118,11 +118,11 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | WP-058 | Recipe 빌더 (W-023) | REL-011 | todo | - | - | - | CR-005 신규 |
 | WP-059 | capability 드리프트와 정책 관리 (A-005, A-006) | REL-011 | todo | - | - | - | CR-005 신규 |
 | WP-060 | 전체 parity 검증 | REL-011 | todo | - | - | - | CR-005 신규 |
-| WP-061 | 의미 capability 제약 엔진 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — constraints 단위, lib/gh(폼 = 서버) | 들어온 것: `evaluateInvocation`(열거·정수·JSON 필드·context_required·repository_format)을 폼·서버·재검증이 공유. 남은 것: 13종 전체. 3장 누락 행을 이 판에서 보강 (`DEV-663`) |
-| WP-062 | gh 출력·파일 안전 경계 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — safe-output 단위 16, a11y QA-GH-24·25, 회귀 원시 HTML 0건 | 들어온 것: `SafeOutputStream`·`sanitizeText`·텍스트 노드 렌더. 남은 것: 파일 아티팩트 경계(`FR-GH-005`). 3장 누락 행 보강 (`DEV-663`) |
-| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — result 단위 7 | 들어온 것: `pr_list_v1`(허용 10필드·무해화·`possibly_more`). 남은 것: 그래프·bindable·Recipe. 3장 누락 행 보강 (`DEV-663`) |
+| WP-061 | 의미 capability 제약 엔진 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | #181 · c5c8aea | 6.83장 — constraints 단위, lib/gh(폼 = 서버) | 들어온 것: `evaluateInvocation`(열거·정수·JSON 필드·context_required·repository_format)을 폼·서버·재검증이 공유. 남은 것: 13종 전체. 3장 누락 행을 이 판에서 보강 (`DEV-663`) |
+| WP-062 | gh 출력·파일 안전 경계 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | #181 · c5c8aea | 6.83장 — safe-output 단위 16, a11y QA-GH-24·25, 회귀 원시 HTML 0건 | 들어온 것: `SafeOutputStream`·`sanitizeText`·텍스트 노드 렌더. 남은 것: 파일 아티팩트 경계(`FR-GH-005`). 3장 누락 행 보강 (`DEV-663`) |
+| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | #181 · c5c8aea | 6.83장 — result 단위 7 | 들어온 것: `pr_list_v1`(허용 10필드·무해화·`possibly_more`). 남은 것: 그래프·bindable·Recipe. 3장 누락 행 보강 (`DEV-663`) |
 | WP-076 | 사내 GHE 직접 로그인 | 인증 (CR-083) | **done** | 에이전트 | feature/ghe-oauth-login | 6.78장 | 사내 실제 GHE OAuth App 검증은 `NOT RUN`. 3장 누락 행을 CR-086 판에서 보강 (`DEV-663`) |
-| WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | **done** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — 실행기 통합 10 · routes 통합 14 · gh-schema 13 · gh-cli 단위 69 · web(lib 41·a11y 24·콜백 8·e2e 8) · 회귀 REL-007 8 · smoke 6절 · 변이 3 kill | R0 `pr.list` 하나를 인가→미리보기→실행→결과·이력까지. 기본 꺼짐. 출력 청크 미스트리밍(`DEV-651`)·분류 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증 NOT RUN** |
+| WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | **done** | 에이전트 | #181 · c5c8aea | 6.83장 — 실행기 통합 10 · routes 통합 14 · gh-schema 13 · gh-cli 단위 69 · web(lib 41·a11y 24·콜백 8·e2e 8) · 회귀 REL-007 8 · smoke 6절 · 변이 3 kill | R0 `pr.list` 하나를 인가→미리보기→실행→결과·이력까지. 기본 꺼짐. 출력 청크 미스트리밍(`DEV-651`)·분류 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증 NOT RUN** |
 
 ## 4. 요구사항-코드 매핑
 
@@ -6474,7 +6474,7 @@ migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기�
 
 **변이.** 셋을 심고 각각을 잡는 시험을 확인했다: 중복 제출 가드 제거 → a11y QA-GH-14가 POST 2건으로 실패, `parsePrefill` 여분 키 통과 → `lib/gh.test` 실패, `canExecute` 위반 무시 → `lib/gh.test` 실패. 이전 세션의 실행기 통합 실패 1건(ESC 상수)은 도구 결함이었고(`DEV-660`), 실제 ESC를 넣자 gh의 caret 표기가 드러났다(`DEV-658`). 검토 뒤 넷째 변이: prsctl 파서의 따옴표 제거를 지우면 회귀 `DEV-664` 표가 실패한다.
 
-**CI.** 착수 시 `main`(`5128c1c`)의 run `34705991448` attempt 2가 hosted 러너에서 두 잡 success였다. 그 뒤 `b35e4ee`의 run `34738457122`는 04:40Z부터 러너 배정 없이 `queued`로 남아 있다(결제 문제 재발로 보인다 — 이전 판의 기록과 같은 모양). 이 판은 `runs-on`·결제 설정·워크플로를 건드리지 않았다. PR의 필수 check 결과와 병합 가능 판정은 CR-086 cascade 절에 적는다.
+**CI.** 착수 시 `main`(`5128c1c`)의 run `34705991448` attempt 2가 hosted 러너에서 두 잡 success였다. 그 뒤 `b35e4ee`의 run `34738457122`는 04:40Z부터 러너 배정 없이 `queued`로 남아 있다(결제 문제 재발로 보인다 — 이전 판의 기록과 같은 모양). 이 판은 `runs-on`·결제 설정·워크플로를 건드리지 않았다. PR의 필수 check 결과와 병합 가능 판정은 CR-086 cascade 절에 적는다. **병합 뒤 실측(2026-09-13):** PR #181의 최종 커밋 `c1e790b`에서 run `34751888594`가 verify 4m02s·integration 4m39s success → squash 병합 `c5c8aea`(134 파일, +30,455 −91). 병합된 main에서 typecheck·lint·lint:deps·단위 2,500·회귀 473·a11y 재실행 통과(후속 docs 브랜치 `docs/cr086-post-merge`).
 
 **능동 자가 연구가 확인한 것.**
 

@@ -1,5 +1,24 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
+최신 기준 (**2026-09-13 3차 · REL-007 R0 완주 — PR #181 병합, CR-086 closed**)
 
+**main = `c5c8aea`. 실측하라.** 워크트리 `/tmp/pr-search-rel007`와 격리 서비스 `prs-rel007-*`는 정리 대상(commands.md 3차 절).
+
+## 후속 (병합 뒤)
+
+1. 원장 3장 `WP-077` 행의 커밋/PR 열에 `#181 · c5c8aea` — `docs/cr086-post-merge` 브랜치의 docs 커밋(agent-context 갱신 포함). 병합된 main에서 재검증(최소 typecheck·lint·test·test:regression·a11y).
+2. 최종 보고(지시서 18장) — session-summary.md 3차 절이 재료.
+
+## REL-007 다음 판 후보 (결정자가 순서를 정한다)
+
+- `DEV-657` capability 분류 195건 → NFR-009 게이트·parity 검증기·`gh_capability_snapshot`·A-006 (REL-007 완료 조건).
+- `DEV-651` 출력 청크 스트리밍(EVT-GH-003 미영속 규칙과 함께). `DEV-652` KMS 어댑터. `DEV-656` 멱등 표 TTL. `JOB-GH-004` 주기 갱신. A-007.
+- R1 capability(쓰기) 전에 승인·확인 흐름(FR-GH-009)·상충 잠금.
+
+## 열어 둔 편차 (건드리지 않는다)
+
+`DEV-651`·`652`·`655`·`656`·`657`·`666` + 기존 `DEV-581`·`588`·`603`·`618`·`642`·`647`·`649`.
+
+---
 최신 기준 (2026-09-13 2차 · REL-007 R0 진행 중 — **세션 상한으로 중단. 워크트리에 미커밋 코드 44개 경로**)
 
 main = `5128c1c`(불변). 작업은 `/tmp/pr-search-rel007` 브랜치 `feature/rel007-r0-pr-list`(origin/main에서 분기, **push 안 함**). 이번 지시서(결정자, 2026-09-13)가 이전 handoff의 「지시를 기다린다」를 대체했다 — 아래 순서대로 **끝까지** 간다.
@@ -39,7 +58,7 @@ git push -u origin feature/rel007-r0-pr-list
 
 ## 1. 남은 실패 하나를 고친다 (실행기 통합 시험 10건 중 1건)
 
-`apps/gh-executor/integration/executor.test.ts`의 `const ESC = ''`가 **빈 문자열**이다 — Write 도구가 리터럴 0x1B를 지웠다. `''`로 바꾼다. 같은 이유로 `packages/gh-cli/testing/mock-ghe-tls.ts`·`packages/gh-cli/src/safe-output.test.ts`·`src/result.test.ts`의 `ESC`도 이스케이프 표기로 바꿔 둔다(지금은 바이트가 살아 있어 통과하지만 다음 편집에서 사라진다). 그다음:
+`apps/gh-executor/integration/executor.test.ts`의 `const ESC = ''`가 **빈 문자열**이다 — Write 도구가 리터럴 0x1B를 지웠다. `'\x1b'`로 바꾼다. 같은 이유로 `packages/gh-cli/testing/mock-ghe-tls.ts`·`packages/gh-cli/src/safe-output.test.ts`·`src/result.test.ts`의 `ESC`도 이스케이프 표기로 바꿔 둔다(지금은 바이트가 살아 있어 통과하지만 다음 편집에서 사라진다). 그다음:
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"
