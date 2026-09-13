@@ -114,6 +114,25 @@ describe('드리프트·오류 경로 (검사 함수 주입)', () => {
     await checker.stop();
   });
 
+  it('드리프트를 확인했는데 DB 기록이 실패해도 stale은 선다 — 기록 실패가 실행을 열어 두지 않는다 (독립 검토 가)', async () => {
+    const drifted: DriftCheck = { ...MATCH, status: 'drift', inventoryHashObserved: 'other', diff: { addedCommands: ['pr frobnicate'], removedCommands: [], changedCommands: [] } };
+    const deadPool = { query: async () => { throw new Error('db down'); } } as unknown as Pool;
+    const base = deps({ drift: () => drifted });
+    const checker = startRegistryChecker({ ...base, pool: deadPool }, 3_600_000);
+    const result = await checker.runOnce('periodic');
+    expect(result).not.toBeNull();
+    expect(result?.status).toBe('drift');
+    expect(result?.stale).toBe(true);
+    expect(result?.verificationId).toBeNull();
+    expect(result?.recordError).toContain('db down');
+    expect(checker.state()).toMatchObject({ status: 'drift', stale: true, verificationId: null });
+    expect(base.metrics.render()).toContain('record_failed');
+    expect(logs.some((entry) => entry['level'] === 'error' && String(entry['message']).includes('registry_stale'))).toBe(true);
+    // DB에는 아무 행도 남지 않았다 — 기록 실패는 기록 실패다.
+    expect(await ghRegistryRepo.listVerifications(pool)).toEqual([]);
+    await checker.stop();
+  });
+
   it('바이너리 불일치·구조 실패는 failed이며 stale이다', async () => {
     const checker = startRegistryChecker(deps({ drift: () => ({ ...MATCH, status: 'binary_mismatch', binarySha256Observed: 'deadbeef' }) }), 3_600_000);
     const result = await checker.runOnce('manual');
@@ -154,5 +173,49 @@ describe('드리프트·오류 경로 (검사 함수 주입)', () => {
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((row) => row.trigger === 'periodic')).toBe(true);
     expect(checker.state().checkedAt).not.toBeNull();
+  });
+
+  it('진행 중이면 주기 tick을 건너뛴다 — 짧은 주기·느린 검사에서 회차가 쌓이지 않는다 (독립 검토 나)', async () => {
+    const slow = (): Promise<DriftCheck> => new Promise((resolve) => setTimeout(() => resolve(MATCH), 100));
+    const checker = startRegistryChecker(deps({ drift: slow }), 5);
+    await new Promise((resolve) => setTimeout(resolve, 420));
+    await checker.stop();
+    const rows = await ghRegistryRepo.listVerifications(pool, 200);
+    // 5ms tick × 420ms = 84번 tick이지만 회차마다 ≥100ms이므로 5번 안팎이다. 쌓였다면 수십 건이다.
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.length).toBeLessThanOrEqual(6);
+  });
+
+  it('stop은 재시도 대기(수십 초)를 기다리지 않고 즉시 끊는다', async () => {
+    const failing = deps({ drift: () => ({ ...MATCH, status: 'error', diff: null, inventoryHashObserved: null, error: 'boom' }), retryDelaysMs: [30_000, 30_000, 30_000] });
+    const checker = startRegistryChecker(failing, 3_600_000);
+    const pending = checker.runOnce('periodic');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const started = Date.now();
+    await checker.stop();
+    expect(Date.now() - started).toBeLessThan(2_000);
+    const result = await pending;
+    // 끊긴 회차는 마지막 관측(error)으로 기록되며 stale은 바꾸지 않는다.
+    expect(result?.status).toBe('error');
+    expect(checker.state().stale).toBe(false);
+  });
+
+  it('구조 실패(해시 불일치 manifest)는 일시 오류에 가려지지 않는다 — failed·stale', async () => {
+    const tampered = { ...manifest, hash: 'deadbeef' };
+    const checker = startRegistryChecker(deps({ manifest: tampered, drift: () => ({ ...MATCH, status: 'error', diff: null, inventoryHashObserved: null, error: 'timeout' }) }), 3_600_000);
+    const result = await checker.runOnce('manual');
+    expect(result?.status).toBe('failed');
+    expect(result?.detail).toContain('구조 오류');
+    expect(checker.state().stale).toBe(true);
+    await checker.stop();
+  });
+
+  it('해시만 다른 드리프트(서명 밖 차이)는 detail이 그 사실을 말한다', async () => {
+    const hashOnly: DriftCheck = { ...MATCH, status: 'drift', inventoryHashObserved: 'x'.repeat(64), diff: { addedCommands: [], removedCommands: [], changedCommands: [] } };
+    const result = await runRegistryCheck(deps({ drift: () => hashOnly }), 'manual');
+    expect(result.status).toBe('drift');
+    expect(result.stale).toBe(true);
+    expect(result.detail).toContain('인벤토리 해시 불일치');
+    expect(result.detail).toContain('서명은 같고');
   });
 });

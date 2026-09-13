@@ -18,8 +18,8 @@
 
 import { hostname } from 'node:os';
 import { ghRegistryRepo, type Pool } from '@prs/db';
-import { GH_PINNED_LINUX_AMD64, GH_PINNED_VERSION, RULES_VERSION, VALIDATOR_VERSION, reportHash, validateManifest, type GhCapabilityManifest, type GhRegistryReport } from '@prs/gh-cli';
-import { checkDrift, type DriftCheck } from '@prs/gh-cli/node';
+import { GH_PINNED_LINUX_AMD64, GH_PINNED_VERSION, RULES_VERSION, VALIDATOR_VERSION, manifestHash, reportHash, validateManifest, type GhCapabilityManifest, type GhRegistryReport } from '@prs/gh-cli';
+import { checkDriftAsync, type DriftCheck } from '@prs/gh-cli/node';
 import type { ExecutorConfig } from './config.js';
 import type { ExecutorMetrics } from './metrics.js';
 import type { RunnerLogEntry } from './runner.js';
@@ -46,7 +46,7 @@ export interface RegistryCheckDeps {
   /** 시험용. 재시도 간격을 줄인다. 기본 5s·15s·45s (JOB-GH-003 재시도 3회). */
   readonly retryDelaysMs?: readonly number[];
   /** 시험용. 드리프트 검사를 바꿔 끼운다 — 실제 바이너리 없이 드리프트·오류 경로를 재현한다. */
-  readonly drift?: (manifest: GhCapabilityManifest) => DriftCheck;
+  readonly drift?: (manifest: GhCapabilityManifest) => DriftCheck | Promise<DriftCheck>;
 }
 
 export interface RegistryCheckResult {
@@ -54,8 +54,10 @@ export interface RegistryCheckResult {
   readonly stale: boolean;
   readonly report: GhRegistryReport;
   readonly drift: DriftCheck;
+  /** DB에 남긴 행. 기록에 실패했으면 둘 다 `null`이고 `recordError`가 이유다 — 판정은 그래도 유효하다. */
   readonly snapshotId: number | null;
   readonly verificationId: number | null;
+  readonly recordError: string | null;
   readonly attempts: number;
   readonly detail: string | null;
 }
@@ -63,17 +65,23 @@ export interface RegistryCheckResult {
 const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [5_000, 15_000, 45_000];
 
 function statusOf(report: GhRegistryReport, drift: DriftCheck): { readonly status: Exclude<RegistryStatus, 'unchecked'>; readonly stale: boolean | null; readonly detail: string | null } {
-  if (drift.status === 'error') return { status: 'error', stale: null, detail: drift.error };
+  // 구조 실패는 바이너리와 무관하다 — 일시 오류가 그것을 가리면 안 된다 (독립 검토 나).
   if (report.status === 'failed') return { status: 'failed', stale: true, detail: `manifest 구조 오류 ${String(report.findings.filter((finding) => finding.severity === 'error').length)}건` };
+  if (drift.status === 'error') return { status: 'error', stale: null, detail: drift.error };
   if (drift.status === 'version_mismatch' || drift.status === 'binary_mismatch') {
     return { status: 'failed', stale: true, detail: `${drift.status}: gh ${String(drift.ghVersionObserved)} / sha256 ${String(drift.binarySha256Observed).slice(0, 12)}` };
   }
   if (drift.status === 'drift') {
     const diff = drift.diff;
+    const counted = diff === null ? 0 : diff.addedCommands.length + diff.removedCommands.length + diff.changedCommands.length;
     return {
       status: 'drift',
       stale: true,
-      detail: diff === null ? '인벤토리 해시 불일치' : `added ${String(diff.addedCommands.length)} · removed ${String(diff.removedCommands.length)} · changed ${String(diff.changedCommands.length)}`,
+      detail:
+        diff === null || counted === 0
+          ? // 서명(command·flag 이름·타입·JSON 필드) 밖의 차이 — 설명·기본값·별칭·순서. diff에는 나오지 않지만 해시가 다르다.
+            `인벤토리 해시 불일치 (기대 ${drift.inventoryHashExpected.slice(0, 12)}… / 관측 ${String(drift.inventoryHashObserved).slice(0, 12)}…) — command·flag 서명은 같고 설명·기본값·별칭·순서가 다르다`
+          : `added ${String(diff.addedCommands.length)} · removed ${String(diff.removedCommands.length)} · changed ${String(diff.changedCommands.length)}`,
     };
   }
   if (report.status === 'incomplete') {
@@ -131,7 +139,8 @@ async function record(deps: RegistryCheckDeps, trigger: RegistryTrigger, report:
     binarySha256Expected: GH_PINNED_LINUX_AMD64.binarySha256,
     binarySha256Observed: drift.binarySha256Observed,
     manifestHashExpected: manifest.hash,
-    manifestHashObserved: report.hashVerified ? manifest.hash : null,
+    // 「관측」은 내용에서 다시 계산한 해시다 — 저장된 값의 복사가 아니다.
+    manifestHashObserved: manifestHash(manifest),
     inventoryHashExpected: drift.inventoryHashExpected,
     inventoryHashObserved: drift.inventoryHashObserved,
     validatorVersion: VALIDATOR_VERSION,
@@ -147,24 +156,56 @@ async function record(deps: RegistryCheckDeps, trigger: RegistryTrigger, report:
 
 /**
  * 검사 한 회차. 일시 오류(`error`)면 최대 3회 다시 시도한 뒤 마지막 결과를 기록한다.
- * 던지지 않는다 — 기록 실패(DB 장애)만 던진다. 호출부가 그것을 로그로 남긴다.
+ *
+ * **던지지 않는다.** 기록(DB)이 실패해도 판정은 돌려준다 — 드리프트를 확인했는데 DB가 죽어 있다고
+ * 해서 실행을 계속 열어 두면 안 된다(독립 검토 가, major). 기록 실패는 `recordError`와 지표
+ * `record_failed`로 드러나고 다음 회차가 다시 기록한다.
  */
-export async function runRegistryCheck(deps: RegistryCheckDeps, trigger: RegistryTrigger): Promise<RegistryCheckResult> {
+/** 중단 가능한 대기 — `stop()`이 재시도 sleep(최대 65초)을 기다리지 않게 한다 (독립 검토 나). */
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(done, ms);
+    function done(): void {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    }
+    signal.addEventListener('abort', done, { once: true });
+  });
+}
+
+export async function runRegistryCheck(deps: RegistryCheckDeps, trigger: RegistryTrigger, signal: AbortSignal = new AbortController().signal): Promise<RegistryCheckResult> {
   const delays = deps.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
   const report = validateManifest(deps.manifest);
-  let drift: DriftCheck = (deps.drift ?? ((manifest) => checkDrift({ binaryPath: deps.config.binaryPath, manifest })))(deps.manifest);
+  const probe = deps.drift ?? ((manifest: GhCapabilityManifest) => checkDriftAsync({ binaryPath: deps.config.binaryPath, manifest }));
+  let drift: DriftCheck = await probe(deps.manifest);
   let attempts = 1;
-  while (drift.status === 'error' && attempts <= delays.length) {
+  while (drift.status === 'error' && attempts <= delays.length && !signal.aborted) {
     deps.log({ level: 'warn', message: '레지스트리 드리프트 검사가 오류로 끝나 다시 시도한다', reason: drift.error ?? 'unknown', attempt: attempts });
-    await new Promise((resolve) => setTimeout(resolve, delays[attempts - 1] ?? 0));
-    drift = (deps.drift ?? ((manifest) => checkDrift({ binaryPath: deps.config.binaryPath, manifest })))(deps.manifest);
+    await sleep(delays[attempts - 1] ?? 0, signal);
+    if (signal.aborted) break;
+    drift = await probe(deps.manifest);
     attempts += 1;
   }
   const verdict = statusOf(report, drift);
   const stale = verdict.stale ?? false;
-  const recorded = await record(deps, trigger, report, drift, verdict.status);
   deps.metrics.registryChecks.inc({ result: verdict.status });
-  return { status: verdict.status, stale, report, drift, snapshotId: recorded.snapshotId, verificationId: recorded.verificationId, attempts, detail: verdict.detail };
+  let snapshotId: number | null = null;
+  let verificationId: number | null = null;
+  let recordError: string | null = null;
+  try {
+    const recorded = await record(deps, trigger, report, drift, verdict.status);
+    snapshotId = recorded.snapshotId;
+    verificationId = recorded.verificationId;
+  } catch (error) {
+    recordError = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+    deps.metrics.registryChecks.inc({ result: 'record_failed' });
+  }
+  return { status: verdict.status, stale, report, drift, snapshotId, verificationId, recordError, attempts, detail: verdict.detail };
 }
 
 export interface RegistryChecker {
@@ -176,39 +217,52 @@ export interface RegistryChecker {
 }
 
 /**
- * 주기 검사기. 동시 1 — 앞 회차가 끝나기 전에 다음 회차를 시작하지 않는다(체인). 기동 검사는 호출부가
- * `runOnce('startup')`으로 먼저 돌리고, 그 결과로 실행을 열지 말지 정한다.
+ * 주기 검사기. 동시 1 — 앞 회차가 끝나기 전에 다음 회차를 시작하지 않고(체인), 주기 tick은 회차가
+ * 진행 중이면 **건너뛴다**(쌓지 않는다). 기동 검사는 호출부가 `runOnce('startup')`으로 먼저 돌리고,
+ * 그 결과로 실행을 열지 말지 정한다.
  */
 export function startRegistryChecker(deps: RegistryCheckDeps, intervalMs = deps.config.registryCheckMs): RegistryChecker {
   let stopped = false;
+  let running = false;
+  const aborter = new AbortController();
   let inFlight: Promise<unknown> = Promise.resolve();
   let state: RegistryState = { status: 'unchecked', checkedAt: null, verificationId: null, stale: false, detail: null };
   const now = deps.now ?? ((): Date => new Date());
 
   const runOnce = async (trigger: RegistryTrigger): Promise<RegistryCheckResult | null> => {
     const run = inFlight.then(async (): Promise<RegistryCheckResult | null> => {
+      running = true;
       try {
-        const result = await runRegistryCheck(deps, trigger);
+        if (aborter.signal.aborted) return null;
+        const result = await runRegistryCheck(deps, trigger, aborter.signal);
         // 일시 오류는 이전 stale 판정을 유지한다 — 시간 초과 하나로 실행을 멈추지 않는다.
+        // 기록 실패는 판정을 바꾸지 않는다 — 드리프트를 봤으면 DB가 죽어 있어도 거절한다.
         const stale = result.status === 'error' ? state.stale : result.stale;
         state = { status: result.status, checkedAt: now(), verificationId: result.verificationId, stale, detail: result.detail };
         deps.metrics.registryStale.set(stale ? 1 : 0);
         deps.log({
-          level: stale ? 'error' : result.status === 'error' ? 'warn' : 'info',
-          message: stale ? '레지스트리 검사 실패 — 이후 실행은 registry_stale로 거절한다 (FR-GH-011 AC-3)' : '레지스트리 검사를 기록했다',
+          level: stale ? 'error' : result.status === 'error' || result.recordError !== null ? 'warn' : 'info',
+          message: stale
+            ? '레지스트리 검사 실패 — 이후 실행은 registry_stale로 거절한다 (FR-GH-011 AC-3)'
+            : result.recordError !== null
+              ? '레지스트리 검사는 끝났으나 기록하지 못했다 — 다음 회차가 다시 기록한다'
+              : '레지스트리 검사를 기록했다',
           reason: result.status,
           trigger,
           detail: result.detail,
           verification_id: result.verificationId,
+          record_error: result.recordError,
           manifest_hash: deps.manifest.hash,
           attempts: result.attempts,
         });
         return result;
       } catch (error) {
-        // 기록 실패(DB) — 상태는 바꾸지 않고 로그만 남긴다. 다음 회차가 다시 시도한다.
-        deps.log({ level: 'error', message: '레지스트리 검사 기록 실패', reason: error instanceof Error ? error.message : String(error), trigger });
-        deps.metrics.registryChecks.inc({ result: 'record_failed' });
+        // 검사 자체가 던진 예외(있어서는 안 된다) — 상태는 바꾸지 않고 로그만 남긴다.
+        deps.log({ level: 'error', message: '레지스트리 검사가 예외로 끝났다', reason: error instanceof Error ? error.message : String(error), trigger });
+        deps.metrics.registryChecks.inc({ result: 'check_failed' });
         return null;
+      } finally {
+        running = false;
       }
     });
     inFlight = run.catch(() => undefined);
@@ -216,7 +270,8 @@ export function startRegistryChecker(deps: RegistryCheckDeps, intervalMs = deps.
   };
 
   const timer = setInterval(() => {
-    if (stopped) return;
+    // 진행 중이면 이번 tick은 건너뛴다 — 짧은 주기·긴 재시도에서 회차가 쌓이지 않게.
+    if (stopped || running) return;
     void runOnce('periodic');
   }, intervalMs);
   timer.unref();
@@ -227,6 +282,7 @@ export function startRegistryChecker(deps: RegistryCheckDeps, intervalMs = deps.
     stop: async () => {
       stopped = true;
       clearInterval(timer);
+      aborter.abort();
       await inFlight;
     },
   };

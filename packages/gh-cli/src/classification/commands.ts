@@ -101,7 +101,7 @@ const NAME_ONLY = '판정 근거는 help 요약과 동사뿐이다';
  */
 export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   /* ---- agent-task (preview) */
-  'agent-task create': preview('R1', 'write', 'resource', REPO, `${PREVIEW_NOTE}. 「Create an agent task」 — 에이전트 세션을 만든다`),
+  'agent-task create': preview('R2', 'write', 'resource', REPO, `${PREVIEW_NOTE}. 「Create an agent task」 — 에이전트 세션을 만든다. 과금되는 요청을 쓰고 스스로 커밋·PR을 만들므로 \`codespace create\`와 같은 R2(비용 발생)`),
   'agent-task list': preview('R0', 'read', 'json', REPO, `${PREVIEW_NOTE}. 「List agent tasks」`),
   'agent-task view': preview('R0', 'read', 'json', REPO, `${PREVIEW_NOTE}. 「View an agent task session」`),
 
@@ -109,20 +109,20 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   'alias delete': blocked('R1', 'local', 'exit_status', 'internal', 'gh 설정 파일을 고친다. 실행기의 설정 디렉터리는 실행마다 새로 만들어 남지 않으므로 뜻이 없다'),
   'alias import': blocked('R3', 'local', 'exit_status', 'internal', 'help: 「Import aliases from a YAML file」 — 파일의 확장이 `!`로 시작하면 셸 명령이다 (`alias set` help)'),
   'alias list': blocked('R0', 'local', 'text', 'internal', '실행기의 설정에는 별칭이 없다 — 항상 빈 목록이다'),
-  'alias set': blocked('R3', 'local', 'exit_status', 'internal', 'help: 「If the expansion starts with `!` or if `--shell` was given, the expansion is a shell command」 — 셸 실행 경로다'),
+  'alias set': blocked('R3', 'local', 'exit_status', 'internal', 'help: 「If the expansion starts with `!` or if `--shell` was given, the expansion is a shell expression that will be evaluated through the `sh` interpreter」 — 셸 실행 경로다'),
 
   /* ---- api — 임의 엔드포인트·임의 메서드 */
   api: {
     support: 'supported',
     interaction: 'web_equivalent',
-    risk: 'R2',
+    risk: 'R3',
     sideEffect: 'arbitrary',
     auth: 'token',
     result: 'json',
     sensitivity: 'sensitive',
     stdin: 'optional',
     contexts: HOST,
-    note: 'help: 「Makes an authenticated HTTP request to the GitHub API and prints the response」. `-X`로 메서드를 고르므로 부작용은 입력이 정한다(arbitrary). 웹 등가는 스키마 인지 폼(W-020, WP-056·064)이다',
+    note: 'help: 「Makes an authenticated HTTP request to the GitHub API and prints the response」 · 「-X, --method string  The HTTP method for the request」. 메서드가 부작용을 정하므로 arbitrary이고, `-X DELETE /repos/{owner}/{repo}`처럼 저장소 삭제까지 닿으므로 사다리의 R3(임의 실행)이다. 메서드별 정책은 W-020(WP-056·064)의 몫. 웹 등가는 스키마 인지 폼',
   },
 
   /* ---- attestation */
@@ -154,18 +154,18 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   'codespace edit': write('resource', CODESPACE, 'help: 「Edit a codespace」 — 표시 이름·머신 변경'),
   'codespace jupyter': terminal('terminal_only', 'R1', 'help: 「Open a codespace in JupyterLab」 — 로컬 브라우저·포트 포워딩'),
   'codespace list': read('json', 'internal', NONE, 'help: 「List codespaces」'),
-  'codespace logs': terminal('terminal_only', 'R0', 'help: 「Access codespace logs」 — SSH로 codespace에 붙어 스트림을 받는다', { sideEffect: 'read', result: 'stream' }),
+  'codespace logs': terminal('terminal_only', 'R0', 'help: 「Access codespace logs」 (`-f, --follow  Tail and follow the logs`) — 스트림이며 codespace 안의 로그를 읽는다. gh는 이것을 SSH 세션 위에서 구현한다(help 밖 근거: gh 소스 `codespace/logs.go`)', { sideEffect: 'read', result: 'stream' }),
   'codespace ports forward': terminal('terminal_only', 'R1', 'help: 「Forward ports」 — 로컬 포트를 연다'),
   'codespace ports visibility': write('exit_status', CODESPACE, 'help: 「Change the visibility of the forwarded port」 — `public`이면 인터넷에 노출된다', { risk: 'R2' }),
   'codespace rebuild': write('exit_status', CODESPACE, 'help: 「Rebuild a codespace」 — `--full`이면 캐시 없이 다시 만든다'),
-  'codespace ssh': terminal('terminal_only', 'R2', 'help: 「SSH into a codespace」 — 원격 셸이며 `[<command>]`로 임의 명령을 넘긴다', { sideEffect: 'arbitrary' }),
+  'codespace ssh': terminal('terminal_only', 'R3', 'help: 「SSH into a codespace」 — 원격 셸이며 `[<command>]`로 임의 명령을 넘긴다. 사다리의 R3(임의 실행), `extension exec`·`copilot`과 같은 급', { sideEffect: 'arbitrary' }),
   'codespace stop': write('exit_status', CODESPACE, 'help: 「Stop a running codespace」'),
   'codespace view': read('json', 'internal', CODESPACE, 'help: 「View details about a codespace」'),
 
   /* ---- completion · config · licenses — 실행 호스트의 gh 자체에 대한 것 */
   completion: terminal('terminal_only', 'R0', 'help: 「Generate shell completion scripts」 — 셸 설정용 스크립트. GHE와 무관하다', { sideEffect: 'read', result: 'text', sensitivity: 'public', auth: 'none', contexts: NONE }),
   'config clear-cache': blocked('R0', 'local', 'exit_status', 'internal', 'gh의 로컬 캐시를 지운다 — 실행기의 설정 디렉터리는 실행마다 새것이다'),
-  'config get': blocked('R0', 'read', 'text', 'internal', 'gh 설정값을 읽는다 — 실행기 설정은 환경 변수로 봉인되어 있다 (NFR-010)'),
+  'config get': blocked('R0', 'read', 'text', 'sensitive', 'gh 설정값을 읽는다 — `-h, --host string  Get per-host setting`으로 `oauth_token`도 찍을 수 있어 결과는 sensitive다. 실행기 설정은 환경 변수로 봉인되어 있다 (NFR-010)'),
   'config list': blocked('R0', 'read', 'text', 'internal', 'gh 설정 목록 — 실행기 설정은 환경 변수로 봉인되어 있다 (NFR-010)'),
   'config set': blocked('R1', 'local', 'exit_status', 'internal', 'help: 「Update configuration with a value for the given key」 — 실행기 설정을 사용자가 바꾸게 두지 않는다'),
   copilot: extension('terminal_only', 'R3', 'arbitrary', 'stream', 'help: 「If the Copilot CLI is not installed, it will be downloaded to …」 — 외부 CLI를 내려받아 실행하는 대화형 에이전트다', { auth: 'token' }),
@@ -193,7 +193,7 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   'gist create': write('url', GIST, 'help: 「Create a new gist」 — `--public`이면 공개 콘텐츠가 된다. 파일 또는 stdin 입력', { stdin: 'optional', risk: 'R2' }),
   'gist delete': destructive('exit_status', GIST, 'help: 「Delete a gist」'),
   'gist edit': write('exit_status', GIST, 'help: 「Edit one of your gists」 — flag 없이는 편집기를 열므로 `--add`·`--filename`·`--desc`로만 연다'),
-  'gist list': read('text', 'internal', NONE, 'help: 「List your gists」 — 비밀 gist도 목록에 있다'),
+  'gist list': read('text', 'sensitive', NONE, 'help: 「List your gists」 (`--secret  Show only secret gists`) — 비밀 gist의 ID·설명을 열거한다. 존재 자체가 비공개 정보라 `gist view`와 같은 sensitive'),
   'gist rename': write('exit_status', GIST, 'help: 「Rename a file in a gist」'),
   'gist view': read('text', 'sensitive', GIST, 'help: 「View the given gist or select from recent gists」 — 비밀 gist의 내용을 그대로 찍는다'),
 
@@ -249,7 +249,7 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   'pr review': write('resource', REPO, 'help: 「Add a review to a pull request」 — `--approve`는 병합 조건에 영향', { stdin: 'optional' }),
   'pr status': read('json', 'internal', REPO, 'help: 「Show status of relevant pull requests」'),
   'pr unlock': write('exit_status', REPO, 'help: 「Unlock pull request conversation」'),
-  'pr update-branch': write('exit_status', REPO, 'help: 「Update a pull request branch」 — base를 머지·리베이스해 커밋을 만든다'),
+  'pr update-branch': write('exit_status', REPO, 'help: 「Update a pull request branch」 — 「To reconcile the changes with rebasing on top of the base branch, the `--rebase` option」: `--rebase`는 PR 브랜치 이력을 다시 쓴다(force push). 되돌리기 어려운 쓰기라 R2', { risk: 'R2' }),
   'pr view': read('json', 'internal', REPO, 'help: 「View a pull request」'),
 
   /* ---- preview */

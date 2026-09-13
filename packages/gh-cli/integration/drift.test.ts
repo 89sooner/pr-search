@@ -11,7 +11,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GH_PINNED_LINUX_AMD64, GH_PINNED_VERSION, inventoryHash, inventoryOfManifest, type GhCapabilityManifest } from '../src/index.js';
-import { checkDrift, loadManifest } from '../src/node.js';
+import { checkDrift, checkDriftAsync, extractInventory, extractInventoryAsync, loadManifest } from '../src/node.js';
 import { ensurePinnedGh } from '../testing/pinned-gh.js';
 
 let binary: string;
@@ -50,12 +50,33 @@ describe('GATE-GH-02: 설치된 gh와 커밋된 manifest가 같은 인벤토리�
     expect(checkDrift({ binaryPath: binary, manifest: withPhantom }).diff?.removedCommands).toEqual(['pr frobnicate']);
   }, 300_000);
 
-  it('gh 버전이 다르면 인벤토리를 뽑지 않고 version_mismatch이고, 바이너리가 없으면 error다', () => {
+  it('비동기 판(실행기가 쓰는 것)이 동기 판과 같은 인벤토리·같은 해시를 내고, 도는 동안 이벤트 루프가 살아 있다', async () => {
+    const sync = extractInventory({ binaryPath: binary });
+    let ticks = 0;
+    const ticker = setInterval(() => {
+      ticks += 1;
+    }, 50);
+    const started = Date.now();
+    const [asyncInventory, asyncDrift] = await Promise.all([extractInventoryAsync({ binaryPath: binary }), checkDriftAsync({ binaryPath: binary, manifest })]);
+    const elapsed = Date.now() - started;
+    clearInterval(ticker);
+    expect(inventoryHash(asyncInventory)).toBe(inventoryHash(sync));
+    expect(asyncInventory.commands.map((command) => command.path.join(' '))).toEqual(sync.commands.map((command) => command.path.join(' ')));
+    expect(asyncDrift.status).toBe('match');
+    expect(asyncDrift.inventoryHashObserved).toBe(inventoryHash(sync));
+    // 동기 판이었다면 20~30초 동안 tick이 0이었을 것이다. 비동기 판은 경과 시간의 절반 이상 tick이 돈다.
+    expect(ticks).toBeGreaterThan(Math.floor(elapsed / 50 / 2));
+  }, 300_000);
+
+  it('gh 버전이 다르면 인벤토리를 뽑지 않고 version_mismatch이고, 바이너리가 없으면 error다', async () => {
     const other = checkDrift({ binaryPath: binary, manifest: { ...manifest, ghVersion: '2.96.0' } });
     expect(other.status).toBe('version_mismatch');
     expect(other.inventoryHashObserved).toBeNull();
     const missing = checkDrift({ binaryPath: '/nonexistent/gh', manifest });
     expect(missing.status).toBe('error');
     expect(missing.error).not.toBeNull();
+    const missingAsync = await checkDriftAsync({ binaryPath: '/nonexistent/gh', manifest });
+    expect(missingAsync.status).toBe('error');
+    expect(missingAsync.error).not.toBeNull();
   }, 30_000);
 });

@@ -18,16 +18,19 @@ import { GH_PINNED_VERSION, inventoryHash, reportHash, validateManifest } from '
 import { checkDrift, extractInventory, loadManifest, readGhVersion } from '../packages/gh-cli/dist/node.js';
 
 const [command, ...rest] = process.argv.slice(2);
+/** 값을 받지 않는 플래그 — 뒤에 오는 토큰을 값으로 삼키지 않는다 (`--diagnostic foo`에서 진단 모드가 꺼지던 결함). */
+const BOOLEAN_FLAGS = new Set(['diagnostic']);
 const flags = new Map();
 for (let index = 0; index < rest.length; index += 1) {
   const item = rest[index];
   if (!item.startsWith('--')) continue;
+  const name = item.slice(2);
   const next = rest[index + 1];
-  if (next !== undefined && !next.startsWith('--')) {
-    flags.set(item.slice(2), next);
+  if (!BOOLEAN_FLAGS.has(name) && next !== undefined && !next.startsWith('--')) {
+    flags.set(name, next);
     index += 1;
   } else {
-    flags.set(item.slice(2), true);
+    flags.set(name, true);
   }
 }
 

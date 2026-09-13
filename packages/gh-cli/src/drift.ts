@@ -9,7 +9,8 @@
 
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { diffInventory, extractInventory, readGhVersion, type InventoryDiff } from './inventory.js';
+import { readFile } from 'node:fs/promises';
+import { diffInventory, extractInventory, extractInventoryAsync, readGhVersion, readGhVersionAsync, type InventoryDiff } from './inventory.js';
 import { GH_PINNED_LINUX_AMD64, GH_PINNED_VERSION } from './pin.js';
 import type { GhCapabilityManifest } from './types.js';
 import { inventoryHash, inventoryOfManifest } from './validate.js';
@@ -57,6 +58,41 @@ export function checkDrift(options: DriftOptions): DriftCheck {
   }
   try {
     const actual = extractInventory({ binaryPath: options.binaryPath, ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }) });
+    const diff = diffInventory(expected, actual);
+    const inventoryHashObserved = inventoryHash(actual);
+    const drifted = diff.addedCommands.length + diff.removedCommands.length + diff.changedCommands.length > 0 || inventoryHashObserved !== base.inventoryHashExpected;
+    return { ...base, status: drifted ? 'drift' : 'match', ghVersionObserved, binarySha256Observed, inventoryHashObserved, diff, error: null };
+  } catch (error) {
+    return { ...base, status: 'error', ghVersionObserved, binarySha256Observed, inventoryHashObserved: null, diff: null, error: message(error) };
+  }
+}
+
+/**
+ * `checkDrift`의 비동기 판 — 실행기의 주기 검사가 쓴다. 판정 규칙은 동기 판과 같고 이벤트 루프를 막지 않는다.
+ */
+export async function checkDriftAsync(options: DriftOptions): Promise<DriftCheck> {
+  const expected = inventoryOfManifest(options.manifest);
+  const base = {
+    ghVersionExpected: options.manifest.ghVersion,
+    binarySha256Expected: GH_PINNED_LINUX_AMD64.binarySha256,
+    inventoryHashExpected: inventoryHash(expected),
+  };
+  let binarySha256Observed: string | null = null;
+  let ghVersionObserved: string | null = null;
+  try {
+    binarySha256Observed = createHash('sha256').update(await readFile(options.binaryPath)).digest('hex');
+    ghVersionObserved = await readGhVersionAsync(options.binaryPath, options.timeoutMs);
+  } catch (error) {
+    return { ...base, status: 'error', ghVersionObserved, binarySha256Observed, inventoryHashObserved: null, diff: null, error: message(error) };
+  }
+  if (ghVersionObserved !== options.manifest.ghVersion || ghVersionObserved !== GH_PINNED_VERSION) {
+    return { ...base, status: 'version_mismatch', ghVersionObserved, binarySha256Observed, inventoryHashObserved: null, diff: null, error: null };
+  }
+  if (binarySha256Observed !== GH_PINNED_LINUX_AMD64.binarySha256) {
+    return { ...base, status: 'binary_mismatch', ghVersionObserved, binarySha256Observed, inventoryHashObserved: null, diff: null, error: null };
+  }
+  try {
+    const actual = await extractInventoryAsync({ binaryPath: options.binaryPath, ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }) });
     const diff = diffInventory(expected, actual);
     const inventoryHashObserved = inventoryHash(actual);
     const drifted = diff.addedCommands.length + diff.removedCommands.length + diff.changedCommands.length > 0 || inventoryHashObserved !== base.inventoryHashExpected;

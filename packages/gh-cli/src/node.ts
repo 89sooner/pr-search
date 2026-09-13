@@ -5,10 +5,10 @@
  * 것들이며 `apps/web`은 이 경로를 가져오지 않는다 (회귀가 건다).
  */
 
-export { diffInventory, extractInventory, readGhVersion } from './inventory.js';
+export { diffInventory, extractInventory, extractInventoryAsync, readGhVersion, readGhVersionAsync } from './inventory.js';
 export type { InventoryDiff, InventoryOptions } from './inventory.js';
 
-export { checkDrift } from './drift.js';
+export { checkDrift, checkDriftAsync } from './drift.js';
 export type { DriftCheck, DriftOptions, DriftStatus } from './drift.js';
 
 export { MANIFEST_DIR, ManifestLoadError, loadManifest, manifestPath, writeManifest } from './manifest-file.js';

@@ -69,7 +69,7 @@ export function computeDimensions(
   const flagItems = (predicate: (flag: GhManifestCommand['flags'][number]) => boolean): Item[] =>
     commands.flatMap((command) =>
       command.flags
-        .map((flag, index) => ({ flag, control: command.classification?.flags[index]?.control ?? classifyFlag(flag).control }))
+        .map((flag, index) => ({ flag, control: command.classification?.flags[index]?.control ?? classifyFlag(flag, command.path).control }))
         .filter(({ flag }) => predicate(flag))
         .map(({ flag, control }) => ({ id: `${leafId(command)} --${flag.name}`, classified: control !== 'unknown' })),
     );

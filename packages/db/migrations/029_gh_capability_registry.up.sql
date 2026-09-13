@@ -48,9 +48,13 @@ CREATE TABLE gh_capability_snapshot (
     CHECK (manifest_hash ~ '^[0-9a-f]{64}$' AND inventory_hash ~ '^[0-9a-f]{64}$'),
   CONSTRAINT gh_capability_snapshot_counts_chk
     CHECK (command_count >= 0 AND leaf_command_count >= 0 AND unclassified_count >= 0 AND executable_count >= 0),
-  -- 미분류가 하나라도 있으면 활성화하지 않는다 (NFR-009). 기록은 된다.
+  -- 어느 차원이든 미분류가 하나라도 있으면 활성화하지 않는다 (NFR-009 — command·interaction·flag·positional). 기록은 된다.
   CONSTRAINT gh_capability_snapshot_activation_chk
-    CHECK (activated_at IS NULL OR unclassified_count = 0)
+    CHECK (
+      activated_at IS NULL
+      OR (unclassified_count = 0 AND interaction_unclassified_count = 0
+          AND flag_unclassified_count = 0 AND positional_unclassified_count = 0)
+    )
 );
 
 CREATE TABLE gh_capability_verification (
@@ -93,6 +97,7 @@ CREATE INDEX gh_capability_verification_by_idx
   ON gh_capability_verification (checked_by, checked_at DESC);
 
 -- append-only: 어느 롤이든 갱신·삭제할 수 없다. 표를 통째로 지우는 것은 down 마이그레이션의 몫이다.
+-- 행 트리거는 TRUNCATE에 걸리지 않는다 — prs_admin(소유자)의 TRUNCATE만이 이 보장의 밖이며 prs_app에는 그 권한이 없다.
 CREATE FUNCTION gh_capability_verification_immutable() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN

@@ -251,6 +251,15 @@ export function validateManifest(manifest: GhCapabilityManifest, options: Valida
     if (stored.support !== command.support) error('support_desync', key, 'command.support와 classification.support가 다르다');
     if (stored.risk !== command.risk) error('risk_desync', key, 'command.risk와 classification.risk가 다르다');
     if (command.execution === 'allowed' && stored.risk === null) error('risk_missing_for_allowed', key, '실행을 여는 command에 위험도가 없다');
+    /*
+     * 실행 차원의 **파생**을 다시 계산한다 (독립 검토 나): 정의가 있으면 그 정의의 값, 없으면 분류가
+     * 정책 차단일 때만 `policy_blocked`, 아니면 `not_implemented`. 저장값이 다르면 「열지 않기로 함」과
+     * 「아직 열지 않음」이 뒤바뀐 것이다 — 실행은 넓어지지 않지만 사유가 거짓이 된다.
+     */
+    const definition = definitions.find((capability) => capability.id === command.id);
+    const expectedExecution = definition !== undefined ? definition.execution : stored.support === 'policy_blocked' ? 'policy_blocked' : 'not_implemented';
+    if (command.execution !== expectedExecution) error('execution_derivation_mismatch', key, `execution이 ${command.execution}인데 정의·분류에서 파생하면 ${expectedExecution}이다`);
+    if ((command.executionReason === null) !== (command.execution === 'allowed')) error('execution_reason_mismatch', key, 'executionReason은 allowed일 때만 null이어야 한다');
     if (stored.flags.length !== command.flags.length) error('flag_classification_count', key, `flag 분류 수(${String(stored.flags.length)})가 flag 수(${String(command.flags.length)})와 다르다`);
     for (const flag of stored.flags) if (!CONTROL_VALUES.has(flag.control)) error('flag_control_invalid', `${key} --${flag.name}`, `control 값이 열거 밖이다: ${String(flag.control)}`);
     for (const positional of stored.positionals) if (!CONTROL_VALUES.has(positional.control)) error('positional_control_invalid', `${key} ${positional.placeholder}`, `control 값이 열거 밖이다: ${String(positional.control)}`);

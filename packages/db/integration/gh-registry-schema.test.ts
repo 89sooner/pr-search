@@ -168,17 +168,28 @@ describe('권한과 불변 (append-only)', () => {
     expect(code).toBe(RESTRICT_VIOLATION);
   });
 
-  it('미분류가 남은 스냅숏은 기록되지만 활성화할 수 없다 (NFR-009)', async () => {
-    const { row } = await registry.recordSnapshot(pool, snapshotInput({ manifestHash: HASH_B, unclassifiedCount: 195 }));
-    expect(row.unclassified_count).toBe(195);
-    expect(row.activated_at).toBeNull();
-    let code: string | undefined;
-    try {
-      await pool.query(`UPDATE gh_capability_snapshot SET activated_at = now() WHERE snapshot_id = $1`, [row.snapshot_id]);
-    } catch (error) {
-      code = errorCode(error);
+  it('어느 차원이든 미분류가 남은 스냅숏은 기록되지만 활성화할 수 없다 (NFR-009 — command·interaction·flag·positional)', async () => {
+    const cases: readonly [string, Partial<registry.GhCapabilitySnapshotInput>][] = [
+      ['command', { manifestHash: HASH_B, unclassifiedCount: 195 }],
+      ['interaction', { manifestHash: 'c'.repeat(64), interactionUnclassifiedCount: 1 }],
+      ['flag', { manifestHash: 'd'.repeat(64), flagUnclassifiedCount: 1 }],
+      ['positional', { manifestHash: 'e'.repeat(64), positionalUnclassifiedCount: 1 }],
+    ];
+    for (const [label, overrides] of cases) {
+      const { row } = await registry.recordSnapshot(pool, snapshotInput(overrides));
+      expect(row.activated_at, label).toBeNull();
+      let code: string | undefined;
+      try {
+        await pool.query(`UPDATE gh_capability_snapshot SET activated_at = now() WHERE snapshot_id = $1`, [row.snapshot_id]);
+      } catch (error) {
+        code = errorCode(error);
+      }
+      expect(code, label).toBe(CHECK_VIOLATION);
     }
-    expect(code).toBe(CHECK_VIOLATION);
+    // 네 차원이 전부 0이면 활성화된다 — CHECK가 활성화 자체를 막는 것은 아니다.
+    const { row: clean } = await registry.recordSnapshot(pool, snapshotInput({ manifestHash: 'f'.repeat(64) }));
+    await pool.query(`UPDATE gh_capability_snapshot SET activated_at = now() WHERE snapshot_id = $1`, [clean.snapshot_id]);
+    expect((await registry.findSnapshot(pool, 'r0.2', 'f'.repeat(64)))?.activated_at).not.toBeNull();
   });
 });
 

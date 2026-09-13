@@ -18,7 +18,7 @@
 
 import type { GhClassificationBasis, GhControlClass, GhFlagValueKind, GhInventoryFlag } from '../types.js';
 
-export const RULES_VERSION = 'rules-2026-09-14.1' as const;
+export const RULES_VERSION = 'rules-2026-09-14.2' as const;
 
 /** 브라우저를 여는 flag — 실행기는 브라우저가 없다. 웹 등가는 URL을 링크로 주는 것이다 (ADR-019). */
 const WEB_FLAGS: ReadonlySet<string> = new Set(['web']);
@@ -34,6 +34,7 @@ const ADMIN_APPROVAL_FLAGS: ReadonlySet<string> = new Set([
   'force',
   'admin',
   'delete-branch',
+  'cleanup-tag',
   'clobber',
   'accept-visibility-change-consequences',
 ]);
@@ -41,8 +42,36 @@ const ADMIN_APPROVAL_FLAGS: ReadonlySet<string> = new Set([
 /** 자격을 다루거나 셸 확장을 여는 flag — 이 제품은 열지 않는다. */
 const POLICY_BLOCKED_FLAGS: ReadonlySet<string> = new Set(['shell', 'with-token', 'show-token', 'insecure-storage']);
 
-/** 로컬 편집기·클립보드처럼 실행기에 없는 것을 요구하는 flag. */
-const TERMINAL_ONLY_FLAGS: ReadonlySet<string> = new Set(['editor', 'clipboard', 'insiders']);
+/**
+ * 로컬 편집기·클립보드·git 작업 트리처럼 실행기에 없는 것을 요구하는 flag.
+ * `--clone`(repo create·repo fork)·`--push`(repo create)·`--checkout`(issue develop)은 로컬 저장소에 쓴다.
+ */
+const TERMINAL_ONLY_FLAGS: ReadonlySet<string> = new Set(['editor', 'clipboard', 'insiders', 'clone', 'push', 'checkout']);
+
+/**
+ * command 하나의 flag에만 적용하는 판정 — 이름 규칙으로는 틀리게 되는 자리 (독립 검토 가).
+ * 키는 `<path> --<flag>`. 이름 규칙보다 먼저 본다.
+ */
+const COMMAND_FLAG_OVERRIDES: Readonly<Record<string, Omit<FlagClassificationOutcome, 'basis' | 'secretInput'> & { readonly rule: string; readonly secretInput?: boolean }>> = {
+  // 로컬 경로 — 같은 이름의 `repo sync --source`는 원격 저장소라 이름 규칙으로 못 가른다.
+  'repo create --source': { control: 'terminal_only', valueKind: 'file', enumValues: null, fileRole: null, rule: 'local-path-flag' },
+  // help가 `{zip|tar.gz}`가 아니라 "(zip or tar.gz)"로 적은 열거. 파일을 쓰는 것은 `--dir`이지 이 flag가 아니다.
+  'release download --archive': { control: 'mapped_to_typed_control', valueKind: 'enum', enumValues: ['zip', 'tar.gz'], fileRole: null, rule: 'enum-from-help-prose' },
+  // 스캔 대상 디렉터리(입력). 같은 이름의 `skill install --dir`·`run download --dir`은 출력이다.
+  'skill list --dir': { control: 'mapped_to_generic_control', valueKind: 'file', enumValues: null, fileRole: 'input', rule: 'scan-directory-flag' },
+  'skill update --dir': { control: 'mapped_to_generic_control', valueKind: 'file', enumValues: null, fileRole: 'input', rule: 'scan-directory-flag' },
+  // `@<path>`·`@-`로 파일·stdin을 읽는다 — 값 채널이 셋이다.
+  'api --field': { control: 'mapped_to_generic_control', valueKind: 'key_value', enumValues: null, fileRole: 'input', rule: 'value-or-file-flag' },
+  'api --raw-field': { control: 'mapped_to_generic_control', valueKind: 'key_value', enumValues: null, fileRole: 'input', rule: 'value-or-file-flag' },
+  // 비밀 값 그 자체 — argv 미리보기·로그·이력에 실으면 안 된다.
+  'secret set --body': { control: 'mapped_to_generic_control', valueKind: 'string', enumValues: null, fileRole: null, rule: 'secret-value-flag', secretInput: true },
+  'secret set --env-file': { control: 'mapped_to_generic_control', valueKind: 'file', enumValues: null, fileRole: 'input', rule: 'secret-value-flag', secretInput: true },
+  // 한 번에 여럿을 지우는 flag — `run list --all`처럼 무해한 동명 flag가 있어 command별로 건다.
+  'cache delete --all': { control: 'requires_admin_approval', valueKind: 'bool', enumValues: null, fileRole: null, rule: 'bulk-delete-flag' },
+  'codespace delete --all': { control: 'requires_admin_approval', valueKind: 'bool', enumValues: null, fileRole: null, rule: 'bulk-delete-flag' },
+  'codespace delete --days': { control: 'requires_admin_approval', valueKind: 'int', enumValues: null, fileRole: null, rule: 'bulk-delete-flag' },
+  'alias delete --all': { control: 'requires_admin_approval', valueKind: 'bool', enumValues: null, fileRole: null, rule: 'bulk-delete-flag' },
+};
 
 /**
  * 이름만으로 자원 선택자임을 아는 flag. 값 타입이 `string`이어도 뜻은 「GitHub 자원 하나」다 —
@@ -111,7 +140,7 @@ const SELECTOR_FLAGS: ReadonlySet<string> = new Set([
   'id',
 ]);
 
-/** 파일을 **읽는** flag. 파일 바인딩(FR-GH-005)이 있어야 열 수 있다. */
+/** 파일을 **읽는** flag. 파일 바인딩(FR-GH-005)이 있어야 열 수 있다. `--recover`는 실패한 create의 로컬 입력 파일이다. */
 const FILE_INPUT_FLAGS: ReadonlySet<string> = new Set([
   'body-file',
   'notes-file',
@@ -122,10 +151,11 @@ const FILE_INPUT_FLAGS: ReadonlySet<string> = new Set([
   'tuf-root',
   'bundle',
   'precompiled',
+  'recover',
 ]);
 
 /** 파일을 **쓰는** flag. 아티팩트 결과(FR-GH-005)로 다룬다. */
-const FILE_OUTPUT_FLAGS: ReadonlySet<string> = new Set(['dir', 'output', 'debug-file', 'archive']);
+const FILE_OUTPUT_FLAGS: ReadonlySet<string> = new Set(['dir', 'output', 'debug-file']);
 
 /** 값 타입 자리표시자 → 컨트롤 종류. help가 적은 원문 그대로의 키다. */
 const VALUE_TYPE_KINDS: Readonly<Record<string, GhFlagValueKind>> = {
@@ -182,6 +212,8 @@ export interface FlagClassificationOutcome {
   readonly valueKind: GhFlagValueKind;
   readonly enumValues: readonly string[] | null;
   readonly fileRole: 'input' | 'output' | null;
+  /** 값이 비밀 그 자체다 — argv 미리보기·로그·이력에 실으면 안 된다 (`secret set --body`). */
+  readonly secretInput: boolean;
   readonly basis: GhClassificationBasis;
 }
 
@@ -195,38 +227,44 @@ export function enumValuesOf(description: string): readonly string[] | null {
 
 /**
  * flag 하나를 분류한다. 순서가 규칙이다 — 위에서 처음 맞는 규칙이 답이다.
+ * `commandPath`를 주면 그 command에만 적용하는 판정(`COMMAND_FLAG_OVERRIDES`)을 먼저 본다.
  */
-export function classifyFlag(flag: GhInventoryFlag): FlagClassificationOutcome {
+export function classifyFlag(flag: GhInventoryFlag, commandPath: readonly string[] = []): FlagClassificationOutcome {
   const line = `--${flag.name}${flag.valueType === null ? '' : ` ${flag.valueType}`}  ${flag.description}`.trim();
   const valueType = flag.valueType;
   const enumValues = enumValuesOf(flag.description);
 
+  const override = flag.inherited ? undefined : COMMAND_FLAG_OVERRIDES[`${commandPath.join(' ')} --${flag.name}`];
+  if (override !== undefined) {
+    const { rule, secretInput, ...outcome } = override;
+    return { ...outcome, secretInput: secretInput ?? false, basis: basis(`command-flag-override:${rule}`, line) };
+  }
   if (WEB_FLAGS.has(flag.name)) {
-    return { control: 'mapped_to_web_equivalent', valueKind: 'bool', enumValues: null, fileRole: null, basis: basis('web-flag', line) };
+    return { control: 'mapped_to_web_equivalent', valueKind: 'bool', enumValues: null, fileRole: null, secretInput: false, basis: basis('web-flag', line) };
   }
   if (POLICY_BLOCKED_FLAGS.has(flag.name)) {
-    return { control: 'policy_blocked', valueKind: valueType === null ? 'bool' : 'string', enumValues: null, fileRole: null, basis: basis('policy-blocked-flag', line) };
+    return { control: 'policy_blocked', valueKind: valueType === null ? 'bool' : 'string', enumValues: null, fileRole: null, secretInput: false, basis: basis('policy-blocked-flag', line) };
   }
   if (TERMINAL_ONLY_FLAGS.has(flag.name)) {
-    return { control: 'terminal_only', valueKind: 'bool', enumValues: null, fileRole: null, basis: basis('terminal-only-flag', line) };
+    return { control: 'terminal_only', valueKind: valueType === null ? 'bool' : 'string', enumValues: null, fileRole: null, secretInput: false, basis: basis('terminal-only-flag', line) };
   }
   if (ADMIN_APPROVAL_FLAGS.has(flag.name)) {
-    return { control: 'requires_admin_approval', valueKind: 'bool', enumValues: null, fileRole: null, basis: basis('admin-approval-flag', line) };
+    return { control: 'requires_admin_approval', valueKind: 'bool', enumValues: null, fileRole: null, secretInput: false, basis: basis('admin-approval-flag', line) };
   }
   if (FILE_INPUT_FLAGS.has(flag.name)) {
-    return { control: 'mapped_to_generic_control', valueKind: 'file', enumValues: null, fileRole: 'input', basis: basis('file-input-flag', line) };
+    return { control: 'mapped_to_generic_control', valueKind: 'file', enumValues: null, fileRole: 'input', secretInput: false, basis: basis('file-input-flag', line) };
   }
   if (FILE_OUTPUT_FLAGS.has(flag.name)) {
-    return { control: 'mapped_to_generic_control', valueKind: 'file', enumValues: null, fileRole: 'output', basis: basis('file-output-flag', line) };
+    return { control: 'mapped_to_generic_control', valueKind: 'file', enumValues: null, fileRole: 'output', secretInput: false, basis: basis('file-output-flag', line) };
   }
   if (enumValues !== null) {
-    return { control: 'mapped_to_typed_control', valueKind: 'enum', enumValues, fileRole: null, basis: basis('enum-from-help', line) };
+    return { control: 'mapped_to_typed_control', valueKind: 'enum', enumValues, fileRole: null, secretInput: false, basis: basis('enum-from-help', line) };
   }
   if (SELECTOR_FLAGS.has(flag.name)) {
-    return { control: 'mapped_to_typed_control', valueKind: 'selector', enumValues: null, fileRole: null, basis: basis('selector-flag', line) };
+    return { control: 'mapped_to_typed_control', valueKind: 'selector', enumValues: null, fileRole: null, secretInput: false, basis: basis('selector-flag', line) };
   }
   if (valueType === null) {
-    return { control: 'mapped_to_typed_control', valueKind: 'bool', enumValues: null, fileRole: null, basis: basis('bool-flag', line) };
+    return { control: 'mapped_to_typed_control', valueKind: 'bool', enumValues: null, fileRole: null, secretInput: false, basis: basis('bool-flag', line) };
   }
   /*
    * gh 2.97.0의 help는 몇몇 bool flag의 값 자리에 **다른 flag 이름**을 적는다 —
@@ -235,24 +273,24 @@ export function classifyFlag(flag: GhInventoryFlag): FlagClassificationOutcome {
    * flag」의 표기이므로 bool로 읽되 그 사실을 남긴다.
    */
   if (valueType.startsWith('--')) {
-    return { control: 'mapped_to_typed_control', valueKind: 'bool', enumValues: null, fileRole: null, basis: basis('help-placeholder-artifact', line) };
+    return { control: 'mapped_to_typed_control', valueKind: 'bool', enumValues: null, fileRole: null, secretInput: false, basis: basis('help-placeholder-artifact', line) };
   }
   // `string[="last"]` — 값이 선택적인 문자열 (cobra NoOptDefVal). 문자열 컨트롤이다.
   if (/^string\[=/.test(valueType)) {
-    return { control: 'mapped_to_generic_control', valueKind: 'string', enumValues: null, fileRole: null, basis: basis('optional-value-string', line) };
+    return { control: 'mapped_to_generic_control', valueKind: 'string', enumValues: null, fileRole: null, secretInput: false, basis: basis('optional-value-string', line) };
   }
   const kind = VALUE_TYPE_KINDS[valueType];
   if (kind === undefined) {
-    return { control: 'unknown', valueKind: 'unknown', enumValues: null, fileRole: null, basis: basis('no-rule', line) };
+    return { control: 'unknown', valueKind: 'unknown', enumValues: null, fileRole: null, secretInput: false, basis: basis('no-rule', line) };
   }
   if (kind === 'file') {
-    return { control: 'mapped_to_generic_control', valueKind: 'file', enumValues: null, fileRole: 'input', basis: basis('file-value-type', line) };
+    return { control: 'mapped_to_generic_control', valueKind: 'file', enumValues: null, fileRole: 'input', secretInput: false, basis: basis('file-value-type', line) };
   }
   if (kind === 'selector' || kind === 'int' || kind === 'float' || kind === 'date' || kind === 'duration' || kind === 'fields') {
-    return { control: 'mapped_to_typed_control', valueKind: kind, enumValues: null, fileRole: null, basis: basis(`typed-value-type:${valueType}`, line) };
+    return { control: 'mapped_to_typed_control', valueKind: kind, enumValues: null, fileRole: null, secretInput: false, basis: basis(`typed-value-type:${valueType}`, line) };
   }
   // string · strings · expression · key_value — 자유 입력. 일반 컨트롤로 표현하고 서버가 값을 검증한다.
-  return { control: 'mapped_to_generic_control', valueKind: kind, enumValues: null, fileRole: null, basis: basis(`generic-value-type:${valueType}`, line) };
+  return { control: 'mapped_to_generic_control', valueKind: kind, enumValues: null, fileRole: null, secretInput: false, basis: basis(`generic-value-type:${valueType}`, line) };
 }
 
 /* ------------------------------------------------------------- positionals */

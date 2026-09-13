@@ -111,6 +111,8 @@ export interface FlagClassificationView {
   readonly control: string;
   readonly valueKind: string;
   readonly enumValues: readonly string[] | null;
+  /** 값이 비밀 그 자체(`secret set --body`). 옛 응답에는 없다. */
+  readonly secretInput?: boolean;
   readonly basis: { readonly source: string; readonly rule: string | null; readonly evidence: string };
 }
 

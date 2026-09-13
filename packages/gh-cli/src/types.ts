@@ -289,6 +289,8 @@ export interface GhFlagClassification {
   readonly control: GhControlClass;
   readonly valueKind: GhFlagValueKind;
   readonly enumValues: readonly string[] | null;
+  /** 값이 비밀 그 자체다(`secret set --body`). argv 미리보기·로그·이력에 실으면 안 된다. */
+  readonly secretInput: boolean;
   readonly basis: GhClassificationBasis;
 }
 

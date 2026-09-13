@@ -93,6 +93,31 @@ describe('flag 규칙 — 이름이 값 타입보다 먼저다', () => {
     expect(artifact.basis.rule).toBe('help-placeholder-artifact');
   });
 
+  it('이름 규칙이 틀리는 자리는 command별 판정이 먼저다 (독립 검토 가)', () => {
+    // `repo sync --source`는 원격 저장소(generic)지만 `repo create --source`는 로컬 경로(terminal_only)다.
+    expect(classifyFlag(flag('source'), ['repo', 'sync']).control).toBe('mapped_to_generic_control');
+    expect(classifyFlag(flag('source'), ['repo', 'create'])).toMatchObject({ control: 'terminal_only', valueKind: 'file' });
+    // help가 "(zip or tar.gz)"로 적은 열거 — 파일 출력이 아니라 typed enum이다.
+    expect(classifyFlag(flag('archive', { valueType: 'format' }), ['release', 'download'])).toMatchObject({ control: 'mapped_to_typed_control', valueKind: 'enum', enumValues: ['zip', 'tar.gz'], fileRole: null });
+    // 같은 `--dir`이라도 skill list는 스캔 입력, skill install은 출력이다.
+    expect(classifyFlag(flag('dir', { valueType: 'directory' }), ['skill', 'list']).fileRole).toBe('input');
+    expect(classifyFlag(flag('dir', { valueType: 'directory' }), ['skill', 'install']).fileRole).toBe('output');
+    // 비밀 값 flag는 표지가 붙는다.
+    expect(classifyFlag(flag('body'), ['secret', 'set'])).toMatchObject({ secretInput: true });
+    expect(classifyFlag(flag('body'), ['issue', 'create']).secretInput).toBe(false);
+    // 한 번에 여럿을 지우는 flag는 command별로만 승인 대상이다 — `run list --all`은 무해하다.
+    expect(classifyFlag(flag('all', { valueType: null }), ['cache', 'delete']).control).toBe('requires_admin_approval');
+    expect(classifyFlag(flag('all', { valueType: null }), ['run', 'list']).control).toBe('mapped_to_typed_control');
+    expect(classifyFlag(flag('days', { valueType: 'N' }), ['codespace', 'delete']).control).toBe('requires_admin_approval');
+    // 로컬 작업 트리가 필요한 flag와 부수 삭제 flag.
+    expect(classifyFlag(flag('clone', { valueType: null }), ['repo', 'fork']).control).toBe('terminal_only');
+    expect(classifyFlag(flag('checkout', { valueType: null }), ['issue', 'develop']).control).toBe('terminal_only');
+    expect(classifyFlag(flag('cleanup-tag', { valueType: null }), ['release', 'delete']).control).toBe('requires_admin_approval');
+    expect(classifyFlag(flag('recover'), ['pr', 'create'])).toMatchObject({ valueKind: 'file', fileRole: 'input' });
+    // inherited flag에는 command별 판정을 적용하지 않는다.
+    expect(classifyFlag(flag('all', { valueType: null, inherited: true }), ['cache', 'delete']).control).toBe('mapped_to_typed_control');
+  });
+
   it('모르는 값 타입은 unknown이다 — generic으로 뭉개지 않는다', () => {
     const outcome = classifyFlag(flag('mystery', { valueType: 'quux' }));
     expect(outcome).toMatchObject({ control: 'unknown', valueKind: 'unknown' });

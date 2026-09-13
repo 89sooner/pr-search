@@ -69,6 +69,11 @@ describe('커밋된 manifest', () => {
     }
   });
 
+  /*
+   * **지우지 말 것.** 검증기의 coverage 재계산은 생성기와 같은 함수를 쓰므로 분모 논리의 버그는 양쪽에 같이
+   * 있다. 이 상수들(SRS NFR-009 실측 기준)과 `integration/drift.test.ts`의 실제 바이너리가 검증기 밖의
+   * 유일한 독립 앵커다 (독립 검토 나).
+   */
   it('분모가 SRS의 실측 기준과 같은 뜻으로 읽힌다 — leaf 196 · flag 1,034 · inherited 312 · short 625 · repeatable 37 · json 707', () => {
     const by = new Map(report.dimensions.map((dimension) => [dimension.id, dimension]));
     expect(by.get('command_path')?.total).toBe(196);
@@ -133,6 +138,21 @@ describe('변이 — 검증기가 실제 결함을 각각의 코드로 잡는다
     const result = codes(mutated);
     expect(result.errors).toEqual(['coverage_mismatch']); // 저장된 coverage는 옛것이라 어긋난다 — 그것도 잡힌다
     expect(result.gaps).toEqual(expect.arrayContaining(['support_unknown', 'interaction_unknown', 'positional_unknown']));
+  });
+
+  it('정책 차단을 미구현으로(또는 그 반대로) 뒤바꾸면 잡힌다 — execution_derivation_mismatch (독립 검토 나)', () => {
+    const disguised = withCommands((commands) =>
+      commands.map((command) => (command.path.join(' ') === 'auth token' ? { ...command, execution: 'not_implemented' } : command)),
+    );
+    expect(codes(disguised).errors).toContain('execution_derivation_mismatch');
+    const escalated = withCommands((commands) =>
+      commands.map((command) => (command.path.join(' ') === 'pr merge' ? { ...command, execution: 'policy_blocked' } : command)),
+    );
+    expect(codes(escalated).errors).toContain('execution_derivation_mismatch');
+    const noReason = withCommands((commands) =>
+      commands.map((command) => (command.path.join(' ') === 'pr merge' ? { ...command, executionReason: null } : command)),
+    );
+    expect(codes(noReason).errors).toContain('execution_reason_mismatch');
   });
 
   it('분류 메타데이터를 allowed로 바꿔도 실행이 넓어지지 않는다 — execution_widened', () => {

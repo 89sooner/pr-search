@@ -23,7 +23,7 @@ import { classifyFlag, classifyPositional, parseUsagePositionals, type FlagClass
 const COMMAND_TABLE_RULE = 'commands-table';
 
 function flagsOf(command: GhInventoryCommand): { readonly flags: GhFlagClassification[]; readonly outcomes: FlagClassificationOutcome[] } {
-  const outcomes = command.flags.map((flag) => classifyFlag(flag));
+  const outcomes = command.flags.map((flag) => classifyFlag(flag, command.path));
   const flags = command.flags.map((flag, index) => {
     const outcome = outcomes[index]!;
     return {
@@ -32,6 +32,7 @@ function flagsOf(command: GhInventoryCommand): { readonly flags: GhFlagClassific
       control: outcome.control,
       valueKind: outcome.valueKind,
       enumValues: outcome.enumValues,
+      secretInput: outcome.secretInput,
       basis: outcome.basis,
     };
   });
@@ -79,6 +80,10 @@ function notesOf(command: GhInventoryCommand, outcomes: readonly FlagClassificat
   if (blocked.length > 0) notes.push(`${blocked.join('·')}은(는) 자격·셸을 다룬다 — 이 제품은 열지 않는다`);
   const artifacts = command.flags.filter((_, index) => outcomes[index]?.basis.rule === 'help-placeholder-artifact').map((flag) => `--${flag.name}`);
   if (artifacts.length > 0) notes.push(`${artifacts.join('·')}의 값 자리에 help가 다른 flag 이름을 적었다 — bool로 읽었다 (gh 2.97.0 원문)`);
+  const secrets = command.flags.filter((_, index) => outcomes[index]?.secretInput === true).map((flag) => `--${flag.name}`);
+  if (secrets.length > 0) notes.push(`${secrets.join('·')}의 값은 비밀 그 자체다 — argv 미리보기·로그·이력에 실으면 안 된다 (FR-GH-008 AC-7의 규율)`);
+  const terminalFlags = command.flags.filter((_, index) => outcomes[index]?.control === 'terminal_only').map((flag) => `--${flag.name}`);
+  if (terminalFlags.length > 0) notes.push(`${terminalFlags.join('·')}은(는) 로컬 작업 트리·편집기·클립보드가 필요하다 — 실행기에서는 열 수 없다`);
   if (command.helpStatus === 'auth_required') notes.push('`--help`가 인증을 요구해(종료 4) flag·positional을 뽑지 못했다 (DEV-653)');
   return notes;
 }

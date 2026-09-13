@@ -565,6 +565,7 @@ function CommandDetail({ detail }: { readonly detail: CommandDetailView }): Reac
               <tr key={`${flag.inherited ? 'i' : 'c'}-${flag.name}`} data-control={flag.control}>
                 <td>
                   <code title={flag.basis.evidence}>--{flag.name}</code>
+                  {flag.secretInput === true ? <Badge tone="danger">비밀 값</Badge> : null}
                 </td>
                 <td>{flag.inherited ? '예' : '아니오'}</td>
                 <td>{label(CONTROL_LABEL, flag.control)}</td>
