@@ -56,11 +56,22 @@ async function capture(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: `${dir}/${name}.png`, fullPage: true });
 }
 
+/**
+ * 하이드레이션이 끝나 단축키 리스너(`AppTopBar`의 `document` keydown)가 붙기 전에 누른 키는 사라진다 —
+ * `goto`는 로드까지만 기다리므로 그 창이 실제로 있었다(CI·로컬에서 간헐 실패, `DEV-662`). 붙을 때까지
+ * 다시 누른다. 제품 코드가 아니라 시험의 대기 조건을 고친 것이다.
+ */
+async function pressShortcutUntil(page: Page, settled: () => Promise<void>): Promise<void> {
+  await expect(async () => {
+    await page.keyboard.press('Control+k');
+    await settled();
+  }).toPass({ timeout: 10_000 });
+}
+
 test('WP-073: 검색 단축키가 실제 검색창을 잡고 예시는 요청 없이 편집된다', async ({ page }) => {
   const calls = await searchFixture(page);
   await page.goto('/search');
-  await page.keyboard.press('Control+k');
-  await expect(page.getByRole('searchbox')).toBeFocused();
+  await pressShortcutUntil(page, () => expect(page.getByRole('searchbox')).toBeFocused({ timeout: 500 }));
   await page.getByRole('button', { name: /머지 순서 조사/ }).click();
   await expect(page.getByRole('searchbox')).toBeFocused();
   await expect(page.getByRole('searchbox')).toHaveValue('repo:owner/repo base:main seq:1200..1350');
@@ -69,8 +80,7 @@ test('WP-073: 검색 단축키가 실제 검색창을 잡고 예시는 요청 �
 
 test('WP-073: 다른 화면의 빠른 검색도 입력으로 이동한다', async ({ page }) => {
   await page.goto('/');
-  await page.keyboard.press('Control+k');
-  await expect(page).toHaveURL(/\/search#omni-search-input$/);
+  await pressShortcutUntil(page, () => expect(page).toHaveURL(/\/search#omni-search-input$/, { timeout: 500 }));
   await expect(page.getByRole('searchbox')).toBeFocused();
 });
 
