@@ -27,6 +27,11 @@ import type { ReindexDeps } from './ops/reindex.js';
 import { indexStatsPort, reindexIndexPort } from '@prs/es';
 import { authRepo } from '@prs/db';
 import { MIN_CURSOR_KEY_LENGTH, createCursorSigner } from './cursor/envelope.js';
+import { GH_PINNED_VERSION } from '@prs/gh-cli';
+import { loadManifest } from '@prs/gh-cli/node';
+import { ghOpsConfigFailure } from './gh/config.js';
+import type { IdentityRedis } from './gh/identity.js';
+import { fetchJson } from './gh/http.js';
 
 /** 운영이 자격 증명으로 만든 GHE 접근. 없으면 GHE에 닿는 기능이 서지 않는다. */
 export interface RuntimeGitHub {
@@ -57,6 +62,8 @@ export interface RuntimeParts {
   readonly registry?: RegistryDeps | undefined;
   readonly auth?: AuthContext | undefined;
   readonly searchDeps?: SearchDepsLike | undefined;
+  /** 위임 인가 왕복 상태를 두는 Redis. 세션과 같은 클라이언트다 (REL-007 R0). */
+  readonly identityRedis?: IdentityRedis | undefined;
 }
 
 /**
@@ -88,6 +95,45 @@ export function buildReindexDeps(pool: Pool, es: Client): ReindexDeps {
 }
 
 /**
+ * GitHub Operations Plane 의존 (REL-007 R0 / WP-077, CR-086).
+ *
+ * `GH_OPERATIONS_ENABLED=true`인데 Operations App 자격·봉인 키가 없으면 **던진다** —
+ * 기동을 거부한다 (CR-078의 규율). 꺼져 있으면 `undefined`이며 `buildServer`가 경로를
+ * 달지 않는다. 세션이 없으면 위임 신원을 붙일 사람이 없으므로 역시 `undefined`다.
+ *
+ * manifest는 기동 시 한 번 읽고 해시를 검증한다 (FR-GH-011 AC-2). 손으로 고쳐진
+ * 파일이면 여기서 던진다.
+ */
+export function buildGhDeps(parts: RuntimeParts): ServerDeps['gh'] {
+  const config = parts.config.ghOps;
+  if (config === undefined || !config.enabled) return undefined;
+  const failure = ghOpsConfigFailure(config);
+  if (failure !== null) throw new Error(`${failure} (REL-007 / WP-077)`);
+  if (parts.auth === undefined || parts.identityRedis === undefined) {
+    parts.log({
+      level: 'warn',
+      message: 'GH_OPERATIONS_ENABLED=true이지만 세션 인증이 없어 /gh 경로를 등록하지 않는다 (FR-GH-008)',
+    });
+    return undefined;
+  }
+  const vaultKey = config.vaultKey;
+  if (vaultKey === null) throw new Error('unreachable: ghOpsConfigFailure가 잡았어야 한다');
+  const manifest = loadManifest(GH_PINNED_VERSION);
+  const log = (entry: { readonly level: string; readonly message: string; readonly correlation_id?: string; readonly reason?: string }): void => {
+    parts.log({ ...entry });
+  };
+  return {
+    pool: parts.pool,
+    bus: parts.bus,
+    config,
+    manifest,
+    identity: { pool: parts.pool, redis: parts.identityRedis, config, vaultKey, http: fetchJson },
+    scopes: parts.auth.scopes,
+    log,
+  };
+}
+
+/**
  * 운영 `buildServer` 인자를 만든다. **`index.ts`와 시험이 같은 함수를 쓴다.**
  *
  * 여기서 한 줄이 빠지면 그 기능은 배포에서 사라진다 — 그래서 이 함수가
@@ -106,8 +152,10 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
     });
   }
 
+  const gh = buildGhDeps(parts);
   return {
     config: parts.config,
+    ...(gh === undefined ? {} : { gh }),
     /*
      * **헬스체크가 백킹 서비스를 실제로 확인한다** (CR-059, DEV-495).
      *

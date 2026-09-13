@@ -37,6 +37,9 @@
     },
     {
       "path": "../../packages/github"
+    },
+    {
+      "path": "../../packages/gh-cli"
     }
   ]
 }

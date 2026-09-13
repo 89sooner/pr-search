@@ -6,17 +6,44 @@
     "declarationMap": false,
     "incremental": false,
     "noEmit": true,
-    "types": ["node", "vitest/globals"],
+    "types": [
+      "node",
+      "vitest/globals"
+    ],
     "paths": {
-      "@prs/domain": ["./packages/domain/src/index.ts"],
-      "@prs/metrics": ["./packages/metrics/src/index.ts"],
-      "@prs/contracts": ["./packages/contracts/src/index.ts"],
-      "@prs/query": ["./packages/query/src/index.ts"],
-      "@prs/es": ["./packages/es/src/index.ts"],
-      "@prs/db": ["./packages/db/src/index.ts"],
-      "@prs/github": ["./packages/github/src/index.ts"],
-      "@prs/bus": ["./packages/bus/src/index.ts"],
-      "@prs/authz": ["./packages/authz/src/index.ts"]
+      "@prs/domain": [
+        "./packages/domain/src/index.ts"
+      ],
+      "@prs/metrics": [
+        "./packages/metrics/src/index.ts"
+      ],
+      "@prs/contracts": [
+        "./packages/contracts/src/index.ts"
+      ],
+      "@prs/query": [
+        "./packages/query/src/index.ts"
+      ],
+      "@prs/es": [
+        "./packages/es/src/index.ts"
+      ],
+      "@prs/db": [
+        "./packages/db/src/index.ts"
+      ],
+      "@prs/github": [
+        "./packages/github/src/index.ts"
+      ],
+      "@prs/bus": [
+        "./packages/bus/src/index.ts"
+      ],
+      "@prs/authz": [
+        "./packages/authz/src/index.ts"
+      ],
+      "@prs/gh-cli/node": [
+        "./packages/gh-cli/src/node.ts"
+      ],
+      "@prs/gh-cli": [
+        "./packages/gh-cli/src/index.ts"
+      ]
     }
   },
   "include": [

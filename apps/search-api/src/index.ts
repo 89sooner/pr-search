@@ -163,6 +163,20 @@ const searchDeps = {
  * "무엇을 넘기는가"가 어떤 시험에도 걸리지 않는 자리로 남는다 — API-ADM-007이
  * 정확히 그 자리에서 빠졌다.
  */
+/*
+ * 위임 인가 왕복 상태(REL-007 R0)는 세션과 같은 Redis에 둔다 — 별도 연결을 만들
+ * 이유가 없고, 세션이 없는 배포에는 위임 신원도 없다.
+ */
+const identityClient = authRedis;
+const identityRedis =
+  identityClient === undefined
+    ? undefined
+    : {
+        get: (key: string) => identityClient.get(key),
+        set: (key: string, value: string, mode: 'EX', seconds: number) => identityClient.set(key, value, mode, seconds),
+        del: (...keys: string[]) => identityClient.del(...keys),
+      };
+
 const runtimeParts = {
   config,
   pool,
@@ -172,6 +186,7 @@ const runtimeParts = {
   ...(github === undefined ? {} : { github }),
   ...(registry === undefined ? {} : { registry }),
   ...(auth === undefined ? {} : { auth, searchDeps }),
+  ...(identityRedis === undefined ? {} : { identityRedis }),
 };
 
 log({ level: 'info', message: '기능 가용성', capabilities: runtimeCapabilities(runtimeParts) });

@@ -1,0 +1,97 @@
+/**
+ * **유일한 argv 빌더** (FR-GH-002 AC-2·AC-4·AC-8·AC-9, ADR-017).
+ *
+ * 미리보기와 실행이 이 함수 하나를 부른다. 두 번째 빌더를 만들지 않는다 — 회귀가
+ * `buildArgv(` 정의가 하나뿐임을 코드 검사로 건다.
+ *
+ * ## 무엇이 argv에 들어가는가
+ *
+ * command path · `--repo HOST/OWNER/REPO` · 정의 순서의 옵션 · `--json 필드들`.
+ * 사용자 문자열은 **하나도 그대로 들어가지 않는다**: 열거값과 정수는 검증을 지난
+ * 값이고, 저장소는 슬러그 규칙을 지난 값이며, 호스트는 서버 설정이다. 그래서
+ * shell 메타문자·개행·선행 하이픈이 argv에 도달할 자리가 없다. `spawn`은 shell을
+ * 거치지 않으므로 그 문자들에 뜻이 생길 자리도 없다 (NFR-010).
+ */
+
+import type { GhCapabilityDefinition, GhExecutionContext, GhNormalizedInvocation } from './types.js';
+
+export const REDACTED = '<redacted>';
+
+/**
+ * 토큰 모양의 값. `@prs/github`의 `redact`와 같은 패턴이다 — 그 패키지는 Node
+ * 전용이라 브라우저가 가져올 수 없어 여기 다시 적고, 회귀가 두 패턴이 같은지 건다.
+ */
+const SECRET_PATTERNS: readonly RegExp[] = [
+  /\bgh[spour]_[A-Za-z0-9]{16,}\b/g,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
+];
+
+export function redactString(value: string): string {
+  let out = value;
+  for (const pattern of SECRET_PATTERNS) out = out.replace(pattern, REDACTED);
+  return out;
+}
+
+/** argv에 비밀이 있을 수 없지만, 표시·저장 경로는 예외 없이 이 함수를 지난다 (AC-3). */
+export function redactArgv(argv: readonly string[]): string[] {
+  return argv.map(redactString);
+}
+
+function repoArgument(context: GhExecutionContext): string {
+  return `${context.host}/${context.repository.owner}/${context.repository.name}`;
+}
+
+/**
+ * 결정론적으로 조립한다 (AC-9). 같은 정의·invocation·컨텍스트는 같은 배열이다.
+ *
+ * @throws 정의와 invocation의 capability가 다르거나 정의에 없는 flag가 오면 —
+ * 검증을 거치지 않은 값이 여기 오는 것은 프로그래밍 오류다.
+ */
+export function buildArgv(
+  definition: GhCapabilityDefinition,
+  invocation: GhNormalizedInvocation,
+  context: GhExecutionContext,
+): string[] {
+  if (definition.id !== invocation.capabilityId) {
+    throw new Error(`capability 불일치: 정의 ${definition.id}, invocation ${invocation.capabilityId}`);
+  }
+  if (
+    context.repository.owner !== invocation.repository.owner ||
+    context.repository.name !== invocation.repository.name
+  ) {
+    throw new Error('실행 컨텍스트의 저장소가 invocation과 다르다');
+  }
+
+  const argv: string[] = [...definition.path, '--repo', repoArgument(context)];
+
+  for (const option of definition.options) {
+    if (option.kind === 'json_fields') continue;
+    const entry = invocation.options.find((candidate) => candidate.flag === option.flag);
+    if (entry === undefined) continue;
+    const value = entry.value;
+    if (option.kind === 'bool') {
+      if (value === true) argv.push(option.flag);
+      continue;
+    }
+    if (Array.isArray(value)) throw new Error(`${option.flag}에 배열 값이 왔다`);
+    argv.push(option.flag, String(value));
+  }
+
+  const jsonOption = definition.options.find((option) => option.kind === 'json_fields');
+  if (jsonOption !== undefined && invocation.jsonFields.length > 0) {
+    argv.push(jsonOption.flag, invocation.jsonFields.join(','));
+  }
+
+  for (const item of argv) {
+    // 값 검증이 막았어야 하는 것들. 여기 걸리면 검증기가 뚫린 것이므로 조용히 보내지 않는다.
+    // eslint-disable-next-line no-control-regex -- 제어 문자를 걸러내는 것이 이 검사의 목적이다
+    if (/[\x00-\x1f\x7f]/.test(item)) throw new Error('argv에 제어 문자가 있다');
+  }
+
+  return argv;
+}
+
+export function argvEquals(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((item, index) => item === b[index]);
+}

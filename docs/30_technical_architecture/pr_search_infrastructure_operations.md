@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.15 | 갱신일: 2026-09-13
+> 상태: review | 버전: v0.16 | 갱신일: 2026-09-13
 
 CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하고 모든 sync 호출은 repo session lock을 공유한다. Profile B sequence에는 mirror volume이 없으므로 명시적 API mode다. 환경 키·schema 선행·boot/stop·additive 앱 rollback과 별도 DB down은 [설계](pr_search_wp074_design.md) 10절이 정본이다. pilot.4 fail-fast·SSR smoke·pg hash 보정·worker git을 보존한다. 후보는 새 버전 미발행이며 --release를 사용하지 않는다.
 
@@ -75,7 +75,7 @@ CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하
 | `pipeline-worker:authz` | 권한 캐시 무효화 (JOB-AUTH-001) | `prs:permission` 적체 | **1 / 4** | **1** | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:annotate` | PR 제목 M 넘버 표기 (JOB-SEQ-005) — **GHE 쓰기 자격을 가진 유일한 단위** | 고정 | **1 / 1** | **1** | 하트비트 | 이전 이미지 재배포 |
 | `filebeat` | 원본 아카이브 적재 | `ingest-gateway` 파드 수를 따른다 (사이드카) | 게이트웨이와 동일 | **1** (사이드카) | Filebeat 자체 | 설정 롤백 |
-| `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005) | 대기 중 실행 수 | 2 / 8 | **미포함** | `GET /healthz` (gh 버전·manifest 대조 포함) | 이전 이미지 재배포 |
+| `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005 · CR-086) | 대기 중 실행 수 | 2 / 8 | **선택 프로파일** `github-operations` — 기본 꺼짐, `.env`의 `GH_OPERATIONS_ENABLED=true`면 `prsctl`이 1개를 세운다 | GET /healthz (gh 버전·manifest 대조 포함. 꺼진 상태는 `execution: disabled`를 밝히고 백킹 서비스를 묻지 않는다) | 이전 이미지 재배포 |
 
 **`batch`의 상한은 3이 아니라 1이다** (CR-046, DEV-311). 이 표가 3을 허용하면 운영자가 문서를 따라 늘릴 수 있는데, JOB-ING-007은 리더 선출이 없는 주기 스윕이라 파드마다 같은 아웃박스 행을 다시 발행하고 JOB-ING-006은 동시 실행 상한이 1이다. `pipeline-worker-batch.yaml`의 주석은 replica 1을 요구하는데 이 표가 3을 승인하고 있었다 — **아키텍처가 배포 계약이 경고하는 형상을 허가하고 있었다.** 조정 수단이 생기면 그때 올린다.
 
@@ -87,7 +87,7 @@ CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하
 
 **켜기 전에 읽기 전용으로 먼저 본다.** `annotate-preview-cli`가 대상 저장소의 확정 M 번호 수, 아직 표기하지 않은 수, 다음 회차가 실제로 집을 행 수, 전역·저장소 정책과 차단 상태, 그리고 **확인하지 못한 것**을 함께 낸다. 워커 이미지 안에서 도는 이유는 전역 스위치와 표기 전용 자격이 그 환경에만 있기 때문이다 — 조회 서비스에서 같은 이름의 변수를 읽으면 「그 값이 워커에도 같다」는 가정이 필요하고, 그 가정이 틀리면 사전 점검이 거짓을 말한다. **출력은 승인 토큰이 아니라 측정 시각의 사진이다**: 실제 쓰기 때 잡은 정본을 다시 읽고 현재 상태로 판정한다.
 
-**`gh-executor`는 Profile A에 포함하지 않는다** (CR-059). REL-007 이후의 GitHub Operations Plane이고 첫 사내 반입 대상은 read-only Search/Investigation Plane이다 — **장래의 선택 프로파일 때문에 지금 서비스를 세우지 않는다.** `filebeat`는 반대로 **포함한다**: 이미 구현·배포 계약이 있고(CR-052), Profile A는 게이트웨이 인스턴스가 하나라 `DEV-369`의 `PIPE_BUF` 경합이 아예 성립하지 않아 Profile B보다 배선이 단순하다.
+**`gh-executor`는 Profile A의 기본 형상에 세우지 않되, 선택 프로파일로 담는다** (CR-059 → CR-086). 첫 사내 반입 대상이 read-only Search/Investigation Plane이라는 `CR-059`의 결정은 그대로다 — `GH_OPERATIONS_ENABLED=false`(기본)면 컨테이너가 생기지 않는다. 다만 `REL-007`이 착수되어 이미지는 번들에 담고(`build-bundle.sh`의 `APP_TARGETS`), `prsctl`이 `.env`의 그 값을 읽어 `--profile github-operations`를 붙인다. 켜고 끄는 자리가 `.env` 하나이므로 **search-api만 켜지고 실행기가 없는 형상**(요청이 영원히 `queued`)은 `prsctl`로는 만들어지지 않으며, `prsctl health`가 그 어긋남을 판정한다. `smoke-images.sh` 6절이 실제 이미지로 고정 gh·해시·꺼진 기동·켜짐 거부를 본다.
 
 배포 순서 규칙:
 
@@ -454,7 +454,14 @@ ADR-016이 정의한 격리 요건을 배포 수준에서 구체화한다.
 | 프롬프트·페이저·색상 | 비활성화 (headless) | 대화형 대기로 인한 행 방지 |
 | 자격 증명 | 실행 직전 환경 변수로 주입, 종료와 함께 제거 | ADR-014 |
 | 네트워크 | 구성된 GHE 호스트 허용 목록 | NFR-010 |
+| workspace 저장 매체 (Profile A) | tmpfs `/var/lib/prs/gh-workspaces` 256m (mode 0700, uid 1000) + `/tmp` 64m. 루트 파일시스템은 `read_only: true` | compose 정의 (CR-086) |
+| 동시 실행 상한 | `GH_EXECUTOR_MAX_CONCURRENT` 기본 2 (1..파티션 4). 구독 수 = 동시 실행 수 | ADR-013 |
+| 시간 상한 | R0 `pr.list` 30초 (capability `timeoutMs`), 초과 시 `timed_out` | NFR-011 |
+| 출력 상한 | stdout 1MiB · stderr 64KiB (설정), 이력 발췌 256KiB · 64KiB, 원본은 SHA-256만. 잘린 stdout은 결과 파싱 실패로 `failed` | FR-GH-006 AC-5 |
+| 취소 | DB의 `cancel_requested_at`을 500ms마다 폴링 → 프로세스 그룹 SIGTERM → 1초 뒤 SIGKILL | NFR-011 (3초) |
+| 실행 환경 변수 | 허용 목록 14키(`GH_ENTERPRISE_TOKEN`·`GH_HOST`·격리 `HOME`/`GH_CONFIG_DIR`/`TMPDIR`·headless 값·`SSL_CERT_FILE`), 부모 환경 미상속. `GH_TOKEN`·`GITHUB_TOKEN`은 목록에 없다 | NFR-010 |
+| 사설 CA | gh(Go)는 `NODE_EXTRA_CA_CERTS`를 읽지 않는다. `GH_EXECUTOR_CA_FILE`(compose가 같은 값으로 배선)을 `SSL_CERT_FILE`로 넘긴다. 실행기의 Node 런타임은 GHE에 접속하지 않으므로 Node용 CA 변수를 받지 않는다 | 실측 (CR-086) |
 
-**확정하지 않은 것.** 실행기 파드의 CPU·메모리·임시 디스크 크기, workspace 디스크 할당량 수치, 동시 실행 상한의 구체값은 REL-007 프로비저닝에서 정한다. 실측 없이 값을 넣지 않는다.
+**확정하지 않은 것.** 실행기의 CPU·메모리 요청·제한과 Profile B(K8s)의 manifest는 아직 없다 — `CR-086`은 K8s를 주력으로 만들지 않았다. Profile A의 tmpfs 크기·동시 실행 상한·출력·시간 상한은 위 표대로 확정했다.
 
 `gh auth login`을 서버에서 실행해 자격 증명을 gh config에 영속 저장하지 않는다. 매 실행마다 주입하고 폐기하는 것이 유일한 경로다.

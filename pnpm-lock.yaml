@@ -27,6 +27,27 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(jsdom@26.1.0)(vite@8.2.1(@types/node@22.20.1))
 
+  apps/gh-executor:
+    dependencies:
+      '@prs/bus':
+        specifier: workspace:*
+        version: link:../../packages/bus
+      '@prs/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@prs/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@prs/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@prs/gh-cli':
+        specifier: workspace:*
+        version: link:../../packages/gh-cli
+      '@prs/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
+
   apps/ingest-gateway:
     dependencies:
       '@prs/authz':
@@ -107,6 +128,9 @@ importers:
       '@prs/es':
         specifier: workspace:*
         version: link:../../packages/es
+      '@prs/gh-cli':
+        specifier: workspace:*
+        version: link:../../packages/gh-cli
       '@prs/github':
         specifier: workspace:*
         version: link:../../packages/github
@@ -143,6 +167,9 @@ importers:
       '@prs/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@prs/gh-cli':
+        specifier: workspace:*
+        version: link:../../packages/gh-cli
       '@prs/query':
         specifier: workspace:*
         version: link:../../packages/query
@@ -249,6 +276,12 @@ importers:
       '@prs/query':
         specifier: workspace:*
         version: link:../query
+
+  packages/gh-cli:
+    dependencies:
+      '@prs/domain':
+        specifier: workspace:*
+        version: link:../domain
 
   packages/github:
     dependencies:

@@ -25,6 +25,7 @@ import { registerSequenceRoutes } from './sequence/routes.js';
 import { registerSavedSearchRoutes } from './saved-search/routes.js';
 import { registerAuditRoutes, type AuditRouteOptions } from './audit/routes.js';
 import { registerRepositoryRoutes, type RepositoryRouteOptions } from './repositories/routes.js';
+import { registerGhRoutes, type GhRouteOptions } from './gh/routes.js';
 import type { SavedSearchDeps } from './saved-search/service.js';
 import { authRepo, repositoryRepo, type Pool } from '@prs/db';
 import type { SearchDeps } from './search/service.js';
@@ -188,6 +189,14 @@ export interface ServerDeps {
    * (FR-AUTH-004 AC-5).
    */
   readonly audit?: Omit<AuditRouteOptions, 'auth' | 'loginPath' | 'log'>;
+  /**
+   * GitHub Operations Plane 의존 (API-GH-001~011, REL-007 R0 / WP-077, CR-086).
+   *
+   * **세션 블록 안에만 선다** — 위임 신원은 사람 계정에 붙는 것이라 관리자 토큰
+   * 대체 경로가 없다. `runtime.ts`는 `GH_OPERATIONS_ENABLED=true`이고 세션이 있을
+   * 때만 이것을 만든다. 없으면 경로를 달지 않고 그 사실을 로그로 말한다.
+   */
+  readonly gh?: Omit<GhRouteOptions, 'auth' | 'loginPath'>;
   readonly log?: (entry: { readonly level: string; readonly message: string }) => void;
 }
 
@@ -347,6 +356,19 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
         level: 'warn',
         message: 'PostgreSQL 의존이 없어 시퀀스 경로를 등록하지 않는다 (API-SEQ-001, API-SEQ-002)',
       });
+    }
+
+    /*
+     * GitHub Operations Plane (REL-007 R0 / WP-077, CR-086).
+     *
+     * **여기 한 줄이 빠지면 그 기능은 배포에서 사라진다** — 회귀가 이 호출 형태를
+     * 직접 건다 (CR-034의 규율). 꺼진 배포는 `runtime.ts`가 `gh`를 만들지 않으므로
+     * 경로가 없고, 그 사실을 로그로 말한다.
+     */
+    if (deps.gh !== undefined) {
+      registerGhRoutes(app, { ...deps.gh, auth: deps.auth, loginPath: config.auth.loginPath });
+    } else {
+      log({ level: 'info', message: 'GitHub Operations Plane이 꺼져 있거나 의존이 없어 /gh 경로를 등록하지 않는다 (API-GH-001~011)' });
     }
   } else if (deps.search !== undefined) {
     // 세션 없이 검색을 열면 접근 범위를 채울 신원이 없다 (ADR-008).

@@ -2,7 +2,7 @@
 #
 # PR Search 애플리케이션 이미지 (WP-070 / CR-059 / ADR-021).
 #
-# **하나의 정의가 배포 단위 다섯을 낸다** — `--target`으로 고른다. 워크스페이스
+# **하나의 정의가 배포 단위 여섯을 낸다** — `--target`으로 고른다. 워크스페이스
 # 빌드가 공통이므로 정의를 앱마다 나누면 그 공통 부분이 갈라진다.
 #
 #   docker build --target search-api     -t prs/search-api:<version> .
@@ -10,6 +10,7 @@
 #   docker build --target pipeline-worker -t prs/pipeline-worker:<version> .
 #   docker build --target web            -t prs/web:<version> .
 #   docker build --target migrate        -t prs/db:<version> .
+#   docker build --target gh-executor    -t prs/gh-executor:<version> .
 #
 # **런타임 이미지는 외부 네트워크를 요구하지 않는다.** 의존성은 빌드 시점에
 # 실체화되고, 기동은 PostgreSQL·Elasticsearch·Redis·GHE로만 나간다.
@@ -56,6 +57,35 @@ FROM base AS pipeline-worker
 RUN apk add --no-cache git
 COPY --from=deploy-pipeline-worker /out /app
 EXPOSE 3003
+CMD ["node", "dist/index.js"]
+
+# --- gh 실행기 (REL-007 R0 / WP-077, ADR-016, FR-GH-011) ---
+#
+# **고정 gh 바이너리를 빌드 시점에 내려받아 해시로 대조한다.** 버전과 두 해시(자산·
+# 바이너리)의 정본은 `packages/gh-cli/src/pin.ts`이며, 셸이 그 모듈을 읽을 수 없어 여기
+# 리터럴로 적는다 — 회귀가 두 곳이 같은지 건다. `latest`로 올리지 않는다.
+#
+# 런타임 이미지는 **비루트**(`node`, uid 1000)이고 compose가 루트 파일시스템을 읽기
+# 전용으로 걸며, 쓰기는 실행별 workspace가 있는 tmpfs 한 곳뿐이다 (NFR-010).
+# 실행기는 `git`을 부르지 않는다 — 이 판의 capability에 로컬 workspace가 없다.
+FROM build AS deploy-gh-executor
+RUN pnpm deploy --legacy --filter @prs/gh-executor --prod /out
+
+FROM base AS gh-executor
+ARG GH_VERSION=2.97.0
+ARG GH_ASSET_SHA256=a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112
+ARG GH_BINARY_SHA256=141507c337e8b202ad398550c3b73d72f5af92e86f71665214538a81efd4c409
+RUN wget -qO /tmp/gh.tgz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
+ && echo "${GH_ASSET_SHA256}  /tmp/gh.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/gh.tgz -C /tmp \
+ && echo "${GH_BINARY_SHA256}  /tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" | sha256sum -c - \
+ && install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh \
+ && rm -rf /tmp/gh.tgz "/tmp/gh_${GH_VERSION}_linux_amd64" \
+ && /usr/local/bin/gh --version | head -1 | grep -q "gh version ${GH_VERSION} "
+COPY --from=deploy-gh-executor /out /app
+RUN mkdir -p /var/lib/prs/gh-workspaces && chown node:node /var/lib/prs/gh-workspaces
+USER node
+EXPOSE 3004
 CMD ["node", "dist/index.js"]
 
 # --- 마이그레이션 실행기 ---

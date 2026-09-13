@@ -26,6 +26,9 @@
       "path": "packages/github-annotate"
     },
     {
+      "path": "packages/gh-cli"
+    },
+    {
       "path": "packages/bus"
     },
     {
@@ -39,6 +42,9 @@
     },
     {
       "path": "apps/pipeline-worker"
+    },
+    {
+      "path": "apps/gh-executor"
     }
   ]
 }

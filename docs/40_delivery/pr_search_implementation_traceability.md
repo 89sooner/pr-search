@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.71 | 갱신일: 2026-09-13
+> 상태: review | 버전: v6.72 | 갱신일: 2026-09-13
 
 `WP-075` 안전성 보강(`CR-085`): 자동 표기가 **실패·재시작·설정 변경 상황에서도** 원래 제목을 지키게 했다. 변경 요청의 재시도가 첫 시도의 문자열을 그대로 다시 보내던 자리, 확인된 본문 불일치를 다음 회차가 성공으로 덮던 자리, 시간 예산이 줄 서기와 한 행의 처리에 미치지 않던 자리, 실패한 요청 사이에 간격이 없던 자리를 닫았다 — **다섯 경로 전부 현재 코드에서 시험으로 재현한 뒤** 고쳤다. `DEV-629`(실행자 배제)를 advisory 세션 락으로 닫았고, 검증은 6.82장이다. **전역 기본값은 그대로 꺼짐이며 실제 GHE 표기는 여전히 `NOT RUN`이다.**
 
@@ -101,11 +101,11 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | WP-073 | P4 방식 웹 조사 작업대와 사용성 정돈 | UI 품질 (CR-067) | done | 에이전트 | feature/p4-workbench-ui | 최종 e2e 169 · a11y 358 · 대비 232쌍 · 타입/린트/build 통과 | 6.71장, DEV-554. 기존 DEV-377 별도 유지 |
 | WP-072 | 사내 반입 운반 경로 — GitHub Release 발행과 다운로드 | **배포 (CR-063)** | done | 에이전트 | PR #120 | DoD 16항 전부 통과 · **시험 릴리스 둘을 실제로 발행해 토큰만 있는 환경에서 받아 digest 대조·풀린 사본 verify·load·lineage·git fetch 관통** · 변이 8종 전부 킬 (6.66장) | **`CR-063` 계약 선행 (2026-09-02).** 결정자가 사내 어느 위치에서든 github.com에 닿는다고 확인하면서 문서의 오프라인 전제와 어긋났다(DEV-528). 착수 전 감사(6.65장)가 운반 파일 1.07GB의 경로를 GitHub Release 자산으로 정했고 런북 디스크 요건의 과소 기재(DEV-529)를 함께 찾았다. `WP-071` 다음의 배포 마일스톤 후속이며 **`REL-006` 완료율에 넣지 않는다.** 번들·설치·계보는 그대로다. PR #119 머지 후 리뷰 1건이 실결함이었다(`DEV-530`, **릴리스는 저절로 불변이 아니다**) — 이 PR에서 닫았다 |
 | WP-074 | M 넘버 채번 | REL-003 (CR-077 · CR-079 · CR-080) | done | 에이전트 | feature/wp074-squash-mnumber | 6.76장 — 단위·통합·회귀·e2e·a11y 전 계층, 실제 git 픽스처와 실제 PostgreSQL | **`DEV-576` resolved**(채번 전 미러 fetch, 수정 전 재현 포함). **`DEV-581`은 open으로 남는다** — 직접 푸시 부재 확정 근거 미확보이며 production은 그 앞에서 멈춘다. 기능은 `MNUMBER_ENABLED=false`가 기본이고 꺼진 배포는 기존 응답 모양 그대로다. 사내 재시험·새 릴리스는 `NOT RUN` |
-| WP-075 | PR 제목 M 넘버 표기 | REL-003 (CR-077 · **CR-084**) | **done** | 에이전트 | feature/wp075-pr-title-annotate | 6.81장 — 순수 판정·실제 로컬 HTTP 쓰기·실제 PostgreSQL·회귀·변이 | **기본이 꺼짐이다**(`MNUMBER_ANNOTATE_ENABLED=false`). 자격은 전용 App으로 분리했고 조회용 Data App의 값을 한 자리도 읽지 않는다. `DEV-616`(403의 두 원인 구분)·`DEV-617`(감사 어휘 불일치) 등록. **사내 실제 GHE 표기는 `NOT RUN`** |
-| WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 | todo | - | - | - | CR-005 신규 |
-| WP-046 | 위임 GitHub 신원과 Operations App | REL-007 | todo | - | - | - | CR-005 신규 |
-| WP-047 | 격리 gh 실행기와 실행 수명주기 | REL-007 | todo | - | - | - | CR-005 신규 |
-| WP-048 | W-010 GitHub Command Center 수직 슬라이스 | REL-007 | todo | - | - | - | CR-005 신규 |
+| WP-075 | PR 제목 M 넘버 표기 | REL-003 (CR-077 · **CR-084** · **CR-085**) | **done** | 에이전트 | feature/wp075-pr-title-annotate | 6.81장 — 순수 판정·실제 로컬 HTTP 쓰기·실제 PostgreSQL·회귀·변이 | **기본이 꺼짐이다**(`MNUMBER_ANNOTATE_ENABLED=false`). 자격은 전용 App으로 분리했고 조회용 Data App의 값을 한 자리도 읽지 않는다. `DEV-616`(403의 두 원인 구분)·`DEV-617`(감사 어휘 불일치) 등록. **사내 실제 GHE 표기는 `NOT RUN`** |
+| WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — 인벤토리 추출·manifest 조립·해시, API-GH-001 | 들어온 것: 고정 gh 2.97.0 인벤토리·manifest(hash `ad00027d…`)·`API-GH-001`. 남은 것: 분류 100%(unknown 195, `DEV-657`)·parity 검증기·`gh_capability_snapshot`·A-006 |
+| WP-046 | 위임 GitHub 신원과 Operations App | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — routes 통합 14(인가 왕복·봉인 원문 부재·철회) | 들어온 것: state+PKCE 인가·AES-256-GCM 봉인·요청 시점 갱신·철회·`API-GH-007`·web 콜백. 남은 것: 주기 갱신 잡·A-007·비밀 저장소(`DEV-652`). **사내 실제 App 검증 NOT RUN** |
+| WP-047 | 격리 gh 실행기와 실행 수명주기 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — 실행기 통합 10/10(실제 gh + HTTPS 목), spawn 단위, smoke 6절 | 들어온 것: `gh-executor`(spawn·재검증·argv 대조·취소·상한·하트비트·고아 회수·잔여 스윕·헬스)·`prs:gh:executions`·028. 남은 것: 잠금·승인 전이·출력 스트리밍(`DEV-651`) |
+| WP-048 | W-010 GitHub Command Center 수직 슬라이스 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — lib/gh 41·a11y 24·콜백 라우트 8·e2e 8 | 들어온 것: W-010 최소·W-021 최소(`WP-077`). 남은 것: 생성형 폼 일반화·Recipe·A-006·A-007 |
 | WP-049 | PR 작업 (W-011) | REL-008 | todo | - | - | - | CR-005 신규 |
 | WP-050 | Issue·Discussion 작업 (W-012) | REL-008 | todo | - | - | - | CR-005 신규 |
 | WP-051 | 저장소 작업 (W-013) | REL-009 | todo | - | - | - | CR-005 신규 |
@@ -118,6 +118,11 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | WP-058 | Recipe 빌더 (W-023) | REL-011 | todo | - | - | - | CR-005 신규 |
 | WP-059 | capability 드리프트와 정책 관리 (A-005, A-006) | REL-011 | todo | - | - | - | CR-005 신규 |
 | WP-060 | 전체 parity 검증 | REL-011 | todo | - | - | - | CR-005 신규 |
+| WP-061 | 의미 capability 제약 엔진 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — constraints 단위, lib/gh(폼 = 서버) | 들어온 것: `evaluateInvocation`(열거·정수·JSON 필드·context_required·repository_format)을 폼·서버·재검증이 공유. 남은 것: 13종 전체. 3장 누락 행을 이 판에서 보강 (`DEV-663`) |
+| WP-062 | gh 출력·파일 안전 경계 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — safe-output 단위 16, a11y QA-GH-24·25, 회귀 원시 HTML 0건 | 들어온 것: `SafeOutputStream`·`sanitizeText`·텍스트 노드 렌더. 남은 것: 파일 아티팩트 경계(`FR-GH-005`). 3장 누락 행 보강 (`DEV-663`) |
+| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — result 단위 7 | 들어온 것: `pr_list_v1`(허용 10필드·무해화·`possibly_more`). 남은 것: 그래프·bindable·Recipe. 3장 누락 행 보강 (`DEV-663`) |
+| WP-076 | 사내 GHE 직접 로그인 | 인증 (CR-083) | **done** | 에이전트 | feature/ghe-oauth-login | 6.78장 | 사내 실제 GHE OAuth App 검증은 `NOT RUN`. 3장 누락 행을 CR-086 판에서 보강 (`DEV-663`) |
+| WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | **done** | 에이전트 | feature/rel007-r0-pr-list | 6.83장 — 실행기 통합 10 · routes 통합 14 · gh-schema 13 · gh-cli 단위 69 · web(lib 41·a11y 24·콜백 8·e2e 8) · 회귀 REL-007 8 · smoke 6절 · 변이 3 kill | R0 `pr.list` 하나를 인가→미리보기→실행→결과·이력까지. 기본 꺼짐. 출력 청크 미스트리밍(`DEV-651`)·분류 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증 NOT RUN** |
 
 ## 4. 요구사항-코드 매핑
 
@@ -184,23 +189,23 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | NFR-006 | WP-039 | - | - | not_started |
 | NFR-007 | WP-015 ~ WP-018, WP-025, WP-038 | `apps/web/components/*.tsx`, `apps/web/lib/nav.ts` | `apps/web/a11y/{shell,search,pr-detail,commit-detail}.test.tsx` (axe wcag2a/2aa/21a/21aa, 위반 0건), `apps/web/lib/architecture.test.ts` (QA-COMMON-16·17 정적 검사 + 화면 라우트가 공통 관문을 지나는지), `pnpm test:contrast` (라이트·다크 80쌍, 실패 0건), `apps/web/e2e/{shell,flow-001,flow-002,flow-003}.spec.ts` | partial (**셸·W-001·W-002·W-003은 done** — 랜드마크·스킵 링크·`aria-current`·라우트 전환 알림·좁은 화면 내비게이션·포커스 복귀에 더해, 두 화면의 모든 DoD 상태에 axe를 돌려 위반 0건. 상태를 **색이 아니라 글자로도** 구분한다(타임라인 네 상태, 시퀀스 배지). 복사 결과는 성공·실패 **양쪽을** 라이브 리전으로 알린다(DEV-096). 나머지 화면은 WP-025 이후다. `color-contrast` axe 규칙은 jsdom에 레이아웃·canvas가 없어 끄고 `checkContrast`로 대신 건다 — 켜 두면 조용히 아무것도 검사하지 않으면서 통과로 보인다) |
 | NFR-008 | WP-001, WP-035, WP-040 | `package.json` 스크립트, `scripts/lint-deps.mjs`, `.github/workflows/ci.yml`, `docker-compose.yml`, 각 앱 `src/server.ts`의 `GET /healthz` | `scripts/lint-deps.test.ts`, `apps/*/src/server.test.ts` | partial (WP-001분: 재현 가능한 검증 파이프라인과 헬스 엔드포인트. 롤백 절차·재색인 소요는 WP-035·WP-040) |
-| FR-GH-001 | WP-045, WP-060 | - | - | not_started |
-| FR-GH-002 | WP-047, WP-048 | - | - | not_started |
-| FR-GH-003 | WP-048 | - | - | not_started |
+| FR-GH-001 | WP-045, WP-060, WP-077 | `packages/gh-cli/src/{inventory,manifest,capabilities}.ts`, `apps/search-api/src/gh/routes.ts`(API-GH-001) | gh-cli 단위(help-parse·manifest), a11y QA-GH-01, e2e | partial — AC-6(미지원·미구현 표시) 구현. 분류 100%는 미달(`DEV-657`) |
+| FR-GH-002 | WP-047, WP-048, WP-077 | `apps/search-api/src/gh/executions.ts`, `packages/gh-cli/src/argv.ts`, `apps/gh-executor/src/runner.ts` | 실행기 통합(argv 대조·golden argv), routes 통합, e2e | partial — AC-1·3·4·7·8·10 구현(R0 `pr.list`). 승인·확인(AC-5·6)은 R0 밖 |
+| FR-GH-003 | WP-048, WP-061, WP-077 | `packages/gh-cli/src/constraints.ts`, `apps/web/lib/gh.ts`(`validateForm`), `apps/web/components/GhPrListForm.tsx` | constraints 단위, lib/gh(폼 = 서버 동일 위반), routes 통합 우회 10종, a11y·e2e QA-GH-02 | partial — AC-1·4·5·8 구현. 13종 제약 전체는 미완 |
 | FR-GH-004 | WP-049 ~ WP-055 | - | - | not_started |
 | FR-GH-005 | WP-058 | - | - | not_started |
-| FR-GH-006 | WP-047, WP-052 | - | - | not_started |
+| FR-GH-006 | WP-047, WP-052, WP-077 | `apps/gh-executor/src/{spawn,runner,sweeper}.ts`, `routes.ts`(SSE·cancel) | spawn 단위, 실행기 통합(취소·타임아웃·상한·스윕), routes 통합(SSE) | partial — AC-3·4·5 구현. AC-2 출력 스트리밍은 상태만(`DEV-651`) |
 | FR-GH-007 | WP-053, WP-057 | - | - | not_started |
-| FR-GH-008 | WP-046 | - | - | not_started |
+| FR-GH-008 | WP-046, WP-077 | `apps/search-api/src/gh/identity.ts`, `packages/gh-cli/src/{vault,env}.ts`, `apps/web/app/gh/identity/callback/route.ts` | identity·vault·env 단위, routes 통합(인가 왕복·봉인 원문 부재), 콜백 라우트 8, 실행기 통합(토큰은 헤더에만) | partial — AC-1~7 구현(봉인은 `DEV-652`). 실제 GHE 검증 NOT RUN |
 | FR-GH-009 | WP-048, WP-054, WP-059 | - | - | not_started |
 | FR-GH-010 | WP-056 | - | - | not_started |
-| FR-GH-011 | WP-045, WP-059 | - | - | not_started |
-| FR-GH-012 | WP-048 | - | - | not_started |
+| FR-GH-011 | WP-045, WP-059, WP-077 | `packages/gh-cli/src/pin.ts`, `apps/gh-executor/src/index.ts`(기동 대조), `Dockerfile` | 회귀(pin.ts = Dockerfile = smoke = fake-docker), 실행기 통합(registry_stale), smoke 6절 | partial — AC-1~3 구현(버전·해시·manifest 해시 대조, 어긋나면 기동 거부). 드리프트 잡은 미구현 |
+| FR-GH-012 | WP-048, WP-077 | `packages/db/migrations/028_gh_operations.up.sql`, `packages/db/src/repositories/gh-execution.ts`, `executions.ts`(`toExecutionView`), `apps/web/components/GhHistoryView.tsx` | gh-schema 통합 13(멱등 경합), routes 통합(가시성·중복 키), e2e(이력·재실행) | partial — AC-1~5 구현(감사 정본은 `gh_execution`). AC-6 상충 잠금은 R0 밖 |
 | FR-GH-013 | WP-055, WP-059 | - | - | not_started |
-| NFR-009 | WP-045, WP-060 | - | - | not_started |
-| NFR-010 | WP-047, WP-054 | - | - | not_started |
-| NFR-011 | WP-047 | - | - | not_started |
-| NFR-012 | WP-048 | - | - | not_started |
+| NFR-009 | WP-045, WP-060 | `packages/gh-cli/manifest/gh-2.97.0.json` | manifest 단위(해시 검증) | partial — 인벤토리는 있으나 분류 unknown 195건, 게이트 미통과 (`DEV-657`) |
+| NFR-010 | WP-047, WP-054, WP-062, WP-077 | `apps/gh-executor/src/spawn.ts`, `packages/gh-cli/src/{env,safe-output,argv}.ts`, `deploy/single-host/compose.yml`(read_only·tmpfs) | 회귀(spawn 한 곳·shell 0·환경 허용 목록), safe-output 단위, smoke 6절(비루트·읽기 전용) | partial — shell 0·비루트·읽기 전용·허용 목록·무해화 구현. 네트워크 허용 목록은 배포 정책 몫 |
+| NFR-011 | WP-047, WP-077 | `apps/gh-executor/src/spawn.ts`(취소 폴링 500ms·SIGTERM→SIGKILL), `routes.ts`(SSE 1초) | 실행기 통합(취소 3초 안) | partial — 취소 3초 확인. 수락 p95·완료 p95·첫 출력은 미측정 |
+| NFR-012 | WP-048, WP-077 | `gh_execution`(월별 파티션·12개월), `gh_execution_idempotency`, `sweeper.ts` | gh-schema 통합(멱등 경합·파티션), 실행기 통합(고아 회수), a11y·e2e QA-GH-14 | partial — 멱등·보존·상태 정합성(회수) 구현. 쓰기 감사·상충 잠금은 R0 밖 |
 
 ## 5. 편차 로그 (DEV)
 
@@ -208,6 +213,25 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | DEV ID | 발견일 | 발견 내용 | 관련 FR/WP | 유형 | 연결 CR | 상태 |
 | --- | --- | --- | --- | --- | --- | --- |
+| DEV-668 | 2026-09-13 | **켜기 직후 `gh_execution`의 현재 월 파티션이 아직 없을 수 있다** — 마이그레이션 028은 파티션을 만들지 않고 `worker-batch`의 보존 러너가 만든다(019의 규율). 독립 검토(나) note. 확인: 러너는 **기동 직후 첫 회차**를 돌려 `ensureAllPartitions`(3개월 앞까지)를 실행하므로(`retention.ts` 「첫 회차를 미룰 이유가 없다」) `prsctl upgrade` 뒤 수 초 안에 파티션이 생기고, 그 창에서는 실행 요청이 500이다(트랜잭션이라 키만 남지 않는다). 런북 7.C가 `health` 초록 뒤에 확인하라고 적는다 | ENT-GH-002 · JOB-AUD-001 | 기술 제약 | CR-086 | resolved — 기존 설계가 덮는다 |
+| DEV-667 | 2026-09-13 | **화면의 중복 방지 키가 폼 변경과 무관하게 유지됐다.** 앞선 제출의 응답을 못 받은 채 폼을 바꿔 다시 누르면 같은 키로 서버가 옛 구성의 실행을 돌려주고 화면이 거기에 붙었다(1회 뒤 자가 회복). 독립 검토(나) note. 폼이 바뀌면 키를 새로 만들도록 고쳤다 — 같은 폼의 재시도는 키를 지킨다 | FR-GH-012 AC-5 · WP-048 | 기술 제약 | CR-086 | resolved |
+| DEV-666 | 2026-09-13 | **고아로 회수된 뒤 원래 실행기가 돌아와 낸 결과는 버려진다** — `finishExecution`이 `state='running' AND executor_id`를 요구하므로 0행이고, 사용자에게는 실제로 성공한 실행이 `failed(executor_lost)`로 보인다. 독립 검토(나) minor. **회수 판정을 덮지 않는 것은 의도다**(거짓 성공을 만들지 않는다; 하트비트 5초 대 고아 판정 60초로 오탐은 드물다). 다만 조용히 버리지 않도록 러너가 경고 로그를 남기게 했다 | FR-GH-006 · JOB-GH-007 | 기술 제약 | CR-086 | open — 설계 유지, 로그 추가 |
+| DEV-665 | 2026-09-13 | **재검증과 claim 사이에 취소가 들어오면 행이 `queued`+`cancel_requested_at`로 남아 잔여 큐 스윕(최대 30초)까지 `cancelled`로 확정되지 않았다**(`claim`이 `cancel_requested_at IS NULL`을 요구해 0행 → `lost_claim`). 독립 검토(나) minor. claim이 0행일 때 행을 다시 읽어 취소면 즉시 `cancelled`로 닫도록 고쳤다(실행기 통합 시험 `beforeClaim` 훅으로 재현) | FR-GH-006 AC-3 · NFR-011 | 기술 제약 | CR-086 | resolved |
+| DEV-664 | 2026-09-13 | **`prsctl`의 켜짐 판정 파서가 compose의 dotenv 규칙과 갈렸다.** `GH_OPERATIONS_ENABLED="true"`·`'true'`·`true # 켠다`를 prsctl은 꺼짐으로 읽어 실행기 프로파일을 붙이지 않는데, compose는 따옴표·주석을 벗겨 search-api에 `true`를 넘긴다(실측: `docker compose config`) — **search-api만 켜지고 실행기는 없는 형상**이 조용히 생기고 요청이 영원히 `queued`이며 `prsctl health`는 초록이었다. 독립 검토(나) major. 1차 처방(값 쪽만 dotenv 규칙으로 파싱)은 재검토(나-2)가 키 쪽 변형(`export KEY=…`·키 앞 공백·`KEY = true`)에서 다시 갈리는 것을 실측해 되돌렸다. **최종 처방: `.env`를 다시 파싱하지 않는다** — prsctl이 `docker compose config`가 렌더한 search-api의 값을 단일 근거로 읽고(한 실행에 한 번 계산), on/off/reject 분류는 두 서비스의 `resolveOperationsEnabled`와 같다. 회귀가 **실제 docker compose**로 키·값 변형 16종을 렌더해 prsctl의 판정과 search-api의 판정을 대조한다(docker가 없으면 실패, skip 아님) | WP-047 · WP-077 | 기술 제약 | CR-086 | resolved |
+| DEV-663 | 2026-09-13 | **원장 3장에 `WP-061`·`WP-062`·`WP-066`·`WP-076` 행이 없었고 `WP-075` 행의 REL 열에 `CR-085`가 빠져 있었다.** 3장이 단일 정본 진행 표인데 네 WP의 상태를 답할 수 없었다. 이 판에서 행을 보강했다 | WP-061 · WP-062 · WP-066 · WP-076 · WP-075 | 문서 오류 | CR-086 | resolved |
+| DEV-662 | 2026-09-13 | **e2e `workbench.spec.ts:59`(Ctrl+K가 검색창을 잡는다)가 flaky였다.** 전체 배터리에서 1회 실패, 같은 spec 재실행 2회 중 1회 실패, PR #181의 CI(run `34750872814`)에서도 같은 자리가 실패해 **필수 check를 무작위로 떨어뜨렸다** — 이번 흐름(병합)을 실제로 막으므로 지시 15장의 예외대로 이번 범위에서 고쳤다. 원인: `goto`는 로드까지만 기다리는데 단축키 리스너는 `AppTopBar`의 `useEffect`(하이드레이션 뒤)에 붙어, 그 사이의 Ctrl+K가 사라진다. 처방: **시험의 대기 조건만** 고쳤다 — 리스너가 붙을 때까지 다시 누른다(`toPass`, 같은 spec의 두 시험). 제품 코드는 손대지 않았다 | WP-073 | 기술 제약 | CR-086 | resolved |
+| DEV-661 | 2026-09-13 | **`gh-executor`의 배치가 인프라 3.1장(CR-059 「Profile A 미포함」)과 충돌했다.** 이전 세션이 compose에 상시 서비스로 넣었다. compose 선택 프로파일 `github-operations`로 해소: 이미지는 번들에 담고, `prsctl`이 `.env`의 `GH_OPERATIONS_ENABLED=true`를 읽어 프로파일을 붙이며, `health`가 켜짐·꺼짐 형상의 어긋남을 판정한다. 인프라 3.1을 정정 | WP-047 · WP-077 | 문서 오류 | CR-086 | resolved |
+| DEV-660 | 2026-09-13 | **gh-cli 소스·시험의 정규식과 픽스처에 원시 제어 바이트(ESC·NUL·US·DEL·C1)가 들어 있었다.** 편집 도구가 `executor.test.ts`의 ESC를 지워 통합 시험 1건이 「무해화가 안 된다」로 거짓 실패했고, `argv.ts`·`safe-output.ts`의 정규식은 grep이 파일을 바이너리로 취급했다(동작은 했다). 전부 `\x1b`·`\u0080` 같은 이스케이프로 정정했고, 회귀가 gh 계열 소스의 원시 제어 문자 0건을 건다 | WP-062 · WP-077 | 기술 제약 | CR-086 | resolved |
+| DEV-659 | 2026-09-13 | **꺼진 실행기의 헬스체크가 PostgreSQL을 물어 오프라인 런타임 검사에서 503을 냈다.** 꺼진 실행기는 구독도 스윕도 하지 않아 DB를 쓰지 않는다. 백킹 서비스 확인을 켜졌을 때만 하도록 고쳤다(`server.test.ts` 4건). smoke 6절이 「꺼진 채 기동·healthz 200·`execution: disabled`」를 본다 | WP-047 | 기술 제약 | CR-086 | resolved |
+| DEV-658 | 2026-09-13 | **gh 2.97.0은 `--json` 출력의 C0 제어 문자를 caret 표기(`^[`)로 바꿔 낸다.** GraphQL 응답의 제목에 ESC를 넣자 stdout에는 두 글자 `^[`로 나왔다 — 원시 ESC가 우리 경계(`sanitizeText`)에 닿지 않고 OSC 하이퍼링크도 성립하지 않는다. 경계는 2차 방어선으로 유지하고(단위 시험이 실제 ESC로 건다) 실행기 통합 시험의 기대치를 실측에 맞췄다. 고정 버전의 동작이므로 버전을 올리면 다시 본다 | WP-062 | 기술 제약 | CR-086 | resolved |
+| DEV-657 | 2026-09-13 | **manifest 분류가 `support: 'unknown'` 195건(leaf 196 중 1건만 분류)이라 `NFR-009` 게이트를 통과하지 못한다.** 분류하지 않은 것을 분류했다고 적지 않았고 `gh_capability_snapshot`(CHECK unclassified=0)도 만들지 않았다. 화면의 커버리지 문구가 그 수를 그대로 보인다. REL-007 완료 조건 | WP-045 · NFR-009 | 범위 공백 | CR-086 | open |
+| DEV-656 | 2026-09-13 | **`gh_execution_idempotency`에 보존(TTL) 정책이 없다 — 지금은 영구다.** 실행 기록은 월별 파티션 12개월인데 보조 표는 계속 는다(행당 수십 바이트). `JOB-AUD-001`에 정리를 붙일지 다음 판이 정한다 | ENT-GH-002 · WP-047 | 범위 공백 | CR-086 | open |
+| DEV-655 | 2026-09-13 | **실행기 통합 시험이 `apps/search-api/src/gh/{config,executions}.ts`를 상대 경로로 가져온다(앱→앱 import, 시험 한정).** 「API가 남긴 행을 실행기가 그대로 집는다」를 실제 수락 함수로 증명하기 위해 유지했다. 요청 조립을 `@prs/gh-cli`로 옮기는 것은 DB 의존 때문에 불가하고, 픽스처 직접 INSERT는 그 증명을 약하게 한다. `lint:deps`는 package.json만 보므로 통과한다 | WP-047 | 기술 제약 | CR-086 | open — 유지 결정 |
+| DEV-654 | 2026-09-13 | **gh 2.97.0의 `--state closed`는 GraphQL `states: [CLOSED, MERGED]`로 펴진다.** 공식 help는 이것을 적지 않는다. 목이 기록한 실제 질의로만 알 수 있었다. 시험과 화면 문구에 반영 | WP-066 · FR-GH-002 | 기술 제약 | CR-086 | resolved |
+| DEV-653 | 2026-09-13 | **gh 2.97.0의 `extension exec --help`는 토큰 없이 종료 4(인증 필요)를 낸다.** 인벤토리 추출이 거기서 멈췄다. `helpStatus: 'auth_required'`로 정직하게 남기고 분류 커버리지 계산에 포함한다 | WP-045 | 기술 제약 | CR-086 | resolved |
+| DEV-652 | 2026-09-13 | **위임 토큰 보관이 비밀 저장소가 아니라 PostgreSQL의 AES-256-GCM 봉인이다(키는 `.env`의 `GH_IDENTITY_VAULT_KEY`).** 단일 호스트에 KMS가 없다. 계약의 `token_ref`가 가리키는 자리를 DB에 두되 원문은 없다. 대가: 호스트 전체 탈취 시 키와 봉인이 함께 새어 토큰이 복원된다(덤프만으로는 불가). 보안 문서 10.2·6장 시크릿 표에 적었다. 사내 KMS 도입 시 어댑터 교체 | FR-GH-008 AC-5 · ENT-GH-001 | 기술 제약 | CR-086 | open |
+| DEV-651 | 2026-09-13 | **SSE(API-GH-005)가 출력 청크를 흘리지 않고 상태 변화와 종료만 흘린다** — `FR-GH-006` AC-2 부분 미충족. R0 `pr list`는 종료 뒤 typed 결과가 전부라 실익이 없고, `EVT-GH-003` 미영속 규칙과 함께 설계가 필요하다. 화면은 상태 이벤트와 1초 폴링 대체로 종료를 안다 | FR-GH-006 · WP-047 | 범위 공백 | CR-086 | open |
+| DEV-650 | 2026-09-13 | **데이터 모델 3.5장의 `gh_execution_idem_uk (user_id, idempotency_key, requested_at)`는 파티션 표에서 같은 키를 막지 못한다.** 파티션 유니크는 파티션 키를 포함해야 하고 `requested_at`은 매번 다르다 — 통합 시험이 첫 실행에서 같은 키로 두 행이 생기는 것을 보였다. 비파티션 보조 표 `gh_execution_idempotency`(PK user_id+key)에 먼저 INSERT해 강제(경합 3건 동시 삽입에서 1건 성립). 3.5장의 마이그레이션 번호(006/007/009)도 실제 028과 달라 실현 상태 표로 정정 | ENT-GH-002 · FR-GH-012 AC-5 | 문서 오류 | CR-086 | resolved |
 | DEV-649 | 2026-09-13 | **토큰 발급이 회차의 중단 신호를 받지 않는다.** `InstallationTokenProvider.getToken`은 자신의 요청 시한(기본 10초)으로만 잘리므로, 발급 중 예산이 만료되면 그 왕복이 예산을 최대 10초 넘길 수 있다. 독립 검토가 note로 지목했다. **고치지 않았다** — 그 클래스는 조회 경로와 공유하는 순수 기계이고, 신호를 받게 하려면 `@prs/github`의 계약을 넓혀야 하는데 이 판의 범위가 아니다. 영향은 비변경 요청의 지연뿐이며, 그 창에서 만료되면 뒤이은 PATCH가 취소된 신호로 **전송 없이** 거절된다. 그때 행이 `unknown`으로 남는 것은 보수적 과대 판정이지만(실제로는 아무것도 보내지 않았다) 다음 회차가 제목을 다시 읽어 정상 표기하므로 안전한 방향의 오차다 | JOB-SEQ-005 / WP-075 | 기술 제약 | CR-085 | **open** — `@prs/github`의 토큰 발급기에 중단 신호를 넓히는 작업과 함께 본다 |
 | DEV-648 | 2026-09-13 | **예산이 없는 회차가 종료 신호를 듣지 않았다.** 잔여 스윕은 버스의 회수 시한에 묶이지 않아 예산을 두지 않는데, 줄 서기의 무한 예산 갈래가 `await previous`로만 되어 있어 **종료 요청이 와도 앞 회차가 끝날 때까지** 묶였다. 이벤트 회차가 앞에 있으면 그 예산(25초)만큼 프로세스가 죽지 못한다. 독립 검토가 minor로 지목했다. 갈래를 없애고 언제나 신호와 경주시켰다 — 신호가 없는 회차는 자연히 `previous`만 기다린다. 시험이 실제 타이머로 재고 변이로 확인했다 | JOB-SEQ-005 / WP-075 | 범위 공백 | CR-085 | resolved |
 | DEV-647 | 2026-09-13 | **지속적 실패에서 표기 이벤트가 무한히 유예되며 같은 파티션을 막는다.** `defer`는 논리 재시도 횟수를 올리지 않으므로(`CR-010`의 의도) 예산 소진 유예가 반복돼도 dead letter로 가지 않는다. 버스는 순서 보장을 위해 **파티션당 하나씩** 전달하므로(`redis-streams.ts`의 「이 파티션은 여기서 멈춘다 — 다음 것을 처리하면 순서가 깨진다」), 유예된 이벤트가 같은 파티션의 다른 저장소 표기를 막는다. 독립 검토가 minor로 지목했다. **이 판에서 고치지 않는다**: 외부에 해가 없고(게이트가 초당 하나로 조절한다), 채번은 다른 소비자 그룹이라 영향받지 않으며, 막힌 저장소는 **일일 스윕이 하루 안에 메운다** — 스윕이 존재하는 이유가 그것이다. 유예 횟수 상한은 「정상 동작을 실패로 세지 않는다」는 `DEV-627`의 판단을 뒤집는 일이라 별도 설계가 필요하다. 대신 런북 8장에 증상과 확인 순서를 적었다 | JOB-SEQ-005 / WP-075 | 기술 제약 | CR-085 | **open** — 표기가 특정 저장소에서 지속적으로 실패하는 사례가 실제로 나오면 유예 상한을 설계한다 |
@@ -6409,6 +6433,63 @@ W-004의 C-029는 서버 저장 상태를 복원하고 후보 수·예상 횟수
 migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기며, 완성 content와 completed 전이가 함께 커밋된다. ES timeout·조기 종료·샤드 실패, 취소, 30분 초과는 부분 파일을 공개하지 않는다. CSV 수식 접두어를 중화하고 원문 본문·경로 배열은 내보내지 않는다. `export.create`는 감사 정본에서 활성화됐다.
 
 검증: ES 단위 11건, 실제 PostgreSQL·Elasticsearch·Redis 통합 6건, a11y 1건(axe 위반 0), Chromium E2E 3건 통과. 1000/1001/100000/100001 경계, stale Redis와 PG fence, 대기 중 에폭 변경, 부분 응답, 닫았다 다시 연 다이얼로그의 늦은 응답을 포함한다. 전체 통합 첫 실행에서 migration 024 FK가 기존 `TRUNCATE job` 픽스처를 막고 export가 숫자 에폭을 문자열 파서로 넘기지 못하는 두 결함을 찾아 해당 통합 23건 재실행으로 닫았다.
+
+### 6.83 REL-007 R0 — PR 목록 조회 첫 수직 (2026-09-13, CR-086 / WP-077)
+
+시작 `origin/main`은 `5128c1c`(착수 시), 병합 대상은 `b35e4ee`(그 사이 agent-context만 바뀌었다). 브랜치 `feature/rel007-r0-pr-list`: `d7ed501`(이전 세션의 미커밋 코드 보존) → `8c6fc62`(ESC 픽스처) → `d3b8ced`(W-010·W-021·콜백·시험) → `bc7c8a3`(선택 프로파일·회귀·실행기 헬스·제어 바이트 정정) → 문서 cascade. **릴리스는 발행하지 않았다.**
+
+**무엇을 증명했는가.** 사용자가 웹에서 저장소를 고르고 `pr list`의 상태·건수·JSON 필드를 넣어 실행될 argv를 확인한 뒤, 자신의 위임 토큰으로 격리된 **실제 고정 gh 2.97.0**이 **실제 HTTPS 목 GHE**에 GraphQL을 보내고(목이 기록: `POST /api/graphql`, `Authorization: token …`, `User-Agent: GitHub CLI 2.97.0`, 변수 `{owner, repo, limit, state}`), typed 결과와 무해화된 발췌가 이력에 남는다. 미리보기·수락·재검증이 **같은 빌더**의 argv를 만들고, 실행기는 저장값과 재조립값이 다르면(`argv_mismatch`) 실행하지 않는다. 토큰은 헤더에만 있고 이력·로그·argv 어디에도 없다(통합 시험이 문자열로 확인).
+
+**외부에서 실행한 것과 사내에서만 확인할 수 있는 것.**
+
+| 항목 | 외부 세션 | 사내 |
+| --- | --- | --- |
+| 고정 gh 2.97.0 확보·해시 대조 (자산 `a2c9b849…8112`, 바이너리 `141507c3…c409`) | 실행 — 공식 릴리스에서 내려받아 checksums와 대조, 이미지 빌드가 재대조 | 이미지 반입 시 `smoke-images.sh` 6절이 다시 본다 |
+| manifest 조립 (`gh-2.97.0.json`, hash `ad00027d…dab2`, command 229 · leaf 196 · unknown 195) | 실행 | — |
+| 인가 왕복(state+PKCE)·봉인·요청 시점 갱신·철회 | 실행 — HTTPS 목 GHE (routes 통합 14) | **NOT RUN** — 실제 Operations App 등록·인가 |
+| 요청 → 큐 → 실행기 → 결과·이력, 취소·시간 상한·출력 상한, 재검증 5경로, 고아 회수·잔여 스윕 | 실행 — 실행기 통합 10/10 | **NOT RUN** — 실제 GHE에서 `gh pr list` |
+| 웹 흐름 전체(연결 → 폼 → 미리보기 → 실행 → 스트림 → 결과 → 이력 → 재실행) | 실행 — e2e 8 (API 대역, 실제 Chromium) | 사내 브라우저에서 실제 실행 |
+| 마이그레이션 028 왕복·권한·파티션·CHECK·멱등 경합·봉인 | 실행 — 실제 PostgreSQL (gh-schema 통합 13, 025~028 왕복) | 운영 DB 적용 (`prsctl upgrade`) |
+| 실행기 이미지: 비루트·읽기 전용·네트워크 없음에서 꺼진 기동, 켜짐 거부 | 실행 — `docker build` + smoke 6절 + 전체 `smoke-images.sh 0.1.0-pilot.6`(pilot.6 이미지 + 실행기) 통과 | 번들 반입 시 재실행 |
+| 사설 CA가 `SSL_CERT_FILE`로 gh에 닿는가 | 실행 — 자체 서명 CA로 실측 | **NOT RUN** — 사내 CA |
+| GHES의 user-to-server 토큰 만료 설정·rate limit | — | **NOT RUN** |
+| compose 프로파일 켜짐·꺼짐 형상 (`prsctl health`) | 실행 — `docker compose config --services`로 프로파일 유무 확인, `prsctl` 판정 함수 단독 실행 | 실제 `prsctl upgrade`/`health` |
+
+**전체 배터리 (HEAD `bc7c8a3`, 격리 서비스 postgres 55434 · redis 56380 · es 59201, 순차 실행, 각 명령의 종료 코드를 기록).**
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` · `pnpm lint` · `pnpm run lint:deps` | 통과 |
+| `pnpm run test` | 143 파일 중 142 통과 · 1 skip(`smoke-real-ghe.test.ts`, 실제 GHE 스모크 — 기존 skip), 2,499 통과 |
+| `pnpm run test:regression` | 8 파일 471 통과 (REL-007 블록 8건, 태그 소유권 11건 — `fake-docker`가 실행기 검사를 흉내 낸다) |
+| `pnpm run test:integration` | 105 파일 1,686 통과 (gh-schema 13 · gh/routes 14 · executor 10 포함, 실행기 통합은 실제 gh를 `GH_PINNED_BIN`으로) |
+| `pnpm build` · `pnpm --filter @prs/web run build` | 통과 (`/gh`·`/gh/history`·`/gh/identity/callback` 라우트가 빌드에 잡힘) |
+| `pnpm run test:a11y` | 18 파일 403 통과 (gh 24 포함, axe 0건) |
+| `pnpm run test:contrast` | 232쌍 중 0 실패 |
+| `pnpm run test:e2e` | 189건 중 188 통과, **1건 실패**: `workbench.spec.ts:59` Ctrl+K 포커스 — 같은 spec 재실행 2회 중 1회 실패·1회 통과(flaky, `DEV-662`). PR CI에서도 같은 자리가 떨어져 시험의 대기 조건을 고쳤다(제품 코드 무변경) — 고친 뒤 같은 spec 3회 연속 통과(아래 검토 절). `gh.spec.ts` 8건은 통과 |
+| `docker build --target gh-executor` · `smoke-images.sh 0.1.0-pilot.6` | 통과 (209MB, `USER node`, gh 2.97.0, 바이너리 해시 일치, 꺼진 기동 healthz 200 `execution: disabled`, 켜짐·봉인 키 없음 → 종료 1) |
+| 문서 검사기 `--strict` | CR-086 cascade 절에 기록 |
+
+**독립 검토 두 판과 재검토 — blocker 없음.** (가) 권한·자격·입력·출력·공개 CI 경계: major·minor 0, note 3(발췌·결과 행의 토큰 편집 비대칭 → 고침, `loginPathOf`의 `//host` → 고침, operator의 취소·열람 비대칭 → 계약대로인 의도, 변경 없음). 재검토(가-2): blocker·major·minor 0, note 1(절단 경계에 걸친 토큰 조각은 편집되지 않을 수 있음 — 조각은 재사용 불가, 수용). (나) 실행 수명주기·취소·중복·결과·회귀·배포 배선: **major 1**(`DEV-664` prsctl 파서), minor 2(`DEV-665` 고침, `DEV-666` 설계 유지·로그), note 3(`DEV-667` 고침, `DEV-668` 기존 설계가 덮음, 취소↔정상 종료 경합은 화면이 종료 상태에서 「취소 요청됨」을 그리지 않으므로 변경 없음). 재검토(나-2): **major 1** — 1차 처방이 키 쪽 변형에서 다시 갈린다는 실측 → prsctl이 compose 렌더를 단일 근거로 읽도록 다시 고쳤고 회귀를 실제 docker compose 기반으로 바꿨다(`DEV-664` 최종); note 3(취소 경합의 지표 이중 계수 가능 — 상태는 정확, 기존 경로와 같은 성질; 회수 뒤 결과의 지표 라벨 → `dropped_after_reclaim`으로 고침; 폼 변경 시 키 재생성이 이중 클릭 방어를 깨지 않음 — 코드 흐름으로 확인). 부수 관찰(시험 훅의 운영 누수를 회귀가 걸지 않음) → 회귀에 검사를 더했다. 검토자의 주장은 전부 코드와 재현으로 확인했고, 고친 부분은 시험(단위·실행기 통합 11·회귀 REL-007 블록 10·변이)으로 다시 걸었다.
+
+**변이.** 셋을 심고 각각을 잡는 시험을 확인했다: 중복 제출 가드 제거 → a11y QA-GH-14가 POST 2건으로 실패, `parsePrefill` 여분 키 통과 → `lib/gh.test` 실패, `canExecute` 위반 무시 → `lib/gh.test` 실패. 이전 세션의 실행기 통합 실패 1건(ESC 상수)은 도구 결함이었고(`DEV-660`), 실제 ESC를 넣자 gh의 caret 표기가 드러났다(`DEV-658`). 검토 뒤 넷째 변이: prsctl 파서의 따옴표 제거를 지우면 회귀 `DEV-664` 표가 실패한다.
+
+**CI.** 착수 시 `main`(`5128c1c`)의 run `34705991448` attempt 2가 hosted 러너에서 두 잡 success였다. 그 뒤 `b35e4ee`의 run `34738457122`는 04:40Z부터 러너 배정 없이 `queued`로 남아 있다(결제 문제 재발로 보인다 — 이전 판의 기록과 같은 모양). 이 판은 `runs-on`·결제 설정·워크플로를 건드리지 않았다. PR의 필수 check 결과와 병합 가능 판정은 CR-086 cascade 절에 적는다.
+
+**능동 자가 연구가 확인한 것.**
+
+| 질문 | 근거 | 관측·처분 |
+| --- | --- | --- |
+| gh의 `--json` 출력에 제어 문자가 남는가 | 실제 gh 2.97.0 → HTTPS 목 | C0를 caret 표기(`^[`)로 바꿔 낸다. 우리 경계는 2차 방어선 (`DEV-658`) |
+| `--state closed`의 질의 변수 | 목이 기록한 GraphQL | `states: [CLOSED, MERGED]` — help에 없다 (`DEV-654`) |
+| `extension exec --help` | 실측 | 토큰 없이 종료 4 → `auth_required` (`DEV-653`) |
+| 파티션 표의 유니크 인덱스 | 통합 시험 | 파티션 키를 포함해야 해서 멱등을 강제하지 못한다 → 보조 표 (`DEV-650`) |
+| 사내 CA를 gh에 주는 법 | 실측 | Go 런타임은 `NODE_EXTRA_CA_CERTS`를 읽지 않는다. `SSL_CERT_FILE`로 준다 |
+| 사용자 액세스 토큰 수명 | docs.github.com「Generating a user access token」·「Refreshing user access tokens」 | `expires_in` 8h, refresh 6개월, refresh token은 1회용 → 갱신과 봉인 교체를 한 트랜잭션에 |
+| gh가 HOME에 쓰는 것 | 실측 | `~/.local/state/gh/device-id` — 실행별 HOME이 있어야 남지 않는다 |
+
+**사내가 다음 반입에서 확인할 것.** (1) 실제 GHE에 Operations App 등록(`Pull requests: Read`, callback `<web>/gh/identity/callback`, 토큰 만료 옵트인) → 한 사용자로 연결·`gh pr list` 실행 (2) 사설 CA가 `SSL_CERT_FILE`로 gh에 닿는가 (3) GHES의 user-to-server 토큰 만료 설정과 rate limit (4) 028 운영 적용과 `prsctl health`의 `gh-executor` 행 (5) `gh-executor` 이미지 반입과 smoke 6절.
+
 
 ### 6.82 WP-075 안전성 보강 — 재시도·예산·실행자·복구 근거 (2026-09-13, CR-085)
 

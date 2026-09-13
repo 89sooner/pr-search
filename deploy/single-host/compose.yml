@@ -232,6 +232,16 @@ services:
       OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
       # M 번호 (WP-074). 꺼져 있으면 API-SEQ-007이 404이고 목록·상세·범위에서 M 키가 생략된다.
       MNUMBER_ENABLED: ${MNUMBER_ENABLED:-false}
+      # ── GitHub Operations Plane (REL-007 R0 / WP-077, CR-086) ──────────
+      # 기본 꺼짐. 켜면 `/api/v1/gh/*`가 서고 **Operations App** 자격이 필수다 — 수집용
+      # Data App(`GHE_APP_ID`)·로그인용 OAuth App·표기 App과 자격을 공유하지 않는다
+      # (FR-GH-008 AC-1). 켜 놓고 비어 있으면 기동을 거부한다. `gh-executor`와 같은
+      # `GH_OPERATIONS_ENABLED`·`GH_IDENTITY_VAULT_KEY`여야 한다.
+      GH_OPERATIONS_ENABLED: ${GH_OPERATIONS_ENABLED:-false}
+      GHE_OPS_CLIENT_ID: ${GHE_OPS_CLIENT_ID:-}
+      GHE_OPS_CLIENT_SECRET: ${GHE_OPS_CLIENT_SECRET:-}
+      GHE_OPS_REDIRECT_URI: ${GHE_OPS_REDIRECT_URI:-}
+      GH_IDENTITY_VAULT_KEY: ${GH_IDENTITY_VAULT_KEY:-}
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3002/healthz >/dev/null || exit 1']
       interval: 20s
@@ -403,6 +413,57 @@ services:
       <<: [*app-env, *annotate-env]
       PIPELINE_WORKER_ROLES: annotate
       PIPELINE_WORKER_PORT: '3003'
+
+  # ---------- GitHub Operations Plane ----------
+  #
+  # **`gh`를 띄우는 유일한 서비스다** (ADR-013·ADR-016, REL-007 R0 / WP-077, CR-086).
+  # `search-api`·`web`·워커는 `gh` 프로세스를 만들지 않는다.
+  #
+  # 자격 배선: 조회용 `*ghe-env`(Data App 키)도 `*annotate-env`(표기 App 키)도 받지
+  # **않는다.** 실행에 쓰는 것은 사용자가 위임한 토큰이며, 그것은 DB의 봉인을
+  # `GH_IDENTITY_VAULT_KEY`로 풀어 실행 순간에만 프로세스 환경으로 넘긴다 (FR-GH-008 AC-6).
+  # Operations App의 client secret은 이 서비스에 없다 — 인가·갱신은 `search-api`가 한다.
+  #
+  # 격리 (NFR-010): 비루트, 읽기 전용 루트 파일시스템, 쓰기는 실행별 workspace가 있는
+  # tmpfs 한 곳. Elasticsearch에 붙지 않는다 (인프라 6장).
+  #
+  # **선택 프로파일이다** (`github-operations`). 파일럿 기본 형상은 이 서비스를 세우지
+  # 않는다는 `CR-059`의 결정을 지키되, 이미지는 번들에 담아 `.env` 한 줄로 켤 수 있게 한다.
+  # `prsctl`이 `.env`의 `GH_OPERATIONS_ENABLED=true`를 읽어 `--profile github-operations`를
+  # 붙이므로, **search-api만 켜지고 실행기가 없는 형상**(요청이 영원히 `queued`)은 `prsctl`로는
+  # 만들어지지 않는다 — 켜고 끄는 자리는 `.env` 하나뿐이다.
+  #
+  # `GH_OPERATIONS_ENABLED=false`(기본)면 헬스체크만 서고 아무것도 구독하지 않는다.
+  gh-executor:
+    image: prs/gh-executor:${PRS_VERSION:?}
+    profiles: ['github-operations']
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/lib/prs/gh-workspaces:size=256m,mode=0700,uid=1000,gid=1000
+      - /tmp:size=64m
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_APP_USER:?}:${POSTGRES_APP_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      REDIS_URL: redis://redis:6379
+      # **Node용 CA 변수를 받지 않는다.** 이 프로세스의 Node 런타임은 GHE에 접속하지 않는다 —
+      # GHE 통신은 gh(Go)가, 토큰 갱신은 search-api가 한다. gh는 Node의 CA 변수를 읽지
+      # 않으므로 같은 파일(사설 CA)을 실행 환경의 `SSL_CERT_FILE`로 넘길 경로만 받는다.
+      # 다른 서비스와 같은 컨테이너 안 경로다 (런북 6장 「사설 CA」).
+      GH_EXECUTOR_CA_FILE: ${NODE_EXTRA_CA_CERTS:-}
+      GHE_BASE_URL: ${GHE_BASE_URL:?}
+      GH_OPERATIONS_ENABLED: ${GH_OPERATIONS_ENABLED:-false}
+      GH_IDENTITY_VAULT_KEY: ${GH_IDENTITY_VAULT_KEY:-}
+      GH_EXECUTOR_PORT: '3004'
+      GH_EXECUTOR_MAX_CONCURRENT: ${GH_EXECUTOR_MAX_CONCURRENT:-2}
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3004/healthz >/dev/null || exit 1']
+      interval: 20s
+      timeout: 10s
+      retries: 15
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
 
 volumes:
   # **정본과 재구성 가능한 캐시를 나눈다** (인프라 9.4장). 백업 전략이 볼륨마다

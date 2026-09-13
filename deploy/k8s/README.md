@@ -2,7 +2,7 @@
 
 REL-001 배포 단위(`ingest-gateway`, `pipeline-worker` enrich/project, `search-api`)에
 REL-003의 두 워커 역할이 더해졌다 — `sequence`, `reconcile` (CR-034, DEV-183).
-`web`·`gh-executor`와 나머지 역할은 그것을 소유한 WP가 더한다
+`web`·`gh-executor`와 나머지 역할은 그것을 소유한 WP가 더한다 — `gh-executor`는 `CR-086`(REL-007 R0)이 **Profile A의 선택 프로파일로만** 배선했고 K8s manifest는 아직 없다. 여기 없는 manifest는 배포되지 않는다는 규칙 그대로다.
 (인프라 문서 3장).
 
 **역할에 manifest가 없으면 그 기능은 배포되지 않는다.** WP-021~028이 만든

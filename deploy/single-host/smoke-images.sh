@@ -42,6 +42,7 @@ command -v docker >/dev/null || die "docker가 없다"
 
 WEB_IMAGE="prs/web:${VERSION}"
 WORKER_IMAGE="prs/pipeline-worker:${VERSION}"
+EXECUTOR_IMAGE="prs/gh-executor:${VERSION}"
 
 CONTAINERS=()
 cleanup() { for c in "${CONTAINERS[@]:-}"; do [ -n "$c" ] && docker rm -f "$c" >/dev/null 2>&1 || true; done; }
@@ -64,6 +65,7 @@ fi
 
 docker image inspect "$WEB_IMAGE"    >/dev/null 2>&1 || die "이미지가 없다: $WEB_IMAGE"
 docker image inspect "$WORKER_IMAGE" >/dev/null 2>&1 || die "이미지가 없다: $WORKER_IMAGE"
+docker image inspect "$EXECUTOR_IMAGE" >/dev/null 2>&1 || die "이미지가 없다: $EXECUTOR_IMAGE"
 
 # ── 1. web이 실제 SSR 요청을 처리한다 ───────────────────────────
 step "web 런타임 — 정상 구성으로 기동하고 화면을 낸다"
@@ -265,5 +267,62 @@ step "pipeline-worker 런타임 — git이 실제로 실행된다"
 GIT_VERSION="$(docker run --rm --network none --entrypoint git "$WORKER_IMAGE" --version 2>&1)" \
   || die "pipeline-worker 이미지에서 git이 실행되지 않는다 (DEV-572 재발)"
 pass "${GIT_VERSION}"
+
+# ── 6. gh-executor — 고정 gh, 꺼진 채 기동, 켜면 자격 요구 ─────
+# REL-007 R0 (WP-077 / CR-086). **번들 기본 형상은 이 서비스를 세우지 않는다**(선택
+# 프로파일). 그래도 이미지가 번들에 들어가므로 세 가지를 실제 이미지로 본다:
+#   (a) 고정 gh가 들어 있고 바이너리 SHA-256이 `packages/gh-cli/src/pin.ts`의 값과 같다
+#       (FR-GH-011). 회귀가 아래 두 리터럴이 pin.ts와 같은지 건다.
+#   (b) 꺼진 상태(`GH_OPERATIONS_ENABLED=false`)로 비루트·읽기 전용 루트·네트워크 없음에서
+#       기동하고 `/healthz`가 200과 `execution: disabled`를 낸다 — 꺼진 실행기는 백킹
+#       서비스를 묻지 않는다.
+#   (c) 켰는데 봉인 키가 없으면 기동을 거부한다 (`CR-078`의 규율).
+step "gh-executor 런타임 — 고정 gh와 해시"
+GH_VERSION_OUT="$(docker run --rm --network none --entrypoint gh "$EXECUTOR_IMAGE" --version 2>&1 | head -1)" \
+  || die "gh-executor 이미지에서 gh가 실행되지 않는다"
+printf '%s' "$GH_VERSION_OUT" | grep -qF 'gh version 2.97.0 ' || die "고정 버전이 아니다: ${GH_VERSION_OUT}"
+GH_BIN_HASH="$(docker run --rm --network none --entrypoint sha256sum "$EXECUTOR_IMAGE" /usr/local/bin/gh | cut -d' ' -f1)"
+[ "$GH_BIN_HASH" = "141507c337e8b202ad398550c3b73d72f5af92e86f71665214538a81efd4c409" ] \
+  || die "gh 바이너리 SHA-256이 고정 값과 다르다: ${GH_BIN_HASH}"
+pass "${GH_VERSION_OUT} · SHA-256 ${GH_BIN_HASH:0:12}…"
+
+step "gh-executor 런타임 — 꺼진 상태로 비루트·읽기 전용에서 기동한다"
+GHX="prs-smoke-ghx-$$"; CONTAINERS+=("$GHX")
+docker run -d --name "$GHX" --network none --read-only \
+  --tmpfs /tmp:size=64m --tmpfs /var/lib/prs/gh-workspaces:size=64m,mode=0700,uid=1000,gid=1000 \
+  -e NODE_ENV=production -e GH_OPERATIONS_ENABLED=false -e GHE_BASE_URL=https://ghe.invalid \
+  -e DATABASE_URL=postgres://smoke:smoke@127.0.0.1:9/smoke -e REDIS_URL=redis://127.0.0.1:9 \
+  "$EXECUTOR_IMAGE" >/dev/null || die "gh-executor 컨테이너를 만들지 못한다"
+GHX_READY=0; GHX_BODY=""
+for _ in $(seq 1 30); do
+  if ! docker ps -q -f "name=^${GHX}$" | grep -q .; then
+    docker logs "$GHX" 2>&1 | tail -20 >&2; die "gh-executor가 꺼진 상태로도 기동하지 못한다"
+  fi
+  if GHX_BODY="$(docker exec "$GHX" wget -qO- http://127.0.0.1:3004/healthz 2>/dev/null)"; then GHX_READY=1; break; fi
+  sleep 1
+done
+[ "$GHX_READY" -eq 1 ] || { docker logs "$GHX" 2>&1 | tail -20 >&2; die "gh-executor가 30초 안에 /healthz 200을 내지 못한다"; }
+case "$GHX_BODY" in
+  *'"status":"ok"'*'"execution":"disabled"'*) ;;
+  *) die "gh-executor /healthz가 꺼짐을 정직하게 말하지 않는다: ${GHX_BODY}" ;;
+esac
+[ "$(docker exec "$GHX" id -u)" = 1000 ] || die "gh-executor가 비루트로 돌지 않는다"
+pass "기동 · /healthz 200 · execution: disabled · uid 1000 · 읽기 전용 루트"
+
+step "gh-executor 런타임 — 켰는데 봉인 키가 없으면 거부한다"
+set +e
+GHX_OUT="$(timeout "${SMOKE_REJECT_TIMEOUT_S:-45}" docker run --rm --network none \
+  -e NODE_ENV=production -e GH_OPERATIONS_ENABLED=true -e GHE_BASE_URL=https://ghe.invalid \
+  -e DATABASE_URL=postgres://smoke:smoke@127.0.0.1:9/smoke -e REDIS_URL=redis://127.0.0.1:9 \
+  "$EXECUTOR_IMAGE" 2>&1)"
+GHX_RC=$?
+set -e
+case "$GHX_RC" in
+  124) die "GH_OPERATIONS_ENABLED=true·봉인 키 없음으로 띄웠는데 **죽지 않는다** — 켜 놓고 빈 배포가 초록으로 선다" ;;
+  0)   die "GH_OPERATIONS_ENABLED=true·봉인 키 없음으로 기동한 뒤 정상 종료했다 — 계약이 이행되지 않았다" ;;
+esac
+printf '%s' "$GHX_OUT" | grep -qF 'GH_IDENTITY_VAULT_KEY' \
+  || { printf '%s\n' "$GHX_OUT" | tail -5 >&2; die "죽기는 했으나 구성 거부가 아니다 — 다른 이유로 크래시했다"; }
+pass "종료 코드 ${GHX_RC}로 거부하고 빠진 값을 로그에 남긴다"
 
 printf '\n번들 이미지 런타임 검사 통과 — %s\n' "$VERSION"

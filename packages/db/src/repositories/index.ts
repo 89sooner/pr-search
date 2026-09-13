@@ -28,6 +28,10 @@ export * as sequenceWorkRepo from './sequence-work.js';
 /** 단계별 지연 표본 (WP-074 / ENT-SEQ-007, CR-079). */
 export * as sequenceLatencyRepo from './sequence-latency.js';
 export * as teamMembershipRepo from './team-membership.js';
+/** 위임 신원과 봉인된 토큰 (REL-007 R0 / WP-077, ENT-GH-001, CR-086). */
+export * as ghIdentityRepo from './gh-identity.js';
+/** gh 실행 기록 — 감사 축이자 상태 기계 (REL-007 R0 / WP-077, ENT-GH-002, CR-086). */
+export * as ghExecutionRepo from './gh-execution.js';
 
 export type {
   DeadLetterFilter,
@@ -110,6 +114,14 @@ export type {
   LatencyTriggerKind,
 } from './sequence-latency.js';
 export type { OrgTeamSnapshot } from './team-membership.js';
+export type { ConnectIdentityInput, IdentityConnectionRow, IdentitySecretRow } from './gh-identity.js';
+export type {
+  ExecutionListFilter,
+  ExecutionOutcome,
+  GhExecutionInsert,
+  GhExecutionRow,
+  GhExecutionState as GhExecutionRowState,
+} from './gh-execution.js';
 export type {
   CreateSavedSearchInput,
   CreateSavedSearchOutcome,

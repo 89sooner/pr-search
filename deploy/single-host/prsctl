@@ -30,8 +30,43 @@ step() { printf '\n\033[1m[%s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 bad()  { printf '  \033[31m✗\033[0m %s\n' "$*"; }
 
+# **GitHub Operations Plane은 `.env`가 켠다** (REL-007 R0 / WP-077, CR-086).
+#
+# `GH_OPERATIONS_ENABLED=true`면 `gh-executor`의 선택 프로파일을 함께 켠다. search-api와
+# 실행기가 **같은 값**을 읽어야 하며 — 한쪽만 켜지면 요청이 영원히 `queued`이거나 실행기가
+# 아무것도 받지 않는다 — 그 값을 여기서 프로파일로 옮기면 켜고 끄는 자리가 `.env` 하나가
+# 된다. `require_env` 전에도 불리므로 파일이 없으면 프로파일 없이 돈다.
+# **`.env`를 다시 파싱하지 않는다 — compose가 렌더한 값이 단일 근거다** (`DEV-664`). 처음에는 셸로
+# `.env`를 읽었는데, 그 파서는 compose의 dotenv 규칙(감싼 따옴표·공백 뒤 주석·`export ` 접두·키 앞
+# 공백·`=` 좌우 공백)과 갈렸고, 갈린 입력에서는 **search-api는 켜졌는데 실행기는 없는 형상**이 조용히
+# 생겼다(실측). 그래서 search-api가 실제로 받을 값을 `docker compose config`의 렌더에서 읽는다 —
+# 두 파서가 아니라 하나뿐이므로 갈릴 자리가 없다. 회귀(`runtime-reachability`)가 이 함수와 search-api의
+# 판정을 키·값 양쪽 변형의 입력 표로 대조한다. 한 실행 안에서는 한 번만 계산한다(캐시).
+gh_operations_value() {
+  [ -f "$ENV_FILE" ] || return 0
+  docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config 2>/dev/null \
+    | sed -n '/^  search-api:$/,/^  [a-z][a-z0-9-]*:$/p' \
+    | sed -nE 's/^ +GH_OPERATIONS_ENABLED: *"?([^"]*)"?[[:space:]]*$/\1/p' | head -1
+}
+# on / off / reject — search-api·gh-executor의 `resolveOperationsEnabled`와 같은 분류다: `true`만 켜짐,
+# 빈 값·`false`는 꺼짐, 그 밖(`TRUE`·`yes`…)은 두 서비스가 기동을 거부하므로 여기서도 거부한다.
+GH_OPS_STATE=""
+gh_operations_state() {
+  if [ -z "$GH_OPS_STATE" ]; then
+    case "$(gh_operations_value)" in
+      true) GH_OPS_STATE=on ;;
+      ''|false) GH_OPS_STATE=off ;;
+      *) GH_OPS_STATE=reject ;;
+    esac
+  fi
+  printf '%s' "$GH_OPS_STATE"
+}
+gh_operations_enabled() { [ "$(gh_operations_state)" = on ]; }
+
 compose() {
-  docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  local profiles=()
+  if gh_operations_enabled; then profiles+=(--profile github-operations); fi
+  docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ${profiles[@]+"${profiles[@]}"} "$@"
 }
 
 # **애플리케이션 접속 주체를 만든다** (DEV-503 · DEV-510).
@@ -127,6 +162,9 @@ require_env() {
     grep -qE "^${key}=.+" "$ENV_FILE" || missing+=("$key")
   done
   [ ${#missing[@]} -eq 0 ] || die "필수 값이 비어 있다: ${missing[*]}"
+  # GitHub Operations Plane의 스위치가 두 서비스가 거부하는 값이면 여기서 먼저 막는다 (CR-086 / DEV-664).
+  [ "$(gh_operations_state)" != reject ] \
+    || die "GH_OPERATIONS_ENABLED는 true 또는 false여야 한다: '$(gh_operations_value)' — search-api·gh-executor가 기동을 거부한다"
   # **셸로 소싱하지 않는다.** `ES_JAVA_OPTS=-Xms2g -Xmx2g`처럼 값에 공백이 있으면
   # `. file`이 뒷부분을 명령으로 해석해 죽는다. Compose의 `.env` 파싱은 셸과 달라
   # 공백을 값의 일부로 보므로, 이 스크립트가 쓰는 몇 개만 같은 규칙으로 읽는다.
@@ -181,7 +219,7 @@ cmd_load() {
   local missing=()
   for image in "prs/web:${PRS_VERSION}" "prs/search-api:${PRS_VERSION}" \
                "prs/ingest-gateway:${PRS_VERSION}" "prs/pipeline-worker:${PRS_VERSION}" \
-               "prs/db:${PRS_VERSION}" "prs/es:${PRS_VERSION}"; do
+               "prs/db:${PRS_VERSION}" "prs/es:${PRS_VERSION}" "prs/gh-executor:${PRS_VERSION}"; do
     docker image inspect "$image" >/dev/null 2>&1 || missing+=("$image")
   done
   [ ${#missing[@]} -eq 0 ] || die "적재 뒤에도 없는 이미지: ${missing[*]}"
@@ -276,6 +314,27 @@ cmd_health() {
       bad "$svc /healthz 응답 없음"; failed=1
     fi
   done
+
+  # **GitHub Operations Plane은 켰을 때만 실재해야 하고, 껐으면 없어야 한다** (CR-086).
+  # 프로파일 밖의 컨테이너가 떠 있으면 `.env`와 형상이 갈린 것이다 — 그 상태의 실행기는
+  # 봉인 키가 다를 수 있고, 그러면 모든 실행이 `identity_unsealable`로 거절된다.
+  local ghx_cid
+  ghx_cid="$(docker ps -q -f "label=com.docker.compose.project=${PROJECT}" -f "label=com.docker.compose.service=gh-executor" 2>/dev/null || true)"
+  if gh_operations_enabled; then
+    local body
+    if body="$(compose exec -T gh-executor wget -qO- "http://127.0.0.1:3004/healthz" 2>/dev/null)"; then
+      case "$body" in
+        *'"status":"ok"'*'"execution":"enabled"'*) ok "gh-executor /healthz — $body" ;;
+        *) bad "gh-executor /healthz — $body (execution이 enabled가 아니거나 백킹 서비스 확인 실패)"; failed=1 ;;
+      esac
+    else
+      bad "gh-executor /healthz 응답 없음 — GH_OPERATIONS_ENABLED=true인데 실행기가 서지 않았다"; failed=1
+    fi
+  elif [ -n "$ghx_cid" ]; then
+    bad "gh-executor가 떠 있는데 GH_OPERATIONS_ENABLED가 true가 아니다 — .env와 형상이 갈렸다 (prsctl upgrade로 다시 세운다)"; failed=1
+  else
+    ok "gh-executor 없음 (GH_OPERATIONS_ENABLED 꺼짐 — 의도한 형상)"
+  fi
 
   # 워커는 인바운드를 받지 않으므로 프로세스 상태와 기동 로그로 본다.
   for svc in worker-enrich worker-project worker-sequence worker-link worker-mirror \
@@ -417,7 +476,8 @@ cmd_restore() {
     ok "백업 checksum 일치"
   fi
   step "복원 — 애플리케이션을 먼저 멈춘다"
-  compose stop web search-api ingest-gateway $(compose config --services | grep '^worker-') >/dev/null
+  # 실행기도 멈춘다 — 복원 중인 DB에서 실행을 집으면 안 된다. 프로파일이 꺼져 있으면 목록에 없다.
+  compose stop web search-api ingest-gateway $(compose config --services | grep -E '^(worker-|gh-executor$)') >/dev/null
   step "PostgreSQL 복원 — 데이터베이스를 다시 만든다"
   #
   # **`pg_restore --clean`을 쓰지 않는다.** 이 스키마는 `raw_event`·`audit_record`가

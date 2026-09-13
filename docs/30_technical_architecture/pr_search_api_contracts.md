@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.27 | 갱신일: 2026-09-13
+> 상태: review | 버전: v0.28 | 갱신일: 2026-09-13
 
 ## 1. 목적
 
@@ -65,17 +65,19 @@
 | API ID | Method | Path | 목적 | 인증/권한 | 관련 FR |
 | --- | --- | --- | --- | --- | --- |
 | API-GH-001 | GET | `/gh/capabilities` | capability manifest 조회·검색. 분류 상태와 호스트 지원 여부 포함 | 인증 | FR-GH-001, FR-GH-011, FR-GH-013 |
-| API-GH-002 | POST | `/gh/executions` | 명령 실행 요청. 중복 방지 키 필수 | 인증 + 위임 신원 + 위험도 정책 | FR-GH-002, FR-GH-003, FR-GH-009 |
-| API-GH-003 | GET | `/gh/contexts/{scope}` | 대상 컨텍스트 해석 (저장소·브랜치·PR·이슈 선택자) | 인증 + 접근 범위 | FR-GH-004 |
+| API-GH-002 | POST | `/gh/executions` | 명령 실행 요청. `Idempotency-Key` 헤더 필수(8~128자 `[A-Za-z0-9_-]`, 본문 `idempotency_key`도 받는다). **`POST /gh/executions/preview`**(CR-086)는 실행과 같은 준비 단계(중복 키·발행 제외)를 지나되 큐에 넣지 않고 argv·환경 키·유효 컨텍스트·`executable`·`blockers`를 낸다 | 인증 + 위임 신원 + 위험도 정책 | FR-GH-002, FR-GH-003, FR-GH-009 |
+| API-GH-003 | GET | `/gh/contexts/{scope}` | 대상 컨텍스트 해석 (저장소·브랜치·PR·이슈 선택자). **R0 구현은 `/gh/contexts/repositories`뿐**(등록·활성 저장소 ∩ 접근 범위, CR-086) | 인증 + 접근 범위 | FR-GH-004 |
 | API-GH-004 | GET/POST/PATCH | `/gh/recipes[/{id}]` | Recipe 정의 조회·저장·개정 | 인증 | FR-GH-005 |
-| API-GH-005 | GET | `/gh/executions/{id}/stream` | 실행 진행 상황 스트리밍 (SSE) | 인증 + 실행 소유자 또는 `security_officer` | FR-GH-006 |
+| API-GH-005 | GET | `/gh/executions/{id}/stream` | 실행 진행 상황 스트리밍 (SSE). **R0는 상태 변화(`state` 이벤트, 본문은 실행 뷰)와 종료(`done`)만 흘린다** — 출력 청크는 흘리지 않는다 (`DEV-651`). 접속이 끊겨도 실행은 계속된다 | 인증 + 실행 소유자 또는 security_officer | FR-GH-006 |
 | API-GH-006 | GET/POST | `/gh/executions/{id}/artifacts` | 실행 아티팩트 목록·내려받기, 파일 입력 업로드 | 인증 + 실행 소유자 | FR-GH-007 |
-| API-GH-007 | GET/POST/DELETE | `/gh/identity` | Operations App 연결 상태 조회, 인가 시작, 연결 해제 | 인증 | FR-GH-008 |
+| API-GH-007 | GET/POST/DELETE | `/gh/identity` | Operations App 연결 상태 조회, 인가 시작(`return_to` → `authorize_url`·`state`), 연결 해제. **`POST /gh/identity/callback`**(CR-086)은 web의 콜백 라우트(`/gh/identity/callback`)가 GHE의 `code`·`state`를 세션 쿠키와 함께 본문으로 넘기는 자리이며, 인가를 시작한 사용자와 세션 사용자가 같아야 한다 | 인증 | FR-GH-008 |
 | API-GH-008 | GET/PUT | `/gh/policies` | 실행 정책 조회·변경 (capability 허용/차단, 위험도 재정의, 승인 필요, 엔드포인트·확장 목록) | `operator` | FR-GH-009, FR-GH-010, FR-GH-013 |
 | API-GH-009 | POST | `/gh/api-requests` | `gh api` 요청 구성·실행 | 인증 + 위임 신원 + 엔드포인트 정책 | FR-GH-010 |
-| API-GH-010 | GET | `/gh/executions` | 실행 이력 조회·필터. 본인 이력 기본, `security_officer`는 전체 | 인증 | FR-GH-012 |
+| API-GH-010 | GET | `/gh/executions` | 실행 이력 조회·필터. 본인 이력 기본, security_officer는 `?all=true`. `limit` 1..100(기본 50), `before` 실행 ID 키셋, 응답 `next_before`. **`GET /gh/executions/{id}`**(CR-086)는 상세이며 남의 실행은 404다 | 인증 | FR-GH-012 |
 | API-GH-011 | POST | `/gh/executions/{id}/cancel` | 실행 취소 | 인증 + 실행 소유자 또는 `operator` | FR-GH-006 |
 | API-GH-012 | POST | `/gh/executions/{id}/approve` | 승인 대기 실행의 승인·거부 | `operator` 또는 정책이 지정한 승인자 | FR-GH-009 |
+
+**R0 구현 계약 요약 (CR-086 / WP-077).** 열 개 라우트가 `apps/search-api/src/gh/routes.ts`에 있고 web 프록시가 `/api/gh/…`로 연다. 실행 요청 본문은 `{ capability_id, context: { repository: "owner/name" }, flags: { "--state": …, "--limit": … }, output: { json_fields: [...] } }`이며, 폼과 서버가 같은 `evaluateInvocation`으로 판정한다. 실행 뷰(`toExecutionView`)는 `FR-GH-012` AC-1의 항목(실행 ID·사용자·GitHub 행위자·호스트·저장소·capability·gh 버전·manifest 버전·해시·가려진 argv·환경 키·위험도·권한 판정·시각·종료 코드·출력 해시·상관 ID)에 typed 결과(`pr_list_v1`: `rows`·`row_count`·`possibly_more`·`stdout_truncated`)와 무해화된 발췌(`stdout`·`stderr`, `truncated`), `output_binary`, 요청 당시 `invocation`을 더한 것이다. 배포가 기능을 끄면(`GH_OPERATIONS_ENABLED=false`) 라우트가 등록되지 않아 404이며 화면은 그것을 「열리지 않았다」로 그린다. 같은 키의 재요청은 `GH_DUPLICATE_REQUEST`(409, `detail.execution_id`)이고 화면은 그 실행에 붙는다.
 
 ## 4. API 상세 규격
 
@@ -3008,6 +3010,7 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 | `GH_RESOURCE_LOCKED` | 409 | 같은 대상에 상충 작업 진행 중 | 완료 후 재시도 |
 | `GH_EXECUTION_TIMEOUT` | 504 | 실행 시간 상한 초과 | 범위를 줄여 재시도 |
 | `GH_WORKSPACE_UNAVAILABLE` | 503 | 임시 작업 공간 확보 실패 | 잠시 후 재시도 |
+| `GH_CAPABILITY_NOT_EXECUTABLE` | 409 | manifest에는 있으나 이 배포가 실행을 열지 않은 capability (CR-086). `GH_CAPABILITY_UNKNOWN`·`GH_POLICY_BLOCKED`·`GH_HOST_UNSUPPORTED`와 다른 사실이다 — 미구현을 정책·호스트 제약으로 적지 않는다 | 열린 capability 사용. 사유는 `detail.reason` |
 
 ## 7. 내부 이벤트 계약
 

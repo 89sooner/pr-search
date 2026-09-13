@@ -1,6 +1,6 @@
 # PR Search 프론트엔드 아키텍처
 
-> 상태: review | 버전: v0.4 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.5 | 갱신일: 2026-09-13
 
 CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설계](pr_search_wp074_design.md) 9절로 고정한다. M은 API 생성 문자열이며 PR 번호를 대체하지 않는다. 행별 resolve 없이 페이지 batch, M deep link 1회 resolve, visible pending의 bounded poll을 사용한다. 기존 인증 BFF·from_q·cursor·epoch 경고·Conductor를 보존한다.
 
@@ -272,14 +272,17 @@ GitHub Operations 화면은 실행기 stdout·stderr를 그린다. 그 텍스트
 
 | 라우트 | 화면 | 비고 |
 | --- | --- | --- |
-| `/gh` | W-010 GitHub Command Center | capability 검색과 생성형 폼 |
-| `/gh/pr`, `/gh/issue`, `/gh/repo`, `/gh/actions`, `/gh/release`, `/gh/project`, `/gh/codespace`, `/gh/settings`, `/gh/search`, `/gh/tools` | W-011~W-019, W-022 | 업무 중심 화면 |
+| `/gh` | W-010 GitHub Command Center | **구현됨 (CR-086, R0)**: capability 목록(미지원·미구현도 사유와 함께), `pr.list` 폼·즉시 검증·미리보기·실행·취소·결과. 생성형 폼 일반화(9.2)는 후속. `?prefill=`(이력의 재실행)·`?identity=failed`(콜백 실패)를 읽는다 |
+| `/gh/pr`, `/gh/issue`, `/gh/repo`, `/gh/actions`, `/gh/release`, `/gh/project`, `/gh/codespace`, `/gh/settings`, `/gh/search`, `/gh/tools` | W-011~W-019, W-022 | 업무 중심 화면 | — **R0 미구현** |
 | `/gh/api` | W-020 gh API 탐색기 | |
-| `/gh/history` | W-021 실행 이력·저장된 Recipe | |
+| `/gh/history` | W-021 실행 이력·저장된 Recipe | **구현됨 (R0 최소)**: 본인 이력(`security_officer`만 전체 보기 스위치), 행 선택 → 실행 패널, 「같은 구성으로 다시 실행」은 invocation만 `/gh?prefill=`로 넘겨 **새 미리보기·새 실행**을 만든다 (FR-GH-012 AC-4). Recipe는 후속 |
+| `/gh/identity/callback` | (화면 아님) Operations App 인가 콜백 라우트 | GHE의 `code`·`state`를 세션 쿠키와 함께 `POST /api/v1/gh/identity/callback`에 넘기고 응답의 `return_to`(정화 뒤)로 보낸다. 세션이 없으면 로그인으로, 실패는 `/gh?identity=failed` 한 모양이다. `code`·`state`를 로그에 남기지 않는다 (CR-086) |
 | `/gh/recipes/[id]` | W-023 Recipe 빌더 | |
 | `/admin/gh/policy`, `/admin/gh/registry`, `/admin/gh/audit` | A-005, A-006, A-007 | |
 
 기존 규칙은 그대로다 — 브라우저는 Next.js 라우트 핸들러만 호출하고 핸들러가 프록시한다 (ADR-011). URL 질의 파라미터가 단일 진실이라는 원칙도 유지하되, **실행 요청 본문은 URL에 넣지 않는다.** 비밀 입력이 URL·히스토리·리퍼러에 남으면 안 되기 때문이다 (NFR-010).
+
+**R0 화면 규율 (CR-086 / WP-077).** 폼 검증은 `@prs/gh-cli`의 `evaluateInvocation`을 브라우저에서 **그대로** 부른다 — 진입점이 브라우저 안전하고(Node 전용은 `/node` 서브패스) `next.config.ts`의 `transpilePackages`에 있다. 규칙을 화면에 복제하면 두 판정이 갈리고 느슨한 쪽이 우회 경로다. 미리보기·argv·유효 컨텍스트는 서버가 준 값만 그리고 화면이 argv를 조립하지 않는다. 실행 결과는 typed 결과와 무해화된 발췌를 **텍스트 노드**로만 그린다(`dangerouslySetInnerHTML` 0건을 `architecture.test.ts`가 건다). 제출마다 `Idempotency-Key` 하나를 쓰고 실행이 묶인 뒤에만 다음 키를 만든다. 스트림은 `EventSource`(`state`·`done`)이며 붙지 못하면 1초 폴링으로 대체한다. web은 `GH_OPERATIONS_ENABLED`를 읽지 않고 API의 404를 「열리지 않았다」로 그린다.
 
 ### 9.2 GenericCommandForm
 

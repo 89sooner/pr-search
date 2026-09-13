@@ -1,6 +1,6 @@
 # PR Search 보안 및 개인정보 아키텍처
 
-> 상태: review | 버전: v1.6 | 갱신일: 2026-09-13
+> 상태: review | 버전: v1.7 | 갱신일: 2026-09-13
 
 CR-079: WP-074는 기존 읽기 Data App만 사용한다. 신규 증거 proof의 허용 필드는 [설계](pr_search_wp074_design.md) 6절, 측정 read-only role·세션 파일·비식별 출력은 측정 가이드가 정본이다. 새 제목 쓰기 App, OIDC 정책 변경, 익명 조회, fixture를 production 직접 확정에 넣는 경로는 만들지 않는다. 기존 auth gate와 범위 밖=미등록 404를 유지한다.
 
@@ -153,6 +153,8 @@ export function search(q: ScopedQuery): Promise<EsResponse>;   // ScopedQuery만
 | Redis 암호 | Kubernetes Secret | 시크릿 파일 | 전 백엔드 | 180일 | 회전 이벤트 기록 |
 | 커서 봉인 키 | Kubernetes Secret | 시크릿 파일 | `search-api` | 90일. 회전 시 기존 커서 무효 | 미기록 |
 | GitHub Release 읽기 토큰 (반입용, CR-063) | 해당 없음 — Profile B는 CI가 레지스트리에 push·pull한다 | **반입 담당자의 자격 저장소.** 호스트의 시크릿 파일·`.env`·번들·저장소 어디에도 두지 않는다 | 반입 담당자(사람). 번들을 받는 단계에서만 환경 변수로 준다 | 90일. 담당자가 바뀌면 즉시 폐기 | GitHub 계정 감사 로그 |
+| Operations App client secret (`GHE_OPS_CLIENT_SECRET`, CR-086) | Kubernetes Secret (manifest 미작성) | 시크릿 파일 (`.env`) | **search-api만** — 인가·갱신·철회를 그쪽이 한다. gh-executor는 받지 않는다 | App 재발급 시 | 미기록 |
+| 위임 토큰 봉인 키 (`GH_IDENTITY_VAULT_KEY`, CR-086) | Kubernetes Secret (manifest 미작성) | 시크릿 파일 (`.env`) | search-api(봉인·갱신)와 gh-executor(해제) — **같은 값**이어야 한다. 다르면 실행기가 모든 실행을 `identity_unsealable`로 거절한다 | 회전하면 기존 봉인을 풀 수 없어 사용자가 다시 연결해야 한다 (`key_id`가 회전을 구분) | 미기록 |
 
 **데이터베이스 접속 주체** (CR-059, DEV-503). `prs_app`과 `prs_admin`은 **둘 다 `NOLOGIN` 그룹 롤**이다 (마이그레이션 005) — 권한의 묶음이지 접속 주체가 아니다. `DEV-416`이 관리 연결에 대해 이미 정한 규칙을 **애플리케이션 연결에도 그대로 적용한다.**
 
@@ -363,7 +365,7 @@ ALTER ROLE prs_app_login SET role = 'prs_app';
 | 권한 | 최소 read | 명시적으로 필요한 권한만 |
 | 사용처 | 웹훅 보강, 백필, 권한 조회 | 사용자가 요청한 작업 실행 |
 | 유효 권한 | App 설치 권한 | **App 권한 ∩ 사용자 GitHub 권한** |
-| 보관 | 사내 시크릿 관리 | 비밀 저장소 참조 (`token_ref`), 평문 DB 저장 금지 |
+| 보관 | 사내 시크릿 관리 | 비밀 저장소 참조 (`token_ref`), 평문 DB 저장 금지. **Profile A에서는 `gh_identity_secret`의 AES-256-GCM 봉인이 그 자리를 대신한다** (CR-086 / `DEV-652`) |
 
 수집용 App에 쓰기 권한을 부여하지 않는다. 사용자에게 없는 권한을 설치 권한으로 대체해 실행하지 않는다 (FR-GH-008 AC-4). 이 규칙이 깨지면 웹 UI가 GitHub 권한 모델을 우회하는 경로가 된다.
 
@@ -386,6 +388,8 @@ gh 프로세스 환경 변수로 주입
 토큰이 나타나면 안 되는 곳: argv, URL, 질의 문자열, 애플리케이션 로그, 실행 이력, 감사 본문, 오류 메시지, 스트리밍 출력.
 
 만료된 토큰의 갱신에 실패하면 재인가를 요구한다. 만료된 자격 증명으로 실행을 시도하지 않는다.
+
+**Profile A의 봉인 — 비밀 저장소의 대체이지 동등물이 아니다 (CR-086 / `DEV-652`).** 단일 호스트에는 KMS도 시크릿 관리자도 없다. 그래서 「비밀 저장소에 저장」 단계를 이렇게 실현했다: 액세스·리프레시 토큰을 `.env`의 `GH_IDENTITY_VAULT_KEY`(64자 hex)로 AES-256-GCM 봉인해 `gh_identity_secret`에 넣고, AAD는 `user_id`다 — 다른 사용자의 행으로 옮겨 붙여도 풀리지 않는다. 봉인 해제는 실행기가 실행 직전에만 하고 결과는 프로세스 환경으로만 간다. **대가**: 호스트 전체가 탈취되면 `.env`의 키와 DB의 봉인이 함께 새어 토큰이 복원된다. DB 덤프·백업만으로는 복원되지 않는다(키가 없다). 사내가 KMS를 두면 `sealSecret`/`unsealSecret` 자리를 어댑터로 바꾼다 — 계약(`token_ref`)은 그대로다.
 
 ### 10.3 명령 주입 차단
 

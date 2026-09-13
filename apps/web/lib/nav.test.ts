@@ -89,6 +89,34 @@ describe('QA-A001-10: 운영 그룹은 역할이 있어야 보인다', () => {
   });
 });
 
+describe('REL-007 R0: github 그룹은 역할과 무관하게 보인다 (WP-077, FR-GH-008)', () => {
+  /*
+   * 실행 자격은 역할이 아니라 **위임 신원**이 정하고 그 판정은 서버가 한다. 내비가 역할로
+   * 가리면 「연결하면 쓸 수 있다」는 사실을 사용자가 알 수 없다.
+   */
+  it('역할 6종 전부와 빈 역할에게 두 항목이 보인다', () => {
+    for (const roles of [[], ...ROLES.map((role) => [role])] as Role[][]) {
+      const ids = idsFor(...roles);
+      expect(ids, roles.join(',')).toContain('gh-command-center');
+      expect(ids, roles.join(',')).toContain('gh-history');
+    }
+  });
+
+  it('두 항목은 `github` 그룹이고 역할 제한을 선언하지 않는다', () => {
+    for (const id of ['gh-command-center', 'gh-history']) {
+      const entry = NAV_ENTRIES.find((candidate) => candidate.id === id) as NavEntry;
+      expect(entry.section).toBe('github');
+      expect(entry.allowedRoles).toBeUndefined();
+    }
+  });
+
+  it('`/gh/history`는 `/gh`가 아니라 이력 항목이다 — 최장 일치가 실제로 돈다', () => {
+    expect(activeNavId('/gh')).toBe('gh-command-center');
+    expect(activeNavId('/gh/history')).toBe('gh-history');
+    expect(activeNavId('/gh/identity/callback')).toBe('gh-command-center');
+  });
+});
+
 describe('그룹 판정이 기본적으로 안전하다', () => {
   it('`ops` 그룹의 항목은 하나도 새지 않는다', () => {
     // 판정을 id가 아니라 section으로 하므로 새 운영 화면이 저절로 가려진다.
@@ -100,8 +128,9 @@ describe('그룹 판정이 기본적으로 안전하다', () => {
   });
 
   it('모든 항목이 그룹을 갖는다', () => {
+    // `github`은 REL-007 R0(WP-077)가 더한 네 번째 그룹이다 — 제품 IA의 두 번째 표면.
     for (const entry of NAV_ENTRIES) {
-      expect(['search', 'analysis', 'ops'], entry.id).toContain(entry.section);
+      expect(['search', 'analysis', 'github', 'ops'], entry.id).toContain(entry.section);
     }
   });
 

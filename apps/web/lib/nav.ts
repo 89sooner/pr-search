@@ -19,7 +19,7 @@
 import type { Role } from '@prs/authz/roles';
 
 /** 내비게이션 그룹. 운영 그룹만 역할 제한이 있다. */
-export type NavSection = 'search' | 'analysis' | 'ops';
+export type NavSection = 'search' | 'analysis' | 'github' | 'ops';
 
 export interface NavEntry {
   readonly id: string;
@@ -102,11 +102,22 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     section: 'ops',
     allowedRoles: ['security_officer'],
   },
+  /*
+   * GitHub Operations (REL-007 R0 / WP-077, CR-086) — 제품 IA의 두 번째 표면이다.
+   *
+   * **역할 제한이 없다.** 실행 자격은 역할이 아니라 **위임 신원**(Operations App 연결)이
+   * 정하고, 그 판정은 서버가 한다 (FR-GH-008). 배포가 이 기능을 끄면(`GH_OPERATIONS_ENABLED=false`)
+   * 화면은 API의 404를 「이 배포에서는 열리지 않았다」로 그린다 — web은 플래그를 읽지
+   * 않는다(DEV-589의 규율).
+   */
+  { id: 'gh-command-center', label: 'GitHub 작업', href: '/gh', section: 'github' },
+  { id: 'gh-history', label: '실행 이력', href: '/gh/history', section: 'github' },
 ];
 
 export const SECTION_LABELS: Readonly<Record<NavSection, string>> = {
   search: '검색',
   analysis: '분석',
+  github: 'GitHub',
   ops: '운영',
 };
 
@@ -141,9 +152,10 @@ export function visibleNavEntries(roles: readonly Role[]): readonly NavEntry[] {
  * 경계를 확인해 `/searchable`이 `/search`에 걸리지 않게 한다.
  *
  * **목록을 인자로 받는 이유**는 최장 일치 규칙을 시험할 수 있게 하기
- * 위해서다. 지금 `NAV_ENTRIES`에는 서로 접두가 되는 항목이 없어 그 규칙이
- * 한 번도 실행되지 않는다 — 목록을 고정해 두면 검증할 수 없는 방어 코드가
- * 되고, 나중에 `/ops` 같은 그룹 항목이 들어오는 순간 아무도 모르게 틀린다.
+ * 위해서다. 처음에는 `NAV_ENTRIES`에 서로 접두가 되는 항목이 없어 그 규칙이
+ * 한 번도 실행되지 않았다 — 목록을 고정해 두면 검증할 수 없는 방어 코드가
+ * 되고, 그룹 항목이 들어오는 순간 아무도 모르게 틀린다. `/gh`·`/gh/history`
+ * (WP-077)가 그 첫 쌍이며, `nav.test.ts`가 실제 목록으로도 그 규칙을 건다.
  */
 export function matchNavEntry(
   pathname: string,

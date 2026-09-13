@@ -216,3 +216,28 @@
 .prs-search-controls [data-testid='query-token-bar'] .cdt-badge,
 .prs-page-content [data-seq-state] { text-transform: none; letter-spacing: 0; }
 .prs-page-content [data-seq-state] { font-family: var(--cdt-font-mono); }
+/* WP-077 / CR-086: W-010 GitHub 작업 · W-021 실행 이력. Conductor semantic 토큰만 소비한다. */
+.prs-gh-center > .cdt-panel, .prs-gh-history > .cdt-panel { margin-block-end: var(--cdt-space-4); }
+.prs-gh-layout { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: var(--cdt-space-4); align-items: start; }
+.prs-gh-main { display: grid; gap: var(--cdt-space-4); min-inline-size: 0; }
+.prs-gh-main > .cdt-panel { margin: 0; }
+.prs-gh-identity { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cdt-space-3); }
+.prs-gh-identity > p { flex-basis: 100%; margin: 0; color: var(--cdt-text-muted); font-size: var(--cdt-font-size-sm); }
+.prs-gh-capabilities { list-style: none; padding: 0; margin: var(--cdt-space-3) 0; display: grid; gap: var(--cdt-space-2); }
+.prs-gh-capabilities button { font-family: var(--cdt-font-mono); color: var(--cdt-text-primary); background: none; border: 1px solid var(--cdt-border-subtle); border-radius: var(--cdt-radius-xs); padding: var(--cdt-space-1) var(--cdt-space-2); cursor: pointer; }
+.prs-gh-capabilities button:hover { background: var(--cdt-state-hover); }
+.prs-gh-capabilities button[aria-pressed='true'] { border-color: var(--cdt-border-strong); font-weight: 600; }
+.prs-gh-json-field { display: inline-flex; align-items: center; gap: var(--cdt-space-1); margin-inline-end: var(--cdt-space-3); font-family: var(--cdt-font-mono); font-size: var(--cdt-font-size-sm); }
+.prs-gh-context, .prs-gh-execution-meta { display: grid; grid-template-columns: minmax(100px, 160px) minmax(0, 1fr); gap: var(--cdt-space-1) var(--cdt-space-3); margin: var(--cdt-space-3) 0; font-size: var(--cdt-font-size-sm); }
+.prs-gh-context dt, .prs-gh-execution-meta dt { color: var(--cdt-text-muted); }
+.prs-gh-context dd, .prs-gh-execution-meta dd { margin: 0; min-inline-size: 0; overflow-wrap: anywhere; }
+.prs-gh-context ul { margin: 0; padding-inline-start: var(--cdt-space-4); }
+.prs-gh-execution-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--cdt-space-3); }
+.prs-gh-execution-head h2, .prs-gh-execution-head p { margin: 0; }
+.prs-gh-output-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--cdt-space-2); margin-block: var(--cdt-space-3) var(--cdt-space-2); }
+.prs-gh-output pre, .prs-gh-center [data-testid='gh-preview-argv'] { margin: 0; padding: var(--cdt-space-3); font-family: var(--cdt-font-mono); font-size: var(--cdt-font-size-sm); white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--cdt-border-subtle); border-radius: var(--cdt-radius-xs); background: var(--cdt-surface-subtle); max-block-size: 320px; overflow: auto; }
+.prs-gh-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--cdt-space-3); margin-block-start: var(--cdt-space-3); }
+.prs-gh-center [role='alert'] { color: var(--cdt-text-secondary); font-size: var(--cdt-font-size-sm); margin: var(--cdt-space-1) 0 var(--cdt-space-3); }
+@media (max-width: 1080px) {
+  .prs-gh-layout { grid-template-columns: minmax(0, 1fr); }
+}

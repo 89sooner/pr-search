@@ -16,6 +16,8 @@ describe('보존 기간', () => {
     // OD-003(CR-004)과 NFR-006. 이 수가 바뀌면 데이터가 사라지므로 시험이 건다.
     expect(RETENTION_MONTHS.raw_event).toBe(36);
     expect(RETENTION_MONTHS.audit_record).toBe(12);
+    // NFR-012 「실행 기록 보존 1년」 (REL-007 R0 / WP-077).
+    expect(RETENTION_MONTHS.gh_execution).toBe(12);
   });
 
   it('두 표 모두 값을 갖는다', () => {

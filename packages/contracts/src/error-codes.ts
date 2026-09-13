@@ -130,6 +130,14 @@ export const ERROR_CODES = [
   'GH_EXECUTION_TIMEOUT',
   /** 임시 작업 공간 확보 실패 (사용자 조치: 잠시 후 재시도) — HTTP 503 */
   'GH_WORKSPACE_UNAVAILABLE',
+  /**
+   * manifest에는 있으나 이 배포가 실행을 열지 않은 capability (사용자 조치: 열린 capability 사용) — HTTP 409 (CR-086).
+   *
+   * `GH_CAPABILITY_UNKNOWN`(manifest에 없음)·`GH_POLICY_BLOCKED`(정책 차단)·
+   * `GH_HOST_UNSUPPORTED`(호스트 미지원)와 **다른 사실**이다 — 아직 구현하지 않은 것을
+   * 그 셋 중 하나로 적으면 사용자가 관리자에게 없는 정책을 묻거나 없는 호스트 제약을 찾는다.
+   */
+  'GH_CAPABILITY_NOT_EXECUTABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -192,6 +200,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   GH_RESOURCE_LOCKED: 409,
   GH_EXECUTION_TIMEOUT: 504,
   GH_WORKSPACE_UNAVAILABLE: 503,
+  GH_CAPABILITY_NOT_EXECUTABLE: 409,
 };
 
 export function isErrorCode(value: string): value is ErrorCode {

@@ -14,6 +14,14 @@ export const TOPICS = {
   release: 'prs:release',
   batch: 'prs:batch',
   permission: 'prs:permission',
+  /**
+   * gh 실행 요청 (비동기 문서 9.1, REL-007 R0 / WP-077).
+   *
+   * **수집 파이프라인과 큐를 공유하지 않는다** (ADR-013). 생산자는 `search-api`(실행
+   * 수락), 소비자는 `gh-executor`뿐이다. 파티션 키는 `{host}:{owner/name}`이라 같은
+   * 저장소의 실행이 순서를 지킨다.
+   */
+  ghExecutions: 'prs:gh:executions',
 } as const;
 
 export type Topic = (typeof TOPICS)[keyof typeof TOPICS];
@@ -26,6 +34,7 @@ export const CONSUMER_GROUPS = {
   [TOPICS.release]: 'release',
   [TOPICS.batch]: 'batch',
   [TOPICS.permission]: 'authz',
+  [TOPICS.ghExecutions]: 'gh-executor',
 } as const;
 
 /**
@@ -59,6 +68,7 @@ export const LOGICAL_CONSUMERS: Readonly<Record<Topic, readonly string[]>> = {
   [TOPICS.release]: ['release'],
   [TOPICS.batch]: ['batch'],
   [TOPICS.permission]: ['authz'],
+  [TOPICS.ghExecutions]: ['gh-executor'],
 };
 
 /**
@@ -78,6 +88,9 @@ export const PARTITION_COUNTS: Readonly<Record<Topic, number>> = {
   [TOPICS.release]: 4,
   [TOPICS.batch]: 3,
   [TOPICS.permission]: 4,
+  // 실행기 동시 실행 상한과 같은 수다 — 구독 하나가 파티션 하나씩 맡아 그만큼 병렬로 돈다
+  // (`GH_EXECUTOR_MAX_CONCURRENT`의 상한). 비동기 문서 9.1은 수를 적지 않았다 (DEV 등록).
+  [TOPICS.ghExecutions]: 4,
 };
 
 /** 토픽별 파티션 키가 무엇인지. 코드가 아니라 읽는 사람을 위한 표다. */
@@ -89,6 +102,7 @@ export const PARTITION_KEY_SOURCES: Readonly<Record<Topic, string>> = {
   [TOPICS.release]: 'repository_id',
   [TOPICS.batch]: 'job_id',
   [TOPICS.permission]: 'user_id',
+  [TOPICS.ghExecutions]: 'host:owner/name',
 };
 
 export function isKnownTopic(topic: string): topic is Topic {

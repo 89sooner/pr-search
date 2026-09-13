@@ -11,7 +11,13 @@
 
 import type { Pool } from 'pg';
 
-export const PARTITIONED_TABLES = ['raw_event', 'audit_record'] as const;
+/**
+ * `gh_execution`(REL-007 / WP-077)도 월별 파티션이다. 보존은 감사와 같은 1년
+ * (NFR-012 「실행 기록 보존 1년 — 월별 파티션」). 이 목록에 넣는 것으로 생성·드롭이
+ * `JOB-AUD-001`과 부트스트랩에 함께 걸린다 — 따로 두면 첫 실행 요청이 「파티션이
+ * 없다」로 실패한다.
+ */
+export const PARTITIONED_TABLES = ['raw_event', 'audit_record', 'gh_execution'] as const;
 
 export type PartitionedTable = (typeof PARTITIONED_TABLES)[number];
 
@@ -81,6 +87,7 @@ export async function ensureAllPartitions(pool: Pool, monthsAhead = 3, from?: Da
 export const RETENTION_MONTHS: Readonly<Record<PartitionedTable, number>> = {
   raw_event: 36,
   audit_record: 12,
+  gh_execution: 12,
 };
 
 export interface PartitionBound {
