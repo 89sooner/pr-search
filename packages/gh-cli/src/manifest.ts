@@ -18,9 +18,16 @@ import type {
   GhManifestCoverage,
 } from './types.js';
 import { capabilityIdOf } from './capabilities.js';
+import { classifyCommand } from './classification/classify.js';
+import { computeDimensions } from './classification/dimensions.js';
 
-/** manifest 스키마·오버라이드 판. 정의를 고치면 올린다. gh 버전과 별개다. */
-export const MANIFEST_VERSION = 'r0.1' as const;
+/**
+ * manifest 스키마·오버라이드 판. 정의를 고치면 올린다. gh 버전과 별개다.
+ *
+ * `r0.1` → `r0.2` (CR-088): command마다 분류(`classification`)가 실리고 coverage에 NFR-009 차원별
+ * 집계가 들어갔다. 정책 차단 command의 실행 차원이 `policy_blocked`로 적힌다.
+ */
+export const MANIFEST_VERSION = 'r0.2' as const;
 
 export interface ManifestBuildInput {
   readonly inventory: GhInventory;
@@ -61,10 +68,18 @@ export function manifestHash(manifest: Omit<GhCapabilityManifest, 'hash' | 'gene
   );
 }
 
+/**
+ * command 하나를 manifest 항목으로 만든다 — 인벤토리 + 분류 + 실행 차원.
+ *
+ * 실행 차원은 **정의(`capabilities.ts`)만** 연다. 분류 표가 `supported`라고 적어도 정의가 없으면
+ * `not_implemented`다. 분류 표가 `policy_blocked`인 command는 실행 차원도 `policy_blocked`다 —
+ * 그것은 「아직 열지 않았다」가 아니라 「열지 않기로 했다」이며, 둘을 바꿔 적지 않는다.
+ */
 export function summarizeCommand(
   command: GhInventory['commands'][number],
   capability: GhCapabilityDefinition | undefined,
 ): GhManifestCommand {
+  const classification = classifyCommand(command);
   if (capability !== undefined) {
     return {
       ...command,
@@ -73,19 +88,26 @@ export function summarizeCommand(
       execution: capability.execution,
       executionReason: capability.execution === 'allowed' ? null : NOT_IMPLEMENTED_REASON,
       risk: capability.risk,
+      classification,
     };
   }
+  const blocked = classification?.support === 'policy_blocked';
   return {
     ...command,
     id: capabilityIdOf(command.path),
-    support: 'unknown',
-    execution: 'not_implemented',
-    executionReason: NOT_IMPLEMENTED_REASON,
-    risk: null,
+    support: classification?.support ?? 'unknown',
+    execution: blocked ? 'policy_blocked' : 'not_implemented',
+    executionReason: blocked ? `이 제품이 열지 않기로 정한 command다 — ${classification.basis.evidence}` : NOT_IMPLEMENTED_REASON,
+    risk: classification?.risk ?? null,
+    classification,
   };
 }
 
-function coverageOf(commands: readonly GhManifestCommand[], helpTopics: readonly string[]): GhManifestCoverage {
+export function coverageOf(
+  commands: readonly GhManifestCommand[],
+  helpTopics: readonly string[],
+  capabilities: readonly GhCapabilityDefinition[],
+): GhManifestCoverage {
   const leaves = commands.filter((command) => !command.group && command.aliasOf === null);
   return {
     leafCommands: leaves.length,
@@ -102,6 +124,7 @@ function coverageOf(commands: readonly GhManifestCommand[], helpTopics: readonly
     classifiedLeafCommands: leaves.filter((command) => command.support !== 'unknown').length,
     unclassifiedLeafCommands: leaves.filter((command) => command.support === 'unknown').length,
     executableCommands: leaves.filter((command) => command.execution === 'allowed').length,
+    dimensions: computeDimensions(commands, capabilities),
   };
 }
 
@@ -141,6 +164,18 @@ export function buildManifest(input: ManifestBuildInput): GhCapabilityManifest {
     summarizeCommand(command, byCapabilityPath.get(command.path.join(' '))),
   );
 
+  // 정의와 분류 표가 같은 command를 다르게 말하면 manifest를 만들지 않는다 — 두 정본이 생긴다.
+  for (const command of commands) {
+    const capability = byCapabilityPath.get(command.path.join(' '));
+    const classification = command.classification;
+    if (capability === undefined || classification === null) continue;
+    if (classification.support !== capability.support || classification.risk !== capability.risk || classification.interaction !== capability.interaction) {
+      throw new Error(
+        `정의 ${capability.id}(${capability.support}/${capability.risk}/${capability.interaction})와 분류 표(${classification.support}/${String(classification.risk)}/${classification.interaction})가 다르다`,
+      );
+    }
+  }
+
   const partial = {
     manifestVersion: MANIFEST_VERSION,
     ghVersion: input.inventory.ghVersion,
@@ -153,7 +188,7 @@ export function buildManifest(input: ManifestBuildInput): GhCapabilityManifest {
     ...partial,
     generatedAt: input.generatedAt,
     hash: manifestHash(partial),
-    coverage: coverageOf(commands, input.inventory.helpTopics),
+    coverage: coverageOf(commands, input.inventory.helpTopics, input.capabilities),
   };
 }
 

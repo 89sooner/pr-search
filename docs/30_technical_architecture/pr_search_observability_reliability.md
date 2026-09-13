@@ -256,8 +256,9 @@ A-001 운영 콘솔 화면은 이 중 "수집 파이프라인" 대시보드의 �
 
 | 알림 | 조건 | 등급 |
 | --- | --- | --- |
-| capability 드리프트 | 설치 gh 버전 ≠ manifest 생성 버전 | P2 |
-| 미분류 capability 발견 | `unclassified_count` > 0 | P2 |
+| capability 드리프트 | 실행기 지표 `gh_registry_stale == 1`, 또는 최신 `gh_capability_verification.status ∈ {drift, failed}`, 또는 `/healthz`의 `registry.stale == true` (CR-088). 그 동안 실행은 `registry_stale`로 거절된다 | P2 |
+| 레지스트리 검사 오류 반복 | `gh_registry_check_total{result="error"}`·`{result="record_failed"}` 증가, 또는 최신 검사가 주기의 두 배(기본 2일)를 넘김 | P2 |
+| 미분류 capability 발견 | 검증기 보고서의 `GATE-GH-01` 미달(`unclassified > 0`) — CI 단위 시험이 먼저 잡는다. 운영에서는 `gh_capability_snapshot.unclassified_count > 0` | P2 |
 | 실행기 포화 | 대기 중 실행이 상한의 80% 초과 | P2 |
 | 고아 실행 누적 | JOB-GH-007이 회수한 실행 수 급증 | P2 |
 | workspace 정리 실패 | JOB-GH-005 실패 반복 | P2 |
@@ -268,7 +269,7 @@ A-001 운영 콘솔 화면은 이 중 "수집 파이프라인" 대시보드의 �
 
 | ID | 상황 | 절차 |
 | --- | --- | --- |
-| RB-20 | capability 드리프트 감지 | ① 설치 gh 버전과 manifest 버전 확인 ② 차이 목록 검토 ③ 인벤토리 재생성 후 오버라이드 보강 ④ 커버리지 게이트 통과 확인 ⑤ 새 manifest 활성화 ⑥ 그때까지 신규 command 실행은 차단 유지 |
+| RB-20 | capability 드리프트 감지 | ① A-006(「운영 › gh 레지스트리」)에서 실행기 마지막 검사의 상태·gh 관측 버전·바이너리 SHA-256·diff(added/removed/changed)를 본다 — 같은 사실이 실행기 로그 `레지스트리 검사 실패`와 `/healthz`의 `registry`에 있다 ② search-api와 gh-executor의 이미지 버전이 같은지 확인한다(다르면 `PRS_VERSION`을 맞춰 다시 세운다 — 런북 7.C) ③ 저장소에서 `GH_PINNED_BIN=<gh> pnpm gh:diff-capabilities`로 같은 diff를 재현한다 ④ 인벤토리 재생성(`pnpm gh:manifest`) 후 분류 표·규칙 보강 → `pnpm gh:validate-capabilities`가 `GATE-GH-01` 통과 ⑤ 새 manifest는 새 판·새 CR로 반입한다 — 활성화(`activated_at`)는 게이트 통과 뒤 운영자가 `prs_admin`으로 한다 ⑥ 그때까지 실행은 `registry_stale`로 거절된다(실행기가 자동으로 유지) |
 | RB-21 | 실행기 포화 | ① 대기열 길이와 장기 실행 확인 ② 타임아웃 임박 실행 식별 ③ 필요 시 실행기 증설 ④ 반복되면 명령군별 타임아웃 재검토 |
 | RB-22 | 고아 실행 | ① JOB-GH-007 동작 확인 ② 실행기 파드 재시작 이력 확인 ③ 회수된 실행을 사용자에게 통지 ④ **실패한 쓰기 작업을 자동 재시도하지 않는다** — GitHub 실제 상태를 먼저 확인한다 |
 | RB-23 | 감사 기록 실패 | ① PostgreSQL 쓰기 상태 확인 ② 파티션 존재 확인 ③ 차단된 실행 목록을 보안 담당자에게 보고 ④ 감사 복구 전까지 쓰기 실행 차단 유지 |

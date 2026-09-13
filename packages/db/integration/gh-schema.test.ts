@@ -45,15 +45,15 @@ describe('028 왕복', () => {
   it('027 → 028 → 027 → 028 — 내려가면 세 표가 사라지고 올라오면 돌아온다', async () => {
     const before = await appliedVersions(pool);
     expect(before).toContain('028');
-    // 028만 내린다 — 가장 위의 것이다. 다음에 029가 생기면 이 단언이 즉시 깨진다 (CR-084의 규율).
-    const reverted = await migrateDown(pool, 1);
-    expect(reverted).toEqual(['028']);
+    // 029(레지스트리, CR-088)가 028 위에 있다 — 둘을 내린다. 다음에 030이 생기면 이 단언이 즉시 깨진다 (CR-084의 규율).
+    const reverted = await migrateDown(pool, 2);
+    expect(reverted).toEqual(['029', '028']);
     const tables = await pool.query<{ relname: string }>(
       `SELECT relname FROM pg_class WHERE relname IN ('gh_execution', 'gh_execution_idempotency', 'gh_identity_secret', 'github_identity_connection')`,
     );
     expect(tables.rows).toEqual([]);
     const applied = await migrateUp(pool);
-    expect(applied).toEqual(['028']);
+    expect(applied).toEqual(['028', '029']);
     await ensureAllPartitions(pool, 3);
     // 위 beforeEach의 사용자 행은 CASCADE로 살아 있다 — 028은 app_user를 건드리지 않는다.
     const users = await pool.query('SELECT count(*)::int AS n FROM app_user');

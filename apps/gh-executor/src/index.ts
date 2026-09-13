@@ -24,6 +24,7 @@ import { GH_PINNED_LINUX_AMD64, GH_PINNED_VERSION, type GhCapabilityManifest } f
 import { loadManifest, readGhVersion } from '@prs/gh-cli/node';
 import { executorConfigFailure, resolveExecutorConfig } from './config.js';
 import { createExecutorMetrics } from './metrics.js';
+import { startRegistryChecker, type RegistryChecker } from './registry-check.js';
 import { runExecution, type RunnerDeps, type RunnerLogEntry } from './runner.js';
 import { buildServer, SERVICE_NAME } from './server.js';
 import { startSweeper, type Sweeper } from './sweeper.js';
@@ -47,6 +48,44 @@ let ghVersion: string | null = null;
 let bus: RedisStreamsEventBus | null = null;
 const subscriptions: Subscription[] = [];
 let sweeper: Sweeper | null = null;
+let registry: RegistryChecker | null = null;
+
+/*
+ * 헬스 서버를 **기동 검사보다 먼저** 연다 (독립 검토 나). 켜진 실행기의 기동 검사는 20~30초(재시도면
+ * 몇 분)가 들고, 그동안 `/healthz`가 닫혀 있으면 compose 헬스체크가 재시도를 소모한다. 검사 전의 응답은
+ * `registry.status: 'unchecked'`로 사실을 말한다 — 구독은 아직 없으므로 실행은 시작되지 않는다.
+ */
+const server = buildServer({
+  detail: () => {
+    const state = registry?.state() ?? null;
+    return {
+      execution: config.enabled ? 'enabled' : 'disabled',
+      ghVersion,
+      manifestVersion: manifest?.manifestVersion ?? null,
+      manifestHash: manifest?.hash ?? null,
+      registry: state === null ? null : { status: state.status, checkedAt: state.checkedAt?.toISOString() ?? null, stale: state.stale },
+    };
+  },
+  /*
+   * **백킹 서비스 확인은 실행이 켜졌을 때만이다.** 꺼진 실행기는 구독도 스윕도 하지 않아
+   * PostgreSQL을 쓰지 않는다 — 그런데 헬스체크가 그것을 묻고 503을 내면, 번들 이미지의
+   * 오프라인 런타임 검사(`smoke-images.sh`, 네트워크 없음)가 「꺼진 상태로 기동한다」를
+   * 확인할 수 없고, 운영에서는 DB 장애가 아무것도 하지 않는 서비스를 unhealthy로 만든다.
+   * 켜진 실행기는 DB 없이 실행을 집을 수 없으므로 그때는 실제로 묻는다.
+   */
+  ...(config.enabled
+    ? {
+        checkBackingServices: async (): Promise<void> => {
+          await pool.query('SELECT 1');
+        },
+      }
+    : {}),
+  metrics,
+});
+
+server.listen(config.port, '0.0.0.0', () => {
+  process.stdout.write(`${SERVICE_NAME} listening on ${String(config.port)}\n`);
+});
 
 if (!config.enabled) {
   log({ level: 'info', message: 'Operations 실행이 꺼져 있다 — gh를 띄우지 않고 구독도 걸지 않는다', reason: 'GH_OPERATIONS_ENABLED=false' });
@@ -69,7 +108,24 @@ if (!config.enabled) {
 
   const vaultKey = config.vaultKey;
   if (vaultKey === null) throw new Error('unreachable: executorConfigFailure가 잡았어야 한다');
-  const deps: RunnerDeps = { pool, config, manifest, vaultKey, metrics, log };
+
+  /*
+   * 레지스트리 검사 (JOB-GH-003, FR-GH-011 AC-2·AC-3). 기동 시 한 번 **기다린 뒤** 구독을 세운다 —
+   * 드리프트가 확인된 배포는 첫 실행부터 `registry_stale`로 거절해야지, 몇 건을 돌린 뒤 멈추면 안 된다.
+   * 검사는 20~30초가 든다(command마다 `--help`). 실패해도 프로세스는 뜬다: 헬스가 `registry.stale`을
+   * 말하고 실행이 거절되는 것이 「조용히 진행하지 않는다」의 실체다. 그 뒤로는 하루에 한 번 돈다.
+   */
+  registry = startRegistryChecker({ pool, config, manifest, metrics, log });
+  const startupCheck = await registry.runOnce('startup');
+  if (startupCheck === null) {
+    log({ level: 'error', message: '기동 레지스트리 검사가 예외로 끝났다 — 다음 주기가 다시 시도한다', reason: 'check_failed' });
+  } else if (startupCheck.recordError !== null) {
+    // 판정(stale)은 이미 섰다. 기록만 실패한 것이며 — 029가 아직 적용되지 않은 DB가 대표적이다 — 다음 회차가 다시 기록한다.
+    log({ level: 'error', message: '기동 레지스트리 검사를 기록하지 못했다 — 판정은 유지되고 다음 주기가 다시 기록한다 (마이그레이션 029 적용 여부를 확인한다)', reason: 'record_failed', detail: startupCheck.recordError });
+  }
+
+  const checker = registry;
+  const deps: RunnerDeps = { pool, config, manifest, vaultKey, metrics, log, registry: { isStale: () => checker.state().stale } };
 
   bus = new RedisStreamsEventBus();
   const topic = TOPICS.ghExecutions;
@@ -117,34 +173,6 @@ if (!config.enabled) {
   });
 }
 
-const server = buildServer({
-  detail: () => ({
-    execution: config.enabled ? 'enabled' : 'disabled',
-    ghVersion,
-    manifestVersion: manifest?.manifestVersion ?? null,
-    manifestHash: manifest?.hash ?? null,
-  }),
-  /*
-   * **백킹 서비스 확인은 실행이 켜졌을 때만이다.** 꺼진 실행기는 구독도 스윕도 하지 않아
-   * PostgreSQL을 쓰지 않는다 — 그런데 헬스체크가 그것을 묻고 503을 내면, 번들 이미지의
-   * 오프라인 런타임 검사(`smoke-images.sh`, 네트워크 없음)가 「꺼진 상태로 기동한다」를
-   * 확인할 수 없고, 운영에서는 DB 장애가 아무것도 하지 않는 서비스를 unhealthy로 만든다.
-   * 켜진 실행기는 DB 없이 실행을 집을 수 없으므로 그때는 실제로 묻는다.
-   */
-  ...(config.enabled
-    ? {
-        checkBackingServices: async (): Promise<void> => {
-          await pool.query('SELECT 1');
-        },
-      }
-    : {}),
-  metrics,
-});
-
-server.listen(config.port, '0.0.0.0', () => {
-  process.stdout.write(`${SERVICE_NAME} listening on ${String(config.port)}\n`);
-});
-
 let shuttingDown = false;
 const shutdown = (signal: string): void => {
   if (shuttingDown) return;
@@ -162,6 +190,8 @@ const shutdown = (signal: string): void => {
       await sweeper?.stop();
       // 진행 중인 실행이 끝날 때까지 구독을 닫는다 — 닫힌 뒤 도착한 이벤트는 다른 실행기가 집는다.
       await Promise.all(subscriptions.map((subscription) => subscription.close()));
+      // 레지스트리 검사는 구독 뒤에 멈춘다 — 재시도 대기는 abort로 즉시 끊기므로 유예 45초를 먹지 않는다.
+      await registry?.stop();
       await bus?.close();
       await pool.end();
     } catch (error) {

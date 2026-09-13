@@ -91,9 +91,43 @@ export {
   MANIFEST_VERSION,
   buildManifest,
   canonicalJson,
+  coverageOf,
   manifestHash,
   summarizeCommand,
   verifyManifestHash,
 } from './manifest.js';
 export type { ManifestBuildInput } from './manifest.js';
 export { sha256Hex } from './sha256.js';
+
+export type {
+  GhAuthRequirement,
+  GhClassificationBasis,
+  GhCommandClassification,
+  GhContextRequirement,
+  GhControlClass,
+  GhCoverageDimension,
+  GhCoverageGate,
+  GhFlagClassification,
+  GhFlagValueKind,
+  GhHostSupport,
+  GhIoProfile,
+  GhOutputFormat,
+  GhPositionalClassification,
+  GhSideEffect,
+} from './types.js';
+export { classifyCommand } from './classification/classify.js';
+export { COMMAND_ROWS, COMMAND_ROW_COUNT, NEVER_ASSIGNED_SUPPORT } from './classification/commands.js';
+export type { CommandRow } from './classification/commands.js';
+export { RULES_VERSION, classifyFlag, classifyPositional, enumValuesOf, parseUsagePositionals } from './classification/rules.js';
+export type { FlagClassificationOutcome, PositionalClassificationOutcome, UsagePositional } from './classification/rules.js';
+export { computeDimensions } from './classification/dimensions.js';
+export {
+  REPORT_VERSION,
+  VALIDATOR_VERSION,
+  inventoryCommandOf,
+  inventoryHash,
+  inventoryOfManifest,
+  reportHash,
+  validateManifest,
+} from './validate.js';
+export type { GhFindingSeverity, GhRegistryFinding, GhRegistryGate, GhRegistryReport, ValidateOptions } from './validate.js';

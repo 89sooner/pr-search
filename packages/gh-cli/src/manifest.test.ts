@@ -39,6 +39,7 @@ const inventory: GhInventory = {
     command(['pr'], { group: true }),
     command(['pr', 'list'], { flags: PR_LIST_FLAGS, jsonFields: [...PR_LIST_CAPABILITY.options.flatMap((o) => (o.kind === 'json_fields' ? o.allowed : []))] }),
     command(['pr', 'merge']),
+    command(['pr', 'frobnicate']),
     command(['co'], { aliasOf: ['pr', 'checkout'] }),
   ],
   helpTopics: ['environment'],
@@ -57,17 +58,40 @@ describe('FR-GH-001 AC-5: manifest는 버전과 내용 해시를 가진다', () 
     const manifest = buildManifest({ inventory, capabilities: [PR_LIST_CAPABILITY], generatedAt: '2026-09-13T00:00:00Z' });
     const prList = manifest.commands.find((entry) => entry.id === 'pr.list');
     expect(prList).toMatchObject({ execution: 'allowed', support: 'supported', risk: 'R0', executionReason: null });
+    // `pr merge`는 분류 표에 있다 — 분류는 되지만 실행은 열리지 않는다. 표가 실행을 넓히지 못한다는 것이 요점이다.
     const merge = manifest.commands.find((entry) => entry.id === 'pr.merge');
-    expect(merge).toMatchObject({ execution: 'not_implemented', support: 'unknown', risk: null });
+    expect(merge).toMatchObject({ execution: 'not_implemented', support: 'supported', risk: 'R2' });
     expect(merge?.executionReason).toMatch(/열지 않았다/);
+    expect(merge?.classification).toMatchObject({ sideEffect: 'destructive', interaction: 'web_native' });
+    // 표에 없는 leaf는 미분류로 정직하게 남는다.
+    const unknown = manifest.commands.find((entry) => entry.id === 'pr.frobnicate');
+    expect(unknown).toMatchObject({ execution: 'not_implemented', support: 'unknown', risk: null });
     expect(manifest.coverage).toMatchObject({
-      leafCommands: 2,
+      leafCommands: 3,
       groupCommands: 1,
       aliasOnlyCommands: 1,
       executableCommands: 1,
-      classifiedLeafCommands: 1,
+      classifiedLeafCommands: 2,
       unclassifiedLeafCommands: 1,
     });
+    expect(manifest.coverage.dimensions.find((dimension) => dimension.id === 'command_path')).toMatchObject({ total: 3, classified: 2, unclassifiedSample: ['pr frobnicate'] });
+  });
+
+  it('정책 차단 command는 실행 차원도 policy_blocked다 — 미구현으로 적지 않는다', () => {
+    const manifest = buildManifest({
+      inventory: { ...inventory, commands: [...inventory.commands, command(['auth', 'token'])] },
+      capabilities: [PR_LIST_CAPABILITY],
+      generatedAt: 'x',
+    });
+    const token = manifest.commands.find((entry) => entry.id === 'auth.token');
+    expect(token).toMatchObject({ execution: 'policy_blocked', support: 'policy_blocked', risk: 'R3' });
+    expect(token?.executionReason).toMatch(/열지 않기로/);
+  });
+
+  it('정의와 분류 표가 같은 command를 다르게 말하면 만들지 않는다', () => {
+    expect(() =>
+      buildManifest({ inventory, capabilities: [{ ...PR_LIST_CAPABILITY, risk: 'R1' }], generatedAt: 'x' }),
+    ).toThrow(/분류 표.*다르다/);
   });
 
   it('키 순서와 무관하게 같은 해시이고 내용이 바뀌면 달라진다', () => {

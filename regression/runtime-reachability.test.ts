@@ -4107,6 +4107,64 @@ describe('REL-007 R0: GitHub Operations Plane이 배포에서 실제로 돈다 (
     }
   });
 
+  /*
+   * CR-088 — capability 분류·검증·드리프트·스냅숏·A-006 (WP-078). 아래 넷은 「분류를 늘렸다고 실행이 넓어지지
+   * 않는다」·「검사가 실제 프로세스에 배선됐다」·「요청 경로에서 검사하지 않는다」·「운영 화면의 역할」을 건다.
+   */
+  it('CR-088: 실행 허용은 여전히 pr.list 하나다 — 코드 표와 커밋된 manifest가 같은 답을 낸다', () => {
+    const capabilities = read('packages/gh-cli/src/capabilities.ts');
+    // 정의 배열의 원소가 하나다. 넓히려면 CR이 먼저다 (지시: R0 범위 유지).
+    expect(capabilities).toMatch(/EXECUTABLE_CAPABILITIES: readonly GhCapabilityDefinition\[\] = \[PR_LIST_CAPABILITY\];/);
+    const manifest = JSON.parse(read('packages/gh-cli/manifest/gh-2.97.0.json')) as {
+      manifestVersion: string;
+      coverage: { executableCommands: number; leafCommands: number; unclassifiedLeafCommands: number };
+      commands: { execution: string; id: string; group: boolean }[];
+    };
+    expect(manifest.manifestVersion).toBe('r0.2');
+    expect(manifest.coverage.executableCommands).toBe(1);
+    expect(manifest.commands.filter((command) => command.execution === 'allowed').map((command) => command.id)).toEqual(['pr.list']);
+    expect(manifest.coverage.unclassifiedLeafCommands).toBe(0);
+  });
+
+  it('CR-088: 레지스트리 검사(JOB-GH-003)는 실행기가 기동 시 기다리고 주기로 돌리며 종료에서 닫고, 러너가 stale을 읽는다', () => {
+    const index = read('apps/gh-executor/src/index.ts');
+    expect(index).toMatch(/registry\s*=\s*startRegistryChecker\(/);
+    expect(index).toMatch(/await\s+registry\.runOnce\('startup'\)/);
+    expect(index).toMatch(/await\s+registry\?\.stop\(\)/);
+    expect(index).toMatch(/registry:\s*\{\s*isStale:/);
+    // 헬스 서버는 기동 검사보다 먼저 열린다 — 검사 동안 `/healthz`가 닫혀 있으면 안 된다.
+    expect(index.indexOf('server.listen(')).toBeLessThan(index.indexOf("registry.runOnce('startup')"));
+    expect(read('apps/gh-executor/src/runner.ts')).toMatch(/if\s*\(deps\.registry\?\.isStale\(\)\s*===\s*true\)\s*return\s*\{\s*ok:\s*false,\s*reason:\s*'registry_stale'\s*\};/);
+    expect(read('apps/gh-executor/src/server.ts')).toMatch(/readonly\s+registry\?:/);
+    const check = read('apps/gh-executor/src/registry-check.ts');
+    expect(check).toMatch(/checkedBy:\s*'gh-executor'/);
+    // 주기 검사는 비동기 판을 쓴다 — 동기 판은 이벤트 루프를 20~30초 막는다 (독립 검토 나).
+    expect(check).toContain('checkDriftAsync(');
+    expect(check).not.toMatch(/\bcheckDrift\(/);
+  });
+
+  it('CR-088: 인벤토리 추출(gh --help 순회)은 search-api·web 요청 경로에 없다 — 검사는 실행기·CLI·시험만 한다', () => {
+    const callers = [...walk('apps/search-api/src'), ...walk('apps/web/app'), ...walk('apps/web/lib'), ...walk('apps/web/components')].filter((file) =>
+      /checkDrift\(|extractInventory\(/.test(read(file)),
+    );
+    expect(callers).toEqual([]);
+    expect(read('apps/gh-executor/src/registry-check.ts')).toMatch(/checkDriftAsync\(\{\s*binaryPath:\s*deps\.config\.binaryPath,\s*manifest\s*\}\)/);
+    expect(read('scripts/gh-capabilities.mjs')).toContain('checkDrift(');
+  });
+
+  it('CR-088: A-006 조회는 operator·security_officer만이며 web 라우트·내비·배포 설정이 함께 있다', () => {
+    const routes = read('apps/search-api/src/gh/routes.ts');
+    expect(routes).toMatch(/requireAnyRole\(principal,\s*\['operator',\s*'security_officer'\]\)/);
+    expect(routes).toMatch(/GH_REGISTRY_PATH\s*=\s*'\/api\/v1\/gh\/registry'/);
+    expect(routes).toMatch(/GH_REGISTRY_COMMAND_PATH\s*=\s*'\/api\/v1\/gh\/registry\/commands\/:id'/);
+    expect(existsSync(`${root}apps/web/app/ops/gh-registry/page.tsx`)).toBe(true);
+    expect(read('apps/web/lib/nav.ts')).toMatch(/id:\s*'ops-gh-registry'[\s\S]{0,200}allowedRoles:\s*\['operator',\s*'security_officer'\]/);
+    expect(read('deploy/single-host/compose.yml')).toMatch(/GH_EXECUTOR_REGISTRY_CHECK_MS:\s*\$\{GH_EXECUTOR_REGISTRY_CHECK_MS:-86400000\}/);
+    expect(read('deploy/single-host/.env.example')).toContain('GH_EXECUTOR_REGISTRY_CHECK_MS');
+    // 미리보기·수락(prepare)과 실행기 재검증이 같은 두 조건(정의 allowed ∧ manifest allowed)을 본다 (독립 검토 가).
+    expect(read('apps/search-api/src/gh/executions.ts')).toMatch(/capability\.execution\s*!==\s*'allowed'\s*\|\|\s*command\.execution\s*!==\s*'allowed'/);
+  });
+
   it('gh 계열 소스에 원시 제어 문자가 없다 — 도구가 지운 ESC가 시험을 거짓 실패시켰다', () => {
     const files = [...GH_PLANE, 'packages/gh-cli/testing', 'apps/gh-executor/integration', 'apps/search-api/integration/gh', 'apps/web/app/gh', 'apps/web/lib']
       .flatMap(walk)

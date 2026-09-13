@@ -136,8 +136,9 @@ export async function prepare(deps: ExecutionDeps, principal: Principal, invocat
 
   const command = deps.manifest.commands.find((entry) => entry.id === invocation.capability_id);
   if (command === undefined) throw new GhRejected('GH_CAPABILITY_UNKNOWN', `manifest에 없는 capability: ${invocation.capability_id}`);
+  // 코드 표의 정의와 manifest command가 **둘 다** allowed여야 한다 — 실행기의 재검증(`capability.execution`)과 같은 답을 내도록 대칭으로 본다 (독립 검토 가).
   const capability = findCapability(invocation.capability_id);
-  if (capability === undefined || command.execution !== 'allowed') {
+  if (capability === undefined || capability.execution !== 'allowed' || command.execution !== 'allowed') {
     throw new GhRejected('GH_CAPABILITY_NOT_EXECUTABLE', `이 배포가 실행을 열지 않은 capability: ${invocation.capability_id}`, {
       reason: command.execution,
       explanation: command.executionReason,

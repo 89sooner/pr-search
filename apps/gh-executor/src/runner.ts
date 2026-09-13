@@ -65,6 +65,11 @@ export interface RunnerDeps {
   readonly log: (entry: RunnerLogEntry) => void;
   readonly now?: () => Date;
   /**
+   * 레지스트리 검사(JOB-GH-003)의 현재 판정. `isStale()`이 참이면 드리프트·구조 실패가 확인된 것이며
+   * 재검증이 실행을 `registry_stale`로 거절한다 (FR-GH-011 AC-3). 없으면(시험) 검사하지 않는다.
+   */
+  readonly registry?: { isStale(): boolean };
+  /**
    * 시험 전용. capability의 시간 상한·설정의 stdout 상한을 덮어쓴다 — 운영 배선은 넘기지
    * 않는다(회귀가 건다). 실제 gh 실행에서 상한이 성립하는지 보려면 값을 줄여야 하고,
    * 그것을 위해 capability 정의를 흔들지 않는다.
@@ -114,8 +119,9 @@ async function revalidate(
 > {
   const now = (deps.now ?? ((): Date => new Date()))();
 
-  // 1. 배포가 같은 manifest·gh인가 (FR-GH-011 AC-2·AC-3).
+  // 1. 배포가 같은 manifest·gh인가 (FR-GH-011 AC-2·AC-3). 레지스트리 검사가 드리프트를 확인했어도 같은 사유다.
   if (row.manifest_hash !== deps.manifest.hash || row.gh_version !== GH_PINNED_VERSION) return { ok: false, reason: 'registry_stale' };
+  if (deps.registry?.isStale() === true) return { ok: false, reason: 'registry_stale' };
 
   // 2. capability가 여전히 열려 있는가.
   const capability = findCapability(row.capability_id);

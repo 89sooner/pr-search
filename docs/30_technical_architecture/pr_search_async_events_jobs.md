@@ -737,9 +737,11 @@ Operations Plane의 비동기 처리는 수집 파이프라인과 큐를 공유�
 | `JOB-GH-001` | 구현 — `apps/gh-executor/src/runner.ts`. 큐에서 꺼낼 때 **재검증**(manifest 해시·gh 버전 → capability 열림 → 저장소 활성·이름 불변 → 연결 살아 있음·호스트 일치·만료 전·행위자 일치 → 봉인 해제 → 같은 빌더로 argv 재조립해 저장값과 대조) → `claim` → spawn → 결과 기록. 러너는 던지지 않고 이벤트는 결과와 무관하게 `ack`된다 — 재전달하면 같은 행을 다시 본다 |
 | `JOB-GH-004` 위임 토큰 갱신 | 부분 — 주기 잡이 아니라 **요청 시점 갱신**이다: 실행 요청에서 만료 15분 전이면 `grant_type=refresh_token`으로 갱신하고 봉인을 한 트랜잭션에서 교체한다(refresh token은 1회용). 주기 잡은 다음 판 |
 | `JOB-GH-007` | 구현 (위 표) |
-| `JOB-GH-002`·`003`·`005`·`006`·`008` | 미구현 (Recipe·드리프트 점검·workspace 정리 잡·아티팩트·잠금). workspace는 실행 종료 즉시 `destroyWorkspace`가 지우며 tmpfs라 재기동에 사라진다 |
+| `JOB-GH-003` capability 드리프트 점검 | **구현 (CR-088, `DEV-671`)** — `apps/gh-executor/src/registry-check.ts`. 자리는 실행기다(gh 바이너리와 DB를 둘 다 가진 프로세스). 헬스 서버를 먼저 열고(`registry.status: unchecked`) **기동 시 한 번 기다린 뒤** 구독을 세우며(비동기 판·동시 4, 10초 안팎), 그 뒤 `GH_EXECUTOR_REGISTRY_CHECK_MS`(기본 1일) 주기로 돈다. 동시 1(체인, 진행 중이면 tick 건너뜀), 일시 오류 재시도 3회(5·15·45초, `stop()`이 즉시 끊는다). 검사 = `validateManifest`(적재한 manifest 재계산 대조·커버리지) + `checkDriftAsync`(실제 바이너리 해시·버전·인벤토리 해시·command/flag/JSON 필드 diff — 이벤트 루프를 막지 않는다, `DEV-680`). 결과는 `gh_capability_snapshot`(해시마다 한 행)·`gh_capability_verification`(회차마다 한 행, append-only)에 남는다. 드리프트·구조 실패면 `stale` 플래그가 서고 러너의 재검증이 실행을 `registry_stale`로 거절한다(FR-GH-011 AC-3의 `execution_disabled`) — 프로세스는 종료하지 않고 헬스 `registry.stale`·지표 `gh_registry_stale`이 사실을 말한다. 일시 오류는 `stale`을 바꾸지 않고, DB 기록 실패도 판정을 바꾸지 않는다(`DEV-679`) |
+| `JOB-GH-002`·`005`·`006`·`008` | 미구현 (Recipe·workspace 정리 잡·아티팩트·잠금). workspace는 실행 종료 즉시 `destroyWorkspace`가 지우며 tmpfs라 재기동에 사라진다 |
 | `EVT-GH-001` | 구현 — `prs:gh:executions` 페이로드는 `execution_id`뿐이다. 실행기는 그 ID로 DB 정본을 다시 읽는다 |
 | `EVT-GH-002` | 부분 — 버스 이벤트가 아니라 SSE가 DB의 상태 변화를 1초 폴링으로 흘린다. 감사는 `gh_execution` 행 자체다 |
 | `EVT-GH-003` | 미구현 (`DEV-651`) |
 | `EVT-GH-004` | 부분 — 종료는 `gh_execution` 행의 상태·종료 코드·출력 해시로 남는다. 별도 이벤트는 없다 |
-| `EVT-GH-005`~`007` | 미구현 (승인·드리프트·철회 알림). 철회는 `github_identity_connection.revoked_at`과 사유로 남는다 |
+| `EVT-GH-006` 드리프트 감지 | **버스 이벤트로 발행하지 않는다 (`DEV-673`)** — 드리프트는 `gh_capability_verification` 행(status `drift`, diff)·실행기 로그·지표 `gh_registry_stale`·헬스 `registry.stale`·A-006으로 드러난다. 구독자로 적힌 「알림」 채널이 아직 없다. 알림 채널을 붙이는 판이 발행 여부를 정한다 |
+| `EVT-GH-005`·`007` | 미구현 (승인·철회 알림). 철회는 `github_identity_connection.revoked_at`과 사유로 남는다 |

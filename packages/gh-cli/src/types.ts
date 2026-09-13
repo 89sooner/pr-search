@@ -210,7 +210,118 @@ export interface GhCapabilityDefinition {
   readonly timeoutMs: number;
 }
 
-/** manifest에 실리는 command 하나 — 인벤토리 + 실행 차원. */
+/* ------------------------------------------------------- 분류 (WP-045, NFR-009) */
+
+/**
+ * FR-GH-001 AC-3 — positional·flag의 분류 상태. `unknown`은 미분류이며 게이트를 실패시킨다.
+ * 규칙이 하나도 맞지 않은 자리만 `unknown`이다 — 모르는 것을 generic으로 뭉개지 않는다.
+ */
+export type GhControlClass =
+  | 'mapped_to_typed_control'
+  | 'mapped_to_generic_control'
+  | 'mapped_to_web_equivalent'
+  | 'terminal_only'
+  | 'policy_blocked'
+  | 'unsupported_by_host'
+  | 'requires_admin_approval'
+  | 'unknown';
+
+export type GhFlagValueKind =
+  | 'bool'
+  | 'enum'
+  | 'int'
+  | 'float'
+  | 'string'
+  | 'strings'
+  | 'file'
+  | 'expression'
+  | 'fields'
+  | 'date'
+  | 'duration'
+  | 'selector'
+  | 'key_value'
+  | 'unknown';
+
+/**
+ * 분류 하나의 근거. `rule`은 문서화된 규칙 이름(`rules.ts`), `override`는 사람이 적은 표
+ * (`commands.ts`), `help`는 고정 바이너리의 `--help` 원문이다. `evidence`는 판정이 본 원문이다.
+ */
+export interface GhClassificationBasis {
+  readonly source: 'help' | 'rule' | 'override';
+  readonly rule: string | null;
+  readonly evidence: string;
+}
+
+/**
+ * 부작용. `local`은 GHE가 아니라 실행 호스트(설정·작업 트리·편집기)를 바꾸는 것이고,
+ * `arbitrary`는 입력에 따라 무엇이든 될 수 있음이 **확인된** 것(`gh api`·extension 실행)이다 —
+ * 모르는 것(`unknown`)과 다르다.
+ */
+export type GhSideEffect = 'read' | 'write' | 'destructive' | 'local' | 'arbitrary' | 'unknown';
+export type GhAuthRequirement = 'none' | 'token' | 'unknown';
+/** 대상 GHES에서 실제로 확인했는가. 이 판은 전부 `unverified`다 — 사내 확인은 NOT RUN. */
+export type GhHostSupport = 'verified' | 'unverified';
+export type GhOutputFormat = 'text' | 'json' | 'jq' | 'template' | 'web' | 'stream' | 'file';
+export type GhContextRequirement =
+  | 'repository'
+  | 'host'
+  | 'branch'
+  | 'workspace'
+  | 'codespace'
+  | 'organization'
+  | 'gist'
+  | 'project'
+  | 'none';
+
+/** 입출력 모드 (FR-GH-001 AC-9). */
+export interface GhIoProfile {
+  readonly stdin: 'none' | 'optional' | 'required';
+  readonly fileInputFlags: readonly string[];
+  readonly fileOutputFlags: readonly string[];
+  readonly outputFormats: readonly GhOutputFormat[];
+  readonly contexts: readonly GhContextRequirement[];
+  readonly paginated: boolean;
+}
+
+export interface GhFlagClassification {
+  readonly name: string;
+  readonly inherited: boolean;
+  readonly control: GhControlClass;
+  readonly valueKind: GhFlagValueKind;
+  readonly enumValues: readonly string[] | null;
+  /** 값이 비밀 그 자체다(`secret set --body`). argv 미리보기·로그·이력에 실으면 안 된다. */
+  readonly secretInput: boolean;
+  readonly basis: GhClassificationBasis;
+}
+
+export interface GhPositionalClassification {
+  readonly placeholder: string;
+  readonly required: boolean;
+  readonly variadic: boolean;
+  readonly control: GhControlClass;
+  readonly binding: 'value' | 'file' | 'stdin' | 'passthrough' | null;
+  readonly basis: GhClassificationBasis;
+}
+
+/** leaf command 하나의 분류 전부. 그룹과 별칭 전용 노드에는 없다. */
+export interface GhCommandClassification {
+  readonly support: GhSupportStatus;
+  readonly interaction: GhInteractionMode;
+  readonly risk: GhRiskLevel | null;
+  readonly sideEffect: GhSideEffect;
+  readonly auth: GhAuthRequirement;
+  readonly io: GhIoProfile;
+  readonly resultKind: GhResultContract['kind'] | 'unknown';
+  readonly sensitivity: GhResultContract['sensitivity'] | 'unknown';
+  readonly hostSupport: GhHostSupport;
+  readonly positionals: readonly GhPositionalClassification[];
+  readonly flags: readonly GhFlagClassification[];
+  readonly basis: GhClassificationBasis;
+  /** 옵션에 따라 부작용·민감도가 달라지는 자리 등, 사람이 읽을 주의. */
+  readonly notes: readonly string[];
+}
+
+/** manifest에 실리는 command 하나 — 인벤토리 + 실행 차원 + 분류. */
 export interface GhManifestCommand extends GhInventoryCommand {
   readonly id: string;
   readonly support: GhSupportStatus;
@@ -218,6 +329,23 @@ export interface GhManifestCommand extends GhInventoryCommand {
   /** `not_implemented`·`policy_blocked`의 사람이 읽을 사유. `allowed`는 `null`. */
   readonly executionReason: string | null;
   readonly risk: GhRiskLevel | null;
+  /** leaf만 있다. 그룹·별칭 전용 노드는 `null`. */
+  readonly classification: GhCommandClassification | null;
+}
+
+export type GhCoverageGate = 'GATE-GH-01' | 'GATE-GH-01b' | 'GATE-GH-01d' | 'informational';
+
+/** NFR-009 차원 하나의 커버리지. `unclassifiedSample`은 앞 50개까지다. */
+export interface GhCoverageDimension {
+  readonly id: string;
+  readonly label: string;
+  readonly gate: GhCoverageGate;
+  readonly total: number;
+  readonly classified: number;
+  readonly unclassified: number;
+  readonly unclassifiedSample: readonly string[];
+  /** 분모를 어떻게 셌는지, 무엇이 「분류」인지. 숫자만 두면 나중에 같은 뜻으로 읽히지 않는다. */
+  readonly note: string;
 }
 
 export interface GhManifestCoverage {
@@ -235,6 +363,8 @@ export interface GhManifestCoverage {
   readonly unclassifiedLeafCommands: number;
   /** 실행 차원에서 `allowed`인 leaf 수. */
   readonly executableCommands: number;
+  /** NFR-009 차원별 커버리지 (CR-088). 검증기가 독립적으로 다시 세어 대조한다. */
+  readonly dimensions: readonly GhCoverageDimension[];
 }
 
 export interface GhCapabilityManifest {
