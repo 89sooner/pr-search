@@ -34,9 +34,19 @@ case "${1:-}" in
         AUTH_PROVIDER=*)        PROVIDER="${a#*=}" ;;
         OIDC_ISSUER=*)          OIDC_ISSUER="${a#*=}" ;;
         GHE_OAUTH_CLIENT_ID=*)  GHE_CLIENT="${a#*=}" ;;
-        --entrypoint) ENTRY=1 ;;
+        GH_OPERATIONS_ENABLED=*) GH_OPS="${a#*=}" ;;
+        GH_IDENTITY_VAULT_KEY=*) GH_VAULT="${a#*=}" ;;
+        --entrypoint) ENTRY=1; WANT_ENTRY=1 ;;
+        *) [ "${WANT_ENTRY:-0}" = "1" ] && { ENTRYPOINT="$a"; WANT_ENTRY=0; } ;;
       esac
     done
+
+    # gh-executor 이미지의 검사 (`CR-086`, smoke 6절). 켰는데 봉인 키가 없으면 실행기의
+    # `executorConfigFailure`와 같은 모양으로 거부한다 — 스모크가 그 문구를 찾는다.
+    if [ "${GH_OPS:-}" = "true" ] && [ -z "${GH_VAULT:-}" ]; then
+      printf 'gh-executor: GH_OPERATIONS_ENABLED=true인데 필수 값이 없다: GH_IDENTITY_VAULT_KEY (REL-007 / WP-077)\n' >&2
+      exit 1
+    fi
 
     reject() {
       printf '  web 구성이 성립하지 않아 기동할 수 없다:\n    %s\n' "$1" >&2
@@ -57,12 +67,23 @@ case "${1:-}" in
       fi
     fi
 
+    # `--entrypoint`로 묻는 것들. 값은 진짜 이미지의 답과 같은 모양이어야 게이트를 지난다 —
+    # gh 버전·바이너리 해시 리터럴은 회귀가 `pin.ts`와 대조한다.
+    case "${ENTRYPOINT:-}" in
+      gh)        printf 'gh version 2.97.0 (2026-07-31)\n'; exit 0 ;;
+      sha256sum) printf '141507c337e8b202ad398550c3b73d72f5af92e86f71665214538a81efd4c409  /usr/local/bin/gh\n'; exit 0 ;;
+    esac
     [ "${ENTRY:-0}" = "1" ] && { printf 'git version 0.0.0-fake\n'; exit 0; }
     printf 'ffffffffffff\n'; exit 0 ;;
   exec)
     # `node -e <script>` 또는 `sh -c <조건>`이 온다. 스크립트 내용으로 무엇을
     # 묻는지 가른다 — 게이트가 `tail -1`로 읽으므로 마지막 줄이 답이다.
     script="${*: -1}"
+    case "$*" in
+      # gh-executor의 헬스체크 — 꺼진 상태를 정직하게 답한다 (smoke 6절).
+      *3004/healthz*) printf '{"status":"ok","service":"gh-executor","version":"0.0.0-fake","execution":"disabled","ghVersion":null,"manifestVersion":null,"manifestHash":null}\n'; exit 0 ;;
+      *" id -u")      printf '1000\n'; exit 0 ;;
+    esac
     case "$script" in
       *fetch\(*) printf '200\n' ;;
       *nft.json*) printf '  ✓ 해시 외부 모듈 0종 (가짜 docker)\n' ;;

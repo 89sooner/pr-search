@@ -111,11 +111,14 @@ rm -f "$ARCHIVE"   # 이전 실행의 아카이브가 새 디렉터리 옆에 �
 mkdir -p "$BUNDLE"/{source,images,deploy,manifest,checksums}
 
 # ── 애플리케이션 이미지 ─────────────────────────────────────────
-APP_TARGETS=(web search-api ingest-gateway pipeline-worker migrate es-bootstrap)
+# `gh-executor`는 compose의 선택 프로파일이지만 **이미지는 번들에 담는다** (CR-086) —
+# 사내에서 `.env` 한 줄로 켤 수 있어야 하고, 그때 새 번들을 반입하게 하지 않는다.
+APP_TARGETS=(web search-api ingest-gateway pipeline-worker migrate es-bootstrap gh-executor)
 declare -A IMAGE_NAME=(
   [web]="prs/web"                         [search-api]="prs/search-api"
   [ingest-gateway]="prs/ingest-gateway"   [pipeline-worker]="prs/pipeline-worker"
   [migrate]="prs/db"                      [es-bootstrap]="prs/es"
+  [gh-executor]="prs/gh-executor"
 )
 
 for target in "${APP_TARGETS[@]}"; do

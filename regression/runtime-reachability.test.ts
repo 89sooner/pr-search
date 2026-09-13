@@ -25,6 +25,8 @@ import { describe, expect, it } from 'vitest';
 import { ACTIVE_AUDIT_ACTIONS, NOT_ACTIVATED_AUDIT_ACTIONS } from '@prs/domain';
 import { LOGICAL_CONSUMERS, TOPICS, consumerGroup } from '@prs/bus';
 import { annotateConfigFailure, resolveAnnotateConfig, resolveAnnotateEnabled } from '@prs/github-annotate';
+import { GH_PINNED_LINUX_AMD64, GH_PINNED_VERSION, redactString } from '@prs/gh-cli';
+import { redact as redactGitHub } from '@prs/github';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (path: string): string => readFileSync(new URL(path, new URL('..', import.meta.url)), 'utf8');
@@ -3881,5 +3883,172 @@ describe('표기 안전성 계약 (WP-075 안전성 보강)', () => {
     expect(cli).not.toContain('updateTitle');
     expect(cli).not.toContain('markAnnotateState');
     expect(cli).not.toContain('clearAnnotationBlock');
+  });
+});
+
+/**
+ * REL-007 R0 — GitHub Operations Plane 도달성 (WP-077 / CR-086).
+ *
+ * `CAPABILITIES` 표에 넣지 않는다 — 그 표는 `deploy/k8s/*.yaml`을 요구하는데 이 판은 K8s를
+ * 주력으로 만들지 않는다(결정자 지시). 대신 Profile A(compose)와 소스 배선을 직접 건다.
+ * 문자열 검사라 정교하지 않지만, 「실행기 없이 API만 켜진 배포」·「argv 빌더 둘」·「shell을
+ * 거치는 spawn」·「도구가 지운 제어 문자」는 리뷰에서 눈에 띄지 않는 종류라 회귀로 잡는다.
+ */
+describe('REL-007 R0: GitHub Operations Plane이 배포에서 실제로 돈다 (WP-077)', () => {
+  /** 디렉터리 아래 `.ts`·`.tsx` 파일의 저장소 상대 경로. `node_modules`·`dist`는 우리 코드가 아니다. */
+  const walk = (dir: string): string[] => {
+    const out: string[] = [];
+    const visit = (current: string): void => {
+      for (const entry of readdirSync(`${root}${current}`, { withFileTypes: true })) {
+        if (entry.name === 'node_modules' || entry.name === 'dist') continue;
+        const relative = `${current}/${entry.name}`;
+        if (entry.isDirectory()) visit(relative);
+        else if (/\.tsx?$/.test(entry.name)) out.push(relative);
+      }
+    };
+    if (existsSync(`${root}${dir}`)) visit(dir);
+    return out.sort();
+  };
+  const GH_PLANE = ['packages/gh-cli/src', 'apps/gh-executor/src', 'apps/search-api/src/gh'];
+  const product = GH_PLANE.flatMap(walk).filter((file) => !/\.test\.tsx?$/.test(file));
+
+  it('gh 프로세스를 만드는 곳은 apps/gh-executor/src/spawn.ts 하나이며 shell을 거치지 않는다 (ADR-016, NFR-010)', () => {
+    expect(product.length).toBeGreaterThan(20);
+    const spawners = product.filter((file) => /from 'node:child_process'/.test(read(file)));
+    /*
+     * 둘이다. `spawn.ts`가 **사용자가 요청한 실행**을 띄우는 유일한 곳이고, `inventory.ts`는
+     * manifest 추출과 기동 시 버전 대조를 위해 `gh <path> --help`·`gh --version`만 고정 argv로
+     * 띄운다 — 사용자 입력이 그 argv에 닿는 길이 없다.
+     */
+    expect([...spawners].sort()).toEqual(['apps/gh-executor/src/spawn.ts', 'packages/gh-cli/src/inventory.ts']);
+    const inventory = read('packages/gh-cli/src/inventory.ts');
+    expect(inventory).toContain("[...path, '--help']");
+    expect(inventory).toContain("['--version']");
+    const spawn = read('apps/gh-executor/src/spawn.ts');
+    expect(spawn).toContain('shell: false');
+    // 주석이 아니라 import를 본다 — `exec`·`execFile`을 들여오지 않으면 부를 수 없다.
+    const importedFrom = (source: string): string => /^import \{([^}]*)\} from 'node:child_process';/m.exec(source)?.[1] ?? '';
+    expect(importedFrom(spawn)).toMatch(/\bspawn\b/);
+    expect(importedFrom(spawn)).not.toMatch(/\bexec/);
+    expect(importedFrom(inventory)).toMatch(/\bspawnSync\b/);
+    expect(importedFrom(inventory)).not.toMatch(/\bexec/);
+    /** 주석을 걷어 낸 코드. 「`shell: true`가 0건임을 건다」고 적은 주석까지 잡으면 규칙을 설명할 수 없다. */
+    const code = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    for (const file of product) {
+      expect(code(read(file)), file).not.toContain('shell: true');
+      expect(code(read(file)), file).not.toContain("'sh', '-c'");
+    }
+    // 러너만 spawn을 부른다 — API·다른 모듈이 gh를 직접 띄우는 길이 없다.
+    const callers = product.filter((file) => file !== 'apps/gh-executor/src/spawn.ts' && read(file).includes('runGhProcess('));
+    expect(callers).toEqual(['apps/gh-executor/src/runner.ts']);
+  });
+
+  it('argv 빌더는 하나이고, 미리보기·실행 수락·재검증이 전부 그것을 부른다 (ADR-017, FR-GH-002 AC-4)', () => {
+    const definitions = [...walk('packages'), ...walk('apps')].filter((file) => /export function buildArgv\(/.test(read(file)));
+    expect(definitions).toEqual(['packages/gh-cli/src/argv.ts']);
+    expect(read('apps/search-api/src/gh/executions.ts')).toContain('buildArgv(');
+    const runner = read('apps/gh-executor/src/runner.ts');
+    expect(runner).toContain('buildArgv(');
+    // 저장된 argv와 다시 만든 argv를 **대조**한다 — 변조된 행은 실행하지 않는다 (AC-8).
+    expect(runner).toContain('argvEquals(');
+    expect(runner).toContain("'argv_mismatch'");
+  });
+
+  it('Dockerfile과 smoke 검사의 gh 버전·해시 리터럴이 pin.ts와 같다 (FR-GH-011)', () => {
+    const dockerfile = read('Dockerfile');
+    expect(dockerfile).toContain(`ARG GH_VERSION=${GH_PINNED_VERSION}`);
+    expect(dockerfile).toContain(`ARG GH_ASSET_SHA256=${GH_PINNED_LINUX_AMD64.sha256}`);
+    expect(dockerfile).toContain(`ARG GH_BINARY_SHA256=${GH_PINNED_LINUX_AMD64.binarySha256}`);
+    expect(dockerfile).toContain('USER node');
+    const smoke = read('deploy/single-host/smoke-images.sh');
+    expect(smoke).toContain(`gh version ${GH_PINNED_VERSION} `);
+    expect(smoke).toContain(GH_PINNED_LINUX_AMD64.binarySha256);
+    // 번들 회귀의 docker 대역도 같은 답을 내야 한다 — 어긋나면 태그 소유권 시험이 무관한 이유로 죽는다.
+    const fakeDocker = read('regression/fixtures/release-tag/fake-docker');
+    expect(fakeDocker).toContain(`gh version ${GH_PINNED_VERSION} `);
+    expect(fakeDocker).toContain(GH_PINNED_LINUX_AMD64.binarySha256);
+  });
+
+  it('argv·표시 경로의 비밀 가림이 GitHub 클라이언트의 가림과 같은 답을 낸다 (FR-GH-008 AC-7)', () => {
+    const samples = [
+      'ghu_abcdefghijklmnop0123456789ABCDEF',
+      'token ghs_0123456789abcdefghijklmnopqrstuv in argv',
+      'github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz0123456789',
+      'plain owner/name --state open',
+    ];
+    for (const sample of samples) {
+      expect(redactString(sample), sample).toBe(redactGitHub(sample));
+    }
+    expect(redactString(samples[0] as string)).toBe('<redacted>');
+  });
+
+  it('Profile A: 실행기는 선택 프로파일이고, 플래그·봉인 키는 search-api와 실행기만, 자격은 나뉜다 (CR-059 · FR-GH-008 AC-1)', () => {
+    const compose = read('deploy/single-host/compose.yml');
+    /** 서비스 블록마다 그 이름이 있는가 — MNUMBER 검사와 같은 방법이다. */
+    const carriersOf = (needle: string): string[] => {
+      const carriers = new Set<string>();
+      let current = '';
+      for (const line of compose.split('\n')) {
+        const header = /^ {2}([a-z][a-z0-9-]*):\s*$/.exec(line);
+        if (header?.[1] !== undefined) current = header[1];
+        if (line.includes(needle) && current !== '' && !line.trimStart().startsWith('#')) carriers.add(current);
+      }
+      return [...carriers].sort();
+    };
+    expect(carriersOf('GH_OPERATIONS_ENABLED:')).toEqual(['gh-executor', 'search-api']);
+    expect(carriersOf('GH_IDENTITY_VAULT_KEY:')).toEqual(['gh-executor', 'search-api']);
+    // Operations App의 client secret은 인가·갱신을 하는 search-api에만 간다.
+    expect(carriersOf('GHE_OPS_CLIENT_SECRET:')).toEqual(['search-api']);
+    // web은 플래그를 읽지 않는다 — 404를 「열리지 않았다」로 그린다 (DEV-589의 규율).
+    expect(carriersOf('GH_OPERATIONS_ENABLED:')).not.toContain('web');
+
+    const block = /\n {2}gh-executor:\n[\s\S]*?\n\n/.exec(compose)?.[0] ?? '';
+    expect(block).not.toBe('');
+    expect(block).toContain("profiles: ['github-operations']");
+    expect(block).toContain('read_only: true');
+    // 수집용 Data App·표기 App의 키를 받지 않는다 — 실행은 사용자의 위임 토큰으로만 한다.
+    expect(block).not.toContain('*ghe-env');
+    expect(block).not.toContain('*annotate-env');
+    expect(block).not.toContain('GHE_APP_');
+    expect(block).not.toContain('GHE_ANNOTATE_');
+    expect(block).not.toContain('ELASTICSEARCH');
+  });
+
+  it('search-api가 라우트를 등록하고 실행기가 스윕·구독을 세우며 종료에서 닫는다 (JOB-GH-001·007)', () => {
+    expect(read('apps/search-api/src/server.ts')).toContain('registerGhRoutes(');
+    expect(read('apps/search-api/src/runtime.ts')).toContain('buildGhDeps(');
+    const index = read('apps/gh-executor/src/index.ts');
+    expect(index).toContain('sweeper = startSweeper(');
+    expect(index).toContain('await bus.subscribe(');
+    expect(index).toContain('await sweeper?.stop()');
+    expect(index).toContain('subscriptions.map((subscription) => subscription.close())');
+    // 꺼진 실행기의 헬스체크는 백킹 서비스를 묻지 않는다 — 오프라인 런타임 검사가 그것에 기댄다.
+    expect(index).toMatch(/\.\.\.\(config\.enabled\s*\?\s*\{\s*checkBackingServices/);
+  });
+
+  it('prsctl이 .env의 켜짐을 프로파일로 옮기고, 번들이 실행기 이미지를 담고 검사한다', () => {
+    const prsctl = read('deploy/single-host/prsctl');
+    expect(prsctl).toContain('--profile github-operations');
+    expect(prsctl).toContain('"prs/gh-executor:${PRS_VERSION}"');
+    expect(prsctl).toContain('compose exec -T gh-executor wget -qO- "http://127.0.0.1:3004/healthz"');
+    const bundle = read('deploy/single-host/build-bundle.sh');
+    expect(bundle).toMatch(/APP_TARGETS=\([^)]*\bgh-executor\b/);
+    expect(bundle).toContain('[gh-executor]="prs/gh-executor"');
+    const smoke = read('deploy/single-host/smoke-images.sh');
+    expect(smoke).toContain('EXECUTOR_IMAGE="prs/gh-executor:${VERSION}"');
+    expect(smoke).toContain('GH_OPERATIONS_ENABLED=false');
+    expect(smoke).toContain('GH_OPERATIONS_ENABLED=true');
+    expect(read('deploy/single-host/.env.example')).toContain('GH_OPERATIONS_ENABLED=false');
+  });
+
+  it('gh 계열 소스에 원시 제어 문자가 없다 — 도구가 지운 ESC가 시험을 거짓 실패시켰다', () => {
+    const files = [...GH_PLANE, 'packages/gh-cli/testing', 'apps/gh-executor/integration', 'apps/search-api/integration/gh', 'apps/web/app/gh', 'apps/web/lib']
+      .flatMap(walk)
+      .concat(walk('apps/web/components').filter((file) => /\/(Gh[A-Za-z]+|SafeGhOutputViewer)\.tsx$/.test(file)));
+    expect(files.length).toBeGreaterThan(40);
+    // eslint-disable-next-line no-control-regex -- 제어 문자를 찾는 것이 이 검사의 목적이다
+    const control = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u0080-\u009f]/;
+    const offenders = files.filter((file) => control.test(read(file)));
+    expect(offenders).toEqual([]);
   });
 });

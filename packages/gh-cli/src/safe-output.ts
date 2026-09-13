@@ -102,8 +102,7 @@ export function stripEscapes(bytes: Uint8Array, final: boolean): { readonly clea
 
 /** C1 제어 문자(U+0080~U+009F)는 UTF-8 디코딩 뒤에만 보인다. */
 function stripC1(text: string): string {
-  // eslint-disable-next-line no-control-regex
-  return text.replace(/[-]/g, '');
+  return text.replace(/[\u0080-\u009f]/g, '');
 }
 
 /** NUL이 있거나 제어 문자 비율이 8분의 1을 넘으면 텍스트가 아니다. */

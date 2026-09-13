@@ -14,14 +14,14 @@ describe('QA-GH-22: CSI·OSC·제어 문자가 화면에 닿지 않는다', () =
   });
 
   it('OSC 하이퍼링크·제목 설정을 BEL·ST 종결 모두 걷어 낸다', () => {
-    expect(sanitizeOutput(enc(`x${ESC}]8;;https://evil${ESC}\\link${ESC}]8;;${ESC}\\ y${ESC}]0;titlez`), 1024).text).toBe(
+    expect(sanitizeOutput(enc(`x${ESC}]8;;https://evil${ESC}\\link${ESC}]8;;${ESC}\\ y${ESC}]0;title\x07z`), 1024).text).toBe(
       'xlink yz',
     );
   });
 
   it('C0·C1·DEL은 지우되 탭·개행·CR은 남긴다', () => {
-    expect(sanitizeOutput(enc('a\tb\nc\rdef'), 1024).text).toBe('a\tb\nc\rdef');
-    expect(sanitizeOutput(enc('abc'), 1024).text).toBe('abc');
+    expect(sanitizeOutput(enc('a\tb\nc\rd\x01e\x7ff'), 1024).text).toBe('a\tb\nc\rdef');
+    expect(sanitizeOutput(enc('a\u0085b\u009bc'), 1024).text).toBe('abc');
   });
 
   it('잘못된 UTF-8은 대체 문자가 된다', () => {

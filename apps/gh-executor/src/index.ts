@@ -124,9 +124,20 @@ const server = buildServer({
     manifestVersion: manifest?.manifestVersion ?? null,
     manifestHash: manifest?.hash ?? null,
   }),
-  checkBackingServices: async () => {
-    await pool.query('SELECT 1');
-  },
+  /*
+   * **백킹 서비스 확인은 실행이 켜졌을 때만이다.** 꺼진 실행기는 구독도 스윕도 하지 않아
+   * PostgreSQL을 쓰지 않는다 — 그런데 헬스체크가 그것을 묻고 503을 내면, 번들 이미지의
+   * 오프라인 런타임 검사(`smoke-images.sh`, 네트워크 없음)가 「꺼진 상태로 기동한다」를
+   * 확인할 수 없고, 운영에서는 DB 장애가 아무것도 하지 않는 서비스를 unhealthy로 만든다.
+   * 켜진 실행기는 DB 없이 실행을 집을 수 없으므로 그때는 실제로 묻는다.
+   */
+  ...(config.enabled
+    ? {
+        checkBackingServices: async (): Promise<void> => {
+          await pool.query('SELECT 1');
+        },
+      }
+    : {}),
   metrics,
 });
 
