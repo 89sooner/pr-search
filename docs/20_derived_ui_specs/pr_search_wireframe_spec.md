@@ -944,6 +944,8 @@ capability manifest에 있는 모든 명령을 검색하고, 생성된 폼으로
 | A-006 | manifest 버전·해시, 설치 gh 버전 대조 결과, GHES 버전, command tree, **차원별 분류 커버리지**(command path·alias·positional·command 고유 flag·inherited flag·short alias·반복 가능 flag·interaction 모드·입출력 모드·`--json` 필드), 상태별 집계(supported / policy_blocked / unsupported_by_host / terminal_only / requires_extension), **core와 extension 수치 분리**, 미분류 목록, 드리프트가 있으면 정확한 command·flag diff, 마지막 인벤토리 시각 (CR-008, C-067) | FR-GH-001, FR-GH-011, FR-GH-013 | **CR-009 추가: 결과 계약 커버리지, bindability 분류 커버리지, 입력·출력 port 커버리지, 자원 타입 커버리지, secret 출력 분류, `opaque_text` 개수, capability 그래프 간선 수, 미분류 결과 계약 수 (C-070)**
 | A-007 | 전체 실행 감사 조회·필터, 승인 대기 목록과 승인·거부, 사용자별 위임 신원 연결 상태 | FR-GH-012, FR-GH-008, FR-GH-009 |
 
+> **A-006 구현 상태 (CR-088 / WP-078, 읽기 전용, `/ops/gh-registry`, `operator`·`security_officer`).** 들어온 것: manifest 판·해시·인벤토리 해시·생성 시각·해시 검증, 고정 gh 버전과 바이너리 SHA-256 기대값, 실행기 마지막 검사(관측 gh 버전·바이너리 해시·인벤토리 일치·검증기/규칙 버전·신선도·적재 manifest 일치), **차원별 분류 커버리지**(본표 10차원 + CR-009 차원 + 정보성: host_support·graph_edges·opaque_text — 분모와 「분류됨」의 뜻을 note로), 상태별 집계(support), core/extension 분리(`extension_split`), 미분류 예시, 드리프트 diff(added/removed/changed), 실행 허용 목록, command 검색·필터·분류 상세(flag·positional별 컨트롤과 규칙, 근거 문장, 실행 불가 사유), 스냅숏(활성화 여부·적재 여부), 대상 GHES 확인 「미확인」. 없는 것: GHES 버전(호스트 판정 미구현, `DEV-674`), command tree(목록·검색으로 대신), 재검사 버튼(검사는 실행기의 주기), 마지막 인벤토리 시각(= manifest 생성 시각으로 대신), C-070의 bindability·port·자원 타입·그래프 수치는 미달로 그대로 보인다(`DEV-675`). A-005는 이 화면에 없다.
+
 
 ## 작업대 반응형 배치 (CR-067 / WP-073)
 

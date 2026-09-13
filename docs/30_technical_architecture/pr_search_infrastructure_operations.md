@@ -456,6 +456,7 @@ ADR-016이 정의한 격리 요건을 배포 수준에서 구체화한다.
 | 네트워크 | 구성된 GHE 호스트 허용 목록 | NFR-010 |
 | workspace 저장 매체 (Profile A) | tmpfs `/var/lib/prs/gh-workspaces` 256m (mode 0700, uid 1000) + `/tmp` 64m. 루트 파일시스템은 `read_only: true` | compose 정의 (CR-086) |
 | 동시 실행 상한 | `GH_EXECUTOR_MAX_CONCURRENT` 기본 2 (1..파티션 4). 구독 수 = 동시 실행 수 | ADR-013 |
+| 레지스트리 검사 (JOB-GH-003) | `GH_EXECUTOR_REGISTRY_CHECK_MS` 기본 86400000(1일, 최소 60000). 기동 시 한 번 **기다린 뒤** 구독 — 켜진 실행기의 ready까지 20~30초가 더 든다(command마다 `--help`; compose 헬스체크 interval 20s × retries 15 안). 드리프트·구조 실패면 헬스 `registry.stale=true`·지표 `gh_registry_stale=1`이고 실행은 `registry_stale`로 거절된다. 결과는 `gh_capability_verification`(append-only)에 남는다 (CR-088) | FR-GH-011 AC-3 |
 | 시간 상한 | R0 `pr.list` 30초 (capability `timeoutMs`), 초과 시 `timed_out` | NFR-011 |
 | 출력 상한 | stdout 1MiB · stderr 64KiB (설정), 이력 발췌 256KiB · 64KiB, 원본은 SHA-256만. 잘린 stdout은 결과 파싱 실패로 `failed` | FR-GH-006 AC-5 |
 | 취소 | DB의 `cancel_requested_at`을 500ms마다 폴링 → 프로세스 그룹 SIGTERM → 1초 뒤 SIGKILL | NFR-011 (3초) |

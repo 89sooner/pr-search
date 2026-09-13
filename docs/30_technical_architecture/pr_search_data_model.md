@@ -45,12 +45,13 @@ CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025�
 | ENT-GH-003 | GhRecipe | 저장된 다단계 작업 | `recipe_id`, `owner_user_id`, `name`, `visibility`, `current_revision` | PostgreSQL | gh-recipe | FR-GH-005 |
 | ENT-GH-004 | GhRecipeRevision | Recipe 개정 | `revision_id`, `recipe_id`, `revision`, `definition`, `created_by`, `created_at` | PostgreSQL | gh-recipe | FR-GH-005 |
 | ENT-GH-005 | GhApproval | 승인 대기·처리 기록 | `approval_id`, `execution_id`, `required_role`, `state`, `decided_by`, `decided_at`, `reason` | PostgreSQL | gh-policy | FR-GH-009, FR-GH-013 |
-| ENT-GH-006 | GhCapabilitySnapshot | 적용 중인 capability manifest | `snapshot_id`, `gh_version`, `manifest_version`, `manifest_hash`, `command_count`, `flag_count`, `unclassified_count`, `activated_at`, `alias_count`, `positional_count`, `inherited_flag_count`, `interaction_unclassified_count`, `extension_command_count` (CR-008) | PostgreSQL | gh-registry | FR-GH-001, FR-GH-011 |
+| ENT-GH-006 | GhCapabilitySnapshot | 이 배포가 본 capability manifest의 신원 — manifest 해시마다 한 행, 내용 불변. `activated_at`은 NFR-009 게이트 통과 뒤에만 (CR-088: 기록과 활성화를 분리, `DEV-672`) | `snapshot_id`, `gh_version`, `manifest_version`, `manifest_hash`, `inventory_hash`, `command_count`, `leaf_command_count`, `group_command_count`, `alias_only_command_count`, `alias_count`, `positional_count`, `flag_count`, `inherited_flag_count`, `json_field_count`, `unclassified_count`, `interaction_unclassified_count`, `flag_unclassified_count`, `positional_unclassified_count`, `extension_command_count`, `executable_count`, `coverage`(차원별 집계 JSONB), `first_seen_at`, `activated_at`(NULL 허용) | PostgreSQL (029) | gh-registry | FR-GH-001, FR-GH-011 |
 | ENT-GH-007 | GhCapabilityConstraint | capability의 유효 조합 정의 (CR-008, ADR-017) | `capability_id`, `kind`(`requires`/`conflicts`/`oneOf`/`exactlyOne`/`atLeastOne`/`implies`/`repeatable`/`minItems`/`maxItems`/`enum`/`conditional`/`inputSource`/`context`), `subjects[]`, `condition`, `values[]`, `bounds` | manifest (PostgreSQL 스냅숏) | gh-registry | FR-GH-003 |
 | ENT-GH-008 | GhInvocation | 사용자 의도의 구조화 표현 (CR-008, ADR-017) | `capability_id`, `context`(host/org/repo/ref/workspace), `positional_arguments[]`, `flags[]`, `stdin_source`, `file_bindings[]`, `output_options` | PostgreSQL (`gh_execution`에 내장) | gh-exec | FR-GH-002, FR-GH-012 |
 | ENT-GH-009 | GhResultContract | capability의 결과 계약 (CR-009, ADR-020) | `capability_id`, `kind`(json/resource/resource_list/url/artifact/text/stream/exit_status), `schema`, `resource_type`, `bindable`, `sensitivity`(public/internal/sensitive/secret), `adapters[]`, `composability` | manifest (PostgreSQL 스냅숏) | gh-registry | FR-GH-001, FR-GH-005 |
 | ENT-GH-010 | GhResourceRef | 명령 사이를 잇는 공통 자원 참조 (CR-009) | `host`, `kind`, `repository`, `id`, `number`, `ref` | 값 타입 (실행·Recipe에 내장) | gh-exec, gh-recipe | FR-GH-005 |
 | ENT-GH-011 | GhBinding | Recipe 단계 사이의 구조화된 연결 (CR-009) | `source_step`, `source_port`, `target_step`, `target_slot`(input/positional/flag/context), `field_selector`(선언된 named field 또는 제한된 JSON Pointer) | PostgreSQL (`gh_recipe_revision.definition`) | gh-recipe | FR-GH-005 |
+| ENT-GH-012 | GhCapabilityVerification | 레지스트리 검사 한 회차의 기록 (CR-088, JOB-GH-003) — **append-only**, 갱신·삭제는 DB 트리거가 거부한다. 누가(실행기·CI·CLI)·언제·어떤 바이너리(버전·SHA-256)·어떤 규칙(검증기·규칙 버전)으로 무엇(manifest 해시·인벤토리 해시)을 확인했고 결과(`passed`/`incomplete`/`drift`/`failed`/`error`)와 diff가 무엇이었나 | `verification_id`, `snapshot_id`(FK), `checked_at`, `checked_by`, `trigger`(startup/periodic/manual), `environment`(실행기 ID·호스트명·바이너리 경로), `gh_version_expected/observed`, `binary_sha256_expected/observed`, `manifest_hash_expected/observed`, `inventory_hash_expected/observed`, `validator_version`, `rules_version`, `status`, `drift`(added/removed/changed), `report`(검증기 보고서 원문), `report_hash`, `error` | PostgreSQL (029) | gh-registry | FR-GH-001 AC-5, FR-GH-011 AC-2·AC-3, NFR-009 |
 
 ## 3. PostgreSQL 스키마
 
@@ -757,7 +758,16 @@ GRANT prs_admin TO prs_retention;
 | `gh_execution_artifact` | 만들지 않음 | 파일 입출력을 열지 않았다 |
 | `gh_recipe` · `gh_recipe_revision` | 만들지 않음 | WP-058 |
 | `gh_approval` | 만들지 않음 | R0는 승인이 없다 |
-| `gh_capability_snapshot` | 만들지 않음 | `CHECK (unclassified_count = 0)`는 parity 게이트(`NFR-009`)를 통과한 뒤에만 참이 될 수 있다. 미분류 195건이 남아 있어 만들면 곧바로 거짓이 된다 (`DEV-657`) |
+| `gh_capability_snapshot` | 028에서는 만들지 않음 → **029가 만듦** (아래) | 028 시점의 이유: `CHECK (unclassified_count = 0)`는 parity 게이트(`NFR-009`)를 통과한 뒤에만 참이 될 수 있었다(`DEV-657`). 029는 기록과 활성화를 분리해 그 CHECK를 활성화에만 건다 |
+
+**029가 만든 것 (CR-088 / WP-078, `DEV-672`).** additive이며 028을 건드리지 않는다. 계획 번호 009는 쓰지 않는다.
+
+| 표 | 029 | 이유 |
+| --- | --- | --- |
+| `gh_capability_snapshot` | 만듦 — manifest 해시마다 한 행(`UNIQUE (manifest_version, manifest_hash)`), 인벤토리 해시·차원별 카운트·`coverage` JSONB·`first_seen_at`·`activated_at`(NULL 허용). **CHECK `activated_at IS NULL OR unclassified_count = 0`**. 트리거: 내용 불변(활성화만 한 번 NULL → 시각), 삭제 없음 | 미분류가 남은 manifest도 **진단용으로 기록**해야 A-006이 「무엇이 미완인가」를 보인다. 막는 것은 활성화뿐이다. 과거 실행이 가리키는 해시를 새 내용으로 덮지 않는다 |
+| `gh_capability_verification` | **신설** (`ENT-GH-012`) — 검사 회차마다 한 행. 출처·계기·환경·기대/관측(gh 버전·바이너리 SHA-256·manifest 해시·인벤토리 해시)·검증기/규칙 버전·상태·diff·보고서 원문·보고서 해시·오류. **append-only**: `UPDATE`·`DELETE`를 트리거가 `restrict_violation`으로 거부한다 | 「마지막 검증은 언제 어떤 해시의 자료로 수행됐는가」와 「이전과 무엇이 달라졌는가」에 답하려면 회차가 남아야 한다. 실패 기록이 정상 기록을 덮지 않는다 |
+| 권한 | `prs_app`: 두 표 SELECT·INSERT만(UPDATE·DELETE 없음). `prs_admin`: ALL | 실행기는 기록만 한다. 활성화(`activated_at`)는 운영자가 `prs_admin`으로 — 이 판은 어느 행도 활성화하지 않았다 |
+| 기록 주체 | `gh-executor`의 `JOB-GH-003`(기동 시·주기). CI·CLI는 보고서만 내고 DB에 쓰지 않는다 | 실행기의 기록이 실행 거절(`registry_stale`)의 근거다. CI 검사 바이너리의 결과와 섞지 않는다(`checked_by`) |
 
 ```sql
 -- 006: 위임 신원. 토큰 원문을 저장하지 않는다 (FR-GH-008 AC-5).
@@ -855,7 +865,8 @@ CREATE TABLE gh_recipe_revision (
   UNIQUE (recipe_id, revision)
 );
 
--- 009: 승인과 capability 스냅샷
+-- 009: 승인과 capability 스냅샷 (초기 계획. gh_capability_snapshot의 **실제 DDL은 029**다 — 위 표와 DEV-672.
+--      아래 CHECK (unclassified_count = 0)는 활성화 조건으로 옮겨졌다.)
 CREATE TABLE gh_approval (
   approval_id   BIGSERIAL   PRIMARY KEY,
   execution_id  BIGINT      NOT NULL,
@@ -1395,7 +1406,8 @@ PR과 커밋을 함께 보지만(`W-001-RESULTS`의 유형 열) 집계는 PR만 
 | `gh_execution_idempotency` | **정하지 않았다 — 지금은 영구** (`DEV-656`) | 없음 | 실행 기록의 12개월과 짝을 맞출 정리 잡은 다음 판이다 |
 | `gh_recipe`, `gh_recipe_revision` | 영구 (사용자 삭제 시 제거) | 하드 삭제 | PostgreSQL 백업에 포함 |
 | `gh_approval` | 1년 (연결된 실행과 동일) | 연결 실행 파티션 드롭 시 함께 | PostgreSQL 백업에 포함 |
-| `gh_capability_snapshot` | 영구 | 삭제하지 않음 | 과거 실행의 argv 해석에 필요하다 |
+| `gh_capability_snapshot` | 영구 | 삭제하지 않음 (029 트리거가 DELETE를 거부) | 과거 실행의 argv 해석에 필요하다 |
+| `gh_capability_verification` | 영구 (CR-088) | 삭제하지 않음 (append-only 트리거) | 하루 한 번 + 기동마다 한 행이라 연 수백 행 규모다. 「언제 어떤 자료로 확인했는가」의 이력이므로 지우지 않는다 |
 
 원본 이벤트의 3년 보존 보증은 `raw_event`(PostgreSQL)가 진다. ES 아카이브 인덱스의 ILM 창은 FR-ING-010 AC-1이 요구하는 대로 분리된 값이며, 아카이브는 백업 대상이 아니라 `raw_event`에서 재구성한다. 두 값을 같게 맞출 의무는 없다 — ILM 창을 줄여도 보존 보증은 영향받지 않는다.
 | `job`, `dead_letter` | 90일 | 배치 삭제 | PostgreSQL 백업에 포함 |

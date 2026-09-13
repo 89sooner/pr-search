@@ -246,6 +246,8 @@ ACC-06이 묻는 "실제 저장소의 관계를 사람이 보았을 때 맞는�
 
 **R0 판정 (CR-086 / WP-077, 원장 6.83장).** 통과: `GATE-GH-01c`(출력 안전 경계 — gh-cli 단위·a11y·회귀 원시 HTML 0건), `GATE-GH-03`(실행 격리 — 회귀 spawn 한 곳·shell 0건, smoke 6절 비루트·읽기 전용), `GATE-GH-04`(비밀 취급 — 미리보기·이력·로그·argv에 토큰 0건, 통합 시험이 문자열로 확인), `GATE-GH-05`(권한 — 위임 토큰만, 설치 토큰 경로 없음), `GATE-GH-07`(멱등 — 보조 표 경합 시험·화면 이중 클릭). 미판정: `GATE-GH-01`·`01b`·`01d`·`01e`(분류 195건 미완, `DEV-657`), `GATE-GH-02`(드리프트 잡 미구현; 기동 시 gh 버전·해시·manifest 해시 대조만), `GATE-GH-06`(R0에 쓰기 실행이 없다), `GATE-GH-08`(성능 미측정 — 취소 3초만 통합 시험으로 확인). **REL-007 완료 판정은 열리지 않는다.**
 
+**R1a 판정 (CR-088 / WP-078, 원장 6.85장).** 통과로 바뀐 것: `GATE-GH-01`(NFR-009 본표 차원 — command path 196/196·alias 45/45·positional 164/164·command flag 1,034/1,034·inherited 312/312·short alias 625/625·반복 37/37·interaction 196/196·입출력 196/196·`--json` 707/707, 미분류 0 — `validate.test.ts`가 커밋된 manifest로 CI에서 건다), `GATE-GH-01b`(core 187 / extension plane 9 분리 보고), `GATE-GH-02`(실제 고정 gh 2.97.0의 인벤토리 해시·command·flag·JSON 필드가 manifest와 일치 — `integration/drift.test.ts`가 CI integration 잡에서 돈다; 운영에서는 실행기의 `JOB-GH-003`이 기동 시·하루 한 번 같은 검사를 기록한다). 여전히 미달·미판정: `GATE-GH-01d`(bindability·자원 타입 1/196, 입출력 port 분모 0 — 결과 종류·민감도만 196/196, `DEV-675`), `GATE-GH-01e`, `GATE-GH-06`, `GATE-GH-08`. 검증기의 전체 상태는 `incomplete`이며 CLI `gh:validate-capabilities`는 기본에서 종료 1이다(`--diagnostic`이면 0). 대상 GHES 지원 확인은 0건(`DEV-674`). **REL-007 완료 판정은 여전히 열리지 않는다.**
+
 ### 10.2 정확성 검증 (ACC-09~ACC-14)
 
 | ID | 항목 | 방법 |
