@@ -97,7 +97,7 @@
 | WP-063 | interactive 웹 등가와 extension 신뢰 어댑터 | REL-010 | WP-045, WP-055 | todo |
 | WP-064 | gh api 스키마 브리지와 호스트 capability 판정 | REL-010 | WP-056 | todo |
 | WP-065 | 조합 parity 검증기 | REL-011 | WP-061, WP-063, WP-064, WP-066 | todo |
-| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 | WP-045, WP-061 | **in_progress** — 부분(`WP-077`/`CR-086` + `WP-078`/`CR-088`): `pr_list_v1` 결과 계약과, leaf 196개의 결과 종류·민감도 분류(secret 2·sensitive 4·public 8 등)가 들어왔다. 남은 것: bindability·입출력 port·자원 타입(`GATE-GH-01d`, `DEV-675`)·capability 그래프·Recipe 연결 |
+| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 | WP-045, WP-061 | **in_progress** — 부분(`WP-077`/`CR-086` + `WP-078`/`CR-088`): `pr_list_v1` 결과 계약과, leaf 196개의 결과 종류·민감도 분류(secret 4·sensitive 7·public 8·internal 177)가 들어왔다. 남은 것: bindability·입출력 port·자원 타입(`GATE-GH-01d`, `DEV-675`)·capability 그래프·Recipe 연결 |
 
 의존 그래프에 순환은 없다. WP-001~WP-003과 WP-005·WP-006은 병렬 착수 가능하다.
 
@@ -2765,13 +2765,14 @@ external main의 특정 커밋
 - 관련 계약: `ADR-015`, `ADR-019`, `ADR-020`, `API-GH-001`(분류 요약 필드)·`API-GH-013`·`API-GH-014`, `ENT-GH-006`·`ENT-GH-012`, `JOB-GH-003`, `EVT-GH-006`(미발행, `DEV-673`), `GATE-GH-01`·`01b`·`01d`·`02`.
 - 선행 WP: `WP-077`. `WP-045`(레지스트리·검증기·드리프트·스냅숏)·`WP-059`(A-006 읽기 전용)·`WP-061`·`WP-066`(분류 메타데이터)은 이 WP가 **부분**을 들여온 상위 WP이며, 3장 표의 각 행이 무엇이 들어왔고 무엇이 남았는지 적는다.
 
-구현 범위: `packages/gh-cli/src/classification/{commands,rules,classify,dimensions}.ts`(leaf 196 표 — 행마다 help 원문 근거·규칙 버전 `rules-2026-09-14.1`), `types.ts`(분류 타입·차원 타입), `manifest.ts`(`r0.2`, 정책 차단의 실행 차원 `policy_blocked`, 정의와 표의 불일치는 생성 거부), `validate.ts`(독립 검증기 — 재계산 대조·해시·별칭·정의·실행 확장·차원·게이트·결정적 보고서), `drift.ts`(실제 바이너리 대조); CLI 셋(`gh:inventory`·`gh:validate-capabilities`·`gh:diff-capabilities`); 마이그레이션 029(`gh_capability_snapshot`·`gh_capability_verification`, append-only 트리거, 활성화 CHECK); `packages/db` `ghRegistryRepo`; 실행기 `registry-check.ts`(`JOB-GH-003` — 기동 시 대기·주기·재시도 3·`stale` → `registry_stale`·헬스 `registry`·지표 `gh_registry_check_total`/`gh_registry_stale`); `search-api` `gh/registry.ts` + 라우트 둘(역할 둘); web `/ops/gh-registry`·`GhRegistryView`·`lib/gh-registry.ts`·내비; 회귀 REL-007 블록 4건; compose·`.env.example`·RUNBOOK 7.C.
+구현 범위: `packages/gh-cli/src/classification/{commands,rules,classify,dimensions}.ts`(leaf 196 표 — 행마다 help 원문 근거·command별 flag 판정·비밀 값 표지, 규칙 버전 `rules-2026-09-14.2`), `types.ts`(분류 타입·차원 타입), `manifest.ts`(`r0.2`, 정책 차단의 실행 차원 `policy_blocked`, 정의와 표의 불일치는 생성 거부), `validate.ts`(독립 검증기 — 재계산 대조·해시·별칭·정의·실행 확장·차원·게이트·결정적 보고서), `drift.ts`(실제 바이너리 대조 — 실행기용 비동기 판 포함); CLI 셋(`gh:inventory`·`gh:validate-capabilities`·`gh:diff-capabilities`); 마이그레이션 029(`gh_capability_snapshot`·`gh_capability_verification`, append-only 트리거, 활성화 CHECK); `packages/db` `ghRegistryRepo`; 실행기 `registry-check.ts`(`JOB-GH-003` — 기동 시 대기·주기·재시도 3·`stale` → `registry_stale`·헬스 `registry`·지표 `gh_registry_check_total`/`gh_registry_stale`); `search-api` `gh/registry.ts` + 라우트 둘(역할 둘); web `/ops/gh-registry`·`GhRegistryView`·`lib/gh-registry.ts`·내비; 회귀 REL-007 블록 4건; compose·`.env.example`·RUNBOOK 7.C.
 
 제외: 실행 허용 확대(0건), A-005 정책 편집·위험도 재정의·확장 허용 목록, 스냅숏 활성화, 호스트 지원 판정(`DEV-674`), 결과 계약의 bindability·port·자원 타입·그래프(`DEV-675`), `EVT-GH-006` 버스 발행(`DEV-673`), A-007, K8s manifest, 릴리스 발행, 사내 실검증.
 
 완료 기준:
 - [x] leaf 196개 전부에 표의 행이 있고 인벤토리와 1:1이며, `NFR-009` 본표 차원(`GATE-GH-01`) 전부 100%·미분류 0 — `validate.test.ts`가 커밋된 manifest로 건다 (`pnpm test`가 곧 게이트).
-- [x] 검증기가 실제 결함을 각각의 코드로 잡는다 — command·flag·별칭 누락, 새 미분류, `execution_widened`, 중복 ID, 해시 변조, gh 버전 불일치, 민감도 누락, 정의 드리프트, 컨트롤 열거 위반(변이 9종). 생성 뒤 규칙을 고치고 manifest를 다시 만들지 않은 실제 실수를 `classification_recompute_mismatch` 5건으로 잡았다.
+- [x] 검증기가 실제 결함을 각각의 코드로 잡는다 — command·flag·별칭 누락, 새 미분류, `execution_widened`, 실행 차원 파생 뒤바꿈(`execution_derivation_mismatch`), 중복 ID, 해시 변조, gh 버전 불일치, 민감도 누락, 정의 드리프트, 컨트롤 열거 위반(변이 10종). 생성 뒤 규칙을 고치고 manifest를 다시 만들지 않은 실제 실수를 `classification_recompute_mismatch` 5건으로 잡았다.
+- [x] 독립 검토 두 판(가·나)의 major 3건(기록 실패 시 판정 유실 `DEV-679` — 두 검토가 같은 자리를 지적, `spawnSync` 이벤트 루프 정지 `DEV-680`)과 minor·note 전부를 반영했다 — 분류 이견 7건(R3 둘·R2 둘·sensitive 둘·인용 정정), flag 규칙 공백 9종, `prepare` 대칭, 활성화 CHECK 네 차원, 로케일 정렬 `DEV-681`, 헬스 선개방 (6.85장).
 - [x] 실제 고정 gh 2.97.0의 인벤토리가 manifest와 일치하고(`GATE-GH-02`, CI integration 잡), flag 하나를 지우면 `changed`, command를 지우면 `added`, 없는 command를 더하면 `removed`로 잡힌다.
 - [x] 분류 메타데이터를 `allowed`로 바꿔 적재해도 실행 준비는 `GH_CAPABILITY_NOT_EXECUTABLE`이고, 실행기는 `registry.isStale()`이면 `registry_stale`로 거절한다. 실행 허용은 `pr.list` 하나 — 회귀가 정의 수와 manifest의 `allowed` 목록을 건다.
 - [x] 029 왕복(028 → 029 → 028 → 029), `prs_app`은 SELECT·INSERT만, 검증 기록은 소유자도 갱신·삭제 불가(트리거), 미분류 스냅숏은 기록되되 활성화 불가(CHECK), 같은 해시는 한 행, 실패 기록이 정상 기록을 덮지 않음.

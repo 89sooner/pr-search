@@ -764,8 +764,8 @@ GRANT prs_admin TO prs_retention;
 
 | 표 | 029 | 이유 |
 | --- | --- | --- |
-| `gh_capability_snapshot` | 만듦 — manifest 해시마다 한 행(`UNIQUE (manifest_version, manifest_hash)`), 인벤토리 해시·차원별 카운트·`coverage` JSONB·`first_seen_at`·`activated_at`(NULL 허용). **CHECK `activated_at IS NULL OR unclassified_count = 0`**. 트리거: 내용 불변(활성화만 한 번 NULL → 시각), 삭제 없음 | 미분류가 남은 manifest도 **진단용으로 기록**해야 A-006이 「무엇이 미완인가」를 보인다. 막는 것은 활성화뿐이다. 과거 실행이 가리키는 해시를 새 내용으로 덮지 않는다 |
-| `gh_capability_verification` | **신설** (`ENT-GH-012`) — 검사 회차마다 한 행. 출처·계기·환경·기대/관측(gh 버전·바이너리 SHA-256·manifest 해시·인벤토리 해시)·검증기/규칙 버전·상태·diff·보고서 원문·보고서 해시·오류. **append-only**: `UPDATE`·`DELETE`를 트리거가 `restrict_violation`으로 거부한다 | 「마지막 검증은 언제 어떤 해시의 자료로 수행됐는가」와 「이전과 무엇이 달라졌는가」에 답하려면 회차가 남아야 한다. 실패 기록이 정상 기록을 덮지 않는다 |
+| `gh_capability_snapshot` | 만듦 — manifest 해시마다 한 행(`UNIQUE (manifest_version, manifest_hash)`), 인벤토리 해시·차원별 카운트·`coverage` JSONB·`first_seen_at`·`activated_at`(NULL 허용). **CHECK `activated_at IS NULL OR (command·interaction·flag·positional 미분류 전부 0)`**. 트리거: 내용 불변(활성화만 한 번 NULL → 시각), 삭제 없음 | 미분류가 남은 manifest도 **진단용으로 기록**해야 A-006이 「무엇이 미완인가」를 보인다. 막는 것은 활성화뿐이고 그 조건은 NFR-009처럼 네 차원 전부다. 과거 실행이 가리키는 해시를 새 내용으로 덮지 않는다 |
+| `gh_capability_verification` | **신설** (`ENT-GH-012`) — 검사 회차마다 한 행. 출처·계기·환경·기대/관측(gh 버전·바이너리 SHA-256·manifest 해시·인벤토리 해시)·검증기/규칙 버전·상태·diff·보고서 원문(1 MiB CHECK — 실측 9.6KB, 합성 최악 431KB)·보고서 해시·오류. **append-only**: `UPDATE`·`DELETE`를 트리거가 `restrict_violation`으로 거부한다. 행 트리거는 `TRUNCATE`에 걸리지 않으므로 소유자 `prs_admin`의 TRUNCATE만이 이 보장의 밖이다(`prs_app`에는 그 권한이 없다) | 「마지막 검증은 언제 어떤 해시의 자료로 수행됐는가」와 「이전과 무엇이 달라졌는가」에 답하려면 회차가 남아야 한다. 실패 기록이 정상 기록을 덮지 않는다 |
 | 권한 | `prs_app`: 두 표 SELECT·INSERT만(UPDATE·DELETE 없음). `prs_admin`: ALL | 실행기는 기록만 한다. 활성화(`activated_at`)는 운영자가 `prs_admin`으로 — 이 판은 어느 행도 활성화하지 않았다 |
 | 기록 주체 | `gh-executor`의 `JOB-GH-003`(기동 시·주기). CI·CLI는 보고서만 내고 DB에 쓰지 않는다 | 실행기의 기록이 실행 거절(`registry_stale`)의 근거다. CI 검사 바이너리의 결과와 섞지 않는다(`checked_by`) |
 

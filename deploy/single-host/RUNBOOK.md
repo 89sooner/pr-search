@@ -832,7 +832,8 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 | 연결 직후 「GitHub 계정 연결에 실패했습니다」 | Callback URL이 App 등록값과 같은가, `GHE_OPS_REDIRECT_URI`가 그 값인가. 사유 코드는 search-api 로그(`Operations App 인가 콜백 실패`, `reason`)에만 있다 — 화면은 이유를 말하지 않는다 |
 | 실행이 `gh_auth_required`로 실패한다 | 위임 토큰이 GHE에서 거부됐다 — App 권한(`Pull requests: Read`)과 사용자의 저장소 권한을 확인한다. 연결을 해제하고 다시 인가한다 |
 | 실행이 `registry_stale`로 실패한다 | 둘 중 하나다. (1) search-api와 gh-executor의 이미지 버전이 다르다(manifest 해시·gh 버전 불일치) — 같은 `PRS_VERSION`으로 다시 세운다. (2) 실행기의 레지스트리 검사(JOB-GH-003, `CR-088`)가 드리프트·구조 실패를 확인해 실행을 거절하고 있다 — 웹의 「운영 › gh 레지스트리」(A-006)에서 실행기 마지막 검사의 결과와 diff를 보고, 실행기 로그의 `레지스트리 검사 실패`와 `/healthz`의 `registry.stale`을 확인한다. 검사는 기동 시와 하루에 한 번(`GH_EXECUTOR_REGISTRY_CHECK_MS`) 돈다 |
-| A-006이 「검증 기록이 없습니다」를 낸다 | 실행기가 아직 기동 검사를 기록하지 않았거나(기동 뒤 30초 안팎), 실행기 없이 search-api만 켜져 있다. `./prsctl health`로 실행기를 확인한다. 기록은 `gh_capability_verification`(append-only)에 남는다 |
+| A-006이 「검증 기록이 없습니다」를 낸다 | 실행기가 아직 기동 검사를 기록하지 않았거나(기동 뒤 10초 안팎), 실행기 없이 search-api만 켜져 있거나, **마이그레이션 029가 적용되지 않아 기록이 실패**하고 있다(실행기 로그 `기동 레지스트리 검사를 기록하지 못했다`, 지표 `gh_registry_check_total{result="record_failed"}`). 기록이 실패해도 드리프트 판정은 유지되어 실행이 거절될 수 있다. `./prsctl health`와 `prsctl migrate` 상태를 확인한다. 기록은 `gh_capability_verification`(append-only)에 남는다 |
+| 드리프트 뒤 다시 검사하고 싶다 | 검사는 기동 시와 주기(`GH_EXECUTOR_REGISTRY_CHECK_MS`, 기본 1일)로만 돈다 — 손으로 부르는 API는 없다. 원인을 고친 뒤 실행기를 재기동하면 기동 검사가 다시 돈다(`./prsctl upgrade` 또는 `docker compose restart gh-executor`) |
 
 **레지스트리 검사를 손으로 돌리기 (`CR-088`).** 반입 전이나 조사 중에 같은 검사를 CLI로 돌릴 수 있다 — 저장소에서 `pnpm --filter @prs/gh-cli build` 뒤 `pnpm gh:validate-capabilities`(커밋된 manifest의 구조·분류·커버리지·실행 범위; 미분류가 남으면 종료 1, `--diagnostic`이면 0), `GH_PINNED_BIN=<gh 2.97.0 경로> pnpm gh:diff-capabilities`(설치된 gh와 manifest의 차이), `pnpm gh:inventory`(인벤토리 JSON). `--report <파일>`로 기계 판독 보고서를 남긴다. CLI는 DB에 기록하지 않는다 — 기록은 실행기만 남긴다.
 
