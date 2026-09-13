@@ -87,11 +87,15 @@ export type RunOutcome =
 const STDOUT_EXCERPT_BYTES = 262_144;
 const STDERR_EXCERPT_BYTES = 65_536;
 
+/**
+ * 이력에 남는 발췌. 무해화(`SafeOutputStream`)는 이미 지났고, 여기서 **토큰 모양 편집**(`redactString`)을
+ * 한 번 더 지난다 — gh가 표준 오류에 자격을 되울리는 경우를 위한 심층 방어이며 argv·오류 필드와 같은 규칙이다.
+ */
 function excerpt(text: GhSafeText, maxBytes: number): { readonly text: string | null; readonly truncated: boolean } {
   if (text.binary) return { text: null, truncated: text.truncated };
   const encoded = new TextEncoder().encode(text.text);
-  if (encoded.length <= maxBytes) return { text: text.text, truncated: text.truncated };
-  return { text: new TextDecoder().decode(encoded.subarray(0, maxBytes)), truncated: true };
+  if (encoded.length <= maxBytes) return { text: redactString(text.text), truncated: text.truncated };
+  return { text: redactString(new TextDecoder().decode(encoded.subarray(0, maxBytes))), truncated: true };
 }
 
 /**

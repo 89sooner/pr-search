@@ -177,6 +177,8 @@ describe('오류 DTO 읽기 — 프록시·서버가 정한 코드를 재해석�
   it('login_path는 절대 경로일 때만 받는다', () => {
     expect(loginPathOf({ error: { code: 'UNAUTHENTICATED', detail: { login_path: '/auth/login' } } })).toBe('/auth/login');
     expect(loginPathOf({ error: { code: 'UNAUTHENTICATED', detail: { login_path: 'https://evil/login' } } })).toBeNull();
+    expect(loginPathOf({ error: { code: 'UNAUTHENTICATED', detail: { login_path: '//evil.example/login' } } })).toBeNull();
+    expect(loginPathOf({ error: { code: 'UNAUTHENTICATED', detail: { login_path: '/\\evil.example/login' } } })).toBeNull();
     expect(loginPathOf({ error: { code: 'UNAUTHENTICATED' } })).toBeNull();
     expect(loginPathOf(null)).toBeNull();
   });

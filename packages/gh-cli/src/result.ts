@@ -4,9 +4,11 @@
  * `pr list --json`의 stdout을 `pr_list_v1` 스키마의 행으로 옮긴다. **허용 목록에 있는
  * 필드만 읽고, 모르는 키는 버린다.** 문자열 값은 전부 무해화 경계를 지난다 — gh가
  * JSON 안의 제어 문자를 이스케이프하더라도, 그것을 풀어낸 뒤의 문자열이 화면에
- * 닿는 것은 우리이므로 우리가 걷어 낸다.
+ * 닿는 것은 우리이므로 우리가 걷어 낸다. 토큰 모양(`gh*_…`·PAT·JWT)은 argv와 **같은 편집**
+ * (`redactString`)을 지난다 — GitHub 필드에 누가 토큰을 적어 두었더라도 이력에 남기지 않는다.
  */
 
+import { redactString } from './argv.js';
 import { sanitizeText } from './safe-output.js';
 import type { GhPrListResult, GhPrListRow } from './types.js';
 
@@ -45,7 +47,7 @@ export type ParsePrListOutcome =
 const MAX_STRING_BYTES = 4096;
 
 function str(value: unknown): string | null {
-  return typeof value === 'string' ? sanitizeText(value, MAX_STRING_BYTES) : null;
+  return typeof value === 'string' ? redactString(sanitizeText(value, MAX_STRING_BYTES)) : null;
 }
 
 /** `https://`·`http://`만 링크로 인정한다 (프런트엔드 문서 11장 — 승인된 스킴). */

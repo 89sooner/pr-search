@@ -311,7 +311,8 @@ export function loginPathOf(body: unknown): string | null {
   const detail = (error as Record<string, unknown>)['detail'];
   if (typeof detail !== 'object' || detail === null) return null;
   const path = (detail as Record<string, unknown>)['login_path'];
-  return typeof path === 'string' && path.startsWith('/') ? path : null;
+  // 절대 경로만. `//host`·`/\host`는 브라우저가 외부 출처로 해석하므로 거른다 (`sanitizeReturnPath`와 같은 규율).
+  return typeof path === 'string' && path.startsWith('/') && !path.startsWith('//') && !path.startsWith('/\\') ? path : null;
 }
 
 /** 오류 DTO에서 사용자에게 보일 한 줄. 코드는 서버가 정한 것이며 여기서는 옮기기만 한다. */

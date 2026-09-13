@@ -124,7 +124,8 @@ beforeAll(async () => {
     expectedToken: TOKEN,
     pullRequests: [
       { number: 12, title: `Fix ${ESC}[31mred${ESC}[0m race ${ESC}]8;;https://evil${ESC}\\link${ESC}]8;;${ESC}\\ <script>x</script>`, author: 'alice', headRefName: 'fix/race' },
-      { number: 11, title: 'Add thing', author: 'bob', headRefName: 'feat/thing', isDraft: true },
+      // 토큰 모양을 제목에 심는다 — 발췌와 결과 행이 argv와 같은 편집을 지나는지 본다 (심층 방어).
+      { number: 11, title: 'Add thing ghu_leakedTokenLooksLikeThis00', author: 'bob', headRefName: 'feat/thing', isDraft: true },
       { number: 9, title: 'Closed one', state: 'CLOSED' },
     ],
   });
@@ -189,6 +190,9 @@ describe('사용자 흐름 끝까지 (FR-GH-002 AC-1·AC-4·AC-10, FR-GH-008 AC-
     expect(result.rows[0]?.title).not.toContain(ESC);
     expect(result.rows[0]?.title).toBe('Fix ^[[31mred^[[0m race ^[]8;;https://evil^[\\link^[]8;;^[\\ <script>x</script>');
     expect(result.rows[0]?.author).toBe('alice');
+    // GitHub 필드에 심은 토큰 모양은 결과 행에도 발췌에도 남지 않는다.
+    expect(result.rows[1]?.title).toBe('Add thing <redacted>');
+    expect(done?.stdout_excerpt).not.toContain('ghu_leaked');
     expect(result.possibly_more).toBe(false);
     expect(done?.stdout_excerpt).not.toContain(ESC);
     expect(done?.output_hash).toMatch(/^[0-9a-f]{64}$/);

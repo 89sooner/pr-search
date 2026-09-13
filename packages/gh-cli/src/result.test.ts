@@ -8,6 +8,15 @@ import { PR_LIST_DEFAULT_JSON_FIELDS, PR_LIST_JSON_FIELDS, parsePrListOutput, sa
 const ESC = '\x1b';
 
 describe('pr_list_v1 결과 계약', () => {
+  it('GitHub 필드에 토큰 모양이 있으면 argv와 같은 편집으로 가린다 (심층 방어)', () => {
+    const stdout = JSON.stringify([{ number: 1, title: 'leak ghu_abcdefghijklmnop0123456789 here', author: { login: 'ghp_0123456789abcdefghijklmnop' } }]);
+    const outcome = parsePrListOutput(stdout, ['number', 'title', 'author'], 30);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.result.rows[0]?.title).toBe('leak <redacted> here');
+    expect(outcome.result.rows[0]?.author).toBe('<redacted>');
+  });
+
   it('허용 필드만 읽고 모르는 키는 버린다', () => {
     const stdout = JSON.stringify([
       { number: 12, title: 't', state: 'OPEN', url: 'https://ghe/acme/x/pull/12', author: { login: 'alice', id: 'U_1' }, body: 'secret', extra: 1 },
