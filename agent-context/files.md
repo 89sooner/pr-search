@@ -1,4 +1,34 @@
 # 중요 파일 경로와 역할
+## 2026-09-13 (3차) 라운드가 만들거나 만진 것 (REL-007 R0 완주, PR #181)
+
+### 새로 만든 것
+
+| 경로 | 역할 |
+| --- | --- |
+| `apps/web/app/gh/page.tsx` · `app/gh/history/page.tsx` | W-010·W-021 라우트 (GuardedPage, Suspense) |
+| `apps/web/app/gh/identity/callback/route.ts` (+ `route.test.ts` 8) | Operations App 인가 콜백 — 세션 확인 → search-api POST → return_to 정화. code·state 미기록 |
+| `apps/web/components/GhCommandCenterView.tsx` | W-010 컨테이너: 적재 셋 병렬 → 신원 → 목록 → 폼(같은 판정) → 미리보기(debounce 300ms) → 실행(Idempotency-Key, 폼 변경 시 새 키) → EventSource+폴링 → 패널. 404 = 열리지 않음 |
+| `apps/web/components/GhHistoryView.tsx` | W-021: 이력 표·상세 폴링·취소·`?prefill=` 재실행·security_officer만 전체 보기 |
+| `apps/web/lib/gh-test-fixtures.ts` · `lib/gh.test.ts`(41) · `a11y/gh.test.tsx`(24) · `e2e/gh.spec.ts`(8) | 시험 |
+| `apps/gh-executor/src/server.test.ts` | 헬스체크 4건 |
+
+### 고친 것
+
+| 경로 | 무엇 |
+| --- | --- |
+| `apps/web/lib/gh.ts` | `ExecutionListResponse`·`invocation`·`encodePrefill`/`parsePrefill`/`formFromInvocation`/`loginPathOf`(`//host` 거부)/`describeApiError` |
+| `apps/web/lib/nav.ts`·`nav.test.ts`·`architecture.test.ts`·`components/LeftNavPanel.tsx`·`app/workbench.css` | github 그룹·아이콘·QA-GH-24 가드·스타일 |
+| `apps/web/e2e/workbench.spec.ts` | Ctrl+K 대기 조건(DEV-662) |
+| `apps/gh-executor/src/index.ts` · `runner.ts` | 꺼진 헬스체크는 DB 미확인 · 발췌 토큰 편집 · claim 0행 뒤 취소 확정 · 늦은 결과 로그·지표 라벨 · `beforeClaim` 훅 |
+| `apps/gh-executor/integration/executor.test.ts` | ESC 이스케이프 · caret 표기 기대 · 토큰 편집 · 취소 경합 (11) |
+| `packages/gh-cli/src/{argv,safe-output,result}.ts` + 시험 | 원시 제어 바이트 → 이스케이프 · 결과 문자열 토큰 편집 |
+| `deploy/single-host/compose.yml` · `prsctl` · `build-bundle.sh` · `smoke-images.sh` · `.env.example` | 선택 프로파일 · 렌더 기반 켜짐 판정·health·restore · 번들 이미지 · 6절 · Operations Plane 절 |
+| `regression/runtime-reachability.test.ts` · `regression/fixtures/release-tag/fake-docker` | REL-007 블록 10건 · 실행기 검사 흉내 |
+| `docs/00_governance/change_control.md`(CR-086 행·cascade) · `docs/10`(무변경) · `docs/30` 7종 · `docs/40` 로드맵·WP·검증 계획·원장 · `deploy/single-host/RUNBOOK.md`(7.C) · `deploy/k8s/README.md` | cascade |
+
+### 저장소 밖 (휘발)
+
+워크트리 `/tmp/pr-search-rel007` · 격리 서비스 `prs-rel007-*` · 고정 gh(2차 scratchpad) · 이 세션 scratchpad(`/tmp/claude-1000/-home-roqkf-pr-search/0e72f0fc-…/scratchpad`): battery 로그·검토 보고 `review-a/a2/b/b2.md`·편집 스크립트.
 
 ## 2026-09-13 (2차) 라운드가 만든 것 (REL-007 R0 / WP-077 예정 — **전부 미커밋**, `/tmp/pr-search-rel007`)
 
@@ -43,7 +73,7 @@
 | `src/server.ts` | `/healthz`(execution enabled/disabled·gh 버전·manifest 해시·PG 확인)·`/metrics`, 포트 3004 |
 | `src/index.ts` | 기동: 설정 거부 → gh 버전·**바이너리 해시** 대조 → manifest 로드 → 파티션을 `maxConcurrent` 구독으로 분배 → 스윕. 종료 45초 유예 |
 | `src/spawn.test.ts`·`src/config.test.ts` | 실제 자식 프로세스로 타임아웃·취소·그룹 종료·상한·shell 미경유·환경 미상속 |
-| `integration/executor.test.ts` | 실제 gh + HTTPS 목: 요청→실행→결과, closed 상태, 잘못된 토큰, 재검증 5경로, 취소·타임아웃·상한, 스윕, spawn 실패. **`const ESC`를 `''`로 고쳐야 10/10** |
+| `integration/executor.test.ts` | 실제 gh + HTTPS 목: 요청→실행→결과, closed 상태, 잘못된 토큰, 재검증 5경로, 취소·타임아웃·상한, 스윕, spawn 실패. **`const ESC`를 `'\x1b'`로 고쳐야 10/10** |
 
 ### `packages/db`
 

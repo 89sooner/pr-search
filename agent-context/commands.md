@@ -1,4 +1,48 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
+## 2026-09-13 (3차) 라운드에서 쓴 것 (REL-007 R0 완주)
+
+### 전제 — 2차와 같다
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"
+export POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55434 POSTGRES_USER=prs POSTGRES_PASSWORD=prs POSTGRES_TEST_DB=prs_test
+export REDIS_URL=redis://localhost:56380 ELASTICSEARCH_NODE=http://localhost:59201
+export GH_PINNED_BIN=/tmp/claude-1000/-home-roqkf-pr-search/f864b845-0c6f-4ba6-9c0b-b1a332623dcf/scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh
+```
+
+### 이 판에서 실제로 돌린 것
+
+| 명령 | 결과 |
+| --- | --- |
+| 전체 배터리(순차, HEAD bc7c8a3): typecheck · lint · lint:deps · test · test:regression · test:integration · build · test:a11y · test:contrast · web build · test:e2e | 단위 2,499 · 회귀 471 · 통합 1,686 · a11y 403 · 대비 232 · e2e 188/189(flaky 1) — 이후 커밋마다 관련 시험 재실행 |
+| `pnpm vitest run --config vitest.integration.config.ts apps/gh-executor/integration/executor.test.ts` | 10/10 → (취소 경합 시험 추가) 11/11 |
+| `pnpm vitest run --config vitest.regression.config.ts regression/runtime-reachability.test.ts -t 'REL-007 R0'` | 8 → 9 → 10 (DEV-664 실제 compose 대조·훅 누수) |
+| `pnpm --filter @prs/web exec vitest run --config vitest.a11y.config.ts a11y/gh.test.tsx` | 24 |
+| `pnpm --filter @prs/web exec playwright test e2e/gh.spec.ts` / `e2e/workbench.spec.ts` | 8 / 12 (수정 뒤 3회 연속) |
+| `docker build --target gh-executor -t prs/gh-executor:dev .` | 209MB, USER node |
+| `docker tag prs/gh-executor:dev prs/gh-executor:0.1.0-pilot.6 && bash deploy/single-host/smoke-images.sh 0.1.0-pilot.6` | 전체 통과(6절 포함) |
+| `docker compose -f deploy/single-host/compose.yml --env-file <채운 env> config --services` (+ `--profile github-operations`) | 프로파일 없으면 gh-executor 없음, 있으면 1 |
+| `python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --root /tmp/pr-search-rel007 --strict` | 6건 = main 기준선, 신규 0 |
+| `gh pr create … --body-file` · `gh pr checks 181` · `gh api …/runs/<id>/jobs` · `gh api …/jobs/<id>/logs` | gh 2.4.0에서 동작 |
+| 변이: 중복 제출 가드·prefill 여분 키·canExecute·prsctl 따옴표 제거 | 넷 다 시험에 잡힘 |
+
+### 실패했던 명령과 원인
+
+| 명령 | 실패 | 원인 |
+| --- | --- | --- |
+| Edit 도구 | 「File has not been read yet」 | cat으로 본 파일은 Read로 읽은 것이 아니다 — 파이썬 바이트 편집으로 우회 |
+| 파이썬 `b"""한글"""` | SyntaxError | bytes 리터럴은 ASCII만 — str로 쓰고 encode |
+| 회귀 `not.toContain('shell: true')` | 주석에 걸림 | 주석을 걷어 낸 코드만 검사 |
+| `vitest … \| grep \| head && git commit` | 실패한 채 커밋 | 종료 코드가 head의 것 — amend |
+| `$(printf '\n')`로 셸 조각 결합 | syntax error | 명령 치환이 끝 개행을 지운다 — 파일로 쓴다 |
+
+### 정리 (병합·push 뒤에만)
+
+```bash
+docker compose -p prs-rel007 -f /tmp/claude-1000/-home-roqkf-pr-search/f864b845-0c6f-4ba6-9c0b-b1a332623dcf/scratchpad/compose.rel007.yml down -v
+docker rmi prs/gh-executor:dev prs/gh-executor:0.1.0-pilot.6
+git -C /home/roqkf/pr-search worktree remove /tmp/pr-search-rel007 --force && git -C /home/roqkf/pr-search worktree prune
+```
 
 ## 2026-09-13 (2차) 라운드에서 쓴 것 (REL-007 R0 · CI 확인)
 
@@ -70,7 +114,7 @@ pnpm --filter @prs/gh-cli build && GH_PINNED_BIN=$S/gh/gh_2.97.0_linux_amd64/bin
 
 | 명령 | 실패 | 원인 |
 | --- | --- | --- |
-| Bash 도구에 목 서버 스크립트를 heredoc으로 넣음 | 「command contains control characters」 | ESC 바이트. 파일(Write)로 옮기되 `''`로 적어야 함 |
+| Bash 도구에 목 서버 스크립트를 heredoc으로 넣음 | 「command contains control characters」 | ESC 바이트. 파일(Write)로 옮기되 `'\x1b'`로 적어야 함 |
 | `gh api … --jq '"…"; .assets[] …'` | `unexpected token ";"` | jq 표현식 둘을 `;`로 이었다. 두 번 부른다 |
 | `pnpm gh:manifest` 1차 | `gh extension exec --help` 종료 4 | 인증 필요 command. 인벤토리에 사유로 남기게 고침 |
 | gh-schema 통합 1차 | 중복 키 삽입이 성공 | 파티션 유니크 무력. 보조 표 |

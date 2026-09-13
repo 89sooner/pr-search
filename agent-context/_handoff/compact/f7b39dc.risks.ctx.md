@@ -1,11 +1,28 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=f3ceec660fe0506dfb9cb9356dc764fb12a41286e8a5c72afbddb70dbd4e20e1 bytes=190394 lines=2604 title=리스크-불확실한-가정-함정
+@kv sha256=13c238df0087f52576e1e5e58ae93984afc353c4fd52070087e197ff3cce9bbc bytes=193950 lines=2637 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;apps/gh-executor/integration/executor.test.ts;/../search-api/src/gh/;gh/routes;9/10;prs-pinned-gh/2.97.0/gh;prs/gh-cli;fix/wp075-annotate-safety;packages/es/src/config.ts;packages/bus/src/redis-streams.ts;acme/smp1900;repos/.../actions/runs;packages/authz/src/config.test.ts;apps/web/instrumentation.test.ts;deploy/single-host/smoke-images.sh;deploy/single-host/;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-13 (3차) 라운드가 배운 함정 (REL-007 R0 완주)
+@h3 셸로 .env를 다시 파싱하면 compose와 갈린다 — 두 번 갈렸다
+@p prsctl이 GH_OPERATIONS_ENABLED를 sed로 읽자 "true"(따옴표)·true # 주석에서 꺼짐으로 읽었고(검토 나), 값 쪽을 고치자 export KEY=·키 앞 공백·KEY = true에서 다시 갈렸다(검토 나-2). compose ... ose config의 렌더를 읽는다. 교훈: 같은 파일을 두 파서가 읽으면 반드시 갈린다. 회귀는 실제 compose로 대조한다.
+@h3 flaky 필수 check는 「무관한 결함」이 아니다
+@p workbench.spec.ts:59(Ctrl+K)는 로컬에서 2회 중 1회, PR CI에서 2회 연속 떨어졌다. 처음엔 지시 15장(「무관한 편차는 건드리지 않는다」)으로 기록만 했지만, 필수 check를 떨어뜨리는 순간 이번 흐름을 막는 결함이 되어 같은 조항의 예외에 든다. 원인은 goto 뒤 하이드레이션 전에 누른 키. 시험의 대기 조건만 고쳤다(제품 무변경).
+@h3 Write·Bash 도구와 제어 문자 — 정규식에도 있었다
+@p argv.ts의 /[\x00-\x1f\x7f]/와 safe-output.ts의 C1 범위가 원시 바이트로 저장돼 grep이 파일을 바이너리로 취급했다(동작은 했다). 픽스처(BEL·SOH·DEL·C1)도 같았다. 전부 이스케이프로 정정했고 회귀가 0건을 강 ... 명령 문자열의 제어 문자를 거부하므로 바이트 치환은 파이썬으로 한다. 메모리 파일 자체에도 원시 ESC가 들어 있었다 — 고쳤다.
+@h3 스캔 보고는 백틱을 벗긴다 — 앵커는 원문에서 다시 잰다
+@p Explore 에이전트의 「줄 번호 → 문구」 보고가 | \gh-executor\ |를 | gh-executor |로 인용했다. 그대로 앵커로 쓰면 치환이 0건이다. 스크립트는 치환 0건이면 아무것도 저장하지 않게 짰고, 원문 sed -n으로 앵커를 다시 쟀다.
+@h3 여러 줄 치환은 LF를 섞는다
+@p 한 줄을 여러 줄 문자열로 바꿀 때 내부 \n을 파일의 CRLF로 바꾸지 않으면 개행이 섞인다(데이터 모델 17줄, 프런트엔드 1줄). 편집 뒤 grep -c $'\r$'와 wc -l이 같은지 본다. 파이썬 bytes 리터럴에는 한글을 못 쓴다 — str로 쓰고 encode한다.
+@h3 grep 파이프라인이 && 체인을 가린다
+@p pnpm vitest … | grep … | head 뒤에 &&를 이으면 종료 코드는 head의 것이다. 실패한 시험 상태로 커밋이 만들어졌다(amend로 고침). 종료 코드는 파일로 받거나 PIPESTATUS로 본다. 변이 결과도 「passed=?」이면 요약 줄을 직접 본다 — 1 failed | 426 skipped에는 passed가 없다.
+@h3 검토자의 「확인 못 함」은 내가 실측한다
+@p 검토 나는 compose의 따옴표 제거를 「표준 동작이나 실행 확인은 못 함」으로 적었다. docker compose config로 직접 재어 결함을 확정했고, 그 실측이 처방을 바꿨다.
+@h3 여전히 유효한 것
+@cmd 공유 체크아웃(브랜치는 워크트리로, git add는 경로 명시) · vitest 둘을 동시에 돌리지 않는다 · 채번은 병렬 세션에 묻는다(이번엔 두 세션이 「충돌 없음」) · gh 2.4.0의 없는 플래그 · /tmp는 휘발(워크트리·고정 gh) · agent-context는 워크트리와 main이 같은 내용이며 개행만 다르다.
 @h2 2026-09-13 (2차) 라운드가 배운 함정 (REL-007 R0)
 @h3 Write 도구가 리터럴 제어 문자를 지운다 — 시험 하나가 그것으로 깨졌다
-@path const ESC = '<0x1B>'로 적은 네 파일 중 apps/gh-executor/integration/executor.test.ts는 빈 문자열로 저장됐고(grep -c $'\x1b' = 0), 나머지 셋은 바이트가 남았다. 결과는 「무해화가 안 된다」로 보이는 거짓 실패였다 — 실제로는 입력에 ESC가 없어 걷어 낼 것이 없었다. 처방: 제어 문자는 언제나 ''처럼 이스케이프로 적고, 픽스처의 바이트는 grep -c로 실측한다. Bash 도구도 명령 문자열에 제어 문자가 있으면 거부한다(「control characters that would be hidden」) — 스크립트 파일로 우회했다.
+@path const ESC = '<0x1B>'로 적은 네 파일 중 apps/gh-executor/integration/executor.test.ts는 빈 문자열로 저장됐고(grep -c $'\x1b' = 0), 나머지 셋은 바이트가 남았다. 결과는 「무해화가 안 된다」로 보이는 거짓 실패였다 — 실제로는 입력에 ESC가 없어 걷어 낼 것이 없었다. 처방: 제어 문자는 언제나 '\x1b'처럼 이스케이프로 적고, 픽스처의 바이트는 grep -c로 실측한다. Bash 도구도 명령 문자열에 제어 문자가 있으면 거부한다(「control characters that would be hidden」) — 스크립트 파일로 우회했다.
 @h3 파티션 표의 유니크 인덱스는 파티션 키를 포함해야 한다 — 문서의 DDL이 그래서 틀렸다
 @p 데이터 모델 3.5장의 gh_execution_idem_uk (user_id, idempotency_key, requested_at)는 만들어지지만 같은 키를 막지 못한다(requested_at이 매번 다르다). 통합 시험이 첫 실행에서 잡았다. 보조 표로 풀었고 DEV로 적어야 한다. 교훈: 문서의 DDL을 옮길 때 그 제약이 실제로 무엇을 막는지 시험으로 본다.
 @h3 --state closed는 GraphQL에서 [CLOSED, MERGED]다
