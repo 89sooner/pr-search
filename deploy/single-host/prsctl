@@ -36,23 +36,30 @@ bad()  { printf '  \033[31m✗\033[0m %s\n' "$*"; }
 # 실행기가 **같은 값**을 읽어야 하며 — 한쪽만 켜지면 요청이 영원히 `queued`이거나 실행기가
 # 아무것도 받지 않는다 — 그 값을 여기서 프로파일로 옮기면 켜고 끄는 자리가 `.env` 하나가
 # 된다. `require_env` 전에도 불리므로 파일이 없으면 프로파일 없이 돈다.
-# **`.env`의 값을 compose의 dotenv 규칙대로 읽는다** (`DEV-664`). 감싼 따옴표를 벗기고, 공백 뒤 `#`부터는
-# 주석이며, 앞뒤 공백을 버린다. 실측(2026-09-13, `docker compose config`): `"true"`·`'true'`·`true # 켠다`·
-# ` true `가 전부 `true`로 search-api에 도착한다. 이 파서가 그것과 다르면 **search-api는 켜졌는데 실행기는
-# 없는 형상**이 조용히 생긴다 — 회귀(`runtime-reachability`)가 두 판정을 같은 입력 표로 대조한다.
+# **`.env`를 다시 파싱하지 않는다 — compose가 렌더한 값이 단일 근거다** (`DEV-664`). 처음에는 셸로
+# `.env`를 읽었는데, 그 파서는 compose의 dotenv 규칙(감싼 따옴표·공백 뒤 주석·`export ` 접두·키 앞
+# 공백·`=` 좌우 공백)과 갈렸고, 갈린 입력에서는 **search-api는 켜졌는데 실행기는 없는 형상**이 조용히
+# 생겼다(실측). 그래서 search-api가 실제로 받을 값을 `docker compose config`의 렌더에서 읽는다 —
+# 두 파서가 아니라 하나뿐이므로 갈릴 자리가 없다. 회귀(`runtime-reachability`)가 이 함수와 search-api의
+# 판정을 키·값 양쪽 변형의 입력 표로 대조한다. 한 실행 안에서는 한 번만 계산한다(캐시).
 gh_operations_value() {
   [ -f "$ENV_FILE" ] || return 0
-  sed -nE 's/^GH_OPERATIONS_ENABLED=(.*)$/\1/p' "$ENV_FILE" | tail -1 \
-    | sed -E 's/^[[:space:]]+//; s/[[:space:]]+#.*$//; s/[[:space:]]+$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/; s/^[[:space:]]+//; s/[[:space:]]+$//'
+  docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config 2>/dev/null \
+    | sed -n '/^  search-api:$/,/^  [a-z][a-z0-9-]*:$/p' \
+    | sed -nE 's/^ +GH_OPERATIONS_ENABLED: *"?([^"]*)"?[[:space:]]*$/\1/p' | head -1
 }
 # on / off / reject — search-api·gh-executor의 `resolveOperationsEnabled`와 같은 분류다: `true`만 켜짐,
 # 빈 값·`false`는 꺼짐, 그 밖(`TRUE`·`yes`…)은 두 서비스가 기동을 거부하므로 여기서도 거부한다.
+GH_OPS_STATE=""
 gh_operations_state() {
-  case "$(gh_operations_value)" in
-    true) printf 'on' ;;
-    ''|false) printf 'off' ;;
-    *) printf 'reject' ;;
-  esac
+  if [ -z "$GH_OPS_STATE" ]; then
+    case "$(gh_operations_value)" in
+      true) GH_OPS_STATE=on ;;
+      ''|false) GH_OPS_STATE=off ;;
+      *) GH_OPS_STATE=reject ;;
+    esac
+  fi
+  printf '%s' "$GH_OPS_STATE"
 }
 gh_operations_enabled() { [ "$(gh_operations_state)" = on ]; }
 

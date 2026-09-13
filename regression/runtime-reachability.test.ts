@@ -4047,19 +4047,21 @@ describe('REL-007 R0: GitHub Operations Plane이 배포에서 실제로 돈다 (
   /**
    * `DEV-608`이 Node 축에 세운 방어(켜짐의 정의가 같은가)를 **셸·compose 경계**에도 건다 (`DEV-664`).
    *
-   * prsctl은 `.env`를 셸로 읽어 프로파일을 켜고, search-api는 같은 값을 compose의 dotenv 파서를 지나
-   * 받는다. 두 파서가 같은 입력에 다른 답을 내면 「search-api만 켜지고 실행기는 없는 형상」이 조용히
-   * 생기고 요청이 영원히 `queued`다. 독립 검토가 `"true"`에서 그것을 실측했다.
+   * prsctl은 search-api가 받을 값을 `docker compose config`의 렌더에서 읽어 프로파일을 켠다. 이 시험은
+   * **실제 `docker compose`**로 `.env`의 키·값 변형(따옴표·주석·`export `·공백)을 렌더해, prsctl의 판정이
+   * search-api의 `resolveOperationsEnabled`와 같은 입력에 같은 답(on/off/reject)을 내는지 본다. 처음 판은
+   * 셸로 `.env`를 다시 파싱했고 값 쪽만 맞춘 뒤 키 쪽(`export KEY=…`, `KEY = true`)에서 다시 갈렸다 —
+   * 독립 검토가 둘 다 실측했다. 렌더를 단일 근거로 삼으면 갈릴 자리가 없고, 이 시험은 그 배선(추출
+   * sed·분류)이 유지되는지 건다. **docker가 없으면 실패다** — skip은 통과가 아니다.
    */
-  it('prsctl의 켜짐 판정이 compose의 dotenv 규칙과 search-api의 판정에 같은 답을 낸다 — 입력 표로 건다 (DEV-664)', async () => {
+  it('prsctl의 켜짐 판정이 compose의 렌더와 search-api의 판정에 같은 답을 낸다 — 실제 docker compose로 키·값 변형을 건다 (DEV-664)', async () => {
     const { resolveOperationsEnabled } = await import('../apps/search-api/src/gh/config.js');
+    execFileSync('docker', ['compose', 'version'], { stdio: 'ignore' });
     const prsctl = read('deploy/single-host/prsctl');
     const fn = (name: string): string => new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?\\r?\\n\\}`, 'm').exec(prsctl)?.[0] ?? '';
-    const shell = [fn('gh_operations_value'), fn('gh_operations_state')].join('\n');
-    expect(shell).toContain('gh_operations_value()');
+    const shell = ['GH_OPS_STATE=""', fn('gh_operations_value'), fn('gh_operations_state')].join('\n');
+    expect(shell).toContain('docker compose');
     expect(shell).toContain('gh_operations_state()');
-    /** compose-go dotenv가 값을 넘기는 규칙 — 실측(2026-09-13, `docker compose config`): 감싼 따옴표 제거, 공백 뒤 `#` 주석 제거, 앞뒤 공백 제거. */
-    const dotenv = (raw: string): string => raw.replace(/\s+#.*$/, '').trim().replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1').trim();
     const classifyApi = (value: string): 'on' | 'off' | 'reject' => {
       try {
         return resolveOperationsEnabled({ GH_OPERATIONS_ENABLED: value }) ? 'on' : 'off';
@@ -4067,21 +4069,41 @@ describe('REL-007 R0: GitHub Operations Plane이 배포에서 실제로 돈다 (
         return 'reject';
       }
     };
+    // compose가 `:?`로 요구하는 변수를 전부 채운 `.env` — 값 자체는 이 시험의 관심사가 아니다.
+    const compose = read('deploy/single-host/compose.yml');
+    const required = [...new Set([...compose.matchAll(/\$\{([A-Z_]+):\?\}/g)].map((m) => m[1] ?? ''))].filter((k) => k !== '');
+    const base = required.map((key) => `${key}=x`).join('\n');
     const dir = mkdtempSync(join(tmpdir(), 'prs-gh-ops-'));
+    const composeFile = join(root, 'deploy/single-host/compose.yml');
     try {
-      const inputs = ['true', ' true ', '"true"', "'true'", 'true # 켠다', '"true" # 켠다', 'false', '"false"', '', 'TRUE', 'True', 'yes', '1', 'true#x'];
-      for (const raw of inputs) {
+      const lines = [
+        'GH_OPERATIONS_ENABLED=true', 'GH_OPERATIONS_ENABLED= true ', 'GH_OPERATIONS_ENABLED="true"', "GH_OPERATIONS_ENABLED='true'",
+        'GH_OPERATIONS_ENABLED=true # 켠다', 'GH_OPERATIONS_ENABLED="true" # 켠다', 'export GH_OPERATIONS_ENABLED=true',
+        '  GH_OPERATIONS_ENABLED=true', 'GH_OPERATIONS_ENABLED = true', 'GH_OPERATIONS_ENABLED=false', 'GH_OPERATIONS_ENABLED="false"',
+        'GH_OPERATIONS_ENABLED=', 'GH_OPERATIONS_ENABLED=TRUE', 'GH_OPERATIONS_ENABLED=yes', 'GH_OPERATIONS_ENABLED=true#x', '',
+      ];
+      for (const line of lines) {
         const envFile = join(dir, '.env');
-        writeFileSync(envFile, `PRS_VERSION=x\nGH_OPERATIONS_ENABLED=${raw}\n`);
-        const shellState = execFileSync('bash', ['-c', `${shell}\ngh_operations_state`], { env: { ...process.env, ENV_FILE: envFile }, encoding: 'utf8' }).trim();
-        expect(shellState, `prsctl ${JSON.stringify(raw)}`).toBe(classifyApi(dotenv(raw)));
+        writeFileSync(envFile, `${base}\n${line}\n`);
+        const env = { ...process.env, ENV_FILE: envFile, PROJECT: 'prs-parity-test', COMPOSE_FILE: composeFile };
+        const rendered = execFileSync('bash', ['-c', `${shell}\ngh_operations_value`], { env, encoding: 'utf8' }).trim();
+        const state = execFileSync('bash', ['-c', `${shell}\ngh_operations_state`], { env, encoding: 'utf8' }).trim();
+        expect(state, `prsctl ${JSON.stringify(line)} (rendered=${JSON.stringify(rendered)})`).toBe(classifyApi(rendered));
+        // compose는 따옴표·주석·export·공백을 벗겨 값만 넘긴다 — 실측 그대로다.
+        if (line.includes('true') && !line.includes('TRUE') && !line.includes('true#x')) expect(rendered, line).toBe('true');
       }
-      // 스위치 줄이 아예 없으면 꺼짐이다 — 파일이 없을 때도 같다.
-      writeFileSync(join(dir, '.env'), 'PRS_VERSION=x\n');
-      expect(execFileSync('bash', ['-c', `${shell}\ngh_operations_state`], { env: { ...process.env, ENV_FILE: join(dir, '.env') }, encoding: 'utf8' }).trim()).toBe('off');
-      expect(execFileSync('bash', ['-c', `${shell}\ngh_operations_state`], { env: { ...process.env, ENV_FILE: join(dir, 'missing.env') }, encoding: 'utf8' }).trim()).toBe('off');
+      // 파일이 없으면 꺼짐이다 (require_env 전에도 불린다).
+      const missing = { ...process.env, ENV_FILE: join(dir, 'missing.env'), PROJECT: 'prs-parity-test', COMPOSE_FILE: composeFile };
+      expect(execFileSync('bash', ['-c', `${shell}\ngh_operations_state`], { env: missing, encoding: 'utf8' }).trim()).toBe('off');
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it('실행기의 시험 전용 훅(timeoutMsOverride·stdoutLimitOverride·beforeClaim)은 운영 배선에 넘기지 않는다', () => {
+    const index = read('apps/gh-executor/src/index.ts');
+    for (const hook of ['timeoutMsOverride', 'stdoutLimitOverride', 'beforeClaim']) {
+      expect(index, hook).not.toContain(hook);
     }
   });
 

@@ -310,7 +310,8 @@ export async function runExecution(deps: RunnerDeps, executionId: number): Promi
     });
   }
 
-  deps.metrics.executions.inc({ result: state });
+  // 회수된 뒤 돌아온 결과는 행 상태(failed/executor_lost)와 다르므로 그 상태로 세지 않는다.
+  deps.metrics.executions.inc({ result: finished === null ? 'dropped_after_reclaim' : state });
   deps.metrics.duration.observe(result.durationMs / 1000);
   deps.log({
     level: state === 'succeeded' ? 'info' : 'warn',
