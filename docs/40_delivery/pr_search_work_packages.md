@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.28 | 갱신일: 2026-09-13
+> 상태: review | 버전: v2.29 | 갱신일: 2026-09-13
 
 ## 1. 목적
 
@@ -58,6 +58,7 @@
 | WP-075 | PR 제목 M 넘버 표기 | REL-003 (**CR-077 · CR-084 · CR-085**) | WP-074, WP-012 | **done** — 검증 6.81장, 안전성 보강 6.82장(`CR-085`). 전역 스위치 `MNUMBER_ANNOTATE_ENABLED`의 기본값이 **꺼짐**이라 이 변경을 받는 것만으로 제목이 바뀌지 않는다. **사내 실제 GHE 표기는 `NOT RUN`** — 외부에 GHE가 없어 쓰기 흐름 전부를 로컬 HTTP 목으로 검증했다. `CR-085`가 실패 경로의 안전성을 보강했다: 변경 요청 재시도가 판단 전체를 다시 지나고(`AC-8`), 서버가 제목을 다르게 저장하면 자동 재시도를 멈추며(`AC-9`), 결과를 모르는 요청은 실패로 적지 않는다(`AC-10`). `DEV-629`(실행자 배제)는 이 판에서 닫혔다 |
 | WP-072 | 사내 반입 운반 경로 — GitHub Release 발행과 다운로드 | **배포 (CR-063)** | WP-071 | done |
 | WP-076 | 사내 GHE 직접 로그인 | **인증 (CR-083)** | WP-012, WP-015 | **done** — 검증 6.78장. 사내 실제 GHE OAuth App 검증은 `NOT RUN` |
+| WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | WP-012, WP-015 | **done** — 검증 6.83장. R0 `pr.list` 하나를 인가→미리보기→실행→결과·자기 이력까지 연다. 상위 WP 일곱은 이 수직이 들여온 만큼만 `in_progress`다. 출력 청크 스트리밍은 상태만(`DEV-651`), 분류 195건 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증은 `NOT RUN`** |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003, **WP-067** | done |
 | WP-030 | 되돌림·체리픽·스택 관계 파생 | REL-004 | WP-029, WP-020, **WP-067** | done |
 | WP-031 | 관계 조회 API와 상세 화면 관계 섹션 | REL-004 | WP-030, WP-017, WP-016 | done |
@@ -74,10 +75,10 @@
 | WP-042 | 이분 탐색 보조 | REL-006 | WP-023, WP-025 | done |
 | WP-043 | 관계 그래프 API와 W-007 | REL-006 | WP-031 | todo |
 | WP-044 | 검색 결과 내보내기 | REL-006 | WP-013, WP-016 | done |
-| WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 | WP-001 | todo |
-| WP-046 | 위임 GitHub 신원과 Operations App | REL-007 | WP-012 | todo |
-| WP-047 | 격리 gh 실행기와 실행 수명주기 | REL-007 | WP-045, WP-046 | todo |
-| WP-048 | W-010 GitHub Command Center 수직 슬라이스 | REL-007 | WP-047 | todo |
+| WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 | WP-001 | **in_progress** — 부분(`WP-077`/`CR-086`): 고정 gh 2.97.0 인벤토리 추출·manifest(`manifest/gh-2.97.0.json`, hash `ad00027d…`)·`API-GH-001`이 들어왔다. 남은 것: 분류 100%(unknown 195건, `DEV-657`)·parity 검증기·`gh_capability_snapshot`·A-006 |
+| WP-046 | 위임 GitHub 신원과 Operations App | REL-007 | WP-012 | **in_progress** — 부분(`WP-077`/`CR-086`): 인가 왕복(state+PKCE)·AES-256-GCM 봉인 보관·요청 시점 갱신·철회·`API-GH-007`·web 콜백 라우트가 들어왔다. 남은 것: 주기 갱신 잡(`JOB-GH-004`)·A-007 연결 상태 화면·비밀 저장소 연동(`DEV-652`) |
+| WP-047 | 격리 gh 실행기와 실행 수명주기 | REL-007 | WP-045, WP-046 | **in_progress** — 부분(`WP-077`/`CR-086`): `gh-executor`(shell 없는 spawn·재검증·argv 대조·취소·상한·하트비트·고아 회수·잔여 스윕·헬스)·`prs:gh:executions`·마이그레이션 028이 들어왔다. 남은 것: 상충 작업 잠금(`gh_execution_lock`)·확인·승인 상태 전이·출력 청크 스트리밍(`DEV-651`) |
+| WP-048 | W-010 GitHub Command Center 수직 슬라이스 | REL-007 | WP-047 | **in_progress** — 부분(`WP-077`/`CR-086`): W-010 최소(`pr.list` 폼·미리보기·실행·결과·취소)와 W-021 최소(이력·상세·같은 구성 재실행)가 들어왔다. 남은 것: capability 일반 생성형 폼·Recipe·A-006·A-007 |
 | WP-049 | PR 작업 (W-011) | REL-008 | WP-048 | todo |
 | WP-050 | Issue·Discussion 작업 (W-012) | REL-008 | WP-048 | todo |
 | WP-051 | 저장소 작업 (W-013) | REL-009 | WP-048, WP-057 | todo |
@@ -90,12 +91,12 @@
 | WP-058 | Recipe 빌더 (W-023) | REL-011 | WP-049, WP-052, WP-066 | todo |
 | WP-059 | capability 드리프트와 정책 관리 (A-005, A-006) | REL-011 | WP-045, WP-048 | todo |
 | WP-060 | 전체 parity 검증 | REL-011 | WP-045 ~ WP-059, WP-061 ~ WP-066 | todo |
-| WP-061 | 의미 capability 제약 엔진 | REL-007 | WP-045 | todo |
-| WP-062 | gh 출력·파일 안전 경계 | REL-007 | WP-047 | todo |
+| WP-061 | 의미 capability 제약 엔진 | REL-007 | WP-045 | **in_progress** — 부분(`WP-077`/`CR-086`): `evaluateInvocation`(열거·정수 범위·JSON 필드 허용 목록·`context_required`·`repository_format`)을 폼과 서버가 **같은 함수**로 쓴다. 남은 것: 13종 제약 전체·관계 제약 일반화 |
+| WP-062 | gh 출력·파일 안전 경계 | REL-007 | WP-047 | **in_progress** — 부분(`WP-077`/`CR-086`): `SafeOutputStream`(CSI·OSC·C0/C1·UTF-8 꼬리·상한·바이너리)·`sanitizeText`·화면의 텍스트 노드 렌더(원시 HTML 0건 회귀)가 들어왔다. 남은 것: 파일 아티팩트 경계(`FR-GH-005`) |
 | WP-063 | interactive 웹 등가와 extension 신뢰 어댑터 | REL-010 | WP-045, WP-055 | todo |
 | WP-064 | gh api 스키마 브리지와 호스트 capability 판정 | REL-010 | WP-056 | todo |
 | WP-065 | 조합 parity 검증기 | REL-011 | WP-061, WP-063, WP-064, WP-066 | todo |
-| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 | WP-045, WP-061 | todo |
+| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 | WP-045, WP-061 | **in_progress** — 부분(`WP-077`/`CR-086`): `pr_list_v1` 결과 계약(허용 10필드·무해화·`possibly_more`·절삭 판정)이 들어왔다. 남은 것: capability 그래프·bindable 결과·Recipe 연결 |
 
 의존 그래프에 순환은 없다. WP-001~WP-003과 WP-005·WP-006은 병렬 착수 가능하다.
 
@@ -2690,12 +2691,12 @@ external main의 특정 커밋
 | REL-004 | WP-029 ~ WP-036 | 8 |
 | REL-005 | WP-037 ~ WP-040 | 4 |
 | REL-006 | WP-041 ~ WP-044, WP-069 | 5 |
-| REL-007 | WP-045 ~ WP-048, WP-061, WP-062, WP-066 | 7 |
+| REL-007 | WP-045 ~ WP-048, WP-061, WP-062, WP-066, WP-077 | 8 |
 | REL-008 | WP-049 ~ WP-050 | 2 |
 | REL-009 | WP-051 ~ WP-053, WP-057 | 4 |
 | REL-010 | WP-054 ~ WP-056, WP-063, WP-064 | 5 |
 | REL-011 | WP-058 ~ WP-060, WP-065 | 4 |
-| 합계 | | 68 |
+| 합계 | | 69 |
 
 **`WP-074`·`WP-075`는 이 합계에 넣지 않는다 (CR-077).** 두 WP가 구현하는 `FR-SEQ-008`·`FR-SEQ-009`는 `REL-003`이 세운 시퀀스 계열의 파생이라 요구사항 소속은 `REL-003`이지만, **`REL-003`의 완료 판정은 이미 검증된 `merge_seq`를 기준으로 서 있고 M 넘버가 그 판정을 재개방하지 않는다** (로드맵 4.2장). `WP-070`~`WP-073`을 이 표에 넣지 않은 것과 같은 처리다.
 
@@ -2726,3 +2727,28 @@ external main의 특정 커밋
 - [x] 변이 시험 13종 전부 kill (6.78장), 필수 checks 통과, 문서 검사기 신규 issue 0건.
 - [ ] **사내 실제 GHE OAuth App 검증** — `NOT RUN`. 다음 반입이 확인한다 (6.78장의 목록 넷).
 
+### WP-077 REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`)
+
+> `CR-086` 신설. **구현이 들어왔다** — 검증 기록은 원장 6.83장이다.
+>
+> 사내 실제 GHE에 Operations App을 등록해 인가·실행이 성립하는지는 `NOT RUN`이다. 외부에는 GHE가 없어
+> 인가 왕복·GraphQL·토큰 철회를 **실제 HTTPS 목 GHE**에 **실제 고정 gh 2.97.0**을 붙여 검증했다.
+
+- 목표: 사용자가 웹에서 저장소를 고르고 `pr list`의 상태·건수·JSON 필드를 넣어 실행될 argv를 확인한 뒤, 자신의 위임 권한으로 격리된 gh를 실행하고 결과와 자기 이력을 본다. R0 하나만 연다.
+- 관련 FR: `FR-GH-001` AC-6, `FR-GH-002` AC-1·AC-3·AC-4·AC-7·AC-8·AC-10, `FR-GH-003` AC-1·AC-4·AC-5·AC-8, `FR-GH-006` AC-3·AC-4·AC-5, `FR-GH-008` AC-1~AC-7, `FR-GH-011` AC-1~AC-3, `FR-GH-012` AC-1~AC-5, `NFR-010`, `NFR-011`, `NFR-012`.
+- 관련 계약: `ADR-013`, `ADR-016`, `ADR-017`, `ADR-018`, `API-GH-001`·`API-GH-002`·`API-GH-003`·`API-GH-005`·`API-GH-007`·`API-GH-010`·`API-GH-011`, `ENT-GH-001`·`ENT-GH-002`, `JOB-GH-001`·`JOB-GH-007`, `prs:gh:executions`.
+- 선행 WP: `WP-012`(인증 라이브러리), `WP-015`(인증 라우트·프록시). `WP-045`~`WP-048`·`WP-061`·`WP-062`·`WP-066`은 이 WP가 **부분**을 들여온 상위 WP이며, 3장 표의 각 행이 무엇이 들어왔고 무엇이 남았는지 적는다.
+
+구현 범위: `@prs/gh-cli`(pin 2.97.0·help 파서·인벤토리·manifest 조립/해시·의미 제약 평가기·유일한 argv 빌더·실행 환경 허용 목록 14키·`SafeOutputStream`·`pr_list_v1` 결과·AES-256-GCM 봉인, 진입점은 브라우저 안전·Node 전용은 `/node`); `gh-executor`(shell 없는 spawn·detached 그룹·타임아웃·취소·출력 상한·재검증→claim→실행→기록·하트비트·고아 회수·잔여 큐 스윕·헬스); 마이그레이션 028(`github_identity_connection`·`gh_identity_secret`·`gh_execution` 월별 파티션·`gh_execution_idempotency`); `search-api` `/api/v1/gh/*` 열 개(인가 시작·콜백·상태·철회, capabilities, 저장소 컨텍스트, 미리보기, 실행, 이력·상세, SSE 상태, 취소); web `/gh`·`/gh/history`·`/gh/identity/callback`과 컴포넌트 여섯; compose 선택 프로파일 `github-operations`·prsctl·번들·smoke 6절·`.env.example`; 회귀 REL-007 블록.
+
+제외: R1~R3 capability, `gh api`·extension·Recipe·파일 입출력(`FR-GH-004`·`FR-GH-005`·`FR-GH-007`), 확인·승인 흐름(`FR-GH-009`), 상충 작업 잠금, 출력 청크 스트리밍(`DEV-651`), 주기 토큰 갱신 잡, A-006·A-007 관리 화면, 분류 100%(`DEV-657`), K8s manifest, 릴리스 발행, 사내 실검증.
+
+완료 기준:
+- [x] QA-GH-01: capability 목록에 미지원·차단 항목이 사유와 함께 보이고 숨겨지지 않는다 (a11y·e2e).
+- [x] QA-GH-02·QA-GH-03: 위반 조합에서 실행 버튼이 닫히고 미리보기 요청이 서버로 나가지 않으며, 클라이언트를 우회한 요청도 서버가 **같은 함수**로 거부한다 (routes 통합의 우회 요청 10종).
+- [x] QA-GH-04·QA-GH-05·QA-GH-21: 미리보기에 비밀 값이 없고 유효 컨텍스트가 보이며, 미리보기 argv와 실제 실행 argv가 같은 빌더에서 나온다 — 실행기가 저장값과 재조립값을 대조하고 다르면 실행하지 않는다.
+- [x] QA-GH-11·QA-GH-22·QA-GH-23·QA-GH-24·QA-GH-25: 절삭·CSI/OSC·청크 경계·심은 마크업·바이너리가 화면을 조작하지 못한다 (gh-cli 단위, a11y, 회귀 원시 HTML 0건).
+- [x] QA-GH-12·QA-GH-14·QA-GH-17·QA-GH-18: 미연결 안내와 실행 차단, 같은 버튼 두 번에 실행 하나(`Idempotency-Key`), 레이블 연결·axe 0건, live region.
+- [x] QA-GH-10 전반: 실행 상태가 스트림으로 흐르고 취소가 실제 프로세스 그룹에 닿아(SIGTERM→SIGKILL) 3초 안에 상태가 바뀐다 (실행기 통합 10/10). **출력 청크는 흘리지 않는다** — 제외 항목(`DEV-651`).
+- [x] 변이 3종 kill(중복 제출 가드·prefill 여분 키·`canExecute`), 전체 배터리 통과(e2e 1건은 무관한 flaky, `DEV-662`), 문서 검사기 신규 issue 0건 (6.83장).
+- [ ] **사내 실제 GHE·Operations App 검증** — `NOT RUN`. 다음 반입이 확인한다 (6.83장의 목록).

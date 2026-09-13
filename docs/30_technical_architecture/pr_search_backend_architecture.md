@@ -1,6 +1,6 @@
 # PR Search 백엔드 아키텍처
 
-> 상태: review | 버전: v0.7 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.8 | 갱신일: 2026-09-13
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 
@@ -463,6 +463,20 @@ Elasticsearch와 PostgreSQL 사이에는 분산 트랜잭션을 쓰지 않는다
 | `gh-recipe` | `search-api` + `gh-executor` | Recipe 정의 검증, 단계 진행, 출력 바인딩 | FR-GH-005 |
 | `gh-audit` | `search-api` | 실행 감사 선기록, 이력 조회, 재실행 | FR-GH-012 |
 
+**R0 배치 (CR-086 / WP-077).** 모듈은 이름대로 나뉘지 않고 두 앱과 한 패키지에 산다.
+
+| 모듈 | R0 실체 | 비고 |
+| --- | --- | --- |
+| gh-registry | `packages/gh-cli/src/{pin,help-parse,inventory,manifest,manifest-file}.ts` + `apps/search-api/src/gh/routes.ts`(API-GH-001) | 커밋된 manifest `packages/gh-cli/manifest/gh-2.97.0.json`(hash `ad00027d…`). 인벤토리 추출(`pnpm gh:manifest`)은 `/node` 서브패스 |
+| gh-command | `packages/gh-cli/src/{constraints,argv,env}.ts` + `apps/search-api/src/gh/executions.ts`(`prepare`) | `evaluateInvocation`은 **브라우저 안전**해 web의 폼도 같은 함수를 부른다 (FR-GH-003 AC-8). argv 빌더는 `buildArgv` 하나뿐이며 회귀가 정의 수를 센다 |
+| gh-identity | `apps/search-api/src/gh/identity.ts` + `packages/gh-cli/src/vault.ts` + `packages/db/src/repositories/gh-identity.ts` | 인가 왕복(state+PKCE, Redis 10분), 봉인, 요청 시점 갱신, 철회 |
+| gh-policy | `prepare`의 `policy: 'r0_immediate'` | R0는 즉시 실행뿐. 실행 차원 `execution: allowed \| not_implemented \| policy_blocked`이 manifest에 있고 열리지 않은 capability는 `GH_CAPABILITY_NOT_EXECUTABLE`(409) |
+| gh-exec | `apps/gh-executor/src/{config,spawn,workspace,runner,sweeper,metrics,server,index}.ts` | 별도 프로세스. `spawn`은 `spawn.ts` 한 곳, shell 없음 |
+| gh-audit | `apps/search-api/src/gh/executions.ts`(`toExecutionView`·`listVisibleExecutions`·`findVisibleExecution`) + `packages/db/src/repositories/gh-execution.ts` | 감사의 정본은 `gh_execution` 행이다. 이력 가시성은 본인만, `security_officer`는 `?all=true`, 남의 것은 404 |
+| gh-recipe | 없음 | 다음 판 |
+
+12.2의 14단계 가운데 R0가 지나는 것은 1(중복 키)·2(capability, 여기에 실행 차원 확인이 더해진다)·3(registry)·4(제약)·5(위임 신원)·11(감사 = 실행 행 삽입)·12(발행)·13(실행)·14(결과)이며, 6~10(권한 판정·정책·확인·승인·잠금)은 R0에서 「없음」으로 지난다 — 권한 판정은 GitHub이 위임 토큰으로 강제한다(`permission_check: delegated_token_intersection`). 미리보기(`POST /gh/executions/preview`)는 1과 12를 뺀 같은 준비 단계를 지난다.
+
 ### 12.2 실행 처리 경로
 
 ```text
@@ -489,4 +503,4 @@ Elasticsearch와 PostgreSQL 사이에는 분산 트랜잭션을 쓰지 않는다
 
 - **쓰기 작업은 자동 재시도하지 않는다.** 타임아웃된 `pr merge`가 실제로 머지되었는지 실행기는 알 수 없다. 재시도 판단은 결과를 본 사용자가 한다.
 - 실행기 장애로 남은 `running` 행은 JOB-GH-007이 `failed`로 회수한다.
-- 스트리밍 연결이 끊겨도 실행은 계속된다. 재접속 시 현재 상태와 누적 출력을 다시 전달한다.
+- 스트리밍 연결이 끊겨도 실행은 계속된다. 재접속 시 현재 상태와 누적 출력을 다시 전달한다. **R0는 상태만 다시 전달한다** — 누적 출력은 종료 뒤 발췌로만 온다 (`DEV-651`).

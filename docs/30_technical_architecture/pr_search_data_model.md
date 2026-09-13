@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.21 | 갱신일: 2026-09-13
+> 상태: review | 버전: v0.22 | 갱신일: 2026-09-13
 
 CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025의 최종 필드·check·unique·FK·초기화·role grant·checkpoint/epoch·retention/rollback은 [상세 설계](pr_search_wp074_design.md) 6~7·10절이 소유한다. 아래 CR-077 DDL은 기본 다섯 필드만 보여주는 부분 예시이며 단독 구현하지 않는다.
 
@@ -743,7 +743,21 @@ GRANT prs_admin TO prs_retention;
 
 ### 3.5 GitHub Operations (CR-005 신규)
 
-기존 마이그레이션 001~005는 수정하지 않는다. 아래 스키마는 **006 이후 additive 마이그레이션**으로만 추가한다.
+기존 마이그레이션은 수정하지 않는다. 아래 스키마는 additive 마이그레이션으로만 추가한다. **이 장의 `006`·`007`·`009`는 초기 계획 번호다** — 이 저장소의 실제 마이그레이션 공간에서 GitHub Operations의 첫 마이그레이션은 **`028_gh_operations`**이며(001~027은 Search Plane이 썼다), 첫 수직 판(`CR-086` / `WP-077`)이 실제로 쓰는 것만 만들었다. 실현 상태는 아래 표가 정본이다.
+
+**028이 만든 것과 만들지 않은 것 (CR-086).**
+
+| 표 | 028 | 이유 |
+| --- | --- | --- |
+| `github_identity_connection` | 만듦 (PK `user_id`, `host`, `token_ref`, 만료·철회 열) | 위임 신원의 정본 |
+| `gh_identity_secret` | **신설** (`user_id` FK, `key_id`, `access_sealed`·`refresh_sealed` BYTEA) | 단일 호스트에는 비밀 저장소가 없다. `token_ref`가 가리키는 자리를 이 DB에 두되 **원문이 아니라 AES-256-GCM 봉인**만 넣는다. 봉인 키는 `.env`에 있고 DB에는 없으므로 덤프만으로는 토큰을 되살릴 수 없다. 비밀 저장소의 대체이지 동등물이 아니다 (`DEV-652`, 보안 문서 10.2) |
+| `gh_execution` | 만듦 (월별 파티션, 소유자 `prs_admin`, `PARTITIONED_TABLES` 등재, 보존 12개월) | 실행 기록이자 `FR-GH-012` AC-1의 감사 항목 전부를 담는 **실행 감사의 정본**. `audit_record`에는 별도 행을 남기지 않는다 |
+| `gh_execution_idempotency` | **신설** (비파티션, PK `(user_id, idempotency_key)`, `execution_id`) | 아래 `gh_execution_idem_uk`는 파티션 표에서 **유일성을 강제하지 못한다** — 파티션 키 `requested_at`이 인덱스에 들어가야 하고 두 요청의 그 값은 늘 다르다. 통합 시험이 같은 키로 두 행이 생기는 것을 실제로 보였다. 그래서 요청 수락이 이 보조 표에 먼저 `INSERT … ON CONFLICT DO NOTHING`을 하고 실행 행을 만든다. 경합 3건 동시 삽입에서 1건만 성립한다 (`DEV-650`). 보존 정책은 아직 없다 (`DEV-656`) |
+| `gh_execution_lock` | 만들지 않음 | R0 읽기에는 상충 작업이 없다 |
+| `gh_execution_artifact` | 만들지 않음 | 파일 입출력을 열지 않았다 |
+| `gh_recipe` · `gh_recipe_revision` | 만들지 않음 | WP-058 |
+| `gh_approval` | 만들지 않음 | R0는 승인이 없다 |
+| `gh_capability_snapshot` | 만들지 않음 | `CHECK (unclassified_count = 0)`는 parity 게이트(`NFR-009`)를 통과한 뒤에만 참이 될 수 있다. 미분류 195건이 남아 있어 만들면 곧바로 거짓이 된다 (`DEV-657`) |
 
 ```sql
 -- 006: 위임 신원. 토큰 원문을 저장하지 않는다 (FR-GH-008 AC-5).
@@ -792,6 +806,9 @@ CREATE TABLE gh_execution (
 ) PARTITION BY RANGE (requested_at);
 
 -- 같은 중복 방지 키의 재요청은 새 실행을 만들지 않는다 (FR-GH-012 AC-5).
+-- **아래 유니크 인덱스는 설계 의도일 뿐 파티션 표에서는 같은 키를 막지 못한다** (DEV-650, CR-086).
+-- 028은 이것을 일반 인덱스(gh_execution_idem_idx)로 깔고, 유일성은 보조 표
+-- gh_execution_idempotency(user_id, idempotency_key)의 PK가 강제한다 — 위 실현 상태 표 참고.
 CREATE UNIQUE INDEX gh_execution_idem_uk ON gh_execution (user_id, idempotency_key, requested_at);
 CREATE INDEX gh_execution_user_idx ON gh_execution (user_id, requested_at DESC);
 CREATE INDEX gh_execution_target_idx ON gh_execution (repository, target, requested_at DESC);
@@ -1374,6 +1391,8 @@ PR과 커밋을 함께 보지만(`W-001-RESULTS`의 유형 열) 집계는 PR만 
 | `gh_execution` | 1년 (NFR-012, 감사와 동일) | 월별 파티션 드롭 (관리 롤만) | PostgreSQL 백업에 포함 |
 | `gh_execution_artifact` | 실행 기록보다 짧게 — 기본 30일 | `expires_at` 경과분 정리 잡 | 백업 안 함. 재실행으로 재생성 |
 | `github_identity_connection` | 연결 해제 또는 만료까지 | 하드 삭제 | 참조만 백업. 토큰은 비밀 저장소 소관 |
+| `gh_identity_secret` | 연결과 함께 (재연결·갱신 시 봉인 교체, 철회 시 삭제·행은 유지) | 하드 삭제 | 봉인만 있다. 키(`GH_IDENTITY_VAULT_KEY`)는 `.env`에만 — 백업에 키가 없으면 복원해도 되살릴 수 없으며 그것이 의도다 (CR-086) |
+| `gh_execution_idempotency` | **정하지 않았다 — 지금은 영구** (`DEV-656`) | 없음 | 실행 기록의 12개월과 짝을 맞출 정리 잡은 다음 판이다 |
 | `gh_recipe`, `gh_recipe_revision` | 영구 (사용자 삭제 시 제거) | 하드 삭제 | PostgreSQL 백업에 포함 |
 | `gh_approval` | 1년 (연결된 실행과 동일) | 연결 실행 파티션 드롭 시 함께 | PostgreSQL 백업에 포함 |
 | `gh_capability_snapshot` | 영구 | 삭제하지 않음 | 과거 실행의 argv 해석에 필요하다 |

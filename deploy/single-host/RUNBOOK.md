@@ -14,7 +14,7 @@
 
 **고가용 구성이 아니다.** `NFR-004`의 가용성 목표와 RTO 30분은 이 형상에서 보장하지 않는다. 다중 서버가 필요해지면 Profile B(Kubernetes)로 승격하며, 그 산출물은 `deploy/k8s/`에 이미 있다.
 
-**반입 대상은 read-only Search/Investigation Plane이다.** GitHub Operations Plane(`gh-executor`)은 이 형상에 포함하지 않는다.
+**반입 대상은 read-only Search/Investigation Plane이다.** GitHub Operations Plane(`gh-executor`)은 번들에 담기되 **기본 형상에서는 꺼져 있다** — 켜는 절차는 7.C다 (`CR-086`).
 
 ---
 
@@ -578,6 +578,7 @@ TLS 없이 화면만 띄워 보려면 `AUTH_ENABLED=false`로 두며, 그 형상
 | `worker-sequence` · `worker-mirror` · `worker-release` | 자기 `volumes`가 anchor의 것을 덮는다 — **개별로 더한다** |
 | `web` · `search-api` | 워커가 아니라 anchor를 받지 않는다 |
 | `ingest-gateway` | GHE로 나가지 않아 TLS는 필요 없지만, `NODE_EXTRA_CA_CERTS`가 전역이라 **없는 파일을 가리키면 기동 로그에 경고가 남는다.** 경고를 없애려면 함께 건다 |
+| `gh-executor` (7.C로 켰을 때만) | GHE로 나가는 것은 Node가 아니라 **gh(Go)**다. gh는 `NODE_EXTRA_CA_CERTS`를 읽지 않으므로 compose가 같은 값을 `GH_EXECUTOR_CA_FILE`로 배선해 실행 환경의 `SSL_CERT_FILE`로 넘긴다 — 마운트만 같은 경로로 더하면 된다. 꺼진 형상에는 컨테이너가 없다 |
 
 **건 뒤에 실제로 있는지 확인한다.** 마운트를 빠뜨려도 컨테이너는 뜨고, 그 역할이
 GHE로 나가는 첫 순간에야 인증서 오류로 드러난다.
@@ -796,6 +797,42 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 되돌리고 `./prsctl upgrade`를, 한 저장소만 멈추려면 그 저장소의 `annotate_enabled`를
 끈다. 어느 쪽도 이미 붙은 접두를 지우지 않는다 — 지우려면 사람이 PR 제목을 직접 고친다.
 
+
+### 7.C GitHub 작업(Operations App)을 켜기 (WP-077 / FR-GH-008 · FR-GH-012, `CR-086`)
+
+**기본은 꺼짐이다.** 반입한 형상은 GitHub 작업 화면을 열지 않는다 — `/gh`에 들어가면 「이 배포에서는 GitHub 작업이 열리지 않았습니다」가 보이고 검색·조사 화면은 그대로다. 켜면 사용자가 자신의 GitHub 계정을 **위임**해 `gh pr list`를 격리된 실행기에서 돌리고 결과와 자기 이력을 본다. 이 판이 여는 명령은 그것 하나이며 **읽기 전용**이다 — 7.B와 달리 GHE를 고치지 않는다.
+
+**자격은 넷째다.** 수집용 Data App(2장) · 로그인용 OAuth App(6장) · 표기용 App(7.B) · **Operations App**(여기). 서로 공유하지 않는다. 실행 권한은 이 App의 권한과 사용자 GitHub 권한의 **교집합**이며, 사용자가 화면에서 직접 인가해야 실행이 시작된다 — 설치 권한으로 대신하지 않는다.
+
+1. **Operations App을 GHE에 GitHub App으로 등록한다.** 권한은 `Pull requests: Read` 하나. **Callback URL**은 `https://<서비스 주소>/gh/identity/callback`. 「Expire user authorization tokens」를 **켠다**(액세스 토큰이 8시간 뒤 만료되고 실행 요청 시점에 갱신된다). Webhook은 끈다. Client ID와 Client secret을 받아 둔다.
+2. **`.env`에 값을 채운다.**
+
+   ```
+   GH_OPERATIONS_ENABLED=true
+   GHE_OPS_CLIENT_ID=<App의 Client ID>
+   GHE_OPS_CLIENT_SECRET=<Client secret>
+   GHE_OPS_REDIRECT_URI=https://<서비스 주소>/gh/identity/callback
+   GH_IDENTITY_VAULT_KEY=<openssl rand -hex 32 의 출력>
+   GH_EXECUTOR_MAX_CONCURRENT=2
+   ```
+
+   봉인 키는 한 번 만들면 바꾸지 않는다 — 바꾸면 기존 봉인을 풀 수 없어 모든 사용자가 다시 연결해야 한다. `GHE_OPS_REDIRECT_URI`는 App에 등록한 값과 **문자 그대로** 같아야 한다. 사설 CA를 쓰면 6장의 CA 파일을 `gh-executor`에도 같은 경로로 마운트한다(6장 표).
+3. **`./prsctl upgrade`를 돌린다.** `prsctl`이 `.env`의 `GH_OPERATIONS_ENABLED=true`를 읽어 `gh-executor` 프로파일(`github-operations`)을 함께 세운다. `./prsctl health`가 `gh-executor /healthz … "execution":"enabled"`를 내야 한다. search-api만 켜지고 실행기가 없으면 요청이 영원히 `대기 중`이다 — `health`가 그 어긋남을 빨갛게 낸다.
+4. **한 사용자로 확인한다.** 로그인 → 좌측 「GitHub 작업」 → 「GitHub 계정 연결」 → GHE 인가 화면 → 돌아오면 「연결됨 @<login>」 → 저장소 선택 → 미리보기에 `gh pr list --repo <host>/<owner>/<repo> --state open --limit 30 --json …`이 보이면 「실행」 → 결과 표 → 「실행 이력」에 행이 남는다. 「같은 구성으로 다시 실행」은 새 미리보기를 만들 뿐 실행하지 않는다.
+5. **외부에서 못 본 것을 확인한다 (원장 6.83장).** (a) 실제 GHE 인가 왕복이 성립하는가 (b) `gh pr list`가 GHES에 붙는가 — 실패하면 실행 패널의 「표준 오류」를 편다 (c) 사설 CA가 gh에 닿는가 (d) GHES의 user-to-server 토큰 만료 설정.
+
+**끄는 방법.** `.env`의 `GH_OPERATIONS_ENABLED=false` → `./prsctl upgrade`. search-api가 `/gh/*`를 닫고(화면은 「열리지 않았다」로 돌아간다) 실행기 컨테이너가 사라진다. 마이그레이션 028은 되돌리지 않는다 — 실행 이력과 연결(봉인)은 남는다. 연결까지 지우려면 사용자가 화면에서 「연결 해제」를 하거나 운영자가 `github_identity_connection`·`gh_identity_secret`을 정리한다.
+
+**증상과 확인.**
+
+| 증상 | 확인 |
+| --- | --- |
+| `/gh`가 「열리지 않았다」를 낸다 | `.env`의 `GH_OPERATIONS_ENABLED`가 `true`인가, 그 뒤 `./prsctl upgrade`를 돌렸는가 |
+| 실행이 `대기 중`에 머문다 | `./prsctl health` — 실행기가 서지 않았거나(`GH_OPERATIONS_ENABLED`가 한쪽만 켜짐), 실행기 로그의 `identity_unsealable`(두 서비스의 `GH_IDENTITY_VAULT_KEY`가 다르다) |
+| 연결 직후 「GitHub 계정 연결에 실패했습니다」 | Callback URL이 App 등록값과 같은가, `GHE_OPS_REDIRECT_URI`가 그 값인가. 사유 코드는 search-api 로그(`Operations App 인가 콜백 실패`, `reason`)에만 있다 — 화면은 이유를 말하지 않는다 |
+| 실행이 `gh_auth_required`로 실패한다 | 위임 토큰이 GHE에서 거부됐다 — App 권한(`Pull requests: Read`)과 사용자의 저장소 권한을 확인한다. 연결을 해제하고 다시 인가한다 |
+| 실행이 `registry_stale`로 실패한다 | search-api와 gh-executor의 이미지 버전이 다르다(manifest 해시·gh 버전 불일치). 같은 `PRS_VERSION`으로 다시 세운다 |
+
 ---
 
 ## 8. 문제 해결
@@ -850,3 +887,5 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 | `tar -xzf`가 `not in gzip format`으로 실패 | 파일이 JSON이다 — curl에 `Accept: application/octet-stream`이 빠졌거나 토큰 오류 응답을 저장했다. `head -c 200 <파일>`로 확인한다 |
 | 업그레이드 중 `load`가 `compose.yml: FAILED — checksum 불일치`로 멈춘다 | `prsctl load`는 내부에서 `verify`를 재실행한다. `compose.yml`을 `load` 전에 수정하면 번들의 `SHA256SUMS`와 어긋난다. `load` 완료 → `compose.yml` 수정 → `upgrade` 순서로 실행한다 (`DEV-571`) |
 | `prs-releases`가 0이고 `worker-mirror` 로그에 `spawn git ENOENT`가 보인다 | `pipeline-worker` 이미지에 `git`이 없는 버전이다. `Dockerfile`의 `pipeline-worker` 스테이지가 `git`을 설치하는 upstream 버전으로 이미지를 다시 빌드해 번들을 재생성한다 (`DEV-572`) |
+| GitHub 작업 화면이 「열리지 않았다」이거나 실행이 `대기 중`에 머문다 | 7.C의 「증상과 확인」 — `GH_OPERATIONS_ENABLED`는 search-api와 gh-executor가 같이 읽고, `prsctl`이 `.env`로 프로파일을 켠다 (`CR-086`) |
+| gh-executor 로그에 `identity_unsealable`이 반복된다 | 두 서비스의 `GH_IDENTITY_VAULT_KEY`가 다르다. 같은 값으로 맞춘 뒤 `./prsctl upgrade`. 키를 새로 만들었다면 사용자가 다시 연결해야 한다 (7.C) |

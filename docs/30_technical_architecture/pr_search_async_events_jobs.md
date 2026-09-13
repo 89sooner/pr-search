@@ -1,6 +1,6 @@
 # PR Search 비동기 작업 및 이벤트
 
-> 상태: review | 버전: v0.11 | 갱신일: 2026-09-13
+> 상태: review | 버전: v0.12 | 갱신일: 2026-09-13
 
 CR-079 / ADR-023: JOB-SEQ-004는 sequence 역할의 durable poll과 기존 EventBus를 사용한다. 원본 저장→refresh, snapshot 저장→reconcile, 번호 저장→materialize/announce가 각각 원자적이다. 기동/매초 poll·lease·generation CAS·retry·SIGTERM은 [설계](pr_search_wp074_design.md) 4~8절이 정본이다. 일일 스윕만으로 late mapping 재개를 대신하지 않는다. EVT-SEQ-004는 prs:projected에 발행하며 기존 link/commit-enrich는 이름 필터로 무시한다. ES는 sequence 역할의 durable materialize가 소유한다. **CR-084(WP-075)가 `annotate` 전용 소비자 그룹을 추가했다** — `mnumber`와 다른 group이며 전역 스위치 기본값이 꺼짐이라 켜기 전에는 구독하지 않는다.
 
@@ -696,7 +696,7 @@ Operations Plane의 비동기 처리는 수집 파이프라인과 큐를 공유�
 
 | 큐 | 생산자 | 소비자 | 파티션 키 | 비고 |
 | --- | --- | --- | --- | --- |
-| `prs:gh:executions` | `search-api`(실행 수락) | `gh-executor` | `{host}:{repository}` | 같은 저장소 작업의 순서를 유지한다 |
+| `prs:gh:executions` | `search-api`(실행 수락) | `gh-executor` | `{host}:{owner}/{name}` | 같은 저장소 작업의 순서를 유지한다. **구현됨 (CR-086)**: 파티션 4, 소비자 그룹 `gh-executor`, 실행기가 `GH_EXECUTOR_MAX_CONCURRENT`(기본 2)개 구독으로 파티션을 나눠 맡는다 — 구독 수가 곧 동시 실행 수다 |
 | `prs:gh:recipes` | `search-api` | `gh-executor` | `recipe_id` | Recipe 단계 진행 |
 
 ### 9.2 잡
@@ -709,7 +709,7 @@ Operations Plane의 비동기 처리는 수집 파이프라인과 큐를 공유�
 | JOB-GH-004 | 위임 토큰 갱신 | 만료 30분 전 | 사용자당 1 | 3회 | FR-GH-008 |
 | JOB-GH-005 | 임시 workspace 정리 | 10분 주기 | 1 | 재시도 없음 (다음 주기) | FR-GH-007 |
 | JOB-GH-006 | 아티팩트 만료 정리 | 일 1회 | 1 | 3회 | FR-GH-007 |
-| JOB-GH-007 | 고아 실행 회수 | 5분 주기 | 1 | 재시도 없음 | FR-GH-006, FR-GH-012 |
+| JOB-GH-007 | 고아 실행 회수 | 5분 주기 | 1 | 재시도 없음 | FR-GH-006, FR-GH-012 | **구현됨 (CR-086)** — 실행기 안의 스윕(`startSweeper`, 주기 `GH_EXECUTOR_SWEEP_MS` 기본 15초): 하트비트가 `GH_EXECUTOR_ORPHAN_AFTER_MS`를 넘긴 `running`을 `failed`(`executor_lost`)로 회수하고, `GH_EXECUTOR_QUEUED_STALE_MS`를 넘긴 `queued`를 다시 집는다(발행 유실 대비) |
 | JOB-GH-008 | 실행 잠금 만료 해제 | 1분 주기 | 1 | 재시도 없음 | FR-GH-012 |
 
 **JOB-GH-001이 재시도하지 않는 이유.** 쓰기 작업의 자동 재시도는 중복 실행 위험을 만든다. `pr merge`가 타임아웃으로 실패했을 때 실제로 머지되었는지 아닌지 실행기는 알 수 없다. 재시도는 사용자가 결과를 보고 판단한다.
@@ -722,10 +722,24 @@ Operations Plane의 비동기 처리는 수집 파이프라인과 큐를 공유�
 | --- | --- | --- | --- | --- | --- |
 | EVT-GH-001 | `gh.execution.requested` | `search-api` | `gh-executor`, 감사 | 실행 ID, capability, 위험도, 중복 방지 키 | FR-GH-002 |
 | EVT-GH-002 | `gh.execution.state_changed` | `gh-executor` | 웹(SSE), 감사 | 실행 ID, 이전·현재 상태 | FR-GH-006 |
-| EVT-GH-003 | `gh.execution.output` | `gh-executor` | 웹(SSE) | 실행 ID, 스트림 종류, 청크 (영속 저장 안 함) | FR-GH-006 |
+| EVT-GH-003 | `gh.execution.output` | `gh-executor` | 웹(SSE) | 실행 ID, 스트림 종류, 청크 (영속 저장 안 함) | FR-GH-006 | **R0 미구현** — SSE는 상태 변화만 흘린다 (`DEV-651`) |
 | EVT-GH-004 | `gh.execution.finished` | `gh-executor` | 감사, 이력 | 실행 ID, 종료 코드, 출력 해시, 아티팩트 | FR-GH-012 |
 | EVT-GH-005 | `gh.approval.requested` | `search-api` | 알림, A-007 | 실행 ID, 필요 역할, 위험도 | FR-GH-009 |
 | EVT-GH-006 | `gh.capability.drift_detected` | JOB-GH-003 | 알림, A-006 | 설치 gh 버전, manifest 버전, 차이 요약 | FR-GH-011 |
 | EVT-GH-007 | `gh.identity.revoked` | JOB-GH-004 | 웹, 감사 | 사용자, 사유 | FR-GH-008 |
 
 `EVT-GH-003`은 영속 저장하지 않는다. 출력 원문을 저장하면 비밀이 흘러들 수 있고 크기 상한도 지키기 어렵다. 이력에는 출력 해시와 절삭된 요약만 남는다 (FR-GH-012).
+
+### 9.4 R0 구현 상태 (CR-086 / WP-077)
+
+| 항목 | 상태 |
+| --- | --- |
+| `JOB-GH-001` | 구현 — `apps/gh-executor/src/runner.ts`. 큐에서 꺼낼 때 **재검증**(manifest 해시·gh 버전 → capability 열림 → 저장소 활성·이름 불변 → 연결 살아 있음·호스트 일치·만료 전·행위자 일치 → 봉인 해제 → 같은 빌더로 argv 재조립해 저장값과 대조) → `claim` → spawn → 결과 기록. 러너는 던지지 않고 이벤트는 결과와 무관하게 `ack`된다 — 재전달하면 같은 행을 다시 본다 |
+| `JOB-GH-004` 위임 토큰 갱신 | 부분 — 주기 잡이 아니라 **요청 시점 갱신**이다: 실행 요청에서 만료 15분 전이면 `grant_type=refresh_token`으로 갱신하고 봉인을 한 트랜잭션에서 교체한다(refresh token은 1회용). 주기 잡은 다음 판 |
+| `JOB-GH-007` | 구현 (위 표) |
+| `JOB-GH-002`·`003`·`005`·`006`·`008` | 미구현 (Recipe·드리프트 점검·workspace 정리 잡·아티팩트·잠금). workspace는 실행 종료 즉시 `destroyWorkspace`가 지우며 tmpfs라 재기동에 사라진다 |
+| `EVT-GH-001` | 구현 — `prs:gh:executions` 페이로드는 `execution_id`뿐이다. 실행기는 그 ID로 DB 정본을 다시 읽는다 |
+| `EVT-GH-002` | 부분 — 버스 이벤트가 아니라 SSE가 DB의 상태 변화를 1초 폴링으로 흘린다. 감사는 `gh_execution` 행 자체다 |
+| `EVT-GH-003` | 미구현 (`DEV-651`) |
+| `EVT-GH-004` | 부분 — 종료는 `gh_execution` 행의 상태·종료 코드·출력 해시로 남는다. 별도 이벤트는 없다 |
+| `EVT-GH-005`~`007` | 미구현 (승인·드리프트·철회 알림). 철회는 `github_identity_connection.revoked_at`과 사유로 남는다 |
