@@ -1,4 +1,51 @@
 # 확정한 설계 결정과 이유
+## 2026-09-14 (4차) — CR-087 main CI 정정 · CR-088 REL-007 R1a (WP-078)
+
+### 결정자가 확정해 준 것 (A — 다시 열지 않는다)
+
+| 결정 | 내용 |
+| --- | --- |
+| 두 단계 | S0 main CI 실패 두 건의 실제 원인 수정 → 그다음 REL-007 다음 수직(분류·검증·드리프트·검증 기록·A-006 읽기 전용) |
+| 불변 | REL-007 진행 중 · public 유지 · `runs-on` 불변 · self-hosted·결제·보호 규칙 변경 없음 · 릴리스·태그 발행 없음 · 실제 PR 제목 변경 없음 · R1~R3·`gh api`·extension·Recipe·파일 작업 열지 않음 · M 번호 기본 OFF 유지 · compose 주력 · 001~028 수정 없음 · 다른 세션 자원 불가침 |
+| 실행 범위 | 실행 허용 capability는 계속 `pr.list` 하나. 분류가 늘어도 넓히지 않는다 — UI뿐 아니라 API·executor에서도 |
+| 사전 승인 (B) | CI 원인의 최소 수정 · 기존 capability 모델·검증 도구 확장 · additive 마이그레이션과 스냅숏 저장 · 기존 API 경계 안의 조회 · A-006 읽기 전용 선행 구현 · 최소 CR·WP·추적성 정정 · 독립 리뷰와 필수 CI 뒤 병합 |
+| 시험 방법 | 서명: 비율 완화·삭제·문자열 존재 검사 금지, 결정적 시험 + 진단 분리 허용. 미러 최신화: sleep 증가 금지, 시각 통일·명시 경계 허용 |
+| 이어서 | 세션 한도 두 번 — 「중단된 지점부터 이어서」. 검토자 세션도 한도로 끊겼다 |
+
+### 구현이 스스로 고른 것 (C — 최종 보고의 「Agent-Initiated Decisions」)
+
+| 결정 | 왜 | 대안·되돌리기 | 관련 |
+| --- | --- | --- | --- |
+| 서명 상수 시간 시험을 `vi.mock('node:crypto')`로 `timingSafeEqual`을 **감싸서** 위임을 본다(호출·인자·답 그대로·길이 불일치 시 같은 길이 비교·시크릿 전부 비교) | 시간 측정은 러너 부하에서 0.46까지 흔들렸고 로컬 5조건 220회로는 재현되지 않았다. boolean만으로는 `===`와 구분 불가 — 위임이 관찰 가능한 유일한 사실 | 비율 완화(금지) · 문자열 검사(금지) · perf만(필수 CI에 검증이 없어짐). 되돌리기: 파일 둘 원복 | DEV-669, 변이 3종 |
+| 덮기 경계를 `created_at <= startedAt`에서 **fetch 직전 SELECT로 고정한 집합**으로 | DB µs vs 앱 ms — 같은 밀리초의 마지막 push가 경계 뒤로 읽혔다(CI 실측, DB 표본 994/1000). sleep·여유값은 창을 좁힐 뿐이고 반대 방향 오류를 만든다 | `date_trunc` 통일 — 다른 호스트 시계 차이는 못 막음. 되돌리기: `completeCoveredRefreshWorks` 서명 원복 | DEV-670, 재현 시험 |
+| 분류 표를 JSON이 아니라 **TypeScript 표**(`COMMAND_ROWS`)로, 행마다 `note` 근거 필수 | 검증기가 표를 다시 불러 저장값과 대조해야 하고, 근거 없는 행을 시험이 거부해야 한다 | YAML/JSON 표 — 근거 강제와 타입 검사가 약해짐 | commands.test.ts |
+| `unknown`은 규칙이 없을 때만; 표에 없는 leaf는 `unknown`으로 남긴다 | NFR-009 「목록에서 사라지는 것은 분류가 아니다」. generic으로 뭉개면 100%가 거짓 | — | validate 변이 |
+| 정책 차단 command(alias·auth·config 15)의 실행 차원을 `not_implemented`가 아니라 **`policy_blocked`**로(manifest `r0.2`) | 「열지 않기로 함」과 「아직 열지 않음」은 다른 사실 — 검증기가 파생을 재계산해 뒤바꿈을 잡는다 | r0.1처럼 전부 `not_implemented` — 사유가 거짓 | API 계약 R1a, execution_derivation_mismatch |
+| `sideEffect: 'arbitrary'`를 확인된 값으로(`api`·`codespace ssh`·`extension exec`·`copilot`), 넷 다 R3 | 부작용이 입력에 달린 것은 모르는 것(`unknown`)과 다르다. 사다리의 「임의 실행」은 R3 | R2 — 검토 가가 사다리 불일치를 지적 | 검토 가 |
+| flag 차원 분모에 **실행 가능한 그룹**(`codespace ports`)의 flag 포함 → 1,034 | SRS 실측 기준 1,034·312·625·707이 그 분모. 빼면 숫자가 다른 뜻 | leaf만 — 1,015가 되어 SRS와 어긋남 | DEV-677 |
+| command별 flag 판정 `COMMAND_FLAG_OVERRIDES` + 비밀 값 표지 `secretInput` | 이름 규칙으로는 `run list --all`(무해)과 `cache delete --all`(일괄 삭제)을 못 가른다. `secret set --body`는 argv·로그에 실으면 안 되는 값 | 이름 규칙만 — 틀리거나(과도 상승) 놓친다 | 검토 가, rules .2 |
+| 스냅숏 CHECK를 `activated_at IS NULL OR 네 차원 미분류 0`으로, 검증 기록은 별표 append-only(트리거) | 미분류 manifest도 진단용으로 **기록**되어야 A-006이 「무엇이 미완인가」를 보인다. 막을 것은 활성화뿐이고 조건은 NFR-009처럼 네 차원 | 계획 DDL(CHECK 무조건) — 기록 자체가 불가 | DEV-672 |
+| JOB-GH-003을 **실행기**에 두고 기동 시 검사를 기다린 뒤 구독; 헬스 서버는 먼저 연다 | gh 바이너리와 DB를 둘 다 가진 프로세스가 실행기뿐. 드리프트 배포는 첫 실행부터 거절해야 한다. 검사 동안 헬스가 닫히면 compose가 재시도를 소모 | pipeline-worker에 두기 — 바이너리 없음. 검사 뒤 서버 열기 — 검토 나 note | DEV-671 |
+| 드리프트·구조 실패 → 프로세스 종료가 아니라 **실행마다 `registry_stale` 거절**; 일시 오류와 **DB 기록 실패**는 판정을 바꾸지 않음 | 종료하면 헬스가 사라져 「왜」를 잃는다. 기록 실패(029 미적용 DB)가 판정을 버리면 드리프트 바이너리로 실행이 계속된다 — 두 검토가 같은 자리를 지적 | 종료 · 기록 성공 뒤에만 stale | DEV-679 |
+| 인벤토리 추출·드리프트 검사의 **비동기 판**(`spawn` 동시 4)을 두고 실행기가 쓴다; 동기 판은 CLI·시험용 | `spawnSync` 229회가 이벤트 루프를 20~30초 막아 하트비트·취소·stdout 소비·헬스가 멈춘다(검토 나 major) | worker_thread — vitest에서 TS 로더 문제 · `active===0`일 때만 검사 — 정지 자체는 남음 | DEV-680 |
+| 정렬을 `localeCompare`에서 **코드 단위**로 | `th` 로케일에서 순서가 달라 같은 바이너리가 영구 drift(검토 나 실측). 커밋된 순서는 그대로 | — | DEV-681 |
+| 검증기가 `execution`·`executionReason` **파생**을 재계산 | 저장값끼리의 일치만 보면 정책 차단↔미구현 뒤바꿈이 통과(검토 나) | — | validate 변이 10종 |
+| `prepare`가 정의의 `execution`도 본다(실행기와 대칭) | 코드 표에 `not_implemented` 정의가 들어오는 날 미리보기와 실행기의 답이 갈린다(검토 가 note) | — | 회귀 |
+| A-006 역할은 `operator`·`security_officer` 둘, 읽기 전용, 재검사 버튼 없음 | 드리프트는 운영 사건이자 보안 사건. 검증 기록에 호스트명·바이너리 경로가 있어 일반 역할에는 열지 않는다. 검사는 실행기의 주기 | `security_officer`만(A-004처럼) — 운영자가 못 봄 | nav.test |
+| `API-GH-001`은 분류 요약 셋만, 전부는 `API-GH-014` | W-010이 매번 읽는 목록을 무겁게 하지 않는다 | 전부 001에 — 1.3MB | — |
+| CI 게이트는 새 잡이 아니라 **기존 진입점**: 단위 시험이 커밋된 manifest를 검증, integration 잡의 시험이 실제 바이너리와 대조 | `runs-on`·workflow 구조 불변 지시. 게이트가 skip될 수 없다(시험이 실패로 표현) | 별도 CI 잡 — 구조 변경 | GATE-GH-01·02 |
+| `EVT-GH-006`은 발행하지 않음(기록·로그·지표·헬스·A-006으로 대신) | 구독자로 적힌 「알림」 채널이 없다 | 소비자 없는 이벤트 | DEV-673 |
+| SRS 실측 기준의 `--json` command 41 vs 40은 고치지 않고 DEV로 | SRS는 baseline — 정정은 다음 CR이 검증기 보고서를 근거로 | 이 CR에서 SRS 정정 — baseline 변경의 대가 | DEV-676 |
+| 채번 CR-087·088, DEV-669~681, WP-078, QA-GH-44 | main 실측 + 열린 PR 없음. 병렬 세션 셋(katakuri·design-system·저장 세션)은 pr-search 번호를 쓰지 않는다 | — | — |
+
+### 아직 정하지 않은 것 (다음 판)
+
+- `GATE-GH-01d`: bindability·입출력 port·자원 타입을 leaf 196에 어떻게 줄지(정의 확장 vs 분류 표 확장) — WP-066(`DEV-675`).
+- 호스트 지원 판정(FR-GH-011 AC-4·AC-5)의 데이터 원천 — 사내 GHES 없이는 `unverified` 그대로(`DEV-674`).
+- `EVT-GH-006` 발행 여부는 알림 채널을 붙이는 판이(`DEV-673`). SRS `--json` 41 정정 여부(`DEV-676`).
+- 스냅숏 활성화 절차(운영자 `prs_admin`)와 `admin_action_required` 흐름 — WP-059의 남은 절반.
+- 이월: DEV-651 출력 스트리밍 · DEV-652 KMS · DEV-656 멱등 표 TTL · JOB-GH-004 주기 갱신 · A-007 · R1 승인 흐름(FR-GH-009).
+
 ## 2026-09-13 (3차) — REL-007 R0 완주 (CR-086 closed / WP-077 done)
 
 ### 결정자가 확정해 준 것 (A)

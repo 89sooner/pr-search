@@ -1,4 +1,46 @@
 # 세션 요약 — PR Search 구현 (2026-08-25 후반)
+## 2026-09-14 (4차) — CR-087 main CI 정정(병합) + CR-088 REL-007 R1a: PR #184 병합 완료
+
+### 결과 한 줄
+
+병합 뒤 main에서 실패한 CI 두 건의 **실제 원인**(시간 측정 시험의 러너 취약성 · DB µs/앱 ms 경계라는 제품 결함)을 고쳐 PR #183을 병합했고(`ce5a4b0`, 병합 커밋 main CI green), 이어서 gh 2.97.0 leaf 196개 전부와 flag 1,034·positional 164·`--json` 707을 근거 있는 분류로 채워 NFR-009 본표 차원 100%를 만들고, 독립 검증기·드리프트 검출·append-only 검증 기록(029)·실행기 주기 검사(JOB-GH-003)·API 둘·A-006 읽기 전용 화면을 열었다. 실행 허용은 `pr.list` 하나 그대로이며, 독립 검토 두 판의 major 3건(기록 실패 시 판정 유실·이벤트 루프 정지, 그리고 검토 가의 major는 같은 자리)과 minor·note 전부를 반영해 PR #184를 병합했다(`a996540`). 병합 커밋 main CI: run 34788054624 두 잡 success(`verify` 3m22s · `integration` 5m06s). 릴리스는 발행하지 않았다.
+
+### 지시서 17장 앞머리 다섯 답
+
+1. **main CI 두 실패는 무엇이었고 어떻게 처리했는가** — (a) `5369772` verify: `signature.test.ts` 상수 시간 **시간 측정**이 러너 부하에서 0.4617(하한 0.5). 구현은 그대로였다. 필수 CI에는 `timingSafeEqual` 위임을 보는 결정적 시험(변이 3종 kill), 시간 측정은 `perf/`로(`DEV-669`). (b) `c5c8aea` integration: `freshness.test.ts` T03b — `created_at`(DB µs) `<= startedAt`(앱 ms)이 같은 밀리초의 마지막 push를 남긴 **제품 결함**. 경계를 fetch 직전 집합으로(`DEV-670`), 수정 전 코드에서 결정적으로 실패하는 재현 시험. PR #183 → `ce5a4b0`, 병합 커밋 main CI run 34771011490 두 잡 success. 재실행으로 지우지 않았고 로그·잡 메타데이터를 보존했다.
+2. **관리자가 새로 확인할 수 있는 것** — 웹 「운영 › gh 레지스트리」(A-006, `operator`·`security_officer`): 고정 gh 버전·바이너리 해시·manifest 판/해시/인벤토리 해시·생성 시각, 차원별 분류 커버리지와 게이트(PASS/FAIL), 실행 허용 목록, command 검색과 분류 상세(flag·positional별 컨트롤·규칙·근거 문장·실행 불가 사유), 실행기 마지막 검사(관측 gh 버전·바이너리 해시·인벤토리 일치·검증기/규칙 버전·신선도·적재 manifest 일치)와 드리프트 diff, 스냅숏(활성화 여부), 대상 GHES 「미확인」. 같은 수치를 CLI(`gh:validate-capabilities`·`gh:diff-capabilities`)와 API(`GET /gh/registry`)가 낸다. 기록이 없으면 「없음」으로 말한다.
+3. **분류된 명령 수 / 실제 실행 가능한 명령 수** — 분류 196/196(leaf; 그룹 32·별칭 전용 1은 실행 대상 아님), flag 1,034/1,034·inherited 312/312·positional 164/164·`--json` 707/707, 미분류 0. **실행 가능 1**(`pr.list`). 정책 차단 15(alias·auth·config), 미구현 180. 결과 계약 차원(bindability·port·자원 타입)은 1/196·0/0으로 **미달**(GATE-GH-01d, `DEV-675`).
+4. **기존 PR 목록 조회와 M 번호 기능은 유지되는가** — 예. `pr.list` 미리보기→실제 고정 gh 실행→결과·이력 통합 시험 11/11(실행기)·14/14(routes) 그대로 통과, M 번호 관련 파일·기본 OFF 설정 무변경(배터리 단위 2,553·통합 1,710·회귀 477·e2e 190/191 — 1건은 기존 간헐 `DEV-377`). 다른 capability를 API로 직접 요청하면 409 `GH_CAPABILITY_NOT_EXECUTABLE`(manifest를 `allowed`로 위조해도).
+5. **남은 REL-007 항목과 사내 확인 항목** — 남은 것: `GATE-GH-01d`(`DEV-675`, WP-066) · 호스트 지원 판정(`DEV-674`) · 스냅숏 활성화·A-005·`admin_action_required`(WP-059) · JOB-GH-004 · A-007 · DEV-651·652·656 · R1 승인 흐름 · `GATE-GH-06`·`08`. 사내(NOT RUN): 실제 GHES에서 command별 지원 확인, 실행기 컨테이너의 기동 검사 시간과 헬스 전이, 사내 CA 아래 `gh --help` 순회, 운영 DB 029 적용과 `prs_app` 권한, A-006을 사내 계정으로 열기, 기존(Operations App·`gh pr list`·028·이미지 반입·DEV-561·CR-083).
+
+### 기술 근거
+
+- 시작 `5369772` → CR-087 `ce5a4b0`(PR #183) → CR-088 브랜치 `feature/rel007-capability-registry` 커밋 `0a780ea`·`614dec3`·`538f543`·`2176636`(PR #184) → 병합 a996540, 병합 커밋 main CI run 34788054624 두 잡 success(`verify` 3m22s · `integration` 5m06s).
+- 바이너리 gh 2.97.0 sha256 `141507c3…` · manifest `r0.2` hash `c381880e…` · 규칙 `rules-2026-09-14.2` · 검증기 `validator-2026-09-14.1` · 마이그레이션 029 · 스냅숏 활성화 0건.
+- 분모: leaf 196 · alias 45 · positional 164 · flag 1,034(실행 가능한 그룹 포함) · inherited 312 · short 625 · repeatable 37 · json 707 · extension plane 9 · text 결과 29. support: supported 144·preview 16·policy_blocked 15·requires_extension 9·terminal_only 8·requires_local_workspace 4·unsupported_by_host 0. risk R0 80·R1 65·R2 38·R3 13. sensitivity internal 177·public 8·sensitive 7·secret 4. flag 컨트롤 typed 873·generic 326·web 38·승인 40·터미널 12·차단 6, 비밀 값 2.
+- 시험: gh-cli 단위 110(변이 10) · 드리프트 통합 4 · db 통합 26 · 실행기 통합 21 · api 통합 20 · web lib 810 · a11y 8 · e2e 2 · 회귀 REL-007 14 · 전체 배터리(검토 전) 전 단계 종료 코드 기록 · 문서 검사기 신규 0건.
+- PR #184 CI(head `2176636`): run 34787734188 두 check success(`verify` 3m35s · `integration` 5m36s).
+- 병합된 main(`a996540`) 재검증(새 워크트리, `pnpm install` 뒤): typecheck 0 · test:regression 477/477(DB를 쓰는 두 파일 19건은 격리 서비스 환경을 주어 재실행) · `gh:validate-capabilities --diagnostic` = `incomplete`(GATE-GH-01·01b PASS, 01d FAIL, 오류 0·미분류 0, 보고서 `88d25a5d…`) — 커밋 전과 같은 판정. 원장 6.85장 「병합 뒤 main CI」.
+
+### 능동 자가 연구 결과 (이 판)
+
+| 질문 | 근거 | 예상과 달랐던 점 | 달라진 것 | 미확인 |
+| --- | --- | --- | --- | --- |
+| CI의 서명 비율 0.46은 재현되는가 | 5조건 220회 | 전부 구간 안 — 러너의 143파일 병렬은 재현 불가 | 시간 측정을 게이트에서 뺌 | 러너 실제 조건 |
+| T03b 실패는 시험 문제인가 | DB `clock_timestamp` 표본 1,000·CI 로그 | µs/ms 경계 — **제품** 결함 | 집합 경계 | — |
+| help의 `--force --hostname`은 파서 결함인가 | 원문 `cat -A` | 원문이 그렇다(3건) | 규칙 `help-placeholder-artifact` | — |
+| SRS 228·625·41의 분모 | manifest 재집계 | 228=32+196, 625=542+83, `--json` command는 40 | 차원 note·DEV-676·677 | 41의 출처 |
+| `<remote-port>:<local-port>...`는 자리 몇 개 | usage | 구분자로 이어진 한 자리 | 파서 확장 | — |
+| `codespace ports`는 그룹인가 | help | 실행 가능한 그룹 | flag 분모 포함 | — |
+| `gh api`·`extension exec`·`copilot`·`codespace ssh`의 부작용 | help | 입력이 정함 | `arbitrary`, R3 | — |
+| 기동 검사 소요 | 통합 실측 | 동기 27~43초, 비동기(동시 4) 10초 안팎 | 헬스 선개방·비동기 판 | 사내 호스트 |
+| `variable list`·`gist view`·`auth token`·`config get`·`gist list`의 민감도 | help | 값·내용·토큰·비밀 gist 목록을 찍는다 | sensitive 7·secret 4 | — |
+| 검증기 보고서 크기(검토 나) | 실측 9.6KB·합성 최악 431KB | 1MiB CHECK는 비압축 기준으로도 여유 | — | — |
+
+### Agent-Initiated Decisions — decisions.md 4차 절의 C 표 전부 (요약)
+
+위임 검증 시험 · 집합 경계 · TS 분류 표(근거 필수) · `unknown` 정직 · 정책 차단 실행 차원 · `arbitrary` R3 · flag 분모에 그룹 포함 · command별 flag 판정과 `secretInput` · 스냅숏 CHECK 완화(네 차원)+append-only · JOB-GH-003 실행기·기동 대기·헬스 선개방 · 거절이지 종료 아님, 일시 오류·기록 실패는 판정 유지 · 비동기 판 동시 4 · 코드 단위 정렬 · 파생 재계산 · `prepare` 대칭 · A-006 역할 둘·재검사 버튼 없음 · API-GH-001 가볍게 · CI 게이트는 기존 진입점 · EVT-GH-006 미발행 · SRS 41 미정정(DEV-676) · 채번.
+
 ## 2026-09-13 (3차) — REL-007 R0 완주: PR #181 병합, CR-086 closed
 
 ### 결과 한 줄

@@ -1,4 +1,71 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
+## 2026-09-14 (4차) 라운드에서 쓴 것 (CR-087 · CR-088)
+
+### 전제 — 3차와 같다 (격리 서비스 + 고정 gh). `prs_test` DB는 없으면 만든다
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"   # 셸 기본은 v20.12.0
+export POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55434 POSTGRES_USER=prs POSTGRES_PASSWORD=prs POSTGRES_TEST_DB=prs_test
+export REDIS_URL=redis://localhost:56380 ELASTICSEARCH_NODE=http://localhost:59201
+export GH_PINNED_BIN=/tmp/claude-1000/-home-roqkf-pr-search/f864b845-0c6f-4ba6-9c0b-b1a332623dcf/scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh   # sha256 141507c3…
+docker compose -p prs-rel007 -f <scratchpad>/compose.rel007.yml up -d   # 2차 scratchpad의 사본을 이 세션 scratchpad로 복사해 씀
+docker exec prs-rel007-postgres psql -U prs -d prs -c 'CREATE DATABASE prs_test'   # 첫 통합 실행이 "database prs_test does not exist"로 죽었다
+```
+
+### 이 판에서 실제로 돌린 것
+
+| 명령 | 결과 |
+| --- | --- |
+| `gh api repos/…/actions/runs?branch=main` · `…/runs/<id>/jobs` · `…/actions/jobs/<id>/logs` | 실패 두 건의 잡·단계·대기 시간·로그 보존(대기 2~38초 → 결제·큐가 아니라 실제 실패) |
+| `node sig-ratio.mjs` 40~60회 × 5조건(유휴·CPU 경합·힙 64MB·taskset 2코어+메모리 압박) | 전부 (0.5, 2) 안, 최소 0.666 — CI의 0.4617은 재현 불가 |
+| `psql -c "SELECT count(*) FILTER (WHERE t > date_trunc('milliseconds', t)) FROM (SELECT clock_timestamp() …)"` | 994/1000 — µs가 ms 경계 뒤 |
+| `pnpm vitest run apps/ingest-gateway/src/signature.test.ts` + 변이 3종(`===`·길이 검사 제거·첫 일치 return) | 14/14 → 각각 3·1·1 실패 → 원복 14/14 |
+| `pnpm vitest run --config vitest.integration.config.ts …/freshness.test.ts` (제품 파일 셋 stash → HEAD) | 새 재현 시험만 실패 `expected [] to deeply equal ['d-a','d-b','d-c']`(9/10) · 옛 T03b 단독 3/3 통과 · 수정본 10/10 |
+| `pnpm run test:perf -- perf/signature-timing` | 1/1 (진단) |
+| `pnpm gh:manifest` | 229 command · leaf 196 · 27~43초(동기 판) · manifest r0.2, 마지막 hash `c381880e…` |
+| `pnpm gh:validate-capabilities --diagnostic [--report f]` / 기본 | 상태 `incomplete`(오류 0·미분류 0·GATE-GH-01d 미달) → 진단 exit 0 / 기본 exit 1. 규칙을 고친 뒤 재생성 없이 돌리면 `classification_recompute_mismatch` 5건 → `failed` |
+| `GH_PINNED_BIN=… pnpm gh:diff-capabilities` | `match`, exit 0 |
+| `pnpm vitest run packages/gh-cli/src` | 108 → 110 (변이 10종 포함) |
+| `pnpm vitest run --config vitest.integration.config.ts packages/gh-cli/integration/drift.test.ts` | 3 → 4 (비동기 판 = 동기 판 해시, 도는 동안 tick 생존) |
+| `… packages/db/integration/{migrate,gh-schema,gh-registry-schema,merge-number-schema}.test.ts` | 029 왕복·권한·불변·활성화 네 차원. T06a·028 왕복은 단계 수를 029에 맞춰야 했다 |
+| `… apps/gh-executor/integration/{registry-check,executor}.test.ts` | 10 + 11 (실제 바이너리·DB; 기록 실패·tick·stop·구조 실패·해시만 드리프트) |
+| `… apps/search-api/integration/gh/{registry,routes}.test.ts` | 6 + 14 (401/403/200, 기록 없음, `allowed` 위조 → 409) |
+| `pnpm vitest run --config vitest.regression.config.ts regression/runtime-reachability.test.ts -t 'REL-007'` | 14 (기존 10 + CR-088 4). `prepare` 대칭 편집이 빠진 것을 여기서 잡았다 |
+| `pnpm --filter @prs/web exec vitest run --config vitest.a11y.config.ts a11y/gh-registry.test.tsx` · `playwright test e2e/gh-registry.spec.ts` | 8 · 2 |
+| 전체 배터리(순차, 단계마다 `.exit` 파일) | typecheck·lint·lint:deps 0 · 단위 2,553 · 회귀 477 · 통합 1,710(T06a 1건 → 029 반영 뒤 통과) · build · a11y 411 · contrast 232 · web build · e2e 190/191(`flow-003:176` DEV-377, 단독 3/3) |
+| `python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --root <wt> --strict` (main과 diff) | 신규 0건 (기준선 6건 = main) |
+| `gh pr create --draft … --body-file` · `gh api -X PATCH repos/…/pulls/184 -F body=@file` · `gh pr ready 184` · `gh pr merge 183 --squash` | gh 2.4.0: `pr edit` 대신 PATCH, `--json headRefOid` 없음(`commits[-1].oid`로) |
+
+### 실패했던 명령과 원인
+
+| 명령 | 실패 | 원인 |
+| --- | --- | --- |
+| 첫 통합 실행(`freshness`·`merge-number-schema`) | `database "prs_test" does not exist` | 격리 postgres를 새로 띄워 test DB가 없었다 — `CREATE DATABASE prs_test` |
+| `sleep 25 & … node sig-ratio.mjs` 조합 | `Terminated`(출력 없음) | 백그라운드 hog를 `kill %1`로 죽이는 셸 조각이 측정까지 죽였다 — 결과를 파일로 쓰고 hog PID를 따로 죽인다 |
+| Edit 도구 (`inventory.ts`·`executions.ts`) | `File has not been read yet` | **워크트리마다** Read가 필요하다 — 다른 워크트리(`/home/roqkf/pr-search`)에서 읽은 같은 경로는 안 쳐준다. 한 편집(`prepare` 대칭)이 조용히 빠져 회귀 시험이 잡았다 |
+| `pnpm --filter @prs/gh-cli build` (배치 편집 직후) | `has no exported member 'extractInventoryAsync'` | 위와 같은 이유로 `inventory.ts` 편집만 빠진 채 `drift.ts`·`node.ts`가 먼저 바뀌었다 |
+| `pnpm lint` 첫 실행 | `import()` type annotations forbidden · `no-explicit-any` 4건 | `typeof import('node:crypto')` → `import type * as`; 통합 시험의 `Record<string, any>` → 응답 인터페이스 |
+| `sleep 60; cat …` | 도구가 차단 | 60초 sleep 금지 — 백그라운드 작업의 알림을 기다린다 |
+
+### 정리 (병합·push 뒤에만)
+
+```bash
+docker compose -p prs-rel007 -f /tmp/claude-1000/-home-roqkf-pr-search/2c49681f-1fd6-47f6-a51c-29844a8f6587/scratchpad/compose.rel007.yml down -v
+git -C /home/roqkf/pr-search worktree remove /home/roqkf/pr-search-wt/s0 --force
+git -C /home/roqkf/pr-search worktree remove /home/roqkf/pr-search-wt/cap --force
+git -C /home/roqkf/pr-search worktree prune
+```
+
+실행했다(후속 docs 커밋 직전, 2026-09-14 08:07): `down -v` 종료 0(컨테이너 셋·볼륨 셋·네트워크 제거), `s0`·`cap` 제거와 `prune` 종료 0 — 남은 워크트리는 `post` 하나. 브랜치는 squash 병합이라 `git branch --merged main`에 잡히지 않으며 로컬에 남아 있다(지워도 된다). `post`는 후속 PR 병합 뒤 `git -C /home/roqkf/pr-search worktree remove /home/roqkf/pr-search-wt/post`.
+
+### 병합된 main 재검증 (post 워크트리 = a996540)
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm install` → `pnpm typecheck` | 0 · 0 |
+| `pnpm run test:regression` (격리 서비스 환경 변수 없이) | 2 파일 실패 — `range-vs-git`·`releases-vs-git`가 `ECONNREFUSED 127.0.0.1:5432`, 458 통과·19 skip. **환경 변수를 주고** 그 두 파일만 재실행 → 19/19, 합계 477/477 |
+| `pnpm gh:validate-capabilities --diagnostic` | `incomplete` — 01·01b PASS, 01d FAIL, 오류 0·미분류 0, 보고서 `88d25a5d…` |
+
 ## 2026-09-13 (3차) 라운드에서 쓴 것 (REL-007 R0 완주)
 
 ### 전제 — 2차와 같다

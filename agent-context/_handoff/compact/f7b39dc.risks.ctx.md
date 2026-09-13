@@ -1,8 +1,29 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=13c238df0087f52576e1e5e58ae93984afc353c4fd52070087e197ff3cce9bbc bytes=193950 lines=2637 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;apps/gh-executor/integration/executor.test.ts;/../search-api/src/gh/;gh/routes;9/10;prs-pinned-gh/2.97.0/gh;prs/gh-cli;fix/wp075-annotate-safety;packages/es/src/config.ts;packages/bus/src/redis-streams.ts;acme/smp1900;repos/.../actions/runs;packages/authz/src/config.test.ts;apps/web/instrumentation.test.ts;deploy/single-host/smoke-images.sh;deploy/single-host/;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md;apps/web;refs/tags/;usr/bin/env;HOME/.nvm/versions/node/v22.23.2/bin;regression/runtime-reachability.test.ts;repos/89sooner/pr-search/pulls/
+@kv sha256=df85ddd7c44942ac19790cd65d1c10f5641602de5673e6ad33ce63a0c71f04c1 bytes=197931 lines=2679 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;near/far;994/1000;3/3;home/roqkf/pr-search;home/roqkf/pr-search-wt/cap;1/2;apps/gh-executor/integration/executor.test.ts;/../search-api/src/gh/;gh/routes;9/10;prs-pinned-gh/2.97.0/gh;prs/gh-cli;fix/wp075-annotate-safety;packages/es/src/config.ts;packages/bus/src/redis-streams.ts;acme/smp1900;repos/.../actions/runs;packages/authz/src/config.test.ts;apps/web/instrumentation.test.ts;deploy/single-host/smoke-images.sh;deploy/single-host/;origin/main;docs/20_derived_ui_specs/pr_search_product_ia.md
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-14 (4차) 라운드가 배운 함정 (CR-087 · CR-088)
+@h3 시간을 재는 시험은 필수 CI에 두지 않는다 — 로컬 220회로 재현되지 않는 실패가 러너에서 난다
+@path signature.test.ts의 near/far 비율은 로컬 5조건(유휴·경합·GC 압박·2코어 고정)에서 전부 (0.5, 2) 안이었고 CI에서 0.4617이었다. 러너에서 단위 시험 143파일이 병렬로 도는 조건은 흉내 낼 수 없다. 처방은 범위 완화가 아니라 관찰 가능한 사실(위임)을 결정적으로 검증하고 시간은 진단으로 옮기는 것.
+@h3 두 시계를 한 비교식에 넣지 않는다 — DB µs와 앱 ms
+@path created_at <= startedAt은 같은 밀리초의 마지막 행을 경계 뒤로 읽는다(표본 994/1000). 빠른 러너에서만 나고 WSL(왕복 >1ms)에서는 3/3 통과했다. 경계가 필요하면 시각이 아니라 집합(fetch 직전 SELECT)으로 잡는다. sleep·여유값은 창을 옮길 뿐이다.
+@h3 판정과 기록을 한 함수에서 잇지 않는다 — 기록 실패가 판정을 버린다
+@p 레지스트리 검사가 「판정 → DB 기록」을 같은 함수에서 기다렸고, 기록이 던지면 판정이 반환되지 않아 드리프트 바이너리로 실행이 계속됐다(029 미적용 DB가 대표). 두 검토자가 독립적으로 같은 자리를 지적했다. 판정을 먼저 확정하고 기록 실패는 recordError·지표로만.
+@h3 동기 spawn 반복은 같은 프로세스의 다른 일을 멈춘다
+@p spawnSync 229회(20~30초)는 하트비트·취소 폴링·stdout 소비·/healthz를 멈추고, 64KB 파이프를 넘는 실행은 timed_out될 수 있다. 기동 검사는 구독 전이라 무해했지만 주기 검사는 아니었다. 비동기 판 + 동시 4로 10초 안팎.
+@h3 localeCompare는 환경이다
+@p th 로케일에서 공백을 무시해 pr view가 preview 뒤로 간다 — 같은 바이너리가 영구 drift. 해시의 재료가 되는 정렬은 코드 단위로.
+@h3 Edit 도구는 워크트리마다 Read가 필요하다 — 조용히 빠진 편집
+@path /home/roqkf/pr-search에서 읽은 파일을 /home/roqkf/pr-search-wt/cap의 같은 경로로 편집하면 File has not been read yet으로 거부된다. 배치 편집에서 inventory.ts와 executions.ts 둘이 빠졌고, 하나는 빌드가, 하나는 회귀 시험(내가 그 편집을 전제로 쓴 것)이 잡았다. 문서에 「했다」고 적기 전에 회귀·시험이 그것을 걸어야 한다.
+@h3 생성기를 고치면 산출물을 다시 만든 뒤 검증한다
+@p 규칙(rules.ts)을 고치고 manifest를 재생성하지 않은 채 검증기를 돌리자 classification_recompute_mismatch 5건 — 검증기가 의도대로 생성기 드리프트를 잡은 것이지만, 순서를 지키면 나지 않는다.
+@h3 마이그레이션이 늘면 「내려간 목록」 단언이 깨진다 — 의도된 것
+@path merge-number-schema.test.ts T06a와 gh-schema.test.ts 028 왕복은 목록으로 단언하므로 029에서 즉시 깨졌다. 단계 수와 목록에 새 번호를 더한다(CR-084의 규율).
+@h3 검토자 세션도 한도에 걸린다
+@path 검토 가의 보고가 2절 첫 줄에서 잘렸고 재송 1/2만 왔다(5~7절 미도착). 검토 나는 전문이 왔다. 보고서를 요청할 때 길이 제한을 전제로 나눠 보내게 하고, 잘린 부분은 스스로 점검해 원장에 「미도착」으로 적는다.
+@h3 여전히 유효한 것
+@cmd 공유 체크아웃(브랜치는 워크트리로, git add는 경로 명시 — 이번엔 전용 워크트리라 status로 도출) · vitest 둘을 동시에 돌리지 않는다 · 채번은 병렬 세션에 묻는다(셋 다 pr-search 아님) · gh 2.4.0의 없는 필드·플래그(headRefOid·pr edit) · /tmp는 휘발 · 도구는 60초 sleep을 막는다(백그라운드 + 알림) · flow-003:176·Ctrl+K e2e는 간헐 · dotenv는 한 파서로.
 @h2 2026-09-13 (3차) 라운드가 배운 함정 (REL-007 R0 완주)
 @h3 셸로 .env를 다시 파싱하면 compose와 갈린다 — 두 번 갈렸다
 @p prsctl이 GH_OPERATIONS_ENABLED를 sed로 읽자 "true"(따옴표)·true # 주석에서 꺼짐으로 읽었고(검토 나), 값 쪽을 고치자 export KEY=·키 앞 공백·KEY = true에서 다시 갈렸다(검토 나-2). compose ... ose config의 렌더를 읽는다. 교훈: 같은 파일을 두 파서가 읽으면 반드시 갈린다. 회귀는 실제 compose로 대조한다.
