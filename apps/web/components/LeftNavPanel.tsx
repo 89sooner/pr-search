@@ -25,6 +25,7 @@ const ICONS: Readonly<Record<string, WorkbenchIconName>> = {
   search: 'search', 'saved-searches': 'bookmark', repositories: 'repository',
   ranges: 'range', releases: 'tag', analytics: 'chart', 'ops-pipeline': 'pipeline',
   'ops-repositories': 'repository', 'ops-jobs': 'jobs', 'ops-audit': 'shield',
+  'gh-command-center': 'branch', 'gh-history': 'jobs',
 };
 
 export function LeftNavPanel({ roles, activeId }: LeftNavPanelProps): ReactNode {

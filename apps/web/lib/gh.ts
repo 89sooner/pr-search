@@ -133,6 +133,14 @@ export interface ExecutionView {
   readonly stderr: { readonly text: string | null; readonly truncated: boolean } | null;
   readonly output_binary: boolean;
   readonly correlation_id: string;
+  /** 요청 당시의 invocation. 「같은 구성으로 다시 실행」의 재료다 (FR-GH-012 AC-4). */
+  readonly invocation?: Record<string, unknown>;
+}
+
+/** `API-GH-010` 목록 응답. `next_before`가 있으면 그 ID 앞의 페이지가 더 있다. */
+export interface ExecutionListResponse {
+  readonly items: readonly ExecutionView[];
+  readonly next_before: number | null;
 }
 
 export const TERMINAL_STATES: readonly string[] = ['succeeded', 'failed', 'cancelled', 'timed_out', 'policy_blocked'];
@@ -236,6 +244,86 @@ export function newIdempotencyKey(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return `web-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/**
+ * 이력의 「같은 구성으로 다시 실행」이 W-010에 넘기는 값 (FR-GH-012 AC-4).
+ *
+ * invocation만 넘긴다 — 실행 ID나 승인 여부는 넘기지 않는다. 받는 쪽은 그것으로 **새 미리보기와
+ * 새 실행**을 만들 뿐이며, 과거 실행의 승인이나 결과를 승계하지 않는다.
+ */
+export function encodePrefill(invocation: Record<string, unknown>): string {
+  return encodeURIComponent(JSON.stringify(invocation));
+}
+
+/**
+ * `?prefill=`을 invocation으로 읽는다. 모양이 조금이라도 다르면 `null`이다.
+ *
+ * URL은 외부 입력이다 — 여기서 받은 값은 폼의 초기값이 될 뿐이고, 판정은 폼 값과 똑같이
+ * `validateForm`(서버와 같은 함수)을 지난다. 키를 더 받지 않는 것이 요점이다.
+ */
+export function parsePrefill(raw: string | null): GhInvocation | null {
+  if (raw === null || raw === '') return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const record = parsed as Record<string, unknown>;
+  const capabilityId = record['capability_id'];
+  const context = record['context'];
+  const repository = typeof context === 'object' && context !== null ? (context as Record<string, unknown>)['repository'] : undefined;
+  const flags = record['flags'];
+  const output = record['output'];
+  const jsonFields = typeof output === 'object' && output !== null ? (output as Record<string, unknown>)['json_fields'] : undefined;
+  if (typeof capabilityId !== 'string' || typeof repository !== 'string') return null;
+  if (typeof flags !== 'object' || flags === null || Array.isArray(flags)) return null;
+  if (!Array.isArray(jsonFields) || !jsonFields.every((field) => typeof field === 'string')) return null;
+  const safeFlags: Record<string, string> = {};
+  for (const [flag, value] of Object.entries(flags as Record<string, unknown>)) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') safeFlags[flag] = String(value);
+  }
+  return { capability_id: capabilityId, context: { repository }, flags: safeFlags, output: { json_fields: jsonFields as string[] } };
+}
+
+/** invocation → 폼 초기값. 정의에 없는 flag는 버린다 — 폼이 그릴 수 없는 값은 초기값이 될 수 없다. */
+export function formFromInvocation(capability: CapabilityView, invocation: GhInvocation): PrListFormState {
+  const base = defaultFormState(capability, invocation.context.repository);
+  const enumOption = capability.options.find((option) => option.kind === 'enum');
+  const intOption = capability.options.find((option) => option.kind === 'int');
+  const stateValue = enumOption === undefined ? undefined : invocation.flags[enumOption.flag];
+  const limitValue = intOption === undefined ? undefined : invocation.flags[intOption.flag];
+  return {
+    ...base,
+    state: typeof stateValue === 'string' ? stateValue : base.state,
+    limit: typeof limitValue === 'string' || typeof limitValue === 'number' ? String(limitValue) : base.limit,
+    jsonFields: invocation.output.json_fields.length > 0 ? [...invocation.output.json_fields] : base.jsonFields,
+  };
+}
+
+/** 401 응답의 `detail.login_path`. 프록시가 넣어 준다 — 화면이 로그인 경로를 짐작하지 않는다. */
+export function loginPathOf(body: unknown): string | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const error = (body as Record<string, unknown>)['error'];
+  if (typeof error !== 'object' || error === null) return null;
+  const detail = (error as Record<string, unknown>)['detail'];
+  if (typeof detail !== 'object' || detail === null) return null;
+  const path = (detail as Record<string, unknown>)['login_path'];
+  return typeof path === 'string' && path.startsWith('/') ? path : null;
+}
+
+/** 오류 DTO에서 사용자에게 보일 한 줄. 코드는 서버가 정한 것이며 여기서는 옮기기만 한다. */
+export function describeApiError(body: unknown, fallback: string): { readonly message: string; readonly code: string | null; readonly correlationId: string | null } {
+  if (typeof body !== 'object' || body === null) return { message: fallback, code: null, correlationId: null };
+  const record = body as Record<string, unknown>;
+  const correlationId = typeof record['correlation_id'] === 'string' ? record['correlation_id'] : null;
+  const error = record['error'];
+  if (typeof error !== 'object' || error === null) return { message: fallback, code: null, correlationId };
+  const code = typeof (error as Record<string, unknown>)['code'] === 'string' ? ((error as Record<string, unknown>)['code'] as string) : null;
+  const message = typeof (error as Record<string, unknown>)['message'] === 'string' ? ((error as Record<string, unknown>)['message'] as string) : fallback;
+  return { message, code, correlationId };
 }
 
 /** argv를 사람이 읽을 한 줄로. 공백이 있는 항목은 따옴표로 감싼다 — 표시용이며 실행에 쓰지 않는다. */

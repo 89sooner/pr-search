@@ -152,9 +152,10 @@ export function visibleNavEntries(roles: readonly Role[]): readonly NavEntry[] {
  * 경계를 확인해 `/searchable`이 `/search`에 걸리지 않게 한다.
  *
  * **목록을 인자로 받는 이유**는 최장 일치 규칙을 시험할 수 있게 하기
- * 위해서다. 지금 `NAV_ENTRIES`에는 서로 접두가 되는 항목이 없어 그 규칙이
- * 한 번도 실행되지 않는다 — 목록을 고정해 두면 검증할 수 없는 방어 코드가
- * 되고, 나중에 `/ops` 같은 그룹 항목이 들어오는 순간 아무도 모르게 틀린다.
+ * 위해서다. 처음에는 `NAV_ENTRIES`에 서로 접두가 되는 항목이 없어 그 규칙이
+ * 한 번도 실행되지 않았다 — 목록을 고정해 두면 검증할 수 없는 방어 코드가
+ * 되고, 그룹 항목이 들어오는 순간 아무도 모르게 틀린다. `/gh`·`/gh/history`
+ * (WP-077)가 그 첫 쌍이며, `nav.test.ts`가 실제 목록으로도 그 규칙을 건다.
  */
 export function matchNavEntry(
   pathname: string,

@@ -128,6 +128,33 @@ describe('FR-AUTH-001: 화면 라우트는 전부 공통 관문을 지난다', (
   });
 });
 
+describe('QA-GH-24: GitHub 작업 화면은 원시 HTML을 만들지 않는다 (ADR-018, THR-023)', () => {
+  /*
+   * gh의 출력과 GitHub 필드(PR 제목·브랜치명)는 외부 입력이다. 서버가 무해화한 값을 화면이
+   * **텍스트 노드로만** 그려야 하며, `dangerouslySetInnerHTML`이나 `innerHTML` 하나가 그 경계를
+   * 통째로 무너뜨린다. 리뷰에 맡기면 지켜지지 않는 종류의 규칙이라 정적으로 건다.
+   */
+  const GH_FILES = FILES.filter(
+    (file) =>
+      /\/components\/Gh[A-Za-z]+\.tsx$/.test(file) ||
+      /\/components\/SafeGhOutputViewer\.tsx$/.test(file) ||
+      /\/app\/gh\//.test(file) ||
+      /\/lib\/gh\.ts$/.test(file),
+  );
+
+  it('검사가 실제로 도는지 — gh 화면 파일을 찾았다', () => {
+    expect(GH_FILES.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it.each(GH_FILES.map((f) => [f.slice(WEB_ROOT.length), f] as const))('%s에 원시 HTML 삽입이 없다', (_name, full) => {
+    const source = readFileSync(full, 'utf8');
+    // 속성·키로 **쓰는** 자리만 잡는다 — 「쓰지 않는다」고 적은 주석까지 잡으면 규칙을 설명할 수 없다.
+    expect(source).not.toMatch(/dangerouslySetInnerHTML\s*[=:]/);
+    expect(source).not.toMatch(/\.innerHTML\s*=/);
+    expect(source).not.toMatch(/insertAdjacentHTML\s*\(/);
+  });
+});
+
 describe('QA-COMMON-17: Conductor 외 UI 라이브러리가 없다 (ADR-006)', () => {
   const pkg = JSON.parse(
     readFileSync(join(WEB_ROOT, 'package.json'), 'utf8'),
