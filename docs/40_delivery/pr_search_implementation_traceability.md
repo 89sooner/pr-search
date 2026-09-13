@@ -185,7 +185,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | NFR-002 | WP-004, WP-005, WP-008 | `apps/ingest-gateway/src/{server,metrics}.ts`, `packages/bus/src/{types,topics,partition,config,redis-streams,in-memory}.ts`, `apps/pipeline-worker/src/{project,metrics}.ts` | `apps/ingest-gateway/integration/{load,enqueue}.test.ts`, `apps/pipeline-worker/integration/worker/project.test.ts` | partial (발행까지 포함한 수신 응답 p95 38.3ms / 예산 300ms. 수신→색인 지연은 `ingestion_lag_seconds`로 계측하며 개발 데이터셋에서 전량 10초 이내. 운영 규모 측정은 REL-001 성능 게이트) |
 | NFR-003 | WP-002, WP-003 | `packages/db/migrations/*`, `packages/db/src/partitions.ts`, `packages/es/src/indices.ts` | `packages/db/integration/partitions.test.ts`, `packages/es/integration/bootstrap.test.ts` | partial (PostgreSQL 파티션 + ES 샤드 수. 용량 실측은 REL-001 이후) |
 | NFR-004 | WP-010 (인프라) | - | - | not_started |
-| NFR-005 | WP-003, WP-004, WP-012 | `packages/es/src/mappings/*` (`dynamic: strict`), `apps/ingest-gateway/src/signature.ts` | `packages/es/integration/behavior.test.ts`, `apps/ingest-gateway/src/signature.test.ts` | partial (매핑 수준 차단 + 웹훅 서명 검증·로그 금지 항목. 세션 인증은 WP-012) |
+| NFR-005 | WP-003, WP-004, WP-012 | `packages/es/src/mappings/*` (`dynamic: strict`), `apps/ingest-gateway/src/signature.ts` | `packages/es/integration/behavior.test.ts`, `apps/ingest-gateway/src/signature.test.ts`(상수 시간은 `timingSafeEqual` 위임을 결정적으로 검증, `DEV-669`), `perf/signature-timing.perf.test.ts`(시간 측정 진단 — CI 게이트 아님) | partial (매핑 수준 차단 + 웹훅 서명 검증·로그 금지 항목. 세션 인증은 WP-012) |
 | NFR-006 | WP-039 | - | - | not_started |
 | NFR-007 | WP-015 ~ WP-018, WP-025, WP-038 | `apps/web/components/*.tsx`, `apps/web/lib/nav.ts` | `apps/web/a11y/{shell,search,pr-detail,commit-detail}.test.tsx` (axe wcag2a/2aa/21a/21aa, 위반 0건), `apps/web/lib/architecture.test.ts` (QA-COMMON-16·17 정적 검사 + 화면 라우트가 공통 관문을 지나는지), `pnpm test:contrast` (라이트·다크 80쌍, 실패 0건), `apps/web/e2e/{shell,flow-001,flow-002,flow-003}.spec.ts` | partial (**셸·W-001·W-002·W-003은 done** — 랜드마크·스킵 링크·`aria-current`·라우트 전환 알림·좁은 화면 내비게이션·포커스 복귀에 더해, 두 화면의 모든 DoD 상태에 axe를 돌려 위반 0건. 상태를 **색이 아니라 글자로도** 구분한다(타임라인 네 상태, 시퀀스 배지). 복사 결과는 성공·실패 **양쪽을** 라이브 리전으로 알린다(DEV-096). 나머지 화면은 WP-025 이후다. `color-contrast` axe 규칙은 jsdom에 레이아웃·canvas가 없어 끄고 `checkContrast`로 대신 건다 — 켜 두면 조용히 아무것도 검사하지 않으면서 통과로 보인다) |
 | NFR-008 | WP-001, WP-035, WP-040 | `package.json` 스크립트, `scripts/lint-deps.mjs`, `.github/workflows/ci.yml`, `docker-compose.yml`, 각 앱 `src/server.ts`의 `GET /healthz` | `scripts/lint-deps.test.ts`, `apps/*/src/server.test.ts` | partial (WP-001분: 재현 가능한 검증 파이프라인과 헬스 엔드포인트. 롤백 절차·재색인 소요는 WP-035·WP-040) |
@@ -213,6 +213,8 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | DEV ID | 발견일 | 발견 내용 | 관련 FR/WP | 유형 | 연결 CR | 상태 |
 | --- | --- | --- | --- | --- | --- | --- |
+| DEV-670 | 2026-09-14 | **fetch가 덮는 refresh 의도의 경계가 두 시계를 섞었다.** `completeCoveredRefreshWorks`가 `created_at <= fetch.startedAt`으로 잘랐는데 `created_at`은 DB `clock_timestamp()`(µs)이고 `startedAt`은 애플리케이션 `Date`(ms)다. 같은 밀리초 안에 들어온 **마지막** push는 경계 뒤로 읽혀 `ready`로 남았다 — main CI run `34752161210`(`c5c8aea`, T03b에서 `d-1-dup` 누락)이 그 모양이며, DB 표본 1,000회 중 994회가 `t > date_trunc('milliseconds', t)`였다. 로컬(WSL)에서는 왕복이 1ms를 넘어 옛 시험이 3/3 통과했다. 운영 영향: 남은 의도는 다음 회차가 다시 fetch해 처리하므로 데이터 손실은 없으나 fetch가 한 번 더 돌고, 워커와 DB가 다른 호스트면 시계 차이로 fetch **뒤** push를 덮는 반대 방향 오류도 가능했다. 처방: 경계를 시각이 아니라 fetch 직전(미러 락 아래)에 SELECT로 고정한 **집합**으로 바꿨다(`listCoverableRefreshWorkKeys` → `completeCoveredRefreshWorks(workKeys)`) — 커밋 가시성이 경계다. 수정 전 코드에서 결정적으로 실패하는 재현 시험(`now` 고정 + `created_at` +500µs)을 두었다 | FR-SEQ-008 AC-11 · ENT-SEQ-006 · WP-074 | 기술 제약 | CR-087 | resolved |
+| DEV-669 | 2026-09-14 | **웹훅 서명의 상수 시간 시험이 시간을 재는 시험이라 러너 부하에서 떨어졌다.** main CI run `34752531241`(`5369772`, `verify`)에서 64KB·2,000회 near/far 비율이 0.4617로 하한 0.5 미달. 구현은 `timingSafeEqual` 그대로였고, 로컬에서는 5조건 220회(유휴·CPU 경합·힙 64MB·2vCPU 고정+메모리 압박) 전부 (0.5, 2) 안(최소 0.666)이라 재현되지 않았다 — 러너에서 단위 시험 143파일이 병렬로 도는 조건을 흉내 내지 못했다. 처방: 필수 CI에는 판정이 `timingSafeEqual`에 **위임되는지**(호출·인자·답 그대로·길이 불일치 시 같은 길이 비교·시크릿 전부 비교)를 보는 결정적 시험을 두었고, 세 변이(`===`·길이 검사 제거·첫 일치에서 중단)가 각각 잡힌다. 시간 측정은 `perf/signature-timing.perf.test.ts`(5회 중앙값, `pnpm run test:perf -- perf/signature-timing`)로 옮겨 한계를 적었다. 비율 범위를 넓히거나 문자열 존재만 보는 시험으로 바꾸지 않았고, 암호학적 상수 시간을 증명한 것도 아니다 | NFR-005 · FR-ING-001 AC-1 · WP-003 | 기술 제약 | CR-087 | resolved |
 | DEV-668 | 2026-09-13 | **켜기 직후 `gh_execution`의 현재 월 파티션이 아직 없을 수 있다** — 마이그레이션 028은 파티션을 만들지 않고 `worker-batch`의 보존 러너가 만든다(019의 규율). 독립 검토(나) note. 확인: 러너는 **기동 직후 첫 회차**를 돌려 `ensureAllPartitions`(3개월 앞까지)를 실행하므로(`retention.ts` 「첫 회차를 미룰 이유가 없다」) `prsctl upgrade` 뒤 수 초 안에 파티션이 생기고, 그 창에서는 실행 요청이 500이다(트랜잭션이라 키만 남지 않는다). 런북 7.C가 `health` 초록 뒤에 확인하라고 적는다 | ENT-GH-002 · JOB-AUD-001 | 기술 제약 | CR-086 | resolved — 기존 설계가 덮는다 |
 | DEV-667 | 2026-09-13 | **화면의 중복 방지 키가 폼 변경과 무관하게 유지됐다.** 앞선 제출의 응답을 못 받은 채 폼을 바꿔 다시 누르면 같은 키로 서버가 옛 구성의 실행을 돌려주고 화면이 거기에 붙었다(1회 뒤 자가 회복). 독립 검토(나) note. 폼이 바뀌면 키를 새로 만들도록 고쳤다 — 같은 폼의 재시도는 키를 지킨다 | FR-GH-012 AC-5 · WP-048 | 기술 제약 | CR-086 | resolved |
 | DEV-666 | 2026-09-13 | **고아로 회수된 뒤 원래 실행기가 돌아와 낸 결과는 버려진다** — `finishExecution`이 `state='running' AND executor_id`를 요구하므로 0행이고, 사용자에게는 실제로 성공한 실행이 `failed(executor_lost)`로 보인다. 독립 검토(나) minor. **회수 판정을 덮지 않는 것은 의도다**(거짓 성공을 만들지 않는다; 하트비트 5초 대 고아 판정 60초로 오탐은 드물다). 다만 조용히 버리지 않도록 러너가 경고 로그를 남기게 했다 | FR-GH-006 · JOB-GH-007 | 기술 제약 | CR-086 | open — 설계 유지, 로그 추가 |
@@ -6433,6 +6435,38 @@ W-004의 C-029는 서버 저장 상태를 복원하고 후보 수·예상 횟수
 migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기며, 완성 content와 completed 전이가 함께 커밋된다. ES timeout·조기 종료·샤드 실패, 취소, 30분 초과는 부분 파일을 공개하지 않는다. CSV 수식 접두어를 중화하고 원문 본문·경로 배열은 내보내지 않는다. `export.create`는 감사 정본에서 활성화됐다.
 
 검증: ES 단위 11건, 실제 PostgreSQL·Elasticsearch·Redis 통합 6건, a11y 1건(axe 위반 0), Chromium E2E 3건 통과. 1000/1001/100000/100001 경계, stale Redis와 PG fence, 대기 중 에폭 변경, 부분 응답, 닫았다 다시 연 다이얼로그의 늦은 응답을 포함한다. 전체 통합 첫 실행에서 migration 024 FK가 기존 `TRUNCATE job` 픽스처를 막고 export가 숫자 에폭을 문자열 파서로 넘기지 못하는 두 결함을 찾아 해당 통합 23건 재실행으로 닫았다.
+
+### 6.84 main CI 실패 두 건의 원인 정정 (2026-09-14, CR-087)
+
+시작 `origin/main`은 `5369772`. 브랜치 `fix/main-ci-s0-flaky`. 기능 확장(REL-007 다음 수직, 별도 CR)과 섞지 않으려고 따로 닫는다. **릴리스는 발행하지 않았다.**
+
+**증거부터 보존했다.** run `34752161210`(`c5c8aea`): `integration` 잡(id `103710407847`) `test:integration` 단계 실패, 대기 2초·실행 190초, 러너 GitHub Actions 1000002409. run `34752531241`(`5369772`): `verify` 잡(id `103711356760`) `test` 단계 실패, 대기 3초·실행 75초, 러너 GitHub Actions 1000002414. 두 run 모두 attempt 1이고 나머지 잡은 success다. 대기가 초 단위였으므로 결제 차단·큐 대기가 아니라 **실제 시험 실패**다. 잡 로그 전문과 run·job 메타데이터(JSON)는 세션 scratchpad에 남겼다(휘발) — 원장에는 아래 관측값을 옮긴다.
+
+**(1) `signature.test.ts` 「앞에서 틀린 값과 끝에서 틀린 값의 비교 시간이 갈리지 않는다」 — `DEV-669`.**
+
+| 질문 | 확인 |
+| --- | --- |
+| 구현이 보안 요구를 지키는가 | 예. `constantTimeEquals`는 길이 검사 뒤 `timingSafeEqual`을 부르고, 길이가 달라도 같은 길이의 비교를 한 번 치른다. `verifyWebhookSignature`는 일치 뒤에도 남은 시크릿을 끝까지 비교한다. 코드 변경 없음(주석만) |
+| 시간 측정이 CI에서 그것을 신뢰성 있게 검사하는가 | 아니다. CI 관측값 0.4617(하한 0.5). 로컬 재현 시도 5조건 220회 — 유휴 40회(0.740~1.016), CPU 경합 2개 40회(0.785~0.996), 힙 64MB 40회(0.733~0.967), 2vCPU 고정+메모리 압박 3개 60회(0.666~1.488), 2vCPU 고정 반복 40회 — **전부 구간 안**이며 압박에서 분산만 넓어졌다. 러너에서 단위 시험 143파일이 병렬로 도는 조건(전체 20.31초, 이 파일 773ms)은 흉내 내지 못했다. 측정 대상은 호출당 `Buffer.from` 두 번(128KB) × 2,000회 = 256MB 할당이라 GC 시점이 측정에 섞인다 |
+| 처방 | 필수 CI: `vi.mock('node:crypto')`로 `timingSafeEqual`을 **감싸서**(대체하지 않고) 판정의 위임을 본다 — 같은 길이면 정확히 그 두 버퍼로 한 번 호출, 원시 함수의 답이 곧 결과(다른 값에 `true`를 주면 `true`, 같은 값에 `false`를 주면 `false`), 길이가 다르면 예외 없이 거짓이면서 같은 길이 비교 한 번, 시크릿 셋 중 첫째가 맞아도 세 번 호출. 시간 측정은 `perf/signature-timing.perf.test.ts`로 옮겼다(5회 중앙값, 단독 실행 전제, 한계를 파일 머리에 적음). 진단 실행 `pnpm run test:perf -- perf/signature-timing` → 1파일 1건 통과 |
+| 변이 | `return expected === actual` → 위임 3건 실패(11/14) · 길이 검사 제거 → `RangeError`로 1건 실패(13/14) · 첫 일치에서 `return true` → 시크릿 전부 비교 1건 실패(13/14). 셋 다 원복 뒤 14/14 |
+
+**(2) `freshness.test.ts` T03b 「성공한 fetch가 그 전에 도착한 push 의도를 전부 덮고…」 — `DEV-670`.**
+
+| 질문 | 확인 |
+| --- | --- |
+| 시험의 「먼저 도착했다」가 DB 상태와 일치하는가 | 일치한다 — 세 의도는 `prepareAndAssignSequence` 호출 전에 커밋됐다. 그런데 덮기 경계는 `created_at <= fetch.startedAt`이었고, `created_at`은 DB `clock_timestamp()`(µs), `startedAt`은 애플리케이션 `new Date()`(ms)다 |
+| 애플리케이션 시각과 DB 시각의 정밀도가 다른가 | 다르다. 격리 PostgreSQL에서 `SELECT clock_timestamp() <= date_trunc('milliseconds', clock_timestamp())`는 거짓이고, 표본 1,000회 중 994회가 `t > date_trunc('milliseconds', t)`다. 마지막 INSERT(d-1-dup)와 `startedAt` 사이가 1ms 안에 들면 그 행은 경계 **뒤**로 읽힌다 — CI 관측(`['d-1','d-2']`, `d-1-dup` 누락)과 일치한다. 로컬(WSL, Docker 경유)에서는 왕복이 1ms를 넘어 옛 시험이 3/3 통과했다 |
+| 코드 결함인가 시험 결함인가 | **코드 결함**이다. 남은 의도는 다음 회차가 다시 fetch해 처리하므로 데이터 손실은 없지만 불필요한 fetch가 돌고, 워커와 DB가 다른 호스트면 시계 차이가 반대 방향(fetch **뒤** push를 덮음)으로도 작동한다 |
+| 처방 | 경계를 시각에서 **집합**으로 바꿨다. `withFreshness`에 `beforeFetch` 훅을 두어 fetch 직전(미러 락 아래, API 모드는 그래프 읽기 직전)에 `listCoverableRefreshWorkKeys`가 `ready`·`retry`·(같은 토큰의) `leased` 행의 키를 고정하고, 채번이 정상 종료하면 `completeCoveredRefreshWorks(workKeys)`가 그 집합만 닫는다(상태 조건을 다시 본다). 커밋 가시성이 경계이므로 시계가 개입하지 않는다. `sleep`·여유값·비교 연산자 완화는 쓰지 않았다 |
+| 수정 전 재현 | 새 시험 「같은 밀리초 안에 도착한 마지막 push도 덮는다」 — 애플리케이션 시각을 고정(`now`)하고 세 의도의 `created_at`을 그보다 500µs 뒤에 둔다. 제품 파일 셋을 `HEAD`로 되돌리고 돌리면 `expected [] to deeply equal ['d-a','d-b','d-c']`로 **결정적으로 실패**(9/10)하고, 수정본에서는 통과한다 |
+| 통합 시험 | `freshness.test.ts` 10/10(새 재현 1 포함) · `packages/db/integration/merge-number-schema.test.ts` 23/23 — 집합 고정 뒤 도착한 행은 같은 밀리초여도 남고, 빈 집합은 질의 없이 빈 결과, 집합에 있어도 다른 워커가 집어 간 행은 닫지 않는다 |
+
+**배터리 (HEAD 커밋 직전, 격리 서비스 postgres 55434 · redis 56380 · es 59201).** `pnpm typecheck` 통과 · `pnpm lint` 통과(첫 실행에서 `import()` 타입 표기 1건을 고쳤다) · `pnpm run lint:deps` 패키지 16개 위반 0 · 단위 `apps/pipeline-worker/src`·`apps/ingest-gateway/src`·`packages/db/src` 24파일 378건 통과 · 위 통합 둘 33건 통과 · 진단 perf 1건. 전체 단위·통합·회귀·e2e 배터리는 PR의 CI와 다음 수직 판에서 다시 돈다.
+
+**하지 않은 것.** 비율 범위 완화 · 시험 삭제 · `sleep` · 문자열 존재 검사 · 마이그레이션 변경 · 재실행 green으로 실패 지우기. 「암호학적 상수 시간을 증명했다」고 적지 않는다 — 검증한 것은 판정의 위임과 서명 판정의 정확성이다.
+
+**병합 뒤 main CI.** (병합 뒤 실측해 채운다.)
 
 ### 6.83 REL-007 R0 — PR 목록 조회 첫 수직 (2026-09-13, CR-086 / WP-077)
 

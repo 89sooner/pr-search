@@ -257,6 +257,39 @@ describe('T03b: 중복·역순 push, 락 경합, 마지막 push 복구', () => {
     }
   });
 
+  /**
+   * main CI run 34752161210(c5c8aea)의 실패를 결정적으로 재현한다 (DEV-670).
+   *
+   * 수정 전 코드는 `created_at <= fetch.startedAt`으로 덮을 의도를 잘랐다. `created_at`은
+   * DB의 `clock_timestamp()`(µs)이고 `startedAt`은 애플리케이션의 `Date`(ms)라, 같은
+   * 밀리초에 들어온 **마지막** 의도(`d-1-dup`)가 경계 뒤로 읽혀 남았다. 빠른 러너에서
+   * 마지막 INSERT와 `startedAt` 사이가 1ms 안에 들면 언제든 난다.
+   *
+   * 여기서는 그 상황을 시계에 기대지 않고 만든다: 애플리케이션 시각을 고정하고 의도의
+   * `created_at`을 그보다 500µs **뒤**에 둔다. 시각 경계로 되돌아가면 셋 다 남는다.
+   */
+  it('**같은 밀리초 안에 도착한 마지막 push도 덮는다** — DB 시각(µs)과 애플리케이션 시각(ms)의 경계 (DEV-670)', async () => {
+    const startedAt = new Date(Date.now() - 1_000);
+    for (const id of ['d-a', 'd-b', 'd-c']) await enqueueRefresh(id, id.charAt(2).repeat(40), startedAt);
+    await pool.query(
+      `UPDATE sequence_work SET created_at = $1::timestamptz + interval '500 microseconds' WHERE work_key = ANY($2::text[])`,
+      [startedAt.toISOString(), ['push:d-a', 'push:d-b', 'push:d-c']],
+    );
+
+    const outcome = await prepareAndAssignSequence(
+      deps({ freshness: { pool, mode: 'mirror', sync: mirrorSyncTo(origin.url), now: () => startedAt } }),
+      REPOSITORY_ID,
+      BRANCH,
+    );
+    expect(outcome.kind).toBe('done');
+    if (outcome.kind !== 'done') return;
+    expect(outcome.fetch.startedAt).toEqual(startedAt);
+    expect(outcome.covered.map((one) => one.payload.delivery_id).sort()).toEqual(['d-a', 'd-b', 'd-c']);
+    for (const key of ['push:d-a', 'push:d-b', 'push:d-c']) {
+      expect((await sequenceWorkRepo.findWork(pool, key))?.state, key).toBe('done');
+    }
+  });
+
   it('**미러 락을 다른 호출자가 쥐고 있으면 defer한다** — 같은 디렉터리에 두 fetch가 겹치지 않는다', async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => { release = resolve; });

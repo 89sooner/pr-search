@@ -338,16 +338,27 @@ describe('sequence_work claim · lease · CAS (T03b · T04a)', () => {
     expect(await workRepo.enqueueRefreshWork(pool, { deliveryId: 'd-3', repositoryId: REPO, baseBranch: 'release', headSha: SHA(3), receivedAt: at('2026-09-11T00:00:02Z'), correlationId: 'c-3' })).toBe(true);
 
     const [claimed] = await workRepo.claimDueWork(pool, { kinds: ['refresh'], limit: 1, leaseMs: 60_000 });
-    const fetchStartedAt = new Date();
-    const covered = await workRepo.completeCoveredRefreshWorks(pool, { repositoryId: REPO, baseBranch: BRANCH, coveredBefore: fetchStartedAt, leaseToken: claimed!.lease_token });
-    expect(covered.map((one) => one.payload.delivery_id).sort()).toEqual(['d-1', 'd-2']);
-    expect((await workRepo.findWork(pool, 'push:d-3'))?.state).toBe('ready');
-    expect((await workRepo.findWork(pool, 'push:d-1'))?.state).toBe('done');
+    // fetch 직전에 덮을 집합을 고정한다 — 시각이 아니라 그 시점에 보이는 행이다 (DEV-670).
+    const coverable = await workRepo.listCoverableRefreshWorkKeys(pool, { repositoryId: REPO, baseBranch: BRANCH, leaseToken: claimed!.lease_token });
+    expect(coverable).toEqual(['push:d-1', 'push:d-2']);
 
-    // fetch 시작 **뒤에** 도착한 push는 남는다.
+    // fetch 시작 **뒤에** 도착한 push는 집합에 없으므로 남는다 — 같은 밀리초에 들어와도 같다.
     await workRepo.enqueueRefreshWork(pool, { deliveryId: 'd-4', repositoryId: REPO, baseBranch: BRANCH, headSha: SHA(4), receivedAt: new Date(), correlationId: 'c-4' });
-    const late = await workRepo.completeCoveredRefreshWorks(pool, { repositoryId: REPO, baseBranch: BRANCH, coveredBefore: fetchStartedAt, leaseToken: null });
-    expect(late).toEqual([]);
+
+    const covered = await workRepo.completeCoveredRefreshWorks(pool, { workKeys: coverable, leaseToken: claimed!.lease_token });
+    expect(covered.map((one) => one.payload.delivery_id).sort()).toEqual(['d-1', 'd-2']);
+    expect((await workRepo.findWork(pool, 'push:d-1'))?.state).toBe('done');
+    expect((await workRepo.findWork(pool, 'push:d-3'))?.state).toBe('ready');
+    expect((await workRepo.findWork(pool, 'push:d-4'))?.state).toBe('ready');
+
+    // 빈 집합은 질의 없이 빈 결과다.
+    expect(await workRepo.completeCoveredRefreshWorks(pool, { workKeys: [], leaseToken: null })).toEqual([]);
+
+    // 집합에 있었어도 그 사이 다른 워커가 집어 간 행(lease 불일치)은 닫지 않는다.
+    const others = await workRepo.claimDueWork(pool, { kinds: ['refresh'], limit: 2, leaseMs: 60_000 });
+    expect(others.map((row) => row.work_key).sort()).toEqual(['push:d-3', 'push:d-4']);
+    expect(await workRepo.completeCoveredRefreshWorks(pool, { workKeys: ['push:d-4'], leaseToken: null })).toEqual([]);
+    expect((await workRepo.findWork(pool, 'push:d-4'))?.state).toBe('leased');
   });
 
   it('lease 상태와 lease 필드는 함께 있거나 함께 없다 (CHECK)', async () => {
