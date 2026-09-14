@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-09-14T14:25:03+00:00
+generated=2026-09-14T14:39:45+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=8
@@ -35,9 +35,9 @@ sig=agent-context/decisions.md;origin/main;gh/policies;gh/policies/changes;lib/g
 ### f5791b0
 src=agent-context/files.md
 compact=agent-context/_handoff/compact/f5791b0.files.ctx.md
-sha256=0d946bc2195fff13d3ca86414c8ee6b0c15e075d912c5f44d582bc1f801d0835
+sha256=682c80d94d087e8bc53c8f99d585e745fce287f826c8cb16f0130413535fad7f
 bytes=177947 compact_bytes=173470 lines=2064 priority=45
-heads=중요 파일 경로와 역할 > 2026-09-14 (6차) 라운드가 만들거나 만진 것 (CR-090, PR #188 — 81 파일) > 코드 (새 파일) > 코드 (고친 것) > 문서 (23개 + 런북) > 저장소 밖 (scratchpad, 무시 대상 — /tmp라 재부팅에 사라진다)
+heads=중요 파일 경로와 역할 > 2026-09-14 (6차) 라운드가 만들거나 만진 것 (CR-090, PR #188 — 81 파일) > 코드 (새 파일) > 코드 (고친 것) > 문서 (24개 + 런북) > 저장소 밖 (scratchpad, 무시 대상 — /tmp라 재부팅에 사라진다)
 sig=agent-context/files.md;packages/gh-cli/src/;packages/db/migrations/030_gh_operations_policy;packages/db/src/repositories/gh-policy.ts;integration/gh-policy.test.ts;apps/search-api/src/gh/policy.ts;integration/gh/policy-routes.test.ts;apps/gh-executor/integration/;app/ops/gh-policy/page.tsx;lib/gh-policy.test.ts;a11y/gh-policy.test.tsx;e2e/gh-policy.spec.ts;src/gh/;packages/db/src/;packages/contracts/src/error-codes.ts;packages/domain/src/audit.ts;app/ops/gh-registry/page.tsx;integration/gh/;gh/executions;regression/runtime-reachability.test.ts;deploy/single-host/RUNBOOK.md;exp/db-experiments;logs/battery/;restore/restore-smoke.sh
 
 ### f7b39dc

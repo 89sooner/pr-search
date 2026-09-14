@@ -15,7 +15,7 @@
 - web `lib/{gh,gh-registry,nav,proxy}.ts`(프록시 `idempotency-key` — `DEV-690`), `components/{GhCommandCenterView,GhExecutionPreview}.tsx`, `app/ops/gh-registry/page.tsx`.
 - 시험: 실행기 `integration/{executor,registry-check}.test.ts`, search-api `integration/gh/{registry,routes}.test.ts`·`src/{runtime,gh/executions}.test.ts`, DB `integration/{gh-registry-schema,gh-schema,merge-number-schema}.test.ts`, web `lib/{nav,proxy}.test.ts`, `regression/runtime-reachability.test.ts`(CR-088 배선 이전·CR-090 셋).
 
-### 문서 (23개 + 런북)
+### 문서 (24개 + 런북)
 
 - SRS v2.28, PRD v1.12, 용어집 v0.10, 추적 매트릭스 v1.7, 파생 UI(브리프 v0.9·IA v0.6·흐름 v0.8·QA v0.18·상태 매트릭스 v0.18·와이어프레임 v0.19), 아키텍처(API 계약 v0.30·ADR v0.11·비동기 v0.14·백엔드 v0.10·데이터 모델 v0.24·프런트엔드 v0.7·인프라 v0.18·관측성 v0.6·보안 v1.10), delivery(로드맵 v0.21·원장 v6.76·검증 계획 v0.12·작업 패키지 v2.32), change_control(CR-090 행·cascade 절), `deploy/single-host/RUNBOOK.md`(업그레이드·7.C·증상 표). 후속 기록 PR이 원장·작업 패키지 판을 한 단계 더 올린다.
 
