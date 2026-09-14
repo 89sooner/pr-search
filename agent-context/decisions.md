@@ -1,4 +1,36 @@
 # 확정한 설계 결정과 이유
+## 2026-09-14 (6차) — CR-090 REL-007 R2 운영 승인·R0 실행 정책 (WP-080, PR #188)
+
+### A. 사용자 직접 결정 · B. 지시서 사전 승인 (다시 논의하지 않음)
+
+- A: 기준 `origin/main` `26e2627`, 후보 번호 CR-090·DEV-690·WP-080·QA-GH-47(확인 뒤 사용), CR-089 자원 정리 승인(내용 보존 확인 뒤 — 거절되면 남기고 우회·`!` 안내 금지), 사내 반입·실제 GHES 시험은 사용자가 나중에.
+- B: WP-059의 스냅숏 승인·활성화 선행, A-005 `pr.list` 차단·재개 최소, A-006 승인 상태·근거·이력, 승인 없는 실행을 `admin_action_required`로 거부, 최소 additive migration, 승인·정책 변경의 감사와 동시성 방어, WP-045 문구 정정, 독립 검토·CI 뒤 병합. 변경 권한은 `operator`(`security_officer`는 조회), 큐에서 꺼낼 때 재확인·대기 요청 비승계·자동 재실행 없음, 정책을 못 읽으면 새 실행만 거부, 정의가 바뀌면 자동 승인·fallback 없음, 롤백 전 끄기.
+- 유지: 실행 허용 `pr.list` 하나, gh 2.97.0, `GH_OPERATIONS_ENABLED`·M 번호 기본 OFF, 마이그레이션 001~029 불변, public·ubuntu-latest·workflow 구조, single-host-primary. 제외: `pr.view` 등 새 실행, R1~R3·Recipe·임의 `gh api`·extension·파일 작업, 위험도 재정의·정책 전체 편집기·엔드포인트 정책 엔진, 동적 manifest, 사내 DB·GHE 변경, 릴리스·태그.
+
+### C. 구현이 스스로 고른 것 (근거와 되돌리는 법)
+
+| 결정 | 근거 | 다른 선택지 | 되돌리기 |
+| --- | --- | --- | --- |
+| 배포 범위 = `GHE_BASE_URL`의 호스트(서버 설정, 클라이언트가 지정하지 않음) | `executor_id`는 재시작마다 바뀐다(호스트명:pid:uuid 앞 8자), 029 기록에 범위가 없었다 | 실행기 신원 단위·전역 한 행·요청 지정 | 030 down(반드시 끈 뒤) |
+| 근거 신선도 한도 = 검사 주기 + 한 회차 최악 소요(기본 91,225,000ms), DB 함수 인자는 60,000~691,200,000ms | 숨은 상수 금지, 과거 통과로 무기한 실행하는 경로 금지 | 고정 24시간·만료 없음 | `registry-cadence.ts`, 인자 범위는 새 migration |
+| 쓰기는 `SECURITY DEFINER` 함수 하나 + advisory lock(정책 변경 배타, 검증 기록 INSERT·claim 공유) | `FOR SHARE`는 UPDATE 권한이 필요하다(E3), `prs_app` UPDATE 확대와 `prs_admin` 배포 금지 | 행 잠금·관리 자격 배포 | 030 down |
+| 기대 revision 불일치 409(`revision_changed`와 현재 revision), 승인은 미리보기 묶음(`evidence_changed`), 같은 스냅숏 재승인 `already_approved`, 같은 키·같은 지문 `replayed`·다른 지문 `GH_DUPLICATE_REQUEST` | 오래된 확인·중복 적용·키 재사용 차단 | 마지막 쓰기 승리 | `policy.ts`·030 |
+| API-GH-008 = `GET /gh/policies` + `POST /gh/policies/changes`(행위 단위, JSON 본문 전용, `Idempotency-Key` 필수). 오류 코드 넷(`GH_ADMIN_ACTION_REQUIRED`·`GH_POLICY_CONFLICT`·`GH_REGISTRY_APPROVAL_INELIGIBLE` 409, `GH_POLICY_UNAVAILABLE` 503) | 계획의 `PUT`(전체 교체)에는 멱등·충돌 규칙이 없었다 | `PUT` | `routes.ts` |
+| 감사 액션 넷, 적용 감사는 변경과 같은 트랜잭션(FR-AUTH-004 AC-6 예외), 거절 결과 코드 다섯은 `action`이 네 값일 때만 best-effort, `replayed` 0행 | 기록 없는 적용이 거절보다 나쁘다, 정본 어휘 밖 액션을 만들지 않는다(검토 A) | 전부 best-effort | SRS·030 |
+| 대기 요청 닫힘 — 정책 사유는 `policy_blocked` 종료(`error` = 사유), 레지스트리 사유는 `failed`, 정책 읽기 실패·잠금 대기 초과는 `queued` 유지(스윕) | 과거 승인 승계·자동 재실행 금지, 판정 못 한 것은 닫지 않는다 | 전부 `failed` | `runner.ts` |
+| claim 가드 트리거 — PRS10(revision 없음·`queued`가 아닌 새 행), PRS11(현재 정책과 다른 claim). 옛 앱의 Operations 경로는 오류가 된다(의도한 비호환) | 롤백해도 실행이 조용히 다시 열리지 않게. `queued` 제한은 검토 A | 앱 코드만으로 방어 | 030 down(반드시 끈 뒤) |
+| 잠금 대기 초과(55P03) — 실행기 claim은 던지지 않고 `policy_unavailable`·`queued`, 정책 변경은 503(감사 없음) | 던지면 버스가 재시도로 돌려 파티션이 막힌다(검토 B) | 500·재시도 | `runner.ts`·`policy.ts` |
+| 적용 뒤 응답용 재조회 실패는 500 유지 | web이 5xx(503 제외)에서 같은 키로 다시 보내 `replayed`를 받는다 — 새 응답 모양을 시험 없이 들이지 않았다(검토 B) | 200 + `policy: null` | `routes.ts` |
+| SQL 함수에 gh pin 상수를 두지 않음 | pin 교체 때 정당한 승인이 새 migration 전까지 막힌다. 실행은 `approvalMatchesManifest`와 가드가 pin된 정의로만 연다(검토 A 타당 판정) | 상수 대조 | — |
+| 함수의 내장 호출은 스키마를 한정하지 않고, `prs_app`에 `public` CREATE 없음을 시험으로 고정하며 운영 DB는 런북에서 확인 | PostgreSQL 15의 기본값은 새 DB에만 적용된다 | 전부 `pg_catalog.` 한정 | 새 migration |
+| `activated_at` = 최초 운영 승인 시각(한 번), 철회해도 유지. 현재 승인은 정책 revision | 029 스키마상 스냅숏은 철회할 수 없다 | 활성화 열 재사용 | — |
+| API 수락은 레지스트리 신선도를 보지 않고 실행기 claim이 본다 | 수락은 통과 기록 + 승인을 요구하고, claim이 그보다 느슨해질 수 없다 | 두 곳 모두 | `registry-policy.ts` |
+| web `canChangePolicy(roles, authEnabled)` — 인증 없는 배포에서는 버튼을 그린다(판정은 서버) | 파일럿 형상 | 숨김 | `lib/gh-policy.ts` |
+| 프록시 `Idempotency-Key` 전달(`DEV-690`), CSRF 토큰 미도입·JSON 전용 보완(`DEV-691` open) | 토큰 체계는 범위 밖 | 토큰 도입 | `proxy.ts` |
+| 정책 잠금 `lock_timeout` 10초, 이력 조회 20건 | 정상 변경은 밀리초 | — | 상수 |
+| 구현하지 않음: 재검사 API, 다른 스냅숏 선택·fallback, 정책 전체 편집기, 승인 만료 자동 철회, 알림·이벤트 발행, 승인자 분리(4-eyes), 정책 변경 55P03의 서버 로그·지표 분리, 스위퍼 머리 막힘 수정 | 지시서 범위 밖이거나 검토 note | — | — |
+| 검증 방식: 변이 31, 옛 앱 `git archive` 롤백 실측, 검토 반영 뒤 이미지 재빌드, 백업 복원 스모크(일회성), 문서 cascade 독립 검토 | 새 시험·방어를 믿기 전에 대상을 되돌린다 | — | — |
+
 ## 2026-09-14 (5차) — CR-089 REL-007 R1b 결과 계약·타입 연결 검증 (WP-079, PR #186)
 
 ### A. 사용자 직접 결정 · B. 지시서 사전 승인 (다시 논의하지 않음)

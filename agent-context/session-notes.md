@@ -1,4 +1,41 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
+## Session: 2026-09-14 (6차) — CR-090 REL-007 R2 운영 승인·R0 실행 정책 (PR #188)
+
+## Goal
+
+결정자 지시서: 「검사가 통과했다는 화면 표시에서 끝나지 않고, 관리자의 명시적 승인과 차단 결정이 실제 실행을 통제하며, 그 근거와 변경 이력이 보존되는 상태」. 새 명령 실행·R1 개방 없음. 계약 정정 → DB·API·실행기·화면 → 실제 실행 검증 → 독립 검토 → PR·CI·병합 → 병합 뒤 main CI. 사내 반입·실제 GHES 시험은 사용자가 나중에 한다.
+
+## Current state
+
+main = `9c8a781`(CR-090 병합) 위에 후속 기록 PR이 올라간다. 병합 커밋 main CI: run `34854308135` attempt 1 success(verify·integration — 회귀 484). 운영 승인·철회(A-006)와 `pr.list` 차단·재개(A-005 최소)가 API 수락·실행기 claim·DB 가드에서 지켜진다. 실행 허용 `pr.list` 하나. REL-007은 미완료다.
+
+## Decisions
+
+decisions.md 6차 절(A·B·C 표).
+
+## Changed files
+
+files.md 6차 절.
+
+## Commands
+
+commands.md 6차 절.
+
+## Next steps
+
+1. origin/main·열린 PR·세션·ID 실측(CR-091·DEV-694·WP-081·QA-GH-50 후보).
+2. REL-007 다음 판은 결정자 지시를 받는다 — 남은 완료 조건과 WP-059의 나머지는 todos.md 6차 절.
+3. 이 판이 만든 자원(격리 서비스 `prs-approval-*`와 볼륨, 작업 트리 `approval`·`cr090-record`, 병합된 브랜치 둘, 이미지 `prs/*:cr090-verify`·`cr090-final`)의 정리는 사용자 결정이다 — `git worktree list`·`docker ps -a`·`docker images`로 실측한다.
+4. CR-089 자원(작업 트리 `contracts`, 브랜치 `feature/rel007-result-contracts`·`docs/cr-089-merge-record`)은 정리 시도가 권한 시스템에 거절돼 남아 있다. 다시 시도하거나 우회하지 않는다.
+
+## Risks/gotchas
+
+risks.md 6차 절.
+
+## References
+
+PR #188, CR-090, WP-080, DEV-685·DEV-690~693, THR-048~051, QA-GH-47~49, RB-25·26, ENT-GH-013·014, 원장 6.87장, 이전 세션 전사 `exports/202609141932.md`·`exports/202609142215.md`, 세션 jsonl `66c6e4d6`·`acd5a0d8`·`e0a2c7af`(지시서 원문은 `acd5a0d8` scratchpad `directive-cr090.md`, /tmp라 재부팅에 사라진다).
+
 ## Session: 2026-09-14 (5차) — CR-089 REL-007 R1b 결과 계약·타입 연결 검증 (PR #186)
 
 ## Goal
