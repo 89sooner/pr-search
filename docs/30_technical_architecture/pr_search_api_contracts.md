@@ -3004,11 +3004,11 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 | `GH_CONSTRAINT_VIOLATION` | 400 | argument·flag 제약 위반 | 충돌·의존 관계 수정 |
 | `GH_IDENTITY_REQUIRED` | 401 | Operations App 미연결·토큰 만료 | GitHub 계정 연결 |
 | `GH_PERMISSION_DENIED` | 403 | 사용자 GitHub 권한 부족 | 필요 권한 요청 |
-| `GH_POLICY_BLOCKED` | 403 | 실행 정책이 차단한 capability | 관리자에게 문의 |
+| `GH_POLICY_BLOCKED` | 403 | 실행 정책이 차단한 capability. CR-090부터 운영자가 A-005에서 막은 capability는 `detail.reason = policy_blocked`·`detail.detail = operator_blocked`이다 | 관리자에게 문의 |
 | `GH_ENDPOINT_BLOCKED` | 403 | `gh api` 엔드포인트 정책 차단 | 허용된 엔드포인트 사용 |
 | `GH_EXTENSION_BLOCKED` | 403 | 허용 목록에 없는 확장 | 관리자 승인 요청 |
 | `GH_HOST_UNSUPPORTED` | 409 | 대상 GHE 버전이 미지원 | 지원되는 기능 사용 |
-| `GH_REGISTRY_STALE` | 409 | 실행기 gh 버전과 manifest 불일치 | 관리자 조치 대기 |
+| `GH_REGISTRY_STALE` | 409 | 실행기 gh 버전과 manifest 불일치. CR-090부터 실행기의 가장 최근 판정이 드리프트·구조 실패·미완이거나 다른 정의를 가리킬 때도 이 코드다(`detail.reason`: `registry_stale`·`registry_evidence_expired`·`registry_unchecked`) | 관리자 조치 대기 |
 | `GH_CONFIRMATION_REQUIRED` | 409 | 위험도에 따른 확인 미수행 | 확인 후 재요청 |
 | `GH_APPROVAL_REQUIRED` | 409 | 승인자 승인 대기 | 승인 후 자동 진행 |
 | `GH_TARGET_CHANGED` | 409 | 실행 직전 대상 상태가 변경됨 | 새로 고침 후 재확인 |
@@ -3017,6 +3017,10 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 | `GH_EXECUTION_TIMEOUT` | 504 | 실행 시간 상한 초과 | 범위를 줄여 재시도 |
 | `GH_WORKSPACE_UNAVAILABLE` | 503 | 임시 작업 공간 확보 실패 | 잠시 후 재시도 |
 | `GH_CAPABILITY_NOT_EXECUTABLE` | 409 | manifest에는 있으나 이 배포가 실행을 열지 않은 capability (CR-086). `GH_CAPABILITY_UNKNOWN`·`GH_POLICY_BLOCKED`·`GH_HOST_UNSUPPORTED`와 다른 사실이다 — 미구현을 정책·호스트 제약으로 적지 않는다 | 열린 capability 사용. 사유는 `detail.reason` |
+| `GH_ADMIN_ACTION_REQUIRED` | 409 | 현재 적재된 배포 정의의 운영 승인이 없다 — 승인이 없었거나 철회됐거나 배포 정의가 바뀌었다 (CR-090, FR-GH-011 AC-6). `GH_POLICY_BLOCKED`(운영자 차단)·`GH_REGISTRY_STALE`(실행기 판정)과 다른 사실이다 | 관리자에게 운영 승인 요청 (A-006). `detail.detail`: `no_approval`·`approved_definition_differs` |
+| `GH_POLICY_CONFLICT` | 409 | 운영 정책 변경의 전제가 확인한 뒤 바뀌었다 — 기대 revision·승인 근거가 다르거나 바꿀 것이 없다 (CR-090, FR-GH-011 AC-8) | 다시 확인 후 제출. `detail.reason`: `revision_changed`(+`current_revision`)·`evidence_changed`·`evidence_not_latest`·`already_approved`·`not_approved`·`already_blocked`·`not_blocked` |
+| `GH_REGISTRY_APPROVAL_INELIGIBLE` | 409 | 현재 근거로는 운영 승인할 수 없다 (CR-090, FR-GH-011 AC-7) | 사유 해소 후 다시 확인. `detail.reasons[]`의 코드(근거 없음·통과 아님·다른 정의·관측 불일치·판 해석 불가·재현 불가·게이트 미달·신선도 초과 등) |
+| `GH_POLICY_UNAVAILABLE` | 503 | 운영 정책 상태를 읽지 못해 새 실행을 허용하지 않는다 (CR-090, FR-GH-011 AC-9). 다른 API는 계속 응답한다 | 잠시 후 재시도. 계속되면 마이그레이션 030 적용 여부 확인 |
 
 ## 7. 내부 이벤트 계약
 

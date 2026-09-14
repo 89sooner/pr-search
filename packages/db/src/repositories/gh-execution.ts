@@ -66,6 +66,8 @@ export interface GhExecutionRow {
   readonly stderr_truncated: boolean;
   readonly output_binary: boolean;
   readonly correlation_id: string;
+  /** 요청을 수락한 시점의 운영 정책 revision (CR-090). 030 이전의 행은 `null`이며 실행되지 않는다. */
+  readonly policy_revision: number | null;
 }
 
 export interface GhExecutionInsert {
@@ -86,6 +88,8 @@ export interface GhExecutionInsert {
   readonly idempotencyKey: string;
   readonly authorizationResult: string;
   readonly correlationId: string;
+  /** 수락 판정이 본 운영 정책 revision. 실행권 확정 때 현재 revision과 같아야 한다 (FR-GH-011 AC-9). */
+  readonly policyRevision: number;
 }
 
 /** 같은 사용자·같은 키가 이미 있다 — 새 실행을 만들지 않았다. */
@@ -126,8 +130,8 @@ export async function insertExecution(pool: Pool, input: GhExecutionInsert): Pro
       `INSERT INTO gh_execution
          (user_id, github_actor, host, repository, repository_id, target, capability_id, invocation, context,
           redacted_argv, env_keys, risk_level, state, gh_version, manifest_version, manifest_hash,
-          idempotency_key, authorization_result, correlation_id)
-       VALUES ($1, $2, $3, $4, $5, NULL, $6, $7::jsonb, $8::jsonb, $9, $10, $11, 'queued', $12, $13, $14, $15, $16, $17)
+          idempotency_key, authorization_result, correlation_id, policy_revision)
+       VALUES ($1, $2, $3, $4, $5, NULL, $6, $7::jsonb, $8::jsonb, $9, $10, $11, 'queued', $12, $13, $14, $15, $16, $17, $18)
        RETURNING *`,
       [
         input.userId,
@@ -147,6 +151,7 @@ export async function insertExecution(pool: Pool, input: GhExecutionInsert): Pro
         input.idempotencyKey,
         input.authorizationResult,
         input.correlationId,
+        input.policyRevision,
       ],
     );
     const row = result.rows[0];
@@ -316,6 +321,22 @@ export async function finishExecution(
       outcome.outputBinary,
       outcome.envKeys === undefined ? null : [...outcome.envKeys],
     ],
+  );
+  return result.rows[0] ?? null;
+}
+
+/**
+ * 운영 정책 때문에 집지 않은 대기 요청을 닫는다 (FR-GH-011 AC-9, FR-GH-009 AC-8, CR-090). `queued`일 때만.
+ *
+ * 상태는 `policy_blocked`(종료)이고 `error`가 사유 코드다 — `admin_action_required`·`policy_blocked`·`policy_changed`.
+ * 닫힌 요청은 다시 실행되지 않는다. 사용자가 새 요청으로 다시 제출한다.
+ */
+export async function closeQueuedByPolicy(db: Queryable, executionId: number, reason: string): Promise<GhExecutionRow | null> {
+  const result = await db.query<GhExecutionRow>(
+    `UPDATE gh_execution SET state = 'policy_blocked', finished_at = now(), error = $2
+      WHERE execution_id = $1 AND state = 'queued'
+      RETURNING *`,
+    [executionId, reason.slice(0, 1000)],
   );
   return result.rows[0] ?? null;
 }

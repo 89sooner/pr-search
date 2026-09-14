@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseHelp, type ParsedCommandListing } from './help-parse.js';
 import { parseGhVersionOutput } from './pin.js';
+import { GH_VERSION_TIMEOUT_MS, INVENTORY_HELP_CONCURRENCY, INVENTORY_HELP_TIMEOUT_MS } from './registry-cadence.js';
 import type { GhInventory, GhInventoryCommand } from './types.js';
 
 export interface InventoryOptions {
@@ -111,8 +112,8 @@ function runHelpAsync(binaryPath: string, path: readonly string[], home: string,
   });
 }
 
-/** 동시에 띄우는 `--help` 프로세스 수. CPU 넷을 다 쓰지 않으면서 27초를 8초쯤으로 줄인다. */
-const HELP_CONCURRENCY = 4;
+/** 동시에 띄우는 `--help` 프로세스 수 — 신선도 한도 계산과 같은 값을 읽는다(`registry-cadence.ts`, CR-090). */
+const HELP_CONCURRENCY = INVENTORY_HELP_CONCURRENCY;
 
 /** 코드 단위 비교 — `localeCompare`는 로케일에 따라 순서가 달라 인벤토리 해시가 환경에 묶인다 (독립 검토 나). */
 function byPath(a: GhInventoryCommand, b: GhInventoryCommand): number {
@@ -122,7 +123,7 @@ function byPath(a: GhInventoryCommand, b: GhInventoryCommand): number {
 }
 
 /** `gh --version`으로 실제 버전을 읽는다. */
-export function readGhVersion(binaryPath: string, timeoutMs = 10_000): string {
+export function readGhVersion(binaryPath: string, timeoutMs = GH_VERSION_TIMEOUT_MS): string {
   const home = mkdtempSync(join(tmpdir(), 'prs-gh-inventory-'));
   try {
     const result = spawnSync(binaryPath, ['--version'], {
@@ -144,7 +145,7 @@ export function readGhVersion(binaryPath: string, timeoutMs = 10_000): string {
  * 인벤토리를 뽑는다. 결과는 path 사전순이라 같은 바이너리는 같은 배열을 낸다.
  */
 export function extractInventory(options: InventoryOptions): GhInventory {
-  const timeoutMs = options.timeoutMs ?? 20_000;
+  const timeoutMs = options.timeoutMs ?? INVENTORY_HELP_TIMEOUT_MS;
   const home = mkdtempSync(join(tmpdir(), 'prs-gh-inventory-'));
   const commands: GhInventoryCommand[] = [];
 
@@ -214,7 +215,7 @@ export function extractInventory(options: InventoryOptions): GhInventory {
 }
 
 /** `readGhVersion`의 비동기 판. */
-export async function readGhVersionAsync(binaryPath: string, timeoutMs = 10_000): Promise<string> {
+export async function readGhVersionAsync(binaryPath: string, timeoutMs = GH_VERSION_TIMEOUT_MS): Promise<string> {
   const home = mkdtempSync(join(tmpdir(), 'prs-gh-inventory-'));
   try {
     const output = await new Promise<string>((resolve, reject) => {
@@ -247,7 +248,7 @@ export async function readGhVersionAsync(binaryPath: string, timeoutMs = 10_000)
  * 트리를 동시 `HELP_CONCURRENCY`개로 내려간다. 순서는 끝에서 정렬하므로 방문 순서는 결과에 없다.
  */
 export async function extractInventoryAsync(options: InventoryOptions): Promise<GhInventory> {
-  const timeoutMs = options.timeoutMs ?? 20_000;
+  const timeoutMs = options.timeoutMs ?? INVENTORY_HELP_TIMEOUT_MS;
   const home = mkdtempSync(join(tmpdir(), 'prs-gh-inventory-'));
   const commands: GhInventoryCommand[] = [];
   let active = 0;

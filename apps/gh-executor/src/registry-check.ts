@@ -18,7 +18,7 @@
 
 import { hostname } from 'node:os';
 import { ghRegistryRepo, type Pool } from '@prs/db';
-import { GH_PINNED_LINUX_AMD64, GH_PINNED_VERSION, RULES_VERSION, VALIDATOR_VERSION, manifestHash, reportHash, validateManifest, type GhCapabilityManifest, type GhRegistryReport } from '@prs/gh-cli';
+import { GH_PINNED_LINUX_AMD64, GH_PINNED_VERSION, REGISTRY_CHECK_RETRY_DELAYS_MS, RULES_VERSION, VALIDATOR_VERSION, manifestHash, reportHash, validateManifest, type GhCapabilityManifest, type GhRegistryReport } from '@prs/gh-cli';
 import { checkDriftAsync, type DriftCheck } from '@prs/gh-cli/node';
 import type { ExecutorConfig } from './config.js';
 import type { ExecutorMetrics } from './metrics.js';
@@ -34,6 +34,11 @@ export interface RegistryState {
   /** 참이면 러너가 실행을 `registry_stale`로 거절한다. */
   readonly stale: boolean;
   readonly detail: string | null;
+  /**
+   * 마지막으로 **통과한** 회차의 시각 (CR-090). 일시 오류는 이 값을 바꾸지 않는다 — 그래서 오류가 이어져도 러너가
+   * 신선도 한도(주기 + 한 회차 최악 소요)를 넘긴 과거 통과로 새 실행권을 주지 않는다. `checkedAt`은 결과와 무관한 마지막 회차다.
+   */
+  readonly lastPassedAt: Date | null;
 }
 
 export interface RegistryCheckDeps {
@@ -62,7 +67,8 @@ export interface RegistryCheckResult {
   readonly detail: string | null;
 }
 
-const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [5_000, 15_000, 45_000];
+/** 신선도 한도(`registryEvidenceMaxAgeMs`)가 같은 값을 읽는다 — 여기서 숫자를 따로 적지 않는다 (CR-090). */
+const DEFAULT_RETRY_DELAYS_MS: readonly number[] = REGISTRY_CHECK_RETRY_DELAYS_MS;
 
 function statusOf(report: GhRegistryReport, drift: DriftCheck): { readonly status: Exclude<RegistryStatus, 'unchecked'>; readonly stale: boolean | null; readonly detail: string | null } {
   // 구조 실패는 바이너리와 무관하다 — 일시 오류가 그것을 가리면 안 된다 (독립 검토 나).
@@ -98,6 +104,8 @@ function environmentOf(deps: RegistryCheckDeps): Record<string, unknown> {
     binary_path: deps.config.binaryPath,
     node_version: process.version,
     pid: process.pid,
+    // 운영 승인의 신선도 한도가 이 기록을 쓴 실행기의 실제 주기로 계산된다 (CR-090).
+    registry_check_ms: deps.config.registryCheckMs,
   };
 }
 
@@ -133,6 +141,8 @@ async function record(deps: RegistryCheckDeps, trigger: RegistryTrigger, report:
     snapshotId: row.snapshot_id,
     checkedBy: 'gh-executor',
     trigger,
+    // 배포 범위 — 서버 설정 GHE_BASE_URL의 호스트. 운영 승인은 이 범위의 가장 최근 실행기 기록만 근거로 삼는다 (CR-090).
+    scope: deps.config.host,
     environment: environmentOf(deps),
     ghVersionExpected: GH_PINNED_VERSION,
     ghVersionObserved: drift.ghVersionObserved,
@@ -226,7 +236,7 @@ export function startRegistryChecker(deps: RegistryCheckDeps, intervalMs = deps.
   let running = false;
   const aborter = new AbortController();
   let inFlight: Promise<unknown> = Promise.resolve();
-  let state: RegistryState = { status: 'unchecked', checkedAt: null, verificationId: null, stale: false, detail: null };
+  let state: RegistryState = { status: 'unchecked', checkedAt: null, verificationId: null, stale: false, detail: null, lastPassedAt: null };
   const now = deps.now ?? ((): Date => new Date());
 
   const runOnce = async (trigger: RegistryTrigger): Promise<RegistryCheckResult | null> => {
@@ -238,7 +248,8 @@ export function startRegistryChecker(deps: RegistryCheckDeps, intervalMs = deps.
         // 일시 오류는 이전 stale 판정을 유지한다 — 시간 초과 하나로 실행을 멈추지 않는다.
         // 기록 실패는 판정을 바꾸지 않는다 — 드리프트를 봤으면 DB가 죽어 있어도 거절한다.
         const stale = result.status === 'error' ? state.stale : result.stale;
-        state = { status: result.status, checkedAt: now(), verificationId: result.verificationId, stale, detail: result.detail };
+        const checkedAt = now();
+        state = { status: result.status, checkedAt, verificationId: result.verificationId, stale, detail: result.detail, lastPassedAt: result.status === 'passed' ? checkedAt : state.lastPassedAt };
         deps.metrics.registryStale.set(stale ? 1 : 0);
         deps.log({
           level: stale ? 'error' : result.status === 'error' || result.recordError !== null ? 'warn' : 'info',

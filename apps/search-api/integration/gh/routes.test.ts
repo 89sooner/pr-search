@@ -41,6 +41,9 @@ import { createTestRedis, migratedPool } from '../helpers.js';
 import { TEST_CURSOR_KEY } from '../_cursor-fixture.js';
 import { httpsJson } from '../../../../packages/gh-cli/testing/https-json.js';
 import { startMockGhe, type MockGhe } from '../../../../packages/gh-cli/testing/mock-ghe-tls.js';
+import { randomUUID } from 'node:crypto';
+import { changePolicy, parsePolicyChange, policyStatus } from '../../src/gh/policy.js';
+import { recordFixtureEvidence } from './policy-fixtures.js';
 
 const VAULT_KEY = 'ab'.repeat(32);
 const AUTH_CONFIG = { enabled: true, cookieSecure: false, loginPath: '/auth/login', groupRoleMap: new Map<string, never>() } as const;
@@ -114,6 +117,7 @@ beforeAll(async () => {
     GH_IDENTITY_VAULT_KEY: VAULT_KEY,
   });
   const vaultKey = parseVaultKey(VAULT_KEY);
+  const manifest = loadManifest();
 
   app = buildServer({
     config: { port: 0, adminTokens: [], metricsQueryUrl: null, gheBaseUrl: null, auth: AUTH_CONFIG, searchCursorKey: TEST_CURSOR_KEY, ghOps: ghConfig },
@@ -122,13 +126,24 @@ beforeAll(async () => {
       pool,
       bus,
       config: ghConfig,
-      manifest: loadManifest(),
+      manifest,
       identity: { pool, redis: redisPort(redis), config: ghConfig, vaultKey, http: httpsJson(mock.caFile) },
       scopes,
       streamPollMs: 50,
     },
   });
   await app.ready();
+
+  /*
+   * 실행 경로 시험의 전제 — 이 목 GHE(배포 범위)의 현재 정의를 운영 승인해 둔다 (CR-090). 근거 행은 fixture이고 승인은 실제
+   * 판정·DB 함수를 지난다. 승인·차단 자체의 HTTP 동작은 `policy-routes.test.ts`가 본다.
+   */
+  const policyDeps = { pool, manifest, scope: mock.host, operationsEnabled: true };
+  await recordFixtureEvidence(pool, manifest, mock.host);
+  const status = await policyStatus(policyDeps);
+  const preview = status['approval_preview'] as { snapshot_id: number; verification_id: number; report_hash: string };
+  const request = parsePolicyChange({ action: 'approve', expected_revision: (status['policy'] as { revision: number }).revision, reason: '라우트 시험 전제', snapshot_id: preview.snapshot_id, verification_id: preview.verification_id, report_hash: preview.report_hash }, manifest);
+  await changePolicy(policyDeps, 'u-fixture-operator', request, `routes-fixture-${String(Date.now())}`, randomUUID());
 }, 120_000);
 
 afterAll(async () => {

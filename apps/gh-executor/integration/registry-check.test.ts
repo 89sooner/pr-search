@@ -79,13 +79,16 @@ describe('기동 검사 — 실제 바이너리·실제 manifest', () => {
 
     const snapshots = await ghRegistryRepo.listSnapshots(pool);
     expect(snapshots).toHaveLength(1);
-    // 검사가 passed여도 스냅숏을 활성화하지 않는다 — 활성화는 운영자의 별도 절차다(WP-059, CR-089 범위 밖).
+    // 검사가 passed여도 스냅숏을 활성화하지 않는다 — 최초 승인 시각은 운영자의 운영 승인만 채운다(CR-090).
     expect(snapshots[0]).toMatchObject({ manifest_hash: manifest.hash, manifest_version: 'r0.3', gh_version: '2.97.0', unclassified_count: 0, executable_count: 1, leaf_command_count: 196, flag_count: 1034, activated_at: null });
     const verifications = await ghRegistryRepo.listVerifications(pool);
     expect(verifications).toHaveLength(1);
     expect(verifications[0]).toMatchObject({ checked_by: 'gh-executor', trigger: 'startup', status: 'passed', gh_version_observed: '2.97.0', manifest_hash_expected: manifest.hash });
     expect(verifications[0]?.inventory_hash_observed).toBe(verifications[0]?.inventory_hash_expected);
     expect((verifications[0]?.environment as { binary_path?: string }).binary_path).toBe(binary);
+    // 배포 범위와 실제 검사 주기를 적는다 — 운영 승인은 이 범위의 최신 실행기 기록과 이 주기로 신선도를 판정한다 (CR-090).
+    expect(verifications[0]?.scope).toBe('ghe.test');
+    expect((verifications[0]?.environment as { registry_check_ms?: number }).registry_check_ms).toBe(60_000);
     expect(verifications[0]?.report as { status?: string; reportVersion?: string }).toMatchObject({ status: 'passed', reportVersion: 'r2' });
     // 결과 계약 요약이 검증 기록에 남는다 — 실행 허용은 그대로 하나다.
     expect((verifications[0]?.report as { contracts?: { executableCommands: string[]; executableFlows: number } }).contracts).toMatchObject({ executableCommands: ['pr.list'], executableFlows: 0 });
@@ -166,6 +169,30 @@ describe('드리프트·오류 경로 (검사 함수 주입)', () => {
     const rows = await ghRegistryRepo.listVerifications(pool);
     expect(rows.map((row) => row.status).sort()).toEqual(['error', 'passed']);
     expect(rows.find((row) => row.status === 'error')?.error).toBe('boom');
+    await checker.stop();
+  });
+
+  it('마지막 통과 시각은 통과한 회차에서만 바뀐다 — 일시 오류·드리프트는 바꾸지 않는다 (CR-090, 과거 통과로 무기한 실행 금지)', async () => {
+    let clock = new Date('2026-09-14T00:00:00.000Z');
+    let next: DriftCheck = MATCH;
+    const checker = startRegistryChecker(deps({ drift: () => next, now: () => clock }), 3_600_000);
+    await checker.runOnce('startup');
+    expect(checker.state()).toMatchObject({ status: 'passed', lastPassedAt: new Date('2026-09-14T00:00:00.000Z') });
+
+    clock = new Date('2026-09-14T06:00:00.000Z');
+    next = { ...MATCH, status: 'error', diff: null, inventoryHashObserved: null, error: 'gh --help timed out' };
+    await checker.runOnce('periodic');
+    expect(checker.state()).toMatchObject({ status: 'error', stale: false, checkedAt: clock, lastPassedAt: new Date('2026-09-14T00:00:00.000Z') });
+
+    clock = new Date('2026-09-14T12:00:00.000Z');
+    next = { ...MATCH, status: 'drift', inventoryHashObserved: 'other', diff: { addedCommands: ['pr frobnicate'], removedCommands: [], changedCommands: [] } };
+    await checker.runOnce('periodic');
+    expect(checker.state()).toMatchObject({ status: 'drift', stale: true, lastPassedAt: new Date('2026-09-14T00:00:00.000Z') });
+
+    clock = new Date('2026-09-14T18:00:00.000Z');
+    next = MATCH;
+    await checker.runOnce('periodic');
+    expect(checker.state()).toMatchObject({ status: 'passed', stale: false, lastPassedAt: new Date('2026-09-14T18:00:00.000Z') });
     await checker.stop();
   });
 

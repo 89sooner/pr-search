@@ -10,6 +10,9 @@
  *   - 실행이 끝나면 workspace와 토큰이 남지 않는다 (NFR-010)
  *   - 고아 회수와 잔여 큐 스윕 (JOB-GH-007)
  *
+ * CR-090: 실행은 현재 정의의 운영 승인을 전제로 한다. 이 파일은 실행 수명주기를 보므로, 실제 레지스트리 검사와 실제 승인 경로로
+ * 목 GHE마다(배포 범위마다) 한 번 승인해 둔다 — 정책 판정을 끄지 않는다. 승인·차단 흐름 자체는 `policy-flow.test.ts`가 본다.
+ *
  * 바이너리는 `ensurePinnedGh`가 확보한다 — 없으면 **실패**이지 skip이 아니다.
  *
  * 검증: `pnpm test:integration gh-executor`
@@ -32,6 +35,8 @@ import { ensurePinnedGh } from '../../../packages/gh-cli/testing/pinned-gh.js';
 import { startMockGhe, type MockGhe } from '../../../packages/gh-cli/testing/mock-ghe-tls.js';
 import { resolveGhOpsConfig } from '../../search-api/src/gh/config.js';
 import { requestExecution, type ExecutionDeps } from '../../search-api/src/gh/executions.js';
+import type { DriftCheck } from '@prs/gh-cli/node';
+import { evidenceAndApproval } from './policy-helpers.js';
 
 const ESC = '\x1b';
 const VAULT_KEY = 'cd'.repeat(32);
@@ -45,6 +50,10 @@ let manifest: GhCapabilityManifest;
 let workspaceRoot: string;
 let bus: InMemoryEventBus;
 let logs: RunnerLogEntry[] = [];
+/** 실제 고정 바이너리로 한 번 얻은 드리프트 결과 — 다른 목 GHE(배포 범위)의 근거로 다시 기록한다. */
+let realDrift: DriftCheck;
+/** 레지스트리 검사가 통과한 시각. 러너의 레지스트리 입력으로 명시해 넘긴다. */
+let lastPassedAt: Date;
 
 function executorDeps(overrides: Partial<Record<string, string>> = {}, extra: Partial<RunnerDeps> = {}): RunnerDeps {
   const config: ExecutorConfig = resolveExecutorConfig({
@@ -66,8 +75,14 @@ function executorDeps(overrides: Partial<Record<string, string>> = {}, extra: Pa
     vaultKey: parseVaultKey(VAULT_KEY),
     metrics: createExecutorMetrics(),
     log: (entry) => logs.push(entry),
+    registry: { snapshot: () => ({ stale: false, lastPassedAt }) },
     ...extra,
   };
+}
+
+/** 이 목 GHE의 배포 범위에 실측 근거를 남기고 승인한다 (CR-090). */
+async function approveFor(target: MockGhe): Promise<void> {
+  await evidenceAndApproval(pool, executorDeps({ GHE_BASE_URL: target.baseUrl, GH_EXECUTOR_CA_FILE: target.caFile }).config, manifest, realDrift);
 }
 
 function apiDeps(target: MockGhe = mock): ExecutionDeps {
@@ -129,7 +144,11 @@ beforeAll(async () => {
       { number: 9, title: 'Closed one', state: 'CLOSED' },
     ],
   });
-}, 180_000);
+  // 실제 고정 바이너리로 기동 검사를 돌려 근거를 남기고, search-api의 실제 경로로 운영 승인한다 (CR-090).
+  const approved = await evidenceAndApproval(pool, executorDeps().config, manifest);
+  realDrift = approved.check.drift;
+  lastPassedAt = new Date();
+}, 240_000);
 
 afterAll(async () => {
   await pool.query('TRUNCATE gh_execution, gh_execution_idempotency, gh_identity_secret, github_identity_connection, app_user, repository RESTART IDENTITY CASCADE');
@@ -264,12 +283,13 @@ describe('큐에서 꺼낼 때의 재검증 (FR-GH-008 예외 처리, FR-GH-011 
 
     await connectAlice();
     const staleRow = await enqueue();
-    expect(await runExecution(executorDeps({}, { manifest: { ...manifest, hash: 'different' } }), staleRow.execution_id)).toBe('rejected');
-    expect((await ghExecutionRepo.findById(pool, staleRow.execution_id))?.error).toBe('registry_stale');
+    // 실행기가 승인 정의와 다른 manifest를 싣고 있다 — 다른 스냅숏으로 옮겨 가지 않고 운영 승인 필요로 닫는다 (CR-090, FR-GH-011 AC-9).
+    expect(await runExecution(executorDeps({}, { manifest: { ...manifest, hash: 'different' } }), staleRow.execution_id)).toBe('policy_closed');
+    expect(await ghExecutionRepo.findById(pool, staleRow.execution_id)).toMatchObject({ state: 'policy_blocked', error: 'admin_action_required' });
 
     // 레지스트리 검사(JOB-GH-003)가 드리프트를 확인한 뒤의 대기 실행도 같은 사유로 거절한다 (FR-GH-011 AC-3, CR-088).
     const driftedRow = await enqueue();
-    expect(await runExecution(executorDeps({}, { registry: { isStale: () => true } }), driftedRow.execution_id)).toBe('rejected');
+    expect(await runExecution(executorDeps({}, { registry: { snapshot: () => ({ stale: true, lastPassedAt }) } }), driftedRow.execution_id)).toBe('rejected');
     expect((await ghExecutionRepo.findById(pool, driftedRow.execution_id))?.error).toBe('registry_stale');
 
     const tamperedRow = await enqueue();
@@ -303,6 +323,7 @@ describe('수명주기 (FR-GH-006 AC-3·AC-4·AC-5, NFR-011)', () => {
 
     const slow = await startMockGhe({ expectedToken: TOKEN, graphqlDelayMs: 8_000 });
     try {
+      await approveFor(slow);
       await connectAlice({ host: slow.host });
       const deps = executorDeps({ GHE_BASE_URL: slow.baseUrl, GH_EXECUTOR_CA_FILE: slow.caFile });
       const row = await requestExecution(apiDeps(slow), PRINCIPAL, { capability_id: 'pr.list', context: { repository: 'acme/payments' }, flags: {}, output: { json_fields: [] } }, 'key-cancel-000001', '00000000-0000-4000-8000-00000000abce');
@@ -342,6 +363,7 @@ describe('수명주기 (FR-GH-006 AC-3·AC-4·AC-5, NFR-011)', () => {
   it('시간 상한을 넘기면 timed_out이다', async () => {
     const slow = await startMockGhe({ expectedToken: TOKEN, graphqlDelayMs: 6_000 });
     try {
+      await approveFor(slow);
       await connectAlice({ host: slow.host });
       const row = await requestExecution(apiDeps(slow), PRINCIPAL, { capability_id: 'pr.list', context: { repository: 'acme/payments' }, flags: {}, output: { json_fields: [] } }, 'key-timeout-00001', '00000000-0000-4000-8000-00000000abcf');
       const deps = executorDeps({ GHE_BASE_URL: slow.baseUrl, GH_EXECUTOR_CA_FILE: slow.caFile }, { timeoutMsOverride: 800 });
@@ -385,6 +407,7 @@ describe('결과 계약 pr_list_v2 (CR-089)', () => {
   it('GraphQL이 number null을 주면 gh는 0을 찍고, 실행은 result_parse_failed: invalid_identifier로 끝난다 — 0을 번호로 받지 않는다', async () => {
     const raw = await startMockGhe({ expectedToken: TOKEN, rawPullRequestNodes: [{ number: null, title: 't', state: 'OPEN', url: 'https://127.0.0.1/acme/payments/pull/7', author: { login: 'alice' }, headRefName: 'h', baseRefName: 'main', isDraft: false }] });
     try {
+      await approveFor(raw);
       await connectAlice({ host: raw.host });
       const row = await requestExecution(apiDeps(raw), PRINCIPAL, { capability_id: 'pr.list', context: { repository: 'acme/payments' }, flags: {}, output: { json_fields: ['number', 'title'] } }, 'key-null-number-001', '00000000-0000-4000-8000-00000000ab02');
       expect(await runExecution(executorDeps({ GHE_BASE_URL: raw.baseUrl, GH_EXECUTOR_CA_FILE: raw.caFile }), row.execution_id)).toBe('failed');

@@ -191,3 +191,38 @@ export type { SubjectSlot } from './classification/ports.js';
 export { contractProblems } from './classification/contract-checks.js';
 export type { ContractDimension, ContractProblem } from './classification/contract-checks.js';
 export { NONZERO_DENOMINATOR_DIMENSIONS } from './classification/dimensions.js';
+// 레지스트리 운영 승인과 실행 게이트 (CR-090) — API·실행기·화면이 같은 판정식을 쓴다.
+export { GH_VERSION_TIMEOUT_MS, INVENTORY_HELP_CONCURRENCY, INVENTORY_HELP_TIMEOUT_MS, REGISTRY_CHECK_RETRY_DELAYS_MS } from './registry-cadence.js';
+export {
+  REQUIRED_APPROVAL_GATES,
+  approvalMatchesManifest,
+  decideExecution,
+  decodeRegistryReport,
+  emptyPolicyState,
+  evaluateApprovalEligibility,
+  evidenceIntervalMs,
+  executorRegistryVerdict,
+  isExecutableByCode,
+  nonAliasCommandCount,
+  recordedRegistryVerdict,
+  registeredReportVersions,
+  registryCheckRoundBudgetMs,
+  registryEvidenceMaxAgeMs,
+} from './registry-policy.js';
+export type {
+  GhApprovalEligibility,
+  GhApprovalEligibilityInput,
+  GhApprovalEvidence,
+  GhApprovalIneligibleReason,
+  GhApprovalSnapshot,
+  GhDecodedRegistryReport,
+  GhExecutionGate,
+  GhExecutionGateInput,
+  GhExecutionGateReason,
+  GhPolicyApproval,
+  GhPolicyState,
+  GhRecordedCheck,
+  GhRegistryVerdict,
+  GhReportDecodeFailure,
+  GhReportDecodeOutcome,
+} from './registry-policy.js';
