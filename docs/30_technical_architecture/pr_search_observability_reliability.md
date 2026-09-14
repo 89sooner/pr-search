@@ -259,7 +259,7 @@ A-001 운영 콘솔 화면은 이 중 "수집 파이프라인" 대시보드의 �
 | capability 드리프트 | 실행기 지표 `gh_registry_stale == 1`, 또는 최신 `gh_capability_verification.status ∈ {drift, failed}`, 또는 `/healthz`의 `registry.stale == true` (CR-088). 그 동안 실행은 `registry_stale`로 거절된다 | P2 |
 | 레지스트리 검사 오류 반복 | `gh_registry_check_total{result="error"}`·`{result="record_failed"}` 증가, 또는 최신 검사가 주기의 두 배(기본 2일)를 넘김 | P2 |
 | 운영 승인 필요 지속 (CR-090) | `GH_OPERATIONS_ENABLED=true`인데 `GET /api/v1/gh/policies`의 `policy.approval`이 없거나 `matches_served=false`(배포 직후·정의 변경·철회), 또는 실행 수락 거절 `GH_ADMIN_ACTION_REQUIRED` 증가 — `RB-25` | P3 |
-| 운영 정책 확인 불가 (CR-090) | 실행 수락 `GH_POLICY_UNAVAILABLE`(503), 또는 실행기 지표 `gh_execution_total{result="policy_unavailable"}` 증가 — `RB-26` | P2 |
+| 운영 정책 확인 불가 (CR-090) | 실행 수락·정책 변경의 `GH_POLICY_UNAVAILABLE`(503), 또는 실행기 지표 `gh_execution_total{result="policy_unavailable"}` 증가 — `RB-26` | P2 |
 | 미분류 capability 발견 | 검증기 보고서의 `GATE-GH-01` 미달(`unclassified > 0`) — CI 단위 시험이 먼저 잡는다. 운영에서는 `gh_capability_snapshot.unclassified_count > 0` | P2 |
 | 실행기 포화 | 대기 중 실행이 상한의 80% 초과 | P2 |
 | 고아 실행 누적 | JOB-GH-007이 회수한 실행 수 급증 | P2 |
@@ -277,4 +277,4 @@ A-001 운영 콘솔 화면은 이 중 "수집 파이프라인" 대시보드의 �
 | RB-23 | 감사 기록 실패 | ① PostgreSQL 쓰기 상태 확인 ② 파티션 존재 확인 ③ 차단된 실행 목록을 보안 담당자에게 보고 ④ 감사 복구 전까지 쓰기 실행 차단 유지 |
 | RB-24 | 비밀 유출 의심 | ① 해당 실행의 마스킹 경로 점검 ② 관련 GitHub 시크릿 회전 요청 ③ 로그·이력에서 노출 범위 산정 ④ 보안 담당자 에스컬레이션 |
 | RB-25 | 운영 승인 필요 (CR-090) | ① A-006 「운영 승인」에서 상태를 본다 — 승인 없음·철회·「승인된 정의가 현재 정의와 다름」 중 무엇인가 ② 승인 자격이 없으면 사유 목록대로 조치한다(실행기 기동 검사 기록 없음·오래됨·드리프트·보고서 판·재현 불가 등) — 실행기가 서 있고 `/healthz`의 `registry.lastPassedAt`이 신선한지 본다 ③ 자격이 있으면 운영자가 미리보기(대상 정의·근거·게이트·열리는 기능)를 확인하고 사유와 함께 승인한다 ④ 승인 뒤 한 사용자·한 저장소로 `pr.list`를 확인한다(런북 7.C) ⑤ **승인을 우회하려고 DB를 직접 고치지 않는다** — 정책 표는 애플리케이션 롤로 쓸 수 없고, 소유자 계정의 직접 변경은 revision·이력·감사를 남기지 않는다 |
-| RB-26 | 운영 정책 확인 불가 (CR-090) | ① search-api 로그 `운영 정책을 읽지 못했다`와 실행기 로그 `운영 정책을 읽지 못해 대기 요청을 집지 않는다`를 본다 ② 마이그레이션 030 적용 여부(`prsctl migrate` 상태)와 PostgreSQL 연결을 확인한다 ③ 그 동안 새 실행은 거절되고 대기 요청은 닫히지 않고 남는다 — 복구 뒤 잔여 스윕이 현재 정책으로 다시 판정한다 ④ 검색·수집·M 번호 경로는 영향을 받지 않는다 |
+| RB-26 | 운영 정책 확인 불가 (CR-090) | ① search-api 로그 `운영 정책을 읽지 못했다`와 실행기 로그 `운영 정책을 읽지 못해 대기 요청을 집지 않는다`를 본다 ② 마이그레이션 030 적용 여부(`prsctl migrate` 상태)와 PostgreSQL 연결을 확인한다 ③ 그 동안 새 실행은 거절되고 대기 요청은 닫히지 않고 남는다 — 복구 뒤 잔여 스윕이 현재 정책으로 다시 판정한다 ④ 검색·수집·M 번호 경로는 영향을 받지 않는다 ⑤ **읽지 못한 것이 아니라 잠금을 얻지 못한 경우** — 실행기 로그 `운영 정책 잠금을 기다리다 시간이 지나 대기 요청을 집지 않았다`(`reason: policy_lock_timeout`)나 정책 변경 응답 503의 `detail.reason = policy_lock_timeout`이면 다른 정책 변경이 배타 잠금을 10초 넘게 쥔 것이다. `pg_locks`(`locktype = 'advisory'`)와 `pg_stat_activity`에서 오래 열린 트랜잭션을 찾는다. 지표 `policy_unavailable`은 두 원인을 합치므로 실행기 로그의 `reason`으로 가르고, search-api는 정책 변경의 잠금 대기 초과를 로그로 남기지 않는다(응답만) ⑥ 정책 변경이 500이고 PostgreSQL 로그에 `audit_record`의 파티션이 없다는 오류가 있으면, 적용 감사가 변경과 같은 트랜잭션이라 변경도 커밋되지 않은 것이다 — `RB-18` ②대로 파티션을 만든 뒤 다시 제출한다(search-api는 처리하지 않은 오류를 로그로 남기지 않는다) |
