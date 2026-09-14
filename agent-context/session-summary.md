@@ -1,4 +1,49 @@
 # 세션 요약 — PR Search 구현 (2026-08-25 후반)
+## 2026-09-14 (5차) — CR-089 REL-007 R1b 결과 계약·타입 연결 검증: PR #186 병합(`99d53d3`)
+
+### 이 구간의 목표
+
+결정자 지시서 「REL-007 결과 계약·타입 연결 검증 수직 구현」(17장). 각 명령의 결과가 무엇이고 어디에 안전하게 연결될 수 있는지를 코드와 A-006에서 검증할 수 있게 하되, 그 정의만으로 새 명령이나 Recipe가 실행되지 않게 한다. 회귀 시험을 CI에 잇는다. PR → CI → 병합 → main CI → 후속 원장·handoff PR까지.
+
+### 이어받은 방식
+
+이전 세션(`539c17f5`)이 구현 대부분을 미커밋으로 남긴 채 컨텍스트가 찼다. `/clear` 뒤 export 전사(`exports/202609141338.md`)를 읽었지만 **지시서 4~14장이 전사에서 「354 lines hidden」으로 접혀 있었다** — `~/.claude/projects/-home-roqkf-pr-search/539c17f5-….jsonl`에서 사용자 메시지 원문을 뽑아 복원했다. 설계 메모(`DESIGN-cr089.md`)·격리 서비스 compose·고정 gh 경로는 이전 세션 scratchpad에 남아 있었다.
+
+### 결과
+
+| 항목 | 결과 |
+| --- | --- |
+| PR | #186 `6196b20` — 70 파일, +16,597 −760 |
+| PR CI | run `34812603220` attempt 1 success — verify(typecheck·lint·lint:deps·단위 2,651·build·a11y 414·대비·e2e 191) · integration(통합 1,725 · **회귀 481 — CI 첫 실행**) |
+| 병합 | squash `99d53d3` |
+| 병합 커밋 main CI | run `34813159209` attempt 1 success(verify·integration — 회귀 481) |
+| GATE-GH-01d | 통과 — 결과 계약·bindability·자원 타입·secret 출력 196/196, 출력 port 32/32(36), 입력 port 80/80(81) |
+| 그래프 | 간선 398(직접 0·조건부 398), 같은 타입 불가 6, 실행 가능 다단계 흐름 0 |
+| 실행 허용 | `pr.list` 하나 · 구현 adapter `pr_list_v2` 하나 |
+| 배터리 | typecheck·lint·lint:deps 0 · 단위 2,651 · 통합 1,725 · 회귀 481 · build · gh validate passed · gh diff match · a11y 414 · e2e 191(flow-003 수정 뒤 5회 연속) |
+| 변이 | 22종 중 21 kill, M01 등가 |
+| 독립 검토 | 코드 A·B 두 관점 + 재검토(새 발견 없음) + 문서 cascade 검토(결함 0) |
+| 문서 검사기 | ERROR 4·WARN 2 기준선 그대로(신규 0, strict 통과 아님) |
+| 새 ID | CR-089 · WP-079 · DEV-682~689 · QA-GH-45·46 (DEV-675·676 종결) |
+
+### 이 구간이 이전 세션 코드에서 찾아 고친 것
+
+- 근거 문장의 출처 오류 둘: web 모드 사유가 `pr list` 소스를, 입력 port `slot_alternative`가 PR 전용 근거를 모든 무리에 인용 → 무리별 사실만(`gist create`가 비TTY stdout에 안내를 쓰는 예외 실측).
+- `evaluateBinding`이 값의 개수를 출력 port 계약과 대조하지 않던 것 → `endpoint_mismatch`.
+- A-006 픽스처가 manifest와 다른 값(모드 누락·줄인 문구·간선 조건 누락) → 실측 리터럴 + 드리프트 가드 시험.
+- 이전 세션이 쓴 회귀 CR-089 시험 하나가 **한 번도 실행되지 않았고** 처음 돌리자 거짓 경보(주석의 `gh_execution` 낱말) → 주석을 걷은 코드만.
+- 전량 e2e에서 `flow-003:176`이 이 판의 gh 명세와 함께 실패(DEV-689).
+
+### 현재 상태 한 줄
+
+main = `99d53d3`(CR-089 병합) 위에 후속 기록 PR이 올라간다. GATE-GH-01d 통과, 실행 허용 `pr.list` 하나, 실행 가능한 다단계 흐름 0. REL-007은 미완료다(01e·06·08·사내 GHES 확인·스냅숏 활성화 조건).
+
+### 다음 에이전트가 먼저 할 것
+
+1. `git fetch && git log origin/main -1`로 병합·후속 PR 반영을 실측하고, 열린 PR·다른 세션을 확인한다.
+2. REL-007 다음 판은 결정자가 정한다 — 남은 완료 조건은 `GATE-GH-01e`(Recipe 없음)·`06`·`08`·사내 GHES 확인(`DEV-674`)·스냅숏 활성화 조건(`DEV-685`).
+3. 새 판은 CR 등록부터, 번호는 착수 때 다시 잰다(CR-090·DEV-690·WP-080·QA-GH-47 후보).
+
 ## 2026-09-14 (4차 마감): CR-088 병합 뒤 후속 기록 마감, PR #185 병합(`824eb57`)과 정리
 
 ### 이 구간의 목표

@@ -1,4 +1,40 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
+## Session: 2026-09-14 (5차) — CR-089 REL-007 R1b 결과 계약·타입 연결 검증 (PR #186)
+
+## Goal
+
+결정자 지시서: 각 명령의 결과가 무엇이고 어디에 안전하게 연결될 수 있는지 코드와 A-006에서 검증 가능하게, 그러나 새 명령·Recipe는 실행되지 않게. 회귀 시험 CI 연결. 병합 후 main CI까지.
+
+## Current state
+
+main = `99d53d3`(CR-089 병합) 위에 후속 기록 PR이 올라간다. GATE-GH-01d 통과, 실행 허용 `pr.list` 하나, 실행 가능한 다단계 흐름 0. REL-007은 미완료다(01e·06·08·사내 GHES 확인·스냅숏 활성화 조건).
+
+## Decisions
+
+decisions.md 5차 절(A·B·C 표).
+
+## Changed files
+
+files.md 5차 절.
+
+## Commands
+
+commands.md 5차 절.
+
+## Next steps
+
+1. origin/main·열린 PR·세션·ID 실측(CR-090·DEV-690·WP-080·QA-GH-47 후보).
+2. REL-007 다음 판은 결정자 지시를 받는다 — 남은 완료 조건은 todos.md 5차 절.
+3. 격리 서비스 `prs-contracts-*`와 작업 트리 `/home/roqkf/pr-search-wt/contracts`는 후속 PR 병합 뒤 정리 대상이다(격리 서비스 `prs-contracts-*` 컨테이너와 볼륨 `contracts-*`, 작업 트리, 병합된 브랜치 `feature/rel007-result-contracts`·`docs/cr-089-merge-record`) — 정리 여부는 `git worktree list`·`docker ps -a`로 실측한다.
+
+## Risks/gotchas
+
+risks.md 5차 절.
+
+## References
+
+PR #186, CR-089, WP-079, DEV-682~689, QA-GH-45·46, 원장 6.86장, 이전 세션 전사 `exports/202609141338.md`·jsonl `539c17f5`.
+
 ## Session: 2026-09-14 (4차 마감): /clear 뒤 이어받아 CR-088 후속 기록을 마감 (PR #185)
 
 ### Goal (결정자의 말로)

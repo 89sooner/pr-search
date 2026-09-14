@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.74 | 갱신일: 2026-09-14
+> 상태: review | 버전: v6.75 | 갱신일: 2026-09-14
 
 `WP-075` 안전성 보강(`CR-085`): 자동 표기가 **실패·재시작·설정 변경 상황에서도** 원래 제목을 지키게 했다. 변경 요청의 재시도가 첫 시도의 문자열을 그대로 다시 보내던 자리, 확인된 본문 불일치를 다음 회차가 성공으로 덮던 자리, 시간 예산이 줄 서기와 한 행의 처리에 미치지 않던 자리, 실패한 요청 사이에 간격이 없던 자리를 닫았다 — **다섯 경로 전부 현재 코드에서 시험으로 재현한 뒤** 고쳤다. `DEV-629`(실행자 배제)를 advisory 세션 락으로 닫았고, 검증은 6.82장이다. **전역 기본값은 그대로 꺼짐이며 실제 GHE 표기는 여전히 `NOT RUN`이다.**
 
@@ -120,9 +120,9 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | WP-060 | 전체 parity 검증 | REL-011 | todo | - | - | - | CR-005 신규 |
 | WP-061 | 의미 capability 제약 엔진 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | #181 · c5c8aea | 6.83장 — constraints 단위, lib/gh(폼 = 서버) | 들어온 것: `evaluateInvocation`(열거·정수·JSON 필드·context_required·repository_format)을 폼·서버·재검증이 공유. 남은 것: 13종 전체. 3장 누락 행을 이 판에서 보강 (`DEV-663`) |
 | WP-062 | gh 출력·파일 안전 경계 | REL-007 (CR-086 부분) | **in_progress** | 에이전트 | #181 · c5c8aea | 6.83장 — safe-output 단위 16, a11y QA-GH-24·25, 회귀 원시 HTML 0건 | 들어온 것: `SafeOutputStream`·`sanitizeText`·텍스트 노드 렌더. 남은 것: 파일 아티팩트 경계(`FR-GH-005`). 3장 누락 행 보강 (`DEV-663`) |
-| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 (CR-086 · CR-089 부분) | **in_progress** | 에이전트 | #181 · c5c8aea · feature/rel007-result-contracts | 6.83장 — result 단위 7 · 6.86장 — 결과 계약·port·바인딩·그래프 (WP-079) | 들어온 것: `pr_list_v1`(허용 10필드·무해화·`possibly_more`) → `pr_list_v2`(PR 참조), leaf 196의 결과 계약·typed 입출력 port·`GhResourceRef` 식별 규칙·제한 JSON Pointer·순수 바인딩 평가·타입 그래프, `GATE-GH-01d` 통과. 남은 것: Recipe 저장 거부(`WP-058`)·아티팩트 ID 표현·`GhResultEnvelope` 통일·`gh_api_structured`(`WP-064`). 3장 누락 행 보강 (`DEV-663`) |
+| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 (CR-086 · CR-089 부분) | **in_progress** | 에이전트 | #181 · c5c8aea · #186 · 99d53d3 | 6.83장 — result 단위 7 · 6.86장 — 결과 계약·port·바인딩·그래프 (WP-079) | 들어온 것: `pr_list_v1`(허용 10필드·무해화·`possibly_more`) → `pr_list_v2`(PR 참조), leaf 196의 결과 계약·typed 입출력 port·`GhResourceRef` 식별 규칙·제한 JSON Pointer·순수 바인딩 평가·타입 그래프, `GATE-GH-01d` 통과. 남은 것: Recipe 저장 거부(`WP-058`)·아티팩트 ID 표현·`GhResultEnvelope` 통일·`gh_api_structured`(`WP-064`). 3장 누락 행 보강 (`DEV-663`) |
 | WP-076 | 사내 GHE 직접 로그인 | 인증 (CR-083) | **done** | 에이전트 | feature/ghe-oauth-login | 6.78장 | 사내 실제 GHE OAuth App 검증은 `NOT RUN`. 3장 누락 행을 CR-086 판에서 보강 (`DEV-663`) |
-| WP-079 | REL-007 R1b — 결과 계약·typed port·순수 연결 판정·타입 그래프·A-006 조회 | REL-007 (**CR-089**) | **in_progress** | 에이전트 | feature/rel007-result-contracts | 6.86장 — gh-cli 단위(결과 계약·port·바인딩·그래프·JSON Pointer·검증기 위조 변이), result-contract 통합(실제 gh 2.97.0 → PR 참조 → `pr view` 입력 호환), 실행기·registry 통합, web lib(픽스처 드리프트 가드)·a11y QA-GH-45·46·e2e, 회귀 CR-089 4, 변이 22(21 kill·1 등가), 독립 검토 2관점과 재검토 | leaf 196의 결과 계약과 입출력 port(출력 36·입력 81), `pr_list_v2`와 PR 참조, 타입 그래프 간선 398(실행 가능 0), `GATE-GH-01d` 통과, 도메인 회귀 CI 연결(`DEV-686`). 실행 허용 `pr.list` 하나·다단계 흐름 0. 호스트 확인 `NOT RUN`(`DEV-674`)·스냅숏 활성화 조건(`DEV-685`) |
+| WP-079 | REL-007 R1b — 결과 계약·typed port·순수 연결 판정·타입 그래프·A-006 조회 | REL-007 (**CR-089**) | **done** | 에이전트 | #186 · 99d53d3 | 6.86장 — gh-cli 단위(결과 계약·port·바인딩·그래프·JSON Pointer·검증기 위조 변이), result-contract 통합(실제 gh 2.97.0 → PR 참조 → `pr view` 입력 호환), 실행기·registry 통합, web lib(픽스처 드리프트 가드)·a11y QA-GH-45·46·e2e, 회귀 CR-089 4, 변이 22(21 kill·1 등가), 독립 검토 2관점과 재검토 | leaf 196의 결과 계약과 입출력 port(출력 36·입력 81), `pr_list_v2`와 PR 참조, 타입 그래프 간선 398(실행 가능 0), `GATE-GH-01d` 통과, 도메인 회귀 CI 연결(`DEV-686`). 실행 허용 `pr.list` 하나·다단계 흐름 0. 호스트 확인 `NOT RUN`(`DEV-674`)·스냅숏 활성화 조건(`DEV-685`) |
 | WP-078 | REL-007 R1a — capability 분류·검증·드리프트·스냅숏·A-006 읽기 전용 | REL-007 (**CR-088**) | **done** | 에이전트 | #184 · a996540 | 6.85장 — gh-cli 단위 110(변이 10) · 드리프트 통합 4 · db 통합 26(029 왕복·권한·불변·활성화 네 차원) · 실행기 통합 21(registry-check 10) · routes·registry 통합 20 · web lib 810 · a11y 8 · e2e 2 · 회귀 REL-007 14 · CLI validate/diff · 독립 검토 2판 반영 | leaf 196·flag 1,034·positional 164·`--json` 707 분류(`NFR-009` 본표 100%), 검증기·드리프트·029·`JOB-GH-003`·`API-GH-013`/`014`·A-006. 실행 허용 `pr.list` 하나 그대로. `GATE-GH-01d` 미달(`DEV-675`)·호스트 확인 `NOT RUN`(`DEV-674`) |
 | WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | **done** | 에이전트 | #181 · c5c8aea | 6.83장 — 실행기 통합 10 · routes 통합 14 · gh-schema 13 · gh-cli 단위 69 · web(lib 41·a11y 24·콜백 8·e2e 8) · 회귀 REL-007 8 · smoke 6절 · 변이 3 kill | R0 `pr.list` 하나를 인가→미리보기→실행→결과·이력까지. 기본 꺼짐. 출력 청크 미스트리밍(`DEV-651`)·분류 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증 NOT RUN** |
 
@@ -6547,6 +6547,12 @@ migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기�
 **문서 cascade 독립 검토.** 범위 규칙(SRS는 등록된 사실 정정과 머리글·판 이력뿐)·수치·판·해시·ID를 manifest 재계산과 대조·표 칸 수·머리글 한 단계·cascade 체크리스트와 실제 변경 문서 18개의 대응·과거 기록 보존을 확인했고 결함 0이다.
 
 **문서 검사기 `--strict`.** 이 CR의 편집 전(작업 트리 = main): 종료 1, ERROR 4(정의되지 않은 ID `FR-CSS-005`·`D-002`, 자리표시어 13+8) · WARN 2(`risks.md` 경로). 편집 후(머리글·원장·cascade까지 최종 수정한 상태): 종료 1, 같은 ERROR 4 · WARN 2 — **신규 0건**이며 strict 전체 통과는 아니다. CR-087·CR-088 시점의 검사기 결과는 두 CR이 이 원장에 적는다고 했지만 남아 있지 않다 — 재구성하지 않는다(`DEV-687`).
+
+**PR CI.** PR #186 head `6196b20` — run `34812603220` attempt 1 success. `verify` 잡: typecheck·lint·lint:deps·단위 2,651(1 skip)·build·a11y 414·대비·e2e 191. `integration` 잡: 통합 1,725(110 파일) 다음 **`test:regression` 481(8 파일) — 도메인 회귀가 CI에서 처음 실행됐다**(`DEV-686`, 잡 로그의 단계 목록과 건수로 확인).
+
+**병합.** squash `99d53d3` — 부모 `f3cd00f`, 트리 `7e675d48`가 PR head의 트리와 같다(병합 뒤 `origin/main` 실측).
+
+**병합 뒤 main CI.** 병합 커밋 `99d53d3` — run `34813159209`(push) attempt 1 success. `verify` 잡(06:22:01→06:26:31 UTC): typecheck·lint·lint:deps·단위 2,651(1 skip)·build·a11y 414·대비·e2e 191. `integration` 잡(06:22:01→06:27:44 UTC): 통합 1,725(110 파일) 다음 `test:regression` 481(8 파일) — 병합된 main에서도 도메인 회귀가 CI로 돈다(`DEV-686`).
 
 **사내에서만 확인할 수 있는 것 (NOT RUN).** 대상 GHES에서 command별 결과 모양·비TTY 출력·URL 문법이 2.97.0 소스와 같은지, 실제 사내 저장소의 `pr list` 결과로 만든 참조, 운영 DB의 검증 기록 `r2` 저장, 사내 계정으로 A-006 열어 보기.
 

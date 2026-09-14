@@ -1,4 +1,50 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
+## 2026-09-14 (5차) 라운드에서 쓴 것 (CR-089)
+
+### 환경
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"
+export POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55435 POSTGRES_USER=prs POSTGRES_PASSWORD=prs POSTGRES_TEST_DB=prs_test \
+  REDIS_URL=redis://127.0.0.1:56381 ELASTICSEARCH_NODE=http://127.0.0.1:59202 GH_PINNED_BIN=/tmp/prs-pinned-gh/2.97.0/gh
+```
+
+### 규칙·계약을 바꾼 뒤
+
+```bash
+pnpm --filter @prs/gh-cli build && pnpm gh:manifest && pnpm gh:validate-capabilities && pnpm vitest run packages/gh-cli/src apps/web/lib
+```
+
+### 이전 세션 jsonl에서 사용자 메시지 원문 복원
+
+```bash
+python3 - <<'PY'   # message.content가 str 또는 [{type:text}]인 user 줄에서 찾는 문구로 거른다
+PY
+```
+
+### e2e 부하 상관 실험 (명세 바꿔 끼우기 — 백업·trap·sha256 대조)
+
+```bash
+cp e2e/gh.spec.ts $SP/bak-gh.spec.ts; sha256sum e2e/gh*.spec.ts > $SP/bak-specs.sha
+trap 'cp $SP/bak-gh.spec.ts e2e/gh.spec.ts; …; sha256sum -c $SP/bak-specs.sha' EXIT
+git show origin/main:apps/web/e2e/gh.spec.ts > e2e/gh.spec.ts; ./node_modules/.bin/playwright test
+```
+
+### PR·CI
+
+```bash
+git push -u origin feature/rel007-result-contracts:feature/rel007-result-contracts
+gh pr create --base main --head feature/rel007-result-contracts --title "…" --body-file $SP/draft-pr-body.md
+gh api "repos/89sooner/pr-search/actions/runs?head_sha=$SHA&per_page=10" --jq '.workflow_runs[] | "\(.id) \(.status) \(.conclusion)"'
+gh api repos/89sooner/pr-search/actions/runs/$ID/jobs --jq '.jobs[] | "\(.name) \(.conclusion) " + ([.steps[] | "\(.name)=\(.conclusion)"] | join(","))'
+```
+
+### 실패했던 명령과 원인
+
+- `sed -i '3s/^…$/…/'` 머리글 치환 — CRLF 때문에 무변경, 그리고 같은 메시지의 Edit 7건이 「modified since read」로 거부.
+- 회귀 `-t 'REL-007|CR-088|CR-089'` 첫 실행 — CR-089 A-006 조회 시험이 주석 낱말로 실패(거짓 경보).
+- `sha256sum -c bak-specs.sha`를 저장소 루트에서 — 상대 경로라 `No such file`(apps/web에서 해야 함).
+
 ## 2026-09-14 (4차 마감) 구간에서 쓴 것 (PR #185와 handoff)
 
 ### 지금 상태에서 시작하는 법

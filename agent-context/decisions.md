@@ -1,4 +1,33 @@
 # 확정한 설계 결정과 이유
+## 2026-09-14 (5차) — CR-089 REL-007 R1b 결과 계약·타입 연결 검증 (WP-079, PR #186)
+
+### A. 사용자 직접 결정 · B. 지시서 사전 승인 (다시 논의하지 않음)
+
+- 결과 의미 계약과 실행 허용 정의의 분리, 전체 core capability의 결과 계약, 공통 자원 참조·typed port·제한된 순수 바인딩 검증, 타입 그래프, CLI·검증 기록·API·A-006 연결, 실제 `pr list` 출력 정규화, 회귀 시험의 CI 연결, 필요한 최소 CR·WP·문서 정정, 뒷받침된 SRS 사실 정정(`--json` 41/40).
+- 유지: 실행 허용 `pr.list` 하나, M 번호 기본 OFF, `GH_OPERATIONS_ENABLED` 기본 OFF, public·ubuntu-latest, gh 2.97.0, 마이그레이션 001~029 불변. 제외: R1~R3, `pr.view` 포함 새 실행, Recipe, 임의 gh api·extension·표현식, 파일 작업, A-005·스냅숏 활성화, 릴리스.
+
+### C. 구현이 스스로 고른 것 (근거와 되돌리는 법)
+
+| 결정 | 근거 | 다른 선택지 | 되돌리기 |
+| --- | --- | --- | --- |
+| 결과 계약을 **출력 모드마다** 둔다 | exporter는 `--json`일 때만 구조(`json_flags.go:225-257`) — 한 계약이면 기본 출력에도 port가 있어 보인다 | command당 계약 하나 | `GhOutputModeContract` 제거, 주 종류만 |
+| `fully_bindable` 0, 식별 필드·gh 파서 URL이 있을 때만 출력 port | 필드 선택·출력 모드 조건이 늘 있다 | `--json`이면 bindable | `composabilityOf` 규칙 |
+| `pr_list_v2` — 번호 미선택은 행 `number: null`·참조 `unavailable`, 잘못된 번호는 결과 전체 `invalid_identifier`, v1 이력 재해석 없음 | v1이 허용된 `--json title`을 실패로 만들었다(DEV-682), gh는 null을 0으로 찍는다 | 선택 축소(number 강제) | 스키마 판을 되돌리면 이력 호환 코드도 |
+| port 분모는 capability 수 — 출력 = 바인딩 가능, 입력 = 대상 자원 자리, 0이면 미달 | 모두를 비바인딩으로 적어 분모를 없애는 위조를 막는다. SRS 문장도 정정(DEV-688) | port 수 분모 | `NONZERO_DENOMINATOR_DIMENSIONS` |
+| 입력 port는 번호·ID 대안만(URL·이름·브랜치 대안 제외) | PR URL 인자는 `--repo`를 덮는다(`finder.go:117-120`) | URL도 입력 | `subjectSlotsOf` |
+| project·gist·artifact·user·team은 종류만, 참조 없음 | `GhResourceRef`에 소유자 자리가 없고 식별 규칙이 없다 | 가짜 참조 | `IDENTIFIABLE_KINDS` |
+| JSON Pointer: RFC 6901 부분집합 + 128자·토큰 8·자기 속성·prototype 토큰 거부·보정 없음 | 표현식 해석기 금지(ADR-020, THR-031) | JSONPath | `json-pointer.ts` 상수 |
+| 목록 → 목록 불가, 목록 → 단일은 `/<index>` 명시 선택 조건부 | 상한 있는 fan-out이 먼저(FR-GH-005 AC-9) | 조건부 허용 | `list_to_list` 사유 |
+| 검증기 보고서 판 `r2`, 옛 `r1` 기록은 API가 `contract_dimensions: not_in_report_version` | append-only 기록을 새 기준으로 통과처럼 읽지 않는다 | 소급 재검증 | `CONTRACT_DIMENSIONS_REPORT_VERSION` |
+| API-GH-001엔 composability 하나만, 계약·간선은 API-GH-014 | W-010이 매번 읽는 목록을 가볍게 | 목록에 전부 | routes.ts |
+| 마이그레이션 없음 | 029 JSONB(보고서·coverage)로 충분, 계약은 manifest 파일 | 030 열 추가 | — |
+| 스냅숏 활성화 조건 미변경(DEV-685 open) | 활성화 절차 자체가 WP-059 범위 밖 | CHECK에 01d 열 추가 | WP-059에서 |
+| A-006 픽스처는 manifest 실측 리터럴 + 드리프트 가드 시험 | 목이 응답을 지어내면 계약 버그를 숨긴다 | 손으로 줄인 값 | 가드 시험 삭제 |
+| 간선 표시 타입을 `executable: false`로 좁히고 문구 고정 | 이 판에 실행 가능한 간선이 없다(검토 B) | boolean 분기 | 타입 되돌림 |
+| `flow-003` 뒤로가기 도착 판정만 15초(DEV-689) | 실측: 이 판 명세와 함께 전량 5회 중 3회 실패, main 명세 4회 중 0, 수정 뒤 5/5 — 렌더 지연(DEV-376 계열) | 전역 expect 타임아웃·명세 축소 | 한 줄 |
+| 머리글 누락은 소급하지 않고 이 CR에서 한 단계씩 올림(DEV-687) | 과거 판을 새 날짜로 만들면 역사 기록을 바꾼다 | 과거 커밋 판 재구성 | — |
+| 문서 검사기 before/after를 CR cascade와 원장에 **숫자로** 적음 | CR-087·088이 「원장에 적는다」고 하고 안 적었다 | 참조만 | — |
+
 ## 2026-09-14 (4차 마감): /clear 뒤 이어받은 구간 (PR #185)
 
 ### 결정자가 정한 것 (A)
