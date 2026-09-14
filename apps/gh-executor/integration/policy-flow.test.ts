@@ -23,7 +23,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { InMemoryEventBus } from '@prs/bus';
-import { authRepo, ghExecutionRepo, ghIdentityRepo, ghPolicyRepo, repositoryRepo, withTransaction, type GhExecutionRow, type Pool } from '@prs/db';
+import { authRepo, ghExecutionRepo, ghIdentityRepo, ghPolicyLockKey, ghPolicyRepo, repositoryRepo, withTransaction, type GhExecutionRow, type Pool } from '@prs/db';
 import { GH_PINNED_VERSION, type GhCapabilityManifest } from '@prs/gh-cli';
 import { loadManifest, parseVaultKey, sealSecret } from '@prs/gh-cli/node';
 import { resolveExecutorConfig, type ExecutorConfig } from '../src/config.js';
@@ -313,6 +313,25 @@ describe('상한·재시작·정의 변경·오래된 확인·재요청·철회'
       expect(mock.graphqlRequests()).toHaveLength(before);
     } finally {
       await pool.query('ALTER TABLE gh_operations_policy_unreadable RENAME TO gh_operations_policy');
+    }
+    expect(await runExecution(runnerDeps(), queued.execution_id)).toBe('succeeded');
+    expect(mock.graphqlRequests()).toHaveLength(before + 1);
+  }, 60_000);
+
+  it('claim이 정책 잠금을 기다리다 시간이 지나면 던지지 않고 대기 요청을 남긴다 — 버스 파티션을 막지 않고, 잠금이 풀리면 실행한다 (독립 검토 B)', async () => {
+    const queued = await request();
+    const before = mock.graphqlRequests().length;
+    // 다른 정책 변경이 배타 잠금을 오래 쥔 상황 — claim의 공유 잠금은 lock_timeout(10초)을 넘기면 55P03이다.
+    const holder = await pool.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT pg_advisory_xact_lock(hashtext($1))', [ghPolicyLockKey(mock.host)]);
+      expect(await runExecution(runnerDeps(), queued.execution_id)).toBe('policy_unavailable');
+      expect((await ghExecutionRepo.findById(pool, queued.execution_id))?.state).toBe('queued');
+      expect(mock.graphqlRequests()).toHaveLength(before);
+    } finally {
+      await holder.query('COMMIT');
+      holder.release();
     }
     expect(await runExecution(runnerDeps(), queued.execution_id)).toBe('succeeded');
     expect(mock.graphqlRequests()).toHaveLength(before + 1);

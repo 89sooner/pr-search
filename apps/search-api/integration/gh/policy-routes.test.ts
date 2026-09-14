@@ -286,4 +286,23 @@ describe('정책 상태를 읽지 못하면 — 새 실행은 막고 다른 API�
     }
     expect(await gateOf()).toMatchObject({ allowed: true });
   });
+
+  it('다른 정책 변경이 잠금을 오래 쥐면 변경은 503 GH_POLICY_UNAVAILABLE이고 아무것도 쓰지 않으며 감사도 남기지 않는다 (독립 검토 B)', async () => {
+    const operator = await login('u-ops', ['operator']);
+    const current = (await readPolicy(operator)).policy.revision;
+    const auditBefore = (await auditRows('gh_capability.block')).length;
+    const holder = await pool.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`gh:policy:${mock.host}`]);
+      const response = await change(operator, { action: 'block', expected_revision: current, reason: '잠금 경합', capability_id: 'pr.list' });
+      expect(response.statusCode, response.body).toBe(503);
+      expect(response.json<{ error: { code: string; detail: { reason: string } } }>().error).toMatchObject({ code: 'GH_POLICY_UNAVAILABLE', detail: { reason: 'policy_lock_timeout' } });
+    } finally {
+      await holder.query('COMMIT');
+      holder.release();
+    }
+    expect((await readPolicy(operator)).policy.revision).toBe(current);
+    expect((await auditRows('gh_capability.block')).length).toBe(auditBefore);
+  }, 60_000);
 });

@@ -292,7 +292,9 @@ export function registerGhRoutes(app: FastifyInstance, options: GhRouteOptions):
       return reply.send({ outcome: outcome.outcome, revision: outcome.revision, policy: status['policy'], capabilities: status['capabilities'], correlation_id: correlationId });
     } catch (error) {
       if (error instanceof PolicyRequestRejected) {
-        await auditRejection(error.auditResult, change === null ? policyDeps.scope : auditTargetOf(policyDeps.scope, change), change?.reason ?? null);
+        if (error.auditResult !== null) {
+          await auditRejection(error.auditResult, change === null ? policyDeps.scope : auditTargetOf(policyDeps.scope, change), change?.reason ?? null);
+        }
         return fail(reply, error.code, error.message, correlationId, error.detail);
       }
       throw error;

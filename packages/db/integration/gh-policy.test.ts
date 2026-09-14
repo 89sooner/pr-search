@@ -243,6 +243,9 @@ describe('권한 경계 — prs_app은 읽고, 함수를 실행할 뿐이다', (
     expect(fn.rows).toHaveLength(1);
     expect(fn.rows[0]).toMatchObject({ secdef: true, owner: 'prs_admin', app: true, pub: false });
     expect(fn.rows[0]?.config).toEqual(['search_path=pg_catalog, public, pg_temp']);
+    // 함수 본문의 한정하지 않은 내장 함수·연산자를 prs_app이 만든 객체로 가로챌 수 없다 — public에 CREATE가 없다(독립 검토 A).
+    const create = await pool.query<{ c: boolean }>("SELECT has_schema_privilege('prs_app', 'public', 'CREATE') AS c");
+    expect(create.rows[0]?.c).toBe(false);
   });
 
   it('prs_app으로 직접 쓰면 거절된다 — 정책 표·이력 표·스냅숏 활성화', async () => {
@@ -597,6 +600,24 @@ describe('실행권 확정 가드 — 옛 앱 경로가 실행을 다시 열지 
         (error: unknown) => errorCode(error),
       );
     expect(outcome).toBe('PRS10');
+  });
+
+  it('새 실행 기록은 queued로만 들어간다 — prs_app이 running·종료 상태로 바로 넣어 claim 대조를 건너뛰지 못한다 (PRS10)', async () => {
+    const { scope, definition } = await approvedScope();
+    for (const state of ['running', 'succeeded', 'policy_blocked']) {
+      const outcome = await asApp((client) =>
+        client.query(
+          `INSERT INTO gh_execution (user_id, github_actor, host, capability_id, invocation, context, redacted_argv, risk_level, state,
+                                     gh_version, manifest_version, manifest_hash, idempotency_key, authorization_result, correlation_id, policy_revision)
+           VALUES ('u-direct', 'alice', $1, 'pr.list', '{}', '{}', '{}', 'R0', $2, '2.97.0', 'r0.3', $3, $4, 'x', gen_random_uuid(), 1)`,
+          [scope, state, definition.manifestHash, unique('direct').replace(/[^A-Za-z0-9_-]/g, '_')],
+        ),
+      ).then(
+        () => 'inserted',
+        (error: unknown) => errorCode(error),
+      );
+      expect(outcome, state).toBe('PRS10');
+    }
   });
 
   it('현재 정책과 다른 요청의 claim은 거절되고, 맞는 요청만 running이 된다 (PRS11)', async () => {

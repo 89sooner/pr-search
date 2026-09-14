@@ -54,10 +54,13 @@ export interface PolicyDeps {
 /** 거절. `code`는 API 오류 코드, `detail`은 응답에 싣는 사실. */
 export class PolicyRequestRejected extends Error {
   constructor(
-    readonly code: 'INVALID_PARAMETER' | 'GH_POLICY_CONFLICT' | 'GH_REGISTRY_APPROVAL_INELIGIBLE' | 'GH_DUPLICATE_REQUEST',
+    readonly code: 'INVALID_PARAMETER' | 'GH_POLICY_CONFLICT' | 'GH_REGISTRY_APPROVAL_INELIGIBLE' | 'GH_DUPLICATE_REQUEST' | 'GH_POLICY_UNAVAILABLE',
     message: string,
-    /** 감사 결과 코드 — `invalid`·`conflict`·`ineligible`·`key_reused`. */
-    readonly auditResult: 'invalid' | 'conflict' | 'ineligible' | 'key_reused',
+    /**
+     * 감사 결과 코드 — `invalid`·`conflict`·`ineligible`·`key_reused`. `null`이면 남기지 않는다: 결정을 판정하지 못한
+     * 인프라 사유(정책 잠금 대기 초과)는 결정의 거절이 아니고 정본 결과 어휘에도 없다.
+     */
+    readonly auditResult: 'invalid' | 'conflict' | 'ineligible' | 'key_reused' | null,
     readonly detail?: Readonly<Record<string, unknown>>,
   ) {
     super(message);
@@ -446,6 +449,10 @@ export async function changePolicy(deps: PolicyDeps, actor: string, request: Pol
         case 'invalid':
           throw new PolicyRequestRejected('INVALID_PARAMETER', `요청 값이 틀렸다: ${error.reason}`, 'invalid', { field: error.reason });
       }
+    }
+    if (ghPolicyRepo.isPolicyLockTimeout(error)) {
+      // 다른 정책 변경이 잠금을 오래 쥐었다. 트랜잭션이 롤백돼 적용된 것이 없으므로 새 키로 다시 제출해도 두 번 적용되지 않는다.
+      throw new PolicyRequestRejected('GH_POLICY_UNAVAILABLE', '다른 운영 정책 변경이 진행 중이라 잠금을 얻지 못했다 — 잠시 후 다시 확인하고 제출한다', null, { reason: 'policy_lock_timeout' });
     }
     throw error;
   }

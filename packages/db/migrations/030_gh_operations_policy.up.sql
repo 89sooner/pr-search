@@ -370,7 +370,7 @@ GRANT EXECUTE ON FUNCTION gh_operations_policy_apply(TEXT, TEXT, BIGINT, TEXT, T
 
 -- ── 실행권 확정 가드 ─────────────────────────────────────────────────
 --
--- 새 실행은 수락 시점의 정책 revision을 반드시 적고(INSERT), 그 값은 바뀌지 않는다(UPDATE). queued→running 전이는
+-- 새 실행은 수락 시점의 정책 revision을 반드시 적고 대기 상태로만 들어오며(INSERT), 그 값은 바뀌지 않는다(UPDATE). queued→running 전이는
 -- 현재 revision이 같고, 승인 정의가 실행 행의 정의와 같고, capability가 차단되지 않았을 때만 된다.
 -- **이전 앱 버전으로 되돌려도 이 가드는 남는다** — 옛 search-api는 policy_revision을 적지 않아 INSERT가 거절되고,
 -- 옛 실행기의 claim UPDATE는 revision이 없어 거절된다. 실행이 조용히 다시 열리지 않는다(롤백 방어).
@@ -386,6 +386,10 @@ BEGIN
   IF TG_OP = 'INSERT' THEN
     IF NEW.policy_revision IS NULL THEN
       RAISE EXCEPTION 'gh_execution requires policy_revision (CR-090)' USING ERRCODE = 'PRS10';
+    END IF;
+    -- 새 실행 기록은 대기 상태로만 들어온다. running이나 종료 상태로 바로 넣어 아래 실행권 확정 대조를 건너뛰지 못한다.
+    IF NEW.state IS DISTINCT FROM 'queued' THEN
+      RAISE EXCEPTION 'gh_execution must be inserted as queued (CR-090)' USING ERRCODE = 'PRS10';
     END IF;
     RETURN NEW;
   END IF;

@@ -150,6 +150,18 @@ describe('신선도 한도 — 검사 주기와 시간 상한·재시도 설정�
     expect(() => registryEvidenceMaxAgeMs({ intervalMs: 0, commandsWithHelp: 228 })).toThrow();
     expect(() => registryCheckRoundBudgetMs(-1)).toThrow();
   });
+
+  it('받아들이는 가장 긴 주기(7일)의 한도도 DB 함수가 받는 인자 상한 안에 있다 — 넘으면 정당한 승인이 PRS05로 막힌다', () => {
+    // 두 값은 다른 파일에 산다(판정 모듈과 마이그레이션 030). 한쪽만 바뀌면 여기서 드러난다 (독립 검토 A).
+    const sql = readFileSync(fileURLToPath(new URL('../../db/migrations/030_gh_operations_policy.up.sql', import.meta.url)), 'utf8');
+    const bounds = /p_evidence_max_age_ms NOT BETWEEN (\d+) AND (\d+)/.exec(sql);
+    expect(bounds).not.toBeNull();
+    const [, floor, ceiling] = bounds ?? [];
+    const longest = registryEvidenceMaxAgeMs({ intervalMs: 7 * DAY, commandsWithHelp: nonAliasCommandCount(manifest) });
+    const shortest = registryEvidenceMaxAgeMs({ intervalMs: 60_000, commandsWithHelp: nonAliasCommandCount(manifest) });
+    expect(longest).toBeLessThanOrEqual(Number(ceiling));
+    expect(shortest).toBeGreaterThanOrEqual(Number(floor));
+  });
 });
 
 describe('실행 판정 — API·실행기·화면이 같은 식을 쓴다 (FR-GH-011 AC-9, FR-GH-009 AC-8)', () => {

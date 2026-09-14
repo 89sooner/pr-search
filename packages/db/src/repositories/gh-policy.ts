@@ -189,10 +189,18 @@ const SQLSTATE_KIND: ReadonlyMap<string, PolicyChangeRejectionKind> = new Map([
   ['PRS05', 'invalid'],
 ]);
 
-/** 실행권 확정 가드가 거절했다 (PRS10: revision 누락·변경, PRS11: 현재 정책과 다름). */
+/** 실행권 확정 가드가 거절했다 (PRS10: revision 누락·변경·대기 아닌 새 행, PRS11: 현재 정책과 다름). */
 export function isPolicyGuardViolation(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
   return code === 'PRS10' || code === 'PRS11';
+}
+
+/**
+ * 정책 잠금을 `lock_timeout` 안에 얻지 못했다(`55P03` lock_not_available). 다른 변경이 배타 잠금을 오래 쥐었다는 뜻이며,
+ * 트랜잭션 전체가 롤백되므로 이 트랜잭션이 쓴 것은 없다 — 판정의 거절이 아니라 「지금은 판정할 수 없음」이다.
+ */
+export function isPolicyLockTimeout(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === '55P03';
 }
 
 /**

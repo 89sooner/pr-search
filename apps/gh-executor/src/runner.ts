@@ -265,6 +265,15 @@ export async function runExecution(deps: RunnerDeps, executionId: number): Promi
       return taken === null ? { kind: 'lost' } : { kind: 'claimed', row: taken };
     });
   } catch (error) {
+    if (ghPolicyRepo.isPolicyLockTimeout(error)) {
+      /*
+       * 정책 변경(배타)이 잠금 대기 상한을 넘겨 쥐고 있었다 — 판정하지 못했으므로 닫지 않고 남긴다(트랜잭션은 롤백됐다).
+       * 던지면 버스가 이 이벤트를 재시도로 돌려 같은 파티션의 뒤 이벤트까지 막는다. 잔여 스윕이 다시 본다.
+       */
+      deps.metrics.executions.inc({ result: 'policy_unavailable' });
+      deps.log({ level: 'error', message: '운영 정책 잠금을 기다리다 시간이 지나 대기 요청을 집지 않았다 — 닫지 않고 남긴다', execution_id: executionId, reason: 'policy_lock_timeout', correlation_id: row.correlation_id });
+      return 'policy_unavailable';
+    }
     if (!ghPolicyRepo.isPolicyGuardViolation(error)) throw error;
     // 판정은 허용했는데 DB 가드가 거절했다 — 판정 뒤에 정책이 바뀐 것이다. 과거 판정을 믿지 않고 닫는다.
     await ghExecutionRepo.closeQueuedByPolicy(deps.pool, executionId, 'policy_changed');
