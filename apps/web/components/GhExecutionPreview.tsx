@@ -11,6 +11,7 @@
 import type { ReactNode } from 'react';
 import { Badge } from '@conductor-by-89soone/react';
 import { formatArgv, identityLabel, type PreviewView } from '../lib/gh';
+import { blockerLabel } from '../lib/gh-policy';
 
 export interface GhExecutionPreviewProps {
   readonly preview: PreviewView | null;
@@ -69,7 +70,7 @@ export function GhExecutionPreview({ preview, loading }: GhExecutionPreviewProps
       </dl>
       {preview.blockers.length > 0 ? (
         <p role="status" data-testid="gh-preview-blockers">
-          실행할 수 없습니다: {preview.blockers.join(', ')}
+          실행할 수 없습니다: {preview.blockers.map(blockerLabel).join(', ')}
         </p>
       ) : null}
     </section>

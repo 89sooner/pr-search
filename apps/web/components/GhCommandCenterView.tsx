@@ -40,6 +40,7 @@ import { Button, Panel } from '@conductor-by-89soone/react';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { GhCapabilityList } from './GhCapabilityList';
+import { GhExecutionGateBanner } from './GhExecutionGateBanner';
 import { GhExecutionPanel } from './GhExecutionPanel';
 import { GhExecutionPreview } from './GhExecutionPreview';
 import { GhIdentityBanner } from './GhIdentityBanner';
@@ -554,6 +555,8 @@ export function GhCommandCenterView(): ReactNode {
                   <h2>
                     gh {capability.path.join(' ')} <small>{capability.title}</small>
                   </h2>
+                  {/* 운영 승인 필요·관리자 차단·레지스트리 불일치를 입력 전에 알린다 (CR-090). 실행 가능하면 그리지 않는다. */}
+                  <GhExecutionGateBanner gate={preview?.gate ?? capability.execution_gate} />
                   <GhPrListForm capability={capability} repositories={repositories} form={form} violations={violations} onChange={setForm} />
                 </>
               )}

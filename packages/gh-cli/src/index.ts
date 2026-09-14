@@ -194,6 +194,8 @@ export { NONZERO_DENOMINATOR_DIMENSIONS } from './classification/dimensions.js';
 // 레지스트리 운영 승인과 실행 게이트 (CR-090) — API·실행기·화면이 같은 판정식을 쓴다.
 export { GH_VERSION_TIMEOUT_MS, INVENTORY_HELP_CONCURRENCY, INVENTORY_HELP_TIMEOUT_MS, REGISTRY_CHECK_RETRY_DELAYS_MS } from './registry-cadence.js';
 export {
+  GH_APPROVAL_INELIGIBLE_REASONS,
+  GH_EXECUTION_GATE_REASONS,
   REQUIRED_APPROVAL_GATES,
   approvalMatchesManifest,
   decideExecution,

@@ -93,6 +93,17 @@ describe('허용 목록이 좁다', () => {
     expect(headers.has('x-custom')).toBe(false);
   });
 
+  it('쓰기 요청의 중복 방지 키는 넘어간다 — 신원이 아니며 서버가 사용자별로 묶는다 (DEV-690, FR-GH-012 AC-5)', () => {
+    /*
+     * W-010의 실행 요청과 운영 정책 변경은 `Idempotency-Key` 헤더로 키를 보낸다. 허용 목록에서 빠져 있어 실제 프록시를 지나면
+     * 키가 사라지고 search-api가 400을 냈다 — e2e는 브라우저에서 응답을 목킹하고 통합 시험은 search-api를 직접 불러 드러나지
+     * 않았다(CR-090 준비 중 코드 판독으로 발견, 이 시험으로 재현).
+     */
+    const headers = proxied({ 'Idempotency-Key': 'req-0001-alpha', 'content-type': 'application/json' });
+    expect(headers.get('idempotency-key')).toBe('req-0001-alpha');
+    expect(FORBIDDEN_IDENTITY_HEADERS).not.toContain('idempotency-key');
+  });
+
   it('대소문자를 가리지 않고 막는다', () => {
     expect(proxied({ 'X-User-Id': 'attacker' }).has('x-user-id')).toBe(false);
   });

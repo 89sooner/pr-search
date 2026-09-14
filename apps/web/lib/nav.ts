@@ -115,6 +115,17 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     allowedRoles: ['operator', 'security_officer'],
   },
   /*
+   * A-005 gh 실행 정책 — 최소 부분 (WP-080 / CR-090). 실행이 열린 capability의 차단·재개만 있다. 조회는 A-006과 같은
+   * 두 역할이 하고, 변경은 `operator`만 한다(API-GH-008이 요청마다 판정한다).
+   */
+  {
+    id: 'ops-gh-policy',
+    label: 'gh 실행 정책',
+    href: '/ops/gh-policy',
+    section: 'ops',
+    allowedRoles: ['operator', 'security_officer'],
+  },
+  /*
    * GitHub Operations (REL-007 R0 / WP-077, CR-086) — 제품 IA의 두 번째 표면이다.
    *
    * **역할 제한이 없다.** 실행 자격은 역할이 아니라 **위임 신원**(Operations App 연결)이

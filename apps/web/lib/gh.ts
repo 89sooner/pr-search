@@ -17,6 +17,7 @@
  */
 
 import { evaluateInvocation, type GhCapabilityDefinition, type GhConstraintViolation, type GhInvocation } from '@prs/gh-cli';
+import { GATE_TEXT, type ExecutionGateView } from './gh-policy';
 
 /** `API-GH-001`이 내는 capability 하나. 서버가 snake_case로 준다. */
 export interface CapabilityView {
@@ -40,6 +41,8 @@ export interface CapabilityView {
     readonly resource_kind: string | null;
   } | null;
   readonly timeout_ms: number;
+  /** 실행 판정 (CR-090). 옛 배포의 응답에는 없다 — 그때는 미리보기의 판정만 본다. */
+  readonly execution_gate?: ExecutionGateView | null;
 }
 
 /** `API-GH-001`의 command 목록 한 줄 — 실행이 열리지 않은 것도 사유와 함께. */
@@ -100,6 +103,8 @@ export interface PreviewView {
     readonly policy: string;
     readonly timeout_ms: number;
   };
+  /** 실행 판정 (CR-090). 허용이 아니면 그 사유가 `blockers`의 맨 앞에 온다. */
+  readonly gate?: ExecutionGateView;
   readonly executable: boolean;
   readonly blockers: readonly string[];
 }
@@ -372,6 +377,9 @@ export function describeError(error: string | null): string {
   if (error === null) return '';
   if (error === 'identity_required' || error === 'identity_expired' || error === 'identity_revoked') return 'GitHub 계정 연결이 없거나 만료됐습니다. 다시 연결한 뒤 실행하세요.';
   if (error === 'registry_stale') return '실행기의 gh·manifest가 요청 시점과 다릅니다. 새로 고침 뒤 다시 실행하세요.';
+  // 운영 정책이 닫은 요청 (CR-090) — 상태는 `policy_blocked`이며 다시 실행되지 않는다.
+  if (error === 'admin_action_required' || error === 'policy_blocked' || error === 'policy_changed') return `${GATE_TEXT[error].title}. ${GATE_TEXT[error].description}`;
+  if (error === 'registry_evidence_expired' || error === 'registry_unchecked') return `${GATE_TEXT[error].title}. ${GATE_TEXT[error].description}`;
   if (error === 'argv_mismatch') return '요청이 저장된 뒤 명령이 달라졌습니다. 다시 실행하세요.';
   if (error === 'executor_lost') return '실행기가 응답을 멈춰 실행을 회수했습니다.';
   if (error === 'gh_auth_required') return 'gh가 인증을 요구했습니다 — 위임 토큰이 GHE에서 거부됐을 수 있습니다.';

@@ -30,6 +30,11 @@ const FORWARDED_REQUEST_HEADERS: ReadonlySet<string> = new Set([
   'accept',
   'accept-language',
   'content-type',
+  /*
+   * 쓰기 요청의 중복 방지 키 (FR-GH-012 AC-5, API-GH-002·008). 신원을 주장하지 않는다 — search-api가 세션의 사용자별로
+   * 묶어 판정한다. 목록에서 빠져 있어 W-010의 실행 요청이 실제 프록시를 지나면 400이 났다 (DEV-690, CR-090).
+   */
+  'idempotency-key',
 ]);
 
 /**

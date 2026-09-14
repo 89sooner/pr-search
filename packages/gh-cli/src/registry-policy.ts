@@ -213,16 +213,20 @@ export function recordedRegistryVerdict(input: { readonly manifestHash: string; 
 
 // ── 실행 판정 ──────────────────────────────────────────────────────────────
 
-export type GhExecutionGateReason =
-  | 'operations_disabled'
-  | 'capability_not_executable'
-  | 'policy_unavailable'
-  | 'admin_action_required'
-  | 'policy_blocked'
-  | 'policy_changed'
-  | 'registry_stale'
-  | 'registry_evidence_expired'
-  | 'registry_unchecked';
+/** 실행 판정의 거절 사유 전부 — 화면 문구·API 오류 매핑이 이 목록을 빠짐없이 덮는지 시험이 건다. */
+export const GH_EXECUTION_GATE_REASONS = [
+  'operations_disabled',
+  'capability_not_executable',
+  'policy_unavailable',
+  'admin_action_required',
+  'policy_blocked',
+  'policy_changed',
+  'registry_stale',
+  'registry_evidence_expired',
+  'registry_unchecked',
+] as const;
+
+export type GhExecutionGateReason = (typeof GH_EXECUTION_GATE_REASONS)[number];
 
 export interface GhExecutionGateInput {
   readonly operationsEnabled: boolean;
@@ -292,23 +296,29 @@ export function decideExecution(input: GhExecutionGateInput): GhExecutionGate {
 
 // ── 승인 자격 ──────────────────────────────────────────────────────────────
 
-export type GhApprovalIneligibleReason =
-  | 'snapshot_missing'
-  | 'snapshot_unclassified'
-  | 'evidence_missing'
-  | 'evidence_not_passed'
-  | 'evidence_other_definition'
-  | 'evidence_manifest_mismatch'
-  | 'evidence_binary_mismatch'
-  | 'evidence_inventory_mismatch'
-  | 'evidence_cadence_unknown'
-  | 'evidence_stale'
-  | GhReportDecodeFailure
-  | 'report_hash_mismatch'
-  | 'report_not_reproducible'
-  | 'report_not_passed'
-  | 'gate_not_passed'
-  | 'already_approved';
+/** 승인 부적격 사유 전부 — 화면 문구가 이 목록을 빠짐없이 덮는지 시험이 건다. */
+export const GH_APPROVAL_INELIGIBLE_REASONS = [
+  'snapshot_missing',
+  'snapshot_unclassified',
+  'evidence_missing',
+  'evidence_not_passed',
+  'evidence_other_definition',
+  'evidence_manifest_mismatch',
+  'evidence_binary_mismatch',
+  'evidence_inventory_mismatch',
+  'evidence_cadence_unknown',
+  'evidence_stale',
+  'report_version_unsupported',
+  'report_version_superseded',
+  'report_invalid',
+  'report_hash_mismatch',
+  'report_not_reproducible',
+  'report_not_passed',
+  'gate_not_passed',
+  'already_approved',
+] as const;
+
+export type GhApprovalIneligibleReason = (typeof GH_APPROVAL_INELIGIBLE_REASONS)[number];
 
 export interface GhApprovalSnapshot {
   readonly snapshotId: number;
