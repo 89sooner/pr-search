@@ -1,6 +1,6 @@
 # PR Search 프론트엔드 아키텍처
 
-> 상태: review | 버전: v0.6 | 갱신일: 2026-09-14
+> 상태: review | 버전: v0.7 | 갱신일: 2026-09-14
 
 CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설계](pr_search_wp074_design.md) 9절로 고정한다. M은 API 생성 문자열이며 PR 번호를 대체하지 않는다. 행별 resolve 없이 페이지 batch, M deep link 1회 resolve, visible pending의 bounded poll을 사용한다. 기존 인증 BFF·from_q·cursor·epoch 경고·Conductor를 보존한다.
 
@@ -42,7 +42,8 @@ CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설�
 | `/ops/repositories` | A-002 | FR-ING-009 | 서버 | API-ADM-001 |
 | `/ops/jobs` | A-003 | FR-ADMIN-002, FR-ADMIN-003, FR-ING-006, FR-ING-008 | 클라이언트 (30초 폴링) | API-ADM-002, API-ADM-004, API-ADM-007 |
 | `/ops/audit` | A-004 | FR-AUTH-004 | 서버 | API-ADM-005 |
-| `/ops/gh-registry` | A-006 (읽기 전용, CR-088 · 결과 계약·port·연결 후보와 분리 집계 표시 CR-089 — 실행·Recipe 버튼 없음) | FR-GH-001, FR-GH-011, NFR-009 | 클라이언트 (폴링 없음, 「다시 읽기」 버튼) | API-GH-013, API-GH-014, API-GH-001 |
+| `/ops/gh-registry` | A-006 (CR-088 · 결과 계약·port·연결 후보와 분리 집계 표시 CR-089 · **운영 승인 절 CR-090** — 적재 정의·승인 정의·근거·자격·승인 미리보기·승인·철회·이력. 실행·Recipe 버튼 없음) | FR-GH-001, FR-GH-011, NFR-009 | 클라이언트 (폴링 없음, 「다시 읽기」 버튼) | API-GH-013, API-GH-014, API-GH-001, API-GH-008 |
+| `/ops/gh-policy` | A-005 최소 (CR-090 — 실행이 열린 capability(`pr.list`)의 차단·재개, 사유, 마지막 변경자·revision·이력, 변경 후 사용자에게 보일 사유) | FR-GH-009 | 클라이언트 (폴링 없음) | API-GH-008 |
 | `/api/*` | - | FR-AUTH-001 | 라우트 핸들러 | `search-api` 프록시 |
 | `/auth/callback` | - | FR-AUTH-001 | 라우트 핸들러 | OIDC 토큰 교환 |
 
@@ -205,7 +206,7 @@ apps/web/app/api/[...path]/route.ts
 규칙:
 
 - **신원을 주장하는 헤더를 만들지 않는다** (CR-018, DEV-067). 예전에 이 자리에는 "사용자 식별 헤더 부착"이 적혀 있었으나 그것은 CR-015 DEV-047이 정한 것과 정면으로 어긋난다. `search-api`는 `X-User-Id`·`X-Forwarded-User`·`Authorization`·`X-Roles` 어느 것도 읽지 않고 **전부 401로 거절한다**(WP-012가 시험으로 건다). 신원은 세션 쿠키가 나르고, `search-api`가 같은 Redis 저장소에서 직접 해석한다. 헤더를 믿기 시작하면 클러스터 안 무엇이든 신원을 위조할 수 있다.
-- 클라이언트가 보낸 헤더를 그대로 전달하지 않는다. 전달 목록은 **세션 쿠키와 상관 ID뿐**이다.
+- 클라이언트가 보낸 헤더를 그대로 전달하지 않는다. 전달 목록은 **세션 쿠키와 상관 ID뿐**이다. CR-090부터 쓰기 요청의 중복 방지 키(`Idempotency-Key`)도 넘긴다 — 신원을 주장하지 않고 `search-api`가 세션 사용자별로 묶는다. 목록에서 빠져 있어 실제 프록시를 지난 W-010 실행이 400이었다(`DEV-690`).
 - 접근 범위를 프런트엔드에서 계산하거나 전달하지 않는다. 서버가 세션으로 판정한다 (ADR-008).
 - 오류 응답의 `code`와 `detail`을 그대로 클라이언트에 넘긴다. 프런트엔드가 오류를 재해석하지 않는다.
 
@@ -279,7 +280,7 @@ GitHub Operations 화면은 실행기 stdout·stderr를 그린다. 그 텍스트
 | `/gh/history` | W-021 실행 이력·저장된 Recipe | **구현됨 (R0 최소)**: 본인 이력(`security_officer`만 전체 보기 스위치), 행 선택 → 실행 패널, 「같은 구성으로 다시 실행」은 invocation만 `/gh?prefill=`로 넘겨 **새 미리보기·새 실행**을 만든다 (FR-GH-012 AC-4). Recipe는 후속 |
 | `/gh/identity/callback` | (화면 아님) Operations App 인가 콜백 라우트 | GHE의 `code`·`state`를 세션 쿠키와 함께 `POST /api/v1/gh/identity/callback`에 넘기고 응답의 `return_to`(정화 뒤)로 보낸다. 세션이 없으면 로그인으로, 실패는 `/gh?identity=failed` 한 모양이다. `code`·`state`를 로그에 남기지 않는다 (CR-086) |
 | `/gh/recipes/[id]` | W-023 Recipe 빌더 | |
-| `/admin/gh/policy`, `/admin/gh/registry`, `/admin/gh/audit` | A-005, A-006, A-007 | |
+| `/ops/gh-policy`(A-005 최소, **구현됨 CR-090**), `/ops/gh-registry`(A-006, **구현됨 CR-088·CR-089·CR-090**), `/admin/gh/audit`(A-007, 미구현) | A-005, A-006, A-007 | 운영 화면은 `/ops/*` 아래에 있다 — 이 행의 옛 `/admin/gh/policy`·`/admin/gh/registry`는 구현과 달랐다(`DEV-692`). 조회는 `operator`·`security_officer`, 변경은 `operator`이고 판정은 서버가 요청마다 한다. 인증이 켜진 배포에서만 역할로 버튼을 가린다(`canChangePolicy`) — 가리는 것이 방어가 아니다 |
 
 기존 규칙은 그대로다 — 브라우저는 Next.js 라우트 핸들러만 호출하고 핸들러가 프록시한다 (ADR-011). URL 질의 파라미터가 단일 진실이라는 원칙도 유지하되, **실행 요청 본문은 URL에 넣지 않는다.** 비밀 입력이 URL·히스토리·리퍼러에 남으면 안 되기 때문이다 (NFR-010).
 

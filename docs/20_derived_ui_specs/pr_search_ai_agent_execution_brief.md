@@ -1,6 +1,6 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-09-14
+> 상태: review | 버전: v0.9 | 갱신일: 2026-09-14
 
 CR-079 WP-074 재개: [실행서](../40_delivery/pr_search_wp074_execution.md) → [상세 설계](../30_technical_architecture/pr_search_wp074_design.md) → [측정 가이드](../40_delivery/pr_search_wp074_measurement_guide.md) 전문. 실제 source와 계약을 대조한 뒤 S0~S6/T01~T06으로 구현한다. 이 설계 작성은 실행 허가가 아니다. DEV-581을 fixture 성공으로 닫지 않고 외부 실행·사내 NOT RUN·WP-075 비활성을 분리한다. source별 파일 소유·검증 기록과 Agent-Initiated Decisions를 남긴다.
 
@@ -182,7 +182,8 @@ REL-007부터 적용된다. REL-001~006을 먼저 닫는다.
 | 패키지 | `packages/gh-cli` 신규. 기존 `@prs/github`(REST)를 gh 래퍼로 바꾸지 않는다 | ADR-013 |
 | 위험도 | R0 즉시 / R1 미리보기 / R2 확인 + 대상 재조회 / R3 강한 확인 + 승인 | ADR-016 |
 | UI | `GenericCommandForm` 하나가 전 capability를 커버. 업무 화면은 그 위의 편의 레이어 | ADR-015 |
-| 마이그레이션 | 006부터 additive. 001~005는 수정하지 않는다 | 데이터 모델 3.5 |
+| 마이그레이션 | 006부터 additive. 001~005는 수정하지 않는다 — 실제 번호는 `028`(실행)·`029`(레지스트리)·`030`(운영 정책)이며 기존 파일은 고치지 않는다 | 데이터 모델 3.5 |
+| 운영 정책 (CR-090) | 실행 허용 = 기능 켜짐 ∧ 현재 적재 정의의 운영 승인 ∧ 코드·manifest 실행 목록 ∧ 운영자 차단 없음 ∧ 레지스트리 판정 ∧ 사용자 권한. 판정식은 `@prs/gh-cli`의 `decideExecution` 하나이고 API 수락·실행기 claim·화면 표시가 같은 식을 부른다. 정책 표 쓰기는 마이그레이션 030의 SECURITY DEFINER 함수 하나다 | FR-GH-011 AC-6~AC-10, FR-GH-009 AC-8 |
 
 절대 하지 않는 것:
 
@@ -197,6 +198,9 @@ capability를 조용히 숨기기
 gh api로 정책 우회
 토큰·비밀을 argv·로그·이력·감사에 기록
 쓰기 작업 자동 재시도
+운영 승인 없이 실행하거나 대기 요청에 과거 승인을 승계
+운영 정책으로 실행 구현 목록을 넓히기
+정책 표를 애플리케이션 롤(prs_app)로 직접 쓰기 — UPDATE 권한 부여 포함
 ```
 
 측정 기준값 (gh 2.97.0): command node 228개(실행 가능 leaf 196, 그룹 32), command 고유 flag 1,034개, positional placeholder 230개, `--json` 출력 지원 40개(`--json` flag를 가진 41개 중 `workflow run`은 입력 flag). 정본은 SRS 9.8절 실측 기준 표다(CR-089가 옛 값 261·41을 그 표에 맞췄다). 이 수치는 고정된 버전에서 측정한 값이며 버전이 바뀌면 manifest와 함께 갱신한다.
