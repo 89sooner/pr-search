@@ -1,5 +1,5 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
-최신 기준 (**2026-09-14 6차 · CR-090 병합(`9c8a781`, PR #188) · 병합 커밋 main CI run `34854308135` attempt 1 success(verify·integration — 회귀 484) · 후속 기록 PR은 이 갱신을 담아 올라간다**)
+최신 기준 (**2026-09-14 6차 · CR-090 병합(`9c8a781`, PR #188) · 병합 커밋 main CI run `34854308135` attempt 1 success(verify·integration — 회귀 484) · 후속 기록 PR #189 병합(`9c7f132`) · 2026-09-15 `0.1.0-pilot.6` 발행(태그 → `9c7f132`, 원장 6.88장)**)
 
 **main은 `9c8a781` 뒤에 후속 기록 PR이 병합된 상태여야 한다. 실측하라**(`git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`). 이 갱신을 담은 후속 PR의 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 `git log`로 읽는다.
 
@@ -13,13 +13,13 @@
 
 ### 후속 (병합 뒤)
 
-- [ ] 후속 원장·handoff PR(`docs/cr-090-merge-record`)이 병합됐는지 실측한다 — 원장 3장 커밋/PR 열·6.87장 PR CI·병합·main CI, WP-080 done, CR-090 closed, agent-context 6차 절과 handoff pack을 담는다.
+- [x] 후속 원장·handoff PR(`docs/cr-090-merge-record`)이 병합됐는지 실측한다(PR #189 `9c7f132` 병합, main CI run `34857988095` success) — 원장 3장 커밋/PR 열·6.87장 PR CI·병합·main CI, WP-080 done, CR-090 closed, agent-context 6차 절과 handoff pack을 담는다.
 - [ ] 이 판이 만든 자원의 정리를 사용자가 정한다 — 격리 서비스 `prs-approval-{postgres,redis,elasticsearch}`(볼륨 `prs-approval_approval-*`), 작업 트리 `/home/roqkf/pr-search-wt/approval`·`/home/roqkf/pr-search-wt/cr090-record`, 병합된 브랜치 `feature/rel007-registry-approval`·`docs/cr-090-merge-record`(로컬·원격), 이미지 `prs/*:cr090-verify`·`prs/*:cr090-final`. 실측: `git worktree list`·`docker ps -a`·`docker images 'prs/*'`·`git ls-remote --heads origin`.
 - [ ] CR-089 자원(작업 트리 `/home/roqkf/pr-search-wt/contracts`, 브랜치 `feature/rel007-result-contracts`·`docs/cr-089-merge-record`)은 2026-09-14 정리 시도가 권한 시스템에 거절돼 남아 있다. 내용은 squash 병합(`99d53d3`·`26e2627`)과 트리가 같고 bundle을 떠 두었다(`/tmp`, 휘발). 사용자가 직접 정리할지 정한다 — 에이전트는 다시 시도하거나 우회하지 않는다.
 
 ### 사내 반입 전 (사용자)
 
-1. 병합된 main에서 반입 번들을 만든다 — 이 판은 release·tag를 발행하지 않았다.
+1. [발행됨] 2026-09-15 `0.1.0-pilot.6`을 main `9c7f132`에서 발행했다(자산 SHA-256 `54abbe156130c8e69ef6bdd5dd032e1e03770c7dcdad8253fda6d44e6ab2b3e0`, 원장 6.88장). 사내 운영자에게 버전·읽기 토큰·SHA-256을 릴리스와 별도 채널로 전달하고, 번들을 받아 `sha256sum`으로 대조한다.
 2. `./prsctl upgrade`로 마이그레이션 030을 적용하고, DB에서 `select has_schema_privilege('prs_app', 'public', 'CREATE')`가 `f`인지 본다.
 3. Operations를 켠 배포는 `./prsctl health`에서 실행기 기동 검사 통과를 본 뒤 `operator`로 A-006에서 근거를 확인하고 **최초 운영 승인**을 한다. 승인 전까지 실행은 `GH_ADMIN_ACTION_REQUIRED`다.
 4. 한 사용자·한 저장소로 `pr.list` 실행 → 차단 → 거절 확인 → 재개 → 새 실행을 본다(런북 7.C 4단계).
@@ -371,7 +371,7 @@ needs to be increased`이며 재실행도 같았다. 결정자가 로컬 전 계
 - [ ] 원격 브랜치 정리 여부 — `feature/wp075-pr-title-annotate`가 남아 있다. 이전 라운드의
       넷(`fix/dev-561-git-ca-trust`·`feature/ghe-oauth-login`·`fix/smoke-gate-cr083`·
       `docs/pilot5-published`)도 병합됐으나 그대로다.
-- [ ] `0.1.0-pilot.6` 발행 여부 — **이번 세션은 발행하지 않았다**(승인 범위 밖). 사내가
+- [x] `0.1.0-pilot.6` 발행 여부 — 2026-09-15 발행했다(원장 6.88장). 당시 기록: **이번 세션은 발행하지 않았다**(승인 범위 밖). 사내가
       표기 기능을 받으려면 새 번들이 필요하다.
 - [ ] 병합된 PR의 미해결 리뷰 스레드는 GraphQL `isResolved`로 직접 세라. PR #176은 0건이지만
       저장소 전체로는 26건이 남아 있다(전부 이전 라운드).
