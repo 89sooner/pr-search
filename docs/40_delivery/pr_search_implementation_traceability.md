@@ -1,6 +1,8 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.77 | 갱신일: 2026-09-14
+> 상태: review | 버전: v6.78 | 갱신일: 2026-09-15
+
+`0.1.0-pilot.6` 발행: `0.1.0-pilot.5` 이후 main에 병합된 `CR-084`~`CR-090`(PR 제목 M 넘버 표기와 그 안전성 보강, REL-007 R0 `gh pr list`·capability 레지스트리·결과 계약·운영 승인 정책)을 담아 발행했다. 태그는 `9c7f132`를 가리키고 자산 SHA-256은 `54abbe15…b3e0`이며 `immutable`이라 잠겼다. 마이그레이션 수준은 `030`이다. 값과 사내 전달 사항, 업그레이드에서 달라지는 것은 6.88장이다. **사내 반입과 실제 GHE 검증은 `NOT RUN`이다.**
 
 `WP-075` 안전성 보강(`CR-085`): 자동 표기가 **실패·재시작·설정 변경 상황에서도** 원래 제목을 지키게 했다. 변경 요청의 재시도가 첫 시도의 문자열을 그대로 다시 보내던 자리, 확인된 본문 불일치를 다음 회차가 성공으로 덮던 자리, 시간 예산이 줄 서기와 한 행의 처리에 미치지 않던 자리, 실패한 요청 사이에 간격이 없던 자리를 닫았다 — **다섯 경로 전부 현재 코드에서 시험으로 재현한 뒤** 고쳤다. `DEV-629`(실행자 배제)를 advisory 세션 락으로 닫았고, 검증은 6.82장이다. **전역 기본값은 그대로 꺼짐이며 실제 GHE 표기는 여전히 `NOT RUN`이다.**
 
@@ -6461,6 +6463,65 @@ W-004의 C-029는 서버 저장 상태를 복원하고 후보 수·예상 횟수
 migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기며, 완성 content와 completed 전이가 함께 커밋된다. ES timeout·조기 종료·샤드 실패, 취소, 30분 초과는 부분 파일을 공개하지 않는다. CSV 수식 접두어를 중화하고 원문 본문·경로 배열은 내보내지 않는다. `export.create`는 감사 정본에서 활성화됐다.
 
 검증: ES 단위 11건, 실제 PostgreSQL·Elasticsearch·Redis 통합 6건, a11y 1건(axe 위반 0), Chromium E2E 3건 통과. 1000/1001/100000/100001 경계, stale Redis와 PG fence, 대기 중 에폭 변경, 부분 응답, 닫았다 다시 연 다이얼로그의 늦은 응답을 포함한다. 전체 통합 첫 실행에서 migration 024 FK가 기존 `TRUNCATE job` 픽스처를 막고 export가 숫자 에폭을 문자열 파서로 넘기지 못하는 두 결함을 찾아 해당 통합 23건 재실행으로 닫았다.
+
+### 6.88 `0.1.0-pilot.6` 발행 (2026-09-15, CR-084 ~ CR-090)
+
+**무엇을 담았나.** `0.1.0-pilot.5`(태그 `2795666`) 이후 main에 병합된 판 전부다. 6.82장의 후보 번들 `0.1.0-pilot.6`(`7e4fd63`)은 발행하지 않았으므로, 결정자 지시(2026-09-15)에 따라 같은 버전 이름을 그때의 main `9c7f132`에서 다시 만들어 발행했다. 이전 후보는 재사용하지 않았다(pilot.5와 같은 규율).
+
+| 판 | 무엇 | 받기만 했을 때 |
+| --- | --- | --- |
+| `CR-084` / `WP-075` | PR 제목 M 넘버 표기(`FR-SEQ-009`, `ADR-022`) | `MNUMBER_ANNOTATE_ENABLED` 기본 꺼짐이라 제목이 바뀌지 않는다 |
+| `CR-085` | 표기의 실패 경로 안전성 보강(재시도·시간 예산·실행자·복구 근거) | 같음 |
+| `CR-086` / `WP-077` | REL-007 R0: 위임 신원으로 `gh pr list`를 격리 실행기에서 실행 | `GH_OPERATIONS_ENABLED` 기본 꺼짐이라 실행기가 서지 않는다 |
+| `CR-087` | main CI 실패 두 건의 원인 정정 | 동작 변화 없음 |
+| `CR-088` / `WP-078` | gh capability 분류·검증·드리프트·스냅숏, A-006 읽기 전용 | 실행 허용은 `pr.list` 하나 |
+| `CR-089` / `WP-079` | 결과 계약·typed port·연결 판정, A-006 조회 | 새로 실행되는 명령 0 |
+| `CR-090` / `WP-080` | 운영 승인·철회와 `pr.list` 차단·재개가 API·큐·실행기를 통제 | Operations를 켜도 운영자의 최초 운영 승인 전에는 실행이 거절된다 |
+
+마이그레이션 수준이 `025`에서 `030`으로 오른다: `026` 표기 정책, `027` 표기 결과, `028` gh 실행, `029` capability 레지스트리, `030` 운영 정책.
+
+**발행 값 (GitHub에 다시 물어 확인했다).**
+
+| 항목 | 값 |
+| --- | --- |
+| 버전 | `0.1.0-pilot.6` |
+| 태그 대상 | `9c7f1328ba3bd3307a168a3bea68dfce67abba1e` (`git ls-remote`로도 같다) |
+| 자산 | `pr-search-0.1.0-pilot.6-offline.tar.gz` |
+| 자산 SHA-256 | `54abbe156130c8e69ef6bdd5dd032e1e03770c7dcdad8253fda6d44e6ab2b3e0` |
+| 자산 크기 | 1,156,652,983 바이트 |
+| `draft` · `prerelease` | 둘 다 `false` |
+| `immutable` | `true` (발행 뒤 자산과 태그가 잠긴다) |
+| 발행 시각 | `2026-09-14T21:55:40Z` (2026-09-15 06:55:40 KST) |
+| 마이그레이션 수준 | `030` |
+
+값은 `gh api repos/89sooner/pr-search/releases/tags/0.1.0-pilot.6`로 다시 물어 빌드 출력, 로컬 아카이브의 `sha256sum`·크기와 대조했다. `gh release view --json`에는 `digest`가 없으므로 그 경로로는 확인할 수 없다.
+
+**빌드 기록.** 공유 체크아웃의 `main`(`9c7f132`, 작업 트리 깨끗함, 같은 커밋의 main CI run `34857988095` success)에서 `./deploy/single-host/build-bundle.sh 0.1.0-pilot.6 /tmp/pr-search-bundle-release --release`를 실행했다(06:48:51~06:55:40 KST, 종료 0). 발행 전제 검사(같은 버전의 릴리스·태그·초안 없음, immutable releases 켜짐)를 통과한 뒤 다음 순서로 진행됐다: 애플리케이션 이미지 7종 빌드, 백킹 이미지 4종 확보, `docker save`, **tar에서 다시 적재한 이미지로 런타임 게이트**(web 기동·대표 SSR 10종·운영 계약을 어긴 구성 거부 넷, pipeline-worker의 git, gh-executor의 고정 gh 해시·꺼진 기동·봉인 키 없는 켜짐 거부), 소스 계보, 배포 정의(LF), manifest, checksum, 시크릿 혼입 검사(0건), 운반 아카이브, 초안과 자산 업로드, 태그 원자적 생성, **발행 전 자산 이름·크기·digest·상태 대조**, 발행, 발행 확인. 번들 디렉터리 2.7G, 아카이브 1.1G.
+
+**번들을 다시 열어 확인한 것.** `checksums/SHA256SUMS` 10개 파일 `OK`. `release-manifest.json`의 `upstream.commit`이 태그 대상과 같고 `branch`는 `main`, `migration_level`은 `030`, `contains_secrets`는 `false`다. `git bundle verify`는 완전한 이력(HEAD `9c7f132`)을 보고했다. 번들에 복사된 런북·`compose.yml`·`prsctl`·`.env.example`·`filebeat.yml`은 커밋 내용과 바이트까지 같고(CR 0개), 시크릿으로 보이는 파일은 0개다.
+
+**사내 운영자에게 별도 채널로 전달할 것 셋** (`DEV-530`): 버전 `0.1.0-pilot.6` · 읽기 토큰 · 위 SHA-256. **토큰 값은 어디에도 적지 않는다.**
+
+**사내에서 받는 명령** (런북 2.B 1단계):
+
+```bash
+GH_TOKEN=<읽기 토큰> gh release download 0.1.0-pilot.6 -R 89sooner/pr-search -p '*.tar.gz'
+sha256sum pr-search-0.1.0-pilot.6-offline.tar.gz   # 위 SHA-256과 같아야 한다
+tar -xzf pr-search-0.1.0-pilot.6-offline.tar.gz
+```
+
+**업그레이드에서 달라지는 것 (사내 운영자).**
+
+- 새 기능 스위치(`MNUMBER_ANNOTATE_ENABLED`, `GH_OPERATIONS_ENABLED`)는 모두 기본 꺼짐이다. 번들을 받는 것만으로 PR 제목이 바뀌거나 gh 명령이 실행되지 않는다.
+- `./prsctl upgrade`가 마이그레이션 026~030을 적용한다. 030 뒤 운영 DB에서 `select has_schema_privilege('prs_app', 'public', 'CREATE')`가 `f`인지 한 번 확인한다(런북 7.C 4단계).
+- Operations를 켜려면 Operations App 등록과 봉인 키가 필요하고, **운영자의 최초 운영 승인 전까지 실행 요청은 `GH_ADMIN_ACTION_REQUIRED`로 거절된다**(런북 7.C).
+- 이전 앱으로 되돌릴 때는 먼저 Operations를 끈다. 030의 가드가 옛 앱의 실행 경로를 오류로 만들기 때문이다.
+
+**다음 반입에서 확인할 것 (NOT RUN).**
+
+- pilot.5에서 넘어온 확인이 아직 끝나지 않았다면 이 판에서 함께 본다: 번들 기본값으로 미러 초기화(`DEV-561`), 실제 GHE OAuth App callback·첫 조회·세션 쿠키(`CR-083`, `DEV-613`·`DEV-614`).
+- 표기: 전용 App 등록과 권한, 켰을 때 실제 PR 제목 변경과 감사(6.81·6.82장).
+- Operations: Operations App 등록, 실행기 기동 검사 통과, A-006 근거와 최초 운영 승인, 한 사용자·한 저장소의 `pr.list` 실행·차단·재개, 대상 GHES 지원 확인(`DEV-674`)(6.83·6.85·6.87장).
 
 ### 6.87 REL-007 R2 — 검증된 레지스트리 운영 승인·R0 실행 정책 (2026-09-14, CR-090 / WP-080)
 

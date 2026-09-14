@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-09-14T14:39:45+00:00
+generated=2026-09-14T21:59:20+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=8
@@ -67,8 +67,8 @@ sig=agent-context/session-summary.md;exports/202609142215.md;origin/main;exports
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=6fcd16d7809ecc3c04880279400d48f7a05cd6d6d80818adcf70ce3bbfdffb06
-bytes=206573 compact_bytes=179733 lines=2493 priority=30
+sha256=3f1d0ae9e1de28b78bbbc83a57d712b6074b06e474a87c508bbe3927668c2cdc
+bytes=206974 compact_bytes=180119 lines=2493 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > 먼저 할 것 (결정자 확인이 필요하다) > 2026-09-14 (6차) — CR-090 뒤에 남은 것 > 후속 (병합 뒤) > 사내 반입 전 (사용자) > REL-007 완료를 막는 것 (결정자가 순서를 정함)
 sig=agent-context/todos.md;origin/main;feature/rel007-capability-registry;fix/main-ci-s0-flaky;feature/rel007-r0-pr-list;docs/cr-090-merge-record;home/roqkf/pr-search-wt/approval;home/roqkf/pr-search-wt/cr090-record;feature/rel007-registry-approval;home/roqkf/pr-search-wt/contracts;feature/rel007-result-contracts;docs/cr-089-merge-record;/prsctl;477/477;docs/cr088-post-merge;1/196;0/0;3/3;docs/cr086-post-merge;tmp/pr-search-rel007;home/roqkf/pr-search;tmp/claude-1000/-home-roqkf-pr-search/f864b845-0c6f-4ba6-9c0b-b1a332623dcf/scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;scripts/gh-manifest.mjs;packages/gh-cli
 
