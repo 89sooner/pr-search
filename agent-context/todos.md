@@ -1,15 +1,40 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
-최신 기준 (**2026-09-14 4차 마감 · CR-088 병합(`a996540`) · 후속 기록 PR #185 병합(`824eb57`) · 세 병합 커밋의 main CI 전부 success**)
+최신 기준 (**2026-09-14 5차 · CR-089 병합(`99d53d3`, PR #186) · 병합 커밋 main CI run `34813159209` attempt 1 success(verify·integration — 회귀 481) · 후속 기록 PR은 이 갱신을 담아 올라간다**)
 
-**main = `824eb57`. 실측하라**(`git fetch -q origin && git log origin/main --oneline -1`, `gh pr list --state open`). 워크트리는 `/home/roqkf/pr-search` 하나이고 격리 서비스 `prs-rel007-*`는 없다. 이번 handoff 갱신(agent-context 7개 파일과 `_handoff/`)은 **커밋하지 않았다**.
+**main은 `99d53d3` 뒤에 후속 기록 PR이 병합된 상태여야 한다. 실측하라**(`git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`). 이 갱신을 담은 후속 PR의 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 `git log`로 읽는다.
 
 ## 먼저 할 것 (결정자 확인이 필요하다)
 
-1. [ ] 미커밋 handoff 갱신을 커밋할지 정한다. 올린다면 공유 체크아웃의 main에서 직접 커밋하지 말고 commands.md 「4차 마감」의 워크트리 절차(미실행 제안)로 옮겨 PR로 올린다(선례 PR #182·#185).
-2. [ ] 저장소 루트의 전사 `202609140825.md`(62,570바이트, untracked)를 `exports/`로 옮길지 정한다. `.gitignore:24`는 `exports/`만 무시하므로 루트에 두면 `git add -A`에 딸려 들어간다.
-3. [ ] 병합된 기능 브랜치 둘(`feature/rel007-capability-registry`·`fix/main-ci-s0-flaky`, 로컬·원격)을 지울지 정한다. squash 병합이라 `git branch --merged main`에는 잡히지 않는다.
-4. [ ] REL-007 다음 판의 순서를 받는다(아래 「REL-007 다음 판 후보」).
-5. [ ] 착수할 때 새 번호를 main에서 다시 잰다. 2026-09-14 기준 가장 큰 ID는 CR-088 · DEV-681 · WP-078 · QA-GH-44 · OD-009 · ADR-023이고 열린 PR은 0건이었다. 병렬 세션이 있으면 채번 현황을 묻는다.
+1. [ ] REL-007 다음 판의 순서를 받는다. 남은 완료 조건은 아래 5차 절이다(`GATE-GH-01e`·`06`·`08`, 사내 GHES 확인 `DEV-674`, 스냅숏 활성화 조건 `DEV-685`).
+2. [ ] 이전 판의 병합된 기능 브랜치(`feature/rel007-capability-registry`·`fix/main-ci-s0-flaky`, 로컬·원격)와 `feature/rel007-r0-pr-list` 원격을 지울지 정한다. squash 병합이라 `git branch --merged main`에는 잡히지 않는다. 이 판의 두 브랜치는 5차 절의 정리 대상이다.
+3. [ ] 착수할 때 새 번호를 main에서 다시 잰다. 2026-09-14 5차 기준 가장 큰 ID는 CR-089 · DEV-689 · WP-079 · QA-GH-46 · OD-009 · ADR-023이다. 병렬 세션이 있으면 채번 현황을 묻는다.
+
+## 2026-09-14 (5차) — CR-089 뒤에 남은 것
+
+### 후속 (병합 뒤)
+
+- [ ] 후속 원장·handoff PR(`docs/cr-089-merge-record`)이 병합됐는지 실측한다 — 원장 3장 커밋/PR 열·6.86장 PR CI·병합·main CI, WP-079 done, CR-089 closed, agent-context 5차 절과 handoff pack을 담는다
+- [ ] 이 판이 만든 자원의 정리 여부를 실측한다 — 격리 서비스 `prs-contracts-*`(볼륨 `contracts-*`), 작업 트리 `/home/roqkf/pr-search-wt/contracts`, 병합된 브랜치 `feature/rel007-result-contracts`·`docs/cr-089-merge-record`(`git worktree list`·`docker ps -a`·`git ls-remote --heads origin`)
+
+### REL-007 완료를 막는 것 (결정자가 순서를 정함)
+
+1. `GATE-GH-01e` 조합 안전 — Recipe 저장이 생겨야 판정 대상이 있다(`WP-058`).
+2. `GATE-GH-06` 쓰기 실행 감사·승인(R1 흐름), `GATE-GH-08` 성능 측정.
+3. 사내 GHES 지원 확인(`DEV-674`) — 사내에서만.
+4. 스냅숏 활성화 절차와 조건에 결과 계약 차원 반영(`DEV-685`, WP-059).
+
+### WP-066의 남은 부분
+
+- Recipe 저장 시 호환 거부(`WP-058`), 아티팩트 ID 표현(`FR-GH-007`), `GhResultEnvelope` 통일, `gh_api_structured` adapter(`WP-064`).
+
+### 고치지 않기로 한 nit (검토 A)
+
+- `resource-ref.ts` URL 번호 정규식이 16자리를 받은 뒤 안전 정수 검사에서 `grammar`로 거절 — 도달 불가라 표지만 어색하다.
+- `pr status`의 `current_branch` 정적 간선 — 실행기에서는 늘 null(`workspace_required`로 문서화).
+
+### 사내에서만 할 수 있는 것
+
+- 대상 GHES에서 결과 모양·비TTY 출력·URL 문법이 2.97.0 소스와 같은지, 사내 저장소 `pr list` 결과로 만든 참조, 운영 DB의 검증 기록 `r2`, 사내 계정으로 A-006 결과 계약 표시.
 
 ## 후속 (병합 뒤): 4차에서 마감함
 

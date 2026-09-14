@@ -1,4 +1,30 @@
 # 중요 파일 경로와 역할
+## 2026-09-14 (5차) 라운드가 만들거나 만진 것 (CR-089, PR #186 — 70 파일)
+
+### 코드 (새 파일)
+
+- `packages/gh-cli/src/{resource-ref,json-pointer,binding,graph}.ts`(+ 각 `.test.ts`) — 참조 식별·포인터·호환 판정과 바인딩 평가·그래프(순수 함수).
+- `packages/gh-cli/src/classification/{results,ports,contract-checks}.ts`(+ `results.test.ts`) — 결과 계약·port 규칙·완전성 검사.
+- `packages/gh-cli/integration/result-contract.test.ts` — 실제 gh `pr list` → 참조 → `pr view` 입력 호환.
+- `apps/web/lib/gh-registry-fixtures.test.ts` — A-006 픽스처 드리프트 가드.
+
+### 코드 (고친 것)
+
+- `packages/gh-cli/src/{types,capabilities,result,validate,manifest,index}.ts`, `classification/{classify,commands,dimensions,rules}.ts`, `manifest/gh-2.97.0.json`(r0.3 재생성), `testing/mock-ghe-tls.ts`(`rawPullRequestNodes`).
+- `apps/gh-executor/src/runner.ts`(참조 저장), `apps/search-api/src/gh/{registry,routes}.ts`(API-GH-001·013·014).
+- `apps/web/components/{GhRegistryView,GhExecutionPanel}.tsx`, `apps/web/lib/{gh,gh-registry,gh-registry-fixtures,gh-test-fixtures}.ts`, 시험(`lib/gh*.test.ts`, `a11y/gh*.test.tsx`, `e2e/gh*.spec.ts`, `e2e/flow-003.spec.ts` DEV-689).
+- `regression/runtime-reachability.test.ts`(CR-089 블록 4), `.github/workflows/ci.yml`(test:regression), `scripts/gh-capabilities.mjs`(분리 집계 출력).
+
+### 문서 (18개)
+
+- SRS v2.27, change_control(CR-089 행·cascade), 원장 v6.74(3·4·5장, 6.86장), WP v2.30(WP-079·WP-066·커버리지 71), 검증 계획 v0.11, 로드맵 v0.20, API 계약 v0.29, 데이터 모델 v0.23, 백엔드 v0.9, 프런트엔드 v0.6, 비동기 v0.13, 인프라 v0.17, 관측성 v0.5(머리글만), 보안 v1.9, ADR v0.10, 와이어프레임 v0.18, QA 체크리스트 v0.17(QA-GH-45·46), 에이전트 브리프 v0.8.
+
+### 저장소 밖 (세션 scratchpad `/tmp/claude-1000/-home-roqkf-pr-search/3bd93f51-…/scratchpad`, 무시 대상)
+
+- `mutate.mjs`·`mutation.log`(변이 22), `emit-fixtures.mjs`·`splice-fixtures.mjs`(픽스처 실측), `bump-header.mjs`(머리글), `battery/`(배터리 로그), `r10~r13*`(e2e 실험), `flow003-artifacts/`(실패 스냅숏), `draft-*.md`.
+- 이전 세션 `539c17f5` scratchpad: `DESIGN-cr089.md`, `compose.contracts.yml`, `gh-research/cli`(gh v2.97.0 소스), `probe-pr-list.json`.
+- 고정 gh: `/tmp/prs-pinned-gh/2.97.0/gh`(sha256 `141507c3…`). 격리 서비스 `prs-contracts-{postgres 55435, redis 56381, elasticsearch 59202}`(볼륨 `contracts-*`).
+
 ## 2026-09-14 (4차 마감) 구간이 만지거나 남긴 것
 
 ### 저장소: PR #185 → `824eb57`

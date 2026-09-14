@@ -1,8 +1,19 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=19b0682dba7d0dba6d2ec8ce6e12afe63e06a85cc3b65213fc5c70b9874df521 bytes=202419 lines=2713 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000;3/3;home/roqkf/pr-search-wt/cap;1/2;apps/gh-executor/integration/executor.test.ts;/../search-api/src/gh/;gh/routes;9/10
+@kv sha256=193256f17492cc466c0e36b059eb412523ac2b9a6137d51e0a83b1e5bad10e6c bytes=204890 lines=2726 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;origin/main;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000;3/3;home/roqkf/pr-search-wt/cap;1/2
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-14 (5차) 라운드가 배운 함정 (CR-089)
+@path export 전사는 긴 사용자 메시지를 접는다. 「354 lines hidden」 — 지시서 4~14장이 전사에 없었다. 세션 jsonl(~/.claude/projects/<proj>/<session>.jsonl)에서 사용자 메시지 원문을 뽑아 복원한다.
+@b CRLF 작업 트리에서 sed -i의 $ 앵커는 조용히 안 맞고, 무변경이어도 파일을 다시 써 뒤따르는 Edit를 거부시킨다. 치환은 개행을 감지하고 기대값과 정확히 같을 때만 바꾸는 node 스크립트로.
+@todo 문서 검사기의 자리표시어 패턴(「미정」)이 「미정의」 같은 낱말에 걸린다. 새 문장 뒤 git diff -U0 -- docs/ | grep -E '^\+' | grep -cE '결정 필요|TODO|TBD|미정'이 0인지 본다.
+@risk 시험이 문서를 읽는다 — regression/ledger-canonical-table.test.ts(원장 3장 8칸·DEV 행 없음), packages/contracts/src/error-codes.test.ts(API 계약 6장), runtime-reachability(SRS·인프라·API 계약·토큰). 배터리 도중 문서를 고치지 말고, 문서 마감 뒤 이 시험들을 다시 돌린다.
+@path 처음 CI에 편입된 회귀 시험은 한 번도 안 돈 시험을 품고 있을 수 있다. 이전 세션이 쓴 CR-089 회귀 하나가 주석 낱말로 거짓 경보를 냈다 — 소스 정규식 시험은 주석을 걷은 코드((^|[^:])//로 :// 보존)에만.
+@b flow-003:176은 병렬 e2e 부하에 민감하다. 기본 작업자(12코어에서 6)로 전량을 돌리면 무거운 명세와 겹칠 때 /search(force-dynamic) 렌더가 5초를 넘겼다. 부하 상관을 주장하려면 교차 배치로 조건을 번갈아 돌린다.
+@b Playwright는 실행을 시작할 때 test-results/를 비운다. 실패 산출물은 다음 실행 전에 scratchpad로 복사한다.
+@b 검토 서브에이전트가 시험을 돌리면 배터리 타이밍이 흔들린다. 배터리 중에는 검토자에게 시험 실행을 막거나 배터리를 끝낸 뒤 검토를 시작한다(a11y 5초 시간 초과 한 건이 그렇게 났다).
+@b 변이 검사에서 살아남은 변이가 곧 시험 빈틈은 아니다. M01은 뒤 단계(참조 검증)가 같은 규칙을 걸어 관찰 차이가 없는 등가 변이였다 — 입력별로 원본·변이본 결과를 대조해 판정한다.
+@path 브랜치 upstream이 origin/main이면 git push가 위험하다. git push -u origin <branch>:<branch>로 명시.
 @h2 2026-09-14 (4차 마감) 구간이 배운 함정
 @h3 경로 없는 /export는 저장소 루트에 떨어지고, 루트는 무시 대상이 아니다
 @path /export 202609140825.md는 exports/가 아니라 /home/roqkf/pr-search/202609140825.md에 저장됐다. .gitignore:24는 exports/만 무시하므로 이 전사는 untracked로 보이고 git add -A나 git add .에 딸려 커밋될 수 있다. 전사에는 대화 전문이 들어 있다. 명령을 안내할 때는 /export /home/roqkf/pr-search/exports/<이름>.md처럼 절대 경로를 준다(메모리 handoff-transcript-name-not-predicted). 스테이징은 늘 경로를 명시한다.
