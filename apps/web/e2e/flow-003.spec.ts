@@ -211,7 +211,14 @@ test.describe('FLOW-002 전 경로: SHA 입력 → 커밋 상세 → PR 상세',
      * 뒤로가기가 검색이 아닌 곳으로 갔다면 그 사실이 여기서 드러난다.
      */
     await expect(page).toHaveURL(/\/search/);
-    await expect(page.getByRole('searchbox')).toHaveValue(MERGE_SHA);
+    /*
+     * **URL이 바뀐 뒤에도 앞 화면이 한동안 남는다 — 그 도착만 넉넉히 기다린다** (DEV-689).
+     * `/search`는 `force-dynamic`이라 뒤로가기의 RSC 왕복이 서버 부하만큼 늦고, 그동안
+     * `main`에는 커밋 상세가 그대로 서 있다(실패 시점 스냅숏). 전량 e2e를 기본 작업자로
+     * 돌리면 병렬 부하가 5초 기본값을 넘긴다. 판정할 계약은 「검색 화면과 원래 입력이
+     * 돌아온다」이지 5초가 아니다 — 다른 곳에 도착했다면 위의 URL 판정이 먼저 잡는다.
+     */
+    await expect(page.getByRole('searchbox')).toHaveValue(MERGE_SHA, { timeout: 15_000 });
   });
 
   test('**뒤로가기가 튕겨 나가지 않는다** (CR-021, DEV-097)', async ({ page }) => {

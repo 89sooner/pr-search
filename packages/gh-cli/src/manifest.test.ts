@@ -94,6 +94,27 @@ describe('FR-GH-001 AC-5: manifest는 버전과 내용 해시를 가진다', () 
     ).toThrow(/분류 표.*다르다/);
   });
 
+  it('CR-089: 판은 r0.3이고, 실행 정의는 결과 계약을 복사하지 않고 구현한 adapter로 계약의 출력 port를 가리킨다', () => {
+    const manifest = buildManifest({ inventory, capabilities: [PR_LIST_CAPABILITY], generatedAt: 'x' });
+    expect(manifest.manifestVersion).toBe('r0.3');
+    expect(manifest.capabilities[0]).not.toHaveProperty('result');
+    expect(manifest.capabilities[0]?.resultAdapter).toEqual({ mode: 'json', adapter: 'native_json', schema: 'pr_list_v2', outputPort: 'pull_requests' });
+    const contract = manifest.commands.find((entry) => entry.id === 'pr.list')?.classification?.result;
+    expect(contract?.outputPorts.map((port) => port.id)).toEqual(['pull_requests']);
+    // 표에 없는 leaf는 결과 계약도 없다 — 미분류를 계약으로 꾸미지 않는다.
+    expect(manifest.commands.find((entry) => entry.id === 'pr.frobnicate')?.classification?.result).toBeNull();
+  });
+
+  it('CR-089: 구현 adapter가 결과 계약의 port·스키마와 다르면 만들지 않는다', () => {
+    const wrongPort = { ...PR_LIST_CAPABILITY, resultAdapter: { ...PR_LIST_CAPABILITY.resultAdapter, outputPort: 'pull_request' } };
+    expect(() => buildManifest({ inventory, capabilities: [wrongPort], generatedAt: 'x' })).toThrow(/출력 port와 다르다/);
+    const wrongSchema = { ...PR_LIST_CAPABILITY, resultAdapter: { ...PR_LIST_CAPABILITY.resultAdapter, schema: 'pr_list_v1' } };
+    expect(() => buildManifest({ inventory, capabilities: [wrongSchema], generatedAt: 'x' })).toThrow(/출력 port와 다르다/);
+    // 식별 필드 number가 인벤토리에 없으면 계약에 port가 생기지 않아 정의가 가리킬 port가 없다.
+    const noNumber: GhInventory = { ...inventory, commands: inventory.commands.map((entry) => (entry.path.join(' ') === 'pr list' ? { ...entry, jsonFields: entry.jsonFields.filter((field) => field !== 'number') } : entry)) };
+    expect(() => buildManifest({ inventory: noNumber, capabilities: [PR_LIST_CAPABILITY], generatedAt: 'x' })).toThrow();
+  });
+
   it('키 순서와 무관하게 같은 해시이고 내용이 바뀌면 달라진다', () => {
     const a = buildManifest({ inventory, capabilities: [PR_LIST_CAPABILITY], generatedAt: 'x' });
     const b = buildManifest({ inventory: { ...inventory, commands: [...inventory.commands].reverse() }, capabilities: [PR_LIST_CAPABILITY], generatedAt: 'y' });

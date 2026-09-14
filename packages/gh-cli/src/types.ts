@@ -159,32 +159,208 @@ export type GhConstraint =
   | { readonly kind: 'input_source_exclusive'; readonly sources: readonly string[] }
   | { readonly kind: 'context_required'; readonly context: 'repository' | 'host' };
 
-/** 결과 계약 (FR-GH-001 AC-11, ADR-020, ENT-GH-009). */
-export interface GhResultContract {
-  readonly kind: 'json' | 'resource' | 'resource_list' | 'url' | 'artifact' | 'text' | 'stream' | 'exit_status';
-  /** 구조화 결과의 스키마 이름. `pr_list_v1` 처럼 이 패키지가 아는 값이어야 한다. */
-  readonly schema: string;
-  readonly resourceType: string | null;
+/* ------------------------------------------- 결과 계약 (CR-009 · ADR-020, CR-089) */
+
+/** 결과 종류 (FR-GH-001 AC-11). 뜻은 `classification/results.ts`의 머리 주석이 정한다. */
+export type GhResultKind = 'json' | 'resource' | 'resource_list' | 'url' | 'artifact' | 'text' | 'stream' | 'exit_status';
+
+export type GhResultSensitivity = 'public' | 'internal' | 'sensitive' | 'secret';
+
+/**
+ * result adapter — 결과를 구조화하는 **방식의 정의**다 (SRS 9.8). 실행기에 그 방식이 구현됐는지는
+ * 다른 사실이며 `GhImplementedResultAdapter`(실행 정의)만 말한다.
+ */
+export type GhResultAdapter =
+  | 'native_json'
+  | 'gh_api_structured'
+  | 'resource_url'
+  | 'artifact'
+  | 'opaque_text'
+  | 'stream'
+  | 'exit_status'
+  | 'secret_non_bindable';
+
+/** composability 상태 (SRS 9.8). `unknown`은 없다 — 모르는 것은 분류가 아니라 미분류다. */
+export type GhComposability =
+  | 'fully_bindable'
+  | 'partially_bindable'
+  | 'terminal_result'
+  | 'artifact_result'
+  | 'opaque_result'
+  | 'secret_non_bindable'
+  | 'policy_blocked'
+  | 'unsupported_by_host';
+
+/** `GhResourceRef.kind` (SRS 9.8 3항, ENT-GH-010) — 15종. */
+export type GhResourceKind =
+  | 'repository'
+  | 'pull_request'
+  | 'issue'
+  | 'discussion'
+  | 'workflow'
+  | 'workflow_run'
+  | 'release'
+  | 'project'
+  | 'codespace'
+  | 'artifact'
+  | 'gist'
+  | 'user'
+  | 'team'
+  | 'branch'
+  | 'commit';
+
+/**
+ * 명령 사이를 잇는 공통 typed 참조 (SRS 9.8 3항 `{ host, kind, repository, id, number, ref }`).
+ *
+ * **참조는 권한이 아니다.** 참조를 만들었다는 것은 「이 자원을 가리킨다」일 뿐이며, 그것을 입력으로 쓰는
+ * 실행은 그때의 접근 범위를 다시 확인한다. `host`·`repository`는 검증된 실행 컨텍스트에서 오고, 출력에 있는
+ * 임의 URL이 그것을 덮지 않는다(`resource-ref.ts`).
+ */
+export interface GhResourceRef {
+  readonly host: string;
+  readonly kind: GhResourceKind;
+  /** `owner/name`. 저장소에 속하지 않는 자원(gist·codespace)은 `null`. */
+  readonly repository: string | null;
+  readonly id: string | null;
+  readonly number: number | null;
+  readonly ref: string | null;
+}
+
+/** 출력 모드 하나의 계약. 한 command의 기본 출력과 `--json` 출력은 **다른 계약**이다. */
+export interface GhOutputModeContract {
+  readonly mode: GhOutputFormat;
+  readonly kind: GhResultKind;
+  readonly adapter: GhResultAdapter;
+  /** 구조화 스키마 이름. 구조화할 수 없으면 `null`이고 `unstructuredReason`이 그 이유다. */
+  readonly schema: string | null;
+  readonly unstructuredReason: string | null;
+  /** 이 모드의 결과에서 typed 출력 port가 성립할 수 있는가. */
   readonly bindable: boolean;
-  readonly sensitivity: 'public' | 'internal' | 'sensitive' | 'secret';
-  readonly adapter:
-    | 'native_json'
-    | 'gh_api_structured'
-    | 'resource_url'
-    | 'artifact'
-    | 'opaque_text'
-    | 'stream'
-    | 'exit_status'
-    | 'secret_non_bindable';
-  readonly composability:
-    | 'fully_bindable'
-    | 'partially_bindable'
-    | 'terminal_result'
-    | 'artifact_result'
-    | 'opaque_result'
-    | 'secret_non_bindable'
-    | 'policy_blocked'
-    | 'unsupported_by_host';
+  /** `bindable=false`일 때 그 이유. `true`면 `null`. */
+  readonly reason: string | null;
+}
+
+export type GhPortConditionCode =
+  /** 결과가 이 출력 모드여야 port가 성립한다 (`json` 또는 `text`). */
+  | 'output_mode'
+  /** `--json`에 이 필드들이 선택돼야 식별 값이 출력에 있다. */
+  | 'json_fields_selected'
+  /** 이 flag가 쓰이면 출력이 달라져 port가 성립하지 않는다 (`--web`·`--dry-run`·`--include-prs`). */
+  | 'flag_absent'
+  /** 참조의 저장소가 입력 쪽 실행 컨텍스트의 저장소와 같아야 한다. */
+  | 'same_repository'
+  /** 참조의 저장소가 실행 컨텍스트가 아니라 출력 필드·URL에서 온다 — 입력 쪽 실행에서 접근 범위를 다시 본다. */
+  | 'repository_from_output'
+  /** 출력 URL의 호스트(와 문법에 따라 저장소)가 실행 컨텍스트와 같아야 참조가 된다. */
+  | 'url_matches_context'
+  /** 목록 출력을 단일 입력에 이을 때 원소 하나를 명시적으로 골라야 한다 (첫 원소 자동 선택 없음). */
+  | 'explicit_selection'
+  /** 단일 참조를 반복 가능한 입력 자리에 한 개짜리 목록으로 넘긴다. */
+  | 'single_value_as_list'
+  /** 입력 자리의 여러 대안 중 이 대안으로만 받는다 (`<number> | <url> | <branch>`의 `number`). */
+  | 'slot_alternative'
+  /** 로컬 작업 트리가 있어야 값이 생긴다 — 실행기에는 없다. */
+  | 'workspace_required';
+
+export interface GhPortCondition {
+  readonly code: GhPortConditionCode;
+  readonly detail: string;
+}
+
+/** 출력 JSON에서 참조의 식별 값을 읽는 규칙. */
+export interface GhJsonIdentity {
+  /** 식별 값이 들어갈 참조의 자리. */
+  readonly slot: 'number' | 'id' | 'ref' | 'repository';
+  /** 그 값을 담은 최상위 JSON 필드 — 인벤토리의 JSON FIELDS에 있어야 한다. */
+  readonly field: string;
+  /** 저장소를 출력에서 읽을 때의 필드 경로(`['repository', 'nameWithOwner']`). `null`이면 실행 컨텍스트다. */
+  readonly repositoryPath: readonly string[] | null;
+}
+
+/** gh 스스로가 인자로 읽는 URL 문법이 있는 자원 종류 — 출력 URL을 참조로 읽을 근거가 있는 것만. */
+export type GhUrlGrammar = 'pull_request' | 'issue' | 'discussion' | 'repository';
+
+export type GhPortSource =
+  | {
+      readonly adapter: 'native_json';
+      readonly mode: 'json';
+      /** 결과 스키마 이름 (`pr_list_v2`·`gh-json/pr.view`). */
+      readonly schema: string;
+      /** 문서 안에서 자원(목록)이 있는 자리 — RFC 6901. 최상위면 빈 문자열. */
+      readonly pointer: string;
+      readonly identity: GhJsonIdentity;
+    }
+  | {
+      readonly adapter: 'resource_url';
+      readonly mode: 'text';
+      readonly grammar: GhUrlGrammar;
+      /** 참조의 저장소가 실행 컨텍스트여야 하는가(URL은 대조만), URL에서 오는가(새 저장소·이관). */
+      readonly repository: 'execution_context' | 'url' | 'none';
+    };
+
+export type GhPortSlot =
+  | { readonly kind: 'positional'; readonly index: number; readonly placeholder: string; readonly alternative: string }
+  | { readonly kind: 'flag'; readonly flag: string };
+
+/**
+ * typed 입출력 port (SRS 9.8 4항). 이름이 아니라 **타입**으로 잇는다 — 호환 판정은 `binding.ts`다.
+ * port에는 기본값이 없다 — 선택이 실패하면 기본값·첫 원소로 보정하지 않고 실패한다.
+ */
+export interface GhPort {
+  /** command 안에서 방향마다 유일하다. */
+  readonly id: string;
+  readonly direction: 'input' | 'output';
+  readonly type: GhResourceKind;
+  readonly cardinality: 'one' | 'many';
+  /** 입력: 자리가 필수인가. 출력: 조건이 맞으면 늘 값이 있는가. */
+  readonly required: boolean;
+  /** 값이 `null`일 수 있는가 (`pr status`의 `currentBranch`). */
+  readonly nullable: boolean;
+  readonly sensitivity: GhResultSensitivity;
+  readonly conditions: readonly GhPortCondition[];
+  /** 출력 port만 — 결과에서 참조를 만드는 방법. */
+  readonly source: GhPortSource | null;
+  /** 입력 port만 — 참조가 들어가는 자리. */
+  readonly slot: GhPortSlot | null;
+  readonly basis: GhClassificationBasis;
+}
+
+/**
+ * 결과 계약 — 「이 command의 결과를 어떻게 해석할 수 있는가」의 **의미 정본**이다 (FR-GH-001 AC-11·AC-12, ADR-020,
+ * ENT-GH-009). leaf마다 하나이며 분류(`GhCommandClassification.result`)에 있다.
+ *
+ * **실행 허용과 무관하다.** 계약이 있고 port가 호환돼도 실행은 `EXECUTABLE_CAPABILITIES`만 연다.
+ */
+export interface GhResultContract {
+  readonly kind: GhResultKind;
+  readonly sensitivity: GhResultSensitivity;
+  readonly composability: GhComposability;
+  /** `composability`가 `fully_bindable`·`partially_bindable`인가. 파생값이며 검증기가 다시 계산한다. */
+  readonly bindable: boolean;
+  /** 결과가 가리키는 자원 종류. 자원 결과가 아니면 `null`. */
+  readonly resourceKind: GhResourceKind | null;
+  /** `resourceKind`의 근거, 또는 `null`인 이유. 비워 두지 않는다. */
+  readonly resourceBasis: string;
+  /** `io.outputFormats`의 모드마다 하나. */
+  readonly outputs: readonly GhOutputModeContract[];
+  readonly inputPorts: readonly GhPort[];
+  readonly outputPorts: readonly GhPort[];
+  /** 입력 port가 없는 이유. 있으면 `null`. */
+  readonly inputPortsNote: string | null;
+  /** 출력 port가 없는 이유. 있으면 `null`. */
+  readonly outputPortsNote: string | null;
+  readonly basis: GhClassificationBasis;
+}
+
+/**
+ * 실행 정의가 **구현한** result adapter — 실행기가 실제로 이 스키마로 결과를 만든다. 의미(종류·자원·port)는
+ * 복사하지 않고 결과 계약의 출력 port를 이름으로 가리킨다.
+ */
+export interface GhImplementedResultAdapter {
+  readonly mode: 'json';
+  readonly adapter: 'native_json';
+  readonly schema: string;
+  readonly outputPort: string;
 }
 
 /**
@@ -205,7 +381,8 @@ export interface GhCapabilityDefinition {
   readonly requiredPermissions: readonly string[];
   readonly options: readonly GhOption[];
   readonly constraints: readonly GhConstraint[];
-  readonly result: GhResultContract;
+  /** 구현한 결과 adapter. 결과의 뜻은 분류의 결과 계약이 정본이다 (CR-089). */
+  readonly resultAdapter: GhImplementedResultAdapter;
   /** 실행 시간 상한(ms). 명령군마다 다르다 (NFR-011). */
   readonly timeoutMs: number;
 }
@@ -311,14 +488,17 @@ export interface GhCommandClassification {
   readonly sideEffect: GhSideEffect;
   readonly auth: GhAuthRequirement;
   readonly io: GhIoProfile;
-  readonly resultKind: GhResultContract['kind'] | 'unknown';
-  readonly sensitivity: GhResultContract['sensitivity'] | 'unknown';
+  /** 주 결과 종류 — `result.kind`와 같다(검증기가 건다). 미분류 leaf만 `unknown`이다. */
+  readonly resultKind: GhResultKind | 'unknown';
+  readonly sensitivity: GhResultSensitivity | 'unknown';
   readonly hostSupport: GhHostSupport;
   readonly positionals: readonly GhPositionalClassification[];
   readonly flags: readonly GhFlagClassification[];
   readonly basis: GhClassificationBasis;
   /** 옵션에 따라 부작용·민감도가 달라지는 자리 등, 사람이 읽을 주의. */
   readonly notes: readonly string[];
+  /** 결과 계약 (CR-089). 분류 표에 행이 없는 미분류 leaf는 `null`이다. */
+  readonly result: GhResultContract | null;
 }
 
 /** manifest에 실리는 command 하나 — 인벤토리 + 실행 차원 + 분류. */
@@ -451,9 +631,14 @@ export interface GhSafeText {
   readonly bytesKept: number;
 }
 
-/** `pr list --json`의 한 행. 허용 필드만 있고 값은 무해화 경계를 지났다. */
+/**
+ * `pr list --json`의 한 행 (`pr_list_v2`). 허용 필드만 있고 값은 무해화 경계를 지났다.
+ *
+ * `number`는 그 필드를 **선택하지 않았으면** `null`이다 — 번호를 지어내거나 0으로 채우지 않는다. 선택했는데
+ * 양의 안전한 정수가 아니면 결과 전체가 거절된다(`invalid_identifier`).
+ */
 export interface GhPrListRow {
-  readonly number: number;
+  readonly number: number | null;
   readonly title: string | null;
   readonly state: string | null;
   readonly url: string | null;
@@ -465,12 +650,23 @@ export interface GhPrListRow {
   readonly updatedAt: string | null;
 }
 
+/** 행에서 만든 PR 참조. 식별 필드를 고르지 않았으면 만들 수 없고, 그 사실과 이유를 따로 싣는다. */
+export interface GhPrListReferences {
+  readonly port: 'pull_requests';
+  readonly type: 'pull_request';
+  readonly status: 'available' | 'unavailable';
+  readonly reason: 'identity_field_not_selected' | null;
+  /** `available`이면 행과 같은 순서·같은 수다. `unavailable`이면 비어 있다. */
+  readonly refs: readonly GhResourceRef[];
+}
+
 export interface GhPrListResult {
-  readonly schema: 'pr_list_v1';
+  readonly schema: 'pr_list_v2';
   readonly rows: readonly GhPrListRow[];
   readonly fields: readonly string[];
   /** 요청한 상한(`--limit`)에 닿아 더 있을 수 있는가. gh는 초과분을 잘라 내고 알리지 않는다. */
   readonly possiblyMore: boolean;
+  readonly references: GhPrListReferences;
 }
 
 /** 실행 상태 (FR-GH-006 AC-1). */

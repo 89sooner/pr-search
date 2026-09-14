@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.29 | 갱신일: 2026-09-13
+> 상태: review | 버전: v2.30 | 갱신일: 2026-09-14
 
 ## 1. 목적
 
@@ -58,6 +58,7 @@
 | WP-075 | PR 제목 M 넘버 표기 | REL-003 (**CR-077 · CR-084 · CR-085**) | WP-074, WP-012 | **done** — 검증 6.81장, 안전성 보강 6.82장(`CR-085`). 전역 스위치 `MNUMBER_ANNOTATE_ENABLED`의 기본값이 **꺼짐**이라 이 변경을 받는 것만으로 제목이 바뀌지 않는다. **사내 실제 GHE 표기는 `NOT RUN`** — 외부에 GHE가 없어 쓰기 흐름 전부를 로컬 HTTP 목으로 검증했다. `CR-085`가 실패 경로의 안전성을 보강했다: 변경 요청 재시도가 판단 전체를 다시 지나고(`AC-8`), 서버가 제목을 다르게 저장하면 자동 재시도를 멈추며(`AC-9`), 결과를 모르는 요청은 실패로 적지 않는다(`AC-10`). `DEV-629`(실행자 배제)는 이 판에서 닫혔다 |
 | WP-072 | 사내 반입 운반 경로 — GitHub Release 발행과 다운로드 | **배포 (CR-063)** | WP-071 | done |
 | WP-076 | 사내 GHE 직접 로그인 | **인증 (CR-083)** | WP-012, WP-015 | **done** — 검증 6.78장. 사내 실제 GHE OAuth App 검증은 `NOT RUN` |
+| WP-079 | REL-007 R1b — 결과 계약·typed port·순수 연결 판정·타입 그래프·A-006 조회 | REL-007 (**CR-089**) | WP-078 | **in_progress** — 검증 6.86장. leaf 196개 전부의 결과 계약과 입출력 port, `pr_list_v2`와 PR 참조, 제한 JSON Pointer·바인딩 평가·그래프, `GATE-GH-01d` 통과, 도메인 회귀의 CI 연결. 실행 허용은 `pr.list` 하나, 실행 가능한 다단계 흐름 0 |
 | WP-078 | REL-007 R1a — capability 분류·검증·드리프트·스냅숏·A-006 읽기 전용 | REL-007 (**CR-088**) | WP-077 | **done** — 검증 6.85장. leaf 196·flag 1,034·positional 164·`--json` 707 전부 분류(`NFR-009` 본표 100%), 독립 검증기·드리프트 검출·029 스냅숏/검증 기록·`JOB-GH-003`·`API-GH-013`/`014`·A-006. 실행 허용은 `pr.list` 하나 그대로. `GATE-GH-01d`(bindability·port·자원 타입)는 미달로 남고(`DEV-675`), 사내 GHES 확인은 `NOT RUN`(`DEV-674`) |
 | WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | WP-012, WP-015 | **done** — 검증 6.83장. R0 `pr.list` 하나를 인가→미리보기→실행→결과·자기 이력까지 연다. 상위 WP 일곱은 이 수직이 들여온 만큼만 `in_progress`다. 출력 청크 스트리밍은 상태만(`DEV-651`), 분류 195건 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증은 `NOT RUN`** |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003, **WP-067** | done |
@@ -97,7 +98,7 @@
 | WP-063 | interactive 웹 등가와 extension 신뢰 어댑터 | REL-010 | WP-045, WP-055 | todo |
 | WP-064 | gh api 스키마 브리지와 호스트 capability 판정 | REL-010 | WP-056 | todo |
 | WP-065 | 조합 parity 검증기 | REL-011 | WP-061, WP-063, WP-064, WP-066 | todo |
-| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 | WP-045, WP-061 | **in_progress** — 부분(`WP-077`/`CR-086` + `WP-078`/`CR-088`): `pr_list_v1` 결과 계약과, leaf 196개의 결과 종류·민감도 분류(secret 4·sensitive 7·public 8·internal 177)가 들어왔다. 남은 것: bindability·입출력 port·자원 타입(`GATE-GH-01d`, `DEV-675`)·capability 그래프·Recipe 연결 |
+| WP-066 | typed 결과 계약과 capability 그래프 | REL-007 | WP-045, WP-061 | **in_progress** — 부분(`WP-077`/`CR-086` + `WP-078`/`CR-088` + `WP-079`/`CR-089`): leaf 196개 전부의 결과 계약(출력 모드별 계약·자원 종류·composability·민감도)과 typed 입출력 port, `GhResourceRef` 식별 규칙, 제한 JSON Pointer·순수 바인딩 평가, 타입 그래프가 들어왔고 `GATE-GH-01d`가 통과했다(`DEV-675` 종결). 남은 것: Recipe 저장 시 거부(`WP-058`)·아티팩트 ID 표현(`FR-GH-007`)·`GhResultEnvelope` 통일·`gh_api_structured` adapter(`WP-064`)·`GATE-GH-01e` |
 
 의존 그래프에 순환은 없다. WP-001~WP-003과 WP-005·WP-006은 병렬 착수 가능하다.
 
@@ -2569,6 +2570,8 @@ external main의 특정 커밋
 
 ### WP-066 typed 결과 계약과 capability 그래프
 
+> **부분 구현 (CR-089 / WP-079, 원장 6.86장).** 결과 계약(leaf 196)·typed 입출력 port·`GhResourceRef` 식별 규칙·제한 JSON Pointer·순수 바인딩 평가·타입 그래프가 들어왔다. 아래 완료 기준의 체크는 그 판의 사실이며, 연쇄 예시는 고정 gh 2.97.0에서 성립하는 연결로 고쳤다(`DEV-684`). 남은 것은 Recipe 저장 거부·아티팩트 ID 표현·`GhResultEnvelope` 통일·`gh_api_structured` adapter다.
+
 - 목표: command의 출력에도 계약이 생기고, 어떤 명령을 이을 수 있는지 타입으로 계산된다.
 - 관련 요구사항: FR-GH-001, FR-GH-005, NFR-009, NFR-010
 - 관련 화면/플로우: W-023, A-006
@@ -2588,14 +2591,14 @@ external main의 특정 커밋
   - Recipe 그래프 UI (WP-058)
   - 조합 커버리지 리포트 산출 (WP-065)
 - 완료 기준(DoD):
-  - [ ] 모든 capability가 결과 계약을 가지며 `unknown`이 0이다
-  - [ ] `secret` 결과가 바인딩 대상으로 제안되지 않고, 저장 시도가 거부된다
-  - [ ] 출력 port와 입력 port의 호환이 이름이 아니라 타입으로 계산된다
-  - [ ] `gh search prs` → `gh pr checks` → `gh run rerun` 같은 연쇄가 그래프에서 자동으로 도출된다
-  - [ ] `opaque_text` capability가 typed 바인딩 source로 선택되지 않고, 목록에서 숨겨지지도 않는다
-  - [ ] 아티팩트 결과가 경로가 아니라 ID로 표현된다
-  - [ ] `GhBinding` 평가에 표현식 해석기가 쓰이지 않음을 코드 검사로 확인한다
-- 검증 방법: `pnpm test gh/result-contract`, `pnpm test gh/capability-graph`
+  - [x] 모든 capability가 결과 계약을 가지며 `unknown`이 0이다 (CR-089 — leaf 196/196, 검증기가 재계산 대조)
+  - [ ] `secret` 결과가 바인딩 대상으로 제안되지 않고, 저장 시도가 거부된다 — 판정은 불가(`secret_source`)이고 그래프 간선이 없다(CR-089). 저장 거부는 Recipe 저장이 생기는 판(`WP-058`)의 일이다
+  - [x] 출력 port와 입력 port의 호환이 이름이 아니라 타입으로 계산된다 (CR-089 — `judgePortCompatibility`)
+  - [x] `gh search prs` → `gh pr checks`, `gh run list` → `gh run rerun` 같은 연결이 그래프에서 자동으로 도출된다 (CR-089 — 옛 예시의 `gh pr checks` → `gh run rerun`은 `pr checks` 결과에 식별자가 없어 성립하지 않는다, `DEV-684`)
+  - [x] `opaque_text` capability가 typed 바인딩 source로 선택되지 않고, 목록에서 숨겨지지도 않는다 (CR-089 — `source_not_bindable`, A-006 요약과 목록에 composability가 보인다)
+  - [ ] 아티팩트 결과가 경로가 아니라 ID로 표현된다 — 결과 계약은 `artifact_result`로 적었지만 아티팩트 ID adapter는 없다(`FR-GH-007`)
+  - [x] `GhBinding` 평가에 표현식 해석기가 쓰이지 않음을 코드 검사로 확인한다 (CR-089 — `binding.test.ts`가 `eval`·`Function`·표현식 엔진·I/O import 부재를 건다)
+- 검증 방법: `pnpm vitest run packages/gh-cli/src`(결과 계약·port·바인딩·그래프·JSON Pointer·검증기 변이), `pnpm test:integration packages/gh-cli/integration/result-contract.test.ts`(실제 gh `pr list` → 참조 → `pr view` 입력 호환)
 - 기록: 원장 WP-066 상태, FR-GH-001·FR-GH-005 매핑
 
 ## UI 품질 보강 (CR-067)
@@ -2692,12 +2695,12 @@ external main의 특정 커밋
 | REL-004 | WP-029 ~ WP-036 | 8 |
 | REL-005 | WP-037 ~ WP-040 | 4 |
 | REL-006 | WP-041 ~ WP-044, WP-069 | 5 |
-| REL-007 | WP-045 ~ WP-048, WP-061, WP-062, WP-066, WP-077 | 8 |
+| REL-007 | WP-045 ~ WP-048, WP-061, WP-062, WP-066, WP-077 ~ WP-079 | 10 |
 | REL-008 | WP-049 ~ WP-050 | 2 |
 | REL-009 | WP-051 ~ WP-053, WP-057 | 4 |
 | REL-010 | WP-054 ~ WP-056, WP-063, WP-064 | 5 |
 | REL-011 | WP-058 ~ WP-060, WP-065 | 4 |
-| 합계 | | 69 |
+| 합계 | | 71 |
 
 **`WP-074`·`WP-075`는 이 합계에 넣지 않는다 (CR-077).** 두 WP가 구현하는 `FR-SEQ-008`·`FR-SEQ-009`는 `REL-003`이 세운 시퀀스 계열의 파생이라 요구사항 소속은 `REL-003`이지만, **`REL-003`의 완료 판정은 이미 검증된 `merge_seq`를 기준으로 서 있고 M 넘버가 그 판정을 재개방하지 않는다** (로드맵 4.2장). `WP-070`~`WP-073`을 이 표에 넣지 않은 것과 같은 처리다.
 
@@ -2781,4 +2784,34 @@ external main의 특정 커밋
 - [x] A-006: 신원·차원별 커버리지·게이트·실행 허용·검증 기록·드리프트 diff·스냅숏·호스트 미확인이 API 값 그대로 보이고, 없음·미완·지남·드리프트·오류가 서로 다르게 보이며(`QA-GH-44`), 403은 필요한 역할을 적은 no_permission, 404는 「열리지 않았다」, 요약의 마크업은 텍스트로만(QA-GH-24), axe 0건 (a11y·e2e).
 - [x] 요청 경로에서 검사하지 않는다 — 회귀가 search-api·web에 `checkDrift`·`extractInventory` 호출이 없음을 건다.
 - [ ] **사내 GHES 지원 확인**(`DEV-674`)과 **`GATE-GH-01d`**(`DEV-675`) — 이 WP의 범위 밖이며 REL-007 완료를 막는다.
+- [ ] **사내 실제 GHE·Operations App 검증** — `NOT RUN` (WP-077과 같다).
+
+### WP-079 REL-007 R1b — 결과 계약·typed port·순수 연결 판정·타입 그래프·A-006 조회
+
+> `CR-089` 신설. **실행을 하나도 새로 열지 않는다** — 실행 허용은 `pr.list` 하나, 구현된 결과 adapter는 `pr_list_v2` 하나, 실행 가능한 다단계 흐름은 0이다. 검증 기록은 원장 6.86장이다.
+>
+> 결과 계약이 있고 타입이 호환된다는 것은 실행 승인이 아니다. `pr.view`는 입력 계약의 호환 판정 대상일 뿐이며 실행하지 않았다.
+
+- 목표: 관리자가 A-006에서 「각 명령이 어떤 형태의 결과를 내는가, 그 결과가 어떤 GitHub 자원을 가리키는가, 다른 명령의 입력으로 쓸 수 있는가, 연결하려면 어떤 필드·선택·컨텍스트가 필요한가, 연결할 수 없다면 타입·민감도·출력 형식 중 무엇 때문인가, 타입상 연결할 수 있어도 실행은 왜 막혀 있는가」를 확인하고, 코드가 같은 사실을 검증한다.
+- 관련 FR: `FR-GH-001` AC-11·AC-12, `FR-GH-002` AC-10(`pr_list_v2`의 자원 참조), `FR-GH-005` AC-8·AC-11(바인딩 평가와 호환 판정만 — 저장·실행 없음), `NFR-009`(`GATE-GH-01d`), `NFR-010`(비밀 결과 비바인딩).
+- 관련 계약: `ADR-020`, `API-GH-001`·`API-GH-013`·`API-GH-014`, `ENT-GH-009`·`ENT-GH-010`·`ENT-GH-011`, `JOB-GH-003`(보고서 판 `r2`), `GATE-GH-01d`.
+- 선행 WP: `WP-078`. `WP-066`(결과 계약·그래프)·`WP-045`(검증기)·`WP-059`(A-006)는 이 WP가 **부분**을 들여온 상위 WP이며, 3장 표의 각 행이 무엇이 들어왔고 무엇이 남았는지 적는다.
+
+구현 범위: `packages/gh-cli/src/types.ts`(결과 계약·port·자원 참조 타입, 실행 정의의 `resultAdapter`), `classification/{results,ports,contract-checks}.ts`(leaf 196의 결과 계약·입출력 port 규칙·완전성 검사, 주 결과 종류 63건·출력 모드 29건 정정 `DEV-683`, 규칙 판 `rules-2026-09-14.3`), `classification/{classify,dimensions}.ts`(출력 모드 판정, `GATE-GH-01d` 여섯 차원), `resource-ref.ts`(식별 규칙·출력 URL 해석), `json-pointer.ts`(RFC 6901 부분집합), `binding.ts`(호환 판정·바인딩 평가), `graph.ts`(판정기의 답으로 계산한 그래프), `result.ts`(`pr_list_v2`, `DEV-682`), `validate.ts`(보고서 판 `r2`·분리 집계 `contracts`), `manifest.ts`(`r0.3` — 구현 adapter와 계약 port가 다르면 생성 거부)와 고정 gh 2.97.0으로 재생성한 manifest; 실행기 `runner.ts`(검증된 실행 컨텍스트로 참조 저장); `search-api` `gh/{routes,registry}.ts`(API-GH-001 요약·API-GH-013 `contracts`·`gate_scope`·보고서 판·API-GH-014 계약·간선); web `GhRegistryView`(결과 계약 패널·상세 표)·`GhExecutionPanel`(참조 문구)·`lib/{gh,gh-registry}.ts`와 manifest 실측 픽스처·드리프트 가드; CLI `gh:validate-capabilities`의 분리 집계; `.github/workflows/ci.yml` integration 잡의 `test:regression`(`DEV-686`); 회귀 CR-089 블록 4건; e2e `flow-003`의 뒤로가기 도착 판정 기다림(`DEV-689`).
+
+제외: `pr.view`를 포함한 새 명령의 실제 실행, R1~R3 개방, Recipe 저장·실행·그래프 편집기(`WP-058`), 임의 `gh api`·extension·jq·template 표현식 실행, 파일 업로드·다운로드, A-005 정책 편집·스냅숏 활성화(`DEV-685`), 마이그레이션 추가(029 JSONB로 충분), `gh_api_structured` adapter(`WP-064`), 호스트 지원 판정(`DEV-674`), KMS·토큰 주기 갱신·SSE 출력 스트리밍, 릴리스 발행, 사내 실검증.
+
+완료 기준:
+- [x] leaf 196개 전부에 결과 계약이 있고, 출력 모드마다 adapter와 스키마 또는 구조화 불가 사유가 있으며, 자원 결과가 아닌 것에 가짜 자원 종류를 채우지 않았다 — 검증기가 인벤토리에서 계약을 다시 만들어 저장값과 대조한다.
+- [x] `GATE-GH-01d` 여섯 차원 통과 — 결과 계약·bindability·자원 타입·secret 출력 196/196, 출력 port 32/32(출력 port 36개), 입력 port 80/80(입력 port 81개). port 차원은 capability 수가 분모이고 0이면 미달이다(시험).
+- [x] 검증기가 위조를 각각의 코드로 잡는다 — port 삭제, 전부 비바인딩으로 적어 분모 0 만들기, 비밀이 흐르게 적기, 중복 port·없는 타입·JSON에 없는 식별 필드·방향 위조, 입력 port 불일치, 대상 GHES 확인 없는 `unsupported_by_host`, 구현 adapter의 옛 스키마·없는 port, 결과 계약 없음.
+- [x] 실제 고정 gh `pr list` → `pr_list_v2` → PR 참조 → `/1` 명시 선택 → `pr view` 입력 호환(실행 불가, 목 서버가 받은 GraphQL은 `pr list` 하나). `title`만 고른 조회는 성공하되 참조가 없고, GraphQL `number: null`(gh는 0을 찍는다)은 `invalid_identifier`, 빈 목록에서 없는 원소 선택은 실패, 다른 저장소 컨텍스트는 거절이다 (통합 시험).
+- [x] 자동 호환이 없다 — 선택 없는 `PullRequestRef[]` → `PullRequestRef`, `IssueRef` → `PullRequestRef`, 목록 → 목록, 비밀·opaque source, 다른 호스트·저장소, 식별 필드 없는 결과, 값 개수 위조가 각각 거절된다. JSON Pointer의 escape 순서·배열 인덱스·`-`·없는 경로·prototype 토큰·길이·깊이 상한을 건다 (단위 시험).
+- [x] 그래프 간선은 판정기의 답과 정확히 같고(모든 짝 재판정), 특정 간선이 코드에 적혀 있지 않으며, 모든 간선이 실행 불가·다단계 흐름 0이다.
+- [x] 실행 경계 유지 — 결과 계약·port가 있는 `pr.view`를 `allowed`로 바꿔 적재해도 `GH_CAPABILITY_NOT_EXECUTABLE`이다. 실행 준비·실행기 재검증은 결과 계약·port·바인딩·그래프를 읽지 않고, 바인딩 평가는 어느 앱의 제품 코드에도 없다 (통합·회귀).
+- [x] 과거 기록 — `pr_list_v1` 기록은 다시 해석하지 않고, `r1` 보고서의 검증 기록은 「결과 계약 미검증」으로 낸다 (통합·a11y).
+- [x] A-006·W-010 — 결과 계약·port·간선과 「실행 미개방」, 분리 집계, 옛 판 표시, 참조 문구가 보이고 실행·Recipe 버튼이 없다 (a11y `QA-GH-45`·`QA-GH-46`, e2e). 픽스처는 manifest 실측이며 드리프트 가드가 건다.
+- [ ] 도메인 회귀가 PR head와 병합 커밋의 main CI integration 잡에서 실제로 돈다(`DEV-686`) — 원장 6.86장.
+- [ ] 독립 검토 두 관점(A 결과 의미·B 실행 분리)과 변경 뒤 재검토 — 원장 6.86장.
+- [ ] **사내 GHES 지원 확인**(`DEV-674`)과 **스냅숏 활성화 조건**(`DEV-685`) — 이 WP의 범위 밖이며 REL-007 완료를 막는다.
 - [ ] **사내 실제 GHE·Operations App 검증** — `NOT RUN` (WP-077과 같다).

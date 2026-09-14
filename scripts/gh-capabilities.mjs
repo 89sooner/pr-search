@@ -90,6 +90,14 @@ if (command === 'validate') {
   printDimensions(report.dimensions);
   console.log('게이트:');
   for (const gate of report.gates) console.log(`  ${gate.pass ? 'PASS' : 'FAIL'} ${gate.id} — ${gate.detail}`);
+  // 결과 계약·연결 (CR-089) — 분모가 다른 수치를 한 줄의 100%로 합치지 않는다. API-GH-013·A-006이 같은 요약을 낸다.
+  const contracts = report.contracts;
+  console.log('결과 계약·연결:');
+  console.log(`  결과 계약 ${String(contracts.resultContracts.classified)}/${String(contracts.resultContracts.total)} · composability ${contracts.composability.filter((entry) => entry.count > 0).map((entry) => `${entry.value} ${String(entry.count)}`).join(' · ')}`);
+  console.log(`  출력 port ${String(contracts.outputPorts.ports)}개(${String(contracts.outputPorts.commands)} command) · 입력 port ${String(contracts.inputPorts.ports)}개(${String(contracts.inputPorts.commands)} command)`);
+  console.log(`  구현된 결과 adapter: ${contracts.adaptersImplemented.join(', ') || '없음'} · 실행 허용: ${contracts.executableCommands.join(', ') || '없음'}`);
+  console.log(`  타입상 간선 ${String(contracts.graph.edges)}(조건부 ${String(contracts.graph.conditional)} · 직접 ${String(contracts.graph.direct)} · 같은 타입 불가 ${String(contracts.graph.blockedSameType)}) · 실행 가능한 다단계 흐름 ${String(contracts.executableFlows)} · 대상 GHES 확인 ${String(contracts.hostVerified)}`);
+  console.log('  판정 범위: GATE-GH-01·01b·01d만 — 01e·06·08과 대상 GHES 확인은 판정하지 않는다');
   const errors = report.findings.filter((finding) => finding.severity === 'error');
   const gaps = report.findings.filter((finding) => finding.severity === 'gap');
   for (const finding of errors) console.log(`  ERROR ${finding.code} ${finding.subject}: ${finding.message}`);

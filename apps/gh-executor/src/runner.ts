@@ -270,11 +270,12 @@ export async function runExecution(deps: RunnerDeps, executionId: number): Promi
     state = 'failed';
     error = 'stdout_binary';
   } else {
-    const parsed = parsePrListOutput(result.stdout.text, validation.jsonFields, validation.limit);
+    // 참조의 호스트·저장소는 재검증을 지난 실행 컨텍스트에서 온다 — 행의 url이 덮지 않는다 (CR-089).
+    const parsed = parsePrListOutput(result.stdout.text, validation.jsonFields, validation.limit, { host: row.host, repository: validation.repository });
     if (parsed.ok) {
       state = 'succeeded';
       structured = {
-        kind: 'json',
+        kind: 'resource_list',
         schema: parsed.result.schema,
         sensitivity: 'internal',
         fields: parsed.result.fields,
@@ -282,6 +283,7 @@ export async function runExecution(deps: RunnerDeps, executionId: number): Promi
         row_count: parsed.result.rows.length,
         possibly_more: parsed.result.possiblyMore,
         stdout_truncated: result.stdout.truncated,
+        references: parsed.result.references,
       };
     } else {
       state = 'failed';

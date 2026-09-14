@@ -176,10 +176,24 @@ describe('사용자 흐름 끝까지 (FR-GH-002 AC-1·AC-4·AC-10, FR-GH-008 AC-
     expect(graphql[0]?.path).not.toContain(TOKEN);
 
     // typed 결과: 허용 필드만, 무해화된 값.
-    const result = done?.result as { schema: string; rows: { number: number; title: string; author: string | null; headRefName: string | null }[]; row_count: number; possibly_more: boolean };
-    expect(result.schema).toBe('pr_list_v1');
+    const result = done?.result as {
+      kind: string;
+      schema: string;
+      rows: { number: number; title: string; author: string | null; headRefName: string | null }[];
+      row_count: number;
+      possibly_more: boolean;
+      references: { status: string; reason: string | null; refs: { host: string; kind: string; repository: string; number: number }[] };
+    };
+    expect(result.schema).toBe('pr_list_v2');
+    expect(result.kind).toBe('resource_list');
     expect(result.row_count).toBe(2);
     expect(result.rows.map((r) => r.number)).toEqual([12, 11]);
+    // PR 참조의 호스트·저장소는 재검증한 실행 컨텍스트다 — 목이 행에 준 url(https://127.0.0.1/…)이 아니다 (CR-089).
+    expect(result.references.status).toBe('available');
+    expect(result.references.refs.map((ref) => [ref.kind, ref.host, ref.repository, ref.number])).toEqual([
+      ['pull_request', mock.host, 'acme/payments', 12],
+      ['pull_request', mock.host, 'acme/payments', 11],
+    ]);
     /*
      * **gh 2.97.0은 `--json` 출력의 C0 제어 문자를 caret 표기(`^[`)로 바꿔 낸다** (실측 — 목이
      * GraphQL 응답에 `\u001b`로 보낸 ESC가 stdout에는 두 글자 `^[`로 나온다). 그래서 원시 ESC는
@@ -351,6 +365,37 @@ describe('수명주기 (FR-GH-006 AC-3·AC-4·AC-5, NFR-011)', () => {
     expect(done?.error).toMatch(/result_parse_failed/);
     expect(done?.error).toMatch(/truncated/);
     expect(done?.result).toBeNull();
+  }, 60_000);
+});
+
+describe('결과 계약 pr_list_v2 (CR-089)', () => {
+  it('title만 고른 실행은 성공하고 행을 남기되 참조는 만들지 않는다 — v1은 result_parse_failed: row_shape였다', async () => {
+    await connectAlice();
+    const row = await requestExecution(apiDeps(), PRINCIPAL, { capability_id: 'pr.list', context: { repository: 'acme/payments' }, flags: { '--state': 'open', '--limit': 5 }, output: { json_fields: ['title'] } }, 'key-title-only-0001', '00000000-0000-4000-8000-00000000ab01');
+    expect(await runExecution(executorDeps(), row.execution_id)).toBe('succeeded');
+    const done = await ghExecutionRepo.findById(pool, row.execution_id);
+    expect(done?.redacted_argv).toContain('title');
+    const result = done?.result as { schema: string; rows: { number: number | null; title: string | null }[]; references: { status: string; reason: string | null; refs: unknown[] } };
+    expect(result.schema).toBe('pr_list_v2');
+    expect(result.rows.map((r) => r.number)).toEqual([null, null]);
+    expect(result.rows[1]?.title).toBe('Add thing <redacted>');
+    expect(result.references).toEqual({ port: 'pull_requests', type: 'pull_request', status: 'unavailable', reason: 'identity_field_not_selected', refs: [] });
+  }, 60_000);
+
+  it('GraphQL이 number null을 주면 gh는 0을 찍고, 실행은 result_parse_failed: invalid_identifier로 끝난다 — 0을 번호로 받지 않는다', async () => {
+    const raw = await startMockGhe({ expectedToken: TOKEN, rawPullRequestNodes: [{ number: null, title: 't', state: 'OPEN', url: 'https://127.0.0.1/acme/payments/pull/7', author: { login: 'alice' }, headRefName: 'h', baseRefName: 'main', isDraft: false }] });
+    try {
+      await connectAlice({ host: raw.host });
+      const row = await requestExecution(apiDeps(raw), PRINCIPAL, { capability_id: 'pr.list', context: { repository: 'acme/payments' }, flags: {}, output: { json_fields: ['number', 'title'] } }, 'key-null-number-001', '00000000-0000-4000-8000-00000000ab02');
+      expect(await runExecution(executorDeps({ GHE_BASE_URL: raw.baseUrl, GH_EXECUTOR_CA_FILE: raw.caFile }), row.execution_id)).toBe('failed');
+      const done = await ghExecutionRepo.findById(pool, row.execution_id);
+      expect(done?.exit_code).toBe(0);
+      expect(done?.stdout_excerpt).toContain('"number":0');
+      expect(done?.error).toBe('result_parse_failed: invalid_identifier');
+      expect(done?.result).toBeNull();
+    } finally {
+      await raw.close();
+    }
   }, 60_000);
 });
 

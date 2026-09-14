@@ -25,6 +25,8 @@ import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { describeApiError, loginPathOf, type CapabilitiesResponse } from '../lib/gh';
 import {
+  ADAPTER_LABEL,
+  COMPOSABILITY_LABEL,
   CONTROL_LABEL,
   EMPTY_FILTER,
   EXECUTION_LABEL,
@@ -32,17 +34,24 @@ import {
   SIDE_EFFECT_LABEL,
   STATUS_LABEL,
   SUPPORT_LABEL,
+  contractVerificationState,
   countBy,
+  describeConditions,
   filterCommands,
   isOverdue,
   label,
   percentOf,
+  refTypeLabel,
   registryHeadline,
   shortHash,
   statusTone,
   type CommandDetailView,
   type CommandFilter,
+  type CommandGraphView,
   type CommandListItem,
+  type ContractSummaryView,
+  type GraphEdgeView,
+  type PortView,
   type RegistryStatusView,
   type VerificationView,
 } from '../lib/gh-registry';
@@ -104,8 +113,15 @@ function Hash({ value }: { readonly value: string | null }): ReactNode {
   );
 }
 
+const CONTRACT_STATE_TEXT: Readonly<Record<ReturnType<typeof contractVerificationState>, string>> = {
+  verified: '결과 계약 검증',
+  legacy: '결과 계약 미검증(옛 판)',
+  unknown: '판 모름',
+};
+
 function VerificationRow({ row, now }: { readonly row: VerificationView; readonly now: Date }): ReactNode {
   const inventoryMatch = row.inventory_hash_observed === null ? '—' : row.inventory_hash_observed === row.inventory_hash_expected ? '일치' : '불일치';
+  const contractState = contractVerificationState(row);
   return (
     <tr data-testid="gh-registry-verification" data-source={row.checked_by} data-status={row.status}>
       <td>{row.checked_by}</td>
@@ -120,8 +136,98 @@ function VerificationRow({ row, now }: { readonly row: VerificationView; readonl
       <td>
         {row.validator_version} / {row.rules_version}
       </td>
+      <td data-contract-dimensions={contractState}>
+        {row.report_version ?? '—'} · {CONTRACT_STATE_TEXT[contractState]}
+      </td>
       <td>{isOverdue(row.checked_at, 86_400_000, now) ? '지남' : '최근'}</td>
     </tr>
+  );
+}
+
+/**
+ * 결과 계약·연결 요약 (CR-089). 분모가 다른 수치를 따로 적는다 — 결과 계약이 있다는 것, port가 있다는 것, adapter를 구현했다는
+ * 것, 실행이 열렸다는 것, 타입이 호환된다는 것, 다단계 실행이 된다는 것, 사내에서 확인했다는 것은 전부 다른 사실이다.
+ */
+function ContractsPanel({ contracts, gateScope }: { readonly contracts: ContractSummaryView | undefined; readonly gateScope: string | undefined }): ReactNode {
+  return (
+    <Panel data-testid="gh-registry-contracts">
+      <h2>결과 계약과 연결 (GATE-GH-01d)</h2>
+      {contracts === undefined ? (
+        <p data-testid="gh-registry-contracts-none">이 배포의 응답에는 결과 계약 요약이 없습니다 — 결과 계약을 싣지 않는 옛 판입니다.</p>
+      ) : (
+        <>
+          <p>
+            <small>결과 계약이 있고 타입이 호환된다는 것은 실행 승인이 아닙니다. 아래 수치는 분모가 달라 서로 합치지 않습니다.</small>
+          </p>
+          <Table data-testid="gh-registry-contract-summary" caption="결과 계약·port·구현 adapter·실행 허용·타입 간선·다단계 흐름·대상 GHES 확인">
+            <thead>
+              <tr>
+                <th scope="col">항목</th>
+                <th scope="col">값</th>
+                <th scope="col">분모와 뜻</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-item="result_contracts">
+                <td>결과 계약 분류</td>
+                <td>
+                  {String(contracts.resultContracts.classified)}/{String(contracts.resultContracts.total)}
+                </td>
+                <td>leaf command</td>
+              </tr>
+              <tr data-item="output_ports">
+                <td>출력 port</td>
+                <td>{String(contracts.outputPorts.ports)}</td>
+                <td>{String(contracts.outputPorts.commands)}개 command(조건부 연결 가능)의 결과에서 참조를 만드는 방법</td>
+              </tr>
+              <tr data-item="input_ports">
+                <td>입력 port</td>
+                <td>{String(contracts.inputPorts.ports)}</td>
+                <td>대상 자원 자리를 가진 {String(contracts.inputPorts.commands)}개 command</td>
+              </tr>
+              <tr data-item="adapters">
+                <td>구현된 결과 adapter</td>
+                <td>{String(contracts.adaptersImplemented.length)}</td>
+                <td>{contracts.adaptersImplemented.join(', ') || '없음'}</td>
+              </tr>
+              <tr data-item="executable">
+                <td>실행 허용</td>
+                <td>{String(contracts.executableCommands.length)}</td>
+                <td>{contracts.executableCommands.join(', ') || '없음'}</td>
+              </tr>
+              <tr data-item="edges">
+                <td>타입상 호환 간선</td>
+                <td>{String(contracts.graph.edges)}</td>
+                <td>
+                  조건부 {String(contracts.graph.conditional)} · 직접 {String(contracts.graph.direct)} · 타입은 같지만 불가 {String(contracts.graph.blockedSameType)}
+                </td>
+              </tr>
+              <tr data-item="flows">
+                <td>실행 가능한 다단계 흐름</td>
+                <td>{String(contracts.executableFlows)}</td>
+                <td>Recipe·다단계 실행은 열리지 않았다</td>
+              </tr>
+              <tr data-item="host">
+                <td>대상 GHES 확인</td>
+                <td>{String(contracts.hostVerified)}</td>
+                <td>사내 GHES에서 확인한 command</td>
+              </tr>
+            </tbody>
+          </Table>
+          <p data-testid="gh-registry-composability">
+            {contracts.composability
+              .filter((entry) => entry.count > 0)
+              .map((entry) => `${label(COMPOSABILITY_LABEL, entry.value)} ${String(entry.count)}`)
+              .join(' · ')}
+          </p>
+        </>
+      )}
+      {gateScope === undefined ? null : (
+        <p data-testid="gh-registry-gate-scope">
+          <small>{gateScope}</small>
+        </p>
+      )}
+    </Panel>
   );
 }
 
@@ -287,6 +393,7 @@ export function GhRegistryView(): ReactNode {
                 <th scope="col">인벤토리</th>
                 <th scope="col">이 manifest</th>
                 <th scope="col">검증기/규칙</th>
+                <th scope="col">보고서 판</th>
                 <th scope="col">신선도</th>
               </tr>
             </thead>
@@ -352,6 +459,8 @@ export function GhRegistryView(): ReactNode {
         </Table>
       </Panel>
 
+      <ContractsPanel contracts={status.contracts} gateScope={status.gate_scope} />
+
       <Panel data-testid="gh-registry-commands">
         <h2>command 분류 탐색</h2>
         <p data-testid="gh-registry-support-summary">
@@ -411,6 +520,7 @@ export function GhRegistryView(): ReactNode {
               <Badge tone="neutral">{label(SUPPORT_LABEL, command.support)}</Badge> <Badge tone={command.execution === 'allowed' ? 'accent' : 'neutral'}>{label(EXECUTION_LABEL, command.execution)}</Badge>
               {command.risk === null ? null : <Badge tone="accent">{command.risk}</Badge>}
               {command.side_effect === undefined || command.side_effect === null ? null : <small> {label(SIDE_EFFECT_LABEL, command.side_effect)}</small>}
+              {command.composability === undefined || command.composability === null ? null : <small> · {label(COMPOSABILITY_LABEL, command.composability)}</small>}
               <span> {command.summary}</span>
             </li>
           ))}
@@ -584,6 +694,191 @@ function CommandDetail({ detail }: { readonly detail: CommandDetailView }): Reac
           <small>--json 필드 {String(detail.json_fields.length)}개: {detail.json_fields.join(', ')}</small>
         </p>
       ) : null}
+      <ResultContractSection detail={detail} />
+    </div>
+  );
+}
+
+/**
+ * command 하나의 결과 계약·port·연결 후보 (CR-089). 모든 값은 서버가 준 것이며 화면은 판정을 만들지 않는다. 실행 결과는 싣지
+ * 않는다 — 이 상세는 manifest의 정적 계약이다.
+ */
+function ResultContractSection({ detail }: { readonly detail: CommandDetailView }): ReactNode {
+  const contract = detail.result_contract;
+  if (contract === undefined) {
+    return <p data-testid="gh-registry-contract-absent">이 응답에는 결과 계약이 없습니다 — 결과 계약을 싣지 않는 옛 판입니다.</p>;
+  }
+  if (contract === null) {
+    return (
+      <p data-testid="gh-registry-contract-absent">
+        {detail.alias_of === null ? '그룹 또는 미분류 command라 결과 계약이 없습니다.' : `별칭은 계약을 따로 갖지 않습니다 — gh ${detail.alias_of.join(' ')}의 계약을 따릅니다.`}
+      </p>
+    );
+  }
+  return (
+    <section data-testid="gh-registry-contract" data-composability={contract.composability} aria-label="결과 계약">
+      <h4>결과 계약</h4>
+      <dl>
+        <dt>주 결과 · 민감도</dt>
+        <dd>
+          {contract.kind} · {contract.sensitivity}
+        </dd>
+        <dt>연결 가능성</dt>
+        <dd>
+          <Badge tone={contract.bindable ? 'accent' : 'neutral'}>{label(COMPOSABILITY_LABEL, contract.composability)}</Badge>
+        </dd>
+        <dt>자원</dt>
+        <dd data-testid="gh-registry-contract-resource">
+          {refTypeLabel(contract.resourceKind)} — {contract.resourceBasis}
+        </dd>
+        <dt>근거</dt>
+        <dd>{contract.basis.evidence}</dd>
+      </dl>
+      <Table data-testid="gh-registry-contract-outputs" caption="출력 모드마다 결과 계약이 다르다 — 기본 출력과 --json 출력은 다른 계약이다">
+        <thead>
+          <tr>
+            <th scope="col">모드</th>
+            <th scope="col">결과</th>
+            <th scope="col">adapter</th>
+            <th scope="col">스키마</th>
+            <th scope="col">연결</th>
+            <th scope="col">이유</th>
+          </tr>
+        </thead>
+        <tbody>
+          {contract.outputs.map((output) => (
+            <tr key={output.mode} data-mode={output.mode} data-bindable={output.bindable ? 'true' : 'false'}>
+              <td>{output.mode}</td>
+              <td>{output.kind}</td>
+              <td>{label(ADAPTER_LABEL, output.adapter)}</td>
+              <td>{output.schema ?? '—'}</td>
+              <td>{output.bindable ? '가능' : '불가'}</td>
+              <td>{output.reason ?? output.unstructuredReason ?? '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+      <PortTable title="출력 port" ports={contract.outputPorts} note={contract.outputPortsNote} testId="gh-registry-output-ports" />
+      <PortTable title="입력 port" ports={contract.inputPorts} note={contract.inputPortsNote} testId="gh-registry-input-ports" />
+      {detail.graph === undefined || detail.graph === null ? null : <GraphSection graph={detail.graph} />}
+    </section>
+  );
+}
+
+function PortTable({ title, ports, note, testId }: { readonly title: string; readonly ports: readonly PortView[]; readonly note: string | null; readonly testId: string }): ReactNode {
+  return (
+    <div data-testid={testId}>
+      <h5>{title}</h5>
+      {ports.length === 0 ? (
+        <p>없음 — {note ?? '이유가 적혀 있지 않습니다'}</p>
+      ) : (
+        <Table caption={`${title}: 타입·개수·필수·null·민감도·조건`}>
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">타입</th>
+              <th scope="col">개수</th>
+              <th scope="col">필수</th>
+              <th scope="col">null</th>
+              <th scope="col">민감도</th>
+              <th scope="col">조건</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ports.map((port) => (
+              <tr key={port.id} data-port={port.id}>
+                <td>
+                  <code>{port.id}</code>
+                </td>
+                <td>{refTypeLabel(port.type)}</td>
+                <td>{port.cardinality === 'many' ? '목록' : '하나'}</td>
+                <td>{port.required ? '예' : '아니오'}</td>
+                <td>{port.nullable ? '예' : '아니오'}</td>
+                <td>{port.sensitivity}</td>
+                <td>{describeConditions(port.conditions)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+const edgeKey = (edge: { readonly from: string; readonly fromPort: string; readonly to: string; readonly toPort: string }): string => `${edge.from}.${edge.fromPort}->${edge.to}.${edge.toPort}`;
+const commandLabel = (id: string): string => `gh ${id.split('.').join(' ')}`;
+
+function EdgeTable({ title, edges, direction }: { readonly title: string; readonly edges: readonly GraphEdgeView[]; readonly direction: 'outgoing' | 'incoming' }): ReactNode {
+  return (
+    <div data-testid={`gh-registry-graph-${direction}`}>
+      <h6>
+        {title} ({String(edges.length)})
+      </h6>
+      {edges.length === 0 ? (
+        <p>없음</p>
+      ) : (
+        <Table caption={title}>
+          <thead>
+            <tr>
+              <th scope="col">{direction === 'outgoing' ? '입력 쪽 command' : '출력 쪽 command'}</th>
+              <th scope="col">타입</th>
+              <th scope="col">판정</th>
+              <th scope="col">조건</th>
+              <th scope="col">실행</th>
+            </tr>
+          </thead>
+          <tbody>
+            {edges.map((edge) => (
+              <tr key={edgeKey(edge)} data-edge={edgeKey(edge)} data-verdict={edge.verdict} data-executable={String(edge.execution.executable)}>
+                <td>{direction === 'outgoing' ? `${commandLabel(edge.to)} (${edge.toPort})` : `${commandLabel(edge.from)} (${edge.fromPort})`}</td>
+                <td>{refTypeLabel(edge.type)}</td>
+                <td>{edge.verdict === 'direct' ? '직접 호환' : '조건부 호환'}</td>
+                <td>{describeConditions(edge.conditions)}</td>
+                <td>
+                  <Badge tone="neutral">실행 미개방</Badge> {edge.execution.reason}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+function GraphSection({ graph }: { readonly graph: CommandGraphView }): ReactNode {
+  return (
+    <div data-testid="gh-registry-graph">
+      <h5>연결 후보 (타입 판정)</h5>
+      <p>
+        <small>호환은 실행 승인이 아닙니다. 실행 허용은 코드 표가 정하고, 실행 가능한 다단계 흐름은 {String(graph.executable_flows)}개입니다.</small>
+      </p>
+      <EdgeTable title="이 결과를 입력으로 받을 수 있는 command" edges={graph.outgoing} direction="outgoing" />
+      <EdgeTable title="이 command의 입력에 이을 수 있는 결과" edges={graph.incoming} direction="incoming" />
+      {graph.blocked.length === 0 ? null : (
+        <Table data-testid="gh-registry-graph-blocked" caption="타입은 같지만 이어지지 않는 짝과 이유">
+          <thead>
+            <tr>
+              <th scope="col">출력</th>
+              <th scope="col">입력</th>
+              <th scope="col">이유</th>
+            </tr>
+          </thead>
+          <tbody>
+            {graph.blocked.map((pair) => (
+              <tr key={edgeKey(pair)} data-edge={edgeKey(pair)}>
+                <td>
+                  {commandLabel(pair.from)} ({pair.fromPort})
+                </td>
+                <td>
+                  {commandLabel(pair.to)} ({pair.toPort})
+                </td>
+                <td>{pair.reasons.map((reason) => reason.detail).join(' · ')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
     </div>
   );
 }

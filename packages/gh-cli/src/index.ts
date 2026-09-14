@@ -65,9 +65,10 @@ export {
   PR_LIST_DEFAULT_JSON_FIELDS,
   PR_LIST_JSON_FIELDS,
   parsePrListOutput,
+  prListPortValue,
   safeHttpUrl,
 } from './result.js';
-export type { ParsePrListOutcome, PrListJsonField } from './result.js';
+export type { ParsePrListOutcome, PrListJsonField, PrListResultContext } from './result.js';
 
 export {
   GH_EXECUTION_ENV_KEYS,
@@ -80,6 +81,7 @@ export type { ExecutionEnvInput, GhExecutionEnvKey } from './env.js';
 
 export {
   EXECUTABLE_CAPABILITIES,
+  IMPLEMENTED_RESULT_SCHEMAS,
   PR_LIST_CAPABILITY,
   PR_LIST_CAPABILITY_ID,
   R0_READ_TIMEOUT_MS,
@@ -130,4 +132,62 @@ export {
   reportHash,
   validateManifest,
 } from './validate.js';
-export type { GhFindingSeverity, GhRegistryFinding, GhRegistryGate, GhRegistryReport, ValidateOptions } from './validate.js';
+export type { GhContractSummary, GhFindingSeverity, GhRegistryFinding, GhRegistryGate, GhRegistryReport, ValidateOptions } from './validate.js';
+
+/* ------------------------------------------ 결과 계약·typed port·바인딩·그래프 (CR-089) */
+
+export type {
+  GhComposability,
+  GhImplementedResultAdapter,
+  GhJsonIdentity,
+  GhOutputModeContract,
+  GhPort,
+  GhPortCondition,
+  GhPortConditionCode,
+  GhPortSlot,
+  GhPortSource,
+  GhPrListReferences,
+  GhResourceKind,
+  GhResourceRef,
+  GhResultAdapter,
+  GhResultKind,
+  GhResultSensitivity,
+  GhUrlGrammar,
+} from './types.js';
+export { JSON_POINTER_MAX_LENGTH, JSON_POINTER_MAX_TOKENS, evaluateJsonPointer, parseJsonPointer } from './json-pointer.js';
+export type { JsonPointerError, JsonPointerEvaluation, JsonPointerParse } from './json-pointer.js';
+export { IDENTIFIABLE_KINDS, REPOSITORY_SCOPED_KINDS, RESOURCE_KINDS, refFromOutputUrl, refTypeName, slugOf, validateResourceRef } from './resource-ref.js';
+export type { GhRefContext, GhRefProblem, GhRefValidation, GhUrlRefOutcome, GhUrlRefProblem } from './resource-ref.js';
+export { BINDING_EXECUTION_BLOCKED, evaluateBinding, judgePortCompatibility } from './binding.js';
+export type {
+  GhBinding,
+  GhBindingOutcome,
+  GhBindingRejection,
+  GhBindingTargetContext,
+  GhCompatibilityVerdict,
+  GhIncompatibility,
+  GhIncompatibilityCode,
+  GhPortCompatibility,
+  GhPortEndpoint,
+  GhPortValue,
+} from './binding.js';
+export { computeCapabilityGraph } from './graph.js';
+export type { GhCapabilityGraph, GhGraphBlockedPair, GhGraphEdge, GhGraphSummary } from './graph.js';
+export {
+  BINDABLE_COMPOSABILITY,
+  COMPOSABILITY_VALUES,
+  OPAQUE_JSON,
+  OUTPUT_PORT_NOTES,
+  PORTLESS_RESOURCE,
+  RESULT_ADAPTERS,
+  RESULT_KINDS,
+  RESULT_KIND_EVIDENCE,
+  RESULT_SENSITIVITIES,
+  classifyResult,
+  composabilityOf,
+} from './classification/results.js';
+export { JSON_OUTPUT_PORTS, PR_LIST_RESULT_SCHEMA, URL_OUTPUT_PORTS, jsonSchemaName, subjectSlotsOf, urlSchemaName } from './classification/ports.js';
+export type { SubjectSlot } from './classification/ports.js';
+export { contractProblems } from './classification/contract-checks.js';
+export type { ContractDimension, ContractProblem } from './classification/contract-checks.js';
+export { NONZERO_DENOMINATOR_DIMENSIONS } from './classification/dimensions.js';

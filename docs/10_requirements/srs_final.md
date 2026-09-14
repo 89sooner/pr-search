@@ -1,7 +1,9 @@
 # PR Search 최종 요구사항 정의서
 
-> 상태: baseline | 버전: v2.26 | 갱신일: 2026-09-13
+> 상태: baseline | 버전: v2.27 | 갱신일: 2026-09-14
 
+> **v2.27 (CR-089, 2026-09-14): 9.8절과 `NFR-009`의 사실 셋을 고정 gh 2.97.0 실측으로 정정한다.** 요구사항 문장과 수용 기준은 **한 글자도 바뀌지 않는다.** 고친 것은 셋이다 — (1) 실측 기준 표와 `NFR-009`의 `--json` 지원 command **41 → 40**: 41은 `--json` flag를 가진 command 수였고 그중 `workflow run --json`은 「Read workflow inputs as JSON via STDIN」인 **입력** flag다. JSON 출력(JSON FIELDS 절)이 있는 command는 40(leaf 39 + 실행 가능한 그룹 `codespace ports`)이며 필드 707은 같다(`DEV-676` 종결). (2) 9.8 4항 예시의 `gh pr checks` 출력 `CheckRunRef[]`: gh 2.97.0의 `pr checks` JSON 필드에는 check run·workflow run 식별자가 없고(`pkg/cmd/pr/checks/checks.go:22-32`) 3항의 `GhResourceRef.kind` 15종에도 check run이 없다 — 예시를 실제로 성립하는 연결로 바꿨다(`DEV-684`). (3) `NFR-009`의 입력·출력 port 분류율 기준 열이 분모를 명시한다: 출력 port는 composability가 바인딩 가능한 capability, 입력 port는 대상 자원을 받는 자리를 가진 capability이며, 둘 다 port 수가 아니라 capability 수이고 분모가 0이면 통과가 아니다(`DEV-688`). **신규 FR·NFR 없음, 안정 ID 재번호화 0건.** 근거는 `CR-089` cascade에 있다.
+>
 > **v2.26 (CR-085, 2026-09-13): `FR-SEQ-009`의 수용 기준이 실패 경로까지 덮는다.** 요구사항 문장과 기존 `AC-1`~`AC-7`은 **한 글자도 바뀌지 않는다.** 더한 것은 셋이다 — `AC-8`(변경 요청 재시도는 현재 제목과 정본을 다시 확인한다), `AC-9`(서버가 저장한 제목이 다르면 자동으로 다시 쓰지 않는다), `AC-10`(결과를 확정할 수 없는 요청은 실패로 적지 않는다). 이미 승인된 `AC-1`(원래 제목 보존)이 **성공 경로에서만** 지켜지고 있었다는 것이 이 판의 출발점이며, 다섯 가지 실패 경로를 현재 코드에서 시험으로 재현한 뒤 고쳤다. `AC-9`는 `AC-3`(「재시도 대상이며」)의 예외를 만들므로 명시가 필요했다 — 적지 않으면 구현이 승인 없이 재시도를 멈춘 것이 된다. 예외/실패 처리에 권한 차단 해제 조건 한 줄을 더했다. **신규 FR·NFR 없음, 안정 ID 재번호화 0건.** 근거와 대가는 `CR-085` cascade에 있다.
 >
 > **v2.25 (CR-084, 2026-09-12): `FR-SEQ-009`의 구현이 들어오며 감사 액션 하나가 활성으로 바뀐다.** `CR-077`이 승인한 PR 제목 M 넘버 표기(`WP-075`)를 구현했다. **요구사항 문장과 수용 기준은 한 글자도 바뀌지 않는다** — 이 판이 SRS에서 고치는 것은 10.2절 감사 대상 액션 표의 `pull_request.annotate` 상태 칸 하나(미활성 → 활성)뿐이다. 그 행은 이 표에서 **행위자가 사람이 아닌 유일한 행**이며, 지금까지의 모든 감사 대상은 사용자가 화면이나 API를 눌러 만들었지만 이것은 잡이 스스로 기록한다. **신규 FR·NFR 없음, 안정 ID 재번호화 0건.** 승인 범위 위에 더한 운영 스위치 셋(전역 기본 꺼짐·저장소별 해제의 정본·실행 중 권한 차단)과 그 근거는 `CR-084` cascade에 있다.
@@ -1112,7 +1114,7 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 | inherited/global flag 출현 | 312 (고유 4종: `--codespace`, `--help`, `--repo`, `--repo-owner`) |
 | short alias를 가진 flag | 625 |
 | 반복 가능 flag | 37 |
-| `--json` 지원 command | 41 |
+| `--json` 출력 지원 command | 40 (JSON FIELDS 절이 있는 command — leaf 39 + 그룹 `codespace ports`. `--json` flag를 가진 command는 41이지만 `workflow run --json`은 입력 flag다, CR-089) |
 | `--json` 필드 정의 | 707 |
 
 이전 판은 positional placeholder를 261개로 적었으나 실측은 230개다 (DEV-011, CR-008에서 정정). 이 수치는 고정값이 아니라 고정된 버전에서 측정한 값이며, 버전이 바뀌면 manifest와 함께 갱신된다.
@@ -1168,7 +1170,7 @@ CR-005로 추가된 요구사항 그룹이다. 이 그룹은 사용자가 명시
 
 **3. `GhResourceRef` — 공통 자원 참조.** 명령 사이에서 `owner/repo#123` 같은 문자열을 다시 파싱하지 않는다. `{ host, kind, repository, id, number, ref }` 구조로 넘긴다. `kind`는 `repository`, `pull_request`, `issue`, `discussion`, `workflow`, `workflow_run`, `release`, `project`, `codespace`, `artifact`, `gist`, `user`, `team`, `branch`, `commit`이다.
 
-**4. typed 입출력 port.** capability는 바인딩 가능한 입력·출력 port를 가진다. `gh search prs`의 출력은 `PullRequestRef[]`, `gh pr checks`의 입력은 `PullRequestRef`이고 출력은 `CheckRunRef[]`, `gh run rerun`의 입력은 `WorkflowRunRef`다. **어떤 명령 뒤에 어떤 명령을 이을 수 있는지는 타입으로 계산한다** — 이름 문자열이 같아서 잇는 것이 아니다.
+**4. typed 입출력 port.** capability는 바인딩 가능한 입력·출력 port를 가진다. `gh search prs`의 출력은 `PullRequestRef[]`이고 `gh pr checks`의 입력은 `PullRequestRef`다. `gh run list`의 출력은 `WorkflowRunRef[]`이고 `gh run rerun`의 입력은 `WorkflowRunRef`다. `gh pr checks`의 결과에는 check run·workflow run 식별자가 없어 출력 port가 없다(CR-089). **어떤 명령 뒤에 어떤 명령을 이을 수 있는지는 타입으로 계산한다** — 이름 문자열이 같아서 잇는 것이 아니다.
 
 **5. `GhCapabilityGraph`.** manifest에서 node=capability, edge=출력 port → 호환 입력 port 인 그래프를 자동으로 계산한다. W-023이 다음 단계를 제안할 때 전체 명령을 무작정 나열하지 않고 현재 출력과 호환되는 것을 먼저 보여준다. 전체 검색은 계속 되지만, 호환되지 않는 연결은 저장 전에 사유와 함께 거부한다.
 
@@ -1510,7 +1512,7 @@ CR-008에서 게이트를 전 차원으로 넓혔다. 아래는 모두 **고정�
 | 반복 가능 flag 분류율 | 100% | 검증 도구 | 37 |
 | interaction 모드 분류율 | 100% | 검증 도구 | `web_native`/`web_equivalent`/`sandbox_terminal`/`terminal_only`/`policy_blocked`/`unsupported_by_host` |
 | 입출력 모드 분류율 | 100% | 검증 도구 | stdin·파일 입력·파일 출력·출력 형식 |
-| `--json` 필드 분류율 | 100% | 검증 도구 | 지원 command 41, 필드 707 |
+| `--json` 필드 분류율 | 100% | 검증 도구 | 지원 command 40(`--json` flag를 가진 41 중 `workflow run`은 입력 flag, CR-089), 필드 707 |
 | 미분류 command 수 | 0 | 검증 도구 종료 코드 | `unknown` 금지 |
 | 미분류 positional 수 | 0 | 검증 도구 종료 코드 | `unknown` 금지 |
 | 미분류 flag 수 | 0 | 검증 도구 종료 코드 | `unknown` 금지 |
@@ -1519,8 +1521,8 @@ CR-008에서 게이트를 전 차원으로 넓혔다. 아래는 모두 **고정�
 | core / extension coverage 분리 | 두 수치를 따로 보고 | 검증 도구 | 합산해 가리지 않는다 |
 | 결과 계약 분류율 (CR-009) | 100% | 검증 도구 | 모든 capability가 `GhResultContract`를 가진다 |
 | bindability 분류율 (CR-009) | 100% | 검증 도구 | composability 상태 8종 중 하나 |
-| 입력 port 분류율 (CR-009) | 100% | 검증 도구 | 바인딩 가능한 capability 기준 |
-| 출력 port 분류율 (CR-009) | 100% | 검증 도구 | 위와 동일 |
+| 입력 port 분류율 (CR-009) | 100% | 검증 도구 | 대상 자원을 받는 자리(positional 대안·`--codespace`)를 가진 capability 기준 — 바인딩의 도착이 될 수 있는 capability다. port 수가 아니라 capability 수이며 분모가 0이면 통과가 아니다 (CR-089) |
+| 출력 port 분류율 (CR-009) | 100% | 검증 도구 | composability가 바인딩 가능(`fully_bindable`·`partially_bindable`)한 capability 기준 — port 수가 아니라 capability 수이며 분모가 0이면 통과가 아니다 (CR-089) |
 | 자원 타입 분류율 (CR-009) | 100% | 검증 도구 | `GhResourceRef.kind` |
 | secret 출력 분류율 (CR-009) | 100% | 검증 도구 | 비밀 결과를 일반 결과로 흘리지 않는다 |
 | 미분류 결과 계약 수 (CR-009) | 0 | 검증 도구 종료 코드 | `unknown` 금지 |

@@ -41,7 +41,9 @@ const CAPABILITIES = {
         { kind: 'json_fields', flag: '--json', allowed: [...JSON_FIELDS, 'createdAt'], defaultValue: JSON_FIELDS, minItems: 1, maxItems: 10, label: 'JSON 필드' },
       ],
       constraints: [{ kind: 'context_required', context: 'repository' }],
-      result: { kind: 'json', schema: 'pr_list_v1', resourceType: 'pull_request', bindable: false, sensitivity: 'internal', adapter: 'native_json', composability: 'terminal_result' },
+      // CR-089: 실행 정의에는 구현 adapter만 있고, 결과의 뜻은 결과 계약 요약으로 온다.
+      result_adapter: { mode: 'json', adapter: 'native_json', schema: 'pr_list_v2', outputPort: 'pull_requests' },
+      result_contract: { kind: 'resource_list', sensitivity: 'internal', composability: 'partially_bindable', bindable: true, resource_kind: 'pull_request' },
       timeout_ms: 30_000,
     },
   ],
@@ -122,8 +124,15 @@ function executionOf(id: number, invocation: Invocation, state: string): Record<
     result:
       state === 'succeeded'
         ? {
-            kind: 'json',
-            schema: 'pr_list_v1',
+            kind: 'resource_list',
+            schema: 'pr_list_v2',
+            references: {
+              port: 'pull_requests',
+              type: 'pull_request',
+              status: 'available',
+              reason: null,
+              refs: [12, 11].map((number) => ({ host: 'ghe.test', kind: 'pull_request', repository: invocation.context.repository, id: null, number, ref: null })),
+            },
             fields: invocation.output.json_fields,
             rows: [
               { number: 12, title: 'Fix race <script>alert(1)</script>', state: 'OPEN', url: 'https://ghe.test/acme/payments/pull/12', author: 'alice', headRefName: 'fix/race', baseRefName: 'main', isDraft: false, createdAt: null, updatedAt: '2026-09-12T00:00:00.000Z' },

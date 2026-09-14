@@ -16,6 +16,7 @@
  * | `--limit` 상한 100 | gh 기본 30, 상한은 서버가 강제한다. 목록 화면 한 페이지 크기다 |
  */
 
+import { PR_LIST_RESULT_SCHEMA } from './classification/ports.js';
 import { PR_LIST_DEFAULT_JSON_FIELDS, PR_LIST_JSON_FIELDS } from './result.js';
 import type { GhCapabilityDefinition } from './types.js';
 
@@ -61,21 +62,19 @@ export const PR_LIST_CAPABILITY: GhCapabilityDefinition = {
     },
   ],
   constraints: [{ kind: 'context_required', context: 'repository' }],
-  result: {
-    kind: 'json',
-    schema: 'pr_list_v1',
-    resourceType: 'pull_request',
-    // 다음 단계로 잇는 것(Recipe)은 이 판의 범위가 아니다. 계약상 이을 수 있는 종류이지만 지금은 닫는다.
-    bindable: false,
-    sensitivity: 'internal',
-    adapter: 'native_json',
-    composability: 'terminal_result',
-  },
+  /*
+   * 실행기가 **구현한** adapter뿐이다 (CR-089). 결과가 무엇이고 어디에 이을 수 있는지(종류·자원·port·composability)는
+   * 분류의 결과 계약이 정본이며 여기에 복사하지 않는다 — 검증기가 스키마·port 이름이 계약과 같은지 건다.
+   */
+  resultAdapter: { mode: 'json', adapter: 'native_json', schema: PR_LIST_RESULT_SCHEMA, outputPort: 'pull_requests' },
   timeoutMs: R0_READ_TIMEOUT_MS,
 };
 
 /** 실행을 여는 capability 전부. 순서가 manifest 순서다. */
 export const EXECUTABLE_CAPABILITIES: readonly GhCapabilityDefinition[] = [PR_LIST_CAPABILITY];
+
+/** 실행기가 결과를 실제로 만드는 스키마. 결과 계약에 스키마가 정의돼 있다는 것과 다른 사실이다. */
+export const IMPLEMENTED_RESULT_SCHEMAS: readonly string[] = [PR_LIST_RESULT_SCHEMA];
 
 export function findCapability(id: string): GhCapabilityDefinition | undefined {
   return EXECUTABLE_CAPABILITIES.find((capability) => capability.id === id);

@@ -90,6 +90,21 @@ describe('resultKind는 서버가 준 사실을 가른다 (지시서 12장, FR-G
     ['stdout 절삭', execution({ result: { ...execution().result, stdout_truncated: true }, stdout: { text: '[', truncated: true } }), 'truncated'],
     ['0건', execution({ result: { schema: 'pr_list_v1', rows: [], row_count: 0, possibly_more: false, stdout_truncated: false } }), 'empty'],
     ['행 있음', execution(), 'rows'],
+    // CR-089: pr_list_v2는 number를 고르지 않은 정상 조회도 행이다 — 번호가 null이어도 0건이나 실패로 읽지 않는다.
+    [
+      'v2 — 번호를 고르지 않은 행',
+      execution({
+        result: {
+          schema: 'pr_list_v2',
+          rows: [{ number: null, title: 'Fix race', state: null, url: null, author: null, headRefName: null, baseRefName: null, isDraft: null, createdAt: null, updatedAt: null }],
+          row_count: 1,
+          possibly_more: false,
+          stdout_truncated: false,
+          references: { status: 'unavailable', reason: 'identity_field_not_selected', refs: [] },
+        },
+      }),
+      'rows',
+    ],
   ] as const)('%s → %s', (_label, view, kind) => {
     expect(resultKind(view)).toBe(kind);
   });

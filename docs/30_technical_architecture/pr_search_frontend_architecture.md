@@ -1,6 +1,6 @@
 # PR Search 프론트엔드 아키텍처
 
-> 상태: review | 버전: v0.5 | 갱신일: 2026-09-13
+> 상태: review | 버전: v0.6 | 갱신일: 2026-09-14
 
 CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설계](pr_search_wp074_design.md) 9절로 고정한다. M은 API 생성 문자열이며 PR 번호를 대체하지 않는다. 행별 resolve 없이 페이지 batch, M deep link 1회 resolve, visible pending의 bounded poll을 사용한다. 기존 인증 BFF·from_q·cursor·epoch 경고·Conductor를 보존한다.
 
@@ -42,7 +42,7 @@ CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설�
 | `/ops/repositories` | A-002 | FR-ING-009 | 서버 | API-ADM-001 |
 | `/ops/jobs` | A-003 | FR-ADMIN-002, FR-ADMIN-003, FR-ING-006, FR-ING-008 | 클라이언트 (30초 폴링) | API-ADM-002, API-ADM-004, API-ADM-007 |
 | `/ops/audit` | A-004 | FR-AUTH-004 | 서버 | API-ADM-005 |
-| `/ops/gh-registry` | A-006 (읽기 전용, CR-088) | FR-GH-001, FR-GH-011, NFR-009 | 클라이언트 (폴링 없음, 「다시 읽기」 버튼) | API-GH-013, API-GH-014, API-GH-001 |
+| `/ops/gh-registry` | A-006 (읽기 전용, CR-088 · 결과 계약·port·연결 후보와 분리 집계 표시 CR-089 — 실행·Recipe 버튼 없음) | FR-GH-001, FR-GH-011, NFR-009 | 클라이언트 (폴링 없음, 「다시 읽기」 버튼) | API-GH-013, API-GH-014, API-GH-001 |
 | `/api/*` | - | FR-AUTH-001 | 라우트 핸들러 | `search-api` 프록시 |
 | `/auth/callback` | - | FR-AUTH-001 | 라우트 핸들러 | OIDC 토큰 교환 |
 

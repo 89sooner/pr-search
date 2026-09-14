@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.16 | 갱신일: 2026-09-13
+> 상태: review | 버전: v0.17 | 갱신일: 2026-09-14
 
 CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하고 모든 sync 호출은 repo session lock을 공유한다. Profile B sequence에는 mirror volume이 없으므로 명시적 API mode다. 환경 키·schema 선행·boot/stop·additive 앱 rollback과 별도 DB down은 [설계](pr_search_wp074_design.md) 10절이 정본이다. pilot.4 fail-fast·SSR smoke·pg hash 보정·worker git을 보존한다. 후보는 새 버전 미발행이며 --release를 사용하지 않는다.
 
@@ -250,6 +250,7 @@ pnpm db:migrate --down --step 1   # 최신 1개만 회수
 pnpm db:partitions                # 월별 파티션 생성 (기본 3개월치)
 pnpm db:seed                      # 개발용 합성 시드 (저장소 3, PR 200, 커밋 500, 릴리스 10)
 pnpm test:integration             # 실제 PostgreSQL·Elasticsearch 대상 통합 테스트
+pnpm test:regression              # 도메인 회귀 — CI integration 잡이 test:integration 뒤에 같은 서비스로 순차 실행 (CR-089)
 
 # --- WP-003에서 동작하는 명령 (Elasticsearch 필요) ---
 pnpm es:apply-mappings            # 엔티티 인덱스 4종 생성 + 별칭 부여
@@ -280,7 +281,7 @@ DB 접속 정보는 환경 변수에서만 읽는다 (`@prs/db`의 `resolvePoolC
 
 Elasticsearch 접속도 같은 원칙이다 (`@prs/es`의 `resolveClientOptions`). `ELASTICSEARCH_NODE`가 없으면 `http://localhost:9200`을 쓰고, `ELASTICSEARCH_API_KEY`가 있으면 인증에 사용한다.
 
-`pnpm test`(단위)와 `pnpm test:integration`(백킹 서비스 필요)을 분리해 둔 이유는, 백킹 서비스가 없는 환경에서도 단위 검증이 항상 돌아야 하기 때문이다. CI는 두 잡으로 나뉘며 통합 잡이 PostgreSQL 서비스 컨테이너를 띄운다.
+`pnpm test`(단위)와 `pnpm test:integration`(백킹 서비스 필요)을 분리해 둔 이유는, 백킹 서비스가 없는 환경에서도 단위 검증이 항상 돌아야 하기 때문이다. CI는 두 잡으로 나뉘며 통합 잡이 PostgreSQL 서비스 컨테이너를 띄운다. 통합 잡은 `test:integration`이 끝난 **뒤에** 같은 서비스·환경 변수로 `test:regression`을 순차 실행한다(CR-089) — 두 계층이 공유 DB를 동시에 고치지 않고, 러너·트리거·잡 구조는 그대로다.
 
 로컬 백킹 서비스는 저장소 루트의 `docker-compose.yml`이 띄운다. local 환경은 2장 표에 따라 Elasticsearch 노드 1개·복제본 0이며, 운영의 전용 3노드 구성(OD-006, 4.1장)을 재현하지 않는다.
 

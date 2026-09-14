@@ -69,8 +69,9 @@ beforeEach(async () => {
 describe('기동 검사 — 실제 바이너리·실제 manifest', () => {
   it('스냅숏 한 행과 검증 기록 한 행을 남기고, 두 번째 회차는 같은 스냅숏에 기록만 더한다', async () => {
     const first = await runRegistryCheck(deps(), 'startup');
-    // 커밋된 manifest는 GATE-GH-01은 통과하고 GATE-GH-01d(bindability·resource_type)는 미달이다 — incomplete이지 stale이 아니다.
-    expect(first.status).toBe('incomplete');
+    // 커밋된 manifest(r0.3)는 GATE-GH-01·01b·01d를 통과한다(CR-089) — passed이며 stale이 아니다.
+    expect(first.status).toBe('passed');
+    expect(first.report.gates.every((gate) => gate.pass)).toBe(true);
     expect(first.stale).toBe(false);
     expect(first.attempts).toBe(1);
     expect(first.drift.status).toBe('match');
@@ -78,13 +79,16 @@ describe('기동 검사 — 실제 바이너리·실제 manifest', () => {
 
     const snapshots = await ghRegistryRepo.listSnapshots(pool);
     expect(snapshots).toHaveLength(1);
-    expect(snapshots[0]).toMatchObject({ manifest_hash: manifest.hash, gh_version: '2.97.0', unclassified_count: 0, executable_count: 1, leaf_command_count: 196, flag_count: 1034, activated_at: null });
+    // 검사가 passed여도 스냅숏을 활성화하지 않는다 — 활성화는 운영자의 별도 절차다(WP-059, CR-089 범위 밖).
+    expect(snapshots[0]).toMatchObject({ manifest_hash: manifest.hash, manifest_version: 'r0.3', gh_version: '2.97.0', unclassified_count: 0, executable_count: 1, leaf_command_count: 196, flag_count: 1034, activated_at: null });
     const verifications = await ghRegistryRepo.listVerifications(pool);
     expect(verifications).toHaveLength(1);
-    expect(verifications[0]).toMatchObject({ checked_by: 'gh-executor', trigger: 'startup', status: 'incomplete', gh_version_observed: '2.97.0', manifest_hash_expected: manifest.hash });
+    expect(verifications[0]).toMatchObject({ checked_by: 'gh-executor', trigger: 'startup', status: 'passed', gh_version_observed: '2.97.0', manifest_hash_expected: manifest.hash });
     expect(verifications[0]?.inventory_hash_observed).toBe(verifications[0]?.inventory_hash_expected);
     expect((verifications[0]?.environment as { binary_path?: string }).binary_path).toBe(binary);
-    expect((verifications[0]?.report as { status?: string }).status).toBe('incomplete');
+    expect(verifications[0]?.report as { status?: string; reportVersion?: string }).toMatchObject({ status: 'passed', reportVersion: 'r2' });
+    // 결과 계약 요약이 검증 기록에 남는다 — 실행 허용은 그대로 하나다.
+    expect((verifications[0]?.report as { contracts?: { executableCommands: string[]; executableFlows: number } }).contracts).toMatchObject({ executableCommands: ['pr.list'], executableFlows: 0 });
 
     const second = await runRegistryCheck(deps(), 'periodic');
     expect(second.snapshotId).toBe(first.snapshotId);
@@ -110,7 +114,7 @@ describe('드리프트·오류 경로 (검사 함수 주입)', () => {
 
     next = MATCH;
     await checker.runOnce('periodic');
-    expect(checker.state()).toMatchObject({ status: 'incomplete', stale: false });
+    expect(checker.state()).toMatchObject({ status: 'passed', stale: false });
     await checker.stop();
   });
 
@@ -151,7 +155,7 @@ describe('드리프트·오류 경로 (검사 함수 주입)', () => {
     });
     const recovered = await runRegistryCheck(flaky, 'periodic');
     expect(recovered.attempts).toBe(3);
-    expect(recovered.status).toBe('incomplete');
+    expect(recovered.status).toBe('passed');
     expect(recovered.stale).toBe(false);
 
     const checker = startRegistryChecker(deps({ drift: () => ({ ...MATCH, status: 'error', diff: null, inventoryHashObserved: null, error: 'boom' }) }), 3_600_000);
@@ -160,7 +164,7 @@ describe('드리프트·오류 경로 (검사 함수 주입)', () => {
     expect(failed?.attempts).toBe(4);
     expect(checker.state()).toMatchObject({ status: 'error', stale: false });
     const rows = await ghRegistryRepo.listVerifications(pool);
-    expect(rows.map((row) => row.status).sort()).toEqual(['error', 'incomplete']);
+    expect(rows.map((row) => row.status).sort()).toEqual(['error', 'passed']);
     expect(rows.find((row) => row.status === 'error')?.error).toBe('boom');
     await checker.stop();
   });

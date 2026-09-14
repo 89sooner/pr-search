@@ -194,6 +194,33 @@ describe('GhExecutionPanel (C-058)', () => {
     expect(screen.getByTestId('gh-result-failed').textContent).toContain('종료 코드 1');
   });
 
+  it('CR-089: pr_list_v2에서 번호를 고르지 않은 행은 번호 칸이 비고, 참조를 만들지 않았다는 사실을 따로 말한다', async () => {
+    const rows = [{ number: null, title: 'Fix race', state: 'OPEN', url: 'https://ghe.example.com/acme/payments/pull/12', author: null, headRefName: null, baseRefName: null, isDraft: null, createdAt: null, updatedAt: null }];
+    const { container } = render(
+      <GhExecutionPanel execution={execution({ result: { schema: 'pr_list_v2', rows, row_count: 1, possibly_more: false, stdout_truncated: false, references: { status: 'unavailable', reason: 'identity_field_not_selected', refs: [] } } })} />,
+    );
+    const row = screen.getByTestId('gh-result-row');
+    expect(within(row).queryByRole('link')).toBeNull();
+    expect(row.textContent).toContain('—');
+    const note = screen.getByTestId('gh-result-references');
+    expect(note.getAttribute('data-status')).toBe('unavailable');
+    expect(note.textContent).toContain('PR 참조를 만들지 않았습니다');
+    expect(await violations(container)).toEqual([]);
+  });
+
+  it('CR-089: 참조를 만든 v2 결과는 개수와 「실행은 열리지 않았다」를 함께 말하고, v1 기록에는 참조 문구가 없다', () => {
+    const base = execution();
+    const refs = [12, 11].map((number) => ({ host: 'ghe.example.com', kind: 'pull_request', repository: 'acme/payments', number }));
+    render(<GhExecutionPanel execution={execution({ result: { ...(base.result ?? {}), schema: 'pr_list_v2', references: { status: 'available', reason: null, refs } } })} />);
+    const note = screen.getByTestId('gh-result-references');
+    expect(note.getAttribute('data-status')).toBe('available');
+    expect(note.textContent).toContain('PR 참조 2개');
+    expect(note.textContent).toContain('실행은 열리지 않았습니다');
+    cleanup();
+    render(<GhExecutionPanel execution={execution()} />);
+    expect(screen.queryByTestId('gh-result-references')).toBeNull();
+  });
+
   it('QA-GH-18: 상태는 live region에 실리고, 끝나지 않은 실행만 취소할 수 있다', () => {
     const onCancel = vi.fn();
     render(<GhExecutionPanel execution={execution({ state: 'running', finished_at: null, result: null, stdout: null })} onCancel={onCancel} />);

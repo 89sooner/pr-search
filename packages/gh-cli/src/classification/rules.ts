@@ -18,7 +18,11 @@
 
 import type { GhClassificationBasis, GhControlClass, GhFlagValueKind, GhInventoryFlag } from '../types.js';
 
-export const RULES_VERSION = 'rules-2026-09-14.2' as const;
+/**
+ * `.2` → `.3` (CR-089): 결과 계약·port 규칙(`results.ts`·`ports.ts`)이 분류에 들어갔고, 출력 모드 판정이 바뀌었다 —
+ * JSON 출력은 JSON FIELDS·`--format {json}`일 때만(`workflow run --json`은 입력), 파일 출력 flag는 `file`, `--watch`는 `stream`.
+ */
+export const RULES_VERSION = 'rules-2026-09-14.3' as const;
 
 /** 브라우저를 여는 flag — 실행기는 브라우저가 없다. 웹 등가는 URL을 링크로 주는 것이다 (ADR-019). */
 const WEB_FLAGS: ReadonlySet<string> = new Set(['web']);

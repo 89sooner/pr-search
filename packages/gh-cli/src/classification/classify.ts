@@ -18,6 +18,7 @@ import type {
   GhPositionalClassification,
 } from '../types.js';
 import { COMMAND_ROWS, type CommandRow } from './commands.js';
+import { classifyResult } from './results.js';
 import { classifyFlag, classifyPositional, parseUsagePositionals, type FlagClassificationOutcome } from './rules.js';
 
 const COMMAND_TABLE_RULE = 'commands-table';
@@ -53,20 +54,34 @@ function positionalsOf(command: GhInventoryCommand): GhPositionalClassification[
   });
 }
 
-function outputFormatsOf(command: GhInventoryCommand, row: CommandRow | undefined): GhOutputFormat[] {
+/**
+ * 출력 모드. **JSON 출력은 JSON FIELDS 절(`--json <fields>`) 또는 `--format {json}`이 있을 때만이다** — `workflow run --json`은
+ * 「Read workflow inputs as JSON via STDIN」인 입력 flag라 출력 모드가 아니다(CR-089 정정, SRS의 `--json` 41 vs 40의 출처).
+ * 파일로 쓰는 flag가 있으면 `file`, `--watch`가 있으면 `stream` 모드가 더해진다.
+ */
+function outputFormatsOf(command: GhInventoryCommand, row: CommandRow | undefined, fileOutputFlags: readonly string[]): GhOutputFormat[] {
   const names = new Set(command.flags.map((flag) => flag.name));
   const formats: GhOutputFormat[] = [];
   const push = (format: GhOutputFormat): void => {
     if (!formats.includes(format)) formats.push(format);
   };
+  const jsonFields = command.jsonFields.length > 0;
+  const formatJson = command.flags.some((flag) => !flag.inherited && flag.name === 'format' && /\{[^{}]*\bjson\b[^{}]*\}/.test(flag.description));
   if (row?.result === 'stream') push('stream');
   else if (row?.result === 'artifact') push('file');
-  else if (row?.result === 'json' && !names.has('json')) push('json');
+  else if (row?.result === 'json' && !jsonFields && !formatJson) push('json');
   else push('text');
-  if (names.has('json') || command.jsonFields.length > 0) push('json');
+  if (jsonFields || formatJson) push('json');
   if (names.has('jq')) push('jq');
-  if (names.has('template')) push('template');
+  /*
+   * 출력 템플릿은 JSON 출력이 있을 때만이다 — gh는 `--template`을 `--json`·`--format json`과 함께만 붙인다
+   * (pkg/cmdutil/json_flags.go:45-50·148-150). `pr create`·`issue create`의 `--template`은 본문 틀을, `repo create`의 것은
+   * 틀 저장소를 고르는 **입력**이다 (CR-089 정정).
+   */
+  if (names.has('template') && (jsonFields || formatJson || row?.result === 'json')) push('template');
   if (names.has('web')) push('web');
+  if (names.has('watch') && row?.result !== 'stream') push('stream');
+  if (fileOutputFlags.length > 0) push('file');
   return formats;
 }
 
@@ -98,11 +113,12 @@ export function classifyCommand(command: GhInventoryCommand): GhCommandClassific
   const { flags, outcomes } = flagsOf(command);
   const positionals = positionalsOf(command);
   const stdinFromUsage = positionals.some((positional) => positional.binding === 'stdin');
+  const fileOutputFlags = command.flags.filter((_, index) => outcomes[index]?.fileRole === 'output').map((flag) => `--${flag.name}`);
   const io = {
     stdin: row?.stdin ?? (stdinFromUsage ? ('optional' as const) : ('none' as const)),
     fileInputFlags: command.flags.filter((_, index) => outcomes[index]?.fileRole === 'input').map((flag) => `--${flag.name}`),
-    fileOutputFlags: command.flags.filter((_, index) => outcomes[index]?.fileRole === 'output').map((flag) => `--${flag.name}`),
-    outputFormats: outputFormatsOf(command, row),
+    fileOutputFlags,
+    outputFormats: outputFormatsOf(command, row, fileOutputFlags),
     contexts: row?.contexts ?? [],
     paginated: command.flags.some((flag) => flag.name === 'limit' || flag.name === 'paginate'),
   };
@@ -122,6 +138,7 @@ export function classifyCommand(command: GhInventoryCommand): GhCommandClassific
       flags,
       basis: { source: 'override', rule: COMMAND_TABLE_RULE, evidence: `분류 표에 행이 없다: ${key}` },
       notes: notesOf(command, outcomes),
+      result: null,
     };
   }
 
@@ -139,5 +156,6 @@ export function classifyCommand(command: GhInventoryCommand): GhCommandClassific
     flags,
     basis: { source: 'override', rule: COMMAND_TABLE_RULE, evidence: row.note },
     notes: notesOf(command, outcomes),
+    result: classifyResult(command, row, io.outputFormats),
   };
 }

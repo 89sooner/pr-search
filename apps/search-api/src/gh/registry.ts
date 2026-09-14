@@ -13,12 +13,26 @@
  */
 
 import { ghRegistryRepo, type GhCapabilitySnapshotRow, type GhCapabilityVerificationRow, type Pool } from '@prs/db';
-import { GH_PINNED_LINUX_AMD64, GH_PINNED_VERSION, validateManifest, type GhCapabilityManifest, type GhManifestCommand, type GhRegistryReport } from '@prs/gh-cli';
+import {
+  GH_PINNED_LINUX_AMD64,
+  GH_PINNED_VERSION,
+  REPORT_VERSION,
+  computeCapabilityGraph,
+  validateManifest,
+  type GhCapabilityGraph,
+  type GhCapabilityManifest,
+  type GhManifestCommand,
+  type GhRegistryReport,
+} from '@prs/gh-cli';
 
 /** 실행기의 기본 검사 주기(`GH_EXECUTOR_REGISTRY_CHECK_MS`). 화면이 「지났다」를 판정하는 근거로 함께 낸다. */
 export const REGISTRY_CHECK_INTERVAL_MS = 86_400_000;
 
+/** 결과 계약 차원(GATE-GH-01d의 여섯 차원)을 처음 검증한 보고서 판 (CR-089). */
+export const CONTRACT_DIMENSIONS_REPORT_VERSION = 2;
+
 const reports = new WeakMap<GhCapabilityManifest, GhRegistryReport>();
+const graphs = new WeakMap<GhCapabilityManifest, GhCapabilityGraph>();
 
 /** 적재한 manifest의 보고서. 요청마다 다시 만들지 않는다 — 같은 manifest는 같은 보고서다. */
 export function reportFor(manifest: GhCapabilityManifest): GhRegistryReport {
@@ -29,8 +43,33 @@ export function reportFor(manifest: GhCapabilityManifest): GhRegistryReport {
   return report;
 }
 
+/** 적재한 manifest의 타입 그래프. 판정기의 결과이며 실행 가능성과 무관하다. */
+export function graphFor(manifest: GhCapabilityManifest): GhCapabilityGraph {
+  const cached = graphs.get(manifest);
+  if (cached !== undefined) return cached;
+  const graph = computeCapabilityGraph(manifest.commands);
+  graphs.set(manifest, graph);
+  return graph;
+}
+
+/**
+ * 저장된 보고서의 판. 기록은 append-only라 옛 판(`r1`)의 보고서가 남아 있다 — 그 기록은 결과 계약 차원을 검증하지 않았고,
+ * 새 판의 기준으로 다시 읽어 「통과」로 보이게 하지 않는다. 판을 읽을 수 없으면 `null`이다.
+ */
+export function reportVersionOf(report: unknown): { readonly version: string | null; readonly contractDimensions: 'verified' | 'not_in_report_version' } {
+  const raw = typeof report === 'object' && report !== null ? (report as Record<string, unknown>)['reportVersion'] : undefined;
+  const version = typeof raw === 'string' ? raw : null;
+  const number = version === null ? null : /^r(\d+)$/.exec(version)?.[1];
+  const verified = number !== undefined && number !== null && Number(number) >= CONTRACT_DIMENSIONS_REPORT_VERSION;
+  return { version, contractDimensions: verified ? 'verified' : 'not_in_report_version' };
+}
+
 function verificationView(row: GhCapabilityVerificationRow, servedHash: string): Record<string, unknown> {
+  const reportVersion = reportVersionOf(row.report);
   return {
+    report_version: reportVersion.version,
+    /** 이 기록의 보고서가 결과 계약 차원(01d 여섯)을 검증했는가. `r1` 기록은 아니다. */
+    contract_dimensions: reportVersion.contractDimensions,
     verification_id: row.verification_id,
     snapshot_id: row.snapshot_id,
     checked_at: row.checked_at.toISOString(),
@@ -100,7 +139,13 @@ export async function registryStatus(pool: Pool, manifest: GhCapabilityManifest)
       alias_only_command_count: manifest.coverage.aliasOnlyCommands,
       help_topics: manifest.coverage.helpTopics,
     },
-    validator: { version: report.validatorVersion, rules_version: report.rulesVersion, status: report.status },
+    validator: { version: report.validatorVersion, rules_version: report.rulesVersion, report_version: REPORT_VERSION, status: report.status },
+    /**
+     * 결과 계약·연결의 분리 집계 (CR-089) — 결과 계약 분류·port 정의·구현 adapter·실행 허용·타입상 간선·실행 가능한 다단계
+     * 흐름·사내 호스트 확인은 다른 사실이라 합치지 않는다. port·간선의 목록은 API-GH-014가 command마다 낸다.
+     */
+    contracts: report.contracts,
+    gate_scope: 'GATE-GH-01·01b·01d만 판정한다. 01d 통과는 REL-007 완료가 아니다 — 01e·06·08과 대상 GHES 지원 확인은 판정하지 않았다',
     coverage: {
       classified_leaf_commands: manifest.coverage.classifiedLeafCommands,
       unclassified_leaf_commands: manifest.coverage.unclassifiedLeafCommands,
@@ -130,11 +175,27 @@ export async function registryStatus(pool: Pool, manifest: GhCapabilityManifest)
   };
 }
 
-/** A-006의 command 상세 — 분류 전부(flag·positional·근거). 없으면 `null`. */
+/**
+ * A-006의 command 상세 — 분류 전부(flag·positional·근거)와 결과 계약·port·간선. 없으면 `null`.
+ *
+ * 간선은 이 command에서 나가는 것·들어오는 것·타입은 같지만 이어지지 않는 것(이유 포함)이다. **실행 결과를 싣지 않는다** —
+ * 이 조회는 manifest(정적 계약)만 읽고 `gh_execution`을 읽지 않는다. 다른 사용자의 결과 원문이 이 경로로 나가지 않는다.
+ */
 export function commandDetail(manifest: GhCapabilityManifest, id: string): Record<string, unknown> | null {
   const command: GhManifestCommand | undefined = manifest.commands.find((entry) => entry.id === id);
   if (command === undefined) return null;
+  const leaf = !command.group && command.aliasOf === null;
+  const graph = graphFor(manifest);
   return {
+    result_contract: command.classification?.result ?? null,
+    graph: leaf
+      ? {
+          outgoing: graph.edges.filter((edge) => edge.from === command.id),
+          incoming: graph.edges.filter((edge) => edge.to === command.id),
+          blocked: graph.blocked.filter((pair) => pair.from === command.id || pair.to === command.id),
+          executable_flows: 0,
+        }
+      : null,
     id: command.id,
     path: command.path,
     summary: command.summary,

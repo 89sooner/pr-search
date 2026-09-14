@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.28 | 갱신일: 2026-09-13
+> 상태: review | 버전: v0.29 | 갱신일: 2026-09-14
 
 ## 1. 목적
 
@@ -64,7 +64,7 @@
 
 | API ID | Method | Path | 목적 | 인증/권한 | 관련 FR |
 | --- | --- | --- | --- | --- | --- |
-| API-GH-001 | GET | `/gh/capabilities` | capability manifest 조회·검색. 분류 상태와 호스트 지원 여부 포함 | 인증 | FR-GH-001, FR-GH-011, FR-GH-013 |
+| API-GH-001 | GET | `/gh/capabilities` | capability manifest 조회·검색. 분류 상태와 호스트 지원 여부 포함. CR-089: `commands[]`에 `composability`, 실행 정의에 `result_adapter`(구현 adapter)와 `result_contract` 요약(`kind`·`sensitivity`·`composability`·`bindable`·`resource_kind`) — 실행 정의의 `result`는 없어졌다 | 인증 | FR-GH-001, FR-GH-011, FR-GH-013 |
 | API-GH-002 | POST | `/gh/executions` | 명령 실행 요청. `Idempotency-Key` 헤더 필수(8~128자 `[A-Za-z0-9_-]`, 본문 `idempotency_key`도 받는다). **`POST /gh/executions/preview`**(CR-086)는 실행과 같은 준비 단계(중복 키·발행 제외)를 지나되 큐에 넣지 않고 argv·환경 키·유효 컨텍스트·`executable`·`blockers`를 낸다 | 인증 + 위임 신원 + 위험도 정책 | FR-GH-002, FR-GH-003, FR-GH-009 |
 | API-GH-003 | GET | `/gh/contexts/{scope}` | 대상 컨텍스트 해석 (저장소·브랜치·PR·이슈 선택자). **R0 구현은 `/gh/contexts/repositories`뿐**(등록·활성 저장소 ∩ 접근 범위, CR-086) | 인증 + 접근 범위 | FR-GH-004 |
 | API-GH-004 | GET/POST/PATCH | `/gh/recipes[/{id}]` | Recipe 정의 조회·저장·개정 | 인증 | FR-GH-005 |
@@ -76,12 +76,14 @@
 | API-GH-010 | GET | `/gh/executions` | 실행 이력 조회·필터. 본인 이력 기본, security_officer는 `?all=true`. `limit` 1..100(기본 50), `before` 실행 ID 키셋, 응답 `next_before`. **`GET /gh/executions/{id}`**(CR-086)는 상세이며 남의 실행은 404다 | 인증 | FR-GH-012 |
 | API-GH-011 | POST | `/gh/executions/{id}/cancel` | 실행 취소 | 인증 + 실행 소유자 또는 `operator` | FR-GH-006 |
 | API-GH-012 | POST | `/gh/executions/{id}/approve` | 승인 대기 실행의 승인·거부 | `operator` 또는 정책이 지정한 승인자 | FR-GH-009 |
-| API-GH-013 | GET | `/gh/registry` | 레지스트리 상태 (A-006, CR-088): 고정 gh 버전·바이너리 해시 기대값, manifest 판·해시·인벤토리 해시·생성 시각·해시 검증, 검증기·규칙 버전과 상태, 차원별 커버리지(`dimensions`)·게이트·실행 허용(`allowed` vs 코드 표 `definitions`)·findings 요약, 출처별 최신 검증 기록(`latest_by_source`)과 최근 10건(각각 적재 manifest 일치 여부 `matches_served_manifest`), 스냅숏 10건(`activated_at`·`is_served`), `host_verification`(`not_verified`). **검사를 돌리지 않고 저장된 기록을 읽는다.** 기록이 없으면 빈 배열이다 | `operator` 또는 `security_officer` | FR-GH-001, FR-GH-011, NFR-009 |
-| API-GH-014 | GET | `/gh/registry/commands/{id}` | command 분류 상세 (A-006, CR-088): 인벤토리(usage·별칭·flag·JSON 필드)·지원·실행·사유·위험·분류 전부(interaction·부작용·인증·입출력·결과 종류·민감도·호스트 확인·positional/flag별 컨트롤과 근거·note)·정의(실행을 여는 것만, 대부분 `null`). id는 `^[a-z0-9][a-z0-9.-]{0,79}$`가 아니면 400, manifest에 없으면 `GH_CAPABILITY_UNKNOWN`(404) | `operator` 또는 `security_officer` | FR-GH-001 AC-6, FR-GH-011 |
+| API-GH-013 | GET | `/gh/registry` | 레지스트리 상태 (A-006, CR-088): 고정 gh 버전·바이너리 해시 기대값, manifest 판·해시·인벤토리 해시·생성 시각·해시 검증, 검증기·규칙 버전과 상태, 차원별 커버리지(`dimensions`)·게이트·실행 허용(`allowed` vs 코드 표 `definitions`)·findings 요약, 출처별 최신 검증 기록(`latest_by_source`)과 최근 10건(각각 적재 manifest 일치 여부 `matches_served_manifest`), 스냅숏 10건(`activated_at`·`is_served`), `host_verification`(`not_verified`). **검사를 돌리지 않고 저장된 기록을 읽는다.** 기록이 없으면 빈 배열이다. CR-089: `contracts`(결과 계약 분류·composability 분포·출력/입력 port의 command 수와 port 수·구현 adapter·실행 허용·그래프 요약·실행 가능한 다단계 흐름·대상 GHES 확인 — 분모가 다른 수치를 합치지 않는다)·`gate_scope`·`validator.report_version`, 검증 기록마다 `report_version`·`contract_dimensions`(`verified` / `not_in_report_version`) | `operator` 또는 `security_officer` | FR-GH-001, FR-GH-011, NFR-009 |
+| API-GH-014 | GET | `/gh/registry/commands/{id}` | command 분류 상세 (A-006, CR-088): 인벤토리(usage·별칭·flag·JSON 필드)·지원·실행·사유·위험·분류 전부(interaction·부작용·인증·입출력·결과 종류·민감도·호스트 확인·positional/flag별 컨트롤과 근거·note)·정의(실행을 여는 것만, 대부분 `null`). id는 `^[a-z0-9][a-z0-9.-]{0,79}$`가 아니면 400, manifest에 없으면 `GH_CAPABILITY_UNKNOWN`(404). CR-089: `result_contract`(결과 계약 전부)와 `graph`(`outgoing`·`incoming`·`blocked`·`executable_flows: 0` — 간선마다 조건과 `execution.executable: false`·이유). 그룹·별칭 전용 노드는 둘 다 `null`이고, 실행 기록은 읽지 않는다 | `operator` 또는 `security_officer` | FR-GH-001 AC-6·AC-11·AC-12, FR-GH-011 |
 
-**R0 구현 계약 요약 (CR-086 / WP-077).** 열 개 라우트가 `apps/search-api/src/gh/routes.ts`에 있고 web 프록시가 `/api/gh/…`로 연다. 실행 요청 본문은 `{ capability_id, context: { repository: "owner/name" }, flags: { "--state": …, "--limit": … }, output: { json_fields: [...] } }`이며, 폼과 서버가 같은 `evaluateInvocation`으로 판정한다. 실행 뷰(`toExecutionView`)는 `FR-GH-012` AC-1의 항목(실행 ID·사용자·GitHub 행위자·호스트·저장소·capability·gh 버전·manifest 버전·해시·가려진 argv·환경 키·위험도·권한 판정·시각·종료 코드·출력 해시·상관 ID)에 typed 결과(`pr_list_v1`: `rows`·`row_count`·`possibly_more`·`stdout_truncated`)와 무해화된 발췌(`stdout`·`stderr`, `truncated`), `output_binary`, 요청 당시 `invocation`을 더한 것이다. 배포가 기능을 끄면(`GH_OPERATIONS_ENABLED=false`) 라우트가 등록되지 않아 404이며 화면은 그것을 「열리지 않았다」로 그린다. 같은 키의 재요청은 `GH_DUPLICATE_REQUEST`(409, `detail.execution_id`)이고 화면은 그 실행에 붙는다.
+**R0 구현 계약 요약 (CR-086 / WP-077).** 열 개 라우트가 `apps/search-api/src/gh/routes.ts`에 있고 web 프록시가 `/api/gh/…`로 연다. 실행 요청 본문은 `{ capability_id, context: { repository: "owner/name" }, flags: { "--state": …, "--limit": … }, output: { json_fields: [...] } }`이며, 폼과 서버가 같은 `evaluateInvocation`으로 판정한다. 실행 뷰(`toExecutionView`)는 `FR-GH-012` AC-1의 항목(실행 ID·사용자·GitHub 행위자·호스트·저장소·capability·gh 버전·manifest 버전·해시·가려진 argv·환경 키·위험도·권한 판정·시각·종료 코드·출력 해시·상관 ID)에 typed 결과(`pr_list_v1`: `rows`·`row_count`·`possibly_more`·`stdout_truncated` — CR-089부터 `pr_list_v2`, 아래 R1b)와 무해화된 발췌(`stdout`·`stderr`, `truncated`), `output_binary`, 요청 당시 `invocation`을 더한 것이다. 배포가 기능을 끄면(`GH_OPERATIONS_ENABLED=false`) 라우트가 등록되지 않아 404이며 화면은 그것을 「열리지 않았다」로 그린다. 같은 키의 재요청은 `GH_DUPLICATE_REQUEST`(409, `detail.execution_id`)이고 화면은 그 실행에 붙는다.
 
 **R1a 계약 추가 (CR-088 / WP-078).** `API-GH-001`의 `commands[]`에 분류 요약 셋 `interaction`·`side_effect`·`host_support`가 붙는다(옛 배포에는 없다 — 화면은 없으면 그리지 않는다). 정책 차단 command(`auth`·`alias`·`config`)의 `execution`은 `not_implemented`가 아니라 **`policy_blocked`**로 온다(manifest `r0.2`) — 「열지 않기로 했다」와 「아직 열지 않았다」를 바꿔 적지 않는다; `GH_CAPABILITY_NOT_EXECUTABLE`의 `detail.reason`도 그 값이다. 분류 전부는 `API-GH-014`가 낸다 — `API-GH-001`은 W-010이 매번 읽으므로 가볍게 둔다. `API-GH-013`·`014`는 `apps/search-api/src/gh/registry.ts`에 있고 라우트는 `routes.ts`가 `requireAnyRole(principal, ['operator', 'security_officer'])`로 닫는다. 실행 허용은 여전히 `pr.list` 하나이며, manifest의 `execution`을 `allowed`로 바꿔 적재해도 `prepare`는 코드 표에 정의가 없으면 `GH_CAPABILITY_NOT_EXECUTABLE`이다(통합 시험).
+
+**R1b 계약 추가 (CR-089 / WP-079).** `pr list`의 typed 결과가 **`pr_list_v2`**가 된다: 실행 뷰의 `result.kind`는 `resource_list`, 행의 `number`는 그 필드를 고르지 않았으면 `null`이고, `result.references`는 `{ port: 'pull_requests', type: 'pull_request', status: 'available' | 'unavailable', reason, refs: GhResourceRef[] }`다 — 참조의 `host`·`repository`는 재검증한 실행 컨텍스트이며 행의 `url`이 덮지 않는다. `number`를 골랐는데 양의 안전한 정수가 아니면 실행은 `failed`, 오류는 `result_parse_failed: invalid_identifier`다. 과거 `pr_list_v1` 기록은 그대로 내며 다시 해석하지 않는다(화면은 `references`가 없으면 참조 문구를 그리지 않는다). `API-GH-013`·`014`의 새 필드는 옛 배포의 응답에 없으므로 화면은 없으면 「옛 판」으로 말한다. 결과 계약·port·간선이 생겨도 실행 준비·실행기 재검증은 그것을 읽지 않는다 — 결과 계약이 있는 `pr.view`를 `allowed`로 바꿔 적재해도 `GH_CAPABILITY_NOT_EXECUTABLE`이다(통합 시험).
 
 ## 4. API 상세 규격
 

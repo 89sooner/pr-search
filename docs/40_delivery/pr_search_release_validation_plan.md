@@ -1,6 +1,6 @@
 # PR Search 릴리스 검증 계획
 
-> 상태: review | 버전: v0.10 | 갱신일: 2026-09-13
+> 상태: review | 버전: v0.11 | 갱신일: 2026-09-14
 
 CR-079: WP-074의 수용 시험은 [실행서](pr_search_wp074_execution.md) T01~T06·변이 목록이 정본이다. migration 왕복·실제 DB/ES/Redis/git·인증 세션 UI·이미지 런타임·read-only 측정 CLI가 필요하다. 단계별 상태를 계약 정정/구현/외부 실제 실행/사내 운영/WP-075로 구분한다. 직접 부재 증거 한계를 seed fixture로 숨기지 않는다. 이번 설계 세션에서 앱 시험과 후보 번들은 NOT RUN이다.
 
@@ -85,7 +85,7 @@ Profile A의 롤백은 `.env`의 `PRS_VERSION`을 이전 값으로 되돌리고 
 | 대비 | Conductor `checkContrast` | main 병합 | 예 |
 | 시각 회귀 | `pnpm test:e2e --visual` | main 병합 | 예 |
 | 성능 | `pnpm test:perf` | 주 1회 + 릴리스 | 예 |
-| 도메인 회귀 | `pnpm test:regression` | 주 1회 + 릴리스 | 예 |  <!-- WP-021이 이 계층을 세웠다 (CR-025, DEV-120) -->
+| 도메인 회귀 | `pnpm test:regression` | 매 PR·main push (CI integration 잡에서 `test:integration` 뒤 같은 서비스로 순차, CR-089) + 릴리스 | 예 |  <!-- WP-021이 이 계층을 세웠다 (CR-025, DEV-120) -->
 | 시크릿 스캔 | CI 잡 | 매 PR | 예 |
 | 의존성 취약점 | CI 잡 | 매 PR | 예 |
 
@@ -234,7 +234,7 @@ ACC-06이 묻는 "실제 저장소의 관계를 사람이 보았을 때 맞는�
 | GATE-GH-01 capability 커버리지 | NFR-009의 전 차원 분류 100% — command path, alias, positional, command 고유 flag, inherited/global flag, short alias, 반복 가능 flag, interaction 모드, 입출력 모드, `--json` 필드. 미분류 0 (CR-008) | NFR-009 |
 | GATE-GH-01b core/extension 분리 | core parity와 extension parity 수치를 분리 보고 (CR-008) | NFR-009, FR-GH-013 |
 | GATE-GH-01c 출력 안전 경계 | gh 출력에 ANSI CSI·OSC·제어 문자가 무해화되어 전달되고, 렌더링 경로에 원시 HTML이 0건 (CR-008) | NFR-010 |
-| GATE-GH-01d 결과 계약 커버리지 | 결과 계약·bindability·입출력 port·자원 타입·secret 출력 분류 각각 100%, 미분류 0 (CR-009) | NFR-009, FR-GH-001 |
+| GATE-GH-01d 결과 계약 커버리지 | 결과 계약·bindability·자원 타입·secret 출력(분모: leaf 전부)과 출력 port(분모: 바인딩 가능한 capability)·입력 port(분모: 대상 자원 자리를 가진 capability) 분류 각각 100%, 미분류 0. port 차원은 분모가 0이면 통과가 아니다 (CR-009, 분모 명시 CR-089) | NFR-009, FR-GH-001 |
 | GATE-GH-01e 조합 안전 | `secret` 결과 바인딩 0건, 상한 없는 fan-out 저장 0건, Recipe 그래프 순환 0건 (CR-009) | NFR-010, FR-GH-005 |
 | GATE-GH-02 드리프트 | 설치 gh와 커밋된 manifest가 일치. CI 검출 잡 통과 | NFR-009 |
 | GATE-GH-03 실행 격리 | shell 경유 0건, 비루트·읽기 전용 루트 FS 확인, workspace 격리 확인 | NFR-010 |
@@ -247,6 +247,8 @@ ACC-06이 묻는 "실제 저장소의 관계를 사람이 보았을 때 맞는�
 **R0 판정 (CR-086 / WP-077, 원장 6.83장).** 통과: `GATE-GH-01c`(출력 안전 경계 — gh-cli 단위·a11y·회귀 원시 HTML 0건), `GATE-GH-03`(실행 격리 — 회귀 spawn 한 곳·shell 0건, smoke 6절 비루트·읽기 전용), `GATE-GH-04`(비밀 취급 — 미리보기·이력·로그·argv에 토큰 0건, 통합 시험이 문자열로 확인), `GATE-GH-05`(권한 — 위임 토큰만, 설치 토큰 경로 없음), `GATE-GH-07`(멱등 — 보조 표 경합 시험·화면 이중 클릭). 미판정: `GATE-GH-01`·`01b`·`01d`·`01e`(분류 195건 미완, `DEV-657`), `GATE-GH-02`(드리프트 잡 미구현; 기동 시 gh 버전·해시·manifest 해시 대조만), `GATE-GH-06`(R0에 쓰기 실행이 없다), `GATE-GH-08`(성능 미측정 — 취소 3초만 통합 시험으로 확인). **REL-007 완료 판정은 열리지 않는다.**
 
 **R1a 판정 (CR-088 / WP-078, 원장 6.85장).** 통과로 바뀐 것: `GATE-GH-01`(NFR-009 본표 차원 — command path 196/196·alias 45/45·positional 164/164·command flag 1,034/1,034·inherited 312/312·short alias 625/625·반복 37/37·interaction 196/196·입출력 196/196·`--json` 707/707, 미분류 0 — `validate.test.ts`가 커밋된 manifest로 CI에서 건다), `GATE-GH-01b`(core 187 / extension plane 9 분리 보고), `GATE-GH-02`(실제 고정 gh 2.97.0의 인벤토리 해시·command·flag·JSON 필드가 manifest와 일치 — `integration/drift.test.ts`가 CI integration 잡에서 돈다; 운영에서는 실행기의 `JOB-GH-003`이 기동 시·하루 한 번 같은 검사를 기록한다). 여전히 미달·미판정: `GATE-GH-01d`(bindability·자원 타입 1/196, 입출력 port 분모 0 — 결과 종류·민감도만 196/196, `DEV-675`), `GATE-GH-01e`, `GATE-GH-06`, `GATE-GH-08`. 검증기의 전체 상태는 `incomplete`이며 CLI `gh:validate-capabilities`는 기본에서 종료 1이다(`--diagnostic`이면 0). 대상 GHES 지원 확인은 0건(`DEV-674`). **REL-007 완료 판정은 여전히 열리지 않는다.**
+
+**R1b 판정 (CR-089 / WP-079, 원장 6.86장).** 통과로 바뀐 것: `GATE-GH-01d` — 검증기 보고서 판 `r2`에서 결과 계약 196/196·bindability 196/196·자원 타입 196/196·secret 출력 196/196·출력 port 32/32(바인딩 가능한 capability, 출력 port 36개)·입력 port 80/80(대상 자원 자리를 가진 capability, 입력 port 81개), 미분류 0. 차원마다 「분류됨」은 결과 계약 완전성 검사(`contract-checks.ts`)에서 그 차원의 문제가 0건이라는 뜻이고, 검증기는 인벤토리에서 계약을 다시 만들어 저장값과 대조한다 — `validate.test.ts`가 커밋된 manifest로 CI에서 건다(port를 지워 분모 줄이기·모두를 비바인딩으로 적어 분모 0 만들기·비밀이 흐르게 적기·구현 adapter 위조가 각각의 코드로 잡힌다). 검증기 전체 상태는 `passed`이며 CLI `gh:validate-capabilities`는 기본에서 종료 0이다. **이 통과는 REL-007 완료가 아니다**: 실행 허용은 `pr.list` 하나, 구현된 결과 adapter는 `pr_list_v2` 하나이고, 타입상 호환 간선 398(전부 조건부)은 실행 승인이 아니며 실행 가능한 다단계 흐름은 0이다. 여전히 미달·미판정: `GATE-GH-01e`(Recipe가 없어 판정할 대상이 없다), `GATE-GH-06`, `GATE-GH-08`, 대상 GHES 지원 확인 0건(`DEV-674`). 스냅숏은 검사가 `passed`여도 활성화하지 않는다(`DEV-685`). 도메인 회귀가 이 판부터 CI integration 잡에서 돈다(`DEV-686`). **REL-007 완료 판정은 여전히 열리지 않는다.**
 
 ### 10.2 정확성 검증 (ACC-09~ACC-14)
 

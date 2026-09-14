@@ -4120,10 +4120,50 @@ describe('REL-007 R0: GitHub Operations Plane이 배포에서 실제로 돈다 (
       coverage: { executableCommands: number; leafCommands: number; unclassifiedLeafCommands: number };
       commands: { execution: string; id: string; group: boolean }[];
     };
-    expect(manifest.manifestVersion).toBe('r0.2');
+    expect(manifest.manifestVersion).toBe('r0.3');
     expect(manifest.coverage.executableCommands).toBe(1);
     expect(manifest.commands.filter((command) => command.execution === 'allowed').map((command) => command.id)).toEqual(['pr.list']);
     expect(manifest.coverage.unclassifiedLeafCommands).toBe(0);
+  });
+
+  /*
+   * CR-089 — 결과 계약·typed port·바인딩·그래프 (WP-079). 아래 넷은 「의미 계약이 생겼다고 실행이 넓어지지 않는다」·
+   * 「바인딩 평가를 요청 경로에 두지 않았다(다단계 실행 0)」·「A-006이 실행 결과 원문의 통로가 아니다」·「회귀 시험이
+   * CI에서 실제로 돈다」를 건다.
+   */
+  it('CR-089: 실행 경로(prepare·실행기 재검증)는 결과 계약·port·바인딩·그래프를 읽지 않는다 — 실행 허용은 코드 표뿐이다', () => {
+    for (const file of ['apps/search-api/src/gh/executions.ts', 'apps/gh-executor/src/runner.ts']) {
+      const source = read(file);
+      expect(source, file).toMatch(/findCapability\(/);
+      expect(source, file).not.toMatch(/classification\??\.result|outputPorts?\b|inputPorts|resultAdapter|evaluateBinding|judgePortCompatibility|computeCapabilityGraph|composability/);
+    }
+  });
+
+  it('CR-089: 바인딩 평가(evaluateBinding)는 어느 앱의 제품 코드에도 없다 — 호환 판정을 실행 승인으로 쓰는 길이 없다', () => {
+    // 앱 다섯 전부의 제품 코드 — ingest-gateway도 실행 경로와 무관하지만 「어느 앱에도 없다」의 분모에 넣는다 (독립 검토 B).
+    const callers = ['apps/search-api/src', 'apps/gh-executor/src', 'apps/pipeline-worker/src', 'apps/ingest-gateway/src', 'apps/web/app', 'apps/web/lib', 'apps/web/components']
+      .flatMap(walk)
+      .filter((file) => !/\.test\.tsx?$/.test(file) && /evaluateBinding\(/.test(read(file)));
+    expect(callers).toEqual([]);
+  });
+
+  it('CR-089: A-006 조회(registry.ts)는 실행 기록을 읽지 않는다 — 다른 사용자의 결과 원문이 이 경로로 나가지 않는다', () => {
+    // 주석을 걷어 낸 코드만 본다 — 문서 주석이 「`gh_execution`을 읽지 않는다」고 말하는 것은 읽는 코드가 아니다.
+    const registry = read('apps/search-api/src/gh/registry.ts').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    expect(registry).not.toMatch(/ghExecutionRepo|gh_execution\b|stdout_excerpt|findVisibleExecution/);
+    expect(registry).toMatch(/result_contract:\s*command\.classification\?\.result/);
+  });
+
+  it('CR-089: 회귀 시험은 CI의 integration 잡에서 test:integration 뒤에 같은 서비스·환경으로 순차 실행된다', () => {
+    const ci = read('.github/workflows/ci.yml');
+    const verify = ci.slice(ci.indexOf('\n  verify:'), ci.indexOf('\n  integration:'));
+    const integration = ci.slice(ci.indexOf('\n  integration:'));
+    expect(integration).toMatch(/- name: test:integration\s+run: pnpm test:integration\s+(?:#[^\n]*\s+)*- name: test:regression\s+run: pnpm test:regression/);
+    expect(integration).toContain('POSTGRES_TEST_DB: prs_test');
+    expect(verify).not.toContain('test:regression');
+    // 러너·트리거·잡 구조는 그대로다 (결정자 지시).
+    expect(ci.match(/runs-on: ubuntu-latest/g)).toHaveLength(2);
+    expect(ci).toMatch(/on:\s+push:\s+branches: \[main\]\s+pull_request:/);
   });
 
   it('CR-088: 레지스트리 검사(JOB-GH-003)는 실행기가 기동 시 기다리고 주기로 돌리며 종료에서 닫고, 러너가 stale을 읽는다', () => {

@@ -174,7 +174,7 @@ describe('command 분류 — 표와 규칙이 합쳐진다', () => {
     jsonFields: ['number', 'title'],
   });
 
-  it('pr list: 표가 지원·읽기·R0·json을, 규칙이 flag 컨트롤과 입출력을 정한다', () => {
+  it('pr list: 표가 지원·읽기·R0·resource_list를, 규칙이 flag 컨트롤과 입출력을 정한다', () => {
     const classification = classifyCommand(prList);
     expect(classification).not.toBeNull();
     expect(classification).toMatchObject({
@@ -183,7 +183,8 @@ describe('command 분류 — 표와 규칙이 합쳐진다', () => {
       risk: 'R0',
       sideEffect: 'read',
       auth: 'token',
-      resultKind: 'json',
+      // CR-089: `--json` 결과가 PR을 식별하므로 주 종류는 resource_list다(결과 계약의 kind와 같다).
+      resultKind: 'resource_list',
       sensitivity: 'internal',
       hostSupport: 'unverified',
     });
@@ -198,6 +199,18 @@ describe('command 분류 — 표와 규칙이 합쳐진다', () => {
     ]);
     expect(classification?.notes.join(' ')).toContain('--web');
     expect(classification?.basis).toMatchObject({ source: 'override', rule: 'commands-table' });
+    // 결과 계약도 같은 함수가 만든다 — JSON 모드의 number가 인벤토리에 있어야 출력 port가 생긴다.
+    expect(classification?.result).toMatchObject({ kind: 'resource_list', composability: 'partially_bindable', resourceKind: 'pull_request' });
+    expect(classification?.result?.outputs.map((output) => output.mode)).toEqual(['text', 'json', 'web']);
+  });
+
+  it('JSON FIELDS가 없는 `--json`(workflow run의 입력 flag)은 출력 모드가 아니고, JSON 출력이 없는 `--template`도 출력 모드가 아니다', () => {
+    const workflowRun = classifyCommand(
+      command(['workflow', 'run'], { usage: 'gh workflow run [<workflow-id> | <workflow-name>] [flags]', flags: [flag('json', { valueType: null, description: 'Read workflow inputs as JSON via STDIN' })] }),
+    );
+    expect(workflowRun?.io.outputFormats).toEqual(['text']);
+    const prCreate = classifyCommand(command(['pr', 'create'], { flags: [flag('template', { short: 'T', valueType: 'file', description: 'Template file to use as starting body text' })] }));
+    expect(prCreate?.io.outputFormats).toEqual(['text']);
   });
 
   it('표에 없는 leaf는 unknown으로 남고 flag·positional 규칙만 적용된다', () => {
