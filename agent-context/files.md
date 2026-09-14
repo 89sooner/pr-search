@@ -1,4 +1,31 @@
 # 중요 파일 경로와 역할
+## 2026-09-14 (6차) 라운드가 만들거나 만진 것 (CR-090, PR #188 — 81 파일)
+
+### 코드 (새 파일)
+
+- `packages/gh-cli/src/{registry-policy,registry-cadence}.ts`(+ `registry-policy.test.ts`) — 실행 판정 `decideExecution`, 승인 자격 `evaluateApprovalEligibility`, 보고서 판 해석기, 신선도 한도 계산.
+- `packages/db/migrations/030_gh_operations_policy.{up,down}.sql` — 정책 표·이력 표·`gh_operations_policy_apply`·검증 기록 `scope`·`gh_execution.policy_revision`·가드 트리거. `packages/db/src/repositories/gh-policy.ts`(+ `integration/gh-policy.test.ts`).
+- `apps/search-api/src/gh/policy.ts` — 조회·변경·수락 게이트. 시험 `integration/gh/policy-routes.test.ts`·`policy-fixtures.ts`.
+- `apps/gh-executor/integration/{policy-flow.test.ts,policy-helpers.ts}` — 결정자 지시서 1장 흐름을 실제 gh로.
+- web: `app/ops/gh-policy/page.tsx`, `components/{GhRegistryApprovalPanel,GhPolicyView,GhPolicyShared,GhExecutionGateBanner}.tsx`, `lib/{gh-policy,gh-policy-fixtures}.ts`(+ `lib/gh-policy.test.ts`, `a11y/gh-policy.test.tsx`, `e2e/gh-policy.spec.ts`).
+
+### 코드 (고친 것)
+
+- 실행기 `src/{runner,registry-check,index}.ts`(claim 트랜잭션·`lastPassedAt`·검사기 상태 배선), search-api `src/gh/{executions,registry,routes}.ts`, `packages/db/src/{advisory-lock,index}.ts`·`repositories/{gh-execution,gh-registry,index}.ts`, `packages/contracts/src/error-codes.ts`(오류 코드 넷), `packages/domain/src/audit.ts`(감사 액션 넷), `packages/gh-cli/src/{index,inventory}.ts`.
+- web `lib/{gh,gh-registry,nav,proxy}.ts`(프록시 `idempotency-key` — `DEV-690`), `components/{GhCommandCenterView,GhExecutionPreview}.tsx`, `app/ops/gh-registry/page.tsx`.
+- 시험: 실행기 `integration/{executor,registry-check}.test.ts`, search-api `integration/gh/{registry,routes}.test.ts`·`src/{runtime,gh/executions}.test.ts`, DB `integration/{gh-registry-schema,gh-schema,merge-number-schema}.test.ts`, web `lib/{nav,proxy}.test.ts`, `regression/runtime-reachability.test.ts`(CR-088 배선 이전·CR-090 셋).
+
+### 문서 (23개 + 런북)
+
+- SRS v2.28, PRD v1.12, 용어집 v0.10, 추적 매트릭스 v1.7, 파생 UI(브리프 v0.9·IA v0.6·흐름 v0.8·QA v0.18·상태 매트릭스 v0.18·와이어프레임 v0.19), 아키텍처(API 계약 v0.30·ADR v0.11·비동기 v0.14·백엔드 v0.10·데이터 모델 v0.24·프런트엔드 v0.7·인프라 v0.18·관측성 v0.6·보안 v1.10), delivery(로드맵 v0.21·원장 v6.76·검증 계획 v0.12·작업 패키지 v2.32), change_control(CR-090 행·cascade 절), `deploy/single-host/RUNBOOK.md`(업그레이드·7.C·증상 표). 후속 기록 PR이 원장·작업 패키지 판을 한 단계 더 올린다.
+
+### 저장소 밖 (scratchpad, 무시 대상 — /tmp라 재부팅에 사라진다)
+
+- `66c6e4d6` scratchpad: `DESIGN.md`·`PROGRESS.md`, `compose.approval.yml`(격리 서비스), `exp/db-experiments.{mjs,log}`(E1~E5), `validator-before.txt`.
+- `acd5a0d8` scratchpad: `directive-cr090.md`(지시서 전문), `RESUME.md`, `edit.mjs`(개행 보존 편집기)·`docspec/*.mjs`, `mutation/{mutations,run}.mjs`·`run*.log`(변이 31), `oldapp/`(`git archive 26e2627` + 롤백 A·C 시험), `logs/battery/`(1회차), `cr089-cleanup/`(bundle·실측), 조사 결과 셋.
+- `e0a2c7af` scratchpad: `restore/restore-smoke.sh`·로그 세 회차, `images-final.sh`·`logs/{images,smoke-images,web-ssr,rollback}-final.log`, `battery-final.sh`·`logs/battery-final/`, `docspec2/*.mjs`, `pr-body.md`·`merge-body.txt`, `ci/`(잡 로그), `RESUME.md`, `final-report-draft.md`.
+- 고정 gh `/tmp/prs-pinned-gh/2.97.0/gh`(sha256 `141507c3…c409`). 격리 서비스 `prs-approval-{postgres 55438, redis 56383, elasticsearch 59204}`(볼륨 `prs-approval_approval-*`). 이미지 `prs/{db,search-api,pipeline-worker,gh-executor,web}:cr090-verify`(f2e9a00)·`:cr090-final`(9bb981d).
+
 ## 2026-09-14 (5차) 라운드가 만들거나 만진 것 (CR-089, PR #186 — 70 파일)
 
 ### 코드 (새 파일)

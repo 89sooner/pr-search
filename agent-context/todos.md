@@ -1,27 +1,70 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
-최신 기준 (**2026-09-14 5차 · CR-089 병합(`99d53d3`, PR #186) · 병합 커밋 main CI run `34813159209` attempt 1 success(verify·integration — 회귀 481) · 후속 기록 PR은 이 갱신을 담아 올라간다**)
+최신 기준 (**2026-09-14 6차 · CR-090 병합(`9c8a781`, PR #188) · 병합 커밋 main CI run `34854308135` attempt 1 success(verify·integration — 회귀 484) · 후속 기록 PR은 이 갱신을 담아 올라간다**)
 
-**main은 `99d53d3` 뒤에 후속 기록 PR이 병합된 상태여야 한다. 실측하라**(`git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`). 이 갱신을 담은 후속 PR의 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 `git log`로 읽는다.
+**main은 `9c8a781` 뒤에 후속 기록 PR이 병합된 상태여야 한다. 실측하라**(`git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`). 이 갱신을 담은 후속 PR의 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 `git log`로 읽는다.
 
 ## 먼저 할 것 (결정자 확인이 필요하다)
 
-1. [ ] REL-007 다음 판의 순서를 받는다. 남은 완료 조건은 아래 5차 절이다(`GATE-GH-01e`·`06`·`08`, 사내 GHES 확인 `DEV-674`, 스냅숏 활성화 조건 `DEV-685`).
-2. [ ] 이전 판의 병합된 기능 브랜치(`feature/rel007-capability-registry`·`fix/main-ci-s0-flaky`, 로컬·원격)와 `feature/rel007-r0-pr-list` 원격을 지울지 정한다. squash 병합이라 `git branch --merged main`에는 잡히지 않는다. 이 판의 두 브랜치는 5차 절의 정리 대상이다.
-3. [ ] 착수할 때 새 번호를 main에서 다시 잰다. 2026-09-14 5차 기준 가장 큰 ID는 CR-089 · DEV-689 · WP-079 · QA-GH-46 · OD-009 · ADR-023이다. 병렬 세션이 있으면 채번 현황을 묻는다.
+1. [ ] REL-007 다음 판의 순서를 받는다. 남은 완료 조건은 아래 6차 절이다(`GATE-GH-01e`·`06`·`08`, 사내 GHES 확인 `DEV-674`). 스냅숏 활성화 조건(`DEV-685`)은 CR-090이 운영 승인으로 종결했다.
+2. [ ] 이전 판의 병합된 기능 브랜치(`feature/rel007-capability-registry`·`fix/main-ci-s0-flaky`, 로컬·원격)와 `feature/rel007-r0-pr-list` 원격을 지울지 정한다. squash 병합이라 `git branch --merged main`에는 잡히지 않는다. CR-089·CR-090이 만든 브랜치는 6차 절의 정리 대상이다.
+3. [ ] 착수할 때 새 번호를 main에서 다시 잰다. 2026-09-14 6차 기준 가장 큰 ID는 CR-090 · DEV-693 · WP-080 · QA-GH-49 · OD-009 · ADR-023 · THR-051 · RB-26 · ENT-GH-014이다. 병렬 세션이 있으면 채번 현황을 묻는다.
+
+## 2026-09-14 (6차) — CR-090 뒤에 남은 것
+
+### 후속 (병합 뒤)
+
+- [ ] 후속 원장·handoff PR(`docs/cr-090-merge-record`)이 병합됐는지 실측한다 — 원장 3장 커밋/PR 열·6.87장 PR CI·병합·main CI, WP-080 done, CR-090 closed, agent-context 6차 절과 handoff pack을 담는다.
+- [ ] 이 판이 만든 자원의 정리를 사용자가 정한다 — 격리 서비스 `prs-approval-{postgres,redis,elasticsearch}`(볼륨 `prs-approval_approval-*`), 작업 트리 `/home/roqkf/pr-search-wt/approval`·`/home/roqkf/pr-search-wt/cr090-record`, 병합된 브랜치 `feature/rel007-registry-approval`·`docs/cr-090-merge-record`(로컬·원격), 이미지 `prs/*:cr090-verify`·`prs/*:cr090-final`. 실측: `git worktree list`·`docker ps -a`·`docker images 'prs/*'`·`git ls-remote --heads origin`.
+- [ ] CR-089 자원(작업 트리 `/home/roqkf/pr-search-wt/contracts`, 브랜치 `feature/rel007-result-contracts`·`docs/cr-089-merge-record`)은 2026-09-14 정리 시도가 권한 시스템에 거절돼 남아 있다. 내용은 squash 병합(`99d53d3`·`26e2627`)과 트리가 같고 bundle을 떠 두었다(`/tmp`, 휘발). 사용자가 직접 정리할지 정한다 — 에이전트는 다시 시도하거나 우회하지 않는다.
+
+### 사내 반입 전 (사용자)
+
+1. 병합된 main에서 반입 번들을 만든다 — 이 판은 release·tag를 발행하지 않았다.
+2. `./prsctl upgrade`로 마이그레이션 030을 적용하고, DB에서 `select has_schema_privilege('prs_app', 'public', 'CREATE')`가 `f`인지 본다.
+3. Operations를 켠 배포는 `./prsctl health`에서 실행기 기동 검사 통과를 본 뒤 `operator`로 A-006에서 근거를 확인하고 **최초 운영 승인**을 한다. 승인 전까지 실행은 `GH_ADMIN_ACTION_REQUIRED`다.
+4. 한 사용자·한 저장소로 `pr.list` 실행 → 차단 → 거절 확인 → 재개 → 새 실행을 본다(런북 7.C 4단계).
+5. 이전 앱으로 되돌릴 때는 먼저 `GH_OPERATIONS_ENABLED=false`로 끈다. 030을 내리는 것은 반드시 끈 뒤다.
+
+### REL-007 완료를 막는 것 (결정자가 순서를 정함)
+
+1. `GATE-GH-01e` 조합 안전 — Recipe 저장이 생겨야 판정 대상이 있다(`WP-058`).
+2. `GATE-GH-06` 쓰기 실행 감사·승인(R1 흐름), `GATE-GH-08` 성능 측정. CR-090의 내부 정책 감사 시험은 `06`의 증거가 아니다.
+3. 사내 GHES 지원 확인(`DEV-674`) — 사내에서만.
+
+### WP-059의 남은 부분 (CR-090은 A-005 최소·A-006 운영 승인만 당겼다)
+
+- 완료 기준 둘: 설치 gh 버전과 manifest 버전이 다르면 새 command 실행 차단, 확장 허용 목록에 추가한 확장만 실행.
+- A-005 나머지: 위험도 재정의, 승인 필요 지정, `gh api` 엔드포인트 정책, 확장 허용 목록.
+
+### 고치지 않기로 한 note (독립 검토)
+
+- search-api가 정책 변경의 잠금 대기 초과 503을 로그·지표로 남기지 않는다.
+- 실행기 지표 `gh_execution_total{result="policy_unavailable"}`가 정책 읽기 실패와 잠금 대기 초과를 합친다(로그 `reason`으로 가른다). claim 행 잠금 경합의 55P03도 같은 이름을 받을 수 있다.
+- 기존 스위퍼의 머리 막힘 — 계속 던지는 오류가 가장 오래된 대기 행에 있으면 그 회차가 멈춘다(이 판이 만든 것이 아니다).
+- `checked_at`(트랜잭션 시작 시각) 정렬의 동률 역전 — 실행을 여는 쪽으로 뒤집히지 않는다.
+- `action`이 없거나 알 수 없는 정책 변경 거절은 감사하지 않는다(정본 어휘 밖 액션을 만들지 않는다).
+
+### 열린 편차
+
+- `DEV-691` — CSRF 토큰 체계가 없다(모든 쓰기 API). 새 정책 변경 경로만 JSON 본문 전용으로 보완했다.
+
+### 사내에서만 할 수 있는 것
+
+- 실제 GHES에서 실행기 기동 검사·A-006 근거·운영 승인·`pr.list` 실행·차단·재개, 대상 GHES 지원 확인(`DEV-674`), 운영 DB 권한 확인.
 
 ## 2026-09-14 (5차) — CR-089 뒤에 남은 것
 
 ### 후속 (병합 뒤)
 
-- [ ] 후속 원장·handoff PR(`docs/cr-089-merge-record`)이 병합됐는지 실측한다 — 원장 3장 커밋/PR 열·6.86장 PR CI·병합·main CI, WP-079 done, CR-089 closed, agent-context 5차 절과 handoff pack을 담는다
-- [ ] 이 판이 만든 자원의 정리 여부를 실측한다 — 격리 서비스 `prs-contracts-*`(볼륨 `contracts-*`), 작업 트리 `/home/roqkf/pr-search-wt/contracts`, 병합된 브랜치 `feature/rel007-result-contracts`·`docs/cr-089-merge-record`(`git worktree list`·`docker ps -a`·`git ls-remote --heads origin`)
+- [x] 후속 원장·handoff PR(`docs/cr-089-merge-record`)이 병합됐는지 실측한다(6차: #187 `26e2627` 병합 확인) — 원장 3장 커밋/PR 열·6.86장 PR CI·병합·main CI, WP-079 done, CR-089 closed, agent-context 5차 절과 handoff pack을 담는다
+- [ ] 이 판이 만든 자원의 정리 여부를 실측한다(6차 실측: 격리 서비스·볼륨은 없고, 작업 트리와 브랜치 둘은 정리 시도가 권한 시스템에 거절돼 남았다 — 6차 절) — 격리 서비스 `prs-contracts-*`(볼륨 `contracts-*`), 작업 트리 `/home/roqkf/pr-search-wt/contracts`, 병합된 브랜치 `feature/rel007-result-contracts`·`docs/cr-089-merge-record`(`git worktree list`·`docker ps -a`·`git ls-remote --heads origin`)
 
 ### REL-007 완료를 막는 것 (결정자가 순서를 정함)
 
 1. `GATE-GH-01e` 조합 안전 — Recipe 저장이 생겨야 판정 대상이 있다(`WP-058`).
 2. `GATE-GH-06` 쓰기 실행 감사·승인(R1 흐름), `GATE-GH-08` 성능 측정.
 3. 사내 GHES 지원 확인(`DEV-674`) — 사내에서만.
-4. 스냅숏 활성화 절차와 조건에 결과 계약 차원 반영(`DEV-685`, WP-059).
+4. 스냅숏 활성화 절차와 조건에 결과 계약 차원 반영(`DEV-685`, WP-059) — 6차: CR-090(PR #188)이 운영 승인으로 종결했다.
 
 ### WP-066의 남은 부분
 

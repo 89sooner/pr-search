@@ -1,8 +1,20 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=193256f17492cc466c0e36b059eb412523ac2b9a6137d51e0a83b1e5bad10e6c bytes=204890 lines=2726 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;origin/main;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000;3/3;home/roqkf/pr-search-wt/cap;1/2
+@kv sha256=3296dae0aadcfb017ad99e71ee70cdeaa063725487b41c7d187cfc142103102c bytes=207614 lines=2740 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000;3/3;home/roqkf/pr-search-wt/cap
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-14 (6차) 라운드가 배운 함정 (CR-090)
+@b /clear 뒤에도 백그라운드 에이전트는 돈다. 이어 쓰는 전사는 새 세션의 subagents/에 쌓이고 완료 알림은 새 대화로 온다. 옛 jsonl이 멈춰 보여도 끝난 것이 아니다 — 다시 띄우기 전에 새 세션 쪽 수정 시각을 본다.
+@b 검토 에이전트는 턴 한도에서 발견 사항 없이 멈출 수 있다. 결과가 「partial」이면 「지적 없음」이 아니다. 같은 에이전트에 이어서 끝내라고 보내고, 도구 사용 예산(예: 15회 안쪽 뒤 보고)과 남은 우선순위를 준다.
+@b 이미지는 빌드한 커밋의 코드다. 검토 반영처럼 migration·서버 코드가 바뀌면 이미지를 다시 빌드하고 smoke·SSR·롤백 실측을 되풀이한다 — 옛 태그의 통과는 새 코드의 증거가 아니다.
+@b 가드 트리거는 월 파티션마다 복제되고, prs_app은 파티션에 직접 쓸 권한이 없다. 카탈로그를 셀 때 부모만 세면 틀린다.
+@b pg_restore 문서는 전체 복원의 적재 순서를 보장 문장으로 적지 않는다. 공식인 것은 「트리거·검증 안 된 CHECK는 post-data 절」까지다. 데이터가 트리거보다 먼저 들어간다는 것은 관측이므로 PostgreSQL 주 판이 바뀌면 복원을 다시 잰다.
+@b PostgreSQL 15의 public CREATE 제거는 새 DB에만 적용된다. 업그레이드한 클러스터·복원한 덤프는 옛 권한을 유지한다 — 운영 DB는 has_schema_privilege('prs_app', 'public', 'CREATE')로 확인한다(런북 7.C 4단계).
+@b search-api는 Fastify logger: false이고 처리하지 않은 오류를 로그로 남기지 않는다. 정책 변경 500의 원인(예: audit_record 파티션 없음)은 PostgreSQL 로그에서 본다.
+@path 정책 변경 경로의 DB 오류는 500이지 503이 아니다. 503은 호스트 미구성과 잠금 대기 초과뿐이고, 조회(GET /gh/policies)는 정책을 못 읽으면 503이다 — 문서가 한때 반대로 적었다.
+@b 카탈로그 비교가 빈 결과끼리 같으면 PASS가 무효다. 비교 전에 기대 사실이 실제로 있는지(개수)를 따로 단언한다.
+@path 새 워크트리를 git worktree add -b <branch> <path> origin/main으로 만들면 upstream이 main이 된다. 곧바로 --unset-upstream하고, push는 origin <branch>:<branch>로 적는다(5차에도 같은 함정).
+@b 격리 서비스 환경 변수 없이 돌린 회귀는 DB가 필요한 파일에서 실패한다. 4차에 적은 함정을 문서 시험 재실행에서 다시 밟았다 — 문서를 읽는 시험도 배터리와 같은 환경으로 돌린다.
 @h2 2026-09-14 (5차) 라운드가 배운 함정 (CR-089)
 @path export 전사는 긴 사용자 메시지를 접는다. 「354 lines hidden」 — 지시서 4~14장이 전사에 없었다. 세션 jsonl(~/.claude/projects/<proj>/<session>.jsonl)에서 사용자 메시지 원문을 뽑아 복원한다.
 @b CRLF 작업 트리에서 sed -i의 $ 앵커는 조용히 안 맞고, 무변경이어도 파일을 다시 써 뒤따르는 Edit를 거부시킨다. 치환은 개행을 감지하고 기대값과 정확히 같을 때만 바꾸는 node 스크립트로.
