@@ -32,6 +32,9 @@ export * as teamMembershipRepo from './team-membership.js';
 export * as ghIdentityRepo from './gh-identity.js';
 /** gh 실행 기록 — 감사 축이자 상태 기계 (REL-007 R0 / WP-077, ENT-GH-002, CR-086). */
 export * as ghExecutionRepo from './gh-execution.js';
+/** 운영 승인·capability 차단의 현재 상태와 revision 이력 — 쓰기는 DB 함수로만 (REL-007 / WP-080, ENT-GH-013·014, CR-090). */
+export * as ghPolicyRepo from './gh-policy.js';
+export type { ApplyPolicyChangeInput, ApplyPolicyChangeResult, GhPolicyAction, GhPolicyRevisionRow, GhPolicyRow, PolicyChangeRejectionKind } from './gh-policy.js';
 
 export type {
   DeadLetterFilter,

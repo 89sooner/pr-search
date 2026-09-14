@@ -393,6 +393,8 @@ $EDITOR .env          # PRS_VERSION을 새 값으로 — **load보다 먼저다*
 
 **마이그레이션이 먼저다.** 하위 호환이므로 옛 코드가 새 스키마 위에서 돈다(데이터 모델 7장). 롤백은 `.env`의 `PRS_VERSION`을 이전 값으로 되돌리고 `./prsctl upgrade`를 다시 실행한다 — **이전 이미지가 로컬에 남아 있어야 하므로 번들을 지우지 마라.**
 
+**GitHub 작업을 켠 배포 (`CR-090`).** 마이그레이션 030을 받은 뒤에는 **관리자의 최초 운영 승인이 있어야** GitHub 작업이 실행된다 — 업그레이드 직후의 실행 요청은 「관리자 운영 승인이 필요합니다」로 거절되며, 이전 판의 실행 허용을 승계하지 않는다. 7.C 4단계를 한다. 030은 GitHub 작업 경로에 한해 옛 코드와 호환되지 않는다(의도) — 옛 앱의 실행 요청과 실행권 확정은 가드가 거절한다. 검색·수집·M 번호 경로는 영향을 받지 않는다. 롤백 전에는 7.C 「롤백할 때」를 본다.
+
 ---
 
 ## 4. 백업과 복구
@@ -798,7 +800,7 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 끈다. 어느 쪽도 이미 붙은 접두를 지우지 않는다 — 지우려면 사람이 PR 제목을 직접 고친다.
 
 
-### 7.C GitHub 작업(Operations App)을 켜기 (WP-077 / FR-GH-008 · FR-GH-012, `CR-086`)
+### 7.C GitHub 작업(Operations App)을 켜기 (WP-077 / FR-GH-008 · FR-GH-012, `CR-086` · 운영 승인 WP-080 / FR-GH-011, `CR-090`)
 
 **기본은 꺼짐이다.** 반입한 형상은 GitHub 작업 화면을 열지 않는다 — `/gh`에 들어가면 「이 배포에서는 GitHub 작업이 열리지 않았습니다」가 보이고 검색·조사 화면은 그대로다. 켜면 사용자가 자신의 GitHub 계정을 **위임**해 `gh pr list`를 격리된 실행기에서 돌리고 결과와 자기 이력을 본다. 이 판이 여는 명령은 그것 하나이며 **읽기 전용**이다 — 7.B와 달리 GHE를 고치지 않는다.
 
@@ -818,10 +820,23 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 
    봉인 키는 한 번 만들면 바꾸지 않는다 — 바꾸면 기존 봉인을 풀 수 없어 모든 사용자가 다시 연결해야 한다. `GHE_OPS_REDIRECT_URI`는 App에 등록한 값과 **문자 그대로** 같아야 한다. 사설 CA를 쓰면 6장의 CA 파일을 `gh-executor`에도 같은 경로로 마운트한다(6장 표).
 3. **`./prsctl upgrade`를 돌린다.** `prsctl`이 `.env`의 `GH_OPERATIONS_ENABLED=true`를 읽어 `gh-executor` 프로파일(`github-operations`)을 함께 세운다. `prsctl`은 `.env`를 따로 해석하지 않고 compose가 렌더한 search-api의 값을 그대로 읽으므로, compose가 받아들이는 형태(따옴표·주석·`export`·공백)면 무엇이든 같은 답이다. `TRUE`·`yes`는 두 서비스가 거부하므로 `prsctl`도 거부한다(`DEV-664`). 켠 직후 `worker-batch`가 기동 첫 회차에서 `gh_execution`의 월 파티션을 만든다 — `./prsctl health`가 초록이 된 뒤에 4단계를 한다(`DEV-668`). `./prsctl health`가 `gh-executor /healthz … "execution":"enabled"`를 내야 한다. search-api만 켜지고 실행기가 없으면 요청이 영원히 `대기 중`이다 — `health`가 그 어긋남을 빨갛게 낸다.
-4. **한 사용자로 확인한다.** 로그인 → 좌측 「GitHub 작업」 → 「GitHub 계정 연결」 → GHE 인가 화면 → 돌아오면 「연결됨 @<login>」 → 저장소 선택 → 미리보기에 `gh pr list --repo <host>/<owner>/<repo> --state open --limit 30 --json …`이 보이면 「실행」 → 결과 표 → 「실행 이력」에 행이 남는다. 「같은 구성으로 다시 실행」은 새 미리보기를 만들 뿐 실행하지 않는다.
-5. **외부에서 못 본 것을 확인한다 (원장 6.83장).** (a) 실제 GHE 인가 왕복이 성립하는가 (b) `gh pr list`가 GHES에 붙는가 — 실패하면 실행 패널의 「표준 오류」를 편다 (c) 사설 CA가 gh에 닿는가 (d) GHES의 user-to-server 토큰 만료 설정.
+4. **운영자가 현재 배포 정의를 운영 승인한다 (`CR-090`).** 마이그레이션 030부터 **`GH_OPERATIONS_ENABLED=true`만으로는 실행되지 않는다** — 운영자가 이 배포의 gh capability 정의를 승인하기 전의 실행 요청은 「관리자 운영 승인이 필요합니다」로 거절되고, 이전 판에서 열려 있던 실행도 승계하지 않는다.
+   1. `./prsctl health`에서 `gh-executor /healthz`의 `registry.status`가 `passed`이고 `registry.lastPassedAt`이 방금 시각인지 본다 — 실행기 기동 검사가 끝나야 승인 근거가 생긴다. 처음 켤 때 한 번은 DB에서 `select has_schema_privilege('prs_app', 'public', 'CREATE')`가 `f`인지도 본다 — 운영 정책 함수가 기대는 권한 경계다(보안 10.6). PostgreSQL 15보다 오래된 판에서 만든 DB를 올렸거나 그런 덤프를 복원했다면 `t`일 수 있으며, 그때는 승인하기 전에 DB 관리자와 `public` 스키마의 `PUBLIC` CREATE 권한을 정리한다.
+   2. `operator` 역할로 로그인해 좌측 「운영 › gh 레지스트리」(A-006)의 **운영 승인** 패널을 연다. 「현재 적재된 정의와 운영 승인된 정의」에서 gh 버전·manifest 판·해시를, 「최근 실행기 검사」에서 기록 번호·시각·상태 `passed`·보고서 판·근거 유효 기한을 확인한다. 「승인 자격」에 사유가 있으면 그것부터 해소한다(아래 증상 표).
+   3. 「승인 미리보기」를 열어 적용 대상(이 배포 범위)·승인할 정의·근거 기록·게이트 결과·**실제로 열리는 기능(`gh pr list` 한 개)**·아직 허용되지 않는 기능·운영 영향을 읽고 사유를 적어 승인한다. 상태가 「현재 정의 운영 승인됨」이 되고 변경 이력에 revision이 남는다(감사 로그에는 `gh_registry.approve`).
+   4. 운영 승인은 **이 배포 범위의 현재 R0 정의에 대한 DB 결정**이다 — 무엇을 설치하지 않고, 196개 명령을 열지 않으며, 사내 GHES 지원 확인을 대신하지 않는다. `security_officer`만 가진 사용자는 조회만 한다.
+5. **한 사용자로 확인한다.** 로그인 → 좌측 「GitHub 작업」 → 「GitHub 계정 연결」 → GHE 인가 화면 → 돌아오면 「연결됨 @<login>」 → 저장소 선택 → 미리보기에 `gh pr list --repo <host>/<owner>/<repo> --state open --limit 30 --json …`이 보이면 「실행」 → 결과 표 → 「실행 이력」에 행이 남는다. 「같은 구성으로 다시 실행」은 새 미리보기를 만들 뿐 실행하지 않는다. 운영 승인 전이면 저장소를 고른 뒤 미리보기에 「관리자 운영 승인이 필요합니다」가 보이고 실행 버튼이 꺼진다.
+6. **외부에서 못 본 것을 확인한다 (원장 6.83장·6.87장).** (a) 실제 GHE 인가 왕복이 성립하는가 (b) `gh pr list`가 GHES에 붙는가 — 실패하면 실행 패널의 「표준 오류」를 편다 (c) 사설 CA가 gh에 닿는가 (d) GHES의 user-to-server 토큰 만료 설정.
 
 **끄는 방법.** `.env`의 `GH_OPERATIONS_ENABLED=false` → `./prsctl upgrade`. search-api가 `/gh/*`를 닫고(화면은 「열리지 않았다」로 돌아간다) 실행기 컨테이너가 사라진다. 마이그레이션 028은 되돌리지 않는다 — 실행 이력과 연결(봉인)은 남는다. 연결까지 지우려면 사용자가 화면에서 「연결 해제」를 하거나 운영자가 `github_identity_connection`·`gh_identity_secret`을 정리한다.
+
+**차단·재개 (A-005, `CR-090`).** 장애 대응 등으로 `gh pr list` 실행을 멈추려면 `operator`가 「운영 › gh 실행 정책」(A-005)에서 사유와 함께 **차단**한다. 차단이 커밋된 뒤의 새 요청과 아직 실행권을 받지 않은 대기 요청은 실행되지 않는다(사용자에게는 「관리자가 이 명령의 실행을 차단했습니다」). **이미 실행 중인 작업은 취소되지 않는다** — 필요하면 실행 이력에서 취소한다. **재개**는 같은 화면에서 명시적으로만 하며, 차단 중에 닫힌 요청은 다시 실행되지 않는다(사용자가 새로 요청한다). 차단은 기능 스위치(`GH_OPERATIONS_ENABLED`)와 달리 화면과 실행기를 그대로 두고 그 명령의 새 실행권만 막는다. 시험할 때는 한 사용자·한 저장소로 차단 → 실행 요청 거절 확인 → 재개 → 새 요청 실행 순서로 본다.
+
+**배포 정의가 바뀌면 다시 승인한다 (`CR-090`).** 새 번들로 업그레이드해 manifest나 gh가 바뀌면 이전 승인은 새 정의로 옮겨 가지 않는다 — A-006 상태가 「승인된 정의가 현재 정의와 다름 — 재승인 필요」가 되고 실행은 「관리자 운영 승인이 필요합니다」로 거절된다. 4단계를 새 정의로 다시 한다. 이전 스냅숏으로 자동으로 돌아가지도 않는다.
+
+**운영 승인 철회와 장애 대응 (`CR-090`).** 「운영 승인」 패널의 **철회**는 새 요청과 대기 요청의 실행을 멈춘다. 이미 수행한 GHE 조회를 되돌리지 않는다. 정책 상태를 읽지 못하면(마이그레이션 030 미적용·DB 장애) 새 실행은 `GH_POLICY_UNAVAILABLE`로 거절되고 대기 요청은 닫히지 않고 남는다 — 복구 뒤 실행기의 잔여 스윕이 현재 정책으로 다시 판정한다. 검색·수집·M 번호는 영향을 받지 않는다. 승인을 우회하려고 DB를 직접 고치지 않는다(관측성 문서 `RB-25`·`RB-26`).
+
+**롤백할 때 (`CR-090`).** 앱 이미지를 이전 판으로 되돌려도 030의 가드가 남아 옛 search-api의 실행 요청과 옛 실행기의 실행권 확정이 거절된다 — 실행이 조용히 다시 열리지 않는 대신 그 동안 GitHub 작업은 오류가 된다. 되돌리기 전에 `GH_OPERATIONS_ENABLED=false`로 끄는 것이 깨끗하다. **마이그레이션 030 자체를 내려야 한다면 반드시 먼저 끈다** — 030을 내리면 가드와 정책이 사라져 옛 앱의 실행이 다시 열린다. 내려도 스냅숏의 최초 승인 시각과 감사 행은 남고, 다시 올려도 승인은 되살아나지 않는다.
 
 **증상과 확인.**
 
@@ -829,10 +844,17 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 | --- | --- |
 | `/gh`가 「열리지 않았다」를 낸다 | `.env`의 `GH_OPERATIONS_ENABLED`가 `true`인가, 그 뒤 `./prsctl upgrade`를 돌렸는가 |
 | 실행이 `대기 중`에 머문다 | `./prsctl health` — 실행기가 서지 않았거나(`GH_OPERATIONS_ENABLED`가 한쪽만 켜짐), 실행기 로그의 `identity_unsealable`(두 서비스의 `GH_IDENTITY_VAULT_KEY`가 다르다) |
+| 실행이 「관리자 운영 승인이 필요합니다」로 거절된다 (`GH_ADMIN_ACTION_REQUIRED`) | 업그레이드·첫 켜기·배포 정의 변경 뒤의 정상 동작이다 — 4단계. A-006 「운영 승인」 상태가 승인 없음·철회·「승인된 정의가 현재 정의와 다름」 중 무엇인지 본다 (`CR-090`) |
+| 승인 버튼이 없거나 승인이 403이다 | 운영자(`operator`) 역할이 필요하다 — `security_officer`만으로는 조회만 한다 |
+| 「승인 자격」에 사유가 나온다 | 사유 목록대로 본다. 실행기 검증 기록이 없거나 오래됐으면 실행기가 서 있는지와 `/healthz`의 `registry.lastPassedAt`을 본다. 「최근 검사가 통과가 아님」·「다른 manifest」·「재현되지 않음」이면 search-api와 gh-executor의 이미지 버전(`PRS_VERSION`)이 같은지 확인하고 실행기를 다시 기동한다 |
+| 실행이 `GH_POLICY_UNAVAILABLE`(503)로 거절되고 A-005·A-006이 「읽지 못했다」를 낸다 | 마이그레이션 030 적용 여부(`prsctl migrate` 상태)와 DB 연결을 확인한다. 검색은 계속 동작한다 (`CR-090`) |
+| A-005·A-006의 차단·재개·승인·철회가 「운영 정책 상태를 읽지 못했습니다」로 끝나는데 화면의 정책 조회는 된다 | 다른 정책 변경이 정책 잠금을 10초 넘게 쥔 경우다(응답의 `detail.reason`이 `policy_lock_timeout`). 롤백돼 적용된 것이 없고 감사도 남지 않는다 — 화면을 새로 고쳐 revision을 확인한 뒤 다시 제출한다. 반복되면 DB에 오래 열린 트랜잭션이 있는지 본다 (관측성 `RB-26`, `CR-090`) |
+| 차단·승인이 「응답을 받지 못했습니다」로 끝나고 「다시 보내기」도 같다 | search-api는 이 오류를 로그로 남기지 않으므로 PostgreSQL 컨테이너 로그를 본다. `audit_record`에 맞는 파티션이 없다는 오류면 감사를 남기지 못해 변경도 커밋되지 않은 것이다(적용 감사는 변경과 같은 트랜잭션이다) — `select relname from pg_class where relname like 'audit_record_%'`로 이번 달 파티션을 확인하고, 없으면 파티션을 만드는 잡이 돌지 않은 것이므로 `worker-batch` 로그를 본다(아래 `store_failed` 항목과 같은 원인이다). 한 번 응답만 잃은 경우라면 「다시 보내기」가 같은 요청으로 결과를 확인한다 — 두 번 적용되지 않는다 (`CR-090`) |
+| 실행이 「관리자가 이 명령의 실행을 차단했습니다」로 거절된다 | 「운영 › gh 실행 정책」(A-005)에서 차단 사유·변경자·revision을 보고, 필요하면 운영자가 재개한다 (`CR-090`) |
 | 연결 직후 「GitHub 계정 연결에 실패했습니다」 | Callback URL이 App 등록값과 같은가, `GHE_OPS_REDIRECT_URI`가 그 값인가. 사유 코드는 search-api 로그(`Operations App 인가 콜백 실패`, `reason`)에만 있다 — 화면은 이유를 말하지 않는다 |
 | 실행이 `gh_auth_required`로 실패한다 | 위임 토큰이 GHE에서 거부됐다 — App 권한(`Pull requests: Read`)과 사용자의 저장소 권한을 확인한다. 연결을 해제하고 다시 인가한다 |
 | 실행이 `registry_stale`로 실패한다 | 둘 중 하나다. (1) search-api와 gh-executor의 이미지 버전이 다르다(manifest 해시·gh 버전 불일치) — 같은 `PRS_VERSION`으로 다시 세운다. (2) 실행기의 레지스트리 검사(JOB-GH-003, `CR-088`)가 드리프트·구조 실패를 확인해 실행을 거절하고 있다 — 웹의 「운영 › gh 레지스트리」(A-006)에서 실행기 마지막 검사의 결과와 diff를 보고, 실행기 로그의 `레지스트리 검사 실패`와 `/healthz`의 `registry.stale`을 확인한다. 검사는 기동 시와 하루에 한 번(`GH_EXECUTOR_REGISTRY_CHECK_MS`) 돈다 |
-| A-006이 「검증 기록이 없습니다」를 낸다 | 실행기가 아직 기동 검사를 기록하지 않았거나(기동 뒤 10초 안팎), 실행기 없이 search-api만 켜져 있거나, **마이그레이션 029가 적용되지 않아 기록이 실패**하고 있다(실행기 로그 `기동 레지스트리 검사를 기록하지 못했다`, 지표 `gh_registry_check_total{result="record_failed"}`). 기록이 실패해도 드리프트 판정은 유지되어 실행이 거절될 수 있다. `./prsctl health`와 `prsctl migrate` 상태를 확인한다. 기록은 `gh_capability_verification`(append-only)에 남는다 |
+| A-006이 「검증 기록이 없습니다」를 낸다 | 실행기가 아직 기동 검사를 기록하지 않았거나(기동 뒤 10초 안팎), 실행기 없이 search-api만 켜져 있거나, **마이그레이션 029(`CR-090`부터는 030도)가 적용되지 않아 기록이 실패**하고 있다(실행기 로그 `기동 레지스트리 검사를 기록하지 못했다`, 지표 `gh_registry_check_total{result="record_failed"}`). 기록이 실패해도 드리프트 판정은 유지되어 실행이 거절될 수 있다. `./prsctl health`와 `prsctl migrate` 상태를 확인한다. 기록은 `gh_capability_verification`(append-only)에 남는다 |
 | 드리프트 뒤 다시 검사하고 싶다 | 검사는 기동 시와 주기(`GH_EXECUTOR_REGISTRY_CHECK_MS`, 기본 1일)로만 돈다 — 손으로 부르는 API는 없다. 원인을 고친 뒤 실행기를 재기동하면 기동 검사가 다시 돈다(`./prsctl upgrade` 또는 `docker compose restart gh-executor`) |
 
 **레지스트리 검사를 손으로 돌리기 (`CR-088`).** 반입 전이나 조사 중에 같은 검사를 CLI로 돌릴 수 있다 — 저장소에서 `pnpm --filter @prs/gh-cli build` 뒤 `pnpm gh:validate-capabilities`(커밋된 manifest의 구조·분류·커버리지·실행 범위; 미분류가 남으면 종료 1, `--diagnostic`이면 0), `GH_PINNED_BIN=<gh 2.97.0 경로> pnpm gh:diff-capabilities`(설치된 gh와 manifest의 차이), `pnpm gh:inventory`(인벤토리 JSON). `--report <파일>`로 기계 판독 보고서를 남긴다. CLI는 DB에 기록하지 않는다 — 기록은 실행기만 남긴다.
@@ -892,4 +914,5 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 | 업그레이드 중 `load`가 `compose.yml: FAILED — checksum 불일치`로 멈춘다 | `prsctl load`는 내부에서 `verify`를 재실행한다. `compose.yml`을 `load` 전에 수정하면 번들의 `SHA256SUMS`와 어긋난다. `load` 완료 → `compose.yml` 수정 → `upgrade` 순서로 실행한다 (`DEV-571`) |
 | `prs-releases`가 0이고 `worker-mirror` 로그에 `spawn git ENOENT`가 보인다 | `pipeline-worker` 이미지에 `git`이 없는 버전이다. `Dockerfile`의 `pipeline-worker` 스테이지가 `git`을 설치하는 upstream 버전으로 이미지를 다시 빌드해 번들을 재생성한다 (`DEV-572`) |
 | GitHub 작업 화면이 「열리지 않았다」이거나 실행이 `대기 중`에 머문다 | 7.C의 「증상과 확인」 — `GH_OPERATIONS_ENABLED`는 search-api와 gh-executor가 같이 읽고, `prsctl`이 `.env`로 프로파일을 켠다 (`CR-086`) |
+| GitHub 작업 실행이 「관리자 운영 승인이 필요합니다」로 거절된다 | 업그레이드·첫 켜기·배포 정의 변경 뒤의 정상 동작이다 — 7.C 4단계(운영 승인). 승인했는데도 그렇다면 A-006에서 「승인된 정의가 현재 정의와 다름」인지 본다 (`CR-090`) |
 | gh-executor 로그에 `identity_unsealable`이 반복된다 | 두 서비스의 `GH_IDENTITY_VAULT_KEY`가 다르다. 같은 값으로 맞춘 뒤 `./prsctl upgrade`. 키를 새로 만들었다면 사용자가 다시 연결해야 한다 (7.C) |

@@ -138,6 +138,19 @@ export const ERROR_CODES = [
    * 그 셋 중 하나로 적으면 사용자가 관리자에게 없는 정책을 묻거나 없는 호스트 제약을 찾는다.
    */
   'GH_CAPABILITY_NOT_EXECUTABLE',
+  /**
+   * 현재 적재된 배포 정의의 운영 승인이 없다 (사용자 조치: 관리자에게 운영 승인 요청) — HTTP 409 (CR-090, FR-GH-011 AC-6).
+   *
+   * `GH_POLICY_BLOCKED`(운영자가 막음)·`GH_REGISTRY_STALE`(실행기 판정이 불일치)과 다른 사실이다 — 승인이 한 번도 없었거나,
+   * 철회됐거나, 배포 정의가 바뀌어 예전 승인이 지금 정의를 가리키지 않는다.
+   */
+  'GH_ADMIN_ACTION_REQUIRED',
+  /** 운영 정책 변경이 확인한 뒤의 정책·근거와 맞지 않는다 (사용자 조치: 다시 확인 후 제출) — HTTP 409 (CR-090, FR-GH-011 AC-8) */
+  'GH_POLICY_CONFLICT',
+  /** 현재 근거로는 운영 승인할 수 없다 — 사유 목록 포함 (사용자 조치: 사유 해소 후 다시 확인) — HTTP 409 (CR-090, FR-GH-011 AC-7) */
+  'GH_REGISTRY_APPROVAL_INELIGIBLE',
+  /** 운영 정책 상태를 읽지 못해 새 실행을 허용하지 않는다 (사용자 조치: 잠시 후 재시도) — HTTP 503 (CR-090, FR-GH-011 AC-9) */
+  'GH_POLICY_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -201,6 +214,10 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   GH_EXECUTION_TIMEOUT: 504,
   GH_WORKSPACE_UNAVAILABLE: 503,
   GH_CAPABILITY_NOT_EXECUTABLE: 409,
+  GH_ADMIN_ACTION_REQUIRED: 409,
+  GH_POLICY_CONFLICT: 409,
+  GH_REGISTRY_APPROVAL_INELIGIBLE: 409,
+  GH_POLICY_UNAVAILABLE: 503,
 };
 
 export function isErrorCode(value: string): value is ErrorCode {

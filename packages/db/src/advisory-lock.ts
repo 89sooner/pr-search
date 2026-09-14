@@ -124,6 +124,17 @@ export function annotateRunnerLockKey(): string {
 }
 
 /**
+ * GitHub Operations 운영 정책 잠금 키 (CR-090, 마이그레이션 030).
+ *
+ * 배포 범위(`GHE_BASE_URL`의 호스트) 단위다. **SQL도 같은 문자열로 잡는다** — 정책 변경 함수(배타)와 실행기 검증 기록·
+ * 실행권 확정 트리거(공유)가 `hashtext('gh:policy:' || scope)`를 쓴다. 문자열이 어긋나면 직렬화가 조용히 풀리므로
+ * 이 함수와 마이그레이션의 접두를 시험이 함께 건다.
+ */
+export function ghPolicyLockKey(scope: string): string {
+  return `gh:policy:${scope}`;
+}
+
+/**
  * 재색인 울타리 키 (WP-035 / CR-045·046, DEV-296·308).
  *
  * ## 왜 키가 하나인가

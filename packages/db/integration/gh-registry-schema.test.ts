@@ -57,6 +57,8 @@ function verificationInput(snapshotId: number, overrides: Partial<registry.GhCap
     snapshotId,
     checkedBy: 'gh-executor',
     trigger: 'startup',
+    // 실행기 기록은 배포 범위를 적는다 (마이그레이션 030 CHECK, CR-090).
+    scope: 'ghe.example.com',
     environment: { executor_id: 'test:1', hostname: 'test' },
     ghVersionExpected: '2.97.0',
     ghVersionObserved: '2.97.0',
@@ -98,15 +100,16 @@ beforeEach(async () => {
 describe('029 왕복', () => {
   it('028 → 029 → 028 → 029 — 내려가면 두 표와 함수가 사라지고 028의 표는 남는다', async () => {
     expect(await appliedVersions(pool)).toContain('029');
-    const reverted = await migrateDown(pool, 1);
-    expect(reverted).toEqual(['029']);
+    // 030(운영 정책, CR-090)이 029 위에 있고 029의 표를 참조한다 — 둘을 내린다. 목록으로 단언하므로 031이 생기면 즉시 깨진다.
+    const reverted = await migrateDown(pool, 2);
+    expect(reverted).toEqual(['030', '029']);
     const gone = await pool.query<{ relname: string }>(`SELECT relname FROM pg_class WHERE relname IN ('gh_capability_snapshot', 'gh_capability_verification')`);
     expect(gone.rows).toEqual([]);
     const functions = await pool.query<{ proname: string }>(`SELECT proname FROM pg_proc WHERE proname IN ('gh_capability_verification_immutable', 'gh_capability_snapshot_guard')`);
     expect(functions.rows).toEqual([]);
     const kept = await pool.query<{ relname: string }>(`SELECT relname FROM pg_class WHERE relname = 'gh_execution'`);
     expect(kept.rows).toHaveLength(1);
-    expect(await migrateUp(pool)).toEqual(['029']);
+    expect(await migrateUp(pool)).toEqual(['029', '030']);
     // 다시 올린 뒤 재실행은 멱등이다 — 적용할 것이 없다.
     expect(await migrateUp(pool)).toEqual([]);
   });
@@ -207,7 +210,7 @@ describe('리포지터리', () => {
   it('출처별 최신 검증 하나를 돌려주고, 실패 기록이 정상 기록을 덮지 않는다', async () => {
     const { row } = await registry.recordSnapshot(pool, snapshotInput());
     await registry.insertVerification(pool, verificationInput(row.snapshot_id, { checkedBy: 'gh-executor', status: 'incomplete' }));
-    await registry.insertVerification(pool, verificationInput(row.snapshot_id, { checkedBy: 'ci', trigger: 'manual', status: 'passed' }));
+    await registry.insertVerification(pool, verificationInput(row.snapshot_id, { checkedBy: 'ci', trigger: 'manual', scope: null, status: 'passed' }));
     await new Promise((resolve) => setTimeout(resolve, 5));
     await registry.insertVerification(pool, verificationInput(row.snapshot_id, { checkedBy: 'gh-executor', trigger: 'periodic', status: 'error', error: 'gh --help timed out' }));
 

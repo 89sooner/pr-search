@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.17 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.18 | 갱신일: 2026-09-14
 
 CR-079 상태 우선순위: 기존 인증/outer epoch_stale 처리 → PR 대상 여부 → sequence 존재 → M 확정 → M 조회 장애. pending은 merged PR에만 적용한다. reason=not_sequenced는 '시퀀스 채번 대기', predecessor_pending 등은 'M 번호 대기', not_applicable은 미머지/비대상, unavailable은 '확인 불가'다. commit 행에는 M 영역 없음. 기존 표의 '채번 후 자동 표시'는 [설계 9절](../30_technical_architecture/pr_search_wp074_design.md)의 visible·5초 간격·60초 상한 재검증을 뜻하며 무제한/행별 poll이 아니다.
 
@@ -287,10 +287,12 @@ CR-079 상태 우선순위: 기존 인증/outer epoch_stale 처리 → PR 대상
 | --- | --- | --- | --- |
 | `identity_required` | Operations App 미연결 또는 토큰 만료 | 연결 안내 | GitHub 계정 연결 |
 | `permission_denied` | 사용자 GitHub 권한 부족 | 필요 권한과 보유 여부 | 권한 요청 |
-| `policy_blocked` | 실행 정책이 차단 | 차단 사유 | 관리자 문의 |
+| `admin_action_required` | 현재 배포 정의의 운영 승인이 없음 — 승인 없음·철회·정의 변경 (CR-090) | 「관리자 운영 승인이 필요합니다」와 이유 | 관리자에게 운영 승인 요청 (A-006) |
+| `policy_blocked` | 실행 정책이 차단. CR-090부터 manifest 분류의 차단과 운영자 차단(`detail: operator_blocked`)을 다른 문장으로 보인다 | 차단 사유 — 운영자 차단이면 「관리자가 이 명령의 실행을 차단했습니다」 | 관리자 문의 (재개는 A-005) |
 | `unsupported_host` | 대상 GHE 버전 미지원 | 미지원 사유 | 지원 기능 사용 |
 | `terminal_only` | 웹으로 옮길 수 없는 기능 | 분류 사유와 대안 | 터미널 사용 |
-| `registry_stale` | 실행기 gh와 manifest 불일치 | 관리자 조치 대기 안내 | A-006 확인 |
+| `registry_stale` | 실행기 gh와 manifest 불일치. CR-090부터 실행기의 최근 판정이 드리프트·구조 실패·미완이거나 다른 정의를 가리킬 때, 마지막 통과가 신선도 한도를 넘었을 때(`registry_evidence_expired`), 아직 검사하지 않았을 때(`registry_unchecked`)도 이 상태다 | 관리자 조치 대기 안내 — 셋을 다른 문장으로 | A-006 확인 |
+| `policy_unavailable` | 운영 정책 상태를 읽지 못해 새 실행을 허용하지 않음 (CR-090) | 「실행 정책을 확인할 수 없습니다」 | 잠시 후 재시도 |
 | `constraint_error` | argument·flag 제약 위반 | 위반한 제약 | 입력 수정 |
 | `awaiting_confirmation` | R2 이상 확인 대기 | 대상·위험도·영향 | 확인 또는 취소 |
 | `awaiting_approval` | R3 승인 대기 | 승인자와 대기 시간 | 대기 또는 취소 |
@@ -298,6 +300,19 @@ CR-079 상태 우선순위: 기존 인증/outer epoch_stale 처리 → PR 대상
 | `target_changed` | 실행 직전 대상 상태 변경 | 무엇이 달라졌는지 | 새로 고침 후 재확인 |
 | `timed_out` | 실행 시간 상한 초과 | 경과 시간과 상한 | 범위 축소 후 재시도 |
 | `output_truncated` | 출력 상한 초과 | 절삭 사실 | 아티팩트로 전체 확인 |
+
+**A-005·A-006 운영 정책 상태 (CR-090).** 두 화면이 같은 `API-GH-008` 응답을 읽는다.
+
+| 상태 | 의미 | 사용자에게 보이는 것 | 다음 동작 |
+| --- | --- | --- | --- |
+| `approval_required` | 현재 적재 정의의 운영 승인이 없음 | 승인 자격과 불가 사유 목록 | 사유 해소 뒤 승인 (`operator`) |
+| `approved` | 현재 적재 정의가 운영 승인됨 | 승인한 정의·근거·승인자·시각 | 철회 또는 차단·재개 (`operator`) |
+| `approved_other_definition` | 승인은 있으나 배포 정의가 바뀜 | 「승인된 정의가 현재 정의와 다름 — 재승인 필요」 | 새 정의의 근거를 확인하고 재승인 |
+| `readonly` | `security_officer`만 가진 사용자 | 같은 내용, 변경 버튼 없음과 그 이유 | 운영자에게 요청 |
+| `conflict` | 확인한 뒤 정책이나 근거가 바뀜 (409) | 「확인한 뒤 정책이나 근거가 바뀌었습니다」 | 새로 읽고 다시 확인 |
+| `lost_response` | 제출했으나 응답을 받지 못함 | 같은 요청으로 다시 확인한다는 안내 | 같은 중복 방지 키로 재전송 |
+| `forbidden` | 서버가 역할 부족으로 거절 (403) | 「운영 정책을 바꾸려면 운영자(operator) 역할이 필요합니다」 | 역할 요청 |
+| `unavailable` | 정책을 읽지 못함 (503) 또는 기능 꺼짐 (404) | 두 경우를 다른 문장으로 | 재시도 또는 기능 켜기 |
 
 전이 규칙 중 되돌릴 수 없는 것 하나: `running` → `succeeded`인 쓰기 작업은 화면에서 되돌리기를 제공하지 않는다. GitHub 상태를 되돌리려면 별도의 되돌리기 작업(예: `pr revert`)을 새 실행으로 수행한다.
 

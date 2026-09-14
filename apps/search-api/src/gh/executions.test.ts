@@ -99,6 +99,7 @@ describe('실행 뷰', () => {
     stderr_truncated: false,
     output_binary: false,
     correlation_id: 'c',
+    policy_revision: 1,
   };
 
   it('끝나기 전에는 출력 발췌가 null이다 — 부분 출력을 완료처럼 보이지 않게 한다', () => {

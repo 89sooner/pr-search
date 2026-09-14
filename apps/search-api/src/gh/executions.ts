@@ -10,7 +10,10 @@
  * 4. 제약 검증          → GH_CONSTRAINT_VIOLATION (위반 목록 포함)
  * 5. 신원 확인          → 연결 없음·만료 → GH_IDENTITY_REQUIRED
  * 6. 권한 판정          → 저장소가 접근 범위 밖 → NOT_FOUND (존재를 드러내지 않는다)
- * 7·8·9·10             → R0에는 정책·확인·승인·대상 재조회·잠금이 없다 (이 판은 R0만 연다)
+ * 7. 실행 판정 (CR-090) → 운영 승인 없음 GH_ADMIN_ACTION_REQUIRED · 운영자 차단 GH_POLICY_BLOCKED ·
+ *                        레지스트리 불일치 GH_REGISTRY_STALE · 정책을 읽지 못함 GH_POLICY_UNAVAILABLE.
+ *                        실행기의 claim과 같은 함수(decideExecution)다. 수락한 revision을 실행 기록에 남긴다
+ * 8·9·10               → R0에는 확인·승인(실행 단위)·대상 재조회·잠금이 없다 (이 판은 R0만 연다)
  * 11. 감사 선기록       → gh_execution 행 INSERT. 실패하면 실행하지 않는다
  * 12. 큐 적재           → prs:gh:executions
  * ```
@@ -34,9 +37,11 @@ import {
   type GhCapabilityDefinition,
   type GhCapabilityManifest,
   type GhConstraintViolation,
+  type GhExecutionGate,
   type GhInvocation,
 } from '@prs/gh-cli';
 import type { GhOpsConfig } from './config.js';
+import { executionGate, gateView, type PolicyDeps } from './policy.js';
 import { listVisibleRepositories, resolveRepositoryContext, type RepositoryContext } from './context.js';
 import { IdentityError, ensureLiveConnection, readStatus, type IdentityDeps } from './identity.js';
 
@@ -49,7 +54,11 @@ export class GhRejected extends Error {
       | 'GH_CAPABILITY_NOT_EXECUTABLE'
       | 'GH_CONSTRAINT_VIOLATION'
       | 'GH_IDENTITY_REQUIRED'
-      | 'GH_DUPLICATE_REQUEST',
+      | 'GH_DUPLICATE_REQUEST'
+      | 'GH_ADMIN_ACTION_REQUIRED'
+      | 'GH_POLICY_BLOCKED'
+      | 'GH_REGISTRY_STALE'
+      | 'GH_POLICY_UNAVAILABLE',
     message: string,
     readonly detail?: Readonly<Record<string, unknown>>,
   ) {
@@ -120,6 +129,34 @@ export interface Prepared {
   readonly invocation: GhInvocation;
   readonly identity: Awaited<ReturnType<typeof readStatus>>;
   readonly host: string;
+  /** 실행 판정 (CR-090). 미리보기는 사유로 보여 주고, 실행 요청은 허용이 아니면 거절한다. */
+  readonly gate: GhExecutionGate;
+}
+
+/** 이 배포의 운영 정책 입력. 배포 범위는 서버 설정의 호스트다 — 클라이언트가 보내지 않는다. */
+export function policyDepsOf(deps: Pick<ExecutionDeps, 'pool' | 'manifest' | 'config'>, host: string): PolicyDeps {
+  return { pool: deps.pool, manifest: deps.manifest, scope: host, operationsEnabled: deps.config.enabled };
+}
+
+/** 실행 판정의 거절 사유 → API 오류. 사유 코드는 `detail.reason`으로 그대로 싣는다. */
+export function gateRejection(gate: Extract<GhExecutionGate, { allowed: false }>): GhRejected {
+  const detail = { reason: gate.reason, detail: gate.detail, policy_revision: gate.revision };
+  switch (gate.reason) {
+    case 'admin_action_required':
+      return new GhRejected('GH_ADMIN_ACTION_REQUIRED', '현재 배포 정의의 운영 승인이 없다 — 관리자에게 운영 승인을 요청한다', detail);
+    case 'policy_blocked':
+      return new GhRejected('GH_POLICY_BLOCKED', '운영자가 이 capability의 실행을 차단했다', detail);
+    case 'policy_unavailable':
+      return new GhRejected('GH_POLICY_UNAVAILABLE', '운영 정책 상태를 읽지 못해 실행을 허용하지 않는다', detail);
+    case 'registry_stale':
+    case 'registry_evidence_expired':
+    case 'registry_unchecked':
+      return new GhRejected('GH_REGISTRY_STALE', '실행기의 레지스트리 판정이 이 정의와 맞지 않는다 — 관리자 조치를 기다린다', detail);
+    case 'operations_disabled':
+    case 'capability_not_executable':
+    case 'policy_changed':
+      return new GhRejected('GH_CAPABILITY_NOT_EXECUTABLE', '이 배포가 실행을 열지 않았다', detail);
+  }
 }
 
 function violationsDetail(violations: readonly GhConstraintViolation[]): Record<string, unknown> {
@@ -157,8 +194,9 @@ export async function prepare(deps: ExecutionDeps, principal: Principal, invocat
     buildExecutionEnv({ host, token: '<redacted>', workspace: { home: '<workspace>/home', configDir: '<workspace>/config', tmp: '<workspace>/tmp' }, caFile: null }),
   );
   const identity = await readStatus(deps.identity, principal.userId);
+  const gate = await executionGate(policyDepsOf(deps, host), capability.id);
 
-  return { capability, repository, argv, redactedArgv: redactArgv(argv), envKeys, invocation, identity, host };
+  return { capability, repository, argv, redactedArgv: redactArgv(argv), envKeys, invocation, identity, host, gate };
 }
 
 export interface PreviewView {
@@ -180,12 +218,16 @@ export interface PreviewView {
     readonly policy: 'r0_immediate';
     readonly timeout_ms: number;
   };
+  /** 실행 판정 (CR-090) — 허용이 아니면 사유가 `blockers`의 맨 앞에 온다. */
+  readonly gate: Record<string, unknown>;
   readonly executable: boolean;
   readonly blockers: readonly string[];
 }
 
 export function toPreview(deps: ExecutionDeps, prepared: Prepared): PreviewView {
   const blockers: string[] = [];
+  // 운영 정책이 먼저다 — 승인·차단이 막은 요청을 계정 연결 안내로 보이게 하지 않는다 (W-010 상태 순서).
+  if (!prepared.gate.allowed) blockers.push(prepared.gate.reason);
   if (prepared.identity.status !== 'connected') blockers.push(`identity_${prepared.identity.status}`);
   return {
     capability_id: prepared.capability.id,
@@ -205,6 +247,7 @@ export function toPreview(deps: ExecutionDeps, prepared: Prepared): PreviewView 
       policy: 'r0_immediate',
       timeout_ms: prepared.capability.timeoutMs,
     },
+    gate: gateView(prepared.gate),
     executable: blockers.length === 0,
     blockers,
   };
@@ -291,6 +334,7 @@ export async function requestExecution(
   }
 
   const prepared = await prepare(deps, principal, invocation);
+  if (!prepared.gate.allowed) throw gateRejection(prepared.gate);
 
   let connection: Awaited<ReturnType<typeof ensureLiveConnection>>;
   try {
@@ -339,6 +383,8 @@ export async function requestExecution(
       idempotencyKey,
       authorizationResult: 'delegated_token_intersection',
       correlationId,
+      // 수락한 판정의 revision. 실행기가 claim에서 현재 revision과 대조한다 — 다르면 승계하지 않고 닫는다 (FR-GH-011 AC-9).
+      policyRevision: prepared.gate.revision,
     });
   } catch (error) {
     if (error instanceof ghExecutionRepo.DuplicateIdempotencyKeyError) {

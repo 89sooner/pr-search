@@ -1,6 +1,6 @@
 # PR Search 백엔드 아키텍처
 
-> 상태: review | 버전: v0.9 | 갱신일: 2026-09-14
+> 상태: review | 버전: v0.10 | 갱신일: 2026-09-14
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 
@@ -470,12 +470,12 @@ Elasticsearch와 PostgreSQL 사이에는 분산 트랜잭션을 쓰지 않는다
 | gh-registry | `packages/gh-cli/src/{pin,help-parse,inventory,manifest,manifest-file,validate,drift}.ts` + `packages/gh-cli/src/classification/{commands,rules,classify,dimensions,results,ports,contract-checks}.ts` + `packages/gh-cli/src/{resource-ref,json-pointer,binding,graph}.ts`(CR-089) + `scripts/gh-capabilities.mjs`(`gh:inventory`·`gh:validate-capabilities`·`gh:diff-capabilities`) + `apps/gh-executor/src/registry-check.ts`(JOB-GH-003) + `packages/db/src/repositories/gh-registry.ts` + `apps/search-api/src/gh/{routes,registry}.ts`(API-GH-001·013·014) | 커밋된 manifest `packages/gh-cli/manifest/gh-2.97.0.json`(판 `r0.3`, CR-089 — `r0.2`는 CR-088). **결과 계약은 분류가 소유한다**(CR-089): leaf마다 `classification.result`(출력 모드별 계약·자원 종류·typed port·composability)이고, 실행 정의는 계약을 복사하지 않고 구현 adapter(`resultAdapter`)로 계약의 출력 port를 가리킨다. 호환 판정(`judgePortCompatibility`)·바인딩 평가(`evaluateBinding`)·그래프(`computeCapabilityGraph`)는 DB·토큰·파일·네트워크·spawn이 없는 순수 함수이며, 실행 준비·실행기 재검증은 이것들을 읽지 않는다(회귀가 건다). 분류는 사람이 적은 표(leaf 196, 행마다 근거)와 문서화된 규칙(flag·positional, 판정마다 근거)으로 만들고, **검증기가 인벤토리에서 다시 만들어 저장값과 대조**한다 — 생성기의 결과를 다시 세어 성공하는 구조가 아니다. 인벤토리 추출·드리프트는 `/node` 서브패스(바이너리를 띄운다). 실행 허용은 `capabilities.ts`의 코드 표만 정하며 분류는 넓히지 못한다(`execution_widened`) |
 | gh-command | `packages/gh-cli/src/{constraints,argv,env}.ts` + `apps/search-api/src/gh/executions.ts`(`prepare`) | `evaluateInvocation`은 **브라우저 안전**해 web의 폼도 같은 함수를 부른다 (FR-GH-003 AC-8). argv 빌더는 `buildArgv` 하나뿐이며 회귀가 정의 수를 센다 |
 | gh-identity | `apps/search-api/src/gh/identity.ts` + `packages/gh-cli/src/vault.ts` + `packages/db/src/repositories/gh-identity.ts` | 인가 왕복(state+PKCE, Redis 10분), 봉인, 요청 시점 갱신, 철회 |
-| gh-policy | `prepare`의 `policy: 'r0_immediate'` | R0는 즉시 실행뿐. 실행 차원 `execution: allowed \| not_implemented \| policy_blocked`이 manifest에 있고 열리지 않은 capability는 `GH_CAPABILITY_NOT_EXECUTABLE`(409) |
+| gh-policy | `prepare`의 `policy: 'r0_immediate'` + **CR-090 운영 정책**: `packages/gh-cli/src/{registry-policy,registry-cadence}.ts`(판정식 `decideExecution`·승인 자격 `evaluateApprovalEligibility`·보고서 판 해석기·레지스트리 판정 입력·신선도 한도 — 순수 함수), `apps/search-api/src/gh/policy.ts`(`API-GH-008` 조회·변경, 수락 판정 `executionGate`), `packages/db/src/repositories/gh-policy.ts`(읽기와 함수 호출만 — 정책 표를 쓰는 SQL이 없다), `packages/db/migrations/030_gh_operations_policy.*`(함수·가드 트리거), `apps/gh-executor/src/runner.ts`(claim 트랜잭션) | R0는 즉시 실행뿐. 실행 차원 `execution: allowed \| not_implemented \| policy_blocked`이 manifest에 있고 열리지 않은 capability는 `GH_CAPABILITY_NOT_EXECUTABLE`(409) |
 | gh-exec | `apps/gh-executor/src/{config,spawn,workspace,runner,sweeper,metrics,server,index}.ts` | 별도 프로세스. `spawn`은 `spawn.ts` 한 곳, shell 없음 |
 | gh-audit | `apps/search-api/src/gh/executions.ts`(`toExecutionView`·`listVisibleExecutions`·`findVisibleExecution`) + `packages/db/src/repositories/gh-execution.ts` | 감사의 정본은 `gh_execution` 행이다. 이력 가시성은 본인만, `security_officer`는 `?all=true`, 남의 것은 404 |
 | gh-recipe | 없음 | 다음 판 |
 
-12.2의 14단계 가운데 R0가 지나는 것은 1(중복 키)·2(capability, 여기에 실행 차원 확인이 더해진다)·3(registry)·4(제약)·5(위임 신원)·11(감사 = 실행 행 삽입)·12(발행)·13(실행)·14(결과)이며, 6~10(권한 판정·정책·확인·승인·잠금)은 R0에서 「없음」으로 지난다 — 권한 판정은 GitHub이 위임 토큰으로 강제한다(`permission_check: delegated_token_intersection`). 미리보기(`POST /gh/executions/preview`)는 1과 12를 뺀 같은 준비 단계를 지난다.
+12.2의 14단계 가운데 R0가 지나는 것은 1(중복 키)·2(capability, 여기에 실행 차원 확인이 더해진다)·3(registry)·4(제약)·5(위임 신원)·11(감사 = 실행 행 삽입)·12(발행)·13(실행)·14(결과)이며, 6~10(권한 판정·정책·확인·승인·잠금)은 R0에서 「없음」으로 지난다 — 권한 판정은 GitHub이 위임 토큰으로 강제한다(`permission_check: delegated_token_intersection`). 미리보기(`POST /gh/executions/preview`)는 1과 12를 뺀 같은 준비 단계를 지난다. **CR-090부터 7(정책 평가)이 실제로 돈다.** 실제 순서는 1(중복 키) → 2·4(capability·제약) → 저장소 접근 범위 → 신원 상태 읽기 → **7 실행 판정**(기능 꺼짐 → 코드·manifest 상한 → 정책 읽기 → 운영 승인 → 운영자 차단 → 레지스트리) → 5(위임 연결 확인 — 연결 없음·만료는 판정 뒤에 거절한다) → 11·12다. 판정 거절은 `GH_ADMIN_ACTION_REQUIRED`(409)·`GH_POLICY_BLOCKED`(403)·`GH_REGISTRY_STALE`(409)·`GH_POLICY_UNAVAILABLE`(503)이고, 수락한 실행 행은 판정의 `policy_revision`을 적는다. 13(실행기 처리)은 claim 트랜잭션에서 같은 판정을 다시 한다(비동기 9.4장).
 
 ### 12.2 실행 처리 경로
 

@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.17 | 갱신일: 2026-09-14
+> 상태: review | 버전: v0.18 | 갱신일: 2026-09-14
 
 CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하고 모든 sync 호출은 repo session lock을 공유한다. Profile B sequence에는 mirror volume이 없으므로 명시적 API mode다. 환경 키·schema 선행·boot/stop·additive 앱 rollback과 별도 DB down은 [설계](pr_search_wp074_design.md) 10절이 정본이다. pilot.4 fail-fast·SSR smoke·pg hash 보정·worker git을 보존한다. 후보는 새 버전 미발행이며 --release를 사용하지 않는다.
 
@@ -75,7 +75,7 @@ CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하
 | `pipeline-worker:authz` | 권한 캐시 무효화 (JOB-AUTH-001) | `prs:permission` 적체 | **1 / 4** | **1** | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:annotate` | PR 제목 M 넘버 표기 (JOB-SEQ-005) — **GHE 쓰기 자격을 가진 유일한 단위** | 고정 | **1 / 1** | **1** | 하트비트 | 이전 이미지 재배포 |
 | `filebeat` | 원본 아카이브 적재 | `ingest-gateway` 파드 수를 따른다 (사이드카) | 게이트웨이와 동일 | **1** (사이드카) | Filebeat 자체 | 설정 롤백 |
-| `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005 · CR-086) | 대기 중 실행 수 | 2 / 8 | **선택 프로파일** `github-operations` — 기본 꺼짐, `.env`의 `GH_OPERATIONS_ENABLED=true`면 `prsctl`이 1개를 세운다 | GET /healthz (gh 버전·manifest 대조 포함. 꺼진 상태는 `execution: disabled`를 밝히고 백킹 서비스를 묻지 않는다) | 이전 이미지 재배포 |
+| `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005 · CR-086) | 대기 중 실행 수 | 2 / 8 | **선택 프로파일** `github-operations` — 기본 꺼짐, `.env`의 `GH_OPERATIONS_ENABLED=true`면 `prsctl`이 1개를 세운다. 켜도 운영자가 현재 정의를 운영 승인(A-006)하기 전에는 새 실행이 시작되지 않는다(CR-090) | GET /healthz (gh 버전·manifest 대조 포함, CR-090부터 `registry.lastPassedAt`. 꺼진 상태는 `execution: disabled`를 밝히고 백킹 서비스를 묻지 않는다) | 이전 이미지 재배포 |
 
 **`batch`의 상한은 3이 아니라 1이다** (CR-046, DEV-311). 이 표가 3을 허용하면 운영자가 문서를 따라 늘릴 수 있는데, JOB-ING-007은 리더 선출이 없는 주기 스윕이라 파드마다 같은 아웃박스 행을 다시 발행하고 JOB-ING-006은 동시 실행 상한이 1이다. `pipeline-worker-batch.yaml`의 주석은 replica 1을 요구하는데 이 표가 3을 승인하고 있었다 — **아키텍처가 배포 계약이 경고하는 형상을 허가하고 있었다.** 조정 수단이 생기면 그때 올린다.
 
@@ -457,7 +457,7 @@ ADR-016이 정의한 격리 요건을 배포 수준에서 구체화한다.
 | 네트워크 | 구성된 GHE 호스트 허용 목록 | NFR-010 |
 | workspace 저장 매체 (Profile A) | tmpfs `/var/lib/prs/gh-workspaces` 256m (mode 0700, uid 1000) + `/tmp` 64m. 루트 파일시스템은 `read_only: true` | compose 정의 (CR-086) |
 | 동시 실행 상한 | `GH_EXECUTOR_MAX_CONCURRENT` 기본 2 (1..파티션 4). 구독 수 = 동시 실행 수 | ADR-013 |
-| 레지스트리 검사 (JOB-GH-003) | `GH_EXECUTOR_REGISTRY_CHECK_MS` 기본 86400000(1일, 최소 60000). 헬스 서버가 먼저 열리고(`registry.status: unchecked`) 기동 검사를 **기다린 뒤** 구독 — 켜진 실행기가 실행을 집기까지 10초 안팎이 더 든다(비동기 판·동시 4, command마다 `--help`). 드리프트·구조 실패면 헬스 `registry.stale=true`·지표 `gh_registry_stale=1`이고 실행은 `registry_stale`로 거절된다. DB 기록 실패(예: 029 미적용)는 판정을 바꾸지 않고 로그·지표 `record_failed`로 드러난다. 결과는 `gh_capability_verification`(append-only)에 남는다 (CR-088) | FR-GH-011 AC-3 |
+| 레지스트리 검사 (JOB-GH-003) | `GH_EXECUTOR_REGISTRY_CHECK_MS` 기본 86400000(1일, 최소 60000). 헬스 서버가 먼저 열리고(`registry.status: unchecked`) 기동 검사를 **기다린 뒤** 구독 — 켜진 실행기가 실행을 집기까지 10초 안팎이 더 든다(비동기 판·동시 4, command마다 `--help`). 드리프트·구조 실패면 헬스 `registry.stale=true`·지표 `gh_registry_stale=1`이고 실행은 `registry_stale`로 거절된다. DB 기록 실패(예: 029 미적용)는 판정을 바꾸지 않고 로그·지표 `record_failed`로 드러난다. 결과는 `gh_capability_verification`(append-only)에 남는다 (CR-088). **CR-090:** 기록에 배포 범위(`GHE_BASE_URL` 호스트)와 주기(`registry_check_ms`)를 적고 헬스에 `registry.lastPassedAt`을 낸다. 운영 승인 근거와 실행기의 새 실행권은 신선도 한도 = 주기 + 한 회차 최악 소요(기본 91,225,000ms = 25시간 20분 25초) 안에서만 유효하다 — 주기를 바꾸면 한도도 같이 바뀐다. 마이그레이션 030이 빠진 DB에서는 실행기 기록이 실패하고(`record_failed`) 정책 조회가 실패해 새 실행은 `policy_unavailable`이다 | FR-GH-011 AC-3·AC-7·AC-9 |
 | 시간 상한 | R0 `pr.list` 30초 (capability `timeoutMs`), 초과 시 `timed_out` | NFR-011 |
 | 출력 상한 | stdout 1MiB · stderr 64KiB (설정), 이력 발췌 256KiB · 64KiB, 원본은 SHA-256만. 잘린 stdout은 결과 파싱 실패로 `failed` | FR-GH-006 AC-5 |
 | 취소 | DB의 `cancel_requested_at`을 500ms마다 폴링 → 프로세스 그룹 SIGTERM → 1초 뒤 SIGKILL | NFR-011 (3초) |

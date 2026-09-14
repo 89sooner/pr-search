@@ -88,9 +88,9 @@ describe('T06a: 024 → 025 → 024 → 025 왕복', () => {
      * 아니다. `migrateDown(pool, 1)`로 두면 가장 위의 것만 내려가고 025는 그대로 남아,
      * 아래 단언이 **025가 내려갔다고 믿으며 다른 것을 재는** 상태가 된다. 단계 수가
      * 아니라 **내려간 목록**으로 단언하므로 새 마이그레이션이 생기면 여기서 즉시 깨진다 —
-     * `CR-085`의 027이 실제로 이 자리를 깨뜨렸고, `CR-086`의 028, `CR-088`의 029도 그랬다 — 그것이 이 형태의 목적이다.
+     * `CR-085`의 027이 실제로 이 자리를 깨뜨렸고, `CR-086`의 028, `CR-088`의 029, `CR-090`의 030도 그랬다 — 그것이 이 형태의 목적이다.
      */
-    expect(await migrateDown(pool, 5)).toEqual(['029', '028', '027', '026', '025']);
+    expect(await migrateDown(pool, 6)).toEqual(['030', '029', '028', '027', '026', '025']);
     expect((await appliedVersions(pool)).includes('025')).toBe(false);
     const columns = await pool.query<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns WHERE table_name = 'merge_sequence'`,
@@ -106,7 +106,7 @@ describe('T06a: 024 → 025 → 024 → 025 왕복', () => {
     );
     expect(after.rows).toEqual(before.rows);
 
-    expect(await migrateUp(pool)).toEqual(['025', '026', '027', '028', '029']);
+    expect(await migrateUp(pool)).toEqual(['025', '026', '027', '028', '029', '030']);
     const restored = await pool.query<{ merge_number: number | null }>(
       'SELECT merge_number FROM merge_sequence WHERE merge_seq = 1',
     );

@@ -16,6 +16,8 @@
  * | `GET /gh/executions/{id}` | API-GH-010 (CR-086 추가) | 상세 |
  * | `GET /gh/executions/{id}/stream` | API-GH-005 | SSE. 상태 변화와 종료를 흘린다 |
  * | `POST /gh/executions/{id}/cancel` | API-GH-011 | 소유자 또는 `operator` |
+ * | `GET /gh/policies` | API-GH-008 (CR-090) | 운영 정책·승인 미리보기·revision 이력. `operator`·`security_officer` |
+ * | `POST /gh/policies/changes` | API-GH-008 (CR-090) | 승인·철회·차단·재개. `operator`만. `Idempotency-Key` 필수, JSON 본문만 |
  */
 
 import { randomUUID } from 'node:crypto';
@@ -25,12 +27,15 @@ import { ghExecutionRepo } from '@prs/db';
 import { GH_PINNED_VERSION, isTerminalExecutionState } from '@prs/gh-cli';
 import type { AuthContext } from '../auth/context.js';
 import { hasRole } from '@prs/authz';
-import { authenticateSession, requireAnyRole, type SessionPrincipal } from '../auth/principal.js';
+import type { AuditAction } from '@prs/domain';
+import { recordAuditBestEffort } from '../audit/recorder.js';
+import { authenticateSession, principalId, requireAnyRole, type SessionPrincipal } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
 import { commandDetail, registryStatus } from './registry.js';
 import {
   GhRejected,
   findVisibleExecution,
+  policyDepsOf,
   listVisibleExecutions,
   listVisibleRepositories,
   parseIdempotencyKey,
@@ -42,6 +47,7 @@ import {
   type ExecutionDeps,
 } from './executions.js';
 import { IdentityError, completeAuthorization, disconnect, readStatus, startAuthorization } from './identity.js';
+import { PolicyRequestRejected, auditTargetOf, changePolicy, executionGate, gateView, parsePolicyChange, policyStatus, type PolicyDeps } from './policy.js';
 
 export const GH_CAPABILITIES_PATH = '/api/v1/gh/capabilities';
 export const GH_CONTEXT_REPOSITORIES_PATH = '/api/v1/gh/contexts/repositories';
@@ -53,6 +59,16 @@ export const GH_EXECUTION_PREVIEW_PATH = '/api/v1/gh/executions/preview';
 export const GH_REGISTRY_PATH = '/api/v1/gh/registry';
 /** API-GH-014 — command 분류 상세 (A-006). 같은 역할. */
 export const GH_REGISTRY_COMMAND_PATH = '/api/v1/gh/registry/commands/:id';
+/** API-GH-008 (CR-090) — 운영 정책 조회. `operator`·`security_officer`. */
+export const GH_POLICIES_PATH = '/api/v1/gh/policies';
+/** API-GH-008 (CR-090) — 운영 정책 변경(승인·철회·차단·재개). `operator`만. */
+export const GH_POLICY_CHANGES_PATH = '/api/v1/gh/policies/changes';
+const POLICY_AUDIT_ACTION: Readonly<Record<string, AuditAction>> = {
+  approve: 'gh_registry.approve',
+  revoke: 'gh_registry.revoke',
+  block: 'gh_capability.block',
+  resume: 'gh_capability.resume',
+};
 const CAPABILITY_ID_PATTERN = /^[a-z0-9][a-z0-9.-]{0,79}$/;
 
 export interface GhRouteOptions extends ExecutionDeps {
@@ -78,6 +94,11 @@ function parseId(raw: unknown): number | null {
 export function registerGhRoutes(app: FastifyInstance, options: GhRouteOptions): void {
   const { auth, loginPath } = options;
   const deps: ExecutionDeps = options;
+  /*
+   * 운영 정책의 배포 범위는 서버 설정의 호스트다(CR-090). 켜진 배포는 `ghOpsConfigFailure`가 호스트를 요구하므로 여기서
+   * 비어 있을 수 없다 — 그래도 빈 문자열로 정책을 읽지 않는다. 호스트가 없으면 정책 경로는 `policy_unavailable`로 답한다.
+   */
+  const policyDeps: PolicyDeps | null = deps.config.host === null ? null : policyDepsOf(deps, deps.config.host);
 
   const session = async (request: FastifyRequest, reply: FastifyReply, correlationId: string): Promise<SessionPrincipal | null> => {
     try {
@@ -107,6 +128,14 @@ export function registerGhRoutes(app: FastifyInstance, options: GhRouteOptions):
     const principal = await session(request, reply, correlationId);
     if (principal === null) return reply;
     const manifest = deps.manifest;
+    /*
+     * 실행 판정 (CR-090) — W-010이 「기능 꺼짐·운영 승인 필요·운영자 차단·레지스트리 불일치·실행 가능」을 구분해 그린다.
+     * 실행기의 claim과 같은 함수이며, 정책을 읽지 못해도 이 목록은 답한다(판정만 `policy_unavailable`).
+     */
+    const gates = new Map<string, Record<string, unknown>>();
+    for (const capability of manifest.capabilities) {
+      gates.set(capability.id, policyDeps === null ? { allowed: false, reason: 'policy_unavailable', detail: 'host_not_configured', revision: null } : gateView(await executionGate(policyDeps, capability.id)));
+    }
     return reply.send({
       gh_version: GH_PINNED_VERSION,
       manifest_version: manifest.manifestVersion,
@@ -133,6 +162,7 @@ export function registerGhRoutes(app: FastifyInstance, options: GhRouteOptions):
               ? null
               : { kind: contract.kind, sensitivity: contract.sensitivity, composability: contract.composability, bindable: contract.bindable, resource_kind: contract.resourceKind },
           timeout_ms: capability.timeoutMs,
+          execution_gate: gates.get(capability.id) ?? null,
         };
       }),
       commands: manifest.commands
@@ -197,6 +227,78 @@ export function registerGhRoutes(app: FastifyInstance, options: GhRouteOptions):
     const detail = commandDetail(deps.manifest, id);
     if (detail === null) return fail(reply, 'GH_CAPABILITY_UNKNOWN', `manifest에 없는 capability: ${id}`, correlationId);
     return reply.send({ ...detail, correlation_id: correlationId });
+  });
+
+  /*
+   * API-GH-008 (CR-090) — 운영 정책 조회. 역할은 A-006과 같다(`operator`·`security_officer`). 검사를 돌리지 않는다.
+   */
+  app.get(GH_POLICIES_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const principal = await registryAccess(request, reply, correlationId);
+    if (principal === null) return reply;
+    if (policyDeps === null) return fail(reply, 'GH_POLICY_UNAVAILABLE', 'GHE 호스트가 구성되지 않아 운영 정책을 읽을 수 없다', correlationId);
+    try {
+      const body = await policyStatus(policyDeps);
+      return reply.send({ ...body, correlation_id: correlationId });
+    } catch (error) {
+      deps.log?.({ level: 'error', message: '운영 정책을 읽지 못했다 (마이그레이션 030 적용 여부를 확인한다)', correlation_id: correlationId, reason: error instanceof Error ? error.message.slice(0, 300) : String(error) });
+      return fail(reply, 'GH_POLICY_UNAVAILABLE', '운영 정책 상태를 읽지 못했다', correlationId);
+    }
+  });
+
+  /*
+   * API-GH-008 (CR-090) — 운영 정책 변경. **`operator`만** — `security_officer`만 가진 사용자는 조회만 한다(SRS 6장).
+   *
+   * - 역할은 요청마다 세션에서 다시 판정한다. 화면이 버튼을 숨기는 것으로 대신하지 않는다.
+   * - JSON 본문만 받는다. CSRF 토큰 체계는 저장소 전체에 없고(DEV) 세션 쿠키가 `SameSite=Lax`다 — 다른 사이트의 폼 POST에는
+   *   쿠키가 실리지 않고, JSON 본문은 교차 출처에서 사전 요청 없이 보낼 수 없다.
+   * - 적용 감사는 DB 함수가 변경과 같은 트랜잭션에서 남긴다. 여기서 남기는 것은 거절뿐이다(best-effort).
+   */
+  app.post(GH_POLICY_CHANGES_PATH, async (request, reply) => {
+    const correlationId = randomUUID();
+    const principal = await session(request, reply, correlationId);
+    if (principal === null) return reply;
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const rawAction = typeof body['action'] === 'string' ? body['action'] : null;
+    const auditAction = rawAction === null ? undefined : POLICY_AUDIT_ACTION[rawAction];
+    const auditRejection = async (resultCode: string, target: string | null, query: string | null): Promise<void> => {
+      if (auditAction === undefined) return;
+      await recordAuditBestEffort(deps.pool, { userId: principalId(principal), action: auditAction, target, query, resultCode, correlationId }, deps.log);
+    };
+    if (!hasRole(principal.roles, 'operator')) {
+      await auditRejection('forbidden', policyDeps?.scope ?? null, null);
+      return fail(reply, 'FORBIDDEN_ROLE', "'operator' 역할이 필요하다", correlationId, { required_role: 'operator' });
+    }
+    const contentType = String(request.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase();
+    if (contentType !== 'application/json') {
+      await auditRejection('invalid', policyDeps?.scope ?? null, null);
+      return fail(reply, 'INVALID_PARAMETER', '운영 정책 변경은 application/json 본문만 받는다', correlationId, { field: 'content-type' });
+    }
+    if (policyDeps === null) return fail(reply, 'GH_POLICY_UNAVAILABLE', 'GHE 호스트가 구성되지 않아 운영 정책을 바꿀 수 없다', correlationId);
+    let key: string;
+    try {
+      key = parseIdempotencyKey(request.headers['idempotency-key'] ?? body['idempotency_key']);
+    } catch (error) {
+      await auditRejection('invalid', policyDeps.scope, null);
+      const shaped = rejected(reply, error, correlationId);
+      if (shaped !== null) return shaped;
+      throw error;
+    }
+    let change: ReturnType<typeof parsePolicyChange> | null = null;
+    try {
+      change = parsePolicyChange(body, deps.manifest);
+      const outcome = await changePolicy(policyDeps, principal.userId, change, key, correlationId);
+      const status = await policyStatus(policyDeps);
+      return reply.send({ outcome: outcome.outcome, revision: outcome.revision, policy: status['policy'], capabilities: status['capabilities'], correlation_id: correlationId });
+    } catch (error) {
+      if (error instanceof PolicyRequestRejected) {
+        if (error.auditResult !== null) {
+          await auditRejection(error.auditResult, change === null ? policyDeps.scope : auditTargetOf(policyDeps.scope, change), change?.reason ?? null);
+        }
+        return fail(reply, error.code, error.message, correlationId, error.detail);
+      }
+      throw error;
+    }
   });
 
   // API-GH-003 — 고를 수 있는 저장소.

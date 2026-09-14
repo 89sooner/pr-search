@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.31 | 갱신일: 2026-09-14
+> 상태: review | 버전: v2.32 | 갱신일: 2026-09-14
 
 ## 1. 목적
 
@@ -59,6 +59,7 @@
 | WP-072 | 사내 반입 운반 경로 — GitHub Release 발행과 다운로드 | **배포 (CR-063)** | WP-071 | done |
 | WP-076 | 사내 GHE 직접 로그인 | **인증 (CR-083)** | WP-012, WP-015 | **done** — 검증 6.78장. 사내 실제 GHE OAuth App 검증은 `NOT RUN` |
 | WP-079 | REL-007 R1b — 결과 계약·typed port·순수 연결 판정·타입 그래프·A-006 조회 | REL-007 (**CR-089**) | WP-078 | **done** — 검증 6.86장. leaf 196개 전부의 결과 계약과 입출력 port, `pr_list_v2`와 PR 참조, 제한 JSON Pointer·바인딩 평가·그래프, `GATE-GH-01d` 통과, 도메인 회귀의 CI 연결. 실행 허용은 `pr.list` 하나, 실행 가능한 다단계 흐름 0 |
+| WP-080 | REL-007 R2 — 검증된 레지스트리 운영 승인·R0 실행 정책 | REL-007 (**CR-090**) | WP-079 | **in_progress** — 검증 6.87장. 운영 승인·철회(A-006)·`pr.list` 차단·재개(A-005 최소)·배포 범위별 정책 revision(충돌 검출·멱등·불변 이력·같은 트랜잭션 감사)·요청 수락과 claim의 같은 판정·claim 가드·마이그레이션 030. 새로 실행 가능한 명령 0, 실행 허용은 `pr.list` 하나 |
 | WP-078 | REL-007 R1a — capability 분류·검증·드리프트·스냅숏·A-006 읽기 전용 | REL-007 (**CR-088**) | WP-077 | **done** — 검증 6.85장. leaf 196·flag 1,034·positional 164·`--json` 707 전부 분류(`NFR-009` 본표 100%), 독립 검증기·드리프트 검출·029 스냅숏/검증 기록·`JOB-GH-003`·`API-GH-013`/`014`·A-006. 실행 허용은 `pr.list` 하나 그대로. `GATE-GH-01d`(bindability·port·자원 타입)는 미달로 남고(`DEV-675`), 사내 GHES 확인은 `NOT RUN`(`DEV-674`) |
 | WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | WP-012, WP-015 | **done** — 검증 6.83장. R0 `pr.list` 하나를 인가→미리보기→실행→결과·자기 이력까지 연다. 상위 WP 일곱은 이 수직이 들여온 만큼만 `in_progress`다. 출력 청크 스트리밍은 상태만(`DEV-651`), 분류 195건 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증은 `NOT RUN`** |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003, **WP-067** | done |
@@ -77,10 +78,10 @@
 | WP-042 | 이분 탐색 보조 | REL-006 | WP-023, WP-025 | done |
 | WP-043 | 관계 그래프 API와 W-007 | REL-006 | WP-031 | todo |
 | WP-044 | 검색 결과 내보내기 | REL-006 | WP-013, WP-016 | done |
-| WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 | WP-001 | **in_progress** — 부분(`WP-077`/`CR-086` + `WP-078`/`CR-088`): 인벤토리 추출·manifest(`r0.2`)·`API-GH-001`, 분류 표·규칙(leaf 196·flag 1,034·positional 164·`--json` 707 전부, `NFR-009` 본표 100%), 독립 검증기(`gh:validate-capabilities`)·드리프트(`gh:diff-capabilities`, CI integration 시험)·`gh_capability_snapshot`(029)·CI 게이트(단위 시험). 남은 것: 결과 계약 차원(`GATE-GH-01d`, `DEV-675`)·호스트 지원 판정(`DEV-674`)·parity 최종(WP-060) |
+| WP-045 | gh capability 레지스트리와 parity 검증기 | REL-007 | WP-001 | **in_progress** — 부분(`WP-077`/`CR-086` + `WP-078`/`CR-088` + `WP-079`/`CR-089` + `WP-080`/`CR-090`): 인벤토리 추출·manifest(`WP-078` 당시 `r0.2`, 지금은 `r0.3`)·`API-GH-001`, 분류 표·규칙(leaf 196·flag 1,034·positional 164·`--json` 707 전부, `NFR-009` 본표 100%), 독립 검증기(`gh:validate-capabilities`)·드리프트(`gh:diff-capabilities`, CI integration 시험)·`gh_capability_snapshot`(029)·CI 게이트(단위 시험), 결과 계약 차원(`GATE-GH-01d` 통과·보고서 판 `r2` — `CR-089`, `DEV-675` 종결), 검증 기록의 배포 범위와 등록된 보고서 판 해석기(`CR-090`). 남은 것: 호스트 지원 판정(`DEV-674`)·parity 최종(WP-060) |
 | WP-046 | 위임 GitHub 신원과 Operations App | REL-007 | WP-012 | **in_progress** — 부분(`WP-077`/`CR-086`): 인가 왕복(state+PKCE)·AES-256-GCM 봉인 보관·요청 시점 갱신·철회·`API-GH-007`·web 콜백 라우트가 들어왔다. 남은 것: 주기 갱신 잡(`JOB-GH-004`)·A-007 연결 상태 화면·비밀 저장소 연동(`DEV-652`) |
-| WP-047 | 격리 gh 실행기와 실행 수명주기 | REL-007 | WP-045, WP-046 | **in_progress** — 부분(`WP-077`/`CR-086`): `gh-executor`(shell 없는 spawn·재검증·argv 대조·취소·상한·하트비트·고아 회수·잔여 스윕·헬스)·`prs:gh:executions`·마이그레이션 028이 들어왔다. 남은 것: 상충 작업 잠금(`gh_execution_lock`)·확인·승인 상태 전이·출력 청크 스트리밍(`DEV-651`) |
-| WP-048 | W-010 GitHub Command Center 수직 슬라이스 | REL-007 | WP-047 | **in_progress** — 부분(`WP-077`/`CR-086`): W-010 최소(`pr.list` 폼·미리보기·실행·결과·취소)와 W-021 최소(이력·상세·같은 구성 재실행)가 들어왔다. 남은 것: capability 일반 생성형 폼·Recipe·A-006·A-007 |
+| WP-047 | 격리 gh 실행기와 실행 수명주기 | REL-007 | WP-045, WP-046 | **in_progress** — 부분(`WP-077`/`CR-086` + `WP-080`/`CR-090`): `gh-executor`(shell 없는 spawn·재검증·argv 대조·취소·상한·하트비트·고아 회수·잔여 스윕·헬스)·`prs:gh:executions`·마이그레이션 028이 들어왔다. `CR-090`: 큐에서 꺼낼 때의 운영 정책 판정과 정책 공유 잠금 claim 트랜잭션·claim 가드(030)·`policy_blocked` 닫힘이 들어왔다. 남은 것: 상충 작업 잠금(`gh_execution_lock`)·확인·승인 상태 전이·출력 청크 스트리밍(`DEV-651`) |
+| WP-048 | W-010 GitHub Command Center 수직 슬라이스 | REL-007 | WP-047 | **in_progress** — 부분(`WP-077`/`CR-086` + `WP-080`/`CR-090`): W-010 최소(`pr.list` 폼·미리보기·실행·결과·취소)와 W-021 최소(이력·상세·같은 구성 재실행), W-010 실행 판정 표시(운영 승인 필요·관리자 차단·레지스트리 불일치·정책 확인 불가 — `CR-090`)가 들어왔다. 남은 것: capability 일반 생성형 폼·Recipe·A-006(읽기와 운영 승인은 `WP-078`~`WP-080`이 들였다)·A-007 |
 | WP-049 | PR 작업 (W-011) | REL-008 | WP-048 | todo |
 | WP-050 | Issue·Discussion 작업 (W-012) | REL-008 | WP-048 | todo |
 | WP-051 | 저장소 작업 (W-013) | REL-009 | WP-048, WP-057 | todo |
@@ -91,7 +92,7 @@
 | WP-056 | gh API 탐색기 (W-020) | REL-010 | WP-048 | todo |
 | WP-057 | 임시 workspace와 로컬 git 작업 | REL-009 | WP-047 | todo |
 | WP-058 | Recipe 빌더 (W-023) | REL-011 | WP-049, WP-052, WP-066 | todo |
-| WP-059 | capability 드리프트와 정책 관리 (A-005, A-006) | REL-011 | WP-045, WP-048 | **in_progress** — 부분(`WP-078`/`CR-088`): A-006 **읽기 전용**(manifest 신원·차원별 커버리지·게이트·실행 허용·command 분류 상세·검증 기록·드리프트 diff·스냅숏·호스트 미확인)과 드리프트 시 `registry_stale` 거절이 들어왔다. 남은 것: A-005(허용·차단·위험도 재정의·승인 지정·엔드포인트·확장 허용 목록)·정책 변경 감사·`admin_action_required` 흐름·스냅숏 활성화 |
+| WP-059 | capability 드리프트와 정책 관리 (A-005, A-006) | REL-011 | WP-045, WP-048 | **in_progress** — 부분(`WP-078`/`CR-088` + `WP-080`/`CR-090`): A-006 읽기(manifest 신원·차원별 커버리지·게이트·실행 허용·command 분류 상세·검증 기록·드리프트 diff·스냅숏·호스트 미확인)와 드리프트 시 `registry_stale` 거절(`CR-088`), **운영 승인·철회와 스냅숏 활성화(최초 승인 시각)·A-005 최소(`pr.list` 차단·재개)·정책 변경 감사(같은 트랜잭션)·`admin_action_required` 흐름**(`CR-090`, `DEV-685` 종결)이 들어왔다. 남은 것: A-005 나머지(허용 목록 편집·위험도 재정의·승인 지정·엔드포인트·확장 허용 목록과 그 실행)·A-006의 GHES 버전·parity 최종(WP-060) |
 | WP-060 | 전체 parity 검증 | REL-011 | WP-045 ~ WP-059, WP-061 ~ WP-066 | todo |
 | WP-061 | 의미 capability 제약 엔진 | REL-007 | WP-045 | **in_progress** — 부분(`WP-077`/`CR-086`): `evaluateInvocation`(열거·정수 범위·JSON 필드 허용 목록·`context_required`·`repository_format`)을 폼과 서버가 **같은 함수**로 쓴다. `CR-088`이 flag·positional의 컨트롤 종류(열거값·값 종류·파일 역할·승인 필요·컨텍스트 요구)를 분류 메타데이터로 채웠다 — 제약 **평가**는 아직 `pr.list`뿐이다. 남은 것: 13종 제약 전체·관계 제약 일반화 |
 | WP-062 | gh 출력·파일 안전 경계 | REL-007 | WP-047 | **in_progress** — 부분(`WP-077`/`CR-086`): `SafeOutputStream`(CSI·OSC·C0/C1·UTF-8 꼬리·상한·바이너리)·`sanitizeText`·화면의 텍스트 노드 렌더(원시 HTML 0건 회귀)가 들어왔다. 남은 것: 파일 아티팩트 경계(`FR-GH-005`) |
@@ -2412,13 +2413,14 @@ external main의 특정 커밋
   - A-005: capability 허용·차단, 위험도 재정의, 승인 필요 지정, `gh api` 엔드포인트 정책, 확장 허용 목록
   - 드리프트 시 `registry_stale` / `execution_disabled` / `admin_action_required` 처리
   - 정책 변경의 감사 기록
+  - **`CR-090`/`WP-080` 선행 구현**: 운영 승인·철회(스냅숏 활성화)·A-005 최소(`pr.list` 차단·재개)·`admin_action_required` 흐름·정책 변경 감사 — 3장 표와 원장 6.87장
 - 제외:
   - parity 최종 검증 (WP-060)
 - 완료 기준(DoD):
   - [ ] 설치 gh 버전과 manifest 버전이 다르면 새 command 실행이 차단된다
-  - [ ] 관리자가 capability를 차단하면 사용자 화면에서 `policy_blocked`으로 표시된다
+  - [x] 관리자가 capability를 차단하면 사용자 화면에서 `policy_blocked`으로 표시된다 — `CR-090`/`WP-080` 범위(`pr.list`, W-010 「관리자가 이 명령의 실행을 차단했습니다」)
   - [ ] 확장 허용 목록에 추가한 확장만 실행된다
-  - [ ] 정책 변경이 감사에 남는다
+  - [x] 정책 변경이 감사에 남는다 — `CR-090`/`WP-080` 범위(운영 승인·철회·차단·재개, 변경과 같은 트랜잭션)
 - 검증 방법: `pnpm test:integration gh-policy`
 - 기록: 원장 WP-059 상태, FR-GH-013 매핑
 
@@ -2695,12 +2697,12 @@ external main의 특정 커밋
 | REL-004 | WP-029 ~ WP-036 | 8 |
 | REL-005 | WP-037 ~ WP-040 | 4 |
 | REL-006 | WP-041 ~ WP-044, WP-069 | 5 |
-| REL-007 | WP-045 ~ WP-048, WP-061, WP-062, WP-066, WP-077 ~ WP-079 | 10 |
+| REL-007 | WP-045 ~ WP-048, WP-061, WP-062, WP-066, WP-077 ~ WP-080 | 11 |
 | REL-008 | WP-049 ~ WP-050 | 2 |
 | REL-009 | WP-051 ~ WP-053, WP-057 | 4 |
 | REL-010 | WP-054 ~ WP-056, WP-063, WP-064 | 5 |
 | REL-011 | WP-058 ~ WP-060, WP-065 | 4 |
-| 합계 | | 71 |
+| 합계 | | 72 |
 
 **`WP-074`·`WP-075`는 이 합계에 넣지 않는다 (CR-077).** 두 WP가 구현하는 `FR-SEQ-008`·`FR-SEQ-009`는 `REL-003`이 세운 시퀀스 계열의 파생이라 요구사항 소속은 `REL-003`이지만, **`REL-003`의 완료 판정은 이미 검증된 `merge_seq`를 기준으로 서 있고 M 넘버가 그 판정을 재개방하지 않는다** (로드맵 4.2장). `WP-070`~`WP-073`을 이 표에 넣지 않은 것과 같은 처리다.
 
@@ -2813,5 +2815,37 @@ external main의 특정 커밋
 - [x] A-006·W-010 — 결과 계약·port·간선과 「실행 미개방」, 분리 집계, 옛 판 표시, 참조 문구가 보이고 실행·Recipe 버튼이 없다 (a11y `QA-GH-45`·`QA-GH-46`, e2e). 픽스처는 manifest 실측이며 드리프트 가드가 건다.
 - [x] 도메인 회귀가 PR head와 병합 커밋의 main CI integration 잡에서 실제로 돈다(`DEV-686`) — PR run `34812603220`·main run `34813159209` attempt 1 success(verify·integration — 회귀 481) (원장 6.86장).
 - [x] 독립 검토 두 관점(A 결과 의미·B 실행 분리)과 변경 뒤 재검토 — 두 관점 모두 재검토에서 새 발견 없음, 문서 cascade 검토 결함 0 (원장 6.86장).
-- [ ] **사내 GHES 지원 확인**(`DEV-674`)과 **스냅숏 활성화 조건**(`DEV-685`) — 이 WP의 범위 밖이며 REL-007 완료를 막는다.
+- [ ] **사내 GHES 지원 확인**(`DEV-674`)과 **스냅숏 활성화 조건**(`DEV-685`) — 이 WP의 범위 밖이며 REL-007 완료를 막는다. (`DEV-685`는 뒤이은 `WP-080`/`CR-090`의 운영 승인으로 종결됐다.)
 - [ ] **사내 실제 GHE·Operations App 검증** — `NOT RUN` (WP-077과 같다).
+
+### WP-080 REL-007 R2 — 검증된 레지스트리 운영 승인·R0 실행 정책
+
+> `CR-090` 신설. **새로 실행 가능한 명령은 없다** — 실행 허용은 `pr.list` 하나이며, 운영 승인과 관리자 정책은 코드의 실행 목록을 줄일 수만 있다. 검증 기록은 원장 6.87장이다.
+>
+> 운영 승인은 이 배포 범위의 현재 R0 정의에 대한 DB 결정이다. 196개 명령의 실행 허용·사내 GHES 호환성 확인·`REL-007` 완료가 아니고, 이 WP의 감사·동시성 시험은 `GATE-GH-06`·`GATE-GH-01e`·`GATE-GH-08`의 증거가 아니다.
+
+- 목표: 관리자가 A-006에서 검증된 현재 배포 정의를 승인하고 A-005에서 기존 `pr.list` 실행을 차단·재개하며, 그 결정이 API의 요청 수락과 실행기의 claim에서 실제로 지켜지고 근거와 변경 이력이 보존된다.
+- 관련 FR: `FR-GH-011` AC-6~AC-10, `FR-GH-009` AC-8, `FR-AUTH-004` AC-1(감사 액션 넷)·AC-6 예외, `FR-GH-012` AC-4(과거 승인 비승계).
+- 관련 계약: `API-GH-001`(`execution_gate`)·`API-GH-002`(미리보기 `gate`, 수락 거절 코드)·`API-GH-008`(조회·변경)·`API-GH-013`(`unsupported_report_version`), `ENT-GH-006`·`ENT-GH-012`(`scope`)·`ENT-GH-013`·`ENT-GH-014`, `JOB-GH-001`(claim 트랜잭션)·`JOB-GH-003`(`lastPassedAt`·신선도 한도), `THR-048`~`THR-051`, A-005·A-006·W-010.
+- 선행 WP: `WP-079`. `WP-059`(스냅숏 활성화·A-005 최소·정책 변경 감사·`admin_action_required` 흐름)·`WP-047`(claim의 정책 재판정)·`WP-048`(W-010 판정 표시)·`WP-045`(검증 기록의 배포 범위·보고서 판 해석기)는 이 WP가 **부분**을 들여온 상위 WP이며, 3장 표의 각 행이 무엇이 들어왔고 무엇이 남았는지 적는다. `WP-059`는 REL-011, A-005는 REL-010 소속이지만 이 판이 최소 부분을 REL-007로 당겼다(로드맵 4.3절).
+
+구현 범위: `packages/gh-cli/src/registry-policy.ts`(판정식 `decideExecution` — 기능 꺼짐 → 코드·manifest 상한 → 정책 읽기 → 운영 승인 → 운영자 차단 → 대기 요청의 revision → 레지스트리; 승인 자격 `evaluateApprovalEligibility` — 사유를 모두 모은다; 등록된 보고서 판 해석기 — `r2`만 읽고 `r1`은 옛 판, `r999`는 해석 불가; 레지스트리 판정 입력 — 실행기는 인메모리 검사, API는 DB 기록; 신선도 한도 = 주기 + 한 회차 최악 소요), `registry-cadence.ts`(검사의 시간 상한·동시성·재시도 대기를 한 곳에), 마이그레이션 `030_gh_operations_policy`(정책 표·revision 이력·`SECURITY DEFINER` 변경 함수·검증 기록 `scope`와 잠금 트리거·`gh_execution.policy_revision`과 claim 가드 트리거), `packages/db/src/repositories/gh-policy.ts`(읽기와 함수 호출만)·`gh-registry.ts`(`latestExecutorVerification`)·`gh-execution.ts`(`policy_revision`·`closeQueuedByPolicy`), 실행기 `registry-check.ts`(범위·주기 기록, `lastPassedAt`)·`runner.ts`(앞선 판정 + 정책 공유 잠금 claim 트랜잭션), search-api `gh/policy.ts`(`API-GH-008`·수락 판정)·`executions.ts`(수락 거절·revision 기록)·`routes.ts`(역할·JSON 전용·거절 감사)·`registry.ts`(보고서 판 해석기), contracts 오류 코드 넷, domain 감사 액션 넷, web 프록시의 `Idempotency-Key` 전달(`DEV-690`)·A-006 운영 승인 절·A-005 최소(`/ops/gh-policy`)·W-010 실행 판정 배너·내비, 도달성 회귀 `CR-090` 셋.
+
+제외: `pr.view`를 포함한 새 명령 실행, R1~R3·Recipe·임의 `gh api`·extension·파일 작업 개방, 위험도 재정의·승인 정책 전체 편집기·엔드포인트 정책 엔진, 동적 manifest 다운로드·설치·코드 로딩, 다른 스냅숏 선택·이전 정의로 되돌아가기, 재검사 API, CSRF 토큰 체계(`DEV-691`), 실제 사내 DB 적용·실제 GHE 변경, 릴리스·태그 발행, 러너·결제·브랜치 보호 설정 변경, 기존 열린 편차 전체 정리.
+
+완료 기준:
+- [x] 승인 자격을 서버가 적재 정의와 DB 근거로만 판정한다 — 옛 판 `r1`·알 수 없는 판 `r999`·`passed` 문자열만 위조·스냅숏/보고서/manifest 해시 불일치·CI·CLI·다른 범위의 기록·과거 통과 뒤 최신 드리프트·오래된 근거와 미래 시각·근거 없음·실행기와 API의 적재 정의 불일치가 각각의 사유로 거절된다 (gh-cli 단위 22·DB 통합).
+- [x] 승인·철회·차단·재개가 배포 범위마다 하나인 revision으로 남는다 — 두 운영자의 동시 승인과 승인·차단 경합은 먼저 커밋한 쪽만 반영되고 나머지는 충돌이며, 오래된 미리보기는 `evidence_changed`, 같은 키·같은 내용은 `replayed`(이력·감사 증가 0), 다른 내용은 거절이다 (DB·흐름·HTTP 통합).
+- [x] 감사가 변경과 원자적이다 — `audit_record` INSERT가 실패하면 상태·이력·스냅숏 활성화가 모두 그대로다. 거절은 결과 코드로 남고 `replayed`는 남지 않는다 (DB·HTTP 통합).
+- [x] `prs_app`으로 정책 표 직접 쓰기·이력 쓰기·스냅숏 활성화·실행 기록 revision 바꾸기·`search_path` 가로채기가 실제로 거절·무효다. 함수는 `SECURITY DEFINER`·소유자 `prs_admin`·`search_path` 고정·`PUBLIC` 실행 불가다 (DB 통합).
+- [x] 사용자 흐름 1~9를 실제 PostgreSQL·고정 gh 2.97.0·HTTPS 목 GHE로 보인다 — 승인 전 거절 → 미리보기 → 승인 → 실행(GraphQL 1회) → 차단 → 새 요청 거절·대기 요청은 claim에서 닫힘(gh 호출 0) → 재개 → 새 요청 실행 → 이력·감사, 그리고 다른 capability 거절·재시작 뒤 유지·정의 변경 시 자동 승인 없음·철회 뒤 운영 승인 필요 (흐름 통합).
+- [x] 큐 재검증의 경계 — 재검증과 claim 사이에 차단되면 claim 트랜잭션의 판정이 `policy_blocked`로 닫고, claim이 먼저 잠금을 쥐면 차단은 그 뒤에 커밋되며 차단 뒤의 확정은 가드가 거절한다. 정책을 읽지 못하면 새 실행은 503이고 대기 요청은 닫히지 않으며 다른 API는 응답한다 (흐름·DB·HTTP 통합).
+- [x] 롤백 방어 — revision이 없거나 `queued`가 아닌 새 실행 기록(PRS10)과 현재 정책과 다른 claim(PRS11)이 거절되고, 029 → 030 → 029 → 030 왕복에서 과거 행이 남고 승인은 되살아나지 않는다. **옛 앱 코드(`26e2627`)는 새 migrate 이미지로 030을 받은 DB에서 실행 기록을 만들지도 claim하지도 못한다** (DB 통합·롤백 실측). 백업 복원(`prsctl restore` 경로)은 종료 상태·revision 없는 과거 행을 그대로 복원하고, 복원 뒤에도 가드가 산다(복원 실측).
+- [x] 기능 OFF와 회귀 — `GH_OPERATIONS_ENABLED=false`면 gh 의존이 없어 운영 정책을 읽지 않는다. 실행 허용은 코드 표 `pr.list` 하나이고 정책은 넓히지 못하며, 결과 계약·연결 후보가 실행 권한이 되지 않는다 (단위·회귀 `CR-088`·`CR-089`·`CR-090`).
+- [x] 화면 — A-006 승인 미리보기·충돌·403, A-005 차단·재개 확인과 사용자에게 보일 사유, W-010 상태 구분과 실행 버튼 (a11y `QA-GH-47`~`QA-GH-49`, 실제 Chromium e2e 5). 이 시험의 증거 범위는 화면이며 서버 판정은 통합 시험이 본다.
+- [x] 핵심 방어를 지우는 변이 31종(독립 검토 반영 다섯 포함)이 모두 시험에 잡힌다 — 하나는 시험을 보강한 뒤다 (원장 6.87장).
+- [x] 이미지 다섯 빌드·`smoke-images.sh` 통과·web 이미지의 새 운영 화면 SSR 200·migrate 이미지의 030 적용 — 검토 반영(`9bb981d`) 뒤 다시 빌드해 같은 결과 (원장 6.87장).
+- [x] 필수 배터리(최종 `9bb981d` 전 단계 통과)·독립 검토 두 관점과 재검토(blocker·major 0)·문서 cascade 독립 검토(blocker·major·minor 0, nit 1 반영) — 원장 6.87장.
+- [ ] PR CI·병합 커밋의 main CI — 병합 뒤 후속 기록 PR에서 원장 6.87장에 적는다.
+- [ ] **사내 반입과 실제 GHES에서의 운영 승인·`pr.list`** — `NOT RUN`.
+- [ ] **REL-007 잔여 게이트** — `GATE-GH-01e`·`GATE-GH-06`·`GATE-GH-08`·대상 GHES 지원 확인(`DEV-674`). 이 WP의 범위 밖이며 이 WP의 시험은 그 증거가 아니다.

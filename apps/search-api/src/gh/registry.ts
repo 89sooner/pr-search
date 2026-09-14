@@ -18,6 +18,7 @@ import {
   GH_PINNED_VERSION,
   REPORT_VERSION,
   computeCapabilityGraph,
+  decodeRegistryReport,
   validateManifest,
   type GhCapabilityGraph,
   type GhCapabilityManifest,
@@ -56,12 +57,14 @@ export function graphFor(manifest: GhCapabilityManifest): GhCapabilityGraph {
  * 저장된 보고서의 판. 기록은 append-only라 옛 판(`r1`)의 보고서가 남아 있다 — 그 기록은 결과 계약 차원을 검증하지 않았고,
  * 새 판의 기준으로 다시 읽어 「통과」로 보이게 하지 않는다. 판을 읽을 수 없으면 `null`이다.
  */
-export function reportVersionOf(report: unknown): { readonly version: string | null; readonly contractDimensions: 'verified' | 'not_in_report_version' } {
-  const raw = typeof report === 'object' && report !== null ? (report as Record<string, unknown>)['reportVersion'] : undefined;
-  const version = typeof raw === 'string' ? raw : null;
-  const number = version === null ? null : /^r(\d+)$/.exec(version)?.[1];
-  const verified = number !== undefined && number !== null && Number(number) >= CONTRACT_DIMENSIONS_REPORT_VERSION;
-  return { version, contractDimensions: verified ? 'verified' : 'not_in_report_version' };
+export function reportVersionOf(report: unknown): { readonly version: string | null; readonly contractDimensions: 'verified' | 'not_in_report_version' | 'unsupported_report_version' } {
+  /*
+   * 등록된 판 해석기로 읽는다 (CR-090). 판 번호의 크기를 비교하면 `r999`처럼 해석기가 없는 판이 「결과 계약 검증됨」으로
+   * 보인다 — 운영 승인이 거절하는 기록을 화면이 초록으로 그리게 된다.
+   */
+  const decoded = decodeRegistryReport(report);
+  if (decoded.ok) return { version: decoded.report.version, contractDimensions: 'verified' };
+  return { version: decoded.version, contractDimensions: decoded.reason === 'report_version_unsupported' ? 'unsupported_report_version' : 'not_in_report_version' };
 }
 
 function verificationView(row: GhCapabilityVerificationRow, servedHash: string): Record<string, unknown> {

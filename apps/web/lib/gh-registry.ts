@@ -57,7 +57,7 @@ export interface VerificationView {
   /** 저장된 보고서의 판 (CR-089). 옛 배포의 응답에는 없다. */
   readonly report_version?: string | null;
   /** 그 보고서가 결과 계약 차원(01d 여섯)을 검증했는가. `r1` 기록은 `not_in_report_version`이다. */
-  readonly contract_dimensions?: 'verified' | 'not_in_report_version';
+  readonly contract_dimensions?: 'verified' | 'not_in_report_version' | 'unsupported_report_version';
 }
 
 /* ------------------------------------------------------- 결과 계약·연결 (CR-089) */

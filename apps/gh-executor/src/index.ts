@@ -63,7 +63,7 @@ const server = buildServer({
       ghVersion,
       manifestVersion: manifest?.manifestVersion ?? null,
       manifestHash: manifest?.hash ?? null,
-      registry: state === null ? null : { status: state.status, checkedAt: state.checkedAt?.toISOString() ?? null, stale: state.stale },
+      registry: state === null ? null : { status: state.status, checkedAt: state.checkedAt?.toISOString() ?? null, stale: state.stale, lastPassedAt: state.lastPassedAt?.toISOString() ?? null },
     };
   },
   /*
@@ -125,7 +125,7 @@ if (!config.enabled) {
   }
 
   const checker = registry;
-  const deps: RunnerDeps = { pool, config, manifest, vaultKey, metrics, log, registry: { isStale: () => checker.state().stale } };
+  const deps: RunnerDeps = { pool, config, manifest, vaultKey, metrics, log, registry: { snapshot: () => checker.state() } };
 
   bus = new RedisStreamsEventBus();
   const topic = TOPICS.ghExecutions;

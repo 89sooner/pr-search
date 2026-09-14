@@ -8,6 +8,10 @@
  *   4. 제약 — 상태 CHECK, 위험도 CHECK, 중복 방지 키 유니크
  *   5. 봉인 표에 토큰 원문이 없다 (리포지터리가 바이트만 넣는다)
  *
+ * CR-090: 실행 기록은 수락 시점의 운영 정책 revision을 적고, queued→running은 그 revision·승인 정의가 현재 정책과 같을 때만
+ * 된다(마이그레이션 030 가드). 이 파일은 028의 상태 기계를 보므로, 실제 정책 함수로 이 호스트의 정의를 한 번 승인해 둔다 —
+ * 가드를 끄거나 우회하지 않는다. 가드 자체의 거절은 `gh-policy.test.ts`가 본다.
+ *
  * 검증: `pnpm test:integration gh-schema`
  */
 
@@ -17,6 +21,8 @@ import { appliedVersions, migrateDown, migrateUp } from '../src/migrate.js';
 import { ensureAllPartitions, partitionName } from '../src/partitions.js';
 import * as ghExecutionRepo from '../src/repositories/gh-execution.js';
 import * as ghIdentityRepo from '../src/repositories/gh-identity.js';
+import * as ghPolicyRepo from '../src/repositories/gh-policy.js';
+import * as ghRegistryRepo from '../src/repositories/gh-registry.js';
 import { withTransaction } from '../src/pool.js';
 import { migratedPool } from './helpers.js';
 
@@ -45,15 +51,15 @@ describe('028 왕복', () => {
   it('027 → 028 → 027 → 028 — 내려가면 세 표가 사라지고 올라오면 돌아온다', async () => {
     const before = await appliedVersions(pool);
     expect(before).toContain('028');
-    // 029(레지스트리, CR-088)가 028 위에 있다 — 둘을 내린다. 다음에 030이 생기면 이 단언이 즉시 깨진다 (CR-084의 규율).
-    const reverted = await migrateDown(pool, 2);
-    expect(reverted).toEqual(['029', '028']);
+    // 029(레지스트리, CR-088)와 030(운영 정책, CR-090)이 028 위에 있다 — 셋을 내린다. 다음에 031이 생기면 이 단언이 즉시 깨진다 (CR-084의 규율).
+    const reverted = await migrateDown(pool, 3);
+    expect(reverted).toEqual(['030', '029', '028']);
     const tables = await pool.query<{ relname: string }>(
       `SELECT relname FROM pg_class WHERE relname IN ('gh_execution', 'gh_execution_idempotency', 'gh_identity_secret', 'github_identity_connection')`,
     );
     expect(tables.rows).toEqual([]);
     const applied = await migrateUp(pool);
-    expect(applied).toEqual(['028', '029']);
+    expect(applied).toEqual(['028', '029', '030']);
     await ensureAllPartitions(pool, 3);
     // 위 beforeEach의 사용자 행은 CASCADE로 살아 있다 — 028은 app_user를 건드리지 않는다.
     const users = await pool.query('SELECT count(*)::int AS n FROM app_user');
@@ -94,10 +100,39 @@ describe('파티션 (NFR-012 — 월별 파티션)', () => {
   });
 });
 
+const SCHEMA_HOST = 'ghe.example.com';
+const SCHEMA_MANIFEST_HASH = 'a1'.repeat(32);
+
+/** 이 호스트의 정의를 실제 정책 함수로 승인하고 revision을 돌려준다 (CR-090). 이미 승인돼 있으면 그 revision이다. */
+async function approveSchemaDefinition(): Promise<number> {
+  const current = await ghPolicyRepo.findPolicy(pool, SCHEMA_HOST);
+  if (current?.approved_manifest_hash === SCHEMA_MANIFEST_HASH) return current.revision;
+  const { row: snapshot } = await ghRegistryRepo.recordSnapshot(pool, {
+    ghVersion: '2.97.0', manifestVersion: 'r0.1', manifestHash: SCHEMA_MANIFEST_HASH, inventoryHash: 'b2'.repeat(32),
+    commandCount: 1, leafCommandCount: 1, groupCommandCount: 0, aliasOnlyCommandCount: 0, aliasCount: 0, positionalCount: 0, flagCount: 0,
+    inheritedFlagCount: 0, jsonFieldCount: 0, unclassifiedCount: 0, interactionUnclassifiedCount: 0, flagUnclassifiedCount: 0,
+    positionalUnclassifiedCount: 0, extensionCommandCount: 0, executableCount: 1, coverage: { dimensions: [] },
+  });
+  const evidence = await ghRegistryRepo.insertVerification(pool, {
+    snapshotId: snapshot.snapshot_id, checkedBy: 'gh-executor', trigger: 'startup', scope: SCHEMA_HOST, environment: { registry_check_ms: 86_400_000 },
+    ghVersionExpected: '2.97.0', ghVersionObserved: '2.97.0', binarySha256Expected: 'c3'.repeat(32), binarySha256Observed: 'c3'.repeat(32),
+    manifestHashExpected: SCHEMA_MANIFEST_HASH, manifestHashObserved: SCHEMA_MANIFEST_HASH, inventoryHashExpected: 'b2'.repeat(32), inventoryHashObserved: 'b2'.repeat(32),
+    validatorVersion: 'validator-test', rulesVersion: 'rules-test', status: 'passed', drift: null, report: { reportVersion: 'r2' }, reportHash: 'd4'.repeat(32), error: null,
+  });
+  const applied = await ghPolicyRepo.applyPolicyChange(pool, {
+    scope: SCHEMA_HOST, action: 'approve', expectedRevision: current?.revision ?? 0, actor: 'test:gh-schema', reason: '028 상태 기계 시험의 전제',
+    correlationId: '00000000-0000-4000-8000-0000000000aa', idempotencyKey: `schema-${String(Date.now())}`, requestFingerprint: 'e5'.repeat(32),
+    snapshotId: snapshot.snapshot_id, verificationId: evidence.verification_id, reportHash: evidence.report_hash, evidenceMaxAgeMs: 91_225_000,
+  });
+  return applied.revision;
+}
+
+let schemaRevision = 0;
+
 const insertInput = (overrides: Partial<ghExecutionRepo.GhExecutionInsert> = {}): ghExecutionRepo.GhExecutionInsert => ({
   userId: 'u-alice',
   githubActor: 'alice',
-  host: 'ghe.example.com',
+  host: SCHEMA_HOST,
   repository: 'acme/payments',
   repositoryId: 4021,
   capabilityId: 'pr.list',
@@ -108,14 +143,19 @@ const insertInput = (overrides: Partial<ghExecutionRepo.GhExecutionInsert> = {})
   riskLevel: 'R0',
   ghVersion: '2.97.0',
   manifestVersion: 'r0.1',
-  manifestHash: 'h',
+  manifestHash: SCHEMA_MANIFEST_HASH,
   idempotencyKey: 'key-00000001',
   authorizationResult: 'delegated_token_intersection',
   correlationId: '00000000-0000-4000-8000-000000000001',
+  policyRevision: schemaRevision,
   ...overrides,
 });
 
 describe('제약과 상태 기계', () => {
+  beforeAll(async () => {
+    schemaRevision = await approveSchemaDefinition();
+  });
+
   it('중복 방지 키는 같은 사용자 안에서 유일하다 (FR-GH-012 AC-5)', async () => {
     await ghExecutionRepo.insertExecution(pool, insertInput());
     await expect(ghExecutionRepo.insertExecution(pool, insertInput())).rejects.toBeInstanceOf(ghExecutionRepo.DuplicateIdempotencyKeyError);

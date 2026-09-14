@@ -1,6 +1,6 @@
 # PR Search 제품 IA 문서
 
-> 상태: review | 버전: v0.5 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.6 | 갱신일: 2026-09-14
 
 CR-079: 새 화면을 추가하지 않는다. W-001의 기존 검색 진입에서 M 인용 query 네 값(repository/base/epoch/M)을 받아 해석하고 기존 W-002로 이동한다. W-001·W-002·W-004는 M 번호를 PR 번호 옆에 병기한다. W-004의 계산 기준은 merge_seq다. [상세 설계 9절](../30_technical_architecture/pr_search_wp074_design.md)의 상태·링크 계약을 따른다.
 
@@ -127,8 +127,8 @@ Product Surface
 
 | 화면 ID | 화면명 | 목적 | 관련 요구사항 | 우선순위 |
 | --- | --- | --- | --- | --- |
-| A-005 | GitHub 실행 정책 | capability 허용/차단, 위험도 재정의, 승인 필요 지정, `gh api` 엔드포인트 정책, 확장 허용 목록 | FR-GH-009, FR-GH-010, FR-GH-013 | P1 |
-| A-006 | gh capability·버전 레지스트리 | manifest 버전·해시, gh 버전 대조, 분류 커버리지, 드리프트, 호스트 지원 상태 | FR-GH-001, FR-GH-011, FR-GH-013 | P0 |
+| A-005 | GitHub 실행 정책 | capability 허용/차단, 위험도 재정의, 승인 필요 지정, `gh api` 엔드포인트 정책, 확장 허용 목록. **CR-090 최소 구현(`/ops/gh-policy`)은 실행이 열린 capability(`pr.list`)의 차단·재개와 이력뿐이다** | FR-GH-009, FR-GH-010, FR-GH-013 | P1 |
+| A-006 | gh capability·버전 레지스트리 | manifest 버전·해시, gh 버전 대조, 분류 커버리지, 드리프트, 호스트 지원 상태. **CR-090: 현재 적재 정의의 운영 승인·철회와 그 근거·이력** | FR-GH-001, FR-GH-011, FR-GH-013 | P0 |
 | A-007 | GitHub 작업 감사·승인 | 전체 실행 감사 조회, 승인 대기 작업 처리, 위임 신원 연결 상태 | FR-GH-012, FR-GH-008, FR-GH-009 | P1 |
 
 ## 5. 내비게이션과 진입 경로

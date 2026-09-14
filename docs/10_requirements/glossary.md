@@ -1,6 +1,8 @@
 # PR Search 용어집
 
-> 상태: review | 버전: v0.9 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.10 | 갱신일: 2026-09-14
+
+CR-090 용어 보완: GitHub Operations의 **운영 승인**은 운영자가 이 배포 범위에서 현재 적재된 gh capability 정의를 R0 범위에서 쓰기로 한 DB 결정이며, 실행 단위 승인(R3 승인자)과 다른 낱말이다. **운영자 차단**은 manifest 분류의 `policy_blocked`와 같은 코드를 쓰지만 다른 사실이고 응답의 `detail`로 가른다. 아래 GitHub Operations 용어 표에 여섯 행을 더했다.
 
 CR-079 용어 보완: M 넘버의 화면 표기는 **M 번호**, 정본 필드명은 `merge_number`다. 공간은 repository_id·base_branch·seq_epoch로 한정한다. `pr_confirmed`는 merged·base·SHA가 일치하는 양성 증거, `direct_confirmed`는 PR 부재의 완결 증서, `unresolved`는 아직 결론을 낼 수 없는 상태다. 교정 가능한 commit.role=direct_push와 영구 direct_confirmed는 동의어가 아니다. 현재 production 부재 증서는 확보되지 않았다(DEV-581). 상세 데이터 어휘는 [설계 3·6절](../30_technical_architecture/pr_search_wp074_design.md)이 소유한다.
 
@@ -149,6 +151,12 @@ CR-079 용어 보완: M 넘버의 화면 표기는 **M 번호**, 정본 필드�
 | Recipe | `gh_recipe` | 등록된 capability만 조합한 다단계 작업 정의 | shell 스크립트가 아니다. 임의 명령을 넣을 수 없다 | FR-GH-005 |
 | 임시 workspace | `workspace` | 로컬 git이나 파일이 필요한 실행에 배정되는 격리된 디렉터리 | 서버의 실제 소스 트리가 아니다 | FR-GH-007 |
 | 레지스트리 드리프트 | `registry_stale` | 실행기의 gh 버전과 manifest 생성 버전이 다른 상태 | 이 상태에서 신규 command를 실행하지 않는다 | FR-GH-011 AC-3 |
+| 운영 승인 | `gh_operations_policy.approved_*` | 운영자가 이 배포 범위에서 현재 적재된 capability 정의(gh 버전·manifest 판·manifest 해시)를 R0 범위에서 쓰기로 한 DB 결정. 실행기 검증 기록과 보고서 해시에 묶이고 운영 정책 revision으로 남는다. 없으면 기능이 켜져 있어도 새 실행을 시작하지 않는다 | 실행 단위 승인(`gh_approval`, R3 승인자)과 다르다. 196개 명령의 실행 허용·사내 GHES 확인·REL-007 완료가 아니다 (CR-090) | FR-GH-011 AC-6~AC-8 |
+| 운영 승인 필요 | `admin_action_required` | 현재 적재된 정의의 운영 승인이 없어(승인 없음·철회·정의 변경) 새 실행을 거절하는 판정 | 레지스트리 드리프트(`registry_stale`)·운영자 차단과 다른 사실이다 (CR-090) | FR-GH-011 AC-3·AC-6 |
+| 운영자 차단 | `policy_blocked` (`detail: operator_blocked`) | 운영자가 실행 가능한 capability의 새 실행권을 사유와 함께 막은 정책. 재개는 명시적으로만 한다 | manifest 분류가 실행 차원에서 막은 `policy_blocked`(열지 않기로 한 command)와 코드가 같지만 다른 사실이다. 이미 실행 중인 작업을 취소하지 않는다 (CR-090) | FR-GH-009 AC-8 |
+| 운영 정책 revision | `gh_operations_policy.revision` | 배포 범위 하나의 운영 승인·차단 상태에 붙는 번호. 변경마다 기대 revision을 대조하고 1씩 올리며 이력 한 행을 남긴다 | manifest 판(`r0.3`)·검증기 보고서 판(`r2`)과 다른 번호다 (CR-090) | FR-GH-011 AC-8 |
+| 배포 범위 | `scope` | 운영 정책과 실행기 검증 기록이 속하는 단위 = 서버 설정 `GHE_BASE_URL`의 호스트. 클라이언트가 지정하지 않는다 | 사용자의 저장소 접근 범위(`access_scope`)와 다르다 (CR-090) | FR-GH-011 AC-6 |
+| 근거 신선도 한도 | `evidence_max_age_ms` | 운영 승인의 근거로 받을 수 있는 실행기 검증 기록의 최대 나이이자, 실행기가 마지막 통과 뒤 새 실행권을 줄 수 있는 한도 = 검사 주기 + 한 회차 최악 소요(기본 91,225,000ms, 25시간 20분 25초) | 검사 주기(`GH_EXECUTOR_REGISTRY_CHECK_MS`) 자체가 아니다 (CR-090) | FR-GH-011 AC-7·AC-9 |
 | 구조화 invocation (GhInvocation) | 사용자가 구성한 gh 작업의 구조 표현. capability ID, 컨텍스트, positional, flag, stdin 원본, 파일 바인딩, 출력 옵션으로 이뤄진다. 문자열 명령이 아니라 이것이 요청·검증·미리보기·실행·감사·재실행의 단일 진실이다 (CR-008, ADR-017) |
 | 의미 제약 모델 (GhCapabilityConstraint) | capability의 유효 조합 정의. `requires`·`conflicts`·`oneOf`·`exactlyOne`·`atLeastOne`·`implies`·반복 가능·최소/최대·값 열거·조건부 필수·입력원 제약·컨텍스트 의존 제약을 표현한다. 폼·서버 검증·argv 빌더·테스트 생성기가 같은 모델을 읽는다 (CR-008) |
 | SafeGhOutput | gh stdout·stderr와 GitHub 텍스트가 사용자 화면에 닿기 전에 반드시 통과하는 무해화 경계. ANSI CSI·OSC·제어 문자 무해화, invalid UTF-8 치환, 바이너리 탐지, 바이트 상한, 스트리밍 청크 경계 보정 (CR-008, ADR-018) |

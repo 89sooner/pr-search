@@ -7,6 +7,10 @@
  * 검증」은 최신 행이고 「이전과 무엇이 달라졌는가」는 행 사이의 차이다.
  *
  * 이 리포지터리는 실행 허용을 읽지도 쓰지도 않는다. 기록이 초록이어도 실행기는 스스로 대조한다.
+ *
+ * CR-090: 실행기 기록은 배포 범위(`scope` — `GHE_BASE_URL`의 호스트)를 적는다(마이그레이션 030 CHECK). 운영 승인의 근거는
+ * 「그 범위의 가장 최근 실행기 기록」이며 CLI·CI 기록이나 범위가 없는 과거 기록은 근거가 아니다. 기록 INSERT는 트리거가
+ * 정책 잠금(공유)을 걸어, 승인이 최신 기록을 읽는 동안 새 기록이 끼어들지 못한다.
  */
 
 import type { Pool, PoolClient } from 'pg';
@@ -138,6 +142,8 @@ export interface GhCapabilityVerificationRow {
   readonly checked_at: Date;
   readonly checked_by: GhVerificationSource;
   readonly trigger: GhVerificationTrigger;
+  /** 배포 범위. 030 이전의 기록과 CLI·CI 기록은 `null`이다. */
+  readonly scope: string | null;
   readonly environment: Record<string, unknown>;
   readonly gh_version_expected: string;
   readonly gh_version_observed: string | null;
@@ -160,6 +166,8 @@ export interface GhCapabilityVerificationInput {
   readonly snapshotId: number;
   readonly checkedBy: GhVerificationSource;
   readonly trigger: GhVerificationTrigger;
+  /** 배포 범위. 실행기 기록이면 반드시 준다(030 CHECK). CLI·CI는 `null`. */
+  readonly scope: string | null;
   readonly environment: Readonly<Record<string, unknown>>;
   readonly ghVersionExpected: string;
   readonly ghVersionObserved: string | null;
@@ -178,7 +186,7 @@ export interface GhCapabilityVerificationInput {
   readonly error: string | null;
 }
 
-const VERIFICATION_COLUMNS = `verification_id, snapshot_id, checked_at, checked_by, trigger, environment, gh_version_expected, gh_version_observed,
+const VERIFICATION_COLUMNS = `verification_id, snapshot_id, checked_at, checked_by, trigger, scope, environment, gh_version_expected, gh_version_observed,
   binary_sha256_expected, binary_sha256_observed, manifest_hash_expected, manifest_hash_observed, inventory_hash_expected,
   inventory_hash_observed, validator_version, rules_version, status, drift, report, report_hash, error`;
 
@@ -188,8 +196,8 @@ export async function insertVerification(db: Queryable, input: GhCapabilityVerif
     `INSERT INTO gh_capability_verification (
        snapshot_id, checked_by, trigger, environment, gh_version_expected, gh_version_observed, binary_sha256_expected,
        binary_sha256_observed, manifest_hash_expected, manifest_hash_observed, inventory_hash_expected, inventory_hash_observed,
-       validator_version, rules_version, status, drift, report, report_hash, error)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17::jsonb, $18, $19)
+       validator_version, rules_version, status, drift, report, report_hash, error, scope)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17::jsonb, $18, $19, $20)
      RETURNING ${VERIFICATION_COLUMNS}`,
     [
       input.snapshotId,
@@ -211,6 +219,7 @@ export async function insertVerification(db: Queryable, input: GhCapabilityVerif
       JSON.stringify(input.report),
       input.reportHash,
       input.error,
+      input.scope,
     ],
   );
   const row = result.rows[0];
@@ -226,6 +235,27 @@ export async function latestVerifications(db: Queryable): Promise<GhCapabilityVe
       ORDER BY checked_by, checked_at DESC, verification_id DESC`,
   );
   return result.rows;
+}
+
+/**
+ * 배포 범위의 가장 최근 **실행기** 기록 (CR-090).
+ *
+ * - 운영 승인의 근거는 `excludeTransientErrors: false` — 일시 오류라도 가장 최근이 통과가 아니면 승인하지 않는다.
+ * - 실행 수락의 레지스트리 판정은 `true` — 실행기가 일시 오류에서 이전 판정을 유지하는 규칙과 같다.
+ */
+export async function latestExecutorVerification(db: Queryable, scope: string, options: { readonly excludeTransientErrors: boolean }): Promise<GhCapabilityVerificationRow | null> {
+  const result = await db.query<GhCapabilityVerificationRow>(
+    `SELECT ${VERIFICATION_COLUMNS} FROM gh_capability_verification
+      WHERE checked_by = 'gh-executor' AND scope = $1 ${options.excludeTransientErrors ? "AND status <> 'error'" : ''}
+      ORDER BY checked_at DESC, verification_id DESC LIMIT 1`,
+    [scope],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function findSnapshotById(db: Queryable, snapshotId: number): Promise<GhCapabilitySnapshotRow | null> {
+  const result = await db.query<GhCapabilitySnapshotRow>(`SELECT ${SNAPSHOT_COLUMNS} FROM gh_capability_snapshot WHERE snapshot_id = $1`, [snapshotId]);
+  return result.rows[0] ?? null;
 }
 
 export async function listVerifications(db: Queryable, limit = 20): Promise<GhCapabilityVerificationRow[]> {

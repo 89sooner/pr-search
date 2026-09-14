@@ -239,6 +239,8 @@ describe('API-GH-013 — 상태', () => {
     });
     const base = {
       snapshotId: row.snapshot_id,
+      // 실행기 기록은 배포 범위를 적는다 (마이그레이션 030, CR-090).
+      scope: 'ghe.example.com',
       environment: { hostname: 'exec-1' },
       ghVersionExpected: '2.97.0',
       ghVersionObserved: '2.97.0',
@@ -280,6 +282,7 @@ describe('API-GH-013 — 상태', () => {
     const { row } = await ghRegistryRepo.recordSnapshot(pool, snapshotInput(manifest.hash));
     const base = {
       snapshotId: row.snapshot_id,
+      scope: 'ghe.example.com',
       environment: {},
       ghVersionExpected: '2.97.0',
       ghVersionObserved: '2.97.0',
@@ -296,11 +299,15 @@ describe('API-GH-013 — 상태', () => {
       error: null,
     } as const;
     await ghRegistryRepo.insertVerification(pool, { ...base, checkedBy: 'ci', trigger: 'manual', status: 'incomplete', report: { reportVersion: 'r1', status: 'incomplete' } });
-    await ghRegistryRepo.insertVerification(pool, { ...base, checkedBy: 'gh-executor', trigger: 'startup', status: 'passed', report: { reportVersion: 'r2', status: 'passed' } });
+    // r2는 등록된 해석기가 읽을 수 있는 실제 보고서여야 「검증됨」이다 (CR-090 — 판 번호의 크기 비교를 쓰지 않는다).
+    await ghRegistryRepo.insertVerification(pool, { ...base, checkedBy: 'gh-executor', trigger: 'startup', status: 'passed', report: JSON.parse(JSON.stringify(reportFor(manifest))) as unknown });
+    await ghRegistryRepo.insertVerification(pool, { ...base, checkedBy: 'cli', trigger: 'manual', scope: null, status: 'passed', report: { ...(JSON.parse(JSON.stringify(reportFor(manifest))) as Record<string, unknown>), reportVersion: 'r999' } });
     const body = (await app.inject({ method: 'GET', url: GH_REGISTRY_PATH, headers: await login('u-ops', ['operator']) })).json<StatusBody>();
     const bySource = new Map(body.verification.latest_by_source.map((one) => [one.checked_by, one]));
     expect(bySource.get('ci')).toMatchObject({ report_version: 'r1', contract_dimensions: 'not_in_report_version' });
     expect(bySource.get('gh-executor')).toMatchObject({ report_version: 'r2', contract_dimensions: 'verified' });
+    // 해석기가 없는 판은 더 큰 번호여도 검증된 기록이 아니다.
+    expect(bySource.get('cli')).toMatchObject({ report_version: 'r999', contract_dimensions: 'unsupported_report_version' });
   });
 });
 

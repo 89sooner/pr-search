@@ -74,6 +74,17 @@ export const ACTIVE_AUDIT_ACTIONS = [
    * 같은 규율이다.
    */
   'pull_request.annotate',
+  /**
+   * GitHub Operations 운영 정책 (WP-080 / FR-GH-011 AC-6·AC-8, FR-GH-009 AC-8, CR-090).
+   *
+   * **적용(`applied`)은 DB 함수가 변경과 같은 트랜잭션에서 남긴다** — FR-AUTH-004 AC-6의 예외다. 이 서버가 남기는 것은
+   * 거절(`forbidden`·`invalid`·`conflict`·`ineligible`·`key_reused`)뿐이며 그것은 AC-6의 원칙대로 트랜잭션 밖 best-effort다.
+   * 같은 중복 방지 키의 재요청(`replayed`)은 바꾼 것이 없어 남기지 않는다.
+   */
+  'gh_registry.approve',
+  'gh_registry.revoke',
+  'gh_capability.block',
+  'gh_capability.resume',
 ] as const;
 
 /**

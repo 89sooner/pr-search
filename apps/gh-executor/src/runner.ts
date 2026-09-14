@@ -23,19 +23,22 @@
  */
 
 import { createHash } from 'node:crypto';
-import { ghExecutionRepo, ghIdentityRepo, repositoryRepo, type Pool, type GhExecutionRow } from '@prs/db';
+import { ghExecutionRepo, ghIdentityRepo, ghPolicyRepo, repositoryRepo, withTransaction, type Pool, type PoolClient, type GhExecutionRow } from '@prs/db';
 import {
   GH_PINNED_VERSION,
   argvEquals,
   buildArgv,
   buildExecutionEnv,
+  decideExecution,
   evaluateInvocation,
+  executorRegistryVerdict,
   findCapability,
   parsePrListOutput,
   parseRepositorySlug,
   redactArgv,
   redactString,
   type GhCapabilityManifest,
+  type GhExecutionGate,
   type GhInvocation,
   type GhSafeText,
 } from '@prs/gh-cli';
@@ -65,10 +68,10 @@ export interface RunnerDeps {
   readonly log: (entry: RunnerLogEntry) => void;
   readonly now?: () => Date;
   /**
-   * 레지스트리 검사(JOB-GH-003)의 현재 판정. `isStale()`이 참이면 드리프트·구조 실패가 확인된 것이며
-   * 재검증이 실행을 `registry_stale`로 거절한다 (FR-GH-011 AC-3). 없으면(시험) 검사하지 않는다.
+   * 레지스트리 검사(JOB-GH-003)의 현재 상태 — 드리프트·구조 실패(`stale`)와 마지막 통과 시각. 러너는 이것으로 실행 판정의
+   * 레지스트리 입력을 채운다 (FR-GH-011 AC-3·AC-9). **필수다** — 시험도 명시적으로 넘긴다. 없으면 검사를 건너뛰는 경로를 두지 않는다.
    */
-  readonly registry?: { isStale(): boolean };
+  readonly registry: { snapshot(): { readonly stale: boolean; readonly lastPassedAt: Date | null } };
   /**
    * 시험 전용. capability의 시간 상한·설정의 stdout 상한을 덮어쓴다 — 운영 배선은 넘기지
    * 않는다(회귀가 건다). 실제 gh 실행에서 상한이 성립하는지 보려면 값을 줄여야 하고,
@@ -85,6 +88,8 @@ export type RunOutcome =
   | 'not_queued'
   | 'cancelled_before_start'
   | 'rejected'
+  | 'policy_closed'
+  | 'policy_unavailable'
   | 'lost_claim'
   | 'succeeded'
   | 'failed'
@@ -119,9 +124,8 @@ async function revalidate(
 > {
   const now = (deps.now ?? ((): Date => new Date()))();
 
-  // 1. 배포가 같은 manifest·gh인가 (FR-GH-011 AC-2·AC-3). 레지스트리 검사가 드리프트를 확인했어도 같은 사유다.
+  // 1. 요청이 이 실행기가 적재한 manifest·gh로 수락됐는가 (FR-GH-011 AC-2·AC-3). 레지스트리 검사 판정은 실행 판정(decideExecution)이 본다.
   if (row.manifest_hash !== deps.manifest.hash || row.gh_version !== GH_PINNED_VERSION) return { ok: false, reason: 'registry_stale' };
-  if (deps.registry?.isStale() === true) return { ok: false, reason: 'registry_stale' };
 
   // 2. capability가 여전히 열려 있는가.
   const capability = findCapability(row.capability_id);
@@ -172,6 +176,51 @@ function classifyExit(result: GhProcessResult): string {
   return `gh_exit_${String(result.exitCode ?? 'signal')}`;
 }
 
+/** 운영 정책이 이유인 닫힘은 `policy_blocked` 상태, 레지스트리·상한이 이유면 기존처럼 `failed` 상태다. */
+const POLICY_CLOSE_REASONS: ReadonlySet<string> = new Set(['admin_action_required', 'policy_blocked', 'policy_changed']);
+
+/**
+ * 실행 판정 (FR-GH-011 AC-9). API의 수락 판정과 **같은 함수**이며 입력만 이 프로세스의 것이다 — 정책은 DB, 레지스트리는
+ * 자기 인메모리 검사, 대기 요청이므로 수락 시점의 revision을 함께 준다. 정책을 읽지 못하면 `policy_unavailable`이다.
+ */
+async function gateFor(deps: RunnerDeps, row: GhExecutionRow, db: Pool | PoolClient): Promise<GhExecutionGate> {
+  const scope = deps.config.host ?? row.host;
+  let policy: ReturnType<typeof ghPolicyRepo.policyStateOf> | 'unavailable';
+  try {
+    policy = ghPolicyRepo.policyStateOf(scope, await ghPolicyRepo.findPolicy(db, scope));
+  } catch {
+    policy = 'unavailable';
+  }
+  const registry = deps.registry.snapshot();
+  return decideExecution({
+    operationsEnabled: deps.config.enabled,
+    capabilityId: row.capability_id,
+    manifest: deps.manifest,
+    policy,
+    registry: executorRegistryVerdict({ stale: registry.stale, lastPassedAt: registry.lastPassedAt, now: (deps.now ?? ((): Date => new Date()))(), intervalMs: deps.config.registryCheckMs, manifest: deps.manifest }),
+    acceptedRevision: row.policy_revision,
+  });
+}
+
+/** 판정이 막은 대기 요청을 닫는다. 정책을 읽지 못한 경우는 닫지 않고 남긴다 — DB가 돌아오면 스윕이 다시 본다. */
+async function closeByGate(deps: RunnerDeps, db: Pool | PoolClient, row: GhExecutionRow, gate: Extract<GhExecutionGate, { allowed: false }>): Promise<RunOutcome> {
+  if (gate.reason === 'policy_unavailable') {
+    deps.metrics.executions.inc({ result: 'policy_unavailable' });
+    deps.log({ level: 'error', message: '운영 정책을 읽지 못해 대기 요청을 집지 않는다 — 실행을 허용하지 않고 남긴다 (FR-GH-011 AC-9, 마이그레이션 030 적용 여부를 확인한다)', execution_id: row.execution_id, reason: gate.reason, correlation_id: row.correlation_id });
+    return 'policy_unavailable';
+  }
+  if (POLICY_CLOSE_REASONS.has(gate.reason)) {
+    await ghExecutionRepo.closeQueuedByPolicy(db, row.execution_id, gate.reason);
+    deps.metrics.executions.inc({ result: 'policy_blocked' });
+    deps.log({ level: 'warn', message: '운영 정책 때문에 대기 요청을 닫았다 — 과거 승인을 승계하지 않고 다시 실행하지 않는다', execution_id: row.execution_id, reason: gate.reason, correlation_id: row.correlation_id });
+    return 'policy_closed';
+  }
+  await ghExecutionRepo.failQueued(db, row.execution_id, gate.reason);
+  deps.metrics.executions.inc({ result: 'rejected' });
+  deps.log({ level: 'warn', message: '큐에서 꺼낸 실행이 실행 판정에서 탈락했다', execution_id: row.execution_id, reason: gate.reason, correlation_id: row.correlation_id });
+  return 'rejected';
+}
+
 /**
  * 실행 하나를 끝까지 처리한다. **던지지 않는다** — 예외도 `failed`로 기록된다.
  */
@@ -187,6 +236,10 @@ export async function runExecution(deps: RunnerDeps, executionId: number): Promi
     return 'cancelled_before_start';
   }
 
+  // 운영 정책 판정을 먼저 한다 — 막힐 요청을 위해 토큰을 꺼내지 않는다. 잠금 없이 읽으므로 최종 판정은 claim 트랜잭션이 다시 한다.
+  const early = await gateFor(deps, row, deps.pool);
+  if (!early.allowed) return closeByGate(deps, deps.pool, row, early);
+
   const validation = await revalidate(deps, row);
   if (!validation.ok) {
     await ghExecutionRepo.failQueued(deps.pool, executionId, validation.reason);
@@ -196,7 +249,40 @@ export async function runExecution(deps: RunnerDeps, executionId: number): Promi
   }
 
   if (deps.beforeClaim !== undefined) await deps.beforeClaim();
-  const claimed = await ghExecutionRepo.claimExecution(deps.pool, executionId, deps.config.executorId);
+  /*
+   * 실행권 확정 (FR-GH-011 AC-9). 정책 잠금(공유)을 쥔 한 트랜잭션에서 정책을 다시 읽고 같은 판정을 한 뒤 집는다 —
+   * 차단·철회(배타)가 이미 커밋됐으면 여기서 보이고, 아직이면 이 트랜잭션이 끝날 때까지 기다린다. 그래서 차단이 커밋된 뒤에
+   * 새 실행권이 나가지 않는다. 가드 트리거(PRS11)가 DB에서 같은 사실을 한 번 더 본다. gh는 이 트랜잭션 밖에서 띄운다.
+   */
+  type ClaimStep = { readonly kind: 'claimed'; readonly row: GhExecutionRow } | { readonly kind: 'closed'; readonly outcome: RunOutcome } | { readonly kind: 'lost' };
+  let step: ClaimStep;
+  try {
+    step = await withTransaction(deps.pool, async (client): Promise<ClaimStep> => {
+      await ghPolicyRepo.lockPolicyShared(client, deps.config.host ?? row.host);
+      const gate = await gateFor(deps, row, client);
+      if (!gate.allowed) return { kind: 'closed', outcome: await closeByGate(deps, client, row, gate) };
+      const taken = await ghExecutionRepo.claimExecution(client, executionId, deps.config.executorId);
+      return taken === null ? { kind: 'lost' } : { kind: 'claimed', row: taken };
+    });
+  } catch (error) {
+    if (ghPolicyRepo.isPolicyLockTimeout(error)) {
+      /*
+       * 정책 변경(배타)이 잠금 대기 상한을 넘겨 쥐고 있었다 — 판정하지 못했으므로 닫지 않고 남긴다(트랜잭션은 롤백됐다).
+       * 던지면 버스가 이 이벤트를 재시도로 돌려 같은 파티션의 뒤 이벤트까지 막는다. 잔여 스윕이 다시 본다.
+       */
+      deps.metrics.executions.inc({ result: 'policy_unavailable' });
+      deps.log({ level: 'error', message: '운영 정책 잠금을 기다리다 시간이 지나 대기 요청을 집지 않았다 — 닫지 않고 남긴다', execution_id: executionId, reason: 'policy_lock_timeout', correlation_id: row.correlation_id });
+      return 'policy_unavailable';
+    }
+    if (!ghPolicyRepo.isPolicyGuardViolation(error)) throw error;
+    // 판정은 허용했는데 DB 가드가 거절했다 — 판정 뒤에 정책이 바뀐 것이다. 과거 판정을 믿지 않고 닫는다.
+    await ghExecutionRepo.closeQueuedByPolicy(deps.pool, executionId, 'policy_changed');
+    deps.metrics.executions.inc({ result: 'policy_blocked' });
+    deps.log({ level: 'warn', message: '실행권 확정 가드가 거절해 대기 요청을 닫았다', execution_id: executionId, reason: 'policy_guard', correlation_id: row.correlation_id });
+    return 'policy_closed';
+  }
+  if (step.kind === 'closed') return step.outcome;
+  const claimed = step.kind === 'claimed' ? step.row : null;
   if (claimed === null) {
     /*
      * claim이 0행이면 둘 중 하나다 — 다른 실행기가 먼저 집었거나, 재검증과 claim 사이에 **취소가
