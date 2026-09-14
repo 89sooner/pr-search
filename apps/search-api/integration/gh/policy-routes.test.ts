@@ -23,7 +23,7 @@ import type { GhCapabilityManifest } from '@prs/gh-cli';
 import { loadManifest, parseVaultKey } from '@prs/gh-cli/node';
 import { buildServer } from '../../src/server.js';
 import { resolveGhOpsConfig } from '../../src/gh/config.js';
-import { GH_CAPABILITIES_PATH, GH_EXECUTIONS_PATH, GH_EXECUTION_PREVIEW_PATH, GH_IDENTITY_CALLBACK_PATH, GH_IDENTITY_PATH, GH_POLICIES_PATH, GH_POLICY_CHANGES_PATH } from '../../src/gh/routes.js';
+import { GH_CAPABILITIES_PATH, GH_EXECUTIONS_PATH, GH_EXECUTION_PREVIEW_PATH, GH_IDENTITY_CALLBACK_PATH, GH_IDENTITY_PATH, GH_POLICIES_PATH, GH_POLICY_CHANGES_PATH, GH_REGISTRY_PATH } from '../../src/gh/routes.js';
 import type { AuthContext } from '../../src/auth/context.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
 import { TEST_CURSOR_KEY } from '../_cursor-fixture.js';
@@ -260,5 +260,30 @@ describe('API-GH-008 — 승인·차단·재개가 실행 요청을 통제한다
     const response = await change(both, { action: 'block', expected_revision: current, reason: '두 역할', capability_id: 'pr.list' });
     expect(response.statusCode, response.body).toBe(200);
     expect((await change(both, { action: 'resume', expected_revision: current + 1, reason: '두 역할 재개', capability_id: 'pr.list' })).statusCode).toBe(200);
+  });
+});
+
+describe('정책 상태를 읽지 못하면 — 새 실행은 막고 다른 API는 답한다 (FR-GH-011 AC-9·AC-10)', () => {
+  it('정책 표를 읽을 수 없으면 실행 요청은 503 GH_POLICY_UNAVAILABLE이고, capability 목록·레지스트리·헬스는 응답한다', async () => {
+    const user = await login('u-dev', ['developer']);
+    const operator = await login('u-ops', ['operator']);
+    type Gate = { allowed: boolean; reason: string | null };
+    const gateOf = async (): Promise<Gate | undefined> => (await app.inject({ method: 'GET', url: GH_CAPABILITIES_PATH, headers: user })).json<{ capabilities: { execution_gate: Gate }[] }>().capabilities[0]?.execution_gate;
+    expect(await gateOf()).toMatchObject({ allowed: true });
+
+    // 마이그레이션 030이 빠진 DB나 권한 오류와 같은 조건 — 표 이름을 잠시 바꿔 정책 조회를 실패시킨다.
+    await pool.query('ALTER TABLE gh_operations_policy RENAME TO gh_operations_policy_unreadable');
+    try {
+      expect(await gateOf()).toMatchObject({ allowed: false, reason: 'policy_unavailable' });
+      const refused = await app.inject({ method: 'POST', url: GH_EXECUTIONS_PATH, headers: { ...user, 'idempotency-key': key() }, payload: INVOCATION });
+      expect(refused.statusCode, refused.body).toBe(503);
+      expect(refused.json<{ error: { code: string; detail: { reason: string } } }>().error).toMatchObject({ code: 'GH_POLICY_UNAVAILABLE', detail: { reason: 'policy_unavailable' } });
+      expect((await app.inject({ method: 'GET', url: GH_POLICIES_PATH, headers: operator })).statusCode).toBe(503);
+      expect((await app.inject({ method: 'GET', url: GH_REGISTRY_PATH, headers: operator })).statusCode).toBe(200);
+      expect((await app.inject({ method: 'GET', url: '/healthz' })).statusCode).toBe(200);
+    } finally {
+      await pool.query('ALTER TABLE gh_operations_policy_unreadable RENAME TO gh_operations_policy');
+    }
+    expect(await gateOf()).toMatchObject({ allowed: true });
   });
 });

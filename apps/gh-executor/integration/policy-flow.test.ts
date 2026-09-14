@@ -302,6 +302,22 @@ describe('상한·재시작·정의 변경·오래된 확인·재요청·철회'
     await operatorChange(policy, { action: 'resume', expected_revision: accepted + 1, reason: '경합 시험 뒤 재개', capability_id: 'pr.list' }, 'u-flow-operator');
   }, 60_000);
 
+  it('정책 상태를 읽지 못하면 실행기는 대기 요청을 집지도 닫지도 않는다 — 다시 읽을 수 있게 되면 현재 정책으로 판정해 실행한다 (FR-GH-011 AC-9)', async () => {
+    const queued = await request();
+    const before = mock.graphqlRequests().length;
+    // 마이그레이션 030이 빠진 DB나 권한 오류와 같은 조건 — 표 이름을 잠시 바꿔 정책 조회를 실패시킨다.
+    await pool.query('ALTER TABLE gh_operations_policy RENAME TO gh_operations_policy_unreadable');
+    try {
+      expect(await runExecution(runnerDeps(), queued.execution_id)).toBe('policy_unavailable');
+      expect((await ghExecutionRepo.findById(pool, queued.execution_id))?.state).toBe('queued');
+      expect(mock.graphqlRequests()).toHaveLength(before);
+    } finally {
+      await pool.query('ALTER TABLE gh_operations_policy_unreadable RENAME TO gh_operations_policy');
+    }
+    expect(await runExecution(runnerDeps(), queued.execution_id)).toBe('succeeded');
+    expect(mock.graphqlRequests()).toHaveLength(before + 1);
+  }, 60_000);
+
   it('철회하면 새 요청은 다시 운영 승인 필요이고, 철회 전에 수락된 대기 요청은 닫힌다', async () => {
     const queued = await request();
     const current = (await readPreview(policy)).revision;

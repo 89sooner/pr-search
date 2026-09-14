@@ -16,8 +16,9 @@ import type { Pool } from '@prs/db';
 import type { EventBus } from '@prs/bus';
 import type { Client } from '@elastic/elasticsearch';
 import type { GitHubClient } from '@prs/github';
-import { buildIntegrityDeps, buildServerDeps, runtimeCapabilities, type RuntimeParts } from './runtime.js';
+import { buildGhDeps, buildIntegrityDeps, buildServerDeps, runtimeCapabilities, type RuntimeParts } from './runtime.js';
 import type { SearchApiConfig } from './config.js';
+import { resolveGhOpsConfig } from './gh/config.js';
 
 const CONFIG = {
   port: 0,
@@ -79,6 +80,38 @@ describe('buildServerDeps — 운영이 무엇을 넘기는가', () => {
     const deps = buildServerDeps(parts());
     expect(deps.ops).toBeDefined();
     expect(deps.pipeline).toBeDefined();
+  });
+});
+
+describe('buildGhDeps — Operations가 꺼진 배포는 운영 정책을 요구하지 않는다 (CR-090)', () => {
+  /*
+   * 인증·Redis·Operations App 자격을 모두 준다. 하나라도 빠지면 그 분기(예: 세션 인증 없음)가 `undefined`를 내어,
+   * 스위치를 무시하는 변이가 살아남는다(실측). 스위치만 다르게 해야 스위치가 유일한 원인이다.
+   */
+  const OPS_ENV = {
+    GHE_BASE_URL: 'https://ghe.example.com',
+    GHE_OPS_CLIENT_ID: 'ops-client-id',
+    GHE_OPS_CLIENT_SECRET: 'ops-client-secret',
+    GHE_OPS_REDIRECT_URI: 'http://web.test/gh/identity/callback',
+    GH_IDENTITY_VAULT_KEY: 'ab'.repeat(32),
+  };
+  // 조립이 DB를 한 번이라도 읽으면 던진다 — 정책 표(030)는 요청을 받을 때 읽는다.
+  const pool = {
+    query: () => {
+      throw new Error('조립이 DB를 읽었다');
+    },
+  } as unknown as Pool;
+  const opsParts = (enabled: 'true' | 'false'): RuntimeParts =>
+    parts({
+      config: { ...CONFIG, ghOps: resolveGhOpsConfig({ ...OPS_ENV, GH_OPERATIONS_ENABLED: enabled }) } as unknown as SearchApiConfig,
+      pool,
+      auth: { scopes: {} } as unknown as RuntimeParts['auth'],
+      identityRedis: {} as unknown as RuntimeParts['identityRedis'],
+    });
+
+  it('GH_OPERATIONS_ENABLED=false면 gh 의존이 없다 — 같은 자격·인증에서 스위치만 켜면 생긴다. 어느 쪽도 조립 중에 DB를 읽지 않는다', () => {
+    expect(buildGhDeps(opsParts('false'))).toBeUndefined();
+    expect(buildGhDeps(opsParts('true'))).toBeDefined();
   });
 });
 
