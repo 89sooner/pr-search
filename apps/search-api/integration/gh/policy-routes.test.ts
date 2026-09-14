@@ -115,11 +115,18 @@ beforeAll(async () => {
     gh: { pool, bus, config: ghConfig, manifest, identity: { pool, redis: redisPort(redis), config: ghConfig, vaultKey: parseVaultKey(VAULT_KEY), http: httpsJson(mock.caFile) }, scopes, streamPollMs: 50 },
   });
   await app.ready();
+  /*
+   * 다른 통합 시험 파일이 남긴 행을 비운다. CI는 모든 파일을 한 DB에서 차례로 돌리고 순서는 정해져 있지 않다 —
+   * `acme/payments`를 다른 ID로 넣는 파일이 앞에 돌면 저장소 upsert가 (owner, name) 고유 제약에 걸린다(실측).
+   * 정책 표도 비운다: 목 GHE의 포트가 다시 쓰이면 남은 정책이 이 파일의 「revision 0」 전제를 깬다.
+   */
+  await pool.query('TRUNCATE gh_execution, gh_execution_idempotency, gh_identity_secret, github_identity_connection, app_user, repository, gh_operations_policy_revision, gh_operations_policy RESTART IDENTITY CASCADE');
   for (const id of ['u-dev', 'u-ops', 'u-sec', 'u-both']) await authRepo.upsertUserOnLogin(pool, { user_id: id, login: id.replace(/^u-/, '') });
   await repositoryRepo.upsertRepository(pool, { repository_id: REPO_ID, owner: 'acme', name: 'payments', org_id: 1, visibility: 'internal', sequence_branches: ['main'] });
 }, 120_000);
 
 afterAll(async () => {
+  await pool.query('TRUNCATE gh_execution, gh_execution_idempotency, gh_identity_secret, github_identity_connection, app_user, repository, gh_operations_policy_revision, gh_operations_policy RESTART IDENTITY CASCADE');
   await app.close();
   await mock.close();
   await bus.close();

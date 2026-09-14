@@ -112,6 +112,12 @@ beforeAll(async () => {
   });
   policy = policyDepsFor(pool, manifest, mock.host);
 
+  /*
+   * 다른 통합 시험 파일이 남긴 행을 비운다. CI는 모든 파일을 한 DB에서 차례로 돌리고 순서는 정해져 있지 않다 —
+   * `acme/payments`를 다른 ID로 넣는 파일이 앞에 돌면 저장소 upsert가 (owner, name) 고유 제약에 걸린다(실측).
+   * 정책 표도 비운다: 목 GHE의 포트가 다시 쓰이면 남은 정책이 이 흐름의 「승인 전」 전제를 깬다.
+   */
+  await pool.query('TRUNCATE gh_execution, gh_execution_idempotency, gh_identity_secret, github_identity_connection, app_user, repository, gh_operations_policy_revision, gh_operations_policy RESTART IDENTITY CASCADE');
   await authRepo.upsertUserOnLogin(pool, { user_id: PRINCIPAL.userId, login: PRINCIPAL.login });
   await repositoryRepo.upsertRepository(pool, { repository_id: REPO_ID, owner: 'acme', name: 'payments', org_id: 1, visibility: 'internal', sequence_branches: ['main'] });
   const vaultKey = parseVaultKey(VAULT_KEY);
@@ -130,7 +136,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await checker.stop();
-  await pool.query('DELETE FROM gh_execution_idempotency WHERE user_id = $1', [PRINCIPAL.userId]);
+  await pool.query('TRUNCATE gh_execution, gh_execution_idempotency, gh_identity_secret, github_identity_connection, app_user, repository, gh_operations_policy_revision, gh_operations_policy RESTART IDENTITY CASCADE');
   await mock.close();
   await bus.close();
   rmSync(workspaceRoot, { recursive: true, force: true });
@@ -276,6 +282,25 @@ describe('상한·재시작·정의 변경·오래된 확인·재요청·철회'
     expect(again).toMatchObject({ outcome: 'replayed', revision: first.revision });
     expect((await ghPolicyRepo.listPolicyRevisions(pool, mock.host, 1))[0]?.revision).toBe(first.revision);
   });
+
+  it('재검증과 claim 사이에 차단되면 claim 트랜잭션의 판정이 닫는다 — 앞선 판정을 믿지 않고 gh 호출 0 (FR-GH-011 AC-9)', async () => {
+    const queued = await request();
+    const accepted = queued.policy_revision ?? -1;
+    const before = mock.graphqlRequests().length;
+    const outcome = await runExecution(
+      runnerDeps({
+        beforeClaim: async () => {
+          await operatorChange(policy, { action: 'block', expected_revision: accepted, reason: 'claim 직전 차단', capability_id: 'pr.list' }, 'u-flow-operator');
+        },
+      }),
+      queued.execution_id,
+    );
+    expect(outcome).toBe('policy_closed');
+    // 사유가 `policy_blocked`다 — DB 가드가 거절한 뒤의 대체 경로(`policy_changed`)가 아니라 claim 트랜잭션의 판정이 막았다.
+    expect(await ghExecutionRepo.findById(pool, queued.execution_id)).toMatchObject({ state: 'policy_blocked', error: 'policy_blocked', policy_revision: accepted });
+    expect(mock.graphqlRequests()).toHaveLength(before);
+    await operatorChange(policy, { action: 'resume', expected_revision: accepted + 1, reason: '경합 시험 뒤 재개', capability_id: 'pr.list' }, 'u-flow-operator');
+  }, 60_000);
 
   it('철회하면 새 요청은 다시 운영 승인 필요이고, 철회 전에 수락된 대기 요청은 닫힌다', async () => {
     const queued = await request();
