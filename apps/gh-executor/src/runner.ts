@@ -23,7 +23,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { ghExecutionRepo, ghIdentityRepo, ghPolicyRepo, repositoryRepo, withTransaction, type Pool, type GhExecutionRow } from '@prs/db';
+import { ghExecutionRepo, ghIdentityRepo, ghPolicyRepo, repositoryRepo, withTransaction, type Pool, type PoolClient, type GhExecutionRow } from '@prs/db';
 import {
   GH_PINNED_VERSION,
   argvEquals,
@@ -183,7 +183,7 @@ const POLICY_CLOSE_REASONS: ReadonlySet<string> = new Set(['admin_action_require
  * 실행 판정 (FR-GH-011 AC-9). API의 수락 판정과 **같은 함수**이며 입력만 이 프로세스의 것이다 — 정책은 DB, 레지스트리는
  * 자기 인메모리 검사, 대기 요청이므로 수락 시점의 revision을 함께 준다. 정책을 읽지 못하면 `policy_unavailable`이다.
  */
-async function gateFor(deps: RunnerDeps, row: GhExecutionRow, db: Pool | import('@prs/db').PoolClient): Promise<GhExecutionGate> {
+async function gateFor(deps: RunnerDeps, row: GhExecutionRow, db: Pool | PoolClient): Promise<GhExecutionGate> {
   const scope = deps.config.host ?? row.host;
   let policy: ReturnType<typeof ghPolicyRepo.policyStateOf> | 'unavailable';
   try {
@@ -203,7 +203,7 @@ async function gateFor(deps: RunnerDeps, row: GhExecutionRow, db: Pool | import(
 }
 
 /** 판정이 막은 대기 요청을 닫는다. 정책을 읽지 못한 경우는 닫지 않고 남긴다 — DB가 돌아오면 스윕이 다시 본다. */
-async function closeByGate(deps: RunnerDeps, db: Pool | import('@prs/db').PoolClient, row: GhExecutionRow, gate: Extract<GhExecutionGate, { allowed: false }>): Promise<RunOutcome> {
+async function closeByGate(deps: RunnerDeps, db: Pool | PoolClient, row: GhExecutionRow, gate: Extract<GhExecutionGate, { allowed: false }>): Promise<RunOutcome> {
   if (gate.reason === 'policy_unavailable') {
     deps.metrics.executions.inc({ result: 'policy_unavailable' });
     deps.log({ level: 'error', message: '운영 정책을 읽지 못해 대기 요청을 집지 않는다 — 실행을 허용하지 않고 남긴다 (FR-GH-011 AC-9, 마이그레이션 030 적용 여부를 확인한다)', execution_id: row.execution_id, reason: gate.reason, correlation_id: row.correlation_id });
