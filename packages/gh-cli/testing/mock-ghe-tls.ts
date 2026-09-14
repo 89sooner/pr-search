@@ -44,6 +44,12 @@ export interface MockPullRequest {
 
 export interface MockGheOptions {
   readonly pullRequests?: readonly MockPullRequest[];
+  /**
+   * GraphQL `nodes`를 **원문 그대로** 돌려준다. `pullRequests`의 정상 모양으로는 만들 수 없는 값
+   * (`number: null`·문자열 번호·필드 누락)을 실제 gh에 흘려 결과 경계를 시험한다. 상태 필터는 적용하지
+   * 않고 건수 상한만 적용한다.
+   */
+  readonly rawPullRequestNodes?: readonly Readonly<Record<string, unknown>>[];
   /** GraphQL 응답을 지연시킨다(ms). 시간 제한·취소 시험용. */
   readonly graphqlDelayMs?: number;
   /** GraphQL을 이 상태 코드로 거절한다. */
@@ -162,7 +168,7 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
         }
         const limit = parsed.variables?.limit ?? 30;
         const states = parsed.variables?.state ?? ['OPEN'];
-        const nodes = pullRequests
+        const nodes = options.rawPullRequestNodes !== undefined ? options.rawPullRequestNodes.slice(0, limit) : pullRequests
           .filter((pr) => states.includes((pr.state ?? 'OPEN').toUpperCase()))
           .slice(0, limit)
           .map((pr) => ({

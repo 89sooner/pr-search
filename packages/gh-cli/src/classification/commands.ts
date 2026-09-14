@@ -27,7 +27,8 @@ import type {
   GhAuthRequirement,
   GhContextRequirement,
   GhInteractionMode,
-  GhResultContract,
+  GhResultKind,
+  GhResultSensitivity,
   GhRiskLevel,
   GhSideEffect,
   GhSupportStatus,
@@ -39,16 +40,16 @@ export interface CommandRow {
   readonly risk: GhRiskLevel;
   readonly sideEffect: Exclude<GhSideEffect, 'unknown'>;
   readonly auth: Exclude<GhAuthRequirement, 'unknown'>;
-  readonly result: GhResultContract['kind'];
-  readonly sensitivity: GhResultContract['sensitivity'];
+  readonly result: GhResultKind;
+  readonly sensitivity: GhResultSensitivity;
   readonly stdin?: 'optional' | 'required';
   readonly contexts: readonly GhContextRequirement[];
   /** 판정의 근거 — help 원문 인용 또는 규칙. 비워 두지 않는다. */
   readonly note: string;
 }
 
-type Kind = GhResultContract['kind'];
-type Sens = GhResultContract['sensitivity'];
+type Kind = GhResultKind;
+type Sens = GhResultSensitivity;
 
 const REPO: readonly GhContextRequirement[] = ['repository'];
 const HOST: readonly GhContextRequirement[] = ['host'];
@@ -101,7 +102,7 @@ const NAME_ONLY = '판정 근거는 help 요약과 동사뿐이다';
  */
 export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   /* ---- agent-task (preview) */
-  'agent-task create': preview('R2', 'write', 'resource', REPO, `${PREVIEW_NOTE}. 「Create an agent task」 — 에이전트 세션을 만든다. 과금되는 요청을 쓰고 스스로 커밋·PR을 만들므로 \`codespace create\`와 같은 R2(비용 발생)`),
+  'agent-task create': preview('R2', 'write', 'text', REPO, `${PREVIEW_NOTE}. 「Create an agent task」 — 에이전트 세션을 만든다. 과금되는 요청을 쓰고 스스로 커밋·PR을 만들므로 \`codespace create\`와 같은 R2(비용 발생)`),
   'agent-task list': preview('R0', 'read', 'json', REPO, `${PREVIEW_NOTE}. 「List agent tasks」`),
   'agent-task view': preview('R0', 'read', 'json', REPO, `${PREVIEW_NOTE}. 「View an agent task session」`),
 
@@ -128,14 +129,14 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   /* ---- attestation */
   'attestation download': read('artifact', 'internal', REPO, 'help: 「Download an artifact\'s attestations for offline use」 — 번들 파일을 쓴다(파일 출력)'),
   'attestation trusted-root': read('text', 'public', HOST, 'help: 「Output trusted_root.jsonl contents」 — 공개 신뢰 루트를 stdout에 낸다', { auth: 'none' }),
-  'attestation verify': read('text', 'internal', REPO, 'help: 「Verify an artifact\'s integrity using attestations」 — 아티팩트 파일 또는 OCI 참조를 입력으로 받는다'),
+  'attestation verify': read('json', 'internal', REPO, 'help: 「Verify an artifact\'s integrity using attestations」 — 아티팩트 파일 또는 OCI 참조를 입력으로 받는다'),
 
   /* ---- auth — 자격은 이 제품이 위임 토큰으로 관리한다. gh의 자격 저장소를 쓰지 않는다 */
   'auth login': blocked('R3', 'local', 'exit_status', 'secret', '대화형 로그인·브라우저·토큰 입력. 실행기는 위임 토큰을 환경으로 받으며 gh 자격 저장소를 쓰지 않는다 (FR-GH-008)'),
   'auth logout': blocked('R3', 'local', 'exit_status', 'internal', 'gh 자격 저장소를 지운다 — 실행기에는 그 저장소가 없다'),
   'auth refresh': blocked('R3', 'local', 'exit_status', 'secret', '토큰 범위를 다시 인가한다 — 위임 토큰의 갱신은 search-api가 한다 (JOB-GH-004)'),
   'auth setup-git': blocked('R2', 'local', 'exit_status', 'internal', 'git 자격 도우미를 설정한다 — 실행기에는 git 작업 트리가 없다'),
-  'auth status': blocked('R0', 'read', 'text', 'sensitive', 'help: 「Display active account and authentication state」 — `--show-token`이면 토큰을 찍는다'),
+  'auth status': blocked('R0', 'read', 'json', 'sensitive', 'help: 「Display active account and authentication state」 — `--show-token`이면 토큰을 찍는다'),
   'auth switch': blocked('R3', 'local', 'exit_status', 'internal', '계정 전환 — 실행기의 계정은 위임 신원 하나뿐이다'),
   'auth token': blocked('R3', 'read', 'text', 'secret', 'help: 「This command outputs the authentication token for an account」 — 결과가 비밀 그 자체다'),
 
@@ -149,18 +150,18 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   /* ---- codespace */
   'codespace code': terminal('terminal_only', 'R1', 'help: 「Open a codespace in Visual Studio Code」 — 로컬 편집기를 연다'),
   'codespace cp': terminal('terminal_only', 'R1', 'help: 「Copy files between local and remote file systems」 — 로컬 파일 시스템이 필요하다'),
-  'codespace create': { support: 'supported', interaction: 'web_native', risk: 'R2', sideEffect: 'write', auth: 'token', result: 'resource', sensitivity: 'internal', contexts: REPO, note: 'help: 「Create a codespace」 — 과금되는 컴퓨트를 만든다. 되돌리려면 삭제해야 한다' },
+  'codespace create': { support: 'supported', interaction: 'web_native', risk: 'R2', sideEffect: 'write', auth: 'token', result: 'text', sensitivity: 'internal', contexts: REPO, note: 'help: 「Create a codespace」 — 과금되는 컴퓨트를 만든다. 되돌리려면 삭제해야 한다' },
   'codespace delete': destructive('exit_status', CODESPACE, 'help: 「Delete codespaces」 — `--all`·`--days`로 여럿을 지운다'),
-  'codespace edit': write('resource', CODESPACE, 'help: 「Edit a codespace」 — 표시 이름·머신 변경'),
-  'codespace jupyter': terminal('terminal_only', 'R1', 'help: 「Open a codespace in JupyterLab」 — 로컬 브라우저·포트 포워딩'),
-  'codespace list': read('json', 'internal', NONE, 'help: 「List codespaces」'),
+  'codespace edit': write('exit_status', CODESPACE, 'help: 「Edit a codespace」 — 표시 이름·머신 변경'),
+  'codespace jupyter': terminal('terminal_only', 'R1', 'help: 「Open a codespace in JupyterLab」 — 로컬 브라우저·포트 포워딩', { result: 'url' }),
+  'codespace list': read('resource_list', 'internal', NONE, 'help: 「List codespaces」'),
   'codespace logs': terminal('terminal_only', 'R0', 'help: 「Access codespace logs」 (`-f, --follow  Tail and follow the logs`) — 스트림이며 codespace 안의 로그를 읽는다. gh는 이것을 SSH 세션 위에서 구현한다(help 밖 근거: gh 소스 `codespace/logs.go`)', { sideEffect: 'read', result: 'stream' }),
   'codespace ports forward': terminal('terminal_only', 'R1', 'help: 「Forward ports」 — 로컬 포트를 연다'),
   'codespace ports visibility': write('exit_status', CODESPACE, 'help: 「Change the visibility of the forwarded port」 — `public`이면 인터넷에 노출된다', { risk: 'R2' }),
   'codespace rebuild': write('exit_status', CODESPACE, 'help: 「Rebuild a codespace」 — `--full`이면 캐시 없이 다시 만든다'),
   'codespace ssh': terminal('terminal_only', 'R3', 'help: 「SSH into a codespace」 — 원격 셸이며 `[<command>]`로 임의 명령을 넘긴다. 사다리의 R3(임의 실행), `extension exec`·`copilot`과 같은 급', { sideEffect: 'arbitrary' }),
   'codespace stop': write('exit_status', CODESPACE, 'help: 「Stop a running codespace」'),
-  'codespace view': read('json', 'internal', CODESPACE, 'help: 「View details about a codespace」'),
+  'codespace view': read('resource', 'internal', CODESPACE, 'help: 「View details about a codespace」'),
 
   /* ---- completion · config · licenses — 실행 호스트의 gh 자체에 대한 것 */
   completion: terminal('terminal_only', 'R0', 'help: 「Generate shell completion scripts」 — 셸 설정용 스크립트. GHE와 무관하다', { sideEffect: 'read', result: 'text', sensitivity: 'public', auth: 'none', contexts: NONE }),
@@ -172,11 +173,11 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   licenses: read('text', 'public', NONE, 'help: 「View third-party license information」 — gh 자체의 라이선스 문서', { auth: 'none' }),
 
   /* ---- discussion (preview) */
-  'discussion comment': preview('R1', 'write', 'resource', REPO, `${PREVIEW_NOTE}. 「Add, edit, or delete a comment」 — \`--delete-last\`는 삭제다`),
+  'discussion comment': preview('R1', 'write', 'url', REPO, `${PREVIEW_NOTE}. 「Add, edit, or delete a comment」 — \`--delete-last\`는 삭제다`),
   'discussion create': preview('R1', 'write', 'resource', REPO, `${PREVIEW_NOTE}. 「Create a new discussion」`),
   'discussion edit': preview('R1', 'write', 'resource', REPO, `${PREVIEW_NOTE}. 「Edit a discussion」`),
-  'discussion list': preview('R0', 'read', 'json', REPO, `${PREVIEW_NOTE}. 「List discussions in a repository」`),
-  'discussion view': preview('R0', 'read', 'json', REPO, `${PREVIEW_NOTE}. 「View a discussion」`),
+  'discussion list': preview('R0', 'read', 'resource_list', REPO, `${PREVIEW_NOTE}. 「List discussions in a repository」`),
+  'discussion view': preview('R0', 'read', 'resource', REPO, `${PREVIEW_NOTE}. 「View a discussion」`),
 
   /* ---- extension (ADR-019 — 별도 plane, 허용 목록 없이 열지 않는다) */
   'extension browse': extension('terminal_only', 'R1', 'local', 'exit_status', 'help: 「Enter a UI for browsing, adding, and removing extensions」 — 터미널 UI'),
@@ -185,7 +186,7 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   'extension install': extension('web_native', 'R2', 'local', 'exit_status', 'help: 「Install a gh extension from a repository」 — 코드를 내려받아 설치한다. pin·허용 목록이 먼저다 (ADR-019)'),
   'extension list': extension('web_native', 'R0', 'read', 'text', 'help: 「List installed extension commands」 — 실행기에는 설치된 확장이 없어 항상 빈 목록이다'),
   'extension remove': extension('web_native', 'R1', 'local', 'exit_status', 'help: 「Remove an installed extension」'),
-  'extension search': extension('web_native', 'R0', 'read', 'json', 'help: 「Search extensions to the GitHub CLI」 — GitHub 저장소 검색이며 읽기다'),
+  'extension search': extension('web_native', 'R0', 'read', 'resource_list', 'help: 「Search extensions to the GitHub CLI」 — GitHub 저장소 검색이며 읽기다'),
   'extension upgrade': extension('web_native', 'R2', 'local', 'exit_status', 'help: 「Upgrade installed extensions」 — 코드를 바꾼다'),
 
   /* ---- gist */
@@ -206,27 +207,27 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   'ssh-key list': read('text', 'internal', NONE, 'help: 「Lists SSH keys in your GitHub account」 — 공개 키 목록'),
 
   /* ---- issue */
-  'issue close': write('resource', REPO, 'help: 「Close issue」 — reopen으로 되돌린다'),
-  'issue comment': write('resource', REPO, 'help: 「Add a comment to an issue」 — `--edit-last`·`--delete-last`는 마지막 코멘트를 고치거나 지운다', { stdin: 'optional' }),
+  'issue close': write('exit_status', REPO, 'help: 「Close issue」 — reopen으로 되돌린다'),
+  'issue comment': write('url', REPO, 'help: 「Add a comment to an issue」 — `--edit-last`·`--delete-last`는 마지막 코멘트를 고치거나 지운다', { stdin: 'optional' }),
   'issue create': write('resource', REPO, 'help: 「Create a new issue」 — 본문은 flag 또는 파일', { stdin: 'optional' }),
   'issue delete': destructive('exit_status', REPO, 'help: 「Delete issue」 — 되돌릴 수 없다'),
-  'issue develop': write('resource', REPO, 'help: 「Manage linked branches for an issue」 — 브랜치를 만든다. `--checkout`은 작업 트리가 필요하다'),
-  'issue edit': write('resource', REPO, 'help: 「Edit issues」 — 여러 이슈를 한 번에 바꾼다'),
-  'issue list': read('json', 'internal', REPO, 'help: 「List issues in a repository」'),
+  'issue develop': write('text', REPO, 'help: 「Manage linked branches for an issue」 — 브랜치를 만든다. `--checkout`은 작업 트리가 필요하다'),
+  'issue edit': write('resource_list', REPO, 'help: 「Edit issues」 — 여러 이슈를 한 번에 바꾼다'),
+  'issue list': read('resource_list', 'internal', REPO, 'help: 「List issues in a repository」'),
   'issue lock': write('exit_status', REPO, 'help: 「Lock issue conversation」'),
   'issue pin': write('exit_status', REPO, 'help: 「Pin an issue」'),
-  'issue reopen': write('resource', REPO, 'help: 「Reopen issue」'),
+  'issue reopen': write('exit_status', REPO, 'help: 「Reopen issue」'),
   'issue status': read('json', 'internal', REPO, 'help: 「Show status of relevant issues」'),
   'issue transfer': destructive('resource', REPO, 'help: 「Transfer issue to another repository」 — 번호가 바뀌고 원래 저장소에서 사라진다'),
   'issue unlock': write('exit_status', REPO, 'help: 「Unlock issue conversation」'),
   'issue unpin': write('exit_status', REPO, 'help: 「Unpin an issue」'),
-  'issue view': read('json', 'internal', REPO, 'help: 「View an issue」'),
+  'issue view': read('resource', 'internal', REPO, 'help: 「View an issue」'),
 
   /* ---- label */
   'label clone': write('exit_status', REPO, 'help: 「Clones labels from one repository to another」 — `--force`면 덮어쓴다'),
-  'label create': write('resource', REPO, 'help: 「Create a new label」'),
+  'label create': write('exit_status', REPO, 'help: 「Create a new label」'),
   'label delete': destructive('exit_status', REPO, 'help: 「Delete a label from a repository」'),
-  'label edit': write('resource', REPO, 'help: 「Edit a label」'),
+  'label edit': write('exit_status', REPO, 'help: 「Edit a label」'),
   'label list': read('json', 'internal', REPO, 'help: 「List labels in a repository」'),
 
   /* ---- org */
@@ -235,62 +236,62 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   /* ---- pr */
   'pr checkout': terminal('requires_local_workspace', 'R1', 'help: 「Check out a pull request in git」 — 작업 트리가 필요하다', { contexts: REPO }),
   'pr checks': read('json', 'internal', REPO, 'help: 「Show CI status for a single pull request」 — `--watch`면 끝날 때까지 스트림'),
-  'pr close': write('resource', REPO, 'help: 「Close a pull request」 — `--delete-branch`는 브랜치 삭제를 더한다'),
-  'pr comment': write('resource', REPO, 'help: 「Add a comment to a pull request」', { stdin: 'optional' }),
+  'pr close': write('exit_status', REPO, 'help: 「Close a pull request」 — `--delete-branch`는 브랜치 삭제를 더한다'),
+  'pr comment': write('url', REPO, 'help: 「Add a comment to a pull request」', { stdin: 'optional' }),
   'pr create': write('resource', REPO, 'help: 「Create a pull request」 — 본문은 flag 또는 파일. `--web`은 브라우저', { stdin: 'optional' }),
   'pr diff': read('text', 'internal', REPO, 'help: 「View changes in a pull request」 — 패치 원문'),
   'pr edit': write('resource', REPO, 'help: 「Edit a pull request」'),
-  'pr list': read('json', 'internal', REPO, 'help: 「List pull requests in a repository」 — R0 첫 수직이 여는 유일한 command (CR-086)'),
+  'pr list': read('resource_list', 'internal', REPO, 'help: 「List pull requests in a repository」 — R0 첫 수직이 여는 유일한 command (CR-086)'),
   'pr lock': write('exit_status', REPO, 'help: 「Lock pull request conversation」'),
-  'pr merge': destructive('resource', REPO, 'help: 「Merge a pull request」 — 병합은 되돌리기 어렵고 `--admin`은 보호 규칙을 넘는다'),
-  'pr ready': write('resource', REPO, 'help: 「Mark a pull request as ready for review」 — `--undo`로 되돌린다'),
-  'pr reopen': write('resource', REPO, 'help: 「Reopen a pull request」'),
+  'pr merge': destructive('exit_status', REPO, 'help: 「Merge a pull request」 — 병합은 되돌리기 어렵고 `--admin`은 보호 규칙을 넘는다'),
+  'pr ready': write('exit_status', REPO, 'help: 「Mark a pull request as ready for review」 — `--undo`로 되돌린다'),
+  'pr reopen': write('exit_status', REPO, 'help: 「Reopen a pull request」'),
   'pr revert': write('resource', REPO, 'help: 「Revert a pull request」 — 되돌리기 PR을 새로 만든다'),
-  'pr review': write('resource', REPO, 'help: 「Add a review to a pull request」 — `--approve`는 병합 조건에 영향', { stdin: 'optional' }),
+  'pr review': write('exit_status', REPO, 'help: 「Add a review to a pull request」 — `--approve`는 병합 조건에 영향', { stdin: 'optional' }),
   'pr status': read('json', 'internal', REPO, 'help: 「Show status of relevant pull requests」'),
   'pr unlock': write('exit_status', REPO, 'help: 「Unlock pull request conversation」'),
   'pr update-branch': write('exit_status', REPO, 'help: 「Update a pull request branch」 — 「To reconcile the changes with rebasing on top of the base branch, the `--rebase` option」: `--rebase`는 PR 브랜치 이력을 다시 쓴다(force push). 되돌리기 어려운 쓰기라 R2', { risk: 'R2' }),
-  'pr view': read('json', 'internal', REPO, 'help: 「View a pull request」'),
+  'pr view': read('resource', 'internal', REPO, 'help: 「View a pull request」'),
 
   /* ---- preview */
   'preview prompter': terminal('terminal_only', 'R0', 'help: 「Execute a test program to preview the prompter」 — 대화형 프롬프트 시험 도구', { sideEffect: 'read', auth: 'none', contexts: NONE, sensitivity: 'public' }),
 
   /* ---- project */
-  'project close': write('resource', PROJECT, 'help: 「Close a project」 — `--undo`로 되돌린다'),
-  'project copy': write('resource', PROJECT, 'help: 「Copy a project」'),
-  'project create': write('resource', ORG, 'help: 「Create a project」'),
-  'project delete': destructive('exit_status', PROJECT, 'help: 「Delete a project」'),
-  'project edit': write('resource', PROJECT, 'help: 「Edit a project」'),
-  'project field-create': write('resource', PROJECT, 'help: 「Create a field in a project」'),
-  'project field-delete': destructive('exit_status', PROJECT, 'help: 「Delete a field in a project」 — 필드의 값이 함께 사라진다'),
+  'project close': write('json', PROJECT, 'help: 「Close a project」 — `--undo`로 되돌린다'),
+  'project copy': write('json', PROJECT, 'help: 「Copy a project」'),
+  'project create': write('json', ORG, 'help: 「Create a project」'),
+  'project delete': destructive('json', PROJECT, 'help: 「Delete a project」'),
+  'project edit': write('json', PROJECT, 'help: 「Edit a project」'),
+  'project field-create': write('json', PROJECT, 'help: 「Create a field in a project」'),
+  'project field-delete': destructive('json', PROJECT, 'help: 「Delete a field in a project」 — 필드의 값이 함께 사라진다'),
   'project field-list': read('json', 'internal', PROJECT, 'help: 「List the fields in a project」 — `--format json`'),
-  'project item-add': write('resource', PROJECT, 'help: 「Add a pull request or an issue to a project」'),
-  'project item-archive': write('resource', PROJECT, 'help: 「Archive an item in a project」 — `--undo`로 되돌린다'),
-  'project item-create': write('resource', PROJECT, 'help: 「Create a draft issue item in a project」'),
-  'project item-delete': destructive('exit_status', PROJECT, 'help: 「Delete an item from a project by ID」'),
-  'project item-edit': write('resource', PROJECT, 'help: 「Edit an item in a project」 — `--clear`는 값을 지운다'),
+  'project item-add': write('json', PROJECT, 'help: 「Add a pull request or an issue to a project」'),
+  'project item-archive': write('json', PROJECT, 'help: 「Archive an item in a project」 — `--undo`로 되돌린다'),
+  'project item-create': write('json', PROJECT, 'help: 「Create a draft issue item in a project」'),
+  'project item-delete': destructive('json', PROJECT, 'help: 「Delete an item from a project by ID」'),
+  'project item-edit': write('json', PROJECT, 'help: 「Edit an item in a project」 — `--clear`는 값을 지운다'),
   'project item-list': read('json', 'internal', PROJECT, 'help: 「List the items in a project」 — `--format json`'),
   'project link': write('exit_status', PROJECT, 'help: 「Link a project to a repository or a team」'),
   'project list': read('json', 'internal', ORG, 'help: 「List the projects for an owner」 — `--format json`'),
-  'project mark-template': write('exit_status', PROJECT, 'help: 「Mark a project as a template」 — `--undo`로 되돌린다'),
+  'project mark-template': write('json', PROJECT, 'help: 「Mark a project as a template」 — `--undo`로 되돌린다'),
   'project unlink': write('exit_status', PROJECT, 'help: 「Unlink a project from a repository or a team」'),
   'project view': read('json', 'internal', PROJECT, 'help: 「View a project」 — `--format json`'),
 
   /* ---- release */
-  'release create': write('resource', REPO, 'help: 「Create a new release」 — 태그를 만들 수 있고 자산 파일을 올린다', { stdin: 'optional' }),
+  'release create': write('url', REPO, 'help: 「Create a new release」 — 태그를 만들 수 있고 자산 파일을 올린다', { stdin: 'optional' }),
   'release delete': destructive('exit_status', REPO, 'help: 「Delete a release」 — `--cleanup-tag`는 태그까지 지운다'),
   'release delete-asset': destructive('exit_status', REPO, 'help: 「Delete an asset from a release」'),
   'release download': read('artifact', 'internal', REPO, 'help: 「Download release assets」 — 파일을 쓴다(파일 출력)'),
-  'release edit': write('resource', REPO, 'help: 「Edit a release」', { stdin: 'optional' }),
-  'release list': read('json', 'internal', REPO, 'help: 「List releases in a repository」'),
+  'release edit': write('url', REPO, 'help: 「Edit a release」', { stdin: 'optional' }),
+  'release list': read('resource_list', 'internal', REPO, 'help: 「List releases in a repository」'),
   'release upload': write('exit_status', REPO, 'help: 「Upload assets to a release」 — 파일 입력. `--clobber`면 덮어쓴다'),
-  'release verify': read('text', 'internal', REPO, 'help: 「Verify the attestation for a release」'),
-  'release verify-asset': read('text', 'internal', REPO, 'help: 「Verify that a given asset originated from a release」 — 로컬 파일을 입력으로 받는다'),
-  'release view': read('json', 'internal', REPO, 'help: 「View information about a release」'),
+  'release verify': read('json', 'internal', REPO, 'help: 「Verify the attestation for a release」'),
+  'release verify-asset': read('json', 'internal', REPO, 'help: 「Verify that a given asset originated from a release」 — 로컬 파일을 입력으로 받는다'),
+  'release view': read('resource', 'internal', REPO, 'help: 「View information about a release」'),
 
   /* ---- repo */
   'repo archive': destructive('exit_status', REPO, 'help: 「Archive a repository」 — 읽기 전용이 된다. unarchive로 되돌린다'),
-  'repo autolink create': write('resource', REPO, 'help: 「Create a new autolink reference」'),
+  'repo autolink create': write('text', REPO, 'help: 「Create a new autolink reference」'),
   'repo autolink delete': destructive('exit_status', REPO, 'help: 「Delete an autolink reference」'),
   'repo autolink list': read('json', 'internal', REPO, 'help: 「List autolink references for a GitHub repository」'),
   'repo autolink view': read('json', 'internal', REPO, 'help: 「View an autolink reference」'),
@@ -300,20 +301,20 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   'repo deploy-key add': write('exit_status', REPO, 'help: 「Add a deploy key to a GitHub repository」 — 접근 수단을 더한다. 키 파일 입력', { risk: 'R2' }),
   'repo deploy-key delete': destructive('exit_status', REPO, 'help: 「Delete a deploy key from a GitHub repository」'),
   'repo deploy-key list': read('json', 'internal', REPO, 'help: 「List deploy keys in a GitHub repository」 — 공개 키 목록'),
-  'repo edit': write('resource', REPO, 'help: 「Edit repository settings」 — 가시성·병합 정책·기능 토글', { risk: 'R2' }),
+  'repo edit': write('exit_status', REPO, 'help: 「Edit repository settings」 — 가시성·병합 정책·기능 토글', { risk: 'R2' }),
   'repo fork': write('resource', REPO, 'help: 「Create a fork of a repository」 — `--clone`은 작업 트리가 필요하다'),
   'repo gitignore list': read('text', 'public', NONE, 'help: 「List available repository gitignore templates」', { auth: 'none' }),
   'repo gitignore view': read('text', 'public', NONE, 'help: 「View an available repository gitignore template」', { auth: 'none' }),
   'repo license list': read('text', 'public', NONE, 'help: 「List common repository licenses」', { auth: 'none' }),
   'repo license view': read('text', 'public', NONE, 'help: 「View a specific repository license」', { auth: 'none' }),
-  'repo list': read('json', 'internal', ORG, 'help: 「List repositories owned by user or organization」'),
+  'repo list': read('resource_list', 'internal', ORG, 'help: 「List repositories owned by user or organization」'),
   'repo read-dir': preview('R0', 'read', 'json', REPO, `${PREVIEW_NOTE}. 「List a directory in a repository」`),
-  'repo read-file': preview('R0', 'read', 'text', REPO, `${PREVIEW_NOTE}. 「Read the contents of a file … without cloning it」 — 기본으로 이스케이프 시퀀스가 있는 파일 출력을 거부한다`),
-  'repo rename': destructive('resource', REPO, 'help: 「Rename a repository」 — 옛 이름의 링크가 리다이렉트에 기댄다'),
+  'repo read-file': preview('R0', 'read', 'json', REPO, `${PREVIEW_NOTE}. 「Read the contents of a file … without cloning it」 — 기본으로 이스케이프 시퀀스가 있는 파일 출력을 거부한다`),
+  'repo rename': destructive('exit_status', REPO, 'help: 「Rename a repository」 — 옛 이름의 링크가 리다이렉트에 기댄다'),
   'repo set-default': terminal('requires_local_workspace', 'R0', 'help: 「Configure default repository for this directory」 — 로컬 git 설정을 바꾼다', { contexts: REPO }),
   'repo sync': write('exit_status', REPO, 'help: 「Sync a repository」 — 인자가 없으면 로컬 저장소를, 있으면 원격 포크를 동기화한다. 웹은 원격 모드만이다'),
   'repo unarchive': write('exit_status', REPO, 'help: 「Unarchive a repository」'),
-  'repo view': read('json', 'internal', REPO, 'help: 「View a repository」'),
+  'repo view': read('resource', 'internal', REPO, 'help: 「View a repository」'),
 
   /* ---- ruleset */
   'ruleset check': read('text', 'internal', REPO, 'help: 「View rules that would apply to a given branch」'),
@@ -324,17 +325,17 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   'run cancel': write('exit_status', REPO, 'help: 「Cancel a workflow run」'),
   'run delete': destructive('exit_status', REPO, 'help: 「Delete a workflow run」 — 로그·아티팩트가 함께 사라진다'),
   'run download': read('artifact', 'internal', REPO, 'help: 「Download artifacts generated by a workflow run」 — 파일을 쓴다(파일 출력)'),
-  'run list': read('json', 'internal', REPO, 'help: 「List recent workflow runs」'),
+  'run list': read('resource_list', 'internal', REPO, 'help: 「List recent workflow runs」'),
   'run rerun': write('exit_status', REPO, 'help: 「Rerun a run」 — 새 시도를 만든다'),
-  'run view': read('json', 'internal', REPO, 'help: 「View a summary of a workflow run」 — `--log`는 로그 전문'),
+  'run view': read('resource', 'internal', REPO, 'help: 「View a summary of a workflow run」 — `--log`는 로그 전문'),
   'run watch': read('stream', 'internal', REPO, 'help: 「Watch a run until it completes」 — 끝날 때까지 스트림'),
 
   /* ---- search */
   'search code': read('json', 'internal', HOST, 'help: 「Search within code」'),
-  'search commits': read('json', 'internal', HOST, 'help: 「Search for commits」'),
-  'search issues': read('json', 'internal', HOST, 'help: 「Search for issues」'),
-  'search prs': read('json', 'internal', HOST, 'help: 「Search for pull requests」'),
-  'search repos': read('json', 'internal', HOST, 'help: 「Search for repositories」'),
+  'search commits': read('resource_list', 'internal', HOST, 'help: 「Search for commits」'),
+  'search issues': read('resource_list', 'internal', HOST, 'help: 「Search for issues」'),
+  'search prs': read('resource_list', 'internal', HOST, 'help: 「Search for pull requests」'),
+  'search repos': read('resource_list', 'internal', HOST, 'help: 「Search for repositories」'),
 
   /* ---- secret · variable — Actions 자격 */
   'secret delete': destructive('exit_status', REPO, 'help: 「Delete secrets」 — 저장소·환경·조직·사용자 수준'),
@@ -349,7 +350,7 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   'skill install': preview('R2', 'local', 'exit_status', NONE, `${PREVIEW_NOTE}. 「Install agent skills from a GitHub repository」 — 로컬에 코드를 내려받아 둔다`, { interaction: 'terminal_only' }),
   'skill list': preview('R0', 'read', 'json', NONE, `${PREVIEW_NOTE}. 「List installed skills」 — 실행기에는 설치된 skill이 없다`),
   'skill preview': preview('R0', 'read', 'text', NONE, `${PREVIEW_NOTE}. 「Preview a skill from a GitHub repository」`),
-  'skill publish': preview('R2', 'write', 'resource', REPO, `${PREVIEW_NOTE}. 「Validate and publish skills to a GitHub repository」 — 로컬 디렉터리를 올린다`, { interaction: 'terminal_only' }),
+  'skill publish': preview('R2', 'write', 'text', REPO, `${PREVIEW_NOTE}. 「Validate and publish skills to a GitHub repository」 — 로컬 디렉터리를 올린다`, { interaction: 'terminal_only' }),
   'skill search': preview('R0', 'read', 'json', HOST, `${PREVIEW_NOTE}. 「Search for skills across GitHub」`),
   'skill update': preview('R1', 'local', 'exit_status', NONE, `${PREVIEW_NOTE}. 「Update installed skills」`, { interaction: 'terminal_only' }),
 
@@ -359,8 +360,8 @@ export const COMMAND_ROWS: Readonly<Record<string, CommandRow>> = {
   /* ---- workflow */
   'workflow disable': write('exit_status', REPO, 'help: 「Disable a workflow」 — 이후 트리거가 실행되지 않는다', { risk: 'R2' }),
   'workflow enable': write('exit_status', REPO, 'help: 「Enable a workflow」'),
-  'workflow list': read('json', 'internal', REPO, 'help: 「List workflows」'),
-  'workflow run': write('resource', REPO, 'help: 「Run a workflow by creating a workflow_dispatch event」 — 입력은 `-f`·`-F`·`--json` stdin', { stdin: 'optional' }),
+  'workflow list': read('resource_list', 'internal', REPO, 'help: 「List workflows」'),
+  'workflow run': write('url', REPO, 'help: 「Run a workflow by creating a workflow_dispatch event」 — 입력은 `-f`·`-F`·`--json` stdin', { stdin: 'optional' }),
   'workflow view': read('text', 'internal', REPO, 'help: 「View the summary of a workflow」 — `--yaml`은 정의 원문'),
 };
 

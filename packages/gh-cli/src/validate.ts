@@ -19,15 +19,19 @@
  */
 
 import { classifyCommand } from './classification/classify.js';
-import { computeDimensions } from './classification/dimensions.js';
+import { contractProblems } from './classification/contract-checks.js';
+import { NONZERO_DENOMINATOR_DIMENSIONS, computeDimensions } from './classification/dimensions.js';
+import { COMPOSABILITY_VALUES } from './classification/results.js';
 import { RULES_VERSION } from './classification/rules.js';
-import { EXECUTABLE_CAPABILITIES } from './capabilities.js';
+import { EXECUTABLE_CAPABILITIES, IMPLEMENTED_RESULT_SCHEMAS } from './capabilities.js';
+import { computeCapabilityGraph, type GhGraphSummary } from './graph.js';
 import { MANIFEST_VERSION, canonicalJson, coverageOf, manifestHash } from './manifest.js';
 import { GH_PINNED_VERSION } from './pin.js';
 import { sha256Hex } from './sha256.js';
 import type {
   GhCapabilityDefinition,
   GhCapabilityManifest,
+  GhComposability,
   GhControlClass,
   GhCoverageDimension,
   GhInventory,
@@ -37,8 +41,29 @@ import type {
   GhSupportStatus,
 } from './types.js';
 
-export const VALIDATOR_VERSION = 'validator-2026-09-14.1' as const;
-export const REPORT_VERSION = 'r1' as const;
+export const VALIDATOR_VERSION = 'validator-2026-09-14.2' as const;
+/**
+ * 보고서 판. `r1` → `r2` (CR-089): GATE-GH-01d 차원이 결과 계약·bindability·자원 타입·secret 출력·출력 port·입력 port
+ * 여섯으로 바뀌었고 `contracts` 요약이 붙었다. `r1` 기록은 이 차원들을 검증하지 않은 기록이다 — 새 판으로 다시 읽지 않는다.
+ */
+export const REPORT_VERSION = 'r2' as const;
+
+/**
+ * 결과 계약·연결의 분리 집계 (CR-089). 서로 다른 분모를 합치지 않는다 — 결과 계약 완료율·port 정의·구현 adapter·
+ * 실행 허용·타입상 간선·실행 가능한 다단계 흐름·사내 호스트 확인은 각각 다른 사실이다.
+ */
+export interface GhContractSummary {
+  readonly resultContracts: { readonly classified: number; readonly total: number };
+  readonly composability: readonly { readonly value: GhComposability; readonly count: number }[];
+  readonly outputPorts: { readonly commands: number; readonly ports: number };
+  readonly inputPorts: { readonly commands: number; readonly ports: number };
+  /** `pr.list:pr_list_v2`처럼 실행기가 실제로 결과를 만드는 adapter. */
+  readonly adaptersImplemented: readonly string[];
+  readonly executableCommands: readonly string[];
+  readonly graph: GhGraphSummary;
+  readonly executableFlows: 0;
+  readonly hostVerified: number;
+}
 
 export type GhFindingSeverity = 'error' | 'gap' | 'info';
 
@@ -76,6 +101,7 @@ export interface GhRegistryReport {
     /** 코드 표(`EXECUTABLE_CAPABILITIES`)가 여는 id. 둘은 같아야 한다. */
     readonly definitions: readonly string[];
   };
+  readonly contracts: GhContractSummary;
   readonly findings: readonly GhRegistryFinding[];
   readonly status: 'passed' | 'incomplete' | 'failed';
 }
@@ -184,6 +210,13 @@ export function validateManifest(manifest: GhCapabilityManifest, options: Valida
   for (const command of manifest.commands) {
     const key = command.path.join(' ');
     if (command.aliasOf !== null && !byPath.has(command.aliasOf.join(' '))) error('alias_target_missing', key, `별칭 전용 노드가 가리키는 ${command.aliasOf.join(' ')}가 없다`);
+    if (command.aliasOf !== null) {
+      // 별칭은 계약을 따로 갖지 않는다 — 가리키는 leaf의 결과 계약을 그대로 쓴다. 그 leaf에 계약이 없으면 별칭도 미분류다.
+      const target = byPath.get(command.aliasOf.join(' '));
+      if (target !== undefined && (target.group || target.classification?.result === null || target.classification?.result === undefined)) {
+        gap('alias_target_unclassified', key, `별칭이 가리키는 ${command.aliasOf.join(' ')}에 결과 계약이 없다`);
+      }
+    }
     for (const alias of command.aliases) {
       const owner = aliasOwners.get(alias);
       if (owner !== undefined && owner !== key) error('alias_conflict', alias, `별칭이 ${owner}와 ${key} 둘 다에 있다`);
@@ -222,8 +255,23 @@ export function validateManifest(manifest: GhCapabilityManifest, options: Valida
         for (const field of option.allowed) if (!command.jsonFields.includes(field)) error('definition_json_field_missing', `${capability.id} ${field}`, '정의의 JSON 필드가 인벤토리에 없다');
       }
     }
-    if (!RESULT_KINDS.has(capability.result.kind)) error('definition_result_invalid', capability.id, '정의의 결과 종류가 없다');
-    if (!SENSITIVITIES.has(capability.result.sensitivity)) error('definition_sensitivity_invalid', capability.id, '정의의 결과 민감도가 없다');
+    /*
+     * 구현한 결과 adapter는 의미 정본(결과 계약)의 출력 port를 이름으로 가리킨다 (CR-089). 스키마·모드·adapter가 그 port와
+     * 같아야 하고, 스키마는 실행기가 실제로 만드는 것이어야 한다. 계약을 복사하지 않으므로 둘이 갈라질 자리는 여기뿐이다.
+     */
+    const adapter = (capability as Partial<GhCapabilityDefinition>).resultAdapter;
+    if (adapter === undefined) {
+      error('definition_adapter_missing', capability.id, '실행 정의에 구현한 결과 adapter가 없다');
+    } else {
+      if (!IMPLEMENTED_RESULT_SCHEMAS.includes(adapter.schema)) error('definition_adapter_unimplemented', capability.id, `스키마 ${adapter.schema}를 실행기가 만들지 않는다`);
+      const port = command.classification?.result?.outputPorts.find((one) => one.id === adapter.outputPort);
+      const source = port?.source ?? null;
+      if (port === undefined) {
+        error('definition_adapter_port_missing', capability.id, `결과 계약에 출력 port ${adapter.outputPort}가 없다`);
+      } else if (source === null || source.adapter !== adapter.adapter || source.mode !== adapter.mode || (source.adapter === 'native_json' && source.schema !== adapter.schema)) {
+        error('definition_adapter_mismatch', capability.id, '구현한 adapter의 모드·스키마가 결과 계약의 출력 port와 다르다');
+      }
+    }
   }
   for (const id of manifestDefinitions.keys()) {
     if (!definitions.some((capability) => capability.id === id)) error('definition_unknown', id, 'manifest에 코드 표에 없는 정의가 있다');
@@ -276,6 +324,8 @@ export function validateManifest(manifest: GhCapabilityManifest, options: Valida
     for (const flag of stored.flags) if (flag.control === 'unknown') gap('flag_unknown', `${key} --${flag.name}`, `flag에 맞는 규칙이 없다: ${flag.basis.evidence}`);
     for (const positional of stored.positionals) if (positional.control === 'unknown') gap('positional_unknown', `${key} ${positional.placeholder}`, 'positional에 맞는 규칙이 없다');
     if (command.helpStatus === 'auth_required') info('help_auth_required', key, '--help가 인증을 요구해 flag·positional을 뽑지 못했다 (DEV-653)');
+    // 결과 계약·port (CR-089) — 차원 집계와 같은 검사다. 근거·이유가 빠진 것은 미분류, 어긋난 것은 구조 오류다.
+    for (const problem of contractProblems(command)) findings.push({ code: problem.code, severity: problem.severity, subject: problem.subject, message: problem.message });
   }
 
   // 5. 커버리지 재계산 대조.
@@ -288,7 +338,7 @@ export function validateManifest(manifest: GhCapabilityManifest, options: Valida
   // 6. 게이트.
   const gateOf = (id: GhRegistryGate['id'], label: string): GhRegistryGate => {
     const owned = dimensions.filter((dimension) => dimension.gate === id);
-    const failing = owned.filter((dimension) => dimension.unclassified > 0 || (dimension.total === 0 && dimension.id === 'io_port'));
+    const failing = owned.filter((dimension) => dimension.unclassified > 0 || (dimension.total === 0 && NONZERO_DENOMINATOR_DIMENSIONS.has(dimension.id)));
     return {
       id,
       label,
@@ -306,6 +356,25 @@ export function validateManifest(manifest: GhCapabilityManifest, options: Valida
   const hasError = findings.some((finding) => finding.severity === 'error');
   const hasGap = findings.some((finding) => finding.severity === 'gap') || gates.some((gate) => !gate.pass);
 
+  // 7. 결과 계약·연결의 분리 집계 — 합쳐서 하나의 100%로 만들지 않는다.
+  const leaves = manifest.commands.filter((command) => !command.group && command.aliasOf === null);
+  const contracts = leaves.map((command) => command.classification?.result ?? null);
+  const resultContractDimension = dimensions.find((dimension) => dimension.id === 'result_contract');
+  const contractSummary: GhContractSummary = {
+    resultContracts: { classified: resultContractDimension?.classified ?? 0, total: resultContractDimension?.total ?? leaves.length },
+    composability: COMPOSABILITY_VALUES.map((value) => ({ value, count: contracts.filter((contract) => contract?.composability === value).length })),
+    outputPorts: { commands: contracts.filter((contract) => (contract?.outputPorts.length ?? 0) > 0).length, ports: contracts.reduce((sum, contract) => sum + (contract?.outputPorts.length ?? 0), 0) },
+    inputPorts: { commands: contracts.filter((contract) => (contract?.inputPorts.length ?? 0) > 0).length, ports: contracts.reduce((sum, contract) => sum + (contract?.inputPorts.length ?? 0), 0) },
+    adaptersImplemented: definitions.flatMap((capability) => {
+      const schema = (capability as Partial<GhCapabilityDefinition>).resultAdapter?.schema;
+      return schema !== undefined && IMPLEMENTED_RESULT_SCHEMAS.includes(schema) ? [`${capability.id}:${schema}`] : [];
+    }),
+    executableCommands: allowedIds,
+    graph: computeCapabilityGraph(manifest.commands).summary,
+    executableFlows: 0,
+    hostVerified: leaves.filter((command) => command.classification?.hostSupport === 'verified').length,
+  };
+
   return {
     reportVersion: REPORT_VERSION,
     validatorVersion: VALIDATOR_VERSION,
@@ -320,6 +389,7 @@ export function validateManifest(manifest: GhCapabilityManifest, options: Valida
     dimensions,
     gates,
     execution: { allowed: allowedIds, definitions: definitionIds },
+    contracts: contractSummary,
     findings,
     status: hasError ? 'failed' : hasGap ? 'incomplete' : 'passed',
   };

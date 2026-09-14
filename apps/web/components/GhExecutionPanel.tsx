@@ -49,10 +49,12 @@ function PrRows({ rows, possiblyMore }: { readonly rows: readonly PrRowView[]; r
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.number} data-testid="gh-result-row">
+          {rows.map((row, index) => (
+            <tr key={row.number === null ? `row-${String(index)}` : `pr-${String(row.number)}`} data-testid="gh-result-row">
               <td>
-                {row.url === null ? (
+                {row.number === null ? (
+                  '—'
+                ) : row.url === null ? (
                   `#${String(row.number)}`
                 ) : (
                   <a href={row.url} target="_blank" rel="noopener noreferrer">
@@ -86,6 +88,27 @@ function PrRows({ rows, possiblyMore }: { readonly rows: readonly PrRowView[]; r
         </p>
       ) : null}
     </>
+  );
+}
+
+/**
+ * 결과에서 PR 참조를 만들었는가 (CR-089). `pr_list_v1` 기록에는 이 사실이 없어 아무것도 그리지 않는다 — 옛 기록을
+ * 새 규칙으로 다시 해석하지 않는다. 참조는 권한이 아니고, 다른 명령에 잇는 실행은 열리지 않았다는 사실을 함께 말한다.
+ */
+function ReferenceNote({ execution }: { readonly execution: ExecutionView }): ReactNode {
+  const references = execution.result?.references;
+  if (references === undefined) return null;
+  if (references.status === 'available') {
+    return (
+      <p data-testid="gh-result-references" data-status="available">
+        PR 참조 {String(references.refs.length)}개를 만들었습니다({execution.host} · {execution.repository ?? '—'}의 번호). 참조는 권한이 아니며, 다른 명령에 잇는 실행은 열리지 않았습니다.
+      </p>
+    );
+  }
+  return (
+    <p data-testid="gh-result-references" data-status="unavailable">
+      PR 번호(number) 필드를 고르지 않아 PR 참조를 만들지 않았습니다. 목록은 그대로 보입니다.
+    </p>
   );
 }
 
@@ -144,6 +167,7 @@ export function GhExecutionPanel({ execution, onCancel, cancelling = false }: Gh
       {(kind === 'rows' || kind === 'truncated') && rows.length > 0 ? (
         <PrRows rows={rows} possiblyMore={execution.result?.possibly_more === true} />
       ) : null}
+      {kind === 'rows' || kind === 'empty' ? <ReferenceNote execution={execution} /> : null}
 
       {isTerminal(execution.state) ? (
         <details data-testid="gh-raw-output">

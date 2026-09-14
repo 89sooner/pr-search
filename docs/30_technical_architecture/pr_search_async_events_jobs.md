@@ -1,6 +1,6 @@
 # PR Search 비동기 작업 및 이벤트
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-09-13
+> 상태: review | 버전: v0.13 | 갱신일: 2026-09-14
 
 CR-079 / ADR-023: JOB-SEQ-004는 sequence 역할의 durable poll과 기존 EventBus를 사용한다. 원본 저장→refresh, snapshot 저장→reconcile, 번호 저장→materialize/announce가 각각 원자적이다. 기동/매초 poll·lease·generation CAS·retry·SIGTERM은 [설계](pr_search_wp074_design.md) 4~8절이 정본이다. 일일 스윕만으로 late mapping 재개를 대신하지 않는다. EVT-SEQ-004는 prs:projected에 발행하며 기존 link/commit-enrich는 이름 필터로 무시한다. ES는 sequence 역할의 durable materialize가 소유한다. **CR-084(WP-075)가 `annotate` 전용 소비자 그룹을 추가했다** — `mnumber`와 다른 group이며 전역 스위치 기본값이 꺼짐이라 켜기 전에는 구독하지 않는다.
 
@@ -737,7 +737,7 @@ Operations Plane의 비동기 처리는 수집 파이프라인과 큐를 공유�
 | `JOB-GH-001` | 구현 — `apps/gh-executor/src/runner.ts`. 큐에서 꺼낼 때 **재검증**(manifest 해시·gh 버전 → capability 열림 → 저장소 활성·이름 불변 → 연결 살아 있음·호스트 일치·만료 전·행위자 일치 → 봉인 해제 → 같은 빌더로 argv 재조립해 저장값과 대조) → `claim` → spawn → 결과 기록. 러너는 던지지 않고 이벤트는 결과와 무관하게 `ack`된다 — 재전달하면 같은 행을 다시 본다 |
 | `JOB-GH-004` 위임 토큰 갱신 | 부분 — 주기 잡이 아니라 **요청 시점 갱신**이다: 실행 요청에서 만료 15분 전이면 `grant_type=refresh_token`으로 갱신하고 봉인을 한 트랜잭션에서 교체한다(refresh token은 1회용). 주기 잡은 다음 판 |
 | `JOB-GH-007` | 구현 (위 표) |
-| `JOB-GH-003` capability 드리프트 점검 | **구현 (CR-088, `DEV-671`)** — `apps/gh-executor/src/registry-check.ts`. 자리는 실행기다(gh 바이너리와 DB를 둘 다 가진 프로세스). 헬스 서버를 먼저 열고(`registry.status: unchecked`) **기동 시 한 번 기다린 뒤** 구독을 세우며(비동기 판·동시 4, 10초 안팎), 그 뒤 `GH_EXECUTOR_REGISTRY_CHECK_MS`(기본 1일) 주기로 돈다. 동시 1(체인, 진행 중이면 tick 건너뜀), 일시 오류 재시도 3회(5·15·45초, `stop()`이 즉시 끊는다). 검사 = `validateManifest`(적재한 manifest 재계산 대조·커버리지) + `checkDriftAsync`(실제 바이너리 해시·버전·인벤토리 해시·command/flag/JSON 필드 diff — 이벤트 루프를 막지 않는다, `DEV-680`). 결과는 `gh_capability_snapshot`(해시마다 한 행)·`gh_capability_verification`(회차마다 한 행, append-only)에 남는다. 드리프트·구조 실패면 `stale` 플래그가 서고 러너의 재검증이 실행을 `registry_stale`로 거절한다(FR-GH-011 AC-3의 `execution_disabled`) — 프로세스는 종료하지 않고 헬스 `registry.stale`·지표 `gh_registry_stale`이 사실을 말한다. 일시 오류는 `stale`을 바꾸지 않고, DB 기록 실패도 판정을 바꾸지 않는다(`DEV-679`) |
+| `JOB-GH-003` capability 드리프트 점검 | **구현 (CR-088, `DEV-671`)** — `apps/gh-executor/src/registry-check.ts`. 자리는 실행기다(gh 바이너리와 DB를 둘 다 가진 프로세스). 헬스 서버를 먼저 열고(`registry.status: unchecked`) **기동 시 한 번 기다린 뒤** 구독을 세우며(비동기 판·동시 4, 10초 안팎), 그 뒤 `GH_EXECUTOR_REGISTRY_CHECK_MS`(기본 1일) 주기로 돈다. 동시 1(체인, 진행 중이면 tick 건너뜀), 일시 오류 재시도 3회(5·15·45초, `stop()`이 즉시 끊는다). 검사 = `validateManifest`(적재한 manifest 재계산 대조·커버리지) + `checkDriftAsync`(실제 바이너리 해시·버전·인벤토리 해시·command/flag/JSON 필드 diff — 이벤트 루프를 막지 않는다, `DEV-680`). 결과는 `gh_capability_snapshot`(해시마다 한 행)·`gh_capability_verification`(회차마다 한 행, append-only)에 남는다. 드리프트·구조 실패면 `stale` 플래그가 서고 러너의 재검증이 실행을 `registry_stale`로 거절한다(FR-GH-011 AC-3의 `execution_disabled`) — 프로세스는 종료하지 않고 헬스 `registry.stale`·지표 `gh_registry_stale`이 사실을 말한다. 일시 오류는 `stale`을 바꾸지 않고, DB 기록 실패도 판정을 바꾸지 않는다(`DEV-679`). 검증기 보고서는 판 `r2`(CR-089)부터 결과 계약 차원 여섯과 분리 집계(`contracts`)를 담는다 — 옛 `r1` 기록은 지워지지 않고, API가 「결과 계약 차원을 검증하지 않은 기록」(`contract_dimensions: not_in_report_version`)으로 낸다. 검사가 `passed`여도 스냅숏을 활성화하지 않는다 |
 | `JOB-GH-002`·`005`·`006`·`008` | 미구현 (Recipe·workspace 정리 잡·아티팩트·잠금). workspace는 실행 종료 즉시 `destroyWorkspace`가 지우며 tmpfs라 재기동에 사라진다 |
 | `EVT-GH-001` | 구현 — `prs:gh:executions` 페이로드는 `execution_id`뿐이다. 실행기는 그 ID로 DB 정본을 다시 읽는다 |
 | `EVT-GH-002` | 부분 — 버스 이벤트가 아니라 SSE가 DB의 상태 변화를 1초 폴링으로 흘린다. 감사는 `gh_execution` 행 자체다 |

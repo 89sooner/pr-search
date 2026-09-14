@@ -119,3 +119,10 @@ jobs:
       # 통합 테스트는 소스를 직접 읽으므로 빌드가 필요 없다 (vitest 별칭).
       - name: test:integration
         run: pnpm test:integration
+
+      # 회귀 시험은 같은 서비스와 환경 변수를 쓴다 (git 대조·배포 도달성, 릴리스 검증 계획 7·8장).
+      # 통합 시험이 끝난 **뒤에** 같은 잡에서 순차로 돌므로 두 계층이 공유 DB를 동시에 고치지 않는다.
+      # DEV-664 시험은 러너의 실제 `docker compose`를 부른다 — 없으면 skip이 아니라 실패다.
+      # 회귀 시험이 CI에서 도는 것은 이 단계가 처음이다(CR-089, DEV-686) — 통합 잡의 소요가 그만큼 는다.
+      - name: test:regression
+        run: pnpm test:regression

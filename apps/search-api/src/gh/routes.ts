@@ -113,20 +113,28 @@ export function registerGhRoutes(app: FastifyInstance, options: GhRouteOptions):
       manifest_hash: manifest.hash,
       generated_at: manifest.generatedAt,
       coverage: manifest.coverage,
-      capabilities: manifest.capabilities.map((capability) => ({
-        id: capability.id,
-        path: capability.path,
-        title: capability.title,
-        risk: capability.risk,
-        support: capability.support,
-        execution: capability.execution,
-        interaction: capability.interaction,
-        required_permissions: capability.requiredPermissions,
-        options: capability.options,
-        constraints: capability.constraints,
-        result: capability.result,
-        timeout_ms: capability.timeoutMs,
-      })),
+      capabilities: manifest.capabilities.map((capability) => {
+        // 결과의 뜻은 분류의 결과 계약이 정본이다 — 실행 정의에는 구현한 adapter만 있다 (CR-089).
+        const contract = manifest.commands.find((command) => command.id === capability.id)?.classification?.result ?? null;
+        return {
+          id: capability.id,
+          path: capability.path,
+          title: capability.title,
+          risk: capability.risk,
+          support: capability.support,
+          execution: capability.execution,
+          interaction: capability.interaction,
+          required_permissions: capability.requiredPermissions,
+          options: capability.options,
+          constraints: capability.constraints,
+          result_adapter: capability.resultAdapter,
+          result_contract:
+            contract === null
+              ? null
+              : { kind: contract.kind, sensitivity: contract.sensitivity, composability: contract.composability, bindable: contract.bindable, resource_kind: contract.resourceKind },
+          timeout_ms: capability.timeoutMs,
+        };
+      }),
       commands: manifest.commands
         .filter((command) => !command.group)
         .map((command) => ({
@@ -144,6 +152,8 @@ export function registerGhRoutes(app: FastifyInstance, options: GhRouteOptions):
           interaction: command.classification?.interaction ?? null,
           side_effect: command.classification?.sideEffect ?? null,
           host_support: command.classification?.hostSupport ?? null,
+          // 결과 계약 요약 하나 (CR-089). port·간선은 API-GH-014만 낸다.
+          composability: command.classification?.result?.composability ?? null,
         })),
       correlation_id: correlationId,
     });

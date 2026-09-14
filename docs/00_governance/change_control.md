@@ -92,6 +92,7 @@
 | CR-086 | 2026-09-13 | scope | `REL-007` 착수 (결정자 승인 2026-09-13) | **REL-007 GitHub Operations Plane을 공식 착수하고 첫 읽기 전용 수직(`gh pr list`)을 연다.** 사용자가 웹에서 저장소를 고르고 상태·건수·JSON 필드를 넣어 실행될 argv를 확인한 뒤, 자신의 위임 권한으로 격리된 gh를 실행하고 결과와 자기 이력을 본다. R0 하나(`pr.list`)만 열고 R1~R3·`gh api`·extension·Recipe·파일 입출력은 열지 않는다. **요구사항 문장과 수용 기준은 바꾸지 않는다** — 실행 감사의 정본은 `gh_execution`(`ENT-GH-002`, `FR-GH-012` AC-1의 항목 전부)이며 `FR-AUTH-004`의 `audit_record` action 표에는 행을 더하지 않는다. 구현이 확정한 것: 새 패키지 `@prs/gh-cli`(고정 gh 2.97.0·help 파서·인벤토리·manifest·의미 제약 평가기·유일한 argv 빌더·`SafeGhOutput`·typed 결과·봉인), 새 프로세스 `gh-executor`(shell 없는 spawn·큐 재검증·argv 재조립 대조·취소·상한·고아 회수·잔여 스윕), 마이그레이션 028(표 넷), `search-api`의 `/api/v1/gh/*` 라우트 열 개, W-010·W-021 화면과 Operations App 인가 콜백, compose 선택 프로파일 `github-operations`. 문서와 어긋난 자리는 편차로 적었다: 파티션 표 유니크로는 멱등을 강제할 수 없어 보조 표로 강제(`DEV-650`), SSE는 상태만 흘림(`DEV-651`), 봉인 키가 비밀 저장소의 대체(`DEV-652`), 분류 미완 195건으로 `NFR-009` 게이트 미통과(`DEV-657`), `gh-executor`의 Profile A 배치 충돌을 선택 프로파일로 해소(`DEV-661`). **기본값은 꺼짐**(`GH_OPERATIONS_ENABLED=false`)이며 릴리스는 발행하지 않는다 | FR-GH-001 · FR-GH-002 · FR-GH-003 · FR-GH-006 · FR-GH-008 · FR-GH-011 · FR-GH-012 · NFR-009 · NFR-010 · NFR-011 · NFR-012 · ADR-016 · ADR-017 · ADR-018 · API-GH-001 · API-GH-002 · API-GH-003 · API-GH-005 · API-GH-007 · API-GH-010 · API-GH-011 · ENT-GH-001 · ENT-GH-002 · JOB-GH-001 · JOB-GH-007 · REL-007 · WP-045 · WP-046 · WP-047 · WP-048 · WP-061 · WP-062 · WP-066 · WP-077 · DEV-650 ~ DEV-668 | 아키텍처(데이터 모델·비동기·백엔드·인프라·보안·API 계약·프런트엔드) · 로드맵 · 작업 패키지 · 배포 정의 · 런북 · 코드 · 구현 원장 | closed — cascade와 검사기 결과를 기록한 뒤 닫는다 (2026-09-13) |
 | CR-087 | 2026-09-14 | correction | main CI 실패 두 건 — 병합 커밋 `c5c8aea`·`5369772`의 run `34752161210`·`34752531241` | **병합 뒤 main에서 실패한 시험 둘의 원인을 고친다 — 요구사항 문장은 바꾸지 않는다.** (1) `apps/ingest-gateway/src/signature.test.ts`의 상수 시간 비교 시험은 **시간을 재는** 시험이라 호스팅 러너 부하에서 near/far 비율이 0.4617로 하한 0.5에 미달했고, 구현(`timingSafeEqual`)은 그대로였다(`DEV-669`). 필수 CI에는 판정이 원시 함수에 **위임되는지**를 호출로 보는 결정적 시험을 두고(조기 종료 `===`·길이 검사 제거·첫 일치에서 중단, 세 변이가 각각 잡힌다), 시간 측정은 `perf/signature-timing.perf.test.ts`로 옮겨 한계를 적었다. 비율 범위를 넓히거나 시험을 지우지 않았다. (2) `apps/pipeline-worker/integration/sequence/freshness.test.ts` T03b는 fetch가 덮는 refresh 의도의 경계가 `created_at <= startedAt`이었고, `created_at`은 DB의 `clock_timestamp()`(µs)·`startedAt`은 애플리케이션의 `Date`(ms)라 같은 밀리초에 들어온 마지막 의도가 경계 뒤로 읽혀 남았다(`DEV-670`, **제품 결함**). 경계를 시각이 아니라 **fetch 직전(미러 락 아래)에 고정한 집합**으로 바꿨다 — 커밋 가시성이 경계다. 수정 전 코드에서 결정적으로 실패하는 재현 시험을 두었다. 마이그레이션·SRS 변경 없음 | NFR-005 · FR-ING-001 · FR-SEQ-008 · ENT-SEQ-006 · WP-003 · WP-074 · DEV-669 · DEV-670 | 아키텍처(보안 12장) · 코드 · 구현 원장 | closed — cascade와 검사기 결과를 기록한 뒤 닫는다 (2026-09-14) |
 | CR-088 | 2026-09-14 | scope | `REL-007` 다음 수직 (결정자 지시 2026-09-14) | **capability 분류·검증·드리프트 검출·검증 기록 저장·A-006 읽기 전용 조회를 연다 — 실행 허용은 `pr.list` 하나 그대로다.** 고정 gh 2.97.0의 leaf 196개 전부를 사람이 적은 표(`classification/commands.ts`, 행마다 help 원문 근거)로 지원 상태·interaction·위험·부작용·인증·입출력·결과 종류·민감도까지 분류하고, flag 1,034·inherited 312·positional 164·`--json` 필드 707을 문서화된 규칙(`rules.ts`, 판정마다 근거)으로 분류해 `NFR-009` 본표 차원(`GATE-GH-01`) 전부를 100%로 만들었다. 미분류 command 0. **분류가 실행을 넓히지 않는다**: 실행 허용은 코드 표(`EXECUTABLE_CAPABILITIES`)와 manifest가 함께 정하고, 독립 검증기(`validateManifest`)가 분류를 인벤토리에서 다시 만들어 대조하며 `execution_widened`·실행 차원 파생(`policy_blocked`↔`not_implemented` 뒤바꿈)·해시 변조·중복 ID·별칭 충돌·정의 드리프트·미분류를 각각의 코드로 잡는다(변이 10종 시험). 드리프트는 실제 바이너리의 인벤토리 해시와 command·flag·JSON 필드 diff로 검출한다(CI integration 잡의 시험 = `GATE-GH-02`). 마이그레이션 029(additive)가 `gh_capability_snapshot`(해시마다 한 행, 활성화는 게이트 통과 뒤에만 — CHECK 완화 `DEV-672`)과 `gh_capability_verification`(append-only, 트리거로 갱신·삭제 금지)을 만들고, 실행기가 `JOB-GH-003`으로 기동 시 한 번(구독 전에 기다림)과 하루 한 번 검사해 기록한다 — 드리프트·구조 실패면 다음 통과까지 실행을 `registry_stale`로 거절하고(`FR-GH-011` AC-3의 `execution_disabled`), DB 기록이 실패해도 판정은 유지한다(`DEV-679`). 검사는 이벤트 루프를 막지 않는 비동기 판이다(`DEV-680`). `API-GH-013`(상태)·`API-GH-014`(command 상세)와 web `/ops/gh-registry`(A-006 읽기 전용, `operator`·`security_officer`)가 같은 검증기 모델을 읽는다. **하지 않은 것**: 실행 허용 확대(0건), A-005 정책 편집, 스냅숏 활성화, `unsupported_by_host` 판정(사내 GHES 미확인 — 전부 `unverified`, `DEV-674`), 결과 계약의 bindability·port·자원 타입(`GATE-GH-01d` 미달, `DEV-675`), `EVT-GH-006` 버스 발행(`DEV-673`), 릴리스 발행. SRS 문장 변경 없음 — `NFR-009` 실측 기준 열의 수치 하나(`--json` 지원 command 41 vs 실측 40)는 `DEV-676`으로 적고 정정 여부는 다음 CR이 정한다 | FR-GH-001 · FR-GH-011 · FR-GH-013 · NFR-009 · ADR-015 · ADR-019 · ADR-020 · API-GH-001 · API-GH-013 · API-GH-014 · ENT-GH-006 · ENT-GH-012 · JOB-GH-003 · EVT-GH-006 · REL-007 · WP-045 · WP-059 · WP-061 · WP-066 · WP-078 · DEV-657 · DEV-671 ~ DEV-681 | 아키텍처(데이터 모델·비동기·백엔드·인프라·API 계약·프런트엔드·관측성) · 파생 UI(와이어프레임 A-006·QA 체크리스트) · 로드맵 · 작업 패키지 · 검증 계획 · 배포 정의 · 런북 · 코드 · 구현 원장 | closed — cascade와 검사기 결과를 기록한 뒤 닫는다 (2026-09-14) |
+| CR-089 | 2026-09-14 | scope | `REL-007` 결과 계약·타입 연결 검증 수직 (결정자 지시 2026-09-14) | **각 명령의 결과가 무엇이고 어디에 안전하게 연결될 수 있는지를 코드와 A-006에서 검증할 수 있게 한다 — 그 정의만으로 새 명령이나 Recipe가 실행되지 않는다.** 고정 gh 2.97.0의 leaf 196개 전부에 결과 계약(주 결과 종류·출력 모드별 adapter와 스키마 또는 구조화 불가 사유·자원 종류 또는 비적용 이유·composability·민감도·typed 입출력 port와 조건)을 manifest `r0.3`의 분류에 싣고, 실행 정의는 계약을 복사하지 않고 구현한 adapter(`pr_list_v2`)로 계약의 출력 port를 가리킨다. 공통 자원 참조(`GhResourceRef`)의 식별 규칙, 제한 JSON Pointer, 순수 호환 판정·바인딩 평가, 판정기의 답에서 계산한 타입 그래프를 두고, `GATE-GH-01d`를 여섯 차원(결과 계약·bindability·자원 타입·secret 출력·출력 port·입력 port — port 차원은 capability 수가 분모이고 0이면 미달)의 실제 완전성 검증으로 바꾼다(검증기 보고서 판 `r2`, 옛 `r1` 기록은 「결과 계약 미검증」으로 읽는다). `pr list` 결과를 `pr_list_v2`로 올려 식별 필드를 고르지 않은 정상 조회를 살리고(`DEV-682`) PR 참조를 검증된 실행 컨텍스트로 만든다. 분류 표의 주 결과 종류 63건·출력 모드 29건을 비TTY 실측으로 정정한다(`DEV-683`). 도메인 회귀를 CI integration 잡에 잇는다(`DEV-686`). SRS 사실 정정 셋(`--json` 41 → 40 `DEV-676`, 9.8 4항 예시 `DEV-684`, `NFR-009` port 분모 `DEV-688`)과 CR-087·088 머리글 누락 정정(`DEV-687`). **하지 않은 것**: `pr.view`를 포함한 새 명령의 실행, Recipe 저장·실행·그래프 편집기, R1~R3 개방, 스냅숏 활성화(`DEV-685`)·A-005 정책 편집, 마이그레이션 추가, 사내 GHES 지원 판정(`DEV-674`), 릴리스 발행 | FR-GH-001 · FR-GH-002 · FR-GH-005 · FR-GH-011 · NFR-009 · NFR-010 · ADR-020 · API-GH-001 · API-GH-013 · API-GH-014 · ENT-GH-009 · ENT-GH-010 · ENT-GH-011 · JOB-GH-003 · REL-007 · WP-045 · WP-059 · WP-066 · WP-079 · DEV-674 ~ DEV-676 · DEV-682 ~ DEV-689 | 요구사항(SRS v2.27) · 아키텍처(데이터 모델·비동기·백엔드·인프라·API 계약·프런트엔드·관측성·보안·ADR) · 파생 UI(와이어프레임 A-006·QA 체크리스트·에이전트 브리프) · 로드맵 · 작업 패키지 · 검증 계획 · CI · 코드 · 구현 원장 | in_progress |
 
 ## 4. 게이트 통과 기록
 
@@ -1809,3 +1810,61 @@ CR-004 종료 시점의 미결 항목이다. 각각 별도 CR로 처리한다. �
 **구현이 스스로 고른 것(Agent-Initiated Decisions)은 최종 보고의 별도 장과 agent-context/decisions.md에 전부 적었다.** 무거운 것: 분류 표를 JSON이 아니라 TypeScript 표로(행마다 근거, 검증기가 재계산 대조) · `sideEffect: 'arbitrary'`를 확인된 값으로(`gh api`·`codespace ssh`·`extension exec`·`copilot`, 넷 다 R3) · 정책 차단 command의 실행 차원 `policy_blocked` · flag 차원 분모에 실행 가능한 그룹 포함(SRS 1,034와 일치) · command별 flag 판정(`COMMAND_FLAG_OVERRIDES`)과 비밀 값 표지 `secretInput` · 스냅숏 CHECK 완화(활성화 조건은 네 차원)와 append-only 트리거 · JOB-GH-003을 실행기에 두고 기동 시 기다림, 헬스는 먼저 열림 · 드리프트는 거절, 일시 오류는 stale 유지, 기록 실패는 판정을 바꾸지 않음 · 검사는 비동기 판(동시 4) · A-006 역할 둘 · API-GH-001은 가볍게 두고 상세는 API-GH-014 · CI 게이트는 기존 진입점(단위 시험이 커밋된 manifest를 검증, integration 잡의 시험이 실제 바이너리와 대조) · manifest 판 `r0.2`, 규칙 판 `rules-2026-09-14.2`.
 
 **병합 판정.** 이 CR의 PR은 필수 check green 뒤 squash 병합하고, **병합 커밋의 main CI**를 다시 실측해 원장 6.85장에 적는다. 릴리스는 발행하지 않는다.
+
+### CR-089 cascade — 결과 계약·typed port·순수 연결 판정·타입 그래프·A-006 조회 (REL-007 R1b)
+
+시작 `origin/main`은 `f3cd00f`(CR-088 병합과 handoff 기록 뒤, main CI run `34791175999` success). 브랜치 `feature/rel007-result-contracts`. **이 판은 결정자가 지시한 REL-007의 결과 계약·타입 연결 검증 수직이다** — 관리자가 「각 명령이 어떤 형태의 결과를 내는가, 그 결과가 어떤 GitHub 자원을 가리키는가, 다른 명령의 입력으로 쓸 수 있는가, 연결하려면 어떤 필드·선택·컨텍스트가 필요한가, 연결할 수 없다면 타입·민감도·출력 형식 중 무엇 때문인가, 타입상 연결할 수 있어도 실행은 왜 막혀 있는가」를 A-006에서 확인하고 코드가 같은 사실을 검증한다. **그 정의만으로 새 명령이나 Recipe가 실행되지 않는다** — 실행 허용은 `pr.list` 하나이고 릴리스는 발행하지 않는다.
+
+**첫 계약 표 (S1).**
+
+| 낱말 | 이 판의 뜻 | 분모·수 |
+| --- | --- | --- |
+| 결과 계약 | 「이 command의 결과를 어떻게 해석할 수 있는가」의 의미 정본. manifest 분류(`classification.result`)가 소유하며 출력 모드마다 결과·adapter·스키마 또는 구조화 불가 사유를 따로 적는다 | leaf 196 |
+| 출력 port | 결과에서 참조를 만드는 방법 — `--json` 식별 필드(native_json) 또는 gh 자신이 인자로 읽는 문법의 URL(resource_url). 이름이나 `--json` 존재만으로 만들지 않는다 | capability 32 · port 36 |
+| 입력 port | 대상 자원을 받는 자리(positional의 번호·ID 대안, codespace `--codespace`). URL·이름·브랜치 대안과 필터 flag는 port가 아니다 | capability 80 · port 81 |
+| bindable | composability가 `fully_bindable`·`partially_bindable`인가 — 결과 계약의 성질이다. 실행기가 그 결과를 실제로 구조화하는가(구현 adapter)와 다르다 | 32 (fully 0) |
+| 구현 adapter | 실행 정의(`capabilities.ts`)가 실제로 만드는 결과 스키마. 계약을 복사하지 않고 계약의 출력 port를 이름으로 가리킨다 | 1 (`pr.list:pr_list_v2`) |
+| 호환 | 판정기가 출력 port → 입력 port를 타입·개수·민감도·조건으로 이어도 된다고 답한 것. **실행 승인이 아니다** | 간선 398 (직접 0 · 조건부 398) |
+| 실행 허용 | 코드 표 `EXECUTABLE_CAPABILITIES`와 manifest `allowed`가 둘 다인 것 | 1 (`pr.list`) |
+| 실행 가능한 다단계 흐름 | 저장·실행되는 Recipe | 0 |
+| 대상 GHES 확인 | 사내 GHES에서 실제로 돌려 본 것 | 0 (`DEV-674`) |
+
+「분류됨」은 결과 계약 완전성 검사(`contract-checks.ts`)에서 그 차원의 문제가 0건이라는 뜻이다. port 차원은 분모가 0이면 통과가 아니다 — 모두를 비바인딩으로 적어 분모를 없애는 것은 분류가 아니다. `GATE-GH-01d` 통과는 REL-007 완료가 아니다(`01e`·`06`·`08`·대상 GHES 확인이 남는다).
+
+- [x] 요구사항: **SRS v2.27 — 요구사항 문장과 수용 기준은 바꾸지 않았다.** 사실 셋만 고정 gh 2.97.0 실측으로 정정했다: 실측 기준 표와 `NFR-009`의 `--json` 출력 지원 command 41 → 40(`DEV-676` 종결), 9.8 4항 예시의 `gh pr checks` 출력 `CheckRunRef[]` → 실제로 성립하는 연결(`DEV-684`), `NFR-009`의 입력·출력 port 분류율 기준 열의 분모(`DEV-688`). 결정자 지시(14장)가 뒷받침된 사실 정정을 이 CR에서 승인했다. PRD·용어집·추적 매트릭스는 바꿀 것이 없었다(용어 `GhResultContract`·`GhResourceRef`·입출력 port·`GhBinding`·그래프·composability가 이미 있다).
+- [x] 데이터 모델 1장: `ENT-GH-009`(분류가 소유하는 결과 계약의 실현 필드 — SRS의 `schema`·`adapters`를 출력 모드별로 나눔, 새 열·마이그레이션 없음), `ENT-GH-010`(식별 규칙, 참조는 권한이 아님), `ENT-GH-011`(평가만 연다, 제한 JSON Pointer).
+- [x] 비동기 9.4: `JOB-GH-003` 보고서 판 `r2`와 옛 `r1` 기록의 읽기, 검사가 `passed`여도 스냅숏을 활성화하지 않음.
+- [x] 백엔드 12.1: gh-registry 모듈에 `results`·`ports`·`contract-checks`·`resource-ref`·`json-pointer`·`binding`·`graph`, manifest `r0.3`, 순수 함수이며 실행 경로가 읽지 않음.
+- [x] 인프라: 명령 목록에 `pnpm test:regression`, CI 통합 잡의 순차 회귀 단계.
+- [x] API 계약: `API-GH-001`(`composability`·`result_adapter`·`result_contract` 요약), `API-GH-013`(`contracts`·`gate_scope`·보고서 판·`contract_dimensions`), `API-GH-014`(`result_contract`·`graph`), R1b 절(`pr_list_v2`·`invalid_identifier`·옛 기록·결과 계약이 있는 `pr.view`도 실행 불가). 6장 오류 코드는 바뀌지 않았다.
+- [x] 프런트엔드 9.1: `/ops/gh-registry`의 결과 계약·port·연결 후보 표시(실행·Recipe 버튼 없음).
+- [x] 보안: `THR-030`·`THR-031`의 부분 실현.
+- [x] ADR-020: 구현 판 한 줄(출력 모드별 계약, `fully_bindable` 0, 목록 규칙, 그래프, `gh_api_structured` 미사용).
+- [x] 관측성: 내용 변경 없음 — CR-088이 바꾼 내용에 맞춰 머리글만 올렸다(`DEV-687`).
+- [x] 파생 UI: 와이어프레임 A-006 결과 계약 표시, QA 체크리스트 `QA-GH-45`(A-006 결과 계약·연결·옛 판)·`QA-GH-46`(W-010 참조 문구), 에이전트 브리프의 옛 측정값(placeholder 261 → 230, `--json` 41 → 40).
+- [x] 로드맵 4.3(세 번째 수직·남은 완료 조건), 작업 패키지 `WP-079` 신설과 `WP-066` 부분 갱신(완료 기준 체크·연쇄 예시 정정)·3장 표·4장 커버리지(`WP-078` 누락 보강, 합계 71), 검증 계획(`GATE-GH-01d` 분모 명시, R1b 판정, 도메인 회귀 주기).
+- [x] 구현 원장: 3장(`WP-079` 신설, `WP-066`·`WP-059`), 4장(`FR-GH-001` done·`FR-GH-002`·`FR-GH-005` partial·`NFR-009`), 5장(`DEV-682`~`DEV-689` 신설, `DEV-675`·`DEV-676` 종결), 6.86장 검증 기록.
+- [x] CI: `.github/workflows/ci.yml` integration 잡의 `test:integration` 다음 `test:regression` 한 단계(러너·트리거·잡 구조·서비스 포트 불변, `DEV-686`).
+- [x] 머리글: 이 CR이 바꾼 문서와, CR-087·CR-088이 내용을 바꾸고도 머리글을 올리지 않은 문서의 판을 한 번씩 올렸다(`DEV-687`) — 과거 커밋의 판을 소급해 만들지 않았다. `change_control.md`는 원래 상태 머리글이 없다.
+- [x] 문서 검사기 `--strict`: 편집 전(main과 같은 문서) 종료 1 · ERROR 4(정의되지 않은 ID `FR-CSS-005`·`D-002`, 자리표시어 13+8) · WARN 2(`risks.md` 경로), 편집 후(머리글·원장까지 최종 수정) 같은 6건 — **신규 0건.** strict 전체 통과가 아니다. 원장 6.86장에도 적었다.
+
+**승인 범위를 넘지 않은 자리.**
+
+| 유혹 | 하지 않은 것 | 근거 |
+| --- | --- | --- |
+| 호환 판정이 나온 `pr.view`를 실행 가능으로 열기 | 실행 허용 `pr.list` 하나 그대로 | 지시: 결과 계약이 생겼다는 이유로 실행 가능하다고 판단하는 경로를 만들지 않는다. 통합 시험이 `pr.view`를 `allowed`로 위조해도 `GH_CAPABILITY_NOT_EXECUTABLE`임을 건다 |
+| `--json`이 있는 command를 전부 `fully_bindable`로 | `fully_bindable` 0, 식별 필드가 있는 결과만 port | 필드 선택·출력 모드 조건이 늘 있고, 식별 필드가 없는 JSON(`pr checks` 등)은 참조를 만들 수 없다 |
+| 모르는 결과를 `opaque_text`·`policy_blocked`로 일괄 치환해 미분류 0 만들기 | 행마다 비TTY 관측 근거 — 주 종류 63건 정정 | 검증기가 인벤토리에서 계약을 다시 만들어 대조한다(`classification_recompute_mismatch`) |
+| SRS 예시(`pr checks` → `run rerun`)에 맞춰 link URL로 간선 만들기 | 간선을 만들지 않고 예시를 정정 | `pr checks` 결과에 식별자가 없다(`DEV-684`) |
+| port가 없는 command에 의미 없는 port를 하나씩 붙이기 | 이유가 있는 비적용(`inputPortsNote`·`outputPortsNote`) | 분모는 capability 수이고, 이유가 없으면 미분류다 |
+| 목록 → 목록을 조건부로 열기 | 불가(`list_to_list`) | 상한 있는 fan-out 규칙(FR-GH-005 AC-9)이 먼저다 |
+| Recipe 저장·그래프 편집기·실행 버튼 | 두지 않았다 | 지시의 제외. 바인딩 평가는 순수 함수이고 제품 코드가 부르지 않는다(회귀) |
+| 검사가 `passed`가 됐으니 스냅숏 활성화 | 활성화하지 않았다 | 활성화 절차는 WP-059이며 CHECK가 결과 계약 차원을 보지 않는다(`DEV-685`) |
+| 마이그레이션 030 추가 | 추가하지 않았다 | 029의 JSONB(보고서·coverage)로 충분하다 |
+| 사내 GHES 미확인을 `unsupported_by_host`로 | 0건 그대로 | 검증기가 `unsupported_without_host_evidence`로 잡는다 |
+
+**구현이 스스로 고른 것(Agent-Initiated Decisions)은 최종 보고의 별도 장에 적었다.** 무거운 것: 계약을 출력 모드마다 둠 · `pr_list_v2`(v1 재해석 없음, 번호 미선택은 참조 `unavailable`, 잘못된 번호는 결과 전체 거절) · port 분모를 capability 수로(출력 = 바인딩 가능, 입력 = 대상 자원 자리) · URL·이름·브랜치 대안을 입력 port에서 제외 · project·gist·artifact·user·team은 종류만(참조 없음) · JSON Pointer 제한(128자·토큰 8·자기 속성·prototype 토큰 거부) · 목록 → 목록 불가·목록 → 단일 명시 선택 · 보고서 판 `r2`와 `r1` 기록의 「미검증」 표시 · A-006 상세에 간선·불가 짝을 싣고 목록 API는 composability 하나만 · 픽스처를 manifest 실측으로 두고 드리프트 가드 · 바인딩 평가의 값 개수 검사 · 근거 문장의 출처를 무리마다 확인한 곳에만.
+
+**독립 검토 두 관점과 재검토.** 원장 6.86장.
+
+**병합 판정.** 이 CR의 PR은 필수 check green 뒤 squash 병합하고, **PR head와 병합 커밋의 main CI**에서 integration 잡의 `test:regression` 단계가 실제로 돈 것을 실측해 후속 원장 PR에서 6.86장에 적는다. 릴리스는 발행하지 않는다.

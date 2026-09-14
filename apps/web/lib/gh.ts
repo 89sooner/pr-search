@@ -29,7 +29,16 @@ export interface CapabilityView {
   readonly required_permissions: readonly string[];
   readonly options: GhCapabilityDefinition['options'];
   readonly constraints: GhCapabilityDefinition['constraints'];
-  readonly result: GhCapabilityDefinition['result'];
+  /** 실행기가 구현한 결과 adapter (CR-089). 옛 배포의 응답에는 없다. */
+  readonly result_adapter?: GhCapabilityDefinition['resultAdapter'];
+  /** 결과 계약 요약. 결과의 뜻은 서버가 분류에서 준다 — 화면이 다시 정하지 않는다. */
+  readonly result_contract?: {
+    readonly kind: string;
+    readonly sensitivity: string;
+    readonly composability: string;
+    readonly bindable: boolean;
+    readonly resource_kind: string | null;
+  } | null;
   readonly timeout_ms: number;
 }
 
@@ -95,8 +104,9 @@ export interface PreviewView {
   readonly blockers: readonly string[];
 }
 
+/** `pr_list_v2`에서는 `number` 필드를 고르지 않았으면 `null`이다. `pr_list_v1` 기록은 늘 번호가 있다. */
 export interface PrRowView {
-  readonly number: number;
+  readonly number: number | null;
   readonly title: string | null;
   readonly state: string | null;
   readonly url: string | null;
@@ -132,6 +142,12 @@ export interface ExecutionView {
     readonly row_count?: number;
     readonly possibly_more?: boolean;
     readonly stdout_truncated?: boolean;
+    /** `pr_list_v2`의 PR 참조 (CR-089). `pr_list_v1` 기록에는 없다 — 옛 기록을 다시 해석하지 않는다. */
+    readonly references?: {
+      readonly status: 'available' | 'unavailable';
+      readonly reason: string | null;
+      readonly refs: readonly { readonly host: string; readonly kind: string; readonly repository: string | null; readonly number: number | null }[];
+    };
   } | null;
   readonly stdout: { readonly text: string | null; readonly truncated: boolean } | null;
   readonly stderr: { readonly text: string | null; readonly truncated: boolean } | null;
@@ -231,7 +247,8 @@ export function validateForm(capability: CapabilityView, form: PrListFormState):
     requiredPermissions: capability.required_permissions,
     options: capability.options,
     constraints: capability.constraints,
-    result: capability.result,
+    // 폼 검증(evaluateInvocation)은 결과 adapter를 읽지 않는다 — 옛 응답이면 구현 adapter 자리를 채울 뿐이다.
+    resultAdapter: capability.result_adapter ?? { mode: 'json', adapter: 'native_json', schema: 'unknown', outputPort: 'unknown' },
     timeoutMs: capability.timeout_ms,
   };
   const outcome = evaluateInvocation(definition, toInvocation(capability, form));

@@ -54,6 +54,107 @@ export interface VerificationView {
   readonly report_hash: string;
   readonly matches_served_manifest: boolean;
   readonly environment: Record<string, unknown>;
+  /** 저장된 보고서의 판 (CR-089). 옛 배포의 응답에는 없다. */
+  readonly report_version?: string | null;
+  /** 그 보고서가 결과 계약 차원(01d 여섯)을 검증했는가. `r1` 기록은 `not_in_report_version`이다. */
+  readonly contract_dimensions?: 'verified' | 'not_in_report_version';
+}
+
+/* ------------------------------------------------------- 결과 계약·연결 (CR-089) */
+
+export interface PortConditionView {
+  readonly code: string;
+  readonly detail: string;
+}
+
+export interface PortView {
+  readonly id: string;
+  readonly direction: 'input' | 'output';
+  readonly type: string;
+  readonly cardinality: 'one' | 'many';
+  readonly required: boolean;
+  readonly nullable: boolean;
+  readonly sensitivity: string;
+  readonly conditions: readonly PortConditionView[];
+  readonly source: Readonly<Record<string, unknown>> | null;
+  readonly slot: Readonly<Record<string, unknown>> | null;
+  readonly basis: { readonly source: string; readonly rule: string | null; readonly evidence: string };
+}
+
+export interface OutputModeView {
+  readonly mode: string;
+  readonly kind: string;
+  readonly adapter: string;
+  readonly schema: string | null;
+  readonly unstructuredReason: string | null;
+  readonly bindable: boolean;
+  readonly reason: string | null;
+}
+
+export interface ResultContractView {
+  readonly kind: string;
+  readonly sensitivity: string;
+  readonly composability: string;
+  readonly bindable: boolean;
+  readonly resourceKind: string | null;
+  readonly resourceBasis: string;
+  readonly outputs: readonly OutputModeView[];
+  readonly inputPorts: readonly PortView[];
+  readonly outputPorts: readonly PortView[];
+  readonly inputPortsNote: string | null;
+  readonly outputPortsNote: string | null;
+  readonly basis: { readonly source: string; readonly rule: string | null; readonly evidence: string };
+}
+
+export interface GraphEdgeView {
+  readonly from: string;
+  readonly fromPort: string;
+  readonly to: string;
+  readonly toPort: string;
+  readonly type: string;
+  readonly verdict: 'direct' | 'conditional';
+  readonly conditions: readonly PortConditionView[];
+  /** 이 판의 간선은 전부 실행 불가다(`GhGraphEdge.execution.executable: false`) — 화면에 「실행 가능」을 그리는 분기를 두지 않는다. */
+  readonly execution: { readonly from: string; readonly to: string; readonly executable: false; readonly reason: string };
+}
+
+export interface GraphBlockedView {
+  readonly from: string;
+  readonly fromPort: string;
+  readonly to: string;
+  readonly toPort: string;
+  readonly type: string;
+  readonly reasons: readonly { readonly code: string; readonly detail: string }[];
+}
+
+export interface CommandGraphView {
+  readonly outgoing: readonly GraphEdgeView[];
+  readonly incoming: readonly GraphEdgeView[];
+  readonly blocked: readonly GraphBlockedView[];
+  readonly executable_flows: number;
+}
+
+/** `API-GH-013`의 `contracts` — 분모가 다른 수치를 따로 낸다. 화면이 합치거나 다시 세지 않는다. */
+export interface ContractSummaryView {
+  readonly resultContracts: { readonly classified: number; readonly total: number };
+  readonly composability: readonly { readonly value: string; readonly count: number }[];
+  readonly outputPorts: { readonly commands: number; readonly ports: number };
+  readonly inputPorts: { readonly commands: number; readonly ports: number };
+  readonly adaptersImplemented: readonly string[];
+  readonly executableCommands: readonly string[];
+  readonly graph: {
+    readonly nodes: number;
+    readonly outputPorts: number;
+    readonly inputPorts: number;
+    readonly edges: number;
+    readonly direct: number;
+    readonly conditional: number;
+    readonly blockedSameType: number;
+    readonly byType: readonly { readonly type: string; readonly edges: number }[];
+    readonly executableFlows: number;
+  };
+  readonly executableFlows: number;
+  readonly hostVerified: number;
 }
 
 export interface SnapshotView {
@@ -85,7 +186,11 @@ export interface RegistryStatusView {
     readonly alias_only_command_count: number;
     readonly help_topics: number;
   };
-  readonly validator: { readonly version: string; readonly rules_version: string; readonly status: RegistryStatus | string };
+  readonly validator: { readonly version: string; readonly rules_version: string; readonly report_version?: string; readonly status: RegistryStatus | string };
+  /** 결과 계약·연결 요약 (CR-089). 옛 배포의 응답에는 없다 — 없으면 「없음」으로 말한다. */
+  readonly contracts?: ContractSummaryView;
+  /** 이 화면의 게이트가 무엇을 판정하지 않는가 — 01d 통과를 REL-007 완료로 읽지 않게. */
+  readonly gate_scope?: string;
   readonly coverage: {
     readonly classified_leaf_commands: number;
     readonly unclassified_leaf_commands: number;
@@ -164,6 +269,10 @@ export interface CommandDetailView {
     readonly notes: readonly string[];
   } | null;
   readonly definition: { readonly id: string } | null;
+  /** 결과 계약 (CR-089). 그룹·별칭 전용 노드와 옛 배포는 `null`·없음이다. */
+  readonly result_contract?: ResultContractView | null;
+  /** 이 command에서 나가는·들어오는 타입 간선과 이어지지 않는 같은 타입 짝. 실행 가능성과 무관하다. */
+  readonly graph?: CommandGraphView | null;
 }
 
 /* ------------------------------------------------------------------ 라벨 */
@@ -224,6 +333,63 @@ export const STATUS_LABEL: Readonly<Record<string, string>> = {
   error: '오류',
   unchecked: '미검사',
 };
+
+export const COMPOSABILITY_LABEL: Readonly<Record<string, string>> = {
+  fully_bindable: '조건 없이 연결 가능',
+  partially_bindable: '조건부 연결 가능',
+  terminal_result: '끝 결과(연결 없음)',
+  artifact_result: '파일 결과',
+  opaque_result: '구조 없음',
+  secret_non_bindable: '비밀 — 흐르지 않음',
+  policy_blocked: '정책 차단',
+  unsupported_by_host: '호스트 미지원',
+};
+
+export const ADAPTER_LABEL: Readonly<Record<string, string>> = {
+  native_json: 'JSON',
+  gh_api_structured: 'gh api 구조화',
+  resource_url: '자원 URL',
+  artifact: '파일',
+  opaque_text: '텍스트',
+  stream: '스트림',
+  exit_status: '종료 코드',
+  secret_non_bindable: '비밀',
+};
+
+export const CONDITION_LABEL: Readonly<Record<string, string>> = {
+  output_mode: '출력 모드',
+  json_fields_selected: '필드 선택',
+  flag_absent: 'flag 미사용',
+  same_repository: '같은 저장소',
+  repository_from_output: '저장소를 출력에서 읽음',
+  url_matches_context: 'URL이 컨텍스트와 같음',
+  explicit_selection: '원소 하나를 명시적으로 선택',
+  single_value_as_list: '한 개짜리 목록',
+  slot_alternative: '자리의 대안 하나로만',
+  workspace_required: '작업 트리 필요',
+};
+
+/** `pull_request` → `PullRequestRef`. 서버의 `refTypeName`과 같은 규칙이다. */
+export function refTypeLabel(kind: string | null): string {
+  if (kind === null) return '자원 결과 아님';
+  return `${kind.split('_').map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join('')}Ref`;
+}
+
+/**
+ * 검증 기록이 결과 계약 차원을 검증했는가. `r1` 보고서는 검증하지 않은 기록이며 「통과」로 다시 읽지 않는다. 판을 모르는
+ * 옛 응답은 `unknown`이다.
+ */
+export function contractVerificationState(row: VerificationView): 'verified' | 'legacy' | 'unknown' {
+  if (row.contract_dimensions === 'verified') return 'verified';
+  if (row.contract_dimensions === 'not_in_report_version') return 'legacy';
+  return 'unknown';
+}
+
+/** 조건 목록을 한 줄로. 조건이 없으면 「없음」이다 — 직접 호환이라는 뜻이다. */
+export function describeConditions(conditions: readonly PortConditionView[]): string {
+  if (conditions.length === 0) return '없음';
+  return conditions.map((condition) => `${label(CONDITION_LABEL, condition.code)}: ${condition.detail}`).join(' · ');
+}
 
 export function label(table: Readonly<Record<string, string>>, value: string | null | undefined): string {
   if (value === null || value === undefined) return '—';
@@ -292,6 +458,8 @@ export interface CommandListItem {
   readonly interaction?: string | null;
   readonly side_effect?: string | null;
   readonly host_support?: string | null;
+  /** 결과 계약의 composability (CR-089). 옛 응답에는 없다. */
+  readonly composability?: string | null;
 }
 
 export interface CommandFilter {

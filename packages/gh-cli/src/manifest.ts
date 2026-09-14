@@ -26,8 +26,12 @@ import { computeDimensions } from './classification/dimensions.js';
  *
  * `r0.1` → `r0.2` (CR-088): command마다 분류(`classification`)가 실리고 coverage에 NFR-009 차원별
  * 집계가 들어갔다. 정책 차단 command의 실행 차원이 `policy_blocked`로 적힌다.
+ *
+ * `r0.2` → `r0.3` (CR-089): 분류마다 결과 계약(`classification.result` — 출력 모드·자원·port·composability)이 실리고,
+ * 실행 정의는 결과 계약을 복사하지 않고 구현한 adapter(`resultAdapter`)만 가진다. 주 결과 종류 일부를 비TTY 관측으로
+ * 정정했다(`RESULT_KIND_EVIDENCE`).
  */
-export const MANIFEST_VERSION = 'r0.2' as const;
+export const MANIFEST_VERSION = 'r0.3' as const;
 
 export interface ManifestBuildInput {
   readonly inventory: GhInventory;
@@ -173,6 +177,12 @@ export function buildManifest(input: ManifestBuildInput): GhCapabilityManifest {
       throw new Error(
         `정의 ${capability.id}(${capability.support}/${capability.risk}/${capability.interaction})와 분류 표(${classification.support}/${String(classification.risk)}/${classification.interaction})가 다르다`,
       );
+    }
+    // 구현한 adapter는 결과 계약의 출력 port를 가리켜야 한다 — 실행 정의가 결과의 뜻을 따로 말하지 않는다 (CR-089).
+    const adapter = capability.resultAdapter;
+    const source = classification.result?.outputPorts.find((port) => port.id === adapter.outputPort)?.source ?? null;
+    if (source === null || source.adapter !== adapter.adapter || source.mode !== adapter.mode || (source.adapter === 'native_json' && source.schema !== adapter.schema)) {
+      throw new Error(`정의 ${capability.id}의 구현 adapter(${adapter.schema} → ${adapter.outputPort})가 결과 계약의 출력 port와 다르다`);
     }
   }
 

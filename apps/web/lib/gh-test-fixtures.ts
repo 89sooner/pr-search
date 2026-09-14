@@ -19,7 +19,8 @@ export const PR_LIST_VIEW: CapabilityView = {
   required_permissions: PR_LIST_CAPABILITY.requiredPermissions,
   options: PR_LIST_CAPABILITY.options,
   constraints: PR_LIST_CAPABILITY.constraints,
-  result: PR_LIST_CAPABILITY.result,
+  result_adapter: PR_LIST_CAPABILITY.resultAdapter,
+  result_contract: { kind: 'resource_list', sensitivity: 'internal', composability: 'partially_bindable', bindable: true, resource_kind: 'pull_request' },
   timeout_ms: PR_LIST_CAPABILITY.timeoutMs,
 };
 

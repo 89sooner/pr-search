@@ -1,6 +1,6 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.7 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.8 | 갱신일: 2026-09-14
 
 CR-079 WP-074 재개: [실행서](../40_delivery/pr_search_wp074_execution.md) → [상세 설계](../30_technical_architecture/pr_search_wp074_design.md) → [측정 가이드](../40_delivery/pr_search_wp074_measurement_guide.md) 전문. 실제 source와 계약을 대조한 뒤 S0~S6/T01~T06으로 구현한다. 이 설계 작성은 실행 허가가 아니다. DEV-581을 fixture 성공으로 닫지 않고 외부 실행·사내 NOT RUN·WP-075 비활성을 분리한다. source별 파일 소유·검증 기록과 Agent-Initiated Decisions를 남긴다.
 
@@ -199,7 +199,7 @@ gh api로 정책 우회
 쓰기 작업 자동 재시도
 ```
 
-측정 기준값 (gh 2.97.0): command node 228개(실행 가능 leaf 196, 그룹 32), command 고유 flag 1,034개, positional placeholder 261개, `--json` 지원 41개. 이 수치는 고정된 버전에서 측정한 값이며 버전이 바뀌면 manifest와 함께 갱신한다.
+측정 기준값 (gh 2.97.0): command node 228개(실행 가능 leaf 196, 그룹 32), command 고유 flag 1,034개, positional placeholder 230개, `--json` 출력 지원 40개(`--json` flag를 가진 41개 중 `workflow run`은 입력 flag). 정본은 SRS 9.8절 실측 기준 표다(CR-089가 옛 값 261·41을 그 표에 맞췄다). 이 수치는 고정된 버전에서 측정한 값이며 버전이 바뀌면 manifest와 함께 갱신한다.
 
 
 ## WP-073 작업대 실행 규칙 (CR-067)

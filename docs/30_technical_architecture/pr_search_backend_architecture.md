@@ -1,6 +1,6 @@
 # PR Search 백엔드 아키텍처
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-09-13
+> 상태: review | 버전: v0.9 | 갱신일: 2026-09-14
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 
@@ -467,7 +467,7 @@ Elasticsearch와 PostgreSQL 사이에는 분산 트랜잭션을 쓰지 않는다
 
 | 모듈 | R0 실체 | 비고 |
 | --- | --- | --- |
-| gh-registry | `packages/gh-cli/src/{pin,help-parse,inventory,manifest,manifest-file,validate,drift}.ts` + `packages/gh-cli/src/classification/{commands,rules,classify,dimensions}.ts` + `scripts/gh-capabilities.mjs`(`gh:inventory`·`gh:validate-capabilities`·`gh:diff-capabilities`) + `apps/gh-executor/src/registry-check.ts`(JOB-GH-003) + `packages/db/src/repositories/gh-registry.ts` + `apps/search-api/src/gh/{routes,registry}.ts`(API-GH-001·013·014) | 커밋된 manifest `packages/gh-cli/manifest/gh-2.97.0.json`(판 `r0.2`, CR-088). 분류는 사람이 적은 표(leaf 196, 행마다 근거)와 문서화된 규칙(flag·positional, 판정마다 근거)으로 만들고, **검증기가 인벤토리에서 다시 만들어 저장값과 대조**한다 — 생성기의 결과를 다시 세어 성공하는 구조가 아니다. 인벤토리 추출·드리프트는 `/node` 서브패스(바이너리를 띄운다). 실행 허용은 `capabilities.ts`의 코드 표만 정하며 분류는 넓히지 못한다(`execution_widened`) |
+| gh-registry | `packages/gh-cli/src/{pin,help-parse,inventory,manifest,manifest-file,validate,drift}.ts` + `packages/gh-cli/src/classification/{commands,rules,classify,dimensions,results,ports,contract-checks}.ts` + `packages/gh-cli/src/{resource-ref,json-pointer,binding,graph}.ts`(CR-089) + `scripts/gh-capabilities.mjs`(`gh:inventory`·`gh:validate-capabilities`·`gh:diff-capabilities`) + `apps/gh-executor/src/registry-check.ts`(JOB-GH-003) + `packages/db/src/repositories/gh-registry.ts` + `apps/search-api/src/gh/{routes,registry}.ts`(API-GH-001·013·014) | 커밋된 manifest `packages/gh-cli/manifest/gh-2.97.0.json`(판 `r0.3`, CR-089 — `r0.2`는 CR-088). **결과 계약은 분류가 소유한다**(CR-089): leaf마다 `classification.result`(출력 모드별 계약·자원 종류·typed port·composability)이고, 실행 정의는 계약을 복사하지 않고 구현 adapter(`resultAdapter`)로 계약의 출력 port를 가리킨다. 호환 판정(`judgePortCompatibility`)·바인딩 평가(`evaluateBinding`)·그래프(`computeCapabilityGraph`)는 DB·토큰·파일·네트워크·spawn이 없는 순수 함수이며, 실행 준비·실행기 재검증은 이것들을 읽지 않는다(회귀가 건다). 분류는 사람이 적은 표(leaf 196, 행마다 근거)와 문서화된 규칙(flag·positional, 판정마다 근거)으로 만들고, **검증기가 인벤토리에서 다시 만들어 저장값과 대조**한다 — 생성기의 결과를 다시 세어 성공하는 구조가 아니다. 인벤토리 추출·드리프트는 `/node` 서브패스(바이너리를 띄운다). 실행 허용은 `capabilities.ts`의 코드 표만 정하며 분류는 넓히지 못한다(`execution_widened`) |
 | gh-command | `packages/gh-cli/src/{constraints,argv,env}.ts` + `apps/search-api/src/gh/executions.ts`(`prepare`) | `evaluateInvocation`은 **브라우저 안전**해 web의 폼도 같은 함수를 부른다 (FR-GH-003 AC-8). argv 빌더는 `buildArgv` 하나뿐이며 회귀가 정의 수를 센다 |
 | gh-identity | `apps/search-api/src/gh/identity.ts` + `packages/gh-cli/src/vault.ts` + `packages/db/src/repositories/gh-identity.ts` | 인가 왕복(state+PKCE, Redis 10분), 봉인, 요청 시점 갱신, 철회 |
 | gh-policy | `prepare`의 `policy: 'r0_immediate'` | R0는 즉시 실행뿐. 실행 차원 `execution: allowed \| not_implemented \| policy_blocked`이 manifest에 있고 열리지 않은 capability는 `GH_CAPABILITY_NOT_EXECUTABLE`(409) |

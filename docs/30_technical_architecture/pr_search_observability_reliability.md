@@ -1,6 +1,6 @@
 # PR Search 관측성 및 신뢰성
 
-> 상태: review | 버전: v0.4 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.5 | 갱신일: 2026-09-14
 
 CR-079: [설계](pr_search_wp074_design.md) 6.4·10절과 [측정 가이드](../40_delivery/pr_search_wp074_measurement_guide.md)가 stage timestamps, sample attribution, p50/p95/p99/max·누락·음수·pending·retention을 정의한다. NFR-002 수신→검색 p95 10초/p99 60초를 검증 목표로 비교하되 로컬 수치를 사내 보장으로 승격하지 않는다. assigned_at-committed_at은 별도 보조 지표다. DEV-576의 6시간은 스윕 주기이고 실측 상한이 아니다.
 

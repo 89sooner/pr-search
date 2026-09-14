@@ -5,16 +5,31 @@
  * 실행기 미검사·지남·드리프트·적재 불일치가 서로 다른 답이어야 한다. 기대값은 손으로 적었다.
  */
 
+import { RESOURCE_KINDS, refTypeName } from '@prs/gh-cli';
 import { describe, expect, it } from 'vitest';
-import { countBy, filterCommands, isOverdue, label, percentOf, registryHeadline, shortHash, statusTone, SUPPORT_LABEL } from './gh-registry';
+import {
+  contractVerificationState,
+  countBy,
+  describeConditions,
+  filterCommands,
+  isOverdue,
+  label,
+  percentOf,
+  refTypeLabel,
+  registryHeadline,
+  shortHash,
+  statusTone,
+  SUPPORT_LABEL,
+  type VerificationView,
+} from './gh-registry';
 import { REGISTRY_STATUS_DRIFT, REGISTRY_STATUS_EMPTY, registryStatus, verification } from './gh-registry-fixtures';
 import { CAPABILITIES } from './gh-test-fixtures';
 
 const NOW = new Date('2026-09-14T04:00:00.000Z');
 
 describe('registryHeadline — 없음·미검사·실행기 기록을 가른다', () => {
-  it('기록이 없으면 no_records다 — 0개 정상이 아니다', () => {
-    expect(registryHeadline(REGISTRY_STATUS_EMPTY, NOW)).toEqual({ kind: 'no_records', validatorStatus: 'incomplete' });
+  it('기록이 없으면 no_records다 — 검증기가 passed여도 0개 정상이 아니다', () => {
+    expect(registryHeadline(REGISTRY_STATUS_EMPTY, NOW)).toEqual({ kind: 'no_records', validatorStatus: 'passed' });
   });
 
   it('실행기 기록이 없고 CI 기록만 있으면 executor_unchecked다', () => {
@@ -83,5 +98,35 @@ describe('command 탐색', () => {
     const counts = countBy(CAPABILITIES.commands, (command) => command.support);
     expect(counts[0]).toEqual({ value: 'supported', count: 2 });
     expect(counts.map((one) => one.value)).toEqual(['supported', 'unknown', 'unsupported_by_host']);
+  });
+});
+
+describe('결과 계약 표시 (CR-089)', () => {
+  it('refTypeLabel은 자원 종류 15개 전부에서 서버의 refTypeName과 같고, 자원 결과가 아니면 그렇게 말한다', () => {
+    const kinds = [...RESOURCE_KINDS];
+    expect(kinds).toHaveLength(15);
+    for (const kind of kinds) expect(refTypeLabel(kind), kind).toBe(refTypeName(kind));
+    expect(refTypeLabel('pull_request')).toBe('PullRequestRef');
+    expect(refTypeLabel('workflow_run')).toBe('WorkflowRunRef');
+    expect(refTypeLabel(null)).toBe('자원 결과 아님');
+  });
+
+  it('검증 기록의 보고서 판: r2는 verified, r1은 legacy, 판을 모르는 옛 응답은 unknown이다 — 옛 기록을 통과로 다시 읽지 않는다', () => {
+    expect(contractVerificationState(verification())).toBe('verified');
+    expect(contractVerificationState(verification({ status: 'passed', report_version: 'r1', contract_dimensions: 'not_in_report_version' }))).toBe('legacy');
+    const old: { -readonly [K in keyof VerificationView]?: VerificationView[K] } = verification();
+    delete old.report_version;
+    delete old.contract_dimensions;
+    expect(contractVerificationState(old as VerificationView)).toBe('unknown');
+  });
+
+  it('describeConditions: 조건이 없으면 「없음」(직접 호환)이고, 있으면 라벨과 세부를 순서대로 잇는다 — 모르는 코드는 그대로 보인다', () => {
+    expect(describeConditions([])).toBe('없음');
+    expect(
+      describeConditions([
+        { code: 'explicit_selection', detail: '/0' },
+        { code: 'mystery', detail: 'x' },
+      ]),
+    ).toBe('원소 하나를 명시적으로 선택: /0 · mystery: x');
   });
 });
