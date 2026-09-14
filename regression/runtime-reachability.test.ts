@@ -4171,10 +4171,18 @@ describe('REL-007 R0: GitHub Operations Plane이 배포에서 실제로 돈다 (
     expect(index).toMatch(/registry\s*=\s*startRegistryChecker\(/);
     expect(index).toMatch(/await\s+registry\.runOnce\('startup'\)/);
     expect(index).toMatch(/await\s+registry\?\.stop\(\)/);
-    expect(index).toMatch(/registry:\s*\{\s*isStale:/);
+    /*
+     * CR-090: 러너는 검사기의 상태(드리프트 `stale`과 마지막 통과 시각)를 통째로 받아 실행 판정의 레지스트리 입력으로 쓴다.
+     * 옛 배선(`isStale`만 넘기고 재검증에서 한 줄로 거절)은 과거의 통과 하나로 무기한 실행하는 경로를 남겼다.
+     */
+    expect(index).toMatch(/registry:\s*\{\s*snapshot:\s*\(\)\s*=>\s*checker\.state\(\)\s*\}/);
     // 헬스 서버는 기동 검사보다 먼저 열린다 — 검사 동안 `/healthz`가 닫혀 있으면 안 된다.
     expect(index.indexOf('server.listen(')).toBeLessThan(index.indexOf("registry.runOnce('startup')"));
-    expect(read('apps/gh-executor/src/runner.ts')).toMatch(/if\s*\(deps\.registry\?\.isStale\(\)\s*===\s*true\)\s*return\s*\{\s*ok:\s*false,\s*reason:\s*'registry_stale'\s*\};/);
+    const runner = read('apps/gh-executor/src/runner.ts');
+    // 러너 의존에서 레지스트리는 필수다 — 없으면 검사를 건너뛰는 경로를 두지 않는다.
+    expect(runner).toMatch(/readonly\s+registry:\s*\{\s*snapshot\(\)/);
+    expect(runner).toMatch(/const\s+registry\s*=\s*deps\.registry\.snapshot\(\);/);
+    expect(runner).toMatch(/executorRegistryVerdict\(\{\s*stale:\s*registry\.stale,\s*lastPassedAt:\s*registry\.lastPassedAt,/);
     expect(read('apps/gh-executor/src/server.ts')).toMatch(/readonly\s+registry\?:/);
     const check = read('apps/gh-executor/src/registry-check.ts');
     expect(check).toMatch(/checkedBy:\s*'gh-executor'/);
@@ -4203,6 +4211,63 @@ describe('REL-007 R0: GitHub Operations Plane이 배포에서 실제로 돈다 (
     expect(read('deploy/single-host/.env.example')).toContain('GH_EXECUTOR_REGISTRY_CHECK_MS');
     // 미리보기·수락(prepare)과 실행기 재검증이 같은 두 조건(정의 allowed ∧ manifest allowed)을 본다 (독립 검토 가).
     expect(read('apps/search-api/src/gh/executions.ts')).toMatch(/capability\.execution\s*!==\s*'allowed'\s*\|\|\s*command\.execution\s*!==\s*'allowed'/);
+  });
+
+  /*
+   * CR-090 — 운영 승인·차단이 실제 실행을 통제한다 (WP-080). 아래 셋은 「판정식이 한 곳이고 수락·claim이 그것을 부른다」·
+   * 「정책 표를 애플리케이션이 직접 쓰지 않는다」·「운영 정책 경로의 역할과 web 배선」을 건다. 동작은 통합 시험
+   * (`gh-policy`·`policy-flow`·`policy-routes`)이 보고, 여기는 그 동작이 배포 코드에 이어져 있는지를 본다.
+   */
+  it('CR-090: 요청 수락과 실행기 claim이 같은 판정 함수를 부르고, claim은 정책 공유 잠금을 쥔 한 트랜잭션에서 한다', () => {
+    const executions = read('apps/search-api/src/gh/executions.ts');
+    expect(read('apps/search-api/src/gh/policy.ts')).toMatch(/return\s+decideExecution\(\{/);
+    expect(executions).toMatch(/const\s+gate\s*=\s*await\s+executionGate\(policyDepsOf\(deps,\s*host\),\s*capability\.id\);/);
+    expect(executions).toMatch(/if\s*\(!prepared\.gate\.allowed\)\s*throw\s+gateRejection\(prepared\.gate\);/);
+    expect(executions).toMatch(/policyRevision:\s*prepared\.gate\.revision/);
+    const runner = read('apps/gh-executor/src/runner.ts');
+    expect(runner).toMatch(/return\s+decideExecution\(\{/);
+    expect(runner).toMatch(/acceptedRevision:\s*row\.policy_revision/);
+    expect(runner).toMatch(/withTransaction\(deps\.pool,[\s\S]{0,200}lockPolicyShared\(client,[\s\S]{0,200}gateFor\(deps,\s*row,\s*client\)[\s\S]{0,300}claimExecution\(client,/);
+    // 판정식은 `@prs/gh-cli` 한 곳이다 — API·실행기·화면이 식을 복제하지 않는다 (지시서 6장).
+    const copies = ['apps/search-api/src', 'apps/gh-executor/src', 'apps/web/app', 'apps/web/lib', 'apps/web/components']
+      .flatMap(walk)
+      .filter((file) => !/\.test\.tsx?$/.test(file) && /function\s+(decideExecution|approvalMatchesManifest|evaluateApprovalEligibility)\b/.test(read(file)));
+    expect(copies).toEqual([]);
+  });
+
+  it('CR-090: 정책 표는 애플리케이션 코드가 직접 쓰지 않는다 — 쓰기는 migration 030의 SECURITY DEFINER 함수 하나이고 prs_app은 읽기·실행만 한다', () => {
+    // 주석을 걷어 낸 코드만 본다 — 「`UPDATE gh_operations_policy`를 적어도 DB가 거절한다」는 설명은 쓰는 코드가 아니다.
+    const code = (file: string): string => read(file).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    const writers = ['apps/search-api/src', 'apps/gh-executor/src', 'apps/pipeline-worker/src', 'packages/db/src']
+      .flatMap(walk)
+      .filter((file) => !/\.test\.ts$/.test(file) && /(INSERT\s+INTO|UPDATE|DELETE\s+FROM|TRUNCATE)\s+gh_operations_policy/i.test(code(file)));
+    expect(writers).toEqual([]);
+    const migration = read('packages/db/migrations/030_gh_operations_policy.up.sql');
+    expect(migration).toMatch(/SECURITY DEFINER\s+SET search_path = pg_catalog, public, pg_temp/);
+    expect(migration).toMatch(/GRANT EXECUTE ON FUNCTION gh_operations_policy_apply\([^)]*\) TO prs_app;/);
+    expect(migration).toMatch(/GRANT SELECT ON gh_operations_policy, gh_operations_policy_revision TO prs_app;/);
+    expect(migration).not.toMatch(/GRANT\s+(INSERT|UPDATE|DELETE|ALL)[^;]*gh_operations_policy[^;]*TO\s+prs_app/);
+    // 새 실행 기록은 수락 revision을 적는다 — claim 가드가 그 값을 현재 정책과 대조한다.
+    expect(read('packages/db/src/repositories/gh-execution.ts')).toMatch(/correlation_id,\s*policy_revision\)/);
+  });
+
+  it('CR-090: 운영 정책 조회는 operator·security_officer, 변경은 operator만이며 web 라우트·내비·프록시 헤더가 함께 있다', () => {
+    const routes = read('apps/search-api/src/gh/routes.ts');
+    expect(routes).toMatch(/GH_POLICIES_PATH\s*=\s*'\/api\/v1\/gh\/policies'/);
+    expect(routes).toMatch(/GH_POLICY_CHANGES_PATH\s*=\s*'\/api\/v1\/gh\/policies\/changes'/);
+    expect(routes).toMatch(/app\.get\(GH_POLICIES_PATH,[\s\S]{0,200}registryAccess\(request,\s*reply,\s*correlationId\)/);
+    // 변경 처리기 본문만 잘라 본다 — 역할 판정이 있고, 그것이 변경 함수 호출보다 앞선다.
+    const start = routes.indexOf('app.post(GH_POLICY_CHANGES_PATH');
+    const end = routes.indexOf('app.get(GH_CONTEXT_REPOSITORIES_PATH');
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const changeHandler = routes.slice(start, end);
+    expect(changeHandler).toMatch(/if\s*\(!hasRole\(principal\.roles,\s*'operator'\)\)/);
+    expect(changeHandler.search(/hasRole\(principal\.roles,\s*'operator'\)/)).toBeLessThan(changeHandler.indexOf('changePolicy('));
+    expect(existsSync(`${root}apps/web/app/ops/gh-policy/page.tsx`)).toBe(true);
+    expect(read('apps/web/lib/nav.ts')).toMatch(/id:\s*'ops-gh-policy'[\s\S]{0,200}allowedRoles:\s*\['operator',\s*'security_officer'\]/);
+    // 쓰기 요청의 중복 방지 키가 web 프록시를 지난다 — 빠지면 실제 배포에서 실행·정책 변경이 400이다 (DEV-690).
+    expect(read('apps/web/lib/proxy.ts')).toMatch(/^\s*'idempotency-key',\r?$/m);
   });
 
   it('gh 계열 소스에 원시 제어 문자가 없다 — 도구가 지운 ESC가 시험을 거짓 실패시켰다', () => {
