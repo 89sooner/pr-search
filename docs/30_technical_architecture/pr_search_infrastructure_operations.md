@@ -275,7 +275,7 @@ deploy/single-host/prsctl health  # 전 서비스 health 판정                 
 deploy/single-host/prsctl smoke   # read-only 검색 스모크                          — WP-070
 deploy/single-host/prsctl backup  # PostgreSQL 논리 백업 (9.4장)                   — WP-070
 deploy/single-host/prsctl restore # 백업 복원 + 재색인                             — WP-070
-deploy/single-host/prsctl role list | grant <login> <역할> | revoke <login> <역할>
+deploy/single-host/prsctl role list | grant <login|user_id> <역할> | revoke <login|user_id> <역할>
 #                                 # 관리자 지정 역할(operator·release_manager·security_officer). search-api 이미지로 한 번 실행하고
 #                                 # 호스트 사용자를 감사 행위 주체로 남긴다 — CR-091 (DEV-695)
 ```

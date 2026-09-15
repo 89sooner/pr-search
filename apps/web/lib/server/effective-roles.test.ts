@@ -87,6 +87,18 @@ describe('DEV-695: 관문이 /me의 실효 역할을 쓴다', () => {
     expect(String(log.mock.calls[0]?.[0])).toContain('DEV-695');
   });
 
+  /**
+   * **성공이 아닌 응답의 본문은 역할의 근거가 아니다.** 앞 시험의 오류 본문에는 `roles`가 없어서, 상태 코드를 보지 않고
+   * 본문을 읽는 구현도 「형식이 다르다」로 같은 결과를 냈다(변이 D2가 살아남았다). 본문에 역할이 실린 비정상 응답으로 건다.
+   */
+  it.each([401, 403, 404, 502])('%i 응답에 roles가 실려 있어도 믿지 않는다', async (status) => {
+    const { fetch } = fakeFetch(() => json({ roles: ['developer', 'operator'] }, status));
+    const log = vi.fn();
+
+    expect(await resolveEffectiveRoles(INPUT, { fetch, log })).toEqual(['developer', 'manager']);
+    expect(log.mock.calls[0]?.[1]).toMatchObject({ reason: 'rejected', status });
+  });
+
   it('search-api에 닿지 못하면 세션의 역할로 그린다', async () => {
     const log = vi.fn();
     const failing = (async () => {

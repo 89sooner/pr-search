@@ -95,22 +95,25 @@ export interface AssignableUserRow {
 }
 
 /**
- * 로그인 이름으로 사용자를 찾는다 (CR-091 / DEV-695).
+ * 역할을 줄 대상을 찾는다 — `user_id` 또는 로그인 이름 (CR-091 / DEV-695).
  *
- * **정확히 같은 이름이 먼저다.** 없을 때만 대소문자를 무시하고 찾는다 — GHE 로그인은
- * 대소문자를 가리지 않는데 운영자가 표시 이름의 대소문자로 칠 수 있다. 무시한 결과가 둘
- * 이상이면(개명 흔적) 둘 다 돌려주고 호출자가 고르지 않게 한다 — 권한을 줄 대상을 추측하지 않는다.
+ * **`user_id`와 정확히 같으면 그 행이다.** 불변 식별자라 모호할 수 없다(`FR-AUTH-001` AC-9).
+ *
+ * 아니면 **대소문자를 무시한 로그인 이름으로** 찾고 그 행을 전부 돌려준다. GHE 로그인은 대소문자를 가리지 않으므로
+ * `Alice`와 `alice`는 같은 사람의 이름이다. 둘 이상이면 개명 흔적이 남은 것이고, 그중 하나가 대소문자까지 같아도
+ * **고르지 않는다** — 운영자가 친 대소문자가 지금 쓰이는 신원을 가리킨다는 보장이 없다(독립 검토 A). 호출자가
+ * 후보의 `user_id`와 마지막 접속을 보여 주고 `user_id`로 다시 실행하게 한다.
  */
-export async function findUsersByLogin(db: Queryable, login: string): Promise<AssignableUserRow[]> {
-  const exact = await db.query<AssignableUserRow>(
-    'SELECT user_id, login, roles, last_seen_at FROM app_user WHERE login = $1',
-    [login],
+export async function findAssignableUsers(db: Queryable, target: string): Promise<AssignableUserRow[]> {
+  const byId = await db.query<AssignableUserRow>(
+    'SELECT user_id, login, roles, last_seen_at FROM app_user WHERE user_id = $1',
+    [target],
   );
-  if (exact.rows.length > 0) return exact.rows;
+  if (byId.rows.length > 0) return byId.rows;
 
   const folded = await db.query<AssignableUserRow>(
-    'SELECT user_id, login, roles, last_seen_at FROM app_user WHERE lower(login) = lower($1) ORDER BY login',
-    [login],
+    'SELECT user_id, login, roles, last_seen_at FROM app_user WHERE lower(login) = lower($1) ORDER BY last_seen_at DESC NULLS LAST, login',
+    [target],
   );
   return folded.rows;
 }

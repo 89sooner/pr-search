@@ -115,11 +115,13 @@ export function webConfigFailure(env: NodeJS.ProcessEnv = process.env): string |
 /**
  * 성립하지만 **받아들인 위험을 담은** 구성의 경고 (CR-091 / DEV-694).
  *
- * `webConfigFailure`가 `null`인 구성에서만 부른다 — 성립하지 않는 구성은 경고가 아니라
- * 기동 거부의 대상이다. 지금은 하나다: 운영에서 인증을 켠 채 `ALLOW_INSECURE_COOKIES=true`로
- * 평문 HTTP 세션을 허용한 배포.
+ * **성립하지 않는 구성에서는 빈 목록이다** — 그 구성은 경고가 아니라 기동 거부의 대상이고,
+ * 이유는 `webConfigFailure`가 말한다. 여기서 던지면 기동 검증이 거부 이유를 적기 전에 죽는다.
+ * 지금은 하나다: 운영에서 인증을 켠 채 `ALLOW_INSECURE_COOKIES=true`로 평문 HTTP 세션을
+ * 허용한 배포.
  */
 export function webConfigWarnings(env: NodeJS.ProcessEnv = process.env): string[] {
+  if (webConfigFailure(env) !== null) return [];
   const warnings: string[] = [];
   if (resolveWebConfig(env).authEnabled && insecureCookiesAllowed(env)) {
     warnings.push(

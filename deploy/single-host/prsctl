@@ -13,7 +13,7 @@
 #   ./prsctl backup     PostgreSQL 논리 백업
 #   ./prsctl restore    백업 복원 + 전량 재색인
 #   ./prsctl lineage    이 형상이 어느 외부 커밋에서 왔는가
-#   ./prsctl role list | grant <login> <역할> | revoke <login> <역할>
+#   ./prsctl role list | grant <login|user_id> <역할> | revoke <login|user_id> <역할>
 #                       관리자 지정 역할(operator·release_manager·security_officer)
 #
 # **fail-fast다.** checksum 불일치·이미지 부재·필수 환경 변수 부재·마이그레이션
@@ -43,7 +43,9 @@ bad()  { printf '  \033[31m✗\033[0m %s\n' "$*"; }
 # 공백·`=` 좌우 공백)과 갈렸고, 갈린 입력에서는 **search-api는 켜졌는데 실행기는 없는 형상**이 조용히
 # 생겼다(실측). 그래서 search-api가 실제로 받을 값을 `docker compose config`의 렌더에서 읽는다 —
 # 두 파서가 아니라 하나뿐이므로 갈릴 자리가 없다. 회귀(`runtime-reachability`)가 이 함수와 search-api의
-# 판정을 키·값 양쪽 변형의 입력 표로 대조한다. 한 실행 안에서는 한 번만 계산한다(캐시).
+# 판정을 키·값 양쪽 변형의 입력 표로 대조한다. 켜짐 판정(`gh_operations_state`)은 한 실행 안에서 한 번만
+# 계산한다(캐시). 렌더 추출(`rendered_env_value`) 자체는 부를 때마다 렌더한다 — `$(…)` 서브셸 안에서 불리므로
+# 셸 변수 캐시가 부모에 남지 않는다.
 gh_operations_value() {
   rendered_env_value search-api GH_OPERATIONS_ENABLED
 }
@@ -56,10 +58,15 @@ gh_operations_value() {
 # 빈 문자열이다(require_env 전에도 불린다).
 rendered_env_value() {
   [ -f "$ENV_FILE" ] || return 0
-  local raw inner
-  raw="$(docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config 2>/dev/null \
+  local rendered raw inner
+  # **렌더를 먼저 변수에 받는다.** 파이프 끝에 `head -1`을 두면 앞 단계가 SIGPIPE로 끝날 수 있고, 이 스크립트는
+  # `set -Eeuo pipefail`이라 그 비영 종료가 대입을 실패시켜 **빈 값으로** 떨어진다(독립 검토 B). 변수를 끝까지 읽는
+  # `sed`에 넘기고 첫 줄은 셸이 자른다. 렌더가 실패하면(필수 변수 누락 등) 빈 값이다.
+  rendered="$(docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config 2>/dev/null)" || return 0
+  raw="$(printf '%s\n' "$rendered" \
     | sed -n "/^  $1:\$/,/^  [a-z][a-z0-9-]*:\$/p" \
-    | sed -nE "s/^ +$2:[[:space:]]*(.*)\$/\\1/p" | head -1)"
+    | sed -nE "s/^ +$2:[[:space:]]*(.*)\$/\\1/p")"
+  raw="${raw%%$'\n'*}"
   raw="${raw%"${raw##*[![:space:]]}"}"
   case "$raw" in
     \'*\')
@@ -94,9 +101,44 @@ admin_tokens_configured() {
   done
   return 1
 }
+# search-api의 `parseAdminTokens`는 단수형 `ADMIN_API_TOKEN`도 읽지만 **compose가 그 키를 search-api에 넘기지 않으므로**
+# 번들 형상에서는 늘 비어 있다. 그래서 복수형만 본다 — 회귀가 compose에 단수형이 생기는 순간 이 판단을 깨뜨린다.
 auth_token_conflict() {
   [ "$(rendered_env_value search-api AUTH_ENABLED)" = true ] && admin_tokens_configured "$(rendered_env_value search-api ADMIN_API_TOKENS)"
 }
+
+# **평문 HTTP 세션을 허용한 형상인가** (CR-091 / DEV-694). 맞으면 경고 한 줄을 낸다 — 실패가 아니라 받아들인 위험이다.
+# web의 판정(`insecureCookiesAllowed`)과 **같은 네 요소**를 렌더에서 본다: 운영(`NODE_ENV=production`) · 인증 켜짐
+# (`AUTH_ENABLED=true`) · Secure 꺼짐(`SESSION_COOKIE_SECURE`가 `true`가 아니다 — web은 `true`만 Secure로 읽는다) ·
+# `ALLOW_INSECURE_COOKIES=true`. 회귀가 실제 compose로 web의 판정과 대조한다.
+insecure_cookie_notice() {
+  [ "$(rendered_env_value web NODE_ENV)" = production ] || return 0
+  [ "$(rendered_env_value web AUTH_ENABLED)" = true ] || return 0
+  [ "$(rendered_env_value web SESSION_COOKIE_SECURE)" != true ] || return 0
+  [ "$(rendered_env_value web ALLOW_INSECURE_COOKIES)" = true ] || return 0
+  printf '  \033[33m!\033[0m 평문 HTTP 세션 허용 (ALLOW_INSECURE_COOKIES=true) — 파일럿 전용이다. TLS를 붙이면 SESSION_COOKIE_SECURE=true로 되돌리고 이 값을 지운다\n'
+}
+# **web의 세션 쿠키 계약을 컨테이너 교체 전에 판정한다** (CR-091 / DEV-694, 독립 검토 B). `ok` · `flag_invalid` ·
+# `insecure_undeclared` 중 하나를 낸다. web(`resolveSessionReaderConfig`)과 같은 순서·요소다:
+#   1. `ALLOW_INSECURE_COOKIES`가 다듬어서 `true`·`false`·빈 값이 아니면 거부 — web은 형상과 무관하게 먼저 던진다
+#   2. 운영(`NODE_ENV=production`)이고 Secure가 꺼졌고(`SESSION_COOKIE_SECURE`가 `true`가 아님) 인증을 명시적으로
+#      끄지 않았고(`AUTH_ENABLED`가 `false`가 아님) 플래그도 없으면 거부 — 사내 `0.1.0-pilot.6`이 교체 뒤에야 만난 형상
+# 이 CR이 토큰 공존을 교체 전에 막으면서 자기가 만든 플래그의 오타는 교체 뒤로 미루면 같은 실패가 되살아난다.
+# 회귀가 실제 compose로 web의 판정과 대조한다.
+web_cookie_contract() {
+  local flag
+  flag="$(rendered_env_value web ALLOW_INSECURE_COOKIES)"
+  flag="${flag#"${flag%%[![:space:]]*}"}"; flag="${flag%"${flag##*[![:space:]]}"}"
+  case "$flag" in true|false|'') ;; *) printf 'flag_invalid'; return 0 ;; esac
+  if [ "$(rendered_env_value web NODE_ENV)" = production ] \
+     && [ "$(rendered_env_value web SESSION_COOKIE_SECURE)" != true ] \
+     && [ "$(rendered_env_value web AUTH_ENABLED)" != false ] \
+     && [ "$flag" != true ]; then
+    printf 'insecure_undeclared'; return 0
+  fi
+  printf 'ok'
+}
+
 # on / off / reject — search-api·gh-executor의 `resolveOperationsEnabled`와 같은 분류다: `true`만 켜짐,
 # 빈 값·`false`는 꺼짐, 그 밖(`TRUE`·`yes`…)은 두 서비스가 기동을 거부하므로 여기서도 거부한다.
 GH_OPS_STATE=""
@@ -219,6 +261,14 @@ require_env() {
     || die "AUTH_ENABLED=true(세션 인증)와 ADMIN_API_TOKENS를 함께 둘 수 없다 — search-api가 기동을 거부한다 (DEV-048).
   .env에서 ADMIN_API_TOKENS의 값을 비우고(ADMIN_API_TOKENS=) 다시 실행한다. 컨테이너는 아직 바꾸지 않았다.
   토큰으로 하던 운영 작업은 세션의 operator 역할로 한다: 그 사람이 한 번 로그인한 뒤 ./prsctl role grant <login> operator (RUNBOOK 6장)"
+  # web의 세션 쿠키 계약도 컨테이너를 바꾸기 전에 말한다 (FR-AUTH-001 AC-2 · CR-091).
+  case "$(web_cookie_contract)" in
+    flag_invalid) die "ALLOW_INSECURE_COOKIES는 true 또는 false여야 한다: '$(rendered_env_value web ALLOW_INSECURE_COOKIES)' — web이 기동을 거부한다 (CR-091).
+  컨테이너는 아직 바꾸지 않았다. .env의 값을 true나 false로 고치거나 비운다" ;;
+    insecure_undeclared) die "운영에서 SESSION_COOKIE_SECURE=false만으로는 web이 기동하지 않는다 (FR-AUTH-001 AC-2). 컨테이너는 아직 바꾸지 않았다.
+  셋 중 하나를 고른다: TLS를 붙이고 SESSION_COOKIE_SECURE=true · 로그인까지 시험하는 평문 HTTP 파일럿이면 ALLOW_INSECURE_COOKIES=true를 함께 적는다 ·
+  로그인 없이 화면만 띄우려면 AUTH_ENABLED=false (RUNBOOK 6장)" ;;
+  esac
   # **셸로 소싱하지 않는다.** `ES_JAVA_OPTS=-Xms2g -Xmx2g`처럼 값에 공백이 있으면
   # `. file`이 뒷부분을 명령으로 해석해 죽는다. Compose의 `.env` 파싱은 셸과 달라
   # 공백을 값의 일부로 보므로, 이 스크립트가 쓰는 몇 개만 같은 규칙으로 읽는다.
@@ -371,11 +421,7 @@ cmd_health() {
 
   # **평문 HTTP 세션을 허용한 형상은 health마다 말한다** (CR-091 / DEV-694). 실패가 아니다 — 받아들인 위험이다.
   # web이 기동마다 같은 경고를 로그에 남기지만, 운영자가 가장 자주 보는 출력이 이것이다.
-  if [ "$(rendered_env_value web AUTH_ENABLED)" = true ] \
-     && [ "$(rendered_env_value web SESSION_COOKIE_SECURE)" = false ] \
-     && [ "$(rendered_env_value web ALLOW_INSECURE_COOKIES)" = true ]; then
-    printf '  \033[33m!\033[0m 평문 HTTP 세션 허용 (ALLOW_INSECURE_COOKIES=true) — 파일럿 전용이다. TLS를 붙이면 SESSION_COOKIE_SECURE=true로 되돌리고 이 값을 지운다\n'
-  fi
+  insecure_cookie_notice
 
   # **GitHub Operations Plane은 켰을 때만 실재해야 하고, 껐으면 없어야 한다** (CR-086).
   # 프로파일 밖의 컨테이너가 떠 있으면 `.env`와 형상이 갈린 것이다 — 그 상태의 실행기는

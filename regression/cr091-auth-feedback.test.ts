@@ -33,15 +33,40 @@ function composeBase(): string {
 
 /** prsctl 함수 몇 개를 실제 compose와 함께 돌린다. */
 function runShell(functions: readonly string[], body: string, envLines: string): string {
+  return renderAndRun(functions, body, envLines).out;
+}
+
+type ServiceEnv = Record<string, string | undefined>;
+
+/**
+ * prsctl 함수를 돌리고, **같은 `.env`로 compose가 서비스에 실제로 넘길 환경을 JSON 렌더에서 따로 읽는다.**
+ *
+ * 대조의 기준은 prsctl이 추출한 문자열이 아니라 이 JSON이다. 처음 판은 prsctl이 뽑은 값을 그대로 search-api 판정에
+ * 넣었고, 그래서 추출이 틀려도(작은따옴표를 벗기지 않아도) 양쪽이 같은 틀린 값을 보고 일치했다(변이 E2가 살아남았다).
+ */
+function renderAndRun(
+  functions: readonly string[],
+  body: string,
+  envLines: string,
+): { out: string; services: Record<string, ServiceEnv> } {
   const dir = mkdtempSync(join(tmpdir(), 'prs-cr091-'));
   try {
     const envFile = join(dir, '.env');
+    const composeFile = join(root, 'deploy/single-host/compose.yml');
     writeFileSync(envFile, `${composeBase()}\n${envLines}\n`);
-    const shell = [...functions.map(fn), body].join('\n');
-    return execFileSync('bash', ['-c', shell], {
-      env: { ...process.env, ENV_FILE: envFile, PROJECT: 'prs-cr091-test', COMPOSE_FILE: join(root, 'deploy/single-host/compose.yml') },
+    // **prsctl과 같은 strict 모드로 돌린다** (독립 검토 B). nounset·pipefail·대입의 errexit에서만 드러나는 회귀가 있다.
+    const shell = ['set -Eeuo pipefail', ...functions.map(fn), body].join('\n');
+    const out = execFileSync('bash', ['-c', shell], {
+      env: { ...process.env, ENV_FILE: envFile, PROJECT: 'prs-cr091-test', COMPOSE_FILE: composeFile },
       encoding: 'utf8',
     });
+    const json = JSON.parse(
+      execFileSync('docker', ['compose', '--project-name', 'prs-cr091-test', '--env-file', envFile, '-f', composeFile, 'config', '--format', 'json'], {
+        encoding: 'utf8',
+      }),
+    ) as { services: Record<string, { environment?: ServiceEnv }> };
+    const services = Object.fromEntries(Object.entries(json.services).map(([name, service]) => [name, service.environment ?? {}]));
+    return { out, services };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -73,7 +98,7 @@ describe('DEV-696: prsctl이 세션 인증과 관리 토큰의 공존을 컨테�
    * **판정이 search-api와 같다** — 실제 docker compose로 렌더한 값을 search-api의 두 함수에 넣는다.
    * 따옴표·주석·`export `·공백·빈 토큰(`이름:`)·작은따옴표 렌더(`','`, `':'`)가 갈릴 자리였다.
    */
-  it('prsctl의 충돌 판정이 렌더된 값에 대한 search-api의 기동 거부 판정과 같다 — 실제 docker compose', async () => {
+  it('prsctl의 충돌 판정이 compose가 넘기는 값에 대한 search-api의 기동 거부 판정과 같다 — 실제 docker compose', async () => {
     const { resolveSessionReaderConfig } = await import('../packages/authz/src/config.js');
     const { parseAdminTokens } = await import('../apps/search-api/src/config.js');
     execFileSync('docker', ['compose', 'version'], { stdio: 'ignore' });
@@ -90,7 +115,7 @@ describe('DEV-696: prsctl이 세션 인증과 관리 토큰의 공존을 컨테�
     let conflicts = 0;
     for (const auth of authLines) {
       for (const tokens of tokenLines) {
-        const out = runShell(
+        const { out: raw, services } = renderAndRun(
           ['rendered_env_value', 'admin_tokens_configured', 'auth_token_conflict'],
           [
             'printf "%s\\n" "$(rendered_env_value search-api AUTH_ENABLED)"',
@@ -98,12 +123,17 @@ describe('DEV-696: prsctl이 세션 인증과 관리 토큰의 공존을 컨테�
             'if auth_token_conflict; then echo conflict; else echo ok; fi',
           ].join('\n'),
           `${auth}\n${tokens}`,
-        ).split('\n');
-        const [renderedAuth = '', renderedTokens = '', verdict = ''] = out;
+        );
+        const [renderedAuth = '', renderedTokens = '', verdict = ''] = raw.split('\n');
+        const actual = services['search-api'] ?? {};
+        const label = `${JSON.stringify(auth)} + ${JSON.stringify(tokens)}`;
+        // prsctl의 추출이 compose가 실제로 넘기는 값과 같다 — 인용 형식이 판정을 바꾸지 않는다.
+        expect(renderedAuth, `${label}: AUTH_ENABLED 추출`).toBe(actual['AUTH_ENABLED'] ?? '');
+        expect(renderedTokens, `${label}: ADMIN_API_TOKENS 추출`).toBe(actual['ADMIN_API_TOKENS'] ?? '');
 
-        const enabled = resolveSessionReaderConfig({ AUTH_ENABLED: renderedAuth }).enabled;
-        const apiRefuses = enabled && parseAdminTokens({ ADMIN_API_TOKENS: renderedTokens }).length > 0;
-        expect(verdict, `${JSON.stringify(auth)} + ${JSON.stringify(tokens)} → rendered ${JSON.stringify([renderedAuth, renderedTokens])}`).toBe(
+        const enabled = resolveSessionReaderConfig({ AUTH_ENABLED: actual['AUTH_ENABLED'] }).enabled;
+        const apiRefuses = enabled && parseAdminTokens({ ...actual }).length > 0;
+        expect(verdict, `${label} → compose ${JSON.stringify([actual['AUTH_ENABLED'], actual['ADMIN_API_TOKENS']])}`).toBe(
           apiRefuses ? 'conflict' : 'ok',
         );
         if (apiRefuses) conflicts += 1;
@@ -113,6 +143,17 @@ describe('DEV-696: prsctl이 세션 인증과 관리 토큰의 공존을 컨테�
     expect(conflicts).toBeGreaterThan(10);
     expect(conflicts).toBeLessThan(authLines.length * tokenLines.length);
   }, 600_000);
+
+  /**
+   * **단수형 `ADMIN_API_TOKEN`은 compose가 search-api에 넘기지 않는다.** search-api의 `parseAdminTokens`는 그것도 읽지만
+   * prsctl은 복수형만 본다(독립 검토 A). 누가 compose에 단수형을 더하면 prsctl이 그 공존을 놓치므로 여기서 깨뜨린다.
+   */
+  it('compose가 search-api에 단수형 ADMIN_API_TOKEN을 넘기지 않는다 — prsctl이 복수형만 보는 근거', () => {
+    const { services } = renderAndRun([], 'true', 'ADMIN_API_TOKEN=tok');
+    expect(services['search-api']?.['ADMIN_API_TOKEN']).toBeUndefined();
+    expect(read('deploy/single-host/compose.yml')).not.toMatch(/^\s+ADMIN_API_TOKEN:/m);
+    expect(read('apps/search-api/src/config.ts')).toContain("env['ADMIN_API_TOKEN']");
+  }, 120_000);
 
   it('작은따옴표·큰따옴표 렌더를 벗긴다 — 값의 인용 형식이 판정을 바꾸지 않는다', () => {
     const out = runShell(['rendered_env_value'], 'rendered_env_value search-api ADMIN_API_TOKENS', "ADMIN_API_TOKENS=' alice : tok '");
@@ -134,12 +175,81 @@ describe('DEV-694: ALLOW_INSECURE_COOKIES가 쿠키를 발급하는 web에만 �
     expect(read('deploy/single-host/compose.yml').match(/^\s+ALLOW_INSECURE_COOKIES:/gm)).toHaveLength(1);
   }, 120_000);
 
-  it('health가 세 값이 모두 맞을 때 경고 줄을 낸다', () => {
-    const health = fn('cmd_health');
-    expect(health).toContain('rendered_env_value web AUTH_ENABLED');
-    expect(health).toContain('rendered_env_value web SESSION_COOKIE_SECURE');
-    expect(health).toContain('rendered_env_value web ALLOW_INSECURE_COOKIES');
-  });
+  /**
+   * **health의 경고가 web의 판정과 같은 형상에서만 나온다** — 실제 compose로 돌린다.
+   *
+   * 처음 판은 함수 본문에 세 변수 이름이 있는지만 봤고, 조건 앞에 `false &&`를 붙인 변이가 살아남았다(E5). 경고를 함수로
+   * 떼어 실제로 실행하고, compose가 web에 넘기는 값으로 web의 판정(`insecureCookiesAllowed`)과 대조한다.
+   */
+  it('health의 평문 HTTP 경고가 compose가 web에 넘기는 값에 대한 web의 판정과 같다 — 실제 docker compose', async () => {
+    const { insecureCookiesAllowed, resolveSessionReaderConfig } = await import('../packages/authz/src/config.js');
+    expect(fn('cmd_health')).toMatch(/^\s+insecure_cookie_notice$/m);
+    const cases = [
+      '',
+      'SESSION_COOKIE_SECURE=false',
+      'SESSION_COOKIE_SECURE=false\nALLOW_INSECURE_COOKIES=true',
+      'SESSION_COOKIE_SECURE=0\nALLOW_INSECURE_COOKIES=true',
+      'SESSION_COOKIE_SECURE=true\nALLOW_INSECURE_COOKIES=true',
+      'AUTH_ENABLED=false\nSESSION_COOKIE_SECURE=false\nALLOW_INSECURE_COOKIES=true',
+      'SESSION_COOKIE_SECURE=false\nALLOW_INSECURE_COOKIES="true"',
+      'SESSION_COOKIE_SECURE=false\nALLOW_INSECURE_COOKIES=yes',
+    ];
+    let warned = 0;
+    for (const lines of cases) {
+      const { out, services } = renderAndRun(['rendered_env_value', 'insecure_cookie_notice'], 'insecure_cookie_notice', lines);
+      const web = services['web'] ?? {};
+      let webWarns: boolean;
+      try {
+        webWarns = resolveSessionReaderConfig({ ...web }).enabled && insecureCookiesAllowed({ ...web });
+      } catch {
+        webWarns = false; // 거부되는 구성은 경고가 아니라 기동 거부다
+      }
+      expect(out.includes('평문 HTTP 세션 허용'), `${JSON.stringify(lines)} → web ${JSON.stringify(web['SESSION_COOKIE_SECURE'])}`).toBe(webWarns);
+      if (webWarns) warned += 1;
+    }
+    expect(warned).toBeGreaterThan(1);
+    expect(warned).toBeLessThan(cases.length);
+  }, 300_000);
+
+  /**
+   * **web의 쿠키 계약도 컨테이너 교체 전에 막는다** (독립 검토 B). 토큰 공존만 사전에 막고 이 판이 만든 플래그의 오타를
+   * 교체 뒤로 미루면 DEV-696이 없앤 재기동 반복이 새 플래그에서 되살아난다. 사내가 처음 막힌 형상(플래그 없이 Secure만 끔)도
+   * 같은 자리에서 잡는다. 기준은 compose가 web에 넘기는 값에 대한 web의 판정(`resolveSessionReaderConfig`)이다.
+   */
+  it('prsctl의 쿠키 계약 판정이 compose가 web에 넘기는 값에 대한 web의 기동 거부와 같다 — 실제 docker compose', async () => {
+    const { resolveSessionReaderConfig } = await import('../packages/authz/src/config.js');
+    expect(fn('require_env')).toMatch(/case "\$\(web_cookie_contract\)" in[\s\S]*flag_invalid\) die[\s\S]*insecure_undeclared\) die/);
+    const cases = [
+      '',
+      'SESSION_COOKIE_SECURE=false',
+      'SESSION_COOKIE_SECURE=false\nAUTH_ENABLED=false',
+      'SESSION_COOKIE_SECURE=false\nALLOW_INSECURE_COOKIES=true',
+      'SESSION_COOKIE_SECURE=0\nALLOW_INSECURE_COOKIES=true',
+      'SESSION_COOKIE_SECURE=0',
+      'ALLOW_INSECURE_COOKIES=TRUE',
+      'ALLOW_INSECURE_COOKIES=yes\nSESSION_COOKIE_SECURE=false',
+      "ALLOW_INSECURE_COOKIES=' true '\nSESSION_COOKIE_SECURE=false",
+      'ALLOW_INSECURE_COOKIES=false\nSESSION_COOKIE_SECURE=false',
+      'ALLOW_INSECURE_COOKIES=true',
+      'AUTH_ENABLED=TRUE\nSESSION_COOKIE_SECURE=false',
+    ];
+    const seen = new Set<string>();
+    for (const lines of cases) {
+      const { out, services } = renderAndRun(['rendered_env_value', 'web_cookie_contract'], 'web_cookie_contract', lines);
+      const web = services['web'] ?? {};
+      let expected = 'ok';
+      try {
+        resolveSessionReaderConfig({ ...web });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        expected = message.includes('ALLOW_INSECURE_COOKIES는 true 또는 false') ? 'flag_invalid' : message.includes('SESSION_COOKIE_SECURE=false는 허용되지 않는다') ? 'insecure_undeclared' : `unexpected: ${message}`;
+      }
+      expect(out, `${JSON.stringify(lines)} → web ${JSON.stringify([web['NODE_ENV'], web['AUTH_ENABLED'], web['SESSION_COOKIE_SECURE'], web['ALLOW_INSECURE_COOKIES']])}`).toBe(expected);
+      seen.add(expected);
+    }
+    // 표가 세 답을 모두 만든다 — 한쪽만 나오면 아무것도 대조하지 않은 것이다.
+    expect([...seen].sort()).toEqual(['flag_invalid', 'insecure_undeclared', 'ok']);
+  }, 300_000);
 
   it('.env.example이 플래그를 빈 값으로 두고 운영 기본값은 Secure다', async () => {
     const example = read('deploy/single-host/.env.example');
@@ -154,19 +264,23 @@ describe('DEV-694: ALLOW_INSECURE_COOKIES가 쿠키를 발급하는 web에만 �
    * 자리가 남으면, 평문 HTTP 파일럿에서 그 자리만 세션을 못 찾는다. 정본 이름은 search-api로 보내는 헤더를 조립하는
    * `lib/proxy.ts` 한 곳에서만 쓴다.
    */
-  it('web이 브라우저 쿠키를 읽는 자리는 모두 sessionCookieName()을 쓴다', () => {
+  it('web이 브라우저 쿠키를 읽는 자리는 모두 sessionCookieName()을 쓰고 중복을 거절하는 읽기를 지난다', () => {
     const files = [...walk('apps/web/app'), ...walk('apps/web/lib')].filter(
       (file) => /\.(ts|tsx)$/.test(file) && !/\.test\.tsx?$/.test(file),
     );
     expect(files.length).toBeGreaterThan(30);
-    const direct = files.filter((file) => /cookies(\(\))?\)?\.get\(SESSION_COOKIE_NAME\)|\.get\(OIDC_STATE_COOKIE\)/.test(read(file)));
+    // 프레임워크의 `cookies.get()`은 같은 이름이 둘이면 하나를 고른다 — 인증 쿠키를 그것으로 읽지 않는다 (독립 검토 A).
+    const direct = files.filter((file) =>
+      /cookies(\(\))?\)?\.get\((SESSION_COOKIE_NAME|OIDC_STATE_COOKIE|sessionCookieName\(|oidcStateCookieName\()/.test(read(file)),
+    );
     expect(direct).toEqual([]);
     const users = files.filter((file) => read(file).includes('SESSION_COOKIE_NAME'));
     expect(users).toEqual(['apps/web/lib/proxy.ts']);
-    for (const file of ['apps/web/lib/server/page-guard.tsx', 'apps/web/app/api/[...path]/route.ts', 'apps/web/app/auth/logout/route.ts', 'apps/web/app/gh/identity/callback/route.ts']) {
-      expect(read(file), file).toContain('sessionCookieName(config.session.cookieSecure)');
+    for (const file of ['apps/web/lib/server/page-guard.tsx', 'apps/web/app/api/[...path]/route.ts', 'apps/web/app/gh/identity/callback/route.ts']) {
+      expect(read(file), file).toMatch(/readBrowserCookie\(.*\.get\('cookie'\), sessionCookieName\(config\.session\.cookieSecure\)\)/);
     }
-    expect(read('apps/web/app/auth/callback/route.ts')).toContain('oidcStateCookieName(secure)');
+    expect(read('apps/web/app/auth/logout/route.ts')).toMatch(/readBrowserCookieValues\(.*\.get\('cookie'\), sessionCookieName\(config\.session\.cookieSecure\)\)/);
+    expect(read('apps/web/app/auth/callback/route.ts')).toMatch(/readBrowserCookie\(request\.headers\.get\('cookie'\), oidcStateCookieName\(secure\)\)/);
   });
 });
 

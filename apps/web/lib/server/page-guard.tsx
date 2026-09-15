@@ -22,11 +22,12 @@
 import 'server-only';
 
 import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
+import { headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { sessionCookieName } from '@prs/authz';
 import type { Role } from '@prs/authz/roles';
 import { Shell } from '../../components/Shell';
+import { readBrowserCookie } from '../proxy';
 import { resolveWebConfig } from './config';
 import { resolveEffectiveRoles } from './effective-roles';
 import { sessionStore } from './session';
@@ -106,7 +107,8 @@ export async function GuardedPage({
   }
 
   // 브라우저가 가진 이름은 `Secure` 여부로 갈린다 (CR-091) — 세울 때와 같은 함수로 읽는다.
-  const sessionId = (await cookies()).get(sessionCookieName(config.session.cookieSecure))?.value;
+  // 같은 이름이 둘이면 없는 것으로 본다 — 프록시와 같은 규칙이다(`readBrowserCookie`).
+  const sessionId = readBrowserCookie((await headers()).get('cookie'), sessionCookieName(config.session.cookieSecure));
   const loaded = sessionId === undefined ? null : await sessionStore().load(sessionId);
 
   if (loaded === null) {

@@ -19,7 +19,7 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { sanitizeReturnPath, sessionCookieName } from '@prs/authz';
-import { buildProxyHeaders, resolveProxyAuth } from '../../../../lib/proxy';
+import { buildProxyHeaders, readBrowserCookie, resolveProxyAuth } from '../../../../lib/proxy';
 import { resolveWebConfig } from '../../../../lib/server/config';
 import { sessionStore } from '../../../../lib/server/session';
 
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
    *    돌아와 **다시 연결**한다 — 인가 코드는 1회용이라 되살리지 않는다.
    */
   const auth = await resolveProxyAuth(
-    request.cookies.get(sessionCookieName(config.session.cookieSecure))?.value,
+    readBrowserCookie(request.headers.get('cookie'), sessionCookieName(config.session.cookieSecure)),
     (id) => sessionStore().load(id),
   );
   if (auth.kind === 'unauthenticated') {

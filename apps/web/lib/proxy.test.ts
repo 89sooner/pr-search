@@ -13,6 +13,8 @@ import {
   buildProxyHeaders,
   buildResponseHeaders,
   buildUpstreamUrl,
+  readBrowserCookie,
+  readBrowserCookieValues,
   resolveProxyAuth,
 } from './proxy';
 
@@ -225,5 +227,43 @@ describe('세션 판정 (`resolveProxyAuth`)', () => {
       return Promise.resolve({ userId: 'u1' });
     });
     expect(seen).toEqual(['sess-abc']);
+  });
+});
+
+/**
+ * 브라우저 쿠키 읽기 (CR-091, 독립 검토 A).
+ *
+ * web은 값 하나를 골라 search-api로 가는 헤더를 다시 조립한다. 그래서 중복 쿠키 거절이 web에도 없으면
+ * search-api의 방어가 브라우저 구간에서 사라진다 — 평문 HTTP 파일럿의 접두 없는 이름은 하위 도메인·같은 망에서
+ * 하나 더 심을 수 있다(세션 강요).
+ */
+describe('CR-091: 브라우저 쿠키를 중복 없이 읽는다', () => {
+  it('이름이 하나면 그 값이다', () => {
+    expect(readBrowserCookie('theme=dark; prs_session=abc; lang=ko', 'prs_session')).toBe('abc');
+    expect(readBrowserCookie(`${SESSION_COOKIE_NAME}=xyz`, SESSION_COOKIE_NAME)).toBe('xyz');
+  });
+
+  it('**같은 이름이 둘이면 없는 것으로 본다** — 어느 쪽을 골라도 주입한 쪽이 이길 수 있다', () => {
+    expect(readBrowserCookie('prs_session=victim; prs_session=attacker', 'prs_session')).toBeUndefined();
+  });
+
+  it('없거나 비었으면 없는 것이다', () => {
+    expect(readBrowserCookie(null, 'prs_session')).toBeUndefined();
+    expect(readBrowserCookie('', 'prs_session')).toBeUndefined();
+    expect(readBrowserCookie('prs_session=', 'prs_session')).toBeUndefined();
+  });
+
+  it('이름은 정확히 같아야 한다 — 접두 있는 이름과 없는 이름은 다른 쿠키다', () => {
+    expect(readBrowserCookie(`${SESSION_COOKIE_NAME}=secure`, 'prs_session')).toBeUndefined();
+    expect(readBrowserCookie('prs_session=plain', SESSION_COOKIE_NAME)).toBeUndefined();
+  });
+
+  it('로그아웃용 읽기는 같은 이름의 값을 전부 준다 — 피해자의 세션을 남기지 않는다', () => {
+    expect(readBrowserCookieValues('prs_session=victim; x=1; prs_session=attacker; prs_session=victim', 'prs_session')).toEqual([
+      'victim',
+      'attacker',
+    ]);
+    expect(readBrowserCookieValues(undefined, 'prs_session')).toEqual([]);
+    expect(readBrowserCookieValues('prs_session=', 'prs_session')).toEqual([]);
   });
 });

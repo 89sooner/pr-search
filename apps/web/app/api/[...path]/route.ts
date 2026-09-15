@@ -19,6 +19,7 @@ import {
   buildProxyHeaders,
   buildResponseHeaders,
   buildUpstreamUrl,
+  readBrowserCookie,
   resolveProxyAuth,
 } from '../../../lib/proxy';
 import { resolveWebConfig } from '../../../lib/server/config';
@@ -57,8 +58,10 @@ async function proxy(request: NextRequest, segments: readonly string[]): Promise
    * 없이도 세 갈래 전부를 시험할 수 있어야 한다.
    */
   // 브라우저 쪽 이름은 `Secure` 여부로 갈리고(CR-091), search-api로는 정본 이름으로 다시 조립한다.
-  const auth = await resolveProxyAuth(request.cookies.get(sessionCookieName(config.session.cookieSecure))?.value, (id) =>
-    sessionStore().load(id),
+  // 같은 이름이 둘이면 없는 것으로 본다 — 다시 조립하면 search-api의 중복 거절이 닿지 않는다.
+  const auth = await resolveProxyAuth(
+    readBrowserCookie(request.headers.get('cookie'), sessionCookieName(config.session.cookieSecure)),
+    (id) => sessionStore().load(id),
   );
 
   if (auth.kind === 'unauthenticated') {

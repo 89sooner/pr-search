@@ -121,6 +121,33 @@ describe('DEV-695: 관리자 지정 역할을 지정·회수한다', () => {
     expect(await roles()).toEqual(['developer']);
   });
 
+  /**
+   * **COMMIT에서 실패해도 감사만 남지 않는다** — 감사가 정말로 같은 트랜잭션인지 가르는 시험이다.
+   *
+   * 위 시험(감사 표 이름 변경)은 감사 쓰기가 콜백 안에서 던지므로 감사를 트랜잭션 밖에서 써도 롤백으로 통과한다(변이
+   * C1이 살아남았다). 여기서는 역할 UPDATE와 감사 INSERT가 **둘 다 성공한 뒤 COMMIT에서** 실패하게 한다 — 지연 제약
+   * 트리거가 그 자리다. 감사가 다른 연결로 먼저 커밋됐다면 역할은 그대로인데 `applied` 감사가 남는다.
+   */
+  it('COMMIT에서 실패하면 역할도 감사도 남지 않는다', async () => {
+    const before = (await auditRows()).length;
+    await pool.query(
+      "CREATE OR REPLACE FUNCTION cr091_fail_at_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'cr091 commit failure'; END $$",
+    );
+    await pool.query(
+      'CREATE CONSTRAINT TRIGGER cr091_fail_at_commit AFTER UPDATE ON app_user DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION cr091_fail_at_commit()',
+    );
+    try {
+      await expect(runRoleCommand(['grant', LOGIN, 'operator', '--actor', 'ops-kim'], capture().deps)).rejects.toThrow(
+        /cr091 commit failure/,
+      );
+    } finally {
+      await pool.query('DROP TRIGGER IF EXISTS cr091_fail_at_commit ON app_user');
+      await pool.query('DROP FUNCTION IF EXISTS cr091_fail_at_commit()');
+    }
+    expect(await roles()).toEqual(['developer']);
+    expect((await auditRows()).length).toBe(before);
+  });
+
   it('동시에 같은 지정을 두 번 해도 한 번만 적용되고 감사도 하나다', async () => {
     const before = (await auditRows()).length;
 
@@ -193,10 +220,30 @@ describe('DEV-695: 추측하지 않는다', () => {
     expect(run.err.join('\n')).toContain('여럿');
   });
 
-  it('정확히 같은 이름이 있으면 그것을 고른다', async () => {
+  /**
+   * **대소문자까지 같아도 변형이 여럿이면 고르지 않는다** (독립 검토 A).
+   *
+   * `login`은 대소문자를 가리는 UNIQUE라 개명 흔적으로 `CR091-Lee`와 `cr091-lee`가 함께 남을 수 있다. 운영자가 친
+   * 대소문자가 지금 쓰이는 신원이라는 보장이 없으므로, 정확 일치를 골랐다면 운영 권한이 쓰이지 않는 행에 붙을 수 있다.
+   */
+  it('정확히 같은 이름이 있어도 대소문자 변형이 여럿이면 고르지 않고 user_id를 보여 준다', async () => {
+    await authRepo.upsertUserOnLogin(pool, { user_id: 'github:994', login: 'CR091-Lee', github_user_id: 994 });
+    const run = capture();
+
+    expect(await runRoleCommand(['grant', 'CR091-Lee', 'operator', '--actor', 'ops-kim'], run.deps)).toBe(2);
+
+    expect(await roles('github:994')).toEqual(['developer']);
+    expect(await roles()).toEqual(['developer']);
+    const message = run.err.join('\n');
+    expect(message).toContain('github:994');
+    expect(message).toContain(USER);
+    expect(message).toContain('마지막 접속');
+  });
+
+  it('user_id로 가리키면 그 행을 고른다 — 불변 식별자라 모호하지 않다', async () => {
     await authRepo.upsertUserOnLogin(pool, { user_id: 'github:994', login: 'CR091-Lee', github_user_id: 994 });
 
-    expect(await runRoleCommand(['grant', 'CR091-Lee', 'operator', '--actor', 'ops-kim'], capture().deps)).toBe(0);
+    expect(await runRoleCommand(['grant', 'github:994', 'operator', '--actor', 'ops-kim'], capture().deps)).toBe(0);
 
     expect(await roles('github:994')).toEqual(['developer', 'operator']);
     expect(await roles()).toEqual(['developer']);

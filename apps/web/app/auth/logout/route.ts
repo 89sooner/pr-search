@@ -11,6 +11,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { serializeClearingCookie, sessionCookieName } from '@prs/authz';
+import { readBrowserCookieValues } from '../../../lib/proxy';
 import { resolveWebConfig } from '../../../lib/server/config';
 import { sessionStore } from '../../../lib/server/session';
 
@@ -20,8 +21,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const config = resolveWebConfig();
 
   // 브라우저가 가진 이름은 `Secure` 여부로 갈린다 (CR-091) — 세울 때와 같은 함수로 읽는다.
-  const sessionId = request.cookies.get(sessionCookieName(config.session.cookieSecure))?.value;
-  if (sessionId !== undefined && sessionId !== '') {
+  // 같은 이름이 둘 이상이면 전부 끝낸다 — 어느 것이 이 사용자의 세션인지 모르기 때문이다.
+  for (const sessionId of readBrowserCookieValues(request.headers.get('cookie'), sessionCookieName(config.session.cookieSecure))) {
     await sessionStore().destroy(sessionId);
   }
 

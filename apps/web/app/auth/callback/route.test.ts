@@ -245,6 +245,30 @@ describe('CR-091: ALLOW_INSECURE_COOKIES 배포의 로그인 왕복', () => {
     expect(cookies.join('\n')).not.toContain('__Host-');
   });
 
+  /**
+   * **같은 이름의 왕복 쿠키가 둘이면 로그인을 완결하지 않는다** (독립 검토 A).
+   *
+   * 접두 없는 이름은 하위 도메인·같은 망에서 하나 더 심을 수 있다. 프레임워크가 그중 하나를 고르게 두면 남이 심은
+   * 왕복 상태로 로그인이 완결될 수 있다 — search-api가 세션 쿠키에 하는 중복 거절을 web도 한다.
+   */
+  it('중복 왕복 쿠키는 없는 것으로 본다 — 세션을 발급하지 않는다', async () => {
+    for (const [key, value] of Object.entries(PILOT_ENV)) vi.stubEnv(key, value);
+    stubFetch({ user: { id: 4021, login: 'kim' } });
+    const login = await import('../login/route.js');
+    const started = login.GET(new NextRequest(new URL('/auth/login?return_to=/search', 'http://prs.intra')));
+    const roundTripCookie = asBrowserCookie(started.headers.getSetCookie().find((one) => one.includes('prs_oidc')) ?? '');
+    const state = new URL(started.headers.get('location') ?? '').searchParams.get('state') ?? '';
+
+    const callback = await GET(
+      new NextRequest(new URL(`/auth/callback?code=test-code&state=${state}`, 'http://prs.intra'), {
+        headers: { cookie: `${roundTripCookie}; prs_oidc=planted-by-someone-else` },
+      }),
+    );
+
+    expect(callback.status).toBe(401);
+    expect(created).toHaveLength(0);
+  });
+
   it('TLS 배포의 쿠키 이름은 그대로다 — 이미 로그인한 사용자의 세션이 끊기지 않는다', async () => {
     stubFetch({ user: { id: 4021, login: 'kim' } });
 

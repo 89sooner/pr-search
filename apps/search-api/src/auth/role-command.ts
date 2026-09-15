@@ -20,6 +20,8 @@
  *   같은 역할을 주면 어느 쪽을 지워야 회수되는지 운영자가 알 수 없다.
  * - 대상은 **한 번 로그인한 사용자**다. 로그인 전에는 `user_id`(GHE 숫자 id)를 알 수 없고, 이름만으로
  *   행을 지어내면 로그인 때 다른 키의 행과 부딪친다.
+ * - 대상은 GHE 로그인 이름이나 `user_id`로 가리킨다. 이름이 대소문자만 다른 여러 행에 걸리면 **고르지 않는다** —
+ *   후보의 `user_id`와 마지막 접속을 보여 주고 `user_id`로 다시 실행하게 한다(독립 검토 A).
  * - 변경과 감사가 한 트랜잭션이다(`changeAssignedRole`). 바뀐 것이 없으면 감사도 없다.
  */
 
@@ -51,8 +53,8 @@ export type RoleCommandExit = 0 | 2;
 const USAGE = [
   '사용법:',
   '  prsctl role list',
-  '  prsctl role grant <login> <역할>',
-  '  prsctl role revoke <login> <역할>',
+  '  prsctl role grant <login 또는 user_id> <역할>',
+  '  prsctl role revoke <login 또는 user_id> <역할>',
   '',
   `지정할 수 있는 역할: ${[...ADMIN_ASSIGNED_ROLES].join(', ')}`,
   'manager·qa는 GHE_TEAM_ROLE_MAP(또는 IDP 그룹 매핑)으로 준다.',
@@ -128,7 +130,7 @@ async function change(
     return 2;
   }
 
-  const candidates = await authRepo.findUsersByLogin(deps.pool, login);
+  const candidates = await authRepo.findAssignableUsers(deps.pool, login);
   if (candidates.length === 0) {
     deps.err(
       `'${login}'으로 로그인한 사용자가 없다. 대상이 PR Search에 한 번 로그인해야 정본에 행이 생긴다 (DEV-613). ` +
@@ -137,8 +139,14 @@ async function change(
     return 2;
   }
   if (candidates.length > 1) {
-    deps.err(`'${login}'과 대소문자만 다른 사용자가 여럿이다 — 정확한 이름으로 다시 실행한다:`);
-    for (const candidate of candidates) deps.err(`  ${candidate.login}\t${candidate.user_id}`);
+    deps.err(
+      `'${login}'이 대소문자만 다른 사용자 여럿에 걸린다 — 개명 흔적일 수 있어 고르지 않는다. ` +
+        '마지막 접속을 보고 지금 쓰는 신원의 user_id로 다시 실행한다:',
+    );
+    for (const candidate of candidates) {
+      const seen = candidate.last_seen_at === null ? '-' : candidate.last_seen_at.toISOString();
+      deps.err(`  ${candidate.login}\t${candidate.user_id}\t마지막 접속 ${seen}`);
+    }
     return 2;
   }
 

@@ -56,17 +56,16 @@ export async function register(): Promise<void> {
   const { webConfigFailure, webConfigWarnings } = await import('./lib/server/config');
 
   const failure = webConfigFailure();
-  if (failure === null) {
-    /*
-     * **성립했지만 받아들인 위험이 있는 구성은 기동마다 말한다** (CR-091 / DEV-694).
-     * `ALLOW_INSECURE_COOKIES=true`로 평문 HTTP 세션을 허용한 배포가 그것이다. 한 번 적고
-     * 잊히면 그 파일럿 형상이 운영이 된다 — 로그를 여는 사람마다 그 사실을 보게 한다.
-     */
-    for (const warning of webConfigWarnings()) {
-      console.warn(`\n  경고: ${warning}\n`);
-    }
-    return;
+  /*
+   * **성립했지만 받아들인 위험이 있는 구성은 기동마다 말한다** (CR-091 / DEV-694).
+   * `ALLOW_INSECURE_COOKIES=true`로 평문 HTTP 세션을 허용한 배포가 그것이다. 한 번 적고
+   * 잊히면 그 파일럿 형상이 운영이 된다 — 로그를 여는 사람마다 그 사실을 보게 한다.
+   * 성립하지 않는 구성에서는 빈 목록이다 — 그 갈래는 아래에서 거부한다.
+   */
+  for (const warning of webConfigWarnings()) {
+    console.warn(`\n  경고: ${warning}\n`);
   }
+  if (failure === null) return;
 
   const production = process.env['NODE_ENV'] === 'production';
   console.error(

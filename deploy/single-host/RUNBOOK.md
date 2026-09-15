@@ -547,7 +547,7 @@ GHE_TEAM_ROLE_MAP=cpswdev-team/pipe-admins:manager,cpswdev-team/pipe-users:qa
 2. 서버에서 지정한다.
 
    ```bash
-   ./prsctl role grant <GHE 로그인> operator     # 지정
+   ./prsctl role grant <GHE 로그인> operator     # 지정 (user_id도 된다: github:12345)
    ./prsctl role list                             # 지정 역할을 가진 사람
    ./prsctl role revoke <GHE 로그인> operator    # 회수
    ```
@@ -562,7 +562,8 @@ GHE_TEAM_ROLE_MAP=cpswdev-team/pipe-admins:manager,cpswdev-team/pipe-users:qa
 가진 역할을 다시 지정하면 아무것도 바뀌지 않고 기록도 남지 않는다.
 
 `<GHE 로그인>`은 표시 이름이 아니라 GHE 로그인 이름이다. 대소문자는 달라도
-찾지만, 대소문자만 다른 사용자가 둘 이상이면 고르지 않고 멈춘다.
+찾지만, 대소문자만 다른 사용자가 둘 이상이면(개명 흔적) **고르지 않고** 후보의
+`user_id`와 마지막 접속을 보여 주며 멈춘다. 지금 쓰는 신원의 `user_id`로 다시 실행한다.
 
 #### 스코프
 
@@ -943,6 +944,8 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 | GHE 로그인은 되는데 모두 `developer`다 | `GHE_TEAM_ROLE_MAP`이 비었거나 팀 이름이 다르다. 값은 `<org>/<team>:<역할>`이고 구분자는 **콜론**이다. 팀 슬러그는 GHE의 팀 URL 마지막 구간이며 표시 이름이 아니다. 팀으로 부여할 수 있는 역할은 `manager`와 `qa`뿐이다. `operator`·`release_manager`·`security_officer`는 `./prsctl role grant <login> <역할>`로 준다 (6장 「운영 역할 지정하기」) |
 | 운영 메뉴가 없거나 `/ops/*`·A-006 승인이 403이다 (세션 인증 배포) | 그 사람에게 `operator`가 지정됐는가 — `./prsctl role list`. 없으면 그 사람이 한 번 로그인한 뒤 `./prsctl role grant <login> operator`를 돌리고 화면을 새로 고친다. 다시 로그인할 필요는 없다 (`CR-091`). `0.1.0-pilot.6`까지의 빌드는 DB에 지정해도 역할에 반영되지 않았다(`DEV-695`) |
 | `./prsctl role grant`가 「로그인한 사용자가 없다」로 멈춘다 | 대상이 아직 로그인하지 않았거나 이름이 다르다. 표시 이름이 아니라 GHE 로그인 이름을 쓴다. 로그인은 되는데도 같으면 `docker logs search-api`에 정본 등록 실패(`DEV-613`)가 있는지 본다 |
+| `prsctl`이 「운영에서 `SESSION_COOKIE_SECURE=false`만으로는 web이 기동하지 않는다」로 멈춘다 | **의도된 사전 거부다** (`FR-AUTH-001` AC-2 · `CR-091`). 그대로 올리면 `web`이 기동을 거부하고 재기동을 반복한다 — `0.1.0-pilot.6`까지의 `prsctl`은 이것을 컨테이너 교체 뒤에야 보였다. 메시지의 셋 중 하나를 고른다: TLS를 붙이고 `SESSION_COOKIE_SECURE=true`, 로그인까지 시험하는 평문 HTTP 파일럿이면 `ALLOW_INSECURE_COOKIES=true`를 함께, 로그인이 필요 없으면 `AUTH_ENABLED=false` (6장) |
+| `prsctl`이 「`ALLOW_INSECURE_COOKIES`는 true 또는 false여야 한다」로 멈춘다 | 값에 오타가 있다(`TRUE`·`yes`·`1`). `web`은 그 값을 켜짐으로도 꺼짐으로도 읽지 않고 기동을 거부한다. `true`나 `false`로 고치거나 비운다 — 컨테이너는 아직 바뀌지 않았다 |
 | `prsctl`이 「`AUTH_ENABLED=true`(세션 인증)와 `ADMIN_API_TOKENS`를 함께 둘 수 없다」로 멈춘다 | **의도된 사전 거부다** (`DEV-048` · `CR-091`). 그대로 올리면 `search-api`가 기동을 거부하고 재기동을 반복한다. 컨테이너는 아직 바뀌지 않았다. `.env`의 `ADMIN_API_TOKENS` 값을 비우고(`ADMIN_API_TOKENS=`) 같은 명령을 다시 돌린다. 토큰으로 하던 운영 작업은 `operator` 역할로 한다 (6장) |
 | `search-api`가 재기동을 반복하고 로그에 `OIDC 세션과 ADMIN_API_TOKENS를 함께 구성할 수 없다` | 위와 같은 원인이다. `0.1.0-pilot.6`까지의 `prsctl`은 이것을 미리 막지 않았다. `ADMIN_API_TOKENS`를 비우고 `./prsctl upgrade` |
 | `./prsctl health`에 「평문 HTTP 세션 허용」 줄이 있다 | 실패가 아니다. `ALLOW_INSECURE_COOKIES=true`로 TLS 없이 로그인을 여는 파일럿 형상이라는 알림이다 (6장). 운영으로 쓰기 전에 TLS를 붙이고 두 값을 되돌린다 |
