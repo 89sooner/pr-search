@@ -1,6 +1,8 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.80 | 갱신일: 2026-09-15
+> 상태: review | 버전: v6.81 | 갱신일: 2026-09-15
+
+`0.1.0-pilot.7` 발행: `CR-091`(사내 pilot.6 반입 피드백 세 건 — 평문 HTTP 파일럿 로그인, `prsctl role`로 `operator` 지정, 토큰 공존·쿠키 계약 사전 거부)을 담아 발행했다. 태그는 `0c26cdd`를 가리키고 자산 SHA-256은 `2008c786…e168`이며 `immutable`이라 잠겼다. 새 마이그레이션은 없다(`030`). 값과 사내 전달 사항은 6.90장이다. **사내 반입과 실제 GHE 확인은 `NOT RUN`이다.**
 
 `CR-091` 사내 `0.1.0-pilot.6` 반입 피드백 세 건: TLS 없는 파일럿의 GHE 로그인(`ALLOW_INSECURE_COOKIES` — `Secure`가 없으면 접두 없는 쿠키 이름), 세션 인증 뒤 `operator`를 얻는 경로(요청마다 합성하는 실효 역할과 `prsctl role`), 토큰이 남은 `.env`로 인증을 켠 업그레이드의 사전 감지를 고쳤다. **역할 합집합은 `CR-015`부터 문서에만 있었다**(`DEV-695`) — 사내 제안 둘은 그 경계를 넓히므로 택하지 않았다. 검증은 6.89장이며 사내 확인은 `NOT RUN`이다.
 
@@ -6468,6 +6470,58 @@ W-004의 C-029는 서버 저장 상태를 복원하고 후보 수·예상 횟수
 migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기며, 완성 content와 completed 전이가 함께 커밋된다. ES timeout·조기 종료·샤드 실패, 취소, 30분 초과는 부분 파일을 공개하지 않는다. CSV 수식 접두어를 중화하고 원문 본문·경로 배열은 내보내지 않는다. `export.create`는 감사 정본에서 활성화됐다.
 
 검증: ES 단위 11건, 실제 PostgreSQL·Elasticsearch·Redis 통합 6건, a11y 1건(axe 위반 0), Chromium E2E 3건 통과. 1000/1001/100000/100001 경계, stale Redis와 PG fence, 대기 중 에폭 변경, 부분 응답, 닫았다 다시 연 다이얼로그의 늦은 응답을 포함한다. 전체 통합 첫 실행에서 migration 024 FK가 기존 `TRUNCATE job` 픽스처를 막고 export가 숫자 에폭을 문자열 파서로 넘기지 못하는 두 결함을 찾아 해당 통합 23건 재실행으로 닫았다.
+
+### 6.90 `0.1.0-pilot.7` 발행 (2026-09-15, CR-091)
+
+**무엇을 담았나.** `0.1.0-pilot.6`(태그 `9c7f132`) 이후 main에 병합된 판이다 — 사내 pilot.6 반입 피드백을 고친 `CR-091`(PR #191)과 그 기록(PR #192, 사내 피드백 커밋 `a95e4d9` 포함). 결정자 지시(2026-09-15)로 병합 뒤 발행했다. **새 마이그레이션은 없다** — 마이그레이션 수준은 `030` 그대로다.
+
+| 판 | 무엇 | 받기만 했을 때 |
+| --- | --- | --- |
+| `CR-091` / `DEV-694` | `ALLOW_INSECURE_COOKIES=true`를 `SESSION_COOKIE_SECURE=false`와 함께 적은 평문 HTTP 파일럿이 인증을 켠 채 기동, `Secure`가 없으면 `prs_session`·`prs_oidc` | 값을 적지 않으면 동작이 같다. TLS 배포의 쿠키 이름·속성은 그대로라 로그인한 사용자의 세션이 끊기지 않는다 |
+| `CR-091` / `DEV-695` | 요청마다 합성하는 실효 역할과 `./prsctl role list·grant·revoke` | 지정하기 전까지 역할은 이전과 같다. 이전 판에서 DB에 손으로 적어 둔 관리자 지정이 있었다면 **이제 반영된다** |
+| `CR-091` / `DEV-696` | `prsctl`이 토큰 공존·플래그 오타·플래그 없는 `Secure` 해제를 교체 전에 멈춘다 | 이전 판에서 이 조합으로 서지 못하던 배포는 이제 `upgrade` 시작에서 멈추고 처방을 말한다 |
+
+**발행 값 (GitHub에 다시 물어 확인했다).**
+
+| 항목 | 값 |
+| --- | --- |
+| 버전 | `0.1.0-pilot.7` |
+| 태그 대상 | `0c26cdd87e2608b807de2b38d475ad49c72e9651` (`git ls-remote`로도 같다) |
+| 자산 | `pr-search-0.1.0-pilot.7-offline.tar.gz` |
+| 자산 SHA-256 | `2008c7864984e88ed22d9bb4c4c70bd73688ba9522dda3bbfab18d4e0b0ee168` |
+| 자산 크기 | 1,156,972,915 바이트 |
+| `draft` · `prerelease` | 둘 다 `false` |
+| `immutable` | `true` (발행 뒤 자산과 태그가 잠긴다) |
+| 발행 시각 | `2026-09-15T04:29:19Z` (2026-09-15 13:29:19 KST) |
+| 마이그레이션 수준 | `030` (pilot.6과 같다) |
+
+값은 `gh api repos/89sooner/pr-search/releases/tags/0.1.0-pilot.7`로 다시 물어 빌드 출력, 로컬 아카이브의 `sha256sum`·크기와 대조했다(자산 `digest`와 `state: uploaded`까지).
+
+**빌드 기록.** 공유 체크아웃의 `main`(`0c26cdd`, 작업 트리 깨끗함, 같은 커밋의 main CI run `34928073071` success — verify·integration)에서 `./deploy/single-host/build-bundle.sh 0.1.0-pilot.7 /tmp/pr-search-bundle-release --release`를 실행했다(13:22:31~13:29:19 KST, 종료 0). 발행 전제 검사(같은 버전의 릴리스·태그·초안 없음, immutable releases 켜짐)를 통과한 뒤 애플리케이션 이미지 7종 빌드, 백킹 이미지 4종 확보, `docker save`, **tar에서 다시 적재한 이미지로 런타임 게이트**, 소스 계보, 배포 정의(LF), manifest, checksum, 시크릿 혼입 검사, 운반 아카이브, 초안과 자산 업로드, 태그 원자적 생성, 발행 전 자산 대조, 발행, 발행 확인 순서로 진행됐다. **게이트에는 이 판이 더한 검사 셋이 들어 있고 모두 통과했다** — 인증을 켠 평문 HTTP 파일럿이 기동하고 로그에 경고, 플래그 없는 `Secure` 해제와 플래그 오타 거부, search-api 이미지의 `node dist/role-cli.js`가 DB 전에 사용법과 종료 코드 2. 번들 디렉터리 2.7G, 아카이브 1.1G.
+
+**번들을 다시 열어 확인한 것.** `checksums/SHA256SUMS` 10개 파일 `OK`. `release-manifest.json`의 `upstream.commit`이 태그 대상과 같고 `upstream.branch`는 `main`, `schema.migration_level`은 `030`, `contains_secrets`는 `false`다. `git bundle verify`는 완전한 이력(HEAD `0c26cdd`)을 보고했다. 번들에 복사된 런북·`compose.yml`·`prsctl`·`.env.example`·`filebeat.yml`은 커밋 내용과 바이트까지 같고(CR 0개), 시크릿 패턴에 걸린 파일은 0개다.
+
+**사내 운영자에게 별도 채널로 전달할 것 셋** (`DEV-530`): 버전 `0.1.0-pilot.7` · 읽기 토큰 · 위 SHA-256. **토큰 값은 어디에도 적지 않는다.**
+
+**사내에서 받는 명령** (런북 2.B 1단계):
+
+```bash
+GH_TOKEN=<읽기 토큰> gh release download 0.1.0-pilot.7 -R 89sooner/pr-search -p '*.tar.gz'
+sha256sum pr-search-0.1.0-pilot.7-offline.tar.gz   # 위 SHA-256과 같아야 한다
+tar -xzf pr-search-0.1.0-pilot.7-offline.tar.gz
+```
+
+**업그레이드에서 달라지는 것 (사내 운영자).**
+
+- `./prsctl upgrade`가 적용할 새 마이그레이션은 없다(`030` 그대로).
+- `upgrade`·`health` 시작에서 멈추는 경우가 셋 생겼다 — `AUTH_ENABLED=true`인데 `ADMIN_API_TOKENS`가 남음, `ALLOW_INSECURE_COOKIES`에 오타, 플래그 없이 `SESSION_COOKIE_SECURE=false`. 멈추면 **컨테이너는 아직 바뀌지 않았다**. 메시지의 처방대로 `.env`를 고치고 다시 돌린다(런북 8장).
+- **운영자 지정**: 그 사람이 한 번 로그인한 뒤 `./prsctl role grant <GHE 로그인> operator` → 화면 새로 고침. 다시 로그인할 필요가 없다(런북 6장 「운영 역할 지정하기」). GitHub 작업의 최초 운영 승인(런북 7.C)도 이 역할로 한다.
+- **TLS 없는 파일럿에서 로그인**: `SESSION_COOKIE_SECURE=false`와 `ALLOW_INSECURE_COOKIES=true`를 함께 적고, GHE OAuth App callback을 `http://<서비스 주소>/auth/callback`으로 맞춘다. web 기동 로그와 `./prsctl health`에 경고 줄이 나오는 것은 정상이다. TLS를 붙이면 두 값을 되돌린다(쿠키 이름이 바뀌어 한 번 다시 로그인한다).
+
+**다음 반입에서 확인할 것 (NOT RUN).**
+
+- `CR-091`: 토큰이 남은 `.env`에서 `upgrade`가 교체 전에 멈추는지, `prsctl role grant` 뒤 새로 고침만으로 운영 메뉴·`/ops/*`가 열리는지, 평문 HTTP 파일럿의 GHE 로그인 왕복과 경고(6.89장).
+- pilot.6에서 넘어온 확인이 끝나지 않았다면 함께 본다(6.88장).
 
 ### 6.89 `0.1.0-pilot.6` 반입 피드백 세 건 — 평문 HTTP 파일럿 로그인 · 관리자 지정 역할 · 토큰 공존 사전 감지 (2026-09-15, CR-091 / DEV-694 · DEV-695 · DEV-696)
 

@@ -1,5 +1,5 @@
 # agent-context-index:v1
-generated=2026-09-15T04:04:30+00:00
+generated=2026-09-15T04:31:08+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=8
@@ -9,8 +9,8 @@ legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd c
 - f73e2b0 p=25 src=agent-context/session-notes.md compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md title=Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료 sig=agent-context/session-notes.md,agent-context/upstream-feedback.md,origin/main,Risks/gotchas,logs/battery-,logs/images/,feature/rel007-result-contracts,docs/cr-089-merge-record
 - f3c6d32 p=25 src=agent-context/session-summary.md compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md title=세션-요약-PR-Search-구현-2026-08-25-후반 sig=agent-context/session-summary.md,origin/main,exports/202609142215.md,exports/202609141338.md,claude/projects/-home-roqkf-pr-search/539c17f5-,196/196,32/32,80/80
 - f0b2764 p=28 src=agent-context/decisions.md compact=agent-context/_handoff/compact/f0b2764.decisions.ctx.md title=확정한-설계-결정과-이유 sig=agent-context/decisions.md,dist/role-cli.js,prs/authz,prs/db,true/false/,origin/main,gh/policies,gh/policies/changes
-- f54408e p=30 src=agent-context/todos.md compact=agent-context/_handoff/compact/f54408e.todos.ctx.md title=다음-작업-미해결-항목-확인할-사항 sig=agent-context/todos.md,origin/main,feature/rel007-capability-registry,fix/main-ci-s0-flaky,feature/rel007-r0-pr-list,docs/cr-091-merge-record,/deploy/single-host/build-bundle.sh,repos/89sooner/pr-search/releases/tags/0.1.0-pilot.7
-- f3df0a8 p=40 src=agent-context/upstream-feedback.md compact=agent-context/_handoff/compact/f3df0a8.upstream-feedback.ctx.md title=Upstream-Feedback sig=agent-context/upstream-feedback.md,/prsctl,auth/callback,ops/repositories,Upstream,Feedback,DEV,companion
+- f54408e p=30 src=agent-context/todos.md compact=agent-context/_handoff/compact/f54408e.todos.ctx.md title=다음-작업-미해결-항목-확인할-사항 sig=agent-context/todos.md,origin/main,feature/rel007-capability-registry,fix/main-ci-s0-flaky,feature/rel007-r0-pr-list,docs/cr-091-merge-record,docs/pilot7-published,/prsctl
+- f3df0a8 p=40 src=agent-context/upstream-feedback.md compact=agent-context/_handoff/compact/f3df0a8.upstream-feedback.ctx.md title=Upstream-Feedback sig=agent-context/upstream-feedback.md,/prsctl,auth/callback,ops/repositories,Upstream,Feedback,SHA,sha256sum
 - f527103 p=45 src=agent-context/commands.md compact=agent-context/_handoff/compact/f527103.commands.ctx.md title=명령어-시험-결과-실패한-명령과-원인 sig=agent-context/commands.md,HOME/.nvm/versions/node/v22.23.2/bin,tmp/prs-pinned-gh/2.97.0/gh,SP/compose.cr091.yml,SP/battery.sh,SP/logs/battery-3,SP/mutation/run.mjs,deploy/single-host
 - f5791b0 p=45 src=agent-context/files.md compact=agent-context/_handoff/compact/f5791b0.files.ctx.md title=중요-파일-경로와-역할 sig=agent-context/files.md,packages/authz/src/,packages/db/src/repositories/auth.ts,packages/domain/src/audit.ts,apps/search-api/src/auth/,src/role-cli.ts,apps/web/lib/server/,app/auth/
 - f7b39dc p=45 src=agent-context/risks.md compact=agent-context/_handoff/compact/f7b39dc.risks.ctx.md title=리스크-불확실한-가정-함정 sig=agent-context/risks.md,gh/policies,origin/main,claude/projects/,regression/ledger-canonical-table.test.ts,packages/contracts/src/error-codes.test.ts,home/roqkf/pr-search/202609140825.md,home/roqkf/pr-search/exports/
@@ -67,18 +67,18 @@ sig=agent-context/session-summary.md;origin/main;exports/202609142215.md;exports
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=f90b97283ba781484bc599236009587a2becab5d136cf9d8a4be9e66257887d8
-bytes=208985 compact_bytes=182142 lines=2517 priority=30
+sha256=38b68d9f993f5e5496a03a395af347307baf3177d62882167e790912a25b8423
+bytes=209185 compact_bytes=182266 lines=2518 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > 먼저 할 것 (결정자 확인이 필요하다) > 2026-09-15 (7차) — CR-091 뒤에 남은 것 > 이 세션이 이어서 할 것 > 사내 반입 뒤 (사용자, NOT RUN) > 후속 후보 (결정자가 정한다)
-sig=agent-context/todos.md;origin/main;feature/rel007-capability-registry;fix/main-ci-s0-flaky;feature/rel007-r0-pr-list;docs/cr-091-merge-record;/deploy/single-host/build-bundle.sh;repos/89sooner/pr-search/releases/tags/0.1.0-pilot.7;/prsctl;agent-context/upstream-feedback.md;home/roqkf/pr-search-wt/cr091-auth;home/roqkf/pr-search-wt/cr091-record;fix/cr091-pilot6-auth-feedback;docs/cr-090-merge-record;home/roqkf/pr-search-wt/approval;home/roqkf/pr-search-wt/cr090-record;feature/rel007-registry-approval;home/roqkf/pr-search-wt/contracts;feature/rel007-result-contracts;docs/cr-089-merge-record;477/477;docs/cr088-post-merge;1/196;0/0
+sig=agent-context/todos.md;origin/main;feature/rel007-capability-registry;fix/main-ci-s0-flaky;feature/rel007-r0-pr-list;docs/cr-091-merge-record;docs/pilot7-published;/prsctl;agent-context/upstream-feedback.md;home/roqkf/pr-search-wt/cr091-auth;home/roqkf/pr-search-wt/cr091-record;fix/cr091-pilot6-auth-feedback;docs/cr-090-merge-record;home/roqkf/pr-search-wt/approval;home/roqkf/pr-search-wt/cr090-record;feature/rel007-registry-approval;home/roqkf/pr-search-wt/contracts;feature/rel007-result-contracts;docs/cr-089-merge-record;477/477;docs/cr088-post-merge;1/196;0/0;3/3
 
 ### f3df0a8
 src=agent-context/upstream-feedback.md
 compact=agent-context/_handoff/compact/f3df0a8.upstream-feedback.ctx.md
-sha256=ac0e4d738e1b8385cbc108b1b1e39af5d60a3389cc7186d7ba4b9b40fbec15e6
-bytes=3921 compact_bytes=4062 lines=33 priority=40
+sha256=c9e624e9e2baaa996af6d3d2091e32fb839da3cce3d9d14761906583a70de4d7
+bytes=4292 compact_bytes=4418 lines=35 priority=40
 heads=Upstream Feedback > DEV-577 companion — SESSION_COOKIE_SECURE=false 허용 플래그 미구현 > FR-SESSION-OPS — 세션 인증 전환 후 operator 역할 취득 불가 > DEV-048 운영 충돌 — AUTH_ENABLED=true와 ADMIN_API_TOKENS 공존 불가
-sig=agent-context/upstream-feedback.md;/prsctl;auth/callback;ops/repositories;Upstream;Feedback;DEV;companion;SESSION_COOKIE_SECURE;ALLOW_INSECURE_COOKIES;prs_session;prs_oidc;Secure;GHE;OAuth;App;NOT;RUN;AUTH_PROVIDER;GHE_OAUTH_REDIRECT_URI;callback;HTTP;NODE_ENV;production
+sig=agent-context/upstream-feedback.md;/prsctl;auth/callback;ops/repositories;Upstream;Feedback;SHA;sha256sum;DEV;companion;SESSION_COOKIE_SECURE;ALLOW_INSECURE_COOKIES;prs_session;prs_oidc;Secure;GHE;OAuth;App;NOT;RUN;AUTH_PROVIDER;GHE_OAUTH_REDIRECT_URI;callback;HTTP
 
 ## continuation_protocol
 read this index first; follow read_order; inspect only compact files needed for task; run reader.py search/show/restore when routing is unclear; treat compact context as lossy and repo source as final truth.
