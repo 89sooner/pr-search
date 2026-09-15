@@ -1,4 +1,41 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
+## Session: 2026-09-15 (7차) — CR-091 사내 pilot.6 반입 피드백 세 건 (PR #191)
+
+## Goal
+
+사용자 지시: 「`agent-context/upstream-feedback.md` — 릴리즈 반입 후 정상 실행되나 이번에 해당 파일에 대한 이슈가 피드백되었다. 이걸 개선해」. 피드백 셋: (1) TLS 없는 파일럿의 GHE 로그인 불가, (2) 세션 인증 뒤 `operator` 획득 불가, (3) `AUTH_ENABLED=true`와 `ADMIN_API_TOKENS` 공존 crash-loop의 사전 감지. 사용자 결정(AskUserQuestion): DB 지정 경로 복구 · `ALLOW_INSECURE_COOKIES` 명시 플래그 · 병합 뒤 `0.1.0-pilot.7` 발행까지.
+
+## Current state
+
+main = `f8db374`(CR-091 병합) 위에 후속 기록 PR이 올라간다. PR CI run `34926323705` attempt 1 success(verify 4m20s · integration 8m02s — 단위 2,760 · a11y 424 · e2e 196 · 통합 1,805 · 회귀 496). 병합 커밋 main CI run `34926885455` attempt 1 success(verify 4m37s · integration 7m32s — 단위 2,760 · a11y 424 · e2e 196 · 통합 1,805 · 회귀 496). 그 뒤 `0.1.0-pilot.7` 발행과 발행 기록 PR이 남는다(todos.md 7차 절). REL-007은 여전히 결정자 지시를 기다린다.
+
+## Decisions
+
+decisions.md 7차 절.
+
+## Changed files
+
+files.md 7차 절.
+
+## Commands
+
+commands.md 7차 절.
+
+## Next steps
+
+1. origin/main·열린 PR 실측. 이 기록 PR이 병합됐는지 본다.
+2. `0.1.0-pilot.7`을 main에서 `build-bundle.sh 0.1.0-pilot.7 <out> --release`로 발행하고 원장에 기록한다(todos.md 7차 절) — 이 세션이 이어서 한다.
+3. 사내에 전달할 것: 버전·읽기 토큰·SHA-256(별도 채널), 업그레이드 뒤 `prsctl role grant <login> operator`, 평문 HTTP 파일럿이면 `SESSION_COOKIE_SECURE=false`+`ALLOW_INSECURE_COOKIES=true`.
+4. 자원 정리(격리 서비스 `prs-cr091-*`, 작업 트리 `cr091-auth`·`cr091-record`, 병합된 브랜치 둘, 이미지 `prs/*:cr091-final`)는 사용자 결정이다.
+
+## Risks/gotchas
+
+risks.md 7차 절.
+
+## References
+
+PR #191(`f8db374`), CR-091, DEV-694·695·696, THR-052·053, 원장 6.89장, 세션 aeef726c(scratchpad: DESIGN-cr091.md·PROGRESS-cr091.md·ledger-6.89-draft.md·mutation/·logs/battery-{1,2,3}/·logs/images/), 메모리 smoke-gate-has-two-shadows.
+
 ## Session: 2026-09-14 (6차) — CR-090 REL-007 R2 운영 승인·R0 실행 정책 (PR #188)
 
 ## Goal

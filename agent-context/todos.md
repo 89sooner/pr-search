@@ -1,13 +1,37 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
-최신 기준 (**2026-09-14 6차 · CR-090 병합(`9c8a781`, PR #188) · 병합 커밋 main CI run `34854308135` attempt 1 success(verify·integration — 회귀 484) · 후속 기록 PR #189 병합(`9c7f132`) · 2026-09-15 `0.1.0-pilot.6` 발행(태그 → `9c7f132`, 원장 6.88장)**)
+최신 기준 (**2026-09-15 7차 · CR-091 병합(`f8db374`, PR #191) · 병합 커밋 main CI run `34926885455` attempt 1 success(verify 4m37s · integration 7m32s — 단위 2,760 · a11y 424 · e2e 196 · 통합 1,805 · 회귀 496) · 후속 기록 PR · `0.1.0-pilot.7` 발행 예정**)
 
-**main은 `9c8a781` 뒤에 후속 기록 PR이 병합된 상태여야 한다. 실측하라**(`git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`). 이 갱신을 담은 후속 PR의 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 `git log`로 읽는다.
+**main은 `f8db374` 뒤에 후속 기록 PR이 병합된 상태여야 한다. 실측하라**(`git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`). 이 갱신을 담은 후속 PR의 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 `git log`로 읽는다.
 
 ## 먼저 할 것 (결정자 확인이 필요하다)
 
 1. [ ] REL-007 다음 판의 순서를 받는다. 남은 완료 조건은 아래 6차 절이다(`GATE-GH-01e`·`06`·`08`, 사내 GHES 확인 `DEV-674`). 스냅숏 활성화 조건(`DEV-685`)은 CR-090이 운영 승인으로 종결했다.
 2. [ ] 이전 판의 병합된 기능 브랜치(`feature/rel007-capability-registry`·`fix/main-ci-s0-flaky`, 로컬·원격)와 `feature/rel007-r0-pr-list` 원격을 지울지 정한다. squash 병합이라 `git branch --merged main`에는 잡히지 않는다. CR-089·CR-090이 만든 브랜치는 6차 절의 정리 대상이다.
-3. [ ] 착수할 때 새 번호를 main에서 다시 잰다. 2026-09-14 6차 기준 가장 큰 ID는 CR-090 · DEV-693 · WP-080 · QA-GH-49 · OD-009 · ADR-023 · THR-051 · RB-26 · ENT-GH-014이다. 병렬 세션이 있으면 채번 현황을 묻는다.
+3. [ ] 착수할 때 새 번호를 main에서 다시 잰다. 2026-09-15 7차 기준 가장 큰 ID는 CR-091 · DEV-696 · WP-080 · QA-GH-49 · OD-009 · ADR-023 · THR-053 · RB-26 · ENT-GH-014이다. 병렬 세션이 있으면 채번 현황을 묻는다.
+
+## 2026-09-15 (7차) — CR-091 뒤에 남은 것
+
+### 이 세션이 이어서 할 것
+
+1. [ ] 이 기록 PR(docs/cr-091-merge-record)이 병합됐는지 실측한다.
+2. [ ] `0.1.0-pilot.7`을 main에서 발행한다 — `./deploy/single-host/build-bundle.sh 0.1.0-pilot.7 <out> --release`(공유 체크아웃 main, 작업 트리 깨끗함, 같은 버전 릴리스·태그 없음). 자산 SHA-256을 `gh api repos/89sooner/pr-search/releases/tags/0.1.0-pilot.7`로 대조하고 원장에 발행 절을 적는 기록 PR을 올린다.
+
+### 사내 반입 뒤 (사용자, NOT RUN)
+
+- 버전·읽기 토큰·SHA-256을 별도 채널로 전달한다.
+- `./prsctl upgrade`. 토큰이 남은 `.env`로 인증을 켜면 이제 교체 전에 멈춘다 — `ADMIN_API_TOKENS=`로 비운다.
+- 운영자가 한 번 로그인한 뒤 `./prsctl role grant <GHE 로그인> operator`, 화면 새로 고침으로 운영 메뉴 확인.
+- TLS가 없으면 `SESSION_COOKIE_SECURE=false`와 `ALLOW_INSECURE_COOKIES=true`를 함께 적고, GHE OAuth App callback을 `http://`로 맞춘다. `./prsctl health`의 「평문 HTTP 세션 허용」 줄은 실패가 아니다. 쿠키 이름이 `prs_session`으로 바뀐다.
+- `agent-context/upstream-feedback.md`의 세 항목에 사내 확인 결과를 적는다.
+
+### 후속 후보 (결정자가 정한다)
+
+- `AUTH_ENABLED`의 인식하지 못하는 값(`TRUE`)이 조용히 인증을 끈다(검토 A 관찰) — 관리 토큰이 있으면 토큰 경로가 열린다. 엄격화 CR.
+- 역할 관리 화면(현재는 호스트 명령만).
+
+### 자원 정리 (사용자 결정)
+
+격리 서비스 `prs-cr091-{postgres,redis,elasticsearch}`(볼륨 `prs-cr091_cr091-pg`, compose 파일은 세션 aeef726c scratchpad), 작업 트리 `/home/roqkf/pr-search-wt/cr091-auth`·`/home/roqkf/pr-search-wt/cr091-record`, 병합된 브랜치 `fix/cr091-pilot6-auth-feedback`·`docs/cr-091-merge-record`(로컬·원격), 이미지 `prs/*:cr091-final`. 이전 판 자원(6차 절)도 그대로다.
 
 ## 2026-09-14 (6차) — CR-090 뒤에 남은 것
 

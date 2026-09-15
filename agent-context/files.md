@@ -1,4 +1,27 @@
 # 중요 파일 경로와 역할
+## 2026-09-15 (7차) 라운드가 만들거나 만진 것 (CR-091, PR #191)
+
+### 코드
+
+- `packages/authz/src/{config,roles,session,index}.ts` — `ALLOW_INSECURE_COOKIES`(`cookiePolicy`·`insecureCookiesAllowed`), `withAssignedRoles`, `sessionCookieName`·`INSECURE_SESSION_COOKIE_NAME`·`readSessionCookie(name)`.
+- `packages/db/src/repositories/auth.ts` — `findAssignedRoles`·`findAssignableUsers`·`listAssignedRoleHolders`·`changeAssignedRole`. `packages/domain/src/audit.ts` — `user_role.grant`·`user_role.revoke`.
+- `apps/search-api/src/auth/{registration,role-command}.ts`, `src/role-cli.ts`.
+- `apps/web/lib/server/{effective-roles,config,page-guard}.ts(x)`, `lib/{proxy,oidc-state}.ts`, `instrumentation.ts`, `app/auth/{callback,logout}/route.ts`, `app/api/[...path]/route.ts`, `app/gh/identity/callback/route.ts`.
+- `deploy/single-host/{prsctl,compose.yml,.env.example,RUNBOOK.md,smoke-images.sh}`.
+
+### 시험
+
+- `packages/authz/src/{config,roles,session}.test.ts`, `apps/search-api/src/auth/registration.test.ts`, `apps/search-api/integration/authz/{assigned-roles,role-command}.test.ts`(신규), `apps/web/lib/server/effective-roles.test.ts`(신규), `apps/web/app/auth/logout/route.test.ts`(신규), `apps/web/{instrumentation,lib/proxy,lib/oidc-state,lib/architecture,app/auth/callback/route}.test.ts`.
+- `regression/cr091-auth-feedback.test.ts`(신규 — 실제 compose JSON 대조), `regression/runtime-reachability.test.ts`(DEV-664 함수 목록·anchor 절 기준), `regression/fixtures/release-tag/fake-docker`.
+
+### 문서
+
+SRS v2.29, 용어집 v0.11, 보안 v1.11(THR-052·053), API 계약 v0.31, 백엔드 v0.11, 프런트엔드 v0.8, 데이터 모델 v0.25, 인프라 v0.19, 작업 패키지 v2.34, 원장 v6.79(DEV-694~696·4장·6.89장), change_control(CR-091 행·cascade).
+
+### 저장소 밖 (세션 aeef726c scratchpad, /tmp라 재부팅에 사라진다)
+
+DESIGN-cr091.md·PROGRESS-cr091.md·ledger-6.89-draft.md, docedit.mjs·docspec/*.mjs(개행 보존 편집기와 명세), mutation/{mutations,run}.mjs·results.log, battery.sh·logs/battery-{1,2,3}/, logs/images/(빌드·smoke·role-cli DB), compose.cr091.yml, pr-body.md·merge-body.txt, e2e-fail-1/.
+
 ## 2026-09-14 (6차) 라운드가 만들거나 만진 것 (CR-090, PR #188 — 81 파일)
 
 ### 코드 (새 파일)

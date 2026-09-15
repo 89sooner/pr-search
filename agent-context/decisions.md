@@ -1,4 +1,28 @@
 # 확정한 설계 결정과 이유
+## 2026-09-15 (7차) — CR-091 사내 pilot.6 반입 피드백 (PR #191)
+
+### A. 사용자 직접 결정 (다시 논의하지 않음)
+
+- `operator`는 **DB 지정 경로 복구**로 얻는다. 팀 매핑에 `operator` 허용·`/ops/*`를 `manager`로 하향은 기각(CR-015 경계).
+- 평문 HTTP 파일럿은 **`ALLOW_INSECURE_COOKIES=true` 명시 플래그**로 연다(CR-083의 「인증을 끈 배포만 면제」를 좁게 넓힘). 거부 유지·런북만 보강은 기각.
+- 병합 뒤 **`0.1.0-pilot.7` 발행까지** 한다.
+
+### C. 구현이 스스로 고른 것 (근거와 되돌리는 법)
+
+| 결정 | 근거 | 다른 선택지 | 되돌리기 |
+| --- | --- | --- | --- |
+| 실효 역할을 **요청마다** 합성, 세션에 되써 넣지 않음, 캐시 없음 | 세션 레코드는 touch 때 통째로 다시 쓰여 web과 서로 덮고, 회수가 세션 수명(12h) 동안 늦어진다 | 로그인 때 합성 + 지정 시 세션 종료 | `registration.ts` load |
+| 지정값을 읽지 못하면 세션 역할로 판정(fail closed), 503으로 바꾸지 않음 | 지정값은 권한을 더하기만 한다. 전 요청 503은 DB 장애 때 검색 가용성을 떨어뜨린다 | 503 | `#readAssigned` |
+| web 관문은 `/me`(API-AUTH-001)에서 역할을 받음, 3초 상한, 실패 시 세션 역할 | 계약이 이미 「셸이 /me를 쓴다」고 적음. web은 DB에 닿지 않는다 | 새 API·Redis 역할 캐시 | `effective-roles.ts` |
+| 역할 명령은 **search-api 이미지**(`dist/role-cli.js`), prsctl이 `compose run --rm --no-deps -T` | `@prs/authz`→`@prs/db` 의존이라 db CLI에 두면 역할 어휘를 두 벌 적어야 한다 | db 이미지 migrate CLI | `cmd_role` |
+| 지정·회수와 감사 한 트랜잭션, 무변경은 감사 없음, 행위 주체 `prsctl:<호스트 사용자>` | CR-090 운영 정책과 같은 근거(기록 없는 권한 변경이 실패보다 나쁘다) | best-effort 감사 | `changeAssignedRole` |
+| 지정 가능 역할은 `ADMIN_ASSIGNED_ROLES` 셋만, 대상은 login 또는 user_id, 대소문자 변형이 여럿이면 고르지 않음 | 두 경로가 같은 역할을 주면 회수 자리를 모른다. 개명 흔적의 낡은 행에 권한이 붙지 않게(검토 A) | 정확 일치 우선 | `findAssignableUsers` |
+| 플래그는 `Secure`를 끄지 않음(두 값 모두 요구), 값은 true/false/빈 값만 | CR-078의 「적어 낸 선언」 규율 | 플래그 하나로 끔 | `cookiePolicy` |
+| `Secure`가 없으면 `prs_session`·`prs_oidc`, 서버 간에는 정본 `__Host-prs_session` | 브라우저가 Secure 없는 `__Host-`를 저장하지 않음. search-api·TLS 배포 불변 | 이름 고정 | `sessionCookieName` |
+| web이 원시 Cookie 헤더로 읽어 중복이면 없음, 로그아웃은 전부 종료 | 세션 강요 경로(검토 A) | 프레임워크 cookies.get | `readBrowserCookie` |
+| prsctl 사전 거부 셋(토큰 공존·플래그 오타·플래그 없는 Secure 해제), 판정은 compose 렌더를 web·search-api와 같은 규칙으로 | DEV-664 단일 파서. 교체 뒤 crash-loop 방지(검토 B) | 사후 증상표만 | `require_env` |
+| `AUTH_ENABLED=TRUE` 오타 엄격화는 **하지 않음** | CR-083 이전부터의 동작, 범위 밖 | 이 판에서 엄격화 | 후속 CR 후보 |
+
 ## 2026-09-14 (6차) — CR-090 REL-007 R2 운영 승인·R0 실행 정책 (WP-080, PR #188)
 
 ### A. 사용자 직접 결정 · B. 지시서 사전 승인 (다시 논의하지 않음)

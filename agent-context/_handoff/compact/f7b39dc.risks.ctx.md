@@ -1,8 +1,18 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=3296dae0aadcfb017ad99e71ee70cdeaa063725487b41c7d187cfc142103102c bytes=207614 lines=2740 title=리스크-불확실한-가정-함정
+@kv sha256=d833426b7d2fac2b5de83759281e4a1981055c26e895f851a04a9572ca9c9b50 bytes=209153 lines=2752 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000;3/3;home/roqkf/pr-search-wt/cap
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-15 (7차) 라운드가 배운 함정 (CR-091)
+@b Host- 접두 쿠키는 Secure 없이 브라우저가 저장하지 않는다. 쿠키 속성 계약을 풀 때는 이름 규칙도 함께 본다.
+@b 문서가 적은 합집합이 코드에 없을 수 있다. 세션에 역할을 직접 넣는 시험은 합성 경로를 검증하지 않는다 — 운영 조립(createAuthContext)과 로그인이 실제로 만드는 세션으로 건다.
+@b web이 쿠키 값 하나를 골라 서버 간 헤더를 다시 조립하면 뒤 서비스의 중복 쿠키 거절이 무력해진다.
+@path smoke-images.sh에는 그림자가 둘 있다(메모리 smoke-gate-has-two-shadows): DEV-615 파서는 인라인 -e만, release-tag fake-docker는 게이트 전체를 흉내 낸다.
+@b 대조 시험의 기준이 대조 대상의 산출물이면 추출 오류가 보이지 않는다(변이 E2) — compose JSON 렌더처럼 독립된 근거를 쓴다.
+@b 감사 원자성 시험은 COMMIT 시점 실패로 건다. 콜백 안에서 던지는 실패 주입은 트랜잭션 밖 기록과 구별하지 못한다(변이 C1).
+@b set -Eeuo pipefail 아래 … | head -1 대입은 SIGPIPE로 빈 값이 될 수 있다 — 렌더를 변수로 받고 셸이 첫 줄을 자른다.
+@b 검토 결과가 알림에서 잘린다 — SendMessage로 나머지를 받는다(두 검토 모두 잘렸다).
+@b 통합 시험의 beforeEach에서 app_user 행을 지우면 search-api의 프로세스 수명 등록 캐시와 어긋난다.
 @h2 2026-09-14 (6차) 라운드가 배운 함정 (CR-090)
 @b /clear 뒤에도 백그라운드 에이전트는 돈다. 이어 쓰는 전사는 새 세션의 subagents/에 쌓이고 완료 알림은 새 대화로 온다. 옛 jsonl이 멈춰 보여도 끝난 것이 아니다 — 다시 띄우기 전에 새 세션 쪽 수정 시각을 본다.
 @b 검토 에이전트는 턴 한도에서 발견 사항 없이 멈출 수 있다. 결과가 「partial」이면 「지적 없음」이 아니다. 같은 에이전트에 이어서 끝내라고 보내고, 도구 사용 예산(예: 15회 안쪽 뒤 보고)과 남은 우선순위를 준다.
