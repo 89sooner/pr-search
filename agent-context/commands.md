@@ -1,4 +1,41 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
+## 2026-09-15 (8차) 라운드에서 쓴 것 (CR-092)
+
+### 환경
+
+7차와 같은 격리 서비스 `prs-cr091-*`를 재사용했다(PATH node v22.23.2, POSTGRES_PORT 55439, REDIS 56384, ES 59205).
+
+### 재현·실측
+
+```bash
+# smoke 뒤섞임: 한 컨테이너에 docker exec로 20회 → 200 12 · HTTP/1.1 8
+docker run -d --rm --name P --entrypoint node prs/search-api:0.1.0-pilot.7 -e '<http 서버>'
+for i in $(seq 1 20); do docker exec P wget -qO- --server-response http://127.0.0.1:3002/healthz 2>&1 | awk '/HTTP\//{print $2}' | tail -1; done | sort | uniq -c
+# 프록시 뒤 출처 → location: https://localhost:3000/gh?identity=failed
+docker run -d --rm -p 127.0.0.1:53999:3000 -e NODE_ENV=production -e AUTH_ENABLED=false -e SESSION_COOKIE_SECURE=true -e SEARCH_API_URL=http://127.0.0.1:9 prs/web:0.1.0-pilot.7
+curl -sS -o /dev/null -D - -H 'Host: prs.corp.example' -H 'X-Forwarded-Proto: https' http://127.0.0.1:53999/gh/identity/callback
+```
+
+### 배터리·변이·게이트
+
+```bash
+$SP/battery.sh $SP/logs/battery-2                  # CI 순서, 단계마다 종료 코드와 코드 트리 해시
+node $SP/mutation/run.mjs                          # 22종. kill의 의미는 대상 시험을 변이 없이 따로 돌려 기준선으로 확인
+for p in migrate:db search-api:search-api pipeline-worker:pipeline-worker gh-executor:gh-executor web:web; do docker build --target ${p%%:*} -t prs/${p##*:}:cr092-final .; done
+(cd deploy/single-host && ./smoke-images.sh cr092-final)
+DOC_ROOT=<worktree> node $SP/docpatch.mjs spec.txt [--apply]   # @@@ FILE/FROM/TO/END 구분자 명세
+gh api repos/89sooner/pr-search/actions/jobs/<id>/logs | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' | grep -E 'Tests  |passed \('
+```
+
+### 실패했던 명령과 원인
+
+- lint 1건: gh identity 콜백에서 `NextResponse`가 타입으로만 남음 → `import type`.
+- `redirect.test` 첫 실행: 빈 경로가 `sanitizeReturnPath(path, '')`와 같아 통과 → `path === ''` 명시.
+- 가짜 compose `shift 2` → 서비스 이름이 `docker exec`로 넘어가 빈 결과 → `shift 3`.
+- 정적·회귀의 부정 검사가 주석의 인용에 걸림 → 주석을 빼고 검사.
+- Next 라우트 파일의 상수 export는 빌드 타입 오류 → `lib/auth-paths.ts`로.
+- ugrep의 `{0,120}` 유니코드 반복이 복잡도 한도 초과 → `rg -o`.
+
 ## 2026-09-15 (7차) 라운드에서 쓴 것 (CR-091)
 
 ### 환경

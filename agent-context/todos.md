@@ -1,13 +1,43 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
-최신 기준 (**2026-09-15 7차 · CR-091 병합(`f8db374`, PR #191) · 병합 커밋 main CI run `34926885455` attempt 1 success(verify 4m37s · integration 7m32s — 단위 2,760 · a11y 424 · e2e 196 · 통합 1,805 · 회귀 496) · 후속 기록 PR #192 병합(`0c26cdd`, main CI run `34928073071` success) · 2026-09-15 `0.1.0-pilot.7` 발행(태그 → `0c26cdd`, 원장 6.90장)**)
+최신 기준 (**2026-09-15 8차 · CR-092 병합(`ae9bf27`, PR #194) · PR CI run `34971448100` success(단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503) · 병합 커밋 main CI run `34972449347` attempt 1 success(verify 4m32s · integration 7m22s — 단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503) · 릴리스 미발행(지시) · 이전: 7차 CR-091 `f8db374`, `0.1.0-pilot.7` 발행(태그 → `0c26cdd`, 원장 6.90장)**)
 
-**main은 `f8db374` 뒤에 후속 기록 PR이 병합된 상태여야 한다. 실측하라**(`git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`). 이 갱신을 담은 후속 PR의 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 `git log`로 읽는다.
+**main은 `ae9bf27` 뒤에 후속 기록 PR(`docs/cr-092-merge-record`)이 병합된 상태여야 한다. 실측하라**(`git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`). 이 갱신을 담은 후속 PR의 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 `git log`로 읽는다.
 
 ## 먼저 할 것 (결정자 확인이 필요하다)
 
 1. [ ] REL-007 다음 판의 순서를 받는다. 남은 완료 조건은 아래 6차 절이다(`GATE-GH-01e`·`06`·`08`, 사내 GHES 확인 `DEV-674`). 스냅숏 활성화 조건(`DEV-685`)은 CR-090이 운영 승인으로 종결했다.
 2. [ ] 이전 판의 병합된 기능 브랜치(`feature/rel007-capability-registry`·`fix/main-ci-s0-flaky`, 로컬·원격)와 `feature/rel007-r0-pr-list` 원격을 지울지 정한다. squash 병합이라 `git branch --merged main`에는 잡히지 않는다. CR-089·CR-090이 만든 브랜치는 6차 절의 정리 대상이다.
-3. [ ] 착수할 때 새 번호를 main에서 다시 잰다. 2026-09-15 7차 기준 가장 큰 ID는 CR-091 · DEV-696 · WP-080 · QA-GH-49 · OD-009 · ADR-023 · THR-053 · RB-26 · ENT-GH-014이다. 병렬 세션이 있으면 채번 현황을 묻는다.
+3. [ ] 착수할 때 새 번호를 main에서 다시 잰다. 2026-09-15 8차 기준 가장 큰 ID는 CR-092 · DEV-700 · WP-080 · QA-GH-49 · OD-009 · ADR-023 · THR-054 · RB-26 · ENT-GH-014이다. 병렬 세션이 있으면 채번 현황을 묻는다.
+
+## 2026-09-15 (8차) — CR-092 뒤에 남은 것
+
+### 이 세션이 이어서 할 것
+
+1. [ ] 기록 PR(`docs/cr-092-merge-record`) 병합 — 원장 6.91장 PR CI·병합·main CI, CR-092 closed, upstream-feedback 회신, 8차 절과 handoff pack. 병합 커밋은 `git log`로 확인한다.
+
+### 결정자 확인 (사용자)
+
+1. [ ] 다음 발행 여부와 시점 — 이번 지시는 「릴리스를 발행하진 말아라 아직」이다. 발행하면 원장 6.91장의 사내 확인 항목을 함께 전달한다.
+2. [ ] 디자인 시스템 개선 트랙의 착수와 방식(Conductor 원본 저장소 개선·발행 → 제품 고정 버전 상향). `/home/roqkf/design-system`에 다른 세션의 미커밋 작업이 있었다.
+3. [ ] `smp*` 저장소 브랜치 변경은 사내 운영자가 운영 화면에서 한다 — 이름 규칙 자동 적용을 원하면 새 CR.
+
+### 사내 반입 뒤 (사용자, NOT RUN)
+
+- 조직 `Members` 권한 없이 저장소 셋으로 `/api/v1/me` 200. 503이면 `search-api` 로그 「접근 범위를 조회하지 못했다」의 `stage`·`status`·`required_permission`.
+- nginx 뒤에서 GHE 로그인 뒤 서비스 주소로 복귀, 상단 로그인 이름 메뉴 → 「로그아웃」 → 완료 화면.
+- `./prsctl smoke`의 헬스체크 두 줄이 `✓`.
+- 손으로 넣은 `permission_cache` 행 삭제.
+- `agent-context/upstream-feedback.md` 각 항목 아래에 확인 결과 기록.
+
+### 후속 후보 (결정자가 정한다)
+
+- `AUTH_LOGIN_PATH` 로드 시 검증(검토 A minor — 지금은 배포 정의가 값을 전달하지 않는다).
+- 로그아웃·쓰기 경로의 CSRF 토큰(`DEV-691`).
+- 7차의 후보(`AUTH_ENABLED=TRUE` 엄격화, 역할 관리 화면)는 그대로다.
+
+### 자원 정리 (사용자 결정)
+
+- 작업 트리 `/home/roqkf/pr-search-wt/cr092`·`/home/roqkf/pr-search-wt/cr092-record`, 병합된 브랜치 `fix/cr092-pilot7-feedback`·`docs/cr-092-merge-record`(로컬·원격), 이미지 `prs/*:cr092-final`. 격리 서비스 `prs-cr091-*`는 이 판도 썼다. 이전 판 자원(7차·6차 절)도 그대로다.
 
 ## 2026-09-15 (7차) — CR-091 뒤에 남은 것
 
@@ -15,7 +45,7 @@
 
 1. [x] 기록 PR #192(docs/cr-091-merge-record) 병합 `0c26cdd`, main CI run `34928073071` success(verify·integration).
 2. [x] **발행됨** 2026-09-15 `0.1.0-pilot.7`을 main `0c26cdd`에서 발행했다(자산 SHA-256 `2008c7864984e88ed22d9bb4c4c70bd73688ba9522dda3bbfab18d4e0b0ee168`, 1,156,972,915 바이트, immutable, 원장 6.90장). 이 발행 기록 PR(docs/pilot7-published)의 병합은 `git log`로 확인한다.
-3. [ ] 사내 운영자에게 버전·읽기 토큰·SHA-256을 릴리스와 별도 채널로 전달한다(사용자).
+3. [x] 사내 운영자에게 버전·읽기 토큰·SHA-256을 릴리스와 별도 채널로 전달한다(사용자). — 사내가 `0.1.0-pilot.7`을 반입해 피드백을 보냈으므로(`0a83797`) 전달된 것으로 본다.
 
 ### 사내 반입 뒤 (사용자, NOT RUN)
 

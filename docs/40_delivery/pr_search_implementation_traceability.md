@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.82 | 갱신일: 2026-09-15
+> 상태: review | 버전: v6.83 | 갱신일: 2026-09-15
 
 `CR-092` 사내 `0.1.0-pilot.7` 반입 피드백: 쓰이지 않는 조직·팀 조회가 접근 범위 전체를 503으로 만든 자리(`DEV-698` — 이제 `org_team` 범위에서만 읽고 실패 단계를 로그에 남긴다), 로그인·계정 연결 콜백이 프록시 뒤에서 `localhost:3000`으로 보낸 자리(`DEV-699` — 경로만 담은 `Location`), 화면에 로그아웃이 없던 자리(`DEV-700` — 사용자 메뉴와 공개 완료 화면), `prsctl smoke`의 간헐 오탐(`DEV-697`)을 고쳤다. **일곱 건 중 넷은 사내가 적은 원인이나 전제가 실제와 달랐다** — 로그인 때 팀 동기화·`smp*` 브랜치·디자인 시스템은 코드를 바꾸지 않았다. 검증은 6.91장이며 릴리스는 발행하지 않았고 사내 확인은 `NOT RUN`이다.
 
@@ -6526,6 +6526,8 @@ migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기�
 | --- | --- | --- |
 | 1 | `bead499` | **전 단계 0** — typecheck·lint·lint:deps · 단위 2,790(skip 1은 실제 GHE가 필요한 기존 smoke) · build · a11y 429 · 대비 · e2e 199 · 통합 1,807 · 회귀 502 (코드 트리 해시 `3c42b7a850392f68`) |
 | 2 | `77f7a74` | **전 단계 0** — 검토 반영(로그 문구·회귀 호출 모양·뒤섞임 재현 모드)과 이 장 뒤. typecheck·lint·lint:deps · 단위 2,790(skip 1 같음) · build · a11y 429 · 대비 · e2e 199 · 통합 1,807 · 회귀 503 (코드 트리 해시 `0bcdafb070257440`) |
+
+**PR CI · 병합 · main CI.** PR #194(head `7194762`)의 CI run `34971448100` attempt 1 success — verify 4m31s(단위 2,790 · a11y 429 · e2e 199)·integration 8m27s(통합 1,807 · 회귀 503), 로컬 2회차와 수가 같다. squash 병합 `ae9bf27`(트리는 PR head와 같다). 병합 커밋의 main CI run `34972449347` attempt 1 success(verify 4m32s · integration 7m22s — 단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503). CR-092는 이것으로 닫았다(`closed`).
 
 **이미지 재검증** (릴리스·태그 없음). `5dd513a`에서 `prs/{db,search-api,pipeline-worker,gh-executor,web}:cr092-final` 다섯 빌드 종료 코드 0, `smoke-images.sh cr092-final` 통과(기존 게이트 전부 — SSR 화면 10종 200, 프록시 401, 쿠키 계약 거부 여섯, gh 고정 버전, `role-cli` 사용법). **새 이미지로 고친 동작을 실측했다**: web 이미지에 프록시 헤더(`Host: prs.corp.example`·`X-Forwarded-Host`·`X-Forwarded-Proto: https`)를 실어 Operations 콜백 → `307` · `location: /gh?identity=failed`(pilot.7은 `https://localhost:3000/…`), `Accept: text/html`의 로그아웃 `POST` → `303` · `location: /auth/signed-out` · 세션 쿠키 만료, 스크립트 로그아웃 → `200` `{"ok":true}`, `/auth/signed-out` → `200`·제목·`href="/"`(인증을 끈 형상). search-api 이미지 컨테이너에 새 `http_status`를 `docker exec`로 20회 걸어 20회 모두 `200`.
 
