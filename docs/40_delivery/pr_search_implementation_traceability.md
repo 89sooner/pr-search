@@ -6477,6 +6477,72 @@ migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기�
 
 검증: ES 단위 11건, 실제 PostgreSQL·Elasticsearch·Redis 통합 6건, a11y 1건(axe 위반 0), Chromium E2E 3건 통과. 1000/1001/100000/100001 경계, stale Redis와 PG fence, 대기 중 에폭 변경, 부분 응답, 닫았다 다시 연 다이얼로그의 늦은 응답을 포함한다. 전체 통합 첫 실행에서 migration 024 FK가 기존 `TRUNCATE job` 픽스처를 막고 export가 숫자 에폭을 문자열 파서로 넘기지 못하는 두 결함을 찾아 해당 통합 23건 재실행으로 닫았다.
 
+### 6.91 `0.1.0-pilot.7` 반입 피드백 — 접근 범위의 쓰이지 않는 조회 · 프록시 뒤 복귀 주소 · 로그아웃 · 스모크 파싱 (2026-09-15, CR-092 / DEV-697 · DEV-698 · DEV-699 · DEV-700)
+
+시작 `origin/main`은 `0a83797`(사내 피드백 일곱 건을 `agent-context/upstream-feedback.md`에 올린 커밋, 코드 변경 없음)이다. 브랜치 `fix/cr092-pilot7-feedback`(작업 트리 격리, 격리 서비스 `prs-cr091-*` 재사용 — PostgreSQL 55439·Redis 56384·ES 59205). **사용자 결정 넷**(2026-09-15): 필요한 조회만 + 진단 로그, 사용자 메뉴 + 로그아웃 완료 화면, `smp*` 브랜치는 운영 조치 안내, 디자인 시스템은 이 판에서 제외. **릴리스는 발행하지 않는다**(결정자 지시).
+
+**착수 전 대조 — 사내가 본 것과 실제 원인.** 일곱 건 전부를 코드·문서로 대조하고 둘은 실측으로 재현했다.
+
+| 피드백 | 사내가 적은 원인 | 실제 | 판 |
+| --- | --- | --- | --- |
+| scope 503 | GHE App의 `members:read` 부족 | 흐름은 맞다. 다만 저장소 셋이면 조직·팀 값은 어디에도 쓰이지 않는데 늘 조회했고, 사유가 로그에 없어 원인을 확인할 수 없었다 | `DEV-698` |
+| 로그인 시 팀 동기화 | `team_member`가 비어 저장소가 가려진다 | 500개 이하 범위는 저장소 ID로만 거른다. 버전 0·`team_member` 빔은 정상이다. 원인은 위의 503 | 코드 변경 없음 |
+| 로그아웃 뒤 `localhost:3000` | 로그아웃 리다이렉트가 고정 | 로그아웃은 리다이렉트하지 않는다. **로그인·Operations 콜백**이 `request.nextUrl.origin`으로 복귀 주소를 만들었다 — pilot.7 web 이미지에 `Host: prs.corp.example`·`X-Forwarded-Host`·`X-Forwarded-Proto: https`로 `location: https://localhost:3000/gh?identity=failed` 실측 | `DEV-699` |
+| 로그아웃 버튼 없음 | — | 사실. C-001이 사용자 메뉴를 적었지만 항목이 없었다 | `DEV-700` |
+| smoke `→ HTTP/1.1` | pilot.7에서 파싱이 바뀜 | 그 파이프는 `CR-060`(pilot.2)부터 같다. `docker exec`의 stdout·stderr 도착 순서 문제 — pilot.7 이미지에 20회 걸어 8회 재현, `-O/dev/null`이면 20회 모두 200 | `DEV-697` |
+| `smp*` → `dev` | — | 코드에 기본 브랜치가 없다. 저장소마다 운영자가 적는다(`FR-ING-009` AC-1·AC-12) | 런북 절차 |
+| 디자인 시스템 | — | Conductor npm 0.3.1 고정, 원본 저장소에서 작업 중 | 별도 트랙 |
+
+**무엇을 했나.** `GheAccessScopeSource`가 조직·팀을 `org_team` 범위에서만 읽고 단계를 붙인 오류를 던지며 resolver가 그것을 필요 권한과 함께 로그에 남긴다(본문 없음). `/me`의 `org_count`·`team_count`는 `explicit`에서 `null`. 콜백 둘의 복귀는 `redirectToPath`(경로만). C-001 사용자 메뉴의 로그아웃 폼, 로그아웃 라우트의 303과 공개 완료 화면. `prsctl`의 `http_status`. 런북 2.C 권한 표·시퀀스 브랜치 절차, 6장 프록시·로그아웃, 8장 증상. 세부는 CR-092 cascade 절이다.
+
+**독립 검토 두 관점.** 둘 다 읽기 전용이며 시험을 실행하지 않게 했다(배터리와 같은 작업 트리).
+
+| 검토 | 결과 | 처분 |
+| --- | --- | --- |
+| A — 보안·인증·권한 | blocker·major 0, minor 1, 관찰 셋 | 권한을 넓히는 경로 없음을 네 소비처(`toAccessScope`·캐시 `scope_kind`·`gh/context.ts`·ES 필터)와 무효화 질의로 확인했다. minor: `AUTH_LOGIN_PATH`가 로드 때 검증되지 않아 잘못된 값이면 `redirectToPath`가 요청마다 던진다 — **고치지 않았다**: compose·`.env.example`·k8s 정의 어디에서도 서비스에 전달되지 않아 배포 형상에서는 늘 기본값 `/auth/login`이다. 관찰: `AccessScopeLookupError`가 `cause`에 원 오류를 보관한다(resolver가 `cause`를 전파하지 않고 로그도 읽지 않음 — 심층 방어 메모), 정적 규칙은 회귀 울타리일 뿐 우회 가능하다(실제 통제는 `redirectToPath`), 강제 로그아웃은 `DEV-691`과 함께 남는다 |
+| B — 배포·시험·문서 | blocker 0, major 1, minor 1, nit 1 | major: 이 장이 없는데 cascade가 [x]로 가리켰다 — 검증을 모은 뒤 쓰려던 순서였고 이 장으로 닫았다. minor: 실패 로그 문구 「GHE에서 읽지 못했다」가 PostgreSQL 단계에 틀림 → 「접근 범위를 조회하지 못했다」(런북 두 자리 함께). nit: 가짜 compose가 `-qO/dev/null`에서는 본문을 스트림에 싣지 않아 뒤섞임을 겪지 않음 → `FAKE_BODY_IN_STREAM` 모드로 판정(awk)의 견고성을 따로 건다. 확인만 한 것: `http_status`의 strict 모드 안전성·awk 이식성(gawk·mawk·busybox), 기존 회귀(`runtime-reachability` smoke 검사·gh-executor 헬스체크·DEV-615 파서·fake-docker)와 충돌 없음, 통합 시험 격리(`fileParallelism: false`), 런북 주장과 코드 대조 |
+
+**변이.** 원문 보관 → 정확히 한 번 치환 → 대상 시험 → 원문 복원·바이트 대조(`restored` 전부). **변이 없는 코드에서 대상 시험이 전부 통과하는 기준선**(단위 91 · 통합 2 · 회귀 7 · a11y 31)을 따로 확인해 kill이 명령 실패가 아님을 확인했다.
+
+| 묶음 | 변이 | 결과 |
+| --- | --- | --- |
+| DEV-698 | S1 늘 조직·팀 조회(옛 동작) · S2 경계 어긋남 · S3 단계 오표기 · S4 상태 코드 버림 · S5 로그 제거 · S6 로그에 원인 오류 · S7 사용자 행 부재 로그 제거 · S8 운영 조립이 로그 미전달 · S9 `/me`가 `explicit`에서 조직 수를 셈 | 9 kill |
+| DEV-699 | W1 로그인 콜백이 요청 출처로 절대 주소(옛 동작) · W2 helper가 서버 출처로 절대화 · W3 helper가 경로 규칙 미검사 | 3 kill |
+| DEV-700 | W4 문서 요청에도 JSON · W5 로그인으로 곧장 · W6 303 대신 307 · W7 메뉴가 폼 미제출 · W8 폼이 GET · W9 완료 화면 제목이 개요에서 빠짐 | 6 kill |
+| DEV-697 | P1 본문을 파이프에(`-qO-`) · P2 첫 응답 미선택 · P3 `\|\| true` 제거 · P4 위치 기반 판정(옛 판정) | 4 kill |
+
+**변이 설계가 찾은 시험의 빈틈 하나.** 회귀가 `printf '[%s]' "$(http_status …)"`로 불러 치환의 비영 종료가 `printf`에 묻혔다 — 함수 끝의 `|| true`를 지워도 `set -e`가 걸리지 않았다. `cmd_smoke`와 같은 대입 모양(`code="$(…)"`)으로 바꾼 뒤 P3이 kill된다.
+
+**실측 재현** (고치기 전 이미지 `0.1.0-pilot.7`).
+
+| 대상 | 방법 | 결과 |
+| --- | --- | --- |
+| `DEV-697` | `docker run` 한 이미지에 `docker exec … wget -qO- --server-response … 2>&1 \| awk '/HTTP\//{print $2}' \| tail -1`을 20회 | `200` 12 · `HTTP/1.1` 8. 한 줄 표본 `{"status":"ok",…}  HTTP/1.1 200 OK`. `-O/dev/null`이면 20회 모두 200. 새 `http_status`를 같은 컨테이너에 걸어 20회 200, 500 → 500, 리다이렉트 first 302·last 200, 연결 거부 → 빈 값, strict 모드 생존 |
+| `DEV-699` | web 이미지를 띄우고 `curl -H 'Host: prs.corp.example' -H 'X-Forwarded-Proto: https' …/gh/identity/callback` | `307` · `location: https://localhost:3000/gh?identity=failed` (Host 없이 부르면 `http://localhost:3000/…`) |
+
+**검증 배터리** (격리 서비스, CI 순서, 단계마다 종료 코드).
+
+| 회차 | 커밋 | 결과 |
+| --- | --- | --- |
+| 1 | `bead499` | **전 단계 0** — typecheck·lint·lint:deps · 단위 2,790(skip 1은 실제 GHE가 필요한 기존 smoke) · build · a11y 429 · 대비 · e2e 199 · 통합 1,807 · 회귀 502 (코드 트리 해시 `3c42b7a850392f68`) |
+
+**이미지 재검증** (릴리스·태그 없음). `5dd513a`에서 `prs/{db,search-api,pipeline-worker,gh-executor,web}:cr092-final` 다섯 빌드 종료 코드 0, `smoke-images.sh cr092-final` 통과(기존 게이트 전부 — SSR 화면 10종 200, 프록시 401, 쿠키 계약 거부 여섯, gh 고정 버전, `role-cli` 사용법). **새 이미지로 고친 동작을 실측했다**: web 이미지에 프록시 헤더(`Host: prs.corp.example`·`X-Forwarded-Host`·`X-Forwarded-Proto: https`)를 실어 Operations 콜백 → `307` · `location: /gh?identity=failed`(pilot.7은 `https://localhost:3000/…`), `Accept: text/html`의 로그아웃 `POST` → `303` · `location: /auth/signed-out` · 세션 쿠키 만료, 스크립트 로그아웃 → `200` `{"ok":true}`, `/auth/signed-out` → `200`·제목·`href="/"`(인증을 끈 형상). search-api 이미지 컨테이너에 새 `http_status`를 `docker exec`로 20회 걸어 20회 모두 `200`.
+
+**e2e가 실제 서버에서 확인한 것.** 빌드한 web을 `next start`로 띄운 Playwright가 프록시 헤더(`Host`·`X-Forwarded-Host`·`X-Forwarded-Proto`)를 실어 Operations 콜백을 부르면 `Location`이 `/gh?identity=failed` 그대로이고(서버가 상대 경로를 절대화하지 않는다), 폼 모양의 로그아웃이 303 `/auth/signed-out`과 쿠키 만료를, 완료 화면이 세션 없이 200·제목·내비게이션 없음·「다시 로그인」을 낸다.
+
+**문서 검사기.** 시작 전과 cascade 뒤 모두 ERROR 4 · WARN 2(자리표시어 13·8건 그대로), 신규 0. strict 통과가 아니다.
+
+**고치지 않기로 한 것.**
+
+- 로그인 때 팀 멤버십 동기화(사내 요청) — 원인이 아니고 `FR-AUTH-003`이 요구하지 않는다. 로그인은 권한 변경이 아니다.
+- DB 기반 접근 범위 출처(사내 제안) — `OD-002`(GHE 협업자·팀 API로 확정)와 `FR-AUTH-002` AC-1(실효 권한)에 어긋나고, `team_member`는 저장소 권한이 아니다(사용자 결정).
+- `smp*` 저장소의 시퀀스 대상 브랜치 자동 규칙 — 저장소마다 운영자가 적는 값이다. 런북 2.C의 편집 절차로 안내했다(사용자 결정).
+- 디자인 시스템 개선 — 별도 트랙(사용자 결정).
+- `AUTH_LOGIN_PATH`의 로드 시 검증(검토 A minor) — 배포 정의가 그 값을 전달하지 않는다.
+- 로그아웃의 CSRF 토큰 — `DEV-691`이 토큰 체계와 함께 닫는다.
+
+**사내 적용은 `NOT RUN`이다.** 다음 반입에서 확인할 것: 조직 `Members` 권한 없이 저장소 셋으로 `/api/v1/me`가 200인지(권한을 이미 줬다면 그대로 200), 503이면 `search-api` 로그의 「접근 범위를 조회하지 못했다」 줄의 `stage`·`status`·`required_permission`, nginx 뒤에서 GHE 로그인 뒤 서비스 주소로 돌아오는지, 상단 로그인 이름의 메뉴 → 「로그아웃」 → 완료 화면, `./prsctl smoke`의 헬스체크 두 줄이 `✓`인지. 사내가 손으로 넣은 `permission_cache` 행은 지운다 — `refreshed_at`을 미래로 넣었다면 그 행이 계속 신선해 권한 회수가 반영되지 않는다(`FR-AUTH-003` AC-3). 실제 세션으로 브라우저에서 메뉴 → 로그아웃을 도는 것은 외부에 IdP가 없어 `NOT RUN`이다.
+
 ### 6.90 `0.1.0-pilot.7` 발행 (2026-09-15, CR-091)
 
 **무엇을 담았나.** `0.1.0-pilot.6`(태그 `9c7f132`) 이후 main에 병합된 판이다 — 사내 pilot.6 반입 피드백을 고친 `CR-091`(PR #191)과 그 기록(PR #192, 사내 피드백 커밋 `a95e4d9` 포함). 결정자 지시(2026-09-15)로 병합 뒤 발행했다. **새 마이그레이션은 없다** — 마이그레이션 수준은 `030` 그대로다.
