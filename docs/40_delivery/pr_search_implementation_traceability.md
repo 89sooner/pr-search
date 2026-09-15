@@ -6525,6 +6525,7 @@ migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기�
 | 회차 | 커밋 | 결과 |
 | --- | --- | --- |
 | 1 | `bead499` | **전 단계 0** — typecheck·lint·lint:deps · 단위 2,790(skip 1은 실제 GHE가 필요한 기존 smoke) · build · a11y 429 · 대비 · e2e 199 · 통합 1,807 · 회귀 502 (코드 트리 해시 `3c42b7a850392f68`) |
+| 2 | `77f7a74` | **전 단계 0** — 검토 반영(로그 문구·회귀 호출 모양·뒤섞임 재현 모드)과 이 장 뒤. typecheck·lint·lint:deps · 단위 2,790(skip 1 같음) · build · a11y 429 · 대비 · e2e 199 · 통합 1,807 · 회귀 503 (코드 트리 해시 `0bcdafb070257440`) |
 
 **이미지 재검증** (릴리스·태그 없음). `5dd513a`에서 `prs/{db,search-api,pipeline-worker,gh-executor,web}:cr092-final` 다섯 빌드 종료 코드 0, `smoke-images.sh cr092-final` 통과(기존 게이트 전부 — SSR 화면 10종 200, 프록시 401, 쿠키 계약 거부 여섯, gh 고정 버전, `role-cli` 사용법). **새 이미지로 고친 동작을 실측했다**: web 이미지에 프록시 헤더(`Host: prs.corp.example`·`X-Forwarded-Host`·`X-Forwarded-Proto: https`)를 실어 Operations 콜백 → `307` · `location: /gh?identity=failed`(pilot.7은 `https://localhost:3000/…`), `Accept: text/html`의 로그아웃 `POST` → `303` · `location: /auth/signed-out` · 세션 쿠키 만료, 스크립트 로그아웃 → `200` `{"ok":true}`, `/auth/signed-out` → `200`·제목·`href="/"`(인증을 끈 형상). search-api 이미지 컨테이너에 새 `http_status`를 `docker exec`로 20회 걸어 20회 모두 `200`.
 
