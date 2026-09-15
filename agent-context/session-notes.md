@@ -1,4 +1,41 @@
 # Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료
+## Session: 2026-09-15 (8차) — CR-092 사내 pilot.7 반입 피드백 일곱 건 (PR #194)
+
+## Goal
+
+사용자 지시: 「agent-context/upstream-feedback.md 내부망에서 아래와 같이 피드백이 왔다 피드백 내용을 반영하여 개선 후 origin/main에 반영해라. 릴리즈를 발행하진 말아라 아직」. 피드백 일곱: scope 503(`members:read` 추정), 로그인 시 팀 동기화, 로그아웃 뒤 `localhost:3000`, 로그아웃 버튼 없음, smoke healthz 오탐, `smp*` 시퀀스 브랜치 `dev`, 디자인 시스템 개선. 사용자 결정(AskUserQuestion): 필요한 조회만 + 진단 로그 · 사용자 메뉴 + 로그아웃 완료 화면 · `smp*`는 운영 조치 안내 · 디자인 시스템은 이번 PR 제외(별도 트랙).
+
+## Current state
+
+main = `ae9bf27`(CR-092 병합) 위에 후속 기록 PR이 올라간다. PR CI run `34971448100` attempt 1 success(verify 4m31s · integration 8m27s — 단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503). 병합 커밋 main CI run `34972449347` attempt 1 success(verify 4m32s · integration 7m22s — 단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503). **릴리스는 발행하지 않았다**(지시). REL-007은 여전히 결정자 지시를 기다린다.
+
+## Decisions
+
+decisions.md 8차 절.
+
+## Changed files
+
+files.md 8차 절.
+
+## Commands
+
+commands.md 8차 절.
+
+## Next steps
+
+1. origin/main·열린 PR 실측. 기록 PR(`docs/cr-092-merge-record`)이 병합됐는지 본다.
+2. 다음 발행은 결정자 지시를 받는다(발행하면 CR-092가 담긴다). 발행하면 사내에 원장 6.91장의 확인 항목을 함께 전달한다.
+3. 디자인 시스템 개선은 별도 트랙 — `/home/roqkf/design-system`에 다른 세션의 미커밋 Badge·Button 작업이 있었다(2026-09-15 19:30~20:35 계속 바뀜). 조율 뒤 착수.
+4. 자원 정리(작업 트리 `cr092`·`cr092-record`, 병합된 브랜치 둘, 이미지 `prs/*:cr092-final`)는 사용자 결정이다.
+
+## Risks/gotchas
+
+risks.md 8차 절.
+
+## References
+
+PR #194(`ae9bf27`), CR-092, DEV-697~700, THR-054, 원장 6.91장, 세션 2b5d8611(scratchpad: DESIGN-cr092.md·PROGRESS-cr092.md·docpatch.mjs·spec-*.txt·mutation/·logs/battery-{1,2}/·logs/images/).
+
 ## Session: 2026-09-15 (7차) — CR-091 사내 pilot.6 반입 피드백 세 건 (PR #191)
 
 ## Goal

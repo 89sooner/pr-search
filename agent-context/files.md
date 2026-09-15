@@ -1,4 +1,28 @@
 # 중요 파일 경로와 역할
+## 2026-09-15 (8차) 라운드가 만들거나 만진 것 (CR-092, PR #194)
+
+### 코드
+
+- `packages/authz/src/{scope-source,scope,index}.ts` — `AccessScopeLookupError`·`SCOPE_STAGE_PERMISSION`·`atStage`, `org_team` 범위에서만 조직·팀 조회, resolver `log`·`describeScopeFailure`.
+- `apps/search-api/src/auth/{context,me}.ts` — resolver에 로그 전달, `/me` 요약의 `null`.
+- `apps/web/lib/{redirect,auth-paths}.ts`, `app/auth/{callback,logout}/route.ts`, `app/auth/signed-out/page.tsx`, `app/gh/identity/callback/route.ts`, `components/{UserMenu,SignedOutView,AppTopBar}.tsx`, `app/workbench.css`.
+- `deploy/single-host/prsctl`(`http_status`), `deploy/single-host/RUNBOOK.md`(2.C 권한 표·시퀀스 브랜치, 6장 프록시·로그아웃, 8장).
+
+### 시험
+
+- `packages/authz/src/scope-source.test.ts`(신규), `apps/search-api/integration/authz/scope-diagnostics.test.ts`(신규), `apps/search-api/src/auth/auth.test.ts`.
+- `apps/web/lib/redirect.test.ts`(신규), `lib/architecture.test.ts`(라우트 핸들러의 출처 기반 리다이렉트 금지), `app/auth/{callback,logout}/route.test.ts`, `app/gh/identity/callback/route.test.ts`, `a11y/shell.test.tsx`(사용자 메뉴·완료 화면), `e2e/shell.spec.ts`(프록시 헤더·303·완료 화면).
+- `regression/cr092-pilot7-feedback.test.ts`(신규 — 가짜 compose, `FAKE_BODY_IN_STREAM`).
+
+### 문서
+
+- change_control CR-092 행·cascade, 보안 v1.12(THR-054), API 계약 v0.32, 백엔드 v0.12, 프런트엔드 v0.9, 컴포넌트 명세 v0.16, 화면 흐름 v0.9, 작업 패키지 v2.35, 원장(DEV-697~700·4장·6.91장).
+- `agent-context/upstream-feedback.md` 일곱 항목 회신(기록 PR).
+
+### 저장소 밖 (세션 2b5d8611 scratchpad, /tmp라 재부팅에 사라진다)
+
+- DESIGN-cr092.md·PROGRESS-cr092.md, docpatch.mjs와 spec-*.txt(구분자 명세 개행 보존 편집), battery.sh·logs/battery-{1,2}/, mutation/{run,mutations}.mjs·results.log, logs/images/(빌드·smoke·fix-probe.txt), pr-body.md·merge-body.txt.
+
 ## 2026-09-15 (7차) 라운드가 만들거나 만진 것 (CR-091, PR #191)
 
 ### 코드

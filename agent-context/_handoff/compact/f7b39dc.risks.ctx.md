@@ -1,8 +1,17 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=d833426b7d2fac2b5de83759281e4a1981055c26e895f851a04a9572ca9c9b50 bytes=209153 lines=2752 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000;3/3;home/roqkf/pr-search-wt/cap
+@kv sha256=d99196663ffe107071afe50c40ae8884ef3a09b3afa9f2838d9000e13707f3f8 bytes=210673 lines=2763 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;home/roqkf/design-system;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000;3/3
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-15 (8차) 라운드가 배운 함정 (CR-092)
+@todo next start는 요청 출처를 자기가 들은 호스트·포트로 조립한다 — nginx가 Host를 넘겨도 request.nextUrl.origin은 localhost:3000이고 X-Forwarded-Proto만 반영된다. 라우트 시험은 NextRequest에 출처를 직접 넣어 이것을 못 본다 — next start e2e나 이미지로 확인한다.
+@b docker compose exec는 stdout·stderr를 따로 나른다 — 2>&1로 합쳐 줄 단위로 파싱하면 도착 순서에 따라 줄이 붙는다(간헐). 한쪽만 읽는다.
+@b 셸 회귀에서 printf '%s' "$(f)"는 f의 비영 종료를 묻어 set -e를 시험하지 못한다 — 운영 코드와 같은 대입 모양으로 부른다.
+@b 사내가 적은 원인을 그대로 믿지 않는다 — 이번 일곱 중 넷이 달랐다. 피드백마다 코드·실측으로 대조한 뒤 결정을 묻는다.
+@b 쓰이지 않는 조회도 실패하면 전체를 실패시킨다 — 「나중에 필요할지 모르니 함께 읽는다」는 권한 요구를 늘린다.
+@b 검증 장을 병합 직전에 쓰면 검토자는 없는 장을 가리키는 [x]를 major로 본다 — 검토 전에 뼈대를 두거나 체크리스트를 [ ]로 둔다.
+@b 구분자 명세(docpatch)의 자리표시 검사는 명세 자체의 @@@에 걸린다 — 결과 파일을 grep한다.
+@path /home/roqkf/design-system에 다른 세션의 미커밋 변경이 있었다(Badge·Button) — 디자인 트랙 착수 전에 조율한다.
 @h2 2026-09-15 (7차) 라운드가 배운 함정 (CR-091)
 @b Host- 접두 쿠키는 Secure 없이 브라우저가 저장하지 않는다. 쿠키 속성 계약을 풀 때는 이름 규칙도 함께 본다.
 @b 문서가 적은 합집합이 코드에 없을 수 있다. 세션에 역할을 직접 넣는 시험은 합성 경로를 검증하지 않는다 — 운영 조립(createAuthContext)과 로그인이 실제로 만드는 세션으로 건다.

@@ -1,4 +1,27 @@
 # 확정한 설계 결정과 이유
+## 2026-09-15 (8차) — CR-092 사내 pilot.7 반입 피드백 (PR #194)
+
+### A. 사용자 직접 결정 (다시 논의하지 않음)
+
+- scope 503: **필요한 조회만**(저장소 500개 이하면 조직·팀 조회 생략) + 실패 단계 진단 로그 + 런북 권한 표. DB 기반 출처(사내 제안)는 `OD-002`·`FR-AUTH-002` AC-1과 충돌해 기각. 로그인 시 팀 동기화는 원인이 아니라 코드 변경 없이 회신.
+- 로그아웃: **사용자 메뉴 + 공개 로그아웃 완료 화면**. 로그인으로 곧장 보내기·`WEB_EXTERNAL_URL`은 기각.
+- `smp*` 시퀀스 브랜치: **운영 조치 안내**(런북). 이름 규칙 자동 적용은 기각.
+- 디자인 시스템 개선: **이번 PR 제외, 별도 트랙**.
+- 릴리스를 발행하지 않는다(지시).
+
+### C. 구현이 스스로 고른 것 (근거와 되돌리는 법)
+
+| 결정 | 근거 | 다른 선택지 | 되돌리기 |
+| --- | --- | --- | --- |
+| 조직·팀 조회 조건 = `shouldUseOrgTeamScope(repositoryIds.length)` | 표현은 그 범위의 저장소 수가 정해 한 캐시 값 안에서 넘나듦이 없다. 무효화는 `org_team` 행에서만 `org_ids`를 읽고 `team_ids`는 읽지 않는다 | 늘 조회(옛 동작) | `scope-source.ts`의 if |
+| 실패 로그는 단계·kind·status·required_permission만, 메시지 없음 | `GitHubApiError` 메시지가 응답 본문 앞 200자를 담는다 | 메시지 포함 | `describeScopeFailure` |
+| `/me`의 `org_count`·`team_count`는 `explicit`에서 `null` | `0`은 「조직 0개의 구성원」이라는 사실로 읽힌다. `repository_count`가 `org_team`에서 `null`인 것과 대칭 | `0` 유지 | `me.ts` `summarizeScope` |
+| 복귀 `Location`은 경로만(`redirectToPath`), 규칙 위반은 던짐 | 서버가 외부 이름을 몰라도 된다. `Host` 신뢰는 열린 리다이렉트 | `WEB_EXTERNAL_URL`, `X-Forwarded-Host` | `lib/redirect.ts` |
+| 로그아웃 응답을 `Accept`(text/html)로 가름 | 스크립트·기존 e2e의 JSON 계약 보존 | 늘 303 | `logout/route.ts` |
+| 메뉴 폼은 메뉴 밖, `onSelect`에서 `requestSubmit` | `DropdownMenu.Content`가 포털이라 폼 안에 못 넣음. Conductor `Item`은 `[icon, children]` 배열이라 `asChild`에 부적합 | fetch 뒤 이동 | `UserMenu.tsx` |
+| `http_status`: `-qO/dev/null` + `HTTP/x.y` 뒤 토큰, awk 하나로 first/last | 이중 방어, SIGPIPE 없음 | head/tail | `prsctl` `http_status` |
+| `AUTH_LOGIN_PATH` 로드 검증은 하지 않음(검토 A minor) | 배포 정의가 값을 전달하지 않아 늘 기본값 | 로드 시 거부 | 후속 후보 |
+
 ## 2026-09-15 (7차) — CR-091 사내 pilot.6 반입 피드백 (PR #191)
 
 ### A. 사용자 직접 결정 (다시 논의하지 않음)
