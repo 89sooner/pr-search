@@ -18,8 +18,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
-import { SESSION_COOKIE_NAME, sanitizeReturnPath } from '@prs/authz';
-import { buildProxyHeaders, resolveProxyAuth } from '../../../../lib/proxy';
+import { sanitizeReturnPath, sessionCookieName } from '@prs/authz';
+import { buildProxyHeaders, readBrowserCookie, resolveProxyAuth } from '../../../../lib/proxy';
 import { resolveWebConfig } from '../../../../lib/server/config';
 import { sessionStore } from '../../../../lib/server/session';
 
@@ -59,7 +59,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
    * 1. 세션. 세션 없이는 이 `state`가 누구의 것인지 서버가 확인할 수 없다. 로그인 뒤 `/gh`로
    *    돌아와 **다시 연결**한다 — 인가 코드는 1회용이라 되살리지 않는다.
    */
-  const auth = await resolveProxyAuth(request.cookies.get(SESSION_COOKIE_NAME)?.value, (id) => sessionStore().load(id));
+  const auth = await resolveProxyAuth(
+    readBrowserCookie(request.headers.get('cookie'), sessionCookieName(config.session.cookieSecure)),
+    (id) => sessionStore().load(id),
+  );
   if (auth.kind === 'unauthenticated') {
     logFailure(correlationId, '세션이 없다');
     if (config.authEnabled) {

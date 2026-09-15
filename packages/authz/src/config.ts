@@ -58,9 +58,37 @@ export interface SessionReaderConfig {
 }
 
 export function resolveSessionReaderConfig(env: AuthEnv = process.env): SessionReaderConfig {
+  const enabled = env['AUTH_ENABLED'] === undefined ? hasAuthCredentials(env) : env['AUTH_ENABLED'] === 'true';
+  const { secure } = cookiePolicy(env);
+
+  return {
+    enabled,
+    cookieSecure: secure,
+    loginPath: env['AUTH_LOGIN_PATH'] ?? '/auth/login',
+    groupRoleMap: parseGroupRoleMap(env['IDP_GROUP_ROLE_MAP']),
+  };
+}
+
+/**
+ * 운영에서 `Secure` 없는 세션 쿠키를 **명시 플래그로** 허용한 배포인가 (CR-091 / DEV-694).
+ *
+ * `ALLOW_INSECURE_COOKIES=true`로만 참이 된다. 이 배포는 평문 HTTP로 세션을 발급할 수
+ * 있으므로 `web`이 기동할 때마다 경고한다 — 받아들인 위험이 로그에서 사라지지 않게.
+ * 판정은 `resolveSessionReaderConfig`와 같은 함수(`cookiePolicy`)에서 나온다. 계약을
+ * 어긴 구성이면 똑같이 던진다.
+ */
+export function insecureCookiesAllowed(env: AuthEnv = process.env): boolean {
+  return cookiePolicy(env).insecureAllowed;
+}
+
+interface CookiePolicy {
+  readonly secure: boolean;
+  readonly insecureAllowed: boolean;
+}
+
+function cookiePolicy(env: AuthEnv): CookiePolicy {
   const production = (env['NODE_ENV'] ?? 'development') === 'production';
   const secure = env['SESSION_COOKIE_SECURE'] === undefined ? production : env['SESSION_COOKIE_SECURE'] === 'true';
-  const enabled = env['AUTH_ENABLED'] === undefined ? hasAuthCredentials(env) : env['AUTH_ENABLED'] === 'true';
 
   /*
    * 평문 HTTP로 **세션 쿠키를 내보내는** 운영 배포를 기동시키지 않는다 (AC-2).
@@ -87,20 +115,46 @@ export function resolveSessionReaderConfig(env: AuthEnv = process.env): SessionR
    * 세 번째 줄이 `CR-078`의 우려를 구조로 막는다. 값을 되돌리지 않고 인증만
    * 켜면 그 배포는 서지 못한다.
    *
-   * 그래서 이 완화는 사내가 요청한 것의 절반이다. GHE OAuth2 로그인을 실제로
-   * 시험하려면 인증을 켜야 하고, 켜면 TLS가 필요하다. 런북이 그 사실을 적는다.
+   * ## 두 번째 면제 — 위험을 이름으로 적어 낸 배포 (CR-091, 사용자 결정)
+   *
+   * `CR-083`의 면제는 사내가 요청한 것의 절반이었다. GHE 로그인을 실제로 시험하려면
+   * 인증을 켜야 하는데, 사내 파일럿(`0.1.0-pilot.6`)은 TLS를 아직 세우지 못했고 그
+   * 형상에서는 로그인 왕복 쿠키부터 브라우저가 돌려보내지 않았다.
+   *
+   * 그래서 `ALLOW_INSECURE_COOKIES=true`를 **명시한** 배포는 인증을 켠 채로도 선다.
+   * `CR-078`의 우려에 대한 답은 여전히 「계산된 상태가 아니라 적어 낸 선언」이다:
+   *
+   *   - 플래그는 `Secure`를 **끄지 않는다.** `SESSION_COOKIE_SECURE=false`와 **둘 다**
+   *     적어야 한다 — 한 줄의 실수로 평문 세션이 시작되지 않는다.
+   *   - 플래그의 이름이 받아들이는 위험을 말한다. `AUTH_ENABLED=false`처럼 다른 뜻의
+   *     값이 부수 효과로 면제를 주는 모양이 아니다.
+   *   - 값은 `true`만 켠다. `TRUE`·`yes` 같은 값은 기동을 거부한다 — 켰다고 믿는
+   *     운영자가 꺼진 배포를 보거나, 그 반대가 되지 않게.
+   *   - 허용된 배포는 `insecureCookiesAllowed`로 드러나고 `web`이 기동마다 경고한다.
    */
   const authExplicitlyDisabled = env['AUTH_ENABLED'] === 'false';
-  if (production && !secure && !authExplicitlyDisabled) {
-    throw new Error('운영에서 SESSION_COOKIE_SECURE=false는 허용되지 않는다 (FR-AUTH-001 AC-2)');
+  const allowInsecure = resolveAllowInsecureCookies(env);
+  if (production && !secure && !authExplicitlyDisabled && !allowInsecure) {
+    throw new Error(
+      '운영에서 SESSION_COOKIE_SECURE=false는 허용되지 않는다 (FR-AUTH-001 AC-2). ' +
+        'TLS를 붙이거나, 평문 HTTP 파일럿의 위험을 받아들인다면 ALLOW_INSECURE_COOKIES=true를 함께 적는다',
+    );
   }
 
-  return {
-    enabled,
-    cookieSecure: secure,
-    loginPath: env['AUTH_LOGIN_PATH'] ?? '/auth/login',
-    groupRoleMap: parseGroupRoleMap(env['IDP_GROUP_ROLE_MAP']),
-  };
+  return { secure, insecureAllowed: production && !secure && !authExplicitlyDisabled && allowInsecure };
+}
+
+/**
+ * `ALLOW_INSECURE_COOKIES` — `true`만 켠다 (CR-091 / DEV-694).
+ *
+ * 비었거나 `false`면 꺼짐이다. 그 밖의 값은 던진다 — `MNUMBER_ENABLED`·
+ * `GH_OPERATIONS_ENABLED`와 같은 규율이다.
+ */
+export function resolveAllowInsecureCookies(env: AuthEnv = process.env): boolean {
+  const raw = (env['ALLOW_INSECURE_COOKIES'] ?? '').trim();
+  if (raw === 'true') return true;
+  if (raw === '' || raw === 'false') return false;
+  throw new Error(`ALLOW_INSECURE_COOKIES는 true 또는 false여야 한다: '${raw}'`);
 }
 
 /**

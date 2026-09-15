@@ -43,6 +43,7 @@ command -v docker >/dev/null || die "docker가 없다"
 WEB_IMAGE="prs/web:${VERSION}"
 WORKER_IMAGE="prs/pipeline-worker:${VERSION}"
 EXECUTOR_IMAGE="prs/gh-executor:${VERSION}"
+SEARCH_API_IMAGE="prs/search-api:${VERSION}"
 
 CONTAINERS=()
 cleanup() { for c in "${CONTAINERS[@]:-}"; do [ -n "$c" ] && docker rm -f "$c" >/dev/null 2>&1 || true; done; }
@@ -66,6 +67,7 @@ fi
 docker image inspect "$WEB_IMAGE"    >/dev/null 2>&1 || die "이미지가 없다: $WEB_IMAGE"
 docker image inspect "$WORKER_IMAGE" >/dev/null 2>&1 || die "이미지가 없다: $WORKER_IMAGE"
 docker image inspect "$EXECUTOR_IMAGE" >/dev/null 2>&1 || die "이미지가 없다: $EXECUTOR_IMAGE"
+docker image inspect "$SEARCH_API_IMAGE" >/dev/null 2>&1 || die "이미지가 없다: $SEARCH_API_IMAGE"
 
 # ── 1. web이 실제 SSR 요청을 처리한다 ───────────────────────────
 step "web 런타임 — 정상 구성으로 기동하고 화면을 낸다"
@@ -234,6 +236,31 @@ expect_accepted() { # 라벨 그리고 환경 변수들
 expect_accepted "AUTH_ENABLED=false 명시 + insecure 쿠키 (파일럿 형상)" \
   -e AUTH_ENABLED=false -e SESSION_COOKIE_SECURE=false
 
+# **두 번째 면제 — 인증을 켠 평문 HTTP 파일럿** (`CR-091`). `ALLOW_INSECURE_COOKIES=true`를 함께 적으면 서야 하고,
+# **기동 로그에 그 위험을 남겨야 한다.** 서기만 하고 말하지 않으면 파일럿 형상이 조용히 운영이 된다.
+#
+# **환경 변수는 호출마다 인라인 `-e`로 적는다.** `apps/web/lib/server/config.test.ts`가 이 호출들에서 조합을 뽑아
+# 실제 계약 함수에 넣는다(`DEV-615`) — 배열 확장으로 묶으면 그 대조가 조합을 읽지 못한다(실측).
+expect_accepted "ALLOW_INSECURE_COOKIES=true + insecure 쿠키 + 인증 켬 (평문 HTTP 파일럿, CR-091)" \
+  -e AUTH_ENABLED=true -e SESSION_COOKIE_SECURE=false -e ALLOW_INSECURE_COOKIES=true -e AUTH_PROVIDER=github \
+  -e GHE_BASE_URL=http://ghe.invalid -e GHE_OAUTH_CLIENT_ID=c -e GHE_OAUTH_CLIENT_SECRET=s \
+  -e GHE_OAUTH_REDIRECT_URI=http://prs.invalid/auth/callback
+PILOT_LOG="$(docker logs "${CONTAINERS[${#CONTAINERS[@]}-1]}" 2>&1)"
+printf '%s' "$PILOT_LOG" | grep -qF '경고: ALLOW_INSECURE_COOKIES=true' \
+  || { printf '%s\n' "$PILOT_LOG" | tail -20 >&2; die "평문 HTTP 파일럿으로 섰는데 기동 로그에 경고가 없다 (CR-091)"; }
+pass "평문 HTTP 파일럿 → 기동 로그에 받아들인 위험을 경고한다"
+
+# 플래그만으로는 서지 않는다는 쪽과, 모르는 값은 거부한다는 쪽 (`CR-091`). 자격은 채워 두어 쿠키 말고 다른 이유로
+# 거부되지 않게 한다.
+expect_rejected "인증을 켠 insecure 쿠키에 플래그 없음 (GHE)" \
+  -e AUTH_ENABLED=true -e SESSION_COOKIE_SECURE=false -e AUTH_PROVIDER=github \
+  -e GHE_BASE_URL=http://ghe.invalid -e GHE_OAUTH_CLIENT_ID=c -e GHE_OAUTH_CLIENT_SECRET=s \
+  -e GHE_OAUTH_REDIRECT_URI=http://prs.invalid/auth/callback
+expect_rejected "ALLOW_INSECURE_COOKIES=yes (모르는 값)" \
+  -e AUTH_ENABLED=true -e SESSION_COOKIE_SECURE=false -e ALLOW_INSECURE_COOKIES=yes -e AUTH_PROVIDER=github \
+  -e GHE_BASE_URL=http://ghe.invalid -e GHE_OAUTH_CLIENT_ID=c -e GHE_OAUTH_CLIENT_SECRET=s \
+  -e GHE_OAUTH_REDIRECT_URI=http://prs.invalid/auth/callback
+
 # 이번 사내 반입을 막은 구성.
 #
 # **의도를 적지 않은 배포는 면제되지 않는다** (`CR-083`). `AUTH_ENABLED`를 주지
@@ -324,5 +351,18 @@ esac
 printf '%s' "$GHX_OUT" | grep -qF 'GH_IDENTITY_VAULT_KEY' \
   || { printf '%s\n' "$GHX_OUT" | tail -5 >&2; die "죽기는 했으나 구성 거부가 아니다 — 다른 이유로 크래시했다"; }
 pass "종료 코드 ${GHX_RC}로 거부하고 빠진 값을 로그에 남긴다"
+
+# ── search-api의 관리자 지정 역할 명령 ─────────────────────────────
+# **`prsctl role`은 이 이미지의 `dist/role-cli.js`를 부른다** (`CR-091`). 세션 인증 배포에서 `operator`를 얻는 유일한
+# 경로이므로, 배포 트리에서 모듈이 해석되지 않으면 사내에서 운영 콘솔이 통째로 닫힌다(`DEV-551`과 같은 종류의 실패).
+# 인자 없이 부르면 DB에 닿기 전에 사용법을 내고 2로 끝난다 — 네트워크 없이 진입점과 의존 해석을 함께 본다.
+step "search-api 이미지 — 관리자 지정 역할 명령이 배포 트리에서 실행된다 (CR-091)"
+set +e
+ROLE_OUT="$(docker run --rm --network none --entrypoint node "$SEARCH_API_IMAGE" dist/role-cli.js 2>&1)"
+ROLE_RC=$?
+set -e
+[ "$ROLE_RC" -eq 2 ] && printf '%s' "$ROLE_OUT" | grep -qF 'prsctl role grant' \
+  || { printf '%s\n' "$ROLE_OUT" | tail -10 >&2; die "search-api 이미지의 role-cli가 사용법을 내지 않는다 (종료 코드 ${ROLE_RC}) — prsctl role이 사내에서 실패한다"; }
+pass "node dist/role-cli.js → 종료 코드 2와 사용법 (DB 접속 전)"
 
 printf '\n번들 이미지 런타임 검사 통과 — %s\n' "$VERSION"

@@ -16,8 +16,28 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 export const IDLE_TIMEOUT_MS = 8 * 60 * 60 * 1000;
 export const ABSOLUTE_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 
-/** 쿠키 이름. `__Host-` 접두는 도메인·경로를 브라우저가 강제하게 한다. */
+/**
+ * 쿠키 이름. `__Host-` 접두는 도메인·경로를 브라우저가 강제하게 한다.
+ *
+ * **서비스 사이의 정본 이름이기도 하다.** `web`의 프록시는 브라우저가 어떤 이름으로 보냈든
+ * `search-api`로 보내는 헤더를 이 이름으로 다시 조립하므로, `search-api`는 이 이름만 읽는다.
+ */
 export const SESSION_COOKIE_NAME = '__Host-prs_session';
+
+/**
+ * `Secure` 없이 발급할 때 브라우저가 받는 세션 쿠키 이름 (CR-091 / DEV-694).
+ *
+ * **브라우저는 `__Host-` 접두 쿠키에 `Secure`가 없으면 저장하지 않는다** (RFC 6265bis의
+ * 쿠키 접두 규칙). 그래서 `Secure`만 빼고 이름을 그대로 두면 평문 HTTP 파일럿의 로그인이
+ * 여전히 성립하지 않는다 — 속성은 허용했는데 브라우저가 쿠키를 버린다. 접두 없는 이름을 쓰는
+ * 대가(하위 도메인의 쿠키 덮어쓰기 방어가 사라짐)는 평문 HTTP를 받아들인 형상에 이미 들어 있다.
+ */
+export const INSECURE_SESSION_COOKIE_NAME = 'prs_session';
+
+/** 브라우저와 주고받는 세션 쿠키 이름. `Secure`일 때만 `__Host-` 접두를 쓸 수 있다. */
+export function sessionCookieName(secure: boolean): string {
+  return secure ? SESSION_COOKIE_NAME : INSECURE_SESSION_COOKIE_NAME;
+}
 
 /** 128비트로는 짧다. 세션 ID는 그 자체가 인증 수단이다. */
 const SESSION_ID_BYTES = 32;
@@ -102,9 +122,10 @@ export interface CookieOptions {
  * - `Secure` — 평문 HTTP로 나가지 않는다.
  * - `SameSite=Lax` — 다른 사이트의 POST에 쿠키가 실리지 않는다 (CSRF).
  * - `Path=/` + `Domain` 없음 — `__Host-` 접두의 요구 조건이다.
+ * - 이름은 `sessionCookieName(secure)` — `Secure`가 없으면 접두 없는 이름이다 (CR-091).
  */
 export function serializeSessionCookie(sessionId: string, options: CookieOptions): string {
-  const parts = [`${SESSION_COOKIE_NAME}=${sessionId}`, 'Path=/', 'HttpOnly', 'SameSite=Lax'];
+  const parts = [`${sessionCookieName(options.secure)}=${sessionId}`, 'Path=/', 'HttpOnly', 'SameSite=Lax'];
   if (options.secure) parts.push('Secure');
   if (options.maxAgeSeconds !== undefined) parts.push(`Max-Age=${String(options.maxAgeSeconds)}`);
   return parts.join('; ');
@@ -112,7 +133,7 @@ export function serializeSessionCookie(sessionId: string, options: CookieOptions
 
 /** 로그아웃용. 서버 측 무효화와 **함께** 쓴다 — 이것만으로는 끝나지 않는다. */
 export function serializeClearingCookie(options: CookieOptions): string {
-  const parts = [`${SESSION_COOKIE_NAME}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
+  const parts = [`${sessionCookieName(options.secure)}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
   if (options.secure) parts.push('Secure');
   return parts.join('; ');
 }
@@ -122,15 +143,18 @@ export function serializeClearingCookie(options: CookieOptions): string {
  *
  * 같은 이름이 여러 번 오면 **거절한다.** 어느 쪽을 고르든 공격자가 원하는
  * 값을 고르게 만드는 방법이 생기기 때문이다 (쿠키 주입).
+ *
+ * @param name 기본값은 서비스 사이의 정본 이름이다. 브라우저의 헤더를 읽는 자리만
+ *   `sessionCookieName(secure)`를 넘긴다.
  */
-export function readSessionCookie(header: string | undefined): string | null {
+export function readSessionCookie(header: string | undefined, name: string = SESSION_COOKIE_NAME): string | null {
   if (header === undefined || header === '') return null;
 
   const found: string[] = [];
   for (const pair of header.split(';')) {
     const separator = pair.indexOf('=');
     if (separator < 0) continue;
-    if (pair.slice(0, separator).trim() !== SESSION_COOKIE_NAME) continue;
+    if (pair.slice(0, separator).trim() !== name) continue;
     found.push(pair.slice(separator + 1).trim());
   }
 

@@ -56,9 +56,10 @@ import {
   clearedRoundTripCookie,
   decodeRoundTrip,
   serializeCookie,
-  OIDC_STATE_COOKIE,
+  oidcStateCookieName,
   type OidcRoundTrip,
 } from '../../../lib/oidc-state';
+import { readBrowserCookie } from '../../../lib/proxy';
 import { resolveWebConfig } from '../../../lib/server/config';
 import { sessionStore } from '../../../lib/server/session';
 
@@ -214,7 +215,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const provider = resolveAuthProvider();
 
   // 1. 왕복 상태.
-  const roundTrip = decodeRoundTrip(request.cookies.get(OIDC_STATE_COOKIE)?.value);
+  // 세운 쪽(`/auth/login`)과 같은 규칙으로 이름을 고른다 — `Secure`가 없으면 접두 없는 이름이다 (CR-091).
+  // 같은 이름이 둘이면 없는 것으로 본다 — 남이 심은 왕복 상태로 로그인이 완결되지 않게 한다.
+  const roundTrip = decodeRoundTrip(readBrowserCookie(request.headers.get('cookie'), oidcStateCookieName(secure)));
   if (roundTrip === null) {
     logAuthFailure(correlationId, provider, '왕복 쿠키가 없거나 읽을 수 없다');
     return authFailed(correlationId, secure);

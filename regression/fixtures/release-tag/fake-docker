@@ -10,7 +10,9 @@
 # 무관한 이유로 이 시험이 죽는다.
 set -euo pipefail
 case "${1:-}" in
-  build|pull|load|logs|rm) exit 0 ;;
+  build|pull|load|rm) exit 0 ;;
+  # 허용 검사가 기동 로그의 경고를 찾는다(`CR-091`). `run -d`가 남긴 로그를 이름으로 돌려준다.
+  logs) name="${!#}"; [ -f "$(dirname "$0")/fake-docker.logs.${name}" ] && cat "$(dirname "$0")/fake-docker.logs.${name}"; exit 0 ;;
   image) [ "${2:-}" = "inspect" ] && { printf 'sha256:0000000000000000000000000000000000000000000000000000000000000000\n'; exit 0; }; exit 0 ;;
   save)
     out=""; prev=""
@@ -26,9 +28,13 @@ case "${1:-}" in
     # 그래서 인자에서 구성을 모아 계약대로 판정한다. 재구현이지만 대역에는 다른
     # 방법이 없다. **판정이 갈리면 `apps/web/lib/server/config.test.ts`의 대조
     # 시험이 먼저 죽는다** — 거기서 스모크의 기대를 실제 계약 함수에 넣는다.
-    AUTH_ENABLED=""; COOKIE_SECURE=""; PROVIDER=""; OIDC_ISSUER=""; GHE_CLIENT=""
+    AUTH_ENABLED=""; COOKIE_SECURE=""; PROVIDER=""; OIDC_ISSUER=""; GHE_CLIENT=""; FLAG=""; NAME=""; ROLE_CLI=0
     for a in "$@"; do
+      [ "${WANT_NAME:-0}" = "1" ] && { NAME="$a"; WANT_NAME=0; continue; }
       case "$a" in
+        --name)                 WANT_NAME=1 ;;
+        ALLOW_INSECURE_COOKIES=*) FLAG="${a#*=}" ;;
+        dist/role-cli.js)       ROLE_CLI=1 ;;
         AUTH_ENABLED=*)         AUTH_ENABLED="${a#*=}" ;;
         SESSION_COOKIE_SECURE=*) COOKIE_SECURE="${a#*=}" ;;
         AUTH_PROVIDER=*)        PROVIDER="${a#*=}" ;;
@@ -53,8 +59,16 @@ case "${1:-}" in
       exit 1
     }
 
-    # 쿠키 계약 — **명시적으로 끈 배포만 면제된다** (`CR-083`).
-    if [ "$COOKIE_SECURE" = "false" ] && [ "$AUTH_ENABLED" != "false" ]; then
+    # search-api 이미지의 역할 명령 (`CR-091`). 인자 없이 부르면 DB 전에 사용법을 내고 2로 끝난다.
+    if [ "$ROLE_CLI" = "1" ]; then
+      printf '사용법:\n  prsctl role list\n  prsctl role grant <login 또는 user_id> <역할>\n' >&2
+      exit 2
+    fi
+
+    # 쿠키 계약 — 면제는 **적어 낸 선언** 둘이다: 인증을 명시적으로 끈 배포(`CR-083`), 플래그를 함께 적은 배포(`CR-091`).
+    # 플래그 값은 `true`·`false`·빈 값만 받는다.
+    case "$FLAG" in true|false|'') ;; *) reject "ALLOW_INSECURE_COOKIES는 true 또는 false여야 한다: '${FLAG}'" ;; esac
+    if [ "$COOKIE_SECURE" = "false" ] && [ "$AUTH_ENABLED" != "false" ] && [ "$FLAG" != "true" ]; then
       reject "SESSION_COOKIE_SECURE=false (AUTH_ENABLED=${AUTH_ENABLED:-미설정})"
     fi
 
@@ -65,6 +79,11 @@ case "${1:-}" in
       else
         [ -n "$OIDC_ISSUER" ] || reject "AUTH_ENABLED=true인데 OIDC 자격이 없다"
       fi
+    fi
+
+    # 인증을 켠 평문 HTTP 파일럿은 서되 기동 로그에 경고를 남긴다 (`CR-091`).
+    if [ -n "$NAME" ] && [ "$FLAG" = "true" ] && [ "$COOKIE_SECURE" = "false" ] && [ "$AUTH_ENABLED" = "true" ]; then
+      printf '\n  경고: ALLOW_INSECURE_COOKIES=true — 세션 쿠키가 Secure 없이 발급된다 (가짜 docker)\n' > "$(dirname "$0")/fake-docker.logs.${NAME}"
     fi
 
     # `--entrypoint`로 묻는 것들. 값은 진짜 이미지의 답과 같은 모양이어야 게이트를 지난다 —

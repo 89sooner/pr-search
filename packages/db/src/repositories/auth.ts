@@ -7,6 +7,8 @@
  */
 
 import type { Pool, PoolClient } from 'pg';
+import { withTransaction } from '../pool.js';
+import { recordAudit } from './audit.js';
 
 type Queryable = Pool | PoolClient;
 
@@ -68,9 +70,131 @@ export async function findUserById(db: Queryable, userId: string): Promise<AppUs
   return rows[0] ?? null;
 }
 
+/**
+ * 관리자 지정 역할만 읽는다 (CR-091 / DEV-695).
+ *
+ * 세션을 읽는 자리가 **요청마다** 부른다 — 지정·회수가 다음 요청에 반영되려면 캐시를
+ * 두지 않아야 한다. 기본 키 조회 한 번이다. 행이 없으면 `null`.
+ */
+export async function findAssignedRoles(db: Queryable, userId: string): Promise<string[] | null> {
+  const { rows } = await db.query<{ roles: string[] }>('SELECT roles FROM app_user WHERE user_id = $1', [userId]);
+  return rows[0]?.roles ?? null;
+}
+
 /** 관리자 지정 역할을 바꾼다. IdP 매핑 역할은 여기 담기지 않는다. */
 export async function setAssignedRoles(db: Queryable, userId: string, roles: readonly string[]): Promise<void> {
   await db.query('UPDATE app_user SET roles = $2 WHERE user_id = $1', [userId, [...roles]]);
+}
+
+/** 역할을 지정받을 사용자 후보. `login`은 사람이 치는 값이라 대소문자가 다를 수 있다. */
+export interface AssignableUserRow {
+  readonly user_id: string;
+  readonly login: string;
+  readonly roles: string[];
+  readonly last_seen_at: Date | null;
+}
+
+/**
+ * 역할을 줄 대상을 찾는다 — `user_id` 또는 로그인 이름 (CR-091 / DEV-695).
+ *
+ * **`user_id`와 정확히 같으면 그 행이다.** 불변 식별자라 모호할 수 없다(`FR-AUTH-001` AC-9).
+ *
+ * 아니면 **대소문자를 무시한 로그인 이름으로** 찾고 그 행을 전부 돌려준다. GHE 로그인은 대소문자를 가리지 않으므로
+ * `Alice`와 `alice`는 같은 사람의 이름이다. 둘 이상이면 개명 흔적이 남은 것이고, 그중 하나가 대소문자까지 같아도
+ * **고르지 않는다** — 운영자가 친 대소문자가 지금 쓰이는 신원을 가리킨다는 보장이 없다(독립 검토 A). 호출자가
+ * 후보의 `user_id`와 마지막 접속을 보여 주고 `user_id`로 다시 실행하게 한다.
+ */
+export async function findAssignableUsers(db: Queryable, target: string): Promise<AssignableUserRow[]> {
+  const byId = await db.query<AssignableUserRow>(
+    'SELECT user_id, login, roles, last_seen_at FROM app_user WHERE user_id = $1',
+    [target],
+  );
+  if (byId.rows.length > 0) return byId.rows;
+
+  const folded = await db.query<AssignableUserRow>(
+    'SELECT user_id, login, roles, last_seen_at FROM app_user WHERE lower(login) = lower($1) ORDER BY last_seen_at DESC NULLS LAST, login',
+    [target],
+  );
+  return folded.rows;
+}
+
+/** 지정 역할을 하나라도 가진 사용자. `prsctl role list`가 보여 준다. */
+export async function listAssignedRoleHolders(db: Queryable, roles: readonly string[]): Promise<AssignableUserRow[]> {
+  const { rows } = await db.query<AssignableUserRow>(
+    `SELECT user_id, login, roles, last_seen_at FROM app_user
+      WHERE roles && $1::text[]
+      ORDER BY login`,
+    [[...roles]],
+  );
+  return rows;
+}
+
+export interface AssignedRoleChange {
+  readonly userId: string;
+  readonly role: string;
+  readonly change: 'grant' | 'revoke';
+  /** 감사 기록의 행위 주체 (`prsctl:<호스트 사용자>`). */
+  readonly actor: string;
+  /** `user_role.grant` 또는 `user_role.revoke` — 어휘의 정본은 `@prs/domain`이다. */
+  readonly auditAction: string;
+  readonly correlationId: string;
+}
+
+export type AssignedRoleChangeResult =
+  | { readonly outcome: 'applied'; readonly roles: string[] }
+  | { readonly outcome: 'unchanged' }
+  | { readonly outcome: 'user_not_found' };
+
+/**
+ * 관리자 지정 역할 하나를 더하거나 뺀다 (CR-091 / DEV-695).
+ *
+ * ## 변경과 감사가 한 트랜잭션이다
+ *
+ * `FR-AUTH-004` AC-6의 원칙은 「감사 쓰기는 주 트랜잭션 밖이고 그 실패가 주 동작을 바꾸지
+ * 않는다」이다. 운영 권한의 부여·회수는 그 원칙의 예외다 — `CR-090`이 운영 정책 결정에 둔
+ * 예외와 같은 근거로, **기록 없는 권한 변경이 실패한 권한 변경보다 나쁘다.** 감사 행을 쓰지
+ * 못하면(예: 이번 달 파티션이 없다) 역할도 바뀌지 않는다.
+ *
+ * ## 멱등하다
+ *
+ * 이미 가진 역할을 더하거나 없는 역할을 빼면 **아무것도 쓰지 않고** `unchanged`다. 바뀐 것이
+ * 없으므로 감사도 남기지 않는다 — `safe_marker.set`의 멱등 재시도와 같은 규율이다. 조건을
+ * `UPDATE`의 `WHERE`에 두었으므로 동시에 같은 지정을 두 번 해도 한쪽만 적용된다(행 잠금 뒤
+ * 조건을 다시 평가한다).
+ */
+export async function changeAssignedRole(pool: Pool, input: AssignedRoleChange): Promise<AssignedRoleChangeResult> {
+  return withTransaction(pool, async (client) => {
+    const exists = await client.query('SELECT 1 FROM app_user WHERE user_id = $1', [input.userId]);
+    if (exists.rowCount === 0) return { outcome: 'user_not_found' } as const;
+
+    const updated =
+      input.change === 'grant'
+        ? await client.query<{ roles: string[] }>(
+            `UPDATE app_user SET roles = array_append(roles, $2::text)
+              WHERE user_id = $1 AND NOT ($2::text = ANY(roles))
+              RETURNING roles`,
+            [input.userId, input.role],
+          )
+        : await client.query<{ roles: string[] }>(
+            `UPDATE app_user SET roles = array_remove(roles, $2::text)
+              WHERE user_id = $1 AND $2::text = ANY(roles)
+              RETURNING roles`,
+            [input.userId, input.role],
+          );
+
+    const row = updated.rows[0];
+    if (row === undefined) return { outcome: 'unchanged' } as const;
+
+    await recordAudit(client, {
+      userId: input.actor,
+      action: input.auditAction,
+      target: `${input.userId}/${input.role}`,
+      query: null,
+      resultCode: 'applied',
+      correlationId: input.correlationId,
+    });
+    return { outcome: 'applied', roles: row.roles } as const;
+  });
 }
 
 export interface PermissionCacheRow {

@@ -15,10 +15,42 @@
  * 막는가는 보안 판정이므로 Next.js 런타임 없이 시험할 수 있어야 한다.
  */
 
-import { SESSION_COOKIE_NAME } from '@prs/authz';
+import { SESSION_COOKIE_NAME, readSessionCookie } from '@prs/authz';
 
 /** 상관 ID를 실어 보내는 헤더. `search-api`가 응답에 같은 값을 돌려준다. */
 export const CORRELATION_HEADER = 'x-correlation-id';
+
+/**
+ * 브라우저가 보낸 `Cookie` 헤더에서 이름 하나의 값을 꺼낸다 — **같은 이름이 둘 이상이면 없는 것으로 본다** (CR-091).
+ *
+ * `search-api`의 `readSessionCookie`는 중복 쿠키를 거절한다(쿠키 주입 방어). 그런데 web은 값 하나를 골라
+ * `search-api`로 가는 헤더를 **다시 조립하므로**, web이 프레임워크의 `cookies.get()`으로 하나를 고르면 그 방어가
+ * 브라우저 구간에서 사라진다. 평문 HTTP 파일럿(`ALLOW_INSECURE_COOKIES`)의 쿠키 이름에는 `__Host-` 보호가 없어
+ * 하위 도메인이나 같은 망에서 `prs_session=<다른 세션>`을 하나 더 심을 수 있고, web이 그 값을 고르면 피해자의
+ * 요청이 남의 세션으로 실행된다(세션 강요, 독립 검토 A). 그래서 web도 원시 헤더를 같은 규칙으로 읽는다.
+ */
+export function readBrowserCookie(header: string | null | undefined, name: string): string | undefined {
+  return readSessionCookie(header ?? undefined, name) ?? undefined;
+}
+
+/**
+ * 같은 이름의 값을 **전부** 꺼낸다 — 로그아웃 전용 (CR-091).
+ *
+ * 인증 판정은 중복을 거절해야 하지만(`readBrowserCookie`) 로그아웃은 방향이 반대다. 중복 중 어느 것이 이
+ * 사용자의 세션인지 모르므로 하나도 지우지 않으면 **피해자의 세션이 서버에 남는다.** 전부 지운다 — 남이 심은
+ * 값이 섞여 있어도 그 세션을 끝내는 것은 해가 되지 않는다.
+ */
+export function readBrowserCookieValues(header: string | null | undefined, name: string): string[] {
+  if (header === null || header === undefined || header === '') return [];
+  const values: string[] = [];
+  for (const pair of header.split(';')) {
+    const separator = pair.indexOf('=');
+    if (separator < 0 || pair.slice(0, separator).trim() !== name) continue;
+    const value = pair.slice(separator + 1).trim();
+    if (value !== '' && !values.includes(value)) values.push(value);
+  }
+  return values;
+}
 
 /**
  * 클라이언트 → `search-api`로 **넘어가는** 헤더.

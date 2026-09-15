@@ -194,6 +194,91 @@ describe('CR-083: GHE 콜백이 신원을 정하는 방식', () => {
   });
 });
 
+/**
+ * 평문 HTTP 파일럿의 로그인 왕복 (`CR-091` / `DEV-694`).
+ *
+ * 사내 `0.1.0-pilot.6`은 `http://` 주소로 GHE 로그인을 시험했고 콜백이 「왕복 쿠키가 없거나
+ * 읽을 수 없다」로 끝났다. 이 묶음은 **로그인 라우트가 실제로 낸 `Set-Cookie`를 브라우저처럼
+ * 되돌려 보내** 콜백까지 흐르게 한다. 두 가지를 함께 건다: `Secure`가 없는 쿠키에 `__Host-`
+ * 접두가 붙지 않는다(붙으면 브라우저가 버린다), 세운 이름과 읽는 이름이 같다.
+ */
+describe('CR-091: ALLOW_INSECURE_COOKIES 배포의 로그인 왕복', () => {
+  const PILOT_ENV: Record<string, string> = {
+    ...GHE_ENV,
+    SESSION_COOKIE_SECURE: 'false',
+    ALLOW_INSECURE_COOKIES: 'true',
+    GHE_OAUTH_REDIRECT_URI: 'http://prs.intra/auth/callback',
+  };
+
+  /** `Set-Cookie` 한 줄을 브라우저가 돌려보낼 `name=value`로 줄인다. 브라우저의 거부 규칙도 흉내 낸다. */
+  function asBrowserCookie(setCookie: string): string {
+    const [pair = '', ...attributes] = setCookie.split(';').map((part) => part.trim());
+    const secure = attributes.some((attribute) => attribute.toLowerCase() === 'secure');
+    // RFC 6265bis: `__Host-`·`__Secure-` 접두 쿠키는 `Secure` 없이 저장되지 않는다.
+    if (!secure && /^__(Host|Secure)-/.test(pair)) throw new Error(`브라우저가 버리는 쿠키다: ${setCookie}`);
+    return pair;
+  }
+
+  it('로그인이 세운 왕복 쿠키로 콜백이 세션을 발급하고, 두 쿠키 모두 브라우저가 받는 모양이다', async () => {
+    for (const [key, value] of Object.entries(PILOT_ENV)) vi.stubEnv(key, value);
+    stubFetch({ user: { id: 4021, login: 'kim' } });
+    const login = await import('../login/route.js');
+
+    const started = login.GET(new NextRequest(new URL('/auth/login?return_to=/search', 'http://prs.intra')));
+    const roundTripSetCookie = started.headers.getSetCookie().find((one) => one.includes('prs_oidc')) ?? '';
+    const roundTripCookie = asBrowserCookie(roundTripSetCookie);
+    expect(roundTripCookie.startsWith('prs_oidc=')).toBe(true);
+    const state = new URL(started.headers.get('location') ?? '').searchParams.get('state') ?? '';
+
+    const callback = await GET(
+      new NextRequest(new URL(`/auth/callback?code=test-code&state=${state}`, 'http://prs.intra'), {
+        headers: { cookie: roundTripCookie },
+      }),
+    );
+
+    expect(callback.status).toBe(307);
+    expect(created).toHaveLength(1);
+    const cookies = callback.headers.getSetCookie();
+    const session = cookies.find((one) => one.startsWith('prs_session='));
+    expect(session, '세션 쿠키가 접두 없는 이름으로 나가지 않았다').toBeDefined();
+    expect(asBrowserCookie(session ?? '')).toBe(`prs_session=${created[0]?.sessionId ?? ''}`);
+    expect(cookies.join('\n')).not.toContain('__Host-');
+  });
+
+  /**
+   * **같은 이름의 왕복 쿠키가 둘이면 로그인을 완결하지 않는다** (독립 검토 A).
+   *
+   * 접두 없는 이름은 하위 도메인·같은 망에서 하나 더 심을 수 있다. 프레임워크가 그중 하나를 고르게 두면 남이 심은
+   * 왕복 상태로 로그인이 완결될 수 있다 — search-api가 세션 쿠키에 하는 중복 거절을 web도 한다.
+   */
+  it('중복 왕복 쿠키는 없는 것으로 본다 — 세션을 발급하지 않는다', async () => {
+    for (const [key, value] of Object.entries(PILOT_ENV)) vi.stubEnv(key, value);
+    stubFetch({ user: { id: 4021, login: 'kim' } });
+    const login = await import('../login/route.js');
+    const started = login.GET(new NextRequest(new URL('/auth/login?return_to=/search', 'http://prs.intra')));
+    const roundTripCookie = asBrowserCookie(started.headers.getSetCookie().find((one) => one.includes('prs_oidc')) ?? '');
+    const state = new URL(started.headers.get('location') ?? '').searchParams.get('state') ?? '';
+
+    const callback = await GET(
+      new NextRequest(new URL(`/auth/callback?code=test-code&state=${state}`, 'http://prs.intra'), {
+        headers: { cookie: `${roundTripCookie}; prs_oidc=planted-by-someone-else` },
+      }),
+    );
+
+    expect(callback.status).toBe(401);
+    expect(created).toHaveLength(0);
+  });
+
+  it('TLS 배포의 쿠키 이름은 그대로다 — 이미 로그인한 사용자의 세션이 끊기지 않는다', async () => {
+    stubFetch({ user: { id: 4021, login: 'kim' } });
+
+    const response = await GET(callbackRequest().request);
+
+    const cookies = response.headers.getSetCookie();
+    expect(cookies.some((one) => one.startsWith('__Host-prs_session=') && one.includes('Secure'))).toBe(true);
+  });
+});
+
 describe('CR-083: 콜백 실패가 한 가지 모양으로만 보인다', () => {
   const failures: [string, () => NextRequest][] = [
     [

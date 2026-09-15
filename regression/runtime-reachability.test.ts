@@ -2832,7 +2832,11 @@ describe('첫 사내 반입이 드러낸 계약 (CR-066)', () => {
 
     expect(overriding, 'anchor를 덮는 워커가 하나도 없다 — 구조가 바뀌었다').not.toHaveLength(0);
 
-    const section = RUNBOOK.slice(RUNBOOK.indexOf('anchor는 얕게 합쳐진다'));
+    // **절 제목에서 자른다** (CR-091). 같은 낱말이 5장 표에도 있어 첫 등장부터 자르면, 그 사이에 다른 `bash` 블록
+    // (6장 「운영 역할 지정하기」)이 생기는 순간 엉뚱한 블록을 확인 명령으로 읽는다.
+    const heading = RUNBOOK.indexOf('#### 2단계의 함정 — anchor는 얕게 합쳐진다');
+    expect(heading, 'anchor 절 제목이 없다').toBeGreaterThan(-1);
+    const section = RUNBOOK.slice(heading);
     // **표의 그 행에서 잰다.** 문서 어딘가에 이름이 있다는 것으로는 부족하다 —
     // 「개별로 더한다」고 지시하는 행에 빠져 있으면 운영자가 그 서비스를 건너뛴다.
     const row = section.split('\n').find((line) => line.includes('개별로 더한다'));
@@ -4059,7 +4063,9 @@ describe('REL-007 R0: GitHub Operations Plane이 배포에서 실제로 돈다 (
     execFileSync('docker', ['compose', 'version'], { stdio: 'ignore' });
     const prsctl = read('deploy/single-host/prsctl');
     const fn = (name: string): string => new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?\\r?\\n\\}`, 'm').exec(prsctl)?.[0] ?? '';
-    const shell = ['GH_OPS_STATE=""', fn('gh_operations_value'), fn('gh_operations_state')].join('\n');
+    // CR-091: 렌더 추출이 `rendered_env_value` 하나로 모였다 — 토큰 충돌 사전 감지(DEV-696)가 같은 함수를 쓴다.
+    const shell = ['GH_OPS_STATE=""', fn('rendered_env_value'), fn('gh_operations_value'), fn('gh_operations_state')].join('\n');
+    expect(fn('gh_operations_value')).toContain('rendered_env_value search-api GH_OPERATIONS_ENABLED');
     expect(shell).toContain('docker compose');
     expect(shell).toContain('gh_operations_state()');
     const classifyApi = (value: string): 'on' | 'off' | 'reject' => {

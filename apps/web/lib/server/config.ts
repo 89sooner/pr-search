@@ -9,6 +9,7 @@ import 'server-only';
  */
 
 import {
+  insecureCookiesAllowed,
   resolveAuthProvider,
   resolveGitHubAuthConfig,
   resolveOidcConfig,
@@ -109,6 +110,27 @@ export function webConfigFailure(env: NodeJS.ProcessEnv = process.env): string |
   }
 
   return null;
+}
+
+/**
+ * 성립하지만 **받아들인 위험을 담은** 구성의 경고 (CR-091 / DEV-694).
+ *
+ * **성립하지 않는 구성에서는 빈 목록이다** — 그 구성은 경고가 아니라 기동 거부의 대상이고,
+ * 이유는 `webConfigFailure`가 말한다. 여기서 던지면 기동 검증이 거부 이유를 적기 전에 죽는다.
+ * 지금은 하나다: 운영에서 인증을 켠 채 `ALLOW_INSECURE_COOKIES=true`로 평문 HTTP 세션을
+ * 허용한 배포.
+ */
+export function webConfigWarnings(env: NodeJS.ProcessEnv = process.env): string[] {
+  if (webConfigFailure(env) !== null) return [];
+  const warnings: string[] = [];
+  if (resolveWebConfig(env).authEnabled && insecureCookiesAllowed(env)) {
+    warnings.push(
+      'ALLOW_INSECURE_COOKIES=true — 세션 쿠키가 Secure 없이 발급된다. 같은 망의 누구든 평문 HTTP에서 ' +
+        '세션을 가로챌 수 있다. 파일럿 전용이며, TLS를 붙이면 SESSION_COOKIE_SECURE=true로 되돌리고 이 값을 지운다 ' +
+        '(FR-AUTH-001 AC-2, RUNBOOK 6장)',
+    );
+  }
+  return warnings;
 }
 
 /** 던져진 것에서 사람이 읽을 이유만 꺼낸다. 값이 아니라 계약 문구다. */

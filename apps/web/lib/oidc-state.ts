@@ -19,6 +19,20 @@ import type { AuthorizationRequest } from '@prs/authz';
 export const OIDC_STATE_COOKIE = '__Host-prs_oidc';
 
 /**
+ * `Secure` 없이 세울 때의 이름 (CR-091 / DEV-694).
+ *
+ * 브라우저는 `__Host-` 접두 쿠키에 `Secure`가 없으면 저장하지 않는다. 사내
+ * `0.1.0-pilot.6`의 평문 HTTP 로그인이 「왕복 쿠키가 없거나 읽을 수 없다」로 끝난 자리가
+ * 이 쿠키였다 — 속성만 풀고 이름을 두면 같은 자리에서 같은 이유로 다시 끝난다.
+ */
+export const INSECURE_OIDC_STATE_COOKIE = 'prs_oidc';
+
+/** 왕복 쿠키 이름. `Secure`일 때만 `__Host-` 접두를 쓸 수 있다. 세울 때와 읽을 때 같은 함수를 쓴다. */
+export function oidcStateCookieName(secure: boolean): string {
+  return secure ? OIDC_STATE_COOKIE : INSECURE_OIDC_STATE_COOKIE;
+}
+
+/**
  * 왕복 상태의 수명 (10분).
  *
  * IdP 로그인 화면에서 사용자가 머무는 시간을 넉넉히 덮되, 브라우저에 오래
@@ -86,11 +100,11 @@ export interface CookieAttributes {
  * 쿠키를 세운다.
  *
  * `__Host-` 접두를 쓰므로 `Secure`·`Path=/`가 필수이고 `Domain`을 둘 수 없다 —
- * 하위 도메인이 이 쿠키를 덮어쓰지 못하게 한다.
+ * 하위 도메인이 이 쿠키를 덮어쓰지 못하게 한다. `Secure`가 없으면 접두 없는 이름이다.
  */
 export function roundTripCookie(value: string, secure: boolean): CookieAttributes {
   return {
-    name: OIDC_STATE_COOKIE,
+    name: oidcStateCookieName(secure),
     value,
     httpOnly: true,
     secure,

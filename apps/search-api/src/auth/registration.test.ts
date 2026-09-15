@@ -53,6 +53,10 @@ interface RecordedQuery {
   readonly values: readonly unknown[];
 }
 
+/** 정본 **등록** 질의만 추린다. 역할 조회(DEV-695)는 요청마다 돌므로 등록 횟수와 섞지 않는다. */
+const inserts = (queries: readonly RecordedQuery[]): RecordedQuery[] =>
+  queries.filter((query) => query.text.includes('INSERT INTO app_user'));
+
 /** `Pool` 대역. `upsertUserOnLogin`이 부르는 `query` 하나만 받는다. */
 function fakePool(options: { failWith?: Error } = {}): {
   readonly pool: Pool;
@@ -100,10 +104,11 @@ describe('DEV-613: 세션을 읽으면 정본에 사용자 행이 있게 한다'
     const loaded = await store.load(sessionId);
 
     expect(loaded).not.toBeNull();
+    expect(inserts(queries)).toHaveLength(1);
+    // 등록 요청은 upsert의 반환 행으로 역할을 읽는다 — 질의가 하나 더 붙지 않는다.
     expect(queries).toHaveLength(1);
-    expect(queries[0]?.text).toContain('INSERT INTO app_user');
     // 신원·로그인·GHE 숫자 id·이메일이 그대로 간다.
-    expect(queries[0]?.values).toEqual(['4021', 'kim', 4021, 'kim@example.com']);
+    expect(inserts(queries)[0]?.values).toEqual(['4021', 'kim', 4021, 'kim@example.com']);
   });
 
   /**
@@ -117,7 +122,7 @@ describe('DEV-613: 세션을 읽으면 정본에 사용자 행이 있게 한다'
 
     await store.load(sessionId);
 
-    expect(queries[0]?.values[2]).toBeNull();
+    expect(inserts(queries)[0]?.values[2]).toBeNull();
   });
 
   it('같은 사용자를 여러 번 읽어도 정본을 한 번만 친다', async () => {
@@ -129,7 +134,7 @@ describe('DEV-613: 세션을 읽으면 정본에 사용자 행이 있게 한다'
     await store.load(sessionId);
     await store.load(sessionId);
 
-    expect(queries).toHaveLength(1);
+    expect(inserts(queries)).toHaveLength(1);
   });
 
   /**
@@ -147,8 +152,8 @@ describe('DEV-613: 세션을 읽으면 정본에 사용자 행이 있게 한다'
     await store.load(await seed(store, { login: 'kim' }));
     await store.load(await seed(store, { login: 'kim-renamed' }));
 
-    expect(queries).toHaveLength(2);
-    expect(queries[1]?.values[1]).toBe('kim-renamed');
+    expect(inserts(queries)).toHaveLength(2);
+    expect(inserts(queries)[1]?.values[1]).toBe('kim-renamed');
   });
 
   it('이메일이 바뀌어도 다시 등록한다', async () => {
@@ -158,8 +163,8 @@ describe('DEV-613: 세션을 읽으면 정본에 사용자 행이 있게 한다'
     await store.load(await seed(store, { email: 'old@example.com' }));
     await store.load(await seed(store, { email: 'new@example.com' }));
 
-    expect(queries).toHaveLength(2);
-    expect(queries[1]?.values[3]).toBe('new@example.com');
+    expect(inserts(queries)).toHaveLength(2);
+    expect(inserts(queries)[1]?.values[3]).toBe('new@example.com');
   });
 
   it('내용이 그대로면 세션이 달라도 한 번만 친다', async () => {
@@ -169,7 +174,7 @@ describe('DEV-613: 세션을 읽으면 정본에 사용자 행이 있게 한다'
     await store.load(await seed(store));
     await store.load(await seed(store));
 
-    expect(queries).toHaveLength(1);
+    expect(inserts(queries)).toHaveLength(1);
   });
 
   it('사용자가 다르면 각각 등록한다', async () => {
@@ -181,7 +186,7 @@ describe('DEV-613: 세션을 읽으면 정본에 사용자 행이 있게 한다'
     await store.load(first);
     await store.load(second);
 
-    expect(queries.map((q) => q.values[0])).toEqual(['a', 'b']);
+    expect(inserts(queries).map((q) => q.values[0])).toEqual(['a', 'b']);
   });
 
   it('세션이 없으면 정본을 건드리지 않는다', async () => {
@@ -221,11 +226,12 @@ describe('DEV-613: 세션을 읽으면 정본에 사용자 행이 있게 한다'
 
     await store.load(sessionId);
 
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.message).toContain('DEV-613');
-    expect(seen[0]?.detail['user_id']).toBe('4021');
-    // 이메일은 신원 확인에 필요하지 않다 (NFR-005).
-    expect(JSON.stringify(seen[0]?.detail)).not.toContain('kim@example.com');
+    // 이 대역은 모든 질의에 실패하므로 역할 조회 실패(DEV-695)도 한 줄 남는다. 등록 로그는 하나다.
+    const registration = seen.filter((entry) => entry.message.includes('DEV-613'));
+    expect(registration).toHaveLength(1);
+    expect(registration[0]?.detail['user_id']).toBe('4021');
+    // 이메일은 신원 확인에 필요하지 않다 (NFR-005). 어느 로그에도 싣지 않는다.
+    expect(JSON.stringify(seen.map((entry) => entry.detail))).not.toContain('kim@example.com');
   });
 
   /**
@@ -249,15 +255,15 @@ describe('DEV-613: 세션을 읽으면 정본에 사용자 행이 있게 한다'
     const sessionId = await seed(store);
 
     await store.load(sessionId);
-    expect(queries).toHaveLength(1);
+    expect(inserts(queries)).toHaveLength(1);
 
     fail = false;
     await store.load(sessionId);
-    expect(queries).toHaveLength(2);
+    expect(inserts(queries)).toHaveLength(2);
 
-    // 성공한 뒤에는 캐시가 선다.
+    // 성공한 뒤에는 캐시가 선다 — 역할 조회는 요청마다 돌지만 등록은 다시 하지 않는다.
     await store.load(sessionId);
-    expect(queries).toHaveLength(2);
+    expect(inserts(queries)).toHaveLength(2);
   });
 
   /**
@@ -276,5 +282,140 @@ describe('DEV-613: 세션을 읽으면 정본에 사용자 행이 있게 한다'
     expect(await store.load(sessionId)).toBeNull();
     // 세션 쿠키 계약은 감싸도 그대로다 (FR-AUTH-001 AC-2).
     expect(serializeSessionCookie(sessionId, { secure: true })).toContain('HttpOnly');
+  });
+});
+
+/**
+ * 실효 역할 = 세션 역할 ∪ 관리자 지정값 (`CR-091` / `DEV-695`).
+ *
+ * 보안 문서 5.1과 API-AUTH-001은 이 합집합을 적었지만 **코드에 없었다** — 로그인 콜백은
+ * DB에 닿지 않아 지정값 없이 세션을 만들었고, 세션을 읽는 자리는 세션의 역할만 봤다.
+ * 그래서 사내 `0.1.0-pilot.6`에서 GHE 로그인으로 바꾼 뒤 누구도 `operator`가 될 수 없었다.
+ */
+describe('DEV-695: 세션을 읽을 때 관리자 지정 역할을 더한다', () => {
+  /** 등록 upsert와 역할 조회에 각각 답하는 `Pool` 대역. */
+  function rolesPool(answer: {
+    readonly upsert?: () => readonly string[];
+    readonly select?: () => readonly string[] | null;
+  }): { readonly pool: Pool; readonly queries: RecordedQuery[] } {
+    const queries: RecordedQuery[] = [];
+    const pool = {
+      query: async (text: string, values: readonly unknown[]) => {
+        queries.push({ text, values });
+        if (text.includes('INSERT INTO app_user')) {
+          return { rows: [{ user_id: values[0], login: values[1], roles: answer.upsert?.() ?? ['developer'] }] };
+        }
+        const roles = answer.select?.() ?? null;
+        return { rows: roles === null ? [] : [{ roles }] };
+      },
+    } as unknown as Pool;
+    return { pool, queries };
+  }
+
+  it('등록하는 요청은 upsert가 돌려준 지정값을 더한다', async () => {
+    const { pool } = rolesPool({ upsert: () => ['developer', 'operator'] });
+    const store = new RegisteringSessionStore({ redis: fakeRedis(), pool });
+
+    const loaded = await store.load(await seed(store, { roles: ['developer', 'manager'] }));
+
+    expect(loaded?.session.roles).toEqual(['developer', 'manager', 'operator']);
+  });
+
+  it('등록된 뒤에는 요청마다 다시 읽는다 — 지정도 회수도 다음 요청에 반영된다', async () => {
+    let assigned: readonly string[] = ['developer'];
+    const { pool, queries } = rolesPool({ upsert: () => assigned, select: () => assigned });
+    const store = new RegisteringSessionStore({ redis: fakeRedis(), pool });
+    const sessionId = await seed(store);
+
+    expect((await store.load(sessionId))?.session.roles).toEqual(['developer']);
+
+    assigned = ['developer', 'operator'];
+    expect((await store.load(sessionId))?.session.roles).toEqual(['developer', 'operator']);
+
+    assigned = ['developer'];
+    expect((await store.load(sessionId))?.session.roles).toEqual(['developer']);
+
+    // 등록은 한 번, 역할 조회는 등록 뒤의 두 요청.
+    expect(inserts(queries)).toHaveLength(1);
+    expect(queries.filter((query) => query.text.includes('SELECT roles'))).toHaveLength(2);
+  });
+
+  /**
+   * **Redis에 되써 넣지 않는다.** 세션 레코드는 유휴 시각을 갱신할 때 통째로 다시 쓰이므로
+   * 되써 넣으면 `web`의 쓰기와 서로 덮고, 회수가 세션 수명 동안 늦어진다.
+   */
+  it('실효 역할을 세션 레코드에 저장하지 않는다', async () => {
+    const redis = fakeRedis();
+    const { pool } = rolesPool({ upsert: () => ['developer', 'operator'] });
+    const store = new RegisteringSessionStore({ redis, pool });
+    const sessionId = await seed(store);
+
+    await store.load(sessionId);
+
+    const stored = [...redis.store.values()].map((raw) => JSON.parse(raw) as { roles: string[] });
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.roles).toEqual(['developer']);
+  });
+
+  it('지정값을 읽지 못하면 세션 역할만 쓰고 그 사실을 남긴다 — 과잉 허용이 아니라 거절 쪽이다', async () => {
+    let failSelect = false;
+    const queries: RecordedQuery[] = [];
+    const pool = {
+      query: async (text: string, values: readonly unknown[]) => {
+        queries.push({ text, values });
+        if (text.includes('INSERT INTO app_user')) return { rows: [{ user_id: values[0], roles: ['developer', 'operator'] }] };
+        if (failSelect) throw new Error('connection terminated');
+        return { rows: [{ roles: ['developer', 'operator'] }] };
+      },
+    } as unknown as Pool;
+    const seen: { message: string; detail: Record<string, unknown> }[] = [];
+    const store = new RegisteringSessionStore({ redis: fakeRedis(), pool, log: (message, detail) => seen.push({ message, detail }) });
+    const sessionId = await seed(store, { roles: ['developer', 'qa'] });
+
+    expect((await store.load(sessionId))?.session.roles).toContain('operator');
+
+    failSelect = true;
+    const loaded = await store.load(sessionId);
+
+    expect(loaded).not.toBeNull();
+    expect(loaded?.session.roles).toEqual(['developer', 'qa']);
+    expect(seen.map((entry) => entry.message)).toEqual([expect.stringContaining('DEV-695')]);
+    expect(seen[0]?.detail['user_id']).toBe('4021');
+  });
+
+  it('등록이 실패해도 지정값은 user_id로 읽는다 — 개명 충돌이 운영 권한을 지우지 않는다', async () => {
+    const pool = {
+      query: async (text: string) => {
+        if (text.includes('INSERT INTO app_user')) throw new Error('duplicate key value violates unique constraint');
+        return { rows: [{ roles: ['developer', 'operator'] }] };
+      },
+    } as unknown as Pool;
+    const store = new RegisteringSessionStore({ redis: fakeRedis(), pool });
+
+    const loaded = await store.load(await seed(store));
+
+    expect(loaded?.session.roles).toEqual(['developer', 'operator']);
+  });
+
+  it('정본에 행이 없으면 세션 역할 그대로다', async () => {
+    const pool = {
+      query: async (text: string) => {
+        if (text.includes('INSERT INTO app_user')) throw new Error('duplicate key');
+        return { rows: [] };
+      },
+    } as unknown as Pool;
+    const store = new RegisteringSessionStore({ redis: fakeRedis(), pool });
+
+    expect((await store.load(await seed(store, { roles: ['developer', 'manager'] })))?.session.roles).toEqual([
+      'developer',
+      'manager',
+    ]);
+  });
+
+  it('DB에 적힌 역할이 아닌 값은 권한이 되지 않는다', async () => {
+    const { pool } = rolesPool({ upsert: () => ['developer', 'admin', 'OPERATOR'] });
+    const store = new RegisteringSessionStore({ redis: fakeRedis(), pool });
+
+    expect((await store.load(await seed(store)))?.session.roles).toEqual(['developer']);
   });
 });

@@ -13,6 +13,7 @@ import {
   hasRole,
   isRole,
   parseGroupRoleMap,
+  withAssignedRoles,
 } from './roles.js';
 
 const MAP = parseGroupRoleMap('eng-managers:manager,qa-guild:qa');
@@ -51,6 +52,43 @@ describe('DEV-049: 역할 합성', () => {
     const b = composeRoles(['qa-guild'], ['operator', 'qa'], MAP);
     expect(a).toEqual(b);
     expect(new Set(a).size).toBe(a.length);
+  });
+});
+
+/**
+ * 세션 역할 + DB 지정값 (`CR-091` / `DEV-695`).
+ *
+ * 로그인 콜백은 DB에 닿지 않아 지정값 없이 세션을 만든다. 세션을 읽는 자리가 요청마다
+ * 이 함수로 나머지 절반을 더한다 — 그래서 지정도 **회수도** 다음 요청에 반영된다.
+ */
+describe('DEV-695: 세션 역할에 DB 지정값을 더한다', () => {
+  it('세션의 팀 매핑 역할과 DB의 operator를 합친다', () => {
+    expect(withAssignedRoles(['developer', 'manager'], ['developer', 'operator'])).toEqual([
+      'developer',
+      'manager',
+      'operator',
+    ]);
+  });
+
+  it('DB에서 회수되면 결과에서도 빠진다 — 세션에 남은 흔적으로 되살아나지 않는다', () => {
+    // 세션 역할은 로그인 때의 IdP 절반뿐이다. operator가 거기 있을 길은 없지만,
+    // 있다고 해도 이 함수는 넣어 준 두 집합만 합친다.
+    expect(withAssignedRoles(['developer', 'manager'], ['developer'])).toEqual(['developer', 'manager']);
+  });
+
+  it('developer는 늘 있다 — 두 집합이 비어도', () => {
+    expect(withAssignedRoles([], [])).toEqual(['developer']);
+  });
+
+  it('역할이 아닌 문자열은 어느 쪽에서 와도 버린다', () => {
+    expect(withAssignedRoles(['admin'], ['operatorr', 'OPERATOR', ''])).toEqual(['developer']);
+  });
+
+  it('composeRoles와 같은 답을 낸다 — 로그인 때 합성한 것에 더하면 한 번에 합성한 것과 같다', () => {
+    const sessionRoles = composeRoles(['qa-guild'], [], MAP);
+    expect(withAssignedRoles(sessionRoles, ['security_officer', 'qa'])).toEqual(
+      composeRoles(['qa-guild'], ['security_officer', 'qa'], MAP),
+    );
   });
 });
 

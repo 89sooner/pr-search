@@ -8,11 +8,13 @@
 import { describe, expect, it } from 'vitest';
 import { createAuthorizationRequest } from '@prs/authz';
 import {
+  INSECURE_OIDC_STATE_COOKIE,
   OIDC_STATE_COOKIE,
   OIDC_STATE_TTL_SECONDS,
   clearedRoundTripCookie,
   decodeRoundTrip,
   encodeRoundTrip,
+  oidcStateCookieName,
   roundTripCookie,
 } from './oidc-state';
 
@@ -94,6 +96,23 @@ describe('쿠키 속성', () => {
     expect(cookie.path).toBe('/');
     // `Domain`이 없어야 한다 — 속성 자체를 두지 않는다.
     expect(cookie).not.toHaveProperty('domain');
+  });
+
+  /**
+   * **`Secure`가 없으면 `__Host-` 접두도 없다** (`CR-091` / `DEV-694`).
+   *
+   * 사내 `0.1.0-pilot.6`의 평문 HTTP 로그인은 이 쿠키에서 「왕복 쿠키가 없거나 읽을 수 없다」로
+   * 끝났다. 브라우저는 `Secure` 없는 `__Host-` 쿠키를 저장하지 않으므로 속성만 풀면 같은 자리에서
+   * 다시 끝난다. 세울 때와 읽을 때 같은 함수가 이름을 고른다.
+   */
+  it('Secure가 없는 왕복 쿠키는 접두 없는 이름이다 — 세우는 이름과 읽는 이름이 같다', () => {
+    const cookie = roundTripCookie('value', false);
+    expect(cookie.name).toBe(INSECURE_OIDC_STATE_COOKIE);
+    expect(cookie.name.startsWith('__')).toBe(false);
+    expect(cookie.secure).toBe(false);
+    expect(oidcStateCookieName(false)).toBe(cookie.name);
+    expect(clearedRoundTripCookie(false).name).toBe(cookie.name);
+    expect(oidcStateCookieName(true)).toBe(OIDC_STATE_COOKIE);
   });
 
   it('HttpOnly다 — 스크립트가 `codeVerifier`를 읽지 못한다', () => {

@@ -119,6 +119,31 @@ export function composeRoles(
   return ROLES.filter((role) => roles.has(role));
 }
 
+/**
+ * 세션에 담긴 역할에 DB 지정값을 더한다 (CR-091 / DEV-695).
+ *
+ * `composeRoles`의 합집합은 **로그인 시점에 절반만** 성립했다. 로그인 콜백을 도는
+ * `web`은 DB에 닿지 않으므로 지정값 자리에 빈 배열을 넘겼고, 세션을 읽는 두 서비스는
+ * 세션의 역할만 봤다. 그래서 `app_user.roles[]`에 `operator`를 적어도 **어디에도
+ * 반영되지 않았다** — 보안 문서 5.1과 API-AUTH-001이 적은 합집합이 코드에 없었다.
+ *
+ * 나머지 절반은 **세션을 읽는 자리가 요청마다** 이 함수로 더한다. 세션에 되써 넣지
+ * 않는다 — 세션 레코드는 읽을 때마다 통째로 다시 쓰이므로(유휴 시각 갱신) 되써 넣으면
+ * 두 서비스의 쓰기가 서로 덮고, 무엇보다 회수가 세션 수명(최대 12시간) 동안 늦어진다.
+ *
+ * 규칙은 `composeRoles`와 같다: `developer`는 늘 있고, 역할이 아닌 문자열은 버린다.
+ *
+ * @param sessionRoles 로그인 때 합성한 역할 (IdP 그룹·GHE 팀 매핑)
+ * @param assigned `app_user.roles[]`의 DB 지정값
+ */
+export function withAssignedRoles(sessionRoles: readonly string[], assigned: readonly string[]): Role[] {
+  const roles = new Set<Role>([DEFAULT_ROLE]);
+  for (const role of [...sessionRoles, ...assigned]) {
+    if (isRole(role)) roles.add(role);
+  }
+  return ROLES.filter((role) => roles.has(role));
+}
+
 export function hasRole(roles: readonly string[], required: Role): boolean {
   return roles.includes(required);
 }

@@ -114,14 +114,22 @@ describe('FR-AUTH-001: 화면 라우트는 전부 공통 관문을 지난다', (
        * 세션에 관한 결정은 전부 `page-guard.tsx` 안에 있어야 한다.
        */
       expect(source).not.toContain('SESSION_COOKIE_NAME');
+      // 브라우저 쪽 이름은 `Secure` 여부로 갈린다 (CR-091). 그 판정도 관문 안에만 있어야 한다.
+      expect(source).not.toContain('sessionCookieName(');
       expect(source).not.toContain('sessionStore(');
+      // 실효 역할(DEV-695)도 관문이 묻는다. 화면이 따로 물으면 두 판정이 갈라진다.
+      expect(source).not.toContain('resolveEffectiveRoles(');
     },
   );
 
-  it('관문 자신은 세 가지를 모두 한다 — 읽고, 없으면 보내고, 셸을 세운다', () => {
+  it('관문 자신은 네 가지를 모두 한다 — 읽고, 없으면 보내고, 실효 역할을 묻고, 셸을 세운다', () => {
     const guard = readFileSync(join(WEB_ROOT, 'lib/server/page-guard.tsx'), 'utf8');
-    expect(guard).toContain('SESSION_COOKIE_NAME');
+    // `Secure` 여부로 갈리는 이름을 세울 때와 같은 함수로 읽는다 (CR-091).
+    expect(guard).toContain('sessionCookieName(config.session.cookieSecure)');
     expect(guard).toContain('sessionStore()');
+    // 역할은 세션 레코드가 아니라 search-api의 /me에서 온다 (DEV-695, API-AUTH-001).
+    expect(guard).toContain('resolveEffectiveRoles(');
+    expect(guard).not.toMatch(/session\.roles as/);
     // 확인만 하고 통과시키면 확인하지 않은 것과 같다.
     expect(guard).toContain('redirect(');
     expect(guard).toContain('return_to=');
