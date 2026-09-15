@@ -56,8 +56,8 @@ function stubFetch(upstream: Upstream = {}): { readonly calls: { url: string; in
   return { calls };
 }
 
-function request(options: { code?: string; state?: string; sessionId?: string } = {}): NextRequest {
-  const url = new URL('/gh/identity/callback', 'https://prs.example.com');
+function request(options: { code?: string; state?: string; sessionId?: string; origin?: string } = {}): NextRequest {
+  const url = new URL('/gh/identity/callback', options.origin ?? 'https://prs.example.com');
   if (options.code !== undefined) url.searchParams.set('code', options.code);
   if (options.state !== undefined) url.searchParams.set('state', options.state);
   const next = new NextRequest(url);
@@ -88,7 +88,7 @@ describe('FR-GH-008 AC-2: 콜백은 세션이 있는 사용자의 것만 서버�
     const { calls } = stubFetch();
     const response = await GET(request({ code: CODE, state: STATE }));
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('https://prs.example.com/auth/login?return_to=%2Fgh');
+    expect(response.headers.get('location')).toBe('/auth/login?return_to=%2Fgh');
     expect(calls).toHaveLength(0);
   });
 
@@ -103,7 +103,7 @@ describe('FR-GH-008 AC-2: 콜백은 세션이 있는 사용자의 것만 서버�
     const { calls } = stubFetch();
     for (const partial of [{ state: STATE }, { code: CODE }, {}]) {
       const response = await GET(request({ ...partial, sessionId: 'sid-alice' }));
-      expect(response.headers.get('location')).toBe('https://prs.example.com/gh?identity=failed');
+      expect(response.headers.get('location')).toBe('/gh?identity=failed');
     }
     expect(calls).toHaveLength(0);
   });
@@ -124,30 +124,30 @@ describe('FR-GH-008 AC-2: 콜백은 세션이 있는 사용자의 것만 서버�
     expect(headers.get('authorization')).toBeNull();
 
     expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('https://prs.example.com/gh');
+    expect(response.headers.get('location')).toBe('/gh');
   });
 
   it('서버의 return_to를 한 번 더 거른다 — 외부 URL로 보내지 않는다', async () => {
     stubFetch({ body: { status: 'connected', github_login: 'alice', return_to: 'https://evil.example/phish', correlation_id: 'c' } });
     const response = await GET(request({ code: CODE, state: STATE, sessionId: 'sid-alice' }));
-    expect(response.headers.get('location')).toBe('https://prs.example.com/gh');
+    expect(response.headers.get('location')).toBe('/gh');
 
     stubFetch({ body: { status: 'connected', github_login: 'alice', return_to: '/gh/history', correlation_id: 'c' } });
     const ok = await GET(request({ code: CODE, state: STATE, sessionId: 'sid-alice' }));
-    expect(ok.headers.get('location')).toBe('https://prs.example.com/gh/history');
+    expect(ok.headers.get('location')).toBe('/gh/history');
   });
 
   it('서버가 거절하면(state 불일치 등) 실패 한 모양이며 사유는 로그에만 간다', async () => {
     stubFetch({ status: 401, body: { error: { code: 'GH_IDENTITY_REQUIRED', message: 'GitHub 계정 연결에 실패했다', detail: { reason: 'state_mismatch' } }, correlation_id: 'c-fail' } });
     const response = await GET(request({ code: CODE, state: STATE, sessionId: 'sid-alice' }));
-    expect(response.headers.get('location')).toBe('https://prs.example.com/gh?identity=failed');
+    expect(response.headers.get('location')).toBe('/gh?identity=failed');
     expect(logged.join('\n')).toContain('state_mismatch');
   });
 
   it('search-api에 닿지 못해도 실패 한 모양이다', async () => {
     stubFetch({ throws: true });
     const response = await GET(request({ code: CODE, state: STATE, sessionId: 'sid-alice' }));
-    expect(response.headers.get('location')).toBe('https://prs.example.com/gh?identity=failed');
+    expect(response.headers.get('location')).toBe('/gh?identity=failed');
   });
 
   it('code·state는 어느 경로에서도 로그에 남지 않는다', async () => {
@@ -159,5 +159,30 @@ describe('FR-GH-008 AC-2: 콜백은 세션이 있는 사용자의 것만 서버�
     expect(everything).not.toContain(CODE);
     expect(everything).not.toContain(STATE);
     expect(everything).toContain('Operations App 인가 콜백을 완료하지 못했다');
+  });
+});
+
+/**
+ * **역방향 프록시 뒤에서 `localhost:3000`으로 보내지 않는다** (CR-092 / DEV-699).
+ *
+ * 사내 `0.1.0-pilot.7` 이미지에 `Host: prs.corp.example`로 이 콜백을 걸어 `location: https://localhost:3000/gh?identity=failed`를
+ * 실측했다. 라우트가 보는 출처가 그 값이어도 세 갈래(실패·로그인·성공) 모두 호스트 없는 경로여야 한다.
+ */
+describe('복귀 주소에 호스트를 싣지 않는다 (CR-092 / DEV-699)', () => {
+  const behindProxy = 'https://localhost:3000';
+
+  it('실패·로그인·성공 세 갈래 모두 상대 경로다', async () => {
+    stubFetch();
+    const failed = await GET(request({ origin: behindProxy }));
+    const login = await GET(request({ code: CODE, state: STATE, origin: behindProxy }));
+    const connected = await GET(request({ code: CODE, state: STATE, sessionId: 'sid-alice', origin: behindProxy }));
+
+    expect(failed.headers.get('location')).toBe('/gh?identity=failed');
+    expect(login.headers.get('location')).toBe('/auth/login?return_to=%2Fgh');
+    expect(connected.headers.get('location')).toBe('/gh');
+    for (const response of [failed, login, connected]) {
+      expect(response.status).toBe(307);
+      expect(response.headers.get('location')).not.toMatch(/^[a-z]+:|^\/\//i);
+    }
   });
 });

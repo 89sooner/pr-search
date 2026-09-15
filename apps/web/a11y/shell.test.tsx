@@ -32,6 +32,7 @@ vi.mock('next/link', () => ({
 const { Shell } = await import('../components/Shell');
 const { EmptyState } = await import('../components/EmptyState');
 const { ErrorBanner } = await import('../components/ErrorBanner');
+const { SignedOutView } = await import('../components/SignedOutView');
 
 /**
  * axe를 돌리고 위반 목록을 준다. 규칙은 WCAG 2.1 AA로 좁힌다 (NFR-007).
@@ -445,5 +446,86 @@ describe('라우트 전환 알림', () => {
 
     expect(screen.getByTestId('route-announcement').textContent).toBe('릴리스');
     expect(document.activeElement).toBe(document.getElementById('main-content'));
+  });
+});
+
+/**
+ * C-001 사용자 메뉴와 로그아웃 (CR-092 / DEV-700, FR-AUTH-001 AC-5).
+ *
+ * 사내 `0.1.0-pilot.7`에는 화면에 로그아웃이 없었다. 로그인 이름이 메뉴의 트리거가 되고, 그 안의 「로그아웃」이
+ * `POST /auth/logout` 폼을 제출한다 — 링크(`GET`)로 만들지 않는다.
+ */
+describe('사용자 메뉴 (CR-092 / DEV-700)', () => {
+  const renderSignedIn = (): void => {
+    render(
+      <Shell roles={['developer']} user={{ login: 'kim', email: 'kim@corp.example' }} title="통합 검색">
+        <h1>통합 검색</h1>
+      </Shell>,
+    );
+  };
+  const trigger = (): HTMLElement => screen.getByRole('button', { name: '사용자 메뉴: kim' });
+
+  it('로그인 이름이 메뉴 버튼이고 닫혀 있다', () => {
+    renderSignedIn();
+    expect(trigger()).toHaveAttribute('aria-haspopup', 'menu');
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('키보드로 열면 신원과 로그아웃 항목이 보이고, 연 채로도 axe 위반이 없다', async () => {
+    renderSignedIn();
+    trigger().focus();
+    await userEvent.keyboard('{Enter}');
+
+    const menu = await screen.findByRole('menu');
+    expect(menu).toHaveTextContent('kim@corp.example');
+    expect(screen.getByRole('menuitem', { name: '로그아웃' })).toBeInTheDocument();
+    // 메뉴는 포털로 나가므로 `document.body`를 훑는다.
+    expect(describeViolations(await violations(document.body))).toBe('');
+  });
+
+  it('로그아웃을 고르면 로그아웃 폼을 POST로 제출한다 — 스크립트가 요청과 이동을 따로 잇지 않는다', async () => {
+    renderSignedIn();
+    const form = screen.getByTestId('logout-form') as HTMLFormElement;
+    const submitted = vi.fn((event: Event) => {
+      // jsdom은 제출에 따른 이동을 구현하지 않는다. 이동은 e2e가 본다.
+      event.preventDefault();
+    });
+    form.addEventListener('submit', submitted);
+
+    trigger().focus();
+    await userEvent.keyboard('{Enter}');
+    await screen.findByRole('menu');
+    screen.getByRole('menuitem', { name: '로그아웃' }).focus();
+    await userEvent.keyboard('{Enter}');
+
+    await waitFor(() => {
+      expect(submitted).toHaveBeenCalledTimes(1);
+    });
+    expect(form.method).toBe('post');
+    expect(new URL(form.action).pathname).toBe('/auth/logout');
+  });
+
+  it('인증을 끈 배포에는 사용자 메뉴도 로그아웃 폼도 없다', () => {
+    render(
+      <Shell roles={[]} user={null} title="x">
+        <h1>x</h1>
+      </Shell>,
+    );
+    expect(screen.queryByTestId('user-summary')).toBeNull();
+    expect(screen.queryByTestId('logout-form')).toBeNull();
+  });
+});
+
+describe('로그아웃 완료 화면 (CR-092 / DEV-700)', () => {
+  it('main 하나·제목 하나·다시 로그인 링크가 있고 axe 위반이 없다', async () => {
+    const { container } = render(<SignedOutView loginHref="/auth/login?return_to=%2F" />);
+
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: '로그아웃했습니다' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '다시 로그인' })).toHaveAttribute('href', '/auth/login?return_to=%2F');
+    // PR Search 세션만 끝났다는 사실을 말한다 — 공용 PC에서 IdP 세션이 남는다.
+    expect(container).toHaveTextContent('사내 로그인');
+    expect(describeViolations(await violations(container))).toBe('');
   });
 });

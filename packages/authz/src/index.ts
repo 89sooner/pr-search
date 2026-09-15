@@ -93,12 +93,15 @@ export {
 export type { LoadedSession, SessionRedis, SessionStoreOptions } from './session-store.js';
 
 export {
+  AccessScopeLookupError,
   DEFAULT_REPOSITORY_CONCURRENCY,
   GheAccessScopeSource,
+  SCOPE_STAGE_PERMISSION,
   ghePermissionApi,
   isReadable,
 } from './scope-source.js';
 export type {
+  AccessScopeLookupStage,
   AccessScopeSource,
   CollaboratorPermission,
   GhePermissionApi,
@@ -115,6 +118,7 @@ export {
   EXPLICIT_SCOPE_LIMIT,
   SCOPE_KEY_PREFIX,
   ScopeUnavailableError,
+  describeScopeFailure,
   parseCachedScope,
   scopeKey,
   toAccessScope,

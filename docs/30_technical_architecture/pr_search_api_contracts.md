@@ -1,6 +1,6 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.31 | 갱신일: 2026-09-15
+> 상태: review | 버전: v0.32 | 갱신일: 2026-09-15
 
 ## 1. 목적
 
@@ -2112,8 +2112,8 @@ ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 →
   "access_scope": {
     "scope_kind": "explicit",
     "repository_count": 128,
-    "org_count": 1,
-    "team_count": 6,
+    "org_count": null,
+    "team_count": null,
     "refreshed_at": "2026-08-21T09:14:02.000Z"
   },
   "session": {
@@ -2129,6 +2129,7 @@ ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 →
 - Authz: 인증만 필요하다. 역할 검사는 없다 — 자기 자신을 보는 것이므로
 - **`access_scope`는 요약이다. 저장소 ID 목록을 싣지 않는다 (CR-015, DEV-040).** 접근 범위가 500개를 넘는 사용자에서 응답이 수십 KB가 되고, 그 목록은 조직의 저장소 인벤토리 그 자체다. 화면은 건수만 필요하다
 - `scope_kind`가 `org_team`이면 `repository_count`는 `null`이다 — 그 모드는 저장소를 세지 않고 조직·팀 조건으로 치환하기 때문이다 (FR-AUTH-002 AC-6)
+- **`scope_kind`가 `explicit`이면 `org_count`·`team_count`가 `null`이다** (CR-092, DEV-698). 그 모드의 범위는 조직·팀을 읽지 않는다 — `0`으로 두면 「조직 0개의 구성원」이라는 사실로 읽힌다. 두 수는 `org_team` 모드에서만 센다. 저장소가 500개 이하인 배포는 조직 `Members` 권한 없이도 이 응답이 200이다
 - `roles`는 IdP 그룹 매핑(`manager`, `qa`)과 DB 지정(`operator`, `release_manager`, `security_officer`)의 합집합에 `developer`를 더한 것이다 (CR-015, DEV-049)
 - **그 합집합은 요청마다 정본에서 만든다** (CR-091, DEV-695). 세션에는 로그인 때의 IdP·팀 매핑 역할만 있고 DB 지정은 이 요청을 처리할 때 `app_user.roles[]`에서 더한다 — 그래서 `prsctl role grant|revoke`의 결과가 **재로그인 없이 다음 요청부터** 여기에 나타난다. DB 지정을 읽지 못하면 세션의 역할만 싣는다(fail closed, 오류로 바꾸지 않는다)
 - `web`의 화면 관문(`GuardedPage`)이 이 응답의 `roles`로 내비게이션과 운영 버튼을 그린다 (CR-091). 이 호출이 실패하면 관문은 세션 레코드의 역할로 그린다 — 덜 보이는 쪽이며 실제 판정은 각 API가 다시 한다

@@ -17,9 +17,10 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest, NextResponse } from 'next/server';
 import { sanitizeReturnPath, sessionCookieName } from '@prs/authz';
 import { buildProxyHeaders, readBrowserCookie, resolveProxyAuth } from '../../../../lib/proxy';
+import { redirectToPath } from '../../../../lib/redirect';
 import { resolveWebConfig } from '../../../../lib/server/config';
 import { sessionStore } from '../../../../lib/server/session';
 
@@ -45,8 +46,8 @@ function logFailure(correlationId: string, reason: string, status?: number): voi
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const correlationId = randomUUID();
   const config = resolveWebConfig();
-  const origin = request.nextUrl.origin;
-  const failed = (): NextResponse => NextResponse.redirect(new URL(FAILED_RETURN, origin));
+  // 복귀는 상대 경로다 — 프록시 뒤에서 `request.nextUrl.origin`은 `localhost:3000`이다 (CR-092 / DEV-699, `lib/redirect.ts`).
+  const failed = (): NextResponse => redirectToPath(FAILED_RETURN);
 
   const code = request.nextUrl.searchParams.get('code') ?? '';
   const state = request.nextUrl.searchParams.get('state') ?? '';
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (auth.kind === 'unauthenticated') {
     logFailure(correlationId, '세션이 없다');
     if (config.authEnabled) {
-      return NextResponse.redirect(new URL(`${config.session.loginPath}?return_to=${encodeURIComponent(FALLBACK_RETURN)}`, origin));
+      return redirectToPath(`${config.session.loginPath}?return_to=${encodeURIComponent(FALLBACK_RETURN)}`);
     }
     return failed();
   }
@@ -107,5 +108,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   // 3. 복귀. 서버가 준 값도 다시 한번 거른다 — 신뢰 경계를 두 번 넘지 않는다.
   const returnTo = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['return_to'] : undefined;
-  return NextResponse.redirect(new URL(sanitizeReturnPath(typeof returnTo === 'string' ? returnTo : undefined, FALLBACK_RETURN), origin));
+  return redirectToPath(sanitizeReturnPath(typeof returnTo === 'string' ? returnTo : undefined, FALLBACK_RETURN));
 }

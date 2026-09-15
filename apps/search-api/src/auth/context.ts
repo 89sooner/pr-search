@@ -65,7 +65,7 @@ export interface AuthContextOptions {
   readonly pool: Pool;
   readonly source: AccessScopeSource;
   readonly metrics?: ScopeMetrics;
-  /** 정본 등록 실패를 남길 곳 (`DEV-613`). */
+  /** 정본 등록 실패(`DEV-613`)와 접근 범위 조회 실패(`DEV-698`)를 남길 곳. */
   readonly log?: ((message: string, detail: Record<string, unknown>) => void) | undefined;
 }
 
@@ -88,6 +88,8 @@ export function createAuthContext(options: AuthContextOptions): AuthContext {
     db: createScopeDatabase(options.pool),
     source: options.source,
     ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
+    // 503의 사유는 응답이 아니라 운영자 로그가 말한다 (CR-092 / DEV-698).
+    log: options.log,
   });
 
   return {

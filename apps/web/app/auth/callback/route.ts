@@ -60,6 +60,7 @@ import {
   type OidcRoundTrip,
 } from '../../../lib/oidc-state';
 import { readBrowserCookie } from '../../../lib/proxy';
+import { redirectToPath } from '../../../lib/redirect';
 import { resolveWebConfig } from '../../../lib/server/config';
 import { sessionStore } from '../../../lib/server/session';
 
@@ -274,9 +275,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
 
     // 6. 원래 경로로. 쿠키에서 온 값도 다시 한번 거른다 — 신뢰 경계를 두 번 넘지 않는다.
-    const response = NextResponse.redirect(
-      new URL(sanitizeReturnPath(roundTrip.returnTo), request.nextUrl.origin),
-    );
+    // **상대 경로로 보낸다** (CR-092 / DEV-699). 프록시 뒤에서 `request.nextUrl.origin`은 `localhost:3000`이라
+    // 사내 `0.1.0-pilot.7`의 사용자가 로그인 뒤 그 주소로 떨어졌다 — 근거는 `lib/redirect.ts`.
+    const response = redirectToPath(sanitizeReturnPath(roundTrip.returnTo));
 
     /*
      * **쿠키 둘을 같은 방법으로 단다** (`DEV-614`).

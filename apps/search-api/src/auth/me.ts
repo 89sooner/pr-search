@@ -22,8 +22,12 @@ export interface AccessScopeSummary {
   readonly scope_kind: 'explicit' | 'org_team';
   /** `org_team` 모드에서는 `null`이다 — 그 모드는 저장소를 세지 않는다. */
   readonly repository_count: number | null;
-  readonly org_count: number;
-  readonly team_count: number;
+  /**
+   * `explicit` 모드에서는 `null`이다 — 그 모드의 범위는 조직·팀을 읽지 않는다 (CR-092 / DEV-698).
+   * `0`으로 두면 "조직 0개의 구성원"이라는 사실로 읽힌다.
+   */
+  readonly org_count: number | null;
+  readonly team_count: number | null;
   readonly refreshed_at: string;
 }
 
@@ -46,8 +50,8 @@ export function summarizeScope(scope: CachedScope): AccessScopeSummary {
   return {
     scope_kind: orgTeam ? 'org_team' : 'explicit',
     repository_count: orgTeam ? null : scope.repositoryIds.length,
-    org_count: scope.orgIds.length,
-    team_count: scope.teamIds.length,
+    org_count: orgTeam ? scope.orgIds.length : null,
+    team_count: orgTeam ? scope.teamIds.length : null,
     refreshed_at: new Date(scope.refreshedAt).toISOString(),
   };
 }

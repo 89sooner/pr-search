@@ -290,12 +290,37 @@ ADMIN_DATABASE_URL=postgresql://prs_retention:<비밀번호>@postgres:5432/prs
 기동 직후 시스템은 **비어 있다.** 웹훅은 앞으로 오는 것만 받는다.
 
 1. GHE App 자격(`GHE_APP_ID`·`GHE_APP_PRIVATE_KEY`·`GHE_INSTALLATIONS`)은 **2.B 3단계에서 이미 넣었다** (`DEV-527`) — 여기서 처음 넣는 것이 아니다. 나중에 바꿨다면 `./prsctl upgrade`로 컨테이너를 다시 만든다.
-2. 운영 콘솔(`A-001`)에서 저장소를 등록한다.
+2. 운영 콘솔의 저장소 화면(`A-002`, `/ops/repositories`)에서 저장소를 등록한다. **시퀀스 대상 브랜치는 저장소마다 적는다** — 제품에 기본값이 없고 이름 규칙으로 정해 주지도 않는다. 아래 「시퀀스 대상 브랜치 정하기·바꾸기」.
 3. GHE에 웹훅을 등록한다 — 대상은 `http://<호스트>:3001/api/v1/webhooks/github`, 시크릿은 `.env`의 `GHE_WEBHOOK_SECRET`.
    **경로에 `/api/v1`이 있다.** 정본은 `apps/ingest-gateway/src/server.ts`의 `WEBHOOK_PATH`이며, 이 문서가 한동안 그것을 빼고 적어 첫 반입에서 웹훅이 전부 404였다 (`DEV-549`).
    **GHE가 이 주소에 닿는지 먼저 확인한다** — 닿지 않으면 4단계로 가기 전에 아래 「GHE가 서버에 닿지 못할 때」를 읽는다.
 4. **백필을 실행한다** — 과거 PR 이력은 백필이 채운다(`JOB-ING-004`). `worker-enrich`가 그 역할을 함께 켜고 있다.
 5. 시퀀스 채번과 관계 파생은 미러 동기화 뒤에 따라온다.
+
+#### 수집용 GHE App에 줄 권한 (`CR-092`)
+
+`GHE_APP_ID`의 App(설치 토큰)은 수집만이 아니라 **로그인한 사용자의 접근 범위**도 읽는다. 권한이 모자라면 기동은 정상이고 로그인도 되는데 조회가 503 `permission_unavailable`이 된다 — 사내 `0.1.0-pilot.7`이 그 모양이었다(`DEV-698`). 권한 이름은 GitHub REST 문서의 엔드포인트별 권한 표를 따른다.
+
+| 권한 | 수준 | 없으면 |
+| --- | --- | --- |
+| Repository permissions › Metadata | Read-only | 저장소 등록이 `FORBIDDEN_ROLE`로 거절되고(등록은 `GET /repos/{owner}/{repo}`로 저장소를 확인한다), 사용자의 저장소 권한을 읽지 못해 **모든 조회가 503**이다 |
+| Repository permissions › Contents | Read-only | 미러의 `git` 동기화와 커밋 수집이 실패한다. 등록 거절 응답의 `required_permissions`가 이 셋을 함께 적는다 |
+| Repository permissions › Pull requests | Read-only | PR을 수집하지 못한다(백필·증분) |
+| Organization permissions › Members | Read-only | **볼 수 있는 저장소가 500개를 넘는 사용자**의 조회가 503이다(그 크기부터 조직·팀 조건으로 거른다). 작성자 팀 집계(`group_by=team`)가 「모름」이고, `team` 웹훅의 팀 구성원 갱신이 실패한다 |
+
+- **저장소가 500개 이하인 배포는 `Members` 없이도 조회가 선다.** `0.1.0-pilot.7`까지는 쓰이지 않는 조직·팀 조회까지 불러 그 권한이 없으면 전부 503이었다. 작성자 팀 집계를 쓸 계획이면 그래도 준다.
+- App 권한을 바꾸면 GHE가 **설치마다 승인을 다시 요구한다.** 조직 관리자가 승인해야 새 권한이 설치 토큰에 실린다.
+- 조회가 503이면 추정하지 말고 로그를 본다. `docker logs <search-api 컨테이너>`의 「접근 범위를 GHE에서 읽지 못했다」 줄이 **실패한 단계(`stage`)·상태 코드(`status`)·그 단계가 요구하는 권한(`required_permission`)**을 적는다. GHE 응답 본문은 싣지 않는다.
+- **`permission_cache`에 손으로 행을 넣지 않는다.** 5분 뒤 만료되어 다시 GHE를 부르므로 증상이 5분 뒤에 되돌아오고(`FR-AUTH-003`), 미래 시각을 넣어 붙잡아 두면 권한 회수가 반영되지 않는다.
+
+#### 시퀀스 대상 브랜치 정하기·바꾸기 (`CR-092`)
+
+시퀀스(M 번호, 범위 조사)는 **저장소마다 적은 브랜치**에만 매긴다(`FR-ING-009` AC-1, 저장소당 최대 10개). 제품은 기본 브랜치를 추측하지 않고 이름 규칙(`smp*`면 `dev` 같은)을 적용하지도 않는다 — 운영자가 저장소마다 적는다.
+
+- **등록할 때** 저장소 화면의 등록 폼에서 브랜치를 한 줄에 하나씩 적는다. 사내 규칙상 `smp`로 시작하는 저장소는 `dev`를 적는다.
+- **이미 다른 브랜치로 등록했다면** 저장소 화면에서 그 저장소를 편집해 목록을 고친다(`PATCH /api/v1/admin/repositories/{id}`). 새로 더한 브랜치는 **채번을 자동으로 요청하며**(`AC-12`) 변경은 감사 기록 `repository.update`로 남는다.
+- **목록에서 뺀 브랜치의 기존 시퀀스는 지워지지 않는다.** 뺐다는 사실만 반영되고 새 머지에는 번호가 붙지 않는다. `main`을 `dev`로 바꾸면 `main`의 이미 붙은 번호는 그대로 남고 `dev`에 새로 매긴다.
+- 사용자가 인용하는 범위는 `(저장소, 브랜치)` 공간마다 따로다. 브랜치를 바꾼 뒤에는 새 공간의 번호로 인용한다.
 
 #### GHE가 서버에 닿지 못할 때 — 방향이 반대다
 
@@ -599,6 +624,29 @@ GHE_OAUTH_REDIRECT_URI=http://<서비스 주소>/auth/callback
 
 로그인 없이 화면만 띄워 보려면 지금처럼 `AUTH_ENABLED=false`로 둔다. 그 형상에서
 조회는 전부 401이다 (7장).
+
+#### 역방향 프록시(nginx) 뒤에서 — 외부 주소를 따로 적지 않는다 (`CR-092`)
+
+로그인·GitHub 계정 연결이 끝난 뒤 돌아가는 주소는 **경로만** 보낸다(`Location: /search?…`).
+브라우저가 자기가 연 주소를 기준으로 풀기 때문에 서비스는 자기 외부 이름을 몰라도 된다.
+`WEB_EXTERNAL_URL` 같은 값은 없고 필요하지 않다.
+
+- `0.1.0-pilot.7`까지는 절대 주소를 만들었고, `next start`가 그 주소를 **자기가 들은
+  `localhost:3000`**으로 조립해 GHE 로그인 뒤 `https://localhost:3000/…`으로 떨어졌다(`DEV-699`).
+  nginx에서 `Host`를 넘겨도 바뀌지 않았다 — 고친 버전은 프록시 설정을 요구하지 않는다.
+- `Host`·`X-Forwarded-Host`를 믿어 주소를 만들지 않는다. 그 헤더를 고른 누구든 리다이렉트
+  목적지를 고르게 되기 때문이다.
+- GHE OAuth App의 callback URL(`GHE_OAUTH_REDIRECT_URI`)은 여전히 **브라우저가 여는 외부 주소**로 적는다.
+
+#### 로그아웃 (`CR-092`)
+
+화면 오른쪽 위의 **로그인 이름을 누르면** 사용자 메뉴가 열리고 그 안에 「로그아웃」이 있다.
+누르면 PR Search 세션이 서버에서 끝나고 「로그아웃했습니다」 화면(`/auth/signed-out`)이 나온다.
+
+- **GHE(또는 IdP) 로그인은 끝나지 않는다.** 「다시 로그인」을 누르면 GHE가 묻지 않고 곧바로
+  돌려보낼 수 있다. 공용 PC라면 GHE에서도 로그아웃한다.
+- 주소창에 `/auth/logout`을 치면 405다 — 로그아웃은 `POST`만 받는다(다른 사이트가 링크 하나로
+  사용자를 로그아웃시키지 못하게). 스크립트에서 `POST /auth/logout`을 부르면 지금처럼 JSON `{"ok":true}`다.
 
 ### 사설 CA
 
@@ -951,6 +999,11 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 | `search-api`가 재기동을 반복하고 로그에 `OIDC 세션과 ADMIN_API_TOKENS를 함께 구성할 수 없다` | 위와 같은 원인이다. `0.1.0-pilot.6`까지의 `prsctl`은 이것을 미리 막지 않았다. `ADMIN_API_TOKENS`를 비우고 `./prsctl upgrade` |
 | `./prsctl health`에 「평문 HTTP 세션 허용」 줄이 있다 | 실패가 아니다. `ALLOW_INSECURE_COOKIES=true`로 TLS 없이 로그인을 여는 파일럿 형상이라는 알림이다 (6장). 운영으로 쓰기 전에 TLS를 붙이고 두 값을 되돌린다 |
 | 로그인 직후 화면은 뜨는데 조회가 503 `permission_unavailable` | `DEV-613` 이전 빌드다. 그 빌드는 로그인이 `app_user` 행을 만들지 않아 접근 범위를 산출하지 못했다. 고친 버전은 세션을 읽을 때 정본에 행을 만든다. 그래도 503이면 `docker logs search-api`에 등록 실패 이유가 남아 있는지 본다 — `app_user.login`이 UNIQUE라 GHE에서 개명한 계정이 다른 행과 부딪칠 수 있고, 그때는 사람이 정본을 정리해야 한다 |
+| 로그인은 되는데 **저장소 목록이 비고** `/api/v1/me`가 503 `permission_unavailable` | 수집용 GHE App의 권한이다(2.C 「수집용 GHE App에 줄 권한」). `docker logs <search-api 컨테이너>`에서 「접근 범위를 GHE에서 읽지 못했다」 줄의 `stage`·`status`·`required_permission`을 본다 — `collaborator_permission`이면 `Metadata`, `org_membership`·`org_teams`·`team_membership`이면 조직 `Members`다. `0.1.0-pilot.7`까지는 저장소가 몇 개든 `Members`가 없으면 503이었다(`DEV-698`). **`permission_cache`나 `team_member`에 손으로 행을 넣지 않는다** — 캐시는 5분 뒤 만료되고, `team_member`는 이 증상과 무관하다(아래) |
+| `team_member`가 비어 있고 `app_user.access_scope_version`이 0이다 | **정상이다.** 로그인은 팀 동기화를 시작하지 않고 버전을 올리지 않는다 — 버전은 권한 변경 웹훅의 무효화에서만 오른다(`FR-AUTH-003`). 볼 수 있는 저장소가 500개 이하인 사용자의 검색은 저장소 ID로만 거르므로 `team_member`와 `allowed_team_ids`가 가시성에 쓰이지 않는다. 저장소가 안 보이는 원인은 위 행의 503이다 |
+| `./prsctl smoke`가 `✗ search-api /healthz → HTTP/1.1`로 실패하는데 `docker exec`로 부르면 `{"status":"ok"…}`다 | **서비스는 정상이다.** `0.1.0-pilot.7`까지의 `prsctl`이 본문과 헤더를 한 파이프로 읽어, 둘의 도착 순서가 바뀌면 상태 코드 자리에서 `HTTP/1.1`을 읽었다(간헐, `DEV-697`). 고친 버전은 상태 코드만 읽는다. 그 전까지는 `./prsctl health`로 판정한다 |
+| GHE 로그인(또는 GitHub 계정 연결) 뒤 **`localhost:3000`**으로 간다 | `0.1.0-pilot.7`까지의 빌드다 — 돌아갈 주소를 서버가 들은 호스트로 조립했다(`DEV-699`). 고친 버전은 경로만 보내므로 nginx 설정을 바꿀 필요가 없다(6장 「역방향 프록시 뒤에서」). 그 전까지는 주소창의 `localhost:3000`을 서비스 주소로 바꿔 연다 |
+| 로그아웃할 방법이 없다 | 화면 오른쪽 위의 로그인 이름을 누른다(6장 「로그아웃」, `CR-092`). `0.1.0-pilot.7`까지는 메뉴가 없었다 |
 | 인증을 켠 뒤 모든 화면이 로그인으로 갔다가 500 | `OIDC_REDIRECT_URI`를 채웠는가 (`DEV-579`). 값은 `<서비스 주소>/auth/callback`이며 IdP에 등록한 것과 문자 그대로 같아야 한다. 고친 버전에서는 이 값이 비면 `web`이 아예 기동하지 않으므로 이 증상은 `DEV-579` 이전 빌드에서만 난다 |
 | GHE 호출이 인증서 오류 · 기동 로그에 CA 경고 | CA를 **여섯 자리 전부**에 걸었는가. anchor는 얕게 합쳐져 `worker-sequence`·`worker-mirror`·`worker-release`에 닿지 않는다 (6장 「anchor는 얕게 합쳐진다」, `DEV-552`) |
 | `JOB-MIR-001`이 SSL 오류로 실패하고 **미러 볼륨이 비어 있다** (다른 서비스는 정상) | `git`이 사내 CA를 신뢰하지 않는다. `NODE_EXTRA_CA_CERTS`는 Node 런타임만 읽으므로 `git` 서브프로세스에는 닿지 않는다 (`DEV-561`). `.env`의 `GIT_SSL_CAINFO`에 `NODE_EXTRA_CA_CERTS`와 **같은 경로**를 적고 `./prsctl upgrade`를 돌린다. 값만 넣고 컨테이너를 다시 만들지 않으면 반영되지 않는다 (6장 「사설 CA」) |

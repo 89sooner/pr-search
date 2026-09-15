@@ -136,6 +136,28 @@ describe('FR-AUTH-001: 화면 라우트는 전부 공통 관문을 지난다', (
   });
 });
 
+describe('CR-092 / DEV-699: 라우트 핸들러가 서버가 들은 출처로 주소를 조립하지 않는다', () => {
+  /*
+   * `next start`는 요청 출처를 자기가 들은 호스트·포트로 조립한다. 역방향 프록시 뒤에서 그 값은 `localhost:3000`이고,
+   * 콜백 둘이 그것으로 복귀 주소를 만들어 사내 `0.1.0-pilot.7`의 사용자가 로그인 뒤 `localhost:3000`으로 떨어졌다.
+   * 복귀는 `lib/redirect.ts`의 상대 경로로만 한다. **새 라우트가 같은 한 줄을 다시 쓰는 것**이 이 결함이 되돌아오는
+   * 길이라 정적으로 막는다. 주석은 뺀다 — 「쓰지 않는다」고 적은 설명까지 잡으면 규칙을 설명할 수 없다.
+   */
+  const withoutComments = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const ROUTES = sourceFiles('app').filter((f) => /(^|\/)route\.ts$/.test(f));
+
+  it('검사가 실제로 도는지 — 라우트 핸들러를 찾았다', () => {
+    expect(ROUTES.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it.each(ROUTES.map((f) => [f.slice(WEB_ROOT.length), f] as const))('%s가 요청 출처로 리다이렉트 주소를 만들지 않는다', (_name, full) => {
+    const code = withoutComments(readFileSync(full, 'utf8'));
+    expect(code).not.toMatch(/nextUrl\.origin/);
+    expect(code).not.toMatch(/new URL\([^)]*request\.url/);
+    expect(code).not.toMatch(/NextResponse\.redirect\(\s*new URL\(/);
+  });
+});
+
 describe('QA-GH-24: GitHub 작업 화면은 원시 HTML을 만들지 않는다 (ADR-018, THR-023)', () => {
   /*
    * gh의 출력과 GitHub 필드(PR 제목·브랜치명)는 외부 입력이다. 서버가 무해화한 값을 화면이

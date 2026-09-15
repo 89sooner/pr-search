@@ -289,8 +289,9 @@ describe('API-AUTH-001 /me (DEV-040)', () => {
     expect(body.access_scope).toEqual({
       scope_kind: 'explicit',
       repository_count: 128,
-      org_count: 1,
-      team_count: 2,
+      // 저장소 목록 모드의 범위는 조직·팀을 읽지 않는다 — 0이 아니라 모른다 (CR-092 / DEV-698).
+      org_count: null,
+      team_count: null,
       refreshed_at: new Date(T0).toISOString(),
     });
     expect(body.correlation_id).toBe(CORR);
@@ -306,10 +307,12 @@ describe('API-AUTH-001 /me (DEV-040)', () => {
     expect(serialized.length).toBeLessThan(1000);
   });
 
-  it('org_team 모드에서는 저장소 수가 null이다', async () => {
+  it('org_team 모드에서는 저장소 수가 null이고 조직·팀 수를 센다', async () => {
     const body = await buildMe(principal, scopes(501), CORR);
     expect(body.access_scope.scope_kind).toBe('org_team');
     expect(body.access_scope.repository_count).toBeNull();
+    expect(body.access_scope.org_count).toBe(1);
+    expect(body.access_scope.team_count).toBe(2);
   });
 
   it('세션 만료 두 가지를 모두 알려 준다', async () => {
