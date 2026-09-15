@@ -1,8 +1,9 @@
 #hidden
 # aci:v1 id=f3df0a8 src=agent-context/upstream-feedback.md
-@kv sha256=ac0e4d738e1b8385cbc108b1b1e39af5d60a3389cc7186d7ba4b9b40fbec15e6 bytes=3921 lines=33 title=Upstream-Feedback
-@sig agent-context/upstream-feedback.md;/prsctl;auth/callback;ops/repositories;Upstream;Feedback;DEV;companion;SESSION_COOKIE_SECURE;ALLOW_INSECURE_COOKIES;prs_session;prs_oidc;Secure;GHE;OAuth;App;NOT;RUN;AUTH_PROVIDER;GHE_OAUTH_REDIRECT_URI;callback;HTTP;NODE_ENV;production
+@kv sha256=c9e624e9e2baaa996af6d3d2091e32fb839da3cce3d9d14761906583a70de4d7 bytes=4292 lines=35 title=Upstream-Feedback
+@sig agent-context/upstream-feedback.md;/prsctl;auth/callback;ops/repositories;Upstream;Feedback;SHA;sha256sum;DEV;companion;SESSION_COOKIE_SECURE;ALLOW_INSECURE_COOKIES;prs_session;prs_oidc;Secure;GHE;OAuth;App;NOT;RUN;AUTH_PROVIDER;GHE_OAUTH_REDIRECT_URI;callback;HTTP
 @h1 Upstream Feedback
+@path 2026-09-15: 아래 세 항목은 0.1.0-pilot.7에 담겨 발행됐다 (CR-091, 태그 → 0c26cdd). 자산 SHA-256은 릴리스와 별도 채널로 받아 sha256sum으로 대조한다(런북 2.B 1단계). 업그레이드에서 달라지는 것과 확인 순서는 원장 6.90장이다. 사내 확인 결과는 각 항목 아래에 적어 주기 바란다.
 @p ---
 @h2 DEV-577 companion — SESSION_COOKIE_SECURE=false 허용 플래그 미구현
 @path 상류 반영 완료 (2026-09-15, CR-091 / DEV-694, PR #191). ALLOW_INSECURE_COOKIES=true를 SESSION_COOKIE_SECURE=false와 함께 적으면 인증을 켠 채 기동한다(파일럿 전용, 두 값 모두 필요). 기동마다 web 로그와 ./prsctl health가 경고한다. 쿠키 이름이 prs_session·prs_oidc로 바뀐다 — Host- 접두 쿠키는 Secure 없이 브라우저가 저장하지 않아, 플래그만 두면 같은 자리에서 다시 실패했을 것이다. GHE OAuth App callback도 http://로 맞춘다. 절차는 런북 6장 「운영에는 TLS가 필요하다」. 사내 확인은 NOT RUN.

@@ -1,5 +1,5 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
-최신 기준 (**2026-09-15 7차 · CR-091 병합(`f8db374`, PR #191) · 병합 커밋 main CI run `34926885455` attempt 1 success(verify 4m37s · integration 7m32s — 단위 2,760 · a11y 424 · e2e 196 · 통합 1,805 · 회귀 496) · 후속 기록 PR · `0.1.0-pilot.7` 발행 예정**)
+최신 기준 (**2026-09-15 7차 · CR-091 병합(`f8db374`, PR #191) · 병합 커밋 main CI run `34926885455` attempt 1 success(verify 4m37s · integration 7m32s — 단위 2,760 · a11y 424 · e2e 196 · 통합 1,805 · 회귀 496) · 후속 기록 PR #192 병합(`0c26cdd`, main CI run `34928073071` success) · 2026-09-15 `0.1.0-pilot.7` 발행(태그 → `0c26cdd`, 원장 6.90장)**)
 
 **main은 `f8db374` 뒤에 후속 기록 PR이 병합된 상태여야 한다. 실측하라**(`git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`). 이 갱신을 담은 후속 PR의 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 `git log`로 읽는다.
 
@@ -13,8 +13,9 @@
 
 ### 이 세션이 이어서 할 것
 
-1. [ ] 이 기록 PR(docs/cr-091-merge-record)이 병합됐는지 실측한다.
-2. [ ] `0.1.0-pilot.7`을 main에서 발행한다 — `./deploy/single-host/build-bundle.sh 0.1.0-pilot.7 <out> --release`(공유 체크아웃 main, 작업 트리 깨끗함, 같은 버전 릴리스·태그 없음). 자산 SHA-256을 `gh api repos/89sooner/pr-search/releases/tags/0.1.0-pilot.7`로 대조하고 원장에 발행 절을 적는 기록 PR을 올린다.
+1. [x] 기록 PR #192(docs/cr-091-merge-record) 병합 `0c26cdd`, main CI run `34928073071` success(verify·integration).
+2. [x] **발행됨** 2026-09-15 `0.1.0-pilot.7`을 main `0c26cdd`에서 발행했다(자산 SHA-256 `2008c7864984e88ed22d9bb4c4c70bd73688ba9522dda3bbfab18d4e0b0ee168`, 1,156,972,915 바이트, immutable, 원장 6.90장). 이 발행 기록 PR(docs/pilot7-published)의 병합은 `git log`로 확인한다.
+3. [ ] 사내 운영자에게 버전·읽기 토큰·SHA-256을 릴리스와 별도 채널로 전달한다(사용자).
 
 ### 사내 반입 뒤 (사용자, NOT RUN)
 
