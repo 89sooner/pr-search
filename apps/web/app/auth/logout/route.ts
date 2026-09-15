@@ -10,7 +10,7 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { SESSION_COOKIE_NAME, serializeClearingCookie } from '@prs/authz';
+import { serializeClearingCookie, sessionCookieName } from '@prs/authz';
 import { resolveWebConfig } from '../../../lib/server/config';
 import { sessionStore } from '../../../lib/server/session';
 
@@ -19,7 +19,8 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const config = resolveWebConfig();
 
-  const sessionId = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  // 브라우저가 가진 이름은 `Secure` 여부로 갈린다 (CR-091) — 세울 때와 같은 함수로 읽는다.
+  const sessionId = request.cookies.get(sessionCookieName(config.session.cookieSecure))?.value;
   if (sessionId !== undefined && sessionId !== '') {
     await sessionStore().destroy(sessionId);
   }

@@ -25,6 +25,7 @@ export {
   hasRole,
   isRole,
   parseGroupRoleMap,
+  withAssignedRoles,
 } from './roles.js';
 export type { GroupRoleMap, Role } from './roles.js';
 
@@ -67,6 +68,7 @@ export type {
 export {
   ABSOLUTE_TIMEOUT_MS,
   IDLE_TIMEOUT_MS,
+  INSECURE_SESSION_COOKIE_NAME,
   SESSION_COOKIE_NAME,
   createSessionId,
   deadlinesOf,
@@ -75,6 +77,7 @@ export {
   remainingTtlSeconds,
   serializeClearingCookie,
   serializeSessionCookie,
+  sessionCookieName,
   sessionIdsMatch,
 } from './session.js';
 export type { CookieOptions, ExpiryReason, SessionDeadlines, SessionRecord } from './session.js';
@@ -147,6 +150,8 @@ export {
   hasAuthCredentials,
   hasGitHubAuthCredentials,
   hasOidcCredentials,
+  insecureCookiesAllowed,
+  resolveAllowInsecureCookies,
   resolveAuthProvider,
   resolveGitHubAuthConfig,
   resolveOidcConfig,

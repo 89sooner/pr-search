@@ -85,6 +85,16 @@ export const ACTIVE_AUDIT_ACTIONS = [
   'gh_registry.revoke',
   'gh_capability.block',
   'gh_capability.resume',
+  /**
+   * 관리자 지정 역할의 부여·회수 (CR-091 / DEV-695, FR-AUTH-004 AC-1·AC-6).
+   *
+   * `operator`·`release_manager`·`security_officer`는 IdP·팀으로 부여할 수 없고 `app_user.roles[]`에만
+   * 있다(CR-015). 그 값을 바꾸는 유일한 경로가 `prsctl role grant|revoke`이며, **변경과 같은 트랜잭션에서**
+   * 남긴다 — AC-6의 예외이고 근거는 CR-090의 운영 정책과 같다(기록 없는 권한 변경이 실패보다 나쁘다).
+   * 행위 주체는 `prsctl:<호스트 사용자>`다. 바뀐 것이 없는 재실행(`unchanged`)은 남기지 않는다.
+   */
+  'user_role.grant',
+  'user_role.revoke',
 ] as const;
 
 /**

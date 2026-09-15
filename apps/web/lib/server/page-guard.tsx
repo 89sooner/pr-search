@@ -24,10 +24,11 @@ import 'server-only';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import type { ReactNode } from 'react';
-import { SESSION_COOKIE_NAME } from '@prs/authz';
+import { sessionCookieName } from '@prs/authz';
 import type { Role } from '@prs/authz/roles';
 import { Shell } from '../../components/Shell';
 import { resolveWebConfig } from './config';
+import { resolveEffectiveRoles } from './effective-roles';
 import { sessionStore } from './session';
 
 /** 관문이 화면에 넘기는 세션 정보. */
@@ -104,7 +105,8 @@ export async function GuardedPage({
     );
   }
 
-  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  // 브라우저가 가진 이름은 `Secure` 여부로 갈린다 (CR-091) — 세울 때와 같은 함수로 읽는다.
+  const sessionId = (await cookies()).get(sessionCookieName(config.session.cookieSecure))?.value;
   const loaded = sessionId === undefined ? null : await sessionStore().load(sessionId);
 
   if (loaded === null) {
@@ -112,7 +114,16 @@ export async function GuardedPage({
   }
 
   const { session } = loaded;
-  const roles = session.roles as readonly Role[];
+  /*
+   * **역할은 세션 레코드가 아니라 `/me`에서 온다** (CR-091 / DEV-695, API-AUTH-001).
+   * 세션에는 로그인 때의 IdP·팀 절반만 있고, 관리자 지정(`operator` 등)은 정본에 닿는
+   * `search-api`만 안다. 실패하면 세션의 역할로 그린다 — 근거는 `effective-roles.ts`.
+   */
+  const roles = await resolveEffectiveRoles({
+    searchApiUrl: config.searchApiUrl,
+    sessionId: session.sessionId,
+    sessionRoles: session.roles,
+  });
   return (
     <Shell roles={roles} user={{ login: session.login, email: session.email }} title={title}>
       {render(roles)}

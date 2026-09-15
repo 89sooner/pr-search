@@ -32,7 +32,13 @@
  * 바뀌지 않으므로 호출부를 건드리지 않는다.
  */
 
-import { SessionStore, type SessionRecord, type SessionRedis, type LoadedSession } from '@prs/authz';
+import {
+  SessionStore,
+  withAssignedRoles,
+  type LoadedSession,
+  type SessionRecord,
+  type SessionRedis,
+} from '@prs/authz';
 import { authRepo, type Pool } from '@prs/db';
 
 export interface RegisteringSessionStoreOptions {
@@ -77,34 +83,56 @@ export class RegisteringSessionStore extends SessionStore {
     this.#log = options.log;
   }
 
+  /**
+   * 세션을 읽고, 정본에 등록하고, **실효 역할을 돌려준다.**
+   *
+   * ## 실효 역할 (CR-091 / DEV-695)
+   *
+   * 세션의 `roles`는 로그인 때 합성한 IdP 쪽 절반이다(`web`은 DB에 닿지 않는다). 나머지
+   * 절반인 `app_user.roles[]`의 관리자 지정값을 **여기서 요청마다** 더한다. 세션을 읽는
+   * 모든 경로가 이 자리를 지나므로(머리글) 호출부 서른 곳이 그대로 실효 역할을 받는다.
+   *
+   * - **Redis에 되써 넣지 않는다.** 돌려주는 객체만 바꾼다. 세션 레코드는 유휴 시각을
+   *   갱신할 때 통째로 다시 쓰이므로, 되써 넣으면 `web`의 쓰기와 서로 덮는다.
+   * - **캐시하지 않는다.** 회수가 다음 요청에 반영되어야 한다. 등록이 필요한 요청은
+   *   upsert의 반환 행을 쓰고, 나머지는 기본 키 조회 한 번이다.
+   * - **읽지 못하면 세션 역할만 쓴다** (fail closed). 지정값은 권한을 더하기만 하므로
+   *   빠뜨린 쪽의 결과는 거절이지 과잉 허용이 아니다. 그 사실은 로그에 남긴다 — 운영자가
+   *   403을 권한 설정 문제로 오진하지 않게.
+   */
   override async load(sessionId: string): Promise<LoadedSession | null> {
     const loaded = await super.load(sessionId);
     if (loaded === null) return null;
-    await this.#ensureRegistered(loaded.session);
-    return loaded;
+
+    const assigned = await this.#registerAndReadAssigned(loaded.session);
+    if (assigned === null) return loaded;
+    return { ...loaded, session: { ...loaded.session, roles: withAssignedRoles(loaded.session.roles, assigned) } };
   }
 
   /**
-   * 정본에 행이 있게 한다.
+   * 정본에 행이 있게 하고, 그 행의 관리자 지정 역할을 돌려준다.
    *
-   * **실패해도 던지지 않는다.** 세션 자체는 유효하고, 정본이 비어 있다는 사실은
+   * **등록 실패해도 던지지 않는다.** 세션 자체는 유효하고, 정본이 비어 있다는 사실은
    * 접근 범위 해석이 이미 `503 permission_unavailable`로 정확하게 말한다. 여기서
    * 던지면 그 증상이 **인증 실패**로 둔갑해 운영자가 엉뚱한 곳을 본다.
    *
    * 실패한 사용자는 캐시에 넣지 않으므로 다음 요청이 다시 시도한다.
+   *
+   * @returns 지정 역할. 행이 없으면 빈 배열, 읽지 못했으면 `null`.
    */
-  async #ensureRegistered(session: SessionRecord): Promise<void> {
+  async #registerAndReadAssigned(session: SessionRecord): Promise<readonly string[] | null> {
     const key = registrationKey(session);
-    if (this.#registered.has(key)) return;
+    if (this.#registered.has(key)) return this.#readAssigned(session);
 
     try {
-      await authRepo.upsertUserOnLogin(this.#pool, {
+      const row = await authRepo.upsertUserOnLogin(this.#pool, {
         user_id: session.userId,
         login: session.login,
         github_user_id: session.githubUserId ?? null,
         email: session.email,
       });
       this.#registered.add(key);
+      return Array.isArray(row.roles) ? row.roles : [];
     } catch (error) {
       /*
        * 가장 그럴듯한 원인은 `app_user.login`의 UNIQUE 충돌이다 — 누군가
@@ -117,6 +145,23 @@ export class RegisteringSessionStore extends SessionStore {
         user_id: session.userId,
         reason: error instanceof Error ? error.message : String(error),
       });
+      /*
+       * 등록이 실패해도 **지정 역할은 `user_id`로 따로 읽는다.** 개명 충돌이면 행은
+       * 옛 이름으로 남아 있고 그 행의 `operator`는 여전히 유효한 관리자 지정이다.
+       */
+      return this.#readAssigned(session);
+    }
+  }
+
+  async #readAssigned(session: SessionRecord): Promise<readonly string[] | null> {
+    try {
+      return (await authRepo.findAssignedRoles(this.#pool, session.userId)) ?? [];
+    } catch (error) {
+      this.#log?.('관리자 지정 역할을 읽지 못해 세션의 역할만 쓴다 (DEV-695)', {
+        user_id: session.userId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 }

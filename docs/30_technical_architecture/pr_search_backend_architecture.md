@@ -1,6 +1,6 @@
 # PR Search 백엔드 아키텍처
 
-> 상태: review | 버전: v0.10 | 갱신일: 2026-09-14
+> 상태: review | 버전: v0.11 | 갱신일: 2026-09-15
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 
@@ -313,7 +313,7 @@ async function search(rawQuery: string, opts: SearchOptions, ctx: RequestContext
 
 1. 세션 검증 — `search-api`가 세션 쿠키를 Redis에서 **직접** 해석한다. 신원을 주장하는 헤더는 읽지 않는다 (CR-015, DEV-047). 미인증 → 401 + OIDC 리다이렉트 힌트
 2. 접근 범위 산출 (실패 → 503 `permission_unavailable`, 부분 결과 없음)
-3. 역할 검사 (운영·감사 화면만 해당. 부족 → 403)
+3. 역할 검사 (운영·감사 화면만 해당. 부족 → 403). **역할은 세션의 IdP·팀 매핑 역할과 `app_user.roles[]`의 관리자 지정의 합집합이며, 1단계에서 세션을 읽을 때마다 합성한다** (CR-091, DEV-695 — `RegisteringSessionStore`). 세션에 되써 넣지 않고 캐시하지 않으므로 지정·회수가 다음 요청에 반영된다. 지정값을 읽지 못하면 세션의 역할로 판정한다
 4. 강제 필터 결합 (우회 불가)
 4-1. **시퀀스 인용 바인딩** — 질의에 `seq:` 범위 조건이 있을 때만 (CR-051). 공간 지목을 검증하고(`repo:`·`base:` 하나씩), 그 공간을 해석하고, 유효 에폭을 확정해 질의에 결합한다. **접근 범위 산출(2단계) 뒤에 온다** — 공간 해석이 접근 통제를 지나야 하고, 미등록과 범위 밖이 같은 `NOT_FOUND`가 되어야 하기 때문이다. 요청이 든 에폭이 현재와 다르면 여기서 멈추고 5단계를 실행하지 않는다
 5. 조회 실행 — 여러 인덱스를 함께 도는 조회는 **모든 정렬 키에 `unmapped_type`을 붙이고 `_shards.failed`를 검사한다** (CR-016, DEV-054). 한쪽 인덱스에만 있는 필드로 정렬하면 Elasticsearch가 HTTP 200에 샤드 부분 실패를 붙여 주는데, 그대로 내보내면 한 인덱스가 통째로 빠진 결과가 정상처럼 보인다

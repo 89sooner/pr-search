@@ -4059,7 +4059,9 @@ describe('REL-007 R0: GitHub Operations Plane이 배포에서 실제로 돈다 (
     execFileSync('docker', ['compose', 'version'], { stdio: 'ignore' });
     const prsctl = read('deploy/single-host/prsctl');
     const fn = (name: string): string => new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?\\r?\\n\\}`, 'm').exec(prsctl)?.[0] ?? '';
-    const shell = ['GH_OPS_STATE=""', fn('gh_operations_value'), fn('gh_operations_state')].join('\n');
+    // CR-091: 렌더 추출이 `rendered_env_value` 하나로 모였다 — 토큰 충돌 사전 감지(DEV-696)가 같은 함수를 쓴다.
+    const shell = ['GH_OPS_STATE=""', fn('rendered_env_value'), fn('gh_operations_value'), fn('gh_operations_state')].join('\n');
+    expect(fn('gh_operations_value')).toContain('rendered_env_value search-api GH_OPERATIONS_ENABLED');
     expect(shell).toContain('docker compose');
     expect(shell).toContain('gh_operations_state()');
     const classifyApi = (value: string): 'on' | 'off' | 'reject' => {

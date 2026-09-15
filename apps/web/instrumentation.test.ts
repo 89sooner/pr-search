@@ -148,3 +148,62 @@ describe('DEV-577: 기동 검증', () => {
     expect(exits).toEqual([]);
   });
 });
+
+/**
+ * 평문 HTTP 파일럿 — 서되, 기동마다 말한다 (`CR-091` / `DEV-694`).
+ *
+ * 사내 `0.1.0-pilot.6`은 TLS 없이 GHE 로그인을 시험하려 했고 이 판정이 그것을 막았다.
+ * `ALLOW_INSECURE_COOKIES=true`를 함께 적은 배포는 서지만, **받아들인 위험이 로그에서 사라지지
+ * 않게** 기동할 때마다 경고한다.
+ */
+describe('CR-091: ALLOW_INSECURE_COOKIES 기동', () => {
+  const stubPilot = (): void => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('AUTH_ENABLED', 'true');
+    vi.stubEnv('SESSION_COOKIE_SECURE', 'false');
+    vi.stubEnv('AUTH_PROVIDER', 'github');
+    vi.stubEnv('GHE_BASE_URL', 'http://ghe.example');
+    vi.stubEnv('GHE_OAUTH_CLIENT_ID', 'id');
+    vi.stubEnv('GHE_OAUTH_CLIENT_SECRET', 'secret');
+    vi.stubEnv('GHE_OAUTH_REDIRECT_URI', 'http://prs.example/auth/callback');
+  };
+
+  it('플래그를 함께 적으면 종료하지 않고 경고한다', async () => {
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    stubPilot();
+    vi.stubEnv('ALLOW_INSECURE_COOKIES', 'true');
+
+    await register();
+
+    expect(exits, '파일럿 형상을 죽였다').toEqual([]);
+    expect(warned).toHaveBeenCalledTimes(1);
+    expect(String(warned.mock.calls[0]?.[0])).toContain('ALLOW_INSECURE_COOKIES=true');
+  });
+
+  it('플래그가 없으면 여전히 종료한다 — 사내가 겪은 거부는 기본값으로 남는다', async () => {
+    stubPilot();
+    vi.stubEnv('ALLOW_INSECURE_COOKIES', undefined);
+
+    await register();
+    expect(exits).toHaveLength(1);
+  });
+
+  it('플래그 값이 오타면 종료한다', async () => {
+    stubPilot();
+    vi.stubEnv('ALLOW_INSECURE_COOKIES', 'yes');
+
+    await register();
+    expect(exits).toHaveLength(1);
+  });
+
+  it('TLS 배포에 플래그가 남아 있어도 경고하지 않는다 — 평문 세션이 없다', async () => {
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    stubPilot();
+    vi.stubEnv('SESSION_COOKIE_SECURE', 'true');
+    vi.stubEnv('ALLOW_INSECURE_COOKIES', 'true');
+
+    await register();
+    expect(exits).toEqual([]);
+    expect(warned).not.toHaveBeenCalled();
+  });
+});

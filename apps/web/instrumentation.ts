@@ -53,10 +53,20 @@ export async function register(): Promise<void> {
    * 정적으로 끌면 Edge 런타임의 계측 그래프에도 올라간다. Node 런타임에
    * 들어온 뒤에 가져오면 그 자리가 생기지 않는다.
    */
-  const { webConfigFailure } = await import('./lib/server/config');
+  const { webConfigFailure, webConfigWarnings } = await import('./lib/server/config');
 
   const failure = webConfigFailure();
-  if (failure === null) return;
+  if (failure === null) {
+    /*
+     * **성립했지만 받아들인 위험이 있는 구성은 기동마다 말한다** (CR-091 / DEV-694).
+     * `ALLOW_INSECURE_COOKIES=true`로 평문 HTTP 세션을 허용한 배포가 그것이다. 한 번 적고
+     * 잊히면 그 파일럿 형상이 운영이 된다 — 로그를 여는 사람마다 그 사실을 보게 한다.
+     */
+    for (const warning of webConfigWarnings()) {
+      console.warn(`\n  경고: ${warning}\n`);
+    }
+    return;
+  }
 
   const production = process.env['NODE_ENV'] === 'production';
   console.error(

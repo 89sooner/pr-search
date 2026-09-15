@@ -166,6 +166,9 @@ services:
       SEARCH_API_URL: http://search-api:3002
       AUTH_ENABLED: ${AUTH_ENABLED:-true}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      # 평문 HTTP 파일럿 전용 (CR-091). `SESSION_COOKIE_SECURE=false`와 **함께** 적어야 인증을 켠 채 선다.
+      # 쿠키를 발급하는 것은 `web`뿐이므로 **`web`에만 준다** — search-api는 SESSION_COOKIE_SECURE도 받지 않는다.
+      ALLOW_INSECURE_COOKIES: ${ALLOW_INSECURE_COOKIES:-}
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}

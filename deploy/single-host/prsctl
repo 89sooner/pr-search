@@ -13,6 +13,8 @@
 #   ./prsctl backup     PostgreSQL 논리 백업
 #   ./prsctl restore    백업 복원 + 전량 재색인
 #   ./prsctl lineage    이 형상이 어느 외부 커밋에서 왔는가
+#   ./prsctl role list | grant <login> <역할> | revoke <login> <역할>
+#                       관리자 지정 역할(operator·release_manager·security_officer)
 #
 # **fail-fast다.** checksum 불일치·이미지 부재·필수 환경 변수 부재·마이그레이션
 # 실패·health 실패를 성공으로 접지 않는다.
@@ -43,10 +45,57 @@ bad()  { printf '  \033[31m✗\033[0m %s\n' "$*"; }
 # 두 파서가 아니라 하나뿐이므로 갈릴 자리가 없다. 회귀(`runtime-reachability`)가 이 함수와 search-api의
 # 판정을 키·값 양쪽 변형의 입력 표로 대조한다. 한 실행 안에서는 한 번만 계산한다(캐시).
 gh_operations_value() {
+  rendered_env_value search-api GH_OPERATIONS_ENABLED
+}
+
+# **서비스가 실제로 받을 환경 변수 하나를 compose 렌더에서 읽는다** (DEV-664 · CR-091).
+#
+# 렌더는 YAML이므로 값이 인용될 수 있다 — 실측: `""`, `"true"`, `','`, `':'`, `'alice : tok'`. 큰따옴표와
+# 작은따옴표 두 형식을 모두 벗긴다(작은따옴표 안의 `''`는 `'`, 큰따옴표 안의 `\"`·`\\`는 그 문자). 처음 판은
+# 큰따옴표만 벗겼는데 GH 스위치는 그것으로 충분했고, 토큰 값에서 작은따옴표 렌더가 나왔다. `.env`가 없으면
+# 빈 문자열이다(require_env 전에도 불린다).
+rendered_env_value() {
   [ -f "$ENV_FILE" ] || return 0
-  docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config 2>/dev/null \
-    | sed -n '/^  search-api:$/,/^  [a-z][a-z0-9-]*:$/p' \
-    | sed -nE 's/^ +GH_OPERATIONS_ENABLED: *"?([^"]*)"?[[:space:]]*$/\1/p' | head -1
+  local raw inner
+  raw="$(docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config 2>/dev/null \
+    | sed -n "/^  $1:\$/,/^  [a-z][a-z0-9-]*:\$/p" \
+    | sed -nE "s/^ +$2:[[:space:]]*(.*)\$/\\1/p" | head -1)"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  case "$raw" in
+    \'*\')
+      inner="${raw:1:${#raw}-2}"
+      printf '%s' "${inner//\'\'/\'}" ;;
+    \"*\")
+      inner="${raw:1:${#raw}-2}"
+      inner="${inner//\\\"/\"}"
+      printf '%s' "${inner//\\\\/\\}" ;;
+    *) printf '%s' "$raw" ;;
+  esac
+}
+
+# **세션 인증과 관리 토큰을 함께 둔 형상을 기동 전에 막는다** (DEV-048 · CR-091 / DEV-696).
+#
+# search-api는 둘을 함께 받으면 기동을 거부한다(`OIDC 세션과 ADMIN_API_TOKENS를 함께 구성할 수 없다`). 그 거부는
+# 옳지만 **컨테이너를 교체한 뒤에** 드러나 crash-loop로 보였다 — 사내 `0.1.0-pilot.6`에서 `AUTH_ENABLED=false`
+# 파일럿을 `true`로 바꾸며 이전 `.env`의 토큰을 남긴 채 `upgrade`를 돌린 것이 그 모양이다. 판정은 search-api와
+# 같다: 켜짐은 렌더된 `AUTH_ENABLED`가 정확히 `true`(compose가 기본값 `true`를 늘 렌더한다), 토큰은
+# `parseAdminTokens`의 규칙(쉼표로 나누고 다듬어, `이름:` 뒤가 빈 항목은 토큰이 아니다). 회귀가 실제 compose로
+# 입력 표를 대조한다.
+admin_tokens_configured() {
+  local raw="$1" entry token
+  local -a entries=()
+  IFS=',' read -r -a entries <<< "$raw"
+  for entry in ${entries[@]+"${entries[@]}"}; do
+    entry="${entry#"${entry%%[![:space:]]*}"}"; entry="${entry%"${entry##*[![:space:]]}"}"
+    [ -n "$entry" ] || continue
+    case "$entry" in *:*) token="${entry#*:}" ;; *) token="$entry" ;; esac
+    token="${token#"${token%%[![:space:]]*}"}"; token="${token%"${token##*[![:space:]]}"}"
+    [ -z "$token" ] || return 0
+  done
+  return 1
+}
+auth_token_conflict() {
+  [ "$(rendered_env_value search-api AUTH_ENABLED)" = true ] && admin_tokens_configured "$(rendered_env_value search-api ADMIN_API_TOKENS)"
 }
 # on / off / reject — search-api·gh-executor의 `resolveOperationsEnabled`와 같은 분류다: `true`만 켜짐,
 # 빈 값·`false`는 꺼짐, 그 밖(`TRUE`·`yes`…)은 두 서비스가 기동을 거부하므로 여기서도 거부한다.
@@ -165,6 +214,11 @@ require_env() {
   # GitHub Operations Plane의 스위치가 두 서비스가 거부하는 값이면 여기서 먼저 막는다 (CR-086 / DEV-664).
   [ "$(gh_operations_state)" != reject ] \
     || die "GH_OPERATIONS_ENABLED는 true 또는 false여야 한다: '$(gh_operations_value)' — search-api·gh-executor가 기동을 거부한다"
+  # 세션 인증과 관리 토큰의 공존은 search-api가 거부한다 — 컨테이너를 바꾸기 전에 말한다 (DEV-048 · DEV-696).
+  ! auth_token_conflict \
+    || die "AUTH_ENABLED=true(세션 인증)와 ADMIN_API_TOKENS를 함께 둘 수 없다 — search-api가 기동을 거부한다 (DEV-048).
+  .env에서 ADMIN_API_TOKENS의 값을 비우고(ADMIN_API_TOKENS=) 다시 실행한다. 컨테이너는 아직 바꾸지 않았다.
+  토큰으로 하던 운영 작업은 세션의 operator 역할로 한다: 그 사람이 한 번 로그인한 뒤 ./prsctl role grant <login> operator (RUNBOOK 6장)"
   # **셸로 소싱하지 않는다.** `ES_JAVA_OPTS=-Xms2g -Xmx2g`처럼 값에 공백이 있으면
   # `. file`이 뒷부분을 명령으로 해석해 죽는다. Compose의 `.env` 파싱은 셸과 달라
   # 공백을 값의 일부로 보므로, 이 스크립트가 쓰는 몇 개만 같은 규칙으로 읽는다.
@@ -314,6 +368,14 @@ cmd_health() {
       bad "$svc /healthz 응답 없음"; failed=1
     fi
   done
+
+  # **평문 HTTP 세션을 허용한 형상은 health마다 말한다** (CR-091 / DEV-694). 실패가 아니다 — 받아들인 위험이다.
+  # web이 기동마다 같은 경고를 로그에 남기지만, 운영자가 가장 자주 보는 출력이 이것이다.
+  if [ "$(rendered_env_value web AUTH_ENABLED)" = true ] \
+     && [ "$(rendered_env_value web SESSION_COOKIE_SECURE)" = false ] \
+     && [ "$(rendered_env_value web ALLOW_INSECURE_COOKIES)" = true ]; then
+    printf '  \033[33m!\033[0m 평문 HTTP 세션 허용 (ALLOW_INSECURE_COOKIES=true) — 파일럿 전용이다. TLS를 붙이면 SESSION_COOKIE_SECURE=true로 되돌리고 이 값을 지운다\n'
+  fi
 
   # **GitHub Operations Plane은 켰을 때만 실재해야 하고, 껐으면 없어야 한다** (CR-086).
   # 프로파일 밖의 컨테이너가 떠 있으면 `.env`와 형상이 갈린 것이다 — 그 상태의 실행기는
@@ -576,6 +638,22 @@ cmd_restore() {
   printf '\n복구가 끝났다. 검색이 복원된 정본을 답한다.\n'
 }
 
+# **관리자 지정 역할** (CR-091 / DEV-695).
+#
+# `operator`·`release_manager`·`security_officer`는 IdP 그룹·GHE 팀으로 줄 수 없고(CR-015) `app_user.roles[]`에만
+# 있다. 세션 인증을 켠 배포에서 그 값을 바꾸는 경로가 이것 하나다 — 최초의 operator는 화면으로 만들 수 없다.
+# search-api 이미지로 한 번 실행하므로 search-api와 같은 DB 접속 구성을 쓰고, 변경과 감사를 한 트랜잭션에 남긴다.
+# **행위 주체는 호스트 사용자다.** sudo로 돌렸으면 sudo를 부른 사람이다. 감사 기록에는 `prsctl:<사용자>`로 남는다.
+cmd_role() {
+  require_env
+  local actor
+  actor="$(printf '%s' "${SUDO_USER:-$(id -un)}" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-64)"
+  [ -n "$actor" ] || die "호스트 사용자 이름을 알 수 없다 — 감사 기록의 행위 주체 없이 역할을 바꾸지 않는다"
+  local status=0
+  compose run --rm --no-deps -T search-api node dist/role-cli.js "$@" --actor "$actor" || status=$?
+  return "$status"
+}
+
 cmd_lineage() {
   local m="${BUNDLE_ROOT}/manifest/release-manifest.json"
   [ -f "$m" ] || die "release-manifest.json이 없다: $m"
@@ -593,5 +671,6 @@ case "${1:-}" in
   backup)  cmd_backup ;;
   restore) shift; cmd_restore "$@" ;;
   lineage) cmd_lineage ;;
-  *) sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  role)    shift; cmd_role "$@" ;;
+  *) sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

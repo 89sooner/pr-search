@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ABSOLUTE_TIMEOUT_MS,
   IDLE_TIMEOUT_MS,
+  INSECURE_SESSION_COOKIE_NAME,
   SESSION_COOKIE_NAME,
   createSessionId,
   deadlinesOf,
@@ -17,6 +18,7 @@ import {
   remainingTtlSeconds,
   serializeClearingCookie,
   serializeSessionCookie,
+  sessionCookieName,
   type SessionRecord,
 } from './session.js';
 
@@ -92,6 +94,29 @@ describe('DoD 2: 쿠키 속성 (AC-2)', () => {
     expect(serializeSessionCookie('abc', { secure: false })).not.toContain('Secure');
   });
 
+  /**
+   * **`Secure`를 떼면 `__Host-` 접두도 뗀다** (`CR-091` / `DEV-694`).
+   *
+   * 브라우저는 `__Host-` 접두 쿠키에 `Secure`가 없으면 저장하지 않는다. 속성만 떼고 이름을
+   * 두면 평문 HTTP 파일럿에서 `Set-Cookie`는 나가는데 브라우저가 버리고, 사용자는 로그인
+   * 화면으로 되돌아온다. 사내 `0.1.0-pilot.6`이 막힌 모양이 그것이다.
+   */
+  it('Secure가 없는 쿠키에 __Host- 접두를 붙이지 않는다 — 브라우저가 버린다', () => {
+    const insecure = serializeSessionCookie('abc', { secure: false });
+    expect(insecure.startsWith(`${INSECURE_SESSION_COOKIE_NAME}=abc;`)).toBe(true);
+    expect(insecure).not.toContain('__Host-');
+    expect(serializeClearingCookie({ secure: false }).startsWith(`${INSECURE_SESSION_COOKIE_NAME}=;`)).toBe(true);
+
+    const secure = serializeSessionCookie('abc', { secure: true });
+    expect(secure.startsWith(`${SESSION_COOKIE_NAME}=abc;`)).toBe(true);
+  });
+
+  it('이름을 고르는 규칙은 하나다 — Secure일 때만 __Host-', () => {
+    expect(sessionCookieName(true)).toBe(SESSION_COOKIE_NAME);
+    expect(sessionCookieName(false)).toBe(INSECURE_SESSION_COOKIE_NAME);
+    expect(INSECURE_SESSION_COOKIE_NAME.startsWith('__')).toBe(false);
+  });
+
   it('로그아웃 쿠키는 Max-Age=0이고 값이 비어 있다', () => {
     const cookie = serializeClearingCookie({ secure: true });
     expect(cookie).toContain(`${SESSION_COOKIE_NAME}=;`);
@@ -103,6 +128,11 @@ describe('DoD 2: 쿠키 속성 (AC-2)', () => {
 describe('쿠키 읽기', () => {
   it('여러 쿠키 중 세션 쿠키만 꺼낸다', () => {
     expect(readSessionCookie(`theme=dark; ${SESSION_COOKIE_NAME}=xyz; lang=ko`)).toBe('xyz');
+  });
+
+  it('기본은 정본 이름만 읽는다 — search-api는 접두 없는 이름을 세션으로 받지 않는다 (CR-091)', () => {
+    expect(readSessionCookie(`${INSECURE_SESSION_COOKIE_NAME}=xyz`)).toBeNull();
+    expect(readSessionCookie(`${INSECURE_SESSION_COOKIE_NAME}=xyz`, INSECURE_SESSION_COOKIE_NAME)).toBe('xyz');
   });
 
   it('세션 쿠키가 없으면 null이다', () => {

@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.18 | 갱신일: 2026-09-14
+> 상태: review | 버전: v0.19 | 갱신일: 2026-09-15
 
 CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하고 모든 sync 호출은 repo session lock을 공유한다. Profile B sequence에는 mirror volume이 없으므로 명시적 API mode다. 환경 키·schema 선행·boot/stop·additive 앱 rollback과 별도 DB down은 [설계](pr_search_wp074_design.md) 10절이 정본이다. pilot.4 fail-fast·SSR smoke·pg hash 보정·worker git을 보존한다. 후보는 새 버전 미발행이며 --release를 사용하지 않는다.
 
@@ -275,6 +275,9 @@ deploy/single-host/prsctl health  # 전 서비스 health 판정                 
 deploy/single-host/prsctl smoke   # read-only 검색 스모크                          — WP-070
 deploy/single-host/prsctl backup  # PostgreSQL 논리 백업 (9.4장)                   — WP-070
 deploy/single-host/prsctl restore # 백업 복원 + 재색인                             — WP-070
+deploy/single-host/prsctl role list | grant <login> <역할> | revoke <login> <역할>
+#                                 # 관리자 지정 역할(operator·release_manager·security_officer). search-api 이미지로 한 번 실행하고
+#                                 # 호스트 사용자를 감사 행위 주체로 남긴다 — CR-091 (DEV-695)
 ```
 
 DB 접속 정보는 환경 변수에서만 읽는다 (`@prs/db`의 `resolvePoolConfig`). 우선순위는 `DATABASE_URL` → 개별 `POSTGRES_*` → 로컬 기본값이다. 통합 테스트는 `POSTGRES_TEST_DB`(기본 `prs_test`)를 써서 개발용 DB와 분리한다.

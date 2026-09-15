@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.24 | 갱신일: 2026-09-14
+> 상태: review | 버전: v0.25 | 갱신일: 2026-09-15
 
 CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025의 최종 필드·check·unique·FK·초기화·role grant·checkpoint/epoch·retention/rollback은 [상세 설계](pr_search_wp074_design.md) 6~7·10절이 소유한다. 아래 CR-077 DDL은 기본 다섯 필드만 보여주는 부분 예시이며 단독 구현하지 않는다.
 
@@ -476,7 +476,7 @@ CREATE TABLE app_user (
   login                 TEXT        NOT NULL UNIQUE,      -- GHE login
   github_user_id        BIGINT      UNIQUE,               -- GHE 숫자 id (CR-015, DEV-043)
   email                 TEXT,
-  roles                 TEXT[]      NOT NULL DEFAULT '{developer}',
+  roles                 TEXT[]      NOT NULL DEFAULT '{developer}', -- 관리자 지정값. 로그인은 쓰지 않고 `prsctl role`만 바꾼다. 실효 역할은 요청마다 세션 역할과 합성 (CR-091, DEV-695)
   access_scope_version  INT         NOT NULL DEFAULT 0,   -- 무효화 시 증가 (CR-015, DEV-044)
   last_seen_at          TIMESTAMPTZ
 );

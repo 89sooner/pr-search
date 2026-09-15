@@ -393,6 +393,8 @@ $EDITOR .env          # PRS_VERSION을 새 값으로 — **load보다 먼저다*
 
 **마이그레이션이 먼저다.** 하위 호환이므로 옛 코드가 새 스키마 위에서 돈다(데이터 모델 7장). 롤백은 `.env`의 `PRS_VERSION`을 이전 값으로 되돌리고 `./prsctl upgrade`를 다시 실행한다 — **이전 이미지가 로컬에 남아 있어야 하므로 번들을 지우지 마라.**
 
+**세션 인증과 관리 토큰 (`CR-091`).** `./prsctl load`·`install`·`upgrade`·`health`는 시작하기 전에 `AUTH_ENABLED=true`와 `ADMIN_API_TOKENS`가 함께 있는지 본다. 함께 있으면 **컨테이너를 바꾸기 전에** 멈춘다 — `search-api`가 그 조합으로는 기동하지 않기 때문이다(`DEV-048`). 파일럿을 `AUTH_ENABLED=false`에서 `true`로 옮기는 업그레이드라면 이전 `.env`의 토큰을 비우고, 운영자에게 `./prsctl role grant`로 `operator`를 준다(6장).
+
 **GitHub 작업을 켠 배포 (`CR-090`).** 마이그레이션 030을 받은 뒤에는 **관리자의 최초 운영 승인이 있어야** GitHub 작업이 실행된다 — 업그레이드 직후의 실행 요청은 「관리자 운영 승인이 필요합니다」로 거절되며, 이전 판의 실행 허용을 승계하지 않는다. 7.C 4단계를 한다. 030은 GitHub 작업 경로에 한해 옛 코드와 호환되지 않는다(의도) — 옛 앱의 실행 요청과 실행권 확정은 가드가 거절한다. 검색·수집·M 번호 경로는 영향을 받지 않는다. 롤백 전에는 7.C 「롤백할 때」를 본다.
 
 ---
@@ -525,8 +527,8 @@ GHE_TEAM_ROLE_MAP=cpswdev-team/pipe-admins:manager,cpswdev-team/pipe-users:qa
 ```
 
 **부여할 수 있는 역할은 `manager`와 `qa` 둘뿐이다** (`CR-015`, `DEV-049`).
-`release_manager`·`operator`·`security_officer`는 관리자가 `app_user.roles[]`에
-직접 지정하며, 여기 적으면 `web`이 기동하지 않는다. GHE 팀을 만들 수 있는
+`release_manager`·`operator`·`security_officer`는 관리자가 `./prsctl role`로
+직접 지정하며(아래), 여기 적으면 `web`이 기동하지 않는다. GHE 팀을 만들 수 있는
 사람이 운영 권한을 발급하게 두지 않는다는 계약이고, 그것은 IdP 그룹에 세운
 제약과 같다.
 
@@ -534,19 +536,67 @@ GHE_TEAM_ROLE_MAP=cpswdev-team/pipe-admins:manager,cpswdev-team/pipe-users:qa
 성립한다** — 무엇이 보이는지는 역할이 아니라 GHE 저장소 권한이 정한다
 (`FR-AUTH-002`).
 
+#### 운영 역할 지정하기 (`prsctl role`, `CR-091`)
+
+저장소 등록·백필·재색인 같은 운영 콘솔(`/ops/*`)과 GitHub 작업의 운영 승인은
+`operator`가 한다. **세션 인증을 켠 배포에서 그 역할을 얻는 방법은 이것 하나다** —
+팀 매핑으로는 줄 수 없고, 관리 토큰(`ADMIN_API_TOKENS`)은 인증을 켜면 쓸 수 없다(`DEV-048`).
+
+1. 역할을 받을 사람이 **먼저 한 번 로그인한다.** 로그인해야 PR Search가 그 사람의
+   GHE 숫자 id를 알고 정본에 행이 생긴다.
+2. 서버에서 지정한다.
+
+   ```bash
+   ./prsctl role grant <GHE 로그인> operator     # 지정
+   ./prsctl role list                             # 지정 역할을 가진 사람
+   ./prsctl role revoke <GHE 로그인> operator    # 회수
+   ```
+
+3. 그 사람이 화면을 **새로 고친다.** 다시 로그인할 필요가 없다 — 역할은 요청마다
+   정본에서 다시 읽는다. 회수도 다음 요청부터 반영된다.
+
+지정할 수 있는 역할은 `operator`·`release_manager`·`security_officer` 셋이다.
+`manager`·`qa`는 위의 팀 매핑으로 준다. 지정·회수는 감사 기록(A-004)에
+`user_role.grant`·`user_role.revoke`로 남고, 행위 주체는 `prsctl`을 실행한
+**호스트 사용자**(`prsctl:<사용자>`, `sudo`로 돌렸으면 sudo를 부른 사람)다. 이미
+가진 역할을 다시 지정하면 아무것도 바뀌지 않고 기록도 남지 않는다.
+
+`<GHE 로그인>`은 표시 이름이 아니라 GHE 로그인 이름이다. 대소문자는 달라도
+찾지만, 대소문자만 다른 사용자가 둘 이상이면 고르지 않고 멈춘다.
+
 #### 스코프
 
 비워 두면 `read:user read:org`다. 그것이 최소 권한이며 `/user`와 `/user/teams`를
 읽는 데 필요한 전부다. **저장소 내용을 읽는 스코프는 요구하지 않는다** — 수집은
 별도 App 자격으로 하고 이 토큰은 신원 확인에만 쓰인다.
 
-#### TLS는 여전히 필요하다
+#### 운영에는 TLS가 필요하다 — TLS 없는 파일럿은 명시 플래그로만 (`CR-091`)
 
-`AUTH_PROVIDER=github`으로 바꾸어도 **평문 HTTP에서 로그인을 켤 수는 없다.**
-세션 쿠키 계약(`FR-AUTH-001` AC-2)은 공급자와 무관하며, `AUTH_ENABLED=true`인
-배포에서 `SESSION_COOKIE_SECURE=false`는 `web`의 기동을 막는다. 파일럿에서
-TLS 없이 화면만 띄워 보려면 `AUTH_ENABLED=false`로 두며, 그 형상에서 조회는
-전부 401이다 (7장).
+세션 쿠키 계약(`FR-AUTH-001` AC-2)은 공급자와 무관하다. **운영 배포는 TLS를 앞에
+세우고 `SESSION_COOKIE_SECURE=true`(기본값)로 둔다.** 평문 HTTP에서는 세션 쿠키를
+같은 망의 누구든 가로챌 수 있다.
+
+TLS를 아직 세우지 못한 **파일럿에서 로그인까지 시험해야 한다면** `.env`에 두 값을
+**함께** 적는다. 하나만 적으면 `web`이 기동하지 않는다.
+
+```
+AUTH_ENABLED=true
+SESSION_COOKIE_SECURE=false
+ALLOW_INSECURE_COOKIES=true
+GHE_OAUTH_REDIRECT_URI=http://<서비스 주소>/auth/callback
+```
+
+- 그 형상의 `web`은 기동할 때마다 로그에 경고를 남기고, `./prsctl health`도 「평문
+  HTTP 세션 허용」 경고 줄을 낸다. 실패가 아니라 받아들인 위험을 알리는 줄이다.
+- 브라우저에 가는 쿠키 이름이 `prs_session`·`prs_oidc`로 바뀐다. `Secure`가 없는
+  `__Host-` 쿠키는 브라우저가 저장하지 않기 때문이다. TLS로 옮기면 원래 이름으로
+  돌아가므로 사용자는 한 번 다시 로그인한다.
+- GHE에 등록한 OAuth App의 callback URL도 `http://`로 맞춘다. 문자 그대로 같아야 한다.
+- **TLS를 붙이는 날** `SESSION_COOKIE_SECURE=true`로 되돌리고 `ALLOW_INSECURE_COOKIES`를
+  지운 뒤 `./prsctl upgrade`를 돌린다.
+
+로그인 없이 화면만 띄워 보려면 지금처럼 `AUTH_ENABLED=false`로 둔다. 그 형상에서
+조회는 전부 401이다 (7장).
 
 ### 사설 CA
 
@@ -822,7 +872,7 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 3. **`./prsctl upgrade`를 돌린다.** `prsctl`이 `.env`의 `GH_OPERATIONS_ENABLED=true`를 읽어 `gh-executor` 프로파일(`github-operations`)을 함께 세운다. `prsctl`은 `.env`를 따로 해석하지 않고 compose가 렌더한 search-api의 값을 그대로 읽으므로, compose가 받아들이는 형태(따옴표·주석·`export`·공백)면 무엇이든 같은 답이다. `TRUE`·`yes`는 두 서비스가 거부하므로 `prsctl`도 거부한다(`DEV-664`). 켠 직후 `worker-batch`가 기동 첫 회차에서 `gh_execution`의 월 파티션을 만든다 — `./prsctl health`가 초록이 된 뒤에 4단계를 한다(`DEV-668`). `./prsctl health`가 `gh-executor /healthz … "execution":"enabled"`를 내야 한다. search-api만 켜지고 실행기가 없으면 요청이 영원히 `대기 중`이다 — `health`가 그 어긋남을 빨갛게 낸다.
 4. **운영자가 현재 배포 정의를 운영 승인한다 (`CR-090`).** 마이그레이션 030부터 **`GH_OPERATIONS_ENABLED=true`만으로는 실행되지 않는다** — 운영자가 이 배포의 gh capability 정의를 승인하기 전의 실행 요청은 「관리자 운영 승인이 필요합니다」로 거절되고, 이전 판에서 열려 있던 실행도 승계하지 않는다.
    1. `./prsctl health`에서 `gh-executor /healthz`의 `registry.status`가 `passed`이고 `registry.lastPassedAt`이 방금 시각인지 본다 — 실행기 기동 검사가 끝나야 승인 근거가 생긴다. 처음 켤 때 한 번은 DB에서 `select has_schema_privilege('prs_app', 'public', 'CREATE')`가 `f`인지도 본다 — 운영 정책 함수가 기대는 권한 경계다(보안 10.6). PostgreSQL 15보다 오래된 판에서 만든 DB를 올렸거나 그런 덤프를 복원했다면 `t`일 수 있으며, 그때는 승인하기 전에 DB 관리자와 `public` 스키마의 `PUBLIC` CREATE 권한을 정리한다.
-   2. `operator` 역할로 로그인해 좌측 「운영 › gh 레지스트리」(A-006)의 **운영 승인** 패널을 연다. 「현재 적재된 정의와 운영 승인된 정의」에서 gh 버전·manifest 판·해시를, 「최근 실행기 검사」에서 기록 번호·시각·상태 `passed`·보고서 판·근거 유효 기한을 확인한다. 「승인 자격」에 사유가 있으면 그것부터 해소한다(아래 증상 표).
+   2. `operator` 역할로 로그인해 좌측 「운영 › gh 레지스트리」(A-006)의 **운영 승인** 패널을 연다(역할은 6장 「운영 역할 지정하기」의 `./prsctl role grant`로 준다). 「현재 적재된 정의와 운영 승인된 정의」에서 gh 버전·manifest 판·해시를, 「최근 실행기 검사」에서 기록 번호·시각·상태 `passed`·보고서 판·근거 유효 기한을 확인한다. 「승인 자격」에 사유가 있으면 그것부터 해소한다(아래 증상 표).
    3. 「승인 미리보기」를 열어 적용 대상(이 배포 범위)·승인할 정의·근거 기록·게이트 결과·**실제로 열리는 기능(`gh pr list` 한 개)**·아직 허용되지 않는 기능·운영 영향을 읽고 사유를 적어 승인한다. 상태가 「현재 정의 운영 승인됨」이 되고 변경 이력에 revision이 남는다(감사 로그에는 `gh_registry.approve`).
    4. 운영 승인은 **이 배포 범위의 현재 R0 정의에 대한 DB 결정**이다 — 무엇을 설치하지 않고, 196개 명령을 열지 않으며, 사내 GHES 지원 확인을 대신하지 않는다. `security_officer`만 가진 사용자는 조회만 한다.
 5. **한 사용자로 확인한다.** 로그인 → 좌측 「GitHub 작업」 → 「GitHub 계정 연결」 → GHE 인가 화면 → 돌아오면 「연결됨 @<login>」 → 저장소 선택 → 미리보기에 `gh pr list --repo <host>/<owner>/<repo> --state open --limit 30 --json …`이 보이면 「실행」 → 결과 표 → 「실행 이력」에 행이 남는다. 「같은 구성으로 다시 실행」은 새 미리보기를 만들 뿐 실행하지 않는다. 운영 승인 전이면 저장소를 고른 뒤 미리보기에 「관리자 운영 승인이 필요합니다」가 보이고 실행 버튼이 꺼진다.
@@ -888,9 +938,14 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 | `password authentication failed` (`prs_retention`) | **비밀번호를 퍼센트 인코딩했는가** — 앱은 디코딩한 값으로 접속한다. 롤 자체는 `install`·`upgrade`·`restore`가 `ADMIN_DATABASE_URL`을 읽어 만들므로(`DEV-556`), 값을 고친 뒤 `./prsctl upgrade`를 돌리면 비밀번호가 맞춰진다 |
 | 웹 화면이 전부 500, 로그에 `Failed to load external module` | 이미지가 `DEV-551` 이전 빌드다. 그 결함은 **배포 트리에서만** 나타나며 이미지 빌드가 고친다 — 컨테이너 안에서 손으로 스텁을 만들면 `upgrade`·`restart`마다 사라진다. 고친 버전으로 다시 받는다 |
 | `docker compose ps`는 전부 정상인데 **웹 화면만 500** | 이미지가 `DEV-577` 이전 빌드다. 그 빌드는 잘못된 구성으로도 기동하고 `/healthz`에 200을 내므로 컨테이너가 `healthy`로 보이는데, 사람이 여는 화면만 500이 됐다 — 사내 반입 `0.1.0-pilot.3`이 막힌 자리다. **컨테이너 안에서 `npm install`을 실행하지 않는다**: 배포 트리의 `package.json`은 워크스페이스 참조를 담고 있어 npm이 `EUNSUPPORTEDPROTOCOL`로 거부하고, 설령 되더라도 `upgrade` 한 번에 사라진다. 고친 버전으로 다시 받는다 |
-| `web`이 재기동을 반복한다 · 로그에 `web 구성이 성립하지 않아 기동할 수 없다` | **의도된 거부다** (`DEV-577`). 로그의 다음 줄이 어느 계약을 어겼는지 적는다. 가장 잦은 것은 운영에서 `SESSION_COOKIE_SECURE=false`이며, 값을 `true`로 되돌리고 `./prsctl upgrade`를 다시 돌린다 (2.B). 이 거부가 없던 시절에는 같은 구성이 초록으로 서서 화면만 500이었다 |
+| `web`이 재기동을 반복한다 · 로그에 `web 구성이 성립하지 않아 기동할 수 없다` | **의도된 거부다** (`DEV-577`). 로그의 다음 줄이 어느 계약을 어겼는지 적는다. 가장 잦은 것은 운영에서 `SESSION_COOKIE_SECURE=false`이며, 값을 `true`로 되돌리고 `./prsctl upgrade`를 다시 돌린다 (2.B). TLS 없는 파일럿에서 로그인까지 시험하는 중이라면 6장 「운영에는 TLS가 필요하다」의 두 값을 함께 적었는지 본다 — `ALLOW_INSECURE_COOKIES`의 값이 `true`·`false`·빈 값이 아니어도 같은 자리에서 막힌다. 이 거부가 없던 시절에는 같은 구성이 초록으로 서서 화면만 500이었다 |
 | `AUTH_PROVIDER=github`인데 `web`이 기동하지 않는다 | 로그의 다음 줄이 어느 키가 비었는지 적는다 (`CR-083`). `GHE_BASE_URL`·`GHE_OAUTH_CLIENT_ID`·`GHE_OAUTH_CLIENT_SECRET`·`GHE_OAUTH_REDIRECT_URI` 넷이 필수다. `AUTH_PROVIDER` 값에 오타가 있어도 같은 자리에서 막힌다 — 오타가 조용히 `oidc`로 떨어지지 않는다 |
-| GHE 로그인은 되는데 모두 `developer`다 | `GHE_TEAM_ROLE_MAP`이 비었거나 팀 이름이 다르다. 값은 `<org>/<team>:<역할>`이고 구분자는 **콜론**이다. 팀 슬러그는 GHE의 팀 URL 마지막 구간이며 표시 이름이 아니다. 부여할 수 있는 역할은 `manager`와 `qa`뿐이다 (6장) |
+| GHE 로그인은 되는데 모두 `developer`다 | `GHE_TEAM_ROLE_MAP`이 비었거나 팀 이름이 다르다. 값은 `<org>/<team>:<역할>`이고 구분자는 **콜론**이다. 팀 슬러그는 GHE의 팀 URL 마지막 구간이며 표시 이름이 아니다. 팀으로 부여할 수 있는 역할은 `manager`와 `qa`뿐이다. `operator`·`release_manager`·`security_officer`는 `./prsctl role grant <login> <역할>`로 준다 (6장 「운영 역할 지정하기」) |
+| 운영 메뉴가 없거나 `/ops/*`·A-006 승인이 403이다 (세션 인증 배포) | 그 사람에게 `operator`가 지정됐는가 — `./prsctl role list`. 없으면 그 사람이 한 번 로그인한 뒤 `./prsctl role grant <login> operator`를 돌리고 화면을 새로 고친다. 다시 로그인할 필요는 없다 (`CR-091`). `0.1.0-pilot.6`까지의 빌드는 DB에 지정해도 역할에 반영되지 않았다(`DEV-695`) |
+| `./prsctl role grant`가 「로그인한 사용자가 없다」로 멈춘다 | 대상이 아직 로그인하지 않았거나 이름이 다르다. 표시 이름이 아니라 GHE 로그인 이름을 쓴다. 로그인은 되는데도 같으면 `docker logs search-api`에 정본 등록 실패(`DEV-613`)가 있는지 본다 |
+| `prsctl`이 「`AUTH_ENABLED=true`(세션 인증)와 `ADMIN_API_TOKENS`를 함께 둘 수 없다」로 멈춘다 | **의도된 사전 거부다** (`DEV-048` · `CR-091`). 그대로 올리면 `search-api`가 기동을 거부하고 재기동을 반복한다. 컨테이너는 아직 바뀌지 않았다. `.env`의 `ADMIN_API_TOKENS` 값을 비우고(`ADMIN_API_TOKENS=`) 같은 명령을 다시 돌린다. 토큰으로 하던 운영 작업은 `operator` 역할로 한다 (6장) |
+| `search-api`가 재기동을 반복하고 로그에 `OIDC 세션과 ADMIN_API_TOKENS를 함께 구성할 수 없다` | 위와 같은 원인이다. `0.1.0-pilot.6`까지의 `prsctl`은 이것을 미리 막지 않았다. `ADMIN_API_TOKENS`를 비우고 `./prsctl upgrade` |
+| `./prsctl health`에 「평문 HTTP 세션 허용」 줄이 있다 | 실패가 아니다. `ALLOW_INSECURE_COOKIES=true`로 TLS 없이 로그인을 여는 파일럿 형상이라는 알림이다 (6장). 운영으로 쓰기 전에 TLS를 붙이고 두 값을 되돌린다 |
 | 로그인 직후 화면은 뜨는데 조회가 503 `permission_unavailable` | `DEV-613` 이전 빌드다. 그 빌드는 로그인이 `app_user` 행을 만들지 않아 접근 범위를 산출하지 못했다. 고친 버전은 세션을 읽을 때 정본에 행을 만든다. 그래도 503이면 `docker logs search-api`에 등록 실패 이유가 남아 있는지 본다 — `app_user.login`이 UNIQUE라 GHE에서 개명한 계정이 다른 행과 부딪칠 수 있고, 그때는 사람이 정본을 정리해야 한다 |
 | 인증을 켠 뒤 모든 화면이 로그인으로 갔다가 500 | `OIDC_REDIRECT_URI`를 채웠는가 (`DEV-579`). 값은 `<서비스 주소>/auth/callback`이며 IdP에 등록한 것과 문자 그대로 같아야 한다. 고친 버전에서는 이 값이 비면 `web`이 아예 기동하지 않으므로 이 증상은 `DEV-579` 이전 빌드에서만 난다 |
 | GHE 호출이 인증서 오류 · 기동 로그에 CA 경고 | CA를 **여섯 자리 전부**에 걸었는가. anchor는 얕게 합쳐져 `worker-sequence`·`worker-mirror`·`worker-release`에 닿지 않는다 (6장 「anchor는 얕게 합쳐진다」, `DEV-552`) |
@@ -898,7 +953,7 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 | 서버 안에서 `curl`이 `HTTP/0.9` 오류 | 호스트에 프록시가 강제돼 컨테이너 IP로 가는 요청까지 경유한다. 진단할 때만 `--noproxy '*'`로 우회한다 — 서비스 쪽 프록시 지원은 별개다 (`DEV-494`) |
 | 검색 결과가 비어 있다 | 백필을 실행했는가. `worker-project` 로그에 색인 기록이 있는가 |
 | `group_by=team`이 빈 결과 | `authz` 역할에 GHE 자격이 있는가 — 없으면 작성자 팀이 언제나 모름이다 |
-| 로그인 후 다시 로그인 화면 | 평문 HTTP로 서비스하고 있는가. `Secure` 쿠키는 브라우저가 HTTP로 되돌려 보내지 않으므로 세션이 매 요청마다 사라진다. **`SESSION_COOKIE_SECURE=false`로 내리는 것은 답이 아니다** — 운영에서 그 값은 `web`의 기동을 막는다 (`DEV-577`). TLS를 앞에 세우거나, 아직 세울 수 없다면 `AUTH_ENABLED=false`로 둔다. 그 형상에서도 화면은 서고 조회만 프록시가 401로 막는다 |
+| 로그인 후 다시 로그인 화면 · 콜백 로그에 「왕복 쿠키가 없거나 읽을 수 없다」 | 평문 HTTP로 서비스하고 있는가. `Secure` 쿠키는 브라우저가 HTTP로 되돌려 보내지 않으므로 세션이 매 요청마다 사라진다. **`SESSION_COOKIE_SECURE=false` 한 값만 바꾸는 것은 답이 아니다** — 운영에서 그 값은 `web`의 기동을 막는다 (`DEV-577`). TLS를 앞에 세우거나, 파일럿에서 로그인까지 시험해야 한다면 6장의 두 값(`ALLOW_INSECURE_COOKIES=true` 포함)을 함께 적는다. 로그인이 필요 없으면 `AUTH_ENABLED=false`로 둔다 — 그 형상에서도 화면은 서고 조회만 프록시가 401로 막는다. `0.1.0-pilot.6`까지의 빌드에는 이 플래그가 없다 |
 | `install`이 접속 주체 프로비저닝에서 멈춘다 | `POSTGRES_APP_USER`가 `prs_app`인가 — 그것은 그룹 롤이라 접속할 수 없다. 다른 이름을 준다 (DEV-503) |
 | 업그레이드에서 `load`가 `.env`가 없다고 멈춘다 | 이전 설치의 `.env`를 복사했는가. 번들은 시크릿을 담지 않는다 (DEV-513) |
 | 복구 뒤 검색 결과가 비어 있거나 부분적 | **정상이다.** 재색인이 도는 중이며 진행은 운영 콘솔에서 본다 (DEV-511) |

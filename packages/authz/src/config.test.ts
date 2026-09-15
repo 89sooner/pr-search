@@ -25,6 +25,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   hasAuthCredentials,
+  insecureCookiesAllowed,
+  resolveAllowInsecureCookies,
   resolveAuthProvider,
   resolveGitHubAuthConfig,
   resolveOidcConfig,
@@ -95,6 +97,64 @@ describe('FR-AUTH-001 AC-2: 운영에서 insecure 세션 쿠키를 거부한다'
     expect(resolveSessionReaderConfig({ NODE_ENV: 'development', SESSION_COOKIE_SECURE: 'false' }).cookieSecure).toBe(
       false,
     );
+  });
+});
+
+/**
+ * 두 번째 면제 — 위험을 이름으로 적어 낸 배포 (`CR-091` / `DEV-694`, 사용자 결정).
+ *
+ * 사내 `0.1.0-pilot.6`은 TLS 없이 GHE 로그인을 시험하려 했고, `CR-083`의 면제(인증을 끈
+ * 배포)로는 그것을 할 수 없었다. 이 묶음은 **플래그가 한 줄로 평문 세션을 시작시키지
+ * 않는다**는 것을 건다 — 플래그만으로도, `SESSION_COOKIE_SECURE=false`만으로도 서지 않는다.
+ */
+describe('CR-091: ALLOW_INSECURE_COOKIES — 운영에서 인증을 켠 평문 HTTP 파일럿', () => {
+  const PILOT = { NODE_ENV: 'production', AUTH_ENABLED: 'true', SESSION_COOKIE_SECURE: 'false' } as const;
+
+  it('SESSION_COOKIE_SECURE=false와 함께 적으면 인증을 켠 채로 선다', () => {
+    const config = resolveSessionReaderConfig({ ...PILOT, ALLOW_INSECURE_COOKIES: 'true' });
+    expect(config.cookieSecure).toBe(false);
+    expect(config.enabled).toBe(true);
+    expect(insecureCookiesAllowed({ ...PILOT, ALLOW_INSECURE_COOKIES: 'true' })).toBe(true);
+  });
+
+  it('플래그가 없으면 여전히 거부하고, 거부 문구가 두 갈래의 처방을 말한다', () => {
+    expect(() => resolveSessionReaderConfig(PILOT)).toThrow(/TLS.*ALLOW_INSECURE_COOKIES=true/);
+  });
+
+  it('플래그는 Secure를 끄지 않는다 — 플래그만 적은 운영 배포는 Secure 쿠키를 낸다', () => {
+    const env = { NODE_ENV: 'production', AUTH_ENABLED: 'true', ALLOW_INSECURE_COOKIES: 'true' };
+    expect(resolveSessionReaderConfig(env).cookieSecure).toBe(true);
+    expect(insecureCookiesAllowed(env)).toBe(false);
+  });
+
+  it('AUTH_ENABLED=false 면제와 겹치면 경고 대상이 아니다 — 세션이 발급되지 않는 형상이다', () => {
+    const env = { ...PILOT, AUTH_ENABLED: 'false', ALLOW_INSECURE_COOKIES: 'true' };
+    expect(resolveSessionReaderConfig(env).enabled).toBe(false);
+    expect(insecureCookiesAllowed(env)).toBe(false);
+  });
+
+  it('개발에서는 경고 대상이 아니다 — 운영 계약의 예외가 아니라 원래 허용이다', () => {
+    expect(insecureCookiesAllowed({ NODE_ENV: 'development', SESSION_COOKIE_SECURE: 'false', ALLOW_INSECURE_COOKIES: 'true' })).toBe(
+      false,
+    );
+  });
+
+  it.each(['', 'false', ' false '])('%j는 꺼짐이다', (value) => {
+    expect(resolveAllowInsecureCookies({ ALLOW_INSECURE_COOKIES: value })).toBe(false);
+    expect(() => resolveSessionReaderConfig({ ...PILOT, ALLOW_INSECURE_COOKIES: value })).toThrow(/SESSION_COOKIE_SECURE/);
+  });
+
+  it.each(['TRUE', 'yes', '1', 'on'])('%j는 기동을 거부한다 — 켜짐으로도 꺼짐으로도 읽지 않는다', (value) => {
+    expect(() => resolveAllowInsecureCookies({ ALLOW_INSECURE_COOKIES: value })).toThrow(/ALLOW_INSECURE_COOKIES는 true 또는 false/);
+    // Secure를 켠 운영 배포에서도 같다 — 오타는 형상과 무관하게 오타다.
+    expect(() => resolveSessionReaderConfig({ NODE_ENV: 'production', ALLOW_INSECURE_COOKIES: value })).toThrow(
+      /ALLOW_INSECURE_COOKIES/,
+    );
+  });
+
+  it('값이 없으면 꺼짐이다 — 이미 선 배포의 동작이 바뀌지 않는다', () => {
+    expect(resolveAllowInsecureCookies({})).toBe(false);
+    expect(insecureCookiesAllowed({ NODE_ENV: 'production' })).toBe(false);
   });
 });
 
