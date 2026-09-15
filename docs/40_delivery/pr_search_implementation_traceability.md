@@ -6506,9 +6506,10 @@ migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기�
 | 1 | `665e4f4` | typecheck·lint·lint:deps 0 · 단위 2,743 · build · a11y 424 · 대비 · **e2e 195/196** · 통합 1,803 · **회귀 492/494** |
 | 1의 실패 | | e2e `flow-003.spec.ts:176` 뒤로가기 도착 판정 15초 초과 — `DEV-689`와 같은 증상, e2e는 인증을 끈 형상이라 이 판의 `/me` 경로를 지나지 않으며 **단독 3회 14/14**. 회귀 2건은 이 판이 바꾼 파일의 모양에 기댄 기존 시험이었다 — 런북 anchor 절 시험이 낱말의 **첫 등장**(5장 표)부터 잘라 6장에 새로 생긴 `bash` 블록을 확인 명령으로 읽었고(절 제목에서 자르게 좁혔다), 기동 검증 시험이 `if (failure === null) return;` 표지를 찾았다(경고 출력을 그 앞으로 옮겼다) |
 | 2 | `0ea0ec8` | typecheck·lint·lint:deps 0 · **단위 2,757/2,760** · build · a11y 424 · 대비 · e2e 196 · 통합 1,805 · **회귀 486/496** |
+| 3 | `029eb07` | **전 단계 0** — typecheck·lint·lint:deps · 단위 2,760 · build · a11y 424 · 대비 · e2e 196 · 통합 1,805 · 회귀 496 (코드 트리 해시 `04b9d3071098fbdf`) |
 | 2의 실패 | | 단위 3건은 `DEV-615` 대조 시험이 `smoke-images.sh`의 호출에서 인라인 `-e`만 읽는데 새 게이트 호출을 배열 확장으로 적었다(인라인으로 풀었다). 회귀 10건은 태그 소유권 시험의 가짜 docker가 새 게이트 셋(파일럿 기동·경고, 플래그 오타, `role-cli`)을 흉내 내지 않아 번들 빌드가 멈췄다 — 픽스처 머리글이 「게이트의 검사 모양이 바뀌면 여기도 바뀌어야 한다」고 적은 자리다 |
 
-**이미지 재검증** (`0ea0ec8`, 릴리스·태그 없음). `prs/{db,search-api,pipeline-worker,gh-executor,web}:cr091-final` 다섯 빌드 종료 코드 0. `smoke-images.sh cr091-final` 통과 — 새 검사 셋(인증을 켠 평문 HTTP 파일럿이 기동하고 로그에 경고, 플래그 없는 `Secure` 해제와 플래그 오타 거부, `node dist/role-cli.js`가 DB 전에 사용법과 종료 코드 2)을 포함한다. 배포 이미지의 `role-cli`를 격리 PostgreSQL에 붙여 지정 → 재지정(무변경, 감사 없음) → 목록 → `manager` 거부(2) → `user_id`로 회수를 돌리고, 감사 두 행(`prsctl:image-smoke`, `user_role.grant`·`user_role.revoke`, `applied`)과 최종 역할 `{developer}`를 확인했다.
+**이미지 재검증** (`0ea0ec8`, 릴리스·태그 없음 — 3회차까지 바뀐 것은 게이트 스크립트·픽스처·시험·문서뿐이고 이미지에 들어가는 애플리케이션 코드는 같다). `prs/{db,search-api,pipeline-worker,gh-executor,web}:cr091-final` 다섯 빌드 종료 코드 0. `smoke-images.sh cr091-final` 통과 — 새 검사 셋(인증을 켠 평문 HTTP 파일럿이 기동하고 로그에 경고, 플래그 없는 `Secure` 해제와 플래그 오타 거부, `node dist/role-cli.js`가 DB 전에 사용법과 종료 코드 2)을 포함한다. 배포 이미지의 `role-cli`를 격리 PostgreSQL에 붙여 지정 → 재지정(무변경, 감사 없음) → 목록 → `manager` 거부(2) → `user_id`로 회수를 돌리고, 감사 두 행(`prsctl:image-smoke`, `user_role.grant`·`user_role.revoke`, `applied`)과 최종 역할 `{developer}`를 확인했다.
 
 **문서 검사기.** 시작 전과 cascade 뒤 모두 ERROR 4 · WARN 2(자리표시어 13·8건 그대로), 신규 0. strict 통과가 아니다.
 
