@@ -1,77 +1,22 @@
 #hidden
 # aci:v1 id=f3df0a8 src=agent-context/upstream-feedback.md
-@kv sha256=cdf434494595549fafedb4317370272ed3ef9184c8456adbe281a4ca522d7410 bytes=7159 lines=105 title=Upstream-Feedback
-@sig agent-context/upstream-feedback.md;certs/ghe-ca.crt;deploy/single-host/compose.yml;deploy/single-host/.env.example;deploy/single-host/RUNBOOK.md;docs/40_delivery/pr_search_implementation_traceability.md;auth/callback;OIDC/GHE;login/oauth/authorize;login/oauth/access_token;user/teams;cpswdev-team/pipe-admins;cpswdev-team/pipe-users;Upstream;Feedback;DEV;compose;GIT_SSL_CAINFO;example;resolved;NOT;RUN;JOB;MIR
+@kv sha256=ac0e4d738e1b8385cbc108b1b1e39af5d60a3389cc7186d7ba4b9b40fbec15e6 bytes=3921 lines=33 title=Upstream-Feedback
+@sig agent-context/upstream-feedback.md;/prsctl;auth/callback;ops/repositories;Upstream;Feedback;DEV;companion;SESSION_COOKIE_SECURE;ALLOW_INSECURE_COOKIES;prs_session;prs_oidc;Secure;GHE;OAuth;App;NOT;RUN;AUTH_PROVIDER;GHE_OAUTH_REDIRECT_URI;callback;HTTP;NODE_ENV;production
 @h1 Upstream Feedback
 @p ---
-@h2 DEV-561 — git 서브프로세스가 사내 CA를 신뢰하지 않아 미러 초기화 실패
-@path 상류 반영 완료 (2026-09-11, CR-082). compose.yml의 x-app-env 앵커에 GIT_SSL_CAINFO를 더해 git을 부르는 세 서비스에 한 자리로 닿게 했고, .env.example과 런북 6장·8장을 갱신했다. 회귀가 서비스별 최종 환경 키 집합을 계산해 그것을 강제한다. 원장 DEV-561 resolved, 검증 6.77장.
-@p 사내에서 할 것: 다음 반입에서 임시 조치(.env와 compose.yml 직접 수정)를 되돌리고 번들 기본값으로 미러 초기화가 성립하는지 확인한다. .env의 GIT_SSL_CAINFO는 그대로 두면 된다 — 이제 상류가 같은 키를 읽는다. 사내 재적용은 아직 NOT RUN이다.
-@p 발견: 0.1.0-pilot.4 업그레이드 중 (2026-09-11)
-@path 현상: JOB-MIR-001(git clone) 실행 시 SSL certificate problem: unable to get local issuer certificate
-@cmd 원인: NODE_EXTRA_CA_CERTS는 Node.js 런타임만 읽는다. git 서브프로세스는 별도로 GIT_SSL_CAINFO를 받아야 한다 (RUNBOOK 6장에 명시됨, 실제 compose.yml에는 없었다)
-@path 사내 임시 조치: .env에 GIT_SSL_CAINFO=/certs/ghe-ca.crt, compose.yml x-app-env에 GIT_SSL_CAINFO: ${GIT_SSL_CAINFO:-} 추가
-@h3 반영해야 할 파일
-@path deploy/single-host/compose.yml
-@b x-app-env 앵커의 NODE_EXTRA_CA_CERTS: 바로 아래에 추가:
-@code lang=yaml sha=2bc67ae7bdda lines=71 kept=71
-|  NODE_EXTRA_CA_CERTS: ${NODE_EXTRA_CA_CERTS:-}
-|  GIT_SSL_CAINFO: ${GIT_SSL_CAINFO:-} # ← 이 줄 추가
-|  ```
-|**`deploy/single-host/.env.example`**
-|- `NODE_EXTRA_CA_CERTS=` 아래에 추가:
-|  ```
-|  GIT_SSL_CAINFO=                # git 서브프로세스용 CA 파일 경로. NODE_EXTRA_CA_CERTS와 같은 값을 준다 (컨테이너 안 경로)
-|  ```
-|**`deploy/single-host/RUNBOOK.md`**
-|- 6장 「사설 CA」 절에 추가:
-|  ```
-|  **`git` 서브프로세스는 `NODE_EXTRA_CA_CERTS`를 보지 않는다.** 미러 초기화(JOB-MIR-001)와
-|  미러 fetch는 git을 직접 호출하므로, `.env`의 `GIT_SSL_CAINFO`에 컨테이너 안 CA 파일 경로를
-|  따로 설정해야 한다. `NODE_EXTRA_CA_CERTS`와 같은 값을 준다 (DEV-561).
-|  ```
-|- 8장 문제 해결 표에 추가:
-|  ```
-|  | JOB-MIR-001이 SSL 오류로 실패하고 미러 볼륨이 비어 있다
-|  | git이 사내 CA를 신뢰하지 않는다. `.env`에 GIT_SSL_CAINFO=/certs/ghe-ca.crt 추가,
-|    compose.yml x-app-env에 GIT_SSL_CAINFO: ${GIT_SSL_CAINFO:-} 추가 후 prsctl upgrade (DEV-561) |
-|  ```
-|**`docs/40_delivery/pr_search_implementation_traceability.md`**
-|- 5장 DEV 표 상단에 추가:
-|  ```
-|  | DEV-561 | 2026-09-11 | git 서브프로세스가 사내 CA를 신뢰하지 않아 JOB-MIR-001 실패.
-|    NODE_EXTRA_CA_CERTS는 Node.js만 읽고 git은 GIT_SSL_CAINFO를 별도로 필요로 한다.
-|    compose.yml x-app-env와 .env.example에 GIT_SSL_CAINFO 항목 추가 필요 |
-|    worker-mirror / JOB-MIR-001 | 운영 발견 | 없음 | open |
-|  ```
-|---
-|## FR-NEW — 사내 GHE OAuth2 직접 인증 지원
-|> **상류 반영 완료 (2026-09-11, `CR-083` / `WP-076`).** `AUTH_PROVIDER=github`으로 사내 GHE 계정 로그인을 지원한다. 기존 OIDC 배포는 값을 주지 않으면 그대로다. 설정 절차는 런북 6장 「사내 GHE 계정으로 로그인하기」에 있고, 검증 기록은 원장 6.78장이다. `srs_final.md`는 `v2.24`로 `FR-AUTH-001`에 `AC-6`~`AC-9`가 들어갔다.
-|>
-|> **제안과 다르게 구현한 자리 둘.** 근거는 `CR-083` cascade의 표에 있다.
-|>
-|> 1. **역할 매핑**: `GHE_TEAM_ROLE_MAP=<org>/<team>:<역할>`이며 구분자가 **콜론**이다(`=`가 아니다). `admin`·`viewer`는 이 제품의 역할이 아니다 — 역할 여섯은 `developer`·`release_manager`·`manager`·`qa`·`operator`·`security_officer`이고, **팀으로 부여할 수 있는 것은 `manager`와 `qa` 둘뿐이다**(`CR-015`·`DEV-049`). GHE 팀을 만들 수 있는 사람이 운영 권한을 발급하게 두지 않는다는 기존 계약을 그대로 상속했다. 사내가 말한 "viewer"는 사실상 기본 역할 `developer`이며, 매핑을 비워 두면 모두 그것을 받고 조회는 성립한다 — 무엇이 보이는지는 ...cut
-|> 2. **`SESSION_COOKIE_SECURE` 완화**: `AUTH_ENABLED=false`를 **명시한** 배포만 면제된다. **이것은 요청의 절반이다** — GHE OAuth2 로그인을 실제로 시험하려면 `AUTH_ENABLED=true`여야 하고, 그러면 TLS가 다시 필요하다. 면제를 명시적 선언에 건 것은 그 값을 남긴 채 인증만 켜는 배포를 막기 위해서다.
-|>
-|> **사내에서 할 것**: GHE에 로그인 전용 OAuth App을 등록한다(수집용 App과 자격을 공유하지 않는다). callback URL은 `<서비스 주소>/auth/callback`이다. 그다음 `.env`에 `AUTH_PROVIDER=github`과 자격 셋을 채우고 `prsctl upgrade`를 돌린다. **실제 GHE로 검증한 적이 없으므로**(외부에 GHE가 없다) 원장 6.78장의 확인 항목 넷을 함께 봐 주기 바란다.
-|**요청 배경**: 사내망 배포 환경에서 별도 OIDC IdP(Keycloak 등) 없이 **이미 있는 사내 GHE 계정으로 바로 로그인**하고 싶다. 현재 코드는 표준 OIDC(JWT + JWKS 검증)만 지원하는데, 사내 GHE는 OIDC 디스커버리 엔드포인트가 없어 직접 쓸 수 없다. Dex 같은 미들웨어를 따로 띄우는 것은 운영 부담이 크다.
-|**추가 요청**: 파일럿·개발 환경에서 TLS 없이 테스트할 수 있도록 `SESSION_COOKIE_SECURE=false` + `NODE_ENV=production` 조합을 허용하는 옵션도 함께 검토해달라. 현재 코드가 이 조합에서 web 기동을 거부한다 (DEV-577).
-|### 필요한 변경
-|**인증 흐름 추가**
-|- `AUTH_PROVIDER=github` 같은 새 환경 변수로 OIDC/GHE 중 선택
-|- GHE OAuth2 Authorization Code Flow 구현:
-|  - 인가: `https://<GHE_BASE_URL>/login/oauth/authorize`
-|  - 토큰: `https://<GHE_BASE_URL>/login/oauth/access_token`
-|  - 사용자 정보: `https://<GHE_API_URL>/user` + `/user/teams`
-|- 기존 OIDC 흐름은 그대로 유지 (하위 호환)
-|**권한(Role) 매핑**
-|- OIDC의 `OIDC_GROUP_ROLE_MAP`(그룹 클레임 기반) 대신 GHE 팀/조직 멤버십으로 역할 결정
-|- 예: `GHE_TEAM_ROLE_MAP=cpswdev-team/pipe-admins=admin,cpswdev-team/pipe-users=viewer`
-|- GHE App 자격(`GHE_APP_ID`, `GHE_APP_PRIVATE_KEY`)이 이미 있으므로 팀 멤버십 조회 가능
-|**`.env.example` 추가 항목**
-@h1 GHE OAuth2 인증 (OIDC 대신 사내 GHE를 직접 쓸 때)
-@p AUTH_PROVIDER=oidc # oidc(기본) | github GHE_OAUTH_CLIENT_ID= # GHE에 등록한 OAuth App의 Client ID GHE_OAUTH_CLIENT_SECRET= # GHE OAuth App의 Client Secret GHE_TEAM_ROLE_MAP= # <org>/<team>=<role> 쌍, 쉼표 구분
-@code lang=txt sha=fbbd79f485ec lines=4 kept=4
-|**`SESSION_COOKIE_SECURE` 완화 (선택)**
-|- `NODE_ENV=production` + `SESSION_COOKIE_SECURE=false` 조합을 `AUTH_ENABLED=false` 일 때만 허용하는 방향으로 검토
-|- 또는 별도 `ALLOW_INSECURE_COOKIES=true` 명시 플래그로 분리
+@h2 DEV-577 companion — SESSION_COOKIE_SECURE=false 허용 플래그 미구현
+@path 상류 반영 완료 (2026-09-15, CR-091 / DEV-694, PR #191). ALLOW_INSECURE_COOKIES=true를 SESSION_COOKIE_SECURE=false와 함께 적으면 인증을 켠 채 기동한다(파일럿 전용, 두 값 모두 필요). 기동마다 web 로그와 ./prsctl health가 경고한다. 쿠키 이름이 prs_session·prs_oidc로 바뀐다 — Host- 접두 쿠키는 Secure 없이 브라우저가 저장하지 않아, 플래그만 두면 같은 자리에서 다시 실패했을 것이다. GHE OAuth App callback도 http://로 맞춘다. 절차는 런북 6장 「운영에는 TLS가 필요하다」. 사내 확인은 NOT RUN.
+@p 발견: 0.1.0-pilot.6 반입 후 로그인 시도 (2026-09-15)
+@path 현상: AUTH_PROVIDER=github으로 GHE OAuth 로그인 시도 시, GHE_OAUTH_REDIRECT_URI=http://{호스트}/auth/callback(HTTP)으로 설정했을 때 OAuth state 쿠키(Secure 속성)를 브라우저가 콜백 시 전송 거부 → 왕복 쿠키가 없거나 읽을 수 없다로 인증 실패. SESSION_COOKIE_SECURE=false + NODE_ENV=production 조합은 web이 기동 자체를 거부해 우회 불가
+@path 올바른 구성: GHE_OAUTH_REDIRECT_URI=https://{호스트}/auth/callback + TLS 필수
+@p 요청: ALLOW_INSECURE_COOKIES=true 명시 플래그 또는 동등한 완화 조치 추가 (파일럿·개발 환경 대응)
+@p ---
+@h2 FR-SESSION-OPS — 세션 인증 전환 후 operator 역할 취득 불가
+@path 상류 반영 완료 (2026-09-15, CR-091 / DEV-695, PR #191) — 제안과 다르게 고쳤다. 원인은 경계가 아니라 관리자 지정 경로가 코드에 없었던 것이다(역할 합집합이 요청 경로에 없었고 지정 명령도 없었다). 팀 매핑에 operator 허용·/ops/*를 manager로 하향은 CR-015 경계를 넓혀 택하지 않았다(사용자 결정). 대신: 운영자가 한 번 로그인한 뒤 서버에서 ./prsctl role grant <GHE 로그인> operator → 화면 새로 고침(재로그인 불필요). list·revoke도 있고 감사에 남는다. 절차는 런북 6장 「운영 역할 지정하기」. 사내 확인은 NOT RUN.
+@p 발견: 0.1.0-pilot.6 AUTH_PROVIDER=github 전환 후 저장소 등록 시도 (2026-09-15)
+@path 현상: /ops/repositories 등 운영 콘솔 화면이 operator 역할을 요구하지만, GHE_TEAM_ROLE_MAP에서 부여 가능한 역할은 manager·qa 뿐 (CR-015, DEV-049). ADMIN_API_TOKENS는 AUTH_ENABLED=true와 공존 불가 (DEV-048). 결과적으로 세션 인증 전환 후 어떤 방법으로도 operator 역할을 얻을 수 없음
+@p 요청: GHE_TEAM_ROLE_MAP에서 operator 매핑을 허용하거나, /ops/* 화면의 역할 요구사항을 manager로 조정
+@p ---
+@h2 DEV-048 운영 충돌 — AUTH_ENABLED=true와 ADMIN_API_TOKENS 공존 불가
+@path 상류 반영 완료 (2026-09-15, CR-091 / DEV-696, PR #191). ./prsctl load·install·upgrade·health가 시작 전에 이 공존을 search-api와 같은 판정으로 보고 컨테이너를 바꾸기 전에 멈추며 처방(값 비우기, prsctl role grant)을 말한다. 같은 자리에서 ALLOW_INSECURE_COOKIES 오타와 플래그 없이 Secure만 끈 구성도 먼저 멈춘다. 사내 확인은 NOT RUN.
+@p 발견: 0.1.0-pilot.6 반입 후 AUTH_ENABLED=true 전환 시 (2026-09-15) 현상: search-api가 기동 즉시 OIDC 세션과 ADMIN_API_TOKENS를 함께 구성할 수 없다로 crash-loop. 파일럿에서 AUTH ... sctl upgrade 요청: upgrade 시 또는 prsctl health 판정 전에 이 충돌을 사전 감지해 명확한 안내 출력

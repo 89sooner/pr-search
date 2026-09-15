@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.79 | 갱신일: 2026-09-15
+> 상태: review | 버전: v6.80 | 갱신일: 2026-09-15
 
 `CR-091` 사내 `0.1.0-pilot.6` 반입 피드백 세 건: TLS 없는 파일럿의 GHE 로그인(`ALLOW_INSECURE_COOKIES` — `Secure`가 없으면 접두 없는 쿠키 이름), 세션 인증 뒤 `operator`를 얻는 경로(요청마다 합성하는 실효 역할과 `prsctl role`), 토큰이 남은 `.env`로 인증을 켠 업그레이드의 사전 감지를 고쳤다. **역할 합집합은 `CR-015`부터 문서에만 있었다**(`DEV-695`) — 사내 제안 둘은 그 경계를 넓히므로 택하지 않았다. 검증은 6.89장이며 사내 확인은 `NOT RUN`이다.
 
@@ -6518,6 +6518,8 @@ migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기�
 - `AUTH_ENABLED`의 인식하지 못하는 값(`TRUE`)이 조용히 인증을 끈다 — CR-083 이전부터의 동작이다. 관리 토큰이 함께 있으면 토큰 경로가 열리므로 별도 CR 후보로 남긴다.
 - 화면 관문의 `/me` 한 번은 화면마다 search-api 왕복을 더한다(최대 3초 상한, 실패하면 세션 역할). API-AUTH-001 계약대로다.
 - 역할 명령의 행위 주체는 호스트 사용자 이름이며 인증된 신원이 아니다(THR-053).
+
+**PR·병합.** PR #191(head `1576e7e`, 커밋 넷) — PR CI run `34926323705` attempt 1 success(verify 4m20s · integration 8m02s — 단위 2,760 · a11y 424 · e2e 196 · 통합 1,805 · 회귀 496). squash 병합 `f8db374`(병합 트리가 PR head와 같다). 병합 커밋 main CI run `34926885455` attempt 1 success(verify 4m37s · integration 7m32s — 단위 2,760 · a11y 424 · e2e 196 · 통합 1,805 · 회귀 496).
 
 **사내 적용은 `NOT RUN`이다.** 다음 반입에서 확인할 것: 업그레이드 뒤 `prsctl role grant <login> operator`와 새로 고침만으로 운영 메뉴와 `/ops/*`가 열리는지, 평문 HTTP 파일럿(`SESSION_COOKIE_SECURE=false`·`ALLOW_INSECURE_COOKIES=true`, GHE OAuth App의 `http://` callback)의 로그인 왕복과 web 기동 경고·`prsctl health` 경고 줄, 토큰이 남은 `.env`와 플래그 오타에서 `prsctl`이 컨테이너 교체 전에 멈추는지.
 ### 6.88 `0.1.0-pilot.6` 발행 (2026-09-15, CR-084 ~ CR-090)
