@@ -1,35 +1,56 @@
 # Upstream Feedback
 
-> **2026-09-15: 아래 세 항목은 `0.1.0-pilot.7`에 담겨 발행됐다** (`CR-091`, 태그 → `0c26cdd`). 자산 SHA-256은 릴리스와 별도 채널로 받아 `sha256sum`으로 대조한다(런북 2.B 1단계). 업그레이드에서 달라지는 것과 확인 순서는 원장 6.90장이다. 사내 확인 결과는 각 항목 아래에 적어 주기 바란다.
+## DEV-scope-ghe — scope 계산이 GHE App 권한 부족으로 실패 → 저장소 목록 빈 화면
+
+**발견**: 0.1.0-pilot.7 `AUTH_ENABLED=true` 전환 후 저장소 목록 접근 (2026-09-15)
+**현상**: `GET /api/v1/me`가 503 `PERMISSION_UNAVAILABLE`을 반환. `permission_cache`(Redis·PostgreSQL)가 비어 GHE API 실시간 조회 시도 → `GheAccessScopeSource.fetch()` 실패 → `ScopeUnavailableError`. 실패 원인: GHE App(ID:16)이 `collaborator permission`, `isOrgMember`, `teamMembership` API를 호출할 `members:read` 권한 미보유로 추정. 결과적으로 저장소 목록이 완전히 빈 화면으로 표시됨
+**사내 임시 조치**: `permission_cache` 테이블에 수동 INSERT (repo_ids, team_ids, org_ids)
+**요청**: (1) GHE App에 `members:read` 권한 추가 또는 (2) scope-source를 GHE API 대신 DB의 `team_member`·`allowed_team_ids`를 사용하는 DB-기반 어댑터로 전환 (worker-authz가 이미 이 데이터를 관리함)
 
 ---
 
-## DEV-577 companion — `SESSION_COOKIE_SECURE=false` 허용 플래그 미구현
+## DEV-authz-sync — 로그인 시 팀 멤버십 자동 동기화 안 됨
 
-> **상류 반영 완료 (2026-09-15, `CR-091` / `DEV-694`, PR #191).** `ALLOW_INSECURE_COOKIES=true`를 `SESSION_COOKIE_SECURE=false`와 **함께** 적으면 인증을 켠 채 기동한다(파일럿 전용, 두 값 모두 필요). 기동마다 web 로그와 `./prsctl health`가 경고한다. **쿠키 이름이 `prs_session`·`prs_oidc`로 바뀐다** — `__Host-` 접두 쿠키는 `Secure` 없이 브라우저가 저장하지 않아, 플래그만 두면 같은 자리에서 다시 실패했을 것이다. GHE OAuth App callback도 `http://`로 맞춘다. 절차는 런북 6장 「운영에는 TLS가 필요하다」. 사내 확인은 `NOT RUN`.
-
-**발견**: 0.1.0-pilot.6 반입 후 로그인 시도 (2026-09-15)
-**현상**: `AUTH_PROVIDER=github`으로 GHE OAuth 로그인 시도 시, `GHE_OAUTH_REDIRECT_URI=http://{호스트}/auth/callback`(HTTP)으로 설정했을 때 OAuth state 쿠키(`Secure` 속성)를 브라우저가 콜백 시 전송 거부 → `왕복 쿠키가 없거나 읽을 수 없다`로 인증 실패. `SESSION_COOKIE_SECURE=false` + `NODE_ENV=production` 조합은 `web`이 기동 자체를 거부해 우회 불가
-**올바른 구성**: `GHE_OAUTH_REDIRECT_URI=https://{호스트}/auth/callback` + TLS 필수
-**요청**: `ALLOW_INSECURE_COOKIES=true` 명시 플래그 또는 동등한 완화 조치 추가 (파일럿·개발 환경 대응)
+**발견**: 0.1.0-pilot.7 `AUTH_ENABLED=true` 전환 후 신규 세션 로그인 (2026-09-15)
+**현상**: 사용자가 GHE OAuth2로 로그인해 `app_user`가 생성됐으나 `access_scope_version=0` 상태로 방치. `worker-authz` 큐에 작업이 쌓이지 않아 `team_member` 테이블이 비어 있음. 결과적으로 `allowed_team_ids`가 설정된 모든 저장소가 검색 결과에서 보이지 않음 (ADR-008 access-scope filter)
+**사내 임시 조치**: `team_member`에 수동 INSERT + `access_scope_version` 수동 증가
+**요청**: 세션 로그인 시 `worker-authz` 팀 멤버십 동기화 자동 트리거
 
 ---
 
-## FR-SESSION-OPS — 세션 인증 전환 후 `operator` 역할 취득 불가
+## DEV-logout-redirect — 로그아웃 후 `localhost:3000`으로 리다이렉트
 
-> **상류 반영 완료 (2026-09-15, `CR-091` / `DEV-695`, PR #191) — 제안과 다르게 고쳤다.** 원인은 경계가 아니라 **관리자 지정 경로가 코드에 없었던 것**이다(역할 합집합이 요청 경로에 없었고 지정 명령도 없었다). 팀 매핑에 `operator` 허용·`/ops/*`를 `manager`로 하향은 CR-015 경계를 넓혀 택하지 않았다(사용자 결정). 대신: 운영자가 한 번 로그인한 뒤 서버에서 `./prsctl role grant <GHE 로그인> operator` → 화면 새로 고침(재로그인 불필요). `list`·`revoke`도 있고 감사에 남는다. 절차는 런북 6장 「운영 역할 지정하기」. 사내 확인은 `NOT RUN`.
-
-**발견**: 0.1.0-pilot.6 `AUTH_PROVIDER=github` 전환 후 저장소 등록 시도 (2026-09-15)
-**현상**: `/ops/repositories` 등 운영 콘솔 화면이 `operator` 역할을 요구하지만, `GHE_TEAM_ROLE_MAP`에서 부여 가능한 역할은 `manager`·`qa` 뿐 (CR-015, DEV-049). `ADMIN_API_TOKENS`는 `AUTH_ENABLED=true`와 공존 불가 (DEV-048). 결과적으로 세션 인증 전환 후 어떤 방법으로도 `operator` 역할을 얻을 수 없음
-**요청**: `GHE_TEAM_ROLE_MAP`에서 `operator` 매핑을 허용하거나, `/ops/*` 화면의 역할 요구사항을 `manager`로 조정
+**발견**: 0.1.0-pilot.7 로그아웃 시도 (2026-09-15)
+**현상**: `POST /auth/logout` 후 리다이렉트 대상이 `localhost:3000`으로 고정됨. 리버스 프록시(nginx) 뒤에서 서비스할 때 실제 접속 주소(`https://{호스트}`)로 돌아오지 않음
+**요청**: 로그아웃 후 리다이렉트 URL을 `WEB_EXTERNAL_URL` 같은 환경 변수로 설정하거나 `Host`/`X-Forwarded-Host` 헤더 기반으로 동적 결정
 
 ---
 
-## DEV-048 운영 충돌 — `AUTH_ENABLED=true`와 `ADMIN_API_TOKENS` 공존 불가
+## DEV-logout-button — 명시적 로그아웃 버튼 없음
 
-> **상류 반영 완료 (2026-09-15, `CR-091` / `DEV-696`, PR #191).** `./prsctl load`·`install`·`upgrade`·`health`가 시작 전에 이 공존을 search-api와 같은 판정으로 보고 **컨테이너를 바꾸기 전에** 멈추며 처방(값 비우기, `prsctl role grant`)을 말한다. 같은 자리에서 `ALLOW_INSECURE_COOKIES` 오타와 플래그 없이 `Secure`만 끈 구성도 먼저 멈춘다. 사내 확인은 `NOT RUN`.
+**발견**: 0.1.0-pilot.7 로그아웃 시도 (2026-09-15)
+**현상**: UI에 로그아웃 버튼이 없어 `POST /auth/logout`을 직접 호출해야 함. 브라우저 주소창에서 GET으로 접근하면 HTTP 405. 일반 사용자가 로그아웃 방법을 알 수 없음
+**요청**: 상단 네비게이션 또는 프로필 메뉴에 로그아웃 버튼 추가
 
-**발견**: 0.1.0-pilot.6 반입 후 `AUTH_ENABLED=true` 전환 시 (2026-09-15)
-**현상**: `search-api`가 기동 즉시 `OIDC 세션과 ADMIN_API_TOKENS를 함께 구성할 수 없다`로 crash-loop. 파일럿에서 `AUTH_ENABLED=false` → `true` 전환 시 이전 `.env`에 `ADMIN_API_TOKENS` 잔존이 전형적 함정임
-**사내 임시 조치**: `.env`에서 `ADMIN_API_TOKENS=` 값 제거 후 `prsctl upgrade`
-**요청**: `upgrade` 시 또는 `prsctl` health 판정 전에 이 충돌을 사전 감지해 명확한 안내 출력
+---
+
+## DEV-smoke-healthz — `prsctl smoke` search-api healthz 오탐
+
+**발견**: 0.1.0-pilot.7 반입 후 smoke 실행 (2026-09-15)
+**현상**: `prsctl smoke`가 `✗ search-api /healthz → HTTP/1.1`을 보고하며 실패. `docker exec`로 직접 확인하면 `{"status":"ok","service":"search-api","version":"0.1.0"}` 정상 반환. pilot.7에서 smoke 스크립트가 `wget --server-response` + `awk '/HTTP\//{print $2}'`로 파싱 방식을 변경했는데 컨테이너 내 wget 출력 형식과 맞지 않아 `$2`가 `200` 대신 `HTTP/1.1`로 추출됨
+**요청**: smoke의 healthz 파싱 로직 수정
+
+---
+
+## 시퀀스 대상 브랜치
+
+**발견**: 수집 대상 레포지터리의 시퀀스 대상 브랜치가 'main'임
+**요청**: `smp*`로 시작하는 레포지터리의 시퀀스 대상 브랜치는 'dev'임
+
+---
+
+## 디자인 시스템 개선
+
+**발견**: 전체적으로 UI/UX 관점에서 굉장히 미관이 좋지 않음(특히 뱃지나 버튼의 모양)
+**요청**: 상용 SaaS 수준의 고품질의 UI/UX 디자인으로 변경, 현재 사용하는 design-system 외에도 개선이 가능한 것은 최대한 스킬도 활용해서 미적으로나 경험적으로 뛰어난 시스템으로의 개선 필요
+1
