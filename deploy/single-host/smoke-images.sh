@@ -238,19 +238,28 @@ expect_accepted "AUTH_ENABLED=false 명시 + insecure 쿠키 (파일럿 형상)"
 
 # **두 번째 면제 — 인증을 켠 평문 HTTP 파일럿** (`CR-091`). `ALLOW_INSECURE_COOKIES=true`를 함께 적으면 서야 하고,
 # **기동 로그에 그 위험을 남겨야 한다.** 서기만 하고 말하지 않으면 파일럿 형상이 조용히 운영이 된다.
-PILOT_GHE=(-e AUTH_ENABLED=true -e SESSION_COOKIE_SECURE=false -e AUTH_PROVIDER=github
-  -e GHE_BASE_URL=http://ghe.invalid -e GHE_OAUTH_CLIENT_ID=c -e GHE_OAUTH_CLIENT_SECRET=s
-  -e GHE_OAUTH_REDIRECT_URI=http://prs.invalid/auth/callback)
+#
+# **환경 변수는 호출마다 인라인 `-e`로 적는다.** `apps/web/lib/server/config.test.ts`가 이 호출들에서 조합을 뽑아
+# 실제 계약 함수에 넣는다(`DEV-615`) — 배열 확장으로 묶으면 그 대조가 조합을 읽지 못한다(실측).
 expect_accepted "ALLOW_INSECURE_COOKIES=true + insecure 쿠키 + 인증 켬 (평문 HTTP 파일럿, CR-091)" \
-  "${PILOT_GHE[@]}" -e ALLOW_INSECURE_COOKIES=true
+  -e AUTH_ENABLED=true -e SESSION_COOKIE_SECURE=false -e ALLOW_INSECURE_COOKIES=true -e AUTH_PROVIDER=github \
+  -e GHE_BASE_URL=http://ghe.invalid -e GHE_OAUTH_CLIENT_ID=c -e GHE_OAUTH_CLIENT_SECRET=s \
+  -e GHE_OAUTH_REDIRECT_URI=http://prs.invalid/auth/callback
 PILOT_LOG="$(docker logs "${CONTAINERS[${#CONTAINERS[@]}-1]}" 2>&1)"
 printf '%s' "$PILOT_LOG" | grep -qF '경고: ALLOW_INSECURE_COOKIES=true' \
   || { printf '%s\n' "$PILOT_LOG" | tail -20 >&2; die "평문 HTTP 파일럿으로 섰는데 기동 로그에 경고가 없다 (CR-091)"; }
 pass "평문 HTTP 파일럿 → 기동 로그에 받아들인 위험을 경고한다"
 
-# 플래그만으로는 서지 않는다는 쪽과, 모르는 값은 거부한다는 쪽 (`CR-091`).
-expect_rejected "인증을 켠 insecure 쿠키에 플래그 없음 (GHE)" "${PILOT_GHE[@]}"
-expect_rejected "ALLOW_INSECURE_COOKIES=yes (모르는 값)" "${PILOT_GHE[@]}" -e ALLOW_INSECURE_COOKIES=yes
+# 플래그만으로는 서지 않는다는 쪽과, 모르는 값은 거부한다는 쪽 (`CR-091`). 자격은 채워 두어 쿠키 말고 다른 이유로
+# 거부되지 않게 한다.
+expect_rejected "인증을 켠 insecure 쿠키에 플래그 없음 (GHE)" \
+  -e AUTH_ENABLED=true -e SESSION_COOKIE_SECURE=false -e AUTH_PROVIDER=github \
+  -e GHE_BASE_URL=http://ghe.invalid -e GHE_OAUTH_CLIENT_ID=c -e GHE_OAUTH_CLIENT_SECRET=s \
+  -e GHE_OAUTH_REDIRECT_URI=http://prs.invalid/auth/callback
+expect_rejected "ALLOW_INSECURE_COOKIES=yes (모르는 값)" \
+  -e AUTH_ENABLED=true -e SESSION_COOKIE_SECURE=false -e ALLOW_INSECURE_COOKIES=yes -e AUTH_PROVIDER=github \
+  -e GHE_BASE_URL=http://ghe.invalid -e GHE_OAUTH_CLIENT_ID=c -e GHE_OAUTH_CLIENT_SECRET=s \
+  -e GHE_OAUTH_REDIRECT_URI=http://prs.invalid/auth/callback
 
 # 이번 사내 반입을 막은 구성.
 #

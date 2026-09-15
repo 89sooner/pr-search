@@ -220,9 +220,9 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | DEV ID | 발견일 | 발견 내용 | 관련 FR/WP | 유형 | 연결 CR | 상태 |
 | --- | --- | --- | --- | --- | --- | --- |
-| DEV-696 | 2026-09-15 | **`prsctl`이 세션 인증과 관리 토큰의 공존을 컨테이너 교체 전에 알리지 않았다.** `search-api`는 둘을 함께 받으면 기동을 거부한다(`DEV-048`, 옳은 계약). 사내 `0.1.0-pilot.6`은 `AUTH_ENABLED=false` 파일럿을 `true`로 옮기며 이전 `.env`의 `ADMIN_API_TOKENS`를 남겼고, `upgrade`가 컨테이너를 바꾼 뒤에야 `search-api`의 재기동 반복으로 드러났다. 사내 임시 조치는 값을 비우고 다시 올리는 것이었다 | DEV-048 / WP-070 · WP-071 | 범위 공백 | CR-091 | resolved — `verify`·`lineage`를 뺀 모든 명령이 지나는 `require_env`가 compose 렌더의 `AUTH_ENABLED`·`ADMIN_API_TOKENS`를 `search-api`와 같은 규칙으로 판정해 컨테이너를 바꾸기 전에 멈추고 처방을 말한다. 렌더 추출을 `rendered_env_value` 하나로 모았고 YAML 작은따옴표 렌더(`','`·`':'`)도 벗긴다. 회귀가 실제 compose로 조합 108개를 `search-api`의 판정과 대조한다 |
+| DEV-696 | 2026-09-15 | **`prsctl`이 세션 인증과 관리 토큰의 공존을 컨테이너 교체 전에 알리지 않았다.** `search-api`는 둘을 함께 받으면 기동을 거부한다(`DEV-048`, 옳은 계약). 사내 `0.1.0-pilot.6`은 `AUTH_ENABLED=false` 파일럿을 `true`로 옮기며 이전 `.env`의 `ADMIN_API_TOKENS`를 남겼고, `upgrade`가 컨테이너를 바꾼 뒤에야 `search-api`의 재기동 반복으로 드러났다. 사내 임시 조치는 값을 비우고 다시 올리는 것이었다 | DEV-048 / WP-070 · WP-071 | 범위 공백 | CR-091 | resolved — `verify`·`lineage`를 뺀 모든 명령이 지나는 `require_env`가 compose 렌더의 `AUTH_ENABLED`·`ADMIN_API_TOKENS`를 `search-api`와 같은 규칙으로 판정해 컨테이너를 바꾸기 전에 멈추고 처방을 말한다. 렌더 추출을 `rendered_env_value` 하나로 모았고 YAML 작은따옴표 렌더(`','`·`':'`)도 벗긴다. 같은 자리에서 web의 쿠키 계약(플래그 오타·플래그 없는 `Secure` 해제)도 교체 전에 멈춘다(독립 검토 B). 회귀가 실제 compose의 JSON 렌더를 기준으로 prsctl의 추출과 판정을 search-api·web의 판정과 대조한다(토큰 조합 108개, strict 모드) |
 | DEV-695 | 2026-09-15 | **역할 합집합이 요청 경로에 없었고, 관리자 지정을 쓰는 운영 경로도 없었다.** 보안 문서 5.1·API-AUTH-001·`composeRoles`는 최종 역할을 `{developer}` ∪ IdP 그룹 매핑 ∪ `app_user.roles[]`로 적었다. 그런데 로그인 콜백(`web`)은 DB에 닿지 않아 지정값 자리에 빈 배열을 넘겼고, `search-api`의 주체와 `web`의 화면 관문은 세션 레코드의 역할만 봤다. `setAssignedRoles`를 부르는 프로덕션 코드도, API·CLI·런북 절차도 없었다. 그래서 사내 `0.1.0-pilot.6`이 `AUTH_PROVIDER=github`으로 바꾼 뒤 **누구도 `operator`를 얻을 수 없었다** — 팀 매핑은 `operator`를 줄 수 없고(`CR-015`) 관리 토큰은 인증과 공존할 수 없다(`DEV-048`). **시험이 이 빈틈을 가렸다**: 권한 강제 통합 시험은 세션 레코드에 `operator`를 직접 넣어 만들었다. 사내는 팀 매핑에 `operator`를 허용하거나 운영 화면을 `manager`로 낮추자고 제안했다 | FR-AUTH-001 · FR-AUTH-004 · API-AUTH-001 / WP-012 | 범위 공백 | CR-091 | resolved — 사내 제안 둘은 `CR-015`의 경계를 넓혀 기각(사용자 결정). `search-api`가 세션을 읽을 때마다 `app_user.roles[]`를 더하고(세션에 되써 넣지 않는다, 읽기 실패는 세션 역할로 fail closed), 화면 관문이 `/me`에서 역할을 받으며, `prsctl role list·grant·revoke`가 지정·회수와 감사(`user_role.grant`·`user_role.revoke`)를 한 트랜잭션으로 한다(`FR-AUTH-001` AC-10, `FR-AUTH-004` AC-6 예외). 운영 조립(`createAuthContext`)을 그대로 쓰는 통합 시험이 지정→200·회수→403을 같은 세션으로 건다. 사내 확인 `NOT RUN` |
-| DEV-694 | 2026-09-15 | **평문 HTTP 파일럿에서 GHE 로그인을 시험할 방법이 없었다.** 사내 `0.1.0-pilot.6`이 `GHE_OAUTH_REDIRECT_URI=http://…`로 로그인하자 콜백이 「왕복 쿠키가 없거나 읽을 수 없다」로 끝났다 — `Secure` 쿠키는 HTTP로 돌아오지 않는다. `CR-083`의 면제는 인증을 끈 배포뿐이라 `SESSION_COOKIE_SECURE=false`로 인증을 켜면 `web`이 기동을 거부했다(그것이 계약이었다). 사내는 명시 플래그를 요청했다. **구현 중 하나를 더 찾았다**: 세션 쿠키(`__Host-prs_session`)와 왕복 쿠키(`__Host-prs_oidc`)가 모두 `__Host-` 접두인데, 브라우저는 `Secure` 없는 `__Host-` 쿠키를 저장하지 않는다(RFC 6265bis 쿠키 접두 규칙). 속성만 풀었다면 면제는 기동만 통과시키고 로그인은 같은 자리에서 다시 실패했다 | FR-AUTH-001 AC-2 / WP-012 · WP-076 | 범위 공백 | CR-091 | resolved — `ALLOW_INSECURE_COOKIES=true`를 `SESSION_COOKIE_SECURE=false`와 함께 명시한 배포만 인증을 켠 채 선다(사용자 결정). 플래그 오타는 기동 거부, 기동마다 경고, `prsctl health` 경고 줄. `Secure`가 없으면 `prs_session`·`prs_oidc`로 발급하고 `search-api`로는 정본 이름으로 다시 조립한다. TLS 배포의 쿠키 이름·속성은 그대로다. 라우트 시험이 로그인이 낸 `Set-Cookie`를 브라우저 규칙으로 되돌려 콜백까지 흘린다. 사내 확인 `NOT RUN` |
+| DEV-694 | 2026-09-15 | **평문 HTTP 파일럿에서 GHE 로그인을 시험할 방법이 없었다.** 사내 `0.1.0-pilot.6`이 `GHE_OAUTH_REDIRECT_URI=http://…`로 로그인하자 콜백이 「왕복 쿠키가 없거나 읽을 수 없다」로 끝났다 — `Secure` 쿠키는 HTTP로 돌아오지 않는다. `CR-083`의 면제는 인증을 끈 배포뿐이라 `SESSION_COOKIE_SECURE=false`로 인증을 켜면 `web`이 기동을 거부했다(그것이 계약이었다). 사내는 명시 플래그를 요청했다. **구현 중 하나를 더 찾았다**: 세션 쿠키(`__Host-prs_session`)와 왕복 쿠키(`__Host-prs_oidc`)가 모두 `__Host-` 접두인데, 브라우저는 `Secure` 없는 `__Host-` 쿠키를 저장하지 않는다(RFC 6265bis 쿠키 접두 규칙). 속성만 풀었다면 면제는 기동만 통과시키고 로그인은 같은 자리에서 다시 실패했다 | FR-AUTH-001 AC-2 / WP-012 · WP-076 | 범위 공백 | CR-091 | resolved — `ALLOW_INSECURE_COOKIES=true`를 `SESSION_COOKIE_SECURE=false`와 함께 명시한 배포만 인증을 켠 채 선다(사용자 결정). 플래그 오타는 기동 거부, 기동마다 경고, `prsctl health` 경고 줄. `Secure`가 없으면 `prs_session`·`prs_oidc`로 발급하고 `search-api`로는 정본 이름으로 다시 조립한다. TLS 배포의 쿠키 이름·속성은 그대로다. 라우트 시험이 로그인이 낸 `Set-Cookie`를 브라우저 규칙으로 되돌려 콜백까지 흘린다. 접두 없는 이름은 하위 도메인·같은 망에서 하나 더 심을 수 있으므로 web도 중복 쿠키를 거절하고 로그아웃은 중복 세션을 전부 끝낸다(독립 검토 A). 사내 확인 `NOT RUN` |
 | DEV-693 | 2026-09-14 | **3장 `WP-045` 행이 `CR-089` 반영에서 빠졌다.** 작업 패키지 3장과 이 원장 3장의 `WP-045` 행이 manifest `r0.2`와 「남은 것: `GATE-GH-01d`(`DEV-675`)」를 적고 있었는데, 실제로는 `CR-089`가 manifest를 `r0.3`으로 올리고 `GATE-GH-01d`를 통과시켰으며 `DEV-675`를 종결했다. 같은 CR에서 `WP-066`·`WP-059` 행은 갱신됐다 — `WP-079` 절이 「3장 표의 각 행이 무엇이 들어왔고 무엇이 남았는지 적는다」고 요구한 갱신 가운데 이 행만 빠졌다. 처방: 당시 판정(`WP-078` 당시 `r0.2`)을 역사로 남기고 현재 남은 것만 호스트 지원 판정(`DEV-674`)·parity 최종(WP-060)으로 고쳤다 — 결정자 지시(CR-090 2장)가 승인했다 | WP-045 · WP-079 · 작업 패키지 3장 · 원장 3장 | 문서 오류 | CR-090 | resolved |
 | DEV-692 | 2026-09-14 | **프런트엔드 문서 9.1 라우트 표가 A-005·A-006을 `/admin/gh/policy`·`/admin/gh/registry`로 적었다.** 같은 문서 4장의 라우트 표와 구현은 `CR-088`부터 A-006을 `/ops/gh-registry`에 두었고 운영 화면은 모두 `/ops/*` 아래다 — 한 문서 안에서 두 표가 갈려 있었다. 처방: 9.1 행을 `/ops/gh-policy`(A-005 최소, `CR-090`)·`/ops/gh-registry`(A-006)·`/admin/gh/audit`(A-007, 미구현)로 고쳤다 | FR-GH-009 · FR-GH-011 · 프런트엔드 9.1 | 문서 오류 | CR-090 | resolved |
 | DEV-691 | 2026-09-14 | **보안 문서 `THR-019`의 완화 「SameSite=Lax + 쓰기 요청에 CSRF 토큰」 가운데 CSRF 토큰이 코드 어디에도 없다.** web·search-api·authz에 CSRF 토큰 발급·검증이 없고(코드 검색 — OIDC·GHE 인가의 `state`는 다른 것이다) 세션 쿠키가 `SameSite=Lax`인 것뿐이다. `CR-090` 이전부터 모든 쓰기 API에 해당한다. `SameSite=Lax`는 다른 사이트(등록 도메인이 다른 곳)의 POST에 쿠키를 싣지 않지만 같은 사이트의 다른 하위 도메인은 막지 않는다. 이 판은 토큰 체계를 들이지 않았고(범위 밖) 새 운영 정책 변경 경로만 `application/json` 본문을 요구해 폼·`text/plain` 요청을 400으로 거절한다(HTTP 통합 시험). `THR-019` 행에 실제 상태를 적었다 | THR-019 · NFR-010 · API-GH-008 | 범위 공백 | CR-090 | open — 토큰 체계를 들이는 보안 판이 닫는다 |
@@ -6469,6 +6469,56 @@ migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기�
 
 검증: ES 단위 11건, 실제 PostgreSQL·Elasticsearch·Redis 통합 6건, a11y 1건(axe 위반 0), Chromium E2E 3건 통과. 1000/1001/100000/100001 경계, stale Redis와 PG fence, 대기 중 에폭 변경, 부분 응답, 닫았다 다시 연 다이얼로그의 늦은 응답을 포함한다. 전체 통합 첫 실행에서 migration 024 FK가 기존 `TRUNCATE job` 픽스처를 막고 export가 숫자 에폭을 문자열 파서로 넘기지 못하는 두 결함을 찾아 해당 통합 23건 재실행으로 닫았다.
 
+### 6.89 `0.1.0-pilot.6` 반입 피드백 세 건 — 평문 HTTP 파일럿 로그인 · 관리자 지정 역할 · 토큰 공존 사전 감지 (2026-09-15, CR-091 / DEV-694 · DEV-695 · DEV-696)
+
+시작 `origin/main`은 `a95e4d9`(사내 피드백을 `agent-context/upstream-feedback.md`에 올린 커밋, 코드 변경 없음)다. 브랜치 `fix/cr091-pilot6-auth-feedback`(작업 트리 격리, 격리 서비스 `prs-cr091-*` — PostgreSQL 55439·Redis 56384·ES 59205). **사용자 결정 셋**(2026-09-15): 팀 매핑 허용·운영 화면 하향 대신 관리자 지정 경로 복구, `ALLOW_INSECURE_COOKIES` 명시 플래그, 병합 뒤 `0.1.0-pilot.7` 발행.
+
+**무엇이 비어 있었나.**
+
+| 편차 | 사내가 본 것 | 실제 원인 |
+| --- | --- | --- |
+| `DEV-694` | HTTP 콜백이 「왕복 쿠키가 없거나 읽을 수 없다」, `SESSION_COOKIE_SECURE=false`로는 `web`이 서지 않음 | 계약대로의 거부에 더해 **`__Host-` 접두** — 속성만 풀면 브라우저가 쿠키를 버린다(구현 중 발견) |
+| `DEV-695` | 세션 인증 뒤 누구도 `operator`가 될 수 없음 | 역할 합집합(`CR-015`)이 **문서에만** 있었다 — 콜백이 지정값 자리에 빈 배열, 세션을 읽는 두 자리가 세션 역할만, 지정 경로 없음. 권한 강제 시험은 세션에 `operator`를 직접 넣어 이 빈틈을 가렸다 |
+| `DEV-696` | 인증을 켠 `upgrade` 뒤 `search-api` 재기동 반복 | 옳은 기동 거부(`DEV-048`)가 컨테이너 교체 뒤에야 보였다 |
+
+**무엇을 했나.** 요청마다 합성하는 실효 역할(`search-api`의 세션 저장소, web 관문의 `/me`), `prsctl role list·grant·revoke`(search-api 이미지, 변경과 감사가 한 트랜잭션, 대상은 로그인 이름 또는 `user_id`), `ALLOW_INSECURE_COOKIES`와 `Secure` 여부를 따르는 쿠키 이름, web의 중복 쿠키 거절, `prsctl`의 사전 거부 셋(토큰 공존·플래그 오타·플래그 없는 `Secure` 해제)과 health 경고, `smoke-images.sh` 게이트 셋. 세부는 CR-091 cascade 절이다.
+
+**독립 검토 두 관점.** 둘 다 읽기 전용이며 시험을 실행하지 않게 했다(배터리와 같은 작업 트리).
+
+| 검토 | 결과 | 처분 |
+| --- | --- | --- |
+| A — 보안·인증·권한 | blocker·major 0, minor 3, nit 1, 관찰 1 | ① 평문 파일럿의 접두 없는 쿠키를 하나 더 심어 세션을 강요하는 경로 — web이 원시 `Cookie` 헤더로 읽어 중복이면 없는 것으로 보고, 로그아웃은 같은 이름의 세션을 전부 끝낸다(THR-052에 명시) ② `prsctl`이 단수 `ADMIN_API_TOKEN`을 보지 않음 — compose가 넘기지 않는다는 사실을 회귀로 고정 ③ 대소문자만 다른 로그인이 여럿일 때 정확 일치가 낡은 행을 고를 수 있음 — 고르지 않고 `user_id`로 지정 ④ health 경고에 `NODE_ENV` 요소가 빠짐 — web과 같은 네 요소 ⑤ 관찰: `AUTH_ENABLED=TRUE` 같은 오타가 조용히 인증을 끈다 — **CR-083 이전부터의 동작**이라 이 판에서 고치지 않고 후속 후보로 남긴다 |
+| B — 배포·시험·문서 | blocker 0, major 1, minor 3, nit 3 | major: 이 판이 만든 플래그의 오타와 플래그 없는 `Secure` 해제를 `prsctl`이 교체 전에 막지 않아 DEV-696이 없앤 실패가 새 플래그에서 되살아남 — `web_cookie_contract` 사전 거부. minor: 회귀를 `set -Eeuo pipefail`로 돌린다 · 단수 토큰(A②와 같음) · 원장 6.89 표기. nit: 렌더 추출의 캐시 주석 정정 · 화면마다 `/me` 한 번(최대 3초 상한)은 API-AUTH-001 계약대로이며 운영 유의점으로 남긴다 · 런북에 `prsctl role`의 스택 가동 전제 |
+
+**변이.** 원문 보관 → 정확히 한 번 치환 → 대상 시험 → 원문 복원·바이트 대조(`restored` 전부).
+
+| 회차 | 변이 | 결과 |
+| --- | --- | --- |
+| 1차 | 22종(쿠키 판정·이름·경고, 실효 역할, 지정 명령, 관문, prsctl·compose) | 17 kill · **B3 등가**(`withAssignedRoles`는 마지막에 `ROLES.filter`로 출력을 거르므로 입력 검증을 빼도 결과가 같다) · **생존 4** |
+| 생존 4의 원인 | C1 감사를 트랜잭션 밖에서 기록 · D2 비정상 `/me` 본문을 믿음 · E2 YAML 작은따옴표를 벗기지 않음 · E5 health 경고 제거 | 시험의 빈틈이었다 — 감사 표 이름 변경은 콜백 안에서 던져 어차피 롤백되고, 오류 본문에 `roles`가 없어 형식 오류로도 같은 답이 나왔으며, 대조 시험이 prsctl이 뽑은 값을 그대로 search-api 판정에 넣었고, health 시험은 문자열만 봤다 |
+| 보강 뒤 | COMMIT 시점에 실패하는 지연 제약 트리거 · 본문에 `roles`가 실린 401·403·404·502 · compose **JSON 렌더**를 기준으로 추출과 판정을 대조 · 경고를 함수로 떼어 실제 compose로 실행 | C1·D2·E2·E5 kill |
+| 검토 반영 코드 | A5(콜백 이름) 재확인, F1 중복 쿠키 첫 값 채택 · F2 로그아웃이 하나만 종료 · F3 관문이 `cookies()`로 읽음 · G1 `user_id` 지정 불가 · G2 대소문자 변형 중 정확 일치 채택 · H1 플래그 오타 사전 거부 제거 · H2 `AUTH_ENABLED=false` 면제 누락 | 전부 kill |
+
+**검증 배터리** (격리 서비스, CI 순서, 단계마다 종료 코드).
+
+| 회차 | 커밋 | 결과 |
+| --- | --- | --- |
+| 1 | `665e4f4` | typecheck·lint·lint:deps 0 · 단위 2,743 · build · a11y 424 · 대비 · **e2e 195/196** · 통합 1,803 · **회귀 492/494** |
+| 1의 실패 | | e2e `flow-003.spec.ts:176` 뒤로가기 도착 판정 15초 초과 — `DEV-689`와 같은 증상, e2e는 인증을 끈 형상이라 이 판의 `/me` 경로를 지나지 않으며 **단독 3회 14/14**. 회귀 2건은 이 판이 바꾼 파일의 모양에 기댄 기존 시험이었다 — 런북 anchor 절 시험이 낱말의 **첫 등장**(5장 표)부터 잘라 6장에 새로 생긴 `bash` 블록을 확인 명령으로 읽었고(절 제목에서 자르게 좁혔다), 기동 검증 시험이 `if (failure === null) return;` 표지를 찾았다(경고 출력을 그 앞으로 옮겼다) |
+| 2 | `0ea0ec8` | typecheck·lint·lint:deps 0 · **단위 2,757/2,760** · build · a11y 424 · 대비 · e2e 196 · 통합 1,805 · **회귀 486/496** |
+| 2의 실패 | | 단위 3건은 `DEV-615` 대조 시험이 `smoke-images.sh`의 호출에서 인라인 `-e`만 읽는데 새 게이트 호출을 배열 확장으로 적었다(인라인으로 풀었다). 회귀 10건은 태그 소유권 시험의 가짜 docker가 새 게이트 셋(파일럿 기동·경고, 플래그 오타, `role-cli`)을 흉내 내지 않아 번들 빌드가 멈췄다 — 픽스처 머리글이 「게이트의 검사 모양이 바뀌면 여기도 바뀌어야 한다」고 적은 자리다 |
+
+**이미지 재검증** (`0ea0ec8`, 릴리스·태그 없음). `prs/{db,search-api,pipeline-worker,gh-executor,web}:cr091-final` 다섯 빌드 종료 코드 0. `smoke-images.sh cr091-final` 통과 — 새 검사 셋(인증을 켠 평문 HTTP 파일럿이 기동하고 로그에 경고, 플래그 없는 `Secure` 해제와 플래그 오타 거부, `node dist/role-cli.js`가 DB 전에 사용법과 종료 코드 2)을 포함한다. 배포 이미지의 `role-cli`를 격리 PostgreSQL에 붙여 지정 → 재지정(무변경, 감사 없음) → 목록 → `manager` 거부(2) → `user_id`로 회수를 돌리고, 감사 두 행(`prsctl:image-smoke`, `user_role.grant`·`user_role.revoke`, `applied`)과 최종 역할 `{developer}`를 확인했다.
+
+**문서 검사기.** 시작 전과 cascade 뒤 모두 ERROR 4 · WARN 2(자리표시어 13·8건 그대로), 신규 0. strict 통과가 아니다.
+
+**고치지 않기로 한 것.**
+
+- `AUTH_ENABLED`의 인식하지 못하는 값(`TRUE`)이 조용히 인증을 끈다 — CR-083 이전부터의 동작이다. 관리 토큰이 함께 있으면 토큰 경로가 열리므로 별도 CR 후보로 남긴다.
+- 화면 관문의 `/me` 한 번은 화면마다 search-api 왕복을 더한다(최대 3초 상한, 실패하면 세션 역할). API-AUTH-001 계약대로다.
+- 역할 명령의 행위 주체는 호스트 사용자 이름이며 인증된 신원이 아니다(THR-053).
+
+**사내 적용은 `NOT RUN`이다.** 다음 반입에서 확인할 것: 업그레이드 뒤 `prsctl role grant <login> operator`와 새로 고침만으로 운영 메뉴와 `/ops/*`가 열리는지, 평문 HTTP 파일럿(`SESSION_COOKIE_SECURE=false`·`ALLOW_INSECURE_COOKIES=true`, GHE OAuth App의 `http://` callback)의 로그인 왕복과 web 기동 경고·`prsctl health` 경고 줄, 토큰이 남은 `.env`와 플래그 오타에서 `prsctl`이 컨테이너 교체 전에 멈추는지.
 ### 6.88 `0.1.0-pilot.6` 발행 (2026-09-15, CR-084 ~ CR-090)
 
 **무엇을 담았나.** `0.1.0-pilot.5`(태그 `2795666`) 이후 main에 병합된 판 전부다. 6.82장의 후보 번들 `0.1.0-pilot.6`(`7e4fd63`)은 발행하지 않았으므로, 결정자 지시(2026-09-15)에 따라 같은 버전 이름을 그때의 main `9c7f132`에서 다시 만들어 발행했다. 이전 후보는 재사용하지 않았다(pilot.5와 같은 규율).

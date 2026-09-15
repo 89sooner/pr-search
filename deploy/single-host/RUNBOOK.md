@@ -543,7 +543,8 @@ GHE_TEAM_ROLE_MAP=cpswdev-team/pipe-admins:manager,cpswdev-team/pipe-users:qa
 팀 매핑으로는 줄 수 없고, 관리 토큰(`ADMIN_API_TOKENS`)은 인증을 켜면 쓸 수 없다(`DEV-048`).
 
 1. 역할을 받을 사람이 **먼저 한 번 로그인한다.** 로그인해야 PR Search가 그 사람의
-   GHE 숫자 id를 알고 정본에 행이 생긴다.
+   GHE 숫자 id를 알고 정본에 행이 생긴다. 이 명령은 **스택이 가동 중일 때** 돌린다 —
+   search-api 이미지로 한 번 실행하되 PostgreSQL을 따로 세우지 않는다.
 2. 서버에서 지정한다.
 
    ```bash

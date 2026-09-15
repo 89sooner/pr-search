@@ -1950,10 +1950,10 @@ CR-004 종료 시점의 미결 항목이다. 각각 별도 CR로 처리한다. �
 - [x] 용어집 v0.11: 「관리자 지정 역할」·「실효 역할」 두 행.
 - [x] 아키텍처: 보안 v1.11(4장 세션 행과 평문 HTTP 파일럿 절, 5.1의 요청마다 성립하는 합집합과 `prsctl role`, `THR-052`·`THR-053`), API 계약 v0.31(API-AUTH-001의 요청마다 합성·화면 관문의 사용), 백엔드 v0.11(6.1 3단계), 프런트엔드 v0.8(사용자 컨텍스트의 역할 출처, 쿠키 이름 규칙), 데이터 모델 v0.25(`app_user.roles` 주석), 인프라 v0.19(`prsctl role`).
 - [x] 코드: `packages/authz`(`ALLOW_INSECURE_COOKIES` 판정·`insecureCookiesAllowed`, `sessionCookieName`·`INSECURE_SESSION_COOKIE_NAME`, `withAssignedRoles`), `packages/db`(`findAssignedRoles`·`findUsersByLogin`·`listAssignedRoleHolders`·`changeAssignedRole`), `packages/domain`(감사 어휘 둘), `apps/search-api`(`RegisteringSessionStore`가 실효 역할을 돌려준다, `auth/role-command.ts`·`role-cli.ts`), `apps/web`(`lib/server/effective-roles.ts`와 관문, 기동 경고, 브라우저 쿠키 이름을 읽고 세우는 다섯 자리).
-- [x] 배포 정의: `compose.yml`의 `web`에만 `ALLOW_INSECURE_COOKIES`, `.env.example`의 면제 설명과 관리 토큰 안내, `prsctl`의 `rendered_env_value`(YAML 작은따옴표 렌더도 벗긴다)·`auth_token_conflict`·`health` 경고·`role` 명령.
+- [x] 배포 정의: `compose.yml`의 `web`에만 `ALLOW_INSECURE_COOKIES`, `.env.example`의 면제 설명과 관리 토큰 안내, `prsctl`의 `rendered_env_value`(YAML 작은따옴표 렌더도 벗긴다)·`auth_token_conflict`·`web_cookie_contract`(플래그 오타·플래그 없는 `Secure` 해제 사전 거부)·`insecure_cookie_notice`(health 경고)·`role` 명령, `smoke-images.sh`의 새 검사 셋과 그것을 흉내 내는 회귀 픽스처(`fake-docker`).
 - [x] 런북: 6장 「운영 역할 지정하기」와 「운영에는 TLS가 필요하다 — TLS 없는 파일럿은 명시 플래그로만」, 3장 업그레이드의 사전 감지, 7.C 4단계의 역할 출처, 8장 증상 표(고친 셋, 새 다섯).
 - [x] 작업 패키지 v2.34: `WP-012`·`WP-076`에 정정 주석. **새 WP를 만들지 않았다** — `WP-012`의 계약을 코드가 이행하지 못한 자리를 고친 것이다.
-- [x] 구현 원장: `DEV-694`~`DEV-696`을 5장에, 4장 `FR-AUTH-001`·`FR-AUTH-004` 행을, 검증 결과를 6.89장에 적었다.
+- [x] 구현 원장: `DEV-694`~`DEV-696`을 5장에, 4장 `FR-AUTH-001`·`FR-AUTH-004` 행을, 검증 결과(독립 검토 두 관점·변이·배터리·이미지·게이트)를 6.89장에 적었다. PR CI·병합·main CI는 후속 기록 PR이 6.89장에 더한다.
 
 **사내 제안을 그대로 구현하지 않은 자리 둘.** 둘 다 `CR-015`가 세운 경계를 지키기 위해서이며 사용자가 결정했다(2026-09-15).
 
@@ -1965,6 +1965,8 @@ CR-004 종료 시점의 미결 항목이다. 각각 별도 CR로 처리한다. �
 | `upgrade`·`health` 전에 토큰 공존 감지 | 그대로 받았다. `verify`·`lineage`를 뺀 모든 명령이 지나는 `require_env`에서 멈춘다 | compose 렌더를 단일 근거로 읽는다(`DEV-664`). 실제 compose로 108개 조합을 `search-api`의 판정과 대조한다 |
 
 **구현이 스스로 고른 것.** 실효 역할을 세션에 되써 넣지 않았다 — 세션 레코드는 유휴 갱신 때 통째로 다시 쓰이므로 `web`의 쓰기와 서로 덮고, 회수가 세션 수명 동안 늦어진다. 대신 요청마다 기본 키 조회 한 번이다(등록하는 요청은 upsert의 반환 행을 쓴다). 관리자 지정을 읽지 못하면 세션의 역할로 판정한다(fail closed). 화면 관문은 `/me`를 3초 상한으로 묻고 실패하면 세션의 역할로 그린다. 역할 명령은 `packages/db`가 아니라 `search-api` 이미지에 두었다 — `@prs/authz`가 `@prs/db`에 의존하므로 반대로 두면 역할 어휘를 한 벌 더 적어야 한다. 행위 주체는 `prsctl:<호스트 사용자>`(`sudo`면 부른 사람)이며 인증된 신원이 아니라는 사실을 `THR-053`에 적었다. `ALLOW_INSECURE_COOKIES`는 쿠키를 발급하는 `web`에만 넘긴다.
+
+**독립 검토 두 관점이 바꾼 것.** 검토 A(보안)는 blocker·major 0이었고, 평문 파일럿의 접두 없는 쿠키로 **세션을 강요하는 경로**를 찾았다 — web이 값 하나를 골라 search-api로 가는 헤더를 다시 조립하므로 search-api의 중복 쿠키 거절이 브라우저 구간에서 사라진다. web도 원시 헤더를 같은 규칙으로 읽게 했다. 검토 B(배포·시험)의 major는 **이 CR의 원칙을 이 CR이 만든 플래그에 적용하지 않은 자리**였다 — 토큰 공존은 교체 전에 막으면서 플래그 오타는 교체 뒤로 미뤘다. 대소문자만 다른 로그인의 모호성, strict 모드 없는 회귀, 대조의 기준(prsctl이 뽑은 값이 아니라 compose JSON)도 이때 고쳤다. 처분 전체와 고치지 않기로 한 것은 원장 6.89장이다.
 
 **검증.** 원장 6.89장이 정본이다.
 
