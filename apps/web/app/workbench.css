@@ -27,6 +27,16 @@
 .prs-quick-search { display: inline-flex; gap: var(--cdt-space-3); align-items: center; min-block-size: var(--cdt-space-7); color: var(--cdt-text-secondary); text-decoration: none; font-size: var(--cdt-font-size-sm); padding: var(--cdt-space-1) var(--cdt-space-3); border: 1px solid var(--cdt-border-subtle); border-radius: var(--cdt-radius-xs); background: var(--cdt-surface-raised); }
 .prs-quick-search:hover { border-color: var(--cdt-border-strong); text-decoration: none; }
 .prs-user { display: flex; align-items: center; gap: var(--cdt-space-2); max-inline-size: 220px; font-size: var(--cdt-font-size-sm); overflow-wrap: anywhere; }
+/* 사용자 메뉴 트리거 (CR-092 / DEV-700) — 이름 표시였던 자리가 버튼이 됐다. 모양은 옆의 빠른 검색과 같은 결로 둔다. */
+button.prs-user { appearance: none; min-block-size: var(--cdt-space-7); padding: var(--cdt-space-1) var(--cdt-space-2); border: 1px solid transparent; border-radius: var(--cdt-radius-xs); background: transparent; color: var(--cdt-text-secondary); font: inherit; font-size: var(--cdt-font-size-sm); cursor: pointer; }
+button.prs-user:hover, button.prs-user[data-state='open'] { border-color: var(--cdt-border-subtle); background: var(--cdt-surface-raised); color: var(--cdt-text-primary); }
+.prs-user-menu__identity { display: grid; gap: var(--cdt-space-1); }
+.prs-user-menu__identity > span { color: var(--cdt-text-muted); font-weight: 400; overflow-wrap: anywhere; }
+/* 로그아웃 완료 (CR-092 / DEV-700) — 셸 없이 가운데에 선다. */
+.prs-signed-out { display: grid; place-items: center; min-block-size: 100dvh; padding: var(--cdt-space-5); background: var(--cdt-surface-canvas); }
+.prs-signed-out .cdt-empty-state { max-inline-size: 32rem; }
+.prs-signed-out__title { margin: 0; font: inherit; }
+.prs-signed-out a:focus-visible { outline: 2px solid var(--cdt-accent); outline-offset: 2px; }
 .prs-avatar { display: grid; place-items: center; flex: none; inline-size: var(--cdt-space-6); block-size: var(--cdt-space-6); border-radius: var(--cdt-radius-pill); background: var(--cdt-accent-soft); font-family: var(--cdt-font-mono); color: var(--cdt-text-primary); }
 .prs-statusbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--cdt-space-2); padding: var(--cdt-space-2) var(--cdt-space-5); border-block-start: 1px solid var(--cdt-border-subtle); font-size: var(--cdt-font-size-xs); color: var(--cdt-text-muted); background: var(--cdt-surface-subtle); }
 .prs-page-content { min-inline-size: 0; }

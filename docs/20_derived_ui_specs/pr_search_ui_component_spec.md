@@ -1,6 +1,8 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.15 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.16 | 갱신일: 2026-09-15
+
+CR-092 C-001 사용자 메뉴: 로그인 이름이 메뉴 트리거가 되고 항목은 신원 표시와 「로그아웃」이다. 「로그아웃」은 `POST /auth/logout` 폼 제출이며 결과는 공개 로그아웃 완료 화면이다(DEV-700).
 
 CR-079 C-014 확장: mNumberState에 unavailable을 더하고 mNumberReason과 mNumberEpoch를 받는다. PR 공통 M 표시 모델이 API reason→한국어 문구를 매핑하며 null을 0/빈 문자열로 변환하지 않는다. 상태·번호·링크는 같은 epoch 모델에서 만들고 pending/unavailable에는 M 복사 링크 없음. Conductor Badge/기존 live region을 소비하며 새 토큰·CSS는 추가하지 않는다. [설계 9절](../30_technical_architecture/pr_search_wp074_design.md).
 
@@ -60,6 +62,7 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - 이벤트: `topbar.search_focus`, `topbar.space_change`, `topbar.user_menu_open`
 - 접근성: `banner` landmark. 옴니 검색은 `⌘K`/`Ctrl+K`로 포커스하며 `Kbd`로 단축키를 시각 표시한다
 - 사용 화면: 전 화면
+- 사용자 메뉴 (CR-092, DEV-700): 트리거는 로그인 이름(아바타 두 글자와 이름)이며 접근 이름은 `사용자 메뉴: {login}`이다. Conductor `DropdownMenu`로 연다. 항목은 신원 표시(로그인·이메일, 선택 불가)와 「로그아웃」 하나다. **「로그아웃」은 `POST /auth/logout` 폼을 제출한다 — 링크(`GET`)로 만들지 않는다.** 메뉴 내용은 포털로 그려지므로 폼은 메뉴 밖에 두고 항목 선택이 그 폼을 제출한다. 인증을 끈 배포(`user = null`)에는 메뉴도 폼도 그리지 않는다. 이벤트 `topbar.user_menu_open`은 이 메뉴가 열릴 때다
 
 ### C-002 LeftNavPanel
 

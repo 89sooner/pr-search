@@ -160,6 +160,30 @@ compose() {
   docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ${profiles[@]+"${profiles[@]}"} "$@"
 }
 
+# **컨테이너 안에서 요청하고 HTTP 상태 코드만 읽는다** (CR-092 / DEV-697). `first`는 첫 응답(리다이렉트를 따라가기
+# 전 그 경로 자신의 답), `last`는 마지막 응답이다. 답이 없으면 빈 문자열이다.
+#
+# **본문을 같은 파이프에 싣지 않는다.** 처음 판은 `/healthz`를 `wget -qO- --server-response … 2>&1`로 읽었다.
+# `docker compose exec`는 컨테이너의 stdout과 stderr를 **따로** 나르므로 둘의 도착 순서가 보장되지 않고, 개행 없는
+# JSON 본문(stdout)이 헤더(stderr)보다 먼저 도착하면 한 줄이 `{"status":"ok",…}  HTTP/1.1 200 OK`가 되어 두 번째
+# 필드가 `HTTP/1.1`이다. 사내 `0.1.0-pilot.7`의 `✗ search-api /healthz → HTTP/1.1`이 그것이며, 같은 이미지에
+# `docker exec`로 20회 걸어 8회 재현했다(`-O/dev/null`이면 20회 모두 200). 간헐적이어서 그전 반입에서는 드러나지
+# 않았다. 본문을 버리고, 줄 안의 위치가 아니라 `HTTP/x.y` **바로 뒤의 토큰**을 읽는다 — busybox가 실패에서 덧붙이는
+# `wget: server returned error: HTTP/1.1 500 …` 줄도 같은 값을 준다. `head`·`tail` 대신 awk 하나가 고르므로
+# `pipefail` 아래에서 SIGPIPE가 끼지 않는다. wget은 4xx·5xx·무응답에서 비영으로 끝나므로 끝의 `|| true`가 호출한
+# 쪽의 `set -e`를 지킨다.
+http_status() {
+  local svc="$1" url="$2" pick="$3"
+  compose exec -T "$svc" wget -qO/dev/null --server-response "$url" 2>&1 \
+    | awk -v pick="$pick" '
+        { for (i = 1; i < NF; i++) if ($i ~ /^HTTP\/[0-9.]+$/ && $(i + 1) ~ /^[0-9][0-9][0-9]$/) {
+            if (first == "") first = $(i + 1)
+            last = $(i + 1)
+            break
+          } }
+        END { print (pick == "first" ? first : last) }' || true
+}
+
 # **애플리케이션 접속 주체를 만든다** (DEV-503 · DEV-510).
 #
 # `prs_app`은 마이그레이션 005가 만드는 `NOLOGIN` 그룹 롤이라 **그대로는 접속할 수
@@ -468,8 +492,7 @@ cmd_smoke() {
   local failed=0
   for pair in "web:3000" "search-api:3002"; do
     local svc="${pair%%:*}" port="${pair##*:}" code
-    code="$(compose exec -T "$svc" wget -qO- --server-response "http://127.0.0.1:${port}/healthz" 2>&1 \
-      | awk '/HTTP\//{print $2}' | tail -1 || true)"
+    code="$(http_status "$svc" "http://127.0.0.1:${port}/healthz" last)"
     if [ "$code" = 200 ]; then ok "$svc /healthz"; else bad "$svc /healthz → ${code:-무응답}"; failed=1; fi
   done
 
@@ -488,8 +511,7 @@ cmd_smoke() {
   # 검사의 관심사가 아니다. 첫 줄이 `/` 자신의 답이다 (`tail`이면 IdP 왕복의 답을
   # 읽는다).
   local entry
-  entry="$(compose exec -T web wget -qO/dev/null --server-response \
-    'http://127.0.0.1:3000/' 2>&1 | awk '/HTTP\//{print $2}' | head -1 || true)"
+  entry="$(http_status web 'http://127.0.0.1:3000/' first)"
   case "$entry" in
     5*|'') bad "웹 진입 화면 / → ${entry:-무응답} — 헬스체크가 초록이어도 사람은 쓸 수 없다 (DEV-577)"; failed=1 ;;
     *) ok "웹 진입 화면 / → ${entry}" ;;

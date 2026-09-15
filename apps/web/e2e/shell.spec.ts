@@ -161,6 +161,46 @@ test.describe('인증 라우트 (FLOW-000)', () => {
   });
 });
 
+/**
+ * 역방향 프록시 뒤의 복귀 주소와 로그아웃 완료 (CR-092 / DEV-699 · DEV-700).
+ *
+ * 라우트 시험은 `NextRequest`에 출처를 직접 넣으므로 **`next start`가 실제로 무엇을 출처로 삼는지**, 그리고 서버가
+ * 상대 `Location`을 절대 주소로 바꾸지 않는지는 여기서만 보인다. 사내 `0.1.0-pilot.7`은 `Host`를 그대로 넘기는 nginx
+ * 뒤에서 `location: https://localhost:3000/…`을 받았다 — 그 헤더들을 그대로 싣고 부른다.
+ */
+test.describe('프록시 뒤의 복귀 주소와 로그아웃 완료 (CR-092)', () => {
+  const PROXY_HEADERS = { host: 'prs.corp.example', 'x-forwarded-host': 'prs.corp.example', 'x-forwarded-proto': 'https' };
+
+  test('Operations 콜백의 복귀 주소에 서버가 들은 호스트가 실리지 않는다 (DEV-699)', async ({ request }) => {
+    const response = await request.get('/gh/identity/callback', { headers: PROXY_HEADERS, maxRedirects: 0 });
+
+    expect(response.status()).toBe(307);
+    expect(response.headers()['location']).toBe('/gh?identity=failed');
+  });
+
+  test('폼으로 로그아웃하면 303으로 완료 화면을 가리키고 쿠키를 만료시킨다 (DEV-700)', async ({ request }) => {
+    const response = await request.post('/auth/logout', {
+      headers: { ...PROXY_HEADERS, accept: 'text/html,application/xhtml+xml' },
+      maxRedirects: 0,
+    });
+
+    expect(response.status()).toBe(303);
+    expect(response.headers()['location']).toBe('/auth/signed-out');
+    expect(response.headers()['set-cookie'] ?? '').toContain('Max-Age=0');
+  });
+
+  test('완료 화면은 세션 없이 서고, 셸 없이 다시 로그인할 길만 준다 (DEV-700)', async ({ page }) => {
+    const response = await page.goto('/auth/signed-out');
+
+    expect(response?.status()).toBe(200);
+    await expect(page.getByRole('heading', { level: 1, name: '로그아웃했습니다' })).toBeVisible();
+    // 셸의 내비게이션을 두지 않는다 — 누르면 로그인으로 이어져 IdP 세션으로 곧바로 다시 로그인된다.
+    await expect(page.getByRole('navigation', { name: '주요 화면' })).toHaveCount(0);
+    // 이 e2e는 인증을 끈 배포다 — 로그인 경로(503) 대신 진입 화면을 가리킨다.
+    await expect(page.getByRole('link', { name: '다시 로그인' })).toHaveAttribute('href', '/');
+  });
+});
+
 test.describe('헬스체크', () => {
   test('`/healthz`가 200이다', async ({ request }) => {
     expect((await request.get('/healthz')).status()).toBe(200);

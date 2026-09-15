@@ -20,7 +20,7 @@
  */
 
 import { EXPLICIT_SCOPE_LIMIT, shouldUseOrgTeamScope, type AccessScope } from '@prs/es';
-import type { AccessScopeSource, RawAccessScope } from './scope-source.js';
+import { AccessScopeLookupError, SCOPE_STAGE_PERMISSION, type AccessScopeSource, type RawAccessScope } from './scope-source.js';
 
 /** FR-AUTH-003 AC-1. */
 export const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -74,6 +74,32 @@ export interface ScopeResolverOptions {
   readonly metrics?: ScopeMetrics;
   readonly maxConcurrentRefresh?: number;
   readonly now?: () => number;
+  /**
+   * 조회 실패를 남길 곳 (CR-092 / DEV-698).
+   *
+   * 응답은 사유를 싣지 않는다(`PERMISSION_UNAVAILABLE`) — 그 자리는 운영자의 로그다. 지표만 남기던 판에서는
+   * 사내가 503의 원인을 추정할 수밖에 없었다.
+   */
+  readonly log?: ((message: string, detail: Record<string, unknown>) => void) | undefined;
+}
+
+/**
+ * 조회 실패를 로그에 남길 모양으로 옮긴다.
+ *
+ * **오류 메시지를 싣지 않는다.** GHE 전송 오류의 메시지는 응답 본문 앞부분을 담는다. 단계·분류·상태 코드와
+ * 그 단계가 요구하는 App 권한만으로 운영자가 처방을 고를 수 있다.
+ */
+export function describeScopeFailure(userId: string, error: unknown): Record<string, unknown> {
+  if (error instanceof AccessScopeLookupError) {
+    return {
+      user_id: userId,
+      stage: error.stage,
+      error_kind: error.kind ?? null,
+      status: error.status ?? null,
+      required_permission: SCOPE_STAGE_PERMISSION[error.stage],
+    };
+  }
+  return { user_id: userId, stage: 'unknown', error_name: error instanceof Error ? error.name : typeof error };
 }
 
 /**
@@ -103,6 +129,7 @@ export class AccessScopeResolver {
   readonly #metrics: ScopeMetrics | undefined;
   readonly #now: () => number;
   readonly #maxConcurrent: number;
+  readonly #log: ScopeResolverOptions['log'];
 
   /** 사용자별 진행 중인 갱신. 요청 병합의 실체다. */
   readonly #inFlight = new Map<string, Promise<CachedScope>>();
@@ -117,6 +144,7 @@ export class AccessScopeResolver {
     this.#metrics = options.metrics;
     this.#now = options.now ?? Date.now;
     this.#maxConcurrent = options.maxConcurrentRefresh ?? DEFAULT_MAX_CONCURRENT_REFRESH;
+    this.#log = options.log;
   }
 
   /**
@@ -199,6 +227,7 @@ export class AccessScopeResolver {
     if (user === null) {
       // 세션이 있는데 사용자 행이 없다. 로그인이 만들었어야 하므로 정합성
       // 문제이며, 빈 범위로 조용히 넘기지 않는다.
+      this.#log?.('접근 범위를 산출하지 못했다 — 정본에 사용자 행이 없다', { user_id: userId, stage: 'app_user' });
       throw new ScopeUnavailableError(`사용자 '${userId}'가 등록되어 있지 않다`);
     }
 
@@ -211,6 +240,8 @@ export class AccessScopeResolver {
       raw = await this.#source.fetch({ userId, login: user.login });
     } catch (error) {
       this.#metrics?.refreshFailed();
+      // 단계에 따라 PostgreSQL(등록 저장소 목록)일 수도 GHE일 수도 있다 — 문구는 둘 다를 덮고, 어느 쪽인지는 `stage`가 말한다.
+      this.#log?.('접근 범위를 조회하지 못했다', describeScopeFailure(userId, error));
       throw new ScopeUnavailableError(error instanceof Error ? error.message : String(error));
     } finally {
       this.#release();

@@ -1,6 +1,6 @@
 # PR Search 프론트엔드 아키텍처
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-09-15
+> 상태: review | 버전: v0.9 | 갱신일: 2026-09-15
 
 CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설계](pr_search_wp074_design.md) 9절로 고정한다. M은 API 생성 문자열이며 PR 번호를 대체하지 않는다. 행별 resolve 없이 페이지 batch, M deep link 1회 resolve, visible pending의 bounded poll을 사용한다. 기존 인증 BFF·from_q·cursor·epoch 경고·Conductor를 보존한다.
 
@@ -45,7 +45,9 @@ CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설�
 | `/ops/gh-registry` | A-006 (CR-088 · 결과 계약·port·연결 후보와 분리 집계 표시 CR-089 · **운영 승인 절 CR-090** — 적재 정의·승인 정의·근거·자격·승인 미리보기·승인·철회·이력. 실행·Recipe 버튼 없음) | FR-GH-001, FR-GH-011, NFR-009 | 클라이언트 (폴링 없음, 「다시 읽기」 버튼) | API-GH-013, API-GH-014, API-GH-001, API-GH-008 |
 | `/ops/gh-policy` | A-005 최소 (CR-090 — 실행이 열린 capability(`pr.list`)의 차단·재개, 사유, 마지막 변경자·revision·이력, 변경 후 사용자에게 보일 사유) | FR-GH-009 | 클라이언트 (폴링 없음) | API-GH-008 |
 | `/api/*` | - | FR-AUTH-001 | 라우트 핸들러 | `search-api` 프록시 |
-| `/auth/callback` | - | FR-AUTH-001 | 라우트 핸들러 | OIDC 토큰 교환 |
+| `/auth/callback` | - | FR-AUTH-001 | 라우트 핸들러 | OIDC 토큰 교환. 복귀는 경로만 담은 `Location`이다 (CR-092) |
+| `/auth/logout` | - | FR-AUTH-001 | 라우트 핸들러 (`POST`만) | 서버 세션 종료. 문서 요청(`Accept`에 `text/html`)은 303으로 `/auth/signed-out`, 그 밖은 JSON (CR-092) |
+| `/auth/signed-out` | - | FR-AUTH-001 | 서버 (공개, 셸 없음) | 로그아웃 완료. 세션을 읽지 않는다 (CR-092) |
 
 라우트 파라미터는 `pr_search_screen_flow_spec.md` 2장의 딥링크 표와 일치해야 한다. 불일치는 딥링크 공유를 깨뜨린다.
 
@@ -210,6 +212,7 @@ apps/web/app/api/[...path]/route.ts
 - 접근 범위를 프런트엔드에서 계산하거나 전달하지 않는다. 서버가 세션으로 판정한다 (ADR-008).
 - **브라우저와 주고받는 쿠키 이름은 `Secure` 여부를 따른다** (CR-091, DEV-694). `Secure`면 `__Host-prs_session`·`__Host-prs_oidc`, 평문 HTTP 파일럿(`ALLOW_INSECURE_COOKIES=true`)이면 접두 없는 `prs_session`·`prs_oidc`다 — 브라우저는 `Secure` 없는 `__Host-` 쿠키를 저장하지 않는다. 세우는 라우트와 읽는 라우트·관문·프록시가 같은 함수(`sessionCookieName`·`oidcStateCookieName`)로 이름을 고르고, `search-api`로는 정본 이름으로 다시 조립한다.
 - 오류 응답의 `code`와 `detail`을 그대로 클라이언트에 넘긴다. 프런트엔드가 오류를 재해석하지 않는다.
+- **라우트 핸들러의 리다이렉트는 경로만 담는다** (CR-092, DEV-699). `request.nextUrl.origin`·`request.url`로 절대 주소를 만들지 않는다 — `next start`는 역방향 프록시 뒤에서 그 출처를 `localhost:3000`으로 조립한다. `lib/redirect.ts`의 `redirectToPath`가 같은 출처의 경로만 받고(어기면 던진다), `lib/architecture.test.ts`가 옛 방법을 정적으로 막는다. IdP로 보내는 인가 리다이렉트는 IdP의 절대 주소이므로 이 규칙의 대상이 아니다.
 
 ### 10.1 클라이언트 번들 경계 (CR-018, DEV-068)
 

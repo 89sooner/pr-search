@@ -9,6 +9,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { IconButton, Kbd, TopBar } from '@conductor-by-89soone/react';
+import { UserMenu } from './UserMenu';
 import { WorkbenchIcon } from './WorkbenchIcon';
 
 /** 슬롯 안에서 포커스를 받을 수 있는 것. 순서대로 첫째를 잡는다. */
@@ -184,12 +185,8 @@ export function AppTopBar({
             }}>
             <WorkbenchIcon name="search" /><span>빠른 검색</span><Kbd>{modifier} K</Kbd>
           </Link>
-          {user === null ? null : (
-            <span className="prs-user" data-testid="user-summary" aria-label={`로그인: ${user.login}`}>
-              <span className="prs-avatar" aria-hidden="true">{user.login.slice(0, 2).toUpperCase()}</span>
-              <span>{user.login}</span>
-            </span>
-          )}
+          {/* 로그인 이름이 사용자 메뉴의 트리거다 — 로그아웃이 그 안에 있다 (CR-092 / DEV-700). */}
+          {user === null ? null : <UserMenu login={user.login} email={user.email} />}
         </>
       }
     />

@@ -84,10 +84,10 @@ function stubFetch(options: {
 }
 
 /** 왕복 쿠키와 `state`를 맞춘 콜백 요청. */
-function callbackRequest(): { request: NextRequest; state: string } {
+function callbackRequest(origin = 'https://prs.example.com'): { request: NextRequest; state: string } {
   const authorization = createAuthorizationRequest('/search?q=abc');
   const request = new NextRequest(
-    new URL(`/auth/callback?code=test-code&state=${authorization.state}`, 'https://prs.example.com'),
+    new URL(`/auth/callback?code=test-code&state=${authorization.state}`, origin),
   );
   request.cookies.set('__Host-prs_oidc', encodeRoundTrip(authorization));
   return { request, state: authorization.state };
@@ -182,7 +182,7 @@ describe('CR-083: GHE 콜백이 신원을 정하는 방식', () => {
 
     const response = await GET(callbackRequest().request);
 
-    expect(response.headers.get('location')).toBe('https://prs.example.com/search?q=abc');
+    expect(response.headers.get('location')).toBe('/search?q=abc');
 
     // 쿠키가 둘 나간다 — `get`은 그중 하나만 돌려주므로 목록으로 본다.
     const cookies = response.headers.getSetCookie();
@@ -191,6 +191,24 @@ describe('CR-083: GHE 콜백이 신원을 정하는 방식', () => {
       cookies.some((one) => one.includes('__Host-prs_oidc=;') || one.includes('Max-Age=0')),
       '왕복 쿠키를 지우지 않았다 — 같은 state로 다시 시도할 수 있다',
     ).toBe(true);
+  });
+
+  /**
+   * **역방향 프록시 뒤에서 `localhost:3000`으로 보내지 않는다** (CR-092 / DEV-699).
+   *
+   * `next start`는 요청 출처를 자기가 들은 호스트·포트로 조립한다. 사내 `0.1.0-pilot.7`의 사용자는 GHE 로그인 뒤
+   * `https://localhost:3000/`으로 떨어졌다. 라우트가 보는 출처가 그 값이어도 복귀 주소에 호스트가 없어야 한다.
+   */
+  it('라우트가 본 출처가 localhost:3000이어도 복귀 주소에 호스트를 싣지 않는다 (DEV-699)', async () => {
+    stubFetch({ user: { id: 4021, login: 'kim' } });
+
+    const response = await GET(callbackRequest('https://localhost:3000').request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('/search?q=abc');
+    expect(response.headers.get('location')).not.toContain('localhost');
+    // 상대 경로로 바꾸면서 세션 쿠키를 잃지 않았다 (DEV-614의 자리).
+    expect(response.headers.getSetCookie().some((one) => one.includes('__Host-prs_session='))).toBe(true);
   });
 });
 

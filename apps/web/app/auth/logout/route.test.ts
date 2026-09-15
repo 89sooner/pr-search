@@ -87,3 +87,49 @@ describe('로그아웃이 서버 세션을 끝낸다 (AC-5)', () => {
     expect(response.headers.getSetCookie().join('\n')).toContain('Max-Age=0');
   });
 });
+
+/**
+ * 사용자 메뉴의 로그아웃은 폼 제출이다 (CR-092 / DEV-700).
+ *
+ * 브라우저가 이동하므로 JSON을 받으면 사용자는 `{"ok":true}` 한 줄을 본다. 로그인으로 곧장 보내면 IdP 세션이
+ * 살아 있을 때 곧바로 다시 로그인된다 — 완료 화면으로 보낸다.
+ */
+describe('문서 요청은 로그아웃 완료 화면으로 간다 (CR-092 / DEV-700)', () => {
+  const documentLogout = (cookie: string, origin: string): NextRequest =>
+    new NextRequest(new URL('/auth/logout', origin), {
+      method: 'POST',
+      headers: { cookie, accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
+    });
+
+  it('폼 제출(Accept: text/html)은 세션을 끝낸 뒤 303으로 완료 화면을 가리키고 쿠키를 지운다', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('SESSION_COOKIE_SECURE', 'true');
+
+    const response = await POST(documentLogout('__Host-prs_session=sess-form', 'https://prs.example.com'));
+
+    expect(destroyed).toEqual(['sess-form']);
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/auth/signed-out');
+    expect(response.headers.getSetCookie().join('\n')).toContain('__Host-prs_session=;');
+  });
+
+  it('프록시 뒤(라우트가 본 출처가 localhost:3000)에서도 완료 화면 주소에 호스트를 싣지 않는다 (DEV-699)', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('SESSION_COOKIE_SECURE', 'true');
+
+    const response = await POST(documentLogout('__Host-prs_session=sess-proxy', 'http://localhost:3000'));
+
+    expect(response.headers.get('location')).toBe('/auth/signed-out');
+  });
+
+  it('스크립트 요청은 지금까지와 같은 JSON 200이다 — 로그인 화면이 아니라 완료 화면도 아니다', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('SESSION_COOKIE_SECURE', 'true');
+
+    const response = await POST(logout('__Host-prs_session=sess-json'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('location')).toBeNull();
+    expect(await response.json()).toEqual({ ok: true });
+  });
+});
