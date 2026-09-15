@@ -24,10 +24,16 @@ const fn = (name: string): string => new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?\\r
 /**
  * `docker compose exec -T <svc> wget … <url>`를 흉내 낸다. 경로마다 busybox wget의 실측 출력을 내며, `-qO-`면 본문을
  * **헤더보다 먼저** stdout에 개행 없이 쓴다 — 스트림 도착 순서가 바뀐 최악의 경우다.
+ *
+ * `FAKE_BODY_IN_STREAM=1`이면 **옵션과 무관하게** 본문을 그렇게 쓴다(독립 검토 B). `http_status`는 `-qO/dev/null`을
+ * 넘기므로 실제 wget이라면 본문이 스트림에 오르지 않고, 그래서 기본 모드의 시험은 뒤섞임을 겪지 않는다. 이 모드는
+ * 판정(awk)이 **줄 안의 위치가 아니라 `HTTP/x.y` 뒤의 토큰**을 읽는다는 것을 따로 건다 — 본문을 버리는 방어가
+ * 무너져도 판정이 옳아야 한다.
  */
 const FAKE_COMPOSE = String.raw`
 compose() {
   local url="" body_to_stdout=0 arg
+  [ "${'${'}FAKE_BODY_IN_STREAM:-0}" = 1 ] && body_to_stdout=1
   for arg in "$@"; do
     case "$arg" in
       -qO-) body_to_stdout=1 ;;
@@ -52,10 +58,25 @@ compose() {
 }
 `;
 
-/** prsctl과 같은 strict 모드에서 `http_status`를 가짜 compose와 함께 돌린다. */
-function status(url: string, pick: 'first' | 'last'): string {
-  const script = ['set -Eeuo pipefail', FAKE_COMPOSE, fn('http_status'), `printf '[%s]' "$(http_status search-api '${url}' ${pick})"`].join('\n');
-  return execFileSync('bash', ['-c', script], { encoding: 'utf8' });
+/**
+ * prsctl과 같은 strict 모드에서 `http_status`를 가짜 compose와 함께 돌린다.
+ *
+ * **prsctl과 같은 모양으로 부른다 — 대입이다.** `printf '[%s]' "$(http_status …)"`로 부르면 치환의 비영 종료가 `printf`의
+ * 종료 코드에 묻혀 `set -e`가 걸리지 않는다. `cmd_smoke`는 `code="$(http_status …)"`로 받으므로, 함수 끝의 `|| true`가
+ * 빠지면 5xx·무응답에서 스크립트가 진단을 내기 전에 죽는다 — 그 변이를 잡으려면 호출도 대입이어야 한다.
+ */
+function status(url: string, pick: 'first' | 'last', bodyInStream = false): string {
+  const script = [
+    'set -Eeuo pipefail',
+    FAKE_COMPOSE,
+    fn('http_status'),
+    `code="$(http_status search-api '${url}' ${pick})"`,
+    `printf '[%s]' "$code"`,
+  ].join('\n');
+  return execFileSync('bash', ['-c', script], {
+    encoding: 'utf8',
+    env: { ...process.env, FAKE_BODY_IN_STREAM: bodyInStream ? '1' : '0' },
+  });
 }
 
 describe('DEV-697: prsctl smoke가 HTTP 상태 코드만 읽는다', () => {
@@ -64,9 +85,15 @@ describe('DEV-697: prsctl smoke가 HTTP 상태 코드만 읽는다', () => {
     expect(fn('cmd_smoke')).toContain('/healthz');
   });
 
-  it('본문이 헤더보다 먼저 도착해도 200을 읽는다 — 사내 pilot.7의 `→ HTTP/1.1`', () => {
+  it('헬스체크의 200을 읽는다 — 본문을 스트림에 싣지 않는다(-qO/dev/null)', () => {
     expect(status('http://127.0.0.1:3002/healthz', 'last')).toBe('[200]');
     expect(status('http://127.0.0.1:3000/healthz', 'first')).toBe('[200]');
+  });
+
+  it('본문이 헤더보다 먼저 도착해 한 줄에 붙어도 200을 읽는다 — 사내 pilot.7의 `→ HTTP/1.1`', () => {
+    // `{"status":"ok",…}  HTTP/1.1 200 OK` — 옛 판정(`$2`)은 여기서 `HTTP/1.1`을 읽었다.
+    expect(status('http://127.0.0.1:3002/healthz', 'last', true)).toBe('[200]');
+    expect(status('http://127.0.0.1:3002/healthz', 'first', true)).toBe('[200]');
   });
 
   it('5xx에서는 500을 읽고, wget의 비영 종료가 strict 모드의 호출자를 죽이지 않는다', () => {

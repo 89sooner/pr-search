@@ -310,7 +310,7 @@ ADMIN_DATABASE_URL=postgresql://prs_retention:<비밀번호>@postgres:5432/prs
 
 - **저장소가 500개 이하인 배포는 `Members` 없이도 조회가 선다.** `0.1.0-pilot.7`까지는 쓰이지 않는 조직·팀 조회까지 불러 그 권한이 없으면 전부 503이었다. 작성자 팀 집계를 쓸 계획이면 그래도 준다.
 - App 권한을 바꾸면 GHE가 **설치마다 승인을 다시 요구한다.** 조직 관리자가 승인해야 새 권한이 설치 토큰에 실린다.
-- 조회가 503이면 추정하지 말고 로그를 본다. `docker logs <search-api 컨테이너>`의 「접근 범위를 GHE에서 읽지 못했다」 줄이 **실패한 단계(`stage`)·상태 코드(`status`)·그 단계가 요구하는 권한(`required_permission`)**을 적는다. GHE 응답 본문은 싣지 않는다.
+- 조회가 503이면 추정하지 말고 로그를 본다. `docker logs <search-api 컨테이너>`의 「접근 범위를 조회하지 못했다」 줄이 **실패한 단계(`stage`)·상태 코드(`status`)·그 단계가 요구하는 권한(`required_permission`)**을 적는다. GHE 응답 본문은 싣지 않는다.
 - **`permission_cache`에 손으로 행을 넣지 않는다.** 5분 뒤 만료되어 다시 GHE를 부르므로 증상이 5분 뒤에 되돌아오고(`FR-AUTH-003`), 미래 시각을 넣어 붙잡아 두면 권한 회수가 반영되지 않는다.
 
 #### 시퀀스 대상 브랜치 정하기·바꾸기 (`CR-092`)
@@ -999,7 +999,7 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 | `search-api`가 재기동을 반복하고 로그에 `OIDC 세션과 ADMIN_API_TOKENS를 함께 구성할 수 없다` | 위와 같은 원인이다. `0.1.0-pilot.6`까지의 `prsctl`은 이것을 미리 막지 않았다. `ADMIN_API_TOKENS`를 비우고 `./prsctl upgrade` |
 | `./prsctl health`에 「평문 HTTP 세션 허용」 줄이 있다 | 실패가 아니다. `ALLOW_INSECURE_COOKIES=true`로 TLS 없이 로그인을 여는 파일럿 형상이라는 알림이다 (6장). 운영으로 쓰기 전에 TLS를 붙이고 두 값을 되돌린다 |
 | 로그인 직후 화면은 뜨는데 조회가 503 `permission_unavailable` | `DEV-613` 이전 빌드다. 그 빌드는 로그인이 `app_user` 행을 만들지 않아 접근 범위를 산출하지 못했다. 고친 버전은 세션을 읽을 때 정본에 행을 만든다. 그래도 503이면 `docker logs search-api`에 등록 실패 이유가 남아 있는지 본다 — `app_user.login`이 UNIQUE라 GHE에서 개명한 계정이 다른 행과 부딪칠 수 있고, 그때는 사람이 정본을 정리해야 한다 |
-| 로그인은 되는데 **저장소 목록이 비고** `/api/v1/me`가 503 `permission_unavailable` | 수집용 GHE App의 권한이다(2.C 「수집용 GHE App에 줄 권한」). `docker logs <search-api 컨테이너>`에서 「접근 범위를 GHE에서 읽지 못했다」 줄의 `stage`·`status`·`required_permission`을 본다 — `collaborator_permission`이면 `Metadata`, `org_membership`·`org_teams`·`team_membership`이면 조직 `Members`다. `0.1.0-pilot.7`까지는 저장소가 몇 개든 `Members`가 없으면 503이었다(`DEV-698`). **`permission_cache`나 `team_member`에 손으로 행을 넣지 않는다** — 캐시는 5분 뒤 만료되고, `team_member`는 이 증상과 무관하다(아래) |
+| 로그인은 되는데 **저장소 목록이 비고** `/api/v1/me`가 503 `permission_unavailable` | 수집용 GHE App의 권한이다(2.C 「수집용 GHE App에 줄 권한」). `docker logs <search-api 컨테이너>`에서 「접근 범위를 조회하지 못했다」 줄의 `stage`·`status`·`required_permission`을 본다 — `collaborator_permission`이면 `Metadata`, `org_membership`·`org_teams`·`team_membership`이면 조직 `Members`다. `0.1.0-pilot.7`까지는 저장소가 몇 개든 `Members`가 없으면 503이었다(`DEV-698`). **`permission_cache`나 `team_member`에 손으로 행을 넣지 않는다** — 캐시는 5분 뒤 만료되고, `team_member`는 이 증상과 무관하다(아래) |
 | `team_member`가 비어 있고 `app_user.access_scope_version`이 0이다 | **정상이다.** 로그인은 팀 동기화를 시작하지 않고 버전을 올리지 않는다 — 버전은 권한 변경 웹훅의 무효화에서만 오른다(`FR-AUTH-003`). 볼 수 있는 저장소가 500개 이하인 사용자의 검색은 저장소 ID로만 거르므로 `team_member`와 `allowed_team_ids`가 가시성에 쓰이지 않는다. 저장소가 안 보이는 원인은 위 행의 503이다 |
 | `./prsctl smoke`가 `✗ search-api /healthz → HTTP/1.1`로 실패하는데 `docker exec`로 부르면 `{"status":"ok"…}`다 | **서비스는 정상이다.** `0.1.0-pilot.7`까지의 `prsctl`이 본문과 헤더를 한 파이프로 읽어, 둘의 도착 순서가 바뀌면 상태 코드 자리에서 `HTTP/1.1`을 읽었다(간헐, `DEV-697`). 고친 버전은 상태 코드만 읽는다. 그 전까지는 `./prsctl health`로 판정한다 |
 | GHE 로그인(또는 GitHub 계정 연결) 뒤 **`localhost:3000`**으로 간다 | `0.1.0-pilot.7`까지의 빌드다 — 돌아갈 주소를 서버가 들은 호스트로 조립했다(`DEV-699`). 고친 버전은 경로만 보내므로 nginx 설정을 바꿀 필요가 없다(6장 「역방향 프록시 뒤에서」). 그 전까지는 주소창의 `localhost:3000`을 서비스 주소로 바꿔 연다 |

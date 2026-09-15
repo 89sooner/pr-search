@@ -240,7 +240,8 @@ export class AccessScopeResolver {
       raw = await this.#source.fetch({ userId, login: user.login });
     } catch (error) {
       this.#metrics?.refreshFailed();
-      this.#log?.('접근 범위를 GHE에서 읽지 못했다', describeScopeFailure(userId, error));
+      // 단계에 따라 PostgreSQL(등록 저장소 목록)일 수도 GHE일 수도 있다 — 문구는 둘 다를 덮고, 어느 쪽인지는 `stage`가 말한다.
+      this.#log?.('접근 범위를 조회하지 못했다', describeScopeFailure(userId, error));
       throw new ScopeUnavailableError(error instanceof Error ? error.message : String(error));
     } finally {
       this.#release();
