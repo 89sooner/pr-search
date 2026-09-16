@@ -62,7 +62,7 @@ export function ResultWorkbench(props: ResultTableProps & { readonly fromQuery: 
     : selected.repository == null || selected.pr_number == null ? null
     : `${selected.repository}#${String(selected.pr_number)}`;
   useEffect(() => {
-    if (selectedId !== null && window.matchMedia('(max-width: 700px)').matches) inspector.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (selectedId !== null && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 700px)').matches) inspector.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }, [selectedId]);
 
   return (
