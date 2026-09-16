@@ -1,5 +1,7 @@
 # PR Search 보안 및 개인정보 아키텍처
 
+> CR-098 / FR-AUTH-002: GHE collaborator permission의 read 이상 호환 집합은 `read`·`write`·`writer`와 REST 내부 이름 `pull`·`triage`·`push`·`maintain`·`admin`을 수용한다. `none`·빈 값·미지 이름은 계속 기본 거부한다. 화면 메뉴 필터는 API 권한 검사를 대체하지 않으며 reader의 Workspace 바로가기는 operator에게만 렌더링한다.
+
 > CR-097: FR-SRC-001~004는 소스 코드의 **일시적 열람**을 허용한다. 모든 source GET은 세션과 기존 저장소 범위를 확인한 뒤 Data App의 read-only GitHubSourceReader를 호출한다. 미등록/범위 밖은 동일404이며 관리자 토큰 우회는 없다. ref/SHA/path/page를 검증하고 임의 호스트·download_url·파일시스템 경로를 따르지 않는다. 본문은 PG/ES/Redis/미러/로그에 저장하지 않는다. 응답 no-store, 감사는 경로·SHA·결과만. UTF8/크기/라인 한도와 안전한 React 텍스트 렌더링을 사용한다. 기존 MIRROR_ALLOW_BLOB_FETCH 설정을 변경하지 않는다.
 
 > 상태: review | 버전: v1.13 | 갱신일: 2026-09-17

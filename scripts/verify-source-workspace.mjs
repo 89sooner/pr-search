@@ -79,6 +79,8 @@ async function mock(page) {
     page.on('pageerror', error => errors.push(error.message)); await mock(page);
     await page.goto(`${origin}/search`); await page.waitForLoadState('networkidle');
     await page.addStyleTag({ content: 'nextjs-portal{display:none!important}' });
+    assert.equal(await page.getByLabel('Merged after').getAttribute('placeholder'), 'YYYY-MM-DD');
+    assert.equal(await page.getByLabel('Merged before').getAttribute('placeholder'), 'YYYY-MM-DD');
     const folder = page.getByRole('treeitem', { name: 'src', exact: true }); await folder.waitFor();
     await folder.locator(':scope > .source-tree-node').click();
     const file = page.getByRole('treeitem', { name: 'policy.ts', exact: true }); await file.waitFor(); await file.locator(':scope > .source-tree-node').click();

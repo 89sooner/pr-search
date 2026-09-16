@@ -1,5 +1,7 @@
 # PR Search UI 컴포넌트 명세서
 
+> CR-098 / WP-086: ReaderShell의 상단 Workspace 바로가기는 operator에게만 렌더링한다. 일반 사용자는 검색·분석 본문을 사용하되 운영/레거시 바로가기의 존재를 상단 메뉴에서 노출하지 않는다. LeftNavPanel의 “Follow the merge order” 설명은 제거하고 operator 전용 Advanced search·Repository workspace 링크는 보존한다. Merged after/before는 브라우저 로케일과 무관하게 `YYYY-MM-DD`를 placeholder로 표시하고 같은 패턴을 요구한다.
+
 > CR-097: SourceTree는 sidebar 하단의 lazy Git 트리이며 방향키·Enter·선택 경로 복원을 지원한다. SourceHistory는 선택 경로의 live Git 이력을 고정 SHA로 표시한다. DiffModal은 파일목록·split/unified·문자열 검색·변경 구간 이동·전체화면/이동을 제공한다. TimeLapseModal은 Radix Slider·버전목록·코드·추론 라인 heatmap/history·관련 PR을 제공한다. Ctrl/⌘+D는 선택된 검색 행, T는 선택 파일의 분석 진입이다. 상위 모달 안에서는 workspace 단축키를 가로채지 않는다. 모든 모달은 Escape와 호출자 포커스 복귀를 유지한다.
 
 > CR-096: 모든 기존 컴포넌트는 기능을 보존하며 `components/ui`의 typed Radix 제품 프리미티브를 사용한다. UI 문구는 영어다. 폼 label/description/error/required 연결, 포털 포커스·Escape·복귀, 모바일 탐색 drawer, 미리보기 크기 조절·Escape를 유지한다. 공통 헤더 ThemeToggle은 저장 선호도를 변경하며 메뉴·대화상자에도 즉시 적용한다.

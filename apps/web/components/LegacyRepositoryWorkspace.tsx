@@ -168,7 +168,8 @@ export function LegacyRepositoryWorkspace({ login = '', loginPath, gheBaseUrl }:
   }, [requestKey, cursor, nonce, repository, login, gheBaseUrl]);
   const rows = loadedKey === requestKey ? data?.items ?? [] : [];
   function field(key: string, label: string, placeholder = '', type = 'text'): ReactNode {
-    return <label className="repo-field"><span>{label}</span><input type={type} value={draft[key] ?? ''} placeholder={placeholder} onChange={event => { setDraft(current => ({ ...current, [key]: event.target.value })); }} /></label>;
+    const date = type === 'date';
+    return <label className="repo-field"><span>{label}</span><input type={date ? 'text' : type} inputMode={date ? 'numeric' : undefined} pattern={date ? '\\d{4}-\\d{2}-\\d{2}' : undefined} value={draft[key] ?? ''} placeholder={date ? 'YYYY-MM-DD' : placeholder} onChange={event => { setDraft(current => ({ ...current, [key]: event.target.value })); }} /></label>;
   }
   function sortBy(fieldName: string): void { navigate({ sort: fieldName, order: sort === fieldName && order === 'desc' ? 'asc' : 'desc' }); }
   return <div className="repo-workspace" onKeyDown={event => {
