@@ -83,7 +83,7 @@ case "${1:-}" in
 
     # 인증을 켠 평문 HTTP 파일럿은 서되 기동 로그에 경고를 남긴다 (`CR-091`).
     if [ -n "$NAME" ] && [ "$FLAG" = "true" ] && [ "$COOKIE_SECURE" = "false" ] && [ "$AUTH_ENABLED" = "true" ]; then
-      printf '\n  경고: ALLOW_INSECURE_COOKIES=true — 세션 쿠키가 Secure 없이 발급된다 (가짜 docker)\n' > "$(dirname "$0")/fake-docker.logs.${NAME}"
+      printf '\n  Warning: ALLOW_INSECURE_COOKIES=true — Session cookies are issued without Secure (fake docker)\n' > "$(dirname "$0")/fake-docker.logs.${NAME}"
     fi
 
     # `--entrypoint`로 묻는 것들. 값은 진짜 이미지의 답과 같은 모양이어야 게이트를 지난다 —

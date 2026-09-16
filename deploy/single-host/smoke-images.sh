@@ -246,7 +246,7 @@ expect_accepted "ALLOW_INSECURE_COOKIES=true + insecure 쿠키 + 인증 켬 (평
   -e GHE_BASE_URL=http://ghe.invalid -e GHE_OAUTH_CLIENT_ID=c -e GHE_OAUTH_CLIENT_SECRET=s \
   -e GHE_OAUTH_REDIRECT_URI=http://prs.invalid/auth/callback
 PILOT_LOG="$(docker logs "${CONTAINERS[${#CONTAINERS[@]}-1]}" 2>&1)"
-printf '%s' "$PILOT_LOG" | grep -qF '경고: ALLOW_INSECURE_COOKIES=true' \
+printf '%s' "$PILOT_LOG" | grep -qF 'Warning: ALLOW_INSECURE_COOKIES=true' \
   || { printf '%s\n' "$PILOT_LOG" | tail -20 >&2; die "평문 HTTP 파일럿으로 섰는데 기동 로그에 경고가 없다 (CR-091)"; }
 pass "평문 HTTP 파일럿 → 기동 로그에 받아들인 위험을 경고한다"
 
