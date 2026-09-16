@@ -1,5 +1,17 @@
 # PR Search 구현 추적 원장
 
+## 0.1.0-pilot.11 발행 — 사내 권한명·operator 바로가기 보정 (2026-09-17)
+
+PR #203이 CR-098 / WP-086을 `05687c2`로 병합했다. `read`·`write`·`writer` 권한 호환, operator 전용 Workspace 메뉴, 좌측 설명 제거, `YYYY-MM-DD` 날짜 입력을 포함한다. 릴리스 게이트에서 반복된 FLOW-002 중복 자동 이동을 DEV-708로 닫았고 문제 흐름20/20 및 PR/main 전체 CI를 통과했다.
+
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.11
+- 태그: `05687c2a3ff33418e571729a634704fe1ef772d4`
+- 자산: `pr-search-0.1.0-pilot.11-offline.tar.gz`, 1,154,177,072 bytes
+- 별도 채널 전달 SHA-256: `daf494ba8ba4a60b8e3dc81095b39af242db24bab6d33fbb5b2e6380e953f38c`
+- 로컬 checksum과 GitHub asset digest 일치, state uploaded, immutable releases enabled.
+- tar 재적재 뒤 SSR10종·API401·web 구성 허용/거부·pipeline git·gh2.97.0/hash·비루트/읽기전용 executor·역할 CLI smoke 통과.
+- 사내 GHE 권한 응답 및 실제 재반입은 NOT RUN이다.
+
 ## CR-098 / WP-086 — 사내 권한명·operator 바로가기 보정 (2026-09-17)
 
 사내 GHE가 반환한 `read`·`write`/`writer`가 기존 `pull`·`push` 중심 호환 집합에 없어 read 이상 사용자의 등록 저장소가 범위에서 빠졌다(DEV-704). ReaderShell은 유효 역할을 받으면서도 Workspace 드롭다운 자체를 무조건 렌더해 비operator에게 바로가기 모음을 노출했다(DEV-705). LeftNavPanel의 부가 설명은 현재 UI에서 불필요했다(DEV-706). 날짜 input의 브라우저 로케일 UI가 `연도-월-일` 샘플을 만들어 영문 제품 형식과 어긋났다(DEV-707). 요구사항 확대가 아니라 FR-AUTH-002와 operator 격리·표현의 구현 보정이다.
@@ -117,7 +129,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | WP-083 | 일반 검색 Radix 재구현 | UI 품질 (CR-095) | done | 에이전트 | PR #199 / pilot.10 | 전체 CI·브라우저·bundle smoke 통과 | 기존 문서 validator 오류 유지 |
 | WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | done | 에이전트 | PR #199 / pilot.10 | 접근성 433/433·전체 CI·bundle smoke 통과 | 실 GHE 미검증, 기존 문서 gate 오류 |
 | WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | done | 에이전트 | PR #199 / pilot.10 | 집중94/94·Chromium·전체 CI·bundle smoke 통과 | 실 GHE NOT RUN, 기존 문서 gate 오류 |
-| WP-086 | 사내 권한명·operator 바로가기 보정 | 권한·UI 보정 (CR-098) | done | 에이전트 | 로컬 변경 | 권한22/22·reader/operator DOM/접근성33/33·FLOW-002 반복20/20·타입·lint·빌드·Chromium 날짜/Source 회귀 통과 | 사내 재반입 NOT RUN, PR·릴리스 발행 진행 |
+| WP-086 | 사내 권한명·operator 바로가기 보정 | 권한·UI 보정 (CR-098) | done | 에이전트 | PR #203 / pilot.11 | 권한22/22·DOM/a11y33/33·FLOW20/20·PR/main 전체 CI·bundle smoke 통과 | 사내 재반입 NOT RUN |
 | WP-081 | 최신 Conductor·Shell·W-001 | UI 품질 (CR-093) | done | 에이전트 | `a8796de` / PR #196 | PR CI `35061974889`·main CI `35062529329` success; `0.1.0-pilot.8` | CR-093, 신규 기능 의미 없음 |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | `96d4e2f` / PR #2 | DoD 6항 전부 통과. 통합 26건, CI `verify`·`integration` 모두 성공 (6.2장) | 로컬은 네이티브 PostgreSQL 16.13, CI는 서비스 컨테이너 (DEV-006) |
