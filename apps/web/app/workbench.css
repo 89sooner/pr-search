@@ -21,9 +21,13 @@
 .prs-nav-note strong { margin-block-end: var(--cdt-space-2); color: var(--cdt-text-secondary); }
 .prs-topbar { min-block-size: 60px; padding-inline: var(--cdt-space-5); background: var(--cdt-surface-subtle); }
 .prs-topbar .cdt-topbar__eyebrow { color: var(--cdt-text-muted); font-size: var(--cdt-font-size-2xs); }
-.prs-breadcrumb { display: flex; align-items: center; gap: var(--cdt-space-2); color: var(--cdt-text-muted); font-weight: 400; }
+/* 현재 위치 (CR-093) — Conductor `Breadcrumb`는 nav 래퍼만 주므로 목록의 모양은 제품이 정한다. 한 줄, 글머리 없음. */
+.prs-breadcrumb ol { display: flex; align-items: center; gap: var(--cdt-space-2); margin: 0; padding: 0; list-style: none; font-weight: 400; }
+.prs-breadcrumb li { display: inline-flex; align-items: center; gap: var(--cdt-space-1); min-inline-size: 0; }
+.prs-breadcrumb a { color: var(--cdt-text-muted); text-decoration: none; }
+.prs-breadcrumb a:hover { color: var(--cdt-text-secondary); text-decoration: underline; }
 .prs-breadcrumb strong { color: var(--cdt-text-secondary); font-weight: 500; }
-.prs-breadcrumb .prs-icon { inline-size: var(--cdt-space-3); }
+.prs-breadcrumb .prs-icon { inline-size: var(--cdt-space-3); block-size: var(--cdt-space-3); }
 .prs-quick-search { display: inline-flex; gap: var(--cdt-space-3); align-items: center; min-block-size: var(--cdt-space-7); color: var(--cdt-text-secondary); text-decoration: none; font-size: var(--cdt-font-size-sm); padding: var(--cdt-space-1) var(--cdt-space-3); border: 1px solid var(--cdt-border-subtle); border-radius: var(--cdt-radius-xs); background: var(--cdt-surface-raised); }
 .prs-quick-search:hover { border-color: var(--cdt-border-strong); text-decoration: none; }
 .prs-user { display: flex; align-items: center; gap: var(--cdt-space-2); max-inline-size: 220px; font-size: var(--cdt-font-size-sm); overflow-wrap: anywhere; }
@@ -55,7 +59,6 @@ button.prs-user:hover, button.prs-user[data-state='open'] { border-color: var(--
 .prs-page-content form:not(.prs-omni-search) { display: flex; align-items: end; flex-wrap: wrap; gap: var(--cdt-space-3); margin-block-end: var(--cdt-space-4); }
 .prs-page-content form > * { min-inline-size: 0; }
 .prs-page-content fieldset { min-inline-size: 0; }
-.prs-page-content [role='tablist'] { display: flex; flex-wrap: wrap; gap: var(--cdt-space-1); }
 .prs-page-content [role='tabpanel']:not([hidden]) { min-inline-size: 0; }
 .prs-text-link { display: inline-flex; align-items: center; gap: var(--cdt-space-2); color: var(--cdt-text-primary); font-weight: 500; }
 .prs-search-view { border: 1px solid var(--cdt-border-default); border-radius: var(--cdt-radius-sm); background: var(--cdt-surface-raised); overflow: clip; }
@@ -65,21 +68,28 @@ button.prs-user:hover, button.prs-user[data-state='open'] { border-color: var(--
 .prs-omni-search [data-omni-input] { padding-inline-start: var(--cdt-space-7); font-family: var(--cdt-font-mono); font-size: var(--cdt-font-size-base); }
 .prs-omni-search > p:not(.cdt-sr-only) { grid-column: 1 / -1; margin: 0; font-size: var(--cdt-font-size-sm); }
 .prs-search-controls [data-testid='search-actions'] { grid-column: 2; grid-row: 1; }
-.prs-search-controls [data-testid='query-token-bar'] { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--cdt-space-2); margin: 0; padding: 0; list-style: none; }
-.prs-search-controls [data-testid='query-token-bar'] > li { display: flex; align-items: center; background: var(--cdt-surface-subtle); border: 1px solid var(--cdt-border-subtle); border-radius: var(--cdt-radius-xs); }
-.prs-search-controls [data-testid='query-token-bar'] > li .cdt-badge { background: transparent; border: 0; font-family: var(--cdt-font-mono); }
-.prs-search-controls [data-testid='query-token-bar'] > li .cdt-btn { padding: var(--cdt-space-1); min-block-size: var(--cdt-space-6); min-inline-size: var(--cdt-space-6); }
+/* 적용된 필터 (CR-093) — 칩의 모양은 Conductor `FilterChip`이 정한다. 제품은 자리와 부정 표시만 준다. */
+.prs-search-controls [data-testid='query-token-bar'] { grid-column: 1 / -1; }
+.prs-query-tokens .cdt-filter-chip { font-size: var(--cdt-font-size-sm); }
+.prs-query-tokens .cdt-filter-chip[data-negated] { border-color: var(--cdt-status-warning); }
+.prs-query-token__negation { margin-inline-end: var(--cdt-space-1); color: var(--cdt-text-secondary); font-weight: 600; }
+.prs-query-error > p { margin: 0 0 var(--cdt-space-2); }
 .prs-search-view > .cdt-banner { margin: var(--cdt-space-3); }
 .prs-search-view > [data-testid='sequence-context'] { padding: var(--cdt-space-2) var(--cdt-space-4); margin: 0; background: var(--cdt-surface-subtle); font-family: var(--cdt-font-mono); font-size: var(--cdt-font-size-xs); color: var(--cdt-text-secondary); }
+/* 결과·집계 탭 (CR-093) — 탭의 모양은 Conductor `Tabs`가 정한다. 도구 막대가 이미 경계선을 그리므로 목록의 밑줄은 끈다. */
 .prs-results-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--cdt-space-2); padding-inline: var(--cdt-space-3); border-block: 1px solid var(--cdt-border-default); background: var(--cdt-surface-subtle); }
-.prs-results-toolbar [role='tab'] { border-radius: 0; border: 0; border-block-end: 2px solid transparent; background: none; }
-.prs-results-toolbar [role='tab'][aria-selected='true'] { border-block-end-color: var(--cdt-accent); color: var(--cdt-text-primary); }
+.prs-results-toolbar .cdt-tabs__list { border-block-end: 0; }
+.prs-results-toolbar .cdt-tabs__trigger { min-block-size: var(--cdt-space-7); padding-block: var(--cdt-space-1); border-radius: var(--cdt-radius-xs); }
+.prs-results-tabs .cdt-tabs__content { padding-block: 0; min-inline-size: 0; }
 .prs-results-actions { display: flex; align-items: center; gap: var(--cdt-space-2); }
 .prs-result-count { font-size: var(--cdt-font-size-xs); font-variant-numeric: tabular-nums; color: var(--cdt-text-secondary); margin-inline-end: var(--cdt-space-2); }
 .prs-search-layout { display: grid; grid-template-columns: minmax(0, 1fr); min-block-size: 420px; }
 .prs-search-layout[data-filters-open] { grid-template-columns: 196px minmax(0, 1fr); }
-.prs-search-layout > #search-filters { border-inline-end: 1px solid var(--cdt-border-subtle); background: var(--cdt-surface-subtle); }
+.prs-search-layout > .prs-search-filters { border-inline-end: 1px solid var(--cdt-border-subtle); background: var(--cdt-surface-subtle); }
 .prs-results-body { min-inline-size: 0; }
+/* 로딩 (CR-093) — 상태는 Conductor `Skeleton` 하나가 말하고, 표의 자리표시 행은 결과가 놓일 자리만 보인다. */
+.prs-loading-status.cdt-skeleton { min-block-size: 0; padding: var(--cdt-space-2) var(--cdt-space-4); background: transparent; font-size: var(--cdt-font-size-sm); }
+.prs-skeleton-row.cdt-skeleton { min-block-size: var(--cdt-space-4); block-size: var(--cdt-space-4); padding: 0; margin-block: var(--cdt-space-1); border-radius: var(--cdt-radius-xs); background: var(--cdt-surface-subtle); }
 .prs-page-content .prs-facet-rail { border: 0; background: transparent; box-shadow: none; border-radius: 0; padding: var(--cdt-space-4); margin: 0; }
 .prs-facet-rail h2 { font-size: var(--cdt-font-size-base); margin-block-end: var(--cdt-space-4); }
 .prs-facet-rail > p { color: var(--cdt-text-muted); font-size: var(--cdt-font-size-sm); line-height: var(--cdt-font-line-height-base); }
@@ -123,20 +133,28 @@ button.prs-user:hover, button.prs-user[data-state='open'] { border-color: var(--
 .prs-diff-deleted { color: var(--cdt-meter-exceeded); font-family: var(--cdt-font-mono); }
 .prs-keyboard-help { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cdt-space-2); padding: var(--cdt-space-2) var(--cdt-space-4); border-block-start: 1px solid var(--cdt-border-subtle); color: var(--cdt-text-muted); font-size: var(--cdt-font-size-xs); margin: 0; }
 .prs-keyboard-help > span { margin-inline-start: auto; }
-.prs-result-workbench[data-preview-open] .cdt-table__scroll { max-block-size: 48vh; overflow: auto; }
-.prs-result-preview { border-block-start: 2px solid var(--cdt-border-strong); background: var(--cdt-surface-raised); }
-.prs-preview-toolbar, .prs-preview-toolbar > div { display: flex; align-items: center; gap: var(--cdt-space-2); }
-.prs-preview-toolbar { justify-content: space-between; padding-inline: var(--cdt-space-4); border-block-end: 1px solid var(--cdt-border-subtle); background: var(--cdt-surface-subtle); font-size: var(--cdt-font-size-xs); }
-.prs-preview-toolbar span { color: var(--cdt-text-muted); }
-.prs-preview-content { display: grid; grid-template-columns: 1fr 1fr; gap: var(--cdt-space-5); padding: var(--cdt-space-4); }
-.prs-preview-heading { min-inline-size: 0; }
-.prs-preview-heading > p { margin: 0 0 var(--cdt-space-2); color: var(--cdt-text-muted); font-size: var(--cdt-font-size-xs); }
-.prs-preview-heading h2 { overflow-wrap: anywhere; font-size: var(--cdt-font-size-md); margin-block-end: var(--cdt-space-3); }
-.prs-preview-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--cdt-space-2); font-size: var(--cdt-font-size-sm); }
-.prs-preview-actions [role='status'] { flex-basis: 100%; font-size: var(--cdt-font-size-xs); }
+/*
+ * 결과 작업대 (CR-093) — 좌우 분할·폭 조절·좁은 화면의 세로 쌓기는 Conductor `WorkbenchLayout`이,
+ * 닫기·Escape·포커스 복귀는 `DetailInspector`가 한다. 제품은 바깥 경계(이미 `.prs-search-view`가 그린다)를
+ * 지우고 미리보기 안의 사실 배치만 정한다.
+ */
+.prs-result-workbench.cdt-workbench { border: 0; border-radius: 0; background: transparent; }
+.prs-result-workbench .cdt-workbench__inspector { padding: var(--cdt-space-3) var(--cdt-space-4) var(--cdt-space-4); background: var(--cdt-surface-raised); }
+.prs-result-workbench .cdt-workbench__resize { font-size: var(--cdt-font-size-xs); margin-block-end: var(--cdt-space-2); }
+.prs-result-workbench .cdt-workbench__resize input { inline-size: 120px; accent-color: var(--cdt-accent); }
+/* 긴 목록을 탐색해도 미리보기가 목록 끝으로 밀리지 않게 한다 (CR-093). */
+.prs-result-workbench[data-inspecting] .cdt-table__scroll { max-block-size: 48vh; overflow: auto; }
+.prs-result-workbench[data-inspecting] .prs-result-title { max-inline-size: 320px; }
+.prs-result-preview > header { margin-block-end: var(--cdt-space-2); }
+.prs-page-content .prs-result-preview > header h2 { margin: 0; font-size: var(--cdt-font-size-base); font-weight: 600; }
+.prs-preview-position { margin: 0 0 var(--cdt-space-3); color: var(--cdt-text-muted); font-size: var(--cdt-font-size-xs); font-variant-numeric: tabular-nums; }
+.prs-preview-identity { margin: 0 0 var(--cdt-space-1); color: var(--cdt-text-muted); font-size: var(--cdt-font-size-xs); }
+.prs-page-content .prs-preview-title { overflow-wrap: anywhere; font-size: var(--cdt-font-size-md); line-height: var(--cdt-font-line-height-md); margin: 0 0 var(--cdt-space-3); }
+.prs-preview-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--cdt-space-2); margin-block-end: var(--cdt-space-4); font-size: var(--cdt-font-size-sm); }
+.prs-preview-actions [role='status'] { font-size: var(--cdt-font-size-xs); color: var(--cdt-text-secondary); }
 .prs-page-content .prs-preview-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--cdt-space-3); margin: 0; }
 .prs-preview-facts dd { font-size: var(--cdt-font-size-sm); margin-block-start: var(--cdt-space-1); }
-.prs-preview-relations { display: flex; align-items: center; flex-wrap: wrap; gap: var(--cdt-space-2); padding: var(--cdt-space-2) var(--cdt-space-4); border-block-start: 1px solid var(--cdt-border-subtle); font-size: var(--cdt-font-size-xs); color: var(--cdt-text-muted); }
+.prs-preview-relations { display: flex; align-items: center; flex-wrap: wrap; gap: var(--cdt-space-2); margin-block-start: var(--cdt-space-4); padding-block-start: var(--cdt-space-3); border-block-start: 1px solid var(--cdt-border-subtle); font-size: var(--cdt-font-size-xs); color: var(--cdt-text-muted); }
 .prs-search-welcome { max-inline-size: 720px; padding: var(--cdt-space-8) var(--cdt-space-6); margin-inline: auto; }
 .prs-welcome-mark { display: grid; place-items: center; inline-size: var(--cdt-space-8); block-size: var(--cdt-space-8); border: 1px solid var(--cdt-border-subtle); border-radius: var(--cdt-radius-sm); color: var(--cdt-accent); background: var(--cdt-accent-soft); margin-block-end: var(--cdt-space-5); }
 .prs-search-welcome h2 { font-size: var(--cdt-font-size-xl); margin-block: var(--cdt-space-2) var(--cdt-space-3); }
@@ -148,9 +166,8 @@ button.prs-user:hover, button.prs-user[data-state='open'] { border-color: var(--
 .prs-query-example span span { font-size: var(--cdt-font-size-xs); color: var(--cdt-text-muted); }
 .prs-query-example code { display: block; font-size: var(--cdt-font-size-xs); color: var(--cdt-text-secondary); overflow-wrap: anywhere; }
 .prs-search-welcome .prs-welcome-footnote { font-size: var(--cdt-font-size-xs); margin-block-end: var(--cdt-space-5); }
-.prs-search-view > [role='tabpanel']:not(#tabpanel-results) { padding: var(--cdt-space-4); }
+.prs-search-view .prs-aggregation-panel:not([hidden]) { padding: var(--cdt-space-4); }
 .prs-results-body > :is(.cdt-banner, .cdt-empty-state, [data-testid='empty-no-result'], [data-testid='resolved-single']) { margin: var(--cdt-space-4); }
-.prs-skeleton-line { display: block; background: var(--cdt-surface-subtle); margin-block: var(--cdt-space-1); border-radius: var(--cdt-radius-xs); block-size: var(--cdt-space-4); }
 .prs-page-content [data-testid='entity-header'] { border-block-start: 3px solid var(--cdt-accent); }
 .prs-page-content [data-testid='entity-identifier'] { color: var(--cdt-text-muted); font-size: var(--cdt-font-size-sm); margin-block: 0 var(--cdt-space-2); }
 .prs-page-content [data-testid='entity-header'] h1 { font-size: var(--cdt-font-size-xl); line-height: var(--cdt-font-line-height-xl); margin-block-end: var(--cdt-space-4); overflow-wrap: anywhere; }
@@ -166,13 +183,13 @@ button.prs-user:hover, button.prs-user[data-state='open'] { border-color: var(--
   .prs-shell .cdt-app-shell__nav:not([data-mobile]) { flex-basis: 188px; inline-size: 188px; }
   .prs-brand { padding-inline: var(--cdt-space-3); }
   .prs-search-layout[data-filters-open] { grid-template-columns: 168px minmax(0, 1fr); }
-  .prs-preview-content { grid-template-columns: minmax(0, 1fr); }
+  .prs-page-content .prs-preview-facts { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 800px) {
   .prs-shell .cdt-app-shell__main { padding: var(--cdt-space-4); }
   .prs-topbar { padding-inline: var(--cdt-space-3); }
   .prs-search-layout[data-filters-open] { grid-template-columns: minmax(0, 1fr); }
-  .prs-search-layout > #search-filters { border-inline-end: 0; border-block-end: 1px solid var(--cdt-border-subtle); }
+  .prs-search-layout > .prs-search-filters { border-inline-end: 0; border-block-end: 1px solid var(--cdt-border-subtle); }
   .prs-facet-rail { display: flex; flex-wrap: wrap; gap: var(--cdt-space-3); max-block-size: 260px; overflow: auto; }
   .prs-facet-rail h2, .prs-facet-rail > p { flex-basis: 100%; margin: 0; }
   .prs-facet-rail fieldset { flex: 1 1 135px; margin-block-end: 0; }
@@ -223,8 +240,7 @@ button.prs-user:hover, button.prs-user[data-state='open'] { border-color: var(--
 @media (max-width: 800px) {
   .prs-page-content [data-testid='range-body'] { grid-template-columns: minmax(0, 1fr); }
 }
-.prs-search-controls [data-testid='query-token-bar'] .cdt-badge,
-.prs-page-content [data-seq-state] { text-transform: none; letter-spacing: 0; }
+/* 0.4.1의 배지는 문장 대소문자·자간 0이 기본이라 옛 재정의(`text-transform: none; letter-spacing: 0`)는 뺐다 (CR-093). */
 .prs-page-content [data-seq-state] { font-family: var(--cdt-font-mono); }
 /* WP-077 / CR-086: W-010 GitHub 작업 · W-021 실행 이력. Conductor semantic 토큰만 소비한다. */
 .prs-gh-center > .cdt-panel, .prs-gh-history > .cdt-panel { margin-block-end: var(--cdt-space-4); }

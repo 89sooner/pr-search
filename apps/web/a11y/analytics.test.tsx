@@ -7,12 +7,10 @@
  *   - unknown 구간을 0과 다르게, 근거 링크 없이 그리는가 (FR-STAT-005 AC-5)
  *   - 모든 차트에 표 대체가 있는가 (QA-W006-18)
  *   - 개인 순위 배지·정렬 강조가 없는가 (QA-W006-17)
- *   - 탭이 화살표·Home·End로 움직이는가 (W-001-AGG 접근성)
  *   - axe 위반 0건 (QA-COMMON, 두 테마 대비는 conductor-check-contrast가 따로 본다)
  */
 
-import { useState, type ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import axe from 'axe-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -26,7 +24,6 @@ const { PercentileCardRow } = await import('../components/PercentileCardRow');
 const { AggregationPanel } = await import('../components/AggregationPanel');
 const { DistributionChart } = await import('../components/DistributionChart');
 const { TimeSeriesChart } = await import('../components/TimeSeriesChart');
-const { TabList, TabPanel } = await import('../components/Tabs');
 
 async function violations(container: HTMLElement): Promise<axe.Result[]> {
   const results = await axe.run(container, {
@@ -152,55 +149,5 @@ describe('TimeSeriesChart (QA-W006-18, FR-STAT-002)', () => {
     const swatch = container.querySelector('[data-testid="series-legend"] span[aria-hidden="true"]');
     expect((swatch as HTMLElement).style.backgroundColor).toContain('--cdt-dataviz-series-');
     expect(await violations(container)).toEqual([]);
-  });
-});
-
-describe('TabList — 접근성 탭 (W-001-AGG)', () => {
-  function Harness(): ReactNode {
-    const [active, setActive] = useState('results');
-    return (
-      <>
-        <TabList
-          tabs={[{ id: 'results', label: '결과' }, { id: 'aggregation', label: '집계' }]}
-          activeId={active}
-          onChange={setActive}
-          label="보기 방식"
-        />
-        <TabPanel id="results" active={active === 'results'}>
-          결과 내용
-        </TabPanel>
-        <TabPanel id="aggregation" active={active === 'aggregation'}>
-          집계 내용
-        </TabPanel>
-      </>
-    );
-  }
-
-  it('roving tabindex와 ARIA 연결을 갖추고 axe 0건', async () => {
-    const { container } = render(<Harness />);
-    const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(2);
-    expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
-    expect(tabs[0]).toHaveAttribute('tabindex', '0');
-    expect(tabs[1]).toHaveAttribute('tabindex', '-1');
-    expect(tabs[0]).toHaveAttribute('aria-controls', 'tabpanel-results');
-    // 비활성 패널은 hidden
-    expect(container.querySelector('#tabpanel-aggregation')).toHaveAttribute('hidden');
-    expect(await violations(container)).toEqual([]);
-  });
-
-  it('ArrowRight로 다음 탭이 선택된다 (자동 활성화)', () => {
-    render(<Harness />);
-    fireEvent.keyDown(screen.getByRole('tab', { name: '결과' }), { key: 'ArrowRight' });
-    expect(screen.getByRole('tab', { name: '집계' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: '결과' })).toHaveAttribute('aria-selected', 'false');
-  });
-
-  it('End는 마지막, Home은 첫 탭으로 간다', () => {
-    render(<Harness />);
-    fireEvent.keyDown(screen.getByRole('tab', { name: '결과' }), { key: 'End' });
-    expect(screen.getByRole('tab', { name: '집계' })).toHaveAttribute('aria-selected', 'true');
-    fireEvent.keyDown(screen.getByRole('tab', { name: '집계' }), { key: 'Home' });
-    expect(screen.getByRole('tab', { name: '결과' })).toHaveAttribute('aria-selected', 'true');
   });
 });

@@ -403,6 +403,116 @@ describe('상태 매트릭스 W-001 — 모든 상태가 그려진다', () => {
   });
 });
 
+describe('결과·집계 탭 (CR-093, Conductor Tabs · W-001-AGG)', () => {
+  const READY = { total: { value: 1, relation: 'eq' }, items: [ROW], next_cursor: null };
+
+  async function ready(): Promise<ReturnType<typeof render>> {
+    stubFetch(READY);
+    params.current = new URLSearchParams('q=repo:acme/payments');
+    const rendered = view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    return rendered;
+  }
+
+  it('탭·패널의 ARIA 연결이 서고 axe 0건이다', async () => {
+    const { container } = await ready();
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['결과', '집계']);
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+    /*
+     * roving tabindex는 Radix 방식이다 — 처음에는 목록이 탭 정지점이고, 목록에 포커스가 들어오면 선택된 탭이
+     * 받는다. 그 뒤부터 선택된 탭만 `tabindex="0"`이다 (0.3.1의 자체 구현은 처음부터 탭에 0을 두었다).
+     */
+    screen.getByRole('tablist').focus();
+    await waitFor(() => {
+      expect(document.activeElement).toBe(tabs[0]);
+      expect(tabs[0]).toHaveAttribute('tabindex', '0');
+    });
+    expect(tabs[1]).toHaveAttribute('tabindex', '-1');
+    // 두 패널 모두 DOM에 있어 `aria-controls`가 끊기지 않고, 비활성 패널은 hidden이다.
+    expect(document.getElementById(tabs[0]!.getAttribute('aria-controls') ?? '')).not.toBeNull();
+    expect(document.getElementById(tabs[1]!.getAttribute('aria-controls') ?? '')).toHaveAttribute('hidden');
+    expect(describeViolations(await violations(container))).toBe('');
+  });
+
+  it('화살표로 옮기면 그 자리에서 선택된다 — 자동 활성화 (0.3.1 동작 보존)', async () => {
+    await ready();
+    screen.getByRole('tab', { name: '결과' }).focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(screen.getByRole('tab', { name: '집계' })).toHaveAttribute('aria-selected', 'true');
+    await userEvent.keyboard('{Home}');
+    expect(screen.getByRole('tab', { name: '결과' })).toHaveAttribute('aria-selected', 'true');
+    await userEvent.keyboard('{End}');
+    expect(screen.getByRole('tab', { name: '집계' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('**집계를 다녀와도 결과 패널의 선택이 남는다** — 결과 패널은 언마운트하지 않는다', async () => {
+    await ready();
+    await userEvent.click(screen.getByRole('button', { name: /#1234 미리보기/ }));
+    expect(screen.getByRole('region', { name: '선택한 결과 미리보기' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('tab', { name: '집계' }));
+    expect(screen.getByRole('tab', { name: '집계' })).toHaveAttribute('aria-selected', 'true');
+    await userEvent.click(screen.getByRole('tab', { name: '결과' }));
+
+    expect(screen.getByRole('region', { name: '선택한 결과 미리보기' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /#1234 미리보기/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('**집계 내용은 활성일 때만 마운트된다** — 숨은 채로 조회하지 않는다 (FR-STAT-006)', async () => {
+    const calls = await (async () => {
+      const list = stubFetch(READY);
+      params.current = new URLSearchParams('q=repo:acme/payments');
+      view();
+      await waitFor(() => {
+        expect(stateOf()).toBe('ready');
+      });
+      return list;
+    })();
+    expect(screen.queryByTestId('search-aggregation')).toBeNull();
+    const before = calls.length;
+    await userEvent.click(screen.getByRole('tab', { name: '집계' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('search-aggregation')).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole('tab', { name: '결과' }));
+    expect(screen.queryByTestId('search-aggregation')).toBeNull();
+    // 결과 탭에 머무는 동안은 목록 요청 하나뿐이다 — 집계는 탭을 연 뒤에만 나간다.
+    expect(before).toBe(1);
+  });
+});
+
+describe('미리보기의 관계 요약 (CR-093, QA-W001-24)', () => {
+  async function preview(link_summary: unknown): Promise<HTMLElement> {
+    stubFetch({ total: { value: 1, relation: 'eq' }, items: [{ ...ROW, link_summary }], next_cursor: null });
+    params.current = new URLSearchParams('q=repo:acme/payments');
+    view();
+    await waitFor(() => {
+      expect(stateOf()).toBe('ready');
+    });
+    await userEvent.click(screen.getByRole('button', { name: /#1234 미리보기/ }));
+    return screen.getByTestId('preview-relations');
+  }
+
+  it('요약이 없으면 「미확인」이라고 말한다', async () => {
+    expect((await preview(null)).textContent).toContain('관계 요약 미확인');
+  });
+
+  it('확인했고 관계가 없으면 「없음」이라고 말한다 — 「미확인」과 다른 문구다', async () => {
+    const relations = await preview({ reference_count: 0, has_revert: false, is_reverted: false, has_cherry_pick: false, has_stack: false });
+    expect(relations.textContent).toContain('확인된 관계 없음');
+    expect(relations.textContent).not.toContain('미확인');
+  });
+
+  it('관계가 있으면 배지를 그린다', async () => {
+    const relations = await preview({ reference_count: 2, has_revert: true, is_reverted: false, has_cherry_pick: false, has_stack: false });
+    expect(within(relations).getByTestId('relation-badge-references')).toHaveTextContent('참조 2');
+    expect(within(relations).getByTestId('relation-badge-has_revert')).toBeInTheDocument();
+  });
+});
+
 describe('정렬 (FR-SRCH-007, C-013 접근성)', () => {
   it('정렬 헤더에 `aria-sort`가 붙는다', async () => {
     stubFetch({

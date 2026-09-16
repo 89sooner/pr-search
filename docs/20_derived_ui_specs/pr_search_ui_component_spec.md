@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.16 | 갱신일: 2026-09-15
+> 상태: review | 버전: v0.17 | 갱신일: 2026-09-16
 
 CR-092 C-001 사용자 메뉴: 로그인 이름이 메뉴 트리거가 되고 항목은 신원 표시와 「로그아웃」이다. 「로그아웃」은 `POST /auth/logout` 폼 제출이며 결과는 공개 로그아웃 완료 화면이다(DEV-700).
 
@@ -570,3 +570,9 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - C-012: 여섯 패싯·건수·checkbox 이름·생략/실패 구분을 유지한다. 좁은 화면에서는 위쪽으로 이동한다.
 - C-013: `ResultWorkbench`가 현재 목록의 선택만 소유한다. Conductor Table과 실제 제목 링크, 미리보기 선택 버튼의 roving tabindex를 사용한다. 요약에 API를 추가하지 않는다. 각 행에서 저장소/브랜치를 식별할 수 있고 시퀀스 공간/에폭을 상세에서도 읽을 수 있어야 한다.
 - 상세 섹션 내비게이션은 기존 W-002/W-003 heading의 앵커다. 자동 확장·자동 폴링은 없다.
+
+## CR-093 / WP-081 — Conductor 0.4.1 적용 계약
+
+C-001 셸은 `AppShell routeKey`·`AppShellNavTrigger`·`Breadcrumb`를 사용한다. 서랍 닫힘의 포커스는 Conductor가 소유하며 앱의 rAF 복귀를 제거한다. W-001 탭은 `Tabs` automatic 활성화로 기존 키보드 동작을 보존한다. 두 패널은 `forceMount`하되 집계 내용은 활성일 때만 마운트하고 결과 선택은 탭 왕복에 유지한다. 조건은 `FilterToolbar`·`FilterChip`(제외 조건 표시·제거 접근 이름), 필터 접기는 `Collapsible`, 로딩은 `Skeleton`, 미리보기는 `WorkbenchLayout`·`DetailInspector`·`CopyButton`이다. 닫기/Escape는 선택 트리거로 돌아가며 복사 대상이 없으면 안내 텍스트를 제공한다.
+
+`ResultTable`은 유지한다. DataTable 0.4.1에는 제품의 roving tabindex·↑↓/Home/End/Escape, 원인별 빈 상태(C-004), CursorPager(C-016), 행 활성화와 스크롤 영역 계약을 담을 슬롯이 충분하지 않다. Combobox는 자유 문법 입력(C-010)을 대체하지 못하고 MultiSelect는 패싯 건수·계산 상태를 표현하지 못하므로 기존 조합을 유지한다. 이 유지 결정은 다른 화면이나 REL-007 기능 확장을 허용하지 않는다.

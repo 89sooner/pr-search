@@ -22,10 +22,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { TabList, TabPanel } from './Tabs';
 import { SearchAggregationTab } from './SearchAggregationTab';
 import { hasSequenceRangeFilter, serializeQuery } from '@prs/query';
-import { Banner, Button, Spinner } from '@conductor-by-89soone/react';
+import { Banner, Button, Collapsible, Skeleton, Tabs } from '@conductor-by-89soone/react';
 import { CursorPager, toCursorFailure, type CursorFailure } from './CursorPager';
 import Link from 'next/link';
 import { EmptyState } from './EmptyState';
@@ -682,23 +681,51 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         </Banner>
       )}
 
-      <div className="prs-results-toolbar">
-      <TabList
-        tabs={[{ id: 'results', label: '결과' }, { id: 'aggregation', label: '집계' }]}
-        activeId={activeTab}
-        onChange={(id) => {
-          setActiveTab(id as 'results' | 'aggregation');
+      {/*
+        * 결과·집계 탭은 Conductor `Tabs`다 (0.4.1, CR-093). 0.3.1에는 탭이 없어 `Button`을
+        * 조합해 WAI-ARIA 탭을 직접 만들었다(DEV-397) — 그 파일은 지웠다.
+        *
+        * - `activationMode="automatic"`: 화살표로 옮기면 그 자리에서 선택도 바뀐다. 0.3.1 구현과
+        *   같은 동작이며 Conductor 기본(manual)과 다르므로 명시한다.
+        * - 결과 패널은 `forceMount`: 집계로 갔다 와도 선택한 행과 미리보기가 남는다.
+        * - 집계 패널도 `forceMount`이되 **내용은 활성일 때만** 마운트한다 (아래 주석).
+        *
+        * 필터 레일 접기는 Conductor `Collapsible`이다. `Root`가 트리거(도구 막대)와 내용(레일)을
+        * 함께 감싸야 하므로 탭 바깥에 선다. 접힘은 조회도 URL도 바꾸지 않는 이 세션의 상태다.
+        */}
+      <Collapsible.Root
+        open={filtersOpen && screen.kind !== 'epoch_stale'}
+        onOpenChange={setFiltersOpen}
+        className="prs-results"
+      >
+      <Tabs.Root
+        value={activeTab}
+        onValueChange={(value) => {
+          setActiveTab(value as 'results' | 'aggregation');
         }}
-        label="검색 결과 보기 방식"
-      />
-      {activeTab === 'results' ? <div className="prs-results-actions">
-        <ExportDialog state={state} disabled={loading || screen.kind !== 'ready'} />
-        <span className="prs-result-count">{screen.kind === 'ready' && total !== null ? `${total.value.toLocaleString('ko-KR')}${total.relation === 'gte' ? '+' : ''}건` : loading ? '검색 중…' : '검색 결과'}</span>
-        <Button variant="ghost" size="sm" aria-expanded={filtersOpen} aria-controls="search-filters"
-          onClick={() => { setFiltersOpen((open) => !open); }}><WorkbenchIcon name="filter" />필터</Button>
-        <Button variant="ghost" size="sm" disabled={loading || state.q.trim() === '' || parsed.error !== null || screen.kind === 'epoch_stale'}
-          onClick={backToFirst} aria-label="결과 새로고침"><WorkbenchIcon name="refresh" />새로고침</Button>
-      </div> : <span className="prs-result-count">현재 검색 조건의 PR 집계</span>}
+        activationMode="automatic"
+        className="prs-results-tabs"
+      >
+      <div className="prs-results-toolbar">
+        <Tabs.List aria-label="검색 결과 보기 방식">
+          <Tabs.Trigger value="results">결과</Tabs.Trigger>
+          <Tabs.Trigger value="aggregation">집계</Tabs.Trigger>
+        </Tabs.List>
+        {activeTab === 'results' ? <div className="prs-results-actions">
+          <span className="prs-result-count" data-testid="result-count">{screen.kind === 'ready' && total !== null ? `${total.value.toLocaleString('ko-KR')}${total.relation === 'gte' ? '+' : ''}건` : loading ? '검색 중…' : '검색 결과'}</span>
+          <ExportDialog state={state} disabled={loading || screen.kind !== 'ready'} />
+          {/*
+            * 낡은 인용이면 레일을 그리지 않으므로(CR-051) 접기 버튼도 두지 않는다 — 누를 수 없는
+            * 버튼을 두면 사용자가 자기 조작이 무시됐다고 읽는다.
+            */}
+          {screen.kind === 'epoch_stale' ? null : (
+            <Collapsible.Trigger asChild>
+              <Button variant="ghost" size="sm"><WorkbenchIcon name="filter" />필터</Button>
+            </Collapsible.Trigger>
+          )}
+          <Button variant="ghost" size="sm" disabled={loading || state.q.trim() === '' || parsed.error !== null || screen.kind === 'epoch_stale'}
+            onClick={backToFirst} aria-label="결과 새로고침"><WorkbenchIcon name="refresh" />새로고침</Button>
+        </div> : <span className="prs-result-count">현재 검색 조건의 PR 집계</span>}
       </div>
 
       {/*
@@ -722,14 +749,15 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         </Banner>
       ) : null}
 
-      <TabPanel id="results" active={activeTab === 'results'}>
+      <Tabs.Content value="results" forceMount className="prs-results-panel">
       <div className="prs-search-layout" data-filters-open={filtersOpen && screen.kind !== 'epoch_stale' ? '' : undefined}>
         {/*
           * 낡은 인용이면 레일도 그리지 않는다 (CR-051). 세지 않은 분포를
           * "아직 세지 않음"으로 보이는 것은 사실이지만, 이 화면의 답은
           * 분포가 아니라 "번호의 뜻이 달라졌다"이고 그것은 배너가 말한다.
           */}
-        <div id="search-filters" hidden={!filtersOpen || screen.kind === 'epoch_stale'}>
+        {/* `id`를 주지 않는다 — 트리거의 `aria-controls`가 Radix가 만든 내용 id를 가리키므로 덮어쓰면 참조가 끊긴다. */}
+        <Collapsible.Content className="prs-search-filters">
         {screen.kind === 'epoch_stale' ? null : (
           <FacetRail
             source={facetSource}
@@ -739,7 +767,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
             onRetry={backToFirst}
           />
         )}
-        </div>
+        </Collapsible.Content>
         <div className="prs-results-body">
         <ScreenBody
           key={`${state.q}|${state.sort ?? ''}|${state.order ?? ''}|${state.seqEpoch ?? ''}|${page.nonce}`}
@@ -771,11 +799,15 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         />
       ) : null}
       {screen.kind === 'ready' ? <p id="result-keyboard-help" className="prs-keyboard-help"><WorkbenchIcon name="preview" />미리보기 버튼에서 ↑ ↓ 이동 · Enter 선택 · Esc 닫기<span>제목을 누르면 상세 화면으로 이동합니다.</span></p> : null}
-      </TabPanel>
+      </Tabs.Content>
 
-      <TabPanel id="aggregation" active={activeTab === 'aggregation'}>
-        {/* 집계 탭은 **활성일 때만** 마운트한다 — 숨은 채로 조회하면 결과 탭의
-            "서버를 부르지 않는다" 계약을 깨고 경합을 만든다 (FR-STAT-006은 요청 시 집계). */}
+      {/*
+        * 집계 패널도 `forceMount`다 — 탭 트리거의 `aria-controls`가 가리키는 패널 요소가 늘 있어야
+        * 한다(없으면 참조가 끊긴 ARIA 속성이다, axe `aria-valid-attr-value`). 다만 **내용은 활성일
+        * 때만** 마운트한다: 숨은 채로 조회하면 결과 탭의 "서버를 부르지 않는다" 계약을 깨고 경합을
+        * 만든다 (FR-STAT-006은 요청 시 집계).
+        */}
+      <Tabs.Content value="aggregation" forceMount className="prs-aggregation-panel">
         {activeTab === 'aggregation' ? (
           <SearchAggregationTab
             q={state.q}
@@ -787,7 +819,9 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
             loginPath={loginPath}
           />
         ) : null}
-      </TabPanel>
+      </Tabs.Content>
+      </Tabs.Root>
+      </Collapsible.Root>
     </div>
   );
 }
@@ -848,7 +882,11 @@ function ScreenBody({
     case 'loading_initial':
       return (
         <div data-testid="loading-initial">
-          <Spinner label="검색 중" />
+          {/*
+           * 상태는 Conductor `Skeleton` 하나가 알린다(`role="status"`, 0.4.1). 표 안의 자리표시
+           * 행은 보조 기술에서 감춘다 — 스피너 하나를 가운데 두는 대신 결과가 놓일 자리를 보인다.
+           */}
+          <Skeleton label="검색 결과를 불러오는 중" className="prs-loading-status" />
           <ResultTable rows={[]} sort={sort} onSortChange={onSortChange} loading />
         </div>
       );
