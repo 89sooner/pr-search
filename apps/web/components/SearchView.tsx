@@ -135,6 +135,9 @@ const IDLE: FetchOutcome = {
   networkFailed: false,
 };
 
+// App Router 전환 중 이전/다음 SearchView가 잠시 공존해도 같은 자동 이동은 한 번만 쌓는다.
+let automaticNavigationHref: string | null = null;
+
 export interface SearchViewProps {
   readonly loginPath: string;
   /** GHE 기준 URL. URL 형태 식별자 판정에 쓴다 (DEV-064). */
@@ -456,6 +459,8 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
 
   useEffect(() => {
     if (singleHref === null || submitCount === 0) return;
+    if (automaticNavigationHref === singleHref) return;
+    automaticNavigationHref = singleHref;
     // 한 번만 떠난다. 소비하지 않으면 뒤로가기가 곧바로 튕겨 나간다.
     setSubmitCount(0);
     router.push(singleHref);
@@ -486,6 +491,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
   const submit = useCallback(
     (value: string) => {
       // 제출은 새 조사다 — 히스토리에 남긴다 (화면 이동은 `push`).
+      automaticNavigationHref = null;
       setSubmitCount((n) => n + 1);
       /*
        * **에폭을 물려주지 않는다** (CR-051). 새 질의는 다른 공간을 가리킬 수

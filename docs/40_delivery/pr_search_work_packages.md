@@ -5,7 +5,7 @@
 - 요구사항: FR-AUTH-002, NFR-007. 선행: WP-085.
 - 범위: GHE `read`/`write`/`writer` 권한 호환, reader Workspace 메뉴 operator 제한, 좌측 merge-order 설명 제거, 날짜 필터 `YYYY-MM-DD` 표시. API 강제·기존 operator 링크는 유지한다.
 - 완료 기준: 권한명 허용/거부 단위 검사, developer/operator DOM 검사, 날짜 placeholder 브라우저 검사, authz·web 접근성 집중 검사, 타입·lint 통과.
-- 상태: done — 권한22/22·reader/operator DOM/접근성33/33·타입·lint·빌드·Chromium Source 흐름 및 날짜 placeholder 통과. PR/신규 릴리스 발행 진행.
+- 상태: done — 권한22/22·reader/operator DOM/접근성33/33·FLOW-002 반복20/20·타입·lint·빌드·Chromium Source 흐름 및 날짜 placeholder 통과. PR/신규 릴리스 발행 진행.
 
 ## WP-085 파일 Tree·경로 History·Diff/TimeLapse (CR-097)
 
@@ -92,7 +92,7 @@
 | WP-083 | 일반 검색 Radix 재구현 | UI 품질 (CR-095) | WP-082 | **done** — CI·브라우저 확인, pilot.10 발행 |
 | WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | WP-083 | **done** — 접근성 433/433·전체 CI, pilot.10 발행 |
 | WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | WP-084 | **done** — Source 집중 검사·Chromium·전체 CI, pilot.10 발행; 실 GHE 미검증 |
-| WP-086 | 사내 권한명·operator 바로가기 보정 | 권한·UI 보정 (CR-098) | WP-085 | **done** — 집중 검사·빌드·실제 Chromium 통과, 발행 진행 |
+| WP-086 | 사내 권한명·operator 바로가기 보정 | 권한·UI 보정 (CR-098) | WP-085 | **done** — 집중 검사·FLOW 반복·빌드·실제 Chromium 통과, 발행 진행 |
 | WP-081 | 최신 Conductor 및 Shell·W-001 개선 | UI 품질 (CR-093) | WP-073 | **done** — PR #196 `a8796de`, PR·main CI success, `0.1.0-pilot.8` 발행 (원장 6.92장) |
 | WP-078 | REL-007 R1a — capability 분류·검증·드리프트·스냅숏·A-006 읽기 전용 | REL-007 (**CR-088**) | WP-077 | **done** — 검증 6.85장. leaf 196·flag 1,034·positional 164·`--json` 707 전부 분류(`NFR-009` 본표 100%), 독립 검증기·드리프트 검출·029 스냅숏/검증 기록·`JOB-GH-003`·`API-GH-013`/`014`·A-006. 실행 허용은 `pr.list` 하나 그대로. `GATE-GH-01d`(bindability·port·자원 타입)는 미달로 남고(`DEV-675`), 사내 GHES 확인은 `NOT RUN`(`DEV-674`) |
 | WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | WP-012, WP-015 | **done** — 검증 6.83장. R0 `pr.list` 하나를 인가→미리보기→실행→결과·자기 이력까지 연다. 상위 WP 일곱은 이 수직이 들여온 만큼만 `in_progress`다. 출력 청크 스트리밍은 상태만(`DEV-651`), 분류 195건 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증은 `NOT RUN`** |

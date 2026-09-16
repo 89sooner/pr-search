@@ -2,7 +2,7 @@
 
 ## CR-098 — 사내 GHE 권한명·operator 바로가기 보정 (2026-09-17)
 
-사내 반입에서 협업자 권한 API가 `read`·`write`/`writer`를 반환할 때 등록 저장소가 접근 범위에서 빠지는 문제와, 일반 사용자의 reader 상단에 Workspace 바로가기 메뉴가 노출되는 문제를 사용자가 보고했다. FR-AUTH-002의 read 이상 판정과 기존 operator UI 격리를 구현에 맞춘다. `READABLE_PERMISSIONS`는 REST 내부 이름과 사내 역할 이름을 함께 허용하고, reader 상단 Workspace 메뉴는 operator에게만 렌더링한다. 좌측의 “Follow the merge order” 설명은 제거하되 operator의 Advanced search·Repository workspace 링크는 보존한다. Merged after/before 입력은 로케일별 `연도-월-일` 대신 `YYYY-MM-DD` placeholder와 같은 형식 검사를 사용한다. WP-086. 요구사항 범위를 넓히지 않는 구현 결함 수정이며 DEV-704~707로 추적한다. 상태: 로컬 구현·집중 검사·프로덕션 빌드·실제 Chromium 회귀 완료, PR/신규 릴리스 발행 진행.
+사내 반입에서 협업자 권한 API가 `read`·`write`/`writer`를 반환할 때 등록 저장소가 접근 범위에서 빠지는 문제와, 일반 사용자의 reader 상단에 Workspace 바로가기 메뉴가 노출되는 문제를 사용자가 보고했다. FR-AUTH-002의 read 이상 판정과 기존 operator UI 격리를 구현에 맞춘다. `READABLE_PERMISSIONS`는 REST 내부 이름과 사내 역할 이름을 함께 허용하고, reader 상단 Workspace 메뉴는 operator에게만 렌더링한다. 좌측의 “Follow the merge order” 설명은 제거하되 operator의 Advanced search·Repository workspace 링크는 보존한다. Merged after/before 입력은 로케일별 `연도-월-일` 대신 `YYYY-MM-DD` placeholder와 같은 형식 검사를 사용한다. WP-086. 요구사항 범위를 넓히지 않는 구현 결함 수정이며 DEV-704~708로 추적한다. CI가 반복 검출한 단일 검색결과 자동 이동 중복도 같은 릴리스 게이트에서 보정한다. 상태: 로컬 구현·집중 검사·프로덕션 빌드·실제 Chromium 회귀 완료, PR/신규 릴리스 발행 진행.
 
 ## CR-097 — 파일 Tree → 경로 History → Diff/TimeLapse (2026-09-16)
 
