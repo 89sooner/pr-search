@@ -17,6 +17,9 @@
 | 이미지 | cr092-final 다섯 빌드 · smoke-images 통과 · 새 이미지로 고친 동작 실측 |
 | 문서 검사기 | ERROR 4·WARN 2 기준선 그대로(신규 0) |
 | 새 ID | CR-092 · DEV-697~700 · THR-054 (SRS 변경 없음) |
+| 기록 PR | #195 → `8c567b7` · PR CI run `34973414801` success(verify 4m19s · integration 7m32s) · main CI run `34974241562` success(verify 4m17s · integration 6m27s) |
+| 피드백 반영 범위 | 코드 수정 4(DEV-697~700) · 코드 변경 없음 2(팀 동기화, `smp*` 브랜치) · 제외 1(디자인 시스템). 릴리스 미발행이라 사내 미적용 |
+| 기록 밖 산출물 | Obsidian worklog `dailywork/2026-09-15_PR-Search-CR-092-pilot.7-반입-피드백-반영과-main-병합.md` |
 
 ### 이 구간이 찾아 고친 것
 
@@ -26,7 +29,7 @@
 
 ### 다음 에이전트가 먼저 할 것
 
-- `git fetch && git log origin/main -3`로 기록 PR 병합을 실측한다.
+- `git fetch && git log origin/main -3`로 main이 `8c567b7`(또는 그 뒤)인지, `git status --short`로 이 마감 갱신(agent-context·`_handoff`)이 커밋 전인지 실측한다.
 - 다음 발행과 디자인 트랙은 결정자 지시를 받는다(todos.md 8차 절).
 
 ## 2026-09-15 (7차) — CR-091 사내 `0.1.0-pilot.6` 반입 피드백 세 건: PR #191 병합(`f8db374`)

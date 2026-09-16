@@ -35,6 +35,35 @@ gh api repos/89sooner/pr-search/actions/jobs/<id>/logs | sed 's/\x1b\[[0-9;]*[A-
 - 정적·회귀의 부정 검사가 주석의 인용에 걸림 → 주석을 빼고 검사.
 - Next 라우트 파일의 상수 export는 빌드 타입 오류 → `lib/auth-paths.ts`로.
 - ugrep의 `{0,120}` 유니코드 반복이 복잡도 한도 초과 → `rg -o`.
+- CI 대기용 `run_in_background` 루프 둘(`gh pr checks 195` 반복)이 시스템 메모리 부족으로 kill → Monitor로 `gh api repos/89sooner/pr-search/actions/runs/<id> --jq '"\(.status) \(.conclusion)"'`를 40초마다 확인해 완료를 받았다.
+- `ae9bf27` main CI 대기 루프가 빈 출력으로 끝남(jq `select`가 끝내 비었거나 루프 경계) → 실행 목록을 직접 조회해 run `34972449347` success를 확인했다.
+
+### 병합 뒤 확인 (8차 마감)
+
+```bash
+git -C /home/roqkf/pr-search fetch -q origin && git -C /home/roqkf/pr-search log origin/main --oneline -3   # 8c567b7 · ae9bf27 · 0a83797
+gh api "repos/89sooner/pr-search/actions/runs?branch=main&per_page=3" --jq '.workflow_runs[] | "\(.id) \(.head_sha[0:7]) \(.status) \(.conclusion)"'
+gh api repos/89sooner/pr-search/actions/runs/<id>/jobs --jq '.jobs[] | "\(.name) \(.conclusion) \(.started_at) \(.completed_at)"'
+git show origin/main:deploy/single-host/prsctl | grep -c '^http_status() {'        # 1
+git cat-file -e origin/main:apps/web/lib/redirect.ts && echo present
+gh release list | head -1                                                           # 최신 0.1.0-pilot.7 (발행 안 함)
+```
+
+### worklog (Obsidian)
+
+```bash
+cd ~/.claude/skills/obsidian-second-brain
+python3 scripts/worklog.py path --title "PR Search CR-092 pilot.7 반입 피드백 반영과 main 병합" --json
+python3 scripts/worklog.py check "<path>"     # errors 0 · warnings 0
+python3 scripts/worklog.py index              # notes 132
+```
+
+### handoff pack
+
+```bash
+python3 ~/.claude/skills/agent-context-handoff/scripts/context_handoff.py build --root /home/roqkf/pr-search --source agent-context --output agent-context/_handoff
+python3 agent-context/_handoff/reader.py list --output agent-context/_handoff
+```
 
 ## 2026-09-15 (7차) 라운드에서 쓴 것 (CR-091)
 

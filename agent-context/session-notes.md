@@ -7,7 +7,7 @@
 
 ## Current state
 
-main = `ae9bf27`(CR-092 병합) 위에 후속 기록 PR이 올라간다. PR CI run `34971448100` attempt 1 success(verify 4m31s · integration 8m27s — 단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503). 병합 커밋 main CI run `34972449347` attempt 1 success(verify 4m32s · integration 7m22s — 단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503). **릴리스는 발행하지 않았다**(지시). REL-007은 여전히 결정자 지시를 기다린다.
+**8차 마감(22:5x KST): main = `8c567b7`** — 기록 PR #195(병합 결과·사내 회신·8차 절·handoff pack)까지 병합했고 PR CI run `34973414801`·main CI run `34974241562` 모두 success, 열린 PR 0. 공유 체크아웃 `/home/roqkf/pr-search`의 로컬 `main`도 `8c567b7`이다. 이 마감 갱신(아래 사실과 handoff pack 재생성)은 **커밋하지 않은 작업 트리 변경**이다 — 사용자가 커밋을 요청하지 않았다. 병합 전 기록: main = `ae9bf27`(CR-092 병합) 위에 후속 기록 PR이 올라간다. PR CI run `34971448100` attempt 1 success(verify 4m31s · integration 8m27s — 단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503). 병합 커밋 main CI run `34972449347` attempt 1 success(verify 4m32s · integration 7m22s — 단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503). **릴리스는 발행하지 않았다**(지시). REL-007은 여전히 결정자 지시를 기다린다.
 
 ## Decisions
 
@@ -23,7 +23,7 @@ commands.md 8차 절.
 
 ## Next steps
 
-1. origin/main·열린 PR 실측. 기록 PR(`docs/cr-092-merge-record`)이 병합됐는지 본다.
+1. [x] 기록 PR #195 병합(`8c567b7`)과 main CI success를 실측했다. 다음 세션은 `git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`, `git status --short`(이 마감 갱신이 아직 커밋 전인지)부터 본다.
 2. 다음 발행은 결정자 지시를 받는다(발행하면 CR-092가 담긴다). 발행하면 사내에 원장 6.91장의 확인 항목을 함께 전달한다.
 3. 디자인 시스템 개선은 별도 트랙 — `/home/roqkf/design-system`에 다른 세션의 미커밋 Badge·Button 작업이 있었다(2026-09-15 19:30~20:35 계속 바뀜). 조율 뒤 착수.
 4. 자원 정리(작업 트리 `cr092`·`cr092-record`, 병합된 브랜치 둘, 이미지 `prs/*:cr092-final`)는 사용자 결정이다.
@@ -31,6 +31,16 @@ commands.md 8차 절.
 ## Risks/gotchas
 
 risks.md 8차 절.
+
+## 마감 뒤 확인한 것 (사용자 질문에 답하며)
+
+- **「메모리 부족으로 진행하지 못한 것은?」** — 중단된 것은 PR #195 CI를 기다리던 백그라운드 명령 둘뿐이었다(검증이 아니라 대기). Monitor로 다시 기다려 CI success를 확인한 뒤 병합했고, 병합 뒤 main CI(`8c567b7`)도 success로 직접 조회했다. 누락된 검증은 없다.
+- **「upstream-feedback이 다 반영됐나?」** — 일곱 중 **넷은 코드 수정**(DEV-697~700), **둘은 코드 변경 없음**(로그인 시 팀 동기화 — 원인 아님, `smp*` 브랜치 — 운영자가 운영 화면에서 변경), **하나는 제외**(디자인 시스템, 별도 트랙). 릴리스를 발행하지 않아 **사내 서버에는 아직 적용되지 않았다**. `smp*` 브랜치 변경만 발행과 무관하게 지금 할 수 있다.
+- worklog 노트를 Obsidian `dailywork/2026-09-15_PR-Search-CR-092-pilot.7-반입-피드백-반영과-main-병합.md`에 남겼다(`worklog.py check` 오류 0·경고 0).
+
+## Transcript
+
+- 대상: `/home/roqkf/pr-search/exports/pr-search-2026-09-15.md` — **pending /export**. `exports/`는 `.gitignore` 대상이다(저장소 루트는 아니다). 다음 세션은 `ls -la /home/roqkf/pr-search/exports/ | tail -3`으로 실제 파일과 크기를 확인한 뒤에만 보관됐다고 적는다.
 
 ## References
 

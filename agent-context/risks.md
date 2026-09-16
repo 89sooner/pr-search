@@ -9,6 +9,9 @@
 - 검증 장을 병합 직전에 쓰면 검토자는 없는 장을 가리키는 [x]를 major로 본다 — 검토 전에 뼈대를 두거나 체크리스트를 [ ]로 둔다.
 - 구분자 명세(docpatch)의 자리표시 검사는 명세 자체의 `@@@`에 걸린다 — 결과 파일을 grep한다.
 - `/home/roqkf/design-system`에 다른 세션의 미커밋 변경이 있었다(Badge·Button) — 디자인 트랙 착수 전에 조율한다.
+- **이 머신은 메모리가 빠듯하다(약 15.8GB).** 8차 후반에 `run_in_background` 대기 명령 둘이 「system is running low on memory」로 kill됐다. 주요 사용처는 IDE(`tsserver`·vscode-server)와 Elasticsearch 컨테이너 둘(`prs-cr091-elasticsearch`·`prs-approval-elasticsearch`, 각 약 1.1~1.5GB)이다. kill된 대기는 **검증 누락이 아니라 대기 누락**이므로 CI를 `gh api …/actions/runs`로 직접 조회해 메운다. 긴 CI 대기는 Monitor(40초 간격 `gh api …/runs/<id>`)가 살아남았다. 배터리·이미지 빌드처럼 무거운 작업 전에 쓰지 않는 격리 서비스 정리를 사용자에게 제안한다(정리는 사용자 결정).
+- **kill되거나 비정상 종료한 대기 루프의 출력은 비어 있을 수 있다** — 루프 출력이 비었다고 「실행 없음」으로 읽지 말고 실행 목록을 직접 본다(8차에 `ae9bf27` main CI 대기 출력이 비었지만 실제 run은 success였다).
+- 「피드백이 다 반영됐나」라는 물음에 「병합됨」만 답하면 과장이다 — 코드 수정·코드 변경 없음·제외와 **사내 미적용(발행 전)**을 나눠 답한다.
 
 ## 2026-09-15 (7차) 라운드가 배운 함정 (CR-091)
 

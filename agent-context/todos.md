@@ -1,7 +1,7 @@
 # 다음 작업 · 미해결 항목 · 확인할 사항
-최신 기준 (**2026-09-15 8차 · CR-092 병합(`ae9bf27`, PR #194) · PR CI run `34971448100` success(단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503) · 병합 커밋 main CI run `34972449347` attempt 1 success(verify 4m32s · integration 7m22s — 단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503) · 릴리스 미발행(지시) · 이전: 7차 CR-091 `f8db374`, `0.1.0-pilot.7` 발행(태그 → `0c26cdd`, 원장 6.90장)**)
+최신 기준 (**2026-09-15 8차 마감 · 기록 PR #195 병합(`8c567b7`, PR CI run `34973414801` · main CI run `34974241562` success) · CR-092 병합(`ae9bf27`, PR #194) · PR CI run `34971448100` success(단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503) · 병합 커밋 main CI run `34972449347` attempt 1 success(verify 4m32s · integration 7m22s — 단위 2,790 · a11y 429 · e2e 199 · 통합 1,807 · 회귀 503) · 릴리스 미발행(지시) · 이전: 7차 CR-091 `f8db374`, `0.1.0-pilot.7` 발행(태그 → `0c26cdd`, 원장 6.90장)**)
 
-**main은 `ae9bf27` 뒤에 후속 기록 PR(`docs/cr-092-merge-record`)이 병합된 상태여야 한다. 실측하라**(`git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`). 이 갱신을 담은 후속 PR의 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 `git log`로 읽는다.
+**main은 `8c567b7`이다(기록 PR #195까지 병합, 열린 PR 0). 그 뒤 마감 handoff 갱신은 공유 체크아웃에 커밋되지 않은 채 남았을 수 있다. 실측하라**(`git fetch -q origin && git log origin/main --oneline -3`, `gh pr list --state open`). 이 갱신을 담은 후속 PR의 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 `git log`로 읽는다.
 
 ## 먼저 할 것 (결정자 확인이 필요하다)
 
@@ -13,7 +13,15 @@
 
 ### 이 세션이 이어서 할 것
 
-1. [ ] 기록 PR(`docs/cr-092-merge-record`) 병합 — 원장 6.91장 PR CI·병합·main CI, CR-092 closed, upstream-feedback 회신, 8차 절과 handoff pack. 병합 커밋은 `git log`로 확인한다.
+1. [x] 기록 PR(`docs/cr-092-merge-record`) 병합 — PR #195 → `8c567b7`, main CI run `34974241562` success(2026-09-15)
+2. [ ] 마감 handoff 갱신(`agent-context/*.md` 마감 문단·`_handoff/`)을 커밋할지 사용자에게 묻는다 — 공유 체크아웃 `main`에서 만들었으므로 커밋한다면 워크트리의 docs 브랜치와 PR로 옮긴다(직접 main 커밋 금지) — 원장 6.91장 PR CI·병합·main CI, CR-092 closed, upstream-feedback 회신, 8차 절과 handoff pack. 병합 커밋은 `git log`로 확인한다.
+
+### 피드백 반영 범위 (사용자에게 확인해 준 기준)
+
+- 코드 수정 4: `DEV-698` 접근 범위 · `DEV-699` 복귀 주소 · `DEV-700` 로그아웃 · `DEV-697` smoke.
+- 코드 변경 없음 2: 로그인 시 팀 동기화(원인 아님), `smp*` 시퀀스 브랜치(운영자가 `/ops/repositories`에서 변경).
+- 제외 1: 디자인 시스템 개선(별도 트랙).
+- **발행 전이라 사내 서버에는 넷 모두 아직 적용되지 않았다.**
 
 ### 결정자 확인 (사용자)
 

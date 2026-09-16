@@ -21,6 +21,9 @@
 | 메뉴 폼은 메뉴 밖, `onSelect`에서 `requestSubmit` | `DropdownMenu.Content`가 포털이라 폼 안에 못 넣음. Conductor `Item`은 `[icon, children]` 배열이라 `asChild`에 부적합 | fetch 뒤 이동 | `UserMenu.tsx` |
 | `http_status`: `-qO/dev/null` + `HTTP/x.y` 뒤 토큰, awk 하나로 first/last | 이중 방어, SIGPIPE 없음 | head/tail | `prsctl` `http_status` |
 | `AUTH_LOGIN_PATH` 로드 검증은 하지 않음(검토 A minor) | 배포 정의가 값을 전달하지 않아 늘 기본값 | 로드 시 거부 | 후속 후보 |
+| 기록 PR 작업 트리는 병합 뒤 origin/main에서 새로 만든다(`cr092-record`) | 구현 브랜치 위에 쌓으면 squash 병합 뒤 자식 PR이 main이 아닌 부모로 들어간다(메모리 stacked-pr) | 구현 브랜치에서 이어 커밋 | — |
+| 전사는 `exports/` 절대경로로 안내한다 | 저장소 루트는 gitignore 대상이 아니라 대화 전문이 커밋에 딸려 갈 수 있고, 이름만 주면 위치가 일정하지 않다(메모리) | 스킬 기본값인 저장소 루트 | — |
+| 8차 마감 handoff 갱신은 커밋하지 않고 작업 트리에 둔다 | 사용자가 문서·pack 갱신만 요청했고 커밋·PR은 요청하지 않았다. 공유 체크아웃 `main`에 직접 커밋하지 않는다 | docs 브랜치로 PR | 사용자가 원하면 워크트리 docs 브랜치로 옮겨 PR |
 
 ## 2026-09-15 (7차) — CR-091 사내 pilot.6 반입 피드백 (PR #191)
 

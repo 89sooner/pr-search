@@ -1,7 +1,7 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=d99196663ffe107071afe50c40ae8884ef3a09b3afa9f2838d9000e13707f3f8 bytes=210673 lines=2763 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;home/roqkf/design-system;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000;3/3
+@kv sha256=1a542e6b5d5d95310ac5559e609805ec20d3802b59f0045c377807c910764f20 bytes=211867 lines=2766 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;home/roqkf/design-system;actions/runs;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 2026-09-15 (8차) 라운드가 배운 함정 (CR-092)
 @todo next start는 요청 출처를 자기가 들은 호스트·포트로 조립한다 — nginx가 Host를 넘겨도 request.nextUrl.origin은 localhost:3000이고 X-Forwarded-Proto만 반영된다. 라우트 시험은 NextRequest에 출처를 직접 넣어 이것을 못 본다 — next start e2e나 이미지로 확인한다.
@@ -12,6 +12,9 @@
 @b 검증 장을 병합 직전에 쓰면 검토자는 없는 장을 가리키는 [x]를 major로 본다 — 검토 전에 뼈대를 두거나 체크리스트를 [ ]로 둔다.
 @b 구분자 명세(docpatch)의 자리표시 검사는 명세 자체의 @@@에 걸린다 — 결과 파일을 grep한다.
 @path /home/roqkf/design-system에 다른 세션의 미커밋 변경이 있었다(Badge·Button) — 디자인 트랙 착수 전에 조율한다.
+@path 이 머신은 메모리가 빠듯하다(약 15.8GB). 8차 후반에 run_in_background 대기 명령 둘이 「system is running low on memory」로 kill됐다. 주요 사용처는 IDE(tsserver·vscode-server)와 Elasticsearch 컨테이너 둘(prs-cr091-elasticsearch·prs-approval-elasticsearch, 각 약 1.1~1.5GB)이다. kill된 대기는 검증 누락이 아니라 대기 누락이므로 CI를 gh api …/actions/runs로 직접 조회해 메운다. 긴 CI 대기는 Monitor(40초 간격 gh api …/runs/<id>)가 살아남았다. 배터리·이미지 빌드처럼 무거운 작업 전에 쓰지 않는 격리 서비스 정리를 사용자에게 제안한다(정리는 사용자 결정).
+@b kill되거나 비정상 종료한 대기 루프의 출력은 비어 있을 수 있다 — 루프 출력이 비었다고 「실행 없음」으로 읽지 말고 실행 목록을 직접 본다(8차에 ae9bf27 main CI 대기 출력이 비었지만 실제 run은 success였다).
+@b 「피드백이 다 반영됐나」라는 물음에 「병합됨」만 답하면 과장이다 — 코드 수정·코드 변경 없음·제외와 사내 미적용(발행 전)을 나눠 답한다.
 @h2 2026-09-15 (7차) 라운드가 배운 함정 (CR-091)
 @b Host- 접두 쿠키는 Secure 없이 브라우저가 저장하지 않는다. 쿠키 속성 계약을 풀 때는 이름 규칙도 함께 본다.
 @b 문서가 적은 합집합이 코드에 없을 수 있다. 세션에 역할을 직접 넣는 시험은 합성 경로를 검증하지 않는다 — 운영 조립(createAuthContext)과 로그인이 실제로 만드는 세션으로 건다.

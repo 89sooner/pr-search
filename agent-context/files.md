@@ -19,6 +19,13 @@
 - change_control CR-092 행·cascade, 보안 v1.12(THR-054), API 계약 v0.32, 백엔드 v0.12, 프런트엔드 v0.9, 컴포넌트 명세 v0.16, 화면 흐름 v0.9, 작업 패키지 v2.35, 원장(DEV-697~700·4장·6.91장).
 - `agent-context/upstream-feedback.md` 일곱 항목 회신(기록 PR).
 
+### 저장소 밖 (세션 산출물)
+
+- Obsidian worklog: `/mnt/c/Users/slrtt/Documents/Obsidian Vault/dailywork/2026-09-15_PR-Search-CR-092-pilot.7-반입-피드백-반영과-main-병합.md`(작업 개요·변경 표·검증 표·흐름도·요약), `dailywork-index.md` 재생성.
+- 전사 대상: `/home/roqkf/pr-search/exports/pr-search-2026-09-15.md` — pending /export(`exports/`는 gitignore).
+- 작업 트리 `/home/roqkf/pr-search-wt/cr092`(`fix/cr092-pilot7-feedback`)·`/home/roqkf/pr-search-wt/cr092-record`(`docs/cr-092-merge-record`) — 둘 다 병합됨, 정리는 사용자 결정.
+- 이미지 `prs/{db,search-api,pipeline-worker,gh-executor,web}:cr092-final` — 릴리스 아님, 정리는 사용자 결정.
+
 ### 저장소 밖 (세션 2b5d8611 scratchpad, /tmp라 재부팅에 사라진다)
 
 - DESIGN-cr092.md·PROGRESS-cr092.md, docpatch.mjs와 spec-*.txt(구분자 명세 개행 보존 편집), battery.sh·logs/battery-{1,2}/, mutation/{run,mutations}.mjs·results.log, logs/images/(빌드·smoke·fix-probe.txt), pr-body.md·merge-body.txt.
