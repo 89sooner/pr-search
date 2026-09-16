@@ -134,7 +134,7 @@ test.describe('FLOW-003: 딥링크 → 조회 → 상세 → 복귀', () => {
 
     await page.getByTestId('range-query').click();
     await expect(page.getByTestId('range-results')).toBeVisible();
-    await expect(page.getByTestId('summary-reverts-pending')).toContainText("Not yet available");
+    await expect(page.getByTestId('summary-reverts-pending')).toContainText("Pending");
 
     // 성공한 조회는 URL을 현재 에폭 인용으로 만든다 (ADR-007).
     await expect(page).toHaveURL(/epoch=3/);

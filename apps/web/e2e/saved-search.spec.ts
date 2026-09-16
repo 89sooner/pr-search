@@ -320,7 +320,7 @@ test.describe('W-001 저장 액션 (W-001-ACTIONS)', () => {
     expect(shareCalls).toBe(0);
 
     await page.getByTestId('save-search-visibility').click();
-    await page.getByRole('option', { name: /Shared with team/ }).click();
+    await page.getByRole('option', { name: /Team — share with one team/ }).click();
     await expect.poll(() => shareCalls).toBe(1);
   });
 

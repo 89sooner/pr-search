@@ -629,7 +629,7 @@ describe('문법 오류 (CR-014, DEV-038)', () => {
     expect(response.statusCode).toBe(400);
     const body = response.json<{ error: { code: string; message: string } }>();
     expect(body.error.code).toBe('QUERY_SYNTAX_ERROR');
-    expect(body.error.message).toContain('범위 형식');
+    expect(body.error.message).toContain('only supports ranges');
   });
 
   it('부정형 `-seq:1234`도 400이다 — 이쪽이 전체를 돌려줬다 (DEV-378)', async () => {

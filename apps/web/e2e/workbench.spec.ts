@@ -136,9 +136,11 @@ test('WP-073: 1440×1200에서 25행을 읽을 수 있다', async ({ page }) => 
   await searchFixture(page);
   await openResults(page);
   await noDocumentOverflow(page);
+  await expect(page.getByTestId('result-row')).toHaveCount(25);
+  const first = await page.getByTestId('result-row').first().boundingBox();
   const last = await page.getByTestId('result-row').last().boundingBox();
-  expect(last).not.toBeNull();
-  expect(last!.y + last!.height).toBeLessThanOrEqual(1200);
+  expect(first).not.toBeNull(); expect(last).not.toBeNull();
+  expect((last!.y + last!.height) - first!.y).toBeLessThanOrEqual(1200);
   await capture(page, 'workbench-25-rows');
 });
 
@@ -232,7 +234,7 @@ test('CR-093: 미리보기 폭은 키보드로 조절되고 좁은 화면에서�
   await searchFixture(page);
   await openResults(page);
   await page.locator('[data-result-select]').first().click();
-  const share = () => page.locator('.cdt-workbench').evaluate((node) => node.style.getPropertyValue('--cdt-workbench-inspector-share'));
+  const share = () => page.locator('.ui-workbench').evaluate((node) => node.style.getPropertyValue('--ui-inspector-width'));
   expect(await share()).toBe('38%');
   const slider = page.getByRole('slider', { name: /Preview width/ });
   await slider.focus();
@@ -244,7 +246,7 @@ test('CR-093: 미리보기 폭은 키보드로 조절되고 좁은 화면에서�
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(slider).toBeHidden();
-  const table = await page.locator('.cdt-workbench__results').boundingBox();
+  const table = await page.locator('.ui-workbench-results').boundingBox();
   const inspector = await page.getByRole('region', { name: "Selected result preview" }).boundingBox();
   expect(table).not.toBeNull();
   expect(inspector).not.toBeNull();
@@ -263,7 +265,7 @@ test('WP-073: 클립보드 실패를 숨기지 않는다', async ({ page }) => {
    * 식별자 자체는 미리보기의 신원 줄에 선택 가능한 텍스트로 있다.
    */
   await expect(page.getByRole('region', { name: "Selected result preview" })).toContainText("Copy failed");
-  await expect(page.getByRole('region', { name: "Selected result preview" })).toContainText("Select the text to copy it");
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toContainText("Select and copy the identifier manually");
 });
 
 test('WP-073: 커밋 선택은 전체 SHA와 미확인을 보존하고 복사한다', async ({ page, context }) => {
@@ -279,8 +281,8 @@ test('WP-073: 커밋 선택은 전체 SHA와 미확인을 보존하고 복사한
   await page.locator('[data-result-select]').first().click();
   const preview = page.getByRole('region', { name: "Selected result preview" });
   await expect(preview).toContainText(sha);
-  await expect(preview).toContainText("File count unavailable");
-  await expect(preview).toContainText("Sequence space unavailable");
+  await expect(preview).toContainText("File count unknown");
+  await expect(preview).toContainText("Sequence space unknown");
   await expect(preview).not.toContainText('+0');
   await page.getByRole('button', { name: "Copy identifier" }).click();
   await expect(preview).toContainText("Copied");

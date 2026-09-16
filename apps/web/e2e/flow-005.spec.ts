@@ -130,7 +130,7 @@ test.describe('FLOW-005 통계 대시보드', () => {
     const stale = { query: 'seq:1200..1350', sequence_context: { sequence_space: 'acme/a@main' }, requested_seq_epoch: 'old-epoch', epoch_stale: true, correlation_id: 'c-stale' };
     await installRoutes(page, { timeSeriesStatus: 200, groupsBody: stale });
     await page.goto('/analytics?q=seq%3A1200..1350&group_by=team&seq_epoch=old-epoch');
-    await expect(page.getByTestId('epoch-stale').first()).toContainText("Epoch");
+    await expect(page.getByTestId('epoch-stale').first()).toContainText("epoch");
   });
 
   test('그룹 키가 없으면 그룹 패널은 조회하지 않고 안내를 그린다', async ({ page }) => {

@@ -116,7 +116,7 @@ test.describe('A-005 실행 정책 — 최소 (QA-GH-48)', () => {
 
     const card = page.getByTestId('gh-policy-capability');
     await expect(card).toHaveAttribute('data-blocked', 'false');
-    await expect(card.getByTestId('gh-policy-user-view')).toContainText("Enabled");
+    await expect(card.getByTestId('gh-policy-user-view')).toContainText("Available");
     await card.getByTestId('gh-policy-block-open').click();
     const blockDialog = page.getByTestId('gh-policy-block-dialog');
     await expect(blockDialog.getByTestId('gh-policy-block-user-text')).toContainText("An administrator blocked this command");
@@ -163,8 +163,8 @@ async function installCommandCenter(page: Page, gate: ExecutionGateView): Promis
 test.describe('W-010 실행 판정 표시 (QA-GH-49)', () => {
   test('운영 승인 필요·관리자 차단은 서로 다른 말로 보이고 실행 버튼이 꺼진다 — 실행 가능이면 배너가 없다', async ({ page }) => {
     for (const [gate, state, text] of [
-      [GATE_ADMIN_ACTION, 'admin_action_required', '관리자 운영 승인이 필요합니다'],
-      [GATE_BLOCKED, 'policy_blocked', '관리자가 이 명령의 실행을 차단했습니다'],
+      [GATE_ADMIN_ACTION, 'admin_action_required', 'Operational approval is required'],
+      [GATE_BLOCKED, 'policy_blocked', 'An administrator blocked this command'],
     ] as const) {
       await page.unroute('**/api/gh/**');
       await installCommandCenter(page, gate);

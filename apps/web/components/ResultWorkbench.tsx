@@ -22,7 +22,7 @@
  */
 
 import Link from 'next/link';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { CopyButton, DetailInspector, WorkbenchLayout } from './ui';
 import { ResultTable, resultIdentity, resultName, type ResultTableProps } from './ResultTable';
 import { SequenceBadge } from './SequenceBadge';
@@ -40,6 +40,7 @@ export function ResultWorkbench(props: ResultTableProps & { readonly fromQuery: 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
   const returnFocus = useRef<HTMLElement | null>(null);
+  const inspector = useRef<HTMLElement | null>(null);
   const selected = rows.find((row) => resultIdentity(row) === selectedId) ?? null;
   const selectedIndex = selected === null ? -1 : rows.indexOf(selected);
 
@@ -60,6 +61,9 @@ export function ResultWorkbench(props: ResultTableProps & { readonly fromQuery: 
     : selected.kind === 'commit' ? (selected.commit_sha ?? null)
     : selected.repository == null || selected.pr_number == null ? null
     : `${selected.repository}#${String(selected.pr_number)}`;
+  useEffect(() => {
+    if (selectedId !== null && window.matchMedia('(max-width: 700px)').matches) inspector.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [selectedId]);
 
   return (
     <WorkbenchLayout
@@ -68,6 +72,7 @@ export function ResultWorkbench(props: ResultTableProps & { readonly fromQuery: 
       onWidthChange={setInspectorWidth}
       inspector={selected === null ? null : (
         <DetailInspector
+          ref={inspector}
           className="prs-result-preview"
           data-testid="result-preview"
           label="Selected result preview"

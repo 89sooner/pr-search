@@ -243,7 +243,7 @@ test.describe('FLOW-006 표시 규칙', () => {
 
     const detached = page.getByTestId('relation-detached');
     await expect(detached).toBeVisible();
-    await expect(detached).toHaveText("disabled");
+    await expect(detached).toHaveText("Dismissed");
     // 숨기지 않는다 — 대상으로 이동할 수도 있어야 한다.
     await expect(page.getByTestId('relation-group-stacks_on-outgoing')).toBeVisible();
   });

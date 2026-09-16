@@ -56,9 +56,9 @@ test.describe('셸이 실제 브라우저에서 선다', () => {
     await expect(page).toHaveTitle(/PR Search/);
   });
 
-  test('`lang`이 한국어다 — 스크린 리더의 발음을 정한다', async ({ page }) => {
+  test('`lang` is English so screen readers use the product language', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('html')).toHaveAttribute('lang', 'ko');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   });
 });
 
@@ -67,7 +67,7 @@ test.describe('내비게이션', () => {
     await page.goto('/');
 
     // 화면은 WP-016 이후지만 경로 구조는 셸이 소유한다. 404여도 이동은 일어난다.
-    await page.getByRole('link', { name: "Search" }).click();
+    await page.getByRole('link', { name: "Search", exact: true }).click();
     await expect(page).toHaveURL(/\/search$/);
   });
 
@@ -226,10 +226,10 @@ test.describe('축소 모션 설정을 존중한다 (NFR-007 · Conductor FR-CSS
   async function readMotion(page: Page) {
     return page.evaluate(() => {
       const root = getComputedStyle(document.documentElement);
-      const item = document.querySelector('.cdt-nav-list__item');
+      const item = document.querySelector('.ui-nav-link');
       return {
-        fast: root.getPropertyValue('--cdt-motion-fast').trim(),
-        standard: root.getPropertyValue('--cdt-motion-standard').trim(),
+        fast: root.getPropertyValue('--ui-motion-fast').trim(),
+        standard: root.getPropertyValue('--ui-motion-standard').trim(),
         itemDurations: item === null ? null : getComputedStyle(item).transitionDuration,
       };
     });

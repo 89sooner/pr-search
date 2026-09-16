@@ -88,7 +88,7 @@
 .reader-ui .repo-results-heading > div { display: flex; align-items: center; gap: 12px; font-size: 10px; }
 .reader-table-scroll { border: 1px solid var(--ui-border-default); border-radius: 10px; overflow-x: auto; background: var(--ui-surface-raised); }
 .reader-ui .repo-table { border-collapse: collapse; border: 0; border-radius: 0; margin: 0; width: 100%; font-size: 11px; box-shadow: none; table-layout: auto; }
-.reader-ui .repo-table :is(th,td) { padding: 15px 10px; border: 0; border-bottom: 1px solid var(--ui-border-subtle); text-align: left; vertical-align: middle; }
+.reader-ui .repo-table :is(th,td) { padding: 9px 10px; border: 0; border-bottom: 1px solid var(--ui-border-subtle); text-align: left; vertical-align: middle; }
 .reader-ui .repo-table th { background: var(--ui-surface-subtle); color: var(--ui-text-muted); padding-block: 12px; font-size: 10px; font-weight: 500; white-space: nowrap; }
 .reader-ui .repo-table th button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; font: inherit; color: inherit; padding: 0; }
 .reader-ui .repo-table tr:last-child td { border-bottom: 0; }

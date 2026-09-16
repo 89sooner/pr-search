@@ -27,16 +27,16 @@ test('FLOW-004 start → good → revisit → bad → converged → reset', asyn
   await expect(page.getByTestId('anchor-to-resolved')).toBeVisible();
   await page.getByTestId('range-query').click();
   await page.getByRole('button', { name: "Start bisect in this range" }).click();
-  await expect(page.getByTestId('bisect-next')).toContainText('seq:5');
-  await page.getByRole('button', { name: "Healthy", exact: true }).click();
+  await expect(page.getByTestId('bisect-next')).toContainText('seq: 5');
+  await page.getByRole('button', { name: "Good", exact: true }).click();
   await expect(page.getByTestId('bisect-remaining')).toHaveText("Remaining candidates: 2 · Estimated remaining checks: 1");
   await page.close();
   const reopened = await context.newPage();
   await reopened.goto('/ranges?repo=acme%2Fpayments&branch=main');
-  await expect(reopened.getByTestId('bisect-next')).toContainText('seq:8');
+  await expect(reopened.getByTestId('bisect-next')).toContainText('seq: 8');
   await reopened.getByRole('button', { name: "Bad", exact: true }).click();
   await expect(reopened.getByTestId('bisect-result')).toContainText('PR #4208');
-  await expect(reopened.getByRole('button', { name: "Healthy", exact: true })).toHaveCount(0);
+  await expect(reopened.getByRole('button', { name: "Good", exact: true })).toHaveCount(0);
   await reopened.getByRole('button', { name: "Reset bisect" }).click();
   await expect(reopened.getByTestId('bisect-result')).toHaveCount(0);
 });
@@ -55,9 +55,9 @@ for (const failure of ['contradiction', 'epoch'] as const) {
     });
     await page.goto('/ranges?repo=acme%2Fpayments&branch=main');
     if (failure === 'contradiction') {
-      await page.getByRole('button', { name: "Healthy", exact: true }).click();
+      await page.getByRole('button', { name: "Good", exact: true }).click();
       await expect(page.getByTestId('bisect-panel').getByRole('alert')).toContainText("good 10, bad 9");
-      await expect(page.getByRole('button', { name: "Healthy", exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: "Good", exact: true })).toBeDisabled();
     } else await expect(page.getByText("Bisect epoch is stale")).toBeVisible();
     await page.getByRole('button', { name: "Reset bisect" }).click();
     expect(reset).toBe(true);

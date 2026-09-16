@@ -192,7 +192,7 @@ test.describe('M 번호 병기와 해석 진입', () => {
     await expect(page.getByTestId('mnumber-badge')).toHaveText('M-1900-77');
 
     await page.getByTestId('mnumber-copy').click();
-    await expect(page.getByTestId('mnumber-copy-status')).toHaveText(/Copied/);
+    await expect(page.getByTestId('mnumber-copy-status')).toHaveText(/copied/i);
 
     const copied = await page.evaluate(() => navigator.clipboard.readText());
     expect(copied).toContain('m_repository=acme%2Fsmp1900');

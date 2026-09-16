@@ -182,7 +182,7 @@ test.describe('A-004 감사 로그', () => {
     await page.goto('/ops/audit');
 
     await expect(page.getByTestId('audit-view')).toHaveAttribute('data-state', 'no_permission');
-    await expect(page.getByText(/security_officer/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /security_officer/ })).toBeVisible();
     // 조건에 맞는 기록이 없다고 말하지 않는다 — 볼 자격이 없는 것이다.
     await expect(page.getByText(/No audit records match these filters/)).toHaveCount(0);
   });

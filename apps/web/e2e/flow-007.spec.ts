@@ -171,7 +171,7 @@ test.describe('FLOW-007 수집 지연 대응', () => {
 
     await expect(page.getByTestId('metric-ingestion-lag')).toHaveAttribute('data-unavailable', 'true');
     await expect(page.getByTestId('metric-stage-latency')).toContainText("Unknown");
-    await expect(page.getByTestId('metric-stage-latency')).toContainText("2.4s");
+    await expect(page.getByTestId('metric-stage-latency')).toContainText("2.4 seconds");
   });
 
   test('2단계: "느린 저장소가 없다"와 "볼 수 없다"를 가른다 (DEV-051)', async ({ page }) => {
@@ -252,7 +252,7 @@ test.describe('FLOW-007 수집 지연 대응', () => {
 
     await page.getByTestId('scan-run').click();
     await expect(page.getByTestId('scan-conflict')).toContainText('91');
-    await expect(page.getByTestId('scan-conflict')).toContainText("cannot run concurrently");
+    await expect(page.getByTestId('scan-conflict')).toContainText("cannot run simultaneously");
   });
 
   test('아카이브 인덱스가 없어도 나머지 섹션이 정상 동작한다 (QA-A001-13)', async ({ page }) => {

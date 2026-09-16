@@ -82,7 +82,7 @@ export function ReleaseTimeline({
                     id={id}
                     checked={checked}
                     disabled={disabled}
-                    aria-label={`${release.tagName} Select for comparison`}
+                    aria-label={`Select ${release.tagName} for comparison`}
                     {...(note === null ? {} : { 'aria-describedby': noteId })}
                     onCheckedChange={(next) => {
                       const on = next === true;

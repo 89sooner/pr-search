@@ -156,7 +156,7 @@ test.describe('W-004 안전 구간 표식', () => {
     await page.getByTestId('safe-marker-note-input').fill('릴리스 검증 완료');
     await page.getByTestId('safe-marker-submit').click();
 
-    await expect(page.getByTestId('safe-marker-result')).toContainText("created");
+    await expect(page.getByTestId('safe-marker-result')).toContainText("Marker set");
     expect(traffic.puts).toHaveLength(1);
     expect(traffic.puts[0]).toMatchObject({
       repository: 'acme/payments',

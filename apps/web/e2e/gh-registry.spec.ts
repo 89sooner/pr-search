@@ -369,7 +369,7 @@ test.describe('A-006 gh capability·버전 레지스트리', () => {
     await expect(page.getByTestId('gh-registry-records-executor')).toHaveAttribute('data-status', 'passed');
     await expect(page.getByTestId('gh-registry-dimensions')).toContainText('1034/1034');
     await expect(page.getByTestId('gh-registry-gates').locator('[data-gate="GATE-GH-01d"]')).toHaveAttribute('data-pass', 'true');
-    await expect(page.getByTestId('gh-registry-host')).toContainText("Unknown");
+    await expect(page.getByTestId('gh-registry-host')).toContainText("Unverified");
     // 결과 계약·연결 요약 (CR-089) — 분모가 다른 수치를 따로 보이고, 01d 통과가 REL-007 완료가 아니라고 말한다.
     const summary = page.getByTestId('gh-registry-contract-summary');
     await expect(summary.locator('[data-item="result_contracts"]')).toContainText('196/196');
