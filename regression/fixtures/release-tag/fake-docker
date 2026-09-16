@@ -55,7 +55,7 @@ case "${1:-}" in
     fi
 
     reject() {
-      printf '  web 구성이 성립하지 않아 기동할 수 없다:\n    %s\n' "$1" >&2
+      printf '  Cannot start because the web configuration is invalid:\n    %s\n' "$1" >&2
       exit 1
     }
 

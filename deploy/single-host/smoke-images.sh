@@ -177,7 +177,7 @@ step "web 런타임 — 운영 계약을 어긴 구성은 기동을 거부한다
 # **거부의 근거까지 본다.** 종료 코드만 보면 무관한 기동 크래시도 통과한다.
 # 기동 검증이 낸 머리말을 확인해 「구성 때문에 거부했다」와 「어쩌다 죽었다」를
 # 가른다.
-REJECT_MARK='web 구성이 성립하지 않아 기동할 수 없다'
+REJECT_MARK='Cannot start because the web configuration is invalid:'
 expect_rejected() { # 라벨 그리고 환경 변수들
   local label="$1"; shift
   local name="prs-smoke-reject-$$-${RANDOM}"; CONTAINERS+=("$name")
