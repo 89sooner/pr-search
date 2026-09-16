@@ -63,7 +63,7 @@ export async function register(): Promise<void> {
    * 성립하지 않는 구성에서는 빈 목록이다 — 그 갈래는 아래에서 거부한다.
    */
   for (const warning of webConfigWarnings()) {
-    console.warn(`\n  경고: ${warning}\n`);
+    console.warn(`\n  Warning: ${warning}\n`);
   }
   if (failure === null) return;
 
@@ -71,11 +71,11 @@ export async function register(): Promise<void> {
   console.error(
     [
       '',
-      '  web 구성이 성립하지 않아 기동할 수 없다:',
+      '  Cannot start because the web configuration is invalid:',
       `    ${failure}`,
       '',
-      '  이 값들은 환경 변수에서만 온다. `.env`를 고치고 다시 올린다.',
-      '  절차는 deploy/single-host/RUNBOOK.md 2.B다.',
+      '  These values come only from environment variables. Update `.env` and restart.',
+      '  See deploy/single-host/RUNBOOK.md section 2.B for instructions.',
       '',
     ].join('\n'),
   );

@@ -36,7 +36,7 @@ function unauthenticated(correlationId: string, loginPath: string): NextResponse
     {
       error: {
         code: 'UNAUTHENTICATED',
-        message: '세션이 없거나 만료되었습니다',
+        message: 'Your session is missing or expired',
         detail: { login_path: loginPath },
       },
       correlation_id: correlationId,
@@ -78,7 +78,7 @@ async function proxy(request: NextRequest, segments: readonly string[]): Promise
      */
     return NextResponse.json(
       {
-        error: { code: 'PERMISSION_UNAVAILABLE', message: '세션을 확인할 수 없습니다' },
+        error: { code: 'PERMISSION_UNAVAILABLE', message: 'Unable to verify your session' },
         correlation_id: correlationId,
       },
       { status: 503, headers: { [CORRELATION_HEADER]: correlationId } },
@@ -108,7 +108,7 @@ async function proxy(request: NextRequest, segments: readonly string[]): Promise
      */
     return NextResponse.json(
       {
-        error: { code: 'UPSTREAM_UNAVAILABLE', message: '검색 서비스에 연결할 수 없습니다' },
+        error: { code: 'UPSTREAM_UNAVAILABLE', message: 'Unable to connect to the search service' },
         correlation_id: correlationId,
       },
       { status: 502, headers: { [CORRELATION_HEADER]: correlationId } },

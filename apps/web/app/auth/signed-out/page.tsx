@@ -12,7 +12,7 @@ import { resolveWebConfig } from '../../../lib/server/config';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = { title: '로그아웃했습니다 · PR Search' };
+export const metadata: Metadata = { title: 'Signed out · PR Search' };
 
 export default function SignedOutPage(): ReactNode {
   const config = resolveWebConfig();

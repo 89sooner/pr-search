@@ -1,6 +1,19 @@
 # PR Search API 계약
 
-> 상태: review | 버전: v0.32 | 갱신일: 2026-09-15
+## CR-097 — 인가된 일시 소스 열람
+
+공통 경로 `/api/v1/source/:repository` (`repository`는 URL 인코딩한 owner/repo). 세션만 허용하며 PG 저장소 해석·접근 범위를 먼저 통과한다. 없는 저장소/범위 밖은 동일404. 응답은 `Cache-Control: private, no-store`, 오류는 기존 envelope다. 소스 본문은 영속 저장하지 않는다.
+
+| ID | GET 경로 | 입력 | 출력 |
+| --- | --- | --- | --- |
+| API-SRC-001 | `/tree` | 선택 ref(브랜치 또는40자SHA), 하위 조회 시 tree_sha/revision/path | 고정 revision, ref, 파일/폴더 entries(path/name/sha/kind/size), truncated |
+| API-SRC-002 | `/history` | ref, path, page(1~1000) | 고정 revision, 경로 커밋50개, next_page |
+| API-SRC-003 | `/file` | revision(40자SHA), 파일 path | status(text/missing/binary/too_large/unsupported), text/null, size, sha, reason |
+| API-SRC-004 | `/diff` | pr 또는 commit 중 하나, page(1~30) | base/head, commit, files100개(path/previous_path/status/additions/deletions), next_page, truncated, 관련 PR |
+
+`/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
+
+> 상태: review | 버전: v0.33 | 갱신일: 2026-09-17
 
 ## 1. 목적
 
@@ -2969,6 +2982,10 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 
 | Error Code | HTTP | 의미 | 사용자 조치 |
 | --- | --- | --- | --- |
+| `SOURCE_CHANGED` | 409 | 분석 중 PR head/base 이동 | 비교를 닫고 다시 열기 |
+| `SOURCE_RATE_LIMITED` | 429 | GHE 조회 한도 | Retry-After 이후 재시도 |
+| `SOURCE_PERMISSION_REQUIRED` | 503 | Data App의 Contents read 권한 미비 | 운영자에게 앱 권한 확인 요청 |
+| `SOURCE_UNAVAILABLE` | 502 | GHE 소스 조회 실패 | 재시도 |
 | `QUERY_SYNTAX_ERROR` | 400 | 질의 파싱 실패 | 오류 구간 수정 |
 | `SHA_PREFIX_TOO_SHORT` | 400 | hex 접두 7자 미만 | 더 긴 SHA 입력 |
 | `QUERY_TOO_SHORT` | 400 | 검색어 1자 | 2자 이상 입력 |

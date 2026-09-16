@@ -18,7 +18,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Timeline } from '@conductor-by-89soone/react';
+import { Badge, Timeline } from './ui';
 import { formatTimestamp } from '../lib/format';
 import type { TimelineStatus, TimelineStep } from '../lib/pr-detail';
 
@@ -28,16 +28,16 @@ export interface PrTimelineProps {
 
 /** 상태별 표식. **색만으로 구분하지 않는다** — 글자를 함께 둔다. */
 const MARK: Readonly<Record<TimelineStatus, { readonly tone: 'accent' | 'neutral' | 'info'; readonly text: string }>> = {
-  done: { tone: 'accent', text: '완료' },
-  done_at_unknown: { tone: 'info', text: '완료 (시각 미상)' },
-  pending: { tone: 'neutral', text: '대기' },
-  out_of_scope: { tone: 'neutral', text: '미지원' },
+  done: { tone: 'accent', text: "Complete" },
+  done_at_unknown: { tone: 'info', text: "Complete (time unknown)" },
+  pending: { tone: 'neutral', text: "Pending" },
+  out_of_scope: { tone: 'neutral', text: "Unsupported" },
 };
 
 export function PrTimeline({ steps }: PrTimelineProps): ReactNode {
   return (
     <section aria-labelledby="timeline-heading" data-testid="pr-timeline">
-      <h2 id="timeline-heading">타임라인</h2>
+      <h2 id="timeline-heading">Timeline</h2>
       <Timeline>
         {steps.map((step) => {
           const mark = MARK[step.status];

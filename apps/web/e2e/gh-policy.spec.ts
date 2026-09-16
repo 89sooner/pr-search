@@ -61,21 +61,21 @@ test.describe('A-006 운영 승인 (QA-GH-47)', () => {
     await expect(panel).toHaveAttribute('data-state', 'approval_required');
     await expect(page.getByTestId('gh-approval-served')).toContainText('r0.3');
     await expect(page.getByTestId('gh-approval-evidence')).toContainText('#41');
-    await expect(page.getByTestId('gh-approval-host')).toContainText('미검증');
+    await expect(page.getByTestId('gh-approval-host')).toContainText("unverified");
 
     await page.getByTestId('gh-approval-open').click();
     const dialog = page.getByTestId('gh-approval-dialog');
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByTestId('gh-approval-preview-opens')).toContainText('gh pr list 한 개');
-    await expect(dialog.getByTestId('gh-approval-preview-not-opened')).toContainText('195개');
+    await expect(dialog.getByTestId('gh-approval-preview-opens')).toContainText("gh pr list");
+    await expect(dialog.getByTestId('gh-approval-preview-not-opened')).toContainText("195");
     await expect(dialog.getByTestId('gh-approval-preview-gates')).toContainText('GATE-GH-01d');
-    await expect(dialog.getByTestId('gh-approval-preview-impact')).toContainText('사내 GHES 지원 확인은 이 승인과 별개');
+    await expect(dialog.getByTestId('gh-approval-preview-impact')).toContainText("Internal GHES support remains unverified and is independent of this approval");
     await expect(dialog.getByTestId('gh-approval-submit')).toBeDisabled();
 
     await dialog.getByTestId('gh-approval-reason').fill('r0.3 배포 운영 승인');
     await dialog.getByTestId('gh-approval-submit').click();
 
-    await expect(page.getByTestId('gh-approval-applied')).toContainText('운영 승인했습니다');
+    await expect(page.getByTestId('gh-approval-applied')).toContainText("Operational approval granted");
     await expect(panel).toHaveAttribute('data-state', 'approved');
     expect(mock.posted).toHaveLength(1);
     expect(mock.posted[0]?.body).toEqual({ action: 'approve', expected_revision: 0, reason: 'r0.3 배포 운영 승인', snapshot_id: 7, verification_id: 41, report_hash: SERVED_REPORT_HASH });
@@ -91,7 +91,7 @@ test.describe('A-006 운영 승인 (QA-GH-47)', () => {
     await page.getByTestId('gh-approval-reason').fill('승인');
     const readsBefore = mock.policyReads;
     await page.getByTestId('gh-approval-submit').click();
-    await expect(page.getByText('확인한 뒤 정책이나 근거가 바뀌었습니다')).toBeVisible();
+    await expect(page.getByText("The policy or evidence changed after your review")).toBeVisible();
     await expect.poll(() => mock.policyReads).toBeGreaterThan(readsBefore);
     await expect(page.getByTestId('gh-approval-panel')).toHaveAttribute('data-state', 'approval_required');
   });
@@ -103,7 +103,7 @@ test.describe('A-006 운영 승인 (QA-GH-47)', () => {
     await page.getByTestId('gh-approval-revoke-open').click();
     await page.getByTestId('gh-revoke-reason').fill('권한 없는 철회 시도');
     await page.getByTestId('gh-revoke-submit').click();
-    await expect(page.getByText('운영 정책을 바꾸려면 운영자(operator) 역할이 필요합니다.')).toBeVisible();
+    await expect(page.getByText("The operator role is required to change operational policy.")).toBeVisible();
     await expect(page.getByTestId('gh-approval-panel')).toHaveAttribute('data-state', 'approved');
   });
 });
@@ -116,15 +116,15 @@ test.describe('A-005 실행 정책 — 최소 (QA-GH-48)', () => {
 
     const card = page.getByTestId('gh-policy-capability');
     await expect(card).toHaveAttribute('data-blocked', 'false');
-    await expect(card.getByTestId('gh-policy-user-view')).toContainText('실행 가능');
+    await expect(card.getByTestId('gh-policy-user-view')).toContainText("Available");
     await card.getByTestId('gh-policy-block-open').click();
     const blockDialog = page.getByTestId('gh-policy-block-dialog');
-    await expect(blockDialog.getByTestId('gh-policy-block-user-text')).toContainText('관리자가 이 명령의 실행을 차단했습니다');
-    await expect(blockDialog).toContainText('이미 실행 중인 작업은 취소되지 않습니다');
+    await expect(blockDialog.getByTestId('gh-policy-block-user-text')).toContainText("An administrator blocked this command");
+    await expect(blockDialog).toContainText("Running jobs continue");
     await blockDialog.getByTestId('gh-policy-reason').fill('장애 대응 — 조회 폭주');
     await blockDialog.getByTestId('gh-policy-submit').click();
     await expect(card).toHaveAttribute('data-blocked', 'true');
-    await expect(card.getByTestId('gh-policy-user-view')).toContainText('관리자가 이 명령의 실행을 차단했습니다');
+    await expect(card.getByTestId('gh-policy-user-view')).toContainText("An administrator blocked this command");
     expect(mock.posted[0]?.body).toEqual({ action: 'block', expected_revision: 1, reason: '장애 대응 — 조회 폭주', capability_id: 'pr.list' });
 
     mock.scenario = 'blocked';
@@ -134,7 +134,7 @@ test.describe('A-005 실행 정책 — 최소 (QA-GH-48)', () => {
     await page.reload();
     await page.getByTestId('gh-policy-resume-open').click();
     const resumeDialog = page.getByTestId('gh-policy-resume-dialog');
-    await expect(resumeDialog).toContainText('자동으로 다시 실행되지 않습니다');
+    await expect(resumeDialog).toContainText("will not restart automatically");
     await resumeDialog.getByTestId('gh-policy-reason').fill('장애 해소');
     await resumeDialog.getByTestId('gh-policy-submit').click();
     await expect(page.getByTestId('gh-policy-capability')).toHaveAttribute('data-blocked', 'false');
@@ -163,8 +163,8 @@ async function installCommandCenter(page: Page, gate: ExecutionGateView): Promis
 test.describe('W-010 실행 판정 표시 (QA-GH-49)', () => {
   test('운영 승인 필요·관리자 차단은 서로 다른 말로 보이고 실행 버튼이 꺼진다 — 실행 가능이면 배너가 없다', async ({ page }) => {
     for (const [gate, state, text] of [
-      [GATE_ADMIN_ACTION, 'admin_action_required', '관리자 운영 승인이 필요합니다'],
-      [GATE_BLOCKED, 'policy_blocked', '관리자가 이 명령의 실행을 차단했습니다'],
+      [GATE_ADMIN_ACTION, 'admin_action_required', 'Operational approval is required'],
+      [GATE_BLOCKED, 'policy_blocked', 'An administrator blocked this command'],
     ] as const) {
       await page.unroute('**/api/gh/**');
       await installCommandCenter(page, gate);
@@ -178,7 +178,7 @@ test.describe('W-010 실행 판정 표시 (QA-GH-49)', () => {
       await expect(page.getByTestId('gh-preview')).toHaveAttribute('data-ready', 'true');
       await expect(page.getByTestId('gh-preview-blockers')).toContainText(text);
       await expect(page.getByTestId('gh-execute')).toBeDisabled();
-      await expect(page.locator('body')).not.toContainText('전 기능');
+      await expect(page.locator('body')).not.toContainText("all features");
     }
 
     await page.unroute('**/api/gh/**');

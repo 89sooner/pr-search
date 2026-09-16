@@ -15,7 +15,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge } from '@conductor-by-89soone/react';
+import { Badge } from './ui';
 import { summaryBadges, type LinkSummaryView } from '../lib/relations';
 
 export interface RelationBadgeGroupProps {

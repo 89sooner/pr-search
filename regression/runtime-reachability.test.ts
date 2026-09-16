@@ -2980,7 +2980,7 @@ describe('첫 사내 반입이 드러낸 계약 (CR-066)', () => {
  * 그래서 여기서는 근거가 아니라 **불변식**을 잰다. 제품 CSS가 몇 개든, 그 안에
  * 전환·애니메이션 선언이 없어야 한다. 파일이 늘어나도 이 시험은 따라간다.
  */
-describe('제품 스타일시트가 모션을 만들지 않는다 (DEV-555)', () => {
+describe('제품 스타일시트 모션은 제품 토큰과 축소 모션을 따른다 (CR-096)', () => {
   /**
    * **`apps/web` 전체를 재귀로 훑는다.** 처음에는 `apps/web/app`의 직계 자식만 셌는데,
    * 그러면 라우트 지역 스타일시트(`app/search/results.css`)나 `components/` 아래의 것이
@@ -3000,16 +3000,14 @@ describe('제품 스타일시트가 모션을 만들지 않는다 (DEV-555)', ()
   };
   const productStyles = collectStyles('apps/web');
 
-  it('제품 CSS에 전환·애니메이션 선언이 없다 — 모션은 Conductor가 소유한다', () => {
-    for (const path of productStyles) {
-      const name = path;
-      const css = read(path)
-        // 주석은 걷어 낸다. 규칙을 설명하는 문장이 그 규칙을 어겼다고 세지 않는다.
-        .replace(/\/\*[\s\S]*?\*\//g, '');
-      expect(css, `${name}이 transition을 선언한다`).not.toMatch(/(^|[;{\s])transition(-[a-z]+)?\s*:/);
-      expect(css, `${name}이 animation을 선언한다`).not.toMatch(/(^|[;{\s])animation(-[a-z]+)?\s*:/);
-      expect(css, `${name}이 @keyframes를 정의한다`).not.toContain('@keyframes');
-    }
+  it('제품 모션 토큰은 명시적이며 reduced-motion에서 0으로 축소된다', () => {
+    const shared = read('apps/web/app/ui.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(shared).toMatch(/--ui-motion-fast\s*:\s*140ms/);
+    expect(shared).toMatch(/--ui-motion-standard\s*:\s*240ms/);
+    expect(shared).toMatch(/prefers-reduced-motion\s*:\s*reduce[\s\S]*--ui-motion-fast\s*:\s*0s[\s\S]*--ui-motion-standard\s*:\s*0s/);
+    expect(shared).toContain('transition:background-color var(--ui-motion-fast),color var(--ui-motion-fast)');
+    const reader = read('apps/web/app/reader-workspace.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(reader).toMatch(/prefers-reduced-motion\s*:\s*no-preference[\s\S]*transition:/);
   });
 
   it('§9가 사라진 근거를 다시 주장하지 않는다', () => {
@@ -3018,8 +3016,8 @@ describe('제품 스타일시트가 모션을 만들지 않는다 (DEV-555)', ()
     if (productStyles.length > 0) {
       expect(tokens, '§9가 아직 "CSS 파일이 0건"을 근거로 든다').not.toContain('CSS 파일이 0건');
     }
-    // 규칙 자체는 남아 있어야 한다 — 근거를 고치면서 결론까지 지우지 않는다.
-    expect(tokens).toContain('제품에서 별도 애니메이션을 추가하지 않는다');
+    // CR-096 amendment가 아래의 역사적 Conductor 규칙보다 우선함을 분명히 한다.
+    expect(tokens).toContain('아래 Conductor 토큰은 역사 기록이다');
   });
 });
 

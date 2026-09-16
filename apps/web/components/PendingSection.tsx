@@ -20,7 +20,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { Badge, Button, Panel } from '@conductor-by-89soone/react';
+import { Badge, Button, Panel } from './ui';
 
 export interface PendingSectionProps {
   readonly id: string;
@@ -42,7 +42,7 @@ export function PendingSection({ id, title, reason, owner, onExpand }: PendingSe
   return (
     <Panel as="section" aria-labelledby={`${id}-heading`} data-testid={`section-${id}`}>
       <h2 id={`${id}-heading`}>
-        {title} <Badge tone="neutral">준비 중</Badge>
+        {title} <Badge tone="neutral">Coming soon</Badge>
       </h2>
 
       <Button
@@ -59,13 +59,13 @@ export function PendingSection({ id, title, reason, owner, onExpand }: PendingSe
           if (next) onExpand?.();
         }}
       >
-        {expanded ? '접기' : '펼치기'}
+        {expanded ? 'Collapse' : 'Expand'}
       </Button>
 
       <div id={`${id}-body`} hidden={!expanded} data-testid={`body-${id}`}>
         <p data-testid={`reason-${id}`}>{reason}</p>
         <p>
-          <span className="cdt-sr-only">담당 작업 패키지: </span>
+          <span className="ui-sr-only">Owning work package: </span>
           {owner}
         </p>
       </div>

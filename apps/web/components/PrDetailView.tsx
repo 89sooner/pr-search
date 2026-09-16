@@ -15,11 +15,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Badge, Banner, Button, Panel } from '@conductor-by-89soone/react';
+import { Badge, Banner, Button, Panel } from './ui';
 import { CommitList } from './CommitList';
 import { EmptyState } from './EmptyState';
 import { DetailSectionNav } from './DetailSectionNav';
 import { EntityHeader } from './EntityHeader';
+import { SourceActions } from './source/SourceDialogs';
 import { ErrorBanner } from './ErrorBanner';
 import { RelationSection } from './RelationSection';
 import { CoChangeSection } from './CoChangeSection';
@@ -157,7 +158,7 @@ export function PrDetailView({
     return (
       <div data-testid="pr-detail" data-screen-state="loading_initial">
         <Panel as="section" aria-busy="true" data-testid="detail-skeleton">
-          <p>불러오는 중…</p>
+          <p>Loading…</p>
         </Panel>
       </div>
     );
@@ -180,15 +181,15 @@ export function PrDetailView({
          */}
         <EmptyState
           cause="not_found"
-          description="이 PR을 찾을 수 없습니다. 번호가 정확한지 확인하세요. 저장소가 아직 수집되지 않았을 수도 있습니다."
+          description="This PR could not be found. Check the number. The repository may not have been ingested yet."
           actions={
             <>
-              <a href={backHref}>검색으로 돌아가기</a>{' '}
+              <a href={backHref}>Back to search</a>{' '}
               <a
                 href={`/repositories?repository=${encodeURIComponent(repository)}`}
                 data-testid="pr-open-repository-overview"
               >
-                이 저장소의 수집 상태 보기
+                View repository ingestion status
               </a>
             </>
           }
@@ -210,11 +211,11 @@ export function PrDetailView({
       <div data-testid="pr-detail" data-screen-state="auth_expired">
         <ErrorBanner
           tone="warning"
-          title="세션이 만료되었습니다"
-          impact="다시 로그인하면 보던 화면으로 돌아옵니다."
+          title="Your session has expired"
+          impact="Sign in again to return to this page."
           action={
             <a href={`${screen.loginPath}?return_to=${encodeURIComponent(`/pr/${repository}/${String(prNumber)}`)}`}>
-              다시 로그인
+              Sign in again
             </a>
           }
         />
@@ -227,12 +228,12 @@ export function PrDetailView({
       <div data-testid="pr-detail" data-screen-state="offline">
         <ErrorBanner
           tone="danger"
-          title="서버에 연결하지 못했습니다"
-          impact="네트워크 연결을 확인한 뒤 다시 시도하세요."
+          title="Unable to connect to the server"
+          impact="Check your network connection and try again."
           recoverable
           action={
             <Button variant="secondary" onClick={refetch}>
-              다시 시도
+              Try again
             </Button>
           }
         />
@@ -245,13 +246,13 @@ export function PrDetailView({
       <div data-testid="pr-detail" data-screen-state="error_other">
         <ErrorBanner
           tone="danger"
-          title="조회에 실패했습니다"
+          title="Unable to load results"
           impact={screen.message}
           recoverable={screen.correlationId === null}
           correlationId={screen.correlationId}
           action={
             <Button variant="secondary" onClick={refetch}>
-              다시 시도
+              Try again
             </Button>
           }
         />
@@ -271,6 +272,7 @@ export function PrDetailView({
         title={pr.title ?? `#${String(pr.pr_number ?? prNumber)}`}
         identifier={`${pr.repository ?? repository} #${String(pr.pr_number ?? prNumber)}`}
         externalUrl={external}
+        actions={<SourceActions repository={pr.repository ?? repository} pr={pr.pr_number ?? prNumber} />}
         badges={
           <>
             {pr.state === undefined ? null : (
@@ -304,7 +306,7 @@ export function PrDetailView({
       />
 
       {/* 복사 결과는 기존 `ShaChip`과 같은 live region 규약으로 알린다. */}
-      <span role="status" aria-live="polite" data-testid="mnumber-copy-status" className="cdt-sr-only">
+      <span role="status" aria-live="polite" data-testid="mnumber-copy-status" className="ui-sr-only">
         {copyResult === null ? '' : COPY_MESSAGES[copyResult]}
       </span>
 
@@ -315,8 +317,8 @@ export function PrDetailView({
         * 다시 볼 길만 준다.
         */}
       {revalidation.exhausted ? (
-        <Banner tone="info" data-testid="mnumber-poll-exhausted" title="M 번호가 아직 확정되지 않았습니다">
-          <p>자동 확인을 멈췄습니다. 잠시 뒤 다시 확인해 주세요.</p>
+        <Banner tone="info" data-testid="mnumber-poll-exhausted" title="The M number is not yet finalized">
+          <p>Automatic checks have stopped. Check again later.</p>
           <Button
             variant="secondary"
             onClick={() => {
@@ -324,49 +326,49 @@ export function PrDetailView({
               refetch();
             }}
           >
-            다시 확인
+            Check again
           </Button>
         </Banner>
       ) : null}
-      <DetailSectionNav sections={[{ id: 'overview-heading', label: '개요' }, { id: 'commits-heading', label: '커밋' }, { id: 'timeline-heading', label: '타임라인' }, { id: 'neighbors-heading', label: '선행·후행' }, { id: 'releases-heading', label: '포함 릴리스' }, { id: 'links-heading', label: '관계' }]} />
+      <DetailSectionNav sections={[{ id: 'overview-heading', label: "Overview" }, { id: 'commits-heading', label: "Commit" }, { id: 'timeline-heading', label: "Timeline" }, { id: 'neighbors-heading', label: "Neighbors" }, { id: 'releases-heading', label: "Containing releases" }, { id: 'links-heading', label: "Relationships" }]} />
 
       {/*
        * 저장소가 보관됨이면 알린다 — 결과가 갱신되지 않는 이유가 된다.
        */}
       {pr.repository_archived === true ? (
-        <Banner tone="warning" title="보관된 저장소">
-          <p>이 저장소는 보관되어 더 이상 갱신되지 않습니다.</p>
+        <Banner tone="warning" title="Archived repository">
+          <p>This repository is archived and is no longer updated.</p>
         </Banner>
       ) : null}
 
       <Panel as="section" aria-labelledby="overview-heading" data-testid="pr-overview">
-        <h2 id="overview-heading">개요</h2>
+        <h2 id="overview-heading">Overview</h2>
         <dl>
-          <dt>대상 브랜치</dt>
+          <dt>Base branch</dt>
           <dd>{pr.base_branch ?? '—'}</dd>
-          <dt>소스 브랜치</dt>
+          <dt>Head branch</dt>
           <dd>{pr.head_branch ?? '—'}</dd>
-          <dt>작성자</dt>
+          <dt>Author</dt>
           <dd>{pr.author ?? '—'}</dd>
-          <dt>라벨</dt>
+          <dt>Label</dt>
           <dd>{(pr.labels ?? []).length === 0 ? '—' : (pr.labels ?? []).join(', ')}</dd>
-          <dt>변경 규모</dt>
+          <dt>Change size</dt>
           <dd>
-            {pr.changed_files_count === undefined ? '—' : `파일 ${String(pr.changed_files_count)}개`}
+            {pr.changed_files_count === undefined ? '—' : `Files ${String(pr.changed_files_count)} items`}
             {pr.additions === undefined ? '' : ` +${String(pr.additions)}`}
             {pr.deletions === undefined ? '' : ` -${String(pr.deletions)}`}
             {/* 파일 목록 절삭도 밝힌다 — 조용히 자르면 규모를 오해한다. */}
-            {pr.files_truncated === true ? ' (변경 파일 목록이 절삭되었습니다)' : ''}
+            {pr.files_truncated === true ? "(changed file list truncated)" : ''}
           </dd>
-          <dt>리드타임</dt>
+          <dt>Lead time</dt>
           <dd>{pr.lead_time_seconds === undefined ? '—' : formatDuration(pr.lead_time_seconds)}</dd>
-          <dt>첫 리뷰 대기</dt>
+          <dt>Time to first review</dt>
           <dd>
             {pr.first_review_wait_seconds === undefined
               ? '—'
               : formatDuration(pr.first_review_wait_seconds)}
           </dd>
-          <dt>리뷰어</dt>
+          <dt>Reviewers</dt>
           <dd data-testid="reviewers">
             {reviewers.length === 0
               ? '—'
@@ -378,7 +380,7 @@ export function PrDetailView({
                      * 투영이 저장하지 않아 만들지 않는다.
                      */}
                     <Badge tone={r.status === 'approved' ? 'success' : 'neutral'}>
-                      {r.status === 'approved' ? '승인함' : '아직 아님'}
+                      {r.status === 'approved' ? "Approved" : "Not yet"}
                     </Badge>
                   </span>
                 ))}
@@ -433,7 +435,7 @@ export function PrDetailView({
 
       <p>
         <a href={backHref} data-testid="back-link">
-          검색으로 돌아가기
+          Back to search
         </a>
       </p>
     </div>

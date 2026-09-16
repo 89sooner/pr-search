@@ -192,9 +192,9 @@ describe('반개구간 규칙 (QA-W004-01)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('space-selector')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('range-boundary-rule')).toHaveTextContent('(시작, 끝]');
-    expect(screen.getByTestId('anchor-from-boundary')).toHaveTextContent('제외');
-    expect(screen.getByTestId('anchor-to-boundary')).toHaveTextContent('포함');
+    expect(screen.getByTestId('range-boundary-rule')).toHaveTextContent("(start, end]");
+    expect(screen.getByTestId('anchor-from-boundary')).toHaveTextContent("Excluded");
+    expect(screen.getByTestId('anchor-to-boundary')).toHaveTextContent("Included");
   });
 });
 
@@ -213,7 +213,7 @@ describe('앵커 정규화 표시 (QA-W004-04·05·06)', () => {
     expect(resolved).toHaveTextContent('seq:2');
     expect(resolved).toHaveTextContent('seq 2');
     expect(resolved).toHaveTextContent('02' + 'a'.repeat(10));
-    expect(resolved).toHaveTextContent('에폭 3');
+    expect(resolved).toHaveTextContent("Epoch 3");
   });
 
   it('**체인 밖 커밋은 머지 커밋 제안 버튼이 붙는다** (QA-W004-05)', async () => {
@@ -259,7 +259,7 @@ describe('앵커 정규화 표시 (QA-W004-04·05·06)', () => {
     });
     await typeAndCommit('from', '#900');
     await waitFor(() => {
-      expect(screen.getByTestId('anchor-from-error')).toHaveTextContent('머지되지 않은');
+      expect(screen.getByTestId('anchor-from-error')).toHaveTextContent("has not been merged");
     });
   });
 });
@@ -318,9 +318,9 @@ describe('조회와 결과 (QA-W004-10·11)', () => {
 
   it('**요약 넷이 보이고 되돌림 자리는 "준비 중"이다** (QA-W004-10 절반, DEV-150)', async () => {
     await queryReady();
-    expect(screen.getByTestId('summary-pr-count')).toHaveTextContent('3건');
-    expect(screen.getByTestId('summary-author-count')).toHaveTextContent('2명');
-    expect(screen.getByTestId('summary-reverts-pending')).toHaveTextContent('준비 중');
+    expect(screen.getByTestId('summary-pr-count')).toHaveTextContent("3");
+    expect(screen.getByTestId('summary-author-count')).toHaveTextContent("2");
+    expect(screen.getByTestId('summary-reverts-pending')).toHaveTextContent("Pending — relationship derivation");
   });
 
   it('**결과가 서버 순서 그대로이고 색인 대기 행이 표시된다** (QA-W004-11, DEV-130)', async () => {
@@ -328,7 +328,7 @@ describe('조회와 결과 (QA-W004-10·11)', () => {
     const rows = screen.getAllByTestId('range-row');
     expect(rows.map((row) => row.querySelector('td')?.textContent)).toEqual(['3', '4', '5']);
     expect(screen.getByTestId('range-row-unindexed')).toBeInTheDocument();
-    expect(screen.getByTestId('range-missing-in-index')).toHaveTextContent('1건');
+    expect(screen.getByTestId('range-missing-in-index')).toHaveTextContent("1");
   });
 
   it('성공한 조회가 URL을 현재 에폭 인용으로 바꾼다', async () => {
@@ -432,7 +432,7 @@ describe('빈 상태와 공간 선택', () => {
     stubFetch();
     view('repo=acme%2Fledger&branch=main');
     await waitFor(() => {
-      expect(screen.getByTestId('space-state')).toHaveTextContent('채번 이력 없음');
+      expect(screen.getByTestId('space-state')).toHaveTextContent("No sequence history");
     });
     expect(screen.getByTestId('space-epoch-none')).toBeInTheDocument();
   });
@@ -548,7 +548,7 @@ describe('안전 구간 표식 (QA-W004-12·13·14)', () => {
     });
     // 저장된 에폭이 그대로 보인다 — 현재 값으로 갈아 끼우면 무효가 사라진다.
     expect(screen.getByTestId('safe-marker-epoch')).toHaveTextContent('3');
-    expect(screen.getByTestId('safe-marker-stale')).toHaveTextContent('무효');
+    expect(screen.getByTestId('safe-marker-stale')).toHaveTextContent("Invalid");
   });
 
   it('끝 앵커가 없으면 등록이 사유와 함께 막힌다 (`marker_target_unresolved`)', async () => {
@@ -557,7 +557,7 @@ describe('안전 구간 표식 (QA-W004-12·13·14)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('safe-marker-card')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('safe-marker-blocked')).toHaveTextContent('끝 앵커');
+    expect(screen.getByTestId('safe-marker-blocked')).toHaveTextContent("end anchor");
   });
 
   it('끝 앵커가 해석되면 그 서수를 대상으로 삼는다 (DEV-462)', async () => {
@@ -674,7 +674,7 @@ describe('안전 구간 표식 (QA-W004-12·13·14)', () => {
     await userEvent.click(screen.getByTestId('safe-marker-submit'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('safe-marker-result')).toHaveTextContent('등록했습니다');
+      expect(screen.getByTestId('safe-marker-result')).toHaveTextContent("Marker set to seq 5");
     });
     // 표식은 실제로 바뀌었다 — 그럼에도 결과 문구가 남는다.
     expect(screen.getByTestId('safe-marker-seq')).toHaveTextContent('seq 5');

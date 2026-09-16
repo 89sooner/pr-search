@@ -238,7 +238,7 @@ export function detectIdentifier(raw: string, options: DetectOptions = {}): Iden
       interpretations: TEXT_ONLY,
       rejection: {
         code: 'SHA_PREFIX_TOO_SHORT',
-        message: `축약 SHA는 ${String(MIN_SHA_PREFIX_LENGTH)}자 이상이어야 합니다`,
+        message: `A shortened SHA must contain at least ${String(MIN_SHA_PREFIX_LENGTH)} characters`,
         min_length: MIN_SHA_PREFIX_LENGTH,
         actual_length: input.length,
       },

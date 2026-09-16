@@ -90,8 +90,8 @@ test.describe('W-009 목록 (FR-ING-009 AC-6)', () => {
     await page.goto('/repositories');
     const card = page.getByTestId('repository-card');
     await expect(card).toBeVisible();
-    await expect(card.getByTestId('registration-state')).toHaveText('수집 중');
-    await expect(card.getByTestId('document_counts-value')).toContainText('PR 12건');
+    await expect(card.getByTestId('registration-state')).toHaveText("Collecting");
+    await expect(card.getByTestId('document_counts-value')).toContainText("PR 12");
     await expect(card.getByTestId('sequence-spaces')).toBeVisible();
   });
 
@@ -132,8 +132,8 @@ test.describe('W-009 목록 (FR-ING-009 AC-6)', () => {
 
     await page.goto('/repositories');
     const empty = page.getByTestId('empty-state');
-    await expect(page.getByText('표시할 등록 저장소가 없습니다')).toBeVisible();
-    await expect(page.getByText(/GitHub에 접근 가능한 저장소가 없/)).toHaveCount(0);
+    await expect(page.getByText("No registered repositories to display")).toBeVisible();
+    await expect(page.getByText(/No accessible GitHub repositories/)).toHaveCount(0);
     void empty;
   });
 });

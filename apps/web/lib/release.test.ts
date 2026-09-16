@@ -216,17 +216,17 @@ describe('previousLabel', () => {
   it('무엇과 비교한 수인지 말한다 (DEV-155)', () => {
     expect(
       previousLabel(row({ tagName: 'v1.1', previousTagName: 'v1.0', pullRequestCountSincePrevious: 2 })),
-    ).toBe('v1.0 대비 PR 2건');
+    ).toBe("v1.0 — PRs added: 2");
   });
 
   it('비교 대상이 없으면 0이 아니라 없음이다', () => {
-    expect(previousLabel(row({ tagName: 'v1.0' }))).toBe('직전 릴리스 없음');
+    expect(previousLabel(row({ tagName: 'v1.0' }))).toBe("No previous release");
     expect(previousLabel(row({ tagName: 'v1.0' }))).not.toContain('0건');
   });
 
   it('0건은 없음과 다르다 — 세었고 없는 것이다', () => {
     expect(
       previousLabel(row({ tagName: 'v1.1', previousTagName: 'v1.0', pullRequestCountSincePrevious: 0 })),
-    ).toBe('v1.0 대비 PR 0건');
+    ).toBe("v1.0 — PRs added: 0");
   });
 });

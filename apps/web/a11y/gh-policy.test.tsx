@@ -58,22 +58,22 @@ describe('A-006 운영 승인 절 (QA-GH-47)', () => {
     const { container } = render(<GhRegistryApprovalPanel canChange />);
     const panel = await screen.findByTestId('gh-approval-panel');
     expect(panel).toHaveAttribute('data-state', 'approval_required');
-    expect(screen.getByTestId('gh-approval-state')).toHaveTextContent('운영 승인 필요');
+    expect(screen.getByTestId('gh-approval-state')).toHaveTextContent("Operational approval required");
     expect(screen.getByTestId('gh-approval-served')).toHaveTextContent('r0.3');
-    expect(screen.getByTestId('gh-approval-approved')).toHaveTextContent('없음');
+    expect(screen.getByTestId('gh-approval-approved')).toHaveTextContent("None");
     expect(screen.getByTestId('gh-approval-eligible')).toBeInTheDocument();
     expect(screen.getByTestId('gh-approval-evidence')).toHaveTextContent('#41');
-    expect(screen.getByTestId('gh-approval-evidence')).toHaveTextContent('25시간 20분');
-    expect(screen.getByTestId('gh-approval-host')).toHaveTextContent('미검증');
+    expect(screen.getByTestId('gh-approval-evidence')).toHaveTextContent("25h 20m");
+    expect(screen.getByTestId('gh-approval-host')).toHaveTextContent("unverified");
     expect(screen.getByTestId('gh-approval-scope-note')).toHaveTextContent('REL-007 완료가 아니다');
     expect(await violations(container)).toEqual([]);
 
     fireEvent.click(screen.getByTestId('gh-approval-open'));
     const dialog = await screen.findByTestId('gh-approval-dialog');
-    expect(within(dialog).getByTestId('gh-approval-preview-opens')).toHaveTextContent('gh pr list 한 개');
-    expect(within(dialog).getByTestId('gh-approval-preview-not-opened')).toHaveTextContent('실행이 열리지 않은 gh 명령 195개');
+    expect(within(dialog).getByTestId('gh-approval-preview-opens')).toHaveTextContent("gh pr list");
+    expect(within(dialog).getByTestId('gh-approval-preview-not-opened')).toHaveTextContent("Disabled gh commands: 195");
     expect(within(dialog).getByTestId('gh-approval-preview-gates')).toHaveTextContent('GATE-GH-01d');
-    expect(within(dialog).getByTestId('gh-approval-preview-impact')).toHaveTextContent('이전 정책을 승계하지 않고 닫힙니다');
+    expect(within(dialog).getByTestId('gh-approval-preview-impact')).toHaveTextContent("Previously queued requests close without inheriting the old policy");
     const submit = within(dialog).getByTestId('gh-approval-submit');
     expect(submit).toBeDisabled();
     expect(await violations(document.body)).toEqual([]);
@@ -93,8 +93,8 @@ describe('A-006 운영 승인 절 (QA-GH-47)', () => {
     installFetch({ scenario: 'ineligible' });
     const { container } = render(<GhRegistryApprovalPanel canChange />);
     const reasons = await screen.findByTestId('gh-approval-reasons');
-    expect(within(reasons).getByText(/신선도 한도를 넘었습니다/)).toBeInTheDocument();
-    expect(within(reasons).getByText(/검증기·manifest가 다릅니다/)).toBeInTheDocument();
+    expect(within(reasons).getByText(/evidence has expired/)).toBeInTheDocument();
+    expect(within(reasons).getByText(/different validators or manifests/)).toBeInTheDocument();
     expect(screen.getByTestId('gh-approval-open')).toBeDisabled();
     expect(await violations(container)).toEqual([]);
   });
@@ -111,7 +111,7 @@ describe('A-006 운영 승인 절 (QA-GH-47)', () => {
   it('승인된 정의가 현재 정의와 다르면 재승인이 필요하다고 말한다', async () => {
     installFetch({ scenario: 'other_definition' });
     render(<GhRegistryApprovalPanel canChange />);
-    expect(await screen.findByTestId('gh-approval-state')).toHaveTextContent('재승인 필요');
+    expect(await screen.findByTestId('gh-approval-state')).toHaveTextContent("approval required again");
   });
 
   it('충돌이면 다시 확인하라고 알리고 새로 읽는다', async () => {
@@ -121,7 +121,7 @@ describe('A-006 운영 승인 절 (QA-GH-47)', () => {
     const dialog = await screen.findByTestId('gh-approval-dialog');
     fireEvent.change(within(dialog).getByTestId('gh-approval-reason'), { target: { value: '승인' } });
     fireEvent.click(within(dialog).getByTestId('gh-approval-submit'));
-    expect(await screen.findByText(/확인한 뒤 정책이나 근거가 바뀌었습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/The policy or evidence changed after your review/)).toBeInTheDocument();
   });
 
   it('403·404에서는 그리지 않는다 — 같은 페이지의 레지스트리 화면이 그 상태를 말한다', async () => {
@@ -140,15 +140,15 @@ describe('A-005 실행 정책 — 최소 (QA-GH-48)', () => {
     const { container } = render(<GhPolicyView canChange />);
     const card = await screen.findByTestId('gh-policy-capability');
     expect(card).toHaveAttribute('data-blocked', 'false');
-    expect(within(card).getByTestId('gh-policy-user-view')).toHaveTextContent('실행 가능');
+    expect(within(card).getByTestId('gh-policy-user-view')).toHaveTextContent("Available");
     expect(screen.getByTestId('gh-policy-scope')).toHaveTextContent('revision 1');
-    expect(screen.getByTestId('gh-policy-limits')).toHaveTextContent('늘릴 수 없습니다');
+    expect(screen.getByTestId('gh-policy-limits')).toHaveTextContent("cannot enable additional commands");
     expect(await violations(container)).toEqual([]);
 
     fireEvent.click(within(card).getByTestId('gh-policy-block-open'));
     const dialog = await screen.findByTestId('gh-policy-block-dialog');
-    expect(within(dialog).getByTestId('gh-policy-block-user-text')).toHaveTextContent('관리자가 이 명령의 실행을 차단했습니다');
-    expect(dialog).toHaveTextContent('이미 실행 중인 작업은 취소되지 않습니다');
+    expect(within(dialog).getByTestId('gh-policy-block-user-text')).toHaveTextContent("An administrator blocked this command");
+    expect(dialog).toHaveTextContent("Running jobs continue");
     expect(await violations(document.body)).toEqual([]);
     fireEvent.change(within(dialog).getByTestId('gh-policy-reason'), { target: { value: '장애 대응' } });
     fireEvent.click(within(dialog).getByTestId('gh-policy-submit'));
@@ -159,14 +159,14 @@ describe('A-005 실행 정책 — 최소 (QA-GH-48)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('gh-policy-capability')).toHaveAttribute('data-blocked', 'true');
     });
-    expect(screen.getByTestId('gh-policy-applied')).toHaveTextContent('차단했습니다');
+    expect(screen.getByTestId('gh-policy-applied')).toHaveTextContent("blocked");
   });
 
   it('차단된 상태에서는 재개 확인을 열고, 조회 전용이면 버튼 없이 그 사실을 말한다', async () => {
     installFetch({ scenario: 'blocked' });
     const { unmount } = render(<GhPolicyView canChange />);
     fireEvent.click(await screen.findByTestId('gh-policy-resume-open'));
-    expect(await screen.findByTestId('gh-policy-resume-dialog')).toHaveTextContent('자동으로 다시 실행되지 않습니다');
+    expect(await screen.findByTestId('gh-policy-resume-dialog')).toHaveTextContent("will not restart automatically");
     unmount();
     cleanup();
     vi.restoreAllMocks();
@@ -179,7 +179,7 @@ describe('A-005 실행 정책 — 최소 (QA-GH-48)', () => {
   it('승인되지 않은 배포에서는 차단 여부와 무관하게 실행이 거절된다고 알리고, 403이면 필요한 역할을 말한다', async () => {
     installFetch({ scenario: 'approval_required' });
     const { unmount } = render(<GhPolicyView canChange />);
-    expect(await screen.findByTestId('gh-policy-approval-needed')).toHaveTextContent('운영 승인되지 않아');
+    expect(await screen.findByTestId('gh-policy-approval-needed')).toHaveTextContent("lacks operational approval");
     unmount();
     vi.restoreAllMocks();
     installFetch({ status: 403 });
@@ -195,12 +195,12 @@ describe('W-010 실행 판정 배너 (QA-GH-49)', () => {
     expect(container.textContent).toBe('');
     rerender(<GhExecutionGateBanner gate={GATE_ADMIN_ACTION} />);
     expect(screen.getByTestId('gh-execution-gate')).toHaveAttribute('data-gate-state', 'admin_action_required');
-    expect(screen.getByTestId('gh-execution-gate')).toHaveTextContent('관리자 운영 승인이 필요합니다');
+    expect(screen.getByTestId('gh-execution-gate')).toHaveTextContent("Operational approval is required");
     expect(await violations(container)).toEqual([]);
     rerender(<GhExecutionGateBanner gate={GATE_BLOCKED} />);
     expect(screen.getByTestId('gh-execution-gate')).toHaveAttribute('data-gate-state', 'policy_blocked');
     rerender(<GhExecutionGateBanner gate={GATE_REGISTRY} />);
     expect(screen.getByTestId('gh-execution-gate')).toHaveAttribute('data-gate-state', 'registry_mismatch');
-    expect(container.textContent).not.toMatch(/전 기능|모든 기능/);
+    expect(container.textContent).not.toMatch(/all features|every feature/);
   });
 });

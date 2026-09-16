@@ -92,11 +92,11 @@ describe('W-010 상태 구분 (지시서 11장)', () => {
     expect(gateState({ allowed: false, reason: 'policy_unavailable', detail: null, revision: null })).toBe('policy_unavailable');
     expect(gateState(null)).toBeNull();
     expect(gateText(GATE_READY)).toBeNull();
-    expect(gateText(GATE_BLOCKED)?.title).toBe('관리자가 이 명령의 실행을 차단했습니다');
+    expect(gateText(GATE_BLOCKED)?.title).toBe("An administrator blocked this command");
   });
 
   it('미리보기의 막힘 사유는 이 판의 판정 사유만 문구로 옮기고 계정 연결 사유는 코드 그대로 둔다', () => {
-    expect(blockerLabel('admin_action_required')).toBe('관리자 운영 승인이 필요합니다');
+    expect(blockerLabel('admin_action_required')).toBe("Operational approval is required");
     expect(blockerLabel('identity_not_connected')).toBe('identity_not_connected');
   });
 });
@@ -143,8 +143,8 @@ describe('상태와 오류를 운영자의 말로', () => {
   });
 
   it('신선도 한도를 시간·분으로 — 기본 91,225,000ms는 25시간 20분', () => {
-    expect(formatDurationMs(91_225_000)).toBe('25시간 20분');
-    expect(formatDurationMs(3_600_000)).toBe('1시간');
-    expect(formatDurationMs(120_000)).toBe('2분');
+    expect(formatDurationMs(91_225_000)).toBe("25h 20m");
+    expect(formatDurationMs(3_600_000)).toBe("1h");
+    expect(formatDurationMs(120_000)).toBe("2m");
   });
 });

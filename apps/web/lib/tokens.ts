@@ -45,7 +45,7 @@ export function toChips(ast: QueryAst | null): readonly QueryChip[] {
       value,
       negated,
       // 부정 조건임을 이름에 넣는다 — `-` 기호는 스크린 리더가 읽지 않는다.
-      removeLabel: `${negated ? '제외 조건 ' : ''}${filter.key}:${value} 필터 제거`,
+      removeLabel: `Remove ${negated ? 'exclusion ' : ''}filter ${filter.key}:${value}`,
     };
   });
 }

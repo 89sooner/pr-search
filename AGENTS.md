@@ -13,7 +13,7 @@ PR Search collects pull requests and commits from an internal GitHub Enterprise 
 1. **Merge sequence** — a monotonically increasing ordinal per `(repository, base branch)`, derived from the branch's first-parent commit chain. It restores what a Perforce Changelist number provided: "everything up to N is verified", "investigate the range N..M". PR numbers cannot do this because GitHub assigns them at creation time, not at merge time.
 2. **Bidirectional identifier resolution** — commit SHA → PR and PR → commits in a single lookup, plus a relationship graph (precedes/contains/references/reverts/cherry-picks/stacks/co-changes) with evidence and confidence on every edge.
 
-Stack: TypeScript everywhere, PostgreSQL as the system of record, Elasticsearch as a rebuildable derived search view, and the internal `design-system` (Conductor) for UI. The settled decisions live in ADR-001 through ADR-012; implementation agents follow them rather than re-deciding.
+Stack: TypeScript everywhere, PostgreSQL as the system of record, Elasticsearch as a rebuildable derived search view, and Radix Primitives with product-owned theme tokens for UI (CR-096 / ADR-006 amendment). Follow the settled ADRs and their approved amendments rather than re-deciding.
 
 This file states rules, not status. Do not read current state here — any snapshot written into an entry point goes stale the moment a work package lands (DEV-324, DEV-325). Read status from the source of truth at the current `HEAD`:
 

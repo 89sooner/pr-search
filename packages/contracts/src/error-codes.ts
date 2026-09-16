@@ -8,6 +8,11 @@
  */
 
 export const ERROR_CODES = [
+  /** Transient source browsing (FR-SRC-001~004 / CR-097). */
+  'SOURCE_CHANGED',
+  'SOURCE_RATE_LIMITED',
+  'SOURCE_PERMISSION_REQUIRED',
+  'SOURCE_UNAVAILABLE',
   /** 질의 파싱 실패 (사용자 조치: 오류 구간 수정) — HTTP 400 */
   'QUERY_SYNTAX_ERROR',
   /** hex 접두 7자 미만 (사용자 조치: 더 긴 SHA 입력) — HTTP 400 */
@@ -161,6 +166,10 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
  * `GRAPH_TIMEOUT`은 부분 결과와 함께 200으로 응답한다 (API 계약 6장).
  */
 export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
+  SOURCE_CHANGED: 409,
+  SOURCE_RATE_LIMITED: 429,
+  SOURCE_PERMISSION_REQUIRED: 503,
+  SOURCE_UNAVAILABLE: 502,
   QUERY_SYNTAX_ERROR: 400,
   SHA_PREFIX_TOO_SHORT: 400,
   QUERY_TOO_SHORT: 400,

@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Badge, Banner, Button, Panel } from '@conductor-by-89soone/react';
+import { Badge, Banner, Button, Panel } from './ui';
 import { AnchorInput, type AnchorFieldState } from './AnchorInput';
 import { SequenceSpaceSelector, type SequenceSpaceRef } from './SequenceSpaceSelector';
 import { RangeSummaryCard } from './RangeSummaryCard';
@@ -31,6 +31,7 @@ import { parseQuery, serializeQuery, type QueryAst } from '@prs/query';
 import { ErrorBanner } from './ErrorBanner';
 import { SafeMarkerCard } from './SafeMarkerCard';
 import { BisectPanel } from './BisectPanel';
+import { serviceMessage } from '../lib/service-message';
 import {
   judgeMarkerSubmit,
   markerRequestUrl,
@@ -168,8 +169,8 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
         const body: unknown = await response.json();
         if (!response.ok) {
           const failure = judgeAnchorFailure(body);
-          const message =
-            (body as { error?: { message?: string } }).error?.message ?? '앵커를 해석하지 못했습니다.';
+          const error = (body as { error?: { message?: string; code?: string } }).error;
+          const message = serviceMessage(error?.message, "Unable to resolve the anchor.", error?.code);
           set({ kind: 'failed', failure, message });
           return;
         }
@@ -177,12 +178,12 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
         const epoch = (body as { seq_epoch?: number }).seq_epoch;
         if (typeof epoch === 'number') setResolveEpoch(epoch);
         if (resolved === undefined) {
-          set({ kind: 'failed', failure: null, message: '응답에 해석 결과가 없습니다.' });
+          set({ kind: 'failed', failure: null, message: "The response contains no resolution result." });
           return;
         }
         set({ kind: 'resolved', anchor: resolved });
       } catch {
-        set({ kind: 'failed', failure: null, message: '네트워크 오류로 해석하지 못했습니다.' });
+        set({ kind: 'failed', failure: null, message: "Unable to resolve due to a network error." });
       }
     },
     [space],
@@ -260,7 +261,7 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
           setOutcome({
             kind: 'server_error',
             code: error.code ?? 'UNKNOWN',
-            message: error.message ?? '조회에 실패했습니다.',
+            message: serviceMessage(error.message, error.code === 'RANGE_TOO_LARGE' ? 'This range is too large. Narrow the range and try again.' : 'Unable to load results.'),
             correlationId: typeof record['correlation_id'] === 'string' ? record['correlation_id'] : null,
             status: response.status,
           });
@@ -403,7 +404,7 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
   const submitMarker = useCallback(
     async (note: string | null): Promise<MarkerSubmitOutcome> => {
       if (space === null || markerTargetSeq === null || markerEpoch === null) {
-        return { kind: 'error', code: 'INVALID_PARAMETER', message: '표식 대상을 확인할 수 없습니다.' };
+        return { kind: 'error', code: 'INVALID_PARAMETER', message: "Unable to identify the marker target." };
       }
       try {
         const response = await fetch('/api/safe-markers', {
@@ -429,7 +430,7 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
         await loadMarker();
         return outcome;
       } catch {
-        return { kind: 'error', code: 'OFFLINE', message: '네트워크 오류로 등록하지 못했습니다.' };
+        return { kind: 'error', code: 'OFFLINE', message: "Unable to save due to a network error." };
       }
     },
     [space, markerTargetSeq, markerEpoch, marker, loadMarker],
@@ -483,11 +484,11 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
 
   return (
     <div data-testid="ranges-view">
-      <Panel as="section" aria-label="시퀀스 공간과 앵커">
+      <Panel as="section" aria-label="Sequence space and anchors">
         {spacesFailed ? (
-          <p data-testid="spaces-error">시퀀스 공간 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.</p>
+          <p data-testid="spaces-error">Unable to load sequence spaces. Please try again later.</p>
         ) : null}
-        {spaces === null && !spacesFailed ? <p data-testid="spaces-loading">공간 목록을 불러오는 중…</p> : null}
+        {spaces === null && !spacesFailed ? <p data-testid="spaces-loading">Loading sequence spaces…</p> : null}
         {spaces !== null ? (
           <SequenceSpaceSelector
             spaces={spaces}
@@ -504,13 +505,13 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
 
         {/* 반개구간 규칙 상시 표기 (QA-W004-01) — 앵커 라벨의 제외/포함과 짝이다. */}
         <p data-testid="range-boundary-rule">
-          구간 규칙: <code className="cdt-mono">(시작, 끝]</code> — 시작 앵커는 <Badge tone="neutral">제외</Badge>, 끝 앵커는{' '}
-          <Badge tone="neutral">포함</Badge>됩니다.
+          Range rule: <code className="ui-mono">(start, end]</code> — Start anchor: <Badge tone="neutral">Excluded</Badge>; end anchor: {' '}
+          <Badge tone="neutral">Included</Badge>.
         </p>
 
         <AnchorInput
           id="from"
-          label="시작 앵커"
+          label="Start anchor"
           boundary="exclusive"
           value={fromText}
           state={fromState}
@@ -523,7 +524,7 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
         />
         <AnchorInput
           id="to"
-          label="끝 앵커"
+          label="End anchor"
           boundary="inclusive"
           value={toText}
           state={toState}
@@ -537,7 +538,7 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
 
         {preflight.kind === 'inverted' ? (
           <p data-testid="range-inverted" role="alert">
-            시작(seq {preflight.fromSeq})이 끝(seq {preflight.toSeq})보다 뒤입니다.{' '}
+            Start (seq {preflight.fromSeq}) is after end (seq {preflight.toSeq}).{' '}
             <Button
               data-testid="range-swap"
               onClick={() => {
@@ -549,21 +550,20 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
                 setToState(previousFrom);
               }}
             >
-              두 앵커 교환
+              Swap anchors
             </Button>
           </p>
         ) : null}
         {preflight.kind === 'too_large' ? (
           <p data-testid="range-too-large" role="alert">
-            예상 {preflight.expected.toLocaleString()}건 — 5만 건을 넘습니다. 앵커를 좁혀 주세요.
+            Estimated {preflight.expected.toLocaleString()} items — exceeds 50,000. Narrow the anchors.
           </p>
         ) : null}
 
         {urlEpochJudgement === 'stale' && outcome.kind === 'idle' ? (
-          <Banner tone="warning" title="에폭 불일치" data-testid="epoch-stale-banner">
-            이 링크는 에폭 {initial.current.epoch ?? 0} 기준 인용인데 현재 에폭은{' '}
-            {selectedSpace?.seq_epoch ?? 0}입니다. 서수가 다른 커밋을 가리킬 수 있어 자동으로 재조회하지
-            않습니다.
+          <Banner tone="warning" title="Epoch mismatch" data-testid="epoch-stale-banner">
+            This link references epoch {initial.current.epoch ?? 0} ; the current epoch is {' '}
+            {selectedSpace?.seq_epoch ?? 0}. Ordinals may refer to different commits, so results were not reloaded automatically.
           </Banner>
         ) : null}
 
@@ -577,7 +577,7 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
             })
           }
         >
-          조회
+          Load
         </Button>
       </Panel>
 
@@ -605,15 +605,15 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
       />}
 
       {outcome.kind === 'idle' && fromAnchor === null && toAnchor === null ? (
-        <p data-testid="range-empty">앵커 두 개를 지정하면 구간을 조회합니다.</p>
+        <p data-testid="range-empty">Specify two anchors to load the range.</p>
       ) : null}
-      {outcome.kind === 'loading' ? <p data-testid="range-loading">구간을 조회하는 중…</p> : null}
+      {outcome.kind === 'loading' ? <p data-testid="range-loading">Loading range…</p> : null}
 
       {outcome.kind === 'epoch_stale' ? (
-        <Banner tone="warning" title="인용 에폭이 낡았습니다" data-testid="epoch-stale-result">
-          에폭 {outcome.requestedEpoch} 인용은 현재 에폭 {outcome.currentEpoch}에서 무효입니다.{' '}
+        <Banner tone="warning" title="Referenced epoch is stale" data-testid="epoch-stale-result">
+          Epoch {outcome.requestedEpoch} is invalid in current epoch {outcome.currentEpoch}.{' '}
           <Button data-testid="requery-current-epoch" onClick={() => void runQuery({ pinEpoch: null })}>
-            현재 에폭으로 재조회
+            Reload using current epoch
           </Button>
         </Banner>
       ) : null}
@@ -621,7 +621,7 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
       {outcome.kind === 'server_error' ? (
         <ErrorBanner
           tone={outcome.status >= 500 ? 'danger' : 'warning'}
-          title={`조회 실패 (${outcome.code})`}
+          title={`Request failed (${outcome.code})`}
           impact={outcome.message}
           correlationId={outcome.correlationId}
           recoverable={outcome.status < 500}
@@ -629,20 +629,20 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
       ) : null}
       {outcome.kind === 'offline' ? (
         <p data-testid="range-offline" role="alert">
-          네트워크 오류로 조회하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.
+          Unable to load results due to a network error. Check your connection and try again.
         </p>
       ) : null}
 
       {outcome.kind === 'ready' ? (
         <>
           {outcome.result.sequenceState === 'reassigning' ? (
-            <Banner tone="warning" title="재채번 진행 중" data-testid="reassigning-banner">
-              마지막 확정 값으로 표시 중입니다 — 재채번이 끝나면 서수가 달라질 수 있습니다 (QA-W004-22).
+            <Banner tone="warning" title="Renumbering in progress" data-testid="reassigning-banner">
+              Showing the last confirmed values. Ordinals may change once renumbering completes (QA-W004-22).
             </Banner>
           ) : null}
           {outcome.result.sequenceState === 'stale' ? (
-            <Banner tone="warning" title="채번이 뒤처져 있습니다" data-testid="stale-banner">
-              최근 머지가 아직 서수를 받지 않았습니다. 구간 끝이 실제보다 짧을 수 있습니다.
+            <Banner tone="warning" title="Sequence numbering is behind" data-testid="stale-banner">
+              Recent merges have not received ordinals yet. The range may end before the actual branch tip.
             </Banner>
           ) : null}
           {outcome.result.summary === null ? null : <RangeSummaryCard summary={outcome.result.summary} />}

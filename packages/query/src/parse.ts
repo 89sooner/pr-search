@@ -49,11 +49,11 @@ const DATE_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]
 
 function parseNumericBound(raw: string, token: RawToken): number {
   if (!/^-?\d+$/.test(raw)) {
-    throw syntaxError(`범위 끝이 정수가 아닙니다: '${raw}'`, token.raw, token.start, token.end);
+    throw syntaxError(`Range bound must be an integer: '${raw}'`, token.raw, token.start, token.end);
   }
   const parsed = Number(raw);
   if (!Number.isSafeInteger(parsed)) {
-    throw syntaxError(`범위 끝이 너무 큽니다: '${raw}'`, token.raw, token.start, token.end);
+    throw syntaxError(`Range bound is too large: '${raw}'`, token.raw, token.start, token.end);
   }
   return parsed;
 }
@@ -61,7 +61,7 @@ function parseNumericBound(raw: string, token: RawToken): number {
 function checkTemporalBound(raw: string, token: RawToken): string {
   if (!DATE_ONLY.test(raw) && !DATE_TIME.test(raw)) {
     throw syntaxError(
-      `날짜 형식이 아닙니다: '${raw}' (예: 2026-08-10 또는 2026-08-10T05:02:11Z)`,
+      `Invalid date format: '${raw}' (for example: 2026-08-10 or 2026-08-10T05:02:11Z)`,
       token.raw,
       token.start,
       token.end,
@@ -78,7 +78,7 @@ function checkTemporalBound(raw: string, token: RawToken): string {
     probe.getUTCDate() !== day ||
     Number.isNaN(Date.parse(raw))
   ) {
-    throw syntaxError(`존재하지 않는 날짜입니다: '${raw}'`, token.raw, token.start, token.end);
+    throw syntaxError(`Invalid calendar date: '${raw}'`, token.raw, token.start, token.end);
   }
   return raw;
 }
@@ -96,7 +96,7 @@ function toRangeFilter(key: QueryKey, token: RawToken): RangeFilter {
 
   if (from === '' || to === '') {
     throw syntaxError(
-      `범위는 양끝이 모두 있어야 합니다: '${token.value}' (예: 1200..1350)`,
+      `Both range bounds are required: '${token.value}' (for example: 1200..1350)`,
       token.raw,
       token.start,
       token.end,
@@ -108,7 +108,7 @@ function toRangeFilter(key: QueryKey, token: RawToken): RangeFilter {
     const low = parseNumericBound(from, token);
     const high = parseNumericBound(to, token);
     if (low > high) {
-      throw syntaxError(`범위가 뒤집혔습니다: '${token.value}'`, token.raw, token.start, token.end);
+      throw syntaxError(`Range bounds are reversed: '${token.value}'`, token.raw, token.start, token.end);
     }
     return { key, op, from: low, to: high };
   }
@@ -116,19 +116,19 @@ function toRangeFilter(key: QueryKey, token: RawToken): RangeFilter {
     const low = checkTemporalBound(from, token);
     const high = checkTemporalBound(to, token);
     if (Date.parse(low) > Date.parse(high)) {
-      throw syntaxError(`범위가 뒤집혔습니다: '${token.value}'`, token.raw, token.start, token.end);
+      throw syntaxError(`Range bounds are reversed: '${token.value}'`, token.raw, token.start, token.end);
     }
     return { key, op, from: low, to: high };
   }
   // 도달하지 않는다. 호출 측이 `isRangeKey`로 걸렀다.
-  throw syntaxError(`범위를 지원하지 않는 키입니다: '${key}'`, token.raw, token.start, token.end);
+  throw syntaxError(`This key does not support ranges: '${key}'`, token.raw, token.start, token.end);
 }
 
 function checkEnumeratedValue(key: QueryKey, token: RawToken): void {
   const allowed = ENUMERATED_VALUES[key];
   if (allowed === undefined || allowed.includes(token.value)) return;
 
-  throw new QueryParseError('QUERY_SYNTAX_ERROR', `'${key}'가 받지 않는 값입니다: '${token.value}'`, {
+  throw new QueryParseError('QUERY_SYNTAX_ERROR', `Invalid value for '${key}': '${token.value}'`, {
     token: token.raw,
     offset_start: token.start,
     offset_end: token.end,
@@ -167,7 +167,7 @@ export function parseQuery(input: string): QueryAst {
     }
 
     if (token.value === '') {
-      throw syntaxError(`'${token.key}'의 값이 비었습니다`, token.raw, token.start, token.end);
+      throw syntaxError(`The value for '${token.key}' is empty`, token.raw, token.start, token.end);
     }
 
     /*
@@ -204,7 +204,7 @@ export function parseQuery(input: string): QueryAst {
   const text = textTerms.length === 0 ? null : textTerms.join(' ');
   if (text !== null && countCodePoints(text) < MIN_TEXT_LENGTH) {
     // 오프셋은 첫 검색어 낱말의 자리다. 화면이 그 한 글자를 강조한다.
-    throw new QueryParseError('QUERY_TOO_SHORT', `검색어는 ${String(MIN_TEXT_LENGTH)}자 이상이어야 합니다`, {
+    throw new QueryParseError('QUERY_TOO_SHORT', `Search text must contain at least ${String(MIN_TEXT_LENGTH)} characters`, {
       token: text,
       offset_start: firstTextStart,
       offset_end: firstTextStart + text.length,

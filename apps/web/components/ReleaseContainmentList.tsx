@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Badge, Button, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Panel, Table } from './ui';
 import { judgeContainment, type ContainmentState, type ContainmentSource } from '../lib/containment';
 import { formatTimestamp } from '../lib/format';
 
@@ -32,7 +32,7 @@ export function ReleaseContainmentList({ state }: ReleaseContainmentListProps): 
   if (state.kind === 'release_not_indexed') {
     return (
       <p data-testid="releases-not-indexed">
-        이 저장소의 릴리스가 아직 수집되지 않았습니다. 수집이 서면 포함 릴리스가 표시됩니다.
+        Releases have not been collected for this repository. Containing releases will appear after collection.
       </p>
     );
   }
@@ -40,7 +40,7 @@ export function ReleaseContainmentList({ state }: ReleaseContainmentListProps): 
   if (state.kind === 'not_sequenced') {
     return (
       <p data-testid="releases-not-sequenced">
-        머지 시퀀스가 없어 포함 여부를 판정할 수 없습니다. 머지·채번이 끝나면 표시됩니다.
+        Containment cannot be determined without a merge sequence. It will appear after merging and numbering.
       </p>
     );
   }
@@ -48,20 +48,20 @@ export function ReleaseContainmentList({ state }: ReleaseContainmentListProps): 
   if (state.kind === 'unreleased') {
     return (
       <p data-testid="releases-unreleased">
-        <Badge tone="warning">미배포</Badge> 아직 어떤 릴리스에도 포함되지 않았습니다.
-        {state.pendingPrCount > 0 ? ` 마지막 릴리스 이후 ${String(state.pendingPrCount)}건이 대기 중입니다.` : ''}
+        <Badge tone="warning">Unreleased</Badge> Not yet included in any release.
+        {state.pendingPrCount > 0 ? `Since the last release: ${String(state.pendingPrCount)} items pending.` : ''}
       </p>
     );
   }
 
   return (
-    <Table caption="이 항목을 포함하는 릴리스 (시각 오름차순)">
+    <Table caption="Releases containing this item (oldest first)">
       <Table.Head>
         <Table.Row>
-          <Table.HeaderCell scope="col">태그</Table.HeaderCell>
-          <Table.HeaderCell scope="col">릴리스 시각</Table.HeaderCell>
-          <Table.HeaderCell scope="col">대상 브랜치</Table.HeaderCell>
-          <Table.HeaderCell scope="col">시퀀스</Table.HeaderCell>
+          <Table.HeaderCell scope="col">Tag</Table.HeaderCell>
+          <Table.HeaderCell scope="col">Released at</Table.HeaderCell>
+          <Table.HeaderCell scope="col">Base branch</Table.HeaderCell>
+          <Table.HeaderCell scope="col">Sequence</Table.HeaderCell>
         </Table.Row>
       </Table.Head>
       <Table.Body>
@@ -144,7 +144,7 @@ export function ReleaseContainmentSection({
 
   return (
     <Panel as="section" aria-labelledby={`${sectionId}-heading`} data-testid={`section-${sectionId}`}>
-      <h2 id={`${sectionId}-heading`}>포함 릴리스</h2>
+      <h2 id={`${sectionId}-heading`}>Containing releases</h2>
 
       <Button
         type="button"
@@ -160,13 +160,13 @@ export function ReleaseContainmentSection({
           if (next) load();
         }}
       >
-        {expanded ? '접기' : '펼치기'}
+        {expanded ? "Collapse" : "Expand"}
       </Button>
 
       <div id={`${sectionId}-body`} hidden={!expanded} data-testid={`body-${sectionId}`}>
-        {outcome.phase === 'loading' ? <p data-testid="releases-loading">불러오는 중…</p> : null}
+        {outcome.phase === 'loading' ? <p data-testid="releases-loading">Loading…</p> : null}
         {outcome.phase === 'error' ? (
-          <p data-testid="releases-error">포함 릴리스를 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.</p>
+          <p data-testid="releases-error">Unable to load containing releases. Please try again later.</p>
         ) : null}
         {outcome.phase === 'ready' ? <ReleaseContainmentList state={outcome.state} /> : null}
       </div>

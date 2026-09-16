@@ -21,7 +21,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Button, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Panel, Table } from './ui';
 import type { LinkedPrState, LinkedPullRequest } from '../lib/commit-detail';
 
 export interface LinkedPrListProps {
@@ -43,11 +43,11 @@ export function LinkedPrList({
   return (
     <Panel as="section" aria-labelledby="linked-pr-heading" data-testid="linked-prs" data-pr-state={state}>
       <h2 id="linked-pr-heading">
-        소속 PR{' '}
+        Linked PRs {' '}
         {/* 둘 이상이면 그 사실 자체가 정보다 (`multi_pr`, AC-5). */}
         {pullRequests.length > 1 ? (
           <Badge tone="info" data-testid="multi-pr-badge">
-            PR {pullRequests.length}건
+            {pullRequests.length} PRs
           </Badge>
         ) : null}
       </h2>
@@ -59,17 +59,17 @@ export function LinkedPrList({
        */}
       {enrichmentPending ? (
         <div data-testid="pr-enrichment-pending">
-          <Badge tone="warning">수집 중</Badge>
-          <p>이 PR의 보강이 아직 끝나지 않았습니다. 목록이 나중에 늘 수 있습니다.</p>
+          <Badge tone="warning">Collecting</Badge>
+          <p>This PR is still being enriched. More entries may appear later.</p>
           <Button variant="secondary" size="sm" type="button" onClick={onRefetch} disabled={refetching} data-testid="pr-refetch">
-            다시 조회
+            Refresh
           </Button>
         </div>
       ) : null}
 
       {state === 'direct_push' ? (
         <p data-testid="direct-push">
-          PR 없음 (직접 푸시). 이 커밋은 PR을 거치지 않고 대상 브랜치에 직접 반영되었습니다.
+          No PR (direct push). This commit was pushed directly to the base branch.
         </p>
       ) : null}
 
@@ -79,20 +79,19 @@ export function LinkedPrList({
          * 전혀 다른 사실이고, 사용자가 할 일도 다르다.
          */
         <p data-testid="not-linked-yet">
-          아직 PR 연결을 찾지 못했습니다. 수집이 진행 중이거나, 이 커밋이 속한 PR이 아직 색인되지
-          않았을 수 있습니다.
+          No linked PR found yet. Ingestion may still be running, or the PR containing this commit may not be indexed.
         </p>
       ) : null}
 
       {state === 'linked' ? (
-        <Table caption="이 커밋이 속한 PR">
+        <Table caption="PRs containing this commit">
           <Table.Head>
             <Table.Row>
               <Table.HeaderCell scope="col">PR</Table.HeaderCell>
-              <Table.HeaderCell scope="col">제목</Table.HeaderCell>
-              <Table.HeaderCell scope="col">작성자</Table.HeaderCell>
-              <Table.HeaderCell scope="col">리뷰어</Table.HeaderCell>
-              <Table.HeaderCell scope="col">머지 시각</Table.HeaderCell>
+              <Table.HeaderCell scope="col">Title</Table.HeaderCell>
+              <Table.HeaderCell scope="col">Author</Table.HeaderCell>
+              <Table.HeaderCell scope="col">Reviewers</Table.HeaderCell>
+              <Table.HeaderCell scope="col">Merged at</Table.HeaderCell>
             </Table.Row>
           </Table.Head>
           <Table.Body>
@@ -114,7 +113,7 @@ export function LinkedPrList({
                 <Table.Cell>{(pr.reviewers ?? []).length === 0 ? '—' : (pr.reviewers ?? []).join(', ')}</Table.Cell>
                 <Table.Cell>
                   {pr.merged_at === undefined ? (
-                    <span data-testid="not-merged">미머지</span>
+                    <span data-testid="not-merged">Not merged</span>
                   ) : (
                     <time dateTime={pr.merged_at}>{pr.merged_at}</time>
                   )}

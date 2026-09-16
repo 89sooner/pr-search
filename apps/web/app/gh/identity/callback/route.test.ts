@@ -158,7 +158,7 @@ describe('FR-GH-008 AC-2: 콜백은 세션이 있는 사용자의 것만 서버�
     const everything = logged.join('\n');
     expect(everything).not.toContain(CODE);
     expect(everything).not.toContain(STATE);
-    expect(everything).toContain('Operations App 인가 콜백을 완료하지 못했다');
+    expect(everything).toContain('Unable to complete the Operations App authorization callback');
   });
 });
 

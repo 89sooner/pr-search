@@ -15,17 +15,17 @@ export default function HomePage(): ReactNode {
     <GuardedPage
       title="PR Search"
       returnTo="/"
-      whenAuthDisabled={<EmptyState cause="no_permission" title="인증이 구성되지 않았습니다"
-        description="GitHub Enterprise 데이터에 접근하려면 사내 로그인이 필요합니다. 운영자에게 인증 설정을 확인하세요."
-        actions={<Link href="/search">검색 작업대 열기</Link>} />}
+      whenAuthDisabled={<EmptyState cause="no_permission" title="Authentication is not configured"
+        description="Sign in with your company account to access GitHub Enterprise data. Ask an operator to check the authentication settings."
+        actions={<Link href="/search">Open search workspace</Link>} />}
     >
       {({ roles }) => { if (process.env['PRS_LEGACY_SEARCH'] !== '1' && !roles.includes('operator')) redirect('/search'); return <>
-      <header className="prs-page-heading"><div><p className="prs-eyebrow">GITHUB ENTERPRISE</p><h1>변경 이력 작업대</h1></div></header>
+      <header className="prs-page-heading"><div><p className="prs-eyebrow">GITHUB ENTERPRISE</p><h1>Change history workspace</h1></div></header>
       <div className="prs-home-workflows">
-        <Link href="/search#omni-search-input"><WorkbenchIcon name="search" /><strong>PR · 커밋 검색</strong><span>식별자 하나로 변경과 연결된 PR을 찾습니다.</span><WorkbenchIcon name="arrow" /></Link>
-        <Link href="/ranges"><WorkbenchIcon name="range" /><strong>머지 범위 조사</strong><span>검증한 지점부터 문제가 발생한 지점까지 좁힙니다.</span><WorkbenchIcon name="arrow" /></Link>
-        <Link href="/repositories"><WorkbenchIcon name="repository" /><strong>저장소 탐색</strong><span>수집 상태와 브랜치별 시퀀스 공간을 확인합니다.</span><WorkbenchIcon name="arrow" /></Link>
-        <Link href="/saved-searches"><WorkbenchIcon name="bookmark" /><strong>저장된 검색</strong><span>자주 사용하는 조사 조건을 다시 실행합니다.</span><WorkbenchIcon name="arrow" /></Link>
+        <Link href="/search#omni-search-input"><WorkbenchIcon name="search" /><strong>Search PRs and commits</strong><span>Find changes and their associated PRs with a single identifier.</span><WorkbenchIcon name="arrow" /></Link>
+        <Link href="/ranges"><WorkbenchIcon name="range" /><strong>Investigate a merge range</strong><span>Narrow the range between the last verified point and the first failure.</span><WorkbenchIcon name="arrow" /></Link>
+        <Link href="/repositories"><WorkbenchIcon name="repository" /><strong>Browse repositories</strong><span>Check collection status and sequence spaces for each branch.</span><WorkbenchIcon name="arrow" /></Link>
+        <Link href="/saved-searches"><WorkbenchIcon name="bookmark" /><strong>Saved searches</strong><span>Run your frequently used investigation queries again.</span><WorkbenchIcon name="arrow" /></Link>
       </div>
       </>; }}
     </GuardedPage>

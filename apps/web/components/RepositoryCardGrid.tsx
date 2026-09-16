@@ -21,7 +21,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Button, Card, CardGrid, Meter } from '@conductor-by-89soone/react';
+import { Badge, Button, Card, CardGrid, Meter } from './ui';
 import { SequenceSpaceStatusList } from './SequenceSpaceStatusList';
 import { formatTimestamp } from '../lib/format';
 import {
@@ -54,7 +54,7 @@ function AxisValue({
   if (kind === 'unavailable') {
     return (
       <span data-testid={`${axis}-unavailable`} data-kind="unavailable">
-        확인하지 못했습니다
+        Unavailable
       </span>
     );
   }
@@ -102,36 +102,36 @@ export function RepositoryCardGrid({ repositories, onRetry }: RepositoryCardGrid
             ) : null}
 
             <dl>
-              <dt>마지막 수집</dt>
+              <dt>Last ingested</dt>
               <dd>
                 <AxisValue
                   item={item}
                   axis="last_ingested_at"
                   value={item.last_ingested_at}
-                  absent="아직 수집 기록이 없습니다"
+                  absent="No ingestion records yet"
                   render={() => formatTimestamp(item.last_ingested_at as string)}
                 />
               </dd>
 
-              <dt>검색 대상 문서</dt>
+              <dt>Searchable documents</dt>
               <dd>
                 <AxisValue
                   item={item}
                   axis="document_counts"
                   value={countsUnavailable ? null : item.document_counts}
-                  absent="아직 색인된 문서가 없습니다"
+                  absent="No indexed documents yet"
                   render={() =>
-                    `PR ${String(item.document_counts?.pull_requests ?? 0)}건 · 커밋 ${String(
+                    `PR ${String(item.document_counts?.pull_requests ?? 0)} · Commits ${String(
                       item.document_counts?.commits ?? 0,
-                    )}건 (합계 ${String(item.document_counts?.total ?? 0)}건)`
+                    )} (total ${String(item.document_counts?.total ?? 0)})`
                   }
                 />
               </dd>
 
-              <dt>백필</dt>
+              <dt>Backfill</dt>
               <dd data-testid="backfill">
                 {isAxisUnavailable(item, 'backfill') ? (
-                  <span data-kind="unavailable">확인하지 못했습니다</span>
+                  <span data-kind="unavailable">Unavailable</span>
                 ) : (
                   <>
                     <span data-testid="backfill-state">{backfillLabel(item.backfill)}</span>
@@ -139,7 +139,7 @@ export function RepositoryCardGrid({ repositories, onRetry }: RepositoryCardGrid
                       <Meter
                         value={progress.ratio * 100}
                         valueText={`${String(progress.processed)} / ${String(progress.total)}`}
-                        aria-label={`${item.repository} 백필 진행률`}
+                        aria-label={`${item.repository} Backfill progress`}
                         data-testid="backfill-progress"
                       />
                     ) : null}
@@ -147,7 +147,7 @@ export function RepositoryCardGrid({ repositories, onRetry }: RepositoryCardGrid
                 )}
               </dd>
 
-              <dt>최근 조정 스캔</dt>
+              <dt>Latest reconciliation scan</dt>
               <dd data-testid="reconciliation">
                 {reconciliationSummary(item)}
                 {item.reconciliation.last_completed_at === null ||
@@ -158,7 +158,7 @@ export function RepositoryCardGrid({ repositories, onRetry }: RepositoryCardGrid
             </dl>
 
             {isAxisUnavailable(item, 'sequence_spaces') ? (
-              <p data-testid="sequence_spaces-unavailable">시퀀스 공간 상태를 확인하지 못했습니다</p>
+              <p data-testid="sequence_spaces-unavailable">Unable to check sequence space status</p>
             ) : (
               <SequenceSpaceStatusList spaces={item.sequence_spaces} />
             )}
@@ -169,7 +169,7 @@ export function RepositoryCardGrid({ repositories, onRetry }: RepositoryCardGrid
                 onClick={() => { onRetry(item.repository); }}
                 data-testid="card-retry"
               >
-                이 저장소만 다시 확인
+                Refresh this repository
               </Button>
             ) : null}
           </Card>

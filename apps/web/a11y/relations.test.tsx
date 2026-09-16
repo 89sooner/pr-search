@@ -178,7 +178,7 @@ describe('항목 축 상태를 갈라 그린다', () => {
       'stacks_on',
     );
     // 행은 남아 있고, 해제 표시가 텍스트로 붙는다 (색상만으로 구분하지 않는다).
-    expect(screen.getByTestId('relation-detached')).toHaveTextContent('해제됨');
+    expect(screen.getByTestId('relation-detached')).toHaveTextContent("Dismissed");
     expect(screen.getByTestId('relation-target-link')).toBeInTheDocument();
   });
 
@@ -220,7 +220,7 @@ describe('항목 축 상태를 갈라 그린다', () => {
     ]);
     expect(screen.queryByTestId('relation-target-link')).toBeNull();
     expect(screen.getByTestId('relation-target-inactive')).toHaveTextContent('acme/secret#20');
-    expect(container.textContent).not.toContain('권한');
+    expect(container.textContent).not.toContain("permission");
   });
 
   it('미해결 참조는 링크가 비활성이다', async () => {
@@ -332,7 +332,7 @@ describe('`links_pending`은 참조 그룹에만 걸린다 (QA-W002-26)', () => 
     );
     await userEvent.click(screen.getByTestId('toggle-links'));
     await waitFor(() => {
-      expect(screen.getByTestId('references-pending')).toHaveTextContent('참조 분석 중');
+      expect(screen.getByTestId('references-pending')).toHaveTextContent("Analyzing references");
     });
     // 되돌림 간선은 그 상태와 무관하게 보인다.
     expect(screen.getAllByTestId('relation-row').length).toBeGreaterThan(0);
@@ -383,7 +383,7 @@ describe('동시 변경 (QA-W002-28)', () => {
     render(<CoChangeSection repository="acme/payments" prNumber={1234} sectionId="cochanges" />);
     await userEvent.click(screen.getByTestId('toggle-cochanges'));
     await waitFor(() => {
-      expect(screen.getByTestId('cochange-unavailable')).toHaveTextContent('머지되지 않아');
+      expect(screen.getByTestId('cochange-unavailable')).toHaveTextContent("before merging");
     });
     expect(screen.queryByTestId('cochange-empty')).toBeNull();
   });
@@ -434,8 +434,8 @@ describe('W-001 관계 배지 (QA-W001-24)', () => {
     expect(within(rows[1] as HTMLElement).queryByTestId('relation-badges')).toBeNull();
     // 관계가 있는 행: 라벨 텍스트를 포함한 배지가 있다.
     const third = within(rows[2] as HTMLElement);
-    expect(third.getByTestId('relation-badge-is_reverted')).toHaveTextContent('되돌림됨');
-    expect(third.getByTestId('relation-badge-references')).toHaveTextContent('참조 2');
+    expect(third.getByTestId('relation-badge-is_reverted')).toHaveTextContent("Reverted");
+    expect(third.getByTestId('relation-badge-references')).toHaveTextContent("References: 2");
   });
 });
 

@@ -12,7 +12,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Button, TextField } from '@conductor-by-89soone/react';
+import { Badge, Button, TextField } from './ui';
 import type { AnchorFailureView, ResolvedAnchorView } from '../lib/range';
 
 export type AnchorFieldState =
@@ -38,16 +38,16 @@ function failureText(failure: AnchorFailureView | null, message: string): string
   if (failure === null) return message;
   switch (failure.kind) {
     case 'not_on_branch':
-      return '이 커밋은 대상 브랜치의 first-parent 체인에 없습니다.';
+      return "This commit is not on the base branch's first-parent chain.";
     case 'not_merged':
-      return '아직 머지되지 않은 PR입니다 — 머지되면 서수를 받습니다.';
+      return "This PR has not been merged. It receives an ordinal when merged.";
     case 'space_mismatch':
       return failure.releaseBranch === null
-        ? '다른 시퀀스 공간의 앵커입니다. 브랜치를 바꿔 주세요.'
-        : `이 앵커는 ${failure.releaseBranch} 브랜치의 것입니다. 브랜치를 바꿔 주세요.`;
+        ? "This anchor belongs to another sequence space. Change the branch."
+        : `This anchor belongs to ${failure.releaseBranch} branch. Change the selected branch.`;
     case 'unresolvable':
       return failure.ambiguous
-        ? '여러 커밋에 걸리는 접두입니다 — 더 길게 입력해 주세요.'
+        ? "This prefix matches multiple commits. Enter more characters."
         : message;
   }
 }
@@ -68,7 +68,7 @@ export function AnchorInput({
       <label htmlFor={`${id}-input`}>{label}</label>{' '}
       {/* 반개구간 규칙의 절반 — 상시 표기다 (QA-W004-01). */}
       <Badge tone="neutral" data-testid={`anchor-${id}-boundary`}>
-        {boundary === 'exclusive' ? '제외' : '포함'}
+        {boundary === 'exclusive' ? "Excluded" : "Included"}
       </Badge>
       <TextField
         id={`${id}-input`}
@@ -76,7 +76,7 @@ export function AnchorInput({
         value={value}
         aria-describedby={describedBy}
         aria-invalid={state.kind === 'failed'}
-        placeholder="태그 · SHA · #PR · 시각 · seq:N"
+        placeholder="Tag · SHA · #PR · timestamp · seq:N"
         onChange={(event) => onChange(event.currentTarget.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') onCommit();
@@ -92,14 +92,14 @@ export function AnchorInput({
         }}
       />
       <p id={describedBy} data-testid={`anchor-${id}-status`}>
-        {state.kind === 'idle' ? '앵커를 입력하세요.' : null}
-        {state.kind === 'resolving' ? '정규화하는 중…' : null}
+        {state.kind === 'idle' ? "Enter an anchor." : null}
+        {state.kind === 'resolving' ? "Resolving…" : null}
         {state.kind === 'resolved' ? (
           <span data-testid={`anchor-${id}-resolved`}>
             {/* AC-5: 원본 표현 → 서수 · SHA(12자) · 에폭 */}
             {state.anchor.expression} → seq {state.anchor.mergeSeq} ·{' '}
-            <code className="cdt-mono">{state.anchor.commitSha.slice(0, 12)}</code>
-            {epoch === null ? '' : ` · 에폭 ${String(epoch)}`}
+            <code className="ui-mono">{state.anchor.commitSha.slice(0, 12)}</code>
+            {epoch === null ? '' : `· Epoch ${String(epoch)}`}
           </span>
         ) : null}
         {state.kind === 'failed' ? (
@@ -108,7 +108,7 @@ export function AnchorInput({
             {state.failure?.kind === 'not_on_branch' && state.failure.suggestedSha !== null ? (
               <>
                 {' '}
-                제안:{' '}
+                Suggestion: {' '}
                 <Button
                   variant="secondary"
                   size="sm"
@@ -119,7 +119,7 @@ export function AnchorInput({
                     onChange(state.failure !== null && state.failure.kind === 'not_on_branch' && state.failure.suggestedSha !== null ? state.failure.suggestedSha : value);
                   }}
                 >
-                  머지 커밋 사용
+                  Use merge commit
                 </Button>
               </>
             ) : null}

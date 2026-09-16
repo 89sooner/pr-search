@@ -125,7 +125,7 @@ describe('랜드마크와 스킵 링크 (QA-COMMON)', () => {
      * 내비게이션 랜드마크는 둘이다 (CR-093): 주요 화면 목록과 상단의 현재 위치(Conductor
      * `Breadcrumb`, 이름 「경로」). 이름이 다르므로 스크린 리더의 랜드마크 목록에서 구분된다.
      */
-    expect(screen.getAllByRole('navigation').map((nav) => nav.getAttribute('aria-label'))).toEqual(['주요 화면', '경로']);
+    expect(screen.getAllByRole('navigation').map((nav) => nav.getAttribute('aria-label'))).toEqual(["Breadcrumb", "Main navigation"]);
     expect(screen.getAllByRole('main')).toHaveLength(1);
   });
 
@@ -150,11 +150,11 @@ describe('랜드마크와 스킵 링크 (QA-COMMON)', () => {
         <h1>x</h1>
       </Shell>,
     );
-    expect(screen.getByRole('navigation', { name: '주요 화면' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: "Main navigation" })).toBeInTheDocument();
     // 현재 위치는 `aria-current="page"`로 표시한다 — 색이나 굵기만으로 전하지 않는다.
-    const breadcrumb = screen.getByRole('navigation', { name: '경로' });
-    expect(within(breadcrumb).getByRole('link', { name: '작업대' })).toHaveAttribute('href', '/');
-    expect(within(breadcrumb).getByText('통합 검색').closest('[aria-current="page"]')).not.toBeNull();
+    const breadcrumb = screen.getByRole('navigation', { name: "Breadcrumb" });
+    expect(within(breadcrumb).getByRole('link', { name: "Workbench" })).toHaveAttribute('href', '/');
+    expect(within(breadcrumb).getByText("통합 검색").closest('[aria-current="page"]')).not.toBeNull();
   });
 });
 
@@ -167,9 +167,9 @@ describe('QA-A001-10: 운영 항목이 DOM에 없다', () => {
     );
 
     // 비활성으로도 보이지 않는다 — 존재 자체를 노출하지 않는다 (C-002).
-    expect(screen.queryByRole('link', { name: '파이프라인' })).toBeNull();
-    expect(screen.queryByRole('link', { name: '저장소 등록' })).toBeNull();
-    expect(screen.queryByRole('link', { name: '감사 기록' })).toBeNull();
+    expect(screen.queryByRole('link', { name: "Pipeline" })).toBeNull();
+    expect(screen.queryByRole('link', { name: "Repository registration" })).toBeNull();
+    expect(screen.queryByRole('link', { name: "Audit log" })).toBeNull();
   });
 
   /*
@@ -185,8 +185,8 @@ describe('QA-A001-10: 운영 항목이 DOM에 없다', () => {
         <h1>x</h1>
       </Shell>,
     );
-    expect(screen.getByRole('link', { name: '파이프라인' })).toHaveAttribute('href', '/ops/pipeline');
-    expect(screen.getByRole('link', { name: '저장소 등록' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: "Pipeline" })).toHaveAttribute('href', '/ops/pipeline');
+    expect(screen.getByRole('link', { name: "Repository registration" })).toHaveAttribute(
       'href',
       '/ops/repositories',
     );
@@ -198,7 +198,7 @@ describe('QA-A001-10: 운영 항목이 DOM에 없다', () => {
         <h1>x</h1>
       </Shell>,
     );
-    expect(screen.queryByRole('link', { name: '감사 기록' })).toBeNull();
+    expect(screen.queryByRole('link', { name: "Audit log" })).toBeNull();
   });
 
   it('QA-A004-07: `security_officer`에게 감사 기록과 파이프라인만 보인다', () => {
@@ -207,11 +207,11 @@ describe('QA-A001-10: 운영 항목이 DOM에 없다', () => {
         <h1>x</h1>
       </Shell>,
     );
-    expect(screen.getByRole('link', { name: '감사 기록' })).toHaveAttribute('href', '/ops/audit');
+    expect(screen.getByRole('link', { name: "Audit log" })).toHaveAttribute('href', '/ops/audit');
     // A-001은 CR-052가 연 아카이브 진입점이다 (DEV-375).
-    expect(screen.getByRole('link', { name: '파이프라인' })).toHaveAttribute('href', '/ops/pipeline');
+    expect(screen.getByRole('link', { name: "Pipeline" })).toHaveAttribute('href', '/ops/pipeline');
     // A-002는 `operator` 전용이다.
-    expect(screen.queryByRole('link', { name: '저장소 등록' })).toBeNull();
+    expect(screen.queryByRole('link', { name: "Repository registration" })).toBeNull();
   });
 });
 
@@ -224,7 +224,7 @@ describe('현재 항목 표시', () => {
       </Shell>,
     );
 
-    expect(screen.getByRole('link', { name: '통합 검색' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: "Search" })).toHaveAttribute('aria-current', 'page');
   });
 
   it('다른 항목에는 붙지 않는다', () => {
@@ -235,7 +235,7 @@ describe('현재 항목 표시', () => {
       </Shell>,
     );
 
-    expect(screen.getByRole('link', { name: '릴리스' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: "Releases" })).not.toHaveAttribute('aria-current');
   });
 });
 
@@ -252,7 +252,7 @@ describe('⌘K로 옴니 검색에 포커스 (WP-015 DoD)', () => {
       </Shell>,
     );
 
-    const input = screen.getByLabelText('옴니 검색');
+    const input = screen.getByLabelText("옴니 검색");
     expect(document.activeElement).not.toBe(input);
 
     await userEvent.keyboard('{Control>}k{/Control}');
@@ -267,7 +267,7 @@ describe('⌘K로 옴니 검색에 포커스 (WP-015 DoD)', () => {
     );
 
     await userEvent.keyboard('{Meta>}k{/Meta}');
-    expect(document.activeElement).toBe(screen.getByLabelText('옴니 검색'));
+    expect(document.activeElement).toBe(screen.getByLabelText("옴니 검색"));
   });
 
   it('수식 키 없는 `k`는 아무것도 하지 않는다 — 타이핑을 가로채지 않는다', async () => {
@@ -278,7 +278,7 @@ describe('⌘K로 옴니 검색에 포커스 (WP-015 DoD)', () => {
     );
 
     await userEvent.keyboard('k');
-    expect(document.activeElement).not.toBe(screen.getByLabelText('옴니 검색'));
+    expect(document.activeElement).not.toBe(screen.getByLabelText("옴니 검색"));
   });
 
   it('슬롯이 비어 있으면 던지지 않는다 — WP-016 전까지의 상태다', async () => {
@@ -302,7 +302,7 @@ describe('⌘K로 옴니 검색에 포커스 (WP-015 DoD)', () => {
  */
 describe('좁은 화면 내비게이션 (QA-COMMON-06, QA-COMMON-07)', () => {
   function toggle(): HTMLElement {
-    return screen.getByRole('button', { name: /주요 화면/ });
+    return screen.getByRole('button', { name: /main menu/ });
   }
 
   it('여는 버튼이 있다 — 없으면 좁은 화면에서 내비게이션이 사라진다', () => {
@@ -313,7 +313,7 @@ describe('좁은 화면 내비게이션 (QA-COMMON-06, QA-COMMON-07)', () => {
     );
 
     expect(toggle()).toHaveAttribute('aria-expanded', 'false');
-    expect(toggle()).toHaveAccessibleName('주요 화면 열기');
+    expect(toggle()).toHaveAccessibleName("Open main menu");
   });
 
   it('키보드로 닿고 눌리면 서랍이 열린다', async () => {
@@ -323,11 +323,12 @@ describe('좁은 화면 내비게이션 (QA-COMMON-06, QA-COMMON-07)', () => {
       </Shell>,
     );
 
-    toggle().focus();
+    const trigger = toggle();
+    trigger.focus();
     await userEvent.keyboard('{Enter}');
 
-    expect(toggle()).toHaveAttribute('aria-expanded', 'true');
-    expect(toggle()).toHaveAccessibleName('주요 화면 닫기');
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(trigger).toHaveAccessibleName("Close main menu");
     // 서랍이 실제로 떠야 한다 — 상태만 바뀌고 아무것도 안 뜨면 소용없다.
     expect(screen.getByRole('dialog')).toBeTruthy();
   });
@@ -340,7 +341,7 @@ describe('좁은 화면 내비게이션 (QA-COMMON-06, QA-COMMON-07)', () => {
     );
 
     await userEvent.click(toggle());
-    expect(screen.getAllByRole('navigation', { name: '주요 화면' })).toHaveLength(1);
+    expect(screen.getAllByRole('navigation', { name: "Main navigation" })).toHaveLength(1);
   });
 
   it('`Escape`로 닫히고 포커스가 버튼으로 돌아온다 (QA-COMMON-07)', async () => {
@@ -378,8 +379,9 @@ describe('좁은 화면 내비게이션 (QA-COMMON-06, QA-COMMON-07)', () => {
       </Shell>,
     );
 
-    await userEvent.click(toggle());
-    expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+    const trigger = toggle();
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
 
     pathname.current = '/releases';
     rerender(
@@ -453,7 +455,7 @@ describe('라우트 전환 알림', () => {
       </Shell>,
     );
 
-    expect(screen.getByTestId('route-announcement').textContent).toBe('릴리스');
+    expect(screen.getByTestId('route-announcement').textContent).toBe("릴리스");
     expect(document.activeElement).toBe(document.getElementById('main-content'));
   });
 });
@@ -472,7 +474,7 @@ describe('사용자 메뉴 (CR-092 / DEV-700)', () => {
       </Shell>,
     );
   };
-  const trigger = (): HTMLElement => screen.getByRole('button', { name: '사용자 메뉴: kim' });
+  const trigger = (): HTMLElement => screen.getByRole('button', { name: "User menu: kim" });
 
   it('로그인 이름이 메뉴 버튼이고 닫혀 있다', () => {
     renderSignedIn();
@@ -488,7 +490,7 @@ describe('사용자 메뉴 (CR-092 / DEV-700)', () => {
 
     const menu = await screen.findByRole('menu');
     expect(menu).toHaveTextContent('kim@corp.example');
-    expect(screen.getByRole('menuitem', { name: '로그아웃' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: "Sign out" })).toBeInTheDocument();
     // 메뉴는 포털로 나가므로 `document.body`를 훑는다.
     expect(describeViolations(await violations(document.body))).toBe('');
   });
@@ -505,7 +507,7 @@ describe('사용자 메뉴 (CR-092 / DEV-700)', () => {
     trigger().focus();
     await userEvent.keyboard('{Enter}');
     await screen.findByRole('menu');
-    screen.getByRole('menuitem', { name: '로그아웃' }).focus();
+    screen.getByRole('menuitem', { name: "Sign out" }).focus();
     await userEvent.keyboard('{Enter}');
 
     await waitFor(() => {
@@ -531,10 +533,10 @@ describe('로그아웃 완료 화면 (CR-092 / DEV-700)', () => {
     const { container } = render(<SignedOutView loginHref="/auth/login?return_to=%2F" />);
 
     expect(screen.getAllByRole('main')).toHaveLength(1);
-    expect(screen.getByRole('heading', { level: 1, name: '로그아웃했습니다' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '다시 로그인' })).toHaveAttribute('href', '/auth/login?return_to=%2F');
+    expect(screen.getByRole('heading', { level: 1, name: "Signed out" })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: "Sign in again" })).toHaveAttribute('href', '/auth/login?return_to=%2F');
     // PR Search 세션만 끝났다는 사실을 말한다 — 공용 PC에서 IdP 세션이 남는다.
-    expect(container).toHaveTextContent('사내 로그인');
+    expect(container).toHaveTextContent("internal sign-in");
     expect(describeViolations(await violations(container))).toBe('');
   });
 });

@@ -116,21 +116,21 @@ describe('읽히는 문구 — 색에만 의존하지 않는다 (C-014 접근성
     const label1 = sequenceLabel(merged, 'unassigned');
     const label2 = sequenceLabel(merged, 'not_computed');
     expect(label1).not.toBe(label2);
-    expect(label1).toBe('미머지');
-    expect(label2).toBe('미채번');
+    expect(label1).toBe("Unmerged");
+    expect(label2).toBe("Not numbered");
   });
 
   it('설명도 다르다 — 사용자가 할 수 있는 일이 다르기 때문이다', () => {
     const d1 = sequenceDescription(merged, 'unassigned');
     const d2 = sequenceDescription(merged, 'not_computed');
     expect(d1).not.toBe(d2);
-    expect(d2).toContain('아직');
+    expect(d2).toContain("yet");
   });
 
   it('설명이 시퀀스 공간과 비교 불가를 밝힌다 (ADR-007)', () => {
     const text = sequenceDescription(merged, 'assigned');
     expect(text).toContain('acme/payments@main');
-    expect(text).toContain('에폭 3');
-    expect(text).toContain('비교할 수 없');
+    expect(text).toContain("epoch 3");
+    expect(text).toContain("cannot be compared");
   });
 });

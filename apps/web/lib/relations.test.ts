@@ -39,7 +39,7 @@ describe('summaryBadges — 요약이 없는 것과 관계가 없는 것 (DEV-26
 
   it('참조 수를 배지에 싣는다', () => {
     const badges = summaryBadges({ reference_count: 3 });
-    expect(badges).toEqual([{ key: 'references', label: '참조 3' }]);
+    expect(badges).toEqual([{ key: 'references', label: "References: 3" }]);
   });
 
   it('되돌림 주체와 되돌림 대상을 구분한다', () => {
@@ -130,8 +130,8 @@ describe('judgeRelations — 항목 축 상태', () => {
     const hidden = judgeRelations(
       body([{ link_id: 'b', confidence: 'heuristic', evidence: 'e', resolved: true, endpoint: {} }]),
     );
-    expect(unresolved?.items[0]?.endpoint.label).toContain('색인');
-    expect(hidden?.items[0]?.endpoint.label).toContain('표시할 수 없');
+    expect(unresolved?.items[0]?.endpoint.label).toContain("indexed");
+    expect(hidden?.items[0]?.endpoint.label).toContain("unavailable");
   });
 
   it('`ambiguous`를 그대로 옮긴다', () => {
@@ -158,13 +158,13 @@ describe('방향과 라벨 — 화살표만으로 말하지 않는다', () => {
     const out = directionLabel('reverts', 'outgoing');
     const inc = directionLabel('reverts', 'incoming');
     expect(out).not.toBe(inc);
-    expect(out).toContain('되돌린 대상');
-    expect(inc).toContain('되돌린 주체');
+    expect(out).toContain("Reverted by this item");
+    expect(inc).toContain("Items that revert this item");
   });
 
   it('스택의 두 방향이 상위·하위를 말한다', () => {
-    expect(directionLabel('stacks_on', 'outgoing')).toContain('상위');
-    expect(directionLabel('stacks_on', 'incoming')).toContain('하위');
+    expect(directionLabel('stacks_on', 'outgoing')).toContain("Parent");
+    expect(directionLabel('stacks_on', 'incoming')).toContain("Child");
   });
 
   it('신뢰도 셋이 서로 다른 라벨을 갖는다 (QA-W002-12)', () => {
@@ -214,7 +214,7 @@ describe('judgeCoChanges — 계산 불가와 0건 (DEV-254)', () => {
   });
 
   it('미머지 문구가 **왜** 계산할 수 없는지 말한다 — 90일 창의 기준점이 없다', () => {
-    expect(coChangeReasonLabel('not_merged')).toContain('90일');
+    expect(coChangeReasonLabel('not_merged')).toContain("90 days");
   });
 
   it('항목을 옮긴다', () => {

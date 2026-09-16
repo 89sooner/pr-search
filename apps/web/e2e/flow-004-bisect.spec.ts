@@ -26,18 +26,18 @@ test('FLOW-004 start → good → revisit → bad → converged → reset', asyn
   await page.goto('/ranges?repo=acme%2Fpayments&branch=main&from=seq%3A1&to=seq%3A9&epoch=1');
   await expect(page.getByTestId('anchor-to-resolved')).toBeVisible();
   await page.getByTestId('range-query').click();
-  await page.getByRole('button', { name: '이 구간에서 탐색 시작' }).click();
-  await expect(page.getByTestId('bisect-next')).toContainText('seq:5');
-  await page.getByRole('button', { name: '정상', exact: true }).click();
-  await expect(page.getByTestId('bisect-remaining')).toHaveText('남은 후보 2건 · 예상 잔여 검사 1회');
+  await page.getByRole('button', { name: "Start bisect in this range" }).click();
+  await expect(page.getByTestId('bisect-next')).toContainText('seq: 5');
+  await page.getByRole('button', { name: "Good", exact: true }).click();
+  await expect(page.getByTestId('bisect-remaining')).toHaveText("Remaining candidates: 2 · Estimated remaining checks: 1");
   await page.close();
   const reopened = await context.newPage();
   await reopened.goto('/ranges?repo=acme%2Fpayments&branch=main');
-  await expect(reopened.getByTestId('bisect-next')).toContainText('seq:8');
-  await reopened.getByRole('button', { name: '이상', exact: true }).click();
+  await expect(reopened.getByTestId('bisect-next')).toContainText('seq: 8');
+  await reopened.getByRole('button', { name: "Bad", exact: true }).click();
   await expect(reopened.getByTestId('bisect-result')).toContainText('PR #4208');
-  await expect(reopened.getByRole('button', { name: '정상', exact: true })).toHaveCount(0);
-  await reopened.getByRole('button', { name: '탐색 초기화' }).click();
+  await expect(reopened.getByRole('button', { name: "Good", exact: true })).toHaveCount(0);
+  await reopened.getByRole('button', { name: "Reset bisect" }).click();
   await expect(reopened.getByTestId('bisect-result')).toHaveCount(0);
 });
 
@@ -55,11 +55,11 @@ for (const failure of ['contradiction', 'epoch'] as const) {
     });
     await page.goto('/ranges?repo=acme%2Fpayments&branch=main');
     if (failure === 'contradiction') {
-      await page.getByRole('button', { name: '정상', exact: true }).click();
-      await expect(page.getByTestId('bisect-panel').getByRole('alert')).toContainText('정상 10, 이상 9');
-      await expect(page.getByRole('button', { name: '정상', exact: true })).toBeDisabled();
-    } else await expect(page.getByText('탐색 에폭이 낡았습니다')).toBeVisible();
-    await page.getByRole('button', { name: '탐색 초기화' }).click();
+      await page.getByRole('button', { name: "Good", exact: true }).click();
+      await expect(page.getByTestId('bisect-panel').getByRole('alert')).toContainText("good 10, bad 9");
+      await expect(page.getByRole('button', { name: "Good", exact: true })).toBeDisabled();
+    } else await expect(page.getByText("Bisect epoch is stale")).toBeVisible();
+    await page.getByRole('button', { name: "Reset bisect" }).click();
     expect(reset).toBe(true);
   });
 }

@@ -24,7 +24,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Button, Panel } from '@conductor-by-89soone/react';
+import { Button, Panel } from './ui';
 import { JobTable } from './JobTable';
 import { JobRunForm, type JobRunSubmission } from './JobRunForm';
 import { IndexStatusPanel } from './IndexStatusPanel';
@@ -180,11 +180,11 @@ export function OpsJobsView(): ReactNode {
             body: JSON.stringify({ action }),
           });
           if (!response.ok) {
-            setActionError(`잡 ${String(jobId)}의 ${action} 요청이 거절되었습니다.`);
+            setActionError(`Job ${String(jobId)}:${action} request was rejected.`);
           }
         } catch (error) {
           void error;
-          setActionError(`잡 ${String(jobId)}의 ${action} 요청을 보내지 못했습니다.`);
+          setActionError(`Job ${String(jobId)}:${action} request could not be sent.`);
         } finally {
           setPendingJobId(null);
           refresh();
@@ -216,10 +216,10 @@ export function OpsJobsView(): ReactNode {
             setConflictJobId(typeof existing === 'number' ? existing : -1);
             return;
           }
-          if (!response.ok) setActionError('잡을 만들지 못했습니다. 입력을 확인하세요.');
+          if (!response.ok) setActionError("Unable to create the job. Check the inputs.");
         } catch (error) {
           void error;
-          setActionError('잡 실행 요청을 보내지 못했습니다.');
+          setActionError("Unable to send the job request.");
         } finally {
           setRunSubmitting(false);
           refresh();
@@ -250,11 +250,11 @@ export function OpsJobsView(): ReactNode {
              * **자동으로 다시 요청하지 않는다** (FLOW-008 예외 흐름). 재채번은
              * 비가역이므로 재시도는 운영자의 명시적 재실행이어야 한다.
              */
-            setActionError('재채번 요청이 거절되었습니다. 결과를 확인한 뒤 다시 실행하세요.');
+            setActionError("Renumbering was rejected. Check the result before trying again.");
           }
         } catch (error) {
           void error;
-          setActionError('재채번 요청을 보내지 못했습니다. 결과를 확인한 뒤 다시 실행하세요.');
+          setActionError("Unable to request renumbering. Check the result before trying again.");
         } finally {
           setReassignSubmitting(false);
           refresh();
@@ -269,8 +269,8 @@ export function OpsJobsView(): ReactNode {
       <div data-testid="ops-jobs-view" data-state="no_permission">
         <EmptyState
           cause="no_permission"
-          title="이 화면은 운영자(operator) 역할이 필요합니다"
-          description="필요한 역할을 그대로 적습니다. 다른 역할로는 잡을 조회하거나 제어할 수 없습니다."
+          title="The operator role is required"
+          description="Only operators can view and control jobs."
         />
       </div>
     );
@@ -304,31 +304,31 @@ export function OpsJobsView(): ReactNode {
       {actionError === null ? null : (
         <ErrorBanner
           tone="danger"
-          title="요청을 처리하지 못했습니다"
+          title="Unable to process the request"
           impact={actionError}
           action={
             <Button variant="secondary" onClick={refresh} data-testid="ops-jobs-retry">
-              다시 조회
+              Refresh
             </Button>
           }
         />
       )}
 
-      <Panel as="section" aria-label="잡 목록" data-testid="section-jobs">
-        <h2>잡 목록</h2>
+      <Panel as="section" aria-label="Jobs" data-testid="section-jobs">
+        <h2>Jobs</h2>
         {jobs.failed ? (
           <ErrorBanner
             tone="warning"
-            title="잡 목록을 가져오지 못했습니다"
-            impact="다른 섹션은 정상 동작합니다. 잠시 뒤 다시 조회해 주세요."
+            title="Unable to load jobs"
+            impact="Other sections remain available. Please try again later."
           />
         ) : (
           <JobTable jobs={jobList} onAction={onAction} pendingJobId={pendingJobId} />
         )}
       </Panel>
 
-      <Panel as="section" aria-label="잡 실행" data-testid="section-run">
-        <h2>잡 실행</h2>
+      <Panel as="section" aria-label="Run job" data-testid="section-run">
+        <h2>Run job</h2>
         <JobRunForm
           onSubmit={onRun}
           submitting={runSubmitting}
@@ -337,20 +337,20 @@ export function OpsJobsView(): ReactNode {
         />
       </Panel>
 
-      <section aria-label="인덱스 상태" data-testid="section-index">
+      <section aria-label="Index status" data-testid="section-index">
         <IndexStatusPanel status={indexStatus.data} failed={indexStatus.failed} />
       </section>
 
-      <Panel as="section" aria-label="시퀀스 정합성" data-testid="section-integrity">
-        <h2>시퀀스 정합성</h2>
+      <Panel as="section" aria-label="Sequence integrity" data-testid="section-integrity">
+        <h2>Sequence integrity</h2>
         {integrity.failed ? (
           <ErrorBanner
             tone="warning"
-            title="정합성 점검 결과를 가져오지 못했습니다"
-            impact="다른 섹션은 정상 동작합니다. 잠시 뒤 다시 조회해 주세요."
+            title="Unable to load integrity check results"
+            impact="Other sections remain available. Please try again later."
           />
         ) : (integrity.data?.reports ?? []).length === 0 ? (
-          <p data-testid="integrity-empty">점검 결과가 없습니다. 실행 폼에서 정합성 점검을 시작할 수 있습니다.</p>
+          <p data-testid="integrity-empty">No check results. Start an integrity check using the job form.</p>
         ) : (
           (integrity.data?.reports ?? []).map((report) => (
             <IntegrityReportCard

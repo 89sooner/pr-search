@@ -28,8 +28,8 @@ export default async function AuditPage({
   }
 
   return (
-    <GuardedPage title="감사 기록" returnTo="/ops/audit">
-      <h1>감사 기록</h1>
+    <GuardedPage title="Audit log" returnTo="/ops/audit">
+      <h1>Audit log</h1>
       <AuditView initialSearch={search.toString()} />
     </GuardedPage>
   );

@@ -288,7 +288,7 @@ test.describe('보강 미완료 (QA-W002-15, FLOW-002 예외 흐름)', () => {
     await expect(page.getByTestId('enrichment-pending')).toBeVisible();
 
     const before = calls.filter((c) => c.includes('/pull-requests/')).length;
-    await page.getByRole('button', { name: '다시 조회' }).click();
+    await page.getByRole('button', { name: "Refresh" }).click();
     await expect
       .poll(() => calls.filter((c) => c.includes('/pull-requests/')).length)
       .toBe(before + 1);
@@ -332,7 +332,7 @@ test.describe('접근 범위 (QA-W002-18)', () => {
 
     await expect(page.getByTestId('pr-detail')).toHaveAttribute('data-screen-state', 'not_found');
     // "권한"이라는 말이 나오면 "있긴 있다"가 새어 나간다.
-    await expect(page.getByRole('main')).not.toContainText('권한');
+    await expect(page.getByRole('main')).not.toContainText("permission");
   });
 });
 

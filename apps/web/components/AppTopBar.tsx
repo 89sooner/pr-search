@@ -8,9 +8,10 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AppShellNavTrigger, Breadcrumb, IconButton, Kbd, TopBar } from '@conductor-by-89soone/react';
+import { AppShellNavTrigger, Breadcrumb, IconButton, Kbd, TopBar } from './ui';
 import { UserMenu } from './UserMenu';
 import { WorkbenchIcon } from './WorkbenchIcon';
+import { ThemeToggle } from './ui/ThemeToggle';
 
 /** 슬롯 안에서 포커스를 받을 수 있는 것. 순서대로 첫째를 잡는다. */
 const FOCUSABLE = 'input, textarea, select, button, [tabindex]:not([tabindex="-1"])';
@@ -102,7 +103,7 @@ export function AppTopBar({
         <AppShellNavTrigger asChild>
           <IconButton
             variant="ghost"
-            aria-label={navOpen ? '주요 화면 닫기' : '주요 화면 열기'}
+            aria-label={navOpen ? 'Close main menu' : 'Open main menu'}
             icon={<WorkbenchIcon name="menu" />}
           />
         </AppShellNavTrigger>
@@ -117,7 +118,7 @@ export function AppTopBar({
              */
             <Breadcrumb className="prs-breadcrumb">
               <ol>
-                <li><Link href="/">작업대</Link></li>
+                <li><Link href="/">Workbench</Link></li>
                 <li aria-current="page"><WorkbenchIcon name="chevron" /><strong>{title}</strong></li>
               </ol>
             </Breadcrumb>
@@ -127,14 +128,15 @@ export function AppTopBar({
       actions={
         <>
           <Link ref={searchLink} href="/search#omni-search-input" className="prs-quick-search"
-            aria-label="빠른 검색" aria-keyshortcuts="Control+k Meta+k"
+            aria-label="Quick search" aria-keyshortcuts="Control+k Meta+k"
             onClick={(event) => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               if (focusSearch()) event.preventDefault();
             }}>
-            <WorkbenchIcon name="search" /><span>빠른 검색</span><Kbd>{modifier} K</Kbd>
+            <WorkbenchIcon name="search" /><span>Quick search</span><Kbd>{modifier} K</Kbd>
           </Link>
           {/* 로그인 이름이 사용자 메뉴의 트리거다 — 로그아웃이 그 안에 있다 (CR-092 / DEV-700). */}
+          <ThemeToggle />
           {user === null ? null : <UserMenu login={user.login} email={user.email} />}
         </>
       }

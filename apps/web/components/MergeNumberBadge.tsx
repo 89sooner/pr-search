@@ -29,7 +29,7 @@
 
 import Link from 'next/link';
 import { useId, type ReactNode } from 'react';
-import { Badge, Button } from '@conductor-by-89soone/react';
+import { Badge, Button } from './ui';
 import { WorkbenchIcon } from './WorkbenchIcon';
 import {
   mergeNumberView,
@@ -69,9 +69,9 @@ export async function writeMergeNumberLink(link: MergeNumberLink): Promise<Clipb
 
 /** 복사 결과의 문구. 세 화면이 같은 말을 한다. */
 export const COPY_MESSAGES: Readonly<Record<ClipboardResult, string>> = {
-  copied: 'M 번호 링크를 복사했습니다.',
-  failed: 'M 번호 링크를 복사하지 못했습니다. 배지를 새 탭에서 열어 주소를 복사하세요.',
-  unsupported: '클립보드를 사용할 수 없습니다. 배지를 새 탭에서 열어 주소를 복사하세요.',
+  copied: "M-number link copied.",
+  failed: "Unable to copy the M-number link. Open the badge in a new tab and copy its address.",
+  unsupported: "Clipboard unavailable. Open the badge in a new tab and copy its address.",
 };
 
 export function MergeNumberBadge({ fields, context, onCopy }: MergeNumberBadgeProps): ReactNode {
@@ -108,20 +108,20 @@ export function MergeNumberBadge({ fields, context, onCopy }: MergeNumberBadgePr
           size="sm"
           type="button"
           data-testid="mnumber-copy"
-          aria-label={`${view.label} 링크 복사`}
+          aria-label={`${view.label} Copy link`}
           onClick={() => {
             if (view.link !== null) onCopy(view.link);
           }}
         >
           <WorkbenchIcon name="copy" />
-          M 링크 복사
+          Copy M link
         </Button>
       ) : null}
       {/*
        * 설명은 화면에 보이지 않되 스크린 리더에는 읽힌다 (C-014 접근성 규칙).
        * 색과 짧은 문구만으로는 "왜 번호가 없는가"가 전달되지 않는다.
        */}
-      <span id={describedBy} className="cdt-sr-only">
+      <span id={describedBy} className="ui-sr-only">
         {view.description}
       </span>
     </>

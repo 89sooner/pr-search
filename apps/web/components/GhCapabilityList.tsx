@@ -9,7 +9,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { Badge, TextField } from '@conductor-by-89soone/react';
+import { Badge, TextField } from './ui';
 import type { CapabilitiesResponse, CommandView } from '../lib/gh';
 
 export interface GhCapabilityListProps {
@@ -19,9 +19,9 @@ export interface GhCapabilityListProps {
 }
 
 const EXECUTION_LABEL: Readonly<Record<string, string>> = {
-  allowed: '실행 가능',
-  not_implemented: '아직 열리지 않음',
-  policy_blocked: '정책 차단',
+  allowed: "Available",
+  not_implemented: "Not yet enabled",
+  policy_blocked: "Blocked by policy",
 };
 
 export function GhCapabilityList({ capabilities, selectedId, onSelect }: GhCapabilityListProps): ReactNode {
@@ -34,13 +34,13 @@ export function GhCapabilityList({ capabilities, selectedId, onSelect }: GhCapab
   const rest = commands.filter((command) => command.execution !== 'allowed');
 
   return (
-    <nav aria-label="capability 목록" data-testid="gh-capability-list">
+    <nav aria-label="Capabilities" data-testid="gh-capability-list">
       <p data-testid="gh-capability-coverage">
-        gh {capabilities.gh_version} · command {String(capabilities.coverage.leafCommands)}개 중 실행 가능 {String(capabilities.coverage.executableCommands)}개 · 분류되지 않음 {String(capabilities.coverage.unclassifiedLeafCommands)}개
+        gh {capabilities.gh_version} · command {String(capabilities.coverage.leafCommands)} total; available: {String(capabilities.coverage.executableCommands)}· Unclassified: {String(capabilities.coverage.unclassifiedLeafCommands)} items
       </p>
       <TextField
-        aria-label="capability 검색"
-        placeholder="예: pr list"
+        aria-label="Search capabilities"
+        placeholder="e.g. pr list"
         value={query}
         onChange={(event) => {
           setQuery(event.target.value);
@@ -63,16 +63,16 @@ export function GhCapabilityList({ capabilities, selectedId, onSelect }: GhCapab
             <Badge tone="accent">{command.risk ?? 'R?'}</Badge> <span>{command.summary}</span>
           </li>
         ))}
-        {executable.length === 0 ? <li>검색 결과에 실행 가능한 command가 없습니다.</li> : null}
+        {executable.length === 0 ? <li>No executable commands match your search.</li> : null}
       </ul>
       <details data-testid="gh-capability-others">
-        <summary>실행이 열리지 않은 command {String(rest.length)}개 — 사유와 함께</summary>
+        <summary>Disabled commands: {String(rest.length)} with reasons</summary>
         <ul>
           {rest.slice(0, 250).map((command) => (
             <li key={command.id} data-execution={command.execution}>
               <span aria-disabled="true">
                 gh {command.path.join(' ')}
-                {command.alias_of === null ? '' : ` (별칭: gh ${command.alias_of.join(' ')})`}
+                {command.alias_of === null ? '' : `(alias: gh${command.alias_of.join(' ')})`}
               </span>{' '}
               <Badge tone="neutral">{EXECUTION_LABEL[command.execution] ?? command.execution}</Badge>
               {command.execution_reason === null ? null : <small> — {command.execution_reason}</small>}

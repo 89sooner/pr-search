@@ -13,11 +13,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Badge, Banner, Button, Panel } from '@conductor-by-89soone/react';
+import { Badge, Banner, Button, Panel } from './ui';
 import { ChangedPathList } from './ChangedPathList';
 import { EmptyState } from './EmptyState';
 import { DetailSectionNav } from './DetailSectionNav';
 import { EntityHeader } from './EntityHeader';
+import { SourceActions } from './source/SourceDialogs';
 import { ErrorBanner } from './ErrorBanner';
 import { LinkedPrList } from './LinkedPrList';
 import { RelationSection } from './RelationSection';
@@ -122,7 +123,7 @@ export function CommitDetailView({
     return (
       <div data-testid="commit-detail" data-screen-state="loading_initial">
         <Panel as="section" aria-busy="true" data-testid="detail-skeleton">
-          <p>불러오는 중…</p>
+          <p>Loading…</p>
         </Panel>
       </div>
     );
@@ -146,15 +147,15 @@ export function CommitDetailView({
          */}
         <EmptyState
           cause="not_found"
-          description="이 커밋을 찾을 수 없습니다. SHA가 정확한지 확인하세요. 저장소가 아직 수집되지 않았을 수도 있습니다."
+          description="This commit could not be found. Check the SHA. The repository may not have been ingested yet."
           actions={
             <>
-              <a href={backHref}>검색으로 돌아가기</a>{' '}
+              <a href={backHref}>Back to search</a>{' '}
               <a
                 href={`/repositories?repository=${encodeURIComponent(repository)}`}
                 data-testid="commit-open-repository-overview"
               >
-                이 저장소의 수집 상태 보기
+                View repository ingestion status
               </a>
             </>
           }
@@ -176,11 +177,11 @@ export function CommitDetailView({
       <div data-testid="commit-detail" data-screen-state="auth_expired">
         <ErrorBanner
           tone="warning"
-          title="세션이 만료되었습니다"
-          impact="다시 로그인하면 보던 화면으로 돌아옵니다."
+          title="Your session has expired"
+          impact="Sign in again to return to this page."
           action={
             <a href={`${screen.loginPath}?return_to=${encodeURIComponent(`/commit/${repository}/${commitSha}`)}`}>
-              다시 로그인
+              Sign in again
             </a>
           }
         />
@@ -193,12 +194,12 @@ export function CommitDetailView({
       <div data-testid="commit-detail" data-screen-state="offline">
         <ErrorBanner
           tone="danger"
-          title="서버에 연결하지 못했습니다"
-          impact="네트워크 연결을 확인한 뒤 다시 시도하세요."
+          title="Unable to connect to the server"
+          impact="Check your network connection and try again."
           recoverable
           action={
             <Button variant="secondary" onClick={refetch}>
-              다시 시도
+              Try again
             </Button>
           }
         />
@@ -211,13 +212,13 @@ export function CommitDetailView({
       <div data-testid="commit-detail" data-screen-state="error_other">
         <ErrorBanner
           tone="danger"
-          title="조회에 실패했습니다"
+          title="Unable to load results"
           impact={screen.message}
           recoverable={screen.correlationId === null}
           correlationId={screen.correlationId}
           action={
             <Button variant="secondary" onClick={refetch}>
-              다시 시도
+              Try again
             </Button>
           }
         />
@@ -244,6 +245,7 @@ export function CommitDetailView({
         title={commitTitle(commit)}
         identifier={`${repo} · ${sha.slice(0, 12)}`}
         externalUrl={gheCommitUrl(gheBaseUrl, repo, sha)}
+        actions={<SourceActions repository={repo} commit={sha} />}
         badges={
           <>
             <Badge tone={role.known ? 'accent' : 'neutral'} data-testid="role-badge">
@@ -253,11 +255,11 @@ export function CommitDetailView({
           </>
         }
       />
-      <DetailSectionNav sections={[{ id: 'commit-meta-heading', label: '커밋' }, { id: 'linked-pr-heading', label: '연결 PR' }, { id: 'paths-heading', label: '변경 경로' }, { id: 'commit-neighbors-heading', label: '선행·후행' }, { id: 'commit-releases-heading', label: '포함 릴리스' }, { id: 'commit-links-heading', label: '관계' }]} />
+      <DetailSectionNav sections={[{ id: 'commit-meta-heading', label: "Commit" }, { id: 'linked-pr-heading', label: "Linked PRs" }, { id: 'paths-heading', label: "Changed paths" }, { id: 'commit-neighbors-heading', label: "Neighbors" }, { id: 'commit-releases-heading', label: "Containing releases" }, { id: 'commit-links-heading', label: "Relationships" }]} />
 
       {commit.repository_archived === true ? (
-        <Banner tone="warning" title="보관된 저장소">
-          <p>이 저장소는 보관되어 더 이상 갱신되지 않습니다.</p>
+        <Banner tone="warning" title="Archived repository">
+          <p>This repository is archived and is no longer updated.</p>
         </Banner>
       ) : null}
 
@@ -267,28 +269,27 @@ export function CommitDetailView({
        */}
       {hasCommitMetadata(commit) ? (
         <Panel as="section" aria-labelledby="commit-meta-heading" data-testid="commit-meta">
-          <h2 id="commit-meta-heading">커밋</h2>
+          <h2 id="commit-meta-heading">Commit</h2>
           <dl>
-            <dt>메시지</dt>
+            <dt>Message</dt>
             <dd>{commit.message ?? '—'}</dd>
-            <dt>작성자</dt>
+            <dt>Author</dt>
             <dd>{commit.author ?? '—'}</dd>
-            <dt>작성 시각</dt>
+            <dt>Authored at</dt>
             <dd>{commit.authored_at ?? '—'}</dd>
           </dl>
         </Panel>
       ) : (
         <Panel as="section" aria-labelledby="commit-meta-heading" data-testid="commit-meta-missing">
           <h2 id="commit-meta-heading">
-            커밋 <Badge tone="neutral">준비 중</Badge>
+            Commit <Badge tone="neutral">Not yet available</Badge>
           </h2>
           <p>
-            메시지·작성자·작성 시각은 아직 수집하지 않았습니다. 수집 이벤트가 커밋에 대해 SHA만
-            나릅니다. 이 화면은 SHA를 이름으로 씁니다.
+            The message, author, and authored timestamp have not been collected. Ingestion events provide only the SHA, which identifies this commit here.
           </p>
           <p>
-            <span className="cdt-sr-only">담당 작업 패키지: </span>
-            WP-020 (미러 기반 커밋 보강)
+            <span className="ui-sr-only">Work package: </span>
+            WP-020 (mirror-based commit enrichment)
           </p>
         </Panel>
       )}
@@ -333,7 +334,7 @@ export function CommitDetailView({
             })}
       />
 
-      <ChangedPathList {...paths} owner="WP-020 (미러 기반 커밋 보강)" />
+      <ChangedPathList {...paths} owner="WP-020 (mirror-based commit enrichment)" />
 
       <ReleaseContainmentSection repository={repo} kind="commit" id={sha} sectionId="commit-releases" />
       {/*
@@ -349,10 +350,10 @@ export function CommitDetailView({
         linksPending={commit.links_pending === true}
       />
 
-
       <p>
+
         <a href={backHref} data-testid="back-link">
-          검색으로 돌아가기
+          Back to search
         </a>
       </p>
     </div>

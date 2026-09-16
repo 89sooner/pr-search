@@ -70,7 +70,7 @@ describe('등록이 막힌 이유 (C-031 사용 규칙)', () => {
   });
 
   it('끝 앵커가 없으면 그 사실을 말한다 (`marker_target_unresolved`)', () => {
-    expect(markerBlockedReason(true, null)).toContain('끝 앵커');
+    expect(markerBlockedReason(true, null)).toContain("end anchor");
   });
 
   it('**자격 없음이 앵커 미해석보다 앞선다** — 자격이 없으면 앵커를 해석해도 못 누른다', () => {
@@ -129,14 +129,14 @@ describe('등록 응답 판정 (API-SEQ-004)', () => {
     expect(outcome).toEqual({ kind: 'conflict', currentSeq: null });
   });
 
-  it('그 밖의 오류는 코드와 메시지를 그대로 옮긴다 — 재해석하지 않는다', () => {
+  it('keeps the service code and presents Korean diagnostics with an English fallback', () => {
     const outcome = judgeMarkerSubmit(400, {
       error: { code: 'SEQUENCE_NOT_FOUND', message: '그 서수는 없습니다', detail: { merge_seq: 99 } },
     });
     expect(outcome).toEqual({
       kind: 'error',
       code: 'SEQUENCE_NOT_FOUND',
-      message: '그 서수는 없습니다',
+      message: 'Could not create the marker. (SEQUENCE_NOT_FOUND)',
     });
   });
 

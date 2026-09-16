@@ -64,11 +64,11 @@ export function facetRailState(source: FacetSource): FacetRailState {
 export function facetNotice(state: FacetRailState): string | null {
   switch (state.kind) {
     case 'not_computed':
-      return '값 분포는 아직 계산하지 않았습니다. 검색 후 제공되는 필터로 결과를 좁힐 수 있습니다.';
+      return 'Distributions have not been calculated yet. Use the available filters after searching to narrow the results.';
     case 'omitted':
-      return '이번 조회에서는 분포 계산을 생략했습니다. 조건을 좁히면 다시 계산합니다.';
+      return 'Distribution calculation was skipped for this query. Narrow your filters to calculate it again.';
     case 'failed':
-      return '분포 계산에 실패했습니다. 목록은 정상이며, 다시 시도할 수 있습니다.';
+      return 'Distribution calculation failed. The results are available; you can retry.';
     case 'ready':
       return null;
   }
@@ -98,12 +98,12 @@ export interface FacetField {
  * `merged:`·`seq:` 질의 키로 이미 필터할 수 있다 (DEV-285).
  */
 export const SEARCH_FACET_FIELDS: readonly FacetField[] = [
-  { key: 'repository', queryKey: 'repo', label: '저장소' },
-  { key: 'author', queryKey: 'author', label: '작성자' },
-  { key: 'team', queryKey: 'team', label: '팀' },
-  { key: 'label', queryKey: 'label', label: '라벨' },
-  { key: 'base_branch', queryKey: 'base', label: '대상 브랜치' },
-  { key: 'state', queryKey: 'state', label: '상태' },
+  { key: 'repository', queryKey: 'repo', label: 'Repositories' },
+  { key: 'author', queryKey: 'author', label: 'Author' },
+  { key: 'team', queryKey: 'team', label: 'Team' },
+  { key: 'label', queryKey: 'label', label: 'Labels' },
+  { key: 'base_branch', queryKey: 'base', label: 'Base branch' },
+  { key: 'state', queryKey: 'state', label: 'Status' },
 ];
 
 /**
@@ -113,10 +113,10 @@ export const SEARCH_FACET_FIELDS: readonly FacetField[] = [
  * PR 상태는 W-004의 승인 범위가 아니다.
  */
 export const RANGE_FACET_FIELDS: readonly FacetField[] = [
-  { key: 'author', queryKey: 'author', label: '작성자' },
-  { key: 'team', queryKey: 'team', label: '팀' },
-  { key: 'label', queryKey: 'label', label: '라벨' },
-  { key: 'path', queryKey: 'path', label: '변경 경로' },
+  { key: 'author', queryKey: 'author', label: 'Author' },
+  { key: 'team', queryKey: 'team', label: 'Team' },
+  { key: 'label', queryKey: 'label', label: 'Labels' },
+  { key: 'path', queryKey: 'path', label: 'Changed paths' },
 ];
 
 /**

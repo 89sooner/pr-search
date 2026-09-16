@@ -156,7 +156,7 @@ test.describe('FLOW-002 전 경로: SHA 입력 → 커밋 상세 → PR 상세',
     // 1. W-001에서 40자 SHA를 붙여넣는다.
     await page.goto('/search');
     await page.getByRole('searchbox').fill(MERGE_SHA);
-    await page.getByRole('button', { name: '검색' }).click();
+    await page.getByRole('button', { name: "Search" }).click();
 
     /*
      * 2. **후보가 1건이라 자동으로 이동한다** (FLOW-001 4단계).
@@ -177,7 +177,7 @@ test.describe('FLOW-002 전 경로: SHA 입력 → 커밋 상세 → PR 상세',
     await stubApi(page);
     await page.goto('/search');
     await page.getByRole('searchbox').fill(MERGE_SHA);
-    await page.getByRole('button', { name: '검색' }).click();
+    await page.getByRole('button', { name: "Search" }).click();
     // 후보 1건이라 자동으로 커밋 상세에 도착한다.
     await expect(page.getByTestId('commit-detail')).toBeVisible();
     await page.getByTestId('linked-pr-link').click();
@@ -225,7 +225,7 @@ test.describe('FLOW-002 전 경로: SHA 입력 → 커밋 상세 → PR 상세',
     await stubApi(page);
     await page.goto('/search');
     await page.getByRole('searchbox').fill(MERGE_SHA);
-    await page.getByRole('button', { name: '검색' }).click();
+    await page.getByRole('button', { name: "Search" }).click();
     await expect(page.getByTestId('commit-detail')).toBeVisible();
 
     await page.goBack();
@@ -244,7 +244,7 @@ test.describe('FLOW-002 전 경로: SHA 입력 → 커밋 상세 → PR 상세',
     await stubApi(page);
     await page.goto('/search');
     await page.getByRole('searchbox').fill(MERGE_SHA);
-    await page.getByRole('button', { name: '검색' }).click();
+    await page.getByRole('button', { name: "Search" }).click();
     await expect(page.getByTestId('commit-detail')).toBeVisible();
     await page.goBack();
 
@@ -281,7 +281,7 @@ test.describe('SHA 복사 (QA-W003-07)', () => {
     await page.goto(`/commit/acme/payments/${MERGE_SHA}`);
 
     await page.getByTestId('sha-copy').click();
-    await expect(page.getByTestId('sha-copy-status')).toContainText('복사했습니다');
+    await expect(page.getByTestId('sha-copy-status')).toContainText("Copied");
 
     const clipped = await page.evaluate(() => navigator.clipboard.readText());
     // 화면에 보이는 12자가 아니라 40자여야 한다.
@@ -301,6 +301,6 @@ test.describe('접근 범위 (W-002와 같은 규칙)', () => {
     await page.goto(`/commit/acme/payments/${MERGE_SHA}`);
 
     await expect(page.getByTestId('commit-detail')).toHaveAttribute('data-screen-state', 'not_found');
-    await expect(page.getByRole('main')).not.toContainText('권한');
+    await expect(page.getByRole('main')).not.toContainText("permission");
   });
 });

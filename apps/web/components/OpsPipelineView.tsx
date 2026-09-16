@@ -26,7 +26,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Button, Panel, TextField } from '@conductor-by-89soone/react';
+import { Button, Panel, TextField } from './ui';
 import { PipelineMetricGrid } from './PipelineMetricGrid';
 import { DeadLetterTable, type DeadLetterItemView } from './DeadLetterTable';
 import { ScanResultCard, type ScanResultView } from './ScanResultCard';
@@ -185,10 +185,10 @@ export function OpsPipelineView({ roles, authEnabled = true }: OpsPipelineViewPr
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ dead_letter_ids: [...ids] }),
           });
-          if (!response.ok) setActionError('재처리 요청이 거절되었습니다.');
+          if (!response.ok) setActionError("The replay request was rejected.");
         } catch (error) {
           void error;
-          setActionError('재처리 요청을 보내지 못했습니다.');
+          setActionError("Unable to send the replay request.");
         } finally {
           setSubmitting(false);
           refresh();
@@ -218,10 +218,10 @@ export function OpsPipelineView({ roles, authEnabled = true }: OpsPipelineViewPr
           setConflictJobId(typeof existing === 'number' ? existing : -1);
           return;
         }
-        if (!response.ok) setActionError('조정 스캔을 시작하지 못했습니다.');
+        if (!response.ok) setActionError("Unable to start the reconciliation scan.");
       } catch (error) {
         void error;
-        setActionError('조정 스캔 요청을 보내지 못했습니다.');
+        setActionError("Unable to request a reconciliation scan.");
       } finally {
         setSubmitting(false);
         refresh();
@@ -237,7 +237,7 @@ export function OpsPipelineView({ roles, authEnabled = true }: OpsPipelineViewPr
         if (archiveQuery.trim() !== '') params.set('delivery_id', archiveQuery.trim());
         const response = await fetch(`${RAW_EVENTS_URL}?${params.toString()}`, { cache: 'no-store' });
         if (!response.ok) {
-          setActionError('원본 아카이브를 조회하지 못했습니다.');
+          setActionError("Unable to load the payload archive.");
           return;
         }
         const body = (await response.json().catch(() => null)) as {
@@ -248,7 +248,7 @@ export function OpsPipelineView({ roles, authEnabled = true }: OpsPipelineViewPr
         setExpanded(new Set());
       } catch (error) {
         void error;
-        setActionError('원본 아카이브 조회를 보내지 못했습니다.');
+        setActionError("Unable to query the payload archive.");
       }
     })();
   }, [archiveQuery]);
@@ -258,8 +258,8 @@ export function OpsPipelineView({ roles, authEnabled = true }: OpsPipelineViewPr
       <div data-testid="ops-pipeline-view" data-state="no_permission">
         <EmptyState
           cause="no_permission"
-          title="이 화면은 운영자(operator) 또는 보안 담당자(security_officer) 역할이 필요합니다"
-          description="필요한 역할을 그대로 적습니다. 보안 담당자에게는 원본 아카이브 섹션만 열립니다."
+          title="The operator or security_officer role is required"
+          description="Security officers can access only the payload archive section."
         />
       </div>
     );
@@ -289,7 +289,7 @@ export function OpsPipelineView({ roles, authEnabled = true }: OpsPipelineViewPr
       }}
     >
       {actionError === null ? null : (
-        <ErrorBanner tone="danger" title="요청을 처리하지 못했습니다" impact={actionError} />
+        <ErrorBanner tone="danger" title="Unable to process the request" impact={actionError} />
       )}
 
       {/*
@@ -299,18 +299,18 @@ export function OpsPipelineView({ roles, authEnabled = true }: OpsPipelineViewPr
       */}
       {mayFetch ? (
         <>
-          <Panel as="section" aria-label="단계 지표" data-testid="section-metrics">
-            <h2>단계 지표</h2>
+          <Panel as="section" aria-label="Stage metrics" data-testid="section-metrics">
+            <h2>Stage metrics</h2>
             <PipelineMetricGrid metrics={status} failed={statusFailed} />
           </Panel>
 
-          <Panel as="section" aria-label="실패 대기열" data-testid="section-dlq">
-            <h2>실패 대기열</h2>
+          <Panel as="section" aria-label="Dead-letter queue" data-testid="section-dlq">
+            <h2>Dead-letter queue</h2>
             {deadLetterFailed ? (
               <ErrorBanner
                 tone="warning"
-                title="실패 대기열을 가져오지 못했습니다"
-                impact="다른 섹션은 정상 동작합니다."
+                title="Unable to load the dead-letter queue"
+                impact="Other sections remain available."
               />
             ) : (
               <DeadLetterTable
@@ -322,7 +322,7 @@ export function OpsPipelineView({ roles, authEnabled = true }: OpsPipelineViewPr
             )}
           </Panel>
 
-          <section aria-label="조정 스캔" data-testid="section-scan">
+          <section aria-label="Reconciliation scan" data-testid="section-scan">
             <ScanResultCard
               result={
                 status === null
@@ -343,32 +343,31 @@ export function OpsPipelineView({ roles, authEnabled = true }: OpsPipelineViewPr
         </>
       ) : null}
 
-      <Panel as="section" aria-label="원본 아카이브" data-testid="section-archive">
-        <h2>원본 아카이브</h2>
+      <Panel as="section" aria-label="Payload archive" data-testid="section-archive">
+        <h2>Payload archive</h2>
         <div>
           <TextField
-            aria-label="전달 식별자"
+            aria-label="Delivery ID"
             data-testid="archive-query"
             value={archiveQuery}
-            placeholder="전달 식별자"
+            placeholder="Delivery ID"
             onChange={(event) => {
               setArchiveQuery(event.target.value);
             }}
           />
           <Button data-testid="archive-search" onClick={onArchiveSearch}>
-            조회
+            Load
           </Button>
         </div>
 
         {archiveView === 'archive_unavailable' ? (
           <p data-testid="archive-unavailable">
-            원본 아카이브 인덱스가 없습니다. 아직 이벤트가 없거나 보존 기간이 지난 상태이며, 이 화면의 다른 섹션은 정상
-            동작합니다.
+            The payload archive index is unavailable. There may be no events yet, or retention has expired. Other sections remain available.
           </p>
         ) : archiveView === 'archive_scope_empty' ? (
-          <p data-testid="archive-empty">조건에 맞는 원본이 없습니다.</p>
+          <p data-testid="archive-empty">No payloads match these filters.</p>
         ) : archive === null ? (
-          <p data-testid="archive-idle">전달 식별자로 원본 이벤트를 조회합니다.</p>
+          <p data-testid="archive-idle">Look up an original event by delivery ID.</p>
         ) : (
           <ul data-testid="archive-items">
             {archive.items.map((item) => (
@@ -393,7 +392,7 @@ export function OpsPipelineView({ roles, authEnabled = true }: OpsPipelineViewPr
                       setExpanded((current) => new Set(current).add(item.delivery_id));
                     }}
                   >
-                    원본 펼치기
+                    Expand payload
                   </Button>
                 )}
               </li>

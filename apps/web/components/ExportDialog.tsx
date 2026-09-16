@@ -2,8 +2,9 @@
 
 /** W-001 / QA-W001-20·21: preview count, explicit consent, then file or job. */
 import { useEffect, useRef, useState } from 'react';
-import { Banner, Button, Dialog } from '@conductor-by-89soone/react';
+import { Banner, Button, Dialog } from './ui';
 import type { QueryState } from '../lib/query-url';
+import { serviceMessage } from '../lib/service-message';
 
 export function ExportDialog({ state, disabled }: { readonly state: QueryState; readonly disabled: boolean }) {
   const [open, setOpen] = useState(false);
@@ -22,10 +23,10 @@ export function ExportDialog({ state, disabled }: { readonly state: QueryState; 
     setTotal(null); setError(null); setJob(null); setDownload(null); setBusy(false);
     void fetch('/api/exports', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...JSON.parse(body) as object, preview: true }), signal: abort.signal })
       .then(async (response) => {
-        const data = await response.json() as { total?: number; error?: { message?: string } };
-        if (!response.ok) throw new Error(data.error?.message ?? '대상 건수를 확인하지 못했습니다.');
+        const data = await response.json() as { total?: number; error?: { message?: string; code?: string } };
+        if (!response.ok) throw new Error(serviceMessage(data.error?.message, "Unable to determine the result count.", data.error?.code));
         if (!abort.signal.aborted) setTotal(data.total ?? 0);
-      }).catch((reason: unknown) => { if (!abort.signal.aborted) setError(reason instanceof Error ? reason.message : '대상 건수를 확인하지 못했습니다.'); });
+      }).catch((reason: unknown) => { if (!abort.signal.aborted) setError(reason instanceof Error ? reason.message : "Unable to determine the result count."); });
     return () => { abort.abort(); creation.current?.abort(); };
   }, [open, body]);
   useEffect(() => {
@@ -35,15 +36,15 @@ export function ExportDialog({ state, disabled }: { readonly state: QueryState; 
     const poll = async (): Promise<void> => {
       try {
         const response = await fetch(`/api/exports/${job}`, { signal: abort.signal, cache: 'no-store' });
-        const data = await response.json() as { state: string; download_url: string | null; error?: string | { message?: string } };
+        const data = await response.json() as { state: string; download_url: string | null; error?: string | { message?: string; code?: string } };
         if (!response.ok || data.state === 'failed' || data.state === 'cancelled') {
-          const reasons: Record<string, string> = { export_scope_changed: '접근 권한이 변경되었습니다.', export_epoch_changed: '시퀀스가 재채번되었습니다. 검색을 새로고침하세요.', export_limit_exceeded: '결과가 100,000건을 초과했습니다.', export_timeout: '내보내기 제한 시간 30분을 초과했습니다.', export_failed: '파일 생성에 실패했습니다.' };
-          throw new Error(typeof data.error === 'string' ? reasons[data.error] ?? '내보내기가 중단되었습니다.' : data.error?.message ?? '내보내기를 완료하지 못했습니다. 다시 요청하세요.');
+          const reasons: Record<string, string> = { export_scope_changed: "Your access permissions have changed.", export_epoch_changed: "The sequence was renumbered. Refresh your search.", export_limit_exceeded: "Results exceed 100,000 items.", export_timeout: "The export exceeded the 30-minute time limit.", export_failed: "Unable to generate the file." };
+          throw new Error(typeof data.error === 'string' ? reasons[data.error] ?? "The export was interrupted." : serviceMessage(data.error?.message, "Unable to complete the export. Please request it again.", data.error?.code));
         }
         if (abort.signal.aborted) return;
         if (data.download_url !== null) { setDownload(data.download_url.replace('/api/v1/', '/api/')); setBusy(false); }
         else timer = setTimeout(() => { void poll(); }, 1000);
-      } catch (reason) { if (!abort.signal.aborted) { setError(reason instanceof Error ? reason.message : '상태 확인에 실패했습니다.'); setBusy(false); } }
+      } catch (reason) { if (!abort.signal.aborted) { setError(reason instanceof Error ? reason.message : "Unable to check status."); setBusy(false); } }
     };
     void poll();
     return () => { abort.abort(); clearTimeout(timer); };
@@ -55,8 +56,8 @@ export function ExportDialog({ state, disabled }: { readonly state: QueryState; 
       const response = await fetch('/api/exports', { method: 'POST', headers: { 'content-type': 'application/json' }, body, signal: abort.signal });
       if (abort.signal.aborted) return;
       if (!response.ok) {
-        const data = await response.json() as { error?: { message?: string } };
-        throw new Error(data.error?.message ?? '내보내기에 실패했습니다.');
+        const data = await response.json() as { error?: { message?: string; code?: string } };
+        throw new Error(serviceMessage(data.error?.message, "Export failed.", data.error?.code));
       }
       if (response.status === 202) { const data = await response.json() as { job_id: number }; if (!abort.signal.aborted) setJob(data.job_id); return; }
       const blob = await response.blob();
@@ -65,25 +66,25 @@ export function ExportDialog({ state, disabled }: { readonly state: QueryState; 
       const link = document.createElement('a'); link.href = url; link.download = `pr-search.${format}`; link.click();
       setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
       setBusy(false); setOpen(false);
-    } catch (reason) { if (!abort.signal.aborted) { setError(reason instanceof Error ? reason.message : '내보내기에 실패했습니다.'); setBusy(false); } }
+    } catch (reason) { if (!abort.signal.aborted) { setError(reason instanceof Error ? reason.message : "Export failed."); setBusy(false); } }
   };
   return <>
-    <Button variant="ghost" size="sm" disabled={disabled} onClick={() => { setOpen(true); setBusy(false); }}>내보내기</Button>
+    <Button variant="ghost" size="sm" disabled={disabled} onClick={() => { setOpen(true); setBusy(false); }}>Export</Button>
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Content size="md">
-        <Dialog.Title>검색 결과 내보내기</Dialog.Title>
-        <Dialog.Description>현재 검색 조건과 접근 권한에 해당하는 결과를 파일로 받습니다. 최대 100,000건입니다.</Dialog.Description>
-        <p>검색 조건: <code>{state.q}</code></p>
-        <p role="status">{total === null ? error === null ? '대상 건수 확인 중…' : '대상 건수를 확인하지 못했습니다.' : `${total.toLocaleString('ko-KR')}건 · ${total > 1000 ? '비동기 작업 완료 후 다운로드' : '바로 다운로드'}`}</p>
-        <fieldset disabled={busy}><legend>파일 형식</legend>
-          <label><input type="radio" name="export-format" checked={format === 'csv'} onChange={() => { setFormat('csv'); }} />CSV</label>
-          <label><input type="radio" name="export-format" checked={format === 'json'} onChange={() => { setFormat('json'); }} />JSON</label>
+        <Dialog.Title>Export search results</Dialog.Title>
+        <Dialog.Description>Download up to 100,000 results matching your current search filters and access permissions.</Dialog.Description>
+        <p>Search query: <code>{state.q}</code></p>
+        <p role="status">{total === null ? error === null ? "Checking result count…" : "Unable to determine the result count." : `${total.toLocaleString("en-US")} items · ${total > 1000 ? "Download when the background job finishes" : "Download immediately"}`}</p>
+        <fieldset disabled={busy}><legend>File format</legend>
+          <label><input type="radio" name="export-format" checked={format === 'csv'} onChange={() => { setFormat('csv'); }} /> CSV</label>
+          <label><input type="radio" name="export-format" checked={format === 'json'} onChange={() => { setFormat('json'); }} /> JSON</label>
         </fieldset>
-        {error === null ? null : <Banner tone="danger" title="내보내기 실패">{error}</Banner>}
-        {job !== null ? <p role="status">작업 #{job}{busy ? ' 실행 중…' : ''}</p> : null}
-        {download === null ? null : <a href={download} download>완성된 파일 다운로드</a>}
-        <Button disabled={total === null || busy || total > 100000 || download !== null} onClick={() => { void create(); }}>내보내기 실행</Button>
-        <Dialog.Close asChild><Button variant="ghost">닫기</Button></Dialog.Close>
+        {error === null ? null : <Banner tone="danger" title="Export failed">{error}</Banner>}
+        {job !== null ? <p role="status">Job #{job}{busy ? "Running…" : ''}</p> : null}
+        {download === null ? null : <a href={download} download>Download completed file</a>}
+        <Button disabled={total === null || busy || total > 100000 || download !== null} onClick={() => { void create(); }}>Export</Button>
+        <Dialog.Close asChild><Button variant="ghost">Close</Button></Dialog.Close>
       </Dialog.Content>
     </Dialog.Root>
   </>;

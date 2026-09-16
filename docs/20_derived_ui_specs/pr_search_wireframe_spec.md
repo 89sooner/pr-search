@@ -1,6 +1,10 @@
 # PR Search 와이어프레임 사양서
 
-> 상태: review | 버전: v0.20 | 갱신일: 2026-09-16
+> CR-097 / FR-SRC-001~004: template.html의 좌측 탐색/중앙 결과 배치를 유지한다. 파일 트리는 탐색 하단, History는 중앙에 배치한다. Diff는 변경 파일 목록 / split 또는 unified 코드 / PR 설명으로 구성하며 Time-lapse는 리비전 목록 / 코드 / 선택 라인 이력과 상단 슬라이더로 구성한다. 모달 이동·전체화면·테마 전환을 제공한다. 모바일은 세로 영역과 수평 코드 스크롤을 사용한다. ADR-006의 SaaS 10곳 중 Linear식 밀도·Vercel식 탐색·Supabase식 데이터 패널을 참고하되 제품 토큰과 Radix를 유지한다.
+
+> CR-095: template.html 기준 상단 헤더, 최대 1400px 콘텐츠, 300px 저장소 사이드바와 유연한 본문. 본문 순서는 탭 → 소유자/저장소/브랜치 → 상태/검색어/작성자/라벨 → 날짜 → 검색/초기화 → 결과 표다. 좁은 화면은 한 열로 전환하고 결과 표만 가로 스크롤한다. 템플릿의 미구현 백엔드 기능은 가짜 UI로 표시하지 않는다.
+
+> 상태: review | 버전: v0.22 | 갱신일: 2026-09-17
 
 CR-079 화면 세부 계약: W-001 SearchView→ResultWorkbench→ResultTable, W-002 PrDetailView/lib/pr-detail, W-004 RangesView→RangeResultTable/lib/range가 M 표시 모델을 공유한다. seq 미채번은 '시퀀스 채번 대기', M만 없으면 'M 번호 대기', 미머지/비대상은 '대상 아님', 조회 장애는 '확인 불가'다. PR 번호·제목 링크·from_q·새 탭·키보드·커서는 유지한다. [설계 9절](../30_technical_architecture/pr_search_wp074_design.md)은 네 query key·복사·제한 poll·행별 추가 요청 금지의 정본이다.
 

@@ -67,9 +67,9 @@ describe('RegistrationRequestQueue (C-071)', () => {
   it('QA-A002-06: 처리 상태·처리자·처리 시각·메모를 함께 보인다', () => {
     render(<RegistrationRequestQueue requests={REQUESTS} onPrefill={vi.fn()} onDismiss={vi.fn()} />);
     const dismissed = screen.getAllByTestId('request-row')[1] as HTMLElement;
-    expect(dismissed.textContent).toContain('종료됨');
+    expect(dismissed.textContent).toContain("Closed");
     expect(within(dismissed).getByTestId('request-resolved-by').textContent).toBe('operator');
-    expect(within(dismissed).getByTestId('request-note').textContent).toContain('사내 저장소가 아닙니다');
+    expect(within(dismissed).getByTestId('request-note').textContent).toContain("사내 저장소가 아닙니다");
   });
 
   it('**QA-A002-07: "등록 폼 채우기"는 요청 상태를 바꾸지 않는다** — 폼만 채운다', () => {
@@ -105,7 +105,7 @@ describe('RegistrationRequestQueue (C-071)', () => {
 
     fireEvent.change(screen.getByTestId('request-dismiss-reason'), { target: { value: '대상이 아닙니다' } });
     fireEvent.click(screen.getByTestId('request-dismiss-submit'));
-    expect(onDismiss).toHaveBeenCalledWith('101', '대상이 아닙니다');
+    expect(onDismiss).toHaveBeenCalledWith('101', "대상이 아닙니다");
   });
 
   it('상한을 넘는 사유는 보내지 않는다', () => {
@@ -122,9 +122,9 @@ describe('RegistrationRequestQueue (C-071)', () => {
       <RegistrationRequestQueue requests={REQUESTS} onPrefill={vi.fn()} onDismiss={vi.fn()} nextCursor="abc" />,
     );
     const count = screen.getByTestId('request-count').textContent ?? '';
-    expect(count).toContain('지금까지 3건');
-    expect(count).toContain('더 남아 있습니다');
-    expect(count).not.toContain('전체 3건');
+    expect(count).toContain("Loaded 3 items so far.");
+    expect(count).toContain("More items available.");
+    expect(count).not.toContain("Total 3");
   });
 
   it('빈 목록은 나머지 섹션을 막지 않는다 (`requests_empty`)', () => {
@@ -187,9 +187,9 @@ describe('RepositoryRegistrationForm (C-043)', () => {
 
     const added = screen.getByTestId('registration-added-branches').textContent ?? '';
     expect(added).toContain('release');
-    expect(added).toContain('잡 운영 화면');
+    expect(added).toContain("job operations");
     // 시간을 지어내지 않는다.
-    expect(added).not.toMatch(/약 \d+|예상|분 소요/);
+    expect(added).not.toMatch(/about \d+|estimated|minutes required/);
     expect(screen.getByTestId('registration-sequence-jobs').textContent).toContain('77');
   });
 
@@ -199,8 +199,8 @@ describe('RepositoryRegistrationForm (C-043)', () => {
 
     const message = screen.getByTestId('unregister-message').textContent ?? '';
     expect(message).toBe(UNREGISTER_CONFIRM_MESSAGE);
-    expect(message).toContain('문서는 유지됩니다');
-    expect(message).not.toContain('삭제');
+    expect(message).toContain("documents will be retained");
+    expect(message).not.toContain("Delete");
   });
 
   it('**확인 전에는 `onUnregister`를 부르지 않는다**', () => {

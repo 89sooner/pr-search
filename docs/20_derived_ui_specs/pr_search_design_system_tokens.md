@@ -1,6 +1,10 @@
 # PR Search 디자인 시스템 토큰 문서
 
-> 상태: review | 버전: v0.7 | 갱신일: 2026-09-16
+> CR-096: 전체 화면의 정본 토큰은 `apps/web/app/ui.css`의 --ui-*이며 :root 및 [data-theme='dark']가 각 팔레트를 정의한다. 아래 Conductor 토큰은 역사 기록이다. Reader 화면 --r-*는 --ui-*를 참조한다. 폰트는 로컬 Geist Variable, 데이터 식별자는 monospace. 테마는 html에 적용해 Radix 포털까지 동일한 배경·텍스트·포커스 대비를 유지한다.
+
+> CR-095: 아래 Conductor 규칙은 operator 기존 UI에만 적용한다. 일반 UI는 reader-workspace.css의 --r-* 토큰, .reader-ui 범위, Geist Variable 로컬 폰트를 사용한다. 기본은 밝은 중성 배경 #f7f8fa·흰 표면·청색 #3566d9이며 컨트롤 focus-visible, 축소 모션, 포털의 동일 토큰 범위를 제공한다.
+
+> 상태: review | 버전: v0.9 | 갱신일: 2026-09-16
 
 ## 1. 디자인 원칙
 

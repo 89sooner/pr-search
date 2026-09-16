@@ -16,8 +16,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function OpsRepositoriesPage(): Promise<ReactNode> {
   return (
-    <GuardedPage title="저장소 등록 관리" returnTo="/ops/repositories">
-      <h1>저장소 등록 관리</h1>
+    <GuardedPage title="Repository registration management" returnTo="/ops/repositories">
+      <h1>Repository registration management</h1>
       <OpsRepositoriesView />
     </GuardedPage>
   );

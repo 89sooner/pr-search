@@ -119,15 +119,15 @@ export function mergeNumberEntryHref(link: {
 
 /** `pending` 사유의 사람 읽는 설명. 내부 blocker 식별자는 서버가 주지 않으므로 여기에도 없다. */
 const PENDING_REASON_TEXT: Readonly<Record<string, string>> = {
-  pr_evidence_pending: '이 PR의 머지 근거를 아직 확인하는 중입니다.',
-  predecessor_pending: '앞선 항목의 PR 연결이 확정되지 않아 그 지점에서 채번이 멈췄습니다.',
-  negative_evidence_unavailable: '앞선 항목이 PR 없는 반영인지 확정할 근거가 아직 없습니다.',
-  partial_lookup: '후보 조회가 아직 끝나지 않았습니다.',
-  profile_unverified: '과거 머지 방식이 확인되지 않았습니다.',
-  unsupported_merge_profile: '스쿼시가 아닌 머지 이력이 있어 채번하지 않습니다.',
-  mapping_conflict: '머지 근거가 서로 모순되어 채번을 멈췄습니다.',
-  fetch_failed: '머지 근거 조회가 일시 실패했습니다. 다음 회차에 다시 시도합니다.',
-  canonical_mismatch: '정본 대조에 불일치가 있어 채번을 멈췄습니다.',
+  pr_evidence_pending: 'Merge evidence for this PR is still being checked.',
+  predecessor_pending: 'Numbering stopped at an earlier entry whose PR association is not confirmed.',
+  negative_evidence_unavailable: 'There is not enough evidence to confirm whether an earlier entry was applied without a PR.',
+  partial_lookup: 'Candidate lookup has not finished yet.',
+  profile_unverified: 'The historical merge method has not been confirmed.',
+  unsupported_merge_profile: 'Numbering is unavailable because the history includes non-squash merges.',
+  mapping_conflict: 'Numbering stopped because merge evidence is contradictory.',
+  fetch_failed: 'Merge evidence lookup temporarily failed. It will retry in the next cycle.',
+  canonical_mismatch: 'Numbering stopped because verification against the source of truth found a mismatch.',
 };
 
 /**
@@ -149,37 +149,37 @@ export function mergeNumberView(fields: MergeNumberFields, context: MergeNumberC
   switch (state) {
     case 'not_applicable':
       if (reason === 'branch_not_tracked') {
-        return shown(state, reason, '채번 비대상 브랜치', '대상 브랜치가 채번 대상이 아니어서 M 번호가 없습니다.', 'neutral');
+        return shown(state, reason, 'Branch not numbered', 'There is no M number because the base branch is not eligible for numbering.', 'neutral');
       }
-      return shown(state, reason, 'M 번호 대상 아님', '머지되지 않은 PR에는 M 번호가 없습니다.', 'neutral');
+      return shown(state, reason, 'Not eligible for an M number', 'Unmerged PRs do not have M numbers.', 'neutral');
 
     case 'unavailable':
       if (reason === 'repository_code_unavailable') {
         return shown(
           state,
           reason,
-          '저장소 코드 확인 필요',
-          '저장소 이름에서 코드를 정할 수 없어 M 번호를 표기하지 못했습니다. 번호 자체는 부여되었을 수 있습니다.',
+          'Repository code needs verification',
+          'The M number cannot be displayed because a code could not be derived from the repository name. A number may already be assigned.',
           'warning',
         );
       }
       if (reason === 'number_capacity_exceeded') {
-        return shown(state, reason, 'M 번호 확인 불가', 'M 번호가 표기 가능한 범위를 넘어 표시하지 않습니다.', 'warning');
+        return shown(state, reason, 'M number unavailable', 'The M number exceeds the supported display range.', 'warning');
       }
-      return shown(state, reason, 'M 번호 확인 불가', 'M 번호를 확인하지 못했습니다. 다시 시도하면 표시될 수 있습니다.', 'warning');
+      return shown(state, reason, 'M number unavailable', 'The M number could not be retrieved. Try again.', 'warning');
 
     case 'pending': {
       if (reason === 'not_sequenced') {
         return shown(
           state,
           reason,
-          '시퀀스 채번 대기',
-          '머지 시퀀스가 아직 채번되지 않아 M 번호를 계산하지 않았습니다. 잠정 번호는 없습니다.',
+          'Awaiting sequence numbering',
+          'The M number has not been calculated because the merge sequence is not assigned yet. No provisional number is available.',
           'neutral',
         );
       }
-      const why = reason === null ? '사유를 아직 확인하지 못했습니다.' : (PENDING_REASON_TEXT[reason] ?? `사유 코드: ${reason}.`);
-      return shown(state, reason, 'M 번호 대기', `M 번호가 아직 부여되지 않았습니다. ${why} 잠정 번호는 없습니다.`, 'neutral');
+      const why = reason === null ? 'The reason is not available yet.' : (PENDING_REASON_TEXT[reason] ?? `Reason code: ${reason}.`);
+      return shown(state, reason, 'M number pending', `An M number has not been assigned yet. ${why} No provisional number is available.`, 'neutral');
     }
 
     case 'assigned': {
@@ -189,7 +189,7 @@ export function mergeNumberView(fields: MergeNumberFields, context: MergeNumberC
        * 그릴 수 없으므로 "확인 불가"로 말한다 — 빈 배지는 "번호가 없다"로 읽힌다.
        */
       if (typeof number !== 'string' || number === '') {
-        return shown('unavailable', reason, 'M 번호 확인 불가', 'M 번호 표기를 받지 못했습니다. 다시 시도하면 표시될 수 있습니다.', 'warning');
+        return shown('unavailable', reason, 'M number unavailable', 'The M number display value was not received. Try again.', 'warning');
       }
       const epoch = typeof fields.merge_number_epoch === 'number' ? fields.merge_number_epoch : null;
       const link =
@@ -210,14 +210,14 @@ export function mergeNumberView(fields: MergeNumberFields, context: MergeNumberC
       const space =
         context.repository !== null && context.baseBranch !== null
           ? `${context.repository}@${context.baseBranch}`
-          : '이 시퀀스 공간';
-      const epochText = epoch === null ? '' : ` (에폭 ${String(epoch)})`;
+          : 'this sequence space';
+      const epochText = epoch === null ? '' : ` (epoch ${String(epoch)})`;
       return {
         kind: 'shown',
         state,
         reason,
         label: number,
-        description: `${space}의 M 번호${epochText}. PR 번호를 대체하지 않으며 선후관계 확인에만 씁니다. 시퀀스 에폭이 바뀌면 무효가 됩니다.`,
+        description: `${space} M number${epochText}. Use it only to determine merge order; it does not replace the PR number. It becomes invalid when the sequence epoch changes.`,
         tone: 'accent',
         link,
       };
@@ -441,12 +441,12 @@ export function judgeMergeNumberResolve(
       return { kind: 'pending', reason: stringOrNull(record['merge_number_reason']), prNumber };
     }
     // 2xx인데 아는 모양이 아니다 — 성공으로 위장하지 않는다.
-    return { kind: 'error', code: 'UNEXPECTED_RESPONSE', message: '해석 응답의 모양이 계약과 다릅니다.', correlationId: stringOrNull(record['correlation_id']), status };
+    return { kind: 'error', code: 'UNEXPECTED_RESPONSE', message: 'The resolution response does not match the expected format.', correlationId: stringOrNull(record['correlation_id']), status };
   }
 
   const error = (typeof record['error'] === 'object' && record['error'] !== null ? record['error'] : {}) as Record<string, unknown>;
   const code = stringOrNull(error['code']) ?? 'UNKNOWN';
-  const message = stringOrNull(error['message']) ?? '해석에 실패했습니다.';
+  const message = stringOrNull(error['message']) ?? 'Resolution failed.';
   const detail = (typeof error['detail'] === 'object' && error['detail'] !== null ? error['detail'] : {}) as Record<string, unknown>;
   const reason = stringOrNull(detail['reason']);
   const correlationId = stringOrNull(record['correlation_id']);

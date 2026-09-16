@@ -22,7 +22,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Badge, Button, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Panel, Table } from './ui';
 import { coChangeReasonLabel, judgeCoChanges, type CoChangeView } from '../lib/relations';
 
 export interface CoChangeSectionProps {
@@ -78,7 +78,7 @@ export function CoChangeSection({
 
   return (
     <Panel as="section" aria-labelledby={`${sectionId}-heading`} data-testid={`section-${sectionId}`}>
-      <h2 id={`${sectionId}-heading`}>동시 변경</h2>
+      <h2 id={`${sectionId}-heading`}>Co-changes</h2>
 
       <Button
         type="button"
@@ -96,38 +96,38 @@ export function CoChangeSection({
           }
         }}
       >
-        {expanded ? '접기' : '펼치기'}
+        {expanded ? "Collapse" : "Expand"}
       </Button>
 
       <div id={`${sectionId}-body`} hidden={!expanded} data-testid={`body-${sectionId}`}>
-        {outcome.phase === 'loading' ? <p data-testid="cochange-loading">불러오는 중…</p> : null}
+        {outcome.phase === 'loading' ? <p data-testid="cochange-loading">Loading…</p> : null}
 
         {outcome.phase === 'error' ? (
           <p data-testid="cochange-error">
-            동시 변경을 불러오지 못했습니다.{' '}
+            Unable to load co-changes.{' '}
             <Button type="button" data-testid="cochange-retry" onClick={load}>
-              다시 시도
+              Try again
             </Button>
           </p>
         ) : null}
 
         {outcome.phase === 'ready' && outcome.view.kind === 'unavailable' ? (
           <p data-testid="cochange-unavailable">
-            <Badge tone="neutral">계산 불가</Badge> {coChangeReasonLabel(outcome.view.reason)}
+            <Badge tone="neutral">Cannot calculate</Badge> {coChangeReasonLabel(outcome.view.reason)}
           </p>
         ) : null}
 
         {outcome.phase === 'ready' && outcome.view.kind === 'ready' ? (
           outcome.view.items.length === 0 ? (
-            <p data-testid="cochange-empty">겹치는 변경 경로를 가진 PR이 없습니다.</p>
+            <p data-testid="cochange-empty">No PRs share changed paths.</p>
           ) : (
-            <Table caption="동시 변경 상관 (겹침 정도 내림차순, 상위 20건)">
+            <Table caption="Co-change correlations (top 20, highest overlap first)">
               <Table.Head>
                 <Table.Row>
                   <Table.HeaderCell scope="col">PR</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">작성자</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">겹침 정도</Table.HeaderCell>
-                  <Table.HeaderCell scope="col">겹치는 경로</Table.HeaderCell>
+                  <Table.HeaderCell scope="col">Author</Table.HeaderCell>
+                  <Table.HeaderCell scope="col">Overlap</Table.HeaderCell>
+                  <Table.HeaderCell scope="col">Overlapping paths</Table.HeaderCell>
                 </Table.Row>
               </Table.Head>
               <Table.Body>

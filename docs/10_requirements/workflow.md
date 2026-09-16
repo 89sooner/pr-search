@@ -1,6 +1,8 @@
 # PR Search SRS 작성 워크플로
 
-> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+> CR-097 / FR-SRC-001~004: 저장소·브랜치 선택 → 좌측 Files & folders 확장 → 파일/폴더 선택 → 고정 SHA의 경로 History → 커밋 Diff 또는 파일 리비전 둘 비교 → Time-lapse 리비전 탐색·라인 이력. 일반 검색과 Repository workspace 양쪽 및 PR/커밋 상세에서 진입한다. rename 이전 경로는 Diff에서 이어가며, 자동 rename 계보는 보장하지 않는다.
+
+> 상태: review | 버전: v0.3 | 갱신일: 2026-09-17
 
 ## 1. 목적
 

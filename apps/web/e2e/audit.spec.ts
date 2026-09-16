@@ -126,7 +126,7 @@ test.describe('A-004 감사 로그', () => {
     await page.goto('/ops/audit');
     await expect(page.getByTestId('audit-row').first()).toBeVisible();
 
-    await page.getByLabel('행위 유형').fill('entity.view');
+    await page.getByLabel("Action type").fill('entity.view');
     await page.getByTestId('audit-apply').click();
 
     // URL이 조건을 담는다 — 조사 중이던 조건을 붙여넣기로 넘길 수 있다.
@@ -163,7 +163,7 @@ test.describe('A-004 감사 로그', () => {
       .poll(() => seen.some((s) => s.includes('action=retention.purge') && s.includes('user_id=alice')))
       .toBe(true);
     // 입력 칸도 그 값을 보인다 — URL과 화면이 어긋나지 않는다.
-    await expect(page.getByLabel('행위 유형')).toHaveValue('retention.purge');
+    await expect(page.getByLabel("Action type")).toHaveValue('retention.purge');
   });
 
   test('커서 다음 페이지가 이어진다 — 앞 페이지를 비우지 않는다', async ({ page }) => {
@@ -182,9 +182,9 @@ test.describe('A-004 감사 로그', () => {
     await page.goto('/ops/audit');
 
     await expect(page.getByTestId('audit-view')).toHaveAttribute('data-state', 'no_permission');
-    await expect(page.getByText(/security_officer/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /security_officer/ })).toBeVisible();
     // 조건에 맞는 기록이 없다고 말하지 않는다 — 볼 자격이 없는 것이다.
-    await expect(page.getByText(/조건에 맞는 감사 기록이 없습니다/)).toHaveCount(0);
+    await expect(page.getByText(/No audit records match these filters/)).toHaveCount(0);
   });
 
   test('QA-A004-03: 수정·삭제 컨트롤이 표에 없다 (AC-3)', async ({ page }) => {
@@ -195,7 +195,7 @@ test.describe('A-004 감사 로그', () => {
     const table = page.getByTestId('audit-record-table');
     await expect(table.locator('button')).toHaveCount(0);
     await expect(table.locator('input')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /삭제|수정|편집/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Delete|Update|Edit/ })).toHaveCount(0);
   });
 
   test('행위 후보에 legacy 값이 있고 미활성 액션은 없다 (AC-7, DEV-403)', async ({ page }) => {

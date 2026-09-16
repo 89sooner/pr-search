@@ -57,9 +57,9 @@ export function formatSequenceRef(value: number | null | undefined, epoch: numbe
 
 /** 기간 표기의 단위. 큰 것부터 본다. */
 const DURATION_UNITS: readonly (readonly [seconds: number, suffix: string])[] = [
-  [86_400, '일'],
-  [3_600, '시간'],
-  [60, '분'],
+  [86_400, 'd'],
+  [3_600, 'h'],
+  [60, 'm'],
 ];
 
 /**
@@ -73,7 +73,7 @@ export function formatDuration(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return '—';
 
   const total = Math.trunc(seconds);
-  if (total < 60) return `${String(total)}초`;
+  if (total < 60) return `${String(total)}s`;
 
   const parts: string[] = [];
   let rest = total;

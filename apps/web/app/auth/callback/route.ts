@@ -178,7 +178,7 @@ function logAuthFailure(correlationId: string, provider: string, cause: unknown)
   console.error(
     JSON.stringify({
       level: 'warn',
-      message: '로그인을 완료하지 못했다',
+      message: 'Unable to complete sign-in',
       correlation_id: correlationId,
       provider,
       // `exchangeGitHubCode`·`exchangeCode`가 본문을 메시지에 담지 않도록 만들어져
@@ -192,7 +192,7 @@ function logAuthFailure(correlationId: string, provider: string, cause: unknown)
 function authFailed(correlationId: string, secure: boolean): NextResponse {
   const response = NextResponse.json(
     {
-      error: { code: 'UNAUTHENTICATED', message: '인증을 완료하지 못했습니다. 다시 로그인하세요.' },
+      error: { code: 'UNAUTHENTICATED', message: 'Authentication failed. Sign in again.' },
       correlation_id: correlationId,
     },
     { status: 401 },
@@ -208,7 +208,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   if (!config.authEnabled) {
     return NextResponse.json(
-      { error: { code: 'PERMISSION_UNAVAILABLE', message: '인증이 구성되지 않았습니다' } },
+      { error: { code: 'PERMISSION_UNAVAILABLE', message: 'Authentication is not configured' } },
       { status: 503 },
     );
   }
@@ -220,20 +220,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // 같은 이름이 둘이면 없는 것으로 본다 — 남이 심은 왕복 상태로 로그인이 완결되지 않게 한다.
   const roundTrip = decodeRoundTrip(readBrowserCookie(request.headers.get('cookie'), oidcStateCookieName(secure)));
   if (roundTrip === null) {
-    logAuthFailure(correlationId, provider, '왕복 쿠키가 없거나 읽을 수 없다');
+    logAuthFailure(correlationId, provider, 'Round-trip cookie is missing or unreadable');
     return authFailed(correlationId, secure);
   }
 
   // 2. `state` 비교. IdP가 준 것과 우리가 만든 것이 같아야 한다 (CSRF).
   const received = request.nextUrl.searchParams.get('state') ?? '';
   if (!statesMatch(roundTrip.state, received)) {
-    logAuthFailure(correlationId, provider, 'state가 일치하지 않는다');
+    logAuthFailure(correlationId, provider, 'State does not match');
     return authFailed(correlationId, secure);
   }
 
   const code = request.nextUrl.searchParams.get('code') ?? '';
   if (code === '') {
-    logAuthFailure(correlationId, provider, '인가 코드가 없다');
+    logAuthFailure(correlationId, provider, 'Authorization code is missing');
     return authFailed(correlationId, secure);
   }
 
@@ -252,7 +252,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       console.error(
         JSON.stringify({
           level: 'warn',
-          message: '팀 목록이 페이지 상한에서 잘렸다 — 역할이 일부 팀만으로 산출됐다',
+          message: 'Team list truncated at the page limit; roles were derived from a partial team list',
           correlation_id: correlationId,
           login: identity.login,
         }),

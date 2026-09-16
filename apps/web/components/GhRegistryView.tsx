@@ -1,5 +1,8 @@
 'use client';
 
+import { dimensionLabel, dimensionNote, gateDetail, gateLabel } from '../lib/gh-presentation';
+import { serviceMessage } from '../lib/service-message';
+
 /**
  * A-006 gh capability·버전 레지스트리 (WP-078 / FR-GH-001 AC-5·AC-6, FR-GH-011 AC-2·AC-3, NFR-009, QA-GH-32, CR-088).
  *
@@ -20,7 +23,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Badge, Button, Panel, Table, TextField } from '@conductor-by-89soone/react';
+import { Badge, Button, Panel, Table, TextField } from './ui';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { describeApiError, loginPathOf, type CapabilitiesResponse } from '../lib/gh';
@@ -82,14 +85,14 @@ async function loadJson<T>(url: string, signal: AbortSignal): Promise<Loaded<T>>
     response = await fetch(url, { signal, cache: 'no-store' });
   } catch (error) {
     if (signal.aborted) throw error;
-    return { kind: 'failed', message: '서버에 연결하지 못했습니다.', correlationId: null };
+    return { kind: 'failed', message: "Unable to connect to the server.", correlationId: null };
   }
   const body: unknown = await response.json().catch(() => null);
   if (response.status === 404) return { kind: 'unavailable' };
   if (response.status === 403) return { kind: 'no_permission' };
   if (response.status === 401) return { kind: 'unauthenticated', loginPath: loginPathOf(body) };
   if (!response.ok) {
-    const shaped = describeApiError(body, '응답을 읽지 못했습니다.');
+    const shaped = describeApiError(body, "Unable to read the response.");
     return { kind: 'failed', message: shaped.message, correlationId: shaped.correlationId };
   }
   return { kind: 'ok', body: body as T };
@@ -98,7 +101,7 @@ async function loadJson<T>(url: string, signal: AbortSignal): Promise<Loaded<T>>
 function formatTime(iso: string | null): string {
   if (iso === null) return '—';
   const at = new Date(iso);
-  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString('ko-KR', { hour12: false });
+  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString("en-US", { hour12: false });
 }
 
 function StatusBadge({ status }: { readonly status: string }): ReactNode {
@@ -114,13 +117,13 @@ function Hash({ value }: { readonly value: string | null }): ReactNode {
 }
 
 const CONTRACT_STATE_TEXT: Readonly<Record<ReturnType<typeof contractVerificationState>, string>> = {
-  verified: '결과 계약 검증',
-  legacy: '결과 계약 미검증(옛 판)',
-  unknown: '판 모름',
+  verified: "Result contract verified",
+  legacy: "Result contract unverified (older version)",
+  unknown: "Unknown version",
 };
 
 function VerificationRow({ row, now }: { readonly row: VerificationView; readonly now: Date }): ReactNode {
-  const inventoryMatch = row.inventory_hash_observed === null ? '—' : row.inventory_hash_observed === row.inventory_hash_expected ? '일치' : '불일치';
+  const inventoryMatch = row.inventory_hash_observed === null ? '—' : row.inventory_hash_observed === row.inventory_hash_expected ? "Match" : "Mismatch";
   const contractState = contractVerificationState(row);
   return (
     <tr data-testid="gh-registry-verification" data-source={row.checked_by} data-status={row.status}>
@@ -132,14 +135,14 @@ function VerificationRow({ row, now }: { readonly row: VerificationView; readonl
       </td>
       <td>{row.gh_version_observed ?? '—'}</td>
       <td>{inventoryMatch}</td>
-      <td>{row.matches_served_manifest ? '예' : '아니오'}</td>
+      <td>{row.matches_served_manifest ? "Yes" : "No"}</td>
       <td>
         {row.validator_version} / {row.rules_version}
       </td>
       <td data-contract-dimensions={contractState}>
         {row.report_version ?? '—'} · {CONTRACT_STATE_TEXT[contractState]}
       </td>
-      <td>{isOverdue(row.checked_at, 86_400_000, now) ? '지남' : '최근'}</td>
+      <td>{isOverdue(row.checked_at, 86_400_000, now) ? "Expired" : "Recent"}</td>
     </tr>
   );
 }
@@ -151,66 +154,66 @@ function VerificationRow({ row, now }: { readonly row: VerificationView; readonl
 function ContractsPanel({ contracts, gateScope }: { readonly contracts: ContractSummaryView | undefined; readonly gateScope: string | undefined }): ReactNode {
   return (
     <Panel data-testid="gh-registry-contracts">
-      <h2>결과 계약과 연결 (GATE-GH-01d)</h2>
+      <h2>Result contracts and connections (GATE-GH-01d)</h2>
       {contracts === undefined ? (
-        <p data-testid="gh-registry-contracts-none">이 배포의 응답에는 결과 계약 요약이 없습니다 — 결과 계약을 싣지 않는 옛 판입니다.</p>
+        <p data-testid="gh-registry-contracts-none">This deployment uses an older response format without a result contract summary.</p>
       ) : (
         <>
           <p>
-            <small>결과 계약이 있고 타입이 호환된다는 것은 실행 승인이 아닙니다. 아래 수치는 분모가 달라 서로 합치지 않습니다.</small>
+            <small>Result contracts and type compatibility do not grant execution approval. The figures below have different denominators and cannot be added together.</small>
           </p>
-          <Table data-testid="gh-registry-contract-summary" caption="결과 계약·port·구현 adapter·실행 허용·타입 간선·다단계 흐름·대상 GHES 확인">
+          <Table data-testid="gh-registry-contract-summary" caption="Result contracts, ports, adapters, execution permissions, type edges, workflows, and GHES verification">
             <thead>
               <tr>
-                <th scope="col">항목</th>
-                <th scope="col">값</th>
-                <th scope="col">분모와 뜻</th>
+                <th scope="col">Item</th>
+                <th scope="col">Value</th>
+                <th scope="col">Denominator and meaning</th>
               </tr>
             </thead>
             <tbody>
               <tr data-item="result_contracts">
-                <td>결과 계약 분류</td>
+                <td>Result contract classification</td>
                 <td>
                   {String(contracts.resultContracts.classified)}/{String(contracts.resultContracts.total)}
                 </td>
                 <td>leaf command</td>
               </tr>
               <tr data-item="output_ports">
-                <td>출력 port</td>
+                <td>Output port</td>
                 <td>{String(contracts.outputPorts.ports)}</td>
-                <td>{String(contracts.outputPorts.commands)}개 command(조건부 연결 가능)의 결과에서 참조를 만드는 방법</td>
+                <td>{String(contracts.outputPorts.commands)} commands whose results can conditionally produce references</td>
               </tr>
               <tr data-item="input_ports">
-                <td>입력 port</td>
+                <td>Input port</td>
                 <td>{String(contracts.inputPorts.ports)}</td>
-                <td>대상 자원 자리를 가진 {String(contracts.inputPorts.commands)}개 command</td>
+                <td>With target resource slots: {String(contracts.inputPorts.commands)} commands</td>
               </tr>
               <tr data-item="adapters">
-                <td>구현된 결과 adapter</td>
+                <td>Implemented result adapters</td>
                 <td>{String(contracts.adaptersImplemented.length)}</td>
-                <td>{contracts.adaptersImplemented.join(', ') || '없음'}</td>
+                <td>{contracts.adaptersImplemented.join(', ') || "None"}</td>
               </tr>
               <tr data-item="executable">
-                <td>실행 허용</td>
+                <td>Execution allowed</td>
                 <td>{String(contracts.executableCommands.length)}</td>
-                <td>{contracts.executableCommands.join(', ') || '없음'}</td>
+                <td>{contracts.executableCommands.join(', ') || "None"}</td>
               </tr>
               <tr data-item="edges">
-                <td>타입상 호환 간선</td>
+                <td>Type-compatible edges</td>
                 <td>{String(contracts.graph.edges)}</td>
                 <td>
-                  조건부 {String(contracts.graph.conditional)} · 직접 {String(contracts.graph.direct)} · 타입은 같지만 불가 {String(contracts.graph.blockedSameType)}
+                  Conditional {String(contracts.graph.conditional)} · Direct {String(contracts.graph.direct)} · Same type, incompatible {String(contracts.graph.blockedSameType)}
                 </td>
               </tr>
               <tr data-item="flows">
-                <td>실행 가능한 다단계 흐름</td>
+                <td>Executable workflows</td>
                 <td>{String(contracts.executableFlows)}</td>
-                <td>Recipe·다단계 실행은 열리지 않았다</td>
+                <td>Recipes and multi-step execution are not enabled</td>
               </tr>
               <tr data-item="host">
-                <td>대상 GHES 확인</td>
+                <td>Target GHES verification</td>
                 <td>{String(contracts.hostVerified)}</td>
-                <td>사내 GHES에서 확인한 command</td>
+                <td>Commands verified on internal GHES</td>
               </tr>
             </tbody>
           </Table>
@@ -224,7 +227,7 @@ function ContractsPanel({ contracts, gateScope }: { readonly contracts: Contract
       )}
       {gateScope === undefined ? null : (
         <p data-testid="gh-registry-gate-scope">
-          <small>{gateScope}</small>
+          <small>{serviceMessage(gateScope, 'Only GATE-GH-01, 01b, and 01d are evaluated. Passing 01d does not complete REL-007; gates 01e, 06, 08 and target GHES support remain separate.')}</small>
         </p>
       )}
     </Panel>
@@ -268,45 +271,45 @@ export function GhRegistryView(): ReactNode {
     void loadJson<CommandDetailView>(commandUrl(id), controller.signal)
       .then((loaded) => {
         if (loaded.kind === 'ok') setDetail({ kind: 'ok', body: loaded.body });
-        else setDetail({ kind: 'failed', message: loaded.kind === 'failed' ? loaded.message : `상세를 읽지 못했습니다 (${loaded.kind}).` });
+        else setDetail({ kind: 'failed', message: loaded.kind === 'failed' ? loaded.message : `Unable to load details (${loaded.kind}).` });
       })
       .catch(() => {
-        setDetail({ kind: 'failed', message: '상세를 읽지 못했습니다.' });
+        setDetail({ kind: 'failed', message: "Unable to load details." });
       });
   }, []);
 
   if (screen.kind === 'loading') {
     return (
       <div data-testid="gh-registry" data-state="loading" aria-busy="true">
-        <p>레지스트리 상태를 읽는 중입니다…</p>
+        <p>Loading registry status…</p>
       </div>
     );
   }
   if (screen.kind === 'unavailable') {
     return (
       <div data-testid="gh-registry" data-state="unavailable">
-        <EmptyState cause="not_found" title="이 배포에서는 GitHub 작업이 열리지 않았습니다" description="GH_OPERATIONS_ENABLED가 꺼져 있어 레지스트리 조회 경로가 없습니다. 켜는 방법은 런북 7.C에 있습니다." />
+        <EmptyState cause="not_found" title="GitHub operations are not enabled in this deployment" description="Registry queries are unavailable because GH_OPERATIONS_ENABLED is disabled. See runbook 7.C to enable it." />
       </div>
     );
   }
   if (screen.kind === 'no_permission') {
     return (
       <div data-testid="gh-registry" data-state="no_permission">
-        <EmptyState cause="no_permission" title="이 화면은 운영자(operator) 또는 보안 담당자(security_officer) 역할이 필요합니다" description="필요한 역할을 그대로 적습니다. 다른 역할로는 레지스트리 상태를 조회할 수 없습니다." />
+        <EmptyState cause="no_permission" title="The operator or security_officer role is required" description="Only operator and security_officer can view registry status." />
       </div>
     );
   }
   if (screen.kind === 'unauthenticated') {
     return (
       <div data-testid="gh-registry" data-state="unauthenticated">
-        <ErrorBanner tone="warning" title="세션이 없거나 만료되었습니다" impact="다시 로그인하면 이 화면으로 돌아옵니다." action={screen.loginPath === null ? undefined : <a href={screen.loginPath}>로그인</a>} />
+        <ErrorBanner tone="warning" title="Session missing or expired" impact="Sign in again to return to this page." action={screen.loginPath === null ? undefined : <a href={screen.loginPath}>Sign in</a>} />
       </div>
     );
   }
   if (screen.kind === 'failed' || status === null) {
     return (
       <div data-testid="gh-registry" data-state="failed">
-        <ErrorBanner tone="danger" title="레지스트리 상태를 읽지 못했습니다" impact={screen.kind === 'failed' ? screen.message : '응답이 비어 있습니다.'} correlationId={screen.kind === 'failed' ? screen.correlationId : null} action={<Button variant="secondary" onClick={() => setNonce((value) => value + 1)}>다시 읽기</Button>} />
+        <ErrorBanner tone="danger" title="Unable to load registry status" impact={screen.kind === 'failed' ? screen.message : "The response is empty."} correlationId={screen.kind === 'failed' ? screen.correlationId : null} action={<Button variant="secondary" onClick={() => setNonce((value) => value + 1)}>Reload</Button>} />
       </div>
     );
   }
@@ -320,81 +323,81 @@ export function GhRegistryView(): ReactNode {
   return (
     <div data-testid="gh-registry" data-state="ready" data-records={headline.kind}>
       <Panel data-testid="gh-registry-headline">
-        <h2>이 배포가 쓰는 gh와 manifest</h2>
+        <h2>gh and manifest used by this deployment</h2>
         <dl>
-          <dt>고정 gh 버전</dt>
+          <dt>Pinned gh version</dt>
           <dd data-testid="gh-registry-gh-version">{status.gh.pinned_version}</dd>
-          <dt>바이너리 SHA-256(기대)</dt>
+          <dt>Expected binary SHA-256</dt>
           <dd>
             <Hash value={status.gh.binary_sha256_expected} />
           </dd>
-          <dt>manifest 판 · 해시</dt>
+          <dt>Manifest version · hash</dt>
           <dd data-testid="gh-registry-manifest">
-            {status.manifest.version} · <Hash value={status.manifest.hash} /> · {status.manifest.hash_verified ? '해시 검증됨' : '해시 불일치'}
+            {status.manifest.version} · <Hash value={status.manifest.hash} /> · {status.manifest.hash_verified ? "Hash verified" : "Hash mismatch"}
           </dd>
-          <dt>인벤토리 해시</dt>
+          <dt>Inventory hash</dt>
           <dd>
             <Hash value={status.manifest.inventory_hash} />
           </dd>
-          <dt>생성 시각</dt>
+          <dt>Created at</dt>
           <dd>{formatTime(status.manifest.generated_at)}</dd>
           <dt>command</dt>
           <dd>
-            전체 {String(status.manifest.command_count)} · leaf {String(status.manifest.leaf_command_count)} · 그룹 {String(status.manifest.group_command_count)} · 별칭 전용 {String(status.manifest.alias_only_command_count)} · help topic {String(status.manifest.help_topics)}
+            All {String(status.manifest.command_count)} · leaf {String(status.manifest.leaf_command_count)} · Groups {String(status.manifest.group_command_count)} · Alias only {String(status.manifest.alias_only_command_count)} · help topic {String(status.manifest.help_topics)}
           </dd>
-          <dt>검증기 · 규칙</dt>
+          <dt>Validator · rules</dt>
           <dd>
             {status.validator.version} / {status.validator.rules_version} · <StatusBadge status={status.validator.status} />
           </dd>
         </dl>
         {headline.kind === 'no_records' ? (
           <p data-testid="gh-registry-records-none" role="status">
-            검증 기록이 없습니다 — 실행기가 아직 기동 검사를 기록하지 않았거나 이 기록을 남기지 않는 옛 배포입니다. 위의 상태는 이 API가 적재한 manifest를 지금 검증한 값이며, 실제 바이너리와의 대조는 실행기의 기록에만 있습니다.
+            No validation record exists. The runner has not recorded a startup check or uses an older deployment. The status above validates the API's loaded manifest; only runner records compare it with the actual binary.
           </p>
         ) : null}
         {headline.kind === 'executor_unchecked' ? (
           <p data-testid="gh-registry-records-partial" role="status">
-            실행기 기록이 없습니다 — {headline.other.checked_by}의 기록({label(STATUS_LABEL, headline.other.status)}, {formatTime(headline.other.checked_at)})만 있습니다. 실행을 실제로 거절하는 판정은 실행기의 검사입니다.
+            No runner record exists — only {headline.other.checked_by} records ({label(STATUS_LABEL, headline.other.status)}, {formatTime(headline.other.checked_at)}) are available. Runner checks determine whether execution is rejected.
           </p>
         ) : null}
         {headline.kind === 'executor' ? (
           <p data-testid="gh-registry-records-executor" role="status" data-status={headline.latest.status} data-overdue={headline.overdue ? 'true' : 'false'}>
-            실행기 마지막 검사: <StatusBadge status={headline.latest.status} /> {formatTime(headline.latest.checked_at)}
-            {headline.overdue ? ' · 검사 주기의 두 배를 넘겼습니다 — 실행기가 멈췄거나 검사가 돌지 않습니다' : ''}
-            {headline.servedMismatch ? ' · 실행기가 검사한 manifest 해시가 이 API의 manifest와 다릅니다 — 두 서비스의 이미지 버전을 확인하세요' : ''}
-            {headline.latest.status === 'drift' || headline.latest.status === 'failed' ? ' · 실행기가 새 실행을 registry_stale로 거절하고 있습니다' : ''}
+            Last runner check: <StatusBadge status={headline.latest.status} /> {formatTime(headline.latest.checked_at)}
+            {headline.overdue ? "· More than two check intervals have elapsed. The runner or its checks may have stopped." : ''}
+            {headline.servedMismatch ? "· Runner and API manifest hashes differ. Check both service image versions." : ''}
+            {headline.latest.status === 'drift' || headline.latest.status === 'failed' ? "· The runner is rejecting new executions with registry_stale." : ''}
           </p>
         ) : null}
       </Panel>
 
       <Panel data-testid="gh-registry-execution">
-        <h2>실행 허용</h2>
+        <h2>Execution allowed</h2>
         <p>
-          실행이 열린 capability {String(status.execution.allowed.length)}개: {status.execution.allowed.join(', ') || '없음'} · 분류된 leaf {String(status.coverage.classified_leaf_commands)}개 / 미분류 {String(status.coverage.unclassified_leaf_commands)}개
+          Enabled capabilities {String(status.execution.allowed.length)} items: {status.execution.allowed.join(', ') || "None"} · Classified leaves: {String(status.coverage.classified_leaf_commands)}/ Unclassified: {String(status.coverage.unclassified_leaf_commands)} items
         </p>
         <p>
-          <small>분류가 늘어도 실행 허용은 코드 표(EXECUTABLE_CAPABILITIES)와 manifest가 함께 정한다. 검증기가 둘의 불일치를 실패로 본다.</small>
+          <small>Execution is controlled jointly by EXECUTABLE_CAPABILITIES and the manifest, regardless of classification coverage. The validator rejects mismatches.</small>
         </p>
       </Panel>
 
       <Panel data-testid="gh-registry-verifications">
-        <h2>검증 기록 (출처별 최신)</h2>
+        <h2>Validation records (latest per source)</h2>
         {status.verification.latest_by_source.length === 0 ? (
-          <p>기록 없음</p>
+          <p>No records</p>
         ) : (
-          <Table caption="실행기(JOB-GH-003)·CI·CLI가 남긴 마지막 검사. 실행기의 기록이 실행 거절의 근거다.">
+          <Table caption="Latest runner (JOB-GH-003), CI, and CLI checks. Runner records determine execution rejection.">
             <thead>
               <tr>
-                <th scope="col">출처</th>
-                <th scope="col">계기</th>
-                <th scope="col">시각</th>
-                <th scope="col">결과</th>
-                <th scope="col">관측 gh</th>
-                <th scope="col">인벤토리</th>
-                <th scope="col">이 manifest</th>
-                <th scope="col">검증기/규칙</th>
-                <th scope="col">보고서 판</th>
-                <th scope="col">신선도</th>
+                <th scope="col">Source</th>
+                <th scope="col">Trigger</th>
+                <th scope="col">Time</th>
+                <th scope="col">Results</th>
+                <th scope="col">Observed gh</th>
+                <th scope="col">Inventory</th>
+                <th scope="col">This manifest</th>
+                <th scope="col">Validator/rules</th>
+                <th scope="col">Report version</th>
+                <th scope="col">Freshness</th>
               </tr>
             </thead>
             <tbody>
@@ -406,16 +409,16 @@ export function GhRegistryView(): ReactNode {
         )}
         {drifted?.drift ? (
           <div data-testid="gh-registry-drift">
-            <h3>드리프트 — 정의와 실제 바이너리의 차이</h3>
+            <h3>Drift — definition versus actual binary</h3>
             <ul>
               {drifted.drift.addedCommands.map((one) => (
-                <li key={`+${one}`}>바이너리에만 있음: {one}</li>
+                <li key={`+${one}`}>Binary only: {one}</li>
               ))}
               {drifted.drift.removedCommands.map((one) => (
-                <li key={`-${one}`}>manifest에만 있음: {one}</li>
+                <li key={`-${one}`}>Manifest only: {one}</li>
               ))}
               {drifted.drift.changedCommands.map((one) => (
-                <li key={`~${one}`}>flag·JSON 필드가 달라짐: {one}</li>
+                <li key={`~${one}`}>Changed flags or JSON fields: {one}</li>
               ))}
             </ul>
           </div>
@@ -423,22 +426,22 @@ export function GhRegistryView(): ReactNode {
       </Panel>
 
       <Panel data-testid="gh-registry-coverage">
-        <h2>차원별 분류 커버리지 (NFR-009)</h2>
+        <h2>Classification coverage by dimension (NFR-009)</h2>
         <ul data-testid="gh-registry-gates">
           {status.gates.map((gate) => (
             <li key={gate.id} data-gate={gate.id} data-pass={gate.pass ? 'true' : 'false'}>
-              <Badge tone={gate.pass ? 'success' : 'warning'}>{gate.pass ? 'PASS' : 'FAIL'}</Badge> {gate.id} {gate.label} — {gate.detail}
+              <Badge tone={gate.pass ? 'success' : 'warning'}>{gate.pass ? 'PASS' : 'FAIL'}</Badge> {gate.id} {gateLabel(gate)} — {gateDetail(gate)}
             </li>
           ))}
         </ul>
-        <Table data-testid="gh-registry-dimensions" caption="차원마다 분모(무엇을 셌는가)와 분류된 수. 분모 0은 백분율이 아니라 「정의되지 않음」이다.">
+        <Table data-testid="gh-registry-dimensions" caption="Classified counts and denominators for each dimension. A zero denominator means undefined, not a percentage.">
           <thead>
             <tr>
-              <th scope="col">게이트</th>
-              <th scope="col">차원</th>
-              <th scope="col">분류/전체</th>
-              <th scope="col">비율</th>
-              <th scope="col">미분류 예</th>
+              <th scope="col">Gate</th>
+              <th scope="col">Dimension</th>
+              <th scope="col">Classified/total</th>
+              <th scope="col">Percentage</th>
+              <th scope="col">Unclassified examples</th>
             </tr>
           </thead>
           <tbody>
@@ -446,13 +449,13 @@ export function GhRegistryView(): ReactNode {
               <tr key={dimension.id} data-dimension={dimension.id} data-unclassified={dimension.unclassified}>
                 <td>{dimension.gate}</td>
                 <td>
-                  <span title={dimension.note}>{dimension.label}</span>
+                  <span title={dimensionNote(dimension)}>{dimensionLabel(dimension)}</span>
                 </td>
                 <td>
                   {String(dimension.classified)}/{String(dimension.total)}
                 </td>
                 <td>{percentOf(dimension)}</td>
-                <td>{dimension.unclassified === 0 ? '—' : `${dimension.unclassifiedSample.slice(0, 5).join(', ')}${dimension.unclassified > 5 ? ` 외 ${String(dimension.unclassified - 5)}` : ''}`}</td>
+                <td>{dimension.unclassified === 0 ? '—' : `${dimension.unclassifiedSample.slice(0, 5).join(', ')}${dimension.unclassified > 5 ? `and more ${String(dimension.unclassified - 5)}` : ''}`}</td>
               </tr>
             ))}
           </tbody>
@@ -462,14 +465,14 @@ export function GhRegistryView(): ReactNode {
       <ContractsPanel contracts={status.contracts} gateScope={status.gate_scope} />
 
       <Panel data-testid="gh-registry-commands">
-        <h2>command 분류 탐색</h2>
+        <h2>Browse command classifications</h2>
         <p data-testid="gh-registry-support-summary">
-          {bySupport.map((entry) => `${label(SUPPORT_LABEL, entry.value)} ${String(entry.count)}`).join(' · ') || '목록을 읽지 못했습니다'}
+          {bySupport.map((entry) => `${label(SUPPORT_LABEL, entry.value)} ${String(entry.count)}`).join(' · ') || "Unable to load list"}
         </p>
         <div>
           <TextField
-            aria-label="command 검색"
-            placeholder="예: pr merge, secret"
+            aria-label="Search commands"
+            placeholder="e.g. pr merge, secret"
             value={filter.query}
             onChange={(event) => {
               setFilter((current) => ({ ...current, query: event.target.value }));
@@ -477,7 +480,7 @@ export function GhRegistryView(): ReactNode {
             data-testid="gh-registry-search"
           />
           <label>
-            지원 상태{' '}
+            Support status {' '}
             <select
               data-testid="gh-registry-filter-support"
               value={filter.support}
@@ -485,7 +488,7 @@ export function GhRegistryView(): ReactNode {
                 setFilter((current) => ({ ...current, support: event.target.value }));
               }}
             >
-              <option value="all">전체</option>
+              <option value="all">All</option>
               {Object.entries(SUPPORT_LABEL).map(([value, text]) => (
                 <option key={value} value={value}>
                   {text}
@@ -494,7 +497,7 @@ export function GhRegistryView(): ReactNode {
             </select>
           </label>{' '}
           <label>
-            실행{' '}
+            Run {' '}
             <select
               data-testid="gh-registry-filter-execution"
               value={filter.execution}
@@ -502,7 +505,7 @@ export function GhRegistryView(): ReactNode {
                 setFilter((current) => ({ ...current, execution: event.target.value }));
               }}
             >
-              <option value="all">전체</option>
+              <option value="all">All</option>
               {Object.entries(EXECUTION_LABEL).map(([value, text]) => (
                 <option key={value} value={value}>
                   {text}
@@ -511,7 +514,7 @@ export function GhRegistryView(): ReactNode {
             </select>
           </label>
         </div>
-        <ul data-testid="gh-registry-command-list" aria-label="command 목록">
+        <ul data-testid="gh-registry-command-list" aria-label="Commands">
           {filtered.slice(0, 250).map((command) => (
             <li key={command.id} data-support={command.support} data-execution={command.execution}>
               <button type="button" aria-pressed={command.id === selectedId} data-testid={`gh-registry-command-${command.id}`} onClick={() => select(command.id)}>
@@ -524,34 +527,34 @@ export function GhRegistryView(): ReactNode {
               <span> {command.summary}</span>
             </li>
           ))}
-          {filtered.length === 0 ? <li>조건에 맞는 command가 없습니다.</li> : null}
+          {filtered.length === 0 ? <li>No commands match these filters.</li> : null}
         </ul>
-        {filtered.length > 250 ? <p>{String(filtered.length - 250)}개는 표시하지 않았습니다 — 검색어를 좁히세요.</p> : null}
+        {filtered.length > 250 ? <p>{String(filtered.length - 250)} items omitted. Narrow your search.</p> : null}
 
         <section aria-live="polite" data-testid="gh-registry-command-detail" data-state={detail.kind}>
-          {detail.kind === 'loading' ? <p>상세를 읽는 중입니다…</p> : null}
+          {detail.kind === 'loading' ? <p>Loading details…</p> : null}
           {detail.kind === 'failed' ? <p role="alert">{detail.message}</p> : null}
           {detail.kind === 'ok' ? <CommandDetail detail={detail.body} /> : null}
         </section>
       </Panel>
 
       <Panel data-testid="gh-registry-snapshots">
-        <h2>스냅숏 (manifest 해시마다 한 행)</h2>
+        <h2>Snapshots (one row per manifest hash)</h2>
         {status.snapshots.length === 0 ? (
-          <p>스냅숏 없음</p>
+          <p>No snapshots</p>
         ) : (
-          <Table caption="이 배포가 본 manifest들. 활성화는 NFR-009 게이트를 통과한 뒤에만 가능하며 이 판은 어느 것도 활성화하지 않았다.">
+          <Table caption="Manifests observed by this deployment. Activation requires passing NFR-009 gates; this version has activated none.">
             <thead>
               <tr>
-                <th scope="col">해시</th>
-                <th scope="col">판</th>
+                <th scope="col">Hash</th>
+                <th scope="col">Version</th>
                 <th scope="col">gh</th>
                 <th scope="col">leaf</th>
-                <th scope="col">미분류</th>
-                <th scope="col">실행 허용</th>
-                <th scope="col">처음 본 시각</th>
-                <th scope="col">활성화</th>
-                <th scope="col">지금 적재</th>
+                <th scope="col">Unclassified</th>
+                <th scope="col">Execution allowed</th>
+                <th scope="col">First seen</th>
+                <th scope="col">Activation</th>
+                <th scope="col">Currently loaded</th>
               </tr>
             </thead>
             <tbody>
@@ -566,8 +569,8 @@ export function GhRegistryView(): ReactNode {
                   <td>{String(row.unclassified_count)}</td>
                   <td>{String(row.executable_count)}</td>
                   <td>{formatTime(row.first_seen_at)}</td>
-                  <td>{row.activated_at === null ? '활성화 안 됨' : formatTime(row.activated_at)}</td>
-                  <td>{row.is_served ? '예' : '아니오'}</td>
+                  <td>{row.activated_at === null ? "Not activated" : formatTime(row.activated_at)}</td>
+                  <td>{row.is_served ? "Yes" : "No"}</td>
                 </tr>
               ))}
             </tbody>
@@ -576,15 +579,15 @@ export function GhRegistryView(): ReactNode {
       </Panel>
 
       <Panel data-testid="gh-registry-host">
-        <h2>대상 GHES 확인</h2>
+        <h2>Target GHES verification</h2>
         <p data-status={status.host_verification.status}>
-          <Badge tone="neutral">{status.host_verification.status === 'not_verified' ? '미확인' : status.host_verification.status}</Badge> {status.host_verification.note}
+          <Badge tone="neutral">{status.host_verification.status === 'not_verified' ? "Unverified" : status.host_verification.status}</Badge> {serviceMessage(status.host_verification.note, 'Target GHES verification is separate from registry classification and operational approval.')}
         </p>
       </Panel>
 
       <p>
         <Button variant="secondary" data-testid="gh-registry-refresh" onClick={() => setNonce((value) => value + 1)}>
-          다시 읽기
+          Reload
         </Button>
       </p>
     </div>
@@ -601,26 +604,26 @@ function CommandDetail({ detail }: { readonly detail: CommandDetailView }): Reac
         <code>{detail.usage}</code>
       </p>
       <dl>
-        <dt>실행</dt>
+        <dt>Run</dt>
         <dd>
           <Badge tone={detail.execution === 'allowed' ? 'accent' : 'neutral'}>{label(EXECUTION_LABEL, detail.execution)}</Badge>
           {detail.execution_reason === null ? null : <span> — {detail.execution_reason}</span>}
         </dd>
-        <dt>지원 · interaction · 부작용 · 위험</dt>
+        <dt>Support · interaction · side effects · risk</dt>
         <dd>
           {label(SUPPORT_LABEL, detail.support)} · {label(INTERACTION_LABEL, classification?.interaction)} · {label(SIDE_EFFECT_LABEL, classification?.sideEffect)} · {detail.risk ?? '—'}
         </dd>
-        <dt>결과 · 민감도 · 인증 · 호스트 확인</dt>
+        <dt>Result · sensitivity · authentication · host verification</dt>
         <dd>
-          {classification?.resultKind ?? '—'} · {classification?.sensitivity ?? '—'} · {classification?.auth ?? '—'} · {classification?.hostSupport === 'verified' ? '확인됨' : '미확인'}
+          {classification?.resultKind ?? '—'} · {classification?.sensitivity ?? '—'} · {classification?.auth ?? '—'} · {classification?.hostSupport === 'verified' ? "Verified" : "Unverified"}
         </dd>
-        <dt>입출력</dt>
+        <dt>Input/output</dt>
         <dd>
-          stdin {classification?.io.stdin ?? '—'} · 파일 입력 {classification?.io.fileInputFlags.join(', ') || '없음'} · 파일 출력 {classification?.io.fileOutputFlags.join(', ') || '없음'} · 출력 {classification?.io.outputFormats.join(', ') ?? '—'} · 컨텍스트 {classification?.io.contexts.join(', ') ?? '—'} · {classification?.io.paginated === true ? '페이지네이션 있음' : '페이지네이션 없음'}
+          stdin {classification?.io.stdin ?? '—'} · File input {classification?.io.fileInputFlags.join(', ') || "None"} · File output {classification?.io.fileOutputFlags.join(', ') || "None"} · Output {classification?.io.outputFormats.join(', ') ?? '—'} · Context {classification?.io.contexts.join(', ') ?? '—'} · {classification?.io.paginated === true ? "Paginated" : "Not paginated"}
         </dd>
-        <dt>별칭</dt>
-        <dd>{detail.aliases.length === 0 ? '없음' : detail.aliases.join(', ')}</dd>
-        <dt>분류 근거</dt>
+        <dt>Aliases</dt>
+        <dd>{detail.aliases.length === 0 ? "None" : detail.aliases.join(', ')}</dd>
+        <dt>Classification evidence</dt>
         <dd data-testid="gh-registry-detail-basis">{classification?.basis.evidence ?? '—'}</dd>
       </dl>
       {classification !== null && classification.notes.length > 0 ? (
@@ -631,15 +634,15 @@ function CommandDetail({ detail }: { readonly detail: CommandDetailView }): Reac
         </ul>
       ) : null}
       {classification !== null && classification.positionals.length > 0 ? (
-        <Table caption="positional 자리와 분류">
+        <Table caption="Positional arguments and classification">
           <thead>
             <tr>
-              <th scope="col">자리</th>
-              <th scope="col">필수</th>
-              <th scope="col">반복</th>
-              <th scope="col">컨트롤</th>
-              <th scope="col">바인딩</th>
-              <th scope="col">규칙</th>
+              <th scope="col">Position</th>
+              <th scope="col">Required</th>
+              <th scope="col">Repeatable</th>
+              <th scope="col">Control</th>
+              <th scope="col">Binding</th>
+              <th scope="col">Rule</th>
             </tr>
           </thead>
           <tbody>
@@ -648,8 +651,8 @@ function CommandDetail({ detail }: { readonly detail: CommandDetailView }): Reac
                 <td>
                   <code>{positional.placeholder}</code>
                 </td>
-                <td>{positional.required ? '예' : '아니오'}</td>
-                <td>{positional.variadic ? '예' : '아니오'}</td>
+                <td>{positional.required ? "Yes" : "No"}</td>
+                <td>{positional.variadic ? "Yes" : "No"}</td>
                 <td>{label(CONTROL_LABEL, positional.control)}</td>
                 <td>{positional.binding ?? '—'}</td>
                 <td>{positional.basis.rule ?? positional.basis.source}</td>
@@ -659,15 +662,15 @@ function CommandDetail({ detail }: { readonly detail: CommandDetailView }): Reac
         </Table>
       ) : null}
       {classification !== null ? (
-        <Table caption={`flag ${String(classification.flags.length)}개와 분류. 규칙 이름이 곧 근거이며, 원문은 title에 있다.`}>
+        <Table caption={`flag ${String(classification.flags.length)} items and classifications. Rule names provide evidence; the original text is in the title.`}>
           <thead>
             <tr>
               <th scope="col">flag</th>
-              <th scope="col">상속</th>
-              <th scope="col">컨트롤</th>
-              <th scope="col">값</th>
-              <th scope="col">열거값</th>
-              <th scope="col">규칙</th>
+              <th scope="col">Inherited</th>
+              <th scope="col">Control</th>
+              <th scope="col">Value</th>
+              <th scope="col">Enum values</th>
+              <th scope="col">Rule</th>
             </tr>
           </thead>
           <tbody>
@@ -675,9 +678,9 @@ function CommandDetail({ detail }: { readonly detail: CommandDetailView }): Reac
               <tr key={`${flag.inherited ? 'i' : 'c'}-${flag.name}`} data-control={flag.control}>
                 <td>
                   <code title={flag.basis.evidence}>--{flag.name}</code>
-                  {flag.secretInput === true ? <Badge tone="danger">비밀 값</Badge> : null}
+                  {flag.secretInput === true ? <Badge tone="danger">Secret value</Badge> : null}
                 </td>
-                <td>{flag.inherited ? '예' : '아니오'}</td>
+                <td>{flag.inherited ? "Yes" : "No"}</td>
                 <td>{label(CONTROL_LABEL, flag.control)}</td>
                 <td>{flag.valueKind}</td>
                 <td>{flag.enumValues === null ? '—' : flag.enumValues.join(' | ')}</td>
@@ -687,11 +690,11 @@ function CommandDetail({ detail }: { readonly detail: CommandDetailView }): Reac
           </tbody>
         </Table>
       ) : (
-        <p>그룹 또는 별칭 전용 노드라 분류가 없습니다.</p>
+        <p>Group or alias-only nodes have no classification.</p>
       )}
       {detail.json_fields.length > 0 ? (
         <p>
-          <small>--json 필드 {String(detail.json_fields.length)}개: {detail.json_fields.join(', ')}</small>
+          <small>--json fields {String(detail.json_fields.length)} items: {detail.json_fields.join(', ')}</small>
         </p>
       ) : null}
       <ResultContractSection detail={detail} />
@@ -706,43 +709,43 @@ function CommandDetail({ detail }: { readonly detail: CommandDetailView }): Reac
 function ResultContractSection({ detail }: { readonly detail: CommandDetailView }): ReactNode {
   const contract = detail.result_contract;
   if (contract === undefined) {
-    return <p data-testid="gh-registry-contract-absent">이 응답에는 결과 계약이 없습니다 — 결과 계약을 싣지 않는 옛 판입니다.</p>;
+    return <p data-testid="gh-registry-contract-absent">This older response format does not include result contracts.</p>;
   }
   if (contract === null) {
     return (
       <p data-testid="gh-registry-contract-absent">
-        {detail.alias_of === null ? '그룹 또는 미분류 command라 결과 계약이 없습니다.' : `별칭은 계약을 따로 갖지 않습니다 — gh ${detail.alias_of.join(' ')}의 계약을 따릅니다.`}
+        {detail.alias_of === null ? "Groups and unclassified commands have no result contract." : `Aliases share the contract of gh ${detail.alias_of.join(' ')} rather than defining their own.`}
       </p>
     );
   }
   return (
-    <section data-testid="gh-registry-contract" data-composability={contract.composability} aria-label="결과 계약">
-      <h4>결과 계약</h4>
+    <section data-testid="gh-registry-contract" data-composability={contract.composability} aria-label="Result contract">
+      <h4>Result contract</h4>
       <dl>
-        <dt>주 결과 · 민감도</dt>
+        <dt>Primary result · sensitivity</dt>
         <dd>
           {contract.kind} · {contract.sensitivity}
         </dd>
-        <dt>연결 가능성</dt>
+        <dt>Connectability</dt>
         <dd>
           <Badge tone={contract.bindable ? 'accent' : 'neutral'}>{label(COMPOSABILITY_LABEL, contract.composability)}</Badge>
         </dd>
-        <dt>자원</dt>
+        <dt>Resource</dt>
         <dd data-testid="gh-registry-contract-resource">
           {refTypeLabel(contract.resourceKind)} — {contract.resourceBasis}
         </dd>
-        <dt>근거</dt>
+        <dt>Evidence</dt>
         <dd>{contract.basis.evidence}</dd>
       </dl>
-      <Table data-testid="gh-registry-contract-outputs" caption="출력 모드마다 결과 계약이 다르다 — 기본 출력과 --json 출력은 다른 계약이다">
+      <Table data-testid="gh-registry-contract-outputs" caption="Result contracts vary by output mode. Default and --json output have different contracts.">
         <thead>
           <tr>
-            <th scope="col">모드</th>
-            <th scope="col">결과</th>
+            <th scope="col">Mode</th>
+            <th scope="col">Results</th>
             <th scope="col">adapter</th>
-            <th scope="col">스키마</th>
-            <th scope="col">연결</th>
-            <th scope="col">이유</th>
+            <th scope="col">Schema</th>
+            <th scope="col">Connection</th>
+            <th scope="col">Reason</th>
           </tr>
         </thead>
         <tbody>
@@ -752,14 +755,14 @@ function ResultContractSection({ detail }: { readonly detail: CommandDetailView 
               <td>{output.kind}</td>
               <td>{label(ADAPTER_LABEL, output.adapter)}</td>
               <td>{output.schema ?? '—'}</td>
-              <td>{output.bindable ? '가능' : '불가'}</td>
+              <td>{output.bindable ? "Available" : "Unavailable"}</td>
               <td>{output.reason ?? output.unstructuredReason ?? '—'}</td>
             </tr>
           ))}
         </tbody>
       </Table>
-      <PortTable title="출력 port" ports={contract.outputPorts} note={contract.outputPortsNote} testId="gh-registry-output-ports" />
-      <PortTable title="입력 port" ports={contract.inputPorts} note={contract.inputPortsNote} testId="gh-registry-input-ports" />
+      <PortTable title="Output port" ports={contract.outputPorts} note={contract.outputPortsNote} testId="gh-registry-output-ports" />
+      <PortTable title="Input port" ports={contract.inputPorts} note={contract.inputPortsNote} testId="gh-registry-input-ports" />
       {detail.graph === undefined || detail.graph === null ? null : <GraphSection graph={detail.graph} />}
     </section>
   );
@@ -770,18 +773,18 @@ function PortTable({ title, ports, note, testId }: { readonly title: string; rea
     <div data-testid={testId}>
       <h5>{title}</h5>
       {ports.length === 0 ? (
-        <p>없음 — {note ?? '이유가 적혀 있지 않습니다'}</p>
+        <p>None — {note ?? "No reason provided"}</p>
       ) : (
-        <Table caption={`${title}: 타입·개수·필수·null·민감도·조건`}>
+        <Table caption={`${title}: type, cardinality, required, null, sensitivity, conditions`}>
           <thead>
             <tr>
               <th scope="col">ID</th>
-              <th scope="col">타입</th>
-              <th scope="col">개수</th>
-              <th scope="col">필수</th>
+              <th scope="col">Type</th>
+              <th scope="col">Count</th>
+              <th scope="col">Required</th>
               <th scope="col">null</th>
-              <th scope="col">민감도</th>
-              <th scope="col">조건</th>
+              <th scope="col">Sensitivity</th>
+              <th scope="col">Filters</th>
             </tr>
           </thead>
           <tbody>
@@ -791,9 +794,9 @@ function PortTable({ title, ports, note, testId }: { readonly title: string; rea
                   <code>{port.id}</code>
                 </td>
                 <td>{refTypeLabel(port.type)}</td>
-                <td>{port.cardinality === 'many' ? '목록' : '하나'}</td>
-                <td>{port.required ? '예' : '아니오'}</td>
-                <td>{port.nullable ? '예' : '아니오'}</td>
+                <td>{port.cardinality === 'many' ? "List" : "One"}</td>
+                <td>{port.required ? "Yes" : "No"}</td>
+                <td>{port.nullable ? "Yes" : "No"}</td>
                 <td>{port.sensitivity}</td>
                 <td>{describeConditions(port.conditions)}</td>
               </tr>
@@ -815,16 +818,16 @@ function EdgeTable({ title, edges, direction }: { readonly title: string; readon
         {title} ({String(edges.length)})
       </h6>
       {edges.length === 0 ? (
-        <p>없음</p>
+        <p>None</p>
       ) : (
         <Table caption={title}>
           <thead>
             <tr>
-              <th scope="col">{direction === 'outgoing' ? '입력 쪽 command' : '출력 쪽 command'}</th>
-              <th scope="col">타입</th>
-              <th scope="col">판정</th>
-              <th scope="col">조건</th>
-              <th scope="col">실행</th>
+              <th scope="col">{direction === 'outgoing' ? "Input command" : "Output command"}</th>
+              <th scope="col">Type</th>
+              <th scope="col">Evaluation</th>
+              <th scope="col">Filters</th>
+              <th scope="col">Run</th>
             </tr>
           </thead>
           <tbody>
@@ -832,10 +835,10 @@ function EdgeTable({ title, edges, direction }: { readonly title: string; readon
               <tr key={edgeKey(edge)} data-edge={edgeKey(edge)} data-verdict={edge.verdict} data-executable={String(edge.execution.executable)}>
                 <td>{direction === 'outgoing' ? `${commandLabel(edge.to)} (${edge.toPort})` : `${commandLabel(edge.from)} (${edge.fromPort})`}</td>
                 <td>{refTypeLabel(edge.type)}</td>
-                <td>{edge.verdict === 'direct' ? '직접 호환' : '조건부 호환'}</td>
+                <td>{edge.verdict === 'direct' ? "Directly compatible" : "Conditionally compatible"}</td>
                 <td>{describeConditions(edge.conditions)}</td>
                 <td>
-                  <Badge tone="neutral">실행 미개방</Badge> {edge.execution.reason}
+                  <Badge tone="neutral">Execution disabled</Badge> {edge.execution.reason}
                 </td>
               </tr>
             ))}
@@ -849,19 +852,19 @@ function EdgeTable({ title, edges, direction }: { readonly title: string; readon
 function GraphSection({ graph }: { readonly graph: CommandGraphView }): ReactNode {
   return (
     <div data-testid="gh-registry-graph">
-      <h5>연결 후보 (타입 판정)</h5>
+      <h5>Connection candidates (type evaluation)</h5>
       <p>
-        <small>호환은 실행 승인이 아닙니다. 실행 허용은 코드 표가 정하고, 실행 가능한 다단계 흐름은 {String(graph.executable_flows)}개입니다.</small>
+        <small>Compatibility does not grant execution approval. The code allowlist controls execution. Executable multi-step workflows: {String(graph.executable_flows)} items.</small>
       </p>
-      <EdgeTable title="이 결과를 입력으로 받을 수 있는 command" edges={graph.outgoing} direction="outgoing" />
-      <EdgeTable title="이 command의 입력에 이을 수 있는 결과" edges={graph.incoming} direction="incoming" />
+      <EdgeTable title="Commands that can consume this result" edges={graph.outgoing} direction="outgoing" />
+      <EdgeTable title="Results that can feed this command" edges={graph.incoming} direction="incoming" />
       {graph.blocked.length === 0 ? null : (
-        <Table data-testid="gh-registry-graph-blocked" caption="타입은 같지만 이어지지 않는 짝과 이유">
+        <Table data-testid="gh-registry-graph-blocked" caption="Same-type pairs that cannot connect, with reasons">
           <thead>
             <tr>
-              <th scope="col">출력</th>
-              <th scope="col">입력</th>
-              <th scope="col">이유</th>
+              <th scope="col">Output</th>
+              <th scope="col">Input</th>
+              <th scope="col">Reason</th>
             </tr>
           </thead>
           <tbody>

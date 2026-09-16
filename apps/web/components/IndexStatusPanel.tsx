@@ -23,7 +23,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Panel, Table } from './ui';
 import {
   UNAVAILABLE_LABEL,
   formatBytes,
@@ -36,7 +36,7 @@ import { formatTimestamp } from '../lib/format';
 
 function Unavailable(): ReactNode {
   return (
-    <span data-testid="index-unavailable" aria-label="읽지 못한 값">
+    <span data-testid="index-unavailable" aria-label="Unavailable">
       {UNAVAILABLE_LABEL}
     </span>
   );
@@ -47,11 +47,11 @@ function ReindexCell({ row }: { readonly row: AliasStatusView }): ReactNode {
     const dual = isDualWriting(row);
     return (
       <span data-testid="index-active-reindex" data-dual-write={dual ? 'true' : 'false'}>
-        <Badge tone={dual ? 'warning' : 'info'}>{dual ? '이중 쓰기 중' : '재색인 중'}</Badge>{' '}
-        잡 {row.active_reindex.job_id}
+        <Badge tone={dual ? 'warning' : 'info'}>{dual ? "Dual writing" : "Reindexing"}</Badge>{' '}
+        Job {row.active_reindex.job_id}
         {row.active_reindex.target_index === null ? '' : ` → ${row.active_reindex.target_index}`}
         {dual && row.active_reindex.dual_write_since !== null
-          ? ` (${formatTimestamp(row.active_reindex.dual_write_since)}부터)`
+          ? ` (${formatTimestamp(row.active_reindex.dual_write_since)}since)`
           : ''}
       </span>
     );
@@ -60,14 +60,14 @@ function ReindexCell({ row }: { readonly row: AliasStatusView }): ReactNode {
   if (row.last_reindex !== null) {
     return (
       <span data-testid="index-last-reindex">
-        마지막 재색인 잡 {row.last_reindex.job_id} — {row.last_reindex.state}
-        {row.last_reindex.switched_at === null ? '' : `, 전환 ${formatTimestamp(row.last_reindex.switched_at)}`}
+        Last reindex job {row.last_reindex.job_id} — {row.last_reindex.state}
+        {row.last_reindex.switched_at === null ? '' : `, switched ${formatTimestamp(row.last_reindex.switched_at)}`}
       </span>
     );
   }
 
   return (
-    <span data-testid="index-no-reindex" aria-label="재색인 이력 없음">
+    <span data-testid="index-no-reindex" aria-label="No reindex history">
       —
     </span>
   );
@@ -83,10 +83,9 @@ export function IndexStatusPanel({ status, failed = false }: IndexStatusPanelPro
   if (failed || status === null) {
     return (
       <Panel data-testid="index-status-panel" data-state="index_status_unavailable">
-        <h3>인덱스 상태</h3>
+        <h3>Index status</h3>
         <p data-testid="index-status-failed">
-          별칭 상태를 읽지 못했습니다. 문서 수와 크기는 <strong>{UNAVAILABLE_LABEL}</strong>이며 0이 아닙니다. 잡 목록과
-          실행 폼은 계속 사용할 수 있습니다.
+          Unable to load alias status. Document count and size are <strong>{UNAVAILABLE_LABEL}</strong> rather than zero. The job list and execution form remain available.
         </p>
       </Panel>
     );
@@ -96,23 +95,23 @@ export function IndexStatusPanel({ status, failed = false }: IndexStatusPanelPro
 
   return (
     <Panel data-testid="index-status-panel" data-state={dualWriting ? 'reindex_dual_write' : 'ready'}>
-      <h3>인덱스 상태</h3>
-      <p data-testid="index-generated-at">조회 시각 {formatTimestamp(status.generated_at)}</p>
+      <h3>Index status</h3>
+      <p data-testid="index-generated-at">Checked at {formatTimestamp(status.generated_at)}</p>
 
       {status.unavailable.length > 0 ? (
         <p data-testid="index-partial-unavailable" role="status">
-          일부 값을 읽지 못했습니다: {status.unavailable.join(', ')}. 그 자리만 {UNAVAILABLE_LABEL}으로 표시합니다.
+          Some values could not be loaded: {status.unavailable.join(', ')}. Those values are shown as {UNAVAILABLE_LABEL}.
         </p>
       ) : null}
 
-      <Table data-testid="index-status-table" caption="별칭별 인덱스 상태. 읽지 못한 값은 미확인으로 표시됩니다.">
+      <Table data-testid="index-status-table" caption="Index status by alias. Unavailable values are shown as unknown.">
         <thead>
           <tr>
-            <th scope="col">별칭</th>
-            <th scope="col">실제 인덱스</th>
-            <th scope="col">문서 수</th>
-            <th scope="col">크기</th>
-            <th scope="col">재색인</th>
+            <th scope="col">Alias</th>
+            <th scope="col">Physical index</th>
+            <th scope="col">Documents</th>
+            <th scope="col">Size</th>
+            <th scope="col">Reindex</th>
           </tr>
         </thead>
         <tbody>
@@ -134,7 +133,7 @@ export function IndexStatusPanel({ status, failed = false }: IndexStatusPanelPro
           {status.aliases.length === 0 ? (
             <tr>
               <td colSpan={5} data-testid="index-status-empty">
-                별칭이 없습니다.
+                No aliases.
               </td>
             </tr>
           ) : null}

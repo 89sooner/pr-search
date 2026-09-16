@@ -18,8 +18,8 @@ export const dynamic = 'force-dynamic';
 
 export default async function OpsJobsPage(): Promise<ReactNode> {
   return (
-    <GuardedPage title="인덱스·잡 운영" returnTo="/ops/jobs">
-      <h1>인덱스·잡 운영</h1>
+    <GuardedPage title="Index and job operations" returnTo="/ops/jobs">
+      <h1>Index and job operations</h1>
       <OpsJobsView />
     </GuardedPage>
   );

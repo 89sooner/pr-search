@@ -13,7 +13,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Button, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Table } from './ui';
 import { formatTimestamp } from '../lib/format';
 import { describeError, isTerminal, resultKind, stateLabel, type ExecutionView, type PrRowView } from '../lib/gh';
 import { SafeGhOutputViewer } from './SafeGhOutputViewer';
@@ -37,15 +37,15 @@ export interface GhExecutionPanelProps {
 function PrRows({ rows, possiblyMore }: { readonly rows: readonly PrRowView[]; readonly possiblyMore: boolean }): ReactNode {
   return (
     <>
-      <Table data-testid="gh-result-table" caption="gh pr list 결과. 이 목록은 실행 시점의 GHE 응답이며 검색 색인이 아닙니다.">
+      <Table data-testid="gh-result-table" caption="gh pr list results from GHE at execution time, separate from the search index.">
         <thead>
           <tr>
-            <th scope="col">번호</th>
-            <th scope="col">제목</th>
-            <th scope="col">상태</th>
-            <th scope="col">작성자</th>
-            <th scope="col">브랜치</th>
-            <th scope="col">갱신</th>
+            <th scope="col">Number</th>
+            <th scope="col">Title</th>
+            <th scope="col">Status</th>
+            <th scope="col">Author</th>
+            <th scope="col">Branch</th>
+            <th scope="col">Updated</th>
           </tr>
         </thead>
         <tbody>
@@ -84,7 +84,7 @@ function PrRows({ rows, possiblyMore }: { readonly rows: readonly PrRowView[]; r
       </Table>
       {possiblyMore ? (
         <p data-testid="gh-result-possibly-more">
-          요청한 건수만큼 받았습니다. 더 있을 수 있습니다 — 건수를 늘리거나 상태를 좁혀 다시 실행하세요.
+          The requested limit was reached. More results may exist. Increase the limit or narrow the status filter and run again.
         </p>
       ) : null}
     </>
@@ -101,13 +101,13 @@ function ReferenceNote({ execution }: { readonly execution: ExecutionView }): Re
   if (references.status === 'available') {
     return (
       <p data-testid="gh-result-references" data-status="available">
-        PR 참조 {String(references.refs.length)}개를 만들었습니다({execution.host} · {execution.repository ?? '—'}의 번호). 참조는 권한이 아니며, 다른 명령에 잇는 실행은 열리지 않았습니다.
+        PR references: {String(references.refs.length)} created ({execution.host} · {execution.repository ?? '—'} numbers). References do not grant permissions. Chaining execution to other commands is not enabled.
       </p>
     );
   }
   return (
     <p data-testid="gh-result-references" data-status="unavailable">
-      PR 번호(number) 필드를 고르지 않아 PR 참조를 만들지 않았습니다. 목록은 그대로 보입니다.
+      No PR references were created because the number field was not selected. The list is still shown.
     </p>
   );
 }
@@ -118,11 +118,11 @@ export function GhExecutionPanel({ execution, onCancel, cancelling = false }: Gh
   const cancellable = !isTerminal(execution.state) && execution.cancel_requested_at === null && onCancel !== undefined;
 
   return (
-    <section aria-label="실행 결과" data-testid="gh-execution-panel" data-state={execution.state}>
+    <section aria-label="Execution results" data-testid="gh-execution-panel" data-state={execution.state}>
       <div className="prs-gh-execution-head">
         <p role="status" aria-live="polite" data-testid="gh-execution-status">
-          실행 {String(execution.execution_id)} · <Badge tone={STATE_TONE[execution.state] ?? 'neutral'}>{stateLabel(execution.state)}</Badge>
-          {execution.cancel_requested_at !== null && !isTerminal(execution.state) ? ' · 취소 요청됨' : ''}
+          Run {String(execution.execution_id)} · <Badge tone={STATE_TONE[execution.state] ?? 'neutral'}>{stateLabel(execution.state)}</Badge>
+          {execution.cancel_requested_at !== null && !isTerminal(execution.state) ? "· Cancellation requested" : ''}
         </p>
         {cancellable ? (
           <Button
@@ -133,37 +133,37 @@ export function GhExecutionPanel({ execution, onCancel, cancelling = false }: Gh
               onCancel(execution.execution_id);
             }}
           >
-            취소
+            Cancel
           </Button>
         ) : null}
       </div>
 
       <dl className="prs-gh-execution-meta">
-        <dt>요청</dt>
+        <dt>Requested</dt>
         <dd>{formatTimestamp(execution.requested_at)}</dd>
-        <dt>시작</dt>
+        <dt>Start</dt>
         <dd>{formatTimestamp(execution.started_at)}</dd>
-        <dt>종료</dt>
+        <dt>Finished</dt>
         <dd>{formatTimestamp(execution.finished_at)}</dd>
-        <dt>종료 코드</dt>
+        <dt>Exit code</dt>
         <dd data-testid="gh-exit-code">{execution.exit_code === null ? '-' : String(execution.exit_code)}</dd>
       </dl>
 
-      {kind === 'pending' ? <p data-testid="gh-result-pending">아직 실행 중입니다. 결과는 끝난 뒤에 표시됩니다.</p> : null}
+      {kind === 'pending' ? <p data-testid="gh-result-pending">Still running. Results will appear when execution finishes.</p> : null}
       {kind === 'failed' ? (
         <p data-testid="gh-result-failed" role="alert">
-          실행이 실패했습니다. {describeError(execution.error)}
+          Execution failed. {describeError(execution.error)}
         </p>
       ) : null}
-      {kind === 'cancelled' ? <p data-testid="gh-result-cancelled">실행이 취소됐습니다. 부분 결과는 표시하지 않습니다.</p> : null}
-      {kind === 'timed_out' ? <p data-testid="gh-result-timed-out">시간 상한을 넘겨 실행을 종료했습니다. 부분 결과는 표시하지 않습니다.</p> : null}
-      {kind === 'binary' ? <p data-testid="gh-result-binary">출력이 바이너리라 표시하지 않습니다.</p> : null}
+      {kind === 'cancelled' ? <p data-testid="gh-result-cancelled">Execution was canceled. Partial results are not shown.</p> : null}
+      {kind === 'timed_out' ? <p data-testid="gh-result-timed-out">Execution exceeded the time limit and was stopped. Partial results are not shown.</p> : null}
+      {kind === 'binary' ? <p data-testid="gh-result-binary">Binary output cannot be displayed.</p> : null}
       {kind === 'truncated' ? (
         <p data-testid="gh-result-truncated" role="alert">
-          출력이 상한을 넘겨 잘렸습니다. 아래 표는 <strong>불완전한 목록</strong>이며 전체가 아닙니다.
+          Output exceeded the limit and was truncated. The table below is <strong>incomplete</strong> and does not include all results.
         </p>
       ) : null}
-      {kind === 'empty' ? <p data-testid="gh-result-empty">조건에 맞는 PR이 0건입니다.</p> : null}
+      {kind === 'empty' ? <p data-testid="gh-result-empty">No PRs match these filters.</p> : null}
       {(kind === 'rows' || kind === 'truncated') && rows.length > 0 ? (
         <PrRows rows={rows} possiblyMore={execution.result?.possibly_more === true} />
       ) : null}
@@ -171,9 +171,9 @@ export function GhExecutionPanel({ execution, onCancel, cancelling = false }: Gh
 
       {isTerminal(execution.state) ? (
         <details data-testid="gh-raw-output">
-          <summary>표준 출력·오류 (무해화된 발췌)</summary>
-          <SafeGhOutputViewer label="표준 출력" text={execution.stdout?.text ?? null} truncated={execution.stdout?.truncated ?? false} binary={execution.output_binary} testId="gh-stdout" />
-          <SafeGhOutputViewer label="표준 오류" text={execution.stderr?.text ?? null} truncated={execution.stderr?.truncated ?? false} binary={false} testId="gh-stderr" />
+          <summary>Standard output and error (sanitized excerpts)</summary>
+          <SafeGhOutputViewer label="Standard output" text={execution.stdout?.text ?? null} truncated={execution.stdout?.truncated ?? false} binary={execution.output_binary} testId="gh-stdout" />
+          <SafeGhOutputViewer label="Standard error" text={execution.stderr?.text ?? null} truncated={execution.stderr?.truncated ?? false} binary={false} testId="gh-stderr" />
         </details>
       ) : null}
     </section>

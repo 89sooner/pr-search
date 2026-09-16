@@ -365,18 +365,18 @@ test.describe('A-006 gh capability·버전 레지스트리', () => {
     await expect(root).toHaveAttribute('data-state', 'ready');
     await expect(page.getByTestId('gh-registry-gh-version')).toHaveText('2.97.0');
     await expect(page.getByTestId('gh-registry-manifest')).toContainText('r0.3');
-    await expect(page.getByTestId('gh-registry-execution')).toContainText('실행이 열린 capability 1개: pr.list');
+    await expect(page.getByTestId('gh-registry-execution')).toContainText('Enabled capabilities 1 items: pr.list');
     await expect(page.getByTestId('gh-registry-records-executor')).toHaveAttribute('data-status', 'passed');
     await expect(page.getByTestId('gh-registry-dimensions')).toContainText('1034/1034');
     await expect(page.getByTestId('gh-registry-gates').locator('[data-gate="GATE-GH-01d"]')).toHaveAttribute('data-pass', 'true');
-    await expect(page.getByTestId('gh-registry-host')).toContainText('미확인');
+    await expect(page.getByTestId('gh-registry-host')).toContainText("Unverified");
     // 결과 계약·연결 요약 (CR-089) — 분모가 다른 수치를 따로 보이고, 01d 통과가 REL-007 완료가 아니라고 말한다.
     const summary = page.getByTestId('gh-registry-contract-summary');
     await expect(summary.locator('[data-item="result_contracts"]')).toContainText('196/196');
     await expect(summary.locator('[data-item="executable"]')).toContainText('pr.list');
     await expect(summary.locator('[data-item="edges"]')).toContainText('398');
     await expect(summary.locator('[data-item="flows"]')).toContainText('0');
-    await expect(page.getByTestId('gh-registry-gate-scope')).toContainText('REL-007 완료가 아니다');
+    await expect(page.getByTestId('gh-registry-gate-scope')).toContainText('does not complete REL-007');
 
     const list = page.getByTestId('gh-registry-command-list');
     await expect(list.getByRole('listitem')).toHaveCount(3);
@@ -385,9 +385,9 @@ test.describe('A-006 gh capability·버전 레지스트리', () => {
     await page.getByTestId('gh-registry-command-pr.merge').click();
     await expect(page.getByTestId('gh-registry-detail-pr.merge')).toBeVisible();
     expect(detailCalls).toEqual(['pr.merge']);
-    await expect(page.getByTestId('gh-registry-detail-pr.merge')).toContainText('아직 열리지 않음');
-    await expect(page.getByTestId('gh-registry-detail-pr.merge')).toContainText('승인 필요');
-    await expect(page.getByTestId('gh-registry-detail-pr.merge')).toContainText('파괴적');
+    await expect(page.getByTestId('gh-registry-detail-pr.merge')).toContainText("Not enabled yet");
+    await expect(page.getByTestId('gh-registry-detail-pr.merge')).toContainText("Approval required");
+    await expect(page.getByTestId('gh-registry-detail-pr.merge')).toContainText("Destructive");
 
     // 결과 계약·입력 port·들어오는 간선 (CR-089) — 호환 판정과 실행 미개방을 함께 보이고, 상세에는 실행 버튼이 없다.
     const detail = page.getByTestId('gh-registry-detail-pr.merge');
@@ -397,8 +397,8 @@ test.describe('A-006 gh capability·버전 레지스트리', () => {
     await expect(contract.getByTestId('gh-registry-output-ports')).toContainText('stdout에 결과가 없다');
     const edge = contract.getByTestId('gh-registry-graph-incoming').locator('[data-edge="pr.list.pull_requests->pr.merge.pull_request"]');
     await expect(edge).toHaveAttribute('data-executable', 'false');
-    await expect(edge).toContainText('실행 미개방');
-    await expect(edge).toContainText('원소 하나를 명시적으로 선택');
+    await expect(edge).toContainText("Execution disabled");
+    await expect(edge).toContainText("Explicit item selection");
     await expect(detail.getByRole('button')).toHaveCount(0);
   });
 
@@ -406,12 +406,12 @@ test.describe('A-006 gh capability·버전 레지스트리', () => {
     await installRoutes(page, { registryStatus: 403, detailCalls: [] });
     await page.goto('/ops/gh-registry');
     await expect(page.getByTestId('gh-registry')).toHaveAttribute('data-state', 'no_permission');
-    await expect(page.getByText('운영자(operator) 또는 보안 담당자(security_officer)')).toBeVisible();
+    await expect(page.getByText("The operator or security_officer role is required")).toBeVisible();
 
     await page.unrouteAll();
     await installRoutes(page, { registryStatus: 404, detailCalls: [] });
     await page.goto('/ops/gh-registry');
     await expect(page.getByTestId('gh-registry')).toHaveAttribute('data-state', 'unavailable');
-    await expect(page.getByText('이 배포에서는 GitHub 작업이 열리지 않았습니다')).toBeVisible();
+    await expect(page.getByText("GitHub operations are not enabled in this deployment")).toBeVisible();
   });
 });

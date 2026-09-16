@@ -13,7 +13,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { Badge, Button, Dialog, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Dialog, Panel, Table } from './ui';
 import { ErrorBanner } from './ErrorBanner';
 import { PolicyHistoryTable, ReasonField, usePolicyStatus, usePolicySubmit } from './GhPolicyShared';
 import { formatTimestamp } from '../lib/format';
@@ -21,9 +21,9 @@ import { shortHash } from '../lib/gh-registry';
 import { approvalBody, approvalReasonText, approvalState, formatDurationMs, notOpenedLines, reasonProblem, revokeBody, type PolicyStatusView } from '../lib/gh-policy';
 
 const STATE_TEXT: Readonly<Record<ReturnType<typeof approvalState>, { readonly label: string; readonly tone: 'success' | 'warning' | 'danger' }>> = {
-  approved: { label: '현재 정의 운영 승인됨', tone: 'success' },
-  approval_required: { label: '운영 승인 필요', tone: 'warning' },
-  approved_other_definition: { label: '승인된 정의가 현재 정의와 다름 — 재승인 필요', tone: 'danger' },
+  approved: { label: "Current definition approved", tone: 'success' },
+  approval_required: { label: "Operational approval required", tone: 'warning' },
+  approved_other_definition: { label: "Approved definition differs from the current definition — approval required again", tone: 'danger' },
 };
 
 type DialogKind = 'approve' | 'revoke' | null;
@@ -45,18 +45,18 @@ export function GhRegistryApprovalPanel({ canChange }: { readonly canChange: boo
   const [lost, setLost] = useState(false);
   const [applied, setApplied] = useState<string | null>(null);
 
-  if (load.kind === 'loading') return <p data-testid="gh-approval-loading">운영 승인 상태를 읽는 중…</p>;
+  if (load.kind === 'loading') return <p data-testid="gh-approval-loading">Loading approval status…</p>;
   if (load.kind === 'unavailable' || load.kind === 'forbidden' || load.kind === 'unauthenticated') return null;
   if (load.kind === 'failed') {
     return (
       <ErrorBanner
         tone="danger"
-        title="운영 승인 상태를 읽지 못했습니다"
+        title="Unable to load approval status"
         impact={load.message}
         correlationId={load.correlationId}
         action={
           <Button variant="secondary" onClick={reload} data-testid="gh-approval-retry">
-            다시 읽기
+            Reload
           </Button>
         }
       />
@@ -88,21 +88,21 @@ export function GhRegistryApprovalPanel({ canChange }: { readonly canChange: boo
     setDialog(null);
     setLost(false);
     if (outcome.kind === 'done') {
-      setApplied(outcome.outcome === 'replayed' ? `${done} — 이미 적용된 요청이었습니다 (revision ${String(outcome.revision)})` : `${done} (revision ${String(outcome.revision)})`);
+      setApplied(outcome.outcome === 'replayed' ? `${done} — this request was already applied (revision ${String(outcome.revision)})` : `${done} (revision ${String(outcome.revision)})`);
     } else {
-      setNotice({ tone: outcome.error.stale ? 'warning' : 'danger', title: '운영 승인을 바꾸지 못했습니다', impact: outcome.error.message, correlationId: outcome.error.correlationId, reasons: outcome.error.reasons });
+      setNotice({ tone: outcome.error.stale ? 'warning' : 'danger', title: "Unable to update operational approval", impact: outcome.error.message, correlationId: outcome.error.correlationId, reasons: outcome.error.reasons });
     }
     reload();
   };
 
   return (
     <Panel as="section" aria-labelledby="gh-approval-heading" data-testid="gh-approval-panel" data-state={state}>
-      <h2 id="gh-approval-heading">운영 승인</h2>
+      <h2 id="gh-approval-heading">Operational approval</h2>
       <p>
         <Badge tone={STATE_TEXT[state].tone} data-testid="gh-approval-state">
           {STATE_TEXT[state].label}
         </Badge>{' '}
-        정책 revision {status.policy.revision} · 배포 범위 <code>{status.scope}</code>
+        Policy revision {status.policy.revision} · Deployment scope <code>{status.scope}</code>
       </p>
       <p data-testid="gh-approval-scope-note">{preview.scope_note}</p>
 
@@ -130,7 +130,7 @@ export function GhRegistryApprovalPanel({ canChange }: { readonly canChange: boo
           correlationId={notice.correlationId}
           action={
             <Button variant="secondary" onClick={() => setNotice(null)} data-testid="gh-approval-notice-close">
-              닫기
+              Close
             </Button>
           }
         />
@@ -138,10 +138,10 @@ export function GhRegistryApprovalPanel({ canChange }: { readonly canChange: boo
 
       <DefinitionTable status={status} />
 
-      <h3>승인 자격</h3>
+      <h3>Approval eligibility</h3>
       {preview.eligible ? (
         <p role="status" data-testid="gh-approval-eligible">
-          현재 근거로 운영 승인할 수 있습니다.
+          Current evidence satisfies operational approval requirements.
         </p>
       ) : (
         <ul data-testid="gh-approval-reasons">
@@ -153,24 +153,24 @@ export function GhRegistryApprovalPanel({ canChange }: { readonly canChange: boo
         </ul>
       )}
       <EvidenceSummary status={status} />
-      <p data-testid="gh-approval-host">사내 GHES 지원 확인: 미검증 — 운영 승인은 이 사실을 바꾸지 않습니다.</p>
+      <p data-testid="gh-approval-host">Internal GHES support: unverified. Operational approval does not change this status.</p>
 
       {canChange ? (
         <div className="prs-gh-actions">
           <Button variant="primary" disabled={!preview.eligible} onClick={() => open('approve')} data-testid="gh-approval-open">
-            승인 미리보기
+            Preview approval
           </Button>
           {approval === null ? null : (
             <Button variant="secondary" tone="danger" onClick={() => open('revoke')} data-testid="gh-approval-revoke-open">
-              승인 철회
+              Revoke approval
             </Button>
           )}
         </div>
       ) : (
-        <p data-testid="gh-approval-readonly">운영 승인과 철회는 운영자(operator)만 할 수 있습니다. 이 화면은 조회 전용입니다.</p>
+        <p data-testid="gh-approval-readonly">Only operators can approve or revoke approval. This view is read only.</p>
       )}
 
-      <h3>변경 이력</h3>
+      <h3>Change history</h3>
       <PolicyHistoryTable revisions={status.revisions} testId="gh-approval-history" />
 
       <Dialog.Root
@@ -182,15 +182,14 @@ export function GhRegistryApprovalPanel({ canChange }: { readonly canChange: boo
         <Dialog.Content size="md" data-testid={dialog === 'revoke' ? 'gh-revoke-dialog' : 'gh-approval-dialog'}>
           {dialog === 'revoke' ? (
             <>
-              <Dialog.Title>운영 승인을 철회합니다</Dialog.Title>
+              <Dialog.Title>Revoke operational approval</Dialog.Title>
               <Dialog.Description>
-                철회하면 새 요청은 「관리자 운영 승인이 필요합니다」로 거절되고, 아직 실행권을 받지 않은 대기 요청은 실행되지 않고 닫힙니다. 이미 실행 중인
-                작업은 끝까지 진행되며 필요하면 실행 이력에서 취소합니다. 철회는 이미 수행한 GHE 조회를 되돌리지 않습니다.
+                Revoking approval rejects new requests and closes queued requests without execution claims. Running jobs continue and can be canceled from execution history. Previously completed GHE queries are not undone.
               </Dialog.Description>
             </>
           ) : (
             <>
-              <Dialog.Title>현재 배포 정의를 운영 승인합니다</Dialog.Title>
+              <Dialog.Title>Approve the current deployment definition</Dialog.Title>
               <Dialog.Description>{preview.scope_note}</Dialog.Description>
               <ApprovalPreview status={status} />
             </>
@@ -198,7 +197,7 @@ export function GhRegistryApprovalPanel({ canChange }: { readonly canChange: boo
           <ReasonField id={dialog === 'revoke' ? 'gh-revoke-reason' : 'gh-approval-reason'} value={reason} onChange={setReason} />
           {lost ? (
             <p role="alert" data-testid="gh-approval-lost">
-              응답을 받지 못했습니다. 다시 보내면 같은 요청으로 결과를 확인하며, 결정이 두 번 적용되지 않습니다.
+              No response received. Retry the same request to check its result without applying the decision twice.
             </p>
           ) : null}
           <div>
@@ -208,14 +207,14 @@ export function GhRegistryApprovalPanel({ canChange }: { readonly canChange: boo
               disabled={submitting || reasonProblem(reason) !== null}
               data-testid={dialog === 'revoke' ? 'gh-revoke-submit' : 'gh-approval-submit'}
               onClick={() => {
-                void confirm(dialog === 'revoke' ? revokeBody(status, reason) : approvalBody(status, reason), dialog === 'revoke' ? '운영 승인을 철회했습니다' : '운영 승인했습니다');
+                void confirm(dialog === 'revoke' ? revokeBody(status, reason) : approvalBody(status, reason), dialog === 'revoke' ? "Operational approval revoked" : "Operational approval granted");
               }}
             >
-              {submitting ? '보내는 중…' : lost ? '다시 보내기' : dialog === 'revoke' ? '철회' : '승인'}
+              {submitting ? "Submitting…" : lost ? "Retry request" : dialog === 'revoke' ? "Revoke" : "Approve"}
             </Button>
             <Dialog.Close asChild>
               <Button variant="secondary" disabled={submitting} data-testid="gh-approval-cancel">
-                취소
+                Cancel
               </Button>
             </Dialog.Close>
           </div>
@@ -228,30 +227,30 @@ export function GhRegistryApprovalPanel({ canChange }: { readonly canChange: boo
 function DefinitionTable({ status }: { readonly status: PolicyStatusView }): ReactNode {
   const approval = status.policy.approval;
   return (
-    <Table data-testid="gh-approval-definitions" caption="현재 적재된 정의와 운영 승인된 정의">
+    <Table data-testid="gh-approval-definitions" caption="Loaded and approved definitions">
       <thead>
         <tr>
-          <th scope="col">구분</th>
+          <th scope="col">Category</th>
           <th scope="col">gh</th>
           <th scope="col">manifest</th>
-          <th scope="col">스냅숏</th>
-          <th scope="col">승인</th>
+          <th scope="col">Snapshot</th>
+          <th scope="col">Approve</th>
         </tr>
       </thead>
       <tbody>
         <tr data-testid="gh-approval-served">
-          <th scope="row">현재 적재</th>
+          <th scope="row">Currently loaded</th>
           <td>{status.served.gh_version}</td>
           <td>
             {status.served.manifest_version} · <code title={status.served.manifest_hash}>{shortHash(status.served.manifest_hash)}</code>
           </td>
-          <td>{status.served.snapshot_id === null ? '없음' : `#${String(status.served.snapshot_id)}`}</td>
+          <td>{status.served.snapshot_id === null ? "None" : `#${String(status.served.snapshot_id)}`}</td>
           <td>—</td>
         </tr>
         <tr data-testid="gh-approval-approved">
-          <th scope="row">운영 승인</th>
+          <th scope="row">Operational approval</th>
           {approval === null ? (
-            <td colSpan={4}>없음</td>
+            <td colSpan={4}>None</td>
           ) : (
             <>
               <td>{approval.gh_version}</td>
@@ -274,20 +273,20 @@ function EvidenceSummary({ status }: { readonly status: PolicyStatusView }): Rea
   const preview = status.approval_preview;
   const evidence = preview.evidence;
   if (evidence === null) {
-    return <p data-testid="gh-approval-evidence-none">이 배포 범위의 실행기 검증 기록이 아직 없습니다.</p>;
+    return <p data-testid="gh-approval-evidence-none">No runner validation records exist for this deployment scope.</p>;
   }
   return (
     <dl data-testid="gh-approval-evidence" data-status={evidence.status}>
-      <dt>최근 실행기 검사</dt>
+      <dt>Latest runner check</dt>
       <dd>
         #{evidence.verification_id} · {formatTimestamp(evidence.checked_at)} · {evidence.trigger} · {evidence.status}
       </dd>
-      <dt>보고서 판</dt>
+      <dt>Report version</dt>
       <dd>{preview.report_version ?? '—'}</dd>
-      <dt>근거 유효 기한</dt>
+      <dt>Evidence expiration</dt>
       <dd>
         {preview.evidence_expires_at === null ? '—' : formatTimestamp(preview.evidence_expires_at)}
-        {preview.evidence_max_age_ms === null ? null : ` (검사 주기 + 한 회차 최악 소요 = ${formatDurationMs(preview.evidence_max_age_ms)})`}
+        {preview.evidence_max_age_ms === null ? null : `(check interval + worst-case check duration = ${formatDurationMs(preview.evidence_max_age_ms)})`}
       </dd>
     </dl>
   );
@@ -298,26 +297,26 @@ function ApprovalPreview({ status }: { readonly status: PolicyStatusView }): Rea
   return (
     <div data-testid="gh-approval-preview">
       <dl>
-        <dt>적용 대상 (배포 범위)</dt>
+        <dt>Target (deployment scope)</dt>
         <dd>
           <code>{status.scope}</code>
         </dd>
-        <dt>승인할 정의</dt>
+        <dt>Definition to approve</dt>
         <dd>
-          gh {status.served.gh_version} · manifest {status.served.manifest_version} · <code title={status.served.manifest_hash}>{shortHash(status.served.manifest_hash)}</code> · 스냅숏 #
+          gh {status.served.gh_version} · manifest {status.served.manifest_version} · <code title={status.served.manifest_hash}>{shortHash(status.served.manifest_hash)}</code> · Snapshot #
           {preview.snapshot_id ?? '—'}
         </dd>
-        <dt>근거 기록</dt>
+        <dt>Evidence record</dt>
         <dd data-testid="gh-approval-preview-evidence">
-          실행기 검사 #{preview.verification_id ?? '—'} · {formatTimestamp(preview.evidence?.checked_at)} · 보고서 {preview.report_version ?? '—'} ·{' '}
+          Runner check #{preview.verification_id ?? '—'} · {formatTimestamp(preview.evidence?.checked_at)} · Report {preview.report_version ?? '—'} ·{' '}
           <code title={preview.report_hash ?? undefined}>{shortHash(preview.report_hash)}</code>
         </dd>
       </dl>
-      <Table data-testid="gh-approval-preview-gates" caption="필요한 게이트 결과">
+      <Table data-testid="gh-approval-preview-gates" caption="Required gate results">
         <thead>
           <tr>
-            <th scope="col">게이트</th>
-            <th scope="col">결과</th>
+            <th scope="col">Gate</th>
+            <th scope="col">Results</th>
           </tr>
         </thead>
         <tbody>
@@ -326,30 +325,29 @@ function ApprovalPreview({ status }: { readonly status: PolicyStatusView }): Rea
             return (
               <tr key={id}>
                 <td>{id}</td>
-                <td>{pass ? '통과' : '미달'}</td>
+                <td>{pass ? "Passed" : "Failed"}</td>
               </tr>
             );
           })}
         </tbody>
       </Table>
-      <h3>실제로 열리는 기능</h3>
+      <h3>Capabilities being enabled</h3>
       <ul data-testid="gh-approval-preview-opens">
         {preview.opens.map((id) => (
           <li key={id}>
-            <code>gh {id.split('.').join(' ')}</code> 한 개
+            <code>gh {id.split('.').join(' ')}</code> one
           </li>
         ))}
       </ul>
-      <h3>아직 허용되지 않는 기능</h3>
+      <h3>Capabilities not yet enabled</h3>
       <ul data-testid="gh-approval-preview-not-opened">
         {notOpenedLines(status).map((line) => (
           <li key={line}>{line}</li>
         ))}
       </ul>
-      <h3>운영 영향</h3>
+      <h3>Operational impact</h3>
       <p data-testid="gh-approval-preview-impact">
-        승인하면 이 정의로 새 요청을 실행할 수 있습니다. 승인 전에 수락된 대기 요청은 이전 정책을 승계하지 않고 닫힙니다. 사내 GHES 지원 확인은 이
-        승인과 별개이며 여전히 미검증입니다. 배포 정의가 바뀌면 다시 승인해야 합니다.
+        Approval enables new requests for this definition. Previously queued requests close without inheriting the old policy. Internal GHES support remains unverified and is independent of this approval. Definition changes require renewed approval.
       </p>
     </div>
   );

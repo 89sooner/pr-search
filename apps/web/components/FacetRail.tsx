@@ -24,7 +24,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Button, Checkbox, Panel } from '@conductor-by-89soone/react';
+import { Button, Checkbox, Panel } from './ui';
 import type { QueryAst } from '@prs/query';
 import {
   SEARCH_FACET_FIELDS,
@@ -64,8 +64,8 @@ export function FacetRail({
   const retryable = state.kind === 'omitted' || state.kind === 'failed';
 
   return (
-    <Panel as="aside" aria-label="필터" className="prs-facet-rail">
-      <h2>필터</h2>
+    <Panel as="aside" aria-label="Filters" className="prs-facet-rail">
+      <h2>Filters</h2>
 
       {/*
        * 사유를 **먼저** 보여 준다. 아래 목록이 비어 있는 이유를 모른 채
@@ -79,7 +79,7 @@ export function FacetRail({
 
       {retryable && onRetry !== undefined ? (
         <Button variant="secondary" data-testid="facet-retry" onClick={onRetry}>
-          분포 다시 계산
+          Recalculate distribution
         </Button>
       ) : null}
 

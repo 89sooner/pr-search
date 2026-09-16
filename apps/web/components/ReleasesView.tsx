@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Badge, Button, Panel } from '@conductor-by-89soone/react';
+import { Badge, Button, Panel } from './ui';
 import { SequenceSpaceSelector, type SequenceSpaceRef } from './SequenceSpaceSelector';
 import { ReleaseTimeline } from './ReleaseTimeline';
 import { RangeSummaryCard } from './RangeSummaryCard';
@@ -232,11 +232,11 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
 
   return (
     <div data-testid="releases-view">
-      <Panel as="section" aria-label="시퀀스 공간">
+      <Panel as="section" aria-label="Sequence space">
         {spacesFailed ? (
-          <p data-testid="spaces-error">시퀀스 공간 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.</p>
+          <p data-testid="spaces-error">Unable to load sequence spaces. Please try again later.</p>
         ) : null}
-        {spaces === null && !spacesFailed ? <p data-testid="spaces-loading">공간 목록을 불러오는 중…</p> : null}
+        {spaces === null && !spacesFailed ? <p data-testid="spaces-loading">Loading sequence spaces…</p> : null}
         {spaces !== null ? (
           <SequenceSpaceSelector
             spaces={spaces}
@@ -251,34 +251,34 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
           />
         ) : null}
         <p data-testid="releases-scope-note">
-          목록은 <strong>이 저장소의 모든 대상 브랜치</strong> 릴리스입니다. 선택한 공간(
-          {baseBranch ?? '미선택'})은 아래 미배포 구간의 기준입니다.
+          This list includes releases from <strong>all base branches in this repository</strong> . The selected space (
+          {baseBranch ?? "Not selected"}) defines the unreleased range below.
         </p>
       </Panel>
 
       {space === null ? (
         <EmptyState
           cause="no_query"
-          title="시퀀스 공간을 고르세요"
-          description="저장소와 대상 브랜치를 고르면 릴리스 타임라인이 표시됩니다."
+          title="Select a sequence space"
+          description="Select a repository and base branch to view the release timeline."
         />
       ) : null}
 
-      {list.kind === 'loading' ? <p data-testid="releases-loading">릴리스를 불러오는 중…</p> : null}
+      {list.kind === 'loading' ? <p data-testid="releases-loading">Loading releases…</p> : null}
 
       {list.kind === 'not_found' ? (
         <EmptyState
           cause="not_found"
-          title="저장소를 찾을 수 없습니다"
-          description="등록되지 않았거나 접근 범위 밖입니다."
+          title="Repository not found"
+          description="The repository is unregistered or outside your access scope."
         />
       ) : null}
 
       {list.kind === 'failed' ? (
         <ErrorBanner
           tone="danger"
-          title="릴리스 목록을 불러오지 못했습니다"
-          impact="타임라인과 구간 비교를 사용할 수 없습니다."
+          title="Unable to load releases"
+          impact="Timeline and range comparison are unavailable."
           action={
             <Button
               data-testid="releases-retry"
@@ -286,7 +286,7 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
                 setReloadToken((token) => token + 1);
               }}
             >
-              다시 시도
+              Try again
             </Button>
           }
         />
@@ -304,15 +304,15 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
          */
         <EmptyState
           cause="not_indexed"
-          title="이 저장소의 릴리스가 없습니다"
-          description="아직 태그가 만들어지지 않았거나, 릴리스 수집이 아직 이 저장소에 닿지 않았습니다. GitHub Enterprise에서 태그를 확인해 주세요."
+          title="No releases in this repository"
+          description="No tags exist yet, or release ingestion has not reached this repository. Check tags in GitHub Enterprise."
           actions={
             repository === null ? undefined : (
               <Link
                 href={`/repositories?repository=${encodeURIComponent(repository)}`}
                 data-testid="releases-open-repository-overview"
               >
-                이 저장소의 수집 상태 보기
+                View repository ingestion status
               </Link>
             )
           }
@@ -321,7 +321,7 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
 
       {list.kind === 'ready' && list.view.truncated ? (
         <p data-testid="releases-truncated">
-          최신 릴리스만 표시했습니다 — 더 오래된 릴리스는 이 목록에 없습니다.
+          Only recent releases are shown. Older releases are omitted.
         </p>
       ) : null}
 
@@ -335,25 +335,25 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
             onSelect={setDetailTag}
           />
 
-          <Panel as="section" aria-label="구간 비교">
+          <Panel as="section" aria-label="Compare range">
             {verdict.kind === 'ready' ? (
               <>
                 <p data-testid="compare-direction">
-                  {verdict.from.tagName} <Badge tone="neutral">제외</Badge> → {verdict.to.tagName}{' '}
-                  <Badge tone="neutral">포함</Badge> — 서수가 작은 쪽이 시작입니다.
+                  {verdict.from.tagName} <Badge tone="neutral">Excluded</Badge> → {verdict.to.tagName}{' '}
+                  <Badge tone="neutral">Included</Badge> — The lower ordinal is the start.
                 </p>
                 <Link
                   href={compareHref(space?.repository ?? '', verdict.from, verdict.to)}
                   data-testid="compare-link"
                 >
-                  이 구간 PR 목록 보기
+                  View PRs in this range
                 </Link>
               </>
             ) : null}
 
             {verdict.kind === 'incomplete' ? (
               <p data-testid="compare-incomplete">
-                비교할 릴리스를 {verdict.remaining}건 더 고르세요.
+                Select {verdict.remaining} more releases to compare.
               </p>
             ) : null}
 
@@ -361,9 +361,9 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
             {verdict.kind === 'space_mismatch' ? (
               <ErrorBanner
                 tone="warning"
-                title="대상 브랜치가 다른 릴리스는 비교할 수 없습니다"
-                impact={`고른 두 릴리스가 ${verdict.spaces.join(' · ')} 브랜치에 각각 속합니다. 시퀀스는 브랜치마다 따로 매겨지므로 두 값을 한 구간으로 이을 수 없습니다.`}
-                action={<span>같은 브랜치의 릴리스 2건을 고르세요.</span>}
+                title="Cannot compare releases from different base branches"
+                impact={`The selected releases belong to ${verdict.spaces.join(' · ')} branches. Each branch has its own sequence, so these ordinals cannot form a single range.`}
+                action={<span>Select two releases from the same branch.</span>}
                 recoverable
               />
             ) : null}
@@ -371,48 +371,47 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
             {verdict.kind === 'not_anchorable' ? (
               <ErrorBanner
                 tone="warning"
-                title="서수가 없는 릴리스는 구간의 끝이 될 수 없습니다"
-                impact={`${verdict.tagNames.join(', ')}은(는) 대상 브랜치의 first-parent 체인에 없거나, 현재 에폭으로 아직 재해석되지 않았습니다.`}
-                action={<span>서수가 표시된 릴리스를 고르세요.</span>}
+                title="A release without an ordinal cannot be a range endpoint"
+                impact={`${verdict.tagNames.join(', ')} is outside the base branch's first-parent chain or has not been resolved in the current epoch.`}
+                action={<span>Select a release with an ordinal.</span>}
                 recoverable
               />
             ) : null}
           </Panel>
 
-          <Panel as="section" aria-label="릴리스 상세">
+          <Panel as="section" aria-label="Release details">
             {selected === null ? (
-              <p data-testid="detail-empty">릴리스 태그를 누르면 직전 릴리스 대비 요약이 표시됩니다.</p>
+              <p data-testid="detail-empty">Select a release tag to view changes since the previous release.</p>
             ) : selected.previousTagName === null ? (
               <p data-testid="detail-no-previous">
-                {selected.tagName}은(는) 이 공간에서 가장 이른 릴리스입니다 — 직전 릴리스가 없어 비교할
-                구간이 없습니다.
+                {selected.tagName} is the earliest release in this space. No previous release exists for comparison.
               </p>
             ) : (
               <>
                 <p data-testid="detail-heading">
-                  {selected.tagName} — 직전({selected.previousTagName}) 대비
+                  {selected.tagName} — compared with previous release ({selected.previousTagName})
                 </p>
-                {detail.kind === 'loading' ? <p data-testid="detail-loading">요약을 불러오는 중…</p> : null}
+                {detail.kind === 'loading' ? <p data-testid="detail-loading">Loading summary…</p> : null}
                 {detail.kind === 'failed' ? (
-                  <p data-testid="detail-failed">요약을 불러오지 못했습니다.</p>
+                  <p data-testid="detail-failed">Unable to load summary.</p>
                 ) : null}
                 {detail.kind === 'ready' ? <RangeSummaryCard summary={detail.summary} /> : null}
               </>
             )}
           </Panel>
 
-          <Panel as="section" aria-label="미배포 구간">
+          <Panel as="section" aria-label="Unreleased range">
             {unreleased.kind === 'loading' ? (
-              <p data-testid="unreleased-loading">미배포 구간을 확인하는 중…</p>
+              <p data-testid="unreleased-loading">Checking unreleased range…</p>
             ) : null}
             {unreleased.kind === 'failed' ? (
-              <p data-testid="unreleased-failed">미배포 구간을 불러오지 못했습니다.</p>
+              <p data-testid="unreleased-failed">Unable to load unreleased range.</p>
             ) : null}
             {unreleased.kind === 'ready' ? (
               <>
                 <p data-testid="unreleased-summary">
-                  마지막 릴리스 이후 {unreleased.summary.pullRequestCount}건의 PR이 {baseBranch ?? ''}{' '}
-                  head까지 대기 중입니다.
+                  Since the last release: {unreleased.summary.pullRequestCount} PRs are pending through {baseBranch ?? ''}{' '}
+                  head.
                 </p>
                 {unreleased.range === null ? null : (
                   <>
@@ -425,12 +424,11 @@ export function ReleasesView({ loginPath }: ReleasesViewProps): ReactNode {
                       )}
                       data-testid="unreleased-link"
                     >
-                      미배포 목록 보기
+                      View unreleased changes
                     </Link>
                     {hasStartAnchor(unreleased.range) ? null : (
                       <p data-testid="unreleased-no-start">
-                        이 공간에는 채번된 릴리스가 없어 시작 앵커가 없습니다 — 범위 조사에서 시작
-                        지점을 직접 고르세요.
+                        This space has no numbered releases to use as a start anchor. Choose a start point in range investigation.
                       </p>
                     )}
                   </>

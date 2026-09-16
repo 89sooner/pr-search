@@ -35,7 +35,7 @@ function logFailure(correlationId: string, reason: string, status?: number): voi
   console.error(
     JSON.stringify({
       level: 'warn',
-      message: 'Operations App 인가 콜백을 완료하지 못했다',
+      message: 'Unable to complete the Operations App authorization callback',
       correlation_id: correlationId,
       reason,
       ...(status === undefined ? {} : { upstream_status: status }),
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const code = request.nextUrl.searchParams.get('code') ?? '';
   const state = request.nextUrl.searchParams.get('state') ?? '';
   if (code === '' || state === '') {
-    logFailure(correlationId, 'code 또는 state가 없다');
+    logFailure(correlationId, 'Code or state is missing');
     return failed();
   }
 
@@ -65,14 +65,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     (id) => sessionStore().load(id),
   );
   if (auth.kind === 'unauthenticated') {
-    logFailure(correlationId, '세션이 없다');
+    logFailure(correlationId, 'Session is missing');
     if (config.authEnabled) {
       return redirectToPath(`${config.session.loginPath}?return_to=${encodeURIComponent(FALLBACK_RETURN)}`);
     }
     return failed();
   }
   if (auth.kind === 'unavailable') {
-    logFailure(correlationId, '세션 저장소에 닿지 못했다');
+    logFailure(correlationId, 'Session store is unreachable');
     return failed();
   }
 
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       cache: 'no-store',
     });
   } catch {
-    logFailure(correlationId, 'search-api에 닿지 못했다');
+    logFailure(correlationId, 'search-api is unreachable');
     return failed();
   }
 

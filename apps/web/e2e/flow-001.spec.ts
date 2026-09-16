@@ -85,7 +85,7 @@ test.describe('W-001이 실제 브라우저에서 선다', () => {
     await page.goto('/search');
 
     await expect(page.getByRole('banner')).toBeVisible();
-    await expect(page.getByRole('heading', { name: '통합 검색', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: "Search", level: 1 })).toBeVisible();
     await expect(page.getByRole('searchbox')).toBeVisible();
   });
 
@@ -108,7 +108,7 @@ test.describe('URL이 단일 진실이다 (QA-COMMON-09)', () => {
     // 입력창이 URL의 질의를 그대로 담는다.
     await expect(page.getByRole('searchbox')).toHaveValue('repo:acme/payments author:kim');
     // 칩도 URL에서 나온다 — 화면 상태가 따로 있지 않다.
-    await expect(page.getByRole('button', { name: 'author:kim 필터 제거' })).toBeVisible();
+    await expect(page.getByRole('button', { name: "Remove filter author:kim" })).toBeVisible();
     await expect(page.getByTestId('search-view')).toHaveAttribute('data-screen-state', 'ready');
   });
 
@@ -141,8 +141,8 @@ test.describe('히스토리 규율 (WP-016 DoD)', () => {
     await page.getByLabel('kim (18)').click();
     await page.getByLabel('lee (11)').click();
     await page.getByLabel('backend (33)').click();
-    await page.getByRole('button', { name: '머지 시각' }).click();
-    await page.getByRole('button', { name: '변경 파일' }).click();
+    await page.getByRole('button', { name: "Merged at" }).click();
+    await page.getByRole('button', { name: "Changed files" }).click();
 
     // 조건이 실제로 URL에 쌓였는지 확인한다 — 아무 일도 없었다면 시험이 무의미하다.
     await expect(page).toHaveURL(/author%3Akim/);
@@ -159,7 +159,7 @@ test.describe('히스토리 규율 (WP-016 DoD)', () => {
     await expect(page.getByTestId('search-view')).toHaveAttribute('data-screen-state', 'ready');
 
     await page.getByRole('searchbox').fill('repo:acme/other');
-    await page.getByRole('button', { name: '검색', exact: true }).click();
+    await page.getByRole('button', { name: "Search", exact: true }).click();
     await expect(page).toHaveURL(/acme%2Fother/);
 
     // 제출은 `push`이므로 뒤로가기가 직전 질의로 돌아간다.
@@ -191,7 +191,7 @@ test.describe('클라이언트가 먼저 거절한다 (QA-W001-04)', () => {
     await page.goto('/search');
 
     await page.getByRole('searchbox').fill('abc12');
-    await expect(page.getByRole('button', { name: '검색', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: "Search", exact: true })).toBeDisabled();
     expect(calls).toEqual([]);
   });
 
@@ -200,7 +200,7 @@ test.describe('클라이언트가 먼저 거절한다 (QA-W001-04)', () => {
     await page.goto('/search');
 
     await page.getByRole('searchbox').fill('a1b2c3d');
-    await expect(page.getByRole('button', { name: '검색', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: "Search", exact: true })).toBeEnabled();
   });
 });
 
@@ -212,8 +212,8 @@ test.describe('오프셋 페이징을 시사하지 않는다 (QA-W001-14 절반 
 
     // 커서 동작 자체는 WP-032지만 **금지 규칙은 지금 세운다** — 나중에
     // 검사하면 이미 잘못 만든 뒤다.
-    await expect(page.getByRole('navigation', { name: /페이지/ })).toHaveCount(0);
-    await expect(page.locator('[aria-label*="페이지"]')).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: /page/ })).toHaveCount(0);
+    await expect(page.locator("[aria-label*=\"page\"]")).toHaveCount(0);
   });
 });
 

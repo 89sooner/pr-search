@@ -24,7 +24,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Badge, Button, Panel } from '@conductor-by-89soone/react';
+import { Badge, Button, Panel } from './ui';
 import { LinkGroupList } from './LinkGroupList';
 import {
   judgeRelations,
@@ -124,7 +124,7 @@ export function RelationSection({
 
   return (
     <Panel as="section" aria-labelledby={`${sectionId}-heading`} data-testid={`section-${sectionId}`}>
-      <h2 id={`${sectionId}-heading`}>관계</h2>
+      <h2 id={`${sectionId}-heading`}>Relationships</h2>
 
       <Button
         type="button"
@@ -140,7 +140,7 @@ export function RelationSection({
           if (next) loadAll();
         }}
       >
-        {expanded ? '접기' : '펼치기'}
+        {expanded ? "Collapse" : "Expand"}
       </Button>
 
       <div id={`${sectionId}-body`} hidden={!expanded} data-testid={`body-${sectionId}`}>
@@ -156,7 +156,7 @@ export function RelationSection({
                 <>
                   {' '}
                   <Badge tone="neutral" data-testid="references-pending">
-                    참조 분석 중
+                    Analyzing references
                   </Badge>
                 </>
               ) : null}
@@ -168,14 +168,14 @@ export function RelationSection({
               if (outcome.phase === 'loading') {
                 return (
                   <p key={key} data-testid={`relation-loading-${key}`}>
-                    불러오는 중…
+                    Loading…
                   </p>
                 );
               }
               if (outcome.phase === 'error') {
                 return (
                   <p key={key} data-testid={`relation-error-${key}`}>
-                    관계를 불러오지 못했습니다.{' '}
+                    Unable to load relationships.{' '}
                     {/*
                       * 따를 수 없는 지시를 하지 않는다 (CR-032, DEV-170). 버튼이
                       * 없으면 상세 화면을 다시 여는 것 말고 복구 경로가 없다.
@@ -187,7 +187,7 @@ export function RelationSection({
                         loadGroup(linkType, direction);
                       }}
                     >
-                      다시 시도
+                      Try again
                     </Button>
                   </p>
                 );

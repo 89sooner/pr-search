@@ -18,10 +18,10 @@ export const dynamic = 'force-dynamic';
 
 export default async function GhRegistryPage(): Promise<ReactNode> {
   return (
-    <GuardedPage title="gh capability 레지스트리" returnTo="/ops/gh-registry">
+    <GuardedPage title="gh capability registry" returnTo="/ops/gh-registry">
       {({ roles, authEnabled }) => (
         <>
-          <h1>gh capability·버전 레지스트리</h1>
+          <h1>gh capability and version registry</h1>
           {/* 운영 승인 (CR-090). 승인·철회 버튼은 operator에게만 그린다 — 변경 권한은 API-GH-008이 요청마다 다시 본다. */}
           <GhRegistryApprovalPanel canChange={canChangePolicy(roles, authEnabled)} />
           <GhRegistryView />

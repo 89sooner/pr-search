@@ -58,13 +58,13 @@ describe('행 액션 (AC-2, AC-6)', () => {
 
   it('무효할 때 **저장자에게는 편집 경로를** 안내한다', () => {
     const actions = rowActions(item({ query_status: 'invalid', is_owner: true }));
-    expect(actions.blockedReason).toContain('편집');
+    expect(actions.blockedReason).toContain("Edit");
     expect(actions.canEdit).toBe(true);
   });
 
   it('무효할 때 **공유받은 사람에게는 소유자가 고쳐야 한다고** 안내한다', () => {
     const actions = rowActions(item({ query_status: 'invalid', is_owner: false }));
-    expect(actions.blockedReason).toContain('소유자');
+    expect(actions.blockedReason).toContain("owner");
     expect(actions.canEdit).toBe(false);
   });
 
@@ -121,7 +121,7 @@ describe('목록 상태 (상태 매트릭스 W-008)', () => {
 
 describe('공개 범위 레이블 (NFR-006)', () => {
   it('비공개는 문자로 말한다', () => {
-    expect(visibilityLabel(item())).toBe('비공개');
+    expect(visibilityLabel(item())).toBe("Private");
   });
 
   it('**팀 공유는 대상 팀 이름을 함께 보인다**', () => {
@@ -129,11 +129,11 @@ describe('공개 범위 레이블 (NFR-006)', () => {
       visibilityLabel(
         item({ visibility: 'team', target_team: { team_id: 7, org_id: 1, slug: 'payments' } }),
       ),
-    ).toBe('팀 공유 · payments');
+    ).toBe("Shared with team · payments");
   });
 
   it('대상이 빠져 있어도 무너지지 않는다', () => {
-    expect(visibilityLabel(item({ visibility: 'team' }))).toBe('팀 공유');
+    expect(visibilityLabel(item({ visibility: 'team' }))).toBe("Shared with team");
   });
 });
 
@@ -147,8 +147,8 @@ describe('공유 대상 레이블 (DEV-331 계열)', () => {
   });
 
   it('**같은 이름이 여럿이면 조직을 덧붙인다** — 어느 팀에 공유하는지 알아야 한다', () => {
-    expect(shareTargetLabel(payments, [payments, twin, platform])).toBe('payments (조직 10)');
-    expect(shareTargetLabel(twin, [payments, twin, platform])).toBe('payments (조직 20)');
+    expect(shareTargetLabel(payments, [payments, twin, platform])).toBe("payments (organization 10)");
+    expect(shareTargetLabel(twin, [payments, twin, platform])).toBe("payments (organization 20)");
   });
 });
 
@@ -230,15 +230,15 @@ describe('무효 구간 (AC-6)', () => {
 
 describe('저장 실패 안내', () => {
   it('**상한 초과는 무엇을 해야 하는지 말한다**', () => {
-    expect(saveFailureMessage('SAVED_SEARCH_LIMIT')).toContain('삭제');
+    expect(saveFailureMessage('SAVED_SEARCH_LIMIT')).toContain("Delete");
   });
 
   it('이름 충돌은 이름을 바꾸라고 말한다', () => {
-    expect(saveFailureMessage('SAVED_SEARCH_NAME_CONFLICT')).toContain('다른 이름');
+    expect(saveFailureMessage('SAVED_SEARCH_NAME_CONFLICT')).toContain("different name");
   });
 
   it('문법 오류는 질의를 고치라고 말한다', () => {
-    expect(saveFailureMessage('QUERY_SYNTAX_ERROR')).toContain('질의');
+    expect(saveFailureMessage('QUERY_SYNTAX_ERROR')).toContain("query");
   });
 
   it('모르는 코드에도 답이 있다 — 빈 화면을 남기지 않는다', () => {
@@ -328,7 +328,7 @@ describe('rowActions와 시퀀스 인용 (CR-051)', () => {
   it('`unbound`면 실행이 막히고 사유를 준다', () => {
     const actions = rowActions(item({ sequence_reference: { status: 'unbound' } }));
     expect(actions.canRun).toBe(false);
-    expect(actions.blockedReason).toContain('다시 연결');
+    expect(actions.blockedReason).toContain("Rebind");
   });
 
   it('**공유받은 사람에게는 재연결을 그리지 않는다** — 저장자만 고친다 (AC-2)', () => {
@@ -342,7 +342,7 @@ describe('rowActions와 시퀀스 인용 (CR-051)', () => {
   it('공유받은 사람의 `unbound` 사유는 저장자를 가리킨다', () => {
     const actions = rowActions(item({ is_owner: false, sequence_reference: { status: 'unbound' } }));
     expect(actions.canRun).toBe(false);
-    expect(actions.blockedReason).toContain('저장자');
+    expect(actions.blockedReason).toContain("owner");
   });
 
   it('낡았어도 실행은 열려 있다', () => {

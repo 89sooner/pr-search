@@ -55,12 +55,12 @@ export const OPS_ROLES: ReadonlySet<Role> = new Set<Role>(['operator', 'security
  * 자기 WP에서 붙는다. 없는 경로로 가면 Next.js가 404를 낸다.
  */
 export const NAV_ENTRIES: readonly NavEntry[] = [
-  { id: 'search', label: '통합 검색', href: '/search', section: 'search' },
-  { id: 'saved-searches', label: '저장된 검색', href: '/saved-searches', section: 'search' },
-  { id: 'repositories', label: '저장소', href: '/repositories', section: 'analysis' },
-  { id: 'ranges', label: '범위 조사', href: '/ranges', section: 'analysis' },
-  { id: 'releases', label: '릴리스', href: '/releases', section: 'analysis' },
-  { id: 'analytics', label: '통계', href: '/analytics', section: 'analysis' },
+  { id: 'search', label: 'Search', href: '/search', section: 'search' },
+  { id: 'saved-searches', label: 'Saved searches', href: '/saved-searches', section: 'search' },
+  { id: 'repositories', label: 'Repositories', href: '/repositories', section: 'analysis' },
+  { id: 'ranges', label: 'Range investigation', href: '/ranges', section: 'analysis' },
+  { id: 'releases', label: 'Releases', href: '/releases', section: 'analysis' },
+  { id: 'analytics', label: 'Analytics', href: '/analytics', section: 'analysis' },
   /*
    * A-001 파이프라인. `security_officer`도 보되 그 역할에게는 `A-001-ARCHIVE`
    * 섹션만 렌더링된다 (CR-052, DEV-375). 진입점은 열고 내용은 화면이 가른다 —
@@ -68,7 +68,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
    */
   {
     id: 'ops-pipeline',
-    label: '파이프라인',
+    label: 'Pipeline',
     href: '/ops/pipeline',
     section: 'ops',
     allowedRoles: ['operator', 'security_officer'],
@@ -76,7 +76,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   /* A-002 저장소 등록. `operator` 전용이다 (권한 매트릭스). */
   {
     id: 'ops-repositories',
-    label: '저장소 등록',
+    label: 'Repository registration',
     href: '/ops/repositories',
     section: 'ops',
     allowedRoles: ['operator'],
@@ -89,7 +89,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
    */
   {
     id: 'ops-jobs',
-    label: '잡',
+    label: 'Jobs',
     href: '/ops/jobs',
     section: 'ops',
     allowedRoles: ['operator'],
@@ -97,7 +97,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   /* A-004 감사 기록. `security_officer` 전용이다 (FR-AUTH-004 AC-5). */
   {
     id: 'ops-audit',
-    label: '감사 기록',
+    label: 'Audit log',
     href: '/ops/audit',
     section: 'ops',
     allowedRoles: ['security_officer'],
@@ -109,7 +109,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
    */
   {
     id: 'ops-gh-registry',
-    label: 'gh 레지스트리',
+    label: 'gh registry',
     href: '/ops/gh-registry',
     section: 'ops',
     allowedRoles: ['operator', 'security_officer'],
@@ -120,7 +120,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
    */
   {
     id: 'ops-gh-policy',
-    label: 'gh 실행 정책',
+    label: 'gh execution policy',
     href: '/ops/gh-policy',
     section: 'ops',
     allowedRoles: ['operator', 'security_officer'],
@@ -133,15 +133,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
    * 화면은 API의 404를 「이 배포에서는 열리지 않았다」로 그린다 — web은 플래그를 읽지
    * 않는다(DEV-589의 규율).
    */
-  { id: 'gh-command-center', label: 'GitHub 작업', href: '/gh', section: 'github' },
-  { id: 'gh-history', label: '실행 이력', href: '/gh/history', section: 'github' },
+  { id: 'gh-command-center', label: 'GitHub operations', href: '/gh', section: 'github' },
+  { id: 'gh-history', label: 'Run history', href: '/gh/history', section: 'github' },
 ];
 
 export const SECTION_LABELS: Readonly<Record<NavSection, string>> = {
-  search: '검색',
-  analysis: '분석',
+  search: 'Search',
+  analysis: 'Analysis',
   github: 'GitHub',
-  ops: '운영',
+  ops: 'Operations',
 };
 
 /** 역할 하나라도 운영 그룹을 볼 수 있는가. */

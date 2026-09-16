@@ -69,23 +69,23 @@ describe('A-006 — 신원·커버리지·게이트·실행 허용', () => {
     expect(screen.getByTestId('gh-registry-gh-version')).toHaveTextContent('2.97.0');
     expect(screen.getByTestId('gh-registry-manifest')).toHaveTextContent('r0.3');
     expect(screen.getByTestId('gh-registry-manifest')).toHaveTextContent('13623d63cb18…');
-    expect(screen.getByTestId('gh-registry-manifest')).toHaveTextContent('해시 검증됨');
-    expect(screen.getByTestId('gh-registry-execution')).toHaveTextContent('실행이 열린 capability 1개: pr.list');
-    expect(screen.getByTestId('gh-registry-execution')).toHaveTextContent('분류된 leaf 196개 / 미분류 0개');
+    expect(screen.getByTestId('gh-registry-manifest')).toHaveTextContent("Hash verified");
+    expect(screen.getByTestId('gh-registry-execution')).toHaveTextContent('Enabled capabilities 1 items: pr.list');
+    expect(screen.getByTestId('gh-registry-execution')).toHaveTextContent('Classified leaves: 196/ Unclassified: 0 items');
 
     const dimensions = screen.getByTestId('gh-registry-dimensions');
-    const flagRow = within(dimensions).getByText('command 고유 flag 분류율').closest('tr');
+    const flagRow = within(dimensions).getByText('Command-specific flag coverage').closest('tr');
     expect(flagRow).toHaveTextContent('1034/1034');
     expect(flagRow).toHaveTextContent('100%');
-    const contractRow = within(dimensions).getByText('결과 계약 분류율').closest('tr');
+    const contractRow = within(dimensions).getByText('Result contract coverage').closest('tr');
     expect(contractRow).toHaveTextContent('196/196');
-    const outputPortRow = within(dimensions).getByText('출력 port 분류율').closest('tr');
+    const outputPortRow = within(dimensions).getByText('Output port coverage').closest('tr');
     expect(outputPortRow).toHaveTextContent('32/32');
-    const flowRow = within(dimensions).getByText('실행 가능한 다단계 흐름 수').closest('tr');
+    const flowRow = within(dimensions).getByText('Executable multistep flows').closest('tr');
     expect(flowRow).toHaveTextContent('n/a');
 
     const gates = screen.getByTestId('gh-registry-gates');
-    expect(within(gates).getByText(/GATE-GH-01 capability/).closest('li')).toHaveAttribute('data-pass', 'true');
+    expect(within(gates).getByText(/GATE-GH-01 Capability/).closest('li')).toHaveAttribute('data-pass', 'true');
     expect(within(gates).getByText(/GATE-GH-01d/).closest('li')).toHaveAttribute('data-pass', 'true');
 
     // 결과 계약·연결 요약 (CR-089) — 분모가 다른 수치를 따로 보인다.
@@ -97,12 +97,12 @@ describe('A-006 — 신원·커버리지·게이트·실행 허용', () => {
     expect(summary.querySelector('[data-item="edges"]')).toHaveTextContent('398');
     expect(summary.querySelector('[data-item="flows"]')).toHaveTextContent('0');
     expect(summary.querySelector('[data-item="host"]')).toHaveTextContent('0');
-    expect(screen.getByTestId('gh-registry-composability')).toHaveTextContent('조건부 연결 가능 32');
-    expect(screen.getByTestId('gh-registry-gate-scope')).toHaveTextContent('REL-007 완료가 아니다');
+    expect(screen.getByTestId('gh-registry-composability')).toHaveTextContent('Conditionally bindable 32');
+    expect(screen.getByTestId('gh-registry-gate-scope')).toHaveTextContent('does not complete REL-007');
 
     expect(screen.getByTestId('gh-registry-records-executor')).toHaveAttribute('data-status', 'passed');
     expect(screen.getByTestId('gh-registry-verification').querySelector('[data-contract-dimensions]')).toHaveAttribute('data-contract-dimensions', 'verified');
-    expect(screen.getByTestId('gh-registry-host')).toHaveTextContent('미확인');
+    expect(screen.getByTestId('gh-registry-host')).toHaveTextContent("Unverified");
     expect(await violations(container)).toEqual([]);
   });
 
@@ -110,11 +110,11 @@ describe('A-006 — 신원·커버리지·게이트·실행 허용', () => {
     installFetch({ registry: { status: 200, body: REGISTRY_STATUS_LEGACY } });
     const { container } = render(<GhRegistryView />);
     await ready();
-    expect(screen.getByTestId('gh-registry-contracts-none')).toHaveTextContent('옛 판');
+    expect(screen.getByTestId('gh-registry-contracts-none')).toHaveTextContent("older");
     expect(screen.queryByTestId('gh-registry-contract-summary')).toBeNull();
     const cell = screen.getByTestId('gh-registry-verification').querySelector('[data-contract-dimensions]');
     expect(cell).toHaveAttribute('data-contract-dimensions', 'legacy');
-    expect(cell).toHaveTextContent('결과 계약 미검증(옛 판)');
+    expect(cell).toHaveTextContent("Result contract unverified (older version)");
     expect(await violations(container)).toEqual([]);
   });
 
@@ -123,9 +123,9 @@ describe('A-006 — 신원·커버리지·게이트·실행 허용', () => {
     render(<GhRegistryView />);
     const root = await ready();
     expect(root).toHaveAttribute('data-records', 'no_records');
-    expect(screen.getByTestId('gh-registry-records-none')).toHaveTextContent('검증 기록이 없습니다');
-    expect(screen.getByTestId('gh-registry-verifications')).toHaveTextContent('기록 없음');
-    expect(screen.getByTestId('gh-registry-snapshots')).toHaveTextContent('스냅숏 없음');
+    expect(screen.getByTestId('gh-registry-records-none')).toHaveTextContent("No validation record exists");
+    expect(screen.getByTestId('gh-registry-verifications')).toHaveTextContent("No records");
+    expect(screen.getByTestId('gh-registry-snapshots')).toHaveTextContent("No snapshots");
     expect(screen.queryByTestId('gh-registry-records-executor')).toBeNull();
   });
 
@@ -134,13 +134,13 @@ describe('A-006 — 신원·커버리지·게이트·실행 허용', () => {
     render(<GhRegistryView />);
     await ready();
     expect(screen.getByTestId('gh-registry-records-executor')).toHaveAttribute('data-status', 'drift');
-    expect(screen.getByTestId('gh-registry-records-executor')).toHaveTextContent('registry_stale로 거절');
+    expect(screen.getByTestId('gh-registry-records-executor')).toHaveTextContent("rejecting new executions with registry_stale");
     const drift = screen.getByTestId('gh-registry-drift');
-    expect(drift).toHaveTextContent('바이너리에만 있음: pr frobnicate');
-    expect(drift).toHaveTextContent('flag·JSON 필드가 달라짐: pr list');
+    expect(drift).toHaveTextContent("Binary only: pr frobnicate");
+    expect(drift).toHaveTextContent("Changed flags or JSON fields: pr list");
     const row = screen.getByTestId('gh-registry-verification');
     expect(row).toHaveAttribute('data-status', 'drift');
-    expect(row).toHaveTextContent('불일치');
+    expect(row).toHaveTextContent("Mismatch");
   });
 });
 
@@ -152,7 +152,7 @@ describe('A-006 — 접근·부재·오류를 가른다', () => {
     await waitFor(() => {
       expect(root).toHaveAttribute('data-state', 'no_permission');
     });
-    expect(root).toHaveTextContent('운영자(operator) 또는 보안 담당자(security_officer)');
+    expect(root).toHaveTextContent("The operator or security_officer role is required");
     expect(await violations(container)).toEqual([]);
   });
 
@@ -163,7 +163,7 @@ describe('A-006 — 접근·부재·오류를 가른다', () => {
     await waitFor(() => {
       expect(root).toHaveAttribute('data-state', 'unavailable');
     });
-    expect(root).toHaveTextContent('이 배포에서는 GitHub 작업이 열리지 않았습니다');
+    expect(root).toHaveTextContent("GitHub operations are not enabled in this deployment");
   });
 
   it('500은 상관 ID와 다시 읽기 버튼이 있는 실패다', async () => {
@@ -173,9 +173,9 @@ describe('A-006 — 접근·부재·오류를 가른다', () => {
     await waitFor(() => {
       expect(root).toHaveAttribute('data-state', 'failed');
     });
-    expect(root).toHaveTextContent('터졌다');
+    expect(root).toHaveTextContent('Unable to read the response. (INTERNAL_ERROR)');
     expect(root).toHaveTextContent('c-500');
-    expect(screen.getByRole('button', { name: '다시 읽기' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Reload" })).toBeInTheDocument();
   });
 });
 
@@ -198,13 +198,13 @@ describe('A-006 — command 탐색과 상세', () => {
     fireEvent.click(screen.getByTestId('gh-registry-command-pr.list'));
     const detail = await screen.findByTestId('gh-registry-detail-pr.list');
     expect(calls).toContain('/api/gh/registry/commands/pr.list');
-    expect(detail).toHaveTextContent('실행 가능');
-    expect(detail).toHaveTextContent('웹 폼');
-    expect(detail).toHaveTextContent('읽기');
+    expect(detail).toHaveTextContent("Enabled");
+    expect(detail).toHaveTextContent("Web form");
+    expect(detail).toHaveTextContent("Read");
     expect(screen.getByTestId('gh-registry-detail-basis')).toHaveTextContent('List pull requests in a repository');
     // flag 표: --state는 열거값이, --web은 웹 등가가 보인다.
     expect(detail).toHaveTextContent('open | closed | merged | all');
-    expect(detail).toHaveTextContent('웹 등가');
+    expect(detail).toHaveTextContent("Web equivalent");
     // 요약에 심은 <script>는 텍스트다 — DOM에 script 요소가 없다.
     expect(container.querySelector('script')).toBeNull();
     expect(detail).toHaveTextContent('<script>alert(1)</script>');
@@ -216,12 +216,12 @@ describe('A-006 — command 탐색과 상세', () => {
     expect(within(contract).getByTestId('gh-registry-contract-outputs').querySelector('[data-mode="json"]')).toHaveAttribute('data-bindable', 'true');
     expect(within(contract).getByTestId('gh-registry-contract-outputs').querySelector('[data-mode="text"]')).toHaveAttribute('data-bindable', 'false');
     expect(within(contract).getByTestId('gh-registry-output-ports')).toHaveTextContent('pull_requests');
-    expect(within(contract).getByTestId('gh-registry-output-ports')).toHaveTextContent('필드 선택: number');
+    expect(within(contract).getByTestId('gh-registry-output-ports')).toHaveTextContent("Field selection: number");
     const edge = within(contract).getByTestId('gh-registry-graph-outgoing').querySelector('[data-edge="pr.list.pull_requests->pr.view.pull_request"]');
     expect(edge).toHaveAttribute('data-executable', 'false');
-    expect(edge).toHaveTextContent('조건부 호환');
-    expect(edge).toHaveTextContent('원소 하나를 명시적으로 선택');
-    expect(edge).toHaveTextContent('실행 미개방');
+    expect(edge).toHaveTextContent("Conditionally compatible");
+    expect(edge).toHaveTextContent("Explicit item selection");
+    expect(edge).toHaveTextContent("Execution disabled");
     expect(within(detail).queryAllByRole('button')).toEqual([]);
     expect(await violations(container)).toEqual([]);
   });
@@ -232,12 +232,12 @@ describe('A-006 — command 탐색과 상세', () => {
     await ready();
     fireEvent.click(screen.getByTestId('gh-registry-command-auth.token'));
     const detail = await screen.findByTestId('gh-registry-detail-auth.token');
-    expect(detail).toHaveTextContent('정책 차단');
+    expect(detail).toHaveTextContent("Policy blocked");
     expect(detail).toHaveTextContent('열지 않기로 정한');
     expect(detail).toHaveTextContent('secret');
     // 비밀 결과는 연결 후보가 없고 그 이유를 말한다 (CR-089).
     expect(within(detail).getByTestId('gh-registry-contract')).toHaveAttribute('data-composability', 'secret_non_bindable');
-    expect(detail).toHaveTextContent('비밀 — 흐르지 않음');
-    expect(within(detail).getByTestId('gh-registry-graph-outgoing')).toHaveTextContent('없음');
+    expect(detail).toHaveTextContent("Secret — cannot be passed on");
+    expect(within(detail).getByTestId('gh-registry-graph-outgoing')).toHaveTextContent("None");
   });
 });

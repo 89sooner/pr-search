@@ -28,6 +28,6 @@ describe('redirectToPath (CR-092 / DEV-699)', () => {
     ['빈 값', ''],
     ['헤더를 쪼개는 제어 문자', '/ok\r\nset-cookie: x=1'],
   ])('%s는 다른 출처로 읽히거나 헤더를 깨므로 던진다', (_label, path) => {
-    expect(() => redirectToPath(path)).toThrow('같은 출처의 절대 경로가 아니다');
+    expect(() => redirectToPath(path)).toThrow('Not a same-origin absolute path');
   });
 });

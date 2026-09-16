@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Button, Panel, Table } from '@conductor-by-89soone/react';
+import { Button, Panel, Table } from './ui';
 import { RegistrationRequestQueue } from './RegistrationRequestQueue';
 import {
   RepositoryRegistrationForm,
@@ -152,7 +152,7 @@ export function OpsRepositoriesView(): ReactNode {
             if (Array.isArray(permissions)) {
               setRequiredPermissions(permissions as readonly string[]);
             } else {
-              setActionError('저장소를 등록하지 못했습니다. 입력을 확인하세요.');
+              setActionError("Unable to register the repository. Check the inputs.");
             }
             return;
           }
@@ -166,7 +166,7 @@ export function OpsRepositoriesView(): ReactNode {
           refresh();
         } catch (error) {
           void error;
-          setActionError('등록 요청을 보내지 못했습니다.');
+          setActionError("Unable to send the registration request.");
         } finally {
           setSubmitting(false);
         }
@@ -182,11 +182,11 @@ export function OpsRepositoriesView(): ReactNode {
       void (async () => {
         try {
           const response = await fetch(`${REPOSITORIES_URL}/${String(target.repository_id)}`, { method: 'DELETE' });
-          if (!response.ok) setActionError('해제 요청이 거절되었습니다.');
+          if (!response.ok) setActionError("The unregister request was rejected.");
           else setEdit(null);
         } catch (error) {
           void error;
-          setActionError('해제 요청을 보내지 못했습니다.');
+          setActionError("Unable to send the unregister request.");
         } finally {
           setSubmitting(false);
           refresh();
@@ -207,10 +207,10 @@ export function OpsRepositoriesView(): ReactNode {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ action: 'dismiss', reason }),
           });
-          if (!response.ok) setActionError('요청 종료가 거절되었습니다.');
+          if (!response.ok) setActionError("Closing the request was rejected.");
         } catch (error) {
           void error;
-          setActionError('요청 종료를 보내지 못했습니다.');
+          setActionError("Unable to send the close request.");
         } finally {
           setSubmitting(false);
           setRequests(NO_REQUESTS);
@@ -237,8 +237,8 @@ export function OpsRepositoriesView(): ReactNode {
       <div data-testid="ops-repositories-view" data-state="no_permission">
         <EmptyState
           cause="no_permission"
-          title="이 화면은 운영자(operator) 역할이 필요합니다"
-          description="필요한 역할을 그대로 적습니다. 다른 역할로는 저장소를 등록하거나 해제할 수 없습니다."
+          title="The operator role is required"
+          description="Only operators can register or unregister repositories."
         />
       </div>
     );
@@ -257,33 +257,33 @@ export function OpsRepositoriesView(): ReactNode {
   return (
     <div data-testid="ops-repositories-view" data-state={state}>
       {actionError === null ? null : (
-        <ErrorBanner tone="danger" title="요청을 처리하지 못했습니다" impact={actionError} />
+        <ErrorBanner tone="danger" title="Unable to process the request" impact={actionError} />
       )}
 
-      <Panel as="section" aria-label="등록 저장소" data-testid="section-repositories">
-        <h2>등록 저장소</h2>
+      <Panel as="section" aria-label="Registered repositories" data-testid="section-repositories">
+        <h2>Registered repositories</h2>
         {repositoriesFailed ? (
           <ErrorBanner
             tone="warning"
-            title="저장소 목록을 가져오지 못했습니다"
-            impact="등록 요청 목록은 정상 동작합니다. 잠시 뒤 다시 조회해 주세요."
+            title="Unable to load repositories"
+            impact="Registration requests remain available. Please try again later."
           />
         ) : list.length === 0 ? (
           <EmptyState
             cause="not_indexed"
-            title="등록된 저장소가 없습니다"
-            description="아래 폼에서 첫 저장소를 등록하면 수집이 시작됩니다."
+            title="No registered repositories"
+            description="Register your first repository below to start ingestion."
           />
         ) : (
-          <Table data-testid="repository-table" caption="등록된 저장소와 시퀀스 대상 브랜치.">
+          <Table data-testid="repository-table" caption="Registered repositories and sequence base branches.">
             <thead>
               <tr>
-                <th scope="col">저장소</th>
-                <th scope="col">상태</th>
-                <th scope="col">시퀀스 대상 브랜치</th>
-                <th scope="col">미러</th>
-                <th scope="col">등록 시각</th>
-                <th scope="col">조작</th>
+                <th scope="col">Repository</th>
+                <th scope="col">Status</th>
+                <th scope="col">Sequence base branches</th>
+                <th scope="col">Mirror</th>
+                <th scope="col">Registered at</th>
+                <th scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -294,7 +294,7 @@ export function OpsRepositoriesView(): ReactNode {
                   </td>
                   <td>{row.status}</td>
                   <td>{row.sequence_branches.length === 0 ? '—' : row.sequence_branches.join(', ')}</td>
-                  <td>{row.mirror_enabled ? '사용' : '사용 안 함'}</td>
+                  <td>{row.mirror_enabled ? "Enabled" : "Disabled"}</td>
                   <td>{formatTimestamp(row.registered_at ?? null)}</td>
                   <td>
                     <Button
@@ -313,7 +313,7 @@ export function OpsRepositoriesView(): ReactNode {
                         });
                       }}
                     >
-                      편집
+                      Edit
                     </Button>
                   </td>
                 </tr>
@@ -323,8 +323,8 @@ export function OpsRepositoriesView(): ReactNode {
         )}
       </Panel>
 
-      <Panel as="section" aria-label="등록·편집" data-testid="section-form">
-        <h2>{edit === null ? '저장소 등록' : `${edit.owner}/${edit.name} 편집`}</h2>
+      <Panel as="section" aria-label="Register / edit" data-testid="section-form">
+        <h2>{edit === null ? "Register repository" : `${edit.owner}/${edit.name} Edit`}</h2>
         <RepositoryRegistrationForm
           prefill={prefill}
           edit={edit}
@@ -336,13 +336,13 @@ export function OpsRepositoriesView(): ReactNode {
         />
       </Panel>
 
-      <Panel as="section" aria-label="등록 검토 요청" data-testid="section-requests">
-        <h2>등록 검토 요청</h2>
+      <Panel as="section" aria-label="Request registration review" data-testid="section-requests">
+        <h2>Request registration review</h2>
         {requestsFailed ? (
           <ErrorBanner
             tone="warning"
-            title="등록 검토 요청을 가져오지 못했습니다"
-            impact="저장소 목록과 등록 폼은 정상 동작합니다."
+            title="Unable to load registration review requests"
+            impact="The repository list and registration form remain available."
           />
         ) : (
           <RegistrationRequestQueue

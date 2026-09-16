@@ -9,7 +9,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Card, CardGrid } from '@conductor-by-89soone/react';
+import { Card, CardGrid } from './ui';
 import type { RangeSummaryView } from '../lib/range';
 
 export interface RangeSummaryCardProps {
@@ -18,47 +18,47 @@ export interface RangeSummaryCardProps {
 
 export function RangeSummaryCard({ summary }: RangeSummaryCardProps): ReactNode {
   return (
-    <section aria-label="구간 요약" data-testid="range-summary">
+    <section aria-label="Range summary" data-testid="range-summary">
       <CardGrid>
         <Card data-testid="summary-pr-count">
           <h3>PR</h3>
-          <p>{summary.pullRequestCount}건</p>
+          <p>{summary.pullRequestCount} items</p>
         </Card>
         <Card data-testid="summary-commit-count">
-          <h3>커밋</h3>
-          <p>{summary.commitCount}건</p>
+          <h3>Commit</h3>
+          <p>{summary.commitCount} items</p>
         </Card>
         <Card data-testid="summary-author-count">
-          <h3>작성자</h3>
-          <p>{summary.distinctAuthorCount}명</p>
+          <h3>Author</h3>
+          <p>{summary.distinctAuthorCount} people</p>
         </Card>
         <Card data-testid="summary-size">
-          <h3>변경 규모</h3>
+          <h3>Change size</h3>
           <p>
-            파일 {summary.changedFilesTotal} · +{summary.additionsTotal} −{summary.deletionsTotal}
+            Files {summary.changedFilesTotal} · +{summary.additionsTotal} −{summary.deletionsTotal}
             {summary.filesTruncatedPullRequestCount > 0
-              ? ` (절삭 PR ${String(summary.filesTruncatedPullRequestCount)}건 — 실제는 더 클 수 있음)`
+              ? `(truncated PRs: ${String(summary.filesTruncatedPullRequestCount)} — actual totals may be larger)`
               : ''}
           </p>
         </Card>
         <Card data-testid="summary-reverts">
-          <h3>되돌림 보유</h3>
+          <h3>Has reverts</h3>
           {summary.reverted.kind === 'count' ? (
-            <p>{summary.reverted.count}건</p>
+            <p>{summary.reverted.count} items</p>
           ) : (
             // 계산하지 않은 것을 계산한 척하지 않는다 (DEV-133·150).
-            <p data-testid="summary-reverts-pending">준비 중 — 관계 파생({summary.reverted.owner})이 서면 표시됩니다</p>
+            <p data-testid="summary-reverts-pending">Pending — relationship derivation ({summary.reverted.owner}) must complete first</p>
           )}
         </Card>
       </CardGrid>
 
       {summary.topChangedPaths.length > 0 ? (
         <details data-testid="summary-top-paths">
-          <summary>변경 경로 상위 {summary.topChangedPaths.length}</summary>
+          <summary>Top changed paths {summary.topChangedPaths.length}</summary>
           <ul>
             {summary.topChangedPaths.map((entry) => (
               <li key={entry.path}>
-                <code className="cdt-mono">{entry.path}</code> — {entry.count}건
+                <code className="ui-mono">{entry.path}</code> — {entry.count} items
               </li>
             ))}
           </ul>

@@ -13,7 +13,7 @@ test.describe('셸이 실제 브라우저에서 선다', () => {
     await page.goto('/');
 
     await expect(page.getByRole('banner')).toBeVisible();
-    await expect(page.getByRole('navigation', { name: '주요 화면' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: "Main navigation" })).toBeVisible();
     await expect(page.getByRole('main')).toBeVisible();
 
     // 스킵 링크는 평소 숨어 있다가 포커스를 받으면 나타난다.
@@ -56,9 +56,9 @@ test.describe('셸이 실제 브라우저에서 선다', () => {
     await expect(page).toHaveTitle(/PR Search/);
   });
 
-  test('`lang`이 한국어다 — 스크린 리더의 발음을 정한다', async ({ page }) => {
+  test('`lang` is English so screen readers use the product language', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('html')).toHaveAttribute('lang', 'ko');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   });
 });
 
@@ -67,7 +67,7 @@ test.describe('내비게이션', () => {
     await page.goto('/');
 
     // 화면은 WP-016 이후지만 경로 구조는 셸이 소유한다. 404여도 이동은 일어난다.
-    await page.getByRole('link', { name: '통합 검색' }).click();
+    await page.getByRole('link', { name: "Search", exact: true }).click();
     await expect(page).toHaveURL(/\/search$/);
   });
 
@@ -75,8 +75,8 @@ test.describe('내비게이션', () => {
     // 세션이 없으므로 역할도 없다 — 운영 그룹이 렌더링되지 않는다 (QA-A001-10).
     await page.goto('/');
 
-    await expect(page.getByRole('link', { name: '파이프라인' })).toHaveCount(0);
-    await expect(page.getByRole('link', { name: '감사 기록' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: "Pipeline" })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: "Audit log" })).toHaveCount(0);
   });
 });
 
@@ -193,11 +193,11 @@ test.describe('프록시 뒤의 복귀 주소와 로그아웃 완료 (CR-092)', 
     const response = await page.goto('/auth/signed-out');
 
     expect(response?.status()).toBe(200);
-    await expect(page.getByRole('heading', { level: 1, name: '로그아웃했습니다' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: "Signed out" })).toBeVisible();
     // 셸의 내비게이션을 두지 않는다 — 누르면 로그인으로 이어져 IdP 세션으로 곧바로 다시 로그인된다.
-    await expect(page.getByRole('navigation', { name: '주요 화면' })).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: "Main navigation" })).toHaveCount(0);
     // 이 e2e는 인증을 끈 배포다 — 로그인 경로(503) 대신 진입 화면을 가리킨다.
-    await expect(page.getByRole('link', { name: '다시 로그인' })).toHaveAttribute('href', '/');
+    await expect(page.getByRole('link', { name: "Sign in again" })).toHaveAttribute('href', '/');
   });
 });
 
@@ -226,10 +226,10 @@ test.describe('축소 모션 설정을 존중한다 (NFR-007 · Conductor FR-CSS
   async function readMotion(page: Page) {
     return page.evaluate(() => {
       const root = getComputedStyle(document.documentElement);
-      const item = document.querySelector('.cdt-nav-list__item');
+      const item = document.querySelector('.ui-nav-link');
       return {
-        fast: root.getPropertyValue('--cdt-motion-fast').trim(),
-        standard: root.getPropertyValue('--cdt-motion-standard').trim(),
+        fast: root.getPropertyValue('--ui-motion-fast').trim(),
+        standard: root.getPropertyValue('--ui-motion-standard').trim(),
         itemDurations: item === null ? null : getComputedStyle(item).transitionDuration,
       };
     });

@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Badge, Field, Table, TextArea } from '@conductor-by-89soone/react';
+import { Badge, Field, Table, TextArea } from './ui';
 import { formatTimestamp } from '../lib/format';
 import { newIdempotencyKey } from '../lib/gh';
 import { shortHash } from '../lib/gh-registry';
@@ -40,7 +40,7 @@ export function usePolicyStatus(): { readonly load: PolicyLoad; readonly reload:
         response = await fetch(POLICY_URL, { signal: controller.signal, cache: 'no-store' });
       } catch {
         if (controller.signal.aborted) return;
-        setLoad({ kind: 'failed', message: '서버에 연결하지 못했습니다.', correlationId: null });
+        setLoad({ kind: 'failed', message: "Unable to connect to the server.", correlationId: null });
         return;
       }
       const body = (await response.json().catch(() => null)) as unknown;
@@ -49,7 +49,7 @@ export function usePolicyStatus(): { readonly load: PolicyLoad; readonly reload:
       else if (response.status === 403) setLoad({ kind: 'forbidden' });
       else if (response.status === 401) setLoad({ kind: 'unauthenticated' });
       else if (!response.ok) {
-        const shaped = describePolicyError(body, '운영 정책을 읽지 못했습니다.');
+        const shaped = describePolicyError(body, "Unable to load operational policy.");
         setLoad({ kind: 'failed', message: shaped.message, correlationId: shaped.correlationId });
       } else setLoad({ kind: 'ok', body: body as PolicyStatusView });
     })();
@@ -96,7 +96,7 @@ export function usePolicySubmit(): { readonly submitting: boolean; readonly begi
       }
       if (response.status >= 500 && response.status !== 503) return { kind: 'lost' };
       key.current = null;
-      return { kind: 'rejected', error: describePolicyError(payload, '운영 정책을 바꾸지 못했습니다.') };
+      return { kind: 'rejected', error: describePolicyError(payload, "Unable to update operational policy.") };
     } finally {
       setSubmitting(false);
     }
@@ -107,7 +107,7 @@ export function usePolicySubmit(): { readonly submitting: boolean; readonly begi
 export function ReasonField({ id, value, onChange }: { readonly id: string; readonly value: string; readonly onChange: (value: string) => void }): ReactNode {
   const problem = value === '' ? null : reasonProblem(value);
   return (
-    <Field id={id} label="사유" description={`감사 기록과 revision 이력에 남습니다. ${String(POLICY_REASON_MAX)}자 이내로, 비밀 값은 적지 않습니다.`} {...(problem === null ? {} : { error: problem })}>
+    <Field id={id} label="Reason" description={`Recorded in the audit log and revision history. ${String(POLICY_REASON_MAX)} characters maximum. Do not include secrets.`} {...(problem === null ? {} : { error: problem })}>
       <TextArea id={id} data-testid={id} value={value} invalid={problem !== null} onChange={(event) => onChange(event.target.value)} />
     </Field>
   );
@@ -117,20 +117,20 @@ export function PolicyHistoryTable({ revisions, testId }: { readonly revisions: 
   if (revisions.length === 0) {
     return (
       <p data-testid={`${testId}-empty`} role="status">
-        아직 운영 정책을 바꾼 기록이 없습니다.
+        No operational policy changes have been recorded.
       </p>
     );
   }
   return (
-    <Table data-testid={testId} caption="운영 정책 revision 이력 — 최근 것부터. 이 기록은 갱신·삭제되지 않습니다.">
+    <Table data-testid={testId} caption="Operational policy revisions, newest first. Records cannot be modified or deleted.">
       <thead>
         <tr>
           <th scope="col">revision</th>
-          <th scope="col">변경</th>
-          <th scope="col">대상</th>
-          <th scope="col">운영자</th>
-          <th scope="col">사유</th>
-          <th scope="col">시각</th>
+          <th scope="col">Changes</th>
+          <th scope="col">Target</th>
+          <th scope="col">Operator</th>
+          <th scope="col">Reason</th>
+          <th scope="col">Time</th>
         </tr>
       </thead>
       <tbody>

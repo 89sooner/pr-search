@@ -17,8 +17,8 @@ export default async function SavedSearchesPage(): Promise<ReactNode> {
 
   // 세션 관문은 `GuardedPage` 하나가 소유한다 (WP-018).
   return (
-    <GuardedPage title="저장된 검색" returnTo="/saved-searches">
-      <h1>저장된 검색</h1>
+    <GuardedPage title="Saved searches" returnTo="/saved-searches">
+      <h1>Saved searches</h1>
       <SavedSearchesView loginPath={config.session.loginPath} />
     </GuardedPage>
   );

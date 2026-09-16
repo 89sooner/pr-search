@@ -18,7 +18,7 @@
 
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AppShell } from '@conductor-by-89soone/react';
+import { AppShell } from './ui';
 import type { Role } from '@prs/authz/roles';
 import { activeNavId } from '../lib/nav';
 import { AppTopBar, type UserSummary } from './AppTopBar';
@@ -64,9 +64,9 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
   return (
     <AppShell
       className="prs-shell"
-      navLabel="주요 화면"
-      navCloseLabel="탐색 패널 닫기"
-      skipLinkLabel="본문으로 건너뛰기"
+      navLabel="Main navigation"
+      navCloseLabel="Close navigation"
+      skipLinkLabel="Skip to content"
       mainId={MAIN_ID}
       /*
        * 라우트가 바뀌면 `AppShell`이 서랍을 닫고 `main`에 포커스를 준다 (0.4.1). 제품이 같은
@@ -90,13 +90,13 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
        * 알림 영역은 화면에 보이지 않되 DOM에는 있어야 한다. `display: none`이면
        * 스크린 리더도 읽지 않으므로 Conductor의 시각적 숨김 클래스를 쓴다.
        */}
-      <div role="status" aria-live="polite" aria-atomic="true" data-testid="route-announcement" className="cdt-sr-only">
+      <div role="status" aria-live="polite" aria-atomic="true" data-testid="route-announcement" className="ui-sr-only">
         {announcement}
       </div>
       <div className="prs-page-content">{children}</div>
-      <footer className="prs-statusbar" aria-label="작업 안내">
-        <span>GitHub Enterprise · 변경 이력 탐색</span>
-        <span>시퀀스는 저장소 · 대상 브랜치 기준</span>
+      <footer className="prs-statusbar" aria-label="Workspace information">
+        <span>GitHub Enterprise · Explore change history</span>
+        <span>Sequences are scoped to a repository and base branch</span>
       </footer>
     </AppShell>
   );

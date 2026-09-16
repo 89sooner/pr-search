@@ -10,15 +10,14 @@
  *
  * `StatusBadge`는 색·아이콘·텍스트 **세 채널**을 요구하고 아이콘 노드는
  * 소비자가 준다 — Conductor는 아이콘 세트를 담지 않는다. 이 저장소에는
- * `lucide-react`가 없으므로 토큰이 정한 이름을 `data-cdt-icon`으로 싣고
+ * `lucide-react`가 없으므로 토큰이 정한 이름을 `data-ui-icon`으로 싣고
  * 시각 기호를 함께 그린다. 이름을 지어내지 않는 것이 요점이다:
  * `STATUS_ICONS`가 그 이름의 정본이다.
  */
 
 import type { ReactNode } from 'react';
-import { StatusBadge } from '@conductor-by-89soone/react';
-import { STATUS_ICONS } from '@conductor-by-89soone/tokens';
-import type { Status } from '@conductor-by-89soone/react';
+import { StatusBadge } from './ui';
+import type { Status } from './ui';
 
 /**
  * 잡 상태 여섯을 Conductor `Status` 일곱 중 하나로 옮긴다 (FR-ADMIN-002 AC-2).
@@ -37,12 +36,12 @@ const JOB_STATUS: Readonly<Record<string, Status>> = {
 };
 
 const JOB_STATUS_LABELS: Readonly<Record<string, string>> = {
-  queued: '대기',
-  running: '실행 중',
-  paused: '일시 중지',
-  completed: '완료',
-  failed: '실패',
-  cancelled: '취소됨',
+  queued: 'Queued',
+  running: 'Running',
+  paused: 'Paused',
+  completed: 'Completed',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
 };
 
 /** 상태별 시각 기호. 아이콘 이름은 토큰이 정하고 여기서 지어내지 않는다. */
@@ -58,7 +57,7 @@ const GLYPHS: Readonly<Record<Status, string>> = {
 
 function StatusIcon({ status }: { readonly status: Status }): ReactNode {
   return (
-    <span aria-hidden="true" data-cdt-icon={STATUS_ICONS[status]}>
+    <span aria-hidden="true" data-ui-icon={status}>
       {GLYPHS[status]}
     </span>
   );

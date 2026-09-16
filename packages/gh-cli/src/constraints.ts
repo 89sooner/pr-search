@@ -72,7 +72,7 @@ function evaluateOption(
           violation: {
             code: 'enum_value',
             flag: option.flag,
-            message: `${option.flag}는 ${option.values.join(', ')} 중 하나여야 한다`,
+            message: `${option.flag} must be one of: ${option.values.join(', ')}`,
           },
         };
       }
@@ -82,14 +82,14 @@ function evaluateOption(
       if (raw === undefined) return { value: option.defaultValue };
       const numeric = typeof raw === 'string' && /^-?\d+$/.test(raw) ? Number(raw) : raw;
       if (typeof numeric !== 'number' || !Number.isSafeInteger(numeric)) {
-        return { violation: { code: 'int_format', flag: option.flag, message: `${option.flag}는 정수여야 한다` } };
+        return { violation: { code: 'int_format', flag: option.flag, message: `${option.flag} must be an integer` } };
       }
       if (numeric < option.min || numeric > option.max) {
         return {
           violation: {
             code: 'int_range',
             flag: option.flag,
-            message: `${option.flag}는 ${String(option.min)}..${String(option.max)} 안이어야 한다`,
+            message: `${option.flag} must be between ${String(option.min)} and ${String(option.max)}`,
           },
         };
       }
@@ -98,13 +98,13 @@ function evaluateOption(
     case 'bool': {
       if (raw === undefined) return { value: option.defaultValue ? true : null };
       if (typeof raw !== 'boolean') {
-        return { violation: { code: 'bool_format', flag: option.flag, message: `${option.flag}는 true/false여야 한다` } };
+        return { violation: { code: 'bool_format', flag: option.flag, message: `${option.flag} must be true or false` } };
       }
       return { value: raw ? true : null };
     }
     case 'json_fields': {
       // `--json`은 `output.json_fields`가 나른다. flags에 오면 모르는 flag다.
-      return { violation: { code: 'unknown_flag', flag: option.flag, message: `${option.flag}는 output.json_fields로 준다` } };
+      return { violation: { code: 'unknown_flag', flag: option.flag, message: `Pass ${option.flag} through output.json_fields` } };
     }
   }
 }
@@ -118,26 +118,26 @@ function evaluateJsonFields(
     return { fields: option.defaultValue };
   }
   if (!Array.isArray(raw) || raw.some((field) => typeof field !== 'string')) {
-    return { violation: { code: 'json_field_not_allowed', flag: option.flag, message: 'json_fields는 문자열 배열이어야 한다' } };
+    return { violation: { code: 'json_field_not_allowed', flag: option.flag, message: 'json_fields must be an array of strings' } };
   }
   const fields = raw as string[];
   const seen = new Set<string>();
   for (const field of fields) {
     if (!option.allowed.includes(field)) {
       return {
-        violation: { code: 'json_field_not_allowed', flag: option.flag, message: `허용되지 않는 JSON 필드: ${field}` },
+        violation: { code: 'json_field_not_allowed', flag: option.flag, message: `JSON field is not allowed: ${field}` },
       };
     }
     if (seen.has(field)) {
-      return { violation: { code: 'json_fields_duplicate', flag: option.flag, message: `JSON 필드가 중복된다: ${field}` } };
+      return { violation: { code: 'json_fields_duplicate', flag: option.flag, message: `Duplicate JSON field: ${field}` } };
     }
     seen.add(field);
   }
   if (fields.length < option.minItems) {
-    return { violation: { code: 'json_fields_min', flag: option.flag, message: `JSON 필드는 최소 ${String(option.minItems)}개다` } };
+    return { violation: { code: 'json_fields_min', flag: option.flag, message: `Select at least ${String(option.minItems)} JSON fields` } };
   }
   if (fields.length > option.maxItems) {
-    return { violation: { code: 'json_fields_max', flag: option.flag, message: `JSON 필드는 최대 ${String(option.maxItems)}개다` } };
+    return { violation: { code: 'json_fields_max', flag: option.flag, message: `Select at most ${String(option.maxItems)} JSON fields` } };
   }
   // 허용 목록 순서로 정렬한다 — 같은 집합이면 같은 argv여야 한다 (FR-GH-002 AC-9).
   return { fields: option.allowed.filter((field) => seen.has(field)) };
@@ -160,7 +160,7 @@ export function evaluateRelations(
         if (!has(constraint.flag)) break;
         for (const required of constraint.requires) {
           if (!has(required)) {
-            violations.push({ code: 'requires', flag: constraint.flag, message: `${constraint.flag}는 ${required}를 요구한다` });
+            violations.push({ code: 'requires', flag: constraint.flag, message: `${constraint.flag} requires ${required}` });
           }
         }
         break;
@@ -172,7 +172,7 @@ export function evaluateRelations(
           violations.push({
             code: constraint.kind,
             flag: found[0] ?? null,
-            message: `${found.join(', ')}는 함께 쓸 수 없다`,
+            message: `These flags cannot be used together: ${found.join(', ')}`,
           });
         }
         break;
@@ -183,7 +183,7 @@ export function evaluateRelations(
           violations.push({
             code: 'exactly_one',
             flag: found[0] ?? null,
-            message: `${constraint.flags.join(', ')} 중 정확히 하나가 필요하다`,
+            message: `Exactly one of these flags is required: ${constraint.flags.join(', ')}`,
           });
         }
         break;
@@ -193,7 +193,7 @@ export function evaluateRelations(
           violations.push({
             code: 'at_least_one',
             flag: null,
-            message: `${constraint.flags.join(', ')} 중 하나 이상이 필요하다`,
+            message: `At least one of these flags is required: ${constraint.flags.join(', ')}`,
           });
         }
         break;
@@ -202,7 +202,7 @@ export function evaluateRelations(
         if (!has(constraint.flag)) break;
         if (constraint.whenValue !== undefined && present.get(constraint.flag) !== constraint.whenValue) break;
         if (!has(constraint.implies)) {
-          violations.push({ code: 'implies', flag: constraint.flag, message: `${constraint.flag}는 ${constraint.implies}를 함께 요구한다` });
+          violations.push({ code: 'implies', flag: constraint.flag, message: `${constraint.flag} also requires ${constraint.implies}` });
         }
         break;
       }
@@ -211,7 +211,7 @@ export function evaluateRelations(
           violations.push({
             code: 'required_if',
             flag: constraint.flag,
-            message: `${constraint.when.flag}=${constraint.when.value}이면 ${constraint.flag}가 필요하다`,
+            message: `${constraint.flag} is required when ${constraint.when.flag}=${constraint.when.value}`,
           });
         }
         break;
@@ -222,7 +222,7 @@ export function evaluateRelations(
           violations.push({
             code: 'input_source_exclusive',
             flag: found[0] ?? null,
-            message: `입력원은 하나여야 한다: ${found.join(', ')}`,
+            message: `Use only one input source: ${found.join(', ')}`,
           });
         }
         break;
@@ -230,7 +230,7 @@ export function evaluateRelations(
       case 'context_required': {
         const satisfied = constraint.context === 'repository' ? context.repository : context.host;
         if (!satisfied) {
-          violations.push({ code: 'context_required', flag: null, message: `${constraint.context} 컨텍스트가 필요하다` });
+          violations.push({ code: 'context_required', flag: null, message: `${constraint.context} context is required` });
         }
         break;
       }
@@ -249,21 +249,21 @@ export function evaluateInvocation(definition: GhCapabilityDefinition, invocatio
 
   const repository = parseRepositorySlug(invocation.context?.repository);
   if (repository === null) {
-    violations.push({ code: 'repository_format', flag: null, message: '저장소는 owner/name 형식이어야 한다' });
+    violations.push({ code: 'repository_format', flag: null, message: 'Repository must use the owner/name format' });
   }
 
   const rawFlags = invocation.flags ?? {};
   const extra = (invocation as unknown as Record<string, unknown>);
   for (const forbidden of ['positional', 'stdin', 'files', 'argv', 'command']) {
     if (forbidden in extra && extra[forbidden] !== undefined) {
-      violations.push({ code: 'positional_not_allowed', flag: null, message: `${forbidden}은 이 capability가 받지 않는다` });
+      violations.push({ code: 'positional_not_allowed', flag: null, message: `This capability does not accept ${forbidden}` });
     }
   }
 
   for (const flag of Object.keys(rawFlags)) {
     const option = optionByFlag(definition, flag);
     if (option === undefined || option.kind === 'json_fields') {
-      violations.push({ code: 'unknown_flag', flag, message: `모르는 flag: ${flag}` });
+      violations.push({ code: 'unknown_flag', flag, message: `Unknown flag: ${flag}` });
     }
   }
 

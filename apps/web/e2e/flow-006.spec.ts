@@ -243,7 +243,7 @@ test.describe('FLOW-006 표시 규칙', () => {
 
     const detached = page.getByTestId('relation-detached');
     await expect(detached).toBeVisible();
-    await expect(detached).toHaveText('해제됨');
+    await expect(detached).toHaveText("Dismissed");
     // 숨기지 않는다 — 대상으로 이동할 수도 있어야 한다.
     await expect(page.getByTestId('relation-group-stacks_on-outgoing')).toBeVisible();
   });
@@ -267,7 +267,7 @@ test.describe('FLOW-006 표시 규칙', () => {
     await expect(group.getByTestId('relation-target-inactive')).toHaveText('acme/other#20');
     await expect(group.getByTestId('relation-target-link')).toHaveCount(0);
     // "권한"이라는 말이 나오면 "있긴 있다"가 새어 나간다.
-    await expect(page.getByRole('main')).not.toContainText('권한');
+    await expect(page.getByRole('main')).not.toContainText("permission");
   });
 
   test('**`links_pending`이 참조에만 걸리고 되돌림은 그대로 보인다** (DEV-258)', async ({ page }) => {
@@ -275,7 +275,7 @@ test.describe('FLOW-006 표시 규칙', () => {
     await page.goto('/pr/acme/payments/1234');
     await page.getByTestId('toggle-links').click();
 
-    await expect(page.getByTestId('references-pending')).toHaveText('참조 분석 중');
+    await expect(page.getByTestId('references-pending')).toHaveText("Analyzing references");
     // 되돌림 간선은 그 상태와 무관하게 보인다.
     await expect(page.getByTestId('relation-group-reverts-incoming')).toBeVisible();
   });

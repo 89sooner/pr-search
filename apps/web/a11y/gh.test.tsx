@@ -68,10 +68,10 @@ describe('GhPrListForm (C-061)', () => {
     const form = defaultFormState(PR_LIST_VIEW, 'acme/payments');
     render(<GhPrListForm capability={PR_LIST_VIEW} repositories={REPOSITORIES} form={form} violations={[]} onChange={vi.fn()} />);
 
-    expect(screen.getByLabelText('저장소')).toBeTruthy();
-    const state = screen.getByLabelText('PR 상태') as HTMLSelectElement;
+    expect(screen.getByLabelText("Repository")).toBeTruthy();
+    const state = screen.getByLabelText("PR status") as HTMLSelectElement;
     expect(Array.from(state.options).map((option) => option.value)).toEqual(['open', 'closed', 'merged', 'all']);
-    const limit = screen.getByLabelText('조회 건수') as HTMLInputElement;
+    const limit = screen.getByLabelText("Result limit") as HTMLInputElement;
     expect(limit.min).toBe('1');
     expect(limit.max).toBe('100');
     // JSON 필드는 허용 목록의 체크박스다 — 자유 입력이 아니다.
@@ -82,6 +82,9 @@ describe('GhPrListForm (C-061)', () => {
     const form = { ...defaultFormState(PR_LIST_VIEW, 'acme/payments'), limit: '0' };
     render(<GhPrListForm capability={PR_LIST_VIEW} repositories={REPOSITORIES} form={form} violations={validateForm(PR_LIST_VIEW, form)} onChange={vi.fn()} />);
     expect(screen.getByTestId('gh-violation-limit').getAttribute('role')).toBe('alert');
+    expect(screen.getByTestId('gh-violation-limit')).toHaveTextContent('--limit must be between 1 and 100');
+    expect(screen.getByTestId('gh-pr-list-form')).not.toHaveTextContent(/\p{Script=Hangul}/u);
+    expect(screen.getByTestId('gh-pr-list-form')).toHaveAccessibleName('List pull requests input');
     expect(screen.queryByTestId('gh-violation-state')).toBeNull();
   });
 
@@ -106,10 +109,10 @@ describe('GhCapabilityList (W-010 목록)', () => {
     const others = screen.getByTestId('gh-capability-others');
     expect(others.textContent).toContain('gh pr merge');
     expect(others.textContent).toContain('이 판이 열지 않은 capability');
-    expect(others.textContent).toContain('정책 차단');
+    expect(others.textContent).toContain("Blocked by policy");
     expect(others.textContent).toContain('실행기에 작업 트리가 없다');
     // 분류하지 않은 것을 분류했다고 적지 않는다.
-    expect(screen.getByTestId('gh-capability-coverage').textContent).toContain('분류되지 않음 195개');
+    expect(screen.getByTestId('gh-capability-coverage').textContent).toContain("Unclassified: 195");
   });
 
   it('실행 가능한 것만 버튼이고 선택 상태가 aria-pressed로 드러난다', () => {
@@ -130,7 +133,7 @@ describe('GhExecutionPreview (C-062)', () => {
   it('QA-GH-21: 호스트·저장소·신원·gh 버전·manifest·권한·권한 판정·정책이 보인다', () => {
     render(<GhExecutionPreview preview={PREVIEW} loading={false} />);
     const context = screen.getByTestId('gh-effective-context').textContent ?? '';
-    for (const fragment of ['ghe.example.com', 'acme/payments', '@alice', '2.97.0', 'r0.1', 'ad00027d84b9', 'pull_requests:read', 'delegated_token_intersection', '30초']) {
+    for (const fragment of ['ghe.example.com', 'acme/payments', '@alice', '2.97.0', 'r0.1', 'ad00027d84b9', 'pull_requests:read', 'delegated_token_intersection', '30 seconds']) {
       expect(context, fragment).toContain(fragment);
     }
   });
@@ -175,7 +178,7 @@ describe('GhExecutionPanel (C-058)', () => {
   it('QA-GH-11: 절삭된 출력은 불완전한 목록임을 alert로 말한다', () => {
     render(<GhExecutionPanel execution={execution({ stdout: { text: '[…', truncated: true } })} />);
     expect(screen.getByTestId('gh-result-truncated').getAttribute('role')).toBe('alert');
-    expect(screen.getByTestId('gh-result-truncated').textContent).toContain('불완전한 목록');
+    expect(screen.getByTestId('gh-result-truncated').textContent).toContain("incomplete");
   });
 
   it('QA-GH-25: 바이너리 출력은 텍스트로 그리지 않는다', () => {
@@ -191,7 +194,7 @@ describe('GhExecutionPanel (C-058)', () => {
     expect(screen.getByTestId('gh-result-empty')).toBeTruthy();
     cleanup();
     render(<GhExecutionPanel execution={execution({ state: 'failed', error: 'gh_exit_1', result: null })} />);
-    expect(screen.getByTestId('gh-result-failed').textContent).toContain('종료 코드 1');
+    expect(screen.getByTestId('gh-result-failed').textContent).toContain("code 1");
   });
 
   it('CR-089: pr_list_v2에서 번호를 고르지 않은 행은 번호 칸이 비고, 참조를 만들지 않았다는 사실을 따로 말한다', async () => {
@@ -204,7 +207,7 @@ describe('GhExecutionPanel (C-058)', () => {
     expect(row.textContent).toContain('—');
     const note = screen.getByTestId('gh-result-references');
     expect(note.getAttribute('data-status')).toBe('unavailable');
-    expect(note.textContent).toContain('PR 참조를 만들지 않았습니다');
+    expect(note.textContent).toContain("No PR references were created");
     expect(await violations(container)).toEqual([]);
   });
 
@@ -214,8 +217,8 @@ describe('GhExecutionPanel (C-058)', () => {
     render(<GhExecutionPanel execution={execution({ result: { ...(base.result ?? {}), schema: 'pr_list_v2', references: { status: 'available', reason: null, refs } } })} />);
     const note = screen.getByTestId('gh-result-references');
     expect(note.getAttribute('data-status')).toBe('available');
-    expect(note.textContent).toContain('PR 참조 2개');
-    expect(note.textContent).toContain('실행은 열리지 않았습니다');
+    expect(note.textContent).toContain("PR references: 2");
+    expect(note.textContent).toContain("execution to other commands is not enabled");
     cleanup();
     render(<GhExecutionPanel execution={execution()} />);
     expect(screen.queryByTestId('gh-result-references')).toBeNull();
@@ -227,7 +230,7 @@ describe('GhExecutionPanel (C-058)', () => {
     const status = screen.getByTestId('gh-execution-status');
     expect(status.getAttribute('role')).toBe('status');
     expect(status.getAttribute('aria-live')).toBe('polite');
-    expect(status.textContent).toContain('실행 중');
+    expect(status.textContent).toContain("Running");
     fireEvent.click(screen.getByTestId('gh-cancel'));
     expect(onCancel).toHaveBeenCalledWith(7);
     cleanup();
@@ -291,7 +294,7 @@ describe('GhCommandCenterView (W-010)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('gh-command-center').getAttribute('data-state')).toBe('unavailable');
     });
-    expect(screen.getByText('이 배포에서는 GitHub 작업이 열리지 않았습니다')).toBeTruthy();
+    expect(screen.getByText("GitHub operations are not enabled in this deployment")).toBeTruthy();
   });
 
   it('QA-GH-12: 연결이 없으면 연결 안내가 나오고 실행 버튼은 닫혀 있다', async () => {

@@ -16,10 +16,10 @@ export const dynamic = 'force-dynamic';
 
 export default async function GhPolicyPage(): Promise<ReactNode> {
   return (
-    <GuardedPage title="gh 실행 정책" returnTo="/ops/gh-policy">
+    <GuardedPage title="gh execution policy" returnTo="/ops/gh-policy">
       {({ roles, authEnabled }) => (
         <>
-          <h1>gh 실행 정책</h1>
+          <h1>gh execution policy</h1>
           <GhPolicyView canChange={canChangePolicy(roles, authEnabled)} />
         </>
       )}

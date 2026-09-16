@@ -152,7 +152,7 @@ describe('DoD 상태', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('not_found');
     });
-    expect(container.textContent).not.toContain('권한');
+    expect(container.textContent).not.toContain("permission");
     expect(describeViolations(await violations(container))).toBe('');
   });
 
@@ -173,7 +173,7 @@ describe('DoD 상태', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('auth_expired');
     });
-    const link = screen.getByRole('link', { name: '다시 로그인' });
+    const link = screen.getByRole('link', { name: "Sign in again" });
     expect(link.getAttribute('href')).toContain(encodeURIComponent(`/commit/acme/payments/${MERGE_SHA}`));
   });
 });
@@ -186,7 +186,7 @@ describe('역할 배지 (QA-W003-01·02)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByTestId('role-badge')).toHaveTextContent('머지 커밋');
+    expect(screen.getByTestId('role-badge')).toHaveTextContent("Merge commit");
   });
 
   it('원본 커밋은 **원본 커밋**이다 — 글자로 구분한다', async () => {
@@ -196,7 +196,7 @@ describe('역할 배지 (QA-W003-01·02)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByTestId('role-badge')).toHaveTextContent('원본 커밋');
+    expect(screen.getByTestId('role-badge')).toHaveTextContent("Original commit");
   });
 
   it('**역할을 모르면 그렇게 쓴다** — 머지 커밋으로 넘겨짚지 않는다', async () => {
@@ -208,7 +208,7 @@ describe('역할 배지 (QA-W003-01·02)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByTestId('role-badge')).toHaveTextContent('역할 미상');
+    expect(screen.getByTestId('role-badge')).toHaveTextContent("Unknown role");
   });
 });
 
@@ -253,7 +253,7 @@ describe('소속 PR (QA-W003-04·05, DEV-093)', () => {
     });
     expect(screen.getAllByTestId('linked-pr-row')).toHaveLength(2);
     // 둘이라는 사실 자체가 정보다 — 배지로도 알린다.
-    expect(screen.getByTestId('multi-pr-badge')).toHaveTextContent('PR 2건');
+    expect(screen.getByTestId('multi-pr-badge')).toHaveTextContent("2 PRs");
     expect(describeViolations(await violations(container))).toBe('');
   });
 
@@ -266,12 +266,12 @@ describe('소속 PR (QA-W003-04·05, DEV-093)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByTestId('not-linked-yet')).toHaveTextContent('아직 PR 연결을 찾지 못했습니다');
+    expect(screen.getByTestId('not-linked-yet')).toHaveTextContent("No linked PR found yet");
     /*
      * 이것이 이 화면에서 가장 하기 쉬운 거짓말이다 — "직접 푸시"라고 쓰면
      * 사용자는 PR 리뷰를 거치지 않은 커밋으로 읽는다.
      */
-    expect(container.textContent).not.toContain('직접 푸시');
+    expect(container.textContent).not.toContain("Direct push");
     expect(screen.queryByTestId('direct-push')).toBeNull();
   });
 
@@ -283,7 +283,7 @@ describe('소속 PR (QA-W003-04·05, DEV-093)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByTestId('direct-push')).toHaveTextContent('PR 없음 (직접 푸시)');
+    expect(screen.getByTestId('direct-push')).toHaveTextContent("No PR (direct push)");
     expect(screen.queryByTestId('not-linked-yet')).toBeNull();
   });
 
@@ -295,7 +295,7 @@ describe('소속 PR (QA-W003-04·05, DEV-093)', () => {
       expect(stateOf()).toBe('ready');
     });
     // 이미 이어진 PR은 그대로 보이고, 늘 수 있다고만 알린다.
-    expect(screen.getByTestId('pr-enrichment-pending')).toHaveTextContent('늘 수 있습니다');
+    expect(screen.getByTestId('pr-enrichment-pending')).toHaveTextContent("More entries may appear later");
     expect(screen.getByTestId('linked-pr-row')).toBeInTheDocument();
     expect(screen.queryByTestId('not-linked-yet')).toBeNull();
   });
@@ -354,7 +354,7 @@ describe('시퀀스 위치 (QA-W003-06, DEV-092)', () => {
       expect(stateOf()).toBe('ready');
     });
     expect(screen.getByTestId('sequence-position')).toHaveAttribute('data-seq-state', 'not_computed');
-    expect(screen.getByTestId('seq-not-computed')).toHaveTextContent('아직 채번하지 않았습니다');
+    expect(screen.getByTestId('seq-not-computed')).toHaveTextContent("has not received a merge sequence number");
     expect(screen.queryByTestId('seq-off-chain')).toBeNull();
   });
 
@@ -369,7 +369,7 @@ describe('시퀀스 위치 (QA-W003-06, DEV-092)', () => {
       expect(stateOf()).toBe('ready');
     });
     expect(screen.queryByTestId('landed-as-link')).toBeNull();
-    expect(screen.getByTestId('seq-off-chain')).toHaveTextContent('아직 머지되지 않아');
+    expect(screen.getByTestId('seq-off-chain')).toHaveTextContent("The containing PR is not merged");
   });
 });
 
@@ -382,9 +382,9 @@ describe('변경 경로 (QA-W003-08, DEV-094)', () => {
       expect(stateOf()).toBe('ready');
     });
     expect(screen.getByTestId('changed-paths')).toBeInTheDocument();
-    expect(screen.getByTestId('paths-reason')).toHaveTextContent('아직 수집하지 않았습니다');
+    expect(screen.getByTestId('paths-reason')).toHaveTextContent("have not been collected yet");
     // `0`으로 그리면 "바꾼 파일이 없다"는 거짓이 된다.
-    expect(screen.getByTestId('changed-paths').textContent).not.toContain('파일 0개');
+    expect(screen.getByTestId('changed-paths').textContent).not.toContain("Files: 0");
   });
 
   it('경로가 오면 경로와 라인 수만 그린다 — **파일 내용은 없다**', async () => {
@@ -399,7 +399,7 @@ describe('변경 경로 (QA-W003-08, DEV-094)', () => {
       expect(stateOf()).toBe('ready');
     });
     expect(screen.getByTestId('path-row')).toHaveTextContent('src/payment/retry.ts');
-    expect(screen.getByTestId('path-count')).toHaveTextContent('파일 1개');
+    expect(screen.getByTestId('path-count')).toHaveTextContent("Files: 1");
     expect(describeViolations(await violations(container))).toBe('');
   });
 });
@@ -424,7 +424,7 @@ describe('SHA 복사 (QA-W003-07, C-024, DEV-096)', () => {
 
     await userEvent.click(screen.getByTestId('sha-copy'));
     await waitFor(() => {
-      expect(screen.getByTestId('sha-copy-status')).toHaveTextContent('복사했습니다');
+      expect(screen.getByTestId('sha-copy-status')).toHaveTextContent("Copied");
     });
   });
 
@@ -435,7 +435,7 @@ describe('SHA 복사 (QA-W003-07, C-024, DEV-096)', () => {
 
     await userEvent.click(screen.getByTestId('sha-copy'));
     await waitFor(() => {
-      expect(screen.getByTestId('sha-copy-status')).toHaveTextContent('복사하지 못했습니다');
+      expect(screen.getByTestId('sha-copy-status')).toHaveTextContent("Could not copy");
     });
     // 손으로 옮겨 적을 수 있어야 한다.
     expect(screen.getByTestId('sha-full')).toHaveTextContent(MERGE_SHA);
@@ -447,7 +447,7 @@ describe('SHA 복사 (QA-W003-07, C-024, DEV-096)', () => {
 
     await userEvent.click(screen.getByTestId('sha-copy'));
     await waitFor(() => {
-      expect(screen.getByTestId('sha-copy-status')).toHaveTextContent('복사하지 못했습니다');
+      expect(screen.getByTestId('sha-copy-status')).toHaveTextContent("Could not copy");
     });
   });
 
@@ -496,7 +496,7 @@ describe('커밋 메타데이터 (DEV-090)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByTestId('commit-meta-missing')).toHaveTextContent('SHA만 나릅니다');
+    expect(screen.getByTestId('commit-meta-missing')).toHaveTextContent("provide only the SHA");
   });
 
   it('메타데이터가 오면 그린다 (WP-020 뒤)', async () => {
@@ -601,7 +601,7 @@ describe('시퀀스 위치의 앞뒤 (WP-027 / CR-031, DEV-163)', () => {
       expect(screen.getByTestId('section-commit-neighbors')).toBeInTheDocument();
     });
     await userEvent.click(screen.getByTestId('toggle-commit-neighbors'));
-    expect(screen.getByTestId('neighbor-off-chain')).toHaveTextContent('first-parent 체인 밖');
+    expect(screen.getByTestId('neighbor-off-chain')).toHaveTextContent("outside the base branch's first-parent chain");
     expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toEqual([]);
   });
 

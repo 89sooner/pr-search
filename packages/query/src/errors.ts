@@ -39,7 +39,7 @@ export class QueryParseError extends Error {
 }
 
 export function unsupportedKey(key: string, token: string, start: number, end: number): QueryParseError {
-  return new QueryParseError('QUERY_SYNTAX_ERROR', `지원하지 않는 검색 키입니다: '${key}'`, {
+  return new QueryParseError('QUERY_SYNTAX_ERROR', `Unsupported search key: '${key}'`, {
     token,
     offset_start: start,
     offset_end: end,
@@ -58,7 +58,7 @@ export function unsupportedKey(key: string, token: string, start: number, end: n
 export function rangeOnlyKey(key: RangeKey, token: string, start: number, end: number): QueryParseError {
   return new QueryParseError(
     'QUERY_SYNTAX_ERROR',
-    `'${key}'는 범위 형식만 지원합니다 (예: ${RANGE_KEY_EXAMPLE[key]})`,
+    `'${key}' only supports ranges (for example: ${RANGE_KEY_EXAMPLE[key]})`,
     { token, offset_start: start, offset_end: end },
   );
 }

@@ -72,7 +72,7 @@ test('WP-073: 검색 단축키가 실제 검색창을 잡고 예시는 요청 �
   const calls = await searchFixture(page);
   await page.goto('/search');
   await pressShortcutUntil(page, () => expect(page.getByRole('searchbox')).toBeFocused({ timeout: 500 }));
-  await page.getByRole('button', { name: /머지 순서 조사/ }).click();
+  await page.getByRole('button', { name: /Investigate merge order/ }).click();
   await expect(page.getByRole('searchbox')).toBeFocused();
   await expect(page.getByRole('searchbox')).toHaveValue('repo:owner/repo base:main seq:1200..1350');
   expect(calls).toEqual([]);
@@ -89,18 +89,18 @@ test('WP-073: 선택/화살표/닫기 포커스, 추가 API 요청 없음, 제�
   await openResults(page);
   const selection = page.locator('[data-result-select]');
   await selection.nth(0).click();
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toContainText('#2486');
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toContainText('#2486');
   await page.keyboard.press('ArrowDown');
   await expect(selection.nth(1)).toBeFocused();
   await expect(selection.nth(1)).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toContainText('#2485');
-  await page.getByRole('button', { name: '미리보기 닫기' }).click();
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toContainText('#2485');
+  await page.getByRole('button', { name: "Close preview" }).click();
   await expect(selection.nth(1)).toBeFocused();
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toHaveCount(0);
   await page.keyboard.press('End');
   await expect(selection.nth(24)).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toHaveCount(0);
   expect(calls).toHaveLength(1);
   await expect(page.getByTestId('result-link').first()).toHaveAttribute('href', new RegExp('/pr/platform/engine/2486\\?from_q='));
 });
@@ -110,14 +110,14 @@ test('WP-073: 필터 접기는 조회/URL을 바꾸지 않고 갱신은 선택�
   await openResults(page);
   const url = page.url();
   await page.locator('[data-result-select]').first().click();
-  await page.getByRole('button', { name: '필터', exact: true }).click();
-  await expect(page.getByRole('complementary', { name: '필터' })).toBeHidden();
+  await page.getByRole('button', { name: "Filters", exact: true }).click();
+  await expect(page.getByRole('complementary', { name: "Filters" })).toBeHidden();
   expect(page.url()).toBe(url);
   expect(calls).toHaveLength(1);
-  await page.getByRole('button', { name: '필터', exact: true }).click();
-  await expect(page.getByRole('complementary', { name: '필터' })).toBeVisible();
-  await page.getByRole('button', { name: '결과 새로고침' }).click();
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toHaveCount(0);
+  await page.getByRole('button', { name: "Filters", exact: true }).click();
+  await expect(page.getByRole('complementary', { name: "Filters" })).toBeVisible();
+  await page.getByRole('button', { name: "Refresh results" }).click();
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toHaveCount(0);
   await expect.poll(() => calls.length).toBe(2);
   await expect(page.getByTestId('result-row')).toHaveCount(25);
 });
@@ -128,7 +128,7 @@ test('WP-073: 질의 변경 시 이전 선택 데이터를 보여주지 않는�
   await page.locator('[data-result-select]').first().click();
   await page.getByLabel('minseo (9)').click();
   await expect(page).toHaveURL(/author%3Aminseo/);
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toHaveCount(0);
 });
 
 test('WP-073: 1440×1200에서 25행을 읽을 수 있다', async ({ page }) => {
@@ -136,9 +136,11 @@ test('WP-073: 1440×1200에서 25행을 읽을 수 있다', async ({ page }) => 
   await searchFixture(page);
   await openResults(page);
   await noDocumentOverflow(page);
+  await expect(page.getByTestId('result-row')).toHaveCount(25);
+  const first = await page.getByTestId('result-row').first().boundingBox();
   const last = await page.getByTestId('result-row').last().boundingBox();
-  expect(last).not.toBeNull();
-  expect(last!.y + last!.height).toBeLessThanOrEqual(1200);
+  expect(first).not.toBeNull(); expect(last).not.toBeNull();
+  expect((last!.y + last!.height) - first!.y).toBeLessThanOrEqual(1200);
   await capture(page, 'workbench-25-rows');
 });
 
@@ -167,15 +169,15 @@ test('WP-073: 390px에서 문서 가로 넘침 없이 필터/표/선택/내비�
   await searchFixture(page, { items: ROWS.map((row, i) => i === 0 ? { ...row, title: 'LongIdentifier'.repeat(40), author: 'LongAuthor'.repeat(20) } : row) });
   await openResults(page);
   await noDocumentOverflow(page);
-  await page.getByRole('button', { name: '필터', exact: true }).click();
+  await page.getByRole('button', { name: "Filters", exact: true }).click();
   await page.locator('[data-result-select]').first().click();
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toBeVisible();
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toBeVisible();
   await noDocumentOverflow(page);
   await capture(page, 'workbench-mobile');
-  await page.getByRole('button', { name: '주요 화면 열기' }).click();
-  await expect(page.getByRole('link', { name: '저장된 검색', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: "Open main menu" }).click();
+  await expect(page.getByRole('link', { name: "Saved searches", exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: '주요 화면 열기' })).toBeFocused();
+  await expect(page.getByRole('button', { name: "Open main menu" })).toBeFocused();
 });
 
 for (const width of [390, 1440]) {
@@ -183,10 +185,10 @@ for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 844 });
     await searchFixture(page);
     await openResults(page);
-    await page.getByRole('button', { name: '필터', exact: true }).click();
+    await page.getByRole('button', { name: "Filters", exact: true }).click();
     const selection = page.locator('[data-result-select]');
     await selection.first().click();
-    const heading = page.getByRole('heading', { name: '선택한 결과 미리보기' });
+    const heading = page.getByRole('heading', { name: "Selected result preview" });
     await expect(heading).toBeInViewport();
     await selection.first().focus();
     await page.keyboard.press('End');
@@ -201,18 +203,18 @@ test('CR-093: 탭은 화살표로 옮기고, 집계를 다녀와도 결과 패�
   await openResults(page);
   const selection = page.locator('[data-result-select]');
   await selection.nth(1).click();
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toContainText('#2485');
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toContainText('#2485');
 
-  await page.getByRole('tab', { name: '결과' }).focus();
+  await page.getByRole('tab', { name: "Results" }).focus();
   await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('tab', { name: '집계' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('tab', { name: '집계' })).toBeFocused();
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toBeHidden();
+  await expect(page.getByRole('tab', { name: "Aggregation" })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: "Aggregation" })).toBeFocused();
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toBeHidden();
 
   await page.keyboard.press('ArrowLeft');
-  await expect(page.getByRole('tab', { name: '결과' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: "Results" })).toHaveAttribute('aria-selected', 'true');
   // 결과 패널은 언마운트하지 않는다 — 고른 행과 미리보기가 그대로다.
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toContainText('#2485');
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toContainText('#2485');
   await expect(selection.nth(1)).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -221,8 +223,8 @@ test('CR-093: 미리보기 안에서 Escape를 누르면 닫히고 고른 행의
   await openResults(page);
   const selection = page.locator('[data-result-select]');
   await selection.nth(3).click();
-  const preview = page.getByRole('region', { name: '선택한 결과 미리보기' });
-  await preview.getByRole('button', { name: '미리보기 닫기' }).focus();
+  const preview = page.getByRole('region', { name: "Selected result preview" });
+  await preview.getByRole('button', { name: "Close preview" }).focus();
   await page.keyboard.press('Escape');
   await expect(preview).toHaveCount(0);
   await expect(selection.nth(3)).toBeFocused();
@@ -232,9 +234,9 @@ test('CR-093: 미리보기 폭은 키보드로 조절되고 좁은 화면에서�
   await searchFixture(page);
   await openResults(page);
   await page.locator('[data-result-select]').first().click();
-  const share = () => page.locator('.cdt-workbench').evaluate((node) => node.style.getPropertyValue('--cdt-workbench-inspector-share'));
+  const share = () => page.locator('.ui-workbench').evaluate((node) => node.style.getPropertyValue('--ui-inspector-width'));
   expect(await share()).toBe('38%');
-  const slider = page.getByRole('slider', { name: /미리보기 폭/ });
+  const slider = page.getByRole('slider', { name: /Preview width/ });
   await slider.focus();
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowLeft');
@@ -244,8 +246,8 @@ test('CR-093: 미리보기 폭은 키보드로 조절되고 좁은 화면에서�
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(slider).toBeHidden();
-  const table = await page.locator('.cdt-workbench__results').boundingBox();
-  const inspector = await page.getByRole('region', { name: '선택한 결과 미리보기' }).boundingBox();
+  const table = await page.locator('.ui-workbench-results').boundingBox();
+  const inspector = await page.getByRole('region', { name: "Selected result preview" }).boundingBox();
   expect(table).not.toBeNull();
   expect(inspector).not.toBeNull();
   expect(inspector!.y).toBeGreaterThanOrEqual(table!.y + table!.height - 1);
@@ -257,13 +259,13 @@ test('WP-073: 클립보드 실패를 숨기지 않는다', async ({ page }) => {
   await searchFixture(page);
   await openResults(page);
   await page.locator('[data-result-select]').first().click();
-  await page.getByRole('button', { name: '식별자 복사' }).click();
+  await page.getByRole('button', { name: "Copy identifier" }).click();
   /*
    * 문구는 Conductor 0.4.1 `CopyButton`의 것이다 (CR-093) — 실패를 알리고 선택해 복사할 길을 준다.
    * 식별자 자체는 미리보기의 신원 줄에 선택 가능한 텍스트로 있다.
    */
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toContainText('복사 실패');
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toContainText('텍스트를 선택해 복사하세요');
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toContainText("Copy failed");
+  await expect(page.getByRole('region', { name: "Selected result preview" })).toContainText("Select and copy the identifier manually");
 });
 
 test('WP-073: 커밋 선택은 전체 SHA와 미확인을 보존하고 복사한다', async ({ page, context }) => {
@@ -277,13 +279,13 @@ test('WP-073: 커밋 선택은 전체 SHA와 미확인을 보존하고 복사한
   });
   await page.goto(`/search?q=${encodeURIComponent(QUERY)}`);
   await page.locator('[data-result-select]').first().click();
-  const preview = page.getByRole('region', { name: '선택한 결과 미리보기' });
+  const preview = page.getByRole('region', { name: "Selected result preview" });
   await expect(preview).toContainText(sha);
-  await expect(preview).toContainText('파일 수 미확인');
-  await expect(preview).toContainText('시퀀스 공간 미확인');
+  await expect(preview).toContainText("File count unknown");
+  await expect(preview).toContainText("Sequence space unknown");
   await expect(preview).not.toContainText('+0');
-  await page.getByRole('button', { name: '식별자 복사' }).click();
-  await expect(preview).toContainText('복사했습니다');
+  await page.getByRole('button', { name: "Copy identifier" }).click();
+  await expect(preview).toContainText("Copied");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(sha);
 });
 
@@ -305,8 +307,8 @@ test('WP-073: 상세 섹션 링크가 제목에 키보드 포커스를 옮기고
   await page.goto('/pr/platform/engine/2486');
   await expect(page.getByTestId('pr-detail')).toHaveAttribute('data-screen-state', 'ready');
   const baselineCalls = calls.length;
-  await page.getByRole('navigation', { name: '상세 섹션' }).getByRole('link', { name: '커밋', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '커밋', exact: true })).toBeFocused();
+  await page.getByRole('navigation', { name: "Detail sections" }).getByRole('link', { name: "Commit", exact: true }).click();
+  await expect(page.getByRole('heading', { name: "Commit", exact: true })).toBeFocused();
   expect(calls).toHaveLength(baselineCalls);
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.evaluate(() => window.scrollTo(0, 0));

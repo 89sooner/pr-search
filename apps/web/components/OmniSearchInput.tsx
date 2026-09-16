@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Button, TextField } from '@conductor-by-89soone/react';
+import { Button, TextField } from './ui';
 import { isTooShortShaPrefix } from '../lib/search-state';
 import { MIN_SHA_PREFIX_LENGTH } from '@prs/query';
 import { WorkbenchIcon } from './WorkbenchIcon';
@@ -79,7 +79,7 @@ export function OmniSearchInput({
   }
 
   return (
-    <form className="prs-omni-search" onSubmit={handleSubmit} role="search" aria-label="통합 검색">
+    <form className="prs-omni-search" onSubmit={handleSubmit} role="search" aria-label="Search">
       <span className="prs-search-glyph"><WorkbenchIcon name="search" /></span>
       <TextField
         ref={input}
@@ -93,7 +93,7 @@ export function OmniSearchInput({
          * `aria-labelledby` 셋만 이름으로 인정한다. 검색 바에는 눈에 보이는
          * 라벨을 두지 않으므로(`Field`는 라벨을 그린다) `aria-label`이 맞다.
          */
-        aria-label="커밋 SHA, PR 번호, URL 또는 질의"
+        aria-label="Commit SHA, PR number, URL, or query"
         // `searchbox`는 명세가 지정한 역할이다 (C-010 접근성).
         role="searchbox"
         type="text"
@@ -103,7 +103,7 @@ export function OmniSearchInput({
         invalid={tooShort}
         aria-invalid={tooShort}
         aria-describedby={tooShort ? errorId : undefined}
-        placeholder="SHA, PR 번호, GHE URL 또는 repo:owner/repo …"
+        placeholder="SHA, PR number, GHE URL, or repo:owner/repo …"
         onChange={(event) => {
           setDraft(event.target.value);
         }}
@@ -128,10 +128,10 @@ export function OmniSearchInput({
         variant="primary"
         loading={busy}
         {...(tooShort
-          ? { blockedReason: `축약 SHA는 최소 ${String(MIN_SHA_PREFIX_LENGTH)}자가 필요합니다` }
+          ? { blockedReason: `A short SHA requires at least ${String(MIN_SHA_PREFIX_LENGTH)} characters` }
           : {})}
       >
-        검색
+        Search
       </Button>
 
       {/*
@@ -140,13 +140,12 @@ export function OmniSearchInput({
        */}
       {tooShort ? (
         <p id={errorId} role="alert" data-testid="prefix-too-short">
-          축약 SHA는 최소 {MIN_SHA_PREFIX_LENGTH}자가 필요합니다. {draft.trim().length}자를
-          입력했습니다 — 검색을 실행하지 않았습니다.
+          A short SHA requires at least {MIN_SHA_PREFIX_LENGTH} characters. {draft.trim().length} characters entered. Search was not run.
         </p>
       ) : null}
 
       {/* 건수 알림. 결과가 바뀔 때만 문구가 생긴다 (C-010 접근성). */}
-      <p aria-live="polite" data-testid="result-announcement" className="cdt-sr-only">
+      <p aria-live="polite" data-testid="result-announcement" className="ui-sr-only">
         {resultAnnouncement ?? ''}
       </p>
     </form>

@@ -17,7 +17,7 @@
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { Badge, Table } from '@conductor-by-89soone/react';
+import { Badge, Table } from './ui';
 import type { RangeItemView } from '../lib/range';
 import { formatTimestamp } from '../lib/format';
 import { MergeNumberBadge } from './MergeNumberBadge';
@@ -46,20 +46,20 @@ function hrefOf(repository: string, item: RangeItemView): string {
 
 export function RangeResultTable({ repository, baseBranch, items, missingInIndex }: RangeResultTableProps): ReactNode {
   return (
-    <section aria-label="구간 결과" data-testid="range-results">
+    <section aria-label="Range results" data-testid="range-results">
       {missingInIndex > 0 ? (
         <p data-testid="range-missing-in-index">
-          {missingInIndex}건은 정본에는 있으나 색인 반영 대기 중입니다 — 서수·식별자만 확정 표시합니다.
+          {missingInIndex} items exist in the source of truth but are awaiting indexing. Only ordinals and identifiers are confirmed.
         </p>
       ) : null}
-      <Table caption="구간 내 항목 (서수 오름차순)">
+      <Table caption="Items in range (ascending ordinal)">
         <Table.Head>
           <Table.Row>
             <Table.HeaderCell scope="col">seq</Table.HeaderCell>
-            <Table.HeaderCell scope="col">제목</Table.HeaderCell>
-            <Table.HeaderCell scope="col">작성자</Table.HeaderCell>
-            <Table.HeaderCell scope="col">머지 시각</Table.HeaderCell>
-            <Table.HeaderCell scope="col">규모</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Title</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Author</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Merged at</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Size</Table.HeaderCell>
           </Table.Row>
         </Table.Head>
         <Table.Body>
@@ -84,7 +84,7 @@ export function RangeResultTable({ repository, baseBranch, items, missingInIndex
                 />{' '}
                 {item.indexed ? null : (
                   <Badge tone="neutral" data-testid="range-row-unindexed">
-                    색인 대기
+                    Indexing pending
                   </Badge>
                 )}
               </Table.Cell>

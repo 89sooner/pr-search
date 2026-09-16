@@ -81,23 +81,23 @@ describe('시퀀스 + 에폭 (ADR-007)', () => {
 
 describe('기간 표기', () => {
   it('1분 미만은 초다', () => {
-    expect(formatDuration(0)).toBe('0초');
-    expect(formatDuration(59)).toBe('59초');
+    expect(formatDuration(0)).toBe("0s");
+    expect(formatDuration(59)).toBe("59s");
   });
 
   it('분·시간·일로 올라간다', () => {
-    expect(formatDuration(60)).toBe('1분');
-    expect(formatDuration(3_600)).toBe('1시간');
-    expect(formatDuration(86_400)).toBe('1일');
+    expect(formatDuration(60)).toBe("1m");
+    expect(formatDuration(3_600)).toBe("1h");
+    expect(formatDuration(86_400)).toBe("1d");
   });
 
   it('**두 단위까지만 쓴다** — 표에서 줄을 넘기지 않게', () => {
     // 2일 3시간 14분 9초가 아니라 2일 3시간.
-    expect(formatDuration(2 * 86_400 + 3 * 3_600 + 14 * 60 + 9)).toBe('2일 3시간');
+    expect(formatDuration(2 * 86_400 + 3 * 3_600 + 14 * 60 + 9)).toBe("2d 3h");
   });
 
   it('WP-013의 리드 타임 예시가 읽힌다', () => {
-    expect(formatDuration(97_331)).toBe('1일 3시간');
+    expect(formatDuration(97_331)).toBe("1d 3h");
   });
 
   it('음수는 `—`다 — `0초`가 아니다', () => {

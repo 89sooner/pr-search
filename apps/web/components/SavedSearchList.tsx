@@ -17,7 +17,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { Badge, Button, Dialog, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Dialog, Table } from './ui';
 import {
   describeSequenceReference,
   rowActions,
@@ -43,9 +43,9 @@ export interface SavedSearchListProps {
 }
 
 function formatTime(value: string | null): string {
-  if (value === null) return '실행한 적 없음';
+  if (value === null) return "Never run";
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('ko-KR');
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("en-US");
 }
 
 /**
@@ -63,10 +63,10 @@ function QueryCell({ item, rowId }: { item: SavedSearchView; rowId: string }): R
       ? splitInvalidSpan(item.query, item.query_error?.detail)
       : null;
 
-  if (spans === null) return <code className="cdt-mono" data-testid={`${rowId}-query`}>{item.query}</code>;
+  if (spans === null) return <code className="ui-mono" data-testid={`${rowId}-query`}>{item.query}</code>;
 
   return (
-    <code className="cdt-mono" data-testid={`${rowId}-query`}>
+    <code className="ui-mono" data-testid={`${rowId}-query`}>
       {spans.before}
       <mark data-testid={`${rowId}-invalid-span`}>{spans.invalid}</mark>
       {spans.after}
@@ -90,12 +90,12 @@ export function SavedSearchList({
       <Table data-testid={`${testIdPrefix}-table`}>
         <thead>
           <tr>
-            <th scope="col">이름</th>
-            <th scope="col">질의</th>
-            <th scope="col">공개 범위</th>
-            <th scope="col">소유자</th>
-            <th scope="col">마지막 실행</th>
-            <th scope="col">액션</th>
+            <th scope="col">Name</th>
+            <th scope="col">Query</th>
+            <th scope="col">Visibility</th>
+            <th scope="col">Owner</th>
+            <th scope="col">Last run</th>
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -112,7 +112,7 @@ export function SavedSearchList({
                     <>
                       {/* 유효성은 배지와 문장 둘 다로 말한다 — 색만으로 구분하지 않는다. */}
                       <Badge tone="danger" data-testid={`${rowId}-invalid`}>
-                        해석 불가
+                        Cannot resolve
                       </Badge>
                       <p data-testid={`${rowId}-blocked`}>{actions.blockedReason}</p>
                     </>
@@ -143,7 +143,7 @@ export function SavedSearchList({
                   )}
                 </td>
                 <td data-testid={`${rowId}-visibility`}>{visibilityLabel(item)}</td>
-                <td>{item.is_owner ? '나' : item.owner.login}</td>
+                <td>{item.is_owner ? "Me" : item.owner.login}</td>
                 <td>{formatTime(item.last_run_at)}</td>
                 <td>
                   <Button
@@ -153,7 +153,7 @@ export function SavedSearchList({
                     disabled={!actions.canRun}
                     data-testid={`${rowId}-run`}
                   >
-                    실행
+                    Run
                   </Button>
 
                   {/*
@@ -169,7 +169,7 @@ export function SavedSearchList({
                       }}
                       data-testid={`${rowId}-edit`}
                     >
-                      편집
+                      Edit
                     </Button>
                   ) : null}
 
@@ -185,7 +185,7 @@ export function SavedSearchList({
                       }}
                       data-testid={`${rowId}-rebind-epoch`}
                     >
-                      현재 에폭으로 다시 연결
+                      Reconnect to current epoch
                     </Button>
                   ) : null}
 
@@ -197,7 +197,7 @@ export function SavedSearchList({
                       }}
                       data-testid={`${rowId}-delete`}
                     >
-                      삭제
+                      Delete
                     </Button>
                   ) : null}
                 </td>
@@ -214,9 +214,9 @@ export function SavedSearchList({
         }}
       >
         <Dialog.Content size="sm" data-testid={`${testIdPrefix}-delete-dialog`}>
-          <Dialog.Title>저장된 검색을 삭제합니다</Dialog.Title>
+          <Dialog.Title>Delete saved search</Dialog.Title>
           <Dialog.Description>
-            «{pendingDelete?.name ?? ''}»를 삭제합니다. 되돌릴 수 없으며, 팀에 공유했다면 그 팀에서도 사라집니다.
+            «{pendingDelete?.name ?? ''}» will be deleted permanently. If shared with a team, it will also disappear for that team.
           </Dialog.Description>
           <div>
             <Button
@@ -226,10 +226,10 @@ export function SavedSearchList({
               }}
               data-testid={`${testIdPrefix}-delete-confirm`}
             >
-              삭제
+              Delete
             </Button>
             <Dialog.Close asChild>
-              <Button variant="secondary">취소</Button>
+              <Button variant="secondary">Cancel</Button>
             </Dialog.Close>
           </div>
         </Dialog.Content>

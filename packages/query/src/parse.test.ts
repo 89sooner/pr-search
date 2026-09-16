@@ -117,27 +117,27 @@ describe('AC-2·AC-3: 범위', () => {
     // 만들면 남는 것이 스칼라라서 거절되기 때문이다(DEV-364). 규칙 자체는
     // 범위를 받지 않는 키에서 확인한다.
     expect(parseQuery('label:"1..2"').filters).toEqual([{ key: 'label', op: 'eq', values: ['1..2'] }]);
-    expect(reject('seq:"1..2"').message).toContain('범위 형식');
+    expect(reject('seq:"1..2"').message).toContain("supports ranges");
   });
 
   it('열린 범위는 거절한다 — 지어내지 않는다', () => {
-    expect(reject('seq:1200..').message).toContain('양끝');
-    expect(reject('seq:..1350').message).toContain('양끝');
+    expect(reject('seq:1200..').message).toContain("Both range bounds");
+    expect(reject('seq:..1350').message).toContain("Both range bounds");
   });
 
   it('뒤집힌 범위를 거절한다', () => {
-    expect(reject('seq:1350..1200').message).toContain('뒤집');
-    expect(reject('merged:2026-08-19..2026-08-10').message).toContain('뒤집');
+    expect(reject('seq:1350..1200').message).toContain("reversed");
+    expect(reject('merged:2026-08-19..2026-08-10').message).toContain("reversed");
   });
 
   it('정수가 아닌 숫자 범위를 거절한다', () => {
     expect(reject('seq:abc..10').code).toBe('QUERY_SYNTAX_ERROR');
-    expect(reject('seq:1.5..10').message).toContain('정수');
+    expect(reject('seq:1.5..10').message).toContain("integer");
   });
 
   it('존재하지 않는 날짜를 거절한다', () => {
     // 형식은 맞지만 2월 30일은 없다.
-    expect(reject('merged:2026-02-30..2026-03-01').message).toContain('존재하지 않는');
+    expect(reject('merged:2026-02-30..2026-03-01').message).toContain("Invalid calendar date");
   });
 
   it('날짜 형식이 아니면 거절하고 예를 보여 준다', () => {
@@ -149,7 +149,7 @@ describe('DEV-364: 범위 전용 키의 스칼라를 거절한다', () => {
   it('`seq:1234`가 문법 오류다 — 조용히 0건이 되지 않는다', () => {
     const error = reject('seq:1234');
     expect(error.code).toBe('QUERY_SYNTAX_ERROR');
-    expect(error.message).toContain('범위 형식');
+    expect(error.message).toContain("supports ranges");
     expect(error.message).toContain('seq:1200..1350');
   });
 
@@ -164,14 +164,14 @@ describe('DEV-364: 범위 전용 키의 스칼라를 거절한다', () => {
   });
 
   it('따옴표로 감싸도 스칼라는 스칼라다', () => {
-    expect(reject('seq:"1234"').message).toContain('범위 형식');
+    expect(reject('seq:"1234"').message).toContain("supports ranges");
   });
 
   it('시각 키 둘도 같은 규칙이다', () => {
     // `merged`·`created`도 `RANGE_FIELDS`에만 있어 스칼라가 `MATCH_NONE`이
     // 되었다. 규칙을 키마다 다르게 두면 그 차이가 다음 결함이 된다.
-    expect(reject('merged:2026-08-10').message).toContain('범위 형식');
-    expect(reject('created:2026-08-10').message).toContain('범위 형식');
+    expect(reject('merged:2026-08-10').message).toContain("supports ranges");
+    expect(reject('created:2026-08-10').message).toContain("supports ranges");
   });
 
   it('예시는 키마다 다르다 — 사용자를 두 번 틀리게 하지 않는다', () => {
@@ -188,7 +188,7 @@ describe('DEV-364: 범위 전용 키의 스칼라를 거절한다', () => {
 
   it('값이 비면 그 사실을 먼저 말한다', () => {
     // 사용자가 할 일이 다르다 — 값을 적는 것과 형식을 고치는 것.
-    expect(reject('seq:').message).toContain('비었습니다');
+    expect(reject('seq:').message).toContain("is empty");
   });
 
   it('범위 형태는 그대로 성립한다', () => {
@@ -381,7 +381,7 @@ describe('인용', () => {
 
   it('닫히지 않은 따옴표를 거절한다', () => {
     // 남은 문자열을 통째로 값으로 삼으면 오타를 눈치채지 못한 채 검색한다.
-    expect(reject('label:"needs review').message).toContain('닫히지');
+    expect(reject('label:"needs review').message).toContain("Unclosed");
   });
 
   it('키 없는 인용 낱말도 검색어다', () => {
@@ -391,7 +391,7 @@ describe('인용', () => {
 
 describe('문법 오류', () => {
   it('값이 빈 키를 거절한다', () => {
-    expect(reject('author:').message).toContain('값이 비었');
+    expect(reject('author:').message).toContain("is empty");
   });
 
   it('키처럼 보이지 않는 것은 검색어로 둔다', () => {

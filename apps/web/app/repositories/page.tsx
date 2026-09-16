@@ -28,8 +28,8 @@ export default async function RepositoriesPage({ searchParams }: PageProps): Pro
   const repository = typeof raw === 'string' && raw !== '' ? raw : null;
 
   return (
-    <GuardedPage title="저장소" returnTo="/repositories">
-      <h1>저장소</h1>
+    <GuardedPage title="Repositories" returnTo="/repositories">
+      <h1>Repositories</h1>
       <RepositoriesView loginPath={config.session.loginPath} repositoryFilter={repository} />
     </GuardedPage>
   );

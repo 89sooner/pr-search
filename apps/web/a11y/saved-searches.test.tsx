@@ -148,8 +148,8 @@ describe('C-037 목록 (QA-W008-01·02·06)', () => {
     expect(run.disabled).toBe(true);
 
     // 색이 아니라 글로도 말한다 (NFR-006).
-    expect(screen.getByTestId('t-row-3-invalid').textContent).toContain('해석 불가');
-    expect(screen.getByTestId('t-row-3-blocked').textContent).toContain('소유자');
+    expect(screen.getByTestId('t-row-3-invalid').textContent).toContain("Cannot resolve");
+    expect(screen.getByTestId('t-row-3-blocked').textContent).toContain("owner");
   });
 
   it('공개 범위를 문자로 보인다 — 색만으로 구분하지 않는다', () => {
@@ -163,7 +163,7 @@ describe('C-037 목록 (QA-W008-01·02·06)', () => {
         testIdPrefix="t"
       />,
     );
-    expect(screen.getByTestId('t-row-1-visibility').textContent).toBe('비공개');
+    expect(screen.getByTestId('t-row-1-visibility').textContent).toBe("Private");
     expect(screen.getByTestId('t-row-2-visibility').textContent).toContain('payments');
   });
 
@@ -466,7 +466,7 @@ describe('W-001 저장 대화상자 (QA-W008-01)', () => {
     await user.click(screen.getByTestId('save-search-submit'));
 
     const error = await screen.findByTestId('save-search-error');
-    expect(error.textContent).toContain('100건');
+    expect(error.textContent).toContain("100 saved searches");
   });
 
   it('axe 위반 0건', async () => {
@@ -509,7 +509,7 @@ describe('시퀀스 인용 상태 (QA-W008-13~19 / CR-051)', () => {
   it('낡은 인용을 **글로** 알린다 — 색만으로 말하지 않는다 (NFR-006)', () => {
     draw(withReference({ status: 'epoch_stale', stored_seq_epoch: 3, current_seq_epoch: 4 }));
 
-    expect(screen.getByTestId('t-row-1-sequence-status').textContent).toContain('달라졌');
+    expect(screen.getByTestId('t-row-1-sequence-status').textContent).toContain("changed");
     const detail = screen.getByTestId('t-row-1-sequence-detail').textContent ?? '';
     expect(detail).toContain('3');
     expect(detail).toContain('4');
@@ -524,7 +524,7 @@ describe('시퀀스 인용 상태 (QA-W008-13~19 / CR-051)', () => {
     draw(withReference({ status: 'unbound', current_seq_epoch: 4 }));
 
     expect(screen.getByTestId<HTMLButtonElement>('t-row-1-run').disabled).toBe(true);
-    expect(screen.getByTestId('t-row-1-blocked').textContent).toContain('다시 연결');
+    expect(screen.getByTestId('t-row-1-blocked').textContent).toContain("Rebind");
   });
 
   it('저장자에게 재연결 버튼을 그리고, 누르면 콜백이 불린다', async () => {

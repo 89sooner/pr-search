@@ -19,7 +19,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { Badge, Button, Checkbox, Dialog, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Checkbox, Dialog, Table } from './ui';
 import { BULK_REPROCESS_CONFIRM_THRESHOLD, needsBulkReconfirm } from '../lib/ops-jobs';
 import { formatTimestamp } from '../lib/format';
 
@@ -88,23 +88,23 @@ export function DeadLetterTable({
     <div data-testid="dead-letter-table" data-alerting={alerting ? 'true' : 'false'}>
       {alerting ? (
         <p data-testid="dead-letter-alert" role="status">
-          실패 대기열이 {BULK_REPROCESS_CONFIRM_THRESHOLD}건을 넘었습니다 (
-          {(total ?? items.length).toLocaleString('ko-KR')}건). 원인을 먼저 확인하세요.
+          The dead-letter queue exceeds {BULK_REPROCESS_CONFIRM_THRESHOLD} items (
+          {(total ?? items.length).toLocaleString("en-US")} items). Investigate the cause first.
         </p>
       ) : null}
 
-      <Table data-testid="dead-letter-list" caption="실패한 수집 이벤트. 원인을 해소한 뒤 재처리합니다.">
+      <Table data-testid="dead-letter-list" caption="Failed ingestion events. Resolve the cause before replaying.">
         <thead>
           <tr>
-            <th scope="col">선택</th>
-            <th scope="col">전달 식별자</th>
-            <th scope="col">단계</th>
-            <th scope="col">상태</th>
-            <th scope="col">실패 사유</th>
-            <th scope="col">재시도</th>
-            <th scope="col">재처리</th>
-            <th scope="col">마지막 갱신</th>
-            <th scope="col">원본</th>
+            <th scope="col">Select</th>
+            <th scope="col">Delivery ID</th>
+            <th scope="col">Stage</th>
+            <th scope="col">Status</th>
+            <th scope="col">Failure reason</th>
+            <th scope="col">Retry</th>
+            <th scope="col">Replay</th>
+            <th scope="col">Last updated</th>
+            <th scope="col">Original</th>
           </tr>
         </thead>
         <tbody>
@@ -114,7 +114,7 @@ export function DeadLetterTable({
                 <Checkbox
                   id={`dlq-select-${String(item.dead_letter_id)}`}
                   data-testid="dead-letter-select"
-                  aria-label={`${item.delivery_id} 선택`}
+                  aria-label={`${item.delivery_id} Select`}
                   checked={selected.has(item.dead_letter_id)}
                   onCheckedChange={() => {
                     toggle(item.dead_letter_id);
@@ -142,7 +142,7 @@ export function DeadLetterTable({
                       onOpenPayload(item.delivery_id);
                     }}
                   >
-                    원본 열람
+                    View payload
                   </Button>
                 )}
               </td>
@@ -151,7 +151,7 @@ export function DeadLetterTable({
           {items.length === 0 ? (
             <tr>
               <td colSpan={9} data-testid="dead-letter-empty">
-                실패한 이벤트가 없습니다.
+                No failed events.
               </td>
             </tr>
           ) : null}
@@ -165,7 +165,7 @@ export function DeadLetterTable({
           setPhase('confirm');
         }}
       >
-        선택한 {ids.length}건 재처리
+        Selected: {ids.length} events to replay
       </Button>
 
       <Dialog.Root
@@ -176,12 +176,12 @@ export function DeadLetterTable({
       >
         <Dialog.Content size="sm" data-testid="dead-letter-dialog" data-phase={phase ?? 'closed'}>
           <Dialog.Title>
-            {phase === 'reconfirm' ? '정말 이 규모로 재처리합니까?' : '선택한 이벤트를 재처리합니다'}
+            {phase === 'reconfirm' ? "Replay this many events?" : "Replay selected events"}
           </Dialog.Title>
           <Dialog.Description data-testid="dead-letter-dialog-count">
             {phase === 'reconfirm'
-              ? `${String(ids.length)}건은 ${String(BULK_REPROCESS_CONFIRM_THRESHOLD)}건을 넘습니다. GHE 한도를 소모하고 실시간 수집이 밀릴 수 있습니다.`
-              : `대상 ${String(ids.length)}건을 다시 수집 대기열에 넣습니다.`}
+              ? `${String(ids.length)} items exceeds ${String(BULK_REPROCESS_CONFIRM_THRESHOLD)} items. This consumes GHE rate limits and may delay live ingestion.`
+              : `Target ${String(ids.length)} events will be returned to the ingestion queue.`}
           </Dialog.Description>
 
           <div>
@@ -201,11 +201,11 @@ export function DeadLetterTable({
                 finish();
               }}
             >
-              {phase === 'reconfirm' ? '그래도 재처리' : '재처리'}
+              {phase === 'reconfirm' ? "Replay anyway" : "Replay"}
             </Button>
             <Dialog.Close asChild>
               <Button variant="secondary" data-testid="dead-letter-reprocess-cancel">
-                취소
+                Cancel
               </Button>
             </Dialog.Close>
           </div>

@@ -17,7 +17,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Button, Card } from '@conductor-by-89soone/react';
+import { Button, Card } from './ui';
 import { JobStatusBadge } from './JobStatusBadge';
 import { formatCount, progressView, type JobView } from '../lib/ops-jobs';
 import { formatTimestamp } from '../lib/format';
@@ -52,26 +52,26 @@ export function ScanResultCard({
 
   return (
     <Card data-testid="scan-result-card" data-active={active ? 'true' : 'false'}>
-      <h3>조정 스캔</h3>
+      <h3>Reconciliation scan</h3>
 
       {result === null ? (
-        <p data-testid="scan-no-result">아직 조정 스캔 결과가 없습니다.</p>
+        <p data-testid="scan-no-result">No reconciliation scan results yet.</p>
       ) : (
         <dl data-testid="scan-result">
           <div>
-            <dt>마지막 스캔</dt>
+            <dt>Last scan</dt>
             <dd>{formatTimestamp(result.last_scanned_at)}</dd>
           </div>
           <div>
-            <dt>발견 누락</dt>
+            <dt>Missing items found</dt>
             <dd data-testid="scan-missing">{formatCount(result.missing_count)}</dd>
           </div>
           <div>
-            <dt>스캔 저장소</dt>
+            <dt>Repositories scanned</dt>
             <dd>{formatCount(result.repositories_scanned)}</dd>
           </div>
           <div>
-            <dt>미룬 저장소</dt>
+            <dt>Repositories deferred</dt>
             <dd>{formatCount(result.deferred_count)}</dd>
           </div>
         </dl>
@@ -83,17 +83,17 @@ export function ScanResultCard({
       */}
       {job === null ? null : (
         <p data-testid="scan-job">
-          잡 {job.job_id} <JobStatusBadge state={job.state} />
+          Job {job.job_id} <JobStatusBadge state={job.state} />
           {progress?.done === null || progress === null
             ? ''
-            : ` — ${progress.done.toLocaleString('ko-KR')}${progress.total === null ? ' 처리 (총계 미확인)' : ` / ${progress.total.toLocaleString('ko-KR')}`}`}
-          {job.finished_at === null ? '' : ` · 종료 ${formatTimestamp(job.finished_at)}`}
+            : ` — ${progress.done.toLocaleString("en-US")}${progress.total === null ? "processed (total unknown)" : ` / ${progress.total.toLocaleString("en-US")}`}`}
+          {job.finished_at === null ? '' : `· Finished ${formatTimestamp(job.finished_at)}`}
         </p>
       )}
 
       {conflictJobId === null ? null : (
         <p data-testid="scan-conflict" role="status">
-          조정 스캔이 이미 실행 중입니다 (잡 {conflictJobId}). 주기 실행과 수동 실행은 동시에 돌지 않습니다.
+          A reconciliation scan is already running (job {conflictJobId}). Scheduled and manual scans cannot run simultaneously.
         </p>
       )}
 
@@ -105,7 +105,7 @@ export function ScanResultCard({
           onRun();
         }}
       >
-        {submitting ? '실행 요청 중…' : active ? '실행 중' : '즉시 실행'}
+        {submitting ? "Starting…" : active ? "Running" : "Run now"}
       </Button>
     </Card>
   );

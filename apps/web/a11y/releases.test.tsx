@@ -215,7 +215,7 @@ describe('비교 선택 (QA-W005-01·02·03)', () => {
     expect(screen.queryByTestId('compare-link')).not.toBeInTheDocument();
     // 경고 배너는 `status`다 — Conductor는 `danger`에만 `alert`을 준다.
     const blocked = screen.getByRole('status');
-    expect(blocked).toHaveTextContent('대상 브랜치가 다른 릴리스는 비교할 수 없습니다');
+    expect(blocked).toHaveTextContent("Cannot compare releases from different base branches");
     expect(blocked).toHaveTextContent('release/2.4');
   });
 
@@ -226,7 +226,7 @@ describe('비교 선택 (QA-W005-01·02·03)', () => {
     const off = rowOf('off-chain');
     expect(within(off).getByTestId('release-no-seq')).toBeInTheDocument();
     expect(within(off).getByRole('checkbox')).toBeDisabled();
-    expect(within(off).getByTestId('release-select-note')).toHaveTextContent('서수가 없어');
+    expect(within(off).getByTestId('release-select-note')).toHaveTextContent("without an ordinal");
   });
 
   it('상한 2건에 닿으면 미선택 행만 비활성되고 사유가 붙는다', async () => {
@@ -237,7 +237,7 @@ describe('비교 선택 (QA-W005-01·02·03)', () => {
     await check('v1.1');
     const third = within(rowOf('v1.0')).getByRole('checkbox');
     expect(third).toBeDisabled();
-    expect(within(rowOf('v1.0')).getByTestId('release-select-note')).toHaveTextContent('2건까지');
+    expect(within(rowOf('v1.0')).getByTestId('release-select-note')).toHaveTextContent("up to two releases");
     // 이미 고른 것은 해제할 수 있어야 한다 — 안 그러면 선택을 되돌릴 수 없다.
     expect(within(rowOf('v1.2')).getByRole('checkbox')).not.toBeDisabled();
   });
@@ -248,7 +248,7 @@ describe('직전 대비 표기 (QA-W005-06, DEV-155)', () => {
     stubFetch();
     view();
     await waitForRows();
-    expect(within(rowOf('v1.1')).getByTestId('release-previous')).toHaveTextContent('v1.0 대비 PR 2건');
+    expect(within(rowOf('v1.1')).getByTestId('release-previous')).toHaveTextContent("v1.0 — PRs added: 2");
   });
 
   it('직전이 없으면 0이 아니라 없음이다', async () => {
@@ -256,8 +256,8 @@ describe('직전 대비 표기 (QA-W005-06, DEV-155)', () => {
     view();
     await waitForRows();
     const label = within(rowOf('v1.0')).getByTestId('release-previous');
-    expect(label).toHaveTextContent('직전 릴리스 없음');
-    expect(label).not.toHaveTextContent('0건');
+    expect(label).toHaveTextContent("No previous release");
+    expect(label).not.toHaveTextContent("0");
   });
 });
 
@@ -270,8 +270,8 @@ describe('릴리스 상세', () => {
     await waitFor(() => {
       expect(screen.getByTestId('range-summary')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('detail-heading')).toHaveTextContent('직전(v1.1) 대비');
-    expect(screen.getByTestId('range-summary')).toHaveTextContent('준비 중');
+    expect(screen.getByTestId('detail-heading')).toHaveTextContent("compared with previous release (v1.1)");
+    expect(screen.getByTestId('range-summary')).toHaveTextContent("Pending — relationship derivation");
   });
 
   it('**행의 공간으로 묻는다** — 셀렉터의 브랜치로 고정하지 않는다', async () => {
@@ -307,7 +307,7 @@ describe('릴리스 상세', () => {
     view();
     await waitForRows();
     await userEvent.click(within(rowOf('v1.0')).getByTestId('release-select'));
-    expect(screen.getByTestId('detail-no-previous')).toHaveTextContent('직전 릴리스가 없어');
+    expect(screen.getByTestId('detail-no-previous')).toHaveTextContent("No previous release exists for comparison.");
     expect(screen.queryByTestId('range-summary')).not.toBeInTheDocument();
   });
 });
@@ -319,7 +319,7 @@ describe('미배포 구간 (QA-W005-04, AC-5)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('unreleased-summary')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('unreleased-summary')).toHaveTextContent('2건');
+    expect(screen.getByTestId('unreleased-summary')).toHaveTextContent("2");
     expect(screen.getByTestId('unreleased-link')).toHaveAttribute(
       'href',
       '/ranges?repo=acme%2Fpayments&branch=main&from=seq%3A6&to=seq%3A8&epoch=3',
@@ -332,11 +332,11 @@ describe('릴리스 0건 (QA-W005-05 절반, DEV-159)', () => {
     stubFetch({ releases: { status: 200, body: { repository: 'acme/payments', releases: [], reason: 'release_not_indexed', truncated: false } } });
     const { container } = view();
     await waitFor(() => {
-      expect(screen.getByText('이 저장소의 릴리스가 없습니다')).toBeInTheDocument();
+      expect(screen.getByText("No releases in this repository")).toBeInTheDocument();
     });
     // 원인 둘이 한 안내에 함께 있다 — 판별할 수 없는 것을 갈라 말하지 않는다.
-    expect(screen.getByText(/태그가 만들어지지/)).toBeInTheDocument();
-    expect(screen.getByText(/수집이 아직/)).toBeInTheDocument();
+    expect(screen.getByText(/No tags exist yet/)).toBeInTheDocument();
+    expect(screen.getByText(/release ingestion has not reached/)).toBeInTheDocument();
     // W-009는 REL-004~005다 — 없는 경로로 보내지 않는다.
     expect(container.querySelector('a[href="/repositories"]')).toBeNull();
     expect(screen.queryByTestId('release-timeline')).not.toBeInTheDocument();
@@ -356,7 +356,7 @@ describe('상태 렌더링과 접근성', () => {
     stubFetch({ releases: { status: 404, body: { error: { code: 'NOT_FOUND', message: 'x' } } } });
     view();
     await waitFor(() => {
-      expect(screen.getByText('저장소를 찾을 수 없습니다')).toBeInTheDocument();
+      expect(screen.getByText("Repository not found")).toBeInTheDocument();
     });
   });
 
@@ -364,9 +364,9 @@ describe('상태 렌더링과 접근성', () => {
     stubFetch({ releases: { status: 503, body: {} } });
     view();
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('릴리스 목록을 불러오지 못했습니다');
+      expect(screen.getByRole('alert')).toHaveTextContent("Unable to load releases");
     });
-    expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Try again" })).toBeInTheDocument();
   });
 
   it('**"다시 시도"가 실제로 다시 부른다**', async () => {
@@ -387,7 +387,7 @@ describe('상태 렌더링과 접근성', () => {
     stubFetch();
     view('');
     await waitFor(() => {
-      expect(screen.getByText('시퀀스 공간을 고르세요')).toBeInTheDocument();
+      expect(screen.getByText("Select a sequence space")).toBeInTheDocument();
     });
   });
 
@@ -417,7 +417,7 @@ describe('상태 렌더링과 접근성', () => {
     stubFetch({ releases: { status: 200, body: { repository: 'acme/payments', releases: [], reason: 'release_not_indexed', truncated: false } } });
     const { container } = view();
     await waitFor(() => {
-      expect(screen.getByText('이 저장소의 릴리스가 없습니다')).toBeInTheDocument();
+      expect(screen.getByText("No releases in this repository")).toBeInTheDocument();
     });
     const found = await violations(container);
     expect(found, describeViolations(found)).toEqual([]);

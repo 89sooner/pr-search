@@ -16,7 +16,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Button, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Table } from './ui';
 import { shortSha } from '../lib/format';
 import type { CommitListModel } from '../lib/pr-detail';
 
@@ -29,12 +29,12 @@ export interface CommitListProps extends CommitListModel {
 /** 원본 커밋 수를 사람이 읽는 문구로. 모르면 모른다고 말한다. */
 export function commitCountLabel(model: CommitListModel): string {
   const shown = model.sourceCommits.length;
-  if (!model.truncated) return `원본 커밋 ${String(shown)}건`;
+  if (!model.truncated) return `${String(shown)} original ${shown === 1 ? 'commit' : 'commits'}`;
   if (model.totalCount === null) {
     // **"250건 중 250건"이라고 쓰지 않는다.** 총계를 모른다.
-    return `원본 커밋 ${String(shown)}건 이상 (앞 ${String(shown)}건만 표시, 전체 건수는 수집하지 않습니다)`;
+    return `${String(shown)} or more original commits (showing the first ${String(shown)}; the total count is not collected)`;
   }
-  return `원본 커밋 ${String(model.totalCount)}건 중 앞 ${String(shown)}건`;
+  return `${String(model.totalCount)} original commits (showing the first ${String(shown)})`;
 }
 
 export function CommitList({
@@ -50,12 +50,12 @@ export function CommitList({
 
   return (
     <section aria-labelledby="commits-heading" data-testid="commit-list">
-      <h2 id="commits-heading">커밋</h2>
+      <h2 id="commits-heading">Commit</h2>
 
-      <Table caption="이 PR의 커밋">
+      <Table caption="Commits in this PR">
         <Table.Head>
           <Table.Row>
-            <Table.HeaderCell scope="col">역할</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Role</Table.HeaderCell>
             <Table.HeaderCell scope="col">SHA</Table.HeaderCell>
           </Table.Row>
         </Table.Head>
@@ -66,13 +66,13 @@ export function CommitList({
            */}
           <Table.Row data-testid="merge-commit-row">
             <Table.Cell>
-              <Badge tone="accent">머지 커밋</Badge>
+              <Badge tone="accent">Merge commit</Badge>
             </Table.Cell>
             <Table.Cell>
               {mergeCommitSha === null ? (
-                <span data-testid="no-merge-commit">아직 머지되지 않았습니다</span>
+                <span data-testid="no-merge-commit">Not yet merged</span>
               ) : (
-                <code className="cdt-mono">{shortSha(mergeCommitSha)}</code>
+                <code className="ui-mono">{shortSha(mergeCommitSha)}</code>
               )}
             </Table.Cell>
           </Table.Row>
@@ -80,10 +80,10 @@ export function CommitList({
           {sourceCommits.map((commit) => (
             <Table.Row key={commit.commit_sha} data-testid="source-commit-row">
               <Table.Cell>
-                <Badge tone="neutral">원본</Badge>
+                <Badge tone="neutral">Original</Badge>
               </Table.Cell>
               <Table.Cell>
-                <code className="cdt-mono">{shortSha(commit.commit_sha)}</code>
+                <code className="ui-mono">{shortSha(commit.commit_sha)}</code>
               </Table.Cell>
             </Table.Row>
           ))}
@@ -96,10 +96,10 @@ export function CommitList({
        */}
       {enrichmentPending ? (
         <div data-testid="enrichment-pending">
-          <Badge tone="warning">수집 중</Badge>
-          <p>원본 커밋을 아직 수집하지 못했습니다. 머지 커밋은 위에 표시되어 있습니다.</p>
+          <Badge tone="warning">Collecting</Badge>
+          <p>Original commits have not been collected yet. The merge commit is shown above.</p>
           <Button variant="secondary" loading={refetching} onClick={onRefetch}>
-            다시 조회
+            Refresh
           </Button>
         </div>
       ) : (

@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { Banner, Button, Panel, Spinner } from '@conductor-by-89soone/react';
+import { Banner, Button, Panel, Spinner } from './ui';
 import { CursorPager, toCursorFailure, type CursorFailure } from './CursorPager';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
@@ -66,8 +66,8 @@ const FIRST_PAGE: ListState = {
 };
 
 const VIEW_LABEL: Readonly<Record<SavedSearchListView, string>> = {
-  mine: '내 검색',
-  team: '팀 공유 검색',
+  mine: "My searches",
+  team: "Team searches",
 };
 
 export interface SavedSearchesViewProps {
@@ -267,9 +267,9 @@ function SavedSearchSection({ view, loginPath }: SectionProps): ReactNode {
         <h2>{VIEW_LABEL[view]}</h2>
         <ErrorBanner
           tone="warning"
-          title="다시 로그인해야 합니다"
-          impact="세션이 만료되어 저장된 검색을 읽을 수 없습니다."
-          action={<a href={loginPath}>로그인</a>}
+          title="Please sign in again"
+          impact="Your session expired. Sign in to load saved searches."
+          action={<a href={loginPath}>Sign in</a>}
         />
       </Panel>
     );
@@ -280,16 +280,16 @@ function SavedSearchSection({ view, loginPath }: SectionProps): ReactNode {
       <h2>{VIEW_LABEL[view]}</h2>
       <div data-testid={`saved-${view}-state`} data-screen-state={screen} />
 
-      {screen === 'loading_initial' ? <Spinner label="저장된 검색을 불러오는 중" /> : null}
+      {screen === 'loading_initial' ? <Spinner label="Loading saved searches" /> : null}
 
       {screen === 'error_load' ? (
         <ErrorBanner
           tone="danger"
-          title="목록을 불러오지 못했습니다"
-          impact="저장된 검색을 읽지 못했습니다. 지금까지 본 목록은 그대로 있습니다."
+          title="Unable to load list"
+          impact="Unable to load saved searches. Previously loaded entries are preserved."
           action={
             <Button variant="secondary" onClick={reload} data-testid={`saved-${view}-retry`}>
-              다시 시도
+              Try again
             </Button>
           }
         />
@@ -298,17 +298,17 @@ function SavedSearchSection({ view, loginPath }: SectionProps): ReactNode {
       {screen === 'empty_no_saved' ? (
         <EmptyState
           cause="no_result"
-          title="저장된 검색이 없습니다"
-          description="통합 검색에서 조건을 만든 뒤 저장하면 여기에 나타납니다."
-          actions={<a href="/search">통합 검색으로</a>}
+          title="No saved searches"
+          description="Save a query from search to see it here."
+          actions={<a href="/search">Go to search</a>}
         />
       ) : null}
 
       {screen === 'empty_no_shared' ? (
         <EmptyState
           cause="no_result"
-          title="공유받은 검색이 없습니다"
-          description="같은 팀 구성원이 팀 공유로 저장하면 여기에 나타납니다."
+          title="No shared searches"
+          description="Searches shared by your teammates appear here."
         />
       ) : null}
 
@@ -342,8 +342,8 @@ function SavedSearchSection({ view, loginPath }: SectionProps): ReactNode {
       ) : null}
 
       {screen === 'loading_more' ? (
-        <Banner tone="info" title="이어 보는 중">
-          <Spinner label="다음 페이지를 불러오는 중" />
+        <Banner tone="info" title="Loading more">
+          <Spinner label="Loading next page" />
         </Banner>
       ) : null}
 

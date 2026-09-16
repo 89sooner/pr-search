@@ -88,6 +88,7 @@ const FORWARDED_RESPONSE_HEADERS: ReadonlySet<string> = new Set([
   'content-disposition',
   'content-type',
   'cache-control',
+  'retry-after',
   CORRELATION_HEADER,
 ]);
 

@@ -85,9 +85,9 @@ describe('PipelineMetricGrid (C-040)', () => {
     expect(screen.getByTestId('metric-ingestion-lag').getAttribute('data-unavailable')).toBe('true');
     // 축 안의 값 하나만 미확인 (`"unavailable"` 문자열)
     const latency = screen.getByTestId('metric-stage-latency');
-    expect(latency.textContent).toContain('미확인');
-    expect(latency.textContent).toContain('2.4초');
-    expect(latency.textContent).not.toContain('0.0초');
+    expect(latency.textContent).toContain("Unknown");
+    expect(latency.textContent).toContain("2.4 seconds");
+    expect(latency.textContent).not.toContain("0.0s");
   });
 
   it('QA-A001-02: 마지막 갱신 시각을 표시한다', () => {
@@ -98,24 +98,24 @@ describe('PipelineMetricGrid (C-040)', () => {
   it('신선도가 지나도 값을 지우지 않는다 — 그 시점의 값임을 적는다', () => {
     render(<PipelineMetricGrid metrics={STATUS} stale />);
     expect(screen.getByTestId('pipeline-metric-grid').getAttribute('data-state')).toBe('stale');
-    expect(screen.getByTestId('pipeline-updated-at').textContent).toContain('30초가 지났습니다');
+    expect(screen.getByTestId('pipeline-updated-at').textContent).toContain("More than 30 seconds have elapsed");
   });
 
   it('DEV-051: "없다"와 "볼 수 없다"를 가르고 식별자는 주지 않는다', () => {
     render(<PipelineMetricGrid metrics={STATUS} />);
     const empty = screen.getByTestId('laggards-empty').textContent ?? '';
-    expect(empty).toContain('접근 범위 안에는 없습니다');
-    expect(empty).toContain('3건');
+    expect(empty).toContain("None within your access scope");
+    expect(empty).toContain("3");
   });
 
   it('범위 밖도 0이면 그냥 없다고 적는다', () => {
     render(<PipelineMetricGrid metrics={{ ...STATUS, slowest_repositories_out_of_scope: 0 }} />);
-    expect(screen.getByTestId('laggards-empty').textContent).toBe('지연 상위 저장소가 없습니다.');
+    expect(screen.getByTestId('laggards-empty').textContent).toBe("No repositories with significant lag.");
   });
 
   it('조회 실패도 미확인이며 0이 아니다', () => {
     render(<PipelineMetricGrid metrics={null} failed />);
-    expect(screen.getByTestId('pipeline-metrics-failed').textContent).toContain('미확인');
+    expect(screen.getByTestId('pipeline-metrics-failed').textContent).toContain("Unknown");
   });
 
   it('axe 위반 0건', async () => {
@@ -127,7 +127,7 @@ describe('PipelineMetricGrid (C-040)', () => {
 describe('DeadLetterTable (C-041)', () => {
   it('QA-A001-04: 실패 사유·재시도 횟수·전달 식별자를 그린다', () => {
     render(<DeadLetterTable items={items(2)} onReprocess={vi.fn()} />);
-    expect(screen.getAllByTestId('dead-letter-error')[0]?.textContent).toBe('색인 거부');
+    expect(screen.getAllByTestId('dead-letter-error')[0]?.textContent).toBe("색인 거부");
     expect(screen.getAllByTestId('dead-letter-retry')[0]?.textContent).toBe('2');
     expect(screen.getAllByTestId('dead-letter-delivery')[0]?.textContent).toBe('delivery-1');
   });
@@ -171,12 +171,14 @@ describe('DeadLetterTable (C-041)', () => {
     render(<DeadLetterTable items={items(3)} onReprocess={vi.fn()} />);
     for (const box of screen.getAllByTestId('dead-letter-select')) fireEvent.click(box);
     fireEvent.click(screen.getByTestId('dead-letter-reprocess-open'));
-    expect(screen.getByTestId('dead-letter-dialog-count').textContent).toContain('3건');
+    expect(screen.getByTestId('dead-letter-dialog-count').textContent).toContain("3");
   });
 
   it('원본을 목록이 자동으로 펼치지 않는다 (THR-044)', () => {
-    render(<DeadLetterTable items={items(2)} onReprocess={vi.fn()} onOpenPayload={vi.fn()} />);
-    expect(screen.queryByText(/payload/i)).toBeNull();
+    const onOpenPayload = vi.fn();
+    const { container } = render(<DeadLetterTable items={items(2)} onReprocess={vi.fn()} onOpenPayload={onOpenPayload} />);
+    expect(container.querySelector('pre')).toBeNull();
+    expect(onOpenPayload).not.toHaveBeenCalled();
     expect(screen.getAllByTestId('dead-letter-open-payload')).toHaveLength(2);
   });
 
@@ -203,10 +205,10 @@ describe('ScanResultCard (C-042)', () => {
   it('**QA-A003-15: 버튼을 누른 사실이 아니라 잡 상태를 보인다**', () => {
     render(<ScanResultCard result={null} job={SCAN_JOB} onRun={vi.fn()} />);
     const line = screen.getByTestId('scan-job').textContent ?? '';
-    expect(line).toContain('잡 55');
-    expect(line).toContain('실행 중');
+    expect(line).toContain("Job 55");
+    expect(line).toContain("Running");
     expect(line).toContain('4');
-    expect(line).not.toContain('실행했습니다');
+    expect(line).not.toContain("executed");
   });
 
   it('실행 중이면 다시 누를 수 없다 — 두 번째 잡을 만들지 않는다', () => {
@@ -220,7 +222,7 @@ describe('ScanResultCard (C-042)', () => {
     render(<ScanResultCard result={null} job={null} onRun={vi.fn()} conflictJobId={91} />);
     const conflict = screen.getByTestId('scan-conflict').textContent ?? '';
     expect(conflict).toContain('91');
-    expect(conflict).toContain('동시에 돌지 않습니다');
+    expect(conflict).toContain("cannot run simultaneously");
   });
 
   it('QA-A001-07: 발견 누락 건수를 보이고 미확인을 0으로 대신하지 않는다', () => {
@@ -230,7 +232,7 @@ describe('ScanResultCard (C-042)', () => {
         onRun={vi.fn()}
       />,
     );
-    expect(screen.getByTestId('scan-missing').textContent).toBe('미확인');
+    expect(screen.getByTestId('scan-missing').textContent).toBe("Unknown");
   });
 
   it('실행 전에는 누를 수 있다', () => {

@@ -278,100 +278,100 @@ export interface CommandDetailView {
 /* ------------------------------------------------------------------ 라벨 */
 
 export const SUPPORT_LABEL: Readonly<Record<string, string>> = {
-  supported: '지원',
-  preview: '미리보기(gh preview)',
-  policy_blocked: '정책 차단',
-  terminal_only: '터미널 전용',
+  supported: 'Supported',
+  preview: 'Preview (gh preview)',
+  policy_blocked: 'Policy blocked',
+  terminal_only: 'Terminal only',
   requires_extension: 'extension plane',
-  requires_local_workspace: '작업 트리 필요',
-  unsupported_by_host: '호스트 미지원',
-  admin_only: '관리자 전용',
-  unknown: '미분류',
+  requires_local_workspace: 'Working tree required',
+  unsupported_by_host: 'Unsupported host',
+  admin_only: 'Administrator only',
+  unknown: 'Unclassified',
 };
 
 export const EXECUTION_LABEL: Readonly<Record<string, string>> = {
-  allowed: '실행 가능',
-  not_implemented: '아직 열리지 않음',
-  policy_blocked: '정책 차단',
+  allowed: 'Enabled',
+  not_implemented: 'Not enabled yet',
+  policy_blocked: 'Policy blocked',
 };
 
 export const INTERACTION_LABEL: Readonly<Record<string, string>> = {
-  web_native: '웹 폼',
-  web_equivalent: '웹 등가',
-  sandbox_terminal: '격리 터미널',
-  terminal_only: '터미널 전용',
-  policy_blocked: '정책 차단',
-  unsupported_by_host: '호스트 미지원',
-  unknown: '미분류',
+  web_native: 'Web form',
+  web_equivalent: 'Web equivalent',
+  sandbox_terminal: 'Isolated terminal',
+  terminal_only: 'Terminal only',
+  policy_blocked: 'Policy blocked',
+  unsupported_by_host: 'Unsupported host',
+  unknown: 'Unclassified',
 };
 
 export const SIDE_EFFECT_LABEL: Readonly<Record<string, string>> = {
-  read: '읽기',
-  write: '쓰기',
-  destructive: '파괴적',
-  local: '로컬(실행 호스트)',
-  arbitrary: '입력에 따라 다름',
-  unknown: '미분류',
+  read: 'Read',
+  write: 'Write',
+  destructive: 'Destructive',
+  local: 'Local (runner host)',
+  arbitrary: 'Depends on input',
+  unknown: 'Unclassified',
 };
 
 export const CONTROL_LABEL: Readonly<Record<string, string>> = {
-  mapped_to_typed_control: 'typed 컨트롤',
-  mapped_to_generic_control: '일반 컨트롤',
-  mapped_to_web_equivalent: '웹 등가',
-  terminal_only: '터미널 전용',
-  policy_blocked: '정책 차단',
-  unsupported_by_host: '호스트 미지원',
-  requires_admin_approval: '승인 필요',
-  unknown: '미분류',
+  mapped_to_typed_control: 'Typed control',
+  mapped_to_generic_control: 'Generic control',
+  mapped_to_web_equivalent: 'Web equivalent',
+  terminal_only: 'Terminal only',
+  policy_blocked: 'Policy blocked',
+  unsupported_by_host: 'Unsupported host',
+  requires_admin_approval: 'Approval required',
+  unknown: 'Unclassified',
 };
 
 export const STATUS_LABEL: Readonly<Record<string, string>> = {
-  passed: '통과',
-  incomplete: '미완(게이트 미달)',
-  drift: '드리프트',
-  failed: '실패',
-  error: '오류',
-  unchecked: '미검사',
+  passed: 'Passed',
+  incomplete: 'Incomplete (gate unmet)',
+  drift: 'Drift',
+  failed: 'Failed',
+  error: 'Error',
+  unchecked: 'Not checked',
 };
 
 export const COMPOSABILITY_LABEL: Readonly<Record<string, string>> = {
-  fully_bindable: '조건 없이 연결 가능',
-  partially_bindable: '조건부 연결 가능',
-  terminal_result: '끝 결과(연결 없음)',
-  artifact_result: '파일 결과',
-  opaque_result: '구조 없음',
-  secret_non_bindable: '비밀 — 흐르지 않음',
-  policy_blocked: '정책 차단',
-  unsupported_by_host: '호스트 미지원',
+  fully_bindable: 'Unconditionally bindable',
+  partially_bindable: 'Conditionally bindable',
+  terminal_result: 'Terminal result (no binding)',
+  artifact_result: 'File result',
+  opaque_result: 'Unstructured',
+  secret_non_bindable: 'Secret — cannot be passed on',
+  policy_blocked: 'Policy blocked',
+  unsupported_by_host: 'Unsupported host',
 };
 
 export const ADAPTER_LABEL: Readonly<Record<string, string>> = {
   native_json: 'JSON',
-  gh_api_structured: 'gh api 구조화',
-  resource_url: '자원 URL',
-  artifact: '파일',
-  opaque_text: '텍스트',
-  stream: '스트림',
-  exit_status: '종료 코드',
-  secret_non_bindable: '비밀',
+  gh_api_structured: 'Structured gh api output',
+  resource_url: 'Resource URL',
+  artifact: 'File',
+  opaque_text: 'Text',
+  stream: 'Stream',
+  exit_status: 'Exit code',
+  secret_non_bindable: 'Secret',
 };
 
 export const CONDITION_LABEL: Readonly<Record<string, string>> = {
-  output_mode: '출력 모드',
-  json_fields_selected: '필드 선택',
-  flag_absent: 'flag 미사용',
-  same_repository: '같은 저장소',
-  repository_from_output: '저장소를 출력에서 읽음',
-  url_matches_context: 'URL이 컨텍스트와 같음',
-  explicit_selection: '원소 하나를 명시적으로 선택',
-  single_value_as_list: '한 개짜리 목록',
-  slot_alternative: '자리의 대안 하나로만',
-  workspace_required: '작업 트리 필요',
+  output_mode: 'Output mode',
+  json_fields_selected: 'Field selection',
+  flag_absent: 'Flag absent',
+  same_repository: 'Same repository',
+  repository_from_output: 'Repository from output',
+  url_matches_context: 'URL matches context',
+  explicit_selection: 'Explicit item selection',
+  single_value_as_list: 'Single-item list',
+  slot_alternative: 'One positional alternative only',
+  workspace_required: 'Working tree required',
 };
 
 /** `pull_request` → `PullRequestRef`. 서버의 `refTypeName`과 같은 규칙이다. */
 export function refTypeLabel(kind: string | null): string {
-  if (kind === null) return '자원 결과 아님';
+  if (kind === null) return 'Not a resource result';
   return `${kind.split('_').map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join('')}Ref`;
 }
 
@@ -387,7 +387,7 @@ export function contractVerificationState(row: VerificationView): 'verified' | '
 
 /** 조건 목록을 한 줄로. 조건이 없으면 「없음」이다 — 직접 호환이라는 뜻이다. */
 export function describeConditions(conditions: readonly PortConditionView[]): string {
-  if (conditions.length === 0) return '없음';
+  if (conditions.length === 0) return 'None';
   return conditions.map((condition) => `${label(CONDITION_LABEL, condition.code)}: ${condition.detail}`).join(' · ');
 }
 

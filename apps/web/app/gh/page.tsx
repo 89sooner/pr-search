@@ -16,19 +16,19 @@ export const dynamic = 'force-dynamic';
 
 export default async function GhCommandCenterPage(): Promise<ReactNode> {
   return (
-    <GuardedPage title="GitHub 작업" returnTo="/gh">
+    <GuardedPage title="GitHub operations" returnTo="/gh">
       <header className="prs-page-heading">
         <div>
           <p className="prs-eyebrow">GITHUB OPERATIONS</p>
-          <h1>GitHub 작업</h1>
+          <h1>GitHub operations</h1>
         </div>
-        <p>자신의 위임 권한으로 격리된 gh를 실행하고 결과를 확인합니다. 이 화면의 결과는 실행 시점의 GHE 응답이며 검색 색인이 아닙니다.</p>
+        <p>Run isolated gh commands with your delegated permissions and review the results. Results are live GHE responses from the time of execution, not search index data.</p>
       </header>
       {/*
        * `useSearchParams`(`?prefill=`·`?identity=`)를 쓰는 컴포넌트는 `Suspense` 안에 있어야 한다 —
        * 없으면 빌드가 전체 라우트를 클라이언트 렌더로 떨어뜨린다 (W-001과 같은 자리).
        */}
-      <Suspense fallback={<p>GitHub 작업을 준비하는 중…</p>}>
+      <Suspense fallback={<p>Loading GitHub operations…</p>}>
         <GhCommandCenterView />
       </Suspense>
     </GuardedPage>

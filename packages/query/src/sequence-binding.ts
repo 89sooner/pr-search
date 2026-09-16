@@ -104,7 +104,7 @@ export function analyzeSequenceBinding(ast: QueryAst): SequenceBindingAnalysis {
 /** 화면과 API가 같은 문구를 쓰도록 한 곳에 둔다. */
 export const SEQUENCE_BINDING_MESSAGE: Readonly<Record<SequenceBindingProblem, string>> = {
   sequence_space_required:
-    'seq: 조건은 하나의 시퀀스 공간에서만 의미가 있습니다. repo:와 base:를 각각 하나씩 지정하세요.',
+    'A seq: filter applies to a single sequence space. Specify exactly one repo: and one base: filter.',
   sequence_space_ambiguous:
-    'seq: 조건이 여러 시퀀스 공간을 가리킵니다. repo:와 base:를 각각 하나만 남기세요.',
+    'The seq: filter references multiple sequence spaces. Keep only one repo: and one base: filter.',
 };

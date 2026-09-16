@@ -22,11 +22,11 @@ export default async function RangesPage(): Promise<ReactNode> {
   const config = resolveWebConfig();
 
   return (
-    <GuardedPage title="범위 조사" returnTo="/ranges">
+    <GuardedPage title="Range investigation" returnTo="/ranges">
       {({ roles, authEnabled }) => (
         <>
-          <h1>범위 조사</h1>
-          <Suspense fallback={<p>범위 조사를 준비하는 중…</p>}>
+          <h1>Range investigation</h1>
+          <Suspense fallback={<p>Loading range investigation…</p>}>
             <RangesView
               loginPath={config.session.loginPath}
               roles={roles}

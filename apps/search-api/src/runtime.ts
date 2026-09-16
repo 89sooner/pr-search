@@ -155,6 +155,7 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
   const gh = buildGhDeps(parts);
   return {
     config: parts.config,
+    ...(parts.github && parts.auth ? { source: { pool: parts.pool, reader: () => parts.github!.client.sourceReader() } } : {}),
     ...(gh === undefined ? {} : { gh }),
     /*
      * **헬스체크가 백킹 서비스를 실제로 확인한다** (CR-059, DEV-495).
@@ -331,6 +332,7 @@ export function runtimeCapabilities(parts: RuntimeParts): Readonly<Record<string
     sequence_integrity: buildIntegrityDeps(parts.pool, parts.github) !== undefined,
     /** 저장소 수집 진단은 세션이 있어야 선다 — 접근 범위 없이 낼 수 없다. */
     repository_overview: parts.auth !== undefined && parts.searchDeps !== undefined,
+    source_browsing: parts.auth !== undefined && parts.searchDeps !== undefined && parts.github !== undefined,
     /** 원본 아카이브 조회도 같다 (FR-ING-010 AC-6). 토큰만으로는 서지 않는다. */
     raw_event_archive: parts.auth !== undefined && parts.searchDeps !== undefined,
     /** 감사 기록 조회는 `security_officer` 역할이 필요하고 역할은 세션에만 있다. */

@@ -123,7 +123,7 @@ describe('DistributionChart (QA-W006-18, FR-STAT-005 AC-5)', () => {
     const unknownRow = container.querySelector('[data-unknown="true"]');
     expect(unknownRow).not.toBeNull();
     expect(within(unknownRow as HTMLElement).queryByTestId('distribution-drilldown')).toBeNull();
-    expect(within(unknownRow as HTMLElement).getByText(/보강 미완료/)).toBeInTheDocument();
+    expect(within(unknownRow as HTMLElement).getByText(/enrichment incomplete/i)).toBeInTheDocument();
     expect(await violations(container)).toEqual([]);
   });
 });
@@ -147,7 +147,7 @@ describe('TimeSeriesChart (QA-W006-18, FR-STAT-002)', () => {
     expect(screen.getByTestId('series-legend')).toHaveTextContent('payments-core');
     // M8: 계열 색은 dataviz 토큰이어야 한다 (status/severity 돌려쓰기 금지, ADR-006)
     const swatch = container.querySelector('[data-testid="series-legend"] span[aria-hidden="true"]');
-    expect((swatch as HTMLElement).style.backgroundColor).toContain('--cdt-dataviz-series-');
+    expect((swatch as HTMLElement).style.backgroundColor).toContain('--ui-dataviz-series-');
     expect(await violations(container)).toEqual([]);
   });
 });

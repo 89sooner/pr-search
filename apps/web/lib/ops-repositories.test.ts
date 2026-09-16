@@ -40,9 +40,9 @@ describe('요청 처리는 `pending`에서만 가능하다 (AC-11 / QA-A002-06)'
   });
 
   it('세 상태에 사람이 읽는 이름이 있다', () => {
-    expect(requestStatusLabel('pending')).toBe('대기 중');
-    expect(requestStatusLabel('fulfilled')).toBe('등록됨');
-    expect(requestStatusLabel('dismissed')).toBe('종료됨');
+    expect(requestStatusLabel('pending')).toBe("Queued");
+    expect(requestStatusLabel('fulfilled')).toBe("Registered");
+    expect(requestStatusLabel('dismissed')).toBe("Closed");
   });
 
   it('모르는 상태는 그대로 보인다 — 지어내지 않는다', () => {
@@ -108,12 +108,12 @@ describe('새로 대상이 된 브랜치만 채번한다 (AC-12 / QA-A002-11)', 
 
 describe('해제 확인 문구 (QA-A002-03)', () => {
   it('"삭제"라는 낱말을 쓰지 않는다', () => {
-    expect(UNREGISTER_CONFIRM_MESSAGE).not.toContain('삭제');
+    expect(UNREGISTER_CONFIRM_MESSAGE).not.toContain("Delete");
   });
 
   it('수집 중단과 문서 유지를 함께 말한다', () => {
-    expect(UNREGISTER_CONFIRM_MESSAGE).toContain('수집은 중단');
-    expect(UNREGISTER_CONFIRM_MESSAGE).toContain('문서는 유지');
+    expect(UNREGISTER_CONFIRM_MESSAGE).toContain("collection will stop");
+    expect(UNREGISTER_CONFIRM_MESSAGE).toContain("documents will be retained");
   });
 });
 

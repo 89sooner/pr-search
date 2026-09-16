@@ -121,8 +121,8 @@ export function timelineSteps(pr: PrDetailSource): readonly TimelineStep[] {
   const approvedBy = pr.approved_by ?? [];
 
   return [
-    step('created', '생성', pr.created_at),
-    step('first_review', '첫 리뷰', pr.first_review_at),
+    step('created', 'Created', pr.created_at),
+    step('first_review', 'First review', pr.first_review_at),
     /*
      * 승인. **`approved_by`가 비어 있지 않으면 일어난 것이다.**
      *
@@ -130,21 +130,21 @@ export function timelineSteps(pr: PrDetailSource): readonly TimelineStep[] {
      * 그리면 승인된 PR을 "승인 대기"로 표시하게 된다.
      */
     approvedBy.length === 0
-      ? { key: 'approved', label: '승인', status: 'pending', at: null, note: null }
+      ? { key: 'approved', label: 'Approved', status: 'pending', at: null, note: null }
       : {
           key: 'approved',
-          label: '승인',
+          label: 'Approved',
           status: 'done_at_unknown',
           at: null,
-          note: `${approvedBy.join(', ')}이(가) 승인했습니다. 승인 시각은 수집하지 않습니다.`,
+          note: `${approvedBy.join(', ')} approved. Approval timestamps are not collected.`,
         },
-    step('merged', '머지', pr.merged_at),
+    step('merged', 'Merged', pr.merged_at),
     {
       key: 'released',
-      label: '릴리스 포함',
+      label: 'Included in release',
       status: 'out_of_scope',
       at: null,
-      note: '릴리스 수집이 서면 표시됩니다.',
+      note: 'Available when release collection is enabled.',
     },
   ];
 }

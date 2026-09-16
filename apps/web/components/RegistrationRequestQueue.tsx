@@ -24,7 +24,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { Badge, Button, Dialog, Field, Table, TextArea } from '@conductor-by-89soone/react';
+import { Badge, Button, Dialog, Field, Table, TextArea } from './ui';
 import {
   MAX_RESOLUTION_NOTE,
   hasMoreRequests,
@@ -44,7 +44,7 @@ const STATUS_TONE: Readonly<Record<string, 'neutral' | 'info' | 'success' | 'war
 
 function Absent(): ReactNode {
   return (
-    <span data-testid="request-absent" aria-label="값 없음">
+    <span data-testid="request-absent" aria-label="No value">
       —
     </span>
   );
@@ -81,7 +81,7 @@ export function RegistrationRequestQueue({
     return (
       <div data-testid="request-queue" data-state={loading ? 'loading_initial' : 'requests_empty'}>
         <p data-testid="request-queue-empty">
-          {loading ? '등록 검토 요청을 불러오는 중입니다.' : '처리할 등록 검토 요청이 없습니다.'}
+          {loading ? "Loading registration review requests." : "No registration review requests to process."}
         </p>
       </div>
     );
@@ -91,18 +91,18 @@ export function RegistrationRequestQueue({
     <div data-testid="request-queue" data-state={submitting ? 'submitting' : 'ready'}>
       <Table
         data-testid="request-table"
-        caption="등록 검토 요청. 처리 메모는 운영자에게만 보이며 요청자에게 돌아가지 않습니다."
+        caption="Registration review requests. Processing notes are visible only to operators and are not sent to requesters."
       >
         <thead>
           <tr>
-            <th scope="col">저장소</th>
-            <th scope="col">요청자</th>
-            <th scope="col">요청 시각</th>
-            <th scope="col">상태</th>
-            <th scope="col">처리자</th>
-            <th scope="col">처리 시각</th>
-            <th scope="col">처리 메모</th>
-            <th scope="col">조작</th>
+            <th scope="col">Repository</th>
+            <th scope="col">Requested by</th>
+            <th scope="col">Requested at</th>
+            <th scope="col">Status</th>
+            <th scope="col">Processed by</th>
+            <th scope="col">Processed at</th>
+            <th scope="col">Processing note</th>
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -138,7 +138,7 @@ export function RegistrationRequestQueue({
                             onPrefill(request);
                           }}
                         >
-                          등록 폼 채우기
+                          Fill registration form
                         </Button>
                       )}
                       <Button
@@ -150,7 +150,7 @@ export function RegistrationRequestQueue({
                           setTarget(request);
                         }}
                       >
-                        종료
+                        Finished
                       </Button>
                     </>
                   )}
@@ -166,8 +166,8 @@ export function RegistrationRequestQueue({
         더 있는지는 커서가 답한다.
       */}
       <p data-testid="request-count">
-        지금까지 {requests.length.toLocaleString('ko-KR')}건을 불러왔습니다.
-        {hasMoreRequests(nextCursor) ? ' 더 남아 있습니다.' : ''}
+        Loaded {requests.length.toLocaleString("en-US")} items so far.
+        {hasMoreRequests(nextCursor) ? "More items available." : ''}
       </p>
 
       {hasMoreRequests(nextCursor) && onLoadMore !== undefined ? (
@@ -179,7 +179,7 @@ export function RegistrationRequestQueue({
             if (nextCursor !== null) onLoadMore(nextCursor);
           }}
         >
-          더 불러오기
+          Load more
         </Button>
       ) : null}
 
@@ -193,17 +193,16 @@ export function RegistrationRequestQueue({
         }}
       >
         <Dialog.Content size="md" data-testid="request-dismiss-dialog">
-          <Dialog.Title>등록 없이 이 요청을 종료합니다</Dialog.Title>
+          <Dialog.Title>Close this request without registration</Dialog.Title>
           <Dialog.Description>
-            {target?.repository} 요청을 종료합니다. 사유는 <strong>운영자에게만</strong> 보이며 요청자에게 돌아가지
-            않습니다. 종료한 요청을 다시 여는 경로는 없습니다.
+            {target?.repository} Close this request. The reason is visible <strong>only to operators</strong> and is not sent to the requester. Closed requests cannot be reopened.
           </Dialog.Description>
 
           <Field
             id="request-dismiss-reason"
-            label="종료 사유"
-            description={`${String(MAX_RESOLUTION_NOTE)}자 이내로 적습니다.`}
-            {...(tooLong ? { error: `${String(MAX_RESOLUTION_NOTE)}자를 넘었습니다.` } : {})}
+            label="Closing reason"
+            description={`${String(MAX_RESOLUTION_NOTE)} characters maximum.`}
+            {...(tooLong ? { error: `${String(MAX_RESOLUTION_NOTE)} characters over the limit.` } : {})}
           >
             <TextArea
               id="request-dismiss-reason"
@@ -235,11 +234,11 @@ export function RegistrationRequestQueue({
                 onDismiss(requestId, note);
               }}
             >
-              종료
+              Finished
             </Button>
             <Dialog.Close asChild>
               <Button variant="secondary" data-testid="request-dismiss-cancel">
-                취소
+                Cancel
               </Button>
             </Dialog.Close>
           </div>

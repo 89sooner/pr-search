@@ -173,9 +173,9 @@ describe('DoD 상태 5종', () => {
     });
     const label = screen.getByTestId('commit-count').textContent ?? '';
     // 절삭 표시는 있다.
-    expect(label).toContain('이상');
+    expect(label).toContain("2 or more original commits");
     // **가짜 총계를 쓰지 않는다.** "2건 중 2건" 같은 문구가 나오면 안 된다.
-    expect(label).toContain('전체 건수는 수집하지 않습니다');
+    expect(label).toContain("the total count is not collected");
     expect(describeViolations(await violations(container))).toBe('');
   });
 
@@ -187,7 +187,7 @@ describe('DoD 상태 5종', () => {
       expect(stateOf()).toBe('not_found');
     });
     // "권한이 없습니다"라고 쓰면 "있긴 있다"가 새어 나간다.
-    expect(container.textContent).not.toContain('권한');
+    expect(container.textContent).not.toContain("permission");
     expect(describeViolations(await violations(container))).toBe('');
   });
 });
@@ -201,7 +201,7 @@ describe('커밋 목록 (C-018, QA-W002-01·02)', () => {
       expect(stateOf()).toBe('ready');
     });
     const merge = screen.getByTestId('merge-commit-row');
-    expect(within(merge).getByText('머지 커밋')).toBeInTheDocument();
+    expect(within(merge).getByText("Merge commit")).toBeInTheDocument();
     expect(screen.getAllByTestId('source-commit-row')).toHaveLength(2);
 
     /*
@@ -224,7 +224,7 @@ describe('커밋 목록 (C-018, QA-W002-01·02)', () => {
       expect(stateOf()).toBe('ready');
     });
     // 행을 빼지 않는다 — 빼면 "커밋이 없다"로 읽힌다.
-    expect(screen.getByTestId('no-merge-commit')).toHaveTextContent('아직 머지되지 않았습니다');
+    expect(screen.getByTestId('no-merge-commit')).toHaveTextContent("Not yet merged");
     expect(screen.getAllByTestId('source-commit-row')).toHaveLength(2);
   });
 
@@ -235,7 +235,7 @@ describe('커밋 목록 (C-018, QA-W002-01·02)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByTestId('commit-count')).toHaveTextContent('원본 커밋 2건');
+    expect(screen.getByTestId('commit-count')).toHaveTextContent("2 original commits");
   });
 
   it('재조회 버튼이 **다시 부른다** — 자동 폴링이 아니다', async () => {
@@ -247,7 +247,7 @@ describe('커밋 목록 (C-018, QA-W002-01·02)', () => {
     });
     expect(calls).toHaveLength(1);
 
-    await userEvent.click(screen.getByRole('button', { name: '다시 조회' }));
+    await userEvent.click(screen.getByRole('button', { name: "Refresh" }));
     await waitFor(() => {
       expect(calls).toHaveLength(2);
     });
@@ -276,7 +276,7 @@ describe('타임라인 (C-022, DEV-084)', () => {
     const approved = screen.getByTestId('timeline-approved');
     expect(approved).toHaveAttribute('data-status', 'done_at_unknown');
     // 시각을 모르는 이유를 말한다 — 안 그러면 사용자가 버그로 읽는다.
-    expect(screen.getByTestId('timeline-note-approved')).toHaveTextContent('승인 시각은 수집하지 않습니다');
+    expect(screen.getByTestId('timeline-note-approved')).toHaveTextContent("Approval timestamps are not collected");
   });
 
   it('승인자가 없으면 `pending`이다', async () => {
@@ -307,14 +307,14 @@ describe('타임라인 (C-022, DEV-084)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(within(screen.getByTestId('timeline-approved')).getByText('대기')).toBeInTheDocument();
+    expect(within(screen.getByTestId('timeline-approved')).getByText("Pending")).toBeInTheDocument();
     /*
      * 릴리스는 **아직 안 온 것이 아니라 이 릴리스에서 지원하지 않는 것**이다
      * (WP-024). "대기"로 쓰면 기다리면 채워진다는 거짓말이 된다.
      */
     const released = within(screen.getByTestId('timeline-released'));
-    expect(released.queryByText('대기')).toBeNull();
-    expect(released.getByText('미지원')).toBeInTheDocument();
+    expect(released.queryByText("Pending")).toBeNull();
+    expect(released.getByText("Unsupported")).toBeInTheDocument();
   });
 
   it('상태를 **글자로도** 구분한다 — 색에만 의존하지 않는다', async () => {
@@ -324,8 +324,8 @@ describe('타임라인 (C-022, DEV-084)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(within(screen.getByTestId('timeline-approved')).getByText('완료 (시각 미상)')).toBeInTheDocument();
-    expect(within(screen.getByTestId('timeline-created')).getByText('완료')).toBeInTheDocument();
+    expect(within(screen.getByTestId('timeline-approved')).getByText("Complete (time unknown)")).toBeInTheDocument();
+    expect(within(screen.getByTestId('timeline-created')).getByText("Complete")).toBeInTheDocument();
   });
 });
 
@@ -337,8 +337,8 @@ describe('리뷰 상태 (DEV-085)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(within(screen.getByTestId('reviewer-lee')).getByText('승인함')).toBeInTheDocument();
-    expect(within(screen.getByTestId('reviewer-park')).getByText('아직 아님')).toBeInTheDocument();
+    expect(within(screen.getByTestId('reviewer-lee')).getByText("Approved")).toBeInTheDocument();
+    expect(within(screen.getByTestId('reviewer-park')).getByText("Not yet")).toBeInTheDocument();
   });
 
   it('**"변경 요청"을 만들지 않는다** — 데이터가 없다', async () => {
@@ -348,7 +348,7 @@ describe('리뷰 상태 (DEV-085)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(container.textContent).not.toContain('변경 요청');
+    expect(container.textContent).not.toContain("Changes requested");
   });
 });
 
@@ -368,7 +368,7 @@ describe('헤더 배지 (W-002-HEADER)', () => {
      * (CR-019, DEV-077). 배지를 아예 빼는 것도 답이 아니다 — 이 화면의
      * 존재 이유가 시퀀스 위치다.
      */
-    expect(badges.getByText('미채번')).toBeInTheDocument();
+    expect(badges.getByText("Not numbered")).toBeInTheDocument();
   });
 
   it('미머지 PR은 **"미머지"**로 — 미채번과 가른다', async () => {
@@ -379,8 +379,8 @@ describe('헤더 배지 (W-002-HEADER)', () => {
       expect(stateOf()).toBe('ready');
     });
     const badges = within(screen.getByTestId('entity-badges'));
-    expect(badges.getByText('미머지')).toBeInTheDocument();
-    expect(badges.queryByText('미채번')).toBeNull();
+    expect(badges.getByText("Unmerged")).toBeInTheDocument();
+    expect(badges.queryByText("Not numbered")).toBeNull();
   });
 });
 
@@ -392,7 +392,7 @@ describe('갱신되지 않는 이유를 밝힌다 (CR-020, DEV-089)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByText('보관된 저장소')).toBeInTheDocument();
+    expect(screen.getByText("Archived repository")).toBeInTheDocument();
     expect(describeViolations(await violations(container))).toBe('');
   });
 
@@ -403,7 +403,7 @@ describe('갱신되지 않는 이유를 밝힌다 (CR-020, DEV-089)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.queryByText('보관된 저장소')).toBeNull();
+    expect(screen.queryByText("Archived repository")).toBeNull();
   });
 
   it('**변경 파일 목록 절삭을 알린다** — 커밋 절삭과 같은 규칙이다', async () => {
@@ -417,7 +417,7 @@ describe('갱신되지 않는 이유를 밝힌다 (CR-020, DEV-089)', () => {
      * "파일 2개"만 보이면 그것이 전부라고 읽는다. 3000건 상한에 걸린
      * PR에서 그 문구는 거짓이다 (FR-ING-007 AC-4).
      */
-    expect(screen.getByTestId('pr-overview').textContent).toContain('절삭');
+    expect(screen.getByTestId('pr-overview').textContent).toContain("truncated");
   });
 
   it('절삭되지 않았으면 절삭 문구가 없다', async () => {
@@ -427,7 +427,7 @@ describe('갱신되지 않는 이유를 밝힌다 (CR-020, DEV-089)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByTestId('pr-overview').textContent).not.toContain('절삭');
+    expect(screen.getByTestId('pr-overview').textContent).not.toContain("truncated");
   });
 });
 
@@ -443,7 +443,7 @@ describe('GHE 링크 (C-023, DEV-086)', () => {
     expect(link).toHaveAttribute('href', 'https://ghe.acme.example/acme/payments/pull/1234');
     expect(link).toHaveAttribute('rel', 'noreferrer');
     // 새 창임을 말로도 알린다 (C-023 접근성).
-    expect(link).toHaveAccessibleName(/새 창/);
+    expect(link).toHaveAccessibleName(/new window/);
   });
 
   it('**미구성이면 버튼을 그리지 않는다** — 죽은 링크보다 없는 편이 낫다', async () => {
@@ -478,7 +478,7 @@ describe('준비 중 섹션 (QA-W002-07, QA-W002-17)', () => {
       expect(stateOf()).toBe('ready');
     });
     await userEvent.click(screen.getByTestId('toggle-neighbors'));
-    expect(screen.getByTestId('neighbor-not-merged')).toHaveTextContent('아직 머지되지 않아');
+    expect(screen.getByTestId('neighbor-not-merged')).toHaveTextContent("Not yet merged");
     // PR 문서의 `state`로 아는 사실을 409로 되묻지 않는다.
     expect(calls.filter((url) => url.includes('/api/sequence-neighbors'))).toEqual([]);
   });

@@ -112,7 +112,7 @@ export const AUTO_ADVANCE_LIMIT = 20;
  * 볼 수 있는 것이 없다는 사실만 말할 수 있다.
  */
 export const EMPTY_NO_REPOSITORY_MESSAGE =
-  'PR Search에서 표시할 수 있는 등록 저장소가 없습니다. 찾는 저장소가 있다면 등록 검토를 요청할 수 있습니다.';
+  'No registered repositories are available to display in PR Search. You can request registration review for a repository.';
 
 /** 한 항목이 조회에 실패했는가. */
 export function isAxisUnavailable(item: RepositoryOverview, axis: string): boolean {
@@ -138,8 +138,8 @@ export function valueKind(
 }
 
 export const REGISTRATION_LABEL: Readonly<Record<RegistrationState, string>> = {
-  active: '수집 중',
-  archived: '수집 해제됨',
+  active: 'Collecting',
+  archived: 'Collection disabled',
 };
 
 /**
@@ -148,13 +148,13 @@ export const REGISTRATION_LABEL: Readonly<Record<RegistrationState, string>> = {
  * 해제는 신규 수집 중단이고 **기존 문서는 남는다**(FR-ING-009 AC-3). 그 사실을
  * 함께 말하지 않으면 사용자는 "자료가 사라졌다"로 읽는다.
  */
-export const ARCHIVED_NOTE = '새 이벤트를 수집하지 않습니다. 이미 수집된 자료는 그대로 검색됩니다.';
+export const ARCHIVED_NOTE = 'New events are not collected. Previously collected data remains searchable.';
 
 export const SEQUENCE_LABEL: Readonly<Record<SequenceState, string>> = {
-  ok: '정상',
-  stale: '갱신 지연',
-  reassigning: '재채번 중',
-  unknown: '아직 채번된 적 없음',
+  ok: 'Healthy',
+  stale: 'Update delayed',
+  reassigning: 'Renumbering',
+  unknown: 'Never numbered',
 };
 
 /**
@@ -195,16 +195,16 @@ export function backfillProgress(backfill: BackfillView | null): BackfillProgres
 }
 
 export const BACKFILL_STATE_LABEL: Readonly<Record<string, string>> = {
-  queued: '대기 중',
-  running: '진행 중',
-  succeeded: '완료',
-  failed: '실패',
-  cancelled: '취소됨',
-  paused: '일시 중지',
+  queued: 'Queued',
+  running: 'In progress',
+  succeeded: 'Complete',
+  failed: 'Failed',
+  cancelled: 'Canceled',
+  paused: 'Paused',
 };
 
 export function backfillLabel(backfill: BackfillView | null): string {
-  if (backfill === null) return '요청된 적 없음';
+  if (backfill === null) return 'Never requested';
   return BACKFILL_STATE_LABEL[backfill.state] ?? backfill.state;
 }
 
@@ -215,10 +215,10 @@ export function backfillLabel(backfill: BackfillView | null): string {
  * "확인했고 누락이 없다"이며 "기록이 없다"와 다르다.
  */
 export function reconciliationSummary(item: RepositoryOverview): string {
-  if (isAxisUnavailable(item, 'reconciliation')) return '확인하지 못했습니다';
+  if (isAxisUnavailable(item, 'reconciliation')) return 'Could not verify';
   const { last_completed_at: at, missing_count: missing } = item.reconciliation;
-  if (at === null || missing === null) return '완료된 조정 스캔 기록이 없습니다';
-  return missing === 0 ? '누락 없음' : `누락 ${String(missing)}건`;
+  if (at === null || missing === null) return 'No completed reconciliation scan';
+  return missing === 0 ? 'No missing items' : `Missing items: ${String(missing)}`;
 }
 
 /** 이 화면이 저장소 하나를 다시 조회할 때 쓰는 질의. */

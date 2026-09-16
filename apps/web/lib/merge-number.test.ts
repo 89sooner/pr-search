@@ -44,8 +44,8 @@ describe('WP-074 FR-SEQ-008 배지 판정 — 상세 설계 9절 표', () => {
     );
     // 설명이 공간·에폭·"PR 번호를 대체하지 않음"을 말한다 (AC-8).
     expect(view.description).toContain('acme/smp1900@main');
-    expect(view.description).toContain('에폭 4');
-    expect(view.description).toContain('PR 번호를 대체하지 않');
+    expect(view.description).toContain("epoch 4");
+    expect(view.description).toContain("does not replace the PR number");
   });
 
   it('**키가 없으면 그리지 않는다** — 기능 off·구버전 응답', () => {
@@ -63,7 +63,7 @@ describe('WP-074 FR-SEQ-008 배지 판정 — 상세 설계 9절 표', () => {
       { merge_number: null, merge_number_state: 'pending', merge_number_reason: 'not_sequenced', merge_number_epoch: null },
       PR,
     );
-    expect(view).toMatchObject({ kind: 'shown', state: 'pending', label: '시퀀스 채번 대기', link: null });
+    expect(view).toMatchObject({ kind: 'shown', state: 'pending', label: "Awaiting sequence numbering", link: null });
   });
 
   it('pending → 「M 번호 대기」 + 사유 설명, **잠정 번호도 링크도 없다**', () => {
@@ -71,10 +71,10 @@ describe('WP-074 FR-SEQ-008 배지 판정 — 상세 설계 9절 표', () => {
       { merge_number: null, merge_number_state: 'pending', merge_number_reason: 'predecessor_pending', merge_number_epoch: 4 },
       PR,
     );
-    expect(view).toMatchObject({ kind: 'shown', state: 'pending', label: 'M 번호 대기', link: null, tone: 'neutral' });
+    expect(view).toMatchObject({ kind: 'shown', state: 'pending', label: "M number pending", link: null, tone: 'neutral' });
     if (view.kind !== 'shown') return;
-    expect(view.description).toContain('앞선 항목');
-    expect(view.description).toContain('잠정 번호는 없');
+    expect(view.description).toContain("earlier entry");
+    expect(view.description).toContain("No provisional number");
     expect(view.label).not.toMatch(/M-\d+-\d+/);
   });
 
@@ -89,9 +89,9 @@ describe('WP-074 FR-SEQ-008 배지 판정 — 상세 설계 9절 표', () => {
   ])('pending 사유 %s 가 접근 가능한 설명을 갖는다', (reason) => {
     const view = mergeNumberView({ merge_number: null, merge_number_state: 'pending', merge_number_reason: reason }, PR);
     if (view.kind !== 'shown') throw new Error('shown이어야 한다');
-    expect(view.label).toBe('M 번호 대기');
+    expect(view.label).toBe("M number pending");
     expect(view.description.length).toBeGreaterThan(20);
-    expect(view.description).not.toContain('사유 코드');
+    expect(view.description).not.toContain("Reason code");
   });
 
   it('모르는 pending 사유는 코드를 그대로 읽어 준다 — 숨기지 않는다', () => {
@@ -102,12 +102,12 @@ describe('WP-074 FR-SEQ-008 배지 판정 — 상세 설계 9절 표', () => {
 
   it('not_merged → 「M 번호 대상 아님」', () => {
     const view = mergeNumberView({ merge_number_state: 'not_applicable', merge_number_reason: 'not_merged' }, PR);
-    expect(view).toMatchObject({ kind: 'shown', state: 'not_applicable', label: 'M 번호 대상 아님', link: null });
+    expect(view).toMatchObject({ kind: 'shown', state: 'not_applicable', label: "Not eligible for an M number", link: null });
   });
 
   it('branch_not_tracked → 「채번 비대상 브랜치」', () => {
     const view = mergeNumberView({ merge_number_state: 'not_applicable', merge_number_reason: 'branch_not_tracked' }, PR);
-    expect(view).toMatchObject({ kind: 'shown', state: 'not_applicable', label: '채번 비대상 브랜치' });
+    expect(view).toMatchObject({ kind: 'shown', state: 'not_applicable', label: "Branch not numbered" });
   });
 
   it('repository_code_unavailable → 「저장소 코드 확인 필요」', () => {
@@ -115,15 +115,15 @@ describe('WP-074 FR-SEQ-008 배지 판정 — 상세 설계 9절 표', () => {
       { merge_number: null, merge_number_state: 'unavailable', merge_number_reason: 'repository_code_unavailable' },
       PR,
     );
-    expect(view).toMatchObject({ kind: 'shown', state: 'unavailable', label: '저장소 코드 확인 필요', link: null, tone: 'warning' });
+    expect(view).toMatchObject({ kind: 'shown', state: 'unavailable', label: "Repository code needs verification", link: null, tone: 'warning' });
   });
 
   it('그 밖의 unavailable → 「M 번호 확인 불가」 — pending과 **문구가 다르다**', () => {
     const failed = mergeNumberView({ merge_number_state: 'unavailable', merge_number_reason: 'mnumber_read_failed' }, PR);
     const capacity = mergeNumberView({ merge_number_state: 'unavailable', merge_number_reason: 'number_capacity_exceeded' }, PR);
     const pending = mergeNumberView({ merge_number_state: 'pending', merge_number_reason: 'fetch_failed' }, PR);
-    expect(failed).toMatchObject({ kind: 'shown', label: 'M 번호 확인 불가', link: null });
-    expect(capacity).toMatchObject({ kind: 'shown', label: 'M 번호 확인 불가', link: null });
+    expect(failed).toMatchObject({ kind: 'shown', label: "M number unavailable", link: null });
+    expect(capacity).toMatchObject({ kind: 'shown', label: "M number unavailable", link: null });
     if (failed.kind !== 'shown' || pending.kind !== 'shown') throw new Error('shown이어야 한다');
     expect(failed.label).not.toBe(pending.label);
     expect(failed.tone).not.toBe(pending.tone);
@@ -131,7 +131,7 @@ describe('WP-074 FR-SEQ-008 배지 판정 — 상세 설계 9절 표', () => {
 
   it('assigned인데 표기 문자열이 없으면 확인 불가로 말한다 — 빈 배지를 그리지 않는다', () => {
     const view = mergeNumberView({ merge_number: null, merge_number_state: 'assigned', merge_number_epoch: 4 }, PR);
-    expect(view).toMatchObject({ kind: 'shown', state: 'unavailable', label: 'M 번호 확인 불가', link: null });
+    expect(view).toMatchObject({ kind: 'shown', state: 'unavailable', label: "M number unavailable", link: null });
   });
 
   it('assigned여도 에폭·저장소·브랜치 중 하나가 없으면 **링크를 만들지 않는다**', () => {

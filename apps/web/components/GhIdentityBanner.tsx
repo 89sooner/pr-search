@@ -8,7 +8,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Button } from '@conductor-by-89soone/react';
+import { Badge, Button } from './ui';
 import { identityLabel, type IdentityView } from '../lib/gh';
 
 export interface GhIdentityBannerProps {
@@ -19,27 +19,27 @@ export interface GhIdentityBannerProps {
 }
 
 export function GhIdentityBanner({ identity, connecting, onConnect, onDisconnect }: GhIdentityBannerProps): ReactNode {
-  if (identity === null) return <p data-testid="gh-identity-loading">GitHub 신원을 확인하는 중…</p>;
+  if (identity === null) return <p data-testid="gh-identity-loading">Checking GitHub identity…</p>;
   const connected = identity.status === 'connected';
   return (
     <div className="prs-gh-identity" data-testid="gh-identity" data-status={identity.status}>
       <span>
-        GitHub 신원: {connected && identity.github_login !== null ? <strong>@{identity.github_login}</strong> : null}{' '}
+        GitHub identity: {connected && identity.github_login !== null ? <strong>@{identity.github_login}</strong> : null}{' '}
         <Badge tone={connected ? 'accent' : 'warning'}>{identityLabel(identity.status)}</Badge>
         {identity.host === null ? null : <small> · {identity.host}</small>}
       </span>
       {connected ? (
         <Button variant="secondary" data-testid="gh-identity-disconnect" onClick={onDisconnect} disabled={connecting}>
-          연결 해제
+          Disconnect
         </Button>
       ) : (
         <Button data-testid="gh-identity-connect" onClick={onConnect} disabled={connecting}>
-          {connecting ? '이동 중…' : 'GitHub 계정 연결'}
+          {connecting ? "Redirecting…" : "Connect GitHub account"}
         </Button>
       )}
       {connected ? null : (
         <p data-testid="gh-identity-hint">
-          PR Search 로그인과 별개로, 사용자를 대신해 명령을 실행할 Operations App 인가가 필요합니다. 실행 권한은 App 권한과 사용자 권한의 교집합입니다.
+          In addition to signing in to PR Search, authorize the Operations App to run commands on your behalf. Execution permissions are the intersection of app and user permissions.
         </p>
       )}
     </div>

@@ -25,7 +25,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Table } from '@conductor-by-89soone/react';
+import { Table } from './ui';
 import type { AuditRecordView } from '../lib/audit';
 import { formatTimestamp } from '../lib/format';
 
@@ -36,7 +36,7 @@ export interface AuditRecordTableProps {
 /** 값이 없음을 그리는 한 자리. 세 열이 같은 모양을 쓴다. */
 function Absent(): ReactNode {
   return (
-    <span data-testid="audit-absent" aria-label="값 없음">
+    <span data-testid="audit-absent" aria-label="No value">
       —
     </span>
   );
@@ -45,16 +45,16 @@ function Absent(): ReactNode {
 export function AuditRecordTable({ items }: AuditRecordTableProps): ReactNode {
   return (
     <Table data-testid="audit-record-table">
-      <caption>감사 기록. 최근 순으로 정렬되며 수정·삭제할 수 없습니다.</caption>
+      <caption>Audit records, newest first. Records cannot be edited or deleted.</caption>
       <thead>
         <tr>
-          <th scope="col">시각</th>
-          <th scope="col">사용자</th>
-          <th scope="col">행위</th>
-          <th scope="col">대상</th>
-          <th scope="col">질의</th>
-          <th scope="col">결과</th>
-          <th scope="col">상관 ID</th>
+          <th scope="col">Time</th>
+          <th scope="col">User</th>
+          <th scope="col">Action</th>
+          <th scope="col">Target</th>
+          <th scope="col">Query</th>
+          <th scope="col">Results</th>
+          <th scope="col">Correlation ID</th>
         </tr>
       </thead>
       <tbody>

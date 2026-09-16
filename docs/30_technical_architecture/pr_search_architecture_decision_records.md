@@ -1,6 +1,29 @@
 # PR Search Architecture Decision Records
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-09-16
+> CR-097 amendment / FR-SRC-001~004 / NFR-005: 소스 미저장은 지속 저장 금지로 유지하되, 사용자 승인 분석 요청에 대한 일시적인 GHE Contents 열람을 허용한다. 기존 인증/저장소 범위 판정 후 읽기 API만 사용하고 소스 본문은 PG·ES·Redis·미러·로그에 남기지 않는다. 외부 download_url을 추적하지 않는다. Git 원본 line blame을 가장하지 않고 제한된 인접 리비전 정렬의 추정 이력을 제공한다. ADR-006의 Radix/제품 토큰/기존 SaaS 10곳 참고 방향을 공유한다.
+
+> ADR-006 amendment / CR-096 (2026-09-16): 사용자가 전체 화면 Radix 전환을 승인했다. Conductor는 운영 화면에서도 제거하며 typed local UI 계층·시맨틱 토큰·영문 UI·지속되는 light/dark 선택을 제품 기준으로 삼는다. 기존 기능 컴포넌트와 접근 권한은 유지한다. CR-095의 제한적 범위를 대체한다.
+
+### CR-096 디자인 참고 근거
+
+2026-09-16 공식 공개 사이트를 검토한 편집 선정 10곳이며 공인 순위가 아니다. 실제 사용 라이브러리를 추정하지 않고 화면의 패턴을 참고한다.
+
+| 공식 참고 | 적용 방향 |
+| --- | --- |
+| [Linear](https://linear.app/) | 목록·속성·상태 위계 |
+| [Vercel](https://vercel.com/font) | Geist 타이포그래피, 중성 표면 |
+| [Resend](https://resend.com/) | 절제된 내비게이션·주요 동작 |
+| [Supabase](https://supabase.com/) | 저장소·브랜치 작업 문맥 |
+| [Raycast](https://www.raycast.com/) | 키보드 검색 진입 |
+| [Notion](https://www.notion.com/) | 콘텐츠 중심 여백과 읽기 위계 |
+| [Figma](https://www.figma.com/) | 탐색과 본문 역할 분담 |
+| [Clerk](https://clerk.com/) | 신원·폼·피드백 구성 |
+| [Stripe](https://stripe.com/) | 수치·날짜·상태 정렬 |
+| [Framer](https://www.framer.com/) | 구분선·테이블·선택 상태 |
+
+> ADR-006 amendment — CR-095 (2026-09-16, 사용자 승인): Conductor 전용 결정은 operator 기존 UI에 한정한다. 일반 검색/읽기 UI는 @radix-ui의 headless primitives, 시맨틱 HTML과 독립 제품 CSS로 전환한다. 신규 토큰은 --r-*로 격리한다. 기존 운영 컴포넌트는 삭제하지 않는다. 근거: template.html 배치와 최신 개발자용 SaaS 표현 요구, NFR-007, FR-SRCH-003·005~008. 신규 API·DB 결정 없음.
+
+> 상태: review | 버전: v0.15 | 갱신일: 2026-09-17
 
 CR-079: ADR-023을 아래 목록과 상세 설계에 추가한다. 새 M 번호의 적용과 세부 계약은 [상세 설계](pr_search_wp074_design.md) 전문, 선택 대안은 4절, Agent-Initiated Decisions는 12절이 소유한다. 직접 부재 증거의 가용성 한계(DEV-581)는 accepted 동작인 pending과 별개인 검증 조건이며 해결됐다고 간주하지 않는다.
 
