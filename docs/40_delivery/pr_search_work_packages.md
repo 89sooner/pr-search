@@ -5,14 +5,14 @@
 - 요구사항: FR-SRC-001~004, FR-AUTH-002, NFR-005·007. 선행: WP-084.
 - 범위: GHE 읽기 어댑터·인가된 Source API 네 개·Radix 기반 탐색/분석 UI·기존 workspace 및 상세 연결. 소스 지속 저장/색인과 GHE 쓰기는 제외한다.
 - 완료 기준: QA-W001-40~44, 타입·집중 검사·브라우저·빌드 통과. 사내 실제 GHE 검증과 배포는 별도다.
-- 상태: done — 로컬 구현·검증 완료. 실제 GHE NOT RUN, 문서 gate의 기존 오류 유지, 미발행.
+- 상태: done — PR #199·#200·#201 및 CI 통과, `0.1.0-pilot.10` 발행. 실제 GHE NOT RUN, 기존 문서 gate 오류 유지.
 
 ## WP-084 전체 화면 Radix·영문·테마 (CR-096)
 
 - 요구사항: FR-SRCH-003·005~008, FR-ADMIN-001, NFR-007. 선행: WP-083.
 - 범위: Conductor 런타임 제거, 기존 화면 기능 유지, 제품 문구 영어화, 전체 화면 light/dark 버튼·선호도 저장·포털 일관성.
 - 완료 기준: 타입·lint·빌드, 핵심 토큰 대비, 영어 UI 정적 검사, 대표 검색/저장소/저장된 검색/분석/운영 화면의 실제 브라우저 확인, 테마 전환·재방문·모바일 drawer·Dialog 확인.
-- 상태: done — 빌드·타입·lint·접근성 433/433·핵심 대비 18쌍·17개 브라우저 화면/상태 확인. 릴리스 미발행. 검증 정본은 구현 추적 원장 CR-096 기록이다.
+- 상태: done — 빌드·타입·lint·접근성 433/433·핵심 대비 18쌍·브라우저 확인 및 `0.1.0-pilot.10` 발행. 검증 정본은 구현 추적 원장 기록이다.
 
 ## WP-083 일반 검색 Radix 재구현 (CR-095)
 
@@ -82,9 +82,9 @@
 | WP-079 | REL-007 R1b — 결과 계약·typed port·순수 연결 판정·타입 그래프·A-006 조회 | REL-007 (**CR-089**) | WP-078 | **done** — 검증 6.86장. leaf 196개 전부의 결과 계약과 입출력 port, `pr_list_v2`와 PR 참조, 제한 JSON Pointer·바인딩 평가·그래프, `GATE-GH-01d` 통과, 도메인 회귀의 CI 연결. 실행 허용은 `pr.list` 하나, 실행 가능한 다단계 흐름 0 |
 | WP-080 | REL-007 R2 — 검증된 레지스트리 운영 승인·R0 실행 정책 | REL-007 (**CR-090**) | WP-079 | **done** — 검증 6.87장. 운영 승인·철회(A-006)·`pr.list` 차단·재개(A-005 최소)·배포 범위별 정책 revision(충돌 검출·멱등·불변 이력·같은 트랜잭션 감사)·요청 수락과 claim의 같은 판정·claim 가드·마이그레이션 030. 새로 실행 가능한 명령 0, 실행 허용은 `pr.list` 하나 |
 | WP-082 | 기본 저장소 작업 공간과 operator 전용 기존 UI | UI 품질 (CR-094) | WP-081 | **done** — PR CI 및 0.1.0-pilot.9 발행 진행 (원장 6.93장) |
-| WP-083 | 일반 검색 Radix 재구현 | UI 품질 (CR-095) | WP-082 | **done** — 로컬 빌드·핵심 브라우저 확인, 미발행 |
-| WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | WP-083 | **done** — 접근성 433/433, 17개 화면/상태 및 테마 확인, 미발행 |
-| WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | WP-084 | **done** — 집중 검사·실제 Chromium 흐름 확인, 실 GHE 미검증, 미발행 |
+| WP-083 | 일반 검색 Radix 재구현 | UI 품질 (CR-095) | WP-082 | **done** — CI·브라우저 확인, pilot.10 발행 |
+| WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | WP-083 | **done** — 접근성 433/433·전체 CI, pilot.10 발행 |
+| WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | WP-084 | **done** — Source 집중 검사·Chromium·전체 CI, pilot.10 발행; 실 GHE 미검증 |
 | WP-081 | 최신 Conductor 및 Shell·W-001 개선 | UI 품질 (CR-093) | WP-073 | **done** — PR #196 `a8796de`, PR·main CI success, `0.1.0-pilot.8` 발행 (원장 6.92장) |
 | WP-078 | REL-007 R1a — capability 분류·검증·드리프트·스냅숏·A-006 읽기 전용 | REL-007 (**CR-088**) | WP-077 | **done** — 검증 6.85장. leaf 196·flag 1,034·positional 164·`--json` 707 전부 분류(`NFR-009` 본표 100%), 독립 검증기·드리프트 검출·029 스냅숏/검증 기록·`JOB-GH-003`·`API-GH-013`/`014`·A-006. 실행 허용은 `pr.list` 하나 그대로. `GATE-GH-01d`(bindability·port·자원 타입)는 미달로 남고(`DEV-675`), 사내 GHES 확인은 `NOT RUN`(`DEV-674`) |
 | WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | WP-012, WP-015 | **done** — 검증 6.83장. R0 `pr.list` 하나를 인가→미리보기→실행→결과·자기 이력까지 연다. 상위 WP 일곱은 이 수직이 들여온 만큼만 `in_progress`다. 출력 청크 스트리밍은 상태만(`DEV-651`), 분류 195건 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증은 `NOT RUN`** |

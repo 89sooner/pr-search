@@ -1,5 +1,16 @@
 # PR Search 구현 추적 원장
 
+## 0.1.0-pilot.10 발행 — Radix UI와 Source 분석 (2026-09-17)
+
+PR #199가 CR-095~097 / WP-083~085를 `b43b152`로 병합했고 PR·main의 verify/integration CI가 통과했다. release smoke에서 CR-096 영문 전환 뒤 남은 로그 표식 불일치 둘을 DEV-703으로 발견해 PR #200·#201로 수정·검증했다. 최종 태그 `0.1.0-pilot.10`은 `bb4433c6994c05811cc0d1e8a8ebfa23c9ebc0c2`를 가리킨다.
+
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.10
+- 자산: `pr-search-0.1.0-pilot.10-offline.tar.gz`, 1,154,220,962 bytes
+- 별도 채널 전달 SHA-256: `b3d29fef444425dc6867059be365852f28361f4fe4dd24742471ee9163671229`
+- immutable releases: enabled. 발행 전 자산 이름·크기·digest와 로컬 아카이브를 대조했고 발행 후 태그·자산이 잠겼다.
+- 이미지 tar 재적재 뒤 SSR 10종, API 401, web 구성 허용/거부, pipeline git, gh 2.97.0·바이너리 해시, 비루트·읽기 전용 gh-executor, 역할 CLI smoke 통과.
+- 실 사내 GHE/OIDC/반입 검증은 NOT RUN이며 기존 문서 validator 오류를 해소한 것으로 보지 않는다.
+
 ## CR-097 / WP-085 — 파일 Tree·경로 History·Diff/TimeLapse (2026-09-17)
 
 FR-SRC-001~004를 SourceTree·SourceHistory·SourceDialogs와 source-analysis 모델, Source API 네 개 및 GitHubSourceReader로 구현했다. 기본 검색·기존 Repository workspace·PR/커밋 상세에 연결했다. Radix Dialog/Slider와 기존 제품 토큰을 사용하며 영문·테마·전체화면·모달 이동·단축키를 제공한다. 공식 SaaS 10곳의 기존 조사와 ADR-006 표현 방향을 공유한다.
@@ -99,9 +110,9 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-083 | 일반 검색 Radix 재구현 | UI 품질 (CR-095) | done | 에이전트 | 로컬 변경 | 타입·변경 lint·프로덕션 빌드·핵심 브라우저 조작 통과 | 기존 문서 validator 오류 유지, 미발행 |
-| WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | done | 에이전트 | 로컬 변경 | 접근성 433/433·아키텍처 66/66·브라우저 17개 상태·빌드 통과 | 실 GHE 미검증, 문서 gate 기존 오류, 미발행 |
-| WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | done | 에이전트 | 로컬 변경 | 집중94/94·Chromium 핵심 흐름·새 화면 axe·타입·빌드 통과 | 실 GHE NOT RUN, 기존 문서 gate 오류, 미발행 |
+| WP-083 | 일반 검색 Radix 재구현 | UI 품질 (CR-095) | done | 에이전트 | PR #199 / pilot.10 | 전체 CI·브라우저·bundle smoke 통과 | 기존 문서 validator 오류 유지 |
+| WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | done | 에이전트 | PR #199 / pilot.10 | 접근성 433/433·전체 CI·bundle smoke 통과 | 실 GHE 미검증, 기존 문서 gate 오류 |
+| WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | done | 에이전트 | PR #199 / pilot.10 | 집중94/94·Chromium·전체 CI·bundle smoke 통과 | 실 GHE NOT RUN, 기존 문서 gate 오류 |
 | WP-081 | 최신 Conductor·Shell·W-001 | UI 품질 (CR-093) | done | 에이전트 | `a8796de` / PR #196 | PR CI `35061974889`·main CI `35062529329` success; `0.1.0-pilot.8` | CR-093, 신규 기능 의미 없음 |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | `96d4e2f` / PR #2 | DoD 6항 전부 통과. 통합 26건, CI `verify`·`integration` 모두 성공 (6.2장) | 로컬은 네이티브 PostgreSQL 16.13, CI는 서비스 컨테이너 (DEV-006) |
