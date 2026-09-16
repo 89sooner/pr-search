@@ -61,12 +61,10 @@ export function LeftNavPanel({ roles, activeId }: LeftNavPanelProps): ReactNode 
         </Link>
       )}
     />
-    <div className="prs-nav-note">
-      {roles.includes('operator') ? <Link href="/search?legacy=1">Advanced search</Link> : null}
-      {roles.includes('operator') ? <Link href="/search?legacy=workspace">Repository workspace</Link> : null}
-      <WorkbenchIcon name="branch" />
-      <p><strong>Follow the merge order</strong><span>PR numbers follow creation.<br />Sequences follow branch history.</span></p>
-    </div>
+    {roles.includes('operator') ? <div className="prs-nav-note">
+      <Link href="/search?legacy=1">Advanced search</Link>
+      <Link href="/search?legacy=workspace">Repository workspace</Link>
+    </div> : null}
     </>
   );
 }

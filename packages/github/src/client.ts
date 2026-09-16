@@ -154,9 +154,9 @@ export interface CollaboratorSummary {
 /**
  * `GET /repos/{owner}/{repo}/collaborators/{username}/permission`의 응답.
  *
- * `permission`은 `none`·`read`·`write`·`admin`이 아니라 GHE 내부 이름
- * (`pull`·`triage`·`push`·`maintain`·`admin`)으로 온다. `read` 이상의 판정은
- * `@prs/authz`의 `isReadable`이 한다.
+ * GHE 버전에 따라 REST 내부 이름(`pull`·`triage`·`push`·`maintain`·`admin`) 또는
+ * 역할 이름(`read`·`write`·`writer`)으로 온다. `read` 이상의 판정은 `@prs/authz`의
+ * `isReadable`이 호환 집합으로 처리한다.
  */
 export interface PermissionSummary {
   readonly permission: string;

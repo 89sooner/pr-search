@@ -12,6 +12,7 @@ import {
   AccessScopeLookupError,
   GheAccessScopeSource,
   SCOPE_STAGE_PERMISSION,
+  isReadable,
   type GhePermissionApi,
   type RegisteredRepository,
 } from './scope-source.js';
@@ -77,6 +78,16 @@ function api(options: { membersForbidden?: boolean; collaboratorError?: Error } 
 }
 
 const USER = { userId: 'u1', login: 'kim' };
+
+describe('FR-AUTH-002: GHE read 권한 이름 호환', () => {
+  it.each(['read', 'write', 'writer', 'pull', 'triage', 'push', 'maintain', 'admin'])('%s는 저장소 read 이상이다', (permission) => {
+    expect(isReadable(permission)).toBe(true);
+  });
+
+  it.each(['none', '', 'viewer', 'unknown'])('%s는 저장소 접근 권한이 아니다', (permission) => {
+    expect(isReadable(permission)).toBe(false);
+  });
+});
 
 describe('조직·팀은 그 표현을 쓸 때만 읽는다 (CR-092 / DEV-698, FR-AUTH-002 AC-1·AC-6)', () => {
   it('저장소 셋이면 조직 Members 권한이 없어도 범위가 선다 — 사내 pilot.7 형상', async () => {

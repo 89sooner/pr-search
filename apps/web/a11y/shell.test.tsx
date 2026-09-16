@@ -30,6 +30,7 @@ vi.mock('next/link', () => ({
 }));
 
 const { Shell } = await import('../components/Shell');
+const { ReaderShell } = await import('../components/reader/ReaderShell');
 const { EmptyState } = await import('../components/EmptyState');
 const { ErrorBanner } = await import('../components/ErrorBanner');
 const { SignedOutView } = await import('../components/SignedOutView');
@@ -159,6 +160,22 @@ describe('랜드마크와 스킵 링크 (QA-COMMON)', () => {
 });
 
 describe('QA-A001-10: 운영 항목이 DOM에 없다', () => {
+  it('reader의 Workspace 바로가기는 operator에게만 보인다', () => {
+    const developer = render(<ReaderShell user={{ login: 'dev', email: null }} roles={['developer']}><p>content</p></ReaderShell>);
+    expect(screen.queryByRole('button', { name: 'Workspace' })).toBeNull();
+    developer.unmount();
+
+    render(<ReaderShell user={{ login: 'ops', email: null }} operator roles={['developer', 'operator']}><p>content</p></ReaderShell>);
+    expect(screen.getByRole('button', { name: 'Workspace' })).toBeInTheDocument();
+  });
+
+  it('좌측 안내 문구는 역할과 무관하게 렌더링하지 않는다', () => {
+    render(<Shell roles={['developer', 'operator']} user={null} title="Search"><p>content</p></Shell>);
+    expect(screen.queryByText('Follow the merge order')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Advanced search' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Repository workspace' })).toBeInTheDocument();
+  });
+
   it('`developer`에게는 운영 링크가 렌더링되지 않는다', () => {
     render(
       <Shell roles={['developer']} user={null} title="통합 검색">

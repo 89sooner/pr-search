@@ -51,7 +51,7 @@ export interface RegisteredRepository {
 }
 
 /** `read` 이상으로 치는 GHE 권한 (FR-AUTH-002 AC-1). */
-const READABLE_PERMISSIONS = new Set(['pull', 'triage', 'push', 'maintain', 'admin']);
+const READABLE_PERMISSIONS = new Set(['read', 'write', 'writer', 'pull', 'triage', 'push', 'maintain', 'admin']);
 
 export function isReadable(permission: string): boolean {
   return READABLE_PERMISSIONS.has(permission);
