@@ -1,5 +1,7 @@
 'use client';
 
+import { capabilityTitle } from '../lib/gh-presentation';
+
 /**
  * W-010 GitHub Command Center — R0 첫 수직 (WP-077 / FR-GH-001·002·003·006·008·012, CR-086).
  *
@@ -36,7 +38,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Button, Panel } from '@conductor-by-89soone/react';
+import { Button, Panel } from './ui';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { GhCapabilityList } from './GhCapabilityList';
@@ -104,13 +106,13 @@ async function loadJson<T>(url: string, signal: AbortSignal): Promise<Loaded<T>>
     response = await fetch(url, { signal, cache: 'no-store' });
   } catch (error) {
     if (signal.aborted) throw error;
-    return { kind: 'failed', message: '서버에 연결하지 못했습니다.', correlationId: null };
+    return { kind: 'failed', message: "Unable to connect to the server.", correlationId: null };
   }
   const body = await bodyOf(response);
   if (response.status === 404) return { kind: 'unavailable' };
   if (response.status === 401) return { kind: 'unauthenticated', loginPath: loginPathOf(body) };
   if (!response.ok) {
-    const shaped = describeApiError(body, '응답을 읽지 못했습니다.');
+    const shaped = describeApiError(body, "Unable to read the response.");
     return { kind: 'failed', message: shaped.message, correlationId: shaped.correlationId };
   }
   return { kind: 'ok', body: body as T };
@@ -251,7 +253,7 @@ export function GhCommandCenterView(): ReactNode {
             return;
           }
           if (!response.ok) {
-            const shaped = describeApiError(body, '미리보기를 만들지 못했습니다.');
+            const shaped = describeApiError(body, "Unable to generate the preview.");
             setPreview(null);
             setPreviewError({ message: shaped.message, correlationId: shaped.correlationId });
             return;
@@ -262,7 +264,7 @@ export function GhCommandCenterView(): ReactNode {
           if (controller.signal.aborted) return;
           void error;
           setPreview(null);
-          setPreviewError({ message: '미리보기 요청을 보내지 못했습니다.', correlationId: null });
+          setPreviewError({ message: "Unable to request a preview.", correlationId: null });
         } finally {
           if (!controller.signal.aborted) setPreviewLoading(false);
         }
@@ -356,7 +358,7 @@ export function GhCommandCenterView(): ReactNode {
         const body = await bodyOf(response);
         const url = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['authorize_url'] : undefined;
         if (response.status !== 201 || typeof url !== 'string') {
-          const shaped = describeApiError(body, 'GitHub 계정 연결을 시작하지 못했습니다.');
+          const shaped = describeApiError(body, "Unable to start connecting your GitHub account.");
           setActionError({ message: shaped.message, correlationId: shaped.correlationId });
           setConnecting(false);
           return;
@@ -365,7 +367,7 @@ export function GhCommandCenterView(): ReactNode {
         window.location.assign(url);
       } catch (error) {
         void error;
-        setActionError({ message: 'GitHub 계정 연결 요청을 보내지 못했습니다.', correlationId: null });
+        setActionError({ message: "Unable to send the GitHub connection request.", correlationId: null });
         setConnecting(false);
       }
     })();
@@ -378,12 +380,12 @@ export function GhCommandCenterView(): ReactNode {
       try {
         const response = await fetch(IDENTITY_URL, { method: 'DELETE' });
         if (!response.ok) {
-          const shaped = describeApiError(await bodyOf(response), '연결을 해제하지 못했습니다.');
+          const shaped = describeApiError(await bodyOf(response), "Unable to disconnect.");
           setActionError({ message: shaped.message, correlationId: shaped.correlationId });
         }
       } catch (error) {
         void error;
-        setActionError({ message: '연결 해제 요청을 보내지 못했습니다.', correlationId: null });
+        setActionError({ message: "Unable to send the disconnect request.", correlationId: null });
       } finally {
         setConnecting(false);
         setPreview(null);
@@ -410,7 +412,7 @@ export function GhCommandCenterView(): ReactNode {
           idempotencyKey.current = null;
           return;
         }
-        const shaped = describeApiError(body, '실행 요청이 거절되었습니다.');
+        const shaped = describeApiError(body, "The execution request was rejected.");
         if (shaped.code === 'GH_DUPLICATE_REQUEST') {
           /*
            * 같은 키의 실행이 이미 있다 — 앞선 제출의 응답을 못 받았던 경우다. 새 실행을 만들지
@@ -428,14 +430,14 @@ export function GhCommandCenterView(): ReactNode {
           }
         }
         if (shaped.code === 'GH_IDENTITY_REQUIRED') {
-          setActionError({ message: 'GitHub 계정 연결이 없거나 만료됐습니다. 연결한 뒤 다시 실행하세요.', correlationId: shaped.correlationId });
+          setActionError({ message: "Your GitHub connection is missing or expired. Connect your account and try again.", correlationId: shaped.correlationId });
           refreshIdentity();
           return;
         }
         setActionError({ message: shaped.message, correlationId: shaped.correlationId });
       } catch (error) {
         void error;
-        setActionError({ message: '실행 요청을 보내지 못했습니다. 같은 요청을 다시 보내면 중복 실행이 만들어지지 않습니다.', correlationId: null });
+        setActionError({ message: "Unable to send the execution request. Retrying the same request will not create a duplicate execution.", correlationId: null });
       } finally {
         setSubmitting(false);
       }
@@ -452,12 +454,12 @@ export function GhCommandCenterView(): ReactNode {
         if (response.status === 202) {
           setExecution(body as ExecutionView);
         } else {
-          const shaped = describeApiError(body, '취소 요청이 거절되었습니다.');
+          const shaped = describeApiError(body, "The cancellation request was rejected.");
           setActionError({ message: shaped.message, correlationId: shaped.correlationId });
         }
       } catch (error) {
         void error;
-        setActionError({ message: '취소 요청을 보내지 못했습니다.', correlationId: null });
+        setActionError({ message: "Unable to send the cancellation request.", correlationId: null });
       } finally {
         setCancelling(false);
       }
@@ -469,8 +471,8 @@ export function GhCommandCenterView(): ReactNode {
       <div data-testid="gh-command-center" data-state="unavailable">
         <EmptyState
           cause="not_found"
-          title="이 배포에서는 GitHub 작업이 열리지 않았습니다"
-          description="운영자가 GH_OPERATIONS_ENABLED를 켜고 Operations App을 등록하면 이 화면이 열립니다. 검색과 조사 화면은 그대로 쓸 수 있습니다."
+          title="GitHub operations are not enabled in this deployment"
+          description="An operator must enable GH_OPERATIONS_ENABLED and register the Operations App. Search and investigation remain available."
         />
       </div>
     );
@@ -482,9 +484,9 @@ export function GhCommandCenterView(): ReactNode {
       <div data-testid="gh-command-center" data-state="unauthenticated">
         <EmptyState
           cause="no_permission"
-          title="로그인이 필요합니다"
-          description="GitHub 작업은 로그인한 사용자가 자신의 위임 권한으로만 실행합니다."
-          actions={loginHref === null ? undefined : <Link href={loginHref}>로그인</Link>}
+          title="Sign in required"
+          description="GitHub operations run only with the signed-in user's delegated permissions."
+          actions={loginHref === null ? undefined : <Link href={loginHref}>Sign in</Link>}
         />
       </div>
     );
@@ -495,13 +497,13 @@ export function GhCommandCenterView(): ReactNode {
       <div data-testid="gh-command-center" data-state="failed">
         <ErrorBanner
           tone="danger"
-          title="GitHub 작업 화면을 준비하지 못했습니다"
+          title="Unable to load GitHub operations"
           impact={screen.message}
           correlationId={screen.correlationId}
           recoverable
           action={
             <Button variant="secondary" onClick={refreshIdentity} data-testid="gh-retry">
-              다시 시도
+              Try again
             </Button>
           }
         />
@@ -516,30 +518,30 @@ export function GhCommandCenterView(): ReactNode {
       {identityFailed ? (
         <ErrorBanner
           tone="warning"
-          title="GitHub 계정 연결에 실패했습니다"
-          impact="인가가 완료되지 않았습니다. 아래에서 다시 연결하세요. 어느 단계에서 실패했는지는 운영 로그에만 남습니다."
+          title="Unable to connect your GitHub account"
+          impact="Authorization did not complete. Connect again below. Failure details are available only in operational logs."
         />
       ) : null}
       {actionError === null ? null : (
         <ErrorBanner
           tone="danger"
-          title="요청을 처리하지 못했습니다"
+          title="Unable to process the request"
           impact={actionError.message}
           correlationId={actionError.correlationId}
           action={
             <Button variant="secondary" onClick={() => setActionError(null)} data-testid="gh-dismiss-error">
-              닫기
+              Close
             </Button>
           }
         />
       )}
 
-      <Panel as="section" aria-label="GitHub 신원" data-testid="section-identity">
+      <Panel as="section" aria-label="GitHub identity" data-testid="section-identity">
         <GhIdentityBanner identity={identity} connecting={connecting} onConnect={onConnect} onDisconnect={onDisconnect} />
       </Panel>
 
       {!ready ? (
-        <p data-testid="gh-loading">GitHub 작업을 준비하는 중…</p>
+        <p data-testid="gh-loading">Loading GitHub operations…</p>
       ) : (
         <div className="prs-gh-layout">
           <Panel as="aside" aria-label="capability" data-testid="section-capabilities">
@@ -547,13 +549,13 @@ export function GhCommandCenterView(): ReactNode {
           </Panel>
 
           <div className="prs-gh-main">
-            <Panel as="section" aria-label="명령 입력" data-testid="section-form">
+            <Panel as="section" aria-label="Command input" data-testid="section-form">
               {capability === null || form === null ? (
-                <p data-testid="gh-capability-not-executable">이 배포가 실행을 연 capability를 목록에서 고르세요.</p>
+                <p data-testid="gh-capability-not-executable">Select a capability enabled for this deployment.</p>
               ) : (
                 <>
                   <h2>
-                    gh {capability.path.join(' ')} <small>{capability.title}</small>
+                    gh {capability.path.join(' ')} <small>{capabilityTitle(capability)}</small>
                   </h2>
                   {/* 운영 승인 필요·관리자 차단·레지스트리 불일치를 입력 전에 알린다 (CR-090). 실행 가능하면 그리지 않는다. */}
                   <GhExecutionGateBanner gate={preview?.gate ?? capability.execution_gate} />
@@ -562,20 +564,20 @@ export function GhCommandCenterView(): ReactNode {
               )}
             </Panel>
 
-            <Panel as="section" aria-label="실행" data-testid="section-preview">
+            <Panel as="section" aria-label="Run" data-testid="section-preview">
               <GhExecutionPreview preview={preview} loading={previewLoading} />
               {previewError === null ? null : (
                 <p role="alert" data-testid="gh-preview-error">
                   {previewError.message}
-                  {previewError.correlationId === null ? '' : ` (상관 ID ${previewError.correlationId})`}
+                  {previewError.correlationId === null ? '' : `(correlation ID ${previewError.correlationId})`}
                 </p>
               )}
               <div className="prs-gh-actions">
                 <Button data-testid="gh-execute" disabled={!canExecute(violations, preview) || submitting} onClick={onExecute}>
-                  {submitting ? '요청 중…' : '실행'}
+                  {submitting ? "Submitting…" : "Run"}
                 </Button>
                 <Link href="/gh/history" data-testid="gh-open-history">
-                  실행 이력
+                  Execution history
                 </Link>
               </div>
             </Panel>

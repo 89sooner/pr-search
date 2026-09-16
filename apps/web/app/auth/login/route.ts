@@ -39,7 +39,7 @@ export function GET(request: NextRequest): NextResponse {
   if (!config.authEnabled) {
     // 자격 증명 없이 리다이렉트하면 제공자 대신 404로 간다. 무엇이 빠졌는지 말한다.
     return NextResponse.json(
-      { error: { code: 'PERMISSION_UNAVAILABLE', message: '인증이 구성되지 않았습니다' } },
+      { error: { code: 'PERMISSION_UNAVAILABLE', message: 'Authentication is not configured' } },
       { status: 503 },
     );
   }

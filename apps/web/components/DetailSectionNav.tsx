@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 export function DetailSectionNav({ sections }: {
   readonly sections: readonly { readonly id: string; readonly label: string }[];
 }): ReactNode {
-  return <nav className="prs-detail-nav" aria-label="상세 섹션">
+  return <nav className="prs-detail-nav" aria-label="Detail sections">
     {sections.map(({ id, label }) => <a key={id} href={`#${id}`} onClick={(event) => {
       const target = document.getElementById(id);
       if (target === null || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;

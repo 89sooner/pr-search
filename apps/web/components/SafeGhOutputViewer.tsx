@@ -9,7 +9,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge } from '@conductor-by-89soone/react';
+import { Badge } from './ui';
 
 export interface SafeGhOutputViewerProps {
   readonly label: string;
@@ -26,17 +26,17 @@ export function SafeGhOutputViewer({ label, text, truncated, binary, testId }: S
         <strong>{label}</strong>
         {truncated ? (
           <Badge tone="warning" data-testid={`${testId}-truncated`}>
-            상한을 넘겨 잘렸습니다
+            Exceeded the limit and was truncated
           </Badge>
         ) : null}
         {binary ? (
           <Badge tone="neutral" data-testid={`${testId}-binary`}>
-            바이너리 출력 — 텍스트로 표시하지 않습니다
+            Binary output — not displayed as text
           </Badge>
         ) : null}
       </div>
       {binary ? null : text === null || text === '' ? (
-        <p data-testid={`${testId}-empty`}>출력이 없습니다.</p>
+        <p data-testid={`${testId}-empty`}>No output.</p>
       ) : (
         <pre data-testid={`${testId}-text`} tabIndex={0}>
           {text}

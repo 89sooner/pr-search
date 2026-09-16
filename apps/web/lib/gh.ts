@@ -18,6 +18,7 @@
 
 import { evaluateInvocation, type GhCapabilityDefinition, type GhConstraintViolation, type GhInvocation } from '@prs/gh-cli';
 import { GATE_TEXT, type ExecutionGateView } from './gh-policy';
+import { serviceMessage } from './service-message';
 
 /** `API-GH-001`이 내는 capability 하나. 서버가 snake_case로 준다. */
 export interface CapabilityView {
@@ -175,16 +176,16 @@ export function isTerminal(state: string): boolean {
 }
 
 const STATE_LABELS: Readonly<Record<string, string>> = {
-  queued: '대기 중',
-  preflighting: '사전 점검 중',
-  awaiting_confirmation: '확인 대기',
-  awaiting_approval: '승인 대기',
-  running: '실행 중',
-  succeeded: '성공',
-  failed: '실패',
-  cancelled: '취소됨',
-  timed_out: '시간 초과',
-  policy_blocked: '정책 차단',
+  queued: 'Queued',
+  preflighting: 'Preflight checks',
+  awaiting_confirmation: 'Awaiting confirmation',
+  awaiting_approval: 'Awaiting approval',
+  running: 'Running',
+  succeeded: 'Succeeded',
+  failed: 'Failed',
+  cancelled: 'Canceled',
+  timed_out: 'Timed out',
+  policy_blocked: 'Policy blocked',
 };
 
 export function stateLabel(state: string): string {
@@ -192,11 +193,11 @@ export function stateLabel(state: string): string {
 }
 
 const IDENTITY_LABELS: Readonly<Record<IdentityView['status'], string>> = {
-  connected: '연결됨',
-  not_connected: '연결되지 않음',
-  expired: '만료됨 — 다시 연결이 필요합니다',
-  revoked: '연결 해제됨',
-  host_changed: '다른 GHE에 연결됨 — 다시 연결이 필요합니다',
+  connected: 'Connected',
+  not_connected: 'Not connected',
+  expired: 'Expired — reconnect required',
+  revoked: 'Disconnected',
+  host_changed: 'Connected to a different GHE — reconnect required',
 };
 
 export function identityLabel(status: IdentityView['status']): string {
@@ -349,7 +350,7 @@ export function describeApiError(body: unknown, fallback: string): { readonly me
   const error = record['error'];
   if (typeof error !== 'object' || error === null) return { message: fallback, code: null, correlationId };
   const code = typeof (error as Record<string, unknown>)['code'] === 'string' ? ((error as Record<string, unknown>)['code'] as string) : null;
-  const message = typeof (error as Record<string, unknown>)['message'] === 'string' ? ((error as Record<string, unknown>)['message'] as string) : fallback;
+  const message = serviceMessage((error as Record<string, unknown>)['message'], fallback, code);
   return { message, code, correlationId };
 }
 
@@ -375,16 +376,16 @@ export function resultKind(execution: ExecutionView): ResultKind {
 /** 실패 사유를 사용자 말로. 서버의 사유 코드가 정본이며 여기서는 옮기기만 한다. */
 export function describeError(error: string | null): string {
   if (error === null) return '';
-  if (error === 'identity_required' || error === 'identity_expired' || error === 'identity_revoked') return 'GitHub 계정 연결이 없거나 만료됐습니다. 다시 연결한 뒤 실행하세요.';
-  if (error === 'registry_stale') return '실행기의 gh·manifest가 요청 시점과 다릅니다. 새로 고침 뒤 다시 실행하세요.';
+  if (error === 'identity_required' || error === 'identity_expired' || error === 'identity_revoked') return 'Your GitHub connection is missing or expired. Reconnect before running this command.';
+  if (error === 'registry_stale') return 'The runner\'s gh or manifest has changed since the request. Refresh and run again.';
   // 운영 정책이 닫은 요청 (CR-090) — 상태는 `policy_blocked`이며 다시 실행되지 않는다.
   if (error === 'admin_action_required' || error === 'policy_blocked' || error === 'policy_changed') return `${GATE_TEXT[error].title}. ${GATE_TEXT[error].description}`;
   if (error === 'registry_evidence_expired' || error === 'registry_unchecked') return `${GATE_TEXT[error].title}. ${GATE_TEXT[error].description}`;
-  if (error === 'argv_mismatch') return '요청이 저장된 뒤 명령이 달라졌습니다. 다시 실행하세요.';
-  if (error === 'executor_lost') return '실행기가 응답을 멈춰 실행을 회수했습니다.';
-  if (error === 'gh_auth_required') return 'gh가 인증을 요구했습니다 — 위임 토큰이 GHE에서 거부됐을 수 있습니다.';
-  if (error.startsWith('gh_exit_')) return `gh가 종료 코드 ${error.slice('gh_exit_'.length)}로 끝났습니다. 표준 오류를 확인하세요.`;
-  if (error.startsWith('result_parse_failed')) return '출력을 결과 계약으로 읽지 못했습니다. 표준 출력이 잘렸거나 형식이 다릅니다.';
-  if (error.startsWith('timed_out')) return '시간 상한을 넘겨 프로세스를 종료했습니다.';
+  if (error === 'argv_mismatch') return 'The command changed after the request was saved. Run it again.';
+  if (error === 'executor_lost') return 'The run was reclaimed because the runner stopped responding.';
+  if (error === 'gh_auth_required') return 'gh requested authentication. GHE may have rejected the delegated token.';
+  if (error.startsWith('gh_exit_')) return `gh exited with code ${error.slice('gh_exit_'.length)}. Check standard error.`;
+  if (error.startsWith('result_parse_failed')) return 'The output did not match the result contract. Standard output may be truncated or have a different format.';
+  if (error.startsWith('timed_out')) return 'The process was terminated after exceeding the time limit.';
   return error;
 }

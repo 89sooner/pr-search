@@ -1,6 +1,8 @@
 # PR Search 화면 플로우 명세서
 
-> 상태: review | 버전: v0.9 | 갱신일: 2026-09-15
+> CR-097 / FR-SRC-001~004: 트리 선택은 URL path/path_kind/source_ref와 History 탭에 반영한다. History 파일 리비전 두 개 → Compare selected, 커밋 행 → Diff, 파일 → Time-lapse. Diff 안에서 Time-lapse를 열면 Escape는 최상단 모달만 닫는다. Ctrl/⌘+D는 활성 결과의 Diff, T는 선택 파일 Time-lapse이며 입력 필드와 열린 모달에서는 전역 단축키를 실행하지 않는다.
+
+> 상태: review | 버전: v0.10 | 갱신일: 2026-09-17
 
 CR-092 FLOW-000: 로그아웃 단계와 공개 완료 화면, 복귀는 경로만 담는다(DEV-699·DEV-700).
 

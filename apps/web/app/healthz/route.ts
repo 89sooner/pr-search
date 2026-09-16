@@ -30,7 +30,7 @@ export function GET(): Response {
      * `parseGroupRoleMap`은 잘못된 항목을 그대로 담아 던진다. 자세한 내용은
      * 운영자만 읽는 컨테이너 로그로 보낸다 (NFR-005).
      */
-    console.error(`web 구성이 성립하지 않는다: ${failure}`);
+    console.error(`Invalid web configuration: ${failure}`);
     return Response.json({ status: 'error', service: 'web' }, { status: 503 });
   }
 

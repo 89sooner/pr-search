@@ -16,7 +16,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { Banner, Panel, Spinner } from '@conductor-by-89soone/react';
+import { Banner, Panel, Spinner } from './ui';
 import { AggregationPanel, type AggregationGroup } from './AggregationPanel';
 import {
   analyticsHref,
@@ -89,12 +89,12 @@ export function SearchAggregationTab({ q, seqEpoch, loginPath }: SearchAggregati
     <div data-testid="search-aggregation">
       <p>
         <Link href={analyticsHref(state)} data-testid="open-dashboard">
-          대시보드에서 보기
+          View in dashboard
         </Link>
       </p>
 
       {panel.kind === 'loading' ? (
-        <Spinner label="집계를 불러오는 중" />
+        <Spinner label="Loading aggregation" />
       ) : panel.kind === 'ready' || panel.kind === 'approximate' ? (
         <AggregationPanel
           groups={groups}
@@ -104,14 +104,14 @@ export function SearchAggregationTab({ q, seqEpoch, loginPath }: SearchAggregati
         />
       ) : panel.kind === 'epoch_stale' ? (
         <Banner tone="warning">
-          질의의 시퀀스 범위가 딛고 선 에폭이 현재와 다릅니다. 집계를 그리지 않습니다.
+          The query references a different sequence epoch. Aggregation is unavailable.
         </Banner>
       ) : panel.kind === 'empty_no_data' ? (
         <Panel as="section">
-          <p>이 질의로 집계할 Pull Request가 없습니다.</p>
+          <p>No pull requests match this query for aggregation.</p>
         </Panel>
       ) : (
-        <Banner tone="warning">집계를 불러오지 못했습니다.</Banner>
+        <Banner tone="warning">Unable to load aggregation.</Banner>
       )}
     </div>
   );

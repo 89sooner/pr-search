@@ -25,9 +25,9 @@ export interface RegistrationRequestView {
 export type RequestStatus = 'pending' | 'fulfilled' | 'dismissed';
 
 const STATUS_LABELS: Readonly<Record<RequestStatus, string>> = {
-  pending: '대기 중',
-  fulfilled: '등록됨',
-  dismissed: '종료됨',
+  pending: 'Queued',
+  fulfilled: 'Registered',
+  dismissed: 'Closed',
 };
 
 export function requestStatusLabel(status: string): string {
@@ -99,7 +99,7 @@ export function addedBranches(before: readonly string[], after: readonly string[
  * 회피하고, 그러면 수집이 멈춰야 할 저장소가 계속 돈다.
  */
 export const UNREGISTER_CONFIRM_MESSAGE =
-  '신규 이벤트 수집은 중단됩니다. 기존 검색 문서는 유지됩니다.';
+  'New event collection will stop. Existing search documents will be retained.';
 
 /**
  * 등록 요청 종료 사유의 상한. 마이그레이션 020의 CHECK와 같은 값이다.

@@ -10,7 +10,7 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { NavList, type NavItem } from '@conductor-by-89soone/react';
+import { NavList, type NavItem } from './ui';
 import type { Role } from '@prs/authz/roles';
 import { WorkbenchIcon, type WorkbenchIconName } from './WorkbenchIcon';
 import { SECTION_LABELS, visibleNavEntries } from '../lib/nav';
@@ -40,13 +40,13 @@ export function LeftNavPanel({ roles, activeId }: LeftNavPanelProps): ReactNode 
 
   return (
     <>
-    <Link href="/" className="prs-brand" aria-label="PR Search 홈">
+    <Link href="/" className="prs-brand" aria-label="PR Search home">
       <span className="prs-brand-mark"><WorkbenchIcon name="branch" /></span>
-      <span><strong>PR Search</strong><small>변경 이력 작업대</small></span>
+      <span><strong>PR Search</strong><small>Every change, connected.</small></span>
     </Link>
     <NavList
       className="prs-nav"
-      aria-label="주요 화면"
+      aria-label="Main navigation"
       items={items}
       /*
        * Next.js `Link`로 그린다 — 전체 새로고침 없이 라우팅해야 셸이 유지되고
@@ -62,9 +62,10 @@ export function LeftNavPanel({ roles, activeId }: LeftNavPanelProps): ReactNode 
       )}
     />
     <div className="prs-nav-note">
-      {roles.includes('operator') ? <Link href="/search?legacy=1">기존 검색 작업대</Link> : null}
+      {roles.includes('operator') ? <Link href="/search?legacy=1">Advanced search</Link> : null}
+      {roles.includes('operator') ? <Link href="/search?legacy=workspace">Repository workspace</Link> : null}
       <WorkbenchIcon name="branch" />
-      <p><strong>머지 순서로 이어지는 이력</strong><span>PR 번호는 생성 순서,<br />시퀀스는 브랜치 반영 순서입니다.</span></p>
+      <p><strong>Follow the merge order</strong><span>PR numbers follow creation.<br />Sequences follow branch history.</span></p>
     </div>
     </>
   );

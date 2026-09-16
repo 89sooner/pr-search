@@ -22,7 +22,7 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { Badge, CodeBlock, Table } from '@conductor-by-89soone/react';
+import { Badge, CodeBlock, Table } from './ui';
 import {
   confidenceLabel,
   directionLabel,
@@ -56,7 +56,7 @@ export function LinkGroupList({ group }: LinkGroupListProps): ReactNode {
   if (group.items.length === 0) {
     return (
       <p data-testid={`relation-empty-${group.linkType}-${group.direction}`}>
-        {linkTypeLabel(group.linkType)} 관계가 없습니다.
+        {linkTypeLabel(group.linkType)} No relationships.
       </p>
     );
   }
@@ -68,10 +68,10 @@ export function LinkGroupList({ group }: LinkGroupListProps): ReactNode {
       <Table caption={caption}>
         <Table.Head>
           <Table.Row>
-            <Table.HeaderCell scope="col">대상</Table.HeaderCell>
-            <Table.HeaderCell scope="col">신뢰도</Table.HeaderCell>
-            <Table.HeaderCell scope="col">상태</Table.HeaderCell>
-            <Table.HeaderCell scope="col">근거</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Target</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Confidence</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Status</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Evidence</Table.HeaderCell>
           </Table.Row>
         </Table.Head>
         <Table.Body>
@@ -79,7 +79,7 @@ export function LinkGroupList({ group }: LinkGroupListProps): ReactNode {
             <Table.Row key={item.linkId} data-testid="relation-row">
               <Table.Cell>
                 {/* 방향을 문장으로도 말한다 — 화살표만으로 주체·대상을 구분하지 않는다. */}
-                <span className="cdt-sr-only">{directionLabel(group.linkType, group.direction)}: </span>
+                <span className="ui-sr-only">{directionLabel(group.linkType, group.direction)}: </span>
                 {endpointCell(item)}
               </Table.Cell>
               <Table.Cell>
@@ -90,22 +90,22 @@ export function LinkGroupList({ group }: LinkGroupListProps): ReactNode {
               <Table.Cell>
                 {item.detached === true ? (
                   <Badge tone="warning" data-testid="relation-detached">
-                    해제됨
+                    Dismissed
                   </Badge>
                 ) : null}
                 {item.ambiguous ? (
                   <Badge tone="warning" data-testid="relation-ambiguous">
-                    후보 여러 개
+                    Multiple candidates
                   </Badge>
                 ) : null}
                 {!item.resolved ? (
                   <Badge tone="neutral" data-testid="relation-unresolved">
-                    미해결 참조
+                    Unresolved reference
                   </Badge>
                 ) : null}
                 {item.resolved && !item.endpoint.contentAvailable ? (
                   <Badge tone="neutral" data-testid="relation-content-unavailable">
-                    대상 상세 없음
+                    Target details unavailable
                   </Badge>
                 ) : null}
               </Table.Cell>
@@ -123,7 +123,7 @@ export function LinkGroupList({ group }: LinkGroupListProps): ReactNode {
       </Table>
       {group.truncated ? (
         <p data-testid={`relation-truncated-${group.linkType}-${group.direction}`}>
-          상한을 넘는 관계가 더 있습니다. 표시된 것은 일부입니다.
+          More relationships exist beyond the limit. Only some are shown.
         </p>
       ) : null}
     </div>

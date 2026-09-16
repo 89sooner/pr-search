@@ -17,7 +17,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Badge, Button, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Panel, Table } from './ui';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { GhExecutionPanel } from './GhExecutionPanel';
@@ -80,7 +80,7 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
           return;
         }
         if (!response.ok) {
-          const shaped = describeApiError(body, '이력을 읽지 못했습니다.');
+          const shaped = describeApiError(body, "Unable to load history.");
           setScreen({ kind: 'failed', message: shaped.message, correlationId: shaped.correlationId });
           return;
         }
@@ -91,7 +91,7 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
       } catch (error) {
         if (controller.signal.aborted) return;
         void error;
-        setScreen({ kind: 'failed', message: '서버에 연결하지 못했습니다.', correlationId: null });
+        setScreen({ kind: 'failed', message: "Unable to connect to the server.", correlationId: null });
       }
     })();
     return () => {
@@ -107,7 +107,7 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
         const response = await fetch(listUrl(all, nextBefore), { cache: 'no-store' });
         const body: unknown = await response.json().catch(() => null);
         if (!response.ok) {
-          const shaped = describeApiError(body, '다음 페이지를 읽지 못했습니다.');
+          const shaped = describeApiError(body, "Unable to load the next page.");
           setActionError({ message: shaped.message, correlationId: shaped.correlationId });
           return;
         }
@@ -116,7 +116,7 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
         setNextBefore(page.next_before);
       } catch (error) {
         void error;
-        setActionError({ message: '다음 페이지 요청을 보내지 못했습니다.', correlationId: null });
+        setActionError({ message: "Unable to request the next page.", correlationId: null });
       } finally {
         setLoadingMore(false);
       }
@@ -161,12 +161,12 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
           setSelected(view);
           setItems((current) => current.map((item) => (item.execution_id === view.execution_id ? view : item)));
         } else {
-          const shaped = describeApiError(body, '취소 요청이 거절되었습니다.');
+          const shaped = describeApiError(body, "The cancellation request was rejected.");
           setActionError({ message: shaped.message, correlationId: shaped.correlationId });
         }
       } catch (error) {
         void error;
-        setActionError({ message: '취소 요청을 보내지 못했습니다.', correlationId: null });
+        setActionError({ message: "Unable to send the cancellation request.", correlationId: null });
       } finally {
         setCancelling(false);
       }
@@ -176,7 +176,7 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
   if (screen.kind === 'unavailable') {
     return (
       <div data-testid="gh-history" data-state="unavailable">
-        <EmptyState cause="not_found" title="이 배포에서는 GitHub 작업이 열리지 않았습니다" description="운영자가 GH_OPERATIONS_ENABLED를 켜면 실행 이력도 여기에 쌓입니다." />
+        <EmptyState cause="not_found" title="GitHub operations are not enabled in this deployment" description="Execution history will appear here once an operator enables GH_OPERATIONS_ENABLED." />
       </div>
     );
   }
@@ -184,7 +184,7 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
     const loginHref = screen.loginPath === null ? null : `${screen.loginPath}?return_to=${encodeURIComponent('/gh/history')}`;
     return (
       <div data-testid="gh-history" data-state="unauthenticated">
-        <EmptyState cause="no_permission" title="로그인이 필요합니다" description="실행 이력은 본인의 것만 보입니다." actions={loginHref === null ? undefined : <Link href={loginHref}>로그인</Link>} />
+        <EmptyState cause="no_permission" title="Sign in required" description="You can view only your own execution history." actions={loginHref === null ? undefined : <Link href={loginHref}>Sign in</Link>} />
       </div>
     );
   }
@@ -193,12 +193,12 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
       <div data-testid="gh-history" data-state="failed">
         <ErrorBanner
           tone="danger"
-          title="실행 이력을 읽지 못했습니다"
+          title="Unable to load execution history"
           impact={screen.message}
           correlationId={screen.correlationId}
           action={
             <Button variant="secondary" onClick={refresh} data-testid="gh-history-retry">
-              다시 조회
+              Refresh
             </Button>
           }
         />
@@ -211,20 +211,20 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
       {actionError === null ? null : (
         <ErrorBanner
           tone="danger"
-          title="요청을 처리하지 못했습니다"
+          title="Unable to process the request"
           impact={actionError.message}
           correlationId={actionError.correlationId}
           action={
             <Button variant="secondary" onClick={() => setActionError(null)} data-testid="gh-history-dismiss-error">
-              닫기
+              Close
             </Button>
           }
         />
       )}
 
-      <Panel as="section" aria-label="실행 이력" data-testid="section-history">
+      <Panel as="section" aria-label="Execution history" data-testid="section-history">
         <div className="prs-gh-execution-head">
-          <h2>실행 이력</h2>
+          <h2>Execution history</h2>
           <div className="prs-gh-actions">
             {canSeeAll ? (
               <label className="prs-gh-json-field" htmlFor="gh-history-all">
@@ -238,31 +238,31 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
                     setAll(event.target.checked);
                   }}
                 />
-                전체 사용자의 실행 보기
+                Show executions for all users
               </label>
             ) : null}
             <Button variant="secondary" onClick={refresh} data-testid="gh-history-refresh">
-              새로 고침
+              Refresh
             </Button>
           </div>
         </div>
 
-        {screen.kind === 'loading' ? <p data-testid="gh-history-loading">이력을 읽는 중…</p> : null}
+        {screen.kind === 'loading' ? <p data-testid="gh-history-loading">Loading history…</p> : null}
         {screen.kind === 'ready' && items.length === 0 ? (
-          <EmptyState cause="no_result" title="아직 실행한 명령이 없습니다" description="GitHub 작업 화면에서 실행하면 여기에 이력이 남습니다." actions={<Link href="/gh">GitHub 작업으로</Link>} />
+          <EmptyState cause="no_result" title="No commands have been run" description="Commands run from GitHub operations appear here." actions={<Link href="/gh">Go to GitHub operations</Link>} />
         ) : null}
         {items.length === 0 ? null : (
-          <Table data-testid="gh-history-table" caption="실행 이력. 본인이 요청한 실행만 보이며, 각 행의 결과는 실행 시점의 GHE 응답입니다.">
+          <Table data-testid="gh-history-table" caption="Your execution history. Each result reflects the GHE response at execution time.">
             <thead>
               <tr>
-                <th scope="col">실행</th>
+                <th scope="col">Run</th>
                 <th scope="col">capability</th>
-                <th scope="col">저장소</th>
-                <th scope="col">상태</th>
-                <th scope="col">요청</th>
-                <th scope="col">종료</th>
+                <th scope="col">Repository</th>
+                <th scope="col">Status</th>
+                <th scope="col">Requested</th>
+                <th scope="col">Finished</th>
                 <th scope="col">
-                  <span className="cdt-sr-only">동작</span>
+                  <span className="ui-sr-only">Actions</span>
                 </th>
               </tr>
             </thead>
@@ -293,7 +293,7 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
                   <td>
                     {item.invocation === undefined ? null : (
                       <Link href={`/gh?prefill=${encodePrefill(item.invocation)}`} data-testid="gh-history-rerun">
-                        같은 구성으로 다시 실행
+                        Run again with these settings
                       </Link>
                     )}
                   </td>
@@ -304,7 +304,7 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
         )}
         {nextBefore === null ? null : (
           <Button variant="secondary" onClick={loadMore} disabled={loadingMore} data-testid="gh-history-more">
-            {loadingMore ? '읽는 중…' : '이전 실행 더 보기'}
+            {loadingMore ? "Loading…" : "Load earlier executions"}
           </Button>
         )}
       </Panel>

@@ -170,16 +170,16 @@ test.describe('FLOW-007 수집 지연 대응', () => {
     await page.goto('/ops/pipeline');
 
     await expect(page.getByTestId('metric-ingestion-lag')).toHaveAttribute('data-unavailable', 'true');
-    await expect(page.getByTestId('metric-stage-latency')).toContainText('미확인');
-    await expect(page.getByTestId('metric-stage-latency')).toContainText('2.4초');
+    await expect(page.getByTestId('metric-stage-latency')).toContainText("Unknown");
+    await expect(page.getByTestId('metric-stage-latency')).toContainText("2.4s");
   });
 
   test('2단계: "느린 저장소가 없다"와 "볼 수 없다"를 가른다 (DEV-051)', async ({ page }) => {
     await installRoutes(page, { counters: counters() });
     await page.goto('/ops/pipeline');
 
-    await expect(page.getByTestId('laggards-empty')).toContainText('접근 범위 안에는 없습니다');
-    await expect(page.getByTestId('laggards-empty')).toContainText('3건');
+    await expect(page.getByTestId('laggards-empty')).toContainText("None within your access scope");
+    await expect(page.getByTestId('laggards-empty')).toContainText("3");
   });
 
   test('**4단계: 확인 전에는 재처리 요청이 서버로 나가지 않는다**', async ({ page }) => {
@@ -239,8 +239,8 @@ test.describe('FLOW-007 수집 지연 대응', () => {
     await installRoutes(page, { counters: counters(), scanRunning: true });
     await page.goto('/ops/pipeline');
 
-    await expect(page.getByTestId('scan-job')).toContainText('잡 55');
-    await expect(page.getByTestId('scan-job')).toContainText('실행 중');
+    await expect(page.getByTestId('scan-job')).toContainText("Job 55");
+    await expect(page.getByTestId('scan-job')).toContainText("Running");
     // 실행 중에는 다시 누를 수 없다 — 두 번째 잡을 만들지 않는다.
     await expect(page.getByTestId('scan-run')).toBeDisabled();
   });
@@ -252,7 +252,7 @@ test.describe('FLOW-007 수집 지연 대응', () => {
 
     await page.getByTestId('scan-run').click();
     await expect(page.getByTestId('scan-conflict')).toContainText('91');
-    await expect(page.getByTestId('scan-conflict')).toContainText('동시에 돌지 않습니다');
+    await expect(page.getByTestId('scan-conflict')).toContainText("cannot run concurrently");
   });
 
   test('아카이브 인덱스가 없어도 나머지 섹션이 정상 동작한다 (QA-A001-13)', async ({ page }) => {

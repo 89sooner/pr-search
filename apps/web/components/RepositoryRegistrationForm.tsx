@@ -24,7 +24,7 @@
  */
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { Button, Checkbox, Dialog, Field, Switch, TextArea, TextField } from '@conductor-by-89soone/react';
+import { Button, Checkbox, Dialog, Field, Switch, TextArea, TextField } from './ui';
 import {
   MAX_SEQUENCE_BRANCHES,
   UNREGISTER_CONFIRM_MESSAGE,
@@ -112,7 +112,7 @@ export function RepositoryRegistrationForm({
     >
       <form
         data-testid="registration-form"
-        aria-label={edit === null ? '저장소 등록' : '저장소 편집'}
+        aria-label={edit === null ? "Register repository" : "Edit repository"}
         onSubmit={(event) => {
           event.preventDefault();
           if (!ready) return;
@@ -125,7 +125,7 @@ export function RepositoryRegistrationForm({
           });
         }}
       >
-        <Field id="registration-owner" label="소유자">
+        <Field id="registration-owner" label="Owner">
           <TextField
             id="registration-owner"
             data-testid="registration-owner"
@@ -137,7 +137,7 @@ export function RepositoryRegistrationForm({
           />
         </Field>
 
-        <Field id="registration-name" label="저장소 이름">
+        <Field id="registration-name" label="Repository name">
           <TextField
             id="registration-name"
             data-testid="registration-name"
@@ -151,10 +151,10 @@ export function RepositoryRegistrationForm({
 
         <Field
           id="registration-branches"
-          label="시퀀스 대상 브랜치"
-          description={`줄바꿈이나 쉼표로 구분합니다. 최대 ${String(MAX_SEQUENCE_BRANCHES)}개입니다.`}
+          label="Sequence base branches"
+          description={`Separate with newlines or commas. Maximum: ${String(MAX_SEQUENCE_BRANCHES)} items.`}
           {...(overLimit
-            ? { error: `${String(outcome.given)}개를 적었습니다. 최대 ${String(MAX_SEQUENCE_BRANCHES)}개입니다.` }
+            ? { error: `${String(outcome.given)} entered. Maximum: ${String(MAX_SEQUENCE_BRANCHES)} items.` }
             : {})}
         >
           <TextArea
@@ -170,12 +170,11 @@ export function RepositoryRegistrationForm({
 
         {added.length === 0 ? null : (
           <p data-testid="registration-added-branches">
-            새로 대상이 되는 브랜치 {added.length}개({added.join(', ')})의 채번 잡이 생깁니다. 진행률은 잡 운영 화면에서
-            확인합니다.
+            New sequence branches: {added.length}({added.join(', ')}). Numbering jobs will be created. Track progress in job operations.
           </p>
         )}
 
-        <Field id="registration-mirror" label="미러 사용">
+        <Field id="registration-mirror" label="Enable mirror">
           <Switch
             id="registration-mirror"
             data-testid="registration-mirror"
@@ -187,7 +186,7 @@ export function RepositoryRegistrationForm({
         </Field>
 
         {edit === null ? (
-          <Field id="registration-backfill" label="등록 후 백필 실행">
+          <Field id="registration-backfill" label="Run backfill after registration">
             <Checkbox
               id="registration-backfill"
               data-testid="registration-backfill"
@@ -201,18 +200,18 @@ export function RepositoryRegistrationForm({
 
         {requiredPermissions === null ? null : (
           <p data-testid="registration-no-access" role="status">
-            이 저장소에 접근할 수 없습니다. 필요한 권한: {requiredPermissions.join(', ')}
+            Cannot access this repository. Required permissions: {requiredPermissions.join(', ')}
           </p>
         )}
 
         {sequenceJobIds.length === 0 ? null : (
           <p data-testid="registration-sequence-jobs">
-            채번 잡 {sequenceJobIds.join(', ')}이(가) 생성되었습니다. 진행률은 잡 운영 화면에서 확인합니다.
+            Numbering job {sequenceJobIds.join(', ')} created. Track progress in job operations.
           </p>
         )}
 
         <Button type="submit" disabled={!ready} data-testid="registration-submit">
-          {submitting ? '요청 중…' : edit === null ? '등록' : '변경 저장'}
+          {submitting ? "Submitting…" : edit === null ? "Register" : "Save changes"}
         </Button>
       </form>
 
@@ -226,13 +225,13 @@ export function RepositoryRegistrationForm({
               setConfirmingUnregister(true);
             }}
           >
-            수집 해제
+            Unregister
           </Button>
 
           <Dialog.Root open={confirmingUnregister} onOpenChange={setConfirmingUnregister}>
             <Dialog.Content size="sm" data-testid="unregister-dialog">
               <Dialog.Title>
-                {edit.owner}/{edit.name}의 수집을 해제합니다
+                {edit.owner}/{edit.name} will be unregistered from ingestion
               </Dialog.Title>
               {/*
                 **"삭제"라고 부르지 않는다.** 문구는 `ops-repositories.ts`가
@@ -251,11 +250,11 @@ export function RepositoryRegistrationForm({
                     onUnregister(edit);
                   }}
                 >
-                  해제
+                  Unregister
                 </Button>
                 <Dialog.Close asChild>
                   <Button variant="secondary" data-testid="unregister-cancel">
-                    취소
+                    Cancel
                   </Button>
                 </Dialog.Close>
               </div>

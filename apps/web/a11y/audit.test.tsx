@@ -70,7 +70,7 @@ afterEach(() => {
 describe('AuditRecordTable', () => {
   it('QA-A004-02: 일곱 열을 모두 그린다 (AC-2)', () => {
     render(<AuditRecordTable items={ROWS} />);
-    for (const header of ['시각', '사용자', '행위', '대상', '질의', '결과', '상관 ID']) {
+    for (const header of ['Time', 'User', 'Action', 'Target', 'Query', 'Results', 'Correlation ID']) {
       expect(screen.getByRole('columnheader', { name: header })).toBeTruthy();
     }
   });
@@ -96,7 +96,7 @@ describe('AuditRecordTable', () => {
     render(<AuditRecordTable items={ROWS} />);
     const absent = screen.getAllByTestId('audit-absent');
     expect(absent.length).toBeGreaterThan(0);
-    expect(absent[0]?.getAttribute('aria-label')).toBe('값 없음');
+    expect(absent[0]?.getAttribute('aria-label')).toBe("No value");
   });
 
   it('**질의를 자르지 않는다** — AC-2가 요구하는 것은 재구성 가능한 문자열이다', () => {
@@ -118,12 +118,12 @@ describe('AuditRecordTable', () => {
   it('표에 설명이 있다 — 무엇을 보는 표인지 말한다', () => {
     const { container } = render(<AuditRecordTable items={ROWS} />);
     const caption = container.querySelector('caption');
-    expect(caption?.textContent).toContain('수정·삭제할 수 없습니다');
+    expect(caption?.textContent).toContain("Records cannot be edited or deleted");
   });
 
   it('빈 목록도 머리글을 그린다 — 표가 사라지지 않는다', () => {
     render(<AuditRecordTable items={[]} />);
-    expect(screen.getByRole('columnheader', { name: '행위' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: "Action" })).toBeTruthy();
     expect(screen.queryAllByTestId('audit-row')).toHaveLength(0);
   });
 

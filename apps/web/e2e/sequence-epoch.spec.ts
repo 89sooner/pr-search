@@ -209,7 +209,7 @@ test.describe('시퀀스 인용 URL (CR-051)', () => {
 
     // 새 질의를 제출한다. 뜻이 없어진 파라미터가 남으면 다음 조회가 거절당한다.
     await page.getByRole('searchbox').fill('repo:acme/payments author:kim');
-    await page.getByRole('button', { name: '검색', exact: true }).click();
+    await page.getByRole('button', { name: "Search", exact: true }).click();
 
     await expect(page).toHaveURL(/author%3Akim/);
     await expect(page).not.toHaveURL(/seq_epoch/);

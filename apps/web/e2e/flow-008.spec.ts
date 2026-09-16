@@ -216,7 +216,7 @@ test.describe('FLOW-008 시퀀스 재채번', () => {
     await page.getByTestId('reassign-confirm-input').fill('acme/payments');
     await page.getByTestId('reassign-confirm-submit').click();
 
-    await expect(page.getByText(/재채번 요청이 거절되었습니다/)).toBeVisible();
+    await expect(page.getByText(/Renumbering was rejected/)).toBeVisible();
     /*
      * **재채번은 비가역이므로 재시도는 운영자의 명시적 재실행이어야 한다.**
      * 잠시 기다린 뒤에도 요청이 하나뿐임을 확인한다.
@@ -258,7 +258,7 @@ test.describe('FLOW-008 시퀀스 재채번', () => {
     await installRoutes(page, { counters: counters() });
     await page.goto('/ops/jobs');
 
-    await expect(page.getByTestId('job-progress-count')).toContainText('총계 미확인');
+    await expect(page.getByTestId('job-progress-count')).toContainText("total unknown");
     await expect(page.getByTestId('job-progress-meter')).toHaveCount(0);
   });
 });

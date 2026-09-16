@@ -9,9 +9,9 @@ it('WP-044 export count confirmation is labelled and keyboard operable', async (
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ total: 1001, mode: 'async' })));
   const user = userEvent.setup();
   render(<ExportDialog state={{ ...EMPTY_STATE, q: 'repo:wp044/visible' }} disabled={false} />);
-  await user.click(screen.getByRole('button', { name: '내보내기' }));
+  await user.click(screen.getByRole('button', { name: "Export" }));
   const dialog = await screen.findByRole('dialog');
-  await screen.findByText(/1,001건/);
+  await screen.findByText(/1,001/);
   const results = await axe.run(dialog, { rules: { 'color-contrast': { enabled: false } } });
   expect(results.violations).toEqual([]);
   await user.click(screen.getByRole('radio', { name: 'JSON' }));

@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { Badge, Banner, Button, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Banner, Button, Panel, Table } from './ui';
 import {
   DEFAULT_NEIGHBOR_COUNT,
   NEIGHBOR_COUNT_OPTIONS,
@@ -56,7 +56,7 @@ export function NeighborSequenceList({
 }: NeighborSequenceListProps): ReactNode {
   return (
     <div data-testid="neighbor-list">
-      <label htmlFor="neighbor-count">앞뒤 표시 건수</label>
+      <label htmlFor="neighbor-count">Neighbor count</label>
       <select
         id="neighbor-count"
         data-testid="neighbor-count"
@@ -67,23 +67,23 @@ export function NeighborSequenceList({
       >
         {NEIGHBOR_COUNT_OPTIONS.map((option) => (
           <option key={option} value={option}>
-            앞뒤 각 {option}건
+            On each side: {option} items
           </option>
         ))}
       </select>
 
       {/* 경계는 오류가 아니라 사실이다 (AC-4) — 모자란 것이 아니라 더 없는 것이다. */}
       {boundary.atStart ? (
-        <p data-testid="neighbor-at-start">이 앞에는 더 없습니다 — 시퀀스 공간의 시작입니다.</p>
+        <p data-testid="neighbor-at-start">No earlier items. This is the start of the sequence space.</p>
       ) : null}
 
-      <Table caption={`시퀀스 ${String(anchorSeq)} 기준 선행·후행 (서수 오름차순)`}>
+      <Table caption={`Sequence ${String(anchorSeq)} neighbors (ascending ordinal)`}>
         <Table.Head>
           <Table.Row>
             <Table.HeaderCell scope="col">seq</Table.HeaderCell>
-            <Table.HeaderCell scope="col">항목</Table.HeaderCell>
-            <Table.HeaderCell scope="col">작성자</Table.HeaderCell>
-            <Table.HeaderCell scope="col">머지 시각</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Item</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Author</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Merged at</Table.HeaderCell>
           </Table.Row>
         </Table.Head>
         <Table.Body>
@@ -101,17 +101,17 @@ export function NeighborSequenceList({
                 {row.isAnchor ? (
                   /* 기준 개체는 강조한다 (AC-3). 색만으로 말하지 않는다 — 배지 문자열이 근거다. */
                   <Badge tone="accent" data-testid="neighbor-anchor-badge">
-                    이 항목
+                    This item
                   </Badge>
                 ) : null}
                 {row.kind === 'commit' ? (
                   <Badge tone="neutral" data-testid="neighbor-direct-push">
-                    직접 푸시
+                    Direct push
                   </Badge>
                 ) : null}
                 {row.indexed ? null : (
                   <Badge tone="neutral" data-testid="neighbor-unindexed">
-                    색인 대기
+                    Indexing pending
                   </Badge>
                 )}
               </Table.Cell>
@@ -123,7 +123,7 @@ export function NeighborSequenceList({
       </Table>
 
       {boundary.atEnd ? (
-        <p data-testid="neighbor-at-end">이 뒤에는 더 없습니다 — 시퀀스 공간의 끝입니다.</p>
+        <p data-testid="neighbor-at-end">No later items. This is the end of the sequence space.</p>
       ) : null}
     </div>
   );
@@ -146,29 +146,27 @@ export function NeighborUnavailable({ reason, offChain = false }: NeighborUnavai
   if (offChain) {
     return (
       <p data-testid="neighbor-off-chain">
-        이 커밋은 대상 브랜치의 first-parent 체인 밖이라 서수가 없습니다 — 앞뒤를 셀 기준이
-        없습니다. 이 변경이 반영된 머지 커밋에서 확인하세요.
+        This commit is outside the base branch's first-parent chain and has no ordinal. View neighbors from the merge commit that introduced this change.
       </p>
     );
   }
   if (reason === 'not_merged') {
     return (
       <p data-testid="neighbor-not-merged">
-        아직 머지되지 않아 머지 시퀀스가 없습니다. 머지되면 앞뒤가 표시됩니다.
+        Not yet merged, so no merge sequence is available. Neighbors will appear after merging.
       </p>
     );
   }
   if (reason === 'not_sequenced') {
     return (
       <p data-testid="neighbor-not-sequenced">
-        머지 시퀀스를 아직 부여받지 못했습니다 — 채번이 끝나면 표시됩니다. 머지되지 않았다는
-        뜻은 아닙니다.
+        Merge sequence numbering is pending. Neighbors will appear once numbering completes; this does not mean the change is unmerged.
       </p>
     );
   }
   return (
     <p data-testid="neighbor-unknown-reason">
-      앞뒤를 표시할 수 없습니다. 사유를 확인하지 못했습니다.
+      Neighbors are unavailable. The reason could not be determined.
     </p>
   );
 }
@@ -288,7 +286,7 @@ export function NeighborSection({
 
   return (
     <Panel as="section" aria-labelledby={`${sectionId}-heading`} data-testid={`section-${sectionId}`}>
-      <h2 id={`${sectionId}-heading`}>선행·후행</h2>
+      <h2 id={`${sectionId}-heading`}>Neighbors</h2>
 
       <Button
         type="button"
@@ -304,7 +302,7 @@ export function NeighborSection({
           if (next && outcome.phase === 'idle') load(count);
         }}
       >
-        {expanded ? '접기' : '펼치기'}
+        {expanded ? "Collapse" : "Expand"}
       </Button>
 
       <div id={`${sectionId}-body`} hidden={!expanded} data-testid={`body-${sectionId}`}>
@@ -315,7 +313,7 @@ export function NeighborSection({
           />
         ) : null}
 
-        {outcome.phase === 'loading' ? <p data-testid="neighbors-loading">불러오는 중…</p> : null}
+        {outcome.phase === 'loading' ? <p data-testid="neighbors-loading">Loading…</p> : null}
         {/*
           * 실패에서 **빠져나갈 길을 함께 낸다** (CR-032, DEV-170). 안내만 두면
           * 접었다 펴도 `phase`가 `idle`이 아니라 다시 부르지 않고, 건수 조절은
@@ -324,9 +322,9 @@ export function NeighborSection({
           */}
         {outcome.phase === 'error' ? (
           <>
-            <p data-testid="neighbors-error">선행·후행을 불러오지 못했습니다.</p>
+            <p data-testid="neighbors-error">Unable to load neighbors.</p>
             <Button variant="secondary" size="sm" type="button" data-testid="neighbors-retry" onClick={() => { load(count); }}>
-              다시 시도
+              Try again
             </Button>
           </>
         ) : null}
@@ -340,11 +338,10 @@ export function NeighborSection({
               * 가리키게 된다 — W-004와 같은 규칙이다.
               */}
             {epoch === 'stale' ? (
-              <Banner tone="warning" title="시퀀스가 재채번되었습니다" data-testid="neighbors-epoch-stale">
+              <Banner tone="warning" title="The sequence was renumbered" data-testid="neighbors-epoch-stale">
                 <p>
-                  이 화면이 표시한 시퀀스는 에폭 {String(documentEpoch)} 기준이고 지금은 에폭{' '}
-                  {String(view.seqEpoch)}입니다. 이전에 인용한 범위는 무효이며, 아래 목록은 현재
-                  에폭 기준입니다.
+                  The previously displayed sequence used epoch {String(documentEpoch)} ; the current epoch is {' '}
+                  {String(view.seqEpoch)}. Previous range references are invalid. The list below uses the current epoch.
                 </p>
               </Banner>
             ) : null}
@@ -363,7 +360,7 @@ export function NeighborSection({
 
             {rangeHref === null ? null : (
               <Link href={rangeHref} data-testid="neighbors-range-expand">
-                범위로 확장
+                Open as range
               </Link>
             )}
           </>

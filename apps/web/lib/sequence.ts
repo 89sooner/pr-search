@@ -93,19 +93,19 @@ export function sequenceLabel(input: SequenceInput, state: SequenceBadgeState): 
       return `${seq}${epoch}`;
     }
     case 'unassigned':
-      return '미머지';
+      return 'Unmerged';
     case 'not_computed':
-      return '미채번';
+      return 'Not numbered';
   }
 }
 
 /** 툴팁·`aria-describedby`에 실을 설명. 공간과 에폭을 밝힌다 (ADR-007). */
 export function sequenceDescription(input: SequenceInput, state: SequenceBadgeState): string {
-  if (state === 'unassigned') return '머지되지 않아 시퀀스가 없습니다.';
+  if (state === 'unassigned') return 'No sequence is available because this item has not been merged.';
   if (state === 'not_computed') {
-    return '머지 시퀀스를 아직 계산하지 않았습니다. 값이 없는 것과 다릅니다.';
+    return 'The merge sequence has not been calculated yet. This does not mean there is no sequence.';
   }
-  const space = input.sequence_space ?? '알 수 없는 시퀀스 공간';
-  const epoch = input.seq_epoch === null ? '' : ` (에폭 ${String(input.seq_epoch)})`;
-  return `${space}의 머지 시퀀스${epoch}. 다른 시퀀스 공간의 값과 비교할 수 없습니다.`;
+  const space = input.sequence_space ?? 'Unknown sequence space';
+  const epoch = input.seq_epoch === null ? '' : ` (epoch ${String(input.seq_epoch)})`;
+  return `${space} merge sequence${epoch}. Values from different sequence spaces cannot be compared.`;
 }

@@ -17,7 +17,7 @@
  */
 
 import { useId, type ReactNode } from 'react';
-import { Badge } from '@conductor-by-89soone/react';
+import { Badge } from './ui';
 import {
   isForeignSpace,
   sequenceBadgeState,
@@ -70,9 +70,9 @@ export function SequenceBadge({ contextSpace, ...input }: SequenceBadgeProps): R
        * 설명은 화면에 보이지 않되 스크린 리더에는 읽힌다. `display: none`이면
        * 읽히지 않으므로 Conductor의 시각적 숨김 클래스를 쓴다.
        */}
-      <span id={describedBy} className="cdt-sr-only">
+      <span id={describedBy} className="ui-sr-only">
         {sequenceDescription(input, state)}
-        {foreign ? ' 목록의 다른 항목과 다른 시퀀스 공간입니다.' : ''}
+        {foreign ? ' This item is in a different sequence space from the rest of the list.' : ''}
       </span>
     </>
   );

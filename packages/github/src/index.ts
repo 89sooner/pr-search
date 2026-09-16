@@ -8,6 +8,8 @@
  */
 
 export const PACKAGE_NAME = '@prs/github' as const;
+export { GitHubSourceReader } from './source-reader.js';
+export type { SourceGitCommit, SourceRestCommit, SourceRestFile, SourceContent, SourceGitTree, SourcePr } from './source-reader.js';
 
 export {
   resolveGitHubConfig,

@@ -50,13 +50,13 @@ describe('사유 문구 — 조용히 비우지 않는다 (C-012 사용 규칙)'
   it('세지 않았으면 그렇게 말한다', () => {
     const notice = facetNotice(facetRailState({}));
     expect(notice).not.toBeNull();
-    expect(notice).toContain('아직');
+    expect(notice).toContain("yet");
   });
 
   it('생략했으면 **다른 문구**로 말하고 사용자가 할 일을 준다', () => {
     const notice = facetNotice(facetRailState({ facets_omitted: true }));
     expect(notice).not.toBeNull();
-    expect(notice).toContain('좁히면');
+    expect(notice).toContain("Narrow");
   });
 
   it('두 문구가 다르다 — 뭉치면 마지막 경우의 복구 경로를 잃는다', () => {

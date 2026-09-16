@@ -17,7 +17,7 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { Card, CardGrid } from '@conductor-by-89soone/react';
+import { Card, CardGrid } from './ui';
 import { SequenceBadge } from './SequenceBadge';
 import { shortSha } from '../lib/format';
 import { withFromQuery } from '../lib/query-url';
@@ -48,7 +48,7 @@ function label(candidate: ResolutionCandidate): string {
   if (candidate.display_name !== null && candidate.display_name !== '') return candidate.display_name;
   if (candidate.pr_number !== undefined) return `#${String(candidate.pr_number)}`;
   if (candidate.commit_sha !== undefined) return shortSha(candidate.commit_sha);
-  return '(이름 없음)';
+  return "(unnamed)";
 }
 
 export function ResolutionCandidateList({
@@ -57,17 +57,16 @@ export function ResolutionCandidateList({
   fromQuery,
 }: ResolutionCandidateListProps): ReactNode {
   return (
-    <section aria-label="해석 후보" data-testid="candidate-list">
-      <h2>후보 {candidates.length}건</h2>
+    <section aria-label="Resolution candidates" data-testid="candidate-list">
+      <h2>Candidates {candidates.length} items</h2>
       <p>
-        입력한 문자열이 여러 대상과 일치합니다. 어느 것인지 골라 주세요 — 자동으로 이동하지
-        않았습니다.
+        Your input matches multiple targets. Select one to open it.
       </p>
 
       {/* 절삭은 결과보다 먼저 말한다 (FR-SRCH-004 AC-3, QA-W001-06). */}
       {truncated ? (
         <p role="status" data-testid="candidates-truncated">
-          일치하는 대상이 많아 일부만 표시했습니다. 저장소나 작성자 조건을 더하면 좁힐 수 있습니다.
+          Only some matching targets are shown. Add a repository or author filter to narrow the results.
         </p>
       ) : null}
 
@@ -79,8 +78,8 @@ export function ResolutionCandidateList({
           const body = (
             <>
               <strong>{name}</strong>
-              <span>{candidate.kind === 'pull_request' ? 'PR' : '커밋'}</span>
-              <span>{candidate.repository ?? '저장소 미상'}</span>
+              <span>{candidate.kind === 'pull_request' ? 'PR' : "Commit"}</span>
+              <span>{candidate.repository ?? "Unknown repository"}</span>
               {candidate.author === undefined ? null : <span>{candidate.author}</span>}
               <SequenceBadge
                 merge_seq={candidate.merge_seq}

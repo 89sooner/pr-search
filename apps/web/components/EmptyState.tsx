@@ -13,31 +13,31 @@
  */
 
 import type { ReactNode } from 'react';
-import { EmptyState as ConductorEmptyState } from '@conductor-by-89soone/react';
+import { EmptyState as ProductEmptyState } from './ui';
 
 export type EmptyCause = 'no_query' | 'no_result' | 'not_indexed' | 'no_permission' | 'not_found';
 
 /** 원인별 기본 문구. 화면이 `title`·`description`으로 덮어쓸 수 있다. */
 const COPY: Readonly<Record<EmptyCause, { title: string; description: string }>> = {
   no_query: {
-    title: '검색어를 입력하세요',
-    description: '커밋 SHA, PR 번호, GHE URL을 그대로 붙여넣어도 됩니다.',
+    title: "Enter a search query",
+    description: "Paste a commit SHA, PR number, or GHE URL.",
   },
   no_result: {
-    title: '조건에 맞는 결과가 없습니다',
-    description: '조건을 하나씩 빼면서 범위를 넓혀 보세요.',
+    title: "No matching results",
+    description: "Remove filters one at a time to broaden your search.",
   },
   not_indexed: {
-    title: '수집 대상이 아닌 저장소입니다',
-    description: '저장소가 등록되어 있는지 확인하세요. 등록 직후에는 백필이 끝날 때까지 결과가 비어 있습니다.',
+    title: "This repository is not registered for ingestion",
+    description: "Check whether the repository is registered. Results remain empty until the initial backfill completes.",
   },
   no_permission: {
-    title: '볼 수 있는 저장소가 없습니다',
-    description: '접근 권한이 반영되기까지 최대 5분이 걸립니다. 그 뒤에도 같으면 관리자에게 문의하세요.',
+    title: "No accessible repositories",
+    description: "Permission changes may take up to five minutes. Contact an administrator if access is still unavailable.",
   },
   not_found: {
-    title: '찾을 수 없습니다',
-    description: '식별자가 정확한지 확인하세요. 접근 권한이 없는 경우에도 같게 보입니다.',
+    title: "Not found",
+    description: "Check the identifier. Items you cannot access are also shown as not found.",
   },
 };
 
@@ -51,7 +51,7 @@ export interface EmptyStateProps {
 export function EmptyState({ cause, title, description, actions }: EmptyStateProps): ReactNode {
   const copy = COPY[cause];
   return (
-    <ConductorEmptyState
+    <ProductEmptyState
       // 원인을 DOM에 남긴다 — 시험과 운영 조사가 어느 빈 상태인지 구분할 수 있어야 한다.
       data-cause={cause}
       title={title ?? copy.title}

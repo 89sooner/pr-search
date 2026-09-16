@@ -21,7 +21,7 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Button } from '@conductor-by-89soone/react';
+import { Button } from './ui';
 import { AuditRecordTable } from './AuditRecordTable';
 import { CursorPager } from './CursorPager';
 import { EmptyState } from './EmptyState';
@@ -190,8 +190,8 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
       <div data-testid="audit-view" data-state="no_permission">
         <EmptyState
           cause="no_permission"
-          title="이 화면은 보안 담당자(security_officer) 역할이 필요합니다"
-          description="필요한 역할을 그대로 적습니다. 운영자(operator) 역할로는 감사 기록을 조회할 수 없습니다."
+          title="The security_officer role is required"
+          description="Only security_officer can view audit records. The operator role does not grant access."
         />
       </div>
     );
@@ -201,7 +201,7 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
 
   return (
     <div data-testid="audit-view" data-state={view}>
-      <section aria-label="감사 기록 필터" data-testid="audit-filters">
+      <section aria-label="Audit record filters" data-testid="audit-filters">
         <datalist id="audit-action-options">
           {ACTION_OPTIONS.map((action) => (
             <option key={action} value={action} />
@@ -209,7 +209,7 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
         </datalist>
         <Field
           id="audit-user"
-          label="사용자"
+          label="User"
           value={draft.userId}
           onChange={(next) => {
             setDraft((current) => ({ ...current, userId: next }));
@@ -222,7 +222,7 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
         */}
         <Field
           id="audit-action"
-          label="행위 유형"
+          label="Action type"
           value={draft.action}
           list="audit-action-options"
           onChange={(next) => {
@@ -231,7 +231,7 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
         />
         <Field
           id="audit-target"
-          label="대상"
+          label="Target"
           value={draft.target}
           onChange={(next) => {
             setDraft((current) => ({ ...current, target: next }));
@@ -239,7 +239,7 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
         />
         <Field
           id="audit-from"
-          label="시작"
+          label="Start"
           type="datetime-local"
           value={draft.from}
           onChange={(next) => {
@@ -248,7 +248,7 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
         />
         <Field
           id="audit-to"
-          label="끝"
+          label="End"
           type="datetime-local"
           value={draft.to}
           onChange={(next) => {
@@ -257,17 +257,17 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
         />
         <Field
           id="audit-result"
-          label="결과 코드"
+          label="Result code"
           value={draft.resultCode}
           onChange={(next) => {
             setDraft((current) => ({ ...current, resultCode: next }));
           }}
         />
         <Button onClick={apply} data-testid="audit-apply">
-          조회
+          Load
         </Button>
         <Button variant="secondary" onClick={reset} data-testid="audit-reset">
-          조건 지우기
+          Clear filters
         </Button>
       </section>
 
@@ -276,13 +276,13 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
           tone="warning"
           title={
             state.cursorFailure === 'CURSOR_QUERY_MISMATCH'
-              ? '조회 조건이 바뀌었습니다'
-              : '이 페이지 위치를 더 쓸 수 없습니다'
+              ? "Filters have changed"
+              : "This page position is no longer available"
           }
           impact={
             state.cursorFailure === 'CURSOR_QUERY_MISMATCH'
-              ? '조건을 바꾼 뒤에는 이전 위치를 이어 볼 수 없습니다. 첫 페이지부터 다시 봅니다.'
-              : '위치 정보가 만료되었거나 손상되었습니다. 첫 페이지부터 다시 봅니다.'
+              ? "Changing filters invalidates the previous page position. Start again from the first page."
+              : "The page position has expired or is invalid. Start again from the first page."
           }
         />
       ) : null}
@@ -290,16 +290,16 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
       {view === 'error' ? (
         <ErrorBanner
           tone="danger"
-          title="감사 기록을 가져오지 못했습니다"
-          impact="조사 중이던 조건은 그대로 남아 있습니다. 잠시 뒤 다시 조회해 주세요."
+          title="Unable to load audit records"
+          impact="Your filters are preserved. Please try again later."
         />
       ) : null}
 
       {view === 'empty_no_result' ? (
         <EmptyState
           cause="no_result"
-          title="이 조건에 맞는 감사 기록이 없습니다"
-          description="기간을 넓히거나 행위 유형 조건을 지우면 더 많은 기록이 표시됩니다."
+          title="No audit records match these filters"
+          description="Broaden the date range or remove the action type filter to see more records."
         />
       ) : (
         <AuditRecordTable items={items} />

@@ -14,15 +14,15 @@ export const dynamic = 'force-dynamic';
 
 export default async function GhHistoryPage(): Promise<ReactNode> {
   return (
-    <GuardedPage title="GitHub 실행 이력" returnTo="/gh/history">
+    <GuardedPage title="GitHub run history" returnTo="/gh/history">
       {({ roles }) => (
         <>
           <header className="prs-page-heading">
             <div>
               <p className="prs-eyebrow">GITHUB OPERATIONS</p>
-              <h1>실행 이력</h1>
+              <h1>Run history</h1>
             </div>
-            <p>내가 요청한 gh 실행의 상태와 결과입니다. 「같은 구성으로 다시 실행」은 새 미리보기와 새 실행을 만듭니다.</p>
+            <p>View the status and results of your gh runs. Running again with the same configuration creates a new preview and a new run.</p>
           </header>
           <GhHistoryView canSeeAll={roles.includes('security_officer')} />
         </>

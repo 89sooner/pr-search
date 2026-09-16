@@ -22,7 +22,7 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { Panel } from '@conductor-by-89soone/react';
+import { Panel } from './ui';
 
 export interface TimeSeriesRow {
   readonly key: string;
@@ -43,15 +43,15 @@ const MAX_SERIES = 20;
 
 /** 계열 색. 인덱스로 고정한다(같은 키는 같은 색). */
 function seriesColor(index: number): string {
-  return `var(--cdt-dataviz-series-${String((index % MAX_SERIES) + 1)})`;
+  return `var(--ui-dataviz-series-${String((index % MAX_SERIES) + 1)})`;
 }
 
 function polylinePoints(values: readonly number[], max: number): string {
   const n = values.length;
   return values
     .map((value, index) => {
-      const x = n <= 1 ? 0 : (index / (n - 1)) * 100;
-      const y = max === 0 ? 100 : 100 - (value / max) * 100;
+      const x = n <= 1 ? 50 : 3 + (index / (n - 1)) * 94;
+      const y = max === 0 ? 94 : 94 - (value / max) * 86;
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(' ');
@@ -65,35 +65,41 @@ export function TimeSeriesChart({
   bucketLabel = (iso) => iso,
 }: TimeSeriesChartProps): ReactNode {
   const max = series.reduce((acc, row) => Math.max(acc, ...row.values), 0);
-  const summary = `${String(series.length)}개 계열, ${String(buckets.length)}개 구간, 최대 ${max.toLocaleString('ko-KR')}`;
+  const summary = `${String(series.length)} series, ${String(buckets.length)} buckets, maximum ${max.toLocaleString("en-US")}`;
 
   return (
-    <Panel as="section" aria-label="시계열">
-      <h3>머지 PR 시계열</h3>
-      {truncated ? <p data-testid="series-truncated">계열이 20개를 넘어 상위 20개만 색으로 구분합니다.</p> : null}
+    <Panel as="section" aria-label="Time series" className="prs-chart-panel">
+      <h3>Merged PR time series</h3>
+      {truncated ? <p data-testid="series-truncated">More than 20 series exist. Only the top 20 have distinct colors.</p> : null}
 
+      <div className="prs-time-chart">
+      <div className="prs-chart-y-axis" aria-hidden="true"><span>{max.toLocaleString('en-US')}</span><span>{Math.round(max / 2).toLocaleString('en-US')}</span><span>0</span></div>
       <svg
         role="img"
-        aria-label={`머지 PR 시계열: ${summary}`}
+        aria-label={`Merged PR time series: ${summary}`}
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
         style={{ width: '100%', height: '220px' }}
       >
+        {[8, 51, 94].map(y => <line key={y} x1={3} x2={97} y1={y} y2={y} stroke="var(--ui-border-subtle)" strokeWidth={1} vectorEffect="non-scaling-stroke" />)}
         {series.slice(0, MAX_SERIES).map((row, index) => (
           <polyline
             key={row.key}
             points={polylinePoints(row.values, max)}
             fill="none"
             stroke={seriesColor(index)}
-            strokeWidth={1.5}
+            strokeWidth={2.5}
             vectorEffect="non-scaling-stroke"
           />
         ))}
+        {series.slice(0, MAX_SERIES).map((row, index) => row.values.length === 1 ? <circle key={row.key} cx={50} cy={max === 0 ? 94 : 94 - ((row.values[0] ?? 0) / max) * 86} r={1} fill={seriesColor(index)} /> : null)}
       </svg>
+      <div className="prs-chart-x-axis" aria-hidden="true"><span>{buckets[0] ? bucketLabel(buckets[0]) : ''}</span><span>{buckets.length > 1 ? bucketLabel(buckets[buckets.length - 1] ?? '') : ''}</span></div>
+      </div>
 
       {/* 범례: 색과 이름을 함께 싣는다 — 색만으로 계열을 알게 하지 않는다. */}
       {series.length > 0 ? (
-        <ul data-testid="series-legend" aria-label="계열 범례">
+        <ul data-testid="series-legend" aria-label="Series legend" className="prs-chart-legend">
           {series.slice(0, MAX_SERIES).map((row, index) => (
             <li key={row.key}>
               <span
@@ -112,14 +118,14 @@ export function TimeSeriesChart({
       ) : null}
 
       {/* 표 대체: 같은 값·구간 순서. 버킷마다 근거 목록으로 가는 링크를 둔다. */}
-      <details open>
-        <summary>표로 보기</summary>
+      <details open className="prs-chart-data">
+        <summary>View as table</summary>
         <div style={{ overflowX: 'auto' }}>
           <table>
-            <caption>구간별 계열 값</caption>
+            <caption>Series values by bucket</caption>
             <thead>
               <tr>
-                <th scope="col">구간</th>
+                <th scope="col">Range</th>
                 {series.map((row) => (
                   <th key={row.key} scope="col">
                     {row.key}
@@ -142,7 +148,7 @@ export function TimeSeriesChart({
                       )}
                     </th>
                     {series.map((row) => (
-                      <td key={row.key}>{(row.values[bucketIndex] ?? 0).toLocaleString('ko-KR')}</td>
+                      <td key={row.key}>{(row.values[bucketIndex] ?? 0).toLocaleString("en-US")}</td>
                     ))}
                   </tr>
                 );

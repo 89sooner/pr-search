@@ -14,7 +14,7 @@
 | 양방향 식별자 해석 | 커밋 SHA → PR, PR → 커밋을 단일 조회로 해결 | `10_requirements/srs_final.md` FR-SRCH-001~004 |
 | 관계 그래프 | 선행/후행·포함·참조·되돌림·체리픽·스택·동시 변경을 근거와 신뢰도를 갖춘 간선으로 저장 | `10_requirements/srs_final.md` FR-REL-001~008 |
 
-기술 스택은 전 계층 TypeScript, 저장은 PostgreSQL(시스템 오브 레코드) + Elasticsearch(파생 검색 뷰), UI는 사내 `design-system`(Conductor)이다. 확정 결정은 ADR-001~012에 있으며 구현 에이전트는 이를 재결정하지 않는다.
+기술 스택은 전 계층 TypeScript, 저장은 PostgreSQL(시스템 오브 레코드) + Elasticsearch(파생 검색 뷰), UI는 Radix Primitives와 제품 토큰이다(CR-096 / ADR-006 amendment). 확정 결정은 ADR에 있으며 구현 에이전트는 이를 재결정하지 않는다.
 
 **배포는 프로파일 둘이다** (ADR-021 / CR-059). **Profile A**는 단일 호스트 Docker Compose이며 **첫 사내 반입의 현재 기본**이고, **Profile B**는 다중 호스트 Kubernetes로 다중 서버·고가용이 필요해질 때 쓴다. 첫 사내 반입은 **오프라인 번들 하나**로 이루어지며 설치는 사내에서 `git clone`·`pnpm install`·레지스트리 접근을 요구하지 않는다. 그 번들은 GitHub Release 자산으로 발행되어 사내에서 이 저장소 한정 읽기 토큰으로 받는다 (CR-063 / WP-072). 반입된 형상은 **외부로 되돌아오지 않는다** — 외부 저장소가 upstream 릴리스 생산자이고 내부 저장소가 영구 다운스트림 제품 라인이며, **내부 수정을 외부에 병합하는 절차는 설계하지 않는다.** 사내 운영 발견은 민감정보와 내부 코드를 제외한 `Upstream Feedback` 텍스트로 수동 전달하고, public origin이 실제 source를 검증해 수정한다 (CR-073).
 

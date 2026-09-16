@@ -12,7 +12,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Banner } from '@conductor-by-89soone/react';
+import { Banner } from './ui';
 
 export type ErrorTone = 'info' | 'warning' | 'danger';
 
@@ -45,7 +45,7 @@ export function ErrorBanner({
   if (process.env.NODE_ENV !== 'production') {
     // 개발 중에 잡는다. 운영에서 던지면 오류 화면이 또 다른 오류로 덮인다.
     if (!recoverable && id === null) {
-      console.error('[C-005] 복구 불가 오류에는 correlationId가 있어야 한다');
+      console.error("[C-005] Unrecoverable errors require a correlationId");
     }
     /*
      * **`danger`에는 나갈 길이 있어야 한다.**
@@ -56,7 +56,7 @@ export function ErrorBanner({
      * 사용자가 할 수 있는 일을 주지 않는 것은 막다른 길이다.
      */
     if (tone === 'danger' && action === undefined) {
-      console.error('[C-005] `danger` 오류에는 복구 액션이 있어야 한다');
+      console.error("[C-005] Danger errors require a recovery action");
     }
   }
 
@@ -65,7 +65,7 @@ export function ErrorBanner({
       <p>{impact}</p>
       {id === null ? null : (
         <p data-testid="correlation-id">
-          문의 시 이 값을 함께 알려 주세요: <code className="cdt-mono">{id}</code>
+          Include this value when contacting support: <code className="ui-mono">{id}</code>
         </p>
       )}
     </Banner>

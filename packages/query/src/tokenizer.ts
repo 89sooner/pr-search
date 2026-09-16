@@ -60,7 +60,7 @@ function readQuoted(input: string, start: number, tokenStart: number): { value: 
   }
 
   throw syntaxError(
-    '따옴표가 닫히지 않았습니다',
+    'Unclosed quotation mark',
     input.slice(tokenStart),
     tokenStart,
     input.length,

@@ -256,7 +256,7 @@ export function judgeComparisonRange(source: unknown): ComparisonRangeView | nul
  */
 export function previousLabel(release: ReleaseRowView): string {
   if (release.previousTagName === null || release.pullRequestCountSincePrevious === null) {
-    return '직전 릴리스 없음';
+    return 'No previous release';
   }
-  return `${release.previousTagName} 대비 PR ${String(release.pullRequestCountSincePrevious)}건`;
+  return `${release.previousTagName} — PRs added: ${String(release.pullRequestCountSincePrevious)}`;
 }

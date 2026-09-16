@@ -22,7 +22,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { FilterChip, FilterToolbar } from '@conductor-by-89soone/react';
+import { FilterChip, FilterToolbar } from './ui';
 import type { QueryParseError } from '@prs/query';
 import type { QueryChip } from '../lib/tokens';
 
@@ -44,11 +44,11 @@ export interface QueryTokenBarProps {
 function Highlighted({ raw, error }: { raw: string; error: QueryParseError }): ReactNode {
   const { offset_start: start, offset_end: end } = error.detail;
   if (start < 0 || end > raw.length || start >= end) {
-    return <code className="cdt-mono" data-testid="query-echo">{raw}</code>;
+    return <code className="ui-mono" data-testid="query-echo">{raw}</code>;
   }
 
   return (
-    <code className="cdt-mono" data-testid="query-echo">
+    <code className="ui-mono" data-testid="query-echo">
       {raw.slice(0, start)}
       <mark data-testid="query-error-range">{raw.slice(start, end)}</mark>
       {raw.slice(end)}
@@ -62,7 +62,7 @@ export function QueryTokenBar({ chips, onRemove, error, raw }: QueryTokenBarProp
     const allowed = error.detail.allowed_values;
 
     return (
-      <div data-testid="query-token-bar" role="group" aria-label="질의 토큰" className="prs-query-error">
+      <div data-testid="query-token-bar" role="group" aria-label="Query tokens" className="prs-query-error">
         <p role="alert">{error.message}</p>
         <Highlighted raw={raw} error={error} />
         {/*
@@ -70,10 +70,10 @@ export function QueryTokenBar({ chips, onRemove, error, raw }: QueryTokenBarProp
          * "지원하지 않는 키"만 말하면 사용자가 무엇을 쓸 수 있는지 모른다.
          */}
         {supported === undefined ? null : (
-          <p data-testid="supported-keys">사용할 수 있는 키: {supported.join(', ')}</p>
+          <p data-testid="supported-keys">Available keys: {supported.join(', ')}</p>
         )}
         {allowed === undefined ? null : (
-          <p data-testid="allowed-values">사용할 수 있는 값: {allowed.join(', ')}</p>
+          <p data-testid="allowed-values">Available values: {allowed.join(', ')}</p>
         )}
       </div>
     );
@@ -86,7 +86,7 @@ export function QueryTokenBar({ chips, onRemove, error, raw }: QueryTokenBarProp
      * `FilterToolbar`는 flex-wrap div일 뿐이라 목록 의미는 여기서 준다 — 스크린 리더가
      * "적용된 필터, 2개 항목"으로 읽어야 몇 개가 걸려 있는지 안다.
      */
-    <FilterToolbar role="list" data-testid="query-token-bar" aria-label="적용된 필터" className="prs-query-tokens">
+    <FilterToolbar role="list" data-testid="query-token-bar" aria-label="Applied filters" className="prs-query-tokens">
       {chips.map((chip) => (
         <FilterChip
           key={`${chip.key}-${String(chip.index)}`}
@@ -97,7 +97,7 @@ export function QueryTokenBar({ chips, onRemove, error, raw }: QueryTokenBarProp
             onRemove(chip.index);
           }}
         >
-          {chip.negated ? <span className="prs-query-token__negation">제외</span> : null}
+          {chip.negated ? <span className="prs-query-token__negation">Excluded</span> : null}
           <span className="prs-mono">{chip.key}: {chip.value}</span>
         </FilterChip>
       ))}

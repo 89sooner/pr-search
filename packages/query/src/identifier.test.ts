@@ -153,7 +153,7 @@ describe('QA-W001-04: 7자 미만은 서버를 부르지 않고 거절한다 (FR
 
     expect(detection.rejection).toEqual({
       code: 'SHA_PREFIX_TOO_SHORT',
-      message: '축약 SHA는 7자 이상이어야 합니다',
+      message: "A shortened SHA must contain at least 7 characters",
       min_length: 7,
       actual_length: 6,
     });

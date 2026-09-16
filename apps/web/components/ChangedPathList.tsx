@@ -21,7 +21,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Panel, Table } from './ui';
 import { pathCountLabel, type ChangedPathModel } from '../lib/commit-detail';
 
 export interface ChangedPathListProps extends ChangedPathModel {
@@ -41,7 +41,7 @@ export function ChangedPathList({
   return (
     <Panel as="section" aria-labelledby="paths-heading" data-testid="changed-paths">
       <h2 id="paths-heading">
-        변경 경로 {notCollected ? <Badge tone="neutral">준비 중</Badge> : null}
+        Changed paths {notCollected ? <Badge tone="neutral">Not yet available</Badge> : null}
       </h2>
 
       {notCollected ? (
@@ -51,21 +51,21 @@ export function ChangedPathList({
          */
         <>
           <p data-testid="paths-reason">
-            커밋의 변경 경로는 아직 수집하지 않았습니다. 수집 이벤트가 커밋에 대해 SHA만 나릅니다.
+            Changed paths have not been collected yet. Ingestion events provide only the commit SHA.
           </p>
           <p>
-            <span className="cdt-sr-only">담당 작업 패키지: </span>
+            <span className="ui-sr-only">Work package: </span>
             {owner}
           </p>
         </>
       ) : (
         <>
-          <Table caption="이 커밋이 바꾼 경로">
+          <Table caption="Paths changed by this commit">
             <Table.Head>
               <Table.Row>
-                <Table.HeaderCell scope="col">경로</Table.HeaderCell>
-                <Table.HeaderCell scope="col">추가</Table.HeaderCell>
-                <Table.HeaderCell scope="col">삭제</Table.HeaderCell>
+                <Table.HeaderCell scope="col">Path</Table.HeaderCell>
+                <Table.HeaderCell scope="col">Added</Table.HeaderCell>
+              <Table.HeaderCell scope="col">Removed</Table.HeaderCell>
               </Table.Row>
             </Table.Head>
             <Table.Body>
@@ -73,7 +73,7 @@ export function ChangedPathList({
                 <Table.Row key={one.path} data-testid="path-row">
                   {/* 경로 문자열뿐이다. 내용을 여는 링크도 두지 않는다. */}
                   <Table.Cell>
-                    <code className="cdt-mono">{one.path}</code>
+                    <code className="ui-mono">{one.path}</code>
                   </Table.Cell>
                   <Table.Cell>{one.additions === undefined ? '—' : `+${String(one.additions)}`}</Table.Cell>
                   <Table.Cell>{one.deletions === undefined ? '—' : `-${String(one.deletions)}`}</Table.Cell>

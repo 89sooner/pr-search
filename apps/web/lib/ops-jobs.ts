@@ -30,9 +30,9 @@ export interface JobView {
 export type JobControl = 'pause' | 'resume' | 'cancel';
 
 const CONTROL_LABELS: Readonly<Record<JobControl, string>> = {
-  pause: '일시 중지',
-  resume: '재개',
-  cancel: '중단',
+  pause: 'Pause',
+  resume: 'Resume',
+  cancel: 'Stop',
 };
 
 export function controlLabel(action: JobControl): string {
@@ -110,14 +110,14 @@ export interface RunOption {
 }
 
 export const RUN_OPTIONS: readonly RunOption[] = [
-  { type: 'backfill', label: '저장소 백필', path: '/api/admin/jobs', input: 'repository' },
-  { type: 'link_rebuild', label: '관계 전량 재파생', path: '/api/admin/jobs', input: 'repository' },
-  { type: 'reconcile', label: '조정 스캔', path: '/api/admin/jobs', input: 'none' },
-  { type: 'sequence_assign', label: '시퀀스 채번', path: '/api/admin/jobs', input: 'sequence_space' },
-  { type: 'reindex', label: '무중단 재색인', path: '/api/admin/reindex', input: 'alias' },
+  { type: 'backfill', label: 'Repository backfill', path: '/api/admin/jobs', input: 'repository' },
+  { type: 'link_rebuild', label: 'Rebuild all relationships', path: '/api/admin/jobs', input: 'repository' },
+  { type: 'reconcile', label: 'Reconciliation scan', path: '/api/admin/jobs', input: 'none' },
+  { type: 'sequence_assign', label: 'Sequence numbering', path: '/api/admin/jobs', input: 'sequence_space' },
+  { type: 'reindex', label: 'Zero-downtime reindex', path: '/api/admin/reindex', input: 'alias' },
   {
     type: 'sequence_integrity',
-    label: '시퀀스 정합성 점검',
+    label: 'Sequence consistency check',
     path: '/api/admin/sequence-integrity',
     input: 'sequence_space',
   },
@@ -182,10 +182,10 @@ export function isDualWriting(row: AliasStatusView): boolean {
  * 모르는 것과 인덱스가 빈 것은 다른 사실이고, 후자로 적으면 운영자가 재색인이
  * 실패했다고 읽는다.
  */
-export const UNAVAILABLE_LABEL = '미확인';
+export const UNAVAILABLE_LABEL = 'Unknown';
 
 export function formatCount(value: number | null): string {
-  return value === null ? UNAVAILABLE_LABEL : value.toLocaleString('ko-KR');
+  return value === null ? UNAVAILABLE_LABEL : value.toLocaleString('en-US');
 }
 
 const SIZE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'] as const;

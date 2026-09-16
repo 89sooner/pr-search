@@ -21,7 +21,7 @@
  */
 
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { Badge, Button } from '@conductor-by-89soone/react';
+import { Badge, Button } from './ui';
 
 /** 화면에 보이는 자릿수. 명세가 정한 12자다. */
 const DEFAULT_ABBREVIATE = 12;
@@ -76,33 +76,33 @@ export function ShaChip({ commitSha, abbreviate = DEFAULT_ABBREVIATE, tone = 'ne
        */}
       <Badge tone={tone}>
         {/*
-         * 배지 **안**이라 `cdt-mono`가 아니라 `cdt-num`을 쓴다. `cdt-mono`는
-         * 글꼴과 함께 `--cdt-text-mono-payload`로 색까지 강제하는데, 그 색은
+         * 배지 **안**이라 `ui-mono`가 아니라 `ui-num`을 쓴다. `ui-mono`는
+         * 글꼴과 함께 `--ui-text-mono-payload`로 색까지 강제하는데, 그 색은
          * 페이지 배경을 전제한 값이라 `tone="accent"` 배지 위에서 대비비가
          * 2.79:1(다크)·2.77:1(라이트)로 떨어져 WCAG AA에 미달한다(실측).
-         * `cdt-num`은 같은 모노 글꼴을 주면서 색은 배지가 정한 것을 물려받아
+         * `ui-num`은 같은 모노 글꼴을 주면서 색은 배지가 정한 것을 물려받아
          * 5.39:1·5.16:1로 통과한다. 배지 글자 크기(12px)도 따른다.
          */}
-        <code className="cdt-num" title={commitSha} data-testid="sha-short">
+        <code className="ui-num" title={commitSha} data-testid="sha-short">
           {commitSha.slice(0, abbreviate)}
         </code>
       </Badge>
 
       <Button variant="secondary" onClick={copy} data-testid="sha-copy">
-        전체 SHA 복사
+        Copy full SHA
       </Button>
 
       {/*
        * 성공과 실패를 **같은 영역**에 알린다 (C-024 접근성, DEV-096).
        * 실패했을 때는 전체 SHA를 함께 내보내 손으로 복사할 수 있게 한다 —
-       * `cdt-sr-only`가 아니라 실제로 보이는 텍스트여야 옮겨 적을 수 있다.
+       * `ui-sr-only`가 아니라 실제로 보이는 텍스트여야 옮겨 적을 수 있다.
        */}
       <span role="status" aria-live="polite" data-testid="sha-copy-status">
-        {outcome === 'copied' ? '전체 SHA를 복사했습니다.' : null}
+        {outcome === 'copied' ? 'Copied full SHA.' : null}
         {outcome === 'failed' ? (
           <>
-            복사하지 못했습니다. 이 브라우저가 클립보드를 허용하지 않습니다. 전체 SHA:{' '}
-            <code className="cdt-mono" data-testid="sha-full">{commitSha}</code>
+            Could not copy. This browser does not allow clipboard access. Full SHA: {' '}
+            <code className="ui-mono" data-testid="sha-full">{commitSha}</code>
           </>
         ) : null}
       </span>

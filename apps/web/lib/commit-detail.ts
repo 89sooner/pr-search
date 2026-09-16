@@ -68,17 +68,17 @@ export interface ChangedPath {
 export function roleLabel(role: string | undefined): { readonly text: string; readonly known: boolean } {
   switch (role) {
     case 'merge_commit':
-      return { text: '머지 커밋', known: true };
+      return { text: 'Merge commit', known: true };
     case 'source_commit':
-      return { text: '원본 커밋', known: true };
+      return { text: 'Original commit', known: true };
     case 'direct_push':
-      return { text: '직접 푸시', known: true };
+      return { text: 'Direct push', known: true };
     default:
       /*
        * 서버가 역할을 싣지 않았다. 지어내지 않는다 — `merge_commit`으로
        * 기본값을 두면 원본 커밋이 "이 커밋이 브랜치에 착지했다"로 읽힌다.
        */
-      return { text: '역할 미상', known: false };
+      return { text: 'Unknown role', known: false };
   }
 }
 
@@ -185,14 +185,14 @@ export function changedPathModel(commit: CommitDetailSource): ChangedPathModel {
  * 것을 그렇게 쓰면 화면이 없는 사실을 말하게 된다.
  */
 export function pathCountLabel(model: ChangedPathModel): string {
-  if (model.notCollected) return '변경 경로는 아직 수집하지 않았습니다.';
+  if (model.notCollected) return 'Changed paths have not been collected yet.';
   if (model.totalCount === null) {
-    return `경로 ${String(model.paths.length)}건 (전체 파일 수는 수집하지 않습니다)`;
+    return `Paths: ${String(model.paths.length)} (total file count is not collected)`;
   }
   if (model.truncated) {
-    return `전체 ${String(model.totalCount)}개 중 상위 ${String(model.paths.length)}건`;
+    return `Top ${String(model.paths.length)} of ${String(model.totalCount)} files`;
   }
-  return `파일 ${String(model.totalCount)}개`;
+  return `Files: ${String(model.totalCount)}`;
 }
 
 // ------------------------------------------------------------- 헤더 표시명

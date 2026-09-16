@@ -19,10 +19,10 @@ export const dynamic = 'force-dynamic';
 
 export default async function OpsPipelinePage(): Promise<ReactNode> {
   return (
-    <GuardedPage title="수집 파이프라인" returnTo="/ops/pipeline">
+    <GuardedPage title="Collection pipeline" returnTo="/ops/pipeline">
       {({ roles, authEnabled }) => (
         <>
-          <h1>수집 파이프라인</h1>
+          <h1>Collection pipeline</h1>
           <OpsPipelineView roles={roles} authEnabled={authEnabled} />
         </>
       )}

@@ -16,7 +16,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Panel } from '@conductor-by-89soone/react';
+import { Badge, Panel } from './ui';
 import { shortSha } from '../lib/format';
 import type { SequencePositionState } from '../lib/commit-detail';
 
@@ -40,7 +40,7 @@ export function SequencePosition({
 }: SequencePositionProps): ReactNode {
   return (
     <Panel as="section" aria-labelledby="seqpos-heading" data-testid="sequence-position" data-seq-state={state}>
-      <h2 id="seqpos-heading">시퀀스 위치</h2>
+      <h2 id="seqpos-heading">Sequence position</h2>
 
       {state === 'assigned' ? (
         <p data-testid="seq-assigned">
@@ -48,18 +48,18 @@ export function SequencePosition({
             seq {String(mergeSeq)}
             {seqEpoch === null ? '' : ` @e${String(seqEpoch)}`}
           </Badge>{' '}
-          {sequenceSpace === null ? null : <span>시퀀스 공간: {sequenceSpace}</span>}
+          {sequenceSpace === null ? null : <span>Sequence space: {sequenceSpace}</span>}
         </p>
       ) : null}
 
       {state === 'off_chain' ? (
         <div data-testid="seq-off-chain">
-          <Badge tone="neutral">체인 밖</Badge>
+          <Badge tone="neutral">Off chain</Badge>
           <p>
-            이 커밋은 대상 브랜치에 직접 존재하지 않습니다.
+            This commit is not directly present on the base branch.
             {landedAs === null
-              ? ' 소속 PR이 아직 머지되지 않아 반영된 머지 커밋이 없습니다.'
-              : ' 아래 머지 커밋으로 반영되었습니다.'}
+              ? "The containing PR is not merged, so no merge commit is available."
+              : "Introduced by the merge commit below."}
           </p>
           {landedAs === null ? null : (
             <p>
@@ -68,7 +68,7 @@ export function SequencePosition({
                * 이 링크를 만들 재료가 CR-021 DEV-091로 응답에 더해졌다.
                */}
               <a href={`/commit/${repository}/${landedAs}`} data-testid="landed-as-link">
-                머지 커밋 {shortSha(landedAs)}
+                Merge commit {shortSha(landedAs)}
               </a>
             </p>
           )}
@@ -77,18 +77,18 @@ export function SequencePosition({
 
       {state === 'not_computed' ? (
         <div data-testid="seq-not-computed">
-          <Badge tone="neutral">미채번</Badge>
+          <Badge tone="neutral">Not numbered</Badge>
           {/*
            * **`off_chain`과 다른 문구다.** 이 커밋은 체인 위에 있고 번호만
            * 아직 없다 — 기다리면 생긴다. 체인 밖은 기다려도 생기지 않는다.
            */}
-          <p>이 커밋은 대상 브랜치에 있으나 머지 시퀀스를 아직 채번하지 않았습니다.</p>
+          <p>This commit is on the base branch but has not received a merge sequence number.</p>
         </div>
       ) : null}
 
       <p>
-        <span className="cdt-sr-only">담당 작업 패키지: </span>
-        WP-021 (시퀀스 채번), WP-027 (앞뒤 인접 커밋)
+        <span className="ui-sr-only">Work package: </span>
+        WP-021 (sequence numbering), WP-027 (neighboring commits)
       </p>
     </Panel>
   );

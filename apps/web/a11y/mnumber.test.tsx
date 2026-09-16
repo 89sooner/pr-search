@@ -161,11 +161,11 @@ describe('W-001 목록 — PR 번호 옆 M 배지 (AC-9)', () => {
     const { container } = render(<SearchView loginPath="/auth/login" />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('mnumber-badge')).toHaveTextContent('M 번호 대기');
+      expect(screen.getByTestId('mnumber-badge')).toHaveTextContent("M number pending");
     });
     expect(screen.queryByTestId('mnumber-link')).toBeNull();
     // 색과 짧은 문구만으로는 이유가 전달되지 않는다 — 설명이 함께 읽혀야 한다.
-    expect(screen.getByText(/앞선 항목의 PR 연결이 확정되지 않아/)).toBeInTheDocument();
+    expect(screen.getByText(/an earlier entry whose PR association is not confirmed/)).toBeInTheDocument();
     expect(describeViolations(await violations(container))).toBe('');
   });
 
@@ -298,7 +298,7 @@ describe('자동 재검증 — 현재 요청 하나를 5초 간격으로 (설계
     expect(calls).toHaveLength(12);
 
     // 번호는 여전히 대기다. 없는 값을 채우지 않았다.
-    expect(screen.getByTestId('mnumber-badge')).toHaveTextContent('M 번호 대기');
+    expect(screen.getByTestId('mnumber-badge')).toHaveTextContent("M number pending");
   });
 
   /**
@@ -361,11 +361,11 @@ describe('자동 재검증 — 현재 요청 하나를 5초 간격으로 (설계
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
-    expect(result.current.exhausted, '60초 뒤 소진이어야 한다').toBe(true);
+    expect(result.current.exhausted, "Should be exhausted after 60 seconds").toBe(true);
 
     // 번호가 붙어 대기가 끝났다. **버튼을 누르지 않았다.**
     rerender({ pending: false });
-    expect(result.current.exhausted, '대기가 끝났는데 소진 표시가 남았다').toBe(false);
+    expect(result.current.exhausted, "The exhausted indicator remained after the wait ended").toBe(false);
   });
 
   it('**포커스를 빼앗지 않는다** — 재검증은 조용한 갱신이다', async () => {
@@ -437,7 +437,7 @@ describe('W-002 상세 — 헤더 배지와 링크 복사 (AC-10)', () => {
 
     await userEvent.click(screen.getByTestId('mnumber-copy'));
     await waitFor(() => {
-      expect(screen.getByTestId('mnumber-copy-status')).toHaveTextContent('복사했습니다');
+      expect(screen.getByTestId('mnumber-copy-status')).toHaveTextContent("M-number link copied.");
     });
 
     // 상대 경로를 붙여넣으면 채팅에서 링크가 되지 않는다 — 절대 URL이어야 한다.
@@ -453,7 +453,7 @@ describe('W-002 상세 — 헤더 배지와 링크 복사 (AC-10)', () => {
     render(<PrDetailView repository="acme/smp1900" prNumber={1234} loginPath="/auth/login" />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('mnumber-badge')).toHaveTextContent('M 번호 대기');
+      expect(screen.getByTestId('mnumber-badge')).toHaveTextContent("M number pending");
     });
     expect(screen.queryByTestId('mnumber-copy')).toBeNull();
   });
@@ -469,7 +469,7 @@ describe('W-002 상세 — 헤더 배지와 링크 복사 (AC-10)', () => {
     render(<PrDetailView repository="acme/pay19svc20" prNumber={1234} loginPath="/auth/login" />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('mnumber-badge')).toHaveTextContent('저장소 코드 확인 필요');
+      expect(screen.getByTestId('mnumber-badge')).toHaveTextContent("Repository code needs verification");
     });
     expect(screen.queryByTestId('mnumber-link')).toBeNull();
   });
@@ -567,8 +567,8 @@ describe('`/search` M 해석 진입 — 화면을 늘리지 않는다 (CR-079)',
     await waitFor(() => {
       expect(screen.getByTestId('search-view')).toHaveAttribute('data-screen-state', 'merge_number_entry');
     });
-    expect(screen.getByText(/대상 브랜치/)).toBeInTheDocument();
-    expect(screen.getByText(/시퀀스 에폭/)).toBeInTheDocument();
+    expect(screen.getByText(/Base branch/)).toBeInTheDocument();
+    expect(screen.getByText(/sequence epoch/)).toBeInTheDocument();
 
     // 서버를 부르지 않는다. 부르면 사용자가 묻지 않은 공간의 답이 나온다.
     await waitFor(() => {
@@ -586,7 +586,7 @@ describe('`/search` M 해석 진입 — 화면을 늘리지 않는다 (CR-079)',
       expect(screen.getByTestId('search-view')).toHaveAttribute('data-screen-state', 'merge_number_entry');
     });
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /검색/ })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Go to search' })).toBeInTheDocument();
     });
     expect(replaced).toEqual([]);
     expect(describeViolations(await violations(container))).toBe('');

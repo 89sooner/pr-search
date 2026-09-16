@@ -1,3 +1,5 @@
+import { serviceMessage } from './service-message';
+
 /**
  * W-004 안전 구간 표식의 화면 판정 (WP-041 / FR-SEQ-006, C-031).
  *
@@ -79,8 +81,8 @@ export function markerCardState(marker: MarkerView | null): MarkerCardState {
 
 /** 등록 액션이 막힌 이유. 막히지 않았으면 `null`. */
 export function markerBlockedReason(canWrite: boolean, targetSeq: number | null): string | null {
-  if (!canWrite) return `안전 구간 표식 등록에는 ${MARKER_WRITE_ROLE} 역할이 필요합니다`;
-  if (targetSeq === null) return '끝 앵커를 먼저 해석하면 그 서수를 표식할 수 있습니다';
+  if (!canWrite) return `Creating a safe marker requires the ${MARKER_WRITE_ROLE} role`;
+  if (targetSeq === null) return 'Resolve the end anchor first to mark its ordinal';
   return null;
 }
 
@@ -126,7 +128,7 @@ export function judgeMarkerSubmit(status: number, body: MarkerResponse): MarkerS
   if (code === 'SEQUENCE_EPOCH_STALE') {
     return { kind: 'epoch_stale', currentEpoch: numberOrNull(detail['current_seq_epoch']) };
   }
-  return { kind: 'error', code, message: body.error?.message ?? '표식을 등록하지 못했습니다.' };
+  return { kind: 'error', code, message: serviceMessage(body.error?.message, 'Could not create the marker.', code) };
 }
 
 /** 메모 상한 (FR-SEQ-006 AC-2). 서버의 `CHECK`와 같은 값이다. */

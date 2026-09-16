@@ -19,7 +19,7 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { Panel } from '@conductor-by-89soone/react';
+import { Panel } from './ui';
 
 export interface DistributionBucket {
   readonly label: string;
@@ -41,7 +41,7 @@ export interface DistributionChartProps {
 function sequentialColor(rangeIndex: number): string {
   // sequential.1~5. 구간이 5개를 넘지 않는다(파일 수 5, 라인 수 4).
   const step = Math.min(rangeIndex + 1, 5);
-  return `var(--cdt-dataviz-sequential-${String(step)})`;
+  return `var(--ui-dataviz-sequential-${String(step)})`;
 }
 
 function percent(ratio: number): string {
@@ -50,53 +50,45 @@ function percent(ratio: number): string {
 
 export function DistributionChart({ title, buckets, hrefFor }: DistributionChartProps): ReactNode {
   const max = buckets.reduce((acc, bucket) => Math.max(acc, bucket.count), 0);
-  const rowHeight = 28;
-  const height = Math.max(buckets.length * rowHeight, rowHeight);
   const summary = buckets
-    .map((bucket) => `${bucket.label} ${bucket.count.toLocaleString('ko-KR')}건 ${percent(bucket.ratio)}`)
+    .map((bucket) => `${bucket.label} ${bucket.count.toLocaleString("en-US")} items ${percent(bucket.ratio)}`)
     .join(', ');
   let rangeIndex = -1;
 
   return (
-    <Panel as="section" aria-label={title}>
+    <Panel as="section" aria-label={title} className="prs-chart-panel">
       <h3>{title}</h3>
 
       {/* 시각 막대. 실제 데이터와 상호작용은 아래 표가 담당한다(role img). */}
-      <svg
+      <div
         role="img"
         aria-label={`${title}: ${summary}`}
-        viewBox={`0 0 100 ${String(height)}`}
-        preserveAspectRatio="none"
-        style={{ width: '100%', height: `${String(height)}px` }}
+        className="prs-distribution-chart"
       >
-        {buckets.map((bucket, index) => {
+        {buckets.map((bucket) => {
           if (!bucket.unknown) rangeIndex += 1;
           const width = max === 0 ? 0 : (bucket.count / max) * 100;
-          const fill = bucket.unknown ? 'var(--cdt-text-muted)' : sequentialColor(rangeIndex);
+          const fill = bucket.unknown ? 'var(--ui-text-muted)' : sequentialColor(rangeIndex);
           return (
-            <rect
-              key={bucket.label}
-              x={0}
-              y={index * rowHeight + 4}
-              width={width}
-              height={rowHeight - 8}
-              fill={fill}
-              opacity={bucket.unknown ? 0.5 : 1}
-            />
+            <div key={bucket.label} className="prs-distribution-row" aria-hidden="true">
+              <span>{bucket.label}</span>
+              <span className="prs-distribution-track"><span style={{ width: `${width}%`, background: fill, opacity: bucket.unknown ? 0.5 : 1 }} /></span>
+              <span>{bucket.count.toLocaleString('en-US')}<small>{percent(bucket.ratio)}</small></span>
+            </div>
           );
         })}
-      </svg>
+      </div>
 
       {/* 표 대체. C-034 사용 규칙이 요구한다 — 같은 값·라벨·구간 순서를 쓴다. */}
-      <details open>
-        <summary>표로 보기</summary>
+      <details open className="prs-chart-data">
+        <summary>View as table</summary>
         <table>
-          <caption>{title} 구간별 건수와 비율</caption>
+          <caption>{title} Counts and percentages by bucket</caption>
           <thead>
             <tr>
-              <th scope="col">구간</th>
-              <th scope="col">건수</th>
-              <th scope="col">비율</th>
+              <th scope="col">Range</th>
+              <th scope="col">Count</th>
+              <th scope="col">Percentage</th>
             </tr>
           </thead>
           <tbody>
@@ -108,7 +100,7 @@ export function DistributionChart({ title, buckets, hrefFor }: DistributionChart
                     {href === null ? (
                       <span>
                         {bucket.label}
-                        {bucket.unknown ? <span> (보강 미완료)</span> : null}
+                        {bucket.unknown ? <span> (enrichment incomplete)</span> : null}
                       </span>
                     ) : (
                       <Link href={href} data-testid="distribution-drilldown">
@@ -116,7 +108,7 @@ export function DistributionChart({ title, buckets, hrefFor }: DistributionChart
                       </Link>
                     )}
                   </th>
-                  <td>{bucket.count.toLocaleString('ko-KR')}</td>
+                  <td>{bucket.count.toLocaleString("en-US")}</td>
                   <td>{percent(bucket.ratio)}</td>
                 </tr>
               );

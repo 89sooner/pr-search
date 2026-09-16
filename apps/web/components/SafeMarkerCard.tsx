@@ -19,7 +19,7 @@
  */
 
 import { useId, useState, type ReactNode } from 'react';
-import { Badge, Button, Card, TextArea } from '@conductor-by-89soone/react';
+import { Badge, Button, Card, TextArea } from './ui';
 import {
   MARKER_NOTE_LIMIT,
   markerBlockedReason,
@@ -89,24 +89,24 @@ export function SafeMarkerCard({
 
   return (
     <Card as="div" data-testid="safe-marker-card">
-      <h3>안전 구간 표식</h3>
+      <h3>Verified boundary</h3>
 
       {state === 'marker_absent' ? (
         <p data-testid="safe-marker-absent">
-          이 시퀀스 공간에는 아직 표식이 없습니다. 검증을 마친 지점을 기록하면 조직이 그것을 공유합니다.
+          No marker exists in this sequence space. Record a verified point to share it with your organization.
         </p>
       ) : marker === null ? null : (
         <dl data-testid="safe-marker-current">
-          <dt>시퀀스</dt>
+          <dt>Sequence</dt>
           <dd data-testid="safe-marker-seq">seq {marker.merge_seq}</dd>
-          <dt>등록자</dt>
+          <dt>Registered by</dt>
           <dd data-testid="safe-marker-author">{marker.created_by}</dd>
-          <dt>등록 시각</dt>
+          <dt>Registered at</dt>
           <dd data-testid="safe-marker-time">{formatTime(marker.created_at)}</dd>
-          <dt>에폭</dt>
+          <dt>Epoch</dt>
           <dd data-testid="safe-marker-epoch">{marker.seq_epoch}</dd>
-          <dt>메모</dt>
-          <dd data-testid="safe-marker-note">{marker.note ?? '(없음)'}</dd>
+          <dt>Note</dt>
+          <dd data-testid="safe-marker-note">{marker.note ?? "(none)"}</dd>
         </dl>
       )}
 
@@ -116,14 +116,13 @@ export function SafeMarkerCard({
        */}
       {state === 'marker_epoch_stale' && marker !== null ? (
         <p data-testid="safe-marker-stale" role="status">
-          <Badge tone="warning">무효</Badge> 이 표식은 에폭 {marker.seq_epoch} 기준이고 현재 에폭은{' '}
-          {currentEpoch}입니다. 그 서수가 다른 커밋을 가리킬 수 있어 자동으로 옮기지 않습니다 — 검증을
-          다시 마친 뒤 현재 에폭으로 등록하세요.
+          <Badge tone="warning">Invalid</Badge> This marker uses epoch {marker.seq_epoch} ; the current epoch is {' '}
+          {currentEpoch}. The ordinal may refer to another commit, so the marker will not move automatically. Verify again before setting it in the current epoch.
         </p>
       ) : null}
 
       <label htmlFor={noteId}>
-        메모 (선택, {MARKER_NOTE_LIMIT}자 이내)
+        Note (optional, {MARKER_NOTE_LIMIT} characters maximum)
       </label>
       <TextArea
         id={noteId}
@@ -134,7 +133,7 @@ export function SafeMarkerCard({
         onChange={(event) => setNote(event.target.value)}
       />
       <p data-testid="safe-marker-note-remaining">
-        {MARKER_NOTE_LIMIT - note.length}자 남음
+        {MARKER_NOTE_LIMIT - note.length} characters remaining
       </p>
 
       {/*
@@ -149,7 +148,7 @@ export function SafeMarkerCard({
         {...(blockedReason === null ? {} : { blockedReason })}
         onClick={() => void submit()}
       >
-        {targetSeq === null ? '표식 등록' : `seq ${targetSeq}까지 안전으로 표시`}
+        {targetSeq === null ? "Set marker" : `seq ${targetSeq} as verified`}
       </Button>
 
       {blockedReason === null ? null : (
@@ -161,19 +160,19 @@ export function SafeMarkerCard({
       {result === null ? null : (
         <p data-testid="safe-marker-result" role="alert">
           {result.kind === 'created'
-            ? `표식을 seq ${result.marker.merge_seq}로 등록했습니다.${
-                result.replaced === null ? '' : ` 이전 표식(seq ${result.replaced})은 이력으로 남았습니다.`
+            ? `Marker set to seq ${result.marker.merge_seq}.${
+                result.replaced === null ? '' : ` The previous marker (seq ${result.replaced}) remains in history.`
               }`
             : result.kind === 'unchanged'
-              ? '이미 같은 표식이 등록되어 있어 아무것도 바꾸지 않았습니다.'
+              ? "The same marker already exists. No changes were made."
               : result.kind === 'conflict'
-                ? `그 사이 다른 사람이 표식을 ${
-                    result.currentSeq === null ? '지웠습니다' : `seq ${result.currentSeq}로 옮겼습니다`
-                  }. 현재 값을 확인한 뒤 다시 결정하세요 — 자동으로 다시 보내지 않습니다.`
+                ? `Another user changed the marker: ${
+                    result.currentSeq === null ? "deleted" : `seq ${result.currentSeq} is its new position`
+                  }. Review the current value before trying again. This request will not retry automatically.`
                 : result.kind === 'epoch_stale'
-                  ? `조회하는 사이에 에폭이 ${
-                      result.currentEpoch ?? '다른 값'
-                    }으로 바뀌었습니다. 현재 에폭으로 다시 조회한 뒤 등록하세요.`
+                  ? `While loading, the epoch changed to ${
+                      result.currentEpoch ?? "a different value"
+                    }. Reload using the current epoch before setting the marker.`
                   : result.message}
         </p>
       )}

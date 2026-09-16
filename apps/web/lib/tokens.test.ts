@@ -41,12 +41,12 @@ describe('AST를 칩으로', () => {
 
   it('**제거 버튼 이름이 부정을 말로 밝힌다** — `-`는 읽히지 않는다', () => {
     const chips = toChips(ast('-author:kim'));
-    expect(chips[0]?.removeLabel).toBe('제외 조건 author:kim 필터 제거');
+    expect(chips[0]?.removeLabel).toBe("Remove exclusion filter author:kim");
   });
 
   it('일반 조건의 이름은 명세 그대로다 (C-011 접근성 규칙)', () => {
     const chips = toChips(ast('author:kim'));
-    expect(chips[0]?.removeLabel).toBe('author:kim 필터 제거');
+    expect(chips[0]?.removeLabel).toBe("Remove filter author:kim");
   });
 
   it('전문 검색어는 칩이 아니다 — 지울 대상이 아니라 질의 본문이다', () => {

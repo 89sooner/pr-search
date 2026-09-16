@@ -192,7 +192,7 @@ test.describe('M 번호 병기와 해석 진입', () => {
     await expect(page.getByTestId('mnumber-badge')).toHaveText('M-1900-77');
 
     await page.getByTestId('mnumber-copy').click();
-    await expect(page.getByTestId('mnumber-copy-status')).toHaveText(/복사했습니다/);
+    await expect(page.getByTestId('mnumber-copy-status')).toHaveText(/Copied/);
 
     const copied = await page.evaluate(() => navigator.clipboard.readText());
     expect(copied).toContain('m_repository=acme%2Fsmp1900');
@@ -213,8 +213,8 @@ test.describe('M 번호 병기와 해석 진입', () => {
     await page.goto('/search?m_repository=acme%2Fsmp1900&m_number=M-1900-77');
 
     await expect(page.getByTestId('search-view')).toHaveAttribute('data-screen-state', 'merge_number_entry');
-    await expect(page.getByTestId('mnumber-entry')).toContainText('대상 브랜치');
-    await expect(page.getByTestId('mnumber-entry')).toContainText('시퀀스 에폭');
+    await expect(page.getByTestId('mnumber-entry')).toContainText("Base branch");
+    await expect(page.getByTestId('mnumber-entry')).toContainText("sequence epoch");
 
     expect(calls.resolve).toHaveLength(0);
     expect(calls.search).toHaveLength(0);

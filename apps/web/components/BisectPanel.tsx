@@ -1,9 +1,11 @@
 'use client';
 
+import { serviceMessage } from '../lib/service-message';
+
 /** C-029 / FLOW-004 / WP-042. 서버 저장 상태만 탐색의 정본으로 사용한다. */
 import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { Banner, Button, Panel } from '@conductor-by-89soone/react';
+import { Banner, Button, Panel } from './ui';
 
 interface Point { merge_seq: number; commit_sha: string; pull_request_number: number | null }
 interface Session {
@@ -31,10 +33,10 @@ export function BisectPanel({ repository, baseBranch, range }: BisectPanelProps)
       try {
         const response = await fetch(`/api/bisect-sessions?${query}`, { cache: 'no-store', signal: controller.signal });
         const body = await response.json() as ResponseBody;
-        if (!response.ok) throw new Error(body.error?.message ?? '탐색 상태를 불러오지 못했습니다.');
+        if (!response.ok) throw new Error(serviceMessage(body.error?.message, "Unable to load bisect state.", body.error?.code));
         if (!controller.signal.aborted) setSession(body.session ?? null);
       } catch (failure) {
-        if (!controller.signal.aborted) { setError(failure instanceof Error ? failure.message : '연결을 확인하세요.'); setBlocked(true); }
+        if (!controller.signal.aborted) { setError(failure instanceof Error ? failure.message : "Check your connection."); setBlocked(true); }
       } finally { if (!controller.signal.aborted) setBusy(false); }
     })();
     return () => controller.abort();
@@ -59,42 +61,42 @@ export function BisectPanel({ repository, baseBranch, range }: BisectPanelProps)
         }
         const detail = result.error?.detail;
         const contradiction = result.error?.code === 'BISECT_CONTRADICTION'
-          ? ` (정상 ${String(detail?.['good_seq'])}, 이상 ${String(detail?.['bad_seq'])})` : '';
-        setError((result.error?.message ?? '탐색을 갱신하지 못했습니다.') + contradiction);
+          ? `(good ${String(detail?.['good_seq'])}, bad ${String(detail?.['bad_seq'])})` : '';
+        setError(serviceMessage(result.error?.message, "Unable to update bisect.", result.error?.code) + contradiction);
         setBlocked(true);
         return;
       }
       setSession(result.session ?? null); setBlocked(false);
-    } catch { setError('네트워크 오류입니다. 새로고침해 저장된 상태를 확인하세요.'); setBlocked(true); }
+    } catch { setError("Network error. Refresh to check the saved state."); setBlocked(true); }
     finally { setBusy(false); }
   }
 
   function pointLink(point: Point): ReactNode {
     const path = point.pull_request_number === null
       ? `/commit/${repository}/${point.commit_sha}` : `/pr/${repository}/${String(point.pull_request_number)}`;
-    return <Link href={path}>{point.pull_request_number === null ? `커밋 ${point.commit_sha.slice(0, 12)} (연결된 PR 없음)` : `PR #${String(point.pull_request_number)}`}</Link>;
+    return <Link href={path}>{point.pull_request_number === null ? `Commit ${point.commit_sha.slice(0, 12)} (no linked PR)` : `PR #${String(point.pull_request_number)}`}</Link>;
   }
   return (
-    <Panel aria-label="이분 탐색" data-testid="bisect-panel">
-      <h2>이분 탐색</h2>
-      <p>외부 빌드·테스트로 다음 지점을 검사하고 정상 또는 이상을 표시하세요.</p>
+    <Panel aria-label="Bisect" data-testid="bisect-panel">
+      <h2>Bisect</h2>
+      <p>Build and test the next commit externally, then mark it good or bad.</p>
       {error === null ? null : <p role="alert">{error}</p>}
-      {session?.epoch_stale ? <Banner tone="warning" title="탐색 에폭이 낡았습니다">저장된 탐색을 초기화한 후 현재 에폭에서 구간을 다시 조회하세요.</Banner> : null}
+      {session?.epoch_stale ? <Banner tone="warning" title="Bisect epoch is stale">Reset the saved bisect, then reload the range using the current epoch.</Banner> : null}
       {session === null ? (
-        <Button disabled={busy || blocked || range === null} onClick={() => void submit('start')}>이 구간에서 탐색 시작</Button>
+        <Button disabled={busy || blocked || range === null} onClick={() => void submit('start')}>Start bisect in this range</Button>
       ) : (
         <>
-          <p>후보 구간 ({session.good_seq}, {session.bad_seq}] · 에폭 {session.seq_epoch}</p>
-          <p aria-live="polite" data-testid="bisect-remaining">{session.remaining === null ? '탐색 상태 무효' : `남은 후보 ${String(session.remaining)}건 · 예상 잔여 검사 ${String(session.estimated_steps)}회`}</p>
-          {session.converged && session.result !== null ? <p data-testid="bisect-result">탐색 종료 — seq:{session.result.merge_seq} {pointLink(session.result)}</p> : null}
+          <p>Candidate range ({session.good_seq}, {session.bad_seq}] · Epoch {session.seq_epoch}</p>
+          <p aria-live="polite" data-testid="bisect-remaining">{session.remaining === null ? "Invalid bisect state" : `Remaining candidates: ${String(session.remaining)} · Estimated remaining checks: ${String(session.estimated_steps)}`}</p>
+          {session.converged && session.result !== null ? <p data-testid="bisect-result">Bisect complete — seq: {session.result.merge_seq} {pointLink(session.result)}</p> : null}
           {session.next === null ? null : (
             <>
-              <p data-testid="bisect-next">다음 검사 지점 seq:{session.next.merge_seq} {pointLink(session.next)}</p>
-              <Button disabled={busy || blocked || session.epoch_stale} onClick={() => void submit('good')}>정상</Button>
-              <Button disabled={busy || blocked || session.epoch_stale} onClick={() => void submit('bad')}>이상</Button>
+              <p data-testid="bisect-next">Next commit to test: seq: {session.next.merge_seq} {pointLink(session.next)}</p>
+              <Button disabled={busy || blocked || session.epoch_stale} onClick={() => void submit('good')}>Good</Button>
+              <Button disabled={busy || blocked || session.epoch_stale} onClick={() => void submit('bad')}>Bad</Button>
             </>
           )}
-          <Button disabled={busy} onClick={() => void submit('reset')}>탐색 초기화</Button>
+          <Button disabled={busy} onClick={() => void submit('reset')}>Reset bisect</Button>
         </>
       )}
     </Panel>

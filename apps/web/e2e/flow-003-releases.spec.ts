@@ -167,7 +167,7 @@ test.describe('W-005: 릴리스 목록에서 구간 조사로', () => {
   test('**좌측 내비게이션 "릴리스"가 실제 화면에 닿는다** (CR-030, DEV-157)', async ({ page }) => {
     await stubApi(page);
     await page.goto('/search');
-    await page.getByRole('link', { name: '릴리스' }).click();
+    await page.getByRole('link', { name: "Releases" }).click();
     await expect(page).toHaveURL(/\/releases/);
     // 셸이 소유한 경로에 화면이 섰다 — 이 항목은 이 WP 전까지 404였다.
     await expect(page.getByTestId('releases-view')).toBeVisible();
@@ -182,8 +182,8 @@ test.describe('W-005: 릴리스 목록에서 구간 조사로', () => {
     await expect(page.getByTestId('release-row')).toHaveCount(3);
 
     // 최신을 먼저 누른다 — 목록이 시각 내림차순이라 그것이 자연스럽다.
-    await page.getByRole('checkbox', { name: 'v1.2 비교 대상으로 선택' }).click();
-    await page.getByRole('checkbox', { name: 'v1.0 비교 대상으로 선택' }).click();
+    await page.getByRole('checkbox', { name: "Select v1.2 for comparison" }).click();
+    await page.getByRole('checkbox', { name: "Select v1.0 for comparison" }).click();
 
     // 서수가 작은 쪽이 시작이다 (AC-4) — 누른 순서와 무관하다.
     await expect(page.getByTestId('compare-direction')).toContainText('v1.0');
@@ -201,18 +201,18 @@ test.describe('W-005: 릴리스 목록에서 구간 조사로', () => {
     await page.goto('/releases?repo=acme%2Fpayments&branch=main');
     await expect(page.getByTestId('release-timeline')).toBeVisible();
 
-    await page.getByRole('checkbox', { name: 'v1.2 비교 대상으로 선택' }).click();
-    await page.getByRole('checkbox', { name: 'r2.4.0 비교 대상으로 선택' }).click();
+    await page.getByRole('checkbox', { name: "Select v1.2 for comparison" }).click();
+    await page.getByRole('checkbox', { name: "Select r2.4.0 for comparison" }).click();
 
     await expect(page.getByTestId('compare-link')).toHaveCount(0);
-    await expect(page.getByText('대상 브랜치가 다른 릴리스는 비교할 수 없습니다')).toBeVisible();
+    await expect(page.getByText("Cannot compare releases from different base branches")).toBeVisible();
   });
 
   test('미배포 구간이 서수 앵커로 W-004에 닿는다 (QA-W005-04, AC-5)', async ({ page }) => {
     await stubApi(page);
     await page.goto('/releases?repo=acme%2Fpayments&branch=main');
 
-    await expect(page.getByTestId('unreleased-summary')).toContainText('2건');
+    await expect(page.getByTestId('unreleased-summary')).toContainText("2");
     await page.getByTestId('unreleased-link').click();
     await expect(page).toHaveURL(/from=seq%3A6&to=seq%3A8/);
 

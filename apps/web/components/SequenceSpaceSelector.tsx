@@ -13,7 +13,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Select } from '@conductor-by-89soone/react';
+import { Badge, Select } from './ui';
 import type { SequenceSpaceOption } from '../lib/range';
 
 export interface SequenceSpaceRef {
@@ -28,10 +28,10 @@ export interface SequenceSpaceSelectorProps {
 }
 
 const STATE_LABEL: Readonly<Record<SequenceSpaceOption['sequence_state'], string>> = {
-  ok: '채번 최신',
-  stale: '채번 뒤처짐',
-  reassigning: '재채번 중',
-  unknown: '채번 이력 없음',
+  ok: "Sequence up to date",
+  stale: "Sequence behind",
+  reassigning: "Renumbering",
+  unknown: "No sequence history",
 };
 
 const STATE_TONE: Readonly<Record<SequenceSpaceOption['sequence_state'], 'success' | 'warning' | 'neutral'>> = {
@@ -51,7 +51,7 @@ export function SequenceSpaceSelector({ spaces, value, onChange }: SequenceSpace
 
   return (
     <div data-testid="space-selector">
-      <label id="space-repo-label">저장소</label>
+      <label id="space-repo-label">Repository</label>
       <Select.Root
         value={value?.repository ?? ''}
         onValueChange={(repository) => {
@@ -61,7 +61,7 @@ export function SequenceSpaceSelector({ spaces, value, onChange }: SequenceSpace
         }}
       >
         <Select.Trigger aria-labelledby="space-repo-label" data-testid="space-repo-trigger">
-          <Select.Value placeholder="저장소 선택" />
+          <Select.Value placeholder="Select repository" />
         </Select.Trigger>
         <Select.Content>
           {repositories.map((repository) => (
@@ -72,7 +72,7 @@ export function SequenceSpaceSelector({ spaces, value, onChange }: SequenceSpace
         </Select.Content>
       </Select.Root>
 
-      <label id="space-branch-label">대상 브랜치</label>
+      <label id="space-branch-label">Base branch</label>
       <Select.Root
         value={value?.baseBranch ?? ''}
         onValueChange={(baseBranch) => {
@@ -81,7 +81,7 @@ export function SequenceSpaceSelector({ spaces, value, onChange }: SequenceSpace
         disabled={value === null}
       >
         <Select.Trigger aria-labelledby="space-branch-label" data-testid="space-branch-trigger">
-          <Select.Value placeholder="브랜치" />
+          <Select.Value placeholder="Branch" />
         </Select.Trigger>
         <Select.Content>
           {branches.map((space) => (
@@ -97,11 +97,11 @@ export function SequenceSpaceSelector({ spaces, value, onChange }: SequenceSpace
           {/* 에폭은 인용의 유효 범위다 (ADR-007) — 없는 값을 0으로 그리지 않는다. */}
           {selected.seq_epoch === null ? (
             <Badge tone="neutral" data-testid="space-epoch-none">
-              에폭 없음
+              No epoch
             </Badge>
           ) : (
             <Badge tone="neutral" data-testid="space-epoch">
-              에폭 {selected.seq_epoch}
+              Epoch {selected.seq_epoch}
             </Badge>
           )}{' '}
           <Badge tone={STATE_TONE[selected.sequence_state]} data-testid="space-state">

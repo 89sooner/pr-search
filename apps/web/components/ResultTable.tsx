@@ -25,7 +25,7 @@
 
 import Link from 'next/link';
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
-import { Button, Skeleton, Table } from '@conductor-by-89soone/react';
+import { Button, Skeleton, Table } from './ui';
 import { SequenceBadge } from './SequenceBadge';
 import { HighlightedText } from './HighlightedText';
 import { RelationBadgeGroup } from './RelationBadgeGroup';
@@ -133,7 +133,7 @@ function TitleText({ row, fallback }: { row: ResultRow; fallback: string }): Rea
 export function resultName(row: ResultRow): string {
   if (row.kind === 'pull_request' && row.pr_number !== undefined) return `#${String(row.pr_number)}`;
   if (row.commit_sha !== undefined) return shortSha(row.commit_sha);
-  return '(식별자 없음)';
+  return "(no identifier)";
 }
 
 export function ResultTable({
@@ -167,19 +167,19 @@ export function ResultTable({
   }
 
   return (
-    <Table className="prs-result-table" caption="검색 결과" aria-label="검색 결과"
+    <Table className="prs-result-table" caption="Search results" aria-label="Search results"
       scrollContainerProps={{ tabIndex: 0, role: 'region', ...(onSelect === undefined ? {} : { 'aria-describedby': 'result-keyboard-help' }) }}>
       <Table.Head>
         <Table.Row>
-          {onSelect === undefined ? null : <Table.HeaderCell scope="col"><span className="cdt-sr-only">미리보기</span><WorkbenchIcon name="preview" /></Table.HeaderCell>}
-          {sortHeader('merge_seq', '시퀀스')}
-          <Table.HeaderCell scope="col">변경 내용</Table.HeaderCell>
-          <Table.HeaderCell scope="col">작성자</Table.HeaderCell>
-          <Table.HeaderCell scope="col">상태</Table.HeaderCell>
-          {sortHeader('merged_at', '머지 시각')}
-          {sortHeader('changed_files_count', '변경 파일')}
-          {sortHeader('additions', '추가')}
-          <Table.HeaderCell scope="col">관계</Table.HeaderCell>
+          {onSelect === undefined ? null : <Table.HeaderCell scope="col"><span className="ui-sr-only">Preview</span><WorkbenchIcon name="preview" /></Table.HeaderCell>}
+          {sortHeader('merge_seq', "Sequence")}
+          <Table.HeaderCell scope="col">Changes</Table.HeaderCell>
+          <Table.HeaderCell scope="col">Author</Table.HeaderCell>
+          <Table.HeaderCell scope="col">Status</Table.HeaderCell>
+          {sortHeader('merged_at', "Merged at")}
+          {sortHeader('changed_files_count', "Changed files")}
+          {sortHeader('additions', "Added")}
+          <Table.HeaderCell scope="col">Relationships</Table.HeaderCell>
         </Table.Row>
       </Table.Head>
       <Table.Body>
@@ -207,7 +207,7 @@ export function ResultTable({
               {onSelect === undefined ? null : <Table.Cell>
                 <Button variant="ghost" size="sm" className="prs-row-select"
                   ref={(node) => { if (node === null) selections.current.delete(id); else selections.current.set(id, node); }}
-                  data-result-select={id} aria-label={`${row.repository ?? ''} ${name} 미리보기`}
+                  data-result-select={id} aria-label={`${row.repository ?? ''} ${name} Preview`}
                   aria-pressed={selected} aria-describedby="result-keyboard-help"
                   tabIndex={selected || (selectedId === null && index === 0) ? 0 : -1}
                   onKeyDown={(event) => { onKeyDown(event, index); }}
@@ -219,7 +219,7 @@ export function ResultTable({
                 sequence_space={row.sequence_space} state={row.state} contextSpace={context} /></Table.Cell>
               <Table.Cell className="prs-result-title">
                 <div className="prs-result-title-line">
-                  <span className="prs-result-kind" title={row.kind === 'pull_request' ? 'Pull request' : '커밋'}><WorkbenchIcon name={row.kind === 'pull_request' ? 'pr' : 'commit'} /><span className="cdt-sr-only">{row.kind === 'pull_request' ? 'PR' : '커밋'}</span></span>
+                  <span className="prs-result-kind" title={row.kind === 'pull_request' ? 'Pull request' : "Commit"}><WorkbenchIcon name={row.kind === 'pull_request' ? 'pr' : 'commit'} /><span className="ui-sr-only">{row.kind === 'pull_request' ? 'PR' : "Commit"}</span></span>
                   <span className="prs-result-id prs-mono">{name}</span>
                   {/*
                     * M 배지 (WP-074 / FR-SEQ-008 AC-9 — 상세 설계 9절).
@@ -240,10 +240,10 @@ export function ResultTable({
                   {href === null ? <span><TitleText row={row} fallback={name} /></span> :
                     <Link href={href} data-testid="result-link" title={row.title ?? name}><TitleText row={row} fallback={name} /></Link>}
                 </div>
-                <span className="prs-result-repository prs-mono">{row.sequence_space ?? row.repository ?? '저장소 미상'}</span>
+                <span className="prs-result-repository prs-mono">{row.sequence_space ?? row.repository ?? "Unknown repository"}</span>
               </Table.Cell>
               <Table.Cell><span className="prs-cell-truncate" title={row.author ?? undefined}>{row.author ?? '—'}</span></Table.Cell>
-              <Table.Cell><span className="prs-result-state" data-state={row.state ?? 'unknown'}>{row.state === 'merged' ? '머지됨' : row.state === 'open' ? '열림' : row.state === 'closed' ? '닫힘' : row.state ?? '—'}</span></Table.Cell>
+              <Table.Cell><span className="prs-result-state" data-state={row.state ?? 'unknown'}>{row.state === 'merged' ? "Merged" : row.state === 'open' ? "Open" : row.state === 'closed' ? "Closed" : row.state ?? '—'}</span></Table.Cell>
               <Table.Cell><time className="prs-timestamp" dateTime={row.merged_at ?? undefined} title={row.merged_at ?? undefined}>{formatTimestamp(row.merged_at)}</time></Table.Cell>
               <Table.Cell numeric>{row.changed_files_count ?? '—'}</Table.Cell>
               <Table.Cell numeric><span className="prs-diff-added">{row.additions === null ? '—' : `+${row.additions}`}</span></Table.Cell>

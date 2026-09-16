@@ -13,7 +13,7 @@
 
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
-import { Badge, Button, Dialog, Panel } from '@conductor-by-89soone/react';
+import { Badge, Button, Dialog, Panel } from './ui';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { PolicyHistoryTable, ReasonField, usePolicyStatus, usePolicySubmit } from './GhPolicyShared';
@@ -33,18 +33,18 @@ export function GhPolicyView({ canChange }: { readonly canChange: boolean }): Re
   const [lost, setLost] = useState(false);
   const [message, setMessage] = useState<{ readonly tone: 'status' | 'warning' | 'danger'; readonly text: string; readonly correlationId: string | null } | null>(null);
 
-  if (load.kind === 'loading') return <p data-testid="gh-policy-loading">실행 정책을 읽는 중…</p>;
+  if (load.kind === 'loading') return <p data-testid="gh-policy-loading">Loading execution policy…</p>;
   if (load.kind === 'unavailable') {
     return (
       <div data-testid="gh-policy" data-state="unavailable">
-        <EmptyState cause="not_found" title="이 배포에서는 GitHub 작업이 열리지 않았습니다" description="GH_OPERATIONS_ENABLED가 꺼져 있으면 실행 정책도 없습니다. 검색과 조사 화면은 그대로 쓸 수 있습니다." />
+        <EmptyState cause="not_found" title="GitHub operations are not enabled in this deployment" description="Execution policy is unavailable while GH_OPERATIONS_ENABLED is disabled. Search and investigation remain available." />
       </div>
     );
   }
   if (load.kind === 'forbidden' || load.kind === 'unauthenticated') {
     return (
       <div data-testid="gh-policy" data-state="forbidden">
-        <EmptyState cause="no_permission" title="이 화면은 운영자(operator) 또는 보안 담당자(security_officer) 역할이 필요합니다" description="필요한 역할을 그대로 적습니다. 변경은 운영자만 할 수 있습니다." />
+        <EmptyState cause="no_permission" title="The operator or security_officer role is required" description="Only operator and security_officer can view this page. Only operators can make changes." />
       </div>
     );
   }
@@ -53,12 +53,12 @@ export function GhPolicyView({ canChange }: { readonly canChange: boolean }): Re
       <div data-testid="gh-policy" data-state="failed">
         <ErrorBanner
           tone="danger"
-          title="실행 정책을 읽지 못했습니다"
+          title="Unable to load execution policy"
           impact={load.message}
           correlationId={load.correlationId}
           action={
             <Button variant="secondary" onClick={reload} data-testid="gh-policy-retry">
-              다시 읽기
+              Reload
             </Button>
           }
         />
@@ -82,11 +82,11 @@ export function GhPolicyView({ canChange }: { readonly canChange: boolean }): Re
       setLost(true);
       return;
     }
-    const verb = pending.action === 'block' ? '차단했습니다' : '재개했습니다';
+    const verb = pending.action === 'block' ? "blocked" : "resumed";
     setPending(null);
     setLost(false);
     if (outcome.kind === 'done') {
-      setMessage({ tone: 'status', text: `gh ${pending.capabilityId.split('.').join(' ')} 실행을 ${verb} (revision ${String(outcome.revision)})${outcome.outcome === 'replayed' ? ' — 이미 적용된 요청이었습니다' : ''}`, correlationId: null });
+      setMessage({ tone: 'status', text: `gh ${pending.capabilityId.split('.').join(' ')} Execution ${verb} (revision ${String(outcome.revision)})${outcome.outcome === 'replayed' ? "— this request was already applied" : ''}`, correlationId: null });
     } else {
       setMessage({ tone: outcome.error.stale ? 'warning' : 'danger', text: outcome.error.message, correlationId: outcome.error.correlationId });
     }
@@ -96,16 +96,14 @@ export function GhPolicyView({ canChange }: { readonly canChange: boolean }): Re
   return (
     <div data-testid="gh-policy" data-state="ready">
       <p data-testid="gh-policy-scope">
-        배포 범위 <code>{status.scope}</code> · 정책 revision {status.policy.revision} · 마지막 변경 {status.policy.updated_by ?? '—'} ({formatTimestamp(status.policy.updated_at)})
+        Deployment scope <code>{status.scope}</code> · Policy revision {status.policy.revision} · Last change {status.policy.updated_by ?? '—'} ({formatTimestamp(status.policy.updated_at)})
       </p>
       <p data-testid="gh-policy-limits">
-        이 화면은 실행 정책(A-005)의 최소 부분입니다 — 실행이 열린 명령의 차단·재개만 있습니다. 위험도 재정의·승인 정책 편집·엔드포인트·확장 허용 목록은
-        아직 없습니다. 정책은 실행이 열린 명령을 줄일 수만 있고 늘릴 수 없습니다.
+        Execution policy (A-005) currently supports blocking and resuming enabled commands. Risk overrides, approval policy editing, endpoints, and extension allowlists are not available. Policy can restrict enabled commands but cannot enable additional commands.
       </p>
       {status.policy.approval === null || !status.policy.approval.matches_served ? (
         <p role="status" data-testid="gh-policy-approval-needed">
-          현재 배포 정의가 운영 승인되지 않아 차단 여부와 관계없이 새 실행은 거절됩니다. <Link href="/ops/gh-registry">gh 레지스트리(A-006)</Link>에서 운영
-          승인을 확인하세요.
+          The current deployment definition lacks operational approval, so new executions are rejected regardless of blocking policy. <Link href="/ops/gh-registry">gh registry (A-006)</Link> to review operational approval.
         </p>
       ) : null}
       {message === null ? null : message.tone === 'status' ? (
@@ -115,12 +113,12 @@ export function GhPolicyView({ canChange }: { readonly canChange: boolean }): Re
       ) : (
         <ErrorBanner
           tone={message.tone}
-          title="실행 정책을 바꾸지 못했습니다"
+          title="Unable to update execution policy"
           impact={message.text}
           correlationId={message.correlationId}
           action={
             <Button variant="secondary" onClick={() => setMessage(null)} data-testid="gh-policy-message-close">
-              닫기
+              Close
             </Button>
           }
         />
@@ -133,11 +131,11 @@ export function GhPolicyView({ canChange }: { readonly canChange: boolean }): Re
             <h2 id={`gh-policy-${capability.id}`}>
               <code>gh {capability.id.split('.').join(' ')}</code>{' '}
               <Badge tone={capability.blocked ? 'danger' : 'success'} data-testid="gh-policy-capability-state">
-                {capability.blocked ? '차단' : '허용'}
+                {capability.blocked ? "Blocked" : "Allowed"}
               </Badge>
             </h2>
             <p data-testid="gh-policy-user-view">
-              지금 사용자에게 보이는 상태: {userText === null ? '실행 가능' : userText.title}
+              Current user-visible status: {userText === null ? "Available" : userText.title}
             </p>
             {canChange ? (
               <Button
@@ -146,17 +144,17 @@ export function GhPolicyView({ canChange }: { readonly canChange: boolean }): Re
                 onClick={() => open({ capabilityId: capability.id, action: capability.blocked ? 'resume' : 'block' })}
                 data-testid={capability.blocked ? 'gh-policy-resume-open' : 'gh-policy-block-open'}
               >
-                {capability.blocked ? '실행 재개' : '실행 차단'}
+                {capability.blocked ? "Resume execution" : "Block execution"}
               </Button>
             ) : (
-              <p data-testid="gh-policy-readonly">차단과 재개는 운영자(operator)만 할 수 있습니다.</p>
+              <p data-testid="gh-policy-readonly">Only operators can block or resume execution.</p>
             )}
           </Panel>
         );
       })}
 
       <Panel as="section" aria-labelledby="gh-policy-history-heading">
-        <h2 id="gh-policy-history-heading">변경 이력</h2>
+        <h2 id="gh-policy-history-heading">Change history</h2>
         <PolicyHistoryTable revisions={status.revisions} testId="gh-policy-history" />
       </Panel>
 
@@ -169,20 +167,19 @@ export function GhPolicyView({ canChange }: { readonly canChange: boolean }): Re
         <Dialog.Content size="md" data-testid={pending?.action === 'resume' ? 'gh-policy-resume-dialog' : 'gh-policy-block-dialog'}>
           {pending?.action === 'resume' ? (
             <>
-              <Dialog.Title>gh {pending.capabilityId.split('.').join(' ')} 실행을 재개합니다</Dialog.Title>
+              <Dialog.Title>gh {pending.capabilityId.split('.').join(' ')} Resume execution</Dialog.Title>
               <Dialog.Description>
-                재개 뒤의 새 요청은 현재 권한과 정책을 다시 확인한 뒤 실행됩니다. 차단 중에 닫힌 요청은 자동으로 다시 실행되지 않습니다.
+                New requests will be checked against current permissions and policy before running. Requests closed while blocked will not restart automatically.
               </Dialog.Description>
             </>
           ) : (
             <>
-              <Dialog.Title>gh {pending?.capabilityId.split('.').join(' ') ?? ''} 실행을 차단합니다</Dialog.Title>
+              <Dialog.Title>gh {pending?.capabilityId.split('.').join(' ') ?? ''} Block execution</Dialog.Title>
               <Dialog.Description>
-                차단 뒤의 새 요청과 아직 실행권을 받지 않은 대기 요청은 실행되지 않습니다. 이미 실행 중인 작업은 취소되지 않습니다 — 필요하면 실행 이력에서
-                취소하세요.
+                New requests and queued requests without execution claims will not run. Running jobs continue; cancel them from execution history if needed.
               </Dialog.Description>
               <div data-testid="gh-policy-block-user-text">
-                <strong>변경 후 사용자에게 보일 사유</strong>
+                <strong>Reason shown to users after this change</strong>
                 <p>{GATE_TEXT.policy_blocked.title}</p>
                 <p>{GATE_TEXT.policy_blocked.description}</p>
               </div>
@@ -191,16 +188,16 @@ export function GhPolicyView({ canChange }: { readonly canChange: boolean }): Re
           <ReasonField id="gh-policy-reason" value={reason} onChange={setReason} />
           {lost ? (
             <p role="alert" data-testid="gh-policy-lost">
-              응답을 받지 못했습니다. 다시 보내면 같은 요청으로 결과를 확인하며, 결정이 두 번 적용되지 않습니다.
+              No response received. Retry the same request to check its result without applying the decision twice.
             </p>
           ) : null}
           <div>
             <Button variant="primary" tone={pending?.action === 'block' ? 'danger' : 'neutral'} disabled={submitting || reasonProblem(reason) !== null} data-testid="gh-policy-submit" onClick={() => void confirm()}>
-              {submitting ? '보내는 중…' : lost ? '다시 보내기' : pending?.action === 'block' ? '차단' : '재개'}
+              {submitting ? "Submitting…" : lost ? "Retry request" : pending?.action === 'block' ? "Blocked" : "Resume"}
             </Button>
             <Dialog.Close asChild>
               <Button variant="secondary" disabled={submitting} data-testid="gh-policy-cancel">
-                취소
+                Cancel
               </Button>
             </Dialog.Close>
           </div>

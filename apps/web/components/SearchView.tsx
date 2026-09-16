@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SearchAggregationTab } from './SearchAggregationTab';
 import { hasSequenceRangeFilter, serializeQuery } from '@prs/query';
-import { Banner, Button, Collapsible, Skeleton, Tabs } from '@conductor-by-89soone/react';
+import { Banner, Button, Collapsible, Skeleton, Tabs } from './ui';
 import { CursorPager, toCursorFailure, type CursorFailure } from './CursorPager';
 import Link from 'next/link';
 import { EmptyState } from './EmptyState';
@@ -534,9 +534,9 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
   const total = outcome.search?.total ?? null;
   const announcement =
     screen.kind === 'ready' && total !== null
-      ? `결과 ${String(total.value)}${total.relation === 'gte' ? '건 이상' : '건'}`
+      ? `Results ${String(total.value)}${total.relation === 'gte' ? "or more" : "items"}`
       : screen.kind === 'ambiguous'
-        ? `후보 ${String(candidates?.length ?? 0)}건`
+        ? `Candidates ${String(candidates?.length ?? 0)} items`
         : '';
 
   /*
@@ -603,16 +603,16 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
               * 접두가 같으면 사용자도, 접근성 이름으로 요소를 찾는 시험도
               * 둘을 구분하지 못한다 — 실제로 기존 e2e 하나가 모호해졌다.
               */}
-            <WorkbenchIcon name="bookmark" />저장
+            <WorkbenchIcon name="bookmark" /> Save
           </Button>
         </div>
       )}
       </div>
 
       {savedName === null ? null : (
-        <Banner tone="info" title="저장했습니다">
+        <Banner tone="info" title="Saved">
           <p data-testid="search-saved-notice">
-            «{savedName}»를 저장했습니다. 저장된 검색 화면에서 다시 실행할 수 있습니다.
+            «{savedName}» saved. Run it again from saved searches.
           </p>
         </Banner>
       )}
@@ -642,15 +642,14 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         * 재시도도 두지 않는다. 그것이 ADR-007이 막으려는 자동 재해석이다.
         */}
       {screen.kind === 'epoch_stale' ? (
-        <Banner tone="warning" title="시퀀스 번호의 의미가 바뀌었습니다">
+        <Banner tone="warning" title="Sequence numbering has changed">
           <p data-testid="epoch-stale-notice">
-            이 검색은 <strong>{screen.sequenceSpace}</strong>의 시퀀스 에폭{' '}
-            {screen.requestedEpoch}을 기준으로 만들어졌습니다. 현재 에폭은{' '}
-            {screen.currentEpoch}입니다. 히스토리가 재작성되어 같은 seq 번호가 다른 커밋을
-            가리킬 수 있으므로 결과를 조회하지 않았습니다.
+            This search uses <strong>{screen.sequenceSpace}</strong> sequence epoch {' '}
+            {screen.requestedEpoch}. The current epoch is {' '}
+            {screen.currentEpoch}. History was rewritten, so the same sequence number may refer to another commit. Results were not loaded.
           </p>
           <Button variant="secondary" onClick={rebindEpoch} data-testid="epoch-rebind">
-            현재 에폭으로 다시 조회
+            Reload using current epoch
           </Button>
         </Banner>
       ) : null}
@@ -661,10 +660,10 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         */}
       {screen.kind !== 'epoch_stale' && sequenceContext !== null ? (
         <p data-testid="sequence-context">
-          시퀀스 공간 {sequenceContext.sequence_space} · 에폭 {sequenceContext.seq_epoch}
+          Sequence space {sequenceContext.sequence_space} · Epoch {sequenceContext.seq_epoch}
           {sequenceContext.sequence_state === 'ok'
             ? null
-            : ` · 상태 ${sequenceContext.sequence_state}`}
+            : `· Status ${sequenceContext.sequence_state}`}
         </p>
       ) : null}
 
@@ -673,10 +672,9 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
        * 조용히 0건을 내면 사용자가 오타를 영원히 못 찾는다.
        */}
       {outcome.search?.unresolved_names === undefined ? null : (
-        <Banner tone="warning" title="찾을 수 없는 이름">
+        <Banner tone="warning" title="Unknown name">
           <p data-testid="unresolved-names">
-            {outcome.search.unresolved_names.map((n) => `${n.key}:${n.value}`).join(', ')} — 이 이름은
-            등록된 조직·팀에 없습니다. 결과에 반영되지 않았습니다.
+            {outcome.search.unresolved_names.map((n) => `${n.key}:${n.value}`).join(', ')} — No registered organization or team has this name. It was not applied to the results.
           </p>
         </Banner>
       )}
@@ -707,12 +705,12 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         className="prs-results-tabs"
       >
       <div className="prs-results-toolbar">
-        <Tabs.List aria-label="검색 결과 보기 방식">
-          <Tabs.Trigger value="results">결과</Tabs.Trigger>
-          <Tabs.Trigger value="aggregation">집계</Tabs.Trigger>
+        <Tabs.List aria-label="Search result view">
+          <Tabs.Trigger value="results">Results</Tabs.Trigger>
+          <Tabs.Trigger value="aggregation">Aggregation</Tabs.Trigger>
         </Tabs.List>
         {activeTab === 'results' ? <div className="prs-results-actions">
-          <span className="prs-result-count" data-testid="result-count">{screen.kind === 'ready' && total !== null ? `${total.value.toLocaleString('ko-KR')}${total.relation === 'gte' ? '+' : ''}건` : loading ? '검색 중…' : '검색 결과'}</span>
+          <span className="prs-result-count" data-testid="result-count">{screen.kind === 'ready' && total !== null ? `${total.value.toLocaleString("en-US")}${total.relation === 'gte' ? '+' : ''} items` : loading ? "Searching…" : "Search results"}</span>
           <ExportDialog state={state} disabled={loading || screen.kind !== 'ready'} />
           {/*
             * 낡은 인용이면 레일을 그리지 않으므로(CR-051) 접기 버튼도 두지 않는다 — 누를 수 없는
@@ -720,12 +718,12 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
             */}
           {screen.kind === 'epoch_stale' ? null : (
             <Collapsible.Trigger asChild>
-              <Button variant="ghost" size="sm"><WorkbenchIcon name="filter" />필터</Button>
+              <Button variant="ghost" size="sm"><WorkbenchIcon name="filter" /> Filters</Button>
             </Collapsible.Trigger>
           )}
           <Button variant="ghost" size="sm" disabled={loading || state.q.trim() === '' || parsed.error !== null || screen.kind === 'epoch_stale'}
-            onClick={backToFirst} aria-label="결과 새로고침"><WorkbenchIcon name="refresh" />새로고침</Button>
-        </div> : <span className="prs-result-count">현재 검색 조건의 PR 집계</span>}
+            onClick={backToFirst} aria-label="Refresh results"><WorkbenchIcon name="refresh" /> Refresh</Button>
+        </div> : <span className="prs-result-count">PR aggregation for current search</span>}
       </div>
 
       {/*
@@ -735,8 +733,8 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
         * 다시 볼 길만 준다 — 새로고침은 지금 보고 있는 요청을 그대로 다시 보낸다.
         */}
       {revalidation.exhausted ? (
-        <Banner tone="info" title="M 번호가 아직 확정되지 않았습니다">
-          <p data-testid="mnumber-poll-exhausted">자동 확인을 멈췄습니다. 잠시 뒤 다시 확인해 주세요.</p>
+        <Banner tone="info" title="The M number is not yet finalized">
+          <p data-testid="mnumber-poll-exhausted">Automatic checks have stopped. Check again later.</p>
           <Button
             variant="secondary"
             onClick={() => {
@@ -744,7 +742,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
               revalidate();
             }}
           >
-            다시 확인
+            Check again
           </Button>
         </Banner>
       ) : null}
@@ -798,7 +796,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
           failure={page.failure}
         />
       ) : null}
-      {screen.kind === 'ready' ? <p id="result-keyboard-help" className="prs-keyboard-help"><WorkbenchIcon name="preview" />미리보기 버튼에서 ↑ ↓ 이동 · Enter 선택 · Esc 닫기<span>제목을 누르면 상세 화면으로 이동합니다.</span></p> : null}
+      {screen.kind === 'ready' ? <p id="result-keyboard-help" className="prs-keyboard-help"><WorkbenchIcon name="preview" /> Preview controls: ↑ ↓ navigate · Enter select · Esc close <span>Select a title to view details.</span></p> : null}
       </Tabs.Content>
 
       {/*
@@ -835,7 +833,7 @@ function RetryButton(): ReactNode {
         window.location.reload();
       }}
     >
-      다시 시도
+      Try again
     </Button>
   );
 }
@@ -886,7 +884,7 @@ function ScreenBody({
            * 상태는 Conductor `Skeleton` 하나가 알린다(`role="status"`, 0.4.1). 표 안의 자리표시
            * 행은 보조 기술에서 감춘다 — 스피너 하나를 가운데 두는 대신 결과가 놓일 자리를 보인다.
            */}
-          <Skeleton label="검색 결과를 불러오는 중" className="prs-loading-status" />
+          <Skeleton label="Loading search results" className="prs-loading-status" />
           <ResultTable rows={[]} sort={sort} onSortChange={onSortChange} loading />
         </div>
       );
@@ -899,7 +897,7 @@ function ScreenBody({
        */
       return (
         <div data-testid="resolved-single">
-          <p>해석한 대상으로 이동합니다…</p>
+          <p>Opening resolved target…</p>
           <ResolutionCandidateList candidates={candidates ?? []} truncated={false} fromQuery={fromQuery} />
         </div>
       );
@@ -947,7 +945,7 @@ function ScreenBody({
                * (FLOW-002, CR-050).
                */
               <Link href="/repositories" data-testid="search-open-repository-overview">
-                저장소 수집 상태 확인
+                Check repository ingestion
               </Link>
             }
           />
@@ -959,7 +957,7 @@ function ScreenBody({
             <ul data-testid="relaxation-hints">
               {relaxationHints.map((hint) => (
                 <li key={hint.remove}>
-                  <code className="cdt-mono">{hint.remove}</code>을(를) 빼면 {hint.total}건
+                  <code className="ui-mono">{hint.remove}</code> removed: {hint.total} items
                 </li>
               ))}
             </ul>
@@ -971,9 +969,9 @@ function ScreenBody({
       return (
         <ErrorBanner
           tone="warning"
-          title="검색이 시간 안에 끝나지 않았습니다"
-          impact="조건이 넓어 색인 전체를 훑어야 했습니다."
-          action={<span>저장소 조건(`repo:`)을 더해 범위를 좁혀 보세요.</span>}
+          title="Search timed out"
+          impact="The query was too broad and required scanning the entire index."
+          action={<span>Add a repository filter (repo:) to narrow your search.</span>}
         />
       );
 
@@ -984,11 +982,11 @@ function ScreenBody({
       return (
         <ErrorBanner
           tone="warning"
-          title="세션이 만료되었습니다"
-          impact="다시 로그인하면 보던 화면으로 돌아옵니다."
+          title="Your session has expired"
+          impact="Sign in again to return to this page."
           action={
             /* 원래 경로를 담아 보낸다 — 로그인 후 여기로 돌아온다 (FLOW-000). */
-            <a href={`${loginPath}?return_to=${encodeURIComponent('/search')}`}>다시 로그인</a>
+            <a href={`${loginPath}?return_to=${encodeURIComponent('/search')}`}>Sign in again</a>
           }
         />
       );
@@ -997,8 +995,8 @@ function ScreenBody({
       return (
         <ErrorBanner
           tone="danger"
-          title="서버에 연결하지 못했습니다"
-          impact="네트워크 연결을 확인한 뒤 다시 시도하세요."
+          title="Unable to connect to the server"
+          impact="Check your network connection and try again."
           recoverable
           /* danger 배너에는 나갈 길이 있어야 한다 (Conductor 규칙). */
           action={<RetryButton />}
@@ -1009,7 +1007,7 @@ function ScreenBody({
       return (
         <ErrorBanner
           tone="danger"
-          title="조회에 실패했습니다"
+          title="Unable to load results"
           impact={screen.message}
           /*
            * 서버가 상관 ID를 줬으면 그것을 싣는다 (C-005). 없으면 사용자가

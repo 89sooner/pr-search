@@ -129,7 +129,7 @@ describe('JobTable (C-044)', () => {
   it('총계를 모르는 진행률을 **0으로 그리지 않는다**', () => {
     render(<JobTable jobs={JOBS} onAction={vi.fn()} />);
     const unknownTotal = screen.getByTestId('job-progress-count');
-    expect(unknownTotal.textContent).toContain('총계 미확인');
+    expect(unknownTotal.textContent).toContain("total unknown");
     // 게이지를 만들지 않는다 — 빈 게이지가 "진행 없음"으로 읽힌다.
     expect(within(screen.getAllByTestId('job-row')[0] as HTMLElement).queryByTestId('job-progress-meter')).toBeNull();
   });
@@ -143,7 +143,7 @@ describe('JobTable (C-044)', () => {
     render(<JobTable jobs={JOBS} onAction={vi.fn()} />);
     const badges = screen.getAllByTestId('job-status');
     expect(badges.length).toBeGreaterThan(0);
-    expect(badges.map((badge) => badge.textContent).join(' ')).toContain('실행 중');
+    expect(badges.map((badge) => badge.textContent).join(' ')).toContain("Running");
   });
 
   it('제어를 누르면 잡 식별자와 동작을 그대로 넘긴다', () => {
@@ -235,14 +235,14 @@ describe('IndexStatusPanel (C-046)', () => {
     render(<IndexStatusPanel status={INDEX_STATUS} />);
     const active = screen.getByTestId('index-active-reindex');
     expect(active.getAttribute('data-dual-write')).toBe('true');
-    expect(active.textContent).toContain('이중 쓰기 중');
+    expect(active.textContent).toContain("Dual writing");
     expect(screen.getByTestId('index-status-panel').getAttribute('data-state')).toBe('reindex_dual_write');
   });
 
   it('조회 실패도 미확인으로 적고 0이라 하지 않는다', () => {
     render(<IndexStatusPanel status={null} failed />);
     expect(screen.getByTestId('index-status-panel').getAttribute('data-state')).toBe('index_status_unavailable');
-    expect(screen.getByTestId('index-status-failed').textContent).toContain('미확인');
+    expect(screen.getByTestId('index-status-failed').textContent).toContain("Unknown");
   });
 
   it('axe 위반 0건', async () => {

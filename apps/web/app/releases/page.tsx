@@ -17,9 +17,9 @@ export default async function ReleasesPage(): Promise<ReactNode> {
   const config = resolveWebConfig();
 
   return (
-    <GuardedPage title="릴리스" returnTo="/releases">
-      <h1>릴리스</h1>
-      <Suspense fallback={<p>릴리스를 준비하는 중…</p>}>
+    <GuardedPage title="Releases" returnTo="/releases">
+      <h1>Releases</h1>
+      <Suspense fallback={<p>Loading releases…</p>}>
         <ReleasesView loginPath={config.session.loginPath} />
       </Suspense>
     </GuardedPage>

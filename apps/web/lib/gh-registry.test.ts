@@ -76,7 +76,7 @@ describe('보조 판정', () => {
   });
 
   it('label은 모르는 값을 그대로 보이고 null은 대시다', () => {
-    expect(label(SUPPORT_LABEL, 'supported')).toBe('지원');
+    expect(label(SUPPORT_LABEL, 'supported')).toBe("Supported");
     expect(label(SUPPORT_LABEL, 'mystery')).toBe('mystery');
     expect(label(SUPPORT_LABEL, null)).toBe('—');
     expect(shortHash('abcdef0123456789abcdef')).toBe('abcdef012345…');
@@ -108,7 +108,7 @@ describe('결과 계약 표시 (CR-089)', () => {
     for (const kind of kinds) expect(refTypeLabel(kind), kind).toBe(refTypeName(kind));
     expect(refTypeLabel('pull_request')).toBe('PullRequestRef');
     expect(refTypeLabel('workflow_run')).toBe('WorkflowRunRef');
-    expect(refTypeLabel(null)).toBe('자원 결과 아님');
+    expect(refTypeLabel(null)).toBe("Not a resource result");
   });
 
   it('검증 기록의 보고서 판: r2는 verified, r1은 legacy, 판을 모르는 옛 응답은 unknown이다 — 옛 기록을 통과로 다시 읽지 않는다', () => {
@@ -121,12 +121,12 @@ describe('결과 계약 표시 (CR-089)', () => {
   });
 
   it('describeConditions: 조건이 없으면 「없음」(직접 호환)이고, 있으면 라벨과 세부를 순서대로 잇는다 — 모르는 코드는 그대로 보인다', () => {
-    expect(describeConditions([])).toBe('없음');
+    expect(describeConditions([])).toBe("None");
     expect(
       describeConditions([
         { code: 'explicit_selection', detail: '/0' },
         { code: 'mystery', detail: 'x' },
       ]),
-    ).toBe('원소 하나를 명시적으로 선택: /0 · mystery: x');
+    ).toBe("Explicit item selection: /0 · mystery: x");
   });
 });

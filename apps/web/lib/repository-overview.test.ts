@@ -117,7 +117,7 @@ describe('등록 상태 (AC-7)', () => {
   });
 
   it('**해제 안내가 기존 자료의 존속을 함께 말한다** — "사라졌다"로 읽히지 않는다', () => {
-    expect(ARCHIVED_NOTE).toContain('이미 수집된 자료는 그대로');
+    expect(ARCHIVED_NOTE).toContain("Previously collected data remains searchable");
   });
 });
 
@@ -151,13 +151,13 @@ describe('시퀀스 공간', () => {
 
   it('**unknown은 값이 없는 상태다** — 0으로 그리면 "0번까지 채번됐다"는 거짓이다', () => {
     expect(hasSequenceValue({ ...space, sequence_state: 'unknown', last_sequence: null })).toBe(false);
-    expect(SEQUENCE_LABEL.unknown).toContain('채번된 적 없음');
+    expect(SEQUENCE_LABEL.unknown).toContain("Never numbered");
   });
 });
 
 describe('백필', () => {
   it('잡이 없으면 "요청된 적 없음"이다', () => {
-    expect(backfillLabel(null)).toBe('요청된 적 없음');
+    expect(backfillLabel(null)).toBe("Never requested");
     expect(isBackfillActive(null)).toBe(false);
     expect(backfillProgress(null)).toBeNull();
   });
@@ -192,16 +192,16 @@ describe('백필', () => {
 
 describe('조정 스캔 문구 (AC-6)', () => {
   it('**조회 실패·기록 없음·확인된 건수 셋을 가른다**', () => {
-    expect(reconciliationSummary(item({ unavailable: ['reconciliation'] }))).toBe('확인하지 못했습니다');
+    expect(reconciliationSummary(item({ unavailable: ['reconciliation'] }))).toBe("Could not verify");
     expect(
       reconciliationSummary(item({ reconciliation: { last_completed_at: null, missing_count: null } })),
-    ).toBe('완료된 조정 스캔 기록이 없습니다');
-    expect(reconciliationSummary(item())).toBe('누락 없음');
+    ).toBe("No completed reconciliation scan");
+    expect(reconciliationSummary(item())).toBe("No missing items");
     expect(
       reconciliationSummary(
         item({ reconciliation: { last_completed_at: '2026-08-27T23:00:00.000Z', missing_count: 3 } }),
       ),
-    ).toBe('누락 3건');
+    ).toBe("Missing items: 3");
   });
 
   it('**0과 null이 다른 문구다**', () => {

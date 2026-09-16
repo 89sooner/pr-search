@@ -79,23 +79,23 @@ function bool(value: unknown): boolean {
 
 /** 신뢰도 배지 라벨. 색상만으로 구분하지 않는다. */
 export function confidenceLabel(confidence: RelationConfidence | null): string {
-  if (confidence === 'exact') return '확실';
-  if (confidence === 'derived') return '파생';
-  if (confidence === 'heuristic') return '추정';
-  return '알 수 없음';
+  if (confidence === 'exact') return 'Certain';
+  if (confidence === 'derived') return 'Derived';
+  if (confidence === 'heuristic') return 'Inferred';
+  return 'Unknown';
 }
 
 /** 유형별 그룹 제목. */
 export function linkTypeLabel(linkType: RelationLinkType): string {
   switch (linkType) {
     case 'references':
-      return '참조';
+      return 'References';
     case 'reverts':
-      return '되돌림';
+      return 'Reverts';
     case 'cherry_picks':
-      return '체리픽';
+      return 'Cherry-pick';
     case 'stacks_on':
-      return '스택';
+      return 'Stack';
   }
 }
 
@@ -109,13 +109,13 @@ export function directionLabel(linkType: RelationLinkType, direction: RelationDi
   const outgoing = direction === 'outgoing';
   switch (linkType) {
     case 'reverts':
-      return outgoing ? '이 항목이 되돌린 대상' : '이 항목을 되돌린 주체';
+      return outgoing ? 'Reverted by this item' : 'Items that revert this item';
     case 'cherry_picks':
-      return outgoing ? '이 항목이 가져온 원본' : '이 항목을 가져간 사본';
+      return outgoing ? 'Originals cherry-picked by this item' : 'Copies cherry-picked from this item';
     case 'stacks_on':
-      return outgoing ? '이 PR이 의존하는 상위 PR' : '이 PR에 의존하는 하위 PR';
+      return outgoing ? 'Parent PRs this PR depends on' : 'Child PRs that depend on this PR';
     case 'references':
-      return outgoing ? '이 항목이 참조한 대상' : '이 항목을 참조한 주체';
+      return outgoing ? 'Items referenced by this item' : 'Items that reference this item';
   }
 }
 
@@ -158,7 +158,7 @@ function judgeEndpoint(raw: unknown, resolved: boolean): RelationEndpointView {
   }
   return {
     kind,
-    label: resolved ? '대상 상세를 표시할 수 없습니다' : '대상이 아직 색인되지 않았습니다',
+    label: resolved ? 'Target details are unavailable' : 'The target has not been indexed yet',
     repository,
     url: null,
     contentAvailable: false,
@@ -227,12 +227,12 @@ export function summaryBadges(summary: LinkSummaryView | null | undefined): read
 
   const badges: RelationBadge[] = [];
   if ((summary.reference_count ?? 0) > 0) {
-    badges.push({ key: 'references', label: `참조 ${String(summary.reference_count)}` });
+    badges.push({ key: 'references', label: `References: ${String(summary.reference_count)}` });
   }
-  if (summary.has_revert === true) badges.push({ key: 'has_revert', label: '되돌림' });
-  if (summary.is_reverted === true) badges.push({ key: 'is_reverted', label: '되돌림됨' });
-  if (summary.has_cherry_pick === true) badges.push({ key: 'has_cherry_pick', label: '체리픽' });
-  if (summary.has_stack === true) badges.push({ key: 'has_stack', label: '스택' });
+  if (summary.has_revert === true) badges.push({ key: 'has_revert', label: 'Reverts' });
+  if (summary.is_reverted === true) badges.push({ key: 'is_reverted', label: 'Reverted' });
+  if (summary.has_cherry_pick === true) badges.push({ key: 'has_cherry_pick', label: 'Cherry-pick' });
+  if (summary.has_stack === true) badges.push({ key: 'has_stack', label: 'Stack' });
   return badges;
 }
 
@@ -266,13 +266,13 @@ const CO_CHANGE_REASONS: readonly CoChangeReason[] = [
 export function coChangeReasonLabel(reason: CoChangeReason | null): string {
   switch (reason) {
     case 'not_merged':
-      return '아직 머지되지 않아 동시 변경을 계산할 수 없습니다. 동시 변경은 머지 시각 앞뒤 90일을 봅니다.';
+      return 'Co-changes cannot be calculated before merging. They cover 90 days before and after the merge time.';
     case 'enrichment_pending':
-      return '변경 경로가 아직 수집되지 않아 동시 변경을 계산할 수 없습니다.';
+      return 'Co-changes cannot be calculated until changed paths are collected.';
     case 'too_many_changed_files':
-      return '변경 파일이 200개를 넘어 동시 변경 대상에서 제외됩니다.';
+      return 'Excluded from co-change analysis because more than 200 files changed.';
     default:
-      return '동시 변경을 계산할 수 없습니다.';
+      return 'Co-changes cannot be calculated.';
   }
 }
 

@@ -30,7 +30,7 @@ import { sanitizeReturnPath } from '@prs/authz';
 export function redirectToPath(path: string, status: 303 | 307 = 307): NextResponse {
   // 빈 값은 `sanitizeReturnPath`가 대체값(여기서는 빈 값)을 돌려주므로 비교만으로는 걸리지 않는다.
   if (path === '' || sanitizeReturnPath(path, '') !== path) {
-    throw new Error(`같은 출처의 절대 경로가 아니다: ${JSON.stringify(path)}`);
+    throw new Error(`Not a same-origin absolute path: ${JSON.stringify(path)}`);
   }
   return new NextResponse(null, { status, headers: { location: path } });
 }

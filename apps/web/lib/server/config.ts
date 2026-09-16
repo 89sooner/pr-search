@@ -94,7 +94,7 @@ export function webConfigFailure(env: NodeJS.ProcessEnv = process.env): string |
         resolveOidcConfig(env);
       }
     } catch (cause) {
-      return `AUTH_ENABLED=true인데 인증 구성이 완전하지 않다 — ${reason(cause)}`;
+      return `AUTH_ENABLED=true but authentication configuration is incomplete — ${reason(cause)}`;
     }
 
     /*
@@ -105,7 +105,7 @@ export function webConfigFailure(env: NodeJS.ProcessEnv = process.env): string |
     try {
       resolveTeamRoleMap(env);
     } catch (cause) {
-      return `GHE_TEAM_ROLE_MAP이 올바르지 않다 — ${reason(cause)}`;
+      return `GHE_TEAM_ROLE_MAP is invalid — ${reason(cause)}`;
     }
   }
 
@@ -125,9 +125,9 @@ export function webConfigWarnings(env: NodeJS.ProcessEnv = process.env): string[
   const warnings: string[] = [];
   if (resolveWebConfig(env).authEnabled && insecureCookiesAllowed(env)) {
     warnings.push(
-      'ALLOW_INSECURE_COOKIES=true — 세션 쿠키가 Secure 없이 발급된다. 같은 망의 누구든 평문 HTTP에서 ' +
-        '세션을 가로챌 수 있다. 파일럿 전용이며, TLS를 붙이면 SESSION_COOKIE_SECURE=true로 되돌리고 이 값을 지운다 ' +
-        '(FR-AUTH-001 AC-2, RUNBOOK 6장)',
+      'ALLOW_INSECURE_COOKIES=true — Session cookies are issued without Secure. Anyone on the same network can ' +
+        'intercept sessions over plain HTTP. Pilot use only: after enabling TLS, restore SESSION_COOKIE_SECURE=true and remove this setting ' +
+        '(FR-AUTH-001 AC-2, RUNBOOK chapter 6)',
     );
   }
   return warnings;

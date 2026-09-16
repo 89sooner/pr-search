@@ -1,6 +1,8 @@
 # PR Search 보안 및 개인정보 아키텍처
 
-> 상태: review | 버전: v1.12 | 갱신일: 2026-09-15
+> CR-097: FR-SRC-001~004는 소스 코드의 **일시적 열람**을 허용한다. 모든 source GET은 세션과 기존 저장소 범위를 확인한 뒤 Data App의 read-only GitHubSourceReader를 호출한다. 미등록/범위 밖은 동일404이며 관리자 토큰 우회는 없다. ref/SHA/path/page를 검증하고 임의 호스트·download_url·파일시스템 경로를 따르지 않는다. 본문은 PG/ES/Redis/미러/로그에 저장하지 않는다. 응답 no-store, 감사는 경로·SHA·결과만. UTF8/크기/라인 한도와 안전한 React 텍스트 렌더링을 사용한다. 기존 MIRROR_ALLOW_BLOB_FETCH 설정을 변경하지 않는다.
+
+> 상태: review | 버전: v1.13 | 갱신일: 2026-09-17
 
 CR-079: WP-074는 기존 읽기 Data App만 사용한다. 신규 증거 proof의 허용 필드는 [설계](pr_search_wp074_design.md) 6절, 측정 read-only role·세션 파일·비식별 출력은 측정 가이드가 정본이다. 새 제목 쓰기 App, OIDC 정책 변경, 익명 조회, fixture를 production 직접 확정에 넣는 경로는 만들지 않는다. 기존 auth gate와 범위 밖=미등록 404를 유지한다.
 

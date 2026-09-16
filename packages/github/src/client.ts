@@ -7,6 +7,7 @@
  */
 
 import { GitHubApiError } from './errors.js';
+import { GitHubSourceReader } from './source-reader.js';
 import type { RequestPriority } from './scheduler.js';
 import type { GitHubTransport, PagedResult } from './transport.js';
 
@@ -216,6 +217,8 @@ export const MAX_CHANGED_FILES = 3000;
 export const MAX_PR_COMMITS = 250;
 
 export class GitHubClient {
+  /** FR-SRC-001~004: separate ephemeral reader; ingestion DTOs still exclude source. */
+  sourceReader(): GitHubSourceReader { return new GitHubSourceReader(this.#transport); }
   readonly #transport: GitHubTransport;
 
   constructor(transport: GitHubTransport) {

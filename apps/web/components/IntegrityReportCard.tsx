@@ -26,7 +26,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { Button, Card, CodeBlock, Dialog, Field, TextField } from '@conductor-by-89soone/react';
+import { Button, Card, CodeBlock, Dialog, Field, TextField } from './ui';
 import { reassignConfirmed } from '../lib/ops-jobs';
 import { formatTimestamp } from '../lib/format';
 
@@ -61,9 +61,9 @@ export interface IntegrityReportCardProps {
 
 function Count({ value }: { readonly value: number | null }): ReactNode {
   return value === null ? (
-    <span data-testid="impact-unavailable">미확인</span>
+    <span data-testid="impact-unavailable">Unverified</span>
   ) : (
-    <>{value.toLocaleString('ko-KR')}</>
+    <>{value.toLocaleString("en-US")}</>
   );
 }
 
@@ -89,17 +89,17 @@ export function IntegrityReportCard({
         {report.repository} <span data-testid="integrity-branch">{report.base_branch}</span>
       </h3>
       <p data-testid="integrity-epoch">
-        에폭 {report.seq_epoch}
-        {report.checked_at === null ? '' : ` · 점검 ${formatTimestamp(report.checked_at)}`}
-        {report.checked_count === null ? '' : ` · 대조 ${report.checked_count.toLocaleString('ko-KR')}건`}
+        Epoch {report.seq_epoch}
+        {report.checked_at === null ? '' : `· Checked ${formatTimestamp(report.checked_at)}`}
+        {report.checked_count === null ? '' : `· Compared ${report.checked_count.toLocaleString("en-US")} items`}
       </p>
 
       {report.consistent ? (
-        <p data-testid="integrity-consistent">불일치가 없습니다. 저장된 서수가 커밋 그래프와 같습니다.</p>
+        <p data-testid="integrity-consistent">No mismatches. Stored ordinals match the commit graph.</p>
       ) : (
         <div data-testid="integrity-mismatch">
           <p>
-            최초 불일치 서수 <strong data-testid="integrity-first-mismatch">{report.first_mismatch_seq ?? '미확인'}</strong>
+            First mismatched ordinal <strong data-testid="integrity-first-mismatch">{report.first_mismatch_seq ?? "Unverified"}</strong>
           </p>
           {/*
             **저장 SHA와 실제 SHA를 나란히 보인다** (AC-3). 하나만 보이면
@@ -107,7 +107,7 @@ export function IntegrityReportCard({
           */}
           <CodeBlock
             data-testid="integrity-shas"
-            code={`저장 ${report.stored_sha ?? '(없음)'}\n실제 ${report.actual_sha ?? '(없음)'}`}
+            code={`Stored ${report.stored_sha ?? "(none)"}\nActual ${report.actual_sha ?? "(none)"}`}
           />
 
           <Button
@@ -119,7 +119,7 @@ export function IntegrityReportCard({
               setOpen(true);
             }}
           >
-            재채번 실행
+            Renumber
           </Button>
         </div>
       )}
@@ -132,28 +132,27 @@ export function IntegrityReportCard({
         }}
       >
         <Dialog.Content size="md" data-testid="reassign-dialog">
-          <Dialog.Title>재채번은 되돌릴 수 없습니다</Dialog.Title>
+          <Dialog.Title>Renumbering cannot be undone</Dialog.Title>
           <Dialog.Description>
-            {report.repository} {report.base_branch}의 에폭이 {report.seq_epoch}에서 {report.seq_epoch + 1}로 올라가고,
-            이전 에폭을 인용한 범위는 모두 무효가 됩니다.
+            {report.repository} {report.base_branch} epoch changes {report.seq_epoch} from {report.seq_epoch + 1} to this value. All ranges referencing the previous epoch become invalid.
           </Dialog.Description>
 
           <ul data-testid="reassign-impact">
             <li>
-              재채번 대상 커밋 <Count value={impact?.affected_commit_count ?? null} />건
+              Commits to renumber <Count value={impact?.affected_commit_count ?? null} /> items
             </li>
             <li>
-              무효화되는 안전 구간 표식 <Count value={impact?.invalidated_safe_marker_count ?? null} />건
+              Verified markers invalidated <Count value={impact?.invalidated_safe_marker_count ?? null} /> items
             </li>
             <li>
-              영향받는 저장된 검색 <Count value={impact?.affected_saved_search_count ?? null} />건
+              Affected saved searches <Count value={impact?.affected_saved_search_count ?? null} /> items
             </li>
           </ul>
 
           <Field
             id="reassign-confirm"
-            label="저장소 이름을 그대로 입력하세요"
-            description={`정확히 "${report.repository}"여야 합니다. 공백과 대소문자도 같아야 합니다.`}
+            label="Enter the exact repository name"
+            description={`Must exactly match "${report.repository}", including whitespace and capitalization.`}
           >
             <TextField
               id="reassign-confirm"
@@ -183,11 +182,11 @@ export function IntegrityReportCard({
                 onReassign(report);
               }}
             >
-              {submitting ? '재채번 요청 중…' : '재채번 실행'}
+              {submitting ? "Requesting renumbering…" : "Renumber"}
             </Button>
             <Dialog.Close asChild>
               <Button variant="secondary" data-testid="reassign-cancel">
-                취소
+                Cancel
               </Button>
             </Dialog.Close>
           </div>

@@ -27,6 +27,7 @@ import type { ReactNode } from 'react';
 import { sessionCookieName } from '@prs/authz';
 import type { Role } from '@prs/authz/roles';
 import { Shell } from '../../components/Shell';
+import { ReaderShell } from '../../components/reader/ReaderShell';
 import { readBrowserCookie } from '../proxy';
 import { resolveWebConfig } from './config';
 import { resolveEffectiveRoles } from './effective-roles';
@@ -48,6 +49,8 @@ export interface GuardedPageContext {
 }
 
 export interface GuardedPageProps {
+  readonly reader?: boolean;
+  readonly legacyReader?: boolean;
   /** 셸의 제목. 라우트 전환 알림이 이 값을 읽는다 (QA-COMMON-14). */
   readonly title: string;
   /**
@@ -88,6 +91,8 @@ export async function GuardedPage({
   returnTo,
   children,
   whenAuthDisabled,
+  reader = false,
+  legacyReader = false,
 }: GuardedPageProps): Promise<ReactNode> {
   const config = resolveWebConfig();
 
@@ -100,6 +105,7 @@ export async function GuardedPage({
    * `search-api`에서 같은 판단을 한 것과 같은 이유다.
    */
   if (!config.authEnabled) {
+    if (reader) return <ReaderShell user={null}>{whenAuthDisabled ?? render([])}</ReaderShell>;
     return (
       <Shell roles={[]} user={null} title={title}>
         {whenAuthDisabled ?? render([])}
@@ -127,6 +133,9 @@ export async function GuardedPage({
     sessionId: session.sessionId,
     sessionRoles: session.roles,
   });
+  if ((reader && !(legacyReader && roles.includes('operator'))) || (!roles.includes('operator') && (returnTo.startsWith('/pr/') || returnTo.startsWith('/commit/')))) {
+    return <ReaderShell user={{ login: session.login, email: session.email }} operator={roles.includes('operator')} roles={roles}>{render(roles, session.login)}</ReaderShell>;
+  }
   return (
     <Shell roles={roles} user={{ login: session.login, email: session.email }} title={title}>
       {render(roles, session.login)}

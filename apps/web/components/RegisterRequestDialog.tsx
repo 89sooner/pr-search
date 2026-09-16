@@ -16,8 +16,9 @@
  */
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { Button, Dialog, Field, TextField } from '@conductor-by-89soone/react';
+import { Button, Dialog, Field, TextField } from './ui';
 import { ErrorBanner } from './ErrorBanner';
+import { serviceMessage } from '../lib/service-message';
 
 /** `/api/v1`을 적으면 프록시가 `/api/v1/v1/...`을 만든다. */
 const REGISTRATION_REQUESTS_API = '/api/repository-registration-requests';
@@ -57,8 +58,8 @@ export function RegisterRequestDialog({
         body: JSON.stringify({ repository }),
       });
       if (!response.ok) {
-        const body = (await response.json()) as { error?: { message?: string } };
-        setFailed(body.error?.message ?? '요청을 기록하지 못했습니다');
+        const body = (await response.json()) as { error?: { message?: string; code?: string } };
+        setFailed(serviceMessage(body.error?.message, "Unable to record request", body.error?.code));
         return;
       }
       /*
@@ -69,7 +70,7 @@ export function RegisterRequestDialog({
       onRecorded?.(repository);
       onOpenChange(false);
     } catch {
-      setFailed('요청을 기록하지 못했습니다');
+      setFailed("Unable to record request");
     } finally {
       setSubmitting(false);
     }
@@ -78,17 +79,16 @@ export function RegisterRequestDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Content size="sm" data-testid="register-request-dialog">
-        <Dialog.Title>저장소 등록 검토 요청</Dialog.Title>
+        <Dialog.Title>Request repository registration review</Dialog.Title>
         <Dialog.Description>
-          운영자가 검토할 수 있도록 요청을 기록합니다. 이 요청은 저장소를 등록하거나 수집을
-          시작하지 않으며, 대상 저장소가 실제로 있는지도 확인하지 않습니다.
+          Record a request for operator review. This does not register the repository, start ingestion, or verify that the repository exists.
         </Dialog.Description>
 
         {failed === null ? null : (
-          <ErrorBanner tone="warning" title="요청을 기록하지 못했습니다" impact={failed} recoverable />
+          <ErrorBanner tone="warning" title="Unable to record request" impact={failed} recoverable />
         )}
 
-        <Field label="저장소" required>
+        <Field label="Repository" required>
           <TextField
             value={repository}
             placeholder="owner/name"
@@ -106,10 +106,10 @@ export function RegisterRequestDialog({
           disabled={submitting || repository.trim() === ''}
           data-testid="register-request-submit"
         >
-          요청 기록
+          Submit request
         </Button>
         <Dialog.Close asChild>
-          <Button variant="secondary">취소</Button>
+          <Button variant="secondary">Cancel</Button>
         </Dialog.Close>
       </Dialog.Content>
     </Dialog.Root>

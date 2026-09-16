@@ -16,7 +16,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Card, CardGrid } from '@conductor-by-89soone/react';
+import { Badge, Card, CardGrid } from './ui';
 import { formatDuration } from '../lib/format';
 
 export interface PercentileGroupRow {
@@ -51,8 +51,8 @@ function seconds(value: number): string {
 function LowSampleValues({ raw }: { readonly raw: readonly number[] }): ReactNode {
   return (
     <div data-testid="raw-values">
-      <Badge tone="warning">표본 부족</Badge>
-      <p>표본이 20건 미만이라 백분위 대신 원값을 보입니다.</p>
+      <Badge tone="warning">Insufficient samples</Badge>
+      <p>Fewer than 20 samples. Raw values are shown instead of percentiles.</p>
       <ol>
         {raw.map((value, index) => (
           <li key={index}>{seconds(value)}</li>
@@ -70,14 +70,14 @@ function PercentileCards({
   readonly values: Readonly<Record<string, number>>;
 }): ReactNode {
   return (
-    <CardGrid>
+    <CardGrid className="prs-percentile-grid">
       {percentiles.map((p) => {
         const value = values[String(p)];
         return (
-          <Card key={p} size="sm">
-            <span aria-hidden="true">p{p}</span>
+          <Card key={p} size="sm" className="prs-percentile-card">
+            <span aria-hidden="true">p {p}</span>
             <strong>
-              <span className="cdt-sr-only">{p}번째 백분위 </span>
+              <span className="ui-sr-only">{p} percentile </span>
               {value === undefined ? '—' : seconds(value)}
             </strong>
           </Card>
@@ -95,7 +95,7 @@ export function PercentileCardRow({
   excludedReasons,
 }: PercentileCardRowProps): ReactNode {
   return (
-    <div>
+    <div className="prs-percentiles">
       {overall.lowSample || overall.values === null ? (
         <LowSampleValues raw={overall.rawValues ?? []} />
       ) : (
@@ -103,13 +103,13 @@ export function PercentileCardRow({
       )}
 
       <p data-testid="excluded-count">
-        집계에서 제외: <strong>{excludedCount.toLocaleString('ko-KR')}건</strong>
+        Excluded from aggregation: <strong>{excludedCount.toLocaleString("en-US")} items</strong>
         {excludedReasons !== undefined && Object.keys(excludedReasons).length > 0 ? (
           <span>
             {' '}
             (
             {Object.entries(excludedReasons)
-              .map(([reason, count]) => `${reason} ${count.toLocaleString('ko-KR')}`)
+              .map(([reason, count]) => `${reason} ${count.toLocaleString("en-US")}`)
               .join(', ')}
             )
           </span>
@@ -118,16 +118,16 @@ export function PercentileCardRow({
 
       {groups !== undefined && groups.length > 0 ? (
         <table>
-          <caption>그룹별 백분위 비교</caption>
+          <caption>Percentile comparison by group</caption>
           <thead>
             <tr>
-              <th scope="col">그룹</th>
+              <th scope="col">Group</th>
               {percentiles.map((p) => (
                 <th key={p} scope="col">
-                  p{p}
+                  p {p}
                 </th>
               ))}
-              <th scope="col">표본</th>
+              <th scope="col">Samples</th>
             </tr>
           </thead>
           <tbody>
@@ -136,7 +136,7 @@ export function PercentileCardRow({
                 <th scope="row">{group.key}</th>
                 {group.lowSample || group.values === null ? (
                   <td colSpan={percentiles.length}>
-                    <Badge tone="warning">표본 부족</Badge>
+                    <Badge tone="warning">Insufficient samples</Badge>
                   </td>
                 ) : (
                   percentiles.map((p) => {
@@ -144,7 +144,7 @@ export function PercentileCardRow({
                     return <td key={p}>{value === undefined ? '—' : seconds(value)}</td>;
                   })
                 )}
-                <td>{group.sampleSize.toLocaleString('ko-KR')}</td>
+                <td>{group.sampleSize.toLocaleString("en-US")}</td>
               </tr>
             ))}
           </tbody>

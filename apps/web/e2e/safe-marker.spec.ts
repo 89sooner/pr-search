@@ -141,7 +141,7 @@ test.describe('W-004 안전 구간 표식', () => {
     await page.goto('/ranges?repo=acme%2Fpayments&branch=main');
 
     // 앵커가 없으면 무엇을 표식할지 모른다 — 사유와 함께 막힌다.
-    await expect(page.getByTestId('safe-marker-blocked')).toContainText('끝 앵커');
+    await expect(page.getByTestId('safe-marker-blocked')).toContainText("end anchor");
 
     await page.goto('/ranges?repo=acme%2Fpayments&branch=main&from=seq%3A2&to=seq%3A5');
     await expect(page.getByTestId('safe-marker-submit')).toContainText('seq 5');
@@ -156,7 +156,7 @@ test.describe('W-004 안전 구간 표식', () => {
     await page.getByTestId('safe-marker-note-input').fill('릴리스 검증 완료');
     await page.getByTestId('safe-marker-submit').click();
 
-    await expect(page.getByTestId('safe-marker-result')).toContainText('등록했습니다');
+    await expect(page.getByTestId('safe-marker-result')).toContainText("created");
     expect(traffic.puts).toHaveLength(1);
     expect(traffic.puts[0]).toMatchObject({
       repository: 'acme/payments',
@@ -210,7 +210,7 @@ test.describe('W-004 안전 구간 표식', () => {
     });
     await page.goto('/ranges?repo=acme%2Fpayments&branch=main');
 
-    await expect(page.getByTestId('safe-marker-stale')).toContainText('무효');
+    await expect(page.getByTestId('safe-marker-stale')).toContainText("Invalid");
     // 저장된 에폭이 그대로 보인다 — 현재 값으로 갈아 끼우면 무효가 사라진다.
     await expect(page.getByTestId('safe-marker-epoch')).toHaveText('3');
     await expect(page.getByTestId('safe-marker-seq')).toHaveText('seq 4');
@@ -265,8 +265,8 @@ test.describe('W-004 안전 구간 표식', () => {
     await stubApi(page);
     await page.goto('/ranges?repo=acme%2Fpayments&branch=main&from=seq%3A2&to=seq%3A5');
 
-    await expect(page.getByTestId('safe-marker-note-remaining')).toHaveText('500자 남음');
+    await expect(page.getByTestId('safe-marker-note-remaining')).toHaveText("500 characters remaining");
     await page.getByTestId('safe-marker-note-input').fill('가'.repeat(10));
-    await expect(page.getByTestId('safe-marker-note-remaining')).toHaveText('490자 남음');
+    await expect(page.getByTestId('safe-marker-note-remaining')).toHaveText("490 characters remaining");
   });
 });

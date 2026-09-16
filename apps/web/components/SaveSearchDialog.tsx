@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Banner, Button, Dialog, Field, Select, Spinner, TextField } from '@conductor-by-89soone/react';
+import { Banner, Button, Dialog, Field, Select, Spinner, TextField } from './ui';
 import {
   createPayload,
   saveFailureMessage,
@@ -227,31 +227,31 @@ export function SaveSearchDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Content size="md" data-testid="save-search-dialog">
-        <Dialog.Title>{editing ? '저장된 검색 편집' : '검색 저장'}</Dialog.Title>
+        <Dialog.Title>{editing ? "Edit saved search" : "Save search"}</Dialog.Title>
         <Dialog.Description>
           {editing
-            ? '이름, 질의, 공개 범위를 고칩니다. 결과는 실행할 때마다 다시 계산됩니다.'
-            : '지금 조건을 이름과 함께 저장합니다. 저장하는 것은 질의 문자열이며 결과는 실행할 때마다 다시 계산됩니다.'}
+            ? "Edit the name, query, and visibility. Results are recalculated each time you run the search."
+            : "Save your current query with a name. Results are recalculated each time you run the search."}
         </Dialog.Description>
 
         {phase.kind === 'error' ? (
-          <Banner tone="danger" title="저장하지 못했습니다">
+          <Banner tone="danger" title="Unable to save">
             <p data-testid="save-search-error">{phase.message}</p>
           </Banner>
         ) : null}
 
-        <Field label="이름" required>
+        <Field label="Name" required>
           <TextField
             value={name}
             onChange={(event) => {
               setName(event.target.value);
             }}
             data-testid="save-search-name"
-            placeholder="예: 결제 월간 리뷰"
+            placeholder="e.g. Monthly payments review"
           />
         </Field>
 
-        <Field label={editing ? '질의' : '저장할 질의'}>
+        <Field label={editing ? "Query" : "Query to save"}>
           {/*
             * 저장할 때는 읽기 전용이다 — 여기서 고치면 화면이 보여 준 결과와
             * 어긋난다. **편집할 때는 고칠 수 있어야 한다**: 문법이 바뀌어 무효가
@@ -267,7 +267,7 @@ export function SaveSearchDialog({
           />
         </Field>
 
-        <label id="save-search-visibility-label">공개 범위</label>
+        <label id="save-search-visibility-label">Visibility</label>
         <Select.Root value={visibility} onValueChange={onVisibilityChange}>
           <Select.Trigger
             aria-labelledby="save-search-visibility-label"
@@ -276,39 +276,39 @@ export function SaveSearchDialog({
             <Select.Value />
           </Select.Trigger>
           <Select.Content>
-            <Select.Item value="private">비공개 — 나만 봅니다</Select.Item>
-            <Select.Item value="team">팀 공유 — 한 팀에 공유합니다</Select.Item>
+            <Select.Item value="private">Private — only me</Select.Item>
+            <Select.Item value="team">Team — share with one team</Select.Item>
           </Select.Content>
         </Select.Root>
 
         {visibility === 'team' ? (
           <div data-testid="save-search-team-section">
-            {teams.kind === 'loading' ? <Spinner label="팀 목록을 불러오는 중" /> : null}
+            {teams.kind === 'loading' ? <Spinner label="Loading teams" /> : null}
 
             {teams.kind === 'error' ? (
-              <Banner tone="warning" title="팀 목록을 불러오지 못했습니다">
+              <Banner tone="warning" title="Unable to load teams">
                 <Button
                   variant="secondary"
                   onClick={() => {
                     void loadTeams();
                   }}
                 >
-                  다시 시도
+                  Try again
                 </Button>
               </Banner>
             ) : null}
 
             {noTeams ? (
-              <Banner tone="warning" title="공유할 팀이 없습니다">
+              <Banner tone="warning" title="No teams available">
                 <p data-testid="save-search-no-teams">
-                  현재 구성원인 팀이 없어 팀 공유를 선택할 수 없습니다. 비공개로 저장하세요.
+                  You are not a member of any team. Save this search privately.
                 </p>
               </Banner>
             ) : null}
 
             {teams.kind === 'ready' && teams.teams.length > 0 ? (
               <>
-                <label id="save-search-team-label">공유 대상 팀</label>
+                <label id="save-search-team-label">Team to share with</label>
                 <Select.Root
                   value={teamId === null ? '' : String(teamId)}
                   onValueChange={(next) => {
@@ -319,7 +319,7 @@ export function SaveSearchDialog({
                     aria-labelledby="save-search-team-label"
                     data-testid="save-search-team"
                   >
-                    <Select.Value placeholder="팀 선택" />
+                    <Select.Value placeholder="Select team" />
                   </Select.Trigger>
                   <Select.Content>
                     {teams.teams.map((team) => (
@@ -343,10 +343,10 @@ export function SaveSearchDialog({
             disabled={!canSave}
             data-testid="save-search-submit"
           >
-            {phase.kind === 'saving' ? '저장하는 중…' : '저장'}
+            {phase.kind === 'saving' ? "Saving…" : "Save"}
           </Button>
           <Dialog.Close asChild>
-            <Button variant="secondary">취소</Button>
+            <Button variant="secondary">Cancel</Button>
           </Dialog.Close>
         </div>
       </Dialog.Content>

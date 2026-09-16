@@ -121,7 +121,7 @@ describe('타임라인 (DEV-084)', () => {
     expect(approved?.at).toBeNull();
     // 왜 시각이 없는지 화면이 말할 수 있어야 한다.
     expect(approved?.note).toContain('lee');
-    expect(approved?.note).toContain('승인 시각은 수집하지 않습니다');
+    expect(approved?.note).toContain("Approval timestamps are not collected");
   });
 
   it('승인자가 없으면 `pending`이다 — 그때는 정말 안 일어났다', () => {

@@ -14,9 +14,10 @@
  */
 
 import type { ReactNode } from 'react';
-import { Panel } from '@conductor-by-89soone/react';
+import { Panel } from './ui';
 
 export interface EntityHeaderProps {
+  readonly actions?: ReactNode;
   readonly kind: 'pull_request' | 'commit' | 'release';
   readonly title: string;
   /** `owner/repo #1234` 처럼 사람이 읽는 식별자. */
@@ -44,8 +45,8 @@ function ExternalGlyph(): ReactNode {
 
 const KIND_LABEL: Readonly<Record<EntityHeaderProps['kind'], string>> = {
   pull_request: 'PR',
-  commit: '커밋',
-  release: '릴리스',
+  commit: "Commit",
+  release: "Release",
 };
 
 export function EntityHeader({
@@ -54,15 +55,17 @@ export function EntityHeader({
   identifier,
   badges,
   externalUrl,
+  actions,
 }: EntityHeaderProps): ReactNode {
   return (
     <Panel as="section" aria-labelledby="entity-title" data-testid="entity-header">
       <p data-testid="entity-identifier">
-        <span className="cdt-sr-only">{KIND_LABEL[kind]} </span>
-        <code className="cdt-mono">{identifier}</code>
+        <span className="ui-sr-only">{KIND_LABEL[kind]} </span>
+        <code className="ui-mono">{identifier}</code>
       </p>
       <h1 id="entity-title">{title}</h1>
       {badges === undefined ? null : <div data-testid="entity-badges">{badges}</div>}
+      {actions ? <div className="source-detail-actions">{actions}</div> : null}
 
       {externalUrl === undefined || externalUrl === null ? null : (
         /*
@@ -76,9 +79,9 @@ export function EntityHeader({
           rel="noreferrer"
           data-testid="external-link"
         >
-          GHE에서 열기
+          Open in GHE
           <ExternalGlyph />
-          <span className="cdt-sr-only"> (새 창에서 열립니다)</span>
+          <span className="ui-sr-only"> (opens in a new window)</span>
         </a>
       )}
     </Panel>

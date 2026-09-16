@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Banner, Button, Panel, Spinner } from '@conductor-by-89soone/react';
+import { Banner, Button, Panel, Spinner } from './ui';
 import { CursorPager, toCursorFailure, type CursorFailure } from './CursorPager';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
@@ -183,7 +183,7 @@ export function RepositoriesView({
   if (unauthenticated) {
     return (
       <Banner tone="warning" data-testid="repositories-auth-expired">
-        세션이 만료되었습니다. <a href={loginPath}>다시 로그인</a>하세요.
+        Your session has expired. <a href={loginPath}>Sign in again</a>.
       </Banner>
     );
   }
@@ -201,7 +201,7 @@ export function RepositoriesView({
     <Panel data-testid="repositories-view" data-state={screen}>
       {recorded === null ? null : (
         <Banner tone="info" data-testid="register-request-recorded">
-          {recorded} 등록 검토 요청을 기록했습니다. 운영자가 검토합니다.
+          {recorded} Registration review request recorded. An operator will review it.
         </Banner>
       )}
 
@@ -211,17 +211,17 @@ export function RepositoriesView({
         }}
         data-testid="open-register-request"
       >
-        저장소 등록 요청
+        Request repository registration
       </Button>
 
       {screen === 'error_load' ? (
         <ErrorBanner
           tone="warning"
-          title="저장소 목록을 불러오지 못했습니다"
-          impact="다시 시도하면 목록을 받을 수 있습니다."
+          title="Unable to load repositories"
+          impact="Try again to load the list."
           action={
             <Button variant="secondary" onClick={first} data-testid="repositories-retry">
-              다시 시도
+              Try again
             </Button>
           }
           recoverable
@@ -229,13 +229,13 @@ export function RepositoriesView({
       ) : null}
 
       {screen === 'loading_initial' || screen === 'loading_more' ? (
-        <Spinner label="저장소 목록을 불러오는 중" />
+        <Spinner label="Loading repositories" />
       ) : null}
 
       {screen === 'empty_no_repository' ? (
         <EmptyState
           cause="not_indexed"
-          title="표시할 등록 저장소가 없습니다"
+          title="No registered repositories to display"
           description={EMPTY_NO_REPOSITORY_MESSAGE}
           actions={
             <Button
@@ -244,7 +244,7 @@ export function RepositoriesView({
               }}
               data-testid="empty-register-request"
             >
-              등록 검토 요청
+              Request registration review
             </Button>
           }
         />

@@ -55,7 +55,7 @@ export async function resolveEffectiveRoles(
     });
   const fail = (reason: string, status?: number): readonly Role[] => {
     // 신원·역할 값은 싣지 않는다 (NFR-005). 상관 ID로 search-api 로그와 잇는다.
-    log('실효 역할을 읽지 못해 세션의 역할로 그린다 (DEV-695)', {
+    log('Effective roles unavailable; rendering with session roles (DEV-695)', {
       correlation_id: correlationId,
       reason,
       ...(status === undefined ? {} : { status }),

@@ -126,7 +126,7 @@ test.describe('FLOW-003: 딥링크 → 조회 → 상세 → 복귀', () => {
 
     // 반개구간 규칙 상시 표기 (QA-W004-01).
     await expect(page.getByTestId('range-boundary-rule')).toBeVisible();
-    await expect(page.getByTestId('anchor-from-boundary')).toHaveText('제외');
+    await expect(page.getByTestId('anchor-from-boundary')).toHaveText("Excluded");
 
     // 딥링크의 앵커는 자동 정규화된다 — 링크가 곧 의사 표시다.
     await expect(page.getByTestId('anchor-from-resolved')).toBeVisible();
@@ -134,7 +134,7 @@ test.describe('FLOW-003: 딥링크 → 조회 → 상세 → 복귀', () => {
 
     await page.getByTestId('range-query').click();
     await expect(page.getByTestId('range-results')).toBeVisible();
-    await expect(page.getByTestId('summary-reverts-pending')).toContainText('준비 중');
+    await expect(page.getByTestId('summary-reverts-pending')).toContainText("Not yet available");
 
     // 성공한 조회는 URL을 현재 에폭 인용으로 만든다 (ADR-007).
     await expect(page).toHaveURL(/epoch=3/);
@@ -167,7 +167,7 @@ test.describe('FLOW-003: 딥링크 → 조회 → 상세 → 복귀', () => {
   test('좌측 내비게이션 "범위 조사"가 이 화면으로 온다', async ({ page }) => {
     await stubApi(page);
     await page.goto('/search');
-    await page.getByRole('link', { name: '범위 조사' }).click();
+    await page.getByRole('link', { name: "Range investigation" }).click();
     await expect(page).toHaveURL(/\/ranges/);
     await expect(page.getByTestId('range-empty')).toBeVisible();
   });

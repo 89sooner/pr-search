@@ -10,9 +10,11 @@
  */
 
 import type { ReactNode } from 'react';
-import { Field } from '@conductor-by-89soone/react';
+import { Field } from './ui';
 import type { GhConstraintViolation } from '@prs/gh-cli';
 import type { CapabilityView, PrListFormState, RepositoryContextView } from '../lib/gh';
+import { capabilityTitle } from '../lib/gh-presentation';
+import { serviceMessage } from '../lib/service-message';
 
 export interface GhPrListFormProps {
   readonly capability: CapabilityView;
@@ -28,16 +30,18 @@ export function GhPrListForm({ capability, repositories, form, violations, onCha
   const jsonOption = capability.options.find((option) => option.kind === 'json_fields');
   const violationFor = (flag: string): GhConstraintViolation | undefined => violations.find((violation) => violation.flag === flag);
   const repositoryViolation = violations.find((violation) => violation.code === 'repository_format' || violation.code === 'context_required');
+  const violationMessage = (violation: GhConstraintViolation | undefined): string =>
+    violation === undefined ? '' : serviceMessage(violation.message, `Check ${violation.flag ?? 'the repository context'}.`, violation.code);
 
   return (
     <form
       data-testid="gh-pr-list-form"
-      aria-label={`${capability.title} 입력`}
+      aria-label={`${capabilityTitle(capability)} input`}
       onSubmit={(event) => {
         event.preventDefault();
       }}
     >
-      <Field id="gh-repository" label="저장소" description="등록된 저장소 중 접근할 수 있는 것만 보입니다.">
+      <Field id="gh-repository" label="Repository" description="Only accessible registered repositories are shown.">
         <select
           id="gh-repository"
           data-testid="gh-repository"
@@ -46,7 +50,7 @@ export function GhPrListForm({ capability, repositories, form, violations, onCha
             onChange({ ...form, repository: event.target.value });
           }}
         >
-          <option value="">저장소 선택</option>
+          <option value="">Select a repository</option>
           {repositories.map((repository) => (
             <option key={repository.repository_id} value={repository.repository}>
               {repository.repository} ({repository.visibility})
@@ -56,12 +60,12 @@ export function GhPrListForm({ capability, repositories, form, violations, onCha
       </Field>
       {repositoryViolation === undefined ? null : (
         <p role="alert" data-testid="gh-violation-repository">
-          {repositoryViolation.message}
+          {violationMessage(repositoryViolation)}
         </p>
       )}
 
       {enumOption?.kind === 'enum' ? (
-        <Field id="gh-state" label={enumOption.label}>
+        <Field id="gh-state" label="PR status">
           <select
             id="gh-state"
             data-testid="gh-state"
@@ -80,12 +84,12 @@ export function GhPrListForm({ capability, repositories, form, violations, onCha
       ) : null}
       {enumOption === undefined || violationFor(enumOption.flag) === undefined ? null : (
         <p role="alert" data-testid="gh-violation-state">
-          {violationFor(enumOption.flag)?.message}
+          {violationMessage(violationFor(enumOption.flag))}
         </p>
       )}
 
       {intOption?.kind === 'int' ? (
-        <Field id="gh-limit" label={intOption.label} description={`${String(intOption.min)}부터 ${String(intOption.max)}까지. 서버가 같은 상한을 강제합니다.`}>
+        <Field id="gh-limit" label="Result limit" description={`${String(intOption.min)} to ${String(intOption.max)}. The server enforces the same limit.`}>
           <input
             id="gh-limit"
             data-testid="gh-limit"
@@ -102,13 +106,13 @@ export function GhPrListForm({ capability, repositories, form, violations, onCha
       ) : null}
       {intOption === undefined || violationFor(intOption.flag) === undefined ? null : (
         <p role="alert" data-testid="gh-violation-limit">
-          {violationFor(intOption.flag)?.message}
+          {violationMessage(violationFor(intOption.flag))}
         </p>
       )}
 
       {jsonOption?.kind === 'json_fields' ? (
         <fieldset data-testid="gh-json-fields">
-          <legend>{jsonOption.label}</legend>
+          <legend>JSON fields</legend>
           {jsonOption.allowed.map((field) => {
             const checked = form.jsonFields.includes(field);
             const id = `gh-json-${field}`;
@@ -131,7 +135,7 @@ export function GhPrListForm({ capability, repositories, form, violations, onCha
       ) : null}
       {jsonOption === undefined || violationFor(jsonOption.flag) === undefined ? null : (
         <p role="alert" data-testid="gh-violation-json">
-          {violationFor(jsonOption.flag)?.message}
+          {violationMessage(violationFor(jsonOption.flag))}
         </p>
       )}
     </form>

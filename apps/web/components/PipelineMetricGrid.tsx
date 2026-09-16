@@ -21,14 +21,14 @@
  */
 
 import type { ReactNode } from 'react';
-import { Card, CardGrid } from '@conductor-by-89soone/react';
+import { Card, CardGrid } from './ui';
 import { UNAVAILABLE_LABEL, formatCount } from '../lib/ops-jobs';
 import { hasHiddenSlowRepositories, isUnavailable, type PipelineStatusView } from '../lib/ops-pipeline';
 import { formatTimestamp } from '../lib/format';
 
 function Unavailable(): ReactNode {
   return (
-    <span data-testid="metric-unavailable" aria-label="읽지 못한 값">
+    <span data-testid="metric-unavailable" aria-label="Unavailable">
       {UNAVAILABLE_LABEL}
     </span>
   );
@@ -77,7 +77,7 @@ function AxisList({
           <Unavailable />
         </p>
       ) : entries.length === 0 ? (
-        <p data-testid={`${testId}-empty`}>항목이 없습니다.</p>
+        <p data-testid={`${testId}-empty`}>No items.</p>
       ) : (
         <dl>
           {entries.map(([key, value]) => (
@@ -116,71 +116,71 @@ export function PipelineMetricGrid({
     return (
       <div data-testid="pipeline-metric-grid" data-state="partial_failure">
         <p data-testid="pipeline-metrics-failed">
-          파이프라인 지표를 읽지 못했습니다. 값은 <strong>{UNAVAILABLE_LABEL}</strong>이며 0이 아닙니다.
+          Unable to load pipeline metrics. Values are <strong>{UNAVAILABLE_LABEL}</strong> rather than zero.
         </p>
       </div>
     );
   }
 
   const seconds = (value: number | string): string =>
-    typeof value === 'number' ? `${value.toFixed(1)}초` : String(value);
+    typeof value === 'number' ? `${value.toFixed(1)} seconds` : String(value);
 
   return (
     <div data-testid="pipeline-metric-grid" data-state={stale ? 'stale' : 'ready'}>
       <p data-testid="pipeline-updated-at">
-        마지막 갱신 {formatTimestamp(updatedAt ?? metrics.generated_at)}
-        {stale ? ' — 30초가 지났습니다. 아래 값은 그 시점의 값입니다.' : ''}
+        Last updated {formatTimestamp(updatedAt ?? metrics.generated_at)}
+        {stale ? "— More than 30 seconds have elapsed. Values below reflect that snapshot." : ''}
       </p>
 
       <CardGrid>
         <MetricCard
-          label="분당 수신량"
+          label="Received per minute"
           testId="metric-intake"
           unavailable={isUnavailable(metrics, 'intake_per_minute')}
           value={formatCount(metrics.intake_per_minute ?? null)}
         />
         <MetricCard
-          label="보강 대기"
+          label="Enrichment pending"
           testId="metric-enrichment"
           unavailable={isUnavailable(metrics, 'enrichment_pending')}
           value={formatCount(metrics.enrichment_pending ?? null)}
         />
         <AxisList
-          label="대기열 길이"
+          label="Queue length"
           testId="metric-queue-depth"
           unavailable={isUnavailable(metrics, 'queue_depth')}
           values={metrics.queue_depth}
         />
         <AxisList
-          label="단계별 지연"
+          label="Latency by stage"
           testId="metric-stage-latency"
           unavailable={isUnavailable(metrics, 'stage_latency_seconds')}
           values={metrics.stage_latency_seconds}
           format={seconds}
         />
         <AxisList
-          label="수집 지연"
+          label="Ingestion lag"
           testId="metric-ingestion-lag"
           unavailable={isUnavailable(metrics, 'ingestion_lag_seconds')}
           values={metrics.ingestion_lag_seconds}
           format={seconds}
         />
         <AxisList
-          label="실패 대기열"
+          label="Dead-letter queue"
           testId="metric-dead-letter"
           unavailable={isUnavailable(metrics, 'dead_letter')}
           values={metrics.dead_letter}
         />
         <AxisList
-          label="시퀀스 공간 상태"
+          label="Sequence space status"
           testId="metric-sequence-space"
           unavailable={isUnavailable(metrics, 'sequence_space_state')}
           values={metrics.sequence_space_state}
         />
       </CardGrid>
 
-      <section aria-label="지연 상위 저장소" data-testid="metric-laggards">
-        <h3>지연 상위 저장소</h3>
+      <section aria-label="Repositories with highest lag" data-testid="metric-laggards">
+        <h3>Repositories with highest lag</h3>
         {isUnavailable(metrics, 'slowest_repositories') ? (
           <p>
             <Unavailable />
@@ -193,14 +193,14 @@ export function PipelineMetricGrid({
                  * 없으면 조회자가 "느린 저장소가 없다"와 "내가 볼 수 없다"를
                  * 구분하지 못한다.
                  */
-                `접근 범위 안에는 없습니다. 범위 밖 ${String(metrics.slowest_repositories_out_of_scope ?? 0)}건은 표시하지 않습니다.`
-              : '지연 상위 저장소가 없습니다.'}
+                `None within your access scope. Outside your scope: ${String(metrics.slowest_repositories_out_of_scope ?? 0)} items are hidden.`
+              : "No repositories with significant lag."}
           </p>
         ) : (
           <ol>
             {(metrics.slowest_repositories ?? []).map((row, index) => (
               <li key={String(row['repository'] ?? index)} data-testid="laggard-row">
-                {String(row['repository'] ?? '미확인')} — {String(row['lag_seconds'] ?? UNAVAILABLE_LABEL)}
+                {String(row['repository'] ?? "Unverified")} — {String(row['lag_seconds'] ?? UNAVAILABLE_LABEL)}
               </li>
             ))}
           </ol>

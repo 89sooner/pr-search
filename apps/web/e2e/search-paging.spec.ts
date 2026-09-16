@@ -189,7 +189,7 @@ test.describe('커서 실패 (DEV-273)', () => {
 
     const failure = page.getByTestId('cursor-failure');
     await expect(failure).toHaveAttribute('data-cursor-failure', 'CURSOR_INVALID');
-    await expect(failure).toContainText('만료');
+    await expect(failure).toContainText("expired");
   });
 });
 

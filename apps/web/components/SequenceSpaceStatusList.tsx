@@ -16,7 +16,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Table } from '@conductor-by-89soone/react';
+import { Badge, Table } from './ui';
 import {
   SEQUENCE_LABEL,
   hasSequenceValue,
@@ -38,17 +38,17 @@ export interface SequenceSpaceStatusListProps {
 
 export function SequenceSpaceStatusList({ spaces }: SequenceSpaceStatusListProps): ReactNode {
   if (spaces.length === 0) {
-    return <p data-testid="sequence-spaces-empty">시퀀스 대상 브랜치가 지정되지 않았습니다.</p>;
+    return <p data-testid="sequence-spaces-empty">No sequence base branches configured.</p>;
   }
 
   return (
-    <Table caption="시퀀스 공간 상태" data-testid="sequence-spaces">
+    <Table caption="Sequence space status" data-testid="sequence-spaces">
       <Table.Head>
         <Table.Row>
-          <Table.HeaderCell scope="col">브랜치</Table.HeaderCell>
-          <Table.HeaderCell scope="col">마지막 시퀀스</Table.HeaderCell>
-          <Table.HeaderCell scope="col">에폭</Table.HeaderCell>
-          <Table.HeaderCell scope="col">상태</Table.HeaderCell>
+          <Table.HeaderCell scope="col">Branch</Table.HeaderCell>
+          <Table.HeaderCell scope="col">Last sequence</Table.HeaderCell>
+          <Table.HeaderCell scope="col">Epoch</Table.HeaderCell>
+          <Table.HeaderCell scope="col">Status</Table.HeaderCell>
         </Table.Row>
       </Table.Head>
       <Table.Body>

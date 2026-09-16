@@ -26,6 +26,7 @@ import { registerSavedSearchRoutes } from './saved-search/routes.js';
 import { registerAuditRoutes, type AuditRouteOptions } from './audit/routes.js';
 import { registerRepositoryRoutes, type RepositoryRouteOptions } from './repositories/routes.js';
 import { registerGhRoutes, type GhRouteOptions } from './gh/routes.js';
+import { registerSourceRoutes, type SourceRouteOptions } from './source/routes.js';
 import type { SavedSearchDeps } from './saved-search/service.js';
 import { authRepo, repositoryRepo, type Pool } from '@prs/db';
 import type { SearchDeps } from './search/service.js';
@@ -77,6 +78,7 @@ async function withHealthTimeout<T>(work: Promise<T>): Promise<T> {
 }
 
 export interface ServerDeps {
+  readonly source?: Omit<SourceRouteOptions, 'auth' | 'loginPath'>;
   readonly config?: SearchApiConfig;
 
   /**
@@ -224,6 +226,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   });
 
   if (deps.auth !== undefined) {
+    if (deps.source) registerSourceRoutes(app, { ...deps.source, auth: deps.auth, loginPath: config.auth.loginPath });
     if (config.adminTokens.length > 0) {
       // 세션 옆에 토큰 우회를 열어 둔 배포를 만들지 않는다 (CR-015, DEV-048).
       throw new Error(

@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { Banner, Panel, Spinner } from '@conductor-by-89soone/react';
+import { Banner, Panel, Spinner } from './ui';
 import { PercentileCardRow } from './PercentileCardRow';
 import { AggregationPanel, type AggregationGroup } from './AggregationPanel';
 import {
@@ -51,11 +51,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 const TimeSeriesChart = dynamic(() => import('./TimeSeriesChart').then((m) => m.TimeSeriesChart), {
   ssr: false,
-  loading: () => <Spinner label="시계열을 불러오는 중" />,
+  loading: () => <Spinner label="Loading time series" />,
 });
 const DistributionChart = dynamic(() => import('./DistributionChart').then((m) => m.DistributionChart), {
   ssr: false,
-  loading: () => <Spinner label="분포를 불러오는 중" />,
+  loading: () => <Spinner label="Loading distribution" />,
 });
 
 const ANALYTICS_API = '/api/analytics';
@@ -120,38 +120,37 @@ function usePanel(path: string, requestBody: Record<string, unknown>, enabled = 
 function PanelStatus({ state }: { readonly state: PanelState }): ReactNode {
   switch (state.kind) {
     case 'loading':
-      return <Spinner label="불러오는 중" />;
+      return <Spinner label="Loading" />;
     case 'offline':
-      return <Banner tone="warning">연결이 끊겼습니다. 다시 시도하세요.</Banner>;
+      return <Banner tone="warning">Connection lost. Please try again.</Banner>;
     case 'auth_expired':
       return (
         <Banner tone="warning">
-          세션이 만료되었습니다. <Link href={state.loginPath}>다시 로그인</Link>
+          Your session has expired. <Link href={state.loginPath}>Sign in again</Link>
         </Banner>
       );
     case 'no_permission':
-      return <Banner tone="danger">이 집계를 볼 권한이 없습니다.</Banner>;
+      return <Banner tone="danger">You do not have permission to view this aggregation.</Banner>;
     case 'empty_no_data':
-      return <p>대상 데이터가 없습니다. 기간이나 조건을 넓혀 보세요.</p>;
+      return <p>No matching data. Broaden the date range or filters.</p>;
     case 'epoch_stale':
       return (
         <Banner tone="warning" data-testid="epoch-stale">
-          질의의 시퀀스 범위가 딛고 선 에폭이 현재와 다릅니다(요청 {state.requested ?? '없음'}). 재채번 뒤의 같은
-          서수는 다른 커밋을 가리키므로 집계를 그리지 않습니다. 범위를 다시 지정하세요.
+          The query uses a different sequence epoch (requested {state.requested ?? "None"}). After renumbering, an ordinal may point to a different commit. Select the range again to view the aggregation.
         </Banner>
       );
     case 'error_too_many_buckets':
       return (
         <Banner tone="warning">
-          버킷이 {state.max ?? 400}개를 넘습니다(요청 {state.bucketCount ?? '?'}). 간격을 넓히세요.
+          Bucket limit: {state.max ?? 400} exceeded (requested {state.bucketCount ?? '?'}). Use a wider interval.
         </Banner>
       );
     case 'error_aggregation_timeout':
-      return <Banner tone="warning">집계가 시간을 넘겼습니다. 기간을 줄이거나 조건을 좁히세요.</Banner>;
+      return <Banner tone="warning">The aggregation timed out. Shorten the date range or narrow the filters.</Banner>;
     case 'error_other':
       return (
         <Banner tone="danger">
-          집계에 실패했습니다({state.code}). {state.message}
+          Aggregation failed ({state.code}). {state.message}
         </Banner>
       );
     default:
@@ -188,12 +187,11 @@ export function AnalyticsView({ loginPath }: AnalyticsViewProps): ReactNode {
   );
 
   return (
-    <div>
+    <div className="prs-analytics">
       <AnalyticsControls state={state} onChange={update} />
 
       <p data-testid="pr-population-note">
-        이 통계는 <strong>Pull Request</strong>를 대상으로 셉니다. 검색 목록은 PR과 커밋을 함께 보이므로 목록 총계와
-        다를 수 있으며, 그 차이는 오류가 아닙니다.
+        These statistics count <strong>Pull Request</strong> only. Search results include both PRs and commits, so their totals may legitimately differ.
       </p>
 
       <GroupsSlot state={state} loginPath={loginPath} hrefFor={hrefFor} />
@@ -202,18 +200,20 @@ export function AnalyticsView({ loginPath }: AnalyticsViewProps): ReactNode {
         state={state}
         loginPath={loginPath}
         field="lead_time_seconds"
-        title="리드타임 분포"
+        title="Lead time distribution"
         percentiles={[...DEFAULT_PERCENTILES]}
       />
       <PercentilesSlot
         state={state}
         loginPath={loginPath}
         field="first_review_wait_seconds"
-        title="리뷰 대기 시간"
+        title="Review wait time"
         percentiles={[50, 90, 95]}
       />
-      <DistributionSlot state={state} loginPath={loginPath} dimension="changed_files" title="변경 파일 수 분포" hrefFor={hrefFor} />
-      <DistributionSlot state={state} loginPath={loginPath} dimension="changed_lines" title="변경 라인 수 분포" hrefFor={hrefFor} />
+      <div className="prs-analytics-distributions">
+        <DistributionSlot state={state} loginPath={loginPath} dimension="changed_files" title="Changed file count distribution" hrefFor={hrefFor} />
+        <DistributionSlot state={state} loginPath={loginPath} dimension="changed_lines" title="Changed line count distribution" hrefFor={hrefFor} />
+      </div>
     </div>
   );
 }
@@ -226,9 +226,9 @@ function AnalyticsControls({
   readonly onChange: (patch: Partial<AnalyticsUrlState>) => void;
 }): ReactNode {
   return (
-    <Panel as="section" aria-label="조건">
+    <Panel as="section" aria-label="Filters" className="prs-analytics-filters">
       <label>
-        질의
+        Query
         <input
           type="text"
           defaultValue={state.q}
@@ -239,7 +239,7 @@ function AnalyticsControls({
         />
       </label>
       <label>
-        그룹 키
+        Group by
         <select
           value={state.groupBy ?? ''}
           onChange={(event) => {
@@ -247,7 +247,7 @@ function AnalyticsControls({
             onChange({ groupBy: value === '' ? null : (value as GroupKey) });
           }}
         >
-          <option value="">그룹 없음</option>
+          <option value="">No grouping</option>
           {GROUP_KEYS.map((key) => (
             <option key={key} value={key}>
               {key}
@@ -256,7 +256,7 @@ function AnalyticsControls({
         </select>
       </label>
       <label>
-        버킷 간격
+        Bucket interval
         <select
           value={state.interval}
           onChange={(event) => {
@@ -271,7 +271,7 @@ function AnalyticsControls({
         </select>
       </label>
       <label>
-        시작
+        Start
         <input
           type="date"
           value={state.from ?? ''}
@@ -281,7 +281,7 @@ function AnalyticsControls({
         />
       </label>
       <label>
-        끝
+        End
         <input
           type="date"
           value={state.to ?? ''}
@@ -291,7 +291,7 @@ function AnalyticsControls({
         />
       </label>
       <label>
-        시간대
+        Time zone
         <input
           type="text"
           defaultValue={state.timezone}
@@ -324,20 +324,20 @@ function GroupsSlot({
 
   if (!enabled) {
     return (
-      <Panel as="section" aria-label="그룹 집계">
-        <h3>그룹 집계</h3>
-        <p data-testid="group-prompt">그룹 키를 선택하면 그룹별 집계가 나타납니다.</p>
+      <Panel as="section" aria-label="Group aggregation">
+        <h3>Group aggregation</h3>
+        <p data-testid="group-prompt">Select a grouping to see aggregated results.</p>
       </Panel>
     );
   }
-  if (!isRenderable(panel)) return <Panel as="section" aria-label="그룹 집계"><PanelStatus state={panel} /></Panel>;
+  if (!isRenderable(panel)) return <Panel as="section" aria-label="Group aggregation"><PanelStatus state={panel} /></Panel>;
   return (
     <AggregationPanel
       groups={groups}
       approximate={result.body?.approximate === true}
       truncated={result.body?.['truncated'] === true}
       hrefFor={hrefFor}
-      groupLabel={state.groupBy ?? '그룹'}
+      groupLabel={state.groupBy ?? "Group"}
     />
   );
 }
@@ -356,7 +356,7 @@ function TimeSeriesSlot({
   const series = (result.body?.['series'] as readonly { key: string; values: readonly number[] }[] | undefined) ?? [];
   const panel = resolvePanelState({ ...result, loginPath, isEmpty: !result.loading && result.status === 200 && buckets.length === 0 });
 
-  if (!isRenderable(panel)) return <Panel as="section" aria-label="시계열"><PanelStatus state={panel} /></Panel>;
+  if (!isRenderable(panel)) return <Panel as="section" aria-label="Time series"><PanelStatus state={panel} /></Panel>;
   return (
     <TimeSeriesChart
       buckets={buckets}

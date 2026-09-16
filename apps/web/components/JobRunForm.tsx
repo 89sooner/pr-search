@@ -23,7 +23,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { Button, Field, TextField } from '@conductor-by-89soone/react';
+import { Button, Field, TextField } from './ui';
 import { RUN_OPTIONS, runBody, runOption, type RunOption } from '../lib/ops-jobs';
 
 export interface JobRunSubmission {
@@ -74,7 +74,7 @@ export function JobRunForm({
   return (
     <form
       data-testid="job-run-form"
-      aria-label="잡 실행"
+      aria-label="Run job"
       onSubmit={(event) => {
         event.preventDefault();
         if (option === undefined || !ready || submitting) return;
@@ -95,7 +95,7 @@ export function JobRunForm({
         `C-071`이 `C-013`을 쓰지 않기로 한 것과 같은 판단이며, 여기서 얻는
         접근성은 브라우저가 이미 준다.
       */}
-      <Field id="job-run-type" label="잡 유형">
+      <Field id="job-run-type" label="Job type">
         <select
           id="job-run-type"
           data-testid="job-run-type"
@@ -113,7 +113,7 @@ export function JobRunForm({
       </Field>
 
       {option?.input === 'repository' || option?.input === 'sequence_space' ? (
-        <Field id="job-run-repository" label="저장소" description="owner/name 형식으로 적습니다.">
+        <Field id="job-run-repository" label="Repository" description="Use owner/name format.">
           <TextField
             id="job-run-repository"
             data-testid="job-run-repository"
@@ -128,8 +128,8 @@ export function JobRunForm({
       {option?.input === 'sequence_space' ? (
         <Field
           id="job-run-branch"
-          label="대상 브랜치"
-          description="그 저장소의 시퀀스 대상 브랜치여야 합니다. 대상이 아닌 브랜치는 서버가 거절합니다."
+          label="Base branch"
+          description="Use a configured sequence base branch. The server rejects other branches."
         >
           <TextField
             id="job-run-branch"
@@ -144,7 +144,7 @@ export function JobRunForm({
 
       {option?.input === 'alias' ? (
         <>
-          <Field id="job-run-alias" label="별칭">
+          <Field id="job-run-alias" label="Alias">
             <TextField
               id="job-run-alias"
               data-testid="job-run-alias"
@@ -170,17 +170,17 @@ export function JobRunForm({
         찾게 되므로, 대상이 없다는 사실을 적는다.
       */}
       {option?.input === 'none' ? (
-        <p data-testid="job-run-no-target">조정 스캔은 등록된 저장소 전체를 한 번에 훑습니다. 대상을 고르지 않습니다.</p>
+        <p data-testid="job-run-no-target">Reconciliation scans all registered repositories. No target selection is needed.</p>
       ) : null}
 
       {conflictJobId === null ? null : (
         <p data-testid="job-run-conflict" role="status">
-          같은 대상의 잡이 이미 실행 중입니다 (잡 {conflictJobId}). 그 잡을 먼저 확인하세요.
+          A job for this target is already running (job {conflictJobId}). Check that job first.
         </p>
       )}
 
       <Button type="submit" disabled={!ready || submitting} data-testid="job-run-submit">
-        {submitting ? '실행 요청 중…' : '실행'}
+        {submitting ? "Starting…" : "Run"}
       </Button>
     </form>
   );

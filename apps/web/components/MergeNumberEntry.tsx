@@ -27,7 +27,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { Banner, Button } from '@conductor-by-89soone/react';
+import { Banner, Button } from './ui';
 import { ErrorBanner } from './ErrorBanner';
 import { EmptyState } from './EmptyState';
 import {
@@ -56,10 +56,10 @@ type Phase =
   | { readonly kind: 'done'; readonly outcome: MergeNumberResolveOutcome };
 
 const KEY_LABEL: Readonly<Record<string, string>> = {
-  [MERGE_NUMBER_PARAM.repository]: '저장소',
-  [MERGE_NUMBER_PARAM.baseBranch]: '대상 브랜치',
-  [MERGE_NUMBER_PARAM.seqEpoch]: '시퀀스 에폭',
-  [MERGE_NUMBER_PARAM.number]: 'M 번호',
+  [MERGE_NUMBER_PARAM.repository]: "Repository",
+  [MERGE_NUMBER_PARAM.baseBranch]: "Base branch",
+  [MERGE_NUMBER_PARAM.seqEpoch]: "Sequence epoch",
+  [MERGE_NUMBER_PARAM.number]: "M number",
 };
 
 export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEntryProps): ReactNode {
@@ -110,18 +110,16 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
 
   const searchLink = (
     <Link href="/search" data-testid="mnumber-entry-search-link">
-      검색으로 이동
+      Go to search
     </Link>
   );
 
   if (entry.kind === 'duplicated') {
     return (
       <div data-testid="mnumber-entry" data-entry-state="duplicated">
-        <Banner tone="warning" title="M 번호 링크에 같은 값이 여러 번 있습니다">
+        <Banner tone="warning" title="The M-number link contains duplicate values">
           <p data-testid="mnumber-entry-duplicated">
-            {entry.keys.map((key) => `${KEY_LABEL[key] ?? key}(${key})`).join(', ')}이(가) 여러 번 왔습니다. 어느 것이
-            뜻인지 알 수 없으므로 **하나를 골라 해석하지 않습니다** — 잘못 고르면 사용자가 자기가 무엇을 열었는지 모른 채
-            그 답을 인용하게 됩니다. 배지에서 링크를 다시 복사해 주세요.
+            {entry.keys.map((key) => `${KEY_LABEL[key] ?? key}(${key})`).join(', ')} appears more than once. The intended value is ambiguous, so the link was not resolved. Copy the link again from the badge.
           </p>
           {searchLink}
         </Banner>
@@ -132,11 +130,10 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
   if (entry.kind === 'partial') {
     return (
       <div data-testid="mnumber-entry" data-entry-state="partial">
-        <Banner tone="warning" title="M 번호 링크가 불완전합니다">
+        <Banner tone="warning" title="The M-number link is incomplete">
           <p data-testid="mnumber-entry-missing">
-            M 번호를 해석하려면 저장소·대상 브랜치·시퀀스 에폭·M 번호 넷이 모두 필요합니다. 이 링크에는{' '}
-            {entry.missing.map((key) => `${KEY_LABEL[key] ?? key}(${key})`).join(', ')}이(가) 없습니다. 빠진 값을 임의로
-            채우지 않습니다. 배지에서 링크를 다시 복사해 주세요.
+            Resolving an M number requires a repository, base branch, sequence epoch, and M number. Missing: {' '}
+            {entry.missing.map((key) => `${KEY_LABEL[key] ?? key}(${key})`).join(', ')}. Missing values cannot be inferred. Copy the link again from the badge.
           </p>
           {searchLink}
         </Banner>
@@ -144,13 +141,13 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
     );
   }
 
-  const citation = `${entry.number} · ${entry.repository}@${entry.baseBranch} · 에폭 ${entry.seqEpoch}`;
+  const citation = `${entry.number} · ${entry.repository}@${entry.baseBranch} · Epoch ${entry.seqEpoch}`;
 
   if (phase.kind === 'resolving') {
     return (
       <div data-testid="mnumber-entry" data-entry-state="resolving" aria-busy="true">
         <p>
-          <span className="cdt-mono">{citation}</span>을(를) 해석하는 중…
+          <span className="ui-mono">{citation}</span> is being resolved…
         </p>
       </div>
     );
@@ -161,8 +158,8 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
       <div data-testid="mnumber-entry" data-entry-state="offline">
         <ErrorBanner
           tone="danger"
-          title="서버에 연결하지 못했습니다"
-          impact="네트워크 연결을 확인한 뒤 다시 시도하세요."
+          title="Unable to connect to the server"
+          impact="Check your network connection and try again."
           recoverable
           action={
             <Button
@@ -171,7 +168,7 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
                 window.location.reload();
               }}
             >
-              다시 시도
+              Try again
             </Button>
           }
         />
@@ -185,11 +182,11 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
       return (
         <div data-testid="mnumber-entry" data-entry-state="assigned">
           <p>
-            <span className="cdt-mono">{outcome.mergeNumber}</span>은(는) PR #{outcome.prNumber}입니다. 상세로 이동합니다…
+            <span className="ui-mono">{outcome.mergeNumber}</span> resolves to PR #{outcome.prNumber}. Opening details…
           </p>
           {assignedHref === null ? null : (
             <Link href={assignedHref} data-testid="mnumber-entry-target">
-              {entry.repository} #{outcome.prNumber} 열기
+              {entry.repository} #{outcome.prNumber} Open
             </Link>
           )}
         </div>
@@ -198,9 +195,9 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
     case 'pending':
       return (
         <div data-testid="mnumber-entry" data-entry-state="pending">
-          <Banner tone="info" title="M 번호 대기">
+          <Banner tone="info" title="M number pending">
             <p>
-              <span className="cdt-mono">{citation}</span>은(는) 아직 M 번호가 부여되지 않았습니다. 잠정 번호를 만들지 않습니다.
+              <span className="ui-mono">{citation}</span> has not received an M number. No provisional number is assigned.
             </p>
             {searchLink}
           </Banner>
@@ -216,12 +213,11 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
        */
       return (
         <div data-testid="mnumber-entry" data-entry-state="epoch_stale">
-          <Banner tone="warning" title="시퀀스 번호의 의미가 바뀌었습니다">
+          <Banner tone="warning" title="Sequence numbering has changed">
             <p data-testid="mnumber-epoch-stale-notice">
-              이 M 번호 인용은 <strong>{outcome.sequenceSpace ?? `${entry.repository}@${entry.baseBranch}`}</strong>의 시퀀스 에폭{' '}
-              {outcome.requestedEpoch ?? entry.seqEpoch}을 기준으로 만들어졌습니다. 현재 에폭은{' '}
-              {outcome.currentEpoch ?? '알 수 없음'}입니다. 히스토리가 재작성되어 같은 M 번호가 다른 PR을 가리킬 수 있으므로
-              해석하지 않았습니다.
+              This M-number reference uses <strong>{outcome.sequenceSpace ?? `${entry.repository}@${entry.baseBranch}`}</strong> sequence epoch {' '}
+              {outcome.requestedEpoch ?? entry.seqEpoch}. The current epoch is {' '}
+              {outcome.currentEpoch ?? "Unknown"}. History was rewritten, so the same M number may point to another PR. This reference was not resolved.
             </p>
             {outcome.currentEpoch === null ? null : (
               <Button
@@ -238,7 +234,7 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
                   );
                 }}
               >
-                현재 에폭으로 다시 해석
+                Resolve using current epoch
               </Button>
             )}{' '}
             {searchLink}
@@ -251,7 +247,7 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
         <div data-testid="mnumber-entry" data-entry-state="no_sequence">
           <Banner tone="info" title={noSequenceTitle(outcome.reason)}>
             <p data-testid="mnumber-no-sequence">
-              <span className="cdt-mono">{citation}</span> — {outcome.message}
+              <span className="ui-mono">{citation}</span> — {outcome.message}
             </p>
             {searchLink}
           </Banner>
@@ -261,9 +257,9 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
     case 'feature_disabled':
       return (
         <div data-testid="mnumber-entry" data-entry-state="feature_disabled">
-          <Banner tone="info" title="M 번호 기능이 꺼져 있습니다">
+          <Banner tone="info" title="M numbers are disabled">
             <p data-testid="mnumber-feature-disabled">
-              이 배포에서는 M 번호 해석을 제공하지 않습니다. 기존 검색으로 PR 번호나 커밋 SHA를 조회할 수 있습니다.
+              This deployment does not support M-number resolution. Search by PR number or commit SHA instead.
             </p>
             {searchLink}
           </Banner>
@@ -276,7 +272,7 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
         <div data-testid="mnumber-entry" data-entry-state="not_found">
           <EmptyState
             cause="not_found"
-            description={`${citation}에 해당하는 PR을 찾을 수 없습니다. 저장소·브랜치·에폭이 정확한지 확인하세요.`}
+            description={`${citation} has no matching PR. Check the repository, branch, and epoch.`}
             actions={searchLink}
           />
         </div>
@@ -287,8 +283,8 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
         <div data-testid="mnumber-entry" data-entry-state="invalid">
           <ErrorBanner
             tone="warning"
-            title="M 번호 링크를 해석할 수 없습니다"
-            impact={`${outcome.message}${outcome.field === null ? '' : ` (필드: ${outcome.field})`}`}
+            title="Cannot resolve M-number link"
+            impact={`${outcome.message}${outcome.field === null ? '' : `(field:${outcome.field})`}`}
             action={searchLink}
           />
         </div>
@@ -299,8 +295,8 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
         <div data-testid="mnumber-entry" data-entry-state="auth_expired">
           <ErrorBanner
             tone="warning"
-            title="세션이 만료되었습니다"
-            impact="다시 로그인하면 보던 화면으로 돌아옵니다."
+            title="Your session has expired"
+            impact="Sign in again to return to this page."
             action={
               <a
                 href={`${outcome.loginPath ?? loginPath}?return_to=${encodeURIComponent(
@@ -312,7 +308,7 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
                   }),
                 )}`}
               >
-                다시 로그인
+                Sign in again
               </a>
             }
           />
@@ -324,7 +320,7 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
         <div data-testid="mnumber-entry" data-entry-state="error">
           <ErrorBanner
             tone="danger"
-            title="M 번호를 해석하지 못했습니다"
+            title="Unable to resolve M number"
             impact={outcome.message}
             recoverable={outcome.correlationId === null}
             correlationId={outcome.correlationId}
@@ -335,7 +331,7 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
                   window.location.reload();
                 }}
               >
-                다시 시도
+                Try again
               </Button>
             }
           />
@@ -347,12 +343,12 @@ export function MergeNumberEntry({ entry, fromQuery, loginPath }: MergeNumberEnt
 function noSequenceTitle(reason: string | null): string {
   switch (reason) {
     case 'not_merged':
-      return 'M 번호 대상 아님';
+      return "Not eligible for an M number";
     case 'branch_not_tracked':
-      return '채번 비대상 브랜치';
+      return "Branch not configured for numbering";
     case 'not_sequenced':
-      return '시퀀스 채번 대기';
+      return "Sequence numbering pending";
     default:
-      return '시퀀스가 없습니다';
+      return "No sequence available";
   }
 }

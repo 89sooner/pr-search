@@ -351,7 +351,7 @@ describe('상태 매트릭스 W-001 — 모든 상태가 그려진다', () => {
       expect(stateOf()).toBe('error_search_timeout');
     });
     // 복구 경로를 준다 — "실패했습니다"만으로는 사용자가 할 일이 없다.
-    expect(screen.getByText(/저장소 조건.*좁혀/)).toBeInTheDocument();
+    expect(screen.getByText(/repository filter.*narrow/)).toBeInTheDocument();
     expect(describeViolations(await violations(container))).toBe('');
   });
 
@@ -374,7 +374,7 @@ describe('상태 매트릭스 W-001 — 모든 상태가 그려진다', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('auth_expired');
     });
-    const link = screen.getByRole('link', { name: '다시 로그인' });
+    const link = screen.getByRole('link', { name: "Sign in again" });
     expect(link).toHaveAttribute('href', '/auth/login?return_to=%2Fsearch');
     expect(describeViolations(await violations(container))).toBe('');
   });
@@ -419,7 +419,7 @@ describe('결과·집계 탭 (CR-093, Conductor Tabs · W-001-AGG)', () => {
   it('탭·패널의 ARIA 연결이 서고 axe 0건이다', async () => {
     const { container } = await ready();
     const tabs = screen.getAllByRole('tab');
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['결과', '집계']);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Results", "Aggregation"]);
     expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
     /*
      * roving tabindex는 Radix 방식이다 — 처음에는 목록이 탭 정지점이고, 목록에 포커스가 들어오면 선택된 탭이
@@ -439,26 +439,26 @@ describe('결과·집계 탭 (CR-093, Conductor Tabs · W-001-AGG)', () => {
 
   it('화살표로 옮기면 그 자리에서 선택된다 — 자동 활성화 (0.3.1 동작 보존)', async () => {
     await ready();
-    screen.getByRole('tab', { name: '결과' }).focus();
+    screen.getByRole('tab', { name: "Results" }).focus();
     await userEvent.keyboard('{ArrowRight}');
-    expect(screen.getByRole('tab', { name: '집계' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: "Aggregation" })).toHaveAttribute('aria-selected', 'true');
     await userEvent.keyboard('{Home}');
-    expect(screen.getByRole('tab', { name: '결과' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: "Results" })).toHaveAttribute('aria-selected', 'true');
     await userEvent.keyboard('{End}');
-    expect(screen.getByRole('tab', { name: '집계' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: "Aggregation" })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('**집계를 다녀와도 결과 패널의 선택이 남는다** — 결과 패널은 언마운트하지 않는다', async () => {
     await ready();
-    await userEvent.click(screen.getByRole('button', { name: /#1234 미리보기/ }));
-    expect(screen.getByRole('region', { name: '선택한 결과 미리보기' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /#1234 Preview/ }));
+    expect(screen.getByRole('region', { name: "Selected result preview" })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('tab', { name: '집계' }));
-    expect(screen.getByRole('tab', { name: '집계' })).toHaveAttribute('aria-selected', 'true');
-    await userEvent.click(screen.getByRole('tab', { name: '결과' }));
+    await userEvent.click(screen.getByRole('tab', { name: "Aggregation" }));
+    expect(screen.getByRole('tab', { name: "Aggregation" })).toHaveAttribute('aria-selected', 'true');
+    await userEvent.click(screen.getByRole('tab', { name: "Results" }));
 
-    expect(screen.getByRole('region', { name: '선택한 결과 미리보기' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /#1234 미리보기/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('region', { name: "Selected result preview" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /#1234 Preview/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('**집계 내용은 활성일 때만 마운트된다** — 숨은 채로 조회하지 않는다 (FR-STAT-006)', async () => {
@@ -473,11 +473,11 @@ describe('결과·집계 탭 (CR-093, Conductor Tabs · W-001-AGG)', () => {
     })();
     expect(screen.queryByTestId('search-aggregation')).toBeNull();
     const before = calls.length;
-    await userEvent.click(screen.getByRole('tab', { name: '집계' }));
+    await userEvent.click(screen.getByRole('tab', { name: "Aggregation" }));
     await waitFor(() => {
       expect(screen.getByTestId('search-aggregation')).toBeInTheDocument();
     });
-    await userEvent.click(screen.getByRole('tab', { name: '결과' }));
+    await userEvent.click(screen.getByRole('tab', { name: "Results" }));
     expect(screen.queryByTestId('search-aggregation')).toBeNull();
     // 결과 탭에 머무는 동안은 목록 요청 하나뿐이다 — 집계는 탭을 연 뒤에만 나간다.
     expect(before).toBe(1);
@@ -492,23 +492,23 @@ describe('미리보기의 관계 요약 (CR-093, QA-W001-24)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    await userEvent.click(screen.getByRole('button', { name: /#1234 미리보기/ }));
+    await userEvent.click(screen.getByRole('button', { name: /#1234 Preview/ }));
     return screen.getByTestId('preview-relations');
   }
 
   it('요약이 없으면 「미확인」이라고 말한다', async () => {
-    expect((await preview(null)).textContent).toContain('관계 요약 미확인');
+    expect((await preview(null)).textContent).toContain('Relationship summary unavailable');
   });
 
   it('확인했고 관계가 없으면 「없음」이라고 말한다 — 「미확인」과 다른 문구다', async () => {
     const relations = await preview({ reference_count: 0, has_revert: false, is_reverted: false, has_cherry_pick: false, has_stack: false });
-    expect(relations.textContent).toContain('확인된 관계 없음');
-    expect(relations.textContent).not.toContain('미확인');
+    expect(relations.textContent).toContain('No confirmed relationships');
+    expect(relations.textContent).not.toContain("Unknown");
   });
 
   it('관계가 있으면 배지를 그린다', async () => {
     const relations = await preview({ reference_count: 2, has_revert: true, is_reverted: false, has_cherry_pick: false, has_stack: false });
-    expect(within(relations).getByTestId('relation-badge-references')).toHaveTextContent('참조 2');
+    expect(within(relations).getByTestId('relation-badge-references')).toHaveTextContent("References: 2");
     expect(within(relations).getByTestId('relation-badge-has_revert')).toBeInTheDocument();
   });
 });
@@ -528,7 +528,7 @@ describe('정렬 (FR-SRCH-007, C-013 접근성)', () => {
       expect(stateOf()).toBe('ready');
     });
 
-    const header = screen.getByRole('columnheader', { name: /시퀀스/ });
+    const header = screen.getByRole('columnheader', { name: /Sequence/ });
     expect(header).toHaveAttribute('aria-sort', 'descending');
   });
 
@@ -541,7 +541,7 @@ describe('정렬 (FR-SRCH-007, C-013 접근성)', () => {
       expect(stateOf()).toBe('ready');
     });
     // URL에 정렬이 없어도 시퀀스 열이 내림차순으로 표시된다.
-    expect(screen.getByRole('columnheader', { name: /시퀀스/ })).toHaveAttribute(
+    expect(screen.getByRole('columnheader', { name: /Sequence/ })).toHaveAttribute(
       'aria-sort',
       'descending',
     );
@@ -560,7 +560,7 @@ describe('정렬 (FR-SRCH-007, C-013 접근성)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByRole('columnheader', { name: /머지 시각/ })).toHaveAttribute(
+    expect(screen.getByRole('columnheader', { name: /Merged at/ })).toHaveAttribute(
       'aria-sort',
       'none',
     );
@@ -574,7 +574,7 @@ describe('정렬 (FR-SRCH-007, C-013 접근성)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    await userEvent.click(screen.getByRole('button', { name: '머지 시각' }));
+    await userEvent.click(screen.getByRole('button', { name: "Merged at" }));
 
     expect(pushed).toEqual([]);
     expect(replaced).toHaveLength(1);
@@ -589,7 +589,7 @@ describe('정렬 (FR-SRCH-007, C-013 접근성)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    screen.getByRole('button', { name: '머지 시각' }).focus();
+    screen.getByRole('button', { name: "Merged at" }).focus();
     await userEvent.keyboard('{Enter}');
     expect(replaced).toHaveLength(1);
   });
@@ -636,8 +636,8 @@ describe('결과 행 (C-013)', () => {
      * 동작 자체는 WP-032지만, **금지 규칙은 지금 세우는 것이 옳다** —
      * 나중에 검사하면 이미 잘못 만든 뒤다.
      */
-    expect(container.querySelector('[aria-label*="페이지"]')).toBeNull();
-    expect(screen.queryByRole('navigation', { name: /페이지/ })).toBeNull();
+    expect(container.querySelector("[aria-label*=\"page\"]")).toBeNull();
+    expect(screen.queryByRole('navigation', { name: /page/ })).toBeNull();
     expect(container.textContent).not.toMatch(/\d+\s*\/\s*\d+\s*페이지/);
   });
 });
@@ -671,7 +671,7 @@ describe('시퀀스 배지 (C-014, QA-W001-22)', () => {
 
     const badge = container.querySelector('[data-seq-state]');
     expect(badge).toHaveAttribute('data-foreign', '');
-    expect(container.textContent).toContain('다른 시퀀스 공간');
+    expect(container.textContent).toContain('different sequence space');
   });
 
   it('같은 공간이면 표식이 없다 — 근거 없이 흐리게 그리지 않는다', () => {
@@ -694,7 +694,7 @@ describe('시퀀스 배지 (C-014, QA-W001-22)', () => {
     const badge = container.querySelector('[data-seq-state]');
     const id = badge?.getAttribute('aria-describedby');
     expect(id).toBeTruthy();
-    expect(container.querySelector(`#${CSS.escape(id ?? '')}`)?.textContent).toContain('에폭 3');
+    expect(container.querySelector(`#${CSS.escape(id ?? '')}`)?.textContent).toContain("epoch 3");
   });
 });
 
@@ -707,7 +707,7 @@ describe('질의 토큰 바 (C-011)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByRole('button', { name: 'author:kim 필터 제거' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Remove filter author:kim" })).toBeInTheDocument();
   });
 
   it('칩을 지우면 **AST를 고쳐** URL을 `replace`한다', async () => {
@@ -718,7 +718,7 @@ describe('질의 토큰 바 (C-011)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    await userEvent.click(screen.getByRole('button', { name: 'author:kim 필터 제거' }));
+    await userEvent.click(screen.getByRole('button', { name: "Remove filter author:kim" }));
 
     expect(pushed).toEqual([]);
     expect(replaced).toHaveLength(1);
@@ -735,7 +735,7 @@ describe('질의 토큰 바 (C-011)', () => {
     await waitFor(() => {
       expect(stateOf()).toBe('ready');
     });
-    expect(screen.getByRole('button', { name: '제외 조건 author:kim 필터 제거' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Remove exclusion filter author:kim" })).toBeInTheDocument();
   });
 });
 
@@ -815,7 +815,7 @@ describe('제출 경로 (C-010, QA-W001-04)', () => {
     view();
 
     await userEvent.type(screen.getByRole('searchbox'), 'a1b2c3');
-    await userEvent.click(screen.getByRole('button', { name: '검색' }));
+    await userEvent.click(screen.getByRole('button', { name: "Search" }));
 
     expect(pushed).toEqual([]);
     await waitFor(() => {
@@ -846,7 +846,7 @@ describe('제출 경로 (C-010, QA-W001-04)', () => {
     view();
 
     await userEvent.type(screen.getByRole('searchbox'), 'a1b2c3');
-    expect(screen.getByRole('button', { name: '검색' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: "Search" })).toBeDisabled();
   });
 
   it('7자가 되면 잠금이 풀리고 제출이 라우팅한다', async () => {
@@ -854,9 +854,9 @@ describe('제출 경로 (C-010, QA-W001-04)', () => {
     view();
 
     await userEvent.type(screen.getByRole('searchbox'), 'a1b2c3d');
-    expect(screen.getByRole('button', { name: '검색' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: "Search" })).toBeEnabled();
 
-    await userEvent.click(screen.getByRole('button', { name: '검색' }));
+    await userEvent.click(screen.getByRole('button', { name: "Search" }));
     // 제출은 새 조사다 — `push`로 히스토리에 남는다.
     expect(pushed).toHaveLength(1);
     expect(pushed[0]).toContain('a1b2c3d');

@@ -1,6 +1,8 @@
 # PR Search 릴리스 검증 계획
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-09-14
+> CR-097 / WP-085: FR-SRC-001~004 게이트는 Source API 인증/범위/입력/응답 no-store·감사 메타데이터, SHA 고정·rename·이동 PR·binary/크기 제한, Tree→History→Diff→Time-lapse 브라우저 흐름, 영어·테마·키보드·모달 접근성 검사다. 목 기반 로컬 통과를 실제 사내 GHE 권한·버전 검증으로 대체하지 않는다. 이번 작업은 릴리스 발행을 포함하지 않는다.
+
+> 상태: review | 버전: v0.13 | 갱신일: 2026-09-17
 
 CR-079: WP-074의 수용 시험은 [실행서](pr_search_wp074_execution.md) T01~T06·변이 목록이 정본이다. migration 왕복·실제 DB/ES/Redis/git·인증 세션 UI·이미지 런타임·read-only 측정 CLI가 필요하다. 단계별 상태를 계약 정정/구현/외부 실제 실행/사내 운영/WP-075로 구분한다. 직접 부재 증거 한계를 seed fixture로 숨기지 않는다. 이번 설계 세션에서 앱 시험과 후보 번들은 NOT RUN이다.
 

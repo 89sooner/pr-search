@@ -14,6 +14,7 @@
  */
 
 import { GH_APPROVAL_INELIGIBLE_REASONS, GH_EXECUTION_GATE_REASONS, type GhApprovalIneligibleReason, type GhExecutionGateReason } from '@prs/gh-cli';
+import { serviceMessage } from './service-message';
 
 export const POLICY_URL = '/api/gh/policies';
 export const POLICY_CHANGES_URL = '/api/gh/policies/changes';
@@ -125,10 +126,10 @@ export interface PolicyStatusView {
 }
 
 export const POLICY_ACTION_LABEL: Readonly<Record<PolicyAction, string>> = {
-  approve: '운영 승인',
-  revoke: '승인 철회',
-  block: '실행 차단',
-  resume: '실행 재개',
+  approve: 'Operational approval',
+  revoke: 'Revoke approval',
+  block: 'Block execution',
+  resume: 'Resume execution',
 };
 
 /** W-010이 구분해 그리는 상태 (지시서 11장). 계정 연결·권한은 기존 신원 배너가 따로 그린다. */
@@ -145,15 +146,15 @@ export interface GateText {
  * A-005는 차단 전에 이 문구를 「변경 후 사용자에게 보일 사유」로 미리 보여 준다.
  */
 export const GATE_TEXT: Readonly<Record<GhExecutionGateReason, GateText>> = {
-  operations_disabled: { state: 'operations_disabled', title: '이 배포에서는 GitHub 작업이 꺼져 있습니다', description: '운영자가 기능을 켜면 이 화면이 열립니다.' },
-  capability_not_executable: { state: 'not_executable', title: '이 배포가 실행을 열지 않은 명령입니다', description: '열린 명령만 실행할 수 있습니다. 운영 승인으로 명령이 늘어나지 않습니다.' },
-  policy_unavailable: { state: 'policy_unavailable', title: '실행 정책을 확인할 수 없습니다', description: '정책 상태를 읽지 못해 실행을 허용하지 않습니다. 잠시 후 다시 시도하세요.' },
-  admin_action_required: { state: 'admin_action_required', title: '관리자 운영 승인이 필요합니다', description: '현재 배포된 gh 명령 정의를 운영자가 아직 승인하지 않았습니다. 승인되면 다시 실행할 수 있습니다.' },
-  policy_blocked: { state: 'policy_blocked', title: '관리자가 이 명령의 실행을 차단했습니다', description: '운영자가 재개할 때까지 새 요청은 실행되지 않습니다. 필요하면 관리자에게 문의하세요.' },
-  policy_changed: { state: 'admin_action_required', title: '요청한 뒤 실행 정책이 바뀌었습니다', description: '이 요청은 이전 정책으로 수락돼 실행하지 않고 닫혔습니다. 필요하면 새로 요청하세요.' },
-  registry_stale: { state: 'registry_mismatch', title: 'gh 레지스트리가 승인된 정의와 맞지 않습니다', description: '실행기의 검사 결과가 이 정의와 다릅니다. 관리자 조치를 기다립니다.' },
-  registry_evidence_expired: { state: 'registry_mismatch', title: '실행기의 최근 검사가 오래됐습니다', description: '실행기가 제때 검사를 마치지 못해 실행을 멈췄습니다. 관리자 조치를 기다립니다.' },
-  registry_unchecked: { state: 'registry_mismatch', title: '실행기가 아직 gh 레지스트리를 검사하지 않았습니다', description: '검사가 끝나면 다시 판정합니다. 관리자 조치를 기다립니다.' },
+  operations_disabled: { state: 'operations_disabled', title: 'GitHub operations are disabled for this deployment', description: 'This page becomes available when an operator enables the feature.' },
+  capability_not_executable: { state: 'not_executable', title: 'This command is not enabled in this deployment', description: 'Only enabled commands can run. Operational approval does not enable additional commands.' },
+  policy_unavailable: { state: 'policy_unavailable', title: 'Execution policy is unavailable', description: 'Execution is blocked because the policy could not be read. Try again later.' },
+  admin_action_required: { state: 'admin_action_required', title: 'Operational approval is required', description: 'An operator has not approved the deployed gh command definitions yet. Try again after approval.' },
+  policy_blocked: { state: 'policy_blocked', title: 'An administrator blocked this command', description: 'New requests will not run until an operator resumes execution. Contact an administrator if needed.' },
+  policy_changed: { state: 'admin_action_required', title: 'The execution policy changed after this request', description: 'This request was accepted under an earlier policy and closed without running. Submit a new request if needed.' },
+  registry_stale: { state: 'registry_mismatch', title: 'The gh registry does not match the approved definitions', description: 'The runner\'s verification does not match these definitions. Administrator action is required.' },
+  registry_evidence_expired: { state: 'registry_mismatch', title: 'The runner\'s latest verification is stale', description: 'Execution stopped because the runner did not complete verification in time. Administrator action is required.' },
+  registry_unchecked: { state: 'registry_mismatch', title: 'The runner has not verified the gh registry yet', description: 'The policy will be evaluated after verification. Administrator action is required.' },
 };
 
 export function gateState(gate: ExecutionGateView | null | undefined): GateState | null {
@@ -169,24 +170,24 @@ export function gateText(gate: ExecutionGateView | null | undefined): GateText |
 
 /** 승인 부적격 사유 → 운영자에게 보이는 문구. 모든 사유를 덮는다(시험이 `GH_APPROVAL_INELIGIBLE_REASONS`와 대조한다). */
 export const APPROVAL_REASON_TEXT: Readonly<Record<GhApprovalIneligibleReason, string>> = {
-  snapshot_missing: '현재 정의의 스냅숏이 없습니다 — 실행기가 이 정의를 아직 검사하지 않았습니다.',
-  snapshot_unclassified: '현재 정의에 미분류 항목이 남아 있습니다.',
-  evidence_missing: '이 배포 범위의 실행기 검증 기록이 없습니다. CLI·CI 기록은 근거가 아닙니다.',
-  evidence_not_passed: '가장 최근 실행기 검사가 통과가 아닙니다 — 과거 통과로 덮지 않습니다.',
-  evidence_other_definition: '실행기의 최근 검사가 다른 manifest를 가리킵니다 — 실행기와 API의 배포가 다릅니다.',
-  evidence_manifest_mismatch: '실행기가 다시 계산한 manifest 해시가 기대값과 다릅니다.',
-  evidence_binary_mismatch: '실행기의 gh 바이너리·버전이 고정값과 다릅니다.',
-  evidence_inventory_mismatch: '실행기가 관측한 인벤토리가 manifest와 다릅니다.',
-  evidence_cadence_unknown: '검증 기록에 검사 주기가 없습니다 — 이 판의 실행기가 다시 검사해야 합니다.',
-  evidence_stale: '검증 근거가 신선도 한도를 넘었습니다 — 실행기의 다음 검사를 기다리거나 재기동 검사를 확인하세요.',
-  report_version_unsupported: '보고서 판을 이 서버가 해석할 수 없습니다.',
-  report_version_superseded: '결과 계약을 검증하지 않은 옛 판의 보고서입니다.',
-  report_invalid: '보고서 모양이 틀립니다.',
-  report_hash_mismatch: '저장된 보고서 해시가 보고서 내용과 다릅니다.',
-  report_not_reproducible: '서버가 같은 정의로 만든 보고서와 다릅니다 — 실행기와 API의 검증기·manifest가 다릅니다.',
-  report_not_passed: '보고서가 통과가 아닙니다.',
-  gate_not_passed: '필요한 게이트(GATE-GH-01·01b·01d)가 통과하지 않았습니다.',
-  already_approved: '현재 정의는 이미 운영 승인돼 있습니다.',
+  snapshot_missing: 'No snapshot exists for the current definitions. The runner has not verified them yet.',
+  snapshot_unclassified: 'The current definitions still contain unclassified items.',
+  evidence_missing: 'No runner verification exists for this deployment scope. CLI and CI records do not qualify as evidence.',
+  evidence_not_passed: 'The latest runner verification did not pass. An earlier pass does not override it.',
+  evidence_other_definition: 'The latest runner verification references a different manifest. The runner and API deployments differ.',
+  evidence_manifest_mismatch: 'The manifest hash recalculated by the runner does not match the expected value.',
+  evidence_binary_mismatch: 'The runner\'s gh binary or version differs from the pinned value.',
+  evidence_inventory_mismatch: 'The inventory observed by the runner differs from the manifest.',
+  evidence_cadence_unknown: 'The verification record has no check interval. The current runner must verify it again.',
+  evidence_stale: 'Verification evidence has expired. Wait for the runner\'s next check or review its startup verification.',
+  report_version_unsupported: 'This server cannot read this report version.',
+  report_version_superseded: 'This is an older report that did not verify result contracts.',
+  report_invalid: 'The report format is invalid.',
+  report_hash_mismatch: 'The stored report hash does not match its contents.',
+  report_not_reproducible: 'The report differs from one generated by the server for the same definitions. The runner and API use different validators or manifests.',
+  report_not_passed: 'The report did not pass.',
+  gate_not_passed: 'The required gates (GATE-GH-01, 01b, 01d) did not pass.',
+  already_approved: 'The current definitions already have operational approval.',
 };
 
 export function approvalReasonText(code: string): string {
@@ -204,10 +205,10 @@ export function approvalState(status: PolicyStatusView): ApprovalState {
 /** 사유 입력의 문제. 없으면 `null`. 서버와 같은 규칙이지만 판정은 서버가 한다 — 여기는 제출 전 안내다. */
 export function reasonProblem(reason: string): string | null {
   const trimmed = reason.trim();
-  if (trimmed === '') return '사유를 적어 주세요.';
-  if ([...trimmed].length > POLICY_REASON_MAX) return `${String(POLICY_REASON_MAX)}자 이내로 적어 주세요.`;
+  if (trimmed === '') return 'Enter a reason.';
+  if ([...trimmed].length > POLICY_REASON_MAX) return `${String(POLICY_REASON_MAX)} characters maximum.`;
   // eslint-disable-next-line no-control-regex -- 서버(`search-api/src/gh/policy.ts`)와 같은 제어 문자 규칙을 제출 전에 안내한다.
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(trimmed)) return '제어 문자는 쓸 수 없습니다.';
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(trimmed)) return 'Control characters are not allowed.';
   return null;
 }
 
@@ -252,17 +253,17 @@ export function describePolicyError(body: unknown, fallback: string): PolicyErro
   const reasons = Array.isArray(detail['reasons']) ? (detail['reasons'] as { code?: unknown }[]).map((one) => (typeof one.code === 'string' ? one.code : '')).filter((one) => one !== '') : [];
   switch (code) {
     case 'GH_POLICY_CONFLICT':
-      return { code, message: '확인한 뒤 정책이나 근거가 바뀌었습니다. 새로 읽은 내용을 다시 확인한 뒤 제출하세요.', correlationId, stale: true, reasons: [] };
+      return { code, message: 'The policy or evidence changed after your review. Review the refreshed details before submitting.', correlationId, stale: true, reasons: [] };
     case 'GH_REGISTRY_APPROVAL_INELIGIBLE':
-      return { code, message: '현재 근거로는 운영 승인할 수 없습니다.', correlationId, stale: true, reasons };
+      return { code, message: 'The current evidence does not support operational approval.', correlationId, stale: true, reasons };
     case 'GH_DUPLICATE_REQUEST':
-      return { code, message: '같은 요청 키가 다른 내용에 이미 쓰였습니다. 새로 읽은 뒤 다시 제출하세요.', correlationId, stale: true, reasons: [] };
+      return { code, message: 'This request key has already been used with different content. Refresh and submit again.', correlationId, stale: true, reasons: [] };
     case 'FORBIDDEN_ROLE':
-      return { code, message: '운영 정책을 바꾸려면 운영자(operator) 역할이 필요합니다.', correlationId, stale: false, reasons: [] };
+      return { code, message: 'The operator role is required to change operational policy.', correlationId, stale: false, reasons: [] };
     case 'GH_POLICY_UNAVAILABLE':
-      return { code, message: '운영 정책 상태를 읽지 못했습니다. 잠시 후 다시 시도하세요.', correlationId, stale: false, reasons: [] };
+      return { code, message: 'Could not read the operational policy. Try again later.', correlationId, stale: false, reasons: [] };
     default: {
-      const message = typeof error['message'] === 'string' && error['message'] !== '' ? error['message'] : fallback;
+      const message = serviceMessage(error['message'], fallback, code);
       return { code, message, correlationId, stale: false, reasons: [] };
     }
   }
@@ -273,19 +274,19 @@ export function formatDurationMs(ms: number): string {
   const minutes = Math.floor(ms / 60_000);
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  if (hours === 0) return `${String(rest)}분`;
-  return rest === 0 ? `${String(hours)}시간` : `${String(hours)}시간 ${String(rest)}분`;
+  if (hours === 0) return `${String(rest)}m`;
+  return rest === 0 ? `${String(hours)}h` : `${String(hours)}h ${String(rest)}m`;
 }
 
 /** 승인해도 열리지 않는 것 — 미리보기가 그대로 보인다. 서버의 `not_opened` 수치와 함께 쓴다. */
 export function notOpenedLines(status: PolicyStatusView): readonly string[] {
   const counts = status.approval_preview.not_opened;
   return [
-    `실행이 열리지 않은 gh 명령 ${String(counts.not_executable_commands)}개 (전체 leaf ${String(counts.leaf_commands)}개 중)`,
-    '다단계 Recipe의 저장·실행',
-    '쓰기 위험도(R1~R3) 명령',
-    '임의 gh api 호출과 확장(extension) 실행',
-    '파일 입출력 작업',
+    `Disabled gh commands: ${String(counts.not_executable_commands)} (out of ${String(counts.leaf_commands)} leaf commands)`,
+    'Saving and running multistep Recipes',
+    'Write commands (risk levels R1–R3)',
+    'Arbitrary gh api calls and extension execution',
+    'File input/output operations',
   ];
 }
 

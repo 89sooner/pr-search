@@ -23,7 +23,7 @@
 
 import Link from 'next/link';
 import { useRef, useState, type ReactNode } from 'react';
-import { CopyButton, DetailInspector, WorkbenchLayout } from '@conductor-by-89soone/react';
+import { CopyButton, DetailInspector, WorkbenchLayout } from './ui';
 import { ResultTable, resultIdentity, resultName, type ResultTableProps } from './ResultTable';
 import { SequenceBadge } from './SequenceBadge';
 import { RelationBadgeGroup } from './RelationBadgeGroup';
@@ -70,7 +70,7 @@ export function ResultWorkbench(props: ResultTableProps & { readonly fromQuery: 
         <DetailInspector
           className="prs-result-preview"
           data-testid="result-preview"
-          label="선택한 결과 미리보기"
+          label="Selected result preview"
           returnFocusRef={returnFocus}
           onClose={() => {
             setSelectedId(null);
@@ -78,40 +78,40 @@ export function ResultWorkbench(props: ResultTableProps & { readonly fromQuery: 
         >
           <p className="prs-preview-position">{selectedIndex + 1} / {rows.length}</p>
           <p className="prs-preview-identity prs-mono">
-            {selected.repository ?? '저장소 미상'} · {selected.kind === 'commit' ? (selected.commit_sha ?? resultName(selected)) : resultName(selected)}
+            {selected.repository ?? "Unknown repository"} · {selected.kind === 'commit' ? (selected.commit_sha ?? resultName(selected)) : resultName(selected)}
           </p>
           <h3 className="prs-preview-title">{selected.title ?? resultName(selected)}</h3>
           <div className="prs-preview-actions">
-            {href === null ? null : <Link href={href} className="prs-text-link">상세 보기<WorkbenchIcon name="arrow" /></Link>}
+            {href === null ? null : <Link href={href} className="prs-text-link">View details <WorkbenchIcon name="arrow" /></Link>}
             {identifier === null
-              ? <span role="status">복사할 식별자가 없습니다.</span>
-              : <CopyButton value={identifier} label="식별자 복사" />}
+              ? <span role="status">No identifier available to copy.</span>
+              : <CopyButton value={identifier} label="Copy identifier" />}
           </div>
           <dl className="prs-preview-facts">
-            <div><dt>작성자</dt><dd>{selected.author ?? '—'}</dd></div>
-            <div><dt>머지 시각</dt><dd>{formatTimestamp(selected.merged_at)}</dd></div>
+            <div><dt>Author</dt><dd>{selected.author ?? '—'}</dd></div>
+            <div><dt>Merged at</dt><dd>{formatTimestamp(selected.merged_at)}</dd></div>
             <div>
-              <dt>시퀀스 · 공간</dt>
+              <dt>Sequence · space</dt>
               <dd>
                 <SequenceBadge merge_seq={selected.merge_seq} seq_epoch={selected.seq_epoch} sequence_space={selected.sequence_space} state={selected.state} />
-                <span className="prs-preview-space prs-mono">{selected.sequence_space ?? '시퀀스 공간 미확인'}</span>
+                <span className="prs-preview-space prs-mono">{selected.sequence_space ?? "Sequence space unknown"}</span>
               </dd>
             </div>
             <div>
-              <dt>변경 규모</dt>
+              <dt>Change size</dt>
               <dd>
-                {selected.changed_files_count == null ? '파일 수 미확인' : `${String(selected.changed_files_count)}개 파일`}
+                {selected.changed_files_count == null ? "File count unknown" : `${String(selected.changed_files_count)} files`}
                 <span className="prs-diff-added"> {selected.additions == null ? '—' : `+${String(selected.additions)}`}</span>
                 <span className="prs-diff-deleted"> {selected.deletions == null ? '—' : `−${String(selected.deletions)}`}</span>
               </dd>
             </div>
           </dl>
           <div className="prs-preview-relations" data-testid="preview-relations">
-            <span>관계</span>
+            <span>Relationships</span>
             {relationBadges === null
-              ? <span>관계 요약 미확인 · 상세에서 확인</span>
+              ? <span>Relationship summary unavailable · View details</span>
               : relationBadges.length === 0
-                ? <span>확인된 관계 없음</span>
+                ? <span>No confirmed relationships</span>
                 : <RelationBadgeGroup summary={selected.link_summary ?? null} />}
           </div>
         </DetailInspector>

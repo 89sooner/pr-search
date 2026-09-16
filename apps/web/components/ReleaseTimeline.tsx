@@ -16,7 +16,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, Button, Checkbox, Table } from '@conductor-by-89soone/react';
+import { Badge, Button, Checkbox, Table } from './ui';
 import { isSelectable, previousLabel, type ReleaseRowView } from '../lib/release';
 import { formatTimestamp } from '../lib/format';
 
@@ -46,16 +46,16 @@ export function ReleaseTimeline({
   const full = selection.length >= MAX_SELECTION;
 
   return (
-    <section aria-label="릴리스 타임라인" data-testid="release-timeline">
-      <Table caption="릴리스 (시각 내림차순, 비교 대상 2건 선택)">
+    <section aria-label="Release timeline" data-testid="release-timeline">
+      <Table caption="Releases (newest first; select two to compare)">
         <Table.Head>
           <Table.Row>
-            <Table.HeaderCell scope="col">비교</Table.HeaderCell>
-            <Table.HeaderCell scope="col">태그</Table.HeaderCell>
-            <Table.HeaderCell scope="col">대상 브랜치</Table.HeaderCell>
-            <Table.HeaderCell scope="col">시각</Table.HeaderCell>
-            <Table.HeaderCell scope="col">서수</Table.HeaderCell>
-            <Table.HeaderCell scope="col">직전 대비</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Compare</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Tag</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Base branch</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Time</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Ordinal</Table.HeaderCell>
+            <Table.HeaderCell scope="col">Since previous release</Table.HeaderCell>
           </Table.Row>
         </Table.Head>
         <Table.Body>
@@ -70,9 +70,9 @@ export function ReleaseTimeline({
             const id = `release-select-${release.tagName}`;
             const noteId = `${id}-note`;
             const note = !selectable
-              ? '서수가 없어 비교 앵커가 될 수 없습니다'
+              ? "Cannot use as a comparison anchor without an ordinal"
               : full && !checked
-                ? '비교는 2건까지입니다 — 하나를 해제하세요'
+                ? "Select up to two releases. Deselect one first."
                 : null;
 
             return (
@@ -82,7 +82,7 @@ export function ReleaseTimeline({
                     id={id}
                     checked={checked}
                     disabled={disabled}
-                    aria-label={`${release.tagName} 비교 대상으로 선택`}
+                    aria-label={`${release.tagName} Select for comparison`}
                     {...(note === null ? {} : { 'aria-describedby': noteId })}
                     onCheckedChange={(next) => {
                       const on = next === true;
@@ -115,7 +115,7 @@ export function ReleaseTimeline({
                 <Table.Cell>
                   {release.baseBranch ?? (
                     <Badge tone="neutral" data-testid="release-off-chain">
-                      체인 밖
+                      Off chain
                     </Badge>
                   )}
                 </Table.Cell>
@@ -123,7 +123,7 @@ export function ReleaseTimeline({
                 <Table.Cell>
                   {release.mergeSeq === null ? (
                     <Badge tone="neutral" data-testid="release-no-seq">
-                      서수 없음
+                      No ordinal
                     </Badge>
                   ) : (
                     release.mergeSeq

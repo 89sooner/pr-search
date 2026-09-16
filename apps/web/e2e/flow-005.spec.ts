@@ -100,9 +100,9 @@ test.describe('FLOW-005 통계 대시보드', () => {
     // 그룹 패널은 산다.
     await expect(page.getByTestId('group-drilldown').first()).toBeVisible();
     // 시계열만 timeout 상태다 — 다른 패널을 비우지 않는다.
-    await expect(page.getByText('집계가 시간을 넘겼습니다.')).toBeVisible();
+    await expect(page.getByText("The aggregation timed out.")).toBeVisible();
     // 백분위·제외 건수는 여전히 뜬다.
-    await expect(page.getByRole('region', { name: '리드타임 분포' }).getByTestId('excluded-count')).toContainText('17');
+    await expect(page.getByRole('region', { name: "Lead time distribution" }).getByTestId('excluded-count')).toContainText('17');
     // 분포의 unknown은 근거 링크가 없다.
     await expect(page.locator('[data-unknown="true"]').first()).toBeVisible();
   });
@@ -130,7 +130,7 @@ test.describe('FLOW-005 통계 대시보드', () => {
     const stale = { query: 'seq:1200..1350', sequence_context: { sequence_space: 'acme/a@main' }, requested_seq_epoch: 'old-epoch', epoch_stale: true, correlation_id: 'c-stale' };
     await installRoutes(page, { timeSeriesStatus: 200, groupsBody: stale });
     await page.goto('/analytics?q=seq%3A1200..1350&group_by=team&seq_epoch=old-epoch');
-    await expect(page.getByTestId('epoch-stale').first()).toContainText('에폭');
+    await expect(page.getByTestId('epoch-stale').first()).toContainText("Epoch");
   });
 
   test('그룹 키가 없으면 그룹 패널은 조회하지 않고 안내를 그린다', async ({ page }) => {
@@ -157,7 +157,7 @@ test.describe('FLOW-005 통계 대시보드', () => {
   test('team 빈 그룹을 데이터 없음으로 그린다', async ({ page }) => {
     await installRoutes(page, { timeSeriesStatus: 200, groupsBody: { ...GROUPS, groups: [], total: { value: 0, relation: 'eq' } } });
     await page.goto('/analytics?q=org%3Aacme&group_by=team');
-    await expect(page.getByText('이 그룹으로 집계할 데이터가 없습니다.')).toBeVisible();
+    await expect(page.getByText("No data is available for this group.")).toBeVisible();
   });
 });
 
@@ -172,7 +172,7 @@ test.describe('FLOW-005 W-001 집계 탭', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ results: [], items: [] }) });
     });
     await page.goto('/search?q=org%3Aacme');
-    await page.getByRole('tab', { name: '집계' }).click();
+    await page.getByRole('tab', { name: "Aggregation" }).click();
     await expect(page.getByTestId('search-aggregation')).toBeVisible();
     await expect(page.getByTestId('open-dashboard')).toHaveAttribute('href', /\/analytics/);
   });

@@ -1,6 +1,44 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.85 | 갱신일: 2026-09-16
+## CR-097 / WP-085 — 파일 Tree·경로 History·Diff/TimeLapse (2026-09-17)
+
+FR-SRC-001~004를 SourceTree·SourceHistory·SourceDialogs와 source-analysis 모델, Source API 네 개 및 GitHubSourceReader로 구현했다. 기본 검색·기존 Repository workspace·PR/커밋 상세에 연결했다. Radix Dialog/Slider와 기존 제품 토큰을 사용하며 영문·테마·전체화면·모달 이동·단축키를 제공한다. 공식 SaaS 10곳의 기존 조사와 ADR-006 표현 방향을 공유한다.
+
+GHE 읽기 전 인증·저장소 범위를 판정하고 SHA에 고정한다. PR 비교는 merge-base를 사용하고 파일 조회 도중 head/base 변경을 거부한다. source 응답은 no-store, 감사에는 메타데이터만 포함한다. 파일256KiB/4,000라인·트리5,000항목·Diff30페이지·Time-lapse30리비전 및 연산 한도를 둔다. 원본 파일의 지속 저장·색인·외부 다운로드는 추가하지 않는다. 라인 계보는 인접 텍스트 비교의 추정이며 자동 rename 추적·Git blame과 동일하지 않음을 표시한다.
+
+검증 기록:
+
+- 공유/테스트/web TypeScript, 변경 파일 ESLint, 프로덕션 Next 빌드 통과. 영어 리터럴 검사0, 패키지 의존성 규칙 위반0.
+- source 모델5·GHE 어댑터2·Source API/서비스15·오류 계약6·아키텍처66: **94/94** 통과. 별도 runtime/proxy 집중 검사와 기존 PR/commit 상세 접근성85건도 통과(중복 합산하지 않음).
+- 실제 Chromium: 트리 확장·고정 SHA 경로 이력·리비전 둘 비교·commit/PR Diff·rename/binary·split/unified/find·전체화면·중첩 모달·슬라이더·라인 이력 이동·관련 PR·Ctrl+D·모바일 통과. Tree/History·light Diff·dark Time-lapse의 axe WCAG A/AA 검사 위반0. 선택 파일 작은 글자의 대비 결함을 이 검사에서 발견해 수정했다.
+- `/tmp/pr-search-source/` PNG는 실제 앱과 가상 API 데이터를 사용한 캡처다. 실 사내 GHE/자격증명/서버 버전 검증은 **NOT RUN**이며 출시/태그/외부 쓰기는 수행하지 않았다.
+- 문서 validator: 기존 FR-CSS-005·D-002 오류 둘, risks.md 누락 및 SRS 상태 경고 유지. 신규 Source ID 참조 오류는 없다. CR 종료 gate는 기존 오류 때문에 보류한다.
+
+## CR-096 / WP-084 — 전체 화면 Radix·영문·사용자 테마 (2026-09-16)
+
+중단된 전체 화면 전환을 이어 완료했다. 기존 기능 컴포넌트는 보존하고 Conductor 의존성과 CSS를 제거했다. `components/ui/index.tsx`의 타입 있는 Radix 프리미티브가 폼 label/required, 모달·모바일 drawer의 포커스, 탭 유지, 표·미리보기를 담당한다. 모든 제품 고정 문구는 영어이며 원본 PR·커밋·감사 데이터는 보존한다. GitHub의 서명된 정의/manifest/hash는 변경하지 않고 UI 표시 계층을 영어로 제공한다. 서버의 한국어 진단을 그대로 노출하던 일부 경로는 영어 안내와 오류 코드를 제공한다.
+
+테마 정본은 `app/ui.css`이며 html data-theme로 Radix 포털까지 전파된다. 사용자 선택은 localStorage `pr-search-theme`에 저장하며, 기본값은 시스템 설정이다. 차단된 저장소에서도 전환은 가능하고 다른 탭 변경을 동기화한다. ReaderShell·AppTopBar·로그아웃 화면에 버튼이 있다. 차트의 동적 팔레트 토큰 20+5개를 포함해 스타일 변수를 완결했고, 통계 필터·백분위 스트립·분포 패널·운영 표와 수치 카드를 재구성했다. 디자인 참고 10곳과 적용 방향은 ADR-006의 CR-096 표에 기록했다.
+
+### 검증 기록
+
+- 확인: 공유 TypeScript 프로젝트 빌드 및 web typecheck, web 프로덕션 Next 빌드, 변경 경로 ESLint, lint:deps 통과.
+- 확인: 전체 접근성 컴포넌트 테스트 **433/433** 통과 (`/tmp/pr-search-a11y-final.json`). 범위 오류 코드의 제목/본문 중복도 정리했다.
+- 확인: 아키텍처 검사 **66/66**, 핵심 텍스트 대비 light/dark **18쌍 실패 0**, web AST 영어 검사 **한국어 런타임 리터럴 0**. 주석·명시적 fixture는 제외한다.
+- 확인/담당 보고: helper/query 982건, 인증·설정·콜백 집중 검사 116건, gh 표시·검증·제약 집중 검사 122건 통과. 중복 포함 가능성이 있어 합산하지 않는다.
+- 확인: `scripts/verify-radix-ui.mjs`로 실제 Chromium의 **17개 화면/상태**에서 light/dark·선택 저장·새로고침·교차 탭·시스템 기본값·저장 차단·필터·단축키·필수 입력·모달 복귀·모바일 drawer 통과. 가상 응답이며 실 GHE/OIDC는 NOT RUN.
+- 캡처: `/tmp/pr-search-ui/`의 search, repositories, saved-searches, analytics, pipeline, jobs 등 light/dark PNG. 실제 코드 렌더링이며 테마 CSS를 캡처 도구에서 주입하지 않는다.
+- 문서 gate: 기존 FR-CSS-005·D-002 참조 오류와 risks.md 경고는 이 UI 작업에서 해결하지 않았다(CR-095에서 기존 HEAD에도 존재함을 확인). 신규 릴리스/PR 발행 없음.
+
+작업 절차 확인: [x] 요청된 전체 UI 범위 확인, [x] 공통 컴포넌트 계약·호출부 확인, [x] 역할·원본 데이터·실행 정책 보존, [x] 브라우저 흐름 검증, [x] empty/미구성 화면 및 저장 차단 검증, [x] 실행 결과와 실제 사내 미검증 범위 구분.
+
+## CR-095 / WP-083 — Radix 일반 검색 화면 (2026-09-16)
+
+공식 사이트 10곳 조사 결과는 `artifacts/RADIX_SAAS_RESEARCH.md`에 기록했다. template.html의 상단 헤더·300px 탐색·탭·필터·결과 배치를 `ReaderShell`, Radix Tabs/Select/DropdownMenu/Dialog, 독립 --r-* 토큰과 로컬 Geist 폰트로 구현했다. 일반 UI에서 Conductor 컴포넌트 사용을 제거하고 기존 operator Shell/SearchView 및 pilot.9 RepositoryWorkspace 사본을 보존했다. 새 의존성은 pnpm-lock.yaml로 고정했다. 기존 API·DB 변경 없음.
+
+검증: TypeScript·변경 TS/TSX lint·Next 프로덕션 빌드 통과. 가상 API를 주입한 실제 Chromium에서 초기 목록·Radix 상태 선택·탭 왕복 필터 유지·인라인 상세·Ctrl+K·Dialog Escape·390px 모바일 페이지 넘침 없음 통과. 일반 DOM의 cdt-* 클래스 0건, 브라우저 pageerror 0건. 캡처는 `/tmp/pr-search-radix/desktop.png`, `detail.png`, `mobile.png`. 실 GHE/OIDC 검증은 NOT RUN. 문서 validator는 기존 FR-CSS-005·D-002 참조 오류 둘 때문에 실패했으며, HEAD의 docs를 별도 임시 디렉터리에 추출해 동일 오류를 확인했다. 기존 risks.md 경로 경고도 남는다. 이번 요청은 구현이며 릴리스는 발행하지 않았다.
+
+> 상태: review | 버전: v6.88 | 갱신일: 2026-09-17
 
 `CR-094 / WP-082` 기본 저장소 작업 공간과 operator 전용 기존 UI: `template.html` 및 설계 분석 문서를 Conductor 기반 `RepositoryWorkspace`로 재구현하고, 기존 검색 및 운영 도구는 operator 전용(`?legacy=1`)으로 보존했다. developer 저장소 등록 절차 폐지·진입 즉시 현재 저장소 PR 목록 표시·필터 유지·deep link `WorkspaceEntityPage`, upstream smoke 재시도 로직 및 RUNBOOK 오프라인 빌드 절차를 반영했다. 검증과 0.1.0-pilot.9 발행 증거는 6.93장에 기록한다.
 
@@ -61,6 +99,9 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| WP-083 | 일반 검색 Radix 재구현 | UI 품질 (CR-095) | done | 에이전트 | 로컬 변경 | 타입·변경 lint·프로덕션 빌드·핵심 브라우저 조작 통과 | 기존 문서 validator 오류 유지, 미발행 |
+| WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | done | 에이전트 | 로컬 변경 | 접근성 433/433·아키텍처 66/66·브라우저 17개 상태·빌드 통과 | 실 GHE 미검증, 문서 gate 기존 오류, 미발행 |
+| WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | done | 에이전트 | 로컬 변경 | 집중94/94·Chromium 핵심 흐름·새 화면 axe·타입·빌드 통과 | 실 GHE NOT RUN, 기존 문서 gate 오류, 미발행 |
 | WP-081 | 최신 Conductor·Shell·W-001 | UI 품질 (CR-093) | done | 에이전트 | `a8796de` / PR #196 | PR CI `35061974889`·main CI `35062529329` success; `0.1.0-pilot.8` | CR-093, 신규 기능 의미 없음 |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | `96d4e2f` / PR #2 | DoD 6항 전부 통과. 통합 26건, CI `verify`·`integration` 모두 성공 (6.2장) | 로컬은 네이티브 PostgreSQL 16.13, CI는 서비스 컨테이너 (DEV-006) |

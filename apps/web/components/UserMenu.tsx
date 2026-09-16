@@ -15,7 +15,7 @@
  */
 
 import { useRef, type ReactNode } from 'react';
-import { DropdownMenu } from '@conductor-by-89soone/react';
+import { DropdownMenu } from './ui';
 import { LOGOUT_PATH } from '../lib/auth-paths';
 
 export interface UserMenuProps {
@@ -30,7 +30,7 @@ export function UserMenu({ login, email }: UserMenuProps): ReactNode {
     <>
       <form ref={logout} method="post" action={LOGOUT_PATH} hidden data-testid="logout-form" />
       <DropdownMenu.Root>
-        <DropdownMenu.Trigger className="prs-user" data-testid="user-summary" aria-label={`사용자 메뉴: ${login}`}>
+        <DropdownMenu.Trigger className="prs-user" data-testid="user-summary" aria-label={`User menu: ${login}`}>
           <span className="prs-avatar" aria-hidden="true">{login.slice(0, 2).toUpperCase()}</span>
           <span>{login}</span>
         </DropdownMenu.Trigger>
@@ -46,7 +46,7 @@ export function UserMenu({ login, email }: UserMenuProps): ReactNode {
               logout.current?.requestSubmit();
             }}
           >
-            로그아웃
+            Sign out
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Root>

@@ -1,6 +1,8 @@
 # PR Search 백엔드 아키텍처
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-09-15
+> CR-097 / FR-SRC-001~004: sourceRoutes는 인증 → 기존 ScopeService/resolveRepository → GitHubSourceReader 순서다. GitHubClient의 기존 전송·rate-limit 경계를 공유하는 별도 읽기 어댑터이며 source DTO를 수집/색인 DTO에 추가하지 않는다. 비재귀 트리·Contents·경로별 commits·PR files/merge-base를 요청 시 조회한다. 파일256KiB/4,000라인·디렉터리5,000항목·Diff100항목×30페이지 상한, 전체SHA 검증, PR 조회 전후 ref 확인을 강제한다.
+
+> 상태: review | 버전: v0.13 | 갱신일: 2026-09-17
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 

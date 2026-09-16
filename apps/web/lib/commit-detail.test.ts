@@ -58,13 +58,13 @@ const SOURCE: CommitDetailSource = { ...MERGE, commit_sha: SOURCE_SHA, role: 'so
 
 describe('역할 배지 (QA-W003-01·02·03)', () => {
   it('세 값을 모두 다룬다 — `direct_push`도 문구가 있다', () => {
-    expect(roleLabel('merge_commit')).toEqual({ text: '머지 커밋', known: true });
-    expect(roleLabel('source_commit')).toEqual({ text: '원본 커밋', known: true });
+    expect(roleLabel('merge_commit')).toEqual({ text: "Merge commit", known: true });
+    expect(roleLabel('source_commit')).toEqual({ text: "Original commit", known: true });
     /*
      * WP-021 전까지 도달하지 않지만(DEV-061) 매핑에는 둔다. 빼 두면 값이
      * 오는 날 `undefined`가 화면에 뜬다.
      */
-    expect(roleLabel('direct_push')).toEqual({ text: '직접 푸시', known: true });
+    expect(roleLabel('direct_push')).toEqual({ text: "Direct push", known: true });
   });
 
   it('**모르는 역할을 `merge_commit`으로 기본값 두지 않는다**', () => {
@@ -72,7 +72,7 @@ describe('역할 배지 (QA-W003-01·02·03)', () => {
     for (const unknown of [undefined, '', 'rebase_commit']) {
       const label = roleLabel(unknown);
       expect(label.known).toBe(false);
-      expect(label.text).toBe('역할 미상');
+      expect(label.text).toBe("Unknown role");
     }
   });
 });
@@ -217,28 +217,28 @@ describe('변경 경로 문구 (DEV-094)', () => {
      * 않은 것을 그렇게 쓰면 화면이 없는 사실을 주장한다.
      */
     const label = pathCountLabel(model({ paths: [], totalCount: null, notCollected: true }));
-    expect(label).toContain('아직 수집하지 않았습니다');
-    expect(label).not.toContain('0개');
+    expect(label).toContain("have not been collected yet");
+    expect(label).not.toContain("Files: 0");
   });
 
   it('세었으면 확정 건수를 말한다', () => {
-    expect(pathCountLabel(model({ totalCount: 2 }))).toBe('파일 2개');
+    expect(pathCountLabel(model({ totalCount: 2 }))).toBe("Files: 2");
   });
 
   it('바꾼 파일이 정말 없으면 `0개`다 — 수집 전과 다른 문구다', () => {
-    expect(pathCountLabel(model({ paths: [], totalCount: 0 }))).toBe('파일 0개');
+    expect(pathCountLabel(model({ paths: [], totalCount: 0 }))).toBe("Files: 0");
   });
 
   it('**절삭이면 상위 N건임을 밝힌다** — 전부인 것처럼 쓰지 않는다', () => {
     const label = pathCountLabel(model({ totalCount: 40, truncated: true }));
     expect(label).toContain('40');
-    expect(label).toContain('상위 2건');
+    expect(label).toContain("Top 2");
   });
 
   it('**총계를 모르면 모른다고 쓴다** — 목록 길이를 총계로 내세우지 않는다', () => {
     const label = pathCountLabel(model({ totalCount: null }));
-    expect(label).toContain('전체 파일 수는 수집하지 않습니다');
-    expect(label).not.toBe('파일 2개');
+    expect(label).toContain("total file count is not collected");
+    expect(label).not.toBe("Files: 2");
   });
 });
 

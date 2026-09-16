@@ -117,15 +117,15 @@ describe('resultKind는 서버가 준 사실을 가른다 (지시서 12장, FR-G
 
 describe('describeError는 서버 사유 코드를 옮기기만 한다', () => {
   it.each([
-    ['identity_required', '연결'],
-    ['identity_expired', '연결'],
+    ['identity_required', "connection"],
+    ['identity_expired', "connection"],
     ['registry_stale', 'manifest'],
-    ['argv_mismatch', '명령이 달라졌습니다'],
-    ['executor_lost', '회수'],
-    ['gh_auth_required', '인증'],
-    ['gh_exit_4', '종료 코드 4'],
-    ['result_parse_failed: not_json (stdout truncated)', '결과 계약'],
-    ['timed_out_after_30000ms', '시간 상한'],
+    ['argv_mismatch', "command changed"],
+    ['executor_lost', "reclaimed"],
+    ['gh_auth_required', "authentication"],
+    ['gh_exit_4', "code 4"],
+    ['result_parse_failed: not_json (stdout truncated)', "result contract"],
+    ['timed_out_after_30000ms', "time limit"],
   ])('%s', (code, fragment) => {
     expect(describeError(code)).toContain(fragment);
   });
@@ -198,8 +198,8 @@ describe('오류 DTO 읽기 — 프록시·서버가 정한 코드를 재해석�
     expect(loginPathOf(null)).toBeNull();
   });
 
-  it('code·message·correlation_id를 그대로 옮기고 없으면 fallback이다', () => {
-    expect(describeApiError({ error: { code: 'GH_DUPLICATE_REQUEST', message: '이미 있다' }, correlation_id: 'c-1' }, 'x')).toEqual({ message: '이미 있다', code: 'GH_DUPLICATE_REQUEST', correlationId: 'c-1' });
+  it('retains diagnostic IDs and localizes service messages with an English fallback', () => {
+    expect(describeApiError({ error: { code: 'GH_DUPLICATE_REQUEST', message: '이미 있다' }, correlation_id: 'c-1' }, 'Unable to execute.')).toEqual({ message: 'Unable to execute. (GH_DUPLICATE_REQUEST)', code: 'GH_DUPLICATE_REQUEST', correlationId: 'c-1' });
     expect(describeApiError({ message: 'Route not found' }, '기본')).toEqual({ message: '기본', code: null, correlationId: null });
     expect(describeApiError(null, '기본')).toEqual({ message: '기본', code: null, correlationId: null });
   });

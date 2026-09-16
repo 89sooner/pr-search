@@ -254,7 +254,7 @@ test.describe('W-010 GitHub Command Center', () => {
     await installRoutes(page, { counters: counters(), unavailable: true });
     await page.goto('/gh');
     await expect(page.getByTestId('gh-command-center')).toHaveAttribute('data-state', 'unavailable');
-    await expect(page.getByText('이 배포에서는 GitHub 작업이 열리지 않았습니다')).toBeVisible();
+    await expect(page.getByText("GitHub operations are not enabled in this deployment")).toBeVisible();
   });
 
   test('연결이 없으면 연결 버튼이 보이고, 누르면 서버가 준 인가 URL로 이동한다 (FR-GH-008 AC-2, QA-GH-12)', async ({ page }) => {
@@ -306,7 +306,7 @@ test.describe('W-010 GitHub Command Center', () => {
     await expect(page.getByTestId('gh-result-row')).toHaveCount(2);
     await expect(page.getByTestId('gh-result-title').first()).toHaveText('Fix race <script>alert(1)</script>');
     expect(await page.locator('[data-testid="gh-execution-panel"] script').count()).toBe(0);
-    await expect(page.getByTestId('gh-execution-status')).toContainText('성공');
+    await expect(page.getByTestId('gh-execution-status')).toContainText("Succeeded");
   });
 
   test('위반이 있으면 실행 버튼이 닫히고 미리보기 요청이 서버로 나가지 않는다 (QA-GH-02)', async ({ page }) => {
@@ -341,7 +341,7 @@ test.describe('W-010 GitHub Command Center', () => {
   test('인가 실패로 돌아오면 안내가 보이고 다시 연결할 수 있다', async ({ page }) => {
     await installRoutes(page, { counters: counters(), connected: false });
     await page.goto('/gh?identity=failed');
-    await expect(page.getByText('GitHub 계정 연결에 실패했습니다')).toBeVisible();
+    await expect(page.getByText("Unable to connect your GitHub account")).toBeVisible();
     await expect(page.getByTestId('gh-identity-connect')).toBeVisible();
   });
 });

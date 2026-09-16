@@ -73,21 +73,21 @@ export function describeSequenceReference(
   switch (reference.status) {
     case 'current':
       return {
-        label: '시퀀스 에폭 일치',
+        label: 'Sequence epoch matches',
         detail:
           reference.stored_seq_epoch === undefined
             ? null
-            : `에폭 ${String(reference.stored_seq_epoch)}`,
+            : `Epoch ${String(reference.stored_seq_epoch)}`,
         blocksRun: false,
         offersRebind: false,
       };
     case 'epoch_stale':
       return {
-        label: '시퀀스 에폭이 달라졌습니다',
+        label: 'The sequence epoch has changed',
         detail:
           reference.stored_seq_epoch === undefined || reference.current_seq_epoch === undefined
             ? null
-            : `저장 당시 ${String(reference.stored_seq_epoch)} · 현재 ${String(reference.current_seq_epoch)}`,
+            : `Saved: ${String(reference.stored_seq_epoch)} · Current: ${String(reference.current_seq_epoch)}`,
         /*
          * **막지 않는다.** 실행하면 저장된 에폭 그대로 W-001로 가고 그
          * 화면이 무효를 알린다 — 여기서 막으면 사용자가 무엇이 달라졌는지
@@ -98,8 +98,8 @@ export function describeSequenceReference(
       };
     case 'unbound':
       return {
-        label: '에폭 정보 없이 저장되었습니다',
-        detail: '안전하게 실행할 수 없습니다. 현재 시퀀스 공간에 다시 연결하세요',
+        label: 'Saved without epoch information',
+        detail: 'Cannot run safely. Rebind to the current sequence space',
         blocksRun: true,
         offersRebind: true,
       };
@@ -109,8 +109,8 @@ export function describeSequenceReference(
          * 어떤 수치도 적지 않는다 (THR-043). 저장된 에폭까지 응답에 없으므로
          * 여기서 만들 것도 없다.
          */
-        label: '시퀀스 상태를 확인할 수 없습니다',
-        detail: '이 검색이 가리키는 저장소에 접근할 수 없습니다',
+        label: 'Sequence status is unavailable',
+        detail: 'The repository referenced by this search is inaccessible',
         blocksRun: false,
         offersRebind: false,
       };
@@ -197,12 +197,12 @@ export function rowActions(item: SavedSearchView): RowActions {
     canRebindEpoch: item.is_owner && sequence?.offersRebind === true,
     blockedReason: invalid
       ? item.is_owner
-        ? '질의를 현재 문법으로 해석할 수 없습니다. 편집해서 고치세요.'
-        : '질의를 현재 문법으로 해석할 수 없습니다. 소유자가 질의를 수정해야 합니다.'
+        ? 'The query cannot be parsed with the current syntax. Edit it to continue.'
+        : 'The query cannot be parsed with the current syntax. Its owner must update it.'
       : sequenceBlocks
         ? item.is_owner
-          ? '시퀀스 에폭 정보 없이 저장되어 안전하게 실행할 수 없습니다. 현재 시퀀스 공간에 다시 연결하세요.'
-          : '시퀀스 에폭 정보 없이 저장되어 안전하게 실행할 수 없습니다. 저장자가 다시 연결해야 합니다.'
+          ? 'This search was saved without a sequence epoch and cannot run safely. Rebind it to the current sequence space.'
+          : 'This search was saved without a sequence epoch and cannot run safely. Its owner must rebind it.'
         : null,
   };
 }
@@ -243,10 +243,10 @@ export function splitInvalidSpan(
 
 /** 공개 범위 레이블. **색만으로 구분하지 않는다** (NFR-006). */
 export function visibilityLabel(item: SavedSearchView): string {
-  if (item.visibility === 'private') return '비공개';
+  if (item.visibility === 'private') return 'Private';
   const team = item.target_team;
-  if (team === undefined) return '팀 공유';
-  return `팀 공유 · ${team.slug}`;
+  if (team === undefined) return 'Shared with team';
+  return `Shared with team · ${team.slug}`;
 }
 
 /**
@@ -260,7 +260,7 @@ export function shareTargetLabel(
   all: readonly ShareTargetTeam[],
 ): string {
   const duplicated = all.filter((one) => one.slug === team.slug).length > 1;
-  return duplicated ? `${team.slug} (조직 ${String(team.org_id)})` : team.slug;
+  return duplicated ? `${team.slug} (organization ${String(team.org_id)})` : team.slug;
 }
 
 /** 저장 대화상자가 보낼 본문. `visibility`가 `private`이면 대상을 담지 않는다. */
@@ -294,17 +294,17 @@ export function createPayload(input: {
 export function saveFailureMessage(code: string | undefined): string {
   switch (code) {
     case 'SAVED_SEARCH_LIMIT':
-      return '저장할 수 있는 검색이 100건을 넘었습니다. 저장된 검색에서 기존 항목을 삭제한 뒤 다시 시도하세요.';
+      return 'You have reached the limit of 100 saved searches. Delete an existing saved search and try again.';
     case 'SAVED_SEARCH_NAME_CONFLICT':
-      return '같은 이름의 저장된 검색이 이미 있습니다. 다른 이름을 쓰세요.';
+      return 'A saved search with this name already exists. Use a different name.';
     case 'QUERY_SYNTAX_ERROR':
-      return '질의를 현재 문법으로 해석할 수 없습니다. 질의를 고친 뒤 저장하세요.';
+      return 'The query cannot be parsed with the current syntax. Update it before saving.';
     case 'INVALID_PARAMETER':
-      return '입력을 확인하세요. 공유 대상 팀은 현재 구성원인 팀만 고를 수 있고, seq: 조건은 repo:와 base:를 각각 하나씩 지정해야 합니다.';
+      return 'Check your input. You can share only with teams you belong to. A seq: filter requires exactly one repo: and one base: filter.';
     case 'SAVED_SEARCH_QUERY_INVALID':
       // 저장하는 사이에 재채번이 일어났다 (CR-051). 현재 값으로 바꿔 저장하지 않는다.
-      return '조회하는 사이에 시퀀스 에폭이 바뀌었습니다. 현재 결과를 다시 확인한 뒤 저장하세요.';
+      return 'The sequence epoch changed during the lookup. Review the current results before saving.';
     default:
-      return '저장하지 못했습니다. 잠시 후 다시 시도하세요.';
+      return 'Could not save. Try again later.';
   }
 }

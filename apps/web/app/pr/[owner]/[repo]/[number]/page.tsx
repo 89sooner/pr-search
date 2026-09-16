@@ -57,10 +57,10 @@ export default async function PrDetailPage({ params, searchParams }: PageProps):
        */}
       <EmptyState
         cause="not_found"
-        description="이 PR을 찾을 수 없습니다. 번호가 정확한지 확인하세요."
+        description="This PR could not be found. Check the PR number."
         actions={
           <a href={searchBackHref(fromQuery)} data-testid="back-link">
-            검색으로 돌아가기
+            Back to search
           </a>
         }
       />
@@ -69,7 +69,7 @@ export default async function PrDetailPage({ params, searchParams }: PageProps):
 
   // 세션 관문은 `GuardedPage` 하나가 소유한다 (WP-018).
   return (
-    <GuardedPage title="PR 상세" returnTo={`/pr/${repository}/${number}`}>
+    <GuardedPage title="PR details" returnTo={`/pr/${repository}/${number}`}>
       {body}
     </GuardedPage>
   );

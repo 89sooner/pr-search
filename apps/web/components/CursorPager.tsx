@@ -24,7 +24,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Banner, Button, Spinner } from '@conductor-by-89soone/react';
+import { Banner, Button, Spinner } from './ui';
 
 /** 커서 실패의 갈래. 서버 오류 코드를 그대로 쓴다 — 화면이 코드를 재해석하지 않는다. */
 export type CursorFailure = 'CURSOR_QUERY_MISMATCH' | 'CURSOR_INVALID';
@@ -51,12 +51,12 @@ export interface CursorPagerProps {
 
 const FAILURE_TEXT: Readonly<Record<CursorFailure, { title: string; impact: string }>> = {
   CURSOR_QUERY_MISMATCH: {
-    title: '조건이 바뀌어 이어 보기를 계속할 수 없습니다',
-    impact: '검색 조건이나 권한이 달라졌습니다. 첫 페이지부터 다시 봅니다.',
+    title: "Filters changed; pagination cannot continue",
+    impact: "Search filters or permissions have changed. Start again from the first page.",
   },
   CURSOR_INVALID: {
-    title: '이어 보기 정보를 사용할 수 없습니다',
-    impact: '이어 보기 정보가 만료되었거나 손상되었습니다. 첫 페이지부터 다시 봅니다.',
+    title: "Pagination is unavailable",
+    impact: "Pagination information has expired or is invalid. Start again from the first page.",
   },
 };
 
@@ -77,7 +77,7 @@ export function CursorPager({
   if (failure === null && !resumed && nextCursor === null) return null;
 
   return (
-    <nav data-testid="cursor-pager" aria-label="이어 보기">
+    <nav data-testid="cursor-pager" aria-label="Pagination">
       {failure === null ? null : (
         <Banner tone="warning" title={FAILURE_TEXT[failure].title}>
           <p data-testid="cursor-failure" data-cursor-failure={failure}>
@@ -87,7 +87,7 @@ export function CursorPager({
       )}
 
       <p data-testid="cursor-loaded" aria-live="polite">
-        {`지금까지 ${String(loadedCount)}건을 불러왔습니다.`}
+        {`Loaded ${String(loadedCount)} items so far.`}
       </p>
 
       {resumed ? (
@@ -97,7 +97,7 @@ export function CursorPager({
           disabled={loading}
           onClick={onFirst}
         >
-          첫 페이지로
+          First page
         </Button>
       ) : null}
 
@@ -108,7 +108,7 @@ export function CursorPager({
          * 버튼만 사라지면 사용자는 "더 있는데 안 나오는 것"과 "여기가 끝"을
          * 구분할 수 없다 — 이 제품에서 그 차이는 조사 결과의 신뢰다.
          */
-        resumed ? <p data-testid="cursor-end">마지막 페이지입니다.</p> : null
+        resumed ? <p data-testid="cursor-end">This is the last page.</p> : null
       ) : (
         <Button
           data-testid="cursor-next"
@@ -118,7 +118,7 @@ export function CursorPager({
             onLoadMore(nextCursor);
           }}
         >
-          {loading ? <Spinner label="다음 페이지를 불러오는 중" /> : '다음 페이지'}
+          {loading ? <Spinner label="Loading next page" /> : "Next page"}
         </Button>
       )}
     </nav>

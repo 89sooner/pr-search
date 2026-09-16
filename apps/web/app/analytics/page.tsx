@@ -20,10 +20,10 @@ export default function AnalyticsPage(): ReactNode {
   const config = resolveWebConfig();
 
   return (
-    <GuardedPage title="통계" returnTo="/analytics">
-      <h1>통계 대시보드</h1>
+    <GuardedPage title="Analytics" returnTo="/analytics">
+      <h1>Analytics dashboard</h1>
       {/* `useSearchParams`를 쓰는 클라이언트 컴포넌트는 Suspense 안에 있어야 한다. */}
-      <Suspense fallback={<p>통계를 준비하는 중…</p>}>
+      <Suspense fallback={<p>Loading analytics…</p>}>
         <AnalyticsView loginPath={config.session.loginPath} />
       </Suspense>
     </GuardedPage>

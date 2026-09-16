@@ -24,7 +24,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Button, Meter, Table } from '@conductor-by-89soone/react';
+import { Button, Meter, Table } from './ui';
 import { JobStatusBadge } from './JobStatusBadge';
 import { controlLabel, jobControls, progressView, type JobControl, type JobView } from '../lib/ops-jobs';
 import { formatTimestamp } from '../lib/format';
@@ -32,7 +32,7 @@ import { formatTimestamp } from '../lib/format';
 /** 값이 없음을 그리는 한 자리. 여러 칸이 같은 모양을 쓴다. */
 function Absent(): ReactNode {
   return (
-    <span data-testid="job-absent" aria-label="값 없음">
+    <span data-testid="job-absent" aria-label="No value">
       —
     </span>
   );
@@ -42,7 +42,7 @@ function Progress({ job }: { readonly job: JobView }): ReactNode {
   const view = progressView(job);
 
   if (view.waitingUntil !== null) {
-    return <span data-testid="job-progress-waiting">한도 회복 대기 — {formatTimestamp(view.waitingUntil)}</span>;
+    return <span data-testid="job-progress-waiting">Waiting for rate limit reset — {formatTimestamp(view.waitingUntil)}</span>;
   }
 
   if (view.done === null) return <Absent />;
@@ -56,8 +56,8 @@ function Progress({ job }: { readonly job: JobView }): ReactNode {
   if (view.ratio === null || view.total === null) {
     return (
       <span data-testid="job-progress-count">
-        {view.done.toLocaleString('ko-KR')}
-        {unit} 처리 (총계 미확인)
+        {view.done.toLocaleString("en-US")}
+        {unit} processed (total unknown)
       </span>
     );
   }
@@ -67,8 +67,8 @@ function Progress({ job }: { readonly job: JobView }): ReactNode {
     <span data-testid="job-progress-meter">
       <Meter
         value={percent}
-        valueText={`${view.done.toLocaleString('ko-KR')} / ${view.total.toLocaleString('ko-KR')}${unit}`}
-        aria-label={`잡 ${String(job.job_id)} 진행률`}
+        valueText={`${view.done.toLocaleString("en-US")} / ${view.total.toLocaleString("en-US")}${unit}`}
+        aria-label={`Job ${String(job.job_id)} Progress`}
       />
     </span>
   );
@@ -83,17 +83,17 @@ export interface JobTableProps {
 
 export function JobTable({ jobs, onAction, pendingJobId = null }: JobTableProps): ReactNode {
   return (
-    <Table data-testid="job-table" caption="실행 중이거나 최근에 끝난 잡. 제어 버튼은 서버가 허용한 것만 표시됩니다.">
+    <Table data-testid="job-table" caption="Running and recently completed jobs. Only server-authorized controls are shown.">
       <thead>
         <tr>
-          <th scope="col">유형</th>
-          <th scope="col">대상</th>
-          <th scope="col">상태</th>
-          <th scope="col">진행률</th>
-          <th scope="col">시작</th>
-          <th scope="col">종료</th>
-          <th scope="col">요청자</th>
-          <th scope="col">제어</th>
+          <th scope="col">Type</th>
+          <th scope="col">Target</th>
+          <th scope="col">Status</th>
+          <th scope="col">Progress</th>
+          <th scope="col">Start</th>
+          <th scope="col">Finished</th>
+          <th scope="col">Requested by</th>
+          <th scope="col">Controls</th>
         </tr>
       </thead>
       <tbody>
@@ -143,7 +143,7 @@ export function JobTable({ jobs, onAction, pendingJobId = null }: JobTableProps)
         {jobs.length === 0 ? (
           <tr>
             <td colSpan={8} data-testid="job-table-empty">
-              실행 중이거나 최근에 끝난 잡이 없습니다.
+              No running or recently completed jobs.
             </td>
           </tr>
         ) : null}
@@ -155,7 +155,7 @@ export function JobTable({ jobs, onAction, pendingJobId = null }: JobTableProps)
             .map((job) => (
               <tr key={`error-${String(job.job_id)}`} data-testid="job-error-row">
                 <td colSpan={8}>
-                  잡 {job.job_id} 실패 사유: {job.error}
+                  Job {job.job_id} Failure reason: {job.error}
                 </td>
               </tr>
             ))}

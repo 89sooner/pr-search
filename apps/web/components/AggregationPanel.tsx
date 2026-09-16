@@ -18,7 +18,7 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { Badge, Panel, Table } from '@conductor-by-89soone/react';
+import { Badge, Panel, Table } from './ui';
 import { formatDuration } from '../lib/format';
 
 export interface AggregationGroup {
@@ -44,7 +44,7 @@ export interface AggregationPanelProps {
 }
 
 function num(value: number): string {
-  return value.toLocaleString('ko-KR');
+  return value.toLocaleString("en-US");
 }
 
 export function AggregationPanel({
@@ -52,37 +52,37 @@ export function AggregationPanel({
   approximate = false,
   truncated = false,
   hrefFor,
-  groupLabel = '그룹',
+  groupLabel = "Group",
 }: AggregationPanelProps): ReactNode {
   return (
-    <Panel as="section" aria-label="그룹 집계">
+    <Panel as="section" aria-label="Group aggregation">
       <header>
-        <h3>그룹 집계</h3>
+        <h3>Group aggregation</h3>
         {approximate ? (
           <Badge tone="warning" data-testid="approximate-badge">
-            근사값
+            Approximate
           </Badge>
         ) : null}
         {truncated ? (
           <Badge tone="info" data-testid="truncated-badge">
-            상위 500개만
+            Top 500 only
           </Badge>
         ) : null}
       </header>
 
       {groups.length === 0 ? (
-        <p data-testid="group-empty">이 그룹으로 집계할 데이터가 없습니다.</p>
+        <p data-testid="group-empty">No data is available for this group.</p>
       ) : (
-        <Table caption="그룹별 건수와 변경 규모, 리드타임 중앙값">
+        <Table caption="Counts, change size, and median lead time by group">
           <Table.Head>
             <Table.Row>
               <Table.HeaderCell scope="col">{groupLabel}</Table.HeaderCell>
               <Table.HeaderCell scope="col" aria-sort="descending">
-                건수
+                Count
               </Table.HeaderCell>
-              <Table.HeaderCell scope="col">변경 파일 합계</Table.HeaderCell>
-              <Table.HeaderCell scope="col">추가 라인 합계</Table.HeaderCell>
-              <Table.HeaderCell scope="col">리드타임 중앙값</Table.HeaderCell>
+              <Table.HeaderCell scope="col">Total changed files</Table.HeaderCell>
+              <Table.HeaderCell scope="col">Total added lines</Table.HeaderCell>
+              <Table.HeaderCell scope="col">Median lead time</Table.HeaderCell>
             </Table.Row>
           </Table.Head>
           <Table.Body>

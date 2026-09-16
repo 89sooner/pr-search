@@ -60,10 +60,10 @@ export default async function CommitDetailPage({ params, searchParams }: PagePro
     <div data-testid="commit-detail" data-screen-state="not_found">
       <EmptyState
         cause="not_found"
-        description="이 커밋을 찾을 수 없습니다. SHA가 정확한지 확인하세요."
+        description="This commit could not be found. Check the SHA."
         actions={
           <a href={searchBackHref(fromQuery)} data-testid="back-link">
-            검색으로 돌아가기
+            Back to search
           </a>
         }
       />
@@ -71,7 +71,7 @@ export default async function CommitDetailPage({ params, searchParams }: PagePro
   );
 
   return (
-    <GuardedPage title="커밋 상세" returnTo={`/commit/${repository}/${sha}`}>
+    <GuardedPage title="Commit details" returnTo={`/commit/${repository}/${sha}`}>
       {body}
     </GuardedPage>
   );
