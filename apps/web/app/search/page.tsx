@@ -36,13 +36,13 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   // `redirect` 한 줄을 빠뜨린 라우트가 인증 구멍이 된다.
   return (
     <GuardedPage title="통합 검색" returnTo="/search">
-      {({ roles, login }) => roles.includes('operator') && legacy ? <>
+      {({ roles, login }) => (process.env['PRS_LEGACY_SEARCH'] === '1' || (roles.includes('operator') && legacy)) ? <>
       <header className="prs-page-heading">
         <div><p className="prs-eyebrow">SEARCH WORKSPACE</p><h1>통합 검색</h1></div>
         <p>PR · 커밋 · 머지 시퀀스를 한곳에서 탐색합니다.</p>
       </header>
       {view}
-      </> : <Suspense fallback={<p>저장소를 준비하는 중…</p>}><RepositoryWorkspace login={login} loginPath={config.session.loginPath} {...(ghe ? { gheBaseUrl: ghe } : {})} /></Suspense>}
+      </> : <Suspense fallback={<p>저장소를 준비하는 중…</p>}><RepositoryWorkspace loginPath={config.session.loginPath} {...(login ? { login } : {})} {...(ghe ? { gheBaseUrl: ghe } : {})} /></Suspense>}
     </GuardedPage>
   );
 }

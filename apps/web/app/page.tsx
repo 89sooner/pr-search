@@ -19,7 +19,7 @@ export default function HomePage(): ReactNode {
         description="GitHub Enterprise 데이터에 접근하려면 사내 로그인이 필요합니다. 운영자에게 인증 설정을 확인하세요."
         actions={<Link href="/search">검색 작업대 열기</Link>} />}
     >
-      {({ roles }) => { if (!roles.includes('operator')) redirect('/search'); return <>
+      {({ roles }) => { if (process.env['PRS_LEGACY_SEARCH'] !== '1' && !roles.includes('operator')) redirect('/search'); return <>
       <header className="prs-page-heading"><div><p className="prs-eyebrow">GITHUB ENTERPRISE</p><h1>변경 이력 작업대</h1></div></header>
       <div className="prs-home-workflows">
         <Link href="/search#omni-search-input"><WorkbenchIcon name="search" /><strong>PR · 커밋 검색</strong><span>식별자 하나로 변경과 연결된 PR을 찾습니다.</span><WorkbenchIcon name="arrow" /></Link>

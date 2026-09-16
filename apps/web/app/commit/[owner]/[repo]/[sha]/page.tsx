@@ -12,7 +12,6 @@ import { EmptyState } from '../../../../../components/EmptyState';
 import { searchBackHref } from '../../../../../lib/pr-detail';
 import { resolveWebConfig } from '../../../../../lib/server/config';
 import { GuardedPage } from '../../../../../lib/server/page-guard';
-import { WorkspaceEntityPage } from '../../../../../components/WorkspaceEntityPage';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,7 +72,7 @@ export default async function CommitDetailPage({ params, searchParams }: PagePro
 
   return (
     <GuardedPage title="커밋 상세" returnTo={`/commit/${repository}/${sha}`}>
-      {({ roles }) => roles.includes('operator') ? body : valid ? <WorkspaceEntityPage repository={repository} commitSha={sha.toLowerCase()} {...(ghe ? { gheBaseUrl: ghe } : {})} /> : <p>이 커밋을 찾을 수 없습니다. <a href="/search">검색으로 돌아가기</a></p>}
+      {body}
     </GuardedPage>
   );
 }

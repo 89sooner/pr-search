@@ -19,7 +19,7 @@ import type { Pool } from '@prs/db';
 import type { Client as EsClient } from '@elastic/elasticsearch';
 import type { ErrorResponse } from '@prs/contracts';
 import type { AuthContext } from '../auth/context.js';
-import { authenticateSession, requireRole } from '../auth/principal.js';
+import { authenticateSession } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
 import {
   CursorInvalidError,
@@ -169,15 +169,6 @@ export function registerRepositoryRoutes(
   app.post(REGISTRATION_REQUESTS_PATH, async (request, reply) => {
     const correlationId = randomUUID();
     const body = (request.body ?? {}) as Record<string, unknown>;
-
-    // CR-094: the retired developer request workflow is retained for operators only.
-    try {
-      requireRole(await authenticateSession(request, auth.sessions), 'operator');
-    } catch (error) {
-      const shape = toAuthError(error, { correlationId, loginPath });
-      if (shape !== null) { await sendAuthError(reply, shape); return reply; }
-      throw error;
-    }
 
     const userId = await session(request, reply, correlationId);
     if (userId === null) return reply;

@@ -53,7 +53,7 @@ export function WorkspaceDetail({ row, gheBaseUrl, onPath }: { row: ResultRow; g
   </div>;
 }
 
-export function RepositoryWorkspace({ login, loginPath, gheBaseUrl }: { login: string; loginPath: string; gheBaseUrl?: string }): ReactNode {
+export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { login?: string; loginPath: string; gheBaseUrl?: string }): ReactNode {
   const router = useRouter();
   const params = useSearchParams();
   const serialized = params.toString();
