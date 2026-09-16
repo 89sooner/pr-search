@@ -1,6 +1,8 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.83 | 갱신일: 2026-09-15
+> 상태: review | 버전: v6.84 | 갱신일: 2026-09-16
+
+`CR-093 / WP-081` 최신 Conductor·Shell·W-001 작업을 재개했다. 구현 및 문서 cascade 진행 중이며 검증과 발행 증거는 6.92장에 기록한다.
 
 `CR-092` 사내 `0.1.0-pilot.7` 반입 피드백: 쓰이지 않는 조직·팀 조회가 접근 범위 전체를 503으로 만든 자리(`DEV-698` — 이제 `org_team` 범위에서만 읽고 실패 단계를 로그에 남긴다), 로그인·계정 연결 콜백이 프록시 뒤에서 `localhost:3000`으로 보낸 자리(`DEV-699` — 경로만 담은 `Location`), 화면에 로그아웃이 없던 자리(`DEV-700` — 사용자 메뉴와 공개 완료 화면), `prsctl smoke`의 간헐 오탐(`DEV-697`)을 고쳤다. **일곱 건 중 넷은 사내가 적은 원인이나 전제가 실제와 달랐다** — 로그인 때 팀 동기화·`smp*` 브랜치·디자인 시스템은 코드를 바꾸지 않았다. 검증은 6.91장이며 릴리스는 발행하지 않았고 사내 확인은 `NOT RUN`이다.
 
@@ -57,6 +59,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| WP-081 | 최신 Conductor·Shell·W-001 | UI 품질 (CR-093) | in_progress | 에이전트 | 미커밋 | 6.92장 — 검증 대기 | CR-093, 신규 기능 의미 없음 |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | `96d4e2f` / PR #2 | DoD 6항 전부 통과. 통합 26건, CI `verify`·`integration` 모두 성공 (6.2장) | 로컬은 네이티브 PostgreSQL 16.13, CI는 서비스 컨테이너 (DEV-006) |
 | WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | done | 에이전트 | `2477c74` / PR #4 | DoD 5항 전부 통과. 로컬 단위 27건 + CI `verify`·`integration` 성공 (6.3장) | DoD 1·2·3·5는 CI의 ES 서비스 컨테이너에서 검증 (DEV-008) |
@@ -224,6 +227,8 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | DEV ID | 발견일 | 발견 내용 | 관련 FR/WP | 유형 | 연결 CR | 상태 |
 | --- | --- | --- | --- | --- | --- | --- |
+| DEV-702 | 2026-09-16 | Conductor 전환에서 표의 48vh 높이 제한이 사라져 390px 화면의 첫 행 선택 후 미리보기가 25행 아래 뷰포트 밖에 남았다. 1440px에서는 재현되지 않았다 | FR-SRCH-008 · NFR-007 / WP-081 | 구현 결함 | CR-093 | open — data-inspecting 조건의 48vh·overflow 복원 및 390/1440 첫·끝 행 미리보기 가시성 회귀 검증 중 |
+| DEV-701 | 2026-09-16 | ADR-006·QA-COMMON-17이 아이콘 자산과 UI 프리미티브를 구분하지 않아 승인된 lucide 직접 소비와 충돌했다 | FR-SRCH-006 · FR-SRCH-008 · NFR-007 / WP-081 | 문서 오류 | CR-093 | open — 아이콘 한정 예외 cascade, 검증 대기 |
 | DEV-700 | 2026-09-15 | **화면에 로그아웃이 없었다.** `FR-AUTH-001` AC-5가 요구하는 서버 측 세션 무효화는 `POST /auth/logout`에 있었지만 그것을 부르는 화면이 없었다 — 셸의 상단에는 로그인 이름만 표시됐다. C-001은 「사용자 메뉴」와 `topbar.user_menu_open`을 적었으나 메뉴 항목을 정하지 않았다. 사내 `0.1.0-pilot.7`의 사용자는 로그아웃 방법을 알 수 없었고, 주소창으로 열면 405였다(`GET`을 받지 않는 것은 옳은 계약이다) | FR-AUTH-001 AC-5 · C-001 · FLOW-000 / WP-015 | 범위 공백 | CR-092 | resolved — 로그인 이름이 사용자 메뉴의 트리거가 되고 「로그아웃」이 `POST /auth/logout` 폼을 제출한다. 문서 요청은 303으로 공개 완료 화면(`/auth/signed-out`, 셸 없음, 「다시 로그인」 하나)을, 스크립트 요청은 기존 JSON을 받는다. 로그인으로 곧장 보내지 않은 것은 IdP 세션으로 곧바로 다시 로그인되기 때문이다(사용자 결정). a11y가 메뉴를 연 상태의 axe 0과 폼 제출을, e2e가 실제 Next 서버의 303과 완료 화면을 건다. 실제 세션으로 브라우저에서 메뉴 → 로그아웃을 도는 것은 IdP가 없어 `NOT RUN` |
 | DEV-699 | 2026-09-15 | **로그인·계정 연결 콜백이 서버가 들은 출처로 복귀 주소를 만들었다.** `app/auth/callback/route.ts`와 `app/gh/identity/callback/route.ts`가 `NextResponse.redirect(new URL(path, request.nextUrl.origin))`로 보냈는데, `next start`는 요청 출처를 자기가 들은 호스트·포트로 조립한다. 사내 `0.1.0-pilot.7`은 nginx 뒤에서 GHE 로그인 뒤 `localhost:3000`으로 떨어졌고 사내는 이를 「로그아웃 뒤 리다이렉트」로 보고했다(로그아웃 라우트는 리다이렉트하지 않았다). pilot.7 web 이미지에 `Host: prs.corp.example`·`X-Forwarded-Host`·`X-Forwarded-Proto: https`를 실어 `location: https://localhost:3000/gh?identity=failed`를 실측했다. **라우트 시험은 `NextRequest`에 출처를 직접 넣어 이것을 볼 수 없었다** | FR-AUTH-001 · FR-GH-008 · FLOW-000 / WP-015 · WP-077 · WP-076 | 구현 결함 | CR-092 | resolved — 복귀 `Location`은 같은 출처의 경로만 담는다(`lib/redirect.ts`, 규칙을 어긴 값은 던진다). 사내 제안(`WEB_EXTERNAL_URL`·`X-Forwarded-Host`)은 맞출 값이 늘거나 열린 리다이렉트가 되어 택하지 않았다(`THR-054`). 라우트 시험이 출처 `localhost:3000`에서도 경로만 나오는지, e2e가 실제 `next start`에 프록시 헤더를 실어 `Location`이 그대로인지, 정적 시험이 라우트 핸들러의 `nextUrl.origin`·`request.url` 리다이렉트를 막는지 건다 |
 | DEV-698 | 2026-09-15 | **쓰이지 않는 조직·팀 조회 하나가 접근 범위 전체를 503으로 만들었다.** `GheAccessScopeSource.fetch()`는 저장소마다 협업자 권한을 읽은 뒤 **늘** 조직 구성원·팀 목록·팀 소속까지 읽었다(주석: 「임계를 넘나드는 순간에 다시 조회하지 않도록」). 그런데 표현(`explicit`/`org_team`)은 그 범위 자신의 저장소 수가 정하므로 500개 이하인 범위의 조직·팀 값은 필터에도 무효화 대상 조회에도 쓰이지 않는다. 사내 `0.1.0-pilot.7`(저장소 셋)은 인증을 켜자 `/api/v1/me`가 503이었고 저장소 목록이 비었다 — App에 조직 `Members` 권한이 없으면 그 조회가 403이다(GitHub REST 문서: 협업자 권한은 `Metadata`, 조직·팀은 `Members`). **실패 사유를 로그에 남기지 않아** 사내는 원인을 추정했고 `permission_cache`에 손으로 행을 넣었다(5분 뒤 만료). 런북에도 수집용 App의 권한 목록이 없었다 | FR-AUTH-002 · FR-AUTH-003 · API-AUTH-001 / WP-012 | 구현 결함 | CR-092 | resolved — 조직·팀은 범위가 `org_team`으로 표현될 때만 읽는다(그 실패는 여전히 503, 부분 범위 없음). 조회 단계마다 `AccessScopeLookupError`(단계·오류 분류·상태 코드)를 붙이고 `AccessScopeResolver`가 운영 로그에 필요한 App 권한과 함께 남긴다 — GHE 응답 본문은 싣지 않는다. `/me`의 `org_count`·`team_count`는 `explicit`에서 `null`이다. 런북 2.C에 권한 표. 사내 제안 가운데 DB 기반 출처는 `OD-002`·AC-1에 어긋나 기각(사용자 결정). 운영 조립과 실제 PostgreSQL·Redis로 저장소 셋 → 200·조직 조회 0회, 501개 → 503·로그 단계를 건다. 사내 확인 `NOT RUN` |
@@ -6476,6 +6481,28 @@ W-004의 C-029는 서버 저장 상태를 복원하고 후보 수·예상 횟수
 migration 024의 `search_export`는 job 요청과 한 트랜잭션에서 생기며, 완성 content와 completed 전이가 함께 커밋된다. ES timeout·조기 종료·샤드 실패, 취소, 30분 초과는 부분 파일을 공개하지 않는다. CSV 수식 접두어를 중화하고 원문 본문·경로 배열은 내보내지 않는다. `export.create`는 감사 정본에서 활성화됐다.
 
 검증: ES 단위 11건, 실제 PostgreSQL·Elasticsearch·Redis 통합 6건, a11y 1건(axe 위반 0), Chromium E2E 3건 통과. 1000/1001/100000/100001 경계, stale Redis와 PG fence, 대기 중 에폭 변경, 부분 응답, 닫았다 다시 연 다이얼로그의 늦은 응답을 포함한다. 전체 통합 첫 실행에서 migration 024 FK가 기존 `TRUNCATE job` 픽스처를 막고 export가 숫자 에폭을 문자열 파서로 넘기지 못하는 두 결함을 찾아 해당 통합 23건 재실행으로 닫았다.
+
+### 6.92 최신 Conductor·Shell·W-001 (2026-09-16, CR-093 / WP-081)
+
+기준 `8c567b7`, 브랜치 `feature/cr093-conductor-w001`. 이전 대화와 실제 diff를 대조해 복구했다. react/css 0.3.1 → 0.4.1, tokens 0.3.0 → 0.4.0, lucide-react 1.46.0 exact. 초안의 미리보기 40%는 소스의 38%로 정정했다. 집계 패널은 forceMount이며 내부 내용만 활성 조건으로 마운트한다.
+
+**A. 사용자 직접 결정.** 디자인 시스템 트랙 우선, 최신 Conductor·UI/UX 개선, 필요한 외부 라이브러리 허용. 2026-09-16 재개 지시는 빠른 수직 완료와 새 릴리스 발행을 포함한다.
+
+**B. 사전 승인.** published exact 버전, Shell+W-001 primary vertical, Conductor-first, generic gap 상류 개선 가능, lucide 조사, Recipe/R1/REL-007 확장 제외, 브라우저 검증, 구현 PR·main CI·기록 PR. 이전 pilot.8 미발행은 최신 사용자 발행 지시로 대체됐다.
+
+**C. 추가 결정과 근거.** 아래 결정은 CR-093/DEV-701/WP-081 및 web a11y·e2e·architecture 시험으로 추적한다. 공통 운영 영향은 설정·DB·API 변경 없음, 되돌림은 해당 소비 코드·lockfile·문서 변경의 revert다. 접근성·번들·호환성의 최종 판정은 검증 대기다.
+
+| 결정 | 필요·관측·다른 선택지 | 사용자·코드·의존성 영향 | 접근성·성능·호환·위험·되돌림 |
+| --- | --- | --- | --- |
+| ResultTable 유지 | DataTable에 roving 키보드·원인별 빈 상태·CursorPager 슬롯 부족. 전면 교체 대신 기존 Table 조합 | 링크·정렬·행 이동 유지, 새 의존성 없음 | 기존 키보드와 알림 중복 방지. 상류 슬롯 확대 시 재검토 |
+| Combobox/MultiSelect 미적용 | 자유 문법과 패싯 건수·계산 상태를 대체 못함 | 입력·FacetRail 유지 | 기존 의미 보존, 새 번들 없음 |
+| lucide-react 1.46.0 직접 소비 | 기존 WorkbenchIcon SVG를 공통 아이콘으로 대체. 직접 SVG 유지도 검토 | 어댑터 API 유지, 이름별 import·exact 의존성 추가 | 접근 이름은 호출부, 번들 실측 대기. ADR-006 한정 예외. 어댑터와 의존성 revert 가능 |
+| custom Tabs 제거, automatic·forceMount | 제공 Tabs로 전환하되 수동 활성화는 기존 행동을 바꿈 | 결과 선택 유지, 집계 내부 활성 마운트, custom 파일 삭제 | 화살표 활성 유지·불필요 집계 요청 방지 검증. 숨김 패널 회귀 위험을 시험 |
+| 폭 초기 38%, 관계 없음 구분 | 실제 구현은 38%, 관계 null과 빈 목록은 다른 사실 | 로컬 폭 조절, 미리보기 안내만 변경 | 키보드 조절·좁은 화면 확인, API 요청 추가 없음. 로컬 기본값 revert 가능 |
+
+**검토 발견(DEV-702).** 390px 첫 행 선택 뒤 미리보기 heading의 viewport 검사가 실패했다(1440px 통과). 기존 48vh 제한 삭제가 원인이어서 inspecting 상태의 높이·스크롤을 복원하고 두 폭에서 첫·끝 행 선택 검사를 추가한다. 이전 results-2 변이 로그는 build 실패여서 성공 증거가 아니다.
+
+**로컬 검증.** Node 22.23.2: typecheck·lint·lint:deps·전체 build 통과. 단위 2,791 통과·기존 1 skip, a11y 433 통과, 대비 232쌍 실패 0. 전체 통합 1,806 통과·감사 action 필터 1 실패 후 해당 파일 재실행 26/26 통과(공유 DB 누적 영향 추정, 원인 미확정). 전체 e2e 203 통과·뒤로가기 1 실패 후 해당 흐름 재실행 14/14 통과. 최종 전체 판정은 깨끗한 PR CI에서 확인한다. 변이 M1~M8 모두 kill·원문 바이트 복원 확인. 기존 results-2 빌드 실패는 증거에서 제외. 모바일 회귀는 수정 전 390px viewport 비율 0 실패, 수정 후 390/1440px 처음·끝 선택 2/2 통과(DEV-702). 독립 리뷰 재검토 blocker/major 없음. 검색 client-reference manifest 고유 JS 청크: 기준 raw 274,064/gzip 89,551 → 변경 raw 342,985/gzip 111,647바이트(+21.6KiB gzip). 동일 빌드 환경의 참조 청크 비교이며 실제 전체 네트워크 전송량은 아니다. npm latest react/css 0.4.1·tokens 0.4.0, 상류 main 606ecde0de1a8e0efaee35ece2154569bac360df. 문서 검사 기존 오류 2·경고 2 유지, 신규 0. 회귀 503/503 통과. PR CI·main CI·발행은 후속 기록. 사내 GHE NOT RUN, 기존 미통과 게이트 유지.
 
 ### 6.91 `0.1.0-pilot.7` 반입 피드백 — 접근 범위의 쓰이지 않는 조회 · 프록시 뒤 복귀 주소 · 로그아웃 · 스모크 파싱 (2026-09-15, CR-092 / DEV-697 · DEV-698 · DEV-699 · DEV-700)
 

@@ -1,10 +1,17 @@
 'use client';
 
 /**
- * C-011 QueryTokenBar — 파싱된 토큰 칩과 오류 구간 (WP-016 / FR-SRCH-005).
+ * C-011 QueryTokenBar — 파싱된 토큰 칩과 오류 구간 (WP-016 / FR-SRCH-005 · CR-093).
  *
  * 칩 제거는 **문자열을 자르지 않고 AST를 고친다** (`lib/tokens.ts`). 이유는
  * 그 파일에 적었다.
+ *
+ * ## 칩은 Conductor `FilterChip`이다 (0.4.1)
+ *
+ * 0.3.1에는 제거 가능한 칩이 없어 `Badge`와 `IconButton`을 붙여 만들었다. `FilterChip`이
+ * 그 조합(글자 + 이름 붙은 제거 버튼)을 주므로 그것을 쓴다. 제거 버튼의 접근 이름
+ * (`author:kim 필터 제거`, 부정이면 `제외 조건 …`)은 `lib/tokens.ts`가 정하고 여기서는
+ * 그대로 넘긴다. **부정은 기호가 아니라 글자로도 밝힌다** — `-`는 읽히지 않는다.
  *
  * ## 오류 구간을 왜 여기서 보여 주는가
  *
@@ -15,7 +22,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Badge, IconButton } from '@conductor-by-89soone/react';
+import { FilterChip, FilterToolbar } from '@conductor-by-89soone/react';
 import type { QueryParseError } from '@prs/query';
 import type { QueryChip } from '../lib/tokens';
 
@@ -26,15 +33,6 @@ export interface QueryTokenBarProps {
   readonly error?: QueryParseError | null;
   /** 오류 구간을 강조할 원문. `error`가 있을 때만 쓰인다. */
   readonly raw?: string;
-}
-
-/** 작은 × 글리프. 아이콘 라이브러리를 들이지 않는다 (QA-COMMON-17). */
-function CloseGlyph(): ReactNode {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-      <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-    </svg>
-  );
 }
 
 /**
@@ -64,7 +62,7 @@ export function QueryTokenBar({ chips, onRemove, error, raw }: QueryTokenBarProp
     const allowed = error.detail.allowed_values;
 
     return (
-      <div data-testid="query-token-bar" role="group" aria-label="질의 토큰">
+      <div data-testid="query-token-bar" role="group" aria-label="질의 토큰" className="prs-query-error">
         <p role="alert">{error.message}</p>
         <Highlighted raw={raw} error={error} />
         {/*
@@ -84,25 +82,25 @@ export function QueryTokenBar({ chips, onRemove, error, raw }: QueryTokenBarProp
   if (chips.length === 0) return null;
 
   return (
-    <ul data-testid="query-token-bar" aria-label="적용된 필터">
+    /*
+     * `FilterToolbar`는 flex-wrap div일 뿐이라 목록 의미는 여기서 준다 — 스크린 리더가
+     * "적용된 필터, 2개 항목"으로 읽어야 몇 개가 걸려 있는지 안다.
+     */
+    <FilterToolbar role="list" data-testid="query-token-bar" aria-label="적용된 필터" className="prs-query-tokens">
       {chips.map((chip) => (
-        <li key={`${chip.key}-${String(chip.index)}`}>
-          <Badge tone={chip.negated ? 'warning' : 'neutral'} data-negated={chip.negated ? '' : undefined}>
-            {/* 부정을 기호가 아니라 글자로도 밝힌다 — `-`는 읽히지 않는다. */}
-            {chip.negated ? '제외 ' : ''}
-            {chip.key}: {chip.value}
-          </Badge>
-          <IconButton
-            aria-label={chip.removeLabel}
-            icon={<CloseGlyph />}
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              onRemove(chip.index);
-            }}
-          />
-        </li>
+        <FilterChip
+          key={`${chip.key}-${String(chip.index)}`}
+          role="listitem"
+          data-negated={chip.negated ? '' : undefined}
+          removeLabel={chip.removeLabel}
+          onRemove={() => {
+            onRemove(chip.index);
+          }}
+        >
+          {chip.negated ? <span className="prs-query-token__negation">제외</span> : null}
+          <span className="prs-mono">{chip.key}: {chip.value}</span>
+        </FilterChip>
       ))}
-    </ul>
+    </FilterToolbar>
   );
 }

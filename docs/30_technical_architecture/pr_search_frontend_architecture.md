@@ -1,6 +1,6 @@
 # PR Search 프론트엔드 아키텍처
 
-> 상태: review | 버전: v0.9 | 갱신일: 2026-09-15
+> 상태: review | 버전: v0.10 | 갱신일: 2026-09-16
 
 CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설계](pr_search_wp074_design.md) 9절로 고정한다. M은 API 생성 문자열이며 PR 번호를 대체하지 않는다. 행별 resolve 없이 페이지 batch, M deep link 1회 resolve, visible pending의 bounded poll을 사용한다. 기존 인증 BFF·from_q·cursor·epoch 경고·Conductor를 보존한다.
 
@@ -334,3 +334,7 @@ flag 타입 → 컨트롤 매핑. 모든 컨트롤은 Conductor 프리미티브�
 ## 작업대 표현 계층 (CR-067 / WP-073)
 
 FR-SRCH-001·006~011, FR-SEQ-005, NFR-007에 따른 표현 변경이다. Shell은 역할 기반 NavList와 빠른 검색 진입을, SearchView는 기존 URL/요청/커서/에폭 상태를, ResultWorkbench는 응답 안의 선택을 각각 소유한다. 선택 키는 문서 종류·저장소·식별자·시퀀스 공간이다. 질의/정렬/에폭/조회 세대 경계에서 선택 컴포넌트를 다시 마운트해 이전 응답이 남지 않게 한다. 미리보기는 ResultRow 데이터만 사용한다. 선택·필터 접기·초안은 영구 저장하지 않는다. API/인가/DB/ES 계약과 자동 재조회 금지 규칙은 기존 그대로다. 스타일은 Conductor 위의 `workbench.css` 제품 배치로 한정한다.
+
+## CR-093 / WP-081 Conductor 소비 갱신
+
+FR-SRCH-001·006·008 및 NFR-007의 표현 계층이다. Shell 내비게이션 포커스는 AppShell/AppShellNavTrigger가 관리한다. SearchView의 URL·요청·커서·에폭 판정은 그대로이며 Tabs·Collapsible·Skeleton을 소비한다. ResultWorkbench의 선택과 폭(38%, URL 미반영)은 로컬 상태이고 DetailInspector에 선택 트리거 ref를 넘긴다. 결과 행별 API 요청을 추가하지 않는다. FilterChip·CopyButton·Breadcrumb를 직접 소비하고 custom Tabs를 삭제한다. WorkbenchIcon만 lucide-react 1.46.0 아이콘 어댑터로 유지한다(ADR-006 예외). ResultTable 유지 근거는 컴포넌트 명세 CR-093절이다.

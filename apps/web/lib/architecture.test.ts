@@ -200,6 +200,12 @@ describe('QA-COMMON-17: Conductor 외 UI 라이브러리가 없다 (ADR-006)', (
     '@conductor-by-89soone/css',
     '@conductor-by-89soone/react',
     '@conductor-by-89soone/tokens',
+    /*
+     * 아이콘 라이브러리 (CR-093, ADR-006의 아이콘 예외). Conductor 0.4.1이 peer로 요구하고 README가
+     * 함께 설치하라고 적은 바로 그 패키지다. 제품은 `components/WorkbenchIcon.tsx` 한 곳에서만
+     * 가져온다 — 다른 파일이 직접 가져오면 아래 시험이 잡는다.
+     */
+    'lucide-react',
     'next',
     'react',
     'react-dom',
@@ -220,5 +226,19 @@ describe('QA-COMMON-17: Conductor 외 UI 라이브러리가 없다 (ADR-006)', (
      */
     const all = { ...pkg.dependencies, ...pkg.devDependencies };
     expect(Object.keys(all).filter((n) => n.startsWith('@radix-ui/'))).toEqual([]);
+  });
+});
+
+describe('CR-093: 아이콘 라이브러리는 한 파일만 안다', () => {
+  /*
+   * `lucide-react`를 가져오는 제품 파일은 `components/WorkbenchIcon.tsx` 하나여야 한다. 호출부가
+   * 라이브러리를 직접 알면 이름 → 그림의 대응이 여러 곳으로 흩어져, 라이브러리를 바꾸거나 그림을
+   * 고칠 때 한 자리를 놓친다. 스타일 규칙과 같은 종류라 정적으로 건다.
+   */
+  it('lucide-react를 가져오는 파일은 WorkbenchIcon뿐이다', () => {
+    const importers = FILES.filter((file) => /from 'lucide-react'/.test(readFileSync(file, 'utf8'))).map((f) =>
+      f.slice(WEB_ROOT.length),
+    );
+    expect(importers).toEqual(['components/WorkbenchIcon.tsx']);
   });
 });

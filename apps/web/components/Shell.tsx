@@ -1,17 +1,19 @@
 'use client';
 
 /**
- * 앱 셸 (WP-015 / QA-COMMON, NFR-007).
+ * 앱 셸 (WP-015 / QA-COMMON, NFR-007 · CR-093 Conductor 0.4.1).
  *
- * Conductor `AppShell` 위에 이 제품이 필요로 하는 둘을 얹는다:
+ * Conductor 0.4.1 `AppShell`이 셸의 포커스 규율을 책임진다 — 라우트 전환(`routeKey`)에
+ * 서랍을 닫고 `main`으로 포커스를 옮기며, 서랍이 닫히면 여는 버튼으로 되돌린다. 0.3.1에서
+ * 제품이 대신 하던 것(라우트 전환 닫기·`main` 포커스·`requestAnimationFrame` 복귀)은
+ * 그래서 사라졌다.
  *
- * 1. **라우트 전환 시 `main`으로 포커스를 옮긴다.** SPA 라우팅은 문서를
- *    바꾸지 않으므로 스크린 리더 사용자의 포커스가 방금 누른 링크에 남는다.
- *    다음 탭이 새 화면의 처음이 아니라 이전 화면의 다음 항목으로 간다.
- * 2. **`aria-live`로 새 화면 제목을 알린다.** 포커스 이동만으로는 "무엇이
- *    바뀌었는가"가 전달되지 않는다.
+ * 제품이 얹는 것은 둘이다:
  *
- * 둘 다 Conductor의 몫이 아니다 — 디자인 시스템은 라우터를 모른다.
+ * 1. **`aria-live`로 새 화면 제목을 알린다.** 포커스 이동만으로는 "무엇이 바뀌었는가"가
+ *    전달되지 않는다. 디자인 시스템은 라우터를 모른다.
+ * 2. **빠른 검색 해시로 들어오면 입력이 포커스를 갖는다** (WP-073). `AppShell`이 `main`으로
+ *    옮긴 뒤 이 제품의 입력으로 되돌린다 — 디자인 시스템은 이 제품의 검색 입력을 모른다.
  */
 
 import { usePathname } from 'next/navigation';
@@ -48,36 +50,12 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
     }
 
     /*
-     * 좁은 화면에서 링크를 누르면 내비게이션을 닫는다.
-     *
-     * 열린 채로 두면 새 화면이 그 뒤에 가려지고, 포커스를 `main`으로 옮겨도
-     * 사용자에게는 아무것도 바뀌지 않은 것처럼 보인다.
-     *
-     * **지금은 이 줄이 없어도 서랍이 닫힌다** — 아래에서 `main`에 포커스를
-     * 주는 순간 Radix의 비모달 Dialog가 "바깥으로 포커스가 나갔다"로 보고
-     * 스스로 닫기 때문이다(변이 D11로 확인했다). 그래도 남겨 둔다: 그 동작은
-     * Radix의 내부 사정이고, `main`을 못 찾아 포커스를 옮기지 못하는 경우에는
-     * 닫아 주는 것이 이 줄뿐이다. 의도를 라이브러리의 부수 효과에 맡기지 않는다.
+     * `AppShell`의 `routeKey` 효과가 **먼저** 돈다(자식 효과가 부모보다 앞선다) — 그것이
+     * `main`을 잡은 뒤 여기서 입력으로 되돌린다. 순서가 뒤집히면 `main`이 입력의 포커스를
+     * 빼앗아 빠른 검색이 검색창 아닌 본문에 떨어진다.
      */
-    setNavOpen(false);
-
-    /*
-     * `AppShell`이 소유한 `<main>`을 id로 찾는다.
-     *
-     * 자식 쪽에 ref를 걸어 두면 그것은 `<main>` **안의** 요소라 스킵 링크가
-     * 가리키는 대상과 달라진다 — 포커스가 두 곳으로 갈린다.
-     */
-    // 빠른 검색으로 진입한 경우 자식이 잡은 입력 포커스를 main이 빼앗지 않는다 (WP-073).
-    const target = (window.location.hash === '#omni-search-input'
-      ? document.querySelector<HTMLElement>('[data-omni-input]') : null)
-      ?? document.getElementById(MAIN_ID);
-    if (target !== null) {
-      /*
-       * `tabIndex = -1`을 먼저 준다. `main`은 원래 포커스를 받지 못하므로
-       * 그냥 `focus()`를 부르면 아무 일도 일어나지 않는다.
-       */
-      target.setAttribute('tabindex', '-1');
-      target.focus({ preventScroll: true });
+    if (window.location.hash === '#omni-search-input') {
+      document.querySelector<HTMLElement>('[data-omni-input]')?.focus({ preventScroll: true });
     }
 
     setAnnouncement(title);
@@ -86,9 +64,16 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
   return (
     <AppShell
       className="prs-shell"
+      navLabel="주요 화면"
       navCloseLabel="탐색 패널 닫기"
       skipLinkLabel="본문으로 건너뛰기"
       mainId={MAIN_ID}
+      /*
+       * 라우트가 바뀌면 `AppShell`이 서랍을 닫고 `main`에 포커스를 준다 (0.4.1). 제품이 같은
+       * 일을 다시 하지 않는다 — 둘이 하면 포커스가 두 번 움직이고 서랍 닫힘의 복귀가 그 사이에
+       * 끼어든다(README 「routeKey는 소비자의 기존 탐색 포커스 로직과 중복 사용하지 않는다」).
+       */
+      routeKey={pathname ?? ''}
       navOpen={navOpen}
       onNavOpenChange={setNavOpen}
       topBar={
@@ -96,7 +81,6 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
           user={user}
           title={title}
           navOpen={navOpen}
-          onNavOpenChange={setNavOpen}
           {...(omniSearch === undefined ? {} : { omniSearch })}
         />
       }
@@ -106,23 +90,7 @@ export function Shell({ roles, user, omniSearch, title, children }: ShellProps):
        * 알림 영역은 화면에 보이지 않되 DOM에는 있어야 한다. `display: none`이면
        * 스크린 리더도 읽지 않으므로 Conductor의 시각적 숨김 클래스를 쓴다.
        */}
-      <div
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        data-testid="route-announcement"
-        style={{
-          position: 'absolute',
-          width: 1,
-          height: 1,
-          margin: -1,
-          padding: 0,
-          overflow: 'hidden',
-          clip: 'rect(0 0 0 0)',
-          whiteSpace: 'nowrap',
-          border: 0,
-        }}
-      >
+      <div role="status" aria-live="polite" aria-atomic="true" data-testid="route-announcement" className="cdt-sr-only">
         {announcement}
       </div>
       <div className="prs-page-content">{children}</div>

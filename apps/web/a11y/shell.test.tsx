@@ -9,7 +9,7 @@
  * 컴포넌트가 렌더되지 않아 아무것도 검사할 수 없다.
  */
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -121,7 +121,11 @@ describe('랜드마크와 스킵 링크 (QA-COMMON)', () => {
     );
 
     expect(screen.getAllByRole('banner')).toHaveLength(1);
-    expect(screen.getAllByRole('navigation')).toHaveLength(1);
+    /*
+     * 내비게이션 랜드마크는 둘이다 (CR-093): 주요 화면 목록과 상단의 현재 위치(Conductor
+     * `Breadcrumb`, 이름 「경로」). 이름이 다르므로 스크린 리더의 랜드마크 목록에서 구분된다.
+     */
+    expect(screen.getAllByRole('navigation').map((nav) => nav.getAttribute('aria-label'))).toEqual(['주요 화면', '경로']);
     expect(screen.getAllByRole('main')).toHaveLength(1);
   });
 
@@ -146,7 +150,11 @@ describe('랜드마크와 스킵 링크 (QA-COMMON)', () => {
         <h1>x</h1>
       </Shell>,
     );
-    expect(screen.getByRole('navigation')).toHaveAccessibleName('주요 화면');
+    expect(screen.getByRole('navigation', { name: '주요 화면' })).toBeInTheDocument();
+    // 현재 위치는 `aria-current="page"`로 표시한다 — 색이나 굵기만으로 전하지 않는다.
+    const breadcrumb = screen.getByRole('navigation', { name: '경로' });
+    expect(within(breadcrumb).getByRole('link', { name: '작업대' })).toHaveAttribute('href', '/');
+    expect(within(breadcrumb).getByText('통합 검색').closest('[aria-current="page"]')).not.toBeNull();
   });
 });
 
@@ -332,7 +340,7 @@ describe('좁은 화면 내비게이션 (QA-COMMON-06, QA-COMMON-07)', () => {
     );
 
     await userEvent.click(toggle());
-    expect(screen.getAllByRole('navigation')).toHaveLength(1);
+    expect(screen.getAllByRole('navigation', { name: '주요 화면' })).toHaveLength(1);
   });
 
   it('`Escape`로 닫히고 포커스가 버튼으로 돌아온다 (QA-COMMON-07)', async () => {
@@ -348,8 +356,9 @@ describe('좁은 화면 내비게이션 (QA-COMMON-06, QA-COMMON-07)', () => {
     expect(toggle()).toHaveAttribute('aria-expanded', 'false');
     /*
      * 포커스가 돌아오지 않으면 키보드 사용자는 문서 처음으로 튕긴다.
-     * 되돌리기는 한 프레임 뒤다 — Radix가 포커스를 푸는 것이 이펙트보다
-     * 늦기 때문이다. 그래서 즉시 단언하지 않고 기다린다.
+     * 되돌리기는 이제 Conductor 0.4.1 `AppShell`의 몫이다(열 때 잡아 둔 요소로 닫을 때
+     * 복귀, CR-093) — 제품의 다음 프레임 보완은 지웠다. 되돌림이 언마운트 뒤에 일어나므로
+     * 즉시 단언하지 않고 기다린다.
      */
     await waitFor(() => {
       expect(document.activeElement).toBe(toggle());

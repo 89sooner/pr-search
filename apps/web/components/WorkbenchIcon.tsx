@@ -1,36 +1,67 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode, SVGProps } from 'react';
+import {
+  ArrowLeftRight,
+  ArrowRight,
+  Bookmark,
+  ChartNoAxesColumn,
+  ChevronRight,
+  ClipboardList,
+  Copy,
+  FolderGit2,
+  GitBranch,
+  GitCommitHorizontal,
+  GitPullRequest,
+  ListFilter,
+  Menu,
+  PanelRight,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Tag,
+  Workflow,
+  X,
+} from 'lucide-react';
 
-/** WP-073: 제품 탐색용 글리프. Conductor의 currentColor를 그대로 사용한다. */
-const PATHS = {
-  search: 'm16 16 4 4M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
-  repository: 'M5 3h14v18H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm0 14h14M7 7h8M7 10h5',
-  branch: 'M6 7v10M18 7v3a4 4 0 0 1-4 4h-4M9 4a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm0 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM21 4a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
-  range: 'M5 5v14M19 5v14M5 12h14m-9-4-4 4 4 4m4-8 4 4-4 4',
-  bookmark: 'M6 3h12v18l-6-4-6 4V3Z',
-  tag: 'M3 3h8l10 10-8 8L3 11V3ZM7 7h.01',
-  chart: 'M4 3v17h17M8 15v-4m5 4V6m5 9V9',
-  pipeline: 'M3 4h6v6H3V4Zm12 10h6v6h-6v-6ZM6 10v7h9M9 7h9v7',
-  jobs: 'M9 5V3h6v2M3 7h18v14H3V7Zm0 6h18m-11 0v3h4v-3',
-  shield: 'm12 2 8 3v6c0 5-8 11-8 11S4 16 4 11V5l8-3Zm-4 9 3 3 5-6',
-  chevron: 'm9 5 7 7-7 7',
-  refresh: 'M20 7a9 9 0 1 0 1 8M20 2v6h-6',
-  filter: 'M3 5h18M6 12h12m-9 7h6',
-  close: 'm6 6 12 12M6 18 18 6',
-  preview: 'M3 4h18v16H3V4Zm0 10h18',
-  copy: 'M9 8h12v13H9V8ZM5 16H3V3h12v2',
-  arrow: 'M4 12h16m-6-6 6 6-6 6',
-  commit: 'M8 12H2m20 0h-6m0 0a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
-  menu: 'M3 5h18M3 12h18M3 19h18',
-} as const;
+/**
+ * WP-073 / CR-093: 제품 탐색용 글리프.
+ *
+ * ## 이 파일이 아이콘 라이브러리를 아는 유일한 곳이다
+ *
+ * 호출부는 **이름**만 안다. 이름 → 그림의 대응을 여기 한 표에 두므로 라이브러리를 바꾸거나
+ * 그림을 고쳐도 호출부는 그대로다. Conductor 0.4.1이 `lucide-react`를 peer로 요구하고
+ * README가 함께 설치하라고 적었으므로(CR-093, ADR-006의 아이콘 예외), 손으로 그린 path
+ * 열일곱 개를 그 위에 계속 유지할 이유가 없었다.
+ *
+ * 의미는 바꾸지 않는다 — 같은 이름은 같은 자리에서 같은 뜻을 낸다. `currentColor`와
+ * `aria-hidden`은 lucide가 기본으로 주고, 색은 여전히 Conductor 토큰에서 온다(QA-COMMON-16).
+ * Conductor `StatusBadge`의 토큰 아이콘 이름 계약과는 무관하다.
+ */
+const ICONS = {
+  search: Search,
+  repository: FolderGit2,
+  branch: GitBranch,
+  pr: GitPullRequest,
+  commit: GitCommitHorizontal,
+  range: ArrowLeftRight,
+  bookmark: Bookmark,
+  tag: Tag,
+  chart: ChartNoAxesColumn,
+  pipeline: Workflow,
+  jobs: ClipboardList,
+  shield: ShieldCheck,
+  chevron: ChevronRight,
+  refresh: RefreshCw,
+  filter: ListFilter,
+  close: X,
+  preview: PanelRight,
+  copy: Copy,
+  arrow: ArrowRight,
+  menu: Menu,
+} as const satisfies Record<string, ComponentType<SVGProps<SVGSVGElement>>>;
 
-export type WorkbenchIconName = keyof typeof PATHS;
+export type WorkbenchIconName = keyof typeof ICONS;
 
 export function WorkbenchIcon({ name }: { readonly name: WorkbenchIconName }): ReactNode {
-  return (
-    <svg className="prs-icon" width="18" height="18" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
-      aria-hidden="true" focusable="false">
-      <path d={PATHS[name]} />
-    </svg>
-  );
+  const Icon = ICONS[name];
+  return <Icon className="prs-icon" width={18} height={18} strokeWidth={1.6} aria-hidden="true" focusable="false" />;
 }

@@ -25,7 +25,7 @@
 
 import Link from 'next/link';
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
-import { Button, Table } from '@conductor-by-89soone/react';
+import { Button, Skeleton, Table } from '@conductor-by-89soone/react';
 import { SequenceBadge } from './SequenceBadge';
 import { HighlightedText } from './HighlightedText';
 import { RelationBadgeGroup } from './RelationBadgeGroup';
@@ -86,7 +86,12 @@ export interface ResultTableProps {
   /** 로딩 중이면 skeleton을 그린다 (상태 매트릭스 `loading_initial`). */
   readonly loading?: boolean;
   readonly selectedId?: string | null;
-  readonly onSelect?: (id: string | null) => void;
+  /**
+   * 선택이 바뀔 때. `trigger`는 그 행의 미리보기 버튼이다 — 미리보기를 닫을 때 포커스가
+   * 돌아갈 자리를 부모(`ResultWorkbench` → Conductor `DetailInspector`)가 기억한다.
+   * `null`(선택 해제)에는 버튼이 없다.
+   */
+  readonly onSelect?: (id: string | null, trigger?: HTMLButtonElement) => void;
 }
 
 /** WP-073 / FR-SRCH-007: 헤더가 정렬 방향을 스크린 리더에 전달한다. */
@@ -148,9 +153,10 @@ export function ResultTable({
     const row = rows[next];
     if (row === undefined) return;
     const id = resultIdentity(row);
-    onSelect?.(id);
-    selections.current.get(id)?.focus({ preventScroll: true });
-    selections.current.get(id)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    const button = selections.current.get(id);
+    onSelect?.(id, button);
+    button?.focus({ preventScroll: true });
+    button?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }
 
   function sortHeader(field: string, label: string): ReactNode {
@@ -178,8 +184,12 @@ export function ResultTable({
       </Table.Head>
       <Table.Body>
         {loading ? Array.from({ length: 8 }, (_, index) => (
+          /*
+           * 자리표시 행. 상태 알림은 화면이 `Skeleton` 하나로 하므로(`SearchView` `loading_initial`)
+           * 여기 행들은 보조 기술에서 감춘다 — 여덟 줄이 저마다 "불러오는 중"이라고 말하지 않는다.
+           */
           <Table.Row key={index} data-testid="result-skeleton" aria-hidden="true">
-            <Table.Cell colSpan={onSelect === undefined ? 8 : 9}><span className="prs-skeleton-line">&nbsp;</span></Table.Cell>
+            <Table.Cell colSpan={onSelect === undefined ? 8 : 9}><Skeleton label="" className="prs-skeleton-row" /></Table.Cell>
           </Table.Row>
         )) : rows.map((row, index) => {
           const href = rowHref(row, fromQuery);
@@ -190,8 +200,9 @@ export function ResultTable({
             <Table.Row key={id} data-testid="result-row" data-selected={selected ? '' : undefined}
               onClick={onSelect === undefined ? undefined : (event) => {
                 if ((event.target as HTMLElement).closest('a,button,input')) return;
-                onSelect(id);
-                selections.current.get(id)?.focus({ preventScroll: true });
+                const button = selections.current.get(id);
+                onSelect(id, button);
+                button?.focus({ preventScroll: true });
               }}>
               {onSelect === undefined ? null : <Table.Cell>
                 <Button variant="ghost" size="sm" className="prs-row-select"
@@ -200,7 +211,7 @@ export function ResultTable({
                   aria-pressed={selected} aria-describedby="result-keyboard-help"
                   tabIndex={selected || (selectedId === null && index === 0) ? 0 : -1}
                   onKeyDown={(event) => { onKeyDown(event, index); }}
-                  onClick={() => { onSelect(selected ? null : id); }}>
+                  onClick={(event) => { onSelect(selected ? null : id, event.currentTarget); }}>
                   <WorkbenchIcon name="preview" />
                 </Button>
               </Table.Cell>}
@@ -208,7 +219,7 @@ export function ResultTable({
                 sequence_space={row.sequence_space} state={row.state} contextSpace={context} /></Table.Cell>
               <Table.Cell className="prs-result-title">
                 <div className="prs-result-title-line">
-                  <span className="prs-result-kind" title={row.kind === 'pull_request' ? 'Pull request' : '커밋'}><WorkbenchIcon name={row.kind === 'pull_request' ? 'branch' : 'commit'} /><span className="cdt-sr-only">{row.kind === 'pull_request' ? 'PR' : '커밋'}</span></span>
+                  <span className="prs-result-kind" title={row.kind === 'pull_request' ? 'Pull request' : '커밋'}><WorkbenchIcon name={row.kind === 'pull_request' ? 'pr' : 'commit'} /><span className="cdt-sr-only">{row.kind === 'pull_request' ? 'PR' : '커밋'}</span></span>
                   <span className="prs-result-id prs-mono">{name}</span>
                   {/*
                     * M 배지 (WP-074 / FR-SEQ-008 AC-9 — 상세 설계 9절).

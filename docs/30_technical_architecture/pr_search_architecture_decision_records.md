@@ -1,6 +1,6 @@
 # PR Search Architecture Decision Records
 
-> 상태: review | 버전: v0.11 | 갱신일: 2026-09-14
+> 상태: review | 버전: v0.12 | 갱신일: 2026-09-16
 
 CR-079: ADR-023을 아래 목록과 상세 설계에 추가한다. 새 M 번호의 적용과 세부 계약은 [상세 설계](pr_search_wp074_design.md) 전문, 선택 대안은 4절, Agent-Initiated Decisions는 12절이 소유한다. 직접 부재 증거의 가용성 한계(DEV-581)는 accepted 동작인 pending과 별개인 검증 조건이며 해결됐다고 간주하지 않는다.
 
@@ -17,7 +17,7 @@ CR-079: ADR-023을 아래 목록과 상세 설계에 추가한다. 새 M 번호�
 | ADR-003 | Elasticsearch 인덱스 전략: 엔티티 고정 인덱스 + 원본 아카이브만 ILM | accepted | 2026-08-19 | data, system, observability |
 | ADR-004 | PostgreSQL을 시스템 오브 레코드로, Elasticsearch를 파생 뷰로 | accepted | 2026-08-19 | data, system, backend |
 | ADR-005 | 커밋 그래프 접근: blobless 미러 우선, GitHub API 폴백 | accepted | 2026-08-19 | backend, async, infrastructure |
-| ADR-006 | UI는 사내 Conductor 디자인 시스템만 사용 | accepted | 2026-08-19 | frontend, derived UI |
+| ADR-006 | UI 프리미티브는 사내 Conductor 사용 | accepted | 2026-08-19 | frontend, derived UI |
 | ADR-007 | 머지 시퀀스는 first-parent 서수, 에폭으로 재작성 처리 | accepted | 2026-08-19 | data, backend, api |
 | ADR-008 | 권한은 서버 측 강제 필터로 결합, 기본 거부 | accepted | 2026-08-19 | security, backend, api |
 | ADR-009 | 관계는 별도 간선 인덱스 + 핫패스 비정규화 | accepted | 2026-08-19 | data, backend, api |
@@ -291,7 +291,7 @@ git -C /mirrors/<repository_id>.git rev-list --first-parent --reverse <last_head
 - Follow-up: 미러 디스크 사용률을 SLI로 감시하고 85% 임계에서 경보한다.
 - ~~Follow-up: OD-001 결정 전까지 두 경로 모두 구현·테스트한다.~~ **완료 (CR-024).** OD-001이 (a)로 닫혔지만 **두 경로는 계속 유지한다** — `mirror_enabled`가 저장소별 설정이라 API 폴백은 영구 경로다. `selectCommitGraph`가 그 선택을 한 곳에서 한다.
 
-## ADR-006 UI는 사내 Conductor 디자인 시스템만 사용
+## ADR-006 UI 프리미티브는 사내 Conductor 사용
 
 ### Context
 
@@ -306,6 +306,8 @@ git -C /mirrors/<repository_id>.git rev-list --first-parent --reverse <last_head
 ### Decision
 
 **옵션 1.** UI 프리미티브는 Conductor만 사용한다.
+
+**CR-093 / WP-081 (2026-09-16) 아이콘 자산 예외:** `lucide-react` 1.46.0의 이름별 import를 `WorkbenchIcon`에 허용한다. FR-SRCH-006·008과 NFR-007의 조사 도구 표현을 위한 아이콘이며 외부 UI 프리미티브·색상·상태 어휘 도입을 허용하지 않는다. react/css 0.4.1·tokens 0.4.0을 exact 소비하고 추가 번들 비용은 빌드와 브라우저 검증에서 확인한다.
 
 - `@conductor-by-89soone/css`를 애플리케이션 진입점에서 1회 import한다.
 - 제품 컴포넌트(`C-###`)는 Conductor 프리미티브의 조합이며 스타일을 새로 정의하지 않는다.

@@ -178,13 +178,92 @@ test('WP-073: 390px에서 문서 가로 넘침 없이 필터/표/선택/내비�
   await expect(page.getByRole('button', { name: '주요 화면 열기' })).toBeFocused();
 });
 
+for (const width of [390, 1440]) {
+  test(`CR-093: ${width}px에서 긴 목록의 처음과 끝을 선택해도 미리보기로 이어진다`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await searchFixture(page);
+    await openResults(page);
+    await page.getByRole('button', { name: '필터', exact: true }).click();
+    const selection = page.locator('[data-result-select]');
+    await selection.first().click();
+    const heading = page.getByRole('heading', { name: '선택한 결과 미리보기' });
+    await expect(heading).toBeInViewport();
+    await selection.first().focus();
+    await page.keyboard.press('End');
+    await expect(selection.last()).toBeFocused();
+    await expect(heading).toBeInViewport();
+    await expect(page.getByTestId('result-preview')).toContainText('#2462');
+  });
+}
+
+test('CR-093: 탭은 화살표로 옮기고, 집계를 다녀와도 결과 패널의 선택이 남는다', async ({ page }) => {
+  await searchFixture(page);
+  await openResults(page);
+  const selection = page.locator('[data-result-select]');
+  await selection.nth(1).click();
+  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toContainText('#2485');
+
+  await page.getByRole('tab', { name: '결과' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: '집계' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: '집계' })).toBeFocused();
+  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toBeHidden();
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('tab', { name: '결과' })).toHaveAttribute('aria-selected', 'true');
+  // 결과 패널은 언마운트하지 않는다 — 고른 행과 미리보기가 그대로다.
+  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toContainText('#2485');
+  await expect(selection.nth(1)).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('CR-093: 미리보기 안에서 Escape를 누르면 닫히고 고른 행의 버튼으로 돌아온다', async ({ page }) => {
+  await searchFixture(page);
+  await openResults(page);
+  const selection = page.locator('[data-result-select]');
+  await selection.nth(3).click();
+  const preview = page.getByRole('region', { name: '선택한 결과 미리보기' });
+  await preview.getByRole('button', { name: '미리보기 닫기' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(preview).toHaveCount(0);
+  await expect(selection.nth(3)).toBeFocused();
+});
+
+test('CR-093: 미리보기 폭은 키보드로 조절되고 좁은 화면에서는 아래로 쌓인다', async ({ page }) => {
+  await searchFixture(page);
+  await openResults(page);
+  await page.locator('[data-result-select]').first().click();
+  const share = () => page.locator('.cdt-workbench').evaluate((node) => node.style.getPropertyValue('--cdt-workbench-inspector-share'));
+  expect(await share()).toBe('38%');
+  const slider = page.getByRole('slider', { name: /미리보기 폭/ });
+  await slider.focus();
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  expect(await share()).toBe('36%');
+  await page.keyboard.press('Home');
+  expect(await share()).toBe('25%');
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(slider).toBeHidden();
+  const table = await page.locator('.cdt-workbench__results').boundingBox();
+  const inspector = await page.getByRole('region', { name: '선택한 결과 미리보기' }).boundingBox();
+  expect(table).not.toBeNull();
+  expect(inspector).not.toBeNull();
+  expect(inspector!.y).toBeGreaterThanOrEqual(table!.y + table!.height - 1);
+  await noDocumentOverflow(page);
+});
+
 test('WP-073: 클립보드 실패를 숨기지 않는다', async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('denied')) } }));
   await searchFixture(page);
   await openResults(page);
   await page.locator('[data-result-select]').first().click();
   await page.getByRole('button', { name: '식별자 복사' }).click();
-  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toContainText('복사하지 못했습니다');
+  /*
+   * 문구는 Conductor 0.4.1 `CopyButton`의 것이다 (CR-093) — 실패를 알리고 선택해 복사할 길을 준다.
+   * 식별자 자체는 미리보기의 신원 줄에 선택 가능한 텍스트로 있다.
+   */
+  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toContainText('복사 실패');
+  await expect(page.getByRole('region', { name: '선택한 결과 미리보기' })).toContainText('텍스트를 선택해 복사하세요');
 });
 
 test('WP-073: 커밋 선택은 전체 SHA와 미확인을 보존하고 복사한다', async ({ page, context }) => {
@@ -204,7 +283,7 @@ test('WP-073: 커밋 선택은 전체 SHA와 미확인을 보존하고 복사한
   await expect(preview).toContainText('시퀀스 공간 미확인');
   await expect(preview).not.toContainText('+0');
   await page.getByRole('button', { name: '식별자 복사' }).click();
-  await expect(preview).toContainText('식별자를 복사했습니다.');
+  await expect(preview).toContainText('복사했습니다');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(sha);
 });
 

@@ -1,6 +1,6 @@
 # PR Search 디자인 시스템 토큰 문서
 
-> 상태: review | 버전: v0.6 | 갱신일: 2026-09-08
+> 상태: review | 버전: v0.7 | 갱신일: 2026-09-16
 
 ## 1. 디자인 원칙
 
@@ -24,6 +24,7 @@ PR Search 웹 대시보드
 
 규칙:
 
+- UI 프리미티브는 Conductor만 소비한다. ADR-006의 `lucide-react` 아이콘 자산 예외는 허용하며 다른 UI 프리미티브 라이브러리는 추가하지 않는다.
 - PR Search는 `@conductor-by-89soone/css`를 애플리케이션 진입점에서 한 번 import한다.
 - 컴포넌트 스타일은 Conductor 블록 클래스(`blockClassName("btn")` → `cdt-btn`)와 유틸리티를 사용한다.
 - 제품 전용 레이아웃(그리드 배치, 섹션 간격)만 애플리케이션 CSS로 작성하고, 그 안에서도 색·타이포·간격은 Conductor CSS 변수를 참조한다. 리터럴 색상값(`#rrggbb`)을 제품 코드에 쓰지 않는다.
@@ -217,7 +218,7 @@ Conductor `Status` 어휘(`queued` / `running` / `waiting` / `success` / `partia
 | --- | --- | --- |
 | 색상 대비 | Conductor `checkContrast` CLI | 본문 4.5:1, 큰 텍스트 3:1 (라이트·다크 모두) |
 | 리터럴 색상값 사용 | 제품 CSS·TSX에 대한 정적 검사 | `#rrggbb` 리터럴 0건 |
-| Conductor 외부 UI 라이브러리 | 의존성 검사 | 0건 |
+| ADR-006 아이콘 자산 예외 이외의 외부 UI 라이브러리 | 의존성 검사 | 0건 |
 | 토큰 미사용 하드코딩 간격 | 정적 검사 | 임의 px 값 0건(레이아웃 그리드 제외) |
 | 접근성 자동 검사 | axe | 위반 0건 |
 
@@ -253,3 +254,7 @@ Conductor `Status` 어휘(`queued` / `running` / `waiting` / `success` / `partia
 `apps/web/app/workbench.css`는 제품 배치의 단일 진입점이다. Conductor CSS 다음에 한 번 import하며 semantic/component 변수의 값을 재선언하지 않는다. 색·서체·간격은 `--cdt-*`를 참조한다. 글리프는 `currentColor` SVG로 두고 외부 폰트/아이콘 요청을 만들지 않는다. 시스템 테마·축소 모션을 그대로 따른다.
 
 C-013의 정보 밀도와 C-012의 체크박스는 제품 클래스 안에서 semantic 간격으로 조밀하게 배치한다. Conductor의 기존 기본 Table/Checkbox geometry가 조사 도구에 크게 그려져 소비자가 배치 클래스를 더한 것이다(DEV-554). 이후 Conductor에 밀도 API를 기여할 후보이며 토큰을 제품에서 덮어쓰지 않는다. 1440×1200의 미리보기 닫힘 상태에서 25행을 확인한다. 미리보기를 열면 결과 표의 높이를 제한해 목록과 선택 요약을 동시에 읽는다. 작은 화면에서는 표 안에서만 가로 스크롤한다. 선택 배경 위의 변경 수치는 `text.primary`로 읽으며 `+`/`−`가 의미를 유지한다. 두 테마의 실제 선택 상태까지 브라우저 axe로 검증한다.
+
+## CR-093 — 소비 버전과 아이콘 예외
+
+react/css `0.4.1`, tokens `0.4.0`, `lucide-react` `1.46.0`을 exact 고정한다. ADR-006 예외는 아이콘 자산에만 적용한다. `WorkbenchIcon`이 이름별 Lucide import를 매핑하며 제품 상태 의미와 접근 이름은 호출부가 소유한다. 색·타이포·UI 프리미티브를 외부 라이브러리로 옮기지 않는다. Conductor의 Badge·Tabs·FilterChip 표현과 중복되는 재정의는 제거하고 표 밀도·sticky 헤더·도메인 상태·배치 CSS는 유지한다.
