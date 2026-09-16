@@ -7,7 +7,10 @@ import {
   ChevronRight,
   ClipboardList,
   Copy,
+  ExternalLink,
+  FileCode,
   FolderGit2,
+  History,
   GitBranch,
   GitCommitHorizontal,
   GitPullRequest,
@@ -57,6 +60,9 @@ const ICONS = {
   copy: Copy,
   arrow: ArrowRight,
   menu: Menu,
+  history: History,
+  file: FileCode,
+  external: ExternalLink,
 } as const satisfies Record<string, ComponentType<SVGProps<SVGSVGElement>>>;
 
 export type WorkbenchIconName = keyof typeof ICONS;

@@ -34,6 +34,7 @@ import { sessionStore } from './session';
 
 /** 관문이 화면에 넘기는 세션 정보. */
 export interface GuardedPageContext {
+  readonly login: string;
   readonly roles: readonly Role[];
   /**
    * 이 배포에 인증이 구성되어 있는가.
@@ -91,8 +92,11 @@ export async function GuardedPage({
   const config = resolveWebConfig();
 
   /** 본문을 편다. 함수면 세션 정보를 넘긴다. */
-  const render = (roles: readonly Role[]): ReactNode =>
-    typeof children === 'function' ? children({ roles, authEnabled: config.authEnabled }) : children;
+  const render = (roles: readonly Role[], login = ''): ReactNode => {
+    // CR-094: preserve legacy pages, but require operator even for direct URLs.
+    if (returnTo !== '/' && returnTo !== '/search' && !returnTo.startsWith('/pr/') && !returnTo.startsWith('/commit/') && !roles.includes('operator')) redirect('/search');
+    return typeof children === 'function' ? children({ roles, login, authEnabled: config.authEnabled }) : children;
+  };
 
   /*
    * 로그인 경로가 없는데 리다이렉트하면 **무한 루프**가 된다 — WP-012가
@@ -128,7 +132,7 @@ export async function GuardedPage({
   });
   return (
     <Shell roles={roles} user={{ login: session.login, email: session.email }} title={title}>
-      {render(roles)}
+      {render(roles, session.login)}
     </Shell>
   );
 }

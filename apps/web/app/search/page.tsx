@@ -10,12 +10,14 @@ import { Suspense, type ReactNode } from 'react';
 import { SearchView } from '../../components/SearchView';
 import { resolveWebConfig } from '../../lib/server/config';
 import { GuardedPage } from '../../lib/server/page-guard';
+import { RepositoryWorkspace } from '../../components/RepositoryWorkspace';
 
 export const dynamic = 'force-dynamic';
 
-export default async function SearchPage(): Promise<ReactNode> {
+export default async function SearchPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<ReactNode> {
   const config = resolveWebConfig();
   const ghe = process.env['GHE_BASE_URL'];
+  const legacy = (await searchParams)['legacy'] === '1';
 
   const view = (
     /*
@@ -34,11 +36,13 @@ export default async function SearchPage(): Promise<ReactNode> {
   // `redirect` 한 줄을 빠뜨린 라우트가 인증 구멍이 된다.
   return (
     <GuardedPage title="통합 검색" returnTo="/search">
+      {({ roles, login }) => roles.includes('operator') && legacy ? <>
       <header className="prs-page-heading">
         <div><p className="prs-eyebrow">SEARCH WORKSPACE</p><h1>통합 검색</h1></div>
         <p>PR · 커밋 · 머지 시퀀스를 한곳에서 탐색합니다.</p>
       </header>
       {view}
+      </> : <Suspense fallback={<p>저장소를 준비하는 중…</p>}><RepositoryWorkspace login={login} loginPath={config.session.loginPath} {...(ghe ? { gheBaseUrl: ghe } : {})} /></Suspense>}
     </GuardedPage>
   );
 }

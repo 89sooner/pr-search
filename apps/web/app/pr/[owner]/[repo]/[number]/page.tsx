@@ -11,6 +11,7 @@ import { EmptyState } from '../../../../../components/EmptyState';
 import { searchBackHref } from '../../../../../lib/pr-detail';
 import { resolveWebConfig } from '../../../../../lib/server/config';
 import { GuardedPage } from '../../../../../lib/server/page-guard';
+import { WorkspaceEntityPage } from '../../../../../components/WorkspaceEntityPage';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +71,7 @@ export default async function PrDetailPage({ params, searchParams }: PageProps):
   // 세션 관문은 `GuardedPage` 하나가 소유한다 (WP-018).
   return (
     <GuardedPage title="PR 상세" returnTo={`/pr/${repository}/${number}`}>
-      {body}
+      {({ roles }) => roles.includes('operator') ? body : valid ? <WorkspaceEntityPage repository={repository} prNumber={Number(number)} {...(ghe ? { gheBaseUrl: ghe } : {})} /> : <p>이 PR을 찾을 수 없습니다. <a href="/search">검색으로 돌아가기</a></p>}
     </GuardedPage>
   );
 }
