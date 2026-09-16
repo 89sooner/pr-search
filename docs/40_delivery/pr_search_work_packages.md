@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.36 | 갱신일: 2026-09-16
+> 상태: review | 버전: v2.37 | 갱신일: 2026-09-16
 
 ## 1. 목적
 
@@ -60,6 +60,7 @@
 | WP-076 | 사내 GHE 직접 로그인 | **인증 (CR-083)** | WP-012, WP-015 | **done** — 검증 6.78장. 사내 실제 GHE OAuth App 검증은 `NOT RUN` |
 | WP-079 | REL-007 R1b — 결과 계약·typed port·순수 연결 판정·타입 그래프·A-006 조회 | REL-007 (**CR-089**) | WP-078 | **done** — 검증 6.86장. leaf 196개 전부의 결과 계약과 입출력 port, `pr_list_v2`와 PR 참조, 제한 JSON Pointer·바인딩 평가·그래프, `GATE-GH-01d` 통과, 도메인 회귀의 CI 연결. 실행 허용은 `pr.list` 하나, 실행 가능한 다단계 흐름 0 |
 | WP-080 | REL-007 R2 — 검증된 레지스트리 운영 승인·R0 실행 정책 | REL-007 (**CR-090**) | WP-079 | **done** — 검증 6.87장. 운영 승인·철회(A-006)·`pr.list` 차단·재개(A-005 최소)·배포 범위별 정책 revision(충돌 검출·멱등·불변 이력·같은 트랜잭션 감사)·요청 수락과 claim의 같은 판정·claim 가드·마이그레이션 030. 새로 실행 가능한 명령 0, 실행 허용은 `pr.list` 하나 |
+| WP-082 | 기본 저장소 작업 공간과 operator 전용 기존 UI | UI 품질 (CR-094) | WP-081 | **done** — PR CI 및 0.1.0-pilot.9 발행 진행 (원장 6.93장) |
 | WP-081 | 최신 Conductor 및 Shell·W-001 개선 | UI 품질 (CR-093) | WP-073 | **done** — PR #196 `a8796de`, PR·main CI success, `0.1.0-pilot.8` 발행 (원장 6.92장) |
 | WP-078 | REL-007 R1a — capability 분류·검증·드리프트·스냅숏·A-006 읽기 전용 | REL-007 (**CR-088**) | WP-077 | **done** — 검증 6.85장. leaf 196·flag 1,034·positional 164·`--json` 707 전부 분류(`NFR-009` 본표 100%), 독립 검증기·드리프트 검출·029 스냅숏/검증 기록·`JOB-GH-003`·`API-GH-013`/`014`·A-006. 실행 허용은 `pr.list` 하나 그대로. `GATE-GH-01d`(bindability·port·자원 타입)는 미달로 남고(`DEV-675`), 사내 GHES 확인은 `NOT RUN`(`DEV-674`) |
 | WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | WP-012, WP-015 | **done** — 검증 6.83장. R0 `pr.list` 하나를 인가→미리보기→실행→결과·자기 이력까지 연다. 상위 WP 일곱은 이 수직이 들여온 만큼만 `in_progress`다. 출력 청크 스트리밍은 상태만(`DEV-651`), 분류 195건 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증은 `NOT RUN`** |
@@ -2715,7 +2716,7 @@ external main의 특정 커밋
 
 **`WP-074`·`WP-075`는 이 합계에 넣지 않는다 (CR-077).** 두 WP가 구현하는 `FR-SEQ-008`·`FR-SEQ-009`는 `REL-003`이 세운 시퀀스 계열의 파생이라 요구사항 소속은 `REL-003`이지만, **`REL-003`의 완료 판정은 이미 검증된 `merge_seq`를 기준으로 서 있고 M 넘버가 그 판정을 재개방하지 않는다** (로드맵 4.2장). `WP-070`~`WP-073`을 이 표에 넣지 않은 것과 같은 처리다.
 
-`WP-081`은 `WP-073`과 같은 UI 품질 트랙이며 위 REL 합계에 넣지 않는다. 기존 기능 릴리스의 완료 판정을 재개방하지 않는다.
+`WP-081`·`WP-082`는 `WP-073`과 같은 UI 품질 트랙이며 위 REL 합계에 넣지 않는다. 기존 기능 릴리스의 완료 판정을 재개방하지 않는다.
 
 모든 REL이 WP로 분해되었고, 모든 WP가 최소 1개 FR을 참조한다.
 ### WP-076 사내 GHE 직접 로그인
@@ -2869,3 +2870,9 @@ external main의 특정 커밋
 - 구현: exact Conductor 갱신, ADR-006 아이콘 예외, Shell·Tabs·FilterChip·Collapsible·WorkbenchLayout·DetailInspector·CopyButton·Breadcrumb·Skeleton 적용. ResultTable·URL·API·인가·DB·ES 의미 유지.
 - 완료 기준: 의존성·타입·lint·빌드·단위·접근성·대비·브라우저 회귀 통과, 좁은/넓은 화면과 두 테마 실측, 독립 검토와 중요 지적 해소, 문서 검사 및 원장 증거, PR와 main CI 확인. 릴리스는 최신 사용자 지시에 따라 별도 발행 증거를 기록한다.
 - 완료: PR #196 squash `a8796de`; PR CI `35061974889`와 main CI `35062529329` success. `0.1.0-pilot.8` 번들 런타임·시크릿 검사와 자산 SHA-256 대조 뒤 발행. 사내 GHE 확인은 `NOT RUN`이며 기존 릴리스 게이트는 재판정하지 않는다.
+
+## WP-082 기본 저장소 작업 공간과 operator 전용 기존 UI (CR-094)
+
+- 요구사항: FR-SRCH-003·005·006·007·008, FR-ING-009, NFR-007. 선행: WP-081.
+- 구현: `template.html` 및 설계 분석 문서를 바탕으로 Conductor 기반 기본 저장소 작업 공간(`RepositoryWorkspace`) 재구현, 기존 컴포넌트는 operator 전용(`/search?legacy=1`)으로 보존, developer 등록 요청 절차 폐지 및 진입 즉시 PR 목록 표시, 필터 유지 및 URL 상태 보존, deep link `WorkspaceEntityPage`, `prsctl smoke` 워커 로그 재시도, RUNBOOK 컨테이너 외부망 차단 오프라인 빌드 절차 보완.
+- 완료 기준: 의존성·타입·lint·빌드·단위·접근성·대비 통과, PR CI 및 main CI 확인 뒤 `0.1.0-pilot.9` 릴리스 번들 발행.

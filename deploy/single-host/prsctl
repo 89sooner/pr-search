@@ -566,10 +566,17 @@ cmd_smoke() {
   fi
 
   # 워커 역할이 실제로 기동 로그에 나타나는지 (CR-034의 도달성 규율).
-  local roles_seen=0 roles_total=0
+  local roles_seen=0 roles_total=0 attempt worker_logs
   for svc in $(compose config --services | grep '^worker-'); do
     roles_total=$((roles_total + 1))
-    compose logs --tail 200 "$svc" 2>/dev/null | grep -q 'roles:' && roles_seen=$((roles_seen + 1))
+    for attempt in 1 2 3; do
+      # Consume docker's complete output: grep -q can SIGPIPE the producer under pipefail.
+      if worker_logs="$(compose logs --tail 200 "$svc" 2>/dev/null)" && [[ "$worker_logs" == *'roles:'* ]]; then
+        roles_seen=$((roles_seen + 1))
+        break
+      fi
+      [ "$attempt" -eq 3 ] || sleep 1
+    done
   done
   if [ "$roles_seen" -eq "$roles_total" ] && [ "$roles_total" -gt 0 ]; then
     ok "워커 기동 로그 ${roles_seen}/${roles_total}"

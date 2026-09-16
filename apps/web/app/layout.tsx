@@ -14,6 +14,7 @@ import type { ReactNode } from 'react';
 // 재정의를 무력화한다 (DEV-538).
 import '@conductor-by-89soone/css';
 import './workbench.css';
+import './repository-workspace.css';
 
 export const metadata: Metadata = {
   title: 'PR Search',

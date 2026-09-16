@@ -66,6 +66,7 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       AUTH_ENABLED: 'false',
+      PRS_LEGACY_SEARCH: '1',
       /*
        * `SESSION_COOKIE_SECURE`를 **덮어쓰지 않는다.**
        *

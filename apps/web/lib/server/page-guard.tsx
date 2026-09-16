@@ -44,6 +44,7 @@ export interface GuardedPageContext {
    * 여부를 가르는 화면(`A-001`)이 그 관행에서 혼자 벗어나지 않게 한다.
    */
   readonly authEnabled: boolean;
+  readonly login?: string;
 }
 
 export interface GuardedPageProps {
@@ -91,8 +92,8 @@ export async function GuardedPage({
   const config = resolveWebConfig();
 
   /** 본문을 편다. 함수면 세션 정보를 넘긴다. */
-  const render = (roles: readonly Role[]): ReactNode =>
-    typeof children === 'function' ? children({ roles, authEnabled: config.authEnabled }) : children;
+  const render = (roles: readonly Role[], login?: string): ReactNode =>
+    typeof children === 'function' ? children({ roles, authEnabled: config.authEnabled, ...(login ? { login } : {}) }) : children;
 
   /*
    * 로그인 경로가 없는데 리다이렉트하면 **무한 루프**가 된다 — WP-012가
@@ -128,7 +129,7 @@ export async function GuardedPage({
   });
   return (
     <Shell roles={roles} user={{ login: session.login, email: session.email }} title={title}>
-      {render(roles)}
+      {render(roles, session.login)}
     </Shell>
   );
 }

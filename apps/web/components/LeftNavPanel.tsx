@@ -62,6 +62,7 @@ export function LeftNavPanel({ roles, activeId }: LeftNavPanelProps): ReactNode 
       )}
     />
     <div className="prs-nav-note">
+      {roles.includes('operator') ? <Link href="/search?legacy=1">기존 검색 작업대</Link> : null}
       <WorkbenchIcon name="branch" />
       <p><strong>머지 순서로 이어지는 이력</strong><span>PR 번호는 생성 순서,<br />시퀀스는 브랜치 반영 순서입니다.</span></p>
     </div>

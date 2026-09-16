@@ -1,6 +1,8 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.84 | 갱신일: 2026-09-16
+> 상태: review | 버전: v6.85 | 갱신일: 2026-09-16
+
+`CR-094 / WP-082` 기본 저장소 작업 공간과 operator 전용 기존 UI: `template.html` 및 설계 분석 문서를 Conductor 기반 `RepositoryWorkspace`로 재구현하고, 기존 검색 및 운영 도구는 operator 전용(`?legacy=1`)으로 보존했다. developer 저장소 등록 절차 폐지·진입 즉시 현재 저장소 PR 목록 표시·필터 유지·deep link `WorkspaceEntityPage`, upstream smoke 재시도 로직 및 RUNBOOK 오프라인 빌드 절차를 반영했다. 검증과 0.1.0-pilot.9 발행 증거는 6.93장에 기록한다.
 
 `CR-093 / WP-081` 최신 Conductor·Shell·W-001 작업을 재개했다. 구현 및 문서 cascade 진행 중이며 검증과 발행 증거는 6.92장에 기록한다.
 
@@ -7984,3 +7986,13 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 `srs_final.md`가 baseline이므로 그 문서의 변경은 CR을 먼저 등록해야 한다. 구현 중 문서와 현실이 어긋나면 5장에 `DEV-###`를 등록하고 CR로 연결한다. 조용한 범위 변경은 금지다.
 
 착수 후 매 WP 완료 시 이 문서의 3·4·6장을 갱신한다. 갱신 없는 완료 보고는 완료가 아니다.
+
+### 6.93 기본 저장소 작업 공간과 operator 전용 기존 UI (2026-09-16, CR-094 / WP-082)
+
+기준 `4e27d58`, 브랜치 `feature/cr094-repository-workspace`. `artifacts/template.html` 및 두 분석 문서를 Conductor 디자인 시스템과 토큰으로 재구현했다.
+
+1. **기본 저장소 작업 공간**: W-001 기본 검색 화면을 `RepositoryWorkspace`로 교체. 진입 즉시 접근 가능한 현재 저장소의 PR 목록을 조회하며, 저장소 목록 사이드바, 브랜치 선택, 파일 경로 이력 이동을 제공한다.
+2. **기존 컴포넌트 보존**: 기존 검색 화면(`SearchView`)과 운영 도구는 삭제하지 않고 operator 전용(`/search?legacy=1` 및 역할 가드)으로 보존한다.
+3. **사용자 경험 개선**: developer의 저장소 등록 검토 요청·승인 절차를 일반 사용자 검색 진입에서 폐지하고, 필터 조합 시 다른 필터가 유지되도록 URL 쿼리 상태를 영속화했다.
+4. **딥링크 호환**: 커밋 및 PR 상세 직접 접근 시 일반 사용자에게 `WorkspaceEntityPage`를 제공하여 레거시 컴포넌트 없이도 상세 맥락을 탐색할 수 있도록 했다.
+5. **Upstream 피드백 반영**: `prsctl smoke` 워커 로그 검사에 3회 재시도 로직(`DEV-smoke-worker-roles`)을 추가하고, RUNBOOK 2.A에 Docker 컨테이너 외부망 차단 환경에서의 빌드 절차(`DEV-bundle-offline`)를 정본화했다.
