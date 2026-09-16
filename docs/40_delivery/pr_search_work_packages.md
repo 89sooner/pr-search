@@ -60,7 +60,7 @@
 | WP-076 | 사내 GHE 직접 로그인 | **인증 (CR-083)** | WP-012, WP-015 | **done** — 검증 6.78장. 사내 실제 GHE OAuth App 검증은 `NOT RUN` |
 | WP-079 | REL-007 R1b — 결과 계약·typed port·순수 연결 판정·타입 그래프·A-006 조회 | REL-007 (**CR-089**) | WP-078 | **done** — 검증 6.86장. leaf 196개 전부의 결과 계약과 입출력 port, `pr_list_v2`와 PR 참조, 제한 JSON Pointer·바인딩 평가·그래프, `GATE-GH-01d` 통과, 도메인 회귀의 CI 연결. 실행 허용은 `pr.list` 하나, 실행 가능한 다단계 흐름 0 |
 | WP-080 | REL-007 R2 — 검증된 레지스트리 운영 승인·R0 실행 정책 | REL-007 (**CR-090**) | WP-079 | **done** — 검증 6.87장. 운영 승인·철회(A-006)·`pr.list` 차단·재개(A-005 최소)·배포 범위별 정책 revision(충돌 검출·멱등·불변 이력·같은 트랜잭션 감사)·요청 수락과 claim의 같은 판정·claim 가드·마이그레이션 030. 새로 실행 가능한 명령 0, 실행 허용은 `pr.list` 하나 |
-| WP-081 | 최신 Conductor 및 Shell·W-001 개선 | UI 품질 (CR-093) | WP-073 | **in_progress** — 구현·문서 cascade, 검증 대기(원장 6.92장) |
+| WP-081 | 최신 Conductor 및 Shell·W-001 개선 | UI 품질 (CR-093) | WP-073 | **done** — PR #196 `a8796de`, PR·main CI success, `0.1.0-pilot.8` 발행 (원장 6.92장) |
 | WP-078 | REL-007 R1a — capability 분류·검증·드리프트·스냅숏·A-006 읽기 전용 | REL-007 (**CR-088**) | WP-077 | **done** — 검증 6.85장. leaf 196·flag 1,034·positional 164·`--json` 707 전부 분류(`NFR-009` 본표 100%), 독립 검증기·드리프트 검출·029 스냅숏/검증 기록·`JOB-GH-003`·`API-GH-013`/`014`·A-006. 실행 허용은 `pr.list` 하나 그대로. `GATE-GH-01d`(bindability·port·자원 타입)는 미달로 남고(`DEV-675`), 사내 GHES 확인은 `NOT RUN`(`DEV-674`) |
 | WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | WP-012, WP-015 | **done** — 검증 6.83장. R0 `pr.list` 하나를 인가→미리보기→실행→결과·자기 이력까지 연다. 상위 WP 일곱은 이 수직이 들여온 만큼만 `in_progress`다. 출력 청크 스트리밍은 상태만(`DEV-651`), 분류 195건 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증은 `NOT RUN`** |
 | WP-029 | 관계 간선 인덱스와 참조 추출 | REL-004 | WP-008, WP-003, **WP-067** | done |
@@ -2868,4 +2868,4 @@ external main의 특정 커밋
 - 요구사항: FR-SRCH-001·006·008, NFR-007. 선행: WP-073. 기존 검색 기능의 표현 개선이며 새 REL 기능은 없다.
 - 구현: exact Conductor 갱신, ADR-006 아이콘 예외, Shell·Tabs·FilterChip·Collapsible·WorkbenchLayout·DetailInspector·CopyButton·Breadcrumb·Skeleton 적용. ResultTable·URL·API·인가·DB·ES 의미 유지.
 - 완료 기준: 의존성·타입·lint·빌드·단위·접근성·대비·브라우저 회귀 통과, 좁은/넓은 화면과 두 테마 실측, 독립 검토와 중요 지적 해소, 문서 검사 및 원장 증거, PR와 main CI 확인. 릴리스는 최신 사용자 지시에 따라 별도 발행 증거를 기록한다.
-- 현재 검증 결과: 원장 6.92장. 아직 완료 판정하지 않는다.
+- 완료: PR #196 squash `a8796de`; PR CI `35061974889`와 main CI `35062529329` success. `0.1.0-pilot.8` 번들 런타임·시크릿 검사와 자산 SHA-256 대조 뒤 발행. 사내 GHE 확인은 `NOT RUN`이며 기존 릴리스 게이트는 재판정하지 않는다.
