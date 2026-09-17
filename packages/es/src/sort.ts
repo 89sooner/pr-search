@@ -19,6 +19,7 @@ import type { estypes } from '@elastic/elasticsearch';
 
 /** FR-SRCH-007 AC-1의 정렬 키 여덟. 이 목록이 곧 400 응답의 지원 키 목록이다. */
 export const SORT_KEYS = [
+  'pr_number',
   'merge_seq',
   'merged_at',
   'created_at',
@@ -49,6 +50,7 @@ export const DEFAULT_SORT_ORDER: SortOrder = 'desc';
  */
 const SORT_FIELDS: Readonly<Record<Exclude<SortKey, 'relevance'>, { field: string; type: 'long' | 'date' | 'integer' }>> =
   {
+    pr_number: { field: 'pr_number', type: 'integer' },
     merge_seq: { field: 'merge_seq', type: 'long' },
     merged_at: { field: 'merged_at', type: 'date' },
     created_at: { field: 'created_at', type: 'date' },

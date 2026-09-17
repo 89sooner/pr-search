@@ -1,5 +1,7 @@
 # PR Search UI 컴포넌트 명세서
 
+> CR-099 / WP-087: operator의 `/search?legacy=1`은 Legacy search로 명시해 보존한다. Repository workspace는 Base branch·facet Label Select, Radix Popover 월간 DatePicker 두 개를 제공한다. PR 표는 `#`(GHE PR 링크), `M number`(merge sequence 파생 표시), `Title`, `Author`, `Status`, `Merged at`, `Changes`, `Details` 순이다. 제목 열에 PR 번호를 중복하지 않으며 기본 정렬은 PR 번호 내림차순이다. 상태·M number 배지는 semantic tone 경계와 안쪽 강조를 사용한다.
+
 > CR-098 / WP-086: ReaderShell의 상단 Workspace 바로가기는 operator에게만 렌더링한다. 일반 사용자는 검색·분석 본문을 사용하되 운영/레거시 바로가기의 존재를 상단 메뉴에서 노출하지 않는다. LeftNavPanel의 “Follow the merge order” 설명은 제거하고 operator 전용 Advanced search·Repository workspace 링크는 보존한다. Merged after/before는 브라우저 로케일과 무관하게 `YYYY-MM-DD`를 placeholder로 표시하고 같은 패턴을 요구한다.
 
 > CR-097: SourceTree는 sidebar 하단의 lazy Git 트리이며 방향키·Enter·선택 경로 복원을 지원한다. SourceHistory는 선택 경로의 live Git 이력을 고정 SHA로 표시한다. DiffModal은 파일목록·split/unified·문자열 검색·변경 구간 이동·전체화면/이동을 제공한다. TimeLapseModal은 Radix Slider·버전목록·코드·추론 라인 heatmap/history·관련 PR을 제공한다. Ctrl/⌘+D는 선택된 검색 행, T는 선택 파일의 분석 진입이다. 상위 모달 안에서는 workspace 단축키를 가로채지 않는다. 모든 모달은 Escape와 호출자 포커스 복귀를 유지한다.
@@ -8,7 +10,7 @@
 
 > CR-095: 일반 화면은 Radix Tabs·Select·Dropdown Menu·Dialog, 시맨틱 HTML Button/Table/Input, Lucide로 구성한다. 컴포넌트는 components/reader 아래에 있으며 Conductor import가 없다. 사용자 메뉴는 기존 POST 로그아웃 계약을 따른다. LegacyRepositoryWorkspace와 SearchView는 operator 전용 경로로 보존한다.
 
-> 상태: review | 버전: v0.20 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.22 | 갱신일: 2026-09-17
 
 CR-092 C-001 사용자 메뉴: 로그인 이름이 메뉴 트리거가 되고 항목은 신원 표시와 「로그아웃」이다. 「로그아웃」은 `POST /auth/logout` 폼 제출이며 결과는 공개 로그아웃 완료 화면이다(DEV-700).
 

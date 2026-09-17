@@ -1,5 +1,12 @@
 # PR Search 작업 패키지
 
+## WP-087 PR 중심 검색 필터·테이블·달력 보정 (CR-099)
+
+- 요구사항: FR-SRCH-006·007, FR-SEQ-008, NFR-007. 선행: WP-086.
+- 범위: operator Legacy search 진입 보존, Base branch/Label Select, Radix 달력, PR#/M number/Title 열, `pr_number DESC`, canonical 상태 필터, 배지 tone 보강.
+- 완료 기준: query·sort 단위 검사, 달력 a11y, 실제 Chromium 필터/열/GHE 링크/M number/정렬 확인, 전체 타입·lint·빌드·CI.
+- 상태: done — query/sort/parser82/82·전체 a11y436/436·아키텍처 포함 집중148/148·대비18쌍·타입·lint·빌드·언어/의존성 gate·실제 Chromium 필터/표/Source 회귀 통과. PR·신규 릴리스 미발행.
+
 ## WP-086 사내 권한명·operator 바로가기 보정 (CR-098)
 
 - 요구사항: FR-AUTH-002, NFR-007. 선행: WP-085.
@@ -28,7 +35,7 @@
 - 완료 기준: 타입·변경 파일 lint·프로덕션 빌드·가상 데이터 브라우저 핵심 조작 확인. 공개 발행은 이번 요청 범위에 포함하지 않는다.
 - 진행 정본: 구현 추적 원장 CR-095 기록.
 
-> 상태: review | 버전: v2.40 | 갱신일: 2026-09-17
+> 상태: review | 버전: v2.42 | 갱신일: 2026-09-17
 
 ## 1. 목적
 
@@ -93,6 +100,7 @@
 | WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | WP-083 | **done** — 접근성 433/433·전체 CI, pilot.10 발행 |
 | WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | WP-084 | **done** — Source 집중 검사·Chromium·전체 CI, pilot.10 발행; 실 GHE 미검증 |
 | WP-086 | 사내 권한명·operator 바로가기 보정 | 권한·UI 보정 (CR-098) | WP-085 | **done** — PR/main CI·bundle smoke, pilot.11 발행; 사내 재반입 미검증 |
+| WP-087 | PR 중심 검색 필터·테이블·달력 보정 | 검색 UX (CR-099) | WP-086 | **done** — 집중 검사·빌드·Chromium 통과, 발행 대기 |
 | WP-081 | 최신 Conductor 및 Shell·W-001 개선 | UI 품질 (CR-093) | WP-073 | **done** — PR #196 `a8796de`, PR·main CI success, `0.1.0-pilot.8` 발행 (원장 6.92장) |
 | WP-078 | REL-007 R1a — capability 분류·검증·드리프트·스냅숏·A-006 읽기 전용 | REL-007 (**CR-088**) | WP-077 | **done** — 검증 6.85장. leaf 196·flag 1,034·positional 164·`--json` 707 전부 분류(`NFR-009` 본표 100%), 독립 검증기·드리프트 검출·029 스냅숏/검증 기록·`JOB-GH-003`·`API-GH-013`/`014`·A-006. 실행 허용은 `pr.list` 하나 그대로. `GATE-GH-01d`(bindability·port·자원 타입)는 미달로 남고(`DEV-675`), 사내 GHES 확인은 `NOT RUN`(`DEV-674`) |
 | WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | WP-012, WP-015 | **done** — 검증 6.83장. R0 `pr.list` 하나를 인가→미리보기→실행→결과·자기 이력까지 연다. 상위 WP 일곱은 이 수직이 들여온 만큼만 `in_progress`다. 출력 청크 스트리밍은 상태만(`DEV-651`), 분류 195건 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증은 `NOT RUN`** |

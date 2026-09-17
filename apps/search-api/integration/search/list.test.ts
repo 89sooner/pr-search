@@ -400,9 +400,9 @@ describe('DoD 4: 정렬 (FR-SRCH-007)', () => {
     expect(idsOf(body).slice(0, -2)).toEqual(['pr:1', 'pr:2', 'c:' + 'a'.repeat(40)]);
   });
 
-  it('정렬 키 여덟이 모두 200이다 (AC-1)', async () => {
+  it('정렬 키 아홉이 모두 200이다 (AC-1)', async () => {
     for (const key of [
-      'merge_seq', 'merged_at', 'created_at', 'updated_at',
+      'pr_number', 'merge_seq', 'merged_at', 'created_at', 'updated_at',
       'changed_files_count', 'additions', 'lead_time_seconds', 'relevance',
     ]) {
       const { status } = await get(`q=&sort=${key}`);

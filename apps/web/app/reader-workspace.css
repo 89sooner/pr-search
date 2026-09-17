@@ -41,6 +41,22 @@
 .reader-ui .repo-field input:focus { border-color: var(--r-accent); box-shadow: var(--ui-shadow-soft); }
 .reader-ui .repo-field input::placeholder { color: var(--ui-text-muted); opacity: 1; }
 .reader-ui .repo-field input[readonly] { color: var(--ui-text-secondary); background: var(--ui-surface-subtle); }
+.reader-date-trigger { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; height:38px; padding:8px 11px; color:var(--ui-text-primary); background:var(--ui-surface-raised); border:1px solid var(--ui-border-default); border-radius:7px; box-shadow:var(--ui-shadow-soft); }
+.reader-date-trigger[data-empty] span { color:var(--ui-text-muted); }
+.reader-calendar { z-index:90; width:286px; padding:12px; color:var(--ui-text-primary); background:var(--ui-surface-raised); border:1px solid var(--ui-border-strong); border-radius:10px; box-shadow:var(--ui-shadow); }
+.reader-calendar header,.reader-calendar footer { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.reader-calendar header { margin-bottom:10px; }
+.reader-calendar header button,.reader-calendar footer button { border:0; border-radius:5px; padding:6px 8px; background:transparent; color:var(--ui-text-secondary); }
+.reader-calendar header button:hover,.reader-calendar footer button:hover { background:var(--ui-state-hover); color:var(--ui-text-primary); }
+.reader-calendar-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+.reader-calendar-grid > span { padding:5px 0; text-align:center; color:var(--ui-text-muted); font-size:10px; font-weight:650; }
+.reader-calendar-grid > button { aspect-ratio:1; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--ui-text-secondary); font-size:11px; }
+.reader-calendar-grid > button:hover { background:var(--ui-state-hover); color:var(--ui-text-primary); }
+.reader-calendar-grid > button[data-outside] { color:var(--ui-border-strong); }
+.reader-calendar-grid > button[aria-current='date'] { border-color:var(--ui-border-strong); }
+.reader-calendar-grid > button[aria-pressed='true'] { background:var(--ui-accent); color:var(--ui-accent-contrast); font-weight:700; box-shadow:0 0 0 2px color-mix(in srgb,var(--ui-accent) 22%,transparent); }
+.reader-calendar footer { margin-top:10px; padding-top:9px; border-top:1px solid var(--ui-border-subtle); }
+.reader-calendar-arrow { fill:var(--ui-surface-raised); }
 .reader-select { display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; }
 .reader-select-menu { background: var(--ui-surface-raised); padding: 5px; border: 1px solid var(--r-border); border-radius: 9px; box-shadow: var(--ui-shadow-soft); min-width: var(--radix-select-trigger-width); max-height: var(--radix-select-content-available-height); z-index: 60; }
 .reader-select-item { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 8px 10px; border-radius: 5px; font-size: 12px; outline: 0; cursor: default; }
@@ -100,6 +116,10 @@
 .reader-ui .repo-expand { display: grid; place-items: center; border: 0; border-radius: 4px; background: none; color: var(--ui-text-muted); padding: 4px; }
 .reader-ui .repo-expand[aria-expanded='true'] svg { transform: rotate(90deg); color: var(--r-accent); }
 .reader-ui .repo-sequence { color: var(--ui-accent); font-family: ui-monospace, monospace; font-size: 11px; font-weight: 500; }
+.reader-ui .repo-pr-link { color:var(--ui-accent); font-family:var(--ui-font-mono); font-size:11px; font-weight:650; text-decoration:none; white-space:nowrap; }
+.reader-ui a.repo-pr-link:hover { text-decoration:underline; text-underline-offset:3px; }
+.reader-ui .repo-mnumber { display:inline-flex; }
+.reader-ui .repo-mnumber:empty::after { content:'—'; color:var(--ui-text-muted); }
 .reader-ui .repo-title-button { display: block; width: 100%; border: 0; background: none; padding: 0; font-size: 12px; font-weight: 520; line-height: 1.6; text-align: left; color: var(--ui-text-primary); overflow-wrap: anywhere; }
 .reader-ui .repo-title-button:hover { color: var(--r-accent); }
 .reader-ui .repo-pr-number { color: var(--ui-text-muted); font-size: 10px; margin-right: 7px; font-family: ui-monospace, monospace; }
@@ -107,8 +127,9 @@
 .reader-author { display: flex; gap: 6px; align-items: center; white-space: nowrap; color: var(--ui-text-muted); font-size: 10px; }
 .reader-avatar { width: 23px; height: 23px; font-size: 8px; }
 .reader-state { display: inline-flex; align-items: center; gap: 4px; color: var(--ui-text-muted); font-size: 9px; white-space: nowrap; border: 1px solid var(--ui-border-default); border-radius: 5px; padding: 3px 5px; }
-.reader-state[data-state='merged'] { color: var(--ui-merged); background: var(--ui-merged-soft); border-color: var(--ui-merged-soft); }
-.reader-state[data-state='open'] { color: var(--ui-status-success); background: var(--ui-success-soft); border-color: var(--ui-success-soft); }
+.reader-state[data-state='merged'] { color: var(--ui-merged); background: var(--ui-merged-soft); border-color:color-mix(in srgb,var(--ui-merged) 38%,var(--ui-border-default)); box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ui-merged) 8%,transparent); }
+.reader-state[data-state='open'] { color: var(--ui-status-success); background: var(--ui-success-soft); border-color:color-mix(in srgb,var(--ui-status-success) 38%,var(--ui-border-default)); box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ui-status-success) 8%,transparent); }
+.reader-state[data-state='closed'] { color:var(--ui-status-danger); background:var(--ui-danger-soft); border-color:color-mix(in srgb,var(--ui-status-danger) 38%,var(--ui-border-default)); box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ui-status-danger) 8%,transparent); }
 .reader-ui .repo-table time { font-size: 9px; color: var(--ui-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .reader-ui .prs-diff-added { color: var(--ui-status-success); font-size: 10px; }
 .reader-ui .repo-deletions { color: var(--ui-status-danger); font-size: 10px; }
