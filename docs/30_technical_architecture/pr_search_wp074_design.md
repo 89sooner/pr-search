@@ -213,7 +213,7 @@ PK `sample_id UUID`, unique `(work_key,attempt,seq_epoch,pr_number)`; work_key�
 
 PK `attestation_id BIGSERIAL`. FK `(repository_id, base_branch)` → `sequence_space` ON DELETE CASCADE. `seq_epoch INT NOT NULL` — 확인서는 에폭에 묶인다. `through_seq BIGINT NULL`(NULL이면 에폭 전체, 값이면 그 서수까지 포함), `grace_seconds INT NOT NULL`(0~2,592,000 = 30일), `actor TEXT`(`prsctl:<호스트 사용자>`, 1~128자), `reason TEXT`(1~500자), `created_at TIMESTAMPTZ`, `revoked_at / revoked_by / revoke_reason`(셋이 함께 NULL이거나 함께 값). 부분 유일 인덱스 `(repository_id, base_branch, seq_epoch) WHERE revoked_at IS NULL` — 공간·에폭마다 활성 확인서는 하나이며 바꾸려면 철회하고 다시 만든다(이력이 남는다). `prs_app`은 SELECT·INSERT와 철회 세 열의 UPDATE만 갖고 본문은 바꾸지 못한다.
 
-확인서가 만든 근거 행은 `mnumber_evidence`에 `state=direct_confirmed`, `source_kind=operator_attestation`, `proof.attestation_id`로 남는다. 철회는 이미 남은 근거 행과 번호를 건드리지 않는다. 031 down은 `operator_attestation` 근거 행을 지우고 표를 없앤다 — 그 서수는 다시 미확정이 되어 채번이 그 앞에서 멈출 뿐 부여된 번호는 바뀌지 않는다.
+확인서가 만든 근거 행은 `mnumber_evidence`에 `state=direct_confirmed`, `source_kind=operator_attestation`, `proof.attestation_id`로 남는다. 철회는 이미 남은 근거 행과 번호를 건드리지 않는다. 031 down은 `operator_attestation` 근거 행을 지우고 표를 없앤다 — 확인서로 지나간 서수는 이미 checkpoint 뒤라 회차가 다시 보지 않으므로 번호·checkpoint는 그대로이고 근거 행만 사라진다. 그 서수를 다시 판정하게 하려면 에폭 재채번이 필요하다.
 
 `prsctl mnumber attest`는 확인서 INSERT·감사 기록(`mnumber_attestation.create`)·`sequence_work(reconcile, trigger_kind=attestation)` 요청을 한 트랜잭션에 남긴다. 러너는 확인서가 덮지만 유예가 남은 서수에서 멈추면 work를 `retry`로 두고 `available_at`을 유예 종료 시각으로 미룬다(`last_reason=attestation_grace_pending`).
 

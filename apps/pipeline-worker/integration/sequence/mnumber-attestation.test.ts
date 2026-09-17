@@ -37,7 +37,7 @@ import { reconcileMergeNumbers, type MergeNumberDeps } from '../../src/mnumber.j
 import type { PullRequestEvidenceSource } from '../../src/mnumber-evidence.js';
 import { runMergeNumberAttestCommand } from '../../src/mnumber-attest-command.js';
 import { runSequenceWorkOnce } from '../../src/sequence-work-runner.js';
-import { makeTempDir, removeDir } from './fixture.js';
+import { makeTempDir, removeDir, run } from './fixture.js';
 import { createSquashFixture, type SquashFixture } from './squash-fixture.js';
 
 const REPOSITORY_ID = 7431;
@@ -401,6 +401,9 @@ describe('prsctl mnumber 명령 (attest · revoke · list)', () => {
     ]);
     const work = await sequenceWorkRepo.findWork(pool, sequenceWorkRepo.spaceWorkKey('reconcile', REPOSITORY_ID, BRANCH, 1));
     expect(work).toMatchObject({ state: 'ready', payload: { trigger_kind: 'attestation', attestation_id: 1 } });
+    // 감사 기록의 상관 ID가 채번 회차 요청에 실린다 — 운영자 행위와 EVT-SEQ-004가 한 ID로 이어진다 (DEV-594).
+    const audit = await pool.query<{ correlation_id: string }>(`SELECT correlation_id FROM audit_record WHERE action = 'mnumber_attestation.create'`);
+    expect(work?.payload['correlation_id']).toBe(audit.rows[0]?.correlation_id);
 
     const deps = mnumberDeps(evidenceSource(knownPrs([21, 25, 29])));
     const round = await runSequenceWorkOnce({ pool, sequence: sequenceDeps(), mnumber: deps, metrics: deps.metrics });
@@ -457,5 +460,36 @@ describe('prsctl mnumber 명령 (attest · revoke · list)', () => {
     expect(await runMergeNumberAttestCommand(['list', '--all', '--repository-id', String(REPOSITORY_ID)], all.deps)).toBe(0);
     expect(all.out[0]).toMatch(/^id\trepository_id\tbase_branch/);
     expect(all.out[1]).toMatch(/^1\t7431\tmain\t1\t-\t0\tprsctl:alice\t.+Z\t.+Z\t사내 squash-only 저장소의 직접 푸시 이력$/);
+  });
+});
+
+describe('독립 검토 뒤 보강 (CR-100)', () => {
+  it('**squash 프로파일 밖(2-parent 머지 커밋)도 확인서가 지나간다** — 사내 저장소 399의 seq=3 상황', async () => {
+    // 원격에 진짜 머지 커밋을 더한 뒤 fetch → 채번 (mnumber.test.ts의 AC-9 픽스처와 같다).
+    await run(origin.dir, ['checkout', '-q', '-b', 'fm']);
+    await run(origin.dir, ['commit', '-q', '--allow-empty', '-m', 'fm 1']);
+    await run(origin.dir, ['checkout', '-q', BRANCH]);
+    await run(origin.dir, ['merge', '-q', '--no-ff', '-m', 'M merge (#31)', 'fm']);
+    await prepareAndAssignSequence(sequenceDeps(), REPOSITORY_ID, BRANCH);
+    await attestViaRepo({ graceSeconds: 0 });
+
+    const outcome = await reconcileMergeNumbers(mnumberDeps(evidenceSource(knownPrs())), REPOSITORY_ID, BRANCH);
+    expect(outcome).toMatchObject({ kind: 'done', assigned: 4, attested: 3, blocked: null });
+    expect(await numbers()).toEqual([null, 1, null, 2, 3, 4, null]);
+    const merge = await mnumberEvidenceRepo.findEvidence(pool, REPOSITORY_ID, BRANCH, 1, 7);
+    expect(merge).toMatchObject({ state: 'direct_confirmed', source_kind: 'operator_attestation' });
+    expect(merge?.proof.attested_reason).toBe('unsupported_merge_profile');
+  });
+
+  it('`--through-seq`가 지금 멈춘 서수보다 작으면 만들되 경고한다', async () => {
+    await seedDirect(1, origin.rootSha);
+    const first = await reconcileMergeNumbers(mnumberDeps(evidenceSource(knownPrs())), REPOSITORY_ID, BRANCH);
+    expect(first).toMatchObject({ kind: 'done', assigned: 1, blocked: { seq: 3, reason: 'negative_evidence_unavailable' } });
+
+    const cmd = commandDeps();
+    const argv = ['attest', '--repository-id', String(REPOSITORY_ID), '--base-branch', BRANCH, '--seq-epoch', '1', '--reason', '범위 시험', '--grace-hours', '0', '--through-seq', '2', '--actor', 'alice'];
+    expect(await runMergeNumberAttestCommand(argv, cmd.deps)).toBe(0);
+    expect(cmd.err.join('\n')).toMatch(/^경고: 지금 멈춘 서수는 3인데 --through-seq 2는 그 앞까지만 덮는다/m);
+    expect(await mnumberAttestationRepo.findActiveAttestation(pool, REPOSITORY_ID, BRANCH, 1)).toMatchObject({ through_seq: 2 });
   });
 });

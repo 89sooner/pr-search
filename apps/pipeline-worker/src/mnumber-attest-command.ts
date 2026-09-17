@@ -181,6 +181,12 @@ async function attest(args: ParsedArgs, deps: AttestCommandDeps): Promise<Attest
     deps.err(`${label} ${baseBranch}의 현재 에폭은 ${String(space.seq_epoch)}이다 — ${String(seqEpoch)}에는 확인서를 만들지 않는다. 확인서는 에폭에 묶인다 (ADR-007).`);
     return 2;
   }
+  if (throughSeq !== null && space.mnumber_blocked_seq !== null && throughSeq < Number(space.mnumber_blocked_seq)) {
+    // 만들기는 하되 말해 준다 — 지금 멈춘 자리를 덮지 못하는 확인서는 「만들었다」 뒤에도 채번을 움직이지 않는다.
+    deps.err(`경고: 지금 멈춘 서수는 ${String(space.mnumber_blocked_seq)}인데 --through-seq ${String(throughSeq)}는 그 앞까지만 덮는다. 이 확인서로는 채번이 다시 나아가지 않는다 — 범위를 넓히려면 revoke 뒤 다시 만든다.`);
+  }
+  // 감사 기록과 그 결과인 채번 회차(EVT-SEQ-004까지)를 한 상관 ID로 잇는다 (DEV-594의 규율).
+  const correlationId = randomUUID();
 
   const client = await deps.pool.connect();
   try {
@@ -211,7 +217,7 @@ async function attest(args: ParsedArgs, deps: AttestCommandDeps): Promise<Attest
       target: `${label}/${baseBranch}@${String(seqEpoch)}#${String(row.attestation_id)}`,
       query: reason,
       resultCode: 'created',
-      correlationId: randomUUID(),
+      correlationId,
     });
     // 멈춰 있던 공간을 깨운다. 확인서 없이는 `negative_evidence_unavailable`이 work를 done으로 닫아 두므로 새 push가 올 때까지 아무것도 돌지 않는다.
     await sequenceWorkRepo.requestWork(client, {
@@ -219,7 +225,7 @@ async function attest(args: ParsedArgs, deps: AttestCommandDeps): Promise<Attest
       repositoryId,
       baseBranch,
       seqEpoch,
-      payload: { trigger_kind: 'attestation', attestation_id: row.attestation_id },
+      payload: { trigger_kind: 'attestation', attestation_id: row.attestation_id, correlation_id: correlationId },
     });
     await client.query('COMMIT');
     deps.out(`확인서를 만들었다: ${describe(row, label)}`);
