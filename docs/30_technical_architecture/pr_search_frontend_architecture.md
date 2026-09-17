@@ -1,12 +1,14 @@
 # PR Search 프론트엔드 아키텍처
 
+> CR-099: RepositoryWorkspace의 쿼리·기본 정렬·Label option 조립은 `lib/repository-search.ts`가 소유한다. 첫 페이지는 facets=true로 Label 후보를 받고 커서 페이지는 false로 호출하되 이전 facets를 유지한다. DatePicker는 기존 Radix Popover와 제품 토큰을 사용한다. 표의 PR 링크는 구성된 GHE base URL로 직접 열고 M number는 목록 DTO의 additive `merge_number*` 필드만 읽어 행별 조회를 만들지 않는다.
+
 > CR-097 / FR-SRC-001~004: components/source의 SourceTree·SourceHistory·SourceDialogs를 일반/기존 workspace와 PR·커밋 상세가 공유한다. useSource는 no-store·AbortController·선택 키로 응답을 격리한다. Diff는 jsdiff의 시간/편집량 한도 안에서 계산하며 Time-lapse는 Radix Slider, 최대30개 리비전·동시3개 요청의 명시적 분석을 사용한다. line alignment는 추정임을 표시한다. 소스는 React 텍스트로 렌더하고 지속 브라우저 저장소에 넣지 않는다.
 
 > CR-096: 전체 웹 번들에서 Conductor 의존성을 제거한다. `components/ui/index.tsx`가 Radix와 시맨틱 HTML의 타입 있는 경계를 소유하고 화면은 기존 API·상태 로직을 유지한다. ThemeProvider는 html data-theme, localStorage `pr-search-theme`, 시스템 기본값, 다른 탭 변경을 동기화한다. 서버 안전 고정 bootstrap은 초기 색상 깜빡임을 줄인다. 사용자가 제공하는 문장을 변환하는 런타임 DOM 번역은 사용하지 않는다.
 
 > CR-095: ReaderShell은 일반 검색의 별도 셸이다. 기존 Shell·SearchView·LegacyRepositoryWorkspace는 operator 경로에 유지한다. 검색 진입은 GuardedPage의 reader/legacyReader와 실효 역할로 결정한다. CSS는 .reader-ui 독립 토큰으로 operator와 격리한다. Radix 패키지·폰트는 lockfile로 고정하고 오프라인 배포에서 CDN에 의존하지 않는다. 기존 BFF와 API 계약은 유지한다.
 
-> 상태: review | 버전: v0.13 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.15 | 갱신일: 2026-09-17
 
 CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설계](pr_search_wp074_design.md) 9절로 고정한다. M은 API 생성 문자열이며 PR 번호를 대체하지 않는다. 행별 resolve 없이 페이지 batch, M deep link 1회 resolve, visible pending의 bounded poll을 사용한다. 기존 인증 BFF·from_q·cursor·epoch 경고·Conductor를 보존한다.
 

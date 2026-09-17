@@ -62,7 +62,7 @@ export function LeftNavPanel({ roles, activeId }: LeftNavPanelProps): ReactNode 
       )}
     />
     {roles.includes('operator') ? <div className="prs-nav-note">
-      <Link href="/search?legacy=1">Advanced search</Link>
+      <Link href="/search?legacy=1">Legacy search</Link>
       <Link href="/search?legacy=workspace">Repository workspace</Link>
     </div> : null}
     </>

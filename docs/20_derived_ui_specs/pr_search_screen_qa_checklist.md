@@ -1,5 +1,15 @@
 # PR Search 화면 QA 체크리스트
 
+## CR-099 PR 중심 Repository workspace
+
+| ID | 확인 항목 | 검증 |
+| --- | --- | --- |
+| QA-W001-45 | operator만 Legacy search 진입을 보고 `/search?legacy=1`로 이동한다 | DOM·브라우저 |
+| QA-W001-46 | Base branch와 facet Label을 선택하고 URL/검색 요청에 유지한다 | 단위·브라우저 |
+| QA-W001-47 | 두 날짜 필터가 키보드 가능한 월간 달력이고 YYYY-MM-DD를 만든다 | a11y·브라우저 |
+| QA-W001-48 | # 열은 GHE PR 링크, 둘째는 M number, 제목에는 PR 번호 중복이 없다 | 브라우저 |
+| QA-W001-49 | 기본 요청은 pr_number desc이며 Merged 선택은 canonical is:merged를 전송한다 | 단위·브라우저 |
+
 ## CR-097 소스 조사 흐름 (FR-SRC-001~004)
 
 | ID | 확인 항목 | 검증 |
@@ -14,7 +24,7 @@
 
 > CR-095 최소 확인: 초기 PR 목록, Radix 상태 선택, 탭 왕복의 필터 유지, 행 확장, Ctrl/⌘+K 검색 포커스, Dialog Escape·포커스 복귀, 모바일 페이지 넘침 없음, 일반 DOM에 Conductor 컴포넌트 없음. 가상 데이터 브라우저 검증과 실 GHE 연동 검증은 별도로 기록한다.
 
-> 상태: review | 버전: v0.22 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.24 | 갱신일: 2026-09-17
 
 CR-079: QA-W001-39·QA-W002-29·QA-W004-30은 [실행서 T05](../40_delivery/pr_search_wp074_execution.md)와 함께 검증한다. 미머지/비대상/pending/unavailable 구분, 코드 불일치·M epoch 누락, 링크 네 문맥, from_q·새 탭·키보드·커서 보존, 행별 resolve 0회가 필수다. 인증 fixture만 사용하며 익명 검색을 열지 않는다. 기존 직접 commit의 M 칸 없음과 PR 식별자 유지 기준은 그대로다.
 

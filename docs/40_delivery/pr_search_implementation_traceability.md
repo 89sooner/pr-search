@@ -1,5 +1,9 @@
 # PR Search 구현 추적 원장
 
+## CR-099 / WP-087 — PR 중심 검색 필터·테이블·달력 보정 (2026-09-17)
+
+Legacy SearchView와 LegacyRepositoryWorkspace는 삭제되지 않았고 operator 전용 진입으로 보존돼 있었다. 다만 “Advanced search”라는 이름이 보존 사실을 숨겼다(DEV-709). Repository workspace의 branch·label은 입력 모양이거나 facet을 요청하지 않아 선택 후보가 없었고(DEV-710), native date는 제품이 제어하는 달력이 아니었다(DEV-711). 표는 expand·sequence가 앞서 PR 주 식별자와 M number 관계가 불명확했고 기본 정렬이 merged_at이었다(DEV-712). 상태 Select는 permissive `state:`를 만들었으므로 UI 열거 상태를 canonical `is:`로 고정한다(DEV-713).
+
 ## 0.1.0-pilot.11 발행 — 사내 권한명·operator 바로가기 보정 (2026-09-17)
 
 PR #203이 CR-098 / WP-086을 `05687c2`로 병합했다. `read`·`write`·`writer` 권한 호환, operator 전용 Workspace 메뉴, 좌측 설명 제거, `YYYY-MM-DD` 날짜 입력을 포함한다. 릴리스 게이트에서 반복된 FLOW-002 중복 자동 이동을 DEV-708로 닫았고 문제 흐름20/20 및 PR/main 전체 CI를 통과했다.
@@ -65,7 +69,7 @@ GHE 읽기 전 인증·저장소 범위를 판정하고 SHA에 고정한다. PR 
 
 검증: TypeScript·변경 TS/TSX lint·Next 프로덕션 빌드 통과. 가상 API를 주입한 실제 Chromium에서 초기 목록·Radix 상태 선택·탭 왕복 필터 유지·인라인 상세·Ctrl+K·Dialog Escape·390px 모바일 페이지 넘침 없음 통과. 일반 DOM의 cdt-* 클래스 0건, 브라우저 pageerror 0건. 캡처는 `/tmp/pr-search-radix/desktop.png`, `detail.png`, `mobile.png`. 실 GHE/OIDC 검증은 NOT RUN. 문서 validator는 기존 FR-CSS-005·D-002 참조 오류 둘 때문에 실패했으며, HEAD의 docs를 별도 임시 디렉터리에 추출해 동일 오류를 확인했다. 기존 risks.md 경로 경고도 남는다. 이번 요청은 구현이며 릴리스는 발행하지 않았다.
 
-> 상태: review | 버전: v6.88 | 갱신일: 2026-09-17
+> 상태: review | 버전: v6.90 | 갱신일: 2026-09-17
 
 `CR-094 / WP-082` 기본 저장소 작업 공간과 operator 전용 기존 UI: `template.html` 및 설계 분석 문서를 Conductor 기반 `RepositoryWorkspace`로 재구현하고, 기존 검색 및 운영 도구는 operator 전용(`?legacy=1`)으로 보존했다. developer 저장소 등록 절차 폐지·진입 즉시 현재 저장소 PR 목록 표시·필터 유지·deep link `WorkspaceEntityPage`, upstream smoke 재시도 로직 및 RUNBOOK 오프라인 빌드 절차를 반영했다. 검증과 0.1.0-pilot.9 발행 증거는 6.93장에 기록한다.
 
@@ -130,6 +134,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | done | 에이전트 | PR #199 / pilot.10 | 접근성 433/433·전체 CI·bundle smoke 통과 | 실 GHE 미검증, 기존 문서 gate 오류 |
 | WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | done | 에이전트 | PR #199 / pilot.10 | 집중94/94·Chromium·전체 CI·bundle smoke 통과 | 실 GHE NOT RUN, 기존 문서 gate 오류 |
 | WP-086 | 사내 권한명·operator 바로가기 보정 | 권한·UI 보정 (CR-098) | done | 에이전트 | PR #203 / pilot.11 | 권한22/22·DOM/a11y33/33·FLOW20/20·PR/main 전체 CI·bundle smoke 통과 | 사내 재반입 NOT RUN |
+| WP-087 | PR 중심 검색 필터·테이블·달력 보정 | 검색 UX (CR-099) | done | 에이전트 | 로컬 변경 | query/sort/parser82/82·전체 a11y436/436·아키텍처 포함 집중148/148·대비18쌍·타입·lint·빌드·언어/의존성 gate·Chromium 필터/표/Source 회귀 통과 (`/tmp/pr-search-source/search-pr-table-light.png`) | 실 GHE 데이터 NOT RUN, 기존 문서 validator 오류 유지, PR·릴리스 미발행 |
 | WP-081 | 최신 Conductor·Shell·W-001 | UI 품질 (CR-093) | done | 에이전트 | `a8796de` / PR #196 | PR CI `35061974889`·main CI `35062529329` success; `0.1.0-pilot.8` | CR-093, 신규 기능 의미 없음 |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | `96d4e2f` / PR #2 | DoD 6항 전부 통과. 통합 26건, CI `verify`·`integration` 모두 성공 (6.2장) | 로컬은 네이티브 PostgreSQL 16.13, CI는 서비스 컨테이너 (DEV-006) |
@@ -304,7 +309,13 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | DEV-705 | 2026-09-17 | ReaderShell이 역할별 항목 필터는 했지만 상단 Workspace 바로가기 메뉴 자체를 모든 역할에 렌더했다 | NFR-007 / WP-086 | 정보 노출·UI 결함 | CR-098 | resolved — operator에게만 드롭다운을 렌더하고 developer DOM 부재를 검사한다 |
 | DEV-706 | 2026-09-17 | LeftNavPanel의 “Follow the merge order” 설명이 현재 작업 흐름에 불필요하게 남아 있었다 | NFR-007 / WP-086 | UI 정리 | CR-098 | resolved — 설명과 장식 아이콘을 제거하고 operator 전용 링크는 보존한다 |
 | DEV-707 | 2026-09-17 | native date input이 브라우저 로케일에 따라 Merged after/before 샘플을 `연도-월-일`로 표시해 영문 UI의 입력 형식을 명확히 전달하지 못했다 | NFR-007 / WP-086 | UI 표현 결함 | CR-098 | resolved — text 입력에 `YYYY-MM-DD` placeholder·numeric input mode·동일 pattern을 적용하고 실제 브라우저에서 확인한다 |
-| DEV-708 | 2026-09-17 | 단일 검색결과 자동 이동 효과가 같은 href에 중복 진입할 수 있어 히스토리에 commit 상세이 두 번 쌓였고, 검색→commit→PR 뒤로가기 두 번이 검색 대신 commit에 머무는 E2E가 main/PR CI에서 반복 실패했다 | FR-SRCH-001 / WP-086 | 기존 간헐 회귀 | CR-098 | resolved — 이동 href를 ref로 동기 소비해 같은 마운트에서 `router.push`를 한 번만 호출하고 FLOW-002 반복 브라우저 검사를 통과시킨다 |
+| DEV-708 | 2026-09-17 | 단일 검색결과 자동 이동 효과가 같은 href에 중복 진입할 수 있어 히스토리에 commit 상세이 두 번 쌓였고, 검색→commit→PR 뒤로가기 두 번이 검색 대신 commit에 머무는 E2E가 main/PR CI에서 반복 실패했다 | FR-SRCH-001 / WP-086 | 기존 간헐 회귀 | CR-098 | resolved — 전환 중 공존하는 SearchView 인스턴스가 공유하는 클라이언트 모듈 guard로 같은 href의 `router.push`를 한 번만 호출하고 FLOW-002 반복 브라우저 검사를 통과시킨다 |
+| DEV-709 | 2026-09-17 | Legacy 통합 검색은 operator 경로에 보존됐지만 “Advanced search” 라벨 때문에 제거된 것처럼 보였다 | NFR-007 / WP-087 | 발견 가능성 결함 | CR-099 | resolved — operator 전용 `/search?legacy=1` 링크를 Legacy search로 명시한다 |
+| DEV-710 | 2026-09-17 | Repository workspace가 label facet을 요청하지 않고 Base branch·Label을 자유 입력처럼 제공해 실제 선택 후보가 없었다 | FR-SRCH-006 / WP-087 | UI·데이터 연결 결함 | CR-099 | resolved — 첫 검색에 facets=true, 다음 페이지에 false를 사용하고 branch/label Select를 제공한다 |
+| DEV-711 | 2026-09-17 | Merged after/before가 달력 요구 대신 native/text 날짜 입력으로 렌더됐다 | NFR-007 / WP-087 | UI 계약 결함 | CR-099 | resolved — Radix Popover 월간 달력과 YYYY-MM-DD 값을 사용한다 |
+| DEV-712 | 2026-09-17 | PR 표의 첫 열이 expand, 둘째가 내부 sequence이고 제목 열에서 PR 번호를 중복 표시했으며 기본 정렬이 merged_at이었다 | FR-SRCH-007 · FR-SEQ-008 / WP-087 | 정보 위계 결함 | CR-099 | resolved — # GHE 링크·M number·Title 순서와 pr_number desc를 API/ES까지 지원한다 |
+| DEV-713 | 2026-09-17 | UI 상태 Select가 값 검증 없는 `state:` 토큰을 생성해 열거 상태 계약과 오류 진단이 느슨했다 | FR-SRCH-006 / WP-087 | 질의 계약 결함 | CR-099 | resolved — UI 상태는 `is:merged/open/closed`를 생성하고 파서 단위 검사로 고정한다 |
+| DEV-714 | 2026-09-17 | CR-099 첫 CI에서 지원 정렬 키 목록 길이 기대가 8에 남아 pr_number 추가를 거부했고, 101개 체크박스를 실제로 누르는 기존 a11y 시험이 CI 부하에서 5초를 넘겼다 | FR-SRCH-007 · NFR-007 / WP-087 | 검증 계약·시간 예산 | CR-099 | resolved — 지원 키 길이를 9로 맞추고 행동 단언은 유지한 채 해당 대량 상호작용 시험만 15초 예산을 부여했다 |
 | DEV-701 | 2026-09-16 | ADR-006·QA-COMMON-17이 아이콘 자산과 UI 프리미티브를 구분하지 않아 승인된 lucide 직접 소비와 충돌했다 | FR-SRCH-006 · FR-SRCH-008 · NFR-007 / WP-081 | 문서 오류 | CR-093 | resolved — 아이콘 한정 예외 cascade와 정적 의존성 검사를 반영했다 |
 | DEV-700 | 2026-09-15 | **화면에 로그아웃이 없었다.** `FR-AUTH-001` AC-5가 요구하는 서버 측 세션 무효화는 `POST /auth/logout`에 있었지만 그것을 부르는 화면이 없었다 — 셸의 상단에는 로그인 이름만 표시됐다. C-001은 「사용자 메뉴」와 `topbar.user_menu_open`을 적었으나 메뉴 항목을 정하지 않았다. 사내 `0.1.0-pilot.7`의 사용자는 로그아웃 방법을 알 수 없었고, 주소창으로 열면 405였다(`GET`을 받지 않는 것은 옳은 계약이다) | FR-AUTH-001 AC-5 · C-001 · FLOW-000 / WP-015 | 범위 공백 | CR-092 | resolved — 로그인 이름이 사용자 메뉴의 트리거가 되고 「로그아웃」이 `POST /auth/logout` 폼을 제출한다. 문서 요청은 303으로 공개 완료 화면(`/auth/signed-out`, 셸 없음, 「다시 로그인」 하나)을, 스크립트 요청은 기존 JSON을 받는다. 로그인으로 곧장 보내지 않은 것은 IdP 세션으로 곧바로 다시 로그인되기 때문이다(사용자 결정). a11y가 메뉴를 연 상태의 axe 0과 폼 제출을, e2e가 실제 Next 서버의 303과 완료 화면을 건다. 실제 세션으로 브라우저에서 메뉴 → 로그아웃을 도는 것은 IdP가 없어 `NOT RUN` |
 | DEV-699 | 2026-09-15 | **로그인·계정 연결 콜백이 서버가 들은 출처로 복귀 주소를 만들었다.** `app/auth/callback/route.ts`와 `app/gh/identity/callback/route.ts`가 `NextResponse.redirect(new URL(path, request.nextUrl.origin))`로 보냈는데, `next start`는 요청 출처를 자기가 들은 호스트·포트로 조립한다. 사내 `0.1.0-pilot.7`은 nginx 뒤에서 GHE 로그인 뒤 `localhost:3000`으로 떨어졌고 사내는 이를 「로그아웃 뒤 리다이렉트」로 보고했다(로그아웃 라우트는 리다이렉트하지 않았다). pilot.7 web 이미지에 `Host: prs.corp.example`·`X-Forwarded-Host`·`X-Forwarded-Proto: https`를 실어 `location: https://localhost:3000/gh?identity=failed`를 실측했다. **라우트 시험은 `NextRequest`에 출처를 직접 넣어 이것을 볼 수 없었다** | FR-AUTH-001 · FR-GH-008 · FLOW-000 / WP-015 · WP-077 · WP-076 | 구현 결함 | CR-092 | resolved — 복귀 `Location`은 같은 출처의 경로만 담는다(`lib/redirect.ts`, 규칙을 어긴 값은 던진다). 사내 제안(`WEB_EXTERNAL_URL`·`X-Forwarded-Host`)은 맞출 값이 늘거나 열린 리다이렉트가 되어 택하지 않았다(`THR-054`). 라우트 시험이 출처 `localhost:3000`에서도 경로만 나오는지, e2e가 실제 `next start`에 프록시 헤더를 실어 `Location`이 그대로인지, 정적 시험이 라우트 핸들러의 `nextUrl.origin`·`request.url` 리다이렉트를 막는지 건다 |

@@ -172,7 +172,7 @@ describe('QA-A001-10: 운영 항목이 DOM에 없다', () => {
   it('좌측 안내 문구는 역할과 무관하게 렌더링하지 않는다', () => {
     render(<Shell roles={['developer', 'operator']} user={null} title="Search"><p>content</p></Shell>);
     expect(screen.queryByText('Follow the merge order')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Advanced search' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Legacy search' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Repository workspace' })).toBeInTheDocument();
   });
 

@@ -4,7 +4,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Button, Skeleton, Table, FieldSelect } from './reader/primitives';
+import { Button, DatePicker, Skeleton, Table, FieldSelect } from './reader/primitives';
 import { GitPullRequest, GitMerge, History, Search, ArrowDown, ArrowUp, SlidersHorizontal, FolderGit2, Command } from 'lucide-react';
 import { WorkbenchIcon } from './WorkbenchIcon';
 import type { RepositoryOverview } from '../lib/repository-overview';
@@ -16,12 +16,14 @@ import { DiffModal, TimeLapseModal, SourceActions, type DiffTarget } from './sou
 import { detectIdentifier, parseQuery } from '@prs/query';
 import type { ResolutionCandidate } from './ResolutionCandidateList';
 import { serviceMessage } from '../lib/service-message';
+import { MergeNumberBadge } from './MergeNumberBadge';
+import { splitSequenceSpace } from '../lib/merge-number';
+import { buildRepositoryQuery, repositoryLabelOptions, repositorySort, type RepositoryWorkspaceTab } from '../lib/repository-search';
 
-interface SearchData { items: ResultRow[]; total?: { value: number; relation: string }; next_cursor?: string | null }
+interface SearchData { items: ResultRow[]; total?: { value: number; relation: string }; next_cursor?: string | null; facets?: Record<string, { value: string; count: number }[]> }
 interface DetailData { body?: string; message?: string; changed_paths?: string[]; files_truncated?: boolean; changed_paths_truncated?: boolean; source_commits?: { commit_sha: string }[]; merge_commit_sha?: string | null; base_branch?: string; head_branch?: string }
 const TAB_NAMES = { search: "Search", history: "Commit history", open: "My open PRs", merged: "My merged PRs" } as const;
-type WorkspaceTab = keyof typeof TAB_NAMES;
-const quote = (value: string): string => JSON.stringify(value);
+type WorkspaceTab = RepositoryWorkspaceTab;
 
 export function WorkspaceDetail({ row, gheBaseUrl, onPath }: { row: ResultRow; gheBaseUrl?: string; onPath?: (path: string, revision?: string) => void }): ReactNode {
   const [detail, setDetail] = useState<DetailData | null>(null);
@@ -117,20 +119,9 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
     return () => { controller.abort(); };
   }, [repoNonce, repoNext]);
   const query = useMemo(() => {
-    const values = new URLSearchParams(serialized);
-    const filters = [`kind:${tab === 'history' ? 'commit' : 'pull_request'}`, `repo:${quote(repository)}`];
-    for (const key of ['base', 'author', 'label', 'path', 'state']) {
-      const value = values.get(key);
-      if (value && !(key === 'state' && (tab === 'open' || tab === 'merged')) && !(key === 'author' && (tab === 'open' || tab === 'merged'))) filters.push(`${key}:${quote(value)}`);
-    }
-    if (tab === 'open' || tab === 'merged') { filters.push(`author:${quote(login)}`, `state:${tab === 'open' ? 'open' : 'merged'}`); }
-    const from = values.get('from'); const to = values.get('to');
-    if (from && to) filters.push(`merged:${from}..${to}`);
-    const text = values.get('q')?.trim();
-    if (text) filters.push(text);
-    return filters.join(' ');
+    return buildRepositoryQuery({ serialized, repository, tab, login });
   }, [serialized, repository, tab, login]);
-  const sort = params.get('sort') ?? (tab === 'history' ? 'merge_seq' : 'merged_at');
+  const sort = repositorySort(tab, params.get('sort'));
   const order = params.get('order') === 'asc' ? 'asc' : 'desc';
   const requestKey = `${query}|${sort}|${order}`;
   const [loadedKey, setLoadedKey] = useState('');
@@ -144,7 +135,7 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
       setError("Enter both merge start and end dates."); setLoading(false); return;
     }
     const continuation = loadedKey === requestKey ? cursor : null;
-    const search = new URLSearchParams({ q: query, sort, order, size: '50' });
+    const search = new URLSearchParams({ q: query, sort, order, size: '50', facets: continuation ? 'false' : 'true' });
     if (continuation) search.set('cursor', continuation);
     const raw = currentParams.get('q')?.trim() ?? '';
     const detected = detectIdentifier(raw, gheBaseUrl ? { gheBaseUrl } : {});
@@ -161,7 +152,7 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
         return body;
       }).then(body => {
         if (controller.signal.aborted) return;
-        setData(previous => ({ ...body, items: continuation ? [...(previous?.items ?? []), ...body.items] : body.items }));
+        setData(previous => ({ ...body, ...(continuation && previous?.facets ? { facets: previous.facets } : {}), items: continuation ? [...(previous?.items ?? []), ...body.items] : body.items }));
         setLoadedKey(requestKey);
       }).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Search failed"); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -169,6 +160,9 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
     // loadedKey determines whether a cursor belongs to this request; it is not a fetch trigger.
   }, [requestKey, cursor, nonce, repository, login, gheBaseUrl]);
   const rows = loadedKey === requestKey ? data?.items ?? [] : [];
+  const labelOptions = useMemo(() => {
+    return repositoryLabelOptions(draft['label'] ?? '', data?.facets?.['label'] ?? []);
+  }, [data?.facets, draft]);
   function field(key: string, label: string, placeholder = '', type = 'text'): ReactNode {
     const date = type === 'date';
     return <label className={`repo-field repo-field--${key}`}><span>{label}</span><input type={date ? 'text' : type} inputMode={date ? 'numeric' : undefined} pattern={date ? '\\d{4}-\\d{2}-\\d{2}' : undefined} data-reader-search={key === 'q' ? '' : undefined} value={draft[key] ?? ''} placeholder={date ? 'YYYY-MM-DD' : placeholder} onChange={event => { setDraft(current => ({ ...current, [key]: event.target.value })); }} /></label>;
@@ -190,8 +184,7 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
         {!repositoryLoading && !repositoryError && !repositories.length ? <p className="repo-muted">No accessible repositories.</p> : null}
       </div>
       <div className="repo-sidebar-heading"><WorkbenchIcon name="branch" /><h2>Branch</h2></div>
-      <label className="repo-field"><span>Base branch</span><input list="repo-branches" placeholder="All branches" value={draft['base'] ?? ''} onChange={event => { setDraft(current => ({ ...current, base: event.target.value })); }} onBlur={() => { if ((draft['base'] ?? '') !== (params.get('base') ?? '')) navigate({ base: draft['base'] ?? '' }); }} onKeyDown={event => { if (event.key === 'Enter') navigate({ base: draft['base'] ?? '' }); }} /></label>
-      <datalist id="repo-branches">{selected?.sequence_spaces.map(space => <option key={space.base_branch} value={space.base_branch} />)}</datalist>
+      <FieldSelect label="Base branch" value={draft['base'] ?? ''} onChange={base => { setDraft(current => ({ ...current, base })); navigate({ base }); }} options={[{ value: '', label: 'All branches' }, ...(selected?.sequence_spaces.map(space => ({ value: space.base_branch, label: space.base_branch })) ?? [])]} />
       <form onSubmit={event => { event.preventDefault(); const path = draft['path'] ?? ''; navigate({ path: path.replace(/\/+$/, ''), path_kind: !path || path.endsWith('/') ? 'directory' : 'file', source_ref: '', tab: 'history' }); }}>
         {field('path', "Find files and paths", 'src/components/…')}
         <Button type="submit" variant="secondary" disabled={!repository}><WorkbenchIcon name="history" /> View path history</Button>
@@ -206,35 +199,38 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
           {value === tab && tab === 'history' ? <SourceHistory repository={repository} path={params.get('path') ?? ''} kind={params.get('path_kind') ?? 'file'} revision={params.get('source_ref') ?? ''} branch={params.get('base') ?? ''} /> : value === tab ? <>
             <form className="repo-filter-form" onSubmit={event => { event.preventDefault(); navigate(Object.fromEntries(['q', 'author', 'label', 'state', 'from', 'to', 'path', 'base'].map(key => [key, draft[key] ?? '']))); }}>
               <header className="reader-panel-heading"><div><p className="reader-eyebrow">REPOSITORY WORKSPACE</p><h1>{tab === 'history' ? "Commit history" : 'Pull requests'}</h1><p>Find the changes you need and explore their context.</p></div><span className="reader-context"><FolderGit2 size={14} />{repository || "Select repository"}</span></header>
-              <div className="reader-context-grid"><label className="repo-field"><span>Owner</span><input value={repository.split('/')[0] ?? ''} readOnly /></label><label className="repo-field"><span>Repository</span><input value={repository.split('/').slice(1).join('/')} readOnly /></label><label className="repo-field"><span>Base branch</span><input value={draft['base'] || "All branches"} readOnly /></label></div>
+              <div className="reader-context-grid"><label className="repo-field"><span>Owner</span><input value={repository.split('/')[0] ?? ''} readOnly /></label><label className="repo-field"><span>Repository</span><input value={repository.split('/').slice(1).join('/')} readOnly /></label><FieldSelect label="Base branch" value={draft['base'] ?? ''} onChange={base => { setDraft(current => ({ ...current, base })); }} options={[{ value: '', label: 'All branches' }, ...(selected?.sequence_spaces.map(space => ({ value: space.base_branch, label: space.base_branch })) ?? [])]} /></div>
               <div className="repo-filter-grid">
                 <FieldSelect label="Status" value={tab === 'open' || tab === 'merged' ? tab : draft['state'] ?? ''} disabled={tab !== 'search'} onChange={state => { setDraft(current => ({ ...current, state })); }} options={[{ value: '', label: "All states" }, { value: 'open', label: "Open" }, { value: 'merged', label: "Merged" }, { value: 'closed', label: "Closed" }]} />
                 {field('q', "Title · PR number · commit SHA", "Keywords, #1842, or commit SHA…")}
                 {tab === 'open' || tab === 'merged' ? <label className="repo-field"><span>Author</span><input value={login} readOnly /></label> : field('author', "Author", "GitHub username")}
-                {field('label', "Label", "All labels")}
+                <FieldSelect label="Label" value={draft['label'] ?? ''} onChange={label => { setDraft(current => ({ ...current, label })); }} options={labelOptions} />
               </div>
-              <div className="reader-date-grid">{field('from', "Merged after", '', 'date')}{field('to', "Merged before", '', 'date')}<div className="reader-filter-hint"><SlidersHorizontal size={16} /><span>Combine additional filters in your search query.<code>author:kim label:bug</code></span></div></div>
+              <div className="reader-date-grid"><DatePicker label="Merged after" value={draft['from'] ?? ''} onChange={from => { setDraft(current => ({ ...current, from })); }} /><DatePicker label="Merged before" value={draft['to'] ?? ''} onChange={to => { setDraft(current => ({ ...current, to })); }} /><div className="reader-filter-hint"><SlidersHorizontal size={16} /><span>Combine additional filters in your search query.<code>author:kim label:bug</code></span></div></div>
               <div className="repo-filter-footer"><Button type="submit" disabled={!repository || loading}><Search size={15} />{loading ? "Searching…" : "Search"}<kbd>↵</kbd></Button><Button type="button" variant="secondary" onClick={() => { navigate({ q: '', author: '', label: '', state: '', from: '', to: '', path: '', base: '' }); }}>Reset</Button><span className="reader-key-hint"><Command size={13} /> K <span>Quick search</span></span></div>
             </form>
-            <div className="repo-results-heading"><span><GitPullRequest size={17} /> {tab === 'history' ? "Commit" : 'Pull requests'} <strong>{loading ? "Loading…" : loadedKey === requestKey && data?.total ? `${data.total.value.toLocaleString("en-US")}${data.total.relation === 'gte' ? '+' : ''} items` : ''}</strong></span><div><span>{sort === 'merge_seq' ? "Sequence" : "Merged at"} {order === 'desc' ? "Descending" : "Ascending"}</span><Button variant="ghost" aria-label="Refresh search" disabled={loading} onClick={() => { setCursor(null); setNonce(n => n + 1); }}><WorkbenchIcon name="refresh" /></Button></div></div>
+            <div className="repo-results-heading"><span><GitPullRequest size={17} /> {tab === 'history' ? "Commit" : 'Pull requests'} <strong>{loading ? "Loading…" : loadedKey === requestKey && data?.total ? `${data.total.value.toLocaleString("en-US")}${data.total.relation === 'gte' ? '+' : ''} items` : ''}</strong></span><div><span>{sort === 'pr_number' ? "PR" : sort === 'merge_seq' ? "M number" : "Merged at"} {order === 'desc' ? "Descending" : "Ascending"}</span><Button variant="ghost" aria-label="Refresh search" disabled={loading} onClick={() => { setCursor(null); setNonce(n => n + 1); }}><WorkbenchIcon name="refresh" /></Button></div></div>
             {unauthorized ? <p role="alert">Your session has expired. <a href={`${loginPath}?return_to=${encodeURIComponent(`/search?${serialized}`)}`}>Sign in again</a></p> : null}
             {error ? <p role="alert" className="repo-error">{error} <Button variant="secondary" onClick={() => { setCursor(null); setNonce(n => n + 1); }}>Reload first page</Button></p> : null}
             <Table className="repo-table" aria-label={TAB_NAMES[tab]} scrollContainerProps={{ tabIndex: 0 }}>
-              <Table.Head><Table.Row><Table.HeaderCell scope="col"><span className="reader-sr-only">Details</span></Table.HeaderCell>
-                <Table.HeaderCell scope="col" aria-sort={sort === 'merge_seq' ? order === 'asc' ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => { sortBy('merge_seq'); }}>Sequence {sort === 'merge_seq' && order === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}</button></Table.HeaderCell>
-                <Table.HeaderCell scope="col">PR / changes</Table.HeaderCell><Table.HeaderCell scope="col">Author</Table.HeaderCell><Table.HeaderCell scope="col">Status</Table.HeaderCell>
+              <Table.Head><Table.Row><Table.HeaderCell scope="col" aria-sort={sort === 'pr_number' ? order === 'asc' ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => { sortBy('pr_number'); }}># {sort === 'pr_number' && order === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}</button></Table.HeaderCell>
+                <Table.HeaderCell scope="col" aria-sort={sort === 'merge_seq' ? order === 'asc' ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => { sortBy('merge_seq'); }}>M number {sort === 'merge_seq' && order === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}</button></Table.HeaderCell>
+                <Table.HeaderCell scope="col">Title</Table.HeaderCell><Table.HeaderCell scope="col">Author</Table.HeaderCell><Table.HeaderCell scope="col">Status</Table.HeaderCell>
                 <Table.HeaderCell scope="col" aria-sort={sort === 'merged_at' ? order === 'asc' ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => { sortBy('merged_at'); }}>Merged at {sort === 'merged_at' && order === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}</button></Table.HeaderCell><Table.HeaderCell scope="col">Changes</Table.HeaderCell>
+                <Table.HeaderCell scope="col"><span className="reader-sr-only">Details</span></Table.HeaderCell>
               </Table.Row></Table.Head><Table.Body>
-                {loading && !rows.length ? Array.from({ length: 7 }, (_, index) => <Table.Row key={index}><Table.Cell colSpan={7}><Skeleton label={index === 0 ? "Loading changes" : ''} /></Table.Cell></Table.Row>) : rows.map(row => {
+                {loading && !rows.length ? Array.from({ length: 7 }, (_, index) => <Table.Row key={index}><Table.Cell colSpan={8}><Skeleton label={index === 0 ? "Loading changes" : ''} /></Table.Cell></Table.Row>) : rows.map(row => {
                   const id = `${row.kind}:${row.repository}:${row.pr_number ?? row.commit_sha}:${row.sequence_space}`;
                   const name = row.pr_number ? `#${row.pr_number}` : row.commit_sha?.slice(0, 12) ?? "Commit";
+                  const gheHref = gheBaseUrl && row.repository && row.pr_number ? `${gheBaseUrl.replace(/\/$/, '')}/${row.repository}/pull/${row.pr_number}` : null;
                   return <Fragment key={id}><Table.Row data-expanded={expanded === id || undefined} onMouseEnter={() => { setActiveRow(row); }} onFocusCapture={() => { setActiveRow(row); }}>
-                    <Table.Cell><button type="button" className="repo-expand" aria-expanded={expanded === id} aria-label={`${name} Details`} onClick={() => { setExpanded(expanded === id ? null : id); }}><WorkbenchIcon name="chevron" /></button></Table.Cell>
-                    <Table.Cell><span className="repo-sequence" title={row.sequence_space ?? ''}>{row.merge_seq ?? '—'}</span></Table.Cell>
-                    <Table.Cell><button type="button" className="repo-title-button" onClick={() => { setExpanded(expanded === id ? null : id); }}><span className="repo-pr-number">{name}</span>{row.title ?? name}</button><small>{row.sequence_space ?? row.repository}</small></Table.Cell>
+                    <Table.Cell>{gheHref ? <a className="repo-pr-link" href={gheHref} target="_blank" rel="noreferrer" aria-label={`${name} in GitHub Enterprise`}>{name}</a> : <span className="repo-pr-link">{name}</span>}</Table.Cell>
+                    <Table.Cell><span className="repo-mnumber"><MergeNumberBadge fields={row} context={{ kind: row.kind, repository: splitSequenceSpace(row.sequence_space)?.repository ?? row.repository, baseBranch: splitSequenceSpace(row.sequence_space)?.baseBranch ?? null }} /></span></Table.Cell>
+                    <Table.Cell><button type="button" className="repo-title-button" onClick={() => { setExpanded(expanded === id ? null : id); }}>{row.title ?? (row.kind === 'commit' ? name : 'Untitled pull request')}</button><small>{row.sequence_space ?? row.repository}</small></Table.Cell>
                     <Table.Cell><span className="reader-author"><span className="reader-avatar">{(row.author ?? '?').slice(0, 2).toUpperCase()}</span>{row.author ?? '—'}</span></Table.Cell><Table.Cell><span className="reader-state" data-state={row.state ?? 'unknown'}>{row.state === 'merged' ? <GitMerge size={13} /> : <GitPullRequest size={13} />}{row.state === 'merged' ? "Merged" : row.state === 'open' ? "Open" : row.state === 'closed' ? "Closed" : '—'}</span></Table.Cell>
                     <Table.Cell><time dateTime={row.merged_at ?? undefined}>{formatTimestamp(row.merged_at)}</time></Table.Cell><Table.Cell><span className="prs-diff-added">{row.additions === null ? '—' : `+${row.additions}`}</span> <span className="repo-deletions">{row.deletions === null ? '' : `−${row.deletions}`}</span></Table.Cell>
-                  </Table.Row>{expanded === id ? <Table.Row><Table.Cell colSpan={7}><WorkspaceDetail row={row} {...(gheBaseUrl ? { gheBaseUrl } : {})} onPath={(path, revision) => { navigate({ path, tab: 'history', path_kind: 'file', source_ref: revision ?? '' }); }} /></Table.Cell></Table.Row> : null}</Fragment>;
+                    <Table.Cell><button type="button" className="repo-expand" aria-expanded={expanded === id} aria-label={`${name} Details`} onClick={() => { setExpanded(expanded === id ? null : id); }}><WorkbenchIcon name="chevron" /></button></Table.Cell>
+                  </Table.Row>{expanded === id ? <Table.Row><Table.Cell colSpan={8}><WorkspaceDetail row={row} {...(gheBaseUrl ? { gheBaseUrl } : {})} onPath={(path, revision) => { navigate({ path, tab: 'history', path_kind: 'file', source_ref: revision ?? '' }); }} /></Table.Cell></Table.Row> : null}</Fragment>;
                 })}
               </Table.Body></Table>
             {!loading && !error && !rows.length ? <div className="repo-empty"><WorkbenchIcon name="search" /><h2>{repository ? "No matching changes" : "No repositories to display"}</h2><p>{repository ? "Adjust your query or filters and search again." : "PRs will appear when an accessible ingested repository is available."}</p></div> : null}

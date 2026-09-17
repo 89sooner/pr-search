@@ -1,5 +1,9 @@
 # 변경 관리 대장
 
+## CR-099 — PR 중심 검색 필터·테이블·달력 보정 (2026-09-17)
+
+사용자는 operator의 Legacy 통합 검색 보존을 확인하고, 기본 Repository workspace 검색을 PR 중심으로 보정하도록 승인했다. operator 진입점은 `/search?legacy=1`이며 화면 라벨을 Legacy search로 명확히 한다. Base branch·Label은 선택 컨트롤, Merged after/before는 Radix Popover 달력으로 제공한다. 결과 표는 `#` PR 링크를 첫 열, M number를 둘째 열, 제목을 셋째 열로 두고 기본 `pr_number DESC`를 사용한다. PR 번호를 제목/changes 열에서 중복 표시하지 않는다. UI 상태 필터는 `is:merged/open/closed` 정본 문법을 사용한다. 배지는 semantic tone별 경계·강조를 보강한다. FR-SRCH-007에 `pr_number` 정렬 키와 W-001 PR 목록 기본 정렬을 추가하며 WP-087로 추적한다. 상태: 로컬 구현 완료 — query/sort/parser82/82·달력/shell a11y34/34·타입·lint·빌드·실제 Chromium 필터/표/Source 회귀 통과. PR·신규 릴리스 미발행.
+
 ## CR-098 — 사내 GHE 권한명·operator 바로가기 보정 (2026-09-17)
 
 사내 반입에서 협업자 권한 API가 `read`·`write`/`writer`를 반환할 때 등록 저장소가 접근 범위에서 빠지는 문제와, 일반 사용자의 reader 상단에 Workspace 바로가기 메뉴가 노출되는 문제를 사용자가 보고했다. FR-AUTH-002의 read 이상 판정과 기존 operator UI 격리를 구현에 맞춘다. `READABLE_PERMISSIONS`는 REST 내부 이름과 사내 역할 이름을 함께 허용하고, reader 상단 Workspace 메뉴는 operator에게만 렌더링한다. 좌측의 “Follow the merge order” 설명은 제거하되 operator의 Advanced search·Repository workspace 링크는 보존한다. Merged after/before 입력은 로케일별 `연도-월-일` 대신 `YYYY-MM-DD` placeholder와 같은 형식 검사를 사용한다. WP-086. 요구사항 범위를 넓히지 않는 구현 결함 수정이며 DEV-704~708로 추적한다. CI가 반복 검출한 단일 검색결과 자동 이동 중복도 같은 릴리스 게이트에서 보정했다. 상태: PR #203·PR/main 전체 CI·`0.1.0-pilot.11` 발행 완료. 사내 재반입 검증은 NOT RUN.

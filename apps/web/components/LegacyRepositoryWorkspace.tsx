@@ -4,6 +4,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Skeleton, Table, Tabs } from './ui';
+import { DatePicker } from './reader/primitives';
 import { WorkbenchIcon } from './WorkbenchIcon';
 import type { RepositoryOverview } from '../lib/repository-overview';
 import type { ResultRow } from './ResultTable';
@@ -14,12 +15,12 @@ import { SourceActions, DiffModal, TimeLapseModal, type DiffTarget } from './sou
 import { detectIdentifier, parseQuery } from '@prs/query';
 import type { ResolutionCandidate } from './ResolutionCandidateList';
 import { serviceMessage } from '../lib/service-message';
+import { buildRepositoryQuery, repositorySort, type RepositoryWorkspaceTab } from '../lib/repository-search';
 
 interface SearchData { items: ResultRow[]; total?: { value: number; relation: string }; next_cursor?: string | null }
 interface DetailData { body?: string; message?: string; changed_paths?: string[]; files_truncated?: boolean; changed_paths_truncated?: boolean; source_commits?: { commit_sha: string }[]; merge_commit_sha?: string | null; base_branch?: string; head_branch?: string }
 const TAB_NAMES = { search: "Search", history: "Commit history", open: "My open PRs", merged: "My merged PRs" } as const;
-type WorkspaceTab = keyof typeof TAB_NAMES;
-const quote = (value: string): string => JSON.stringify(value);
+type WorkspaceTab = RepositoryWorkspaceTab;
 
 export function LegacyWorkspaceDetail({ row, gheBaseUrl, onPath }: { row: ResultRow; gheBaseUrl?: string; onPath?: (path: string, revision?: string) => void }): ReactNode {
   const [detail, setDetail] = useState<DetailData | null>(null);
@@ -115,20 +116,9 @@ export function LegacyRepositoryWorkspace({ login = '', loginPath, gheBaseUrl }:
     return () => { controller.abort(); };
   }, [repoNonce, repoNext]);
   const query = useMemo(() => {
-    const values = new URLSearchParams(serialized);
-    const filters = [`kind:${tab === 'history' ? 'commit' : 'pull_request'}`, `repo:${quote(repository)}`];
-    for (const key of ['base', 'author', 'label', 'path', 'state']) {
-      const value = values.get(key);
-      if (value && !(key === 'state' && (tab === 'open' || tab === 'merged')) && !(key === 'author' && (tab === 'open' || tab === 'merged'))) filters.push(`${key}:${quote(value)}`);
-    }
-    if (tab === 'open' || tab === 'merged') { filters.push(`author:${quote(login)}`, `state:${tab === 'open' ? 'open' : 'merged'}`); }
-    const from = values.get('from'); const to = values.get('to');
-    if (from && to) filters.push(`merged:${from}..${to}`);
-    const text = values.get('q')?.trim();
-    if (text) filters.push(text);
-    return filters.join(' ');
+    return buildRepositoryQuery({ serialized, repository, tab, login });
   }, [serialized, repository, tab, login]);
-  const sort = params.get('sort') ?? (tab === 'history' ? 'merge_seq' : 'merged_at');
+  const sort = repositorySort(tab, params.get('sort'));
   const order = params.get('order') === 'asc' ? 'asc' : 'desc';
   const requestKey = `${query}|${sort}|${order}`;
   const [loadedKey, setLoadedKey] = useState('');
@@ -209,7 +199,7 @@ export function LegacyRepositoryWorkspace({ login = '', loginPath, gheBaseUrl }:
                 {tab === 'open' || tab === 'merged' ? <label className="repo-field"><span>Author</span><input value={login} readOnly /></label> : field('author', "Author", "GitHub username")}
                 {field('label', "Label", "All labels")}
                 <label className="repo-field"><span>Status</span><select value={tab === 'open' || tab === 'merged' ? tab : draft['state'] ?? ''} disabled={tab !== 'search'} onChange={event => { setDraft(current => ({ ...current, state: event.target.value })); }}><option value="">All</option><option value="open">Open</option><option value="merged">Merged</option><option value="closed">Closed</option></select></label>
-                {field('from', "Merged after", '', 'date')}{field('to', "Merged before", '', 'date')}
+                <DatePicker label="Merged after" value={draft['from'] ?? ''} onChange={from => { setDraft(current => ({ ...current, from })); }} /><DatePicker label="Merged before" value={draft['to'] ?? ''} onChange={to => { setDraft(current => ({ ...current, to })); }} />
               </div>
               <div className="repo-filter-footer"><span>Combine filters to find the changes you need.</span><Button type="button" variant="ghost" size="sm" onClick={() => { navigate({ q: '', author: '', label: '', state: '', from: '', to: '', path: '', base: '' }); }}>Reset filters</Button></div>
             </form>

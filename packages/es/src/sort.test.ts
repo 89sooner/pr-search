@@ -25,9 +25,10 @@ function specOf(sort: readonly unknown[], index: number): Record<string, unknown
   return entry[key] ?? {};
 }
 
-describe('DoD 4: 정렬 키 여덟 (AC-1)', () => {
-  it('SRS가 열거한 여덟 그대로다', () => {
+describe('DoD 4: 정렬 키 아홉 (AC-1)', () => {
+  it('SRS가 열거한 아홉 그대로다', () => {
     expect([...SORT_KEYS]).toEqual([
+      'pr_number',
       'merge_seq',
       'merged_at',
       'created_at',
@@ -39,7 +40,7 @@ describe('DoD 4: 정렬 키 여덟 (AC-1)', () => {
     ]);
   });
 
-  it('여덟 모두 정렬 절을 만든다', () => {
+  it('아홉 모두 정렬 절을 만든다', () => {
     for (const key of SORT_KEYS) {
       expect(buildSort(key, 'desc').length, key).toBeGreaterThan(0);
     }

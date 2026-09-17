@@ -13,7 +13,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.33 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.35 | 갱신일: 2026-09-17
 
 ## 1. 목적
 
@@ -516,7 +516,7 @@
 - **`seq:` 질의에 새 오류 코드를 만들지 않는다** (CR-051). 부족한 것은 파라미터이고(`INVALID_PARAMETER`), 확인할 수 없는 것은 자원이다(`NOT_FOUND`). `detail.reason`이 무엇이 부족한지를 가른다
 - **문법·값 오류는 파서가 낸다** (CR-014, DEV-038). `@prs/query`가 오류 코드와 문자 오프셋을 함께 돌려주고 API는 그대로 실어 보낸다. `QUERY_TOO_SHORT`(전문 검색어 1자)도 파서가 판정한다 — 무엇이 전문 검색어인지 아는 곳이 파서뿐이다
 - 페이지네이션: `size` 기본 25, 최대 200 (초과 시 200으로 절삭). `cursor`로 다음 페이지. **오프셋 파라미터는 없다** (공통 원칙 7, ADR-010)
-- 정렬: `merge_seq` | `merged_at` | `created_at` | `updated_at` | `changed_files_count` | `additions` | `lead_time_seconds` | `relevance`. 기본 `merge_seq` desc
+- 정렬: `pr_number` | `merge_seq` | `merged_at` | `created_at` | `updated_at` | `changed_files_count` | `additions` | `lead_time_seconds` | `relevance`. API 기본 `merge_seq` desc. W-001 Repository workspace PR 목록은 `pr_number` desc를 명시한다 (CR-099)
 - **모든 정렬은 문서 ID를 마지막 키로 갖는다** (FR-SRCH-007 AC-4). 동점이 있어도 두 번 조회한 순서가 같다. 그 값은 `_id`가 아니라 **`doc_id` 필드**다 (CR-016, DEV-059) — Elasticsearch 8은 `_id` 정렬을 금지한다. `upsert`가 `_id`와 같은 값을 그 필드에 함께 넣는다
 - **`relevance`는 전문 검색이 서기 전까지 문서 ID 순이다** (CR-016, DEV-056). 접근 범위 필터는 `filter` 절이라 점수를 만들지 않으므로 모든 문서의 점수가 같다. 키를 거절하지는 않는다 — AC-1이 지원 키로 열거했다. 실제 점수는 WP-032가 붙인다
 - **`facets`와 `next_cursor`는 WP-032 전까지 이렇게 나간다** (CR-016, DEV-057). `next_cursor`는 **항상 `null`**로 실린다(키가 있고 값이 없다 = 다음 페이지가 없다). `facets`는 **키 자체가 없다** — 빈 객체는 "패싯을 셌는데 아무것도 없다"로 읽히기 때문이다
