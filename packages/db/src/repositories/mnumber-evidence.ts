@@ -26,8 +26,12 @@ export type EvidenceState = 'unresolved' | 'pr_confirmed' | 'direct_confirmed';
  *
  * `authoritative_absence`는 **production 판정기가 만들지 않는다** (DEV-581, 상세 설계
  * 2.2). 격리 통합 시험만 직접 주입하며, 그 사실은 `proof.fixture_seeded`로 남는다.
+ *
+ * `operator_attestation`은 운영자 확인서(ENT-SEQ-008, CR-100)가 덮은 항목이다. 확인서 자체가
+ * 근거이고 `proof.attestation_id`가 그 행을 가리킨다 — 어느 결정이 이 항목을 지나가게 했는지
+ * 감사 기록과 함께 되짚을 수 있다.
  */
-export type EvidenceSourceKind = 'pr_detail' | 'verified_snapshot' | 'unresolved_lookup' | 'authoritative_absence';
+export type EvidenceSourceKind = 'pr_detail' | 'verified_snapshot' | 'unresolved_lookup' | 'authoritative_absence' | 'operator_attestation';
 
 /** `proof`에 허용되는 필드 (상세 설계 6.2). 제목·본문·작성자·URL·토큰은 넣지 않는다. */
 export interface EvidenceProof {
@@ -47,6 +51,22 @@ export interface EvidenceProof {
   readonly fixture_seeded?: true;
   /** 후속 회차가 이어 받을 열거 cursor (`partial_lookup`). */
   readonly resume_page?: number;
+  /** 이 항목을 덮은 운영자 확인서 (CR-100). 아래 넷은 `operator_attestation`에서만 있다. */
+  readonly attestation_id?: number;
+  /** 확인서가 덮기 전 판정 사유 (`negative_evidence_unavailable` 또는 `unsupported_merge_profile`). */
+  readonly attested_reason?: string;
+  readonly attested_at?: string;
+  readonly grace_seconds?: number;
+  /** 유예 기준 시각 — 정본 행의 `committed_at`. */
+  readonly committed_at?: string;
+}
+
+/** 확정된 근거를 미확정으로 내리려 했다. 호출 측의 읽기가 오래됐다는 뜻이며 회차를 다시 시작해야 한다. */
+export class EvidenceDowngradeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EvidenceDowngradeError';
+  }
 }
 
 export interface EvidenceRow {
@@ -89,6 +109,11 @@ export interface EvidenceUpsert {
  * 오는 것을 막으려면 먼저 `listEvidence`로 읽고 판정한 뒤 호출한다. 그 판정을
  * 여기 넣으면 시험 주입 경로(`direct_confirmed`)까지 같은 규칙에 걸린다.
  *
+ * 단 하나, **확정 → 미확정은 여기서도 거절한다** (CR-100 / DEV-715). 호출 측이 트랜잭션 밖에서
+ * 읽은 근거가 오래됐을 때 그 사이 들어온 확정(운영자 확인서·수동 근거)을 `unresolved`로 덮는
+ * 것이 사내 반입에서 실제로 일어났다. 그 전이는 어떤 경로에서도 옳지 않으므로 SQL이 마지막
+ * 방어선이 되고, 걸리면 `EvidenceDowngradeError`로 회차를 되돌린다.
+ *
  * `first_pending_at`은 미확정이 **처음** 관측된 시각이며 이후 미확정 재기록은
  * 그 값을 보존한다. 확정되면 NULL이다.
  *
@@ -118,6 +143,7 @@ export async function upsertEvidence(db: Queryable, input: EvidenceUpsert): Prom
                                 END,
             proof             = EXCLUDED.proof
       WHERE mnumber_evidence.commit_sha = EXCLUDED.commit_sha
+        AND NOT (mnumber_evidence.state IN ('pr_confirmed', 'direct_confirmed') AND EXCLUDED.state = 'unresolved')
      RETURNING *`,
     [
       input.repositoryId,
@@ -136,6 +162,13 @@ export async function upsertEvidence(db: Queryable, input: EvidenceUpsert): Prom
   );
   const row = result.rows[0];
   if (row === undefined) {
+    const existing = await findEvidence(db, input.repositoryId, input.baseBranch, input.seqEpoch, input.mergeSeq);
+    if (existing !== undefined && existing.commit_sha === input.commitSha.toLowerCase() && input.state === 'unresolved') {
+      throw new EvidenceDowngradeError(
+        `서수 ${String(input.mergeSeq)}의 확정된 근거(${existing.state})를 미확정으로 내리지 않는다: ` +
+          `${String(input.repositoryId)}/${input.baseBranch}@${String(input.seqEpoch)}`,
+      );
+    }
     throw new Error(
       `서수 ${String(input.mergeSeq)}의 근거에 다른 커밋이 이미 있다: ` +
         `${String(input.repositoryId)}/${input.baseBranch}@${String(input.seqEpoch)} != ${input.commitSha}`,
@@ -157,6 +190,32 @@ export async function listEvidence(
   const result = await db.query<EvidenceRow>(
     `SELECT * FROM mnumber_evidence
       WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq = ANY($4::bigint[])`,
+    [repositoryId, baseBranch, seqEpoch, mergeSeqs],
+  );
+  for (const row of result.rows) out.set(Number(row.merge_seq), row);
+  return out;
+}
+
+/**
+ * `listEvidence`와 같되 행을 `FOR UPDATE`로 잠근다 — 트랜잭션 안에서만 부른다 (CR-100 / DEV-715).
+ *
+ * 채번 회차는 근거를 트랜잭션 밖에서 읽고 GHE를 조회한 뒤 트랜잭션에서 저장한다. 그 사이에 다른
+ * 쓰기(운영자 확인서·수동 근거·다른 워커)가 들어왔는지는 잠근 채 다시 읽어야 안다.
+ */
+export async function lockEvidence(
+  db: PoolClient,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  mergeSeqs: readonly number[],
+): Promise<Map<number, EvidenceRow>> {
+  const out = new Map<number, EvidenceRow>();
+  if (mergeSeqs.length === 0) return out;
+  const result = await db.query<EvidenceRow>(
+    `SELECT * FROM mnumber_evidence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq = ANY($4::bigint[])
+      ORDER BY merge_seq
+      FOR UPDATE`,
     [repositoryId, baseBranch, seqEpoch, mergeSeqs],
   );
   for (const row of result.rows) out.set(Number(row.merge_seq), row);

@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.25 | 갱신일: 2026-09-15
+> 상태: review | 버전: v0.26 | 갱신일: 2026-09-17
 
 CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025의 최종 필드·check·unique·FK·초기화·role grant·checkpoint/epoch·retention/rollback은 [상세 설계](pr_search_wp074_design.md) 6~7·10절이 소유한다. 아래 CR-077 DDL은 기본 다섯 필드만 보여주는 부분 예시이며 단독 구현하지 않는다.
 
@@ -9,6 +9,7 @@ CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025�
 | ENT-SEQ-005 | mnumber_evidence | PR/direct/unresolved 증거, PostgreSQL | FR-SEQ-008 AC-10 |
 | ENT-SEQ-006 | sequence_work | 고정 kind의 durable intent/outbox, PostgreSQL | FR-SEQ-008 AC-11 |
 | ENT-SEQ-007 | sequence_latency_sample | 단계별 읽기 전용 관측 자료의 원천, PostgreSQL | FR-SEQ-008 AC-14 |
+| ENT-SEQ-008 | mnumber_attestation | M 번호 운영자 확인서(공간·에폭·범위·유예·행위자·사유·철회), PostgreSQL, 마이그레이션 031 — 상세는 WP-074 설계 6.5절 | FR-SEQ-008 AC-15 (CR-100) |
 
 ## 1. 목적
 

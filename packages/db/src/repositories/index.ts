@@ -23,6 +23,8 @@ export { MAX_SEQUENCE_BRANCHES } from './repository.js';
 export * as sequenceSpaceRepo from './sequence-space.js';
 /** M 번호 근거 (WP-074 / ENT-SEQ-005, CR-079). */
 export * as mnumberEvidenceRepo from './mnumber-evidence.js';
+/** M 번호 운영자 확인서 (CR-100 / ENT-SEQ-008, WP-088). */
+export * as mnumberAttestationRepo from './mnumber-attestation.js';
 /** M 경로의 durable work (WP-074 / ENT-SEQ-006, CR-079). */
 export * as sequenceWorkRepo from './sequence-work.js';
 /** 단계별 지연 표본 (WP-074 / ENT-SEQ-007, CR-079). */
@@ -98,6 +100,8 @@ export type {
   EvidenceState,
   EvidenceUpsert,
 } from './mnumber-evidence.js';
+export { EvidenceDowngradeError } from './mnumber-evidence.js';
+export type { AttestationRow, CreateAttestationInput } from './mnumber-attestation.js';
 export type {
   ClaimOptions,
   CoveredRefresh,

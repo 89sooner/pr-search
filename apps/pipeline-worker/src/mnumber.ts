@@ -13,9 +13,13 @@
  *
  * ## 이 워커가 정하지 않는 것
  *
- * 직접 푸시의 부재 확정. production은 `direct_confirmed`를 만들지 않으며 (DEV-581),
+ * 직접 푸시의 부재 확정. production은 스스로 `direct_confirmed`를 만들지 않으며 (DEV-581),
  * 그 결과 첫 미확정 항목 뒤의 PR이 전부 `pending`으로 남을 수 있다. 그 사실을 감추지
  * 않고 `mnumber_blocked_total{reason}`과 공간 blocker로 드러낸다.
+ *
+ * 그 판단을 대신 내리는 것은 **운영자 확인서**다 (CR-100 / FR-SEQ-008 AC-15, `mnumber-attestation.ts`).
+ * 확인서가 있으면 부재 미확정·프로파일 밖 항목을 유예 뒤에 번호 없이 지나가고, 그 사실을
+ * `mnumber_attested_total`과 근거 행(`operator_attestation`)으로 남긴다.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -24,6 +28,7 @@ import { EVENT_NAMES, deterministicEventId, sequencePartitionKey, type MergeNumb
 import { TOPICS, type EventBus } from '@prs/bus';
 import {
   mergeSequenceRepo,
+  mnumberAttestationRepo,
   mnumberEvidenceRepo,
   repositoryRepo,
   sequenceLatencyRepo,
@@ -39,6 +44,7 @@ import {
 import { applyMergeNumberToDocument, clearMergeNumbersBelowEpoch, readMergeNumberProjectionInternal } from '@prs/es';
 import type { MergeNumberBlockReason } from '@prs/domain';
 import type { WorkerMetrics } from './metrics.js';
+import { applyAttestation } from './mnumber-attestation.js';
 import { resolveEvidence, type EvidenceDecision, type EvidenceDeps } from './mnumber-evidence.js';
 import { planMergeNumbers, type PlanRow } from './mnumber-plan.js';
 import type { MergeNumberConfig } from './mnumber-config.js';
@@ -68,7 +74,14 @@ export type ReconcileOutcome =
       readonly kind: 'done';
       readonly epoch: number;
       readonly assigned: number;
-      readonly blocked: { readonly seq: number; readonly reason: MergeNumberBlockReason } | null;
+      /** 운영자 확인서로 번호 없이 지나간 항목 수 (CR-100). */
+      readonly attested: number;
+      readonly blocked: {
+        readonly seq: number;
+        readonly reason: MergeNumberBlockReason;
+        /** 확인서가 이 서수를 덮지만 유예가 아직 지나지 않았다. 이 시각에 다시 본다 (CR-100). */
+        readonly retryAt?: Date;
+      } | null;
       /** batch를 다 보기 전에 예산이 끝났다. 곧바로 다음 회차다. */
       readonly continueImmediately: boolean;
     }
@@ -163,14 +176,22 @@ export async function reconcileMergeNumbers(
   const rows = await mergeSequenceRepo.listCandidatesAfter(deps.pool, repositoryId, baseBranch, epoch, checkpoint.headSeq, deps.config.batchSize);
   if (rows.length === 0) {
     // 확인할 행이 없다. blocker가 남아 있다면 그것은 지난 회차의 사실 그대로다.
-    return { kind: 'done', epoch, assigned: 0, blocked: space.mnumber_blocked_seq === null ? null : { seq: Number(space.mnumber_blocked_seq), reason: space.mnumber_blocked_reason as MergeNumberBlockReason }, continueImmediately: false };
+    return { kind: 'done', epoch, assigned: 0, attested: 0, blocked: space.mnumber_blocked_seq === null ? null : { seq: Number(space.mnumber_blocked_seq), reason: space.mnumber_blocked_reason as MergeNumberBlockReason }, continueImmediately: false };
   }
 
   // ---- 트랜잭션 밖: 근거 조회. 첫 미확정에서 멈춘다 — 그 뒤는 어차피 이번 회차에 번호를 받지 못한다.
   const existing = await mnumberEvidenceRepo.listEvidence(deps.pool, repositoryId, baseBranch, epoch, rows.map((row) => row.merge_seq));
+  /*
+   * 운영자 확인서 (CR-100 / FR-SEQ-008 AC-15). 있으면 「부재 미확정」과 「프로파일 밖」을 유예가 지난
+   * 항목에 한해 번호 없이 지나간다. 없으면 아래는 기존 규칙 그대로다 — 확인서는 새 판정을 만들지
+   * 않고 기존 판정 위에 얹힌다.
+   */
+  const attestation = await mnumberAttestationRepo.findActiveAttestation(deps.pool, repositoryId, baseBranch, epoch);
   const decisions = new Map<number, EvidenceDecision>();
+  let attested = 0;
+  let gracePending: { readonly seq: number; readonly readyAt: Date } | null = null;
   for (const row of rows) {
-    const decision = await resolveEvidence(
+    let decision = await resolveEvidence(
       deps.evidence,
       {
         repository,
@@ -183,6 +204,15 @@ export async function reconcileMergeNumbers(
       },
       { ...(options.force === undefined ? {} : { force: options.force }) },
     );
+    if (decision.kind === 'unresolved' && attestation !== undefined) {
+      const verdict = applyAttestation({ attestation, decision, row: { mergeSeq: row.merge_seq, committedAt: row.committed_at }, now: now() });
+      if (verdict.kind === 'attested') {
+        decision = verdict.decision;
+        attested += 1;
+      } else if (verdict.kind === 'grace_pending') {
+        gracePending = { seq: row.merge_seq, readyAt: verdict.readyAt };
+      }
+    }
     decisions.set(row.merge_seq, decision);
     if (decision.kind === 'unresolved') break;
   }
@@ -200,6 +230,23 @@ export async function reconcileMergeNumbers(
     if (current === undefined || current.seq_epoch !== epoch || Number(current.mnumber_head_seq) !== checkpoint.headSeq) {
       await client.query('ROLLBACK');
       return { kind: 'retry', reason: 'checkpoint_moved' };
+    }
+
+    /*
+     * **근거가 그 사이 움직였으면 이번 회차를 버린다** (CR-100 / DEV-715).
+     *
+     * 위 `existing`은 트랜잭션 밖에서 읽었고 그 뒤 GHE 조회가 몇 초를 쓴다. 그 사이 운영자 확인서·
+     * 수동 근거·다른 워커가 같은 서수를 확정했을 수 있다. 오래된 `existing`으로 판정한 `unresolved`를
+     * 그대로 저장하면 그 확정을 덮는다 — 사내 반입에서 실제로 일어난 일이다. 잠근 채 다시 읽어
+     * 버전이 다르면 저장하지 않고, 다음 회차가 새 근거로 판정한다.
+     */
+    const locked = await mnumberEvidenceRepo.lockEvidence(client, repositoryId, baseBranch, epoch, [...decisions.keys()]);
+    for (const seq of decisions.keys()) {
+      if ((existing.get(seq)?.evidence_version ?? 0) !== (locked.get(seq)?.evidence_version ?? 0)) {
+        await client.query('ROLLBACK');
+        log({ level: 'warn', message: '근거가 조회 사이에 바뀌어 이번 회차를 버린다 — 다음 회차가 새 근거로 판정한다', repository_id: repositoryId, base_branch: baseBranch, merge_seq: seq, reason: 'evidence_moved' });
+        return { kind: 'retry', reason: 'evidence_moved' };
+      }
     }
 
     /*
@@ -252,7 +299,7 @@ export async function reconcileMergeNumbers(
       });
       deps.metrics.mnumberBlockedTotal.inc({ reason: 'canonical_mismatch' });
       log({ level: 'error', message: 'M 번호 쓰기 행 수가 planner와 다르다 — 정본 불일치로 멈춘다', repository_id: repositoryId, base_branch: baseBranch, expected: plan.assignments.length, written, reason: 'canonical_mismatch' });
-      return { kind: 'done', epoch, assigned: 0, blocked: { seq: firstSeq, reason: 'canonical_mismatch' }, continueImmediately: false };
+      return { kind: 'done', epoch, assigned: 0, attested: 0, blocked: { seq: firstSeq, reason: 'canonical_mismatch' }, continueImmediately: false };
     }
 
     const advanced = await sequenceSpaceRepo.advanceMergeNumberCheckpoint(client, repositoryId, baseBranch, epoch, {
@@ -306,9 +353,14 @@ export async function reconcileMergeNumbers(
     await client.query('COMMIT');
 
     const bySeq = new Map(rows.map((row) => [row.merge_seq, row]));
+    // 멈춘 자리가 확인서의 유예 대기라면 러너가 그 시각에 다시 보도록 알린다 (CR-100).
+    const blockedOutcome =
+      plan.blocked !== null && gracePending !== null && gracePending.seq === plan.blocked.seq
+        ? { ...plan.blocked, retryAt: gracePending.readyAt }
+        : plan.blocked;
     committed = {
       assignments: plan.assignments.map((one) => ({ ...one, sha: bySeq.get(one.mergeSeq)?.commit_sha ?? '' })),
-      blocked: { kind: 'done', epoch, assigned: plan.assignments.length, blocked: plan.blocked, continueImmediately: plan.budgetExhausted && plan.blocked === null },
+      blocked: { kind: 'done', epoch, assigned: plan.assignments.length, attested, blocked: blockedOutcome, continueImmediately: plan.budgetExhausted && plan.blocked === null },
     };
     if (plan.orderMismatches > 0) deps.metrics.mnumberOrderMismatchTotal.inc({ repository: String(repositoryId) }, plan.orderMismatches);
   } catch (error) {
@@ -322,6 +374,7 @@ export async function reconcileMergeNumbers(
   const outcome = committed.blocked;
   if (outcome.assigned > 0) deps.metrics.mnumberAssignedTotal.inc({ repository: String(repositoryId) }, outcome.assigned);
   if (outcome.blocked !== null) deps.metrics.mnumberBlockedTotal.inc({ reason: outcome.blocked.reason });
+  if (outcome.attested > 0) deps.metrics.mnumberAttestedTotal.inc({ repository: String(repositoryId) }, outcome.attested);
   await recordAssignmentSamples(deps, repository, baseBranch, epoch, committed.assignments, options.trigger ?? 'reconcile');
   log({
     level: 'info',
@@ -330,9 +383,10 @@ export async function reconcileMergeNumbers(
     base_branch: baseBranch,
     seq_epoch: epoch,
     assigned: outcome.assigned,
+    attested: outcome.attested,
     ...(outcome.blocked === null ? {} : { blocked_seq: outcome.blocked.seq, blocked_reason: outcome.blocked.reason }),
+    ...(outcome.blocked?.retryAt === undefined ? {} : { attestation_retry_at: outcome.blocked.retryAt.toISOString() }),
   });
-  void now;
   return outcome;
 }
 

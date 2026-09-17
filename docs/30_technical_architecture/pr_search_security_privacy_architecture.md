@@ -89,6 +89,8 @@ CR-079: WP-074는 기존 읽기 Data App만 사용한다. 신규 증거 proof의
 
 **관리자 지정은 배포 호스트의 `prsctl role grant|revoke <login 또는 user_id> <역할>`로만 바꾼다.** 지정할 수 있는 역할은 `release_manager`·`operator`·`security_officer`이고 대상은 한 번 로그인해 정본에 행이 있는 사용자다. 로그인 이름이 대소문자만 다른 여러 행(개명 흔적)에 걸리면 **대소문자까지 같은 행이 있어도 고르지 않고** 후보의 `user_id`와 마지막 접속을 보여 준다 — 운영 권한이 쓰이지 않는 행에 붙지 않게 `user_id`로 다시 가리킨다. 역할 변경과 감사 한 행(`user_role.grant`·`user_role.revoke`, 행위 주체 `prsctl:<호스트 사용자>`)이 한 트랜잭션이며, 바뀐 것이 없는 재실행은 아무것도 쓰지 않는다. **최초의 `operator`는 화면으로 만들 수 없으므로** 이 경로가 출발점이다. 호스트에서 `prsctl`을 돌릴 수 있는 사람은 이미 DB와 시크릿을 쥔 경계 안에 있으므로 이 명령이 새 권한 경계를 열지 않는다. 역할 관리 화면은 범위 밖이다.
 
+**M 번호 운영자 확인서도 같은 자리에서만 만든다 (CR-100, FR-SEQ-008 AC-15).** `prsctl mnumber attest|revoke|list`는 pipeline-worker 이미지로 한 번 실행하고, 확인서·감사 기록(`mnumber_attestation.create`·`revoke`)·채번 회차 요청을 한 트랜잭션에 남긴다. 행위 주체는 `prsctl:<호스트 사용자>`이고 확인서 본문은 불변이며 철회만 할 수 있다(`prs_app`은 철회 세 열의 UPDATE만 갖는다). `mnumber_evidence`에 SQL로 근거를 넣는 것은 운영 경로가 아니다.
+
 방향을 어느 쪽으로든 틀리면 조용히 위험해진다. IdP 클레임으로 `roles[]`를 덮어쓰면 관리자가 지정한 `operator`가 다음 로그인에 사라지고, 반대로 IdP 그룹을 `operator`까지 믿으면 그룹을 만들 수 있는 사람이 운영 권한을 발급할 수 있게 된다.
 
 역할은 **화면·액션 접근**만 결정한다. **데이터 범위**는 역할과 무관하게 접근 범위가 결정한다. `operator`도 권한 없는 저장소의 PR 본문은 볼 수 없다 (SRS 6장).

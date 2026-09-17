@@ -44,6 +44,8 @@
 
 후속 에이전트는 이 조건을 기술 조사로 닫을 수 있다. 대상 GHES의 공식 계약 또는 사내 승인된 증거 소스를 확보하면 CR-079에 근거와 판정 규칙을 보완한다. 단순 실험에서 빈 결과가 안정적이었다는 것만으로 보장으로 승격하지 않는다. 다른 대안인 초기 baseline 건너뛰기·번호 재배치·시간 기반 확정은 사용자 승인 범위를 변경하므로 자동 선택하지 않는다. 이 조건은 설계 작성/외부 테스트 구현의 차단 조건은 아니나 **일반 이력의 M 채번 가용성과 WP-074 전체 완료 판정의 차단 조건**이다. 독립 fixture로 direct 분기를 시험해도 이 조건이 해결된 것은 아니다.
 
+**CR-100 보완 (2026-09-17, WP-088).** 위 조건을 닫는 사내 승인된 증거 소스로 **운영자 확인서**(ENT-SEQ-008, 6.5절)를 둔다. 확인서는 「이 공간·에폭에서 PR 근거가 끝내 나오지 않은 항목(`negative_evidence_unavailable`)과 프로파일 밖 항목(`unsupported_merge_profile`)은 번호 없이 지나간다」는 운영자의 결정이며 행위자·사유·범위·유예와 감사 기록을 남긴다. production 판정기가 스스로 부재를 확정하지 않는다는 원칙은 그대로다 — 확정하는 것은 사람이고, 시스템은 그 결정을 근거 행(`source_kind=operator_attestation`, `proof.attestation_id`)으로 남긴다. 유예(기본 24시간, 항목의 `committed_at` 기준)는 늦은 PR 정보가 먼저 확정될 기회를 주는 안전 여유이지 근거가 아니다. 확인서로 지나간 항목에 뒤늦게 PR이 나타나면 번호는 옮기지 않고(AC-3) 그 PR은 이 에폭에서 번호를 받지 않는다 — 회차는 checkpoint 너머만 보므로 그 사실은 자동으로 발견되지 않으며(DEV-717) 바로잡으려면 에폭 재채번이 필요하다. 「수동 확정 API를 만들지 않는다」는 위 문장은 확인서로 대체된다. 손으로 넣는 SQL 근거는 운영 경로가 아니며, 이미 넣은 행은 확정 → 미확정 금지 규칙(DEV-715)으로 보존된다.
+
 ## 3. 불변식과 판정 값
 
 공간 키는 `(repository_id, base_branch)`, 번호 세대는 `seq_epoch`, 정본 행 키는 이 셋과 `merge_seq`다. `merge_number`는 1부터 PR만 세며 `merge_seq`·PR 번호를 대체하지 않는다.
@@ -53,6 +55,7 @@
 | `pr_confirmed` | merged=true, base.repo.id·base.ref·merge_commit_sha 일치, 증거 버전과 SHA 고정, squash profile 적합 | PR당 한 번호 부여 |
 | `direct_confirmed` | 2.2의 완결 증서 검증 성공 | 번호 소비 없이 checkpoint 이동 |
 | `unresolved` | 조회 전·부분 응답·빈 결과·불일치·profile 불명 | 그 앞에서 중단 |
+| `direct_confirmed` (운영자 확인서, CR-100) | 판정이 `negative_evidence_unavailable` 또는 `unsupported_merge_profile`이고, 활성 확인서의 범위(`through_seq`) 안이며, `committed_at`부터 유예가 지났다 | 번호 소비 없이 checkpoint 이동. `source_kind=operator_attestation`. 유예가 남았으면 그 서수에서 멈추되 러너가 유예 종료 시각에 다시 본다 |
 
 별도의 `conflict` 공간 차단 사유는 확정된 PR 변경·확정 direct에 후발 PR 출현·동일 PR 이중 squash SHA·profile 모순이다. 기존 번호는 유지하고 새 부여는 중단한다. 기존 DEV-207의 교정 가능한 `commit.role=direct_push`는 위 상태와 독립이며 M 판단 입력으로 쓰지 않는다.
 
@@ -156,13 +159,13 @@ PK/FK는 `merge_sequence`의 `(repository_id,base_branch,seq_epoch,merge_seq)`�
 | pr_number | INT NULL, pr_confirmed에서만 NOT NULL |
 | reason | TEXT NULL, unresolved는 사유 필수 |
 | evidence_version | BIGINT NOT NULL DEFAULT 1, CAS 단조 증가 |
-| source_kind | TEXT NOT NULL, pr_detail / verified_snapshot / unresolved_lookup / authoritative_absence |
+| source_kind | TEXT NOT NULL, pr_detail / verified_snapshot / unresolved_lookup / authoritative_absence / operator_attestation (CR-100, 마이그레이션 031) |
 | source_pr_version | BIGINT NULL, snapshot document_version 또는 상세 updated_at 변환값 |
 | merged_at | TIMESTAMPTZ NULL, pr_confirmed에서 필수 |
 | checked_at / first_pending_at | TIMESTAMPTZ NOT NULL / TIMESTAMPTZ NULL |
 | proof | JSONB NOT NULL, 허용 필드 아래 참조 |
 
-proof 허용 필드: `schema_version=1`, `profile=squash_only`, `matched_repository_id`, `matched_base_branch`, `matched_merge_commit_sha`, `merged`, `page_count`, `lookup_complete`, `scan_started_at`, `scan_finished_at`, `observed_head`, `source_request_id_hash`. 제목·본문·작성자·raw payload·URL·token은 금지. `authoritative_absence`는 2.2 근거가 닫히기 전 production에서 생성 금지. fixture 소스는 production 입력 enum에 추가하지 않는다. integration DB에서만 독립 생성한 증거를 직접 주입한다.
+proof 허용 필드: `schema_version=1`, `profile=squash_only`, `matched_repository_id`, `matched_base_branch`, `matched_merge_commit_sha`, `merged`, `page_count`, `lookup_complete`, `scan_started_at`, `scan_finished_at`, `observed_head`, `source_request_id_hash`, 그리고 CR-100의 `attestation_id`·`attested_reason`·`attested_at`·`grace_seconds`·`committed_at`(`operator_attestation`에서만). 제목·본문·작성자·raw payload·URL·token은 금지. `authoritative_absence`는 2.2 근거가 닫히기 전 production에서 생성 금지. fixture 소스는 production 입력 enum에 추가하지 않는다. integration DB에서만 독립 생성한 증거를 직접 주입한다.
 
 확정 후 다른 증거가 오면 번호 변경 대신 공간 blocker를 `mapping_conflict`로 기록한다. conflict는 원인 조사가 가능한 safe evidence digest를 로그에 남긴다. 데이터 수정으로 해결하는 관리 API는 이번 범위에 없다. unresolved→확정과 동일 증거 재검증만 정상 전이다.
 
@@ -205,6 +208,14 @@ PK `sample_id UUID`, unique `(work_key,attempt,seq_epoch,pr_number)`; work_key�
 수신시각은 원본 raw_event 값, 다른 stage 시각은 수행 사실 뒤 DB clock_timestamp()로 기록한다. 가능하면 동일 DB clock을 사용하되 기존 raw_event.received_at의 앱 clock 차이는 출력에서 드러낸다. ES bulk ACK는 가시성 시각이 아니다. 별도 `_search`/실제 검색 API에서 같은 epoch·M 값 확인 후 관측시각을 남긴다. sampled observer는 sequence 역할이 읽기 작업으로 실행하며 실패는 work/번호 성공을 rollback하지 않는다. 별도 best-effort transaction 실패는 `measurement_missing` counter만 증가시킨다.
 
 샘플은 30일 보존, `(repository_id,base_branch,received_at)`와 `(outcome,attempt_started_at)` index. 보존 삭제는 batch 역할의 bounded 운영 메타데이터 cleanup으로 수행하고 audit/raw_event 파티션 잡을 확장하지 않는다. 등록 저장소 식별자는 내부 운영 데이터이며 외부 보고에는 hash로 치환한다. 새 표·sequence에는 명시적 `prs_app` CRUD 및 필요한 sequence USAGE를 migration에서 부여한다. 전용 측정 role은 이 표와 한정 view SELECT만 받는다.
+
+### 6.5 ENT-SEQ-008 `mnumber_attestation` (CR-100)
+
+PK `attestation_id BIGSERIAL`. FK `(repository_id, base_branch)` → `sequence_space` ON DELETE CASCADE. `seq_epoch INT NOT NULL` — 확인서는 에폭에 묶인다. `through_seq BIGINT NULL`(NULL이면 에폭 전체, 값이면 그 서수까지 포함), `grace_seconds INT NOT NULL`(0~2,592,000 = 30일), `actor TEXT`(`prsctl:<호스트 사용자>`, 1~128자), `reason TEXT`(1~500자), `created_at TIMESTAMPTZ`, `revoked_at / revoked_by / revoke_reason`(셋이 함께 NULL이거나 함께 값). 부분 유일 인덱스 `(repository_id, base_branch, seq_epoch) WHERE revoked_at IS NULL` — 공간·에폭마다 활성 확인서는 하나이며 바꾸려면 철회하고 다시 만든다(이력이 남는다). `prs_app`은 SELECT·INSERT와 철회 세 열의 UPDATE만 갖고 본문은 바꾸지 못한다.
+
+확인서가 만든 근거 행은 `mnumber_evidence`에 `state=direct_confirmed`, `source_kind=operator_attestation`, `proof.attestation_id`로 남는다. 철회는 이미 남은 근거 행과 번호를 건드리지 않는다. 031 down은 `operator_attestation` 근거 행을 지우고 표를 없앤다 — 확인서로 지나간 서수는 이미 checkpoint 뒤라 회차가 다시 보지 않으므로 번호·checkpoint는 그대로이고 근거 행만 사라진다. 그 서수를 다시 판정하게 하려면 에폭 재채번이 필요하다.
+
+`prsctl mnumber attest`는 확인서 INSERT·감사 기록(`mnumber_attestation.create`)·`sequence_work(reconcile, trigger_kind=attestation)` 요청을 한 트랜잭션에 남긴다. 러너는 확인서가 덮지만 유예가 남은 서수에서 멈추면 work를 `retry`로 두고 `available_at`을 유예 종료 시각으로 미룬다(`last_reason=attestation_grace_pending`).
 
 ## 7. 순수 planner·트랜잭션·에폭
 
@@ -308,5 +319,6 @@ B(첨부 지시서 승인): 인용 API 강화, 세 분류, 최소 증거 상태 
 | C4: 새 번호 safe-integer 상한 | 기존 JS/ES client·JSON number와 bigint 경계 | 2^53 이상 새 M 거부; 현실 용량보다 크지만 무제한 아님 | string/BigInt transport 전환은 별도 호환성 설계 / DEV-580, T05 |
 | C5: 목록 1회 DB batch 대조 + M resolver entry + 제한 poll | 현 API/UI 구조에서 epoch 안전성과 행별 호출 금지 충족 | DB 부하·새 query key·poll 최대 12회; 기존 cursor 보존 필요 | M feature off, query entry 비활성; field-owner 보존 / DEV-583, T05 |
 | C6: Profile B API mode, 기본 M off, metadata 30일 보존 | K8s sequence volume 없음; 직접 확정 잔여 조건; 관측 저장 상한 필요 | 사내 graph 성능은 별도 측정; cleanup 후 장기 percentile 불가 | B 미러 배포는 별도 근거로 변경; 보존 변경 시 용량 검토 / DEV-582, T06 |
+| C7 (CR-100): 운영자 확인서 = 공간·에폭 단위 결정 + `committed_at` 기준 유예 + 두 사유(`negative_evidence_unavailable`·`unsupported_merge_profile`)만 | 사내 피드백은 「설정 기반 자동 스킵」과 「unresolved를 건너뛰며 진행」을 요청했으나 무조건 스킵은 AC-9·AC-10을, 건너뛰며 진행은 AC-2·AC-3을 깬다. 시간만으로의 확정도 AC-10 위반이라 유예는 근거가 아닌 안전 여유로만 둔다 | 유예 안의 새 push는 여전히 대기(러너가 유예 종료 시각에 재시도); 확인서로 지나간 항목의 후발 PR은 자동 발견되지 않음(DEV-717); 확인서 없는 공간은 기존 그대로 | 확인서 revoke 또는 에폭 재채번. 근거 행의 `attestation_id`와 감사 기록으로 추적. 실제 관측: 통합 시험 11건·변이 2건(원장 6.94장) |
 
 위 C 항목은 설계 선택이며 이번 세션에서 코드·권한·운영 데이터를 바꾸지 않았다. 구현 에이전트는 새 C 결정이 생길 때 같은 표의 형식으로 실제 관찰/실험과 비용을 추가한다.

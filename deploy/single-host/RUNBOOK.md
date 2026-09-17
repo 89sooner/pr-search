@@ -746,7 +746,7 @@ done
 | `ACC-06` 관계 정확도 표본 검수 | `NOT RUN` — **합성 데이터로 만들어 내지 않는다.** `W-007`은 계속 비활성이다 |
 | M 번호 채번 (WP-074) — squash 이력에서 PR당 번호 하나, git first-parent 대조, 늦은 정보 도착 뒤 새 push 없는 재개, 에폭 재채번 | `VERIFIED (external)` — 실제 git 픽스처와 실제 PostgreSQL |
 | 채번 전 미러 fetch (`DEV-576`) — 수정 전 "옛 head를 읽고 새 커밋 없음" 재현과 수정 후 | `VERIFIED (external)` |
-| **직접 푸시의 영구 부재 확정** (`DEV-581`) | **`NOT RUN — 근거 미확보`** — 공식 GHE 읽기 계약에 완결 증서가 없다. production 판정기는 그 상태를 `negative_evidence_unavailable`로 남기며, 그 결과 **첫 미확정 항목 뒤의 PR이 전부 대기할 수 있다.** 격리 시험이 direct 분기를 통과한 것은 이 조건을 닫지 않는다 |
+| **직접 푸시의 영구 부재 확정** (`DEV-581`) → 운영자 확인서 (`CR-100`, 7.D) | **`VERIFIED (external)`** — 확인서로 지나가는 경로·유예·범위·철회·확정 근거 보존을 격리 DB 통합 시험 11건과 변이 2건으로 확인했다(원장 6.94장). 사내 실데이터 적용은 `NOT RUN — internal environment required` — 7.D 절차로 사내에서 실행한다. 이전 기록: **`NOT RUN — 근거 미확보`** — 공식 GHE 읽기 계약에 완결 증서가 없다. production 판정기는 그 상태를 `negative_evidence_unavailable`로 남기며, 그 결과 **첫 미확정 항목 뒤의 PR이 전부 대기할 수 있다.** 격리 시험이 direct 분기를 통과한 것은 이 조건을 닫지 않는다 |
 | 실제 사내 GHE에서의 M 채번·지연 (`measure:sequence-latency`) | `NOT RUN — internal environment required` — 아래 7.A 절차로 사내에서 잰다 |
 
 **외부에서 증명할 수 없는 것을 통과로 적지 않는다.** 사내 반입 뒤 이 표의 아래쪽을 실제로 실행하고 그 결과를 기록한다.
@@ -971,6 +971,48 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 **레지스트리 검사를 손으로 돌리기 (`CR-088`).** 반입 전이나 조사 중에 같은 검사를 CLI로 돌릴 수 있다 — 저장소에서 `pnpm --filter @prs/gh-cli build` 뒤 `pnpm gh:validate-capabilities`(커밋된 manifest의 구조·분류·커버리지·실행 범위; 미분류가 남으면 종료 1, `--diagnostic`이면 0), `GH_PINNED_BIN=<gh 2.97.0 경로> pnpm gh:diff-capabilities`(설치된 gh와 manifest의 차이), `pnpm gh:inventory`(인벤토리 JSON). `--report <파일>`로 기계 판독 보고서를 남긴다. CLI는 DB에 기록하지 않는다 — 기록은 실행기만 남긴다.
 
 ---
+
+### 7.D M 번호 운영자 확인서 (WP-088 / FR-SEQ-008 AC-15, `CR-100`)
+
+`MNUMBER_ENABLED=true`인 형상에서 `worker-sequence` 로그의 「M 채번 회차 완료」가
+`blocked_reason: negative_evidence_unavailable`(PR 근거가 끝내 없는 커밋 — 직접 푸시
+초기 커밋 등)이나 `unsupported_merge_profile`(부모가 둘 이상인 머지 커밋)에서 멈추면
+**그것은 결함이 아니라 설계다.** 공식 GHE 읽기 계약에는 「이 커밋은 PR 머지가 아니다」를
+확정하는 증서가 없어(`DEV-581`) 제품은 부재를 추정하지 않는다. 그 판단은 운영자가
+**확인서**로 내린다 — 확인서는 행위자·사유·범위·유예와 함께 남고 감사 기록(A-004)에
+`mnumber_attestation.create`·`revoke`로 기록된다.
+
+1. 저장소 ID·브랜치·현재 에폭을 확인한다. 로그의 `repository_id`·`base_branch`·`seq_epoch`가
+   그 값이다(운영 화면 저장소 상세에서도 본다).
+2. 확인서를 만든다. **스택이 가동 중일 때** 돌린다 — pipeline-worker 이미지로 한 번 실행하고
+   행위 주체는 `prsctl role`과 같이 호스트 사용자(`prsctl:<사용자>`)다.
+
+   ```bash
+   ./prsctl mnumber attest --repository-id 399 --base-branch main --seq-epoch 1 \
+     --reason "squash-only 저장소. PR 없는 커밋은 직접 푸시다 (2026-09-17 운영 확인)"
+   # 과거 이력만 덮으려면 --through-seq <서수>. 유예(기본 24시간)는 --grace-hours로 바꾼다 (0 = 즉시, 상한 720).
+   ./prsctl mnumber list                                            # 활성 확인서 (--all: 철회된 것까지)
+   ./prsctl mnumber revoke --id 1 --reason "범위를 다시 정한다"      # 철회 — 이미 지나간 항목과 번호는 그대로다
+   ```
+
+3. 채번 회차는 자동으로 요청된다. 로그에서 `attested`·`assigned`가 오르고 `blocked_reason`이
+   사라지는지 본다. 유예가 남은 항목에서 멈추면 `attestation_grace_pending`으로 미뤄 두었다가
+   유예가 끝나는 시각에 스스로 다시 돈다.
+
+규칙:
+
+- 확인서는 (저장소, 브랜치, 에폭)마다 하나다. 에폭이 오르면(force-push) 효력이 없고 새 확인서가
+  필요하다. 범위나 유예를 바꾸려면 철회하고 다시 만든다 — 이력이 남는다.
+- 확인서는 `negative_evidence_unavailable`·`unsupported_merge_profile`만 덮는다. `fetch_failed`·
+  `partial_lookup`·`pr_evidence_pending`·`mapping_conflict`·`canonical_mismatch`는 덮지 않는다 —
+  그것은 「없다」가 아니라 「모른다」거나 「어긋난다」이므로 원인을 본다.
+- 유예는 항목이 브랜치에 오른 시각(`committed_at`)부터 센다. 과거 이력은 첫 회차에 한 번에
+  지나가고, 방금 올라온 커밋은 유예가 지난 뒤 다시 본다. 그 사이에 PR 정보가 오면 PR로
+  확정된다 — 유예는 늦게 도착하는 PR 정보가 먼저 확정될 기회다.
+- 확인서로 지나간 항목에 나중에 PR이 확인되어도 번호는 옮기지 않는다(AC-3). 그 PR은 이
+  에폭에서 M 번호를 받지 않으며(`DEV-717`), 바로잡아야 하면 에폭 재채번이다.
+- `mnumber_evidence`에 SQL로 근거를 넣는 임시 조치는 더 이상 필요 없고, 하지 않는다. 이미
+  손으로 넣은 `direct_confirmed` 행은 그대로 유효하며 워커가 덮지 않는다(`DEV-715`).
 
 ## 8. 문제 해결
 

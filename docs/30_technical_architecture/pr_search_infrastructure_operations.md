@@ -280,6 +280,9 @@ deploy/single-host/prsctl restore # 백업 복원 + 재색인                   
 deploy/single-host/prsctl role list | grant <login|user_id> <역할> | revoke <login|user_id> <역할>
 #                                 # 관리자 지정 역할(operator·release_manager·security_officer). search-api 이미지로 한 번 실행하고
 #                                 # 호스트 사용자를 감사 행위 주체로 남긴다 — CR-091 (DEV-695)
+deploy/single-host/prsctl mnumber attest | revoke | list
+#                                 # M 번호 운영자 확인서 — PR 근거가 끝내 없는 항목과 프로파일 밖 항목을 번호 없이 지나가게 한다.
+#                                 # pipeline-worker 이미지로 한 번 실행하고 확인서·감사·채번 회차 요청을 한 트랜잭션에 남긴다 — CR-100 (WP-088)
 ```
 
 DB 접속 정보는 환경 변수에서만 읽는다 (`@prs/db`의 `resolvePoolConfig`). 우선순위는 `DATABASE_URL` → 개별 `POSTGRES_*` → 로컬 기본값이다. 통합 테스트는 `POSTGRES_TEST_DB`(기본 `prs_test`)를 써서 개발용 DB와 분리한다.
