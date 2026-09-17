@@ -2,7 +2,7 @@
 
 ## M-번호 채번 — NULL-PR 커밋 및 unsupported profile 이 전체 채번을 차단 (버그)
 
-> **2026-09-17: 이 항목을 `CR-100`(WP-088, PR #207 → main `08fbc3a`, 원장 6.94장)으로 처리했다.** 요청 1·2는 **운영자 확인서**(`prsctl mnumber attest`)로, 관찰 4는 결함 수정(`DEV-715`)으로 반영했고, 요청 3은 기각했다. 사내 임시 조치(SQL 근거 삽입·blocker 초기화·work 재투입)는 더 이상 필요 없다 — 손으로 넣은 `direct_confirmed` 행은 그대로 유효하고 워커가 덮지 않는다. 다음 반입 뒤 `./prsctl mnumber attest --repository-id 399 --base-branch main --seq-epoch 1 --reason "…"`를 실행하고(RUNBOOK 7.D) `worker-sequence` 로그의 `attested`·`assigned`와 세 저장소의 M 번호가 끝까지 붙는지 이 항목 아래에 적어 달라.
+> **2026-09-17: 이 항목을 `CR-100`(WP-088, PR #207 → main `08fbc3a`, 원장 6.94장)으로 처리했고 `0.1.0-pilot.13`에 담아 발행했다.** 요청 1·2는 **운영자 확인서**(`prsctl mnumber attest`)로, 관찰 4는 결함 수정(`DEV-715`)으로 반영했고, 요청 3은 기각했다. 사내 임시 조치(SQL 근거 삽입·blocker 초기화·work 재투입)는 더 이상 필요 없다 — 손으로 넣은 `direct_confirmed` 행은 그대로 유효하고 워커가 덮지 않는다. 다음 반입 뒤 `./prsctl mnumber attest --repository-id 399 --base-branch main --seq-epoch 1 --reason "…"`를 실행하고(RUNBOOK 7.D) `worker-sequence` 로그의 `attested`·`assigned`와 세 저장소의 M 번호가 끝까지 붙는지 이 항목 아래에 적어 달라.
 
 **발견**: 0.1.0-pilot.11 사내 반입, `MNUMBER_ENABLED=true` 후 M-번호 채번 테스트 (2026-09-17)
 **관련**: WP-074 / FR-SEQ-008 / DEV-581 / ADR-023 / 상세 설계 §2.2, §3
@@ -73,6 +73,6 @@
 
 > **상류 반영 (`CR-101` / `DEV-718`, PR #208 → main `3ba1c4b`) — 원인은 질의가 아니라 문서였다.** 색인 투영이 GitHub의 원시 `state`(`open`·`closed`)를 그대로 저장하고 병합을 `merged`로 파생하지 않아, `is:merged`(`state = merged`)와 맞는 문서가 하나도 없었다. 같은 전제를 쓰는 「Merged」 배지·PR 상세·M 번호 조회(`not_merged`)·늦은 PR 스냅숏의 채번 재개도 병합을 보지 못하고 있었다. 이제 투영이 병합 신호(`merged`·`merged_at`)가 있으면 `merged`로 파생하고, 마이그레이션 032가 이미 저장된 스냅숏을 같은 규칙으로 바로잡는다.
 >
-> **반입 뒤 할 일**: `./prsctl upgrade`(032 적용) 뒤 운영 콘솔(`/ops`)에서 `prs-pull-requests`를 한 번 **재색인**한다. 재색인 전에는 옛 문서가 `closed`로 남아 Merged가 계속 비어 보인다. 재색인 뒤 Status=Merged·My merged PRs·PR 상세의 Merged 배지·M 번호 조회가 병합 PR을 보이는지 확인해 이 항목 아래에 적어 달라.
+> **`0.1.0-pilot.13`에 담겨 발행됐다.** **반입 뒤 할 일**: `./prsctl upgrade`(032 적용) 뒤 운영 콘솔(`/ops`)에서 `prs-pull-requests`를 한 번 **재색인**한다. 재색인 전에는 옛 문서가 `closed`로 남아 Merged가 계속 비어 보인다. 재색인 뒤 Status=Merged·My merged PRs·PR 상세의 Merged 배지·M 번호 조회가 병합 PR을 보이는지 확인해 이 항목 아래에 적어 달라.
 
 ---

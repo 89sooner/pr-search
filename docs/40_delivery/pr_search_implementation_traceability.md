@@ -1,5 +1,19 @@
 # PR Search 구현 추적 원장
 
+## 0.1.0-pilot.13 발행 — M 번호 운영자 확인서·병합 state 파생 (2026-09-17)
+
+PR #207이 CR-100 / WP-088을 `08fbc3a`로, PR #208이 CR-101 / WP-089를 `3ba1c4b`로 병합했다. M 번호 운영자 확인서(`prsctl mnumber attest|revoke|list`, 마이그레이션 031), 확정 근거 보존(DEV-715), 병합된 PR의 `merged` 파생(DEV-718, 마이그레이션 032)을 담는다. 태그는 마지막 기능 병합 커밋에 두었다 — 그 뒤의 병합 기록 커밋(`ac130e3`)과 다른 세션이 올린 이미지 파일(`936de9f`)은 코드가 아니므로 담지 않는다.
+
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.13
+- 태그: `3ba1c4b1bfa2a56ff2cf0ad3f7f332d13038624f` (manifest `branch`는 `HEAD` — 분리된 워크트리에서 만들었다. pilot.8과 같고, 사내 절차 2.D는 번들의 `HEAD`를 가져온다)
+- 자산: `pr-search-0.1.0-pilot.13-offline.tar.gz`, 1,154,497,950 bytes
+- 별도 채널 전달 SHA-256: `f94f022378dd04cb04965e3596c2fe31321460cb64ca5763d78a91629471f7d3`
+- 로컬 checksum과 GitHub asset digest 일치, state uploaded, immutable releases enabled. manifest `migration_level` `032`.
+- tar 재적재 뒤 smoke(SSR·API 401·web 구성 허용/거부·pipeline git·gh executor·역할 CLI) 통과.
+- 발행 전 선확인과 발행 뒤 재확인: pipeline-worker 이미지의 `dist/mnumber-attest-cli.js`가 DB 접속 전 사용법과 종료 코드 2를 내고, 배포 트리의 `@prs/domain`이 `derivePullRequestState`를 내보내며, `prs/db` 이미지에 마이그레이션 031·032가 있다. 번들 smoke는 새 CLI를 묻지 않으므로 이 확인이 그 자리를 메운다.
+- **사내 반입 순서**: `./prsctl upgrade`(031·032) → 운영 콘솔에서 `prs-pull-requests` 재색인(Merged 필터·My merged PRs·Merged 배지) → `MNUMBER_ENABLED=true`인 형상에서 `./prsctl mnumber attest …`(번들 RUNBOOK 7.D).
+- 사내 실제 GHE 데이터 및 재반입 검증은 NOT RUN이다.
+
 ## 0.1.0-pilot.12 발행 — PR 중심 검색 필터·테이블·달력 보정 (2026-09-17)
 
 PR #205가 CR-099 / WP-087을 `990d6ad`로 병합했다. operator Legacy search 진입 보존, Base branch·Label Select, Radix 달력, `#` GHE PR 링크·M number·Title 열 위계, 기본 `pr_number DESC`, canonical 상태 필터와 강화된 semantic badge를 포함한다. PR/main 전체 CI와 실제 Chromium 회귀를 통과했다.
@@ -81,7 +95,7 @@ GHE 읽기 전 인증·저장소 범위를 판정하고 SHA에 고정한다. PR 
 
 검증: TypeScript·변경 TS/TSX lint·Next 프로덕션 빌드 통과. 가상 API를 주입한 실제 Chromium에서 초기 목록·Radix 상태 선택·탭 왕복 필터 유지·인라인 상세·Ctrl+K·Dialog Escape·390px 모바일 페이지 넘침 없음 통과. 일반 DOM의 cdt-* 클래스 0건, 브라우저 pageerror 0건. 캡처는 `/tmp/pr-search-radix/desktop.png`, `detail.png`, `mobile.png`. 실 GHE/OIDC 검증은 NOT RUN. 문서 validator는 기존 FR-CSS-005·D-002 참조 오류 둘 때문에 실패했으며, HEAD의 docs를 별도 임시 디렉터리에 추출해 동일 오류를 확인했다. 기존 risks.md 경로 경고도 남는다. 이번 요청은 구현이며 릴리스는 발행하지 않았다.
 
-> 상태: review | 버전: v6.93 | 갱신일: 2026-09-17
+> 상태: review | 버전: v6.94 | 갱신일: 2026-09-17
 
 `CR-094 / WP-082` 기본 저장소 작업 공간과 operator 전용 기존 UI: `template.html` 및 설계 분석 문서를 Conductor 기반 `RepositoryWorkspace`로 재구현하고, 기존 검색 및 운영 도구는 operator 전용(`?legacy=1`)으로 보존했다. developer 저장소 등록 절차 폐지·진입 즉시 현재 저장소 PR 목록 표시·필터 유지·deep link `WorkspaceEntityPage`, upstream smoke 재시도 로직 및 RUNBOOK 오프라인 빌드 절차를 반영했다. 검증과 0.1.0-pilot.9 발행 증거는 6.93장에 기록한다.
 
@@ -147,8 +161,8 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | done | 에이전트 | PR #199 / pilot.10 | 집중94/94·Chromium·전체 CI·bundle smoke 통과 | 실 GHE NOT RUN, 기존 문서 gate 오류 |
 | WP-086 | 사내 권한명·operator 바로가기 보정 | 권한·UI 보정 (CR-098) | done | 에이전트 | PR #203 / pilot.11 | 권한22/22·DOM/a11y33/33·FLOW20/20·PR/main 전체 CI·bundle smoke 통과 | 사내 재반입 NOT RUN |
 | WP-087 | PR 중심 검색 필터·테이블·달력 보정 | 검색 UX (CR-099) | done | 에이전트 | PR #205 / pilot.12 | query/sort/parser82/82·전체 a11y436/436·집중148/148·대비18쌍·PR/main 전체 CI·Chromium 필터/표/Source 회귀·bundle smoke 통과 | 실 GHE 데이터 NOT RUN, 기존 문서 validator 오류 유지 |
-| WP-088 | M 번호 운영자 확인서와 확정 근거 보존 | M 채번 운영 (CR-100) | done | 에이전트 | PR #207 · `08fbc3a` | 단위 6/6·통합 13/13+1/1(격리 DB)·변이 2/2 죽음·기존 M 통합 19/19·독립 검토 minor 3 반영·typecheck 0·eslint 0·회귀·전체 통합·build — 6.94장 | 실 GHE 데이터 NOT RUN; 후발 PR 자동 발견 없음(DEV-717); 검사기 잔여 오류 4(기존) |
-| WP-089 | 병합된 PR의 state 파생 보정 | 검색 정확성 (CR-101) | done | 에이전트 | PR #208 · `3ba1c4b` | 단위 3+2(투영 state 단언)·032 왕복 통합·회귀 계약 3·변이(투영 되돌림 → 시험 2건 죽음)·typecheck·lint — 6.95장 | 사내 재색인 뒤 확인 NOT RUN |
+| WP-088 | M 번호 운영자 확인서와 확정 근거 보존 | M 채번 운영 (CR-100) | done | 에이전트 | PR #207 · `08fbc3a` / pilot.13 | 단위 6/6·통합 13/13+1/1(격리 DB)·변이 2/2 죽음·기존 M 통합 19/19·독립 검토 minor 3 반영·typecheck 0·eslint 0·회귀·전체 통합·build — 6.94장 | 실 GHE 데이터 NOT RUN; 후발 PR 자동 발견 없음(DEV-717); 검사기 잔여 오류 4(기존) |
+| WP-089 | 병합된 PR의 state 파생 보정 | 검색 정확성 (CR-101) | done | 에이전트 | PR #208 · `3ba1c4b` / pilot.13 | 단위 3+2(투영 state 단언)·032 왕복 통합·회귀 계약 3·변이(투영 되돌림 → 시험 2건 죽음)·typecheck·lint — 6.95장 | 사내 재색인 뒤 확인 NOT RUN |
 | WP-081 | 최신 Conductor·Shell·W-001 | UI 품질 (CR-093) | done | 에이전트 | `a8796de` / PR #196 | PR CI `35061974889`·main CI `35062529329` success; `0.1.0-pilot.8` | CR-093, 신규 기능 의미 없음 |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | `96d4e2f` / PR #2 | DoD 6항 전부 통과. 통합 26건, CI `verify`·`integration` 모두 성공 (6.2장) | 로컬은 네이티브 PostgreSQL 16.13, CI는 서비스 컨테이너 (DEV-006) |

@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=fcdebf508725b3f635978fbd85f836f4847e87940920e3c9d430a6c4a401069a bytes=215228 lines=2787 title=리스크-불확실한-가정-함정
+@kv sha256=04955846a9bfef39f3ebda4a005d9b201a22d39d43607419e6da0983aacbc675 bytes=216161 lines=2793 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;home/roqkf/design-system;actions/runs;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 2026-09-15 (8차) 라운드가 배운 함정 (CR-092)
@@ -1418,3 +1418,7 @@
 @b 032 뒤 재색인 전에는 Merged가 계속 비어 보인다. 업그레이드 절차에 재색인이 들어갔다.
 @b 회귀 계약 시험은 질의 번역의 모양(term/terms)에 기대지 말고 값으로 비교한다.
 @b 도메인에 이미 있는 타입을 다시 선언하지 않는다. PullRequestState가 entities.ts에 있었고 typecheck에서만 드러났다(vitest는 타입을 보지 않는다).
+@h2 2026-09-17 (9차 후반) pilot.13 발행이 배운 것
+@b 하네스 백그라운드 작업은 메모리 압박에서 중단된다. 이 세션에서 CI 감시 두 개가 「system is running low on memory」로 끊겼다(가용 7.8GB였다). 되돌리기 없이 끊기면 위험한 긴 작업(발행)은 setsid nohup으로 분리하고, 완료는 Monitor의 폴링 루프로 기다린다.
+@path 번들 smoke는 새 운영 CLI를 묻지 않는다. prsctl mnumber가 부르는 dist/mnumber-attest-cli.js는 발행 전 수동 확인으로 메웠다. smoke-images.sh에 역할 CLI와 같은 검사를 더하는 것은 후속 후보다(더할 때는 config.test DEV-615 파서와 release-tag fake-docker도 함께 — 메모리 smoke-gate-has-two-shadows).
+@b 발행 시점의 main이 기능 커밋보다 앞서 있었다(병합 기록 + 다른 세션의 이미지 파일). 태그 대상은 늘 명시적으로 고른다.

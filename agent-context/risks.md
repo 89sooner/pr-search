@@ -2785,3 +2785,9 @@ id 조회 실패 · 릴리스 삭제 실패 · 태그 삭제 실패 · 발행 �
 - **032 뒤 재색인 전에는 Merged가 계속 비어 보인다.** 업그레이드 절차에 재색인이 들어갔다.
 - **회귀 계약 시험은 질의 번역의 모양(`term`/`terms`)에 기대지 말고 값으로 비교한다.**
 - **도메인에 이미 있는 타입을 다시 선언하지 않는다.** `PullRequestState`가 `entities.ts`에 있었고 typecheck에서만 드러났다(vitest는 타입을 보지 않는다).
+
+## 2026-09-17 (9차 후반) pilot.13 발행이 배운 것
+
+- **하네스 백그라운드 작업은 메모리 압박에서 중단된다.** 이 세션에서 CI 감시 두 개가 「system is running low on memory」로 끊겼다(가용 7.8GB였다). 되돌리기 없이 끊기면 위험한 긴 작업(발행)은 `setsid nohup`으로 분리하고, 완료는 Monitor의 폴링 루프로 기다린다.
+- **번들 smoke는 새 운영 CLI를 묻지 않는다.** `prsctl mnumber`가 부르는 `dist/mnumber-attest-cli.js`는 발행 전 수동 확인으로 메웠다. smoke-images.sh에 역할 CLI와 같은 검사를 더하는 것은 후속 후보다(더할 때는 config.test DEV-615 파서와 release-tag fake-docker도 함께 — 메모리 smoke-gate-has-two-shadows).
+- **발행 시점의 main이 기능 커밋보다 앞서 있었다**(병합 기록 + 다른 세션의 이미지 파일). 태그 대상은 늘 명시적으로 고른다.

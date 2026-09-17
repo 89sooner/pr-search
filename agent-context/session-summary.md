@@ -2201,3 +2201,10 @@ todos.md 「시작하기 전에」로 실측한 뒤, 결정자의 지시를 기�
 1. 병합 기록 PR 상태 확인 — 기록 PR `docs/cr100-101-merge-record`(원장 3장·6.94·6.95 병합 기록, CR-100·101 closed, agent-context 9차 절, handoff pack). 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 git log로 읽는다.
 2. 사내 반입 뒤(pilot.13 발행은 사용자 결정): RUNBOOK 7.D로 확인서 실행, 업그레이드 절대로 032 뒤 `prs-pull-requests` 재색인, 결과를 `agent-context/upstream-feedback.md`에 기록.
 3. 후속 후보(결정자): DEV-717 후발 PR 발견 스윕, 기존 검사기 오류 4 별도 CR, REL-007 다음 판.
+
+## 2026-09-17 (9차 후반) — `0.1.0-pilot.13` 발행
+
+- 사용자 지시로 CR-100(`08fbc3a`)·CR-101(`3ba1c4b`)을 담은 `0.1.0-pilot.13`을 발행했다. 태그 `3ba1c4b`, 자산 `pr-search-0.1.0-pilot.13-offline.tar.gz` 1,154,497,950 bytes, SHA-256 `f94f022378dd04cb04965e3596c2fe31321460cb64ca5763d78a91629471f7d3`, immutable.
+- 발행 전 선확인(새 CLI·도메인 헬퍼·마이그레이션 031·032)과 발행 뒤 재확인을 했고, 번들의 tar 재적재 smoke가 통과했다.
+- 사내 반입 순서: `./prsctl upgrade` → `prs-pull-requests` 재색인 → `./prsctl mnumber attest …`. 사내 확인은 NOT RUN.
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.13

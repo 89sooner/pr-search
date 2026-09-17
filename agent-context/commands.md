@@ -4335,3 +4335,22 @@ git rebase --onto origin/main 937dd13 fix/cr101-merged-state     # stacked → m
 
 - PR #207: CI 35175836037(verify는 attempt 2에서 성공)·35177846020(success) → squash `08fbc3a` → main CI `35178340678` success.
 - PR #208: CI 35177537636(verify flow-003 실패, 통합 success) → rebase 뒤 `35178504451`(verify·integration 첫 시도 success) → squash `3ba1c4b` → main CI `35179018409` success.
+
+## 2026-09-17 (9차 후반) — pilot.13 발행에서 쓴 것
+
+```bash
+git worktree add --detach /home/roqkf/pr-search-wt/release13 3ba1c4b1bfa2a56ff2cf0ad3f7f332d13038624f
+# 선확인 — 같은 컨텍스트로 두 타깃만 (발행 실행이 이 캐시를 쓴다)
+docker build --progress=plain --target pipeline-worker -t prs/pipeline-worker:precheck-pilot13 /home/roqkf/pr-search-wt/release13
+docker build --progress=plain --target migrate -t prs/db:precheck-pilot13 /home/roqkf/pr-search-wt/release13
+docker run --rm --network none --entrypoint node prs/pipeline-worker:precheck-pilot13 dist/mnumber-attest-cli.js   # 종료 2 + 사용법
+docker run --rm --network none --entrypoint node prs/pipeline-worker:precheck-pilot13 --input-type=module \
+  -e "const m = await import('@prs/domain'); console.log(typeof m.derivePullRequestState)"                     # function
+docker run --rm --network none --entrypoint sh prs/db:precheck-pilot13 -c 'ls migrations | tail -4'            # 031·032
+# 발행 — 분리 세션 (하네스 백그라운드는 메모리 압박에서 중단될 수 있다)
+setsid nohup "$SP/release13.sh" > "$SP/release13.log" 2>&1 < /dev/null &   # 내부: PATH=node22; ./deploy/single-host/build-bundle.sh 0.1.0-pilot.13 --release
+gh api repos/89sooner/pr-search/releases/tags/0.1.0-pilot.13 --jq '{url:.html_url,immutable:.immutable,tag:.tag_name,target:.target_commitish,assets:[.assets[]|{name,size,digest,state}]}'
+git ls-remote --tags origin refs/tags/0.1.0-pilot.13
+```
+
+- 결과: 발행 `2026-09-17T04:18:56Z` · immutable · 태그 `3ba1c4b` · 자산 1,154,497,950 bytes · digest = 로컬 SHA-256 `f94f022378dd04cb04965e3596c2fe31321460cb64ca5763d78a91629471f7d3` · smoke 20건 통과 · 발행 이미지 ID = 선확인 이미지 ID(pipeline-worker `d35517e50d88`, db `a2888452720c`) · 재확인 통과. 선확인 빌드 약 1분, 발행 실행 13:13:21→13:18:57(업로드 약 1분 15초).

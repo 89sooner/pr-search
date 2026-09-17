@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.45 | 갱신일: 2026-09-17
+> 상태: review | 버전: v2.46 | 갱신일: 2026-09-17
 
 ## WP-089 병합된 PR의 state 파생 보정 (CR-101)
 
@@ -115,8 +115,8 @@
 | WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | WP-084 | **done** — Source 집중 검사·Chromium·전체 CI, pilot.10 발행; 실 GHE 미검증 |
 | WP-086 | 사내 권한명·operator 바로가기 보정 | 권한·UI 보정 (CR-098) | WP-085 | **done** — PR/main CI·bundle smoke, pilot.11 발행; 사내 재반입 미검증 |
 | WP-087 | PR 중심 검색 필터·테이블·달력 보정 | 검색 UX (CR-099) | WP-086 | **done** — PR/main 전체 CI·Chromium·bundle smoke 통과, pilot.12 발행; 실 GHE 데이터 미검증 |
-| WP-088 | M 번호 운영자 확인서와 확정 근거 보존 | M 채번 운영 (CR-100) | WP-087 | **done** — PR #207 `08fbc3a`, PR/main CI success, 독립 검토 반영 (원장 6.94장); 사내 실데이터 NOT RUN |
-| WP-089 | 병합된 PR의 state 파생 보정 | 검색 정확성 (CR-101) | WP-088 | **done** — PR #208 `3ba1c4b`, PR/main CI success (원장 6.95장); 사내 재색인 뒤 확인 NOT RUN |
+| WP-088 | M 번호 운영자 확인서와 확정 근거 보존 | M 채번 운영 (CR-100) | WP-087 | **done** — PR #207 `08fbc3a`, PR/main CI success, 독립 검토 반영 (원장 6.94장), `0.1.0-pilot.13` 발행; 사내 실데이터 NOT RUN |
+| WP-089 | 병합된 PR의 state 파생 보정 | 검색 정확성 (CR-101) | WP-088 | **done** — PR #208 `3ba1c4b`, PR/main CI success (원장 6.95장), `0.1.0-pilot.13` 발행; 사내 재색인 뒤 확인 NOT RUN |
 | WP-081 | 최신 Conductor 및 Shell·W-001 개선 | UI 품질 (CR-093) | WP-073 | **done** — PR #196 `a8796de`, PR·main CI success, `0.1.0-pilot.8` 발행 (원장 6.92장) |
 | WP-078 | REL-007 R1a — capability 분류·검증·드리프트·스냅숏·A-006 읽기 전용 | REL-007 (**CR-088**) | WP-077 | **done** — 검증 6.85장. leaf 196·flag 1,034·positional 164·`--json` 707 전부 분류(`NFR-009` 본표 100%), 독립 검증기·드리프트 검출·029 스냅숏/검증 기록·`JOB-GH-003`·`API-GH-013`/`014`·A-006. 실행 허용은 `pr.list` 하나 그대로. `GATE-GH-01d`(bindability·port·자원 타입)는 미달로 남고(`DEV-675`), 사내 GHES 확인은 `NOT RUN`(`DEV-674`) |
 | WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | WP-012, WP-015 | **done** — 검증 6.83장. R0 `pr.list` 하나를 인가→미리보기→실행→결과·자기 이력까지 연다. 상위 WP 일곱은 이 수직이 들여온 만큼만 `in_progress`다. 출력 청크 스트리밍은 상태만(`DEV-651`), 분류 195건 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증은 `NOT RUN`** |

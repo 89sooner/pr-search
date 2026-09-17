@@ -1,10 +1,10 @@
 #hidden
 # aci:v1 id=f3df0a8 src=agent-context/upstream-feedback.md
-@kv sha256=1eb7b38f326c65b050e79761c57a18bb49489dc4b60474fc1a34f3dff4215f3b bytes=8220 lines=78 title=Upstream-Feedback
+@kv sha256=1b8e37a248f4ba2b08553d3bb48caa4a21946af7ce7707ab4c42aa71ba0cb8b8 bytes=8305 lines=78 title=Upstream-Feedback
 @sig agent-context/upstream-feedback.md;/prsctl;Upstream;Feedback;NULL;unsupported;profile;mnumber;DEV;SQL;blocker;direct_confirmed;repository;RUNBOOK;sequence;attested;assigned;MNUMBER_ENABLED;SEQ;ADR;reconcile;pull_request_number;repository_id;base_branch
 @h1 Upstream Feedback
 @h2 M-번호 채번 — NULL-PR 커밋 및 unsupported profile 이 전체 채번을 차단 (버그)
-@risk 2026-09-17: 이 항목을 CR-100(WP-088, PR #207 → main 08fbc3a, 원장 6.94장)으로 처리했다. 요청 1·2는 운영자 확인서(prsctl mnumber attest)로, 관찰 4는 결함 수정(DEV-715)으로 반영했고 ... ker-sequence 로그의 attested·assigned와 세 저장소의 M 번호가 끝까지 붙는지 이 항목 아래에 적어 달라.
+@risk 2026-09-17: 이 항목을 CR-100(WP-088, PR #207 → main 08fbc3a, 원장 6.94장)으로 처리했고 0.1.0-pilot.13에 담아 발행했다. 요청 1·2는 운영자 확인서(prsctl mnumber attest)로, 관찰 ... ker-sequence 로그의 attested·assigned와 세 저장소의 M 번호가 끝까지 붙는지 이 항목 아래에 적어 달라.
 @p 발견: 0.1.0-pilot.11 사내 반입, MNUMBER_ENABLED=true 후 M-번호 채번 테스트 (2026-09-17)
 @path 관련: WP-074 / FR-SEQ-008 / DEV-581 / ADR-023 / 상세 설계 §2.2, §3
 @h3 현상
@@ -40,5 +40,5 @@
 @h2 검색 Merged 필터 · My merged PRs 빈 결과 (버그)
 @p 발견: 0.1.0-pilot.12 사내 화면, Status=Merged와 「My merged PRs」 탭 (2026-09-17, 결정자 보고) 현상: 검색 화면에서 Status 필터를 Merged로 두면 아무것도 나오지 않고, 「My merged PRs」 탭도 결과가 없다고 잘못 나온다.
 @path 상류 반영 (CR-101 / DEV-718, PR #208 → main 3ba1c4b) — 원인은 질의가 아니라 문서였다. 색인 투영이 GitHub의 원시 state(open·closed)를 그대로 저장하고 병합을 merged로 파생하지 않아, is:merged(state = merged)와 맞는 문서가 하나도 없었다. 같은 전제를 쓰는 「Merged」 배지·PR 상세·M 번호 조회(not_merged)·늦은 PR 스냅숏의 채번 재개도 병합을 보지 못하고 있었다. 이제 투영이 병합 신호(merged·merged_at)가 있으면 merged로 파생하고, 마이그레이션 032가 이미 저장된 스냅숏을 같은 규칙으로 바로잡는다.
-@path 반입 뒤 할 일: ./prsctl upgrade(032 적용) 뒤 운영 콘솔(/ops)에서 prs-pull-requests를 한 번 재색인한다. 재색인 전에는 옛 문서가 closed로 남아 Merged가 계속 비어 보인다. 재색인 뒤 Status=Merged·My merged PRs·PR 상세의 Merged 배지·M 번호 조회가 병합 PR을 보이는지 확인해 이 항목 아래에 적어 달라.
+@path 0.1.0-pilot.13에 담겨 발행됐다. 반입 뒤 할 일: ./prsctl upgrade(032 적용) 뒤 운영 콘솔(/ops)에서 prs-pull-requests를 한 번 재색인한다. 재색인 전에는 옛 문서가 closed로 남아 Merged가 계속 비어 보인다. 재색인 뒤 Status=Merged·My merged PRs·PR 상세의 Merged 배지·M 번호 조회가 병합 PR을 보이는지 확인해 이 항목 아래에 적어 달라.
 @p ---
