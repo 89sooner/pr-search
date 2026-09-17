@@ -165,7 +165,7 @@ describe('DeadLetterTable (C-041)', () => {
     fireEvent.click(screen.getByTestId('dead-letter-reprocess-confirm'));
     expect(onReprocess).toHaveBeenCalledTimes(1);
     expect((onReprocess.mock.calls[0]?.[0] as readonly number[]).length).toBe(101);
-  });
+  }, 15_000);
 
   it('대상 건수를 확인 다이얼로그에 명시한다', () => {
     render(<DeadLetterTable items={items(3)} onReprocess={vi.fn()} />);

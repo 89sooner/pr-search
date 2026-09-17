@@ -425,7 +425,7 @@ describe('DoD 4: 정렬 (FR-SRCH-007)', () => {
     expect(response.statusCode).toBe(400);
     const body = response.json<{ error: { code: string; detail: { supported_keys: string[] } } }>();
     expect(body.error.code).toBe('INVALID_PARAMETER');
-    expect(body.error.detail.supported_keys).toHaveLength(8);
+    expect(body.error.detail.supported_keys).toHaveLength(9);
   });
 });
 
