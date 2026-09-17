@@ -2,7 +2,7 @@
 
 ## CR-099 — PR 중심 검색 필터·테이블·달력 보정 (2026-09-17)
 
-사용자는 operator의 Legacy 통합 검색 보존을 확인하고, 기본 Repository workspace 검색을 PR 중심으로 보정하도록 승인했다. operator 진입점은 `/search?legacy=1`이며 화면 라벨을 Legacy search로 명확히 한다. Base branch·Label은 선택 컨트롤, Merged after/before는 Radix Popover 달력으로 제공한다. 결과 표는 `#` PR 링크를 첫 열, M number를 둘째 열, 제목을 셋째 열로 두고 기본 `pr_number DESC`를 사용한다. PR 번호를 제목/changes 열에서 중복 표시하지 않는다. UI 상태 필터는 `is:merged/open/closed` 정본 문법을 사용한다. 배지는 semantic tone별 경계·강조를 보강한다. FR-SRCH-007에 `pr_number` 정렬 키와 W-001 PR 목록 기본 정렬을 추가하며 WP-087로 추적한다. 상태: 로컬 구현 완료 — query/sort/parser82/82·달력/shell a11y34/34·타입·lint·빌드·실제 Chromium 필터/표/Source 회귀 통과. PR·신규 릴리스 미발행.
+사용자는 operator의 Legacy 통합 검색 보존을 확인하고, 기본 Repository workspace 검색을 PR 중심으로 보정하도록 승인했다. operator 진입점은 `/search?legacy=1`이며 화면 라벨을 Legacy search로 명확히 한다. Base branch·Label은 선택 컨트롤, Merged after/before는 Radix Popover 달력으로 제공한다. 결과 표는 `#` PR 링크를 첫 열, M number를 둘째 열, 제목을 셋째 열로 두고 기본 `pr_number DESC`를 사용한다. PR 번호를 제목/changes 열에서 중복 표시하지 않는다. UI 상태 필터는 `is:merged/open/closed` 정본 문법을 사용한다. 배지는 semantic tone별 경계·강조를 보강한다. FR-SRCH-007에 `pr_number` 정렬 키와 W-001 PR 목록 기본 정렬을 추가하며 WP-087로 추적한다. 상태: PR #205·PR/main 전체 CI·`0.1.0-pilot.12` 발행 완료. 사내 실제 GHE 데이터 검증은 NOT RUN.
 
 ## CR-098 — 사내 GHE 권한명·operator 바로가기 보정 (2026-09-17)
 

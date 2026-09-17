@@ -1,5 +1,17 @@
 # PR Search 구현 추적 원장
 
+## 0.1.0-pilot.12 발행 — PR 중심 검색 필터·테이블·달력 보정 (2026-09-17)
+
+PR #205가 CR-099 / WP-087을 `990d6ad`로 병합했다. operator Legacy search 진입 보존, Base branch·Label Select, Radix 달력, `#` GHE PR 링크·M number·Title 열 위계, 기본 `pr_number DESC`, canonical 상태 필터와 강화된 semantic badge를 포함한다. PR/main 전체 CI와 실제 Chromium 회귀를 통과했다.
+
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.12
+- 태그: `990d6ad95e683c8023c5512c9a9f7733481eb090`
+- 자산: `pr-search-0.1.0-pilot.12-offline.tar.gz`, 1,154,335,782 bytes
+- 별도 채널 전달 SHA-256: `7732d729e20790ae7413eab8f5b86c14f4add42944541017687c36fb062b0551`
+- 로컬 checksum과 GitHub asset digest 일치, state uploaded, immutable releases enabled.
+- tar 재적재 뒤 SSR10종·API401·web 구성 허용/거부·pipeline git·gh2.97.0/hash·비루트/읽기전용 executor·역할 CLI smoke 통과.
+- 사내 실제 GHE 데이터 및 재반입 검증은 NOT RUN이다.
+
 ## CR-099 / WP-087 — PR 중심 검색 필터·테이블·달력 보정 (2026-09-17)
 
 Legacy SearchView와 LegacyRepositoryWorkspace는 삭제되지 않았고 operator 전용 진입으로 보존돼 있었다. 다만 “Advanced search”라는 이름이 보존 사실을 숨겼다(DEV-709). Repository workspace의 branch·label은 입력 모양이거나 facet을 요청하지 않아 선택 후보가 없었고(DEV-710), native date는 제품이 제어하는 달력이 아니었다(DEV-711). 표는 expand·sequence가 앞서 PR 주 식별자와 M number 관계가 불명확했고 기본 정렬이 merged_at이었다(DEV-712). 상태 Select는 permissive `state:`를 만들었으므로 UI 열거 상태를 canonical `is:`로 고정한다(DEV-713).
@@ -134,7 +146,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | done | 에이전트 | PR #199 / pilot.10 | 접근성 433/433·전체 CI·bundle smoke 통과 | 실 GHE 미검증, 기존 문서 gate 오류 |
 | WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | done | 에이전트 | PR #199 / pilot.10 | 집중94/94·Chromium·전체 CI·bundle smoke 통과 | 실 GHE NOT RUN, 기존 문서 gate 오류 |
 | WP-086 | 사내 권한명·operator 바로가기 보정 | 권한·UI 보정 (CR-098) | done | 에이전트 | PR #203 / pilot.11 | 권한22/22·DOM/a11y33/33·FLOW20/20·PR/main 전체 CI·bundle smoke 통과 | 사내 재반입 NOT RUN |
-| WP-087 | PR 중심 검색 필터·테이블·달력 보정 | 검색 UX (CR-099) | done | 에이전트 | 로컬 변경 | query/sort/parser82/82·전체 a11y436/436·아키텍처 포함 집중148/148·대비18쌍·타입·lint·빌드·언어/의존성 gate·Chromium 필터/표/Source 회귀 통과 (`/tmp/pr-search-source/search-pr-table-light.png`) | 실 GHE 데이터 NOT RUN, 기존 문서 validator 오류 유지, PR·릴리스 미발행 |
+| WP-087 | PR 중심 검색 필터·테이블·달력 보정 | 검색 UX (CR-099) | done | 에이전트 | PR #205 / pilot.12 | query/sort/parser82/82·전체 a11y436/436·집중148/148·대비18쌍·PR/main 전체 CI·Chromium 필터/표/Source 회귀·bundle smoke 통과 | 실 GHE 데이터 NOT RUN, 기존 문서 validator 오류 유지 |
 | WP-081 | 최신 Conductor·Shell·W-001 | UI 품질 (CR-093) | done | 에이전트 | `a8796de` / PR #196 | PR CI `35061974889`·main CI `35062529329` success; `0.1.0-pilot.8` | CR-093, 신규 기능 의미 없음 |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | `96d4e2f` / PR #2 | DoD 6항 전부 통과. 통합 26건, CI `verify`·`integration` 모두 성공 (6.2장) | 로컬은 네이티브 PostgreSQL 16.13, CI는 서비스 컨테이너 (DEV-006) |
