@@ -104,6 +104,25 @@ function mappedFields(mapping: typeof PULL_REQUEST_MAPPING): ReadonlySet<string>
 }
 
 describe('PR 문서 (ENT-CORE-002)', () => {
+  /**
+   * **병합은 파생 상태다** (CR-101 / DEV-718). GitHub은 병합된 PR도 `state: closed`로 주고 `merged`·
+   * `merged_at`이 따로 말한다. 문서 계약·`is:merged`·화면 배지·M 번호 조회는 전부 `merged`를 전제하므로
+   * 투영이 파생해야 한다. 이 픽스처(closed + merged)는 원래부터 현실적이었지만 산출 `state`를 아무도
+   * 단언하지 않아 pilot.12까지 병합된 PR이 `closed`로 색인됐다.
+   */
+  it('**closed + merged는 `merged`로 색인된다** — 병합 시각만 있어도 같다', () => {
+    expect(buildPullRequestDocument(source()).doc['state']).toBe('merged');
+    const byMergedAtOnly = enriched({ pull_request: { ...PR, merged: false } });
+    expect(buildPullRequestDocument(source(byMergedAtOnly)).doc['state']).toBe('merged');
+  });
+
+  it('병합 신호가 없으면 GitHub이 준 값 그대로다 — open·closed', () => {
+    const open = enriched({ pull_request: { ...PR, state: 'open', merged: false, merged_at: null, closed_at: null } });
+    expect(buildPullRequestDocument(source(open)).doc['state']).toBe('open');
+    const closedUnmerged = enriched({ pull_request: { ...PR, state: 'closed', merged: false, merged_at: null } });
+    expect(buildPullRequestDocument(source(closedUnmerged)).doc['state']).toBe('closed');
+  });
+
   it('결정론적 ID와 저장소 라우팅을 쓴다', () => {
     const request = buildPullRequestDocument(source());
     expect(request.alias).toBe('prs-pull-requests');

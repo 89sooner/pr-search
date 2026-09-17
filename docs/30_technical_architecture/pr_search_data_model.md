@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.26 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.27 | 갱신일: 2026-09-17
 
 CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025의 최종 필드·check·unique·FK·초기화·role grant·checkpoint/epoch·retention/rollback은 [상세 설계](pr_search_wp074_design.md) 6~7·10절이 소유한다. 아래 CR-077 DDL은 기본 다섯 필드만 보여주는 부분 예시이며 단독 구현하지 않는다.
 
@@ -22,7 +22,7 @@ CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025�
 | Entity ID | 엔티티 | 책임 | 주요 필드 | 소유 저장소 | 소유 모듈 | 관련 요구사항 |
 | --- | --- | --- | --- | --- | --- | --- |
 | ENT-CORE-001 | Repository | 수집 대상 저장소 등록과 정책 | `repository_id`, `owner`, `name`, `org_id`, `visibility`, `sequence_branches[]`, `mirror_enabled`, `status`, **`annotate_enabled`** | PostgreSQL | registry | FR-ING-009, **FR-SEQ-009 AC-6** |
-| ENT-CORE-002 | PullRequest | PR 검색 문서 | `pr_number`, `title`, `body`, `author`, `state`, `merged_at`, `merge_commit_sha`, `merge_seq`, `merge_number`, `link_summary` | Elasticsearch | projection | FR-SRCH-003, FR-SRCH-006, FR-SEQ-008 |
+| ENT-CORE-002 | PullRequest | PR 검색 문서 | `pr_number`, `title`, `body`, `author`, `state`(투영이 파생하는 `open`·`closed`·`merged` — 병합 신호가 있으면 `merged`, CR-101), `merged_at`, `merge_commit_sha`, `merge_seq`, `merge_number`, `link_summary` | Elasticsearch | projection | FR-SRCH-003, FR-SRCH-006, FR-SEQ-008 |
 | ENT-CORE-003 | Commit | 커밋 검색 문서 | `commit_sha`, `message`, `author`, `role`, `merge_seq`, `patch_id`, `changed_paths[]` | Elasticsearch | projection | FR-SRCH-002, FR-SRCH-004 |
 | ENT-CORE-004 | Team | 팀 정보와 집계 그룹 단위 | `team_id`, `slug`, `org_id`, `member_ids[]` | PostgreSQL | registry | FR-AUTH-002, FR-STAT-001 |
 | ENT-CORE-005 | User | 사용자와 접근 범위 | `user_id`, `login`, `email`, `roles[]`, `access_scope_version` | PostgreSQL | auth | FR-AUTH-001, FR-AUTH-003 |
