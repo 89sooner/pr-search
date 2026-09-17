@@ -1,10 +1,11 @@
 'use client';
 
 /** WP-082 / CR-094: repository-first search, with persistent URL filters. */
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Button, DatePicker, Skeleton, Table, FieldSelect } from './reader/primitives';
+import { Spinner } from './ui';
 import { GitPullRequest, GitMerge, History, Search, ArrowDown, ArrowUp, SlidersHorizontal, FolderGit2, Command } from 'lucide-react';
 import { WorkbenchIcon } from './WorkbenchIcon';
 import type { RepositoryOverview } from '../lib/repository-overview';
@@ -160,6 +161,32 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
     // loadedKey determines whether a cursor belongs to this request; it is not a fetch trigger.
   }, [requestKey, cursor, nonce, repository, login, gheBaseUrl]);
   const rows = loadedKey === requestKey ? data?.items ?? [] : [];
+  const nextCursor = loadedKey === requestKey ? data?.next_cursor ?? null : null;
+  /*
+   * CR-104/WP-091: infinite scroll replaces the "More changes" button. The observer callback reads
+   * this ref instead of closing over `nextCursor`/`loading`/`error` directly, so the sentinel doesn't
+   * need to be torn down and re-observed (which re-fires the callback immediately, per spec) every
+   * time a fetch starts or finishes -- only when the sentinel DOM node itself mounts or unmounts.
+   * `!hasError` is what preserves CR-043's no-auto-retry rule: a rejected cursor sets `error` and the
+   * existing banner + "Reload first page" button (unchanged) becomes the only way to resume: the
+   * observer keeps firing on scroll (the sentinel is still there) but every callback is a no-op while
+   * `error` is truthy, so it can't loop.
+   */
+  const infiniteScrollState = useRef({ nextCursor, loading, error });
+  infiniteScrollState.current = { nextCursor, loading, error };
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const sentinelRef = useCallback((node: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node) return;
+    const observer = new IntersectionObserver(entries => {
+      if (!entries[0]?.isIntersecting) return;
+      const state = infiniteScrollState.current;
+      if (state.nextCursor && !state.loading && !state.error) setCursor(state.nextCursor);
+    }, { rootMargin: '200px' });
+    observer.observe(node);
+    observerRef.current = observer;
+  }, []);
   const labelOptions = useMemo(() => {
     return repositoryLabelOptions(draft['label'] ?? '', data?.facets?.['label'] ?? []);
   }, [data?.facets, draft]);
@@ -235,7 +262,7 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
                 })}
               </Table.Body></Table>
             {!loading && !error && !rows.length ? <div className="repo-empty"><WorkbenchIcon name="search" /><h2>{repository ? "No matching changes" : "No repositories to display"}</h2><p>{repository ? "Adjust your query or filters and search again." : "PRs will appear when an accessible ingested repository is available."}</p></div> : null}
-            {loadedKey === requestKey && data?.next_cursor ? <div className="repo-load-more"><Button variant="secondary" disabled={loading} onClick={() => { setCursor(data.next_cursor ?? null); }}>More changes</Button><span>{rows.length.toLocaleString("en-US")} shown</span></div> : null}
+            {nextCursor ? <div className="repo-load-more"><div ref={sentinelRef} aria-hidden="true">{loading ? <Spinner label="Loading more" /> : null}</div><span aria-live="polite">{rows.length.toLocaleString("en-US")} shown</span></div> : null}
             </div>
           </> : null}
         </Tabs.Content>)}
