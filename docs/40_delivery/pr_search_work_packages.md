@@ -1,6 +1,13 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.43 | 갱신일: 2026-09-17
+> 상태: review | 버전: v2.44 | 갱신일: 2026-09-17
+
+## WP-089 병합된 PR의 state 파생 보정 (CR-101)
+
+- 요구사항: FR-SRCH-005 AC-1(`state`·`is` 키), ENT-CORE-002, FR-SEQ-008 AC-11(늦은 PR 스냅숏 재개). 선행: WP-088.
+- 범위: 도메인 헬퍼 `derivePullRequestState`(병합 신호가 있으면 `merged`)와 투영(`documents.ts`)의 적용; 마이그레이션 032로 기존 `pull_request_snapshot.document`의 `state` 정정(down은 `closed`로 결정적 복귀); 투영 단위 시험의 `state` 단언, 032 왕복 통합 시험, 투영 출력과 질의 번역을 잇는 회귀 계약 시험; API 계약의 「state는 GitHub 값 그대로」 문장 정정; RUNBOOK 업그레이드 절의 재색인 안내.
+- 제외: 질의·매핑·UI 변경(이미 계약대로다), 자동 재색인(운영 콘솔에서 수동), 사내 실데이터 확인(NOT RUN).
+- 진행 정본: 구현 추적 원장 6.95장.
 
 ## WP-088 M 번호 운영자 확인서와 확정 근거 보존 (CR-100)
 
@@ -109,6 +116,7 @@
 | WP-086 | 사내 권한명·operator 바로가기 보정 | 권한·UI 보정 (CR-098) | WP-085 | **done** — PR/main CI·bundle smoke, pilot.11 발행; 사내 재반입 미검증 |
 | WP-087 | PR 중심 검색 필터·테이블·달력 보정 | 검색 UX (CR-099) | WP-086 | **done** — PR/main 전체 CI·Chromium·bundle smoke 통과, pilot.12 발행; 실 GHE 데이터 미검증 |
 | WP-088 | M 번호 운영자 확인서와 확정 근거 보존 | M 채번 운영 (CR-100) | WP-087 | **done** — 단위·통합(격리 DB)·변이·typecheck·lint·회귀 통과 (원장 6.94장); PR CI·병합·main CI는 병합 기록에서; 사내 실데이터 NOT RUN |
+| WP-089 | 병합된 PR의 state 파생 보정 | 검색 정확성 (CR-101) | WP-088 | **done** — 단위·032 왕복·회귀 계약·변이·typecheck·lint 통과 (원장 6.95장); PR CI·병합·main CI는 병합 기록에서; 사내 재색인 뒤 확인 NOT RUN |
 | WP-081 | 최신 Conductor 및 Shell·W-001 개선 | UI 품질 (CR-093) | WP-073 | **done** — PR #196 `a8796de`, PR·main CI success, `0.1.0-pilot.8` 발행 (원장 6.92장) |
 | WP-078 | REL-007 R1a — capability 분류·검증·드리프트·스냅숏·A-006 읽기 전용 | REL-007 (**CR-088**) | WP-077 | **done** — 검증 6.85장. leaf 196·flag 1,034·positional 164·`--json` 707 전부 분류(`NFR-009` 본표 100%), 독립 검증기·드리프트 검출·029 스냅숏/검증 기록·`JOB-GH-003`·`API-GH-013`/`014`·A-006. 실행 허용은 `pr.list` 하나 그대로. `GATE-GH-01d`(bindability·port·자원 타입)는 미달로 남고(`DEV-675`), 사내 GHES 확인은 `NOT RUN`(`DEV-674`) |
 | WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | WP-012, WP-015 | **done** — 검증 6.83장. R0 `pr.list` 하나를 인가→미리보기→실행→결과·자기 이력까지 연다. 상위 WP 일곱은 이 수직이 들여온 만큼만 `in_progress`다. 출력 청크 스트리밍은 상태만(`DEV-651`), 분류 195건 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증은 `NOT RUN`** |

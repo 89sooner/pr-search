@@ -13,7 +13,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.35 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.36 | 갱신일: 2026-09-17
 
 ## 1. 목적
 
@@ -383,7 +383,7 @@
 | `is` | 파생 상태 | 아래 |
 | `kind` | **문서 유형** | `pull_request` \\| `commit`. 값이 열거되어 있으므로 그 밖은 400이다. 집계의 `drill_down_query`가 모집단을 유지하는 수단이며(CR-053, DEV-383), `is:merged`가 우연히 PR만 남기는 것에 기대지 않는다 — 그 뜻은 "머지된 것"이지 "PR"이 아니다 |
 
-**`is`는 파생 상태다 (CR-016, DEV-053).** `state`가 GitHub이 준 값을 그대로 보는 반면 `is`는 이 시스템이 계산한 것까지 본다.
+**`is`는 파생 상태다 (CR-016, DEV-053).** `state`는 투영이 정한 세 값 `open`·`closed`·`merged` 중 하나다 — GitHub의 원시 `state`는 `open`·`closed`뿐이고 병합은 `merged`·`merged_at`이 따로 말하므로, 투영이 병합 신호가 있으면 `merged`로 파생한다(CR-101, DEV-718; `derivePullRequestState`). 병합된 PR은 `closed`가 아니라 `merged`이며 세 값은 배타다. `is`는 그 위에 이 시스템이 관계에서 계산한 상태까지 본다.
 
 | 값 | 조건 |
 | --- | --- |

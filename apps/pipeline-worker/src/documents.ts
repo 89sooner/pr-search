@@ -13,6 +13,7 @@
 
 import {
   commitDocId,
+  derivePullRequestState,
   pullRequestDocId,
   type CommitRole,
   type EnrichedReview,
@@ -266,7 +267,12 @@ export function buildPullRequestDocument(source: ProjectionSource): UpsertReques
   if (pr !== null) {
     put(doc, 'title', pr.title);
     put(doc, 'body', pr.body);
-    put(doc, 'state', pr.state);
+    /*
+     * **병합은 파생 상태다** (CR-101 / DEV-718). GitHub은 병합된 PR도 `state: closed`로 주고 `merged`·
+     * `merged_at`이 따로 말한다. 문서 계약(ENT-CORE-002)·`is:merged`·화면 배지·M 번호 조회는 전부
+     * `merged`를 전제하므로 여기서 한 번 파생한다. 이미 저장된 스냅숏은 마이그레이션 032가 같은 규칙이다.
+     */
+    put(doc, 'state', derivePullRequestState(pr));
     put(doc, 'draft', pr.draft);
     put(doc, 'labels', [...pr.labels]);
     put(doc, 'author', pr.author);
