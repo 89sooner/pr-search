@@ -17,7 +17,7 @@
  * 해석 경로를 만들면 한쪽만 접근 통제가 넓어지는 날을 아무도 못 본다.
  */
 
-import { analyzeSequenceBinding, type QueryAst, type SequenceBindingProblem } from '@prs/query';
+import { analyzeMergeNumberBinding, analyzeSequenceBinding, type QueryAst, type SequenceBindingProblem } from '@prs/query';
 import type { AccessScope } from '@prs/es';
 import type { Pool } from '@prs/db';
 import {
@@ -137,4 +137,58 @@ export async function resolveSequenceContext(
    * 유효 에폭으로 삼고, 화면이 그것을 URL에 새긴다 (ADR-007 규칙 5의 "공유 URL").
    */
   return { kind: 'bound', epoch: lookup.space.seqEpoch, context };
+}
+
+/** `mnum:` 질의의 공간·에폭 판정 (CR-106). `resolveSequenceContext`보다 얕다 — 아래 함수 주석 참고. */
+export type MergeNumberRangeOutcome =
+  /** `mnum:` 범위 조건이 없다. */
+  | { readonly kind: 'none' }
+  /** 공간이 확정됐다. 이 에폭으로 `merge_number_epoch`를 건다. */
+  | { readonly kind: 'bound'; readonly epoch: number }
+  /** 질의가 공간을 지목하지 못했다. `INVALID_PARAMETER`(field `q`). */
+  | { readonly kind: 'unbindable'; readonly reason: SequenceBindingProblem }
+  /** 지목한 공간을 확인할 수 없다. `NOT_FOUND` 하나로 답한다 (CR-027 DEV-137, THR-006). */
+  | { readonly kind: 'space_unavailable' };
+
+/**
+ * `mnum:` 질의의 공간과 **현재** 에폭을 확정한다 (FR-SRCH-005 AC-9, CR-106).
+ *
+ * **`resolveSequenceContext`를 재사용하지 않는다.** 그 함수는 `seq_epoch` 파라미터로
+ * 과거 에폭을 인용하고 낡았으면 `stale`로 멈추는 **공유 URL 인용** 기능까지
+ * 담당하는데, `mnum:`은 그 기능이 없다 — 이 CR의 승인 범위는 세대 혼입 방지뿐이고,
+ * M 번호 범위를 과거 에폭으로 고정 인용하는 기능은 승인되지 않았다. 그래서 `mnum:`은
+ * 언제나 **현재** 에폭을 쓰고, 그 값이 다르다고 조회를 멈추는 `stale` 판정이 없다.
+ *
+ * **공간 조회를 두 번 하지 않는다.** `seq:`와 `mnum:`이 같은 질의에 있으면 AST의
+ * 같은 `repo:`·`base:`에서 나오므로 지목하는 공간이 항상 같다 — `resolveSequenceContext`가
+ * 이미 그 공간을 읽었다면 `reuse`로 그 결과를 받아 재사용한다. **이것은 최적화가
+ * 아니라 정합성이다**: 두 번 읽으면 그 사이 강제 푸시가 에폭을 올릴 때 한 응답
+ * 안에서 `seq_epoch` 게이트와 `merge_number_epoch` 게이트가 서로 다른 세대를 보게
+ * 되어, 세대 혼입을 막으려는 이 기능 자체가 그 혼입을 만든다(독립 검토가 실측한
+ * 경합, CR-106).
+ *
+ * @param reuse `resolveSequenceContext`가 이미 확정한 공간. `repository`·`baseBranch`가
+ *   이 함수가 판정한 것과 같을 때만 쓴다 — 다르면(있을 수 없지만 방어적으로) 새로 읽는다.
+ * @returns 라우트가 그대로 분기할 수 있는 판정. 이 함수는 HTTP를 모른다.
+ */
+export async function resolveMergeNumberRangeEpoch(
+  pool: Pool,
+  input: { readonly ast: QueryAst; readonly scope: AccessScope },
+  reuse?: { readonly repository: string; readonly baseBranch: string; readonly epoch: number },
+): Promise<MergeNumberRangeOutcome> {
+  const binding = analyzeMergeNumberBinding(input.ast);
+  if (binding.kind === 'none') return { kind: 'none' };
+  if (binding.kind === 'invalid') return { kind: 'unbindable', reason: binding.reason };
+
+  if (reuse !== undefined && reuse.repository === binding.repository && reuse.baseBranch === binding.baseBranch) {
+    return { kind: 'bound', epoch: reuse.epoch };
+  }
+
+  const slug = parseRepositorySlug(binding.repository);
+  if (slug === null) return { kind: 'space_unavailable' };
+
+  const lookup = await resolveSpace(pool, slug, binding.baseBranch, input.scope);
+  if (lookup.kind !== 'ok') return { kind: 'space_unavailable' };
+
+  return { kind: 'bound', epoch: lookup.space.seqEpoch };
 }

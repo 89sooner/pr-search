@@ -66,6 +66,8 @@ function request(query: string) {
     facets: false,
     // `seq:`가 없는 질의다 (CR-051).
     sequenceEpoch: null,
+    // `mnum:`도 없는 질의다 (CR-106).
+    mergeNumberEpoch: null,
   } as const;
 }
 

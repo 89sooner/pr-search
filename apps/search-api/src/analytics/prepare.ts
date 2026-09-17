@@ -18,8 +18,11 @@
 
 import {
   QueryParseError,
+  analyzePrNumberBinding,
+  hasMergeNumberRangeFilter,
   parseQuery,
   type QueryAst,
+  type RepositoryBindingAnalysis,
 } from '@prs/query';
 import {
   applyMandatoryScopeFilter,
@@ -33,13 +36,20 @@ import {
   type UnresolvedName,
 } from '@prs/es';
 import type { Pool } from '@prs/db';
-import { resolveSequenceContext, type SequenceContextOutcome } from '../search/sequence-context.js';
+import {
+  resolveMergeNumberRangeEpoch,
+  resolveSequenceContext,
+  type MergeNumberRangeOutcome,
+  type SequenceContextOutcome,
+} from '../search/sequence-context.js';
 import { ANALYTICS_TARGET } from './types.js';
 
 export interface PrepareInput {
   readonly rawQuery: string;
   readonly rawEpoch: unknown;
   readonly scope: AccessScope;
+  /** M 번호 기능 켜짐 여부 (CR-106). 꺼져 있으면 `mnum:`을 지원하지 않는 키로 거절한다. */
+  readonly mergeNumberEnabled: boolean;
 }
 
 export interface PrepareDeps {
@@ -63,6 +73,17 @@ export type PrepareOutcome =
   | { readonly kind: 'population_empty' }
   /** 시퀀스 문맥이 거절했다. 사유는 `/search`와 같은 문자열이다. */
   | { readonly kind: 'sequence'; readonly outcome: SequenceContextOutcome }
+  /**
+   * `mnum:`이 있는데 M 번호 기능이 꺼져 있다 (CR-106).
+   *
+   * 판정만 옮긴다 — 응답 모양(`QUERY_SYNTAX_ERROR`, 제외된 `supported_keys`)은
+   * `/search`와 같은 문구를 쓰도록 라우트가 `checkMergeNumberFeatureFlag`로 만든다.
+   */
+  | { readonly kind: 'merge_number_disabled' }
+  /** `pr_number:`가 저장소를 지목하지 못했다. 사유는 `/search`와 같은 문자열이다. */
+  | { readonly kind: 'pr_number_binding'; readonly binding: Extract<RepositoryBindingAnalysis, { kind: 'invalid' }> }
+  /** `mnum:` 공간 판정이 거절했다. 사유는 `/search`와 같은 문자열이다. */
+  | { readonly kind: 'merge_number_range'; readonly outcome: Extract<MergeNumberRangeOutcome, { kind: 'unbindable' | 'space_unavailable' }> }
   | {
       readonly kind: 'ready';
       readonly ast: QueryAst;
@@ -112,15 +133,46 @@ export async function prepareAnalyticsQuery(
     return { kind: 'sequence', outcome: sequence };
   }
 
+  /*
+   * `pr_number:`·`mnum:` (CR-106). `/search`와 같은 파서를 공유하므로 같은
+   * 판정을 거친다 — 이 판정 없이 `mnum:`을 그대로 두면 아래 `buildQuery`가
+   * `MergeNumberEpochRequiredError`를 던지고, 이 함수를 부르는 라우트 어디에도
+   * 그 오류를 잡는 코드가 없어 처리되지 않은 500이 된다(독립 검토가 실측).
+   */
+  if (!input.mergeNumberEnabled && hasMergeNumberRangeFilter(ast)) {
+    return { kind: 'merge_number_disabled' };
+  }
+  const prNumberBinding = analyzePrNumberBinding(ast);
+  if (prNumberBinding.kind === 'invalid') {
+    return { kind: 'pr_number_binding', binding: prNumberBinding };
+  }
+  const mergeNumberRange = await resolveMergeNumberRangeEpoch(
+    deps.pool,
+    { ast, scope: input.scope },
+    sequence.kind === 'bound'
+      ? { repository: sequence.context.repository, baseBranch: sequence.context.base_branch, epoch: sequence.context.seq_epoch }
+      : undefined,
+  );
+  if (mergeNumberRange.kind === 'unbindable' || mergeNumberRange.kind === 'space_unavailable') {
+    return { kind: 'merge_number_range', outcome: mergeNumberRange };
+  }
+
   const resolution = await deps.resolveNames(collectNames(scopedAst));
   const sequenceEpoch = sequence.kind === 'bound' ? sequence.epoch : null;
+  const mergeNumberEpoch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.epoch : null;
   const built = buildQuery(
     // `kind:`가 걷어내진 AST다 — 남기면 `buildQuery`가 던진다 (CR-053).
     scopedAst,
     resolution,
-    // `seq:` 범위가 있는데 에폭이 없으면 `buildQuery`가 던진다 (CR-051).
-    // 조용히 모든 세대를 함께 집계하는 것보다 조립 오류를 드러내는 편이 낫다.
-    sequenceEpoch === null ? {} : { sequenceEpoch },
+    /*
+     * `seq:`/`mnum:` 범위가 있는데 대응 에폭이 없으면 `buildQuery`가 던진다
+     * (CR-051, CR-106). 조용히 모든 세대를 함께 집계하는 것보다 조립 오류를
+     * 드러내는 편이 낫다.
+     */
+    {
+      ...(sequenceEpoch === null ? {} : { sequenceEpoch }),
+      ...(mergeNumberEpoch === null ? {} : { mergeNumberEpoch }),
+    },
   );
 
   /*

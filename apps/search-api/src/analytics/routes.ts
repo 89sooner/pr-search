@@ -26,7 +26,7 @@ import type { Pool } from '@prs/db';
 import type { AuthContext } from '../auth/context.js';
 import { authenticateSession } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
-import { toSequenceFailure } from '../search/routes.js';
+import { mergeNumberDisabledFailure, toMergeNumberRangeFailure, toPrNumberRangeFailure, toSequenceFailure } from '../search/routes.js';
 import {
   buildDistributionsAggs,
   buildGroupsAggs,
@@ -80,6 +80,8 @@ export interface AnalyticsRouteOptions {
     readonly orgIds: readonly number[];
     readonly teamIds: readonly number[];
   }) => Promise<{ readonly orgs: ReadonlyMap<number, string>; readonly teams: ReadonlyMap<number, string> }>;
+  /** M 번호 기능 켜짐 여부 (CR-106). `/search`와 같은 배포 설정을 그대로 받는다. */
+  readonly mergeNumberEnabled?: boolean;
 }
 
 /**
@@ -231,6 +233,13 @@ function toPrepareFailure(
     };
   }
   if (outcome.kind === 'sequence') return toSequenceFailure(outcome.outcome, correlationId);
+  /*
+   * `pr_number:`·`mnum:` (CR-106). `/search`와 문구·사유 코드를 그대로 공유한다 —
+   * 세 API가 같은 파서를 쓰므로 같은 조건에 같은 답을 줘야 한다.
+   */
+  if (outcome.kind === 'merge_number_disabled') return mergeNumberDisabledFailure(correlationId);
+  if (outcome.kind === 'pr_number_binding') return toPrNumberRangeFailure(outcome.binding, correlationId);
+  if (outcome.kind === 'merge_number_range') return toMergeNumberRangeFailure(outcome.outcome, correlationId);
   return null;
 }
 
@@ -279,7 +288,12 @@ async function runCommon(
   const scope = toAccessScope(await options.auth.scopes.resolveCached(userId));
 
   const prepared = await prepareAnalyticsQuery(
-    { rawQuery: queryOverride ?? readString(body, 'query'), rawEpoch: readEpoch(body), scope },
+    {
+      rawQuery: queryOverride ?? readString(body, 'query'),
+      rawEpoch: readEpoch(body),
+      scope,
+      mergeNumberEnabled: options.mergeNumberEnabled ?? false,
+    },
     { pool: options.pool, resolveNames: options.resolveNames },
   );
 

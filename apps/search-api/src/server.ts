@@ -243,7 +243,12 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
         loginPath: config.auth.loginPath,
         mergeNumberEnabled: config.mergeNumberEnabled === true,
       });
-      registerExportRoutes(app, { ...deps.search, auth: deps.auth, loginPath: config.auth.loginPath });
+      registerExportRoutes(app, {
+        ...deps.search,
+        auth: deps.auth,
+        loginPath: config.auth.loginPath,
+        mergeNumberEnabled: config.mergeNumberEnabled === true,
+      });
       /*
        * 집계 API (WP-037 / API-STAT-001~004).
        *
@@ -259,6 +264,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
         resolveGroupDisplay: analyticsDisplay(deps.search.pool),
         auth: deps.auth,
         loginPath: config.auth.loginPath,
+        mergeNumberEnabled: config.mergeNumberEnabled === true,
       });
       // 식별자 해석은 목록 조회와 같은 의존을 쓴다 (WP-014). ES 하나면 된다.
       registerResolveRoutes(app, {

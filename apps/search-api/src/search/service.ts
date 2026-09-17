@@ -308,6 +308,14 @@ export interface SearchRequest {
    * 결과를 질의와 지문에 반영할 뿐이다 (백엔드 아키텍처 6.1의 4-1단계).
    */
   readonly sequenceEpoch: number | null;
+  /**
+   * `mnum:` 범위 질의의 유효 M 번호 에폭. `mnum:`이 없으면 `null` (CR-106).
+   *
+   * `sequenceEpoch`과 별개로 받는다 — 값이 같은 공간에서는 같은 정수여도
+   * `buildQuery`가 다른 색인 필드(`merge_number_epoch`)에 걸고 지문도 다른
+   * 자리에 싣는다.
+   */
+  readonly mergeNumberEpoch: number | null;
 }
 
 /**
@@ -368,9 +376,15 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
     // `kind:`가 걷어내진 AST다 — 남기면 `buildQuery`가 던진다 (CR-053).
     ast,
     resolution,
-    // `seq:`가 있는데 에폭이 없으면 `buildQuery`가 던진다 — 조용히 모든
-    // 세대를 함께 돌려주는 것보다 조립 오류를 드러내는 편이 낫다.
-    request.sequenceEpoch === null ? {} : { sequenceEpoch: request.sequenceEpoch },
+    /*
+     * `seq:`/`mnum:`가 있는데 대응 에폭이 없으면 `buildQuery`가 던진다 —
+     * 조용히 모든 세대를 함께 돌려주는 것보다 조립 오류를 드러내는 편이
+     * 낫다. 둘은 독립이다(CR-106) — 값이 같아도 다른 필드에 걸린다.
+     */
+    {
+      ...(request.sequenceEpoch === null ? {} : { sequenceEpoch: request.sequenceEpoch }),
+      ...(request.mergeNumberEpoch === null ? {} : { mergeNumberEpoch: request.mergeNumberEpoch }),
+    },
   );
 
   // 4. 강제 필터 결합. 우회 경로가 없다 (ADR-008).
@@ -387,6 +401,7 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
     scope: request.scope,
     scopeVersion: request.scopeVersion,
     sequenceEpoch: request.sequenceEpoch,
+    mergeNumberEpoch: request.mergeNumberEpoch,
   });
 
   const resumed =
@@ -477,6 +492,7 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
           scope: request.scope,
           resolution,
           sequenceEpoch: request.sequenceEpoch,
+          mergeNumberEpoch: request.mergeNumberEpoch,
         })
       : NO_RELAXATION;
 

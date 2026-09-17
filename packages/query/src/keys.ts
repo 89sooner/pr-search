@@ -52,6 +52,19 @@ export const QUERY_KEYS = [
    */
   'changed_files',
   'changed_lines',
+  /**
+   * 식별자 범위 (CR-106, FR-SRCH-005 AC-8·AC-9).
+   *
+   * `pr_number`는 `repo:` 하나만 요구한다 — PR 번호는 저장소 안에서 생성
+   * 시점에 매겨지므로 대상 브랜치나 시퀀스 에폭과 무관하다.
+   *
+   * `mnum`은 `seq`와 같은 시퀀스 공간 지목 규칙을 따른다(`repo:`·`base:`
+   * 하나씩). M 번호는 `merge_seq`에서 파생된 별도의 조밀 서수라 `seq`와
+   * 서로 대체할 수 없다 — 공간은 같아도 값은 다르다. 두 키의 지목 규칙은
+   * `sequence-binding.ts`에 있다.
+   */
+  'pr_number',
+  'mnum',
 ] as const;
 
 export type QueryKey = (typeof QUERY_KEYS)[number];
@@ -68,7 +81,7 @@ export function isQueryKey(value: string): value is QueryKey {
  * 여기 없는 키에서 `..`는 리터럴이다 — `path:src/a..b`는 범위가 아니라 그
  * 문자열을 찾는 조건이다.
  */
-export const NUMERIC_RANGE_KEYS = ['seq', 'changed_files', 'changed_lines'] as const;
+export const NUMERIC_RANGE_KEYS = ['seq', 'changed_files', 'changed_lines', 'pr_number', 'mnum'] as const;
 export const TEMPORAL_RANGE_KEYS = ['merged', 'created'] as const;
 
 export type NumericRangeKey = (typeof NUMERIC_RANGE_KEYS)[number];
@@ -91,6 +104,20 @@ export function isRangeKey(key: string): key is RangeKey {
 }
 
 /**
+ * 수치 범위 키의 하한(포함) (CR-106).
+ *
+ * **여기 없는 키는 하한이 없다** — `changed_files`·`changed_lines`는 0을 사실의
+ * 진술로 쓰고(CR-056, "0은 하나도 바꾸지 않음"), `seq`는 이 CR이 손대지 않은
+ * 기존 키다. `pr_number`·`mnum`은 1부터 시작하는 값이라(GitHub의 PR 번호,
+ * `FR-SEQ-008`의 1-기반 조밀 서수) 그 아래는 범위 형태는 맞아도 값 자체가
+ * 성립하지 않는다 — "최솟값 위반"을 형태 검사와 별개로 거절한다.
+ */
+export const MIN_RANGE_VALUE: Readonly<Partial<Record<NumericRangeKey, number>>> = {
+  pr_number: 1,
+  mnum: 1,
+};
+
+/**
  * 범위 키의 올바른 예시 (DEV-364, DEV-378, DEV-379).
  *
  * **키마다 다른 예를 보여 준다.** `seq`에 날짜 예시를 주면 사용자가 두 번
@@ -102,6 +129,8 @@ export const RANGE_KEY_EXAMPLE: Readonly<Record<RangeKey, string>> = {
   created: 'created:2026-08-10..2026-08-19',
   changed_files: 'changed_files:2..5',
   changed_lines: 'changed_lines:51..200',
+  pr_number: 'repo:acme/payments pr_number:100..200',
+  mnum: 'repo:acme/payments base:main mnum:1..50',
 };
 
 /**
