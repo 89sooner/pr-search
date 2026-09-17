@@ -34,7 +34,7 @@ describe('AC-1: 지원 질의 키', () => {
     expect([...QUERY_KEYS]).toEqual([
       'repo', 'org', 'author', 'team', 'author_team', 'reviewer', 'label', 'base',
       'head', 'state', 'merged', 'created', 'seq', 'release', 'path', 'is', 'kind',
-      'changed_files', 'changed_lines',
+      'changed_files', 'changed_lines', 'pr_number', 'mnum',
     ]);
   });
 
@@ -63,6 +63,9 @@ describe('AC-1: 지원 질의 키', () => {
       created: '2026-08-10..2026-08-19',
       changed_files: '2..5',
       changed_lines: '51..200',
+      // 식별자 범위 (CR-106). 나머지 범위 전용 키와 같은 규율이다 — 범위 형태로만 성립한다.
+      pr_number: '100..200',
+      mnum: '1..50',
     };
     const scalars: Record<string, string> = { is: 'merged', kind: 'pull_request' };
     for (const key of QUERY_KEYS) {
@@ -195,6 +198,103 @@ describe('DEV-364: 범위 전용 키의 스칼라를 거절한다', () => {
     expect(parseQuery('seq:1..5').filters).toMatchObject([{ key: 'seq', op: 'range' }]);
     expect(parseQuery('-seq:1..5').filters).toMatchObject([{ key: 'seq', op: 'not_range' }]);
     expect(parseQuery('repo:acme/payments base:main seq:1..5').filters).toHaveLength(3);
+  });
+});
+
+describe('CR-106: pr_number·mnum은 `NUMERIC_RANGE_KEYS`에 등록된 그대로 기존 규율을 물려받는다', () => {
+  /*
+   * 이 블록은 새 검증 로직을 시험하지 않는다 — `pr_number`·`mnum`을
+   * `NUMERIC_RANGE_KEYS`에 등록한 것만으로 `seq:`가 이미 갖던 스칼라 거절·
+   * 역전 거절이 **자동으로** 적용되는지를 확인한다 (parse.ts의 `toRangeFilter`·
+   * `isRangeKey` 분기는 키를 가리지 않는다).
+   */
+  it.each([
+    ['pr_number', 'pr_number:100'],
+    ['mnum', 'mnum:5'],
+  ])('%s의 스칼라도 seq:1234와 같은 방식으로 거절된다', (key, query) => {
+    const error = reject(query);
+    expect(error.code).toBe('QUERY_SYNTAX_ERROR');
+    expect(error.message).toContain('supports ranges');
+    // 예시는 키마다 다르다 (RANGE_KEY_EXAMPLE) — 사용자를 두 번 틀리게 하지 않는다.
+    expect(error.message).toContain(key === 'pr_number' ? 'pr_number:100..200' : 'mnum:1..50');
+  });
+
+  it.each([
+    ['pr_number', '-pr_number:100'],
+    ['mnum', '-mnum:5'],
+  ])('%s의 부정형 스칼라도 거절된다', (_key, query) => {
+    expect(reject(query).code).toBe('QUERY_SYNTAX_ERROR');
+  });
+
+  it.each([
+    ['pr_number', 'pr_number:200..100'],
+    ['mnum', 'mnum:50..1'],
+  ])('%s의 뒤집힌 범위도 거절된다', (_key, query) => {
+    expect(reject(query).message).toContain('reversed');
+  });
+
+  it('범위 형태는 그대로 성립한다', () => {
+    expect(parseQuery('repo:acme/payments pr_number:100..200').filters).toContainEqual({
+      key: 'pr_number',
+      op: 'range',
+      from: 100,
+      to: 200,
+    });
+    expect(parseQuery('repo:acme/payments base:main mnum:1..50').filters).toContainEqual({
+      key: 'mnum',
+      op: 'range',
+      from: 1,
+      to: 50,
+    });
+  });
+});
+
+/*
+ * 위 블록과 달리 이것은 **새 검증 로직**이다 (`MIN_RANGE_VALUE`, CR-106).
+ * `NUMERIC_RANGE_KEYS` 등록만으로는 물려받지 않는다 — `seq`·`changed_files`·
+ * `changed_lines`는 하한이 없고(`changed_files:0..0`은 CR-056이 승인한 사실의
+ * 진술이다), `pr_number`·`mnum`만 1 미만을 거절한다.
+ */
+describe('CR-106: pr_number·mnum은 1 미만을 거절한다 (하한 위반)', () => {
+  it.each([
+    ['pr_number', 'repo:acme/payments pr_number:-5..10'],
+    ['mnum', 'repo:acme/payments base:main mnum:-1..5'],
+    ['pr_number', 'repo:acme/payments pr_number:0..10'],
+    ['mnum', 'repo:acme/payments base:main mnum:0..5'],
+  ])('%s의 하한 위반은 형태가 맞아도 거절된다: %s', (_key, query) => {
+    const error = reject(query);
+    expect(error.code).toBe('QUERY_SYNTAX_ERROR');
+    expect(error.message).toContain('below the minimum');
+  });
+
+  it('1은 하한에 포함된다 — 거절되지 않는다', () => {
+    expect(parseQuery('repo:acme/payments pr_number:1..10').filters).toContainEqual({
+      key: 'pr_number',
+      op: 'range',
+      from: 1,
+      to: 10,
+    });
+    expect(parseQuery('repo:acme/payments base:main mnum:1..5').filters).toContainEqual({
+      key: 'mnum',
+      op: 'range',
+      from: 1,
+      to: 5,
+    });
+  });
+
+  it('changed_files·seq는 하한 검사를 받지 않는다 — 기존 동작 그대로다', () => {
+    expect(parseQuery('repo:acme/payments changed_files:0..0').filters).toContainEqual({
+      key: 'changed_files',
+      op: 'range',
+      from: 0,
+      to: 0,
+    });
+    expect(parseQuery('repo:acme/payments base:main seq:-5..10').filters).toContainEqual({
+      key: 'seq',
+      op: 'range',
+      from: -5,
+      to: 10,
+    });
   });
 });
 

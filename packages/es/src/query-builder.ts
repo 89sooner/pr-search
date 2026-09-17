@@ -19,6 +19,7 @@
 
 import type { estypes } from "@elastic/elasticsearch";
 import {
+  hasMergeNumberRangeFilter,
   hasSequenceRangeFilter,
   isRangeFilter,
   type QueryAst,
@@ -60,6 +61,14 @@ const RANGE_FIELDS: Readonly<Partial<Record<QueryKey, string>>> = {
    */
   changed_files: "changed_files_count",
   changed_lines: "changed_lines",
+  /*
+   * 식별자 범위 (CR-106, FR-SRCH-005 AC-8·AC-9).
+   *
+   * `pr_number`는 이 매핑만으로 충분하다 — 에폭 게이트가 필요 없다(아래
+   * `buildQuery`의 `mnum:` 처리와 다르다).
+   */
+  pr_number: "pr_number",
+  mnum: "merge_number",
 };
 
 /**
@@ -145,6 +154,18 @@ export interface BuildQueryOptions {
    * 아니라 fail-open이라 더 나쁘다.
    */
   readonly sequenceEpoch?: number;
+  /**
+   * `mnum:` 범위 조건이 딛고 선 M 번호 유효 에폭 (CR-106).
+   *
+   * **`sequenceEpoch`과 값은 같을 수 있지만 별개 옵션이다.** 이 값은
+   * `seq_epoch`이 아니라 색인의 `merge_number_epoch` 필드에 건다 — 두 필드는
+   * 서로 다른 투영 작업(PR 투영·M 번호 투영)이 다른 시점에 쓰므로
+   * (`packages/es/src/mappings/pull-requests.ts` 주석), `sequenceEpoch`
+   * 하나로 두 필드를 함께 게이트할 수 없다. `seq:`와 `mnum:`이 같은 질의에
+   * 함께 있으면 두 옵션에 **같은 값**(그 공간의 현재 에폭)을 넣는다 — 공간
+   * 해석은 호출부가 한 번만 한다.
+   */
+  readonly mergeNumberEpoch?: number;
 }
 
 /** `seq:` 범위가 있는데 에폭 없이 질의를 만들려 했다. 배포·조립 오류다. */
@@ -152,6 +173,14 @@ export class SequenceEpochRequiredError extends Error {
   constructor() {
     super("seq: 범위 조건이 있는 질의에는 시퀀스 에폭이 필요하다 (CR-051)");
     this.name = "SequenceEpochRequiredError";
+  }
+}
+
+/** `mnum:` 범위가 있는데 M 번호 에폭 없이 질의를 만들려 했다. 배포·조립 오류다 (CR-106). */
+export class MergeNumberEpochRequiredError extends Error {
+  constructor() {
+    super("mnum: 범위 조건이 있는 질의에는 M 번호 에폭이 필요하다 (CR-106)");
+    this.name = "MergeNumberEpochRequiredError";
   }
 }
 
@@ -480,6 +509,22 @@ export function buildQuery(
   if (hasSequenceRangeFilter(ast)) {
     if (options.sequenceEpoch === undefined) throw new SequenceEpochRequiredError();
     filter.push({ term: { seq_epoch: options.sequenceEpoch } });
+  }
+
+  /*
+   * M 번호도 한 세대 안에서만 뜻이 있다 (CR-106) — 같은 이유, 다른 필드다.
+   *
+   * `seq_epoch`이 아니라 `merge_number_epoch`에 건다. 색인의 두 필드는 서로
+   * 다른 투영 작업이 다른 시점에 쓰므로(PR 투영·M 번호 투영), `seq_epoch`만
+   * 걸면 M 번호 투영이 뒤처진 문서가 최신 PR 투영 문서와 함께 통과해 두
+   * 세대의 M 번호가 한 목록에 섞인다 — 위 블록이 `seq:`에 대해 막는 것과
+   * 같은 결함을 `mnum:` 자리에서 반복하는 셈이다. 배정되지 않은 M 번호(
+   * `pending`·미대상)는 이 필드 자체가 없으므로 `range` 절이 자연히
+   * 걸러 낸다 — 별도 판정을 더하지 않는다.
+   */
+  if (hasMergeNumberRangeFilter(ast)) {
+    if (options.mergeNumberEpoch === undefined) throw new MergeNumberEpochRequiredError();
+    filter.push({ term: { merge_number_epoch: options.mergeNumberEpoch } });
   }
 
   for (const one of ast.filters) {

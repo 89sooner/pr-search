@@ -13,6 +13,7 @@ import {
   EMPTY_RESOLUTION,
   FIRST_PARENT_COMMIT_ROLES,
   KindFilterNotAppliedError,
+  MergeNumberEpochRequiredError,
   RangeKeyEqualityError,
   SequenceEpochRequiredError,
   resolveSearchTarget,
@@ -198,6 +199,93 @@ describe('시퀀스 에폭 결합 (CR-051, DEV-361)', () => {
       text: null,
     };
     expect(() => buildQuery(scalar, RESOLUTION)).toThrow(RangeKeyEqualityError);
+  });
+});
+
+describe('식별자 범위 (CR-106, FR-SRCH-005 AC-8·AC-9)', () => {
+  describe('mnum: 은 merge_number를 보고 별도 에폭 필드에 걸린다', () => {
+    it('`mnum`은 `merge_number`를 본다 — M 번호 에폭 필터와 **함께** 선다', () => {
+      const built = buildQuery(parseQuery('repo:acme/payments base:main mnum:1..50'), RESOLUTION, {
+        mergeNumberEpoch: 7,
+      });
+      const filters = (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
+      expect(filters).toContainEqual({ term: { merge_number_epoch: 7 } });
+      expect(filters).toContainEqual({ range: { merge_number: { gte: 1, lte: 50 } } });
+    });
+
+    it('**`mnum:` 범위가 있는데 M 번호 에폭이 없으면 던진다** — 조용히 모든 세대를 함께 돌려주지 않는다', () => {
+      expect(() => buildQuery(parseQuery('repo:acme/payments base:main mnum:1..50'), RESOLUTION)).toThrow(
+        MergeNumberEpochRequiredError,
+      );
+    });
+
+    it('부정된 `-mnum:`에도 M 번호 에폭이 필요하다', () => {
+      const query = 'repo:acme/payments base:main -mnum:1..5';
+      expect(() => buildQuery(parseQuery(query), RESOLUTION)).toThrow(MergeNumberEpochRequiredError);
+
+      const built = buildQuery(parseQuery(query), RESOLUTION, { mergeNumberEpoch: 2 });
+      const bool = (built.query as { bool: { filter?: unknown[]; must_not?: unknown[] } }).bool;
+      // 에폭은 결과 집합 전체의 조건이므로 `filter`에 있고, 범위만 `must_not`이다.
+      expect(bool.filter).toContainEqual({ term: { merge_number_epoch: 2 } });
+      expect(bool.must_not).toEqual([{ range: { merge_number: { gte: 1, lte: 5 } } }]);
+    });
+
+    it('**`mnum:`이 없으면 M 번호 에폭 필터를 넣지 않는다**', () => {
+      const built = buildQuery(parseQuery('repo:acme/payments'), RESOLUTION, { mergeNumberEpoch: 9 });
+      const filters = (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
+      expect(filters).not.toContainEqual({ term: { merge_number_epoch: 9 } });
+    });
+
+    it('**`seq_epoch`과 `merge_number_epoch`는 서로 다른 필드다 — 값이 같아도 섞이지 않는다**', () => {
+      // `seq:`와 `mnum:`이 한 질의에 함께 있으면 같은 값을 두 옵션에 넣지만
+      // (공간 해석은 한 번뿐이다), 색인에서는 서로 다른 필드에 걸려야 한다.
+      const built = buildQuery(parseQuery('repo:acme/payments base:main seq:1..5 mnum:1..50'), RESOLUTION, {
+        sequenceEpoch: 3,
+        mergeNumberEpoch: 3,
+      });
+      const filters = (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
+      expect(filters).toContainEqual({ term: { seq_epoch: 3 } });
+      expect(filters).toContainEqual({ term: { merge_number_epoch: 3 } });
+      // 같은 값 3이 두 번 실려도 그것은 두 필드에 각각 건 결과이지, 한 필터가 아니다.
+      expect(filters.filter((f) => JSON.stringify(f).includes('3'))).toHaveLength(2);
+    });
+
+    it('스칼라 `mnum:`이 AST로 들어오면 던진다', () => {
+      const scalar: QueryAst = { filters: [{ key: 'mnum', op: 'eq', values: ['5'] }], text: null };
+      expect(() => buildQuery(scalar, RESOLUTION, { mergeNumberEpoch: 1 })).toThrow(RangeKeyEqualityError);
+    });
+  });
+
+  describe('pr_number: 은 에폭 게이트가 없다', () => {
+    it('`pr_number`는 `pr_number` 필드를 본다 — 에폭 필터 없이 선다', () => {
+      const built = buildQuery(parseQuery('repo:acme/payments pr_number:100..200'), RESOLUTION);
+      const filters = (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
+      expect(filters).toContainEqual({ range: { pr_number: { gte: 100, lte: 200 } } });
+      // 에폭 옵션을 아예 주지 않아도 던지지 않는다 — `mnum:`·`seq:`와 다르다.
+      expect(filters.some((f) => JSON.stringify(f).includes('epoch'))).toBe(false);
+    });
+
+    it('`mergeNumberEpoch`·`sequenceEpoch`를 함께 줘도 `pr_number:`에는 걸리지 않는다', () => {
+      const built = buildQuery(parseQuery('repo:acme/payments pr_number:100..200'), RESOLUTION, {
+        sequenceEpoch: 5,
+        mergeNumberEpoch: 5,
+      });
+      const filters = (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
+      // `seq:`·`mnum:` 범위가 이 질의에 없으므로 두 에폭 항 모두 없다.
+      expect(filters).not.toContainEqual({ term: { seq_epoch: 5 } });
+      expect(filters).not.toContainEqual({ term: { merge_number_epoch: 5 } });
+      expect(filters).toContainEqual({ range: { pr_number: { gte: 100, lte: 200 } } });
+    });
+
+    it('양끝을 포함한다', () => {
+      const filters = filtersOf('repo:acme/payments pr_number:5..5');
+      expect(filters).toContainEqual({ range: { pr_number: { gte: 5, lte: 5 } } });
+    });
+
+    it('스칼라 `pr_number:`가 AST로 들어오면 던진다', () => {
+      const scalar: QueryAst = { filters: [{ key: 'pr_number', op: 'eq', values: ['100'] }], text: null };
+      expect(() => buildQuery(scalar, RESOLUTION)).toThrow(RangeKeyEqualityError);
+    });
   });
 });
 

@@ -504,6 +504,21 @@ describe('`q` 필터 (DEV-136)', () => {
     expect(lastSearches).toEqual([]);
     expect(body.error?.detail?.['supported_keys']).toBeDefined();
   });
+
+  /*
+   * CR-106. `mnum:`·`pr_number:`는 `/search`의 문법(FR-SRCH-005/006/008)이며
+   * 이 화면(W-004, FR-SEQ-002 계열)은 승인받지 않았다. `@prs/query`가 전역
+   * 정적 목록이라 파서는 통과시키지만, 이 화면이 `buildQuery`에 `mergeNumberEpoch`를
+   * 넘기지 않으므로 그대로 두면 처리되지 않은 500이 된다(독립 검토가 실측) —
+   * 조회 전에 명시적으로 거절하는지를 건다.
+   */
+  it.each(['mnum:1..5', 'pr_number:1..5'])('%s는 이 화면이 승인받지 않은 키라 조회 전에 400이다 (CR-106)', async (token) => {
+    const { status, body } = await get(`from_seq=0&to_seq=6&q=${token}`);
+    expect(status, JSON.stringify(body)).toBe(400);
+    expect(lastSearches).toEqual([]);
+    expect(body.error?.code).toBe('QUERY_SYNTAX_ERROR');
+    expect(body.error?.detail?.['supported_keys']).not.toContain(token.split(':')[0]);
+  });
 });
 
 describe('구간 검증 (AC-3, AC-4 / QA-W004-07·08)', () => {

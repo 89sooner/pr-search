@@ -30,6 +30,8 @@ const BASE = {
   scopeVersion: 7,
   // `seq:`가 없는 질의다. 시퀀스 재료가 **없다** (CR-051).
   sequenceEpoch: null,
+  // `mnum:`도 없는 질의다. M 번호 재료도 **없다** (CR-106).
+  mergeNumberEpoch: null,
 } as const;
 
 const CURSOR = { pitId: 'pit-abc', searchAfter: [1342, 'acme/payments:1210'] };
@@ -97,7 +99,8 @@ describe('지문의 재료 (DEV-272)', () => {
    */
   it('지문 입력에 `size`·`facets`가 없다', () => {
     const material = Object.keys(BASE);
-    // `sequenceEpoch`은 CR-051이 더했다 — 에폭이 바뀌면 같은 서수가 다른 커밋을 가리킨다.
+    // `sequenceEpoch`은 CR-051이, `mergeNumberEpoch`는 CR-106이 더했다 — 둘 다
+    // 없으면 같은 서수·M 번호가 다른 세대를 가리킬 수 있다.
     expect(material).toEqual([
       'query',
       'sortKey',
@@ -105,6 +108,7 @@ describe('지문의 재료 (DEV-272)', () => {
       'scope',
       'scopeVersion',
       'sequenceEpoch',
+      'mergeNumberEpoch',
     ]);
   });
 
@@ -130,6 +134,50 @@ describe('지문의 재료 (DEV-272)', () => {
         computeFingerprint({ ...BASE, sequenceEpoch: 4 }),
       ),
     ).toThrow(CursorQueryMismatchError);
+  });
+});
+
+describe('M 번호 에폭의 재료 (CR-106)', () => {
+  /*
+   * `sequenceEpoch`의 대응 시험을 그대로 본뜬다 — `mergeNumberEpoch`는 값이
+   * 같은 공간이면 같은 정수일 수 있지만, 색인에서는 `seq_epoch`과 다른 필드
+   * (`merge_number_epoch`)에 걸리는 **별도 재료**다 (query-builder.ts).
+   */
+  it('**M 번호 에폭이 달라지면 지문이 달라진다**', () => {
+    expect(computeFingerprint({ ...BASE, mergeNumberEpoch: 3 })).not.toBe(
+      computeFingerprint({ ...BASE, mergeNumberEpoch: 4 }),
+    );
+  });
+
+  it('`mnum:`이 없는 질의와 M 번호 에폭 있는 질의의 지문이 다르다', () => {
+    expect(computeFingerprint(BASE)).not.toBe(computeFingerprint({ ...BASE, mergeNumberEpoch: 1 }));
+  });
+
+  it('M 번호 에폭 3 커서를 에폭 4 조회에 쓰면 거절된다', () => {
+    expect(() =>
+      roundTrip(
+        computeFingerprint({ ...BASE, mergeNumberEpoch: 3 }),
+        computeFingerprint({ ...BASE, mergeNumberEpoch: 4 }),
+      ),
+    ).toThrow(CursorQueryMismatchError);
+  });
+
+  /*
+   * **두 에폭 자리가 실제로 분리돼 있는지를 건다.** 값을 어느 자리에 넣었는지가
+   * 서로 바뀌어도 같은 지문이 나오면, 두 옵션을 하나로 접어도(구현 결함) 이
+   * 시험이 잡지 못한다 — `seq_epoch`이 오른 질의와 `merge_number_epoch`가 오른
+   * 질의가 커서 단계에서 구분되지 않게 된다.
+   */
+  it('**시퀀스 에폭과 M 번호 에폭은 서로 다른 자리다** — 같은 값이라도 넣은 자리가 다르면 지문이 다르다', () => {
+    const sequenceOnly = computeFingerprint({ ...BASE, sequenceEpoch: 3, mergeNumberEpoch: null });
+    const mergeNumberOnly = computeFingerprint({ ...BASE, sequenceEpoch: null, mergeNumberEpoch: 3 });
+    expect(sequenceOnly).not.toBe(mergeNumberOnly);
+  });
+
+  it('둘 다 있으면 둘 다 재료가 된다 — 하나만 바뀌어도 지문이 바뀐다', () => {
+    const both = { ...BASE, sequenceEpoch: 3, mergeNumberEpoch: 5 };
+    expect(computeFingerprint(both)).not.toBe(computeFingerprint({ ...both, sequenceEpoch: 4 }));
+    expect(computeFingerprint(both)).not.toBe(computeFingerprint({ ...both, mergeNumberEpoch: 6 }));
   });
 });
 

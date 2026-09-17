@@ -13,7 +13,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.36 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.37 | 갱신일: 2026-09-18
 
 ## 1. 목적
 
@@ -490,7 +490,8 @@
       "offset_start": 24,
       "offset_end": 36,
       "supported_keys": ["repo","org","author","team","author_team","reviewer","label","base",
-                         "head","state","merged","created","seq","release","path","is","kind"]
+                         "head","state","merged","created","seq","release","path","is","kind",
+                         "changed_files","changed_lines","pr_number","mnum"]
     }
   },
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
@@ -512,8 +513,8 @@
 }
 ```
 
-- 오류: `QUERY_SYNTAX_ERROR` (400), `SHA_PREFIX_TOO_SHORT` (400), `CURSOR_INVALID` (400), `CURSOR_QUERY_MISMATCH` (400), `QUERY_TOO_SHORT` (400), **`INVALID_PARAMETER` (400, `seq:` 질의의 공간 지목 실패와 `seq_epoch` 형식 오류 — CR-051)**, **`NOT_FOUND` (404, `seq:`가 지목한 저장소·공간을 확인할 수 없음 — CR-051)**, `SEARCH_TIMEOUT` (504), `PERMISSION_UNAVAILABLE` (503)
-- **`seq:` 질의에 새 오류 코드를 만들지 않는다** (CR-051). 부족한 것은 파라미터이고(`INVALID_PARAMETER`), 확인할 수 없는 것은 자원이다(`NOT_FOUND`). `detail.reason`이 무엇이 부족한지를 가른다
+- 오류: `QUERY_SYNTAX_ERROR` (400), `SHA_PREFIX_TOO_SHORT` (400), `CURSOR_INVALID` (400), `CURSOR_QUERY_MISMATCH` (400), `QUERY_TOO_SHORT` (400), **`INVALID_PARAMETER` (400, `seq:`/`mnum:` 질의의 공간 지목 실패·`pr_number:` 질의의 저장소 지목 실패·`seq_epoch` 형식 오류 — CR-051, CR-106)**, **`NOT_FOUND` (404, `seq:`/`mnum:`이 지목한 저장소·공간을 확인할 수 없음 — CR-051, CR-106)**, `SEARCH_TIMEOUT` (504), `PERMISSION_UNAVAILABLE` (503)
+- **`seq:`·`mnum:`·`pr_number:` 질의에 새 오류 코드를 만들지 않는다** (CR-051, CR-106). 부족한 것은 파라미터이고(`INVALID_PARAMETER`), 확인할 수 없는 것은 자원이다(`NOT_FOUND`). `detail.reason`이 무엇이 부족한지를 가른다 — `mnum:`은 `seq:`와 같은 `sequence_space_required`/`sequence_space_ambiguous`를 쓰고, `pr_number:`는 별도의 `repository_required`/`repository_ambiguous`를 쓴다(아래 「식별자 범위 지목 계약」)
 - **문법·값 오류는 파서가 낸다** (CR-014, DEV-038). `@prs/query`가 오류 코드와 문자 오프셋을 함께 돌려주고 API는 그대로 실어 보낸다. `QUERY_TOO_SHORT`(전문 검색어 1자)도 파서가 판정한다 — 무엇이 전문 검색어인지 아는 곳이 파서뿐이다
 - 페이지네이션: `size` 기본 25, 최대 200 (초과 시 200으로 절삭). `cursor`로 다음 페이지. **오프셋 파라미터는 없다** (공통 원칙 7, ADR-010)
 - 정렬: `pr_number` | `merge_seq` | `merged_at` | `created_at` | `updated_at` | `changed_files_count` | `additions` | `lead_time_seconds` | `relevance`. API 기본 `merge_seq` desc. W-001 Repository workspace PR 목록은 `pr_number` desc를 명시한다 (CR-099)
@@ -681,6 +682,64 @@ merge_seq    ∈ 요청 범위
 **`sequence_state`는 조회를 막지 않는다.** 공간이 `stale`·`reassigning`이어도 에폭이 일치하면
 "마지막으로 확정된 값"으로 답한다 (기존 시퀀스 계약과 같다). 화면은 그 상태를 값과 함께 보인다 —
 숨기지 않는다.
+
+#### 식별자 범위 지목 계약 (CR-106, 위 「시퀀스 인용 계약」을 `pr_number:`·`mnum:`까지 확장한다)
+
+**`pr_number:` — 저장소만 지목한다.**
+
+`pr_number:` 범위 조건(`range` 또는 `not_range`)이 있는 질의는 부정이 아닌 `repo:` 값 하나를
+가져야 한다. `base:`나 에폭은 요구하지 않는다 — PR 번호는 GitHub이 저장소 안에서 생성 시점에
+매기므로 대상 브랜치나 시퀀스 세대와 무관하다(`merge_seq`와 달리 대상 브랜치 강제 푸시로 무효화되지
+않는다).
+
+| 질의 | 판정 |
+| --- | --- |
+| `repo:acme/payments pr_number:100..200` | 통과 |
+| `pr_number:100..200` | `INVALID_PARAMETER`, `detail.reason: "repository_required"` |
+| `repo:a/x repo:b/y pr_number:100..200` | `INVALID_PARAMETER`, `detail.reason: "repository_ambiguous"` |
+
+```json
+{
+  "error": {
+    "code": "INVALID_PARAMETER",
+    "message": "pr_number: 조건은 하나의 저장소를 지목해야 합니다. repo:를 하나만 지정하세요.",
+    "detail": { "field": "q", "reason": "repository_required", "required_keys": ["repo"] }
+  },
+  "correlation_id": "..."
+}
+```
+
+**`mnum:` — `seq:`와 같은 공간을 지목하고, 같은 유효 에폭을 쓰되 다른 필드에 건다.**
+
+`mnum:` 범위 조건은 위 규칙 1과 완전히 같은 판정을 받는다 — 부정이 아닌 `repo:` 값 하나와
+`base:` 값 하나가 필요하며, 없거나 여럿이면 같은 `sequence_space_required`/`sequence_space_ambiguous`로
+거절한다(같은 질의에 `-mnum:`이 있어도 같다). 공간 해석(규칙 2의 3~6단계)도 **하나만 수행해 공유한다** —
+`seq:`와 `mnum:`이 같은 질의에 함께 있어도 공간 조회는 한 번이다.
+
+**갈라지는 지점은 규칙 2의 7단계다.** `seq:`는 `seq_epoch = 유효 에폭`을 결합하고, `mnum:`은
+**별도로** `merge_number_epoch = 유효 에폭`을 결합한다. 두 결합의 값은 같은 정수(그 공간의 현재
+시퀀스 에폭)이지만 **거는 색인 필드가 다르다** — `seq_epoch`과 `merge_number_epoch`은 서로 다른
+투영 작업(PR 투영·M 번호 투영)이 다른 시점에 쓰는 별개 필드라서, `seq_epoch`만으로 `mnum:`을
+게이트하면 M 번호 투영이 뒤처진 문서가 최신 PR 투영 문서와 함께 통과해 **두 세대의 M 번호가 한
+목록에 섞인다** — 규칙 4가 `seq:`에 대해 막던 것과 같은 결함을 `mnum:` 자리에서 반복하는 것이다.
+
+`mnum:` 범위는 배정된 M 번호가 있는 문서만 본다. 미채번이거나 운영자 확인서로 번호 없이 지나간
+항목은 색인에 `merge_number` 값 자체가 없으므로(있는 값만 싣고 없는 값은 만들지 않는다는 CR-016
+관례) Elasticsearch의 `range` 질의가 자연히 매치하지 않는다 — `pending` 배제를 위한 별도 판정
+로직을 새로 만들지 않는다.
+
+**규칙 5(커서 지문)도 같은 방식으로 확장된다.**
+
+| 질의 | 지문에 실리는 재료 |
+| --- | --- |
+| `seq:`·`mnum:` 둘 다 없음 | 없음 |
+| `seq:`만 있음 | 유효 에폭 (`seq_epoch` 자리) |
+| `mnum:`만 있음 | 유효 에폭 (`merge_number_epoch` 자리) |
+| 둘 다 있음 (같은 공간이라 값은 하나) | 유효 에폭이 **두 자리**에 각각 실린다 — 필드가 다르므로 재료도 따로 넣는다 |
+
+**M 번호 기능이 꺼진 배포(`MNUMBER_ENABLED=false`)에서는 `mnum:`을 `supported_keys`에 넣지
+않는다.** API로 직접 보낸 `mnum:` 조건은 지원하지 않는 키로 `QUERY_SYNTAX_ERROR`로 거절한다 —
+화면에 노출되지 않는 필터라고 해서 조용히 무시하고 통과시키지 않는다.
 
 #### 커서 계약 (CR-043, WP-032가 구현한다)
 

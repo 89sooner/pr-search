@@ -1,5 +1,7 @@
 # Current Handoff — 2026-09-17 PR Search pilot.13 (9차)
 
+> **최소 정정 (CR-106 착수 시점):** 이 문서는 9차(pilot.13) 시점에서 멈춰 있다. 그 뒤 10차(CR-103·CR-104·CR-105, main 최종 커밋 `750fb91`)가 이미 반영됐고, 그 세션이 다음 세션으로 남긴 항목(범위 검색·M번호 필터, Commit history PR 번호 병기)을 CR-106으로 착수한다. 최신 진행 상황은 `agent-context/session-notes.md`의 "10차" 절과 `agent-context/todos.md`의 "먼저 할 것" 절을 본다. 전체 handoff 정리는 CR-106·후속 CR 마감 때 한다.
+
 ## Start here
 
 `0.1.0-pilot.13`이 발행됐다 — 불변 GitHub Release, 태그 `3ba1c4b`(CR-101 병합, 마지막 기능 커밋). main은 그 위에 병합 기록(`ac130e3`), 다른 세션의 이미지 파일(`936de9f`), 이 발행 기록 PR(`docs/pilot13-release-record`)이 얹힌 상태다 — 머리는 `git log origin/main --oneline -5`로 읽는다. 정정이 필요하면 자산·태그를 바꾸지 않고 새 버전(pilot.14)을 낸다.
@@ -13,7 +15,7 @@
 ## Verify before changing code
 
 1. `git status --short --branch`가 main에서 clean인지, 다른 세션이 main에 직접 커밋했는지(`git log origin/main --oneline -5`) 본다 — 9차에서 두 번 있었다.
-2. 채번은 착수 직전에 다시 잰다: `grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1` (CR-101 · DEV-718 · WP-089 · ENT-SEQ-008 다음).
+2. 채번은 착수 직전에 다시 잰다: `grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1` (10차 종료 시점 CR-105 · DEV-722 · WP-091 다음이었으나, 이 값도 착수 시점에 재실측한다 — 공유 checkout에 다른 세션이 있을 수 있다).
 3. 통합·회귀 시험은 워크트리별 격리 DB로 돌린다(`agent-context/commands.md` 9차 절).
 4. 긴 발행·빌드는 분리 세션(`setsid nohup`) + Monitor로 돌린다 — 하네스 백그라운드는 메모리 압박에서 끊긴다.
 

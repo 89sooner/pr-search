@@ -782,4 +782,20 @@ describe('인증과 문법 (공통)', () => {
     const { status } = await post('/groups', { query: 'merged:2026-07-01', group_by: 'author' });
     expect(status).toBe(400);
   });
+
+  /*
+   * CR-106. 독립 검토가 실측한 결함: 집계 넷이 `/search`와 같은 파서를 쓰면서도
+   * `mergeNumberEpoch`를 `buildQuery`에 넘기지 않고 그 예외를 잡는 코드도 없어,
+   * `mnum:` 질의가 처리되지 않은 예외로 500이 됐다. 이 서버는 `MNUMBER_ENABLED`를
+   * 켜지 않았으므로 여기서 확인하는 것은 "500이 아니라 400"이다.
+   */
+  it('mnum:은 기능이 꺼진 배포에서 처리되지 않은 500이 아니라 400이다 (CR-106)', async () => {
+    const { status, body } = await post('/groups', { query: 'repo:acme/payments base:main mnum:1..5', group_by: 'author' });
+    expect(status).toBe(400);
+    expect(body.error?.code).toBe('QUERY_SYNTAX_ERROR');
+  });
+  it('pr_number: 범위는 500이 아니라 정상 처리된다 (CR-106)', async () => {
+    const { status } = await post('/groups', { query: 'repo:acme/payments pr_number:1..999999', group_by: 'author' });
+    expect(status).toBe(200);
+  });
 });

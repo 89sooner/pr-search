@@ -17,6 +17,7 @@ import type { EqualityFilter, QueryAst, QueryFilter, RangeFilter } from './ast.j
 import { QueryParseError, rangeOnlyKey, syntaxError, unsupportedKey } from './errors.js';
 import {
   ENUMERATED_VALUES,
+  MIN_RANGE_VALUE,
   isNumericRangeKey,
   isQueryKey,
   isRangeKey,
@@ -109,6 +110,21 @@ function toRangeFilter(key: QueryKey, token: RawToken): RangeFilter {
     const high = parseNumericBound(to, token);
     if (low > high) {
       throw syntaxError(`Range bounds are reversed: '${token.value}'`, token.raw, token.start, token.end);
+    }
+    /*
+     * 하한 위반 (CR-106). 형태는 정수 범위로 맞지만 값 자체가 그 키에서
+     * 성립하지 않는다 — `pr_number:-5..10`은 범위 문법은 맞아도 PR 번호
+     * -5는 존재할 수 없다. `MIN_RANGE_VALUE`에 없는 키(`seq`·`changed_files`·
+     * `changed_lines`)는 이 검사를 받지 않는다 — 기존 동작을 바꾸지 않는다.
+     */
+    const minimum = MIN_RANGE_VALUE[key];
+    if (minimum !== undefined && low < minimum) {
+      throw syntaxError(
+        `Range bound is below the minimum for '${key}' (${String(minimum)}): '${token.value}'`,
+        token.raw,
+        token.start,
+        token.end,
+      );
     }
     return { key, op, from: low, to: high };
   }

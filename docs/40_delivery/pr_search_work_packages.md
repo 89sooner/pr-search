@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.49 | 갱신일: 2026-09-17
+> 상태: review | 버전: v2.52 | 갱신일: 2026-09-18
+
+## WP-092 식별자 범위 검색: PR 번호·M 번호·SHA 구간 (CR-106)
+
+- 요구사항: `FR-SRCH-005` AC-1·AC-8·AC-9·AC-10(신설), `FR-SRCH-006` AC-1, `FR-SRCH-008` AC-3. 선행: WP-091(같은 검색 필터·결과 영역), WP-074/CR-079(M 번호 정본·투영).
+- 범위: `packages/query/src/keys.ts`에 `pr_number`·`mnum` 범위 키 등록. `packages/query/src/sequence-binding.ts`의 공간 지목 판정을 `mnum`까지 일반화하고 `pr_number` 전용의 별도(저장소 하나만 요구, 에폭 불요) 판정을 추가. `packages/es/src/query-builder.ts`의 `RANGE_FIELDS`에 `pr_number`→`pr_number`·`mnum`→`merge_number` 추가, `mnum:` 질의에는 `merge_number_epoch` 게이트 절을 더한다. `apps/search-api/src/search/cursor.ts`의 `FingerprintInput`에 M 번호 유효 에폭 재료 추가. `apps/search-api/src/search/sequence-context.ts`(또는 대응 경로)가 `mnum:`에도 같은 공간·에폭을 바인딩. `apps/web/lib/repository-search.ts`·`RepositoryWorkspace.tsx` 필터 폼에 PR 번호·SHA·M 번호 각 from-to 입력 추가(SHA는 클라이언트에서 식별자 해석 후 `seq:`로 변환).
+- 제외: Work B(Commit history PR 번호 병기, 별도 CR·WP로 이 CR 병합 뒤 착수), 검색엔진 재설계, 데이터 모델 전면 개편, M 번호 기능이 꺼진 배포에서의 새 동작(꺼져 있으면 필터를 노출하지 않고 API 조건도 명시적으로 거절).
+- 완료 기준: 타입·lint·lint:deps 통과. 단위(파서·공간 지목 판정·query-builder), 통합(워크트리별 격리 PostgreSQL·Elasticsearch·Redis — PR/M 단일값·범위·같은 키 OR·다른 키 AND·부정·공간 미지정·복수값·M 기능 비활성·SHA 정상/동일값/역전/모호한 축약/다른 공간/권한 밖/에폭 변경), 회귀(CR-105 VANGUARD-1 보호 유지), 브라우저(무한스크롤과의 상호작용, URL 복원과 실제 적용 필터 일치) 전부 통과. `total`/`facets`/목록/커서가 같은 검색 조건에서 일관됨을 실제 Elasticsearch 통합 시험으로 확인. 독립 코드 리뷰(code-review 스킬, high) 완료·반영.
+- 상태: **in_progress — 구현·검증·독립 코드 리뷰(2회) 반영 완료, 아직 커밋·PR·병합 전**. 백엔드 4개 API(`/search`·`/exports`·집계·W-004 범위 조사)와 웹 필터 폼 구현 완료. 로컬 검증 전부 통과(typecheck·lint·lint:deps·단위 2919/2920·통합 1847/1847·회귀 506/506·build). 미반영 발견 둘은 DEV-724·DEV-725로 변경 대장에 등재(둘 다 이 CR의 정정 사항과 무관한 별개 결함이며 후속 CR 후보). 진행 정본: 구현 추적 원장(착수 시 장 번호 배정, 병합 전까지는 이 줄이 정본이다).
 
 ## WP-091 검색 결과 무한 스크롤 (CR-104)
 

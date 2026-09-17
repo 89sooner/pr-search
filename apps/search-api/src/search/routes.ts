@@ -11,7 +11,18 @@
 
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { QUERY_KEYS, QueryParseError, SEQUENCE_BINDING_MESSAGE, parseQuery } from '@prs/query';
+import {
+  QUERY_KEYS,
+  QueryParseError,
+  MERGE_NUMBER_BINDING_MESSAGE,
+  REPOSITORY_BINDING_MESSAGE,
+  SEQUENCE_BINDING_MESSAGE,
+  analyzePrNumberBinding,
+  hasMergeNumberRangeFilter,
+  parseQuery,
+  type QueryAst,
+  type RepositoryBindingAnalysis,
+} from '@prs/query';
 import { toAccessScope } from '@prs/authz';
 import { AccessScopeUnavailableError, PartialSearchError, SORT_KEYS, isSortKey } from '@prs/es';
 import type { ErrorResponse } from '@prs/contracts';
@@ -24,7 +35,12 @@ import { CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope
 import { recordAuditBestEffort } from '../audit/recorder.js';
 import { readCursor, readFacets } from '../cursor/params.js';
 import { facetResponseFields } from './facets.js';
-import { resolveSequenceContext, type SequenceContextOutcome } from './sequence-context.js';
+import {
+  resolveMergeNumberRangeEpoch,
+  resolveSequenceContext,
+  type MergeNumberRangeOutcome,
+  type SequenceContextOutcome,
+} from './sequence-context.js';
 import {
   clampSize,
   parseOrder,
@@ -146,6 +162,122 @@ export function toSequenceFailure(
     };
   }
   return null;
+}
+
+/**
+ * `mnum:` 판정을 계약이 정한 응답으로 (CR-106).
+ *
+ * **`toSequenceFailure`와 사유 코드(`detail.reason`)를 그대로 공유한다** — `mnum:`은
+ * `seq:`와 같은 공간 지목 규칙을 쓰므로(`FR-SRCH-005` AC-9) 기계가 읽는 사유는 같다.
+ * **사람이 읽는 문구는 공유하지 않는다** — `MERGE_NUMBER_BINDING_MESSAGE`를 따로 쓴다.
+ * 실측(단위 시험)으로 드러난 실수: 처음에는 `SEQUENCE_BINDING_MESSAGE`를 그대로 써서
+ * `mnum:`만 쓰고 `base:`를 빠뜨린 요청에도 "A seq: filter…"라고 답하고 있었다.
+ *
+ * @returns 조회를 계속해도 되면 `null`.
+ */
+export function toMergeNumberRangeFailure(
+  outcome: MergeNumberRangeOutcome,
+  correlationId: string,
+): { readonly status: number; readonly body: ErrorResponse } | null {
+  if (outcome.kind === 'unbindable') {
+    return {
+      status: 400,
+      body: {
+        error: {
+          code: 'INVALID_PARAMETER',
+          message: MERGE_NUMBER_BINDING_MESSAGE[outcome.reason],
+          detail: { field: 'q', reason: outcome.reason, required_keys: ['repo', 'base'] },
+        },
+        correlation_id: correlationId,
+      },
+    };
+  }
+  if (outcome.kind === 'space_unavailable') {
+    return {
+      status: 404,
+      body: {
+        error: { code: 'NOT_FOUND', message: '이 mnum: 조건을 해석할 시퀀스 공간을 확인할 수 없습니다.' },
+        correlation_id: correlationId,
+      },
+    };
+  }
+  return null;
+}
+
+/**
+ * `pr_number:` 판정을 계약이 정한 응답으로 (CR-106).
+ *
+ * **DB를 거치지 않는다** — `pr_number:`는 저장소 지목만 요구하고 존재 확인은
+ * 기존 `repo:` 필터와 강제 접근 범위가 이미 한다(위 파일 머리글 참고). 그래서
+ * `NOT_FOUND` 분기가 없다 — 지목 자체가 없거나 여럿일 때만 거절한다.
+ *
+ * @returns 조회를 계속해도 되면 `null`.
+ */
+export function toPrNumberRangeFailure(
+  binding: RepositoryBindingAnalysis,
+  correlationId: string,
+): { readonly status: number; readonly body: ErrorResponse } | null {
+  if (binding.kind !== 'invalid') return null;
+  return {
+    status: 400,
+    body: {
+      error: {
+        code: 'INVALID_PARAMETER',
+        message: REPOSITORY_BINDING_MESSAGE[binding.reason],
+        detail: { field: 'q', reason: binding.reason, required_keys: ['repo'] },
+      },
+      correlation_id: correlationId,
+    },
+  };
+}
+
+/**
+ * `mnum:`이 꺼진 배포에서 들어오면 지원하지 않는 키로 거절한다 (CR-106).
+ *
+ * **`/search`·`/exports`·집계 넷이 전부 이 함수를 쓴다** — 같은 파서(`@prs/query`)를
+ * 공유하므로 `mnum:` 판정을 한 곳에서만 걸면 나머지 API는 조용히 새다. 실제로
+ * 독립 검토가 이 CR 최초 구현에서 `/exports`·집계가 `mergeNumberEpoch` 없이
+ * `buildQuery`를 불러 `MergeNumberEpochRequiredError`를 잡지 못하고 500을 내는
+ * 것을 실측으로 잡아냈다 — 여기서 먼저 걸러 그 경로 자체에 도달하지 않게 한다.
+ *
+ * **`QUERY_KEYS`(파서)는 이 플래그를 모른다.** 그 목록은 배포와 무관한 정적
+ * 문법이고(ADR-001, 브라우저와 공유) `MNUMBER_ENABLED`는 배포별 런타임 설정이라,
+ * 지원 키 목록에서 빼는 일은 파서가 아니라 API 계층의 일이다.
+ *
+ * @returns 꺼져 있고 `mnum:`이 있으면 거절 응답. 그 밖은 `null` — 계속 진행한다.
+ */
+/**
+ * `mnum:` 기능 꺼짐 응답 본문 (CR-106).
+ *
+ * **`/search`·집계가 이 함수 하나를 공유한다.** 처음엔 집계 쪽(`analytics/routes.ts`)이
+ * 이 본문을 손으로 다시 타이핑했는데, 그러면 문구·사유 코드가 나중에 여기서만
+ * 바뀌어도 컴파일러가 못 잡는 자리가 생긴다(독립 검토가 지적).
+ */
+export function mergeNumberDisabledFailure(correlationId: string): { readonly status: number; readonly body: ErrorResponse } {
+  return {
+    status: 400,
+    body: {
+      error: {
+        code: 'QUERY_SYNTAX_ERROR',
+        message: "지원하지 않는 검색 키입니다: 'mnum'",
+        detail: {
+          token: 'mnum',
+          reason: 'merge_number_disabled',
+          supported_keys: QUERY_KEYS.filter((key) => key !== 'mnum'),
+        },
+      },
+      correlation_id: correlationId,
+    },
+  };
+}
+
+export function checkMergeNumberFeatureFlag(
+  ast: QueryAst,
+  enabled: boolean,
+  correlationId: string,
+): { readonly status: number; readonly body: ErrorResponse } | null {
+  if (enabled || !hasMergeNumberRangeFilter(ast)) return null;
+  return mergeNumberDisabledFailure(correlationId);
 }
 
 /**
@@ -285,6 +417,11 @@ export function registerSearchRoutes(app: FastifyInstance, options: SearchRouteO
          * `items`·`total`·`facets`·`relaxation_hints` 키를 넣지 않는다 —
          * 계산하지 않은 것을 빈 값으로 채우면 "구간이 비었다"로 읽힌다.
          * `API-SEQ-001`이 같은 이유로 같은 모양을 쓴다.
+         *
+         * **`mnum:`/`pr_number:` 판정보다 먼저다** (CR-106, 독립 검토 정정) —
+         * `seq:` 인용 자체가 낡았으면 그 사실이 다른 무엇보다 먼저 답이어야
+         * 한다. `/exports`·집계 셋도 이 순서다 — 세 API가 판정 순서까지
+         * 같아야 같은 입력에 같은 상태 코드를 낸다.
          */
         await recordSearchAudit(deps.pool, userId, raw, 'epoch_stale', correlationId);
         return reply.send({
@@ -298,7 +435,40 @@ export function registerSearchRoutes(app: FastifyInstance, options: SearchRouteO
         });
       }
 
+      /*
+       * 4-2. `mnum:` 기능 꺼짐 (CR-106). 판정보다 먼저 — 꺼져 있으면 공간
+       * 판정 자체가 뜻이 없다.
+       */
+      const mnumFlagFailure = checkMergeNumberFeatureFlag(ast, mergeNumberEnabled, correlationId);
+      if (mnumFlagFailure !== null) return fail(reply, mnumFlagFailure.status, mnumFlagFailure.body);
+
+      /*
+       * 4-3. `pr_number:` 저장소 지목 (CR-106). DB를 거치지 않으므로 `seq:`
+       * 판정 바로 뒤, 접근 범위 산출과 같은 try 블록 안에서 동기로 끝낸다.
+       */
+      const prNumberBinding = analyzePrNumberBinding(ast);
+      const prNumberFailure = toPrNumberRangeFailure(prNumberBinding, correlationId);
+      if (prNumberFailure !== null) return fail(reply, prNumberFailure.status, prNumberFailure.body);
+
+      /*
+       * 4-4. `mnum:` 공간·에폭 바인딩 (CR-106). `seq:`와 같은 공간 지목
+       * 규칙이지만 인용 파라미터가 없다 — 언제나 현재 에폭을 쓴다. `seq:`가
+       * 이미 같은 공간을 읽었으면(4-1) 그 결과를 재사용해 공간을 두 번 읽지
+       * 않는다 — 그 사이의 강제 푸시가 두 게이트를 다른 세대로 갈라놓는
+       * 경합을 막는다(독립 검토, CR-106).
+       */
+      const mergeNumberRange = await resolveMergeNumberRangeEpoch(
+        deps.pool,
+        { ast, scope },
+        sequence.kind === 'bound'
+          ? { repository: sequence.context.repository, baseBranch: sequence.context.base_branch, epoch: sequence.context.seq_epoch }
+          : undefined,
+      );
+      const mergeNumberFailure = toMergeNumberRangeFailure(mergeNumberRange, correlationId);
+      if (mergeNumberFailure !== null) return fail(reply, mergeNumberFailure.status, mergeNumberFailure.body);
+
       const sequenceEpoch = sequence.kind === 'bound' ? sequence.epoch : null;
+      const mergeNumberEpoch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.epoch : null;
       const result = await runSearch(
         {
           ast,
@@ -310,6 +480,7 @@ export function registerSearchRoutes(app: FastifyInstance, options: SearchRouteO
           cursor: readCursor(query),
           facets: readFacets(query),
           sequenceEpoch,
+          mergeNumberEpoch,
         },
         deps,
       );

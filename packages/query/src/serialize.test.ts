@@ -29,6 +29,10 @@ const CORPUS = [
   'repo:acme/payments org:acme team:payments-core reviewer:lee base:main head:feature/x release:v1 path:src/pay.ts is:reverted',
   '"fix: 결제 오류"',
   '-결제',
+  // 식별자 범위 (CR-106). 지문 재료로 쓰이는 `serializeQuery`가 새 키를
+  // 특별 취급 없이 왕복시키는지 — 키 목록에 빠뜨리면 여기서 먼저 깨진다.
+  'repo:acme/payments pr_number:100..200',
+  'repo:acme/payments base:main mnum:1..50',
 ];
 
 describe('DoD 7: 왕복', () => {

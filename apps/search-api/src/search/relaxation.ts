@@ -21,6 +21,8 @@ import {
   type SearchTarget,
 } from '@prs/es';
 import {
+  analyzeMergeNumberBinding,
+  analyzePrNumberBinding,
   analyzeSequenceBinding,
   serializeQuery,
   type QueryAst,
@@ -69,6 +71,8 @@ export interface RelaxationDeps {
   readonly resolution: NameResolution;
   /** 본 조회가 확정한 유효 에폭. `seq:`가 없으면 `null` (CR-051). */
   readonly sequenceEpoch: number | null;
+  /** 본 조회가 확정한 유효 M 번호 에폭. `mnum:`이 없으면 `null` (CR-106). */
+  readonly mergeNumberEpoch: number | null;
 }
 
 /**
@@ -88,17 +92,22 @@ export async function computeRelaxationHints(
 
   const truncated = ast.filters.length > MAX_RELAXATION_HINTS;
   /*
-   * **실행할 수 없는 질의를 제안하지 않는다** (CR-051).
+   * **실행할 수 없는 질의를 제안하지 않는다** (CR-051, CR-106).
    *
-   * `seq:` 범위가 남은 채로 `repo:`나 `base:`를 빼면 그 질의는 시퀀스
-   * 공간을 잃어 AC-7이 400으로 거절한다. "이 필터를 빼면 N건이 나옵니다"라고
-   * 제안해 놓고 실제로 빼면 오류가 나는 것은 제안이 아니라 함정이다.
-   * 그런 후보는 세지 않고 건너뛴다.
+   * `seq:`·`mnum:` 범위가 남은 채로 `repo:`나 `base:`를 빼거나, `pr_number:`가
+   * 남은 채로 `repo:`를 빼면 그 질의는 지목을 잃어 각 AC가 400으로 거절한다.
+   * "이 필터를 빼면 N건이 나옵니다"라고 제안해 놓고 실제로 빼면 오류가 나는
+   * 것은 제안이 아니라 함정이다. 그런 후보는 세지 않고 건너뛴다.
    */
   const candidates = ast.filters
     .slice(0, MAX_RELAXATION_HINTS)
     .map((filter, index) => ({ filter, relaxed: without(ast, index) }))
-    .filter(({ relaxed }) => analyzeSequenceBinding(relaxed).kind !== 'invalid');
+    .filter(
+      ({ relaxed }) =>
+        analyzeSequenceBinding(relaxed).kind !== 'invalid' &&
+        analyzeMergeNumberBinding(relaxed).kind !== 'invalid' &&
+        analyzePrNumberBinding(relaxed).kind !== 'invalid',
+    );
 
   if (candidates.length === 0) return { hints: [], truncated };
 
@@ -108,9 +117,14 @@ export async function computeRelaxationHints(
       buildQuery(
         relaxed,
         deps.resolution,
-        // 뺀 뒤에도 `seq:`가 남았으면 같은 에폭으로 센다 — 본 조회와 다른
-        // 세대를 세면 그 건수는 아무것도 뜻하지 않는다.
-        deps.sequenceEpoch === null ? {} : { sequenceEpoch: deps.sequenceEpoch },
+        /*
+         * 뺀 뒤에도 `seq:`·`mnum:`이 남았으면 같은 에폭으로 센다 — 본 조회와
+         * 다른 세대를 세면 그 건수는 아무것도 뜻하지 않는다(CR-106).
+         */
+        {
+          ...(deps.sequenceEpoch === null ? {} : { sequenceEpoch: deps.sequenceEpoch }),
+          ...(deps.mergeNumberEpoch === null ? {} : { mergeNumberEpoch: deps.mergeNumberEpoch }),
+        },
       ).query,
       deps.scope,
     ),

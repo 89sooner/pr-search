@@ -53,11 +53,22 @@ export type {
 } from './identifier.js';
 
 export {
+  MERGE_NUMBER_BINDING_MESSAGE,
+  REPOSITORY_BINDING_MESSAGE,
   SEQUENCE_BINDING_MESSAGE,
+  analyzeMergeNumberBinding,
+  analyzePrNumberBinding,
   analyzeSequenceBinding,
+  hasMergeNumberRangeFilter,
+  hasPrNumberRangeFilter,
   hasSequenceRangeFilter,
 } from './sequence-binding.js';
-export type { SequenceBindingAnalysis, SequenceBindingProblem } from './sequence-binding.js';
+export type {
+  RepositoryBindingAnalysis,
+  RepositoryBindingProblem,
+  SequenceBindingAnalysis,
+  SequenceBindingProblem,
+} from './sequence-binding.js';
 
 export { MIN_TEXT_LENGTH, countCodePoints, parseQuery } from './parse.js';
 export { addEquality, intersectNumericRange, replaceEquality, serializeQuery } from './serialize.js';

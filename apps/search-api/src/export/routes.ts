@@ -2,12 +2,12 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { authRepo, jobRepo, searchExportRepo, type Pool } from '@prs/db';
-import { parseQuery, QueryParseError } from '@prs/query';
+import { analyzePrNumberBinding, parseQuery, QueryParseError } from '@prs/query';
 import { toAccessScope } from '@prs/authz';
 import { applyMandatoryScopeFilter, assertNoShardFailures, buildQuery, collectNames, collectExport, search, DEFAULT_SORT_KEY, EXPORT_LIMIT, ExportLimitError, ExportAsyncRequiredError, isSortKey, resolveSearchTarget, serializeExport, type ExportFormat, type ExportPlan } from '@prs/es';
 import type { SearchRouteOptions } from '../search/routes.js';
-import { toSequenceFailure } from '../search/routes.js';
-import { resolveSequenceContext } from '../search/sequence-context.js';
+import { checkMergeNumberFeatureFlag, toMergeNumberRangeFailure, toPrNumberRangeFailure, toSequenceFailure } from '../search/routes.js';
+import { resolveMergeNumberRangeEpoch, resolveSequenceContext } from '../search/sequence-context.js';
 import { authenticateSession } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
 import { recordAuditBestEffort } from '../audit/recorder.js';
@@ -44,10 +44,35 @@ export function registerExportRoutes(app: FastifyInstance, deps: SearchRouteOpti
       const failure = toSequenceFailure(sequence, correlationId);
       if (failure !== null) return reply.status(failure.status).send(failure.body);
       if (sequence.kind === 'stale') return fail(409, 'INVALID_PARAMETER', '시퀀스 에폭이 변경되었습니다. 검색을 갱신하세요.', 'epoch_stale');
+
+      /*
+       * `pr_number:`·`mnum:` (CR-106). `/search`와 같은 파서를 쓰므로 같은
+       * 판정을 거친다 — 독립 검토가 이 세 판정 없이 `mnum:`을 내보내면
+       * `buildQuery`의 `MergeNumberEpochRequiredError`가 잡히지 않은 채
+       * 아래 catch의 일반 503으로 떨어지는 것을 실측으로 잡아냈다.
+       */
+      const mnumFlagFailure = checkMergeNumberFeatureFlag(ast, deps.mergeNumberEnabled ?? false, correlationId);
+      if (mnumFlagFailure !== null) return reply.status(mnumFlagFailure.status).send(mnumFlagFailure.body);
+      const prNumberFailure = toPrNumberRangeFailure(analyzePrNumberBinding(ast), correlationId);
+      if (prNumberFailure !== null) return reply.status(prNumberFailure.status).send(prNumberFailure.body);
+      const mergeNumberRange = await resolveMergeNumberRangeEpoch(
+        deps.pool,
+        { ast, scope },
+        sequence.kind === 'bound'
+          ? { repository: sequence.context.repository, baseBranch: sequence.context.base_branch, epoch: sequence.context.seq_epoch }
+          : undefined,
+      );
+      const mergeNumberFailure = toMergeNumberRangeFailure(mergeNumberRange, correlationId);
+      if (mergeNumberFailure !== null) return reply.status(mergeNumberFailure.status).send(mergeNumberFailure.body);
+      const mergeNumberEpoch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.epoch : null;
+
       const resolved = resolveSearchTarget(ast, ['prs-pull-requests', 'prs-commits']);
       const names = collectNames(resolved.ast);
       const resolution = await deps.resolveNames(names);
-      const built = buildQuery(resolved.ast, resolution, sequence.kind === 'bound' ? { sequenceEpoch: sequence.epoch } : {});
+      const built = buildQuery(resolved.ast, resolution, {
+        ...(sequence.kind === 'bound' ? { sequenceEpoch: sequence.epoch } : {}),
+        ...(mergeNumberEpoch === null ? {} : { mergeNumberEpoch }),
+      });
       const plan: ExportPlan = { target: resolved.target, scope, query: built.query, repositoryIds: cached.repositoryIds, sort, order: body['order'] === 'asc' ? 'asc' : 'desc' };
       const storedPlan = { ...plan, q, ...(sequence.kind === 'bound' ? { sequenceContext: sequence.context } : {}) };
       const check = () => searchExportRepo.assertExportScope(deps.pool, { user_id: userId!, scope_version: cached.version, plan: storedPlan });

@@ -131,4 +131,21 @@ describe('WP-044 export contract', () => {
     expect((await jobRepo.findJobById(pool, id))?.error).toBe('export_epoch_changed');
     expect((await get(id, true)).statusCode).toBe(404);
   });
+
+  /*
+   * CR-106. 독립 검토가 실측한 결함: `/exports`가 `/search`와 같은 파서를
+   * 쓰면서도 `mergeNumberEpoch`를 `buildQuery`에 넘기지 않아, `mnum:` 질의가
+   * `MergeNumberEpochRequiredError`로 던져지고 그 오류를 잡는 코드가 없어
+   * `EXPORT_UNAVAILABLE`(503, 재시도해도 영원히 실패)로 떨어졌다. 여기서는
+   * 그 경로 자체에 도달하지 않는지(400)와 `pr_number:`는 정상 동작하는지를 건다.
+   */
+  it('pr_number: 범위가 정상 동작한다 (CR-106)', async () => {
+    const preview = await post({ q: 'repo:wp044/visible pr_number:1..5', preview: true });
+    expect(preview.json()).toEqual({ total: 5, mode: 'sync' });
+  });
+  it('mnum:은 기능이 꺼진 배포에서 503이 아니라 400으로 거절된다 (CR-106)', async () => {
+    const response = await post({ q: 'repo:wp044/visible base:main mnum:1..5' });
+    expect(response.statusCode, response.body).toBe(400);
+    expect(response.json()).toMatchObject({ error: { code: 'QUERY_SYNTAX_ERROR' } });
+  });
 });

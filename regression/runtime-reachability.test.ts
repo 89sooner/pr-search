@@ -2301,9 +2301,9 @@ describe('집계 API의 도달성과 계약 (WP-037 / CR-053)', () => {
     expect(ROUTES).toContain('epoch_stale: true');
   });
 
-  it('시퀀스 판정을 `/search`와 **같은 함수로** 옮긴다', () => {
+  it('시퀀스·M 번호·PR 번호 판정을 `/search`와 **같은 함수로** 옮긴다 (CR-106)', () => {
     // 각자 옮기면 같은 상황에 다른 상태 코드를 내는 날이 온다.
-    expect(ROUTES).toContain("import { toSequenceFailure } from '../search/routes.js'");
+    expect(ROUTES).toContain("import { mergeNumberDisabledFailure, toMergeNumberRangeFailure, toPrNumberRangeFailure, toSequenceFailure } from '../search/routes.js'");
   });
 
   it('**`kind:`가 PR을 남기지 않으면 400이다** — 조용한 0건이 아니다', () => {

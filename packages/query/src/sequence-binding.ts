@@ -58,19 +58,21 @@ function positiveValues(ast: QueryAst, key: 'repo' | 'base'): Set<string> {
   return values;
 }
 
-/** 이 질의에 `seq:` **범위** 조건이 있는가. 부정된 `-seq:`도 서수를 참조하므로 포함한다. */
-export function hasSequenceRangeFilter(ast: QueryAst): boolean {
-  return ast.filters.some((filter) => isRangeFilter(filter) && filter.key === 'seq');
-}
-
 /**
- * `seq:` 조건이 지목하는 공간을 판정한다.
+ * `seq:`·`mnum:` 공용 공간 지목 판정 (CR-106).
  *
- * @returns `none`이면 검사할 것이 없고, `bound`면 공간 하나가 확정됐으며,
- *   `invalid`면 질의를 실행하지 않고 거절해야 한다.
+ * **`analyzeSequenceBinding`과 `analyzeMergeNumberBinding`이 이 함수 하나를
+ * 부른다.** 처음엔 두 함수가 이 본문을 각자 손으로 복제했는데, 그 복제가
+ * 실제로 사고를 냈다 — `mnum:` 응답 문구가 `seq:`의 것을 그대로 물려받은 채
+ * 나갔다(`toMergeNumberRangeFailure` 주석 참고). 판정 로직은 하나로 묶고,
+ * 갈라야 하는 것(에폭을 어느 색인 필드에 거는지, 문구)만 호출부에서 가른다.
+ *
+ * @param hasFilter 이 판정을 트리거하는 범위 조건이 있는가
+ *   (`hasSequenceRangeFilter`/`hasMergeNumberRangeFilter`). 판정 자체는 어느
+ *   키가 트리거했는지 몰라도 된다 — 공간 지목 규칙은 같기 때문이다.
  */
-export function analyzeSequenceBinding(ast: QueryAst): SequenceBindingAnalysis {
-  if (!hasSequenceRangeFilter(ast)) return { kind: 'none' };
+function analyzeSpaceBinding(ast: QueryAst, hasFilter: boolean): SequenceBindingAnalysis {
+  if (!hasFilter) return { kind: 'none' };
 
   const repositories = positiveValues(ast, 'repo');
   const baseBranches = positiveValues(ast, 'base');
@@ -101,10 +103,113 @@ export function analyzeSequenceBinding(ast: QueryAst): SequenceBindingAnalysis {
   return { kind: 'bound', repository, baseBranch };
 }
 
+/** 이 질의에 `seq:` **범위** 조건이 있는가. 부정된 `-seq:`도 서수를 참조하므로 포함한다. */
+export function hasSequenceRangeFilter(ast: QueryAst): boolean {
+  return ast.filters.some((filter) => isRangeFilter(filter) && filter.key === 'seq');
+}
+
+/**
+ * 이 질의에 `mnum:` **범위** 조건이 있는가 (CR-106). 부정된 `-mnum:`도 포함한다.
+ *
+ * **`hasSequenceRangeFilter`를 넓히지 않는다.** 그 함수는 `seq_epoch` 커서 지문·
+ * URL 인용처럼 `seq:` 전용 장치 여럿이 그대로 가져다 쓰므로, `mnum:`을 섞으면
+ * 그 장치들이 `mnum:`만 있는 질의에도 뜻 없이 반응한다. 지목 규칙(공간)은
+ * 같아도 에폭을 어느 색인 필드에 거는지는 다르므로(아래 `analyzeMergeNumberBinding`
+ * 주석) 검출 함수를 분리해 둔다.
+ */
+export function hasMergeNumberRangeFilter(ast: QueryAst): boolean {
+  return ast.filters.some((filter) => isRangeFilter(filter) && filter.key === 'mnum');
+}
+
+/**
+ * `mnum:` 조건이 지목하는 시퀀스 공간을 판정한다 (FR-SRCH-005 AC-9, CR-106).
+ *
+ * **`analyzeSequenceBinding`과 판정 로직이 같다** — M 번호는 `merge_seq`와 같은
+ * 시퀀스 공간·에폭을 공유하므로(용어집 「M 넘버」) 지목 규칙도 AC-7을 그대로
+ * 따른다(AC-9). 로직을 복제하는 이유는 **호출부가 다르기 때문**이다 — `seq:`
+ * 판정은 `seq_epoch` 커서 지문·URL 인용까지 딸려 있고, `mnum:` 판정은 그런
+ * 부가 장치 없이 "현재 에폭"만 필요하다(API 계약 「식별자 범위 지목 계약」).
+ * 반환 모양은 재사용한다 — 판정 결과 자체는 같은 것을 말하기 때문이다.
+ *
+ * @returns `none`이면 검사할 것이 없고, `bound`면 공간 하나가 확정됐으며,
+ *   `invalid`면 질의를 실행하지 않고 거절해야 한다.
+ */
+export function analyzeMergeNumberBinding(ast: QueryAst): SequenceBindingAnalysis {
+  return analyzeSpaceBinding(ast, hasMergeNumberRangeFilter(ast));
+}
+
+/** 지목이 성립하지 않는 두 경우 (CR-106). API 계약의 `detail.reason`과 같은 문자열이다. */
+export type RepositoryBindingProblem = 'repository_required' | 'repository_ambiguous';
+
+export type RepositoryBindingAnalysis =
+  /** `pr_number:` 범위 조건이 없다. */
+  | { readonly kind: 'none' }
+  /** 정확히 하나의 저장소를 지목했다. 실재 여부는 여기서 모른다. */
+  | { readonly kind: 'bound'; readonly repository: string }
+  /** 지목이 없거나 여럿이다. */
+  | { readonly kind: 'invalid'; readonly reason: RepositoryBindingProblem };
+
+/** 이 질의에 `pr_number:` **범위** 조건이 있는가 (CR-106). 부정된 `-pr_number:`도 포함한다. */
+export function hasPrNumberRangeFilter(ast: QueryAst): boolean {
+  return ast.filters.some((filter) => isRangeFilter(filter) && filter.key === 'pr_number');
+}
+
+/**
+ * `pr_number:` 조건이 지목하는 저장소를 판정한다 (FR-SRCH-005 AC-8, CR-106).
+ *
+ * **`base:`를 요구하지 않는다.** PR 번호는 GitHub이 저장소 안에서 생성 시점에
+ * 매기므로 대상 브랜치나 시퀀스 에폭과 무관하다 — `analyzeSequenceBinding`보다
+ * 요구가 하나 적은, 별개의 더 단순한 판정이다.
+ */
+export function analyzePrNumberBinding(ast: QueryAst): RepositoryBindingAnalysis {
+  if (!hasPrNumberRangeFilter(ast)) return { kind: 'none' };
+
+  const repositories = positiveValues(ast, 'repo');
+  if (repositories.size === 0) return { kind: 'invalid', reason: 'repository_required' };
+  if (repositories.size > 1) return { kind: 'invalid', reason: 'repository_ambiguous' };
+
+  const [repository] = [...repositories];
+  if (repository === undefined) return { kind: 'invalid', reason: 'repository_required' };
+  return { kind: 'bound', repository };
+}
+
+/** 화면과 API가 같은 문구를 쓰도록 한 곳에 둔다 (CR-106). */
+export const REPOSITORY_BINDING_MESSAGE: Readonly<Record<RepositoryBindingProblem, string>> = {
+  repository_required: 'A pr_number: filter applies to a single repository. Specify exactly one repo: filter.',
+  repository_ambiguous: 'The pr_number: filter references multiple repositories. Keep only one repo: filter.',
+};
+
+/**
+ * `seq:` 조건이 지목하는 공간을 판정한다.
+ *
+ * @returns `none`이면 검사할 것이 없고, `bound`면 공간 하나가 확정됐으며,
+ *   `invalid`면 질의를 실행하지 않고 거절해야 한다.
+ */
+export function analyzeSequenceBinding(ast: QueryAst): SequenceBindingAnalysis {
+  return analyzeSpaceBinding(ast, hasSequenceRangeFilter(ast));
+}
+
 /** 화면과 API가 같은 문구를 쓰도록 한 곳에 둔다. */
 export const SEQUENCE_BINDING_MESSAGE: Readonly<Record<SequenceBindingProblem, string>> = {
   sequence_space_required:
     'A seq: filter applies to a single sequence space. Specify exactly one repo: and one base: filter.',
   sequence_space_ambiguous:
     'The seq: filter references multiple sequence spaces. Keep only one repo: and one base: filter.',
+};
+
+/**
+ * `mnum:` 전용 문구 (CR-106).
+ *
+ * **사유 코드(`SequenceBindingProblem`)는 `SEQUENCE_BINDING_MESSAGE`와 공유하지만
+ * 문구는 공유하지 않는다.** `analyzeMergeNumberBinding`이 `analyzeSequenceBinding`과
+ * 같은 판정 로직·같은 `detail.reason` 문자열을 내는 것은 의도된 설계이지만, 사람이
+ * 읽는 문장까지 `seq:`로 고정하면 `mnum:`만 쓰고 `base:`를 빠뜨린 사용자에게 "A seq:
+ * filter…"라고 답하는 오답이 된다 — 기계가 읽는 사유 코드와 사람이 읽는 문구는
+ * 같은 것을 공유할 이유가 없다.
+ */
+export const MERGE_NUMBER_BINDING_MESSAGE: Readonly<Record<SequenceBindingProblem, string>> = {
+  sequence_space_required:
+    'A mnum: filter applies to a single sequence space. Specify exactly one repo: and one base: filter.',
+  sequence_space_ambiguous:
+    'The mnum: filter references multiple sequence spaces. Keep only one repo: and one base: filter.',
 };

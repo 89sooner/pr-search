@@ -12,7 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { QUERY_KEYS, QueryParseError, parseQuery, type QueryAst } from '@prs/query';
+import { QUERY_KEYS, QueryParseError, hasMergeNumberRangeFilter, hasPrNumberRangeFilter, parseQuery, type QueryAst } from '@prs/query';
 import { toAccessScope } from '@prs/authz';
 import { AccessScopeUnavailableError, PartialSearchError } from '@prs/es';
 import { ERROR_HTTP_STATUS } from '@prs/contracts';
@@ -494,6 +494,32 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
           });
         }
         throw error;
+      }
+
+      /*
+       * `mnum:`·`pr_number:`는 이 화면(W-004, FR-SEQ-002 계열)이 승인받은
+       * 범위가 아니다 (CR-106) — 이 CR이 늘린 것은 `FR-SRCH-005`/`006`/`008`,
+       * 즉 `/search`의 문법이다. `@prs/query`가 전역 정적 목록이라 파서는 이
+       * 화면에서도 두 키를 통과시키지만, 여기서 그대로 두면 `buildQuery`가
+       * `mergeNumberEpoch` 없이 던지는 오류가 이 경로에서도 처리되지 않은
+       * 500이 된다(위 `seq:`/`sequenceEpoch` 주석이 이미 경고한 것과 같은
+       * 실패 모양, 독립 검토가 실측). 기능을 이 화면까지 조용히 넓히는 대신
+       * 지원하지 않는 키로 명시적으로 거절한다 — 승인되지 않은 확장이다.
+       */
+      if (ast !== null && (hasMergeNumberRangeFilter(ast) || hasPrNumberRangeFilter(ast))) {
+        const rejected = hasMergeNumberRangeFilter(ast) ? 'mnum' : 'pr_number';
+        return fail(reply, 400, {
+          error: {
+            code: 'QUERY_SYNTAX_ERROR',
+            message: `지원하지 않는 검색 키입니다: '${rejected}'`,
+            detail: {
+              token: rejected,
+              reason: 'range_key_not_supported_here',
+              supported_keys: QUERY_KEYS.filter((key) => key !== 'mnum' && key !== 'pr_number'),
+            },
+          },
+          correlation_id: correlationId,
+        });
       }
     }
 
