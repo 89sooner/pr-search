@@ -17,9 +17,15 @@
  * FR-SRCH-011). 접근 범위 필터도 `filter`이므로 권한이 점수에 섞이지 않는다.
  */
 
-import type { estypes } from '@elastic/elasticsearch';
-import { hasSequenceRangeFilter, isRangeFilter, type QueryAst, type QueryFilter, type QueryKey } from '@prs/query';
-import type { EntityAlias } from './indices.js';
+import type { estypes } from "@elastic/elasticsearch";
+import {
+  hasSequenceRangeFilter,
+  isRangeFilter,
+  type QueryAst,
+  type QueryFilter,
+  type QueryKey,
+} from "@prs/query";
+import type { EntityAlias } from "./indices.js";
 
 /**
  * 키가 보는 ES 필드 (CR-016, DEV-052).
@@ -29,21 +35,21 @@ import type { EntityAlias } from './indices.js';
  * 상태이며, `kind`는 **필드가 아니라 인덱스가 답한다** (CR-053, DEV-383).
  */
 const TERM_FIELDS: Readonly<Partial<Record<QueryKey, string>>> = {
-  repo: 'repository',
-  author: 'author',
-  reviewer: 'reviewers',
-  label: 'labels',
-  base: 'base_branch',
-  head: 'head_branch',
-  state: 'state',
-  release: 'release_tags',
+  repo: "repository",
+  author: "author",
+  reviewer: "reviewers",
+  label: "labels",
+  base: "base_branch",
+  head: "head_branch",
+  state: "state",
+  release: "release_tags",
 };
 
 /** 범위 키가 보는 ES 필드. */
 const RANGE_FIELDS: Readonly<Partial<Record<QueryKey, string>>> = {
-  seq: 'merge_seq',
-  merged: 'merged_at',
-  created: 'created_at',
+  seq: "merge_seq",
+  merged: "merged_at",
+  created: "created_at",
   /*
    * 변경 규모 (CR-056, DEV-451). 분포 구간의 드릴다운이 이 조건으로 그 구간을
    * 가리킨다.
@@ -52,8 +58,8 @@ const RANGE_FIELDS: Readonly<Partial<Record<QueryKey, string>>> = {
    * 필드를 갖지 않으며(DEV-450), 그것이 `unknown` 구간에 질의를 주지 않는
    * 이유이기도 하다. 없는 값을 거는 조건은 만들지 않는다.
    */
-  changed_files: 'changed_files_count',
-  changed_lines: 'changed_lines',
+  changed_files: "changed_files_count",
+  changed_lines: "changed_lines",
 };
 
 /**
@@ -76,15 +82,15 @@ const RANGE_FIELDS: Readonly<Partial<Record<QueryKey, string>>> = {
  * 돌아간다. `prefix`는 문자열 접두라 `src/pay`가 `src/payments`의 접두가 되어
  * 다른 디렉터리를 끌어온다. `term`만이 "경로 계층의 한 마디"를 정확히 가리킨다.
  */
-const PATH_FIELD = 'changed_paths';
+const PATH_FIELD = "changed_paths";
 
 /** `is`가 보는 자리 (CR-016, DEV-053). `state`와 겹치는 셋은 같은 필드다. */
 const DERIVED_STATE: Readonly<Record<string, estypes.QueryDslQueryContainer>> = {
-  merged: { term: { state: 'merged' } },
-  open: { term: { state: 'open' } },
-  closed: { term: { state: 'closed' } },
+  merged: { term: { state: "merged" } },
+  open: { term: { state: "open" } },
+  closed: { term: { state: "closed" } },
   // GitHub에는 없는, 관계 파생이 만든 상태다.
-  reverted: { term: { 'link_summary.is_reverted': true } },
+  reverted: { term: { "link_summary.is_reverted": true } },
 };
 
 /**
@@ -118,7 +124,7 @@ export const EMPTY_RESOLUTION: NameResolution = { orgIds: new Map(), teamIds: ne
  * 사용자가 물은 것이 접근 권한인지 작성자 소속인지에 따라 할 일이 다르다.
  */
 export interface UnresolvedName {
-  readonly key: 'org' | 'team' | 'author_team';
+  readonly key: "org" | "team" | "author_team";
   readonly value: string;
 }
 
@@ -144,8 +150,8 @@ export interface BuildQueryOptions {
 /** `seq:` 범위가 있는데 에폭 없이 질의를 만들려 했다. 배포·조립 오류다. */
 export class SequenceEpochRequiredError extends Error {
   constructor() {
-    super('seq: 범위 조건이 있는 질의에는 시퀀스 에폭이 필요하다 (CR-051)');
-    this.name = 'SequenceEpochRequiredError';
+    super("seq: 범위 조건이 있는 질의에는 시퀀스 에폭이 필요하다 (CR-051)");
+    this.name = "SequenceEpochRequiredError";
   }
 }
 
@@ -158,15 +164,15 @@ export class SequenceEpochRequiredError extends Error {
  */
 export class KindFilterNotAppliedError extends Error {
   constructor() {
-    super('kind: 필터는 resolveSearchTarget으로 검색 대상을 좁혀 적용한다 (CR-053)');
-    this.name = 'KindFilterNotAppliedError';
+    super("kind: 필터는 resolveSearchTarget으로 검색 대상을 좁혀 적용한다 (CR-053)");
+    this.name = "KindFilterNotAppliedError";
   }
 }
 
 /** `kind:` 값과 엔티티 별칭의 대응. 사용자에게 인덱스 이름을 노출하지 않는다. */
 const KIND_ALIAS: Readonly<Record<string, EntityAlias>> = {
-  pull_request: 'prs-pull-requests',
-  commit: 'prs-commits',
+  pull_request: "prs-pull-requests",
+  commit: "prs-commits",
 };
 
 /**
@@ -192,14 +198,14 @@ export function resolveSearchTarget(
   let touched = false;
 
   for (const filter of ast.filters) {
-    if (isRangeFilter(filter) || filter.key !== 'kind') continue;
+    if (isRangeFilter(filter) || filter.key !== "kind") continue;
     touched = true;
     // 파서가 값을 열거로 검증했으므로 여기 도달한 값은 둘 중 하나다.
     const named = filter.values
       .map((value) => KIND_ALIAS[value])
       .filter((alias): alias is EntityAlias => alias !== undefined);
 
-    if (filter.op === 'eq') {
+    if (filter.op === "eq") {
       // 같은 키의 값 여럿은 OR다 (AC-5) — 교집합을 그 합집합으로 좁힌다.
       const keep = new Set<EntityAlias>(named);
       allowed = new Set([...allowed].filter((alias) => keep.has(alias)));
@@ -212,7 +218,7 @@ export function resolveSearchTarget(
 
   const stripped: QueryAst = {
     ...ast,
-    filters: ast.filters.filter((filter) => isRangeFilter(filter) || filter.key !== 'kind'),
+    filters: ast.filters.filter((filter) => isRangeFilter(filter) || filter.key !== "kind"),
   };
   return { target: allowed.size === 0 ? null : [...allowed], ast: stripped };
 }
@@ -228,7 +234,7 @@ export function resolveSearchTarget(
 export class RangeKeyEqualityError extends Error {
   constructor(readonly key: QueryKey) {
     super(`'${key}'는 범위 전용 키다 — 동등 필터로 질의를 만들 수 없다 (DEV-364)`);
-    this.name = 'RangeKeyEqualityError';
+    this.name = "RangeKeyEqualityError";
   }
 }
 
@@ -243,7 +249,7 @@ export class RangeKeyEqualityError extends Error {
  * 직접 푸시(`direct_push`)를 함께 넣는 것은 그것도 first-parent 체인에 실제로
  * 나타난 메시지이기 때문이다. 셋 중 빠지는 것은 `source_commit` 하나다.
  */
-export const FIRST_PARENT_COMMIT_ROLES = ['merge_commit', 'direct_push'] as const;
+export const FIRST_PARENT_COMMIT_ROLES = ["merge_commit", "direct_push"] as const;
 
 /**
  * 자유 텍스트가 점수를 얻는 필드와 가중치 (FR-SRCH-011 AC-1·AC-2).
@@ -256,15 +262,15 @@ export const FIRST_PARENT_COMMIT_ROLES = ['merge_commit', 'direct_push'] as cons
  * `feature/pay-retry` 전체와 정확히 같을 때만 매치된다.
  */
 export const FULL_TEXT_FIELDS: readonly string[] = [
-  'title^3',
-  'title.partial^1.5',
-  'body',
-  'message',
-  'message.partial^0.5',
-  'base_branch.text',
-  'base_branch.partial^0.5',
-  'head_branch.text',
-  'head_branch.partial^0.5',
+  "title^3",
+  "title.partial^1.5",
+  "body",
+  "message",
+  "message.partial^0.5",
+  "base_branch.text",
+  "base_branch.partial^0.5",
+  "head_branch.text",
+  "head_branch.partial^0.5",
 ];
 
 /**
@@ -275,7 +281,7 @@ export const FULL_TEXT_FIELDS: readonly string[] = [
  */
 const NON_FIRST_PARENT_COMMIT: estypes.QueryDslQueryContainer = {
   bool: {
-    filter: [{ exists: { field: 'role' } }],
+    filter: [{ exists: { field: "role" } }],
     must_not: [{ terms: { role: [...FIRST_PARENT_COMMIT_ROLES] } }],
   },
 };
@@ -288,7 +294,15 @@ const NON_FIRST_PARENT_COMMIT: estypes.QueryDslQueryContainer = {
  * 이긴다.
  */
 export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
-  return { multi_match: { query: text, fields: [...FULL_TEXT_FIELDS], type: 'best_fields' } };
+  // return { multi_match: { query: text, fields: [...FULL_TEXT_FIELDS], type: 'best_fields' } };
+  return {
+    multi_match: {
+      query: text,
+      fields: [...FULL_TEXT_FIELDS],
+      type: "best_fields",
+      operator: "and",
+    },
+  };
 }
 
 /**
@@ -361,18 +375,20 @@ function equalityClause(
   const field = TERM_FIELDS[filter.key];
   if (field !== undefined) return termsClause(field, values);
 
-  if (filter.key === 'path') return pathClause(values);
-  if (filter.key === 'is') return derivedStateClause(values);
+  if (filter.key === "path") return pathClause(values);
+  if (filter.key === "is") return derivedStateClause(values);
 
-  if (filter.key === 'org') {
-    const ids = values.map((value) => resolution.orgIds.get(value)).filter((id): id is number => id !== undefined);
+  if (filter.key === "org") {
+    const ids = values
+      .map((value) => resolution.orgIds.get(value))
+      .filter((id): id is number => id !== undefined);
     for (const value of values) {
-      if (!resolution.orgIds.has(value)) unresolved.push({ key: 'org', value });
+      if (!resolution.orgIds.has(value)) unresolved.push({ key: "org", value });
     }
-    return idsClause('org_id', ids);
+    return idsClause("org_id", ids);
   }
 
-  if (filter.key === 'team' || filter.key === 'author_team') {
+  if (filter.key === "team" || filter.key === "author_team") {
     /*
      * 이름 하나가 팀 여럿을 가리킬 수 있다 — 전부 실어 OR로 만든다.
      *
@@ -385,7 +401,7 @@ function equalityClause(
     for (const value of values) {
       if (!resolution.teamIds.has(value)) unresolved.push({ key: filter.key, value });
     }
-    return idsClause(filter.key === 'team' ? 'allowed_team_ids' : 'author_team_ids', ids);
+    return idsClause(filter.key === "team" ? "allowed_team_ids" : "author_team_ids", ids);
   }
 
   /*
@@ -396,7 +412,7 @@ function equalityClause(
    * 삼키면 `filter`에서는 0건이 되고 `must_not`에서는 조건이 통째로 사라진다 —
    * DEV-378이 범위 전용 키에서 겪은 것과 같은 실패다.
    */
-  if (filter.key === 'kind') throw new KindFilterNotAppliedError();
+  if (filter.key === "kind") throw new KindFilterNotAppliedError();
 
   // 파서가 `QUERY_KEYS` 밖을 이미 거절했으므로 도달하지 않는다.
   return MATCH_NONE;
@@ -414,7 +430,7 @@ function toClause(
 }
 
 function isNegated(filter: QueryFilter): boolean {
-  return filter.op === 'not_eq' || filter.op === 'not_range';
+  return filter.op === "not_eq" || filter.op === "not_range";
 }
 
 /**
@@ -458,7 +474,7 @@ export function buildQuery(
     else filter.push(clause);
   }
 
-  if (ast.text !== null && ast.text !== '') {
+  if (ast.text !== null && ast.text !== "") {
     must.push(buildTextClause(ast.text));
     mustNot.push(NON_FIRST_PARENT_COMMIT);
   }
@@ -491,8 +507,8 @@ export function collectNames(ast: QueryAst): { readonly orgs: string[]; readonly
 
   for (const one of ast.filters) {
     if (isRangeFilter(one)) continue;
-    if (one.key === 'org') for (const value of one.values) orgs.add(value);
-    if (one.key === 'team' || one.key === 'author_team') {
+    if (one.key === "org") for (const value of one.values) orgs.add(value);
+    if (one.key === "team" || one.key === "author_team") {
       for (const value of one.values) teams.add(value);
     }
   }
