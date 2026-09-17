@@ -2175,3 +2175,29 @@ todos.md 「시작하기 전에」로 실측한 뒤, 결정자의 지시를 기�
 - Feature: https://github.com/89sooner/pr-search/pull/203, https://github.com/89sooner/pr-search/pull/205
 - Release records: https://github.com/89sooner/pr-search/pull/204, https://github.com/89sooner/pr-search/pull/206
 - Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.12
+
+# 2026-09-17 (9차) — CR-100 M 번호 운영자 확인서 · CR-101 병합 state 파생: PR #207 병합(08fbc3a), PR #208 병합(3ba1c4b)
+
+## 이 구간의 목표
+
+사내 pilot.11 반입 피드백(M-번호 채번이 NULL-PR 커밋·unsupported profile에서 전체 중단, 수동 `direct_confirmed`를 워커가 덮어씀)을 처리하고, 사용자가 추가로 보고한 「Status=Merged·My merged PRs가 빈 결과」를 고친다. 사용자 결정(2026-09-17): 제안대로 — 요청 1·2는 운영자 확인서, 관찰 4는 결함 수정, 요청 3은 기각; 문서 검사기 회귀 정정 포함; 피드백 파일은 내가 커밋; 착수.
+
+## 결과
+
+- CR-100 / WP-088 (PR #207 → `08fbc3a`, main CI `35178340678` success): 운영자 확인서(ENT-SEQ-008, 마이그레이션 031, `prsctl mnumber attest|revoke|list`, FR-SEQ-008 AC-15), 확정 근거 보존(DEV-715: 트랜잭션 안 `FOR UPDATE` 재검증 + upsert SQL 방어선), 검사기 회귀 정정(DEV-716), 열어 둔 한계 DEV-717. 독립 검토(deep-reasoner) blocker 0·minor 3 반영.
+- CR-101 / WP-089 (PR #208 → `3ba1c4b`, main CI `35179018409` success): `derivePullRequestState`로 병합을 `merged`로 파생(DEV-718), 마이그레이션 032로 기존 스냅숏 정정, 업그레이드 뒤 재색인 필요. Merged 필터·탭·배지·M 번호 조회·늦은 PR 스냅숏 재개(AC-11)가 함께 고쳐진다.
+- 릴리스는 발행하지 않았다(지시 없음). pilot.12는 불변. 사내 확인은 NOT RUN(RUNBOOK 7.D·업그레이드 절).
+- 문서 검사기 `--strict`: ERROR 6·WARN 4 → ERROR 4·WARN 2(남은 것은 8c567b7 기준과 같은 기존 항목).
+
+## 이 구간이 찾아 고친 것
+
+- 경합(DEV-715): 근거를 트랜잭션 밖에서 읽고 GHE를 조회한 뒤 저장하는 사이의 확정을 `unresolved`가 덮었다 — 사내 보고의 「seq=1은 보존, seq≥2는 덮어씀」과 일치.
+- 병합 state(DEV-718): 투영이 GitHub 원시 `state`를 그대로 썼다. 단위 시험이 투영의 `state`를 단언하지 않았고 통합·e2e 픽스처는 `state:'merged'`를 손으로 심어 두 계층이 각자 통과했다 — 회귀 계약 시험이 이제 두 계층을 맞댄다.
+- 검사기 회귀(DEV-716): CR-094~099 메모가 상태 줄 위에 쌓여 SRS·작업 패키지가 draft로 읽혔다.
+- 사내 요청의 전제 정정: DEV-581의 전제는 「혼재 환경」이 아니라 「부재 증서의 부재」이며 squash-only에서도 같다.
+
+## 다음 에이전트가 먼저 할 것
+
+1. 병합 기록 PR 상태 확인 — 기록 PR `docs/cr100-101-merge-record`(원장 3장·6.94·6.95 병합 기록, CR-100·101 closed, agent-context 9차 절, handoff pack). 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 git log로 읽는다.
+2. 사내 반입 뒤(pilot.13 발행은 사용자 결정): RUNBOOK 7.D로 확인서 실행, 업그레이드 절대로 032 뒤 `prs-pull-requests` 재색인, 결과를 `agent-context/upstream-feedback.md`에 기록.
+3. 후속 후보(결정자): DEV-717 후발 PR 발견 스윕, 기존 검사기 오류 4 별도 CR, REL-007 다음 판.

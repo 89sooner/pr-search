@@ -2963,3 +2963,50 @@ risks.md의 「2026-09-02 (2차)」 절. 가장 큰 것: 실행 중인 스크립
 ## References
 
 - PR #203, #205, #206; release `0.1.0-pilot.12`; CR-098, CR-099; WP-086, WP-087; DEV-704~714.
+
+# Session: 2026-09-17 (9차) — CR-100 M 번호 운영자 확인서 · CR-101 병합 state 파생
+
+## Goal
+
+사내 pilot.11 반입 피드백(M-번호 채번이 NULL-PR 커밋·unsupported profile에서 전체 중단, 수동 근거 덮어쓰기)을 처리하고, 사용자가 추가로 보고한 「Status=Merged·My merged PRs가 빈 결과」를 고친다. 사용자 결정: 제안대로(요청 1·2는 운영자 확인서, 관찰 4는 결함 수정, 요청 3은 기각), 검사기 회귀 정정 포함, 피드백 파일은 내가 커밋, 착수.
+
+## Current state
+
+- main: 3ba1c4b (이 기록 PR 병합 뒤에는 git log로 읽는다) (CR-100 PR #207 병합 08fbc3a, CR-101 PR #208 병합 3ba1c4b). 릴리스는 발행하지 않았다(지시 없음). pilot.12는 불변.
+- 사내 확인 NOT RUN: `./prsctl mnumber attest …` 뒤 저장소 119·399·1877의 M 번호 완주; `./prsctl upgrade`(032) 뒤 `prs-pull-requests` 재색인 → Status=Merged·My merged PRs·Merged 배지·M 번호 조회 확인.
+
+## Decisions
+
+- 운영자 확인서(ENT-SEQ-008, FR-SEQ-008 AC-15): (저장소, 브랜치, 에폭)마다 하나, 두 사유(`negative_evidence_unavailable`·`unsupported_merge_profile`)만, `committed_at` 기준 유예(기본 24h), 확정 근거는 어떤 경로로도 미확정으로 되돌리지 않는다. 시간만으로의 확정·무조건 스킵·unresolved 건너뛰기는 AC-2·3·9·10 위반이라 기각.
+- 병합은 파생 상태다(DEV-718): `derivePullRequestState` 한 곳에서 `merged`를 파생하고 032가 기존 스냅숏을 바로잡는다. 질의·매핑·UI는 이미 계약대로라 손대지 않았다. 업그레이드 뒤 재색인 필요.
+- 문서 검사기 회귀(DEV-716): SRS·작업 패키지의 상태 줄을 제목 아래로 복귀(검사기는 H1 아래 10줄만 본다).
+- CR-101은 CR-100 브랜치 위에 stacked → CR-100 병합 뒤 main으로 rebase하고 base를 옮겼다(마이그레이션 번호 031/032 충돌 회피).
+
+## Changed files
+
+- CR-100: `packages/db/migrations/031_*`, `packages/db/src/repositories/mnumber-attestation.ts`(신규), `mnumber-evidence.ts`(SQL 방어선·`lockEvidence`·`EvidenceDowngradeError`), `packages/domain/src/audit.ts`(액션 2), `apps/pipeline-worker/src/mnumber-attestation.ts`(순수 판정)·`mnumber.ts`(적용·잠금 재검증)·`sequence-work-runner.ts`(유예 재시도)·`metrics.ts`·`mnumber-attest-command.ts`·`mnumber-attest-cli.ts`, `deploy/single-host/prsctl`(`mnumber`)·`RUNBOOK.md`(7.D), 문서 12개, `agent-context/upstream-feedback.md` 회신.
+- CR-101: `packages/domain/src/pull-request-state.ts`(신규), `apps/pipeline-worker/src/documents.ts`, `packages/db/migrations/032_*`, 시험 4(단위·032 왕복·회귀 계약·파수꾼), 문서(API 계약 v0.36·데이터 모델 v0.27·RUNBOOK 업그레이드·WP-089·원장 6.95·CR-101), upstream-feedback 항목·회신.
+
+## Commands
+
+- 통합·회귀는 워크트리별 격리 DB(`prs_test_cr100`·`_reg`·`prs_test_cr101`)로 돌렸다 — 메모리 `integration-tests-isolated-db-per-worktree`.
+- 실패했던 것: `gh run list --branch`·`--json`은 gh 2.4.0에 없다 → `gh api repos/…/actions/runs?branch=…`로 run ID를 얻고 `gh run watch <id> --exit-status`. `gh run rerun <id> --failed`는 없다 → `gh run rerun <id>`(전체 재실행). PR CI verify는 flow-003 e2e 간헐(DEV-377)로 한 번 실패했고 재실행에서 통과.
+- 회귀 계약 시험은 질의 번역이 `term`이 아니라 `terms`(배열)라 값으로 비교하도록 고쳤다.
+- `PullRequestState`가 `entities.ts`에 이미 있어 이름이 겹쳤다 → 헬퍼가 그 타입을 재사용.
+
+## Next steps
+
+1. 사내 반입(pilot.13 발행은 사용자 결정) 뒤 RUNBOOK 7.D와 업그레이드 절대로 확인서·재색인을 실행하고 결과를 upstream-feedback.md에 적는다.
+2. 병합 기록 PR(원장 3장·6.94·6.95의 PR/CI/병합 SHA, CR-100·101 closed)을 닫는다 — 기록 PR `docs/cr100-101-merge-record`(원장 3장·6.94·6.95 병합 기록, CR-100·101 closed, agent-context 9차 절, handoff pack). 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 git log로 읽는다.
+3. 후속 후보: DEV-717(확인서로 지나간 항목의 후발 PR 발견 스윕), 기존 문서 검사기 오류 4(FR-CSS-005·D-002·자리표시어) 별도 CR, REL-007 다음 판(결정자 순서).
+
+## Risks/gotchas
+
+- 동시 세션이 실제로 있었다: 조사 중 다른 세션이 main에 6853b3f를 직접 커밋했고 upstream-feedback.md를 편집 중이었다. 공유 체크아웃에서는 파일 수정 시각을 확인하고 채번을 다시 잰다.
+- 마이그레이션을 더하면 `packages/db/integration`의 파수꾼 4파일(+ 이번에 추가한 `mnumber-attestation-schema.test.ts`)의 버전 목록을 함께 갱신해야 한다.
+- 확인서로 지나간 항목에 뒤늦게 PR이 나타나도 자동 발견되지 않는다(DEV-717) — 유예가 확률을 줄이고 에폭 재채번이 교정 수단이다.
+- 032 뒤 재색인 전에는 Merged가 계속 비어 보인다 — RUNBOOK 업그레이드 절·문제 해결 행에 적었다.
+
+## References
+
+- PR #207 (CR-100/WP-088), PR #208 (CR-101/WP-089); 원장 6.94·6.95; DEV-715~718; 검토: deep-reasoner 독립 검토(blocker 0, minor 3 반영).

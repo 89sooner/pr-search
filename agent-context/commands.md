@@ -4298,3 +4298,40 @@ gh api repos/89sooner/pr-search/releases/tags/0.1.0-pilot.12 --jq '{url:.html_ur
 - PR #205 초기 CI는 지원 정렬 키 기대값이 8에 머물러 `pr_number` 추가를 거부했다. `apps/search-api/integration/search/list.test.ts`의 기대를 9로 고쳤다.
 - 기존 a11y의 101 checkbox 상호작용이 CI에서 5초를 초과했다. 행동 단언은 유지하고 해당 test의 timeout만 15초로 늘렸다(DEV-714).
 - `gh pr checks 206 --watch --interval 10`은 설치된 gh가 `--watch`를 지원하지 않아 실패했다. `gh run watch 35168444005 --exit-status`로 대체했다.
+
+# 2026-09-17 (9차) 라운드에서 쓴 것 (CR-100 · CR-101)
+
+## 환경
+
+```bash
+export PATH=$HOME/.nvm/versions/node/v22.23.2/bin:$PATH        # .nvmrc=22, 셸 기본은 20.12
+docker exec prs-cr091-postgres psql -U prs -d postgres -c "CREATE DATABASE prs_test_cr100 OWNER prs"
+export POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=55439 POSTGRES_USER=prs POSTGRES_PASSWORD=prs POSTGRES_TEST_DB=prs_test_cr100 \
+  REDIS_URL=redis://127.0.0.1:56384 ELASTICSEARCH_NODE=http://127.0.0.1:59205
+```
+
+## 성공한 검증 (CR-100, 23bfe00 기준)
+
+- `pnpm typecheck`·`pnpm lint`·`pnpm run lint:deps` 0 · `pnpm run test` 2,838 · `pnpm run test:regression` 503(DB 필요) · `pnpm run test:integration` 1,818 · `pnpm build`.
+- 집중: `pnpm exec vitest run --config vitest.integration.config.ts apps/pipeline-worker/integration/sequence/mnumber-attestation.test.ts packages/db/integration/mnumber-attestation-schema.test.ts …` 100/100.
+- 변이: `mnumber.ts` 재검증 `if (false && …)` → 경합 시험 `EvidenceDowngradeError`로 죽음; upsert WHERE 한 줄 제거 → 방어선 시험 「거절되지 않았다」로 죽음.
+- 문서 검사기: `python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --root . --strict` ERROR 6→4, WARN 4→2.
+
+## 성공한 검증 (CR-101, 37fd732 기준)
+
+- typecheck 0(`PullRequestState` 중복 선언 한 번 고침) · lint 0 · 단위 2,843 · 회귀 506 · 통합 1,819 · build.
+- 변이: `documents.ts`를 `pr.state`로 되돌림 → 투영 단위 2건·회귀 계약 1건 죽음.
+
+## CI·PR (gh 2.4.0)
+
+```bash
+gh api "repos/89sooner/pr-search/actions/runs?branch=<브랜치>&per_page=1" --jq '.workflow_runs[0].id'   # run list --branch 없음
+gh run watch <run-id> --exit-status
+gh run rerun <run-id>                       # --failed 없음; verify의 flow-003 e2e(DEV-377) 간헐 실패를 재실행으로 통과
+gh api -X PATCH repos/89sooner/pr-search/pulls/208 -f base=main   # pr edit --base는 GraphQL 오류
+gh pr ready <n>; gh pr merge <n> --squash   # --delete-branch는 쓰지 않는다(로컬 브랜치까지 지운다)
+git rebase --onto origin/main 937dd13 fix/cr101-merged-state     # stacked → main; 원장 표 충돌 1건은 양쪽 행을 살려 해결
+```
+
+- PR #207: CI 35175836037(verify는 attempt 2에서 성공)·35177846020(success) → squash `08fbc3a` → main CI `35178340678` success.
+- PR #208: CI 35177537636(verify flow-003 실패, 통합 success) → rebase 뒤 `35178504451`(verify·integration 첫 시도 success) → squash `3ba1c4b` → main CI `35179018409` success.

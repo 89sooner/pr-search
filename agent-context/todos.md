@@ -2560,5 +2560,27 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [ ] 실제 GHE 저장소에서 Repository workspace의 `is:merged` 검색이 결과를 돌려주는지 확인한다. mock/browser 검증은 완료됐지만 실제 인덱스·권한 데이터는 NOT RUN이다.
 - [ ] `GHE_BASE_URL/<owner>/<repo>/pull/<number>` 형태 PR 링크가 사내 GHE base URL에서 맞는지 확인한다.
 - [ ] M number 데이터가 실제 인덱스에 생긴 뒤 `merge_number*` 필드가 표에 올바르게 표시되는지 확인한다.
-- [ ] 기존 문서 validator의 범위 밖 오류 `FR-CSS-005`, `D-002`, risks/SRS warnings를 별도 CR로 분리한다. 이번 세션에서는 수정하지 않았다.
-- [ ] Upstream Feedback의 `prsctl smoke` 워커 로그 9/10 간헐 문제와 Docker 내부 외부망 차단 빌드 RUNBOOK 보완은 아직 별도 작업이다.
+- [ ] 기존 문서 validator의 범위 밖 오류 `FR-CSS-005`, `D-002`, risks 경로 경고를 별도 CR로 분리한다. (9차 정정: 「SRS·작업 패키지가 draft」 오류·경고 넷은 상태 줄 매몰이 원인이었고 CR-100/DEV-716이 고쳤다. 남은 것은 ERROR 4·WARN 2.)
+- [x] Upstream Feedback의 `prsctl smoke` 워커 로그 9/10 간헐 문제와 Docker 내부 외부망 차단 빌드 RUNBOOK 보완 — 9차 실측: CR-094(원장 6.93장 5항)가 이미 반영했다(`deploy/single-host/prsctl` 워커 로그 3회 재시도, `RUNBOOK.md` 2.A 「Docker 컨테이너 외부 네트워크 차단 환경에서의 빌드」). 회신은 upstream-feedback.md에 남지 않았고 항목은 사내 보고자가 교체했다.
+
+# 2026-09-17 (9차) 뒤에 남은 것
+
+## 먼저 할 것
+
+- [ ] 기록 PR `docs/cr100-101-merge-record`(원장 3장·6.94·6.95 병합 기록, CR-100·101 closed, agent-context 9차 절, handoff pack). 병합 커밋은 이 파일에 적을 수 없다 — 병합 뒤 git log로 읽는다 — 병합 기록 PR(원장 3장·6.94·6.95 PR/CI/SHA, CR-100·101 closed, agent-context 9차 절, handoff pack).
+- [ ] 사내 반입(pilot.13 발행 여부·시점은 사용자 결정) 뒤: `./prsctl mnumber attest --repository-id 399 --base-branch main --seq-epoch 1 --reason "…"` → `worker-sequence` 로그 `attested`·`assigned`, 저장소 119·399·1877 M 번호 완주; `./prsctl upgrade`(032) → 운영 콘솔 `prs-pull-requests` 재색인 → Status=Merged·My merged PRs·Merged 배지·M 번호 조회 확인. 결과를 `agent-context/upstream-feedback.md` 두 항목 아래에 적는다.
+
+## 결정자 확인
+
+- [ ] pilot.13 발행 여부와 시점.
+- [ ] DEV-717(확인서로 지나간 항목의 후발 PR 자동 발견 없음) — 발견 스윕을 별도 CR로 할지.
+- [ ] 기존 문서 검사기 오류 4(`FR-CSS-005`·`D-002`·자리표시어 13+8)·WARN 2(`risks.md` 경로) — 별도 CR.
+- [ ] REL-007 다음 판 순서(GATE-GH-01d·06·08, DEV-674) — 8차 항목 그대로.
+
+## 자원 정리 (사용자 결정)
+
+- 워크트리 `/home/roqkf/pr-search-wt/cr100`·`cr101`, 병합된 브랜치 `fix/cr100-mnumber-attestation`·`fix/cr101-merged-state`(로컬·원격), 격리 DB `prs_test_cr100`·`prs_test_cr100_reg`·`prs_test_cr101`(prs-cr091-postgres). 이전 판 자원(8차 이전 절)도 그대로다.
+
+## 착수할 때 실측할 것
+
+- 다음 ID: CR-101 · DEV-718 · WP-089 · ENT-SEQ-008 이후. 병렬 세션이 있으면 채번 현황을 묻는다(9차에서 실제로 다른 세션이 main에 직접 커밋했다).

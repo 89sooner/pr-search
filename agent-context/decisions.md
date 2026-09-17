@@ -2065,3 +2065,23 @@ URL 파라미터다.
 | 기본 표 정렬은 `pr_number DESC`; `merge_seq`는 내부/보조 M number | 사용자가 PR 우선 탐색을 원했고 M number 값이 존재할 때만 보여야 한다 | 기존 merged_at/expand 우선 표는 정보 위계에 맞지 않는다 |
 | 상태 Select는 `is:merged/open/closed`만 생성 | permissive `state:`보다 query parser의 canonical enum 계약과 맞아 오류 진단이 명확하다 | 사용자 선택 UI에서 임의 `state:` 토큰을 만들지 않는다 |
 | 릴리즈 태그는 기능 병합 커밋에 고정하고 증적은 후속 docs PR로 남긴다 | immutable asset의 계보와 추적 문서 갱신을 분리한다 | 릴리즈 tag를 docs-only 커밋으로 옮기지 않는다 |
+
+# 2026-09-17 (9차) — CR-100·CR-101 확정 결정
+
+## A. 사용자 직접 결정 (다시 논의하지 않음)
+
+- 사내 요청 1·2(프로파일 밖 건너뛰기, NULL-PR 자동 확정)는 **운영자 확인서**로, 관찰 4(덮어쓰기)는 결함 수정으로, 요청 3(unresolved 건너뛰며 진행)은 **기각** — 제안을 그대로 승인.
+- 문서 검사기 회귀(상태 줄 매몰)는 같은 CR에 포함.
+- upstream-feedback.md의 커밋은 내가 한다(main 직접 커밋 `dcaad12`).
+
+## C. 구현이 스스로 고른 것 (근거와 되돌리는 법)
+
+| 결정 | 근거 | 되돌리는 법 |
+| --- | --- | --- |
+| 확인서는 (저장소, 브랜치, 에폭)마다 하나, 두 사유만 덮고, `committed_at` 기준 유예(기본 24h) | AC-3(번호 불변)·AC-9·AC-10(시간은 근거가 아님)을 지키면서 backfill은 첫 회차에 지나가고 새 push는 늦은 PR 정보를 먼저 기다린다 | revoke; 규칙은 `mnumber-attestation.ts` 한 곳 |
+| 유예 대기는 러너가 `retry`로 유예 종료 시각까지 미룬다(`attestation_grace_pending`) | `negative_evidence_unavailable`은 work를 done으로 닫아 새 push까지 아무것도 돌지 않는다 | `sequence-work-runner.ts`의 `retryAt` 분기 |
+| 경합 방어는 두 겹: 트랜잭션 안 `evidence_version` 재검증(`retry evidence_moved`) + upsert SQL의 확정→미확정 거절 | 각각 변이 시험으로 죽음을 확인; SQL은 마지막 방어선 | `lockEvidence`·WHERE 절 |
+| CLI는 `worker-sequence` 이미지로 `prsctl mnumber …`, 행위자는 호스트 사용자 | `prsctl role`과 같은 규율; 감사·확인서·work 요청을 한 트랜잭션 | prsctl `cmd_mnumber` |
+| 병합 state는 도메인 헬퍼 한 곳에서 파생하고 032가 기존 스냅숏을 바로잡는다; 질의·매핑·UI는 손대지 않는다 | 계약(API 예시·UI·M 조회·`entities.ts`의 `PullRequestState`)이 이미 세 값이었고 투영만 어긋났다 | 032 down은 `closed`로 결정적 복귀 |
+| 032는 `document_version`을 올리지 않는다 | 원천 버전이며 같은 버전의 문서가 다시 와도 같은 파생 값 | — |
+| CR-101은 CR-100 위에 stacked 뒤 main으로 rebase | 마이그레이션 번호(031/032)와 파수꾼 시험 목록 충돌 회피 | — |

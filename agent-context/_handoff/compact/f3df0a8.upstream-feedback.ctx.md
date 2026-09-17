@@ -1,21 +1,44 @@
 #hidden
 # aci:v1 id=f3df0a8 src=agent-context/upstream-feedback.md
-@kv sha256=a493067277c390727cf5086f0f2fba0bd3b0db6a64aa251546dea3a5c264e9ec bytes=1910 lines=26 title=Upstream-Feedback
-@sig agent-context/upstream-feedback.md;9/10;tmp/docker-wrapper;/deploy/single-host/build-bundle.sh;Upstream;Feedback;DEV;compose;offline;release;RUNBOOK;WSL2;Docker;alpinelinux;install;ECONNRESET;TLS;handshake;timeout;verdaccio;ENV;npm_config_registry;pipeline;migrate
+@kv sha256=1eb7b38f326c65b050e79761c57a18bb49489dc4b60474fc1a34f3dff4215f3b bytes=8220 lines=78 title=Upstream-Feedback
+@sig agent-context/upstream-feedback.md;/prsctl;Upstream;Feedback;NULL;unsupported;profile;mnumber;DEV;SQL;blocker;direct_confirmed;repository;RUNBOOK;sequence;attested;assigned;MNUMBER_ENABLED;SEQ;ADR;reconcile;pull_request_number;repository_id;base_branch
 @h1 Upstream Feedback
-@h2 DEV-smoke-worker-roles — prsctl smoke 워커 기동 로그 9/10 간헐적 실패
-@p 발견: 0.1.0-pilot.8 반입 후 smoke 실행 (2026-09-16)
-@path 현상: prsctl smoke가 ✗ 워커 기동 로그 9/10을 보고하며 실패. prsctl health는 전 서비스 정상. compose logs --tail 200 worker-* 수동 확인 시 10개 전부 roles: 포함. smoke 스크립트 루프에서 한 워커의 compose logs 호출이 빈 결과를 반환하는 타이밍 이슈로 추정
-@path 사내 임시 조치: prsctl health 결과로 운영 판정. smoke 9/10는 무시
-@p 요청: smoke 워커 로그 확인에 재시도 로직 추가 또는 prsctl health와 동일 방식으로 교체
+@h2 M-번호 채번 — NULL-PR 커밋 및 unsupported profile 이 전체 채번을 차단 (버그)
+@risk 2026-09-17: 이 항목을 CR-100(WP-088, PR #207 → main 08fbc3a, 원장 6.94장)으로 처리했다. 요청 1·2는 운영자 확인서(prsctl mnumber attest)로, 관찰 4는 결함 수정(DEV-715)으로 반영했고 ... ker-sequence 로그의 attested·assigned와 세 저장소의 M 번호가 끝까지 붙는지 이 항목 아래에 적어 달라.
+@p 발견: 0.1.0-pilot.11 사내 반입, MNUMBER_ENABLED=true 후 M-번호 채번 테스트 (2026-09-17)
+@path 관련: WP-074 / FR-SEQ-008 / DEV-581 / ADR-023 / 상세 설계 §2.2, §3
+@h3 현상
+@p MNUMBER_ENABLED=true로 활성화 후 sequence-work-runner이 reconcile 회차를 실행하지만, pull_request_number IS NULL인 첫 커밋에서 채번이 전체 중단되며, 번호가 영영 부여되지 않는다.
+@code lang=txt sha=c044e798aede lines=2 kept=2
+|"M 채번 회차 완료","repository_id":399,"base_branch":"main","seq_epoch":1,
+|"assigned":0,"blocked_seq":1,"blocked_reason":"negative_evidence_unavailable"
+@p 삼 저장소(119, 399, 1877) 모두 동일하게 merge_seq=1에서 negative_evidence_unavailable로 막혔다.
+@h3 근본 원인
+@b NULL-PR 커밋이 blocker로 작용 — pull_request_number IS NULL인 커밋(직접 푸시 초기 커밋) 을
+@p mnumber_evidence에 unresolved / negative_evidence_unavailable로 기록하고, 채번 planner 가 그 앞에서 중단한다. PR 머지가 뒤따라도 번호가 부여되지 않음.
+@b unsupported_merge_profile이 blocker로 작용 — squash-only 환경에서도 2-parent 머지 커밋이
+@p 존재하면(예: 저장소 399의 seq=3), unresolved / unsupported_merge_profile로 기록되고 동일하게 전체 채번이 중단됨. numbered 가 아닌 커밋은 번호 부여를 넘겨야 하는데 skip 하지 않음.
+@risk 흩어진 blocker 가 반복 중재를 필요로 함 — 한 저장소에 NULL-PR 커밋이 수십 개 흩어져 있으면
+@p (저장소 399 기준 41개, 1877 기준 17개), 각각에서 순차적으로 멈춘다. seq=1 통과 후 seq=2, seq=5, seq=13... 에서 다시 멈추며, 매번 수동 evidence 업데이트 + 블로커 해제 + work 큐 재투입 필요.
+@b 워커가 수동 삽입 evidence 를 덮어씀 — direct_confirmed로 수동 업데이트한 기록을 워커의
+@p GHE API 조회가 unresolved / negative_evidence_unavailable로 다시 덮어씀. seq=1은 보존되었으나(타이밍상 워커 실행 전 업데이트 완료), seq=2 이상은 덮어씌워짐.
+@path 상류 반영 (CR-100 / DEV-715) — 원인은 경합이었다. 회차는 근거를 트랜잭션 밖에서 읽고 GHE를 조회한 뒤 트랜잭션에서 저장하는데, 그 사이에 넣은 direct_confirmed를 오래된 읽기로 판정한 unresolved가 덮었다(seq=1은 회차가 읽기 전에 넣어서 살아남았다). 이제 트랜잭션 안에서 잠근 채 다시 읽어 근거가 바뀌었으면 그 회차를 버리고 다음 회차가 새 근거로 판정하며, SQL도 확정 → 미확정을 거절한다.
+@h3 사내 임시 조치
+@p mnumber_evidence 테이블에 직접 SQL 으로 direct_confirmed 기록 삽입 후, sequence_space 블로커 초기화, sequence_work 큐에 reconcile 작업 수동 삽입 반복 수행. 1877 저장소 기준으로 167개 M-번호 부여 확인.
+@h3 요청
+@risk unsupported_merge_profile은 blocker 가 아니라 skip 대상으로 처리 — squash-only 프로파일에서
+@p 2-parent 머지는 numbered 가 아니므로 번호를 부여하지 않으면서 다음 서수로 진행해야 함. 현재는 전체 채번이 중단되는 것이 버그로 판단됨.
+@path 상류 반영 (CR-100 / FR-SEQ-008 AC-15) — 확인서가 있으면 지나간다. 무조건 스킵으로 만들지 않은 이유: 2-parent 커밋이 실제로는 merge-commit으로 머지된 PR일 수 있고(AC-1은 PR이 있는 항목마다 번호를 준다), AC-9는 머지·리베이스 항목을 직접 푸시로 오판하지 않는다고 정한다. 그래서 「이 저장소의 프로파일 밖 항목은 번호 없이 지나간다」는 판단을 운영자가 확인서로 내리고, 시스템은 그 결정을 근거(operator_attestation, proof.attestation_id)로 남긴다.
+@b squash-only 환경에서 NULL-PR 커밋은 자동 direct_confirmed — 사내 squash-only 가 확정된 환경에서
+@path PR 이 없는 커밋은 직접 푸시로 99% 확정 가능. 설정 기반 자동 스킵 로직 필요. DEV-581 의 전제(PR 과
+@p 직접 푸시가 혼재하는 환경)가 사내에 부합하지 않음.
+@path 상류 반영 (CR-100 / AC-15) — 「설정 기반 자동 스킵」 대신 확인서. DEV-581의 전제는 「PR과 직접 푸시가 혼재하는 환경」이 아니라 「공식 GHE 읽기 계약에 부재 증서가 없다」는 것이었고, 그것은 squash-only 환경에서도 같다 — 방금 squash된 PR을 검색 색인이 아직 모르면 빈 응답이 온다. 확인서는 설계 2.2가 열어 둔 「사내 승인된 증거 소스」이며, 유예(기본 24시간, 커밋의 committed_at 기준, --grace-hours)가 늦은 PR 정보에 먼저 확정될 기회를 준다. 과거 이력(41·17건)은 첫 회차에 한 번에 지나가고, 새 직접 푸시는 유예 뒤 러너가 스스로 다시 본다. 확인서는 (저장소, 브랜치, 에폭)마다 하나이고 force-push로 에폭이 오르면 새 확인서가 필요하며, --through-seq로 과거 이력만 덮을 수도 있다.
+@b batch 내 unresolved 커밋은 skip 하며 진행 — 한 회차에서 모든 서수를 스캔하고, PR 이 있는 것부터
+@p 번호 부여, 없는 건 건너뛰며 진행해야 함. 현재는 첫 unresolved 에서 전체가 중단됨.
+@risk 기각 (CR-100). 「PR이 있는 것부터 번호를 주고 없는 건 건너뛰며 진행」은 앞 항목이 나중에 PR로 확인될 때 뒤 번호가 밀린다는 뜻이고, 그것이 FR-SEQ-008 AC-2(빈틈 없는 조밀 서수)·AC-3(앞이 미확정이면 멈추고 이미 부여된 번호 ... 된다. 확인서가 1·2를 해결하면 흩어진 blocker(근본 원인 3)도 한 확인서로 한 회차에 지나가므로 반복 중재가 사라진다.
 @p ---
-@h2 DEV-bundle-offline — --release 없는 사내 빌드 절차 (RUNBOOK 2.A 보완)
-@p 발견: 0.1.0-pilot.8-rc 빌드 시도 (2026-09-16)
-@cmd 현상: 사내 빌드 머신(WSL2)에서 Docker 컨테이너가 외부 네트워크(npmjs.org, dl-cdn.alpinelinux.org)에 접근 불가. 호스트는 접근 가능. build-bundle.sh를 그대로 실행하면 pnpm install과 apk add git이 ECONNRESET/TLS handshake timeout으로 실패.
-@p 사내 우회 절차 요약:
-@cmd npm install -g verdaccio && verdaccio --listen 0.0.0.0:4873 & — 호스트에서 npm 프록시 실행
-@cmd 커스텀 node:22-alpine 이미지 빌드 — pnpm 캐시 + verdaccio ENV(npm_config_registry=http://172.17.0.1:4873) + git(기존 pilot 이미지에서 복사) 포함
-@cmd docker 래퍼 스크립트 생성 — 코드 변경 없는 타겟(pipeline-worker, migrate, es-bootstrap, gh-executor)은 기존 이미지 재태깅하고 빌드 건너뜀
-@path PATH=/tmp/docker-wrapper:$PATH ./deploy/single-host/build-bundle.sh <버전> 실행
-@p 요청: RUNBOOK 2.A 「외부망 — 번들 생성」에 「Docker 컨테이너 외부 네트워크 차단 환경에서의 빌드 절차」 항목 추가
+@h2 검색 Merged 필터 · My merged PRs 빈 결과 (버그)
+@p 발견: 0.1.0-pilot.12 사내 화면, Status=Merged와 「My merged PRs」 탭 (2026-09-17, 결정자 보고) 현상: 검색 화면에서 Status 필터를 Merged로 두면 아무것도 나오지 않고, 「My merged PRs」 탭도 결과가 없다고 잘못 나온다.
+@path 상류 반영 (CR-101 / DEV-718, PR #208 → main 3ba1c4b) — 원인은 질의가 아니라 문서였다. 색인 투영이 GitHub의 원시 state(open·closed)를 그대로 저장하고 병합을 merged로 파생하지 않아, is:merged(state = merged)와 맞는 문서가 하나도 없었다. 같은 전제를 쓰는 「Merged」 배지·PR 상세·M 번호 조회(not_merged)·늦은 PR 스냅숏의 채번 재개도 병합을 보지 못하고 있었다. 이제 투영이 병합 신호(merged·merged_at)가 있으면 merged로 파생하고, 마이그레이션 032가 이미 저장된 스냅숏을 같은 규칙으로 바로잡는다.
+@path 반입 뒤 할 일: ./prsctl upgrade(032 적용) 뒤 운영 콘솔(/ops)에서 prs-pull-requests를 한 번 재색인한다. 재색인 전에는 옛 문서가 closed로 남아 Merged가 계속 비어 보인다. 재색인 뒤 Status=Merged·My merged PRs·PR 상세의 Merged 배지·M 번호 조회가 병합 PR을 보이는지 확인해 이 항목 아래에 적어 달라.
 @p ---

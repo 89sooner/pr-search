@@ -81,7 +81,7 @@ GHE 읽기 전 인증·저장소 범위를 판정하고 SHA에 고정한다. PR 
 
 검증: TypeScript·변경 TS/TSX lint·Next 프로덕션 빌드 통과. 가상 API를 주입한 실제 Chromium에서 초기 목록·Radix 상태 선택·탭 왕복 필터 유지·인라인 상세·Ctrl+K·Dialog Escape·390px 모바일 페이지 넘침 없음 통과. 일반 DOM의 cdt-* 클래스 0건, 브라우저 pageerror 0건. 캡처는 `/tmp/pr-search-radix/desktop.png`, `detail.png`, `mobile.png`. 실 GHE/OIDC 검증은 NOT RUN. 문서 validator는 기존 FR-CSS-005·D-002 참조 오류 둘 때문에 실패했으며, HEAD의 docs를 별도 임시 디렉터리에 추출해 동일 오류를 확인했다. 기존 risks.md 경로 경고도 남는다. 이번 요청은 구현이며 릴리스는 발행하지 않았다.
 
-> 상태: review | 버전: v6.92 | 갱신일: 2026-09-17
+> 상태: review | 버전: v6.93 | 갱신일: 2026-09-17
 
 `CR-094 / WP-082` 기본 저장소 작업 공간과 operator 전용 기존 UI: `template.html` 및 설계 분석 문서를 Conductor 기반 `RepositoryWorkspace`로 재구현하고, 기존 검색 및 운영 도구는 operator 전용(`?legacy=1`)으로 보존했다. developer 저장소 등록 절차 폐지·진입 즉시 현재 저장소 PR 목록 표시·필터 유지·deep link `WorkspaceEntityPage`, upstream smoke 재시도 로직 및 RUNBOOK 오프라인 빌드 절차를 반영했다. 검증과 0.1.0-pilot.9 발행 증거는 6.93장에 기록한다.
 
@@ -147,8 +147,8 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | done | 에이전트 | PR #199 / pilot.10 | 집중94/94·Chromium·전체 CI·bundle smoke 통과 | 실 GHE NOT RUN, 기존 문서 gate 오류 |
 | WP-086 | 사내 권한명·operator 바로가기 보정 | 권한·UI 보정 (CR-098) | done | 에이전트 | PR #203 / pilot.11 | 권한22/22·DOM/a11y33/33·FLOW20/20·PR/main 전체 CI·bundle smoke 통과 | 사내 재반입 NOT RUN |
 | WP-087 | PR 중심 검색 필터·테이블·달력 보정 | 검색 UX (CR-099) | done | 에이전트 | PR #205 / pilot.12 | query/sort/parser82/82·전체 a11y436/436·집중148/148·대비18쌍·PR/main 전체 CI·Chromium 필터/표/Source 회귀·bundle smoke 통과 | 실 GHE 데이터 NOT RUN, 기존 문서 validator 오류 유지 |
-| WP-088 | M 번호 운영자 확인서와 확정 근거 보존 | M 채번 운영 (CR-100) | done | 에이전트 | 브랜치 `fix/cr100-mnumber-attestation` (PR·병합은 병합 기록에서) | 단위 6/6·통합 13/13+1/1(격리 DB)·변이 2/2 죽음·기존 M 통합 19/19·독립 검토 minor 3 반영·typecheck 0·eslint 0·회귀·전체 통합·build — 6.94장 | 실 GHE 데이터 NOT RUN; 후발 PR 자동 발견 없음(DEV-717); 검사기 잔여 오류 4(기존) |
-| WP-089 | 병합된 PR의 state 파생 보정 | 검색 정확성 (CR-101) | done | 에이전트 | 브랜치 `fix/cr101-merged-state` (PR·병합은 병합 기록에서) | 단위 3+2(투영 state 단언)·032 왕복 통합·회귀 계약 3·변이(투영 되돌림 → 시험 2건 죽음)·typecheck·lint — 6.95장 | 사내 재색인 뒤 확인 NOT RUN |
+| WP-088 | M 번호 운영자 확인서와 확정 근거 보존 | M 채번 운영 (CR-100) | done | 에이전트 | PR #207 · `08fbc3a` | 단위 6/6·통합 13/13+1/1(격리 DB)·변이 2/2 죽음·기존 M 통합 19/19·독립 검토 minor 3 반영·typecheck 0·eslint 0·회귀·전체 통합·build — 6.94장 | 실 GHE 데이터 NOT RUN; 후발 PR 자동 발견 없음(DEV-717); 검사기 잔여 오류 4(기존) |
+| WP-089 | 병합된 PR의 state 파생 보정 | 검색 정확성 (CR-101) | done | 에이전트 | PR #208 · `3ba1c4b` | 단위 3+2(투영 state 단언)·032 왕복 통합·회귀 계약 3·변이(투영 되돌림 → 시험 2건 죽음)·typecheck·lint — 6.95장 | 사내 재색인 뒤 확인 NOT RUN |
 | WP-081 | 최신 Conductor·Shell·W-001 | UI 품질 (CR-093) | done | 에이전트 | `a8796de` / PR #196 | PR CI `35061974889`·main CI `35062529329` success; `0.1.0-pilot.8` | CR-093, 신규 기능 의미 없음 |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | `96d4e2f` / PR #2 | DoD 6항 전부 통과. 통합 26건, CI `verify`·`integration` 모두 성공 (6.2장) | 로컬은 네이티브 PostgreSQL 16.13, CI는 서비스 컨테이너 (DEV-006) |
@@ -8119,7 +8119,9 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 
 **독립 검토 (2026-09-17, deep-reasoner).** blocker·major 0, minor 3, nit 2. 반영: (1) 031 down과 설계 6.5의 「근거 행을 지우면 채번이 다시 멈춘다」 서술을 실제 동작으로 정정 — 확인서로 지나간 서수는 checkpoint 뒤라 회차가 다시 보지 않고, 번호·checkpoint는 그대로이며 에폭 재채번이 필요하다; 확인서 행이 있는 상태의 031 down·up을 `packages/db/integration/mnumber-attestation-schema.test.ts`로 검증. (2) `attest`가 감사 기록의 correlation_id를 `reconcile` work payload에 실어 EVT-SEQ-004까지 잇는다(DEV-594 규율); 통합 시험이 두 값의 일치를 건다. (3) `--through-seq`가 지금 멈춘 서수보다 작으면 만들되 경고한다; 통합 시험 추가. 검토가 짚은 공백대로 2-parent 머지 커밋을 확인서가 지나가는 통합 경로(사내 저장소 399의 seq=3 상황)를 추가했다. 기록만: `evidence_moved` 즉시 재시도의 `resetAttempts`(공간당 단일 lease라 실전 도달 불가), `upsertEvidence` 0행 분기에서 행이 동시에 삭제된 극단 경합의 메시지(근거 행은 031 down 외에는 지워지지 않는다).
 
-**후속 실측 (2026-09-17, 워크트리, Node v22.23.2).** 단위 `pnpm run test` 164파일 2,838/2,838(1 skipped). 회귀 `pnpm run test:regression` 10파일 503/503(격리 DB `prs_test_cr100_reg`; DB 없이 돌리면 `releases-vs-git`·`range-vs-git` 두 파일이 접속 거부로 실패한다 — 코드 실패가 아니다). 전체 통합 `pnpm run test:integration` 117파일 1,818/1,818(격리 DB `prs_test_cr100`) — 첫 실행에서 마이그레이션 목록을 세는 파수꾼 시험 4파일 7건(`gh-policy`·`gh-registry-schema`·`gh-schema`·`merge-number-schema`)이 031 추가로 깨졌고 목록에 031을 넣어 통과시켰다(031 down·up 왕복이 그 시험들로 실제 검증됐다). `pnpm build` 성공. 문서 검사기 `--strict`: 편집 전(main `dcaad12`) ERROR 6·WARN 4 → 편집 후 ERROR 4·WARN 2 — 「srs_final.md status must be baseline」·「work packages doc status must be review or baseline」 두 오류와 「AI-agent … while srs_final.md is still draft」 경고 둘이 사라졌다(DEV-716). 남은 ERROR 4(`FR-CSS-005`·`D-002`·자리표시어 13+8)·WARN 2(`risks.md` 경로)는 8c567b7 기준과 같다. PR CI·병합·main CI는 병합 기록에서.
+**후속 실측 (2026-09-17, 워크트리, Node v22.23.2).** 단위 `pnpm run test` 164파일 2,838/2,838(1 skipped). 회귀 `pnpm run test:regression` 10파일 503/503(격리 DB `prs_test_cr100_reg`; DB 없이 돌리면 `releases-vs-git`·`range-vs-git` 두 파일이 접속 거부로 실패한다 — 코드 실패가 아니다). 전체 통합 `pnpm run test:integration` 117파일 1,818/1,818(격리 DB `prs_test_cr100`) — 첫 실행에서 마이그레이션 목록을 세는 파수꾼 시험 4파일 7건(`gh-policy`·`gh-registry-schema`·`gh-schema`·`merge-number-schema`)이 031 추가로 깨졌고 목록에 031을 넣어 통과시켰다(031 down·up 왕복이 그 시험들로 실제 검증됐다). `pnpm build` 성공. 문서 검사기 `--strict`: 편집 전(main `dcaad12`) ERROR 6·WARN 4 → 편집 후 ERROR 4·WARN 2 — 「srs_final.md status must be baseline」·「work packages doc status must be review or baseline」 두 오류와 「AI-agent … while srs_final.md is still draft」 경고 둘이 사라졌다(DEV-716). 남은 ERROR 4(`FR-CSS-005`·`D-002`·자리표시어 13+8)·WARN 2(`risks.md` 경로)는 8c567b7 기준과 같다.
+
+**병합 (2026-09-17).** PR #207 — 첫 PR CI `35175836037`은 verify가 flow-003 e2e 간헐 실패(DEV-377, web 미변경)로 attempt 2에서 success, integration success. 독립 검토 반영 커밋 `23bfe00`의 PR CI `35177846020` success(첫 시도) → squash 병합 `08fbc3a` → main CI `35178340678` success(verify 4m25s · integration 7m32s).
 
 **사내 확인 (NOT RUN).** 다음 반입 뒤 `MNUMBER_ENABLED=true`에서 `./prsctl mnumber attest --repository-id 399 --base-branch main --seq-epoch 1 --reason "…"`를 실행하고 `worker-sequence` 로그 「M 채번 회차 완료」의 `attested`·`assigned`가 오르며 `blocked_reason`이 사라지는지, 저장소 119·399·1877의 M 번호가 끝까지 붙는지 본다. 손으로 넣은 `direct_confirmed` 행(1877 저장소 167건)은 그대로 유효하다. 결과는 `agent-context/upstream-feedback.md` 항목 아래에 적는다.
 
@@ -8140,6 +8142,8 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 - 변이: 투영을 `pr.state`로 되돌리면 투영 단위 시험 2건과 회귀 계약 시험 1건이 죽는다. 복원 뒤 통과.
 - typecheck·eslint·lint:deps·전체 단위·전체 회귀·전체 통합·build·문서 검사기: 아래 「후속 실측」.
 
-**후속 실측 (2026-09-17, 워크트리, Node v22.23.2).** typecheck 0(처음에는 `PullRequestState`가 `entities.ts`에 이미 있어 이름이 겹쳤고, 헬퍼가 그 타입을 재사용하도록 고쳤다 — 계약이 도메인 타입에 이미 선언돼 있었다는 증거다) · eslint 0 · lint:deps 0 · 단위 165파일 2,843/2,843 · 회귀 11파일 506/506(격리 DB) · 전체 통합 118파일 1,819/1,819(격리 DB `prs_test_cr101`) · `pnpm build` 성공 · 문서 검사기 `--strict` ERROR 4·WARN 2(CR-100 뒤와 같다). PR CI·병합·main CI는 병합 기록에서.
+**후속 실측 (2026-09-17, 워크트리, Node v22.23.2).** typecheck 0(처음에는 `PullRequestState`가 `entities.ts`에 이미 있어 이름이 겹쳤고, 헬퍼가 그 타입을 재사용하도록 고쳤다 — 계약이 도메인 타입에 이미 선언돼 있었다는 증거다) · eslint 0 · lint:deps 0 · 단위 165파일 2,843/2,843 · 회귀 11파일 506/506(격리 DB) · 전체 통합 118파일 1,819/1,819(격리 DB `prs_test_cr101`) · `pnpm build` 성공 · 문서 검사기 `--strict` ERROR 4·WARN 2(CR-100 뒤와 같다).
+
+**병합 (2026-09-17).** PR #208 — stacked 상태의 PR CI `35177537636`은 integration success, verify는 flow-003 e2e 간헐 실패(DEV-377, 같은 시험이 오늘 첫 시도에서 두 번 연속). CR-100 병합 뒤 main으로 rebase(`37fd732`, 원장 표 충돌 1건은 양쪽 행을 살려 해결, 031 왕복 파수꾼에 032 반영) → PR CI `35178504451` success(첫 시도) → squash 병합 `3ba1c4b` → main CI `35179018409` success(verify 3m52s · integration 7m47s).
 
 **사내 확인 (NOT RUN).** 다음 반입 뒤 `./prsctl upgrade`(032) → 운영 콘솔 `prs-pull-requests` 재색인 → Status=Merged·My merged PRs·PR 상세 Merged 배지·M 번호 조회가 병합 PR을 보이는지. 결과는 `agent-context/upstream-feedback.md` 항목 아래에 적는다.

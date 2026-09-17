@@ -2134,3 +2134,40 @@ pr-search (브랜치 `claude/first-internal-import-findings`, main = 268efa9에�
 | `scripts/verify-source-workspace.mjs` | Chromium mock browser flow; facets, date, PR link, M number, canonical status query assertion. |
 | `docs/00_governance/change_control.md` | CR-098/099의 승인 범위와 release 상태. |
 | `docs/40_delivery/pr_search_implementation_traceability.md` | WP-086/087, DEV-704~714, pilot.11/12 증적의 canonical ledger. |
+
+# 2026-09-17 (9차) 라운드가 만들거나 만진 것 (CR-100 PR #207 · CR-101 PR #208)
+
+## 코드 (CR-100)
+
+- `packages/db/migrations/031_mnumber_attestation.{up,down}.sql` — ENT-SEQ-008 표, `source_kind`에 `operator_attestation`.
+- `packages/db/src/repositories/mnumber-attestation.ts` — create/revoke/findActive/list.
+- `packages/db/src/repositories/mnumber-evidence.ts` — `operator_attestation`, proof 필드, upsert SQL 방어선(확정→미확정 거절, `EvidenceDowngradeError`), `lockEvidence`(FOR UPDATE).
+- `packages/domain/src/audit.ts` — `mnumber_attestation.create`·`revoke`.
+- `apps/pipeline-worker/src/mnumber-attestation.ts` — 순수 판정 `applyAttestation`(두 사유·범위·유예).
+- `apps/pipeline-worker/src/mnumber.ts` — 확인서 적용, 트랜잭션 안 잠금 재검증(`retry evidence_moved`), `attested`·`retryAt`.
+- `apps/pipeline-worker/src/sequence-work-runner.ts` — 유예 대기 `retry`(`attestation_grace_pending`).
+- `apps/pipeline-worker/src/metrics.ts` — `mnumber_attested_total`.
+- `apps/pipeline-worker/src/mnumber-attest-command.ts`·`mnumber-attest-cli.ts` — `attest|revoke|list`, 감사·work 요청 한 트랜잭션, 상관 ID 연결, `--through-seq` 경고.
+- `deploy/single-host/prsctl` — `cmd_mnumber`(`worker-sequence` 이미지). `RUNBOOK.md` 7.D.
+
+## 코드 (CR-101)
+
+- `packages/domain/src/pull-request-state.ts` — `derivePullRequestState`(`entities.ts`의 `PullRequestState` 재사용).
+- `apps/pipeline-worker/src/documents.ts` — `put(doc, 'state', derivePullRequestState(pr))`.
+- `packages/db/migrations/032_pull_request_snapshot_merged_state.{up,down}.sql` — 기존 스냅숏 `state` 정정.
+- `deploy/single-host/RUNBOOK.md` — 업그레이드 절(032 뒤 재색인), 문제 해결 행.
+
+## 시험
+
+- `apps/pipeline-worker/src/mnumber-attestation.test.ts`(단위 6), `apps/pipeline-worker/integration/sequence/mnumber-attestation.test.ts`(통합 13), `packages/db/integration/mnumber-attestation-schema.test.ts`(031 왕복, 확인서 행 있음), 파수꾼 4파일(031·032).
+- `packages/domain/src/pull-request-state.test.ts`, `apps/pipeline-worker/src/documents.test.ts`(state 단언 2), `packages/db/integration/snapshot-merged-state.test.ts`(032 왕복), `regression/cr101-merged-state.test.ts`(투영 출력 ↔ 질의 번역 계약).
+
+## 문서
+
+- CR-100: SRS v2.35(AC-15·AC-10 예외·감사 표·상태 줄 복귀), PRD, 용어집, WP-074 설계(2.2·3·6.2·6.5·12 C7), ADR-023(accepted+Amendment), 데이터 모델 v0.26(ENT-SEQ-008), 비동기(JOB-SEQ-004), 보안, 인프라, 작업 패키지 WP-088(상태 줄 복귀), 원장 3장·DEV-715~717·6.94장, 변경 대장 CR-100(항목·표·cascade).
+- CR-101: API 계약 v0.36(state 파생 규칙), 데이터 모델 v0.27, 작업 패키지 WP-089, 원장 DEV-718·6.95장, 변경 대장 CR-101.
+- `agent-context/upstream-feedback.md` — M-번호 항목 회신, Merged 항목 신설·회신.
+
+## 저장소 밖
+
+- 격리 DB `prs_test_cr100`·`prs_test_cr100_reg`·`prs_test_cr101`(prs-cr091-postgres). 워크트리 `/home/roqkf/pr-search-wt/cr100`·`cr101`. 메모리 `integration-tests-isolated-db-per-worktree.md`.
