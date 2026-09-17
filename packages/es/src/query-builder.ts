@@ -292,9 +292,31 @@ const NON_FIRST_PARENT_COMMIT: estypes.QueryDslQueryContainer = {
  * `best_fields`는 "한 필드에서 가장 잘 맞은 점수"를 쓴다. 제목과 본문에 같은
  * 낱말이 있다고 점수를 더하지 않는 것이 옳다 — 그러면 긴 본문이 제목 가중치를
  * 이긴다.
+ *
+ * **공백 없는 한 마디는 구문으로 묶는다** (AC-4, DEV-722). `standard`
+ * 토크나이저는 하이픈에도 끊는다 — `VANGUARD-1`이 `vanguard`·`1` 두 토큰이
+ * 된다. 기본 OR(`best_fields`)는 둘 중 하나만 맞아도 매치를 인정하므로, 흔한
+ * 토큰 `1`이 본문·브랜치명 어딘가에 있을 뿐인 무관한 문서가 함께 걸린다.
+ * `type: "phrase"`로 그 서브토큰들이 인접해야만 매치되게 묶으면 이 문제가
+ * 사라진다 — 실제 Elasticsearch로 실측했다
+ * (`apps/search-api/integration/search/facets.test.ts`의 DEV-722 시험).
+ *
+ * **공백이 있는 여러 낱말에는 적용하지 않는다.** AC-4는 `결제 retry`처럼
+ * 언어가 섞인 여러 낱말 질의에서 **어느 한쪽만 맞아도** 매치를 요구한다 —
+ * 거기에 구문 매칭을 적용하면 그 요구를 어긴다. 판단 기준은 분석 후 토큰
+ * 개수가 아니라 **사용자가 실제로 입력한, 분석 이전의 원문에 공백이
+ * 있는지**다 — 토큰 개수로 가르면 공백 있는 낱말이 조사·기호 없이 한
+ * 토큰으로 분석되는 우연한 경우와 구분할 수 없다.
  */
 export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
-  return { multi_match: { query: text, fields: [...FULL_TEXT_FIELDS], type: "best_fields" } };
+  const isSingleToken = !/\s/.test(text.trim());
+  return {
+    multi_match: {
+      query: text,
+      fields: [...FULL_TEXT_FIELDS],
+      type: isSingleToken ? "phrase" : "best_fields",
+    },
+  };
 }
 
 /**

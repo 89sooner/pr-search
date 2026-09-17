@@ -804,6 +804,98 @@ describe('전문 검색 (FR-SRCH-011)', () => {
   });
 });
 
+/*
+ * **재현하는 문제** (DEV-722). `standard` 토크나이저는 하이픈에서도 끊는다 —
+ * `VANGUARD-1`은 `vanguard`·`1` 두 토큰이 된다. 기본 OR(`best_fields`)에서는
+ * 흔한 토큰 `1` 하나만 맞아도 매치되므로, 본문 어딘가에 숫자 `1`이 있을 뿐인
+ * 무관한 문서가 함께 걸린다. 이 스위트 전용 문서 둘을 따로 색인하고 정리한다 —
+ * 공유 `PULL_REQUESTS` fixture는 다른 describe의 bucket·total 단언이 딛고 있어
+ * 건드리지 않는다.
+ */
+describe('식별자가 하이픈으로 쪼개지는 전문 검색 (FR-SRCH-011 AC-4, DEV-722)', () => {
+  const VANGUARD_ID = 'facet-pr-vanguard-1';
+  const STRAY_DIGIT_ID = 'facet-pr-stray-digit';
+
+  function identifierDocument(
+    id: string,
+    n: number,
+    title: string,
+    body: string,
+  ): Record<string, unknown> {
+    return {
+      document_version: 1,
+      repository_id: PAYMENTS,
+      repository: 'facets/payments',
+      org_id: ORG,
+      visibility: 'internal',
+      allowed_team_ids: [PAYMENTS_TEAM],
+      doc_id: id,
+      pr_number: n,
+      title,
+      body,
+      state: 'merged',
+      author: 'kim',
+      labels: [],
+      base_branch: 'main',
+      head_branch: `feature/pr-${String(n)}`,
+      merge_seq: 1000 + n,
+      seq_epoch: 1,
+      sequence_space: 'facets/payments@main',
+      created_at: '2026-08-01T00:00:00Z',
+      updated_at: '2026-08-21T00:00:00Z',
+      merged_at: '2026-08-21T00:00:00Z',
+      changed_files_count: 1,
+      additions: 10,
+      deletions: 1,
+      changed_paths: [`src/pr-${String(n)}.ts`],
+      indexed_at: '2026-08-27T00:00:00Z',
+    };
+  }
+
+  beforeAll(async () => {
+    const bulk = await es.bulk({
+      refresh: true,
+      operations: [
+        { index: { _index: 'prs-pull-requests', _id: VANGUARD_ID, routing: String(PAYMENTS) } },
+        identifierDocument(
+          VANGUARD_ID,
+          901,
+          'VANGUARD-1 배포 안정화',
+          '릴리스 식별자를 문서 제목에 그대로 적는다',
+        ),
+        { index: { _index: 'prs-pull-requests', _id: STRAY_DIGIT_ID, routing: String(PAYMENTS) } },
+        identifierDocument(
+          STRAY_DIGIT_ID,
+          902,
+          '결제 정책 문서 버전 1',
+          'VANGUARD와 무관하게 숫자 하나만 등장한다',
+        ),
+      ],
+    });
+    if (bulk.errors) {
+      const reasons = bulk.items.map((item) => item.index?.error?.reason).filter((one) => one !== undefined);
+      throw new Error(`fixture 색인이 거부됐다: ${reasons.join(' / ')}`);
+    }
+  });
+
+  afterAll(async () => {
+    await es.deleteByQuery({
+      index: 'prs-pull-requests',
+      query: { ids: { values: [VANGUARD_ID, STRAY_DIGIT_ID] } },
+      refresh: true,
+      conflicts: 'proceed',
+    });
+  });
+
+  it('제목이 하이픈으로 쪼개지는 식별자를 구문으로 묶어 매칭한다 (AC-4, DEV-722)', async () => {
+    const { body } = await get(`q=${encodeURIComponent('VANGUARD-1')}&size=200`);
+    const ids = idsOf(body);
+    expect(ids).toContain('pr:901');
+    // 숫자 `1`만 우연히 같을 뿐 `VANGUARD`와는 무관한 문서는 걸리지 않는다.
+    expect(ids).not.toContain('pr:902');
+  });
+});
+
 describe('강조 (AC-5, THR-018)', () => {
   it('평문 조각과 일치 구간을 준다 — 마크업이 아니다', async () => {
     const { body } = await get(`q=${encodeURIComponent('결제')}&size=200`);

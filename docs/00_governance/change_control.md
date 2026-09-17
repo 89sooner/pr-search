@@ -1,5 +1,9 @@
 # 변경 관리 대장
 
+## CR-105 — 하이픈으로 쪼개지는 식별자 전문 검색 과매칭 정정 (2026-09-17)
+
+사용자가 실제 화면에서 발견해 보고한 버그(2026-09-17): Search 페이지 제목 검색에 `VANGUARD-1`처럼 공백 없는 식별자를 입력하면, `VANGUARD-1` 완전 일치가 아니라 숫자 `1`만 포함된 무관한 결과까지 전부 섞여 나왔다. `standard` 토크나이저가 하이픈에서도 끊어 `vanguard`·`1` 두 토큰이 되고, `buildTextClause`의 기본 `multi_match` OR(`best_fields`)는 둘 중 하나만 맞아도 매치를 인정하기 때문이다 — 흔한 토큰 `1`이 본문·브랜치명 어딘가에 있기만 해도 걸렸다. 오늘 다른 세션이 같은 증상을 `operator:"and"`로 고치려다 `FR-SRCH-011 AC-4`(한글·영문 혼용 질의는 한쪽 언어 토큰만 맞아도 매치)를 깨 main CI를 실패시켰고, 그 한 줄을 되돌린 경위는 CR-103/104 cascade의 병합 판정 문단에 있다. **정정: 판단 기준을 분석 후 토큰 개수가 아니라 사용자가 입력한 원문의 공백 여부로 바꾼다.** 공백 없는 한 단어(`VANGUARD-1`)는 `type:"phrase"`로 서브토큰이 인접해야만 매치되게 묶고, 공백 있는 여러 단어(`결제 retry`)는 기존 `best_fields`(OR)를 그대로 유지해 AC-4를 지킨다. 요구사항 문장은 바꾸지 않는다 — AC-4는 "혼용 질의"를 다루지 "하이픈이 든 한 단어"를 다룬 적이 없었고, 이번 정정은 AC-4가 애초에 규정하지 않던 빈틈을 채운다. 실제 Elasticsearch로 검증했다: `_analyze`로 토큰 분리·위치를 확인하고, `.partial` edge_ngram 서브필드와의 상호작용(1자 토큰은 `min_gram` 미달로 색인 자체가 안 됨)도 실측했으며, 되돌린 코드에서 새 시험이 실제로 실패하는 것을 먼저 확인한 뒤(변이 규율) 재적용했다. DEV-722. 상태: 구현·자체 검증(실제 ES 통합 시험) 완료, main 커밋·push 진행 중 — 결과는 완료 뒤 이 문단에 기록한다.
+
 ## CR-104 — 검색 결과 무한 스크롤 (2026-09-17)
 
 CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "More changes" 버튼을 스크롤 자동 로드(무한 스크롤)로 바꾼다. `W-001-PAGER`(WP-016)가 세운 "버튼식 더 보기, 페이지 번호 없음" 결정 중 트리거 방식만 사용자 결정으로 뒤집는다 — FR-SRCH-008은 트리거 방식에 중립적이라 SRS 문장 변경은 없다. `apps/web/components/RepositoryWorkspace.tsx` 한 파일만 바꿨다: sentinel은 `IntersectionObserver`(`rootMargin:200px`)로 마운트 시 한 번만 관찰자를 만들고(로딩/에러가 바뀔 때마다 재생성하지 않는다 — 재생성은 즉시 재발화하는 스펙 때문에 폭주 위험이 있다), 콜백은 ref로 최신 `{nextCursor, loading, error}`를 읽는다. **`error`가 있으면 콜백이 아무 것도 하지 않는다** — 커서 거절(`CURSOR_QUERY_MISMATCH`/`CURSOR_INVALID`) 시 자동 재시도 루프를 만들지 않는다는 원칙(CR-043)을 그대로 지킨다. 결과 카운트는 `aria-live="polite"`로 바꾸고 로딩 표시는 기존 `Spinner`를 재사용한다(`CursorPager.tsx`의 기존 커서 페이지네이션 패턴과 동일 — 새로 발명하지 않았다). 네트워크 호출 횟수 실측으로 폭주 없음을, 커서 거절을 강제로 발생시켜 자동 재시도가 없음을, 키보드만으로 스크롤이 되는지를 모두 확인했다. 알려진 경미한 한계 하나: 스크롤 없이 데이터만 초기화되는 경우(예: 맨 아래로 스크롤된 채 "Reload first page")는 sentinel의 교차 상태가 전환되지 않아 자동으로 다시 발화하지 않는다 — 실제 스크롤 제스처가 한 번이라도 있으면 바로 정상화되어 낮은 우선순위로 남겨뒀다(사용자 재확인 가능). 모바일은 CR-103과 같은 사용자 결정으로 범위 밖이다. WP-091. 상태: closed — main `246fb79` push(PR 없이, 사용자 지시), CI(run `35225253617`) verify·integration 모두 success(2026-09-17).
@@ -159,6 +163,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 | CR-101 | 2026-09-17 | correction | 결정자 보고 2026-09-17 — pilot.12에서 Status=Merged·My merged PRs가 빈 결과 | **병합은 파생 상태다.** 투영이 `merged`를 파생하지 않아 문서 계약과 질의·화면·M 번호 조회·스냅숏 재개가 모두 병합을 보지 못했다. 헬퍼 한 곳에서 파생하고 032가 기존 스냅숏을 바로잡는다. 업그레이드 뒤 재색인 필요 | DEV-718 · WP-089 · ENT-CORE-002 · FR-SRCH-005 AC-1 · FR-SEQ-008 AC-11 | API 계약 · 데이터 모델 · RUNBOOK · WP · 원장 · Upstream 회신 | closed — PR #208 squash `3ba1c4b`, PR CI `35178504451`·main CI `35179018409` success (2026-09-17) · `0.1.0-pilot.13` 발행 |
 | CR-103 | 2026-09-17 | correction | 사용자 보고 2026-09-17 — diff 분할 보기·History·좌측 패널 UI 결함 4건 | **split diff 두 컬럼이 스크롤을 공유해 서로를 밀어냈고, History 진입 시 비교 불가 사유가 안 보였다.** `table-layout:fixed`+`colgroup`과 안내 배너로 정정(요구사항 문장 변경 없음). 좌측 패널·결과 표 고정 레이아웃은 WP-090 신설 | DEV-720 · DEV-721 · WP-085 · WP-090 · FR-SRC-002 AC-3 · FR-SRC-003 AC-2 | WP 문서 · 원장 | main `d0e74c7`(코드)·`e6db5f1`(문서) push 완료 |
 | CR-104 | 2026-09-17 | scope | 사용자 결정 2026-09-17 — W-001-PAGER의 버튼식 더 보기(WP-016)를 스크롤 자동 로드로 전환 | **"More changes" 버튼을 `IntersectionObserver` 기반 무한 스크롤로 대체.** 커서 거절 시 자동 재시도 금지(CR-043)는 그대로 유지, 트리거 방식만 바뀌어 FR-SRCH-008 문장 변경 없음. 모바일은 범위 밖(사용자 결정) | WP-091 · FR-SRCH-008 | wireframe_spec(W-001-PAGER) · WP 문서 · 원장 | closed — main `246fb79` push, CI(run `35225253617`) verify·integration 모두 success (2026-09-17) |
+| CR-105 | 2026-09-17 | correction | 사용자 보고 2026-09-17 — Search 제목에 `VANGUARD-1` 검색 시 숫자 1만 겹치는 무관한 결과가 섞임 | **하이픈으로 쪼개지는 식별자의 전문 검색 과매칭.** 판단 기준을 분석 후 토큰 개수가 아니라 원문 공백 여부로 바꿔, 공백 없는 한 단어는 `type:"phrase"`로 인접 매칭, 공백 있는 여러 단어는 기존 OR을 유지(AC-4 보존). 요구사항 문장 변경 없음 | DEV-722 · FR-SRCH-011 AC-4 | 원장 | 구현·자체 검증(실 ES) 완료, main 커밋·push 진행 중 |
 
 ## 4. 게이트 통과 기록
 
@@ -2137,3 +2142,32 @@ CR-004 종료 시점의 미결 항목이다. 각각 별도 CR로 처리한다. �
 **검증.** 워크트리(Node 22) 기준: `pnpm typecheck` 0, `pnpm lint` 0, `pnpm run lint:deps` 위반 0. `RepositoryWorkspace`를 겨냥한 단위/a11y/e2e 시험 없음(CR-103과 같은 확인). `pnpm --filter @prs/web run build` 성공, 라우트 목록 변경 없음. 브라우저 검증(CR-103과 같은 `window.fetch` 모킹 방식, 220행/50개 단위 커서 페이지네이션 fixture): 스크롤 3회 → 50→100→150행, 모킹한 호출 로그(`["first","50","100"]`)로 스크롤 1회당 요청 1회임을 실측(눈대중이 아니다). 폭주 없음을 스크롤 재유발(위로 스크롤 후 다시 아래로)로 재확인 — 호출 로그 불변. **커서 거절(CR-043) 검증**: 강제로 `CURSOR_QUERY_MISMATCH` 409를 반환하게 해 확인 — 요청 1회로 멈추고 행이 추가되지 않으며 에러 배너가 뜸, 그 뒤 sentinel을 두 번 더 재유발해도(위/아래 스크롤) 호출 로그 불변(재시도 없음 확정), "Reload first page" 클릭 시 정상 복구. 키보드만으로 `End`·`PageDown`으로 하단 도달·추가 로드 확인. `aria-live="polite"` 속성과 텍스트 갱신 확인. 로딩 중 sentinel에 `Spinner` DOM 렌더 확인. CR-103 화면(사이드바·diff·History) 회귀 스모크 확인, 이상 없음.
 
 **병합.** 코드·문서를 함께 main에 직접 커밋·push했다(`246fb79`, 사용자 지시로 PR 없이). CI(run `35225253617`) verify·integration 모두 success(2026-09-17). closed.
+
+### CR-105 cascade — 하이픈으로 쪼개지는 식별자 전문 검색 과매칭 정정
+
+기준 main `246fb79`, worktree `/home/roqkf/pr-search-wt/cr105-search-fix`(브랜치 `fix/cr105-vanguard-search`). 사용자가 Search 페이지에서 직접 겪은 버그를 보고했다(2026-09-17): 제목에 `VANGUARD-1`을 입력하면 완전 일치가 아니라 숫자 `1`만 우연히 겹치는 무관한 PR/커밋까지 결과에 섞였다. correction — 요구사항 문장은 바꾸지 않는다.
+
+- [x] 요구사항(SRS): 변경 없음 — `FR-SRCH-011` AC-4는 "한글·영문 혼용 질의"(공백으로 구분된 여러 단어)를 규정할 뿐 공백 없는 한 단어가 내부적으로 여러 토큰으로 분석되는 경우는 다룬 적이 없다. 이번 정정은 그 빈틈을 채운다.
+- [x] 파생 UI·기술 아키텍처: 변경 없음.
+- [x] 전달: 원장 5장(`DEV-722`)·6.98장.
+
+**배경 — 오늘 있었던 잘못된 첫 시도.** 다른 세션이 같은 버그를 `packages/es/src/query-builder.ts`의 `buildTextClause`에 `operator:"and"`를 더해 고치려 했고(사용자 지시로 커밋·push까지 됨), 이는 main CI의 integration 잡을 실패시켰다 — `FR-SRCH-011 AC-4`가 요구하는 "한글·영문 혼용 질의(`결제 retry`)는 한쪽 언어만 맞아도 매치"를 정면으로 깼기 때문이다(`facets.test.ts`의 AC-4 시험 3건 실패). 그 한 줄만 되돌려 CI를 초록으로 되돌렸다(상세: CR-103/104 cascade 병합 판정 문단). 되돌린 뒤에는 원래의 `VANGUARD-1` 버그가 다시 살아 있었다.
+
+**근본 원인.** `TEXT_ANALYZER`(`text_ko_en`, `packages/es/src/settings.ts`)는 `standard` 토크나이저를 쓰는데, 이 토크나이저는 하이픈에서도 끊는다 — `VANGUARD-1`이 `vanguard`(위치 0)·`1`(위치 1) 두 토큰이 된다. `buildTextClause`의 기본 `multi_match`(`best_fields`, 연산자 지정 없음 = OR)는 둘 중 하나만 맞아도 매치를 인정하므로, 흔한 토큰 `1`이 제목·본문·브랜치명(`head_branch: 'feature/pr-1'` 같은) 어디에나 있기만 해도 걸린다.
+
+**정정.** 판단 기준을 "분석 후 토큰 개수"가 아니라 **"사용자가 입력한, 분석 이전 원문에 공백이 있는가"**로 잡았다 — 토큰 개수로 가르면 공백 있는 여러 단어가 우연히 한 토큰으로 분석되는 경우와 구분할 수 없기 때문이다.
+```ts
+export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
+  const isSingleToken = !/\s/.test(text.trim());
+  return { multi_match: { query: text, fields: [...FULL_TEXT_FIELDS], type: isSingleToken ? "phrase" : "best_fields" } };
+}
+```
+공백 없는 한 단어(`VANGUARD-1`)는 `type:"phrase"`로 서브토큰이 인접해야만 매치를 인정해 무관한 `1`만 겹치는 문서를 배제한다. 공백 있는 여러 단어(`결제 retry`, `invoice 멱등`)는 그대로 `best_fields`(OR)를 유지해 `AC-4`와 기존 통과 시험(제목 우선순위, `source_commit` 배제 등) 전부를 그대로 지킨다.
+
+**실제 Elasticsearch로 실측한 것.** (1) `_analyze` API로 `VANGUARD-1`이 정확히 `vanguard`(pos 0)·`1`(pos 1) 순차 위치로 분석됨을 확인 — `path_hierarchy`처럼 같은 위치에 쌓이는 동의어 함정이 아님을 검증했다. (2) `.partial` 서브필드(edge_ngram, `TEXT_PARTIAL_ANALYZER`)와의 상호작용을 우려해 별도로 `_analyze`했다 — 단일 문자 `1`은 `min_gram:2` 미달로 애초에 색인되는 조각이 없어, `title.partial`의 phrase 서브 질의는 그 부분에서 조용히 매치하지 않을 뿐이고 실제 매치는 `title`·`body`·`message` 본 필드를 통해 이뤄진다는 것을 확인했다(매핑만 읽고 추정하지 않았다). (3) **변이 규율**: 되돌린(수정 전) 코드 상태에서 새 회귀 시험을 먼저 돌려 실패를 확인했다 — 실패 사유가 `pr:902`(숫자만 우연히 겹치는 무관 문서)가 결과에 섞여 나온 것이었고, 부수적으로 `head_branch: 'feature/pr-1'` 필드도 `1` 토큰으로 걸려든다는 것을 추가로 확인했다. 수정을 재적용해 통과로 바뀌는 것도 확인했다.
+
+**시험.** `apps/search-api/integration/search/facets.test.ts`에 전용 `describe`(`식별자가 하이픈으로 쪼개지는 전문 검색 (FR-SRCH-011 AC-4, DEV-722)`)를 새로 만들어, 공유 `PULL_REQUESTS` fixture(다른 describe 15개가 패싯 건수·페이지네이션을 그 위에서 단언한다)를 건드리지 않고 전용 문서 둘을 `beforeAll`에서 색인하고 `afterAll`에서 지운다. `VANGUARD-1` 검색이 실제 문서(`pr:901`)는 포함하고 무관 문서(`pr:902`)는 제외하는지 확인한다.
+
+**검증.** 워크트리(Node 22, 별도 `pnpm install`) 기준: 단위 `pnpm exec vitest run packages/es/src/query-builder.test.ts` 64/64(기존 값 변경 없이 통과 — 이 파일 어떤 단위 시험도 `type`의 리터럴 값을 직접 단언하지 않았다). 통합 `facets.test.ts` 파일 전체 40/40(AC-4 기존 시험 포함, 신규 1건 포함 — 부분군만 돌렸을 때는 8 passed/32 skipped였고 이후 전체 파일로 재확인해 다른 describe에 대한 부수 효과가 없음을 확인했다). 격리 DB `prs_test_cr105`(`prs-cr091-postgres`, 검토 편의를 위해 의도적으로 지우지 않고 남겨 뒀다), 기존 `prs-cr091-elasticsearch`/`-redis` 컨테이너 사용, 공유 `prs_test`는 건드리지 않았다. `pnpm typecheck`·`pnpm lint` 0.
+
+**병합.** main에 직접 커밋·push 예정(CR-103~105와 같은 방식, 사용자 지시로 PR 없이). 실제 커밋 해시와 CI 결과는 완료 뒤 이 문단에 기록한다. 사내 실제 GHE 데이터로의 확인은 `NOT RUN`.
