@@ -2773,3 +2773,15 @@ id 조회 실패 · 릴리스 삭제 실패 · 태그 삭제 실패 · 발행 �
 - **릴리즈 불변성**: `0.1.0-pilot.12`는 immutable이다. asset/tag 수정이 필요하면 새 버전을 발행해야 한다.
 - **CI 시간**: full CI의 verify는 약 4분, integration은 약 6분 걸린다. Node.js 20 deprecation annotation은 있지만 해당 run들은 success였다.
 - **문서 validator**: 현재 baseline에 남아 있던 validator 오류를 이번 범위에서 고치지 않았다. 새 변경의 실패와 혼동하지 않는다.
+
+# 2026-09-17 (9차) 라운드가 배운 함정 (CR-100 · CR-101)
+
+- **공유 체크아웃에 동시 세션이 실제로 있었다.** 조사 도중 다른 세션이 main에 `6853b3f`를 직접 커밋했고 `upstream-feedback.md`를 편집 중이었다(수정 시각 실측). 파일 수정 시각과 `git status`를 다시 재고, 채번은 착수 직전에 다시 잰다.
+- **마이그레이션을 더하면 파수꾼 시험이 깨진다 — 의도된 것이다.** `packages/db/integration`의 `gh-policy`·`gh-registry-schema`·`gh-schema`·`merge-number-schema`와 9차에 더한 `mnumber-attestation-schema`가 down·up 목록을 단언한다. stacked 브랜치에서는 위 커밋을 rebase한 뒤 목록을 다시 맞춘다.
+- **통합·회귀 시험은 격리 DB로.** 공유 `prs_test`는 동시 세션·미병합 마이그레이션과 섞인다. 회귀는 DB 환경 변수 없이 돌리면 두 파일이 접속 거부로 실패한다(코드 실패 아님).
+- **PR CI `verify`의 flow-003 e2e(DEV-377)가 오늘 첫 시도에서 두 번 연속 실패했다(재실행 통과).** web을 건드리지 않은 PR에서도 난다. 잦아지면 DEV-377을 다시 본다.
+- **gh 2.4.0**: `gh run list --branch`·`--json`, `gh run rerun --failed`, `gh pr edit --base`(GraphQL 오류)가 안 된다. run ID는 `gh api …/actions/runs?branch=`, base 변경은 REST PATCH.
+- **확인서는 실제 PR을 삼킬 수 있다(DEV-717).** 유예가 확률을 줄이지만 0은 아니다. 유예 0은 backfill에만 쓴다.
+- **032 뒤 재색인 전에는 Merged가 계속 비어 보인다.** 업그레이드 절차에 재색인이 들어갔다.
+- **회귀 계약 시험은 질의 번역의 모양(`term`/`terms`)에 기대지 말고 값으로 비교한다.**
+- **도메인에 이미 있는 타입을 다시 선언하지 않는다.** `PullRequestState`가 `entities.ts`에 있었고 typecheck에서만 드러났다(vitest는 타입을 보지 않는다).
