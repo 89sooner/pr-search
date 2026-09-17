@@ -3010,3 +3010,37 @@ risks.md의 「2026-09-02 (2차)」 절. 가장 큰 것: 실행 중인 스크립
 ## References
 
 - PR #207 (CR-100/WP-088), PR #208 (CR-101/WP-089); 원장 6.94·6.95; DEV-715~718; 검토: deep-reasoner 독립 검토(blocker 0, minor 3 반영).
+
+## Session: 2026-09-17 (9차 후반) — `0.1.0-pilot.13` 발행
+
+### Goal
+
+사용자 지시(2026-09-17): 「pilot.13으로 지금 발행해라」. CR-100·CR-101을 담은 오프라인 번들을 불변 GitHub Release로 발행한다.
+
+### Current state
+
+- `0.1.0-pilot.13` 발행 완료 — 태그 `3ba1c4b`(CR-101 병합, 마지막 기능 커밋), 자산 `pr-search-0.1.0-pilot.13-offline.tar.gz` 1,154,497,950 bytes, SHA-256 `f94f022378dd04cb04965e3596c2fe31321460cb64ca5763d78a91629471f7d3`, immutable.
+- 기록 PR `docs/pilot13-release-record`가 원장·변경 대장·작업 패키지·agent-context를 갱신한다 — 병합 커밋은 git log로 읽는다.
+- 사내 반입·확인은 NOT RUN.
+
+### Decisions
+
+- 태그는 `3ba1c4b`에 두었다 — 그 뒤의 `ac130e3`(병합 기록)과 `936de9f`(다른 세션의 `easy-worker-guide.png`)는 코드가 아니다. 결정 「릴리스 태그를 docs-only 커밋으로 옮기지 않는다」(CR-098/099)를 따랐다.
+- 분리된 워크트리(`/home/roqkf/pr-search-wt/release13`, detached)에서 빌드했다 — manifest `branch`는 `HEAD`(pilot.8과 같다). 사내 2.D는 번들의 `HEAD`를 가져오므로 영향이 없다.
+- 번들 smoke는 새 CLI를 묻지 않으므로, 발행 전에 같은 컨텍스트로 pipeline-worker·migrate 타깃만 먼저 빌드해 확인했다(`dist/mnumber-attest-cli.js` → 사용법·종료 2, `@prs/domain`의 `derivePullRequestState`, 마이그레이션 031·032). 발행 뒤 발행 이미지로 같은 확인을 반복했다.
+- 발행 실행은 `setsid nohup`으로 분리하고 Monitor로 로그를 봤다 — 이 세션에서 하네스가 메모리 부족을 이유로 백그라운드 작업을 두 번 중단했고, 발행 도중 중단은 되돌리기 없이 반쯤 발행된 상태를 남길 수 있다.
+
+### Commands
+
+- `/tmp/claude-1000/-home-roqkf-pr-search/<세션>/scratchpad/precheck13.sh`·`release13.sh` — 선확인 빌드와 발행 실행(로그 `precheck13.log`·`release13.log`).
+- 발행 확인: `gh api repos/89sooner/pr-search/releases/tags/0.1.0-pilot.13 --jq '{url:.html_url,immutable:.immutable,tag:.tag_name,target:.target_commitish,assets:[.assets[]|{name,size,digest,state}]}'`, `git ls-remote --tags origin refs/tags/0.1.0-pilot.13`.
+
+### Next steps
+
+1. 사내 운영자에게 별도 채널로 셋을 전달한다: 버전 `0.1.0-pilot.13` · 읽기 토큰 · 자산 SHA-256.
+2. 사내 반입 순서: `gh release download` → `sha256sum` 대조 → `./prsctl verify && ./prsctl load` → `./prsctl upgrade`(031·032) → 운영 콘솔 `prs-pull-requests` 재색인 → `./prsctl mnumber attest …`(RUNBOOK 7.D). 결과를 `agent-context/upstream-feedback.md` 두 항목 아래에 적는다.
+
+### Risks/gotchas
+
+- 발행 뒤에는 되돌리지 않는다 — immutable 저장소에서 릴리스를 지우면 버전 이름을 다시 쓸 수 없다. 정정은 pilot.14다.
+- `deploy/single-host/bundle/`이 워크트리마다 쌓인다(공유 체크아웃 29G + release13). 정리는 사용자 결정이다.

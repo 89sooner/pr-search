@@ -2584,3 +2584,10 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 ## 착수할 때 실측할 것
 
 - 다음 ID: CR-101 · DEV-718 · WP-089 · ENT-SEQ-008 이후. 병렬 세션이 있으면 채번 현황을 묻는다(9차에서 실제로 다른 세션이 main에 직접 커밋했다).
+
+## 2026-09-17 (9차 후반) — pilot.13 발행 뒤
+
+- [x] pilot.13 발행 여부와 시점 — 사용자 지시로 발행(2026-09-17). 태그 `3ba1c4b`.
+- [ ] 사내 운영자에게 별도 채널로 전달: 버전 `0.1.0-pilot.13` · 읽기 토큰 · SHA-256 `f94f022378dd04cb04965e3596c2fe31321460cb64ca5763d78a91629471f7d3`.
+- [ ] 사내 반입(NOT RUN): 다운로드·대조·`verify`·`load` → `upgrade`(031·032) → `prs-pull-requests` 재색인 → Status=Merged·My merged PRs·Merged 배지 확인 → `./prsctl mnumber attest …`(RUNBOOK 7.D) → 저장소 119·399·1877 M 번호 완주. 결과를 upstream-feedback.md에 기록.
+- [ ] 자원 정리(사용자 결정): 워크트리 `release13`·`record13`, 격리 DB, 선확인 이미지 `prs/pipeline-worker:precheck-pilot13`·`prs/db:precheck-pilot13`, `release13/deploy/single-host/bundle/`.
