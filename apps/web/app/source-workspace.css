@@ -3,14 +3,17 @@
 .reader-ui .ui-button--primary { color:var(--ui-accent-contrast); }
 .source-heat-legend { display:flex; align-items:center; gap:4px; margin:12px 8px; color:var(--ui-text-muted); font-size:10px; }
 .source-heat-legend i { display:block; width:17px; height:12px; border:1px solid var(--ui-border-subtle); border-radius:2px; }
-.source-tree { border-top:1px solid var(--ui-border-subtle); margin-top:22px; padding-top:18px; }
-.source-tree header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; font-size:12px; }
+/* overflow:hidden is load-bearing: unlike .repo-repositories (whose overflow:auto sits on the element itself), the scrollable [role='tree'] here is a CHILD of this section. Without a clip on the section too, an outer flex allocation smaller than this section's own chrome + list floor spills its content over the sidebar-note that follows it in the DOM instead of clipping cleanly (seen when the viewport got short enough to squeeze this section). */
+.source-tree { border-top:1px solid var(--ui-border-subtle); margin-top:14px; padding-top:12px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+.source-tree > * { flex-shrink:0; }
+.source-tree header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; font-size:12px; }
 .source-tree header button,.source-tree-node,.source-tree-root { background:none; border:0; color:var(--ui-text-secondary); }
-.source-tree-ref { display:flex; align-items:center; gap:6px; color:var(--ui-text-muted); font-size:10px; margin-bottom:12px !important; }
+.source-tree-ref { display:flex; align-items:center; gap:6px; color:var(--ui-text-muted); font-size:10px; margin-bottom:8px !important; }
 .source-tree-ref code { margin-left:auto; }
-.source-tree-find { display:flex; align-items:center; gap:7px; padding:7px 9px; border:1px solid var(--ui-border-default); border-radius:6px; margin-bottom:12px; }
+.source-tree-find { display:flex; align-items:center; gap:7px; padding:6px 9px; border:1px solid var(--ui-border-default); border-radius:6px; margin-bottom:8px; }
 .source-tree-find input { width:100%; min-width:0; border:0; outline:none; background:none; font-size:11px; }
-.source-tree [role='tree'] { max-height:420px; overflow:auto; outline-offset:2px; }
+/* 44px keeps at least one full row visible. repository-workspace.css's min-height on this whole section is sized to cover this floor plus the header/ref/find-input/root-button chrome above it. */
+.source-tree > [role='tree'] { flex:1 1 0; min-height:44px; overflow:auto; outline-offset:2px; }
 .source-tree :is(ul,li) { list-style:none; margin:0; padding:0; }
 .source-tree [role='group'] { padding-left:15px; }
 .source-tree-node { display:flex; align-items:center; gap:6px; padding:7px 4px; cursor:pointer; min-width:0; font-size:11px; border-radius:4px; }
@@ -35,6 +38,7 @@
 .source-history-table :is(th,td) { padding:14px 12px; border-bottom:1px solid var(--ui-border-subtle); text-align:left; }
 .source-history-table td:nth-child(3) { min-width:200px; width:45%; }
 .source-history-table code { color:var(--ui-accent); font-size:11px; }
+.source-history-table .ui-copy-button { margin-left:8px; min-height:29px; padding:4px 8px; font-size:12px; }
 .source-history-table time { white-space:nowrap; font-size:11px; }
 .source-history-title { background:none; border:0; padding:0; text-align:left; color:var(--ui-text-primary); font-weight:500; }
 .source-load-more { display:flex; justify-content:center; padding:18px; }
@@ -75,7 +79,10 @@
 .source-diff-table,.source-file-code { border-collapse:collapse; width:100%; font-family:var(--ui-font-mono); font-size:12px; line-height:1.75; }
 .source-diff-table td,.source-file-code td { padding:0 10px; vertical-align:top; border:0; }
 .source-diff-table code,.source-file-code code { white-space:pre; tab-size:4; color:var(--ui-text-primary); }
-.source-diff-table--split td:nth-child(2),.source-diff-table--split td:nth-child(4) { min-width:260px; width:50%; }
+/* min-width lives on the TABLE, not the cells: table-layout:fixed makes per-cell min-width inert once column widths are derived from `width` (confirmed in-browser -- a cell's computed min-width read back as 150px while its actual rendered width shrank to 93px at a 375px viewport, a known cross-browser quirk). 388px = 2*150px source columns + 2*44px gutters, so at that width each column is exactly 150px; below it the table overflows its own .source-code-scroll and that container's existing overflow:auto takes over as plain whole-table horizontal scroll -- an acceptable narrow-viewport fallback, not a regression of the normal-desktop-width fix. */
+.source-diff-table--split { table-layout:fixed; min-width:388px; }
+/* 44px mirrors .source-line-number's width so the two source columns sum to exactly 100% and the outer .source-code-scroll never has to absorb overflow from either side at normal widths. */
+.source-diff-table--split td:nth-child(2),.source-diff-table--split td:nth-child(4) { width:calc(50% - 44px); min-width:0; overflow-x:auto; }
 .source-diff-table--split td:nth-child(3) { border-left:1px solid var(--ui-border-default); }
 .source-line-number { width:44px; text-align:right; user-select:none; color:var(--ui-text-muted); background:var(--ui-surface-subtle); font-size:10px; }
 .source-line-number button { color:inherit; background:none; border:0; padding:0; font:inherit; width:100%; text-align:right; }

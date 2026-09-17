@@ -11,7 +11,35 @@
 .repo-shell-main { max-width: 1536px; margin: auto; padding: 30px 28px 64px; }
 .repo-workspace { display: grid; grid-template-columns: 260px minmax(0, 1fr); align-items: start; gap: 24px; }
 .repo-workspace svg { flex-shrink: 0; vertical-align: middle; }
-.repo-sidebar { position: sticky; top: 24px; background: var(--ui-surface-raised); padding: 20px; border: 1px solid var(--ui-border-subtle); border-radius: 12px; }
+/*
+ * .repo-topbar/.repo-shell-main are NOT this component's actual ancestors -- RepositoryWorkspace
+ * always renders inside ReaderShell (grep confirms those two classes are unused in any .tsx), whose
+ * real chrome is .reader-header-inner (88px min-height) + its 1px border + .reader-container's 32px
+ * top padding = 121px above the sidebar while unstuck at scroll top.
+ *
+ * This must be `height`, not `max-height` (a flex column sized by `max-height` alone resolves to an
+ * indefinite/auto height whenever content is shorter than the cap, and `flex-grow` has no "remaining
+ * space" to distribute against an indefinite container -- verified in-browser: the two flex:1
+ * children below collapsed to ~0 with max-height, and filled correctly once switched to `height`).
+ *
+ * The 48px below is sized for the STUCK state (sticky top:24px + a symmetric 24px bottom margin),
+ * not the 121px unstuck offset -- .reader-header is not sticky/fixed, so at scroll position 0 the
+ * sidebar sits below the full 121px and this makes it extend past the fold there. Confirmed
+ * in-browser that's cosmetic, not broken (normal sticky-sidebar behavior: it fills in once you
+ * scroll far enough for `top:24px` to engage), and that once stuck, the sidebar's bottom edge
+ * lands within the viewport rather than overflowing past it.
+ */
+.repo-sidebar { position: sticky; top: 24px; display: flex; flex-direction: column; height: calc(100dvh - 48px); overflow: hidden; background: var(--ui-surface-raised); padding: 20px; border: 1px solid var(--ui-border-subtle); border-radius: 12px; }
+.repo-sidebar > * { flex-shrink: 0; }
+/*
+ * Different floors because the two sections aren't symmetric: .repo-repositories IS its own
+ * scrollable list (72px ~ two rows), while .source-tree also carries its own header/ref/find-input/
+ * root-button chrome before its list even starts, so its floor (measured against real content) has
+ * to cover that chrome plus its own list's 44px floor (source-workspace.css) or the section clips
+ * itself short even with its own overflow:hidden.
+ */
+.repo-sidebar > .repo-repositories { flex: 1 1 0; min-height: 72px; }
+.repo-sidebar > .source-tree { flex: 1 1 0; min-height: 185px; }
 .repo-sidebar-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 18px; color: var(--ui-text-secondary); }
 .repo-sidebar-heading h2 { font-size: 13px; margin: 0; font-weight: 650; }
 .repo-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
@@ -21,13 +49,13 @@
 .repo-field input::placeholder { color: var(--ui-text-muted); }
 .repo-field :is(input, select):focus { background: var(--ui-surface-raised); border-color: var(--ui-accent); }
 .repo-field :disabled { opacity: .6; }
-.repo-repositories { margin: 14px -8px 24px; max-height: 280px; overflow: auto; }
-.repo-repositories > button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; border: 0; border-radius: 6px; background: transparent; color: var(--ui-text-secondary); padding: 10px 8px; cursor: pointer; font-size: 12px; }
-.repo-repositories > button > span { flex: 1; overflow-wrap: anywhere; }
+.repo-repositories { margin: 14px -8px 12px; overflow: auto; }
+.repo-repositories > button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; border: 0; border-radius: 6px; background: transparent; color: var(--ui-text-secondary); padding: 8px; cursor: pointer; font-size: 12px; }
+.repo-repositories > button > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .repo-repositories > button[aria-pressed='true'] { background: var(--ui-accent-soft); color: var(--ui-accent); font-weight: 600; }
 .repo-repositories > button:hover { background: var(--ui-surface-subtle); }
-.repo-sidebar form, .prs-page-content .repo-sidebar form { display: grid; gap: 12px; margin: 22px 0 0; }
-.repo-sidebar-note { border-top: 1px solid var(--ui-border-subtle); margin: 22px 0 0; padding-top: 18px; color: var(--ui-text-muted); font-size: 12px; line-height: 1.8; }
+.repo-sidebar form, .prs-page-content .repo-sidebar form { display: grid; gap: 12px; margin: 18px 0 0; }
+.repo-sidebar-note { border-top: 1px solid var(--ui-border-subtle); margin: 14px 0 0; padding-top: 12px; color: var(--ui-text-muted); font-size: 12px; line-height: 1.5; }
 .repo-main { min-width: 0; }
 .repo-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 2px 0 22px; }
 .repo-heading h1 { margin: 5px 0 7px; font-size: clamp(20px, 2vw, 27px); font-weight: 650; letter-spacing: -.04em; overflow-wrap: anywhere; }
@@ -35,12 +63,27 @@
 .repo-main > .ui-tabs { background: var(--ui-surface-raised); border: 1px solid var(--ui-border-subtle); border-radius: 12px; overflow: clip; }
 .repo-main [role='tablist'] { padding: 0 18px; border-bottom: 1px solid var(--ui-border-subtle); overflow-x: auto; }
 .repo-main [role='tab'] { padding: 17px 16px; white-space: nowrap; font-size: 13px; }
-.repo-filter-form, .prs-page-content .repo-filter-form { display: block; margin: 0; padding: 24px; }
+.repo-filter-form, .prs-page-content .repo-filter-form { display: block; margin: 0; padding: 18px; }
 .repo-query-row { display: flex; align-items: end; gap: 12px; margin-bottom: 18px; }
 .repo-query-row > label { flex: 1; }
 .repo-query-row > button { min-height: 39px; }
-.repo-filter-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.repo-filter-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+/* Scoped overrides (rather than editing the shared reader-workspace.css) so only this page's date row is tightened. */
+.repo-filter-form .reader-date-grid { gap: 10px; margin-top: 14px; }
 .repo-filter-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; font-size: 12px; color: var(--ui-text-muted); }
+/*
+ * 689px = measured in-browser (.reader-header + .reader-container's top padding = 121px, tablist
+ * 56px, filter-form 441px, results-heading 47px, plus ~24px of borders/gaps between them) -- the
+ * earlier 326px guess was calibrated against .repo-topbar/.repo-shell-main, which this component
+ * never actually renders inside of (it always renders inside ReaderShell/.reader-container).
+ *
+ * Unlike .repo-sidebar, this element isn't sticky and doesn't need to end exactly at the viewport
+ * edge -- calc(100dvh - 689px) alone degrades to a near-useless sliver on ordinary 800-900px-tall
+ * viewports, so min-height keeps a reasonable number of rows visible there; the calc only starts
+ * mattering on taller screens, where it lets the table use the extra room instead of a stale fixed
+ * height wasting it.
+ */
+.repo-results-scroll { max-height: calc(100dvh - 689px); min-height: 320px; overflow: auto; }
 .repo-results-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 24px; border-block: 1px solid var(--ui-border-subtle); background: var(--ui-surface-subtle); font-size: 12px; color: var(--ui-text-muted); }
 .repo-results-heading > span:first-child { display: flex; align-items: center; gap: 9px; color: var(--ui-text-secondary); }
 .repo-results-heading strong { color: var(--ui-accent); margin-left: 3px; }
@@ -77,6 +120,17 @@
 .repo-empty p { font-size: 13px; }
 .repo-error { padding: 16px 24px; color: var(--ui-status-danger); }
 .repo-load-more { display: flex; justify-content: center; align-items: center; gap: 16px; padding: 22px; font-size: 12px; color: var(--ui-text-muted); }
+/*
+ * Independent review, finding #3: at ~700px viewport height the sidebar's fixed chrome + both
+ * cards' min-height floors add up to slightly more than the sidebar's own height even with neither
+ * card shrunk below its floor -- confirmed in-browser (.source-tree's own box measured 15px taller
+ * than the sidebar's remaining room, .repo-sidebar-note fully clipped already at that width). This
+ * extends the existing "drop the note under space pressure" pattern (already display:none below
+ * 800px width) to short-but-wide viewports too, freeing its ~130px (box + margin) before either
+ * functional card's own floor has to compete for it. 750px leaves a margin above the 700px case that
+ * showed the clip, rather than the threshold sitting exactly on it.
+ */
+@media (max-height: 750px) { .repo-sidebar-note { display: none; } }
 @media (max-width: 1200px) { .repo-workspace { grid-template-columns: 220px minmax(0, 1fr); gap: 18px; } .repo-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .repo-topbar-description { display: none; } }
 @media (max-width: 800px) { .repo-workspace { grid-template-columns: minmax(0, 1fr); } .repo-sidebar { position: static; } .repo-repositories { max-height: 140px; } .repo-sidebar-note { display: none; } .repo-shell-main { padding: 18px 12px; } .repo-filter-form, .prs-page-content .repo-filter-form { padding: 18px; } .repo-topbar { gap: 15px; padding: 16px; } .repo-topbar form > span { display: none; } .repo-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .repo-detail-columns { grid-template-columns: minmax(0, 1fr); } .repo-filter-footer > span { display: none; } }
 

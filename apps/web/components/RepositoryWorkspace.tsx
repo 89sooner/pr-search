@@ -177,7 +177,7 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
       <div className="repo-sidebar-heading"><FolderGit2 size={18} /><h2>Browse repositories</h2><span className="reader-count">{repositories.length}</span></div>
       <label className="repo-field"><span>Find repository</span><input type="search" placeholder="Search by name…" value={repoFind} onChange={event => { setRepoFind(event.target.value); }} /></label>
       <div className="repo-repositories">{repositories.filter(repo => repo.repository.toLowerCase().includes(repoFind.toLowerCase())).map(repo =>
-        <button type="button" key={repo.repository_id} aria-pressed={repository === repo.repository} onClick={() => { navigate({ repository: repo.repository, base: '', path: '' }); }}><WorkbenchIcon name="repository" /><span>{repo.repository}</span><WorkbenchIcon name="chevron" /></button>)}
+        <button type="button" key={repo.repository_id} title={repo.repository} aria-pressed={repository === repo.repository} onClick={() => { navigate({ repository: repo.repository, base: '', path: '' }); }}><WorkbenchIcon name="repository" /><span>{repo.repository}</span><WorkbenchIcon name="chevron" /></button>)}
         {repositoryLoading ? <Skeleton label="Loading repositories" /> : null}
         {repositoryError ? <p role="alert">{repositoryError} <Button variant="ghost" onClick={() => { setRepoNonce(n => n + 1); }}>Try again</Button></p> : null}
         {repositoryCursor ? <Button variant="ghost" disabled={repositoryLoading} onClick={() => { setRepoNext(repositoryCursor); }}>More repositories</Button> : null}
@@ -212,6 +212,7 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
             <div className="repo-results-heading"><span><GitPullRequest size={17} /> {tab === 'history' ? "Commit" : 'Pull requests'} <strong>{loading ? "Loading…" : loadedKey === requestKey && data?.total ? `${data.total.value.toLocaleString("en-US")}${data.total.relation === 'gte' ? '+' : ''} items` : ''}</strong></span><div><span>{sort === 'pr_number' ? "PR" : sort === 'merge_seq' ? "M number" : "Merged at"} {order === 'desc' ? "Descending" : "Ascending"}</span><Button variant="ghost" aria-label="Refresh search" disabled={loading} onClick={() => { setCursor(null); setNonce(n => n + 1); }}><WorkbenchIcon name="refresh" /></Button></div></div>
             {unauthorized ? <p role="alert">Your session has expired. <a href={`${loginPath}?return_to=${encodeURIComponent(`/search?${serialized}`)}`}>Sign in again</a></p> : null}
             {error ? <p role="alert" className="repo-error">{error} <Button variant="secondary" onClick={() => { setCursor(null); setNonce(n => n + 1); }}>Reload first page</Button></p> : null}
+            <div className="repo-results-scroll">
             <Table className="repo-table" aria-label={TAB_NAMES[tab]} scrollContainerProps={{ tabIndex: 0 }}>
               <Table.Head><Table.Row><Table.HeaderCell scope="col" aria-sort={sort === 'pr_number' ? order === 'asc' ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => { sortBy('pr_number'); }}># {sort === 'pr_number' && order === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}</button></Table.HeaderCell>
                 <Table.HeaderCell scope="col" aria-sort={sort === 'merge_seq' ? order === 'asc' ? 'ascending' : 'descending' : 'none'}><button type="button" onClick={() => { sortBy('merge_seq'); }}>M number {sort === 'merge_seq' && order === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}</button></Table.HeaderCell>
@@ -235,6 +236,7 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
               </Table.Body></Table>
             {!loading && !error && !rows.length ? <div className="repo-empty"><WorkbenchIcon name="search" /><h2>{repository ? "No matching changes" : "No repositories to display"}</h2><p>{repository ? "Adjust your query or filters and search again." : "PRs will appear when an accessible ingested repository is available."}</p></div> : null}
             {loadedKey === requestKey && data?.next_cursor ? <div className="repo-load-more"><Button variant="secondary" disabled={loading} onClick={() => { setCursor(data.next_cursor ?? null); }}>More changes</Button><span>{rows.length.toLocaleString("en-US")} shown</span></div> : null}
+            </div>
           </> : null}
         </Tabs.Content>)}
       </Tabs.Root>

@@ -61,13 +61,25 @@
 .reader-select-menu { background: var(--ui-surface-raised); padding: 5px; border: 1px solid var(--r-border); border-radius: 9px; box-shadow: var(--ui-shadow-soft); min-width: var(--radix-select-trigger-width); max-height: var(--radix-select-content-available-height); z-index: 60; }
 .reader-select-item { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 8px 10px; border-radius: 5px; font-size: 12px; outline: 0; cursor: default; }
 .reader-select-item[data-highlighted] { color: var(--r-accent); background: var(--r-soft); }
-.reader-ui .repo-repositories { margin: 14px -8px 24px; max-height: 260px; overflow: auto; }
-.reader-ui .repo-repositories > button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 8px; border: 0; border-radius: 6px; background: none; text-align: left; color: var(--ui-text-secondary); font-size: 11px; }
+/*
+ * CR-102: this selector (.reader-ui .repo-repositories, specificity 0,2,0) ties with
+ * repository-workspace.css's `.repo-sidebar > .repo-repositories` (also 0,2,0) -- whichever loads
+ * later in the cascade wins per-property, and empirically this file's margin/max-height were
+ * winning over that file's compressed margin and its `flex`/`min-height` (properties this file
+ * never set, so no conflict there -- confirmed by reading getComputedStyle in the browser, not by
+ * re-deriving specificity by hand a second time). max-height is dropped: the flex/min-height pair
+ * in repository-workspace.css is what actually bounds this now, and a stale, larger max-height
+ * sitting next to it here only invites the next reader to think IT is the active constraint.
+ */
+.reader-ui .repo-repositories { margin: 14px -8px 12px; overflow: auto; }
+.reader-ui .repo-repositories > button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border: 0; border-radius: 6px; background: none; text-align: left; color: var(--ui-text-secondary); font-size: 11px; }
 .reader-ui .repo-repositories > button > span { flex: 1; overflow-wrap: anywhere; }
 .reader-ui .repo-repositories > button[aria-pressed='true'] { background: var(--r-soft); color: var(--ui-accent); font-weight: 550; }
 .reader-ui .repo-repositories > button:hover { background: var(--ui-state-hover); }
-.reader-ui .repo-sidebar form { display: grid; gap: 11px; margin: 22px 0 0; }
-.reader-ui .repo-sidebar-note { display: block; padding-top: 22px; border-top: 1px solid var(--r-border); margin: 25px 0 0; font-size: 11px; line-height: 1.85; color: var(--ui-text-muted); }
+/* CR-102: margin was winning over repository-workspace.css's compressed 18px top margin (`.repo-sidebar form` matches here, at 0,1,1, under this file's 0,2,1) -- matched here for the same reason as the rules above. gap is unrelated to this task, left as-is. */
+.reader-ui .repo-sidebar form { display: grid; gap: 11px; margin: 18px 0 0; }
+/* CR-102: same cross-file tie as .repo-repositories above -- this rule's padding/margin/font-size/line-height were winning over repository-workspace.css's compressed values (both selectors are 0,2,0; this file loads later). Compressed here instead, since this is the copy that actually renders. */
+.reader-ui .repo-sidebar-note { display: block; padding-top: 12px; border-top: 1px solid var(--r-border); margin: 14px 0 0; font-size: 12px; line-height: 1.5; color: var(--ui-text-muted); }
 .reader-ui .repo-sidebar-note > svg { color: var(--ui-text-muted); display: block; margin-bottom: 9px; }
 .reader-ui .repo-sidebar-note strong { display: block; margin-bottom: 6px; color: var(--ui-text-secondary); font-weight: 500; }
 .reader-ui .repo-main { min-width: 0; }
@@ -76,14 +88,16 @@
 .reader-ui .repo-main [role='tab'][data-state='active'] { background: var(--ui-surface-raised); color: var(--ui-text-secondary); border-color: var(--ui-border-default); box-shadow: var(--ui-shadow-soft); }
 .reader-ui .repo-main [role='tab']:hover { color: var(--ui-text-secondary); }
 .reader-ui .repo-main [role='tabpanel'] { outline: none; }
-.reader-ui .repo-filter-form { padding: 25px 26px 19px; border: 1px solid var(--r-border); border-radius: 11px; background: var(--ui-surface-raised); margin: 0 0 24px; display: block; box-shadow: var(--ui-shadow-soft); }
+/* CR-102: padding was winning over repository-workspace.css's compressed 18px (same 0,2,0 tie as above) -- matched here instead of just moving the value, so which file's rule wins no longer matters for this property. */
+.reader-ui .repo-filter-form { padding: 18px; border: 1px solid var(--r-border); border-radius: 11px; background: var(--ui-surface-raised); margin: 0 0 24px; display: block; box-shadow: var(--ui-shadow-soft); }
 .reader-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
 .reader-eyebrow { color: var(--ui-text-muted); font-size: 9px; font-weight: 550; letter-spacing: .1em; margin-bottom: 6px !important; }
 .reader-panel-heading h1 { font-size: 23px; line-height: 1.3; font-weight: 640; letter-spacing: -.045em; }
 .reader-panel-heading p:last-child { color: var(--ui-text-muted); font-size: 11px; margin-top: 7px; }
 .reader-context { display: flex; align-items: center; gap: 7px; color: var(--ui-text-muted); font-size: 10px; background: var(--ui-surface-subtle); border: 1px solid var(--ui-border-subtle); border-radius: 5px; padding: 5px 8px; overflow-wrap: anywhere; }
 .reader-context-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; margin-bottom: 18px; }
-.reader-ui .repo-filter-grid { display: grid; grid-template-columns: 1fr 2fr 1.15fr 1fr; gap: 14px; }
+/* CR-102: gap was winning over repository-workspace.css's compressed 10px, matched here for the same reason as .repo-filter-form above. */
+.reader-ui .repo-filter-grid { display: grid; grid-template-columns: 1fr 2fr 1.15fr 1fr; gap: 10px; }
 .reader-date-grid { display: grid; grid-template-columns: 1fr 1fr 2.25fr; gap: 14px; margin-top: 18px; }
 .reader-filter-hint { display: flex; align-items: center; gap: 11px; padding-left: 10px; font-size: 10px; color: var(--ui-text-muted); }
 .reader-filter-hint code { display: block; color: var(--ui-text-muted); margin-top: 4px; font-size: 10px; }
@@ -194,6 +208,17 @@
   .reader-ui :is(.reader-button,.reader-select,.repo-repositories button) { transition: background-color 120ms ease-out, border-color 120ms ease-out; }
   .reader-ui .repo-expand svg { transition: transform 120ms ease-out; }
 }
+/*
+ * CR-102: mirrors repository-workspace.css's `@media (max-height:750px) { .repo-sidebar-note {
+ * display:none } }` -- that rule alone loses the cascade to this file's unconditional `.reader-ui
+ * .repo-sidebar-note { display:block }` above (0,2,0 beats 0,1,0 regardless of which one sits
+ * inside a media query), so on a short-but-wide viewport the note was still being laid out and
+ * clipped by .repo-sidebar's own overflow:hidden -- invisible either way, but only an actual
+ * display:none frees its ~113px (box + margin) back to the two card regions' flex-grow. Confirmed
+ * in the browser: with only the other file's rule, .repo-repositories/.source-tree sat exactly on
+ * their floors at 700px tall; this let them use the freed space instead.
+ */
+@media (max-height: 750px) { .reader-ui .repo-sidebar-note { display: none; } }
 
 /* Small data stays legible at laptop scale; secondary text retains AA contrast. */
 .reader-ui .repo-field > :is(span,label) { font-size: 12px; }
