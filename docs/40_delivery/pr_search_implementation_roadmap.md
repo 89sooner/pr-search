@@ -1,6 +1,10 @@
 # PR Search 구현 로드맵
 
-> 상태: review | 버전: v0.21 | 갱신일: 2026-09-14
+> 상태: review | 버전: v0.22 | 갱신일: 2026-09-17
+
+## CR-102 Regression 확장 후보 경로
+
+[구현 계획](pr_search_regression_implementation_plan.md) R0~R8을 후속 후보 경로로 등록한다. 기존 REL-006/WP-042의 완료 범위를 재개방하거나 신규 REL 승인을 의미하지 않는다. **R0 계약·baseline → R1 수동 관측 → R2 SKIP/INCONCLUSIVE → R4 artifact 후보 연결 → R5 Workbench → R6 수동 pilot** 순서다. R3 manifest 등록·역조회는 R0 뒤에 진행해 R4의 선행이 된다. R7 MDVP와 R8 MTBF는 각각 OD-012·013 해소 후 별도 진행하며 첫 수동 pilot을 차단하지 않는다. OD-010·011 결정과 R0 cascade 이전에는 구현 착수 WP로 선택하지 않는다.
 
 CR-079: WP-074의 다음 진행 단위는 [실행서](pr_search_wp074_execution.md) S0~S6다. 선행 WP는 완료됐고 pilot.4 사내 재시험은 외부 개발의 착수 조건이 아니다. 전체 완료는 T01~T06 및 DEV-581의 production 부재 증거 조건을 따로 판정한다. 기존 REL-003 완료 상태는 재개방하지 않는다. WP-075는 계속 후속이다.
 

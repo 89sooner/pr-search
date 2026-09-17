@@ -29,6 +29,8 @@ WP-074 상세 설계의 진입점(CR-079): [설계 계약](30_technical_architec
 
 ## 1. 목적
 
+Regression 확장 검토(CR-102): [연구 원문](40_delivery/deep-research-report.md) → [구현 계획](40_delivery/pr_search_regression_implementation_plan.md) → [HTML 보고서](40_delivery/deep-research-report.html). 연구·draft 계획은 승인 범위를 확대하지 않는다. 계획의 R0에서 요구사항과 파생 계약을 승인·정합화한 후에만 신규 구현 WP로 전환한다.
+
 이 문서는 PR Search의 SRS/PRD 기반 제품 계획 문서 전체를 안내하는 최상위 인덱스다. 목표는 요구사항, UX/UI, 시스템 아키텍처, 프론트엔드, 백엔드, API, 데이터, 인프라, 보안, 운영, 릴리스 검증, 작업 패키지, 구현 추적을 하나의 추적 가능한 문서 체계로 묶는 것이다.
 
 ## 2. 전체 구조

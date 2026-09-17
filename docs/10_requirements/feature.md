@@ -1,6 +1,18 @@
 # PR Search 기능 후보 문서
 
-> 상태: review | 버전: v0.2 | 갱신일: 2026-08-19
+> 상태: review | 버전: v0.3 | 갱신일: 2026-09-17
+
+## Regression 확장 후보 (CR-102)
+
+출처: [연구 보고서](../40_delivery/deep-research-report.md). 아래는 승인 전 후보이며 관련 FR은 기존 기반을 가리킬 뿐 확장의 구현 권한을 뜻하지 않는다. 세부 수용안과 실행 순서는 [구현 계획](../40_delivery/pr_search_regression_implementation_plan.md)에 있다.
+
+| 기능 ID | 사용자 목표·진입점 | 시스템 반응 제안 | 예외·데이터 영향 | 우선순위 제안 | 상태·기존 기반 |
+| --- | --- | --- | --- | --- | --- |
+| F-REG-001 | W-004에서 정확한 regression revision 식별 | repo/branch/epoch와 I 접두로 merge_seq 표시 | M 번호 재정의 없음; 별도 counter 없음 | 1차 | 후보, FR-SEQ-001·007·008 |
+| F-REG-002 | 시험 결과를 재방문해 확인 | 관측 기록과 SKIP/INCONCLUSIVE, 확정되지 않은 원인 구간 표시 | 관측 이력 신규 저장; 세션 초기화와 이력 보존 분리 | 1차 | 후보, FR-SEQ-007 |
+| F-REG-003 | revision·SHA·PR·digest로 binary 식별 | manifest 등록·조회와 보관 binary 기반 coarse/fine 탐색 | revision당 다중 variant/build; 누락 binary가 원인 후보에서 삭제되지 않음 | 1차 | 후보, FR-SEQ-007·FR-SRCH-001·002 |
+| F-REG-004 | 외부 장비 결과를 같은 조사에 기록 | 수동 결과 계약에 외부 result adapter 연결 | MDVP 계약·서비스 주체·중복 run 규칙 필요; 시험 실행 제외 | 후속 조건부 | 후보, FR-SEQ-007·FR-AUTH-002 |
+| F-REG-005 | 통계적으로 불확실한 MTBF 시험을 분리 | model/version/confidence와 verdict 기록 | HPP 가정·고정 관측 계획 검증 전 자동 GOOD/BAD 금지 | 후속 조건부 | 후보, FR-SEQ-007 |
 
 ## 1. 목적
 

@@ -1,6 +1,17 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.46 | 갱신일: 2026-09-17
+> 상태: review | 버전: v2.48 | 갱신일: 2026-09-17
+
+## WP-090 검색 좌측 패널·결과 표 고정 레이아웃 (CR-103)
+
+- 요구사항: 없음(SRS·파생 UI에 규정된 치수 없음, 레이아웃 디테일). 선행: WP-085(같은 화면 영역).
+- 범위: `RepositoryWorkspace.tsx`의 좌측 사이드바(Browse repositories·Files & folders)를 뷰포트 높이에 고정하고 두 카드가 각자 내부 스크롤을 갖게 한다. 필터 폼·결과 표 영역도 그에 맞춰 압축·고정(결과 표는 자체 스크롤 컨테이너, 기존 "More changes" 버튼은 유지 — 페이지네이션 방식 자체는 제외). `LegacyRepositoryWorkspace.tsx`는 같은 CSS 셀렉터를 공유해 임시 라우트로 렌더 확인만 했다(정상 동작, 코드 변경은 없음). 모바일(`max-width:800px`) 대응은 사용자 결정으로 제외한다.
+- 완료 기준: 타입·lint·lint:deps 통과, 실제 브라우저(1440×900·1280×800·1280×700 등)에서 두 카드 독립 스크롤·결과 표 자체 스크롤·짧은 뷰포트 클리핑 없음을 실측 확인, 빌드 통과.
+- 상태: done — 구현·독립 코드 리뷰(10건 전부 반영, 추가 자체 발견 1건 포함)·자체 검증(타입/lint/lint:deps/단위/빌드 통과, 6개 뷰포트 브라우저 확인) 완료. 코드는 main `d0e74c7`로 커밋됨. 사내 실 데이터 확인 NOT RUN. 진행 정본: 구현 추적 원장 6.96장.
+
+## CR-102 구현 후보 분해 — WP 전환 전
+
+[Regression 구현 계획 7장](pr_search_regression_implementation_plan.md#7-세션-크기의-구현-후보-분해)의 R0~R8에 선행·파일 책임·범위·제외·DoD·검증을 정의했다. 현재는 **draft 후보**로 정식 WP ID나 완료 상태를 부여하지 않는다. R0에서 승인 FR/REL과 API/ENT/화면 계약을 연결한 뒤 다음 사용 가능한 WP ID를 배정하고 이 문서의 순서표 및 구현 원장 3장에 같은 상태로 등록한다. R1~R8을 기존 FR-SEQ-007만 참조해 자동 승인된 범위로 구현하지 않는다. WP-042는 기존 good/bad 기능 완료 이력을 유지한다.
 
 ## WP-089 병합된 PR의 state 파생 보정 (CR-101)
 
@@ -36,6 +47,7 @@
 - 범위: GHE 읽기 어댑터·인가된 Source API 네 개·Radix 기반 탐색/분석 UI·기존 workspace 및 상세 연결. 소스 지속 저장/색인과 GHE 쓰기는 제외한다.
 - 완료 기준: QA-W001-40~44, 타입·집중 검사·브라우저·빌드 통과. 사내 실제 GHE 검증과 배포는 별도다.
 - 상태: done — PR #199·#200·#201 및 CI 통과, `0.1.0-pilot.10` 발행. 실제 GHE NOT RUN, 기존 문서 gate 오류 유지.
+- 정정(CR-103, 2026-09-17): split diff 뷰의 두 소스 컬럼이 가로 스크롤 하나를 공유해 한쪽의 긴 줄을 읽으면 반대쪽이 화면 밖으로 밀려났다(DEV-720) — `table-layout:fixed`+`<colgroup>`로 정정. Commit history에 경로 선택 없이 진입하면 체크박스·Compare selected가 비활성화되는 이유가 안 보였다(DEV-721) — 안내 배너로 보완, 게이팅 로직(AC-3)은 그대로. SHA 복사를 기존 `CopyButton`으로 추가.
 
 ## WP-084 전체 화면 Radix·영문·테마 (CR-096)
 
@@ -117,6 +129,7 @@
 | WP-087 | PR 중심 검색 필터·테이블·달력 보정 | 검색 UX (CR-099) | WP-086 | **done** — PR/main 전체 CI·Chromium·bundle smoke 통과, pilot.12 발행; 실 GHE 데이터 미검증 |
 | WP-088 | M 번호 운영자 확인서와 확정 근거 보존 | M 채번 운영 (CR-100) | WP-087 | **done** — PR #207 `08fbc3a`, PR/main CI success, 독립 검토 반영 (원장 6.94장), `0.1.0-pilot.13` 발행; 사내 실데이터 NOT RUN |
 | WP-089 | 병합된 PR의 state 파생 보정 | 검색 정확성 (CR-101) | WP-088 | **done** — PR #208 `3ba1c4b`, PR/main CI success (원장 6.95장), `0.1.0-pilot.13` 발행; 사내 재색인 뒤 확인 NOT RUN |
+| WP-090 | 검색 좌측 패널·결과 표 고정 레이아웃 | UI 품질 (CR-103) | WP-085 | **done** — 구현·독립 리뷰 10건 반영(자체 발견 1건 포함)·타입/lint/lint:deps/단위/빌드 통과·6개 뷰포트 실측(원장 6.96장); 코드 main `d0e74c7` 커밋, 사내 실데이터 NOT RUN |
 | WP-081 | 최신 Conductor 및 Shell·W-001 개선 | UI 품질 (CR-093) | WP-073 | **done** — PR #196 `a8796de`, PR·main CI success, `0.1.0-pilot.8` 발행 (원장 6.92장) |
 | WP-078 | REL-007 R1a — capability 분류·검증·드리프트·스냅숏·A-006 읽기 전용 | REL-007 (**CR-088**) | WP-077 | **done** — 검증 6.85장. leaf 196·flag 1,034·positional 164·`--json` 707 전부 분류(`NFR-009` 본표 100%), 독립 검증기·드리프트 검출·029 스냅숏/검증 기록·`JOB-GH-003`·`API-GH-013`/`014`·A-006. 실행 허용은 `pr.list` 하나 그대로. `GATE-GH-01d`(bindability·port·자원 타입)는 미달로 남고(`DEV-675`), 사내 GHES 확인은 `NOT RUN`(`DEV-674`) |
 | WP-077 | REL-007 R0 — PR 목록 조회 첫 수직 (`gh pr list`) | REL-007 (**CR-086**) | WP-012, WP-015 | **done** — 검증 6.83장. R0 `pr.list` 하나를 인가→미리보기→실행→결과·자기 이력까지 연다. 상위 WP 일곱은 이 수직이 들여온 만큼만 `in_progress`다. 출력 청크 스트리밍은 상태만(`DEV-651`), 분류 195건 미완(`DEV-657`). **사내 실제 GHE·Operations App 검증은 `NOT RUN`** |

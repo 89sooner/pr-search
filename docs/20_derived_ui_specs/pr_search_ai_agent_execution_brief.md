@@ -1,6 +1,8 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.10 | 갱신일: 2026-09-16
+> 상태: review | 버전: v0.11 | 갱신일: 2026-09-17
+
+CR-102 Regression 후속: [구현 계획](../40_delivery/pr_search_regression_implementation_plan.md)의 현재 상태는 draft다. 연구 보고서만 읽고 SKIP/INCONCLUSIVE·artifact·MDVP·MTBF를 구현하지 않는다. R0의 OD-010·011 결정→SRS/traceability→UI/architecture→WP cascade와 handoff gate를 먼저 충족한다. 이후 배정된 WP의 선행·T01~T12를 읽고 기존 세션 잠금·epoch·소유권을 보존하며 구현 원장 3장과 FR→code/test 매핑을 갱신한다. 시험 실행은 외부 경계이며 M 번호 정의는 유지한다.
 
 CR-079 WP-074 재개: [실행서](../40_delivery/pr_search_wp074_execution.md) → [상세 설계](../30_technical_architecture/pr_search_wp074_design.md) → [측정 가이드](../40_delivery/pr_search_wp074_measurement_guide.md) 전문. 실제 source와 계약을 대조한 뒤 S0~S6/T01~T06으로 구현한다. 이 설계 작성은 실행 허가가 아니다. DEV-581을 fixture 성공으로 닫지 않고 외부 실행·사내 NOT RUN·WP-075 비활성을 분리한다. source별 파일 소유·검증 기록과 Agent-Initiated Decisions를 남긴다.
 

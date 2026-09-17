@@ -1,0 +1,1486 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PR Search · Regression 연구 보고서</title>
+<style>
+    /* Design Tokens & Variables */
+    :root {
+      /* Light Theme Colors (Slate & Indigo Palette) */
+      --bg-primary: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-surface-hover: #f1f5f9;
+      --bg-surface-muted: #e2e8f0;
+      --border-color: #cbd5e1;
+      
+      --text-primary: #0f172a;
+      --text-secondary: #334155;
+      --text-muted: #64748b;
+      --text-subtle: #94a3b8;
+      
+      --color-primary: #6366f1;
+      --color-primary-hover: #4f46e5;
+      --color-primary-subtle: #eeeffe;
+      --color-primary-rgb: 99, 102, 241;
+      
+      --color-accent: #0ea5e9;
+      --color-accent-subtle: #e0f2fe;
+      
+      --color-success: #10b981;
+      --color-success-subtle: #ecfdf5;
+      --color-success-text: #047857;
+      
+      --color-warning: #f59e0b;
+      --color-warning-subtle: #fffbeb;
+      --color-warning-text: #b45309;
+      
+      --color-danger: #ef4444;
+      --color-danger-subtle: #fef2f2;
+      --color-danger-text: #b91c1c;
+
+      --code-bg: #0f172a;
+      --code-text: #e2e8f0;
+      --code-border: #1e293b;
+      
+      /* Layout & Spacing */
+      --sidebar-width: 280px;
+      --sidebar-collapsed-width: 72px;
+      --header-height: 70px;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      
+      /* Shadows & Transitions */
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+      --transition-fast: 0.15s ease;
+      --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    /* Dark Theme Override */
+    .dark {
+      --bg-primary: #0b0f19;
+      --bg-surface: #111827;
+      --bg-surface-hover: #1f2937;
+      --bg-surface-muted: #374151;
+      --border-color: #374151;
+      
+      --text-primary: #f9fafb;
+      --text-secondary: #d1d5db;
+      --text-muted: #9ca3af;
+      --text-subtle: #4b5563;
+      
+      --color-primary: #818cf8;
+      --color-primary-hover: #6366f1;
+      --color-primary-subtle: #1e1b4b;
+      --color-primary-rgb: 129, 140, 248;
+      
+      --color-accent: #38bdf8;
+      --color-accent-subtle: #0c4a6e;
+      
+      --color-success: #34d399;
+      --color-success-subtle: #064e3b;
+      --color-success-text: #a7f3d0;
+      
+      --color-warning: #fbbf24;
+      --color-warning-subtle: #78350f;
+      --color-warning-text: #fde68a;
+      
+      --color-danger: #f87171;
+      --color-danger-subtle: #7f1d1d;
+      --color-danger-text: #fca5a5;
+
+      --code-bg: #030712;
+      --code-text: #f3f4f6;
+      --code-border: #111827;
+      
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Reset & Base Styles */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      color-scheme: light dark;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      transition: background-color var(--transition-normal), color var(--transition-normal);
+      overflow-x: hidden;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+      color: var(--text-primary);
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    a {
+      color: var(--color-primary);
+      text-decoration: none;
+      transition: color var(--transition-fast);
+    }
+
+    a:hover {
+      color: var(--color-primary-hover);
+    }
+
+    /* Utilities */
+    .text-success { color: var(--color-success) !important; }
+    .text-warning { color: var(--color-warning) !important; }
+    .text-danger { color: var(--color-danger) !important; }
+    .text-primary { color: var(--color-primary) !important; }
+
+    /* Scroll Progress Bar */
+    .scroll-progress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3px;
+      background: linear-gradient(to right, var(--color-primary), var(--color-accent));
+      width: 0%;
+      z-index: 1000;
+      transition: width 0.1s ease-out;
+    }
+
+    /* Screen Reader Only Utility */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* Layout Skeleton */
+    .app-container {
+      display: flex;
+      min-height: 100vh;
+      width: 100%;
+    }
+
+    /* Sidebar Navigation */
+    .sidebar {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: var(--sidebar-width);
+      background-color: var(--bg-surface);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      transition: width var(--transition-normal), background-color var(--transition-normal), border-color var(--transition-normal);
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .sidebar-logo {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 800;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    .sidebar-title {
+      font-size: 1rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: opacity var(--transition-fast);
+    }
+
+    /* Sidebar Metadata Block */
+    .sidebar-meta {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      font-size: 0.85rem;
+      transition: opacity var(--transition-fast);
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .meta-key {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .meta-val {
+      color: var(--text-primary);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* Sidebar Navigation Links */
+    .sidebar-nav {
+      flex: 1;
+      padding: 20px 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-weight: 500;
+      font-size: 0.9rem;
+      transition: background-color var(--transition-fast), color var(--transition-fast);
+      cursor: pointer;
+    }
+
+    .nav-item:hover {
+      background-color: var(--bg-surface-hover);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background-color: var(--color-primary-subtle);
+      color: var(--color-primary);
+      font-weight: 600;
+    }
+
+    .nav-item svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    /* Sidebar Footer Toggle Controls */
+    .sidebar-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      background-color: var(--bg-surface);
+    }
+
+    .sidebar-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-surface);
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+    }
+
+    .sidebar-btn:hover {
+      background-color: var(--bg-surface-hover);
+      color: var(--text-primary);
+      border-color: var(--text-muted);
+    }
+
+    .sidebar-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* Main Workspace Layout */
+    .main-wrapper {
+      flex: 1;
+      margin-left: var(--sidebar-width);
+      padding: 40px 52px 64px;
+      max-width: 1440px;
+      transition: margin-left var(--transition-normal);
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    /* Header Container */
+    .content-header {
+      padding-bottom: 24px;
+      border-bottom: 2px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .eyebrow-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .eyebrow {
+      color: var(--color-primary);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .artifact-title {
+      font-size: clamp(2rem, 3.5vw, 2.75rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .lede {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      max-width: 800px;
+      line-height: 1.6;
+    }
+
+    /* Standardized Card Grid (Stats Dashboard) */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+
+    .stat-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+      overflow: hidden;
+      transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--color-primary);
+      opacity: 0;
+      transition: opacity var(--transition-fast);
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .stat-card:hover::before {
+      opacity: 1;
+    }
+
+    .stat-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
+    .stat-value {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      line-height: 1.1;
+    }
+
+    .stat-desc {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    /* Content Sections styling */
+    .section-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 32px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: relative;
+    }
+
+    .section-title::after {
+      content: '';
+      position: absolute;
+      bottom: -6px;
+      left: 0;
+      width: 40px;
+      height: 3px;
+      background-color: var(--color-primary);
+      border-radius: 9999px;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      line-height: 1;
+    }
+
+    .badge-primary {
+      background-color: var(--color-primary-subtle);
+      color: var(--color-primary);
+    }
+
+    .badge-success {
+      background-color: var(--color-success-subtle);
+      color: var(--color-success-text);
+    }
+
+    .badge-warning {
+      background-color: var(--color-warning-subtle);
+      color: var(--color-warning-text);
+    }
+
+    .badge-danger {
+      background-color: var(--color-danger-subtle);
+      color: var(--color-danger-text);
+    }
+
+    /* Callouts & Alerts */
+    .callout {
+      display: flex;
+      gap: 16px;
+      padding: 18px 20px;
+      border-radius: var(--radius-md);
+      border-left: 4px solid var(--border-color);
+      background-color: var(--bg-surface-hover);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .callout-icon {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .callout-icon svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .callout-body {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .callout-body strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .callout-info {
+      border-left-color: var(--color-accent);
+      background-color: var(--color-accent-subtle);
+      color: var(--text-secondary);
+    }
+
+    .callout-info .callout-icon {
+      color: var(--color-accent);
+    }
+
+    .callout-success {
+      border-left-color: var(--color-success);
+      background-color: var(--color-success-subtle);
+      color: var(--color-success-text);
+    }
+
+    .callout-success .callout-icon {
+      color: var(--color-success);
+    }
+
+    .callout-warning {
+      border-left-color: var(--color-warning);
+      background-color: var(--color-warning-subtle);
+      color: var(--color-warning-text);
+    }
+
+    .callout-warning .callout-icon {
+      color: var(--color-warning);
+    }
+
+    .callout-danger {
+      border-left-color: var(--color-danger);
+      background-color: var(--color-danger-subtle);
+      color: var(--color-danger-text);
+    }
+
+    .callout-danger .callout-icon {
+      color: var(--color-danger);
+    }
+
+    /* Interactive Tabs Component */
+    .tabs-container {
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background-color: var(--bg-surface);
+    }
+
+    .tabs-header {
+      display: flex;
+      background-color: var(--bg-surface-hover);
+      border-bottom: 1px solid var(--border-color);
+      padding: 8px 8px 0;
+      gap: 4px;
+    }
+
+    .tab-btn {
+      padding: 10px 18px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: none;
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-top-left-radius: var(--radius-sm);
+      border-top-right-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background-color var(--transition-fast), color var(--transition-fast);
+      outline: none;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-primary);
+      background-color: var(--bg-surface-muted);
+    }
+
+    .tab-btn.active {
+      color: var(--color-primary);
+      background-color: var(--bg-surface);
+      border-color: var(--border-color);
+      border-bottom-color: var(--bg-surface);
+      margin-bottom: -1px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .tabs-body {
+      padding: 24px;
+    }
+
+    .tab-panel {
+      display: none;
+      animation: fadeIn var(--transition-normal) forwards;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Content Typography Details */
+    .section-card p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    /* Data Tables */
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-sm);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background-color: var(--bg-surface-hover);
+      color: var(--text-primary);
+      font-weight: 600;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      vertical-align: middle;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background-color: var(--bg-surface-hover);
+    }
+
+    /* Accordions / Details Container */
+    .accordion {
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .accordion-item {
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .accordion-item:last-child {
+      border-bottom: none;
+    }
+
+    .accordion-summary {
+      padding: 16px 20px;
+      background-color: var(--bg-surface);
+      color: var(--text-primary);
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      list-style: none;
+      transition: background-color var(--transition-fast);
+    }
+
+    .accordion-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .accordion-summary:hover {
+      background-color: var(--bg-surface-hover);
+    }
+
+    .accordion-icon {
+      width: 20px;
+      height: 20px;
+      transition: transform var(--transition-normal);
+      color: var(--text-muted);
+    }
+
+    details[open] .accordion-summary {
+      background-color: var(--bg-surface-hover);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    details[open] .accordion-icon {
+      transform: rotate(180deg);
+    }
+
+    .accordion-content {
+      padding: 20px;
+      background-color: var(--bg-surface);
+      color: var(--text-secondary);
+    }
+
+    /* Code Blocks */
+    .code-block-wrapper {
+      border: 1px solid var(--code-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .code-block-header {
+      background-color: #1e293b;
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #0f172a;
+    }
+
+    .code-block-filename {
+      color: #cbd5e1;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .code-copy-btn {
+      background: none;
+      border: 1px solid #475569;
+      border-radius: var(--radius-sm);
+      color: #94a3b8;
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+    }
+
+    .code-copy-btn:hover {
+      background-color: #334155;
+      color: #f8fafc;
+      border-color: #cbd5e1;
+    }
+
+    .code-copy-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    pre {
+      margin: 0;
+      padding: 16px 20px;
+      background-color: var(--code-bg);
+      color: var(--code-text);
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.88rem;
+    }
+
+    code {
+      font-family: inherit;
+    }
+
+    /* Basic Syntax Classes for templates */
+    .token-keyword { color: #f43f5e; font-weight: 600; }
+    .token-string { color: #10b981; }
+    .token-comment { color: #64748b; font-style: italic; }
+    .token-function { color: #60a5fa; }
+    .token-number { color: #fb923c; }
+
+    /* SVG Flowchart styling */
+    .svg-container {
+      width: 100%;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      background-color: var(--bg-surface-hover);
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow-x: auto;
+    }
+
+    .flow-svg {
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .flow-node {
+      fill: var(--bg-surface);
+      stroke: var(--border-color);
+      stroke-width: 1.5px;
+      transition: stroke var(--transition-fast), filter var(--transition-fast);
+    }
+
+    .flow-node:hover {
+      stroke: var(--color-primary);
+      filter: drop-shadow(0 4px 6px rgba(var(--color-primary-rgb), 0.15));
+    }
+
+    .flow-node-primary {
+      fill: var(--color-primary-subtle);
+      stroke: var(--color-primary);
+    }
+
+    .flow-text {
+      font-size: 12px;
+      font-weight: 600;
+      fill: var(--text-primary);
+      pointer-events: none;
+      text-anchor: middle;
+    }
+
+    .flow-text-sub {
+      font-size: 10px;
+      font-weight: 400;
+      fill: var(--text-muted);
+    }
+
+    .flow-arrow {
+      stroke: var(--text-subtle);
+      stroke-width: 2px;
+      fill: none;
+      marker-end: url(#arrowhead);
+    }
+
+    /* Next Actions container with interactive console controls */
+    .console-actions-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding: 16px;
+      background-color: var(--bg-surface-hover);
+      border-radius: var(--radius-md) var(--radius-md) 0 0;
+      border: 1px solid var(--border-color);
+      border-bottom: none;
+    }
+
+    .actions-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .console-copy-btn {
+      background-color: var(--color-primary);
+      color: white;
+      border: 1px solid var(--color-primary);
+      border-radius: var(--radius-sm);
+      padding: 8px 16px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background-color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+    }
+
+    .console-copy-btn:hover {
+      background-color: var(--color-primary-hover);
+      border-color: var(--color-primary-hover);
+      transform: translateY(-1px);
+    }
+
+    .console-copy-btn:active {
+      transform: translateY(0);
+    }
+
+    .toast-status {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--color-success-text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .toast-status.show {
+      opacity: 1;
+    }
+
+    /* Collapsed Sidebar CSS Adjustments */
+    .app-layout.sidebar-collapsed .sidebar {
+      width: var(--sidebar-collapsed-width);
+    }
+
+    .app-layout.sidebar-collapsed .sidebar-title,
+    .app-layout.sidebar-collapsed .sidebar-meta,
+    .app-layout.sidebar-collapsed .nav-text {
+      opacity: 0;
+      pointer-events: none;
+      width: 0;
+      display: none;
+    }
+
+    .app-layout.sidebar-collapsed .main-wrapper {
+      margin-left: var(--sidebar-collapsed-width);
+    }
+
+    .app-layout.sidebar-collapsed .nav-item {
+      justify-content: center;
+      padding: 10px;
+    }
+
+    /* Mobile Adaptations */
+    @media (max-width: 768px) {
+      .sidebar {
+        transform: translateX(-100%);
+        width: var(--sidebar-width) !important;
+      }
+
+      .app-layout.sidebar-mobile-open .sidebar {
+        transform: translateX(0);
+      }
+
+      .main-wrapper {
+        margin-left: 0 !important;
+        padding: 24px 20px 48px;
+      }
+
+      /* Mobile Sticky Header Bar */
+      .mobile-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 20px;
+        background-color: var(--bg-surface);
+        border-bottom: 1px solid var(--border-color);
+        position: sticky;
+        top: 0;
+        z-index: 90;
+      }
+
+      .mobile-menu-btn {
+        background: none;
+        border: none;
+        color: var(--text-primary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .mobile-menu-btn svg {
+        width: 24px;
+        height: 24px;
+      }
+    }
+
+    @media (min-width: 769px) {
+      .mobile-header {
+        display: none;
+      }
+    }
+  
+:root{--color-primary:#25685b;--color-primary-hover:#195247;--color-primary-subtle:#e5f3ee;--color-primary-rgb:37,104,91;--sidebar-width:270px}
+.dark{--color-primary:#80c8b5;--color-primary-subtle:#193b33;--color-primary-hover:#a5e5d4}
+html{scroll-behavior:smooth}body{margin:0;background:var(--bg-primary);color:var(--text-primary);font-size:15px;line-height:1.8}
+.app-layout{display:grid;grid-template-columns:270px minmax(0,1fr)}.sidebar{position:sticky;top:0;height:100vh;width:auto;overflow:auto;padding:25px 16px;border-right:1px solid var(--border-color);background:var(--bg-surface)}
+.main-wrapper{margin:0;padding:36px clamp(18px,4vw,64px);max-width:1240px;min-width:0;width:100%}.sidebar-nav{display:grid;padding:0;gap:5px}.nav-item{display:block;white-space:normal;line-height:1.5;padding:9px 12px;font-size:13px}.nav-item.active{background:var(--color-primary-subtle);color:var(--color-primary)}
+.brand{font-size:21px;font-weight:750;letter-spacing:-.03em;margin-bottom:8px}.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--color-primary);font-weight:700}.meta{font-size:12px;color:var(--text-muted)}h1{font-size:clamp(28px,4vw,44px);line-height:1.2;letter-spacing:-.04em;margin:12px 0 18px}h2{font-size:24px;line-height:1.4;margin:0 0 20px;letter-spacing:-.02em}p{margin:14px 0;overflow-wrap:anywhere}code{overflow-wrap:anywhere}pre code{overflow-wrap:normal}pre{white-space:pre;overflow:auto;font-size:12px;line-height:1.7;padding:20px;color:var(--code-text);background:var(--code-bg);margin:0}
+.section-card{margin:28px 0;padding:28px;scroll-margin-top:20px;border:1px solid var(--border-color);border-radius:12px;background:var(--bg-surface);min-width:0}.stats-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:24px 0}.stat-card{padding:18px;background:var(--bg-surface);border:1px solid var(--border-color);border-radius:10px}.stat-value{font-size:30px;font-weight:700;line-height:1.2}.stat-title{font-size:12px;color:var(--text-muted)}.stat-desc{font-size:13px}.callout{display:block;border-left:4px solid var(--color-primary);padding:14px 18px;background:var(--color-primary-subtle);margin:20px 0}.unresolved{font-size:11px;line-height:1.5;color:var(--text-muted);overflow-wrap:anywhere}.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}button,.button{font:inherit;font-size:13px;padding:8px 12px;border:1px solid var(--border-color);border-radius:7px;background:var(--bg-surface);color:var(--text-primary);cursor:pointer;text-decoration:none}button:hover,.button:hover{background:var(--bg-surface-hover)}button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--color-primary);outline-offset:3px}.code-block-header{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:var(--bg-surface-muted)}.code-block-wrapper{overflow:hidden;border-radius:8px;border:1px solid var(--border-color);margin:18px 0}.table-scroll{overflow-x:auto;max-width:100%;margin:18px 0}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:12px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--border-color);min-width:110px}th{background:var(--bg-surface-hover)}.flow{width:100%;height:auto;min-width:560px}.diagram-scroll{overflow-x:auto}.flow rect{fill:var(--bg-surface-hover);stroke:var(--border-color)}.flow text{fill:var(--text-primary);font-size:15px}.flow .sub{font-size:12px;fill:var(--text-secondary)}.flow path{stroke:var(--color-primary);stroke-width:2;fill:none}.step{color:var(--color-primary);font-weight:700}.hash{word-break:break-all;font-size:11px}summary{cursor:pointer;font-weight:650}details{padding:15px 0}.status{min-height:24px;font-size:12px;color:var(--color-primary)}.skip-link{position:absolute;left:-10000px}.skip-link:focus{left:10px;top:10px;z-index:100;background:var(--bg-surface);padding:12px}
+@media(max-width:800px){.app-layout{display:block}.sidebar{position:static;height:auto;border-right:0;border-bottom:1px solid var(--border-color);padding:16px}.sidebar-nav{display:flex;overflow-x:auto;gap:4px}.nav-item{flex:0 0 155px}.main-wrapper{padding:24px 14px}.section-card{padding:18px;margin:20px 0}.stats-grid{gap:7px}.stat-card{padding:13px 10px}.stat-value{font-size:24px}h2{font-size:21px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}@media print{.sidebar,.toolbar,.copy,.status{display:none}.app-layout{display:block}.main-wrapper{max-width:none;padding:0}.section-card{break-inside:auto;border:0}.table-scroll,pre{overflow:visible;white-space:pre-wrap}.stats-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:800px){.sidebar{transform:none;width:100%!important;min-height:0;max-height:none}.sidebar-nav{flex-direction:row;flex-wrap:nowrap;max-height:none;overflow-x:auto;overflow-y:hidden}.nav-item{flex-shrink:0}.sidebar .brand{margin-bottom:4px}.sidebar p{margin:6px 0 12px}}
+.flow .sub{font-size:10px}
+@media(max-width:800px){.stat-value{font-size:20px;overflow-wrap:anywhere}}
+</style></head>
+<body><a class="skip-link" href="#main">본문 바로가기</a><div class="app-layout"><aside class="sidebar"><div class="brand">PR Search<span style="color:var(--color-primary)"> / </span>Research</div><p class="meta">2026.09.17 · 원문 + 구현 검토<br>CR-102 · 제안 단계</p><nav class="sidebar-nav" aria-label="보고서 목차"><a class="nav-item" href="#overview">핵심 판단</a><a class="nav-item" href="#implementation">구현 순서와 검토</a><a class="nav-item" href="#report-1">결론</a>
+<a class="nav-item" href="#report-2">현재 pr-search와 요구사항의 일치도</a>
+<a class="nav-item" href="#report-3">식별자 모델은 이렇게 정리하는 것이 좋다</a>
+<a class="nav-item" href="#report-4">Regression Workbench로 발전시키는 것이 핵심이다</a>
+<a class="nav-item" href="#report-5">장비·필드 시험과 MTBF에도 적용할 수 있는가</a>
+<a class="nav-item" href="#report-6">CI/CD, Binary Artifact, MDVP 연계 설계</a>
+<a class="nav-item" href="#report-7">실제 개발 순서와 수용 기준</a>
+<a class="nav-item" href="#report-8">최종 권고</a><a class="nav-item" href="#sources">출처와 원문 보존</a></nav></aside>
+<main class="main-wrapper" id="main"><header id="overview"><div class="eyebrow">Engineering research / Regression investigation</div><h1>P4식 Regression Search를<br>PR Search 위에 구현하기</h1><p>first-parent <code>merge_seq</code>를 기준으로, 시험할 binary를 찾고 관측 결과를 기록해 원인 구간을 좁힌다.</p><div class="stats-grid"><div class="stat-card"><div class="stat-title">시험 결과 모델 · 제안</div><div class="stat-value">4</div><div class="stat-desc">PASS · FAIL · SKIP · INCONCLUSIVE</div></div><div class="stat-card"><div class="stat-title">원문 개발 순서</div><div class="stat-value">7단계</div><div class="stat-desc">계약부터 운영 검증까지</div></div><div class="stat-card"><div class="stat-title">원문 수용 시나리오</div><div class="stat-value">10개</div><div class="stat-desc">직접 푸시 · 에폭 · 누락 binary</div></div></div><div class="callout"><strong>기존 bisect를 재사용하는 확장 제안입니다.</strong><br>아래 원문에는 연구 당시의 판단과 예시가 포함됩니다. 신규 기능은 구현 완료나 승인된 baseline이 아닙니다. 현재 계약 대조와 작업 분해는 CR-102 구현 계획에 기록했습니다.</div><div class="toolbar"><button type="button" id="theme" aria-pressed="false">다크 테마</button><button type="button" id="download">원문 Markdown 다운로드</button><button type="button" id="print">인쇄 / PDF</button><a class="button" href="pr_search_regression_implementation_plan.md">구현 계획 열기</a></div><div id="status" class="status" role="status" aria-live="polite"></div></header>
+<section class="section-card" id="implementation"><div class="eyebrow">추가 분석 · 원문과 구분</div><h2>구현 순서와 중요한 보완점</h2><div class="diagram-scroll"><svg class="flow" viewBox="0 0 820 210" role="img" aria-labelledby="flow-title flow-desc"><title id="flow-title">Regression 조사 흐름</title><desc id="flow-desc">Git 이력에서 revision과 artifact를 연결하고 외부 장비에서 시험한 관측을 bisect에 반영해 다음 후보를 선택합니다.</desc><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8"/></marker></defs><rect x="10" y="20" width="175" height="70" rx="8"/><text x="28" y="47">Git first-parent</text><text class="sub" x="28" y="70">space + epoch + merge_seq</text><path d="M185 55H215" marker-end="url(#arrow)"/><rect x="225" y="20" width="170" height="70" rx="8"/><text x="241" y="47">Artifact manifest</text><text class="sub" x="241" y="70">full SHA · digest · variant</text><path d="M395 55H425" marker-end="url(#arrow)"/><rect x="435" y="20" width="170" height="70" rx="8"/><text x="452" y="47">외부 장비 / 사람</text><text class="sub" x="452" y="70">실제 시험 실행</text><path d="M605 55H635" marker-end="url(#arrow)"/><rect x="645" y="20" width="165" height="70" rx="8"/><text x="660" y="47">Observation</text><text class="sub" x="660" y="70">시험 조건 · verdict</text><path d="M725 90V155H395" marker-end="url(#arrow)"/><rect x="225" y="120" width="170" height="70" rx="8"/><text x="244" y="146">Bisect · 다음 후보</text><text class="sub" x="244" y="169">비확정이면 경계 보존</text><path d="M310 120V92" marker-end="url(#arrow)"/></svg></div>
+<div class="table-scroll"><table><thead><tr><th>순서</th><th>후속 작업 후보</th><th>확인할 조건</th></tr></thead><tbody><tr><td class="step">R0</td><td>요구사항·계약 정합화</td><td>범위·보존 결정, 직접 커밋 결과의 SRS 표현 정정</td></tr><tr><td class="step">R1 → R2</td><td>수동 관측 → SKIP/INCONCLUSIVE</td><td>이력·멱등·소유권·경계 보존</td></tr><tr><td class="step">R3 → R4</td><td>manifest → binary 기반 후보</td><td>다중 build, 미채번 pending, 누락 원인 후보 보존</td></tr><tr><td class="step">R5 → R6</td><td>Workbench → 수동 pilot</td><td>기존 권한·영어 UI·접근성·실제 시험 기록</td></tr><tr><td class="step">R7 / R8</td><td>MDVP / MTBF 조건부 확장</td><td>사내 adapter 계약 / 통계 시험 계획 확정 후</td></tr></tbody></table></div>
+<details open><summary>현재 코드와 대조해 보완한 네 가지</summary><p>① 현행 M 표기는 <code>M-1900-1</code> 형식입니다. 원문의 <code>M-8123</code>은 설명용 약식입니다.</p><p>② 현재 bisect는 서수 값 중간에 가까운 커밋을 고릅니다. sparse 시험 통과를 artifact별 균등 탐색이나 정확히 8회 수렴 보장으로 해석할 수 없습니다.</p><p>③ SKIP과 binary 누락은 시험 대상을 줄여도 원인 후보를 없애지 않습니다. 증거가 없으면 단일 원인 대신 미확정 구간을 반환해야 합니다.</p><p>④ MTBF의 고정시점 신뢰구간을 반복 확인해 유리할 때 중단하는 정책은 별도 검증이 필요합니다. 통계 모델과 중단 규칙이 정해지기 전 자동 경계 축소는 후속 계획으로 둡니다.</p></details><p class="meta">분석 기준 HEAD: 2a4f37e · 기존 SRS 유지 · 원문 아래 8개 절 전문 수록</p></section>
+<section class="section-card report-section" id="report-1"><h2>결론</h2><p>2026년 9월 17일 기준 <code>89sooner/pr-search</code>의 현재 <code>main</code>을 확인한 결과, 팀장님이 제안한 방향은 “앞으로 새로 설계해야 할 아이디어”라기보다 이미 상당 부분 저장소의 핵심 아키텍처와 코드에 반영되어 있습니다. README 자체가 이 제품의 목적을 “커밋 SHA ↔ PR 양방향 검색”과 “Perforce Changelist를 대체하는 머지 시퀀스”라고 정의하고 있고, 구현 브리프는 시퀀스를 CI 이벤트 카운터가 아니라 <code>git rev-list --first-parent --reverse &lt;branch&gt;</code>로부터 도출하도록 명시합니다. PostgreSQL이 정본이고 Elasticsearch는 재생성 가능한 조회용 파생 뷰라는 원칙도 이미 잡혀 있습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn3file0L1-L2]</small> <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn4file0L1-L2]</small></p>
+<p>더 중요한 점은 이분 탐색도 이미 <code>WP-042</code>로 구현 완료된 상태라는 것입니다. 현재 API는 사용자별 bisect session을 저장하고, <code>good</code>/<code>bad</code>를 기록하면 다음 중간 후보를 계산하며, contradiction, sequence epoch 변경, direct-push commit, 동시 mark 같은 경계 조건까지 통합 테스트하고 있습니다. 로드맵에는 <code>WP-042</code>가 2026년 9월 9일 완료되었다고 기록되어 있습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn10file1L29-L36]</small> <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn7file0L1-L2]</small></p>
+<p>따라서 제가 권고하는 방향은 “CI에서 또 하나의 독립적인 counter를 새로 만드는 것”이 아닙니다. 현재의 graph-derived <code>merge_seq</code>를 regression의 canonical revision으로 확정하고, 그 위에 사람이 보기 좋은 Integration ID, artifact, 장비 시험 결과, <code>SKIP/INCONCLUSIVE</code>, MTBF 판정 계층을 얹는 것이 가장 안전합니다. GitHub Actions의 <code>GITHUB_RUN_NUMBER</code>는 저장소 전체 통합 순서가 아니라 “특정 workflow의 실행 횟수”이므로 P4 CL 대용으로 사용하기에도 적합하지 않습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn1search9]</small></p>
+<p>특히 하나는 지금 정리해야 합니다. 현재 pr-search에는 서로 다른 개념이 있습니다.</p>
+<div class="table-scroll"><table><thead><tr><th scope="col">개념</th><th scope="col">현재 의미</th><th scope="col">Regression 기준으로 적합한가</th></tr></thead><tbody><tr><td>PR <code>#548</code></td><td>리뷰/개발 단위</td><td>아니오</td></tr><tr><td><code>commit_sha</code></td><td>정확한 Git revision</td><td>예, 다만 사람이 읽기 어려움</td></tr><tr><td><code>merge_seq</code></td><td><code>(repository, base_branch)</code>의 first-parent commit 순서. direct push도 포함</td><td>가장 적합</td></tr><tr><td>현재 <code>M number</code> / <code>merge_number</code></td><td><code>merge_seq</code> 중 PR이 연결된 항목만 다시 조밀하게 센 번호</td><td>보조 식별자에는 좋지만 canonical regression key로는 부적합</td></tr><tr><td>Artifact ID</td><td>현재 요구사항에 필요한 실행 바이너리 식별</td><td>명시적 확장이 필요</td></tr></tbody></table></div>
+<p>현재 용어집은 <code>merge_seq</code>가 first-parent의 모든 커밋을 세고 direct push도 포함한다고 정의하는 반면, <code>M number</code>는 PR이 연결된 항목만 별도로 센다고 구분합니다. SRS도 direct push는 M 번호를 받거나 소비하지 않는다고 명시합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn17file2L43-L51]</small> <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn17file3L63-L70]</small></p>
+<p>즉 팀장님의 예시에서 말하는</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-1">예시 복사</button></div><pre id="code-1"><code>M-10521 PASS
+M-10580 FAIL
+→ M-10550 test</code></pre></div>
+<p>의 <code>M-10521</code>에 가장 가까운 현재 pr-search 내부 개념은 사실 <code>merge_number</code>가 아니라 <code>merge_seq</code>입니다.</p>
+<p>이 차이를 먼저 바로잡아야 이후 UI와 artifact 체계가 깔끔해집니다.</p></section>
+<section class="section-card report-section" id="report-2"><h2>현재 pr-search와 요구사항의 일치도</h2><p>pr-search의 현 설계는 팀장님이 말한 “PR 번호를 regression 순서로 쓰지 말자”는 방향과 매우 잘 맞습니다. 구현 브리프는 시퀀스의 정본을 webhook 도착 순서가 아닌 Git first-parent history로 두며, 시퀀스 값은 항상 sequence space와 epoch를 함께 다루도록 요구합니다. 웹훅 순서 counter를 금지하는 이유도 “언제든 실제 Git과 대조 검증할 수 있어야 하기 때문”입니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn4file0L1-L2]</small></p>
+<p>이 결정은 Git의 성질에도 맞습니다. GitHub의 squash merge는 PR의 여러 커밋을 하나의 commit으로 합쳐 base branch에 반영하므로, “PR 하나 = main의 논리적 integration commit 하나”라는 모델을 만들기에 적합합니다. 반대로 rebase-and-merge는 PR 내부 커밋들을 각각 base에 다시 작성하므로 regression용 integration 단위를 PR과 1:1로 보려는 환경에는 덜 적합합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn1search1turn1search7]</small></p>
+<p>Git 자체도 regression을 위해 <code>git bisect</code>를 제공하며, 알려진 good commit과 bad commit 사이에서 중간 commit을 선택하고 결과에 따라 범위를 반복적으로 절반 가까이 줄입니다. 테스트 자동화는 필수가 아닙니다. 사람이 장비를 돌리고 결과를 본 뒤 <code>git bisect good</code> 또는 <code>git bisect bad</code>를 입력해도 됩니다. 테스트가 불가능한 revision에는 <code>git bisect skip</code>도 사용할 수 있습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn0search0turn0search1]</small></p>
+<p>또 Git은 <code>git bisect --first-parent</code>도 직접 지원합니다. merge가 regression을 유입한 경우 first-parent만 따라가며 merge 지점을 찾도록 할 수 있어서, “integration history를 중심으로 regression을 찾는다”는 현재 pr-search의 모델과 방향이 같습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn0search0]</small></p>
+<p>P4와 비교해도 개념적으로 맞습니다. Perforce의 submitted changelist 번호는 시간에 따라 증가하는 ordinal이지만 반드시 연속적일 필요는 없습니다. 즉 P4의 중요한 UX는 “숫자가 빈틈없이 증가한다”기보다 “제출된 integration의 시간 순서를 사람이 즉시 이해할 수 있는 증가 숫자로 표현한다”는 데 있습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn2search2turn2search9]</small></p>
+<p>현재 구현 상태를 요구사항별로 평가하면 다음과 같습니다.</p>
+<div class="table-scroll"><table><thead><tr><th scope="col">팀장 요구</th><th scope="col">현재 pr-search</th><th scope="col">판단</th></tr></thead><tbody><tr><td>PR 번호가 아닌 main/release history 기준</td><td>first-parent <code>merge_seq</code></td><td>이미 구현</td></tr><tr><td>P4 CL 같은 인간 친화적 순서 번호</td><td><code>merge_seq</code> + 별도 <code>M number</code></td><td>구현됐으나 이름/용도가 혼동 가능</td></tr><tr><td>SHA ↔ PR 매핑</td><td>제품의 핵심 기능으로 정의</td><td>이미 구현</td></tr><tr><td>PASS/FAIL binary search</td><td><code>API-SEQ-005</code>, <code>bisect_session</code></td><td>이미 구현</td></tr><tr><td>다음 midpoint 자동 제시</td><td><code>remaining</code>, <code>estimated_steps</code>, <code>next</code></td><td>이미 구현</td></tr><tr><td>장비 시험을 사람이 수행</td><td>실제 build/test는 외부로 둔 설계</td><td>현재 구조와 잘 맞음</td></tr><tr><td>test 불가능 revision skip</td><td>현재 API는 `good</td><td>bad` 중심</td><td>보완 필요</td></tr><tr><td>Binary artifact ↔ sequence 추적</td><td>sequence 모델에는 직접 포함되지 않음</td><td>확장 필요</td></tr><tr><td>MTBF 같은 확률적 verdict</td><td>현재 good/bad 모델로는 부족</td><td>확장 필요</td></tr><tr><td>MDVP 연계</td><td>공개/저장소 자료에서 확인 불가</td><td>사내 adapter 필요</td></tr></tbody></table></div>
+<p>현재 제품 요구사항에서도 bisect 기능은 “good/bad 표시에 따라 다음 후보 중앙값을 제시”하는 기능이고 실제 build/test 실행은 범위 밖으로 정의돼 있습니다. 이는 오히려 modem 장비/field test 환경과 잘 맞는 분리입니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn15file1L14-L24]</small></p>
+<p>API도 이미 서버 측 상태를 갖습니다. 현재 계약은 <code>GET /bisect-sessions</code>로 개인 세션을 복구하고, <code>POST</code>의 <code>start</code>로 범위를 생성하며, <code>mark</code>에서 <code>good</code>이면 lower bound를 올리고 <code>bad</code>이면 upper bound를 내리는 구조입니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn20file1L12-L23]</small></p>
+<p>통합 테스트에는 sparse sequence <code>[1, 2, 5, 8, 9]</code>에서 <code>1 good / 9 bad → 5 → 2 → culprit 5</code>로 좁혀지는 경우, 사용자 간 세션 격리, contradiction 409, epoch stale, PR이 없는 direct-push commit으로의 수렴, concurrent mark가 범위를 다시 넓히지 않는 것까지 들어가 있습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn7file0L1-L2]</small></p>
+<p>UI 설계도 이미 <code>idle</code>, <code>loading</code>, <code>in_progress</code>, <code>converged</code>, <code>bisect_contradiction</code>, <code>epoch_stale</code> 등의 상태와 <code>remaining</code>, <code>estimated_steps</code>, <code>next</code> 표시를 정의합니다. 따라서 핵심 engine을 다시 만드는 것보다 실제 modem regression workflow에 맞게 이 기능을 전면에 드러내는 작업이 더 중요합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn20file0L3-L10]</small></p></section>
+<section class="section-card report-section" id="report-3"><h2>식별자 모델은 이렇게 정리하는 것이 좋다</h2><p>현재 저장소에서 가장 중요한 설계 판단은 <code>merge_seq</code>와 <code>M number</code>를 혼동하지 않는 것입니다.</p>
+<p>현재 <code>merge_seq</code>는 Git history를 나타냅니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-2">예시 복사</button></div><pre id="code-2"><code>repo = modem/sw
+branch = main
+epoch = 1
+
+merge_seq   SHA        PR
+--------------------------------
+10521       a91bc21    #521
+10522       b12de43    #535
+10523       c81fa22    -
+10524       d71be10    #548
+10525       e29cd11    #530</code></pre></div>
+<p>여기서 <code>c81fa22</code>가 emergency direct push라고 해도 <code>merge_seq=10523</code>은 존재합니다. 이 성질이 regression에는 매우 중요합니다. 실제 main 상태가 바뀌었기 때문입니다. pr-search 용어집도 <code>merge_seq</code>가 direct push를 포함한다고 정의합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn17file2L43-L51]</small></p>
+<p>반면 현재 <code>M number</code>는 다음처럼 될 수 있습니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-3">예시 복사</button></div><pre id="code-3"><code>merge_seq   M number   SHA        PR
+----------------------------------------
+10521       M-8121     a91bc21    #521
+10522       M-8122     b12de43    #535
+10523       -          c81fa22    direct push
+10524       M-8123     d71be10    #548
+10525       M-8124     e29cd11    #530</code></pre></div>
+<p>실제로 현재 release validation plan은 direct push가 M number를 받지도, 번호를 소비하지도 않아야 한다고 검증합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn17file0L1-L12]</small></p>
+<p>이것은 PR 목록에서 “몇 번째 PR integration인가”를 보여주는 데는 좋은 번호입니다. 그러나 regression 기준으로 쓰면 좋지 않습니다. direct push가 장애를 만들었는데 M 번호 공간에는 그 revision 자체가 없을 수 있기 때문입니다.</p>
+<p>따라서 권고안은 다음과 같습니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-4">예시 복사</button></div><pre id="code-4"><code>개발/리뷰              PR #548
+정확한 revision        d71be10...
+Regression revision    main / E1 / S-10524
+PR 친화 번호           M-8123      (필요하다면 유지)
+Binary                 SMP1900-main-E1-S10524-d71be10.bin</code></pre></div>
+<p>사용자들이 P4식으로 <code>M-10524</code>라는 이름을 반드시 원한다면 두 가지 방법이 있는데, 저는 첫 번째를 권합니다.</p>
+<p>첫째, 현재 <code>merge_seq</code>에 사람이 읽을 수 있는 display prefix만 씌웁니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-5">예시 복사</button></div><pre id="code-5"><code>Integration Seq: I-10524
+또는
+Regression Seq: R-10524</code></pre></div>
+<p>DB에는 기존 <code>merge_seq=10524</code> 그대로 저장합니다. 새 counter가 없습니다.</p>
+<p>둘째, 조직에서 <code>M</code>이라는 글자가 반드시 P4 CL 역할을 의미해야 한다면, 현재 PR-only <code>M number</code>의 이름을 바꾸고 <code>M-10524</code>를 <code>merge_seq</code>의 presentation으로 재정의할 수 있습니다. 다만 현재 SRS와 데이터 모델에서 M number의 의미가 이미 명확하게 정의되어 있으므로 이는 단순 UI 변경이 아니라 CR을 통해 요구사항/ADR/API/UI 계약을 함께 바꿔야 하는 변경입니다. 현재 <code>merge_number</code> 저장과 checkpoint인 <code>mnumber_head_seq</code>/<code>mnumber_head</code>도 별도로 존재합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn18file10L163-L174]</small></p>
+<p>저라면 후자를 하지 않고 아래처럼 명칭을 명확히 분리합니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-6">예시 복사</button></div><pre id="code-6"><code>PR #548
+M-8123       ← PR integration ordinal
+I-10524      ← actual integration / regression ordinal
+d71be10      ← Git truth</code></pre></div>
+<p>그리고 Regression 화면에서는 M 번호보다 I 번호를 앞에 둡니다.</p>
+<p>또 <code>(repository, branch)</code>를 반드시 표시해야 합니다. 현재 pr-search가 sequence space를 <code>(repository, base_branch)</code> 단위로 둔 것은 맞는 결정입니다. <code>main:I-10524</code>와 <code>release/26A:I-10524</code>는 같은 revision 번호가 아니기 때문입니다. 실행 브리프도 시퀀스 값을 <code>seq_epoch</code>, <code>sequence_space</code> 없이 단독 저장·전달·표시하는 것을 금지합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn4file0L1-L2]</small></p>
+<p>실제 UI 표기는 다음 정도가 적당합니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-7">예시 복사</button></div><pre id="code-7"><code>modem/sw · main · E1 · I-10524
+PR #548 · d71be10</code></pre></div>
+<p>history rewrite도 이 모델에서는 처리할 수 있습니다. Git history가 바뀌면 이전 ordinal의 의미가 변할 수 있으므로 pr-search는 epoch를 올리고 기존 값의 stale 여부를 표현하도록 이미 설계되어 있습니다. 이것은 P4 CL과 Git sequence 사이의 본질적인 차이를 제대로 처리한 부분입니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn4file0L1-L2]</small></p></section>
+<section class="section-card report-section" id="report-4"><h2>Regression Workbench로 발전시키는 것이 핵심이다</h2><p>현재 bisect backend를 다시 구현할 필요는 없습니다. <code>W-004</code> 계열의 range investigation과 현재 bisect 기능을 “Regression Workbench”로 강화하는 쪽이 효과가 큽니다.</p>
+<p>제가 추천하는 최종 화면은 다음과 같습니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-8">예시 복사</button></div><pre id="code-8"><code>Regression Search
+Repository   modem/sw
+Branch       main
+Sequence     E1
+
+Known PASS   I-10521   a91bc21   #521   build available
+Known FAIL   I-10580   72fd110   #601   build available
+
+Candidate    I-10550   91c7aae   #570
+Artifact     SMP1900-main-E1-S10550-91c7aae.bin
+
+[ PASS ] [ FAIL ] [ INCONCLUSIVE ] [ SKIP ]
+
+Remaining candidates: 29
+Estimated tests: 5
+
+Timeline
+PASS                                          FAIL
+10521 ├──────────────●──────────────┤ 10580
+                    10550</code></pre></div>
+<p>현재 컴포넌트 계약 자체가 <code>remaining</code>, <code>estimated_steps</code>, <code>next</code>를 정본으로 사용하기 때문에 이 형태로의 발전은 기존 설계와 충돌하지 않습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn20file0L3-L10]</small></p>
+<p>여기에서 가장 먼저 추가할 기능은 <code>SKIP</code>과 <code>INCONCLUSIVE</code>입니다. Git 자체는 test할 수 없는 revision을 <code>git bisect skip</code>으로 처리할 수 있고, 여러 revision을 skip할 수도 있습니다. 다만 culprit 바로 주변을 skip하면 Git도 최초 bad revision을 단일 commit으로 특정하지 못할 수 있다고 명시합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn0search0]</small></p>
+<p>현재 pr-search API 계약은 <code>verdict: &quot;good&quot; | &quot;bad&quot;</code>이므로 이 부분이 실제 장비 환경과 비교했을 때 가장 분명한 기능 gap입니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn20file1L12-L23]</small></p>
+<p>단, <code>SKIP</code>과 <code>INCONCLUSIVE</code>는 의미가 달라야 합니다.</p>
+<div class="table-scroll"><table><thead><tr><th scope="col">결과</th><th scope="col">의미</th><th scope="col">탐색 범위</th></tr></thead><tbody><tr><td>PASS</td><td>이 revision에서는 대상 regression이 없음</td><td>lower bound를 올림</td></tr><tr><td>FAIL</td><td>대상 regression이 재현됨</td><td>upper bound를 내림</td></tr><tr><td>SKIP</td><td>build 불가, binary 없음, 장비 호환 불가 등 test 자체 불가능</td><td>bound를 움직이지 않고 다른 후보 선택</td></tr><tr><td>INCONCLUSIVE</td><td>시험했지만 통계/환경상 판정 불가</td><td>bound를 움직이지 않고 재시험 가능 상태로 유지</td></tr></tbody></table></div>
+<p>현재처럼 <code>bisect_session</code>에 good/bad boundary만 두고 끝내기보다는 observation을 별도 저장하는 것이 좋습니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-9">예시 복사</button></div><pre id="code-9"><code>regression_observation
+----------------------
+session_id
+merge_seq
+commit_sha
+artifact_id
+verdict             PASS | FAIL | SKIP | INCONCLUSIVE
+failure_signature
+test_type
+device_id
+environment_id
+started_at
+ended_at
+runtime_seconds
+failure_count
+operator
+note
+result_uri</code></pre></div>
+<p>이렇게 해야 “어느 빌드를 어느 장비에서 누가 얼마나 오래 돌렸고 어떤 실패를 봤는가”가 남습니다.</p>
+<p>특히 binary regression에서는 commit보다 “testable artifact”가 더 현실적인 후보 집합일 수 있습니다. 모든 main commit에 binary를 영구 보관하지 않는 팀이라면 처음에는 존재하는 binary만 대상으로 bisection을 하는 것이 좋습니다.</p>
+<p>예를 들어:</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-10">예시 복사</button></div><pre id="code-10"><code>I-10520    binary O    PASS
+I-10521    binary X
+I-10522    binary X
+I-10523    binary O
+I-10524    binary X
+I-10525    binary O
+...
+I-10580    binary O    FAIL</code></pre></div>
+<p>첫 단계에서는 available artifact 집합을 대상으로 범위를 좁힙니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-11">예시 복사</button></div><pre id="code-11"><code>10520 → 10550 → 10565 → ...</code></pre></div>
+<p>그 결과 원인이 예를 들어 <code>(I-10543, I-10550]</code>까지 좁혀졌다면, 그때 10546 또는 10547의 targeted build를 생성해서 두 번째 단계 bisection을 할 수 있습니다.</p>
+<p>즉 embedded/modem에서는 다음의 2-stage bisect가 훨씬 현실적입니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-12">예시 복사</button></div><pre id="code-12"><code>Stage A
+기존 보관 binary로 coarse bisect
+
+Stage B
+좁혀진 구간의 missing midpoint만 재빌드하여 fine bisect</code></pre></div>
+<p>현재 pr-search 통합 테스트가 존재하는 sequence 값만 대상으로 sparse history에서 midpoint를 계산하는 동작까지 검증하고 있기 때문에, 이 아이디어는 현재 구현 모델과도 잘 맞습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn7file0L1-L2]</small></p>
+<p>그리고 로컬 개발자를 위한 기능으로 “Open in git bisect”를 제공할 수도 있습니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>bash</span><button type="button" class="copy" data-target="code-13">예시 복사</button></div><pre id="code-13"><code>git bisect start --first-parent &lt;bad_sha&gt; &lt;good_sha&gt;</code></pre></div>
+<p>실제 test가 script로 자동 판정될 수 있는 경우에는:</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>bash</span><button type="button" class="copy" data-target="code-14">예시 복사</button></div><pre id="code-14"><code>git bisect run ./regression-test.sh</code></pre></div>
+<p>로 전환할 수 있습니다. Git은 test command가 성공이면 0, bad이면 1~127 중 125를 제외한 값, test 불가이면 125를 반환하도록 정의하고 있습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn0search0]</small></p>
+<p>그러나 서버에서 실제 <code>git bisect</code> 프로세스를 실행할 필요는 없습니다. squash 기반의 선형 first-parent sequence에서는 지금처럼 DB에 있는 ordered sequence를 절반씩 줄이는 것이 장비/사람/웹 UI workflow에 훨씬 자연스럽습니다.</p></section>
+<section class="section-card report-section" id="report-5"><h2>장비·필드 시험과 MTBF에도 적용할 수 있는가</h2><p>장비나 field를 직접 돌려야 해서 test 자동화가 안 된다는 점은 <code>git bisect</code> 또는 pr-search의 bisect 사용을 막지 않습니다.</p>
+<p><code>git bisect</code>에서 자동화되는 것은 “어떤 revision을 다음에 검사할지”이지 “시험 자체를 반드시 프로그램이 해야 한다”는 것이 아닙니다. 공식 Git 문서의 기본 절차도 중간 revision을 checkout한 뒤 사용자가 compile/test하고 good 또는 bad를 입력하는 방식입니다. <code>git bisect run</code>은 추가적인 자동화 옵션일 뿐입니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn0search0]</small></p>
+<p>따라서 modem 환경에서는 다음과 같이 분리하면 됩니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-15">예시 복사</button></div><pre id="code-15"><code>pr-search
+  │
+  ├─ next candidate 결정
+  │    I-10550
+  │
+  ├─ 해당 binary / SHA / PR 정보 표시
+  │
+  ▼
+장비 / chamber / field / MTBF farm
+  │
+  ├─ 사람이 또는 외부 시스템이 test
+  │
+  ▼
+PASS / FAIL / SKIP / INCONCLUSIVE
+  │
+  └──────────────→ pr-search에 결과 기록
+                         │
+                         ▼
+                    next candidate</code></pre></div>
+<p>이 구조라면 test execution이 수 분이든 몇 시간이든 며칠이든 bisect engine과 결합되지 않습니다. 현재 pr-search도 실제 test execution을 범위 밖에 두고 다음 후보만 제시하도록 요구사항이 설정되어 있으므로 구조적으로 적합합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn15file1L14-L24]</small></p>
+<p>다만 MTBF는 일반 PASS/FAIL regression과는 다릅니다.</p>
+<p>MTBF는 한 번 실행했는데 crash가 없었다고 바로 PASS라고 할 수 있는 지표가 아닙니다. NIST의 HPP/exponential reliability model에서는 MTBF 추정치를 기본적으로</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-16">예시 복사</button></div><pre id="code-16"><code>MTBF estimate =
+total system operating time / number of failures</code></pre></div>
+<p>로 보고 confidence interval을 함께 계산합니다. 또한 특정 MTBF 목표를 특정 confidence로 입증하는 acceptance test는 상당한 시험 시간이 필요할 수 있습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn3search0turn3search2]</small></p>
+<p>NIST의 예를 보면 200시간 MTBF를 90% confidence로 확인하면서 failure를 하나도 허용하지 않는 경우에도 460시간의 test가 필요합니다. failure를 몇 건 허용하느냐에 따라 필요한 시험 시간은 더 늘어납니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn3search0]</small></p>
+<p>따라서 MTBF에 일반적인</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-17">예시 복사</button></div><pre id="code-17"><code>한번 돌림
+↓
+안 죽음
+↓
+PASS</code></pre></div>
+<p>를 적용해서 binary search하면 통계적 noise 때문에 잘못된 방향으로 범위를 줄일 가능성이 큽니다.</p>
+<p>MTBF용으로는 판정을 다음처럼 바꾸는 것이 맞습니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-18">예시 복사</button></div><pre id="code-18"><code>candidate I-10550
+
+observed device-hours = T
+failures              = r
+estimated MTBF        = T / r
+confidence interval   = [L, U]
+target MTBF           = M0
+
+if L &gt;= M0:
+    GOOD
+elif U &lt; M0:
+    BAD
+else:
+    INCONCLUSIVE</code></pre></div>
+<p>즉 confidence interval 전체가 목표 MTBF보다 위에 있으면 GOOD, 전체가 아래에 있으면 BAD, 목표를 가로지르면 시험 시간을 더 누적합니다. NIST는 HPP/exponential 모델에서 MTBF의 하한·상한 confidence bound 계산과 zero-failure 하한 계산을 제공하고 있습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn3search2]</small></p>
+<p>이를 pr-search에 직접 넣는다면 session에 다음 정도가 추가되면 됩니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-19">예시 복사</button></div><pre id="code-19"><code>test_mode       = &quot;mtbf&quot;
+target_mtbf     = 200h
+confidence      = 0.90
+total_run_time  = 84h
+failure_count   = 1
+lower_bound     = ...
+upper_bound     = ...
+verdict         = INCONCLUSIVE</code></pre></div>
+<p>다만 full MTBF qualification을 bisection의 모든 midpoint에서 수행하는 것은 현실적으로 너무 비쌀 가능성이 높습니다. 그래서 modem 팀에는 다음 절차를 권합니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-20">예시 복사</button></div><pre id="code-20"><code>빠른 screening regression
+        ↓
+일반 PASS/FAIL 또는 짧은 stress test로
+suspect range를 크게 축소
+        ↓
+2~4개 candidate로 좁아짐
+        ↓
+그 구간에서 반복/병렬 장비 test
+        ↓
+MTBF confidence 기반 판정
+        ↓
+culprit boundary 결정
+        ↓
+최종 candidate에 정식 MTBF qualification</code></pre></div>
+<p>즉 “MTBF도 binary search 가능한가?”에 대한 답은 “가능하지만 raw MTBF 값을 바로 good/bad로 쓰면 안 되고, 통계적 verdict layer가 필요하다”입니다.</p>
+<p>여러 장비를 동시에 돌리는 것도 모델의 가정이 성립한다면 총 system operating time을 누적하는 방식으로 시험 시간을 확보하는 데 사용할 수 있습니다. 다만 device, RF condition, temperature, network configuration 등이 서로 다른데 하나의 homogeneous failure process로 묶어 버리면 오히려 결과를 오염시킬 수 있습니다. NIST의 단순 MTBF 모델 자체가 constant failure rate/HPP 가정을 전제로 합니다. failure rate가 시간에 따라 변하는 reliability-growth 문제라면 NIST도 별도의 power-law 모델을 다룹니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn3search5turn3search3]</small></p>
+<p>그래서 pr-search에는 수학 모델보다 먼저 다음 metadata를 저장하는 것이 중요합니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-21">예시 복사</button></div><pre id="code-21"><code>Device HW revision
+RF / chamber / field configuration
+Network configuration
+Test scenario
+Firmware artifact digest
+Sequence / SHA
+Test duration
+Failure signature
+Failure count
+Retry count</code></pre></div>
+<p>동일 failure signature의 regression만 한 bisect session으로 묶는 것도 중요합니다. 서로 다른 두 장애를 하나의 <code>FAIL</code>로 묶으면 “어떤 지점 이전에는 good이고 이후에는 bad”라는 binary search의 전제가 깨질 수 있습니다.</p></section>
+<section class="section-card report-section" id="report-6"><h2>CI/CD, Binary Artifact, MDVP 연계 설계</h2><p>팀장님이 제안한</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-22">예시 복사</button></div><pre id="code-22"><code>SMP1900_M-10523.bin</code></pre></div>
+<p>같은 artifact naming은 좋은 방향이지만, 현재 pr-search 구조에서는 <code>M number</code>보다 <code>merge_seq</code>를 넣는 것을 권합니다. 현재 M number는 PR이 없는 main commit을 건너뛰기 때문입니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn17file0L1-L12]</small></p>
+<p>예를 들어:</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-23">예시 복사</button></div><pre id="code-23"><code>SMP1900-main-E1-S10523-c81fa22.bin</code></pre></div>
+<p>가 더 정확합니다.</p>
+<p>사용자에게는 짧게 보여도 내부 manifest는 full SHA를 가져야 합니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>json</span><button type="button" class="copy" data-target="code-24">예시 복사</button></div><pre id="code-24"><code>{
+  &quot;product&quot;: &quot;SMP1900&quot;,
+  &quot;repository&quot;: &quot;modem/sw&quot;,
+  &quot;baseBranch&quot;: &quot;main&quot;,
+  &quot;sequenceEpoch&quot;: 1,
+  &quot;mergeSeq&quot;: 10523,
+  &quot;integrationId&quot;: &quot;I-10523&quot;,
+  &quot;commitSha&quot;: &quot;c81fa22f....&quot;,
+  &quot;pullRequest&quot;: 527,
+  &quot;mergeNumber&quot;: 8123,
+  &quot;artifactSha256&quot;: &quot;...&quot;,
+  &quot;buildConfig&quot;: &quot;...&quot;,
+  &quot;toolchain&quot;: &quot;...&quot;,
+  &quot;createdAt&quot;: &quot;...&quot;
+}</code></pre></div>
+<p>이 manifest를 artifact 이름보다 정본으로 삼아야 binary가 복사·rename되더라도 정확한 source revision을 복원할 수 있습니다.</p>
+<p>현재 <code>MergeSequence</code> 데이터 모델은 이미 repository, branch, epoch, <code>merge_seq</code>, <code>commit_sha</code>, PR, <code>merge_number</code>를 연결하는 방향이므로 artifact는 이 mapping에 자연스럽게 foreign key 성격으로 붙일 수 있습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn10file7L145-L153]</small></p>
+<p>권장 엔티티는 다음 정도입니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-25">예시 복사</button></div><pre id="code-25"><code>ArtifactBuild
+-------------
+artifact_id
+repository_id
+base_branch
+seq_epoch
+merge_seq
+commit_sha
+pull_request_number
+merge_number
+product
+variant
+artifact_uri
+artifact_sha256
+build_id
+build_config
+toolchain_version
+created_at
+retention_state</code></pre></div>
+<p>그리고 검색은 양방향이어야 합니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-26">예시 복사</button></div><pre id="code-26"><code>I-10523
+  → SHA
+  → PR
+  → Binary
+  → Test result
+
+Binary digest
+  → I-10523
+  → SHA
+  → PR
+
+PR #527
+  → main integration I-10523
+  → Binary
+  → regression history</code></pre></div>
+<p>여기서 CI가 sequence를 “발급”하게 만들지는 않는 것이 좋습니다.</p>
+<p>GitHub Actions의 <code>GITHUB_RUN_NUMBER</code>는 특정 workflow마다 따로 증가합니다. workflow를 추가하거나 이름/구성을 바꾸면 P4 CL 같은 저장소 통합 sequence의 역할을 하지 못합니다. 반면 현재 pr-search의 <code>first-parent ordinal</code>은 Git history로부터 재구성할 수 있습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn1search9]</small> <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn4file0L1-L2]</small></p>
+<p>권장 흐름은 다음입니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-27">예시 복사</button></div><pre id="code-27"><code>GitHub PR
+   │
+   ▼
+Squash Merge
+   │
+   ▼
+main first-parent commit
+   │
+   ├───────────── commit SHA
+   │
+   ▼
+pr-search sequence assignment
+   │
+   ▼
+(repo, branch, epoch, merge_seq, SHA, PR)
+   │
+   ├───────────────┐
+   ▼               ▼
+Search UI       Build pipeline
+                   │
+                   ▼
+                Binary
+                   │
+                   ▼
+              ArtifactBuild
+                   │
+                   ▼
+          Device / MDVP / field
+                   │
+                   ▼
+          RegressionObservation</code></pre></div>
+<p>GitHub도 squash merge를 base branch에 하나의 commit으로 합치는 방법으로 문서화하므로, sequence branch에서는 squash-only 정책을 유지하는 것이 가장 단순합니다. 현재 pr-search 제품 계약도 M number의 사내 적용을 squash-only로 두고 있습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn1search1]</small> <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn17file8L138-L149]</small></p>
+<p>또 하나 주목할 점은 최근 pr-search의 M-number worker가 “commit이 정말 PR을 통한 것인지, direct push인지”를 증명하기 위해 상당히 복잡한 evidence resolution과 operator attestation까지 갖게 되었다는 점입니다. worker 자체도 production에서 direct push 부재를 임의 확정하지 않고, 확인되지 않으면 뒤쪽 M-number 발급을 멈추며 operator attestation을 별도로 사용한다고 설명합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn19file0L1-L2]</small></p>
+<p>이 복잡성은 PR용 M-number에는 필요하지만 regression sequence에는 필요하지 않습니다.</p>
+<p>이 점 때문에 더더욱:</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-28">예시 복사</button></div><pre id="code-28"><code>Regression truth = merge_seq
+PR-friendly ordinal = merge_number</code></pre></div>
+<p>로 분리하는 것이 좋습니다.</p>
+<p>MDVP에 대해서는 이번 조사에서 modem regression 시스템을 뜻하는 공개된 MDVP 자료를 확인하지 못했습니다. 공개 검색에서 나온 <code>MDVP</code>는 주로 전혀 다른 의미의 약어였고, pr-search 저장소에서도 modem regression/MDVP 연동 계약은 확인되지 않았습니다. 따라서 “최근 MDVP에서 실제로 어떤 binary search를 하는지”를 외부 자료만으로 추정해서 답하는 것은 위험합니다.</p>
+<p>대신 MDVP가 사내 장비/검증 플랫폼이라면 pr-search가 MDVP의 내부 workflow까지 소유할 필요는 없습니다. 다음 계약만 잡으면 됩니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-29">예시 복사</button></div><pre id="code-29"><code>pr-search → MDVP
+-----------------------------
+artifact URI
+commit SHA
+integration sequence
+test scenario
+requested device/profile
+
+MDVP → pr-search
+-----------------------------
+run ID
+integration sequence / SHA
+device/profile
+runtime
+failure count
+failure signature
+raw result URI
+PASS / FAIL / INCONCLUSIVE</code></pre></div>
+<p>MDVP가 지금 binary search를 자체적으로 하고 있다면 pr-search는 그 결과를 ingest하면 되고, 하지 않는다면 pr-search의 existing bisect engine이 “다음 어느 binary를 MDVP에 돌릴지”만 결정하면 됩니다. 이 경계가 가장 느슨하고 유지보수하기 쉽습니다.</p></section>
+<section class="section-card report-section" id="report-7"><h2>실제 개발 순서와 수용 기준</h2><p>현재 저장소 상태를 기준으로 하면 대규모 rewrite는 불필요합니다. 아래 순서가 가장 위험이 낮습니다.</p>
+<div class="table-scroll"><table><thead><tr><th scope="col">단계</th><th scope="col">개발 내용</th><th scope="col">핵심 완료 조건</th></tr></thead><tbody><tr><td>계약 정리</td><td><code>merge_seq</code>를 regression canonical ID로 확정하고 M number와 명확히 분리</td><td>direct push가 있어도 regression timeline에 누락 없음</td></tr><tr><td>Regression UX</td><td>기존 bisect/range 화면을 operator 중심 Workbench로 변경</td><td>PASS/FAIL 두 지점에서 다음 후보를 즉시 찾을 수 있음</td></tr><tr><td>Observation</td><td>good/bad 외에 SKIP/INCONCLUSIVE 및 시험 metadata 저장</td><td>test 불가/불확실 결과가 boundary를 잘못 이동시키지 않음</td></tr><tr><td>Artifact</td><td>sequence ↔ SHA ↔ PR ↔ binary mapping 추가</td><td>sequence 하나로 정확한 test binary를 찾을 수 있음</td></tr><tr><td>Device 연동</td><td>수동 입력 + MDVP/외부 test result adapter</td><td>사람이 돌린 결과와 자동 결과를 같은 session에 기록</td></tr><tr><td>MTBF</td><td>통계 verdict plug-in 추가</td><td>confidence가 부족하면 INCONCLUSIVE, 충분할 때만 GOOD/BAD</td></tr><tr><td>운영 검증</td><td>실제 regression pilot</td><td>기존 P4 workflow보다 후보 선택·artifact 찾기 시간이 감소</td></tr></tbody></table></div>
+<p>첫 번째 변경은 코드보다 요구사항 결정이어야 합니다.</p>
+<p>현재 제품은 M number를 “PR 연결이 있는 commit만 세는 번호”로 명시하고 있기 때문에, team lead가 “M-10524 = main의 10524번째 integration revision”으로 생각한다면 두 정의가 충돌합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn17file3L63-L70]</small></p>
+<p>제가 추천하는 결정문은 사실상 다음 한 문장입니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-30">예시 복사</button></div><pre id="code-30"><code>Regression의 canonical revision은
+(repository, base_branch, seq_epoch, merge_seq)이다.
+
+PR number와 merge_number는 탐색·표시를 위한 보조 식별자다.</code></pre></div>
+<p>그다음 현재 <code>API-SEQ-005</code>를 확장합니다.</p>
+<p>기존:</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>json</span><button type="button" class="copy" data-target="code-31">예시 복사</button></div><pre id="code-31"><code>{
+  &quot;action&quot;: &quot;mark&quot;,
+  &quot;merge_seq&quot;: 10550,
+  &quot;verdict&quot;: &quot;good&quot;
+}</code></pre></div>
+<p>확장:</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>json</span><button type="button" class="copy" data-target="code-32">예시 복사</button></div><pre id="code-32"><code>{
+  &quot;action&quot;: &quot;mark&quot;,
+  &quot;merge_seq&quot;: 10550,
+  &quot;verdict&quot;: &quot;skip&quot;,
+  &quot;reason&quot;: &quot;artifact_unavailable&quot;
+}</code></pre></div>
+<p>그리고 시험 자체의 결과는 별도 observation으로 남기는 편이 장기적으로 낫습니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>json</span><button type="button" class="copy" data-target="code-33">예시 복사</button></div><pre id="code-33"><code>{
+  &quot;merge_seq&quot;: 10550,
+  &quot;commit_sha&quot;: &quot;91c7aae...&quot;,
+  &quot;artifact_id&quot;: &quot;SMP1900-main-E1-S10550-91c7aae&quot;,
+  &quot;verdict&quot;: &quot;inconclusive&quot;,
+  &quot;test_type&quot;: &quot;mtbf&quot;,
+  &quot;device_group&quot;: &quot;lab-a&quot;,
+  &quot;runtime_seconds&quot;: 21600,
+  &quot;failure_count&quot;: 0,
+  &quot;failure_signature&quot;: &quot;NR-L1-RLF&quot;,
+  &quot;result_uri&quot;: &quot;...&quot;
+}</code></pre></div>
+<p>수용 테스트도 실제 modem workflow를 기준으로 잡아야 합니다.</p>
+<p>가장 중요한 시나리오는 다음입니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-34">예시 복사</button></div><pre id="code-34"><code>I-10000 = PASS
+I-10255 = FAIL</code></pre></div>
+<p>후보가 256개 안팎이라면 이상적인 binary search에서는 약 8회의 판정으로 한 revision 수준까지 접근할 수 있습니다. Git의 공식 bisect도 바로 이 방식으로 남은 revision 수와 예상 step 수를 지속적으로 줄입니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn0search0]</small></p>
+<p>다만 실제 수용 기준은 “정확히 8번”보다 아래가 중요합니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-35">예시 복사</button></div><pre id="code-35"><code>1. 모든 next candidate가 first-parent interval 안에 있다.
+2. PASS를 입력하면 candidate 범위가 과거 방향으로 다시 넓어지지 않는다.
+3. FAIL을 입력해도 범위가 다시 넓어지지 않는다.
+4. SKIP/INCONCLUSIVE는 good/bad boundary를 변경하지 않는다.
+5. direct push revision도 candidate가 될 수 있다.
+6. artifact가 없는 revision은 명시적으로 표시된다.
+7. sequence에서 artifact와 full SHA를 항상 역추적할 수 있다.
+8. epoch가 바뀐 세션은 stale로 막힌다.
+9. 서로 다른 branch의 sequence는 비교하지 않는다.
+10. final culprit가 PR이 없는 commit이어도 정상 결과로 표현한다.</code></pre></div>
+<p>이 중 direct-push culprit와 epoch stale, concurrent mark가 interval을 다시 넓히지 않는 것은 현재 테스트가 이미 상당 부분 검증하고 있으므로, 기존 구현을 보존하면서 확장하는 편이 맞습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn7file0L1-L2]</small></p></section>
+<section class="section-card report-section" id="report-8"><h2>최종 권고</h2><p>팀장님의 문제 인식은 맞습니다. “GitHub라서 P4식 regression search가 어렵다”가 문제가 아니라 “PR 번호를 submitted CL처럼 해석하는 것”이 문제입니다. GitHub의 squash merge와 Git의 first-parent history를 사용하면 integration 순서는 충분히 명확해지고, Git에는 regression 탐색을 위한 <code>git bisect</code>와 <code>--first-parent</code>, <code>skip</code>, <code>run</code>까지 이미 존재합니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn1search1turn0search0]</small></p>
+<p>그리고 현재 pr-search는 이 방향을 이미 상당히 멀리 구현해 두었습니다. first-parent 기반 <code>merge_seq</code>, sequence epoch, SHA↔PR mapping, 범위 조사, safe marker, 사용자별 bisect session, midpoint 제안, contradiction 및 epoch stale 처리까지 있기 때문에 새로운 시스템을 만들 이유가 없습니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn3file0L1-L2]</small> <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn7file0L1-L2]</small></p>
+<p>오히려 지금 해야 할 가장 중요한 일은 identifier semantics를 명확히 하는 것입니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-36">예시 복사</button></div><pre id="code-36"><code>현재
+PR #548     = review identifier
+SHA         = exact Git revision
+merge_seq   = actual integration order
+M number    = PR-only ordinal
+
+권고
+PR #548     = review identifier
+SHA         = exact Git revision
+I-10524     = merge_seq의 사람이 읽는 regression identifier
+M-8123      = PR-only identifier가 필요할 때만 유지</code></pre></div>
+<p>그리고 binary에는:</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-37">예시 복사</button></div><pre id="code-37"><code>SMP1900-main-E1-S10524-d71be10.bin</code></pre></div>
+<p>처럼 <code>branch + epoch + merge_seq + SHA</code>를 남기는 것이 좋습니다.</p>
+<p>장비/field 환경에서는 자동화를 포기할 필요가 없습니다. “시험 자동화”와 “탐색 자동화”를 분리하면 됩니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-38">예시 복사</button></div><pre id="code-38"><code>사람/장비       → test execution
+pr-search       → next candidate selection
+artifact store  → exact binary selection
+MDVP            → test result source</code></pre></div>
+<p>현재 pr-search의 bisect 설계 자체가 이미 이 모델에 가깝습니다. 다음 개발의 핵심은 <code>good/bad</code>만 있는 단순 bisect를 <code>PASS/FAIL/SKIP/INCONCLUSIVE + artifact + test observation</code>으로 확장하는 것입니다. 현재 API가 good/bad만 정의한다는 점이 이 요구와 비교한 가장 분명한 gap입니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn20file1L12-L23]</small></p>
+<p>MTBF도 적용할 수 있지만 별도의 statistical verdict layer가 필요합니다. MTBF를 midpoint마다 짧게 한번 돌려 PASS/FAIL로 판정하는 방식은 권하지 않습니다. NIST가 설명하듯 MTBF 확인에는 test time, failure count, confidence level이 함께 필요하고, 원하는 confidence를 얻는 데 상당한 누적 시험 시간이 필요할 수 있습니다. 따라서 일반 regression test로 먼저 범위를 줄인 뒤 소수 candidate에서 MTBF confidence 기반 bisection/confirmation을 하는 것이 현실적입니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn3search0turn3search2]</small></p>
+<p>마지막으로, 팀장님이 처음 제안한 “merge 때 CI/CD counter 하나를 증가시켜 M-number를 만든다”는 아이디어는 개념적으로는 타당하지만 현재 pr-search에는 더 좋은 기반이 이미 있습니다. 별도 mutable counter보다 Git first-parent에서 재구성 가능한 <code>merge_seq</code>가 장애·재처리·backfill·history 검증 측면에서 강합니다. GitHub의 <code>GITHUB_RUN_NUMBER</code>도 workflow별 counter일 뿐 integration history 자체는 아닙니다. <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn1search9]</small> <small class="unresolved" title="원문 대화의 인용 표식 — 현재 파일에서 링크를 복원할 수 없음">[원문 인용: turn4file0L1-L2]</small></p>
+<p>따라서 이 레포지터리에서의 최종 방향은 다음 한 줄로 정리할 수 있습니다.</p>
+<div class="code-block-wrapper"><div class="code-block-header"><span>text</span><button type="button" class="copy" data-target="code-39">예시 복사</button></div><pre id="code-39"><code>main/release first-parent merge_seq를 P4 CL에 해당하는 regression truth로 유지하고,
+그 위에 human-readable Integration ID + artifact mapping +
+manual/device bisect + statistical MTBF verdict를 올린다.</code></pre></div>
+<p>이렇게 가면 PR Search는 단순한 “GitHub PR을 잘 찾아주는 페이지”에서 벗어나, P4 사용자들이 익숙한 “PASS 지점과 FAIL 지점 사이에서 실제 시험 가능한 binary를 골라 원인 integration을 좁히는 Regression Investigation Console” 역할까지 자연스럽게 확장될 수 있습니다.</p></section>
+<section class="section-card" id="sources"><h2>출처와 원문 보존</h2><p>원문의 citation/filecite 토큰은 이전 대화에 종속되어 링크를 복원할 수 없습니다. 표식을 보존하고 미해결 인용으로 표시했습니다. 다운로드한 Markdown은 입력 원문과 동일합니다.</p><div class="table-scroll"><table><thead><tr><th>근거</th><th>확인 위치</th></tr></thead><tbody><tr><td>제품 baseline</td><td><a href="../10_requirements/srs_final.md">SRS</a> · FR-SEQ-001·005·007·008</td></tr><tr><td>현재 bisect 코드</td><td><code>packages/db/src/repositories/bisect-session.ts</code><br><code>apps/search-api/src/sequence/routes.ts</code></td></tr><tr><td>Git 공식 문서</td><td>https://git-scm.com/docs/git-bisect</td></tr><tr><td>GitHub workflow 변수</td><td>https://docs.github.com/en/actions/reference/workflows-and-actions/variables</td></tr><tr><td>NIST HPP/exponential</td><td>https://www.itl.nist.gov/div898/handbook/apr/section4/apr451.htm</td></tr></tbody></table></div><p class="meta">외부 URL은 참고 출처 텍스트입니다. 외부 스크립트·폰트·네트워크 요청 없이 열립니다. 공식 자료 확인일: 2026-09-17.</p><p class="hash">원문 SHA-256: 04441c4ef3d50c4adf468b21f1a6194f834ae5a87dd1c0161ad9b2b2902b96d3</p></section>
+</main></div><script>
+const originalBase64="IyBwci1zZWFyY2jsl5AgUDTsi50gUmVncmVzc2lvbiBTZWFyY2jrpbwg67CY7JiB7ZWY64qUIOqwnOuwnCDqsoDthqAKCiMjIOqysOuhoAoKMjAyNuuFhCA57JuUIDE37J28IOq4sOykgCBgODlzb29uZXIvcHItc2VhcmNoYOydmCDtmITsnqwgYG1haW5g7J2EIO2ZleyduO2VnCDqsrDqs7wsIO2MgOyepeuLmOydtCDsoJzslYjtlZwg67Cp7Zal7J2AIOKAnOyVnuycvOuhnCDsg4jroZwg7ISk6rOE7ZW07JW8IO2VoCDslYTsnbTrlJTslrTigJ3rnbzquLDrs7Tri6Qg7J2066+4IOyDgeuLuSDrtoDrtoQg7KCA7J6l7IaM7J2YIO2VteyLrCDslYTtgqTthY3sspjsmYAg7L2U65Oc7JeQIOuwmOyYgeuQmOyWtCDsnojsirXri4jri6QuIFJFQURNRSDsnpDssrTqsIAg7J20IOygnO2SiOydmCDrqqnsoIHsnYQg4oCc7Luk67CLIFNIQSDihpQgUFIg7JaR67Cp7ZalIOqygOyDieKAneqzvCDigJxQZXJmb3JjZSBDaGFuZ2VsaXN066W8IOuMgOyytO2VmOuKlCDrqLjsp4Ag7Iuc7YCA7Iqk4oCd65286rOgIOygleydmO2VmOqzoCDsnojqs6AsIOq1rO2YhCDruIzrpqztlITripQg7Iuc7YCA7Iqk66W8IENJIOydtOuypO2KuCDsubTsmrTthLDqsIAg7JWE64uI6528IGBnaXQgcmV2LWxpc3QgLS1maXJzdC1wYXJlbnQgLS1yZXZlcnNlIDxicmFuY2g+YOuhnOu2gO2EsCDrj4TstpztlZjrj4TroZ0g66qF7Iuc7ZWp64uI64ukLiBQb3N0Z3JlU1FM7J20IOygleuzuOydtOqzoCBFbGFzdGljc2VhcmNo64qUIOyerOyDneyEsSDqsIDriqXtlZwg7KGw7ZqM7JqpIO2MjOyDnSDrt7DrnbzripQg7JuQ7LmZ64+EIOydtOuvuCDsnqHtmIAg7J6I7Iq164uI64ukLiDuiIBmaWxlY2l0Ze6IgnR1cm4zZmlsZTDuiIJMMS1MMu6IgSDuiIBmaWxlY2l0Ze6IgnR1cm40ZmlsZTDuiIJMMS1MMu6IgQoK642UIOykkeyalO2VnCDsoJDsnYAg7J2067aEIO2DkOyDieuPhCDsnbTrr7ggYFdQLTA0MmDroZwg6rWs7ZiEIOyZhOujjOuQnCDsg4Htg5zrnbzripQg6rKD7J6F64uI64ukLiDtmITsnqwgQVBJ64qUIOyCrOyaqeyekOuzhCBiaXNlY3Qgc2Vzc2lvbuydhCDsoIDsnqXtlZjqs6AsIGBnb29kYC9gYmFkYOulvCDquLDroZ3tlZjrqbQg64uk7J2MIOykkeqwhCDtm4Trs7Trpbwg6rOE7IKw7ZWY66mwLCBjb250cmFkaWN0aW9uLCBzZXF1ZW5jZSBlcG9jaCDrs4Dqsr0sIGRpcmVjdC1wdXNoIGNvbW1pdCwg64+Z7IucIG1hcmsg6rCZ7J2AIOqyveqzhCDsobDqsbTquYzsp4Ag7Ya17ZWpIO2FjOyKpO2KuO2VmOqzoCDsnojsirXri4jri6QuIOuhnOuTnOunteyXkOuKlCBgV1AtMDQyYOqwgCAyMDI264WEIDnsm5QgOeydvCDsmYTro4zrkJjsl4jri6Tqs6Ag6riw66Gd65CY7Ja0IOyeiOyKteuLiOuLpC4g7oiAZmlsZWNpdGXuiIJ0dXJuMTBmaWxlMe6IgkwyOS1MMzbuiIEg7oiAZmlsZWNpdGXuiIJ0dXJuN2ZpbGUw7oiCTDEtTDLuiIEKCuuUsOudvOyEnCDsoJzqsIAg6raM6rOg7ZWY64qUIOuwqe2WpeydgCDigJxDSeyXkOyEnCDrmJAg7ZWY64KY7J2YIOuPheumveyggeyduCBjb3VudGVy66W8IOyDiOuhnCDrp4zrk5zripQg6rKD4oCd7J20IOyVhOuLmeuLiOuLpC4g7ZiE7J6s7J2YIGdyYXBoLWRlcml2ZWQgYG1lcmdlX3NlcWDrpbwgcmVncmVzc2lvbuydmCBjYW5vbmljYWwgcmV2aXNpb27snLzroZwg7ZmV7KCV7ZWY6rOgLCDqt7gg7JyE7JeQIOyCrOuejOydtCDrs7TquLAg7KKL7J2AIEludGVncmF0aW9uIElELCBhcnRpZmFjdCwg7J6l67mEIOyLnO2XmCDqsrDqs7wsIGBTS0lQL0lOQ09OQ0xVU0lWRWAsIE1UQkYg7YyQ7KCVIOqzhOy4teydhCDslrnripQg6rKD7J20IOqwgOyepSDslYjsoITtlanri4jri6QuIEdpdEh1YiBBY3Rpb25z7J2YIGBHSVRIVUJfUlVOX05VTUJFUmDripQg7KCA7J6l7IaMIOyghOyytCDthrXtlakg7Iic7ISc6rCAIOyVhOuLiOudvCDigJztirnsoJUgd29ya2Zsb3fsnZgg7Iuk7ZaJIO2an+yImOKAneydtOuvgOuhnCBQNCBDTCDrjIDsmqnsnLzroZwg7IKs7Jqp7ZWY6riw7JeQ64+EIOygge2Vqe2VmOyngCDslYrsirXri4jri6QuIO6IgGNpdGXuiIJ0dXJuMXNlYXJjaDnuiIEKCu2Kue2eiCDtlZjrgpjripQg7KeA6riIIOygleumrO2VtOyVvCDtlanri4jri6QuIO2YhOyerCBwci1zZWFyY2jsl5DripQg7ISc66GcIOuLpOuluCDqsJzrhZDsnbQg7J6I7Iq164uI64ukLgoKfCDqsJzrhZAgfCDtmITsnqwg7J2Y66+4IHwgUmVncmVzc2lvbiDquLDspIDsnLzroZwg7KCB7ZWp7ZWc6rCAIHwKfC0tLXwtLS18LS0tfAp8IFBSIGAjNTQ4YCB8IOumrOu3sC/qsJzrsJwg64uo7JyEIHwg7JWE64uI7JikIHwKfCBgY29tbWl0X3NoYWAgfCDsoJXtmZXtlZwgR2l0IHJldmlzaW9uIHwg7JiILCDri6Trp4wg7IKs656M7J20IOydveq4sCDslrTroKTsm4AgfAp8IGBtZXJnZV9zZXFgIHwgYChyZXBvc2l0b3J5LCBiYXNlX2JyYW5jaClg7J2YIGZpcnN0LXBhcmVudCBjb21taXQg7Iic7IScLiBkaXJlY3QgcHVzaOuPhCDtj6ztlaggfCDqsIDsnqUg7KCB7ZWpIHwKfCDtmITsnqwgYE0gbnVtYmVyYCAvIGBtZXJnZV9udW1iZXJgIHwgYG1lcmdlX3NlcWAg7KSRIFBS7J20IOyXsOqysOuQnCDtla3rqqnrp4wg64uk7IucIOyhsOuwgO2VmOqyjCDshLwg67KI7Zi4IHwg67O07KGwIOyLneuzhOyekOyXkOuKlCDsoovsp4Drp4wgY2Fub25pY2FsIHJlZ3Jlc3Npb24ga2V566Gc64qUIOu2gOygge2VqSB8CnwgQXJ0aWZhY3QgSUQgfCDtmITsnqwg7JqU6rWs7IKs7ZWt7JeQIO2VhOyalO2VnCDsi6Ttlokg67CU7J2064SI66asIOyLneuzhCB8IOuqheyLnOyggSDtmZXsnqXsnbQg7ZWE7JqUIHwKCu2YhOyerCDsmqnslrTsp5HsnYAgYG1lcmdlX3NlcWDqsIAgZmlyc3QtcGFyZW507J2YIOuqqOuToCDsu6TrsIvsnYQg7IS46rOgIGRpcmVjdCBwdXNo64+EIO2PrO2VqO2VnOuLpOqzoCDsoJXsnZjtlZjripQg67CY66m0LCBgTSBudW1iZXJg64qUIFBS7J20IOyXsOqysOuQnCDtla3rqqnrp4wg67OE64+E66GcIOyEvOuLpOqzoCDqtazrtoTtlanri4jri6QuIFNSU+uPhCBkaXJlY3QgcHVzaOuKlCBNIOuyiO2YuOulvCDrsJvqsbDrgpgg7IaM67mE7ZWY7KeAIOyViuuKlOuLpOqzoCDrqoXsi5ztlanri4jri6QuIO6IgGZpbGVjaXRl7oiCdHVybjE3ZmlsZTLuiIJMNDMtTDUx7oiBIO6IgGZpbGVjaXRl7oiCdHVybjE3ZmlsZTPuiIJMNjMtTDcw7oiBCgrspokg7YyA7J6l64uY7J2YIOyYiOyLnOyXkOyEnCDrp5DtlZjripQKCmBgYHRleHQKTS0xMDUyMSBQQVNTCk0tMTA1ODAgRkFJTArihpIgTS0xMDU1MCB0ZXN0CmBgYAoK7J2YIGBNLTEwNTIxYOyXkCDqsIDsnqUg6rCA6rmM7Jq0IO2YhOyerCBwci1zZWFyY2gg64K067aAIOqwnOuFkOydgCDsgqzsi6QgYG1lcmdlX251bWJlcmDqsIAg7JWE64uI6528IGBtZXJnZV9zZXFg7J6F64uI64ukLgoK7J20IOywqOydtOulvCDrqLzsoIAg67CU66Gc7J6h7JWE7JW8IOydtO2bhCBVSeyZgCBhcnRpZmFjdCDssrTqs4TqsIAg6rmU64GU7ZW07KeR64uI64ukLgoKIyMg7ZiE7J6sIHByLXNlYXJjaOyZgCDsmpTqtazsgqztla3snZgg7J287LmY64+ECgpwci1zZWFyY2jsnZgg7ZiEIOyEpOqzhOuKlCDtjIDsnqXri5jsnbQg66eQ7ZWcIOKAnFBSIOuyiO2YuOulvCByZWdyZXNzaW9uIOyInOyEnOuhnCDsk7Dsp4Ag66eQ7J6Q4oCd64qUIOuwqe2WpeqzvCDrp6TsmrAg7J6YIOunnuyKteuLiOuLpC4g6rWs7ZiEIOu4jOumrO2UhOuKlCDsi5ztgIDsiqTsnZgg7KCV67O47J2EIHdlYmhvb2sg64+E7LCpIOyInOyEnOqwgCDslYTri4wgR2l0IGZpcnN0LXBhcmVudCBoaXN0b3J566GcIOuRkOupsCwg7Iuc7YCA7IqkIOqwkuydgCDtla3sg4Egc2VxdWVuY2Ugc3BhY2XsmYAgZXBvY2jrpbwg7ZWo6ruYIOuLpOujqOuPhOuhnSDsmpTqtaztlanri4jri6QuIOybue2bhSDsiJzshJwgY291bnRlcuulvCDquIjsp4DtlZjripQg7J207Jyg64+EIOKAnOyWuOygnOuToCDsi6TsoJwgR2l06rO8IOuMgOyhsCDqsoDspp3tlaAg7IiYIOyeiOyWtOyVvCDtlZjquLAg65WM66y44oCd7J6F64uI64ukLiDuiIBmaWxlY2l0Ze6IgnR1cm40ZmlsZTDuiIJMMS1MMu6IgQoK7J20IOqysOygleydgCBHaXTsnZgg7ISx7KeI7JeQ64+EIOunnuyKteuLiOuLpC4gR2l0SHVi7J2YIHNxdWFzaCBtZXJnZeuKlCBQUuydmCDsl6zrn6wg7Luk67CL7J2EIO2VmOuCmOydmCBjb21taXTsnLzroZwg7ZWp7LOQIGJhc2UgYnJhbmNo7JeQIOuwmOyYge2VmOuvgOuhnCwg4oCcUFIg7ZWY64KYID0gbWFpbuydmCDrhbzrpqzsoIEgaW50ZWdyYXRpb24gY29tbWl0IO2VmOuCmOKAneudvOuKlCDrqqjrjbjsnYQg66eM65Ok6riw7JeQIOygge2Vqe2VqeuLiOuLpC4g67CY64yA66GcIHJlYmFzZS1hbmQtbWVyZ2XripQgUFIg64K067aAIOy7pOuwi+uTpOydhCDqsIHqsIEgYmFzZeyXkCDri6Tsi5wg7J6R7ISx7ZWY66+A66GcIHJlZ3Jlc3Npb27smqkgaW50ZWdyYXRpb24g64uo7JyE66W8IFBS6rO8IDE6MeuhnCDrs7TroKTripQg7ZmY6rK97JeQ64qUIOuNnCDsoIHtlantlanri4jri6QuIO6IgGNpdGXuiIJ0dXJuMXNlYXJjaDHuiIJ0dXJuMXNlYXJjaDfuiIEKCkdpdCDsnpDssrTrj4QgcmVncmVzc2lvbuydhCDsnITtlbQgYGdpdCBiaXNlY3Rg66W8IOygnOqzte2VmOupsCwg7JWM66Ck7KeEIGdvb2QgY29tbWl06rO8IGJhZCBjb21taXQg7IKs7J207JeQ7IScIOykkeqwhCBjb21taXTsnYQg7ISg7YOd7ZWY6rOgIOqysOqzvOyXkCDrlLDrnbwg67KU7JyE66W8IOuwmOuzteyggeycvOuhnCDsoIjrsJgg6rCA6rmM7J20IOykhOyeheuLiOuLpC4g7YWM7Iqk7Yq4IOyekOuPme2ZlOuKlCDtlYTsiJjqsIAg7JWE64uZ64uI64ukLiDsgqzrnozsnbQg7J6l67mE66W8IOuPjOumrOqzoCDqsrDqs7zrpbwg67O4IOuSpCBgZ2l0IGJpc2VjdCBnb29kYCDrmJDripQgYGdpdCBiaXNlY3QgYmFkYOulvCDsnoXroKXtlbTrj4Qg65Cp64uI64ukLiDthYzsiqTtirjqsIAg67aI6rCA64ql7ZWcIHJldmlzaW9u7JeQ64qUIGBnaXQgYmlzZWN0IHNraXBg64+EIOyCrOyaqe2VoCDsiJgg7J6I7Iq164uI64ukLiDuiIBjaXRl7oiCdHVybjBzZWFyY2gw7oiCdHVybjBzZWFyY2gx7oiBCgrrmJAgR2l07J2AIGBnaXQgYmlzZWN0IC0tZmlyc3QtcGFyZW50YOuPhCDsp4HsoJEg7KeA7JuQ7ZWp64uI64ukLiBtZXJnZeqwgCByZWdyZXNzaW9u7J2EIOycoOyehe2VnCDqsr3smrAgZmlyc3QtcGFyZW5066eMIOuUsOudvOqwgOupsCBtZXJnZSDsp4DsoJDsnYQg7LC+64+E66GdIO2VoCDsiJgg7J6I7Ja07IScLCDigJxpbnRlZ3JhdGlvbiBoaXN0b3J566W8IOykkeyLrOycvOuhnCByZWdyZXNzaW9u7J2EIOywvuuKlOuLpOKAneuKlCDtmITsnqwgcHItc2VhcmNo7J2YIOuqqOuNuOqzvCDrsKntlqXsnbQg6rCZ7Iq164uI64ukLiDuiIBjaXRl7oiCdHVybjBzZWFyY2gw7oiBCgpQNOyZgCDruYTqtZDtlbTrj4Qg6rCc64WQ7KCB7Jy866GcIOunnuyKteuLiOuLpC4gUGVyZm9yY2XsnZggc3VibWl0dGVkIGNoYW5nZWxpc3Qg67KI7Zi464qUIOyLnOqwhOyXkCDrlLDrnbwg7Kad6rCA7ZWY64qUIG9yZGluYWzsnbTsp4Drp4wg67CY65Oc7IucIOyXsOyGjeyggeydvCDtlYTsmpTripQg7JeG7Iq164uI64ukLiDspokgUDTsnZgg7KSR7JqU7ZWcIFVY64qUIOKAnOyIq+yekOqwgCDruYjti4jsl4bsnbQg7Kad6rCA7ZWc64uk4oCd6riw67O064ukIOKAnOygnOy2nOuQnCBpbnRlZ3JhdGlvbuydmCDsi5zqsIQg7Iic7ISc66W8IOyCrOuejOydtCDsponsi5wg7J207ZW07ZWgIOyImCDsnojripQg7Kad6rCAIOyIq+yekOuhnCDtkZztmITtlZzri6TigJ3ripQg642wIOyeiOyKteuLiOuLpC4g7oiAY2l0Ze6IgnR1cm4yc2VhcmNoMu6IgnR1cm4yc2VhcmNoOe6IgQoK7ZiE7J6sIOq1rO2YhCDsg4Htg5zrpbwg7JqU6rWs7IKs7ZWt67OE66GcIO2PieqwgO2VmOuptCDri6TsnYzqs7wg6rCZ7Iq164uI64ukLgoKfCDtjIDsnqUg7JqU6rWsIHwg7ZiE7J6sIHByLXNlYXJjaCB8IO2MkOuLqCB8CnwtLS18LS0tfC0tLXwKfCBQUiDrsojtmLjqsIAg7JWE64uMIG1haW4vcmVsZWFzZSBoaXN0b3J5IOq4sOykgCB8IGZpcnN0LXBhcmVudCBgbWVyZ2Vfc2VxYCB8IOydtOuvuCDqtaztmIQgfAp8IFA0IENMIOqwmeydgCDsnbjqsIQg7Lmc7ZmU7KCBIOyInOyEnCDrsojtmLggfCBgbWVyZ2Vfc2VxYCArIOuzhOuPhCBgTSBudW1iZXJgIHwg6rWs7ZiE65CQ7Jy864KYIOydtOumhC/smqnrj4TqsIAg7Zi864+ZIOqwgOuKpSB8CnwgU0hBIOKGlCBQUiDrp6TtlZEgfCDsoJztkojsnZgg7ZW17IusIOq4sOuKpeycvOuhnCDsoJXsnZggfCDsnbTrr7gg6rWs7ZiEIHwKfCBQQVNTL0ZBSUwgYmluYXJ5IHNlYXJjaCB8IGBBUEktU0VRLTAwNWAsIGBiaXNlY3Rfc2Vzc2lvbmAgfCDsnbTrr7gg6rWs7ZiEIHwKfCDri6TsnYwgbWlkcG9pbnQg7J6Q64+ZIOygnOyLnCB8IGByZW1haW5pbmdgLCBgZXN0aW1hdGVkX3N0ZXBzYCwgYG5leHRgIHwg7J2066+4IOq1rO2YhCB8Cnwg7J6l67mEIOyLnO2XmOydhCDsgqzrnozsnbQg7IiY7ZaJIHwg7Iuk7KCcIGJ1aWxkL3Rlc3TripQg7Jm467aA66GcIOuRlCDshKTqs4QgfCDtmITsnqwg6rWs7KGw7JmAIOyemCDrp57snYwgfAp8IHRlc3Qg67aI6rCA64qlIHJldmlzaW9uIHNraXAgfCDtmITsnqwgQVBJ64qUIGBnb29kfGJhZGAg7KSR7IusIHwg67O07JmEIO2VhOyalCB8CnwgQmluYXJ5IGFydGlmYWN0IOKGlCBzZXF1ZW5jZSDstpTsoIEgfCBzZXF1ZW5jZSDrqqjrjbjsl5DripQg7KeB7KCRIO2PrO2VqOuQmOyngCDslYrsnYwgfCDtmZXsnqUg7ZWE7JqUIHwKfCBNVEJGIOqwmeydgCDtmZXrpaDsoIEgdmVyZGljdCB8IO2YhOyerCBnb29kL2JhZCDrqqjrjbjroZzripQg67aA7KGxIHwg7ZmV7J6lIO2VhOyalCB8CnwgTURWUCDsl7Dqs4QgfCDqs7XqsJwv7KCA7J6l7IaMIOyekOujjOyXkOyEnCDtmZXsnbgg67aI6rCAIHwg7IKs64K0IGFkYXB0ZXIg7ZWE7JqUIHwKCu2YhOyerCDsoJztkogg7JqU6rWs7IKs7ZWt7JeQ7ISc64+EIGJpc2VjdCDquLDriqXsnYAg4oCcZ29vZC9iYWQg7ZGc7Iuc7JeQIOuUsOudvCDri6TsnYwg7ZuE67O0IOykkeyVmeqwkuydhCDsoJzsi5zigJ3tlZjripQg6riw64ql7J206rOgIOyLpOygnCBidWlsZC90ZXN0IOyLpO2WieydgCDrspTsnIQg67CW7Jy866GcIOygleydmOuPvCDsnojsirXri4jri6QuIOydtOuKlCDsmKTtnojroKQgbW9kZW0g7J6l67mEL2ZpZWxkIHRlc3Qg7ZmY6rK96rO8IOyemCDrp57ripQg67aE66as7J6F64uI64ukLiDuiIBmaWxlY2l0Ze6IgnR1cm4xNWZpbGUx7oiCTDE0LUwyNO6IgQoKQVBJ64+EIOydtOuvuCDshJzrsoQg7LihIOyDge2DnOulvCDqsJbsirXri4jri6QuIO2YhOyerCDqs4Tslb3snYAgYEdFVCAvYmlzZWN0LXNlc3Npb25zYOuhnCDqsJzsnbgg7IS47IWY7J2EIOuzteq1rO2VmOqzoCwgYFBPU1Rg7J2YIGBzdGFydGDroZwg67KU7JyE66W8IOyDneyEse2VmOupsCwgYG1hcmtg7JeQ7IScIGBnb29kYOydtOuptCBsb3dlciBib3VuZOulvCDsmKzrpqzqs6AgYGJhZGDsnbTrqbQgdXBwZXIgYm91bmTrpbwg64K066as64qUIOq1rOyhsOyeheuLiOuLpC4g7oiAZmlsZWNpdGXuiIJ0dXJuMjBmaWxlMe6IgkwxMi1MMjPuiIEKCu2Gte2VqSDthYzsiqTtirjsl5DripQgc3BhcnNlIHNlcXVlbmNlIGBbMSwgMiwgNSwgOCwgOV1g7JeQ7IScIGAxIGdvb2QgLyA5IGJhZCDihpIgNSDihpIgMiDihpIgY3VscHJpdCA1YOuhnCDsooHtmIDsp4DripQg6rK97JqwLCDsgqzsmqnsnpAg6rCEIOyEuOyFmCDqsqnrpqwsIGNvbnRyYWRpY3Rpb24gNDA5LCBlcG9jaCBzdGFsZSwgUFLsnbQg7JeG64qUIGRpcmVjdC1wdXNoIGNvbW1pdOycvOuhnOydmCDsiJjroLQsIGNvbmN1cnJlbnQgbWFya+qwgCDrspTsnITrpbwg64uk7IucIOuEk+2eiOyngCDslYrripQg6rKD6rmM7KeAIOuTpOyWtOqwgCDsnojsirXri4jri6QuIO6IgGZpbGVjaXRl7oiCdHVybjdmaWxlMO6IgkwxLUwy7oiBCgpVSSDshKTqs4Trj4Qg7J2066+4IGBpZGxlYCwgYGxvYWRpbmdgLCBgaW5fcHJvZ3Jlc3NgLCBgY29udmVyZ2VkYCwgYGJpc2VjdF9jb250cmFkaWN0aW9uYCwgYGVwb2NoX3N0YWxlYCDrk7HsnZgg7IOB7YOc7JmAIGByZW1haW5pbmdgLCBgZXN0aW1hdGVkX3N0ZXBzYCwgYG5leHRgIO2RnOyLnOulvCDsoJXsnZjtlanri4jri6QuIOuUsOudvOyEnCDtlbXsi6wgZW5naW5l7J2EIOuLpOyLnCDrp4zrk5zripQg6rKD67O064ukIOyLpOygnCBtb2RlbSByZWdyZXNzaW9uIHdvcmtmbG937JeQIOunnuqyjCDsnbQg6riw64ql7J2EIOyghOuptOyXkCDrk5zrn6zrgrTripQg7J6R7JeF7J20IOuNlCDspJHsmpTtlanri4jri6QuIO6IgGZpbGVjaXRl7oiCdHVybjIwZmlsZTDuiIJMMy1MMTDuiIEKCiMjIOyLneuzhOyekCDrqqjrjbjsnYAg7J2066CH6rKMIOygleumrO2VmOuKlCDqsoPsnbQg7KKL64ukCgrtmITsnqwg7KCA7J6l7IaM7JeQ7IScIOqwgOyepSDspJHsmpTtlZwg7ISk6rOEIO2MkOuLqOydgCBgbWVyZ2Vfc2VxYOyZgCBgTSBudW1iZXJg66W8IO2YvOuPme2VmOyngCDslYrripQg6rKD7J6F64uI64ukLgoK7ZiE7J6sIGBtZXJnZV9zZXFg64qUIEdpdCBoaXN0b3J566W8IOuCmO2DgOuDheuLiOuLpC4KCmBgYHRleHQKcmVwbyA9IG1vZGVtL3N3CmJyYW5jaCA9IG1haW4KZXBvY2ggPSAxCgptZXJnZV9zZXEgICBTSEEgICAgICAgIFBSCi0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tCjEwNTIxICAgICAgIGE5MWJjMjEgICAgIzUyMQoxMDUyMiAgICAgICBiMTJkZTQzICAgICM1MzUKMTA1MjMgICAgICAgYzgxZmEyMiAgICAtCjEwNTI0ICAgICAgIGQ3MWJlMTAgICAgIzU0OAoxMDUyNSAgICAgICBlMjljZDExICAgICM1MzAKYGBgCgrsl6zquLDshJwgYGM4MWZhMjJg6rCAIGVtZXJnZW5jeSBkaXJlY3QgcHVzaOudvOqzoCDtlbTrj4QgYG1lcmdlX3NlcT0xMDUyM2DsnYAg7KG07J6s7ZWp64uI64ukLiDsnbQg7ISx7KeI7J20IHJlZ3Jlc3Npb27sl5DripQg66ek7JqwIOykkeyalO2VqeuLiOuLpC4g7Iuk7KCcIG1haW4g7IOB7YOc6rCAIOuwlOuAjOyXiOq4sCDrlYzrrLjsnoXri4jri6QuIHByLXNlYXJjaCDsmqnslrTsp5Hrj4QgYG1lcmdlX3NlcWDqsIAgZGlyZWN0IHB1c2jrpbwg7Y+s7ZWo7ZWc64uk6rOgIOygleydmO2VqeuLiOuLpC4g7oiAZmlsZWNpdGXuiIJ0dXJuMTdmaWxlMu6Igkw0My1MNTHuiIEKCuuwmOuptCDtmITsnqwgYE0gbnVtYmVyYOuKlCDri6TsnYzsspjrn7wg65CgIOyImCDsnojsirXri4jri6QuCgpgYGB0ZXh0Cm1lcmdlX3NlcSAgIE0gbnVtYmVyICAgU0hBICAgICAgICBQUgotLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tCjEwNTIxICAgICAgIE0tODEyMSAgICAgYTkxYmMyMSAgICAjNTIxCjEwNTIyICAgICAgIE0tODEyMiAgICAgYjEyZGU0MyAgICAjNTM1CjEwNTIzICAgICAgIC0gICAgICAgICAgYzgxZmEyMiAgICBkaXJlY3QgcHVzaAoxMDUyNCAgICAgICBNLTgxMjMgICAgIGQ3MWJlMTAgICAgIzU0OAoxMDUyNSAgICAgICBNLTgxMjQgICAgIGUyOWNkMTEgICAgIzUzMApgYGAKCuyLpOygnOuhnCDtmITsnqwgcmVsZWFzZSB2YWxpZGF0aW9uIHBsYW7snYAgZGlyZWN0IHB1c2jqsIAgTSBudW1iZXLrpbwg67Cb7KeA64+ELCDrsojtmLjrpbwg7IaM67mE7ZWY7KeA64+EIOyViuyVhOyVvCDtlZzri6Tqs6Ag6rKA7Kad7ZWp64uI64ukLiDuiIBmaWxlY2l0Ze6IgnR1cm4xN2ZpbGUw7oiCTDEtTDEy7oiBCgrsnbTqsoPsnYAgUFIg66qp66Gd7JeQ7IScIOKAnOuqhyDrsojsp7ggUFIgaW50ZWdyYXRpb27snbjqsIDigJ3rpbwg67O07Jes7KO864qUIOuNsOuKlCDsoovsnYAg67KI7Zi47J6F64uI64ukLiDqt7jrn6zrgpggcmVncmVzc2lvbiDquLDspIDsnLzroZwg7JOw66m0IOyii+yngCDslYrsirXri4jri6QuIGRpcmVjdCBwdXNo6rCAIOyepeyVoOulvCDrp4zrk6Tsl4jripTrjbAgTSDrsojtmLgg6rO16rCE7JeQ64qUIOq3uCByZXZpc2lvbiDsnpDssrTqsIAg7JeG7J2EIOyImCDsnojquLAg65WM66y47J6F64uI64ukLgoK65Sw65287IScIOq2jOqzoOyViOydgCDri6TsnYzqs7wg6rCZ7Iq164uI64ukLgoKYGBgdGV4dArqsJzrsJwv66as67ewICAgICAgICAgICAgICBQUiAjNTQ4Cuygle2Zle2VnCByZXZpc2lvbiAgICAgICAgZDcxYmUxMC4uLgpSZWdyZXNzaW9uIHJldmlzaW9uICAgIG1haW4gLyBFMSAvIFMtMTA1MjQKUFIg7Lmc7ZmUIOuyiO2YuCAgICAgICAgICAgTS04MTIzICAgICAgKO2VhOyalO2VmOuLpOuptCDsnKDsp4ApCkJpbmFyeSAgICAgICAgICAgICAgICAgU01QMTkwMC1tYWluLUUxLVMxMDUyNC1kNzFiZTEwLmJpbgpgYGAKCuyCrOyaqeyekOuTpOydtCBQNOyLneycvOuhnCBgTS0xMDUyNGDrnbzripQg7J2066aE7J2EIOuwmOuTnOyLnCDsm5DtlZzri6TrqbQg65GQIOqwgOyngCDrsKnrspXsnbQg7J6I64qU642wLCDsoIDripQg7LKrIOuyiOynuOulvCDqtoztlanri4jri6QuCgrssqvsp7gsIO2YhOyerCBgbWVyZ2Vfc2VxYOyXkCDsgqzrnozsnbQg7J297J2EIOyImCDsnojripQgZGlzcGxheSBwcmVmaXjrp4wg7JSM7JuB64uI64ukLgoKYGBgdGV4dApJbnRlZ3JhdGlvbiBTZXE6IEktMTA1MjQK65iQ64qUClJlZ3Jlc3Npb24gU2VxOiBSLTEwNTI0CmBgYAoKRELsl5DripQg6riw7KG0IGBtZXJnZV9zZXE9MTA1MjRgIOq3uOuMgOuhnCDsoIDsnqXtlanri4jri6QuIOyDiCBjb3VudGVy6rCAIOyXhuyKteuLiOuLpC4KCuuRmOynuCwg7KGw7KeB7JeQ7IScIGBNYOydtOudvOuKlCDquIDsnpDqsIAg67CY65Oc7IucIFA0IENMIOyXre2VoOydhCDsnZjrr7jtlbTslbwg7ZWc64uk66m0LCDtmITsnqwgUFItb25seSBgTSBudW1iZXJg7J2YIOydtOumhOydhCDrsJTqvrjqs6AgYE0tMTA1MjRg66W8IGBtZXJnZV9zZXFg7J2YIHByZXNlbnRhdGlvbuycvOuhnCDsnqzsoJXsnZjtlaAg7IiYIOyeiOyKteuLiOuLpC4g64uk66eMIO2YhOyerCBTUlPsmYAg642w7J207YSwIOuqqOuNuOyXkOyEnCBNIG51bWJlcuydmCDsnZjrr7jqsIAg7J2066+4IOuqhe2Zle2VmOqyjCDsoJXsnZjrkJjslrQg7J6I7Jy866+A66GcIOydtOuKlCDri6jsiJwgVUkg67OA6rK97J20IOyVhOuLiOudvCBDUuydhCDthrXtlbQg7JqU6rWs7IKs7ZWtL0FEUi9BUEkvVUkg6rOE7JW97J2EIO2VqOq7mCDrsJTqv5Tslbwg7ZWY64qUIOuzgOqyveyeheuLiOuLpC4g7ZiE7J6sIGBtZXJnZV9udW1iZXJgIOyggOyepeqzvCBjaGVja3BvaW507J24IGBtbnVtYmVyX2hlYWRfc2VxYC9gbW51bWJlcl9oZWFkYOuPhCDrs4Trj4TroZwg7KG07J6s7ZWp64uI64ukLiDuiIBmaWxlY2l0Ze6IgnR1cm4xOGZpbGUxMO6IgkwxNjMtTDE3NO6IgQoK7KCA652866m0IO2bhOyekOulvCDtlZjsp4Ag7JWK6rOgIOyVhOuemOyymOufvCDrqoXsua3snYQg66qF7ZmV7Z6IIOu2hOumrO2VqeuLiOuLpC4KCmBgYHRleHQKUFIgIzU0OApNLTgxMjMgICAgICAg4oaQIFBSIGludGVncmF0aW9uIG9yZGluYWwKSS0xMDUyNCAgICAgIOKGkCBhY3R1YWwgaW50ZWdyYXRpb24gLyByZWdyZXNzaW9uIG9yZGluYWwKZDcxYmUxMCAgICAgIOKGkCBHaXQgdHJ1dGgKYGBgCgrqt7jrpqzqs6AgUmVncmVzc2lvbiDtmZTrqbTsl5DshJzripQgTSDrsojtmLjrs7Tri6QgSSDrsojtmLjrpbwg7JWe7JeQIOuRoeuLiOuLpC4KCuuYkCBgKHJlcG9zaXRvcnksIGJyYW5jaClg66W8IOuwmOuTnOyLnCDtkZzsi5ztlbTslbwg7ZWp64uI64ukLiDtmITsnqwgcHItc2VhcmNo6rCAIHNlcXVlbmNlIHNwYWNl66W8IGAocmVwb3NpdG9yeSwgYmFzZV9icmFuY2gpYCDri6jsnITroZwg65GUIOqyg+ydgCDrp57ripQg6rKw7KCV7J6F64uI64ukLiBgbWFpbjpJLTEwNTI0YOyZgCBgcmVsZWFzZS8yNkE6SS0xMDUyNGDripQg6rCZ7J2AIHJldmlzaW9uIOuyiO2YuOqwgCDslYTri4jquLAg65WM66y47J6F64uI64ukLiDsi6Ttlokg67iM66as7ZSE64+EIOyLnO2AgOyKpCDqsJLsnYQgYHNlcV9lcG9jaGAsIGBzZXF1ZW5jZV9zcGFjZWAg7JeG7J20IOuLqOuPhSDsoIDsnqXCt+yghOuLrMK37ZGc7Iuc7ZWY64qUIOqyg+ydhCDquIjsp4Dtlanri4jri6QuIO6IgGZpbGVjaXRl7oiCdHVybjRmaWxlMO6IgkwxLUwy7oiBCgrsi6TsoJwgVUkg7ZGc6riw64qUIOuLpOydjCDsoJXrj4TqsIAg7KCB64u57ZWp64uI64ukLgoKYGBgdGV4dAptb2RlbS9zdyDCtyBtYWluIMK3IEUxIMK3IEktMTA1MjQKUFIgIzU0OCDCtyBkNzFiZTEwCmBgYAoKaGlzdG9yeSByZXdyaXRl64+EIOydtCDrqqjrjbjsl5DshJzripQg7LKY66as7ZWgIOyImCDsnojsirXri4jri6QuIEdpdCBoaXN0b3J56rCAIOuwlOuAjOuptCDsnbTsoIQgb3JkaW5hbOydmCDsnZjrr7jqsIAg67OA7ZWgIOyImCDsnojsnLzrr4DroZwgcHItc2VhcmNo64qUIGVwb2No66W8IOyYrOumrOqzoCDquLDsobQg6rCS7J2YIHN0YWxlIOyXrOu2gOulvCDtkZztmITtlZjrj4TroZ0g7J2066+4IOyEpOqzhOuQmOyWtCDsnojsirXri4jri6QuIOydtOqyg+ydgCBQNCBDTOqzvCBHaXQgc2VxdWVuY2Ug7IKs7J207J2YIOuzuOyniOyggeyduCDssKjsnbTrpbwg7KCc64yA66GcIOyymOumrO2VnCDrtoDrtoTsnoXri4jri6QuIO6IgGZpbGVjaXRl7oiCdHVybjRmaWxlMO6IgkwxLUwy7oiBCgojIyBSZWdyZXNzaW9uIFdvcmtiZW5jaOuhnCDrsJzsoITsi5ztgqTripQg6rKD7J20IO2VteyLrOydtOuLpAoK7ZiE7J6sIGJpc2VjdCBiYWNrZW5k66W8IOuLpOyLnCDqtaztmITtlaAg7ZWE7JqU64qUIOyXhuyKteuLiOuLpC4gYFctMDA0YCDqs4Tsl7TsnZggcmFuZ2UgaW52ZXN0aWdhdGlvbuqzvCDtmITsnqwgYmlzZWN0IOq4sOuKpeydhCDigJxSZWdyZXNzaW9uIFdvcmtiZW5jaOKAneuhnCDqsJXtmZTtlZjripQg7Kq97J20IO2aqOqzvOqwgCDtgb3ri4jri6QuCgrsoJzqsIAg7LaU7LKc7ZWY64qUIOy1nOyihSDtmZTrqbTsnYAg64uk7J2M6rO8IOqwmeyKteuLiOuLpC4KCmBgYHRleHQKUmVncmVzc2lvbiBTZWFyY2gKUmVwb3NpdG9yeSAgIG1vZGVtL3N3CkJyYW5jaCAgICAgICBtYWluClNlcXVlbmNlICAgICBFMQoKS25vd24gUEFTUyAgIEktMTA1MjEgICBhOTFiYzIxICAgIzUyMSAgIGJ1aWxkIGF2YWlsYWJsZQpLbm93biBGQUlMICAgSS0xMDU4MCAgIDcyZmQxMTAgICAjNjAxICAgYnVpbGQgYXZhaWxhYmxlCgpDYW5kaWRhdGUgICAgSS0xMDU1MCAgIDkxYzdhYWUgICAjNTcwCkFydGlmYWN0ICAgICBTTVAxOTAwLW1haW4tRTEtUzEwNTUwLTkxYzdhYWUuYmluCgpbIFBBU1MgXSBbIEZBSUwgXSBbIElOQ09OQ0xVU0lWRSBdIFsgU0tJUCBdCgpSZW1haW5pbmcgY2FuZGlkYXRlczogMjkKRXN0aW1hdGVkIHRlc3RzOiA1CgpUaW1lbGluZQpQQVNTICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgRkFJTAoxMDUyMSDilJzilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDil4/ilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilKQgMTA1ODAKICAgICAgICAgICAgICAgICAgICAxMDU1MApgYGAKCu2YhOyerCDsu7Ttj6zrhIztirgg6rOE7JW9IOyekOyytOqwgCBgcmVtYWluaW5nYCwgYGVzdGltYXRlZF9zdGVwc2AsIGBuZXh0YOulvCDsoJXrs7jsnLzroZwg7IKs7Jqp7ZWY6riwIOuVjOusuOyXkCDsnbQg7ZiV7YOc66Gc7J2YIOuwnOyghOydgCDquLDsobQg7ISk6rOE7JmAIOy2qeuPjO2VmOyngCDslYrsirXri4jri6QuIO6IgGZpbGVjaXRl7oiCdHVybjIwZmlsZTDuiIJMMy1MMTDuiIEKCuyXrOq4sOyXkOyEnCDqsIDsnqUg66i87KCAIOy2lOqwgO2VoCDquLDriqXsnYAgYFNLSVBg6rO8IGBJTkNPTkNMVVNJVkVg7J6F64uI64ukLiBHaXQg7J6Q7LK064qUIHRlc3TtlaAg7IiYIOyXhuuKlCByZXZpc2lvbuydhCBgZ2l0IGJpc2VjdCBza2lwYOycvOuhnCDsspjrpqztlaAg7IiYIOyeiOqzoCwg7Jes65+sIHJldmlzaW9u7J2EIHNraXDtlaAg7IiY64+EIOyeiOyKteuLiOuLpC4g64uk66eMIGN1bHByaXQg67CU66GcIOyjvOuzgOydhCBza2lw7ZWY66m0IEdpdOuPhCDstZzstIggYmFkIHJldmlzaW9u7J2EIOuLqOydvCBjb21taXTsnLzroZwg7Yq57KCV7ZWY7KeAIOuqu+2VoCDsiJgg7J6I64uk6rOgIOuqheyLnO2VqeuLiOuLpC4g7oiAY2l0Ze6IgnR1cm4wc2VhcmNoMO6IgQoK7ZiE7J6sIHByLXNlYXJjaCBBUEkg6rOE7JW97J2AIGB2ZXJkaWN0OiAiZ29vZCIgfCAiYmFkImDsnbTrr4DroZwg7J20IOu2gOu2hOydtCDsi6TsoJwg7J6l67mEIO2ZmOqyveqzvCDruYTqtZDtlojsnYQg65WMIOqwgOyepSDrtoTrqoXtlZwg6riw64qlIGdhcOyeheuLiOuLpC4g7oiAZmlsZWNpdGXuiIJ0dXJuMjBmaWxlMe6IgkwxMi1MMjPuiIEKCuuLqCwgYFNLSVBg6rO8IGBJTkNPTkNMVVNJVkVg64qUIOydmOuvuOqwgCDri6zrnbzslbwg7ZWp64uI64ukLgoKfCDqsrDqs7wgfCDsnZjrr7ggfCDtg5Dsg4kg67KU7JyEIHwKfC0tLXwtLS18LS0tfAp8IFBBU1MgfCDsnbQgcmV2aXNpb27sl5DshJzripQg64yA7IOBIHJlZ3Jlc3Npb27snbQg7JeG7J2MIHwgbG93ZXIgYm91bmTrpbwg7Jis66a8IHwKfCBGQUlMIHwg64yA7IOBIHJlZ3Jlc3Npb27snbQg7J6s7ZiE65CoIHwgdXBwZXIgYm91bmTrpbwg64K066a8IHwKfCBTS0lQIHwgYnVpbGQg67aI6rCALCBiaW5hcnkg7JeG7J2MLCDsnqXruYQg7Zi47ZmYIOu2iOqwgCDrk7EgdGVzdCDsnpDssrQg67aI6rCA64qlIHwgYm91bmTrpbwg7JuA7KeB7J207KeAIOyViuqzoCDri6Trpbgg7ZuE67O0IOyEoO2DnSB8CnwgSU5DT05DTFVTSVZFIHwg7Iuc7ZeY7ZaI7KeA66eMIO2GteqzhC/tmZjqsr3sg4Eg7YyQ7KCVIOu2iOqwgCB8IGJvdW5k66W8IOybgOyngeydtOyngCDslYrqs6Ag7J6s7Iuc7ZeYIOqwgOuKpSDsg4Htg5zroZwg7Jyg7KeAIHwKCu2YhOyerOyymOufvCBgYmlzZWN0X3Nlc3Npb25g7JeQIGdvb2QvYmFkIGJvdW5kYXJ566eMIOuRkOqzoCDrgZ3rgrTquLDrs7Tri6TripQgb2JzZXJ2YXRpb27snYQg67OE64+EIOyggOyepe2VmOuKlCDqsoPsnbQg7KKL7Iq164uI64ukLgoKYGBgdGV4dApyZWdyZXNzaW9uX29ic2VydmF0aW9uCi0tLS0tLS0tLS0tLS0tLS0tLS0tLS0Kc2Vzc2lvbl9pZAptZXJnZV9zZXEKY29tbWl0X3NoYQphcnRpZmFjdF9pZAp2ZXJkaWN0ICAgICAgICAgICAgIFBBU1MgfCBGQUlMIHwgU0tJUCB8IElOQ09OQ0xVU0lWRQpmYWlsdXJlX3NpZ25hdHVyZQp0ZXN0X3R5cGUKZGV2aWNlX2lkCmVudmlyb25tZW50X2lkCnN0YXJ0ZWRfYXQKZW5kZWRfYXQKcnVudGltZV9zZWNvbmRzCmZhaWx1cmVfY291bnQKb3BlcmF0b3IKbm90ZQpyZXN1bHRfdXJpCmBgYAoK7J2066CH6rKMIO2VtOyVvCDigJzslrTripAg67mM65Oc66W8IOyWtOuKkCDsnqXruYTsl5DshJwg64iE6rCAIOyWvOuniOuCmCDsmKTrnpgg64+M66C46rOgIOyWtOuWpCDsi6TtjKjrpbwg67Sk64qU6rCA4oCd6rCAIOuCqOyKteuLiOuLpC4KCu2Kue2eiCBiaW5hcnkgcmVncmVzc2lvbuyXkOyEnOuKlCBjb21taXTrs7Tri6Qg4oCcdGVzdGFibGUgYXJ0aWZhY3TigJ3qsIAg642UIO2YhOyLpOyggeyduCDtm4Trs7Qg7KeR7ZWp7J28IOyImCDsnojsirXri4jri6QuIOuqqOuToCBtYWluIGNvbW1pdOyXkCBiaW5hcnnrpbwg7JiB6rWsIOuztOq0gO2VmOyngCDslYrripQg7YyA7J20652866m0IOyymOydjOyXkOuKlCDsobTsnqztlZjripQgYmluYXJ566eMIOuMgOyDgeycvOuhnCBiaXNlY3Rpb27snYQg7ZWY64qUIOqyg+ydtCDsoovsirXri4jri6QuCgrsmIjrpbwg65Ok7Ja0OgoKYGBgdGV4dApJLTEwNTIwICAgIGJpbmFyeSBPICAgIFBBU1MKSS0xMDUyMSAgICBiaW5hcnkgWApJLTEwNTIyICAgIGJpbmFyeSBYCkktMTA1MjMgICAgYmluYXJ5IE8KSS0xMDUyNCAgICBiaW5hcnkgWApJLTEwNTI1ICAgIGJpbmFyeSBPCi4uLgpJLTEwNTgwICAgIGJpbmFyeSBPICAgIEZBSUwKYGBgCgrssqsg64uo6rOE7JeQ7ISc64qUIGF2YWlsYWJsZSBhcnRpZmFjdCDsp5HtlansnYQg64yA7IOB7Jy866GcIOuylOychOulvCDsooHtnpnri4jri6QuCgpgYGB0ZXh0CjEwNTIwIOKGkiAxMDU1MCDihpIgMTA1NjUg4oaSIC4uLgpgYGAKCuq3uCDqsrDqs7wg7JuQ7J247J20IOyYiOulvCDrk6TslrQgYChJLTEwNTQzLCBJLTEwNTUwXWDquYzsp4Ag7KKB7ZiA7KGM64uk66m0LCDqt7jrlYwgMTA1NDYg65iQ64qUIDEwNTQ37J2YIHRhcmdldGVkIGJ1aWxk66W8IOyDneyEse2VtOyEnCDrkZAg67KI7Ke4IOuLqOqzhCBiaXNlY3Rpb27snYQg7ZWgIOyImCDsnojsirXri4jri6QuCgrspokgZW1iZWRkZWQvbW9kZW3sl5DshJzripQg64uk7J2M7J2YIDItc3RhZ2UgYmlzZWN06rCAIO2bqOyUrCDtmITsi6TsoIHsnoXri4jri6QuCgpgYGB0ZXh0ClN0YWdlIEEK6riw7KG0IOuztOq0gCBiaW5hcnnroZwgY29hcnNlIGJpc2VjdAoKU3RhZ2UgQgrsooHtmIDsp4Qg6rWs6rCE7J2YIG1pc3NpbmcgbWlkcG9pbnTrp4wg7J6s67mM65Oc7ZWY7JesIGZpbmUgYmlzZWN0CmBgYAoK7ZiE7J6sIHByLXNlYXJjaCDthrXtlakg7YWM7Iqk7Yq46rCAIOyhtOyerO2VmOuKlCBzZXF1ZW5jZSDqsJLrp4wg64yA7IOB7Jy866GcIHNwYXJzZSBoaXN0b3J57JeQ7IScIG1pZHBvaW5066W8IOqzhOyCsO2VmOuKlCDrj5nsnpHquYzsp4Ag6rKA7Kad7ZWY6rOgIOyeiOq4sCDrlYzrrLjsl5AsIOydtCDslYTsnbTrlJTslrTripQg7ZiE7J6sIOq1rO2YhCDrqqjrjbjqs7zrj4Qg7J6YIOunnuyKteuLiOuLpC4g7oiAZmlsZWNpdGXuiIJ0dXJuN2ZpbGUw7oiCTDEtTDLuiIEKCuq3uOumrOqzoCDroZzsu6wg6rCc67Cc7J6Q66W8IOychO2VnCDquLDriqXsnLzroZwg4oCcT3BlbiBpbiBnaXQgYmlzZWN04oCd66W8IOygnOqzte2VoCDsiJjrj4Qg7J6I7Iq164uI64ukLgoKYGBgYmFzaApnaXQgYmlzZWN0IHN0YXJ0IC0tZmlyc3QtcGFyZW50IDxiYWRfc2hhPiA8Z29vZF9zaGE+CmBgYAoK7Iuk7KCcIHRlc3TqsIAgc2NyaXB066GcIOyekOuPmSDtjJDsoJXrkKAg7IiYIOyeiOuKlCDqsr3smrDsl5DripQ6CgpgYGBiYXNoCmdpdCBiaXNlY3QgcnVuIC4vcmVncmVzc2lvbi10ZXN0LnNoCmBgYAoK66GcIOyghO2ZmO2VoCDsiJgg7J6I7Iq164uI64ukLiBHaXTsnYAgdGVzdCBjb21tYW5k6rCAIOyEseqzteydtOuptCAwLCBiYWTsnbTrqbQgMX4xMjcg7KSRIDEyNeulvCDsoJzsmbjtlZwg6rCSLCB0ZXN0IOu2iOqwgOydtOuptCAxMjXrpbwg67CY7ZmY7ZWY64+E66GdIOygleydmO2VmOqzoCDsnojsirXri4jri6QuIO6IgGNpdGXuiIJ0dXJuMHNlYXJjaDDuiIEKCuq3uOufrOuCmCDshJzrsoTsl5DshJwg7Iuk7KCcIGBnaXQgYmlzZWN0YCDtlITroZzshLjsiqTrpbwg7Iuk7ZaJ7ZWgIO2VhOyalOuKlCDsl4bsirXri4jri6QuIHNxdWFzaCDquLDrsJjsnZgg7ISg7ZiVIGZpcnN0LXBhcmVudCBzZXF1ZW5jZeyXkOyEnOuKlCDsp4DquIjsspjrn7wgRELsl5Ag7J6I64qUIG9yZGVyZWQgc2VxdWVuY2Xrpbwg7KCI67CY7JSpIOykhOydtOuKlCDqsoPsnbQg7J6l67mEL+yCrOuejC/sm7kgVUkgd29ya2Zsb3fsl5Ag7Zuo7JSsIOyekOyXsOyKpOufveyKteuLiOuLpC4KCiMjIOyepeu5hMK37ZWE65OcIOyLnO2XmOqzvCBNVEJG7JeQ64+EIOyggeyaqe2VoCDsiJgg7J6I64qU6rCACgrsnqXruYTrgpggZmllbGTrpbwg7KeB7KCRIOuPjOugpOyVvCDtlbTshJwgdGVzdCDsnpDrj5ntmZTqsIAg7JWIIOuQnOuLpOuKlCDsoJDsnYAgYGdpdCBiaXNlY3RgIOuYkOuKlCBwci1zZWFyY2jsnZggYmlzZWN0IOyCrOyaqeydhCDrp4nsp4Ag7JWK7Iq164uI64ukLgoKYGdpdCBiaXNlY3Rg7JeQ7IScIOyekOuPme2ZlOuQmOuKlCDqsoPsnYAg4oCc7Ja065akIHJldmlzaW9u7J2EIOuLpOydjOyXkCDqsoDsgqztlaDsp4DigJ3snbTsp4Ag4oCc7Iuc7ZeYIOyekOyytOulvCDrsJjrk5zsi5wg7ZSE66Gc6re4656o7J20IO2VtOyVvCDtlZzri6TigJ3ripQg6rKD7J20IOyVhOuLmeuLiOuLpC4g6rO17IudIEdpdCDrrLjshJzsnZgg6riw67O4IOygiOywqOuPhCDspJHqsIQgcmV2aXNpb27snYQgY2hlY2tvdXTtlZwg65KkIOyCrOyaqeyekOqwgCBjb21waWxlL3Rlc3TtlZjqs6AgZ29vZCDrmJDripQgYmFk66W8IOyeheugpe2VmOuKlCDrsKnsi53snoXri4jri6QuIGBnaXQgYmlzZWN0IHJ1bmDsnYAg7LaU6rCA7KCB7J24IOyekOuPme2ZlCDsmLXshZjsnbwg67+Q7J6F64uI64ukLiDuiIBjaXRl7oiCdHVybjBzZWFyY2gw7oiBCgrrlLDrnbzshJwgbW9kZW0g7ZmY6rK97JeQ7ISc64qUIOuLpOydjOqzvCDqsJnsnbQg67aE66as7ZWY66m0IOuQqeuLiOuLpC4KCmBgYHRleHQKcHItc2VhcmNoCiAg4pSCCiAg4pSc4pSAIG5leHQgY2FuZGlkYXRlIOqysOyglQogIOKUgiAgICBJLTEwNTUwCiAg4pSCCiAg4pSc4pSAIO2VtOuLuSBiaW5hcnkgLyBTSEEgLyBQUiDsoJXrs7Qg7ZGc7IucCiAg4pSCCiAg4pa8Cuyepeu5hCAvIGNoYW1iZXIgLyBmaWVsZCAvIE1UQkYgZmFybQogIOKUggogIOKUnOKUgCDsgqzrnozsnbQg65iQ64qUIOyZuOu2gCDsi5zsiqTthZzsnbQgdGVzdAogIOKUggogIOKWvApQQVNTIC8gRkFJTCAvIFNLSVAgLyBJTkNPTkNMVVNJVkUKICDilIIKICDilJTilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDihpIgcHItc2VhcmNo7JeQIOqysOqzvCDquLDroZ0KICAgICAgICAgICAgICAgICAgICAgICAgIOKUggogICAgICAgICAgICAgICAgICAgICAgICAg4pa8CiAgICAgICAgICAgICAgICAgICAgbmV4dCBjYW5kaWRhdGUKYGBgCgrsnbQg6rWs7KGw652866m0IHRlc3QgZXhlY3V0aW9u7J20IOyImCDrtoTsnbTrk6Ag66qHIOyLnOqwhOydtOuToCDrqbDsuaDsnbTrk6AgYmlzZWN0IGVuZ2luZeqzvCDqsrDtlanrkJjsp4Ag7JWK7Iq164uI64ukLiDtmITsnqwgcHItc2VhcmNo64+EIOyLpOygnCB0ZXN0IGV4ZWN1dGlvbuydhCDrspTsnIQg67CW7JeQIOuRkOqzoCDri6TsnYwg7ZuE67O066eMIOygnOyLnO2VmOuPhOuhnSDsmpTqtazsgqztla3snbQg7ISk7KCV65CY7Ja0IOyeiOycvOuvgOuhnCDqtazsobDsoIHsnLzroZwg7KCB7ZWp7ZWp64uI64ukLiDuiIBmaWxlY2l0Ze6IgnR1cm4xNWZpbGUx7oiCTDE0LUwyNO6IgQoK64uk66eMIE1UQkbripQg7J2867CYIFBBU1MvRkFJTCByZWdyZXNzaW9u6rO864qUIOuLpOumheuLiOuLpC4KCk1UQkbripQg7ZWcIOuyiCDsi6TtlontlojripTrjbAgY3Jhc2jqsIAg7JeG7JeI64uk6rOgIOuwlOuhnCBQQVNT65286rOgIO2VoCDsiJgg7J6I64qUIOyngO2RnOqwgCDslYTri5nri4jri6QuIE5JU1TsnZggSFBQL2V4cG9uZW50aWFsIHJlbGlhYmlsaXR5IG1vZGVs7JeQ7ISc64qUIE1UQkYg7LaU7KCV7LmY66W8IOq4sOuzuOyggeycvOuhnAoKYGBgdGV4dApNVEJGIGVzdGltYXRlID0KdG90YWwgc3lzdGVtIG9wZXJhdGluZyB0aW1lIC8gbnVtYmVyIG9mIGZhaWx1cmVzCmBgYAoK66GcIOuztOqzoCBjb25maWRlbmNlIGludGVydmFs7J2EIO2VqOq7mCDqs4TsgrDtlanri4jri6QuIOuYkO2VnCDtirnsoJUgTVRCRiDrqqntkZzrpbwg7Yq57KCVIGNvbmZpZGVuY2XroZwg7J6F7Kad7ZWY64qUIGFjY2VwdGFuY2UgdGVzdOuKlCDsg4Hri7ntlZwg7Iuc7ZeYIOyLnOqwhOydtCDtlYTsmpTtlaAg7IiYIOyeiOyKteuLiOuLpC4g7oiAY2l0Ze6IgnR1cm4zc2VhcmNoMO6IgnR1cm4zc2VhcmNoMu6IgQoKTklTVOydmCDsmIjrpbwg67O066m0IDIwMOyLnOqwhCBNVEJG66W8IDkwJSBjb25maWRlbmNl66GcIO2ZleyduO2VmOuptOyEnCBmYWlsdXJl66W8IO2VmOuCmOuPhCDtl4jsmqntlZjsp4Ag7JWK64qUIOqyveyasOyXkOuPhCA0NjDsi5zqsITsnZggdGVzdOqwgCDtlYTsmpTtlanri4jri6QuIGZhaWx1cmXrpbwg66qHIOqxtCDtl4jsmqntlZjripDrg5Dsl5Ag65Sw6528IO2VhOyalO2VnCDsi5ztl5gg7Iuc6rCE7J2AIOuNlCDripjslrTrgqnri4jri6QuIO6IgGNpdGXuiIJ0dXJuM3NlYXJjaDDuiIEKCuuUsOudvOyEnCBNVEJG7JeQIOydvOuwmOyggeyduAoKYGBgdGV4dArtlZzrsogg64+M66a8CuKGkwrslYgg7KO97J2MCuKGkwpQQVNTCmBgYAoK66W8IOyggeyaqe2VtOyEnCBiaW5hcnkgc2VhcmNo7ZWY66m0IO2GteqzhOyggSBub2lzZSDrlYzrrLjsl5Ag7J6Y66q765CcIOuwqe2WpeycvOuhnCDrspTsnITrpbwg7KSE7J28IOqwgOuKpeyEseydtCDtgb3ri4jri6QuCgpNVEJG7Jqp7Jy866Gc64qUIO2MkOygleydhCDri6TsnYzsspjrn7wg67CU6r6464qUIOqyg+ydtCDrp57sirXri4jri6QuCgpgYGB0ZXh0CmNhbmRpZGF0ZSBJLTEwNTUwCgpvYnNlcnZlZCBkZXZpY2UtaG91cnMgPSBUCmZhaWx1cmVzICAgICAgICAgICAgICA9IHIKZXN0aW1hdGVkIE1UQkYgICAgICAgID0gVCAvIHIKY29uZmlkZW5jZSBpbnRlcnZhbCAgID0gW0wsIFVdCnRhcmdldCBNVEJGICAgICAgICAgICA9IE0wCgppZiBMID49IE0wOgogICAgR09PRAplbGlmIFUgPCBNMDoKICAgIEJBRAplbHNlOgogICAgSU5DT05DTFVTSVZFCmBgYAoK7KaJIGNvbmZpZGVuY2UgaW50ZXJ2YWwg7KCE7LK06rCAIOuqqe2RnCBNVEJG67O064ukIOychOyXkCDsnojsnLzrqbQgR09PRCwg7KCE7LK06rCAIOyVhOuemOyXkCDsnojsnLzrqbQgQkFELCDrqqntkZzrpbwg6rCA66Gc7KeA66W066m0IOyLnO2XmCDsi5zqsITsnYQg642UIOuIhOygge2VqeuLiOuLpC4gTklTVOuKlCBIUFAvZXhwb25lbnRpYWwg66qo64247JeQ7IScIE1UQkbsnZgg7ZWY7ZWcwrfsg4HtlZwgY29uZmlkZW5jZSBib3VuZCDqs4TsgrDqs7wgemVyby1mYWlsdXJlIO2VmO2VnCDqs4TsgrDsnYQg7KCc6rO17ZWY6rOgIOyeiOyKteuLiOuLpC4g7oiAY2l0Ze6IgnR1cm4zc2VhcmNoMu6IgQoK7J2066W8IHByLXNlYXJjaOyXkCDsp4HsoJEg64Sj64qU64uk66m0IHNlc3Npb27sl5Ag64uk7J2MIOygleuPhOqwgCDstpTqsIDrkJjrqbQg65Cp64uI64ukLgoKYGBgdGV4dAp0ZXN0X21vZGUgICAgICAgPSAibXRiZiIKdGFyZ2V0X210YmYgICAgID0gMjAwaApjb25maWRlbmNlICAgICAgPSAwLjkwCnRvdGFsX3J1bl90aW1lICA9IDg0aApmYWlsdXJlX2NvdW50ICAgPSAxCmxvd2VyX2JvdW5kICAgICA9IC4uLgp1cHBlcl9ib3VuZCAgICAgPSAuLi4KdmVyZGljdCAgICAgICAgID0gSU5DT05DTFVTSVZFCmBgYAoK64uk66eMIGZ1bGwgTVRCRiBxdWFsaWZpY2F0aW9u7J2EIGJpc2VjdGlvbuydmCDrqqjrk6AgbWlkcG9pbnTsl5DshJwg7IiY7ZaJ7ZWY64qUIOqyg+ydgCDtmITsi6TsoIHsnLzroZwg64SI66y0IOu5hOyMgCDqsIDriqXshLHsnbQg64aS7Iq164uI64ukLiDqt7jrnpjshJwgbW9kZW0g7YyA7JeQ64qUIOuLpOydjCDsoIjssKjrpbwg6raM7ZWp64uI64ukLgoKYGBgdGV4dArruaDrpbggc2NyZWVuaW5nIHJlZ3Jlc3Npb24KICAgICAgICDihpMK7J2867CYIFBBU1MvRkFJTCDrmJDripQg7Ken7J2AIHN0cmVzcyB0ZXN066GcCnN1c3BlY3QgcmFuZ2Xrpbwg7YGs6rKMIOy2leyGjAogICAgICAgIOKGkwoyfjTqsJwgY2FuZGlkYXRl66GcIOyigeyVhOynkAogICAgICAgIOKGkwrqt7gg6rWs6rCE7JeQ7IScIOuwmOuztS/rs5HroKwg7J6l67mEIHRlc3QKICAgICAgICDihpMKTVRCRiBjb25maWRlbmNlIOq4sOuwmCDtjJDsoJUKICAgICAgICDihpMKY3VscHJpdCBib3VuZGFyeSDqsrDsoJUKICAgICAgICDihpMK7LWc7KKFIGNhbmRpZGF0ZeyXkCDsoJXsi50gTVRCRiBxdWFsaWZpY2F0aW9uCmBgYAoK7KaJIOKAnE1UQkbrj4QgYmluYXJ5IHNlYXJjaCDqsIDriqXtlZzqsIA/4oCd7JeQIOuMgO2VnCDri7XsnYAg4oCc6rCA64ql7ZWY7KeA66eMIHJhdyBNVEJGIOqwkuydhCDrsJTroZwgZ29vZC9iYWTroZwg7JOw66m0IOyViCDrkJjqs6AsIO2GteqzhOyggSB2ZXJkaWN0IGxheWVy6rCAIO2VhOyalO2VmOuLpOKAneyeheuLiOuLpC4KCuyXrOufrCDsnqXruYTrpbwg64+Z7Iuc7JeQIOuPjOumrOuKlCDqsoPrj4Qg66qo64247J2YIOqwgOygleydtCDshLHrpr3tlZzri6TrqbQg7LSdIHN5c3RlbSBvcGVyYXRpbmcgdGltZeydhCDriITsoIHtlZjripQg67Cp7Iud7Jy866GcIOyLnO2XmCDsi5zqsITsnYQg7ZmV67O07ZWY64qUIOuNsCDsgqzsmqntlaAg7IiYIOyeiOyKteuLiOuLpC4g64uk66eMIGRldmljZSwgUkYgY29uZGl0aW9uLCB0ZW1wZXJhdHVyZSwgbmV0d29yayBjb25maWd1cmF0aW9uIOuTseydtCDshJzroZwg64uk66W4642wIO2VmOuCmOydmCBob21vZ2VuZW91cyBmYWlsdXJlIHByb2Nlc3ProZwg66y27Ja0IOuyhOumrOuptCDsmKTtnojroKQg6rKw6rO866W8IOyYpOyXvOyLnO2CrCDsiJgg7J6I7Iq164uI64ukLiBOSVNU7J2YIOuLqOyInCBNVEJGIOuqqOuNuCDsnpDssrTqsIAgY29uc3RhbnQgZmFpbHVyZSByYXRlL0hQUCDqsIDsoJXsnYQg7KCE7KCc66GcIO2VqeuLiOuLpC4gZmFpbHVyZSByYXRl6rCAIOyLnOqwhOyXkCDrlLDrnbwg67OA7ZWY64qUIHJlbGlhYmlsaXR5LWdyb3d0aCDrrLjsoJzrnbzrqbQgTklTVOuPhCDrs4Trj4TsnZggcG93ZXItbGF3IOuqqOuNuOydhCDri6Tro7nri4jri6QuIO6IgGNpdGXuiIJ0dXJuM3NlYXJjaDXuiIJ0dXJuM3NlYXJjaDPuiIEKCuq3uOuemOyEnCBwci1zZWFyY2jsl5DripQg7IiY7ZWZIOuqqOuNuOuztOuLpCDrqLzsoIAg64uk7J2MIG1ldGFkYXRh66W8IOyggOyepe2VmOuKlCDqsoPsnbQg7KSR7JqU7ZWp64uI64ukLgoKYGBgdGV4dApEZXZpY2UgSFcgcmV2aXNpb24KUkYgLyBjaGFtYmVyIC8gZmllbGQgY29uZmlndXJhdGlvbgpOZXR3b3JrIGNvbmZpZ3VyYXRpb24KVGVzdCBzY2VuYXJpbwpGaXJtd2FyZSBhcnRpZmFjdCBkaWdlc3QKU2VxdWVuY2UgLyBTSEEKVGVzdCBkdXJhdGlvbgpGYWlsdXJlIHNpZ25hdHVyZQpGYWlsdXJlIGNvdW50ClJldHJ5IGNvdW50CmBgYAoK64+Z7J28IGZhaWx1cmUgc2lnbmF0dXJl7J2YIHJlZ3Jlc3Npb27rp4wg7ZWcIGJpc2VjdCBzZXNzaW9u7Jy866GcIOustuuKlCDqsoPrj4Qg7KSR7JqU7ZWp64uI64ukLiDshJzroZwg64uk66W4IOuRkCDsnqXslaDrpbwg7ZWY64KY7J2YIGBGQUlMYOuhnCDrrLbsnLzrqbQg4oCc7Ja065akIOyngOygkCDsnbTsoITsl5DripQgZ29vZOydtOqzoCDsnbTtm4Tsl5DripQgYmFk4oCd652864qUIGJpbmFyeSBzZWFyY2jsnZgg7KCE7KCc6rCAIOq5qOyniCDsiJgg7J6I7Iq164uI64ukLgoKIyMgQ0kvQ0QsIEJpbmFyeSBBcnRpZmFjdCwgTURWUCDsl7Dqs4Qg7ISk6rOECgrtjIDsnqXri5jsnbQg7KCc7JWI7ZWcCgpgYGB0ZXh0ClNNUDE5MDBfTS0xMDUyMy5iaW4KYGBgCgrqsJnsnYAgYXJ0aWZhY3QgbmFtaW5n7J2AIOyii+ydgCDrsKntlqXsnbTsp4Drp4wsIO2YhOyerCBwci1zZWFyY2gg6rWs7KGw7JeQ7ISc64qUIGBNIG51bWJlcmDrs7Tri6QgYG1lcmdlX3NlcWDrpbwg64Sj64qUIOqyg+ydhCDqtoztlanri4jri6QuIO2YhOyerCBNIG51bWJlcuuKlCBQUuydtCDsl4bripQgbWFpbiBjb21taXTsnYQg6rG064SI65uw6riwIOuVjOusuOyeheuLiOuLpC4g7oiAZmlsZWNpdGXuiIJ0dXJuMTdmaWxlMO6IgkwxLUwxMu6IgQoK7JiI66W8IOuTpOyWtDoKCmBgYHRleHQKU01QMTkwMC1tYWluLUUxLVMxMDUyMy1jODFmYTIyLmJpbgpgYGAKCuqwgCDrjZQg7KCV7ZmV7ZWp64uI64ukLgoK7IKs7Jqp7J6Q7JeQ6rKM64qUIOynp+qyjCDrs7Tsl6zrj4Qg64K067aAIG1hbmlmZXN064qUIGZ1bGwgU0hB66W8IOqwgOyguOyVvCDtlanri4jri6QuCgpgYGBqc29uCnsKICAicHJvZHVjdCI6ICJTTVAxOTAwIiwKICAicmVwb3NpdG9yeSI6ICJtb2RlbS9zdyIsCiAgImJhc2VCcmFuY2giOiAibWFpbiIsCiAgInNlcXVlbmNlRXBvY2giOiAxLAogICJtZXJnZVNlcSI6IDEwNTIzLAogICJpbnRlZ3JhdGlvbklkIjogIkktMTA1MjMiLAogICJjb21taXRTaGEiOiAiYzgxZmEyMmYuLi4uIiwKICAicHVsbFJlcXVlc3QiOiA1MjcsCiAgIm1lcmdlTnVtYmVyIjogODEyMywKICAiYXJ0aWZhY3RTaGEyNTYiOiAiLi4uIiwKICAiYnVpbGRDb25maWciOiAiLi4uIiwKICAidG9vbGNoYWluIjogIi4uLiIsCiAgImNyZWF0ZWRBdCI6ICIuLi4iCn0KYGBgCgrsnbQgbWFuaWZlc3TrpbwgYXJ0aWZhY3Qg7J2066aE67O064ukIOygleuzuOycvOuhnCDsgrzslYTslbwgYmluYXJ56rCAIOuzteyCrMK3cmVuYW1l65CY642U652864+EIOygle2Zle2VnCBzb3VyY2UgcmV2aXNpb27snYQg67O17JuQ7ZWgIOyImCDsnojsirXri4jri6QuCgrtmITsnqwgYE1lcmdlU2VxdWVuY2VgIOuNsOydtO2EsCDrqqjrjbjsnYAg7J2066+4IHJlcG9zaXRvcnksIGJyYW5jaCwgZXBvY2gsIGBtZXJnZV9zZXFgLCBgY29tbWl0X3NoYWAsIFBSLCBgbWVyZ2VfbnVtYmVyYOulvCDsl7DqsrDtlZjripQg67Cp7Zal7J2066+A66GcIGFydGlmYWN064qUIOydtCBtYXBwaW5n7JeQIOyekOyXsOyKpOufveqyjCBmb3JlaWduIGtleSDshLHqsqnsnLzroZwg67aZ7J28IOyImCDsnojsirXri4jri6QuIO6IgGZpbGVjaXRl7oiCdHVybjEwZmlsZTfuiIJMMTQ1LUwxNTPuiIEKCuq2jOyepSDsl5Tti7Dti7DripQg64uk7J2MIOygleuPhOyeheuLiOuLpC4KCmBgYHRleHQKQXJ0aWZhY3RCdWlsZAotLS0tLS0tLS0tLS0tCmFydGlmYWN0X2lkCnJlcG9zaXRvcnlfaWQKYmFzZV9icmFuY2gKc2VxX2Vwb2NoCm1lcmdlX3NlcQpjb21taXRfc2hhCnB1bGxfcmVxdWVzdF9udW1iZXIKbWVyZ2VfbnVtYmVyCnByb2R1Y3QKdmFyaWFudAphcnRpZmFjdF91cmkKYXJ0aWZhY3Rfc2hhMjU2CmJ1aWxkX2lkCmJ1aWxkX2NvbmZpZwp0b29sY2hhaW5fdmVyc2lvbgpjcmVhdGVkX2F0CnJldGVudGlvbl9zdGF0ZQpgYGAKCuq3uOumrOqzoCDqsoDsg4nsnYAg7JaR67Cp7Zal7J207Ja07JW8IO2VqeuLiOuLpC4KCmBgYHRleHQKSS0xMDUyMwogIOKGkiBTSEEKICDihpIgUFIKICDihpIgQmluYXJ5CiAg4oaSIFRlc3QgcmVzdWx0CgpCaW5hcnkgZGlnZXN0CiAg4oaSIEktMTA1MjMKICDihpIgU0hBCiAg4oaSIFBSCgpQUiAjNTI3CiAg4oaSIG1haW4gaW50ZWdyYXRpb24gSS0xMDUyMwogIOKGkiBCaW5hcnkKICDihpIgcmVncmVzc2lvbiBoaXN0b3J5CmBgYAoK7Jes6riw7IScIENJ6rCAIHNlcXVlbmNl66W8IOKAnOuwnOq4ieKAne2VmOqyjCDrp4zrk6Tsp4DripQg7JWK64qUIOqyg+ydtCDsoovsirXri4jri6QuCgpHaXRIdWIgQWN0aW9uc+ydmCBgR0lUSFVCX1JVTl9OVU1CRVJg64qUIO2KueyglSB3b3JrZmxvd+uniOuLpCDrlLDroZwg7Kad6rCA7ZWp64uI64ukLiB3b3JrZmxvd+ulvCDstpTqsIDtlZjqsbDrgpgg7J2066aEL+q1rOyEseydhCDrsJTqvrjrqbQgUDQgQ0wg6rCZ7J2AIOyggOyepeyGjCDthrXtlakgc2VxdWVuY2XsnZgg7Jet7ZWg7J2EIO2VmOyngCDrqrvtlanri4jri6QuIOuwmOuptCDtmITsnqwgcHItc2VhcmNo7J2YIGBmaXJzdC1wYXJlbnQgb3JkaW5hbGDsnYAgR2l0IGhpc3RvcnnroZzrtoDthLAg7J6s6rWs7ISx7ZWgIOyImCDsnojsirXri4jri6QuIO6IgGNpdGXuiIJ0dXJuMXNlYXJjaDnuiIEg7oiAZmlsZWNpdGXuiIJ0dXJuNGZpbGUw7oiCTDEtTDLuiIEKCuq2jOyepSDtnZDrpoTsnYAg64uk7J2M7J6F64uI64ukLgoKYGBgdGV4dApHaXRIdWIgUFIKICAg4pSCCiAgIOKWvApTcXVhc2ggTWVyZ2UKICAg4pSCCiAgIOKWvAptYWluIGZpcnN0LXBhcmVudCBjb21taXQKICAg4pSCCiAgIOKUnOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgCBjb21taXQgU0hBCiAgIOKUggogICDilrwKcHItc2VhcmNoIHNlcXVlbmNlIGFzc2lnbm1lbnQKICAg4pSCCiAgIOKWvAoocmVwbywgYnJhbmNoLCBlcG9jaCwgbWVyZ2Vfc2VxLCBTSEEsIFBSKQogICDilIIKICAg4pSc4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSQCiAgIOKWvCAgICAgICAgICAgICAgIOKWvApTZWFyY2ggVUkgICAgICAgQnVpbGQgcGlwZWxpbmUKICAgICAgICAgICAgICAgICAgIOKUggogICAgICAgICAgICAgICAgICAg4pa8CiAgICAgICAgICAgICAgICBCaW5hcnkKICAgICAgICAgICAgICAgICAgIOKUggogICAgICAgICAgICAgICAgICAg4pa8CiAgICAgICAgICAgICAgQXJ0aWZhY3RCdWlsZAogICAgICAgICAgICAgICAgICAg4pSCCiAgICAgICAgICAgICAgICAgICDilrwKICAgICAgICAgIERldmljZSAvIE1EVlAgLyBmaWVsZAogICAgICAgICAgICAgICAgICAg4pSCCiAgICAgICAgICAgICAgICAgICDilrwKICAgICAgICAgIFJlZ3Jlc3Npb25PYnNlcnZhdGlvbgpgYGAKCkdpdEh1YuuPhCBzcXVhc2ggbWVyZ2XrpbwgYmFzZSBicmFuY2jsl5Ag7ZWY64KY7J2YIGNvbW1pdOycvOuhnCDtlansuZjripQg67Cp67KV7Jy866GcIOusuOyEnO2ZlO2VmOuvgOuhnCwgc2VxdWVuY2UgYnJhbmNo7JeQ7ISc64qUIHNxdWFzaC1vbmx5IOygleyxheydhCDsnKDsp4DtlZjripQg6rKD7J20IOqwgOyepSDri6jsiJztlanri4jri6QuIO2YhOyerCBwci1zZWFyY2gg7KCc7ZKIIOqzhOyVveuPhCBNIG51bWJlcuydmCDsgqzrgrQg7KCB7Jqp7J2EIHNxdWFzaC1vbmx566GcIOuRkOqzoCDsnojsirXri4jri6QuIO6IgGNpdGXuiIJ0dXJuMXNlYXJjaDHuiIEg7oiAZmlsZWNpdGXuiIJ0dXJuMTdmaWxlOO6IgkwxMzgtTDE0Oe6IgQoK65iQIO2VmOuCmCDso7zrqqntlaAg7KCQ7J2AIOy1nOq3vCBwci1zZWFyY2jsnZggTS1udW1iZXIgd29ya2Vy6rCAIOKAnGNvbW1pdOydtCDsoJXrp5AgUFLsnYQg7Ya17ZWcIOqyg+yduOyngCwgZGlyZWN0IHB1c2jsnbjsp4DigJ3rpbwg7Kad66qF7ZWY6riwIOychO2VtCDsg4Hri7ntnogg67O17J6h7ZWcIGV2aWRlbmNlIHJlc29sdXRpb27qs7wgb3BlcmF0b3IgYXR0ZXN0YXRpb27quYzsp4Ag6rCW6rKMIOuQmOyXiOuLpOuKlCDsoJDsnoXri4jri6QuIHdvcmtlciDsnpDssrTrj4QgcHJvZHVjdGlvbuyXkOyEnCBkaXJlY3QgcHVzaCDrtoDsnqzrpbwg7J6E7J2YIO2Zleygle2VmOyngCDslYrqs6AsIO2ZleyduOuQmOyngCDslYrsnLzrqbQg65Kk7Kq9IE0tbnVtYmVyIOuwnOq4ieydhCDrqYjstpTrqbAgb3BlcmF0b3IgYXR0ZXN0YXRpb27snYQg67OE64+E66GcIOyCrOyaqe2VnOuLpOqzoCDshKTrqoXtlanri4jri6QuIO6IgGZpbGVjaXRl7oiCdHVybjE5ZmlsZTDuiIJMMS1MMu6IgQoK7J20IOuzteyeoeyEseydgCBQUuyaqSBNLW51bWJlcuyXkOuKlCDtlYTsmpTtlZjsp4Drp4wgcmVncmVzc2lvbiBzZXF1ZW5jZeyXkOuKlCDtlYTsmpTtlZjsp4Ag7JWK7Iq164uI64ukLgoK7J20IOygkCDrlYzrrLjsl5Ag642U642U7JqxOgoKYGBgdGV4dApSZWdyZXNzaW9uIHRydXRoID0gbWVyZ2Vfc2VxClBSLWZyaWVuZGx5IG9yZGluYWwgPSBtZXJnZV9udW1iZXIKYGBgCgrroZwg67aE66as7ZWY64qUIOqyg+ydtCDsoovsirXri4jri6QuCgpNRFZQ7JeQIOuMgO2VtOyEnOuKlCDsnbTrsogg7KGw7IKs7JeQ7IScIG1vZGVtIHJlZ3Jlc3Npb24g7Iuc7Iqk7YWc7J2EIOucu+2VmOuKlCDqs7XqsJzrkJwgTURWUCDsnpDro4zrpbwg7ZmV7J247ZWY7KeAIOuqu+2WiOyKteuLiOuLpC4g6rO16rCcIOqygOyDieyXkOyEnCDrgpjsmKggYE1EVlBg64qUIOyjvOuhnCDsoITtmIAg64uk66W4IOydmOuvuOydmCDslb3slrTsmIDqs6AsIHByLXNlYXJjaCDsoIDsnqXshozsl5DshJzrj4QgbW9kZW0gcmVncmVzc2lvbi9NRFZQIOyXsOuPmSDqs4Tslb3snYAg7ZmV7J2465CY7KeAIOyViuyVmOyKteuLiOuLpC4g65Sw65287IScIOKAnOy1nOq3vCBNRFZQ7JeQ7IScIOyLpOygnOuhnCDslrTrlqQgYmluYXJ5IHNlYXJjaOulvCDtlZjripTsp4DigJ3rpbwg7Jm467aAIOyekOujjOunjOycvOuhnCDstpTsoJXtlbTshJwg64u17ZWY64qUIOqyg+ydgCDsnITtl5jtlanri4jri6QuCgrrjIDsi6AgTURWUOqwgCDsgqzrgrQg7J6l67mEL+qygOymnSDtlIzrnqvtj7zsnbTrnbzrqbQgcHItc2VhcmNo6rCAIE1EVlDsnZgg64K067aAIHdvcmtmbG936rmM7KeAIOyGjOycoO2VoCDtlYTsmpTripQg7JeG7Iq164uI64ukLiDri6TsnYwg6rOE7JW966eMIOyeoeycvOuptCDrkKnri4jri6QuCgpgYGB0ZXh0CnByLXNlYXJjaCDihpIgTURWUAotLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLQphcnRpZmFjdCBVUkkKY29tbWl0IFNIQQppbnRlZ3JhdGlvbiBzZXF1ZW5jZQp0ZXN0IHNjZW5hcmlvCnJlcXVlc3RlZCBkZXZpY2UvcHJvZmlsZQoKTURWUCDihpIgcHItc2VhcmNoCi0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tCnJ1biBJRAppbnRlZ3JhdGlvbiBzZXF1ZW5jZSAvIFNIQQpkZXZpY2UvcHJvZmlsZQpydW50aW1lCmZhaWx1cmUgY291bnQKZmFpbHVyZSBzaWduYXR1cmUKcmF3IHJlc3VsdCBVUkkKUEFTUyAvIEZBSUwgLyBJTkNPTkNMVVNJVkUKYGBgCgpNRFZQ6rCAIOyngOq4iCBiaW5hcnkgc2VhcmNo66W8IOyekOyytOyggeycvOuhnCDtlZjqs6Ag7J6I64uk66m0IHByLXNlYXJjaOuKlCDqt7gg6rKw6rO866W8IGluZ2VzdO2VmOuptCDrkJjqs6AsIO2VmOyngCDslYrripTri6TrqbQgcHItc2VhcmNo7J2YIGV4aXN0aW5nIGJpc2VjdCBlbmdpbmXsnbQg4oCc64uk7J2MIOyWtOuKkCBiaW5hcnnrpbwgTURWUOyXkCDrj4zrprTsp4DigJ3rp4wg6rKw7KCV7ZWY66m0IOuQqeuLiOuLpC4g7J20IOqyveqzhOqwgCDqsIDsnqUg64qQ7Iqo7ZWY6rOgIOycoOyngOuztOyImO2VmOq4sCDsib3sirXri4jri6QuCgojIyDsi6TsoJwg6rCc67CcIOyInOyEnOyZgCDsiJjsmqkg6riw7KSACgrtmITsnqwg7KCA7J6l7IaMIOyDge2DnOulvCDquLDspIDsnLzroZwg7ZWY66m0IOuMgOq3nOuqqCByZXdyaXRl64qUIOu2iO2VhOyalO2VqeuLiOuLpC4g7JWE656YIOyInOyEnOqwgCDqsIDsnqUg7JyE7ZeY7J20IOuCruyKteuLiOuLpC4KCnwg64uo6rOEIHwg6rCc67CcIOuCtOyaqSB8IO2VteyLrCDsmYTro4wg7KGw6rG0IHwKfC0tLXwtLS18LS0tfAp8IOqzhOyVvSDsoJXrpqwgfCBgbWVyZ2Vfc2VxYOulvCByZWdyZXNzaW9uIGNhbm9uaWNhbCBJROuhnCDtmZXsoJXtlZjqs6AgTSBudW1iZXLsmYAg66qF7ZmV7Z6IIOu2hOumrCB8IGRpcmVjdCBwdXNo6rCAIOyeiOyWtOuPhCByZWdyZXNzaW9uIHRpbWVsaW5l7JeQIOuIhOudvSDsl4bsnYwgfAp8IFJlZ3Jlc3Npb24gVVggfCDquLDsobQgYmlzZWN0L3JhbmdlIO2ZlOuptOydhCBvcGVyYXRvciDspJHsi6wgV29ya2JlbmNo66GcIOuzgOqyvSB8IFBBU1MvRkFJTCDrkZAg7KeA7KCQ7JeQ7IScIOuLpOydjCDtm4Trs7Trpbwg7KaJ7IucIOywvuydhCDsiJgg7J6I7J2MIHwKfCBPYnNlcnZhdGlvbiB8IGdvb2QvYmFkIOyZuOyXkCBTS0lQL0lOQ09OQ0xVU0lWRSDrsI8g7Iuc7ZeYIG1ldGFkYXRhIOyggOyepSB8IHRlc3Qg67aI6rCAL+u2iO2ZleyLpCDqsrDqs7zqsIAgYm91bmRhcnnrpbwg7J6Y66q7IOydtOuPmeyLnO2CpOyngCDslYrsnYwgfAp8IEFydGlmYWN0IHwgc2VxdWVuY2Ug4oaUIFNIQSDihpQgUFIg4oaUIGJpbmFyeSBtYXBwaW5nIOy2lOqwgCB8IHNlcXVlbmNlIO2VmOuCmOuhnCDsoJXtmZXtlZwgdGVzdCBiaW5hcnnrpbwg7LC+7J2EIOyImCDsnojsnYwgfAp8IERldmljZSDsl7Drj5kgfCDsiJjrj5kg7J6F66ClICsgTURWUC/smbjrtoAgdGVzdCByZXN1bHQgYWRhcHRlciB8IOyCrOuejOydtCDrj4zrprAg6rKw6rO87JmAIOyekOuPmSDqsrDqs7zrpbwg6rCZ7J2AIHNlc3Npb27sl5Ag6riw66GdIHwKfCBNVEJGIHwg7Ya16rOEIHZlcmRpY3QgcGx1Zy1pbiDstpTqsIAgfCBjb25maWRlbmNl6rCAIOu2gOyhse2VmOuptCBJTkNPTkNMVVNJVkUsIOy2qeu2hO2VoCDrlYzrp4wgR09PRC9CQUQgfAp8IOyatOyYgSDqsoDspp0gfCDsi6TsoJwgcmVncmVzc2lvbiBwaWxvdCB8IOq4sOyhtCBQNCB3b3JrZmxvd+uztOuLpCDtm4Trs7Qg7ISg7YOdwrdhcnRpZmFjdCDssL7quLAg7Iuc6rCE7J20IOqwkOyGjCB8Cgrssqsg67KI7Ke4IOuzgOqyveydgCDsvZTrk5zrs7Tri6Qg7JqU6rWs7IKs7ZWtIOqysOygleydtOyWtOyVvCDtlanri4jri6QuCgrtmITsnqwg7KCc7ZKI7J2AIE0gbnVtYmVy66W8IOKAnFBSIOyXsOqysOydtCDsnojripQgY29tbWl066eMIOyEuOuKlCDrsojtmLjigJ3roZwg66qF7Iuc7ZWY6rOgIOyeiOq4sCDrlYzrrLjsl5AsIHRlYW0gbGVhZOqwgCDigJxNLTEwNTI0ID0gbWFpbuydmCAxMDUyNOuyiOynuCBpbnRlZ3JhdGlvbiByZXZpc2lvbuKAneycvOuhnCDsg53qsIHtlZzri6TrqbQg65GQIOygleydmOqwgCDstqnrj4ztlanri4jri6QuIO6IgGZpbGVjaXRl7oiCdHVybjE3ZmlsZTPuiIJMNjMtTDcw7oiBCgrsoJzqsIAg7LaU7LKc7ZWY64qUIOqysOygleusuOydgCDsgqzsi6Tsg4Eg64uk7J2MIO2VnCDrrLjsnqXsnoXri4jri6QuCgpgYGB0ZXh0ClJlZ3Jlc3Npb27snZggY2Fub25pY2FsIHJldmlzaW9u7J2ACihyZXBvc2l0b3J5LCBiYXNlX2JyYW5jaCwgc2VxX2Vwb2NoLCBtZXJnZV9zZXEp7J2064ukLgoKUFIgbnVtYmVy7JmAIG1lcmdlX251bWJlcuuKlCDtg5Dsg4nCt+2RnOyLnOulvCDsnITtlZwg67O07KGwIOyLneuzhOyekOuLpC4KYGBgCgrqt7jri6TsnYwg7ZiE7J6sIGBBUEktU0VRLTAwNWDrpbwg7ZmV7J6l7ZWp64uI64ukLgoK6riw7KG0OgoKYGBganNvbgp7CiAgImFjdGlvbiI6ICJtYXJrIiwKICAibWVyZ2Vfc2VxIjogMTA1NTAsCiAgInZlcmRpY3QiOiAiZ29vZCIKfQpgYGAKCu2ZleyepToKCmBgYGpzb24KewogICJhY3Rpb24iOiAibWFyayIsCiAgIm1lcmdlX3NlcSI6IDEwNTUwLAogICJ2ZXJkaWN0IjogInNraXAiLAogICJyZWFzb24iOiAiYXJ0aWZhY3RfdW5hdmFpbGFibGUiCn0KYGBgCgrqt7jrpqzqs6Ag7Iuc7ZeYIOyekOyytOydmCDqsrDqs7zripQg67OE64+EIG9ic2VydmF0aW9u7Jy866GcIOuCqOq4sOuKlCDtjrjsnbQg7J6l6riw7KCB7Jy866GcIOuCq+yKteuLiOuLpC4KCmBgYGpzb24KewogICJtZXJnZV9zZXEiOiAxMDU1MCwKICAiY29tbWl0X3NoYSI6ICI5MWM3YWFlLi4uIiwKICAiYXJ0aWZhY3RfaWQiOiAiU01QMTkwMC1tYWluLUUxLVMxMDU1MC05MWM3YWFlIiwKICAidmVyZGljdCI6ICJpbmNvbmNsdXNpdmUiLAogICJ0ZXN0X3R5cGUiOiAibXRiZiIsCiAgImRldmljZV9ncm91cCI6ICJsYWItYSIsCiAgInJ1bnRpbWVfc2Vjb25kcyI6IDIxNjAwLAogICJmYWlsdXJlX2NvdW50IjogMCwKICAiZmFpbHVyZV9zaWduYXR1cmUiOiAiTlItTDEtUkxGIiwKICAicmVzdWx0X3VyaSI6ICIuLi4iCn0KYGBgCgrsiJjsmqkg7YWM7Iqk7Yq464+EIOyLpOygnCBtb2RlbSB3b3JrZmxvd+ulvCDquLDspIDsnLzroZwg7J6h7JWE7JW8IO2VqeuLiOuLpC4KCuqwgOyepSDspJHsmpTtlZwg7Iuc64KY66as7Jik64qUIOuLpOydjOyeheuLiOuLpC4KCmBgYHRleHQKSS0xMDAwMCA9IFBBU1MKSS0xMDI1NSA9IEZBSUwKYGBgCgrtm4Trs7TqsIAgMjU26rCcIOyViO2MjuydtOudvOuptCDsnbTsg4HsoIHsnbggYmluYXJ5IHNlYXJjaOyXkOyEnOuKlCDslb0gOO2ajOydmCDtjJDsoJXsnLzroZwg7ZWcIHJldmlzaW9uIOyImOykgOq5jOyngCDsoJHqt7ztlaAg7IiYIOyeiOyKteuLiOuLpC4gR2l07J2YIOqzteyLnSBiaXNlY3Trj4Qg67CU66GcIOydtCDrsKnsi53snLzroZwg64Ko7J2AIHJldmlzaW9uIOyImOyZgCDsmIjsg4Egc3RlcCDsiJjrpbwg7KeA7IaN7KCB7Jy866GcIOykhOyeheuLiOuLpC4g7oiAY2l0Ze6IgnR1cm4wc2VhcmNoMO6IgQoK64uk66eMIOyLpOygnCDsiJjsmqkg6riw7KSA7J2AIOKAnOygle2Zle2eiCA467KI4oCd67O064ukIOyVhOuemOqwgCDspJHsmpTtlanri4jri6QuCgpgYGB0ZXh0CjEuIOuqqOuToCBuZXh0IGNhbmRpZGF0ZeqwgCBmaXJzdC1wYXJlbnQgaW50ZXJ2YWwg7JWI7JeQIOyeiOuLpC4KMi4gUEFTU+ulvCDsnoXroKXtlZjrqbQgY2FuZGlkYXRlIOuylOychOqwgCDqs7zqsbAg67Cp7Zal7Jy866GcIOuLpOyLnCDrhJPslrTsp4Dsp4Ag7JWK64qU64ukLgozLiBGQUlM7J2EIOyeheugpe2VtOuPhCDrspTsnITqsIAg64uk7IucIOuEk+yWtOyngOyngCDslYrripTri6QuCjQuIFNLSVAvSU5DT05DTFVTSVZF64qUIGdvb2QvYmFkIGJvdW5kYXJ566W8IOuzgOqyve2VmOyngCDslYrripTri6QuCjUuIGRpcmVjdCBwdXNoIHJldmlzaW9u64+EIGNhbmRpZGF0ZeqwgCDrkKAg7IiYIOyeiOuLpC4KNi4gYXJ0aWZhY3TqsIAg7JeG64qUIHJldmlzaW9u7J2AIOuqheyLnOyggeycvOuhnCDtkZzsi5zrkJzri6QuCjcuIHNlcXVlbmNl7JeQ7IScIGFydGlmYWN07JmAIGZ1bGwgU0hB66W8IO2VreyDgSDsl63stpTsoIHtlaAg7IiYIOyeiOuLpC4KOC4gZXBvY2jqsIAg67CU64CQIOyEuOyFmOydgCBzdGFsZeuhnCDrp4ntnozri6QuCjkuIOyEnOuhnCDri6TrpbggYnJhbmNo7J2YIHNlcXVlbmNl64qUIOu5hOq1kO2VmOyngCDslYrripTri6QuCjEwLiBmaW5hbCBjdWxwcml06rCAIFBS7J20IOyXhuuKlCBjb21taXTsnbTslrTrj4Qg7KCV7IOBIOqysOqzvOuhnCDtkZztmITtlZzri6QuCmBgYAoK7J20IOykkSBkaXJlY3QtcHVzaCBjdWxwcml07JmAIGVwb2NoIHN0YWxlLCBjb25jdXJyZW50IG1hcmvqsIAgaW50ZXJ2YWzsnYQg64uk7IucIOuEk+2eiOyngCDslYrripQg6rKD7J2AIO2YhOyerCDthYzsiqTtirjqsIAg7J2066+4IOyDgeuLuSDrtoDrtoQg6rKA7Kad7ZWY6rOgIOyeiOycvOuvgOuhnCwg6riw7KG0IOq1rO2YhOydhCDrs7TsobTtlZjrqbTshJwg7ZmV7J6l7ZWY64qUIO2OuOydtCDrp57sirXri4jri6QuIO6IgGZpbGVjaXRl7oiCdHVybjdmaWxlMO6IgkwxLUwy7oiBCgojIyDstZzsooUg6raM6rOgCgrtjIDsnqXri5jsnZgg66y47KCcIOyduOyLneydgCDrp57sirXri4jri6QuIOKAnEdpdEh1YuudvOyEnCBQNOyLnSByZWdyZXNzaW9uIHNlYXJjaOqwgCDslrTroLXri6TigJ3qsIAg66y47KCc6rCAIOyVhOuLiOudvCDigJxQUiDrsojtmLjrpbwgc3VibWl0dGVkIENM7LKY65+8IO2VtOyEne2VmOuKlCDqsoPigJ3snbQg66y47KCc7J6F64uI64ukLiBHaXRIdWLsnZggc3F1YXNoIG1lcmdl7JmAIEdpdOydmCBmaXJzdC1wYXJlbnQgaGlzdG9yeeulvCDsgqzsmqntlZjrqbQgaW50ZWdyYXRpb24g7Iic7ISc64qUIOy2qeu2hO2eiCDrqoXtmZXtlbTsp4Dqs6AsIEdpdOyXkOuKlCByZWdyZXNzaW9uIO2DkOyDieydhCDsnITtlZwgYGdpdCBiaXNlY3Rg7JmAIGAtLWZpcnN0LXBhcmVudGAsIGBza2lwYCwgYHJ1bmDquYzsp4Ag7J2066+4IOyhtOyerO2VqeuLiOuLpC4g7oiAY2l0Ze6IgnR1cm4xc2VhcmNoMe6IgnR1cm4wc2VhcmNoMO6IgQoK6re466as6rOgIO2YhOyerCBwci1zZWFyY2jripQg7J20IOuwqe2WpeydhCDsnbTrr7gg7IOB64u57Z6IIOupgOumrCDqtaztmITtlbQg65GQ7JeI7Iq164uI64ukLiBmaXJzdC1wYXJlbnQg6riw67CYIGBtZXJnZV9zZXFgLCBzZXF1ZW5jZSBlcG9jaCwgU0hB4oaUUFIgbWFwcGluZywg67KU7JyEIOyhsOyCrCwgc2FmZSBtYXJrZXIsIOyCrOyaqeyekOuzhCBiaXNlY3Qgc2Vzc2lvbiwgbWlkcG9pbnQg7KCc7JWILCBjb250cmFkaWN0aW9uIOuwjyBlcG9jaCBzdGFsZSDsspjrpqzquYzsp4Ag7J6I6riwIOuVjOusuOyXkCDsg4jroZzsmrQg7Iuc7Iqk7YWc7J2EIOunjOuTpCDsnbTsnKDqsIAg7JeG7Iq164uI64ukLiDuiIBmaWxlY2l0Ze6IgnR1cm4zZmlsZTDuiIJMMS1MMu6IgSDuiIBmaWxlY2l0Ze6IgnR1cm43ZmlsZTDuiIJMMS1MMu6IgQoK7Jik7Z6I66CkIOyngOq4iCDtlbTslbwg7ZWgIOqwgOyepSDspJHsmpTtlZwg7J287J2AIGlkZW50aWZpZXIgc2VtYW50aWNz66W8IOuqhe2Zle2eiCDtlZjripQg6rKD7J6F64uI64ukLgoKYGBgdGV4dArtmITsnqwKUFIgIzU0OCAgICAgPSByZXZpZXcgaWRlbnRpZmllcgpTSEEgICAgICAgICA9IGV4YWN0IEdpdCByZXZpc2lvbgptZXJnZV9zZXEgICA9IGFjdHVhbCBpbnRlZ3JhdGlvbiBvcmRlcgpNIG51bWJlciAgICA9IFBSLW9ubHkgb3JkaW5hbAoK6raM6rOgClBSICM1NDggICAgID0gcmV2aWV3IGlkZW50aWZpZXIKU0hBICAgICAgICAgPSBleGFjdCBHaXQgcmV2aXNpb24KSS0xMDUyNCAgICAgPSBtZXJnZV9zZXHsnZgg7IKs656M7J20IOydveuKlCByZWdyZXNzaW9uIGlkZW50aWZpZXIKTS04MTIzICAgICAgPSBQUi1vbmx5IGlkZW50aWZpZXLqsIAg7ZWE7JqU7ZWgIOuVjOunjCDsnKDsp4AKYGBgCgrqt7jrpqzqs6AgYmluYXJ57JeQ64qUOgoKYGBgdGV4dApTTVAxOTAwLW1haW4tRTEtUzEwNTI0LWQ3MWJlMTAuYmluCmBgYAoK7LKY65+8IGBicmFuY2ggKyBlcG9jaCArIG1lcmdlX3NlcSArIFNIQWDrpbwg64Ko6riw64qUIOqyg+ydtCDsoovsirXri4jri6QuCgrsnqXruYQvZmllbGQg7ZmY6rK97JeQ7ISc64qUIOyekOuPme2ZlOulvCDtj6zquLDtlaAg7ZWE7JqU6rCAIOyXhuyKteuLiOuLpC4g4oCc7Iuc7ZeYIOyekOuPme2ZlOKAneyZgCDigJztg5Dsg4kg7J6Q64+Z7ZmU4oCd66W8IOu2hOumrO2VmOuptCDrkKnri4jri6QuCgpgYGB0ZXh0CuyCrOuejC/snqXruYQgICAgICAg4oaSIHRlc3QgZXhlY3V0aW9uCnByLXNlYXJjaCAgICAgICDihpIgbmV4dCBjYW5kaWRhdGUgc2VsZWN0aW9uCmFydGlmYWN0IHN0b3JlICDihpIgZXhhY3QgYmluYXJ5IHNlbGVjdGlvbgpNRFZQICAgICAgICAgICAg4oaSIHRlc3QgcmVzdWx0IHNvdXJjZQpgYGAKCu2YhOyerCBwci1zZWFyY2jsnZggYmlzZWN0IOyEpOqzhCDsnpDssrTqsIAg7J2066+4IOydtCDrqqjrjbjsl5Ag6rCA6rmd7Iq164uI64ukLiDri6TsnYwg6rCc67Cc7J2YIO2VteyLrOydgCBgZ29vZC9iYWRg66eMIOyeiOuKlCDri6jsiJwgYmlzZWN066W8IGBQQVNTL0ZBSUwvU0tJUC9JTkNPTkNMVVNJVkUgKyBhcnRpZmFjdCArIHRlc3Qgb2JzZXJ2YXRpb25g7Jy866GcIO2Zleyepe2VmOuKlCDqsoPsnoXri4jri6QuIO2YhOyerCBBUEnqsIAgZ29vZC9iYWTrp4wg7KCV7J2Y7ZWc64uk64qUIOygkOydtCDsnbQg7JqU6rWs7JmAIOu5hOq1kO2VnCDqsIDsnqUg67aE66qF7ZWcIGdhcOyeheuLiOuLpC4g7oiAZmlsZWNpdGXuiIJ0dXJuMjBmaWxlMe6IgkwxMi1MMjPuiIEKCk1UQkbrj4Qg7KCB7Jqp7ZWgIOyImCDsnojsp4Drp4wg67OE64+E7J2YIHN0YXRpc3RpY2FsIHZlcmRpY3QgbGF5ZXLqsIAg7ZWE7JqU7ZWp64uI64ukLiBNVEJG66W8IG1pZHBvaW5066eI64ukIOynp+qyjCDtlZzrsogg64+M66CkIFBBU1MvRkFJTOuhnCDtjJDsoJXtlZjripQg67Cp7Iud7J2AIOq2jO2VmOyngCDslYrsirXri4jri6QuIE5JU1TqsIAg7ISk66qF7ZWY65OvIE1UQkYg7ZmV7J247JeQ64qUIHRlc3QgdGltZSwgZmFpbHVyZSBjb3VudCwgY29uZmlkZW5jZSBsZXZlbOydtCDtlajqu5gg7ZWE7JqU7ZWY6rOgLCDsm5DtlZjripQgY29uZmlkZW5jZeulvCDslrvripQg642wIOyDgeuLue2VnCDriITsoIEg7Iuc7ZeYIOyLnOqwhOydtCDtlYTsmpTtlaAg7IiYIOyeiOyKteuLiOuLpC4g65Sw65287IScIOydvOuwmCByZWdyZXNzaW9uIHRlc3TroZwg66i87KCAIOuylOychOulvCDspITsnbgg65KkIOyGjOyImCBjYW5kaWRhdGXsl5DshJwgTVRCRiBjb25maWRlbmNlIOq4sOuwmCBiaXNlY3Rpb24vY29uZmlybWF0aW9u7J2EIO2VmOuKlCDqsoPsnbQg7ZiE7Iuk7KCB7J6F64uI64ukLiDuiIBjaXRl7oiCdHVybjNzZWFyY2gw7oiCdHVybjNzZWFyY2gy7oiBCgrrp4jsp4Drp4nsnLzroZwsIO2MgOyepeuLmOydtCDsspjsnYwg7KCc7JWI7ZWcIOKAnG1lcmdlIOuVjCBDSS9DRCBjb3VudGVyIO2VmOuCmOulvCDspp3qsIDsi5zsvJwgTS1udW1iZXLrpbwg66eM65Og64uk4oCd64qUIOyVhOydtOuUlOyWtOuKlCDqsJzrhZDsoIHsnLzroZzripQg7YOA64u57ZWY7KeA66eMIO2YhOyerCBwci1zZWFyY2jsl5DripQg642UIOyii+ydgCDquLDrsJjsnbQg7J2066+4IOyeiOyKteuLiOuLpC4g67OE64+EIG11dGFibGUgY291bnRlcuuztOuLpCBHaXQgZmlyc3QtcGFyZW507JeQ7IScIOyerOq1rOyEsSDqsIDriqXtlZwgYG1lcmdlX3NlcWDqsIAg7J6l7JWgwrfsnqzsspjrpqzCt2JhY2tmaWxswrdoaXN0b3J5IOqygOymnSDsuKHrqbTsl5DshJwg6rCV7ZWp64uI64ukLiBHaXRIdWLsnZggYEdJVEhVQl9SVU5fTlVNQkVSYOuPhCB3b3JrZmxvd+uzhCBjb3VudGVy7J28IOu/kCBpbnRlZ3JhdGlvbiBoaXN0b3J5IOyekOyytOuKlCDslYTri5nri4jri6QuIO6IgGNpdGXuiIJ0dXJuMXNlYXJjaDnuiIEg7oiAZmlsZWNpdGXuiIJ0dXJuNGZpbGUw7oiCTDEtTDLuiIEKCuuUsOudvOyEnCDsnbQg66CI7Y+s7KeA7YSw66as7JeQ7ISc7J2YIOy1nOyihSDrsKntlqXsnYAg64uk7J2MIO2VnCDspITroZwg7KCV66as7ZWgIOyImCDsnojsirXri4jri6QuCgpgYGB0ZXh0Cm1haW4vcmVsZWFzZSBmaXJzdC1wYXJlbnQgbWVyZ2Vfc2Vx66W8IFA0IENM7JeQIO2VtOuLue2VmOuKlCByZWdyZXNzaW9uIHRydXRo66GcIOycoOyngO2VmOqzoCwK6re4IOychOyXkCBodW1hbi1yZWFkYWJsZSBJbnRlZ3JhdGlvbiBJRCArIGFydGlmYWN0IG1hcHBpbmcgKwptYW51YWwvZGV2aWNlIGJpc2VjdCArIHN0YXRpc3RpY2FsIE1UQkYgdmVyZGljdOulvCDsmKzrprDri6QuCmBgYAoK7J2066CH6rKMIOqwgOuptCBQUiBTZWFyY2jripQg64uo7Iic7ZWcIOKAnEdpdEh1YiBQUuydhCDsnpgg7LC+7JWE7KO864qUIO2OmOydtOyngOKAneyXkOyEnCDrspfslrTrgpgsIFA0IOyCrOyaqeyekOuTpOydtCDsnbXsiJntlZwg4oCcUEFTUyDsp4DsoJDqs7wgRkFJTCDsp4DsoJAg7IKs7J207JeQ7IScIOyLpOygnCDsi5ztl5gg6rCA64ql7ZWcIGJpbmFyeeulvCDqs6jrnbwg7JuQ7J24IGludGVncmF0aW9u7J2EIOyige2eiOuKlCBSZWdyZXNzaW9uIEludmVzdGlnYXRpb24gQ29uc29sZeKAnSDsl63tlaDquYzsp4Ag7J6Q7Jew7Iqk65+96rKMIO2ZleyepeuQoCDsiJgg7J6I7Iq164uI64ukLg==";
+const status=document.getElementById('status');
+document.getElementById('theme').addEventListener('click',event=>{const dark=document.documentElement.classList.toggle('dark');event.currentTarget.setAttribute('aria-pressed',String(dark));event.currentTarget.textContent=dark?'라이트 테마':'다크 테마';});
+document.getElementById('print').addEventListener('click',()=>window.print());
+document.getElementById('download').addEventListener('click',()=>{const bytes=Uint8Array.from(atob(originalBase64),c=>c.charCodeAt(0));const url=URL.createObjectURL(new Blob([bytes],{type:'text/markdown;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='deep-research-report.md';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);status.textContent='입력 원문 Markdown을 다운로드했습니다.';});
+document.querySelectorAll('.copy').forEach(button=>button.addEventListener('click',async()=>{const value=document.getElementById(button.dataset.target).textContent;let copied=false;try{await navigator.clipboard.writeText(value);copied=true;}catch{}if(!copied){const area=document.createElement('textarea');area.value=value;area.style.position='fixed';area.style.opacity='0';document.body.append(area);area.select();try{copied=document.execCommand('copy');}catch{}area.remove();button.focus({preventScroll:true});}if(copied){button.textContent='복사됨';status.textContent='예시를 복사했습니다.';setTimeout(()=>button.textContent='예시 복사',1400);}else{status.textContent='브라우저가 복사를 허용하지 않습니다. 코드 텍스트를 선택해서 복사하세요.';}}));
+if('IntersectionObserver' in window){const observer=new IntersectionObserver(entries=>{for(const entry of entries){if(entry.isIntersecting){document.querySelectorAll('.nav-item').forEach(a=>{const active=a.hash==='#'+entry.target.id;a.classList.toggle('active',active);if(active)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current');});}}},{rootMargin:'-5% 0px -75% 0px'});document.querySelectorAll('section[id],header[id]').forEach(s=>observer.observe(s));}
+</script></body></html>

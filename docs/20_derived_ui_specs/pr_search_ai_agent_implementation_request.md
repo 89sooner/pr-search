@@ -1,6 +1,8 @@
 # PR Search 구현 요청서 for AI Agent
 
-> 상태: review | 버전: v0.7 | 갱신일: 2026-09-16
+> 상태: review | 버전: v0.8 | 갱신일: 2026-09-17
+
+CR-102 Regression 확장 입력은 [구현 계획](../40_delivery/pr_search_regression_implementation_plan.md)이다. R0~R8은 승인 전 후보이며 기존 WP-042의 완료 범위를 확대하지 않는다. 제품 결정·요구사항 baseline 및 하위 계약 cascade를 마친 뒤 정식 WP를 부여한다. 구현 에이전트는 해당 WP의 FR/DoD와 T01~T12를 검증하고 개인 소유권·시퀀스 에폭·관측 이력·artifact SHA 연결을 보존해야 한다. MDVP와 MTBF는 각각 OD-012·013의 계약 이후에만 구현한다.
 
 CR-079 후속 WP-074 입력: [실행서](../40_delivery/pr_search_wp074_execution.md)의 필수 읽기 순서와 [상세 설계](../30_technical_architecture/pr_search_wp074_design.md) 전문을 따른다. 이번 문서 작성 세션은 설계 전용이며 구현 시작은 사용자가 별도로 지시한다. squash-only·DEV-207 비최종 분류·직접 부재 증거 한계·durable work·W-004·측정 CLI가 핵심이다. 기존 아래 CR-077 설명 중 '오픈 조건은 DEV-576뿐'이라는 판단은 DEV-581 잔여 증거 게이트로 보완한다. WP-075 GHE 쓰기를 실행하지 않는다.
 
