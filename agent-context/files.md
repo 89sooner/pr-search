@@ -2116,3 +2116,21 @@ pr-search (브랜치 `claude/first-internal-import-findings`, main = 268efa9에�
 - `.env.example`에 `GH_TOKEN`·`GITHUB_TOKEN`을 넣지 마라
 - 런북 curl 경로의 `python3 -c 'import json,sys; …["assets"]…'` — 옛 `grep -E '"(id|name|digest)"'`로 되돌리지 마라
 - 이전 세션 것 그대로: 아카이브 생성 위치(checksum·시크릿 검사 뒤)·`-C "$OUT_ROOT"`·`sed -i 's/\r$//'`·`.gitattributes`·`cmd_load`의 `require_env` 위치·런북 2.B 3단계의 GHE App 자격·`provision_app_role` 위치·`|| true` 넷·재색인 직렬화·`git status --porcelain`·`fixtureMonths`·`audit-grants.test.ts` 전수 검사·`compose.yml`의 `127.0.0.1`
+# 2026-09-17 중요 파일 지도
+
+| 경로 | 역할 / 다음 에이전트가 볼 지점 |
+| --- | --- |
+| `packages/authz/src/scope-source.ts` | `READABLE_PERMISSIONS`와 협업자 권한→검색 범위 판정. 대응 시험은 `scope-source.test.ts`. |
+| `apps/web/components/reader/ReaderShell.tsx` | reader 상단 navigation과 operator 전용 Workspace/Legacy search 노출. |
+| `apps/web/components/LeftNavPanel.tsx` | 좌측 reader navigation, Legacy/operator 링크 라벨. |
+| `apps/web/components/RepositoryWorkspace.tsx` | 기본 통합 검색 UI: `facets=true`, filter state, `pr_number` 기본 정렬, PR/M number 표 렌더. |
+| `apps/web/components/LegacyRepositoryWorkspace.tsx` | operator Legacy workspace; 삭제하지 말 것. |
+| `apps/web/components/SearchView.tsx` | Legacy 통합 검색 view; 삭제하지 말 것. |
+| `apps/web/components/reader/primitives.tsx` | `DatePicker`와 Radix Popover 달력. 접근성 시험은 `apps/web/a11y/reader-primitives.test.tsx`. |
+| `apps/web/lib/repository-search.ts` | `buildRepositoryQuery`, `repositorySort`, `repositoryLabelOptions` 순수 검색 helper. |
+| `packages/es/src/sort.ts` | search-api/Elasticsearch 정렬 키; `pr_number` integer mapping 포함. |
+| `apps/search-api/integration/search/list.test.ts` | API가 9개 지원 정렬 키와 `pr_number`를 계약으로 확인. |
+| `apps/web/app/reader-workspace.css`, `apps/web/app/ui.css` | DatePicker, PR link, M placeholder, semantic badge 시각 규칙. |
+| `scripts/verify-source-workspace.mjs` | Chromium mock browser flow; facets, date, PR link, M number, canonical status query assertion. |
+| `docs/00_governance/change_control.md` | CR-098/099의 승인 범위와 release 상태. |
+| `docs/40_delivery/pr_search_implementation_traceability.md` | WP-086/087, DEV-704~714, pilot.11/12 증적의 canonical ledger. |

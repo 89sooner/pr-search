@@ -4262,3 +4262,39 @@ python3 scripts/worklog.py index               # 52건
 ```
 
 메모리 노트 둘을 `~/.claude/projects/-home-roqkf-pr-search/memory/`에 남겼다 — `build-bundle-run-do-not-edit-inputs`, `gh-cli-2-4-0-quirks`.
+# 2026-09-17 실행 명령·검증 결과
+
+## 성공한 검증
+
+```bash
+pnpm test
+pnpm test:a11y
+pnpm test:contrast
+pnpm build
+node scripts/verify-source-workspace.mjs
+gh run watch 35167424093 --exit-status
+./deploy/single-host/build-bundle.sh 0.1.0-pilot.12 --release
+gh run watch 35168444005 --exit-status
+gh run watch 35168896866 --exit-status
+```
+
+- query/sort/parser: 82/82 pass.
+- 전체 a11y: 436/436 pass. 집중 architecture/query/sort: 148/148 pass. contrast: 18쌍, failure 0.
+- `verify-source-workspace.mjs`: 실제 Chromium mock에서 Base branch/Label/Status/date, `is:merged`, `pr_number DESC`, GHE PR link, M number, title의 중복 PR 번호 제거를 확인했다.
+- main CI `35167424093`(기능 병합)과 `35168896866`(증적 병합)는 verify·integration success다. PR #206 CI `35168444005`도 success다.
+- bundle command는 SSR 10종/API 401/web contract/pipeline git/gh executor/role CLI smoke를 통과하고 immutable release를 발행했다.
+
+## 릴리즈 확인
+
+```bash
+gh api repos/89sooner/pr-search/releases/tags/0.1.0-pilot.12 --jq '{url:.html_url,immutable:.immutable,tag:.tag_name,target:.target_commitish,assets:[.assets[]|{name,size,digest,state}]}'
+```
+
+- remote asset: `pr-search-0.1.0-pilot.12-offline.tar.gz`, 1,154,335,782 bytes, `state=uploaded`, `immutable=true`.
+- digest: `sha256:7732d729e20790ae7413eab8f5b86c14f4add42944541017687c36fb062b0551`.
+
+## 실패했지만 해결 또는 기록한 명령
+
+- PR #205 초기 CI는 지원 정렬 키 기대값이 8에 머물러 `pr_number` 추가를 거부했다. `apps/search-api/integration/search/list.test.ts`의 기대를 9로 고쳤다.
+- 기존 a11y의 101 checkbox 상호작용이 CI에서 5초를 초과했다. 행동 단언은 유지하고 해당 test의 timeout만 15초로 늘렸다(DEV-714).
+- `gh pr checks 206 --watch --interval 10`은 설치된 gh가 `--watch`를 지원하지 않아 실패했다. `gh run watch 35168444005 --exit-status`로 대체했다.

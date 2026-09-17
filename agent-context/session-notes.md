@@ -2924,3 +2924,42 @@ risks.md의 「2026-09-02 (2차)」 절. 가장 큰 것: 실행 중인 스크립
 | 문서 | SRS baseline v2.20(변경 없음) · 원장 v6.34 · 작업 패키지 v2.21 · 인프라 v0.12 · 보안 v1.3 · 로드맵 v0.14 · ADR v0.7 |
 | CI | verify·integration 통과 (PR #119~#125). #124는 통합이 시간 의존 시험으로 두 번 실패한 뒤 통과 |
 | 릴리스 게이트 | NOT APPROVED (Gate 4·5·6 그대로) |
+# Session: 2026-09-17 PR Search 권한 보정·검색 UX·릴리즈
+
+## Goal
+
+사내 GHE 권한 호환과 operator 노출 경계를 보정하고, Repository workspace를 PR 중심 검색 화면으로 완성해 릴리즈한다.
+
+## Current state
+
+기능 및 증적 PR은 모두 main에 병합됐고 pilot.12는 immutable이다. 남은 일은 실제 사내 GHE 데이터/반입 검증뿐이며, 코드 변경은 필요하지 않은 상태다.
+
+## Decisions
+
+- operator Legacy UI는 유지하고 라벨/진입만 명확히 한다.
+- 기본 검색의 enum 상태는 `is:` 문법, 기본 정렬은 `pr_number DESC`다.
+- facet 선택지와 제품 통제 Radix 달력을 사용한다.
+
+## Changed files
+
+- 권한, reader navigation, repository workspace, date primitives, ES sort, browser verification script 및 CR-098/099 docs를 수정했다. 세부 경로는 `files.md`의 2026-09-17 표를 따른다.
+
+## Commands
+
+- 전체 CI, browser flow, production build, offline bundle smoke와 release remote digest 확인을 통과했다. 재현 가능한 명령은 `commands.md`의 2026-09-17 절을 따른다.
+
+## Next steps
+
+1. 사내 환경에서 GHE 권한/merged/facet/PR link를 검증한다.
+2. 실패하면 network request → search-api response → ES data 순으로 원인을 좁힌다.
+3. immutable pilot.12 문제는 패치가 아닌 새 release로 처리한다.
+
+## Risks/gotchas
+
+- 사내 GHE data validation은 NOT RUN이다.
+- pagination에서 facets가 사라지지 않도록 first-page-only facet 계약을 보존한다.
+- Legacy/operator 컴포넌트를 삭제하지 않는다.
+
+## References
+
+- PR #203, #205, #206; release `0.1.0-pilot.12`; CR-098, CR-099; WP-086, WP-087; DEV-704~714.

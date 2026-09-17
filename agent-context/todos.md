@@ -2554,3 +2554,11 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - **`agent-context/` 변경분이 커밋되지 않은 채 인계된다** — `*.md` 7개 +
   `_handoff/` 전체. 코드 작업을 시작하기 전에 이것부터 커밋할지 정할 것
   (`risks.md` 13번). `git add -A`는 쓰지 말 것
+# 2026-09-17 이후 후속 작업
+
+- [ ] 사내 반입 환경에서 `read`·`write`·`writer` 사용자 각각으로 등록 저장소가 보이는지 확인한다. 확인 범위는 `packages/authz/src/scope-source.ts`의 readable 판정과 GHE API 응답이다.
+- [ ] 실제 GHE 저장소에서 Repository workspace의 `is:merged` 검색이 결과를 돌려주는지 확인한다. mock/browser 검증은 완료됐지만 실제 인덱스·권한 데이터는 NOT RUN이다.
+- [ ] `GHE_BASE_URL/<owner>/<repo>/pull/<number>` 형태 PR 링크가 사내 GHE base URL에서 맞는지 확인한다.
+- [ ] M number 데이터가 실제 인덱스에 생긴 뒤 `merge_number*` 필드가 표에 올바르게 표시되는지 확인한다.
+- [ ] 기존 문서 validator의 범위 밖 오류 `FR-CSS-005`, `D-002`, risks/SRS warnings를 별도 CR로 분리한다. 이번 세션에서는 수정하지 않았다.
+- [ ] Upstream Feedback의 `prsctl smoke` 워커 로그 9/10 간헐 문제와 Docker 내부 외부망 차단 빌드 RUNBOOK 보완은 아직 별도 작업이다.

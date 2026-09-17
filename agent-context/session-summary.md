@@ -2149,3 +2149,29 @@ main = `0a73065` · `0.1.0-pilot.2` 발행됨 · WP-072 done · open DEV 16 · �
 ## 다음 에이전트가 먼저 할 것
 
 todos.md 「시작하기 전에」로 실측한 뒤, 결정자의 지시를 기다린다. 후보는 셋이다 — #125 리뷰 처리(DEV-538 후보), `0.1.0-pilot.2` 발행 사실의 원장 기록, 사내 반입 결과의 반영. 외부 기능 개발(WP-042·WP-044)을 자동으로 시작하지 않는다.
+# 2026-09-17 — 권한 보정·PR 중심 검색 UX·pilot.11/12 릴리즈
+
+## Goal
+
+사용자는 사내 GHE 권한명 불일치와 reader navigation 노출을 고치고, 기본 Repository workspace 검색을 PR 중심 SaaS UI로 개편해 새 릴리즈까지 발행하길 요청했다. 기존 Legacy/operator 컴포넌트는 절대 삭제하지 않는 것이 제약이었다.
+
+## Current state
+
+- `main`은 `aadf2f2`이며 작업 트리는 clean이다.
+- 기능은 PR #203(`05687c2`)과 PR #205(`990d6ad`)로 병합됐다. 릴리즈 증적은 PR #204와 #206(`aadf2f2`)로 병합됐다.
+- `0.1.0-pilot.11`과 `0.1.0-pilot.12` 모두 immutable GitHub Release로 발행됐다.
+- 기본 검색은 Base branch/Label 선택, Radix 달력, `#` GHE PR 링크, M number, `pr_number DESC`, canonical `is:` 상태 필터를 제공한다.
+- 실제 사내 GHE 데이터와 재반입 환경 검증은 NOT RUN이다. mock Chromium과 저장소 테스트에서는 검증됐다.
+
+## Result
+
+- 권한: `read`, `write`, `writer`를 읽기 가능 범위에 포함해 저장소 가시성 누락을 보정했다.
+- navigation: Workspace 바로가기와 Legacy search는 operator만 볼 수 있다. Legacy 경로는 `/search?legacy=1`, `/search?legacy=workspace`다.
+- search: `Merged` 상태는 UI에서 `is:merged`를 만들고, 표의 PR 번호 중복을 제거했다.
+- release: pilot.12 asset은 `pr-search-0.1.0-pilot.12-offline.tar.gz`이며 SHA-256은 `7732d729e20790ae7413eab8f5b86c14f4add42944541017687c36fb062b0551`이다.
+
+## References
+
+- Feature: https://github.com/89sooner/pr-search/pull/203, https://github.com/89sooner/pr-search/pull/205
+- Release records: https://github.com/89sooner/pr-search/pull/204, https://github.com/89sooner/pr-search/pull/206
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.12

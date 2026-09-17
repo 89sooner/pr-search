@@ -2764,3 +2764,12 @@ id 조회 실패 · 릴리스 삭제 실패 · 태그 삭제 실패 · 발행 �
 - ID는 실측한다 — 인계가 적은 "다음 빈 DEV"가 이미 쓰인 값이었다(DEV-527)
 - 문서 검증기는 백틱 안의 맨 `*.md`를 문서 참조로 본다 — 경로를 붙인다
 - `count-unresolved-reviews.py`가 미해결 리뷰의 정본이다
+# 2026-09-17 리스크·주의사항
+
+- **실 GHE 미검증**: `is:merged` UI query가 mock Chromium·parser test에서는 맞지만, 사내 GHE의 인덱스 데이터·권한·facet 결과는 아직 NOT RUN이다. 오류가 재현되면 먼저 browser network request와 search-api response를 비교한다.
+- **권한 용어**: `read`, `write`, `writer`는 사내 API 호환을 위한 추가 값이다. 새 권한명을 임의로 더 허용하지 말고 `scope-source.test.ts`의 허용/거부 케이스를 함께 갱신한다.
+- **facet 수명**: `RepositoryWorkspace.tsx`는 첫 페이지의 facets를 유지하고 continuation에는 `facets=false`를 준다. pagination 변경 시 branch/label 선택지가 사라지지 않는지 확인한다.
+- **M number 의미**: sequence는 내부 도메인 값이고 M number는 값이 있을 때만 사용자에게 보인다. sequence 값을 PR 번호처럼 표시하거나 정렬 의미를 바꾸지 않는다.
+- **릴리즈 불변성**: `0.1.0-pilot.12`는 immutable이다. asset/tag 수정이 필요하면 새 버전을 발행해야 한다.
+- **CI 시간**: full CI의 verify는 약 4분, integration은 약 6분 걸린다. Node.js 20 deprecation annotation은 있지만 해당 run들은 success였다.
+- **문서 validator**: 현재 baseline에 남아 있던 validator 오류를 이번 범위에서 고치지 않았다. 새 변경의 실패와 혼동하지 않는다.

@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=1a542e6b5d5d95310ac5559e609805ec20d3802b59f0045c377807c910764f20 bytes=211867 lines=2766 title=리스크-불확실한-가정-함정
+@kv sha256=04ff57ab991bdf8434a3970e2802f48f20c78e37df4d3bb35125c32d80aa5c02 bytes=213284 lines=2775 title=리스크-불확실한-가정-함정
 @sig agent-context/risks.md;home/roqkf/design-system;actions/runs;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000
 @h1 리스크 · 불확실한 가정 · 함정
 @h2 2026-09-15 (8차) 라운드가 배운 함정 (CR-092)
@@ -1400,3 +1400,11 @@
 @path ID는 실측한다 — 인계가 적은 "다음 빈 DEV"가 이미 쓰인 값이었다(DEV-527)
 @b 문서 검증기는 백틱 안의 맨 *.md를 문서 참조로 본다 — 경로를 붙인다
 @b count-unresolved-reviews.py가 미해결 리뷰의 정본이다
+@h1 2026-09-17 리스크·주의사항
+@b 실 GHE 미검증: is:merged UI query가 mock Chromium·parser test에서는 맞지만, 사내 GHE의 인덱스 데이터·권한·facet 결과는 아직 NOT RUN이다. 오류가 재현되면 먼저 browser network request와 search-api response를 비교한다.
+@b 권한 용어: read, write, writer는 사내 API 호환을 위한 추가 값이다. 새 권한명을 임의로 더 허용하지 말고 scope-source.test.ts의 허용/거부 케이스를 함께 갱신한다.
+@path facet 수명: RepositoryWorkspace.tsx는 첫 페이지의 facets를 유지하고 continuation에는 facets=false를 준다. pagination 변경 시 branch/label 선택지가 사라지지 않는지 확인한다.
+@b M number 의미: sequence는 내부 도메인 값이고 M number는 값이 있을 때만 사용자에게 보인다. sequence 값을 PR 번호처럼 표시하거나 정렬 의미를 바꾸지 않는다.
+@path 릴리즈 불변성: 0.1.0-pilot.12는 immutable이다. asset/tag 수정이 필요하면 새 버전을 발행해야 한다.
+@b CI 시간: full CI의 verify는 약 4분, integration은 약 6분 걸린다. Node.js 20 deprecation annotation은 있지만 해당 run들은 success였다.
+@b 문서 validator: 현재 baseline에 남아 있던 validator 오류를 이번 범위에서 고치지 않았다. 새 변경의 실패와 혼동하지 않는다.

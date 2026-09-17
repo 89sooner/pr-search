@@ -2053,3 +2053,15 @@ URL 파라미터다.
 | 백그라운드 실행 전에 모든 변경을 커밋한다. 문서는 실행이 끝난 뒤 쓰거나 stash한다 | dirty guard는 시작 시점에만 돌고, 실행 중 편집은 실행을 무효로 만든다 |
 | 시험 릴리스는 검증 뒤 지운다. 정식 릴리스는 지우지 않는다 | 사내가 받을 것은 정식 릴리스 하나뿐이어야 한다 |
 | 수신 검증은 `GH_CONFIG_DIR`을 빈 디렉터리로 두고 `GH_TOKEN`만으로 한다 | 사내 운영자의 조건(토큰만 있음)을 재현한다. 토큰 값은 어디에도 출력하지 않는다 |
+# 2026-09-17 — CR-098/099 확정 결정
+
+| 결정 | 이유 | 기각하거나 유보한 선택지 |
+| --- | --- | --- |
+| `READABLE_PERMISSIONS`에 `read`, `write`, `writer`를 둔다 | 사내 GHE가 GitHub REST 관례인 `pull`/`push` 대신 이 이름을 반환해 read 이상 사용자가 저장소에서 제외됐다 | 권한명을 사내 배포마다 별도 변환하는 방식은 불필요한 운영 결합이라 채택하지 않았다 |
+| ReaderShell Workspace 직접 메뉴는 operator 전용 | 비operator가 운영 화면으로 바로 갈 수 있던 표시 결함을 권한 경계에 맞춘다 | operator UI/Legacy 컴포넌트 삭제는 사용자 제약 때문에 하지 않았다 |
+| Legacy 통합 검색을 `Legacy search`로 명시 | 기존 `/search?legacy=1` 기능은 남아 있었지만 `Advanced search` 라벨이 보존 사실을 숨겼다 | 기본 reader에 Legacy 링크를 재노출하지 않는다 |
+| 첫 검색에만 `facets=true`, 다음 페이지는 `false` | Base branch/Label 후보는 실제 검색 결과 facets로 제공하되, 페이지 이동에서 불필요한 facet 재요청을 피한다 | 자유 입력만 제공하는 기존 UI는 선택 가능 요구를 충족하지 못한다 |
+| 날짜는 Radix Popover 월간 DatePicker + `YYYY-MM-DD` | 브라우저 native date UI의 로케일별 표현을 피하고 제품이 제어하는 달력 UX를 제공한다 | plain text/native date input은 채택하지 않는다 |
+| 기본 표 정렬은 `pr_number DESC`; `merge_seq`는 내부/보조 M number | 사용자가 PR 우선 탐색을 원했고 M number 값이 존재할 때만 보여야 한다 | 기존 merged_at/expand 우선 표는 정보 위계에 맞지 않는다 |
+| 상태 Select는 `is:merged/open/closed`만 생성 | permissive `state:`보다 query parser의 canonical enum 계약과 맞아 오류 진단이 명확하다 | 사용자 선택 UI에서 임의 `state:` 토큰을 만들지 않는다 |
+| 릴리즈 태그는 기능 병합 커밋에 고정하고 증적은 후속 docs PR로 남긴다 | immutable asset의 계보와 추적 문서 갱신을 분리한다 | 릴리즈 tag를 docs-only 커밋으로 옮기지 않는다 |
