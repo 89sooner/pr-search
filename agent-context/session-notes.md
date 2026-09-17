@@ -3044,3 +3044,57 @@ risks.md의 「2026-09-02 (2차)」 절. 가장 큰 것: 실행 중인 스크립
 
 - 발행 뒤에는 되돌리지 않는다 — immutable 저장소에서 릴리스를 지우면 버전 이름을 다시 쓸 수 없다. 정정은 pilot.14다.
 - `deploy/single-host/bundle/`이 워크트리마다 쌓인다(공유 체크아웃 29G + release13). 정리는 사용자 결정이다.
+
+# Session: 2026-09-17 (10차) — CR-103·104·105: 프런트엔드 4건 요청과 검색 버그, 미완 2건 handoff
+
+## Goal
+
+사용자가 프런트엔드 문제/개선 4건을 보고: (1) diff 분할 보기에서 side-by-side일 때 좌우 음영·코드가 누락되는 경우, (2) search 페이지 좌측 Browse repositories·Files & folders 카드 길이 고정 + 필터·결과 표 압축 + 무한스크롤, (3) 필터에 PR·SHA·M번호 범위 검색 + M번호 필터 추가, (4) commit history에 PR·SHA 병기+카피 가능+체크박스/Compare selected 활성화. 세션 도중 사용자가 실제 화면에서 겪은 별개의 프로덕션 버그(제목에 `VANGUARD-1` 검색 시 숫자 1만 겹치는 무관 결과가 섞임)도 추가로 들어와 함께 처리했다. 컨텍스트 한도 때문에 항목 (3)과 (4)의 PR번호 병기 부분은 다음 세션으로 넘긴다.
+
+## Current state
+
+- **CR-103**(WP-085 정정 + WP-090 신설, main 반영·CI green): 항목 (1) — split diff 두 소스 컬럼이 `.source-code-scroll` 하나를 공유해 긴 줄을 스크롤하면 반대쪽이 화면 밖으로 밀리던 문제(DEV-720)를 `table-layout:fixed`+`<colgroup>`로 정정. 항목 (4) 중 체크박스/Compare selected 안내 부재(DEV-721, 게이팅 로직 자체는 원래 정확)와 SHA 카피(기존 `CopyButton` 재사용)도 여기서 해결. 항목 (2)의 레이아웃 고정은 WP-090으로 신설(좌측 사이드바 `height:calc(100dvh-48px)` + `flex`, 결과 표 `.repo-results-scroll`). 모바일은 사용자 결정으로 제외(시도했다 되돌림).
+- **CR-104**(WP-091, main 반영·CI green): 항목 (2)의 무한스크롤. `IntersectionObserver`로 "More changes" 버튼 대체, `useRef`로 최신 상태를 읽어 재시도 폭주 방지(CR-043 무재시도 원칙 유지), `aria-live="polite"` 카운트, 기존 `CursorPager`/`Spinner` 패턴 재사용.
+- **CR-105**(DEV-722, main 반영·CI green): 세션 중 새로 보고된 VANGUARD-1 버그. `buildTextClause`(`packages/es/src/query-builder.ts`)의 분기 기준을 "원문에 공백이 있는가"로 바꿔, 공백 없는 한 단어는 `type:"phrase"`(서브토큰 인접 요구), 공백 있는 여러 단어는 기존 `best_fields`(OR)를 유지해 `FR-SRCH-011 AC-4`를 지켰다.
+- **미착수**: 항목 (3) 전체(범위 검색·M번호 필터), 항목 (4)의 PR번호 병기 부분. 아래 Next steps 참고.
+- main 최종 커밋 `750fb91`, CI green.
+
+## Decisions
+
+- 4건 요청을 SRS 변경 필요 여부로 나눠 CR을 쪼갰다 — 범위 내 버그(CR-103), 기존 결정(WP-016 버튼식 페이저) 번복이지만 SRS 문장은 중립(CR-104), SRS 범위 밖 신규(항목 3·4-PR병기, 미착수).
+- **AskUserQuestion으로 이미 확정된 방향 — 다음 세션이 다시 묻지 않고 그대로 써도 된다**: 무한스크롤=완전 자동 로드(버튼 없음, 모바일 제외) / SHA 범위 검색=머지 순서 구간 의미(새 질의 키가 아니라 프런트엔드가 두 SHA를 해석해 `seq:` 범위로 변환) / 범위검색·M번호필터=CR·SRS 개정 후 같은 세션에서 구현까지 진행 / PR번호 병기=CR 등록 후 구현까지 진행.
+- 구현은 general-purpose 서브에이전트에 위임하고 내가 diff를 직접 읽어 재검토하는 2단계를 지켰다. CR-103(6개 파일, CSS/레이아웃 리스크 큼)은 `code-review` 스킬(high)까지 별도로 돌려 10건 추가 발견·반영. CR-104·105는 변경 규모가 작고(각각 1~2 파일) 핵심 안전 속성을 구현 스스로 실측 검증했다는 근거가 있어 내 직접 검토로 대체 — 다음 세션도 이 비례적 판단 기준을 유지할 것.
+- CR-103·104·105 전부 **로컬 커밋 → main에 코드 먼저 반영 → 문서(CR/DEV/WP/원장) 작성 → 커밋·push → 실제 CI 확인 → 문서의 "대기" 표시를 실제 결과로 갱신하는 2차 커밋** 순서를 지켰다. 문서에 실제로 일어나지 않은 결과(가짜 PR 번호·CI run ID)를 미리 적지 않는다.
+
+## Changed files (오늘 세션, main에 반영됨)
+
+- `apps/web/app/{reader,repository,source}-workspace.css`, `apps/web/components/RepositoryWorkspace.tsx`, `apps/web/components/source/{SourceDialogs,SourceHistory}.tsx` — CR-103.
+- `apps/web/components/RepositoryWorkspace.tsx`(추가 변경) — CR-104.
+- `packages/es/src/query-builder.ts`, `apps/search-api/integration/search/facets.test.ts` — CR-105.
+- `docs/00_governance/change_control.md`, `docs/40_delivery/pr_search_{work_packages,implementation_traceability}.md`, `docs/20_derived_ui_specs/pr_search_wireframe_spec.md` — 세 CR의 문서 캐스케이드.
+- worktree 잔존(삭제 안 함, 병합 완료라 정리 대상): `/home/roqkf/pr-search-wt/{cr102-frontend-fixes,cr103-infinite-scroll,cr105-search-fix}`.
+
+## Commands
+
+- ID 재실측(커밋 직전마다 반복): `for p in 'CR-[0-9]{3}' 'DEV-[0-9]{3}' 'WP-[0-9]{3}'; do grep -rohE "$p" docs/ | sort -u | tail -2; done` — **주의**: 다른 worktree의 미병합 커밋은 이 grep에 안 잡힌다. 이 세션 마지막 확인 기준 최고값은 CR-105·DEV-722·WP-091이지만, 착수 전 반드시 재확인할 것.
+- `gh run watch <id> --exit-status`(백그라운드) — CI 대기. `gh run rerun`은 이 CLI 버전에 `--failed`/`--job` 플래그가 없다 — 전체 재실행만 가능.
+- 격리 통합 시험: `docker port prs-cr091-postgres`로 매핑 포트 확인 → `POSTGRES_TEST_DB=prs_test_<name>`(공유 `prs_test` 쓰지 않음) 지정. CR-105는 `prs_test_cr105`(검토 편의로 지우지 않고 남김). ES/Redis는 기존 `prs-cr091-elasticsearch`/`-redis` 재사용.
+- Node 22 강제: `source ~/.nvm/nvm.sh && nvm use 22`(Bash 호출마다 반복 필요 — 셸 상태가 유지 안 됨). Node 20 기본값에서는 vitest가 `styleText` 오류로 죽는다.
+
+## Next steps
+
+1. **범위 검색·M번호 필터** (SRS 개정 필요). 착수 전 CR/DEV/WP 번호 재실측 필수(위 Commands 참고). `FR-SRCH-005` AC-1에 `pr_number`(신규 범위 키, 정확히 하나의 `repo:` positive 필요 — base는 불필요, PR 번호는 저장소별이라 시퀀스 공간과 무관)와 `mnum`(신규 범위 키, `seq:`와 같은 repo+base+epoch 공간 규칙 AC-7 적용, `pending`/미채번 항목은 어떤 구간과도 매치 안 됨)을 추가하고, SHA 범위는 새 질의 키가 아니라 "두 SHA를 `FR-SRCH-004` 식별자 해석으로 merge_seq에 대응시켜 `seq:` 범위로 변환하는 클라이언트 동작"으로 AC를 하나 더 추가(새 AC 번호는 재확인). `FR-SRCH-006` AC-1 필터 목록에도 반영. 구현: `packages/query/src/keys.ts`(범위 키 등록) → `packages/es/src/query-builder.ts`의 `RANGE_FIELDS`(필드 매핑, `pr_number`/M번호 실제 ES 필드명은 데이터 모델 확인 필요 — 이 세션에서 확인 안 함) → `RepositoryWorkspace.tsx` 필터 폼에 입력 3쌍(PR/SHA/M번호 각 from-to) 추가. 초안 문구가 `/tmp/claude-1000/-home-roqkf-pr-search/8b6b7e75-7619-4c48-bbe0-e3df1978ec90/scratchpad/cr104-cr105-srs-drafts.md`에 있으나 **그 파일의 CR/WP 번호는 이 세션 초반 기준이라 전부 틀렸다 — 문구 내용만 참고하고 번호는 재실측**.
+2. **Commit history PR번호 병기**. `FR-SRC-002` AC-1을 "SHA·부모·메시지·작성자·시각 + PR 번호(있으면, 없으면 빈 칸)"로 개정. `packages/contracts/src/source.ts`의 `SourceCommit`에 `pr_number: number | null` 추가. `/history` API 핸들러(이 세션에서 정확한 파일 위치 확인 안 함 — `apps/search-api` 쪽에서 History 응답을 만드는 곳을 먼저 찾을 것)가 기존 커밋→PR 역해석(`FR-SRCH-002`/`API-SRCH-002`, 이미 승인된 기능)을 재사용해 채워야 한다. `SourceHistory.tsx`에 표시+카피(기존 `CopyButton`) 추가.
+3. 두 항목 다 이미 "CR·SRS 개정 후 이번에 구현까지" 방향으로 사용자 답변이 나와 있다(위 Decisions) — 다시 물을 필요 없음. 순서(범위검색 먼저, PR병기 다음)도 이미 정해짐.
+4. 착수 전 `git status`로 공유 checkout에 다른 세션의 미커밋 작업이 있는지 먼저 확인(아래 Risks 참고).
+
+## Risks/gotchas
+
+- **공유 checkout(`/home/roqkf/pr-search`)을 다른 세션과 동시에 썼다.** 오늘 다른 세션이 `docs/00_governance/change_control.md`·`pr_search_work_packages.md`·`pr_search_implementation_traceability.md`에 동시에 미커밋 변경(CR-102, 별도의 "Regression 확장" 기능 제안 — `deep-research-report.md` 등)을 갖고 있어 `git merge`가 막혔다. 양쪽 내용을 전부 보존하며 수동으로 끼워 넣어(파일 맨 위, 번호가 큰 쪽을 위로) 해결했다 — 삭제·덮어쓰기 없음. `packages/es/src/query-builder.ts`도 그 세션의 별도 미커밋 변경(아래 항목)이 있었다. **다음 세션도 착수 전 반드시 `git status`로 먼저 확인할 것.**
+- **`query-builder.ts` 사고.** 사용자 지시로 다른 세션의 미검토 변경(`operator:"and"`)을 그대로 커밋·push했더니 main CI가 `FR-SRCH-011 AC-4` 위반으로 실패했다. 되돌린 뒤 사용자가 원래 의도(VANGUARD-1 버그)를 설명해줘서 CR-105로 제대로 고쳤다. **교훈: ES/검색처럼 사이드이펙트가 미묘한 코드는 "일단 커밋해라"는 지시가 있어도 typecheck만 보고 안전하다고 판단하지 말 것 — 관련 기존 통합 시험까지 돌려보고 커밋한다.**
+- 이 저장소는 "요구사항 문장 안 바꿈"이어도 예외 없이 CR을 등록하는 관행이 확고하다 — 다음 세션도 유지.
+- worktree 3개(`cr102-frontend-fixes`·`cr103-infinite-scroll`·`cr105-search-fix`)가 병합 완료 상태로 남아 있다 — 정리(삭제)는 `[Git Destructive]`로 막힐 수 있으니 사용자에게 먼저 물을 것(과거 기록 `auto-mode-denies-git-cleanup` 참고).
+
+## References
+
+- main 최종 커밋 `750fb91`(CI green). CR-103/104/105 cascade 전문은 `docs/00_governance/change_control.md` 하단(파일 끝). 원장 6.96(CR-103)·6.97(CR-104)·6.98(CR-105)장은 `docs/40_delivery/pr_search_implementation_traceability.md`.
