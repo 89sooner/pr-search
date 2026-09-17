@@ -57,7 +57,7 @@ CR-079: ADR-023을 아래 목록과 상세 설계에 추가한다. 새 M 번호�
 | ADR-020 | typed gh 결과 계약과 capability 데이터흐름 그래프 | accepted | 2026-08-20 | data, frontend, backend, security |
 | ADR-021 | 첫 사내 반입은 단일 호스트 프로파일 · 오프라인 번들 · 단방향 다운스트림 계보 | accepted | 2026-09-01 | infrastructure, security, delivery, system |
 | ADR-022 | M 넘버 표기는 Data Plane이 수행하는 유일한 자동 GHE 쓰기 | accepted | 2026-09-10 | security, backend, data |
-| ADR-023 | squash M 번호의 확정 근거·선행 freshness·영속 복구·인용 안전성 | proposed — 설계 review, DEV-581 증거 게이트 잔존 | 2026-09-11 | WP-074 상세 설계, data, async, API, UI, delivery |
+| ADR-023 | squash M 번호의 확정 근거·선행 freshness·영속 복구·인용 안전성 | accepted — CR-100 보완(2026-09-17): DEV-581의 부재 증서를 운영자 확인서(ENT-SEQ-008)가 대신한다 | 2026-09-11 / 2026-09-17 | WP-074 상세 설계, data, async, API, UI, delivery, RUNBOOK |
 
 ## ADR-023 squash M 번호의 확정 근거와 복구
 
@@ -76,6 +76,10 @@ webhook 동기 fetch, 독립 소비자 경주, 이벤트 발행만을 복구 근
 ### Verification and Rollback
 
 후속 실행서 T01~T06 및 필수 변이를 적용한다. 이번 세션에서 실제 앱 시험은 NOT RUN이다. additive 앱 rollback을 우선하며 DB down은 번호·증거 복구자료 확보와 새 producer/consumer 중지 후 수행한다. Agent-Initiated Decisions는 상세 설계 12절의 C1~C6을 따른다.
+
+### Amendment — CR-100 운영자 확인서 (2026-09-17)
+
+사내 `0.1.0-pilot.11` 반입에서 squash-only 저장소 셋이 모두 직접 푸시 초기 커밋(`negative_evidence_unavailable`)과 2-parent 머지 커밋(`unsupported_merge_profile`)에서 멈췄다. 이 ADR이 「production은 부재를 확정하지 않는다」로 남겨 둔 자리를 **운영자 확인서**로 닫는다: 확정하는 것은 사람이고 시스템은 그 결정을 근거로 남긴다. 확인서는 (저장소, 브랜치, 에폭)마다 하나이며 행위자·사유·범위·유예를 담고 감사 기록(`mnumber_attestation.create`·`revoke`)을 만든다. 유예는 `committed_at` 기준 안전 여유이지 근거가 아니다(AC-10 유지). 「번호는 옮기지 않는다」(AC-3)와 「에폭이 오르면 무효」(ADR-007)는 그대로이며, 확인서로 지나간 항목에 뒤늦게 PR이 나타나면 그 PR은 이 에폭에서 번호를 받지 않는다(DEV-717, 에폭 재채번으로 바로잡는다). 같은 CR이 확정 근거를 미확정으로 덮던 경합(DEV-715)을 잠금 재검증과 SQL 방어선으로 막았다. 사내 피드백의 「unresolved를 건너뛰며 진행」은 조밀 서수와 인용 안정성을 깨므로 기각했다. 상세 계약은 WP-074 설계 2.2·3·6.5절이 소유한다.
 
 ## ADR-001 전 계층 TypeScript 단일 언어
 

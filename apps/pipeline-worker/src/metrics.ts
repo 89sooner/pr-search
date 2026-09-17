@@ -105,6 +105,8 @@ export interface WorkerMetrics {
   readonly mnumberBlockedTotal: Counter;
   /** `merged_at` 순서가 `merge_seq` 순서와 어긋난 PR 쌍 수 (FR-SEQ-008 AC-6). 채번을 막지 않는다. */
   readonly mnumberOrderMismatchTotal: Counter;
+  /** 운영자 확인서로 번호 없이 지나간 항목 수 (CR-100 / FR-SEQ-008 AC-15). 라벨: `repository`. */
+  readonly mnumberAttestedTotal: Counter;
   /** 지연 표본을 남기지 못한 수. 관측 실패가 번호를 되돌리지 않는다 (상세 설계 6.4). 라벨: `stage`. */
   readonly measurementMissing: Counter;
   /** durable work 처리 결과. 라벨: `kind`·`outcome`. */
@@ -183,6 +185,7 @@ export function createWorkerMetrics(): WorkerMetrics {
   const mnumberAssignedTotal = new Counter('mnumber_assigned_total', '부여한 M 번호 수');
   const mnumberBlockedTotal = new Counter('mnumber_blocked_total', 'M 채번이 멈춘 회차 수');
   const mnumberOrderMismatchTotal = new Counter('mnumber_order_mismatch_total', 'merged_at 순서와 어긋난 PR 쌍 수');
+  const mnumberAttestedTotal = new Counter('mnumber_attested_total', '운영자 확인서로 번호 없이 지나간 항목 수');
   const measurementMissing = new Counter('measurement_missing_total', '남기지 못한 지연 표본 수');
   const sequenceWorkTotal = new Counter('sequence_work_total', 'durable work 처리 결과');
   const mnumberProjectionStale = new Counter('mnumber_projection_stale_total', '정본과 다른 색인 M 값 수');
@@ -221,6 +224,7 @@ export function createWorkerMetrics(): WorkerMetrics {
     mnumberAssignedTotal,
     mnumberBlockedTotal,
     mnumberOrderMismatchTotal,
+    mnumberAttestedTotal,
     measurementMissing,
     sequenceWorkTotal,
     mnumberProjectionStale,
@@ -245,6 +249,7 @@ export function createWorkerMetrics(): WorkerMetrics {
         mnumberAssignedTotal,
         mnumberBlockedTotal,
         mnumberOrderMismatchTotal,
+        mnumberAttestedTotal,
         mnumberProjectionStale,
         mnumberAnnotateTotal,
         mnumberAnnotateMismatchTotal,

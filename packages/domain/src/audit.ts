@@ -95,6 +95,18 @@ export const ACTIVE_AUDIT_ACTIONS = [
    */
   'user_role.grant',
   'user_role.revoke',
+  /**
+   * M 번호 운영자 확인서의 작성·철회 (CR-100 / WP-088, FR-SEQ-008 AC-15, FR-AUTH-004 AC-1·AC-6).
+   *
+   * 확인서는 「PR 근거가 끝내 나오지 않은 항목과 squash 프로파일 밖 항목은 번호 없이 지나간다」는
+   * 운영자의 결정이며(DEV-581의 부재 증서를 사내 승인 증거로 대신한다), 그 결정 하나가 이후 채번
+   * 전체의 뜻을 정한다. 유일한 경로는 `prsctl mnumber attest|revoke`이고 **변경과 같은 트랜잭션에서**
+   * 남긴다 — `user_role.*`과 같은 예외이자 같은 근거다. 행위 주체는 `prsctl:<호스트 사용자>`, `target`은
+   * `{owner}/{repo}/{branch}@{에폭}#{확인서 ID}`, `query`는 운영자가 남긴 사유다. 바뀐 것이 없는
+   * 재실행(이미 철회된 확인서의 철회)은 남기지 않는다.
+   */
+  'mnumber_attestation.create',
+  'mnumber_attestation.revoke',
 ] as const;
 
 /**

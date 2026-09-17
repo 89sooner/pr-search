@@ -194,6 +194,18 @@ async function runOne(deps: WorkRunnerDeps, row: SequenceWorkRow): Promise<strin
         }
         if (result.continueImmediately) return finish('continue', { state: 'ready', delayMs: 0, reason: 'budget_exhausted', resetAttempts: true });
         if (result.blocked === null) return finish('done', { state: 'done' });
+        if (result.blocked.retryAt !== undefined) {
+          /*
+           * 운영자 확인서가 이 서수를 덮지만 유예가 아직 지나지 않았다 (CR-100). 유예가 끝나는 시각에
+           * 다시 본다 — 그 전에 새 push·스냅숏이 오면 `requestWork`가 available_at을 지금으로 당긴다.
+           */
+          return finish(`blocked:${result.blocked.reason}`, {
+            state: 'retry',
+            delayMs: Math.max(0, result.blocked.retryAt.getTime() - now().getTime()),
+            reason: 'attestation_grace_pending',
+            resetAttempts: true,
+          });
+        }
         switch (result.blocked.reason) {
           case 'partial_lookup':
             return finish('partial_lookup', { state: 'ready', delayMs: 0, reason: 'partial_lookup', resetAttempts: true });

@@ -6,7 +6,7 @@
  * | 상태 | 성립 조건 |
  * | --- | --- |
  * | `pr_confirmed` | merged=true, 같은 저장소·같은 base, `merge_commit_sha`가 이 first-parent 커밋, squash 프로파일 |
- * | `direct_confirmed` | **production 판정기는 만들지 않는다** (2.2의 완결 증서가 없다). 격리 시험만 주입한다 |
+ * | `direct_confirmed` | **production 판정기는 만들지 않는다** (2.2의 완결 증서가 없다). 격리 시험의 주입, 또는 **운영자 확인서**(CR-100, `mnumber-attestation.ts`)가 부재 미확정·프로파일 밖 판정 위에 얹는다 |
  * | `unresolved` | 조회 전·부분 응답·빈 결과·불일치·프로파일 불명 — 그 앞에서 채번이 멈춘다 |
  *
  * 반복해서 빈 조회가 와도 부재를 확정하지 않는다. `NULL`, ES 부재, 부모 수, 시간
@@ -69,7 +69,8 @@ export type EvidenceDecision =
     }
   | {
       readonly kind: 'direct_confirmed';
-      readonly upsert: null;
+      /** 기존 확정은 다시 쓰지 않아 `null`이다. 운영자 확인서가 새로 만든 확정만 저장할 값을 갖는다 (CR-100). */
+      readonly upsert: EvidenceUpsert | null;
     }
   | {
       readonly kind: 'unresolved';
