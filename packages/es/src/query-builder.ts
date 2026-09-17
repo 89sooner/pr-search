@@ -294,15 +294,7 @@ const NON_FIRST_PARENT_COMMIT: estypes.QueryDslQueryContainer = {
  * 이긴다.
  */
 export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
-  // return { multi_match: { query: text, fields: [...FULL_TEXT_FIELDS], type: 'best_fields' } };
-  return {
-    multi_match: {
-      query: text,
-      fields: [...FULL_TEXT_FIELDS],
-      type: "best_fields",
-      operator: "and",
-    },
-  };
+  return { multi_match: { query: text, fields: [...FULL_TEXT_FIELDS], type: "best_fields" } };
 }
 
 /**
