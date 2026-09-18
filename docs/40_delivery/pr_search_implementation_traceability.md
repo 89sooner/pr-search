@@ -1,6 +1,21 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.95 | 갱신일: 2026-09-18
+> 상태: review | 버전: v6.96 | 갱신일: 2026-09-18
+
+## 0.1.0-pilot.14 발행 — CR-102~109 여덟 건 누적 (2026-09-18)
+
+사용자 지시로 `origin/main` HEAD `3fca8a6`(CR-109 / WP-095) 기준으로 발행했다. pilot.13(`3ba1c4b`, CR-101) 이후 main에 쌓인 CR-102(Regression 연구 보고서 계획화, **open** — 신규 범위 baseline 미승인, 앱 구현 없음)·CR-103(Diff 분할·History 안내·사이드바 고정 레이아웃, WP-090)·CR-104(검색 결과 무한 스크롤, WP-091)·CR-105(하이픈 식별자 전문 검색 과매칭 정정, DEV-722)·CR-106(PR 번호·M 번호·SHA 구간 범위 검색, WP-092)·CR-107(Source History 연결 PR 번호 표시, WP-093)·CR-109(Regression Revision Atlas 첫 UI 수직, WP-095, opt-in feature flag 기본 꺼짐)를 처음으로 담는다. CR-108(bisect 이력 계약 재조정, WP-094)은 별도 브랜치 `docs/regression-first-slice`에 미병합 상태로 보존돼 있어 `origin/main`에 없으므로 이 릴리스에 포함되지 않는다.
+
+다른 프로세스(로컬 dev 서버·Playwright test-server)가 계속 파일을 건드리는 공유 checkout 대신, `3fca8a6`에 고정한 별도의 detached worktree(`/home/roqkf/pr-search-wt/release14`)에서 만들어 이미지 계보가 빌드 도중의 우연한 파일 변경에 영향받지 않게 했다. 배포 표면(`Dockerfile`·`.dockerignore`·`deploy/`·`docker-compose.yml`·DB 마이그레이션)은 pilot.13 이후 `git diff --stat`로 변경 없음을 사전에 확인했다.
+
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.14
+- 태그: `3fca8a630d41a74554d68145c86f7cdb977750f6`(manifest `branch`는 `HEAD` — 분리된 워크트리에서 만들었다. pilot.8·13과 같다)
+- 자산: `pr-search-0.1.0-pilot.14-offline.tar.gz`, 1,156,289,684 bytes
+- 별도 채널 전달 SHA-256: `7a7821429ad44b3486818f377845d2089a64e15f9ec00bb333204362ed722904`
+- 로컬 checksum과 GitHub asset digest 일치, state uploaded, immutable releases enabled. 발행 전 초안 자산(이름·크기·digest) 대조와 발행 후 재확인 모두 통과.
+- tar 재적재 뒤 smoke 통과: web(SSR 10종 200·API 프록시 401·해시 외부 모듈 `pg-71df57fbe79e18ab` 해석·손 조치 흔적 없음·인증/쿠키 허용-거부 구성 9종), pipeline-worker(git 2.54.0), gh-executor(gh 2.97.0 고정 바이너리 해시·비루트·읽기 전용 기동·봉인 키 없으면 거부), search-api(관리자 역할 CLI, DB 접속 전 종료 코드 2).
+- 문서 정합성: CR-109의 `change_control.md` 서술과 3장 WP-095 행의 "PR/배포 없음"은 그 커밋(`3fca8a6`) 자체가 작성한, push 이전 시점의 스냅숏이었다 — 실제로는 이미 `origin/main`에 반영돼 이 릴리스에 포함됐다. 이번 갱신에서 WP-095 행을 실제 상태로 정정한다. `change_control.md`·`work_packages.md`의 동일 문구는 이 원장 갱신의 범위 밖이라 손대지 않았다.
+- 사내 실제 GHE 데이터 및 재반입 검증은 NOT RUN이다.
 
 ## CR-102 문서 분석·계획 기록 (2026-09-17)
 
@@ -168,7 +183,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-095 | Regression Revision Atlas 첫 UI 수직 | UI 수직 (CR-109) | done | 에이전트 | 로컬 작업 브랜치 feature/regression-atlas; PR/배포 없음 | 단위49/49·a11y441/441·typecheck·lint·lint:deps·프로덕션 build·1440/390 Chromium·실제 light/dark axe — 6.101장 | fixture opt-in; 실제 MDVP·장비·통계·새 DB는 미구현 |
+| WP-095 | Regression Revision Atlas 첫 UI 수직 | UI 수직 (CR-109) | done | 에이전트 | main `3fca8a6` / pilot.14 | 단위49/49·a11y441/441·typecheck·lint·lint:deps·프로덕션 build·1440/390 Chromium·실제 light/dark axe — 6.101장 | fixture opt-in; 실제 MDVP·장비·통계·새 DB는 미구현. 커밋 시점 "PR/배포 없음" 서술은 이후 push로 stale해져 위 0.1.0-pilot.14 발행 절에서 정정 |
 | WP-083 | 일반 검색 Radix 재구현 | UI 품질 (CR-095) | done | 에이전트 | PR #199 / pilot.10 | 전체 CI·브라우저·bundle smoke 통과 | 기존 문서 validator 오류 유지 |
 | WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | done | 에이전트 | PR #199 / pilot.10 | 접근성 433/433·전체 CI·bundle smoke 통과 | 실 GHE 미검증, 기존 문서 gate 오류 |
 | WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | done | 에이전트 | PR #199 / pilot.10 | 집중94/94·Chromium·전체 CI·bundle smoke 통과 | 실 GHE NOT RUN, 기존 문서 gate 오류; **정정(CR-103)**: split diff 스크롤 결합(DEV-720)·History 비교 불가 사유 미표시(DEV-721) 수정 — 6.96장 |
@@ -176,9 +191,9 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | WP-087 | PR 중심 검색 필터·테이블·달력 보정 | 검색 UX (CR-099) | done | 에이전트 | PR #205 / pilot.12 | query/sort/parser82/82·전체 a11y436/436·집중148/148·대비18쌍·PR/main 전체 CI·Chromium 필터/표/Source 회귀·bundle smoke 통과 | 실 GHE 데이터 NOT RUN, 기존 문서 validator 오류 유지 |
 | WP-088 | M 번호 운영자 확인서와 확정 근거 보존 | M 채번 운영 (CR-100) | done | 에이전트 | PR #207 · `08fbc3a` / pilot.13 | 단위 6/6·통합 13/13+1/1(격리 DB)·변이 2/2 죽음·기존 M 통합 19/19·독립 검토 minor 3 반영·typecheck 0·eslint 0·회귀·전체 통합·build — 6.94장 | 실 GHE 데이터 NOT RUN; 후발 PR 자동 발견 없음(DEV-717); 검사기 잔여 오류 4(기존) |
 | WP-089 | 병합된 PR의 state 파생 보정 | 검색 정확성 (CR-101) | done | 에이전트 | PR #208 · `3ba1c4b` / pilot.13 | 단위 3+2(투영 state 단언)·032 왕복 통합·회귀 계약 3·변이(투영 되돌림 → 시험 2건 죽음)·typecheck·lint — 6.95장 | 사내 재색인 뒤 확인 NOT RUN |
-| WP-090 | 검색 좌측 패널·결과 표 고정 레이아웃 | UI 품질 (CR-103) | done | 에이전트 | main `d0e74c7`(코드)·`e6db5f1`(문서) | typecheck 0·eslint 0·lint:deps 0·단위 5/5(source-analysis sanity)·build 성공·독립 코드 리뷰 10건 전부 반영(자체 발견 1건 포함)·6개 뷰포트 브라우저 실측(1440×900·1280×800·1280×700·375×812·390×844) — 6.96장 | push 완료(PR 없이 main 직접, 사용자 지시); 사내 실데이터 NOT RUN; 모바일 대응은 사용자 결정으로 제외 |
-| WP-091 | 검색 결과 무한 스크롤 | UI 품질 (CR-104) | done | 에이전트 | main `246fb79`, CI run `35225253617` verify·integration success | typecheck 0·eslint 0·lint:deps 0·build 성공·네트워크 호출 실측(폭주 없음)·강제 커서 거절로 자동 재시도 없음 확인·키보드 전용 스크롤 확인 — 6.97장 | 맨 아래 스크롤 상태에서 데이터만 초기화되는 재발화는 알려진 경미한 한계(제외); 모바일 제외(사용자 결정); 사내 실데이터 NOT RUN |
-| WP-092 | 식별자 범위 검색: PR 번호·M 번호·SHA 구간 | 검색 기능 확장 (CR-106) | done | 에이전트 | PR #211 · 스쿼시 `03da17c`, 병합 커밋 CI run `35256612621` verify·integration success | typecheck·lint·lint:deps 0·단위 2919/2920(기존 skip 1건)·통합 1847/1847(신규 `identifier-range.test.ts` 20건 포함, 격리 DB `prs_test_cr106tests`)·회귀 506/506·build 성공·변이 2건 각각 예상대로 죽음·독립 코드 리뷰(high) 2회 전부 반영·`/search` 실제 브라우저 렌더링 확인 — 6.99장 | 세션 부재로 실제 검색 결과 왕복·사내 실데이터는 NOT RUN; 미반영 발견 둘은 DEV-724·DEV-725(후속 CR 후보) |
+| WP-090 | 검색 좌측 패널·결과 표 고정 레이아웃 | UI 품질 (CR-103) | done | 에이전트 | main `d0e74c7`(코드)·`e6db5f1`(문서) / pilot.14 | typecheck 0·eslint 0·lint:deps 0·단위 5/5(source-analysis sanity)·build 성공·독립 코드 리뷰 10건 전부 반영(자체 발견 1건 포함)·6개 뷰포트 브라우저 실측(1440×900·1280×800·1280×700·375×812·390×844) — 6.96장 | push 완료(PR 없이 main 직접, 사용자 지시); 사내 실데이터 NOT RUN; 모바일 대응은 사용자 결정으로 제외 |
+| WP-091 | 검색 결과 무한 스크롤 | UI 품질 (CR-104) | done | 에이전트 | main `246fb79`, CI run `35225253617` verify·integration success / pilot.14 | typecheck 0·eslint 0·lint:deps 0·build 성공·네트워크 호출 실측(폭주 없음)·강제 커서 거절로 자동 재시도 없음 확인·키보드 전용 스크롤 확인 — 6.97장 | 맨 아래 스크롤 상태에서 데이터만 초기화되는 재발화는 알려진 경미한 한계(제외); 모바일 제외(사용자 결정); 사내 실데이터 NOT RUN |
+| WP-092 | 식별자 범위 검색: PR 번호·M 번호·SHA 구간 | 검색 기능 확장 (CR-106) | done | 에이전트 | PR #211 · 스쿼시 `03da17c`, 병합 커밋 CI run `35256612621` verify·integration success / pilot.14 | typecheck·lint·lint:deps 0·단위 2919/2920(기존 skip 1건)·통합 1847/1847(신규 `identifier-range.test.ts` 20건 포함, 격리 DB `prs_test_cr106tests`)·회귀 506/506·build 성공·변이 2건 각각 예상대로 죽음·독립 코드 리뷰(high) 2회 전부 반영·`/search` 실제 브라우저 렌더링 확인 — 6.99장 | 세션 부재로 실제 검색 결과 왕복·사내 실데이터는 NOT RUN; 미반영 발견 둘은 DEV-724·DEV-725(후속 CR 후보) |
 | WP-081 | 최신 Conductor·Shell·W-001 | UI 품질 (CR-093) | done | 에이전트 | `a8796de` / PR #196 | PR CI `35061974889`·main CI `35062529329` success; `0.1.0-pilot.8` | CR-093, 신규 기능 의미 없음 |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | in_progress | 에이전트 | `f36ab06`, `44c1772` / PR #2 | 로컬 6종 통과, 헬스 4종 HTTP 200, GitHub Actions `verify` 성공 (6.1장) | **구현은 완료. DoD 4항 중 3항 검증 완료.** `docker compose up` 기동 확인만 환경 제약으로 보류 (DEV-001). 후속 WP 착수는 막지 않는다 |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | done | 에이전트 | `96d4e2f` / PR #2 | DoD 6항 전부 통과. 통합 26건, CI `verify`·`integration` 모두 성공 (6.2장) | 로컬은 네이티브 PostgreSQL 16.13, CI는 서비스 컨테이너 (DEV-006) |
