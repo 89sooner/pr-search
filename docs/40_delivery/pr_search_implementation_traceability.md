@@ -8244,3 +8244,13 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 **병합**: PR [#211](https://github.com/89sooner/pr-search/pull/211), 브랜치 `feature/cr106-range-search`. PR CI(run `35255901048`) verify(3m36s)·integration(6m22s) 모두 success. 스쿼시 병합 `03da17c`. 병합 커밋 main CI(run `35256612621`) verify·integration 모두 success(2026-09-17).
 
 **사내 확인 (NOT RUN).** 실제 GHE 반입 데이터로의 `pr_number:`/`mnum:`/SHA 구간 검색 확인은 별도다.
+
+### 6.100 Source History에 연결 PR 번호 표시 (2026-09-18, CR-107 / WP-093)
+
+기준 `origin/main` `69a01eb`(CR-106 병합·문서 반영 완료 시점), worktree `/home/roqkf/pr-search-wt/cr107-history-pr-links`(브랜치 `feature/cr107-history-pr-links`). 상세 서술(설계 결정)은 `change_control.md`의 `CR-107` 항목이 정본이다 — 여기서는 검증 수치와 병합 근거만 기록한다.
+
+**요약**: `FR-SRC-002` AC-1을 개정해 Source History 각 행에 연결 PR 번호를 더했다. 계약은 `SourceHistoryCommit.pull_request_numbers: number[] | null`(행 단위 — 배열은 확정, `null`은 미확정)과 `SourceHistory.pull_requests_unavailable`(응답 단위 — PR 연결 조회 자체의 실패·미배선)의 두 층으로 상태를 나눈다. 배치 조회 함수 `loadPullRequestLinks`는 페이지의 SHA 전체를 `terms` 질의 하나로 묶어 `applyMandatoryScopeFilter`(ADR-008)를 통과시키며, `resolve/detail.ts::loadSourceCommits`(별개 기능, FR-SRCH-003)는 호출·수정하지 않는다.
+
+**검증**: 워크트리(Node 22) 기준 — `pnpm typecheck`·`pnpm lint`·`pnpm run lint:deps` 전부 0. 단위 `pnpm run test` 2930/2930(GHE 자격 증명 없음 1건 skip, 기존과 동일). 통합 `pnpm run test:integration` 1857/1857(전체) + 신규 `apps/search-api/integration/source/history-pull-requests.test.ts`(8건, 실제 Elasticsearch로 연결 1개·여러 개(중복·역순 입력 → 오름차순 확정)·빈 배열(direct_push류)·문서 없음(미확정)·다른 저장소의 같은 SHA(접근 범위 밖 비유입)·페이지당 조회 1회(N+1 금지)를 실측). 회귀 `pnpm run test:regression` 506/506. `pnpm --filter @prs/web run build`·루트 `pnpm build`(16개 패키지) 통과. `pnpm run test:a11y` 436/436. `pnpm run test:e2e`는 이 CR과 무관한 기존 간헐 실패(`flow-003.spec.ts:176` — Source 코드 참조 0건, 단독 재실행 1.9초 통과, WP-016·CR-042·CR-044부터 기록된 타이밍 표본잡음) 한 자리를 제외하면 전부 통과. 변이 규율: `unavailable()` 응답 모양을 빈 배열로 바꿔치기, 배치 조회의 `catch`를 제거해 예외가 그대로 전파되게 하는 두 지점 각각에서 대상 시험이 정확히 예상대로 실패하는 것을 먼저 확인한 뒤 원복(재확인 통과). GHE 자격 증명이 없어 실제 브라우저의 실데이터 왕복은 `NOT RUN`(CR-106과 동일 사유) — 대신 실제 CSS를 로드한 정적 마크업으로 light/dark 렌더링·접근성 이름·복사 값(실패 폴백 경로)을 확인했다.
+
+**독립 검토**: code-review 스킬(high) 수행(2차 확인 포함). 정확성 결함 없음(ADR-008 범위 필터·`null`/`[]` 의미·N+1 금지·조회 실패의 502 미전파를 독립적으로 재확인). 아키텍처/관례 발견 6건 중 3건 반영, 2건 반려, 1건은 `DEV-727`로 유보 — 사유는 `change_control.md`의 `CR-107` 항목.

@@ -64,6 +64,12 @@ describe('buildServerDeps — 운영이 무엇을 넘기는가', () => {
     expect(deps.integrity).toBeDefined();
   });
 
+  it('**GHE와 세션이 있으면 source에 실제 ES 클라이언트를 함께 넘긴다** (CR-107, FR-SRC-002 AC-1 — History PR 연결 배치 조회에 필요)', () => {
+    const es = { search: () => undefined } as unknown as Client;
+    const deps = buildServerDeps(parts({ github: GITHUB, auth: {} as unknown as RuntimeParts['auth'], es }));
+    expect(deps.source?.es).toBe(es);
+  });
+
   it('GHE가 없으면 넘기지 않는다', () => {
     expect(buildServerDeps(parts()).integrity).toBeUndefined();
   });
