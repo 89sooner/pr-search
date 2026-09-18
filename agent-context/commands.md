@@ -1,4 +1,8 @@
 # 명령어 · 시험 결과 · 실패한 명령과 원인
+## 2026-09-18 (11차)에서 쓴 것 (CR-106·CR-107)
+
+전체는 `agent-context/session-notes.md`의 "11차" 절 Commands를 본다. 새로 배운 것: `gh pr checks --json name,bucket`이 침묵 실패할 수 있어 `gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '...'`로 대체했다.
+
 ## 2026-09-15 (8차) 라운드에서 쓴 것 (CR-092)
 
 ### 환경

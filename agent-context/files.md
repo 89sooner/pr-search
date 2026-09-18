@@ -1,4 +1,8 @@
 # 중요 파일 경로와 역할
+## 2026-09-18 (11차)가 만들거나 만진 것 (CR-106·CR-107)
+
+전체 목록은 `agent-context/session-notes.md`의 "11차" 절 Changed files를 본다. 신규 파일만: `apps/search-api/integration/search/identifier-range.test.ts`(CR-106), `apps/search-api/integration/source/history-pull-requests.test.ts`(CR-107).
+
 ## 2026-09-15 (8차) 라운드가 만들거나 만진 것 (CR-092, PR #194)
 
 ### 코드

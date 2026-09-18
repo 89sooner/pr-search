@@ -1,30 +1,33 @@
-# Current Handoff — 2026-09-17 PR Search pilot.13 (9차)
-
-> **최소 정정 (CR-106 착수 시점):** 이 문서는 9차(pilot.13) 시점에서 멈춰 있다. 그 뒤 10차(CR-103·CR-104·CR-105, main 최종 커밋 `750fb91`)가 이미 반영됐고, 그 세션이 다음 세션으로 남긴 항목(범위 검색·M번호 필터, Commit history PR 번호 병기)을 CR-106으로 착수한다. 최신 진행 상황은 `agent-context/session-notes.md`의 "10차" 절과 `agent-context/todos.md`의 "먼저 할 것" 절을 본다. 전체 handoff 정리는 CR-106·후속 CR 마감 때 한다.
+# Current Handoff — 2026-09-18 PR Search 11차 (CR-106·CR-107 완료)
 
 ## Start here
 
-`0.1.0-pilot.13`이 발행됐다 — 불변 GitHub Release, 태그 `3ba1c4b`(CR-101 병합, 마지막 기능 커밋). main은 그 위에 병합 기록(`ac130e3`), 다른 세션의 이미지 파일(`936de9f`), 이 발행 기록 PR(`docs/pilot13-release-record`)이 얹힌 상태다 — 머리는 `git log origin/main --oneline -5`로 읽는다. 정정이 필요하면 자산·태그를 바꾸지 않고 새 버전(pilot.14)을 낸다.
+`origin/main`의 최신 커밋은 `c14b9a9`(CR-107 병합 기록)다 — 머리는 `git log origin/main --oneline -5`로 읽는다. 10차가 컨텍스트 한도로 넘긴 두 항목(범위 검색·M번호 필터 = CR-106, Commit history PR 번호 병기 = CR-107) 모두 main에 반영 완료됐다. 다음 세션에 남은 새 작업 지시는 없다 — 아래 "Open boundary"와 `agent-context/todos.md`의 "11차 뒤에 남은 것"이 전부다.
 
 ## Delivered
 
-- CR-100 / WP-088 (PR #207 → `08fbc3a`): M 번호 운영자 확인서(ENT-SEQ-008, 마이그레이션 031, `prsctl mnumber attest|revoke|list`, FR-SEQ-008 AC-15), 확정 근거 보존(DEV-715), 문서 검사기 회귀 정정(DEV-716), 열어 둔 한계 DEV-717.
-- CR-101 / WP-089 (PR #208 → `3ba1c4b`): 병합된 PR을 `merged`로 파생(DEV-718), 마이그레이션 032로 기존 스냅숏 정정.
-- `0.1.0-pilot.13`: 자산 `pr-search-0.1.0-pilot.13-offline.tar.gz` 1,154,497,950 bytes, SHA-256 `f94f022378dd04cb04965e3596c2fe31321460cb64ca5763d78a91629471f7d3`(GitHub digest와 일치), smoke 20건, 발행 전·후 이미지 확인(새 CLI·도메인 헬퍼·031·032). 기록은 원장 머리 절.
+- CR-106 / WP-092 (PR #211 → `03da17c`, 기록 PR #212 → `69a01eb`): Search 필터에 `pr_number:`(PR 번호 범위)·`mnum:`(M 번호 범위, 세대 게이트는 `merge_number_epoch`) 범위 검색과 SHA 두 개의 클라이언트 `seq:` 변환을 추가. `/search`·`/exports`·집계·W-004 범위 조사 네 API 소비처 정합성 확보. DEV-723(cursor.ts NUL 바이트) 정정, DEV-724·725(미반영, 후속 CR 후보) 등재.
+- CR-107 / WP-093 (PR #213 → `95674b8`, 기록 PR #214 → `c14b9a9`): Source History 각 행에 연결 PR 번호(`pull_request_numbers: number[] | null`, 행 단위 확정/미확정) + `pull_requests_unavailable`(응답 단위 조회 실패) 추가. `prs-commits.pull_request_numbers`(기존 필드) 페이지 단위 배치 조회(N+1 금지, ADR-008 필수 범위 필터). DEV-726·727(미반영, 후속 CR 후보) 등재.
+- 두 CR 모두 독립 코드 리뷰(code-review 스킬, high)를 거쳤다. 상세 설계 결정과 발견은 `docs/00_governance/change_control.md`의 `CR-106`·`CR-107` 항목이 정본이다.
 
 ## Verify before changing code
 
-1. `git status --short --branch`가 main에서 clean인지, 다른 세션이 main에 직접 커밋했는지(`git log origin/main --oneline -5`) 본다 — 9차에서 두 번 있었다.
-2. 채번은 착수 직전에 다시 잰다: `grep -rohE 'CR-[0-9]{3}' docs/ | sort -u | tail -1` (10차 종료 시점 CR-105 · DEV-722 · WP-091 다음이었으나, 이 값도 착수 시점에 재실측한다 — 공유 checkout에 다른 세션이 있을 수 있다).
-3. 통합·회귀 시험은 워크트리별 격리 DB로 돌린다(`agent-context/commands.md` 9차 절).
-4. 긴 발행·빌드는 분리 세션(`setsid nohup`) + Monitor로 돌린다 — 하네스 백그라운드는 메모리 압박에서 끊긴다.
+1. `git status --short --branch`가 main에서 clean인지, 다른 세션이 main에 직접 커밋했는지(`git log origin/main --oneline -5`) 본다.
+2. 채번은 착수 직전에 다시 잰다: `for p in 'CR-[0-9]{3}' 'WP-[0-9]{3}' 'DEV-[0-9]{3}'; do grep -rohE "$p" docs/ | sort -u | tail -2; done` **그리고** `gh pr list --state open`(main grep만으로는 머지 대기 PR의 선점을 못 본다).
+3. 통합·회귀 시험은 워크트리별 격리 DB로 돌린다(`agent-context/commands.md` 참고).
+4. **`gh pr merge`는 Claude Code auto mode의 [Merge Without Review] 가드로 막힐 수 있다** — GitHub 쪽 필수 리뷰가 없어도 걸린다. 우회하지 말고 사용자에게 직접 병합을 요청한다(11차에서 실제로 두 번 겪음).
+5. `gh pr checks --json name,bucket`이 이 gh 버전에서 조용히 실패할 수 있다 — CI 폴링은 `gh api repos/89sooner/pr-search/commits/<sha>/check-runs`를 쓴다.
 
 ## Open boundary
 
-사내 반입은 NOT RUN이다. 사내 운영자에게 별도 채널로 버전·읽기 토큰·SHA-256을 전달한 뒤: `gh release download 0.1.0-pilot.13` → `sha256sum` 대조 → `./prsctl verify && ./prsctl load` → `./prsctl upgrade`(031·032) → 운영 콘솔 `prs-pull-requests` 재색인(Merged 필터·My merged PRs·Merged 배지) → `./prsctl mnumber attest …`(번들 RUNBOOK 7.D) → 저장소 119·399·1877 M 번호 완주. 결과는 `agent-context/upstream-feedback.md` 두 항목 아래에 적는다. DEV-717(확인서로 지나간 항목의 후발 PR 자동 발견 없음)과 기존 문서 검사기 오류 4·경고 2는 별도 CR 후보다.
+- worktree 5개(`cr102-frontend-fixes`·`cr103-infinite-scroll`·`cr105-search-fix`·`cr106-range-search`·`cr106-record`) 정리 — 사용자가 "나중에"로 보류(2026-09-18). 정리 전 스쿼시 병합 diff/patch 동등성 확인 필요.
+- 0.1.0-pilot.13 사내 반입 확인 — 여전히 NOT RUN(사내 운영자 작업, 독립 트랙).
+- 디자인 시스템 개선 트랙 착수 방식 — 8차 이후 계속 미결.
+- REL-007 다음 판 순서 — 결정자 지시 대기.
+- 후속 CR 후보(미반영 발견): DEV-724~727 — 사유는 각각 `change_control.md`의 `CR-106`·`CR-107` 항목.
 
 ## References
 
-- https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.13
-- https://github.com/89sooner/pr-search/pull/207 · https://github.com/89sooner/pr-search/pull/208 · https://github.com/89sooner/pr-search/pull/209
-- 원장 `docs/40_delivery/pr_search_implementation_traceability.md` 머리 절(pilot.13)·6.94·6.95장, DEV-715~718; 변경 대장 CR-100·CR-101.
+- https://github.com/89sooner/pr-search/pull/211 · /212 · /213 · /214
+- 원장 `docs/40_delivery/pr_search_implementation_traceability.md` 6.99장(CR-106)·6.100장(CR-107); 변경 대장 CR-106·CR-107.
+- 이전 세션 export: `exports/202609180720.md`(context-full로 중단된 11차 전반 — 이 handoff는 그걸 이어받아 마감한 결과다).

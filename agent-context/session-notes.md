@@ -3102,3 +3102,59 @@ risks.md의 「2026-09-02 (2차)」 절. 가장 큰 것: 실행 중인 스크립
 ## References
 
 - main 최종 커밋 `750fb91`(CI green). CR-103/104/105 cascade 전문은 `docs/00_governance/change_control.md` 하단(파일 끝). 원장 6.96(CR-103)·6.97(CR-104)·6.98(CR-105)장은 `docs/40_delivery/pr_search_implementation_traceability.md`.
+
+# Session: 2026-09-18 (11차) — CR-106 식별자 범위 검색 · CR-107 Source History PR 번호 병기
+
+## Goal
+
+10차(CR-103·104·105)가 컨텍스트 한도로 다음 세션에 넘긴 두 항목을 순서대로(A 완결 후 B) 끝낸다: 범위 검색·M번호 필터(작업 A, CR-106)와 Commit history PR 번호 병기(작업 B, CR-107).
+
+## Current state
+
+- CR-106(WP-092): PR #211 스쿼시 병합 `03da17c`, 기록 PR #212 병합 `69a01eb`. `pr_number:`·`mnum:` 범위 검색, SHA 두 개의 `seq:` 변환 검색이 `/search`·`/exports`·집계·W-004 네 API 소비처 모두에 정합성 있게 반영됐다. 독립 검토 2회가 실제 프로덕션 버그(mnum: 처리 미비 500/503 등)를 여럿 잡았다.
+- CR-107(WP-093): PR #213 스쿼시 병합 `95674b8`, 기록 PR #214 병합 `c14b9a9`. Source History 각 행에 연결 PR 번호(`pull_request_numbers: number[] | null`, 행 단위 확정/미확정) + `pull_requests_unavailable`(응답 단위 조회 실패)를 더했다. `prs-commits.pull_request_numbers`(기존 필드, WP-067)를 페이지 단위 배치 조회로 채운다.
+- 이 세션은 context-full로 중단된 이전 세션(11차 전반)의 export(`exports/202609180720.md`)를 이어받아 시작했다 — CR-106은 이미 끝나 있었고 Work B(CR-107)로 막 넘어가려던 지점이었다.
+- **작업 지시서 원문 복구가 이번 세션의 핵심 사건이었다**: export가 지시서 176줄을 `hidden` 처리해 숨겼는데, 하필 그 구간에 작업 B의 상세 명세(섹션 4) 전체가 있었다. 이 세션 자신이 handoff-prep 단계에서 미리 써 둔 session-notes.md 요약("SourceCommit에 pr_number: number | null 하나만 추가")은 **틀렸다** — jsonl에서 복구한 실제 지시서는 SHA 하나가 여러 PR에 속할 수 있어 History 전용 타입에 `pull_request_numbers` 배열 + 연결 조회 상태(미확정/조회 불가 구분)를 요구했다.
+
+## Decisions
+
+- 상태는 두 층: 행 단위 `pull_request_numbers: number[] | null`(배열=확정, `null`=미확정), 응답 단위 `pull_requests_unavailable?: boolean`(조회 자체의 실패·미배선). 후자가 true여도 History 본문은 유지한다.
+- `resolve/detail.ts::loadSourceCommits`를 호출·확장하지 않는다 — PR 상세 표시(FR-SRCH-003)는 별개 기능이라 새 함수(`loadPullRequestLinks`)를 `source/service.ts`에 만든다.
+- `SourceRouteOptions.es`는 **선택** 필드로 남긴다 — 기존 `source.test.ts` fixture가 `es` 없이 `registerSourceRoutes`를 부르므로, 필수화하면 그 시험이 깨진다(독립 코드 리뷰가 필수화를 제안했으나 이 설계 결정을 근거로 반려).
+- PR 번호 배열은 정렬·중복 제거한다(FR-SRC-002 AC-1의 "중복 없이 결정적 순서로" 요구) — 다만 같은 필드를 읽는 `resolve/detail.ts`의 기존 경로는 정렬하지 않아 두 화면의 표시 순서가 어긋날 수 있다(DEV-726, 후속 CR 후보, 이번엔 손대지 않음).
+- ES `routing` 힌트(저장소 ID 기준)는 이웃 질의(`containments.ts`)는 이미 쓰지만 이번엔 추가하지 않는다 — CR-107·WP-093·API-SRC-002 어디에도 그 요구가 없다(DEV-727, 후속 CR 후보).
+- 구현은 서브에이전트에 위임하고 diff를 직접 재검토하는 2단계를 CR-106에 이어 유지했다. code-review(high)는 1차 실행이 대상을 잘못 잡아(인자 없이 실행 → 공유 checkout의 마지막 커밋을 리뷰) 워크트리 경로를 명시해 재실행해야 했다.
+
+## Changed files (이번 세션, main에 반영됨)
+
+- CR-106: `packages/query/src/{keys,sequence-binding}.ts`, `packages/es/src/query-builder.ts`, `apps/search-api/src/search/{routes,cursor,sequence-context}.ts`, `apps/search-api/src/export/routes.ts`, `apps/search-api/src/saved-search/service.ts`, `apps/search-api/src/sequence/range.ts`, `apps/web/lib/repository-search.ts`, `apps/web/components/RepositoryWorkspace.tsx`, `apps/search-api/integration/search/identifier-range.test.ts`(신규).
+- CR-107: `packages/contracts/src/source.ts`(`SourceHistoryCommit` 신설), `apps/search-api/src/source/{service,routes}.ts`(`loadPullRequestLinks` 신설), `apps/search-api/src/runtime.ts`, `apps/web/components/source/SourceHistory.tsx`, `apps/web/app/source-workspace.css`, `apps/search-api/integration/source/history-pull-requests.test.ts`(신규).
+- 문서: change_control(CR-106·CR-107, DEV-723~727), srs_final(v2.35→v2.37), work_packages(WP-092·093), 구현 원장(6.99·6.100장), API 계약·파생 UI 명세(컴포넌트·QA 체크리스트·상태 매트릭스) 다수.
+
+## Commands
+
+```bash
+# ID 재실측 (착수 직전 매번)
+for p in 'CR-[0-9]{3}' 'WP-[0-9]{3}' 'DEV-[0-9]{3}'; do grep -rohE "$p" docs/ | sort -u | tail -2; done
+gh pr list --state open   # main grep만으로는 머지 대기 PR의 선점을 못 봄
+
+# 워크트리
+git worktree add -b feature/cr10X-... ~/pr-search-wt/cr10X-... main
+
+# 병합 커밋 CI 확인 (gh pr checks --json은 이 gh 버전에서 조용히 실패할 수 있다 — gh api 사용)
+gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '.check_runs[] | "\(.name): \(.status) \(.conclusion)"'
+```
+
+## Risks/gotchas
+
+- **`gh pr merge`가 Claude Code auto mode 분류기([Merge Without Review])에 막혔다** — GitHub 쪽엔 필수 리뷰가 없었는데도 하네스 자체 가드가 걸렸다. CR-106은 같은 세션이 직접 병합했었는데 이번엔 막혔다 — 설정이 바뀌었거나 이 가드가 항상 있었을 수 있다. 우회하지 말고 사용자에게 직접 병합을 요청한다.
+- **`gh pr checks --json name,bucket`이 이 gh 버전에서 침묵 실패한다** — Monitor 루프가 15분 내내 이벤트 0건으로 타임아웃됐는데 실제로는 그 사이 CI가 끝나 있었다. `gh api .../check-runs`로 바꾸면 된다.
+- **위임한 서브에이전트는 hand-back 뒤에도 계속 돈다** — code-review 결과를 기다리는 중이라고 스스로 보고한 서브에이전트가 hand-back 이후에도 파일을 계속 고쳤다. 같은 워크트리를 동시에 직접 편집하다 겹칠 뻔했다(Read-before-Edit 안전장치가 막아 줌).
+- code-review 스킬을 인자 없이 부르면 cwd(공유 checkout)의 최신 커밋을 리뷰해 버린다 — 대상 워크트리 경로를 반드시 명시한다.
+- worktree 정리(구 3개 + cr106 2개, 총 5개)는 이번에도 미뤘다 — 사용자가 "나중에"로 답함(2026-09-18).
+
+## References
+
+- PR #211(`03da17c`)·#212(`69a01eb`, CR-106), #213(`95674b8`)·#214(`c14b9a9`, CR-107).
+- 원장 6.99장(CR-106), 6.100장(CR-107). 변경 대장 CR-106·CR-107, DEV-723~727.
+- 이전 세션 export: `exports/202609180720.md`(11차 전반, context-full로 중단).

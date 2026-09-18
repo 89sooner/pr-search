@@ -1,4 +1,25 @@
 # 세션 요약 — PR Search 구현 (2026-08-25 후반)
+## 2026-09-18 (11차) — CR-106 식별자 범위 검색·CR-107 Source History PR 번호 병기: PR #211/#212(CR-106), #213/#214(CR-107) 병합
+
+### 이 구간의 목표
+
+10차가 컨텍스트 한도로 넘긴 두 항목(범위 검색·M번호 필터, Commit history PR 번호 병기)을 순서대로(A 완결 후 B) 끝낸다. 이 세션은 context-full로 중단된 11차 전반의 export를 이어받아 CR-107부터 재개했다.
+
+### 결과
+
+| 항목 | CR-106 | CR-107 |
+| --- | --- | --- |
+| PR | #211(`03da17c`) | #213(`95674b8`) |
+| PR CI | run `35255901048` verify(3m36s)·integration(6m22s) success | run `35289418836` verify(4m21s)·integration(7m17s) success |
+| main CI | run `35256612621` verify·integration success | run `35292695927` verify(4m44s)·integration(7m34s) success |
+| 기록 PR | #212 → `69a01eb` | #214 → `c14b9a9` |
+| 단위/통합/회귀 | 2919/2920·1847/1847·506/506 | 2930/2930·1857+8/1865·506/506 |
+| 독립 검토 | code-review high 2회, DEV-724·725 미반영 | code-review high(2차 확인 포함), 6건 중 3반영·2반려·1유보(DEV-727) |
+| 새 ID | CR-106·DEV-723~725·WP-092 | CR-107·DEV-726·727·WP-093 |
+| 병합 방식 | 이 세션이 직접 병합 | **사용자가 직접 병합**(Claude Code auto mode [Merge Without Review] 가드로 이 세션은 병합 실행 차단됨) |
+
+사내 실데이터 확인 둘 다 NOT RUN(GHE 자격 증명 없음). 상세는 `agent-context/session-notes.md` "11차" 절과 `docs/00_governance/change_control.md`의 `CR-106`·`CR-107` 항목이 정본이다.
+
 ## 2026-09-15 (8차) — CR-092 사내 `0.1.0-pilot.7` 반입 피드백 일곱 건: PR #194 병합(`ae9bf27`)
 
 ### 이 구간의 목표

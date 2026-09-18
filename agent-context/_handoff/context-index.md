@@ -1,83 +1,83 @@
 # agent-context-index:v1
-generated=2026-09-17T14:11:08+00:00
+generated=2026-09-18T02:45:53+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=9
 legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd command;@path path-ref;@code code-fence;@sig retrieval-signals;@kv metadata
 
 ## read_order
-- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-09-17-PR-Search-pilot.13-9차 sig=agent-context/current-handoff.md,docs/pilot13-release-record,origin/main,agent-context/commands.md,/prsctl,agent-context/upstream-feedback.md,github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.13,github.com/89sooner/pr-search/pull/207
+- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-09-18-PR-Search-11차-CR-106-CR-107-완료 sig=agent-context/current-handoff.md,origin/main,agent-context/todos.md,docs/00_governance/change_control.md,agent-context/commands.md,repos/89sooner/pr-search/commits/,diff/patch,github.com/89sooner/pr-search/pull/211
 - f73e2b0 p=25 src=agent-context/session-notes.md compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md title=Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료 sig=agent-context/session-notes.md,agent-context/upstream-feedback.md,origin/main,home/roqkf/pr-search,home/roqkf/design-system,Risks/gotchas,dailywork/2026-09-15_PR-Search-CR-092-pilot.7-,home/roqkf/pr-search/exports/pr-search-2026-09-15.md
-- f3c6d32 p=25 src=agent-context/session-summary.md compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md title=세션-요약-PR-Search-구현-2026-08-25-후반 sig=agent-context/session-summary.md,origin/main,dailywork/2026-09-15_PR-Search-CR-092-pilot.7-,exports/202609142215.md,exports/202609141338.md,claude/projects/-home-roqkf-pr-search/539c17f5-,196/196,32/32
-- f0b2764 p=28 src=agent-context/decisions.md compact=agent-context/_handoff/compact/f0b2764.decisions.ctx.md title=확정한-설계-결정과-이유 sig=agent-context/decisions.md,lib/redirect.ts,text/html,logout/route.ts,-qO/dev/null,HTTP/x.y,first/last,head/tail
+- f3c6d32 p=25 src=agent-context/session-summary.md compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md title=세션-요약-PR-Search-구현-2026-08-25-후반 sig=agent-context/session-summary.md,2919/2920,1847/1847,506/506,2930/2930,8/1865,agent-context/session-notes.md,docs/00_governance/change_control.md
+- f0b2764 p=28 src=agent-context/decisions.md compact=agent-context/_handoff/compact/f0b2764.decisions.ctx.md title=확정한-설계-결정과-이유 sig=agent-context/decisions.md,docs/00_governance/change_control.md,agent-context/session-notes.md,lib/redirect.ts,text/html,logout/route.ts,-qO/dev/null,HTTP/x.y
 - f54408e p=30 src=agent-context/todos.md compact=agent-context/_handoff/compact/f54408e.todos.ctx.md title=다음-작업-미해결-항목-확인할-사항 sig=agent-context/todos.md,packages/es/src/query-builder.ts,Risks/gotchas,packages/query/src/keys.ts,CR/DEV/WP,packages/contracts/src/source.ts,feature/rel007-capability-registry,fix/main-ci-s0-flaky
-- f527103 p=45 src=agent-context/commands.md compact=agent-context/_handoff/compact/f527103.commands.ctx.md title=명령어-시험-결과-실패한-명령과-원인 sig=agent-context/commands.md,HTTP/1.1,prs/search-api,3002/healthz,3000/gh,prs/web,dev/null,53999/gh/identity/callback
-- f5791b0 p=45 src=agent-context/files.md compact=agent-context/_handoff/compact/f5791b0.files.ctx.md title=중요-파일-경로와-역할 sig=agent-context/files.md,packages/authz/src/,apps/search-api/src/auth/,apps/web/lib/,app/auth/,app/auth/signed-out/page.tsx,app/gh/identity/callback/route.ts,app/workbench.css
-- f7b39dc p=45 src=agent-context/risks.md compact=agent-context/_handoff/compact/f7b39dc.risks.ctx.md title=리스크-불확실한-가정-함정 sig=agent-context/risks.md,home/roqkf/design-system,actions/runs,gh/policies,origin/main,claude/projects/,regression/ledger-canonical-table.test.ts,packages/contracts/src/error-codes.test.ts
+- f527103 p=45 src=agent-context/commands.md compact=agent-context/_handoff/compact/f527103.commands.ctx.md title=명령어-시험-결과-실패한-명령과-원인 sig=agent-context/commands.md,agent-context/session-notes.md,repos/89sooner/pr-search/commits/,HTTP/1.1,prs/search-api,3002/healthz,3000/gh,prs/web
+- f5791b0 p=45 src=agent-context/files.md compact=agent-context/_handoff/compact/f5791b0.files.ctx.md title=중요-파일-경로와-역할 sig=agent-context/files.md,agent-context/session-notes.md,apps/search-api/integration/search/identifier-range.test.ts,apps/search-api/integration/source/history-pull-requests.test.ts,packages/authz/src/,apps/search-api/src/auth/,apps/web/lib/,app/auth/
+- f7b39dc p=45 src=agent-context/risks.md compact=agent-context/_handoff/compact/f7b39dc.risks.ctx.md title=리스크-불확실한-가정-함정 sig=agent-context/risks.md,agent-context/session-notes.md,Risks/gotchas,/check-runs,home/roqkf/design-system,actions/runs,gh/policies,origin/main
 - f3df0a8 p=50 src=agent-context/upstream-feedback.md compact=agent-context/_handoff/compact/f3df0a8.upstream-feedback.ctx.md title=Upstream-Feedback sig=agent-context/upstream-feedback.md,/prsctl,Upstream,Feedback,NULL,unsupported,profile,mnumber
 
 ## files
 ### f527103
 src=agent-context/commands.md
 compact=agent-context/_handoff/compact/f527103.commands.ctx.md
-sha256=1882145f7662dc0ea0c35e067af41ef16b70aad10c43e61a4f24a04e1914daf4
-bytes=232998 compact_bytes=237466 lines=4356 priority=45
-heads=명령어 · 시험 결과 · 실패한 명령과 원인 > 2026-09-15 (8차) 라운드에서 쓴 것 (CR-092) > 환경 > 재현·실측 > smoke 뒤섞임: 한 컨테이너에 docker exec로 20회 → 200 12 · HTTP/1.1 8 > 프록시 뒤 출처 → location: https://localhost:3000/gh?identity=failed
-sig=agent-context/commands.md;HTTP/1.1;prs/search-api;3002/healthz;3000/gh;prs/web;dev/null;53999/gh/identity/callback;SP/battery.sh;SP/logs/battery-2;SP/mutation/run.mjs;deploy/single-host;/smoke-images.sh;SP/docpatch.mjs;FILE/FROM/TO/END;repos/89sooner/pr-search/actions/jobs/;lib/auth-paths.ts;repos/89sooner/pr-search/actions/runs/;home/roqkf/pr-search;origin/main;repos/89sooner/pr-search/actions/runs;deploy/single-host/prsctl;apps/web/lib/redirect.ts;claude/skills/obsidian-second-brain
+sha256=ed72850fc2404ac28a3389d78264c4b82373a4cc254f7da8270972f6468a545e
+bytes=233302 compact_bytes=237773 lines=4360 priority=45
+heads=명령어 · 시험 결과 · 실패한 명령과 원인 > 2026-09-18 (11차)에서 쓴 것 (CR-106·CR-107) > 2026-09-15 (8차) 라운드에서 쓴 것 (CR-092) > 환경 > 재현·실측 > smoke 뒤섞임: 한 컨테이너에 docker exec로 20회 → 200 12 · HTTP/1.1 8
+sig=agent-context/commands.md;agent-context/session-notes.md;repos/89sooner/pr-search/commits/;HTTP/1.1;prs/search-api;3002/healthz;3000/gh;prs/web;dev/null;53999/gh/identity/callback;SP/battery.sh;SP/logs/battery-2;SP/mutation/run.mjs;deploy/single-host;/smoke-images.sh;SP/docpatch.mjs;FILE/FROM/TO/END;repos/89sooner/pr-search/actions/jobs/;lib/auth-paths.ts;repos/89sooner/pr-search/actions/runs/;home/roqkf/pr-search;origin/main;repos/89sooner/pr-search/actions/runs;deploy/single-host/prsctl
 
 ### f98c94b
 src=agent-context/current-handoff.md
 compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md
-sha256=b70a4205fc41ae88deac0a5f4c384fb89cfaaf7910c29878cb9a1a90b336b2ed
-bytes=2920 compact_bytes=3602 lines=28 priority=18
-heads=Current Handoff — 2026-09-17 PR Search pilot.13 (9차) > Start here > Delivered > Verify before changing code > Open boundary > References
-sig=agent-context/current-handoff.md;docs/pilot13-release-record;origin/main;agent-context/commands.md;/prsctl;agent-context/upstream-feedback.md;github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.13;github.com/89sooner/pr-search/pull/207;github.com/89sooner/pr-search/pull/208;github.com/89sooner/pr-search/pull/209;docs/40_delivery/pr_search_implementation_traceability.md;Current;Handoff;Search;Start;GitHub;Release;ac130e3;pilot13;oneline;Delivered;ENT;SEQ;mnumber
+sha256=e5e1ef6328c9647abd01926531eb58f1a5f98c672d7a8aa6ebe73600b446c415
+bytes=3596 compact_bytes=4215 lines=33 priority=18
+heads=Current Handoff — 2026-09-18 PR Search 11차 (CR-106·CR-107 완료) > Start here > Delivered > Verify before changing code > Open boundary > References
+sig=agent-context/current-handoff.md;origin/main;agent-context/todos.md;docs/00_governance/change_control.md;agent-context/commands.md;repos/89sooner/pr-search/commits/;diff/patch;github.com/89sooner/pr-search/pull/211;docs/40_delivery/pr_search_implementation_traceability.md;exports/202609180720.md;Current;Handoff;Search;Start;c14b9a9;oneline;Commit;history;Open;boundary;context;Delivered;pr_number;merge_number_epoch
 
 ### f0b2764
 src=agent-context/decisions.md
 compact=agent-context/_handoff/compact/f0b2764.decisions.ctx.md
-sha256=db95f8500962df536627fa382371fc42e20bee89217e6a749b54e8398b30733b
-bytes=266597 compact_bytes=235340 lines=2096 priority=28
-heads=확정한 설계 결정과 이유 > 2026-09-15 (8차) — CR-092 사내 pilot.7 반입 피드백 (PR #194) > A. 사용자 직접 결정 (다시 논의하지 않음) > C. 구현이 스스로 고른 것 (근거와 되돌리는 법) > 2026-09-15 (7차) — CR-091 사내 pilot.6 반입 피드백 (PR #191) > A. 사용자 직접 결정 (다시 논의하지 않음)
-sig=agent-context/decisions.md;lib/redirect.ts;text/html;logout/route.ts;-qO/dev/null;HTTP/x.y;first/last;head/tail;origin/main;dist/role-cli.js;prs/authz;prs/db;true/false/;gh/policies;gh/policies/changes;lib/gh-policy.ts;41/40;5/5;before/after;477/477;scratchpad/apply-agent-context.py;compact/f3df0a8.upstream-feedback.ctx.md;docs/cr088-post-merge;feature/rel007-capability-registry
+sha256=e35796997971d5696a485c70eeb4f05758986c6e207d974ea8f959dc890a71de
+bytes=266913 compact_bytes=235664 lines=2100 priority=28
+heads=확정한 설계 결정과 이유 > 2026-09-18 (11차) — CR-106·CR-107 > 2026-09-15 (8차) — CR-092 사내 pilot.7 반입 피드백 (PR #194) > A. 사용자 직접 결정 (다시 논의하지 않음) > C. 구현이 스스로 고른 것 (근거와 되돌리는 법) > 2026-09-15 (7차) — CR-091 사내 pilot.6 반입 피드백 (PR #191)
+sig=agent-context/decisions.md;docs/00_governance/change_control.md;agent-context/session-notes.md;lib/redirect.ts;text/html;logout/route.ts;-qO/dev/null;HTTP/x.y;first/last;head/tail;origin/main;dist/role-cli.js;prs/authz;prs/db;true/false/;gh/policies;gh/policies/changes;lib/gh-policy.ts;41/40;5/5;before/after;477/477;scratchpad/apply-agent-context.py;compact/f3df0a8.upstream-feedback.ctx.md
 
 ### f5791b0
 src=agent-context/files.md
 compact=agent-context/_handoff/compact/f5791b0.files.ctx.md
-sha256=79739edd25d6563811d3de450129eb7d2ecc09fa7af7b805f4a3aacb76083e82
-bytes=187924 compact_bytes=183436 lines=2173 priority=45
-heads=중요 파일 경로와 역할 > 2026-09-15 (8차) 라운드가 만들거나 만진 것 (CR-092, PR #194) > 코드 > 시험 > 문서 > 저장소 밖 (세션 산출물)
-sig=agent-context/files.md;packages/authz/src/;apps/search-api/src/auth/;apps/web/lib/;app/auth/;app/auth/signed-out/page.tsx;app/gh/identity/callback/route.ts;app/workbench.css;deploy/single-host/prsctl;deploy/single-host/RUNBOOK.md;packages/authz/src/scope-source.test.ts;apps/search-api/integration/authz/scope-diagnostics.test.ts;apps/search-api/src/auth/auth.test.ts;apps/web/lib/redirect.test.ts;lib/architecture.test.ts;app/gh/identity/callback/route.test.ts;a11y/shell.test.tsx;e2e/shell.spec.ts;regression/cr092-pilot7-feedback.test.ts;agent-context/upstream-feedback.md;mnt/c/Users/slrtt/Documents/Obsidian;Vault/dailywork/2026-09-15_PR-Search-CR-092-pilot.7-;home/roqkf/pr-search/exports/pr-search-2026-09-15.md;home/roqkf/pr-search-wt/cr092
+sha256=9c13dc7e2faef84d05b4f2930b5e8705e3f3088c32c6ed534510bdf0505b976f
+bytes=188247 compact_bytes=183778 lines=2177 priority=45
+heads=중요 파일 경로와 역할 > 2026-09-18 (11차)가 만들거나 만진 것 (CR-106·CR-107) > 2026-09-15 (8차) 라운드가 만들거나 만진 것 (CR-092, PR #194) > 코드 > 시험 > 문서
+sig=agent-context/files.md;agent-context/session-notes.md;apps/search-api/integration/search/identifier-range.test.ts;apps/search-api/integration/source/history-pull-requests.test.ts;packages/authz/src/;apps/search-api/src/auth/;apps/web/lib/;app/auth/;app/auth/signed-out/page.tsx;app/gh/identity/callback/route.ts;app/workbench.css;deploy/single-host/prsctl;deploy/single-host/RUNBOOK.md;packages/authz/src/scope-source.test.ts;apps/search-api/integration/authz/scope-diagnostics.test.ts;apps/search-api/src/auth/auth.test.ts;apps/web/lib/redirect.test.ts;lib/architecture.test.ts;app/gh/identity/callback/route.test.ts;a11y/shell.test.tsx;e2e/shell.spec.ts;regression/cr092-pilot7-feedback.test.ts;agent-context/upstream-feedback.md;mnt/c/Users/slrtt/Documents/Obsidian
 
 ### f7b39dc
 src=agent-context/risks.md
 compact=agent-context/_handoff/compact/f7b39dc.risks.ctx.md
-sha256=04955846a9bfef39f3ebda4a005d9b201a22d39d43607419e6da0983aacbc675
-bytes=216161 compact_bytes=211510 lines=2793 priority=45
-heads=리스크 · 불확실한 가정 · 함정 > 2026-09-15 (8차) 라운드가 배운 함정 (CR-092) > 2026-09-15 (7차) 라운드가 배운 함정 (CR-091) > 2026-09-14 (6차) 라운드가 배운 함정 (CR-090) > 2026-09-14 (5차) 라운드가 배운 함정 (CR-089) > 2026-09-14 (4차 마감) 구간이 배운 함정
-sig=agent-context/risks.md;home/roqkf/design-system;actions/runs;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000
+sha256=776c22b6313adc654c5cf58bc397f9c68b0240736eef5d05bd98a6129b72ebb2
+bytes=216839 compact_bytes=212200 lines=2797 priority=45
+heads=리스크 · 불확실한 가정 · 함정 > 2026-09-18 (11차)가 배운 함정 (CR-106·CR-107) > 2026-09-15 (8차) 라운드가 배운 함정 (CR-092) > 2026-09-15 (7차) 라운드가 배운 함정 (CR-091) > 2026-09-14 (6차) 라운드가 배운 함정 (CR-090) > 2026-09-14 (5차) 라운드가 배운 함정 (CR-089)
+sig=agent-context/risks.md;agent-context/session-notes.md;Risks/gotchas;/check-runs;home/roqkf/design-system;actions/runs;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md
 
 ### f73e2b0
 src=agent-context/session-notes.md
 compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md
-sha256=4f37e3ce626b5665e18aea37a34928a5ea6eb3dd1cfc2e47551ebbe2d764a7b6
-bytes=213558 compact_bytes=210289 lines=3100 priority=25
+sha256=ddd3ba74e021f8cb92d9fa788203382a594dda0d54b39bbd7f3dc2f62a54e686
+bytes=222299 compact_bytes=218757 lines=3160 priority=25
 heads=Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료 > Session: 2026-09-15 (8차) — CR-092 사내 pilot.7 반입 피드백 일곱 건 (PR #194) > Goal > Current state > Decisions > Changed files
 sig=agent-context/session-notes.md;agent-context/upstream-feedback.md;origin/main;home/roqkf/pr-search;home/roqkf/design-system;Risks/gotchas;dailywork/2026-09-15_PR-Search-CR-092-pilot.7-;home/roqkf/pr-search/exports/pr-search-2026-09-15.md;home/roqkf/pr-search/exports/;logs/battery-;logs/images/;feature/rel007-result-contracts;docs/cr-089-merge-record;exports/202609141932.md;exports/202609142215.md;home/roqkf/pr-search-wt/contracts;exports/202609141338.md;exports/202609140756.md;docs/40_delivery/pr_search_implementation_traceability.md;agent-context/_handoff/;github.com/89sooner/pr-search/pull/185;exports/pr-search-2026-09-14.md;perf/signature-timing.perf.test.ts;classification/commands.ts
 
 ### f3c6d32
 src=agent-context/session-summary.md
 compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md
-sha256=0bdae9040d5ce0206ddd00bd88d898fa2f992649a24fc8688a060ca67d36ab51
-bytes=158272 compact_bytes=155321 lines=2210 priority=25
-heads=세션 요약 — PR Search 구현 (2026-08-25 후반) > 2026-09-15 (8차) — CR-092 사내 0.1.0-pilot.7 반입 피드백 일곱 건: PR #194 병합(ae9bf27) > 이 구간의 목표 > 결과 > 이 구간이 찾아 고친 것 > 다음 에이전트가 먼저 할 것
-sig=agent-context/session-summary.md;origin/main;dailywork/2026-09-15_PR-Search-CR-092-pilot.7-;exports/202609142215.md;exports/202609141338.md;claude/projects/-home-roqkf-pr-search/539c17f5-;196/196;32/32;80/80;exports/202609140756.md;477/477;docs/cr088-post-merge;home/roqkf/pr-search;feature/rel007-capability-registry;fix/main-ci-s0-flaky;PASS/FAIL;gh/registry;034/1;312/312;164/164;707/707;1/196;0/0;11/11
+sha256=c86ba51c1f211e4a02d148f3f16de9abfd9729f420c2e452b98b81fa7b12ac85
+bytes=159827 compact_bytes=156943 lines=2231 priority=25
+heads=세션 요약 — PR Search 구현 (2026-08-25 후반) > 2026-09-18 (11차) — CR-106 식별자 범위 검색·CR-107 Source History PR 번호 병기: PR #211/#212(CR-106), #213/#214(CR-107) 병합 > 이 구간의 목표 > 결과 > 2026-09-15 (8차) — CR-092 사내 0.1.0-pilot.7 반입 피드백 일곱 건: PR #194 병합(ae9bf27) > 이 구간의 목표
+sig=agent-context/session-summary.md;2919/2920;1847/1847;506/506;2930/2930;8/1865;agent-context/session-notes.md;docs/00_governance/change_control.md;origin/main;dailywork/2026-09-15_PR-Search-CR-092-pilot.7-;exports/202609142215.md;exports/202609141338.md;claude/projects/-home-roqkf-pr-search/539c17f5-;196/196;32/32;80/80;exports/202609140756.md;477/477;docs/cr088-post-merge;home/roqkf/pr-search;feature/rel007-capability-registry;fix/main-ci-s0-flaky;PASS/FAIL;gh/registry
 
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=31506f6daf9fe8d137b5f92329abc397ef325884009daa325a725f34b215384e
-bytes=217473 compact_bytes=186269 lines=2599 priority=30
+sha256=aef6126e6cadd41737b376c1da1697144630043f876763f0367e0d0eef8d60cd
+bytes=219039 compact_bytes=186269 lines=2626 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > 먼저 할 것 — 2026-09-17 10차에서 이어받을 것 (사용자 방향은 이미 확정, 다시 안 물어도 됨) > 이전 (8차 이하, 아래는 2026-09-15 시점 기준 — 이후 진행 여부 미확인, 착수 전 실제 상태 재확인) > 2026-09-15 (8차) — CR-092 뒤에 남은 것 > 이 세션이 이어서 할 것 > 피드백 반영 범위 (사용자에게 확인해 준 기준)
 sig=agent-context/todos.md;packages/es/src/query-builder.ts;Risks/gotchas;packages/query/src/keys.ts;CR/DEV/WP;packages/contracts/src/source.ts;feature/rel007-capability-registry;fix/main-ci-s0-flaky;feature/rel007-r0-pr-list;docs/cr-092-merge-record;ops/repositories;home/roqkf/design-system;api/v1/me;/prsctl;agent-context/upstream-feedback.md;home/roqkf/pr-search-wt/cr092;home/roqkf/pr-search-wt/cr092-record;fix/cr092-pilot7-feedback;docs/cr-091-merge-record;docs/pilot7-published;home/roqkf/pr-search-wt/cr091-auth;home/roqkf/pr-search-wt/cr091-record;fix/cr091-pilot6-auth-feedback;docs/cr-090-merge-record
 

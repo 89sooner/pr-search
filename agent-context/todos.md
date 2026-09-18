@@ -2597,3 +2597,30 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [ ] 사내 운영자에게 별도 채널로 전달: 버전 `0.1.0-pilot.13` · 읽기 토큰 · SHA-256 `f94f022378dd04cb04965e3596c2fe31321460cb64ca5763d78a91629471f7d3`.
 - [ ] 사내 반입(NOT RUN): 다운로드·대조·`verify`·`load` → `upgrade`(031·032) → `prs-pull-requests` 재색인 → Status=Merged·My merged PRs·Merged 배지 확인 → `./prsctl mnumber attest …`(RUNBOOK 7.D) → 저장소 119·399·1877 M 번호 완주. 결과를 upstream-feedback.md에 기록.
 - [ ] 자원 정리(사용자 결정): 워크트리 `release13`·`record13`, 격리 DB, 선확인 이미지 `prs/pipeline-worker:precheck-pilot13`·`prs/db:precheck-pilot13`, `release13/deploy/single-host/bundle/`.
+
+# 2026-09-18 (11차) 뒤에 남은 것
+
+## 먼저 할 것
+
+10차가 넘긴 두 항목(범위 검색·M번호 필터 CR-106, Commit history PR 번호 병기 CR-107) 모두 main에 반영 완료. 이번 세션이 남긴 새 착수 항목은 없다 — 아래는 여러 세션에 걸쳐 계속 미뤄진 것들이다.
+
+## 결정자 확인
+
+- [ ] worktree 5개(`cr102-frontend-fixes`·`cr103-infinite-scroll`·`cr105-search-fix`·`cr106-range-search`·`cr106-record`) 정리 여부 — 사용자가 "나중에"로 답함(2026-09-18). 정리하려면 스쿼시 병합이라 diff/patch 동등성부터 확인해야 한다.
+- [ ] 디자인 시스템 개선 트랙 착수 방식 — 8차 이후 계속 미결.
+- [ ] REL-007 다음 판 순서 — 아직 결정자 지시 대기.
+
+## 후속 CR 후보 (미반영 발견)
+
+- DEV-724: 비동기 내보내기가 `mnum:` 전용 유효 에폭을 저장하지 않음(CR-106).
+- DEV-725: 저장된 검색 사전 점검이 `mnum:`을 놓침(CR-106).
+- DEV-726: `resolve/detail.ts`의 PR 상세 커밋 조회가 `pull_request_numbers`를 정렬 없이 노출(History와 표시 순서가 어긋날 수 있음, CR-107).
+- DEV-727: `loadPullRequestLinks`의 ES 질의가 `routing` 힌트를 안 씀(정확성 문제 아님, 최적화 여지, CR-107).
+
+## 자원 정리 (사용자 결정)
+
+- 0.1.0-pilot.13 사내 반입 확인 — 여전히 NOT RUN.
+
+## 착수할 때 실측할 것
+
+- 채번(CR/WP/DEV)은 `docs/` grep과 `gh pr list --state open` 둘 다로 재측정한다 — grep만으로는 머지 대기 PR의 선점을 못 본다.

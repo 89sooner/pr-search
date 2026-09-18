@@ -1,8 +1,10 @@
 #hidden
 # aci:v1 id=f7b39dc src=agent-context/risks.md
-@kv sha256=04955846a9bfef39f3ebda4a005d9b201a22d39d43607419e6da0983aacbc675 bytes=216161 lines=2793 title=리스크-불확실한-가정-함정
-@sig agent-context/risks.md;home/roqkf/design-system;actions/runs;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md;home/roqkf/pr-search;near/far;994/1000
+@kv sha256=776c22b6313adc654c5cf58bc397f9c68b0240736eef5d05bd98a6129b72ebb2 bytes=216839 lines=2797 title=리스크-불확실한-가정-함정
+@sig agent-context/risks.md;agent-context/session-notes.md;Risks/gotchas;/check-runs;home/roqkf/design-system;actions/runs;gh/policies;origin/main;claude/projects/;regression/ledger-canonical-table.test.ts;packages/contracts/src/error-codes.test.ts;home/roqkf/pr-search/202609140825.md;home/roqkf/pr-search/exports/;regression/range-vs-git.test.ts;regression/releases-vs-git.test.ts;19/19;agent-context/_handoff/reader.py;compact/f3df0a8.upstream-feedback.ctx.md;tmp/claude-1000/-home-roqkf-pr-search/f864b845-;scratchpad/gh/gh_2.97.0_linux_amd64/bin/gh;packages/gh-cli/testing/pinned-gh.ts;prs-pinned-gh/2.97.0/gh;scripts/gh-capabilities.mjs;exports/202609140756.md
 @h1 리스크 · 불확실한 가정 · 함정
+@h2 2026-09-18 (11차)가 배운 함정 (CR-106·CR-107)
+@cmd 전체는 agent-context/session-notes.md의 "11차" 절 Risks/gotchas를 본다. 핵심만: Claude Code auto mode가 리뷰 승인 없는 gh pr merge를 자체적으로 막는다([Merge Without Review]) — 우회하지 말고 사용자에게 병합을 요청한다. gh pr checks --json name,bucket이 이 gh 버전에서 조용히 실패할 수 있다 — gh api .../check-runs로 대체한다. 위임한 서브에이전트는 비동기 결과를 기다린다고 스스로 보고했으면 hand-back 뒤에도 계속 돈다 — ListAgents로 확인 없이 같은 워크트리를 동시에 고치지 않는다.
 @h2 2026-09-15 (8차) 라운드가 배운 함정 (CR-092)
 @todo next start는 요청 출처를 자기가 들은 호스트·포트로 조립한다 — nginx가 Host를 넘겨도 request.nextUrl.origin은 localhost:3000이고 X-Forwarded-Proto만 반영된다. 라우트 시험은 NextRequest에 출처를 직접 넣어 이것을 못 본다 — next start e2e나 이미지로 확인한다.
 @b docker compose exec는 stdout·stderr를 따로 나른다 — 2>&1로 합쳐 줄 단위로 파싱하면 도착 순서에 따라 줄이 붙는다(간헐). 한쪽만 읽는다.

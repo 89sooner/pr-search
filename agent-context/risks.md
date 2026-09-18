@@ -1,4 +1,8 @@
 # 리스크 · 불확실한 가정 · 함정
+## 2026-09-18 (11차)가 배운 함정 (CR-106·CR-107)
+
+전체는 `agent-context/session-notes.md`의 "11차" 절 Risks/gotchas를 본다. 핵심만: Claude Code auto mode가 리뷰 승인 없는 `gh pr merge`를 자체적으로 막는다([Merge Without Review]) — 우회하지 말고 사용자에게 병합을 요청한다. `gh pr checks --json name,bucket`이 이 gh 버전에서 조용히 실패할 수 있다 — `gh api .../check-runs`로 대체한다. 위임한 서브에이전트는 비동기 결과를 기다린다고 스스로 보고했으면 hand-back 뒤에도 계속 돈다 — `ListAgents`로 확인 없이 같은 워크트리를 동시에 고치지 않는다.
+
 ## 2026-09-15 (8차) 라운드가 배운 함정 (CR-092)
 
 - `next start`는 요청 출처를 자기가 들은 호스트·포트로 조립한다 — nginx가 `Host`를 넘겨도 `request.nextUrl.origin`은 `localhost:3000`이고 `X-Forwarded-Proto`만 반영된다. 라우트 시험은 `NextRequest`에 출처를 직접 넣어 이것을 못 본다 — `next start` e2e나 이미지로 확인한다.
