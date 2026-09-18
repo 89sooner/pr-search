@@ -8264,6 +8264,8 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 
 ### 6.101 Regression Revision Atlas 첫 UI 수직 (2026-09-18, CR-109 / WP-095)
 
+**후속 CR-110.** 사내 반입 이미지에서 `NEXT_PUBLIC_REGRESSION_ENABLED=0`이 build-time route/nav 제거를 일으켰다. 다음 정정은 Regression을 항상 노출하고 provider 미구성 empty state를 보이며 `REGRESSION_FIXTURE_ENABLED`만 synthetic data opt-in으로 남긴다. 번들 재생성이 필요하며, 사내 런타임 `.env` 한 줄만으로 과거 이미지를 바꾸지 못한다.
+
 기준 origin/main `b496996`, branch `feature/regression-atlas`, worktree `/tmp/pr-search-regression-atlas`. 이전 R0a 문서 브랜치는 보존했다. 사용자 지정 B Atlas를 기존 Geist/Radix/제품 토큰으로 이식하고 새로운 /regression과 nav를 기본 꺼진 flag로 추가했다. 기본 화면은 Atlas, Inbox/Pulse는 같은 URL selection·canonical data·session store를 쓴다.
 
 **동작:** 날짜/유형/결과 선택→비교 가능한 PASS suggestion→timeline·변경 목록·detail sheet→명시적 baseline 확인→local bisect→4종 판정→archive/재방문 복원. 표 filter/query/page는 전체 후보와 분리된다. default sample은 60 변경=59 PR+1 direct이며 binary 미보관도 후보에서 지우지 않는다. MDVP marker는 시험 revision에 위치한다. 미매핑/다른 scope/MTBF 보류/자료 지연/epoch stale는 거절·읽기 전용 상태로 표현한다. scope/session/version 검사와 Web Locks로 같은 브라우저 origin의 탭 간 쓰기를 직렬화하며 archive는 기록을 삭제하지 않는다.
@@ -8278,4 +8280,4 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 - 실제 Chromium: 1440/390, Atlas/Inbox/Pulse 상태 유지·문서 overflow0, 모달·SVG point Escape/focus 복귀, manifest download, local queue, 9/17 필터, wrong branch, MTBF/unmapped, stale 잠금, reduced-motion, Search/ranges200·기존 셸. pageerror0. 모바일 Inbox 폭과 repo/branch label 충돌은 확인 후 보정했다.
 - 재실행: fixture 서버를 켠 뒤 `ATLAS_TEST_URL=http://127.0.0.1:3188 node scripts/verify-regression-atlas.mjs`. 스크린샷은 `output/playwright/regression-atlas/`(git 제외). Node22.23.2 사용, 의존성 추가 없음. Next dev가 생성한 apps/web/AGENTS.md·CLAUDE.md는 해당 프레임워크의 로컬 지침이다.
 
-**한계:** 단위 후보 수의 log2는 이상적 검사 횟수이며 시간 보장이 아니다. 단일 경계도 재현 확인 필요 후보로 표시한다. fixture 저장은 브라우저 localStorage 용량/가용성에 의존하고 실패하면 성공을 가장하지 않는다. 자료를 실제 MDVP 결과로 인증하지 않으며 원격 test/build dispatch, 통계 confidence, 운영 artifact registry를 구현하지 않았다. 기능은 NEXT_PUBLIC_REGRESSION_ENABLED build-time opt-in, fixture는 별도 REGRESSION_FIXTURE_ENABLED opt-in이다.
+**한계:** 단위 후보 수의 log2는 이상적 검사 횟수이며 시간 보장이 아니다. 단일 경계도 재현 확인 필요 후보로 표시한다. fixture 저장은 브라우저 localStorage 용량/가용성에 의존하고 실패하면 성공을 가장하지 않는다. 자료를 실제 MDVP 결과로 인증하지 않으며 원격 test/build dispatch, 통계 confidence, 운영 artifact registry를 구현하지 않았다. Regression route/nav는 항상 보이고 fixture만 별도 `REGRESSION_FIXTURE_ENABLED` opt-in이다. CR-110이 public build flag가 사내 반입 뒤 route를 숨긴 문제를 바로잡았다.

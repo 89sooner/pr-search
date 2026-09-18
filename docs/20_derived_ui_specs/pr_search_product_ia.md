@@ -2,7 +2,7 @@
 
 > 상태: review | 버전: v0.9 | 갱신일: 2026-09-18
 
-CR-109 / FR-REG-001: **W-024 Regression Workbench**는 `/regression`이다. Search와 동등한 진입, 기본 B Atlas(first-parent timeline + 302px evidence/bisect), Inbox/Pulse는 공통 context/session의 보조 view다. 로컬 feature flag로 노출하며 기존 Search/ranges는 보존한다. 사용자 지정 `../40_delivery/regression_workbench/UIUX/regression-B-atlas.html`이 레이아웃 근거다.
+CR-109 / FR-REG-001: **W-024 Regression Workbench**는 `/regression`이다. Search와 동등하게 항상 노출하며, provider 미구성 시 명시적 empty state를 보인다. 기본 B Atlas(first-parent timeline + 302px evidence/bisect), Inbox/Pulse는 공통 context/session의 보조 view다. 합성 fixture만 서버-side flag로 opt-in하고 기존 Search/ranges는 보존한다. 사용자 지정 `../40_delivery/regression_workbench/UIUX/regression-B-atlas.html`이 레이아웃 근거다.
 
 | 화면 ID | 이름 | 경로 | 관련 요구사항 |
 | --- | --- | --- | --- |

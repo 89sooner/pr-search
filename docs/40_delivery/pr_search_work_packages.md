@@ -8,7 +8,7 @@
 - 범위: route/nav·feature flag, typed DataSource/fixture, 날짜→결과→비교 PASS→timeline/list/sheet→fixture bisect·기록 복원·로컬 queue, 기존 bisect HTTP 계약 공용화. Atlas 기본, Inbox/Pulse는 같은 상태.
 - 제외: 운영 MDVP adapter 추정·장비/빌드 dispatch·MTBF 계산·새 DB.
 - DoD: baseline 호환·필터 독립·4판정·direct/missing/unmapped/wrong-scope·stale/version 테스트; 실제 1440/390 브라우저·a11y·Search/ranges smoke; lint/typecheck/build; fixture/실 API 연결 범위를 구분한 원장 기록.
-- 상태: done — 단위49/49·a11y441/441·typecheck·lint·lint:deps·build·1440/390 Chromium·light/dark 실제 axe 통과. fixture/실 API 경계와 한계는 원장 6.101장. 원격 배포·실 MDVP 시험 없음.
+- 상태: done — 단위49/49·a11y441/441·typecheck·lint·lint:deps·build·1440/390 Chromium·light/dark 실제 axe 통과. CR-110이 사내 번들의 public build flag route 은닉을 후속 정정한다. fixture/실 API 경계와 한계는 원장 6.101장. 원격 배포·실 MDVP 시험 없음.
 
 
 ## WP-093 Source History에 연결 PR 번호 표시 (CR-107)

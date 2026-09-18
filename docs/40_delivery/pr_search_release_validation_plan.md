@@ -2,7 +2,7 @@
 
 > 상태: review | 버전: v0.15 | 갱신일: 2026-09-18
 
-CR-109 / WP-095 / FR-REG-001의 첫 UI gate는 QA-W024-01~06, canonical/API client 단위, web a11y, `scripts/verify-regression-atlas.mjs`의 실제 1440/390·light/dark·flow 검사다. fixture 실제 bisect 요청0, 미구성 모드의 합성 run0·실제 인증401을 구분해 확인한다. 전체 앱 lint/typecheck·Next build 통과. 이 결과는 운영 MDVP/GHE 실데이터나 장비 시험·릴리스 승인을 대신하지 않는다. 기본 꺼진 두 opt-in flag로 롤백하며 DB 변경은 없다.
+CR-109 / WP-095 / FR-REG-001의 첫 UI gate는 QA-W024-01~06, canonical/API client 단위, web a11y, `scripts/verify-regression-atlas.mjs`의 실제 1440/390·light/dark·flow 검사다. fixture 실제 bisect 요청0, 미구성 모드의 합성 run0·실제 인증401을 구분해 확인한다. 전체 앱 lint/typecheck·Next build 통과. 이 결과는 운영 MDVP/GHE 실데이터나 장비 시험·릴리스 승인을 대신하지 않는다. Regression route는 항상 보이고 fixture만 기본 꺼진 opt-in이라, 롤백은 fixture 비활성으로 충분하며 DB 변경은 없다.
 
 > CR-097 / WP-085: FR-SRC-001~004 게이트는 Source API 인증/범위/입력/응답 no-store·감사 메타데이터, SHA 고정·rename·이동 PR·binary/크기 제한, Tree→History→Diff→Time-lapse 브라우저 흐름, 영어·테마·키보드·모달 접근성 검사다. 목 기반 로컬 통과를 실제 사내 GHE 권한·버전 검증으로 대체하지 않는다. 이번 작업은 릴리스 발행을 포함하지 않는다.
 

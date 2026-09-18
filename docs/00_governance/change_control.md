@@ -1,5 +1,9 @@
 # 변경 관리 대장
 
+## CR-110 — 사내 반입에서 Regression 경로가 숨겨지는 build flag 정정 (2026-09-18)
+
+사내 반입 뒤 Regression 메뉴와 `/regression`이 보이지 않는 보고를 확인했다. 원인: `NEXT_PUBLIC_REGRESSION_ENABLED=0` 기본값이 nav·route 자체를 조건부로 만들고 Next가 이를 이미지 **빌드 시점**에 인라인한다. 단일-host bundle은 `docker build`에 그 build argument를 주지 않으므로 사내 런타임 `.env`에서 값을 바꿔도 이미 만든 번들에는 경로가 생기지 않는다. CR-109의 안전 경계는 fixture만 opt-in하면 충분하므로, route/nav는 항상 보이게 하고 provider 미구성 empty state를 기본으로 한다. `REGRESSION_FIXTURE_ENABLED=1`만 합성 데이터를 켠다. 새 DB/MDVP/빌드 dispatch/릴리즈는 없다. 영향: FR-REG-001, W-024, WP-095, frontend/infrastructure/release validation/traceability. 상태: implementing.
+
 ## CR-109 — Regression Revision Atlas 첫 UI 수직 (2026-09-18)
 
 검증 기록: 원장6.101의 코드·브라우저 검증 완료. 문서 `--report`는 Phase4·FR71/매트릭스71(100%)·오류2/경고4, `--strict`는 기존 오류4/경고4로 미통과다. 시작 시 오류2/경고8 대비 이동된 연구 링크4건을 해소했으며 새 요구사항/화면 참조 오류는 없다. 기존 외부 FR·역사 화면 ID, risks 경로, 연구 원문의 DESIGN 명칭, WP-090 참조·과거 자리표시자 문제는 이번 UI 구현에 섞어 고치지 않았다. 사용자는 지정 지시서를 읽은 뒤 첫 수직을 구현하도록 명시했으므로 전체 문서 handoff 정리를 선행 작업으로 확대하지 않았다. SRS는 해당 UI 범위만 승인으로 반영하며 운영 MDVP까지 완료했다고 주장하지 않는다.
