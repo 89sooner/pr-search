@@ -8,7 +8,7 @@
 - 범위: `packages/contracts/src/source.ts`에 `SourceHistoryCommit`(`SourceCommit` 확장, `pull_request_numbers: number[] | null`)을 추가하고 `SourceHistory.commits`를 이 타입으로 좁힌다. `SourceHistory`에 `pull_requests_unavailable?: boolean`을 추가한다. `apps/search-api/src/source/service.ts`에 페이지 SHA 배치 조회 함수를 신설한다(`applyMandatoryScopeFilter` 경유, `_source`는 `commit_sha`·`pull_request_numbers`만). `apps/search-api/src/source/routes.ts`가 이미 해석해 둔 `scope`를 `sourceHistory()`에 전달한다. `SourceRouteOptions`에 선택 필드 `es`를 추가하고 `apps/search-api/src/runtime.ts`가 배선한다. `apps/web/components/source/SourceHistory.tsx` 각 행에 PR 번호를 표시하고 기존 `CopyButton`으로 복사하며, 연결 미확정·조회 불가 상태를 구별해 안내한다.
 - 제외: `SourceComparison`/`TimeLapseModal`의 기존 관련 PR 조회, `resolve/detail.ts`(PR 상세 원본 커밋 표시), 새 매핑·마이그레이션, `Compare selected` 게이팅 로직 변경.
 - 완료 기준: 타입·lint·lint:deps 통과. 단위(배치 조회 함수의 확정·미확정·실패 분기), 통합(워크트리별 격리 Elasticsearch — 연결 1개·여러 개·빈 배열(direct_push)·문서 없음(미확정)·질의 실패(unavailable), 페이지당 배치 조회가 한 번만 실행됨을 실측), 회귀(`Compare selected` 게이팅·Diff·TimeLapse 유지), 접근성(신규 셀·복사 버튼) 전부 통과. GHE 자격 증명이 없으면 실제 History 왕복은 CR-106처럼 `NOT RUN`이다 — 달성 가능한 검증 범위로 완료 기준을 맞춘다. 독립 코드 리뷰(code-review 스킬, high) 완료·반영.
-- 상태: **in_progress — 구현·검증·독립 코드 리뷰 반영 완료, 아직 커밋·PR·병합 전**. 진행 정본: 구현 추적 원장 6.100장.
+- 상태: **done**. 독립 코드 리뷰(high) 반영 완료. 로컬 검증 전부 통과(typecheck·lint·lint:deps·단위 2930/2930·통합 1857+8/1865·회귀 506/506·a11y 436/436·build). PR #213 스쿼시 병합 `95674b8`, main CI(run `35292695927`) verify·integration success. 발견 편차 `DEV-726`·`DEV-727`은 이 CR의 정정 사항과 무관한 별개 관찰로 후속 CR 후보에 등재. 사내 실데이터 확인 NOT RUN. 진행 정본: 구현 추적 원장 6.100장.
 
 ## WP-092 식별자 범위 검색: PR 번호·M 번호·SHA 구간 (CR-106)
 

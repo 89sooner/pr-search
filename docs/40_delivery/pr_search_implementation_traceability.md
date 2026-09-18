@@ -8254,3 +8254,7 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 **검증**: 워크트리(Node 22) 기준 — `pnpm typecheck`·`pnpm lint`·`pnpm run lint:deps` 전부 0. 단위 `pnpm run test` 2930/2930(GHE 자격 증명 없음 1건 skip, 기존과 동일). 통합 `pnpm run test:integration` 1857/1857(전체) + 신규 `apps/search-api/integration/source/history-pull-requests.test.ts`(8건, 실제 Elasticsearch로 연결 1개·여러 개(중복·역순 입력 → 오름차순 확정)·빈 배열(direct_push류)·문서 없음(미확정)·다른 저장소의 같은 SHA(접근 범위 밖 비유입)·페이지당 조회 1회(N+1 금지)를 실측). 회귀 `pnpm run test:regression` 506/506. `pnpm --filter @prs/web run build`·루트 `pnpm build`(16개 패키지) 통과. `pnpm run test:a11y` 436/436. `pnpm run test:e2e`는 이 CR과 무관한 기존 간헐 실패(`flow-003.spec.ts:176` — Source 코드 참조 0건, 단독 재실행 1.9초 통과, WP-016·CR-042·CR-044부터 기록된 타이밍 표본잡음) 한 자리를 제외하면 전부 통과. 변이 규율: `unavailable()` 응답 모양을 빈 배열로 바꿔치기, 배치 조회의 `catch`를 제거해 예외가 그대로 전파되게 하는 두 지점 각각에서 대상 시험이 정확히 예상대로 실패하는 것을 먼저 확인한 뒤 원복(재확인 통과). GHE 자격 증명이 없어 실제 브라우저의 실데이터 왕복은 `NOT RUN`(CR-106과 동일 사유) — 대신 실제 CSS를 로드한 정적 마크업으로 light/dark 렌더링·접근성 이름·복사 값(실패 폴백 경로)을 확인했다.
 
 **독립 검토**: code-review 스킬(high) 수행(2차 확인 포함). 정확성 결함 없음(ADR-008 범위 필터·`null`/`[]` 의미·N+1 금지·조회 실패의 502 미전파를 독립적으로 재확인). 아키텍처/관례 발견 6건 중 3건 반영, 2건 반려, 1건은 `DEV-727`로 유보 — 사유는 `change_control.md`의 `CR-107` 항목.
+
+**병합**: PR [#213](https://github.com/89sooner/pr-search/pull/213), 브랜치 `feature/cr107-history-pr-links`. PR CI(run `35289418836`) verify(4m21s)·integration(7m17s) 모두 success. 스쿼시 병합 `95674b8`(사용자가 직접 병합). 병합 커밋 main CI(run `35292695927`) verify(4m44s)·integration(7m34s) 모두 success(2026-09-18).
+
+**사내 확인 (NOT RUN).** 실제 GHE 반입 데이터로의 Source History PR 연결 표시 확인은 별도다.
