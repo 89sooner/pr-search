@@ -1,5 +1,7 @@
 # PR Search 구현 추적 원장
 
+> 상태: review | 버전: v6.95 | 갱신일: 2026-09-18
+
 ## CR-102 문서 분석·계획 기록 (2026-09-17)
 
 HEAD `2a4f37e`에서 연구 보고서를 코드·SRS와 대조했다. [Regression 구현 계획](pr_search_regression_implementation_plan.md) R0~R8과 T01~T12, 후보 F-REG-001~005, 제품 결정 OD-010~013을 등록했다. **문서 작성만 수행했으며 신규 WP 완료·앱 시험 통과를 뜻하지 않는다.** WP-042의 기존 완료 상태와 3장 진행률은 보존한다. R0에서 승인 FR/REL과 실행 가능한 WP를 정한 뒤에만 3장에 구현 행을 추가한다.
@@ -106,7 +108,6 @@ GHE 읽기 전 인증·저장소 범위를 판정하고 SHA에 고정한다. PR 
 
 검증: TypeScript·변경 TS/TSX lint·Next 프로덕션 빌드 통과. 가상 API를 주입한 실제 Chromium에서 초기 목록·Radix 상태 선택·탭 왕복 필터 유지·인라인 상세·Ctrl+K·Dialog Escape·390px 모바일 페이지 넘침 없음 통과. 일반 DOM의 cdt-* 클래스 0건, 브라우저 pageerror 0건. 캡처는 `/tmp/pr-search-radix/desktop.png`, `detail.png`, `mobile.png`. 실 GHE/OIDC 검증은 NOT RUN. 문서 validator는 기존 FR-CSS-005·D-002 참조 오류 둘 때문에 실패했으며, HEAD의 docs를 별도 임시 디렉터리에 추출해 동일 오류를 확인했다. 기존 risks.md 경로 경고도 남는다. 이번 요청은 구현이며 릴리스는 발행하지 않았다.
 
-> 상태: review | 버전: v6.94 | 갱신일: 2026-09-17
 
 `CR-094 / WP-082` 기본 저장소 작업 공간과 operator 전용 기존 UI: `template.html` 및 설계 분석 문서를 Conductor 기반 `RepositoryWorkspace`로 재구현하고, 기존 검색 및 운영 도구는 operator 전용(`?legacy=1`)으로 보존했다. developer 저장소 등록 절차 폐지·진입 즉시 현재 저장소 PR 목록 표시·필터 유지·deep link `WorkspaceEntityPage`, upstream smoke 재시도 로직 및 RUNBOOK 오프라인 빌드 절차를 반영했다. 검증과 0.1.0-pilot.9 발행 증거는 6.93장에 기록한다.
 
@@ -167,6 +168,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| WP-095 | Regression Revision Atlas 첫 UI 수직 | UI 수직 (CR-109) | done | 에이전트 | 로컬 작업 브랜치 feature/regression-atlas; PR/배포 없음 | 단위49/49·a11y441/441·typecheck·lint·lint:deps·프로덕션 build·1440/390 Chromium·실제 light/dark axe — 6.101장 | fixture opt-in; 실제 MDVP·장비·통계·새 DB는 미구현 |
 | WP-083 | 일반 검색 Radix 재구현 | UI 품질 (CR-095) | done | 에이전트 | PR #199 / pilot.10 | 전체 CI·브라우저·bundle smoke 통과 | 기존 문서 validator 오류 유지 |
 | WP-084 | 전체 화면 Radix·영문·테마 | UI 품질 (CR-096) | done | 에이전트 | PR #199 / pilot.10 | 접근성 433/433·전체 CI·bundle smoke 통과 | 실 GHE 미검증, 기존 문서 gate 오류 |
 | WP-085 | 파일 Tree·경로 History·Diff/TimeLapse | 소스 조사 (CR-097) | done | 에이전트 | PR #199 / pilot.10 | 집중94/94·Chromium·전체 CI·bundle smoke 통과 | 실 GHE NOT RUN, 기존 문서 gate 오류; **정정(CR-103)**: split diff 스크롤 결합(DEV-720)·History 비교 불가 사유 미표시(DEV-721) 수정 — 6.96장 |
@@ -262,6 +264,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
+| FR-REG-001 | WP-095 | apps/web/app/regression/page.tsx; components/regression/*; lib/regression/*; lib/bisect-client.ts; nav·ReaderShell·LeftNavPanel | lib/regression/*.test.ts, lib/bisect-client.test.ts, a11y/regression.test.tsx, scripts/verify-regression-atlas.mjs | verified — 첫 fixture UI 수직·기존 서버 bisect 복원/판정 경로. 실제 MDVP adapter 없음 |
 | FR-SRCH-001 | WP-014 | `packages/query/src/identifier.ts`, `packages/es/src/resolve-query.ts`, `apps/search-api/src/resolve/{service,routes}.ts` | `packages/query/src/identifier.test.ts`, `apps/search-api/integration/resolve/resolve.test.ts` | done (AC-1~AC-6. 릴리스 태그 판별만 제외 — 패턴이 정의되어 있지 않아 WP-024로 넘겼다, DEV-065) |
 | FR-SRCH-002 | WP-014, WP-018 | `apps/search-api/src/resolve/detail.ts` (`merge_commit_sha` 포함), `packages/es/src/resolve-query.ts`, `apps/web/lib/commit-detail.ts`, `apps/web/components/{ShaChip,ChangedPathList,LinkedPrList,SequencePosition,CommitDetailView}.tsx`, `apps/web/app/commit/[owner]/[repo]/[sha]/page.tsx` | `apps/search-api/integration/resolve/resolve.test.ts`, `packages/es/src/resolve-query.test.ts`, `apps/web/lib/commit-detail.test.ts`, `apps/web/a11y/commit-detail.test.tsx`, `apps/web/e2e/flow-003.spec.ts` | partial (AC-1·AC-2·AC-4·AC-5 충족, **화면 결합은 WP-018에서 done** — 역할 배지 셋, 소속 PR 전량 필드, `multi_pr` 목록, 체인 밖 안내와 머지 커밋 링크. **AC-3 `direct_push`는 여전히 도달 불가** — 커밋 문서가 PR 이벤트에서만 만들어진다, DEV-061 / WP-021. 화면은 매핑을 갖추고 도달하지 않음을 기록했으며, **`reason_code`를 "직접 푸시"로 부르지 않는다**, DEV-093) |
 | FR-SRCH-003 | WP-014, WP-017 | `apps/search-api/src/resolve/detail.ts`, `apps/web/lib/pr-detail.ts`, `apps/web/components/{CommitList,EntityHeader,PrDetailView}.tsx`, `apps/web/app/pr/[owner]/[repo]/[number]/page.tsx` | `apps/search-api/integration/resolve/resolve.test.ts`, `apps/web/lib/pr-detail.test.ts`, `apps/web/a11y/pr-detail.test.tsx`, `apps/web/e2e/flow-002.spec.ts` | partial (AC-1·AC-2·AC-4 충족, **화면 결합은 WP-017에서 done** — 머지 커밋이 항상 첫 행이고 미머지면 사유를 그 행에 표시한다. **AC-3의 메시지 첫 줄·작성자·작성 시각은 커밋 문서에 없다** — 배열 모양만 객체로 두고 `commit_sha`만 채웠다, DEV-062 / WP-020. AC-4의 **전체 건수**도 절삭 시 없어 `null`로 두고 "250건 이상"으로 표시한다, DEV-082·083 / WP-020) |
@@ -8258,3 +8261,21 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 **병합**: PR [#213](https://github.com/89sooner/pr-search/pull/213), 브랜치 `feature/cr107-history-pr-links`. PR CI(run `35289418836`) verify(4m21s)·integration(7m17s) 모두 success. 스쿼시 병합 `95674b8`(사용자가 직접 병합). 병합 커밋 main CI(run `35292695927`) verify(4m44s)·integration(7m34s) 모두 success(2026-09-18).
 
 **사내 확인 (NOT RUN).** 실제 GHE 반입 데이터로의 Source History PR 연결 표시 확인은 별도다.
+
+### 6.101 Regression Revision Atlas 첫 UI 수직 (2026-09-18, CR-109 / WP-095)
+
+기준 origin/main `b496996`, branch `feature/regression-atlas`, worktree `/tmp/pr-search-regression-atlas`. 이전 R0a 문서 브랜치는 보존했다. 사용자 지정 B Atlas를 기존 Geist/Radix/제품 토큰으로 이식하고 새로운 /regression과 nav를 기본 꺼진 flag로 추가했다. 기본 화면은 Atlas, Inbox/Pulse는 같은 URL selection·canonical data·session store를 쓴다.
+
+**동작:** 날짜/유형/결과 선택→비교 가능한 PASS suggestion→timeline·변경 목록·detail sheet→명시적 baseline 확인→local bisect→4종 판정→archive/재방문 복원. 표 filter/query/page는 전체 후보와 분리된다. default sample은 60 변경=59 PR+1 direct이며 binary 미보관도 후보에서 지우지 않는다. MDVP marker는 시험 revision에 위치한다. 미매핑/다른 scope/MTBF 보류/자료 지연/epoch stale는 거절·읽기 전용 상태로 표현한다. scope/session/version 검사와 Web Locks로 같은 브라우저 origin의 탭 간 쓰기를 직렬화하며 archive는 기록을 삭제하지 않는다.
+
+**실 연결 경계:** RegressionDataSource의 현재 provider는 명시적 fixture 또는 unconfigured뿐이다. fixture queue/manifest/관측은 합성 로컬 자료이며 production bisect 요청0을 브라우저에서 검증했다. fixture를 끈 모드에서는 MDVP 미구성을 표시하고 사용자가 직접 입력한 실제 repository/branch의 기존 C-029 세션을 API-SEQ-005로 복원·good/bad 처리한다. 공용 HTTP client가 unsupported verdict를 네트워크 전송 전에 거절한다. 실제 API 인증 프록시401을 확인했고 유효 세션 복원/판정 DTO·UI 반영은 mock 응답으로 검증했다. 실제 사내 MDVP/GHE/장비/영속 관측 DB 시험은 NOT RUN이다.
+
+**검증:**
+
+- 영향 단위49/49: canonical 범위·baseline context·display filter 독립·4판정·missing/direct/unmapped/epoch·version·archive·storage failure·manifest·API wire contract·feature flag·기존 nav.
+- 전체 web a11y441/441(22파일): 새5건과 기존436건. 기존 bisect의 API stale 처리 포함. 브라우저 axe는 settled light/dark 실제 색상으로도 통과했다. light의 LOCAL DEMO 배지 대비4.39를 발견해 secondary text token으로 보정했다.
+- `pnpm typecheck`, `pnpm lint`, `pnpm lint:deps` 통과. Next 프로덕션 빌드에 /regression 포함. 최초 제한 환경의 TypeScript --showConfig subprocess 수집 실패는 정상 로컬 권한 재실행으로 해소됐다.
+- 실제 Chromium: 1440/390, Atlas/Inbox/Pulse 상태 유지·문서 overflow0, 모달·SVG point Escape/focus 복귀, manifest download, local queue, 9/17 필터, wrong branch, MTBF/unmapped, stale 잠금, reduced-motion, Search/ranges200·기존 셸. pageerror0. 모바일 Inbox 폭과 repo/branch label 충돌은 확인 후 보정했다.
+- 재실행: fixture 서버를 켠 뒤 `ATLAS_TEST_URL=http://127.0.0.1:3188 node scripts/verify-regression-atlas.mjs`. 스크린샷은 `output/playwright/regression-atlas/`(git 제외). Node22.23.2 사용, 의존성 추가 없음. Next dev가 생성한 apps/web/AGENTS.md·CLAUDE.md는 해당 프레임워크의 로컬 지침이다.
+
+**한계:** 단위 후보 수의 log2는 이상적 검사 횟수이며 시간 보장이 아니다. 단일 경계도 재현 확인 필요 후보로 표시한다. fixture 저장은 브라우저 localStorage 용량/가용성에 의존하고 실패하면 성공을 가장하지 않는다. 자료를 실제 MDVP 결과로 인증하지 않으며 원격 test/build dispatch, 통계 confidence, 운영 artifact registry를 구현하지 않았다. 기능은 NEXT_PUBLIC_REGRESSION_ENABLED build-time opt-in, fixture는 별도 REGRESSION_FIXTURE_ENABLED opt-in이다.

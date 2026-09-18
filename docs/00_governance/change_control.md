@@ -1,5 +1,11 @@
 # 변경 관리 대장
 
+## CR-109 — Regression Revision Atlas 첫 UI 수직 (2026-09-18)
+
+검증 기록: 원장6.101의 코드·브라우저 검증 완료. 문서 `--report`는 Phase4·FR71/매트릭스71(100%)·오류2/경고4, `--strict`는 기존 오류4/경고4로 미통과다. 시작 시 오류2/경고8 대비 이동된 연구 링크4건을 해소했으며 새 요구사항/화면 참조 오류는 없다. 기존 외부 FR·역사 화면 ID, risks 경로, 연구 원문의 DESIGN 명칭, WP-090 참조·과거 자리표시자 문제는 이번 UI 구현에 섞어 고치지 않았다. 사용자는 지정 지시서를 읽은 뒤 첫 수직을 구현하도록 명시했으므로 전체 문서 handoff 정리를 선행 작업으로 확대하지 않았다. SRS는 해당 UI 범위만 승인으로 반영하며 운영 MDVP까지 완료했다고 주장하지 않는다.
+
+사용자는 이동된 연구01·후속 설계02·`../40_delivery/regression_workbench/UIUX/CLAUDE_REGRESSION_UI_BRIEF.md`를 바탕으로 B Atlas 구현을 지시했다. 이를 별도 /regression·fixture 명시·공통 조사 상태·기존 good/bad API 재사용의 첫 UI 범위 승인으로 기록한다. 기존 미병합 R0a 계약(CR-108/WP-094)은 별도 브랜치에 보존하고 선행으로 삼지 않는다. 신규 CR-109/WP-095/FR-REG-001/W-024. 기본 꺼진 feature flag·별도 fixture opt-in, 실제 MDVP/빌드/장비 실행 없음, M 의미·전체 후보 보존, 자동 삭제 없는 로컬 기록. 상태: **로컬 구현·검증 완료; 문서 전체 strict의 기존 오류 및 실제 운영 연동은 별도**. 변경·검증·한계는 원장6.101장이다. 원격 push/PR/배포는 하지 않았다.
+
 ## CR-107 — Source History에 연결 PR 번호 표시 (2026-09-18)
 
 - 유형: SRS 개정(`FR-SRC-002` AC-1 개정) + 구현. 상태: **open — SRS 개정 착수**.
@@ -46,7 +52,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 ## CR-102 — Regression 연구 보고서의 구현 계획화 (2026-09-17)
 
 - 유형: scope/design 제안 및 문서 correction. 상태: **open — 계획 작성 완료, 신규 범위 baseline 미승인**.
-- 요청: `deep-research-report.md`를 분석해 구현 계획에 반영하고 standalone HTML로 렌더링한다. 이번 요청은 계획·산출물 작성이며 앱 구현·릴리스 실행은 포함하지 않는다.
+- 요청: [연구 원문01](../40_delivery/regression_workbench/deep-research-report_01.md)을 분석해 구현 계획에 반영하고 standalone HTML로 렌더링한다. 당시 요청은 계획·산출물 작성이며 앱 구현·릴리스 실행은 포함하지 않았다. 이후 파일 이동과 첫 UI 구현은 CR-109가 기록한다.
 - 유지: FR-SEQ-001·005·007·008, ADR-007, 기존 M 번호 의미, PostgreSQL 정본, 개인 세션 소유권. 기존 WP-042 완료 이력은 보존한다.
 - 신규 후보: F-REG-001~005. 제품 결정은 PRD의 OD-010~013, 실행 전 설계는 [구현 계획](../40_delivery/pr_search_regression_implementation_plan.md)의 R0~R8로 추적한다. 후보는 승인된 WP가 아니며 SRS·REL·WP ID를 미리 배정하지 않는다.
 - 발견 편차: DEV-719 — FR-SEQ-007 AC-3의 PR 한정 표현과 직접 푸시 결과 구현 차이. 요구사항 정정 후보를 계획에 명시했으며 현재 SRS baseline을 자동 변경하지 않는다.
@@ -109,6 +115,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| CR-109 | 2026-09-18 | scope/implementation | 사용자 지정 B Atlas 및 UI 지시서 구현 | opt-in Regression 첫 fixture UI 수직, 기존 서버 bisect 재사용, Search 보존 | FR-REG-001, W-024, WP-095 | SRS·PRD·glossary·matrix·UI·FE/infra·delivery·원장 | 로컬 구현·검증 완료 — 원장6.101; 실제 MDVP/릴리스 미검증 |
 | CR-001 | 2026-08-19 | correction | 초기 scaffold | 문서 세트 생성 | - | 전체 | closed |
 | CR-002 | 2026-08-19 | scope | 제품 정의 인터뷰 (Perforce → GitHub Enterprise 전환 문제) | Phase 0~5 문서 전량 작성. 기능 후보 45종 수집, FR 51종·NFR 8종 승인, 화면 13종 정의, ADR 12종 확정, REL 6종·WP 44종 분해 | F-*, FR-*, NFR-*, OD-001~008, W-001~009, A-001~004, C-001~047, FLOW-000~008, API-*, ENT-*, JOB-*, EVT-*, ADR-001~012, REL-001~006, WP-001~044 | 전체 | closed |
 | CR-003 | 2026-08-19 | correction | 사용자 baseline 승인 | `srs_final.md`를 `review` → `baseline`(v1.0)으로 전환하고 기준선 잠금 문구 추가. 핸드오프 게이트 통과 기록. 내용 변경 없음 — 상태 전환만 | FR-* 전체 (범위 변경 없음) | `srs_final.md`, `change_control.md`, `pr_search_implementation_traceability.md`, `pr_search_ai_agent_implementation_request.md` | closed |

@@ -1,6 +1,15 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.54 | 갱신일: 2026-09-18
+> 상태: review | 버전: v2.55 | 갱신일: 2026-09-18
+
+## WP-095 Regression Revision Atlas 첫 UI 수직 (CR-109)
+
+- 관련: FR-REG-001, FR-SEQ-007 회귀, W-024, API-SEQ-005. 선행 WP-042·WP-084; 미병합 WP-094는 선행 아님.
+- 범위: route/nav·feature flag, typed DataSource/fixture, 날짜→결과→비교 PASS→timeline/list/sheet→fixture bisect·기록 복원·로컬 queue, 기존 bisect HTTP 계약 공용화. Atlas 기본, Inbox/Pulse는 같은 상태.
+- 제외: 운영 MDVP adapter 추정·장비/빌드 dispatch·MTBF 계산·새 DB.
+- DoD: baseline 호환·필터 독립·4판정·direct/missing/unmapped/wrong-scope·stale/version 테스트; 실제 1440/390 브라우저·a11y·Search/ranges smoke; lint/typecheck/build; fixture/실 API 연결 범위를 구분한 원장 기록.
+- 상태: done — 단위49/49·a11y441/441·typecheck·lint·lint:deps·build·1440/390 Chromium·light/dark 실제 axe 통과. fixture/실 API 경계와 한계는 원장 6.101장. 원격 배포·실 MDVP 시험 없음.
+
 
 ## WP-093 Source History에 연결 PR 번호 표시 (CR-107)
 
@@ -105,6 +114,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
+| WP-095 | Regression Revision Atlas 첫 UI 수직 | UI 수직 (CR-109) | WP-042, WP-084 | done — 원장 6.101장; fixture opt-in·운영 MDVP 미연결 |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | - | in_progress |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | WP-001 | done |
 | WP-003 | Elasticsearch 매핑과 인덱스 부트스트랩 | REL-001 | WP-001 | done |

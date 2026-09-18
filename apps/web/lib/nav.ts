@@ -17,6 +17,7 @@
  */
 
 import type { Role } from '@prs/authz/roles';
+import { regressionEnabled } from './regression/flags';
 
 /** 내비게이션 그룹. 운영 그룹만 역할 제한이 있다. */
 export type NavSection = 'search' | 'analysis' | 'github' | 'ops';
@@ -56,6 +57,7 @@ export const OPS_ROLES: ReadonlySet<Role> = new Set<Role>(['operator', 'security
  */
 export const NAV_ENTRIES: readonly NavEntry[] = [
   { id: 'search', label: 'Search', href: '/search', section: 'search' },
+  ...(regressionEnabled ? [{ id: 'regression', label: 'Regression', href: '/regression', section: 'analysis' as const }] : []),
   { id: 'saved-searches', label: 'Saved searches', href: '/saved-searches', section: 'search' },
   { id: 'repositories', label: 'Repositories', href: '/repositories', section: 'analysis' },
   { id: 'ranges', label: 'Range investigation', href: '/ranges', section: 'analysis' },

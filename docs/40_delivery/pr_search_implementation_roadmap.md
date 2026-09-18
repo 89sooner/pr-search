@@ -1,6 +1,9 @@
 # PR Search 구현 로드맵
 
-> 상태: review | 버전: v0.22 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.23 | 갱신일: 2026-09-18
+
+CR-109 / WP-095: 사용자가 후속 UI 지시서와 B Atlas 구현을 지정하여 첫 fixture UI 수직을 기존 R0a 영속 backend와 분리해 완료했다(FR-REG-001). 다음은 운영 MDVP·artifact 계약과 영속 관측 확장이며 현재 fixture를 production adapter라고 부르지 않는다. 기존 Search/ranges 완료 상태를 유지한다. 검증과 한계는 구현 원장 6.101장.
+
 
 ## CR-102 Regression 확장 후보 경로
 

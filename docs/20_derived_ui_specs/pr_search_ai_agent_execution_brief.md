@@ -1,6 +1,9 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.11 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.12 | 갱신일: 2026-09-18
+
+CR-109 / WP-095: 사용자 후속 지시서 `../40_delivery/regression_workbench/UIUX/CLAUDE_REGRESSION_UI_BRIEF.md`와 B Atlas를 따른다. FR-REG-001의 첫 fixture UI 수직은 사용자가 구현을 지시한 범위다. 이전 CR-102의 전체 backend 계획을 선행 gate로 확대하지 않는다. actual MDVP/영속 history/통계 모델은 후속. 실행·시험·한계는 원장 WP-095를 읽는다. 기존 Search/ranges·개인 인가·M 의미를 유지하며 mock은 명시적으로 격리한다.
+
 
 CR-102 Regression 후속: [구현 계획](../40_delivery/pr_search_regression_implementation_plan.md)의 현재 상태는 draft다. 연구 보고서만 읽고 SKIP/INCONCLUSIVE·artifact·MDVP·MTBF를 구현하지 않는다. R0의 OD-010·011 결정→SRS/traceability→UI/architecture→WP cascade와 handoff gate를 먼저 충족한다. 이후 배정된 WP의 선행·T01~T12를 읽고 기존 세션 잠금·epoch·소유권을 보존하며 구현 원장 3장과 FR→code/test 매핑을 갱신한다. 시험 실행은 외부 경계이며 M 번호 정의는 유지한다.
 

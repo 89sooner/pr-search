@@ -1,6 +1,7 @@
 'use client';
 
 import { serviceMessage } from '../lib/service-message';
+import { readBisect, resetBisect, writeBisect } from '../lib/bisect-client';
 
 /** C-029 / FLOW-004 / WP-042. 서버 저장 상태만 탐색의 정본으로 사용한다. */
 import { useEffect, useState, type ReactNode } from 'react';
@@ -31,7 +32,7 @@ export function BisectPanel({ repository, baseBranch, range }: BisectPanelProps)
     const controller = new AbortController();
     void (async () => {
       try {
-        const response = await fetch(`/api/bisect-sessions?${query}`, { cache: 'no-store', signal: controller.signal });
+        const response = await readBisect({ repository, baseBranch }, controller.signal);
         const body = await response.json() as ResponseBody;
         if (!response.ok) throw new Error(serviceMessage(body.error?.message, "Unable to load bisect state.", body.error?.code));
         if (!controller.signal.aborted) setSession(body.session ?? null);
@@ -44,16 +45,14 @@ export function BisectPanel({ repository, baseBranch, range }: BisectPanelProps)
 
   async function submit(action: 'start' | 'good' | 'bad' | 'reset'): Promise<void> {
     if (busy) return;
+    if (action === 'start' ? range === null : session === null) return;
+    if ((action === 'good' || action === 'bad') && session?.next == null) return;
     setBusy(true); setError(null);
-    const body = action === 'start' && range !== null
-      ? { action: 'start', seq_epoch: range.epoch, from_seq: range.from, to_seq: range.to }
-      : { action: 'mark', seq_epoch: session?.seq_epoch, session_id: session?.session_id, merge_seq: session?.next?.merge_seq, verdict: action };
     try {
-      const response = await fetch(action === 'reset'
-        ? `/api/bisect-sessions?${query}&session_id=${encodeURIComponent(session?.session_id ?? '')}` : '/api/bisect-sessions', {
-        method: action === 'reset' ? 'DELETE' : 'POST', cache: 'no-store',
-        ...(action === 'reset' ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ repository, base_branch: baseBranch, ...body }) }),
-      });
+      const scope = { repository, baseBranch };
+      const response = action === 'reset' && session !== null ? await resetBisect(scope, session.session_id)
+        : action === 'start' && range !== null ? await writeBisect(scope, { action: 'start', seq_epoch: range.epoch, from_seq: range.from, to_seq: range.to })
+        : await writeBisect(scope, { action: 'mark', seq_epoch: session!.seq_epoch, session_id: session!.session_id, merge_seq: session!.next!.merge_seq, verdict: action as 'good' | 'bad' });
       const result = await response.json() as ResponseBody;
       if (!response.ok) {
         if (result.error?.code === 'SEQUENCE_EPOCH_STALE') {

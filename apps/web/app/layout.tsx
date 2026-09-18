@@ -13,6 +13,7 @@ import './repository-workspace.css';
 import '@fontsource-variable/geist';
 import './reader-workspace.css';
 import './source-workspace.css';
+import './regression-workspace.css';
 import { ThemeProvider } from '../components/ui/ThemeProvider';
 import { themeBootstrapScript } from '../components/ui/theme-script';
 

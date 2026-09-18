@@ -1,10 +1,13 @@
 # Regression Investigation 구현 계획
 
-> 상태: draft | 버전: v0.1 | 갱신일: 2026-09-17
+> 상태: draft | 버전: v0.2 | 갱신일: 2026-09-18
+
+CR-109 진행 분리: 사용자 후속 설계02·UI 지시서·B Atlas 구현 지시에 따라 **WP-095의 fixture UI 수직**을 먼저 구현한다. 이 문서의 영속 backend·MDVP·MTBF 후보 전체가 승인된 것은 아니다. 실제 실행/검증 상태는 구현 원장 WP-095를 따른다. 기존 R0a 계약 브랜치는 보존한다.
+
 
 ## 1. 목적과 승인 경계
 
-CR-102 / F-REG-001~005. 사용자 제공 [연구 원문](deep-research-report.md)을 HEAD `2a4f37e`의 문서·코드와 대조한 구현 제안이다. 분석과 계획 작성은 이번 요청 범위다. 신규 제품 범위의 baseline, 앱 구현, 배포 완료를 뜻하지 않는다. 기존 SRS v2.35와 WP-042 완료 상태는 유지한다. 원문 전체는 [HTML](deep-research-report.html)에서도 읽는다.
+CR-102 / F-REG-001~005. 사용자 제공 [연구 원문 01](regression_workbench/deep-research-report_01.md)을 HEAD `2a4f37e`의 문서·코드와 대조한 초기 구현 제안이다. 당시 분석·계획 작성은 신규 제품 범위의 baseline·앱 구현·배포 완료를 뜻하지 않았다. 원문은 [HTML](regression_workbench/deep-research-report_01.html)에서도 읽는다. 최신 UI 구현 범위는 위 CR-109 기록이 보완한다.
 
 권고: `merge_seq`의 first-parent 순서를 재사용하고, 수동 관측 → 비확정 판정 → artifact 연결 → coarse/fine 탐색 순으로 확장한다. MDVP와 MTBF는 계약이 정해진 뒤 독립적으로 붙인다. 독립 CI counter, M 번호 재정의, 서버 git bisect 실행, 장비 제어, 자동 빌드 실행은 제외한다.
 
@@ -174,7 +177,7 @@ Pilot은 동일 조사 구간·시험 조건에서 후보 선택 시간, binary 
 
 변경 파일 목록: 신규 `pr_search_regression_implementation_plan.md`, `deep-research-report.html`; 갱신 `docs/README.md`, `00_governance/document_definitions.md`, `00_governance/change_control.md`, `10_requirements/feature.md`, `10_requirements/prd.md`, `40_delivery/pr_search_implementation_roadmap.md`, `40_delivery/pr_search_release_validation_plan.md`, `40_delivery/pr_search_work_packages.md`, `40_delivery/pr_search_implementation_traceability.md`, `20_derived_ui_specs/pr_search_ai_agent_implementation_request.md`, `20_derived_ui_specs/pr_search_ai_agent_execution_brief.md`. 연구 원문은 보존했다. 검증 결과는 CR-102 검증 기록이 소유한다.
 
-- 사용자 연구: [deep-research-report.md](deep-research-report.md), 분석일 2026-09-17. 원문의 모든 주장·예시는 참고 의견이며 현행 API 사용법과 구분한다.
+- 사용자 연구: [deep-research-report_01.md](regression_workbench/deep-research-report_01.md), 분석일 2026-09-17. 원문의 모든 주장·예시는 참고 의견이며 현행 API 사용법과 구분한다.
 - 프로젝트 정본: [SRS](../10_requirements/srs_final.md), [PRD 결정 목록](../10_requirements/prd.md), [작업 패키지](pr_search_work_packages.md), [원장](pr_search_implementation_traceability.md).
 - Git 공식: https://git-scm.com/docs/git-bisect — first-parent·수동 판정·skip 후 단일 원인 특정 한계, 2026-09-17 확인.
 - GitHub 공식: https://docs.github.com/en/actions/reference/workflows-and-actions/variables — GITHUB_RUN_NUMBER는 특정 workflow의 실행 번호, 2026-09-17 확인.

@@ -1,8 +1,11 @@
 # PR Search 인프라 및 운영 아키텍처
 
+> 상태: review | 버전: v0.21 | 갱신일: 2026-09-18
+
+CR-109 / WP-095 로컬 실행: Node22.23.2와 기존 pnpm lockfile을 사용한다. `NEXT_PUBLIC_REGRESSION_ENABLED=1 REGRESSION_FIXTURE_ENABLED=1 AUTH_ENABLED=false pnpm --filter @prs/web exec next dev --port 3188`로 합성 Atlas를 연다. 인증 false는 fixture 로컬 검증 환경 한정이며 실제 배포 인증은 기존 정책을 따른다. NEXT_PUBLIC flag는 build-time 값이므로 바꾸면 재빌드한다. fixture flag만 끄면 MDVP 미구성 안내와 명시적 실제 scope의 기존 bisect 복원이 제공된다. 운영 MDVP adapter·새 DB·새 포트 기본값·배포 topology 변경은 없다.
+
 > CR-097 / FR-SRC-001~004 운영: 기존 GHE 자격증명에 대상 저장소 Contents 읽기와 PR 읽기 권한이 필요하다. 별도 워커·DB migration·소스 미러는 추가하지 않는다. source_browsing capability는 인증·검색 DB 의존성·GitHub 클라이언트가 구성될 때 제공된다. SOURCE_PERMISSION_REQUIRED/SOURCE_RATE_LIMITED/SOURCE_UNAVAILABLE를 구분하고 Retry-After를 BFF에서 전달한다. 실 GHE에 대한 최소 반입 검수는 폴더/파일·히스토리·PR/커밋 Diff·권한 제외 저장소404·응답 no-store다.
 
-> 상태: review | 버전: v0.20 | 갱신일: 2026-09-17
 
 CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하고 모든 sync 호출은 repo session lock을 공유한다. Profile B sequence에는 mirror volume이 없으므로 명시적 API mode다. 환경 키·schema 선행·boot/stop·additive 앱 rollback과 별도 DB down은 [설계](pr_search_wp074_design.md) 10절이 정본이다. pilot.4 fail-fast·SSR smoke·pg hash 보정·worker git을 보존한다. 후보는 새 버전 미발행이며 --release를 사용하지 않는다.
 

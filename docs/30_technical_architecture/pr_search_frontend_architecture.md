@@ -1,5 +1,9 @@
 # PR Search 프론트엔드 아키텍처
 
+> 상태: review | 버전: v0.16 | 갱신일: 2026-09-18
+
+CR-109 / FR-REG-001 / W-024: `/regression`은 기존 GuardedPage(reader)와 Suspense 경계를 사용한다. `NEXT_PUBLIC_REGRESSION_ENABLED=1`은 build-time nav/route opt-in, `REGRESSION_FIXTURE_ENABLED=1`은 server-side fixture opt-in이다. URL은 view/repo/branch/epoch/run/date/type, 로컬 UI는 display filter/page/dialog/zoom, fixture session은 canonical scope+run key로 구분한다. 합성 fixture는 사용자 B HTML의 JSON만 추출해 typed adapter로 변환했다. 브라우저 저장은 명시적 fixture namespace이며 Web Locks 아래 read/version/write, stale version은 거절하고 archive는 삭제하지 않는다. Storage/lock 미지원은 읽기 전용이다. 실제 MDVP DTO나 인증정보를 추측하지 않는다. 기존 C-029 API 요청을 `lib/bisect-client.ts`로 공용화해 실제 scope 입력 시 저장된 세션 복원·good/bad를 지원한다. 이 API의 영속 관측 아카이브는 아직 없다.
+
 > CR-099: RepositoryWorkspace의 쿼리·기본 정렬·Label option 조립은 `lib/repository-search.ts`가 소유한다. 첫 페이지는 facets=true로 Label 후보를 받고 커서 페이지는 false로 호출하되 이전 facets를 유지한다. DatePicker는 기존 Radix Popover와 제품 토큰을 사용한다. 표의 PR 링크는 구성된 GHE base URL로 직접 열고 M number는 목록 DTO의 additive `merge_number*` 필드만 읽어 행별 조회를 만들지 않는다.
 
 > CR-097 / FR-SRC-001~004: components/source의 SourceTree·SourceHistory·SourceDialogs를 일반/기존 workspace와 PR·커밋 상세가 공유한다. useSource는 no-store·AbortController·선택 키로 응답을 격리한다. Diff는 jsdiff의 시간/편집량 한도 안에서 계산하며 Time-lapse는 Radix Slider, 최대30개 리비전·동시3개 요청의 명시적 분석을 사용한다. line alignment는 추정임을 표시한다. 소스는 React 텍스트로 렌더하고 지속 브라우저 저장소에 넣지 않는다.
@@ -8,7 +12,6 @@
 
 > CR-095: ReaderShell은 일반 검색의 별도 셸이다. 기존 Shell·SearchView·LegacyRepositoryWorkspace는 operator 경로에 유지한다. 검색 진입은 GuardedPage의 reader/legacyReader와 실효 역할로 결정한다. CSS는 .reader-ui 독립 토큰으로 operator와 격리한다. Radix 패키지·폰트는 lockfile로 고정하고 오프라인 배포에서 CDN에 의존하지 않는다. 기존 BFF와 API 계약은 유지한다.
 
-> 상태: review | 버전: v0.15 | 갱신일: 2026-09-17
 
 CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설계](pr_search_wp074_design.md) 9절로 고정한다. M은 API 생성 문자열이며 PR 번호를 대체하지 않는다. 행별 resolve 없이 페이지 batch, M deep link 1회 resolve, visible pending의 bounded poll을 사용한다. 기존 인증 BFF·from_q·cursor·epoch 경고·Conductor를 보존한다.
 

@@ -10,6 +10,8 @@ import { Button } from './primitives';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { visibleNavEntries, SECTION_LABELS } from '../../lib/nav';
 import type { Role } from '@prs/authz/roles';
+import { regressionEnabled } from '../../lib/regression/flags';
+import { WorkbenchIcon } from '../WorkbenchIcon';
 
 export function ReaderShell({ children, user, operator = false, roles = [] }: { children: ReactNode; user: { login: string; email: string | null } | null; operator?: boolean; roles?: readonly Role[] }): ReactNode {
   const pathname = usePathname();
@@ -32,12 +34,12 @@ export function ReaderShell({ children, user, operator = false, roles = [] }: { 
     window.addEventListener('keydown', listener);
     return () => { window.removeEventListener('keydown', listener); };
   }, []);
-  return <div className="reader-ui reader-shell">
+  return <div className="reader-ui reader-shell" data-regression-enabled={regressionEnabled}>
     <a href="#reader-main" className="reader-skip">Skip to content</a>
     <header className="reader-header"><div className="reader-header-inner">
       <Link href="/search" className="reader-brand"><span className="reader-brand-mark"><GitPullRequest size={21} /></span><span>PR Search<small>Every change, connected.</small></span></Link>
       <span className="reader-environment">GitHub Enterprise</span>
-      <nav aria-label="Main navigation"><Link href="/search" aria-current={pathname === '/search' ? 'page' : undefined}><Search size={15} />Search</Link>{operator ? <Link href="/search?legacy=1">Legacy search<ArrowUpRight size={14} /></Link> : null}</nav>
+      <nav aria-label="Main navigation"><Link href="/search" aria-current={pathname === '/search' ? 'page' : undefined}><Search size={15} />Search</Link>{regressionEnabled ? <Link href="/regression" aria-current={pathname === '/regression' ? 'page' : undefined}><WorkbenchIcon name="range"/>Regression</Link> : null}{operator ? <Link href="/search?legacy=1">Legacy search<ArrowUpRight size={14} /></Link> : null}</nav>
       {operator ? <Dropdown.Root><Dropdown.Trigger className="reader-workspace-menu">Workspace<ChevronDown size={13} /></Dropdown.Trigger><Dropdown.Portal><Dropdown.Content align="end" sideOffset={10} className="reader-ui reader-user-menu">{visibleNavEntries(roles).map((entry, index, entries) => <div key={entry.id}>{entry.section !== entries[index - 1]?.section ? <Dropdown.Label className="reader-menu-section">{SECTION_LABELS[entry.section]}</Dropdown.Label> : null}<Dropdown.Item asChild><Link href={entry.href}>{entry.label}</Link></Dropdown.Item></div>)}</Dropdown.Content></Dropdown.Portal></Dropdown.Root> : null}
       <ThemeToggle />
       <Button ref={helpTrigger} variant="ghost" className="reader-help" onClick={() => { setHelp(true); }} aria-label="Search help"><Keyboard size={18} /></Button>

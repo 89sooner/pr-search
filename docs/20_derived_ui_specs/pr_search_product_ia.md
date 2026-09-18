@@ -1,10 +1,17 @@
 # PR Search 제품 IA 문서
 
+> 상태: review | 버전: v0.9 | 갱신일: 2026-09-18
+
+CR-109 / FR-REG-001: **W-024 Regression Workbench**는 `/regression`이다. Search와 동등한 진입, 기본 B Atlas(first-parent timeline + 302px evidence/bisect), Inbox/Pulse는 공통 context/session의 보조 view다. 로컬 feature flag로 노출하며 기존 Search/ranges는 보존한다. 사용자 지정 `../40_delivery/regression_workbench/UIUX/regression-B-atlas.html`이 레이아웃 근거다.
+
+| 화면 ID | 이름 | 경로 | 관련 요구사항 |
+| --- | --- | --- | --- |
+| W-024 | Regression Workbench — Atlas/Inbox/Pulse | /regression | FR-REG-001 |
+
 > CR-097 / FR-SRC-001~004: W-001의 기존 좌측 저장소 탐색 아래 Files & folders 트리와 중앙 Commit history를 연결한다. W-001·W-002·W-003의 Diff 액션은 내부 모달이며 선택 파일의 Time-lapse로 이어진다. 별도 최상위 메뉴를 추가하지 않고 기존 화면을 보존한다.
 
 > CR-095: 일반 W-001은 전역 좌측 내비게이션 없이 상단 제품 헤더와 저장소 탐색 사이드바 하나를 사용한다. 우측 탭은 검색/커밋 이력/내 열린 PR/내 머지 PR다. operator 기존 진입점은 그대로 보존한다.
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-09-17
 
 CR-079: 새 화면을 추가하지 않는다. W-001의 기존 검색 진입에서 M 인용 query 네 값(repository/base/epoch/M)을 받아 해석하고 기존 W-002로 이동한다. W-001·W-002·W-004는 M 번호를 PR 번호 옆에 병기한다. W-004의 계산 기준은 merge_seq다. [상세 설계 9절](../30_technical_architecture/pr_search_wp074_design.md)의 상태·링크 계약을 따른다.
 

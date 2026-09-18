@@ -1,6 +1,20 @@
 # PR Search 최종 요구사항 정의서
 
-> 상태: baseline | 버전: v2.37 | 갱신일: 2026-09-18
+> 상태: baseline | 버전: v2.38 | 갱신일: 2026-09-18
+
+### FR-REG-001 Regression Workbench 첫 UI 수직 (CR-109)
+
+| 항목 | 내용 |
+| --- | --- |
+| 상태 | approved — 사용자 지정 지시서와 B Atlas 구현 지시(2026-09-18); fixture UI 범위 한정 |
+| 우선순위 | Must |
+| 출처 | regression_workbench/UIUX/CLAUDE_REGRESSION_UI_BRIEF.md, regression-B-atlas.html, deep-research-report_02.md |
+| 요구사항 | Regression 기능을 켠 배포에서 사용자가 시험 결과를 선택하면, 시스템은 비교 가능한 PASS 이후 선택 revision까지의 first-parent 변경과 시험 근거를 별도 Workbench로 제공하여야 한다. |
+| 수용 기준 | AC-1: 기존 Search·ranges를 보존하고 Regression 메뉴와 /regression을 제공한다. 기본 Atlas와 Inbox/Pulse는 같은 선택·후보·세션을 공유한다. AC-2: fixture는 별도 opt-in·지속 배너로 구분하고 미구성 배포에 실제 데이터처럼 표시하지 않는다. AC-3: repo/branch/epoch/full SHA를 사용하고 direct push를 포함한다. 날짜는 결과만 필터하고 영역/검색/페이지는 후보·midpoint에 영향을 주지 않는다. AC-4: baseline은 동일 testcase/signature/HW/environment/config/policy의 PASS이며 시작 시 확인한다. 다른 scope·미매핑·MTBF 보류는 자동 판정을 막는다. AC-5: PASS/FAIL만 경계 축소, fixture SKIP/INCONCLUSIVE는 경계 보존, 후보 소진은 unresolved다. 실 API는 기존 good/bad만 사용한다. AC-6: fixture 관측은 version 경쟁 검증·재방문 복원을 갖추고 reset해도 과거 기록을 삭제하지 않는다. fixture 요청 큐는 SHA/digest/context 확인을 거치며 외부 실행하지 않는다. AC-7: 1440/390px·키보드·focus trap·Escape·focus restore·reduced-motion·영어 UI·light/dark를 지원한다. stale/offline/epoch 변경은 persistent banner와 읽기 전용이다. |
+| 검증 방법 | test / demo |
+| 관련 화면 | W-024; 기존 W-001·W-004 회귀 |
+| 관련 API/데이터 | 기존 API-SEQ-005, RegressionDataSource 및 명시적 합성 fixture. 새 운영 MDVP API/DB 없음 |
+| 예외/실패 처리 | loading/empty/permission/error/unmapped/artifact unavailable을 구분한다. 실제 adapter 없으면 미구성 상태다. 단일 경계는 최초 FAIL 후보이며 원인 확정·MTBF 신뢰도를 만들어내지 않는다. |
 
 > CR-107 승인 추가 (2026-09-18): `FR-SRC-002` AC-1을 개정해 Source History 각 행에 연결 PR 번호를 더한다. PR 번호는 `prs-commits.pull_request_numbers`(FR-SRCH-002가 쓰는 것과 같은 근거)로만 채우며 추측하지 않는다. 행 단위로 연결 확정(배열, 빈 배열도 확정된 연결 없음)과 미확정(`null`)을 구별하고, 응답 단위로 PR 연결 조회 자체의 실패·미배선(`pull_requests_unavailable`)도 구별한다 — 이 경우에도 History 본문은 유지된다. 신규 FR·NFR·API·ENT ID 없음, 안정 ID 재번호화 0건. `FR-SRC-002` AC-1이 정밀화됐다.
 

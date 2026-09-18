@@ -1,10 +1,10 @@
 # PR Search 기능 후보 문서
 
-> 상태: review | 버전: v0.3 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.4 | 갱신일: 2026-09-18
 
 ## Regression 확장 후보 (CR-102)
 
-출처: [연구 보고서](../40_delivery/deep-research-report.md). 아래는 승인 전 후보이며 관련 FR은 기존 기반을 가리킬 뿐 확장의 구현 권한을 뜻하지 않는다. 세부 수용안과 실행 순서는 [구현 계획](../40_delivery/pr_search_regression_implementation_plan.md)에 있다.
+출처: [연구 보고서 01](../40_delivery/regression_workbench/deep-research-report_01.md). CR-109/FR-REG-001은 후속 설계02·UI 지시서·B Atlas 선택으로 첫 fixture UI 수직만 승인했다. 아래의 영속 관측·artifact·MDVP·MTBF backend 확장은 후속 후보이며 세부 계획은 [구현 계획](../40_delivery/pr_search_regression_implementation_plan.md)에 있다.
 
 | 기능 ID | 사용자 목표·진입점 | 시스템 반응 제안 | 예외·데이터 영향 | 우선순위 제안 | 상태·기존 기반 |
 | --- | --- | --- | --- | --- | --- |

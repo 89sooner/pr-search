@@ -1,8 +1,11 @@
 # PR Search 용어집
 
+> 상태: review | 버전: v0.13 | 갱신일: 2026-09-18
+
+CR-109 / FR-REG-001: **Revision Atlas**는 first-parent 순서를 x축으로 삼는 Regression view다. **MDVP**는 외부 live-test 환경이며 **MTBF**는 그 안의 시험 유형이다. **비교 가능한 PASS**는 동일 testcase/signature/HW/environment/configuration/policy·동일 공간/epoch의 이전 PASS다. **fixture 모드**는 명시적으로 opt-in한 합성 데이터·로컬 판정/큐이며 실제 장비·빌드 실행이 아니다. **최초 FAIL 경계 후보**는 재현 확인이 필요한 단일 revision 후보이며 원인 확정과 다르다.
+
 > CR-097 용어: **고정 리비전(pinned revision)**은 탐색 시작 시 브랜치에서 해석한 40자 커밋 SHA다. **경로 이력(path history)**은 그 SHA에서 특정 파일/폴더 경로를 변경한 커밋 목록이다. **파일 비교(Diff)**는 두 고정 리비전의 텍스트 차이이고 **시간별 파일 탐색(Time-lapse)**은 리비전별 내용을 슬라이더로 탐색하는 기능이다. **관측 라인 이력(observed line history)**은 최대 30개 로드된 리비전의 인접 텍스트 정렬에서 추정한 변경 기록이며 Git blame·원본 생성 시점·분기 간 계보의 정본이 아니다. FR-SRC-001~004.
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-09-17
 
 CR-091 용어 보완: **관리자 지정 역할**과 **실효 역할**을 더했다. 역할 표의 「관리자 지정」이 코드에서 성립하지 않았던 결함(`DEV-695`)을 고치며, 세션에 담긴 로그인 때의 역할과 요청마다 판정하는 역할을 다른 낱말로 가른다.
 

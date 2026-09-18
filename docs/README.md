@@ -29,7 +29,7 @@ WP-074 상세 설계의 진입점(CR-079): [설계 계약](30_technical_architec
 
 ## 1. 목적
 
-Regression 확장 검토(CR-102): [연구 원문](40_delivery/deep-research-report.md) → [구현 계획](40_delivery/pr_search_regression_implementation_plan.md) → [HTML 보고서](40_delivery/deep-research-report.html). 연구·draft 계획은 승인 범위를 확대하지 않는다. 계획의 R0에서 요구사항과 파생 계약을 승인·정합화한 후에만 신규 구현 WP로 전환한다.
+Regression: [연구 01](40_delivery/regression_workbench/deep-research-report_01.md) → [후속 설계 02](40_delivery/regression_workbench/deep-research-report_02.md) → [UI 구현 지시서](40_delivery/regression_workbench/UIUX/CLAUDE_REGRESSION_UI_BRIEF.md) / [B Atlas](40_delivery/regression_workbench/UIUX/regression-B-atlas.html). 기존 [R0a 구현 계획](40_delivery/pr_search_regression_implementation_plan.md)은 영속 backend 후속이다. CR-109/FR-REG-001은 사용자 지정 B Atlas의 첫 UI 수직을 별도로 승인했으며 WP-095가 구현을 추적한다. 연구 자체와 명시적 UI 승인 범위를 구분한다.
 
 이 문서는 PR Search의 SRS/PRD 기반 제품 계획 문서 전체를 안내하는 최상위 인덱스다. 목표는 요구사항, UX/UI, 시스템 아키텍처, 프론트엔드, 백엔드, API, 데이터, 인프라, 보안, 운영, 릴리스 검증, 작업 패키지, 구현 추적을 하나의 추적 가능한 문서 체계로 묶는 것이다.
 

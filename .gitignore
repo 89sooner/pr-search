@@ -35,3 +35,6 @@ deploy/single-host/backups/
 # `agent-context/`만 제외하고 나머지 미추적 파일을 "깨끗하지 않음"으로 본다.
 plans/
 artifacts/
+
+# Generated local UI verification evidence.
+/output/playwright/

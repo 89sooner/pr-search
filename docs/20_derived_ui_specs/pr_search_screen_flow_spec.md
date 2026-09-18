@@ -1,8 +1,11 @@
 # PR Search 화면 플로우 명세서
 
+> 상태: review | 버전: v0.11 | 갱신일: 2026-09-18
+
+CR-109 / FR-REG-001 / W-024: 날짜/유형→MDVP 결과→비교 PASS suggestion→Start bisect에서 context 확인→local session→판정/재시험→archive/재방문. Atlas/Inbox/Pulse 전환은 URL view만 바꾸고 session을 생성하지 않는다. timeline point/표 행은 같은 Radix sheet를 열며 닫을 때 원래 point/버튼에 focus를 돌린다. fixture queue 확인에는 canonical SHA/digest/context를 표시하고 외부 호출0이다. 실 MDVP 미구성 경로는 real repository/branch를 직접 입력한 뒤 기존 API-SEQ-005 세션 복원으로만 연결한다.
+
 > CR-097 / FR-SRC-001~004: 트리 선택은 URL path/path_kind/source_ref와 History 탭에 반영한다. History 파일 리비전 두 개 → Compare selected, 커밋 행 → Diff, 파일 → Time-lapse. Diff 안에서 Time-lapse를 열면 Escape는 최상단 모달만 닫는다. Ctrl/⌘+D는 활성 결과의 Diff, T는 선택 파일 Time-lapse이며 입력 필드와 열린 모달에서는 전역 단축키를 실행하지 않는다.
 
-> 상태: review | 버전: v0.10 | 갱신일: 2026-09-17
 
 CR-092 FLOW-000: 로그아웃 단계와 공개 완료 화면, 복귀는 경로만 담는다(DEV-699·DEV-700).
 

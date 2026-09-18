@@ -1,5 +1,18 @@
 # PR Search 화면 QA 체크리스트
 
+> 상태: review | 버전: v0.26 | 갱신일: 2026-09-18
+
+## W-024 첫 Atlas 수직 (CR-109 / FR-REG-001)
+
+| ID | 수용 조건 |
+| --- | --- |
+| QA-W024-01 | 날짜→결과→동일 context PASS 확인→범위·timeline·sheet; 다른 날짜 커밋도 범위에 보존 |
+| QA-W024-02 | 60 변경=59 PR+1 direct; 표시 filter/search/page와 canonical 후보 분리, exact manifest 역추적 |
+| QA-W024-03 | PASS/FAIL만 축소; SKIP/보류는 경계 보존; missing binary도 원인 후보 유지; all untestable은 unresolved |
+| QA-W024-04 | 재방문/view 전환 복원·Web Locks+version 경쟁 검증·archive 후 기록 보존; fixture 실제 bisect HTTP 호출0 |
+| QA-W024-05 | 1440/390 문서 overflow0·timeline/table/inbox 내부 scroll·Escape/focus 복귀·영어·light/dark·reduced motion |
+| QA-W024-06 | flag 꺼짐·MDVP 미구성·permission/error/empty/stale/epoch/unmapped/MTBF 보류; 기존 Search/ranges smoke |
+
 ## CR-099 PR 중심 Repository workspace
 
 | ID | 확인 항목 | 검증 |
@@ -25,7 +38,6 @@
 
 > CR-095 최소 확인: 초기 PR 목록, Radix 상태 선택, 탭 왕복의 필터 유지, 행 확장, Ctrl/⌘+K 검색 포커스, Dialog Escape·포커스 복귀, 모바일 페이지 넘침 없음, 일반 DOM에 Conductor 컴포넌트 없음. 가상 데이터 브라우저 검증과 실 GHE 연동 검증은 별도로 기록한다.
 
-> 상태: review | 버전: v0.25 | 갱신일: 2026-09-18
 
 CR-079: QA-W001-39·QA-W002-29·QA-W004-30은 [실행서 T05](../40_delivery/pr_search_wp074_execution.md)와 함께 검증한다. 미머지/비대상/pending/unavailable 구분, 코드 불일치·M epoch 누락, 링크 네 문맥, from_q·새 탭·키보드·커서 보존, 행별 resolve 0회가 필수다. 인증 fixture만 사용하며 익명 검색을 열지 않는다. 기존 직접 commit의 M 칸 없음과 PR 식별자 유지 기준은 그대로다.
 

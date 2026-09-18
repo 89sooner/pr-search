@@ -1,10 +1,13 @@
 # PR Search PRD
 
+> 상태: review | 버전: v1.16 | 갱신일: 2026-09-18
+
+CR-109 / FR-REG-001: Search와 분리된 Regression 메뉴에서 사용자가 선택한 **B Revision Atlas**를 기본으로 제공한다. 첫 수직은 opt-in 합성 fixture로 날짜→MDVP 결과→비교 가능한 PASS 확인→first-parent timeline/변경 목록→상세→bisect를 검증한다. Inbox/Pulse는 같은 선택·cache·canonical context·session을 공유한다. 실제 MDVP 미구성 시 fake data를 자동 노출하지 않으며, 별도로 입력한 실제 저장소·브랜치는 기존 API-SEQ-005의 저장된 개인 세션 조회·good/bad에만 연결한다. OD-012·013의 운영 MDVP/통계 결정은 열어 둔다. 자동 삭제 없는 보존은 이번 fixture 관측/아카이브에도 적용한다.
+
 > CR-097: Repository Workspace에 실제 Git 파일 트리를 추가한다. 선택 경로 History에서 커밋/두 파일 버전을 Diff로 조사하고 TimeLapse에서 리비전 및 추론된 라인 변경 이력을 탐색한다. 인가된 일시 열람이며 원본 소스는 검색 인덱스에 저장하지 않는다. Perforce의 UI 흐름을 차용하되 Git 경로 기반 이력과 제한된 lineage 분석의 차이를 명시한다.
 
 > CR-096: 제품 제공 UI 문구는 영어이며 전체 웹 화면을 Radix 기반 제품 컴포넌트로 통일한다. 사용자는 light/dark를 바꿀 수 있고 저장 선호도가 시스템 기본값에 우선한다. PR·커밋·감사 원문 데이터와 서명된 실행 정의의 내용은 변경하지 않는다.
 
-> 상태: review | 버전: v1.15 | 갱신일: 2026-09-17
 
 ### CR-102 Regression 확장 제안과 결정 목록
 

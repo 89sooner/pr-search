@@ -37,8 +37,9 @@
 
 ## 3. 문서별 정의
 
-- `deep-research-report.md`: 사용자 제공 연구 자료. 기존 상태에 대한 서술은 현재 HEAD와 대조하며 원문 인용 토큰은 검증 가능한 링크로 간주하지 않는다. 요구사항 정본이 아니다.
-- `deep-research-report.html`: 연구 원문 전체와 분석 요약을 담은 standalone 읽기 산출물. 원문을 변경하면 재생성한다. 요구사항·진행 상태의 정본이 아니다.
+- `../40_delivery/regression_workbench/deep-research-report_01.md`: 이동된 사용자 연구 01. 현재 HEAD와 대조하며 원문 인용 토큰은 검증 가능한 링크로 간주하지 않는다. 요구사항 정본이 아니다.
+- `../40_delivery/regression_workbench/deep-research-report_01.html`: 연구 01의 standalone 렌더링. 요구사항·진행 상태의 정본이 아니다.
+- `../40_delivery/regression_workbench/deep-research-report_02.md` 및 `../40_delivery/regression_workbench/UIUX/CLAUDE_REGRESSION_UI_BRIEF.md`: 후속 UI 설계와 사용자가 지정한 실행 지시서. CR-109는 첫 UI 수직만 SRS에 연결한다. B Atlas HTML은 선택된 레이아웃·합성 fixture의 출처이며 운영 데이터나 실제 MDVP 계약이 아니다.
 - `pr_search_regression_implementation_plan.md`: CR-102의 draft 변경 제안·구현 후보 분해·검증 설계. 후보 범위는 feature/PRD에서 유래하며 SRS보다 우선하지 않는다. 승인 후 SRS→UI→아키텍처→전달 cascade로 옮기고 실제 진행률은 구현 원장만 갱신한다.
 
 - `feature.md`: 기능 후보군 및 참고 문서. 최종 기준 문서가 아니다.

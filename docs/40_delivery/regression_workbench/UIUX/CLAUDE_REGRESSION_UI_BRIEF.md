@@ -4,7 +4,7 @@
 
 기존 Search를 유지하고 별도 Regression 메뉴를 추가한다. MDVP는 live-test 환경이며 MTBF는 그 안의 안정성 시험 유형이다. 사용자가 특정 날짜의 MDVP 실패를 선택하면, 마지막 비교 가능한 PASS 이후 해당 FAIL 빌드까지의 integration / PR 목록을 즉시 확인하고 필요할 때 bisect를 진행하도록 한다.
 
-근거 자료는 사용자가 제공한 `deep-research-report.md` 및 대화에서 정의한 UI 요건이다. 함께 전달한 HTML 세 가지는 동일한 합성 데이터를 사용한 UI 시제품이며, 현재 저장소 코드나 실제 MDVP 운영 데이터로 오해하지 않는다. 구현 시작 전에 실제 pr-search의 최신 routes, frontend stack, design tokens, sequence API, bisect session API와 테스트를 확인한다. 사전 조사만으로 세션을 끝내지 말고 확인 후 바로 첫 vertical slice를 구현한다.
+근거 자료는 이동된 [연구 01](../deep-research-report_01.md), [후속 설계 02](../deep-research-report_02.md) 및 대화에서 정의한 UI 요건이다. 함께 전달한 HTML 세 가지는 동일한 합성 데이터를 사용한 UI 시제품이며, 현재 저장소 코드나 실제 MDVP 운영 데이터로 오해하지 않는다. 구현 시작 전에 실제 pr-search의 최신 routes, frontend stack, design tokens, sequence API, bisect session API와 테스트를 확인한다. 사전 조사만으로 세션을 끝내지 말고 확인 후 바로 첫 vertical slice를 구현한다.
 
 ## 디자인 선택
 

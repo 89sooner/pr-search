@@ -1,5 +1,9 @@
 # PR Search UI 컴포넌트 명세서
 
+> 상태: review | 버전: v0.24 | 갱신일: 2026-09-18
+
+CR-109 / W-024 / FR-REG-001: `RegressionWorkbench`가 URL selection·표시 filter·dialog를, `RegressionTimeline`이 first-parent point와 MDVP evidence lane·zoom/pan/keyboard를 소유한다. `RegressionDataSource`는 fixture/unconfigured 경계를 갖고, canonical domain과 fixture session store는 rendering 밖에 둔다. `ExistingBisectSession`은 명시적으로 입력된 실제 scope만 기존 C-029로 전달한다. C-029와 공용 `bisect-client`는 API-SEQ-005의 good/bad만 전송한다. Fixture의 SKIP/INCONCLUSIVE·queue는 이 경로를 호출하지 않는다. Radix Dialog와 제품 토큰·WorkbenchIcon을 재사용한다.
+
 > CR-099 / WP-087: operator의 `/search?legacy=1`은 Legacy search로 명시해 보존한다. Repository workspace는 Base branch·facet Label Select, Radix Popover 월간 DatePicker 두 개를 제공한다. PR 표는 `#`(GHE PR 링크), `M number`(merge sequence 파생 표시), `Title`, `Author`, `Status`, `Merged at`, `Changes`, `Details` 순이다. 제목 열에 PR 번호를 중복하지 않으며 기본 정렬은 PR 번호 내림차순이다. 상태·M number 배지는 semantic tone 경계와 안쪽 강조를 사용한다.
 
 > CR-098 / WP-086: ReaderShell의 상단 Workspace 바로가기는 operator에게만 렌더링한다. 일반 사용자는 검색·분석 본문을 사용하되 운영/레거시 바로가기의 존재를 상단 메뉴에서 노출하지 않는다. LeftNavPanel의 “Follow the merge order” 설명은 제거하고 operator 전용 Advanced search·Repository workspace 링크는 보존한다. Merged after/before는 브라우저 로케일과 무관하게 `YYYY-MM-DD`를 placeholder로 표시하고 같은 패턴을 요구한다.
@@ -10,7 +14,6 @@
 
 > CR-095: 일반 화면은 Radix Tabs·Select·Dropdown Menu·Dialog, 시맨틱 HTML Button/Table/Input, Lucide로 구성한다. 컴포넌트는 components/reader 아래에 있으며 Conductor import가 없다. 사용자 메뉴는 기존 POST 로그아웃 계약을 따른다. LegacyRepositoryWorkspace와 SearchView는 operator 전용 경로로 보존한다.
 
-> 상태: review | 버전: v0.23 | 갱신일: 2026-09-18
 
 CR-092 C-001 사용자 메뉴: 로그인 이름이 메뉴 트리거가 되고 항목은 신원 표시와 「로그아웃」이다. 「로그아웃」은 `POST /auth/logout` 폼 제출이며 결과는 공개 로그아웃 완료 화면이다(DEV-700).
 

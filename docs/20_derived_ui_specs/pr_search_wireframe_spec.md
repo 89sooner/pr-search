@@ -1,5 +1,11 @@
 # PR Search 와이어프레임 사양서
 
+> 상태: review | 버전: v0.27 | 갱신일: 2026-09-18
+
+## W-024 Regression Revision Atlas (CR-109 / FR-REG-001)
+
+사용자 선택 B안: context/date/type/verdict → selected run → first-parent timeline(내부 pan·zoom·키보드 point) + 302px bisect/evidence → suspect changes. 기본 최신순, 반영순 전환. M을 병기하되 정본은 repo/branch/epoch/merge_seq/full SHA이고 direct push는 No M·S로 포함한다. 표시 filter/search/page는 midpoint에 관여하지 않는다. MDVP marker는 완료 시각이 아닌 시험 revision에 놓는다. Sheet에 전체 SHA·PR·author·파일·build/digest·manifest·context를 표시한다. 없는 diff·외부 실행 링크를 만들지 않는다. 390px에서는 한 열, Inbox는 내부 가로 카드, timeline/table만 자기 영역에서 가로 스크롤. 작은 화면에서는 bisect/evidence를 변경 표보다 먼저 배치한다. 기존 Radix Dialog로 Escape·focus trap·복귀. 기본은 fixture 배너, 실제 adapter가 없고 fixture opt-in도 없으면 미구성 상태다.
+
 > CR-106 / W-001: 필터 폼에 PR 번호 범위·M 번호 범위 입력 쌍과, 두 SHA로 머지 순서 구간을 지정하는 보조 입력(클라이언트에서 `seq:`로 변환)을 CR-099의 Base branch·Label Select·두 Radix 달력과 같은 자리·같은 시각 패턴(from-to 쌍)으로 추가한다. PR 번호 범위는 저장소 하나만 요구하고(`FR-SRCH-005` AC-8), M 번호 범위는 `seq:`와 같은 저장소+대상 브랜치 지목을 요구하며(AC-9), 요구 조건이 없으면 `W-001-QUERY`와 같은 방식으로 부족한 조건을 안내한다. SHA 구간(AC-10)은 해석 실패·공간 불일치·미채번을 거절 사유로 안내하고 자동으로 순서를 바꾸지 않는다.
 
 > CR-104 / W-001-PAGER: 커서 기반 더 보기 버튼(WP-016)을 스크롤 자동 로드로 바꾼다. 트리거 방식만 바뀌며 FR-SRCH-008·CR-043의 커서 거절 시 자동 재시도 금지 원칙은 그대로다. 사용자 결정으로 모바일은 제외한다.
@@ -10,7 +16,6 @@
 
 > CR-095: template.html 기준 상단 헤더, 최대 1400px 콘텐츠, 300px 저장소 사이드바와 유연한 본문. 본문 순서는 탭 → 소유자/저장소/브랜치 → 상태/검색어/작성자/라벨 → 날짜 → 검색/초기화 → 결과 표다. 좁은 화면은 한 열로 전환하고 결과 표만 가로 스크롤한다. 템플릿의 미구현 백엔드 기능은 가짜 UI로 표시하지 않는다.
 
-> 상태: review | 버전: v0.26 | 갱신일: 2026-09-18
 
 CR-079 화면 세부 계약: W-001 SearchView→ResultWorkbench→ResultTable, W-002 PrDetailView/lib/pr-detail, W-004 RangesView→RangeResultTable/lib/range가 M 표시 모델을 공유한다. seq 미채번은 '시퀀스 채번 대기', M만 없으면 'M 번호 대기', 미머지/비대상은 '대상 아님', 조회 장애는 '확인 불가'다. PR 번호·제목 링크·from_q·새 탭·키보드·커서는 유지한다. [설계 9절](../30_technical_architecture/pr_search_wp074_design.md)은 네 query key·복사·제한 poll·행별 추가 요청 금지의 정본이다.
 
