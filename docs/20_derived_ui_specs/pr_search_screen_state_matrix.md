@@ -2,7 +2,9 @@
 
 > CR-097 / FR-SRC-001~004: source UI는 loading·empty·error/retry·부분 트리·다음 페이지·이동한 PR·누락 파일·binary·too_large·unsupported·비UTF8·비교 시간 초과·관련 PR 조회 불가를 구별한다. 리비전 없는 상태는 지속 loading으로 표시하지 않는다. 저장소/경로/리비전 변경 시 요청을 취소하고 이전 응답을 새 선택에 섞지 않는다. 상한 256KiB/4,000라인 및 Time-lapse 30리비전을 명시한다.
 
-> 상태: review | 버전: v0.19 | 갱신일: 2026-09-17
+> CR-107 / FR-SRC-002: History 행의 PR 연결은 확정(배열, 빈 배열 포함)·미확정(`null`)·조회 자체 불가(`pull_requests_unavailable`, 응답 단위)를 서로 다르게 표시한다. 미확정은 조회 불가와 다른 상태다 — 미확정은 아직 투영이 안 됐을 뿐 재조회하면 바뀔 수 있고, 조회 불가는 이번 요청에서 시도 자체가 실패했다는 뜻이다.
+
+> 상태: review | 버전: v0.20 | 갱신일: 2026-09-18
 
 CR-079 상태 우선순위: 기존 인증/outer epoch_stale 처리 → PR 대상 여부 → sequence 존재 → M 확정 → M 조회 장애. pending은 merged PR에만 적용한다. reason=not_sequenced는 '시퀀스 채번 대기', predecessor_pending 등은 'M 번호 대기', not_applicable은 미머지/비대상, unavailable은 '확인 불가'다. commit 행에는 M 영역 없음. 기존 표의 '채번 후 자동 표시'는 [설계 9절](../30_technical_architecture/pr_search_wp074_design.md)의 visible·5초 간격·60초 상한 재검증을 뜻하며 무제한/행별 poll이 아니다.
 

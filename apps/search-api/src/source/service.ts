@@ -1,5 +1,9 @@
 import { GitHubApiError, type GitHubSourceReader, type RepoRef, type SourceGitCommit, type SourceRestCommit } from '@prs/github';
 import type { SourceComparison, SourceEntry, SourceFile, SourceHistory, SourceTree } from '@prs/contracts';
+import type { Client } from '@elastic/elasticsearch';
+import { applyMandatoryScopeFilter, assertNoShardFailures, search, type AccessScope } from '@prs/es';
+
+const COMMIT_ALIAS = 'prs-commits' as const;
 
 export const SOURCE_MAX_BYTES = 256 * 1024;
 export const SOURCE_MAX_LINES = 4000;
@@ -29,10 +33,73 @@ export async function sourceTree(reader: GitHubSourceReader, ref: RepoRef, input
     })).sort((a, b) => Number(b.kind === 'directory') - Number(a.kind === 'directory') || a.name.localeCompare(b.name)),
     truncated: tree.truncated === true || tree.tree.length > SOURCE_MAX_ENTRIES };
 }
-export async function sourceHistory(reader: GitHubSourceReader, ref: RepoRef, input: { ref: string; path: string; page: number }): Promise<SourceHistory> {
+/**
+ * SHA → 연결 PR 번호, 페이지 단위 배치 조회 (CR-107 / FR-SRC-002 AC-1).
+ *
+ * 페이지의 SHA 전체를 `terms` 질의 하나로 묶는다 — 행마다 개별 조회하면 N+1이
+ * 된다. `applyMandatoryScopeFilter`(ADR-008)를 반드시 거친다. `resolve/detail.ts`의
+ * `loadSourceCommits`를 호출하지 않는다 — 그 함수의 `_source`는 `pull_request_numbers`를
+ * 가져오지 않고, 확장하면 PR 상세 표시(FR-SRCH-003, 별개 기능)까지 영향을 받는다.
+ *
+ * 히트가 없거나 문서에 `pull_request_numbers` 필드 자체가 없는 SHA는 맵에 키를
+ * 두지 않는다 — `loadSourceCommits`와 같은 관례다(CR-016/017, "거짓 null을 채우지
+ * 않는다"). 호출부(`sourceHistory`)가 맵에 없는 SHA를 미확정(`null`)으로 채운다.
+ *
+ * 배열은 오름차순으로 정렬해 반환한다 — AC-1은 "중복 없이 결정적 순서로" 보이길
+ * 요구하는데, 원본 union 스크립트(`packages/es/src/upsert.ts`)는 `HashSet`으로
+ * 중복만 없앨 뿐 순서를 보장하지 않는다.
+ */
+export async function loadPullRequestLinks(
+  es: Client,
+  repository: string,
+  shas: readonly string[],
+  scope: AccessScope,
+): Promise<ReadonlyMap<string, number[]>> {
+  if (shas.length === 0) return new Map();
+  const normalized = [...new Set(shas.map(sha => sha.toLowerCase()))];
+  const response = await search<{ commit_sha: string; pull_request_numbers?: number[] }>(
+    es,
+    COMMIT_ALIAS,
+    applyMandatoryScopeFilter(
+      { bool: { filter: [{ term: { repository } }, { terms: { commit_sha: normalized } }] } },
+      scope,
+    ),
+    { size: normalized.length, _source: ['commit_sha', 'pull_request_numbers'] },
+  );
+  assertNoShardFailures(response);
+  const bySha = new Map<string, number[]>();
+  for (const hit of response.hits.hits) {
+    const source = hit._source;
+    if (source?.commit_sha !== undefined && source.pull_request_numbers !== undefined) {
+      bySha.set(source.commit_sha.toLowerCase(), [...new Set(source.pull_request_numbers)].sort((a, b) => a - b));
+    }
+  }
+  return bySha;
+}
+
+/**
+ * `links`가 없으면 배치 조회 자체를 건너뛰고 모든 행을 미확정으로 채운다 — 호출부가
+ * ES를 배선하지 않은 경우다. 배치 조회가 던지면(범위 미확인·질의 실패) catch해서
+ * 같은 모양으로 답한다 — **PR 연결 조회 실패가 History 본문을 지우지 않는다.**
+ * 커밋이 0건이면 조회 자체가 필요 없으므로 `pull_requests_unavailable`을 세우지
+ * 않는다 — 아무것도 실패하지 않았다.
+ */
+export async function sourceHistory(reader: GitHubSourceReader, ref: RepoRef, input: { ref: string; path: string; page: number }, links?: { es: Client; scope: AccessScope }): Promise<SourceHistory> {
   const pinned = await pinRevision(reader, ref, input.ref);
   const response = await reader.history(ref, pinned.sha, input.path, input.page);
-  return { repository: `${ref.owner}/${ref.repo}`, revision: pinned.sha, path: input.path, commits: response.body.map(restCommit), next_page: response.nextPage };
+  const repository = `${ref.owner}/${ref.repo}`;
+  const commits = response.body.map(restCommit);
+  const base = { repository, revision: pinned.sha, path: input.path, next_page: response.nextPage };
+  // 미확정 모양은 한 곳에서만 만든다 — 건너뛴 경우와 실패한 경우가 따로 적히면
+  // 나중에 한쪽만 고쳐 "거짓 null" 규율(CR-016/017)이 조용히 갈라질 수 있다.
+  const unavailable = (): SourceHistory => ({ ...base, commits: commits.map(commit => ({ ...commit, pull_request_numbers: null })), pull_requests_unavailable: true });
+  if (links === undefined) return unavailable();
+  try {
+    const bySha = await loadPullRequestLinks(links.es, repository, commits.map(commit => commit.sha), links.scope);
+    return { ...base, commits: commits.map(commit => ({ ...commit, pull_request_numbers: bySha.get(commit.sha.toLowerCase()) ?? null })) };
+  } catch {
+    return unavailable();
+  }
 }
 export async function sourceFile(reader: GitHubSourceReader, ref: RepoRef, revision: string, path: string): Promise<SourceFile> {
   const base: SourceFile = { repository: `${ref.owner}/${ref.repo}`, revision, path, status: 'missing', text: null, size: null, sha: null, reason: null };

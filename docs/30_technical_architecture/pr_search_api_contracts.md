@@ -7,13 +7,13 @@
 | ID | GET 경로 | 입력 | 출력 |
 | --- | --- | --- | --- |
 | API-SRC-001 | `/tree` | 선택 ref(브랜치 또는40자SHA), 하위 조회 시 tree_sha/revision/path | 고정 revision, ref, 파일/폴더 entries(path/name/sha/kind/size), truncated |
-| API-SRC-002 | `/history` | ref, path, page(1~1000) | 고정 revision, 경로 커밋50개, next_page |
+| API-SRC-002 | `/history` | ref, path, page(1~1000) | 고정 revision, 경로 커밋50개(행별 `pull_request_numbers`: 배열=확정/`null`=미확정, CR-107), `pull_requests_unavailable`(조회 실패·미배선 시), next_page |
 | API-SRC-003 | `/file` | revision(40자SHA), 파일 path | status(text/missing/binary/too_large/unsupported), text/null, size, sha, reason |
 | API-SRC-004 | `/diff` | pr 또는 commit 중 하나, page(1~30) | base/head, commit, files100개(path/previous_path/status/additions/deletions), next_page, truncated, 관련 PR |
 
-`/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
+`/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.37 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.38 | 갱신일: 2026-09-18
 
 ## 1. 목적
 

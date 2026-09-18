@@ -3,6 +3,7 @@ import { GitHubApiError, type GitHubSourceReader } from '@prs/github';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from '@prs/db';
 import type { ErrorCode } from '@prs/contracts';
+import type { Client } from '@elastic/elasticsearch';
 import { AccessScopeUnavailableError } from '@prs/es';
 import type { AuthContext } from '../auth/context.js';
 import { authenticateSession } from '../auth/principal.js';
@@ -11,7 +12,8 @@ import { resolveRepository } from '../sequence/space.js';
 import { recordAuditBestEffort } from '../audit/recorder.js';
 import { FULL_SHA, SourceSnapshotChanged, sourceComparison, sourceFile, sourceHistory, sourceTree, validPath, validRef } from './service.js';
 
-export interface SourceRouteOptions { pool: Pool; reader: () => GitHubSourceReader; auth: AuthContext; loginPath: string }
+/** `es`는 선택이다 (CR-107) — 없으면 History의 PR 연결 배치 조회를 건너뛴다. */
+export interface SourceRouteOptions { pool: Pool; reader: () => GitHubSourceReader; auth: AuthContext; loginPath: string; es?: Client }
 export function registerSourceRoutes(app: FastifyInstance, options: SourceRouteOptions): void {
   for (const operation of ['tree', 'history', 'file', 'diff'] as const) {
     app.get(`/api/v1/source/:repository/${operation}`, async (request, reply) => {
@@ -42,7 +44,7 @@ export function registerSourceRoutes(app: FastifyInstance, options: SourceRouteO
         if (operation === 'tree') {
           if (path && !treeSha) return fail(400, 'INVALID_PARAMETER', 'Expanding a directory requires its tree SHA and revision.');
           result = await sourceTree(reader, repo, { ref, path, ...(treeSha ? { treeSha, revision } : {}) });
-        } else if (operation === 'history') result = await sourceHistory(reader, repo, { ref, path, page });
+        } else if (operation === 'history') result = await sourceHistory(reader, repo, { ref, path, page }, options.es ? { es: options.es, scope } : undefined);
         else if (operation === 'file') {
           if (!path || !revision) return fail(400, 'INVALID_PARAMETER', 'A file path and full revision SHA are required.');
           result = await sourceFile(reader, repo, revision, path);

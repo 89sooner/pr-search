@@ -3,13 +3,13 @@
 | 추가 요구사항 (CR-097) | 화면 | 컴포넌트 | API | 검증 |
 | --- | --- | --- | --- | --- |
 | FR-SRC-001 | W-001 | SourceTree | API-SRC-001 | source.test.ts, verify-source-workspace.mjs |
-| FR-SRC-002 | W-001 | SourceHistory | API-SRC-002 | source.test.ts, verify-source-workspace.mjs |
+| FR-SRC-002 | W-001 | SourceHistory | API-SRC-002 | source.test.ts, verify-source-workspace.mjs, history-pull-requests.test.ts |
 | FR-SRC-003 | W-001, W-002, W-003 | DiffModal | API-SRC-003, API-SRC-004 | source-analysis.test.ts, source.test.ts, 브라우저 |
 | FR-SRC-004 | W-001, W-002, W-003 | TimeLapseModal | API-SRC-002~004 | source-analysis.test.ts, 브라우저 |
 
 > CR-096 / WP-084: NFR-007의 키보드·라벨·대비·반응형 확인은 전체 기존 화면에 적용한다. W-001의 template 배치를 유지하고 분석·운영·상세·저장된 검색은 같은 Radix 프리미티브/테마를 공유한다. 신규 화면 ID와 API는 없다. 영어 UI 및 테마 저장 검증은 구현 추적 원장의 CR-096 기록을 따른다.
 
-> 상태: review | 버전: v1.10 | 갱신일: 2026-09-18
+> 상태: review | 버전: v1.11 | 갱신일: 2026-09-18
 
 CR-090 대조: 운영 승인·철회와 그 근거·이력은 A-006, `pr.list` 차단·재개는 A-005(최소), 실행 판정 표시는 W-010에 귀속한다. 운영 정책 변경의 감사 네 액션은 A-005·A-006에서 발생해 A-004에 남는다. 신규 화면 ID는 없다.
 

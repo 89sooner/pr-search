@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnauthenticatedError } from '@prs/authz';
 import { GitHubApiError, type GitHubSourceReader } from '@prs/github';
 import type { Pool } from '@prs/db';
+import type { Client } from '@elastic/elasticsearch';
+import type { AccessScope } from '@prs/es';
 import type { AuthContext } from '../auth/context.js';
 import { authenticateSession } from '../auth/principal.js';
 import { resolveRepository } from '../sequence/space.js';
 import { recordAuditBestEffort } from '../audit/recorder.js';
 import { registerSourceRoutes } from './routes.js';
-import { sourceComparison, sourceFile, sourceHistory, sourceTree, validPath, validRef } from './service.js';
+import { loadPullRequestLinks, sourceComparison, sourceFile, sourceHistory, sourceTree, validPath, validRef } from './service.js';
 
 vi.mock('../auth/principal.js', () => ({ authenticateSession: vi.fn() }));
 vi.mock('../sequence/space.js', () => ({ resolveRepository: vi.fn() }));
@@ -58,6 +60,114 @@ describe('FR-SRC source data handling', () => {
   it('rejects a PR that moves while its file list is loaded', async () => { const { methods, reader } = fixture(); methods.pullRequest.mockResolvedValueOnce({ number: 7, title: 'PR', body: '', head: { sha: SHA }, base: { sha: PARENT } }).mockResolvedValueOnce({ number: 7, title: 'PR', body: '', head: { sha: TREE }, base: { sha: PARENT } }); await expect(sourceComparison(reader, repo, { pr: 7, page: 1 })).rejects.toThrow('Pull request changed'); });
   it('compares PRs to merge-base and preserves rename evidence', async () => { const { reader } = fixture(); const result = await sourceComparison(reader, repo, { pr: 7, page: 1 }); expect(result.base).toBe(PARENT); expect(result.files[0]?.previous_path).toBe('src/old.ts'); });
   it('validates repository-relative paths and references without restricting Unicode filenames', () => { expect(validPath('src/결제 파일.ts')).toBe(true); for (const path of ['../a', '/a', 'a/../b', 'a\\b', 'a\u0000b']) expect(validPath(path)).toBe(false); expect(validRef('feature/payments')).toBe(true); expect(validRef('main~1')).toBe(false); });
+});
+
+/** ES 클라이언트 자리를 대신하는 스텁. 진짜 applyMandatoryScopeFilter를 그대로 지나게 한다. */
+function esFixture(hits: { commit_sha: string; pull_request_numbers?: number[] }[]) {
+  const search = vi.fn().mockResolvedValue({ hits: { hits: hits.map(source => ({ _source: source })) }, _shards: { failed: 0, total: 1 } });
+  return { search, es: { search } as unknown as Client };
+}
+const SCOPE: AccessScope = { kind: 'explicit', repositoryIds: [1] };
+
+describe('CR-107 loadPullRequestLinks batch PR-link lookup (FR-SRC-002 AC-1)', () => {
+  it('queries once for the whole page; confirmed links are deduped and sorted ascending', async () => {
+    const { search, es } = esFixture([{ commit_sha: SHA, pull_request_numbers: [30, 10, 10, 20] }]);
+    const result = await loadPullRequestLinks(es, 'acme/app', [SHA, PARENT], SCOPE);
+    expect(search).toHaveBeenCalledTimes(1);
+    expect(result.get(SHA)).toEqual([10, 20, 30]);
+    expect(result.has(PARENT)).toBe(false); // no hit -> undetermined, no key at all (CR-016/017)
+  });
+
+  it('does not call Elasticsearch for an empty SHA list', async () => {
+    const { search, es } = esFixture([]);
+    const result = await loadPullRequestLinks(es, 'acme/app', [], SCOPE);
+    expect(search).not.toHaveBeenCalled();
+    expect(result.size).toBe(0);
+  });
+
+  it('a hit whose document has no pull_request_numbers field gets no key — never a false null', async () => {
+    const { es } = esFixture([{ commit_sha: SHA }]);
+    const result = await loadPullRequestLinks(es, 'acme/app', [SHA], SCOPE);
+    expect(result.has(SHA)).toBe(false);
+  });
+
+  it('an empty array (direct_push-like) is preserved as a confirmed "no links"', async () => {
+    const { es } = esFixture([{ commit_sha: SHA, pull_request_numbers: [] }]);
+    const result = await loadPullRequestLinks(es, 'acme/app', [SHA], SCOPE);
+    expect(result.get(SHA)).toEqual([]);
+  });
+
+  it('matches regardless of SHA case and scopes the query by repository and mandatory access scope', async () => {
+    const { search, es } = esFixture([{ commit_sha: SHA, pull_request_numbers: [1] }]);
+    await loadPullRequestLinks(es, 'acme/app', [SHA.toUpperCase()], SCOPE);
+    const call = search.mock.calls[0]?.[0] as { index: string; query: unknown; _source: string[] };
+    expect(call.index).toBe('prs-commits');
+    expect(call._source).toEqual(['commit_sha', 'pull_request_numbers']);
+    const serialized = JSON.stringify(call.query);
+    expect(serialized).toContain('acme/app');
+    expect(serialized).toContain(SHA);
+    expect(serialized).toContain('repository_id'); // applyMandatoryScopeFilter actually ran
+  });
+});
+
+describe('CR-107 sourceHistory PR-link branches (FR-SRC-002 AC-1)', () => {
+  it('without a links argument, every row is undetermined and the response is marked unavailable', async () => {
+    const { reader } = fixture();
+    const result = await sourceHistory(reader, repo, { ref: SHA, path: 'src', page: 1 });
+    expect(result.commits).toHaveLength(1);
+    expect(result.commits.every(commit => commit.pull_request_numbers === null)).toBe(true);
+    expect(result.pull_requests_unavailable).toBe(true);
+  });
+
+  it('with links, confirmed/empty/undetermined rows are distinguished from a single page-wide query', async () => {
+    const { methods, reader } = fixture();
+    methods.history.mockResolvedValue({
+      body: [
+        { sha: SHA, parents: [{ sha: PARENT }], author: { login: 'alice' }, commit: { message: 'confirmed', author: { name: 'Alice', date: '2026-09-16T00:00:00Z' } } },
+        { sha: PARENT, parents: [], author: { login: 'bob' }, commit: { message: 'direct push', author: { name: 'Bob', date: '2026-09-15T00:00:00Z' } } },
+        { sha: TREE, parents: [], author: { login: 'carol' }, commit: { message: 'pending', author: { name: 'Carol', date: '2026-09-14T00:00:00Z' } } },
+      ],
+      nextPage: null,
+    });
+    const { search, es } = esFixture([
+      { commit_sha: SHA, pull_request_numbers: [7] },
+      { commit_sha: PARENT, pull_request_numbers: [] },
+      // TREE has no hit at all -> undetermined.
+    ]);
+    const result = await sourceHistory(reader, repo, { ref: SHA, path: 'src', page: 1 }, { es, scope: SCOPE });
+    expect(search).toHaveBeenCalledTimes(1); // N+1 guard: one call covers the whole page
+    expect(result.pull_requests_unavailable).toBeUndefined(); // success omits the key entirely
+    expect(result.commits.find(commit => commit.sha === SHA)?.pull_request_numbers).toEqual([7]);
+    expect(result.commits.find(commit => commit.sha === PARENT)?.pull_request_numbers).toEqual([]);
+    expect(result.commits.find(commit => commit.sha === TREE)?.pull_request_numbers).toBeNull();
+  });
+
+  it('when the batch lookup throws, History body is preserved and the response is marked unavailable, never rejected', async () => {
+    const { reader } = fixture();
+    const es = { search: vi.fn().mockRejectedValue(new Error('es down')) } as unknown as Client;
+    const result = await sourceHistory(reader, repo, { ref: SHA, path: 'src', page: 1 }, { es, scope: SCOPE });
+    expect(result.commits).toHaveLength(1);
+    expect(result.commits.every(commit => commit.pull_request_numbers === null)).toBe(true);
+    expect(result.pull_requests_unavailable).toBe(true);
+  });
+
+  it('an empty access scope makes applyMandatoryScopeFilter throw, and History still answers unavailable, not an error', async () => {
+    const { reader } = fixture();
+    const { es } = esFixture([{ commit_sha: SHA, pull_request_numbers: [1] }]);
+    const result = await sourceHistory(reader, repo, { ref: SHA, path: 'src', page: 1 }, { es, scope: { kind: 'explicit', repositoryIds: [] } });
+    expect(result.commits.every(commit => commit.pull_request_numbers === null)).toBe(true);
+    expect(result.pull_requests_unavailable).toBe(true);
+  });
+
+  it('a page with zero commits never calls Elasticsearch and is not marked unavailable', async () => {
+    const { methods, reader } = fixture();
+    methods.history.mockResolvedValue({ body: [], nextPage: null });
+    const { search, es } = esFixture([]);
+    const result = await sourceHistory(reader, repo, { ref: SHA, path: 'src', page: 1 }, { es, scope: SCOPE });
+    expect(search).not.toHaveBeenCalled();
+    expect(result.commits).toEqual([]);
+    expect(result.pull_requests_unavailable).toBeUndefined();
+  });
 });
 
 describe('FR-SRC session, scope, cache and audit boundary', () => {

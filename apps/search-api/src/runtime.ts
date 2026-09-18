@@ -155,7 +155,7 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
   const gh = buildGhDeps(parts);
   return {
     config: parts.config,
-    ...(parts.github && parts.auth ? { source: { pool: parts.pool, reader: () => parts.github!.client.sourceReader() } } : {}),
+    ...(parts.github && parts.auth ? { source: { pool: parts.pool, reader: () => parts.github!.client.sourceReader(), es: parts.es } } : {}),
     ...(gh === undefined ? {} : { gh }),
     /*
      * **헬스체크가 백킹 서비스를 실제로 확인한다** (CR-059, DEV-495).
