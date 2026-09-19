@@ -1,6 +1,22 @@
 export type RepositoryWorkspaceTab = 'search' | 'history' | 'open' | 'merged';
 const quote = (value: string): string => JSON.stringify(value);
 
+/** CR-111: which range editor the consolidated Range filter selector shows. */
+export type RangeType = 'pr' | 'mnum' | 'date' | 'seq';
+
+/**
+ * Which range type a freshly loaded page should show, from whichever URL-persisted range already
+ * has a value. SHA/merge-order isn't URL-persisted (CR-106: it needs a live re-resolve), so it can't
+ * be detected here and isn't part of this derivation -- 'pr' is the fallback when nothing is active.
+ */
+export function deriveInitialRangeType(serialized: string): RangeType {
+  const values = new URLSearchParams(serialized);
+  if (values.get('pr_from') || values.get('pr_to')) return 'pr';
+  if (values.get('mnum_from') || values.get('mnum_to')) return 'mnum';
+  if (values.get('from') || values.get('to')) return 'date';
+  return 'pr';
+}
+
 export function buildRepositoryQuery(input: { serialized: string; repository: string; tab: RepositoryWorkspaceTab; login: string; seqRange?: { space: string; range: string } }): string {
   const values = new URLSearchParams(input.serialized);
   const filters = [`kind:${input.tab === 'history' ? 'commit' : 'pull_request'}`, `repo:${quote(input.repository)}`];

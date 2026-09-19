@@ -1,6 +1,19 @@
 # PR Search 화면 QA 체크리스트
 
-> 상태: review | 버전: v0.26 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.27 | 갱신일: 2026-09-18
+
+## CR-111 Search 좌측 패널·필터 UI 간소화
+
+| ID | 확인 항목 | 검증 |
+| --- | --- | --- |
+| QA-W001-51 | 「Browse repositories」 헤딩·검색창·전체 목록이 사라지고 현재 저장소를 보이는 「Find Repository」 콤보박스 하나만 남으며, 저장소가 많아도 사이드바 높이를 소비하지 않는다. 드롭다운 안 sentinel 옵션으로 다음 페이지를 이어 받아도 선택된 저장소 표시가 바뀌지 않는다 | 단위·Chromium |
+| QA-W001-52 | 「Branch」 섹션 헤딩 없이 「Base branch」 드롭다운만 남고, 선택 동작·저장소 전환 시 M 번호 range 초기화 규칙(CR-106)은 그대로다 | 브라우저 |
+| QA-W001-53 | 독립된 「Find files and paths」 입력·「View path history」 버튼이 사라지고, `Files & folders` 트리(및 트리 내부 필터)는 그대로 동작하며 사이드바에서 가장 큰 높이를 차지한다. 사이드바 하단 안내 문단은 완전히 제거됐다(요소 자체가 없음, CSS 숨김이 아님) | Chromium·DOM |
+| QA-W001-54 | 필터 폼의 Owner/Repository/Base branch 읽기 전용 필드가 사라져도 검색 질의는 사이드바에서 선택한 repository/base 값을 그대로 사용한다 | 단위·브라우저 |
+| QA-W001-55 | Filters 토글이 최초 진입 시 collapsed이고, 하나의 토글로 전체 상세 필터가 열리고 닫힌다. 접었다 다시 열어도, 그리고 URL을 새로고침해도 입력값이 그대로 복원된다. 필터가 접혀 있어도 `⌘K`/`Ctrl+G`가 여전히 검색어 입력에 포커스를 옮긴다(자동으로 펼쳐진다) | a11y·Chromium |
+| QA-W001-56 | Range filter 선택자에서 PR number/M number/Merged date/Merge order 중 고른 유형의 From/To만 보이고, 유형을 바꿔도 다른 유형에 이미 입력한 값이 사라지지 않는다. 네 유형 모두 기존과 동일한 질의 결과(`pr_number:`/`mnum:`/`merged:`/클라이언트 `seq:` 변환)를 낸다 | 단위·브라우저 |
+| QA-W001-57 | Source History에서 축약 SHA 텍스트를 클릭하면 별도 Copy 버튼 없이 full SHA가 클립보드에 복사되고, `#123` 텍스트를 클릭하면 기존 PR 번호 clipboard 값이 복사된다. 두 컨트롤 모두 Enter/Space·focus-visible·`aria-label`을 제공하고 복사 결과를 `role="status"`로 알린다 | a11y·Chromium |
+| QA-W001-58 | 키보드만으로 저장소·Base branch·Filters 토글·Range filter 유형·SHA/PR 복사·Compare selected를 전부 조작할 수 있다 | a11y |
 
 ## W-024 첫 Atlas 수직 (CR-109 / FR-REG-001)
 

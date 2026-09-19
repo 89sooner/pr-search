@@ -205,6 +205,10 @@ services:
       # M 번호 (WP-074)는 여기에 없다 — **web은 이 값을 읽지 않는다** (DEV-589).
       # 화면은 응답에 M 키가 있는지로만 판단하고, 켜고 끄는 것은 search-api와
       # worker-sequence의 같은 값이다. 여기 두면 한쪽만 바꿔 놓고 켰다고 믿게 된다.
+      # Regression Revision Atlas의 합성 fixture 데이터 (CR-109). route/nav는 always-on이라
+      # `NEXT_PUBLIC_REGRESSION_ENABLED` 같은 build-time flag가 없다(CR-110) — 이 값만
+      # 런타임에 읽어 1일 때만 synthetic 데이터를 켠다. 기본은 0(꺼짐, unconfigured 안내).
+      REGRESSION_FIXTURE_ENABLED: ${REGRESSION_FIXTURE_ENABLED:-0}
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/healthz >/dev/null || exit 1']
       interval: 20s

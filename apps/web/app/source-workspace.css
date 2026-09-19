@@ -42,7 +42,6 @@
 .source-pr-pending, .source-pr-empty { color:var(--ui-text-muted); }
 .source-pr-list { display:flex; flex-wrap:wrap; gap:6px; }
 .source-pr-chip { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
-.source-history-table .ui-copy-button { margin-left:8px; min-height:29px; padding:4px 8px; font-size:12px; }
 .source-history-table time { white-space:nowrap; font-size:11px; }
 .source-history-title { background:none; border:0; padding:0; text-align:left; color:var(--ui-text-primary); font-weight:500; }
 .source-load-more { display:flex; justify-content:center; padding:18px; }
