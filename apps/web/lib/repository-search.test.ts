@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseQuery } from '@prs/query';
-import { buildRepositoryQuery, buildShaRangeFilter, repositoryLabelOptions, repositorySort, type SeqRangeCandidate } from './repository-search';
+import { buildRepositoryQuery, buildShaRangeFilter, deriveInitialRangeType, repositoryLabelOptions, repositorySort, type SeqRangeCandidate } from './repository-search';
 
 describe('repository workspace search contract', () => {
   it('uses canonical merged state and preserves selectable filters', () => {
@@ -105,5 +105,34 @@ describe('merge-order range from two resolved commits (CR-106)', () => {
     const outcome = buildShaRangeFilter({ repository: 'acme/payments', base: 'main', fromCandidates: [commit(980, SPACE)], toCandidates: [commit(120, SPACE)] });
     if (outcome.kind !== 'error') throw new Error('expected a reversed-order error');
     expect(outcome.message).toMatch(/order/i);
+  });
+});
+
+describe('initial Range filter type from the URL (CR-111)', () => {
+  it('defaults to PR number when nothing is active', () => {
+    expect(deriveInitialRangeType('')).toBe('pr');
+    expect(deriveInitialRangeType('repository=acme/payments')).toBe('pr');
+  });
+
+  it('picks whichever URL-persisted range already has a value', () => {
+    expect(deriveInitialRangeType('pr_from=100&pr_to=200')).toBe('pr');
+    expect(deriveInitialRangeType('base=main&mnum_from=1&mnum_to=5')).toBe('mnum');
+    expect(deriveInitialRangeType('from=2026-09-01&to=2026-09-17')).toBe('date');
+  });
+
+  it('requires only one bound to detect the range as active (the pair-completeness check is a separate concern)', () => {
+    expect(deriveInitialRangeType('pr_from=100')).toBe('pr');
+    expect(deriveInitialRangeType('mnum_to=5')).toBe('mnum');
+  });
+
+  it('prefers PR number, then M number, then date when more than one is active', () => {
+    expect(deriveInitialRangeType('pr_from=1&pr_to=2&mnum_from=3&mnum_to=4')).toBe('pr');
+    expect(deriveInitialRangeType('mnum_from=3&mnum_to=4&from=2026-09-01&to=2026-09-17')).toBe('mnum');
+  });
+
+  it("can't detect an active merge-order (SHA) range -- it isn't URL-persisted (CR-106: it needs a live re-resolve)", () => {
+    // No signal to read even if the raw query text happens to contain `seq:`; this mirrors the pre-existing
+    // behavior where reloading a page never restores the resolved SHA range either.
+    expect(deriveInitialRangeType('q=seq%3A120..980')).toBe('pr');
   });
 });

@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.55 | 갱신일: 2026-09-18
+> 상태: review | 버전: v2.56 | 갱신일: 2026-09-18
+
+## WP-096 Search 화면 좌측 패널·필터 UI 간소화 (CR-111)
+
+- 요구사항: 없음(SRS·파생 UI에 규정된 정확한 치수·구성 요소 배치는 없다, `FR-SRCH-006` AC-1은 필터 차원만 규정). 선행: WP-090(CR-103, 같은 사이드바·필터 영역 고정 레이아웃)·WP-092(CR-106, 이번에 통합하는 range 필터 원본)·WP-093(CR-107, 이번에 손대는 Copy UI 원본).
+- 범위: `apps/web/components/RepositoryWorkspace.tsx`의 사이드바를 저장소 목록에서 compact `FieldSelect` 콤보박스로, Branch heading 제거, path 폼 제거, 사이드바 하단 안내 제거로 재구성해 `Files & folders`(`SourceTree`)에 flex 공간을 되돌린다. 필터 패널에서 Owner/Repository/Base branch 중복 필드를 제거하고 나머지 필터 조건 전체(Status/Title·PR·SHA/Author/Label + range 8필드)를 `Collapsible`(`forceMount`, 기본 collapsed) 하나로 묶는다. PR number/M number/Merged date/Merge order 8개 입력을 range 유형 선택 드롭다운 + From/To 두 칸으로 통합하는 `rangeType` 로컬 state와 `deriveInitialRangeType` 순수 함수(`lib/repository-search.ts`)를 추가한다. `⌘K`/hash 포커스 이동이 접힌 필터 안의 `q` 입력을 계속 찾을 수 있도록 `forceMount` + 전용 `window` keydown 리스너로 보강한다. `apps/web/components/source/SourceHistory.tsx`의 `CopyButton`(SHA·PR 번호) 두 곳을 표시 텍스트 자체가 클릭 대상인 신설 `CopyText`(`components/ui/index.tsx`)로 교체한다. `FieldSelect`(`reader/primitives.tsx`)에 옵션별 `disabled?: boolean`을 추가해 저장소 pagination을 드롭다운 안의 sentinel 옵션으로 접는다.
+- 제외: 백엔드 질의 파라미터·API 계약 변경(CR-106 `pr_number:`/`mnum:`/`seq:`, CR-107 `pull_request_numbers`/`pull_requests_unavailable` 그대로), `LegacyRepositoryWorkspace.tsx`·`SearchView.tsx` 변경(같은 CSS 클래스·`SourceTree`/`SourceHistory`를 공유하므로 그 클래스의 CSS 규칙 자체는 삭제하지 않는다), `apps/web/playwright.config.ts`의 공유 e2e 서버 설정 변경(발견한 커버리지 공백은 DEV-728로만 등재).
+- 완료 기준: 타입·lint·lint:deps 통과. `lib/repository-search.test.ts`에 `deriveInitialRangeType` 단위 시험 추가. 신설 `a11y/repository-workspace.test.tsx`로 저장소 선택·pagination sentinel·Base branch·Files & folders 우선순위·Filters 토글(값 보존 포함)·range 유형 전환·SHA/PR 텍스트 복사·키보드 접근을 검증(axe 위반 0). 기존 단위/통합/회귀/a11y/e2e 전부 회귀 없이 통과. `pnpm --filter @prs/web run build` 후 실제 Chromium(light/dark, 넓은/좁은 뷰포트)에서 사용자 제시 13번 검증 체크리스트를 확인. 독립 코드 리뷰(code-review 스킬, high) 완료·반영.
+- 상태: in_progress.
 
 ## WP-095 Regression Revision Atlas 첫 UI 수직 (CR-109)
 

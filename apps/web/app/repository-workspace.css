@@ -37,6 +37,12 @@
  * root-button chrome before its list even starts, so its floor (measured against real content) has
  * to cover that chrome plus its own list's 44px floor (source-workspace.css) or the section clips
  * itself short even with its own overflow:hidden.
+ *
+ * CR-111: RepositoryWorkspace no longer renders `.repo-repositories`/`.repo-sidebar-heading`/
+ * `.repo-sidebar-note` (compact repository combobox + Files & folders replace them, taking the
+ * freed flex space automatically since `.source-tree` is now the sidebar's only `flex:1 1 0`
+ * child). These three rules and their `.repo-sidebar-note` media queries below are kept as-is --
+ * `LegacyRepositoryWorkspace.tsx` still renders all three classes verbatim (confirmed by grep).
  */
 .repo-sidebar > .repo-repositories { flex: 1 1 0; min-height: 72px; }
 .repo-sidebar > .source-tree { flex: 1 1 0; min-height: 185px; }
@@ -49,6 +55,9 @@
 .repo-field input::placeholder { color: var(--ui-text-muted); }
 .repo-field :is(input, select):focus { background: var(--ui-surface-raised); border-color: var(--ui-accent); }
 .repo-field :disabled { opacity: .6; }
+/* CR-111: the sidebar's two top FieldSelects (Find Repository, Base branch) are bare `.repo-field` divs with no heading between them, unlike Legacy's (which still has `.repo-sidebar-heading`s providing that spacing) -- scoped so it doesn't touch Legacy's layout. */
+.repo-sidebar-gap { margin-top: 14px; }
+.repo-sidebar-error { margin: 10px 0 0; font-size: 12px; color: var(--ui-status-danger); }
 .repo-repositories { margin: 14px -8px 12px; overflow: auto; }
 .repo-repositories > button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; border: 0; border-radius: 6px; background: transparent; color: var(--ui-text-secondary); padding: 8px; cursor: pointer; font-size: 12px; }
 .repo-repositories > button > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -70,20 +79,55 @@
 .repo-filter-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
 /* Scoped overrides (rather than editing the shared reader-workspace.css) so only this page's date row is tightened. */
 .repo-filter-form .reader-date-grid { gap: 10px; margin-top: 14px; }
+/* CR-111: filter conditions collapse behind one toggle. `forceMount` on the content keeps `q` (the ⌘K target) mounted while closed, so this hides it visually/from a11y instead of relying on conditional rendering -- RepositoryWorkspace.tsx's own effects handle re-focusing it once opened. */
+.repo-filters-toggle { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; border: 1px solid var(--ui-border-default); background: var(--ui-surface-subtle); color: var(--ui-text-secondary); padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 550; cursor: pointer; }
+.repo-filters-toggle:hover { background: var(--ui-surface-raised); }
+.repo-filters-toggle svg { transition: transform var(--ui-motion-fast); }
+.repo-filters-toggle[data-state='open'] svg { transform: rotate(180deg); }
+.repo-filters-content[data-state='closed'] { display: none; }
+.repo-filters-content .repo-filter-grid { margin-top: 8px; }
+/* 사용자 요청(2026-09-19): range 유형 드롭다운과 From/To를 한 줄에 배치해 높이를 더 줄였다. 420px 상한은 3칸이 들어갈 공간이 부족해 제거하고, 위 `.repo-filter-grid`와 같은 폭까지 쓰게 했다. */
+.repo-range-filter { display: grid; gap: 6px; margin-top: 8px; }
+.repo-range-row { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+.repo-range-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+/* `.reader-panel-heading`(reader-workspace.css)는 다른 reader 화면과 공유되므로, 배너 문단을 지운 이 화면만 상하 여백을 더 줄이도록 modifier 클래스로 scoped override한다. */
+.reader-panel-heading.repo-panel-heading--compact { margin-bottom: 10px; }
+.repo-range-active { margin: 0; font-size: 12px; color: var(--ui-text-muted); }
 .repo-filter-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; font-size: 12px; color: var(--ui-text-muted); }
 /*
- * 689px = measured in-browser (.reader-header + .reader-container's top padding = 121px, tablist
- * 56px, filter-form 441px, results-heading 47px, plus ~24px of borders/gaps between them) -- the
- * earlier 326px guess was calibrated against .repo-topbar/.repo-shell-main, which this component
- * never actually renders inside of (it always renders inside ReaderShell/.reader-container).
- *
- * Unlike .repo-sidebar, this element isn't sticky and doesn't need to end exactly at the viewport
- * edge -- calc(100dvh - 689px) alone degrades to a near-useless sliver on ordinary 800-900px-tall
- * viewports, so min-height keeps a reasonable number of rows visible there; the calc only starts
- * mattering on taller screens, where it lets the table use the extra room instead of a stale fixed
- * height wasting it.
+ * 사용자 요청(2026-09-19)으로 필터 영역의 위아래 여백을 추가로 줄였다. `.repo-filter-form`/
+ * `.repo-filter-footer`는 `reader-workspace.css`의 `.reader-ui .repo-filter-form`/
+ * `.reader-ui .repo-filter-footer`(specificity 0,2,0)가 이겨서 이 파일의 기본 규칙(위 75·92행,
+ * specificity 0,1,0)은 실제로 적용되지 않는다. `LegacyRepositoryWorkspace.tsx`도 같은 클래스를
+ * 그대로 쓰므로, 새 modifier 클래스(`--compact`)를 이 컴포넌트의 JSX에만 추가하고 그 조합에
+ * `.reader-ui` 접두 규칙과 같거나 더 높은 specificity(0,3,0)를 줘서 소스 순서와 무관하게
+ * 확실히 이기게 했다. Legacy는 이 클래스가 없어 영향받지 않는다. 좌우 padding은 손대지 않았다
+ * (요청이 "위아래"로 한정).
  */
-.repo-results-scroll { max-height: calc(100dvh - 689px); min-height: 320px; overflow: auto; }
+.reader-ui .repo-filter-form.repo-filter-form--compact { padding-top: 10px; padding-bottom: 10px; margin-bottom: 8px; }
+.reader-ui .repo-filter-footer.repo-filter-footer--compact { margin-top: 10px; padding-top: 10px; }
+/*
+ * 이력: 689px(CR-111 이전, 필터 상시 펼침) -> 532px(CR-111, 필터 기본 collapsed) -> 474px
+ * (2026-09-19 1차 여백 축소) -> 460px(2026-09-19 2차, range 한 줄 배치 + 배너 제거 + 헤더
+ * 여백 축소 뒤 사용자 요청으로 사이드바 하단과 정렬).
+ *
+ * 사용자 요청: "좌측 사이드패널의 끝과 데이터테이블의 끝 위치를 맞춘다." `.repo-sidebar`는
+ * `position: sticky; top: 24px; height: calc(100dvh - 48px);`라서 스크롤되어 고정된 뒤에는
+ * 항상 `뷰포트 하단 - 24px`에서 끝난다(24(top) + (100dvh-48) = 100dvh-24). 이 요소가 내용으로
+ * 꽉 찼을 때의 하단도 같은 지점에 오게 하려면 `top + (100dvh - N) = 100dvh - 24`, 즉
+ * `N = top + 24`가 성립해야 한다. 1440x900, collapsed filters 기준 top을 실측하면 436px이므로
+ * N = 436 + 24 = 460. (top 자체는 range 유형 드롭다운/From-To를 한 줄로 합치고, 패널 헤더의
+ * 부제 문단을 지우고 그 여백도 줄인 결과로 474px에서 436px로 다시 줄었다.)
+ *
+ * If the filter form is user-expanded, this max-height doesn't shrink to compensate (it's sized
+ * for the common collapsed case) -- the results area simply sits lower on the page, same as any
+ * normal document flow; `min-height` is what keeps it from collapsing to nothing either way.
+ *
+ * calc(100dvh - 460px) alone degrades to a near-useless sliver on short viewports, so min-height
+ * keeps a reasonable number of rows visible there; the calc only starts mattering on taller
+ * screens, where it both uses the extra room and keeps the bottom edge aligned with the sidebar's.
+ */
+.repo-results-scroll { max-height: calc(100dvh - 460px); min-height: 320px; overflow: auto; }
 .repo-results-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 24px; border-block: 1px solid var(--ui-border-subtle); background: var(--ui-surface-subtle); font-size: 12px; color: var(--ui-text-muted); }
 .repo-results-heading > span:first-child { display: flex; align-items: center; gap: 9px; color: var(--ui-text-secondary); }
 .repo-results-heading strong { color: var(--ui-accent); margin-left: 3px; }

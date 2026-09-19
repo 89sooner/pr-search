@@ -1,6 +1,8 @@
 # PR Search 와이어프레임 사양서
 
-> 상태: review | 버전: v0.27 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.28 | 갱신일: 2026-09-18
+
+> CR-111 / W-001: 좌측 사이드바를 「Find Repository」 compact `FieldSelect` 콤보박스(저장소 목록·pagination은 드롭다운 안 sentinel 옵션으로 접는다) + 「Base branch」 셀렉트 + `Files & folders` 트리 순으로 재배치하고, 트리가 사이드바의 남은 flex 공간을 전부 차지하게 한다. 독립된 「Find files and paths」 입력·「View path history」 버튼과 사이드바 하단 안내 문단은 제거한다(Files & folders 트리 자체와 트리 내부 필터는 유지). 필터 폼의 Owner/Repository/Base branch 중복 필드를 제거하고(사이드바 선택값을 그대로 질의에 사용), CR-106의 PR 번호·M 번호·머지 시각·머지 순서 range 네 종류를 하나의 range 유형 선택자 + From/To 두 칸으로 통합한다(유형을 바꿔도 다른 유형의 값은 지우지 않는다). Status·`q`·Author·Label과 통합된 range 선택자를 포함한 필터 조건 전체는 기본 collapsed인 `Collapsible` 하나로 묶고, Search/Reset 버튼은 접힘과 무관하게 항상 노출한다. 접힘/펼침은 필터·URL 상태를 바꾸지 않는다(`FR-SRCH-006`~`009` 원칙과 동일). `SourceHistory`의 SHA·연결 PR 번호(CR-107) 복사는 별도 Copy 버튼 없이 표시 텍스트 자체가 클릭 대상이다. 질의 semantics·URL 파라미터·CR-106/CR-107 API 계약은 바꾸지 않는다.
 
 ## W-024 Regression Revision Atlas (CR-109 / FR-REG-001)
 

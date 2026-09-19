@@ -22,13 +22,13 @@ export const Table = Object.assign(DataTable, {
   Cell: (props: ComponentProps<'td'>) => <td {...props} />,
 });
 
-export function FieldSelect({ label, value, onChange, options, disabled = false }: { label: string; value: string; onChange: (value: string) => void; options: readonly { value: string; label: string }[]; disabled?: boolean }): ReactNode {
+export function FieldSelect({ label, value, onChange, options, disabled = false, className = '' }: { label: string; value: string; onChange: (value: string) => void; options: readonly { value: string; label: string; disabled?: boolean }[]; disabled?: boolean; className?: string }): ReactNode {
   const id = useId();
-  return <div className="repo-field"><label id={id}>{label}</label>
+  return <div className={`repo-field ${className}`.trim()}><label id={id}>{label}</label>
     <Select.Root value={value || '__all__'} onValueChange={next => { onChange(next === '__all__' ? '' : next); }} disabled={disabled}>
       <Select.Trigger className="reader-select" aria-labelledby={id}><Select.Value /><Select.Icon><ChevronDown size={14} /></Select.Icon></Select.Trigger>
       <Select.Portal><Select.Content position="popper" sideOffset={6} className="reader-ui reader-select-menu"><Select.Viewport>
-        {options.map(option => <Select.Item key={option.value} value={option.value || '__all__'} className="reader-select-item"><Select.ItemText>{option.label}</Select.ItemText><Select.ItemIndicator><Check size={14} /></Select.ItemIndicator></Select.Item>)}
+        {options.map(option => <Select.Item key={option.value} value={option.value || '__all__'} {...(option.disabled !== undefined ? { disabled: option.disabled } : {})} className="reader-select-item"><Select.ItemText>{option.label}</Select.ItemText><Select.ItemIndicator><Check size={14} /></Select.ItemIndicator></Select.Item>)}
       </Select.Viewport></Select.Content></Select.Portal>
     </Select.Root>
   </div>;

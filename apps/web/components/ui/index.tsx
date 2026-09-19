@@ -93,6 +93,13 @@ export const CopyButton = forwardRef<HTMLSpanElement, Props<'span'> & { value: s
   async function copy() { clearTimeout(timer.current); try { await navigator.clipboard.writeText(value); setMessage('Copied'); } catch { setMessage('Copy failed. Select and copy the identifier manually.'); } timer.current = setTimeout(() => { setMessage(''); }, 4000); }
   return <span ref={ref} {...props} className={className}><button type="button" className="ui-copy-button" onClick={() => { void copy(); }}><Copy size={13} aria-hidden="true" />{label}</button><span role="status" aria-live="polite" className="ui-copy-status">{message}</span></span>;
 });
+/** CR-111: the displayed identifier itself is the copy target (no separate Copy button/icon), styled as text. Same clipboard/status contract as `CopyButton`. */
+export const CopyText = forwardRef<HTMLButtonElement, Omit<Props<'button'>, 'children'> & { value: string; copyLabel: string; children: ReactNode }>(function CopyText({ value, copyLabel, className, children, ...props }, ref) {
+  const [message, setMessage] = useState(''); const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => { clearTimeout(timer.current); }, []);
+  async function copy() { clearTimeout(timer.current); try { await navigator.clipboard.writeText(value); setMessage('Copied'); } catch { setMessage('Copy failed. Select and copy the identifier manually.'); } timer.current = setTimeout(() => { setMessage(''); }, 4000); }
+  return <span className="ui-copy-text-wrap"><button ref={ref} type="button" {...props} aria-label={copyLabel} onClick={() => { void copy(); }} className={cx('ui-copy-text', className)}>{children}</button><span role="status" aria-live="polite" className="ui-copy-status">{message}</span></span>;
+});
 
 export const WorkbenchLayout = forwardRef<HTMLDivElement, Props<'div'> & { inspector?: ReactNode; width?: number; onWidthChange?: (width: number) => void }>(function WorkbenchLayout({ inspector, children, width = 38, onWidthChange, className, style, ...props }, ref) {
   const rangeId = useId(); const bounded = Math.max(25, Math.min(60, width));

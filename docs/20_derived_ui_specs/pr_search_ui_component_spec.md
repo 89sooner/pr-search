@@ -1,6 +1,8 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.24 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.25 | 갱신일: 2026-09-18
+
+CR-111 / W-001: Repository workspace 사이드바의 저장소 선택은 기존 `FieldSelect`(Radix `Select` 래퍼)를 재사용하는 compact 콤보박스 하나이며, pagination은 목록 대신 드롭다운 안 sentinel 옵션(`disabled` 지원을 옵션 타입에 추가)으로 표현한다. 필터 조건 전체는 `Collapsible`(`forceMount`, 기본 collapsed)로 묶는다 — 접힌 상태에서도 `⌘K`/`Ctrl+G`·`#omni-search-input` 포커스 이동이 계속 동작하도록 숨김은 `[data-state='closed']`의 CSS `display:none`으로만 하고 DOM 마운트는 유지한다. PR 번호·M 번호·머지 시각·머지 순서 range(CR-106)는 range 유형 `FieldSelect` + From/To 두 칸으로 통합하고, 유형별 값은 계속 개별 보존한다. `SourceHistory`의 SHA·PR 번호 복사(CR-107)는 `CopyButton`을 쓰지 않고 형제 컴포넌트 `CopyText`(표시 텍스트 자체가 `aria-label` 달린 semantic button, border/background/padding 없이 텍스트처럼 스타일링, 기존 `role="status"` 복사 안내 재사용)를 신설해 대체한다. `CopyButton`의 다른 사용처(`ResultWorkbench` 미리보기 패널)는 바꾸지 않는다.
 
 CR-109 / W-024 / FR-REG-001: `RegressionWorkbench`가 URL selection·표시 filter·dialog를, `RegressionTimeline`이 first-parent point와 MDVP evidence lane·zoom/pan/keyboard를 소유한다. `RegressionDataSource`는 fixture/unconfigured 경계를 갖고, canonical domain과 fixture session store는 rendering 밖에 둔다. `ExistingBisectSession`은 명시적으로 입력된 실제 scope만 기존 C-029로 전달한다. C-029와 공용 `bisect-client`는 API-SEQ-005의 good/bad만 전송한다. Fixture의 SKIP/INCONCLUSIVE·queue는 이 경로를 호출하지 않는다. Radix Dialog와 제품 토큰·WorkbenchIcon을 재사용한다.
 
