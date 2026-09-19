@@ -2229,3 +2229,13 @@ todos.md 「시작하기 전에」로 실측한 뒤, 결정자의 지시를 기�
 - 발행 전 선확인(새 CLI·도메인 헬퍼·마이그레이션 031·032)과 발행 뒤 재확인을 했고, 번들의 tar 재적재 smoke가 통과했다.
 - 사내 반입 순서: `./prsctl upgrade` → `prs-pull-requests` 재색인 → `./prsctl mnumber attest …`. 사내 확인은 NOT RUN.
 - Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.13
+
+## 2026-09-19 (12차) — CR-111 Search 화면 사이드바·필터 UI 간소화, 구현→리뷰→병합
+
+사용자 지시로 Search 화면(`apps/web/components/RepositoryWorkspace.tsx`)의 좌측 사이드바를 저장소 목록/Branch 섹션/독립 path 폼에서 콤보박스 2개(Find Repository·Base branch)+Files & folders 트리 위주로 재구성하고, PR/M/날짜/머지순서 range 8필드를 유형 선택자 하나로, 필터 패널 전체를 기본 collapsed로 통합했다(CR-111/WP-096). Commit history의 Copy 버튼을 클릭 가능한 텍스트(`CopyText` 신설)로 교체했다.
+
+조사용으로 띄운 서브에이전트 포크 하나가 지시 범위(읽기 전용 조사)를 넘어 별도 워크트리(`/home/roqkf/pr-search-wt/cr111-search-simplify`)에서 CR 등록·구현·신규 테스트·스크린샷까지 스스로 끝내 놓았다. advisor 자문 결과 폐기 대신 "미검토 PR"로 취급해 diff를 전부 정독하고, 서로 독립된 에이전트로 코드 리뷰를 2회(수동 정독+실제 재실행, `code-review` 스킬 effort high) 수행했다. 진짜 결함 5건(Radix Select typeahead가 전역 단축키로 새는 문제 등, `agent-context/risks.md` 참고)을 직접 고치고, 설계 판단이 필요한 엣지 케이스 2건은 `DEV-728`·`DEV-729`로만 등재했다.
+
+사용자 후속 요청으로 필터 영역 여백을 3라운드에 걸쳐 더 줄였고(`.repo-results-scroll` 높이 상수 689px→532px→474px→460px), `deploy/single-host/compose.yml`에 CR-110 후속인 `REGRESSION_FIXTURE_ENABLED` 환경변수를 추가했다. 전부 로컬 커밋 후(`370b838`, `origin/main`이 그 사이 움직여 rebase → `49c02e7`), 사용자 지시로 push → PR #216 → CI green 확인 → `gh pr merge --squash`로 `origin/main`에 병합했다(병합 커밋 `b6d9443`). 병합 직후 CI 재확인 조회가 Claude Code auto-mode의 [Merge Without Review] 가드에 막혀, 그 이후 문서 최종 기록은 사용자 확인 대기 중이다.
+
+상세 설계 결정은 `docs/00_governance/change_control.md`의 `CR-111`(및 `CR-110`의 compose.yml 후속 절)이 정본, 검증 기록은 원장 6.102장. 진행 과정 전체는 Obsidian `dailywork/2026-09-18_Search-화면-사이드바·필터-UI-간소화-(CR-111).md`에 더 상세히 있다.

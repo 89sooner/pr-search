@@ -2624,3 +2624,12 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 ## 착수할 때 실측할 것
 
 - 채번(CR/WP/DEV)은 `docs/` grep과 `gh pr list --state open` 둘 다로 재측정한다 — grep만으로는 머지 대기 PR의 선점을 못 본다.
+
+## CR-111 뒤 남은 것 (12차, 2026-09-19)
+
+- [ ] `pnpm run es:reindex` 실행 여부 — 통합 시험이 공유 Elasticsearch 인덱스를 재생성했다. 사용자 확인 대기.
+- [ ] `docs/00_governance/change_control.md`/`WP-096`/원장의 "병합 완료 후 별도 기록" 절을 실제 커밋 `b6d9443`·PR #216·상태 `done`으로 채우는 소규모 후속 커밋 — Merge Without Review 차단으로 보류, 사용자 확인 후 진행.
+- [ ] `DEV-729`(Range 필터 유형 전환 시 반쪽값이 다른 유형 제출을 막음) 처리 방향을 저자/제품 담당과 결정.
+- [ ] `DEV-728`(`playwright.config.ts`의 `PRS_LEGACY_SEARCH=1` 고정으로 e2e가 `RepositoryWorkspace`/`SourceHistory`에 전혀 도달 못함) 해소를 위한 별도 CR 검토.
+- [ ] 사이드바-결과 표 하단 정렬(CR-111 3차 조정)을 실 데이터가 있는 환경에서 스크롤 상태로 재확인.
+- [ ] worktree `cr111-search-simplify`도 병합 완료됐으니 기존 정리 대기 목록(cr102/103/105/106 계열)에 합류 — 여전히 사용자가 "나중에"로 보류 중.

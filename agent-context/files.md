@@ -2175,3 +2175,29 @@ pr-search (브랜치 `claude/first-internal-import-findings`, main = 268efa9에�
 ## 저장소 밖
 
 - 격리 DB `prs_test_cr100`·`prs_test_cr100_reg`·`prs_test_cr101`(prs-cr091-postgres). 워크트리 `/home/roqkf/pr-search-wt/cr100`·`cr101`. 메모리 `integration-tests-isolated-db-per-worktree.md`.
+
+## CR-111 코드 (12차)
+
+- `apps/web/components/RepositoryWorkspace.tsx` — Search 화면 본체. 사이드바(`Find Repository`/`Base branch` 콤보박스 + `SourceTree`), 필터 폼(`Collapsible`로 감싼 `repo-filter-grid`+`repo-range-filter`), `rangeType`/`deriveInitialRangeType` 상태, ⌘K/타입어헤드 키보드 가드(`[role="combobox"],[role="listbox"]` 포함)가 전부 이 파일 안에 있다.
+- `apps/web/components/source/SourceHistory.tsx` — Commit history 표. SHA/PR 복사가 `CopyText`(클릭 가능한 텍스트) 기반.
+- `apps/web/components/ui/index.tsx` — `CopyButton`(불변, `ResultWorkbench.tsx` 전용)과 신설 `CopyText`(텍스트 자체가 버튼) 둘 다 여기.
+- `apps/web/components/reader/primitives.tsx` — `FieldSelect`(Radix Select 래퍼, 옵션별 `disabled` 지원 추가).
+- `apps/web/lib/repository-search.ts`/`.test.ts` — `RangeType`, `deriveInitialRangeType`(URL에서 어느 range가 활성인지로 초기 유형 결정) 순수 함수.
+- `apps/web/app/repository-workspace.css` — 이 화면 전용 스타일. `.repo-results-scroll`의 `max-height` 상수(현재 460px)와 그 유도 공식이 이 파일 맨 위 주석에 있다 — 화면 구조를 또 바꾸면 반드시 재실측.
+- `apps/web/app/reader-workspace.css` — 여러 reader 화면 공유 스타일. `.reader-ui .repo-filter-form`/`.repo-filter-grid`/`.repo-filter-footer`/`.reader-panel-heading`이 `repository-workspace.css`의 같은 이름 규칙보다 specificity가 높아 실제로 이긴다 — 이 화면만 다르게 하려면 `--compact` 같은 modifier 클래스로 specificity를 맞춰 scoped override한다(이미 있는 패턴).
+- `apps/web/a11y/repository-workspace.test.tsx`, `apps/web/a11y/source-history.test.tsx` — 신설. 이 컴포넌트들을 직접 렌더링하는 유일한 자동화 시험(e2e는 `DEV-728`로 도달 못 함).
+- `deploy/single-host/compose.yml` — `web:` `environment:`의 `REGRESSION_FIXTURE_ENABLED`(CR-109/CR-110 관련).
+
+## CR-111 문서
+
+- `docs/00_governance/change_control.md` CR-111(범위 12개 항목, 설계 결정, 독립 리뷰 결과, 진행 절), CR-110(compose.yml 후속 절).
+- `docs/40_delivery/pr_search_work_packages.md` WP-096.
+- `docs/40_delivery/pr_search_implementation_traceability.md` 6.102장(검증 기록+후속 조정 2회), DEV-728·DEV-729.
+- `docs/20_derived_ui_specs/pr_search_{screen_qa_checklist,ui_component_spec,wireframe_spec}.md`.
+
+## 저장소 밖 (CR-111)
+
+- 워크트리 `/home/roqkf/pr-search-wt/cr111-search-simplify`(브랜치 `feature/cr111-search-simplify`, origin에 push됨, 병합 완료 — 정리 대기 목록에 추가).
+- PR https://github.com/89sooner/pr-search/pull/216 (MERGED, squash `b6d9443`). CI run `35450458507`.
+- Obsidian worklog `dailywork/2026-09-18_Search-화면-사이드바·필터-UI-간소화-(CR-111).md` — 이 세션의 가장 상세한 진행 기록.
+- 메모리 `integration-test-shares-elasticsearch.md`(신설).

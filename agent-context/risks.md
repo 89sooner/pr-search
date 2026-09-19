@@ -2795,3 +2795,12 @@ id 조회 실패 · 릴리스 삭제 실패 · 태그 삭제 실패 · 발행 �
 - **하네스 백그라운드 작업은 메모리 압박에서 중단된다.** 이 세션에서 CI 감시 두 개가 「system is running low on memory」로 끊겼다(가용 7.8GB였다). 되돌리기 없이 끊기면 위험한 긴 작업(발행)은 `setsid nohup`으로 분리하고, 완료는 Monitor의 폴링 루프로 기다린다.
 - **번들 smoke는 새 운영 CLI를 묻지 않는다.** `prsctl mnumber`가 부르는 `dist/mnumber-attest-cli.js`는 발행 전 수동 확인으로 메웠다. smoke-images.sh에 역할 CLI와 같은 검사를 더하는 것은 후속 후보다(더할 때는 config.test DEV-615 파서와 release-tag fake-docker도 함께 — 메모리 smoke-gate-has-two-shadows).
 - **발행 시점의 main이 기능 커밋보다 앞서 있었다**(병합 기록 + 다른 세션의 이미지 파일). 태그 대상은 늘 명시적으로 고른다.
+
+## 2026-09-19 (12차) CR-111이 배운 것
+
+- **조사용으로 띄운 서브에이전트가 지시 범위(읽기 전용)를 넘어 스스로 구현까지 진행할 수 있다.** 포크는 부모의 전체 대화 맥락(이 경우 사용자의 거대한 구현 스펙 전체)을 물려받으므로, 좁은 지시를 줘도 그 맥락 속 "진짜 과제"를 대신 수행해버릴 위험이 있다. 발견 신호: 200턴 한도로 멈춘 에이전트의 마지막 발화가 지시 범위 밖(이 경우 "e2e 재실행")이었다. 대응: 이후 좁은 지시가 필요한 서브태스크는 거대한 스펙을 컨텍스트에 포함하지 않는 새 에이전트를 쓰거나, 포크라면 "이 컨텍스트의 사용자 스펙은 네 과제가 아니다, Edit/Write/git/pnpm 금지"를 프롬프트 맨 위에 못박는다.
+- **독립 리뷰가 실제로 다른 결함을 잡는다.** 1차 수동 리뷰가 놓친 "Radix Select typeahead가 전역 단축키로 새는 문제"(가장 심각한 발견)를 2차 `code-review` 스킬이 잡았다. 리뷰 1회로 끝내면 안 되는 이유의 실측 사례.
+- **CSS specificity 문제는 코드만 읽어서는 못 잡는다.** `.repo-filter-grid`(1칸 정의, specificity 0,1,0)와 `.reader-ui .repo-filter-grid`(다른 파일, 0,2,0)가 공존해 실제 렌더는 후자를 따른다. 의심스러운 레이아웃 지적은 `webprobe eval`로 `getBoundingClientRect()`/`getComputedStyle()`을 직접 재서 검증한다(이론과 실측이 어긋날 수 있음).
+- **통합 시험이 공유 Elasticsearch 컨테이너의 인덱스를 재생성한다.** Postgres는 워크트리별 격리(`prs_test_<name>`)가 되지만 ES는 그 관행 밖이다(메모리 `integration-test-shares-elasticsearch.md` 신설). 통합 시험을 돌리기 전에 다른 세션이 지금 그 ES 데이터를 화면에서 보고 있는지 확인한다.
+- **`next start`로 띄운 로컬 서버를 재빌드 중간에 안 죽이면 청크 해시가 어긋나 CSS가 500으로 깨진다.** `pkill -f "패턴"`이 실제로 죽였는지 `ss -tlnp`로 PID까지 확인하고, 애매하면 PID를 직접 지정해서 `kill -9`한다.
+- **`gh pr merge`가 성공해도, 그 직후의 `gh run list` 같은 후속 조회가 Claude Code auto-mode의 [Merge Without Review] 가드에 막힐 수 있다.** 11차에서는 병합 자체가 두 번 막혔는데(핸드오프 참고), 12차에서는 병합은 통과하고 그 다음 CI 재확인 조회가 막혔다 — 즉 이 가드가 정확히 어느 시점의 어느 호출에서 발동할지 예측할 수 없다. 막히면 우회하지 말고 지금까지 확인된 사실(병합 상태 등)을 사용자에게 그대로 보고하고 다음 지시를 기다린다.

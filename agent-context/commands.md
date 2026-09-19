@@ -4358,3 +4358,33 @@ git ls-remote --tags origin refs/tags/0.1.0-pilot.13
 ```
 
 - 결과: 발행 `2026-09-17T04:18:56Z` · immutable · 태그 `3ba1c4b` · 자산 1,154,497,950 bytes · digest = 로컬 SHA-256 `f94f022378dd04cb04965e3596c2fe31321460cb64ca5763d78a91629471f7d3` · smoke 20건 통과 · 발행 이미지 ID = 선확인 이미지 ID(pipeline-worker `d35517e50d88`, db `a2888452720c`) · 재확인 통과. 선확인 빌드 약 1분, 발행 실행 13:13:21→13:18:57(업로드 약 1분 15초).
+
+## 2026-09-19 (12차) — CR-111 구현 검증 + 병합에서 쓴 것
+
+```bash
+# 로컬 검증 (워크트리 루트)
+. ~/.nvm/nvm.sh && nvm use 22
+pnpm typecheck && pnpm lint && pnpm run lint:deps
+pnpm --filter @prs/web run build
+pnpm test apps/web                        # 유닛, 루트에서 경로 필터로 실행 (apps/web/package.json엔 test 스크립트가 없다 -- pnpm --filter @prs/web run test는 조용히 no-op)
+pnpm --filter @prs/web run test:a11y      # 간헐 실패 재현/재검증할 때는 for 루프로 여러 번 반복
+
+# compose.yml 문법·변수 해석 검증 (필수 변수를 더미로 채워야 한다)
+cd deploy/single-host && PRS_VERSION=0.0.0-validate \
+  POSTGRES_APP_USER=u POSTGRES_APP_PASSWORD=p POSTGRES_DB=d \
+  POSTGRES_OWNER_USER=o POSTGRES_OWNER_PASSWORD=op \
+  GHE_BASE_URL=https://ghe.example \
+  SEARCH_CURSOR_HMAC_KEY=k GHE_WEBHOOK_SECRET=s \
+  docker compose -f compose.yml config --quiet   # exit 0이면 통과
+
+# origin/main 병합 (rebase가 필요할 수 있다 -- 항상 fetch로 먼저 확인)
+git fetch origin main
+git rebase origin/main                    # 충돌 없으면 바로 성공, 커밋 해시가 바뀐다
+git push -u origin <branch>
+gh pr create --title "..." --body "..."
+gh run watch <run-id>                     # gh pr checks --watch는 이 gh 버전에 없음(unknown flag). run-id는 gh pr checks <PR번호> 출력의 URL에서
+gh pr merge <PR번호> --squash --subject "..."
+gh pr view <PR번호> --json state,mergedAt,mergeCommit   # 병합 성공을 확실히 확인하는 방법
+```
+
+- 결과: typecheck/lint/lint:deps/build 전부 성공. 유닛 998/998(48 files). a11y 10회 연속 465/465(간헐 실패 재현 안 됨). `docker compose config` exit 0, `REGRESSION_FIXTURE_ENABLED: "0"`로 정상 렌더. rebase 충돌 없이 `370b838`→`49c02e7`. PR #216 CI(`35450458507`) verify+integration 전부 success(`gh run watch`로 실시간 확인, 약 7분 소요). `gh pr merge --squash` 성공, `gh pr view`로 `state: MERGED`, 병합 커밋 `b6d9443` 확인. 병합 직후 `gh run list`(재확인용)는 Claude Code auto-mode가 [Merge Without Review]로 차단 — 우회 시도하지 않고 사용자에게 보고.
