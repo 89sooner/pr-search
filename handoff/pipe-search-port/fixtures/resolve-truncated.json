@@ -1,0 +1,508 @@
+{
+  "input": "abc1234",
+  "detected_kind": "commit",
+  "candidates": [
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 300,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "69029b6c69029b6c69029b6c69029b6c69029b6c"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 301,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "073a151d073a151d073a151d073a151d073a151d"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 302,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "a5718ecea5718ecea5718ecea5718ecea5718ece"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 303,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "43a9087f43a9087f43a9087f43a9087f43a9087f"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 304,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "e1e08230e1e08230e1e08230e1e08230e1e08230"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 305,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "8017fbe18017fbe18017fbe18017fbe18017fbe1"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 306,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "1e4f75921e4f75921e4f75921e4f75921e4f7592"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 307,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "bc86ef43bc86ef43bc86ef43bc86ef43bc86ef43"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 308,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "5abe68f45abe68f45abe68f45abe68f45abe68f4"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 309,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "f8f5e2a5f8f5e2a5f8f5e2a5f8f5e2a5f8f5e2a5"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 310,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "972d5c56972d5c56972d5c56972d5c56972d5c56"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 311,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "3564d6073564d6073564d6073564d6073564d607"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 312,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "d39c4fb8d39c4fb8d39c4fb8d39c4fb8d39c4fb8"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 313,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "71d3c96971d3c96971d3c96971d3c96971d3c969"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 314,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "100b431a100b431a100b431a100b431a100b431a"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 315,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "ae42bccbae42bccbae42bccbae42bccbae42bccb"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 316,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "4c7a367c4c7a367c4c7a367c4c7a367c4c7a367c"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 317,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "eab1b02deab1b02deab1b02deab1b02deab1b02d"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 318,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "88e929de88e929de88e929de88e929de88e929de"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 319,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "2720a38f2720a38f2720a38f2720a38f2720a38f"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 320,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "c5581d40c5581d40c5581d40c5581d40c5581d40"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 321,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "638f96f1638f96f1638f96f1638f96f1638f96f1"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 322,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "01c710a201c710a201c710a201c710a201c710a2"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 323,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "9ffe8a539ffe8a539ffe8a539ffe8a539ffe8a53"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 324,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "3e3604043e3604043e3604043e3604043e360404"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 325,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "dc6d7db5dc6d7db5dc6d7db5dc6d7db5dc6d7db5"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 326,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "7aa4f7667aa4f7667aa4f7667aa4f7667aa4f766"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 327,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "18dc711718dc711718dc711718dc711718dc7117"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 328,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "b713eac8b713eac8b713eac8b713eac8b713eac8"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 329,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "554b6479554b6479554b6479554b6479554b6479"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 330,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "f382de2af382de2af382de2af382de2af382de2a"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 331,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "91ba57db91ba57db91ba57db91ba57db91ba57db"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 332,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "2ff1d18c2ff1d18c2ff1d18c2ff1d18c2ff1d18c"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 333,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "ce294b3dce294b3dce294b3dce294b3dce294b3d"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 334,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "6c60c4ee6c60c4ee6c60c4ee6c60c4ee6c60c4ee"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 335,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "0a983e9f0a983e9f0a983e9f0a983e9f0a983e9f"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 336,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "a8cfb850a8cfb850a8cfb850a8cfb850a8cfb850"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 337,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "4707320147073201470732014707320147073201"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 338,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "e53eabb2e53eabb2e53eabb2e53eabb2e53eabb2"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 339,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "8376256383762563837625638376256383762563"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 340,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "21ad9f1421ad9f1421ad9f1421ad9f1421ad9f14"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 341,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "bfe518c5bfe518c5bfe518c5bfe518c5bfe518c5"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 342,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "5e1c92765e1c92765e1c92765e1c92765e1c9276"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 343,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "fc540c27fc540c27fc540c27fc540c27fc540c27"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 344,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "9a8b85d89a8b85d89a8b85d89a8b85d89a8b85d8"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 345,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "38c2ff8938c2ff8938c2ff8938c2ff8938c2ff89"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 346,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "d6fa793ad6fa793ad6fa793ad6fa793ad6fa793a"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 347,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "7531f2eb7531f2eb7531f2eb7531f2eb7531f2eb"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 348,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "13696c9c13696c9c13696c9c13696c9c13696c9c"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 349,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "b1a0e64db1a0e64db1a0e64db1a0e64db1a0e64d"
+    }
+  ],
+  "truncated": true,
+  "correlation_id": "00000000-0000-4000-8000-00000000f018"
+}

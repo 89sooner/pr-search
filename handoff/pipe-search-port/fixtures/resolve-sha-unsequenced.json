@@ -1,0 +1,18 @@
+{
+  "input": "f00dcaf",
+  "detected_kind": "commit",
+  "candidates": [
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": null,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "2f740f732f740f732f740f732f740f732f740f73"
+    }
+  ],
+  "truncated": false,
+  "correlation_id": "00000000-0000-4000-8000-00000000f014"
+}

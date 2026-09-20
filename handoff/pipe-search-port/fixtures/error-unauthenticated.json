@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "UNAUTHENTICATED",
+    "message": "Your session is missing or expired",
+    "detail": {
+      "login_path": "/login"
+    }
+  },
+  "correlation_id": "00000000-0000-4000-8000-00000000e002"
+}

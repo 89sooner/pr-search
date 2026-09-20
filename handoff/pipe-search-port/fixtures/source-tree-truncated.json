@@ -1,0 +1,23 @@
+{
+  "repository": "demo/modem",
+  "ref": "main",
+  "revision": "08b35b6808b35b6808b35b6808b35b6808b35b68",
+  "path": "src/phy",
+  "entries": [
+    {
+      "path": "src/phy/rf_calibration.c",
+      "name": "rf_calibration.c",
+      "sha": "e42554ebe42554ebe42554ebe42554ebe42554eb",
+      "kind": "file",
+      "size": 12000
+    },
+    {
+      "path": "src/phy/rf_config.h",
+      "name": "rf_config.h",
+      "sha": "188ea6c0188ea6c0188ea6c0188ea6c0188ea6c0",
+      "kind": "file",
+      "size": 1800
+    }
+  ],
+  "truncated": true
+}

@@ -1,0 +1,10 @@
+{
+  "repository": "demo/modem",
+  "revision": "7156075071560750715607507156075071560750",
+  "path": "src/generated/tables.c",
+  "status": "too_large",
+  "text": null,
+  "size": 12000000,
+  "sha": null,
+  "reason": "This file exceeds the size limit for interactive viewing."
+}

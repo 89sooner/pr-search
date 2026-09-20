@@ -1,0 +1,18 @@
+{
+  "input": "c81fa22",
+  "detected_kind": "commit",
+  "candidates": [
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": "RF configuration",
+      "url": null,
+      "merge_seq": 42,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "f519f70af519f70af519f70af519f70af519f70a"
+    }
+  ],
+  "truncated": false,
+  "correlation_id": "00000000-0000-4000-8000-00000000f011"
+}

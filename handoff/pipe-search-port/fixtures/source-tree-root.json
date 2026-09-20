@@ -1,0 +1,58 @@
+{
+  "repository": "demo/modem",
+  "ref": "main",
+  "revision": "08b35b6808b35b6808b35b6808b35b6808b35b68",
+  "path": "",
+  "entries": [
+    {
+      "path": "src",
+      "name": "src",
+      "sha": "8d12dfd08d12dfd08d12dfd08d12dfd08d12dfd0",
+      "kind": "directory",
+      "size": null
+    },
+    {
+      "path": "tests",
+      "name": "tests",
+      "sha": "7cb9d25f7cb9d25f7cb9d25f7cb9d25f7cb9d25f",
+      "kind": "directory",
+      "size": null
+    },
+    {
+      "path": "docs",
+      "name": "docs",
+      "sha": "708a7ae0708a7ae0708a7ae0708a7ae0708a7ae0",
+      "kind": "directory",
+      "size": null
+    },
+    {
+      "path": "README.md",
+      "name": "README.md",
+      "sha": "1c3a9a991c3a9a991c3a9a991c3a9a991c3a9a99",
+      "kind": "file",
+      "size": 2048
+    },
+    {
+      "path": "build.sh",
+      "name": "build.sh",
+      "sha": "d6fa793ad6fa793ad6fa793ad6fa793ad6fa793a",
+      "kind": "file",
+      "size": 512
+    },
+    {
+      "path": "link-to-src",
+      "name": "link-to-src",
+      "sha": "7f4c6f717f4c6f717f4c6f717f4c6f717f4c6f71",
+      "kind": "symlink",
+      "size": 0
+    },
+    {
+      "path": "vendor/lib",
+      "name": "lib",
+      "sha": "84bf73ec84bf73ec84bf73ec84bf73ec84bf73ec",
+      "kind": "submodule",
+      "size": null
+    }
+  ],
+  "truncated": false
+}

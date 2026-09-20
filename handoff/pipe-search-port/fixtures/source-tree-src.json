@@ -1,0 +1,37 @@
+{
+  "repository": "demo/modem",
+  "ref": "main",
+  "revision": "08b35b6808b35b6808b35b6808b35b6808b35b68",
+  "path": "src",
+  "entries": [
+    {
+      "path": "src/phy",
+      "name": "phy",
+      "sha": "2ff1d18c2ff1d18c2ff1d18c2ff1d18c2ff1d18c",
+      "kind": "directory",
+      "size": null
+    },
+    {
+      "path": "src/l1",
+      "name": "l1",
+      "sha": "073a151d073a151d073a151d073a151d073a151d",
+      "kind": "directory",
+      "size": null
+    },
+    {
+      "path": "src/rrc",
+      "name": "rrc",
+      "sha": "2ff1d18c2ff1d18c2ff1d18c2ff1d18c2ff1d18c",
+      "kind": "directory",
+      "size": null
+    },
+    {
+      "path": "src/main.c",
+      "name": "main.c",
+      "sha": "aa1906d9aa1906d9aa1906d9aa1906d9aa1906d9",
+      "kind": "file",
+      "size": 9001
+    }
+  ],
+  "truncated": false
+}

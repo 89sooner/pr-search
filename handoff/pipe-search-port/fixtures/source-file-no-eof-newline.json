@@ -1,0 +1,10 @@
+{
+  "repository": "demo/modem",
+  "revision": "7156075071560750715607507156075071560750",
+  "path": "src/phy/no_newline.c",
+  "status": "text",
+  "text": "int a = 1;\nint b = 2;",
+  "size": 21,
+  "sha": "f1bbcd88f1bbcd88f1bbcd88f1bbcd88f1bbcd88",
+  "reason": null
+}

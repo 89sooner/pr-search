@@ -1,0 +1,8 @@
+{
+  "message": "RF update\n\nAdjust the calibration table for the new front-end module.",
+  "base_branch": "main",
+  "changed_paths": [
+    "src/phy/rf_calibration.c"
+  ],
+  "changed_paths_truncated": false
+}

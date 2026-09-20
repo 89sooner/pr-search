@@ -1,0 +1,335 @@
+{
+  "artifact_type": "stage1_handoff_package_for_pipe_search_port",
+  "version": "1.0",
+  "date": "2026-09-21",
+  "source_repository": "89sooner/pr-search",
+  "source_commit": "da0ed9b5bd8fac59c7fcf02c593f69962468be4d",
+  "source_commit_date": "2026-09-21T00:56:40+09:00",
+  "ported_screen": "apps/web/components/RepositoryWorkspace.tsx (default /search)",
+  "scope_excludes": [
+    "app shell",
+    "authentication",
+    "api transport wiring",
+    "search authorization"
+  ],
+  "verification": {
+    "unit_tests": "120/120 passed (apps/web/lib pure logic, Node 22.23.2)",
+    "query_package_tests": "115/115 passed (packages/query identifier + parse)",
+    "a11y_tests": "15/15 passed (apps/web/a11y/repository-workspace.test.tsx)",
+    "fixtures": "52/52 passed contract-structure validation",
+    "rendered_screen_evidence": "NOT RUN (backend not started)",
+    "contrast_measurement": "NOT RUN",
+    "pipe_environment": "NOT VERIFIABLE (no access to PIPE repository)",
+    "date_range_semantics": "VERIFIED (inclusive gte/lte, UTC, both bounds required)"
+  },
+  "file_count": 61,
+  "total_bytes": 595216,
+  "files": [
+    {
+      "name": "API_AND_ADAPTER_CONTRACT.md",
+      "bytes": 36703,
+      "sha256": "3418107cd00e3b6de6e7cb24595b236ff8b41a44277540ef4d01f30c7bf4df77"
+    },
+    {
+      "name": "DESIGN_AND_WIREFRAMES.md",
+      "bytes": 50847,
+      "sha256": "c2fbd6a6582f48623ff8c95b35004bb8a045c6245ac2d9191365ab6ef03985de"
+    },
+    {
+      "name": "PARITY_AND_ACCEPTANCE.md",
+      "bytes": 43391,
+      "sha256": "3753d0dd05cdb8b32e86b470b0c225a3a4d11f9b6dbb2b0063e553daf549ec48"
+    },
+    {
+      "name": "PIPE_SEARCH_IMPLEMENTATION_PROMPT.md",
+      "bytes": 64093,
+      "sha256": "7f17844f0e08527f56a49b3bbfc40085f5506a1600e458f858372d4ae252d87d"
+    },
+    {
+      "name": "README.md",
+      "bytes": 8879,
+      "sha256": "f3d5adb1254dc1d1002c6a605e417899892b1533f92ec50cbf67409e56ac95f1"
+    },
+    {
+      "name": "SOURCE_EVIDENCE.md",
+      "bytes": 53080,
+      "sha256": "3ddd51ece86daf67586b083fac79a312ff23cbafb44a539e31ab25b26ca39e82"
+    },
+    {
+      "name": "fixtures/SCENARIOS.md",
+      "bytes": 13354,
+      "sha256": "543af625b884db114c06f95d319c0973a3d43c10b3711ab2d227c0b217c62a9e"
+    },
+    {
+      "name": "fixtures/detail-commit.json",
+      "bytes": 209,
+      "sha256": "6fe68f242d28e40749f028eff6cd3a038ed3ca08bf85645b65242771bcce8541"
+    },
+    {
+      "name": "fixtures/detail-pr-1842.json",
+      "bytes": 759,
+      "sha256": "e2a1ed8a64f90a4bde32976e8d452032ebd1bf0e208f553512b96d9f1fd180f5"
+    },
+    {
+      "name": "fixtures/detail-pr-truncated.json",
+      "bytes": 19335,
+      "sha256": "a88ec363fa18a59dbe290e16c1afac6cfb589913760df5d302972bfb203346f1"
+    },
+    {
+      "name": "fixtures/detail-pr-uncollected.json",
+      "bytes": 253,
+      "sha256": "343e493719b8b5beec1ec07b2496cf1f523cafb238eace14194687f2ce9de188"
+    },
+    {
+      "name": "fixtures/error-cursor-invalid.json",
+      "bytes": 212,
+      "sha256": "bd4d46f5538c678e01cfa07d412b516471f04f80948d5388b6811b6a9e7fee96"
+    },
+    {
+      "name": "fixtures/error-permission-unavailable.json",
+      "bytes": 197,
+      "sha256": "7deaeecda08f9526e67978ef6f9d93e6232430505341d97239967a7aaf09e246"
+    },
+    {
+      "name": "fixtures/error-source-not-found.json",
+      "bytes": 145,
+      "sha256": "a1491910383fff7e236f39d4d7905188911c1d476173375166c10ae24a4d0cf5"
+    },
+    {
+      "name": "fixtures/error-unauthenticated.json",
+      "bytes": 216,
+      "sha256": "f5d6dea4a0f1d62f97d12f667179ac32768c2f5f3360506cb5e7ba403cdd36e2"
+    },
+    {
+      "name": "fixtures/repositories-empty.json",
+      "bytes": 41,
+      "sha256": "0ba0a19264d99ae5d49caa5cb1ee737799cba962afb923c602f96120df6f6813"
+    },
+    {
+      "name": "fixtures/repositories-page1.json",
+      "bytes": 66366,
+      "sha256": "b55b25d519c376a91ae1aa8f76041e192103abba3d85f83b7feced3c64f6f80f"
+    },
+    {
+      "name": "fixtures/repositories-page2-empty.json",
+      "bytes": 46,
+      "sha256": "ae149d89798fbe12060da07076f7b3a4ad2d865283ff03506eec2700402f726c"
+    },
+    {
+      "name": "fixtures/repositories-page3.json",
+      "bytes": 5528,
+      "sha256": "175830bf2a08329aa152605af9d971e39b41a19f3f427e6d6d01091948020d69"
+    },
+    {
+      "name": "fixtures/resolve-empty.json",
+      "bytes": 343,
+      "sha256": "48e19ae61bcd779c4043414a9c455a31b142f616830d52dea839f20887f70d92"
+    },
+    {
+      "name": "fixtures/resolve-pr.json",
+      "bytes": 529,
+      "sha256": "13542b7029d0de28a12ed0bef9b2286eafb436204f1c4db30de9af9f2d05965c"
+    },
+    {
+      "name": "fixtures/resolve-sha-ambiguous.json",
+      "bytes": 696,
+      "sha256": "656f6e64cab14b2fafba94ce2e80cb6f48d9ce026c043ed88acee622f83b4082"
+    },
+    {
+      "name": "fixtures/resolve-sha-from-ok.json",
+      "bytes": 441,
+      "sha256": "5754e298ddab2d44e97a3f0d6449b27d4f0a94ce9358af7c026ceb91b4d5970a"
+    },
+    {
+      "name": "fixtures/resolve-sha-other-branch.json",
+      "bytes": 430,
+      "sha256": "d2abd4ecfa31ab78a076cf026bafc7dd7cc6582884290ae0089c79e0ff487b4f"
+    },
+    {
+      "name": "fixtures/resolve-sha-reversed.json",
+      "bytes": 427,
+      "sha256": "f3ddd956356041fdb72b195d71e2f5baf0aeef46d6a2c7aa0b8b3a0a2545638e"
+    },
+    {
+      "name": "fixtures/resolve-sha-to-ok.json",
+      "bytes": 434,
+      "sha256": "d86ea9bf0848a6ec4e46df035c5ad590844dbc1b6462f4f3ff92760361b7cef6"
+    },
+    {
+      "name": "fixtures/resolve-sha-unsequenced.json",
+      "bytes": 429,
+      "sha256": "7c8f31bb7b0459fd918ec2d33ffbebee0062df4aeadecfc20ae81f45534ead3f"
+    },
+    {
+      "name": "fixtures/resolve-truncated.json",
+      "bytes": 13657,
+      "sha256": "a408738c6416a4d4e934622a00e16e3901e310f7e6f211e87c84a3185bc3ec2e"
+    },
+    {
+      "name": "fixtures/search-empty.json",
+      "bytes": 436,
+      "sha256": "9dbd8f95c80cfc3bcb84ffbcda6fc13504699f6bee3577a25680531b841b816e"
+    },
+    {
+      "name": "fixtures/search-epoch-stale.json",
+      "bytes": 361,
+      "sha256": "8186525f88ad15c0a0c9de9f517e438d34a9ef3d2e0d5b0902400f9ba0084666"
+    },
+    {
+      "name": "fixtures/search-messy-rows.json",
+      "bytes": 3488,
+      "sha256": "2090615d6186d76dd43d0653a0261b9c5061e244ea20b80f6907b860ddb8a441"
+    },
+    {
+      "name": "fixtures/search-mnumber-states.json",
+      "bytes": 5791,
+      "sha256": "c6e79de7d326222496a958e8a3d5b2ac55769e3ea05a52b1677905852f3ba73d"
+    },
+    {
+      "name": "fixtures/search-page1.json",
+      "bytes": 35884,
+      "sha256": "2a0459cf60aa3caf39fb1e0c2e5f0255dbb8c1291c0bc1e26796dca8b605b96a"
+    },
+    {
+      "name": "fixtures/search-page2.json",
+      "bytes": 34966,
+      "sha256": "0219896b0261d387dc2aa4ac9409645601d7953ccd54e2b9b3e222e16f0620a8"
+    },
+    {
+      "name": "fixtures/search-page3.json",
+      "bytes": 16230,
+      "sha256": "1eab0f933741cde8f481b36aff15385c8d904cba612f407e115ace03803a4871"
+    },
+    {
+      "name": "fixtures/search-total-gte.json",
+      "bytes": 35887,
+      "sha256": "006158099e0e13c970f8694d4389a1e81907f4e87cf73567b06729b1c0fef832"
+    },
+    {
+      "name": "fixtures/source-diff-empty.json",
+      "bytes": 372,
+      "sha256": "59c0aee8084840f0ae75fc2abffc3605dcea41977b51e3c2cae537d6bef8cc39"
+    },
+    {
+      "name": "fixtures/source-diff-file-states.json",
+      "bytes": 1481,
+      "sha256": "65708a4a93153d27f48ec366880b7234381f2c2d62c162ff461668d9477c594e"
+    },
+    {
+      "name": "fixtures/source-diff-page1.json",
+      "bytes": 962,
+      "sha256": "ab1512514029636d189c13696f4163bb99756a89c82e2e7a333386f13a7e5e83"
+    },
+    {
+      "name": "fixtures/source-diff-page2-moved.json",
+      "bytes": 699,
+      "sha256": "0ef7a177f2fb3f18467e768b638f71aed4d31c96a195030dbc1d2b7ff44373be"
+    },
+    {
+      "name": "fixtures/source-diff-page2.json",
+      "bytes": 805,
+      "sha256": "c3589027080b87dd0e1ebd75458f61e69a73669c810cebf792a652e8f98a4e46"
+    },
+    {
+      "name": "fixtures/source-file-after.json",
+      "bytes": 503,
+      "sha256": "2c257b4b98024d35b6b837df826db577c8f78f67094c84d56c4a5c9215cd2e39"
+    },
+    {
+      "name": "fixtures/source-file-before.json",
+      "bytes": 417,
+      "sha256": "685f917877a9119e24f5f45e0c86de5b3db285c5de8575b66150ed376f5c8256"
+    },
+    {
+      "name": "fixtures/source-file-binary.json",
+      "bytes": 254,
+      "sha256": "cee1a09593e12b5da1b5bb9d9d3c90f02c77b3243e6fadfb17bbf35189c5ccd1"
+    },
+    {
+      "name": "fixtures/source-file-crlf.json",
+      "bytes": 266,
+      "sha256": "fa30c648eee64fb95116e283e3cfc589e1340f176d7fc270ebee571336bc9c9a"
+    },
+    {
+      "name": "fixtures/source-file-empty.json",
+      "bytes": 244,
+      "sha256": "24b1bd2c94fa31269809d42f990cf324b3caf6ef681b17f227fed5cc53f1cd9a"
+    },
+    {
+      "name": "fixtures/source-file-missing.json",
+      "bytes": 251,
+      "sha256": "efe92d31b11b5d9d36de6d86aca680ac3b1a7adf251cca0ea24023e784d483bd"
+    },
+    {
+      "name": "fixtures/source-file-no-eof-newline.json",
+      "bytes": 266,
+      "sha256": "33d9f2428e34c532bbf5ee269d613b5a9c17b1d7ef0de0af8b2a3fb06baee908"
+    },
+    {
+      "name": "fixtures/source-file-too-large.json",
+      "bytes": 276,
+      "sha256": "2d443c24808de9801fefca56bb2f2b3a5a44ccb3ca40ee518fbf79cfbbda599c"
+    },
+    {
+      "name": "fixtures/source-file-unicode.json",
+      "bytes": 746,
+      "sha256": "f2762301e59d92dd94165be83a92a480e5baee2f619b93e7fc42bb80812285f4"
+    },
+    {
+      "name": "fixtures/source-history-empty.json",
+      "bytes": 159,
+      "sha256": "30a36cb05f35454a537ec73d01ecc28047a3bf080c97810583e556dbad98db48"
+    },
+    {
+      "name": "fixtures/source-history-moved-head.json",
+      "bytes": 6316,
+      "sha256": "ab72da3c9bb5cf5fa1208717676c9bd93122864c1dbb7828c981b1a43e1283d2"
+    },
+    {
+      "name": "fixtures/source-history-page1.json",
+      "bytes": 15532,
+      "sha256": "993fdd0f4bc690e7e0c8135a480337b31085a71924426e2fec72c3898599706e"
+    },
+    {
+      "name": "fixtures/source-history-page2.json",
+      "bytes": 6316,
+      "sha256": "2d86766e926e76c3eb91bc9086ac581b5483912580a0bc0604a895a346ecc6ba"
+    },
+    {
+      "name": "fixtures/source-history-pr-states.json",
+      "bytes": 1448,
+      "sha256": "cbe14f295f9ab7aea6591afa6911a4478bf45f05eaa5bd8b51be5307dd302c9c"
+    },
+    {
+      "name": "fixtures/source-tree-root.json",
+      "bytes": 1304,
+      "sha256": "d9f8062f12b4aa437165a7d3237600a9a1dc6bcf624008e84245fb67b1609c0b"
+    },
+    {
+      "name": "fixtures/source-tree-src.json",
+      "bytes": 813,
+      "sha256": "987a61b7b33cb29805eafe1eaa26ae75bbc9c3b5a848c02f185af8911d667ac4"
+    },
+    {
+      "name": "fixtures/source-tree-truncated.json",
+      "bytes": 534,
+      "sha256": "53f72e73d478b6c7991f9757968f261fc003bb8646def8f01a9ed79a5abe42e4"
+    },
+    {
+      "name": "fixtures/source-tree-unicode.json",
+      "bytes": 687,
+      "sha256": "88cf8a42274319ffbe2d438cb95ff8cfde7ce3f51a0f5b59c11c61cb9ec82022"
+    },
+    {
+      "name": "fixtures/validate-fixtures.mjs",
+      "bytes": 7083,
+      "sha256": "3f6bea3e5d7eeb9119c80984fde51f16ecca1c0881ac0fb80ff62b5be827f1ae"
+    },
+    {
+      "name": "reference/PURE_LOGIC_REFERENCE.md",
+      "bytes": 33399,
+      "sha256": "f6b9737d3139e1d678e11284c79d02c9451be8838648b88ec7188322a816258e"
+    }
+  ],
+  "hash_basis": "sha256 over LF-normalized content (repo uses core.autocrlf=true)"
+}
