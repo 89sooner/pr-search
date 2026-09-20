@@ -1,6 +1,39 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.96 | 갱신일: 2026-09-18
+> 상태: review | 버전: v6.97 | 갱신일: 2026-09-21
+
+## 0.1.0-pilot.16 발행 — CR-111 반영 (2026-09-21)
+
+사용자 지시로 `origin/main` HEAD `5f0d7e0`(W-024 문서) 기준으로 발행했다. `git fetch origin` 재확인 뒤 그 SHA를 고정해 발행 전 main CI(`gh api .../commits/5f0d7e0/check-runs`)가 `verify`·`integration` 모두 `success`임을 확인하고 착수했다. pilot.15(`2a9fe51`) 이후 main에 쌓인 커밋 넷을 처음 담는다: `b6d9443`(CR-111 / WP-096, Search 화면 좌측 패널·필터 UI 간소화, PR [#216](https://github.com/89sooner/pr-search/pull/216)), `8cfb465`(「Refactor code structure for improved readability and maintainability」— CR/WP 참조 없는 커밋이나 main CI green을 확인했으므로 범위를 임의로 짓지 않고 그대로 포함), `03b80d2`(CR-111 구현에 대한 handoff 문서 갱신), `5f0d7e0`(W-024 Regression Workbench 사용자 가이드).
+
+배포 표면은 pilot.15 이후 `deploy/single-host/compose.yml`의 `web:` `environment:`에 `REGRESSION_FIXTURE_ENABLED: ${REGRESSION_FIXTURE_ENABLED:-0}` 한 줄이 추가된 것이 전부다(`git diff --stat 0.1.0-pilot.15..origin/main -- Dockerfile .dockerignore deploy/ docker-compose.yml compose.yml`로 그 외 변경 없음을 사전 확인). 이 줄은 CR-110 후속(2026-09-19, 아래 pilot.15 절 참고)이 규정한 계약이며 `b6d9443`에 실려 들어왔다. 기본값 0(꺼짐)이라 기존 배포 동작은 바뀌지 않는다.
+
+다른 Claude Code 세션(`819ab7bf`, 2026-09-20 09:07 기동)이 `cr111-search-simplify` 워크트리에서 next 서버(PID 65459, 포트 3200)를 띄워 쓰고 있어 공유 checkout 대신, `5f0d7e0`에 고정한 별도 detached worktree(`/home/roqkf/pr-search-wt/release16`)에서 만들었다.
+
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.16
+- 태그: `5f0d7e0e5f2a0f492d56ffb0c39ddd7a618f42a6`(manifest `branch`는 `HEAD` — 분리된 워크트리에서 만들었다. pilot.8·13·14와 같다)
+- 자산: `pr-search-0.1.0-pilot.16-offline.tar.gz`, 1,156,918,968 bytes
+- 별도 채널 전달 SHA-256: `f683a520a78b458c5c0a27350ce03f12743dbb920417c039ef9aa6ef0f7e9e10`
+- 로컬 checksum과 GitHub asset digest 일치, state uploaded, immutable releases 켜짐(발행 뒤 자산·태그가 잠긴다). 발행 전 초안 자산(이름·크기·digest) 대조(로그 `[00:39:29] 초안 자산 대조 (발행 전)`)와 발행 후 재확인(로그 `[00:39:30] 발행 확인`) 모두 통과. 발행이 끝난 뒤에도 `git ls-remote --tags`·`gh api releases/tags`·로컬 `sha256sum`으로 독립적으로 재대조해 태그 타깃과 digest·크기가 모두 일치함을 다시 확인했다.
+- tar 재적재 뒤 smoke 통과: web(기동·`/healthz` 200·SSR 10종 200·API 프록시 401·해시 외부 모듈 `pg-71df57fbe79e18ab` 해석·손 조치 흔적 없음·인증/쿠키 허용-거부 구성 9종), pipeline-worker(git 2.54.0), gh-executor(gh 2.97.0 고정 바이너리 해시·비루트·읽기 전용 기동·봉인 키 없으면 거부), search-api(관리자 역할 CLI, DB 접속 전 종료 코드 2).
+- 문서 정합성: CR-111의 `change_control.md` 서술("상태: implementing")과 `work_packages.md`의 WP-096 절("상태: in_progress")은 그 구현 커밋(`b6d9443`) 자체가 작성한, push·병합 이전 시점의 스냅숏이다 — 실제로는 PR #216이 `b6d9443`으로 병합되어 이미 `origin/main`에 반영됐고 이 릴리스에 포함됐다. 3장 상태표에는 WP-096 행 자체가 아직 없다(WP-090/091/095처럼 행을 정정할 대상이 없다). pilot.14가 세운 선례와 같은 이유로 `change_control.md`·`work_packages.md`는 이 원장 갱신의 범위 밖이라 손대지 않았다.
+- 이번 발행에 앞서 워크트리 정리를 함께 수행했다: 기존 31개(main 제외) 중 28개를 origin/main 반영 확인 뒤 `git worktree remove`로 제거했다 — `gh pr list`의 MERGED 상태로 확인 19개, origin/main 조상 확인(detached worktree 포함) 6개, 원장의 done 표기·역방향 patch-apply로 확인 3개. `contracts`(CRLF 개행 차이만 있는 dirty 상태, `--force` 제거가 정책상 차단돼 남겨 둠), `cr111-search-simplify`(위 다른 세션이 사용 중이라 보류), `regression-first-slice`(CR-108/WP-094, 의도적 미병합)는 유지했다. 상세는 PR [#217](https://github.com/89sooner/pr-search/pull/217) 설명 참고.
+- 사내 실제 GHE 데이터 및 재반입 검증은 NOT RUN이다.
+
+## 0.1.0-pilot.15 발행 — CR-110 반영 (2026-09-18, 사후 기록)
+
+이 절은 원래 발행 시점(2026-09-18)에 기록됐어야 하나 원장에 없었다 — pilot.16 작업 중 발견해 이번에 GitHub API·git으로 사실만 다시 실측해 채운다. 당시 세션이 이 절을 왜 남기지 않았는지는 이 세션에서 확인할 방법이 없다.
+
+`origin/main` HEAD `2a9fe51` 기준으로 발행됐다. pilot.14(`3fca8a6`, CR-109) 이후 커밋 셋을 담는다 — `c590c74`(CR-110), `d759beb`(pilot.14 발행 기록, PR [#215](https://github.com/89sooner/pr-search/pull/215)), 그리고 이 둘을 합친 병합 커밋 `2a9fe51`("Merge remote-tracking branch 'origin/main'") 자체. 헤드라인 변경은 CR-110 하나다: `change_control.md`에 따르면 `NEXT_PUBLIC_REGRESSION_ENABLED=0` 기본값이 Regression nav·route를 Next 빌드 시점에 조건부로 인라인해, 단일-host 번들에 그 build argument를 주지 않는 이상 사내 런타임 `.env`로 값을 바꿔도 이미 만든 번들에는 경로가 생기지 않는 문제가 있었다. CR-109의 안전 경계는 fixture opt-in만으로 충분하다고 보고 route/nav를 항상 노출로, provider 미구성 시 empty state를 기본으로 바꿨다(`REGRESSION_FIXTURE_ENABLED=1`만 합성 데이터를 켠다). `compose.yml`에 그 플래그 자체를 배선하는 후속 조치(위 pilot.16 절 참고)는 2026-09-19로 CR-110 기록에 남아 있으나 실제 커밋은 이후 `b6d9443`에 실려 들어왔다.
+
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.15
+- 태그: `2a9fe51914a459173c6522af762190e7d1b40f95`
+- 자산: `pr-search-0.1.0-pilot.15-offline.tar.gz`, 1,156,534,612 bytes
+- 별도 채널 전달 SHA-256(2026-09-21 GitHub API 재조회 값): `c0d7b02544cf8ede77da3b0d4b6942f372460c09f0070d84cb40e10bb60a1d4e`
+- 발행 시각: 초안 2026-09-18T08:30:40Z, 공개 2026-09-18T08:58:01Z. GitHub API 기준 asset state `uploaded`.
+- 이 항목은 빌드 로그·초안 대조·smoke 결과가 원장에 남아 있지 않아 pilot.6·14·16처럼 발행 당시 검증 세부를 적을 수 없다 — 위 자산 정보만 사후에 확인 가능한 사실이다. 워크트리 `release15`(`/home/roqkf/pr-search-wt/release15`)가 이 태그와 정확히 같은 커밋(`2a9fe51`)을 가리키는 detached HEAD였으므로 이 발행에 쓰였던 것으로 보이나, 그 워크트리는 이번 정리 작업(2026-09-21)에서 이미 제거했다.
+- 문서 정합성: `change_control.md`의 CR-110도 "상태: implementing"으로 남아 있다 — 같은 이유(push 이전 스냅숏)로 보이나, 이 backfill 절의 범위를 벗어나므로 정정하지 않는다.
+- 사내 실제 GHE 데이터 및 재반입 검증 여부는 이 사후 기록에서 확인할 수 없다.
 
 ## 0.1.0-pilot.14 발행 — CR-102~109 여덟 건 누적 (2026-09-18)
 
