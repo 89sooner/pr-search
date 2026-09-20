@@ -8,16 +8,16 @@
 
 배포 표면은 pilot.15 이후 `deploy/single-host/compose.yml`의 `web:` `environment:`에 `REGRESSION_FIXTURE_ENABLED: ${REGRESSION_FIXTURE_ENABLED:-0}` 한 줄이 추가된 것이 전부다(`git diff --stat 0.1.0-pilot.15..origin/main -- Dockerfile .dockerignore deploy/ docker-compose.yml compose.yml`로 그 외 변경 없음을 사전 확인). 이 줄은 CR-110 후속(2026-09-19, 아래 pilot.15 절 참고)이 규정한 계약이며 `b6d9443`에 실려 들어왔다. 기본값 0(꺼짐)이라 기존 배포 동작은 바뀌지 않는다.
 
-다른 세션(Codex)이 `cr111-search-simplify` 워크트리에서 next 서버를 띄워 쓰고 있어 공유 checkout 대신, `5f0d7e0`에 고정한 별도 detached worktree(`/home/roqkf/pr-search-wt/release16`)에서 만들었다.
+다른 Claude Code 세션(`819ab7bf`, 2026-09-20 09:07 기동)이 `cr111-search-simplify` 워크트리에서 next 서버(PID 65459, 포트 3200)를 띄워 쓰고 있어 공유 checkout 대신, `5f0d7e0`에 고정한 별도 detached worktree(`/home/roqkf/pr-search-wt/release16`)에서 만들었다.
 
 - Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.16
 - 태그: `5f0d7e0e5f2a0f492d56ffb0c39ddd7a618f42a6`(manifest `branch`는 `HEAD` — 분리된 워크트리에서 만들었다. pilot.8·13·14와 같다)
 - 자산: `pr-search-0.1.0-pilot.16-offline.tar.gz`, 1,156,918,968 bytes
 - 별도 채널 전달 SHA-256: `f683a520a78b458c5c0a27350ce03f12743dbb920417c039ef9aa6ef0f7e9e10`
 - 로컬 checksum과 GitHub asset digest 일치, state uploaded, immutable releases 켜짐(발행 뒤 자산·태그가 잠긴다). 발행 전 초안 자산(이름·크기·digest) 대조(로그 `[00:39:29] 초안 자산 대조 (발행 전)`)와 발행 후 재확인(로그 `[00:39:30] 발행 확인`) 모두 통과. 발행이 끝난 뒤에도 `git ls-remote --tags`·`gh api releases/tags`·로컬 `sha256sum`으로 독립적으로 재대조해 태그 타깃과 digest·크기가 모두 일치함을 다시 확인했다.
-- tar 재적재 뒤 smoke 통과: web(기동·`/healthz` 200·SSR 10종 200·API 프록시 401·해시 외부 모듈 `pg-71df57fbe79e18ab` 해석·손 조치 흔적 없음·인증/쿠키 허용-거부 구성 8종), pipeline-worker(git 2.54.0), gh-executor(gh 2.97.0 고정 바이너리 해시·비루트·읽기 전용 기동·봉인 키 없으면 거부), search-api(관리자 역할 CLI, DB 접속 전 종료 코드 2).
+- tar 재적재 뒤 smoke 통과: web(기동·`/healthz` 200·SSR 10종 200·API 프록시 401·해시 외부 모듈 `pg-71df57fbe79e18ab` 해석·손 조치 흔적 없음·인증/쿠키 허용-거부 구성 9종), pipeline-worker(git 2.54.0), gh-executor(gh 2.97.0 고정 바이너리 해시·비루트·읽기 전용 기동·봉인 키 없으면 거부), search-api(관리자 역할 CLI, DB 접속 전 종료 코드 2).
 - 문서 정합성: CR-111의 `change_control.md` 서술("상태: implementing")과 `work_packages.md`의 WP-096 절("상태: in_progress")은 그 구현 커밋(`b6d9443`) 자체가 작성한, push·병합 이전 시점의 스냅숏이다 — 실제로는 PR #216이 `b6d9443`으로 병합되어 이미 `origin/main`에 반영됐고 이 릴리스에 포함됐다. 3장 상태표에는 WP-096 행 자체가 아직 없다(WP-090/091/095처럼 행을 정정할 대상이 없다). pilot.14가 세운 선례와 같은 이유로 `change_control.md`·`work_packages.md`는 이 원장 갱신의 범위 밖이라 손대지 않았다.
-- 이번 발행에 앞서 워크트리 정리를 함께 수행했다 — 상세는 `agent-context`/세션 기록 참고. `regression-first-slice`(CR-108/WP-094, 의도적 미병합)는 유지했다.
+- 이번 발행에 앞서 워크트리 정리를 함께 수행했다: 기존 30개 중 27개를 origin/main 반영 확인 뒤 `git worktree remove`로 제거했다. `contracts`(CRLF 개행 차이만 있는 dirty 상태, `--force` 제거가 정책상 차단돼 남겨 둠), `cr111-search-simplify`(위 다른 세션이 사용 중이라 보류), `regression-first-slice`(CR-108/WP-094, 의도적 미병합)는 유지했다. 상세는 PR [#217](https://github.com/89sooner/pr-search/pull/217) 설명 참고.
 - 사내 실제 GHE 데이터 및 재반입 검증은 NOT RUN이다.
 
 ## 0.1.0-pilot.15 발행 — CR-110 반영 (2026-09-18, 사후 기록)
