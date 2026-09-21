@@ -1,0 +1,21 @@
+{
+  "schema": "pipe-search-integration-policy/v1",
+  "clients": [
+    {
+      "client_id": "pipe-prod",
+      "status": "active",
+      "policy_version": 1,
+      "issuer": "urn:corp:pipe:prod",
+      "audience": "urn:corp:pr-search:pipe-integration:prod",
+      "profile": "search-read-v1",
+      "signing_keys": [
+        { "kid": "pipe-signing-2026-01", "public_key_file": "/run/secrets/pipe-integration/pipe-signing-2026-01.pub.pem" }
+      ],
+      "tls_client": {
+        "subject_alt_names": ["URI:spiffe://corp.example/pipe/prod"],
+        "certificate_sha256": []
+      },
+      "repository_ids": [101, 102]
+    }
+  ]
+}

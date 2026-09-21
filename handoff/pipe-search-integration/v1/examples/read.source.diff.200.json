@@ -1,0 +1,53 @@
+{
+  "operation": "read.source.diff",
+  "title": "커밋 변경 비교",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/diff?commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000014"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "base": null,
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "commit": {
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "parents": [],
+        "message": "m",
+        "author": "a",
+        "date": null
+      },
+      "pull_requests": [
+        {
+          "number": 1,
+          "title": "결제 재시도",
+          "body": null
+        }
+      ],
+      "pull_requests_unavailable": false,
+      "files": [
+        {
+          "path": "src/pay/retry.ts",
+          "previous_path": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 1
+        }
+      ],
+      "next_page": null,
+      "truncated": false
+    }
+  }
+}

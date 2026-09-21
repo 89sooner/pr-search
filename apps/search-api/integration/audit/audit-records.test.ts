@@ -269,7 +269,12 @@ describe('QA-A004-01: 다섯 축으로 필터한다', () => {
 
   it('`action`으로 좁힌다', async () => {
     const session = await login(OFFICER, ['developer', 'security_officer']);
-    const { body } = await list(session, 'action=entity.view');
+    /*
+     * 이 파일이 심은 시각 창으로 좁힌다. 같은 DB를 쓰는 다른 파일(CR-112의 PIPE 연동 시험 등)이 "지금" 시각의
+     * `entity.view`를 기본 페이지(50)보다 많이 남기면, 최신순 첫 페이지에서 8월에 심은 이 행이 밀려난다.
+     * 창 안에는 이 파일의 다른 액션(search.execute·repository.register)이 있어 `action` 필터의 검증은 그대로다.
+     */
+    const { body } = await list(session, 'action=entity.view&from=2026-08-20T00:00:00Z&to=2026-08-23T00:00:00Z');
     const mine = body.items.filter((row) => row.user_id.startsWith(NS));
     expect(mine).toHaveLength(1);
     expect(mine[0]?.target).toBe('commit:acme/payments:abc');

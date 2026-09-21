@@ -108,12 +108,30 @@ const CAPABILITIES = [
     stop: null,
     manifest: 'deploy/k8s/search-api.yaml',
   },
+  /*
+   * CR-112부터 entrypoint는 `buildServerDeps`의 결과를 `serverDeps`에 담아 공개 서버와
+   * PIPE 연동 리스너에 **같은 객체로** 넘긴다. 두 번 조립하면 두 경로의 커서 서명·범위
+   * 해석기가 갈린다. 그래서 공개 서버 기동은 `buildServer(serverDeps)`로 단언한다.
+   */
   {
     id: 'API-ADM-007',
     what: '시퀀스 정합성 점검·재채번 API',
     process: 'search-api',
     role: null,
-    start: 'buildServer(buildServerDeps(',
+    start: 'buildServer(serverDeps)',
+    stop: null,
+    manifest: 'deploy/k8s/search-api.yaml',
+  },
+  /*
+   * CR-112 / ADR-025. PIPE 연동 private 리스너는 **기본 꺼짐**이다. 켠 배포에서만 서지만,
+   * 그때 entrypoint가 실제로 조립해 띄우는지는 여기서 본다 (종료는 아래 CR-112 시험).
+   */
+  {
+    id: 'API-INT-001',
+    what: 'PIPE 연동 private 리스너 (mTLS)',
+    process: 'search-api',
+    role: null,
+    start: 'buildIntegrationServer(pipeOptions)',
     stop: null,
     manifest: 'deploy/k8s/search-api.yaml',
   },
@@ -273,6 +291,17 @@ describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () 
       expect(WORKER_INDEX).toContain(stop as string);
     },
   );
+
+  /*
+   * CR-112 / ADR-025. 위 `stop` 검사는 워커만 본다. private 리스너는 search-api 안에 있으므로
+   * 여기서 따로 본다: 공개 서버와 **같은** `serverDeps`로 조립하고, 종료에서 함께 닫는다.
+   */
+  it('API-INT-001 PIPE 연동 리스너 — 공개 서버와 같은 의존으로 서고 종료에서 닫힌다 (CR-112)', () => {
+    expect(API_INDEX).toContain('const serverDeps = buildServerDeps(runtimeParts);');
+    // 단축 속성 `serverDeps,`로 **같은 변수**를 넘긴다 — `serverDeps: buildServerDeps(…)`처럼 다시 조립하면 죽는다.
+    expect(API_INDEX).toMatch(/buildPipeIntegrationDeps\(\{[^}]*\bserverDeps,/);
+    expect(API_INDEX).toContain('integrationApp?.close()');
+  });
 
   it.each(CAPABILITIES.filter((entry) => entry.role !== null))(
     '$id $what — 그 역할이 워커에 실재한다',

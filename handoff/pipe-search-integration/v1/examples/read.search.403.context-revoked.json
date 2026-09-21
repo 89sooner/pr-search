@@ -1,0 +1,30 @@
+{
+  "operation": "read.search",
+  "title": "로그인 문맥 회수 — 같은 문맥으로 재연결 금지",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/search?q=",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 403,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000022"
+    },
+    "body": {
+      "error": {
+        "code": "CONTEXT_REVOKED",
+        "message": "The login context was revoked.",
+        "retryable": false
+      },
+      "correlation_id": "00000000-0000-4000-8000-000000000022"
+    }
+  }
+}

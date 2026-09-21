@@ -1,5 +1,34 @@
 # PR Search API 계약
 
+## CR-112 — PIPE 연동 private 경로 (API-INT-001~014)
+
+공통 접두 `/internal/integrations/pipe/v1`. 이 경로들은 **공개 리스너에 없고**, search-api 안의 private 리스너(mTLS 필수, 기본 꺼짐, ADR-025)에만 등록된다. 모든 요청은 client 인증서로 먼저 client를 정하고, 조회와 `/context`는 `Authorization: Bearer <검색 grant>`를 더 요구한다. 응답은 모두 `Cache-Control: private, no-store`이며 `Set-Cookie`가 없고, 쿠키가 실린 요청은 400이다. **정확한 query·응답 스키마의 정본은 handoff의 OpenAPI(`pipe-integration-v1.openapi.yaml`)와 `operation-map.json`이다** — 아래 표는 목록이다. 경로 목록의 코드 정본은 `apps/search-api/src/integrations/pipe/operations.ts`의 `INTEGRATION_OPERATIONS`이며, 계약 시험이 셋의 일치를 대조한다. 제안 계약 PSI-1.0과 다른 자리는 [CONTRACT_DIFF](../../handoff/pipe-search-integration/v1/CONTRACT_DIFF.md)가 소유한다.
+
+| ID | Method | 경로 (접두 뒤) | 인증 | 실행하는 원본 | 받는 query key |
+| --- | --- | --- | --- | --- | --- |
+| API-INT-001 | POST | `/auth/exchange` | mTLS + 본문 assertion(`purpose: grant`) | 없음 — grant 발급 | 없음 |
+| API-INT-002 | POST | `/auth/revoke` | mTLS + Bearer grant (그런 grant가 없거나 형식이 틀리거나 남의 것이어도 같은 200, `Authorization` 헤더가 없으면 400) | 없음 — grant 회수, 멱등 | 없음 |
+| API-INT-003 | POST | `/auth/revoke-context` | mTLS + 본문 assertion(`purpose: revoke_context`) | 없음 — 로그인 문맥 회수 | 없음 |
+| API-INT-004 | GET | `/context` | mTLS + grant | 없음 — 검색 사용자 문맥 | 없음 |
+| API-INT-005 | GET | `/read/repositories` | mTLS + grant | API-ING-002 | `limit`, `cursor`, `repository` |
+| API-INT-006 | GET | `/read/search` | mTLS + grant | API-SRCH-004 | `q`, `sort`, `order`, `size`, `cursor`, `facets`, `seq_epoch` |
+| API-INT-007 | GET | `/read/resolve` | mTLS + grant | API-SRCH-001 | `q`, `repository`, `limit` |
+| API-INT-008 | GET | `/read/merge-numbers/resolve` | mTLS + grant | API-SEQ-007 | `repository`, `base_branch`, `pr_number`, `merge_number`, `seq_epoch` |
+| API-INT-009 | GET | `/read/pull-requests/{repository}/{pr_number}` | mTLS + grant | API-SRCH-003 | 없음 |
+| API-INT-010 | GET | `/read/commits/{repository}/{commit_sha}` | mTLS + grant | API-SRCH-002 | 없음 |
+| API-INT-011 | GET | `/read/source/{repository}/tree` | mTLS + grant | API-SRC-001 | `ref`, `path`, `revision`, `tree_sha` |
+| API-INT-012 | GET | `/read/source/{repository}/history` | mTLS + grant | API-SRC-002 | `ref`, `path`, `page` |
+| API-INT-013 | GET | `/read/source/{repository}/diff` | mTLS + grant | API-SRC-004 | `pr`, `commit`, `page` |
+| API-INT-014 | GET | `/read/source/{repository}/file` | mTLS + grant | API-SRC-003 | `path`, `revision` |
+
+- **조회(005~014)는 원본 실행 함수를 그대로 부른다.** 성공 본문과 원본의 오류(질의 문법·커서·source·에폭·범위 밖 404·조회 중 503)는 원본과 같은 모양·상태다. 주체는 grant의 canonical 사용자이고, 접근 범위는 그 사용자의 기존 범위와 client 허용 목록의 교집합을 명시적 저장소 목록으로 만든 것이다. 교집합이 비면 원본이 0개 저장소 사용자에게 답하던 그대로다 — 검색·식별자 해석·상세 503 `PERMISSION_UNAVAILABLE`, 저장소 목록 빈 200, source·M 번호 404.
+- **연동 계층은 원본보다 엄격하다.** 중복되거나 목록에 없는 query key, 깨진 percent-encoding·C0 제어 문자·`#`, 경로 파라미터 `{repository}`의 이중 인코딩(`%252F`)·dot segment는 400 `INVALID_REQUEST`다. 원본의 느슨한 처리는 바꾸지 않고 DEV-730·DEV-731로 기록했다. `{repository}`는 `owner%2Fname` 한 조각이다. query 값의 뜻은 원본 그대로다 — 예를 들어 식별자 해석의 `repository` 힌트는 형식이 틀리면 두 경로 모두 조용히 버린다(어느 경우도 접근 범위 밖을 열지 않는다).
+- **접근 범위 확인 실패는 조회 10종 모두 503이다.** 원본 저장소 목록은 같은 실패를 잡지 못해 500을 내지만(DEV-732) 연동은 `FR-AUTH-002`대로 503 `PERMISSION_UNAVAILABLE`로 옮긴다. 봉투는 조회마다 다르다 — 저장소 목록은 연동 봉투, 나머지는 원본 실행 함수가 먼저 잡아 원본 봉투다.
+- **커서.** 연동은 client와 canonical 사용자를 커서 지문 재료에 더한다. 결속이 없는 공개 커서의 지문은 이전과 한 글자도 다르지 않다(추가 전용). 그래서 공개 커서는 연동에서, 연동 커서는 공개 경로에서 `CURSOR_INVALID`다.
+- **연동 고유 오류**는 `{ "error": { "code", "message", "retryable" }, "correlation_id" }` 봉투다. 코드 21종과 상태·재시도 가능 여부의 정본은 `apps/search-api/src/integrations/pipe/errors.ts`의 `PSI_ERRORS`이며 메시지는 코드별 고정 문구다.
+- **발급 응답**은 `protocol_version`(`PSI-1.0`), `token_type`(`Bearer`), `access_token`(`psig1_` + 32바이트 base64url), `grant_id`, `expires_in`(300 이하), `expires_at`, `auth_context_id`, `binding_version`, `identity.ghe_login`, `capabilities`, `correlation_id`다. 수명은 `min(발급 + 300초, auth_expires_at, client 인증서 만료)`다.
+- **상관 ID.** 응답마다 서버가 만든 UUID를 `X-Correlation-Id` 헤더와 본문 `correlation_id`로 돌려준다. PIPE가 보낸 `X-Correlation-Id`는 UUID 형식일 때만 이벤트 기록에 남기고 되돌려 보내지 않는다.
+
 ## CR-097 — 인가된 일시 소스 열람
 
 공통 경로 `/api/v1/source/:repository` (`repository`는 URL 인코딩한 owner/repo). 세션만 허용하며 PG 저장소 해석·접근 범위를 먼저 통과한다. 없는 저장소/범위 밖은 동일404. 응답은 `Cache-Control: private, no-store`, 오류는 기존 envelope다. 소스 본문은 영속 저장하지 않는다.
@@ -13,7 +42,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.38 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.39 | 갱신일: 2026-09-21
 
 ## 1. 목적
 
@@ -91,6 +120,20 @@
 | API-GH-012 | POST | `/gh/executions/{id}/approve` | 승인 대기 실행의 승인·거부 | `operator` 또는 정책이 지정한 승인자 | FR-GH-009 |
 | API-GH-013 | GET | `/gh/registry` | 레지스트리 상태 (A-006, CR-088): 고정 gh 버전·바이너리 해시 기대값, manifest 판·해시·인벤토리 해시·생성 시각·해시 검증, 검증기·규칙 버전과 상태, 차원별 커버리지(`dimensions`)·게이트·실행 허용(`allowed` vs 코드 표 `definitions`)·findings 요약, 출처별 최신 검증 기록(`latest_by_source`)과 최근 10건(각각 적재 manifest 일치 여부 `matches_served_manifest`), 스냅숏 10건(`activated_at`·`is_served`), `host_verification`(`not_verified`). **검사를 돌리지 않고 저장된 기록을 읽는다.** 기록이 없으면 빈 배열이다. CR-089: `contracts`(결과 계약 분류·composability 분포·출력/입력 port의 command 수와 port 수·구현 adapter·실행 허용·그래프 요약·실행 가능한 다단계 흐름·대상 GHES 확인 — 분모가 다른 수치를 합치지 않는다)·`gate_scope`·`validator.report_version`, 검증 기록마다 `report_version`·`contract_dimensions`(`verified` / `not_in_report_version` / CR-090 `unsupported_report_version` — 등록된 해석기가 없는 판) | `operator` 또는 `security_officer` | FR-GH-001, FR-GH-011, NFR-009 |
 | API-GH-014 | GET | `/gh/registry/commands/{id}` | command 분류 상세 (A-006, CR-088): 인벤토리(usage·별칭·flag·JSON 필드)·지원·실행·사유·위험·분류 전부(interaction·부작용·인증·입출력·결과 종류·민감도·호스트 확인·positional/flag별 컨트롤과 근거·note)·정의(실행을 여는 것만, 대부분 `null`). id는 `^[a-z0-9][a-z0-9.-]{0,79}$`가 아니면 400, manifest에 없으면 `GH_CAPABILITY_UNKNOWN`(404). CR-089: `result_contract`(결과 계약 전부)와 `graph`(`outgoing`·`incoming`·`blocked`·`executable_flows: 0` — 간선마다 조건과 `execution.executable: false`·이유). 그룹·별칭 전용 노드는 둘 다 `null`이고, 실행 기록은 읽지 않는다 | `operator` 또는 `security_officer` | FR-GH-001 AC-6·AC-11·AC-12, FR-GH-011 |
+| API-INT-001 | POST | `/internal/integrations/pipe/v1/auth/exchange` | PIPE 서버의 검색 grant 발급 (CR-112). **private 리스너에만 있다** — 경로 목록과 규칙은 이 문서 맨 앞 CR-112 절 | mTLS + 서명 assertion + 활성 identity binding | FR-INT-001 |
+| API-INT-002 | POST | `/internal/integrations/pipe/v1/auth/revoke` | grant 하나 회수 (자기 client의 것만, 멱등) | mTLS + grant | FR-INT-001 |
+| API-INT-003 | POST | `/internal/integrations/pipe/v1/auth/revoke-context` | 로그인 문맥 회수 (표식은 PostgreSQL) | mTLS + 서명 assertion | FR-INT-001 |
+| API-INT-004 | GET | `/internal/integrations/pipe/v1/context` | 검색 사용자 문맥 (`ghe_login`·능력·operation 목록) | mTLS + grant | FR-INT-001 |
+| API-INT-005 | GET | `/internal/integrations/pipe/v1/read/repositories` | API-ING-002 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-ING-009 |
+| API-INT-006 | GET | `/internal/integrations/pipe/v1/read/search` | API-SRCH-004 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRCH-005~009 |
+| API-INT-007 | GET | `/internal/integrations/pipe/v1/read/resolve` | API-SRCH-001 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRCH-001 |
+| API-INT-008 | GET | `/internal/integrations/pipe/v1/read/merge-numbers/resolve` | API-SEQ-007 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SEQ-008 |
+| API-INT-009 | GET | `/internal/integrations/pipe/v1/read/pull-requests/{repository}/{pr_number}` | API-SRCH-003 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRCH-003 |
+| API-INT-010 | GET | `/internal/integrations/pipe/v1/read/commits/{repository}/{commit_sha}` | API-SRCH-002 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRCH-002 |
+| API-INT-011 | GET | `/internal/integrations/pipe/v1/read/source/{repository}/tree` | API-SRC-001 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRC-001 |
+| API-INT-012 | GET | `/internal/integrations/pipe/v1/read/source/{repository}/history` | API-SRC-002 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRC-002 |
+| API-INT-013 | GET | `/internal/integrations/pipe/v1/read/source/{repository}/diff` | API-SRC-004 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRC-003 |
+| API-INT-014 | GET | `/internal/integrations/pipe/v1/read/source/{repository}/file` | API-SRC-003 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRC-003 |
 
 **R0 구현 계약 요약 (CR-086 / WP-077).** 열 개 라우트가 `apps/search-api/src/gh/routes.ts`에 있고 web 프록시가 `/api/gh/…`로 연다. 실행 요청 본문은 `{ capability_id, context: { repository: "owner/name" }, flags: { "--state": …, "--limit": … }, output: { json_fields: [...] } }`이며, 폼과 서버가 같은 `evaluateInvocation`으로 판정한다. 실행 뷰(`toExecutionView`)는 `FR-GH-012` AC-1의 항목(실행 ID·사용자·GitHub 행위자·호스트·저장소·capability·gh 버전·manifest 버전·해시·가려진 argv·환경 키·위험도·권한 판정·시각·종료 코드·출력 해시·상관 ID)에 typed 결과(`pr_list_v1`: `rows`·`row_count`·`possibly_more`·`stdout_truncated` — CR-089부터 `pr_list_v2`, 아래 R1b)와 무해화된 발췌(`stdout`·`stderr`, `truncated`), `output_binary`, 요청 당시 `invocation`을 더한 것이다. 배포가 기능을 끄면(`GH_OPERATIONS_ENABLED=false`) 라우트가 등록되지 않아 404이며 화면은 그것을 「열리지 않았다」로 그린다. 같은 키의 재요청은 `GH_DUPLICATE_REQUEST`(409, `detail.execution_id`)이고 화면은 그 실행에 붙는다.
 
@@ -3129,5 +3172,6 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 | API-STAT-001~004, API-SEQ-004~005, API-REL-003~004, API-REL-006 | stable | 위와 동일 |
 | API-ADM-* | internal | 운영 콘솔 전용. 프런트엔드와 동시 배포 전제로 변경 가능 |
 | API-ING-001 | external | GHE 계약. 변경 시 웹훅 재등록 필요 |
+| API-INT-001~014 | external — 두 저장소 공동 계약 `PSI-1.0` (CR-112, 기본 꺼짐) | 한쪽 저장소만 바꾸지 않는다. 변경은 `protocol_version`과 handoff `manifest.json`의 계약 checksum을 함께 올리고 CONTRACT_DIFF에 사유·호환성·보안 영향을 적는다. 조회(005~014)의 성공·오류 본문은 원본 API의 안정성 규칙을 따른다 |
 
 버전 정책: 경로 접두 `/api/v1`. 하위 호환 변경(필드 추가, 새 enum 값에 대한 관대한 처리)은 버전을 올리지 않는다. 필드 제거·타입 변경·의미 변경은 `/api/v2`를 신설하고 최소 1개 릴리스 동안 병행 운영한다.

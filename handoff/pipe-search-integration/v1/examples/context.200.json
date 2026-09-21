@@ -1,0 +1,50 @@
+{
+  "operation": "context",
+  "title": "검색 사용자 문맥",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/context",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000005"
+    },
+    "body": {
+      "protocol_version": "PSI-1.0",
+      "grant_id": "11111111-1111-4111-8111-111111111111",
+      "expires_at": "2026-09-21T05:05:00Z",
+      "auth_context_id": "ctx-dump-a-000001",
+      "binding_version": 1,
+      "identity": {
+        "ghe_login": "alice-psi"
+      },
+      "capabilities": [
+        "search:read",
+        "source:read",
+        "merge_number:read"
+      ],
+      "operations": [
+        "read.repositories",
+        "read.search",
+        "read.resolve",
+        "read.merge_numbers.resolve",
+        "read.pull_request",
+        "read.commit",
+        "read.source.tree",
+        "read.source.history",
+        "read.source.diff",
+        "read.source.file"
+      ],
+      "correlation_id": "00000000-0000-4000-8000-000000000005"
+    }
+  }
+}

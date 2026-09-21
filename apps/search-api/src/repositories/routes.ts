@@ -20,6 +20,7 @@ import type { Client as EsClient } from '@elastic/elasticsearch';
 import type { ErrorResponse } from '@prs/contracts';
 import type { AuthContext } from '../auth/context.js';
 import { authenticateSession } from '../auth/principal.js';
+import { sessionInvocation, type ReadInvocation, type ReadPrincipal } from '../auth/read-invocation.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
 import {
   CursorInvalidError,
@@ -86,13 +87,38 @@ function toCursorError(error: unknown, correlationId: string): ErrorResponse | n
   return null;
 }
 
+/**
+ * 저장소 목록의 실행 재료 (CR-112).
+ *
+ * 일반 경로와 PIPE 연동 경로가 **같은 값**으로 `executeRepositories`를 부른다. 세션 컨텍스트(`auth`)는
+ * 여기 없다 — 주체와 접근 범위는 `ReadInvocation`이 준다.
+ */
+export interface RepositoriesExecution {
+  readonly deps: {
+    readonly pool: Pool;
+    readonly es: EsClient;
+    readonly log?: (entry: { readonly level: string; readonly message: string; readonly reason?: string }) => void;
+  };
+  readonly cursorSigner: CursorSigner;
+  readonly loginPath: string;
+  readonly now: () => number;
+}
+
+export function repositoriesExecution(options: Omit<RepositoryRouteOptions, 'auth'>): RepositoriesExecution {
+  return {
+    deps: { pool: options.pool, es: options.es, ...(options.log === undefined ? {} : { log: options.log }) },
+    cursorSigner: options.cursorSigner,
+    loginPath: options.loginPath,
+    now: options.now ?? ((): number => Date.now()),
+  };
+}
+
 export function registerRepositoryRoutes(
   app: FastifyInstance,
   options: RepositoryRouteOptions,
 ): void {
-  const { auth, loginPath, cursorSigner, pool, es } = options;
-  const now = options.now ?? ((): number => Date.now());
-  const deps = { pool, es, ...(options.log === undefined ? {} : { log: options.log }) };
+  const { auth, loginPath, pool } = options;
+  const execution = repositoriesExecution(options);
 
   const session = async (
     request: FastifyRequest,
@@ -111,60 +137,9 @@ export function registerRepositoryRoutes(
     }
   };
 
-  app.get(REPOSITORIES_PATH, async (request, reply) => {
-    const correlationId = randomUUID();
-    const query = (request.query ?? {}) as Record<string, unknown>;
-
-    const userId = await session(request, reply, correlationId);
-    if (userId === null) return reply;
-
-    const limit = clampPageSize(query['limit']);
-    if (limit === null) return invalid(reply, correlationId, 'limit', 'limit은 1~100의 정수입니다');
-
-    const rawSlug = query['repository'];
-    let slug: { owner: string; name: string } | undefined;
-    if (rawSlug !== undefined && rawSlug !== null && rawSlug !== '') {
-      const parsed = parseRequestSlug(rawSlug);
-      if (parsed === null) {
-        return invalid(reply, correlationId, 'repository', 'repository는 owner/name 형식입니다');
-      }
-      slug = parsed;
-    }
-
-    const scope = await auth.scopes.resolve(userId);
-    const fingerprint = computeRepositoryFingerprint({
-      scope,
-      slug: slug === undefined ? null : `${slug.owner}/${slug.name}`,
-    });
-
-    let after: { owner: string; name: string; repositoryId: number } | undefined;
-    const rawCursor = query['cursor'];
-    if (typeof rawCursor === 'string' && rawCursor !== '') {
-      try {
-        after = decodeRepositoryCursor(rawCursor, fingerprint, cursorSigner, now());
-      } catch (error) {
-        const shape = toCursorError(error, correlationId);
-        if (shape === null) throw error;
-        return fail(reply, 400, shape);
-      }
-    }
-
-    const page = await loadRepositoryOverview(deps, {
-      scope,
-      limit,
-      ...(after === undefined ? {} : { after }),
-      ...(slug === undefined ? {} : { slug }),
-    });
-
-    return reply.send({
-      items: page.items,
-      next_cursor:
-        page.nextCursor === null
-          ? null
-          : encodeRepositoryCursor(page.nextCursor, fingerprint, cursorSigner, now()),
-      correlation_id: correlationId,
-    });
-  });
+  app.get(REPOSITORIES_PATH, async (request, reply) =>
+    executeRepositories((request.query ?? {}) as Record<string, unknown>, reply, sessionInvocation(request, auth), execution),
+  );
 
   app.post(REGISTRATION_REQUESTS_PATH, async (request, reply) => {
     const correlationId = randomUUID();
@@ -190,5 +165,78 @@ export function registerRepositoryRoutes(
      */
     const view = await recordRegistrationRequest({ pool }, userId, slug);
     return reply.status(201).send({ ...view, correlation_id: correlationId });
+  });
+}
+
+/**
+ * `GET /repositories`의 본문 (CR-112가 라우트에서 꺼냈다 — 검사 순서와 응답은 그대로다).
+ *
+ * 접근 범위 산출 실패는 여기서 잡지 않는다 — 원래 그랬다. 일반 앱에서는 Fastify 기본 처리로
+ * 나가고, PIPE 연동 앱은 자기 오류 처리기가 `503 PERMISSION_UNAVAILABLE`로 옮긴다.
+ */
+export async function executeRepositories(
+  query: Record<string, unknown>,
+  reply: FastifyReply,
+  invocation: ReadInvocation,
+  execution: RepositoriesExecution,
+): Promise<FastifyReply> {
+  const { correlationId } = invocation;
+  const { deps, cursorSigner, loginPath, now } = execution;
+
+  let principal: ReadPrincipal;
+  try {
+    principal = await invocation.identify();
+  } catch (error) {
+    const shape = toAuthError(error, { correlationId, loginPath });
+    if (shape !== null) return sendAuthError(reply, shape);
+    throw error;
+  }
+
+  const limit = clampPageSize(query['limit']);
+  if (limit === null) return invalid(reply, correlationId, 'limit', 'limit은 1~100의 정수입니다');
+
+  const rawSlug = query['repository'];
+  let slug: { owner: string; name: string } | undefined;
+  if (rawSlug !== undefined && rawSlug !== null && rawSlug !== '') {
+    const parsed = parseRequestSlug(rawSlug);
+    if (parsed === null) {
+      return invalid(reply, correlationId, 'repository', 'repository는 owner/name 형식입니다');
+    }
+    slug = parsed;
+  }
+
+  const scope = await principal.resolveScope();
+  const fingerprint = computeRepositoryFingerprint({
+    scope,
+    slug: slug === undefined ? null : `${slug.owner}/${slug.name}`,
+    ...(principal.cursorBinding === undefined ? {} : { binding: principal.cursorBinding }),
+  });
+
+  let after: { owner: string; name: string; repositoryId: number } | undefined;
+  const rawCursor = query['cursor'];
+  if (typeof rawCursor === 'string' && rawCursor !== '') {
+    try {
+      after = decodeRepositoryCursor(rawCursor, fingerprint, cursorSigner, now());
+    } catch (error) {
+      const shape = toCursorError(error, correlationId);
+      if (shape === null) throw error;
+      return fail(reply, 400, shape);
+    }
+  }
+
+  const page = await loadRepositoryOverview(deps, {
+    scope,
+    limit,
+    ...(after === undefined ? {} : { after }),
+    ...(slug === undefined ? {} : { slug }),
+  });
+
+  return reply.send({
+    items: page.items,
+    next_cursor:
+      page.nextCursor === null
+        ? null
+        : encodeRepositoryCursor(page.nextCursor, fingerprint, cursorSigner, now()),
+    correlation_id: correlationId,
   });
 }

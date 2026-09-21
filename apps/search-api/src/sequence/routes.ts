@@ -21,6 +21,7 @@ import { SUPPORTED_ANCHOR_FORMATS } from '@prs/domain';
 import { SAFE_MARKER_NOTE_LIMIT, bisectSessionRepo } from '@prs/db';
 import type { AuthContext } from '../auth/context.js';
 import { authenticateSession, requireRole, type SessionPrincipal } from '../auth/principal.js';
+import { sessionInvocation, type ReadInvocation } from '../auth/read-invocation.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
 import { recordAuditBestEffort } from '../audit/recorder.js';
 import { CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope.js';
@@ -254,6 +255,124 @@ function sendAnchorFailure(
   return null;
 }
 
+/** 시퀀스 경로들의 실패 처리 (CR-112가 closure에서 꺼냈다 — 내용은 그대로다). */
+function sequenceFailureResponse(reply: FastifyReply, correlationId: string, error: unknown, loginPath: string): FastifyReply {
+  /*
+   * 커서 실패는 **400**이다 (CR-043, DEV-273).
+   *
+   * 서버 잘못이 아니라 "이 커서를 쓸 수 없다"는 사실이다. 그리고 두 코드가
+   * 다른 것을 말한다 — 에폭이 바뀐 것과 커서가 훼손된 것은 사용자가 이해할
+   * 내용이 다르다. 자동 재시도 루프를 만들지 않는다.
+   */
+  if (error instanceof CursorQueryMismatchError) {
+    return fail(reply, 400, {
+      error: {
+        code: 'CURSOR_QUERY_MISMATCH',
+        message: '구간 조건이 바뀌어 이어 보기를 계속할 수 없습니다. 첫 페이지부터 다시 봅니다.',
+      },
+      correlation_id: correlationId,
+    });
+  }
+  if (error instanceof CursorInvalidError) {
+    return fail(reply, 400, {
+      error: {
+        code: 'CURSOR_INVALID',
+        message: '이어 보기 정보를 사용할 수 없습니다. 첫 페이지부터 다시 봅니다.',
+      },
+      correlation_id: correlationId,
+    });
+  }
+
+  const shape = toAuthError(error, { correlationId, loginPath });
+  if (shape !== null) return sendAuthError(reply, shape);
+
+  if (error instanceof AccessScopeUnavailableError) {
+    return fail(reply, 503, {
+      error: { code: 'PERMISSION_UNAVAILABLE', message: '접근 권한을 확인할 수 없어 조회를 거부한다' },
+      correlation_id: correlationId,
+    });
+  }
+  if (error instanceof PartialSearchError) {
+    return fail(reply, 504, {
+      error: { code: 'SEARCH_TIMEOUT', message: '검색이 부분 결과만 얻어 조회를 거부한다' },
+      correlation_id: correlationId,
+    });
+  }
+  throw error;
+}
+
+/** M 번호 해석의 실행 재료 (CR-112). 일반 경로와 PIPE 연동 경로가 같은 값을 넘긴다. */
+export interface MergeNumberResolveExecution {
+  readonly pool: RangeDeps['pool'];
+  readonly es: RangeDeps['es'];
+  readonly mergeNumberEnabled: boolean;
+  readonly loginPath: string;
+}
+
+/**
+ * `GET /merge-numbers/resolve`의 본문 (CR-112가 라우트에서 꺼냈다 — 판정은 전부 `resolveMergeNumber`에 있고
+ * 검사 순서·응답은 그대로다). PIPE 연동 경로도 이 함수를 부른다.
+ */
+export async function executeMergeNumberResolve(
+  query: Record<string, unknown>,
+  reply: FastifyReply,
+  invocation: ReadInvocation,
+  execution: MergeNumberResolveExecution,
+): Promise<FastifyReply> {
+  const { correlationId } = invocation;
+  const { loginPath, mergeNumberEnabled } = execution;
+  try {
+    const principal = await invocation.identify();
+    const scope = toAccessScope(await principal.resolveCachedScope());
+    const outcome = await resolveMergeNumber(
+      { pool: execution.pool, es: execution.es, enabled: mergeNumberEnabled },
+      {
+        repository: query['repository'],
+        baseBranch: query['base_branch'],
+        prNumber: query['pr_number'],
+        mergeNumber: query['merge_number'],
+        seqEpoch: query['seq_epoch'],
+        scope,
+      },
+    );
+
+    switch (outcome.kind) {
+      case 'ok':
+        return await reply.send({ ...outcome.body, correlation_id: correlationId });
+      case 'invalid':
+        return fail(reply, 400, {
+          error: {
+            code: 'INVALID_PARAMETER',
+            message: outcome.message,
+            detail: { field: outcome.field, ...(outcome.reason === undefined ? {} : { reason: outcome.reason }) },
+          },
+          correlation_id: correlationId,
+        });
+      case 'not_found':
+        return fail(reply, 404, {
+          error: { code: 'NOT_FOUND', message: outcome.message },
+          correlation_id: correlationId,
+        });
+      case 'no_sequence':
+        return fail(reply, ERROR_HTTP_STATUS['NO_SEQUENCE'], {
+          error: { code: 'NO_SEQUENCE', message: outcome.message, detail: { reason: outcome.reason } },
+          correlation_id: correlationId,
+        });
+      case 'feature_disabled':
+        /*
+         * 기능이 꺼진 배포다. **404이며 사유를 밝힌다** — 화면이 "찾을 수 없음"과
+         * "아직 켜지 않음"을 구분해 안내할 수 있어야 한다 (설계 9절).
+         */
+        return fail(reply, 404, {
+          error: { code: 'NOT_FOUND', message: 'M 번호 기능이 활성화되지 않았습니다.', detail: { reason: 'feature_disabled' } },
+          correlation_id: correlationId,
+        });
+    }
+  } catch (error) {
+    return sequenceFailureResponse(reply, correlationId, error, loginPath);
+  }
+}
+
 export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRouteOptions): void {
   const { auth, loginPath, mergeNumberEnabled = false, ...rest } = options;
   // 범위 조회도 같은 플래그를 쓴다 — 화면마다 M이 보였다 안 보였다 하지 않는다.
@@ -340,50 +459,8 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
   };
 
   /** 두 경로가 같은 실패 처리를 쓴다. 인증·권한·부분 결과의 응답이 갈리면 안 된다. */
-  const toFailureResponse = (reply: FastifyReply, correlationId: string, error: unknown): FastifyReply => {
-    /*
-     * 커서 실패는 **400**이다 (CR-043, DEV-273).
-     *
-     * 서버 잘못이 아니라 "이 커서를 쓸 수 없다"는 사실이다. 그리고 두 코드가
-     * 다른 것을 말한다 — 에폭이 바뀐 것과 커서가 훼손된 것은 사용자가 이해할
-     * 내용이 다르다. 자동 재시도 루프를 만들지 않는다.
-     */
-    if (error instanceof CursorQueryMismatchError) {
-      return fail(reply, 400, {
-        error: {
-          code: 'CURSOR_QUERY_MISMATCH',
-          message: '구간 조건이 바뀌어 이어 보기를 계속할 수 없습니다. 첫 페이지부터 다시 봅니다.',
-        },
-        correlation_id: correlationId,
-      });
-    }
-    if (error instanceof CursorInvalidError) {
-      return fail(reply, 400, {
-        error: {
-          code: 'CURSOR_INVALID',
-          message: '이어 보기 정보를 사용할 수 없습니다. 첫 페이지부터 다시 봅니다.',
-        },
-        correlation_id: correlationId,
-      });
-    }
-
-    const shape = toAuthError(error, { correlationId, loginPath });
-    if (shape !== null) return sendAuthError(reply, shape);
-
-    if (error instanceof AccessScopeUnavailableError) {
-      return fail(reply, 503, {
-        error: { code: 'PERMISSION_UNAVAILABLE', message: '접근 권한을 확인할 수 없어 조회를 거부한다' },
-        correlation_id: correlationId,
-      });
-    }
-    if (error instanceof PartialSearchError) {
-      return fail(reply, 504, {
-        error: { code: 'SEARCH_TIMEOUT', message: '검색이 부분 결과만 얻어 조회를 거부한다' },
-        correlation_id: correlationId,
-      });
-    }
-    throw error;
-  };
+  const toFailureResponse = (reply: FastifyReply, correlationId: string, error: unknown): FastifyReply =>
+    sequenceFailureResponse(reply, correlationId, error, loginPath);
 
   // API-SEQ-005 / WP-042. 사용자 식별자는 본문이 아닌 인증 세션에서만 얻는다.
   app.route({ method: ['GET', 'POST', 'DELETE'], url: BISECT_SESSIONS_PATH, handler: async (request, reply) => {
@@ -809,60 +886,14 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
    * 판정은 전부 `resolveMergeNumber`에 있다. 이 라우트가 하는 일은 세션을 확인하고,
    * 접근 범위를 산출하고, 결과를 계약이 정한 HTTP 모양으로 옮기는 것뿐이다.
    */
-  app.get(MERGE_NUMBER_RESOLVE_PATH, async (request, reply) => {
-    const correlationId = randomUUID();
-    const query = (request.query ?? {}) as Record<string, unknown>;
-    try {
-      const userId = (await authenticateSession(request, auth.sessions)).userId;
-      const scope = toAccessScope(await auth.scopes.resolveCached(userId));
-      const outcome = await resolveMergeNumber(
-        { pool: deps.pool, es: deps.es, enabled: mergeNumberEnabled },
-        {
-          repository: query['repository'],
-          baseBranch: query['base_branch'],
-          prNumber: query['pr_number'],
-          mergeNumber: query['merge_number'],
-          seqEpoch: query['seq_epoch'],
-          scope,
-        },
-      );
-
-      switch (outcome.kind) {
-        case 'ok':
-          return await reply.send({ ...outcome.body, correlation_id: correlationId });
-        case 'invalid':
-          return fail(reply, 400, {
-            error: {
-              code: 'INVALID_PARAMETER',
-              message: outcome.message,
-              detail: { field: outcome.field, ...(outcome.reason === undefined ? {} : { reason: outcome.reason }) },
-            },
-            correlation_id: correlationId,
-          });
-        case 'not_found':
-          return fail(reply, 404, {
-            error: { code: 'NOT_FOUND', message: outcome.message },
-            correlation_id: correlationId,
-          });
-        case 'no_sequence':
-          return fail(reply, ERROR_HTTP_STATUS['NO_SEQUENCE'], {
-            error: { code: 'NO_SEQUENCE', message: outcome.message, detail: { reason: outcome.reason } },
-            correlation_id: correlationId,
-          });
-        case 'feature_disabled':
-          /*
-           * 기능이 꺼진 배포다. **404이며 사유를 밝힌다** — 화면이 "찾을 수 없음"과
-           * "아직 켜지 않음"을 구분해 안내할 수 있어야 한다 (설계 9절).
-           */
-          return fail(reply, 404, {
-            error: { code: 'NOT_FOUND', message: 'M 번호 기능이 활성화되지 않았습니다.', detail: { reason: 'feature_disabled' } },
-            correlation_id: correlationId,
-          });
-      }
-    } catch (error) {
-      return toFailureResponse(reply, correlationId, error);
-    }
-  });
+  app.get(MERGE_NUMBER_RESOLVE_PATH, async (request, reply) =>
+    executeMergeNumberResolve(
+      (request.query ?? {}) as Record<string, unknown>,
+      reply,
+      sessionInvocation(request, auth),
+      { pool: deps.pool, es: deps.es, mergeNumberEnabled, loginPath },
+    ),
+  );
 
   app.get(SEQUENCE_NEIGHBORS_PATH, async (request, reply) => {
     const correlationId = randomUUID();

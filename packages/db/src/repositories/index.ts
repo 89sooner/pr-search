@@ -37,6 +37,19 @@ export * as ghExecutionRepo from './gh-execution.js';
 /** 운영 승인·capability 차단의 현재 상태와 revision 이력 — 쓰기는 DB 함수로만 (REL-007 / WP-080, ENT-GH-013·014, CR-090). */
 export * as ghPolicyRepo from './gh-policy.js';
 export type { ApplyPolicyChangeInput, ApplyPolicyChangeResult, GhPolicyAction, GhPolicyRevisionRow, GhPolicyRow, PolicyChangeRejectionKind } from './gh-policy.js';
+/** PIPE 연동의 identity binding·로그인 문맥·grant·긴급 회수·이벤트 (CR-112 / ENT-INT-001~005). */
+export * as pipeIntegrationRepo from './pipe-integration.js';
+export type {
+  BindingStatus,
+  CredentialKind,
+  CredentialRevocationRow,
+  GrantInsert,
+  GrantLookupRow,
+  IdentityBindingRow,
+  IntegrationEventInput,
+  IntegrationEventType,
+  IssueGrantResult,
+} from './pipe-integration.js';
 
 export type {
   DeadLetterFilter,

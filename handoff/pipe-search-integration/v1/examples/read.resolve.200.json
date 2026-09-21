@@ -1,0 +1,46 @@
+{
+  "operation": "read.resolve",
+  "title": "SHA 접두 해석",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/resolve?q=aaaaaaa",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000008"
+    },
+    "body": {
+      "input": "aaaaaaa",
+      "detected_kind": "commit",
+      "candidates": [
+        {
+          "kind": "commit",
+          "repository": "acme/payments",
+          "repository_id": 101,
+          "display_name": "aaaaaaaaaaaa",
+          "url": "/commit/acme/payments/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "short_sha": "aaaaaaaaaaaa",
+          "role": "merge_commit",
+          "pull_request_numbers": [
+            1
+          ],
+          "merge_seq": 1,
+          "seq_epoch": 3,
+          "sequence_space": "acme/payments@main"
+        }
+      ],
+      "truncated": false,
+      "correlation_id": "00000000-0000-4000-8000-000000000008"
+    }
+  }
+}

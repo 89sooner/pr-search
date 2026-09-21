@@ -1,0 +1,49 @@
+{
+  "operation": "read.commit",
+  "title": "커밋 상세",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/commits/acme%2Fpayments/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000011"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "short_sha": "aaaaaaaaaaaa",
+      "merge_seq": 1,
+      "seq_epoch": 3,
+      "sequence_space": "acme/payments@main",
+      "pull_requests": [
+        {
+          "pr_number": 1,
+          "title": "결제 재시도",
+          "author": "alice-psi",
+          "state": "merged",
+          "merged_at": "2026-08-19T05:02:11Z",
+          "merge_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "url": "/pr/acme/payments/1"
+        }
+      ],
+      "url": "/commit/acme/payments/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "repository_id": 101,
+      "role": "merge_commit",
+      "base_branch": "main",
+      "message": "결제 재시도 구현\n\n본문",
+      "author": "alice-psi",
+      "committed_at": "2026-08-19T04:00:00Z",
+      "correlation_id": "00000000-0000-4000-8000-000000000011"
+    }
+  }
+}

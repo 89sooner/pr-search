@@ -1,0 +1,30 @@
+{
+  "operation": "read.search",
+  "title": "grant 만료 — 새 assertion으로 한 번 재발급",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/search?q=",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000020"
+    },
+    "body": {
+      "error": {
+        "code": "GRANT_EXPIRED",
+        "message": "The search grant has expired.",
+        "retryable": true
+      },
+      "correlation_id": "00000000-0000-4000-8000-000000000020"
+    }
+  }
+}

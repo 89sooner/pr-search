@@ -1,0 +1,27 @@
+{
+  "operation": "auth.revoke",
+  "title": "grant 회수 (결과와 무관하게 같은 본문)",
+  "captured": true,
+  "request": {
+    "method": "POST",
+    "path": "/internal/integrations/pipe/v1/auth/revoke",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000003"
+    },
+    "body": {
+      "protocol_version": "PSI-1.0",
+      "revoked": true,
+      "correlation_id": "00000000-0000-4000-8000-000000000003"
+    }
+  }
+}

@@ -1,0 +1,714 @@
+{
+  "protocol_version": "PSI-1.0",
+  "fixture_only": true,
+  "warning": "FIXTURE ONLY — 공개된 시험 키로 만든 벡터다. 어떤 배포 환경에서도 이 키를 쓰지 않는다.",
+  "clock_now_seconds": 2000000000,
+  "clock_now_iso": "2033-05-18T03:33:20.000Z",
+  "client": {
+    "client_id": "pipe-conformance",
+    "issuer": "urn:fixture:pipe:conformance",
+    "audience": "urn:fixture:pr-search:pipe-integration:conformance",
+    "profile": "search-read-v1",
+    "kid": "pipe-conformance-2033-01"
+  },
+  "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwnOXGyF39hIcP4ds2mgs\nnvqMcFsZIbiR3rh6gUMgqVFkpbBXfZKh4P+6le1B6k/A2e44zDJFEiJ/YCBh8E6u\nxH2WHkkjMP+dsEdXXADZOfMq8suVfZENx9ln336ndFDRp5ErusCUuUJ+Vq1oJjZn\nXYtDvrp14zX2i4NrO4Z1ZjF6Uk0ElfoiVSPHIAIe5Fleq+7LTBdLBR66R37g+xHX\ni+WU6Kpan/Z7DKnPSjzP//FTFraxNWXyhr8+D5RDpNHmdw555M0Rl5t8oukcuPmb\n7N2Wa56gBlO9wb/7Us8Hzxx0eeEhM6tVA0ur8Bs0OmTIhQO3AaZn/DCbFq4ppp0U\naQIDAQAB\n-----END PUBLIC KEY-----\n",
+  "public_key_spki_sha256": "a09ce41e6e4304fb8117b867340cee2b15001b6247984e64951cce1f0639dfb1",
+  "serialization": "token = base64url(JSON.stringify(header)) + \".\" + base64url(JSON.stringify(payload)) + \".\" + base64url(RSASSA-PKCS1-v1_5-SHA256)",
+  "vectors": [
+    {
+      "id": "V01-valid-grant",
+      "description": "정상 grant 목적 assertion",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.R09PUwhz0DMwwRg5hgm3f5N9cDI1MlYTziCcG8XFnBILoSop5k86W4340Ce4igxsYvRjrdBNxg6PWdCcxjrYKgA_QHPh3KzvST1r2gA2v_AeDrfC8rSPNFw37DahxB6LLTFLhWZlHudIi5Kzs9YmLjeZIiP-BsOgqF8q-CkNtGMRWyFRVmwznUJvy-misdasgzHKiDGsWXc1Lhq2JICh1xwNJ6wgbmw9qMLhtAB-Lu2UTuLWFurCkR59Jy865rLoFA1Q2zOzdR8tesLayraTanWTwaZnaMh5qfVv3Ovkl2-j54O56Rz9ySeyVqrygHTpmRFRlIJMtJle04VdGxE30w",
+      "expect": {
+        "result": "accept"
+      }
+    },
+    {
+      "id": "V02-revoke-context-past-auth",
+      "description": "문맥 회수 목적은 지난 auth_expires_at를 받는다",
+      "purpose": "revoke_context",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "revoke_context",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 1999996400,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6InJldm9rZV9jb250ZXh0IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjE5OTk5OTY0MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.nPAbxU5CPDk_RWI4wUmymXshDQ5gn8ati0El-N_E_i_-Ag1Y4D3BG_CiJ5ayOuHIv9jSiLecDWqMDcOR9KYEAVbZKnIZBawb_LkGQIkTk09kJ9Vx-B6sGc_U8idUdwvtEG0_wmWeB4lxchtldO0m65AeSGDaCwi5QULPUwYa4eFL0DRF7EothOfFR-uBm4sWrJ1nQSZJsk3hWYGPnWaP5Lzpw1bDGlBRhtJBp2U-7RJAh76PGWiKI_ZGSoYVn2E0AsjxUFH5r5dbiR0TTrRw96pJTX1xDU04IS09LP0fee9aYtEgfIfzW085F2pBbUxjOU2hR5gvLn9PDTMuLaFSIQ",
+      "expect": {
+        "result": "accept"
+      }
+    },
+    {
+      "id": "V03-ttl-60",
+      "description": "exp - iat = 60초는 받는다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.R09PUwhz0DMwwRg5hgm3f5N9cDI1MlYTziCcG8XFnBILoSop5k86W4340Ce4igxsYvRjrdBNxg6PWdCcxjrYKgA_QHPh3KzvST1r2gA2v_AeDrfC8rSPNFw37DahxB6LLTFLhWZlHudIi5Kzs9YmLjeZIiP-BsOgqF8q-CkNtGMRWyFRVmwznUJvy-misdasgzHKiDGsWXc1Lhq2JICh1xwNJ6wgbmw9qMLhtAB-Lu2UTuLWFurCkR59Jy865rLoFA1Q2zOzdR8tesLayraTanWTwaZnaMh5qfVv3Ovkl2-j54O56Rz9ySeyVqrygHTpmRFRlIJMtJle04VdGxE30w",
+      "expect": {
+        "result": "accept"
+      }
+    },
+    {
+      "id": "V04-ttl-61",
+      "description": "exp - iat = 61초는 거절한다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000061,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjEsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.pBnmA6HKpth4amjAQOtMbv5zfCSJWR2sZK6Z1RRwmuMFE6Bfsymq7vq-zwxLTJBFnRi_WL-_sRqHNTQRxYsbqxKEZvpA_agwCHmdV8JuW6Q9Wrho4Gs-yU3kKwX75Wd1EYdktV5T_Q4DozaBBb002E7b0LBb1C2405hkL7gqEoXIvbozbWdol9Q3T6PkIEul9JOaulLzIm3s326d4cCvqDEt-9hxfsy8qbnwusaZVaSzcKwPjK5fT8fzAMkHNdGVUWnsbgy04YZ0kGJmEK1-Q_PCQVDxwlS_Jn7x8fJwzxNpevDr5IgLn_kUjhoQHK422ZrBWrs-ieYfibG1bxtSvA",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "ttl_too_long"
+      }
+    },
+    {
+      "id": "V05-exp-equals-iat",
+      "description": "exp <= iat는 거절한다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000000,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwMDAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.ckAjebElxU0MedjOzyRAaK-EIEzECpo7y4v1yU3kXPCHmn04PAvPZ3KuuBI5Je35ezXoL-ROKpF5T-BGgqbrFd_c1ONYkFHDo9GGxv1mcK6qBiW2evAEd1j3XgxosTUOnalJAi86MmllefmIp-0u2AwPMUhqsDJAfBu_8mLbes_9ITb4ojfhHHg9iIVXa3TNTG8iIT2Ig-6Rtqb8Sodn2nQyiN_Z6ClQFykD0b8XQSMwwZ4hyHDyJaEx1LV8GCQJ5d7cmELPxxLFEXmCwroIs4OZvINWb6AMmYy41cJmym4Jlf-2HiDIlHUuwQFZyNVAwmecf1Sg3VxdImEHFgxaJA",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "exp_not_after_iat"
+      }
+    },
+    {
+      "id": "V06-iat-future-5s",
+      "description": "iat가 5초 미래까지는 받는다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000005,
+        "nbf": 2000000005,
+        "exp": 2000000065,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwNSwibmJmIjoyMDAwMDAwMDA1LCJleHAiOjIwMDAwMDAwNjUsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.hNIxjj7ucG0_5SxMlVYLXijAPnPubL-4VtBiZG7lUerVqyxgPYQOAv_DYX_FQn4Tl8IlTMH21tI6arVPUcsccD9Z4EJK1ljqdmT3_ZALfkD9TN8C2HGC89Ugg1YdKciyy8UTeKCAhg5HvRi7TMr_RlUqxUJCa4tMPOIxfF_kju0-gSziepX2MXTilAP-RCOw-kGXCmCabkl79hdkWtZXNNgzc9IQ36UaXkkN_pG_kWGN_UAOCB6CI8rGNMOTjindV-R0j7v9M1yNEBJLhAr7yMbxbPw5GE540JUyjZMnUdyjBVie2ijspP26ySYp7OYfwRetRvWIeOAfxBQmcnAb6Q",
+      "expect": {
+        "result": "accept"
+      }
+    },
+    {
+      "id": "V07-iat-future-6s",
+      "description": "iat가 6초 미래면 거절한다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000006,
+        "nbf": 2000000006,
+        "exp": 2000000066,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwNiwibmJmIjoyMDAwMDAwMDA2LCJleHAiOjIwMDAwMDAwNjYsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.AzPyH5cpZkfpARDD21kRmQK5Gpd7rrQs4TSg7fXU9GHXNBkwgPeJ9UAUnDul5ymaJBoW06tDJxg_wV52sj4TNwS-gbgIOn5W5cHSI59CbiIotZ8bKOtnoCcZpo2OGKI7Vjq34uZl8N8SYVaQTXtHdZkHYH-DOVtw6kdvzCwMT6iuxaOP46lwVob_fKUnmCSusweIRnastAqu6GHhEFZmDtdFjN5N3WnfiSXx8wqDdlSpOt4onkp7HZB4r9sWTzWaFKu2dfocr5l0155fp5IHHNV9VnP_TIsFWFQCNe3OcDk1zoia_qIIK3f-e80GUVQNxte9dyf10UYI7tCrJCSrKA",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "iat_in_future"
+      }
+    },
+    {
+      "id": "V08-within-skew-after-exp",
+      "description": "exp 뒤 4초(허용 오차 안)는 받는다",
+      "purpose": "grant",
+      "now": 2000000064,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.R09PUwhz0DMwwRg5hgm3f5N9cDI1MlYTziCcG8XFnBILoSop5k86W4340Ce4igxsYvRjrdBNxg6PWdCcxjrYKgA_QHPh3KzvST1r2gA2v_AeDrfC8rSPNFw37DahxB6LLTFLhWZlHudIi5Kzs9YmLjeZIiP-BsOgqF8q-CkNtGMRWyFRVmwznUJvy-misdasgzHKiDGsWXc1Lhq2JICh1xwNJ6wgbmw9qMLhtAB-Lu2UTuLWFurCkR59Jy865rLoFA1Q2zOzdR8tesLayraTanWTwaZnaMh5qfVv3Ovkl2-j54O56Rz9ySeyVqrygHTpmRFRlIJMtJle04VdGxE30w",
+      "expect": {
+        "result": "accept"
+      }
+    },
+    {
+      "id": "V09-expired-beyond-skew",
+      "description": "exp 뒤 5초부터는 거절한다",
+      "purpose": "grant",
+      "now": 2000000065,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.R09PUwhz0DMwwRg5hgm3f5N9cDI1MlYTziCcG8XFnBILoSop5k86W4340Ce4igxsYvRjrdBNxg6PWdCcxjrYKgA_QHPh3KzvST1r2gA2v_AeDrfC8rSPNFw37DahxB6LLTFLhWZlHudIi5Kzs9YmLjeZIiP-BsOgqF8q-CkNtGMRWyFRVmwznUJvy-misdasgzHKiDGsWXc1Lhq2JICh1xwNJ6wgbmw9qMLhtAB-Lu2UTuLWFurCkR59Jy865rLoFA1Q2zOzdR8tesLayraTanWTwaZnaMh5qfVv3Ovkl2-j54O56Rz9ySeyVqrygHTpmRFRlIJMtJle04VdGxE30w",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "expired"
+      }
+    },
+    {
+      "id": "V10-auth-expired",
+      "description": "grant 목적인데 원 로그인 자격이 만료됐다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000000000,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDAwMDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.a_o-r5TSqXc09SEzFzv60Xx8sK1OxfxG6Xc9TsJQejxEBtxDA11o47vg20gSlSamrsACyCtAHVgYxjdA8_7kBtXo0usrQS1pVbFj5Vvgoa0zhh-xomU6Qcz9FC8TTbCZS2WWl3P5UpE-fjQQ5qzi0WcnjvIf3kJjcBPPdkrCeRMjdkgk_gk18FM0jf-OdHXwjA8MRzI6VoQ5pa_E5pvmatcSbNI8rKqogd1N1j828KcsZpTXT2OoCIbBgWzVd_RQMidDFRC5psttJt-OuwoYIH3n8L4Hg-zHeILZCqZnlGYdBprEqKeeGt5kKAsEUBmG5-tSOD0rVH10qaU8PuY4DA",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "auth_expired"
+      }
+    },
+    {
+      "id": "V11-aud-array",
+      "description": "aud가 배열이면 우리 값이 있어도 거절한다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": [
+          "urn:fixture:pr-search:pipe-integration:conformance"
+        ],
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjpbInVybjpmaXh0dXJlOnByLXNlYXJjaDpwaXBlLWludGVncmF0aW9uOmNvbmZvcm1hbmNlIl0sInN1YiI6ImZpeHR1cmUtY29ycC11c2VyLTAwMSIsImNsaWVudF9pZCI6InBpcGUtY29uZm9ybWFuY2UiLCJwdXJwb3NlIjoiZ3JhbnQiLCJwcm9maWxlIjoic2VhcmNoLXJlYWQtdjEiLCJhdXRoX2NvbnRleHRfaWQiOiJvcGFxdWUtc2VydmVyLWRlcml2ZWQtbG9naW4tY29udGV4dCIsImF1dGhfZXhwaXJlc19hdCI6MjAwMDAwMzYwMCwiaWF0IjoyMDAwMDAwMDAwLCJuYmYiOjIwMDAwMDAwMDAsImV4cCI6MjAwMDAwMDA2MCwianRpIjoiY29uZm9ybWFuY2UtanRpLTAwMDAwMDAwMDAwMSJ9.EiRp_cs57jYl9VTn8xTTU1H6c8S6S9iLHO1O23trW5-p_i5k85b3c9mVKgf-gzXsBa7LIxMQj-kLt8-qxkAKI0wa9yX_l09taRREYN5Rsf0X_6GCEIJ-wSA96TEEd_19lwcrH1-Nq437oo_h3AKxZUk57bV-HXW9A46Nu5VK05kv7F6pCbvQ16yEim6NjMoGROXYCANWJd7tteyxdrZZxaKvh730TE_5msU_wFksP0KJKZVT9dxpisyV2u7S5lyoYkXiX7MP45_fR82Iyst-QE-SX6qp_x2ETyD1X2ScsgbHMbrDYaylJeXD1SW7nIlh6W3WTSvEYYP0HtCaXbjQjw",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "aud"
+      }
+    },
+    {
+      "id": "V12-wrong-issuer",
+      "description": "issuer가 다르다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:other",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOm90aGVyIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.UUG1pJJmiO8bAmeMNxYMGLyXB6JBxv97OspXK9k_9JQwuCkB8WluNN724WPUMwInJT18xoLUj7-AmSxXNIgKm_A0mq-yW2ynF1lNrQ7AL3e6dyrZagW9si5gvBowUcrfwDj86A0fVZOWGndXXY_Q_9cb5D4IpVwouXHMDWuJ5bjLzCp3Lk0CtQELc_Ot9qZhNVUZz-mKuedw68Vd5wMgTgnN4qcEJxp_PErj1u8bTxOjFhBwVUtfNv4lknKIyPhUBQNczKdTQLKnB33CRwxJkZuBA2RdaKzcG0b5TOfscAH6WR9HNQghB_dX9n_7kfiEarg_ssuSLVZsjEA8AfCEmA",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "iss"
+      }
+    },
+    {
+      "id": "V13-wrong-client-id",
+      "description": "client_id가 mTLS client와 다르다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-other",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLW90aGVyIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.GFLpT929WNEH9kxbjCgI2ifFqLRMdLDZ3Cufm7s3Eezn6gqvHEohIh59VKcHTUgsbjsRbj5lbfOwUtQIsgs6H2LkHVrpXnXQmvwZGvpz4P17BeyhIiHDIpLRw57wabklU21jq52-Pv8Do2mlZbfDofSs7AiiBid5BtPvX-i8bAi7gqmS-DAR2c7yG9WSgSEK8H1rD-i1eTD0Y4q2m2tgRfjxwzHXCwt9JV0VdLg1ew3gc01fhg_T2dZJxSZTLkbLdsIr28i-2MoQhlhhnbcmtRDWx0zFHcJl1Brz4913vTVlhFthpWe-tsTA-XKSW3RR_Zm_HlYzgw3LVbnYKKJIxw",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "client_id"
+      }
+    },
+    {
+      "id": "V14-wrong-purpose",
+      "description": "grant 경로에 revoke_context 목적",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "revoke_context",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6InJldm9rZV9jb250ZXh0IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.E_HCwY23Gz8ahHeiexlUg1iM--oYiItjKOmEZJ7HoMqxA8eeGkLvg2yU0mJOUL7thehwj3IilxnPb5qa74MSboFV1YIGDvH-nL8GLu6h_LhLrAC3yjxZO840T3HXdpBBSaNiNhLHVyQumiSVtc9TXbtu6uKYA-5FMhPUxTfSh7TTrKhLhgf0xXPR9k5-JLVbxkq1UYWx0F7tbS2s0VBt4aBeW3LIbfvomoFywSjMjE3a9N7U-xNNd1dH1A1yc_63B9DcS1MDLqYsZ32U8PSPywfB9tGC97PgWPgMux6aeHFClLJEEj6rO6DmNW8KVX8q_AXNi1MnqjZkD4QJIpRneQ",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "purpose"
+      }
+    },
+    {
+      "id": "V15-extra-roles-claim",
+      "description": "권한 주장 claim(roles)은 받지 않는다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001",
+        "roles": [
+          "operator"
+        ]
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEiLCJyb2xlcyI6WyJvcGVyYXRvciJdfQ.bAgc2lgzEn4rS_nhUH6xBy5tz6s5-wMVDvGAvUSq7so7ZEzAxOXROkshctbHOcDNHzrTHSaoRx8ggQwgbF6CL6x8JEMOvZMk8uyg9HaC2DOuvgeH_uCGA0SELf4qCxp7p4OLiQvxI80VR9jKMDYZl2BuOkrUWc_UcAFYmsTfTBhaaBlmJRe7-CQRfBhZkyH4fTIcE7hirdYqbm-YXFa54qNqSmD6vmJuRVYfBcvO2fYQSOklGMU3scQiOQu-72uiflQT_pvPx_lFP-DqFctWrY-TxWL3hkr0SJl2V3RCP8PVcndY4LGBoZJAkFOoYq3ObTrSF3exje-f0tA8jgxxJw",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "claim_unexpected_roles"
+      }
+    },
+    {
+      "id": "V16-extra-ghe-login-claim",
+      "description": "매핑 주장 claim(ghe_login)은 받지 않는다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001",
+        "ghe_login": "someone"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEiLCJnaGVfbG9naW4iOiJzb21lb25lIn0.pP1WElCQnpPRBCGzC8CecyGcFNXWegmH0hbbqCRXMD_hoH8ChXl5G5A_F7nsS3nb1hyItFEzziwco6Wa-GjEpzizmczXlfgRjUtIyThNRvcl-1OmZa-FEImqJmr16RhDxrLlc6fZvHfsKiPD6I1mq6-126WtN1bqa0pvP-oIbDjjEZTyB7Z5v0L_F3b3K7RMam0pw50_2WM3lo_qOpsIB2Wp0i75tpCIJ7khIB7cxB6u-Y0OEV3CY0O2ctzlZi-w92so0e08PXZpksGzKhWMT-uX1nswB6MVzObwYAWK6EBhHM1gcBuNXtqOvVbxepRRJsfigvbKrQuaZQZMXjsz_A",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "claim_unexpected_ghe_login"
+      }
+    },
+    {
+      "id": "V17-missing-nbf",
+      "description": "12개 claim은 모두 필수다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwiZXhwIjoyMDAwMDAwMDYwLCJqdGkiOiJjb25mb3JtYW5jZS1qdGktMDAwMDAwMDAwMDAxIn0.VvLv8br5MAOGSLQJTM2QQr3p6skb6rrWHusa7ceYr5_qCV_ml20t_1oUcNtp5QAADFfqW3upOrMVFL4sj5E0wkJtWfTwt6jX3vQEnT2MzMVbB-crT6wCWJkUqn_-FhPkeQNmTxJGU_WfZPJtWexkoXxlZARcevBA1ysnYupYeFA6WoEi4iFjwWQ82XCewnwHYs2PFrxWAYFMawPDRWUSD5wf_fjbIuFh5VWN0c3ad8wnTg3pT7D5AYVedSu-XttSsfJvq5dwfDynTQknvkeN8vLJSIlW-WLGL-d5_kFcj329_0DnW2cfcQbME9luehtaSp-KrsAxzOiNpNMrwWd_sw",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "claim_missing_nbf"
+      }
+    },
+    {
+      "id": "V18-short-jti",
+      "description": "jti는 128비트 이상(base64url 22자 이상)",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "short-jti"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6InNob3J0LWp0aSJ9.V0IQPWiXkpB0YgYrASd0tMX6HlPvPUR20jJQv626BtajXiLXvoPMsr5T80_8We5lOr7pgU6I8w48SViavBkreGp76gXHjslf186xk98DVgoiNxAwUh3uloCl3DQMrn0H_sZ110Jj11oazUL9l4lHhQ1D3lI2weNUgSsrlH1Bm23FTsZaK55CO83sqFTvszSy17-T2JUlCWPHYaatZ_SIaXRarATaLnShN45fQkaeiwEFM6eClFk3iUyQbcBcXOMhcfENYOPRwVhI4jVdW2RNdMaUX9AVY3lfSPRDrYY6eOXBIQQN1Jev58nFhUFQJ_WFqrfysnAEP5b6_HeSDBx9Ow",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "claim_jti_format"
+      }
+    },
+    {
+      "id": "V19-typ-jwt",
+      "description": "typ은 정확히 pipe-user-assertion+jwt다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "JWT",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InBpcGUtY29uZm9ybWFuY2UtMjAzMy0wMSJ9.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.N9HZgcslb2MFVJjXVKEsG1nXq9awrbH9IVxCWjmvH_6AsIDJH2OLOorvS8cMMlSkBmDQ3Z5ycBrDG6QXFYfXJY2uDRER2vJ03Y6uY8qUi2dhnEzzksqFX0e3lV7ZUclvNEXFjD2uYUeG5KALzbE2NBPBk9Sron0g3suN5Fv-sRuvbtNcJhz1Hl7HTFVrknzpStCIIC3Mj9u7jaj6DBMKzR5rJ6sWBJp5yu3PPlwDsVvBe_F42Atqz-K8v28DI74LayYHEmDjq9Nqy9CDTjQ-hK-yvY80_4NJ-LOD6BwNL7F34Qa0T3hSkRCvqTZdyiDwvOZZsXpQTtKnyuH4Z_J8Fw",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "typ"
+      }
+    },
+    {
+      "id": "V20-unknown-kid",
+      "description": "등록되지 않은 kid",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-unknown"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS11bmtub3duIn0.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.tQy_YrUbhGtlxr5crEnm5z4mJmaviBL10YLp7dyulqI1e8Rv9oKfJ0McrsJmH79kbKda5uhbk84yYLjflVAj8-AXD5W7A-5J4pbm1rnF_m0E-_7UVR7C1luad1FGL_mOavvBPLqM1uQSqjCeTAMozTDOYXsFatL4R8AsTTuVW8jeXkCc-78TkrwUXbGlJR72s-xCY0yPGiO1h7EkcUDgF7mzMdSrA61Yxy8XNsqIWwiaqIYTfrAfGESzw9JfMvAmqD0JMZUcF0fCuPWkhq4RHYc775Ohz3nuZZkdGe944M2aKDyjAVA3HyBKo8CMvI5mvClyJKmXuiqkDeF1fmqQQg",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "unknown_kid"
+      }
+    },
+    {
+      "id": "V21-jku-header",
+      "description": "토큰이 지정한 키 위치(jku)는 따라가지 않고 거절한다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "RS256",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01",
+        "jku": "https://attacker.example/jwks.json"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6InBpcGUtdXNlci1hc3NlcnRpb24rand0Iiwia2lkIjoicGlwZS1jb25mb3JtYW5jZS0yMDMzLTAxIiwiamt1IjoiaHR0cHM6Ly9hdHRhY2tlci5leGFtcGxlL2p3a3MuanNvbiJ9.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.sFsaDUCblqkGYOjMGkZStEzZ-VgHRNDXi-NJlRSRTyA46O_uB8DCervW71xXfK_frADRIyMItr5s1FKUMOTxb3y3djqXzsNZmwj35L8JULRzrwkeGbgLTw0x2vOELhazGtdtVKBgNFSADKZSRG2h_Av0O6va2cOunNcl0-zVxpYxUc4166SmfxwUWhOGaz2byfXQCNJ8WkB0OBnTn5NFo3cPPzztCPlgQzInPn4KAmyP3gDi2JNSCwo-9vt9KM_P1nBoWl99OR1bIfOaU3V9JkSbAxIR9D3L6o8xG7pIX-LCigA2mViHXH51DoUqHLf0blKokFOBBCBkVVG8h1RHzA",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "header_param_jku"
+      }
+    },
+    {
+      "id": "V22-alg-none",
+      "description": "alg:none (서명 없음)은 거절한다",
+      "purpose": "grant",
+      "now": 2000000000,
+      "header": {
+        "alg": "none",
+        "typ": "pipe-user-assertion+jwt",
+        "kid": "pipe-conformance-2033-01"
+      },
+      "payload": {
+        "iss": "urn:fixture:pipe:conformance",
+        "aud": "urn:fixture:pr-search:pipe-integration:conformance",
+        "sub": "fixture-corp-user-001",
+        "client_id": "pipe-conformance",
+        "purpose": "grant",
+        "profile": "search-read-v1",
+        "auth_context_id": "opaque-server-derived-login-context",
+        "auth_expires_at": 2000003600,
+        "iat": 2000000000,
+        "nbf": 2000000000,
+        "exp": 2000000060,
+        "jti": "conformance-jti-000000000001"
+      },
+      "token": "eyJhbGciOiJub25lIiwidHlwIjoicGlwZS11c2VyLWFzc2VydGlvbitqd3QiLCJraWQiOiJwaXBlLWNvbmZvcm1hbmNlLTIwMzMtMDEifQ.eyJpc3MiOiJ1cm46Zml4dHVyZTpwaXBlOmNvbmZvcm1hbmNlIiwiYXVkIjoidXJuOmZpeHR1cmU6cHItc2VhcmNoOnBpcGUtaW50ZWdyYXRpb246Y29uZm9ybWFuY2UiLCJzdWIiOiJmaXh0dXJlLWNvcnAtdXNlci0wMDEiLCJjbGllbnRfaWQiOiJwaXBlLWNvbmZvcm1hbmNlIiwicHVycG9zZSI6ImdyYW50IiwicHJvZmlsZSI6InNlYXJjaC1yZWFkLXYxIiwiYXV0aF9jb250ZXh0X2lkIjoib3BhcXVlLXNlcnZlci1kZXJpdmVkLWxvZ2luLWNvbnRleHQiLCJhdXRoX2V4cGlyZXNfYXQiOjIwMDAwMDM2MDAsImlhdCI6MjAwMDAwMDAwMCwibmJmIjoyMDAwMDAwMDAwLCJleHAiOjIwMDAwMDAwNjAsImp0aSI6ImNvbmZvcm1hbmNlLWp0aS0wMDAwMDAwMDAwMDEifQ.",
+      "expect": {
+        "result": "reject",
+        "status": 401,
+        "code": "ASSERTION_INVALID",
+        "reason": "format"
+      }
+    }
+  ]
+}

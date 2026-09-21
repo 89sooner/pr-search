@@ -1,0 +1,30 @@
+{
+  "operation": "read.repositories",
+  "title": "접근 범위 확인 실패 — 연동 봉투(retryable: true)",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/repositories",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 503,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000018"
+    },
+    "body": {
+      "error": {
+        "code": "PERMISSION_UNAVAILABLE",
+        "message": "Repository access could not be verified.",
+        "retryable": true
+      },
+      "correlation_id": "00000000-0000-4000-8000-000000000018"
+    }
+  }
+}

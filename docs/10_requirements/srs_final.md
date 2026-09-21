@@ -1,6 +1,22 @@
 # PR Search 최종 요구사항 정의서
 
-> 상태: baseline | 버전: v2.38 | 갱신일: 2026-09-18
+> 상태: baseline | 버전: v2.39 | 갱신일: 2026-09-21
+
+### FR-INT-001 PIPE 서버의 사용자 위임 검색 수신 (CR-112)
+
+| 항목 | 내용 |
+| --- | --- |
+| 상태 | approved — 사용자 지시(2026-09-21). 기본 꺼짐. 로컬 구현·검증 범위이며 사내 CA·실제 GHE·운영 프록시를 거친 검증은 별도다 |
+| 우선순위 | Should |
+| 출처 | [작업 지시서](../40_delivery/pipe-search-handoff-auth/01_PR_SEARCH_API_AUTH_CLAUDE_PROMPT.md), [공통 계약 PSI-1.0 제안](../40_delivery/pipe-search-handoff-auth/00_SHARED_INTEGRATION_CONTRACT.md), [수용 시험](../40_delivery/pipe-search-handoff-auth/03_SECURITY_AND_CONTRACT_ACCEPTANCE.md) |
+| 요구사항 | 연동 기능이 켜진 배포에서 등록된 PIPE 서버가 mTLS 연결과 서명된 사용자 assertion으로 사용자 신원을 위임하면, 시스템은 승인된 identity binding으로 연결된 기존 사용자에 한해 300초 이하의 검색 전용 grant를 발급하고, 그 grant로 고정된 조회 10종을 기존 조회와 같은 입력·권한·응답 의미로 제공하여야 한다. |
+| 수용 기준 | AC-1: 연동 경로는 공개 리스너와 분리된 private 리스너에만 등록한다. 공개 리스너와 web 프록시에는 연동 경로가 없다. private 리스너는 TLS 핸드셰이크에서 신뢰 CA가 발급한 client 인증서를 요구하고, 정책에 등록된 인증서(SAN 정확 일치 또는 SHA-256 지문)만 client로 인정한다. 전달 헤더(`X-SSL-Client-*` 등)로 client를 정하지 않는다. AC-2: 사용자 assertion은 RS256 고정, `typ` `pipe-user-assertion+jwt`, 등록된 `kid`, 정확한 `iss`·단일 `aud`·mTLS client와 같은 `client_id`, 정해진 `purpose`·`profile`과 12개 필수 claim만 받고, 수명 60초 이하·시계 오차 5초·길이 8192자 상한을 적용한다. 서명·claim 검증을 통과한 뒤에만 `jti`를 분산 저장소에서 원자적으로 1회 소비하며, 그 저장소가 답하지 않으면 503으로 거절한다. AC-3: grant는 운영자가 승인한 `(issuer, subject) → 기존 사용자` binding이 활성일 때만 발급한다. 이 경로는 사용자·역할을 새로 만들지 않는다. binding의 GHE 호스트·숫자 ID가 정본 사용자, 그리고 GHE에서 조회한 그 login의 현재 숫자 ID와 일치하지 않으면 거절한다(미연결 403, 비활성 403, 충돌 409). AC-4: grant는 일반 세션과 호환되지 않는 불투명 토큰이며 서버는 SHA-256 해시만 저장한다. 수명은 `min(발급 + 300초, 원 로그인 만료, client 인증서 만료)`이고 연장하지 않는다. 매 요청에서 발급 client·인증서 지문의 일치, client·서명 키·인증서의 긴급 회수, binding 상태·버전, 로그인 문맥 회수, 만료를 판정한다. AC-5: grant는 고정 조회 10종(저장소 목록, 검색, 식별자 해석, M 번호 해석, PR 상세, 커밋 상세, source tree·history·file·diff)에만 유효하다. 각 조회는 기존 조회 실행 코드를 그대로 실행하고, 접근 범위는 사용자의 기존 접근 범위(5분 캐시·버전 울타리 포함)와 client 저장소 허용 목록의 교집합을 명시적 저장소 목록으로 만들어 조회 전에 강제한다. 사용자가 operator여도 관리·실행·감사 경로는 열리지 않는다. AC-6: 성공 응답과 원본 조회의 오류는 기존 `/api/v1/*`와 같은 본문·상태이고, 연동 고유 실패만 PSI-1.0 오류 봉투(`code`·`message`·`retryable`)를 쓴다. 원본이 잡지 못해 500이 되는 접근 범위 확인 실패는 `FR-AUTH-002`대로 503 `PERMISSION_UNAVAILABLE`이다(DEV-732). 연동 커서는 client와 사용자 결속을 지문 재료에 더하며, 결속이 없는 공개 커서의 지문은 바뀌지 않는다. 연동 경로는 중복되거나 목록에 없는 query key, 깨진 percent-encoding·제어 문자, 경로 파라미터 `{repository}`의 이중 인코딩·dot segment를 400으로 거절하고, query 값의 뜻(예: 식별자 해석의 저장소 힌트)은 원본 그대로 둔다. AC-7: 개별 grant 회수는 자기 client의 grant에만 효력이 있고 결과와 무관하게 같은 응답을 준다. 로그인 문맥 회수는 새 assertion으로만 받으며, 회수 표식은 PostgreSQL에 두고 원 로그인 만료 뒤 보존 기간까지 남긴다. 발급과 회수가 경합해도 회수가 끝난 뒤 사용 가능한 grant가 남지 않는다. 긴급 회수(client·서명 키·인증서)는 재기동 없이 모든 복제본에 즉시 적용된다. AC-8: 일반 `/api/v1/*`는 grant·assertion을 자격으로 받지 않고, 연동 경로는 브라우저 쿠키를 거절한다. 기존 화면·쿠키·세션 수명·API 계약은 바뀌지 않는다. AC-9: binding 가져오기·끄기는 운영 CLI로만 한다. 기본은 dry-run이고, 충돌(파일 안 중복, 역방향 충돌, 다른 GHE 호스트, 없는 사용자, 숫자 ID 불일치)이 하나라도 있으면 `--apply`여도 아무것도 쓰지 않으며, 변경마다 검증자·근거를 남기고 `binding_version`을 올린다. HTTP로 binding을 바꾸는 경로는 두지 않는다. AC-10: 토큰·assertion·쿠키·서명 키·검색어 전문을 응답·로그·이벤트 기록에 남기지 않으며, 연동 오류 메시지는 코드별 고정 문구다. 조회 감사는 기존 기록기가 canonical 사용자로 남기고, 연동 이벤트 기록은 같은 correlation ID로 client·grant·operation·결과 코드를 남긴다. AC-11: 기능은 기본 꺼짐이며 꺼져 있으면 private 리스너를 띄우지 않는다. 켰는데 리스너·TLS·client 정책·서명 공개키·저장소 허용 목록·세션 인증·Redis 중 하나라도 없으면 기동을 거부하고, 운영(`NODE_ENV=production`)에서는 적합성 시험 공개키를 거부한다. AC-12: 모든 연동 응답은 `Cache-Control: private, no-store`이고 `Set-Cookie`가 없으며, HEAD·OPTIONS와 목록 밖 경로는 404다. |
+| 검증 방법 | test(단위, 127.0.0.1의 실제 mTLS·PostgreSQL·Redis·Elasticsearch 통합, 회귀) / 사내 CA·실제 GHE·운영 프록시를 거친 smoke는 NOT_RUN |
+| 관련 화면 | 없음 — 서버 간 API다. 기존 화면과 `/api/v1/*` 계약은 바뀌지 않는다 |
+| 관련 API/데이터 | API-INT-001~014 / ENT-INT-001~005, ADR-025, WP-097. 실행을 재사용하는 원본: API-ING-002, API-SRCH-001~004, API-SEQ-007, API-SRC-001~004 |
+| 예외/실패 처리 | 접근 범위를 확인하지 못하면 503 `PERMISSION_UNAVAILABLE`이고, 재생 방지·grant·binding 저장소가 답하지 않으면 503 `AUTH_STORE_UNAVAILABLE`이다. 어느 경우에도 발급·조회를 허용하는 쪽으로 넘어가지 않는다. 교집합이 빈 사용자는 원본 경로가 0개 저장소 사용자에게 답하던 그대로 받는다(검색·식별자 해석·상세 503, 저장소 목록 빈 200, source·M 번호 404). 발급 사이의 개명·권한 변경은 grant 수명(최대 300초)과 권한 캐시(최대 5분) 안에서 늦게 반영될 수 있다. |
+
+> **v2.39 (CR-112, 2026-09-21): PIPE 서버의 사용자 위임 검색 수신부를 기본 꺼짐으로 승인한다.** 사용자 지시로 `FR-INT-001`을 더한다. 새 외부 연동 경계(서버 간 private 경로)이며, 기존 화면·`/api/v1/*` 계약·로그인 쿠키·수집·색인·M 번호와 시퀀스의 의미는 바꾸지 않는다. 기존 FR의 요구사항 문장과 수용 기준은 한 글자도 바뀌지 않는다. 설계는 ADR-025, 계약은 API-INT-001~014, 데이터는 ENT-INT-001~005, 구현 단위는 WP-097이 소유한다.
 
 ### FR-REG-001 Regression Workbench 첫 UI 수직 (CR-109)
 

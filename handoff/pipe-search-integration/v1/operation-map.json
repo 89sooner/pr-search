@@ -1,0 +1,319 @@
+{
+  "schema": "pipe-search-integration-operation-map/v1",
+  "protocol_version": "PSI-1.0",
+  "prefix": "/internal/integrations/pipe/v1",
+  "openapi": "pipe-integration-v1.openapi.yaml",
+  "source_of_truth": {
+    "operations": "apps/search-api/src/integrations/pipe/operations.ts#INTEGRATION_OPERATIONS",
+    "error_codes": "apps/search-api/src/integrations/pipe/errors.ts#PSI_ERRORS",
+    "checked_by": "apps/search-api/src/integrations/pipe/contract.test.ts"
+  },
+  "common": {
+    "transport": "private 리스너의 mTLS만. TLS를 끝내는 프록시와 전달 헤더는 지원하지 않는다(L4 passthrough만)",
+    "response_headers": {
+      "Cache-Control": "private, no-store",
+      "Pragma": "no-cache",
+      "X-Content-Type-Options": "nosniff",
+      "X-Correlation-Id": "서버가 만든 UUID"
+    },
+    "cookie_header": "400 INVALID_REQUEST",
+    "duplicate_query_key": "400 INVALID_REQUEST",
+    "unknown_query_key": "400 INVALID_REQUEST",
+    "head_options_unlisted_path": "404 NOT_FOUND (등록되지 않은 client는 401 CLIENT_AUTH_FAILED가 먼저)",
+    "rate_limit": "pr-search에는 없다 — 사용자·client별 제한과 동시성 상한은 PIPE BFF가 둔다(CONTRACT_DIFF D-14)",
+    "limits": {
+      "request_timeout_ms": 60000,
+      "body_bytes_max": 16384
+    },
+    "permission_unavailable": "503 PERMISSION_UNAVAILABLE은 조회마다 봉투가 다르다. 저장소 목록·발급은 연동 봉투(retryable: true)로, 나머지 조회는 원본 실행 함수가 잡아 원본 봉투(retryable 키 없음)로 낸다. BFF는 두 봉투 모두 error.code로 처리한다. 각 조회의 integration_error_codes에 이 코드가 있는지가 곧 연동 봉투로 나오는지다(통합 시험 openapi.test.ts가 실측으로 대조한다)"
+  },
+  "operations": [
+    {
+      "id": "auth.exchange",
+      "api_id": "API-INT-001",
+      "openapi_operation_id": "authExchange",
+      "method": "POST",
+      "path": "/internal/integrations/pipe/v1/auth/exchange",
+      "auth": "mtls+assertion",
+      "query_keys": [],
+      "original": null,
+      "scope": "발급 때 사용자 접근 범위를 한 번 조회한다(실패 503 PERMISSION_UNAVAILABLE). 결과를 grant에 복사하지 않는다. 0개 저장소도 발급한다",
+      "limits": {
+        "assertion_chars_max": 8192,
+        "assertion_lifetime_seconds_max": 60,
+        "clock_skew_seconds": 5,
+        "grant_ttl_seconds_max": 300,
+        "expired_diagnostic_window_seconds": 120
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "PAYLOAD_TOO_LARGE", "UNSUPPORTED_MEDIA_TYPE",
+        "ASSERTION_INVALID", "ASSERTION_REPLAYED", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "PERMISSION_UNAVAILABLE", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": null
+    },
+    {
+      "id": "auth.revoke",
+      "api_id": "API-INT-002",
+      "openapi_operation_id": "authRevoke",
+      "method": "POST",
+      "path": "/internal/integrations/pipe/v1/auth/revoke",
+      "auth": "mtls+grant-optional",
+      "query_keys": [],
+      "original": null,
+      "scope": "없음 — 자기 client의 grant만 회수한다. 결과와 무관하게 같은 200이다",
+      "limits": {},
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "PAYLOAD_TOO_LARGE", "UNSUPPORTED_MEDIA_TYPE",
+        "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": null
+    },
+    {
+      "id": "auth.revoke_context",
+      "api_id": "API-INT-003",
+      "openapi_operation_id": "authRevokeContext",
+      "method": "POST",
+      "path": "/internal/integrations/pipe/v1/auth/revoke-context",
+      "auth": "mtls+assertion",
+      "query_keys": [],
+      "original": null,
+      "scope": "없음 — binding을 요구하지 않는다. (issuer, subject, auth_context_id) 문맥을 회수한다",
+      "limits": {
+        "assertion_chars_max": 8192,
+        "assertion_lifetime_seconds_max": 60,
+        "clock_skew_seconds": 5
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "PAYLOAD_TOO_LARGE", "UNSUPPORTED_MEDIA_TYPE",
+        "ASSERTION_INVALID", "ASSERTION_REPLAYED", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": null
+    },
+    {
+      "id": "context",
+      "api_id": "API-INT-004",
+      "openapi_operation_id": "getContext",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/context",
+      "auth": "mtls+grant",
+      "query_keys": [],
+      "original": null,
+      "scope": "없음 — grant와 정본 사용자만 읽는다",
+      "limits": {},
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": null
+    },
+    {
+      "id": "read.repositories",
+      "api_id": "API-INT-005",
+      "openapi_operation_id": "readRepositories",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/repositories",
+      "auth": "mtls+grant",
+      "query_keys": ["limit", "cursor", "repository"],
+      "original": { "api_id": "API-ING-002", "method": "GET", "path": "/api/v1/repositories" },
+      "scope": "사용자 접근 범위 ∩ client 허용 목록을 조회 전에 강제한다. 교집합이 비면 200 items: []. 범위 확인 실패는 503 PERMISSION_UNAVAILABLE(CONTRACT_DIFF D-20)",
+      "limits": {
+        "limit_default": 50,
+        "limit_max": 100
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "PERMISSION_UNAVAILABLE", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "RepositoriesErrorResponse"
+    },
+    {
+      "id": "read.search",
+      "api_id": "API-INT-006",
+      "openapi_operation_id": "readSearch",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/search",
+      "auth": "mtls+grant",
+      "query_keys": ["q", "sort", "order", "size", "cursor", "facets", "seq_epoch"],
+      "original": { "api_id": "API-SRCH-004", "method": "GET", "path": "/api/v1/search" },
+      "scope": "사용자 접근 범위 ∩ client 허용 목록을 필수 필터로 강제한다(total·facets 포함). 교집합이 비면 503 PERMISSION_UNAVAILABLE(원본의 기본 거부)",
+      "limits": {
+        "size_default": 25,
+        "size_max": 200,
+        "es_timeout_ms": 3000,
+        "track_total_hits": 10000
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "SearchErrorResponse"
+    },
+    {
+      "id": "read.resolve",
+      "api_id": "API-INT-007",
+      "openapi_operation_id": "readResolve",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/resolve",
+      "auth": "mtls+grant",
+      "query_keys": ["q", "repository", "limit"],
+      "original": { "api_id": "API-SRCH-001", "method": "GET", "path": "/api/v1/resolve" },
+      "scope": "사용자 접근 범위 ∩ client 허용 목록을 필수 필터로 강제한다(후보 포함). 교집합이 비면 503 PERMISSION_UNAVAILABLE",
+      "limits": {
+        "limit_default": 10,
+        "limit_max": 50,
+        "sha_prefix_min_length": 7
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "ResolveErrorResponse"
+    },
+    {
+      "id": "read.merge_numbers.resolve",
+      "api_id": "API-INT-008",
+      "openapi_operation_id": "readMergeNumberResolve",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/merge-numbers/resolve",
+      "auth": "mtls+grant",
+      "query_keys": ["repository", "base_branch", "pr_number", "merge_number", "seq_epoch"],
+      "original": { "api_id": "API-SEQ-007", "method": "GET", "path": "/api/v1/merge-numbers/resolve" },
+      "scope": "저장소 접근 범위(교집합)를 코드·에폭 대조보다 먼저 본다 — 범위 밖은 404. MNUMBER_ENABLED가 꺼진 배포는 404(detail.reason = feature_disabled)",
+      "limits": {
+        "pr_number_max": 2147483647
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "MergeNumberResolveErrorResponse"
+    },
+    {
+      "id": "read.pull_request",
+      "api_id": "API-INT-009",
+      "openapi_operation_id": "readPullRequest",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/pull-requests/{repository}/{pr_number}",
+      "auth": "mtls+grant",
+      "query_keys": [],
+      "original": { "api_id": "API-SRCH-003", "method": "GET", "path": "/api/v1/pull-requests/{repository}/{pr_number}" },
+      "scope": "사용자 접근 범위 ∩ client 허용 목록. 범위 밖과 없음은 같은 404. 교집합이 비면 503 PERMISSION_UNAVAILABLE",
+      "limits": {
+        "source_commits_max": 250
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "EntityDetailErrorResponse"
+    },
+    {
+      "id": "read.commit",
+      "api_id": "API-INT-010",
+      "openapi_operation_id": "readCommit",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/commits/{repository}/{commit_sha}",
+      "auth": "mtls+grant",
+      "query_keys": [],
+      "original": { "api_id": "API-SRCH-002", "method": "GET", "path": "/api/v1/commits/{repository}/{commit_sha}" },
+      "scope": "사용자 접근 범위 ∩ client 허용 목록. 범위 밖과 없음은 같은 404. 교집합이 비면 503 PERMISSION_UNAVAILABLE",
+      "limits": {},
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "EntityDetailErrorResponse"
+    },
+    {
+      "id": "read.source.tree",
+      "api_id": "API-INT-011",
+      "openapi_operation_id": "readSourceTree",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/source/{repository}/tree",
+      "auth": "mtls+grant",
+      "query_keys": ["ref", "path", "revision", "tree_sha"],
+      "original": { "api_id": "API-SRC-001", "method": "GET", "path": "/api/v1/source/{repository}/tree" },
+      "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
+      "limits": {
+        "entries_max": 5000
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "SourceErrorResponse"
+    },
+    {
+      "id": "read.source.history",
+      "api_id": "API-INT-012",
+      "openapi_operation_id": "readSourceHistory",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/source/{repository}/history",
+      "auth": "mtls+grant",
+      "query_keys": ["ref", "path", "page"],
+      "original": { "api_id": "API-SRC-002", "method": "GET", "path": "/api/v1/source/{repository}/history" },
+      "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
+      "limits": {
+        "commits_per_page": 50,
+        "page_max": 1000
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "SourceErrorResponse"
+    },
+    {
+      "id": "read.source.diff",
+      "api_id": "API-INT-013",
+      "openapi_operation_id": "readSourceDiff",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/source/{repository}/diff",
+      "auth": "mtls+grant",
+      "query_keys": ["pr", "commit", "page"],
+      "original": { "api_id": "API-SRC-004", "method": "GET", "path": "/api/v1/source/{repository}/diff" },
+      "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
+      "limits": {
+        "files_per_page": 100,
+        "page_max": 30
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "SourceErrorResponse"
+    },
+    {
+      "id": "read.source.file",
+      "api_id": "API-INT-014",
+      "openapi_operation_id": "readSourceFile",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/source/{repository}/file",
+      "auth": "mtls+grant",
+      "query_keys": ["path", "revision"],
+      "original": { "api_id": "API-SRC-003", "method": "GET", "path": "/api/v1/source/{repository}/file" },
+      "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
+      "limits": {
+        "file_bytes_max": 262144,
+        "file_lines_max": 4000
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "SourceErrorResponse"
+    }
+  ]
+}

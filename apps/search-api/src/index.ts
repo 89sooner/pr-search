@@ -20,6 +20,8 @@ import { createGheLookup } from './ops/ghe-lookup.js';
 import type { RegistryDeps } from './ops/repositories.js';
 import { buildServer, SERVICE_NAME } from './server.js';
 import { buildServerDeps, runtimeCapabilities } from './runtime.js';
+import { buildPipeIntegrationDeps, gheUserDirectory, redisReplayStore } from './integrations/pipe/runtime.js';
+import { buildIntegrationServer } from './integrations/pipe/server.js';
 
 const config = resolveSearchApiConfig();
 const pool = createPool();
@@ -34,7 +36,9 @@ const log = (entry: Record<string, unknown>): void => {
  * GHE 클라이언트. 저장소 등록(API-ADM-001)과 접근 범위 산출(FR-AUTH-002)이
  * 함께 쓴다. 자격 증명이 없으면 두 기능 모두 서지 않는다.
  */
-function buildGitHub(): { client: GitHubClient; installationFor: (org: string) => number | undefined } | undefined {
+function buildGitHub():
+  | { client: GitHubClient; installationFor: (org: string) => number | undefined; orgs: readonly string[] }
+  | undefined {
   const githubConfig = resolveGitHubConfig();
   const installations = parseInstallations();
   if (!hasAppCredentials(githubConfig) || installations.length === 0) return undefined;
@@ -58,7 +62,12 @@ function buildGitHub(): { client: GitHubClient; installationFor: (org: string) =
     }),
   );
 
-  return { client, installationFor: (org: string) => tokenPool.installationFor(org) };
+  return {
+    client,
+    installationFor: (org: string) => tokenPool.installationFor(org),
+    // PIPE 연동의 GHE 사용자 조회가 설치 토큰을 고를 조직 (CR-112). 조회 대상과 무관하다.
+    orgs: installations.map((installation) => installation.org),
+  };
 }
 
 const github = buildGitHub();
@@ -191,19 +200,48 @@ const runtimeParts = {
 
 log({ level: 'info', message: '기능 가용성', capabilities: runtimeCapabilities(runtimeParts) });
 
-const app = buildServer(buildServerDeps(runtimeParts));
+const serverDeps = buildServerDeps(runtimeParts);
+const app = buildServer(serverDeps);
+
+/*
+ * PIPE 연동 private 리스너 (CR-112 / ADR-025).
+ *
+ * **공개 리스너와 같은 의존으로** 조립한다(`buildPipeIntegrationDeps`). 꺼져 있으면 만들지 않는다. 켰는데
+ * 의존이 모자라면 여기서 던져 **기동하지 않는다** — 일부만 선 연동을 띄우지 않는다.
+ */
+const pipeSetting = config.pipeIntegration ?? { enabled: false as const };
+const pipeReplayClient = authRedis;
+const pipeInstallOrg = github?.orgs[0];
+const pipeOptions = buildPipeIntegrationDeps({
+  config,
+  setting: pipeSetting,
+  serverDeps,
+  replay: pipeReplayClient === undefined ? undefined : redisReplayStore(pipeReplayClient),
+  directory: github === undefined || pipeInstallOrg === undefined ? undefined : gheUserDirectory(github.client, pipeInstallOrg),
+  log,
+});
+const integrationApp = pipeOptions === undefined ? undefined : buildIntegrationServer(pipeOptions);
 
 try {
   await app.listen({ port: config.port, host: '0.0.0.0' });
   process.stdout.write(`${SERVICE_NAME} listening on ${String(config.port)}\n`);
+  if (integrationApp !== undefined && pipeSetting.enabled) {
+    await integrationApp.listen({ port: pipeSetting.port, host: pipeSetting.host });
+    log({
+      level: 'info',
+      message: 'PIPE 연동 private 리스너 (mTLS)',
+      host: pipeSetting.host,
+      port: pipeSetting.port,
+      clients: pipeSetting.clients.map((client) => client.clientId),
+    });
+  }
 } catch (error) {
   process.stderr.write(`${SERVICE_NAME} failed to start: ${String(error)}\n`);
   process.exit(1);
 }
 
 const shutdown = (): void => {
-  void app
-    .close()
+  void Promise.all([app.close(), integrationApp?.close()])
     .then(async () => {
       await bus.close();
       await authRedis?.quit();

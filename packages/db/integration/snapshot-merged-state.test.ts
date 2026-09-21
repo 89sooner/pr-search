@@ -50,15 +50,15 @@ beforeEach(async () => {
 
 describe('032: 스냅숏 문서의 state 파생 (CR-101 / DEV-718)', () => {
   it('**up이 병합 시각 있는 문서를 merged로 바로잡고 down이 closed로 되돌린다**; 병합 시각 없는 문서와 document_version은 그대로다', async () => {
-    // 032를 내리고 옛 투영이 남겼을 모양으로 심는다.
-    expect(await migrateDown(pool, 1)).toEqual(['032']);
+    // 032를 내리고 옛 투영이 남겼을 모양으로 심는다. 그 위에 033(CR-112)이 쌓였으므로 함께 내린다.
+    expect(await migrateDown(pool, 2)).toEqual(['033', '032']);
     await seed(1, { state: 'closed', merged_at: '2026-08-02T10:30:00.000Z', closed_at: '2026-08-02T10:30:00.000Z' });
     await seed(2, { state: 'closed', merged_at: null, closed_at: '2026-08-03T00:00:00.000Z' });
     await seed(3, { state: 'open', merged_at: null, closed_at: null });
     await seed(4, { state: 'merged', merged_at: '2026-08-04T00:00:00.000Z' });
     await seed(5, { state: 'closed' });
 
-    expect(await migrateUp(pool)).toEqual(['032']);
+    expect(await migrateUp(pool)).toEqual(['032', '033']);
     const after = await states();
     expect(Object.fromEntries(Object.entries(after).map(([pr, row]) => [pr, row.state]))).toEqual({
       1: 'merged',
@@ -70,7 +70,7 @@ describe('032: 스냅숏 문서의 state 파생 (CR-101 / DEV-718)', () => {
     expect(Object.values(after).every((row) => row.version === 1_754_042_400_000)).toBe(true);
 
     // 되돌림은 결정적이다 — 병합된 PR의 GitHub 원시 state는 언제나 closed다.
-    expect(await migrateDown(pool, 1)).toEqual(['032']);
+    expect(await migrateDown(pool, 2)).toEqual(['033', '032']);
     expect(Object.fromEntries(Object.entries(await states()).map(([pr, row]) => [pr, row.state]))).toEqual({
       1: 'closed',
       2: 'closed',
@@ -78,6 +78,6 @@ describe('032: 스냅숏 문서의 state 파생 (CR-101 / DEV-718)', () => {
       4: 'closed',
       5: 'closed',
     });
-    expect(await migrateUp(pool)).toEqual(['032']);
+    expect(await migrateUp(pool)).toEqual(['032', '033']);
   });
 });

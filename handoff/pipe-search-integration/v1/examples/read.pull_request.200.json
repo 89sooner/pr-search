@@ -1,0 +1,65 @@
+{
+  "operation": "read.pull_request",
+  "title": "PR 상세",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/pull-requests/acme%2Fpayments/1",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000010"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "pr_number": 1,
+      "merge_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "source_commits": [
+        {
+          "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "message": "결제 재시도 구현",
+          "author": "alice-psi",
+          "committed_at": "2026-08-19T04:00:00Z"
+        }
+      ],
+      "source_commits_truncated": false,
+      "merge_seq": 1,
+      "seq_epoch": 3,
+      "sequence_space": "acme/payments@main",
+      "url": "/pr/acme/payments/1",
+      "source_commits_total": 1,
+      "repository_id": 101,
+      "title": "결제 재시도",
+      "state": "merged",
+      "author": "alice-psi",
+      "labels": [
+        "backend"
+      ],
+      "base_branch": "main",
+      "head_branch": "feature/retry",
+      "created_at": "2026-08-15T00:00:00Z",
+      "updated_at": "2026-08-19T05:02:11Z",
+      "merged_at": "2026-08-19T05:02:11Z",
+      "changed_files_count": 2,
+      "additions": 120,
+      "deletions": 15,
+      "changed_paths": [
+        "src/pay/retry.ts"
+      ],
+      "merge_number": null,
+      "merge_number_state": "pending",
+      "merge_number_reason": "not_sequenced",
+      "merge_number_epoch": 3,
+      "merge_number_projection_state": "unknown",
+      "correlation_id": "00000000-0000-4000-8000-000000000010"
+    }
+  }
+}
