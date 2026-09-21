@@ -762,7 +762,6 @@ export async function verifySequenceProjection(
   targetIndex: string,
   options: { readonly orderSample?: number } = {},
 ): Promise<SequenceVerifyOutcome> {
-  const alias = aliasOf(kind);
   const reasons: string[] = [];
   const orderSample = options.orderSample ?? 1_000;
   let spaces = 0;
