@@ -5,7 +5,10 @@
   "baseline_head": "52cf27f191abca4622bb4c8d408111b1efe538de",
   "implementation": {
     "branch": "feature/pipe-integration-auth",
-    "state": "미커밋 작업 트리 — commit·push·PR은 사용자 지시 전이다. 커밋하면 그 SHA를 PIPE_INTEGRATION_HANDOFF.md에 적는다",
+    "commit": "28a3c21eb56ab3fc1be59ef7d4465aa26be00f6d",
+    "pull_request": 220,
+    "merge_commit": "e7b4cb4ab333f615836097ca6884781aadd1efdc",
+    "state": "main에 squash 병합됨(2026-09-21). 병합은 운영 활성화가 아니다 — 사내 CA·운영 HAProxy·실제 GHE·PIPE 서버와의 end-to-end는 NOT_RUN이다",
     "change_request": "CR-112",
     "work_package": "WP-097"
   },
@@ -23,7 +26,7 @@
   "files": [
     {
       "path": "CONTRACT_DIFF.md",
-      "sha256": "4bf9a3c7c72d09c779c161ea187cd10c50a2aa5d78062d189cc5561f42e7ec9e",
+      "sha256": "cf6f130c16854d669322369b21236e80b2df31a5c497d9b21a87cbea53eb5ebc",
       "role": "guide — 제안 계약 PSI-1.0과 구현의 차이"
     },
     {
@@ -33,12 +36,12 @@
     },
     {
       "path": "PIPE_INTEGRATION_HANDOFF.md",
-      "sha256": "aabfd6d1523a823abe0fd27050f12aaca768b27134c1355fd4fb44933fc053e3",
+      "sha256": "69107402786b63db99e00fc5b1254c31f80b5e3c2bcf211b4e3abc210035b5c7",
       "role": "guide — 먼저 읽을 문서"
     },
     {
       "path": "TEST_RESULTS.md",
-      "sha256": "ca9743ede6099ba5ff7f650616599857955a31cd1ddfb111e1d845a869282df7",
+      "sha256": "ebc6200f25a2bb6a9dfd7f810f2097f0327a26f42e666654c6b383770029f4f4",
       "role": "evidence — 실행한 명령과 수용 시험 결과"
     },
     {
@@ -223,7 +226,7 @@
     },
     {
       "path": "tools/generate-manifest.mjs",
-      "sha256": "5bddb5d5607b4be375cf55361763728088c57c786dfe72bd66d07c04059de11a",
+      "sha256": "99e38beb2935dc2d785f3b35211fbf54e980297bd0331054cd76e9663414f48a",
       "role": "tool — 계약 검증 도구 입력"
     },
     {

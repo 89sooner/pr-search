@@ -21,12 +21,12 @@ OpenAPI·operation map과 이 문서가 어긋나면 **OpenAPI·operation map이
 
 ## 1. 상태와 기준
 
-- 저장소 `89sooner/pr-search`, 기준 커밋 `52cf27f191abca4622bb4c8d408111b1efe538de`, 브랜치 `feature/pipe-integration-auth`. **미커밋 작업 트리입니다** — commit·push·PR은 사용자 지시 전입니다. 커밋되면 그 SHA를 여기에 적습니다.
+- 저장소 `89sooner/pr-search`, 기준 커밋 `52cf27f191abca4622bb4c8d408111b1efe538de`, 구현 커밋 `28a3c21eb56ab3fc1be59ef7d4465aa26be00f6d`(브랜치 `feature/pipe-integration-auth`, PR #220). 2026-09-21에 main으로 squash 병합됐습니다 — 병합 커밋 `e7b4cb4ab333f615836097ca6884781aadd1efdc`. 병합은 운영 활성화가 아닙니다(기본 꺼짐).
 - 계약 판 `PSI-1.0`. 계약 checksum은 `manifest.json`의 `contract_checksum`이며, OpenAPI와 operation map을 **그 순서로 이어 붙인 LF 바이트의 SHA-256**입니다. PIPE 쪽 계약 시험은 두 파일로 이 값을 다시 계산해 다르면 실패해야 합니다(공통 계약 14장).
 
 | 단계 | 상태 |
 |---|---|
-| 1. 코드·마이그레이션·계약 구현 | 완료 (로컬) |
+| 1. 코드·마이그레이션·계약 구현 | 완료 — main 병합(`e7b4cb4`, PR #220) |
 | 2. mock·로컬 DB·Redis 계약·보안 시험 | 완료 — 127.0.0.1의 **실제 TLS 핸드셰이크**와 PostgreSQL·Redis·Elasticsearch로 통합 시험 |
 | 3. 실제 TLS 종료 경로(사내 CA·HAProxy)와 두 서버 간 mTLS 검증 | **NOT_RUN** |
 | 4. 실제 사용자·GHE 권한·회수·화면 end-to-end | **NOT_RUN** |

@@ -5,7 +5,8 @@
 ```text
 Contract version / checksum: PSI-1.0 / manifest.json의 contract_checksum (`3c7fbe925a8b861b53aeaa38fcb7c86938512808803d8fb001f5aaca5af01a1b`)
 Repo / baseline HEAD / implementation HEAD: 89sooner/pr-search / 52cf27f191abca4622bb4c8d408111b1efe538de /
-  미커밋 작업 트리 (브랜치 feature/pipe-integration-auth, commit·push·PR은 사용자 지시 전)
+  28a3c21eb56ab3fc1be59ef7d4465aa26be00f6d (브랜치 feature/pipe-integration-auth, PR #220)
+  → main squash 병합 e7b4cb4ab333f615836097ca6884781aadd1efdc (2026-09-21). 2장의 표는 커밋 전 작업 트리의 실행이고, 커밋 전체는 PR CI가 확인했다(2장 「병합」).
 Toolchain / environment: Node 22.23.2, pnpm 10.33.0, Vitest 4.1.11, TypeScript 5.9.3, Linux(WSL2).
   PostgreSQL·Redis·Elasticsearch는 이 작업 전용 격리 컨테이너(prs-psi-postgres·prs-psi-redis·prs-psi-es, 127.0.0.1),
   시험 DB prs_test_psi. mTLS는 시험마다 openssl로 만든 시험 CA·서버·client 인증서로 127.0.0.1에서 실제 핸드셰이크.
@@ -35,7 +36,8 @@ Commands actually run: 2장
 - lint 오류 1건은 기준선부터 있던 `handoff/pipe-search-port/fixtures/validate-fixtures.mjs:3`의 `'URL' is not defined`(no-undef)입니다. 이 오류가 #218·#219부터 main CI의 `verify`를 lint 단계에서 멈추게 하고 있어, 병합 전에 해소했습니다. 그 파일은 1단계 인수인계 묶음의 전달물이고 묶음의 MANIFEST.json이 바이트 SHA-256을 고정하므로 파일은 고치지 않고, ESLint 설정에서 그 묶음 경로에만 Node 전역 `URL`을 허용했습니다. 이번 변경으로 생긴 lint 오류는 없습니다.
 - 기존 시험은 리팩터(조회 10종의 route 본문을 실행 함수로 추출) 뒤에도 기준선과 같게 통과합니다. 회귀 시험 중 운영 도달성 표(CR-034)의 API-ADM-007 단언 한 줄은 공개 서버 조립이 `buildServer(serverDeps)`로 바뀐 것에 맞춰 고쳤고(공개 서버와 연동 리스너가 같은 의존 객체를 쓰기 위한 변경), 연동 리스너의 기동·종료 단언을 더했습니다.
 - 1차 전체 실행에서 기존 감사 시험 1건(`apps/search-api/integration/audit/audit-records.test.ts`「`action`으로 좁힌다」)이 실패했습니다. 공유 시험 DB에 새 연동 시험들이 지금 시각의 `entity.view` 감사 기록 71건을 남겨, 기본 페이지(50)의 최신순 첫 페이지에서 그 시험이 8월 시각으로 심은 행이 밀렸기 때문입니다. 시험이 심은 시각 창으로 조회를 좁혀 격리를 보강했습니다(보강 전 형태로 되돌리면 같은 DB 상태에서 실패하고 보강 뒤 통과). 제품 코드의 결함이 아니라 공유 DB에서 페이지 크기에 기대던 시험의 약점입니다.
-- `pnpm run test:a11y`·`pnpm run test:e2e`·`pnpm run test:perf`는 실행하지 않았습니다(NOT_RUN). apps/web의 변경은 단위 시험 한 건(`lib/proxy.test.ts`에 연동 경로 차단 단언 추가)뿐이고 화면 코드가 바뀌지 않았습니다.
+- `pnpm run test:a11y`·`pnpm run test:e2e`·`pnpm run test:perf`는 로컬에서 실행하지 않았습니다(NOT_RUN). a11y·contrast·e2e는 병합 때 PR CI가 실행해 통과했고(아래 「병합」), `test:perf`는 어디서도 실행하지 않았습니다. apps/web의 변경은 단위 시험 한 건(`lib/proxy.test.ts`에 연동 경로 차단 단언 추가)뿐이고 화면 코드가 바뀌지 않았습니다.
+- **병합(2026-09-21).** 위 표는 커밋 전 작업 트리에서 실행한 결과입니다. 커밋 `28a3c21`(PR #220)은 GitHub Actions CI(run `35568796745`)가 그대로 확인했습니다 — `verify`(typecheck·lint·lint:deps·test·build·test:a11y·test:contrast·test:e2e)와 `integration`(test:integration·test:regression) 모두 success이고, 워크플로에 단계를 건너뛰는 조건은 없습니다. main의 squash 병합 커밋은 `e7b4cb4`이며 트리가 `28a3c21`과 같습니다. 병합 커밋 `e7b4cb4`의 main CI(run `35569716267`)는 15:46의 다른 push(`364f0fb`, 트리는 `e7b4cb4`와 같음)가 워크플로의 `cancel-in-progress`로 취소시켰고, `364f0fb`의 main CI(run `35569895232`)가 `verify`·`integration` 모두 success입니다.
 
 ## 3. 수용 시험 결과
 
@@ -172,7 +174,7 @@ Commands actually run: 2장
 | 실제 GHE의 `GET /users/{login}`·권한 조회·웹훅 무효화 | 실제 GHE에 닿지 않는다 |
 | 실제 사용자 identity binding과 권한 교집합 | 매핑 등록은 지시서 범위 밖이다 |
 | PIPE 서버와의 end-to-end(PSI-E 전부, 공동 항목의 PIPE 부분) | PIPE 저장소를 볼 수 없다 |
-| `pnpm run test:a11y`·`test:e2e`·`test:perf` | apps/web 화면 코드가 바뀌지 않았다(단위 시험 한 건만 추가) |
+| `pnpm run test:a11y`·`test:e2e`·`test:perf` (로컬) | apps/web 화면 코드가 바뀌지 않았다(단위 시험 한 건만 추가). a11y·e2e는 PR CI의 `verify`가 실행해 통과했고(2장 「병합」), `test:perf`는 실행한 곳이 없다 |
 | 활성화 전 smoke 7단계 (`DEPLOYMENT_AND_ROLLBACK.md` 9장) | 운영 입력이 없다 |
 
 ## 7. 남는 위험

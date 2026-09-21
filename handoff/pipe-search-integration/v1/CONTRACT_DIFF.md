@@ -1,6 +1,6 @@
 # CONTRACT_DIFF — 제안 계약 PSI-1.0과 pr-search 구현의 차이
 
-> 분류: 인수인계 자료(PIPE 담당 세션용). 기준 제안: `docs/40_delivery/pipe-search-handoff-auth/00_SHARED_INTEGRATION_CONTRACT.md` (PSI-1.0 제안). 구현: 브랜치 `feature/pipe-integration-auth` (CR-112, ADR-025).
+> 분류: 인수인계 자료(PIPE 담당 세션용). 기준 제안: `docs/40_delivery/pipe-search-handoff-auth/00_SHARED_INTEGRATION_CONTRACT.md` (PSI-1.0 제안). 구현: main `e7b4cb4`(PR #220 squash 병합, 브랜치 `feature/pipe-integration-auth`의 `28a3c21`) (CR-112, ADR-025).
 
 이 문서는 제안 계약과 실제 구현이 **다른 자리만** 적습니다. 적지 않은 항목은 제안 계약대로 구현했습니다. 인증 경계나 grant 용도 제한을 약화한 변경은 없습니다. 모든 차이는 같은 방향(더 좁게, 더 명시적으로)입니다.
 
