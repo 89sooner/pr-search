@@ -2,7 +2,7 @@
 
 ## CR-112 — PIPE 서버의 사용자 위임 검색 수신부 (PSI-1.0) (2026-09-21)
 
-- 유형: scope/security. 새 외부 연동 경계(서버 간 private 경로)를 더한다. 기존 화면·기존 `/api/v1/*` 계약·일반 로그인 쿠키·수집·색인·M 번호/시퀀스 의미는 바꾸지 않는다. 상태: **implementing** — 로컬 구현·검증 완료(원장 6.103, 연쇄 기록은 5장 「CR-112 cascade」), 미커밋. commit·push·PR은 사용자 지시 전이고, 사내 CA·실 GHE·운영 HAProxy 검증 전이다.
+- 유형: scope/security. 새 외부 연동 경계(서버 간 private 경로)를 더한다. 기존 화면·기존 `/api/v1/*` 계약·일반 로그인 쿠키·수집·색인·M 번호/시퀀스 의미는 바꾸지 않는다. 상태: **closed** — main `e7b4cb4`(PR #220 squash 병합, 사용자 지시 2026-09-21). 구현·검증은 원장 6.103, 연쇄와 병합 판정은 5장 「CR-112 cascade」. 사내 CA·실 GHE·운영 HAProxy 검증은 NOT_RUN으로 남는다 — 운영 활성화는 이 CR의 범위가 아니다.
 - 요청: 사용자 지시(2026-09-21) — `docs/40_delivery/pipe-search-handoff-auth/01_PR_SEARCH_API_AUTH_CLAUDE_PROMPT.md`를 작업 지시서로, `00_SHARED_INTEGRATION_CONTRACT.md`(PSI-1.0 제안 계약)와 `03_SECURITY_AND_CONTRACT_ACCEPTANCE.md`를 함께 적용한다. 기준 main HEAD `52cf27f`(지시서 사전 조사 HEAD `5f0d7e0`와 `apps/`·`packages/` 차이 없음). commit·push·PR·운영 배포·실제 사용자 매핑·인증서 발급은 이 요청 범위가 아니다.
 - 범위: PIPE Django 서버가 mTLS와 서명 assertion으로 사용자 신원을 위임하면, 승인된 identity binding으로 **기존 pr-search 사용자**에 연결하고, 일반 세션과 호환되지 않는 5분 이하 검색 전용 opaque grant를 발급해, 고정된 조회 10종(저장소·검색·식별자·M 번호·PR 상세·커밋 상세·source 4종)을 **기존 조회 코드 그대로** 쓰게 한다. 권한은 사용자의 기존 접근 범위와 통합 client 저장소 허용 목록의 교집합이며 조회 전에 강제한다.
 - 설계·세부 정본: ADR-025, `FR-INT-001`, API-INT-001~014, ENT-INT-001~005, WP-097. 연쇄 기록은 5장 「CR-112 cascade」에 적는다.
@@ -162,7 +162,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| CR-112 | 2026-09-21 | scope/security | 사용자 지시 2026-09-21 — PIPE Search 연동 2단계 서버 작업(PSI-1.0) | **PIPE 서버가 위임한 사용자에게 기존 조회 10종만 연다.** private mTLS 리스너, RS256 assertion, 승인된 identity binding, 검색 전용 opaque grant(≤300초), 사용자 범위 ∩ client 허용 목록. 일반 경로·쿠키·`/api/v1/*` 계약 불변, 기본 꺼짐 | FR-INT-001 · API-INT-001~014 · ENT-INT-001~005 · ADR-025 · WP-097 | SRS · API 계약 · 데이터 모델 · 보안 · ADR · WP · 원장 · handoff | implementing — 로컬 구현·검증 완료(원장 6.103), 미커밋·사용자 지시 대기 |
+| CR-112 | 2026-09-21 | scope/security | 사용자 지시 2026-09-21 — PIPE Search 연동 2단계 서버 작업(PSI-1.0) | **PIPE 서버가 위임한 사용자에게 기존 조회 10종만 연다.** private mTLS 리스너, RS256 assertion, 승인된 identity binding, 검색 전용 opaque grant(≤300초), 사용자 범위 ∩ client 허용 목록. 일반 경로·쿠키·`/api/v1/*` 계약 불변, 기본 꺼짐 | FR-INT-001 · API-INT-001~014 · ENT-INT-001~005 · ADR-025 · WP-097 | SRS · API 계약 · 데이터 모델 · 보안 · ADR · WP · 원장 · handoff | closed — main `e7b4cb4`(PR #220), 원장 6.103; 사내 CA·실 GHE·운영 HAProxy 검증은 NOT_RUN |
 | CR-109 | 2026-09-18 | scope/implementation | 사용자 지정 B Atlas 및 UI 지시서 구현 | opt-in Regression 첫 fixture UI 수직, 기존 서버 bisect 재사용, Search 보존 | FR-REG-001, W-024, WP-095 | SRS·PRD·glossary·matrix·UI·FE/infra·delivery·원장 | 로컬 구현·검증 완료 — 원장6.101; 실제 MDVP/릴리스 미검증 |
 | CR-001 | 2026-08-19 | correction | 초기 scaffold | 문서 세트 생성 | - | 전체 | closed |
 | CR-002 | 2026-08-19 | scope | 제품 정의 인터뷰 (Perforce → GitHub Enterprise 전환 문제) | Phase 0~5 문서 전량 작성. 기능 후보 45종 수집, FR 51종·NFR 8종 승인, 화면 13종 정의, ADR 12종 확정, REL 6종·WP 44종 분해 | F-*, FR-*, NFR-*, OD-001~008, W-001~009, A-001~004, C-001~047, FLOW-000~008, API-*, ENT-*, JOB-*, EVT-*, ADR-001~012, REL-001~006, WP-001~044 | 전체 | closed |
@@ -2260,7 +2260,7 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 
 ### CR-112 cascade — PIPE 서버의 사용자 위임 검색 수신부 (PSI-1.0)
 
-기준 main `52cf27f`, worktree `/home/roqkf/pr-search-wt/pipe-integration-auth`(브랜치 `feature/pipe-integration-auth`), **미커밋**. scope/security — 새 요구사항 `FR-INT-001` 하나를 더한다. 기존 FR의 요구사항 문장과 수용 기준은 한 글자도 바꾸지 않는다. ID는 `origin/main`과 로컬 브랜치를 실측해 정했다 — CR-112·WP-097·DEV-730~732·ADR-025(ADR-024는 미병합 로컬 브랜치 `docs/regression-first-slice`가 쓰고 있어 건너뜀)·THR-055~060.
+기준 main `52cf27f`, worktree `/home/roqkf/pr-search-wt/pipe-integration-auth`(브랜치 `feature/pipe-integration-auth`), 커밋 `28a3c21` → PR #220 → main `e7b4cb4`. scope/security — 새 요구사항 `FR-INT-001` 하나를 더한다. 기존 FR의 요구사항 문장과 수용 기준은 한 글자도 바꾸지 않는다. ID는 `origin/main`과 로컬 브랜치를 실측해 정했다 — CR-112·WP-097·DEV-730~732·ADR-025(ADR-024는 미병합 로컬 브랜치 `docs/regression-first-slice`가 쓰고 있어 건너뜀)·THR-055~060.
 
 - [x] 요구사항: SRS v2.38 → v2.39 — `FR-INT-001`(AC-1~AC-12) 블록과 v2.39 주석. PRD v1.16 → v1.17 — 제품 계약 문단. 용어집 v0.13 → v0.14 — PIPE 연동·연동 client·허용 목록·사용자 assertion·identity binding·로그인 문맥·문맥 회수 표식·검색 grant·긴급 회수·진단 창·private 리스너와 금지 동의어. 매트릭스 v1.12 → v1.13 — 화면 없음(서버 간 API), WP-097, 검증.
 - [x] 파생 UI: 화면이 없어 IA·와이어프레임은 바꾸지 않았다. AI 에이전트 실행 지시서 v0.12 → v0.13에 진입점·수정 규칙 문단.
@@ -2268,4 +2268,6 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - [x] 전달: 작업 패키지 v2.56 → v2.57(WP-097 절, 상태 표), 원장 v6.97 → v6.98(머리 절, 3장 WP-097, 4장 FR-INT-001, 5장 DEV-730·DEV-731·DEV-732, 운영 도달성 표의 API-ADM-007 셀 정정과 연동 리스너 행, 6.103장). `docs/README.md`에 진입점 한 줄.
 - [x] 코드·시험·handoff: 원장 6.103장과 `handoff/pipe-search-integration/v1/TEST_RESULTS.md`.
 - 문서 검증기(`validate_srs_prd_env.py`): 기준선 `52cf27f`은 `--report` 오류 3·경고 8, `--strict` 오류 5·경고 8이다. 사용자가 넣은 입력 지시서 묶음(`docs/40_delivery/pipe-search-handoff-auth/` 00~05)만 더하면 `--report` 오류 3·경고 12, `--strict` 오류 6·경고 12가 된다 — 그 문서들이 `docs/` 밖 handoff 파일 이름을 인용해 생기는 경로 경고와 05_SOURCE_EVIDENCE의 미결 표식 3개(strict 오류 1)다. 입력 문서는 고치지 않았다. **최종 결과는 입력 묶음만 더한 상태와 오류·경고 목록이 두 모드 모두 완전히 같다** — 이 CR의 문서 편집이 만든 새 오류·경고는 0이다(중간에 원장이 백틱 안의 handoff 파일 이름을 적어 경로 경고 하나가 늘었던 것을 상대 경로 링크로 고쳤다). 커버리지는 FR 72·매트릭스 매핑 72(100%)·아키텍처 참조 71(99%)·WP 참조 70(97%), API 68, 엔티티 41, ADR 24, WP 96, CR 112, DEV 723이다.
-- 상태: 로컬 구현·검증 완료, **미커밋**. commit·push·PR·운영 배포는 사용자 지시 전이며, 사내 CA·운영 HAProxy·실제 GHE를 거친 검증과 실제 사용자 매핑은 NOT_RUN이다. 병합되면 그 커밋을 원장 3장·6.103장과 handoff PIPE_INTEGRATION_HANDOFF에 적고 이 CR을 닫는다.
+- 상태: **closed**(2026-09-21). 운영 배포는 하지 않았고, 사내 CA·운영 HAProxy·실제 GHE를 거친 검증과 실제 사용자 매핑은 NOT_RUN이다 — 이 CR의 범위 밖이다.
+
+**병합 판정.** 구현·검증 보고 뒤 사용자 지시(2026-09-21 「origin/main에 병합」)로 진행했다. 저장소가 공개라 시험 전용 서명 비밀키를 커밋에서 빼고, main CI의 `verify`를 막던 lint 기준선 1건을 ESLint 설정으로 해소한 뒤(원장 6.103장 「병합 준비」) 커밋 `28a3c21`을 PR #220으로 올렸다. PR CI(run `35568796745`)는 verify·integration 모두 success다 — `verify`의 단계(typecheck·lint·lint:deps·test·build·test:a11y·test:contrast·test:e2e)에는 건너뛰는 조건이 없으므로 로컬에서 돌리지 않은 a11y·contrast·e2e도 이 실행이 확인했다. squash 병합 커밋은 `e7b4cb4`(15:43 KST)이고 트리가 `28a3c21`과 같다. 병합 커밋 `e7b4cb4`의 main CI(run `35569716267`)는 끝나기 전에 취소됐다 — 15:46에 사용자가 메인 체크아웃에서 입력 지시서 묶음을 따로 커밋해(`c73ed9f`) main과 병합한 `364f0fb`를 push했고, 워크플로의 `cancel-in-progress`가 앞 실행을 취소했다. `364f0fb`의 트리는 `e7b4cb4`와 같다(묶음 6개 파일이 PR #220에 든 것과 같은 내용이라 차이가 없다, tree `26f3f0fb…`). 그 커밋의 main CI(run `35569895232`)는 verify·integration 모두 success다 — #218부터 lint 단계에서 멈추던 main의 `verify`가 다시 끝까지 통과했다. 병합 기록은 별도 PR(브랜치 `docs/cr112-merge-record`)로 했다 — 작업 패키지 v2.57 → v2.58(WP-097 done), 원장 v6.98 → v6.99(머리 절, 3장, 4장, 6.103장 「병합」), handoff의 PIPE_INTEGRATION_HANDOFF·TEST_RESULTS·CONTRACT_DIFF·manifest 생성기와 다시 만든 manifest(계약 checksum `3c7fbe92…` 변동 없음). 문서 검증기는 이 기록 뒤에도 두 모드 모두 오류·경고 목록이 병합 시점과 같다. 릴리스·태그는 발행하지 않았다. closed.

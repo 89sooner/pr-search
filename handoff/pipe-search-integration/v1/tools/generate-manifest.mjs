@@ -63,7 +63,10 @@ const manifest = {
   baseline_head: '52cf27f191abca4622bb4c8d408111b1efe538de',
   implementation: {
     branch: 'feature/pipe-integration-auth',
-    state: '미커밋 작업 트리 — commit·push·PR은 사용자 지시 전이다. 커밋하면 그 SHA를 PIPE_INTEGRATION_HANDOFF.md에 적는다',
+    commit: '28a3c21eb56ab3fc1be59ef7d4465aa26be00f6d',
+    pull_request: 220,
+    merge_commit: 'e7b4cb4ab333f615836097ca6884781aadd1efdc',
+    state: 'main에 squash 병합됨(2026-09-21). 병합은 운영 활성화가 아니다 — 사내 CA·운영 HAProxy·실제 GHE·PIPE 서버와의 end-to-end는 NOT_RUN이다',
     change_request: 'CR-112',
     work_package: 'WP-097',
   },
