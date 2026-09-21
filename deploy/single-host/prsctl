@@ -17,6 +17,8 @@
 #                       관리자 지정 역할(operator·release_manager·security_officer)
 #   ./prsctl mnumber attest | revoke | list
 #                       M 번호 운영자 확인서 — PR 근거가 끝내 없는 항목을 번호 없이 지나가게 한다 (CR-100)
+#   ./prsctl sequence reproject | status
+#                       머지 시퀀스를 PostgreSQL 정본에서 Elasticsearch로 다시 비춘다 — 재채번이 아니다 (CR-113)
 #
 # **fail-fast다.** checksum 불일치·이미지 부재·필수 환경 변수 부재·마이그레이션
 # 실패·health 실패를 성공으로 접지 않는다.
@@ -751,6 +753,17 @@ cmd_mnumber() {
   return "$status"
 }
 
+cmd_sequence() {
+  require_env
+  local actor
+  actor="$(printf '%s' "${SUDO_USER:-$(id -un)}" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-64)"
+  [ -n "$actor" ] || die "호스트 사용자 이름을 알 수 없다 — 감사 기록의 행위 주체 없이 재투영 잡을 만들지 않는다"
+  local status=0
+  # worker-sequence 이미지로 한 번 실행한다. DB·Elasticsearch 접속은 워커와 같은 구성이다 (CR-113).
+  compose run --rm --no-deps -T worker-sequence node dist/sequence-reproject-cli.js "$@" --actor "$actor" || status=$?
+  return "$status"
+}
+
 cmd_lineage() {
   local m="${BUNDLE_ROOT}/manifest/release-manifest.json"
   [ -f "$m" ] || die "release-manifest.json이 없다: $m"
@@ -770,5 +783,6 @@ case "${1:-}" in
   lineage) cmd_lineage ;;
   role)    shift; cmd_role "$@" ;;
   mnumber) shift; cmd_mnumber "$@" ;;
-  *) sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  sequence) shift; cmd_sequence "$@" ;;
+  *) sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

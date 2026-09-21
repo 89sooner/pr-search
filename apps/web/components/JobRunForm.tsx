@@ -50,6 +50,7 @@ export function JobRunForm({
   const [repository, setRepository] = useState('');
   const [baseBranch, setBaseBranch] = useState('');
   const [alias, setAlias] = useState('');
+  const [expectedEpoch, setExpectedEpoch] = useState('');
 
   const option = runOption(type);
 
@@ -66,6 +67,8 @@ export function JobRunForm({
         return repository.trim() !== '';
       case 'sequence_space':
         return repository.trim() !== '' && baseBranch.trim() !== '';
+      case 'sequence_space_epoch':
+        return repository.trim() !== '' && baseBranch.trim() !== '' && /^[1-9][0-9]*$/.test(expectedEpoch.trim());
       case 'alias':
         return alias.trim() !== '';
     }
@@ -84,6 +87,7 @@ export function JobRunForm({
             repository: repository.trim(),
             baseBranch: baseBranch.trim(),
             alias: alias.trim(),
+            expectedEpoch: expectedEpoch.trim(),
           }),
         });
       }}
@@ -112,7 +116,7 @@ export function JobRunForm({
         </select>
       </Field>
 
-      {option?.input === 'repository' || option?.input === 'sequence_space' ? (
+      {option?.input === 'repository' || option?.input === 'sequence_space' || option?.input === 'sequence_space_epoch' ? (
         <Field id="job-run-repository" label="Repository" description="Use owner/name format.">
           <TextField
             id="job-run-repository"
@@ -125,7 +129,7 @@ export function JobRunForm({
         </Field>
       ) : null}
 
-      {option?.input === 'sequence_space' ? (
+      {option?.input === 'sequence_space' || option?.input === 'sequence_space_epoch' ? (
         <Field
           id="job-run-branch"
           label="Base branch"
@@ -137,6 +141,24 @@ export function JobRunForm({
             value={baseBranch}
             onChange={(event) => {
               setBaseBranch(event.target.value);
+            }}
+          />
+        </Field>
+      ) : null}
+
+      {option?.input === 'sequence_space_epoch' ? (
+        <Field
+          id="job-run-epoch"
+          label="Expected sequence epoch"
+          description="Reprojection rewrites index fields from the database without renumbering. Enter the current epoch shown in the sequence space; the server rejects a different value."
+        >
+          <TextField
+            id="job-run-epoch"
+            data-testid="job-run-epoch"
+            inputMode="numeric"
+            value={expectedEpoch}
+            onChange={(event) => {
+              setExpectedEpoch(event.target.value);
             }}
           />
         </Field>

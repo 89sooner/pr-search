@@ -657,7 +657,7 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
       }
       const target = resolved.target;
 
-      const outcome = await createJob(registry.pool, body['type'], target, principalId(principal));
+      const outcome = await createJob(registry.pool, body['type'], target, principalId(principal), resolved.progress ?? {});
 
       /*
        * **잡 제어는 감사 기록 대상이다** (`FR-ADMIN-002` AC-5). 거절도 남긴다 —

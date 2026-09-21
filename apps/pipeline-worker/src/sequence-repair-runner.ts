@@ -24,6 +24,7 @@
 import { jobRepo, repositoryRepo } from '@prs/db';
 import type { JobRow, Pool, RepositoryRow } from '@prs/db';
 import { repairSequence, type RepairOutcome, type SequenceDeps } from './sequence.js';
+import { awaitProjectionWork, REPROJECT_WATCH_MS } from './sequence-reproject-runner.js';
 
 /** 큐를 비운 뒤 다음 확인까지. 수동 요청이라 빈도가 낮다. */
 export const REPAIR_POLL_INTERVAL_MS = 30_000;
@@ -38,9 +39,14 @@ export interface RepairRunnerLogFields {
   readonly reason?: string;
 }
 
+/** `consistent` 뒤 색인 재투영 완료를 기다리는 상한. 넘어도 잡은 `completed`이며 progress가 `in_progress`를 말한다. */
+export const REPAIR_PROJECTION_WAIT_MS = 10 * 60_000;
+
 export interface RepairRunnerDeps {
   readonly pool: Pool;
   readonly sequence: SequenceDeps;
+  readonly projectionWaitMs?: number;
+  readonly projectionWatchMs?: number;
   readonly log?: (fields: RepairRunnerLogFields) => void;
   readonly sleep?: (ms: number) => Promise<void>;
   /** 시험이 갈아 끼우는 이음매. 기본값이 실제 복구다. */
@@ -125,11 +131,45 @@ export async function runRepairJob(deps: RepairRunnerDeps, job: JobRow): Promise
   const repair = deps.repair ?? repairSequence;
   try {
     const outcome = await repair(deps.sequence, repository, parsed.baseBranch, `job:${String(job.job_id)}`);
-    if (outcome.kind === 'repaired' || outcome.kind === 'consistent') {
+    if (outcome.kind === 'consistent') {
       /*
        * `consistent`도 **성공**이다 (CR-034, DEV-182). 큐에서 기다리는 사이 이미
        * 고쳐졌을 수 있고, 그때 실패로 적으면 운영자가 없는 문제를 쫓는다.
+       *
+       * 그러나 **DB 정합과 색인 복구는 다른 사실이다** (CR-113). `repairSequence`가 남긴
+       * durable full sweep을 상한까지 기다려 progress에 `db: consistent` / `projection:
+       * completed | in_progress | partial`로 따로 적는다. 락은 잡지 않는다 — 읽기만 한다.
        */
+      const patch = async (fields: Record<string, unknown>): Promise<void> => {
+        await deps.pool.query('UPDATE job SET progress = progress || $2::jsonb WHERE job_id = $1', [job.job_id, JSON.stringify(fields)]);
+      };
+      await patch({ db: 'consistent', checked: outcome.checked, projection: 'scheduled', work_key: outcome.projection.work_key, requested_generation: outcome.projection.requested_generation });
+      const sleep = deps.sleep ?? ((ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms)));
+      const waited = await awaitProjectionWork(
+        deps.pool,
+        {
+          workKey: outcome.projection.work_key,
+          requiredGeneration: outcome.projection.requested_generation,
+          repositoryId: repository.repository_id,
+          baseBranch: parsed.baseBranch,
+          seqEpoch: outcome.projection.seq_epoch,
+        },
+        {
+          waitMs: deps.projectionWaitMs ?? REPAIR_PROJECTION_WAIT_MS,
+          watchMs: deps.projectionWatchMs ?? REPROJECT_WATCH_MS,
+          sleep,
+          now: () => new Date(),
+          onTick: async (summary) => {
+            await patch({ ...summary, projection: 'running' });
+          },
+          isCancelled: async () => (await jobRepo.findJobState(deps.pool, job.job_id)) !== 'running',
+        },
+      );
+      const projection =
+        waited.state === 'completed' ? (waited.parkedDocuments > 0 ? 'partial' : 'completed') : waited.state === 'timeout' ? 'in_progress' : waited.state;
+      await patch({ projection, pending_documents: waited.pendingDocuments, parked_documents: waited.parkedDocuments });
+      await finish('completed');
+    } else if (outcome.kind === 'repaired') {
       await finish('completed');
     } else {
       await finish('failed', outcome.kind);

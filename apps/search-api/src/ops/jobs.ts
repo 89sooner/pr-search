@@ -10,7 +10,7 @@
  * 것을 지켜보다 다시 눌러야 한다.
  */
 
-import { jobRepo, repositoryRepo, type JobRow, type JobState, type Pool } from '@prs/db';
+import { jobRepo, repositoryRepo, sequenceSpaceRepo, type JobRow, type JobState, type Pool } from '@prs/db';
 import { sequenceSpaceLabel } from '@prs/domain';
 
 /** `PATCH`가 받는 것. **이 셋뿐이다** (CR-022, DEV-103). */
@@ -56,7 +56,8 @@ export function toJobResponse(row: JobRow): Record<string, unknown> {
  */
 export function allowedActionsForJob(type: string, state: JobState): readonly JobAction[] {
   const byState = jobRepo.allowedActionsFor(state);
-  if (type !== 'reconcile') return byState;
+  // `sequence_reproject`도 멈춰 이어 갈 지점이 없다 — durable work가 스스로 돌고 잡은 그것을 지켜볼 뿐이다 (CR-113).
+  if (type !== 'reconcile' && type !== 'sequence_reproject') return byState;
   return byState.filter((action) => action === 'cancel');
 }
 
@@ -107,7 +108,7 @@ export type CreateJobOutcome =
  * 이 목록은 "운영자가 목록·진행률·중단·취소를 쓸 수 있다"는 뜻이지
  * "API-ADM-002로 만들 수 있다"는 뜻이 **아니다.** 생성 가능 목록은 아래 것이다.
  */
-export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild', 'reindex', 'reconcile', 'sequence_assign'] as const;
+export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild', 'reindex', 'reconcile', 'sequence_assign', 'sequence_reproject'] as const;
 
 export type OperatorJobType = (typeof OPERATOR_JOB_TYPES)[number];
 
@@ -134,6 +135,12 @@ export const CREATABLE_GENERIC_JOB_TYPES = [
   'link_rebuild',
   'reconcile',
   'sequence_assign',
+  /*
+   * JOB-SEQ-006 수동 시퀀스 재투영 (CR-113 / FR-SEQ-001 AC-8). 러너
+   * (`startSequenceReprojectRunner`)와 같은 변경에서 등재했다. 재채번이 아니다 —
+   * 정본 서수를 색인에 다시 비출 뿐 에폭·서수·head를 바꾸지 않는다.
+   */
+  'sequence_reproject',
 ] as const;
 
 export type CreatableGenericJobType = (typeof CREATABLE_GENERIC_JOB_TYPES)[number];
@@ -152,7 +159,8 @@ export function isCreatableGenericJobType(value: unknown): value is CreatableGen
 export const RECONCILE_TARGET = 'all';
 
 export type ResolveTargetOutcome =
-  | { readonly kind: 'ok'; readonly target: string }
+  /** `progress`는 잡 행의 INSERT에 함께 실을 입력이다 (`sequence_reproject`의 에폭·별칭). */
+  | { readonly kind: 'ok'; readonly target: string; readonly progress?: Record<string, unknown> }
   | { readonly kind: 'unknown_repository' }
   | { readonly kind: 'invalid_parameter'; readonly message: string; readonly detail?: Record<string, unknown> };
 
@@ -218,6 +226,67 @@ export async function resolveJobTarget(
     return { kind: 'ok', target: sequenceSpaceLabel(`${owner}/${name}`, baseBranch) };
   }
 
+  if (type === 'sequence_reproject') {
+    /*
+     * 재투영은 **재채번이 아니다** (CR-113). 저장소·브랜치에 더해 `expected_epoch`를 받아
+     * 러너가 현재 에폭과 대조한다 — force-push 직후 운영자가 모르는 새 에폭에 재투영하지
+     * 않게 한다(확인서 CLI의 규율, CR-100). `aliases`는 대상 별칭을 좁힌다(기본 둘 다).
+     * dry-run은 여기서 받지 않는다 — 잡 행 자체가 쓰기이며, 읽기 전용 점검은
+     * `prsctl sequence reproject --dry-run`이 한다.
+     */
+    if (body['dry_run'] === true) {
+      return { kind: 'invalid_parameter', message: 'dry-run은 API 잡으로 만들지 않는다 — prsctl sequence reproject --dry-run을 쓴다' };
+    }
+    const slug = body['repository'];
+    const baseBranch = body['base_branch'];
+    const expectedEpoch = body['expected_epoch'];
+    if (typeof slug !== 'string' || typeof baseBranch !== 'string' || baseBranch === '') {
+      return { kind: 'invalid_parameter', message: 'sequence_reproject는 repository와 base_branch를 받는다' };
+    }
+    if (typeof expectedEpoch !== 'number' || !Number.isInteger(expectedEpoch) || expectedEpoch < 1) {
+      return { kind: 'invalid_parameter', message: 'sequence_reproject는 expected_epoch(양의 정수)를 받는다 — 현재 에폭은 시퀀스 공간 조회로 확인한다' };
+    }
+    const rawAliases = body['aliases'];
+    const allowedAliases = ['prs-pull-requests', 'prs-commits'];
+    if (rawAliases !== undefined && (!Array.isArray(rawAliases) || rawAliases.length === 0 || !rawAliases.every((one) => allowedAliases.includes(one)))) {
+      return { kind: 'invalid_parameter', message: 'aliases는 prs-pull-requests·prs-commits의 비지 않은 부분집합이다', detail: { allowed: allowedAliases } };
+    }
+    const [owner, name] = splitTarget(slug);
+    if (owner === '' || name === '') {
+      return { kind: 'invalid_parameter', message: 'repository는 owner/name 형식이다' };
+    }
+    const repository = await repositoryRepo.findRepositoryBySlug(pool, owner, name);
+    if (repository === undefined) return { kind: 'unknown_repository' };
+    if (!repository.sequence_branches.includes(baseBranch)) {
+      return {
+        kind: 'invalid_parameter',
+        message: '채번 대상 브랜치가 아니다',
+        detail: { sequence_branches: repository.sequence_branches },
+      };
+    }
+    const space = await sequenceSpaceRepo.findSequenceSpace(pool, repository.repository_id, baseBranch);
+    if (space === undefined) {
+      return { kind: 'invalid_parameter', message: '채번된 적 없는 시퀀스 공간이다 — 재투영할 정본이 없다' };
+    }
+    if (space.seq_epoch !== expectedEpoch) {
+      return {
+        kind: 'invalid_parameter',
+        message: 'expected_epoch가 현재 에폭과 다르다',
+        detail: { expected_epoch: expectedEpoch, current_epoch: space.seq_epoch },
+      };
+    }
+    return {
+      kind: 'ok',
+      target: sequenceSpaceLabel(`${owner}/${name}`, baseBranch),
+      progress: {
+        expected_epoch: expectedEpoch,
+        aliases: rawAliases === undefined ? [...allowedAliases] : [...(rawAliases as string[])],
+        repository_id: repository.repository_id,
+        base_branch: baseBranch,
+      },
+    };
+  }
+
   const target = body['target'];
   if (typeof target !== 'string' || target === '') {
     return { kind: 'invalid_parameter', message: 'target은 owner/repo 형식의 문자열이다' };
@@ -261,13 +330,14 @@ export async function createJob(
   type: CreatableGenericJobType,
   target: string,
   requestedBy: string,
+  progress: Record<string, unknown> = {},
 ): Promise<CreateJobOutcome> {
   for (let attempt = 1; ; attempt += 1) {
     const existing = await jobRepo.findActiveJob(pool, type, target);
     if (existing !== undefined) return { kind: 'conflict', jobId: existing.job_id };
 
     try {
-      const jobId = await jobRepo.enqueueJob(pool, type, target, requestedBy);
+      const jobId = await jobRepo.enqueueJob(pool, type, target, requestedBy, progress);
       const job = await jobRepo.findJobById(pool, jobId);
       // 방금 넣은 행을 못 읽는 것은 있을 수 없다 — 있으면 그것이 진짜 오류다.
       if (job === undefined) throw new Error('생성한 잡을 다시 읽지 못했다');
