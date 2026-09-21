@@ -1,6 +1,8 @@
 # PR Search PRD
 
-> 상태: review | 버전: v1.16 | 갱신일: 2026-09-18
+> 상태: review | 버전: v1.17 | 갱신일: 2026-09-21
+
+CR-112 / FR-INT-001: PIPE 사용자가 PIPE 화면 안에서 pr-search의 **읽기 전용 Search 기능**(저장소 목록·검색·식별자 해석·M 번호 해석·PR/커밋 상세·source 4종)을 쓰도록, PIPE 서버가 사용자 신원을 위임하는 서버 간 연결을 제공한다. 기본 꺼짐이며 켠 배포에서만 private 리스너가 선다. 사용자는 pr-search에 이미 등록되어 있고 운영자가 검증한 매핑이 있어야 연결된다 — 새 사용자·역할·공용 계정을 만들지 않는다. 보이는 저장소는 그 사용자의 기존 권한과 PIPE에 허용한 저장소 목록의 교집합이며, 관리·실행·감사 기능과 GitHub Operations는 이 연결로 열리지 않는다. 기존 pr-search 화면·로그인·`/api/v1/*` 계약은 그대로다. PIPE 화면·BFF 구현은 PIPE 저장소의 몫이고, 사내 CA·실제 GHE·운영 프록시를 거친 활성화는 운영 입력이 모인 뒤의 별도 단계다.
 
 CR-109 / FR-REG-001: Search와 분리된 Regression 메뉴에서 사용자가 선택한 **B Revision Atlas**를 기본으로 제공한다. 첫 수직은 opt-in 합성 fixture로 날짜→MDVP 결과→비교 가능한 PASS 확인→first-parent timeline/변경 목록→상세→bisect를 검증한다. Inbox/Pulse는 같은 선택·cache·canonical context·session을 공유한다. 실제 MDVP 미구성 시 fake data를 자동 노출하지 않으며, 별도로 입력한 실제 저장소·브랜치는 기존 API-SEQ-005의 저장된 개인 세션 조회·good/bad에만 연결한다. OD-012·013의 운영 MDVP/통계 결정은 열어 둔다. 자동 삭제 없는 보존은 이번 fixture 관측/아카이브에도 적용한다.
 

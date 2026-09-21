@@ -1,0 +1,142 @@
+{
+  "operation": "read.search",
+  "title": "검색 (패싯 포함)",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/search?q=&size=2&facets=true",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000007"
+    },
+    "body": {
+      "query": "",
+      "parsed": {
+        "filters": [],
+        "text": null
+      },
+      "total": {
+        "value": 4,
+        "relation": "eq"
+      },
+      "sort": {
+        "field": "merge_seq",
+        "order": "desc"
+      },
+      "items": [
+        {
+          "kind": "pull_request",
+          "repository": "acme/payments",
+          "pr_number": 1,
+          "title": "결제 재시도",
+          "author": "alice-psi",
+          "state": "merged",
+          "merge_seq": 1,
+          "seq_epoch": 3,
+          "sequence_space": "acme/payments@main",
+          "merged_at": "2026-08-19T05:02:11Z",
+          "changed_files_count": 2,
+          "additions": 120,
+          "deletions": 15,
+          "labels": [
+            "backend"
+          ],
+          "link_summary": null,
+          "url": "/pr/acme/payments/1",
+          "merge_number": null,
+          "merge_number_state": "pending",
+          "merge_number_reason": "not_sequenced",
+          "merge_number_epoch": 3,
+          "merge_number_projection_state": "unknown"
+        },
+        {
+          "kind": "commit",
+          "repository": "acme/payments",
+          "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "title": "결제 재시도 구현",
+          "author": "alice-psi",
+          "state": null,
+          "merge_seq": 1,
+          "seq_epoch": 3,
+          "sequence_space": "acme/payments@main",
+          "merged_at": "2026-08-19T04:00:00Z",
+          "changed_files_count": null,
+          "additions": null,
+          "deletions": null,
+          "labels": [],
+          "link_summary": null,
+          "url": "/commit/acme/payments/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "facets": {
+        "repository": [
+          {
+            "value": "acme/payments",
+            "count": 3
+          },
+          {
+            "value": "acme/billing",
+            "count": 1
+          }
+        ],
+        "author": [
+          {
+            "value": "alice-psi",
+            "count": 3
+          },
+          {
+            "value": "bob-psi",
+            "count": 1
+          }
+        ],
+        "label": [
+          {
+            "value": "backend",
+            "count": 1
+          },
+          {
+            "value": "billing",
+            "count": 1
+          },
+          {
+            "value": "frontend",
+            "count": 1
+          }
+        ],
+        "base_branch": [
+          {
+            "value": "main",
+            "count": 3
+          },
+          {
+            "value": "develop",
+            "count": 1
+          }
+        ],
+        "state": [
+          {
+            "value": "open",
+            "count": 2
+          },
+          {
+            "value": "merged",
+            "count": 1
+          }
+        ]
+      },
+      "facets_omitted": false,
+      "facets_status": "ready",
+      "next_cursor": "eyJ2IjoxLCJwIjoiNk02YkJCSU9jSEp6TFdOdmJXMXBkSE10ZGpJV01HSkdTRGRPTjNsUmJFTlVXWGhKVWxoNlJuQnpad0FCRmxCelVYZFdRVWd5VWxwdGQxRldjMWRmTmt0MFZuY0FBUUFBQUFBQUFNeGpGbTAxT1ZjMGMxSk1VaTAyY2pKblQydG9lVmxJZG5jQUZIQnljeTF3ZFd4c0xYSmxjWFZsYzNSekxYWXlGa1pvUzNOaloyaDBVVWRMY0ZrM1RFVXhRbTlrVlVFQUFSWlFjMUYzVmtGSU1sSmFiWGRSVm5OWFh6WkxkRlozQUFFQUFBQUFBQURNWkJadE5UbFhOSE5TVEZJdE5uSXlaMDlyYUhsWlNIWjNBQTV3Y25NdFkyOXRiV2wwY3kxMk1oWXdZa1pJTjA0M2VWRnNRMVJaZUVsU1dIcEdjSE5uQVFFV1VITlJkMVpCU0RKU1dtMTNVVlp6VjE4MlMzUldkd0FCQUFBQUFBQUF6R1VXYlRVNVZ6UnpVa3hTTFRaeU1tZFBhMmg1V1VoMmR3QVVjSEp6TFhCMWJHd3RjbVZ4ZFdWemRITXRkaklXUm1oTGMyTm5hSFJSUjB0d1dUZE1SVEZDYjJSVlFRRUJGbEJ6VVhkV1FVZ3lVbHB0ZDFGV2MxZGZOa3QwVm5jQUFRQUFBQUFBQU14bUZtMDFPVmMwYzFKTVVpMDJjakpuVDJ0b2VWbElkbmNBRG5CeWN5MWpiMjF0YVhSekxYWXlGakJpUmtnM1RqZDVVV3hEVkZsNFNWSllla1p3YzJjQ0FSWlFjMUYzVmtGSU1sSmFiWGRSVm5OWFh6WkxkRlozQUFFQUFBQUFBQURNWnhadE5UbFhOSE5TVEZJdE5uSXlaMDlyYUhsWlNIWjNBQlJ3Y25NdGNIVnNiQzF5WlhGMVpYTjBjeTEyTWhaR2FFdHpZMmRvZEZGSFMzQlpOMHhGTVVKdlpGVkJBZ0VXVUhOUmQxWkJTREpTV20xM1VWWnpWMTgyUzNSV2R3QUJBQUFBQUFBQXpHZ1diVFU1VnpSelVreFNMVFp5TW1kUGEyaDVXVWgyZHdBT2NISnpMV052YlcxcGRITXRkaklXTUdKR1NEZE9OM2xSYkVOVVdYaEpVbGg2Um5Celp3TUJGbEJ6VVhkV1FVZ3lVbHB0ZDFGV2MxZGZOa3QwVm5jQUFRQUFBQUFBQU14cEZtMDFPVmMwYzFKTVVpMDJjakpuVDJ0b2VWbElkbmNBRkhCeWN5MXdkV3hzTFhKbGNYVmxjM1J6TFhZeUZrWm9TM05qWjJoMFVVZExjRmszVEVVeFFtOWtWVUVEQVJaUWMxRjNWa0ZJTWxKYWJYZFJWbk5YWHpaTGRGWjNBQUVBQUFBQUFBRE1haFp0TlRsWE5ITlNURkl0Tm5JeVowOXJhSGxaU0haM0FBNXdjbk10WTI5dGJXbDBjeTEyTWhZd1lrWklOMDQzZVZGc1ExUlplRWxTV0hwR2NITm5CQUVXVUhOUmQxWkJTREpTV20xM1VWWnpWMTgyUzNSV2R3QUJBQUFBQUFBQXpHc1diVFU1VnpSelVreFNMVFp5TW1kUGEyaDVXVWgyZHdBVWNISnpMWEIxYkd3dGNtVnhkV1Z6ZEhNdGRqSVdSbWhMYzJObmFIUlJSMHR3V1RkTVJURkNiMlJWUVFRQkZsQnpVWGRXUVVneVVscHRkMUZXYzFkZk5rdDBWbmNBQVFBQUFBQUFBTXhzRm0wMU9WYzBjMUpNVWkwMmNqSm5UMnRvZVZsSWRuY0FEbkJ5Y3kxamIyMXRhWFJ6TFhZeUZqQmlSa2czVGpkNVVXeERWRmw0U1ZKWWVrWndjMmNGQVJaUWMxRjNWa0ZJTWxKYWJYZFJWbk5YWHpaTGRGWjNBQUVBQUFBQUFBRE1iUlp0TlRsWE5ITlNURkl0Tm5JeVowOXJhSGxaU0haM0FCUndjbk10Y0hWc2JDMXlaWEYxWlhOMGN5MTJNaFpHYUV0elkyZG9kRkZIUzNCWk4weEZNVUp2WkZWQkJRRVdVSE5SZDFaQlNESlNXbTEzVVZaelYxODJTM1JXZHdBQkFBQUFBQUFBekc0V2JUVTVWelJ6VWt4U0xUWnlNbWRQYTJoNVdVaDJkd0FPY0hKekxXTnZiVzFwZEhNdGRqSVdNR0pHU0RkT04zbFJiRU5VV1hoSlVsaDZSbkJ6WndZQkZsQnpVWGRXUVVneVVscHRkMUZXYzFkZk5rdDBWbmNBQVFBQUFBQUFBTXh2Rm0wMU9WYzBjMUpNVWkwMmNqSm5UMnRvZVZsSWRuY0FEbkJ5Y3kxamIyMXRhWFJ6TFhZeUZqQmlSa2czVGpkNVVXeERWRmw0U1ZKWWVrWndjMmNIQVJaUWMxRjNWa0ZJTWxKYWJYZFJWbk5YWHpaTGRGWjNBQUVBQUFBQUFBRE1jQlp0TlRsWE5ITlNURkl0Tm5JeVowOXJhSGxaU0haM0FBNXdjbk10WTI5dGJXbDBjeTEyTWhZd1lrWklOMDQzZVZGc1ExUlplRWxTV0hwR2NITm5DQUVXVUhOUmQxWkJTREpTV20xM1VWWnpWMTgyUzNSV2R3QUJBQUFBQUFBQXpIRVdiVFU1VnpSelVreFNMVFp5TW1kUGEyaDVXVWgyZHdBT2NISnpMV052YlcxcGRITXRkaklXTUdKR1NEZE9OM2xSYkVOVVdYaEpVbGg2Um5Celp3a0JGbEJ6VVhkV1FVZ3lVbHB0ZDFGV2MxZGZOa3QwVm5jQUFRQUFBQUFBQU14eUZtMDFPVmMwYzFKTVVpMDJjakpuVDJ0b2VWbElkbmNBRG5CeWN5MWpiMjF0YVhSekxYWXlGakJpUmtnM1RqZDVVV3hEVkZsNFNWSllla1p3YzJjS0FSWlFjMUYzVmtGSU1sSmFiWGRSVm5OWFh6WkxkRlozQUFFQUFBQUFBQURNY3hadE5UbFhOSE5TVEZJdE5uSXlaMDlyYUhsWlNIWjNBQTV3Y25NdFkyOXRiV2wwY3kxMk1oWXdZa1pJTjA0M2VWRnNRMVJaZUVsU1dIcEdjSE5uQ3dFV1VITlJkMVpCU0RKU1dtMTNVVlp6VjE4MlMzUldkd0FCQUFBQUFBQUF6SFFXYlRVNVZ6UnpVa3hTTFRaeU1tZFBhMmg1V1VoMmR3QUNGa1pvUzNOaloyaDBVVWRMY0ZrM1RFVXhRbTlrVlVFQUFCWXdZa1pJTjA0M2VWRnNRMVJaZUVsU1dIcEdjSE5uQUFBPSIsInMiOlsxLC02MjEzNTU5NjgwMDAwMCwicHNpLWNvbW1pdC0xIiwyNTc2OTgwMzc3Nl0sImYiOiJXX1d6NVdNLUMzODNCdHZSZkdSWVEyIiwieCI6MTc4OTk2ODEyNjUzOX0.ayZ5YzKzzDMlb44_4JJ9vYtowyXbsRO-0OIlG0dntKo",
+      "correlation_id": "00000000-0000-4000-8000-000000000007"
+    }
+  }
+}

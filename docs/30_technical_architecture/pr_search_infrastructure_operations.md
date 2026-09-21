@@ -1,6 +1,8 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.21 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.22 | 갱신일: 2026-09-21
+
+CR-112 / FR-INT-001 운영: PIPE 연동은 **기본 꺼짐**이며 켜면 search-api 프로세스가 두 번째 포트(private 리스너, mTLS 필수)를 듣는다(ADR-025). 새 서비스·새 DB·새 Redis·새 워커는 없고 마이그레이션 033(추가 전용 표 다섯)만 더해진다. 켜는 변수는 `PIPE_SEARCH_INTEGRATION_ENABLED=true`와 `…_HOST`·`…_PORT`·`…_TLS_KEY_FILE`·`…_TLS_CERT_FILE`·`…_TLS_CLIENT_CA_FILE`·`…_POLICY_FILE`이며, 하나라도 없거나 틀리면 search-api가 기동하지 않는다. 기본 배포(`deploy/single-host/compose.yml`, `deploy/k8s/`)는 바꾸지 않았다 — private 포트를 여는 compose override·HAProxy L4 passthrough·정책 파일·환경 변수의 **예시**와 키 교체·긴급 회수·binding 운영·보존 정리·롤백 절차는 [배포와 롤백](../../handoff/pipe-search-integration/v1/DEPLOYMENT_AND_ROLLBACK.md)이 소유한다. 운영 명령은 `node dist/pipe-integration-cli.js`(`bindings`·`credentials`·`purge`, 기본 dry-run)이며 `prsctl` 하위 명령은 아직 없다.
 
 CR-109 / WP-095 로컬 실행: Node22.23.2와 기존 pnpm lockfile을 사용한다. `REGRESSION_FIXTURE_ENABLED=1 AUTH_ENABLED=false pnpm --filter @prs/web exec next dev --port 3188`로 합성 Atlas를 연다. Regression route/nav는 항상 포함되고 fixture flag만 끄면 MDVP 미구성 안내와 명시적 실제 scope의 기존 bisect 복원이 제공된다. 인증 false는 fixture 로컬 검증 환경 한정이며 실제 배포 인증은 기존 정책을 따른다. 운영 MDVP adapter·새 DB·새 포트 기본값·배포 topology 변경은 없다.
 
@@ -172,6 +174,8 @@ ES 아카이브(약 700GB)와 `raw_event`(4TB)는 같은 payload를 담지만 �
 | --- | --- | --- |
 | 인바운드 | 사내 사용자 → `web` | 사내망 한정, TLS 종료, 인증 필수 |
 | 인바운드 | GHE → `ingest-gateway` | GHE IP 대역 인그레스 제한, HMAC 검증 |
+| 인바운드 (CR-112, 기본 꺼짐) | PIPE 서버 → `search-api` private 리스너 | 사내 private 망 한정, 공개 ingress·web 경로 없음. search-api가 TLS를 끝내는 mTLS(프록시는 L4 passthrough만), 등록 client 인증서만. 네트워크 ACL은 추가 방어 |
+| 아웃바운드 (CR-112) | `search-api` → GHE REST `GET /users/{login}` | 기존 GHE 허용 목록 안. 발급마다 1회, 프로세스당 동시 8 |
 | 내부 | `web` → `search-api` | 클러스터 내부, mTLS 또는 네트워크 정책 |
 | 내부 | 전 서비스 → PostgreSQL / ES / Redis | 사설 네트워크, 인증, TLS |
 | 아웃바운드 | 워커 → GHE REST | 허용 목록 (GHE 호스트만) |

@@ -1,0 +1,82 @@
+{
+  "operation": "read.repositories",
+  "title": "저장소 목록",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/repositories?limit=2",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000006"
+    },
+    "body": {
+      "items": [
+        {
+          "repository_id": 102,
+          "repository": "acme/billing",
+          "registration_state": "active",
+          "registered_at": "2026-09-21T05:17:06.253Z",
+          "last_ingested_at": null,
+          "document_counts": {
+            "pull_requests": 1,
+            "commits": 0,
+            "total": 1
+          },
+          "backfill": null,
+          "sequence_spaces": [
+            {
+              "base_branch": "main",
+              "last_sequence": null,
+              "seq_epoch": null,
+              "sequence_state": "unknown",
+              "last_assigned_at": null
+            }
+          ],
+          "reconciliation": {
+            "last_completed_at": null,
+            "missing_count": null
+          },
+          "unavailable": []
+        },
+        {
+          "repository_id": 101,
+          "repository": "acme/payments",
+          "registration_state": "active",
+          "registered_at": "2026-09-21T05:17:06.249Z",
+          "last_ingested_at": null,
+          "document_counts": {
+            "pull_requests": 2,
+            "commits": 1,
+            "total": 3
+          },
+          "backfill": null,
+          "sequence_spaces": [
+            {
+              "base_branch": "main",
+              "last_sequence": 0,
+              "seq_epoch": 3,
+              "sequence_state": "ok",
+              "last_assigned_at": null
+            }
+          ],
+          "reconciliation": {
+            "last_completed_at": null,
+            "missing_count": null
+          },
+          "unavailable": []
+        }
+      ],
+      "next_cursor": null,
+      "correlation_id": "00000000-0000-4000-8000-000000000006"
+    }
+  }
+}

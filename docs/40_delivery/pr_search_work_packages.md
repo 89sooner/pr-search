@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.56 | 갱신일: 2026-09-18
+> 상태: review | 버전: v2.57 | 갱신일: 2026-09-21
+
+## WP-097 PIPE 서버 위임 검색 수신부 (CR-112)
+
+- 요구사항: `FR-INT-001` AC-1~AC-12. 설계 ADR-025, 계약 API-INT-001~014, 데이터 ENT-INT-001~005. 선행: 실행을 재사용할 원본 조회(API-ING-002·API-SRCH-001~004·API-SEQ-007·API-SRC-001~004)가 main에 있는 상태 — source 4종은 WP-085.
+- 범위: search-api 안의 private 리스너(mTLS, 기본 꺼짐)와 구성 검증, assertion 검증(`jose@6.2.12` 정확 고정), Redis 재생 방지, identity binding·정본 사용자·GHE 현재 숫자 ID 대조, 검색 grant(해시 저장·수명·sender binding), 로그인 문맥 회수, 긴급 회수, 연동 이벤트와 지표. 마이그레이션 033과 `pipeIntegrationRepo`, 파수꾼 시험 6개의 버전 목록 갱신. 조회 10종의 route 본문을 실행 함수(`execute*`)로 꺼내 일반 route와 공유(`ReadInvocation`), 커서 지문의 선택적 결속(추가 전용). `@prs/github`의 읽기 전용 `getUser`. 운영 CLI `pipe-integration-cli`(`bindings`·`credentials`·`purge`, 기본 dry-run). PIPE 담당용 handoff `handoff/pipe-search-integration/v1/`(OpenAPI·operation map·examples·적합성 벡터·배포와 롤백·CONTRACT_DIFF·TEST_RESULTS·manifest).
+- 제외: PIPE 화면·BFF, 운영 배포·실제 사용자 매핑 등록·인증서 발급과 회수, 기본 배포 파일(`deploy/single-host/compose.yml`·`deploy/k8s/`) 변경(예시만 제공), `prsctl` 하위 명령, 원본 `/api/v1/*`의 기존 결함 수정(DEV-730·DEV-731·DEV-732는 기록만), 사내 CA·운영 HAProxy·실제 GHE를 거친 검증, commit·push·PR(사용자 지시 전).
+- 완료 기준: typecheck·lint(기준선 실패 1건 제외)·lint:deps·단위·통합(127.0.0.1의 실제 mTLS·PostgreSQL·Redis·Elasticsearch)·회귀·build 통과. 공통 수용 시험 PSI-A~G 중 pr-search 책임 항목을 시험 이름으로 연결. 계약 시험이 OpenAPI·`INTEGRATION_OPERATIONS`·operation map의 일치, 예시의 스키마 적합, 적합성 벡터와 구현의 일치를 대조. 핵심 검사를 지우는 변이를 시험이 잡음. 기존 통합·회귀가 기준선 그대로 통과(공개 경로 불변). TEST_RESULTS가 실행한 명령과 NOT_RUN을 구분.
+- 상태: in_progress — 로컬 구현·검증 완료(원장 6.103장), 미커밋. commit·push·PR은 사용자 지시 전이며, 사내 CA·운영 HAProxy·실제 GHE를 거친 검증은 NOT_RUN이다.
 
 ## WP-096 Search 화면 좌측 패널·필터 UI 간소화 (CR-111)
 
@@ -122,6 +130,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
+| WP-097 | PIPE 서버 위임 검색 수신부 | 서버 간 연동 (CR-112) | WP-085 | in_progress — 로컬 구현·검증 완료(원장 6.103장), 미커밋·사용자 지시 대기 |
 | WP-095 | Regression Revision Atlas 첫 UI 수직 | UI 수직 (CR-109) | WP-042, WP-084 | done — 원장 6.101장; fixture opt-in·운영 MDVP 미연결 |
 | WP-001 | 워크스페이스와 공유 패키지 골격 | REL-001 | - | in_progress |
 | WP-002 | PostgreSQL 스키마와 마이그레이션 | REL-001 | WP-001 | done |

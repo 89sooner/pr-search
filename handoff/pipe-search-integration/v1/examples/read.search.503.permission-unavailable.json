@@ -1,0 +1,29 @@
+{
+  "operation": "read.search",
+  "title": "접근 범위 확인 실패 — 원본 봉투(retryable 없음)",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/search?q=",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 503,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000019"
+    },
+    "body": {
+      "error": {
+        "code": "PERMISSION_UNAVAILABLE",
+        "message": "접근 권한을 확인할 수 없어 조회를 거부한다"
+      },
+      "correlation_id": "00000000-0000-4000-8000-000000000019"
+    }
+  }
+}

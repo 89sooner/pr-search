@@ -63,6 +63,11 @@ export interface RepositoryFingerprintInput {
   readonly scope: AccessScope;
   /** `owner/name` 완전 일치 필터. 없으면 전체 목록이다. */
   readonly slug: string | null;
+  /**
+   * 지문에 덧붙이는 결속 (CR-112). **없으면 재료가 이전과 같다** — 공개 커서가 그대로 통한다.
+   * PIPE 연동은 client와 canonical 사용자를 넣는다.
+   */
+  readonly binding?: string;
 }
 
 /**
@@ -87,8 +92,10 @@ export function computeRepositoryFingerprint(input: RepositoryFingerprintInput):
           [...scope.teamIds].sort((a, b) => a - b).join(','),
           [...scope.visibilities].sort().join(','),
         ];
+  // 결속은 있을 때만 재료가 된다 — 없을 때 빈 자리를 더하면 공개 커서의 지문이 바뀐다.
+  const binding = input.binding === undefined ? [] : [`binding:${input.binding}`];
   return createHash('sha256')
-    .update([...material, input.slug ?? ''].join('|'), 'utf8')
+    .update([...material, input.slug ?? '', ...binding].join('|'), 'utf8')
     .digest('base64url')
     .slice(0, 22);
 }

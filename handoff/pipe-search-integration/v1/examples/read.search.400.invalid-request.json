@@ -1,0 +1,30 @@
+{
+  "operation": "read.search",
+  "title": "중복 query key — 연동 계층의 거절",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/search?q=a&q=b",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000017"
+    },
+    "body": {
+      "error": {
+        "code": "INVALID_REQUEST",
+        "message": "The request is not valid.",
+        "retryable": false
+      },
+      "correlation_id": "00000000-0000-4000-8000-000000000017"
+    }
+  }
+}

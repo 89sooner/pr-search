@@ -97,6 +97,14 @@ export interface FingerprintInput {
    * 섞인 순회를 지문이 잡아내지 못한다.
    */
   readonly mergeNumberEpoch: number | null;
+  /**
+   * 지문에 덧붙이는 결속 (CR-112 / ADR-025).
+   *
+   * **없으면 재료가 이전과 한 글자도 다르지 않다** — 이미 발급된 공개 커서가 그대로 통한다
+   * (추가 전용 변경). PIPE 연동은 client와 canonical 사용자를 넣어, 우연히 범위가 같은 다른
+   * 사용자나 다른 client의 커서를 받지 않는다.
+   */
+  readonly binding?: string;
 }
 
 /**
@@ -137,6 +145,8 @@ export function computeFingerprint(input: FingerprintInput): string {
     // 같은 이유로 `mnum:`의 유효 에폭도 별도 자리에 넣는다 (CR-106) — 필드가
     // 다르므로 재료도 따로다.
     input.mergeNumberEpoch === null ? '' : String(input.mergeNumberEpoch),
+    // 결속은 있을 때만 재료가 된다 — 없을 때 빈 자리를 더하면 공개 커서의 지문이 바뀐다.
+    ...(input.binding === undefined ? [] : [`binding:${input.binding}`]),
   ].join(' ');
 
   return createHash('sha256').update(material, 'utf8').digest('base64url').slice(0, 22);

@@ -1,6 +1,8 @@
 # PR Search 용어집
 
-> 상태: review | 버전: v0.13 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.14 | 갱신일: 2026-09-21
+
+CR-112 / FR-INT-001: **PIPE 연동**(`pipe_integration`, 계약 `PSI-1.0`)은 PIPE 서버가 사용자 신원을 위임해 pr-search의 고정 조회 10종을 쓰는 서버 간 연결이다. **연동 client**(`client_id`)는 정책 파일에 등록된 PIPE 서버 하나이며 mTLS 인증서·서명 공개키·저장소 **허용 목록**(`repository_ids`)을 갖는다. 실효 범위는 언제나 사용자 **접근 범위**와 허용 목록의 교집합이다. **사용자 assertion**(`pipe-user-assertion+jwt`)은 PIPE 서버가 서명한 60초 이하의 JWS다 — PIPE 로그인 JWT가 아니며 역할·저장소를 싣지 않는다. **identity binding**(ENT-INT-001)은 운영자가 검증한 `(issuer, subject) → 기존 사용자` 연결이다(금지 동의어: 계정 병합, 자동 매핑). **로그인 문맥**(`auth_context_id`, ENT-INT-002)은 PIPE가 로그인 자격 하나에서 만든 불투명 식별자이고, **문맥 회수 표식**은 그 문맥의 재발급을 막는 PostgreSQL 행이다. **검색 grant**(`psig1_…`, ENT-INT-003)는 300초 이하의 검색 전용 불투명 토큰이다(금지 동의어: 세션, 세션 토큰 — 일반 세션과 서로를 대신하지 못한다). **긴급 회수**(ENT-INT-004)는 client·서명 키·인증서를 재기동 없이 즉시 끊는 기록이다. **진단 창**은 grant 만료 뒤 120초 동안 `GRANT_EXPIRED`를 구분해 알리는 기간이며 인증 수명이 아니다. **private 리스너**는 search-api 프로세스 안에서 공개 리스너와 다른 포트로 듣는 mTLS 전용 서버다.
 
 CR-109 / FR-REG-001: **Revision Atlas**는 first-parent 순서를 x축으로 삼는 Regression view다. **MDVP**는 외부 live-test 환경이며 **MTBF**는 그 안의 시험 유형이다. **비교 가능한 PASS**는 동일 testcase/signature/HW/environment/configuration/policy·동일 공간/epoch의 이전 PASS다. **fixture 모드**는 명시적으로 opt-in한 합성 데이터·로컬 판정/큐이며 실제 장비·빌드 실행이 아니다. **최초 FAIL 경계 후보**는 재현 확인이 필요한 단일 revision 후보이며 원인 확정과 다르다.
 

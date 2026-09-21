@@ -1,0 +1,3616 @@
+# =====================================================================================================================
+# PR Search — PIPE 연동 private API (PSI-1.0) · OpenAPI 3.1
+# =====================================================================================================================
+# 무엇인가: PIPE 서버만 부르는 pr-search private 리스너의 계약이다 (CR-112 / FR-INT-001 / ADR-025).
+#   공개 리스너·web 프록시에는 이 경로들이 없다. 기본 꺼짐이며 켠 배포에서만 리스너가 선다.
+# 정본 관계:
+#   - 경로 목록: apps/search-api/src/integrations/pipe/operations.ts 의 INTEGRATION_OPERATIONS
+#   - 연동 오류 코드·상태·재시도 가능·문구: apps/search-api/src/integrations/pipe/errors.ts 의 PSI_ERRORS
+#   - 조회 성공 본문과 원본 오류 본문: 원본 /api/v1/* 코드 (components.schemas 뒤쪽의 「원본 조회 DTO」 절)
+#   계약 시험(apps/search-api/src/integrations/pipe/contract.test.ts)이 이 파일·코드·operation-map.json·examples·
+#   manifest.json을 대조하고, 통합 시험(apps/search-api/integration/integrations/pipe/openapi.test.ts)이 실제 mTLS로 받은
+#   응답 본문을 이 파일의 스키마로 검증한다. 둘 중 하나라도 어긋나면 시험이 깨진다.
+# 오류 모양은 둘이다 (CONTRACT_DIFF D-09):
+#   - 연동 고유 실패(mTLS·assertion·grant·identity·입력 거절·저장소 장애): PsiErrorResponse — `retryable`이 있다.
+#   - 원본 조회의 실패(질의 문법·커서·source·에폭·범위 밖 404·조회 중 503): 원본 봉투 — `retryable`이 없다.
+#   조회 응답의 오류 스키마는 두 모양의 oneOf다. `error` 객체가 양쪽 모두 닫혀 있어 한 본문이 둘에 동시에 맞지 않는다.
+# 체크섬: handoff manifest.json의 contract_checksum이 이 파일과 operation-map.json의 LF 정규화 SHA-256을 묶는다.
+# =====================================================================================================================
+openapi: 3.1.0
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: PR Search — PIPE Search Integration (private)
+  version: PSI-1.0
+  summary: PIPE 서버가 사용자 신원을 위임해 pr-search의 읽기 전용 조회 10종을 쓰는 서버 간 계약
+  description: |
+    ## 자격
+
+    - **mTLS**: 모든 요청은 private 리스너의 TLS 핸드셰이크에서 client 인증서를 낸다. 인증서가 없거나 신뢰 CA가
+      발급하지 않았으면 HTTP 응답 없이 핸드셰이크가 실패한다. 신뢰 CA가 발급했지만 정책에 없는 인증서는 401
+      `CLIENT_AUTH_FAILED`다. 프록시 전달 헤더(`X-SSL-Client-*` 등)는 읽지 않는다 — TLS passthrough만 지원한다.
+    - **assertion**: `/auth/exchange`·`/auth/revoke-context`의 본문. RS256 compact JWS, 헤더는 `alg`·`typ`·`kid` 셋만,
+      `typ`은 정확히 `pipe-user-assertion+jwt`, claim 12개(`iss`·`aud`(문자열 하나)·`sub`·`client_id`·`purpose`·
+      `profile`·`auth_context_id`·`auth_expires_at`·`iat`·`nbf`·`exp`·`jti`)가 모두 필수이고 그 밖의 claim은 거절한다.
+      `exp - iat`는 60초 이하, 시계 오차 5초, 길이 8192자 이하. 상세 규칙과 기대 결과는 `conformance/vectors.json`.
+    - **grant**: `Authorization: Bearer psig1_…`. 발급에 쓴 client 인증서에 묶이며(다른 인증서면 401
+      `GRANT_BINDING_MISMATCH`) 수명은 `min(발급 + 300초, auth_expires_at, client 인증서 만료)`다. 연장하지 않는다.
+
+    ## 모든 응답
+
+    `Cache-Control: private, no-store`, `Pragma: no-cache`, `X-Content-Type-Options: nosniff`, 서버가 만든
+    `X-Correlation-Id`(UUID, 본문 `correlation_id`와 같은 값 — source 성공 본문에는 `correlation_id` 키가 없다).
+    `Set-Cookie`는 없다. `Cookie` 헤더가 있는 요청은 400 `INVALID_REQUEST`다. HEAD·OPTIONS와 목록 밖 경로는 404다.
+
+    ## 조회 (read.*)
+
+    원본 `/api/v1/*`의 실행 함수를 그대로 부른다. 주체는 grant의 canonical 사용자, 접근 범위는 그 사용자의 기존
+    범위와 client 허용 목록의 교집합(명시적 저장소 목록)이다. 연동 계층은 원본보다 엄격하다: 같은 query key의 중복,
+    목록에 없는 key, 깨진 percent-encoding·C0 제어 문자·`#`, 경로 파라미터 `{repository}`의 이중 인코딩(`%252F`)·
+    dot segment는 400 `INVALID_REQUEST`다(CONTRACT_DIFF D-03). query 값의 뜻은 원본 그대로다 — 예를 들어 식별자
+    해석의 `repository` 힌트는 형식이 틀리면 조용히 버린다. 연동 커서는 client와 사용자에 결속되어 공개 경로 커서와
+    섞이지 않는다.
+servers:
+  - url: https://{host}:{port}
+    description: search-api private 리스너 (mTLS 필수). 실제 주소는 운영 입력이다 (PENDING_OPERATOR_INPUT).
+    variables:
+      host:
+        default: pr-search-integration.internal.example
+      port:
+        default: '3443'
+security:
+  - mutualTLS: []
+    grant: []
+tags:
+  - name: auth
+    description: grant 발급과 회수 (연동 전용)
+  - name: context
+    description: 검색 사용자 문맥 (연동 전용)
+  - name: read
+    description: 원본 조회 10종을 그대로 실행한다
+
+paths:
+  /internal/integrations/pipe/v1/auth/exchange:
+    post:
+      operationId: authExchange
+      x-operation-id: auth.exchange
+      x-api-id: API-INT-001
+      x-auth: mtls+assertion
+      x-original: null
+      tags: [auth]
+      summary: 검색 grant 발급
+      description: |
+        처리 순서: client 인증서 → 쿠키·`Authorization` 거절 → 본문 모양(JSON, 16KiB 이하) → 서명·claim(`purpose: grant`)
+        → 서명 키 긴급 회수 → `jti` 원자 소비(재사용이면 401 `ASSERTION_REPLAYED`) → 로그인 문맥 회수(403
+        `CONTEXT_REVOKED`) → identity binding·정본 사용자·GHE의 현재 숫자 ID(403 `IDENTITY_BINDING_REQUIRED`·
+        `IDENTITY_DISABLED`, 409 `IDENTITY_BINDING_CONFLICT`) → 접근 범위 1회 조회(실패 503 `PERMISSION_UNAVAILABLE`,
+        0개 저장소는 성공) → grant 저장. 재생 방지·grant 저장소 장애는 503 `AUTH_STORE_UNAVAILABLE`이다.
+        수명이 1초 미만이면 발급하지 않고 401 `ASSERTION_INVALID`다.
+      security:
+        - mutualTLS: []
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssertionRequest'
+      responses:
+        '200':
+          description: 발급했다.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExchangeResponse'
+        default:
+          $ref: '#/components/responses/PsiError'
+
+  /internal/integrations/pipe/v1/auth/revoke:
+    post:
+      operationId: authRevoke
+      x-operation-id: auth.revoke
+      x-api-id: API-INT-002
+      x-auth: mtls+grant-optional
+      x-original: null
+      tags: [auth]
+      summary: grant 하나 회수 (멱등)
+      description: |
+        `Authorization: Bearer <grant>`가 가리키는 grant를 회수한다. **자기 client의 grant만** 바뀐다. 형식이 틀렸든,
+        없든, 다른 client의 것이든, 이미 회수됐든 같은 200 본문이다 — 토큰의 존재를 알려 주지 않는다.
+        `Authorization` 헤더 자체가 없으면 400 `INVALID_REQUEST`다. 본문은 없거나 `{}`이며, 본문 없이 보낼 때는
+        `Content-Type`을 싣지 않는다(CONTRACT_DIFF D-06).
+      security:
+        - mutualTLS: []
+          grant: []
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          description: 회수했거나 회수할 것이 없었다 (구분하지 않는다).
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeResponse'
+        default:
+          $ref: '#/components/responses/PsiError'
+
+  /internal/integrations/pipe/v1/auth/revoke-context:
+    post:
+      operationId: authRevokeContext
+      x-operation-id: auth.revoke_context
+      x-api-id: API-INT-003
+      x-auth: mtls+assertion
+      x-original: null
+      tags: [auth]
+      summary: 로그인 문맥 회수
+      description: |
+        새 assertion(`purpose: revoke_context`)의 `(iss, sub, auth_context_id)` 문맥을 회수한다. 회수 표식은 PostgreSQL에
+        남고 그 문맥의 grant가 모두 죽으며, 같은 문맥의 발급은 이후 403 `CONTEXT_REVOKED`다. 이 호출은 binding을
+        요구하지 않는다. 지난 `auth_expires_at`도 받는다(발급에는 받지 않는다). 긴급 회수된 서명 키로 서명했으면 403
+        `CLIENT_DISABLED`다. 이미 회수된 문맥이면 처음 회수 시각을 돌려준다.
+      security:
+        - mutualTLS: []
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssertionRequest'
+      responses:
+        '200':
+          description: 문맥을 회수했다 (이미 회수되어 있었으면 처음 회수 시각).
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeContextResponse'
+        default:
+          $ref: '#/components/responses/PsiError'
+
+  /internal/integrations/pipe/v1/context:
+    get:
+      operationId: getContext
+      x-operation-id: context
+      x-api-id: API-INT-004
+      x-auth: mtls+grant
+      x-original: null
+      tags: [context]
+      summary: 검색 사용자 문맥
+      description: |
+        grant의 검색 사용자 문맥이다. `identity.ghe_login`은 pr-search 정본(`app_user.login`)의 현재 값이다. 브라우저용
+        `/api/pr-search/v1/context`와 `context_key`는 PIPE BFF가 만든다 — pr-search는 만들지 않는다(CONTRACT_DIFF D-08).
+        query key를 받지 않는다.
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+      responses:
+        '200':
+          description: grant가 유효하다.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+            Cache-Control:
+              $ref: '#/components/headers/CacheControl'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationContextResponse'
+        default:
+          $ref: '#/components/responses/PsiError'
+
+  /internal/integrations/pipe/v1/read/repositories:
+    get:
+      operationId: readRepositories
+      x-operation-id: read.repositories
+      x-api-id: API-INT-005
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-ING-002
+        method: GET
+        path: /api/v1/repositories
+      tags: [read]
+      summary: 저장소 목록 (원본 API-ING-002 실행)
+      description: |
+        교집합이 빈 사용자는 200 `items: []`다(CONTRACT_DIFF D-01). 접근 범위 확인 실패는 503
+        `PERMISSION_UNAVAILABLE`(연동 봉투)이다 — 원본 공개 경로는 같은 경우 500을 내는 결함이 있다(CONTRACT_DIFF D-20).
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - name: limit
+          in: query
+          required: false
+          description: 정수 1~100, 기본 50. 없음·빈 값은 50. 범위 밖·정수 아님은 400 `INVALID_PARAMETER`(절삭하지 않는다).
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          description: 앞 응답의 `next_cursor`. 빈 값은 첫 페이지. trim하지 않는다. 쓸 수 없으면 400 `CURSOR_INVALID`, 범위·조건이 바뀌었으면 400 `CURSOR_QUERY_MISMATCH`.
+          schema:
+            type: string
+        - name: repository
+          in: query
+          required: false
+          description: '`owner/name` 완전 일치 필터. 빈 값은 필터 없음. 일치 없음과 볼 수 없음은 둘 다 200 `items: []`다.'
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/RepositoriesOk'
+        default:
+          $ref: '#/components/responses/ReadRepositoriesError'
+
+  /internal/integrations/pipe/v1/read/search:
+    get:
+      operationId: readSearch
+      x-operation-id: read.search
+      x-api-id: API-INT-006
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-SRCH-004
+        method: GET
+        path: /api/v1/search
+      tags: [read]
+      summary: 검색 (원본 API-SRCH-004 실행)
+      description: |
+        검사 순서는 원본과 같다: sort → q 파싱 → 접근 범위 → `seq:` 바인딩(낡았으면 200 epoch_stale) → M 번호 기능 →
+        `pr_number:` 저장소 지목 → `mnum:` 바인딩 → 조회. 교집합이 빈 사용자는 503 `PERMISSION_UNAVAILABLE`이다
+        (원본의 기본 거부, CONTRACT_DIFF D-01). 검색 ES 마감은 3초이며 샤드 실패의 부분 결과만 504 `SEARCH_TIMEOUT`이다.
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - name: q
+          in: query
+          required: false
+          description: 구조화 질의. 없음·빈 값은 범위 안 전체. 문법·값 오류는 400 `QUERY_SYNTAX_ERROR`, 키 없는 검색어가 2 코드 포인트 미만이면 400 `QUERY_TOO_SHORT`.
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: SortKey 9개 중 하나(`pr_number`·`merge_seq`·`merged_at`·`created_at`·`updated_at`·`changed_files_count`·`additions`·`lead_time_seconds`·`relevance`). 없음·빈 값은 `merge_seq`. 그 밖은 조회 전에 400 `INVALID_PARAMETER`.
+          schema:
+            type: string
+        - name: order
+          in: query
+          required: false
+          description: 정확히 `asc`만 오름차순이고 그 밖(없음 포함)은 전부 `desc`다. 오류가 없다.
+          schema:
+            type: string
+        - name: size
+          in: query
+          required: false
+          description: 기본 25, 최대 200(초과는 200으로 절삭). 정수가 아니거나 1 미만이면 25(오류 아님).
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          description: 앞 응답의 `next_cursor`. trim 뒤 빈 값은 첫 페이지. 쓸 수 없으면 400 `CURSOR_INVALID`, 조건·범위가 바뀌었으면 400 `CURSOR_QUERY_MISMATCH`.
+          schema:
+            type: string
+        - name: facets
+          in: query
+          required: false
+          description: 정확히 `true`만 참이다. 거짓이면 `facets`·`facets_omitted`·`facets_status` 세 키가 통째로 빠진다.
+          schema:
+            type: string
+        - name: seq_epoch
+          in: query
+          required: false
+          description: q에 `seq:` 범위가 있을 때만 뜻이 있다. 없으면 현재 에폭으로 바인딩한다. 값이 있는데 빈 값·정수 아님·1 미만이면 400. `seq:`가 없는데 오면 400(`sequence_reference_absent`). 현재 에폭과 다르면 조회 없이 200 epoch_stale.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/SearchOk'
+        default:
+          $ref: '#/components/responses/ReadSearchError'
+
+  /internal/integrations/pipe/v1/read/resolve:
+    get:
+      operationId: readResolve
+      x-operation-id: read.resolve
+      x-api-id: API-INT-007
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-SRCH-001
+        method: GET
+        path: /api/v1/resolve
+      tags: [read]
+      summary: 식별자 해석 (원본 API-SRCH-001 실행)
+      description: 교집합이 빈 사용자는 503 `PERMISSION_UNAVAILABLE`이다(CONTRACT_DIFF D-01).
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - name: q
+          in: query
+          required: false
+          description: SHA 접두(7~40 hex)·PR 번호·`owner/repo#N`·GHE URL. 빈 값은 후보 0개(`not_found`). PR 번호로 읽히지 않는 순수 hex가 7자 미만이거나 40자를 넘으면 조회 없이 400 `SHA_PREFIX_TOO_SHORT`.
+          schema:
+            type: string
+        - name: repository
+          in: query
+          required: false
+          description: PR 번호 해석의 저장소 힌트(`owner/name`). 형식이 틀리면 조용히 버린다(오류 없음).
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: 기본 10, 최대 50(초과는 절삭). 정수가 아니거나 1 미만이면 10.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/ResolveOk'
+        default:
+          $ref: '#/components/responses/ReadResolveError'
+
+  /internal/integrations/pipe/v1/read/merge-numbers/resolve:
+    get:
+      operationId: readMergeNumberResolve
+      x-operation-id: read.merge_numbers.resolve
+      x-api-id: API-INT-008
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-SEQ-007
+        method: GET
+        path: /api/v1/merge-numbers/resolve
+      tags: [read]
+      summary: M 번호 ↔ PR 해석 (원본 API-SEQ-007 실행)
+      description: |
+        검사 순서는 원본과 같다: 접근 범위 → 기능 플래그(꺼져 있으면 404 `NOT_FOUND`, `detail.reason = feature_disabled`)
+        → 구조·숫자 → 저장소 접근 범위(범위 밖은 코드를 비교하기 전에 404) → 코드 대조 → 채번 대상 브랜치 → 공간 → 에폭
+        → 값. `MNUMBER_ENABLED=true`인 배포에서만 capabilities에 `merge_number:read`가 있다(CONTRACT_DIFF D-07).
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - name: repository
+          in: query
+          required: true
+          description: '`owner/name`. trim 뒤 두 조각이 아니면 400.'
+          schema:
+            type: string
+        - name: base_branch
+          in: query
+          required: true
+          description: 필수. trim 뒤 비어 있으면 400. 서버가 브랜치를 고르지 않는다.
+          schema:
+            type: string
+        - name: pr_number
+          in: query
+          required: false
+          description: '`merge_number`와 정확히 하나. 1~2147483647, trim하지 않는다. 둘 다 있거나 둘 다 없으면 400.'
+          schema:
+            type: string
+        - name: merge_number
+          in: query
+          required: false
+          description: '`M-<저장소 코드>-<번호>`. `pr_number`와 정확히 하나. 이 방향에서는 `seq_epoch`이 필수다.'
+          schema:
+            type: string
+        - name: seq_epoch
+          in: query
+          required: false
+          description: 없으면 현재 에폭(`pr_number` 방향에서만). 값이 있으면 1 이상 정수. 현재 에폭과 다르면 값을 계산하지 않고 200 epoch_stale.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/MergeNumberResolveOk'
+        default:
+          $ref: '#/components/responses/ReadMergeNumberResolveError'
+
+  /internal/integrations/pipe/v1/read/pull-requests/{repository}/{pr_number}:
+    get:
+      operationId: readPullRequest
+      x-operation-id: read.pull_request
+      x-api-id: API-INT-009
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-SRCH-003
+        method: GET
+        path: /api/v1/pull-requests/{repository}/{pr_number}
+      tags: [read]
+      summary: PR 상세 (원본 API-SRCH-003 실행)
+      description: 범위 밖과 없음은 같은 404다. 교집합이 빈 사용자는 503 `PERMISSION_UNAVAILABLE`이다(CONTRACT_DIFF D-01). query key를 받지 않는다.
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - $ref: '#/components/parameters/Repository'
+        - name: pr_number
+          in: path
+          required: true
+          description: 10진 정수 1~2147483647. 아니면 원본처럼 404다.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/PullRequestOk'
+        default:
+          $ref: '#/components/responses/ReadEntityDetailError'
+
+  /internal/integrations/pipe/v1/read/commits/{repository}/{commit_sha}:
+    get:
+      operationId: readCommit
+      x-operation-id: read.commit
+      x-api-id: API-INT-010
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-SRCH-002
+        method: GET
+        path: /api/v1/commits/{repository}/{commit_sha}
+      tags: [read]
+      summary: 커밋 상세 (원본 API-SRCH-002 실행)
+      description: 범위 밖과 없음은 같은 404다. 접두 해석은 `/read/resolve`의 몫이다. query key를 받지 않는다.
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - $ref: '#/components/parameters/Repository'
+        - name: commit_sha
+          in: path
+          required: true
+          description: 40자 hex(대소문자 무관). 아니면 원본처럼 404다. 응답의 `commit_sha`는 소문자다.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/CommitOk'
+        default:
+          $ref: '#/components/responses/ReadEntityDetailError'
+
+  /internal/integrations/pipe/v1/read/source/{repository}/tree:
+    get:
+      operationId: readSourceTree
+      x-operation-id: read.source.tree
+      x-api-id: API-INT-011
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-SRC-001
+        method: GET
+        path: /api/v1/source/{repository}/tree
+      tags: [read]
+      summary: source 트리 (원본 API-SRC-001 실행)
+      description: 접근 범위를 확인한 뒤에만 GHE를 부른다. 5000 항목 상한이며 넘으면 `truncated`가 참이다. 범위 밖·미등록은 404다.
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - $ref: '#/components/parameters/Repository'
+        - $ref: '#/components/parameters/SourceRef'
+        - $ref: '#/components/parameters/SourcePath'
+        - $ref: '#/components/parameters/SourceRevision'
+        - name: tree_sha
+          in: query
+          required: false
+          description: 하위 트리의 40자 hex. `revision`과 함께 있어야 한다. `path`가 있으면 필수다.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/SourceTreeOk'
+        '429':
+          $ref: '#/components/responses/SourceRateLimited'
+        default:
+          $ref: '#/components/responses/ReadSourceError'
+
+  /internal/integrations/pipe/v1/read/source/{repository}/history:
+    get:
+      operationId: readSourceHistory
+      x-operation-id: read.source.history
+      x-api-id: API-INT-012
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-SRC-002
+        method: GET
+        path: /api/v1/source/{repository}/history
+      tags: [read]
+      summary: 경로 이력 (원본 API-SRC-002 실행)
+      description: 페이지마다 커밋 50개. 행의 `pull_request_numbers`는 배열(확정)·`null`(미확정)이고, PR 연결 조회가 실패하면 `pull_requests_unavailable`이 참이다.
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - $ref: '#/components/parameters/Repository'
+        - $ref: '#/components/parameters/SourceRef'
+        - $ref: '#/components/parameters/SourcePath'
+        - name: page
+          in: query
+          required: false
+          description: 1~1000, 기본 1. 빈 값·정수 아님은 400.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/SourceHistoryOk'
+        '429':
+          $ref: '#/components/responses/SourceRateLimited'
+        default:
+          $ref: '#/components/responses/ReadSourceError'
+
+  /internal/integrations/pipe/v1/read/source/{repository}/diff:
+    get:
+      operationId: readSourceDiff
+      x-operation-id: read.source.diff
+      x-api-id: API-INT-013
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-SRC-004
+        method: GET
+        path: /api/v1/source/{repository}/diff
+      tags: [read]
+      summary: 변경 비교 (원본 API-SRC-004 실행)
+      description: '`pr`과 `commit` 중 정확히 하나. 페이지마다 파일 100개, 30페이지까지. PR 비교는 merge-base 기준이며 조회 전후 base/head가 움직이면 원본의 `SOURCE_CHANGED` 409다.'
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - $ref: '#/components/parameters/Repository'
+        - name: pr
+          in: query
+          required: false
+          description: PR 번호 1~2147483647. `commit`과 정확히 하나.
+          schema:
+            type: string
+        - name: commit
+          in: query
+          required: false
+          description: 40자 hex. `pr`과 정확히 하나.
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          description: 1~30, 기본 1.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/SourceDiffOk'
+        '429':
+          $ref: '#/components/responses/SourceRateLimited'
+        default:
+          $ref: '#/components/responses/ReadSourceError'
+
+  /internal/integrations/pipe/v1/read/source/{repository}/file:
+    get:
+      operationId: readSourceFile
+      x-operation-id: read.source.file
+      x-api-id: API-INT-014
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-SRC-003
+        method: GET
+        path: /api/v1/source/{repository}/file
+      tags: [read]
+      summary: 특정 리비전의 파일 (원본 API-SRC-003 실행)
+      description: '256KiB·4000줄·UTF-8 한도. 넘으면 200 `status: too_large`다. 없는 path는 revision이 실제로 있을 때만 `missing`이다.'
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - $ref: '#/components/parameters/Repository'
+        - name: path
+          in: query
+          required: true
+          description: 파일 경로. 2048자 이하, 제어 문자·역슬래시·`.`·`..`·빈 조각 금지, `/`로 시작·끝 금지.
+          schema:
+            type: string
+        - name: revision
+          in: query
+          required: true
+          description: 40자 hex 커밋 SHA.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/SourceFileOk'
+        '429':
+          $ref: '#/components/responses/SourceRateLimited'
+        default:
+          $ref: '#/components/responses/ReadSourceError'
+
+components:
+  securitySchemes:
+    mutualTLS:
+      type: mutualTLS
+      description: |
+        private 리스너가 직접 끝내는 TLS의 client 인증서. 정책 파일의 `tls_client`(SAN 정확 일치 또는 leaf DER의 SHA-256
+        지문)에 등록된 인증서만 client로 인정한다. TLS를 끝내는 프록시와 전달 헤더는 지원하지 않는다.
+    grant:
+      type: http
+      scheme: bearer
+      bearerFormat: psig1_ + 32바이트 난수의 base64url (43자)
+      description: '`/auth/exchange`가 발급한 검색 grant. 발급 인증서에 결속되며 수명은 300초 이하다.'
+
+  parameters:
+    UpstreamCorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: PIPE가 만든 상관 ID. UUID 형식일 때만 pr-search 이벤트 기록(`upstream_correlation_id`)에 남기고 응답으로 되돌려 보내지 않는다. 그 밖의 값은 버린다.
+      schema:
+        type: string
+    Repository:
+      name: repository
+      in: path
+      required: true
+      description: |
+        `owner%2Fname` 한 조각(`/`를 `%2F` 하나로 인코딩). 풀린 값은 `^[A-Za-z0-9._-]{1,100}/[A-Za-z0-9._-]{1,100}$`여야
+        하고 `.`·`..` 조각은 거절한다. 이중 인코딩(`%252F`)·깨진 percent-encoding·제어 문자는 400 `INVALID_REQUEST`다.
+        풀린 값이 100자를 넘으면 경로가 맞지 않아 404다(CONTRACT_DIFF D-11).
+      schema:
+        type: string
+    SourceRef:
+      name: ref
+      in: query
+      required: false
+      description: 브랜치·태그·40자 SHA. 빈 값은 저장소 기본 브랜치. 1~255자, 공백 이하 문자·0x7F·`~^:?*[\`·`..`·`@{` 금지, `-`로 시작 금지.
+      schema:
+        type: string
+    SourcePath:
+      name: path
+      in: query
+      required: false
+      description: 빈 값은 루트. 2048자 이하, 제어 문자·역슬래시·`.`·`..`·빈 조각 금지, `/`로 시작·끝 금지.
+      schema:
+        type: string
+    SourceRevision:
+      name: revision
+      in: query
+      required: false
+      description: 40자 hex. 있으면 그 커밋에 고정한다.
+      schema:
+        type: string
+
+  headers:
+    XCorrelationId:
+      description: 이 요청에 서버가 만든 UUID. 본문 `correlation_id`와 같다.
+      schema:
+        type: string
+        format: uuid
+    CacheControl:
+      description: 언제나 `private, no-store`.
+      schema:
+        type: string
+        const: private, no-store
+    RetryAfter:
+      description: GHE가 알려 준 재시도까지의 초. 알려 주지 않았으면 없다.
+      schema:
+        type: string
+
+  responses:
+    PsiError:
+      description: 연동 고유 실패. 상태·재시도 가능 여부·문구는 코드마다 고정이다(`PsiErrorCode`의 `x-psi-errors`).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PsiErrorResponse'
+    RepositoriesOk:
+      description: 원본과 같은 본문.
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RepositoryListResponse'
+    SearchOk:
+      description: 원본과 같은 본문 — 정상 결과 또는 epoch_stale.
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SearchResponseBody'
+    ResolveOk:
+      description: 원본과 같은 본문.
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResolveResponse'
+    MergeNumberResolveOk:
+      description: 원본과 같은 본문 — 해석 결과 또는 epoch_stale.
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MergeNumberResolveResponse'
+    PullRequestOk:
+      description: 원본과 같은 본문.
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PullRequestDetailResponse'
+    CommitOk:
+      description: 원본과 같은 본문.
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CommitDetailResponse'
+    SourceTreeOk:
+      description: 원본과 같은 본문 (`correlation_id` 키가 없다).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SourceTree'
+    SourceHistoryOk:
+      description: 원본과 같은 본문 (`correlation_id` 키가 없다).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SourceHistory'
+    SourceDiffOk:
+      description: 원본과 같은 본문 (`correlation_id` 키가 없다).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SourceComparison'
+    SourceFileOk:
+      description: 원본과 같은 본문 (`correlation_id` 키가 없다).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SourceFile'
+    SourceRateLimited:
+      description: GHE rate limit. 원본 봉투(`SOURCE_RATE_LIMITED`)이며 `Retry-After`가 붙을 수 있다. 즉시 재시도하지 않는다.
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SourceErrorResponse'
+    ReadRepositoriesError:
+      description: 연동 고유 실패(PsiErrorResponse) 또는 원본 조회의 실패(RepositoriesErrorResponse).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReadRepositoriesError'
+    ReadSearchError:
+      description: 연동 고유 실패(PsiErrorResponse) 또는 원본 조회의 실패(SearchErrorResponse).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReadSearchError'
+    ReadResolveError:
+      description: 연동 고유 실패(PsiErrorResponse) 또는 원본 조회의 실패(ResolveErrorResponse).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReadResolveError'
+    ReadMergeNumberResolveError:
+      description: 연동 고유 실패(PsiErrorResponse) 또는 원본 조회의 실패(MergeNumberResolveErrorResponse).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReadMergeNumberResolveError'
+    ReadEntityDetailError:
+      description: 연동 고유 실패(PsiErrorResponse) 또는 원본 조회의 실패(EntityDetailErrorResponse).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReadEntityDetailError'
+    ReadSourceError:
+      description: 연동 고유 실패(PsiErrorResponse) 또는 원본 조회의 실패(SourceErrorResponse).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReadSourceError'
+
+  schemas:
+
+    # ================================================================================================= 연동 고유 (PSI-1.0)
+
+    ProtocolVersion:
+      type: string
+      const: PSI-1.0
+      description: 연동 프로토콜 판. 한쪽 저장소만 바꾸지 않는다.
+
+    Capability:
+      type: string
+      enum: [search:read, source:read, merge_number:read]
+      description: 이 연동이 부여하는 능력. `merge_number:read`는 `MNUMBER_ENABLED=true`인 배포에서만 있다. 역할과 무관하다.
+
+    ReadOperationId:
+      type: string
+      enum:
+        - read.repositories
+        - read.search
+        - read.resolve
+        - read.merge_numbers.resolve
+        - read.pull_request
+        - read.commit
+        - read.source.tree
+        - read.source.history
+        - read.source.diff
+        - read.source.file
+      description: 조회 operation의 이름. 이벤트 기록·지표 라벨에도 같은 이름을 쓴다.
+
+    AuthContextId:
+      type: string
+      pattern: '^[A-Za-z0-9._~:-]{8,256}$'
+      description: PIPE가 로그인 자격 하나에서 만든 비밀 아닌 불투명 식별자.
+
+    IsoSecondsTimestamp:
+      type: string
+      format: date-time
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
+      description: 초 단위 UTC 시각(밀리초 없음).
+
+    PsiErrorCode:
+      type: string
+      enum:
+        - CLIENT_AUTH_FAILED
+        - ASSERTION_INVALID
+        - ASSERTION_REPLAYED
+        - IDENTITY_BINDING_REQUIRED
+        - IDENTITY_BINDING_CONFLICT
+        - IDENTITY_DISABLED
+        - GRANT_EXPIRED
+        - GRANT_INVALID
+        - GRANT_REVOKED
+        - CONTEXT_REVOKED
+        - GRANT_BINDING_MISMATCH
+        - CLIENT_DISABLED
+        - PERMISSION_UNAVAILABLE
+        - OPERATION_NOT_ALLOWED
+        - NOT_FOUND
+        - INTEGRATION_DISABLED
+        - INVALID_REQUEST
+        - PAYLOAD_TOO_LARGE
+        - UNSUPPORTED_MEDIA_TYPE
+        - AUTH_STORE_UNAVAILABLE
+        - INTERNAL_ERROR
+      description: |
+        연동 고유 오류 코드. 코드마다 상태·재시도 가능 여부·문구가 고정이다(`x-psi-errors`, 정본은 errors.ts의
+        PSI_ERRORS). 뒤의 다섯(`INVALID_REQUEST`~`INTERNAL_ERROR`)은 제안 계약 표에 없던 것이다(CONTRACT_DIFF D-04).
+        `INTEGRATION_DISABLED`는 목록에 있지만 현재 어떤 경로도 내지 않는다 — 기능이 꺼지면 리스너 자체가 없다(D-10).
+        `OPERATION_NOT_ALLOWED`도 현재 내지 않는다 — 목록 밖 경로는 등록되지 않아 404 `NOT_FOUND`다.
+      x-psi-errors:
+        CLIENT_AUTH_FAILED: { status: 401, retryable: false, message: Client authentication failed. }
+        ASSERTION_INVALID: { status: 401, retryable: false, message: The user assertion is not valid. }
+        ASSERTION_REPLAYED: { status: 401, retryable: false, message: The user assertion was already used. }
+        IDENTITY_BINDING_REQUIRED: { status: 403, retryable: false, message: Search identity is not connected. }
+        IDENTITY_BINDING_CONFLICT: { status: 409, retryable: false, message: Search identity mapping needs operator review. }
+        IDENTITY_DISABLED: { status: 403, retryable: false, message: Search identity is disabled. }
+        GRANT_EXPIRED: { status: 401, retryable: true, message: The search grant has expired. }
+        GRANT_INVALID: { status: 401, retryable: false, message: The search grant is not valid. }
+        GRANT_REVOKED: { status: 401, retryable: false, message: The search grant was revoked. }
+        CONTEXT_REVOKED: { status: 403, retryable: false, message: The login context was revoked. }
+        GRANT_BINDING_MISMATCH: { status: 401, retryable: false, message: The search grant is bound to a different client credential. }
+        CLIENT_DISABLED: { status: 403, retryable: false, message: The integration client is disabled. }
+        PERMISSION_UNAVAILABLE: { status: 503, retryable: true, message: Repository access could not be verified. }
+        OPERATION_NOT_ALLOWED: { status: 403, retryable: false, message: This operation is not available to the integration. }
+        NOT_FOUND: { status: 404, retryable: false, message: Not found. }
+        INTEGRATION_DISABLED: { status: 503, retryable: false, message: The search integration is disabled. }
+        INVALID_REQUEST: { status: 400, retryable: false, message: The request is not valid. }
+        PAYLOAD_TOO_LARGE: { status: 413, retryable: false, message: The request body is too large. }
+        UNSUPPORTED_MEDIA_TYPE: { status: 415, retryable: false, message: The request content type is not supported. }
+        AUTH_STORE_UNAVAILABLE: { status: 503, retryable: true, message: Search authorization storage is unavailable. }
+        INTERNAL_ERROR: { status: 500, retryable: false, message: Internal error. }
+
+    PsiErrorResponse:
+      type: object
+      description: |
+        연동 고유 실패의 봉투. 메시지에 원인을 싣지 않는다 — 어느 검사에서 떨어졌는지는 pr-search 이벤트 기록에만 있다.
+        원본 봉투와 달리 `retryable`이 언제나 있다. `retryable: true`는 `GRANT_EXPIRED`(새 assertion으로 한 번 재발급),
+        `PERMISSION_UNAVAILABLE`·`AUTH_STORE_UNAVAILABLE`(짧은 backoff 뒤 한 번)뿐이다.
+      required: [error, correlation_id]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message, retryable]
+          additionalProperties: false
+          properties:
+            code:
+              $ref: '#/components/schemas/PsiErrorCode'
+            message:
+              type: string
+            retryable:
+              type: boolean
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+
+    AssertionRequest:
+      type: object
+      description: 발급·문맥 회수의 요청 본문. 이 모양 말고는 400 `INVALID_REQUEST`다(다른 키가 있어도 거절).
+      required: [assertion]
+      additionalProperties: false
+      properties:
+        assertion:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          pattern: '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
+          description: RS256 compact JWS (`base64url(header).base64url(payload).base64url(signature)`).
+
+    EmptyRequest:
+      type: object
+      maxProperties: 0
+      description: 빈 JSON 객체. 키가 있으면 400 `INVALID_REQUEST`다.
+
+    ExchangeResponse:
+      type: object
+      description: 발급 결과. `access_token`은 이 응답에서 한 번만 보인다 — pr-search는 SHA-256만 저장한다.
+      required:
+        - protocol_version
+        - token_type
+        - access_token
+        - grant_id
+        - expires_in
+        - expires_at
+        - auth_context_id
+        - binding_version
+        - identity
+        - capabilities
+        - correlation_id
+      additionalProperties: false
+      properties:
+        protocol_version:
+          $ref: '#/components/schemas/ProtocolVersion'
+        token_type:
+          type: string
+          const: Bearer
+        access_token:
+          type: string
+          pattern: '^psig1_[A-Za-z0-9_-]{43}$'
+        grant_id:
+          type: string
+          format: uuid
+          description: 비밀 아닌 추적 ID. 이벤트 기록과 연결할 때 쓴다.
+        expires_in:
+          type: integer
+          minimum: 1
+          maximum: 300
+          description: 남은 초(내림). `min(300, auth_expires_at, 인증서 만료)`를 넘지 않는다.
+        expires_at:
+          $ref: '#/components/schemas/IsoSecondsTimestamp'
+        auth_context_id:
+          $ref: '#/components/schemas/AuthContextId'
+        binding_version:
+          type: integer
+          minimum: 1
+        identity:
+          type: object
+          required: [ghe_login]
+          additionalProperties: false
+          properties:
+            ghe_login:
+              type: string
+              description: pr-search 정본의 현재 GHE login. 표시용이며 신원의 근거가 아니다.
+        capabilities:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Capability'
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+
+    RevokeResponse:
+      type: object
+      required: [protocol_version, revoked, correlation_id]
+      additionalProperties: false
+      properties:
+        protocol_version:
+          $ref: '#/components/schemas/ProtocolVersion'
+        revoked:
+          type: boolean
+          const: true
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+
+    RevokeContextResponse:
+      type: object
+      required: [protocol_version, auth_context_id, revoked, revoked_at, correlation_id]
+      additionalProperties: false
+      properties:
+        protocol_version:
+          $ref: '#/components/schemas/ProtocolVersion'
+        auth_context_id:
+          $ref: '#/components/schemas/AuthContextId'
+        revoked:
+          type: boolean
+          const: true
+        revoked_at:
+          $ref: '#/components/schemas/IsoSecondsTimestamp'
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+
+    IntegrationContextResponse:
+      type: object
+      required: [protocol_version, grant_id, expires_at, auth_context_id, binding_version, identity, capabilities, operations, correlation_id]
+      additionalProperties: false
+      properties:
+        protocol_version:
+          $ref: '#/components/schemas/ProtocolVersion'
+        grant_id:
+          type: string
+          format: uuid
+        expires_at:
+          $ref: '#/components/schemas/IsoSecondsTimestamp'
+        auth_context_id:
+          $ref: '#/components/schemas/AuthContextId'
+        binding_version:
+          type: integer
+          minimum: 1
+        identity:
+          type: object
+          required: [ghe_login]
+          additionalProperties: false
+          properties:
+            ghe_login:
+              type: string
+        capabilities:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Capability'
+        operations:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ReadOperationId'
+          description: >-
+            이 배포에서 쓸 수 있는 조회 operation. M 번호가 꺼진 배포에서는 `read.merge_numbers.resolve`가 빠진다 — 경로는
+            있지만 원본처럼 404 `NOT_FOUND`(`detail.reason = feature_disabled`)이며, 능력 목록에서도 `merge_number:read`가
+            함께 빠진다(CONTRACT_DIFF D-07).
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+
+    ReadRepositoriesError:
+      oneOf:
+        - $ref: '#/components/schemas/PsiErrorResponse'
+        - $ref: '#/components/schemas/RepositoriesErrorResponse'
+    ReadSearchError:
+      oneOf:
+        - $ref: '#/components/schemas/PsiErrorResponse'
+        - $ref: '#/components/schemas/SearchErrorResponse'
+    ReadResolveError:
+      oneOf:
+        - $ref: '#/components/schemas/PsiErrorResponse'
+        - $ref: '#/components/schemas/ResolveErrorResponse'
+    ReadMergeNumberResolveError:
+      oneOf:
+        - $ref: '#/components/schemas/PsiErrorResponse'
+        - $ref: '#/components/schemas/MergeNumberResolveErrorResponse'
+    ReadEntityDetailError:
+      oneOf:
+        - $ref: '#/components/schemas/PsiErrorResponse'
+        - $ref: '#/components/schemas/EntityDetailErrorResponse'
+    ReadSourceError:
+      oneOf:
+        - $ref: '#/components/schemas/PsiErrorResponse'
+        - $ref: '#/components/schemas/SourceErrorResponse'
+
+    # =================================================================================================================
+    # 원본 조회 DTO — 원본 /api/v1/* 코드에서 추출했다 (아래 주석은 추출 근거와 원본 query 파라미터 규칙이다).
+    # 연동 경로는 같은 실행 함수를 부르므로 성공 본문과 원본 오류 본문이 같다. 원본 query 규칙 중 연동이 더 엄격한
+    # 것(중복·목록 밖 key, 깨진 인코딩, 이중 인코딩·dot segment 저장소)은 연동 계층이 먼저 400 INVALID_REQUEST로 거절한다.
+    # 주석 속 "일반 앱에는 전역 오류 처리기가 없다"·UnhandledErrorResponse는 공개 경로의 이야기다 — 연동 앱은 오류
+    # 처리기가 있어 잡히지 않은 예외도 PsiErrorResponse로 나간다.
+    # =================================================================================================================
+    # =====================================================================================================================
+    # PR Search — 기존 조회 API 응답 DTO (OpenAPI 3.1 `components.schemas` 조각)
+    # =====================================================================================================================
+    # 추출 근거: /home/roqkf/pr-search-wt/pipe-integration-auth 작업 트리, 2026-09-21 실측. HEAD 52cf27f + 미커밋 수정.
+    #   라우트 다섯 파일(repositories·search·resolve·sequence·source의 routes.ts)은 CR-112가 본문을 execute* 함수로
+    #   꺼낸 미커밋 상태이며, 각 함수 주석이 "검사 순서와 응답은 그대로다"라고 적는다. 근거 경로는 저장소 루트 기준이다.
+    # 범위: 일반 `/api/v1/*` 경로(세션 쿠키 인증)의 조회 여섯 묶음과 오류 봉투. PIPE 연동 경로
+    #   (apps/search-api/src/integrations/, 미추적 새 디렉터리)는 같은 execute* 함수를 부르지만 주체 확인과 오류 처리기가
+    #   달라 여기서 다루지 않는다.
+    # 문법: JSON Schema 2020-12만 쓴다. `nullable` 대신 `type: [x, 'null']`·`anyOf: [..., {type: 'null'}]`,
+    #   "함께 나타나거나 함께 빠진다"는 `dependentRequired`, 값에 따른 존재 조건은 `if`/`then`/`else`로 적었다.
+    #   OpenAPI 전용 키워드(discriminator 등)는 쓰지 않았다. 파일은 `components:`·`schemas:` 래퍼를 포함한다.
+    # 키 규약: 키 없음 = 만들지 않았다, `null` = 만들었는데 비었다. required에는 언제나 있는 키만 넣었다. 상세 조회의
+    #   `put()`은 `undefined`만 거르고 `null`은 통과시킨다(apps/search-api/src/resolve/detail.ts:130-132). 투영이
+    #   GitHub의 null을 그대로 ES에 쓰는 필드는 "키가 있고 값이 null"로 나갈 수 있어 [x, 'null']로 적었다.
+    #
+    # ---- 공통 사실 -------------------------------------------------------------------------------------------------------
+    # · querystring: Fastify 5.12.1 기본 파서. 값은 모두 문자열이고 같은 키를 두 번 주면 배열이 된다
+    #   (`?page=1&page=2` → ['1','2'], 실측). 아래의 "문자열만"은 배열을 뜻 없는 값으로 다룬다는 뜻이다.
+    # · 경로의 {repository}는 경로 조각 하나다. `/`는 `%2F`로 인코딩한다 — find-my-way가 한 번 디코딩한다
+    #   (`acme%2Fpayments` → `acme/payments`, 실측). 인코딩하지 않은 `/`는 라우트가 맞지 않아 Fastify 기본 404
+    #   `{message, error, statusCode}`가 나간다(실측).
+    # · 일반 앱에는 전역 오류 처리기가 없다(apps/search-api/src/server.ts:206, setErrorHandler 없음). 라우트가 잡지 않은
+    #   예외는 ErrorResponse가 아니라 Fastify 기본 봉투다 → UnhandledErrorResponse.
+    # · 인증이 가장 먼저다. 세션 실패 → 401 UNAUTHENTICATED, detail.login_path (apps/search-api/src/auth/errors.ts:48-61).
+    # · correlation_id는 요청마다 randomUUID() (apps/search-api/src/auth/read-invocation.ts:59).
+    #
+    # ---- [1] GET /api/v1/repositories — executeRepositories (apps/search-api/src/repositories/routes.ts:177) -------------
+    # limit       정수 1..100, 기본 50. 없음·null·'' → 50. 그 밖은 Number()로 바꿔 safe integer 1..100이 아니면 400
+    #             INVALID_PARAMETER {field: limit}. 절삭하지 않는다(검색 size와 다름). Number()라 ' 5 '·'1e1'·'0x10'은
+    #             통과하고, 배열은 NaN이라 400.
+    #             (근거: apps/search-api/src/repositories/overview.ts:43-44, apps/search-api/src/repositories/overview.ts:115-120,
+    #              apps/search-api/src/repositories/routes.ts:195-196)
+    # repository  `owner/name` 완전 일치 필터(SQL `owner = $1 AND name = $2`). 없음·null·'' → 필터 없음. 값이 있으면
+    #             문자열이어야 하고, trim 뒤 '/'로 정확히 두 조각·각 1..100자가 아니면 400 {field: repository}. 문자
+    #             집합은 보지 않는다. 일치 없음과 볼 수 없음은 둘 다 200 `items: []`다(구분하지 않는다).
+    #             (근거: apps/search-api/src/repositories/routes.ts:198-206, apps/search-api/src/repositories/registration-requests.ts:31,
+    #              apps/search-api/src/repositories/registration-requests.ts:43-52, packages/db/src/repositories/repository.ts:460-463)
+    # cursor      불투명 문자열. 문자열이고 ''가 아니면 해석한다 — trim하지 않는다(검색은 trim한다). 비문자열은 무시(첫 페이지).
+    #             쓸 수 없으면 400 CURSOR_INVALID, 접근 범위·조건이 바뀌었으면 400 CURSOR_QUERY_MISMATCH.
+    #             (근거: apps/search-api/src/repositories/routes.ts:215-225, apps/search-api/src/repositories/routes.ts:68-88)
+    #
+    # ---- [2] GET /api/v1/search — executeSearch (apps/search-api/src/search/routes.ts:364) -------------------------------
+    # 검사 순서: 인증 → sort → q 파싱 → 접근 범위 → seq: 바인딩(낡았으면 여기서 200 epoch_stale로 끝) → mnum 기능 플래그 →
+    #   pr_number: 저장소 지목 → mnum: 바인딩 → 조회. (근거: apps/search-api/src/search/routes.ts:373-519)
+    # q           문자열만. 없음·배열 → '' → 빈 AST({filters: [], text: null})로 전체 조회. 문법·값 오류는 400
+    #             QUERY_SYNTAX_ERROR, 키 없는 검색어가 2 코드 포인트 미만이면 400 QUERY_TOO_SHORT.
+    #             (근거: apps/search-api/src/search/routes.ts:400-416, packages/query/src/parse.ts:30, packages/query/src/parse.ts:220-227)
+    # sort        SortKey 9개 중 하나. 없음·'' → merge_seq. 그 밖(배열은 String()으로 'a,b')은 조회 전에 400
+    #             INVALID_PARAMETER {field: sort, supported_keys}.
+    #             (근거: apps/search-api/src/search/routes.ts:386-397, packages/es/src/sort.ts:21-31, packages/es/src/sort.ts:42)
+    # order       정확히 'asc'만 오름차순. 그 밖(없음·''·'ASC'·배열)은 전부 desc. 오류 없음.
+    #             (근거: apps/search-api/src/search/service.ts:79-81)
+    # size        문자열만. 없음·공백·배열 → 25. Number()가 정수가 아니거나 1 미만 → 25(오류 아님). 200 초과 → 200으로 절삭.
+    #             (근거: apps/search-api/src/search/service.ts:58-60, apps/search-api/src/search/service.ts:71-77)
+    # cursor      문자열이면 trim하고 '' → 첫 페이지. 비문자열 무시. 쓸 수 없으면 400 CURSOR_INVALID, 조건·접근 범위가
+    #             바뀌었으면 400 CURSOR_QUERY_MISMATCH.
+    #             (근거: apps/search-api/src/cursor/params.ts:16-21, apps/search-api/src/search/routes.ts:550-553)
+    # facets      정확히 'true'만 참. 그 밖은 거짓이며 facets·facets_omitted·facets_status 세 키가 통째로 빠진다.
+    #             (근거: apps/search-api/src/cursor/params.ts:31-33, apps/search-api/src/search/facets.ts:260-267)
+    # seq_epoch   q에 seq: 범위 조건이 있을 때만 뜻이 있다. 없음(undefined·null) → 현재 에폭으로 최초 바인딩. 값이 있는데
+    #             ''·공백·배열·정수 아님·1 미만 → 400 {field: seq_epoch}(없는 것으로 접지 않는다). Number()라 ' 3 '·'1e0'은
+    #             통과. seq:가 없는데 값이 오면 형식과 무관하게 400 {field: seq_epoch, reason: sequence_reference_absent}.
+    #             현재 에폭과 다르면 조회 없이 200 SearchEpochStaleResponse.
+    #             (근거: apps/search-api/src/search/sequence-context.ts:101-140, apps/search-api/src/sequence/space.ts:172-187)
+    # M 번호 기능(mergeNumberEnabled)이 꺼진 배포: q에 mnum: 범위가 있으면 400 QUERY_SYNTAX_ERROR {reason: merge_number_disabled},
+    #             목록 PR 항목에서 M 키 다섯이 빠진다.
+    #             (근거: apps/search-api/src/search/routes.ts:255-280, apps/search-api/src/search/routes.ts:474-475,
+    #              apps/search-api/src/search/service.ts:209)
+    #
+    # ---- [3] GET /api/v1/resolve — executeResolve (apps/search-api/src/resolve/routes.ts:196) ---------------------------
+    # q           문자열만(아니면 ''). 앞뒤 공백을 다듬어 판별한다. '' → detected_kind text, 후보 0, reason_code not_found.
+    #             PR 번호로 읽히지 않는 순수 hex 중 길이가 7 미만이거나 40을 넘으면 조회 없이 400 SHA_PREFIX_TOO_SHORT
+    #             {min_length: 7, actual_length}. 40 초과도 이 코드다(41자 입력 → actual_length 41, 빌드된 dist로 실측).
+    #             (근거: apps/search-api/src/resolve/routes.ts:208-233, packages/query/src/identifier.ts:177-185,
+    #              packages/query/src/identifier.ts:195, packages/query/src/identifier.ts:228-245)
+    # repository  문자열이고 /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/에 맞을 때만 PR 번호 해석의 저장소 힌트로 쓴다. 안 맞으면
+    #             조용히 버린다(오류 없음). 입력 자체가 저장소를 지목하면(owner/repo#N, GHE URL) 그쪽이 이긴다.
+    #             (근거: apps/search-api/src/resolve/routes.ts:34, apps/search-api/src/resolve/routes.ts:235-236,
+    #              apps/search-api/src/resolve/service.ts:205-206)
+    # limit       문자열만. 없음·공백·배열·정수 아님·1 미만 → 10. 50 초과 → 50으로 절삭. 해석이 둘인 입력(예: 1234567 = PR 번호
+    #             + SHA 접두)은 해석마다 limit까지 모은 뒤 합쳐 limit로 자른다.
+    #             (근거: apps/search-api/src/resolve/service.ts:33-44, packages/es/src/resolve-query.ts:20,
+    #              apps/search-api/src/resolve/service.ts:233-284)
+    #
+    # ---- [4] GET /api/v1/pull-requests/{repository}/{pr_number}, GET /api/v1/commits/{repository}/{commit_sha} ------------
+    #   executePullRequestDetail (apps/search-api/src/resolve/routes.ts:313), executeCommitDetail (apps/search-api/src/resolve/routes.ts:272)
+    # query 파라미터 없음. 형식이 틀린 경로 값은 400이 아니라 404 NOT_FOUND다.
+    # {repository}  find-my-way 디코딩 뒤 decodeURIComponent를 한 번 더 한다. `%25zz`처럼 두 번째 디코딩이 깨지는 값은
+    #             URIError가 잡히지 않아 500 UnhandledErrorResponse(실측 `"message":"URI malformed"`). 디코딩 결과가
+    #             /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/가 아니면 404 '저장소를 찾을 수 없습니다'.
+    #             (근거: apps/search-api/src/resolve/routes.ts:34, apps/search-api/src/resolve/routes.ts:285-290,
+    #              apps/search-api/src/resolve/routes.ts:326-331)
+    # {commit_sha}  40자 hex(대소문자 무관)만. 아니면 404. 응답의 commit_sha는 소문자로 바꾼 값이다. 접두 해석은 /resolve의 몫.
+    #             (근거: apps/search-api/src/resolve/routes.ts:35, apps/search-api/src/resolve/routes.ts:291-294,
+    #              apps/search-api/src/resolve/detail.ts:205)
+    # {pr_number}   /^\d+$/이고 1..2147483647이어야 한다. 아니면 404.
+    #             (근거: apps/search-api/src/resolve/routes.ts:36-37, apps/search-api/src/resolve/routes.ts:332-338)
+    #
+    # ---- [5] GET /api/v1/merge-numbers/resolve — executeMergeNumberResolve (apps/search-api/src/sequence/routes.ts:316) ----
+    # 검사 순서: 인증 → 접근 범위 → 기능 플래그(꺼져 있으면 404 NOT_FOUND {reason: feature_disabled}) → 구조·숫자 → 저장소 접근
+    #   범위 → 코드 대조 → 채번 대상 브랜치 → 공간 → 에폭 대조 → 값 조회.
+    #   (근거: apps/search-api/src/sequence/routes.ts:324-337, apps/search-api/src/sequence/merge-numbers.ts:100-174)
+    # repository    문자열만. trim 뒤 '/'로 정확히 두 조각, 두 조각 모두 비어 있지 않아야 한다(문자 집합·길이는 보지 않는다).
+    #             아니면 400 {field: repository}.
+    #             (근거: apps/search-api/src/sequence/merge-numbers.ts:104-107, apps/search-api/src/sequence/space.ts:24-31)
+    # base_branch   필수. 문자열이고 trim 뒤 비어 있지 않아야 한다. 아니면 400 {field: base_branch}. 서버가 브랜치를 고르지 않는다.
+    #             (근거: apps/search-api/src/sequence/merge-numbers.ts:65-67, apps/search-api/src/sequence/merge-numbers.ts:108-111)
+    # pr_number / merge_number  정확히 하나. "있음"은 undefined·null이 아니라는 뜻이라 빈 값(`pr_number=`)도 있음이다. 둘 다
+    #             있으면 400 {field: pr_number}, 둘 다 없으면 400 {field: merge_number}.
+    #             (근거: apps/search-api/src/sequence/merge-numbers.ts:113-121)
+    # pr_number     trim하지 않는다. /^[0-9]+$/, 19자 이하, 1..2147483647. 아니면 400 {field: pr_number}.
+    #             (근거: apps/search-api/src/sequence/merge-numbers.ts:32, apps/search-api/src/sequence/merge-numbers.ts:75-87,
+    #              apps/search-api/src/sequence/merge-numbers.ts:126-130)
+    # merge_number  trim하지 않는다. ^M-([0-9]+)-([1-9][0-9]*)$, 번호는 16자리 이하·1..9007199254740991. 아니면 400
+    #             {field: merge_number}. 접근 범위를 지난 뒤 저장소 코드가 없거나 다르면 400 {field: merge_number,
+    #             reason: repository_code_unavailable | repository_code_mismatch}. 발급되지 않은 번호는 404.
+    #             (근거: apps/search-api/src/sequence/merge-numbers.ts:131-139, apps/search-api/src/sequence/merge-numbers.ts:222-241,
+    #              apps/search-api/src/sequence/merge-numbers.ts:276-277, packages/domain/src/mnumber.ts:20, packages/domain/src/mnumber.ts:69-79)
+    # seq_epoch     없음 → 현재 에폭(pr_number 방향에서만 허용). merge_number 방향에서 없으면 400 {field: seq_epoch}. 값이 있으면
+    #             1 이상 정수(''·공백·배열은 400, Number()라 ' 3 '은 통과 — pr_number의 공백 거절과 다르다). 현재 에폭과
+    #             다르면 값을 계산하지 않고 200 MergeNumberResolveEpochStaleResponse.
+    #             (근거: apps/search-api/src/sequence/merge-numbers.ts:141-152, apps/search-api/src/sequence/merge-numbers.ts:254-265,
+    #              apps/search-api/src/sequence/space.ts:172-187)
+    #
+    # ---- [6] GET /api/v1/source/{repository}/{tree|history|file|diff} — executeSource (apps/search-api/src/source/routes.ts:32) ----
+    # 모든 응답(성공·오류)에 `cache-control: private, no-store`, `pragma: no-cache`, `x-content-type-options: nosniff`.
+    #   429에는 GitHub가 재시도 시각을 알려 준 경우 `retry-after`(초)가 붙는다.
+    #   (근거: apps/search-api/src/source/routes.ts:33, apps/search-api/src/source/routes.ts:78)
+    # 검사 순서: 인증 → {repository} 형식(400) → 접근 범위 → 저장소 확인(404) → 파라미터(400) → GitHub 조회.
+    # {repository}  추가 디코딩 없음. /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/가 아니거나 조각이 '.'·'..'이면 400 INVALID_PARAMETER
+    #             (상세 조회는 같은 경우 404다). 미등록·범위 밖 → 404.
+    #             (근거: apps/search-api/src/source/routes.ts:40-45)
+    # 공통 query    path·ref·revision·tree_sha·commit 중 하나라도 문자열이 아니면(배열) 400. page·pr는 이 검사에서 빠진다.
+    #             모든 400은 detail 없이 message만 다르다. (근거: apps/search-api/src/source/routes.ts:46, apps/search-api/src/source/routes.ts:36)
+    # path          기본 ''(루트). 2048자 이하, 제어 문자(0x00-0x1F·0x7F)·역슬래시 금지, '/'로 시작·끝 금지, '.'·'..'·빈 조각 금지.
+    #             (근거: apps/search-api/src/source/routes.ts:47, apps/search-api/src/source/service.ts:13-15)
+    # ref           기본 ''(→ 저장소 기본 브랜치). 있으면 1..255자, 0x20 이하·0x7F·`~^:?*[\` 금지, '..'·'@{' 금지, '-'로 시작 금지.
+    #             (근거: apps/search-api/src/source/routes.ts:48, apps/search-api/src/source/service.ts:16)
+    # revision      있으면 40자 hex. (근거: apps/search-api/src/source/routes.ts:49-52, apps/search-api/src/source/service.ts:11)
+    # tree_sha      있으면 40자 hex이고 revision이 함께 있어야 한다. (근거: apps/search-api/src/source/routes.ts:50-52)
+    # page          없으면 1. 있으면 Number()가 정수 1..1000(diff는 1..30). '' → 0 → 400, 배열 → NaN → 400.
+    #             (근거: apps/search-api/src/source/routes.ts:51-52, apps/search-api/src/source/routes.ts:65)
+    # tree          path가 있으면 tree_sha(따라서 revision)도 필수. (근거: apps/search-api/src/source/routes.ts:55-57)
+    # history       ref·path·page. PR 연결 조회는 es가 배선됐을 때만 한다. (근거: apps/search-api/src/source/routes.ts:58)
+    # file          path와 revision 둘 다 필수. (근거: apps/search-api/src/source/routes.ts:59-61)
+    # diff          pr(Number()가 safe integer 1..2147483647) 또는 commit(40자 hex) 중 정확히 하나, page ≤ 30.
+    #             (근거: apps/search-api/src/source/routes.ts:62-66)
+    # =====================================================================================================================
+
+
+    # ================================================================================================= 공통 · 오류 봉투
+    CorrelationId:
+      type: string
+      format: uuid
+      description: >-
+        요청 상관 ID. 일반 경로는 요청마다 randomUUID()로 만든다. 모든 오류 본문과, source 조회를 뺀 모든 성공 본문에
+        실린다. source 조회는 성공 시 결과 객체를 그대로 보내므로 이 키가 없다.
+        (근거: apps/search-api/src/auth/read-invocation.ts:59, apps/search-api/src/source/routes.ts:70)
+
+    ErrorCode:
+      type: string
+      description: >-
+        API 오류 코드 61개 전체. 이 파일의 조회들이 실제로 내는 코드는 각 *ErrorResponse가 code enum으로 좁힌다.
+        HTTP 상태는 ERROR_HTTP_STATUS가 코드마다 하나로 정한다(M 번호 해석의 NO_SEQUENCE만 그 표를 읽고, 나머지 라우트는
+        상태를 손으로 적는다 — 값은 표와 같다).
+        (근거: packages/contracts/src/error-codes.ts:10-161, packages/contracts/src/error-codes.ts:168-230)
+      enum:
+        - SOURCE_CHANGED
+        - SOURCE_RATE_LIMITED
+        - SOURCE_PERMISSION_REQUIRED
+        - SOURCE_UNAVAILABLE
+        - QUERY_SYNTAX_ERROR
+        - SHA_PREFIX_TOO_SHORT
+        - QUERY_TOO_SHORT
+        - CURSOR_INVALID
+        - CURSOR_QUERY_MISMATCH
+        - RANGE_INVERTED
+        - RANGE_TOO_LARGE
+        - SEQUENCE_SPACE_MISMATCH
+        - SEQUENCE_NOT_FOUND
+        - ANCHOR_NOT_ON_BRANCH
+        - ANCHOR_NOT_MERGED
+        - ANCHOR_UNRESOLVABLE
+        - TOO_MANY_BUCKETS
+        - EXPORT_LIMIT_EXCEEDED
+        - CONFIRMATION_MISMATCH
+        - BRANCH_LIMIT_EXCEEDED
+        - INVALID_PARAMETER
+        - UNAUTHENTICATED
+        - FORBIDDEN_ROLE
+        - NOT_FOUND
+        - RELEASE_NOT_INDEXED
+        - NO_SEQUENCE
+        - SEQUENCE_EPOCH_STALE
+        - BISECT_CONTRADICTION
+        - JOB_CONFLICT
+        - SAFE_MARKER_CONFLICT
+        - REINDEX_BUSY
+        - SAVED_SEARCH_LIMIT
+        - SAVED_SEARCH_NAME_CONFLICT
+        - SAVED_SEARCH_QUERY_INVALID
+        - PAYLOAD_TOO_LARGE
+        - PERMISSION_UNAVAILABLE
+        - SEARCH_TIMEOUT
+        - AGGREGATION_TIMEOUT
+        - GRAPH_TIMEOUT
+        - INTERNAL_ERROR
+        - GH_CAPABILITY_UNKNOWN
+        - GH_CONSTRAINT_VIOLATION
+        - GH_IDENTITY_REQUIRED
+        - GH_PERMISSION_DENIED
+        - GH_POLICY_BLOCKED
+        - GH_ENDPOINT_BLOCKED
+        - GH_EXTENSION_BLOCKED
+        - GH_HOST_UNSUPPORTED
+        - GH_REGISTRY_STALE
+        - GH_CONFIRMATION_REQUIRED
+        - GH_APPROVAL_REQUIRED
+        - GH_TARGET_CHANGED
+        - GH_DUPLICATE_REQUEST
+        - GH_RESOURCE_LOCKED
+        - GH_EXECUTION_TIMEOUT
+        - GH_WORKSPACE_UNAVAILABLE
+        - GH_CAPABILITY_NOT_EXECUTABLE
+        - GH_ADMIN_ACTION_REQUIRED
+        - GH_POLICY_CONFLICT
+        - GH_REGISTRY_APPROVAL_INELIGIBLE
+        - GH_POLICY_UNAVAILABLE
+
+    ErrorResponse:
+      type: object
+      description: >-
+        원본 오류 봉투. 라우트가 `reply.status(s).send(body)`로 보내는 모든 오류가 이 모양이다. `detail`은 오류마다
+        다른 열린 맵이며 키 자체가 없을 수 있다(그 오류가 detail을 만들지 않았다). 조회별로 실제 나오는 code·detail은
+        *ErrorResponse 스키마들이 좁힌다. 라우트가 잡지 않은 예외는 이 모양이 아니다 — UnhandledErrorResponse.
+        (근거: packages/contracts/src/responses.ts:10-18)
+      required: [error, correlation_id]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          additionalProperties: false
+          properties:
+            code:
+              $ref: '#/components/schemas/ErrorCode'
+            message:
+              type: string
+              description: >-
+                사람이 읽는 문구. 대부분 한국어지만 source 조회와 질의 파서(@prs/query)의 문구는 영어다.
+            detail:
+              type: object
+              additionalProperties: true
+              description: >-
+                열린 맵으로 둔다 — 타입이 `Readonly<Record<string, unknown>>`이고 오류마다 키가 다르다. 알려진 모양은
+                *ErrorDetail 스키마들이다. (근거: packages/contracts/src/responses.ts:15)
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+
+    UnhandledErrorResponse:
+      type: object
+      description: >-
+        계약 밖 오류 봉투 — Fastify 5.12.1 기본 오류 처리기의 모양이다. 일반 앱은 setErrorHandler를 두지 않으므로 라우트가
+        잡지 않은 예외(저장소 목록의 접근 범위 산출 실패, 상세 조회의 이중 디코딩 URIError, 옮기지 않은 ES·DB 오류 등)가
+        상태 500으로 이 모양으로 나간다. 경로가 맞지 않는 404도 같은 키를 쓴다(code 없음). message에 내부 예외 문구가
+        그대로 실린다. 실측 예: {"statusCode":500,"error":"Internal Server Error","message":"URI malformed"}.
+        (근거: apps/search-api/src/server.ts:206, node_modules/.pnpm/fastify@5.12.1/node_modules/fastify/lib/error-handler.js:78-98)
+      required: [statusCode, error, message]
+      additionalProperties: false
+      properties:
+        statusCode:
+          type: integer
+        code:
+          type: string
+          description: >-
+            예외 객체에 code 속성이 있을 때만 실린다.
+        error:
+          type: string
+          description: >-
+            HTTP 상태 문구(예: Internal Server Error, Not Found).
+        message:
+          type: string
+
+    LoginRequiredErrorDetail:
+      type: object
+      description: >-
+        401 UNAUTHENTICATED의 detail. 화면이 현재 경로를 보존해 재인증으로 보낼 경로다. 라우트 옵션 loginPath가 없으면
+        '/auth/login'.
+        (근거: apps/search-api/src/auth/errors.ts:48-61)
+      required: [login_path]
+      additionalProperties: false
+      properties:
+        login_path:
+          type: string
+
+    ParameterFieldErrorDetail:
+      type: object
+      description: >-
+        INVALID_PARAMETER의 단순 detail — 틀린 파라미터 이름과, 일부는 사유 코드. 조회별 값은 다음과 같다.
+        저장소 목록 field=limit·repository(reason 없음). 검색 field=seq_epoch — 형식 오류면 reason 없음, seq: 없이 온
+        seq_epoch면 reason=sequence_reference_absent. M 번호 해석 field=repository·base_branch·pr_number·merge_number·
+        seq_epoch — 저장소 코드 문제만 field=merge_number에 reason=repository_code_unavailable 또는 repository_code_mismatch.
+        (근거: apps/search-api/src/repositories/routes.ts:55-65, apps/search-api/src/search/routes.ts:124-149,
+        apps/search-api/src/sequence/routes.ts:342-350, apps/search-api/src/sequence/merge-numbers.ts:104-151,
+        apps/search-api/src/sequence/merge-numbers.ts:222-241)
+      required: [field]
+      additionalProperties: false
+      properties:
+        field:
+          type: string
+          enum: [limit, repository, seq_epoch, base_branch, pr_number, merge_number]
+        reason:
+          type: string
+          enum: [sequence_reference_absent, repository_code_unavailable, repository_code_mismatch]
+
+    SortParameterErrorDetail:
+      type: object
+      description: >-
+        검색의 지원하지 않는 정렬 키(400 INVALID_PARAMETER). supported_keys는 SORT_KEYS 9개를 그 순서대로 싣는다.
+        (근거: apps/search-api/src/search/routes.ts:386-397, packages/es/src/sort.ts:21-31)
+      required: [field, supported_keys]
+      additionalProperties: false
+      properties:
+        field:
+          const: sort
+        supported_keys:
+          type: array
+          uniqueItems: true
+          minItems: 9
+          maxItems: 9
+          items:
+            $ref: '#/components/schemas/SortKey'
+
+    QueryParseErrorDetail:
+      type: object
+      description: >-
+        질의 파서 오류(400 QUERY_SYNTAX_ERROR·QUERY_TOO_SHORT)의 detail. 파서가 만든 token·offset_start·offset_end(와 값이
+        열거된 키면 allowed_values)에 라우트가 supported_keys를 언제나 덧붙인다 — 지원하지 않는 키 오류가 아니어도, 그리고
+        M 번호 기능이 꺼진 배포에서도 mnum을 포함한 21개 전체다. offset은 질의 문자열 안 위치이며 offset_end는 제외 끝이다.
+        QUERY_TOO_SHORT는 키 없는 낱말을 공백으로 이은 검색어가 2 코드 포인트 미만일 때이며 token이 그 검색어,
+        offset_start가 첫 낱말의 위치다.
+        (근거: packages/query/src/errors.ts:15-28, packages/query/src/parse.ts:143-152, packages/query/src/parse.ts:220-227,
+        apps/search-api/src/search/routes.ts:402-416)
+      required: [token, offset_start, offset_end, supported_keys]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+        offset_start:
+          type: integer
+          minimum: 0
+        offset_end:
+          type: integer
+          minimum: 0
+        supported_keys:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/QueryKey'
+        allowed_values:
+          type: array
+          items:
+            type: string
+          description: >-
+            값이 열거된 키에 허용되지 않은 값을 줬을 때만. is는 merged·open·closed·reverted, kind는 pull_request·commit.
+            (근거: packages/query/src/keys.ts:143-148)
+
+    MergeNumberDisabledErrorDetail:
+      type: object
+      description: >-
+        M 번호 기능이 꺼진 배포에 mnum: 범위를 보낸 검색(400 QUERY_SYNTAX_ERROR)의 detail. 파서 오류와 달리 offset이
+        없고, supported_keys에서 mnum이 빠진 20개다.
+        (근거: apps/search-api/src/search/routes.ts:255-271, apps/search-api/src/search/routes.ts:474-475)
+      required: [token, reason, supported_keys]
+      additionalProperties: false
+      properties:
+        token:
+          const: mnum
+        reason:
+          const: merge_number_disabled
+        supported_keys:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/QueryKey'
+          not:
+            contains:
+              const: mnum
+
+    SequenceBindingErrorDetail:
+      type: object
+      description: >-
+        검색의 seq:·mnum: 범위가 시퀀스 공간을 하나로 지목하지 못함(400 INVALID_PARAMETER). repo:·base:가 하나씩
+        있어야 한다. 두 필터가 사유 코드를 공유하고 사람이 읽는 문구만 다르다.
+        (근거: apps/search-api/src/search/routes.ts:111-123, apps/search-api/src/search/routes.ts:181-193,
+        packages/query/src/sequence-binding.ts:33)
+      required: [field, reason, required_keys]
+      additionalProperties: false
+      properties:
+        field:
+          const: q
+        reason:
+          type: string
+          enum: [sequence_space_required, sequence_space_ambiguous]
+        required_keys:
+          const: [repo, base]
+
+    RepositoryBindingErrorDetail:
+      type: object
+      description: >-
+        검색의 pr_number: 범위가 저장소를 하나로 지목하지 못함(400 INVALID_PARAMETER). repo: 하나가 있어야 한다.
+        (근거: apps/search-api/src/search/routes.ts:215-231, packages/query/src/sequence-binding.ts:142)
+      required: [field, reason, required_keys]
+      additionalProperties: false
+      properties:
+        field:
+          const: q
+        reason:
+          type: string
+          enum: [repository_required, repository_ambiguous]
+        required_keys:
+          const: [repo]
+
+    ShaPrefixErrorDetail:
+      type: object
+      description: >-
+        /resolve의 400 SHA_PREFIX_TOO_SHORT detail. PR 번호로 읽히지 않는 순수 hex 입력 중 커밋 해석 길이(7~40)를 벗어난
+        것이 여기로 온다 — 7 미만뿐 아니라 40 초과(41자 → actual_length 41, 실측)도다. actual_length는 trim된 입력의
+        길이다.
+        (근거: packages/query/src/identifier.ts:79-88, packages/query/src/identifier.ts:177-185,
+        packages/query/src/identifier.ts:228-245, apps/search-api/src/resolve/routes.ts:221-233)
+      required: [min_length, actual_length]
+      additionalProperties: false
+      properties:
+        min_length:
+          const: 7
+        actual_length:
+          type: integer
+          minimum: 1
+          anyOf:
+            - maximum: 6
+            - minimum: 41
+
+    NoSequenceErrorDetail:
+      type: object
+      description: >-
+        M 번호 해석의 409 NO_SEQUENCE detail. branch_not_tracked는 채번 대상 브랜치가 아님, not_sequenced는 공간이 없거나
+        그 PR의 머지 커밋이 이 공간·에폭에 없음(미머지·다른 브랜치·미채번을 구분하지 않는다).
+        (근거: apps/search-api/src/sequence/routes.ts:356-360, apps/search-api/src/sequence/merge-numbers.ts:244-251,
+        apps/search-api/src/sequence/merge-numbers.ts:292-303)
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          enum: [branch_not_tracked, not_sequenced]
+
+    FeatureDisabledErrorDetail:
+      type: object
+      description: >-
+        M 번호 기능이 꺼진 배포의 /merge-numbers/resolve(404 NOT_FOUND) detail. 다른 404와 달리 사유를 밝힌다.
+        (근거: apps/search-api/src/sequence/routes.ts:361-369, apps/search-api/src/sequence/merge-numbers.ts:101)
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason:
+          const: feature_disabled
+
+    RepositoriesErrorResponse:
+      description: >-
+        GET /api/v1/repositories 오류. 401 UNAUTHENTICATED(detail LoginRequiredErrorDetail). 400 INVALID_PARAMETER
+        (detail {field: limit|repository}). 400 CURSOR_INVALID·CURSOR_QUERY_MISMATCH(detail 없음). 접근 범위 산출 실패는
+        이 함수가 잡지 않는다(주석이 그렇게 적는다) — 일반 앱에서는 503 PERMISSION_UNAVAILABLE이 아니라 500
+        UnhandledErrorResponse다. 진단 축(수집 시각·문서 수·백필·시퀀스 공간) 실패는 오류가 아니라 200의 unavailable이다.
+        (근거: apps/search-api/src/repositories/routes.ts:55-88, apps/search-api/src/repositories/routes.ts:174-225,
+        apps/search-api/src/repositories/overview.ts:302-319)
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code:
+                  enum: [UNAUTHENTICATED, INVALID_PARAMETER, CURSOR_INVALID, CURSOR_QUERY_MISMATCH]
+                detail:
+                  anyOf:
+                    - $ref: '#/components/schemas/LoginRequiredErrorDetail'
+                    - $ref: '#/components/schemas/ParameterFieldErrorDetail'
+
+    SearchErrorResponse:
+      description: >-
+        GET /api/v1/search 오류(상태: code). 401 UNAUTHENTICATED(LoginRequiredErrorDetail).
+        400 INVALID_PARAMETER — 정렬 키(SortParameterErrorDetail), seq_epoch 형식·고아(ParameterFieldErrorDetail),
+        seq:/mnum: 공간 지목(SequenceBindingErrorDetail), pr_number: 저장소 지목(RepositoryBindingErrorDetail).
+        400 QUERY_SYNTAX_ERROR·QUERY_TOO_SHORT(QueryParseErrorDetail), 기능이 꺼진 mnum:(MergeNumberDisabledErrorDetail).
+        404 NOT_FOUND — seq:·mnum: 공간을 확인할 수 없음(미등록·범위 밖·미채번을 구분하지 않는다, detail 없음).
+        400 CURSOR_INVALID·CURSOR_QUERY_MISMATCH(detail 없음). 503 PERMISSION_UNAVAILABLE — 접근 범위 산출 실패 또는 볼 수
+        있는 저장소가 없음(detail 없음). 504 SEARCH_TIMEOUT — 샤드가 하나라도 실패한 부분 결과일 때만(detail 없음). ES의
+        소프트 타임아웃(timed_out)만으로는 504가 아니다.
+        (근거: apps/search-api/src/search/routes.ts:107-280, apps/search-api/src/search/routes.ts:374-416,
+        apps/search-api/src/search/routes.ts:550-575, packages/es/src/sort.ts:190-196)
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code:
+                  enum:
+                    - UNAUTHENTICATED
+                    - INVALID_PARAMETER
+                    - QUERY_SYNTAX_ERROR
+                    - QUERY_TOO_SHORT
+                    - NOT_FOUND
+                    - CURSOR_INVALID
+                    - CURSOR_QUERY_MISMATCH
+                    - PERMISSION_UNAVAILABLE
+                    - SEARCH_TIMEOUT
+                detail:
+                  anyOf:
+                    - $ref: '#/components/schemas/LoginRequiredErrorDetail'
+                    - $ref: '#/components/schemas/SortParameterErrorDetail'
+                    - $ref: '#/components/schemas/ParameterFieldErrorDetail'
+                    - $ref: '#/components/schemas/SequenceBindingErrorDetail'
+                    - $ref: '#/components/schemas/RepositoryBindingErrorDetail'
+                    - $ref: '#/components/schemas/QueryParseErrorDetail'
+                    - $ref: '#/components/schemas/MergeNumberDisabledErrorDetail'
+
+    ResolveErrorResponse:
+      description: >-
+        GET /api/v1/resolve 오류. 401 UNAUTHENTICATED(LoginRequiredErrorDetail). 400 SHA_PREFIX_TOO_SHORT
+        (ShaPrefixErrorDetail, 조회 전). 503 PERMISSION_UNAVAILABLE, 504 SEARCH_TIMEOUT(샤드 실패, detail 없음). 후보 0건은
+        오류가 아니라 200이다.
+        (근거: apps/search-api/src/resolve/routes.ts:55-80, apps/search-api/src/resolve/routes.ts:205-268)
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code:
+                  enum: [UNAUTHENTICATED, SHA_PREFIX_TOO_SHORT, PERMISSION_UNAVAILABLE, SEARCH_TIMEOUT]
+                detail:
+                  anyOf:
+                    - $ref: '#/components/schemas/LoginRequiredErrorDetail'
+                    - $ref: '#/components/schemas/ShaPrefixErrorDetail'
+
+    EntityDetailErrorResponse:
+      description: >-
+        GET /api/v1/pull-requests/{repository}/{pr_number}·/commits/{repository}/{commit_sha} 오류. 401 UNAUTHENTICATED
+        (LoginRequiredErrorDetail). 404 NOT_FOUND — 경로 값 형식 오류, 없음, 접근 범위 밖을 구분하지 않는다(detail 없음,
+        message만 '저장소를…'/'커밋을…'/'PR을 찾을 수 없습니다'). 503 PERMISSION_UNAVAILABLE, 504 SEARCH_TIMEOUT(detail 없음).
+        {repository}의 두 번째 decodeURIComponent가 던지는 URIError는 500 UnhandledErrorResponse다.
+        (근거: apps/search-api/src/resolve/routes.ts:43-80, apps/search-api/src/resolve/routes.ts:272-353)
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code:
+                  enum: [UNAUTHENTICATED, NOT_FOUND, PERMISSION_UNAVAILABLE, SEARCH_TIMEOUT]
+                detail:
+                  $ref: '#/components/schemas/LoginRequiredErrorDetail'
+
+    MergeNumberResolveErrorResponse:
+      description: >-
+        GET /api/v1/merge-numbers/resolve 오류. 401 UNAUTHENTICATED(LoginRequiredErrorDetail). 400 INVALID_PARAMETER
+        (ParameterFieldErrorDetail). 404 NOT_FOUND — 미등록·범위 밖·발급되지 않은 번호는 같은 문구에 detail 없음, 기능이
+        꺼진 배포는 FeatureDisabledErrorDetail. 409 NO_SEQUENCE(NoSequenceErrorDetail, 상태는 ERROR_HTTP_STATUS에서 읽는다).
+        503 PERMISSION_UNAVAILABLE(접근 범위 산출 실패). 공유 실패 처리기에는 커서 400·504 분기도 있으나 이 경로는 커서를
+        쓰지 않고 ES 오류를 삼키므로 닿지 않는다. DB 오류는 500 UnhandledErrorResponse.
+        (근거: apps/search-api/src/sequence/routes.ts:259-302, apps/search-api/src/sequence/routes.ts:316-374,
+        apps/search-api/src/sequence/merge-numbers.ts:329-337, packages/contracts/src/error-codes.ts:194)
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code:
+                  enum: [UNAUTHENTICATED, INVALID_PARAMETER, NOT_FOUND, NO_SEQUENCE, PERMISSION_UNAVAILABLE]
+                detail:
+                  anyOf:
+                    - $ref: '#/components/schemas/LoginRequiredErrorDetail'
+                    - $ref: '#/components/schemas/ParameterFieldErrorDetail'
+                    - $ref: '#/components/schemas/NoSequenceErrorDetail'
+                    - $ref: '#/components/schemas/FeatureDisabledErrorDetail'
+
+    SourceErrorResponse:
+      description: >-
+        GET /api/v1/source/{repository}/{op} 오류. 401 UNAUTHENTICATED만 detail(LoginRequiredErrorDetail)이 있고 나머지는
+        detail이 없다. 400 INVALID_PARAMETER, 404 NOT_FOUND(저장소 미등록·범위 밖, 또는 GitHub not_found), 409 SOURCE_CHANGED
+        (diff?pr= 분석 중 PR이 바뀜), 429 SOURCE_RATE_LIMITED(retry-after 헤더), 503 SOURCE_PERMISSION_REQUIRED(GitHub App
+        권한), 503 PERMISSION_UNAVAILABLE(접근 범위 확인 실패), 502 SOURCE_UNAVAILABLE(그 밖의 모든 예외 — 이 경로는
+        UnhandledErrorResponse로 새지 않는다). 문구는 영어이며 GitHub 오류 원문을 싣지 않는다.
+        (근거: apps/search-api/src/source/routes.ts:36, apps/search-api/src/source/routes.ts:40-82)
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            error:
+              type: object
+              properties:
+                code:
+                  enum:
+                    - UNAUTHENTICATED
+                    - INVALID_PARAMETER
+                    - NOT_FOUND
+                    - SOURCE_CHANGED
+                    - SOURCE_RATE_LIMITED
+                    - SOURCE_PERMISSION_REQUIRED
+                    - PERMISSION_UNAVAILABLE
+                    - SOURCE_UNAVAILABLE
+                detail:
+                  $ref: '#/components/schemas/LoginRequiredErrorDetail'
+
+    # ================================================================================================= 공유 값
+    SequenceSpaceState:
+      type: string
+      description: >-
+        시퀀스 공간 상태. DB CHECK 제약과 타입이 같은 네 값이다.
+        (근거: packages/db/src/repositories/sequence-space.ts:10, packages/db/migrations/002_sequence.up.sql:14)
+      enum: [ok, stale, reassigning, unknown]
+
+    JobState:
+      type: string
+      description: >-
+        잡 상태. DB CHECK 제약과 타입이 같은 여섯 값이다.
+        (근거: packages/db/src/repositories/job.ts:26, packages/db/migrations/004_app_state.up.sql:31-33)
+      enum: [queued, running, paused, completed, failed, cancelled]
+
+    LinkSummary:
+      type: object
+      additionalProperties: true
+      description: >-
+        관계 배지용 비정규화. API는 ES `_source.link_summary`를 모양을 바꾸지 않고 옮기며 타입도
+        `Readonly<Record<string, unknown>>`이다 — 그래서 열린 맵으로 둔다. 실제 키 집합은 API가 아니라 ES 매핑
+        (dynamic: strict)이 정한다. PR 문서는 has_revert·is_reverted·has_cherry_pick·has_stack·reference_count, 커밋 문서는
+        has_revert·is_reverted·has_cherry_pick·reference_count다. 투영이 처음 만들 때 PR은 다섯 키를, 커밋은 앞의 세 키를
+        채운다.
+        (근거: apps/search-api/src/search/service.ts:111, packages/es/src/mappings/pull-requests.ts:118-126,
+        packages/es/src/mappings/commits.ts:100-109, apps/pipeline-worker/src/documents.ts:318-329,
+        apps/pipeline-worker/src/documents.ts:424-426)
+      properties:
+        has_revert:
+          type: boolean
+        is_reverted:
+          type: boolean
+        has_cherry_pick:
+          type: boolean
+        has_stack:
+          type: boolean
+        reference_count:
+          type: integer
+
+    # ================================================================================================= [1] 저장소 목록
+    RepositoryListResponse:
+      type: object
+      description: >-
+        GET /api/v1/repositories 200 본문. 세 키가 언제나 있다. next_cursor는 순회가 끝났을 때만 null이다 — 항목이 0개인
+        페이지에도 유효한 커서가 붙을 수 있다(범위 밖 저장소가 몰린 구간을 지나는 중, DEV-357). repository= 필터는 일치
+        없음과 볼 수 없음을 둘 다 빈 items로 답한다.
+        (근거: apps/search-api/src/repositories/routes.ts:234-241, apps/search-api/src/repositories/overview.ts:205-214,
+        apps/search-api/src/repositories/overview.ts:330)
+      required: [items, next_cursor, correlation_id]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/RepositoryOverviewItem'
+        next_cursor:
+          type: [string, 'null']
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+
+    RepositoryOverviewItem:
+      type: object
+      description: >-
+        저장소 한 개의 수집 진단. 열 키가 언제나 있다. 진단 축 하나가 실패하면 그 축만 비고 이름이 unavailable에 실린다 —
+        그래서 null은 두 뜻(없음 / 읽지 못함)이며 unavailable이 둘을 가른다. unavailable은 페이지 전체에서 한 번 계산해
+        모든 항목에 같은 목록을 싣는다.
+        (근거: apps/search-api/src/repositories/overview.ts:83-95, apps/search-api/src/repositories/overview.ts:302-319,
+        apps/search-api/src/repositories/overview.ts:336-384)
+      required:
+        - repository_id
+        - repository
+        - registration_state
+        - registered_at
+        - last_ingested_at
+        - document_counts
+        - backfill
+        - sequence_spaces
+        - reconciliation
+        - unavailable
+      additionalProperties: false
+      properties:
+        repository_id:
+          type: integer
+        repository:
+          type: string
+          description: >-
+            `owner/name`.
+        registration_state:
+          type: string
+          enum: [active, archived]
+          description: >-
+            repository.status 그대로. (근거: apps/search-api/src/repositories/overview.ts:372,
+            packages/db/src/repositories/repository.ts:7, packages/db/migrations/003_registry.up.sql:15)
+        registered_at:
+          type: string
+          format: date-time
+          description: >-
+            Date.toISOString(). (근거: apps/search-api/src/repositories/overview.ts:373)
+        last_ingested_at:
+          type: [string, 'null']
+          format: date-time
+          description: >-
+            그 저장소 raw_event의 최신 수신 시각. 이벤트가 없거나 축이 실패하면 null(실패면 unavailable에
+            last_ingested_at). (근거: apps/search-api/src/repositories/overview.ts:337, apps/search-api/src/repositories/overview.ts:374)
+        document_counts:
+          description: >-
+            PR·커밋 두 인덱스 집계가 모두 성공했을 때만 객체다. 한쪽이라도 실패하면 null이고 unavailable에
+            document_counts(절반의 합계를 내지 않는다). (근거: apps/search-api/src/repositories/overview.ts:357-362,
+            apps/search-api/src/repositories/overview.ts:375)
+          anyOf:
+            - $ref: '#/components/schemas/DocumentCounts'
+            - type: 'null'
+        backfill:
+          description: >-
+            그 저장소의 최근 backfill 잡(실행 중이 우선). 잡이 없거나 축이 실패하면 null(실패면 unavailable에 backfill).
+            (근거: apps/search-api/src/repositories/overview.ts:290-293, apps/search-api/src/repositories/overview.ts:376,
+            packages/db/src/repositories/job.ts:384-402)
+          anyOf:
+            - $ref: '#/components/schemas/BackfillView'
+            - type: 'null'
+        sequence_spaces:
+          type: array
+          description: >-
+            등록된 sequence_branches 전부를 그 순서대로. 공간 행이 없는 브랜치는 sequence_state unknown에 나머지 null이다.
+            공간 축이 실패하면 모든 브랜치가 그 모양이 되고 unavailable에 sequence_spaces가 실린다.
+            (근거: apps/search-api/src/repositories/overview.ts:260-288, apps/search-api/src/repositories/overview.ts:351,
+            apps/search-api/src/repositories/overview.ts:377)
+          items:
+            $ref: '#/components/schemas/SequenceSpaceView'
+        reconciliation:
+          $ref: '#/components/schemas/ReconciliationView'
+        unavailable:
+          type: array
+          uniqueItems: true
+          description: >-
+            이번 응답에서 채우지 못한 진단 축 이름. 중복 제거된다. (근거: apps/search-api/src/repositories/overview.ts:336-348,
+            apps/search-api/src/repositories/overview.ts:363)
+          items:
+            type: string
+            enum: [last_ingested_at, document_counts, backfill, sequence_spaces]
+
+    DocumentCounts:
+      type: object
+      description: >-
+        검색 대상 문서 수. 필수 접근 범위 필터를 지난 ES terms 집계이며, 버킷이 없는 저장소는 0이다. total은 두 수의 합.
+        (근거: apps/search-api/src/repositories/overview.ts:58-62, apps/search-api/src/repositories/overview.ts:226-251,
+        apps/search-api/src/repositories/overview.ts:367-375)
+      required: [pull_requests, commits, total]
+      additionalProperties: false
+      properties:
+        pull_requests:
+          type: integer
+          minimum: 0
+        commits:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+
+    BackfillView:
+      type: object
+      description: >-
+        백필 잡 요약. job_id는 BIGSERIAL 숫자를 String()으로 옮긴 문자열이다.
+        (근거: apps/search-api/src/repositories/overview.ts:64-68, apps/search-api/src/repositories/overview.ts:290-293)
+      required: [state, job_id, progress]
+      additionalProperties: false
+      properties:
+        state:
+          $ref: '#/components/schemas/JobState'
+        job_id:
+          type: string
+          pattern: '^[0-9]+$'
+        progress:
+          type: object
+          additionalProperties: true
+          description: >-
+            열린 맵 — job.progress JSONB(NOT NULL, 기본 {})를 그대로 싣는다. 키는 잡 러너가 정하며 이 API가 모양을 정하지
+            않는다. (근거: packages/db/src/repositories/job.ts:42, packages/db/migrations/004_app_state.up.sql:21)
+
+    SequenceSpaceView:
+      type: object
+      description: >-
+        브랜치 하나의 채번 상태. 공간 행이 없으면 last_sequence·seq_epoch·last_assigned_at이 null이고 sequence_state가
+        unknown이다(0으로 그리지 않는다). 행이 있으면 last_sequence는 head_seq(bigint)를 숫자로 옮긴 값이다.
+        (근거: apps/search-api/src/repositories/overview.ts:70-76, apps/search-api/src/repositories/overview.ts:267-287,
+        packages/db/migrations/002_sequence.up.sql:4-15)
+      required: [base_branch, last_sequence, seq_epoch, sequence_state, last_assigned_at]
+      additionalProperties: false
+      properties:
+        base_branch:
+          type: string
+        last_sequence:
+          type: [integer, 'null']
+          minimum: 0
+        seq_epoch:
+          type: [integer, 'null']
+          minimum: 1
+        sequence_state:
+          $ref: '#/components/schemas/SequenceSpaceState'
+        last_assigned_at:
+          type: [string, 'null']
+          format: date-time
+
+    ReconciliationView:
+      type: object
+      description: >-
+        최근 완료된 조정 스캔. 둘이 함께 null이면 완료된 기록이 없다는 뜻이고, missing_count 0은 확인했고 누락이 없다는
+        뜻이다.
+        (근거: apps/search-api/src/repositories/overview.ts:78-81, apps/search-api/src/repositories/overview.ts:378-381,
+        packages/db/src/repositories/repository.ts:34-44)
+      required: [last_completed_at, missing_count]
+      additionalProperties: false
+      properties:
+        last_completed_at:
+          type: [string, 'null']
+          format: date-time
+        missing_count:
+          type: [integer, 'null']
+
+    # ================================================================================================= [2] 검색
+    SearchResponseBody:
+      description: >-
+        GET /api/v1/search 200 본문은 두 모양 중 하나다. seq: 인용 에폭이 현재와 다르면 조회를 실행하지 않은
+        SearchEpochStaleResponse, 그 밖은 SearchResponse. 두 모양은 epoch_stale 값과 items·total 존재로 갈린다.
+        (근거: apps/search-api/src/search/routes.ts:445-468, apps/search-api/src/search/routes.ts:524-549)
+      oneOf:
+        - $ref: '#/components/schemas/SearchResponse'
+        - $ref: '#/components/schemas/SearchEpochStaleResponse'
+
+    SearchResponse:
+      type: object
+      description: >-
+        정상 검색 결과. query·parsed·total·sort·items·next_cursor·correlation_id는 언제나 있다. 나머지는 조건부다 —
+        sequence_context와 epoch_stale(false)은 seq: 공간이 바인딩됐을 때만 함께, relaxation_hints는 total.value가 0일
+        때만(여기에 필터가 8개를 넘으면 relaxation_hints_truncated: true), unresolved_names는 레지스트리에서 못 찾은
+        이름이 있을 때만, facets·facets_omitted·facets_status는 facets=true를 요청했을 때만 셋이 함께 나타난다. 단
+        kind: 필터가 서로 상쇄되어 검색 대상이 없어지면 ES를 부르지 않으므로 facets=true여도 세 키가 빠지고
+        relaxation_hints는 [] 이다.
+        (근거: apps/search-api/src/search/routes.ts:524-549, apps/search-api/src/search/service.ts:365-379,
+        apps/search-api/src/search/facets.ts:260-267)
+      required: [query, parsed, total, sort, items, next_cursor, correlation_id]
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          description: >-
+            요청 q 원문(다듬지 않는다). q가 문자열이 아니었으면 ''. (근거: apps/search-api/src/search/routes.ts:400)
+        parsed:
+          $ref: '#/components/schemas/QueryAst'
+        sequence_context:
+          $ref: '#/components/schemas/SequenceContext'
+        epoch_stale:
+          const: false
+          description: >-
+            sequence_context와 함께일 때만 나타난다. seq:가 없는 질의에는 두 키 모두 없다.
+        total:
+          $ref: '#/components/schemas/SearchTotal'
+        sort:
+          $ref: '#/components/schemas/SearchSort'
+        items:
+          type: array
+          maxItems: 200
+          description: >-
+            한 페이지(size개, 최대 200). PR과 커밋이 한 목록에 섞인다. (근거: apps/search-api/src/search/service.ts:51,
+            apps/search-api/src/search/service.ts:453-462)
+          items:
+            $ref: '#/components/schemas/SearchItem'
+        relaxation_hints:
+          type: array
+          maxItems: 8
+          description: >-
+            total.value가 0일 때만 있다(0건이 아니면 키가 없다). 필터가 2개 미만이거나 뺄 수 있는 후보가 없으면 빈 배열이다.
+            would_yield 내림차순. (근거: apps/search-api/src/search/routes.ts:536-541, apps/search-api/src/search/relaxation.ts:91-155)
+          items:
+            $ref: '#/components/schemas/RelaxationHint'
+        relaxation_hints_truncated:
+          const: true
+          description: >-
+            relaxation_hints가 있고 질의 필터가 8개를 넘어 후보를 앞 8개만 셌을 때만 true로 나타난다. false로는 나오지 않는다.
+            (근거: apps/search-api/src/search/routes.ts:539, apps/search-api/src/search/relaxation.ts:93)
+        unresolved_names:
+          type: array
+          minItems: 1
+          description: >-
+            레지스트리에서 찾지 못한 org·team·author_team 이름. 비어 있으면 키가 없다.
+            (근거: apps/search-api/src/search/routes.ts:543)
+          items:
+            $ref: '#/components/schemas/UnresolvedName'
+        facets:
+          $ref: '#/components/schemas/FacetMap'
+        facets_omitted:
+          type: boolean
+          description: >-
+            facets_status가 budget_omitted·failed면 true, ready면 false. (근거: apps/search-api/src/search/facets.ts:55-60,
+            apps/search-api/src/search/facets.ts:132-133, apps/search-api/src/search/facets.ts:250)
+        facets_status:
+          $ref: '#/components/schemas/FacetStatus'
+        next_cursor:
+          type: [string, 'null']
+          description: >-
+            마지막 페이지에서 null(키는 언제나 있다). size+1건을 읽어 다음 페이지 유무를 판정한다.
+            (근거: apps/search-api/src/search/routes.ts:547, apps/search-api/src/search/service.ts:454-474)
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+      dependentRequired:
+        sequence_context: [epoch_stale]
+        epoch_stale: [sequence_context]
+        relaxation_hints_truncated: [relaxation_hints]
+        facets: [facets_omitted, facets_status]
+        facets_omitted: [facets, facets_status]
+        facets_status: [facets, facets_omitted]
+      if:
+        properties:
+          total:
+            type: object
+            properties:
+              value:
+                const: 0
+      then:
+        required: [relaxation_hints]
+      else:
+        not:
+          anyOf:
+            - required: [relaxation_hints]
+            - required: [relaxation_hints_truncated]
+
+    SearchEpochStaleResponse:
+      type: object
+      description: >-
+        seq: 인용 에폭(seq_epoch 파라미터)이 공간의 현재 에폭과 다를 때의 200 본문. 조회를 실행하지 않으므로 items·total·
+        sort·facets·relaxation_hints 키가 없다(빈 값으로 채우지 않는다). sequence_context는 현재 에폭 기준이다.
+        (근거: apps/search-api/src/search/routes.ts:445-468, apps/search-api/src/search/sequence-context.ts:129-133)
+      required: [query, parsed, sequence_context, requested_seq_epoch, epoch_stale, next_cursor, correlation_id]
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+        parsed:
+          $ref: '#/components/schemas/QueryAst'
+        sequence_context:
+          $ref: '#/components/schemas/SequenceContext'
+        requested_seq_epoch:
+          type: integer
+          minimum: 1
+          description: >-
+            요청이 인용한 에폭(sequence_context.seq_epoch와 다르다).
+        epoch_stale:
+          const: true
+        next_cursor:
+          type: 'null'
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+
+    SearchTotal:
+      type: object
+      description: >-
+        총계. 정확한 수는 1만 건까지만 센다(track_total_hits) — 그 위는 relation gte다. ES가 총계를 숫자로 주거나 주지 않으면
+        eq로 적는다.
+        (근거: apps/search-api/src/search/service.ts:69, apps/search-api/src/search/service.ts:449-451,
+        node_modules/.pnpm/@elastic+elasticsearch@8.19.2/node_modules/@elastic/elasticsearch/lib/api/types.d.ts:1571)
+      required: [value, relation]
+      additionalProperties: false
+      properties:
+        value:
+          type: integer
+          minimum: 0
+        relation:
+          type: string
+          enum: [eq, gte]
+
+    SearchSort:
+      type: object
+      description: >-
+        실제로 적용한 정렬(기본 merge_seq desc).
+        (근거: apps/search-api/src/search/service.ts:153, apps/search-api/src/search/service.ts:509)
+      required: [field, order]
+      additionalProperties: false
+      properties:
+        field:
+          $ref: '#/components/schemas/SortKey'
+        order:
+          $ref: '#/components/schemas/SortOrder'
+
+    SortKey:
+      type: string
+      description: >-
+        정렬 키 9개(코드 주석은 "여덟"이라 적지만 relevance를 포함해 9개다). 이 목록이 곧 400 응답의 supported_keys다.
+        (근거: packages/es/src/sort.ts:20-31)
+      enum:
+        - pr_number
+        - merge_seq
+        - merged_at
+        - created_at
+        - updated_at
+        - changed_files_count
+        - additions
+        - lead_time_seconds
+        - relevance
+
+    SortOrder:
+      type: string
+      description: >-
+        정렬 방향. (근거: packages/es/src/sort.ts:34, apps/search-api/src/search/service.ts:79-81)
+      enum: [asc, desc]
+
+    SearchItem:
+      description: >-
+        목록 항목 하나. kind는 hit의 실제 인덱스 이름으로 가른다(prs-commits로 시작하면 commit). PR과 커밋은 ES 매핑이
+        dynamic: strict라 서로의 필드를 가질 수 없고, 그래서 모양이 둘로 갈린다.
+        (근거: apps/search-api/src/search/service.ts:114-149, apps/search-api/src/search/service.ts:165-196,
+        packages/es/src/mappings/pull-requests.ts:18, packages/es/src/mappings/commits.ts:18)
+      oneOf:
+        - $ref: '#/components/schemas/SearchPullRequestItem'
+        - $ref: '#/components/schemas/SearchCommitItem'
+
+    SearchPullRequestItem:
+      type: object
+      description: >-
+        PR 항목. 없는 값은 ?? null로 키를 두고 null이다. pr_number는 문서에 있을 때만(투영은 언제나 싣는다), highlight는
+        자유 텍스트 질의에 일치 조각이 있을 때만 나타난다. M 다섯 키는 M 번호 기능이 켜진 배포에서, hit에 repository_id와
+        pr_number가 있을 때만 함께 나타난다(값은 PostgreSQL 정본이며 색인 값이 아니다). commit_sha는 PR 문서에 없다.
+        (근거: apps/search-api/src/search/service.ts:169-196, apps/search-api/src/search/service.ts:204-234,
+        apps/search-api/src/sequence/merge-number-batch.ts:72, apps/pipeline-worker/src/documents.ts:191)
+      required:
+        - kind
+        - repository
+        - title
+        - author
+        - state
+        - merge_seq
+        - seq_epoch
+        - sequence_space
+        - merged_at
+        - changed_files_count
+        - additions
+        - deletions
+        - labels
+        - link_summary
+        - url
+      additionalProperties: false
+      allOf:
+        - $ref: '#/components/schemas/MergeNumberRules'
+      properties:
+        kind:
+          const: pull_request
+        repository:
+          type: [string, 'null']
+        pr_number:
+          type: integer
+          minimum: 1
+        title:
+          type: [string, 'null']
+        author:
+          type: [string, 'null']
+        state:
+          type: [string, 'null']
+          description: >-
+            파생 상태. 알려진 값은 open·closed·merged이며, GitHub 원시 값이 예상 밖이면 그대로 둔다(열거하지 않는다).
+            (근거: packages/domain/src/pull-request-state.ts:23-36)
+        merge_seq:
+          type: [integer, 'null']
+        seq_epoch:
+          type: [integer, 'null']
+        sequence_space:
+          type: [string, 'null']
+        merged_at:
+          type: [string, 'null']
+        changed_files_count:
+          type: [integer, 'null']
+        additions:
+          type: [integer, 'null']
+        deletions:
+          type: [integer, 'null']
+        labels:
+          type: array
+          items:
+            type: string
+        link_summary:
+          anyOf:
+            - $ref: '#/components/schemas/LinkSummary'
+            - type: 'null'
+        highlight:
+          $ref: '#/components/schemas/HighlightMap'
+        url:
+          type: [string, 'null']
+          description: >-
+            화면 경로 `/pr/{repository}/{pr_number}`. repository나 pr_number가 없으면 null.
+            (근거: apps/search-api/src/search/service.ts:243-253)
+        merge_number:
+          anyOf:
+            - $ref: '#/components/schemas/MergeNumberText'
+            - type: 'null'
+        merge_number_state:
+          $ref: '#/components/schemas/MergeNumberState'
+        merge_number_reason:
+          anyOf:
+            - $ref: '#/components/schemas/MergeNumberReason'
+            - type: 'null'
+        merge_number_epoch:
+          type: [integer, 'null']
+          minimum: 1
+        merge_number_projection_state:
+          $ref: '#/components/schemas/MergeNumberProjectionState'
+      dependentRequired:
+        merge_number: [merge_number_state, merge_number_reason, merge_number_epoch, merge_number_projection_state]
+        merge_number_state: [merge_number, merge_number_reason, merge_number_epoch, merge_number_projection_state]
+        merge_number_reason: [merge_number, merge_number_state, merge_number_epoch, merge_number_projection_state]
+        merge_number_epoch: [merge_number, merge_number_state, merge_number_reason, merge_number_projection_state]
+        merge_number_projection_state: [merge_number, merge_number_state, merge_number_reason, merge_number_epoch]
+
+    SearchCommitItem:
+      type: object
+      description: >-
+        커밋 항목. 커밋 매핑에는 title·state·labels·changed_files_count·merged_at·pr_number가 없어서(dynamic: strict)
+        title은 커밋 메시지 첫 줄(보강 전이면 null), merged_at은 committed_at 값, state·changed_files_count는 언제나 null,
+        labels는 언제나 []다. commit_sha는 문서에 있을 때만(투영은 언제나 싣는다). M 번호 키는 커밋에 붙지 않는다.
+        (근거: apps/search-api/src/search/service.ts:169-196, apps/search-api/src/search/service.ts:213-215,
+        packages/es/src/mappings/commits.ts:18)
+      required:
+        - kind
+        - repository
+        - title
+        - author
+        - state
+        - merge_seq
+        - seq_epoch
+        - sequence_space
+        - merged_at
+        - changed_files_count
+        - additions
+        - deletions
+        - labels
+        - link_summary
+        - url
+      additionalProperties: false
+      properties:
+        kind:
+          const: commit
+        repository:
+          type: [string, 'null']
+        commit_sha:
+          type: string
+        title:
+          type: [string, 'null']
+        author:
+          type: [string, 'null']
+        state:
+          type: 'null'
+        merge_seq:
+          type: [integer, 'null']
+        seq_epoch:
+          type: [integer, 'null']
+        sequence_space:
+          type: [string, 'null']
+        merged_at:
+          type: [string, 'null']
+          description: >-
+            커밋 문서의 committed_at(이름과 달리 머지 시각이 아니다). (근거: apps/search-api/src/search/service.ts:188)
+        changed_files_count:
+          type: 'null'
+        additions:
+          type: [integer, 'null']
+        deletions:
+          type: [integer, 'null']
+        labels:
+          type: array
+          maxItems: 0
+        link_summary:
+          anyOf:
+            - $ref: '#/components/schemas/LinkSummary'
+            - type: 'null'
+        highlight:
+          $ref: '#/components/schemas/HighlightMap'
+        url:
+          type: [string, 'null']
+          description: >-
+            화면 경로 `/commit/{repository}/{commit_sha}`. repository나 commit_sha가 없으면 null.
+            (근거: apps/search-api/src/search/service.ts:243-253)
+
+    HighlightMap:
+      type: object
+      minProperties: 1
+      description: >-
+        강조 조각. 타입이 `Record<string, HighlightFragment[]>`인 열린 맵이라 값의 모양을 additionalProperties로 둔다. 실제
+        키는 toPlainHighlight가 HIGHLIGHT_FIELDS만 돌기 때문에 title·body·message뿐이다(PR은 title·body, 커밋은 message).
+        조각이 하나도 없으면 맵이 아니라 키 자체가 없다. 마크업은 API 경계를 넘지 않는다.
+        (근거: packages/es/src/highlight.ts:42-51, packages/es/src/highlight.ts:107-126, apps/search-api/src/search/service.ts:173-176)
+      propertyNames:
+        enum: [title, body, message]
+      additionalProperties:
+        type: array
+        minItems: 1
+        maxItems: 3
+        items:
+          $ref: '#/components/schemas/HighlightFragment'
+
+    HighlightFragment:
+      type: object
+      description: >-
+        평문 조각과 일치 구간. 일치 구간이 없는 조각은 버린다. 짝이 맞지 않는 표식은 구간을 만들지 않는다.
+        (근거: packages/es/src/highlight.ts:45-48, packages/es/src/highlight.ts:79-99, packages/es/src/highlight.ts:120)
+      required: [text, matches]
+      additionalProperties: false
+      properties:
+        text:
+          type: string
+        matches:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/HighlightMatch'
+
+    HighlightMatch:
+      type: object
+      description: >-
+        text 안의 일치 구간. 인덱스는 JavaScript 문자열 길이(UTF-16 코드 단위) 기준이고 end는 제외 끝이며 end > start다.
+        (근거: packages/es/src/highlight.ts:79-99)
+      required: [start, end]
+      additionalProperties: false
+      properties:
+        start:
+          type: integer
+          minimum: 0
+        end:
+          type: integer
+          minimum: 1
+
+    FacetMap:
+      type: object
+      description: >-
+        패싯 분포. 타입이 `Record<string, FacetValue[]>`인 열린 맵이라 값의 모양을 additionalProperties로 둔다. 키는
+        SEARCH_FACET_AXES 여섯 축 중 버킷이 하나라도 있는 축뿐이다. facets_status가 budget_omitted·failed면 {}이고, ready여도
+        모든 축이 비면 {}다. team 값은 팀 slug(해석 실패 시 숫자 문자열 그대로)이며 같은 slug은 합쳐 건수 내림차순으로 다시
+        정렬한다. 선택된 필터도 조건에 포함한 분포다.
+        (근거: apps/search-api/src/search/facets.ts:53, apps/search-api/src/search/facets.ts:82-95,
+        apps/search-api/src/search/facets.ts:132-133, apps/search-api/src/search/facets.ts:205-250)
+      propertyNames:
+        enum: [repository, author, team, label, base_branch, state]
+      additionalProperties:
+        type: array
+        minItems: 1
+        maxItems: 20
+        items:
+          $ref: '#/components/schemas/FacetValue'
+
+    FacetValue:
+      type: object
+      description: >-
+        버킷 하나. value는 버킷 키를 String()으로 옮긴 값, count는 doc_count(ES terms 기본 min_doc_count 1).
+        (근거: apps/search-api/src/search/facets.ts:48-51, apps/search-api/src/search/facets.ts:213)
+      required: [value, count]
+      additionalProperties: false
+      properties:
+        value:
+          type: string
+        count:
+          type: integer
+          minimum: 1
+
+    FacetStatus:
+      type: string
+      description: >-
+        패싯 상태 셋. "요청하지 않음"은 값이 아니라 세 키가 없는 것으로 표현한다. budget_omitted는 1.5초 예산 초과(ES
+        timed_out), failed는 조회 실패·샤드 실패.
+        (근거: apps/search-api/src/search/facets.ts:43-46, apps/search-api/src/search/facets.ts:172-203)
+      enum: [ready, budget_omitted, failed]
+
+    RelaxationHint:
+      type: object
+      description: >-
+        0건일 때 필터 하나를 빼면 나오는 건수. remove는 그 필터를 질의 문법으로 되돌린 조각이다. 0건인 후보와, 빼면
+        seq:·mnum:·pr_number: 지목이 깨지는 후보는 싣지 않는다.
+        (근거: apps/search-api/src/search/relaxation.ts:42-47, apps/search-api/src/search/relaxation.ts:102-110,
+        apps/search-api/src/search/relaxation.ts:145)
+      required: [remove, would_yield]
+      additionalProperties: false
+      properties:
+        remove:
+          type: string
+        would_yield:
+          type: integer
+          minimum: 1
+
+    UnresolvedName:
+      type: object
+      description: >-
+        레지스트리에서 찾지 못한 이름. team(저장소 접근 팀)과 author_team(작성자 소속 팀)을 구분해 싣는다.
+        (근거: packages/es/src/query-builder.ts:135-138)
+      required: [key, value]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          enum: [org, team, author_team]
+        value:
+          type: string
+
+    SequenceContext:
+      type: object
+      description: >-
+        seq: 질의가 묶인 시퀀스 공간. seq: 범위 조건이 있는 질의에서만 실린다. repository는 질의의 repo: 값 그대로이고,
+        sequence_space는 `owner/name@branch` 표시용 문자열이다.
+        (근거: apps/search-api/src/search/sequence-context.ts:31-37, apps/search-api/src/search/sequence-context.ts:86-94,
+        apps/search-api/src/sequence/space.ts:116)
+      required: [sequence_space, repository, base_branch, seq_epoch, sequence_state]
+      additionalProperties: false
+      properties:
+        sequence_space:
+          type: string
+        repository:
+          type: string
+        base_branch:
+          type: string
+        seq_epoch:
+          type: integer
+          minimum: 1
+        sequence_state:
+          $ref: '#/components/schemas/SequenceSpaceState'
+
+    QueryAst:
+      type: object
+      description: >-
+        서버가 파싱한 질의(응답의 parsed). filters는 등장 순서를 지키고, 같은 (키, op)의 동등 조건은 한 노드의 values로
+        모인다(OR). text는 키 없는 낱말을 공백으로 이은 전문 검색어이며 부정 낱말은 '-'를 붙인 채 들어간다. 없으면 null.
+        kind: 필터도 그대로 남는다(검색 대상 결정은 서버 안에서만 한다).
+        (근거: packages/query/src/ast.ts:58-63, packages/query/src/parse.ts:161-231, apps/search-api/src/search/routes.ts:461,
+        apps/search-api/src/search/routes.ts:526)
+      required: [filters, text]
+      additionalProperties: false
+      properties:
+        filters:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryFilter'
+        text:
+          type: [string, 'null']
+          minLength: 2
+
+    QueryFilter:
+      description: >-
+        필터 노드. 키 집합이 서로 겹치지 않아 셋 중 정확히 하나에 맞는다 — 범위 키는 스칼라로 쓰면 파서가 거절하므로
+        동등 조건이 되지 않는다.
+        (근거: packages/query/src/ast.ts:55-56, packages/query/src/parse.ts:199-201)
+      oneOf:
+        - $ref: '#/components/schemas/EqualityFilter'
+        - $ref: '#/components/schemas/NumericRangeFilter'
+        - $ref: '#/components/schemas/TemporalRangeFilter'
+
+    EqualityFilter:
+      type: object
+      description: >-
+        동등 조건. key는 범위 키 일곱을 뺀 14개다. values는 빈 값이 없고 중복이 없다. is 값은 merged·open·closed·reverted,
+        kind 값은 pull_request·commit으로 파서가 검증하고, 다른 키의 값은 검증하지 않는다.
+        (근거: packages/query/src/ast.ts:27-31, packages/query/src/parse.ts:185-216, packages/query/src/keys.ts:143-148)
+      required: [key, op, values]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          enum: [repo, org, author, team, author_team, reviewer, label, base, head, state, release, path, is, kind]
+        op:
+          type: string
+          enum: [eq, not_eq]
+        values:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+
+    NumericRangeFilter:
+      type: object
+      description: >-
+        정수 범위 `a..b`(양끝 필수, from ≤ to, safe integer). 음수도 문법상 허용되지만 pr_number·mnum은 from ≥ 1이어야 한다.
+        (근거: packages/query/src/ast.ts:34-39, packages/query/src/keys.ts:84, packages/query/src/keys.ts:115-118,
+        packages/query/src/parse.ts:51-60, packages/query/src/parse.ts:106-131)
+      required: [key, op, from, to]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          enum: [seq, changed_files, changed_lines, pr_number, mnum]
+        op:
+          type: string
+          enum: [range, not_range]
+        from:
+          type: integer
+        to:
+          type: integer
+
+    TemporalRangeFilter:
+      type: object
+      description: >-
+        시각 범위. 사용자가 적은 문자열을 그대로 둔다(자정 등으로 펴지 않는다). 날짜만 또는 날짜+시각 형식이며 실재하는
+        날짜여야 하고 from ≤ to다.
+        (근거: packages/query/src/ast.ts:48-53, packages/query/src/keys.ts:85, packages/query/src/parse.ts:48-49,
+        packages/query/src/parse.ts:62-85, packages/query/src/parse.ts:132-137)
+      required: [key, op, from, to]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          enum: [merged, created]
+        op:
+          type: string
+          enum: [range, not_range]
+        from:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?)?$'
+        to:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?)?$'
+
+    QueryKey:
+      type: string
+      description: >-
+        지원 질의 키 21개(QUERY_KEYS 순서). 파서 오류의 supported_keys가 이 값들이다.
+        (근거: packages/query/src/keys.ts:9-68)
+      enum:
+        - repo
+        - org
+        - author
+        - team
+        - author_team
+        - reviewer
+        - label
+        - base
+        - head
+        - state
+        - merged
+        - created
+        - seq
+        - release
+        - path
+        - is
+        - kind
+        - changed_files
+        - changed_lines
+        - pr_number
+        - mnum
+
+    # ================================================================================================= M 번호 필드
+    MergeNumberText:
+      type: string
+      pattern: '^M-[0-9]+-[1-9][0-9]*$'
+      description: >-
+        M 번호 표기 `M-<저장소 코드>-<번호>`. 저장소 코드는 저장소 이름의 유일한 숫자 run(선행 0 보존), 번호는 1 이상
+        9007199254740991 이하.
+        (근거: packages/domain/src/mnumber.ts:17-20, packages/domain/src/mnumber.ts:33-57)
+
+    MergeNumberState:
+      type: string
+      description: >-
+        PR 항목의 M 상태 넷. (근거: packages/domain/src/mnumber.ts:115-116)
+      enum: [assigned, pending, not_applicable, unavailable]
+
+    MergeNumberReason:
+      type: string
+      description: >-
+        merge_number_reason의 문자열 값(assigned이면 null). 코드가 실제로 내는 15개다 — 채번 blocker 사유 9개(정본에서 읽은 값
+        중 이 목록에 없는 것은 pr_evidence_pending으로 접는다) + predecessor_pending·not_sequenced(pending) +
+        not_merged·branch_not_tracked(not_applicable) + mnumber_read_failed·repository_code_unavailable(unavailable).
+        타입 MergeNumberOtherReason에는 number_capacity_exceeded도 있으나 unavailable 사유로 쓰이는 코드는 없다.
+        (근거: packages/domain/src/mnumber.ts:87-130, apps/search-api/src/sequence/merge-number-view.ts:110-113,
+        apps/search-api/src/sequence/merge-number-view.ts:155-203)
+      enum:
+        - pr_evidence_pending
+        - negative_evidence_unavailable
+        - partial_lookup
+        - profile_unverified
+        - unsupported_merge_profile
+        - mapping_conflict
+        - fetch_failed
+        - number_capacity_exceeded
+        - canonical_mismatch
+        - predecessor_pending
+        - not_sequenced
+        - not_merged
+        - branch_not_tracked
+        - mnumber_read_failed
+        - repository_code_unavailable
+
+    MergeNumberProjectionState:
+      type: string
+      description: >-
+        색인 반영 상태. 실제 검색 hit의 값이 정본과 같을 때만 in_sync, 다르면 pending, hit를 확인하지 못했으면 unknown.
+        assigned가 아니면 언제나 unknown이다.
+        (근거: packages/domain/src/mnumber.ts:133-134, apps/search-api/src/sequence/merge-number-view.ts:145-152)
+      enum: [in_sync, pending, unknown]
+
+    MergeNumberFields:
+      type: object
+      description: >-
+        M 번호 다섯 필드 묶음(DTO 원형). 기능이 켜진 배포에서만 만들어지며 목록의 PR 항목·PR 상세·M 번호 해석이 같은 다섯
+        키를 싣는다. 호스트 스키마는 additionalProperties: false를 지키려고 같은 다섯 속성을 직접 적고 MergeNumberRules를
+        allOf로 건다. 값은 언제나 PostgreSQL 정본이다.
+        (근거: apps/search-api/src/sequence/merge-number-view.ts:24-31)
+      required: [merge_number, merge_number_state, merge_number_reason, merge_number_epoch, merge_number_projection_state]
+      additionalProperties: false
+      allOf:
+        - $ref: '#/components/schemas/MergeNumberRules'
+      properties:
+        merge_number:
+          anyOf:
+            - $ref: '#/components/schemas/MergeNumberText'
+            - type: 'null'
+        merge_number_state:
+          $ref: '#/components/schemas/MergeNumberState'
+        merge_number_reason:
+          anyOf:
+            - $ref: '#/components/schemas/MergeNumberReason'
+            - type: 'null'
+        merge_number_epoch:
+          type: [integer, 'null']
+          minimum: 1
+        merge_number_projection_state:
+          $ref: '#/components/schemas/MergeNumberProjectionState'
+
+    MergeNumberRules:
+      description: >-
+        M 다섯 키 사이의 관계(판정 순서 1~5단계를 옮긴 제약만 있는 스키마). merge_number_state 키가 없는 객체에는 아무것도
+        요구하지 않는다. assigned만 merge_number가 문자열이고 사유가 null이다. pending·not_applicable·unavailable은
+        merge_number가 null이고 관측 상태가 unknown이다. pending의 merge_number_epoch은 공간이 있으면 그 에폭, 없으면 null이다.
+        (근거: apps/search-api/src/sequence/merge-number-view.ts:115-137, apps/search-api/src/sequence/merge-number-view.ts:155-203)
+      type: object
+      allOf:
+        - if:
+            required: [merge_number_state]
+            properties:
+              merge_number_state:
+                const: assigned
+          then:
+            properties:
+              merge_number:
+                type: string
+              merge_number_reason:
+                type: 'null'
+              merge_number_epoch:
+                type: integer
+        - if:
+            required: [merge_number_state]
+            properties:
+              merge_number_state:
+                const: pending
+          then:
+            properties:
+              merge_number:
+                type: 'null'
+              merge_number_reason:
+                enum:
+                  - pr_evidence_pending
+                  - negative_evidence_unavailable
+                  - partial_lookup
+                  - profile_unverified
+                  - unsupported_merge_profile
+                  - mapping_conflict
+                  - fetch_failed
+                  - number_capacity_exceeded
+                  - canonical_mismatch
+                  - predecessor_pending
+                  - not_sequenced
+              merge_number_projection_state:
+                const: unknown
+        - if:
+            required: [merge_number_state]
+            properties:
+              merge_number_state:
+                const: not_applicable
+          then:
+            properties:
+              merge_number:
+                type: 'null'
+              merge_number_reason:
+                enum: [not_merged, branch_not_tracked]
+              merge_number_epoch:
+                type: 'null'
+              merge_number_projection_state:
+                const: unknown
+        - if:
+            required: [merge_number_state]
+            properties:
+              merge_number_state:
+                const: unavailable
+          then:
+            properties:
+              merge_number:
+                type: 'null'
+              merge_number_reason:
+                enum: [mnumber_read_failed, repository_code_unavailable]
+              merge_number_epoch:
+                type: 'null'
+              merge_number_projection_state:
+                const: unknown
+
+    # ================================================================================================= [3] 식별자 해석
+    ResolveResponse:
+      type: object
+      description: >-
+        GET /api/v1/resolve 200 본문. 후보 0건도 200이며 그때만 reason_code(not_found)와 hint가 함께 붙는다. 자동 이동을
+        결정하지 않는다 — 몇 건인지만 말한다. truncated는 한 조회가 limit보다 많은 hit를 낸 경우만 true다(해석 두 개의
+        후보를 합쳐 limit로 자른 경우는 false로 남는다).
+        (근거: apps/search-api/src/resolve/routes.ts:245-263, apps/search-api/src/resolve/service.ts:222-285)
+      required: [input, detected_kind, candidates, truncated, correlation_id]
+      additionalProperties: false
+      properties:
+        input:
+          type: string
+          description: >-
+            앞뒤 공백을 다듬은 q. (근거: packages/query/src/identifier.ts:195)
+        detected_kind:
+          $ref: '#/components/schemas/IdentifierKind'
+        candidates:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/ResolveCandidate'
+        truncated:
+          type: boolean
+        reason_code:
+          const: not_found
+        hint:
+          type: string
+          description: >-
+            reason_code와 함께만 나타나는 고정 안내 문구.
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+      dependentRequired:
+        reason_code: [hint]
+        hint: [reason_code]
+      if:
+        properties:
+          candidates:
+            type: array
+            maxItems: 0
+      then:
+        required: [reason_code, hint]
+      else:
+        not:
+          anyOf:
+            - required: [reason_code]
+            - required: [hint]
+
+    IdentifierKind:
+      type: string
+      description: >-
+        판별 유형. detected_kind는 후보를 만든 해석의 유형이고, 아무것도 못 찾았으면 우선순위 1위 해석의 유형이다.
+        (근거: packages/query/src/identifier.ts:49-59, apps/search-api/src/resolve/service.ts:280)
+      enum: [commit, pull_request, text]
+
+    ResolveCandidate:
+      description: >-
+        후보 하나. kind로 모양이 갈린다. 두 모양 모두 시퀀스 세 키는 키를 두고 null일 수 있다.
+        (근거: apps/search-api/src/resolve/service.ts:47-65)
+      oneOf:
+        - $ref: '#/components/schemas/ResolveCommitCandidate'
+        - $ref: '#/components/schemas/ResolvePullRequestCandidate'
+
+    ResolveCommitCandidate:
+      type: object
+      description: >-
+        커밋 후보. display_name은 커밋 메시지가 아니라 SHA 앞 12자다. commit_sha·short_sha는 문서에 SHA가 있을 때 함께,
+        role·pull_request_numbers는 문서에 있을 때만 나타난다.
+        (근거: apps/search-api/src/resolve/service.ts:104, apps/search-api/src/resolve/service.ts:123-147)
+      required: [kind, repository, repository_id, display_name, url, merge_seq, seq_epoch, sequence_space]
+      additionalProperties: false
+      properties:
+        kind:
+          const: commit
+        repository:
+          type: [string, 'null']
+        repository_id:
+          type: [integer, 'null']
+        display_name:
+          type: [string, 'null']
+          maxLength: 12
+        url:
+          type: [string, 'null']
+          description: >-
+            `/commit/{repository}/{commit_sha}`. repository나 SHA가 없으면 null.
+        commit_sha:
+          type: string
+        short_sha:
+          type: string
+          maxLength: 12
+        role:
+          type: string
+          description: >-
+            커밋 역할. 도메인 어휘는 merge_commit·source_commit·direct_push다(API는 값을 제한하지 않는다).
+            (근거: packages/domain/src/entities.ts:78)
+        pull_request_numbers:
+          type: array
+          items:
+            type: integer
+        merge_seq:
+          type: [integer, 'null']
+        seq_epoch:
+          type: [integer, 'null']
+        sequence_space:
+          type: [string, 'null']
+      dependentRequired:
+        commit_sha: [short_sha]
+        short_sha: [commit_sha]
+
+    ResolvePullRequestCandidate:
+      type: object
+      description: >-
+        PR 후보. display_name은 PR 제목(없으면 null). pr_number·state·author·merged_at은 문서에 있을 때만 나타나며, 투영이
+        GitHub의 null을 그대로 쓰므로 author·merged_at은 키가 있고 null일 수 있다.
+        (근거: apps/search-api/src/resolve/service.ts:149-164, apps/pipeline-worker/src/documents.ts:278,
+        apps/pipeline-worker/src/documents.ts:286, packages/domain/src/events.ts:114-116)
+      required: [kind, repository, repository_id, display_name, url, merge_seq, seq_epoch, sequence_space]
+      additionalProperties: false
+      properties:
+        kind:
+          const: pull_request
+        repository:
+          type: [string, 'null']
+        repository_id:
+          type: [integer, 'null']
+        display_name:
+          type: [string, 'null']
+        url:
+          type: [string, 'null']
+          description: >-
+            `/pr/{repository}/{pr_number}`. repository나 pr_number가 없으면 null.
+        pr_number:
+          type: integer
+          minimum: 1
+        state:
+          type: string
+        author:
+          type: [string, 'null']
+        merged_at:
+          type: [string, 'null']
+        merge_seq:
+          type: [integer, 'null']
+        seq_epoch:
+          type: [integer, 'null']
+        sequence_space:
+          type: [string, 'null']
+
+    # ================================================================================================= [4] PR·커밋 상세
+    PullRequestDetailResponse:
+      type: object
+      description: >-
+        GET /api/v1/pull-requests/{repository}/{pr_number} 200 본문. 언제나 있는 키는 repository·pr_number·merge_commit_sha·
+        source_commits·source_commits_truncated·merge_seq·seq_epoch·sequence_space·url·correlation_id다. 나머지는 put()이
+        문서에 값이 있을 때만(undefined가 아닐 때만) 넣는다 — 키 없음은 보강 전이거나 알 수 없음이다. put()은 null을 거르지
+        않으므로 투영이 GitHub null을 쓰는 body·author·created_at·updated_at·merged_at·closed_at은 null일 수 있다.
+        source_commits_total은 절삭되지 않았을 때만 있다. M 다섯 키는 기능이 켜진 배포에서만 함께 붙는다.
+        (근거: apps/search-api/src/resolve/detail.ts:364-456, apps/search-api/src/resolve/routes.ts:347,
+        apps/pipeline-worker/src/documents.ts:267-289, packages/domain/src/events.ts:101-119)
+      required:
+        - repository
+        - pr_number
+        - merge_commit_sha
+        - source_commits
+        - source_commits_truncated
+        - merge_seq
+        - seq_epoch
+        - sequence_space
+        - url
+        - correlation_id
+      additionalProperties: false
+      allOf:
+        - $ref: '#/components/schemas/MergeNumberRules'
+      properties:
+        repository:
+          type: string
+        pr_number:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        merge_commit_sha:
+          type: [string, 'null']
+          description: >-
+            PR 문서의 merge_commit_sha(없으면 null). 투영은 GitHub 값을 머지 여부로 거르지 않고 그대로 싣는다.
+            (근거: apps/search-api/src/resolve/detail.ts:388, apps/pipeline-worker/src/documents.ts:283,
+            apps/pipeline-worker/src/enriched-payload.ts:81)
+        source_commits:
+          type: array
+          maxItems: 250
+          items:
+            $ref: '#/components/schemas/SourceCommitItem'
+        source_commits_truncated:
+          type: boolean
+          description: >-
+            문서가 절삭을 알리거나 SHA가 250개를 넘으면 true. (근거: apps/search-api/src/resolve/detail.ts:379)
+        source_commits_total:
+          type: integer
+          minimum: 0
+          description: >-
+            source_commits_truncated가 false일 때만 있다(절삭된 총계는 저장되어 있지 않아 키를 뺀다).
+            (근거: apps/search-api/src/resolve/detail.ts:403)
+        merge_seq:
+          type: [integer, 'null']
+        seq_epoch:
+          type: [integer, 'null']
+        sequence_space:
+          type: [string, 'null']
+        url:
+          type: string
+          description: >-
+            `/pr/{repository}/{pr_number}`.
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+        repository_id:
+          type: integer
+        title:
+          type: string
+        body:
+          type: [string, 'null']
+        state:
+          type: string
+          description: >-
+            파생 상태. 알려진 값은 open·closed·merged. (근거: packages/domain/src/pull-request-state.ts:23-36)
+        draft:
+          type: boolean
+        author:
+          type: [string, 'null']
+        reviewers:
+          type: array
+          items:
+            type: string
+        approved_by:
+          type: array
+          items:
+            type: string
+        labels:
+          type: array
+          items:
+            type: string
+        base_branch:
+          type: string
+        head_branch:
+          type: string
+        created_at:
+          type: [string, 'null']
+        updated_at:
+          type: [string, 'null']
+        merged_at:
+          type: [string, 'null']
+        closed_at:
+          type: [string, 'null']
+        first_review_at:
+          type: string
+        lead_time_seconds:
+          type: integer
+          minimum: 0
+        first_review_wait_seconds:
+          type: integer
+          minimum: 0
+        changed_files_count:
+          type: integer
+          minimum: 0
+        additions:
+          type: integer
+          minimum: 0
+        deletions:
+          type: integer
+          minimum: 0
+        changed_paths:
+          type: array
+          items:
+            type: string
+        files_truncated:
+          type: boolean
+        link_summary:
+          $ref: '#/components/schemas/LinkSummary'
+        enrichment_pending:
+          type: boolean
+        links_pending:
+          type: boolean
+        repository_archived:
+          type: boolean
+        merge_number:
+          anyOf:
+            - $ref: '#/components/schemas/MergeNumberText'
+            - type: 'null'
+        merge_number_state:
+          $ref: '#/components/schemas/MergeNumberState'
+        merge_number_reason:
+          anyOf:
+            - $ref: '#/components/schemas/MergeNumberReason'
+            - type: 'null'
+        merge_number_epoch:
+          type: [integer, 'null']
+          minimum: 1
+        merge_number_projection_state:
+          $ref: '#/components/schemas/MergeNumberProjectionState'
+      dependentRequired:
+        merge_number: [merge_number_state, merge_number_reason, merge_number_epoch, merge_number_projection_state]
+        merge_number_state: [merge_number, merge_number_reason, merge_number_epoch, merge_number_projection_state]
+        merge_number_reason: [merge_number, merge_number_state, merge_number_epoch, merge_number_projection_state]
+        merge_number_epoch: [merge_number, merge_number_state, merge_number_reason, merge_number_projection_state]
+        merge_number_projection_state: [merge_number, merge_number_state, merge_number_reason, merge_number_epoch]
+      if:
+        properties:
+          source_commits_truncated:
+            const: false
+      then:
+        required: [source_commits_total]
+      else:
+        not:
+          required: [source_commits_total]
+
+    SourceCommitItem:
+      type: object
+      description: >-
+        PR 상세의 원본 커밋 한 줄. commit_sha만 언제나 있다. 커밋 문서를 찾았을 때 put()으로 message(첫 줄)·author·
+        authored_at·committed_at을 채우며, 보강되지 않은 커밋은 키가 없다. 커밋 보강이 author에 null을 쓸 수 있다.
+        (근거: apps/search-api/src/resolve/detail.ts:300-355, apps/pipeline-worker/src/commit-enrich.ts:146-179)
+      required: [commit_sha]
+      additionalProperties: false
+      properties:
+        commit_sha:
+          type: string
+        message:
+          type: string
+          description: >-
+            커밋 메시지 첫 줄.
+        author:
+          type: [string, 'null']
+        authored_at:
+          type: string
+        committed_at:
+          type: string
+
+    CommitDetailResponse:
+      type: object
+      description: >-
+        GET /api/v1/commits/{repository}/{commit_sha} 200 본문. 언제나 있는 키는 repository·commit_sha·short_sha·merge_seq·
+        seq_epoch·sequence_space·pull_requests·url·correlation_id다. 나머지는 put()이 문서에 값이 있을 때만 넣는다(보강 전
+        커밋에는 message·author 등이 없다). 커밋 보강은 author·committer에 null을 쓸 수 있다. pull_requests가 비면
+        reason_code no_pull_request가 붙는다 — 직접 푸시라는 뜻이 아니라 투영이 PR 번호를 아직 잇지 못했다는 뜻이다.
+        (근거: apps/search-api/src/resolve/detail.ts:199-284, apps/search-api/src/resolve/routes.ts:304,
+        apps/pipeline-worker/src/commit-enrich.ts:162-179)
+      required: [repository, commit_sha, short_sha, merge_seq, seq_epoch, sequence_space, pull_requests, url, correlation_id]
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+        commit_sha:
+          type: string
+          pattern: '^[0-9a-f]{40}$'
+          description: >-
+            경로 값을 소문자로 바꾼 40자 SHA. (근거: apps/search-api/src/resolve/detail.ts:205)
+        short_sha:
+          type: string
+          pattern: '^[0-9a-f]{12}$'
+        merge_seq:
+          type: [integer, 'null']
+        seq_epoch:
+          type: [integer, 'null']
+        sequence_space:
+          type: [string, 'null']
+        pull_requests:
+          type: array
+          maxItems: 50
+          description: >-
+            이 커밋이 속한 PR(N:M). 커밋 문서의 pull_request_numbers 앞 50개를 접근 범위 필터를 지나 조회한다.
+            (근거: apps/search-api/src/resolve/detail.ts:214-235)
+          items:
+            $ref: '#/components/schemas/LinkedPullRequest'
+        url:
+          type: string
+          description: >-
+            `/commit/{repository}/{commit_sha}`.
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+        repository_id:
+          type: integer
+        role:
+          type: string
+          description: >-
+            도메인 어휘는 merge_commit·source_commit·direct_push. (근거: packages/domain/src/entities.ts:78)
+        base_branch:
+          type: string
+        message:
+          type: string
+        author:
+          type: [string, 'null']
+        committer:
+          type: [string, 'null']
+        authored_at:
+          type: string
+        committed_at:
+          type: string
+        parent_shas:
+          type: array
+          items:
+            type: string
+        changed_paths:
+          type: array
+          items:
+            type: string
+        changed_paths_truncated:
+          type: boolean
+        patch_id:
+          type: string
+        patch_id_unavailable:
+          type: string
+          description: >-
+            patch-id를 계산하지 못한 사유 문자열. 보강이 patch_id가 없을 때만 쓴다.
+            (근거: apps/pipeline-worker/src/commit-enrich.ts:172-176)
+        link_summary:
+          $ref: '#/components/schemas/LinkSummary'
+        enrichment_pending:
+          type: boolean
+        links_pending:
+          type: boolean
+        repository_archived:
+          type: boolean
+        reason_code:
+          const: no_pull_request
+      if:
+        properties:
+          pull_requests:
+            type: array
+            maxItems: 0
+      then:
+        required: [reason_code]
+      else:
+        not:
+          required: [reason_code]
+
+    LinkedPullRequest:
+      type: object
+      description: >-
+        커밋 상세에 딸린 PR 요약. 모든 키가 조건부다 — put()이 문서에 값이 있을 때만 넣고, url은 문서에 repository와
+        pr_number가 모두 있을 때만 만든다. 코드 주석은 "미머지 PR이면 merge_commit_sha 키가 없다"고 하지만, 투영이 GitHub
+        값(문자열 또는 null)을 머지 여부로 거르지 않고 쓰고 put()이 null을 통과시키므로 키가 null로 있거나 미머지 PR에도
+        값이 있을 수 있다. author·merged_at도 null일 수 있다.
+        (근거: apps/search-api/src/resolve/detail.ts:165-190, apps/pipeline-worker/src/documents.ts:278-286,
+        apps/pipeline-worker/src/enriched-payload.ts:81, packages/domain/src/events.ts:114-116)
+      additionalProperties: false
+      properties:
+        pr_number:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        author:
+          type: [string, 'null']
+        reviewers:
+          type: array
+          items:
+            type: string
+        approved_by:
+          type: array
+          items:
+            type: string
+        state:
+          type: string
+        merged_at:
+          type: [string, 'null']
+        merge_commit_sha:
+          type: [string, 'null']
+        url:
+          type: string
+          description: >-
+            `/pr/{repository}/{pr_number}`.
+
+    # ================================================================================================= [5] M 번호 해석
+    MergeNumberResolveResponse:
+      description: >-
+        GET /api/v1/merge-numbers/resolve 200 본문은 두 모양 중 하나다. 요청 seq_epoch가 현재 에폭과 다르면 값을 계산하지
+        않은 MergeNumberResolveEpochStaleResponse, 그 밖은 MergeNumberResolution. 둘 다 routes가 correlation_id를 덧붙인다.
+        (근거: apps/search-api/src/sequence/routes.ts:340-341, apps/search-api/src/sequence/merge-numbers.ts:254-265,
+        apps/search-api/src/sequence/merge-numbers.ts:352-363)
+      oneOf:
+        - $ref: '#/components/schemas/MergeNumberResolution'
+        - $ref: '#/components/schemas/MergeNumberResolveEpochStaleResponse'
+
+    MergeNumberResolution:
+      type: object
+      description: >-
+        M 번호 ↔ PR 해석 결과. 모든 키가 언제나 있다. 정본 값은 한 read snapshot에서 읽고, 색인 반영 상태만 스냅숏 밖에서
+        ES로 읽는다(실패하면 unknown). 이 경로는 채번 대상 브랜치와 정본 행을 먼저 확인하므로 not_applicable·
+        mnumber_read_failed에 닿지 않는다. merge_seq는 정본 행 중 merge_seq가 가장 작은 행의 값이고, M 필드는 번호가 있는 행을
+        우선해 고른다 — 같은 PR에 행이 둘(이중 squash SHA)이면 둘이 다른 행에서 올 수 있다.
+        (근거: apps/search-api/src/sequence/merge-numbers.ts:297-303, apps/search-api/src/sequence/merge-numbers.ts:324-364,
+        apps/search-api/src/sequence/merge-number-view.ts:71-101, packages/db/src/repositories/merge-sequence.ts:687)
+      required:
+        - sequence_space
+        - seq_epoch
+        - sequence_state
+        - epoch_stale
+        - pr_number
+        - merge_seq
+        - merge_number
+        - merge_number_state
+        - merge_number_reason
+        - merge_number_epoch
+        - merge_number_projection_state
+        - correlation_id
+      additionalProperties: false
+      allOf:
+        - $ref: '#/components/schemas/MergeNumberRules'
+      properties:
+        sequence_space:
+          type: string
+          description: >-
+            요청 repository를 가른 owner/name과 base_branch로 만든 `owner/name@branch`.
+            (근거: apps/search-api/src/sequence/merge-numbers.ts:252)
+        seq_epoch:
+          type: integer
+          minimum: 1
+        sequence_state:
+          $ref: '#/components/schemas/SequenceSpaceState'
+        epoch_stale:
+          const: false
+        pr_number:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        merge_seq:
+          type: integer
+        merge_number:
+          anyOf:
+            - $ref: '#/components/schemas/MergeNumberText'
+            - type: 'null'
+        merge_number_state:
+          $ref: '#/components/schemas/MergeNumberState'
+        merge_number_reason:
+          anyOf:
+            - $ref: '#/components/schemas/MergeNumberReason'
+            - type: 'null'
+        merge_number_epoch:
+          type: [integer, 'null']
+          minimum: 1
+        merge_number_projection_state:
+          $ref: '#/components/schemas/MergeNumberProjectionState'
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+
+    MergeNumberResolveEpochStaleResponse:
+      type: object
+      description: >-
+        요청 seq_epoch가 현재 에폭과 다를 때의 200 본문. 값을 계산하지 않으므로 sequence_state·pr_number·merge_seq·M 키가
+        없다(검색의 stale 모양과 달리 공간 상태도 싣지 않는다). seq_epoch는 현재 에폭이다.
+        (근거: apps/search-api/src/sequence/merge-numbers.ts:254-265, apps/search-api/src/sequence/routes.ts:340-341)
+      required: [sequence_space, seq_epoch, epoch_stale, requested_seq_epoch, correlation_id]
+      additionalProperties: false
+      properties:
+        sequence_space:
+          type: string
+        seq_epoch:
+          type: integer
+          minimum: 1
+        epoch_stale:
+          const: true
+        requested_seq_epoch:
+          type: integer
+          minimum: 1
+        correlation_id:
+          $ref: '#/components/schemas/CorrelationId'
+
+    # ================================================================================================= [6] 소스 탐색
+    SourceTree:
+      type: object
+      description: >-
+        GET /api/v1/source/{repository}/tree 200 본문(correlation_id 없음). ref는 요청 ref, 없으면 기본 브랜치 이름이고
+        tree_sha로 하위 디렉터리를 펼칠 때는 요청 ref 또는 revision이다. revision은 고정된 40자 커밋 SHA다. entries는 최대
+        5000개이며 디렉터리 먼저, 이름 순이다. GitHub가 잘랐거나 5000개를 넘으면 truncated true.
+        (근거: packages/contracts/src/source.ts:3, apps/search-api/src/source/service.ts:20-35)
+      required: [repository, ref, revision, path, entries, truncated]
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+        ref:
+          type: string
+        revision:
+          type: string
+          pattern: '^[0-9a-fA-F]{40}$'
+        path:
+          type: string
+          description: >-
+            요청 path. 루트면 ''.
+        entries:
+          type: array
+          maxItems: 5000
+          items:
+            $ref: '#/components/schemas/SourceEntry'
+        truncated:
+          type: boolean
+
+    SourceEntry:
+      type: object
+      description: >-
+        트리 항목 하나. kind는 git 트리 type·mode로 정한다(tree → directory, commit → submodule, mode 120000 → symlink, 그 밖
+        file). size는 GitHub가 주지 않으면(디렉터리 등) null. path는 요청 path를 앞에 붙인 전체 경로, name은 항목 이름이다.
+        (근거: packages/contracts/src/source.ts:2, apps/search-api/src/source/service.ts:31-33)
+      required: [path, name, sha, kind, size]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+        name:
+          type: string
+        sha:
+          type: string
+        kind:
+          type: string
+          enum: [directory, file, symlink, submodule]
+        size:
+          type: [integer, 'null']
+
+    SourceHistory:
+      type: object
+      description: >-
+        GET /api/v1/source/{repository}/history 200 본문(correlation_id 없음). pull_requests_unavailable은 PR 연결 조회를
+        건너뛰었거나(ES 미배선) 실패했을 때만 true로 나타나고, 그때 모든 행의 pull_request_numbers가 null이다. 정상이면 키가
+        없다.
+        (근거: packages/contracts/src/source.ts:7, apps/search-api/src/source/service.ts:87-103)
+      required: [repository, revision, path, commits, next_page]
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+        revision:
+          type: string
+          pattern: '^[0-9a-fA-F]{40}$'
+        path:
+          type: string
+        commits:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceHistoryCommit'
+        next_page:
+          type: [integer, 'null']
+          description: >-
+            GitHub Link 헤더가 알린 다음 페이지. 없으면 null.
+        pull_requests_unavailable:
+          const: true
+
+    SourceHistoryCommit:
+      type: object
+      description: >-
+        History 행. author는 GitHub 로그인, 없으면 커밋 작성자 이름, 그것도 없으면 'Unknown'. date는 committer 날짜(없으면
+        null). pull_request_numbers는 배열(빈 배열 포함)이면 확정, null이면 미확정이다. 배열은 중복 없이 오름차순이다.
+        (근거: packages/contracts/src/source.ts:4-6, apps/search-api/src/source/service.ts:18,
+        apps/search-api/src/source/service.ts:74, apps/search-api/src/source/service.ts:95-99)
+      required: [sha, parents, message, author, date, pull_request_numbers]
+      additionalProperties: false
+      properties:
+        sha:
+          type: string
+        parents:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+        author:
+          type: string
+        date:
+          type: [string, 'null']
+        pull_request_numbers:
+          type: [array, 'null']
+          uniqueItems: true
+          items:
+            type: integer
+
+    SourceCommit:
+      type: object
+      description: >-
+        비교 대상 커밋(git commit 객체). author는 git 작성자 이름, date는 committer 날짜(없으면 null).
+        (근거: packages/contracts/src/source.ts:4, apps/search-api/src/source/service.ts:17)
+      required: [sha, parents, message, author, date]
+      additionalProperties: false
+      properties:
+        sha:
+          type: string
+        parents:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+        author:
+          type: string
+        date:
+          type: [string, 'null']
+
+    SourceFile:
+      type: object
+      description: >-
+        GET /api/v1/source/{repository}/file 200 본문(correlation_id 없음). 미리보기를 못 해도 200이며 status와 reason이 그
+        이유를 말한다. status가 text일 때만 text가 문자열이고 reason이 null이다. 그 밖(missing·binary·too_large·unsupported)은
+        text가 null이고 reason이 영어 문장이다. missing은 그 revision에 경로가 없을 때이며 size·sha도 null이다. 크기 상한
+        256 KiB·4000줄.
+        (근거: packages/contracts/src/source.ts:8, apps/search-api/src/source/service.ts:8-9, apps/search-api/src/source/service.ts:104-124)
+      required: [repository, revision, path, status, text, size, sha, reason]
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+        revision:
+          type: string
+          pattern: '^[0-9a-fA-F]{40}$'
+        path:
+          type: string
+        status:
+          type: string
+          enum: [text, missing, binary, too_large, unsupported]
+        text:
+          type: [string, 'null']
+        size:
+          type: [integer, 'null']
+        sha:
+          type: [string, 'null']
+        reason:
+          type: [string, 'null']
+      if:
+        properties:
+          status:
+            const: text
+      then:
+        properties:
+          text:
+            type: string
+          reason:
+            type: 'null'
+      else:
+        properties:
+          text:
+            type: 'null'
+          reason:
+            type: string
+
+    SourceComparison:
+      type: object
+      description: >-
+        GET /api/v1/source/{repository}/diff 200 본문(correlation_id 없음). pr 모드는 merge-base..head, commit 모드는 첫 부모..
+        커밋(부모가 없으면 base null)이다. pull_requests는 pr 모드면 그 PR 하나, commit 모드면 연결 PR 최대 5개다.
+        pull_requests_unavailable은 계약 타입에서는 선택이지만 코드는 언제나 싣는다(pr 모드는 언제나 false). page 30에서
+        멈추며 더 있으면 next_page null에 truncated true.
+        (근거: packages/contracts/src/source.ts:9-11, apps/search-api/src/source/service.ts:125-150)
+      required: [repository, base, head, commit, files, next_page, truncated, pull_requests, pull_requests_unavailable]
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+        base:
+          type: [string, 'null']
+          pattern: '^[0-9a-fA-F]{40}$'
+        head:
+          type: string
+          pattern: '^[0-9a-fA-F]{40}$'
+        commit:
+          $ref: '#/components/schemas/SourceCommit'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceChange'
+        next_page:
+          type: [integer, 'null']
+        truncated:
+          type: boolean
+        pull_requests:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/SourcePullRequest'
+        pull_requests_unavailable:
+          type: boolean
+
+    SourceChange:
+      type: object
+      description: >-
+        변경 파일 하나. status는 GitHub 파일 status 원문이다(코드가 값을 제한하지 않는다). previous_path는 GitHub가
+        previous_filename을 줄 때만 문자열이다.
+        (근거: packages/contracts/src/source.ts:9, apps/search-api/src/source/service.ts:148,
+        packages/github/src/source-reader.ts:7)
+      required: [path, previous_path, status, additions, deletions]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+        previous_path:
+          type: [string, 'null']
+        status:
+          type: string
+        additions:
+          type: integer
+        deletions:
+          type: integer
+
+    SourcePullRequest:
+      type: object
+      description: >-
+        비교에 딸린 PR. GitHub에서 그대로 옮기며 연결 PR을 지어내지 않는다. body는 GitHub가 null을 주면 null.
+        (근거: packages/contracts/src/source.ts:10, apps/search-api/src/source/service.ts:135,
+        apps/search-api/src/source/service.ts:140, packages/github/src/source-reader.ts:10)
+      required: [number, title, body]
+      additionalProperties: false
+      properties:
+        number:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        body:
+          type: [string, 'null']

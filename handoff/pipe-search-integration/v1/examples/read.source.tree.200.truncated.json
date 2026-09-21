@@ -1,0 +1,39 @@
+{
+  "operation": "read.source.tree",
+  "title": "source 부분 결과 — 트리 절삭(5000 항목 상한 또는 GHE 절삭)",
+  "captured": false,
+  "note": "실제 응답을 바탕으로 truncated만 참으로 바꾼 합성 예시다. 절삭된 트리를 완전한 목록으로 다루지 않는다.",
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/tree",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000023"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "ref": "main",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "path": "",
+      "entries": [
+        {
+          "path": "README.md",
+          "name": "README.md",
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kind": "file",
+          "size": 5
+        }
+      ],
+      "truncated": true
+    }
+  }
+}

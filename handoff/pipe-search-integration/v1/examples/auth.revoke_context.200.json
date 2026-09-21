@@ -1,0 +1,32 @@
+{
+  "operation": "auth.revoke_context",
+  "title": "로그인 문맥 회수",
+  "captured": true,
+  "request": {
+    "method": "POST",
+    "path": "/internal/integrations/pipe/v1/auth/revoke-context",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "assertion": "<RS256 compact JWS — conformance/vectors.json 참고>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000004"
+    },
+    "body": {
+      "protocol_version": "PSI-1.0",
+      "auth_context_id": "ctx-dump-a-000003",
+      "revoked": true,
+      "revoked_at": "2026-09-21T05:01:30Z",
+      "correlation_id": "00000000-0000-4000-8000-000000000004"
+    }
+  }
+}
