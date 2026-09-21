@@ -100,4 +100,5 @@ export type {
   TagSummary,
   TeamMemberSummary,
   TeamSummary,
+  UserSummary,
 } from './client.js';

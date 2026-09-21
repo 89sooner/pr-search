@@ -1,8 +1,10 @@
 # PR Search 백엔드 아키텍처
 
+> CR-112 / FR-INT-001 / ADR-025: `apps/search-api/src/integrations/pipe/`가 PIPE 연동 모듈이다 — `config`(기본 꺼짐, 켜면 전부 요구), `transport-auth`(실제 TLS 상태), `assertion`(`jose` 서명 + 계약 정책), `replay-store`(Redis `SET NX EX`), `identity-binding`(binding·정본 사용자·GHE 현재 숫자 ID), `grant-store`(형식·수명·판정 순서), `read-context`(사용자 범위 ∩ 허용 목록), `routes`(고정 operation만), `server`(private 리스너), `runtime`(공개 서버와 같은 `serverDeps`로 조립), `command`(운영 CLI), `audit`(이벤트·지표). 기존 조회 10종은 route 본문을 실행 함수(`executeSearch`·`executeResolve`·`executePullRequestDetail`·`executeCommitDetail`·`executeRepositories`·`executeSource`·`executeMergeNumberResolve`)로 꺼내 일반 route와 연동 route가 공유하며, 두 경로의 차이는 주체·접근 범위를 주는 `ReadInvocation`(`apps/search-api/src/auth/read-invocation.ts`)뿐이다. 일반 route의 인증·해석기 호출은 이전과 같다.
+
 > CR-097 / FR-SRC-001~004: sourceRoutes는 인증 → 기존 ScopeService/resolveRepository → GitHubSourceReader 순서다. GitHubClient의 기존 전송·rate-limit 경계를 공유하는 별도 읽기 어댑터이며 source DTO를 수집/색인 DTO에 추가하지 않는다. 비재귀 트리·Contents·경로별 commits·PR files/merge-base를 요청 시 조회한다. 파일256KiB/4,000라인·디렉터리5,000항목·Diff100항목×30페이지 상한, 전체SHA 검증, PR 조회 전후 ref 확인을 강제한다.
 
-> 상태: review | 버전: v0.13 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.14 | 갱신일: 2026-09-21
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 

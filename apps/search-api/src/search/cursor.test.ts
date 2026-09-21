@@ -7,6 +7,7 @@
  * 자기가 만들지 않은 오류를 본다.
  */
 
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { AccessScope } from '@prs/es';
 import { CursorInvalidError, CursorQueryMismatchError, createCursorSigner } from '../cursor/envelope.js';
@@ -230,5 +231,28 @@ describe('두 실패를 가른다 (DEV-273)', () => {
         CursorInvalidError,
       );
     }
+  });
+});
+
+describe('결속 (CR-112) — 추가 전용이다', () => {
+  /**
+   * 결속이 없으면 재료가 CR-112 이전과 **한 글자도** 다르지 않아야 한다. 그래야 이미 발급된 공개 커서가
+   * 배포 뒤에도 통한다. 이전 공식을 여기서 그대로 다시 계산해 대조한다.
+   */
+  it('결속이 없으면 지문이 이전 공식과 같다', () => {
+    const material = [BASE.query, BASE.sortKey, BASE.order, 'explicit|10,20,30', '7', '', ''].join(' ');
+    const golden = createHash('sha256').update(material, 'utf8').digest('base64url').slice(0, 22);
+    expect(computeFingerprint(BASE)).toBe(golden);
+  });
+
+  it('결속이 있으면 지문이 달라지고, 다른 사용자·다른 client의 커서를 받지 않는다', () => {
+    const alice = computeFingerprint({ ...BASE, binding: 'pipe:pipe-dev:github:1001' });
+    const bob = computeFingerprint({ ...BASE, binding: 'pipe:pipe-dev:github:1002' });
+    const otherClient = computeFingerprint({ ...BASE, binding: 'pipe:pipe-stage:github:1001' });
+    expect(alice).not.toBe(computeFingerprint(BASE));
+    expect(new Set([alice, bob, otherClient]).size).toBe(3);
+    expect(() => roundTrip(alice, bob)).toThrow(CursorQueryMismatchError);
+    // 공개 커서도 연동 경로에서 통하지 않는다 (그 반대도).
+    expect(() => roundTrip(computeFingerprint(BASE), alice)).toThrow(CursorQueryMismatchError);
   });
 });

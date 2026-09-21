@@ -1,10 +1,12 @@
 # PR Search 보안 및 개인정보 아키텍처
 
+> CR-112 / FR-INT-001: PIPE 서버가 사용자 신원을 위임하는 **네 번째 자격 경계**를 연다(14장, ADR-025). 기본 꺼짐이다. 자격은 셋이 겹친다 — 실제 TLS 상태로 확인한 client 인증서(mTLS), PIPE 전용 RS256 서명 assertion, 그 둘로 발급한 300초 이하의 검색 전용 grant. grant는 일반 세션과 서로를 대신하지 못하고, 권한은 기존 엔진이 계산한 사용자 접근 범위와 client 허용 목록의 교집합으로만 넓어질 수 없다. 공개 리스너·web 프록시·`/api/v1/*`의 인증 경계는 바뀌지 않는다.
+
 > CR-098 / FR-AUTH-002: GHE collaborator permission의 read 이상 호환 집합은 `read`·`write`·`writer`와 REST 내부 이름 `pull`·`triage`·`push`·`maintain`·`admin`을 수용한다. `none`·빈 값·미지 이름은 계속 기본 거부한다. 화면 메뉴 필터는 API 권한 검사를 대체하지 않으며 reader의 Workspace 바로가기는 operator에게만 렌더링한다.
 
 > CR-097: FR-SRC-001~004는 소스 코드의 **일시적 열람**을 허용한다. 모든 source GET은 세션과 기존 저장소 범위를 확인한 뒤 Data App의 read-only GitHubSourceReader를 호출한다. 미등록/범위 밖은 동일404이며 관리자 토큰 우회는 없다. ref/SHA/path/page를 검증하고 임의 호스트·download_url·파일시스템 경로를 따르지 않는다. 본문은 PG/ES/Redis/미러/로그에 저장하지 않는다. 응답 no-store, 감사는 경로·SHA·결과만. UTF8/크기/라인 한도와 안전한 React 텍스트 렌더링을 사용한다. 기존 MIRROR_ALLOW_BLOB_FETCH 설정을 변경하지 않는다.
 
-> 상태: review | 버전: v1.13 | 갱신일: 2026-09-17
+> 상태: review | 버전: v1.14 | 갱신일: 2026-09-21
 
 CR-079: WP-074는 기존 읽기 Data App만 사용한다. 신규 증거 proof의 허용 필드는 [설계](pr_search_wp074_design.md) 6절, 측정 read-only role·세션 파일·비식별 출력은 측정 가이드가 정본이다. 새 제목 쓰기 App, OIDC 정책 변경, 익명 조회, fixture를 production 직접 확정에 넣는 경로는 만들지 않는다. 기존 auth gate와 범위 밖=미등록 404를 유지한다.
 
@@ -34,6 +36,8 @@ CR-079: WP-074는 기존 읽기 Data App만 사용한다. 신규 증거 proof의
 | git mirror 볼륨 | trusted (내부) | 워커만 마운트, 읽기 전용 fetch | ADR-005 |
 | GitHub Enterprise | 외부 신뢰 당사자 | App 토큰, TLS, 웹훅 시크릿 | 외부 인터페이스 |
 | OIDC IdP | 외부 신뢰 당사자 | 토큰 서명·발급자·대상·만료 검증 | FR-AUTH-001 |
+| PIPE Django 서버 (연동 client, CR-112) | 외부 신뢰 당사자 — 승인된 사용자에 한해 신원을 대신 주장할 수 있다 | 등록 인증서(mTLS)·PIPE 전용 서명 키·client 저장소 허용 목록·긴급 회수. 요청 본문·헤더의 사용자·역할 주장은 신뢰하지 않는다 | FR-INT-001 |
+| `search-api` private 리스너 (CR-112) | 사내 private 망 한정, 요청 untrusted | 기본 꺼짐, TLS passthrough만, client 인증서 필수, 연동 경로만 등록, 쿠키 거절 | FR-INT-001, ADR-025 |
 
 `ingest-gateway`가 유일한 공개 인바운드 지점이다. 그래서 이 경로만 "요청은 신뢰하지 않되 엔드포인트는 노출된다"는 특수한 위치에 있고, 서명 검증을 **본문 파싱 이전에** 원문 바이트로 수행한다.
 
@@ -178,6 +182,9 @@ export function search(q: ScopedQuery): Promise<EsResponse>;   // ScopedQuery만
 | GitHub Release 읽기 토큰 (반입용, CR-063) | 해당 없음 — Profile B는 CI가 레지스트리에 push·pull한다 | **반입 담당자의 자격 저장소.** 호스트의 시크릿 파일·`.env`·번들·저장소 어디에도 두지 않는다 | 반입 담당자(사람). 번들을 받는 단계에서만 환경 변수로 준다 | 90일. 담당자가 바뀌면 즉시 폐기 | GitHub 계정 감사 로그 |
 | Operations App client secret (`GHE_OPS_CLIENT_SECRET`, CR-086) | Kubernetes Secret (manifest 미작성) | 시크릿 파일 (`.env`) | **search-api만** — 인가·갱신·철회를 그쪽이 한다. gh-executor는 받지 않는다 | App 재발급 시 | 미기록 |
 | 위임 토큰 봉인 키 (`GH_IDENTITY_VAULT_KEY`, CR-086) | Kubernetes Secret (manifest 미작성) | 시크릿 파일 (`.env`) | search-api(봉인·갱신)와 gh-executor(해제) — **같은 값**이어야 한다. 다르면 실행기가 모든 실행을 `identity_unsealable`로 거절한다 | 회전하면 기존 봉인을 풀 수 없어 사용자가 다시 연결해야 한다 (`key_id`가 회전을 구분) | 미기록 |
+| PIPE 연동 서버 TLS 키·인증서 (`PIPE_SEARCH_INTEGRATION_TLS_KEY_FILE`·`…_CERT_FILE`, CR-112) | Kubernetes Secret (manifest 미작성) | 시크릿 파일 (읽기 전용 마운트) | search-api private 리스너만 | 사내 PKI 주기. 교체는 재기동 | 미기록 |
+| PIPE client CA 묶음·client 정책 파일·PIPE 서명 **공개키** (CR-112) | ConfigMap 또는 Secret (manifest 미작성) | 호스트 파일 (읽기 전용 마운트) | search-api | 비밀은 아니지만 무결성이 경계다. 서명 키는 새 키 추가 → 최소 420초 뒤 옛 키 제거. 즉시 차단은 DB 긴급 회수 | 긴급 회수는 `pipe_integration_event`(`credential.revoke`) |
+| 검색 grant 원문 (`psig1_…`, CR-112) | 해당 없음 — pr-search는 SHA-256만 저장 | 해당 없음 | 발급 응답 한 번과 PIPE 서버의 접근 제한 캐시뿐 | 수명 300초 이하, 연장 없음 | 원문 미기록, `grant_id`만 기록 |
 
 **데이터베이스 접속 주체** (CR-059, DEV-503). `prs_app`과 `prs_admin`은 **둘 다 `NOLOGIN` 그룹 롤**이다 (마이그레이션 005) — 권한의 묶음이지 접속 주체가 아니다. `DEV-416`이 관리 연결에 대해 이미 정한 규칙을 **애플리케이션 연결에도 그대로 적용한다.**
 
@@ -360,6 +367,12 @@ ALTER ROLE prs_app_login SET role = 'prs_app';
 | THR-052 | 평문 HTTP 파일럿에서 같은 망의 누군가 세션 쿠키를 가로채거나, 접두 없는 쿠키를 하나 더 심어 피해자의 요청을 자기 세션으로 실행시키거나(세션 강요), 파일럿 형상이 그대로 운영 형상으로 남는다 | 계정 탈취, 신원 혼동 | CR-091 — 면제는 `SESSION_COOKIE_SECURE=false`와 `ALLOW_INSECURE_COOKIES=true` **두 선언을 함께** 요구하고 인식하지 못하는 값은 기동을 거부한다. web은 중복 세션·왕복 쿠키를 없는 것으로 본다(4장). `web`이 기동마다, `prsctl health`가 실행마다 경고한다. 운영 기본값은 `Secure`이며 이 위협은 파일럿에서 **받아들인 위험**으로 남는다 — 줄이는 방법은 TLS뿐이다 (FR-AUTH-001 AC-2, DEV-694) |
 | THR-053 | 관리자 지정 역할이 기록 없이 부여·회수되거나, 회수한 운영 권한이 이미 발급된 세션으로 계속 쓰인다 | 권한 상승, 감사 누락 | CR-091 — 지정은 호스트 운영 도구만 바꾸고 역할 변경과 감사가 한 트랜잭션이다. 실효 역할은 요청마다 정본에서 합성하므로 회수가 다음 요청에 반영되고, 지정값을 읽지 못하면 세션 역할로 판정한다(fail closed). 행위 주체는 호스트 사용자 이름이며 인증된 신원이 아니다 — 호스트 접근자는 이미 DB·시크릿을 쥔 경계 안이다 (FR-AUTH-001 AC-10, DEV-695) |
 | THR-054 | 역방향 프록시 뒤에서 인증 콜백의 복귀 주소가 내부 주소로 새거나, `Host`·`X-Forwarded-Host`를 조작해 복귀 목적지를 다른 출처로 돌린다 | 열린 리다이렉트, 로그인 흐름 단절 | CR-092 — 복귀 `Location`은 같은 출처의 경로만 담고 요청 출처로 절대 주소를 만들지 않는다. 경로는 `sanitizeReturnPath` 규칙을 지나야 하며 어기면 오류다. 라우트 핸들러의 `nextUrl.origin`·`request.url` 기반 리다이렉트를 정적 시험이 금지한다 (FLOW-000, DEV-699) |
+| THR-055 | 공개 망의 누군가 PIPE 연동 경로에 닿거나, 프록시가 붙인 `X-SSL-Client-Verify: SUCCESS` 같은 헤더를 위조해 client로 행세한다 | 인증 우회 (CR-112) | 연동 경로는 private 리스너에만 등록되고 공개 앱·web 프록시에는 없다. client는 **실제 TLS 소켓의 검증 결과와 peer 인증서 DER**로만 정하고 전달 헤더를 읽지 않는다. TLS passthrough만 지원한다 (FR-INT-001 AC-1, ADR-025) |
+| THR-056 | 서명 알고리즘 혼동(`alg: none`, 공개키를 HS256 비밀로 오용), 토큰이 가리키는 키 URL(`jku`·`x5u`·`jwk`) 추종, 가로챈 assertion의 재사용 | 신원 위조 (CR-112) | RS256 고정·등록 `kid`만·금지 헤더 거절·정확한 `typ`·단일 `aud`. 서명·claim 검증 뒤에만 `jti`를 Redis `SET NX EX`로 원자 소비하고, 저장소 장애는 503으로 막는다 (FR-INT-001 AC-2) |
+| THR-057 | PIPE 서버 키가 유출되거나 PIPE가 오작동해 승인되지 않은 사용자를 주장한다 | 사용자 가장 (CR-112) | 서명 키를 가진 PIPE는 **승인된 binding의 사용자만** 주장할 수 있다 — 새 사용자·역할을 만들지 않는다. 범위는 client 허용 목록으로 더 좁다. 키·client·인증서 긴급 회수가 재기동 없이 모든 복제본에 즉시 적용된다. 이 위임 위험 자체는 암호로 사라지지 않으며 **받아들인 위험**이다 (FR-INT-001 AC-3·AC-7) |
+| THR-058 | 로그아웃한 로그인 문맥이 같은 옛 PIPE 자격으로 다시 grant를 받거나, 회수와 발급이 경합해 회수 뒤에 살아 있는 grant가 남는다 | 회수 무력화 (CR-112) | 회수 표식을 PostgreSQL에 두고 원 로그인 만료 뒤 보존 기간까지 남긴다. 발급과 회수는 문맥 행 잠금으로 직렬화되어 어느 쪽이 먼저 커밋해도 회수 뒤 살아 있는 grant가 없다 (FR-INT-001 AC-7) |
+| THR-059 | grant가 일반 `/api/v1/*`나 관리·실행 경로에서 쓰이거나, 브라우저 쿠키가 연동 경로의 자격이 된다 | 권한 상승 (CR-112) | 두 자격은 저장소·형식·받는 리스너가 모두 다르다. 일반 경로는 grant를 읽지 않고, 연동 경로는 쿠키를 거절하며 고정 조회 10종만 등록한다. operator 사용자여도 관리·실행·감사 경로가 없다 (FR-INT-001 AC-5·AC-8) |
+| THR-060 | 개명한 GHE login을 다른 사람이 가져가, 낡은 `app_user.login`으로 계산한 접근 범위가 다른 사람의 권한을 읽는다 | 권한 혼동 (CR-112) | 발급마다 binding·정본 사용자의 숫자 ID와 GHE `GET /users/{login}`의 현재 숫자 ID를 대조해 다르면 409로 멈춘다. 발급 사이(최대 300초)와 권한 캐시(최대 5분) 동안의 변화는 잡지 못한다 — **남는 위험**으로 기록한다 (FR-INT-001 AC-3) |
 
 ## 11. 오남용 사례
 
@@ -512,3 +525,42 @@ gh 프로세스 환경 변수로 주입
 ### 13.4 저장소별 해제
 
 `FR-SEQ-009` AC-6에 따라 표기 대상 저장소는 설정으로 개별 해제할 수 있다. 해제된 저장소는 **채번(`FR-SEQ-008`)은 계속하되 표기(`FR-SEQ-009`)만 멈춘다** — M 넘버 자체는 조회 API(`API-SEQ-007`)로 여전히 얻을 수 있으므로, 표기를 끈다고 이 기능 전체가 사라지지 않는다. 이 스위치는 `THR-046`이 실제로 일어났을 때(잘못된 값이 계속 쓰이는 것을 막을 때) 가장 먼저 쓰는 대응이며, 저장소 단위이므로 문제가 확인된 저장소만 끄고 나머지 저장소의 표기는 계속된다.
+
+## 14. PIPE 서버 위임 수신 보안 (CR-112 신규)
+
+`FR-INT-001`이 여는 자격 경계다. 설계 결정은 ADR-025, 경로 목록은 API 계약 문서 맨 앞의 CR-112 절, 표는 데이터 모델 3.6절이 소유한다. 기본 꺼짐이며 꺼져 있으면 private 리스너 자체가 없다.
+
+### 14.1 네 번째 자격 경계
+
+사용자 세션(4장), Operations 위임 신원(10.1절), M 넘버 표기 App(13.1절)에 이어 네 번째 경계다. 세 자격이 겹치고 어느 하나도 다른 것을 대신하지 않는다.
+
+| 자격 | 가진 쪽 | 증명하는 것 | 받는 곳 |
+| --- | --- | --- | --- |
+| client 인증서 (mTLS) | PIPE 서버 | 요청한 서버가 정책에 등록된 client다 | private 리스너의 TLS 핸드셰이크. 전달 헤더는 읽지 않는다 |
+| 사용자 assertion (RS256, 60초 이하) | PIPE 서버가 발급·회수 요청마다 서명 | PIPE가 검증한 사용자(`sub`)와 로그인 문맥 | `/auth/exchange`·`/auth/revoke-context`의 본문 |
+| 검색 grant (300초 이하) | PIPE 서버의 접근 제한 캐시 | 위 둘로 발급된 검색 전용 자격 | 조회·`/context`의 `Authorization: Bearer` |
+
+일반 세션 쿠키는 이 경로의 자격이 아니고(쿠키가 있으면 400), grant는 일반 `/api/v1/*`의 자격이 아니다(`authenticateSession`은 grant를 읽지 않는다). assertion에는 역할·저장소·login을 싣지 않는다 — 실어 오면 거절한다.
+
+### 14.2 판정 순서
+
+- **모든 요청:** 서버 correlation ID 생성 → 실제 TLS 소켓의 `authorized`와 peer 인증서로 client 결정 → 쿠키 거절 → client 상태·client/인증서 긴급 회수(DB) 확인. 여기서 떨어지면 라우팅 결과를 알려 주지 않는다.
+- **발급:** 본문 모양(16KiB, JSON만) → 서명·claim → 서명 키 긴급 회수 → `jti` 원자 소비 → 문맥 회수 확인 → binding·정본 사용자·GHE 현재 숫자 ID 대조 → 접근 범위 1회 조회(실패 503, 0개는 성공) → 문맥 행 잠금 아래 grant 저장(binding을 같은 트랜잭션에서 다시 확인).
+- **조회:** grant 해시 조회 → 진단 창(만료 뒤 120초) → 발급 client·인증서 지문 일치 → 긴급 회수·설정에서 뺀 키·client 상태·profile → 문맥 회수 → grant 회수 → binding 상태·버전 → 만료 → 엄격한 query·경로 해석 → 기존 조회 실행 함수.
+
+### 14.3 권한 — 새 엔진을 만들지 않는다
+
+grant에 권한 목록을 복사하지 않는다. 조회마다 기존 `AccessScopeResolver.resolveCached`(5분 캐시, 버전 울타리, 만료 캐시 거부, GHE 실패 시 503)를 부르고, 그 결과와 client 허용 목록의 교집합을 **언제나 명시적 저장소 목록**으로 만들어 기존 필수 필터(ADR-008)에 넘긴다. `org_team` 모드 사용자는 허용 목록 저장소의 가시성 재료로 한 번 더 거르므로 일반 경로보다 넓어질 수 없다. 질의 문자열의 `OR`·브랜치·번호 조작은 이 목록을 넓히지 못한다. 연동 커서는 client와 canonical 사용자를 지문에 결속한다.
+
+### 14.4 비밀과 기록
+
+- 토큰·assertion·쿠키·키·검색어 전문을 응답·로그·이벤트에 남기지 않는다. 연동 오류 메시지는 코드별 고정 문구이고, 어느 검사에서 떨어졌는지는 이벤트의 `detail.reason`에만 남는다.
+- 조회 감사는 기존 `audit_record`가 canonical 사용자로 남긴다(감사 어휘는 바뀌지 않는다). 행위 주체(client)·grant·operation·결과는 `pipe_integration_event`(ENT-INT-005)가 **같은 `correlation_id`로** 남긴다.
+- 지표는 `pipe_integration_request_total{operation, outcome}`과 `pipe_integration_event_failed_total`이다. 사용자·저장소·질의를 라벨로 쓰지 않는다.
+- 운영(`NODE_ENV=production`)에서는 handoff 적합성 시험 공개키가 설정되어 있으면 기동하지 않는다. 비밀키 PEM이 정책의 공개키 자리에 있어도 기동하지 않는다.
+
+### 14.5 남는 위험
+
+- **위임 위험(THR-057).** 서명 키를 가진 PIPE는 승인된 사용자를 대신 주장할 수 있다. binding·허용 목록·긴급 회수가 범위를 좁히지만 이 위험 자체는 받아들인 위험이다.
+- **잔여 노출 창.** 회수 호출이 전송 실패로 닿지 않으면 이미 발급된 grant는 최대 300초 동안 남는다. 개명·권한 변경은 grant 수명과 권한 캐시(최대 5분) 안에서 늦게 반영될 수 있다(THR-060).
+- **미검증 환경.** 사내 CA가 발급한 실제 인증서, 운영 HAProxy의 L4 passthrough, 실제 GHE의 `GET /users/{login}` 응답은 이 CR에서 검증하지 않았다(NOT_RUN). 127.0.0.1의 실제 TLS 핸드셰이크 통합 시험은 통과했지만 회사 경로의 검증이 아니다.

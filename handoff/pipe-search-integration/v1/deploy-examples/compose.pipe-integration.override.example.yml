@@ -1,0 +1,22 @@
+# deploy/single-host/compose.yml 위에 얹는 예시 override (CR-112). 운영에 적용하지 않았다.
+#
+# - private 포트는 PIPE_INTEGRATION_BIND(사내 private 인터페이스)에만 publish한다. 0.0.0.0에 열지 않는다.
+# - 비밀 파일은 읽기 전용으로 마운트한다. 내용은 이 파일에도 .env에도 적지 않는다.
+# - search-api는 compose가 넘기는 변수만 받으므로 PIPE_SEARCH_INTEGRATION_*를 여기서 명시한다.
+#
+# 사용 예: docker compose -f compose.yml -f compose.pipe-integration.override.yml up -d search-api
+
+services:
+  search-api:
+    ports:
+      - '${PIPE_INTEGRATION_BIND:?}:${PIPE_INTEGRATION_PUBLISHED_PORT:-3443}:3443'
+    environment:
+      PIPE_SEARCH_INTEGRATION_ENABLED: ${PIPE_SEARCH_INTEGRATION_ENABLED:-false}
+      PIPE_SEARCH_INTEGRATION_HOST: '0.0.0.0'
+      PIPE_SEARCH_INTEGRATION_PORT: '3443'
+      PIPE_SEARCH_INTEGRATION_TLS_KEY_FILE: /run/secrets/pipe-integration/server.key.pem
+      PIPE_SEARCH_INTEGRATION_TLS_CERT_FILE: /run/secrets/pipe-integration/server.crt.pem
+      PIPE_SEARCH_INTEGRATION_TLS_CLIENT_CA_FILE: /run/secrets/pipe-integration/pipe-client-ca.pem
+      PIPE_SEARCH_INTEGRATION_POLICY_FILE: /run/secrets/pipe-integration/policy.json
+    volumes:
+      - '${PIPE_INTEGRATION_SECRETS_DIR:?}:/run/secrets/pipe-integration:ro'

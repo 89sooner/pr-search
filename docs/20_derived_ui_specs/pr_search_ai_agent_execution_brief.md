@@ -1,6 +1,8 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.13 | 갱신일: 2026-09-21
+
+CR-112 / WP-097: PIPE 연동 수신부의 작업 지시서는 `../40_delivery/pipe-search-handoff-auth/01_PR_SEARCH_API_AUTH_CLAUDE_PROMPT.md`이고, 양쪽 공통 계약은 같은 디렉터리의 `00_SHARED_INTEGRATION_CONTRACT.md`(PSI-1.0 제안)다. 이 저장소가 동결한 계약과 PIPE 담당용 산출물은 저장소 최상위 `handoff/pipe-search-integration/v1/`에 있으며, 제안과 다른 자리는 그 안의 CONTRACT_DIFF가 소유한다. 연동을 고칠 때는 `apps/search-api/src/integrations/pipe/operations.ts`의 operation 목록·OpenAPI·operation map을 함께 바꾸고(계약 시험이 셋을 대조한다), 일반 `authenticateSession`에 연동 자격을 받는 분기를 넣지 않으며, 조회 로직을 연동 쪽에 복제하지 않고 공유 실행 함수를 고친다. 한쪽 저장소만 wire protocol을 바꾸지 않는다. 실행·시험·한계는 원장 WP-097을 읽는다.
 
 CR-109 / WP-095: 사용자 후속 지시서 `../40_delivery/regression_workbench/UIUX/CLAUDE_REGRESSION_UI_BRIEF.md`와 B Atlas를 따른다. FR-REG-001의 첫 fixture UI 수직은 사용자가 구현을 지시한 범위다. 이전 CR-102의 전체 backend 계획을 선행 gate로 확대하지 않는다. actual MDVP/영속 history/통계 모델은 후속. 실행·시험·한계는 원장 WP-095를 읽는다. 기존 Search/ranges·개인 인가·M 의미를 유지하며 mock은 명시적으로 격리한다.
 

@@ -156,6 +156,19 @@ describe('대상 URL', () => {
     expect(buildUpstreamUrl('http://api', ['.', 'search'], '')).toBe('http://api/api/v1/search');
   });
 
+  it('**PIPE 연동 private 경로로 빠져나가지 않는다** (CR-112, PSI-G01)', () => {
+    // 연동 경로는 다른 리스너에만 있지만, 프록시가 만드는 주소도 언제나 `/api/v1` 아래다.
+    for (const segments of [
+      ['..', '..', 'internal', 'integrations', 'pipe', 'v1', 'read', 'search'],
+      ['..%2F..%2Finternal%2Fintegrations'],
+      ['%2e%2e', 'internal'],
+    ]) {
+      const url = new URL(buildUpstreamUrl('http://api', segments, ''));
+      expect(url.pathname.startsWith('/api/v1/')).toBe(true);
+      expect(url.pathname).not.toMatch(/^\/internal/);
+    }
+  });
+
   it('조각 안의 `/`를 인코딩한다', () => {
     // `commits/acme/payments/sha`의 저장소 조각이 경로를 갈라서는 안 된다.
     const url = buildUpstreamUrl('http://api', ['commits', 'acme/payments'], '');

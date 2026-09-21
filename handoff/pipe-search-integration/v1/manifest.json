@@ -1,0 +1,235 @@
+{
+  "schema": "pipe-search-integration-manifest/v1",
+  "protocol_version": "PSI-1.0",
+  "repository": "89sooner/pr-search",
+  "baseline_head": "52cf27f191abca4622bb4c8d408111b1efe538de",
+  "implementation": {
+    "branch": "feature/pipe-integration-auth",
+    "state": "미커밋 작업 트리 — commit·push·PR은 사용자 지시 전이다. 커밋하면 그 SHA를 PIPE_INTEGRATION_HANDOFF.md에 적는다",
+    "change_request": "CR-112",
+    "work_package": "WP-097"
+  },
+  "fixture_only": [
+    "examples/",
+    "conformance/",
+    "deploy-examples/"
+  ],
+  "checksum_algorithm": "SHA-256 over UTF-8 bytes after CRLF→LF normalization",
+  "contract_checksum_inputs": [
+    "pipe-integration-v1.openapi.yaml",
+    "operation-map.json"
+  ],
+  "contract_checksum": "3c7fbe925a8b861b53aeaa38fcb7c86938512808803d8fb001f5aaca5af01a1b",
+  "files": [
+    {
+      "path": "CONTRACT_DIFF.md",
+      "sha256": "4bf9a3c7c72d09c779c161ea187cd10c50a2aa5d78062d189cc5561f42e7ec9e",
+      "role": "guide — 제안 계약 PSI-1.0과 구현의 차이"
+    },
+    {
+      "path": "DEPLOYMENT_AND_ROLLBACK.md",
+      "sha256": "0fd43dea589d6d4160ab328fc4512e5b861dcf279fa0f4ac18fa5aeeb637083d",
+      "role": "guide — 배포·키 교체·회수·롤백"
+    },
+    {
+      "path": "PIPE_INTEGRATION_HANDOFF.md",
+      "sha256": "aabfd6d1523a823abe0fd27050f12aaca768b27134c1355fd4fb44933fc053e3",
+      "role": "guide — 먼저 읽을 문서"
+    },
+    {
+      "path": "TEST_RESULTS.md",
+      "sha256": "ca9743ede6099ba5ff7f650616599857955a31cd1ddfb111e1d845a869282df7",
+      "role": "evidence — 실행한 명령과 수용 시험 결과"
+    },
+    {
+      "path": "conformance/README.md",
+      "sha256": "ab02729c2be33f3f49e73a0675beb9c02b8b0b179b9237b39761e016c27a3070",
+      "role": "fixture — assertion 적합성 벡터와 생성기"
+    },
+    {
+      "path": "conformance/generate-vectors.mjs",
+      "sha256": "5830bb482fa51860f5cee6da21894af9d8fd73aa6711ef7f999c251c2a6de841",
+      "role": "fixture — assertion 적합성 벡터와 생성기"
+    },
+    {
+      "path": "conformance/keys/TEST-ONLY-pipe-conformance-signing.public.pem",
+      "sha256": "e4744b49004761209259cfa0c7082264013954f0e3527f85234828921733e815",
+      "role": "fixture — 공개 시험 키 (운영 금지)"
+    },
+    {
+      "path": "conformance/vectors.json",
+      "sha256": "43c4506dbb0359fd902d4f0954800a6b70e6ed82052074f49c07a04bb55bba32",
+      "role": "fixture — assertion 적합성 벡터와 생성기"
+    },
+    {
+      "path": "deploy-examples/compose.pipe-integration.override.example.yml",
+      "sha256": "5d43ae927f258e198ac4f3a3e010f07aee54e4ce8f2752a071c0a34d7770e769",
+      "role": "example — 배포 설정 예시 (값은 자리표시자)"
+    },
+    {
+      "path": "deploy-examples/haproxy-passthrough.example.cfg",
+      "sha256": "0cc387c859a020ecaed2d561f7a0ab386e0cf837d090ab616dc391cabfb212f4",
+      "role": "example — 배포 설정 예시 (값은 자리표시자)"
+    },
+    {
+      "path": "deploy-examples/pipe-integration-policy.example.json",
+      "sha256": "579a0f682d5ed68c0b01bd702fc22d721ca1f5c8b04dd6a235b0db30f1f6551f",
+      "role": "example — 배포 설정 예시 (값은 자리표시자)"
+    },
+    {
+      "path": "deploy-examples/pipe-integration.env.example",
+      "sha256": "daf0613fdd6d8f1adacbbbeab593f16ccc19723394720c00eb79e1f596660fed",
+      "role": "example — 배포 설정 예시 (값은 자리표시자)"
+    },
+    {
+      "path": "examples/README.md",
+      "sha256": "2e559fbd0d86307322cd74adaa0a10ccd8bd67e63b4aca8c2b680fa6605bc6dc",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/auth.exchange.200.json",
+      "sha256": "eb65bee6197b7f53eae5fde577f72cdc8eaad98897b8ecf8b9f2dc62c8dbfdcf",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/auth.exchange.403.identity-binding-required.json",
+      "sha256": "7827c56c14e00b15c85ab5e702aa62236e0216050af9f712fb64ce8ce5cb6d4f",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/auth.revoke.200.json",
+      "sha256": "8b37f5040528068bdc7fc1bde5e700abdb453fd04e1fe998a18877a4e08fde58",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/auth.revoke_context.200.json",
+      "sha256": "6e339193f7f5c87049bc6cda1852051c42382e840546230d709427fcb8c9c42c",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/context.200.json",
+      "sha256": "785a20fb1726e310bad1741d32aaf40b2d1e7eaf21e74f76611552b0a36c5ca2",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.commit.200.json",
+      "sha256": "9b4e16da7e1ce78043eb175166dbdce543bb0708f9db20aa46339682e0d984ef",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.merge_numbers.resolve.409.no-sequence.json",
+      "sha256": "ab745e922f83d5c91bee0405c60451f5cb88029dc44380e8e2c537c65c49d6d3",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.pull_request.200.json",
+      "sha256": "df5f3e6397218f449a3ffad13b026c7b1e38e947131de4711372594624746ced",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.pull_request.404.not-found.json",
+      "sha256": "ae7c015f28ebcce03eef7d7ab8c7ae5dfdcd3a443cda6265d4de22f86bea961f",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.repositories.200.json",
+      "sha256": "841f03c345a5bdd550f0c2257e802dad228804c87af2607fefafeed1242c4a39",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.repositories.503.permission-unavailable.json",
+      "sha256": "b5064658c02c1de788334210b03d29fd72f00f2e6f5c9a8d773e0f87e0e2b4fc",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.resolve.200.json",
+      "sha256": "ae732356aa4f13215ff2d6758b7802918e64bc5b98abc96202497a901c07432d",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.search.200.json",
+      "sha256": "02c4b46999f0bdc9fe8aa5e6d5082a64f8521a6c3bb3d4598ae73f82906a019c",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.search.400.invalid-request.json",
+      "sha256": "53436f8c96fff2a977d049a2029513faf4f99617adac9d51dc8546192b286c16",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.search.401.grant-expired.json",
+      "sha256": "03a51110969152a3c223001f35e48947d487aba2f7504bb0a491e35265cb9850",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.search.401.grant-revoked.json",
+      "sha256": "4662f2bdc92ec3175c1841d50ca76db5b0580f664904be03f01da554195aa234",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.search.403.context-revoked.json",
+      "sha256": "7db601747a3818b0370e5622e4e2645670dd59a6c562544dfcb8b181357b3609",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.search.503.permission-unavailable.json",
+      "sha256": "56d88b2157ee7f08195ab41d7e5cb8026f77a4e80653dd2b659ba699aca955da",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.source.diff.200.json",
+      "sha256": "4f4bc967d23e6d4090b4aa6255a2f5b092646f16cc0115ed2b31adae17150e3f",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.source.file.200.json",
+      "sha256": "f21cbdd5052b58d45a232b234ebc38322196fc79dcbaa286de935239d7a9d310",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.source.history.200.json",
+      "sha256": "39889e3a532274d909d5f6e0e636ab0ba68826447e51454b15398e683681a23a",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.source.history.200.pull-requests-unavailable.json",
+      "sha256": "b41a12140bd1f1c9309d0a3a28fc6a3ac0c243405d3c999c3df6aea7dcc4e7d4",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.source.tree.200.json",
+      "sha256": "a09b7cf11baeb6e17ebaa958b9fd79c08dd9ab79c1197c7899724d40eaad22bd",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.source.tree.200.truncated.json",
+      "sha256": "c06ab563d7c83b3b8187e98ce756d1e86c0e78e86106aea5bbc25805ea20ae4c",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "operation-map.json",
+      "sha256": "77da06fa6abb73359a20e83672d0074867bbd2608f53c842cdd19edd9dc24158",
+      "role": "contract — operation ↔ 원본 조회·query key·상한·오류 코드 (정본)"
+    },
+    {
+      "path": "pipe-integration-v1.openapi.yaml",
+      "sha256": "7d27be44a127db038493287e97a8e2c9a6e7d8893ffd966289824e8fb9b0ca68",
+      "role": "contract — 경로·요청·응답·오류 스키마 (정본)"
+    },
+    {
+      "path": "tools/README.md",
+      "sha256": "5ef110eb71ccccb5f062114230b5ff0ab1fe13ea3399abcfd967fc2fcd550c58",
+      "role": "tool — 계약 검증 도구 입력"
+    },
+    {
+      "path": "tools/generate-manifest.mjs",
+      "sha256": "5bddb5d5607b4be375cf55361763728088c57c786dfe72bd66d07c04059de11a",
+      "role": "tool — 계약 검증 도구 입력"
+    },
+    {
+      "path": "tools/openapi-3.1-schema-2022-10-07.json",
+      "sha256": "da01ba28852cac0de53893797cb8d1942bc3b05084f526dcc216717dec314ed0",
+      "role": "tool — 계약 검증 도구 입력"
+    }
+  ]
+}

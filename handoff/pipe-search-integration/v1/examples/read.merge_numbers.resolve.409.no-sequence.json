@@ -1,0 +1,32 @@
+{
+  "operation": "read.merge_numbers.resolve",
+  "title": "채번 전 — 원본 봉투의 409",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/merge-numbers/resolve?repository=acme/payments&base_branch=main&pr_number=1",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 409,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000009"
+    },
+    "body": {
+      "error": {
+        "code": "NO_SEQUENCE",
+        "message": "시퀀스 채번을 기다리고 있습니다.",
+        "detail": {
+          "reason": "not_sequenced"
+        }
+      },
+      "correlation_id": "00000000-0000-4000-8000-000000000009"
+    }
+  }
+}

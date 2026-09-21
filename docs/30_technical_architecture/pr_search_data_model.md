@@ -1,6 +1,16 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.27 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.28 | 갱신일: 2026-09-21
+
+CR-112 / FR-INT-001: PIPE 연동의 정본 다섯 표를 마이그레이션 033(추가 전용)으로 더한다. 상세는 3.6절이다. Elasticsearch에는 아무것도 더하지 않는다 — ADR-004의 "PostgreSQL만으로 재구축" 원칙에 영향이 없다.
+
+| 엔티티 ID | 이름 | 소유 / 저장 | 요구사항 |
+| --- | --- | --- | --- |
+| ENT-INT-001 | pipe_integration_identity_binding | 승인된 `(issuer, subject) → app_user` 연결, PostgreSQL | FR-INT-001 AC-3·AC-9 |
+| ENT-INT-002 | pipe_integration_auth_context | PIPE 로그인 문맥과 회수 표식(tombstone), PostgreSQL | FR-INT-001 AC-7 |
+| ENT-INT-003 | pipe_integration_grant | 검색 grant(토큰 SHA-256만), PostgreSQL | FR-INT-001 AC-4 |
+| ENT-INT-004 | pipe_integration_credential_revocation | client·서명 키·인증서 긴급 회수, PostgreSQL | FR-INT-001 AC-7 |
+| ENT-INT-005 | pipe_integration_event | 연동 보안 이벤트(추가 전용), PostgreSQL | FR-INT-001 AC-10 |
 
 CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025의 최종 필드·check·unique·FK·초기화·role grant·checkpoint/epoch·retention/rollback은 [상세 설계](pr_search_wp074_design.md) 6~7·10절이 소유한다. 아래 CR-077 DDL은 기본 다섯 필드만 보여주는 부분 예시이며 단독 구현하지 않는다.
 
@@ -924,6 +934,22 @@ ALTER TABLE gh_capability_snapshot
 **`merge_number`는 `merge_seq`를 대신하지 않는다.** 범위 조회(`FR-SEQ-002`)와 릴리스 포함 판정(`FR-REL-002`)은 계속 `merge_seq`를 쓴다 — M 넘버는 직접 푸시 커밋을 세지 않으므로 브랜치 히스토리와 1:1 대응하지 않고, 그 위에서 구간을 인용하면 실제 히스토리 구간과 어긋난다. 색인의 `merge_number`는 **표시와 해석 전용**이며 구간 스캔의 근거가 아니다.
 
 `content(TEXT)`, `row_count(0~100000)`는 완성 전 null이다. 파일 생성 후 실행 중 job 행과 실행자 버전을 확인하고 **산출물 적재와 completed 전이를 같은 트랜잭션**으로 처리한다. 실패·취소·중단은 완성 파일을 공개하지 않는다. 새로운 영구 보존 기한을 만들지 않고 기존 job 수명을 따른다. application role `prs_app`에 이 표의 명시적 CRUD 권한을 부여한다. 대용량 원본 본문·경로 대신 API-SRCH-006에 열거한 검색 요약 projection을 사용한다.
+
+### 3.6 PIPE 연동 (CR-112, 마이그레이션 033)
+
+`packages/db/migrations/033_pipe_integration.up.sql`이 DDL 정본이다. **추가 전용이다** — 기존 표·열·제약을 바꾸지 않고 `app_user`는 외래 키로만 가리킨다. 이 연동은 사용자를 새로 만들지 않으므로(FR-INT-001 AC-3) `app_user` 행이 없는 사람은 연결할 수 없다. 저장소 모듈은 `packages/db/src/repositories/pipe-integration.ts`(`pipeIntegrationRepo`)다.
+
+| 엔티티 | 핵심 열 | 지키는 규칙 |
+| --- | --- | --- |
+| ENT-INT-001 `pipe_integration_identity_binding` | `binding_id`, `issuer`, `subject`, `prs_user_id`(FK `app_user`), `ghe_host`, `ghe_user_id`, `status`(`pending`·`active`·`disabled`·`conflict`), `binding_version`, `verified_by`·`verified_at`·`verification_reference` | `UNIQUE(issuer, subject)`. 역방향 충돌은 부분 유일 색인 둘로 막는다 — 한 issuer 안에서 한 사용자, 한 `(ghe_host, ghe_user_id)`는 **활성** binding을 하나만 갖는다(계정 병합 금지). 상태가 바뀌면 `binding_version`이 오르고, 그 전에 발급된 grant는 다음 요청에서 거절된다 |
+| ENT-INT-002 `pipe_integration_auth_context` | PK `(issuer, subject, auth_context_id)`, `client_id`, `first_seen_at`, `auth_expires_at`, `revoked_at`, `revoke_correlation_id` | **발급과 회수가 이 행 하나의 잠금으로 직렬화된다.** 발급은 `INSERT … ON CONFLICT DO UPDATE`로 행을 잠근 뒤 `revoked_at`을 다시 읽고, 회수는 같은 행을 갱신한 뒤 그 문맥의 grant를 모두 회수한다. `auth_expires_at`은 본 값 중 가장 늦은 것이며 표식은 적어도 그때까지 남는다 |
+| ENT-INT-003 `pipe_integration_grant` | `grant_id`(UUID), `token_sha256`(UNIQUE, 64 hex), `client_id`, `issuer`·`subject`·`auth_context_id`(FK 문맥), `binding_id`(FK)·`binding_version`, `prs_user_id`, `issued_kid`, `certificate_sha256`, `profile`, `client_policy_version`, `issued_at`, `expires_at`, `revoked_at`·`revoke_reason`, `correlation_id` | 원문 토큰은 어디에도 없다. 수명 상한은 DB 제약으로도 건다(`expires_at <= issued_at + 300초`). `revoked_at`과 `revoke_reason`은 함께 있거나 함께 없다 |
+| ENT-INT-004 `pipe_integration_credential_revocation` | PK `(client_id, credential_kind, credential_id)`, `credential_kind`(`client`·`signing_key`·`certificate`), `reason`, `revoked_by`, `revoked_at` | 설정을 바꿔 재기동하기 전에도 모든 복제본에서 즉시 효력이 있다. 되돌리지 않는다 — 새 키·새 인증서·새 `client_id`로 교체한다 |
+| ENT-INT-005 `pipe_integration_event` | `event_id`, `occurred_at`, `event_type`(12종), `result_code`, `http_status`, `client_id`, `issuer`·`subject`·`auth_context_id`, `prs_user_id`, `grant_id`, `operation`, `target`, `binding_version`, `client_policy_version`, `correlation_id`, `upstream_correlation_id`, `actor`, `detail` | 조회 감사는 기존 `audit_record`가 `user_id` = canonical 사용자로 남기고, 이 표는 **같은 `correlation_id`로** client·grant를 남겨 둘을 잇는다. 토큰·assertion·쿠키·검색어 전문·응답 본문은 담지 않는다. `prs_app`에는 `INSERT`·`SELECT`만 준다(추가 전용) |
+
+**Redis에 두는 것은 하나뿐이다.** assertion 재생 방지 키 `prs:pipe:jti:<SHA-256(issuer·client·purpose·jti)>`를 `SET … EX <남은 수명 + 5초> NX`로 한 번 쓴다. 이 값은 assertion 수명(최대 65초)이 지나면 뜻이 없으므로 휘발해도 된다. 반대로 **회수 표식·binding·grant는 PostgreSQL이 정본이다** — Redis 재시작이나 휘발로 회수 표식이 사라지면 같은 옛 로그인 문맥이 다시 grant를 받기 때문이다(ADR-025).
+
+**보존.** 운영 명령 `pipe-integration purge`(기본 dry-run)가 만료 뒤 보존 기간(기본 24시간)이 지난 grant와, `auth_expires_at`·회수 시각 중 늦은 쪽에서 보존 기간(기본 30일)이 지나고 grant가 남지 않은 문맥을 지운다. 이벤트는 애플리케이션 롤이 지울 수 없고, binding·긴급 회수 행은 지우지 않는다. **운영 롤백은 down 마이그레이션이 아니다** — 기능을 끄고 표는 남긴다(회수 표식과 이벤트를 보존해야 한다).
 
 ## 4. Elasticsearch 매핑
 

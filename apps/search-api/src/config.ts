@@ -8,6 +8,7 @@
 import { resolveSessionReaderConfig, type SessionReaderConfig } from '@prs/authz';
 import { MIN_CURSOR_KEY_LENGTH, ephemeralCursorKey } from './cursor/envelope.js';
 import { resolveGhOpsConfig, type GhOpsConfig } from './gh/config.js';
+import { resolvePipeIntegrationConfig, type PipeIntegrationSetting } from './integrations/pipe/config.js';
 
 export interface SearchApiEnv {
   readonly [key: string]: string | undefined;
@@ -87,6 +88,14 @@ export interface SearchApiConfig {
    * 같은 값이어야 한다: API만 켜면 실행이 영원히 `queued`이고, 실행기만 켜면 요청이 없다.
    */
   readonly ghOps?: GhOpsConfig;
+  /**
+   * PIPE 서버의 사용자 위임 검색 수신부 (CR-112 / ADR-025).
+   *
+   * **기본은 꺼짐이다.** 꺼져 있으면 private 리스너를 띄우지 않고 공개 경로는 한 글자도 바뀌지 않는다.
+   * 켜 놓고 리스너·TLS·신뢰 client·서명 키·저장소 허용 목록 중 하나라도 없으면 기동을 거부한다.
+   * 선택 필드인 이유는 `mergeNumberEnabled`와 같다 — 부재가 곧 꺼짐이고 그것이 기존 계약 그대로다.
+   */
+  readonly pipeIntegration?: PipeIntegrationSetting;
 }
 
 /**
@@ -166,6 +175,7 @@ export function resolveSearchApiConfig(env: SearchApiEnv = process.env): SearchA
     searchCursorKey: resolveSearchCursorKey(env),
     mergeNumberEnabled: resolveMergeNumberEnabled(env),
     ghOps: resolveGhOpsConfig(env),
+    pipeIntegration: resolvePipeIntegrationConfig(env),
   };
 }
 

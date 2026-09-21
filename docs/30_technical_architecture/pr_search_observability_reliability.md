@@ -1,6 +1,8 @@
 # PR Search 관측성 및 신뢰성
 
-> 상태: review | 버전: v0.6 | 갱신일: 2026-09-14
+> 상태: review | 버전: v0.7 | 갱신일: 2026-09-21
+
+CR-112 / FR-INT-001: PIPE 연동은 지표 둘을 더한다 — `pipe_integration_request_total{operation, outcome}`(operation은 고정 14종과 `unknown`, outcome은 `ok`·오류 코드·`HTTP_<상태>`)와 `pipe_integration_event_failed_total`(0이 아니면 연동 요청의 행위 주체가 기록되지 않고 있다). 사용자·저장소·질의는 라벨로 쓰지 않는다. 행위 주체·거절 사유는 `pipe_integration_event`(ENT-INT-005)에, 조회 감사는 기존 `audit_record`에 같은 `correlation_id`로 남는다. 알림 기준값은 운영 입력이 모인 뒤 정한다.
 
 CR-079: [설계](pr_search_wp074_design.md) 6.4·10절과 [측정 가이드](../40_delivery/pr_search_wp074_measurement_guide.md)가 stage timestamps, sample attribution, p50/p95/p99/max·누락·음수·pending·retention을 정의한다. NFR-002 수신→검색 p95 10초/p99 60초를 검증 목표로 비교하되 로컬 수치를 사내 보장으로 승격하지 않는다. assigned_at-committed_at은 별도 보조 지표다. DEV-576의 6시간은 스윕 주기이고 실측 상한이 아니다.
 

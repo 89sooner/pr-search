@@ -342,5 +342,9 @@ export function runtimeCapabilities(parts: RuntimeParts): Readonly<Record<string
     index_status: true,
     /** 등록 검토 요청 대기열. 커서 서명 키가 없으면 서지 않는다. */
     registration_request_queue: hasCursorKey(parts.config.searchCursorKey),
+    /**
+     * PIPE 연동 private 리스너 (CR-112). 켰는데 의존이 모자라면 기동 자체가 거부되므로, 참이면 실제로 선다.
+     */
+    pipe_search_integration: parts.config.pipeIntegration?.enabled === true,
   };
 }

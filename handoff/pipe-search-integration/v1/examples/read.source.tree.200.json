@@ -1,0 +1,38 @@
+{
+  "operation": "read.source.tree",
+  "title": "source 트리",
+  "captured": true,
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/tree",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000012"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "ref": "main",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "path": "",
+      "entries": [
+        {
+          "path": "README.md",
+          "name": "README.md",
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kind": "file",
+          "size": 5
+        }
+      ],
+      "truncated": false
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "operation": "auth.exchange",
+  "title": "미매핑 사용자 — 가짜 사용자·빈 결과를 만들지 않는다",
+  "captured": true,
+  "request": {
+    "method": "POST",
+    "path": "/internal/integrations/pipe/v1/auth/exchange",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "assertion": "<RS256 compact JWS — conformance/vectors.json 참고>"
+    }
+  },
+  "response": {
+    "status": 403,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000002"
+    },
+    "body": {
+      "error": {
+        "code": "IDENTITY_BINDING_REQUIRED",
+        "message": "Search identity is not connected.",
+        "retryable": false
+      },
+      "correlation_id": "00000000-0000-4000-8000-000000000002"
+    }
+  }
+}

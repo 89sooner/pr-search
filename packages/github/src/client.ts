@@ -169,6 +169,12 @@ export interface TeamMemberSummary {
   readonly login: string;
 }
 
+/** GHE 사용자 — login과 **불변** 숫자 ID (CR-112). */
+export interface UserSummary {
+  readonly id: number;
+  readonly login: string;
+}
+
 export interface TagSummary {
   readonly name: string;
   readonly commit: { readonly sha: string };
@@ -621,6 +627,29 @@ export class GitHubClient {
       path: `/orgs/${org}/teams/${encodeURIComponent(teamSlug)}/members`,
       ...options,
     });
+  }
+
+  /**
+   * login의 **현재** 사용자 (CR-112). `GET /users/{login}`.
+   *
+   * PIPE 연동이 발급 때 `app_user.login`이 아직 같은 숫자 ID를 가리키는지 대조한다 — 개명 뒤 옛 이름을
+   * 다른 사람이 가져가면 그 사람의 권한이 조회된다. 없는 login이면 404이고, 그것은 답이므로 `null`로
+   * 옮긴다. 401·403·5xx는 그대로 던진다 (모르는 것과 없는 것을 섞지 않는다).
+   *
+   * @param org 설치 토큰을 고를 조직. 조회 대상과 무관하다.
+   */
+  async getUser(login: string, org: string, options: CallOptions = {}): Promise<UserSummary | null> {
+    try {
+      const user = await this.#transport.get<UserSummary>({
+        org,
+        path: `/users/${encodeURIComponent(login)}`,
+        ...options,
+      });
+      return { id: user.id, login: user.login };
+    } catch (error) {
+      if (error instanceof GitHubApiError && error.kind === 'not_found') return null;
+      throw error;
+    }
   }
 
   /**

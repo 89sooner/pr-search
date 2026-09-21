@@ -23,7 +23,7 @@
 
 > ADR-006 amendment — CR-095 (2026-09-16, 사용자 승인): Conductor 전용 결정은 operator 기존 UI에 한정한다. 일반 검색/읽기 UI는 @radix-ui의 headless primitives, 시맨틱 HTML과 독립 제품 CSS로 전환한다. 신규 토큰은 --r-*로 격리한다. 기존 운영 컴포넌트는 삭제하지 않는다. 근거: template.html 배치와 최신 개발자용 SaaS 표현 요구, NFR-007, FR-SRCH-003·005~008. 신규 API·DB 결정 없음.
 
-> 상태: review | 버전: v0.17 | 갱신일: 2026-09-17
+> 상태: review | 버전: v0.18 | 갱신일: 2026-09-21
 
 CR-079: ADR-023을 아래 목록과 상세 설계에 추가한다. 새 M 번호의 적용과 세부 계약은 [상세 설계](pr_search_wp074_design.md) 전문, 선택 대안은 4절, Agent-Initiated Decisions는 12절이 소유한다. 직접 부재 증거의 가용성 한계(DEV-581)는 accepted 동작인 pending과 별개인 검증 조건이며 해결됐다고 간주하지 않는다.
 
@@ -58,6 +58,31 @@ CR-079: ADR-023을 아래 목록과 상세 설계에 추가한다. 새 M 번호�
 | ADR-021 | 첫 사내 반입은 단일 호스트 프로파일 · 오프라인 번들 · 단방향 다운스트림 계보 | accepted | 2026-09-01 | infrastructure, security, delivery, system |
 | ADR-022 | M 넘버 표기는 Data Plane이 수행하는 유일한 자동 GHE 쓰기 | accepted | 2026-09-10 | security, backend, data |
 | ADR-023 | squash M 번호의 확정 근거·선행 freshness·영속 복구·인용 안전성 | accepted — CR-100 보완(2026-09-17): DEV-581의 부재 증서를 운영자 확인서(ENT-SEQ-008)가 대신한다 | 2026-09-11 / 2026-09-17 | WP-074 상세 설계, data, async, API, UI, delivery, RUNBOOK |
+| ADR-025 | PIPE 위임 검색은 search-api 안의 private mTLS 리스너가 받는다 | accepted — CR-112, 기본 꺼짐. 번호 024는 미병합 로컬 브랜치 `docs/regression-first-slice`가 먼저 쓰고 있어 건너뛰었다 | 2026-09-21 | API, data, security, backend, infrastructure, delivery |
+
+## ADR-025 PIPE 위임 검색은 search-api 안의 private mTLS 리스너가 받는다
+
+### Context
+
+CR-112 / FR-INT-001. PIPE 서버가 사용자 신원을 위임해 pr-search의 조회 10종을 쓰려 한다(공통 계약 PSI-1.0 제안). 지켜야 할 것: 기존 `/api/v1/*`·로그인 쿠키 경계(ADR-011 — `search-api`는 신원을 주장하는 헤더를 읽지 않는다), 권한은 기존 엔진이 정한다는 원칙(ADR-008), ES는 PostgreSQL만으로 재구축된다는 원칙(ADR-004), 새 서비스·새 자격의 최소화, 그리고 **로그인 문맥 회수 표식이 저장소 휘발로 사라지면 안 된다**는 계약 요구. 두 저장소가 같은 wire protocol을 구현해야 하므로 한쪽만 프로토콜을 바꿀 수 없다.
+
+### Decision
+
+1. **배치.** 새 게이트웨이 서비스를 만들지 않고 search-api 프로세스 안에 두 번째 Fastify 인스턴스(private 리스너)를 둔다. 공개 앱에는 연동 경로가 하나도 없다. 같은 PostgreSQL pool·Redis·Elasticsearch·GHE App 자격을 쓰고, 공개 서버와 **같은** `serverDeps` 객체로 조립한다 — 두 번 조립하면 커서 서명·접근 범위 해석기가 언젠가 갈린다.
+2. **전송.** Node(OpenSSL)가 직접 TLS를 끝낸다(`requestCert`·`rejectUnauthorized`, 정책에 등록된 인증서의 SAN 정확 일치 또는 SHA-256 지문). TLS를 끝내는 프록시와 그 전달 헤더는 v1에서 지원하지 않는다 — HAProxy는 L4 passthrough만.
+3. **assertion.** JWS 서명 검증은 `jose@6.2.12`(정확한 판 고정)의 `compactVerify`(RS256 고정)에 맡기고, 헤더·claim 정책은 계약 5.2대로 이 저장소가 직접 판정한다. `jwtVerify`를 쓰지 않는 이유는 `typ` 표기를 정규화하고 배열 `aud`를 받아 계약보다 넓기 때문이다. 서명·X.509 검증을 직접 구현하지 않는다.
+4. **저장.** binding·로그인 문맥(회수 표식)·grant·긴급 회수·이벤트는 PostgreSQL(마이그레이션 033, 추가 전용)에 둔다. Redis에는 `jti` 재생 방지 키 하나만 `SET NX EX`로 둔다. 발급과 문맥 회수는 문맥 행 잠금으로 직렬화한다.
+5. **grant.** `psig1_` + 32바이트 난수이며 SHA-256만 저장한다. 수명은 `min(300초, auth_expires_at, client 인증서 notAfter)`이고 연장·refresh가 없다. 발급에 쓴 인증서 지문에 결속한다(sender binding).
+6. **조회 재사용.** 기존 조회 10종의 route 본문을 실행 함수(`execute*`)로 꺼내 일반 route와 연동 route가 같은 함수를 부른다. 함수가 받는 연동 값은 주체와 접근 범위를 주는 `ReadInvocation` 하나다 — 일반 경로는 세션 인증 뒤 이전과 같은 해석기 호출을, 연동 경로는 사용자 범위와 client 허용 목록의 교집합(명시적 저장소 목록)을 준다. 커서 지문은 선택적 결속 재료로만 넓힌다(없으면 이전과 같다).
+7. **login 대조.** 발급마다 GHE `GET /users/{login}`으로 login의 현재 숫자 ID를 확인한다. `@prs/github`에 읽기 전용 `getUser`를 더하고 프로세스당 동시 8개로 제한한다.
+
+### Alternatives and Consequences
+
+독립 게이트웨이 서비스는 새 프로세스·TLS·DB/Redis 자격을 늘리고, 조회를 내부 HTTP self-call이나 복제로 해야 해서 기각했다. 기존 세션(`prs_session`)을 PIPE에 발급하는 안은 그 자격이 더 넓은 원본 API에서 쓰일 수 있어 기각했다. 회수 표식을 Redis에 두는 안은 휘발·재시작이 옛 문맥을 되살려 기각했다. grant에 권한 목록을 고정하는 안은 권한 회수를 grant 수명 동안 무시하는 새 권한 엔진이 되어 기각했다. 프록시 TLS 종료와 전달 헤더는 헤더 위조 방어를 네트워크 가정에 기대게 하므로 v1에서 제외했고, 필요하면 두 저장소가 함께 계약을 고친다. 대가: search-api가 포트 둘을 듣고, 사내 PKI·HAProxy가 passthrough를 허용해야 하며, 발급마다 GHE 호출이 한 번 늘고, 런타임 의존 `jose` 하나가 더해진다.
+
+### Verification and Rollback
+
+단위·127.0.0.1의 실제 mTLS·PostgreSQL·Redis·Elasticsearch 통합·회귀·적합성 벡터·변이 시험의 결과는 원장 6.103절이 소유한다. 사내 CA·운영 HAProxy·실제 GHE를 거친 검증은 NOT_RUN이다. 롤백은 `PIPE_SEARCH_INTEGRATION_ENABLED=false`로 재기동하는 것이다(리스너가 사라진다). 재기동 전 즉시 차단은 `credentials revoke --kind client`다. 마이그레이션 033은 운영에서 내리지 않는다 — 회수 표식과 이벤트 기록을 보존해야 한다.
 
 ## ADR-023 squash M 번호의 확정 근거와 복구
 

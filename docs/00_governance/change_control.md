@@ -1,5 +1,12 @@
 # 변경 관리 대장
 
+## CR-112 — PIPE 서버의 사용자 위임 검색 수신부 (PSI-1.0) (2026-09-21)
+
+- 유형: scope/security. 새 외부 연동 경계(서버 간 private 경로)를 더한다. 기존 화면·기존 `/api/v1/*` 계약·일반 로그인 쿠키·수집·색인·M 번호/시퀀스 의미는 바꾸지 않는다. 상태: **implementing** — 로컬 구현·검증 완료(원장 6.103, 연쇄 기록은 5장 「CR-112 cascade」), 미커밋. commit·push·PR은 사용자 지시 전이고, 사내 CA·실 GHE·운영 HAProxy 검증 전이다.
+- 요청: 사용자 지시(2026-09-21) — `docs/40_delivery/pipe-search-handoff-auth/01_PR_SEARCH_API_AUTH_CLAUDE_PROMPT.md`를 작업 지시서로, `00_SHARED_INTEGRATION_CONTRACT.md`(PSI-1.0 제안 계약)와 `03_SECURITY_AND_CONTRACT_ACCEPTANCE.md`를 함께 적용한다. 기준 main HEAD `52cf27f`(지시서 사전 조사 HEAD `5f0d7e0`와 `apps/`·`packages/` 차이 없음). commit·push·PR·운영 배포·실제 사용자 매핑·인증서 발급은 이 요청 범위가 아니다.
+- 범위: PIPE Django 서버가 mTLS와 서명 assertion으로 사용자 신원을 위임하면, 승인된 identity binding으로 **기존 pr-search 사용자**에 연결하고, 일반 세션과 호환되지 않는 5분 이하 검색 전용 opaque grant를 발급해, 고정된 조회 10종(저장소·검색·식별자·M 번호·PR 상세·커밋 상세·source 4종)을 **기존 조회 코드 그대로** 쓰게 한다. 권한은 사용자의 기존 접근 범위와 통합 client 저장소 허용 목록의 교집합이며 조회 전에 강제한다.
+- 설계·세부 정본: ADR-025, `FR-INT-001`, API-INT-001~014, ENT-INT-001~005, WP-097. 연쇄 기록은 5장 「CR-112 cascade」에 적는다.
+
 ## CR-111 — Search 화면 좌측 패널·필터 UI 간소화 (공간 재배분) (2026-09-18)
 
 - 유형: UI 구성 정리(레이아웃·상호작용 재배치). SRS 개정 불필요 — CR-103과 같은 근거다. `FR-SRCH-006` AC-1은 지원해야 할 필터 **차원**(저장소·작성자·라벨·PR 상태·머지 시각 범위·PR 번호 범위·M 번호 범위 등)만 정하고, 그 차원을 화면에 몇 개의 입력으로 어떻게 배치할지는 정하지 않는다. 이번 변경은 차원을 하나도 줄이거나 늘리지 않고 입력 UI만 재구성한다. 상태: **implementing**.
@@ -155,6 +162,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| CR-112 | 2026-09-21 | scope/security | 사용자 지시 2026-09-21 — PIPE Search 연동 2단계 서버 작업(PSI-1.0) | **PIPE 서버가 위임한 사용자에게 기존 조회 10종만 연다.** private mTLS 리스너, RS256 assertion, 승인된 identity binding, 검색 전용 opaque grant(≤300초), 사용자 범위 ∩ client 허용 목록. 일반 경로·쿠키·`/api/v1/*` 계약 불변, 기본 꺼짐 | FR-INT-001 · API-INT-001~014 · ENT-INT-001~005 · ADR-025 · WP-097 | SRS · API 계약 · 데이터 모델 · 보안 · ADR · WP · 원장 · handoff | implementing — 로컬 구현·검증 완료(원장 6.103), 미커밋·사용자 지시 대기 |
 | CR-109 | 2026-09-18 | scope/implementation | 사용자 지정 B Atlas 및 UI 지시서 구현 | opt-in Regression 첫 fixture UI 수직, 기존 서버 bisect 재사용, Search 보존 | FR-REG-001, W-024, WP-095 | SRS·PRD·glossary·matrix·UI·FE/infra·delivery·원장 | 로컬 구현·검증 완료 — 원장6.101; 실제 MDVP/릴리스 미검증 |
 | CR-001 | 2026-08-19 | correction | 초기 scaffold | 문서 세트 생성 | - | 전체 | closed |
 | CR-002 | 2026-08-19 | scope | 제품 정의 인터뷰 (Perforce → GitHub Enterprise 전환 문제) | Phase 0~5 문서 전량 작성. 기능 후보 45종 수집, FR 51종·NFR 8종 승인, 화면 13종 정의, ADR 12종 확정, REL 6종·WP 44종 분해 | F-*, FR-*, NFR-*, OD-001~008, W-001~009, A-001~004, C-001~047, FLOW-000~008, API-*, ENT-*, JOB-*, EVT-*, ADR-001~012, REL-001~006, WP-001~044 | 전체 | closed |
@@ -2249,3 +2257,15 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 **검증.** 워크트리(Node 22, 별도 `pnpm install`) 기준: 단위 `pnpm exec vitest run packages/es/src/query-builder.test.ts` 64/64(기존 값 변경 없이 통과 — 이 파일 어떤 단위 시험도 `type`의 리터럴 값을 직접 단언하지 않았다). 통합 `facets.test.ts` 파일 전체 40/40(AC-4 기존 시험 포함, 신규 1건 포함 — 부분군만 돌렸을 때는 8 passed/32 skipped였고 이후 전체 파일로 재확인해 다른 describe에 대한 부수 효과가 없음을 확인했다). 격리 DB `prs_test_cr105`(`prs-cr091-postgres`, 검토 편의를 위해 의도적으로 지우지 않고 남겨 뒀다), 기존 `prs-cr091-elasticsearch`/`-redis` 컨테이너 사용, 공유 `prs_test`는 건드리지 않았다. `pnpm typecheck`·`pnpm lint` 0.
 
 **병합.** main에 직접 커밋·push했다(`5b2a24f`, CR-103~105와 같은 방식, 사용자 지시로 PR 없이). CI(run `35229686599`) 1차 시도는 `apps/ingest-gateway/integration/load.test.ts`의 p95 지연 예산 간헐 초과(338ms/300ms, 이 CR과 무관 — `facets.test.ts`는 그 시도에서도 40/40 통과)로 `integration` 잡만 실패, `gh run rerun`으로 재실행해 verify·integration 모두 success(2026-09-17). closed. 사내 실제 GHE 데이터로의 확인은 `NOT RUN`.
+
+### CR-112 cascade — PIPE 서버의 사용자 위임 검색 수신부 (PSI-1.0)
+
+기준 main `52cf27f`, worktree `/home/roqkf/pr-search-wt/pipe-integration-auth`(브랜치 `feature/pipe-integration-auth`), **미커밋**. scope/security — 새 요구사항 `FR-INT-001` 하나를 더한다. 기존 FR의 요구사항 문장과 수용 기준은 한 글자도 바꾸지 않는다. ID는 `origin/main`과 로컬 브랜치를 실측해 정했다 — CR-112·WP-097·DEV-730~732·ADR-025(ADR-024는 미병합 로컬 브랜치 `docs/regression-first-slice`가 쓰고 있어 건너뜀)·THR-055~060.
+
+- [x] 요구사항: SRS v2.38 → v2.39 — `FR-INT-001`(AC-1~AC-12) 블록과 v2.39 주석. PRD v1.16 → v1.17 — 제품 계약 문단. 용어집 v0.13 → v0.14 — PIPE 연동·연동 client·허용 목록·사용자 assertion·identity binding·로그인 문맥·문맥 회수 표식·검색 grant·긴급 회수·진단 창·private 리스너와 금지 동의어. 매트릭스 v1.12 → v1.13 — 화면 없음(서버 간 API), WP-097, 검증.
+- [x] 파생 UI: 화면이 없어 IA·와이어프레임은 바꾸지 않았다. AI 에이전트 실행 지시서 v0.12 → v0.13에 진입점·수정 규칙 문단.
+- [x] 기술 아키텍처: API 계약 v0.38 → v0.39(맨 앞 CR-112 절, 카탈로그 API-INT-001~014, 안정성 표 — 정확한 스키마의 정본은 handoff OpenAPI·operation map), 데이터 모델 v0.27 → v0.28(ENT-INT-001~005, 3.6절), 보안 v1.13 → v1.14(신뢰 경계 2행, 시크릿 3행, THR-055~060, 14장), ADR v0.17 → v0.18(ADR-025), 인프라 v0.21 → v0.22(운영 문단, 네트워크 2행), 백엔드 v0.13 → v0.14(모듈 문단), 관측성 v0.6 → v0.7(지표 둘).
+- [x] 전달: 작업 패키지 v2.56 → v2.57(WP-097 절, 상태 표), 원장 v6.97 → v6.98(머리 절, 3장 WP-097, 4장 FR-INT-001, 5장 DEV-730·DEV-731·DEV-732, 운영 도달성 표의 API-ADM-007 셀 정정과 연동 리스너 행, 6.103장). `docs/README.md`에 진입점 한 줄.
+- [x] 코드·시험·handoff: 원장 6.103장과 `handoff/pipe-search-integration/v1/TEST_RESULTS.md`.
+- 문서 검증기(`validate_srs_prd_env.py`): 기준선 `52cf27f`은 `--report` 오류 3·경고 8, `--strict` 오류 5·경고 8이다. 사용자가 넣은 입력 지시서 묶음(`docs/40_delivery/pipe-search-handoff-auth/` 00~05)만 더하면 `--report` 오류 3·경고 12, `--strict` 오류 6·경고 12가 된다 — 그 문서들이 `docs/` 밖 handoff 파일 이름을 인용해 생기는 경로 경고와 05_SOURCE_EVIDENCE의 미결 표식 3개(strict 오류 1)다. 입력 문서는 고치지 않았다. **최종 결과는 입력 묶음만 더한 상태와 오류·경고 목록이 두 모드 모두 완전히 같다** — 이 CR의 문서 편집이 만든 새 오류·경고는 0이다(중간에 원장이 백틱 안의 handoff 파일 이름을 적어 경로 경고 하나가 늘었던 것을 상대 경로 링크로 고쳤다). 커버리지는 FR 72·매트릭스 매핑 72(100%)·아키텍처 참조 71(99%)·WP 참조 70(97%), API 68, 엔티티 41, ADR 24, WP 96, CR 112, DEV 723이다.
+- 상태: 로컬 구현·검증 완료, **미커밋**. commit·push·PR·운영 배포는 사용자 지시 전이며, 사내 CA·운영 HAProxy·실제 GHE를 거친 검증과 실제 사용자 매핑은 NOT_RUN이다. 병합되면 그 커밋을 원장 3장·6.103장과 handoff PIPE_INTEGRATION_HANDOFF에 적고 이 CR을 닫는다.

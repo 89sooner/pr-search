@@ -6,6 +6,7 @@
  * 만들기 번거롭고, 그 경로가 바로 접근 통제가 사는 자리다.
  */
 
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { AccessScope } from '@prs/es';
 import { createCursorSigner, CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope.js';
@@ -140,5 +141,24 @@ describe('거절', () => {
       Buffer.from(foreign.split('.')[0] ?? '', 'base64url').toString('utf8'),
     ) as Record<string, unknown>;
     expect(decoded['v']).toBe(1);
+  });
+});
+
+describe('결속 (CR-112) — 추가 전용이다', () => {
+  it('결속이 없으면 지문이 이전 공식과 같다 — 발급된 공개 커서가 그대로 통한다', () => {
+    const golden = createHash('sha256')
+      .update(['org_team', '7', '101,202', 'internal,public', ''].join('|'), 'utf8')
+      .digest('base64url')
+      .slice(0, 22);
+    expect(BASE).toBe(golden);
+  });
+
+  it('결속이 있으면 지문이 달라진다 — 다른 사용자·client의 커서를 받지 않는다', () => {
+    const alice = computeRepositoryFingerprint({ scope: ORG_TEAM, slug: null, binding: 'pipe:pipe-dev:github:1001' });
+    const bob = computeRepositoryFingerprint({ scope: ORG_TEAM, slug: null, binding: 'pipe:pipe-dev:github:1002' });
+    expect(alice).not.toBe(BASE);
+    expect(alice).not.toBe(bob);
+    const raw = encodeRepositoryCursor(POSITION, alice, SIGNER, NOW);
+    expect(() => decodeRepositoryCursor(raw, bob, SIGNER, NOW)).toThrow(CursorQueryMismatchError);
   });
 });

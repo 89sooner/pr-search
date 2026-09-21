@@ -316,6 +316,13 @@ export interface SearchRequest {
    * 자리에 싣는다.
    */
   readonly mergeNumberEpoch: number | null;
+  /**
+   * 커서 지문에 덧붙일 결속 (CR-112).
+   *
+   * **일반 경로는 없다** — 없으면 지문 재료가 이전과 같아 공개 커서가 그대로 통한다. PIPE 연동은
+   * client와 canonical 사용자를 넣는다.
+   */
+  readonly cursorBinding?: string;
 }
 
 /**
@@ -402,6 +409,7 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
     scopeVersion: request.scopeVersion,
     sequenceEpoch: request.sequenceEpoch,
     mergeNumberEpoch: request.mergeNumberEpoch,
+    ...(request.cursorBinding === undefined ? {} : { binding: request.cursorBinding }),
   });
 
   const resumed =
