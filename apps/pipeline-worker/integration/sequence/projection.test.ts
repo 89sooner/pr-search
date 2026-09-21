@@ -288,6 +288,8 @@ afterEach(async () => {
 describe('도착 순서와 무관하게 수렴한다 (FR-SEQ-001 AC-7)', () => {
   it('**시퀀스가 먼저 확정되고 PR 문서가 나중에 도착한다** — 새 push 없이 서수를 받는다', async () => {
     await assign();
+    // 채번이 남긴 durable work는 PR 문서가 오기 **전에** 이미 다 돌았다 — 운영에서 1초 안에 일어나는 일이다.
+    await drainWork();
     const seqOf = await canonical();
     const shaA = origin.squash.get(21) as string;
 
@@ -304,6 +306,7 @@ describe('도착 순서와 무관하게 수렴한다 (FR-SEQ-001 AC-7)', () => {
     // 열린 PR로 먼저 투영된다(머지 커밋 없음). 그 뒤 채번, 그 뒤 머지 상태 갱신.
     await projectPullRequest(25, null, 1_000);
     await assign();
+    await drainWork();
     const seqOf = await canonical();
     const shaB = origin.squash.get(25) as string;
     expect((await prDoc(25))?.['merge_seq']).toBeUndefined();
@@ -320,6 +323,7 @@ describe('도착 순서와 무관하게 수렴한다 (FR-SEQ-001 AC-7)', () => {
     await projectPullRequest(29, shas.get(29) as string, 1_000);
     await projectPullRequest(27, shas.get(27) as string, 1_000);
     await assign();
+    await drainWork();
     await projectPullRequest(21, shas.get(21) as string, 1_000);
     await projectPullRequest(25, shas.get(25) as string, 1_000);
     await drainWork();
@@ -333,6 +337,7 @@ describe('도착 순서와 무관하게 수렴한다 (FR-SEQ-001 AC-7)', () => {
 
   it('**직접 푸시 커밋 문서가 채번 뒤에 생성된다** — 보강이 만든 문서도 서수를 받는다', async () => {
     await assign();
+    await drainWork();
     const seqOf = await canonical();
     // 채번 시점에 커밋 문서는 하나도 없다 — 직접 푸시 커밋은 PR 투영이 만들지 않는다.
     expect(await commitDoc(origin.directSha)).toBeUndefined();
