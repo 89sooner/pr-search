@@ -50,7 +50,8 @@ import { migratedPool, truncate } from '../../../../packages/db/integration/help
 import { enrichCommit, type CommitEnrichDeps } from '../../src/commit-enrich.js';
 import { buildUpsertRequests } from '../../src/documents.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
-import { REINDEX_TYPE, runReindexJob } from '../../src/reindex.js';
+import { REINDEX_TYPE, runReindexJob, verifyBeforeCutover } from '../../src/reindex.js';
+import { verifySequenceProjection } from '../../src/sequence-projection.js';
 import { prepareAndAssignSequence, repairSequence, type SequenceDeps } from '../../src/sequence.js';
 import { runSequenceWorkOnce } from '../../src/sequence-work-runner.js';
 import { recordProjectionSnapshot } from '../../src/snapshot.js';
@@ -464,6 +465,26 @@ describe('재색인이 새 인덱스에 시퀀스를 복원한다 (FR-ING-008 AC
         expectProjected(await prDoc(pr, targetIndex), before.rows.find(([one]) => one === sha)?.[1] as number);
       }
       expect(await canonicalSnapshot()).toEqual(before);
+      // replay가 공간·에폭·건수를 진행 상태에 남겼다 — 전환 울타리의 에폭 대조와 중단 뒤 재개의 근거다.
+      const replay = (job?.progress as { sequence_replay?: { spaces: Record<string, unknown>[] } }).sequence_replay;
+      expect(replay?.spaces).toHaveLength(1);
+      expect(replay?.spaces[0]).toMatchObject({ repository_id: REPOSITORY_ID, base_branch: BRANCH, seq_epoch: 1, head_seq: 6, settled: 4, unsettled: 0 });
+
+      /*
+       * 전환 전 검증은 문서마다 대조한다. target에서 문서 하나를 지우고 하나의 서수를 비우면 —
+       * 비운 것은 다시 비춰 고치고(repaired), 없는 것은 고칠 수 없어 실패 사유로 남는다.
+       */
+      await es.delete({ index: targetIndex, id: `${String(REPOSITORY_ID)}:21`, routing: String(REPOSITORY_ID), refresh: true });
+      await es.update({ index: targetIndex, id: `${String(REPOSITORY_ID)}:25`, routing: String(REPOSITORY_ID), refresh: true, script: { lang: 'painless', source: 'ctx._source.remove("merge_seq");' } });
+      const verified = await verifySequenceProjection({ pool, es }, 'pull_request', targetIndex);
+      expect(verified.ok).toBe(false);
+      expect(verified.repaired).toBe(1);
+      expect(verified.reasons.some((one) => one.includes(`${String(REPOSITORY_ID)}:21`) && one.includes('document_missing'))).toBe(true);
+      expectProjected(await prDoc(25, targetIndex), before.rows.find(([one]) => one === (origin.squash.get(25) as string))?.[1] as number);
+      // 재색인 잡의 전환 전 검증도 같은 사유를 낸다 — 잡 상태 사유와 함께.
+      const gate = await verifyBeforeCutover({ pool, es }, jobId, null);
+      expect(gate.ok).toBe(false);
+      expect(gate.reasons.some((one) => one.includes('시퀀스 투영 불일치'))).toBe(true);
     } finally {
       await restoreAlias(PR_ALIAS, sourceIndex);
     }
@@ -493,6 +514,8 @@ describe('재색인이 새 인덱스에 시퀀스를 복원한다 (FR-ING-008 AC
       expect(job?.state, job?.error ?? '').toBe('completed');
       for (const [sha, seq] of before.rows) expectProjected(await commitDoc(sha, targetIndex), seq);
       expect(await canonicalSnapshot()).toEqual(before);
+      const replay = (job?.progress as { sequence_replay?: { spaces: Record<string, unknown>[] } }).sequence_replay;
+      expect(replay?.spaces[0]).toMatchObject({ repository_id: REPOSITORY_ID, base_branch: BRANCH, seq_epoch: 1, settled: 6, unsettled: 0 });
     } finally {
       await restoreAlias(COMMIT_ALIAS, sourceIndex);
     }
