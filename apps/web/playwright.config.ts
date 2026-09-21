@@ -15,6 +15,16 @@ const PREINSTALLED_CHROME = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
  */
 
 const PORT = Number(process.env['WEB_E2E_PORT'] ?? 3100);
+/**
+ * 기본 `/search` 화면(RepositoryWorkspace)용 두 번째 서버 (CR-113).
+ *
+ * 아래 기본 서버는 `PRS_LEGACY_SEARCH=1`로 떠서 `/search`가 legacy `SearchView`로 분기한다.
+ * 그 위에서 도는 spec은 legacy 화면을 시험하는 것이지 운영 기본 화면이 아니다 — 사내 보고의
+ * 「M number 정렬」은 RepositoryWorkspace의 것이므로, 그 플래그 없이 뜬 서버를 하나 더 두고
+ * `workspace.*.spec.ts`만 그쪽으로 보낸다.
+ */
+const WORKSPACE_PORT = Number(process.env['WEB_E2E_WORKSPACE_PORT'] ?? PORT + 1);
+const WORKSPACE_SPEC = /workspace\..*\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './e2e',
@@ -33,6 +43,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: WORKSPACE_SPEC,
       use: {
         ...devices['Desktop Chrome'],
         /*
@@ -48,6 +59,15 @@ export default defineConfig({
         ...(existsSync(PREINSTALLED_CHROME) ? { launchOptions: { executablePath: PREINSTALLED_CHROME } } : {}),
       },
     },
+    {
+      name: 'workspace',
+      testMatch: WORKSPACE_SPEC,
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL: `http://127.0.0.1:${String(WORKSPACE_PORT)}`,
+        ...(existsSync(PREINSTALLED_CHROME) ? { launchOptions: { executablePath: PREINSTALLED_CHROME } } : {}),
+      },
+    },
   ],
 
   /**
@@ -59,7 +79,8 @@ export default defineConfig({
    * **셸이 실제 브라우저에서 서는가**와 **인증 라우트가 올바른 응답을
    * 내는가**다.
    */
-  webServer: {
+  webServer: [
+    {
     command: `./node_modules/.bin/next start --port ${String(PORT)}`,
     url: `http://127.0.0.1:${String(PORT)}/healthz`,
     reuseExistingServer: process.env['CI'] !== 'true',
@@ -76,5 +97,14 @@ export default defineConfig({
        * 시험을 위해 끄지 않는다 — 끄는 순간 e2e가 운영과 다른 앱을 시험한다.
        */
     },
-  },
+    },
+    {
+      // 운영 기본 화면. `PRS_LEGACY_SEARCH`를 세우지 않는다 — 그것이 이 서버의 존재 이유다.
+      command: `./node_modules/.bin/next start --port ${String(WORKSPACE_PORT)}`,
+      url: `http://127.0.0.1:${String(WORKSPACE_PORT)}/healthz`,
+      reuseExistingServer: process.env['CI'] !== 'true',
+      timeout: 120_000,
+      env: { AUTH_ENABLED: 'false' },
+    },
+  ],
 });
