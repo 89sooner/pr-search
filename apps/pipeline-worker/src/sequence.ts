@@ -18,7 +18,8 @@
  *    head는 언제나 그래프에서 다시 읽는다.
  * 4. **저장된 head에서만 이어 붙인다** (AC-5). 전체 재순회는 백필의 일이다.
  * 5. **PostgreSQL이 먼저, Elasticsearch가 나중이다.** 색인 반영이 실패해도
- *    시퀀스 값은 살아 있고 다음 회차가 다시 비춘다 (ADR-004).
+ *    시퀀스 값은 살아 있고 같은 트랜잭션이 남긴 durable 투영 work가 새 push 없이
+ *    다시 비춘다 (ADR-004, CR-113).
  * 6. **히스토리 재작성을 여기서 고치지 않는다.** 감지해서 공간을 `stale`로
  *    두고 소리 낸다 — 재채번은 WP-022다. 조용히 다시 번호를 매기면 과거에
  *    인용된 범위가 말없이 다른 것을 가리키게 되는데, 그것이 조사 도구가 할 수
@@ -61,12 +62,13 @@ import {
   type RepositoryRow,
   withReindexWrite,
 } from '@prs/db';
-import { applyEpochBump, applySequenceToDocuments, findPullRequestByMergeCommit } from '@prs/es';
+import { applyEpochBump, findPullRequestByMergeCommit } from '@prs/es';
 import { CommitGraphError, type CommitGraph, type RepoRef } from '@prs/github';
 import { randomUUID } from 'node:crypto';
 import type { Client } from '@elastic/elasticsearch';
 import { isSequenceBranch, numberCommits, type AssignOutcome } from './sequence-plan.js';
 import { FRESHNESS_DEFER_MS, withFreshness, type FreshnessDeps } from './sequence-freshness.js';
+import { projectSequenceRange, spaceWorkRequest, type ProjectionDeps } from './sequence-projection.js';
 import type { WorkerMetrics } from './metrics.js';
 
 export const SEQUENCE_STAGE = 'sequence' as const;
@@ -243,6 +245,18 @@ export async function assignSequence(
      * push가 그 PR 정보를 실어 왔을 수 있다.
      */
     await requestMergeNumberReconcile(client, repositoryId, baseBranch, space.seq_epoch, 'sequence_assigned', correlationId);
+    /*
+     * 색인 투영 의도도 **같은 트랜잭션**이다 (CR-113 / FR-SEQ-001 AC-7). 아래 인라인 투영이
+     * 실패하거나 PR·커밋 문서가 아직 없어도 durable 러너가 정본을 다시 읽어 비춘다 — 새
+     * push를 기다리지 않는다. 새 커밋이 0건이면 남기지 않는다: 늦은 문서는 스냅숏·보강
+     * 훅이 문서 단위로 요청한다.
+     */
+    if (applied.length > 0) {
+      await sequenceWorkRepo.requestWork(client, spaceWorkRequest({ repositoryId, baseBranch, seqEpoch: space.seq_epoch }, 'tail', {
+        trigger_kind: 'sequence_assigned',
+        ...(correlationId === '' ? {} : { correlation_id: correlationId }),
+      }));
+    }
     await client.query('COMMIT');
 
     committed = {
@@ -266,30 +280,39 @@ export async function assignSequence(
 
   if (applied.length > 0) {
     try {
-      // 재색인 울타리 안에서 쓴다 (WP-035, DEV-296·308).
-      await withReindexWrite(deps.pool, (targets) =>
-        applySequenceToDocuments(
-          deps.es,
-          {
-            repositoryId,
-            baseBranch,
-            seqEpoch: epoch,
-            sequenceSpace: sequenceSpaceLabel(`${repository.owner}/${repository.name}`, baseBranch),
-            assignments: applied.map((entry) => ({ commitSha: entry.sha, mergeSeq: entry.mergeSeq })),
-          },
-          targets,
-        ),
-      );
+      /*
+       * 인라인으로 한 번 비춘다 — 정상 경로에서는 여기서 끝난다. 문서가 아직 없거나
+       * (늦은 PR·직접 푸시 커밋) 일시 실패면 요약에 `pending`으로 남고, 트랜잭션이 남긴
+       * `tail` work가 durable하게 잇는다 (CR-113). 재색인 울타리는 투영기가 스스로 잡는다.
+       */
+      const summary = await projectSequenceRange(projectionDepsOf(deps), repository, {
+        baseBranch,
+        seqEpoch: epoch,
+        fromExclusive: outcome.fromSeq,
+        toInclusive: outcome.toSeq,
+      });
+      if (summary.pending > 0 || summary.staleEpoch > 0) {
+        log({
+          level: 'info',
+          message: '채번 직후 투영에서 일부 문서가 아직 준비되지 않았다 — durable 투영 work가 잇는다',
+          repository_id: repositoryId,
+          base_branch: baseBranch,
+          settled: summary.settled,
+          pending: summary.pending,
+          skipped: summary.skipped,
+          stale_epoch: summary.staleEpoch,
+        });
+      }
     } catch (error) {
       /*
        * **던지지 않는다.** 시퀀스는 PostgreSQL에 이미 커밋됐고 그것이 정본이다.
        * 여기서 던지면 이벤트가 재전달되어 같은 채번을 다시 돌리는데, 채번은
-       * 멱등이라 결과가 같고 색인만 다시 시도된다 — 그럴 바에는 소리를 내고
-       * 다음 회차에 맡긴다. 색인은 다음 push나 재색인이 메운다.
+       * 멱등이라 결과가 같고 색인만 다시 시도된다 — 소리를 내고 durable work에
+       * 맡긴다. 새 push나 재색인을 기다리지 않는다 (CR-113).
        */
       log({
         level: 'error',
-        message: '시퀀스를 색인에 반영하지 못했다 — PostgreSQL 값은 살아 있다',
+        message: '시퀀스를 색인에 반영하지 못했다 — PostgreSQL 값은 살아 있고 durable 투영 work가 다시 비춘다',
         repository_id: repositoryId,
         base_branch: baseBranch,
         reason: 'sequence_index_failed',
@@ -469,6 +492,11 @@ export async function reassignSequence(
     await sequenceSpaceRepo.advanceHead(client, repositoryId, baseBranch, newHead, toSeq);
     // 새 에폭의 M 재채번 의도. 이전 에폭 번호는 그 행에 남고 새 근거로 다시 센다 (ADR-007 규칙 5).
     await requestMergeNumberReconcile(client, repositoryId, baseBranch, newEpoch, 'sequence_reassigned', correlationId);
+    // 새 에폭 전체의 색인 투영 의도 (CR-113). 구 에폭 work는 에폭이 키에 있어 이것을 덮지 못한다.
+    await sequenceWorkRepo.requestWork(client, spaceWorkRequest({ repositoryId, baseBranch, seqEpoch: newEpoch }, 'full', {
+      trigger_kind: 'sequence_reassigned',
+      ...(correlationId === '' ? {} : { correlation_id: correlationId }),
+    }));
     await client.query('COMMIT');
 
     committed = {
@@ -521,28 +549,24 @@ export async function reassignSequence(
      * 둘로 나누면 그 사이에 전환이 끼어들어 새 인덱스가 에폭만 받고 서수를
      * 못 받는 반쪽 상태가 될 수 있다.
      */
-    await withReindexWrite(deps.pool, async (targets) => {
-      await applyEpochBump(
-        deps.es,
-        { repositoryId, baseBranch, newEpoch: outcome.newEpoch, sequenceSpace: label },
-        targets,
-      );
-      await applySequenceToDocuments(
-        deps.es,
-        {
-          repositoryId,
-          baseBranch,
-          seqEpoch: outcome.newEpoch,
-          sequenceSpace: label,
-          assignments: applied.map((entry) => ({ commitSha: entry.sha, mergeSeq: entry.mergeSeq })),
-        },
-        targets,
-      );
+    const bump = await withReindexWrite(deps.pool, (targets) =>
+      applyEpochBump(deps.es, { repositoryId, baseBranch, newEpoch: outcome.newEpoch, sequenceSpace: label }, targets),
+    );
+    if (!bump.complete) {
+      log({ level: 'warn', message: '에폭 상향 갱신에 충돌·실패가 있었다 — durable full sweep이 문서마다 다시 확인한다', repository_id: repositoryId, base_branch: baseBranch, tallies: bump.tallies });
+    }
+    // 분기 이후 구간을 인라인으로 비춘다. 나머지와 실패분은 트랜잭션이 남긴 full sweep이 맡는다 (CR-113).
+    await projectSequenceRange(projectionDepsOf(deps), repository, {
+      baseBranch,
+      seqEpoch: outcome.newEpoch,
+      fromExclusive: outcome.divergedAtSeq - 1,
+      toInclusive: outcome.toSeq,
     });
+    void applied;
   } catch (error) {
     log({
       level: 'error',
-      message: '재채번 결과를 색인에 반영하지 못했다 — PostgreSQL 값은 살아 있다',
+      message: '재채번 결과를 색인에 반영하지 못했다 — PostgreSQL 값은 살아 있고 durable full sweep이 다시 비춘다',
       repository_id: repositoryId,
       base_branch: baseBranch,
       reason: 'sequence_index_failed',
@@ -643,6 +667,16 @@ async function findPullRequestNumber(
      */
     return null;
   }
+}
+
+/** 투영 서비스가 쓰는 의존성 — 채번과 같은 풀·클라이언트·로그다. */
+export function projectionDepsOf(deps: SequenceDeps): ProjectionDeps {
+  return {
+    pool: deps.pool,
+    es: deps.es,
+    ...(deps.log === undefined ? {} : { log: deps.log }),
+    ...(deps.now === undefined ? {} : { now: deps.now }),
+  };
 }
 
 function graphReason(error: unknown): string {
@@ -982,8 +1016,15 @@ export async function refreshSequenceSpaceStates(deps: SequenceDeps): Promise<vo
 
 /** 수동 정합성 복구 결과 (JOB-SEQ-002 수동 경로 / CR-034, DEV-182). */
 export type RepairOutcome =
-  /** 실행 시점에 이미 일치했다. 안전한 무동작 완료다. */
-  | { readonly kind: 'consistent'; readonly checked: number }
+  /**
+   * 실행 시점에 이미 일치했다. DB에는 할 일이 없지만 **색인은 별개다** (CR-113) — durable
+   * full sweep을 예약했고 그 work의 키·세대를 돌려준다. 에폭은 올리지 않았다.
+   */
+  | {
+      readonly kind: 'consistent';
+      readonly checked: number;
+      readonly projection: { readonly work_key: string; readonly requested_generation: number; readonly seq_epoch: number };
+    }
   | {
       readonly kind: 'repaired';
       readonly oldEpoch: number;
@@ -1062,8 +1103,21 @@ export async function repairSequence(
 
   const mismatch = firstSequenceMismatch(stored, actual);
   if (mismatch === null) {
-    // 큐에서 기다리는 사이 다른 경로가 이미 고쳤거나 애초에 멀쩡했다.
-    return { kind: 'consistent', checked: stored.length };
+    /*
+     * 큐에서 기다리는 사이 다른 경로가 이미 고쳤거나 애초에 멀쩡했다. **DB가 일관적이라는
+     * 것이 색인이 일관적이라는 뜻은 아니다** (CR-113, 사내 pilot.17 보고) — 재채번 없이,
+     * 에폭을 올리지 않고, 현재 에폭 전체를 색인에 다시 비추는 durable work를 남긴다.
+     * 예약과 완료는 다른 사실이다: 호출 측(러너)이 work를 기다려 따로 보고한다.
+     */
+    const work = await sequenceWorkRepo.requestWork(deps.pool, spaceWorkRequest({ repositoryId, baseBranch, seqEpoch: space.seq_epoch }, 'full', {
+      trigger_kind: 'sequence_repair_consistent',
+      ...(correlationId === '' ? {} : { correlation_id: correlationId }),
+    }));
+    return {
+      kind: 'consistent',
+      checked: stored.length,
+      projection: { work_key: work.work_key, requested_generation: work.requested_generation, seq_epoch: space.seq_epoch },
+    };
   }
 
   const divergedAtSeq = mismatch.mergeSeq;
@@ -1235,6 +1289,11 @@ export async function repairSequence(
 
     await sequenceSpaceRepo.advanceHead(client, repositoryId, baseBranch, head, toSeq);
     await requestMergeNumberReconcile(client, repositoryId, baseBranch, newEpoch, 'sequence_reassigned', correlationId);
+    // 새 에폭 전체의 색인 투영 의도 (CR-113).
+    await sequenceWorkRepo.requestWork(client, spaceWorkRequest({ repositoryId, baseBranch, seqEpoch: newEpoch }, 'full', {
+      trigger_kind: 'sequence_repaired',
+      ...(correlationId === '' ? {} : { correlation_id: correlationId }),
+    }));
     await client.query('COMMIT');
 
     committed = {
@@ -1276,29 +1335,24 @@ export async function repairSequence(
      * 둘로 나누면 그 사이에 전환이 끼어들어 새 인덱스가 에폭만 받고 서수를
      * 못 받는 반쪽 상태가 될 수 있다.
      */
-    await withReindexWrite(deps.pool, async (targets) => {
-      await applyEpochBump(
-        deps.es,
-        { repositoryId, baseBranch, newEpoch: outcome.newEpoch, sequenceSpace: label },
-        targets,
-      );
-      await applySequenceToDocuments(
-        deps.es,
-        {
-          repositoryId,
-          baseBranch,
-          seqEpoch: outcome.newEpoch,
-          sequenceSpace: label,
-          assignments: applied.map((entry) => ({ commitSha: entry.sha, mergeSeq: entry.mergeSeq })),
-        },
-        targets,
-      );
+    const bump = await withReindexWrite(deps.pool, (targets) =>
+      applyEpochBump(deps.es, { repositoryId, baseBranch, newEpoch: outcome.newEpoch, sequenceSpace: label }, targets),
+    );
+    if (!bump.complete) {
+      log({ level: 'warn', message: '에폭 상향 갱신에 충돌·실패가 있었다 — durable full sweep이 문서마다 다시 확인한다', repository_id: repositoryId, base_branch: baseBranch, tallies: bump.tallies });
+    }
+    await projectSequenceRange(projectionDepsOf(deps), repository, {
+      baseBranch,
+      seqEpoch: outcome.newEpoch,
+      fromExclusive: outcome.divergedAtSeq - 1,
+      toInclusive: outcome.toSeq,
     });
+    void applied;
   } catch (error) {
     deps.metrics.sequenceIndexFailed.inc();
     log({
       level: 'error',
-      message: '복구는 끝났으나 색인 반영에 실패했다 — PostgreSQL 값이 정본이다',
+      message: '복구는 끝났으나 색인 반영에 실패했다 — PostgreSQL 값이 정본이고 durable full sweep이 다시 비춘다',
       repository_id: repositoryId,
       base_branch: baseBranch,
       reason: String(error).slice(0, 200),

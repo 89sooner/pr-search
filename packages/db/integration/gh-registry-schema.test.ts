@@ -101,15 +101,15 @@ describe('029 왕복', () => {
   it('028 → 029 → 028 → 029 — 내려가면 두 표와 함수가 사라지고 028의 표는 남는다', async () => {
     expect(await appliedVersions(pool)).toContain('029');
     // 030(운영 정책, CR-090)이 029 위에 있고 029의 표를 참조한다 — 둘을 내린다. 목록으로 단언하므로 031이 생기면 즉시 깨진다.
-    const reverted = await migrateDown(pool, 5);
-    expect(reverted).toEqual(['033', '032', '031', '030', '029']);
+    const reverted = await migrateDown(pool, 6);
+    expect(reverted).toEqual(['034', '033', '032', '031', '030', '029']);
     const gone = await pool.query<{ relname: string }>(`SELECT relname FROM pg_class WHERE relname IN ('gh_capability_snapshot', 'gh_capability_verification')`);
     expect(gone.rows).toEqual([]);
     const functions = await pool.query<{ proname: string }>(`SELECT proname FROM pg_proc WHERE proname IN ('gh_capability_verification_immutable', 'gh_capability_snapshot_guard')`);
     expect(functions.rows).toEqual([]);
     const kept = await pool.query<{ relname: string }>(`SELECT relname FROM pg_class WHERE relname = 'gh_execution'`);
     expect(kept.rows).toHaveLength(1);
-    expect(await migrateUp(pool)).toEqual(['029', '030', '031', '032', '033']);
+    expect(await migrateUp(pool)).toEqual(['029', '030', '031', '032', '033', '034']);
     // 다시 올린 뒤 재실행은 멱등이다 — 적용할 것이 없다.
     expect(await migrateUp(pool)).toEqual([]);
   });
