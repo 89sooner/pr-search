@@ -1,0 +1,22 @@
+{
+  "artifact_type": "stage1_instruction_package_not_implementation",
+  "version": "1.0",
+  "date": "2026-09-20",
+  "files": [
+    {
+      "name": "PR_SEARCH_TO_PIPE_STAGE1_CLAUDE_PROMPT.md",
+      "bytes": 77342,
+      "sha256": "c769e7d08cc0d7c14c7cde3d9a3efd253075990320aa9f32e3ee75dc80131a10"
+    },
+    {
+      "name": "README.md",
+      "bytes": 2943,
+      "sha256": "f59ca4eec8eceac02fe9b21711d666cb195e3d55fcecaa1b100d664145ccb8bf"
+    },
+    {
+      "name": "START_STAGE1.txt",
+      "bytes": 1303,
+      "sha256": "ecce33aefa0a34d6e59102b5369a5ace683896eefd51f1adffcd1ff35eb5954b"
+    }
+  ]
+}

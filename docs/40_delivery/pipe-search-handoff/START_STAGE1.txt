@@ -1,0 +1,9 @@
+첨부한 PR_SEARCH_TO_PIPE_STAGE1_CLAUDE_PROMPT.md를 이번 작업 지시서로 사용하라.
+
+너는 pr-search 담당이다. 이번에는 pr-search 운영 코드를 수정하거나 PIPE 화면을 구현하지 말고, 현재 기본 Search 코드·계약·테스트를 분석하여 PIPE 담당 Claude에게 전달할 자체 완결형 포팅 명세 묶음을 작성하라.
+
+핵심 산출물은 PIPE_SEARCH_IMPLEMENTATION_PROMPT.md다. PIPE 담당 Claude는 pr-search 저장소나 이전 대화에 접근할 수 없다고 가정하고, 실제 요청·응답·검색 규칙·상태·와이어프레임·컴포넌트 매핑·테스트 기대값을 명시하라. 필요한 참조 로직과 합성 fixture도 같은 묶음에 포함하라.
+
+App Shell은 제외한다. Search 내부의 저장소/파일 패널, 네 탭, 필터, 표, 행 상세, history/diff/time-lapse는 포함한다. MUI 7.1 중심의 PIPE 스택과 고품질 디자인 검수 기준을 따른다. API 접근·인증·검색 권한 연동은 이번에 구현하지 않는다.
+
+먼저 저장소 지침·작업 트리·기준 HEAD를 확인하고 문서의 순서대로 진행하라. 실제로 확인하지 않은 소스·버전·테스트 결과를 확정하지 말고, 생성한 인수인계 파일과 남은 확인 항목을 보고하라.

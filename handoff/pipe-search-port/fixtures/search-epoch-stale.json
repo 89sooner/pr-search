@@ -1,0 +1,16 @@
+{
+  "query": "kind:pull_request repo:\"demo/modem\" seq:42..80",
+  "parsed": {
+    "kind": "and",
+    "nodes": []
+  },
+  "sequence_context": {
+    "repository": "demo/modem",
+    "base_branch": "main",
+    "seq_epoch": 4
+  },
+  "requested_seq_epoch": 3,
+  "epoch_stale": true,
+  "next_cursor": null,
+  "correlation_id": "00000000-0000-4000-8000-00000000f003"
+}

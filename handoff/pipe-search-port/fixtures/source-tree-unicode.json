@@ -1,0 +1,23 @@
+{
+  "repository": "demo/modem",
+  "ref": "release/2026-Q1",
+  "revision": "a6ead519a6ead519a6ead519a6ead519a6ead519",
+  "path": "src/phy",
+  "entries": [
+    {
+      "path": "src/phy/한글 파일 이름.c",
+      "name": "한글 파일 이름.c",
+      "sha": "efd6ea51efd6ea51efd6ea51efd6ea51efd6ea51",
+      "kind": "file",
+      "size": 4096
+    },
+    {
+      "path": "src/phy/very_long_file_name_that_should_not_break_the_layout_even_at_narrow_widths.c",
+      "name": "very_long_file_name_that_should_not_break_the_layout_even_at_narrow_widths.c",
+      "sha": "6f357eef6f357eef6f357eef6f357eef6f357eef",
+      "kind": "file",
+      "size": 8192
+    }
+  ],
+  "truncated": false
+}

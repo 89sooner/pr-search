@@ -1,0 +1,29 @@
+{
+  "repository": "demo/modem",
+  "base": "f519f70af519f70af519f70af519f70af519f70a",
+  "head": "0f8d81010f8d81010f8d81010f8d81010f8d8101",
+  "commit": {
+    "sha": "0f8d81010f8d81010f8d81010f8d81010f8d8101",
+    "parents": [
+      "7156075071560750715607507156075071560750"
+    ],
+    "message": "RF calibration update (amended)\n\nbody",
+    "author": "dev-d",
+    "date": "2026-09-26T08:00:00.000Z",
+    "pull_request_numbers": [
+      1842
+    ]
+  },
+  "files": [
+    {
+      "path": "tests/phy/rf_calibration_test.c",
+      "previous_path": null,
+      "status": "added",
+      "additions": 40,
+      "deletions": 0
+    }
+  ],
+  "next_page": null,
+  "truncated": false,
+  "pull_requests": []
+}

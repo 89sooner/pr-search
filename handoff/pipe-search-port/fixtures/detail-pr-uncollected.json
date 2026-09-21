@@ -1,0 +1,9 @@
+{
+  "body": "변경 파일 목록을 아직 수집하지 않은 PR이다.",
+  "base_branch": "main",
+  "head_branch": "feature/late",
+  "merge_commit_sha": null,
+  "source_commits": [],
+  "source_commits_truncated": false,
+  "source_commits_total": 0
+}

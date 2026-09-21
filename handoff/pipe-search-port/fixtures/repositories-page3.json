@@ -1,0 +1,196 @@
+{
+  "items": [
+    {
+      "repository_id": 201,
+      "repository": "demo/late-repo",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        },
+        {
+          "base_branch": "develop",
+          "last_sequence": 113,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 202,
+      "repository": "demo/tail-0",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 203,
+      "repository": "demo/tail-1",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 204,
+      "repository": "demo/tail-2",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 205,
+      "repository": "demo/tail-3",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 206,
+      "repository": "demo/tail-4",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 207,
+      "repository": "demo/tail-5",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 208,
+      "repository": "demo/tail-6",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    }
+  ],
+  "next_cursor": null
+}

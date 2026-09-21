@@ -1,0 +1,42 @@
+{
+  "repository": "demo/modem",
+  "base": "f519f70af519f70af519f70af519f70af519f70a",
+  "head": "7156075071560750715607507156075071560750",
+  "commit": {
+    "sha": "7156075071560750715607507156075071560750",
+    "parents": [
+      "d31e8d9fd31e8d9fd31e8d9fd31e8d9fd31e8d9f"
+    ],
+    "message": "RF calibration update\n\nbody",
+    "author": "dev-c",
+    "date": "2026-09-25T08:00:00.000Z",
+    "pull_request_numbers": [
+      1842
+    ]
+  },
+  "files": [
+    {
+      "path": "src/phy/rf_calibration.c",
+      "previous_path": null,
+      "status": "modified",
+      "additions": 12,
+      "deletions": 3
+    },
+    {
+      "path": "src/phy/rf_config.h",
+      "previous_path": "src/phy/rf_cfg.h",
+      "status": "renamed",
+      "additions": 2,
+      "deletions": 0
+    }
+  ],
+  "next_page": 2,
+  "truncated": false,
+  "pull_requests": [
+    {
+      "number": 1842,
+      "title": "RF calibration update",
+      "body": "합성 PR 본문이다."
+    }
+  ]
+}

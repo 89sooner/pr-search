@@ -1,0 +1,22 @@
+{
+  "body": "합성 PR 본문이다.\n\n- 상향 링크 전력 제어의 경로 손실 추정을 바로잡는다.\n- 회귀 시험을 함께 추가한다.\n\n실제 서비스에서는 서버가 준 문자열을 평문으로 그린다.",
+  "base_branch": "main",
+  "head_branch": "feature/rf-fix",
+  "merge_commit_sha": "7156075071560750715607507156075071560750",
+  "source_commits": [
+    {
+      "commit_sha": "d31e8d9fd31e8d9fd31e8d9fd31e8d9fd31e8d9f"
+    },
+    {
+      "commit_sha": "34e713ee34e713ee34e713ee34e713ee34e713ee"
+    }
+  ],
+  "source_commits_truncated": false,
+  "source_commits_total": 2,
+  "changed_paths": [
+    "src/phy/rf_calibration.c",
+    "src/phy/rf_config.h",
+    "tests/phy/rf_calibration_test.c"
+  ],
+  "files_truncated": false
+}

@@ -1,0 +1,28 @@
+{
+  "input": "abc1234",
+  "detected_kind": "commit",
+  "candidates": [
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 11,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "cc623a9bcc623a9bcc623a9bcc623a9bcc623a9b"
+    },
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 12,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "commit_sha": "6a99b44c6a99b44c6a99b44c6a99b44c6a99b44c"
+    }
+  ],
+  "truncated": false,
+  "correlation_id": "00000000-0000-4000-8000-00000000f013"
+}

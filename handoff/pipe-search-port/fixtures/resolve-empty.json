@@ -1,0 +1,9 @@
+{
+  "input": "0123456789abcdef0123456789abcdef01234567",
+  "detected_kind": "commit",
+  "candidates": [],
+  "truncated": false,
+  "reason_code": "NOT_INGESTED",
+  "hint": "이 문자열과 일치하는 커밋·PR이 없습니다. 저장소가 수집 대상인지 확인하세요.",
+  "correlation_id": "00000000-0000-4000-8000-00000000f017"
+}

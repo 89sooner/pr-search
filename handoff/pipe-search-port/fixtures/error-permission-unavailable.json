@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "PERMISSION_UNAVAILABLE",
+    "message": "접근 권한을 확인할 수 없어 조회를 거부한다"
+  },
+  "correlation_id": "00000000-0000-4000-8000-00000000e003"
+}

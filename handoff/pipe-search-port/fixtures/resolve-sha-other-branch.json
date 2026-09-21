@@ -1,0 +1,18 @@
+{
+  "input": "bada550",
+  "detected_kind": "commit",
+  "candidates": [
+    {
+      "kind": "commit",
+      "repository": "demo/modem",
+      "display_name": null,
+      "url": null,
+      "merge_seq": 55,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@develop",
+      "commit_sha": "fdeb2507fdeb2507fdeb2507fdeb2507fdeb2507"
+    }
+  ],
+  "truncated": false,
+  "correlation_id": "00000000-0000-4000-8000-00000000f015"
+}

@@ -1,0 +1,20 @@
+{
+  "input": "demo/modem#1842",
+  "detected_kind": "pull_request",
+  "candidates": [
+    {
+      "kind": "pull_request",
+      "repository": "demo/modem",
+      "display_name": "RF calibration update (21)",
+      "url": "https://ghe.example.internal/demo/modem/pull/1842",
+      "merge_seq": 21,
+      "seq_epoch": 3,
+      "sequence_space": "demo/modem@main",
+      "pr_number": 1842,
+      "state": "merged",
+      "author": "dev-a"
+    }
+  ],
+  "truncated": false,
+  "correlation_id": "00000000-0000-4000-8000-00000000f010"
+}

@@ -1,0 +1,54 @@
+{
+  "repository": "demo/modem",
+  "revision": "08b35b6808b35b6808b35b6808b35b6808b35b68",
+  "path": "src/phy/rf_calibration.c",
+  "commits": [
+    {
+      "sha": "7156075071560750715607507156075071560750",
+      "parents": [
+        "d31e8d9fd31e8d9fd31e8d9fd31e8d9fd31e8d9f"
+      ],
+      "message": "A · 연결된 PR이 있다",
+      "author": "dev-c",
+      "date": "2026-09-25T08:00:00.000Z",
+      "pull_request_numbers": [
+        1842
+      ]
+    },
+    {
+      "sha": "d31e8d9fd31e8d9fd31e8d9fd31e8d9fd31e8d9f",
+      "parents": [
+        "34e713ee34e713ee34e713ee34e713ee34e713ee"
+      ],
+      "message": "B · 연결 없음이 확정되었다",
+      "author": "dev-b",
+      "date": "2026-09-24T08:00:00.000Z",
+      "pull_request_numbers": []
+    },
+    {
+      "sha": "34e713ee34e713ee34e713ee34e713ee34e713ee",
+      "parents": [
+        "96af9a3d96af9a3d96af9a3d96af9a3d96af9a3d"
+      ],
+      "message": "C · 아직 모른다",
+      "author": "dev-a",
+      "date": "2026-09-23T08:00:00.000Z",
+      "pull_request_numbers": null
+    },
+    {
+      "sha": "96af9a3d96af9a3d96af9a3d96af9a3d96af9a3d",
+      "parents": [
+        "f878208cf878208cf878208cf878208cf878208c"
+      ],
+      "message": "D · PR이 둘이다",
+      "author": "lee-sy",
+      "date": "2026-09-22T08:00:00.000Z",
+      "pull_request_numbers": [
+        1830,
+        1831
+      ]
+    }
+  ],
+  "next_page": null,
+  "pull_requests_unavailable": true
+}

@@ -1,0 +1,10 @@
+{
+  "repository": "demo/modem",
+  "revision": "f519f70af519f70af519f70af519f70af519f70a",
+  "path": "src/phy/rf_calibration.c",
+  "status": "text",
+  "text": "#include \"rf_calibration.h\"\n\nstatic int calibrate(struct rf_ctx *ctx)\n{\n\tint gain = ctx->gain;\n\tif (gain < MIN_GAIN)\n\t\tgain = MIN_GAIN;\n\treturn gain;\n}\n",
+  "size": 152,
+  "sha": "f519f70af519f70af519f70af519f70af519f70a",
+  "reason": null
+}

@@ -1,0 +1,2319 @@
+{
+  "items": [
+    {
+      "repository_id": 1,
+      "repository": "demo/modem",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        },
+        {
+          "base_branch": "develop",
+          "last_sequence": 113,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        },
+        {
+          "base_branch": "release/2026-Q1",
+          "last_sequence": 103,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 2,
+      "repository": "demo/pkg-002",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 3,
+      "repository": "demo/pkg-003",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 4,
+      "repository": "demo/pkg-004",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 5,
+      "repository": "demo/pkg-005",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 6,
+      "repository": "demo/pkg-006",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 7,
+      "repository": "demo/pkg-007",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 8,
+      "repository": "demo/pkg-008",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 9,
+      "repository": "demo/pkg-009",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 10,
+      "repository": "demo/pkg-010",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 11,
+      "repository": "demo/pkg-011",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 12,
+      "repository": "demo/pkg-012",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 13,
+      "repository": "demo/pkg-013",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 14,
+      "repository": "demo/pkg-014",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 15,
+      "repository": "demo/pkg-015",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 16,
+      "repository": "demo/pkg-016",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 17,
+      "repository": "demo/pkg-017",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 18,
+      "repository": "demo/pkg-018",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 19,
+      "repository": "demo/pkg-019",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 20,
+      "repository": "demo/pkg-020",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 21,
+      "repository": "demo/pkg-021",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 22,
+      "repository": "demo/pkg-022",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 23,
+      "repository": "demo/pkg-023",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 24,
+      "repository": "demo/pkg-024",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 25,
+      "repository": "demo/pkg-025",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 26,
+      "repository": "demo/pkg-026",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 27,
+      "repository": "demo/pkg-027",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 28,
+      "repository": "demo/pkg-028",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 29,
+      "repository": "demo/pkg-029",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 30,
+      "repository": "demo/pkg-030",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 31,
+      "repository": "demo/pkg-031",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 32,
+      "repository": "demo/pkg-032",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 33,
+      "repository": "demo/pkg-033",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 34,
+      "repository": "demo/pkg-034",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 35,
+      "repository": "demo/pkg-035",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 36,
+      "repository": "demo/pkg-036",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 37,
+      "repository": "demo/pkg-037",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 38,
+      "repository": "demo/pkg-038",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 39,
+      "repository": "demo/pkg-039",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 40,
+      "repository": "demo/pkg-040",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 41,
+      "repository": "demo/pkg-041",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 42,
+      "repository": "demo/pkg-042",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 43,
+      "repository": "demo/pkg-043",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 44,
+      "repository": "demo/pkg-044",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 45,
+      "repository": "demo/pkg-045",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 46,
+      "repository": "demo/pkg-046",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 47,
+      "repository": "demo/pkg-047",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 48,
+      "repository": "demo/pkg-048",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 49,
+      "repository": "demo/pkg-049",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 50,
+      "repository": "demo/pkg-050",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 51,
+      "repository": "demo/pkg-051",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 52,
+      "repository": "demo/pkg-052",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 53,
+      "repository": "demo/pkg-053",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 54,
+      "repository": "demo/pkg-054",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 55,
+      "repository": "demo/pkg-055",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 56,
+      "repository": "demo/pkg-056",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 57,
+      "repository": "demo/pkg-057",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 58,
+      "repository": "demo/pkg-058",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 59,
+      "repository": "demo/pkg-059",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 60,
+      "repository": "demo/pkg-060",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 61,
+      "repository": "demo/pkg-061",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 62,
+      "repository": "demo/pkg-062",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 63,
+      "repository": "demo/pkg-063",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 64,
+      "repository": "demo/pkg-064",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 65,
+      "repository": "demo/pkg-065",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 66,
+      "repository": "demo/pkg-066",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 67,
+      "repository": "demo/pkg-067",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 68,
+      "repository": "demo/pkg-068",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 69,
+      "repository": "demo/pkg-069",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 70,
+      "repository": "demo/pkg-070",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 71,
+      "repository": "demo/pkg-071",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 72,
+      "repository": "demo/pkg-072",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 73,
+      "repository": "demo/pkg-073",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 74,
+      "repository": "demo/pkg-074",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 75,
+      "repository": "demo/pkg-075",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 76,
+      "repository": "demo/pkg-076",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 77,
+      "repository": "demo/pkg-077",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 78,
+      "repository": "demo/pkg-078",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 79,
+      "repository": "demo/pkg-079",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 80,
+      "repository": "demo/pkg-080",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 81,
+      "repository": "demo/pkg-081",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 82,
+      "repository": "demo/pkg-082",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 83,
+      "repository": "demo/pkg-083",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 84,
+      "repository": "demo/pkg-084",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 85,
+      "repository": "demo/pkg-085",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 86,
+      "repository": "demo/pkg-086",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 87,
+      "repository": "demo/pkg-087",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 88,
+      "repository": "demo/pkg-088",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 89,
+      "repository": "demo/pkg-089",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 90,
+      "repository": "demo/pkg-090",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 91,
+      "repository": "demo/pkg-091",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 92,
+      "repository": "demo/pkg-092",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 93,
+      "repository": "demo/pkg-093",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 94,
+      "repository": "demo/pkg-094",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 95,
+      "repository": "demo/pkg-095",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 96,
+      "repository": "demo/pkg-096",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 97,
+      "repository": "demo/pkg-097",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 98,
+      "repository": "demo/pkg-098",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 99,
+      "repository": "demo/pkg-099",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    },
+    {
+      "repository_id": 100,
+      "repository": "demo/pkg-100",
+      "registration_state": "active",
+      "registered_at": "2026-01-05T00:00:00.000Z",
+      "last_ingested_at": "2026-09-20T22:00:00.000Z",
+      "document_counts": null,
+      "backfill": null,
+      "sequence_spaces": [
+        {
+          "base_branch": "main",
+          "last_sequence": 123,
+          "seq_epoch": 3,
+          "sequence_state": "active",
+          "last_assigned_at": "2026-09-20T21:00:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_completed_at": "2026-09-20T20:00:00.000Z",
+        "missing_count": 0
+      },
+      "unavailable": []
+    }
+  ],
+  "next_cursor": "REPO_C1"
+}
