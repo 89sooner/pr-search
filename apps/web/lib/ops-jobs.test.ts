@@ -110,6 +110,17 @@ describe('실행 폼은 러너가 있는 유형만 제시한다 (AC-6 / QA-A003-
       base_branch: 'main',
     });
   });
+
+  it('시퀀스 재투영은 저장소·브랜치에 예상 에폭을 숫자로 더한다 (CR-113) — 재채번이 아니라 색인 복구다', () => {
+    const option = runOption('sequence_reproject');
+    expect(option?.path).toBe('/api/admin/jobs');
+    expect(runBody(option as never, { repository: 'acme/payments', baseBranch: 'main', expectedEpoch: '3' })).toEqual({
+      type: 'sequence_reproject',
+      repository: 'acme/payments',
+      base_branch: 'main',
+      expected_epoch: 3,
+    });
+  });
 });
 
 describe('인덱스 상태는 미확인과 0을 구분한다 (FR-ING-008 AC-7 / QA-A003-14)', () => {

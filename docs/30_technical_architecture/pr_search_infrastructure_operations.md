@@ -1,6 +1,6 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.22 | 갱신일: 2026-09-21
+> 상태: review | 버전: v0.23 | 갱신일: 2026-09-22
 
 CR-112 / FR-INT-001 운영: PIPE 연동은 **기본 꺼짐**이며 켜면 search-api 프로세스가 두 번째 포트(private 리스너, mTLS 필수)를 듣는다(ADR-025). 새 서비스·새 DB·새 Redis·새 워커는 없고 마이그레이션 033(추가 전용 표 다섯)만 더해진다. 켜는 변수는 `PIPE_SEARCH_INTEGRATION_ENABLED=true`와 `…_HOST`·`…_PORT`·`…_TLS_KEY_FILE`·`…_TLS_CERT_FILE`·`…_TLS_CLIENT_CA_FILE`·`…_POLICY_FILE`이며, 하나라도 없거나 틀리면 search-api가 기동하지 않는다. 기본 배포(`deploy/single-host/compose.yml`, `deploy/k8s/`)는 바꾸지 않았다 — private 포트를 여는 compose override·HAProxy L4 passthrough·정책 파일·환경 변수의 **예시**와 키 교체·긴급 회수·binding 운영·보존 정리·롤백 절차는 [배포와 롤백](../../handoff/pipe-search-integration/v1/DEPLOYMENT_AND_ROLLBACK.md)이 소유한다. 운영 명령은 `node dist/pipe-integration-cli.js`(`bindings`·`credentials`·`purge`, 기본 dry-run)이며 `prsctl` 하위 명령은 아직 없다.
 
@@ -290,6 +290,10 @@ deploy/single-host/prsctl role list | grant <login|user_id> <역할> | revoke <l
 deploy/single-host/prsctl mnumber attest | revoke | list
 #                                 # M 번호 운영자 확인서 — PR 근거가 끝내 없는 항목과 프로파일 밖 항목을 번호 없이 지나가게 한다.
 #                                 # pipeline-worker 이미지로 한 번 실행하고 확인서·감사·채번 회차 요청을 한 트랜잭션에 남긴다 — CR-100 (WP-088)
+deploy/single-host/prsctl sequence reproject --repository <owner/name> --base-branch <이름> --expected-epoch <에폭> [--alias …] [--dry-run] | status --repository … --base-branch …
+#                                 # 머지 시퀀스를 PostgreSQL 정본에서 Elasticsearch로 다시 비춘다 — 재채번이 아니며 에폭·서수·M 번호를 바꾸지 않는다.
+#                                 # --dry-run은 PostgreSQL·Elasticsearch·작업 큐·감사에 아무것도 쓰지 않는다. worker-sequence 이미지로 한 번 실행하고
+#                                 # 잡(sequence_reproject)·감사(job.run)를 남긴 뒤 durable work 완료를 기다린다 — CR-113 (WP-098, RB-27)
 ```
 
 DB 접속 정보는 환경 변수에서만 읽는다 (`@prs/db`의 `resolvePoolConfig`). 우선순위는 `DATABASE_URL` → 개별 `POSTGRES_*` → 로컬 기본값이다. 통합 테스트는 `POSTGRES_TEST_DB`(기본 `prs_test`)를 써서 개발용 DB와 분리한다.

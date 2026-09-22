@@ -25,7 +25,11 @@ import type { Pool, PoolClient } from 'pg';
 
 type Queryable = Pool | PoolClient;
 
-export type SequenceWorkKind = 'refresh' | 'reconcile' | 'materialize' | 'announce';
+/**
+ * `project`는 정본 시퀀스를 색인에 다시 비추는 의도다 (CR-113 / FR-SEQ-001 AC-7). M 기능과
+ * 무관하게 러너가 집으며, payload의 `scope`(`tail`·`full`·`doc`)가 범위를 가른다.
+ */
+export type SequenceWorkKind = 'refresh' | 'reconcile' | 'materialize' | 'announce' | 'project';
 export type SequenceWorkState = 'ready' | 'leased' | 'retry' | 'parked' | 'done' | 'obsolete';
 
 export interface SequenceWorkRow {
@@ -37,6 +41,11 @@ export interface SequenceWorkRow {
   readonly requested_generation: number;
   readonly completed_generation: number;
   readonly payload: Record<string, unknown>;
+  /**
+   * lease 보유자만 갱신하는 진행 상태 (마이그레이션 034). `payload`는 요청마다 덮이므로
+   * 페이지 커서·generation·완료 요약은 여기 둔다. 시험·운영 조회가 읽는다.
+   */
+  readonly progress: Record<string, unknown>;
   readonly state: SequenceWorkState;
   readonly available_at: Date;
   readonly lease_until: Date | null;
@@ -289,6 +298,26 @@ export async function releaseWork(
   return (result.rowCount ?? 0) > 0;
 }
 
+/**
+ * 진행 상태를 남긴다 (CR-113). **lease 보유자만** 쓸 수 있다 — 만료된 lease의 늦은 저장은
+ * 0행이라 다른 워커가 이어 가는 커서를 되돌리지 못한다.
+ *
+ * @returns 실제로 갱신됐으면 `true`.
+ */
+export async function updateWorkProgress(
+  db: Queryable,
+  lease: LeaseRef,
+  progress: Readonly<Record<string, unknown>>,
+): Promise<boolean> {
+  const result = await db.query(
+    `UPDATE sequence_work
+        SET progress = $3::jsonb, updated_at = clock_timestamp()
+      WHERE work_key = $1 AND lease_token = $2 AND state = 'leased'`,
+    [lease.workKey, lease.leaseToken, JSON.stringify(progress)],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 /** lease 연장 (heartbeat). 잃었으면 `false`이며 호출 측은 결과를 커밋하지 않는다. */
 export async function heartbeatWork(db: Queryable, lease: LeaseRef, leaseMs: number): Promise<boolean> {
   const result = await db.query(
@@ -377,6 +406,29 @@ export async function completeCoveredRefreshWorks(
   return result.rows;
 }
 
+/**
+ * 한 공간·에폭의 문서 단위 `project` work 중 아직 끝나지 않은 수 (CR-113). 재투영 잡·복구 러너가
+ * 완료를 기다리며 2초마다 묻는다 — 행 전체를 읽어 JS에서 거르면 30일간 남는 `done` 행까지 매번
+ * 다시 읽는다(독립 리뷰 지적). `sequence_work_space_idx`가 받는다.
+ */
+export async function countPendingProjectDocWork(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+): Promise<{ readonly pending: number; readonly parked: number }> {
+  const result = await db.query<{ pending: string; parked: string }>(
+    `SELECT count(*) FILTER (WHERE state IN ('ready', 'retry', 'leased'))::text AS pending,
+            count(*) FILTER (WHERE state = 'parked')::text AS parked
+       FROM sequence_work
+      WHERE kind = 'project' AND repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+        AND payload ->> 'scope' = 'doc'`,
+    [repositoryId, baseBranch, seqEpoch],
+  );
+  const row = result.rows[0];
+  return { pending: Number(row?.pending ?? 0), parked: Number(row?.parked ?? 0) };
+}
+
 export async function findWork(db: Queryable, workKey: string): Promise<SequenceWorkRow | undefined> {
   const result = await db.query<SequenceWorkRow>('SELECT * FROM sequence_work WHERE work_key = $1', [workKey]);
   return result.rows[0];
@@ -411,17 +463,20 @@ export async function countPendingWork(db: Queryable): Promise<Readonly<Record<s
 }
 
 /**
- * 완료된 `refresh`·`announce` work를 정리한다 (기본 30일, 1회 1000행).
+ * 완료된 `refresh`·`announce` work와 **문서 단위** `project` work를 정리한다 (기본 30일, 1회 1000행).
  *
- * `materialize`·`reconcile`은 공간·PR당 한 행이라 지우지 않는다 — generation이
- * 이어져야 옛 이벤트를 분류할 수 있다. 미완료·`parked`도 지우지 않는다.
+ * `materialize`·`reconcile`과 공간 단위 `project`(`tail`·`full`)는 공간·PR당 한 행이라
+ * 지우지 않는다 — generation이 이어져야 옛 요청·완료를 분류할 수 있다. 문서 단위 `project`는
+ * 문서마다 한 행이고 완료 뒤 다시 요청되면 새 행이 만들어지므로 지워도 된다 (CR-113).
+ * 미완료·`parked`도 지우지 않는다.
  */
 export async function cleanupDoneWork(db: Queryable, olderThan: Date, limit = 1_000): Promise<number> {
   const result = await db.query(
     `DELETE FROM sequence_work
       WHERE work_key IN (
         SELECT work_key FROM sequence_work
-         WHERE state = 'done' AND kind IN ('refresh', 'announce') AND updated_at < $1
+         WHERE state = 'done' AND updated_at < $1
+           AND (kind IN ('refresh', 'announce') OR (kind = 'project' AND payload ->> 'scope' = 'doc'))
          ORDER BY updated_at
          LIMIT $2
       )`,

@@ -11,7 +11,7 @@
 import type { Client as EsClient } from '@elastic/elasticsearch';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { jobRepo, repositoryRepo, type Pool } from '@prs/db';
+import { jobRepo, repositoryRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
 import { createEsClient, resolveClientOptions } from '@prs/es';
 import { RedisStreamsEventBus, type Redis } from '@prs/bus';
 import { buildServer } from '../../src/server.js';
@@ -247,6 +247,66 @@ describe('POST — 잡 실행', () => {
 
   it('인증 없이는 401이다', async () => {
     expect((await app.inject({ method: 'POST', url: JOBS_PATH, payload: {} })).statusCode).toBe(401);
+  });
+});
+
+describe('POST — 시퀀스 재투영 (JOB-SEQ-006 / CR-113, FR-SEQ-001 AC-8)', () => {
+  const SPACE = { type: 'sequence_reproject', repository: TARGET, base_branch: 'main' };
+
+  beforeEach(async () => {
+    await pool.query('TRUNCATE sequence_space, merge_sequence CASCADE');
+    await sequenceSpaceRepo.ensureSequenceSpace(pool, REPOSITORY_ID, 'main');
+  });
+
+  it('**expected_epoch가 현재 에폭과 같으면 큐에 넣는다** — target은 공간 라벨이고 progress에 입력이 실린다', async () => {
+    const response = await post({ ...SPACE, expected_epoch: 1, aliases: ['prs-pull-requests'] });
+    expect(response.statusCode).toBe(201);
+    const body = response.json<{ type: string; target: string; state: string; progress: Record<string, unknown>; allowed_actions: string[] }>();
+    expect(body.type).toBe('sequence_reproject');
+    expect(body.target).toBe(`${TARGET}@main`);
+    expect(body.state).toBe('queued');
+    expect(body.progress).toMatchObject({ expected_epoch: 1, aliases: ['prs-pull-requests'], repository_id: REPOSITORY_ID, base_branch: 'main' });
+    // 멈춰 이어 갈 지점이 없다 — 취소만 제시한다 (reconcile과 같은 규율).
+    expect(body.allowed_actions).toEqual(['cancel']);
+    const audit = await pool.query<{ action: string; target: string; result_code: string }>('SELECT action, target, result_code FROM audit_record');
+    expect(audit.rows).toEqual([{ action: 'job.run', target: `sequence_reproject:${TARGET}@main`, result_code: 'created' }]);
+  });
+
+  it('**expected_epoch가 다르면 400이며 현재 에폭을 알려 준다** — 재투영은 운영자가 아는 에폭에만 한다', async () => {
+    const response = await post({ ...SPACE, expected_epoch: 2 });
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ error: { code: string; detail?: Record<string, unknown> } }>().error).toMatchObject({ code: 'INVALID_PARAMETER', detail: { expected_epoch: 2, current_epoch: 1 } });
+    expect(await jobRepo.listJobs(pool)).toEqual([]);
+  });
+
+  it('expected_epoch가 없거나 정수가 아니면 400이다', async () => {
+    expect((await post(SPACE)).statusCode).toBe(400);
+    expect((await post({ ...SPACE, expected_epoch: '1' })).statusCode).toBe(400);
+    expect((await post({ ...SPACE, expected_epoch: 0 })).statusCode).toBe(400);
+  });
+
+  it('**dry_run은 잡으로 받지 않는다** — 잡 행 자체가 쓰기이며 읽기 전용 점검은 prsctl의 몫이다', async () => {
+    const response = await post({ ...SPACE, expected_epoch: 1, dry_run: true });
+    expect(response.statusCode).toBe(400);
+    expect(await jobRepo.listJobs(pool)).toEqual([]);
+  });
+
+  it('aliases는 두 별칭의 비지 않은 부분집합만 받는다', async () => {
+    expect((await post({ ...SPACE, expected_epoch: 1, aliases: ['prs-links'] })).statusCode).toBe(400);
+    expect((await post({ ...SPACE, expected_epoch: 1, aliases: [] })).statusCode).toBe(400);
+  });
+
+  it('채번된 적 없는 공간·채번 대상이 아닌 브랜치는 400이다', async () => {
+    expect((await post({ ...SPACE, base_branch: 'develop', expected_epoch: 1 })).statusCode).toBe(400);
+    await pool.query('TRUNCATE sequence_space CASCADE');
+    expect((await post({ ...SPACE, expected_epoch: 1 })).statusCode).toBe(400);
+  });
+
+  it('**같은 공간에 활성 재투영 잡이 있으면 409이며 그 잡 ID를 준다** (FR-ADMIN-002 AC-4)', async () => {
+    const first = await post({ ...SPACE, expected_epoch: 1 });
+    const second = await post({ ...SPACE, expected_epoch: 1 });
+    expect(second.statusCode).toBe(409);
+    expect(second.json<{ error: { detail: { job_id: number } } }>().error.detail.job_id).toBe(first.json<{ job_id: number }>().job_id);
   });
 });
 

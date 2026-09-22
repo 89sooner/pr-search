@@ -23,7 +23,7 @@
 
 > ADR-006 amendment — CR-095 (2026-09-16, 사용자 승인): Conductor 전용 결정은 operator 기존 UI에 한정한다. 일반 검색/읽기 UI는 @radix-ui의 headless primitives, 시맨틱 HTML과 독립 제품 CSS로 전환한다. 신규 토큰은 --r-*로 격리한다. 기존 운영 컴포넌트는 삭제하지 않는다. 근거: template.html 배치와 최신 개발자용 SaaS 표현 요구, NFR-007, FR-SRCH-003·005~008. 신규 API·DB 결정 없음.
 
-> 상태: review | 버전: v0.18 | 갱신일: 2026-09-21
+> 상태: review | 버전: v0.19 | 갱신일: 2026-09-22
 
 CR-079: ADR-023을 아래 목록과 상세 설계에 추가한다. 새 M 번호의 적용과 세부 계약은 [상세 설계](pr_search_wp074_design.md) 전문, 선택 대안은 4절, Agent-Initiated Decisions는 12절이 소유한다. 직접 부재 증거의 가용성 한계(DEV-581)는 accepted 동작인 pending과 별개인 검증 조건이며 해결됐다고 간주하지 않는다.
 
@@ -298,6 +298,22 @@ Elasticsearch만으로 구성하면 스토어가 하나라 단순하다. 그러�
 - Negative: 스토어가 둘이라 운영 대상이 늘고, 두 저장소 사이 정합성 감시가 필요하다.
 - Follow-up: 정합성 감시 잡(`JOB-ING-008`)이 PostgreSQL 대비 Elasticsearch 문서 수와 표본 내용을 주기 대조한다.
 - Follow-up: `raw_event` 테이블을 수신 시각 기준 월별 파티션으로 만들어 보존 기간 만료 삭제를 파티션 드롭으로 처리한다.
+
+### Amendment — CR-113 파생 필드의 수렴 의무 (2026-09-22)
+
+**문제.** 불변 조건은 "재구성 가능"만 말했고, 실제로 재구성이 **일어나는가**는 말하지 않았다. 머지 시퀀스는 PostgreSQL 커밋 뒤 한 번의 `update_by_query`로만 색인에 비쳤고, 문서가 아직 없으면(늦은 PR 문서·늦은 `merge_commit_sha`·채번 뒤에 생기는 직접 푸시 커밋 문서) 0건으로 끝나 다시 오지 않았으며, 재색인은 스냅숏에서 문서를 만들면서 서수를 싣지 않았다. 사내 `0.1.0-pilot.17`에서 재색인 뒤 PR 문서의 `merge_seq`가 0/4,214가 되어 「M number」 정렬이 깨졌다 — 정본은 온전했으나 파생 뷰가 정본과 갈라진 채 아무 소리도 내지 않았다.
+
+**결정.** 파생 뷰의 소유자 필드(`merge_seq`·`seq_epoch`·`sequence_space`)에 다음을 요구한다.
+
+1. **수렴은 의무다.** 정본 변경(채번·재채번·복구)과 문서 도착(스냅숏·커밋 보강)은 **같은 트랜잭션**에 durable 투영 의도(`sequence_work` `project`)를 남기고, 러너가 정본을 다시 읽어 새 push 없이 반영한다. 미반영 작업은 재시도 횟수와 무관하게 완료로 닫히지 않는다.
+2. **한 해석, 한 쓰기.** "어느 문서에 몇 번인가"는 애플리케이션 계층 하나(`apps/pipeline-worker/src/sequence-projection.ts`)가 PostgreSQL에서 풀고, 쓰기는 문서 ID 기반 guarded update 하나(`packages/es/src/sequence-projection.ts`)다. `@prs/es`는 `@prs/db`를 의존하지 않는다. 문서별 결과(`updated`·`noop`·`document_missing`·`guard_rejected`·`stale_epoch`·`transient`)를 보존하며 `updated` 합계나 HTTP 200으로 완료를 말하지 않는다.
+3. **재구축은 replay를 포함한다.** 정본에서 문서를 다시 만드는 것으로 끝나지 않고, 소유자 필드를 현재 정본으로 다시 비추며 전환 전 검증이 target 인덱스의 원시 필드와 대표 정렬을 정본과 대조한다. 옛 활성 인덱스에 대한 완료는 새 인덱스의 완료가 아니다.
+4. **파생 뷰는 정본을 바꾸지 않는다.** 복구는 정본에서 색인으로만 흐른다 — 색인 값·표시 문자열에서 서수를 추정하지 않고, `merge_seq`·`merge_number`·`seq_epoch`·head·`document_version`·PR `base_branch`·`merge_commit_sha`·접근 범위 필드를 바꾸지 않는다. 재투영은 재채번이 아니다.
+5. **운영자는 정본에서 색인으로의 재투영을 요청할 수 있고**(공간·예상 에폭 단위, dry-run은 아무것도 쓰지 않는다), 정합성 복구가 DB에서 할 일이 없어도(`consistent`) 색인은 따로 검증·복구한다.
+
+**한계.** 커밋 문서는 SHA당 하나라 여러 시퀀스 브랜치에 같은 SHA가 속하면 문서가 단 브랜치의 공간이 현재 에폭에 그 SHA를 갖고 있을 때만 그 값을 지키고, 그렇지 않으면 쓰는 공간이 가져간다. PR 재투영이 커밋 문서의 `base_branch`를 PR의 base로 되돌리는 기존 동작과 체인에서 빠진 문서의 옛 서수 정리는 이 개정의 범위 밖이다(DEV로 등재).
+
+정본: FR-SEQ-001 AC-7·AC-8, FR-ING-008 AC-8, FR-ADMIN-003 AC-6, JOB-SEQ-006, ENT-SEQ-006, WP-098.
 
 ## ADR-005 커밋 그래프 접근: blobless 미러 우선, GitHub API 폴백
 

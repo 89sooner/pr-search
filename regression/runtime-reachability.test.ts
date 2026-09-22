@@ -901,6 +901,7 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
 describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () => {
   const RECONCILE = read('apps/pipeline-worker/src/reconcile.ts');
   const ASSIGN = read('apps/pipeline-worker/src/sequence-assign-runner.ts');
+  const REPROJECT = read('apps/pipeline-worker/src/sequence-reproject-runner.ts');
   const OPS_JOBS = read('apps/search-api/src/ops/jobs.ts');
 
   /*
@@ -911,6 +912,8 @@ describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () 
   it.each([
     ['reconcile', RECONCILE],
     ['sequence_assign', ASSIGN],
+    // CR-113: 수동 재투영도 같은 규율 — 등재와 러너가 같은 변경에서 들어왔다.
+    ['sequence_reproject', REPROJECT],
   ])('%s 잡을 집는 러너가 있다', (type, source) => {
     expect(OPS_JOBS).toContain(`'${type}'`);
     expect(source).toContain('claimNextJob');
@@ -946,6 +949,7 @@ describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () 
     'apps/pipeline-worker/src/reindex.ts',
     'apps/pipeline-worker/src/sequence-repair-runner.ts',
     'apps/pipeline-worker/src/sequence-assign-runner.ts',
+    'apps/pipeline-worker/src/sequence-reproject-runner.ts',
     'apps/pipeline-worker/src/reconcile.ts',
   ])('%s — 무방비 finishJob을 쓰지 않는다', (path) => {
     expect(read(path)).not.toMatch(/jobRepo\.finishJob\(/);
@@ -958,9 +962,31 @@ describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () 
    * 자기 오타를 "그 저장소가 없다"로 읽는다. **형식이 틀린 것과 등록되지 않은
    * 것은 다른 오류다.**
    */
-  it('resolveJobTarget의 두 갈래가 모두 슬러그 형식을 검사한다 (DEV-437)', () => {
+  it('resolveJobTarget의 세 갈래가 모두 슬러그 형식을 검사한다 (DEV-437)', () => {
+    // CR-113이 `sequence_reproject` 갈래를 더했다 — 같은 검사를 같은 자리에서 한다.
     const checks = OPS_JOBS.match(/if \(owner === '' \|\| name === ''\)/g) ?? [];
-    expect(checks).toHaveLength(2);
+    expect(checks).toHaveLength(3);
+  });
+
+  /*
+   * **재투영은 재채번이 아니다** (CR-113 / FR-SEQ-001 AC-8). 재투영 러너·명령이 Git을 읽거나
+   * 에폭을 올리거나 정본 서수를 쓰는 함수를 부르면 그 약속이 깨진다 — 소스에서 잠근다.
+   */
+  it('재투영 러너·명령은 Git·에폭·정본 서수에 손대지 않는다 (CR-113)', () => {
+    const command = read('apps/pipeline-worker/src/sequence-reproject-command.ts');
+    for (const source of [REPROJECT, command]) {
+      expect(source).not.toMatch(/graphFor|firstParentCommits|resolveHead|bumpEpoch|advanceHead|upsertMergeSequence|assignMergeNumbers|repairSequence|assignSequence\(/);
+    }
+    // 실제 쓰기는 durable work 하나다 — 잡 러너는 `project(full)`을 요청하고 기다린다.
+    expect(REPROJECT).toContain("spaceWorkRequest(");
+    expect(REPROJECT).toContain("'full'");
+    expect(REPROJECT).toContain('awaitProjectionWork(');
+    // durable 러너가 `project`를 M 기능과 무관하게 집는다.
+    const runner = read('apps/pipeline-worker/src/sequence-work-runner.ts');
+    expect(runner).toContain("deps.mnumber === null ? ['refresh', 'project']");
+    // prsctl은 워커 이미지의 같은 CLI를 부른다 — 문서가 안내하는 명령이 실재한다.
+    expect(read('deploy/single-host/prsctl')).toContain('node dist/sequence-reproject-cli.js');
+    expect(existsSync(new URL('apps/pipeline-worker/src/sequence-reproject-cli.ts', new URL('..', import.meta.url)))).toBe(true);
   });
 
   /*

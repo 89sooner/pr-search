@@ -15,10 +15,11 @@
  * 상태로 남는다.
  */
 
-import { prSnapshotRepo, sequenceSpaceRepo, sequenceWorkRepo, withTransaction } from '@prs/db';
+import { prSnapshotRepo, sequenceProjectionRepo, sequenceSpaceRepo, sequenceWorkRepo, withTransaction } from '@prs/db';
 import type { Pool } from '@prs/db';
 import type { SnapshotSource } from '@prs/db';
 import type { UpsertRequest } from '@prs/es';
+import { docWorkRequest } from './sequence-projection.js';
 
 /**
  * PR 문서 하나를 골라 정본에 남긴다. 커밋 문서는 대상이 아니다.
@@ -32,6 +33,13 @@ import type { UpsertRequest } from '@prs/es';
  *
  * 실시간·백필·조정·부트스트랩 네 경로가 모두 이 함수를 지난다 — 같은 primitive여야
  * 한 경로만 재개를 빠뜨리는 날이 없다.
+ *
+ * ## 늦은 PR 문서의 시퀀스 투영 의도도 같은 트랜잭션이다 (CR-113 / FR-SEQ-001 AC-7)
+ *
+ * 머지된 PR의 `merge_commit_sha`가 **현재 에폭 체인에 이미 채번된 SHA**이면, 그 PR 문서에
+ * 서수를 비출 문서 단위 `project` work를 남긴다. 채번이 PR 문서보다 먼저였거나(사내
+ * pilot.17의 1,429건이 이 모양이었다) `merge_commit_sha`가 나중에 채워진 경우가 여기서
+ * 잡힌다. 아직 채번되지 않은 SHA면 남기지 않는다 — 채번의 `tail` work가 그때 비춘다.
  */
 export async function recordProjectionSnapshot(
   pool: Pool,
@@ -62,5 +70,18 @@ export async function recordProjectionSnapshot(
       seqEpoch: space.seq_epoch,
       payload: { trigger_kind: 'snapshot', pr_number: options.prNumber },
     });
+
+    const mergeSha = (pullRequest.doc as { readonly merge_commit_sha?: unknown }).merge_commit_sha;
+    if (typeof mergeSha !== 'string' || mergeSha === '') return;
+    const target = await sequenceProjectionRepo.findProjectionTargetBySha(client, {
+      repositoryId: options.repositoryId,
+      baseBranch: doc.base_branch,
+      seqEpoch: space.seq_epoch,
+      commitSha: mergeSha,
+    });
+    if (target === undefined) return;
+    await sequenceWorkRepo.requestWorkBatch(client, [
+      docWorkRequest({ repositoryId: options.repositoryId, baseBranch: doc.base_branch, seqEpoch: space.seq_epoch }, 'pull_request', options.prNumber, 'snapshot'),
+    ]);
   });
 }

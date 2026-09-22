@@ -1,6 +1,6 @@
 # PR Search 비동기 작업 및 이벤트
 
-> 상태: review | 버전: v0.14 | 갱신일: 2026-09-14
+> 상태: review | 버전: v0.15 | 갱신일: 2026-09-22
 
 CR-079 / ADR-023: JOB-SEQ-004는 sequence 역할의 durable poll과 기존 EventBus를 사용한다. 원본 저장→refresh, snapshot 저장→reconcile, 번호 저장→materialize/announce가 각각 원자적이다. 기동/매초 poll·lease·generation CAS·retry·SIGTERM은 [설계](pr_search_wp074_design.md) 4~8절이 정본이다. 일일 스윕만으로 late mapping 재개를 대신하지 않는다. EVT-SEQ-004는 prs:projected에 발행하며 기존 link/commit-enrich는 이름 필터로 무시한다. ES는 sequence 역할의 durable materialize가 소유한다. **CR-084(WP-075)가 `annotate` 전용 소비자 그룹을 추가했다** — `mnumber`와 다른 group이며 전역 스위치 기본값이 꺼짐이라 켜기 전에는 구독하지 않는다.
 
@@ -70,6 +70,7 @@ CR-079 / ADR-023: JOB-SEQ-004는 sequence 역할의 durable poll과 기존 Event
 | JOB-SEQ-003 | 시퀀스 정합성 점검 | 수동 / 스케줄 (일 1회, 표본) | **`sequence` 역할** | 3회 | 30분 | EVT-JOB-001 | FR-ADMIN-003 |
 | JOB-SEQ-004 | M 번호 채번 | EVT-SEQ-001·002 / PR snapshot 확정 후 durable reconcile / 운영자 확인서 작성(`prsctl mnumber attest`, CR-100) / 기동·1초 poll / 일 1회 잔여 대조 | **sequence 역할**, 기존 공간 락 공유 | 락 5초 defer, 오류 5회 후 경보하되 durable retry 유지; 확인서 유예 대기는 유예 종료 시각까지 retry(`attestation_grace_pending`); 상세 설계 6.3·6.5 | 기존 회차 10분, batch 기본 100 | EVT-SEQ-004 | FR-SEQ-008 AC-9~15 |
 | JOB-SEQ-005 | PR 제목 M 넘버 표기 | `EVT-SEQ-004`(`mnumber.assigned`) / 미표기 잔여 스윕 (일 1회) | **`annotate` 역할** — GHE 쓰기 자격 증명을 가진 유일한 워커이며 조회 역할과 분리한다 (ADR-022). **같은 정본 DB에서 실행자는 하나다**: `annotate:runner` advisory 세션 락을 쥔 프로세스만 쓴다 (CR-085 / DEV-629) | 시도 5회 지수 백오프. **재시도는 요청이 아니라 판단 전체를 다시 지난다** — 정본 확인 → 제목 재조회 → 순수 판정 → 간격 → 울타리 → PATCH (CR-085 / `AC-8`). 403·404는 재시도하지 않고 사유를 남긴다 | 이벤트 회차 25초 (**줄 서기부터 잰다**). 이 값은 버스의 `claimIdleMs` 30초보다 짧아야 하며, 넘기면 처리 중인 이벤트를 회수가 가로챈다. 스윕에는 시간 상한이 없고 대신 종료 신호가 진행 중인 회차를 끊는다 | - | FR-SEQ-009 |
+| JOB-SEQ-006 | 시퀀스 투영·재투영 (CR-113) | durable `sequence_work` `project` — 채번·재채번·복구 트랜잭션(`tail`·`full`), 늦은 PR 스냅숏·커밋 문서 생성(`doc`), 재색인 전환 직후(`full`), `sequence_reassign`의 `consistent`(`full`) / **수동 (API-ADM-002 `type: sequence_reproject` · `prsctl sequence reproject`)** — `startSequenceReprojectRunner`가 잡을 claim해 `full`을 예약하고 완료를 기다린다 | **`sequence` 역할**, `MNUMBER_ENABLED`와 무관 | 문서별 판정 — `updated`·`noop`은 완료, `document_missing`은 백오프 재시도 뒤 `parked`(러너가 스스로 집지 않는 대기 — 새 스냅숏·보강·full sweep의 재요청이 `ready`로 깨운다; 완료로 닫지 않음), `transient`는 백오프, 에폭 이동은 `obsolete`; 공간 work는 페이지마다 커서를 저장하고 예산(20페이지)마다 lease를 놓는다 | 공간당 lease 60초(heartbeat 10초) | 없음 — 정본 이벤트를 새로 내지 않는다 | FR-SEQ-001 AC-7·AC-8, FR-ING-008 AC-8, FR-ADMIN-003 AC-6 |
 | JOB-REL-001 | 참조 간선 추출 | **EVT-ING-003 / EVT-ING-005** (CR-039, DEV-215) | link | 3회 (**핸들러가 `delivery_count`로 집행한다**, DEV-228) | 30초 | - | FR-REL-003 |
 | JOB-REL-002 | 되돌림 간선 파생 | **EVT-ING-003 / EVT-ING-005** (CR-041, DEV-230) | link | 3회 (**핸들러가 `delivery_count`로 집행**) | 30초 | - | FR-REL-004 |
 | JOB-REL-003 | 체리픽 간선 파생 | **EVT-ING-005** (+ `EVT-ING-003`은 트레일러 경로만) (CR-041, DEV-231) | link | 3회 (**핸들러가 집행**) | 60초 | - | FR-REL-005 |
@@ -362,7 +363,7 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 | 8 | 취소·실패한 잡이 **뒤늦게 `completed`로 덮이지 않는다** | CR-037 DEV-197이 같은 모양을 이미 겪었다 |
 | 9 | 운영 쓰기 경로와 시험 전용 경로가 **다르지 않다** | CR-034가 배운 것 — 격리된 함수 시험은 "운영이 그것을 부른다"를 증명하지 않는다 |
 
-#### 이중 쓰기의 대상은 열일곱이다 (DEV-295)
+#### 이중 쓰기의 대상은 열일곱이다 (DEV-295, CR-113이 한 행을 바꿨다)
 
 계약이 "신규 이벤트 이중 쓰기"라고만 적으면 구현은 투영(`bulkUpsert`) 하나만 고치고 끝낸다. **별칭에 쓰는 경로를 전수로 적는다** — 하나라도 빠지면 그만큼 새 인덱스가 조용히 뒤처지고, 그 사실은 전환 뒤에야 드러난다.
 
@@ -370,7 +371,8 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 | --- | --- | --- |
 | `packages/es/src/upsert.ts` | `bulkUpsert` · `upsertOne` | bulk · update |
 | `packages/es/src/commit-metadata.ts` | `upsertCommitMetadata` | update |
-| `packages/es/src/sequence.ts` | `applySequenceToDocuments` · `applyEpochBump` | update_by_query |
+| `packages/es/src/sequence-projection.ts` | `projectSequenceToDocuments` (CR-113 — 옛 `applySequenceToDocuments`를 대체) | mget + bulk update(스크립트 가드) |
+| `packages/es/src/sequence.ts` | `applyEpochBump` | update_by_query |
 | `packages/es/src/registry.ts` | `markRepositoryArchived` · `applyRepositoryTeams` | update_by_query |
 | `packages/es/src/releases.ts` | `pruneReleaseDocuments` · `applyReleaseTagsToDocuments` | delete_by_query · update_by_query |
 | `packages/es/src/links.ts` | `writeReferenceLinks` · `deleteStaleReferenceLinks` · `resolveReferenceLinks` · `updateLinkSummary` · `writeDerivedLinks` · `deleteStaleDerivedLinks` · `setLinkDetached` · `setLinkResolved` | bulk · delete_by_query · update |
@@ -412,8 +414,8 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 
 | 별칭 | 정본 |
 | --- | --- |
-| `prs-pull-requests` | `pull_request_snapshot` + 현재 저장소·파생 상태 |
-| `prs-commits` | `commit_snapshot` + 시퀀스·저장소 상태 |
+| `prs-pull-requests` | `pull_request_snapshot` + 현재 저장소·파생 상태 + **시퀀스 replay** (CR-113) |
+| `prs-commits` | `commit_snapshot` + 시퀀스·저장소 상태 + **시퀀스 replay** (CR-113) |
 | `prs-links` | 정본 엔티티에서 **재파생**한다 (JOB-REL-006의 경로를 그대로 쓴다) |
 | `prs-releases` | `release` 표 |
 
@@ -421,7 +423,11 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 
 **정본에 없는 필드를 옛 인덱스에서 베껴 오지 않는다.** 어떤 필드가 옛 인덱스에만 있고 정본에서 복구할 수 없다면 그것은 **ADR-004 결함**이다. 임시로 통과시키지 말고 DEV를 등록하고 정본을 먼저 복구한다. 재색인의 성공을 거짓으로 선언하지 않는다.
 
-#### 전환 전 검증 (DEV-297)
+#### 시퀀스는 replay로 복원한다 (CR-113 / FR-ING-008 AC-8)
+
+스냅숏에는 서수가 없다 — 투영이 `merge_seq`를 `params.doc`에 싣지 않는 것이 옳기 때문이다(데이터 모델 5장 필드 소유권). 그래서 재구축만으로는 새 인덱스가 확정된 서수를 하나도 모른 채 서고, 옛 주석의 「채번 반영은 재구축 뒤에 돈다」는 전제는 성립하지 않았다(다음 채번은 head 이후만 번호를 매긴다 — DEV-597의 반증, 사내 pilot.17 보고). 이제 `rebuildAlias`가 저장소마다 PR·커밋 재구축 **직후** 그 저장소의 모든 시퀀스 공간을 현재 정본으로 다시 비춘다(`replaySequenceForRepository` → 정본 해석 → 문서 단위 투영기, 울타리 안이라 서비스 별칭과 shadow에 함께 닿는다). 판정은 **target(shadow) 결과**로 한다 — 옛 활성 인덱스에 대한 완료는 새 인덱스의 완료가 아니다. 공간마다 `{repository_id, base_branch, seq_epoch, head_seq, pages, settled, unsettled, skipped}`를 `job.progress.sequence_replay`에 남겨 중단 뒤 어디까지 갔는지 읽을 수 있고, 전환 울타리 안에서 그 에폭을 정본과 대조한다. 기존 M `materialize` 재예약(DEV-597)은 그대로다. `mergeNumberEnabled`와 무관하다.
+
+#### 전환 전 검증 (DEV-297, CR-113이 한 항목을 더했다)
 
 `source_count == target_count` 하나로 판정하지 않는다. **같은 수의 다른 문서**가 가능하다. 최소한 다음을 모두 확인한 뒤에만 별칭을 옮긴다.
 
@@ -432,6 +438,7 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 - 별칭별 기대 정본 커버리지가 맞는다
 - 대표 질의가 새 인덱스에서 성립한다
 - 잡이 여전히 `running`이다 — 취소·실패로 바뀌지 않았다
+- **시퀀스 투영이 끝났다 (CR-113)** — PR·커밋 별칭에서 먼저 `progress.sequence_replay`의 공간 집합이 정본의 공간 집합(채번된 적 있는 모든 `(저장소, 브랜치)`)을 덮는지 본다 — 재구축이 replay를 실제로 지났다는 증거이며, 이것 없이 아래 문서별 대조만 두면 대조가 불일치를 인라인으로 고치면서 빠진 replay를 가려 준다. 검증 전에 새로 채번된 공간이 생기면(재색인 중 등록·첫 push) 전환하지 않고 실패하며 다시 실행한다. 그다음 정본(현재 시퀀스·스냅숏)으로 계산한 대상 문서 집합을 target 인덱스에서 `mget`으로 읽어 `merge_seq`·`seq_epoch`·`sequence_space`가 문서마다 정본과 같은지, 그리고 공간마다 대표 서수 범위(마지막 1,000개)의 실제 정렬이 정본 순서와 같은지 본다. 전체 PR 수·전체 `merge_sequence` 행 수의 일치는 기준이 아니다 — 미병합·직접 푸시·미수집·연결 미확정은 대상이 아니다. 불일치가 있으면 한 번 더 비추고 다시 읽으며, 그래도 남으면(문서 자체가 없거나 쓰기 실패) 전환하지 않는다. 전환 울타리 안에서 replay가 기록한 에폭이 움직였으면 `sequence_epoch_moved`로 실패하고 옮기지 않는다. 전환 직후 모든 공간에 durable `full` sweep을 남겨 검증과 전환 사이의 변경도 수렴시킨다
 
 #### 실패·취소 처분 (DEV-298)
 
@@ -653,6 +660,8 @@ JOB-MIR-002는 **`commit.metadata_ready`를 받아 `commit.metadata_ready`를 �
 | `retry_total{stage,reason}` | 재시도 횟수 | 급증 시 경보 | - |
 | `sequence_space_state{state}` | 시퀀스 공간 상태별 수 | `stale` 1개 이상 시 경보 | FR-SEQ-001 |
 | `sequence_reassign_total` | 재채번 발생 횟수 | 1건이라도 발생 시 알림 | FR-SEQ-005 AC-5 |
+| `sequence_index_failed_total` | 채번·재채번·복구 직후 인라인 색인 투영이 예외로 끝난 회차 (CR-113부터는 "durable work에 맡겼다"는 신호이지 유실이 아니다) | 5분 지속 증가 시 경보 (RB-27) | FR-SEQ-001 AC-7 |
+| `sequence_work_total{kind="project",outcome}` | durable 시퀀스 투영 work의 처리 결과 (`done`·`continue`·`retry`·`document_missing`·`parked`·`obsolete`·`no_target`·`other_space`·`exception`·`lease_lost`) — `MNUMBER_ENABLED`와 무관하게 오른다 | 미수렴 결과가 10분간 늘고 `done`이 늘지 않으면 경보 (RB-27) | FR-SEQ-001 AC-7·AC-8 |
 | `reconcile_missing_total` | 조정 스캔이 발견한 누락 수 (`repository`·`kind` 라벨) | 0 초과 시 경고 | FR-ING-011 AC-4, NFR-002 |
 | `sequence_integrity_mismatch_total` | 정합성 점검이 발견한 불일치 공간 수 (`repository`·`base_branch` 라벨) | 1건이라도 발생 시 경보 | FR-ADMIN-003 AC-3 |
 | `sequence_integrity_check_failed_total` | 점검을 마치지 못한 횟수 (`reason` 라벨). **공간 상태를 바꾸지 않으므로** 실패는 이 지표로만 보인다 (CR-033, DEV-171) | 3회 연속 시 경보 | FR-ADMIN-003 예외 처리 |
