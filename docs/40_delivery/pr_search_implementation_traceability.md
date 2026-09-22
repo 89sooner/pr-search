@@ -1,10 +1,10 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.100 | 갱신일: 2026-09-22
+> 상태: review | 버전: v6.101 | 갱신일: 2026-09-22
 
 ## CR-113 / WP-098 — 머지 시퀀스의 Elasticsearch 투영 수렴 (2026-09-22)
 
-사용자 지시(2026-09-22)로 사내 `0.1.0-pilot.17` 보고(`agent-context/upstream-feedback.md` — 재색인 뒤 PR 문서의 `merge_seq` 0/4,214)를 최우선 신뢰성 결함으로 고쳤다. 조사 기준 main `2c3004f`(착수 시 `origin/main`과 같음), 워크트리 `/home/roqkf/pr-search-wt/cr113-seq-projection`(브랜치 `feature/cr113-sequence-projection`). 이 저장소에는 `pilot.17` 태그·Release가 없고(최신 `0.1.0-pilot.16` = `5f0d7e0`) `5f0d7e0..2c3004f`에 이 CR이 다루는 파일의 차이가 없으므로 분석은 배포 코드와 같은 코드를 대상으로 했으나, **사내 배포 바이너리의 SHA는 확인하지 못했다(NOT VERIFIED)**. 구현·검증·병합은 6.104장, 편차는 DEV-733~DEV-737, 연쇄는 변경 관리 대장 「CR-113 cascade」.
+사용자 지시(2026-09-22)로 사내 `0.1.0-pilot.17` 보고(`agent-context/upstream-feedback.md` — 재색인 뒤 PR 문서의 `merge_seq` 0/4,214)를 최우선 신뢰성 결함으로 고쳤다. 조사 기준 main `2c3004f`(착수 시 `origin/main`과 같음), 워크트리 `/home/roqkf/pr-search-wt/cr113-seq-projection`(브랜치 `feature/cr113-sequence-projection`). 이 저장소에는 `pilot.17` 태그·Release가 없고(최신 `0.1.0-pilot.16` = `5f0d7e0`) `5f0d7e0..2c3004f`에 이 CR이 다루는 파일의 차이가 없으므로 분석은 배포 코드와 같은 코드를 대상으로 했으나, **사내 배포 바이너리의 SHA는 확인하지 못했다(NOT VERIFIED)**. 구현·검증·병합은 6.104장, 편차는 DEV-733~DEV-737, 연쇄는 변경 관리 대장 「CR-113 cascade」. **병합됨** — PR #223 squash 병합 커밋 `a6ea00d`(2026-09-22 11:07 KST). 사내 배포 SHA는 NOT VERIFIED, 내부망 적용은 NOT RUN이다.
 
 ## CR-112 / WP-097 — PIPE 서버 위임 검색 수신부 (2026-09-21)
 
@@ -224,7 +224,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-098 | 머지 시퀀스의 Elasticsearch 투영 수렴 | 신뢰성 결함 수정 (CR-113) | in_progress | 에이전트 | 로컬 커밋, 브랜치 `feature/cr113-sequence-projection` (push·PR·병합 전) | 6.104장 — 현 코드에서 실패하던 8건이 통과하고 변이 7종에 죽는다; 재투영 잡·CLI·API·Search API 정렬·RepositoryWorkspace e2e 통과 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
+| WP-098 | 머지 시퀀스의 Elasticsearch 투영 수렴 | 신뢰성 결함 수정 (CR-113) | done | 에이전트 | main `a6ea00d` / PR #223 (브랜치 head `36f0444`, squash) | 6.104장 — 현 코드에서 실패하던 8건이 통과하고 변이 10종에 죽는다; 독립 리뷰 2건 수정; 재투영 잡·CLI·API·Search API 정렬·RepositoryWorkspace e2e 통과; PR CI·main CI success | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-097 | PIPE 서버 위임 검색 수신부 | 서버 간 연동 (CR-112) | done | 에이전트 | main `e7b4cb4` / PR #220 (브랜치 커밋 `28a3c21`, squash) | 6.103장 — 최종 실행 typecheck·lint(기준선 1건은 병합 전 설정으로 해소, 오류 0)·lint:deps·단위 3,204·build·통합 2,052·회귀 509 통과, 독립 보안 검토 차단·높음 0. PR CI run `35568796745` verify·integration success | 기본 꺼짐. 사내 CA·운영 HAProxy·실제 GHE를 거친 검증은 NOT_RUN. 발견 편차 DEV-730·DEV-731·DEV-732(원본 경로, 기록만) |
 | WP-096 | Search 화면 좌측 패널·필터 UI 간소화 | UI 간소화 (CR-111) | in_progress | 에이전트 | 로컬 커밋, 브랜치 `feature/cr111-search-simplify` (push·PR·병합 전) | 구현·독립 리뷰 2회·수정·후속 여백/정렬 조정 2회·재검증 전부 완료 — 6.102장. typecheck·lint·lint:deps·build·유닛998/998·a11y 10회 연속 465/465 통과 | 요구사항 없음(레이아웃 정리, `FR-SRCH-006` AC-1은 차원만 규정). 발견 편차 DEV-728(e2e 커버리지 공백)·DEV-729(range 유형 전환 엣지 케이스)는 이 CR의 정정 사항과 무관. 병합 전까지 상태는 in_progress로 유지 |
 | WP-095 | Regression Revision Atlas 첫 UI 수직 | UI 수직 (CR-109) | done | 에이전트 | main `3fca8a6` / pilot.14 | 단위49/49·a11y441/441·typecheck·lint·lint:deps·프로덕션 build·1440/390 Chromium·실제 light/dark axe — 6.101장 | fixture opt-in; 실제 MDVP·장비·통계·새 DB는 미구현. 커밋 시점 "PR/배포 없음" 서술은 이후 push로 stale해져 위 0.1.0-pilot.14 발행 절에서 정정 |
@@ -8435,7 +8435,7 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 
 **독립 리뷰:** 읽기 전용 `deep-reasoner` 검토자 둘(첫 검토자는 세션 한도로 끊겨 새 이름으로 다시 띄웠고, 둘 다 보고서를 냈다). 판정: 정본 불변(초점 2)·누락 은폐 방지(초점 4)·브랜치/에폭 가드(초점 1)·락 배치(초점 3)는 견고, 차단 없음. 지적과 처분 — **[높음, 수정]** `verifySequenceProjection`의 대표 범위 정렬 검사가 `other_space` 커밋(다른 시퀀스 브랜치가 현재 에폭에 가진 공유 커밋)을 기대치에 넣어, first-parent 히스토리를 공유하는 브랜치가 둘 이상인 저장소의 `prs-commits` 재색인이 전환에 닿지 못했다(실제 정렬은 `base_branch` 필터로 읽으므로 길이가 어긋난다) → 기대치에서 `other_space`를 빼고, `release`가 A에서 갈라진 2-브랜치 fixture 시험을 더해 전환 완료·공유 커밋의 단일 라벨·정본 불변을 건다(변이: 필터 제거 → 그 시험 사망). **[중간, 수정]** replay 판정이 shadow(target) 결과가 없을 때 서비스 결과로 물러서 target에 쓰지 못한 문서를 settled로 셌다 → target에서 settled로 확인된 항목만 세고 나머지 전부를 unsettled로 세도록 바꾸고, target의 `mget`만 던지는 ES로 PR 재색인을 돌려 잡 `failed`(`shadow_write_failed`, 울타리)·별칭 불변·replay 기록 `settled 0 / unsettled 4`를 거는 시험을 더했다(변이: 폴백 복원 → 사망). 검토자 「확인 못 함」이었던 `reportShadowFailure` → `recordShadowFailures`의 잡 `failed` 전이는 `packages/db/src/reindex-fence.ts`에서 확인했고 이 시험이 실증한다. **[낮음, 수정]** 재투영·복구 대기의 문서 단위 work 집계가 공간의 모든 `project` 행을 매 tick 읽던 것을 상태 필터 COUNT 질의(`countPendingProjectDocWork`)로 바꿨다; `repaired` 갈래도 `db: repaired / projection: scheduled`를 progress에 남긴다(보고 대칭); 재색인 `sequence_replay` 기록을 공간마다가 아니라 저장소마다 쓴다(쓰기량 제곱 방지); `packages/es/integration/sequence.test.ts`·`sequence-projection-recovery.test.ts`에도 격리 가드를 더했다. **[낮음, 기록]** PR 문서의 `base_branch`가 스냅숏과 어긋나면 문서 단위 work가 `guard_rejected:branch`로 백오프 재시도를 계속한다(완료로 닫히지 않으며 상류 투영이 정합화해야 풀린다 — 한계에 기록); `awaiting_creation`은 재투영 완료 의미에 들어가지 않는다(문서 생성은 보강의 몫, dry-run·status의 `skip_awaiting_creation`으로 본다 — RUNBOOK·API 계약에 명시); 같은 SHA가 두 체인에 속할 때 표시 브랜치는 투영 순서에 따른다(DEV-734). 검토자의 「확인 못 함」(`packages/es/src/index.ts` export·`apps/web`·회귀·문서 전량)은 typecheck·lint·해당 시험 통과로 대신 확인했다.
 
-**병합:** 병합 전 — push·PR·CI·squash 병합 SHA와 그 CI 실행은 후속 기록에서 채운다.
+**병합:** 독립 리뷰 지적을 수정·검증한 head `36f0444`를 PR #223으로 올렸고 PR CI(run 35677604997)는 verify·integration 모두 success다 — `verify`의 단계(typecheck·lint·lint:deps·test·build·test:a11y·test:contrast·test:e2e)에는 건너뛰는 조건이 없으므로 로컬에서 최종 head로 다시 돌리지 않은 a11y·contrast·e2e도 이 실행이 확인했다(로컬 e2e는 `1840dda`에서 206 통과, 이후 `apps/web` 변경 없음). 이전 head `acbf935`의 PR CI(run 35676919247)도 success였다. 사용자 지시(2026-09-22 「main 반영까지 진행」)로 squash 병합했다 — 병합 커밋 `a6ea00d`(11:07 KST), 트리 `154b015…`가 브랜치 head `36f0444`와 같다. 병합 커밋 `a6ea00d`의 main CI: run 35678283958 — verify·integration 모두 success(취소되지 않았다; 병합 뒤 main에 다른 push가 없었다). 병합 기록은 별도 브랜치 `docs/cr113-merge-record`로 했다 — 작업 패키지 v2.59 → v2.60(WP-098 done), 원장 v6.100 → v6.101(머리 절·3장·6.104장 「병합」), 변경 관리 대장(CR-113 closed·병합 판정). 릴리스·태그는 발행하지 않았다.
 
 **발견 편차:** DEV-733(범위 공백 — 이 CR로 해소), DEV-734(다중 시퀀스 브랜치의 커밋 문서 `base_branch` 되돌림, open), DEV-735(체인 밖 문서의 옛 서수 orphan, open), DEV-736(운영 콘솔 재채번 본문 키 `confirm`/`confirmation` 불일치, open — 별건), DEV-737(통합 시험의 공용 ES 거부 장치 부재, partial — 이 CR의 두 파일만 가드).
 
