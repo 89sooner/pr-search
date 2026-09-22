@@ -59,7 +59,7 @@ export const WORK_DEFER_MS = 5_000;
 export const WORK_PARK_MS = 5 * 60_000;
 export const EVIDENCE_PENDING_RETRY_MS = 60_000;
 
-const KIND_ORDER: readonly SequenceWorkKind[] = ['refresh', 'project', 'reconcile', 'materialize', 'announce'];
+const KIND_ORDER: readonly SequenceWorkKind[] = ['refresh', 'project', 'reconcile', 'materialize', 'announce', 'tag'];
 
 /** 표준 백오프 + 지터. `attempt`는 이번 claim이 몇 번째인지(1부터)다. */
 export function retryDelayMs(attempt: number, maxMs: number, random: () => number = Math.random): number {
@@ -279,6 +279,14 @@ async function runOne(deps: WorkRunnerDeps, row: SequenceWorkRow): Promise<strin
         const result = await announceMergeNumbers(deps.mnumber, row);
         if (result === 'done') return finish('done', { state: 'done' });
         return finish('obsolete', { state: 'obsolete', delayMs: 0, reason: 'epoch_moved' });
+      }
+      case 'tag': {
+        /*
+         * 이 러너는 `tag`를 claim하지 않는다 (위 `kinds`) — GHE 쓰기 자격은 `tag` 역할에만 있다
+         * (CR-115 / ADR-026). 그래도 여기 도달했다면 잘못 넘어온 것이므로 아무것도 쓰지 않고
+         * 돌려놓는다. 시도 횟수를 세지 않는다 — 실패가 아니라 남의 일이다.
+         */
+        return finish('not_this_role', { state: 'ready', delayMs: WORK_DEFER_MS, reason: 'tag_role_only', resetAttempts: true });
       }
     }
   } catch (error) {

@@ -491,7 +491,8 @@ describe('T04a: 번호·checkpoint·전달 의도의 원자성', () => {
     expect((await numbers()).map((row) => row.m)).toEqual([null, null, null, null, null, null]);
     expect(await space()).toMatchObject({ headSeq: 0, headNumber: 0, blockedSeq: null });
     const works = await sequenceWorkRepo.listWorkForSpace(pool, REPOSITORY_ID, BRANCH);
-    expect(works.filter((one) => one.kind === 'materialize' || one.kind === 'announce')).toEqual([]);
+    // 태그 의도도 같은 트랜잭션이다 (CR-115) — 커밋이 실패하면 함께 사라진다.
+    expect(works.filter((one) => one.kind === 'materialize' || one.kind === 'announce' || one.kind === 'tag')).toEqual([]);
   });
 
   it('되돌린 뒤 같은 입력으로 다시 돌리면 같은 번호가 붙는다 — 실패가 번호를 소비하지 않는다', async () => {
@@ -525,6 +526,14 @@ describe('durable 러너와 materialize/announce (T04b 일부)', () => {
     // announce는 발행 뒤 done, materialize는 문서가 없어(404) 재시도 대기다.
     expect(works.find((w) => w.kind === 'announce')?.state).toBe('done');
     expect(works.filter((w) => w.kind === 'materialize').every((w) => w.state === 'retry')).toBe(true);
+    /*
+     * 채번 트랜잭션이 PR마다 원격 태그 의도도 남긴다 (CR-115 / FR-SEQ-012 AC-2). **이 러너는 그것을
+     * 집지 않는다** — GHE 쓰기 자격은 `tag` 역할에만 있으므로 `ready`로 남아 있어야 한다.
+     */
+    const tagWorks = works.filter((w) => w.kind === 'tag');
+    expect(tagWorks.map((w) => (w.payload as { pr_number: number }).pr_number).sort((a, b) => a - b)).toEqual([21, 25, 27, 29]);
+    expect(tagWorks.every((w) => w.state === 'ready')).toBe(true);
+    expect(tagWorks.map((w) => (w.payload as { commit_sha: string }).commit_sha)).toEqual(tagWorks.map((w) => origin.squash.get((w.payload as { pr_number: number }).pr_number)));
     const event = published.find((one) => one.envelope.event_name === 'mnumber.assigned');
     expect(event?.topic).toBe('prs:projected');
 

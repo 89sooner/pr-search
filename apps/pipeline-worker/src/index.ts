@@ -80,6 +80,9 @@ import {
   type AnnotateSweeper,
 } from './annotate.js';
 import { AnnotateClient, WriteGate, annotateConfigFailure, resolveAnnotateConfig } from '@prs/github-annotate';
+import { TagClient, resolveTagConfig, tagConfigFailure } from '@prs/github-tag';
+import { startTagSweeper, startTagWorkRunner, type TagDeps, type TagLogFields, type TagSweeper, type TagWorkRunner } from './mnumber-tag.js';
+import { startTagReconcileRunner, type TagReconcileRunner } from './mnumber-tag-reconcile.js';
 import { startSequenceWorkRunner, type SequenceWorkRunner } from './sequence-work-runner.js';
 import { startSequenceMetadataCleanup, type MetadataCleanup } from './sequence-metadata-cleanup.js';
 import { statSync } from 'node:fs';
@@ -1262,6 +1265,50 @@ if (roles.includes('annotate')) {
   }
 }
 
+let tagWorkRunner: TagWorkRunner | undefined;
+let tagSweeper: TagSweeper | undefined;
+let tagReconcileRunner: TagReconcileRunner | undefined;
+if (roles.includes('tag')) {
+  /*
+   * JOB-SEQ-007 (WP-100 / FR-SEQ-012, ADR-026).
+   *
+   * **원격 태그를 만드는 유일한 역할이다.** 자격은 `resolveTagConfig`가 태그 전용 변수(`GHE_TAG_*`)에서만
+   * 읽으며 조회용·표기용 App의 값은 이 블록에 등장하지 않는다. `sequence` 역할이 남긴 `tag` work를
+   * 이 역할만 claim한다 — durable work의 lease가 실행자 중복을 막는다.
+   */
+  const tagConfig = resolveTagConfig();
+  const tagLog = (entry: TagLogFields): void => {
+    process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-007', ...entry })}\n`);
+  };
+
+  if (!tagConfig.enabled) {
+    // 기본값이 꺼짐이다. 이 코드를 받는 것만으로 원격 저장소에 태그가 생겨서는 안 된다.
+    tagLog({ level: 'info', message: '태그가 꺼져 있다 — GHE에 아무것도 쓰지 않는다', reason: 'MNUMBER_TAG_ENABLED=false' });
+  } else {
+    const failure = tagConfigFailure(tagConfig);
+    if (failure !== null) throw new Error(`${failure} (WP-100 / JOB-SEQ-007)`);
+
+    const tagDeps: TagDeps = {
+      pool,
+      config: tagConfig,
+      metrics,
+      log: tagLog,
+      // 간격의 단위는 실행자다. 재시작 직후의 첫 쓰기도 한 간격만큼 늦춘다 (표기와 같은 근거).
+      gate: new WriteGate({ spacingMs: tagConfig.writeSpacingMs, startPaused: true }),
+      client: new TagClient({
+        config: tagConfig,
+        onResponse: (event) => {
+          tagLog({ level: 'info', message: 'GHE 태그 요청', method: event.method, repository: `${event.owner}/${event.repo}`, status: event.status, duration_ms: event.durationMs });
+        },
+      }),
+    };
+    tagWorkRunner = startTagWorkRunner(tagDeps);
+    tagSweeper = startTagSweeper(tagDeps);
+    tagReconcileRunner = startTagReconcileRunner({ pool, client: tagDeps.client, log: tagLog });
+    tagLog({ level: 'info', message: '태그를 시작한다', installations: tagConfig.installations.length, sweep_interval_ms: tagConfig.sweepIntervalMs });
+  }
+}
+
 let shuttingDown = false;
 const shutdown = (): void => {
   if (shuttingDown) return;
@@ -1316,6 +1363,13 @@ const shutdown = (): void => {
        */
       await annotateSweeper?.stop();
       await annotateSubscription?.close();
+      /*
+       * WP-100: 진행 중인 태그 work를 마치고 나간다. POST 뒤 정본 갱신 전에 끊기면 그 행은
+       * `unknown`으로 남거나 lease 만료 뒤 다음 시도의 GET이 호출 없이 복구한다.
+       */
+      await tagSweeper?.stop();
+      await tagWorkRunner?.stop();
+      await tagReconcileRunner?.stop();
       await authzRedisClient?.quit();
       await bus.close();
       await esClient?.close();

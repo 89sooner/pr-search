@@ -26,6 +26,9 @@
       "path": "packages/github-annotate"
     },
     {
+      "path": "packages/github-tag"
+    },
+    {
       "path": "packages/gh-cli"
     },
     {

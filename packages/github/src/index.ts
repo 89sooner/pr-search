@@ -79,6 +79,12 @@ export type { InstallationBinding, LeasedToken, PoolOptions } from './token-pool
 export { RequestScheduler } from './scheduler.js';
 export type { RequestPriority, SchedulerOptions } from './scheduler.js';
 
+/*
+ * 변경 요청의 시간 예산·간격 (WP-075 → CR-115). 표기와 태그 두 쓰기 패키지가 함께 쓴다 —
+ * 자격·토큰·경로를 모르는 순수 유틸리티라 여기 있어도 조회 경로에 쓰기 능력이 생기지 않는다.
+ */
+export { DeadlineExceededError, PassDeadline, WriteGate } from './pacing.js';
+
 export { GitHubTransport, parseNextPage } from './transport.js';
 export type { PagedResult, PageResponse, RequestOptions, TransportEvent, TransportOptions } from './transport.js';
 

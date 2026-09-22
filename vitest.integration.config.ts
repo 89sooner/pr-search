@@ -27,8 +27,10 @@ export default defineConfig({
       // 서브패스가 먼저다 — `@prs/db`가 앞서면 `/migrate`가 진입점으로 잡힌다.
       '@prs/db/migrate': fileURLToPath(new URL('./packages/db/src/migrate.ts', import.meta.url)),
       '@prs/db': resolvePackage('db'),
-      // 접두가 겹친다 — `@prs/github`가 앞서면 `@prs/github-annotate`가 그것으로 잡힌다.
+      // 접두가 겹친다 — `@prs/github`가 앞서면 `@prs/github-annotate`·`@prs/github-tag`가 그것으로 잡힌다.
       '@prs/github-annotate': resolvePackage('github-annotate'),
+      // CI 통합 잡은 빌드 없이 소스를 읽는다 — 별칭이 없으면 `dist`가 없는 러너에서 `@prs/github-tag`가 풀리지 않는다 (CR-115).
+      '@prs/github-tag': resolvePackage('github-tag'),
       // 서브패스가 먼저다 — `@prs/gh-cli`가 앞서면 `/node`가 진입점으로 잡힌다.
       '@prs/gh-cli/node': fileURLToPath(new URL('./packages/gh-cli/src/node.ts', import.meta.url)),
       '@prs/gh-cli': resolvePackage('gh-cli'),

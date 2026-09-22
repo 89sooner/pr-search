@@ -1,6 +1,8 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.26 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.27 | 갱신일: 2026-09-22
+
+CR-115 / A-003: C-045 JobRunForm에 `mnumber_tag_reconcile`(표시명 "M-number tag reconcile (GHE tags)")이 추가된다 — 입력은 `sequence_assign`과 같은 저장소·base 브랜치 둘이며 새 컴포넌트·새 입력 유형은 없다. 폼은 「누락 태그는 다시 만들고 다른 SHA를 가리키는 태그는 보고만 한다」를 말하고, dry-run은 이 폼이 아니라 `prsctl mnumber tags reconcile --dry-run`이다.
 
 CR-111 / W-001: Repository workspace 사이드바의 저장소 선택은 기존 `FieldSelect`(Radix `Select` 래퍼)를 재사용하는 compact 콤보박스 하나이며, pagination은 목록 대신 드롭다운 안 sentinel 옵션(`disabled` 지원을 옵션 타입에 추가)으로 표현한다. 필터 조건 전체는 `Collapsible`(`forceMount`, 기본 collapsed)로 묶는다 — 접힌 상태에서도 `⌘K`/`Ctrl+G`·`#omni-search-input` 포커스 이동이 계속 동작하도록 숨김은 `[data-state='closed']`의 CSS `display:none`으로만 하고 DOM 마운트는 유지한다. PR 번호·M 번호·머지 시각·머지 순서 range(CR-106)는 range 유형 `FieldSelect` + From/To 두 칸으로 통합하고, 유형별 값은 계속 개별 보존한다. `SourceHistory`의 SHA·PR 번호 복사(CR-107)는 `CopyButton`을 쓰지 않고 형제 컴포넌트 `CopyText`(표시 텍스트 자체가 `aria-label` 달린 semantic button, border/background/padding 없이 텍스트처럼 스타일링, 기존 `role="status"` 복사 안내 재사용)를 신설해 대체한다. `CopyButton`의 다른 사용처(`ResultWorkbench` 미리보기 패널)는 바꾸지 않는다.
 
@@ -489,7 +491,8 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 - 기반: Conductor `Field` + `Select` + `TextField` + `Button` + `Dialog`
 - 상태: `idle`, `submitting`, `error_job_conflict`
 - 사용 규칙 (CR-113): `sequence_reproject`(표시명 "Sequence reprojection (index repair)")는 저장소·base 브랜치에 더해 **예상 시퀀스 에폭**을 양의 정수로 받으며, 셋이 채워지기 전에는 요청이 나가지 않는다. 설명문은 「재투영은 재채번이 아니며 정본에서 색인 필드를 다시 쓴다」와 「현재 에폭과 다르면 서버가 거절한다」를 말한다. `allowed_actions`는 서버가 주며(`cancel`만) 화면이 좁히지 않는다. dry-run은 이 폼이 아니라 `prsctl sequence reproject --dry-run`이다
-- 관련 FR: FR-ING-006, FR-ING-008, FR-ADMIN-002, FR-SEQ-001 AC-8
+- 사용 규칙 (CR-115): `mnumber_tag_reconcile`(표시명 "M-number tag reconcile (GHE tags)")는 저장소·base 브랜치 둘을 받으며(`sequence_assign`과 같은 입력 유형 `sequence_space`), 둘이 채워지기 전에는 요청이 나가지 않는다. 설명문은 「정본과 원격 `M-*` 태그를 대조해 누락은 다시 만들고 다른 SHA를 가리키는 태그는 보고만 한다 — 옮기거나 지우지 않는다」를 말한다. 잡 진행률의 `conflict`·`unexpected` 건수는 실패가 아니라 보고이며 화면은 `completed`를 성공으로 그린다. `allowed_actions`는 서버가 준다. dry-run은 이 폼이 아니라 `prsctl mnumber tags reconcile --dry-run`이다
+- 관련 FR: FR-ING-006, FR-ING-008, FR-ADMIN-002, FR-SEQ-001 AC-8, FR-SEQ-012 AC-10
 
 ### C-046 IndexStatusPanel
 

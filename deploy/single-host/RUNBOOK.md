@@ -1095,10 +1095,139 @@ PR·커밋 재구축 뒤 replay와 전환 전 검증을 거친다. `MNUMBER_ENAB
    `db`와 `projection`을 따로 읽는다 — `projection: in_progress`는 색인 복구가 아직 도는
    중이라는 뜻이지 실패가 아니다. 재채번(RB-11)으로 색인 누락을 풀지 않는다.
 
+### 7.F M 번호를 원격 lightweight 태그로 굳히기 (WP-100 / FR-SEQ-012, `CR-115`, RB-28)
+
+켜면 확정된 M 번호마다 원격 GHE 저장소에 `refs/tags/M-<코드>-<번호>`(lightweight — tagger·메시지·
+서명 없음)가 그 번호의 squash 머지 커밋에 생긴다. 그 뒤로는 PR Search 없이도 `git fetch --tags` 한
+클론에서 `git rev-parse M-1900-1450`, `git show M-1900-1450`, `git log M-1900-2010..M-1900-2130`,
+`git diff M-1900-2010..M-1900-2130`, `git checkout M-1900-2010`, `git describe --tags`가 된다.
+**이 기능은 7.B의 제목 표기에 이어 이 제품이 사람의 지시 없이 GHE를 고치는 두 번째 경로다**
+(`ADR-026`). 규율은 7.B와 같다 — 전용 App, 저장소별 해제, 감사, 기본 꺼짐. 다른 것은 되돌릴
+수 없는 정도다: 제목은 사람이 고칠 수 있지만 태그는 한 번 퍼지면 옮겨도 이미 받은 클론이 따라오지
+않는다. 그래서 **이 제품은 태그를 만들기만 하고 옮기거나 지우지 않는다** — 같은 이름의 태그가
+다른 커밋이나 annotated 태그를 가리키면 `conflict`로 남기고 운영자에게 보고할 뿐이다.
+
+**켜기 전에 알린다.** 대상 저장소를 클론한 사람 모두에게 `M-*` 태그가 생긴다는 것을 먼저 알린다 —
+`git fetch --tags`·`git pull`이 태그를 받아 오고, `git describe`의 출력이 바뀐다.
+
+0. **먼저 무엇이 바뀌는지 읽기 전용으로 본다.** 자격만 채우고 전역 스위치는 끈 채로 대조를 dry-run
+   한다 — 원격 태그 목록을 읽어 정본과 대조한 요약만 내고 PostgreSQL·작업 큐·감사·GHE에 아무것도
+   쓰지 않는다. `missing`이 곧 켜면 만들어질 태그 수이고, `conflict`는 이미 누군가 같은 이름으로
+   다른 커밋을 가리켜 둔 태그(켜도 이 제품은 손대지 않는다), `unexpected`는 정본에 없는 번호의
+   `M-*` 태그다.
+
+   ```bash
+   ./prsctl mnumber tags reconcile --repository acme/smp1900 --base-branch main --dry-run
+   ```
+
+1. **태그 전용 GitHub App을 새로 등록한다.** 권한은 `Contents: write` 하나다(공식 문서가 ref
+   생성에 요구하는 권한). 7.B의 표기 App(`Pull requests: write`)과 **다른 App**으로 두기를 권한다 —
+   ref 생성 권한이 제목 갱신보다 넓어 한 키의 유출이 두 반경을 함께 열지 않게 하기 위해서다.
+   같은 App을 두 곳에 넣는 것은 운영자의 선택이다. 태그를 만들 저장소에만 설치한다.
+
+2. **GHE 저장소 ruleset으로 `M-*` 태그를 보호한다.** `refs/tags/M-*`의 갱신·삭제를 막고 생성은
+   태그 전용 App에 허용한다. 이 제품은 그 규칙을 만들지도 검사하지도 않는다 — 규칙이 없으면
+   누구든 태그를 옮길 수 있고, 이 제품은 되돌리지 않는다(`FR-SEQ-012` AC-8).
+
+3. **`.env`에 값을 채운다.**
+
+   ```bash
+   MNUMBER_TAG_ENABLED=true
+   GHE_TAG_APP_ID=<태그 전용 App ID>
+   GHE_TAG_PRIVATE_KEY=<PEM을 한 줄로, 개행은 \n>
+   GHE_TAG_INSTALLATIONS=<org>:<installationId>   # 표기용 GHE_ANNOTATE_INSTALLATIONS와 다른 값
+   ```
+
+   **켜 놓고 세 자격 중 하나라도 비면 `worker-annotate`가 기동을 거부한다** — 표기와 같은 규율이다.
+   나머지(`MNUMBER_TAG_SWEEP_MS`·`MNUMBER_TAG_SWEEP_LIMIT`·`MNUMBER_TAG_BLOCK_COOLDOWN_MS`·
+   `GHE_TAG_REQUEST_TIMEOUT_MS`·`MNUMBER_TAG_WRITE_SPACING_MS`)는 기본값으로 시작한다.
+
+4. **`./prsctl upgrade`를 돌린다.** 마이그레이션 035가 `merge_sequence`의 태그 결과 열,
+   `repository.tag_enabled`(기본 켜짐)·`tag_blocked_*`, `sequence_work`의 `tag` kind, 잡
+   `mnumber_tag_reconcile`을 더한다. 이미 채번된 번호에는 이 시점에 `tag` work가 없다 — 아래 6번이
+   그것을 만든다.
+
+5. **먼저 한 저장소에서만 켠다.** 나머지 저장소는 운영 화면 A-002 또는
+   `PATCH /api/v1/admin/repositories/{id}`의 `tag_enabled: false`로 끈다(끈 저장소는 채번·표기는
+   그대로 하고 태그만 만들지 않는다). 시퀀스 브랜치를 둘 이상 추적하는 저장소는 켜도 만들지 않는다
+   (`disabled(multiple_sequence_branches)`, `OD-015`) — 태그 이름에 브랜치가 없어 두 공간의 같은
+   번호가 한 이름을 다투기 때문이다.
+
+6. **과거 채번분을 채운다.** 켠 뒤 새로 채번되는 번호는 즉시(같은 트랜잭션의 durable work) 태그가
+   된다. **이미 채번된 번호는 대조로 한 번에 넣는다** — dry-run으로 `missing` 건수를 본 뒤 dry-run
+   없이 실행하면 `missing` 전부가 회차 상한 없이 durable work로 들어간다(500건씩 배치로 요청하지만
+   상한은 없다). 잔여 스윕(기본 하루 한 번, 회차당 `MNUMBER_TAG_SWEEP_LIMIT`=500건)만으로도 결국
+   채워지지만 1,500건이면 사흘이 걸린다 — 스윕은 그 뒤의 안전망(유실·실패 복구)이다. 실제 생성
+   속도는 쓰기 간격(기본 1초, 하한 1초)에 묶여 약 1건/초라 1,500건이면 25분 남짓이다.
+
+   ```bash
+   ./prsctl mnumber tags reconcile --repository acme/smp1900 --base-branch main --dry-run   # missing 건수를 본다
+   ./prsctl mnumber tags reconcile --repository acme/smp1900 --base-branch main             # 잡을 만든다 — 감사 job.run
+   ```
+
+   같은 것을 운영 화면 A-003 실행 폼 `M-number tag reconcile (GHE tags)`(저장소·브랜치)나
+   `POST /api/v1/admin/jobs`(`type: mnumber_tag_reconcile`)로도 요청할 수 있다. 잡은
+   `queued → running → completed`로 보이고 `progress`에 `ok`·`missing`·`enqueued`·`conflict`·
+   `unexpected`가 남는다. **`conflict`가 있어도 잡은 `completed`다** — 충돌은 실패가 아니라 보고다.
+
+7. **확인한다.** 태그 상태 집계에서 `done`이 늘고 `untried`가 줄어야 한다. 감사 `merge_number.tag`
+   (A-004 또는 `GET /api/v1/admin/audit`)의 건수가 실제로 만든 태그 수다 — 이미 있어 호출하지 않은
+   회차는 감사를 남기지 않는다. 로컬 클론에서 태그를 받아 확인한다.
+
+   ```bash
+   ./prsctl mnumber tags status --repository acme/smp1900 --base-branch main
+   git fetch --tags && git rev-parse M-1900-1450 && git show --no-patch --oneline M-1900-1450
+   git log --oneline M-1900-1440..M-1900-1450
+   ```
+
+**무엇이 언제 일어나는가.** 새 채번은 즉시 — 채번 트랜잭션이 남긴 `tag` work를 `worker-annotate`의
+`tag` 역할이 1초마다 집어 회차당 8건씩 직렬로 처리한다(쓰기 간격 1초). 잔여 스윕은 기동 30초 뒤 한 번,
+그 뒤 `MNUMBER_TAG_SWEEP_MS`(기본 하루)마다 `tag_state`가 없거나 `failed`·`unknown`인 행을 회차
+상한만큼 되살린다. 대조는 운영자가 실행할 때만 돈다.
+
+**상태 사전.** `./prsctl mnumber tags status`가 세는 `tag_state`와 사유다.
+
+| `tag_state` | 뜻 | 사유(`tag_result_reason`) | 다음에 일어나는 일 |
+| --- | --- | --- | --- |
+| (없음, `untried`) | 아직 시도하지 않았다 | - | work가 있으면 곧 처리되고, 없으면 스윕·대조가 만든다 |
+| `done` | 원격에 같은 SHA의 lightweight 태그가 있음을 확인했다 | `created`(이 제품이 만들었다) · `already_present`(이미 있었다) · `observed_after_unknown`(결과를 모르던 요청 뒤 관측) · `reconciled`(대조가 확인) | 끝 |
+| `conflict` | 같은 이름의 태그가 **다른 것**을 가리켜 손대지 않았다 | `different_sha` · `annotated_tag` (`tag_found_sha`가 원격이 가리키던 SHA) | 스윕이 다시 두드리지 않는다. 사람이 판단한다(아래) |
+| `failed` | 만들지 못했다 | `permission_blocked`(403·404 — 저장소 차단) · `sha_not_in_remote`(머지 커밋이 원격에 없다) · `code_unavailable`(저장소 이름에서 코드를 정할 수 없다, OD-009) · 기타 오류 종류 | `permission_blocked`는 쿨다운 뒤 스윕 또는 대조가 다시 본다. `sha_not_in_remote`·`code_unavailable`은 원인을 고쳐야 한다 |
+| `disabled` | 만들지 않기로 했다 | `repository_tag_disabled`(운영자가 껐다) · `multiple_sequence_branches`(OD-015) | 저장소를 켜거나 브랜치를 하나로 줄인 뒤 대조가 연다 |
+| `unknown` | 생성 요청의 결과를 모른다 | `outcome_unknown_*`·`aborted_after_send` | 다음 시도가 원격을 읽어 확정한다 — 이미 있으면 호출 없이 `done` |
+
+**목록이 잘렸다고 나오면.** 요약에 「목록 상한에서 잘림 — 부분 집계」가 붙으면 현재 에폭의 `M-*` 태그가
+`MNUMBER_TAG_LIST_MAX_PAGES`(기본 200페이지, 2만 건)를 넘은 것이다. 그 실행은 `missing`·`unexpected`를
+부분 집계로만 보고하고 재생성·재개를 하지 않는다 — 「없음」을 확인한 것이 아니기 때문이다. `.env`의 값을
+올리고 `./prsctl upgrade` 뒤 다시 돌린다.
+
+**충돌을 만나면 — 옮기지 않는다.** dry-run 대조로 정본 SHA와 원격 SHA·객체 유형을 나란히 본다.
+사람이 만든 태그라면 그대로 둔다 — 그 번호는 태그 없이 남고 정본·검색·제목 표기는 그대로다. 이
+제품이 잘못 만든 태그라는 것이 확인되면(정본의 번호가 바뀌었거나 다른 저장소의 커밋을 가리킨다)
+정정은 **사람의 절차**다: ① ruleset의 삭제 제한을 일시 해제한다 ② GHE에서 그 태그를 지운다(이
+제품에는 지우는 명령이 없다) ③ dry-run 없이 대조를 실행한다 — 대조가 원격에 없음을 확인한 `conflict`
+행을 다시 열고(`reopened`) durable work로 재생성한다 ④ ruleset을 복구한다. 자동은 없다.
+
+**권한 차단을 만나면.** 변경 요청에 403·404가 오면 그 저장소의 태그를 멈추고(`tag_blocked_at`,
+`permission_blocked`) 쿨다운(`MNUMBER_TAG_BLOCK_COOLDOWN_MS`, 기본 하루) 뒤 스윕이 한 번 다시
+본다. 표기와 같이 **조회 성공으로는 풀리지 않는다** — App 설치·`Contents: write` 권한·ruleset(생성이
+App에 허용되는가)을 고친 뒤 대조를 dry-run 없이 실행하면 즉시 풀린다(운영자의 명시적 재개). 권한이
+여전히 없으면 첫 생성이 다시 차단한다.
+
+**에폭이 오른 뒤.** 재채번은 번호를 바꾸지만 기존 태그는 그대로다(`ADR-007`). 새 에폭의 번호가
+옛 태그와 다른 커밋을 만나면 `conflict`로 보고된다 — 재채번(7.E·RB-11) 뒤에는 대조를 한 번 돌려
+목록을 본다. 옛 태그를 어떻게 할지는 사람이 정한다.
+
+**끄는 방법은 둘이다.** 전역 `MNUMBER_TAG_ENABLED=false`로 재기동하면 `tag` 역할이 아무것도 쓰지
+않고 채번 트랜잭션이 남기는 `tag` work는 `ready`로 쌓인다(다시 켜면 처리된다). 저장소별
+`tag_enabled: false`는 그 저장소만 `disabled`로 남기며 다시 켠 뒤 대조가 연다. 어느 쪽도 이미 만든
+태그를 지우지 않는다.
+
 ## 8. 문제 해결
 
 | 증상 | 확인 |
 | --- | --- |
+| `M-…` 태그가 안 생긴다 | `./prsctl mnumber tags status --repository … --base-branch …`로 `tag_state` 집계·차단·`tag` work 상태를 본다. `MNUMBER_TAG_ENABLED`(기본 꺼짐) → 세 자격 → 저장소 `tag_enabled` → ruleset(생성이 App에 허용되는가) → 시퀀스 브랜치 수(둘 이상이면 OD-015) 순으로 확인한다. 과거 채번분은 대조를 dry-run 없이 한 번 실행해야 바로 채워진다 (7.F) |
 | 한 저장소의 표기가 계속 실패하고, **다른 저장소의 표기도 함께 늦어진다** | 로그에 `시간 예산이 다해 이번 회차를 멈춘다`가 반복되는지 본다. 이벤트는 순서 보장을 위해 파티션마다 하나씩 전달되므로, 지속 실패하는 저장소의 이벤트가 같은 파티션의 다른 저장소를 막는다(`DEV-647`). **표기가 영영 빠지지는 않는다** — 일일 잔여 스윕이 하루 안에 메운다. 급하면 실패하는 저장소의 `annotate_enabled`를 잠시 꺼서 그 이벤트를 흘려보낸다 |
 | 어떤 PR의 표기가 계속 안 된다. 로그에 `title_body_changed`가 있다 | GHE가 제목을 다르게 저장했다. 자동 재시도를 멈춘 상태이며 의도된 정지다. 제목을 확인한 뒤 `PATCH /admin/repositories/{id}`에 `annotate_resume: true`로 다시 연다 (7.B) |
 | 권한을 고쳤는데 차단이 안 풀린다 | 차단은 **실제 쓰기 성공**으로만 풀린다. 조회가 되는 것만으로는 풀리지 않는다. 기다리지 않으려면 `annotate_resume`으로 연다 (7.B) |

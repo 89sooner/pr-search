@@ -914,6 +914,8 @@ describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () 
     ['sequence_assign', ASSIGN],
     // CR-113: 수동 재투영도 같은 규율 — 등재와 러너가 같은 변경에서 들어왔다.
     ['sequence_reproject', REPROJECT],
+    // CR-115: M 번호 태그 대조도 같은 규율 — 러너는 `tag` 역할에 있다.
+    ['mnumber_tag_reconcile', read('apps/pipeline-worker/src/mnumber-tag-reconcile.ts')],
   ])('%s 잡을 집는 러너가 있다', (type, source) => {
     expect(OPS_JOBS).toContain(`'${type}'`);
     expect(source).toContain('claimNextJob');
@@ -951,6 +953,7 @@ describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () 
     'apps/pipeline-worker/src/sequence-assign-runner.ts',
     'apps/pipeline-worker/src/sequence-reproject-runner.ts',
     'apps/pipeline-worker/src/reconcile.ts',
+    'apps/pipeline-worker/src/mnumber-tag-reconcile.ts',
   ])('%s — 무방비 finishJob을 쓰지 않는다', (path) => {
     expect(read(path)).not.toMatch(/jobRepo\.finishJob\(/);
   });
@@ -962,10 +965,10 @@ describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () 
    * 자기 오타를 "그 저장소가 없다"로 읽는다. **형식이 틀린 것과 등록되지 않은
    * 것은 다른 오류다.**
    */
-  it('resolveJobTarget의 세 갈래가 모두 슬러그 형식을 검사한다 (DEV-437)', () => {
-    // CR-113이 `sequence_reproject` 갈래를 더했다 — 같은 검사를 같은 자리에서 한다.
+  it('resolveJobTarget의 네 갈래가 모두 슬러그 형식을 검사한다 (DEV-437)', () => {
+    // CR-113이 `sequence_reproject` 갈래를, CR-115가 `mnumber_tag_reconcile` 갈래를 더했다 — 같은 검사를 같은 자리에서 한다.
     const checks = OPS_JOBS.match(/if \(owner === '' \|\| name === ''\)/g) ?? [];
-    expect(checks).toHaveLength(3);
+    expect(checks).toHaveLength(4);
   });
 
   /*
@@ -3724,6 +3727,41 @@ describe('표기 쓰기 자격이 조회 경로로 새지 않는다 (WP-075 / CR
       )
       .filter((name) => readFileSync(new URL(name, dir), 'utf8').includes('prs-annotate-secrets'));
     expect(others, `표기 시크릿을 참조하는 다른 manifest: ${others.join(', ')}`).toEqual([]);
+  });
+
+  /*
+   * 태그 자격도 같은 규율이다 (CR-115 / ADR-026 결정 3). 태그 전용 App은 표기 App과도 나뉘며
+   * `tag` 역할은 `annotate`와 같은 단위에 뜬다 — 그래서 자격을 받는 단위는 여전히 하나뿐이지만,
+   * 두 App의 키는 다른 앵커·다른 시크릿에 있어야 한 키의 유출이 두 반경을 함께 열지 않는다.
+   */
+  it('태그 자격도 나눈다 — Profile A·B 모두 (CR-115)', () => {
+    const envByService = composeEnvByService(read('deploy/single-host/compose.yml'));
+    const withTagKey = [...envByService.entries()]
+      .filter(([, keys]) => keys.has('GHE_TAG_PRIVATE_KEY'))
+      .map(([name]) => name);
+    expect(withTagKey).toEqual(['worker-annotate']);
+    const keys = envByService.get('worker-annotate');
+    for (const key of DATA_APP_SECRET_KEYS) {
+      expect(keys, `worker-annotate가 조회 App의 ${key}를 받는다`).not.toContain(key);
+    }
+    expect(keys).toContain('MNUMBER_TAG_ENABLED');
+
+    const annotate = read('deploy/k8s/pipeline-worker-annotate.yaml');
+    expect(annotate).toContain('value: annotate,tag');
+    expect(annotate).toContain('secretRef: { name: prs-tag-secrets, optional: true }');
+    const dir = new URL('deploy/k8s/', new URL('..', import.meta.url));
+    const others = readdirSync(dir)
+      .filter((name) => name.endsWith('.yaml') && name !== 'pipeline-worker-annotate.yaml' && name !== 'tag-secret.example.yaml')
+      .filter((name) => readFileSync(new URL(name, dir), 'utf8').includes('prs-tag-secrets'));
+    expect(others, `태그 시크릿을 참조하는 다른 manifest: ${others.join(', ')}`).toEqual([]);
+    // 시크릿 예시 파일끼리도 서로의 이름을 담지 않는다 — 두 시크릿이 한 곳에 합쳐지는 첫 걸음이 그것이다.
+    expect(read('deploy/k8s/tag-secret.example.yaml')).not.toContain('prs-annotate-secrets');
+    expect(read('deploy/k8s/annotate-secret.example.yaml')).not.toContain('prs-tag-secrets');
+
+    // 기본값이 꺼짐이다 — 이 변경을 받는 것만으로 원격 저장소에 태그가 생기지 않는다 (FR-SEQ-012 AC-6).
+    expect(read('deploy/single-host/.env.example')).toContain('MNUMBER_TAG_ENABLED=false');
+    expect(read('deploy/single-host/compose.yml')).toContain('${MNUMBER_TAG_ENABLED:-false}');
+    expect(read('deploy/k8s/configmap.yaml')).toContain("MNUMBER_TAG_ENABLED: 'false'");
   });
 
   it('**기본값이 꺼짐이다** — 이 변경을 받는 것만으로 제목이 바뀌지 않는다', () => {

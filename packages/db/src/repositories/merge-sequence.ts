@@ -30,7 +30,20 @@ export interface MergeSequenceRow extends Omit<MergeSequenceInsert, 'merge_seq'>
   readonly annotate_state: 'done' | 'mismatch' | 'failed' | 'disabled' | 'body_changed' | 'unknown' | null;
   readonly annotated_at: Date | null;
   readonly mnumber_assigned_at: Date | null;
+  /**
+   * 원격 lightweight 태그 결과 (WP-100 / FR-SEQ-012, 마이그레이션 035). NULL은 아직 시도하지
+   * 않은 행이다. `conflict`는 같은 이름의 태그가 **다른 것**을 가리켜 손대지 않은 것이며
+   * `tag_found_sha`가 그 근거다.
+   */
+  readonly tag_state: TagState | null;
+  readonly tagged_at: Date | null;
+  readonly tag_attempt_id: string | null;
+  readonly tag_result_reason: string | null;
+  readonly tag_found_sha: string | null;
 }
+
+/** `merge_sequence.tag_state`의 값 (035의 CHECK와 같다). */
+export type TagState = 'done' | 'conflict' | 'failed' | 'disabled' | 'unknown';
 
 type Queryable = Pool | PoolClient;
 
@@ -1054,4 +1067,240 @@ export async function markDisabledRepositoryTargets(db: Queryable, limit: number
     [limit],
   );
   return result.rowCount ?? 0;
+}
+
+/* ------------------------------------------------------------------ M 번호 태그 (WP-100 / CR-115) */
+
+/** 태그 work가 실행 직전에 다시 읽는 정본 행 — 저장소 정책·차단·추적 브랜치까지 한 번에. */
+export interface TagTargetRow {
+  readonly repository_id: number;
+  readonly owner: string;
+  readonly name: string;
+  readonly sequence_branches: string[];
+  readonly tag_enabled: boolean;
+  readonly tag_blocked_at: Date | null;
+  readonly repository_status: string;
+  readonly base_branch: string;
+  readonly seq_epoch: number;
+  readonly merge_seq: number;
+  readonly commit_sha: string;
+  readonly pull_request_number: number;
+  readonly merge_number: number;
+  readonly tag_state: TagState | null;
+  readonly tag_found_sha: string | null;
+}
+
+/**
+ * PR 하나의 현재 에폭 정본 행 (태그 work의 재확인, FR-SEQ-012 AC-2·AC-4).
+ *
+ * `sequence_space`와 `seq_epoch`까지 조인하므로 **현재 에폭의 행만** 나온다 — 옛 에폭의
+ * work가 이미 무효가 된 번호로 태그를 만드는 경로가 애플리케이션 코드가 아니라 질의에서
+ * 막힌다(표기의 `listAnnotateTargets`와 같은 규율). 재채번 중(`reassigning`) 공간은 나오지 않는다.
+ */
+export async function findTagTarget(
+  db: Queryable,
+  key: { readonly repositoryId: number; readonly baseBranch: string; readonly prNumber: number },
+): Promise<TagTargetRow | undefined> {
+  const result = await db.query<TagTargetRow>(
+    `SELECT ms.repository_id, r.owner, r.name, r.sequence_branches, r.tag_enabled, r.tag_blocked_at,
+            r.status AS repository_status, ms.base_branch, ms.seq_epoch, ms.merge_seq, ms.commit_sha,
+            ms.pull_request_number, ms.merge_number, ms.tag_state, ms.tag_found_sha
+       FROM merge_sequence ms
+       JOIN sequence_space sp
+         ON sp.repository_id = ms.repository_id
+        AND sp.base_branch   = ms.base_branch
+        AND sp.seq_epoch     = ms.seq_epoch
+       JOIN repository r ON r.repository_id = ms.repository_id
+      WHERE ms.repository_id = $1 AND ms.base_branch = $2 AND ms.pull_request_number = $3
+        AND ms.merge_number IS NOT NULL
+        AND sp.state <> 'reassigning'
+      ORDER BY ms.merge_seq
+      LIMIT 1`,
+    [key.repositoryId, key.baseBranch, key.prNumber],
+  );
+  return result.rows[0];
+}
+
+export interface TagSweepFilter {
+  readonly limit: number;
+  readonly repositoryId?: number;
+  readonly baseBranch?: string;
+  /** 권한 차단을 다시 볼 기준 시각. 이보다 오래된 차단만 통과시킨다. 없으면 차단된 저장소를 뺀다. */
+  readonly blockedBefore?: Date;
+}
+
+/**
+ * 태그 work를 다시 요청해야 할 행 (JOB-SEQ-007 잔여 스윕, FR-SEQ-012 AC-2).
+ *
+ * 현재 에폭에서 번호가 확정됐는데 태그 결과가 없거나(`NULL`) 다시 볼 수 있는 상태
+ * (`failed`·`unknown`)인 행이다. `done`·`conflict`·`disabled`는 끝난 상태라 여기 나오지 않는다 —
+ * `conflict`를 스윕이 다시 두드리면 손대지 않기로 한 태그에 요청만 반복하고, `disabled`는
+ * 운영자가 저장소를 다시 켰을 때 대조(reconcile)가 연다. 이 함수는 **과거 채번분의
+ * backfill**이기도 하다: CR-115 이전에 번호를 받은 행에는 `tag` work가 없다.
+ */
+export async function listTagSweepTargets(db: Queryable, filter: TagSweepFilter): Promise<TagTargetRow[]> {
+  const result = await db.query<TagTargetRow>(
+    `SELECT ms.repository_id, r.owner, r.name, r.sequence_branches, r.tag_enabled, r.tag_blocked_at,
+            r.status AS repository_status, ms.base_branch, ms.seq_epoch, ms.merge_seq, ms.commit_sha,
+            ms.pull_request_number, ms.merge_number, ms.tag_state, ms.tag_found_sha
+       FROM merge_sequence ms
+       JOIN sequence_space sp
+         ON sp.repository_id = ms.repository_id
+        AND sp.base_branch   = ms.base_branch
+        AND sp.seq_epoch     = ms.seq_epoch
+       JOIN repository r ON r.repository_id = ms.repository_id
+      WHERE ms.merge_number IS NOT NULL
+        AND ms.pull_request_number IS NOT NULL
+        AND sp.state <> 'reassigning'
+        AND (ms.tag_state IS NULL OR ms.tag_state IN ('failed', 'unknown'))
+        AND r.status = 'active'
+        AND r.tag_enabled
+        AND (r.tag_blocked_at IS NULL OR ($4::timestamptz IS NOT NULL AND r.tag_blocked_at < $4))
+        AND ($1::bigint IS NULL OR ms.repository_id = $1)
+        AND ($2::text   IS NULL OR ms.base_branch   = $2)
+      ORDER BY ms.tagged_at ASC NULLS FIRST, ms.repository_id, ms.base_branch, ms.merge_seq
+      LIMIT $3`,
+    [filter.repositoryId ?? null, filter.baseBranch ?? null, filter.limit, filter.blockedBefore ?? null],
+  );
+  return result.rows;
+}
+
+/** 현재 에폭에서 번호가 확정된 행을 서수 순으로 페이지한다 (대조·상태 집계). */
+export async function listNumberedRowsPage(
+  db: Queryable,
+  key: { readonly repositoryId: number; readonly baseBranch: string; readonly seqEpoch: number },
+  afterSeq: number,
+  limit: number,
+): Promise<MergeSequenceRow[]> {
+  const result = await db.query<MergeSequenceRow>(
+    `SELECT * FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+        AND merge_number IS NOT NULL AND merge_seq > $4
+      ORDER BY merge_seq
+      LIMIT $5`,
+    [key.repositoryId, key.baseBranch, key.seqEpoch, afterSeq, limit],
+  );
+  return result.rows;
+}
+
+export interface TagOutcomeEvidence {
+  readonly attemptId?: string;
+  readonly reason?: string;
+  /** `conflict`의 근거 — 원격 태그가 가리키던 SHA. */
+  readonly foundSha?: string;
+}
+
+/**
+ * 태그 결과를 남긴다. **`merge_number`를 되돌리지 않는다** (FR-SEQ-012 AC-5) — 태그가 실패해도
+ * 번호는 확정된 사실이다. 근거를 주지 않으면 기존 값을 지운다(표기와 같은 규율).
+ */
+export async function markTagState(
+  db: Queryable,
+  key: { readonly repositoryId: number; readonly baseBranch: string; readonly seqEpoch: number; readonly mergeSeq: number },
+  state: TagState,
+  evidence: TagOutcomeEvidence = {},
+): Promise<void> {
+  await db.query(
+    `UPDATE merge_sequence
+        SET tag_state = $5, tagged_at = now(),
+            tag_attempt_id = $6, tag_result_reason = $7, tag_found_sha = $8
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq = $4`,
+    [key.repositoryId, key.baseBranch, key.seqEpoch, key.mergeSeq, state, evidence.attemptId ?? null, evidence.reason ?? null, evidence.foundSha ?? null],
+  );
+}
+
+/**
+ * 종결 상태를 지우고 「미시도」로 되돌린다 (FR-SEQ-012 AC-10).
+ *
+ * 부르는 곳은 대조(reconcile) 하나다 — 원격에 태그가 **없음을 방금 확인한** `conflict` 행만 다시 연다.
+ * 실행자는 `conflict` 행을 원격 조회 없이 건너뛰므로 이 경로 없이는 사람이 GHE에서 지운 태그가
+ * 영영 다시 만들어지지 않는다. `merge_number`는 건드리지 않는다(AC-5). 사유는 남겨 왜 열렸는지
+ * 읽을 수 있게 한다.
+ */
+export async function clearTagState(
+  db: Queryable,
+  key: { readonly repositoryId: number; readonly baseBranch: string; readonly seqEpoch: number; readonly mergeSeq: number },
+  reason: string,
+): Promise<void> {
+  await db.query(
+    `UPDATE merge_sequence
+        SET tag_state = NULL, tagged_at = now(),
+            tag_attempt_id = NULL, tag_result_reason = $5, tag_found_sha = NULL
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_seq = $4`,
+    [key.repositoryId, key.baseBranch, key.seqEpoch, key.mergeSeq, reason.slice(0, 200)],
+  );
+}
+
+/**
+ * **쓰기 직전에 다시 묻는다** — `findTagTarget`으로 읽은 뒤 GHE 조회가 몇 초를 쓰는 동안
+ * 재채번이 에폭을 올렸을 수 있다. 태그는 되돌릴 수 없으므로(옮기지도 지우지도 않는다,
+ * AC-3) 무효가 된 번호를 내보내지 않는다.
+ */
+export async function isTagTargetCurrent(
+  db: Queryable,
+  key: { readonly repositoryId: number; readonly baseBranch: string; readonly seqEpoch: number; readonly mergeSeq: number },
+  mergeNumber: number,
+  commitSha: string,
+  /**
+   * 저장소 정책·차단·추적 브랜치도 함께 다시 본다 (FR-SEQ-012 AC-4, 독립 검토 지적 1). `blockedBefore`는
+   * 권한 차단을 다시 볼 기준 시각이다 — 그보다 새 차단(조회 사이에 다른 실행자가 건 것)이면 만들지 않고,
+   * 쿨다운을 지난 옛 차단은 진입 게이트와 같이 통과시킨다.
+   */
+  options: { readonly blockedBefore: Date },
+): Promise<boolean> {
+  const result = await db.query<{ ok: boolean }>(
+    `SELECT true AS ok
+       FROM merge_sequence ms
+       JOIN sequence_space sp
+         ON sp.repository_id = ms.repository_id
+        AND sp.base_branch   = ms.base_branch
+        AND sp.seq_epoch     = ms.seq_epoch
+       JOIN repository r ON r.repository_id = ms.repository_id
+      WHERE ms.repository_id = $1 AND ms.base_branch = $2 AND ms.seq_epoch = $3 AND ms.merge_seq = $4
+        AND ms.merge_number = $5 AND lower(ms.commit_sha) = lower($6)
+        AND sp.state <> 'reassigning'
+        AND r.status = 'active' AND r.tag_enabled
+        AND (r.tag_blocked_at IS NULL OR r.tag_blocked_at < $7)
+        AND coalesce(array_length(r.sequence_branches, 1), 0) = 1`,
+    [key.repositoryId, key.baseBranch, key.seqEpoch, key.mergeSeq, mergeNumber, commitSha, options.blockedBefore],
+  );
+  return result.rows.length > 0;
+}
+
+/** 저장소·브랜치의 현재 에폭 태그 상태 집계 (읽기 전용 — `prsctl mnumber tags status`). */
+export async function countTagStates(
+  db: Queryable,
+  key: { readonly repositoryId: number; readonly baseBranch: string; readonly seqEpoch: number },
+): Promise<Readonly<Record<string, number>>> {
+  const result = await db.query<{ state: string | null; count: string }>(
+    `SELECT tag_state AS state, count(*)::text AS count
+       FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND merge_number IS NOT NULL
+      GROUP BY tag_state`,
+    [key.repositoryId, key.baseBranch, key.seqEpoch],
+  );
+  const out: Record<string, number> = {};
+  for (const row of result.rows) out[row.state ?? 'untried'] = Number(row.count);
+  return out;
+}
+
+/**
+ * 머지 커밋 SHA로 현재 에폭의 번호 행을 찾는다 (커밋 보강이 merge_commit 문서를 만든 뒤
+ * M 값을 비출 work를 요청할 때, CR-115). 없거나 번호가 없으면 `undefined`.
+ */
+export async function findNumberedRowBySha(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+  commitSha: string,
+): Promise<MergeSequenceRow | undefined> {
+  const result = await db.query<MergeSequenceRow>(
+    `SELECT * FROM merge_sequence
+      WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3 AND lower(commit_sha) = lower($4)
+        AND merge_number IS NOT NULL
+      LIMIT 1`,
+    [repositoryId, baseBranch, seqEpoch, commitSha],
+  );
+  return result.rows[0];
 }

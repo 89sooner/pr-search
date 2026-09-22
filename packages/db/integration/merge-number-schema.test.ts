@@ -90,7 +90,7 @@ describe('T06a: 024 → 025 → 024 → 025 왕복', () => {
      * 아니라 **내려간 목록**으로 단언하므로 새 마이그레이션이 생기면 여기서 즉시 깨진다 —
      * `CR-085`의 027이 실제로 이 자리를 깨뜨렸고, `CR-086`의 028, `CR-088`의 029, `CR-090`의 030, `CR-100`의 031, `CR-101`의 032, `CR-112`의 033, `CR-113`의 034도 그랬다 — 그것이 이 형태의 목적이다.
      */
-    expect(await migrateDown(pool, 10)).toEqual(['034', '033', '032', '031', '030', '029', '028', '027', '026', '025']);
+    expect(await migrateDown(pool, 11)).toEqual(['035', '034', '033', '032', '031', '030', '029', '028', '027', '026', '025']);
     expect((await appliedVersions(pool)).includes('025')).toBe(false);
     const columns = await pool.query<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns WHERE table_name = 'merge_sequence'`,
@@ -106,7 +106,7 @@ describe('T06a: 024 → 025 → 024 → 025 왕복', () => {
     );
     expect(after.rows).toEqual(before.rows);
 
-    expect(await migrateUp(pool)).toEqual(['025', '026', '027', '028', '029', '030', '031', '032', '033', '034']);
+    expect(await migrateUp(pool)).toEqual(['025', '026', '027', '028', '029', '030', '031', '032', '033', '034', '035']);
     const restored = await pool.query<{ merge_number: number | null }>(
       'SELECT merge_number FROM merge_sequence WHERE merge_seq = 1',
     );

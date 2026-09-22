@@ -75,6 +75,15 @@ export const ACTIVE_AUDIT_ACTIONS = [
    */
   'pull_request.annotate',
   /**
+   * 확정된 M 번호를 원격 저장소의 lightweight 태그로 굳힘 (WP-100 / FR-SEQ-012 AC-6, CR-115).
+   *
+   * `pull_request.annotate`와 같은 규율이다 — 행위자는 `TAG_PRINCIPAL`, `query`는 없고,
+   * **실제로 ref를 만든 경우**(`created`)와 결과를 모르던 요청 뒤 원격에서 같은 태그를
+   * 관측한 경우(`observed`)만 남긴다. 이미 있어 호출하지 않은 회차·충돌로 손대지 않은 회차는
+   * 남기지 않는다 — 감사 건수가 「원격에 태그가 생긴 횟수」를 말해야 한다.
+   */
+  'merge_number.tag',
+  /**
    * GitHub Operations 운영 정책 (WP-080 / FR-GH-011 AC-6·AC-8, FR-GH-009 AC-8, CR-090).
    *
    * **적용(`applied`)은 DB 함수가 변경과 같은 트랜잭션에서 남긴다** — FR-AUTH-004 AC-6의 예외다. 이 서버가 남기는 것은
@@ -164,3 +173,6 @@ export const AUDIT_RETENTION_PRINCIPAL = 'system:audit-retention';
  * `system:sequence`·`system:audit-retention`이 이미 쓰는 관례다.
  */
 export const ANNOTATE_PRINCIPAL = 'system:annotate';
+
+/** M 번호 태그를 원격에 만드는 시스템 주체 (WP-100 / FR-SEQ-012 AC-6). `system:annotate`와 같은 관례다. */
+export const TAG_PRINCIPAL = 'system:tag';

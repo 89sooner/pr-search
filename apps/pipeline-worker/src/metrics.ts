@@ -131,6 +131,21 @@ export interface WorkerMetrics {
    * 라벨 필터 없이 그대로 경보에 걸 수 있어야 한다 (WP-075 지표 계약).
    */
   readonly mnumberAnnotateMismatchTotal: Counter;
+  /**
+   * M 번호 태그 work 결과 (JOB-SEQ-007 / WP-100). 라벨: `result`.
+   *
+   * 값은 고정 enum이다 — `created`·`already_done`·`observed_after_unknown`·`conflict`·
+   * `code_unavailable`·`disabled`·`multiple_sequence_branches`·`permission_blocked`·`superseded`·
+   * `obsolete`·`unprocessable`·`outcome_unknown`·`rate_limited`·`deferred`·`failed`.
+   * 저장소 이름·태그 이름을 라벨에 넣지 않는다 — 어느 태그였는지는 로그와 감사가 답한다.
+   */
+  readonly mnumberTagTotal: Counter;
+  /**
+   * 같은 이름의 태그가 다른 SHA(또는 annotated 태그)를 가리켜 손대지 않은 수 (FR-SEQ-012 AC-3).
+   * `mnumberTagTotal{result="conflict"}`와 같은 사실이지만 라벨 필터 없이 경보에 걸 수 있게 따로 둔다 —
+   * 이 값이 오르는 것은 원격 태그가 정본과 어긋났다는 신호이며 사람이 봐야 한다.
+   */
+  readonly mnumberTagConflictTotal: Counter;
   render(): string;
 }
 
@@ -194,6 +209,8 @@ export function createWorkerMetrics(): WorkerMetrics {
     'mnumber_annotate_mismatch_total',
     '다른 M 넘버 접두를 발견해 덮지 않은 수',
   );
+  const mnumberTagTotal = new Counter('mnumber_tag_total', 'M 번호 태그 work 결과 (JOB-SEQ-007)');
+  const mnumberTagConflictTotal = new Counter('mnumber_tag_conflict_total', '다른 대상을 가리키는 같은 이름의 태그를 발견해 손대지 않은 수');
 
   return {
     enrichPending,
@@ -230,6 +247,8 @@ export function createWorkerMetrics(): WorkerMetrics {
     mnumberProjectionStale,
     mnumberAnnotateTotal,
     mnumberAnnotateMismatchTotal,
+    mnumberTagTotal,
+    mnumberTagConflictTotal,
     render: (): string =>
       renderMetrics([
         enrichPending,
@@ -253,6 +272,8 @@ export function createWorkerMetrics(): WorkerMetrics {
         mnumberProjectionStale,
         mnumberAnnotateTotal,
         mnumberAnnotateMismatchTotal,
+        mnumberTagTotal,
+        mnumberTagConflictTotal,
         sequenceWorkTotal,
         releaseRefreshed,
         releaseRefreshFailed,

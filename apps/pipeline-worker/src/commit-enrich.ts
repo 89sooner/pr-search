@@ -395,9 +395,28 @@ async function projectAfterCreate(deps: CommitEnrichDeps, repository: Repository
   try {
     const projection = { pool: deps.pool, es: deps.es, ...(deps.now === undefined ? {} : { now: deps.now }) };
     const outcome = await projectSingleCommit(projection, repository, baseBranch, sha);
-    if (outcome.kind !== 'pending') return;
     const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repository.repository_id, baseBranch);
     if (space === undefined) return;
+    /*
+     * 이 SHA가 현재 에폭에서 번호를 받은 머지 커밋이면 M 값도 비춰야 한다 (CR-115 / FR-SEQ-012 AC-7).
+     * 문서는 방금 생겼고 M 값은 `materialize` work만 쓰므로(소유자 규칙) 그 work를 다시 요청한다 —
+     * 이미 `done`이었던 work는 generation이 올라 `ready`로 돌아온다. M 기능이 꺼진 배포에서는
+     * 러너가 그 행을 `parked`로 두며 켜는 순간 이어 간다.
+     */
+    const numbered = await mergeSequenceRepo.findNumberedRowBySha(deps.pool, repository.repository_id, baseBranch, space.seq_epoch, sha);
+    if (numbered !== undefined && numbered.pull_request_number !== null) {
+      await sequenceWorkRepo.requestWorkBatch(deps.pool, [
+        {
+          kind: 'materialize',
+          repositoryId: repository.repository_id,
+          baseBranch,
+          seqEpoch: space.seq_epoch,
+          keyExtra: [numbered.pull_request_number],
+          payload: { pr_number: numbered.pull_request_number, trigger_kind: 'commit_enrich' },
+        },
+      ]);
+    }
+    if (outcome.kind !== 'pending') return;
     await sequenceWorkRepo.requestWorkBatch(deps.pool, [
       docWorkRequest({ repositoryId: repository.repository_id, baseBranch, seqEpoch: space.seq_epoch }, 'commit', sha, 'commit_enrich'),
     ]);

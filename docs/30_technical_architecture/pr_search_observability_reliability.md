@@ -1,6 +1,8 @@
 # PR Search 관측성 및 신뢰성
 
-> 상태: review | 버전: v0.8 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.9 | 갱신일: 2026-09-22
+
+CR-115 / FR-SEQ-012: M 번호 lightweight 태그(JOB-SEQ-007)는 지표 둘을 더한다 — `mnumber_tag_total{result}`(고정 enum 15종, 비동기 문서 10장)와 `mnumber_tag_conflict_total`(같은 이름의 태그가 다른 것을 가리켜 손대지 않은 수 — 라벨 필터 없이 경보에 건다). 저장소·태그 이름은 라벨에 넣지 않는다 — 어느 태그였는지는 로그와 감사(`merge_number.tag`)가 답한다. 경보 「M 번호 태그 충돌·미수렴」(P2)과 런북 RB-28을 더했다. 잔여 스윕·대조가 되살린 work도 같은 지표로 보인다.
 
 CR-112 / FR-INT-001: PIPE 연동은 지표 둘을 더한다 — `pipe_integration_request_total{operation, outcome}`(operation은 고정 14종과 `unknown`, outcome은 `ok`·오류 코드·`HTTP_<상태>`)와 `pipe_integration_event_failed_total`(0이 아니면 연동 요청의 행위 주체가 기록되지 않고 있다). 사용자·저장소·질의는 라벨로 쓰지 않는다. 행위 주체·거절 사유는 `pipe_integration_event`(ENT-INT-005)에, 조회 감사는 기존 `audit_record`에 같은 `correlation_id`로 남는다. 알림 기준값은 운영 입력이 모인 뒤 정한다.
 
@@ -133,6 +135,7 @@ OpenTelemetry로 분산 추적을 수집한다.
 | 시퀀스 재채번 발생 | `sequence_reassign_total` 증가 | P3 (알림) | RB-11 |
 | 시퀀스 정합성 불일치 | `sequence_integrity_mismatch_total` 1건 이상 | P2 | RB-11 |
 | 시퀀스 색인 투영 미수렴 (CR-113) | `sequence_work_total{kind="project",outcome=~"retry|document_missing|parked|exception"}` 10분 동안 증가하고 같은 창에서 `outcome="done"`이 늘지 않음, 또는 `sequence_index_failed_total` 5분 지속 증가 | P2 | RB-27 |
+| M 번호 태그 충돌·미수렴 (CR-115) | `mnumber_tag_conflict_total` 증가, 또는 `mnumber_tag_total{result=~"failed\|outcome_unknown\|permission_blocked"}`가 30분 동안 증가하고 같은 창에서 `result=~"created\|already_done"`이 늘지 않음, 또는 `sequence_work_total{kind="tag",outcome=~"retry\|parked\|exception"}` 30분 지속 증가 | P2 | RB-28 |
 | 이벤트 유실 발견 | `reconcile_missing_total` 0 초과 | P2 | RB-12 |
 | GHE rate limit 소진 | `github_rate_limit_remaining` 10% 미만 30분 지속 | P3 | RB-13 |
 | 미러 디스크 부족 | `mirror_disk_usage_ratio` 85% 초과 | P2 | RB-14 |
@@ -183,8 +186,9 @@ A-001 운영 콘솔 화면은 이 중 "수집 파이프라인" 대시보드의 �
 | RB-18 | 감사 기록 실패 | ① PostgreSQL 쓰기 상태 확인 ② **파티션 존재 확인(월 경계)** — `audit_record`는 파티션 테이블이라 해당 월 파티션이 없으면 모든 INSERT가 거부된다. 파티션을 만드는 것은 `pnpm db:partitions`(`ensureMonthlyPartitions`, 기본 3개월치)이며 **`JOB-ING-006`은 Elasticsearch 재색인 잡이라 무관하다** (PR #83 리뷰). 없으면 그 명령으로 즉시 만든다 ③ 감사 누락 구간을 보안 담당자에게 보고 ④ **주 동작은 계속 처리되고 있다** (FR-AUTH-004 AC-6) — 이 경보는 조회가 막혔다는 신호가 아니라 **기록이 비고 있다**는 신호다 |
 | RB-19 | 재색인 지연 | ① 진행률 확인 ② 소스(PostgreSQL) 읽기 속도 확인 ③ ES 색인 처리량 확인 ④ 벌크 크기·동시성 조정 ⑤ 별칭 전환 전이므로 서비스 영향 없음을 확인 |
 | RB-27 | 시퀀스 색인 투영 미수렴 (CR-113) | ① 배포 SHA·endpoint·별칭 확인(`prsctl lineage`, `GET /api/v1/admin/reindex`) ② `prsctl sequence status --repository … --base-branch …`로 현재 에폭·head와 `project` work 상태(`ready`/`retry`/`leased`/`parked`/`done`/`obsolete`, `last_reason`) 확인 ③ `prsctl sequence reproject … --expected-epoch <현재> --dry-run`으로 `would_update`·`document_missing`·`guard_rejected` 건수와 표본 확인 — 아무것도 쓰지 않는다 ④ `document_missing`이면 투영·보강 상태(RB-12·RB-14)를 먼저 본다 — 문서가 없는 것은 투영기가 만들 수 없다 ⑤ `--dry-run` 없이 같은 명령으로 제한 범위(저장소·브랜치·에폭·`--alias`) 재투영을 실행하고 잡 `progress`(`projection`·`pending_documents`)를 본다 ⑥ 새 검색 요청으로 「M number」 정렬·`seq:` 범위·cursor 순회를 확인한다(기존 cursor/PIT는 이전 스냅숏을 유지한다) ⑦ 예외: `epoch_mismatch`는 현재 에폭을 다시 지정, `projection_partial`은 남은 문서의 생성 경로 점검, `mapping_conflict`(같은 SHA를 가리키는 PR 스냅숏 둘)·`other_space`(다른 시퀀스 브랜치가 가진 커밋 문서)는 쓰지 않는 것이 옳다 — 재채번(RB-11)으로 풀지 않는다 |
+| RB-28 | M 번호 태그 충돌·미수렴 (CR-115) | ① `prsctl mnumber tags status --repository … --base-branch …`로 현재 에폭의 `tag_state` 집계(`untried`·`done`·`conflict`·`failed`·`disabled`·`unknown`)·`tag` work 상태·저장소 차단(`blocked_at`)을 본다 ② `permission_blocked`면 태그 전용 App의 설치·`Contents: write` 권한·저장소 ruleset(생성이 App에 허용되는가)을 확인한다 — 고친 뒤 `prsctl mnumber tags reconcile …`(dry-run 없이)을 실행하면 차단이 풀리고 누락이 재요청된다(운영자의 명시적 재개; 쿨다운을 기다려도 스윕이 다시 본다) ③ `conflict`면 `prsctl mnumber tags reconcile … --dry-run`으로 정본 SHA와 원격 SHA·객체 유형을 나란히 본다 — **태그를 옮기지 않는다.** 사람이 만든 태그면 그대로 두고(그 번호는 태그 없이 남는다), 이 제품이 잘못 만든 것이면 RUNBOOK 7.F의 정정 절차(ruleset 일시 해제 → GHE에서 삭제 → dry-run 없이 대조 → ruleset 복구)를 따른다 ④ `missing`이 있으면 dry-run 없이 대조를 실행해 durable work로 재생성한다 — 대조는 회차 상한 없이 전부 넣는다 ⑤ `outcome_unknown`·`failed`·`unprocessable`은 GHE 도달성·한도(RB-13)·머지 커밋이 원격에 있는지를 본다 — `unknown`은 다음 시도의 조회가 확정하고, `sha_not_in_remote`는 원격 저장소가 그 커밋을 잃은 것이니 태그 이름을 다른 커밋에 붙이지 않는다 ⑥ `multiple_sequence_branches`는 결함이 아니다(OD-015) ⑦ 자동 되돌리기는 없다 — 에폭 상향 뒤 옛 태그와 새 번호의 충돌도 이 절차로 사람이 본다 |
 
-런북 커버리지 요구(NFR-008)는 상위 실패 모드 8종이다. 위 20종이 이를 초과 충족한다.
+런북 커버리지 요구(NFR-008)는 상위 실패 모드 8종이다. 위 21종이 이를 초과 충족한다.
 
 ## 7. 장애 모드와 저하 동작
 

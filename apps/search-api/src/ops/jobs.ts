@@ -57,7 +57,8 @@ export function toJobResponse(row: JobRow): Record<string, unknown> {
 export function allowedActionsForJob(type: string, state: JobState): readonly JobAction[] {
   const byState = jobRepo.allowedActionsFor(state);
   // `sequence_reproject`도 멈춰 이어 갈 지점이 없다 — durable work가 스스로 돌고 잡은 그것을 지켜볼 뿐이다 (CR-113).
-  if (type !== 'reconcile' && type !== 'sequence_reproject') return byState;
+  // `mnumber_tag_reconcile`도 같다 — 대조 한 회차이며 재생성은 durable work가 잇는다 (CR-115).
+  if (type !== 'reconcile' && type !== 'sequence_reproject' && type !== 'mnumber_tag_reconcile') return byState;
   return byState.filter((action) => action === 'cancel');
 }
 
@@ -108,7 +109,7 @@ export type CreateJobOutcome =
  * 이 목록은 "운영자가 목록·진행률·중단·취소를 쓸 수 있다"는 뜻이지
  * "API-ADM-002로 만들 수 있다"는 뜻이 **아니다.** 생성 가능 목록은 아래 것이다.
  */
-export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild', 'reindex', 'reconcile', 'sequence_assign', 'sequence_reproject'] as const;
+export const OPERATOR_JOB_TYPES = ['backfill', 'link_rebuild', 'reindex', 'reconcile', 'sequence_assign', 'sequence_reproject', 'mnumber_tag_reconcile'] as const;
 
 export type OperatorJobType = (typeof OPERATOR_JOB_TYPES)[number];
 
@@ -141,6 +142,12 @@ export const CREATABLE_GENERIC_JOB_TYPES = [
    * 정본 서수를 색인에 다시 비출 뿐 에폭·서수·head를 바꾸지 않는다.
    */
   'sequence_reproject',
+  /*
+   * JOB-SEQ-007 M 번호 태그 대조 (CR-115 / FR-SEQ-012 AC-10). 러너(`startTagReconcileRunner`, `tag`
+   * 역할)와 같은 변경에서 등재했다. 정본 ↔ 원격 `M-<코드>-*` 태그를 대조해 누락은 durable `tag`
+   * work로 재생성하고, 다른 SHA를 가리키는 태그는 **보고만** 한다 — 옮기거나 지우지 않는다.
+   */
+  'mnumber_tag_reconcile',
 ] as const;
 
 export type CreatableGenericJobType = (typeof CREATABLE_GENERIC_JOB_TYPES)[number];
@@ -284,6 +291,40 @@ export async function resolveJobTarget(
         repository_id: repository.repository_id,
         base_branch: baseBranch,
       },
+    };
+  }
+
+  if (type === 'mnumber_tag_reconcile') {
+    /*
+     * 태그 대조 (CR-115 / FR-SEQ-012 AC-10). 대상은 시퀀스 공간 하나다 — 태그 이름에 브랜치가
+     * 없으므로 공간마다 따로 대조해야 「다른 브랜치의 같은 번호」를 충돌로 오판하지 않는다.
+     * dry-run은 여기서 받지 않는다 — 읽기 전용 점검은 `prsctl mnumber tags reconcile --dry-run`이다.
+     */
+    if (body['dry_run'] === true) {
+      return { kind: 'invalid_parameter', message: 'dry-run은 API 잡으로 만들지 않는다 — prsctl mnumber tags reconcile --dry-run을 쓴다' };
+    }
+    const slug = body['repository'];
+    const baseBranch = body['base_branch'];
+    if (typeof slug !== 'string' || typeof baseBranch !== 'string' || baseBranch === '') {
+      return { kind: 'invalid_parameter', message: 'mnumber_tag_reconcile은 repository와 base_branch를 받는다' };
+    }
+    const [owner, name] = splitTarget(slug);
+    if (owner === '' || name === '') {
+      return { kind: 'invalid_parameter', message: 'repository는 owner/name 형식이다' };
+    }
+    const repository = await repositoryRepo.findRepositoryBySlug(pool, owner, name);
+    if (repository === undefined) return { kind: 'unknown_repository' };
+    if (!repository.sequence_branches.includes(baseBranch)) {
+      return { kind: 'invalid_parameter', message: '채번 대상 브랜치가 아니다', detail: { sequence_branches: repository.sequence_branches } };
+    }
+    const space = await sequenceSpaceRepo.findSequenceSpace(pool, repository.repository_id, baseBranch);
+    if (space === undefined) {
+      return { kind: 'invalid_parameter', message: '채번된 적 없는 시퀀스 공간이다 — 대조할 정본이 없다' };
+    }
+    return {
+      kind: 'ok',
+      target: sequenceSpaceLabel(`${owner}/${name}`, baseBranch),
+      progress: { repository_id: repository.repository_id, base_branch: baseBranch, seq_epoch_at_request: space.seq_epoch },
     };
   }
 
