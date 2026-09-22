@@ -31,8 +31,9 @@ const BASE = {
   scopeVersion: 7,
   // `seq:`가 없는 질의다. 시퀀스 재료가 **없다** (CR-051).
   sequenceEpoch: null,
-  // `mnum:`도 없는 질의다. M 번호 재료도 **없다** (CR-106).
+  // `mnum:`도 없는 질의다. M 번호 재료도 **없다** (CR-106). 묶인 브랜치도 없다 (CR-114).
   mergeNumberEpoch: null,
+  mergeNumberBaseBranch: null,
 } as const;
 
 const CURSOR = { pitId: 'pit-abc', searchAfter: [1342, 'acme/payments:1210'] };
@@ -101,7 +102,8 @@ describe('지문의 재료 (DEV-272)', () => {
   it('지문 입력에 `size`·`facets`가 없다', () => {
     const material = Object.keys(BASE);
     // `sequenceEpoch`은 CR-051이, `mergeNumberEpoch`는 CR-106이 더했다 — 둘 다
-    // 없으면 같은 서수·M 번호가 다른 세대를 가리킬 수 있다.
+    // 없으면 같은 서수·M 번호가 다른 세대를 가리킬 수 있다. `mergeNumberBaseBranch`는
+    // CR-114가 더했다 — `repo:`만 적은 `mnum:` 질의는 문자열에 브랜치가 없다.
     expect(material).toEqual([
       'query',
       'sortKey',
@@ -110,6 +112,7 @@ describe('지문의 재료 (DEV-272)', () => {
       'scopeVersion',
       'sequenceEpoch',
       'mergeNumberEpoch',
+      'mergeNumberBaseBranch',
     ]);
   });
 
@@ -179,6 +182,32 @@ describe('M 번호 에폭의 재료 (CR-106)', () => {
     const both = { ...BASE, sequenceEpoch: 3, mergeNumberEpoch: 5 };
     expect(computeFingerprint(both)).not.toBe(computeFingerprint({ ...both, sequenceEpoch: 4 }));
     expect(computeFingerprint(both)).not.toBe(computeFingerprint({ ...both, mergeNumberEpoch: 6 }));
+  });
+});
+
+describe('M 번호 공간의 브랜치 재료 (CR-114)', () => {
+  /*
+   * `repo:acme/payments mnum:15`는 유일한 추적 브랜치로 묶이는데 그 브랜치가 질의
+   * 문자열에 없다. 페이지 사이에 추적 브랜치가 `main`에서 `release`로 바뀌면 두 공간의
+   * 에폭이 모두 1이어도 지문이 달라야 한다 — 같으면 옛 커서가 다른 공간의 서수 위에서
+   * 순회를 잇는다.
+   */
+  it('**묶인 브랜치가 달라지면 지문이 달라진다** — 에폭이 같아도', () => {
+    const main = { ...BASE, query: 'repo:acme/payments mnum:15..15', mergeNumberEpoch: 1, mergeNumberBaseBranch: 'main' };
+    expect(computeFingerprint(main)).not.toBe(computeFingerprint({ ...main, mergeNumberBaseBranch: 'release' }));
+  });
+
+  it('브랜치 재료는 있을 때만 실린다 — `mnum:` 없는 질의의 지문은 이 필드가 `null`인 채 그대로다', () => {
+    // `binding`과 같은 규칙이다: 없는 질의에 빈 자리를 더하면 공개 커서의 지문이 바뀐다.
+    expect(computeFingerprint(BASE)).toBe(computeFingerprint({ ...BASE, mergeNumberBaseBranch: null }));
+    expect(computeFingerprint(BASE)).not.toBe(computeFingerprint({ ...BASE, mergeNumberBaseBranch: 'main' }));
+  });
+
+  it('브랜치 `main` 커서를 `release`로 묶인 조회에 쓰면 거절된다', () => {
+    const bound = { ...BASE, mergeNumberEpoch: 1, mergeNumberBaseBranch: 'main' };
+    expect(() =>
+      roundTrip(computeFingerprint(bound), computeFingerprint({ ...bound, mergeNumberBaseBranch: 'release' })),
+    ).toThrow(CursorQueryMismatchError);
   });
 });
 

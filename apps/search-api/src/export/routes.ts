@@ -65,6 +65,7 @@ export function registerExportRoutes(app: FastifyInstance, deps: SearchRouteOpti
       const mergeNumberFailure = toMergeNumberRangeFailure(mergeNumberRange, correlationId);
       if (mergeNumberFailure !== null) return reply.status(mergeNumberFailure.status).send(mergeNumberFailure.body);
       const mergeNumberEpoch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.epoch : null;
+      const mergeNumberBaseBranch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.baseBranch : null;
 
       const resolved = resolveSearchTarget(ast, ['prs-pull-requests', 'prs-commits']);
       const names = collectNames(resolved.ast);
@@ -72,6 +73,8 @@ export function registerExportRoutes(app: FastifyInstance, deps: SearchRouteOpti
       const built = buildQuery(resolved.ast, resolution, {
         ...(sequence.kind === 'bound' ? { sequenceEpoch: sequence.epoch } : {}),
         ...(mergeNumberEpoch === null ? {} : { mergeNumberEpoch }),
+        // 검색과 같은 판정, 같은 항이다 (CR-114) — 내보내기만 브랜치 없이 에폭 항을 걸지 않는다.
+        ...(mergeNumberBaseBranch === null ? {} : { mergeNumberBaseBranch }),
       });
       const plan: ExportPlan = { target: resolved.target, scope, query: built.query, repositoryIds: cached.repositoryIds, sort, order: body['order'] === 'asc' ? 'asc' : 'desc' };
       const storedPlan = { ...plan, q, ...(sequence.kind === 'bound' ? { sequenceContext: sequence.context } : {}) };

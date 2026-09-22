@@ -66,8 +66,9 @@ function request(query: string) {
     facets: false,
     // `seq:`가 없는 질의다 (CR-051).
     sequenceEpoch: null,
-    // `mnum:`도 없는 질의다 (CR-106).
+    // `mnum:`도 없는 질의다 (CR-106). 묶인 브랜치도 없다 (CR-114).
     mergeNumberEpoch: null,
+    mergeNumberBaseBranch: null,
   } as const;
 }
 

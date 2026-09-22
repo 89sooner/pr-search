@@ -164,6 +164,7 @@ export async function prepareAnalyticsQuery(
   const resolution = await deps.resolveNames(collectNames(scopedAst));
   const sequenceEpoch = sequence.kind === 'bound' ? sequence.epoch : null;
   const mergeNumberEpoch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.epoch : null;
+  const mergeNumberBaseBranch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.baseBranch : null;
   const built = buildQuery(
     // `kind:`가 걷어내진 AST다 — 남기면 `buildQuery`가 던진다 (CR-053).
     scopedAst,
@@ -171,11 +172,12 @@ export async function prepareAnalyticsQuery(
     /*
      * `seq:`/`mnum:` 범위가 있는데 대응 에폭이 없으면 `buildQuery`가 던진다
      * (CR-051, CR-106). 조용히 모든 세대를 함께 집계하는 것보다 조립 오류를
-     * 드러내는 편이 낫다.
+     * 드러내는 편이 낫다. `mnum:`은 브랜치도 함께 준다 (CR-114) — 검색과 같은 항이 선다.
      */
     {
       ...(sequenceEpoch === null ? {} : { sequenceEpoch }),
       ...(mergeNumberEpoch === null ? {} : { mergeNumberEpoch }),
+      ...(mergeNumberBaseBranch === null ? {} : { mergeNumberBaseBranch }),
     },
   );
 

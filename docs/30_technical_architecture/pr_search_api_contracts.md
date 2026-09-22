@@ -795,6 +795,11 @@ merge_seq    ∈ 요청 범위
 접근 통제를 지나 읽고(`resolveRepository`) 브랜치가 하나면 그 공간의 현재 에폭으로 묶으며, 둘 이상이면
 `INVALID_PARAMETER`(`detail.reason: "sequence_space_ambiguous"`, `required_keys: ["base"]`, `repository`,
 `sequence_branches: [...]`)로 거절한다 — 서버가 공간을 고르는 것이 아니라 고를 것이 없을 때만 통과한다.
+**묶인 브랜치는 질의 항이 된다**: 판정이 확정한 브랜치를 질의 빌더가 `merge_number_epoch` 항과 같은 자리에서
+`base_branch` 항으로 걸어, `base:`를 생략한 질의와 적은 질의가 같은 결과 집합을 본다(검색·집계·내보내기·완화
+공통). 에폭은 공간마다 독립이라 에폭 항만으로는 추적에서 제외된 브랜치의 잔여 문서(DEV-739)를 거르지 못하기
+때문이다. 같은 브랜치가 커서 지문에도 실린다 — `repo:`만 적은 질의는 문자열에 브랜치가 없어 페이지 사이에 추적
+브랜치가 바뀌면 커서가 `CURSOR_QUERY_MISMATCH`로 거절된다.
 `repo:`가 없으면 그대로 `sequence_space_required`이며 문구가 `M-<code>-<number>` 형식(API-SRCH-001)을
 안내한다(전 저장소 무바인딩은 OD-014).
 

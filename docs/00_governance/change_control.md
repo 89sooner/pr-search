@@ -184,7 +184,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| CR-114 | 2026-09-22 | scope | 사용자 지시 2026-09-22 — 사내 pilot.17 보고(검색창 `M-1900-1450`이 전문 검색으로 떨어짐, `mnum:` 범위·바인딩 부담) | **M 번호 표기 문자열을 검색창 식별자로 정본에서 해석하고, `mnum:` 단일 값과 유일 추적 브랜치의 `base:` 생략을 연다.** 후보에 M 세 키·정본 시퀀스 값, 기능 꺼짐은 `merge_number_disabled`, 전 저장소 무바인딩은 OD-014 | FR-SRCH-001 AC-7 · FR-SRCH-005 AC-9 · OD-014 · API-SRCH-001 · WP-099 · DEV-738 | SRS · PRD · 용어집 · 매트릭스 · 화면 흐름 · 실행 지시서 · 백엔드 · API 계약 · PIPE handoff · WP · 원장 | implementing — 브랜치 `feature/cr114-mnumber-search`, 병합은 사용자 지시 뒤 |
+| CR-114 | 2026-09-22 | scope | 사용자 지시 2026-09-22 — 사내 pilot.17 보고(검색창 `M-1900-1450`이 전문 검색으로 떨어짐, `mnum:` 범위·바인딩 부담) | **M 번호 표기 문자열을 검색창 식별자로 정본에서 해석하고, `mnum:` 단일 값과 유일 추적 브랜치의 `base:` 생략을 연다.** 후보에 M 세 키·정본 시퀀스 값, 기능 꺼짐은 `merge_number_disabled`, 전 저장소 무바인딩은 OD-014 | FR-SRCH-001 AC-7 · FR-SRCH-005 AC-9 · OD-014 · API-SRCH-001 · WP-099 · DEV-738 · DEV-739 | SRS · PRD · 용어집 · 매트릭스 · 화면 흐름 · 실행 지시서 · 백엔드 · API 계약 · PIPE handoff · WP · 원장 | implementing — 브랜치 `feature/cr114-mnumber-search`, 병합은 사용자 지시 뒤 |
 | CR-113 | 2026-09-22 | correction/reliability | 사용자 지시 2026-09-22 — 사내 pilot.17 보고(재색인 뒤 `merge_seq` 0/4,214) | **PostgreSQL에 확정된 머지 시퀀스가 색인에 비치지 않거나 재색인 뒤 사라지는 결함을 번호 변경 없이 복원하고 자동 수렴하게 한다.** 문서 단위 guarded 투영기, durable `project` work, 재색인 replay·검증, `sequence_reproject` 잡·`prsctl sequence`, consistent 복구의 색인 검증 | FR-SEQ-001 AC-7·AC-8 · FR-ING-008 AC-8 · FR-ADMIN-003 AC-6 · ADR-004 Amendment · JOB-SEQ-006 · ENT-SEQ-006 · API-ADM-002 · WP-098 · DEV-733~737 | SRS · PRD · 용어집 · 매트릭스 · UI 컴포넌트 · 실행 지시서 · 백엔드 · API 계약 · 데이터 모델 · 비동기 · 인프라 · 관측성 · ADR · WP · 원장 · RUNBOOK | closed — main `a6ea00d`(PR #223), 원장 6.104; 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | CR-112 | 2026-09-21 | scope/security | 사용자 지시 2026-09-21 — PIPE Search 연동 2단계 서버 작업(PSI-1.0) | **PIPE 서버가 위임한 사용자에게 기존 조회 10종만 연다.** private mTLS 리스너, RS256 assertion, 승인된 identity binding, 검색 전용 opaque grant(≤300초), 사용자 범위 ∩ client 허용 목록. 일반 경로·쿠키·`/api/v1/*` 계약 불변, 기본 꺼짐 | FR-INT-001 · API-INT-001~014 · ENT-INT-001~005 · ADR-025 · WP-097 | SRS · API 계약 · 데이터 모델 · 보안 · ADR · WP · 원장 · handoff | closed — main `e7b4cb4`(PR #220), 원장 6.103; 사내 CA·실 GHE·운영 HAProxy 검증은 NOT_RUN |
 | CR-109 | 2026-09-18 | scope/implementation | 사용자 지정 B Atlas 및 UI 지시서 구현 | opt-in Regression 첫 fixture UI 수직, 기존 서버 bisect 재사용, Search 보존 | FR-REG-001, W-024, WP-095 | SRS·PRD·glossary·matrix·UI·FE/infra·delivery·원장 | 로컬 구현·검증 완료 — 원장6.101; 실제 MDVP/릴리스 미검증 |
@@ -2298,13 +2298,14 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 
 ### CR-114 cascade — 검색창 M 번호 문자열 해석과 `mnum:` 단일 값
 
-기준 main `13074f8`(착수 시 `origin/main`과 같음), worktree `/home/roqkf/pr-search-wt/cr114-mnumber-search`(브랜치 `feature/cr114-mnumber-search`). scope — 기존 AC 문장은 바꾸지 않고 AC-7을 더하며 AC-9에 보완 문장을 잇는다. ID는 `docs/`와 로컬·원격 브랜치 전부를 실측해 정했다 — CR-114·WP-099·DEV-738·OD-014(OD-010~013은 PRD의 회귀 보고와 미병합 브랜치가 쓴다). 새 ADR·마이그레이션·잡·감사 액션은 없다.
+기준 main `13074f8`(착수 시 `origin/main`과 같음), worktree `/home/roqkf/pr-search-wt/cr114-mnumber-search`(브랜치 `feature/cr114-mnumber-search`). scope — 기존 AC 문장은 바꾸지 않고 AC-7을 더하며 AC-9에 보완 문장을 잇는다. ID는 `docs/`와 로컬·원격 브랜치 전부를 실측해 정했다 — CR-114·WP-099·DEV-738·OD-014(OD-010~013은 PRD의 회귀 보고와 미병합 브랜치가 쓴다), 독립 검토 뒤 DEV-739. 새 ADR·마이그레이션·잡·감사 액션은 없다.
 
 - [x] 요구사항: SRS v2.40 → v2.41 — `FR-SRCH-001` AC-7·예외 사유 코드 `merge_number_disabled`, `FR-SRCH-005` AC-9 보완, OD-014(open, 권고안 포함), v2.41 주석. PRD v1.18 → v1.19 — 제품 계약 문단. 용어집 v0.15 → v0.16 — M 번호 표기 문자열=식별자, 단일 값·`base:` 생략 어휘와 금지 동의어. 매트릭스 v1.14 → v1.15 — CR-114 표(2행).
 - [x] 파생 UI: 화면 흐름 v0.11 → v0.12(FLOW-001 사전 판정·0건 사유), AI 에이전트 실행 지시서 v0.14 → v0.15(정본 해석 한 경로·단일 값 분기 금지·`base:` 결속 한 곳). IA·와이어프레임·상태 매트릭스·컴포넌트 명세는 바뀌지 않았다 — 후보 카드의 렌더링은 그대로다.
 - [x] 기술 아키텍처: 백엔드 v0.15 → v0.16(4.5 해석 순서 1-a·정본 해석 문단), API 계약 v0.40 → v0.41(API-SRCH-001 M 문자열 응답·`merge_number_disabled`, 「식별자 범위 지목 계약」 CR-114 보완 표). 데이터 모델·비동기·인프라·관측성·보안·ADR·RUNBOOK은 바뀌지 않았다(새 표·잡·운영 절차·자격 없음).
 - [x] 전달: 작업 패키지 v2.60 → v2.61(WP-099 절·상태 표), 원장 v6.101 → v6.102(머리 절, 3장 WP-099, 4장 FR-SRCH-001 AC-7·FR-SRCH-005 AC-9, 5장 DEV-738, 6.105장). PIPE handoff(OpenAPI·합성 예시·CONTRACT_DIFF D-21·manifest 재생성, 계약 checksum `c9a800d8…`). `agent-context/upstream-feedback.md`에 상류 반영 주석 — 첫 항목의 CR-113 주석은 사내 동기화(`aeb2b8e`)가 지웠으므로 복원하고, 둘째 항목에 CR-114 주석을 더한다.
 - [x] 코드·시험: 원장 6.105장.
+- [x] 독립 리뷰(`deep-reasoner`, head `f88fede`): 수정 권고 1건(중간) — `base:` 생략 경로가 「추적 브랜치가 하나면 그 브랜치 문서만 M 값을 갖는다」는 불변식에 기댔고 브랜치 제거가 그 불변식을 깬다(DEV-739). 수정 — 판정이 확정한 브랜치를 `buildQuery`가 `merge_number_epoch` 항과 같은 자리에서 `base_branch` 항으로 걸고(네 경로 공통) 커서 지문에도 싣는다. 단위 +6·통합 +1(제거된 브랜치 잔여 문서 픽스처), 변이 확인 1종. 원장 6.105장 「독립 리뷰」. 5장 DEV-739(open — 정리는 별도 승인).
 - 문서 검증기(`validate_srs_prd_env.py`): 원장 6.105장에 기준선 대비 결과를 적는다.
 - 상태: **implementing** — 병합은 사용자 지시 뒤.
 

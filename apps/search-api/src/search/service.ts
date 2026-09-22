@@ -317,6 +317,14 @@ export interface SearchRequest {
    */
   readonly mergeNumberEpoch: number | null;
   /**
+   * `mnum:` 범위 질의가 묶인 시퀀스 공간의 기준 브랜치. `mnum:`이 없으면 `null` (CR-114).
+   *
+   * 에폭과 **함께** 온다 — 에폭은 공간마다 독립이라 브랜치 없이는 공간을 가리키지 못한다.
+   * `buildQuery`가 `base_branch` 항으로 걸고, 지문에도 별도 자리로 싣는다(`repo:`만 적은
+   * 질의는 문자열에 브랜치가 없어, 추적 브랜치가 바뀌면 같은 지문이 다른 공간을 잇는다).
+   */
+  readonly mergeNumberBaseBranch: string | null;
+  /**
    * 커서 지문에 덧붙일 결속 (CR-112).
    *
    * **일반 경로는 없다** — 없으면 지문 재료가 이전과 같아 공개 커서가 그대로 통한다. PIPE 연동은
@@ -391,6 +399,7 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
     {
       ...(request.sequenceEpoch === null ? {} : { sequenceEpoch: request.sequenceEpoch }),
       ...(request.mergeNumberEpoch === null ? {} : { mergeNumberEpoch: request.mergeNumberEpoch }),
+      ...(request.mergeNumberBaseBranch === null ? {} : { mergeNumberBaseBranch: request.mergeNumberBaseBranch }),
     },
   );
 
@@ -409,6 +418,7 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
     scopeVersion: request.scopeVersion,
     sequenceEpoch: request.sequenceEpoch,
     mergeNumberEpoch: request.mergeNumberEpoch,
+    mergeNumberBaseBranch: request.mergeNumberBaseBranch,
     ...(request.cursorBinding === undefined ? {} : { binding: request.cursorBinding }),
   });
 
@@ -501,6 +511,7 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
           resolution,
           sequenceEpoch: request.sequenceEpoch,
           mergeNumberEpoch: request.mergeNumberEpoch,
+          mergeNumberBaseBranch: request.mergeNumberBaseBranch,
         })
       : NO_RELAXATION;
 

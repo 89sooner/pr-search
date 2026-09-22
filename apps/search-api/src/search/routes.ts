@@ -527,6 +527,8 @@ export async function executeSearch(
 
     const sequenceEpoch = sequence.kind === 'bound' ? sequence.epoch : null;
     const mergeNumberEpoch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.epoch : null;
+    // 에폭과 같은 판정에서 나온 브랜치다 — 질의 빌더가 `base_branch` 항으로 걸고 지문에도 싣는다 (CR-114).
+    const mergeNumberBaseBranch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.baseBranch : null;
     const result = await runSearch(
       {
         ast,
@@ -539,6 +541,7 @@ export async function executeSearch(
         facets: readFacets(query),
         sequenceEpoch,
         mergeNumberEpoch,
+        mergeNumberBaseBranch,
         ...(principal.cursorBinding === undefined ? {} : { cursorBinding: principal.cursorBinding }),
       },
       deps,

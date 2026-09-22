@@ -73,6 +73,8 @@ export interface RelaxationDeps {
   readonly sequenceEpoch: number | null;
   /** 본 조회가 확정한 유효 M 번호 에폭. `mnum:`이 없으면 `null` (CR-106). */
   readonly mergeNumberEpoch: number | null;
+  /** 본 조회가 묶인 `mnum:` 공간의 기준 브랜치. `mnum:`이 없으면 `null` (CR-114). */
+  readonly mergeNumberBaseBranch: string | null;
 }
 
 /**
@@ -124,6 +126,7 @@ export async function computeRelaxationHints(
         {
           ...(deps.sequenceEpoch === null ? {} : { sequenceEpoch: deps.sequenceEpoch }),
           ...(deps.mergeNumberEpoch === null ? {} : { mergeNumberEpoch: deps.mergeNumberEpoch }),
+          ...(deps.mergeNumberBaseBranch === null ? {} : { mergeNumberBaseBranch: deps.mergeNumberBaseBranch }),
         },
       ).query,
       deps.scope,

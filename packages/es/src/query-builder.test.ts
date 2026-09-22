@@ -13,6 +13,7 @@ import {
   EMPTY_RESOLUTION,
   FIRST_PARENT_COMMIT_ROLES,
   KindFilterNotAppliedError,
+  MergeNumberBranchRequiredError,
   MergeNumberEpochRequiredError,
   RangeKeyEqualityError,
   SequenceEpochRequiredError,
@@ -207,6 +208,7 @@ describe('식별자 범위 (CR-106, FR-SRCH-005 AC-8·AC-9)', () => {
     it('`mnum`은 `merge_number`를 본다 — M 번호 에폭 필터와 **함께** 선다', () => {
       const built = buildQuery(parseQuery('repo:acme/payments base:main mnum:1..50'), RESOLUTION, {
         mergeNumberEpoch: 7,
+        mergeNumberBaseBranch: 'main',
       });
       const filters = (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
       expect(filters).toContainEqual({ term: { merge_number_epoch: 7 } });
@@ -214,26 +216,67 @@ describe('식별자 범위 (CR-106, FR-SRCH-005 AC-8·AC-9)', () => {
     });
 
     it('**`mnum:` 범위가 있는데 M 번호 에폭이 없으면 던진다** — 조용히 모든 세대를 함께 돌려주지 않는다', () => {
-      expect(() => buildQuery(parseQuery('repo:acme/payments base:main mnum:1..50'), RESOLUTION)).toThrow(
-        MergeNumberEpochRequiredError,
-      );
+      expect(() =>
+        buildQuery(parseQuery('repo:acme/payments base:main mnum:1..50'), RESOLUTION, { mergeNumberBaseBranch: 'main' }),
+      ).toThrow(MergeNumberEpochRequiredError);
     });
 
-    it('부정된 `-mnum:`에도 M 번호 에폭이 필요하다', () => {
+    /*
+     * **에폭 항은 브랜치 항 없이 서지 않는다** (CR-114 독립 검토 지적 1). 에폭은 공간마다
+     * 독립인 계수기라 `merge_number_epoch = 1`은 그 저장소의 어느 브랜치 문서에나 맞는다.
+     * `repo:`만 적고 유일한 추적 브랜치로 묶인 질의는 AST에 `base:`가 없으므로, 여기서
+     * 싣는 항이 그 질의의 **유일한** 브랜치 제약이다.
+     */
+    it('**`mnum:` 범위가 있는데 공간의 브랜치가 없으면 던진다** — 에폭 항만 건 질의를 만들지 않는다', () => {
+      expect(() =>
+        buildQuery(parseQuery('repo:acme/payments mnum:1..50'), RESOLUTION, { mergeNumberEpoch: 7 }),
+      ).toThrow(MergeNumberBranchRequiredError);
+    });
+
+    it('**`base:` 없는 `mnum:` 질의는 묶인 브랜치의 `base_branch` 항을 에폭 항과 함께 싣는다**', () => {
+      const built = buildQuery(parseQuery('repo:acme/payments mnum:1..50'), RESOLUTION, {
+        mergeNumberEpoch: 1,
+        mergeNumberBaseBranch: 'main',
+      });
+      const filters = (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
+      expect(filters).toContainEqual({ term: { merge_number_epoch: 1 } });
+      expect(filters).toContainEqual({ term: { base_branch: 'main' } });
+      // AST에 `base:`가 없으므로 브랜치 항은 이 하나뿐이다 — 옵션이 만든 항이다.
+      expect(filters.filter((f) => JSON.stringify(f).includes('base_branch'))).toHaveLength(1);
+    });
+
+    it('`base:`를 적은 질의도 같은 옵션을 받는다 — AST의 `terms` 절과 겹칠 뿐 결과는 같다', () => {
+      const built = buildQuery(parseQuery('repo:acme/payments base:main mnum:1..50'), RESOLUTION, {
+        mergeNumberEpoch: 1,
+        mergeNumberBaseBranch: 'main',
+      });
+      const filters = (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
+      // 옵션이 만든 항과 AST의 `base:` 절이 나란히 선다 — 경로에 따라 항을 빼지 않는다.
+      expect(filters).toContainEqual({ term: { base_branch: 'main' } });
+      expect(filters).toContainEqual({ terms: { base_branch: ['main'] } });
+    });
+
+    it('부정된 `-mnum:`에도 M 번호 에폭과 브랜치가 필요하다', () => {
       const query = 'repo:acme/payments base:main -mnum:1..5';
       expect(() => buildQuery(parseQuery(query), RESOLUTION)).toThrow(MergeNumberEpochRequiredError);
+      expect(() => buildQuery(parseQuery(query), RESOLUTION, { mergeNumberEpoch: 2 })).toThrow(MergeNumberBranchRequiredError);
 
-      const built = buildQuery(parseQuery(query), RESOLUTION, { mergeNumberEpoch: 2 });
+      const built = buildQuery(parseQuery(query), RESOLUTION, { mergeNumberEpoch: 2, mergeNumberBaseBranch: 'main' });
       const bool = (built.query as { bool: { filter?: unknown[]; must_not?: unknown[] } }).bool;
-      // 에폭은 결과 집합 전체의 조건이므로 `filter`에 있고, 범위만 `must_not`이다.
+      // 에폭·브랜치는 결과 집합 전체의 조건이므로 `filter`에 있고, 범위만 `must_not`이다.
       expect(bool.filter).toContainEqual({ term: { merge_number_epoch: 2 } });
+      expect(bool.filter).toContainEqual({ term: { base_branch: 'main' } });
       expect(bool.must_not).toEqual([{ range: { merge_number: { gte: 1, lte: 5 } } }]);
     });
 
-    it('**`mnum:`이 없으면 M 번호 에폭 필터를 넣지 않는다**', () => {
-      const built = buildQuery(parseQuery('repo:acme/payments'), RESOLUTION, { mergeNumberEpoch: 9 });
+    it('**`mnum:`이 없으면 M 번호 에폭·브랜치 필터를 넣지 않는다**', () => {
+      const built = buildQuery(parseQuery('repo:acme/payments'), RESOLUTION, {
+        mergeNumberEpoch: 9,
+        mergeNumberBaseBranch: 'main',
+      });
       const filters = (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
       expect(filters).not.toContainEqual({ term: { merge_number_epoch: 9 } });
+      expect(filters).not.toContainEqual({ term: { base_branch: 'main' } });
     });
 
     it('**`seq_epoch`과 `merge_number_epoch`는 서로 다른 필드다 — 값이 같아도 섞이지 않는다**', () => {
@@ -242,6 +285,7 @@ describe('식별자 범위 (CR-106, FR-SRCH-005 AC-8·AC-9)', () => {
       const built = buildQuery(parseQuery('repo:acme/payments base:main seq:1..5 mnum:1..50'), RESOLUTION, {
         sequenceEpoch: 3,
         mergeNumberEpoch: 3,
+        mergeNumberBaseBranch: 'main',
       });
       const filters = (built.query as { bool: { filter?: unknown[] } }).bool.filter ?? [];
       expect(filters).toContainEqual({ term: { seq_epoch: 3 } });
@@ -252,7 +296,9 @@ describe('식별자 범위 (CR-106, FR-SRCH-005 AC-8·AC-9)', () => {
 
     it('스칼라 `mnum:`이 AST로 들어오면 던진다', () => {
       const scalar: QueryAst = { filters: [{ key: 'mnum', op: 'eq', values: ['5'] }], text: null };
-      expect(() => buildQuery(scalar, RESOLUTION, { mergeNumberEpoch: 1 })).toThrow(RangeKeyEqualityError);
+      expect(() => buildQuery(scalar, RESOLUTION, { mergeNumberEpoch: 1, mergeNumberBaseBranch: 'main' })).toThrow(
+        RangeKeyEqualityError,
+      );
     });
   });
 

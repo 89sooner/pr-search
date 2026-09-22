@@ -166,6 +166,18 @@ export interface BuildQueryOptions {
    * 해석은 호출부가 한 번만 한다.
    */
   readonly mergeNumberEpoch?: number;
+  /**
+   * `mnum:` 범위 조건이 딛고 선 시퀀스 공간의 기준 브랜치 (CR-114 독립 검토 지적 1).
+   *
+   * **에폭과 함께 필수다.** 에폭은 `(저장소, 브랜치)` 공간마다 독립인 계수기라 값만으로는
+   * 공간을 가리키지 못한다 — 강제 푸시가 없으면 대개 모든 공간이 1이다. `base:`를 적은
+   * 질의는 AST의 `base:` 절이 같은 항을 이미 만들지만, `repo:`만 적고 유일한 추적
+   * 브랜치로 묶인 질의(CR-114)는 AST에 그 절이 없다. 그때 `merge_number_epoch` 항만
+   * 걸면 **추적에서 제외된 브랜치가 남긴 문서**(`merge_number`·에폭이 지워지지 않는다)가
+   * 같은 에폭 값으로 통과한다. 그래서 여기서 `base_branch` 항을 에폭 항과 **같은 자리에서**
+   * 싣는다 — 어느 경로로 결속했든 두 항은 함께 서고, 호출부가 브랜치를 빠뜨리면 던진다.
+   */
+  readonly mergeNumberBaseBranch?: string;
 }
 
 /** `seq:` 범위가 있는데 에폭 없이 질의를 만들려 했다. 배포·조립 오류다. */
@@ -181,6 +193,14 @@ export class MergeNumberEpochRequiredError extends Error {
   constructor() {
     super("mnum: 범위 조건이 있는 질의에는 M 번호 에폭이 필요하다 (CR-106)");
     this.name = "MergeNumberEpochRequiredError";
+  }
+}
+
+/** `mnum:` 범위가 있는데 공간의 기준 브랜치 없이 질의를 만들려 했다. 배포·조립 오류다 (CR-114). */
+export class MergeNumberBranchRequiredError extends Error {
+  constructor() {
+    super("mnum: 범위 조건이 있는 질의에는 시퀀스 공간의 기준 브랜치가 필요하다 (CR-114)");
+    this.name = "MergeNumberBranchRequiredError";
   }
 }
 
@@ -521,10 +541,17 @@ export function buildQuery(
    * 같은 결함을 `mnum:` 자리에서 반복하는 셈이다. 배정되지 않은 M 번호(
    * `pending`·미대상)는 이 필드 자체가 없으므로 `range` 절이 자연히
    * 걸러 낸다 — 별도 판정을 더하지 않는다.
+   *
+   * **에폭 항은 브랜치 항 없이 서지 않는다** (CR-114). 에폭은 공간마다 독립이라
+   * `merge_number_epoch = 1`은 그 저장소의 어느 브랜치 문서에나 맞는다. `base:`가
+   * AST에 있으면 아래 루프가 같은 항을 한 번 더 만들 뿐이고, 없으면(유일한 추적
+   * 브랜치로 묶인 질의) 이 항이 유일한 브랜치 제약이다.
    */
   if (hasMergeNumberRangeFilter(ast)) {
     if (options.mergeNumberEpoch === undefined) throw new MergeNumberEpochRequiredError();
+    if (options.mergeNumberBaseBranch === undefined) throw new MergeNumberBranchRequiredError();
     filter.push({ term: { merge_number_epoch: options.mergeNumberEpoch } });
+    filter.push({ term: { base_branch: options.mergeNumberBaseBranch } });
   }
 
   for (const one of ast.filters) {

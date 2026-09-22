@@ -105,6 +105,13 @@ const PULL_REQUESTS = [
   pr(SINGLE, 'cr114s/single', 'main', 100, 10),
   pr(SINGLE, 'cr114s/single', 'main', 150, 15),
   pr(SINGLE, 'cr114s/single', 'main', 200, 20),
+  /*
+   * **추적에서 제외된 브랜치가 남긴 문서** (CR-114 독립 검토 지적 1). `single`은 지금 `main`만
+   * 추적하지만 한때 `release`도 추적해 M 15를 발급했고, 관리자가 브랜치를 빼도 이 문서의
+   * `merge_number`·`merge_number_epoch`(둘 다 `main`과 같은 값)는 지워지지 않는다(DEV-739).
+   * `base:` 없는 `repo:cr114s/single mnum:15`가 이 문서를 돌려주면 에폭 항만 걸린 것이다.
+   */
+  pr(SINGLE, 'cr114s/single', 'release', 160, 15),
   pr(DUAL, 'cr114s/dual', 'main', 300, 15),
   pr(DUAL, 'cr114s/dual', 'release', 310, 15),
 ];
@@ -258,6 +265,23 @@ describe('base: 생략 — 추적 브랜치가 하나뿐이면 그 브랜치다'
   it('범위도 같은 규칙이다', async () => {
     const { body } = await get('repo:cr114s/single mnum:10..15');
     expect(prNumbersOf(body)).toEqual([100, 150]);
+  });
+
+  it('**추적에서 제외된 브랜치의 잔여 문서는 `base:`를 생략해도 섞이지 않는다** (독립 검토 지적 1)', async () => {
+    /*
+     * 픽스처의 PR #160은 `release` 브랜치 문서로 M 15·에폭 1을 그대로 갖고 있다. 유일한 추적
+     * 브랜치 `main`으로 묶인 질의가 에폭 항만 걸면 #150과 #160이 함께 나온다 — 묶인 브랜치의
+     * `base_branch` 항이 질의에 함께 실려야 #150 하나다. `base:main`을 적은 질의와 결과가 같다.
+     */
+    const omitted = await get('repo:cr114s/single mnum:15');
+    const explicit = await get('repo:cr114s/single base:main mnum:15');
+    expect(prNumbersOf(omitted.body)).toEqual([150]);
+    expect(prNumbersOf(omitted.body)).toEqual(prNumbersOf(explicit.body));
+    expect(omitted.body.total).toEqual(explicit.body.total);
+
+    // 부정도 같은 공간 안에서다 — 잔여 문서가 「15가 아닌 것」으로 섞여 들어오지 않는다.
+    const negated = await get('repo:cr114s/single -mnum:15');
+    expect(prNumbersOf(negated.body)).toEqual([100, 200]);
   });
 
   it('**브랜치가 둘이면 400과 브랜치 목록이다** — 서버가 고르지 않는다', async () => {
