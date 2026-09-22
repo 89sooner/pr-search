@@ -1,6 +1,8 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.13 | 갱신일: 2026-09-21
+> 상태: review | 버전: v0.14 | 갱신일: 2026-09-22
+
+CR-113 / WP-098: 머지 시퀀스를 색인에 비추는 경로는 **하나**다 — 정본 해석은 `apps/pipeline-worker/src/sequence-projection.ts`, 문서 단위 쓰기는 `packages/es/src/sequence-projection.ts`. 채번·재채번·복구·늦은 PR 스냅숏·커밋 보강·재색인 replay·운영자 재투영이 모두 그 둘을 지나며, SHA 목록 `update_by_query`로 서수를 쓰는 두 번째 경로를 만들지 않는다(`applySequenceToDocuments`는 지워졌다). 색인 값이나 M 표시 문자열에서 서수를 추정하지 않고, 복구 코드가 `merge_sequence`·`sequence_space`에 쓰지 않는다. 새 쓰기 원시체는 `packages/es/src/dual-write.test.ts`의 목록과 비동기 계약 3.5장 표에 함께 올린다. 완료 판정은 문서별 결과(`updated`·`noop`·`document_missing`·`guard_rejected`·`stale_epoch`·`transient`)로 하며 `updated` 합계나 HTTP 200으로 하지 않는다. 시퀀스 복구 시험은 격리된 ES(`cluster.name`에 `isolated`)에서만 돌고 공용 `prs-elasticsearch`를 가리키면 `beforeAll`이 거부한다. 실행·시험·한계는 원장 WP-098을 읽는다.
 
 CR-112 / WP-097: PIPE 연동 수신부의 작업 지시서는 `../40_delivery/pipe-search-handoff-auth/01_PR_SEARCH_API_AUTH_CLAUDE_PROMPT.md`이고, 양쪽 공통 계약은 같은 디렉터리의 `00_SHARED_INTEGRATION_CONTRACT.md`(PSI-1.0 제안)다. 이 저장소가 동결한 계약과 PIPE 담당용 산출물은 저장소 최상위 `handoff/pipe-search-integration/v1/`에 있으며, 제안과 다른 자리는 그 안의 CONTRACT_DIFF가 소유한다. 연동을 고칠 때는 `apps/search-api/src/integrations/pipe/operations.ts`의 operation 목록·OpenAPI·operation map을 함께 바꾸고(계약 시험이 셋을 대조한다), 일반 `authenticateSession`에 연동 자격을 받는 분기를 넣지 않으며, 조회 로직을 연동 쪽에 복제하지 않고 공유 실행 함수를 고친다. 한쪽 저장소만 wire protocol을 바꾸지 않는다. 실행·시험·한계는 원장 WP-097을 읽는다.
 
