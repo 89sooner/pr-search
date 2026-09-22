@@ -1016,6 +1016,83 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 - `mnumber_evidence`에 SQL로 근거를 넣는 임시 조치는 더 이상 필요 없고, 하지 않는다. 이미
   손으로 넣은 `direct_confirmed` 행은 그대로 유효하며 워커가 덮지 않는다(`DEV-715`).
 
+### 7.E 머지 시퀀스 색인 재투영 (WP-098 / FR-SEQ-001 AC-7·AC-8, `CR-113`, RB-20)
+
+검색 화면의 「M number」 정렬은 Elasticsearch 문서의 `merge_seq` 정렬이다. PostgreSQL에 서수가
+확정돼 있어도 문서에 그 값이 없으면(늦게 도착한 PR 문서, 나중에 채워진 `merge_commit_sha`,
+채번 뒤에 만들어진 직접 푸시 커밋 문서, 색인 쓰기 실패, 재색인 직후) 그 문서는 목록 뒤로 밀리고
+`seq:` 범위에서 빠진다 — `0.1.0-pilot.17` 사내 보고의 모양이다. `CR-113`부터는 다음이 자동으로
+돈다: 채번·재채번·복구 트랜잭션이 남긴 durable 투영 작업(`sequence_work` `project`)이 새 push
+없이 정본을 문서에 다시 비추고, 늦은 PR 스냅숏·커밋 문서 생성이 문서 단위 작업을 남기며, 재색인이
+PR·커밋 재구축 뒤 replay와 전환 전 검증을 거친다. `MNUMBER_ENABLED`와 무관하다. 아래는 **자동으로
+수렴하지 않는 것처럼 보일 때** 운영자가 밟는 순서다.
+
+**재투영은 재채번이 아니다.** 아래 어떤 단계도 `merge_seq`·M 번호·`seq_epoch`·head를 바꾸지
+않는다. 색인 값이나 `M-…` 표시 문자열에서 번호를 추정하지 않으며, 옛 `update_by_query` 임시
+조치(사내 보고의 「수동 복구」)는 더 이상 쓰지 않는다 — 문서별 판정 없이 덮어쓰기 때문이다.
+
+1. **어느 형상이 떠 있는가.** `./prsctl lineage`로 배포 SHA를 읽고 이 절이 있는 판(`CR-113`
+   이후)인지 확인한다. 이전 판이면 아래 명령이 없다 — 업그레이드가 먼저다. 별칭·인덱스는
+   운영 화면 `/ops/jobs`의 Index status 또는 `GET /api/v1/admin/reindex`로 본다(`smoke`가
+   같은 경로를 친다).
+2. **공간 상태를 읽는다.** 저장소·브랜치의 현재 에폭·head와 이 에폭의 `project` 작업 상태를
+   본다. `retry`·`parked`가 남아 있으면 `last_reason`이 이유다.
+
+   ```bash
+   ./prsctl sequence status --repository acme/payments --base-branch main
+   ```
+
+3. **dry-run으로 무엇을 쓰게 될지 센다.** PostgreSQL·Elasticsearch·작업 큐·감사 기록 어디에도
+   쓰지 않는다. `would_update`가 곧 복구 대상 수이고, `document_missing`은 투영기가 만들 수
+   없는 문서(투영·보강 경로를 먼저 본다 — RB-12·RB-14), `guard_rejected`는 문서의 저장소·SHA·
+   브랜치가 정본과 다른 경우다. `skip_no_target`(직접 푸시·미수집·연결 미확정)·`skip_awaiting_
+   creation`(커밋 문서 생성 대기)·`skip_other_space`(다른 시퀀스 브랜치가 가진 커밋 문서)·
+   `skip_mapping_conflict`(같은 SHA를 가리키는 PR 스냅숏 둘)는 쓰지 않는 것이 옳다.
+
+   ```bash
+   ./prsctl sequence reproject --repository acme/payments --base-branch main --expected-epoch 1 --dry-run
+   # 별칭을 좁히려면 --alias prs-pull-requests 또는 --alias prs-commits (둘 다 줄 수 있다)
+   ```
+
+4. **제한 범위로 재투영한다.** 같은 명령에서 `--dry-run`을 뺀다. 저장소·브랜치·예상 에폭·별칭이
+   범위이며, `--expected-epoch`가 현재 에폭과 다르면 아무것도 예약하지 않고 거절한다(force-push
+   직후 모르는 에폭에 손대지 않는다). 명령은 `sequence_reproject` 잡을 만들고(운영 화면 Jobs에
+   `queued → running → completed | failed`로 보인다, 감사 `job.run`), `worker-sequence`의
+   러너가 durable 작업을 예약해 끝날 때까지 진행(`projection`·`cursor_seq`·`pending_docs`)을
+   찍는다. 같은 것을 운영 화면 실행 폼 `Sequence reprojection (index repair)`(저장소·브랜치·
+   예상 에폭)이나 `POST /api/v1/admin/jobs`(`type: sequence_reproject`, `expected_epoch`)로도
+   요청할 수 있다. 반복 실행은 멱등이며(두 번째는 `noop`만 센다), 중단·재시작 뒤에도 작업은
+   커서에서 이어진다.
+
+   ```bash
+   ./prsctl sequence reproject --repository acme/payments --base-branch main --expected-epoch 1
+   ```
+
+5. **원시 필드로 대조한다.** 화면이 아니라 색인 문서 자체를 본다 — API는 M 번호를 DB에서
+   보강하므로 화면만으로는 색인이 고쳐졌는지 알 수 없다.
+
+   ```bash
+   # prsctl의 smoke·restore와 같은 자리 — elasticsearch 컨테이너의 curl로 별칭을 통해 읽는다 (문서 ID = <repository_id>:<PR 번호>, routing = repository_id)
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T elasticsearch \
+     curl -fsS 'http://localhost:9200/prs-pull-requests/_doc/399:1450?routing=399&_source=merge_seq,seq_epoch,sequence_space,base_branch,merge_commit_sha'
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T postgres \
+     psql -U prs -d prs -c "SELECT merge_seq, seq_epoch, commit_sha FROM merge_sequence WHERE repository_id = 399 AND base_branch = 'main' AND commit_sha = '<위 merge_commit_sha>'"
+   # 기대: 두 값이 같다(merge_seq·seq_epoch). 다르면 3번의 dry-run 판정을 다시 본다
+   ```
+
+6. **새 검색 요청으로 확인한다.** 「M number」 정렬이 같은 저장소·브랜치·현재 에폭의 서수
+   순서와 같은지, `seq:from..to`가 그 구간을 서수 순으로 돌려주는지, cursor로 끝까지 순회되는지
+   본다. 판정 기준은 서수 순서다 — Merged at 정렬과 같아야 한다는 기준은 쓰지 않는다. 복구
+   전에 연 cursor/PIT는 이전 스냅숏을 유지하므로 새 요청으로 확인한다.
+
+7. **예외.** `epoch_mismatch`는 2번의 현재 에폭을 다시 지정한다. 잡이 `failed:
+   projection_partial`이면 sweep은 끝났으나 끝내 만들어지지 않은 문서(`parked`)가 있다 —
+   3번의 `document_missing`과 같은 자리이며 투영·보강을 고친 뒤 새 스냅숏·보강이 작업을 스스로
+   깨운다. `failed: projection_incomplete`는 상한(30분) 안에 끝나지 않은 것이며 작업은 계속 돈다
+   (`status`로 본다). 정합성 복구(A-003 재채번)가 `consistent`로 끝났을 때도 잡 `progress`의
+   `db`와 `projection`을 따로 읽는다 — `projection: in_progress`는 색인 복구가 아직 도는
+   중이라는 뜻이지 실패가 아니다. 재채번(RB-11)으로 색인 누락을 풀지 않는다.
+
 ## 8. 문제 해결
 
 | 증상 | 확인 |
