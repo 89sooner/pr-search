@@ -23,6 +23,7 @@ import type { Pool } from '@prs/db';
 import {
   parseRepositorySlug,
   readEpochParam,
+  resolveRepository,
   resolveSpace,
   type ResolvedSpace,
 } from '../sequence/space.js';
@@ -147,6 +148,11 @@ export type MergeNumberRangeOutcome =
   | { readonly kind: 'bound'; readonly epoch: number }
   /** 질의가 공간을 지목하지 못했다. `INVALID_PARAMETER`(field `q`). */
   | { readonly kind: 'unbindable'; readonly reason: SequenceBindingProblem }
+  /**
+   * `repo:`만 적었는데 그 저장소가 시퀀스 브랜치를 둘 이상 추적한다 (CR-114).
+   * `INVALID_PARAMETER`(field `q`, reason `sequence_space_ambiguous`)이며 브랜치 목록을 함께 준다.
+   */
+  | { readonly kind: 'branch_required'; readonly repository: string; readonly sequenceBranches: readonly string[] }
   /** 지목한 공간을 확인할 수 없다. `NOT_FOUND` 하나로 답한다 (CR-027 DEV-137, THR-006). */
   | { readonly kind: 'space_unavailable' };
 
@@ -167,6 +173,13 @@ export type MergeNumberRangeOutcome =
  * 되어, 세대 혼입을 막으려는 이 기능 자체가 그 혼입을 만든다(독립 검토가 실측한
  * 경합, CR-106).
  *
+ * **`base:`가 없으면 유일한 추적 브랜치로 묶는다** (CR-114, FR-SRCH-005 AC-9 보완).
+ * 서버가 공간을 고르는 것이 아니다 — 저장소가 시퀀스 브랜치를 하나만 추적하면
+ * 고를 것이 없고, 둘 이상이면 `branch_required`로 거절해 사용자가 `base:`를 더하게
+ * 한다. 저장소 행은 `resolveRepository`로 읽어 접근 통제를 지난다(미등록·범위 밖은
+ * 같은 `space_unavailable`). 하나뿐인 브랜치의 PR 문서만 `merge_number`를 가지므로
+ * 질의에 `base_branch` 절을 더하지 않아도 다른 브랜치 문서가 섞이지 않는다.
+ *
  * @param reuse `resolveSequenceContext`가 이미 확정한 공간. `repository`·`baseBranch`가
  *   이 함수가 판정한 것과 같을 때만 쓴다 — 다르면(있을 수 없지만 방어적으로) 새로 읽는다.
  * @returns 라우트가 그대로 분기할 수 있는 판정. 이 함수는 HTTP를 모른다.
@@ -180,14 +193,28 @@ export async function resolveMergeNumberRangeEpoch(
   if (binding.kind === 'none') return { kind: 'none' };
   if (binding.kind === 'invalid') return { kind: 'unbindable', reason: binding.reason };
 
-  if (reuse !== undefined && reuse.repository === binding.repository && reuse.baseBranch === binding.baseBranch) {
-    return { kind: 'bound', epoch: reuse.epoch };
-  }
-
   const slug = parseRepositorySlug(binding.repository);
   if (slug === null) return { kind: 'space_unavailable' };
 
-  const lookup = await resolveSpace(pool, slug, binding.baseBranch, input.scope);
+  let baseBranch: string;
+  if (binding.kind === 'bound') {
+    baseBranch = binding.baseBranch;
+  } else {
+    const repository = await resolveRepository(pool, slug, input.scope);
+    if (repository.kind !== 'ok') return { kind: 'space_unavailable' };
+    const branches = repository.repository.sequence_branches;
+    const [only] = branches;
+    if (branches.length !== 1 || only === undefined) {
+      return { kind: 'branch_required', repository: binding.repository, sequenceBranches: [...branches] };
+    }
+    baseBranch = only;
+  }
+
+  if (reuse !== undefined && reuse.repository === binding.repository && reuse.baseBranch === baseBranch) {
+    return { kind: 'bound', epoch: reuse.epoch };
+  }
+
+  const lookup = await resolveSpace(pool, slug, baseBranch, input.scope);
   if (lookup.kind !== 'ok') return { kind: 'space_unavailable' };
 
   return { kind: 'bound', epoch: lookup.space.seqEpoch };

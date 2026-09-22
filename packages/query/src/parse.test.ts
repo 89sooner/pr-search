@@ -208,22 +208,16 @@ describe('CR-106: pr_number·mnum은 `NUMERIC_RANGE_KEYS`에 등록된 그대로
    * 역전 거절이 **자동으로** 적용되는지를 확인한다 (parse.ts의 `toRangeFilter`·
    * `isRangeKey` 분기는 키를 가리지 않는다).
    */
-  it.each([
-    ['pr_number', 'pr_number:100'],
-    ['mnum', 'mnum:5'],
-  ])('%s의 스칼라도 seq:1234와 같은 방식으로 거절된다', (key, query) => {
-    const error = reject(query);
+  it('pr_number의 스칼라는 seq:1234와 같은 방식으로 거절된다', () => {
+    const error = reject('pr_number:100');
     expect(error.code).toBe('QUERY_SYNTAX_ERROR');
     expect(error.message).toContain('supports ranges');
     // 예시는 키마다 다르다 (RANGE_KEY_EXAMPLE) — 사용자를 두 번 틀리게 하지 않는다.
-    expect(error.message).toContain(key === 'pr_number' ? 'pr_number:100..200' : 'mnum:1..50');
+    expect(error.message).toContain('pr_number:100..200');
   });
 
-  it.each([
-    ['pr_number', '-pr_number:100'],
-    ['mnum', '-mnum:5'],
-  ])('%s의 부정형 스칼라도 거절된다', (_key, query) => {
-    expect(reject(query).code).toBe('QUERY_SYNTAX_ERROR');
+  it('pr_number의 부정형 스칼라도 거절된다', () => {
+    expect(reject('-pr_number:100').code).toBe('QUERY_SYNTAX_ERROR');
   });
 
   it.each([
@@ -231,6 +225,49 @@ describe('CR-106: pr_number·mnum은 `NUMERIC_RANGE_KEYS`에 등록된 그대로
     ['mnum', 'mnum:50..1'],
   ])('%s의 뒤집힌 범위도 거절된다', (_key, query) => {
     expect(reject(query).message).toContain('reversed');
+  });
+});
+
+describe('CR-114: mnum:은 단일 값을 닫힌 범위로 받는다 (FR-SRCH-005 AC-9 보완)', () => {
+  it('`mnum:1450`은 `mnum:1450..1450`과 같은 필터다', () => {
+    expect(parseQuery('repo:acme/payments mnum:1450').filters).toContainEqual({
+      key: 'mnum',
+      op: 'range',
+      from: 1450,
+      to: 1450,
+    });
+    expect(parseQuery('repo:acme/payments mnum:1450')).toEqual(parseQuery('repo:acme/payments mnum:1450..1450'));
+  });
+
+  it('부정형 `-mnum:1450`도 닫힌 범위의 부정이다', () => {
+    expect(parseQuery('-mnum:1450').filters).toContainEqual({ key: 'mnum', op: 'not_range', from: 1450, to: 1450 });
+  });
+
+  it('따옴표로 감싼 값도 같다', () => {
+    expect(parseQuery('mnum:"1450"').filters).toContainEqual({ key: 'mnum', op: 'range', from: 1450, to: 1450 });
+  });
+
+  it.each([
+    ['정수가 아님', 'mnum:abc', 'must be an integer'],
+    ['하한 위반', 'mnum:0', 'below the minimum'],
+    ['음수', 'mnum:-3', 'below the minimum'],
+    ['빈 값', 'mnum:', 'is empty'],
+  ])('%s은 범위 형태와 같은 이유로 거절된다', (_label, query, fragment) => {
+    const error = reject(query);
+    expect(error.code).toBe('QUERY_SYNTAX_ERROR');
+    expect(error.message).toContain(fragment);
+  });
+
+  it('오프셋이 문제 토큰을 가리킨다', () => {
+    const error = reject('repo:acme/payments mnum:0');
+    expect(error.detail.token).toBe('mnum:0');
+    expect(error.detail.offset_start).toBe(19);
+  });
+
+  it('`seq:`·`merged:`·`pr_number:`는 여전히 범위 전용이다 — 단일 값 허용은 mnum:뿐이다', () => {
+    expect(reject('seq:1234').message).toContain('supports ranges');
+    expect(reject('merged:2026-08-10').message).toContain('supports ranges');
+    expect(reject('pr_number:100').message).toContain('supports ranges');
   });
 
   it('범위 형태는 그대로 성립한다', () => {

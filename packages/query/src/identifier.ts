@@ -17,7 +17,20 @@
  * 경로를 모두 조회하고 후보를 합친다. FR-SRCH-001 **AC-5가 이미 이 상황을
  * 정의한다** — "해석 후보가 2건 이상이면 후보 배열을 반환하고 자동 이동을
  * 수행하지 않는다".
+ *
+ * ## M 번호 문자열은 그 자체가 식별자다 (CR-114, FR-SRCH-001 AC-7)
+ *
+ * `M-1900-1450`은 저장소 코드와 조밀 서수를 담은 표기 문자열이다(`FR-SEQ-008`
+ * AC-5). 사내 `pilot.17`에서 이 문자열을 검색창에 넣으면 전문 검색으로 떨어져
+ * 토큰 `m`·`1900`·`1450`이 엉뚱한 제목에 걸렸다. 판별은 `@prs/domain`의
+ * `parseMergeNumber` **하나**를 쓴다 — 워커·API·화면이 같은 규칙으로 문자열을
+ * 만들고 읽어야 하며, 정규식을 여기서 한 번 더 적으면 저장소 코드 규칙이 한쪽만
+ * 바뀐 날 같은 문자열이 다른 PR을 가리킨다. 어느 저장소·브랜치·에폭인지는
+ * 여기서 모른다 — 코드가 같은 저장소가 여럿일 수 있고 그 판정은 서버가 접근
+ * 범위 안에서 한다.
  */
+
+import { formatMergeNumber, parseMergeNumber } from '@prs/domain';
 
 /** 40자 전체 SHA. */
 const FULL_SHA_LENGTH = 40;
@@ -53,6 +66,15 @@ export type Identifier =
   | { readonly kind: 'commit'; readonly match: 'prefix'; readonly sha: string }
   /** PR 번호. `repository`가 `null`이면 접근 범위 안에서 후보를 찾는다. */
   | { readonly kind: 'pull_request'; readonly repository: string | null; readonly number: number }
+  /**
+   * M 번호 표기 문자열 (CR-114, FR-SRCH-001 AC-7).
+   *
+   * `code`는 저장소 이름의 숫자 부분(OD-009)이고 `number`는 그 시퀀스 공간의 조밀
+   * 서수다. `label`은 정규화된 표기(`M-<code>-<number>`)로, 입력이 `[M-…]`처럼
+   * 제목 접두 그대로였거나 소문자 `m`이었어도 이 값은 정본 형식이다. 어느
+   * 저장소·브랜치·에폭인지는 서버가 접근 범위 안에서 판정한다.
+   */
+  | { readonly kind: 'merge_number'; readonly code: string; readonly number: number; readonly label: string }
   /** 자유 텍스트. 전문 검색으로 위임한다 (FR-SRCH-001 AC-4). */
   | { readonly kind: 'text' };
 
@@ -157,6 +179,23 @@ function fromUrl(input: string, gheBaseUrl: string | undefined): Identifier | nu
   return null;
 }
 
+/**
+ * `M-<코드>-<번호>` (CR-114, FR-SRCH-001 AC-7).
+ *
+ * 받아들이는 변형은 둘뿐이다 — PR 제목 접두를 그대로 붙여 넣은 `[M-1900-1450]`과
+ * 소문자 `m`. 그 밖은 `parseMergeNumber`의 판정 그대로다: 선행 0이 붙은 번호,
+ * 공백, 코드 없는 `M-1450`은 전부 `null`이며 그때 이 문자열은 `text`다.
+ * 저장소 코드의 선행 0은 보존한다(`M-007-3`의 코드는 `007`이다, `repositoryCodeOf`).
+ */
+function fromMergeNumber(input: string): Identifier | null {
+  let text = input;
+  if (text.startsWith('[') && text.endsWith(']')) text = text.slice(1, -1);
+  if (text.startsWith('m-')) text = `M${text.slice(1)}`;
+  const parsed = parseMergeNumber(text);
+  if (parsed === null) return null;
+  return { kind: 'merge_number', code: parsed.code, number: parsed.number, label: formatMergeNumber(parsed.code, parsed.number) };
+}
+
 /** `#1234` / `owner/repo#1234` (해석 2·3단계, FR-SRCH-001 AC-2). */
 function fromHashNumber(input: string): Identifier | null {
   const matched = HASH_NUMBER.exec(input);
@@ -201,6 +240,16 @@ export function detectIdentifier(raw: string, options: DetectOptions = {}): Iden
   const url = fromUrl(input, options.gheBaseUrl);
   if (url !== null) {
     return { input, interpretations: [url], rejection: null };
+  }
+
+  /*
+   * M 번호 문자열은 다른 어떤 해석과도 겹치지 않는다 (CR-114). `M-`으로 시작하므로
+   * hex도 정수도 `#N`도 아니다 — 해석은 이것 하나이며 후보가 여럿인 경우는 같은
+   * 코드를 가진 저장소가 여럿일 때이고, 그것은 서버가 후보 배열로 답한다(AC-5).
+   */
+  const mergeNumber = fromMergeNumber(input);
+  if (mergeNumber !== null) {
+    return { input, interpretations: [mergeNumber], rejection: null };
   }
 
   const interpretations: Identifier[] = [];

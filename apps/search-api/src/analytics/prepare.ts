@@ -83,7 +83,7 @@ export type PrepareOutcome =
   /** `pr_number:`가 저장소를 지목하지 못했다. 사유는 `/search`와 같은 문자열이다. */
   | { readonly kind: 'pr_number_binding'; readonly binding: Extract<RepositoryBindingAnalysis, { kind: 'invalid' }> }
   /** `mnum:` 공간 판정이 거절했다. 사유는 `/search`와 같은 문자열이다. */
-  | { readonly kind: 'merge_number_range'; readonly outcome: Extract<MergeNumberRangeOutcome, { kind: 'unbindable' | 'space_unavailable' }> }
+  | { readonly kind: 'merge_number_range'; readonly outcome: Extract<MergeNumberRangeOutcome, { kind: 'unbindable' | 'branch_required' | 'space_unavailable' }> }
   | {
       readonly kind: 'ready';
       readonly ast: QueryAst;
@@ -153,7 +153,11 @@ export async function prepareAnalyticsQuery(
       ? { repository: sequence.context.repository, baseBranch: sequence.context.base_branch, epoch: sequence.context.seq_epoch }
       : undefined,
   );
-  if (mergeNumberRange.kind === 'unbindable' || mergeNumberRange.kind === 'space_unavailable') {
+  if (
+    mergeNumberRange.kind === 'unbindable' ||
+    mergeNumberRange.kind === 'branch_required' ||
+    mergeNumberRange.kind === 'space_unavailable'
+  ) {
     return { kind: 'merge_number_range', outcome: mergeNumberRange };
   }
 

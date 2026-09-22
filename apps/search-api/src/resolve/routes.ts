@@ -257,7 +257,11 @@ export async function executeResolve(
         ? {}
         : {
             reason_code: result.reason_code,
-            hint: '이 문자열과 일치하는 커밋·PR이 없습니다. 저장소가 수집 대상인지 확인하세요.',
+            hint:
+              result.reason_code === 'merge_number_disabled'
+                ? // 없는 것이 아니라 이 배포가 그 조회를 하지 않는 것이다 (CR-114). 둘을 한 문구로 묶지 않는다.
+                  '이 배포에서는 M 번호 기능이 꺼져 있어 M 번호로 찾을 수 없습니다. 운영자에게 MNUMBER_ENABLED 설정을 확인하세요.'
+                : '이 문자열과 일치하는 커밋·PR이 없습니다. 저장소가 수집 대상인지 확인하세요.',
           }),
       correlation_id: correlationId,
     });

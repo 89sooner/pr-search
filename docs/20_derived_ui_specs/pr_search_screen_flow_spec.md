@@ -1,6 +1,6 @@
 # PR Search 화면 플로우 명세서
 
-> 상태: review | 버전: v0.11 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.12 | 갱신일: 2026-09-22
 
 CR-109 / FR-REG-001 / W-024: 날짜/유형→MDVP 결과→비교 PASS suggestion→Start bisect에서 context 확인→local session→판정/재시험→archive/재방문. Atlas/Inbox/Pulse 전환은 URL view만 바꾸고 session을 생성하지 않는다. timeline point/표 행은 같은 Radix sheet를 열며 닫을 때 원래 point/버튼에 focus를 돌린다. fixture queue 확인에는 canonical SHA/digest/context를 표시하고 외부 호출0이다. 실 MDVP 미구성 경로는 real repository/branch를 직접 입력한 뒤 기존 API-SEQ-005 세션 복원으로만 연결한다.
 
@@ -86,11 +86,11 @@ CR-079 M 인용 흐름: 기존 /search에서 m_repository·m_base_branch·m_seq_
 ```
 
 1. 사용자가 TopBar 옴니 입력에 문자열을 제출한다.
-2. 클라이언트가 형태를 사전 판정한다. 7자 미만 hex 문자열은 서버 호출 없이 즉시 안내한다 (FR-SRCH-004 AC-2).
+2. 클라이언트가 형태를 사전 판정한다. 7자 미만 hex 문자열은 서버 호출 없이 즉시 안내한다 (FR-SRCH-004 AC-2). M 번호 표기 문자열(`M-1900-1450`, 제목 접두 `[M-…]` 그대로도)은 식별자로 판정해 해석 API로 보낸다 (FR-SRCH-001 AC-7, CR-114) — 서버가 현재 에폭의 정본에서 PR 후보를 찾으며, 같은 저장소 코드가 여럿이면 후보가 여럿이다.
 3. 서버가 해석을 수행하고 후보 배열을 반환한다.
 4. 후보가 1건이면 해당 상세 화면으로 이동한다. 이동 전 원본 입력을 URL 쿼리에 남겨 뒤로가기 시 입력이 보존되게 한다.
 5. 후보가 2건 이상이면 W-001의 `ambiguous` 상태로 후보 카드 목록을 표시한다. 자동 이동하지 않는다.
-6. 후보가 0건이면 `empty_no_result` 상태와 함께 원인 후보(미수집 저장소 / 접근 권한 없음 / 오타)를 제시하고 W-009 저장소 개요 경로를 제공한다.
+6. 후보가 0건이면 `empty_no_result` 상태와 함께 원인 후보(미수집 저장소 / 접근 권한 없음 / 오타)를 제시하고 W-009 저장소 개요 경로를 제공한다. M 번호 문자열인데 이 배포의 M 번호 기능이 꺼져 있으면 서버가 사유 `merge_number_disabled`와 안내 문구를 주며(CR-114), 화면은 그것을 「없음」과 구분해 그대로 보인다.
 
 성공 경로: 3~6단계 모두 p95 200ms 이내 (NFR-001).
 실패 경로: 검색 타임아웃(3초) 시 `error_search_timeout` 상태와 저장소 조건 추가 안내.

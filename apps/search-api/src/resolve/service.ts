@@ -21,11 +21,15 @@ import {
   assertNoShardFailures,
   commitExactQuery,
   commitPrefixQuery,
+  isRepositoryInScope,
+  pullRequestDetailQuery,
   pullRequestQuery,
   search,
   shaFallbackQuery,
   type AccessScope,
 } from '@prs/es';
+import { repositoryCodeOf } from '@prs/domain';
+import { mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, withReadSnapshot, type Pool } from '@prs/db';
 import type { Identifier, IdentifierDetection, IdentifierKind } from '@prs/query';
 import type { Client } from '@elastic/elasticsearch';
 
@@ -62,19 +66,41 @@ export interface ResolveCandidate {
   readonly merge_seq: number | null;
   readonly seq_epoch: number | null;
   readonly sequence_space: string | null;
+  /**
+   * M 번호로 찾은 PR 후보에만 실린다 (CR-114 / FR-SRCH-001 AC-7).
+   *
+   * **정본 값이다** — 색인의 `merge_number`가 아니라 `merge_sequence`의 현재 에폭
+   * 행이며, 그래서 이 후보의 `merge_seq`·`seq_epoch`·`sequence_space`도 정본에서
+   * 온다. 세 키는 함께 있거나 함께 없다. 표기 문자열은 현재 저장소 이름으로 만든다(OD-009).
+   */
+  readonly merge_number?: string;
+  readonly merge_number_epoch?: number;
+  readonly merge_number_state?: 'assigned';
 }
+
+/**
+ * 후보 0건의 사유. `merge_number_disabled`는 M 번호 문자열을 넣었는데 이 배포의
+ * M 번호 기능이 꺼져 있을 때다 (CR-114) — "없다"와 "이 배포는 그 조회를 하지
+ * 않는다"를 한 코드로 묶으면 운영자가 왜 안 되는지 알 수 없다.
+ */
+export type ResolveReasonCode = 'not_found' | 'merge_number_disabled';
 
 export interface ResolveResult {
   readonly input: string;
   readonly detected_kind: IdentifierKind;
   readonly candidates: readonly ResolveCandidate[];
   readonly truncated: boolean;
-  readonly reason_code: 'not_found' | null;
+  readonly reason_code: ResolveReasonCode | null;
 }
 
 export interface ResolveDeps {
   readonly es: Client;
   readonly timeoutMs?: number;
+  /**
+   * M 번호 정본 (CR-114 / FR-SRCH-001 AC-7). 없거나 꺼져 있으면 M 번호 문자열은
+   * 후보 0건과 `merge_number_disabled`로 답한다 — 잠정값도 색인 값도 쓰지 않는다.
+   */
+  readonly mergeNumbers?: { readonly pool: Pool; readonly enabled: boolean };
 }
 
 export interface ResolveRequest {
@@ -184,7 +210,8 @@ interface Lookup {
  * 접두에는 폴백을 붙이지 않는다 (`shaFallbackQuery` 주석 참조).
  */
 function lookupsFor(identifier: Identifier, repositoryHint: string | null): readonly Lookup[] {
-  if (identifier.kind === 'text') return [];
+  // M 번호는 색인 질의가 아니라 정본 조회다 — `lookupMergeNumberCandidates`가 맡는다 (CR-114).
+  if (identifier.kind === 'text' || identifier.kind === 'merge_number') return [];
 
   if (identifier.kind === 'commit') {
     if (identifier.match === 'exact') {
@@ -229,8 +256,37 @@ export async function runResolve(
   const seen = new Set<string>();
   let truncated = false;
   let producedBy: IdentifierKind | null = null;
+  let mergeNumberDisabled = false;
 
   for (const identifier of detection.interpretations) {
+    if (identifier.kind === 'merge_number') {
+      /*
+       * M 번호 문자열 (CR-114 / FR-SRCH-001 AC-7). 색인이 아니라 **정본**에서 찾는다 —
+       * 색인의 `merge_number`는 투영이 늦을 수 있고(CR-113의 교훈), 표기 문자열은
+       * 저장소 이름에서 만드는 파생값이라 색인에 없다. 기능이 꺼진 배포는 조회하지
+       * 않고 사유만 남긴다.
+       */
+      if (deps.mergeNumbers === undefined || !deps.mergeNumbers.enabled) {
+        mergeNumberDisabled = true;
+        continue;
+      }
+      const found = await lookupMergeNumberCandidates(
+        { pool: deps.mergeNumbers.pool, es: deps.es, ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }) },
+        identifier,
+        scope,
+        limit + 1,
+      );
+      if (found.length > limit) truncated = true;
+      for (const candidate of found.slice(0, limit)) {
+        const key = candidateKey(candidate);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        candidates.push(candidate);
+        producedBy ??= identifier.kind;
+      }
+      continue;
+    }
+
     for (const lookup of lookupsFor(identifier, request.repositoryHint)) {
       /*
        * 상한보다 하나 더 가져온다.
@@ -280,6 +336,139 @@ export async function runResolve(
     detected_kind: producedBy ?? detection.interpretations[0]?.kind ?? 'text',
     candidates: candidates.slice(0, limit),
     truncated,
-    reason_code: candidates.length === 0 ? 'not_found' : null,
+    reason_code: candidates.length > 0 ? null : mergeNumberDisabled ? 'merge_number_disabled' : 'not_found',
   };
+}
+
+/* ------------------------------------------------------------------ M 번호 (CR-114) */
+
+export interface MergeNumberLookupDeps {
+  readonly pool: Pool;
+  readonly es: Client;
+  readonly timeoutMs?: number;
+}
+
+/** 정본에서 확정한 PR 하나. 색인 문서는 표시 필드를 덧댈 뿐이다. */
+interface MergeNumberSeed {
+  readonly repositoryId: number;
+  readonly repository: string;
+  readonly baseBranch: string;
+  readonly seqEpoch: number;
+  readonly prNumber: number;
+  readonly mergeSeq: number;
+}
+
+/**
+ * `M-<코드>-<번호>` → PR 후보 (FR-SRCH-001 AC-7, CR-114).
+ *
+ * ## 순서가 통제다
+ *
+ * 코드로 저장소를 고른다 → **접근 범위를 지난다** → 추적 브랜치마다 현재 에폭의
+ * `merge_sequence`에서 그 번호를 찾는다 → 색인 문서로 표시 필드를 덧댄다.
+ * 범위 밖 저장소는 두 번째 단계에서 빠지므로 그 저장소에 그 번호가 있는지 없는지는
+ * 응답 어디에도 드러나지 않는다(AC-6, THR-006).
+ *
+ * ## 정본은 한 스냅숏에서 읽는다
+ *
+ * 저장소·브랜치마다 공간과 행을 따로 읽되 **같은 REPEATABLE READ 스냅숏** 안이다
+ * (`API-SEQ-007`의 DEV-592와 같은 규율) — 그 사이 재채번이 커밋하면 한 응답이 두
+ * 세대의 번호를 섞는다. 색인 조회는 스냅숏 밖이다.
+ *
+ * ## 후보가 여럿인 것은 정상이다
+ *
+ * 코드는 저장소 **이름**의 숫자 부분이라(OD-009) 조직이 다른 `acme/smp1900`과
+ * `tools/app1900`이 같은 코드 `1900`을 갖는다. 그때 각각의 `M-1900-1450`이 다른 PR이며
+ * 둘 다 후보다 — AC-5가 정한 대로 자동 이동하지 않는다. 시퀀스 브랜치가 둘인
+ * 저장소도 브랜치마다 후보가 될 수 있다.
+ *
+ * @param limit 이 수까지만 돌려준다. 호출부가 `limit + 1`을 넘겨 절삭을 판정한다.
+ */
+export async function lookupMergeNumberCandidates(
+  deps: MergeNumberLookupDeps,
+  identifier: Extract<Identifier, { kind: 'merge_number' }>,
+  scope: AccessScope,
+  limit: number,
+): Promise<ResolveCandidate[]> {
+  const repositories = (await repositoryRepo.listActiveRepositoriesByCode(deps.pool, identifier.code)).filter((repository) => {
+    // SQL 정규식이 이미 거르지만 코드 규칙의 정본은 `repositoryCodeOf`다 — 둘이 어긋나면 이쪽이 이긴다.
+    const code = repositoryCodeOf(repository.name);
+    if (code.kind !== 'code' || code.code !== identifier.code) return false;
+    return isRepositoryInScope(
+      {
+        repositoryId: repository.repository_id,
+        orgId: repository.org_id,
+        visibility: repository.visibility,
+        allowedTeamIds: repository.allowed_team_ids,
+      },
+      scope,
+    );
+  });
+  if (repositories.length === 0) return [];
+
+  const seeds = await withReadSnapshot(deps.pool, async (db) => {
+    const found: MergeNumberSeed[] = [];
+    for (const repository of repositories) {
+      for (const baseBranch of [...repository.sequence_branches].sort()) {
+        if (found.length >= limit) return found;
+        const space = await sequenceSpaceRepo.findSequenceSpace(db, repository.repository_id, baseBranch);
+        if (space === undefined) continue;
+        const row = await mergeSequenceRepo.findRowByMergeNumber(db, repository.repository_id, baseBranch, space.seq_epoch, identifier.number);
+        // 발급되지 않은 번호는 후보가 아니다 — 잠정값을 지어내지 않는다 (FR-SEQ-008 예외 처리).
+        if (row === null || row.pull_request_number === null) continue;
+        found.push({
+          repositoryId: repository.repository_id,
+          repository: `${repository.owner}/${repository.name}`,
+          baseBranch,
+          seqEpoch: space.seq_epoch,
+          prNumber: row.pull_request_number,
+          mergeSeq: Number(row.merge_seq),
+        });
+      }
+    }
+    return found;
+  });
+
+  const candidates: ResolveCandidate[] = [];
+  for (const seed of seeds) {
+    /*
+     * 표시 필드(제목·작성자·상태·머지 시각)는 색인 문서에서 덧댄다. 문서가 아직 없어도
+     * 후보는 성립한다 — 정본이 그 PR을 확정했고 상세 URL은 정본만으로 만들 수 있다.
+     * 색인 조회도 강제 범위 필터를 지난다(ADR-008) — 두 번 걸러도 뜻은 같다.
+     */
+    const response = await search<ResolveHitSource>(
+      deps.es,
+      PR_ALIAS,
+      applyMandatoryScopeFilter(pullRequestDetailQuery(seed.repository, seed.prNumber), scope),
+      { size: 1, ...(deps.timeoutMs === undefined ? {} : { timeout: `${String(deps.timeoutMs)}ms` }) },
+    );
+    assertNoShardFailures(response);
+    const source = response.hits.hits[0]?._source;
+    const base: ResolveCandidate =
+      source === undefined
+        ? {
+            kind: 'pull_request',
+            repository: seed.repository,
+            repository_id: seed.repositoryId,
+            display_name: null,
+            url: `/pr/${seed.repository}/${String(seed.prNumber)}`,
+            pr_number: seed.prNumber,
+            // 정본에 현재 에폭 행이 있다는 것은 그 PR의 머지 커밋이 체인에 있다는 뜻이다.
+            state: 'merged',
+            merge_seq: null,
+            seq_epoch: null,
+            sequence_space: null,
+          }
+        : pullRequestCandidate(source);
+    candidates.push({
+      ...base,
+      // 시퀀스 세 키와 M 세 키는 정본이 말한다 — 색인의 옛 값이 이기지 않는다.
+      merge_seq: seed.mergeSeq,
+      seq_epoch: seed.seqEpoch,
+      sequence_space: `${seed.repository}@${seed.baseBranch}`,
+      merge_number: identifier.label,
+      merge_number_epoch: seed.seqEpoch,
+      merge_number_state: 'assigned',
+    });
+  }
+  return candidates;
 }

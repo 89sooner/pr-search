@@ -234,6 +234,47 @@ describe('DEV-066: 순수 정수는 PR이면서 SHA 접두다', () => {
   });
 });
 
+describe('FR-SRCH-001 AC-7 (CR-114): M 번호 문자열은 merge_number 해석 하나다', () => {
+  it('`M-1900-1450`은 코드·번호·정규화 표기를 담는다', () => {
+    expect(detectIdentifier('M-1900-1450').interpretations).toEqual([
+      { kind: 'merge_number', code: '1900', number: 1450, label: 'M-1900-1450' },
+    ]);
+  });
+
+  it('제목 접두 그대로 붙여 넣은 `[M-1900-1450]`도 같은 해석이다', () => {
+    expect(first('[M-1900-1450]')).toEqual({ kind: 'merge_number', code: '1900', number: 1450, label: 'M-1900-1450' });
+  });
+
+  it('소문자 `m-`도 받되 표기는 정본 형식이다', () => {
+    expect(first('m-1900-7')).toEqual({ kind: 'merge_number', code: '1900', number: 7, label: 'M-1900-7' });
+  });
+
+  it('저장소 코드의 선행 0은 보존한다 (OD-009, `repositoryCodeOf`)', () => {
+    expect(first('M-007-3')).toEqual({ kind: 'merge_number', code: '007', number: 3, label: 'M-007-3' });
+  });
+
+  it('다른 해석과 겹치지 않는다 — 해석은 이것 하나다', () => {
+    expect(kinds('M-1900-1450')).toEqual(['merge_number']);
+    expect(detectIdentifier('M-1900-1450', { gheBaseUrl: GHE }).rejection).toBeNull();
+  });
+
+  it.each([
+    ['번호 0', 'M-1900-0'],
+    ['번호 선행 0', 'M-1900-007'],
+    ['코드 없음', 'M-1450'],
+    ['코드가 숫자가 아님', 'M-abc-1'],
+    ['안쪽 공백', 'M-1900- 1450'],
+    ['접두 뒤 문자', 'M-1900-1450x'],
+    ['짝이 안 맞는 대괄호', '[M-1900-1450'],
+  ])('%s은 M 번호가 아니라 `text`다', (_label, input) => {
+    expect(kinds(input)).toEqual(['text']);
+  });
+
+  it('`primaryKind`가 merge_number를 준다', () => {
+    expect(primaryKind(detectIdentifier('M-1900-1450'))).toBe('merge_number');
+  });
+});
+
 describe('FR-SRCH-001 AC-4: 나머지는 `text`다', () => {
   it.each([
     ['자유 문자열', 'payment retry'],

@@ -104,6 +104,24 @@ export function isRangeKey(key: string): key is RangeKey {
 }
 
 /**
+ * 단일 값도 받는 수치 범위 키 (CR-114, FR-SRCH-005 AC-9 보완).
+ *
+ * `mnum:1450`은 `mnum:1450..1450`과 **같은 필터**다 — 양끝이 같은 닫힌 범위이며
+ * 새 연산자가 아니다. M 번호는 한 PR을 가리키는 값이라 사용자가 하나만 적는 것이
+ * 자연스러운데, 사내 `pilot.17`에서는 그 한 건을 찾으려고 `mnum:1450..1450`을
+ * 써야 했다. `seq:`·`merged:`·`created:`·`pr_number:`는 그대로 범위 전용이다
+ * (DEV-364) — 이 목록에 키를 더하는 것은 SRS 개정이다.
+ */
+export const SINGLE_VALUE_RANGE_KEYS = ['mnum'] as const;
+export type SingleValueRangeKey = (typeof SINGLE_VALUE_RANGE_KEYS)[number];
+
+const SINGLE_VALUE_SET = new Set<string>(SINGLE_VALUE_RANGE_KEYS);
+
+export function acceptsSingleValue(key: string): key is SingleValueRangeKey {
+  return SINGLE_VALUE_SET.has(key);
+}
+
+/**
  * 수치 범위 키의 하한(포함) (CR-106).
  *
  * **여기 없는 키는 하한이 없다** — `changed_files`·`changed_lines`는 0을 사실의
@@ -130,6 +148,7 @@ export const RANGE_KEY_EXAMPLE: Readonly<Record<RangeKey, string>> = {
   changed_files: 'changed_files:2..5',
   changed_lines: 'changed_lines:51..200',
   pr_number: 'repo:acme/payments pr_number:100..200',
+  // 단일 값도 받는다 (CR-114). 예시는 범위로 두어 `..` 문법을 계속 알린다.
   mnum: 'repo:acme/payments base:main mnum:1..50',
 };
 

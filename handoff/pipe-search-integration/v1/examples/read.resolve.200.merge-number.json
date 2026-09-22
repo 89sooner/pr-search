@@ -1,0 +1,48 @@
+{
+  "operation": "read.resolve",
+  "title": "M 번호 문자열 해석 (CR-114)",
+  "captured": false,
+  "note": "합성 예시. q가 `M-<코드>-<번호>` 표기 문자열이면 detected_kind는 merge_number이고 후보는 pull_request 모양이다. 저장소 코드(1900)는 저장소 이름 payments1900의 숫자 부분이며, 같은 코드를 가진 저장소가 접근 범위 안에 여럿이면 후보가 여럿이다(자동 이동 없음). merge_seq·seq_epoch·sequence_space와 M 세 키는 PostgreSQL 정본 값이다. pr-search 통합 시험 apps/search-api/integration/resolve/merge-number-resolve.test.ts가 같은 모양을 실제 응답으로 확인한다.",
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/resolve?q=M-1900-1450",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000114"
+    },
+    "body": {
+      "input": "M-1900-1450",
+      "detected_kind": "merge_number",
+      "candidates": [
+        {
+          "kind": "pull_request",
+          "repository": "acme/payments1900",
+          "repository_id": 1901,
+          "display_name": "feat: 결제 재시도 로직",
+          "url": "/pr/acme/payments1900/1234",
+          "pr_number": 1234,
+          "state": "merged",
+          "author": "alice-psi",
+          "merged_at": "2026-08-19T05:02:11.000Z",
+          "merge_seq": 1342,
+          "seq_epoch": 3,
+          "sequence_space": "acme/payments1900@main",
+          "merge_number": "M-1900-1450",
+          "merge_number_epoch": 3,
+          "merge_number_state": "assigned"
+        }
+      ],
+      "truncated": false,
+      "correlation_id": "00000000-0000-4000-8000-000000000114"
+    }
+  }
+}
