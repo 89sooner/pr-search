@@ -472,6 +472,11 @@ export interface SpaceWorkProgress {
   /** 이 진행이 속한 요청 세대. 다르면 처음부터 다시 훑는다 (`full`). */
   readonly generation?: number;
   readonly seq_epoch?: number;
+  /**
+   * 이 세대가 비추는 문서 종류. 진행 중(완료되지 않은) 세대에 좁은 별칭 요청이 덮여 와도
+   * 재시작은 **합집합**으로 돈다 — 재요청이 넓은 sweep을 자른 채 완료로 닫히지 않게 한다.
+   */
+  readonly kinds?: readonly SequenceDocKind[];
   /** 마지막으로 처리한 서수. 다음 claim은 그 뒤부터다. */
   readonly cursor_seq?: number;
   readonly pages?: number;
@@ -512,7 +517,6 @@ export async function runSpaceProjectionWork(
 ): Promise<SpaceWorkOutcome> {
   const log = logOf(deps);
   const scope = (row.payload as { scope?: unknown }).scope === 'full' ? 'full' : 'tail';
-  const aliases = allowedKinds(row.payload);
   const loaded = await loadSpace(deps, row.repository_id, row.base_branch);
   if (loaded === undefined) return { kind: 'skipped', reason: 'space_missing' };
   const { space } = loaded;
@@ -522,6 +526,15 @@ export async function runSpaceProjectionWork(
 
   const prior = row.progress as SpaceWorkProgress;
   const restart = scope === 'full' && prior.generation !== row.requested_generation;
+  /*
+   * `requestWork`는 같은 키의 재요청에 payload를 덮어쓴다. 진행 중이던 세대가 아직 끝나지 않았으면
+   * 그 세대의 별칭을 잃지 않는다 — 운영자의 두 별칭 sweep이 재색인 전환의 한 별칭 요청에, 또는 복구의
+   * 두 별칭 sweep이 운영자의 한 별칭 요청에 잘리면, 나머지 별칭의 페이지가 처리되지 않은 채 잡이
+   * 완료로 닫힌다. 끝난 세대 뒤의 새 요청만 요청한 별칭 그대로 돈다.
+   */
+  const requestedKinds = allowedKinds(row.payload);
+  const priorFinished = prior.completed?.generation === prior.generation;
+  const kinds: readonly SequenceDocKind[] = restart && priorFinished ? requestedKinds : unionKinds(prior.kinds, requestedKinds);
   let cursor = restart ? 0 : Number(prior.cursor_seq ?? 0);
   let pages = restart ? 0 : Number(prior.pages ?? 0);
   const counts: Record<string, number> = restart ? {} : { ...(prior.counts ?? {}) };
@@ -532,6 +545,7 @@ export async function runSpaceProjectionWork(
     const progress: SpaceWorkProgress = {
       generation: row.requested_generation,
       seq_epoch: space.seqEpoch,
+      kinds,
       cursor_seq: cursor,
       pages,
       counts: { ...counts },
@@ -556,7 +570,7 @@ export async function runSpaceProjectionWork(
     const current = await sequenceSpaceRepo.findSequenceSpace(deps.pool, row.repository_id, row.base_branch);
     if (current === undefined || current.seq_epoch !== space.seqEpoch) return { kind: 'obsolete', reason: 'epoch_moved' };
 
-    const page = await projectItems(deps, space, resolveTargets(space, rows, 'live', aliases));
+    const page = await projectItems(deps, space, resolveTargets(space, rows, 'live', kinds));
     if (page.staleEpoch.length > 0) return { kind: 'obsolete', reason: 'stale_epoch_in_index' };
 
     const delegated = await requestDocWork(deps.pool, space, page.pending, `${scope}_sweep`);
@@ -611,6 +625,11 @@ function countSkips(skipped: readonly SkippedTarget[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const one of skipped) out[`skip_${one.reason}`] = (out[`skip_${one.reason}`] ?? 0) + 1;
   return out;
+}
+
+function unionKinds(prior: readonly SequenceDocKind[] | undefined, requested: readonly SequenceDocKind[]): readonly SequenceDocKind[] {
+  const set = new Set<SequenceDocKind>([...(prior ?? []), ...requested]);
+  return (['commit', 'pull_request'] as const).filter((kind) => set.has(kind));
 }
 
 function allowedKinds(payload: Record<string, unknown>): SequenceDocKind[] {
@@ -881,17 +900,27 @@ async function allRepositories(pool: Pool): Promise<readonly RepositoryRow[]> {
   return out;
 }
 
-/** 모든 시퀀스 공간에 durable full sweep을 남긴다 — 재색인 전환 직후가 부른다. */
-export async function requestFullSweepForAllSpaces(pool: Pool, payload: Readonly<Record<string, unknown>>): Promise<number> {
-  const repositories = await allRepositories(pool);
-  let requested = 0;
-  for (const repository of repositories) {
+/**
+ * 채번된 적 있는 모든 시퀀스 공간 — replay·검증·전환 뒤 sweep이 **같은 집합**을 본다. 등록 해제된
+ * 저장소도 포함한다(문서가 남아 있다). 공간 행이 없는 브랜치는 비출 정본이 없으므로 뺀다.
+ */
+export async function listProjectionSpaces(pool: Pool): Promise<readonly Pick<ProjectionSpace, 'repositoryId' | 'baseBranch' | 'seqEpoch'>[]> {
+  const out: Pick<ProjectionSpace, 'repositoryId' | 'baseBranch' | 'seqEpoch'>[] = [];
+  for (const repository of await allRepositories(pool)) {
     for (const baseBranch of repository.sequence_branches) {
       const spaceRow = await sequenceSpaceRepo.findSequenceSpace(pool, repository.repository_id, baseBranch);
       if (spaceRow === undefined) continue;
-      await sequenceWorkRepo.requestWork(pool, spaceWorkRequest({ repositoryId: repository.repository_id, baseBranch, seqEpoch: spaceRow.seq_epoch }, 'full', payload));
-      requested += 1;
+      out.push({ repositoryId: repository.repository_id, baseBranch, seqEpoch: spaceRow.seq_epoch });
     }
   }
-  return requested;
+  return out;
+}
+
+/** 모든 시퀀스 공간에 durable full sweep을 남긴다 — 재색인 전환 직후가 부른다. */
+export async function requestFullSweepForAllSpaces(pool: Pool, payload: Readonly<Record<string, unknown>>): Promise<number> {
+  const spaces = await listProjectionSpaces(pool);
+  for (const space of spaces) {
+    await sequenceWorkRepo.requestWork(pool, spaceWorkRequest(space, 'full', payload));
+  }
+  return spaces.length;
 }
