@@ -38,6 +38,9 @@ function fakeEs(): Client {
   return {
     search: async (): Promise<unknown> => ({ hits: { hits: [] } }),
     updateByQuery: async (): Promise<unknown> => ({ updated: 0 }),
+    // CR-113: 문서 단위 투영기가 `mget`·`bulk`를 부른다 — 문서 없음으로 답해 durable work가 남게 둔다.
+    mget: async (body: { docs: readonly { _id: string }[] }): Promise<unknown> => ({ docs: body.docs.map((doc) => ({ _id: doc._id, found: false })) }),
+    bulk: async (): Promise<unknown> => ({ errors: false, items: [] }),
   } as unknown as Client;
 }
 
@@ -318,9 +321,16 @@ describe('T03b: 중복·역순 push, 락 경합, 마지막 push 복구', () => {
     const works = await sequenceWorkRepo.listWorkForSpace(pool, REPOSITORY_ID, BRANCH, ['reconcile']);
     expect(works).toHaveLength(1);
     expect(works[0]?.state).toBe('ready');
-    // M 기능이 꺼져 있으면 reconcile은 집지 않는다 — 다음 회차 claim 0.
-    const idle = await runSequenceWorkOnce({ pool, sequence: deps({ metrics }), mnumber: null, metrics });
-    expect(idle.claimed).toBe(0);
+    /*
+     * M 기능이 꺼져 있으면 reconcile은 집지 않는다. 그러나 **시퀀스 투영(`project`)은 M과
+     * 무관하게 집는다** (CR-113) — 같은 트랜잭션이 남긴 `tail` 의도가 다음 회차에 돈다. 이 파일의
+     * ES 대역은 `mget`·`bulk`가 없어 그 회차는 예외로 끝나 재시도로 남지만, reconcile은 집지 않는다.
+     */
+    const next = await runSequenceWorkOnce({ pool, sequence: deps({ metrics }), mnumber: null, metrics });
+    expect(next.claimed).toBe(1);
+    expect(Object.keys(next.outcomes).every((key) => key.startsWith('project:'))).toBe(true);
+    const reconcileRows = await sequenceWorkRepo.listWorkForSpace(pool, REPOSITORY_ID, BRANCH, ['reconcile']);
+    expect(reconcileRows[0]?.state).toBe('ready');
   });
 
   it('러너가 lease를 잃으면 결과를 기록하지 않는다 (0행) — 늦은 ack', async () => {

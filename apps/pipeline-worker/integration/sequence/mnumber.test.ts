@@ -59,6 +59,9 @@ function fakeEs(): Client {
       esCalls.push({ method: 'updateByQuery', body });
       return { updated: 0 };
     },
+    // CR-113: 문서 단위 투영기의 `mget`·`bulk` — 문서 없음으로 답한다.
+    mget: async (body: { docs: readonly { _id: string }[] }): Promise<unknown> => ({ docs: body.docs.map((doc) => ({ _id: doc._id, found: false })) }),
+    bulk: async (): Promise<unknown> => ({ errors: false, items: [] }),
     get: async (body: unknown): Promise<unknown> => {
       esCalls.push({ method: 'get', body });
       const error = new Error('not found') as Error & { statusCode: number };
