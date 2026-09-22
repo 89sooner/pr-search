@@ -23,6 +23,7 @@ import type { Pool } from '@prs/db';
 import {
   parseRepositorySlug,
   readEpochParam,
+  resolveRepository,
   resolveSpace,
   type ResolvedSpace,
 } from '../sequence/space.js';
@@ -143,10 +144,20 @@ export async function resolveSequenceContext(
 export type MergeNumberRangeOutcome =
   /** `mnum:` 범위 조건이 없다. */
   | { readonly kind: 'none' }
-  /** 공간이 확정됐다. 이 에폭으로 `merge_number_epoch`를 건다. */
-  | { readonly kind: 'bound'; readonly epoch: number }
+  /**
+   * 공간이 확정됐다. 이 에폭으로 `merge_number_epoch`를 걸고, **같은 자리에서**
+   * `baseBranch`로 `base_branch`를 건다 — 에폭은 공간마다 독립이라 브랜치 없이는 공간을
+   * 가리키지 못한다(CR-114 독립 검토 지적 1). `base:`를 적었으면 그 값이고, `repo:`만 적었으면
+   * 유일한 추적 브랜치다.
+   */
+  | { readonly kind: 'bound'; readonly epoch: number; readonly baseBranch: string }
   /** 질의가 공간을 지목하지 못했다. `INVALID_PARAMETER`(field `q`). */
   | { readonly kind: 'unbindable'; readonly reason: SequenceBindingProblem }
+  /**
+   * `repo:`만 적었는데 그 저장소가 시퀀스 브랜치를 둘 이상 추적한다 (CR-114).
+   * `INVALID_PARAMETER`(field `q`, reason `sequence_space_ambiguous`)이며 브랜치 목록을 함께 준다.
+   */
+  | { readonly kind: 'branch_required'; readonly repository: string; readonly sequenceBranches: readonly string[] }
   /** 지목한 공간을 확인할 수 없다. `NOT_FOUND` 하나로 답한다 (CR-027 DEV-137, THR-006). */
   | { readonly kind: 'space_unavailable' };
 
@@ -167,6 +178,16 @@ export type MergeNumberRangeOutcome =
  * 되어, 세대 혼입을 막으려는 이 기능 자체가 그 혼입을 만든다(독립 검토가 실측한
  * 경합, CR-106).
  *
+ * **`base:`가 없으면 유일한 추적 브랜치로 묶는다** (CR-114, FR-SRCH-005 AC-9 보완).
+ * 서버가 공간을 고르는 것이 아니다 — 저장소가 시퀀스 브랜치를 하나만 추적하면
+ * 고를 것이 없고, 둘 이상이면 `branch_required`로 거절해 사용자가 `base:`를 더하게
+ * 한다. 저장소 행은 `resolveRepository`로 읽어 접근 통제를 지난다(미등록·범위 밖은
+ * 같은 `space_unavailable`). **묶인 브랜치는 판정과 함께 돌려주고 질의 빌더가 `base_branch`
+ * 항으로 건다** — 「추적 브랜치가 하나면 그 브랜치 문서만 `merge_number`를 갖는다」는
+ * 불변식에 기대지 않는다. 관리자가 `sequence_branches`에서 브랜치를 빼도 그 브랜치 문서의
+ * `merge_number`·에폭은 지워지지 않으므로(DEV-739), 에폭 항만으로는 그 잔여 문서가 같은
+ * 에폭 값으로 섞인다(CR-114 독립 검토 지적 1).
+ *
  * @param reuse `resolveSequenceContext`가 이미 확정한 공간. `repository`·`baseBranch`가
  *   이 함수가 판정한 것과 같을 때만 쓴다 — 다르면(있을 수 없지만 방어적으로) 새로 읽는다.
  * @returns 라우트가 그대로 분기할 수 있는 판정. 이 함수는 HTTP를 모른다.
@@ -180,15 +201,29 @@ export async function resolveMergeNumberRangeEpoch(
   if (binding.kind === 'none') return { kind: 'none' };
   if (binding.kind === 'invalid') return { kind: 'unbindable', reason: binding.reason };
 
-  if (reuse !== undefined && reuse.repository === binding.repository && reuse.baseBranch === binding.baseBranch) {
-    return { kind: 'bound', epoch: reuse.epoch };
-  }
-
   const slug = parseRepositorySlug(binding.repository);
   if (slug === null) return { kind: 'space_unavailable' };
 
-  const lookup = await resolveSpace(pool, slug, binding.baseBranch, input.scope);
+  let baseBranch: string;
+  if (binding.kind === 'bound') {
+    baseBranch = binding.baseBranch;
+  } else {
+    const repository = await resolveRepository(pool, slug, input.scope);
+    if (repository.kind !== 'ok') return { kind: 'space_unavailable' };
+    const branches = repository.repository.sequence_branches;
+    const [only] = branches;
+    if (branches.length !== 1 || only === undefined) {
+      return { kind: 'branch_required', repository: binding.repository, sequenceBranches: [...branches] };
+    }
+    baseBranch = only;
+  }
+
+  if (reuse !== undefined && reuse.repository === binding.repository && reuse.baseBranch === baseBranch) {
+    return { kind: 'bound', epoch: reuse.epoch, baseBranch };
+  }
+
+  const lookup = await resolveSpace(pool, slug, baseBranch, input.scope);
   if (lookup.kind !== 'ok') return { kind: 'space_unavailable' };
 
-  return { kind: 'bound', epoch: lookup.space.seqEpoch };
+  return { kind: 'bound', epoch: lookup.space.seqEpoch, baseBranch };
 }

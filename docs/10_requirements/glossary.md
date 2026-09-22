@@ -1,6 +1,8 @@
 # PR Search 용어집
 
-> 상태: review | 버전: v0.15 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.16 | 갱신일: 2026-09-22
+
+CR-114 / FR-SRCH-001 AC-7: **M 번호 표기 문자열**(`M-<저장소 코드>-<번호>`)은 그 자체가 통합 검색의 **식별자**다 — 커밋 SHA·PR 번호·GHE URL과 같은 자리에서 유형 `merge_number`로 판별되며, 해석은 색인이 아니라 현재 에폭의 정본(`merge_sequence`)에서 한다. 저장소 코드가 이름의 숫자 부분이므로(OD-009) 같은 코드를 가진 저장소가 여럿일 수 있고, 그때 후보는 여럿이다. `mnum:`의 **단일 값**(`mnum:1450`)은 양끝이 같은 닫힌 범위이지 새 연산자가 아니다. `base:` **생략**은 저장소가 추적하는 시퀀스 브랜치가 하나뿐일 때만 성립한다 — 서버가 공간을 고르는 것이 아니다. 금지 동의어: "M 번호 검색어"(전문 검색과 혼동), "M 번호 필터"(`mnum:` 범위 조건과 혼동), "기본 브랜치 추론"(고를 것이 없을 때만 통과한다).
 
 CR-113 / FR-SEQ-001 AC-7·AC-8: **시퀀스 투영**(sequence projection)은 PostgreSQL 정본(`merge_sequence`·`sequence_space`·`pull_request_snapshot`·`commit_snapshot`)이 정한 서수를 커밋·PR 검색 문서의 `merge_seq`·`seq_epoch`·`sequence_space` 필드에 비추는 일이다. **재투영**(reprojection)은 이미 확정된 서수를 정본에서 색인으로 다시 비추는 것이며 **재채번**(reassignment, FR-SEQ-005)과 다르다 — 에폭·서수·M 번호·head를 바꾸지 않는다. **durable 투영 작업**(`sequence_work`의 `project` kind)은 공간 단위 `tail`(채번 뒤 증분)·`full`(전체 sweep)과 문서 단위 `doc`으로 나뉘며 generation·lease·CAS 규율(ENT-SEQ-006)을 그대로 쓴다. 문서별 판정은 `updated`(새로 반영)·`noop`(이미 같음)·`document_missing`(문서 없음)·`guard_rejected`(저장소·SHA·브랜치 불일치)·`stale_epoch`(구 에폭 작업)·`transient`(일시 실패·경쟁)이고, `updated=0`은 그 자체로 성공도 실패도 아니다. 「대상 없음」(직접 푸시·미수집·연결 미확정)과 「문서 생성 대기」는 구분한다. 금지 동의어: "색인 재채번", "서수 복구(재계산)".
 

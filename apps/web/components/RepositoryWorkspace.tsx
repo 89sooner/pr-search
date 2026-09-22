@@ -165,7 +165,8 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
     if (continuation) search.set('cursor', continuation);
     const raw = currentParams.get('q')?.trim() ?? '';
     const detected = detectIdentifier(raw, gheBaseUrl ? { gheBaseUrl } : {});
-    const identifier = raw !== '' && detected.interpretations.some(item => item.kind === 'commit' || item.kind === 'pull_request');
+    // CR-114: an M number string (`M-1900-1450`) is an identifier too -- the server resolves it against the canonical merge_sequence rows of every in-scope repository with that code.
+    const identifier = raw !== '' && detected.interpretations.some(item => item.kind === 'commit' || item.kind === 'pull_request' || item.kind === 'merge_number');
     if (!identifier) { try { parseQuery(query); } catch (reason) { setError(reason instanceof Error ? reason.message : "Check your search filters."); setLoading(false); return; } }
     const target = identifier ? resolveUrl(raw.startsWith('#') ? `${repository}${raw}` : raw) : `/api/search?${search.toString()}`;
     void fetch(target, { signal: controller.signal, cache: 'no-store' })

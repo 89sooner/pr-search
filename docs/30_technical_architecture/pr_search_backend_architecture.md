@@ -4,7 +4,7 @@
 
 > CR-097 / FR-SRC-001~004: sourceRoutes는 인증 → 기존 ScopeService/resolveRepository → GitHubSourceReader 순서다. GitHubClient의 기존 전송·rate-limit 경계를 공유하는 별도 읽기 어댑터이며 source DTO를 수집/색인 DTO에 추가하지 않는다. 비재귀 트리·Contents·경로별 commits·PR files/merge-base를 요청 시 조회한다. 파일256KiB/4,000라인·디렉터리5,000항목·Diff100항목×30페이지 상한, 전체SHA 검증, PR 조회 전후 ref 확인을 강제한다.
 
-> 상태: review | 버전: v0.15 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.16 | 갱신일: 2026-09-22
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 
@@ -268,6 +268,7 @@ async function search(rawQuery: string, opts: SearchOptions, ctx: RequestContext
 ```text
 입력 문자열
  1. GHE URL 패턴 (호스트+경로)   → pull_request | commit + repository 확정
+ 1-a. M-<코드>-<번호>            → merge_number (정본 merge_sequence, 코드 일치 저장소 × 추적 브랜치, CR-114)
  2. owner/repo#N                 → pull_request + repository 확정
  3. #N 또는 순수 정수            → pull_request (repository 미확정 → 접근 범위 내 후보 조회)
  4. 40자 hex                     → commit (term 질의)
@@ -280,6 +281,8 @@ async function search(rawQuery: string, opts: SearchOptions, ctx: RequestContext
 4번에서 40자 hex가 커밋으로 안 잡히면 `merge_commit_sha` / `head_sha` / `base_sha` 필드도 순차 확인한다. 아직 커밋 문서가 색인되지 않았지만 PR 문서에는 SHA가 들어 있는 경우가 있기 때문이다.
 
 1번의 **호스트 비교는 생략할 수 없다** (CR-017, DEV-064). `GHE_BASE_URL`이 가리키는 호스트와 다른 URL은 경로가 같은 모양이어도 `text`로 떨어진다. 호스트를 보지 않고 경로만 파싱하면 외부 URL이 우리 저장소의 PR로 해석된다.
+
+1-a번의 **M 번호 문자열은 색인이 아니라 정본에서 해석한다** (CR-114, FR-SRCH-001 AC-7). 판별은 `@prs/domain`의 `parseMergeNumber` 하나를 쓰고(정규식을 따로 적지 않는다), 조회는 코드 → 활성 저장소(`listActiveRepositoriesByCode`) → 접근 범위(`isRepositoryInScope`) → 추적 브랜치마다 현재 에폭 `merge_sequence` 순이다. 순서가 통제다 — 범위 밖 저장소는 두 번째 단계에서 빠져 그 저장소에 그 번호가 있는지 없는지가 응답 어디에도 드러나지 않는다. 정본은 한 REPEATABLE READ 스냅숏에서 읽고(재채번 중 두 세대가 섞이지 않게), 색인 문서는 표시 필드(제목·작성자·상태)를 덧댈 뿐이며 시퀀스·M 값은 정본이 이긴다. 기능이 꺼진 배포는 조회 없이 `merge_number_disabled`로 답한다.
 
 7번은 **WP-014 범위 밖이다** (CR-017, DEV-065). 릴리스 태그의 패턴이 어디에도 정의되어 있지 않고 `prs-releases`도 비어 있다(WP-024). 패턴을 추측해 넣으면 `v1`·`build-2` 같은 문자열이 릴리스로 오분류되어 전문 검색으로 가야 할 질의가 0건이 된다. 릴리스를 색인하는 WP-024가 패턴을 정의할 때까지 태그처럼 보이는 문자열은 8번으로 간다.
 

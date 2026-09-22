@@ -14,13 +14,15 @@ export {
   NUMERIC_RANGE_KEYS,
   QUERY_KEYS,
   RANGE_KEY_EXAMPLE,
+  SINGLE_VALUE_RANGE_KEYS,
   TEMPORAL_RANGE_KEYS,
+  acceptsSingleValue,
   isNumericRangeKey,
   isQueryKey,
   isRangeKey,
   isTemporalRangeKey,
 } from './keys.js';
-export type { NumericRangeKey, QueryKey, RangeKey, TemporalRangeKey } from './keys.js';
+export type { NumericRangeKey, QueryKey, RangeKey, SingleValueRangeKey, TemporalRangeKey } from './keys.js';
 
 export { EMPTY_QUERY, isNegated, isRangeFilter } from './ast.js';
 export type {
@@ -54,6 +56,7 @@ export type {
 
 export {
   MERGE_NUMBER_BINDING_MESSAGE,
+  MERGE_NUMBER_BRANCH_REQUIRED_MESSAGE,
   REPOSITORY_BINDING_MESSAGE,
   SEQUENCE_BINDING_MESSAGE,
   analyzeMergeNumberBinding,
@@ -64,6 +67,7 @@ export {
   hasSequenceRangeFilter,
 } from './sequence-binding.js';
 export type {
+  MergeNumberBindingAnalysis,
   RepositoryBindingAnalysis,
   RepositoryBindingProblem,
   SequenceBindingAnalysis,

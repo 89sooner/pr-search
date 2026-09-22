@@ -366,8 +366,16 @@ describe('AC-9: mnum: 은 seq:와 같은 공간 지목을 요구한다', () => {
     expect(prNumbersOf(body)).toContain(140);
   });
 
-  it('`base:` 없이 쓰면 400 sequence_space_required다', async () => {
+  it('`base:` 없이 써도 추적 브랜치가 하나뿐이면 같은 공간이다 (CR-114 보완)', async () => {
+    // CR-106 시점에는 400 sequence_space_required였다. CR-114가 유일한 추적 브랜치로 묶는다 —
+    // 브랜치가 둘 이상인 저장소의 거절은 `mnum-single-value.test.ts`가 건다.
     const { status, body } = await get(`q=${encodeURIComponent('repo:cr106range/payments mnum:10..20')}`);
+    expect(status).toBe(200);
+    expect(prNumbersOf(body).sort((a, b) => a - b)).toEqual([100, 140, 150, 200]);
+  });
+
+  it('`repo:` 없이 쓰면 여전히 400 sequence_space_required다', async () => {
+    const { status, body } = await get(`q=${encodeURIComponent('base:main mnum:10..20')}`);
     expect(status).toBe(400);
     expect(body.error?.code).toBe('INVALID_PARAMETER');
     expect(body.error?.detail?.['reason']).toBe('sequence_space_required');

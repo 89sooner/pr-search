@@ -1,6 +1,8 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.14 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.15 | 갱신일: 2026-09-22
+
+CR-114 / WP-099: 검색창의 M 번호 문자열 해석은 **정본에서** 한다 — 판별은 `packages/query/src/identifier.ts`(`@prs/domain`의 `parseMergeNumber` 재사용, 정규식을 따로 적지 않는다), 조회는 `apps/search-api/src/resolve/service.ts`의 `lookupMergeNumberCandidates`(코드 → 활성 저장소 → 접근 범위 → 추적 브랜치의 현재 에폭 `merge_sequence`, 한 REPEATABLE READ 스냅숏). 색인의 `merge_number`나 M 표시 문자열로 찾는 두 번째 경로를 만들지 않는다. `mnum:` 단일 값은 파서가 닫힌 범위로 옮기므로 질의 빌더·지목 판정·커서 지문에 단일 값 분기를 두지 않는다. `base:` 생략은 `resolveMergeNumberRangeEpoch` 한 곳이 저장소의 추적 브랜치가 하나일 때만 묶고, 둘 이상이면 브랜치 목록과 함께 거절한다 — 서버가 고르지 않는다. `seq:`의 규칙은 그대로다. PIPE handoff의 OpenAPI·예시·manifest는 `contract.test.ts`가 대조하므로 handoff를 고친 뒤 `tools/generate-manifest.mjs`를 다시 돌린다. 실행·시험·한계는 원장 WP-099를 읽는다.
 
 CR-113 / WP-098: 머지 시퀀스를 색인에 비추는 경로는 **하나**다 — 정본 해석은 `apps/pipeline-worker/src/sequence-projection.ts`, 문서 단위 쓰기는 `packages/es/src/sequence-projection.ts`. 채번·재채번·복구·늦은 PR 스냅숏·커밋 보강·재색인 replay·운영자 재투영이 모두 그 둘을 지나며, SHA 목록 `update_by_query`로 서수를 쓰는 두 번째 경로를 만들지 않는다(`applySequenceToDocuments`는 지워졌다). 색인 값이나 M 표시 문자열에서 서수를 추정하지 않고, 복구 코드가 `merge_sequence`·`sequence_space`에 쓰지 않는다. 새 쓰기 원시체는 `packages/es/src/dual-write.test.ts`의 목록과 비동기 계약 3.5장 표에 함께 올린다. 완료 판정은 문서별 결과(`updated`·`noop`·`document_missing`·`guard_rejected`·`stale_epoch`·`transient`)로 하며 `updated` 합계나 HTTP 200으로 하지 않는다. 시퀀스 복구 시험은 격리된 ES(`cluster.name`에 `isolated`)에서만 돌고 공용 `prs-elasticsearch`를 가리키면 `beforeAll`이 거부한다. 실행·시험·한계는 원장 WP-098을 읽는다.
 

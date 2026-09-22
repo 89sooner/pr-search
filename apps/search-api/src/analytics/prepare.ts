@@ -83,7 +83,7 @@ export type PrepareOutcome =
   /** `pr_number:`가 저장소를 지목하지 못했다. 사유는 `/search`와 같은 문자열이다. */
   | { readonly kind: 'pr_number_binding'; readonly binding: Extract<RepositoryBindingAnalysis, { kind: 'invalid' }> }
   /** `mnum:` 공간 판정이 거절했다. 사유는 `/search`와 같은 문자열이다. */
-  | { readonly kind: 'merge_number_range'; readonly outcome: Extract<MergeNumberRangeOutcome, { kind: 'unbindable' | 'space_unavailable' }> }
+  | { readonly kind: 'merge_number_range'; readonly outcome: Extract<MergeNumberRangeOutcome, { kind: 'unbindable' | 'branch_required' | 'space_unavailable' }> }
   | {
       readonly kind: 'ready';
       readonly ast: QueryAst;
@@ -153,13 +153,18 @@ export async function prepareAnalyticsQuery(
       ? { repository: sequence.context.repository, baseBranch: sequence.context.base_branch, epoch: sequence.context.seq_epoch }
       : undefined,
   );
-  if (mergeNumberRange.kind === 'unbindable' || mergeNumberRange.kind === 'space_unavailable') {
+  if (
+    mergeNumberRange.kind === 'unbindable' ||
+    mergeNumberRange.kind === 'branch_required' ||
+    mergeNumberRange.kind === 'space_unavailable'
+  ) {
     return { kind: 'merge_number_range', outcome: mergeNumberRange };
   }
 
   const resolution = await deps.resolveNames(collectNames(scopedAst));
   const sequenceEpoch = sequence.kind === 'bound' ? sequence.epoch : null;
   const mergeNumberEpoch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.epoch : null;
+  const mergeNumberBaseBranch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.baseBranch : null;
   const built = buildQuery(
     // `kind:`가 걷어내진 AST다 — 남기면 `buildQuery`가 던진다 (CR-053).
     scopedAst,
@@ -167,11 +172,12 @@ export async function prepareAnalyticsQuery(
     /*
      * `seq:`/`mnum:` 범위가 있는데 대응 에폭이 없으면 `buildQuery`가 던진다
      * (CR-051, CR-106). 조용히 모든 세대를 함께 집계하는 것보다 조립 오류를
-     * 드러내는 편이 낫다.
+     * 드러내는 편이 낫다. `mnum:`은 브랜치도 함께 준다 (CR-114) — 검색과 같은 항이 선다.
      */
     {
       ...(sequenceEpoch === null ? {} : { sequenceEpoch }),
       ...(mergeNumberEpoch === null ? {} : { mergeNumberEpoch }),
+      ...(mergeNumberBaseBranch === null ? {} : { mergeNumberBaseBranch }),
     },
   );
 

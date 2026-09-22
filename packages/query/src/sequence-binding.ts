@@ -122,20 +122,51 @@ export function hasMergeNumberRangeFilter(ast: QueryAst): boolean {
 }
 
 /**
- * `mnum:` 조건이 지목하는 시퀀스 공간을 판정한다 (FR-SRCH-005 AC-9, CR-106).
+ * `mnum:` 판정의 반환 모양 (CR-106 → CR-114).
+ *
+ * `seq:`와 같은 `none`·`bound`·`invalid`에 **`repository_only`가 하나 더 있다** —
+ * `repo:`는 하나인데 `base:`가 없는 경우다. `seq:`라면 `sequence_space_required`로
+ * 거절하지만(AC-7), `mnum:`은 그 저장소가 추적하는 시퀀스 브랜치가 **하나뿐이면**
+ * 지목이 유일하므로 서버가 그 브랜치로 묶는다(AC-9 보완). 브랜치가 여럿이면
+ * 서버가 거절한다 — 서버가 고르는 것이 아니라 고를 것이 없을 때만 통과한다.
+ * 이 파일은 저장소 정보를 모르므로 그 판정을 호출부에 넘긴다.
+ */
+export type MergeNumberBindingAnalysis =
+  | SequenceBindingAnalysis
+  | { readonly kind: 'repository_only'; readonly repository: string };
+
+/**
+ * `mnum:` 조건이 지목하는 시퀀스 공간을 판정한다 (FR-SRCH-005 AC-9, CR-106 · CR-114).
  *
  * **`analyzeSequenceBinding`과 판정 로직이 같다** — M 번호는 `merge_seq`와 같은
  * 시퀀스 공간·에폭을 공유하므로(용어집 「M 넘버」) 지목 규칙도 AC-7을 그대로
  * 따른다(AC-9). 로직을 복제하는 이유는 **호출부가 다르기 때문**이다 — `seq:`
  * 판정은 `seq_epoch` 커서 지문·URL 인용까지 딸려 있고, `mnum:` 판정은 그런
  * 부가 장치 없이 "현재 에폭"만 필요하다(API 계약 「식별자 범위 지목 계약」).
- * 반환 모양은 재사용한다 — 판정 결과 자체는 같은 것을 말하기 때문이다.
+ *
+ * CR-114가 더한 것은 `base:` 생략 한 가지다: `repo:`가 하나이고 `base:`가 없으면
+ * `repository_only`로 돌려주고, 브랜치가 유일한지는 서버가 저장소 행을 읽어
+ * 정한다. `repo:`가 없거나 여럿인 것, `base:`가 여럿인 것은 그대로 `invalid`다.
  *
  * @returns `none`이면 검사할 것이 없고, `bound`면 공간 하나가 확정됐으며,
- *   `invalid`면 질의를 실행하지 않고 거절해야 한다.
+ *   `repository_only`면 저장소만 확정됐고, `invalid`면 질의를 실행하지 않고
+ *   거절해야 한다.
  */
-export function analyzeMergeNumberBinding(ast: QueryAst): SequenceBindingAnalysis {
-  return analyzeSpaceBinding(ast, hasMergeNumberRangeFilter(ast));
+export function analyzeMergeNumberBinding(ast: QueryAst): MergeNumberBindingAnalysis {
+  if (!hasMergeNumberRangeFilter(ast)) return { kind: 'none' };
+
+  const repositories = positiveValues(ast, 'repo');
+  const baseBranches = positiveValues(ast, 'base');
+  if (repositories.size === 0) return { kind: 'invalid', reason: 'sequence_space_required' };
+  if (repositories.size > 1 || baseBranches.size > 1) {
+    return { kind: 'invalid', reason: 'sequence_space_ambiguous' };
+  }
+  const [repository] = [...repositories];
+  if (repository === undefined) return { kind: 'invalid', reason: 'sequence_space_required' };
+  if (baseBranches.size === 0) return { kind: 'repository_only', repository };
+  const [baseBranch] = [...baseBranches];
+  if (baseBranch === undefined) return { kind: 'invalid', reason: 'sequence_space_required' };
+  return { kind: 'bound', repository, baseBranch };
 }
 
 /** 지목이 성립하지 않는 두 경우 (CR-106). API 계약의 `detail.reason`과 같은 문자열이다. */
@@ -209,7 +240,17 @@ export const SEQUENCE_BINDING_MESSAGE: Readonly<Record<SequenceBindingProblem, s
  */
 export const MERGE_NUMBER_BINDING_MESSAGE: Readonly<Record<SequenceBindingProblem, string>> = {
   sequence_space_required:
-    'A mnum: filter applies to a single sequence space. Specify exactly one repo: and one base: filter.',
+    'A mnum: filter applies to a single sequence space. Specify exactly one repo: filter (and one base: filter when the repository tracks more than one branch), or search the M number itself as M-<code>-<number>.',
   sequence_space_ambiguous:
     'The mnum: filter references multiple sequence spaces. Keep only one repo: and one base: filter.',
 };
+
+/**
+ * `repo:`만 적었는데 그 저장소가 시퀀스 브랜치를 둘 이상 추적한다 (CR-114).
+ *
+ * 사유 코드는 `sequence_space_ambiguous`를 그대로 쓴다 — 지목이 여럿인 것은
+ * 같다. 문구만 다르다: 사용자가 할 일이 `repo:`를 줄이는 것이 아니라 `base:`를
+ * 더하는 것이기 때문이다. 어느 브랜치가 있는지는 서버가 `detail.sequence_branches`로 준다.
+ */
+export const MERGE_NUMBER_BRANCH_REQUIRED_MESSAGE =
+  'This repository tracks more than one sequence branch, so the mnum: filter needs exactly one base: filter.';

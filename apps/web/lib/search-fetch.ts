@@ -66,7 +66,8 @@ export function chooseRoute(state: QueryState, gheBaseUrl?: string): SearchRoute
   if (detection.rejection !== null) return { kind: 'none' };
 
   const kinds = new Set(detection.interpretations.map((i) => i.kind));
-  if (kinds.has('commit') || kinds.has('pull_request')) return { kind: 'resolve', input: raw };
+  // M 번호 문자열도 해석이다 (CR-114, FR-SRCH-001 AC-7) — 서버가 코드가 같은 저장소의 현재 에폭 정본에서 PR을 찾는다.
+  if (kinds.has('commit') || kinds.has('pull_request') || kinds.has('merge_number')) return { kind: 'resolve', input: raw };
   return { kind: 'search' };
 }
 

@@ -18,11 +18,13 @@ import { QueryParseError, rangeOnlyKey, syntaxError, unsupportedKey } from './er
 import {
   ENUMERATED_VALUES,
   MIN_RANGE_VALUE,
+  acceptsSingleValue,
   isNumericRangeKey,
   isQueryKey,
   isRangeKey,
   isTemporalRangeKey,
   type QueryKey,
+  type SingleValueRangeKey,
 } from './keys.js';
 import { tokenize, type RawToken } from './tokenizer.js';
 
@@ -140,6 +142,27 @@ function toRangeFilter(key: QueryKey, token: RawToken): RangeFilter {
   throw syntaxError(`This key does not support ranges: '${key}'`, token.raw, token.start, token.end);
 }
 
+/**
+ * 단일 값을 닫힌 범위로 옮긴다 (CR-114).
+ *
+ * `toRangeFilter`와 같은 정수·하한 검사를 지난다 — `mnum:0`·`mnum:abc`는 범위
+ * 형태로 적었을 때와 같은 이유로 거절되어야 하며, 규칙이 두 곳에 살면 한쪽만
+ * 느슨해지는 날 아무 시험도 그것을 보지 못한다.
+ */
+function toSingleValueRangeFilter(key: SingleValueRangeKey, token: RawToken): RangeFilter {
+  const value = parseNumericBound(token.value, token);
+  const minimum = MIN_RANGE_VALUE[key];
+  if (minimum !== undefined && value < minimum) {
+    throw syntaxError(
+      `Value is below the minimum for '${key}' (${String(minimum)}): '${token.value}'`,
+      token.raw,
+      token.start,
+      token.end,
+    );
+  }
+  return { key, op: token.negated ? 'not_range' : 'range', from: value, to: value };
+}
+
 function checkEnumeratedValue(key: QueryKey, token: RawToken): void {
   const allowed = ENUMERATED_VALUES[key];
   if (allowed === undefined || allowed.includes(token.value)) return;
@@ -198,6 +221,17 @@ export function parseQuery(input: string): QueryAst {
      * 사실이며, 사용자가 할 일도 다르다.
      */
     if (isRangeKey(token.key)) {
+      /*
+       * `mnum:1450`은 양끝이 같은 닫힌 범위다 (CR-114, FR-SRCH-005 AC-9 보완).
+       *
+       * 새 필터 종류를 만들지 않는다 — AST에는 `range`로 실리고 질의 빌더·지목
+       * 판정·커서 지문은 `mnum:1450..1450`과 구분하지 못한다. 그래야 "단일 값
+       * 검색"이 두 번째 경로가 되지 않는다. 따옴표로 감싼 `mnum:"1450"`도 같다.
+       */
+      if (acceptsSingleValue(token.key)) {
+        filters.push(toSingleValueRangeFilter(token.key, token));
+        continue;
+      }
       throw rangeOnlyKey(token.key, token.raw, token.start, token.end);
     }
 

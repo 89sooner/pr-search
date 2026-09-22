@@ -14,6 +14,7 @@ import {
   QUERY_KEYS,
   QueryParseError,
   MERGE_NUMBER_BINDING_MESSAGE,
+  MERGE_NUMBER_BRANCH_REQUIRED_MESSAGE,
   REPOSITORY_BINDING_MESSAGE,
   SEQUENCE_BINDING_MESSAGE,
   analyzePrNumberBinding,
@@ -186,6 +187,31 @@ export function toMergeNumberRangeFailure(
           code: 'INVALID_PARAMETER',
           message: MERGE_NUMBER_BINDING_MESSAGE[outcome.reason],
           detail: { field: 'q', reason: outcome.reason, required_keys: ['repo', 'base'] },
+        },
+        correlation_id: correlationId,
+      },
+    };
+  }
+  if (outcome.kind === 'branch_required') {
+    /*
+     * `repo:`만 적었는데 저장소가 브랜치를 둘 이상 추적한다 (CR-114). 사유 코드는
+     * `sequence_space_ambiguous`를 그대로 쓰고(지목이 여럿인 것은 같다) 브랜치 목록을
+     * 실어 사용자가 `base:`를 고를 수 있게 한다. 이 목록은 접근 통제를 지난 저장소의
+     * 것이다 — `resolveRepository`가 범위 밖이면 `space_unavailable`로 먼저 끝난다.
+     */
+    return {
+      status: 400,
+      body: {
+        error: {
+          code: 'INVALID_PARAMETER',
+          message: MERGE_NUMBER_BRANCH_REQUIRED_MESSAGE,
+          detail: {
+            field: 'q',
+            reason: 'sequence_space_ambiguous',
+            required_keys: ['base'],
+            repository: outcome.repository,
+            sequence_branches: [...outcome.sequenceBranches],
+          },
         },
         correlation_id: correlationId,
       },
@@ -501,6 +527,8 @@ export async function executeSearch(
 
     const sequenceEpoch = sequence.kind === 'bound' ? sequence.epoch : null;
     const mergeNumberEpoch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.epoch : null;
+    // 에폭과 같은 판정에서 나온 브랜치다 — 질의 빌더가 `base_branch` 항으로 걸고 지문에도 싣는다 (CR-114).
+    const mergeNumberBaseBranch = mergeNumberRange.kind === 'bound' ? mergeNumberRange.baseBranch : null;
     const result = await runSearch(
       {
         ast,
@@ -513,6 +541,7 @@ export async function executeSearch(
         facets: readFacets(query),
         sequenceEpoch,
         mergeNumberEpoch,
+        mergeNumberBaseBranch,
         ...(principal.cursorBinding === undefined ? {} : { cursorBinding: principal.cursorBinding }),
       },
       deps,

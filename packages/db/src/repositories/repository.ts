@@ -130,6 +130,27 @@ export async function listActiveRepositories(db: Queryable): Promise<RepositoryR
   return result.rows;
 }
 
+/**
+ * 저장소 코드가 `code`인 활성 저장소 (CR-114 / FR-SRCH-001 AC-7).
+ *
+ * 저장소 코드는 이름의 **유일한** 연속 숫자 run이다(OD-009, `repositoryCodeOf`).
+ * 정규식 `^[^0-9]*<code>[^0-9]*$`가 그 정의를 SQL로 옮긴 것이다 — 숫자 run이 둘인
+ * 이름(`app1900v2`)은 걸리지 않고, 선행 0은 그대로 대조된다(`app007`은 `007`에만
+ * 걸리고 `7`에는 걸리지 않는다). `code`는 호출부가 숫자만으로 검증한 값이어야
+ * 하며 여기서 다시 확인해 정규식에 다른 문자가 들어가지 않게 한다. 접근 범위는
+ * 호출부가 건다 — 이 함수는 접근 통제를 모른다.
+ */
+export async function listActiveRepositoriesByCode(db: Queryable, code: string): Promise<RepositoryRow[]> {
+  if (!/^[0-9]+$/.test(code)) return [];
+  const result = await db.query<RepositoryRow>(
+    `SELECT * FROM repository
+      WHERE status = 'active' AND name ~ ('^[^0-9]*' || $1 || '[^0-9]*$')
+      ORDER BY owner, name`,
+    [code],
+  );
+  return result.rows;
+}
+
 export interface RepositoryFilter {
   readonly status?: RepositoryStatus;
 }

@@ -142,6 +142,18 @@ HEAD·OPTIONS는 어느 경로에서도 404입니다 (HEAD 자동 경로를 껐�
 
 제안 계약 8장은 "scope 확인 불가 → 503 `PERMISSION_UNAVAILABLE`"입니다. 연동은 조회 10종 모두 그렇게 답합니다(연동 봉투, `retryable: true`). 그런데 원본 `/api/v1/repositories`는 같은 실패를 잡지 않아 Fastify 기본 봉투 `{ "statusCode": 500, "error", "message" }`로 냅니다(pr-search 원장 DEV-732, 리팩터 전부터 같은 동작). 연동은 원본의 이 결함을 따라가지 않았습니다 — 따라가면 내부 사유 문장이 PIPE로 넘어가고, PIPE가 권한 장애를 서버 오류로 오인합니다. 이것이 **성공·원본 오류 본문을 원본과 같게 둔다는 원칙의 유일한 예외**이며, 통합 시험 PSI-D09가 `/read/repositories`를 포함한 다섯 조회와 발급에서 503을 확인합니다.
 
+## D-21 `read.resolve`가 M 번호 문자열을 해석한다 — additive (CR-114, 2026-09-22)
+
+PSI-1.0 제안과 CR-112 구현 시점의 `read.resolve`는 커밋 SHA·PR 번호·GHE URL만 판별했습니다. CR-114부터 `q`가 `M-<코드>-<번호>` 표기 문자열(제목 접두 `[M-…]`·소문자 `m-`도 받습니다)이면 `detected_kind`가 **`merge_number`**이고, 후보는 접근 범위 안에서 저장소 이름의 코드가 같은 저장소들의 **현재 에폭 PostgreSQL 정본**(`merge_sequence`)에서 찾은 `pull_request` 후보입니다. 바뀐 것은 전부 additive입니다.
+
+| 자리 | 전 | 후 |
+|---|---|---|
+| `IdentifierKind` | `commit`·`pull_request`·`text` | `merge_number` 추가 |
+| `ResolveResponse.reason_code` | `not_found`만 | `merge_number_disabled` 추가 — M 번호 문자열인데 pr-search 배포의 M 번호 기능이 꺼져 있을 때(`capabilities`에 `merge_number:read`가 없는 배포). 200이며 400이 아닙니다 |
+| `ResolvePullRequestCandidate` | 시퀀스 세 키까지 | `merge_number`·`merge_number_epoch`·`merge_number_state`(세 키는 함께 있거나 함께 없습니다). 이 후보의 `merge_seq`·`seq_epoch`·`sequence_space`는 색인이 아니라 정본 값이며, 색인 문서가 아직 없어도 후보는 성립합니다(`display_name: null`, `state: merged`) |
+
+같은 코드를 가진 저장소가 여럿이거나 시퀀스 브랜치가 둘 이상이면 후보가 여럿입니다 — 원본과 같이 자동 이동을 결정하지 않습니다. `read.merge_numbers.resolve`(저장소·브랜치·에폭을 명시한 정확 해석)는 그대로이며, 두 경로의 답은 같은 정본에서 나옵니다. 예시는 `examples/read.resolve.200.merge-number.json`(합성)입니다.
+
 ## 확인하지 못한 것
 
 | 항목 | 상태 | 이유 |

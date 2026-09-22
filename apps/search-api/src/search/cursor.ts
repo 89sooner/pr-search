@@ -98,6 +98,15 @@ export interface FingerprintInput {
    */
   readonly mergeNumberEpoch: number | null;
   /**
+   * `mnum:` 범위 질의가 묶인 시퀀스 공간의 기준 브랜치. `mnum:`이 없으면 `null` (CR-114).
+   *
+   * `repo:`만 적은 질의는 유일한 추적 브랜치로 묶이는데 그 브랜치가 질의 문자열에 없다.
+   * 지문에 넣지 않으면 페이지 사이에 추적 브랜치가 바뀌어도(에폭은 두 공간 모두 1일 수
+   * 있다) 같은 지문이 나와, 옛 커서가 다른 공간의 서수 위에서 순회를 잇는다. `base:`를
+   * 적은 질의는 문자열에 이미 브랜치가 있지만 재료를 경로마다 다르게 만들지 않는다.
+   */
+  readonly mergeNumberBaseBranch: string | null;
+  /**
    * 지문에 덧붙이는 결속 (CR-112 / ADR-025).
    *
    * **없으면 재료가 이전과 한 글자도 다르지 않다** — 이미 발급된 공개 커서가 그대로 통한다
@@ -145,6 +154,9 @@ export function computeFingerprint(input: FingerprintInput): string {
     // 같은 이유로 `mnum:`의 유효 에폭도 별도 자리에 넣는다 (CR-106) — 필드가
     // 다르므로 재료도 따로다.
     input.mergeNumberEpoch === null ? '' : String(input.mergeNumberEpoch),
+    // `mnum:` 공간의 브랜치는 있을 때만 재료다 (CR-114) — 없는 질의에 빈 자리를 더하면
+    // `mnum:` 없는 공개 커서의 지문까지 바뀐다. 결속과 같은 규칙이다.
+    ...(input.mergeNumberBaseBranch === null ? [] : [`mnum_base:${input.mergeNumberBaseBranch}`]),
     // 결속은 있을 때만 재료가 된다 — 없을 때 빈 자리를 더하면 공개 커서의 지문이 바뀐다.
     ...(input.binding === undefined ? [] : [`binding:${input.binding}`]),
   ].join(' ');

@@ -42,7 +42,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.40 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.41 | 갱신일: 2026-09-22
 
 ## 1. 목적
 
@@ -199,6 +199,36 @@
 **URL은 호스트까지 맞아야 한다 (CR-017, DEV-064).** `GHE_BASE_URL`이 가리키는 호스트와 다른 URL은 경로가 `/owner/repo/pull/N` 모양이더라도 `text`로 떨어진다. 호스트를 보지 않으면 `https://other.example/acme/payments/pull/1`이 우리 저장소의 PR로 해석된다 — 접근 범위가 데이터를 막아 주더라도 **엉뚱한 저장소로 해석하는 것 자체가 오답**이다.
 
 **릴리스 태그는 아직 판별하지 않는다 (CR-017, DEV-065).** 백엔드 아키텍처 4.5의 해석 7단계가 "태그 패턴"을 말하지만 **그 패턴이 무엇인지는 어디에도 정의되어 있지 않고**, `prs-releases`도 아직 비어 있다(WP-024). 패턴을 추측해 넣으면 `v1`·`build-2` 같은 문자열이 릴리스로 오분류되어 전문 검색으로 가야 할 질의가 0건이 된다. 태그처럼 보이는 문자열은 FR-SRCH-001 AC-4대로 `text`이며, 패턴은 릴리스를 색인하는 WP-024가 정의한다.
+
+**M 번호 표기 문자열은 식별자다 (CR-114, FR-SRCH-001 AC-7).** `q`가 `M-<코드>-<번호>`(PR 제목 접두 `[M-…]`·소문자 `m-`도 같다)이면 `detected_kind`는 `merge_number`이고, 후보는 접근 범위 안에서 **저장소 이름의 코드**(OD-009)가 같은 저장소들의 추적 시퀀스 브랜치마다 **현재 에폭 정본**(`merge_sequence.merge_number`)에서 찾은 `pull_request` 후보다 — 색인의 `merge_number`를 읽지 않는다(투영이 늦을 수 있고, 표기 문자열은 색인에 없다). 후보에는 `merge_number`(현재 이름으로 만든 표기)·`merge_number_epoch`·`merge_number_state: "assigned"`가 함께 실리고, 그때 `merge_seq`·`seq_epoch`·`sequence_space`도 정본 값이다. 색인 문서가 아직 없어도 후보는 성립한다(`display_name: null`, `state: "merged"`). 같은 코드의 저장소나 시퀀스 브랜치가 여럿이면 후보가 여럿이며 자동 이동하지 않는다(AC-5). 발급되지 않은 번호·옛 에폭·코드 불일치는 `not_found`다. **M 번호 기능이 꺼진 배포**는 후보 0건과 `reason_code: "merge_number_disabled"`(200)로 답한다 — `not_found`와 섞지 않는다. `API-SEQ-007`(저장소·브랜치·에폭을 명시한 정확 해석)은 그대로이며 두 경로는 같은 정본을 읽는다.
+
+응답 200 (M 번호 문자열, CR-114):
+
+```json
+{
+  "input": "M-1900-1450",
+  "detected_kind": "merge_number",
+  "candidates": [
+    {
+      "kind": "pull_request",
+      "repository": "acme/smp1900",
+      "repository_id": 4021,
+      "pr_number": 77,
+      "display_name": "결제 재시도 로직",
+      "state": "merged",
+      "url": "/pr/acme/smp1900/77",
+      "merge_seq": 1342,
+      "seq_epoch": 3,
+      "sequence_space": "acme/smp1900@main",
+      "merge_number": "M-1900-1450",
+      "merge_number_epoch": 3,
+      "merge_number_state": "assigned"
+    }
+  ],
+  "truncated": false,
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
 
 - 오류: `SHA_PREFIX_TOO_SHORT` (400), `SEARCH_TIMEOUT` (504), `PERMISSION_UNAVAILABLE` (503)
 - Authz: 인증 필요. 접근 범위 밖 후보는 결과에서 제외한다 (FR-SRCH-001 AC-6)
@@ -758,6 +788,27 @@ merge_seq    ∈ 요청 범위
 `base:` 값 하나가 필요하며, 없거나 여럿이면 같은 `sequence_space_required`/`sequence_space_ambiguous`로
 거절한다(같은 질의에 `-mnum:`이 있어도 같다). 공간 해석(규칙 2의 3~6단계)도 **하나만 수행해 공유한다** —
 `seq:`와 `mnum:`이 같은 질의에 함께 있어도 공간 조회는 한 번이다.
+
+**CR-114 보완 — 단일 값과 `base:` 생략 (FR-SRCH-005 AC-9).** `mnum:<n>`은 파서가 `mnum:<n>..<n>`으로 옮기는
+닫힌 범위다 — AST·질의·커서 지문 어디에서도 범위와 구분되지 않으며, 다른 범위 키는 그대로 범위 전용이다.
+`base:`는 지목한 저장소가 추적하는 시퀀스 브랜치가 **하나뿐일 때** 생략할 수 있다: 서버는 저장소 행을
+접근 통제를 지나 읽고(`resolveRepository`) 브랜치가 하나면 그 공간의 현재 에폭으로 묶으며, 둘 이상이면
+`INVALID_PARAMETER`(`detail.reason: "sequence_space_ambiguous"`, `required_keys: ["base"]`, `repository`,
+`sequence_branches: [...]`)로 거절한다 — 서버가 공간을 고르는 것이 아니라 고를 것이 없을 때만 통과한다.
+**묶인 브랜치는 질의 항이 된다**: 판정이 확정한 브랜치를 질의 빌더가 `merge_number_epoch` 항과 같은 자리에서
+`base_branch` 항으로 걸어, `base:`를 생략한 질의와 적은 질의가 같은 결과 집합을 본다(검색·집계·내보내기·완화
+공통). 에폭은 공간마다 독립이라 에폭 항만으로는 추적에서 제외된 브랜치의 잔여 문서(DEV-739)를 거르지 못하기
+때문이다. 같은 브랜치가 커서 지문에도 실린다 — `repo:`만 적은 질의는 문자열에 브랜치가 없어 페이지 사이에 추적
+브랜치가 바뀌면 커서가 `CURSOR_QUERY_MISMATCH`로 거절된다.
+`repo:`가 없으면 그대로 `sequence_space_required`이며 문구가 `M-<code>-<number>` 형식(API-SRCH-001)을
+안내한다(전 저장소 무바인딩은 OD-014).
+
+| 질의 | 판정 |
+| --- | --- |
+| `repo:acme/smp1900 base:main mnum:1450` | 통과 — `mnum:1450..1450`과 같다 |
+| `repo:acme/smp1900 mnum:1450` | 통과 — `smp1900`이 `main` 하나만 추적하면 그 공간·현재 에폭 |
+| `repo:acme/dual mnum:1450` | `INVALID_PARAMETER`, `detail.reason: "sequence_space_ambiguous"`, `detail.sequence_branches: ["main", "release"]` |
+| `mnum:1450` | `INVALID_PARAMETER`, `detail.reason: "sequence_space_required"` |
 
 **갈라지는 지점은 규칙 2의 7단계다.** `seq:`는 `seq_epoch = 유효 에폭`을 결합하고, `mnum:`은
 **별도로** `merge_number_epoch = 유효 에폭`을 결합한다. 두 결합의 값은 같은 정수(그 공간의 현재

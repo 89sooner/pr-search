@@ -1,6 +1,11 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.14 | 갱신일: 2026-09-22
+> 상태: review | 버전: v1.15 | 갱신일: 2026-09-22
+
+| 추가 요구사항 (CR-114) | 화면 | 구현 단위 | 검증 |
+| --- | --- | --- | --- |
+| FR-SRCH-001 AC-7 | W-001(검색창 → 후보 목록 C-017; Repository workspace·legacy workspace의 `q` 입력도 같은 판별기를 쓴다) | WP-099, `packages/query/src/identifier.ts`(`merge_number` 해석 — `@prs/domain` `parseMergeNumber` 재사용), `apps/search-api/src/resolve/service.ts`(`lookupMergeNumberCandidates`: 코드 → 활성 저장소 → 접근 범위 → 추적 브랜치의 현재 에폭 정본, 한 스냅숏), `apps/search-api/src/resolve/routes.ts`(`merge_number_disabled` hint), `packages/db/src/repositories/repository.ts`(`listActiveRepositoriesByCode`), `apps/web/lib/search-fetch.ts`·`components/{RepositoryWorkspace,LegacyRepositoryWorkspace,ResolutionCandidateList}.tsx`, PIPE handoff OpenAPI·예시·CONTRACT_DIFF D-21 | 단위(`identifier.test.ts`·`search-fetch.test.ts`), 통합(`resolve/merge-number-resolve.test.ts` — 단일·복수 저장소·복수 브랜치·범위 밖 비누설·미발급·코드 불일치·옛 에폭·기능 꺼짐·색인 문서 없음·정본 우선·절삭·대괄호), PIPE 계약(`contract.test.ts`·`openapi.test.ts`) |
+| FR-SRCH-005 AC-9 (CR-114 보완) | W-001(구조화 질의) | WP-099, `packages/query/src/{keys,parse,sequence-binding}.ts`(단일 값 → 닫힌 범위, `repository_only`), `apps/search-api/src/search/sequence-context.ts`(유일 추적 브랜치 결속·`branch_required`), `search/routes.ts`·`analytics/prepare.ts`(거절 응답과 브랜치 목록) | 단위(`parse.test.ts`·`sequence-binding.test.ts`), 통합(`search/mnum-single-value.test.ts` — 단일 값=범위 동일·부정·0건·`base:` 생략·둘 이상 브랜치 400·`repo:` 없음 400·미등록 404; `identifier-range.test.ts` 갱신) |
 
 | 추가 요구사항 (CR-113) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |

@@ -156,10 +156,19 @@ describe('FR-SRCH-005 AC-9: mnum: 범위도 seq:와 같은 공간을 지목해�
 
   it.each([
     ['단독', 'mnum:1..50'],
-    ['base 없음', 'repo:acme/payments mnum:1..50'],
     ['repo 없음', 'base:main mnum:1..50'],
   ])('%s이면 거절한다 (sequence_space_required)', (_label, query) => {
     expect(analyzeMnum(query)).toEqual({ kind: 'invalid', reason: 'sequence_space_required' });
+  });
+
+  it('**`repo:`만 있으면 저장소만 확정된다** — 브랜치가 유일한지는 서버가 정한다 (CR-114)', () => {
+    expect(analyzeMnum('repo:acme/payments mnum:1..50')).toEqual({ kind: 'repository_only', repository: 'acme/payments' });
+    // 단일 값도 같은 판정이다 — 파서가 닫힌 범위로 옮긴다.
+    expect(analyzeMnum('repo:acme/payments mnum:1450')).toEqual({ kind: 'repository_only', repository: 'acme/payments' });
+  });
+
+  it('`seq:`는 CR-114 뒤에도 `base:` 없이는 거절한다 — 완화는 mnum:에만 있다', () => {
+    expect(analyze('repo:acme/payments seq:1..50')).toEqual({ kind: 'invalid', reason: 'sequence_space_required' });
   });
 
   it.each([
@@ -194,8 +203,12 @@ describe('FR-SRCH-005 AC-9: mnum: 범위도 seq:와 같은 공간을 지목해�
     expect(hasMergeNumberRangeFilter(ast)).toBe(true);
   });
 
-  it('**스칼라 `mnum:5`는 파서가 먼저 거절한다**', () => {
-    expect(() => parseQuery('mnum:5')).toThrow(QueryParseError);
+  it('**단일 값 `mnum:5`는 닫힌 범위로 파싱되어 같은 지목 규칙을 받는다** (CR-114)', () => {
+    // CR-106 시점에는 파서가 거절했다. CR-114가 `mnum:`에만 단일 값을 열었고, 지목 판정은 범위와 같다.
+    expect(analyzeMnum('mnum:5')).toEqual({ kind: 'invalid', reason: 'sequence_space_required' });
+    expect(analyzeMnum('repo:acme/payments base:main mnum:5')).toEqual({ kind: 'bound', repository: 'acme/payments', baseBranch: 'main' });
+    // `seq:`의 단일 값은 여전히 파서가 거절한다 — 규칙이 키마다 갈리지 않았는지 여기서 한 번 더 건다.
+    expect(() => parseQuery('seq:5')).toThrow(QueryParseError);
   });
 
   it('AST를 직접 조립해도 범위 조건만 본다', () => {

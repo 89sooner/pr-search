@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.60 | 갱신일: 2026-09-22
+> 상태: review | 버전: v2.61 | 갱신일: 2026-09-22
+
+## WP-099 검색창 M 번호 문자열 해석과 `mnum:` 단일 값 (CR-114)
+
+- 요구사항: `FR-SRCH-001` AC-7(신설), `FR-SRCH-005` AC-9(CR-114 보완). 계약 API-SRCH-001(M 문자열 응답·`merge_number_disabled`)과 「식별자 범위 지목 계약」 보완. 선행: WP-014(식별자 해석), WP-074(M 번호 정본·`API-SEQ-007`), WP-092(CR-106 `mnum:` 범위·지목).
+- 범위: (1) `packages/query` — `identifier.ts`에 `merge_number` 해석(`@prs/domain` `parseMergeNumber` 재사용, `[M-…]`·`m-` 정규화), `keys.ts`의 `SINGLE_VALUE_RANGE_KEYS`(`mnum`)와 `parse.ts`의 닫힌 범위 변환(`toSingleValueRangeFilter` — 정수·하한 검사는 범위와 같다), `sequence-binding.ts`의 `MergeNumberBindingAnalysis`(`repository_only`)와 문구(`MERGE_NUMBER_BRANCH_REQUIRED_MESSAGE`). (2) `apps/search-api` — `resolve/service.ts`의 `lookupMergeNumberCandidates`(코드 → 활성 저장소 → 접근 범위 → 추적 브랜치마다 현재 에폭 정본, 한 REPEATABLE READ 스냅숏; 색인 문서는 표시 필드만 덧대고 시퀀스·M 값은 정본이 이긴다)와 `ResolveDeps.mergeNumbers`, `reason_code: merge_number_disabled`와 사유별 hint(`resolve/routes.ts`); `search/sequence-context.ts`의 유일 추적 브랜치 결속·`branch_required`, `search/routes.ts`·`analytics/prepare.ts`의 거절 응답(브랜치 목록). (3) `packages/db` — `repositoryRepo.listActiveRepositoriesByCode`. (4) `apps/web` — `chooseRoute`·`RepositoryWorkspace`·`LegacyRepositoryWorkspace`의 식별자 판정, `ResolutionCandidate`의 M 키. (5) PIPE handoff — OpenAPI additive(`IdentifierKind`·`reason_code`·PR 후보 M 키), 합성 예시 `read.resolve.200.merge-number.json`, CONTRACT_DIFF D-21, manifest 재생성. (6) 문서·시험.
+- 제외: `repo:` 없는 `mnum:` 전 저장소 검색(OD-014), `seq:`·`pr_number:`·시각 키의 단일 값, `API-SEQ-007` 변경, 후보 카드의 M 배지 렌더링, W-002·W-004 변경, 운영 절차·마이그레이션·감사 액션, 운영 서버 변경, 릴리스·태그 발행.
+- 완료 기준: 단위 — 판별기(정규화 3종·거절 7종·유일 해석), 파서(단일 값=범위 동치·부정·따옴표·거절 4종·오프셋·다른 키 범위 전용 유지), 지목(`repository_only`·`seq:` 불변), 경로 선택, 질의 빌더(`mnum:` 범위의 `base_branch` 항 — 브랜치 없으면 던짐), 커서 지문(묶인 브랜치 재료). 통합(격리 PG·ES·Redis) — `resolve/merge-number-resolve.test.ts`(단일·복수 저장소·복수 브랜치·범위 밖 비누설·미발급·코드 불일치·옛 에폭·기능 꺼짐·색인 문서 없음·정본 우선·절삭·대괄호), `search/mnum-single-value.test.ts`(단일 값=범위 동일 결과·부정·0건·`base:` 생략·둘 이상 브랜치 400과 목록·`base:` 명시·`repo:` 없음 400·미등록 404·**추적에서 제외된 브랜치의 잔여 문서 비혼입**), `identifier-range.test.ts` 갱신, PIPE `contract.test.ts`·`openapi.test.ts`. typecheck·lint·lint:deps·단위·통합·회귀·build·a11y·e2e 통과. 독립 리뷰가 접근 범위 누설·정본/색인 혼용·에폭 세대 혼입·`seq:` 규칙 오염·PIPE 계약 호환을 본다.
+- 상태: in_progress — 브랜치 `feature/cr114-mnumber-search`. 진행 정본은 원장 6.105장이다.
 
 ## WP-098 머지 시퀀스의 Elasticsearch 투영 수렴 (CR-113)
 
@@ -138,6 +146,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
+| WP-099 | 검색창 M 번호 문자열 해석과 `mnum:` 단일 값 | 기능 누락 보완 (CR-114) | WP-014, WP-074, WP-092 | in_progress — 브랜치 `feature/cr114-mnumber-search`, 원장 6.105장; 병합은 사용자 지시 뒤 |
 | WP-098 | 머지 시퀀스의 Elasticsearch 투영 수렴 | 신뢰성 결함 수정 (CR-113) | WP-021, WP-022, WP-028, WP-035, WP-074 | done — 원장 6.104장; main `a6ea00d`(PR #223), 사내 배포 SHA NOT VERIFIED·내부망 적용 NOT RUN |
 | WP-097 | PIPE 서버 위임 검색 수신부 | 서버 간 연동 (CR-112) | WP-085 | done — 원장 6.103장; main `e7b4cb4`(PR #220), 기본 꺼짐·사내 CA·운영 HAProxy·실제 GHE 검증은 NOT_RUN |
 | WP-095 | Regression Revision Atlas 첫 UI 수직 | UI 수직 (CR-109) | WP-042, WP-084 | done — 원장 6.101장; fixture opt-in·운영 MDVP 미연결 |

@@ -35,6 +35,13 @@ export interface ResolutionCandidate {
   readonly merge_seq: number | null;
   readonly seq_epoch: number | null;
   readonly sequence_space: string | null;
+  /**
+   * M 번호로 찾은 PR 후보에만 실린다 (CR-114, FR-SRCH-001 AC-7). 값은 정본이며
+   * 색인 값이 아니다. 세 키는 함께 있거나 함께 없다.
+   */
+  readonly merge_number?: string;
+  readonly merge_number_epoch?: number;
+  readonly merge_number_state?: 'assigned';
 }
 
 export interface ResolutionCandidateListProps {

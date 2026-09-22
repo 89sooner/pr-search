@@ -42,6 +42,16 @@ describe('식별자는 해석으로 (FLOW-001)', () => {
     expect(chooseRoute(q('1234567')).kind).toBe('resolve');
   });
 
+  it('M 번호 문자열도 해석으로 간다 (CR-114, FR-SRCH-001 AC-7)', () => {
+    expect(chooseRoute(q('M-1900-1450'))).toEqual({ kind: 'resolve', input: 'M-1900-1450' });
+    expect(chooseRoute(q('[M-1900-1450]')).kind).toBe('resolve');
+  });
+
+  it('M 번호 모양이 아닌 `M-` 문자열은 검색어다', () => {
+    expect(chooseRoute(q('M-1900')).kind).toBe('search');
+    expect(chooseRoute(q('M-1900-0')).kind).toBe('search');
+  });
+
   it('해석 경로가 원본 입력을 그대로 나른다', () => {
     const route = chooseRoute(q('  #1234  '));
     expect(route.kind).toBe('resolve');

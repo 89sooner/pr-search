@@ -137,7 +137,7 @@ export function LegacyRepositoryWorkspace({ login = '', loginPath, gheBaseUrl }:
     if (continuation) search.set('cursor', continuation);
     const raw = currentParams.get('q')?.trim() ?? '';
     const detected = detectIdentifier(raw, gheBaseUrl ? { gheBaseUrl } : {});
-    const identifier = raw !== '' && detected.interpretations.some(item => item.kind === 'commit' || item.kind === 'pull_request');
+    const identifier = raw !== '' && detected.interpretations.some(item => item.kind === 'commit' || item.kind === 'pull_request' || item.kind === 'merge_number');
     const target = identifier ? `/api/resolve?${new URLSearchParams({ q: raw.startsWith('#') ? `${repository}${raw}` : raw, limit: '50' })}` : `/api/search?${search.toString()}`;
     void fetch(target, { signal: controller.signal, cache: 'no-store' })
       .then(async response => {
