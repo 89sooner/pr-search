@@ -3,11 +3,12 @@
  *
  * ## 무엇을 돌리는가
  *
- * `sequence_work`의 네 종류를 기동 직후와 매초 읽는다.
+ * `sequence_work`의 다섯 종류를 기동 직후와 매초 읽는다.
  *
  * | kind | 하는 일 |
  * | --- | --- |
  * | `refresh` | push 의도 → `prepareAndAssignSequence` (fetch → 채번). M 기능과 무관하게 돈다 |
+ * | `project` | 정본 시퀀스를 커밋·PR 문서에 비춘다 (CR-113). M 기능과 무관하게 돈다 |
  * | `reconcile` | M 채번 회차 (`reconcileMergeNumbers`) |
  * | `materialize` | PR 문서 하나에 M 상태 반영 |
  * | `announce` | EVT-SEQ-004 발행 |
@@ -18,7 +19,7 @@
  * ## 같은 공간의 M 회차는 하나다
  *
  * claim은 최대 8건이지만 같은 `(저장소, 브랜치)`의 work는 **순서대로** 돈다 (refresh →
- * reconcile → materialize → announce). 공간이 다르면 병렬이다. 채번의 공간 락이
+ * project → reconcile → materialize → announce). 공간이 다르면 병렬이다. 채번의 공간 락이
  * 이중 안전장치지만, 러너가 줄을 세우면 락 경합 자체가 줄어든다.
  *
  * ## 재시도 정책 (상세 설계 6.3)
@@ -32,7 +33,8 @@ import { sequenceWorkRepo, type Pool, type SequenceWorkKind, type SequenceWorkRo
 import { MAX_RETRIES } from '@prs/bus';
 import type { WorkerMetrics } from './metrics.js';
 import { announceMergeNumbers, materializeMergeNumber, reconcileMergeNumbers, type MergeNumberDeps } from './mnumber.js';
-import { prepareAndAssignSequence, type SequenceDeps, type SequenceLogFields } from './sequence.js';
+import { prepareAndAssignSequence, projectionDepsOf, type SequenceDeps, type SequenceLogFields } from './sequence.js';
+import { runDocProjectionWork, runSpaceProjectionWork } from './sequence-projection.js';
 
 export interface WorkRunnerDeps {
   readonly pool: Pool;
@@ -57,7 +59,7 @@ export const WORK_DEFER_MS = 5_000;
 export const WORK_PARK_MS = 5 * 60_000;
 export const EVIDENCE_PENDING_RETRY_MS = 60_000;
 
-const KIND_ORDER: readonly SequenceWorkKind[] = ['refresh', 'reconcile', 'materialize', 'announce'];
+const KIND_ORDER: readonly SequenceWorkKind[] = ['refresh', 'project', 'reconcile', 'materialize', 'announce'];
 
 /** 표준 백오프 + 지터. `attempt`는 이번 claim이 몇 번째인지(1부터)다. */
 export function retryDelayMs(attempt: number, maxMs: number, random: () => number = Math.random): number {
@@ -77,7 +79,8 @@ function sortByKind(rows: readonly SequenceWorkRow[]): SequenceWorkRow[] {
 
 /** 한 회차: 만료 lease 회수 → claim → 공간별 직렬 실행. 시험이 직접 부른다. */
 export async function runSequenceWorkOnce(deps: WorkRunnerDeps): Promise<WorkRoundResult> {
-  const kinds: SequenceWorkKind[] = deps.mnumber === null ? ['refresh'] : ['refresh', 'reconcile', 'materialize', 'announce'];
+  // `project`는 M 기능과 무관하다 — `MNUMBER_ENABLED=false`에서도 시퀀스 복구는 돌아야 한다 (CR-113).
+  const kinds: SequenceWorkKind[] = deps.mnumber === null ? ['refresh', 'project'] : ['refresh', 'project', 'reconcile', 'materialize', 'announce'];
   await sequenceWorkRepo.reclaimExpiredLeases(deps.pool);
   const claimed = await sequenceWorkRepo.claimDueWork(deps.pool, {
     kinds,
@@ -157,6 +160,50 @@ async function runOne(deps: WorkRunnerDeps, row: SequenceWorkRow): Promise<strin
           return finish('defer', { state: 'ready', delayMs: Math.max(0, result.retryAt.getTime() - now().getTime()), reason: result.reason, resetAttempts: true });
         }
         return retryLater(result.reason);
+      }
+      case 'project': {
+        const scope = (row.payload as { scope?: unknown }).scope;
+        const projection = { ...projectionDepsOf(deps.sequence), ...(deps.log === undefined ? {} : { log: deps.log }) };
+        if (scope === 'doc') {
+          const result = await runDocProjectionWork(projection, row);
+          switch (result.outcome) {
+            case 'done':
+            case 'no_target':
+            case 'other_space':
+              // 대상이 없는 것은 완료다 — 없는 PR을 만들거나 무의미하게 반복하지 않는다.
+              return finish(result.outcome, { state: 'done' });
+            case 'obsolete':
+              return finish('obsolete', { state: 'obsolete', delayMs: 0, reason: result.reason ?? 'epoch_moved' });
+            case 'document_missing':
+              /*
+               * 정본은 문서가 있어야 한다고 하는데 색인에 없다. 투영·보강이 만들 때까지 백오프로 다시
+               * 본다. 반복 실패 상한을 넘으면 `parked`로 둔다 — **완료로 닫지 않는다.** `parked`는
+               * 러너가 스스로 집지 않는 대기 상태이고(`claimDueWork`는 `ready`·`retry`만 집는다),
+               * 새 스냅숏·커밋 보강·공간 full sweep이 같은 키를 다시 요청하면 `requestWork`가 `ready`로
+               * 되돌려 즉시 다시 돈다. 운영자는 `prsctl sequence status`·재투영 잡의 `parked_documents`로 본다.
+               */
+              if (row.attempt_count >= MAX_RETRIES) {
+                log({ level: 'warn', message: '문서가 오래 만들어지지 않는다 — parked로 두고 새 스냅숏·보강·sweep의 재요청을 기다린다', work_key: row.work_key, attempt: row.attempt_count, reason: 'document_missing' });
+                return finish('parked', { state: 'parked', delayMs: WORK_PARK_MS, reason: 'document_missing' });
+              }
+              return retryLater('document_missing', 'document_missing');
+            default:
+              return retryLater(result.reason ?? 'retry');
+          }
+        }
+        const lease = { workKey: row.work_key, leaseToken: row.lease_token as string };
+        const result = await runSpaceProjectionWork(projection, row, lease);
+        switch (result.kind) {
+          case 'done':
+            return finish('done', { state: 'done' });
+          case 'continue':
+            // 예산을 다 썼다. lease를 놓고 커서에서 잇는다 — 실패가 아니다.
+            return finish('continue', { state: 'ready', delayMs: 0, reason: 'page_budget', resetAttempts: true });
+          case 'obsolete':
+            return finish('obsolete', { state: 'obsolete', delayMs: 0, reason: result.reason });
+          default:
+            return finish(`skipped:${result.reason}`, { state: 'done' });
+        }
       }
       case 'reconcile': {
         if (deps.mnumber === null) return finish('disabled', { state: 'parked', delayMs: WORK_PARK_MS, reason: 'mnumber_disabled' });

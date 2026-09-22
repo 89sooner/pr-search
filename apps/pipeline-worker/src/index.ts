@@ -67,6 +67,7 @@ import {
 } from './snapshot-bootstrap.js';
 import { startSequenceRepairRunner, type RepairRunner } from './sequence-repair-runner.js';
 import { startSequenceAssignRunner, type AssignRunner } from './sequence-assign-runner.js';
+import { startSequenceReprojectRunner, type ReprojectRunner } from './sequence-reproject-runner.js';
 import { withMirrorLock } from './mirror-lock.js';
 import { resolveMergeNumberConfig, resolveMergeNumberEnabled, resolveSequenceGraphMode } from './mnumber-config.js';
 import { observeMergeNumberSamples, OBSERVE_POLL_MS, type MergeNumberDeps } from './mnumber.js';
@@ -522,6 +523,8 @@ let integritySweeper: IntegritySweeper | undefined;
 let repairRunner: RepairRunner | undefined;
 /** JOB-SEQ-001 수동 채번 러너 (WP-040 / CR-055). 재채번 러너와 같은 역할에 선다. */
 let assignRunner: AssignRunner | undefined;
+/** JOB-SEQ-006 수동 재투영 러너 (CR-113). `sequence` 역할이 세운다. */
+let reprojectRunner: ReprojectRunner | undefined;
 
 if (roles.includes('sequence')) {
   /*
@@ -794,6 +797,20 @@ if (roles.includes('sequence')) {
     sequence: sequenceDeps,
     log: (fields) => {
       process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-001', ...fields })}\n`);
+    },
+  });
+
+  /*
+   * JOB-SEQ-006 수동 재투영 러너 (CR-113 / FR-SEQ-001 AC-8).
+   *
+   * `sequence_reproject` 잡을 집어 durable `project(full)` work를 예약하고 그 완료를
+   * 기다린다. 실제 쓰기는 위 durable 러너의 같은 경로다 — Git을 읽지 않고 에폭을 올리지
+   * 않는다. `CREATABLE_GENERIC_JOB_TYPES` 등재와 같은 변경에서 들어왔다 (FR-ADMIN-002 AC-6).
+   */
+  reprojectRunner = startSequenceReprojectRunner({
+    pool,
+    log: (fields) => {
+      process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-SEQ-006', ...fields })}\n`);
     },
   });
 
@@ -1291,6 +1308,7 @@ const shutdown = (): void => {
       await linkSubscription?.close();
       await repairRunner?.stop();
       await assignRunner?.stop();
+      await reprojectRunner?.stop();
       await authzSubscription?.close();
       /*
        * WP-075: 진행 중인 표기 회차를 마치고 나간다. PATCH 뒤 정본 갱신 전에

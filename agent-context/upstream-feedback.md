@@ -61,6 +61,12 @@ DB `merge_sequence` 테이블에서 `commit_sha → merge_seq` 매핑을 읽어 
 2. 500개 청크로 분할
 3. ES `update_by_query`로 `merge_commit_sha`가 매칭되는 PR 문서에 `merge_seq`, `seq_epoch`, `sequence_space`, `base_branch`를 씀
 4. 1,457문자 업데이트 확인 (10개는 PR 없는 direct push로 `merge_commit_sha` 없음)
+   DB `merge_sequence` 테이블에서 `commit_sha → merge_seq` 매핑을 읽어 ES `update_by_query`로 직접 씀:
+
+5. `merge_sequence`에서 매핑 추출
+6. 500개 청크로 분할
+7. ES `update_by_query`로 `merge_commit_sha`가 매칭되는 PR 문서에 `merge_seq`, `seq_epoch`, `sequence_space`, `base_branch`를 씀
+8. 1,457문자 업데이트 확인 (10개는 PR 없는 direct push로 `merge_commit_sha` 없음)
 
 ### 요청
 

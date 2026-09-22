@@ -52,6 +52,9 @@ function deps(): SequenceDeps {
     es: {
       search: () => Promise.resolve({ hits: { hits: [] } }),
       updateByQuery: () => Promise.resolve({ updated: 0 }),
+      // CR-113: 문서 단위 투영기의 `mget`·`bulk` — 문서 없음으로 답한다.
+      mget: (body: { docs: readonly { _id: string }[] }) => Promise.resolve({ docs: body.docs.map((doc) => ({ _id: doc._id, found: false })) }),
+      bulk: () => Promise.resolve({ errors: false, items: [] }),
     } as unknown as Client,
     bus: { publish: () => Promise.resolve() } as unknown as EventBus,
     metrics: createWorkerMetrics(),
@@ -166,7 +169,9 @@ describe('수동 정합성 복구 (CR-034, DEV-182)', () => {
   it('**실행 시점에 다시 읽는다** — 이미 일치하면 에폭을 올리지 않는다', async () => {
     await seedWithCorruptionAt(null);
     const outcome = await repairSequence(deps(), (await repositoryRepo.findRepositoryBySlug(pool, OWNER, NAME))!, BRANCH);
-    expect(outcome).toEqual({ kind: 'consistent', checked: 4 });
+    // CR-113: DB가 일관적이어도 색인 재투영 의도를 남긴다 — 에폭은 그대로다.
+    expect(outcome).toMatchObject({ kind: 'consistent', checked: 4, projection: { seq_epoch: 1, requested_generation: 1 } });
+    if (outcome.kind === 'consistent') expect(outcome.projection.work_key).toBe(`project:${JSON.stringify([REPOSITORY_ID, BRANCH, 1, 'full'])}`);
     const space = await sequenceSpaceRepo.findSequenceSpace(pool, REPOSITORY_ID, BRANCH);
     expect(space?.seq_epoch).toBe(1);
   });
@@ -223,9 +228,13 @@ describe('재채번 러너가 큐를 비운다 (CR-034, DEV-178)', () => {
     const jobId = await jobRepo.enqueueJob(pool, 'sequence_reassign', `${OWNER}/${NAME}@${BRANCH}`, 'tester');
     const claimed = await jobRepo.claimNextJob(pool, 'sequence_reassign');
     if (claimed === undefined) throw new Error('claim 실패');
-    const outcome = await runRepairJob({ pool, sequence: deps() }, claimed);
+    // CR-113: consistent여도 색인 재투영 work를 예약하고 그 완료를 기다린다. 이 파일은 durable 러너를
+    // 돌리지 않으므로 대기 상한을 짧게 두고, 잡은 `completed`이되 progress가 `in_progress`를 말하는지 본다.
+    const outcome = await runRepairJob({ pool, sequence: deps(), projectionWaitMs: 200, projectionWatchMs: 20 }, claimed);
     expect(outcome?.kind).toBe('consistent');
-    expect((await jobRepo.findJobById(pool, jobId))?.state).toBe('completed');
+    const job = await jobRepo.findJobById(pool, jobId);
+    expect(job?.state).toBe('completed');
+    expect(job?.progress).toMatchObject({ db: 'consistent', projection: 'in_progress' });
   });
 
   it('등록되지 않은 저장소는 failed로 닫는다', async () => {
@@ -422,7 +431,7 @@ describe('재채번 러너가 큐를 비운다 (CR-034, DEV-178)', () => {
           sequence: deps(),
           repair: async (): Promise<RepairOutcome> => {
             await pool.query("UPDATE job SET state = 'cancelled' WHERE job_id = $1", [jobId]);
-            return { kind: 'consistent', checked: 4 };
+            return { kind: 'consistent', checked: 4, projection: { work_key: 'project:test', requested_generation: 1, seq_epoch: 1 } };
           },
         },
         claimed!,
@@ -447,7 +456,7 @@ describe('재채번 러너가 큐를 비운다 (CR-034, DEV-178)', () => {
           sequence: deps(),
           repair: (): Promise<RepairOutcome> => {
             ran = true;
-            return Promise.resolve({ kind: 'consistent', checked: 4 });
+            return Promise.resolve({ kind: 'consistent', checked: 4, projection: { work_key: 'project:test', requested_generation: 1, seq_epoch: 1 } });
           },
         },
         claimed!,

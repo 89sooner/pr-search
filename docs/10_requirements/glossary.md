@@ -1,6 +1,8 @@
 # PR Search 용어집
 
-> 상태: review | 버전: v0.14 | 갱신일: 2026-09-21
+> 상태: review | 버전: v0.15 | 갱신일: 2026-09-22
+
+CR-113 / FR-SEQ-001 AC-7·AC-8: **시퀀스 투영**(sequence projection)은 PostgreSQL 정본(`merge_sequence`·`sequence_space`·`pull_request_snapshot`·`commit_snapshot`)이 정한 서수를 커밋·PR 검색 문서의 `merge_seq`·`seq_epoch`·`sequence_space` 필드에 비추는 일이다. **재투영**(reprojection)은 이미 확정된 서수를 정본에서 색인으로 다시 비추는 것이며 **재채번**(reassignment, FR-SEQ-005)과 다르다 — 에폭·서수·M 번호·head를 바꾸지 않는다. **durable 투영 작업**(`sequence_work`의 `project` kind)은 공간 단위 `tail`(채번 뒤 증분)·`full`(전체 sweep)과 문서 단위 `doc`으로 나뉘며 generation·lease·CAS 규율(ENT-SEQ-006)을 그대로 쓴다. 문서별 판정은 `updated`(새로 반영)·`noop`(이미 같음)·`document_missing`(문서 없음)·`guard_rejected`(저장소·SHA·브랜치 불일치)·`stale_epoch`(구 에폭 작업)·`transient`(일시 실패·경쟁)이고, `updated=0`은 그 자체로 성공도 실패도 아니다. 「대상 없음」(직접 푸시·미수집·연결 미확정)과 「문서 생성 대기」는 구분한다. 금지 동의어: "색인 재채번", "서수 복구(재계산)".
 
 CR-112 / FR-INT-001: **PIPE 연동**(`pipe_integration`, 계약 `PSI-1.0`)은 PIPE 서버가 사용자 신원을 위임해 pr-search의 고정 조회 10종을 쓰는 서버 간 연결이다. **연동 client**(`client_id`)는 정책 파일에 등록된 PIPE 서버 하나이며 mTLS 인증서·서명 공개키·저장소 **허용 목록**(`repository_ids`)을 갖는다. 실효 범위는 언제나 사용자 **접근 범위**와 허용 목록의 교집합이다. **사용자 assertion**(`pipe-user-assertion+jwt`)은 PIPE 서버가 서명한 60초 이하의 JWS다 — PIPE 로그인 JWT가 아니며 역할·저장소를 싣지 않는다. **identity binding**(ENT-INT-001)은 운영자가 검증한 `(issuer, subject) → 기존 사용자` 연결이다(금지 동의어: 계정 병합, 자동 매핑). **로그인 문맥**(`auth_context_id`, ENT-INT-002)은 PIPE가 로그인 자격 하나에서 만든 불투명 식별자이고, **문맥 회수 표식**은 그 문맥의 재발급을 막는 PostgreSQL 행이다. **검색 grant**(`psig1_…`, ENT-INT-003)는 300초 이하의 검색 전용 불투명 토큰이다(금지 동의어: 세션, 세션 토큰 — 일반 세션과 서로를 대신하지 못한다). **긴급 회수**(ENT-INT-004)는 client·서명 키·인증서를 재기동 없이 즉시 끊는 기록이다. **진단 창**은 grant 만료 뒤 120초 동안 `GRANT_EXPIRED`를 구분해 알리는 기간이며 인증 수명이 아니다. **private 리스너**는 search-api 프로세스 안에서 공개 리스너와 다른 포트로 듣는 mTLS 전용 서버다.
 

@@ -1,6 +1,13 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.13 | 갱신일: 2026-09-21
+> 상태: review | 버전: v1.14 | 갱신일: 2026-09-22
+
+| 추가 요구사항 (CR-113) | 화면 | 구현 단위 | 검증 |
+| --- | --- | --- | --- |
+| FR-SEQ-001 AC-7 | 없음(간접 노출) — W-001 Repository workspace의 「M number」 정렬·`seq:` 범위가 복원된 서수를 그대로 쓴다 | WP-098, `packages/es/src/sequence-projection.ts`, `apps/pipeline-worker/src/sequence-projection.ts`, `sequence_work` `project` kind(마이그레이션 034), 채번·스냅숏·커밋 보강 훅 | 실 PG·ES 통합(`projection.test.ts` — 도착 순서 3종·직접 푸시·ES 실패·consistent), ES 투영기 통합(`packages/es/integration/sequence.test.ts`), Search API 정렬·`seq:`·cursor(`sequence-projection-recovery.test.ts`), RepositoryWorkspace e2e(`workspace.sequence-order.spec.ts`, UI 순서만) |
+| FR-SEQ-001 AC-8 | A-003 Jobs(실행 폼 `Sequence reprojection`) | WP-098, API-ADM-002 `sequence_reproject`, JOB-SEQ-006 러너, `prsctl sequence reproject|status` | 통합(`reproject-runner.test.ts` — dry-run 무변경·감사·멱등·epoch 불일치, `admin/jobs.test.ts`), a11y(`ops-jobs.test.tsx`), 회귀(runtime-reachability) |
+| FR-ING-008 AC-8 | A-003 Index status | WP-098, `reindex.ts` replay·`verifyBeforeCutover` 시퀀스 검사·전환 울타리 에폭 대조 | 통합(`projection.test.ts` 재색인 2건 + verify 게이트) |
+| FR-ADMIN-003 AC-6 | A-003 Sequence integrity | WP-098, `sequence-repair-runner.ts`(`db`/`projection` 분리 보고) | 통합(`reproject-runner.test.ts`, `repair.test.ts`) |
 
 | 추가 요구사항 (CR-112) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |

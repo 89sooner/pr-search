@@ -54,9 +54,10 @@ import {
   type SubscribeOptions,
   type Subscription,
 } from '@prs/bus';
-import { commitSnapshotRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, withReindexWrite } from '@prs/db';
+import { commitSnapshotRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, sequenceWorkRepo, withReindexWrite } from '@prs/db';
 import type { Pool, RepositoryRow } from '@prs/db';
 import { upsertCommitMetadata, type CommitMetadataFields } from '@prs/es';
+import { docWorkRequest, projectSingleCommit } from './sequence-projection.js';
 import type { Client } from '@elastic/elasticsearch';
 import type { CommitGraph, RepoRef } from '@prs/github';
 import type { WorkerMetrics } from './metrics.js';
@@ -309,6 +310,17 @@ export async function enrichCommit(
   );
 
   /*
+   * ---- 서수를 비춘다 (CR-113 / FR-SEQ-001 AC-7).
+   *
+   * 직접 푸시 커밋의 문서는 **채번 이벤트 뒤에 여기서 처음 만들어진다.** 채번 직후의 투영은
+   * 그때 문서가 없어 비출 수 없었으므로, 만든 직후 정본 서수를 인라인으로 비추고 끝나지
+   * 않았으면 문서 단위 work를 남긴다. PR 유래 커밋 문서(체인 밖)는 서수가 없어 `no_target`이다.
+   */
+  if (target.firstParent && target.baseBranch !== undefined) {
+    await projectAfterCreate(deps, repository, target.baseBranch, sha);
+  }
+
+  /*
    * ---- 관계 파생에 "이 커밋을 다시 보라"고 알린다 (CR-039, DEV-215).
    *
    * **정본과 색인이 모두 성공한 뒤에 낸다.** 먼저 내면 관계 워커가 아직 메시지가
@@ -372,6 +384,42 @@ export async function enrichCommit(
     });
   }
   return true;
+}
+
+/**
+ * 방금 만든(또는 갱신한) first-parent 커밋 문서에 서수를 비춘다. 실패는 던지지 않는다 —
+ * 보강의 성공을 되돌리지 않고 durable 문서 단위 work가 잇는다 (CR-113).
+ */
+async function projectAfterCreate(deps: CommitEnrichDeps, repository: RepositoryRow, baseBranch: string, sha: string): Promise<void> {
+  const log = deps.log ?? ((): void => undefined);
+  try {
+    const projection = { pool: deps.pool, es: deps.es, ...(deps.now === undefined ? {} : { now: deps.now }) };
+    const outcome = await projectSingleCommit(projection, repository, baseBranch, sha);
+    if (outcome.kind !== 'pending') return;
+    const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repository.repository_id, baseBranch);
+    if (space === undefined) return;
+    await sequenceWorkRepo.requestWorkBatch(deps.pool, [
+      docWorkRequest({ repositoryId: repository.repository_id, baseBranch, seqEpoch: space.seq_epoch }, 'commit', sha, 'commit_enrich'),
+    ]);
+  } catch (error) {
+    log({
+      level: 'warn',
+      message: '커밋 문서의 서수 투영에 실패했다 — durable 투영 work가 다시 본다',
+      repository_id: repository.repository_id,
+      commit_sha: sha,
+      reason: String(error instanceof Error ? error.message : error).slice(0, 200),
+    });
+    try {
+      const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repository.repository_id, baseBranch);
+      if (space !== undefined) {
+        await sequenceWorkRepo.requestWorkBatch(deps.pool, [
+          docWorkRequest({ repositoryId: repository.repository_id, baseBranch, seqEpoch: space.seq_epoch }, 'commit', sha, 'commit_enrich_failed'),
+        ]);
+      }
+    } catch {
+      // 의도조차 남기지 못했다 — 공간 단위 full sweep(재색인·복구·운영자 재투영)이 마지막 그물이다.
+    }
+  }
 }
 
 /** 대상 여럿을 차례로 보강한다. 하나가 실패해도 나머지를 계속한다. */

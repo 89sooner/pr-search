@@ -4,7 +4,7 @@
 
 > CR-097 / FR-SRC-001~004: sourceRoutes는 인증 → 기존 ScopeService/resolveRepository → GitHubSourceReader 순서다. GitHubClient의 기존 전송·rate-limit 경계를 공유하는 별도 읽기 어댑터이며 source DTO를 수집/색인 DTO에 추가하지 않는다. 비재귀 트리·Contents·경로별 commits·PR files/merge-base를 요청 시 조회한다. 파일256KiB/4,000라인·디렉터리5,000항목·Diff100항목×30페이지 상한, 전체SHA 검증, PR 조회 전후 ref 확인을 강제한다.
 
-> 상태: review | 버전: v0.14 | 갱신일: 2026-09-21
+> 상태: review | 버전: v0.15 | 갱신일: 2026-09-22
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 
@@ -203,9 +203,10 @@ async function reassign(deps, repository, baseBranch, storedHead, newHead) {
     const commits = await graph.firstParentCommits(ref, { from: base, to: newHead });
     // numberCommits(baseSeq, commits) → upsert(..., epoch: newEpoch)
     await advanceHead(t, ..., newHead, toSeq);                  // state='ok'
+    await requestWork(t, project(full, newEpoch));             // CR-113: 새 에폭 전체의 색인 투영 의도 — 같은 트랜잭션
   });
   // COMMIT 뒤 (실패해도 재채번은 성공 — PostgreSQL이 정본, ADR-004):
-  //   applyEpochBump + applySequenceToDocuments               // ES (DEV-129)
+  //   applyEpochBump + projectSequenceRange(분기 이후 구간)     // ES (DEV-129, CR-113) — 나머지·실패분은 durable full sweep이 잇는다
   //   publish EVT-SEQ-002                                     // 알림 소비자는 REL-005 (DEV-127)
   //   recordAudit({ userId: 'system:sequence', ... })          // AC-5
 }
@@ -217,6 +218,7 @@ async function reassign(deps, repository, baseBranch, storedHead, newHead) {
 - **락 획득 실패 시 대기하지 않고 미룬다.** 대기하면 워커 슬롯이 묶여 다른 저장소 처리가 밀린다. **포트에 `requeueLater`는 없다 (CR-025, DEV-117)** — `HandlerDisposition`의 `deferUntil`이 그 동작이고, 락 실패는 실패가 아니라 "지금은 다른 워커가 쥐고 있음"이므로 재시도 예산을 소모하는 `retry`가 아니라 `defer`가 맞다.
 - **재채번 시 merge-base까지의 시퀀스를 새 에폭으로 복사한다.** 그 구간은 값이 동일하므로 이전 에폭 인용 중 상당수가 여전히 같은 커밋을 가리킨다. 다만 화면은 안전을 위해 전부 무효로 표시한다.
 - **안전 구간 표식·이분 탐색 세션·인용에는 아무것도 쓰지 않는다 (CR-026, DEV-126).** 그들은 `seq_epoch`를 저장하고 있으므로 조회가 **현재 에폭과 비교해** `epoch_stale`을 계산한다 — FR-SEQ-005 AC-4 후반부가 정의한 그대로다. 이전 판의 `invalidateSafeMarkers`는 쓸 수단이 스키마에 없는 호출이었다. 저장된 검색의 `seq:` 조건은 `saved_search`를 만드는 WP-033이 같은 규칙(에폭 저장 + 조회 시 비교)을 따른다.
+- **색인 투영은 durable work다 (CR-113 / FR-SEQ-001 AC-7).** 채번 트랜잭션은 `advanceHead`와 함께 `sequence_work` `project(tail)`을 남기고, 재채번·복구는 `project(full)`을 남긴다. COMMIT 뒤 인라인으로 한 번 비추되(`projectSequenceRange` → `apps/pipeline-worker/src/sequence-projection.ts` → `projectSequenceToDocuments`), 문서가 아직 없거나 실패하면 durable 러너가 정본을 다시 읽어 새 push 없이 잇는다. 늦은 PR 스냅숏(`recordProjectionSnapshot`)은 그 SHA가 현재 에폭에 채번돼 있으면 문서 단위 `project(doc)`을 같은 트랜잭션에 남기고, 커밋 보강(`enrichCommit`)은 first-parent 문서를 만든 직후 인라인으로 비춘 뒤 실패분을 `project(doc)`으로 넘긴다. 완료는 문서별 결과로 판정한다(`updated`·`noop`만 완료). `repairSequence`의 `consistent`도 `project(full)`을 남기고 러너가 DB 정합과 색인 복구를 따로 보고한다. 운영자는 `sequence_reproject` 잡(JOB-SEQ-006)·`prsctl sequence reproject`로 같은 경로를 수동으로 부른다.
 - Elasticsearch 문서의 `merge_seq` 갱신은 별도 작업으로 이어진다. **PostgreSQL 커밋이 먼저다** — 색인 반영이 실패해도 시퀀스 값은 살아 있고 다음 회차가 다시 비춘다 (ADR-004). 갱신은 `update_by_query`이며 `document_version`을 올리지 않는다 — 시퀀스는 웹훅이 나르는 엔티티 상태가 아니라 git 히스토리에서 파생한 값이라 버전 비교의 대상이 아니다.
 - **`upsertMergeSequence`가 `pull_request_number`를 나중에 채운다 (CR-025, DEV-118).** push가 그 PR의 투영보다 먼저 도착하면 채번 시점에는 대응 PR을 모르므로 `null`이 된다. `COALESCE(기존, 신규)`로 두어 모르는 값은 나중에 채워지되 **이미 아는 값이 `null`로 덮이지 않게** 한다. 같은 서수에 다른 SHA가 오면 조용히 넘기지 않고 던진다 — 그것은 경합이 아니라 손상이다.
 - **PR 조회는 저장소 하나짜리 `explicit` 접근 범위로 필수 필터를 통과한다 (CR-025, DEV-123).** 채번 잡에는 요청자가 없지만 그렇다고 필터를 우회하지 않는다 — 이 잡이 볼 수 있는 것은 자기가 채번하는 저장소 하나이고, 그것을 접근 범위로 적으면 예외 없이 성립한다.

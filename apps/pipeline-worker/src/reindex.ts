@@ -27,6 +27,14 @@
  * `client.reindex({ source, dest })`를 쓰지 않는다. 옛 인덱스에만 있는 오염이
  * 그대로 옮겨 가면 "색인은 정본만으로 재구축 가능하다"가 증명되지 않는다 —
  * 증명하려는 성질을 우회하는 구현이다.
+ *
+ * ## 시퀀스는 replay로 복원한다 (CR-113 / FR-ING-008 AC-8)
+ *
+ * 스냅숏에는 서수가 없다(투영이 그 키를 싣지 않는다 — 그것이 옳다). 그래서 PR·커밋
+ * 재구축 뒤에 **현재 정본**을 문서 단위 투영기로 다시 비추고(`replaySequenceForRepository`),
+ * 전환 전 검증이 target 인덱스의 원시 필드와 대표 범위 정렬을 정본과 대조한다. 옛 active
+ * 인덱스에 대한 투영 완료는 새 인덱스의 완료가 아니므로 판정은 언제나 target 결과다.
+ * 전환 직후 durable full sweep을 남겨 검증과 전환 사이의 변경도 수렴시킨다.
  */
 
 import {
@@ -65,6 +73,13 @@ import { commitDocId, pullRequestDocId } from '@prs/domain';
 import type { Client } from '@elastic/elasticsearch';
 
 import { commitCreateFields, commitMetadataFields, type CommitFactSource } from './commit-enrich.js';
+import {
+  replaySequenceForRepository,
+  requestFullSweepForAllSpaces,
+  verifySequenceProjection,
+  type ProjectionDeps,
+  type ReplaySpaceRecord,
+} from './sequence-projection.js';
 import { buildProjectedCommitDocument, registryOwnedFields } from './documents.js';
 import { resolveAuthorTeams } from './author-teams.js';
 import type { AuthorTeamResolution } from './documents.js';
@@ -158,6 +173,24 @@ function nowOf(deps: ReindexDeps): Date {
 
 function logOf(deps: ReindexDeps): (fields: ReindexLogFields) => void {
   return deps.log ?? ((): void => undefined);
+}
+
+function projectionDepsOf(deps: ReindexDeps): ProjectionDeps {
+  const log = logOf(deps);
+  return {
+    pool: deps.pool,
+    es: deps.es,
+    log: (fields) => {
+      log({ level: fields.level, message: fields.message, detail: JSON.stringify({ ...fields, level: undefined, message: undefined }).slice(0, 300) });
+    },
+    ...(deps.now === undefined ? {} : { now: deps.now }),
+  };
+}
+
+/** `job.progress.sequence_replay` — 공간마다 replay 진행·에폭을 남긴다. 전환 울타리 안의 에폭 대조가 이것을 읽는다. */
+export interface SequenceReplayProgress {
+  readonly spaces: readonly ReplaySpaceRecord[];
+  readonly repositories_done: number;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -609,19 +642,36 @@ async function requestMergeNumberMaterialize(deps: ReindexDeps, repository: Repo
 }
 
 /** 별칭 하나의 정본 재구축. 별칭마다 정본이 다르다 (비동기 3.5장). */
-async function rebuildAlias(deps: ReindexDeps, alias: EntityAlias): Promise<RebuildTally> {
+async function rebuildAlias(deps: ReindexDeps, alias: EntityAlias, jobId: number): Promise<RebuildTally> {
   const tally: RebuildTally = { scanned: 0, written: 0, documentIds: new Set() };
   const repositories = await allRepositories(deps.pool);
+  const replay: { spaces: ReplaySpaceRecord[]; repositories_done: number } = { spaces: [], repositories_done: 0 };
+  /*
+   * 서수 replay (CR-113). 재구축이 만든 문서에 **현재 정본**의 서수를 비춘다. 공간마다
+   * 진행과 에폭을 `job.progress.sequence_replay`에 남겨, 전환 울타리 안에서 에폭 이동을
+   * 대조하고 중단 뒤에도 어디까지 갔는지 읽을 수 있게 한다. `mergeNumberEnabled`와
+   * 무관하다 — M이 꺼진 배포에서도 서수는 복원돼야 한다.
+   */
+  const replayFor = async (repository: RepositoryRow, kind: 'commit' | 'pull_request'): Promise<void> => {
+    // 진행 기록은 저장소마다 한 번 쓴다 — 공간마다 배열 전체를 다시 쓰면 쓰기량이 공간 수의 제곱이 된다.
+    await replaySequenceForRepository(projectionDepsOf(deps), repository, kind, async (record) => {
+      replay.spaces.push(record);
+    });
+    replay.repositories_done += 1;
+    await advance(deps, jobId, { sequence_replay: replay } as Partial<ReindexProgress>);
+  };
 
   for (const repository of repositories) {
     switch (alias) {
       case 'prs-pull-requests':
         await rebuildPullRequests(deps, repository, tally);
+        await replayFor(repository, 'pull_request');
         // 새 색인에는 M 값이 없다. 러너가 정본을 읽어 채우도록 의도를 남긴다 (DEV-597).
         await requestMergeNumberMaterialize(deps, repository);
         break;
       case 'prs-commits':
         await rebuildCommits(deps, repository, tally);
+        await replayFor(repository, 'commit');
         break;
       case 'prs-releases':
         await rebuildReleases(deps, repository, tally);
@@ -702,6 +752,28 @@ export async function verifyBeforeCutover(
     reasons.push(`대표 질의 실패: ${String(error)}`);
   }
 
+  /*
+   * 8. 시퀀스 투영 (CR-113 / FR-ING-008 AC-8) — target 인덱스의 서수 필드가 정본과 문서마다
+   *    같고, 대표 범위의 실제 정렬이 정본 순서와 같다. 대상 집합은 PostgreSQL의 현재
+   *    시퀀스·스냅숏으로 계산한다 — 전체 건수 비교가 아니다.
+   */
+  if (alias === 'prs-pull-requests' || alias === 'prs-commits') {
+    try {
+      const sequence = await verifySequenceProjection(projectionDepsOf(deps), alias === 'prs-commits' ? 'commit' : 'pull_request', target);
+      reasons.push(...sequence.reasons);
+      logOf(deps)({
+        level: sequence.ok ? 'info' : 'error',
+        message: '전환 전 시퀀스 투영 검증',
+        job_id: jobId,
+        alias,
+        target_index: target,
+        detail: `spaces=${String(sequence.spaces)} items=${String(sequence.items)} repaired=${String(sequence.repaired)} reasons=${String(sequence.reasons.length)}`,
+      });
+    } catch (error) {
+      reasons.push(`시퀀스 투영 검증 실패: ${String(error).slice(0, 200)}`);
+    }
+  }
+
   logOf(deps)({
     level: 'info',
     message: '전환 전 검증',
@@ -775,7 +847,7 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
 
     /* ---- backfill: PostgreSQL 정본에서 다시 만든다 (ADR-004). */
     await advance(deps, jobId, { phase: 'backfill' });
-    const tally = await rebuildAlias(deps, alias);
+    const tally = await rebuildAlias(deps, alias, jobId);
     await advance(deps, jobId, {
       documents_scanned: tally.scanned,
       documents_written: tally.written,
@@ -814,11 +886,23 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
      * shadow가 뒤늦게 불완전해지는 경주가 없다 (DEV-308).
      */
     await advance(deps, jobId, { phase: 'cutover' });
+    let cutoverAbortReason: string | null = null;
     const switched = await withReindexExclusive(deps.pool, async (client) => {
       // 울타리를 잡은 지금 다시 본다 — 기다리는 동안 취소·실패가 들어왔을 수 있다.
       const latest = await reindexRepo.findReindexJob(client, jobId);
       if (latest === undefined || latest.state !== 'running') return false;
       if ((latest.progress.failures ?? 0) > 0) return false;
+
+      /*
+       * 시퀀스 에폭 대조 (CR-113). replay가 비춘 에폭과 지금 정본의 에폭이 다르면 그 사이에
+       * 재채번이 있었다 — 새 인덱스의 서수는 옛 에폭이다. 전환하지 않는다. 옮기지 않은
+       * 별칭은 그대로 서비스되고, 운영자가 다시 실행하면 새 에폭으로 replay한다.
+       */
+      const moved = await sequenceEpochsMoved(client, (latest.progress as Partial<ReindexProgress> & { sequence_replay?: SequenceReplayProgress }).sequence_replay);
+      if (moved !== null) {
+        cutoverAbortReason = moved;
+        return false;
+      }
 
       await switchAlias(deps.es, alias, current.progress.source_index, target);
 
@@ -856,12 +940,28 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
     });
 
     if (!switched) {
-      log({ level: 'warn', message: '전환 직전에 취소·실패가 확인됐다 — 별칭을 옮기지 않았다', job_id: jobId, alias, reason: 'cutover_aborted' });
-      await jobRepo.finishJobIfRunning(deps.pool, jobId, 'failed', 'cutover_aborted');
+      const reason = cutoverAbortReason ?? 'cutover_aborted';
+      log({ level: 'warn', message: '전환 직전에 취소·실패·에폭 이동이 확인됐다 — 별칭을 옮기지 않았다', job_id: jobId, alias, reason });
+      await jobRepo.finishJobIfRunning(deps.pool, jobId, 'failed', reason);
       return;
     }
 
     log({ level: 'info', message: '별칭 전환 완료', job_id: jobId, alias, phase: 'cutover', target_index: target });
+
+    /*
+     * 전환 뒤 durable full sweep (CR-113). 검증과 전환 사이에 들어온 채번·스냅숏은 별칭을 통해
+     * 새 인덱스로 갔지만, 그 쓰기 하나가 실패했을 수 있다. 공간마다 한 행이고 정본을 다시
+     * 읽으므로 비용은 한 번의 sweep이다. 실패해도 전환은 이미 끝났다 — 다음 채번·복구가 같은
+     * work를 다시 남긴다.
+     */
+    if (alias === 'prs-pull-requests' || alias === 'prs-commits') {
+      try {
+        const requested = await requestFullSweepForAllSpaces(deps.pool, { trigger_kind: 'reindex_cutover', reindex_job_id: jobId, aliases: [alias] });
+        log({ level: 'info', message: '전환 뒤 시퀀스 full sweep을 예약했다', job_id: jobId, alias, detail: `spaces=${String(requested)}` });
+      } catch (error) {
+        log({ level: 'warn', message: '전환 뒤 시퀀스 sweep 예약에 실패했다 — 다음 채번·복구가 다시 남긴다', job_id: jobId, alias, reason: 'sweep_request_failed', detail: String(error).slice(0, 200) });
+      }
+    }
 
     /*
      * ---- 종료는 CAS다 (DEV-298).
@@ -875,6 +975,24 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
     log({ level: 'error', message: '재색인 실패 — 별칭은 그대로다', job_id: jobId, alias, reason: 'reindex_failed', detail });
     await jobRepo.finishJobIfRunning(deps.pool, jobId, 'failed', detail);
   }
+}
+
+/**
+ * replay가 기록한 공간 에폭과 정본의 현재 에폭을 대조한다. 움직였으면 사유 문자열, 아니면 `null`.
+ * replay 기록이 없는 별칭(릴리스·간선)은 대조할 것이 없다.
+ */
+async function sequenceEpochsMoved(client: Parameters<typeof sequenceSpaceRepo.findSequenceSpace>[0], replay: SequenceReplayProgress | undefined): Promise<string | null> {
+  if (replay === undefined) return null;
+  const seen = new Map<string, number>();
+  for (const record of replay.spaces) seen.set(`${String(record.repository_id)}\n${record.base_branch}`, record.seq_epoch);
+  for (const [key, epoch] of seen) {
+    const [repositoryId, baseBranch] = key.split('\n');
+    const space = await sequenceSpaceRepo.findSequenceSpace(client, Number(repositoryId), baseBranch ?? '');
+    if (space !== undefined && space.seq_epoch !== epoch) {
+      return `sequence_epoch_moved:${String(repositoryId)}@${baseBranch ?? ''}:${String(epoch)}->${String(space.seq_epoch)}`;
+    }
+  }
+  return null;
 }
 
 /** `<별칭>-v<N>`에서 N을 읽는다. 러너가 만들 버전을 정하는 자리다. */

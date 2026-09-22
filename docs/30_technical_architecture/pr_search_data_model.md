@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.28 | 갱신일: 2026-09-21
+> 상태: review | 버전: v0.29 | 갱신일: 2026-09-22
 
 CR-112 / FR-INT-001: PIPE 연동의 정본 다섯 표를 마이그레이션 033(추가 전용)으로 더한다. 상세는 3.6절이다. Elasticsearch에는 아무것도 더하지 않는다 — ADR-004의 "PostgreSQL만으로 재구축" 원칙에 영향이 없다.
 
@@ -17,7 +17,7 @@ CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025�
 | 엔티티 ID | 이름 | 소유 / 저장 | 요구사항 |
 | --- | --- | --- | --- |
 | ENT-SEQ-005 | mnumber_evidence | PR/direct/unresolved 증거, PostgreSQL | FR-SEQ-008 AC-10 |
-| ENT-SEQ-006 | sequence_work | 고정 kind의 durable intent/outbox, PostgreSQL | FR-SEQ-008 AC-11 |
+| ENT-SEQ-006 | sequence_work | 고정 kind의 durable intent/outbox, PostgreSQL. CR-113이 `project` kind(시퀀스 투영 — 공간 `tail`·`full`, 문서 `doc`)와 lease 보유자만 갱신하는 `progress JSONB`(페이지 커서·generation·완료 요약)를 더했다 (마이그레이션 034) | FR-SEQ-008 AC-11, FR-SEQ-001 AC-7·AC-8 |
 | ENT-SEQ-007 | sequence_latency_sample | 단계별 읽기 전용 관측 자료의 원천, PostgreSQL | FR-SEQ-008 AC-14 |
 | ENT-SEQ-008 | mnumber_attestation | M 번호 운영자 확인서(공간·에폭·범위·유예·행위자·사유·철회), PostgreSQL, 마이그레이션 031 — 상세는 WP-074 설계 6.5절 | FR-SEQ-008 AC-15 (CR-100) |
 
@@ -704,6 +704,7 @@ CREATE TABLE job (
                                       -- | sequence_reassign (마이그레이션 009, CR-033 DEV-172)
                                       -- | sequence_integrity | link_rebuild | export
                                       -- | snapshot_bootstrap (마이그레이션 012, CR-037 DEV-194)
+                                      -- | sequence_reproject (마이그레이션 034, CR-113 — 재채번이 아닌 색인 재투영)
   target      TEXT        NOT NULL,   -- repository_id 또는 인덱스명 등
   state       TEXT        NOT NULL,   -- queued | running | paused | completed | failed | cancelled
   progress    JSONB       NOT NULL DEFAULT '{}',
@@ -1261,6 +1262,8 @@ ALTER TABLE gh_capability_snapshot
 
 **누적 필드는 버전 비교에서 제외한다 (CR-011, DEV-019).** `commit.pull_request_numbers`는 N:M이라 단순 대입하면 나중 이벤트가 앞 PR 번호를 지운다 — 커밋 하나가 두 PR에 속하는 경우 FR-SRCH-002(SHA → PR)가 조용히 한쪽을 잃는다. 집합 소속은 단조 증가하고 순서에 무관하므로, `params.union`에 실린 필드는 **버전 비교와 무관하게 항상 합집합**한다. 상태 필드(`state`, `merged_at`, …)만 버전 비교의 대상이다.
 
+**시퀀스 필드의 소유자는 문서 단위 투영기다 (CR-113).** `merge_seq`·`seq_epoch`·`sequence_space`는 `packages/es/src/sequence-projection.ts`의 `projectSequenceToDocuments`만 쓴다(에폭 상향만 `applyEpochBump`의 `update_by_query`가 먼저 올리고 full sweep이 문서마다 확인한다). 값의 정본은 `merge_sequence`·`sequence_space`이고, "어느 문서에"의 정본은 `pull_request_snapshot`(`merge_commit_sha`·`base_branch`)과 `commit_snapshot`이다 — `merge_sequence.pull_request_number`는 대응의 근거로 쓰지 않는다. 커밋 문서는 SHA당 하나라 두 시퀀스 공간이 같은 문서를 두고 다툴 수 있다: 문서가 단 `base_branch`의 공간이 현재 에폭에 그 SHA를 갖고 있으면 그 공간의 값을 지키고, 없으면 쓰는 공간이 가져간다. PR 문서의 `base_branch`는 PR의 사실이라 투영이 바꾸지 않는다. 구 에폭 작업은 문서의 더 높은 `seq_epoch`를 덮지 못한다. `document_version`은 건드리지 않는다.
+
 **필드 소유권.** 투영 워커는 자기가 계산한 필드만 `params.doc`에 싣는다. 시퀀스 필드(`merge_seq`, `seq_epoch`)·관계 필드(`link_summary`, `links_pending`)·릴리스 필드(`release_tags`, `unreleased`)는 다른 워커가 소유하며, 투영은 그것들을 **생성 시점의 `upsert` 본문에만** 초깃값으로 둔다. `params.doc`에 넣으면 투영이 돌 때마다 다른 워커의 결과를 되돌린다.
 
 **`link_summary`는 leaf 단위로 소유가 갈린다 (CR-039, DEV-222).** 관계 워커가 하나가 아니기 때문이다.
@@ -1359,6 +1362,8 @@ if (!changed) { ctx.op = 'noop'; }
 **시퀀스 범위의 정답지는 PostgreSQL이다 (CR-027, DEV-130).** 이 표의 다른 행과 달리 범위 조회만 두 줄인 이유가 그것이다. `merge_sequence`는 first-parent walk가 직접 쓴 표이고 서수의 정본이다 (ADR-004: Elasticsearch는 PostgreSQL만으로 재구축 가능한 파생 뷰다). 채번은 **PostgreSQL을 먼저 커밋하고 그 뒤에 Elasticsearch로 비춘다** — 비추기가 실패하면(`sequence_index_failed`) 서수를 가진 문서가 그만큼 줄어들고, 그 상태에서 `range(merge_seq)`로 읽은 구간은 **아무 오류 없이 항목이 빠진 채** 돌아온다. 범위 인용이 조용히 틀리는 것은 이 제품이 막으려는 실패 그 자체다.
 
 그래서 **구간에 무엇이 속하는가와 그것이 몇 건인가는 `merge_sequence`가 답하고**, 제목·작성자·변경 경로 같은 표시 필드와 요약 집계만 Elasticsearch가 채운다. 정본에는 있는데 색인에 없는 항목은 **버리지 않고 응답에 드러낸다** — 없는 것을 없다고 말하는 것과 모른다고 말하는 것은 다르다.
+
+**그러나 검색 정렬과 `seq:` 필터는 색인의 `merge_seq`를 그대로 쓴다** (FR-SRCH-007 — 「M number」 정렬은 `merge_seq` 정렬이다). 그래서 「비추기가 실패하면 다음 회차가 메운다」로는 부족했다 — 다음 채번은 head 이후만 번호를 매기고, 늦게 온 PR 문서·직접 푸시 커밋 문서·재색인은 어느 회차도 다시 비추지 않았다(사내 pilot.17 보고). CR-113부터 비추기 실패·문서 부재·재색인은 durable `sequence_work` `project`가 새 push 없이 수렴시키고(FR-SEQ-001 AC-7), 재색인은 replay와 전환 전 검증으로 새 인덱스의 서수를 보증한다(FR-ING-008 AC-8). `sequence_index_failed`는 이제 "durable work에 맡겼다"는 신호이지 유실이 아니다.
 
 이 결정이 `index.sort` 조기 종료 논의도 함께 끝낸다. Elasticsearch가 범위를 스캔하지 않으므로 정렬 방향이 어긋나는 문제(DEV-131)가 성능 경로에 남지 않는다.
 

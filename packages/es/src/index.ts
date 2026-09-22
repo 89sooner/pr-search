@@ -155,7 +155,30 @@ export {
 } from './registry.js';
 export type { MarkArchivedResult } from './registry.js';
 
-export { SEQUENCE_CHUNK, applyEpochBump, applySequenceToDocuments, findPullRequestByMergeCommit } from './sequence.js';
+export { applyEpochBump, findPullRequestByMergeCommit } from './sequence.js';
+export {
+  COMMITS_ALIAS,
+  PULL_REQUESTS_ALIAS,
+  SEQUENCE_PROJECTION_CHUNK,
+  SEQUENCE_PROJECTION_SCRIPT,
+  aliasOf,
+  classifySequenceTarget,
+  isSettledOutcome,
+  projectSequenceToDocuments,
+  readSequenceOrder,
+  readSequenceProjection,
+} from './sequence-projection.js';
+export type {
+  ObservedSequenceFields,
+  ProjectSequenceOptions,
+  SequenceDocKind,
+  SequenceDocOutcome,
+  SequenceDocOutcomeKind,
+  SequenceOutcomeCounts,
+  SequenceProjectionIndexResult,
+  SequenceProjectionItem,
+  SequenceProjectionResult,
+} from './sequence-projection.js';
 /** M 번호 색인 반영·관측 (WP-074 / FR-SEQ-008, CR-079). */
 export {
   applyMergeNumberToDocument,
@@ -164,7 +187,7 @@ export {
   readMergeNumberProjectionInternal,
 } from './merge-number.js';
 export type { MergeNumberDocOutcome, MergeNumberDocUpdate, MergeNumberProjection } from './merge-number.js';
-export type { ApplySequenceInput, ApplySequenceResult, SequenceAssignment } from './sequence.js';
+export type { ApplySequenceResult, UpdateByQueryTally } from './sequence.js';
 
 export { applyMappings, dropEntityIndices, switchAliasesForTests } from './bootstrap.js';
 

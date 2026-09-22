@@ -29,6 +29,9 @@ export * as mnumberAttestationRepo from './mnumber-attestation.js';
 export * as sequenceWorkRepo from './sequence-work.js';
 /** 단계별 지연 표본 (WP-074 / ENT-SEQ-007, CR-079). */
 export * as sequenceLatencyRepo from './sequence-latency.js';
+/** 시퀀스 투영 대상의 정본 해석 (CR-113 / WP-098, FR-SEQ-001 AC-7). */
+export * as sequenceProjectionRepo from './sequence-projection.js';
+export type { ProjectionTargetRow, PullRequestMergeFacts } from './sequence-projection.js';
 export * as teamMembershipRepo from './team-membership.js';
 /** 위임 신원과 봉인된 토큰 (REL-007 R0 / WP-077, ENT-GH-001, CR-086). */
 export * as ghIdentityRepo from './gh-identity.js';

@@ -57,6 +57,9 @@ function fakeEs(): Client {
   return {
     search: async (): Promise<unknown> => ({ hits: { hits: [] } }),
     updateByQuery: async (): Promise<unknown> => ({ updated: 0 }),
+    // CR-113: 문서 단위 투영기가 `mget`·`bulk`를 부른다 — 문서 없음으로 답해 durable work가 남게 둔다.
+    mget: async (body: { docs: readonly { _id: string }[] }): Promise<unknown> => ({ docs: body.docs.map((doc) => ({ _id: doc._id, found: false })) }),
+    bulk: async (): Promise<unknown> => ({ errors: false, items: [] }),
   } as unknown as Client;
 }
 

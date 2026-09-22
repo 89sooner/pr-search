@@ -86,6 +86,17 @@ const UNSCOPED_ALLOWLIST: readonly {
       '그래서 두 인덱스의 건수를 함께 본다. 이 파일에 **사용자 대면 조회를 넣지 않는다** — ' +
       '넣으면 이 사유를 그대로 물려받고 검사기가 침묵한다 (DEV-265가 links.ts에서 배운 것).',
   },
+  {
+    file: 'packages/es/src/sequence-projection.ts',
+    kind: 'no_requester',
+    why:
+      'CR-113 머지 시퀀스의 문서 단위 투영기 (FR-SEQ-001 AC-7, ADR-004 Amendment). 방아쇠가 채번·' +
+      '재채번·늦은 스냅숏·커밋 보강·재색인·durable 러너·운영자 재투영 잡이라 **요청자가 없다**. ' +
+      '`mget`은 문서 ID를 이미 알고 있는 커밋·PR 문서의 서수 필드(repository_id·base_branch·SHA·' +
+      'merge_seq·seq_epoch·sequence_space)만 읽어 정본과 대조하고, `search`는 재색인 전환 전 검증이 ' +
+      '구체 target 인덱스에서 서수 순서만 읽는다 — 제목·본문·작성자는 읽지 않고 결과는 판정·로그로만 ' +
+      '쓰이며 응답 본문이 되지 않는다. 사용자 대면 조회를 이 파일에 넣지 않는다.',
+  },
 ];
 
 const UNSCOPED_FILES = UNSCOPED_ALLOWLIST.map((one) => one.file);

@@ -42,7 +42,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.39 | 갱신일: 2026-09-21
+> 상태: review | 버전: v0.40 | 갱신일: 2026-09-22
 
 ## 1. 목적
 
@@ -2504,6 +2504,7 @@ ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 →
 | `link_rebuild` | JOB-REL-006 참조 간선 전량 재파생 (CR-039) | `owner/repo` | `target` |
 | `reconcile` | JOB-ING-005 조정 스캔 즉시 실행 (CR-055) | `all` — **서버가 정한다** | 없다 |
 | `sequence_assign` | JOB-SEQ-001 시퀀스 채번 (CR-055) | `owner/repo@{기준 브랜치}` — **서버가 조립한다** | `repository`, `base_branch` |
+| `sequence_reproject` | JOB-SEQ-006 시퀀스 재투영 (CR-113) — **재채번이 아니다** | `owner/repo@{기준 브랜치}` — **서버가 조립한다** | `repository`, `base_branch`, `expected_epoch`(양의 정수, 필수), `aliases`(선택 — `prs-pull-requests`·`prs-commits`의 비지 않은 부분집합, 기본 둘 다) |
 
 `link_rebuild`가 열려 있어야 하는 이유는 그것이 **PostgreSQL 정본에서 `prs-links`를 복구하는 유일한 경로**이기 때문이다 (ADR-004).
 
@@ -2512,6 +2513,8 @@ ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 →
 **주기 실행과 수동 실행은 두 루프가 아니라 한 루프다** (`FR-ING-011` AC-7, PR #88 리뷰 P2). 활성 잡 하나 제약(AC-4)은 수동 요청끼리만 막고, **단일 복제본 배치는 프로세스 수를 제한할 뿐 한 프로세스 안의 독립적인 비동기 루프 둘을 직렬화하지 못한다** — 주기 스윕이 GHE 응답을 기다리는 동안 잡 러너가 같은 스캔을 다시 시작할 수 있다. 그래서 `reconcile` 역할은 **호출 지점이 하나뿐인 루프**를 돈다: 매 순회에서 먼저 대기 중인 수동 잡을 집어 보고, 잡았으면 그 잡으로 스윕을 돌리며, 잡지 못했고 주기가 됐으면 주기 스윕을 돌린다. 한 순회에서 스캔은 많아야 한 번 실행되므로 겹칠 자리가 없다. **락을 새로 만들지 않는 이유가 이것이다 — 겹칠 수 있는 구조를 만든 뒤에 막는 것보다 겹칠 수 없는 구조가 낫다.** 순회 간격은 수동 요청이 주기만큼 지연되지 않도록 짧게 두고, 주기 스윕은 마지막 실행 시각으로 판정한다.
 
 **`sequence_assign`의 `target`은 서버가 조립한다.** 요청은 `repository`(`owner/repo`)와 `base_branch`를 주고, 서버가 저장소 등록 여부와 그 브랜치가 `sequence_branches`에 있는지를 확인한 뒤 공간 식별자를 만든다. 클라이언트가 `target` 문자열을 직접 보내면 서로 다른 공간이 같은 문자열로 충돌하거나 등록되지 않은 브랜치가 큐에 들어간다. 러너가 행을 다시 파싱하지 않도록 **`progress`의 초기값에 `repository_id`와 `base_branch`를 함께 싣는다** — 잡 행은 enqueue 순간부터 실행에 필요한 것이 갖춰져 있어야 한다.
+
+**`sequence_reproject`는 정본에서 색인으로만 흐른다** (CR-113 / FR-SEQ-001 AC-8). 서버는 저장소 등록·채번 대상 브랜치·시퀀스 공간 존재를 확인하고, `expected_epoch`가 현재 에폭과 다르면 `400 INVALID_PARAMETER`에 `detail: { expected_epoch, current_epoch }`를 실어 거절한다 — force-push 직후 운영자가 모르는 새 에폭에 재투영하지 않게 하는 확인서(`prsctl mnumber attest`)와 같은 규율이다. `dry_run: true`는 이 경로가 받지 않는다(`400`) — 잡 행 자체가 쓰기이며 읽기 전용 점검은 `prsctl sequence reproject --dry-run`이 한다. 만들어진 잡의 `progress`에는 입력(`expected_epoch`·`aliases`·`repository_id`·`base_branch`)이 실리고, 러너가 durable `project(full)` work를 예약한 뒤 `work_key`·`requested_generation`·`projection`(`scheduled`→`running`→`completed`|`in_progress`|`partial`|`obsolete`|`detached`)·`work_state`·`cursor_seq`·`counts`·`pending_documents`·`parked_documents`를 비춘다. 잡은 sweep과 그것이 넘긴 문서 단위 work가 모두 끝났을 때만 `completed`이고(완료는 「존재하는 target 문서마다 서수가 실렸다」는 뜻이다 — 아직 만들어지지 않은 커밋 문서 `awaiting_creation`은 보강이 만들 때 채워지며 dry-run이 `skip_awaiting_creation`으로 센다), 끝내 만들어지지 않은 문서가 있거나 상한(30분) 안에 끝나지 않으면 `failed`에 사유(`projection_partial`·`projection_incomplete`)를 적는다 — durable work는 계속 돈다. `allowed_actions`는 `cancel`뿐이다(`reconcile`과 같은 이유 — 멈춰 이어 갈 지점이 없다). 감사는 다른 잡과 같은 `job.run`(`target: sequence_reproject:{공간}`, `created`|`JOB_CONFLICT`)이며, CLI 경로도 같은 액션을 `prsctl:<사용자>`로 남긴다. 이 잡은 Git을 읽지 않고 `merge_sequence`·`sequence_space`에 쓰지 않는다.
 
 **두 번째 채번 실행 구조를 만들지 않는다.** 이 경로의 러너와 `prs:sequence` 이벤트 소비자는 같은 `assignSequence`에 모인다. `CR-034`(DEV-180)가 `sequence_assign` 잡 행을 한 번 거절했던 근거는 "그 유형을 집는 러너가 없다"였고, `CR-055`가 그 러너를 세워 전제를 없앤다. **조정 스캔이 누락 공간을 복구할 때는 계속 이벤트로 보낸다** — 그 경로는 공간마다 멱등이고 활성 잡 제약에 걸리지 않아야 하며, 잡 행으로 바꾸면 `DEV-180`이 적어 둔 자물쇠가 그대로 돌아온다.
 
@@ -2704,6 +2707,7 @@ POST /api/v1/admin/sequence-integrity
 - 자동 경로는 `mergeBase(저장 head, 새 head)`까지를 검증된 구간으로 보고 복사한다. 그 가정은 **head가 움직였을 때만** 참이다.
 - 수동 복구가 다루는 상황에는 **head는 그대로이고 중간이 손상된 경우**가 있다. 그때 `mergeBase`는 head 자신이라 자동 전략은 손상 구간을 통째로 복사하고 재계산할 커밋이 0건이 된다 — 아무것도 고치지 않고 에폭만 올린다.
 - 그래서 수동 경로는 **최초 불일치 `N`을 경계로** 삼는다: `1..N-1`은 대조로 검증됐으므로 복사하고, `N..head`는 실제 first-parent 체인에서 다시 계산한다. `N = 1`이면 전체 재계산이다. 실제 체인이 짧아졌으면 새 `head_seq`도 그 길이에 맞춘다.
+- **`consistent`여도 색인은 따로 본다** (CR-113 / FR-ADMIN-003 AC-6). 실행 시점에 저장 시퀀스와 히스토리가 이미 일치하면 에폭을 올리지 않지만, 색인 문서의 서수가 비어 있을 수 있다(사내 pilot.17 — DB `consistent`, 색인 `merge_seq` 0/4,214). 러너는 `repairSequence`가 남긴 durable `project(full)` work를 상한(10분)까지 기다려 잡 `progress`에 `db: consistent`와 `projection: scheduled|running|completed|in_progress|partial`을 **따로** 적는다. 예약만 끝난 상태를 복구 완료로 표시하지 않으며, 색인이 비었다는 이유로 에폭을 올리지 않는다.
 - **실행 시점에 정합성을 다시 읽는다.** 큐에서 기다리는 사이 저장소가 바뀔 수 있고, 이미 고쳐진 것을 다시 고치면 멀쩡한 에폭이 무효가 된다. 일치하면 무동작으로 완료한다(실패가 아니다).
 - 권한은 `operator` 역할이다 (3장). `mode`는 `sample`(기본) 또는 `full`이다. `sample`은 **최근 1000 서수**를 대조한다 (FR-ADMIN-003 AC-2)
 - `new_epoch_expected`는 **현재 에폭 + 1의 실제 계산 결과**다. 고정값이 아니다

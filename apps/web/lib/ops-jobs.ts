@@ -105,8 +105,13 @@ export interface RunOption {
   readonly label: string;
   /** 요청이 가는 프록시 경로. `/api/v1`을 적지 않는다 — 프록시가 붙인다. */
   readonly path: string;
-  /** 이 유형이 받는 재료. 폼이 무엇을 물을지 정한다. */
-  readonly input: 'repository' | 'sequence_space' | 'alias' | 'none';
+  /**
+   * 이 유형이 받는 재료. 폼이 무엇을 물을지 정한다.
+   *
+   * `sequence_space_epoch`는 저장소·브랜치에 더해 **예상 에폭**을 받는다 (CR-113). 재투영은
+   * 재채번이 아니므로 운영자가 지금 에폭을 명시해야 서버가 그것과 대조한다.
+   */
+  readonly input: 'repository' | 'sequence_space' | 'sequence_space_epoch' | 'alias' | 'none';
 }
 
 export const RUN_OPTIONS: readonly RunOption[] = [
@@ -114,6 +119,7 @@ export const RUN_OPTIONS: readonly RunOption[] = [
   { type: 'link_rebuild', label: 'Rebuild all relationships', path: '/api/admin/jobs', input: 'repository' },
   { type: 'reconcile', label: 'Reconciliation scan', path: '/api/admin/jobs', input: 'none' },
   { type: 'sequence_assign', label: 'Sequence numbering', path: '/api/admin/jobs', input: 'sequence_space' },
+  { type: 'sequence_reproject', label: 'Sequence reprojection (index repair)', path: '/api/admin/jobs', input: 'sequence_space_epoch' },
   { type: 'reindex', label: 'Zero-downtime reindex', path: '/api/admin/reindex', input: 'alias' },
   {
     type: 'sequence_integrity',
@@ -130,7 +136,7 @@ export function runOption(type: string): RunOption | undefined {
 /** `API-ADM-002`가 받을 본문. 유형마다 재료가 다르다 (CR-055). */
 export function runBody(
   option: RunOption,
-  input: { readonly repository?: string; readonly baseBranch?: string; readonly alias?: string },
+  input: { readonly repository?: string; readonly baseBranch?: string; readonly alias?: string; readonly expectedEpoch?: string },
 ): Record<string, unknown> {
   switch (option.input) {
     case 'none':
@@ -140,6 +146,14 @@ export function runBody(
       return { type: option.type, target: input.repository ?? '' };
     case 'sequence_space':
       return { type: option.type, repository: input.repository ?? '', base_branch: input.baseBranch ?? '' };
+    case 'sequence_space_epoch':
+      // 에폭은 숫자로 보낸다 — 서버가 현재 에폭과 대조해 다르면 거절한다 (CR-113).
+      return {
+        type: option.type,
+        repository: input.repository ?? '',
+        base_branch: input.baseBranch ?? '',
+        expected_epoch: Number(input.expectedEpoch ?? ''),
+      };
     case 'alias':
       return { alias: input.alias ?? '' };
   }

@@ -187,6 +187,24 @@ describe('JobRunForm (C-045)', () => {
     });
   });
 
+  it('`sequence_reproject`는 예상 에폭이 양의 정수일 때만 보낸다 (CR-113)', async () => {
+    const onSubmit = vi.fn();
+    const { container } = render(<JobRunForm onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByTestId('job-run-type'), { target: { value: 'sequence_reproject' } });
+    fireEvent.change(screen.getByTestId('job-run-repository'), { target: { value: 'acme/payments' } });
+    fireEvent.change(screen.getByTestId('job-run-branch'), { target: { value: 'main' } });
+    // 에폭이 비어 있으면 요청이 나가지 않는다 — 운영자가 지금 에폭을 명시해야 한다.
+    fireEvent.click(screen.getByTestId('job-run-submit'));
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByTestId('job-run-epoch'), { target: { value: '2' } });
+    fireEvent.click(screen.getByTestId('job-run-submit'));
+    expect(onSubmit).toHaveBeenCalledWith({
+      option: expect.objectContaining({ type: 'sequence_reproject', path: '/api/admin/jobs' }),
+      body: { type: 'sequence_reproject', repository: 'acme/payments', base_branch: 'main', expected_epoch: 2 },
+    });
+    expect(await violations(container)).toEqual([]);
+  });
+
   it('재색인은 `API-ADM-004`로 간다 — 일반 잡 경로에 몰지 않는다', () => {
     const onSubmit = vi.fn();
     render(<JobRunForm onSubmit={onSubmit} />);
