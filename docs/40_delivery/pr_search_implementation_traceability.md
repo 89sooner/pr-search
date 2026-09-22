@@ -2,7 +2,7 @@
 
 > 상태: review | 버전: v6.104 | 갱신일: 2026-09-23
 
-## CR-116 / WP-101 — 커밋에 남는 과거 PR 번호: 관계 정본과 전용 투영기 (2026-09-23)
+## CR-116 / WP-101 — 커밋에 남는 과거 PR 번호: 관계 정본과 전용 투영기 (2026-09-23, main `f9cda82` 병합)
 
 사용자 지시(2026-09-23)로 사내 `0.1.0-pilot.17` 운영 보고(`agent-context/upstream-feedback.md` — 「`pull_request_numbers` union semantics로 과거 PR 번호가 커밋에 영구히 남는다」, 2026-09-22. 영향 PR 279개, 잘못 연결된 커밋 3,481개(1차)와 660개(웹훅 재발생분), 열린 PR #2355 하나가 dev 체인 커밋 110개에 남았다)의 요청 1~4 전부를 신뢰성 결함으로 고쳤다. 결함은 커밋 문서의 `pull_request_numbers`가 Elasticsearch 업서트의 **합집합 필드**였다는 것이다(CR-011, DEV-019) — 한 번 더해진 PR 번호를 빼는 경로가 없어, PR이 rebase되어 원본 커밋 목록에서 빠진 커밋에도 그 번호가 영영 남았다. 단순 대입은 답이 아니다: 커밋 하나가 여러 PR에 속하므로(N:M) 한 PR의 투영이 전체 배열을 쓰면 다른 PR의 연결이 사라진다. 그래서 관계의 정본을 PostgreSQL에 두고(마이그레이션 036 — ENT-CORE-009 `pull_request_commit_link`, ENT-CORE-010 `pull_request_link_observation`, ENT-CORE-011 `commit_link_state`) 커밋별 전용 투영기가 그 커밋을 소유하는 PR 전부를 세어 대입하며, **삭제 권한은 완전성을 증명한 관측에만** 준다 — 커밋 조회가 성공했고, 우리 상한에 걸리지 않았고, 원격이 말한 커밋 수와 읽은 수가 같고, 읽기 전후로 head/base가 같아야 한다. 기준 main은 `83d30fb`(CR-115 PR #226 병합분)이고 워크트리는 `/home/roqkf/pr-search-wt/cr116-pr-links`(브랜치 `feature/cr116-pr-links`)다. 구현·검증은 6.107장, 편차는 DEV-744~DEV-753(DEV-752만 open), 설계는 ADR-004 Amendment, 잡은 JOB-REL-008, 런북은 RB-29·RUNBOOK 7.G다. 이 변경은 **관계 재발견이 아니다** — `merge_seq`·`merge_number`·`seq_epoch`·head·권한 정보·원격 M 태그를 읽지도 바꾸지도 않으므로 CR-113의 시퀀스 replay와 CR-115의 커밋 M 투영은 후퇴하지 않고, 재색인 전환 전 검증에 항목이 하나 늘어날 뿐이다. 사내 배포 SHA는 NOT VERIFIED, 내부망 적용은 NOT RUN이다.
 
@@ -236,7 +236,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-101 | 커밋 PR 연결의 정본화와 전용 투영기 | 신뢰성 결함 수정 (CR-116) | in_progress | 에이전트 | PR #228 (브랜치 `feature/cr116-pr-links`, base `main` `83d30fb`, head `49c5b49`) | 6.107장 — 전 계층 통과, 변이 9종 죽음, 독립 검토 지적 4건 수정, PR CI success | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
+| WP-101 | 커밋 PR 연결의 정본화와 전용 투영기 | 신뢰성 결함 수정 (CR-116) | done | 에이전트 | main `f9cda82`(PR #228 squash 병합, 2026-09-23; head `b20d861`) | 6.107장 — 전 계층 통과, 변이 9종 죽음, 독립 검토 지적 4건 수정, PR CI success | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-100 | 확정된 M 번호의 원격 lightweight 태그 | 기능 누락 보완 (CR-115) | done | 에이전트 | main `83d30fb`(PR #226 squash 병합, 2026-09-22) | 6.106장 — 전량 통과, 변이 13종 죽음, 독립 리뷰 지적 3건 수정, PR CI·main CI success | 기본 꺼짐. 사내 배포 SHA NOT VERIFIED, 내부망 적용·사내 GHE ruleset NOT RUN |
 | WP-099 | 검색창 M 번호 문자열 해석과 `mnum:` 단일 값 | 기능 누락 보완 (CR-114) | done | 에이전트 | main `9782ba9`(PR #225 squash 병합, 2026-09-22) | 6.105장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-098 | 머지 시퀀스의 Elasticsearch 투영 수렴 | 신뢰성 결함 수정 (CR-113) | done | 에이전트 | main `a6ea00d` / PR #223 (브랜치 head `36f0444`, squash) | 6.104장 — 현 코드에서 실패하던 8건이 통과하고 변이 10종에 죽는다; 독립 리뷰 2건 수정; 재투영 잡·CLI·API·Search API 정렬·RepositoryWorkspace e2e 통과; PR CI·main CI success | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
@@ -8608,5 +8608,7 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **운영에서 알아야 할 것.** 롤링 업데이트 중 남은 **구버전 워커는 여전히 합집합을 쓴다** — 새 세대 가드로 막을 수 없고, 지표 `commit_link_conflict_total`이 그 조기 경보다. 복구(`prsctl links apply`) 전에 모든 워커가 새 빌드여야 한다. old-binary 롤백은 오염을 재발시킨다. 마이그레이션 036 down은 PostgreSQL 표만 지우고 색인의 `pr_links_generation`은 남는다 — 되돌렸다 다시 적용하면 세대가 1부터 시작하므로 `generation_rewound` 경고가 그 갈라짐을 드러낸다(DEV-751). 절차는 RB-29와 RUNBOOK 7.G다.
 
 **발견 편차:** DEV-744(보강의 완전성 근거 — 해소), DEV-745(합집합에 빼는 경로 없음 — 해소), DEV-746(같은 버전 다른 내용 — 해소), DEV-747(재색인의 시험 병합 SHA — 해소), DEV-748(`pull_request_numbers[0]`을 그 커밋의 PR로 읽음 — 해소), DEV-749(재수집 순서 기준 — 해소), DEV-750(관계 replay의 별칭 사용 — 해소), DEV-751(036 왕복 뒤 세대 되감김 — 해소), DEV-752(`role` 필드 소유권 — **open**, 별도 승인), DEV-753(백필 모양에서 머지 커밋 문서 누락 — 해소, 독립 검토 발견). 승계: DEV-019(합집합 결정의 전제가 거짓이었다)와 DEV-726(`resolve/detail.ts`의 비결정적 순서 — 결정적 대입으로 함께 닫힌다).
+
+**병합:** 독립 검토 지적 4건을 수정하고 계획 보고(`blockingPullRequests`)까지 더한 head `b20d861`을 PR #228(base `main`)으로 올렸다. 그 head의 CI(run 35760961156)는 verify·integration 모두 success이고, 그 직전 `49c5b49`(코드·문서 전량)의 CI(run 35759802933)도 마찬가지다 — 두 커밋의 차이는 CI 기록 세 줄뿐이라 코드 트리가 같다. 첫 push `96a3bc0`의 run 35759017065은 PR 번호를 문서에 반영하고 계획 보고를 고친 뒤 force-push하면서 `cancel-in-progress`로 취소됐다(**취소된 실행을 근거로 쓰지 않는다**). 사용자 지시서(2026-09-23)가 「필수 리뷰·CI를 통과한 정상 main 병합」을 명시 승인했고, `main`에는 브랜치 보호 규칙이 없어(`gh api .../branches/main/protection` → 404) CI만이 게이트다. 병합 직전 `gh pr view`가 `mergeStateStatus: CLEAN`·`mergeable: MERGEABLE`임을 확인하고 squash 병합했다 — 병합 커밋 `f9cda82`, main CI(run 35762117662)도 verify·integration 모두 success다. 문서 검증기는 병합 전 기준선(`main 83d30fb`)과 오류 3·경고 12로 목록까지 완전히 동일했다.
 
 **한계:** 원본 목록에서 빠진 커밋의 `role: source_commit`은 그대로 남는다(DEV-752). 관계 삭제가 완전한 관측을 기다리므로, GHE를 다시 읽지 못하는 동안에는 잘못된 번호가 남아 있을 수 있다 — 그 사실은 `blocked`로 보고되고, **어느 PR을 다시 읽어야 하는지**는 계획의 `blockingPullRequests`가 `--pr …` 형태로 알려 준다. **재구축은 원격을 읽지 않지만 `refetch`는 읽는다** — 036 직후에는 모든 관측이 `unverified`라 좁히지 않으면 그 저장소의 거의 모든 PR이 대상이고, PR당 세 번의 GHE 호출이 든다. `--pr`과 `--limit`으로 나눠 도는 것이 운영 절차다(RUNBOOK 7.G). `refetch`는 PostgreSQL의 관계·관측을 바꾸지만 `apply`와 달리 `job`·감사 기록을 남기지 않는다 — 읽기 전용 조회의 결과를 정본에 반영하는 경로라 그렇게 두었고, 운영자가 그 회차를 되짚을 근거는 관측 행의 `last_verified_at`·`refetch_attempts`·`last_reason`뿐이다. 감사가 필요해지면 별도 CR로 연다.
