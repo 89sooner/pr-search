@@ -23,6 +23,8 @@
 import type { Client } from '@elastic/elasticsearch';
 import type { EventBus } from '@prs/bus';
 import { MirrorCommitGraph, MirrorSync, type CommitGraph } from '@prs/github';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { EVENT_NAMES, type IngestionEnriched } from '@prs/domain';
 import {
   jobRepo,
@@ -55,7 +57,7 @@ import { verifySequenceProjection } from '../../src/sequence-projection.js';
 import { prepareAndAssignSequence, repairSequence, type SequenceDeps } from '../../src/sequence.js';
 import { runSequenceWorkOnce } from '../../src/sequence-work-runner.js';
 import { recordProjectionSnapshot } from '../../src/snapshot.js';
-import { makeTempDir, removeDir } from './fixture.js';
+import { makeTempDir, removeDir, run } from './fixture.js';
 import { createSquashFixture, type SquashFixture } from './squash-fixture.js';
 
 const REPOSITORY_ID = 7513;
@@ -518,6 +520,106 @@ describe('재색인이 새 인덱스에 시퀀스를 복원한다 (FR-ING-008 AC
       expect(replay?.spaces[0]).toMatchObject({ repository_id: REPOSITORY_ID, base_branch: BRANCH, seq_epoch: 1, settled: 6, unsettled: 0 });
     } finally {
       await restoreAlias(COMMIT_ALIAS, sourceIndex);
+    }
+  });
+
+  it('**first-parent 히스토리를 공유하는 두 시퀀스 브랜치** — 공유 커밋은 한 공간의 서수만 달고, 다른 공간의 `prs-commits` 재색인도 전환된다 (독립 리뷰 지적)', async () => {
+    /*
+     * `release`를 A(서수 2) 시점에서 갈라 커밋 하나를 더한다. 두 브랜치의 first-parent 체인은 root·A를
+     * 공유하며, 커밋 문서는 SHA당 하나라 한 공간만 라벨링한다. 처음 판의 전환 전 검증은 대표 범위
+     * 정렬의 기대치에 공유 커밋(`other_space`)까지 넣어 길이가 어긋났고, 그래서 다중 브랜치 저장소의
+     * 커밋 재색인이 전환에 닿지 못했다.
+     */
+    const RELEASE = 'release';
+    await run(origin.dir, ['branch', RELEASE, origin.chain[1] as string]);
+    await run(origin.dir, ['checkout', '-q', RELEASE]);
+    await writeFile(join(origin.dir, 'release-1.txt'), 'release-1\n', 'utf8');
+    await run(origin.dir, ['add', '.']);
+    await run(origin.dir, ['commit', '-q', '-m', 'R1 release fix'], { GIT_AUTHOR_DATE: '2026-09-01T06:00:00Z', GIT_COMMITTER_DATE: '2026-09-01T06:00:00Z' });
+    const releaseHead = (await run(origin.dir, ['rev-parse', 'HEAD'])).trim();
+    await run(origin.dir, ['checkout', '-q', 'main']);
+    await repositoryRepo.upsertRepository(pool, {
+      repository_id: REPOSITORY_ID,
+      owner: OWNER,
+      name: NAME,
+      org_id: 1,
+      visibility: 'internal',
+      sequence_branches: [BRANCH, RELEASE],
+      mirror_enabled: true,
+      status: 'active',
+    });
+    repository = (await repositoryRepo.findRepositoryById(pool, REPOSITORY_ID)) as RepositoryRow;
+
+    for (const [pr, sha] of origin.squash) await projectPullRequest(pr, sha, 1_000);
+    expect((await prepareAndAssignSequence(sequenceDeps(), REPOSITORY_ID, BRANCH)).kind).toBe('done');
+    expect((await prepareAndAssignSequence(sequenceDeps(), REPOSITORY_ID, RELEASE)).kind).toBe('done');
+    const releaseSpace = await sequenceSpaceRepo.findSequenceSpace(pool, REPOSITORY_ID, RELEASE);
+    expect(Number(releaseSpace?.head_seq)).toBe(3); // root · A · R1
+    for (const sha of origin.chain) {
+      await enrichCommit(enrichDeps(), repository, { commitSha: sha, firstParent: true, pullRequestNumber: [...origin.squash.entries()].find(([, one]) => one === sha)?.[0] ?? null, baseBranch: BRANCH });
+    }
+    await enrichCommit(enrichDeps(), repository, { commitSha: releaseHead, firstParent: true, pullRequestNumber: null, baseBranch: RELEASE });
+    await drainWork();
+    const mainBefore = await canonicalSnapshot();
+
+    const { jobId, targetIndex, sourceIndex } = await enqueueReindex(COMMIT_ALIAS);
+    try {
+      const row = await jobRepo.findJobById(pool, jobId);
+      if (row === undefined) throw new Error('잡을 찾지 못했다');
+      await runReindexJob({ pool, es, refresh: true, mergeNumberEnabled: false }, row);
+      const job = await jobRepo.findJobById(pool, jobId);
+      expect(job?.state, job?.error ?? '').toBe('completed');
+
+      // 공유 커밋(root·A)은 replay 순서상 먼저 온 main의 서수를 달고, release 전용 커밋은 release의 서수를 단다.
+      expectProjected(await commitDoc(origin.chain[0] as string, targetIndex), 1);
+      expectProjected(await commitDoc(origin.chain[1] as string, targetIndex), 2);
+      const r1 = await commitDoc(releaseHead, targetIndex);
+      expect(r1).toMatchObject({ merge_seq: 3, seq_epoch: 1, base_branch: RELEASE, sequence_space: `${OWNER}/${NAME}@${RELEASE}` });
+      // release 공간의 replay 기록은 공유 커밋 둘을 other_space로 접고 R1 하나만 settled로 센다.
+      const replay = (job?.progress as { sequence_replay?: { spaces: Record<string, unknown>[] } }).sequence_replay;
+      const releaseRecord = replay?.spaces.find((one) => one['base_branch'] === RELEASE);
+      expect(releaseRecord).toMatchObject({ seq_epoch: 1, head_seq: 3, settled: 1, unsettled: 0, skipped: 2 });
+      // 정본은 두 공간 모두 그대로다.
+      expect(await canonicalSnapshot()).toEqual(mainBefore);
+      expect(Number((await sequenceSpaceRepo.findSequenceSpace(pool, REPOSITORY_ID, RELEASE))?.head_seq)).toBe(3);
+    } finally {
+      await restoreAlias(COMMIT_ALIAS, sourceIndex);
+    }
+  });
+
+  it('**shadow(target) 쓰기가 던지면 replay 기록이 그 공간을 unsettled로 세고 잡은 실패한다** — active 성공이 shadow 실패를 덮지 않는다 (독립 리뷰 지적)', async () => {
+    for (const [pr, sha] of origin.squash) await projectPullRequest(pr, sha, 1_000);
+    await assign();
+    await drainWork();
+
+    const { jobId, targetIndex, sourceIndex } = await enqueueReindex(PR_ALIAS);
+    try {
+      // target 인덱스에 대한 사전 읽기(mget)만 죽는 ES — 서비스 별칭 쪽 투영은 그대로 성공한다.
+      const flaky = new Proxy(es, {
+        get(target, property: string | symbol) {
+          if (property === 'mget') {
+            return async (params: { index?: string }): Promise<unknown> => {
+              if (params.index === targetIndex) throw new Error('injected_shadow_failure');
+              return es.mget(params as never);
+            };
+          }
+          return Reflect.get(target, property) as unknown;
+        },
+      }) as Client;
+      const row = await jobRepo.findJobById(pool, jobId);
+      if (row === undefined) throw new Error('잡을 찾지 못했다');
+      await runReindexJob({ pool, es: flaky, refresh: true, mergeNumberEnabled: false }, row);
+
+      const job = await jobRepo.findJobById(pool, jobId);
+      // 울타리가 shadow 실패를 잡 실패로 만들고 별칭은 옮겨지지 않는다.
+      expect(job?.state).toBe('failed');
+      expect(job?.error).toBe('shadow_write_failed');
+      expect(await resolveServingIndex(es, PR_ALIAS)).toBe(sourceIndex);
+      // replay 기록은 서비스 결과로 물러서지 않는다 — target에 쓰지 못한 넷 전부가 unsettled다.
+      const replay = (job?.progress as { sequence_replay?: { spaces: Record<string, unknown>[] } }).sequence_replay;
+      expect(replay?.spaces[0]).toMatchObject({ base_branch: BRANCH, settled: 0, unsettled: 4 });
+    } finally {
+      await restoreAlias(PR_ALIAS, sourceIndex);
     }
   });
 });

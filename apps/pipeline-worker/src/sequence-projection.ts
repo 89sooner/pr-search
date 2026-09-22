@@ -689,11 +689,6 @@ export interface ReplaySpaceRecord {
   readonly skipped: number;
 }
 
-/** 재색인 replay의 대상 인덱스 판정 — shadow(= target)가 있으면 그것, 없으면 서비스 결과. */
-function targetOutcomes(result: SequenceProjectionResult, alias: string): readonly SequenceDocOutcome[] {
-  return (result.shadows[alias] ?? result.served[alias])?.outcomes ?? [];
-}
-
 /**
  * 재구축 직후 저장소 하나의 모든 시퀀스 공간을 현재 정본으로 다시 비춘다 (재색인 replay).
  *
@@ -728,14 +723,24 @@ export async function replaySequenceForRepository(
       });
       if (rows.length === 0) break;
       const resolved = resolveTargets(space, rows, 'reindex', [kind]);
-      const page = await withReindexWrite(deps.pool, async (targets) => projectItems(deps, space, resolved, { targets }));
-      const judged = targetOutcomes(page.raw, alias);
+      const { page, shadowExpected } = await withReindexWrite(deps.pool, async (targets) => ({
+        page: await projectItems(deps, space, resolved, { targets }),
+        shadowExpected: targets.shadows[alias] !== undefined,
+      }));
       const otherSpace = new Set(page.skipped.filter((one) => one.reason === 'other_space').map((one) => one.docId));
-      for (const one of judged) {
-        if (otherSpace.has(one.docId)) continue;
-        if (isSettledOutcome(one.kind)) settled += 1;
-        else unsettled += 1;
-      }
+      /*
+       * **판정은 target(shadow) 결과다.** shadow 쓰기가 던지면 투영기는 그 별칭의 shadow 결과를 남기지
+       * 않고 `recordShadowFailure`만 부른다(울타리가 잡을 `failed`로 만든다). 그때 서비스 결과로
+       * 물러서면 target에 한 번도 쓰지 못한 문서가 `settled`로 세어져 진행 기록이 거짓이 된다 — 독립
+       * 리뷰 지적. 그래서 "target에서 끝났다고 확인된 항목"만 settled로 세고 **나머지 전부**를
+       * unsettled로 센다. reclaim 두 번째 쓰기만 shadow에 닿은 부분 결과도 같은 규칙으로 정직하다.
+       */
+      const judgedItems = resolved.items.filter((item) => !otherSpace.has(item.docId));
+      const outcomes = shadowExpected ? (page.raw.shadows[alias]?.outcomes ?? []) : (page.raw.served[alias]?.outcomes ?? []);
+      const settledIds = new Set(outcomes.filter((one) => isSettledOutcome(one.kind)).map((one) => one.docId));
+      const pageSettled = judgedItems.filter((item) => settledIds.has(item.docId)).length;
+      settled += pageSettled;
+      unsettled += judgedItems.length - pageSettled;
       skipped += page.skipped.length;
       pages += 1;
       cursor = rows[rows.length - 1]?.merge_seq ?? cursor;
@@ -807,19 +812,30 @@ export async function verifySequenceProjection(
         if (rows.length === 0) break;
         const resolved = resolveTargets(space, rows, 'reindex', [kind]);
         items += resolved.items.length;
-        const mismatched = await findMismatches(deps, space, targetIndex, resolved.items);
-        let remaining = mismatched;
-        if (mismatched.length > 0) {
+        const first = await findMismatches(deps, space, targetIndex, resolved.items);
+        let remaining = first.mismatches;
+        const otherSpace = new Set(first.otherSpace);
+        if (first.mismatches.length > 0) {
           // 한 번 더 비춘다 — 검증 직전 채번이 아직 닿지 않았을 수 있다. 그 뒤에도 남으면 실패다.
-          await withReindexWrite(deps.pool, (targets) => projectItems(deps, space, { items: mismatched.map((one) => one.item), skipped: [] }, { targets }));
-          remaining = await findMismatches(deps, space, targetIndex, mismatched.map((one) => one.item));
-          repaired += mismatched.length - remaining.length;
+          await withReindexWrite(deps.pool, (targets) => projectItems(deps, space, { items: first.mismatches.map((one) => one.item), skipped: [] }, { targets }));
+          const second = await findMismatches(deps, space, targetIndex, first.mismatches.map((one) => one.item));
+          remaining = second.mismatches;
+          for (const id of second.otherSpace) otherSpace.add(id);
+          repaired += first.mismatches.length - remaining.length;
         }
         for (const one of remaining.slice(0, 5)) {
           reasons.push(`시퀀스 투영 불일치 ${one.item.docId} seq=${String(one.item.mergeSeq)}: ${one.reason}`);
         }
         if (remaining.length > 5) reasons.push(`시퀀스 투영 불일치 ${String(remaining.length - 5)}건 더 (${space.sequenceSpace})`);
-        for (const item of resolved.items) expectedOrder.push({ docId: item.docId, mergeSeq: item.mergeSeq });
+        /*
+         * 대표 범위의 기대 순서에는 **이 공간이 실제로 라벨링한 문서만** 넣는다. 다른 시퀀스 브랜치가
+         * 현재 에폭에 갖고 있는 공유 커밋(`other_space`)은 그 브랜치의 서수를 달고 있어 이 공간의
+         * `base_branch` 필터로 읽는 실제 정렬에 나오지 않는다 — 넣으면 길이가 어긋나 다중 브랜치
+         * 저장소의 `prs-commits` 재색인이 전환에 영영 닿지 못한다(독립 리뷰 지적).
+         */
+        for (const item of resolved.items) {
+          if (!otherSpace.has(item.docId)) expectedOrder.push({ docId: item.docId, mergeSeq: item.mergeSeq });
+        }
         cursor = rows[rows.length - 1]?.merge_seq ?? cursor;
         if (rows.length < PROJECTION_PAGE) break;
       }
@@ -851,13 +867,18 @@ function firstDifference(a: readonly number[], b: readonly number[]): number | s
   return '-';
 }
 
+/**
+ * target 인덱스에서 정본과 다른 항목. `otherSpace`는 다른 시퀀스 브랜치가 현재 에폭에 갖고 있어
+ * 이 공간이 쓰지 않는 공유 커밋 문서 — 불일치가 아니며 대표 범위 정렬의 기대치에서도 뺀다.
+ */
 async function findMismatches(
   deps: ProjectionDeps,
   space: ProjectionSpace,
   targetIndex: string,
   items: readonly SequenceProjectionItem[],
-): Promise<{ item: SequenceProjectionItem; reason: string }[]> {
-  if (items.length === 0) return [];
+): Promise<{ mismatches: { item: SequenceProjectionItem; reason: string }[]; otherSpace: Set<string> }> {
+  const otherSpace = new Set<string>();
+  if (items.length === 0) return { mismatches: [], otherSpace };
   const observed = await readSequenceProjection(deps.es, targetIndex, items);
   const out: { item: SequenceProjectionItem; reason: string }[] = [];
   const conflicts: { item: SequenceProjectionItem; branch: string }[] = [];
@@ -881,12 +902,14 @@ async function findMismatches(
     );
     for (const one of conflicts) {
       // 다른 공간이 정본에서 이 SHA를 갖고 있으면 그 문서는 그 공간의 것이다 — 불일치가 아니다.
-      if (!holders.has(sequenceProjectionRepo.spaceCommitKey(one.branch, one.item.expectedSha))) {
+      if (holders.has(sequenceProjectionRepo.spaceCommitKey(one.branch, one.item.expectedSha))) {
+        otherSpace.add(one.item.docId);
+      } else {
         out.push({ item: one.item, reason: 'guard_rejected:branch' });
       }
     }
   }
-  return out;
+  return { mismatches: out, otherSpace };
 }
 
 async function allRepositories(pool: Pool): Promise<readonly RepositoryRow[]> {

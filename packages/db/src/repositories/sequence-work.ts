@@ -406,6 +406,29 @@ export async function completeCoveredRefreshWorks(
   return result.rows;
 }
 
+/**
+ * 한 공간·에폭의 문서 단위 `project` work 중 아직 끝나지 않은 수 (CR-113). 재투영 잡·복구 러너가
+ * 완료를 기다리며 2초마다 묻는다 — 행 전체를 읽어 JS에서 거르면 30일간 남는 `done` 행까지 매번
+ * 다시 읽는다(독립 리뷰 지적). `sequence_work_space_idx`가 받는다.
+ */
+export async function countPendingProjectDocWork(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  seqEpoch: number,
+): Promise<{ readonly pending: number; readonly parked: number }> {
+  const result = await db.query<{ pending: string; parked: string }>(
+    `SELECT count(*) FILTER (WHERE state IN ('ready', 'retry', 'leased'))::text AS pending,
+            count(*) FILTER (WHERE state = 'parked')::text AS parked
+       FROM sequence_work
+      WHERE kind = 'project' AND repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+        AND payload ->> 'scope' = 'doc'`,
+    [repositoryId, baseBranch, seqEpoch],
+  );
+  const row = result.rows[0];
+  return { pending: Number(row?.pending ?? 0), parked: Number(row?.parked ?? 0) };
+}
+
 export async function findWork(db: Queryable, workKey: string): Promise<SequenceWorkRow | undefined> {
   const result = await db.query<SequenceWorkRow>('SELECT * FROM sequence_work WHERE work_key = $1', [workKey]);
   return result.rows[0];

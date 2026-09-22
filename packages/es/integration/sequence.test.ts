@@ -139,6 +139,11 @@ function outcomeOf(result: SequenceProjectionResult, alias: string, docId: strin
 beforeAll(async () => {
   es = createTestClient();
   await waitForCluster(es);
+  // 고정 별칭의 문서를 지우고 별칭을 옮기는 파괴적 시험이다 — 격리 표식이 없는 클러스터에서는 시작하지 않는다 (CR-113, DEV-737).
+  const info = await es.info();
+  if (!/isolated|test|ci/i.test(String(info.cluster_name)) && process.env['CI'] !== 'true') {
+    throw new Error(`격리되지 않은 Elasticsearch(${String(info.cluster_name)})에서는 이 시험을 돌리지 않는다`);
+  }
   await applyMappings(es);
   // 매핑 버전이 올라간 별칭을 현재 정의로 옮긴다 (WP-032). 시험 전용.
   await switchAliasesForTests(es);

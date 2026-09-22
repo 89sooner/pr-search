@@ -97,16 +97,9 @@ function summarize(work: SequenceWorkRow | undefined): Record<string, unknown> {
   };
 }
 
-async function docWorkTally(pool: Pool, repositoryId: number, baseBranch: string, seqEpoch: number): Promise<{ pending: number; parked: number }> {
-  const rows = await sequenceWorkRepo.listWorkForSpace(pool, repositoryId, baseBranch, ['project']);
-  let pending = 0;
-  let parked = 0;
-  for (const row of rows) {
-    if (row.seq_epoch !== seqEpoch || (row.payload as { scope?: unknown }).scope !== 'doc') continue;
-    if (row.state === 'parked') parked += 1;
-    else if (row.state === 'ready' || row.state === 'retry' || row.state === 'leased') pending += 1;
-  }
-  return { pending, parked };
+/** 아직 끝나지 않은 문서 단위 work 수. SQL 집계 하나다 — 매 tick 전량 조회를 하지 않는다. */
+function docWorkTally(pool: Pool, repositoryId: number, baseBranch: string, seqEpoch: number): Promise<{ readonly pending: number; readonly parked: number }> {
+  return sequenceWorkRepo.countPendingProjectDocWork(pool, repositoryId, baseBranch, seqEpoch);
 }
 
 /**

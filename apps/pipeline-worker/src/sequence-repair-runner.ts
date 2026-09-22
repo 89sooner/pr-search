@@ -131,6 +131,9 @@ export async function runRepairJob(deps: RepairRunnerDeps, job: JobRow): Promise
   const repair = deps.repair ?? repairSequence;
   try {
     const outcome = await repair(deps.sequence, repository, parsed.baseBranch, `job:${String(job.job_id)}`);
+    const patch = async (fields: Record<string, unknown>): Promise<void> => {
+      await deps.pool.query('UPDATE job SET progress = progress || $2::jsonb WHERE job_id = $1', [job.job_id, JSON.stringify(fields)]);
+    };
     if (outcome.kind === 'consistent') {
       /*
        * `consistent`도 **성공**이다 (CR-034, DEV-182). 큐에서 기다리는 사이 이미
@@ -140,9 +143,6 @@ export async function runRepairJob(deps: RepairRunnerDeps, job: JobRow): Promise
        * durable full sweep을 상한까지 기다려 progress에 `db: consistent` / `projection:
        * completed | in_progress | partial`로 따로 적는다. 락은 잡지 않는다 — 읽기만 한다.
        */
-      const patch = async (fields: Record<string, unknown>): Promise<void> => {
-        await deps.pool.query('UPDATE job SET progress = progress || $2::jsonb WHERE job_id = $1', [job.job_id, JSON.stringify(fields)]);
-      };
       await patch({ db: 'consistent', checked: outcome.checked, projection: 'scheduled', work_key: outcome.projection.work_key, requested_generation: outcome.projection.requested_generation });
       const sleep = deps.sleep ?? ((ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms)));
       const waited = await awaitProjectionWork(
@@ -170,6 +170,12 @@ export async function runRepairJob(deps: RepairRunnerDeps, job: JobRow): Promise
       await patch({ projection, pending_documents: waited.pendingDocuments, parked_documents: waited.parkedDocuments });
       await finish('completed');
     } else if (outcome.kind === 'repaired') {
+      /*
+       * 재채번은 새 에폭 전체의 durable full sweep을 트랜잭션에 남기고 분기 이후 구간을 인라인으로
+       * 비춘다(`repairSequence`). 색인 상태는 `consistent`와 같은 어휘로 보고하되 기다리지 않는다 —
+       * 에폭이 바뀐 직후라 옛 cursor·인용은 어차피 `epoch_stale`이고, sweep은 `prsctl sequence status`가 본다.
+       */
+      await patch({ db: 'repaired', old_epoch: outcome.oldEpoch, new_epoch: outcome.newEpoch, diverged_at_seq: outcome.divergedAtSeq, projection: 'scheduled' });
       await finish('completed');
     } else {
       await finish('failed', outcome.kind);

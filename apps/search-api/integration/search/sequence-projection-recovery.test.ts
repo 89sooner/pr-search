@@ -172,6 +172,11 @@ beforeAll(async () => {
   pool = await migratedPool();
   redis = createTestRedis();
   es = createEsClient(resolveClientOptions());
+  // 별칭을 옮기는 파괴적 시험이다 — 격리 표식이 없는 클러스터에서는 시작하지 않는다 (CR-113, DEV-737).
+  const info = await es.info();
+  if (!/isolated|test|ci/i.test(String(info.cluster_name)) && process.env['CI'] !== 'true') {
+    throw new Error(`격리되지 않은 Elasticsearch(${String(info.cluster_name)})에서는 이 시험을 돌리지 않는다`);
+  }
   await applyMappings(es);
   await switchAliasesForTests(es);
 

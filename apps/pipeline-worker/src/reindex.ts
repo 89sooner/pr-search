@@ -653,9 +653,9 @@ async function rebuildAlias(deps: ReindexDeps, alias: EntityAlias, jobId: number
    * 무관하다 — M이 꺼진 배포에서도 서수는 복원돼야 한다.
    */
   const replayFor = async (repository: RepositoryRow, kind: 'commit' | 'pull_request'): Promise<void> => {
+    // 진행 기록은 저장소마다 한 번 쓴다 — 공간마다 배열 전체를 다시 쓰면 쓰기량이 공간 수의 제곱이 된다.
     await replaySequenceForRepository(projectionDepsOf(deps), repository, kind, async (record) => {
       replay.spaces.push(record);
-      await advance(deps, jobId, { sequence_replay: replay } as Partial<ReindexProgress>);
     });
     replay.repositories_done += 1;
     await advance(deps, jobId, { sequence_replay: replay } as Partial<ReindexProgress>);

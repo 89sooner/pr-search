@@ -1062,7 +1062,9 @@ PR·커밋 재구축 뒤 replay와 전환 전 검증을 거친다. `MNUMBER_ENAB
    찍는다. 같은 것을 운영 화면 실행 폼 `Sequence reprojection (index repair)`(저장소·브랜치·
    예상 에폭)이나 `POST /api/v1/admin/jobs`(`type: sequence_reproject`, `expected_epoch`)로도
    요청할 수 있다. 반복 실행은 멱등이며(두 번째는 `noop`만 센다), 중단·재시작 뒤에도 작업은
-   커서에서 이어진다.
+   커서에서 이어진다. **완료의 뜻**: 존재하는 문서마다 서수가 실렸다는 것이지 정본의 모든 서수에
+   문서가 있다는 것이 아니다 — 아직 만들어지지 않은 커밋 문서(3번의 `skip_awaiting_creation`)는
+   보강이 만들 때 채워진다.
 
    ```bash
    ./prsctl sequence reproject --repository acme/payments --base-branch main --expected-epoch 1
