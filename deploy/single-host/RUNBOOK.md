@@ -1016,7 +1016,7 @@ GHE 응답 문구가 두 경우를 가르는 실마리다.
 - `mnumber_evidence`에 SQL로 근거를 넣는 임시 조치는 더 이상 필요 없고, 하지 않는다. 이미
   손으로 넣은 `direct_confirmed` 행은 그대로 유효하며 워커가 덮지 않는다(`DEV-715`).
 
-### 7.E 머지 시퀀스 색인 재투영 (WP-098 / FR-SEQ-001 AC-7·AC-8, `CR-113`, RB-20)
+### 7.E 머지 시퀀스 색인 재투영 (WP-098 / FR-SEQ-001 AC-7·AC-8, `CR-113`, RB-27)
 
 검색 화면의 「M number」 정렬은 Elasticsearch 문서의 `merge_seq` 정렬이다. PostgreSQL에 서수가
 확정돼 있어도 문서에 그 값이 없으면(늦게 도착한 PR 문서, 나중에 채워진 `merge_commit_sha`,

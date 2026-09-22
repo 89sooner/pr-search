@@ -660,8 +660,8 @@ JOB-MIR-002는 **`commit.metadata_ready`를 받아 `commit.metadata_ready`를 �
 | `retry_total{stage,reason}` | 재시도 횟수 | 급증 시 경보 | - |
 | `sequence_space_state{state}` | 시퀀스 공간 상태별 수 | `stale` 1개 이상 시 경보 | FR-SEQ-001 |
 | `sequence_reassign_total` | 재채번 발생 횟수 | 1건이라도 발생 시 알림 | FR-SEQ-005 AC-5 |
-| `sequence_index_failed_total` | 채번·재채번·복구 직후 인라인 색인 투영이 예외로 끝난 회차 (CR-113부터는 "durable work에 맡겼다"는 신호이지 유실이 아니다) | 5분 지속 증가 시 경보 (RB-20) | FR-SEQ-001 AC-7 |
-| `sequence_work_total{kind="project",outcome}` | durable 시퀀스 투영 work의 처리 결과 (`done`·`continue`·`retry`·`document_missing`·`parked`·`obsolete`·`no_target`·`other_space`·`exception`·`lease_lost`) — `MNUMBER_ENABLED`와 무관하게 오른다 | 미수렴 결과가 10분간 늘고 `done`이 늘지 않으면 경보 (RB-20) | FR-SEQ-001 AC-7·AC-8 |
+| `sequence_index_failed_total` | 채번·재채번·복구 직후 인라인 색인 투영이 예외로 끝난 회차 (CR-113부터는 "durable work에 맡겼다"는 신호이지 유실이 아니다) | 5분 지속 증가 시 경보 (RB-27) | FR-SEQ-001 AC-7 |
+| `sequence_work_total{kind="project",outcome}` | durable 시퀀스 투영 work의 처리 결과 (`done`·`continue`·`retry`·`document_missing`·`parked`·`obsolete`·`no_target`·`other_space`·`exception`·`lease_lost`) — `MNUMBER_ENABLED`와 무관하게 오른다 | 미수렴 결과가 10분간 늘고 `done`이 늘지 않으면 경보 (RB-27) | FR-SEQ-001 AC-7·AC-8 |
 | `reconcile_missing_total` | 조정 스캔이 발견한 누락 수 (`repository`·`kind` 라벨) | 0 초과 시 경고 | FR-ING-011 AC-4, NFR-002 |
 | `sequence_integrity_mismatch_total` | 정합성 점검이 발견한 불일치 공간 수 (`repository`·`base_branch` 라벨) | 1건이라도 발생 시 경보 | FR-ADMIN-003 AC-3 |
 | `sequence_integrity_check_failed_total` | 점검을 마치지 못한 횟수 (`reason` 라벨). **공간 상태를 바꾸지 않으므로** 실패는 이 지표로만 보인다 (CR-033, DEV-171) | 3회 연속 시 경보 | FR-ADMIN-003 예외 처리 |

@@ -293,7 +293,7 @@ deploy/single-host/prsctl mnumber attest | revoke | list
 deploy/single-host/prsctl sequence reproject --repository <owner/name> --base-branch <이름> --expected-epoch <에폭> [--alias …] [--dry-run] | status --repository … --base-branch …
 #                                 # 머지 시퀀스를 PostgreSQL 정본에서 Elasticsearch로 다시 비춘다 — 재채번이 아니며 에폭·서수·M 번호를 바꾸지 않는다.
 #                                 # --dry-run은 PostgreSQL·Elasticsearch·작업 큐·감사에 아무것도 쓰지 않는다. worker-sequence 이미지로 한 번 실행하고
-#                                 # 잡(sequence_reproject)·감사(job.run)를 남긴 뒤 durable work 완료를 기다린다 — CR-113 (WP-098, RB-20)
+#                                 # 잡(sequence_reproject)·감사(job.run)를 남긴 뒤 durable work 완료를 기다린다 — CR-113 (WP-098, RB-27)
 ```
 
 DB 접속 정보는 환경 변수에서만 읽는다 (`@prs/db`의 `resolvePoolConfig`). 우선순위는 `DATABASE_URL` → 개별 `POSTGRES_*` → 로컬 기본값이다. 통합 테스트는 `POSTGRES_TEST_DB`(기본 `prs_test`)를 써서 개발용 DB와 분리한다.

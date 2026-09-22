@@ -8420,9 +8420,10 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 
 **검증(최종 실행 2026-09-22, Node 22.23.2, 워크트리에서 별도 `pnpm install`):**
 
+- suite별 실행 head: typecheck·lint·lint:deps·단위·통합·회귀·build = 최종 head `e5fbbd5`; a11y·contrast·e2e = `1840dda`(그 뒤 `apps/web`·`apps/search-api/src`·`packages/*/src`에 변경 없음을 `git diff --stat`으로 실측 — 이후 커밋은 `apps/pipeline-worker/src`·시험·문서뿐이다).
 - `pnpm typecheck` 통과, `pnpm lint` 오류 0(중간에 잡힌 미사용 변수 1건 수정), `pnpm run lint:deps` 위반 0.
-- 단위 `pnpm test` 178 파일·3,205 통과(1 skipped, 기준선과 같음).
-- 통합 `pnpm run test:integration`(격리 인프라, 전량): **132 파일·2,091 통과**(09:12~09:20, 502초; 기준선 첫 실행 대비 파일 +3·시험 +33 — projection 8·reproject-runner 8·sequence-projection-recovery 6·admin/jobs +7·es sequence +7 −3, 이 CR이 더한 것). 첫 전량 실행(09:00~09:08)은 4건 실패였다 — 마이그레이션 034를 몰랐던 파수꾼 2파일(`snapshot-merged-state`·`mnumber-attestation-schema`, 목록 단언에 034 추가)과 이 CR의 의도된 동작 변경 2건(`freshness.test.ts`가 「M이 꺼지면 다음 회차 claim 0」을 걸었으나 이제 `project`를 집는다 → `project:*`만 집고 reconcile은 두는 것으로 단언 교정; `repair.test.ts`의 `consistent`가 durable 러너 없이 10분 대기 → 대기 상한 200ms로 두고 `projection: in_progress`를 단언). 이후 대상 디렉터리 재실행 11 파일·166 통과, 파수꾼 6 파일·69 통과.
+- 단위 `pnpm test` 178 파일·3,205 통과(1 skipped, 기준선과 같음) — 최종 head에서 재실행 동일.
+- 통합 `pnpm run test:integration`(격리 인프라, 전량): **132 파일·2,091 통과**(09:12~09:20, 502초; 최종 head `e5fbbd5`에서 10:22~10:30 재실행 132 파일·2,091 통과, 회귀 512·단위 3,205 재실행 통과; 기준선 첫 실행 대비 파일 +3·시험 +33 — projection 8·reproject-runner 8·sequence-projection-recovery 6·admin/jobs +7·es sequence +7 −3, 이 CR이 더한 것). 첫 전량 실행(09:00~09:08)은 4건 실패였다 — 마이그레이션 034를 몰랐던 파수꾼 2파일(`snapshot-merged-state`·`mnumber-attestation-schema`, 목록 단언에 034 추가)과 이 CR의 의도된 동작 변경 2건(`freshness.test.ts`가 「M이 꺼지면 다음 회차 claim 0」을 걸었으나 이제 `project`를 집는다 → `project:*`만 집고 reconcile은 두는 것으로 단언 교정; `repair.test.ts`의 `consistent`가 durable 러너 없이 10분 대기 → 대기 상한 200ms로 두고 `projection: in_progress`를 단언). 이후 대상 디렉터리 재실행 11 파일·166 통과, 파수꾼 6 파일·69 통과.
 - 회귀 `pnpm run test:regression` 11 파일·512 통과(runtime-reachability에 재투영 규율 4단언 추가 — 러너·등재 쌍, 무방비 `finishJob` 금지, 슬러그 검사 3갈래, Git·에폭·정본 서수 미접촉).
 - `pnpm build` 통과. `pnpm test:a11y` 24 파일·466 통과(JobRunForm 재투영 폼 1건 추가). `pnpm test:contrast` 18쌍 0 실패.
 - e2e `pnpm test:e2e` 206 통과 — 기존 `chromium` 프로젝트 204 + 새 `workspace` 프로젝트 2(`PRS_LEGACY_SEARCH` 없이 뜬 두 번째 서버, 실제 RepositoryWorkspace의 「M number」 헤더 → `sort=merge_seq` 요청과 서버 순서 그대로 그림). **UI 순서 검증에 한정**하며 서수의 정본 일치는 search-api 통합 시험이 ES 원시 필드로 건다. 기존 e2e 12개는 legacy 화면을 본다는 사실을 기록한다(playwright.config 주석).
@@ -8433,8 +8434,8 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 
 **독립 리뷰:** REVIEW_PLACEHOLDER
 
-**병합:** MERGE_PLACEHOLDER
+**병합:** 병합 전 — push·PR·CI·squash 병합 SHA와 그 CI 실행은 후속 기록에서 채운다.
 
 **발견 편차:** DEV-733(범위 공백 — 이 CR로 해소), DEV-734(다중 시퀀스 브랜치의 커밋 문서 `base_branch` 되돌림, open), DEV-735(체인 밖 문서의 옛 서수 orphan, open), DEV-736(운영 콘솔 재채번 본문 키 `confirm`/`confirmation` 불일치, open — 별건), DEV-737(통합 시험의 공용 ES 거부 장치 부재, partial — 이 CR의 두 파일만 가드).
 
-**한계:** 내부망 적용·사내 GHE 데이터로의 확인은 NOT RUN이다. 사내 배포 SHA는 NOT VERIFIED다. 재투영 잡의 완료 대기 상한(30분)·복구 러너의 대기(10분)는 대형 저장소에서 `projection_incomplete`/`in_progress`로 끝날 수 있으며 그때 durable work는 계속 돈다(`prsctl sequence status`). 재색인 replay는 저장소마다 재구축 직후 인라인이라 재색인 잡이 그만큼 길어진다(공간당 페이지 500·`mget`+bulk).
+**한계:** 재채번 러너(`sequence_reassign`)와 재투영 러너(`sequence_reproject`)는 잡을 **순차** 처리하므로, `consistent` 대기(≤10분)·재투영 대기(≤30분) 동안 같은 유형의 다른 공간 잡이 줄을 선다 — 락은 잡지 않지만 러너 슬롯은 잡는다(대기 상한이 그 값인 이유). 내부망 적용·사내 GHE 데이터로의 확인은 NOT RUN이다. 사내 배포 SHA는 NOT VERIFIED다. 재투영 잡의 완료 대기 상한(30분)·복구 러너의 대기(10분)는 대형 저장소에서 `projection_incomplete`/`in_progress`로 끝날 수 있으며 그때 durable work는 계속 돈다(`prsctl sequence status`). 재색인 replay는 저장소마다 재구축 직후 인라인이라 재색인 잡이 그만큼 길어진다(공간당 페이지 500·`mget`+bulk).
