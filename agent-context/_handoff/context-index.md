@@ -1,12 +1,12 @@
 # agent-context-index:v1
-generated=2026-09-22T17:28:43+00:00
+generated=2026-09-22T21:34:21+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=9
 legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd command;@path path-ref;@code code-fence;@sig retrieval-signals;@kv metadata
 
 ## read_order
-- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-09-23-PR-Search-16차-CR-116-구현-독립-리뷰-병합-전 sig=agent-context/current-handoff.md,origin/main,feature/cr116-pr-links,home/roqkf/pr-search-wt/cr116-pr-links,github.com/89sooner/pr-search/pull/228,packages/es/src/commit-links.ts,head/base,docs/00_governance/change_control.md
+- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-09-23-PR-Search-16차-CR-116-구현-독립-리뷰-병합-완료 sig=agent-context/current-handoff.md,origin/main,feature/cr116-pr-links,home/roqkf/pr-search-wt/cr116-pr-links,github.com/89sooner/pr-search/pull/228,packages/es/src/commit-links.ts,head/base,docs/00_governance/change_control.md
 - f73e2b0 p=25 src=agent-context/session-notes.md compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md title=Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료 sig=agent-context/session-notes.md,agent-context/upstream-feedback.md,origin/main,home/roqkf/pr-search,home/roqkf/design-system,Risks/gotchas,dailywork/2026-09-15_PR-Search-CR-092-pilot.7-,home/roqkf/pr-search/exports/pr-search-2026-09-15.md
 - f3c6d32 p=25 src=agent-context/session-summary.md compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md title=세션-요약-PR-Search-구현-2026-08-25-후반 sig=agent-context/session-summary.md,2919/2920,1847/1847,506/506,2930/2930,8/1865,agent-context/session-notes.md,docs/00_governance/change_control.md
 - f0b2764 p=28 src=agent-context/decisions.md compact=agent-context/_handoff/compact/f0b2764.decisions.ctx.md title=확정한-설계-결정과-이유 sig=agent-context/decisions.md,docs/00_governance/change_control.md,agent-context/session-notes.md,lib/redirect.ts,text/html,logout/route.ts,-qO/dev/null,HTTP/x.y
@@ -28,10 +28,10 @@ sig=agent-context/commands.md;agent-context/session-notes.md;repos/89sooner/pr-s
 ### f98c94b
 src=agent-context/current-handoff.md
 compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md
-sha256=f495209b926137e9b9a349b018f7d0b57501d4066bd5d83cd30fff0aaddc4d46
-bytes=5259 compact_bytes=5967 lines=40 priority=18
-heads=Current Handoff — 2026-09-23 PR Search 16차 (CR-116 구현·독립 리뷰, 병합 전) > Start here > Delivered > Verify before changing code > Open boundary > References
-sig=agent-context/current-handoff.md;origin/main;feature/cr116-pr-links;home/roqkf/pr-search-wt/cr116-pr-links;github.com/89sooner/pr-search/pull/228;packages/es/src/commit-links.ts;head/base;docs/00_governance/change_control.md;tmp/claude-1000/-home-roqkf-pr-search/;scratchpad/env.sh;packages/db/integration/;agent-context/upstream-feedback.md;cr102/103/105/106/111/113/114/115;docs/40_delivery/pr_search_implementation_traceability.md;docs/40_delivery/pr_search_work_packages.md;deploy/single-host/RUNBOOK.md;Current;Handoff;Search;Start;pull_request_numbers;feature;cr116;oneline
+sha256=6dc46078c07ee90f47d994e482d8fd4cb961313aa9509e39eab1f23576a13448
+bytes=5645 compact_bytes=6397 lines=40 priority=18
+heads=Current Handoff — 2026-09-23 PR Search 16차 (CR-116 구현·독립 리뷰·병합 완료) > Start here > Delivered > Verify before changing code > Open boundary > References
+sig=agent-context/current-handoff.md;origin/main;feature/cr116-pr-links;home/roqkf/pr-search-wt/cr116-pr-links;github.com/89sooner/pr-search/pull/228;packages/es/src/commit-links.ts;head/base;docs/00_governance/change_control.md;tmp/claude-1000/-home-roqkf-pr-search/;scratchpad/env.sh;packages/db/integration/;github.com/89sooner/pr-search/pull/227;docs/cr114-cr115-merge-record;agent-context/upstream-feedback.md;cr102/103/105/106/111/113/114/115;docs/40_delivery/pr_search_implementation_traceability.md;docs/40_delivery/pr_search_work_packages.md;deploy/single-host/RUNBOOK.md;Current;Handoff;Search;Start;pull_request_numbers;feature
 
 ### f0b2764
 src=agent-context/decisions.md
@@ -76,16 +76,16 @@ sig=agent-context/session-summary.md;2919/2920;1847/1847;506/506;2930/2930;8/186
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=86332294213dc582f53d9b406ea6434517387f7e72cb02cffa217969e14b1319
-bytes=221485 compact_bytes=186270 lines=2644 priority=30
+sha256=b2cb76324f87f433e26525ada3e4d5d9c664ab9aa292687606674e8224e63a22
+bytes=221608 compact_bytes=186270 lines=2645 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > 먼저 할 것 — 2026-09-17 10차에서 이어받을 것 (사용자 방향은 이미 확정, 다시 안 물어도 됨) > 이전 (8차 이하, 아래는 2026-09-15 시점 기준 — 이후 진행 여부 미확인, 착수 전 실제 상태 재확인) > 2026-09-15 (8차) — CR-092 뒤에 남은 것 > 이 세션이 이어서 할 것 > 피드백 반영 범위 (사용자에게 확인해 준 기준)
 sig=agent-context/todos.md;packages/es/src/query-builder.ts;Risks/gotchas;packages/query/src/keys.ts;CR/DEV/WP;packages/contracts/src/source.ts;feature/rel007-capability-registry;fix/main-ci-s0-flaky;feature/rel007-r0-pr-list;docs/cr-092-merge-record;ops/repositories;home/roqkf/design-system;api/v1/me;/prsctl;agent-context/upstream-feedback.md;home/roqkf/pr-search-wt/cr092;home/roqkf/pr-search-wt/cr092-record;fix/cr092-pilot7-feedback;docs/cr-091-merge-record;docs/pilot7-published;home/roqkf/pr-search-wt/cr091-auth;home/roqkf/pr-search-wt/cr091-record;fix/cr091-pilot6-auth-feedback;docs/cr-090-merge-record
 
 ### f3df0a8
 src=agent-context/upstream-feedback.md
 compact=agent-context/_handoff/compact/f3df0a8.upstream-feedback.ctx.md
-sha256=e801a88067391b5b74f5bf6aeb36bb0ee6cf3531ade309de9afbae770e092645
-bytes=34340 compact_bytes=27085 lines=262 priority=55
+sha256=0f04cbaf4c0d6f6ab5046677f1720b5b6709716451a07dec2f4163846033b899
+bytes=34917 compact_bytes=27320 lines=262 priority=55
 heads=Upstream Feedback > 재색인 후 merge_seq가 ES에서 사라져 M number 정렬이 깨진다 (설계 갭) > 현상 > 근본 원인: merge_seq의 ES 투영이 fire-and-forget이며 재색인 뒤 재투영 경로가 없다 > 타이밍 불일치 (초기 투영 갭) > 사내 임시 조치
 sig=agent-context/upstream-feedback.md;packages/es/src/sequence-projection.ts;/prsctl;owner/name;packages/es/src/sequence.ts;apps/pipeline-worker/src/reindex.ts;packages/es/src/merge-number.ts;packages/query/src/identifier.ts;prs/domain;api/v1/resolve;acme/smp1900;tools/app1900;org/smp1900;packages/query/src/keys.ts;apps/search-api/src/sequence/merge-numbers.ts;host/owner/repo/pull/1234;owner/repo;api/v1/merge-numbers/resolve;packages/domain/src/mnumber.ts;apps/web/lib/merge-number.ts;refs/tags/M-;git/refs;git/ref/tags/;update/delete
 

@@ -1,8 +1,8 @@
-# Current Handoff — 2026-09-23 PR Search 16차 (CR-116 구현·독립 리뷰, 병합 전)
+# Current Handoff — 2026-09-23 PR Search 16차 (CR-116 구현·독립 리뷰·병합 완료)
 
 ## Start here
 
-`origin/main`의 최신 커밋은 `83d30fb`(CR-115 PR #226 병합분)이고, 16차는 그 위에서 **CR-116 / WP-101**을 구현했다 — 커밋 문서의 `pull_request_numbers`가 합집합이라 과거 PR 번호가 영영 남던 결함이다. 브랜치는 `feature/cr116-pr-links`, worktree는 `/home/roqkf/pr-search-wt/cr116-pr-links`. **병합은 사용자 지시 뒤**다 — PR은 [#228](https://github.com/89sooner/pr-search/pull/228)이다.
+`origin/main`의 최신 커밋은 `83d30fb`(CR-115 PR #226 병합분)이고, 16차는 그 위에서 **CR-116 / WP-101**을 구현했다 — 커밋 문서의 `pull_request_numbers`가 합집합이라 과거 PR 번호가 영영 남던 결함이다. 브랜치는 `feature/cr116-pr-links`, worktree는 `/home/roqkf/pr-search-wt/cr116-pr-links`. PR [#228](https://github.com/89sooner/pr-search/pull/228)은 **main `f9cda82`로 병합됐다**(2026-09-23). 지시서가 「필수 리뷰·CI를 통과한 정상 main 병합」을 명시 승인했고 `main`에 보호 규칙이 없어 CI만이 게이트였으며, PR CI와 main CI 모두 success였다.
 
 머리는 늘 실측한다: `git log origin/main --oneline -5`, `gh pr list --state open`.
 
@@ -25,7 +25,7 @@
 
 ## Open boundary
 
-- **병합이 남았다** — PR #228을 만들었고 CI 결과는 원장 6.107장에 적는다. 병합은 사용자 지시 뒤다.
+- **병합 기록이 남았다** — CR-116을 `closed`·WP-101을 `done`으로 바꾸는 기록은 CR-114·CR-115와 한 PR([#227](https://github.com/89sooner/pr-search/pull/227), 브랜치 `docs/cr114-cr115-merge-record`)로 묶었다. 그 PR은 CR-116 병합으로 충돌했다가 `rebase origin/main`으로 풀었다.
 - `DEV-752`(open) — 원본 목록에서 빠진 커밋의 `role: source_commit`이 그대로 남는다. 사내에서 오염된 커밋들은 보강이 준 `role: merge_commit`을 갖고 있어 화면에 드러나지 않는다. 후속 CR 후보.
 - `DEV-728`은 **해소된 것으로 보인다** — `playwright.config.ts`에 `workspace` 프로젝트가 생겼고(`PRS_LEGACY_SEARCH` 없이 뜬 서버), `workspace.*.spec.ts`가 실제 `RepositoryWorkspace`에 도달한다. 16차가 `workspace.linked-prs.spec.ts`를 그 위에 더했다. 원장의 `DEV-728` 상태를 확인해 닫을지 판단이 필요하다.
 - 사내 적용은 **NOT RUN**, 사내 배포 SHA는 **NOT VERIFIED**. 반입 뒤 할 일은 `agent-context/upstream-feedback.md`의 CR-116 상류 반영 주석 끝에 적혀 있다.
