@@ -20,6 +20,7 @@
     "@prs/es": "workspace:*",
     "@prs/github": "workspace:*",
     "@prs/github-annotate": "workspace:*",
+    "@prs/github-tag": "workspace:*",
     "@prs/metrics": "workspace:*"
   },
   "bin": {

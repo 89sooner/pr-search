@@ -98,7 +98,7 @@ describe('031: 확인서 행이 있는 상태의 왕복', () => {
     await sequenceSpaceRepo.advanceMergeNumberCheckpoint(pool, REPO, BRANCH, 1, { headSeq: 2, headNumber: 1, blocked: null });
 
     // 031 위에 032(CR-101)와 033(CR-112)이 쌓였다 — 031을 내리려면 함께 내린다. 목록으로 단언하므로 새 마이그레이션이 생기면 여기서 깨진다.
-    expect(await migrateDown(pool, 4)).toEqual(['034', '033', '032', '031']);
+    expect(await migrateDown(pool, 5)).toEqual(['035', '034', '033', '032', '031']);
     // 확인서 근거 행만 사라지고, PR 근거·번호·checkpoint는 그대로다.
     expect(await evidenceRepo.findEvidence(pool, REPO, BRANCH, 1, 1)).toBeUndefined();
     expect(await evidenceRepo.findEvidence(pool, REPO, BRANCH, 1, 2)).toMatchObject({ state: 'pr_confirmed', pr_number: 21 });
@@ -126,7 +126,7 @@ describe('031: 확인서 행이 있는 상태의 왕복', () => {
       }),
     ).rejects.toSatisfy((error: unknown) => errorCode(error) === CHECK_VIOLATION);
 
-    expect(await migrateUp(pool)).toEqual(['031', '032', '033', '034']);
+    expect(await migrateUp(pool)).toEqual(['031', '032', '033', '034', '035']);
     expect(await attestationRepo.listAttestations(pool, { includeRevoked: true })).toEqual([]);
     await expect(
       attestationRepo.createAttestation(pool, { repositoryId: REPO, baseBranch: BRANCH, seqEpoch: 1, throughSeq: null, graceSeconds: 0, actor: 'prsctl:fixture', reason: '되살아난 표' }),

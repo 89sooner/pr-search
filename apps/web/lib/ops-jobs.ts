@@ -120,6 +120,8 @@ export const RUN_OPTIONS: readonly RunOption[] = [
   { type: 'reconcile', label: 'Reconciliation scan', path: '/api/admin/jobs', input: 'none' },
   { type: 'sequence_assign', label: 'Sequence numbering', path: '/api/admin/jobs', input: 'sequence_space' },
   { type: 'sequence_reproject', label: 'Sequence reprojection (index repair)', path: '/api/admin/jobs', input: 'sequence_space_epoch' },
+  // CR-115: 정본 ↔ 원격 M 태그 대조. 누락은 다시 만들고 다른 SHA를 가리키는 태그는 보고만 한다.
+  { type: 'mnumber_tag_reconcile', label: 'M-number tag reconcile (GHE tags)', path: '/api/admin/jobs', input: 'sequence_space' },
   { type: 'reindex', label: 'Zero-downtime reindex', path: '/api/admin/reindex', input: 'alias' },
   {
     type: 'sequence_integrity',

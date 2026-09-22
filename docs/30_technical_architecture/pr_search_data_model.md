@@ -1,6 +1,8 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.29 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.30 | 갱신일: 2026-09-22
+
+CR-115 / FR-SEQ-012: M 번호 lightweight 태그의 결과를 마이그레이션 035(추가 전용)로 정본에 얹는다 — `merge_sequence`에 태그 결과 다섯 열(`tag_state`·`tagged_at`·`tag_attempt_id`·`tag_result_reason`·`tag_found_sha`), `repository`에 운영자 정책 `tag_enabled`와 실행 중 차단 `tag_blocked_at`·`tag_blocked_reason`, `sequence_work.kind`에 `tag`, `job.type`에 `mnumber_tag_reconcile`. 표기(025·027)와 같은 규율이라 별도 표를 만들지 않는다 — 태그는 번호의 파생 쓰기이고 그 결과는 번호 행의 속성이다. Elasticsearch에는 `prs-commits`의 `role: merge_commit` 문서에 M 값 세 필드(`merge_number`·`merge_number_epoch`·`merge_number_state`)가 더해지며(AC-7), 소유자는 PR 문서와 같은 `materialize` durable work다(5장). 원격 태그 자체는 정본이 아니다 — GHE의 ref이며 정본은 언제나 `merge_sequence`다. ADR-004에 영향이 없다.
 
 CR-112 / FR-INT-001: PIPE 연동의 정본 다섯 표를 마이그레이션 033(추가 전용)으로 더한다. 상세는 3.6절이다. Elasticsearch에는 아무것도 더하지 않는다 — ADR-004의 "PostgreSQL만으로 재구축" 원칙에 영향이 없다.
 
@@ -17,7 +19,7 @@ CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025�
 | 엔티티 ID | 이름 | 소유 / 저장 | 요구사항 |
 | --- | --- | --- | --- |
 | ENT-SEQ-005 | mnumber_evidence | PR/direct/unresolved 증거, PostgreSQL | FR-SEQ-008 AC-10 |
-| ENT-SEQ-006 | sequence_work | 고정 kind의 durable intent/outbox, PostgreSQL. CR-113이 `project` kind(시퀀스 투영 — 공간 `tail`·`full`, 문서 `doc`)와 lease 보유자만 갱신하는 `progress JSONB`(페이지 커서·generation·완료 요약)를 더했다 (마이그레이션 034) | FR-SEQ-008 AC-11, FR-SEQ-001 AC-7·AC-8 |
+| ENT-SEQ-006 | sequence_work | 고정 kind의 durable intent/outbox, PostgreSQL. CR-113이 `project` kind(시퀀스 투영 — 공간 `tail`·`full`, 문서 `doc`)와 lease 보유자만 갱신하는 `progress JSONB`(페이지 커서·generation·완료 요약)를 더했다 (마이그레이션 034). CR-115가 `tag` kind(원격 lightweight 태그 의도 — 채번 트랜잭션이 PR당 한 행을 남기고 `tag` 역할만 claim한다, `materialize`와 같은 키 규칙)를 더했다 (마이그레이션 035) | FR-SEQ-008 AC-11, FR-SEQ-001 AC-7·AC-8, FR-SEQ-012 AC-2 |
 | ENT-SEQ-007 | sequence_latency_sample | 단계별 읽기 전용 관측 자료의 원천, PostgreSQL | FR-SEQ-008 AC-14 |
 | ENT-SEQ-008 | mnumber_attestation | M 번호 운영자 확인서(공간·에폭·범위·유예·행위자·사유·철회), PostgreSQL, 마이그레이션 031 — 상세는 WP-074 설계 6.5절 | FR-SEQ-008 AC-15 (CR-100) |
 
@@ -31,15 +33,15 @@ CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025�
 
 | Entity ID | 엔티티 | 책임 | 주요 필드 | 소유 저장소 | 소유 모듈 | 관련 요구사항 |
 | --- | --- | --- | --- | --- | --- | --- |
-| ENT-CORE-001 | Repository | 수집 대상 저장소 등록과 정책 | `repository_id`, `owner`, `name`, `org_id`, `visibility`, `sequence_branches[]`, `mirror_enabled`, `status`, **`annotate_enabled`** | PostgreSQL | registry | FR-ING-009, **FR-SEQ-009 AC-6** |
+| ENT-CORE-001 | Repository | 수집 대상 저장소 등록과 정책 | `repository_id`, `owner`, `name`, `org_id`, `visibility`, `sequence_branches[]`, `mirror_enabled`, `status`, **`annotate_enabled`**, **`tag_enabled`** | PostgreSQL | registry | FR-ING-009, **FR-SEQ-009 AC-6**, **FR-SEQ-012 AC-9** |
 | ENT-CORE-002 | PullRequest | PR 검색 문서 | `pr_number`, `title`, `body`, `author`, `state`(투영이 파생하는 `open`·`closed`·`merged` — 병합 신호가 있으면 `merged`, CR-101), `merged_at`, `merge_commit_sha`, `merge_seq`, `merge_number`, `link_summary` | Elasticsearch | projection | FR-SRCH-003, FR-SRCH-006, FR-SEQ-008 |
-| ENT-CORE-003 | Commit | 커밋 검색 문서 | `commit_sha`, `message`, `author`, `role`, `merge_seq`, `patch_id`, `changed_paths[]` | Elasticsearch | projection | FR-SRCH-002, FR-SRCH-004 |
+| ENT-CORE-003 | Commit | 커밋 검색 문서 | `commit_sha`, `message`, `author`, `role`, `merge_seq`, `merge_number`(`role: merge_commit` 문서만, CR-115), `patch_id`, `changed_paths[]` | Elasticsearch | projection | FR-SRCH-002, FR-SRCH-004, FR-SEQ-012 AC-7 |
 | ENT-CORE-004 | Team | 팀 정보와 집계 그룹 단위 | `team_id`, `slug`, `org_id`, `member_ids[]` | PostgreSQL | registry | FR-AUTH-002, FR-STAT-001 |
 | ENT-CORE-005 | User | 사용자와 접근 범위 | `user_id`, `login`, `email`, `roles[]`, `access_scope_version` | PostgreSQL | auth | FR-AUTH-001, FR-AUTH-003 |
 | ENT-CORE-006 | SavedSearch | 저장된 질의 | `saved_search_id`, `name`, `query`, `visibility`, `owner_user_id`, `team_id`(대상 팀, `visibility='team'`일 때만), `seq_epoch`(`seq:` 조건이 딛고 선 에폭, CR-051) | PostgreSQL | search | FR-SRCH-010 |
 | ENT-CORE-007 | AuditRecord | 감사 기록 | `audit_id`, `user_id`, `action`, `target`, `query`, `result_code`, `correlation_id`, `occurred_at` | PostgreSQL | audit | FR-AUTH-004 |
 | ENT-CORE-008 | RepositoryRegistrationRequest | 사용자가 남긴 저장소 등록 검토 요청과 운영자의 처리 결과 | `request_id`, `requested_by`, `repository_owner`, `repository_name`, `created_at`, `status`, `resolved_at`, `resolved_by`, `resolution_note` | PostgreSQL | registry | FR-ING-009 AC-8·AC-11 |
-| ENT-SEQ-001 | MergeSequence | 시퀀스 서수-커밋 대응 | `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `commit_sha`, `pull_request_number`, `merge_number`, `annotate_state` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-002, **FR-SEQ-008, FR-SEQ-009** |
+| ENT-SEQ-001 | MergeSequence | 시퀀스 서수-커밋 대응 | `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `commit_sha`, `pull_request_number`, `merge_number`, `annotate_state`, `tag_state` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-002, **FR-SEQ-008, FR-SEQ-009, FR-SEQ-012** |
 | ENT-SEQ-002 | SequenceSpace | 시퀀스 공간 상태 | `repository_id`, `base_branch`, `seq_epoch`, `head_sha`, `head_seq`, `state`, `last_assigned_at` | PostgreSQL | sequence | FR-SEQ-001, FR-SEQ-005 |
 | ENT-SEQ-003 | SafeMarker | 안전 구간 표식 | `marker_id`, `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `note`, `created_by` | PostgreSQL | sequence | FR-SEQ-006 |
 | ENT-SEQ-004 | BisectSession | 이분 탐색 상태 | `session_id`, `user_id`, `repository_id`, `base_branch`, `seq_epoch`, `good_seq`, `bad_seq` | PostgreSQL | sequence | FR-SEQ-007 |
@@ -219,6 +221,13 @@ CREATE TABLE merge_sequence (
   annotate_expected_digest TEXT,                  -- 쓰려 한 제목의 해시 앞 16자. **원문이 아니다**
   annotate_result_reason   TEXT,                  -- 짧은 사유 코드. 자유 문장을 넣지 않는다
   annotated_at         TIMESTAMPTZ,
+  -- 원격 lightweight 태그 결과 (FR-SEQ-012, 마이그레이션 035, CR-115). 표기와 같은 규율 — 번호 행의 속성이다
+  tag_state            TEXT,                      -- NULL(미시도) | done | conflict | failed | disabled | unknown
+  tagged_at            TIMESTAMPTZ,
+  tag_attempt_id       UUID,                      -- 마지막 시도의 식별자
+  tag_result_reason    TEXT,                      -- 짧은 사유 코드 (created | already_present | observed_after_unknown | reconciled
+                                                  --   | different_sha | annotated_tag | permission_blocked | sha_not_in_remote | …)
+  tag_found_sha        TEXT,                      -- conflict의 근거: 원격 태그가 가리키던 SHA (annotated 태그면 태그 객체의 SHA)
   committed_at         TIMESTAMPTZ NOT NULL,
   assigned_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (repository_id, base_branch, seq_epoch, merge_seq)
@@ -248,7 +257,21 @@ CREATE INDEX merge_sequence_annotate_idx
 -- 지키려는 원래 제목의 나머지를 덮는다. 근거 세 열은 **제목 원문을 담지 않는다** —
 -- 해시 앞 16자와 사유 코드이며 길이 제약이 원문 유입을 막는다. 보존 기간을 새로
 -- 두지 않고 행의 수명을 따른다.
+
+-- 태그 결과 열의 제약 (마이그레이션 035, CR-115)
+ALTER TABLE merge_sequence
+  ADD CONSTRAINT merge_sequence_tag_state_chk
+    CHECK (tag_state IS NULL OR tag_state IN ('done', 'conflict', 'failed', 'disabled', 'unknown')),
+  -- 번호 없는 태그 상태는 없다 — 태그 이름이 번호에서 나온다.
+  ADD CONSTRAINT merge_sequence_tag_requires_number_chk
+    CHECK (tag_state IS NULL OR merge_number IS NOT NULL),
+  ADD CONSTRAINT merge_sequence_tag_reason_len_chk
+    CHECK (tag_result_reason IS NULL OR char_length(tag_result_reason) <= 200),
+  ADD CONSTRAINT merge_sequence_tag_found_sha_chk
+    CHECK (tag_found_sha IS NULL OR tag_found_sha ~ '^[0-9a-f]{40}$');
 ```
+
+**표기 열과 태그 열은 같은 행의 파생 쓰기 결과라 별도 표로 떼지 않는다 (CR-115 / FR-SEQ-012 AC-2·AC-5).** 태그 이름은 `merge_number`에서 나오고 대상은 `commit_sha`다 — 번호 행이 없으면 태그도 없다(`merge_sequence_tag_requires_number_chk`). 별도 표로 떼면 번호와 태그 상태가 다른 트랜잭션에서 갱신되어 언젠가 어긋나고, 에폭 상향으로 행이 옛 에폭에 남을 때 태그 상태만 따로 정리하는 두 번째 경로가 생긴다. 반대 방향도 지킨다 — 태그 결과는 번호를 되돌리지 않는다(`markTagState`는 `tag_*` 다섯 열만 쓴다, AC-5). `tag_state`의 `done`은 원격에 같은 SHA의 lightweight 태그가 있음을 확인한 것이고(이번에 만들었든 이미 있었든), `conflict`는 같은 이름의 태그가 **다른 SHA** 또는 annotated 태그를 가리켜 손대지 않은 것이며 그 근거가 `tag_found_sha`다 — 잔여 스윕은 `conflict`를 다시 두드리지 않고 대조(reconcile)만 다시 판정한다. `failed`·`disabled`·`unknown`은 표기의 같은 값과 뜻이 같다. 근거 열에 태그 이름이나 응답 본문을 담지 않는다 — 이름은 번호에서 재구성되고 사유는 코드다.
 
 채번 동시성 제어는 PostgreSQL advisory lock을 사용한다 (FR-SEQ-001 AC-6).
 
@@ -347,19 +370,29 @@ CREATE TABLE repository (
   annotate_enabled  BOOLEAN     NOT NULL DEFAULT true,      -- 운영자가 적어 낸 정책
   annotate_blocked_at     TIMESTAMPTZ,                      -- 표기 잡이 권한 오류로 스스로 멈춘 시각
   annotate_blocked_reason TEXT,
+  -- M 번호 lightweight 태그 (FR-SEQ-012 AC-9, 마이그레이션 035, CR-115)
+  tag_enabled       BOOLEAN     NOT NULL DEFAULT true,      -- 운영자가 적어 낸 정책. 꺼도 채번·표기는 계속한다
+  tag_blocked_at    TIMESTAMPTZ,                            -- 태그 잡이 변경 요청에 403·404를 받아 스스로 멈춘 시각
+  tag_blocked_reason TEXT,
   CONSTRAINT sequence_branches_limit CHECK (array_length(sequence_branches, 1) <= 10),
   CONSTRAINT repository_annotate_blocked_chk
     CHECK ((annotate_blocked_at IS NULL) = (annotate_blocked_reason IS NULL)),
   CONSTRAINT repository_annotate_blocked_reason_len_chk
     CHECK (annotate_blocked_reason IS NULL OR char_length(annotate_blocked_reason) <= 200),
+  CONSTRAINT repository_tag_blocked_chk
+    CHECK ((tag_blocked_at IS NULL) = (tag_blocked_reason IS NULL)),
+  CONSTRAINT repository_tag_blocked_reason_len_chk
+    CHECK (tag_blocked_reason IS NULL OR char_length(tag_blocked_reason) <= 200),
   UNIQUE (owner, name)
 );
 CREATE INDEX repository_allowed_teams_idx ON repository USING GIN (allowed_team_ids);
 -- 잔여 스윕이 대상 저장소만 고른다 (JOB-SEQ-005).
 CREATE INDEX repository_annotate_enabled_idx ON repository (repository_id) WHERE annotate_enabled;
+-- 태그 잔여 스윕이 대상 저장소만 고른다 (JOB-SEQ-007, 마이그레이션 035).
+CREATE INDEX repository_tag_enabled_idx ON repository (repository_id) WHERE tag_enabled;
 ```
 
-**운영자의 정책과 실행 중 차단은 다른 열이다** (WP-075 / CR-084). `annotate_enabled`는 사람이 적어 낸 값이고 이 제품은 오류를 만났다고 그 값을 바꾸지 않는다. `annotate_blocked_at`은 표기 잡이 GHE에서 `403`·`404`를 받아 **스스로** 멈춘 사실이며, 프로세스가 다시 떠도 유지되어야 하므로 메모리가 아니라 여기 남는다 — 재시작마다 권한 없는 저장소에 다시 요청하면 `FR-SEQ-009`가 막으려던 한도 소모가 그대로 일어난다. 둘을 한 열에 담으면 권한 오류 한 번이 운영자의 설정을 조용히 뒤집고, 권한이 복구된 뒤에도 운영자는 자기가 켜 둔 저장소가 왜 꺼져 있는지 알 수 없다.
+**운영자의 정책과 실행 중 차단은 다른 열이다** (WP-075 / CR-084). `annotate_enabled`는 사람이 적어 낸 값이고 이 제품은 오류를 만났다고 그 값을 바꾸지 않는다. `annotate_blocked_at`은 표기 잡이 GHE에서 `403`·`404`를 받아 **스스로** 멈춘 사실이며, 프로세스가 다시 떠도 유지되어야 하므로 메모리가 아니라 여기 남는다 — 재시작마다 권한 없는 저장소에 다시 요청하면 `FR-SEQ-009`가 막으려던 한도 소모가 그대로 일어난다. 둘을 한 열에 담으면 권한 오류 한 번이 운영자의 설정을 조용히 뒤집고, 권한이 복구된 뒤에도 운영자는 자기가 켜 둔 저장소가 왜 꺼져 있는지 알 수 없다. 태그 열도 같은 규율이다 (CR-115 / FR-SEQ-012 AC-9·예외 처리): `tag_enabled`는 운영자의 정책이고 `tag_blocked_at`은 태그 잡이 변경 요청에 `403`·`404`를 받아 스스로 멈춘 사실이며, 푸는 것은 API 플래그가 아니라 실제 생성 성공(`clearTagBlock`) 또는 운영자의 명시적 대조 실행(`mnumber_tag_reconcile`, dry-run 제외)이고, 그것이 없으면 쿨다운(`MNUMBER_TAG_BLOCK_COOLDOWN_MS`, 기본 24시간) 뒤 잔여 스윕이 한 번 다시 본다 — 조회 성공은 쓰기 권한의 증거가 아니다. 같은 이유로 `conflict`는 잔여 스윕이 아니라 대조만 되돌린다(`clearTagState` — 원격에 없음을 확인한 행만).
 
 ```sql
 
@@ -705,6 +738,7 @@ CREATE TABLE job (
                                       -- | sequence_integrity | link_rebuild | export
                                       -- | snapshot_bootstrap (마이그레이션 012, CR-037 DEV-194)
                                       -- | sequence_reproject (마이그레이션 034, CR-113 — 재채번이 아닌 색인 재투영)
+                                      -- | mnumber_tag_reconcile (마이그레이션 035, CR-115 — 정본 ↔ 원격 M 태그 대조. 옮기거나 지우지 않는다)
   target      TEXT        NOT NULL,   -- repository_id 또는 인덱스명 등
   state       TEXT        NOT NULL,   -- queued | running | paused | completed | failed | cancelled
   progress    JSONB       NOT NULL DEFAULT '{}',
@@ -1104,6 +1138,12 @@ ALTER TABLE gh_capability_snapshot
       "seq_epoch":         { "type": "integer" },
       "sequence_space":    { "type": "keyword" },
 
+      // M 번호 (CR-115, FR-SEQ-012 AC-7). `role: merge_commit` 문서에만 실린다 — 소유자는 PR 문서와 같은
+      // `materialize` durable work이고 투영의 `params.doc`에 싣지 않는다 (5장). `merge_number_reason`은 커밋에 없다
+      "merge_number":      { "type": "long" },
+      "merge_number_epoch": { "type": "integer" },
+      "merge_number_state": { "type": "keyword" },
+
       "changed_paths":     { "type": "text", "analyzer": "path_analyzer",
                              "fields": { "raw": { "type": "keyword", "ignore_above": 1024 } } },
       "additions":         { "type": "integer" },
@@ -1265,6 +1305,8 @@ ALTER TABLE gh_capability_snapshot
 **시퀀스 필드의 소유자는 문서 단위 투영기다 (CR-113).** `merge_seq`·`seq_epoch`·`sequence_space`는 `packages/es/src/sequence-projection.ts`의 `projectSequenceToDocuments`만 쓴다(에폭 상향만 `applyEpochBump`의 `update_by_query`가 먼저 올리고 full sweep이 문서마다 확인한다). 값의 정본은 `merge_sequence`·`sequence_space`이고, "어느 문서에"의 정본은 `pull_request_snapshot`(`merge_commit_sha`·`base_branch`)과 `commit_snapshot`이다 — `merge_sequence.pull_request_number`는 대응의 근거로 쓰지 않는다. 커밋 문서는 SHA당 하나라 두 시퀀스 공간이 같은 문서를 두고 다툴 수 있다: 문서가 단 `base_branch`의 공간이 현재 에폭에 그 SHA를 갖고 있으면 그 공간의 값을 지키고, 없으면 쓰는 공간이 가져간다. PR 문서의 `base_branch`는 PR의 사실이라 투영이 바꾸지 않는다. 구 에폭 작업은 문서의 더 높은 `seq_epoch`를 덮지 못한다. `document_version`은 건드리지 않는다.
 
 **필드 소유권.** 투영 워커는 자기가 계산한 필드만 `params.doc`에 싣는다. 시퀀스 필드(`merge_seq`, `seq_epoch`)·관계 필드(`link_summary`, `links_pending`)·릴리스 필드(`release_tags`, `unreleased`)는 다른 워커가 소유하며, 투영은 그것들을 **생성 시점의 `upsert` 본문에만** 초깃값으로 둔다. `params.doc`에 넣으면 투영이 돌 때마다 다른 워커의 결과를 되돌린다.
+
+**커밋 문서의 M 세 필드는 PR 문서와 같은 소유자다 (CR-115 / FR-SEQ-012 AC-7).** `prs-commits`의 `merge_number`·`merge_number_epoch`·`merge_number_state`는 `materialize` durable work만 쓴다(`packages/es/src/merge-number.ts`의 `applyMergeNumberToCommitDocument` — PR 문서의 `applyMergeNumberToDocument`와 같은 순서·같은 에폭 가드). 투영의 `params.doc`에 싣지 않으며, 대상은 **`role: merge_commit` 문서뿐**이다 — 직접 푸시·원본 커밋 문서는 번호를 받지 않고(FR-SEQ-008 AC-1), 아직 `direct_push`인 채 보강 전인 문서(DEV-207)에는 쓰지 않고 보강이 역할을 고친 뒤 다시 온다. 한 `materialize` work가 PR 문서를 쓴 뒤 커밋 문서를 쓰며, 커밋 문서가 아직 없으면 백오프로 다시 보고 보강이 문서를 만들면서 그 work를 다시 요청한다. 에폭 상향 정리(`clearMergeNumbersBelowEpoch`)와 재색인 뒤 재투영 의도는 PR 인덱스와 커밋 인덱스를 함께 덮는다 — 한쪽만 지우면 `kind:commit`의 `mnum:` 조회가 옛 세대의 번호를 계속 낸다(ADR-007 규칙 5). `merge_number_reason`은 커밋에 없다 — pending의 사유는 PR 문서가 말한다.
 
 **`link_summary`는 leaf 단위로 소유가 갈린다 (CR-039, DEV-222).** 관계 워커가 하나가 아니기 때문이다.
 

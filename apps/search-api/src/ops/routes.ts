@@ -766,6 +766,8 @@ function registerRegistryRoutes(app: FastifyInstance, registry: RegistryDeps, au
           ...(typeof body['annotate_enabled'] === 'boolean'
             ? { annotate_enabled: body['annotate_enabled'] }
             : {}),
+          // 저장소별 태그 해제 (WP-100 / FR-SEQ-012 AC-9). 표기와 같은 자리, 같은 규율이다 — 꺼도 채번은 계속된다.
+          ...(typeof body['tag_enabled'] === 'boolean' ? { tag_enabled: body['tag_enabled'] } : {}),
         },
         principalId(principal),
         correlationId,

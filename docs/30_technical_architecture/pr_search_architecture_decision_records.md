@@ -1,5 +1,7 @@
 # PR Search Architecture Decision Records
 
+> ADR-026 / CR-115 (2026-09-22): 확정된 M 번호를 원격 저장소의 lightweight 태그(`refs/tags/M-<코드>-<번호>`)로 굳히는 **두 번째 자동 GHE 쓰기**를 연다. ADR-022의 「유일한」은 이 날부터 「첫 번째」다(ADR-022 Amendment). 쓰기 반경은 태그 **생성** 하나이고 이동·삭제 경로는 코드에 없으며, 자격은 태그 전용 App(`contents:write`)으로 조회·표기 자격과 나눈다. 기본 꺼짐.
+
 > CR-097 amendment / FR-SRC-001~004 / NFR-005: 소스 미저장은 지속 저장 금지로 유지하되, 사용자 승인 분석 요청에 대한 일시적인 GHE Contents 열람을 허용한다. 기존 인증/저장소 범위 판정 후 읽기 API만 사용하고 소스 본문은 PG·ES·Redis·미러·로그에 남기지 않는다. 외부 download_url을 추적하지 않는다. Git 원본 line blame을 가장하지 않고 제한된 인접 리비전 정렬의 추정 이력을 제공한다. ADR-006의 Radix/제품 토큰/기존 SaaS 10곳 참고 방향을 공유한다.
 
 > ADR-006 amendment / CR-096 (2026-09-16): 사용자가 전체 화면 Radix 전환을 승인했다. Conductor는 운영 화면에서도 제거하며 typed local UI 계층·시맨틱 토큰·영문 UI·지속되는 light/dark 선택을 제품 기준으로 삼는다. 기존 기능 컴포넌트와 접근 권한은 유지한다. CR-095의 제한적 범위를 대체한다.
@@ -59,6 +61,32 @@ CR-079: ADR-023을 아래 목록과 상세 설계에 추가한다. 새 M 번호�
 | ADR-022 | M 넘버 표기는 Data Plane이 수행하는 유일한 자동 GHE 쓰기 | accepted | 2026-09-10 | security, backend, data |
 | ADR-023 | squash M 번호의 확정 근거·선행 freshness·영속 복구·인용 안전성 | accepted — CR-100 보완(2026-09-17): DEV-581의 부재 증서를 운영자 확인서(ENT-SEQ-008)가 대신한다 | 2026-09-11 / 2026-09-17 | WP-074 상세 설계, data, async, API, UI, delivery, RUNBOOK |
 | ADR-025 | PIPE 위임 검색은 search-api 안의 private mTLS 리스너가 받는다 | accepted — CR-112, 기본 꺼짐. 번호 024는 미병합 로컬 브랜치 `docs/regression-first-slice`가 먼저 쓰고 있어 건너뛰었다 | 2026-09-21 | API, data, security, backend, infrastructure, delivery |
+| ADR-026 | M 번호 lightweight 태그는 Data Plane의 두 번째 자동 GHE 쓰기이며 반경은 `refs/tags/M-*` 생성 하나다 | accepted — CR-115, 기본 꺼짐. ADR-022를 「첫 번째」로 고치는 Amendment를 함께 적었다 | 2026-09-22 | security, backend, data, async, infrastructure, RUNBOOK |
+
+## ADR-026 M 번호 lightweight 태그는 Data Plane의 두 번째 자동 GHE 쓰기이며 반경은 `refs/tags/M-*` 생성 하나다
+
+### Context
+
+CR-115 / FR-SEQ-012. 사내 `0.1.0-pilot.17`이 M 번호를 Git revision으로 쓰기로 확정했다 — `git rev-parse M-1900-1450`, `git log M-1900-2010..M-1900-2130`, `git describe --tags`가 되어야 한다. 그러려면 원격 GHE 저장소에 그 이름의 ref가 있어야 하고, 그것을 만드는 것은 ADR-022가 「유일한」이라고 못 박은 자동 GHE 쓰기의 **두 번째** 사례다. 지켜야 할 것: ADR-022가 세운 제약(전용 App·좁은 반경·저장소별 해제·감사·덮어쓰지 않음), ADR-007 규칙 5(인용은 조용히 재해석되지 않는다 — 태그는 이미 인용된 뒤 옮기면 그 인용이 다른 커밋을 가리킨다), ADR-004(Elasticsearch는 PostgreSQL만으로 재구축된다 — 커밋 문서의 M 값도 그렇다), 그리고 표기(WP-075)가 durable 쓰기에서 배운 규율 전부(정본 재확인·결과 불명·권한 차단·쓰기 간격).
+
+### Decision
+
+1. **lightweight 태그, 이름은 표기 문자열 그 자체.** `refs/tags/M-<코드>-<번호>` 하나를 `POST /git/refs`로 만든다. annotated 태그를 쓰지 않는 이유는 tagger·메시지·서명이 「누가 이 태그를 만들었는가」를 이 제품이 주장하게 만들기 때문이다 — 우리는 정본의 사실(번호 ↔ 머지 커밋)만 굳힌다. 대상은 정본 행의 머지 커밋 SHA다.
+2. **쓰기 반경은 생성 하나다.** 클라이언트(`@prs/github-tag`)에 `PATCH /git/refs`(이동·force)·`DELETE /git/refs` 메서드가 없다. 같은 이름의 태그가 다른 SHA를 가리키거나 annotated면 `conflict`로 기록·보고만 한다. 「옮기지 않는다」를 약속이 아니라 **코드 경로의 부재**로 만들고 회귀 시험이 그 부재를 잠근다. 잘못 만든 태그의 정정은 GHE에서 사람이 한다(RUNBOOK 7.F).
+3. **세 번째 전용 App, 별도 역할.** 자격은 `GHE_TAG_*`(권한 `contents:write`)이며 조회용 Data App·표기용 App과 공유하지 않는다 — 표기 App과도 나누는 이유는 ref 생성 권한이 제목 갱신보다 넓어 한 키의 유출이 두 반경을 함께 열기 때문이다. 자격을 받는 것은 `tag` 역할뿐이며 그 역할은 `annotate`와 같은 컨테이너에 뜬다(둘 다 GHE 쓰기 역할). `sequence` 역할의 러너는 `tag` work를 집지 않는다.
+4. **durable work, 채번과 같은 트랜잭션.** 채번 트랜잭션이 PR마다 `sequence_work` `tag` 의도를 번호·checkpoint와 함께 남긴다(기능 스위치를 보지 않는다 — 꺼진 배포에서는 `ready`로 쌓였다가 켜는 순간 처리된다). 실행은 정본 재확인 → `GET ref` → 순수 판정 → 쓰기 간격 → **쓰기 직전 정본 재확인** → `POST` 하나 → 정본 기록 → 실제로 만든 경우에만 감사(`merge_number.tag`, `system:tag`, `created`·`observed`). 일 1회 잔여 스윕이 결과 없는 행·`failed`·`unknown`을 되살린다 — 이것이 CR-115 이전 채번분의 backfill이다.
+5. **에폭이 올라도 태그는 그대로다.** 옛 에폭의 의도는 `obsolete`이고 새 번호가 기존 태그와 다른 SHA를 만나면 `conflict`다. 자동 정정은 없다.
+6. **커밋 문서에도 M 값을 비춘다.** `prs-commits`의 `role: merge_commit` 문서에 `merge_number`·`merge_number_epoch`·`merge_number_state`를 PR 문서와 같은 소유자(`materialize`)·같은 에폭 가드로 쓴다. 에폭 상향 정리와 재색인 뒤 재투영 의도가 커밋 문서까지 덮으므로 ADR-004는 그대로다.
+7. **대조는 생성 경로를 재사용한다.** `mnumber_tag_reconcile` 잡·`prsctl mnumber tags reconcile`은 정본 ↔ 원격 `M-<코드>-*`를 대조해 `missing`은 `tag` work를 다시 요청하고(두 번째 생성 구현을 만들지 않는다), `conflict`·`unexpected`는 보고만 한다. 대조만이 종결 상태를 되돌린다 — 원격에 없음을 방금 확인한 `conflict` 행을 다시 열고(사람이 GHE에서 지운 태그의 재생성 경로), 권한 차단을 푼다(운영자의 명시적 재개 — 조회 성공만으로 푸는 것이 아니다). dry-run은 원격 읽기만이며 아무것도 되돌리지 않는다.
+8. **다중 시퀀스 브랜치 저장소는 만들지 않는다.** 태그 이름에 브랜치가 없어 두 공간의 같은 번호가 한 이름을 다툰다. `disabled(multiple_sequence_branches)`로 남기고 제품 결정은 `OD-015`다(권고안: 저장소별 태그 대상 브랜치 설정).
+
+### Alternatives and Consequences
+
+로컬 미러에만 태그를 만드는 안은 요구(원격 저장소에서 `git fetch --tags`로 쓴다)를 채우지 못해 기각했다. annotated 태그는 결정 1의 이유로 기각했다. 표기 App의 자격을 재사용하는 안은 권한 반경(`contents:write` ⊃ `pull_requests:write`)이 달라 기각했다. 태그 이름에 브랜치를 넣는 안(`M-<코드>-<브랜치>-<번호>`)은 `FR-SEQ-008` AC-5의 표기 문자열·PR 제목 접두와 어긋나 기각했다(`OD-015`). 충돌 시 force-update는 ADR-007 규칙 5와 상류 요건(「절대 force-update 금지」)에 정면으로 어긋나 기각했다. 대가: GHE 쓰기 역할이 둘, App 등록·시크릿·ruleset 운영 절차가 하나 더, 태그 생성 속도는 쓰기 간격 상한(1초)을 받으며 대형 저장소의 첫 backfill은 여러 회차에 걸친다. 「이 제품은 읽기 전용이다」는 한 줄 설명에 예외가 둘이 됐다.
+
+### Verification and Rollback
+
+단위·격리 PostgreSQL + `node:http` 가짜 GHE 통합·실 git 저장소의 revision 사용성·실 Elasticsearch 커밋 문서 투영·회귀(이동·삭제 부재, 잡↔러너 쌍, 역할 manifest)의 결과는 원장 6.106장이 소유한다. 사내 GHE·ruleset·운영 프록시를 거친 검증은 NOT_RUN이다. 롤백은 `MNUMBER_TAG_ENABLED=false`로 재기동하는 것이다 — 이미 만든 태그는 남고(옮기지도 지우지도 않는다) `tag` work는 `ready`로 쌓인다. 마이그레이션 035의 down은 정본 열·work·잡 행만 지우고 원격 태그는 건드리지 않는다.
 
 ## ADR-025 PIPE 위임 검색은 search-api 안의 private mTLS 리스너가 받는다
 
@@ -1191,3 +1219,7 @@ Operations Plane의 "사용자 명시 요청만"이라는 정의가 거짓이 �
 - Follow-up: 에폭 상향 후의 제목 일괄 갱신은 운영자 승인 절차를 요구하므로 별도 CR로 연다. 자동으로
   수백 건의 제목을 고치면 그만큼의 알림이 나간다.
 - Follow-up: 표기 실패율을 SLI로 감시한다. 조용히 실패하면 M 넘버가 있는 PR과 없는 PR이 섞인다.
+
+### Amendment — CR-115 두 번째 자동 쓰기 (2026-09-22)
+
+이 ADR의 제목이 말한 「유일한」은 2026-09-22부터 사실이 아니다 — ADR-026이 M 번호 lightweight 태그 생성을 **두 번째** 자동 GHE 쓰기로 열었다. 제목은 역사 기록으로 그대로 두고 여기서 한정한다. 이 ADR의 제약 다섯은 그대로 살아 있으며 ADR-026이 그것을 그대로 물려받았다: 전용 App(태그는 세 번째 App이고 표기 App과도 나눈다), 좁은 반경(제목 한 필드 ↔ `refs/tags/M-*` 생성 하나), 저장소별 해제(`annotate_enabled` ↔ `tag_enabled`), 감사(`pull_request.annotate` ↔ `merge_number.tag`), 덮어쓰지 않음(다른 접두는 `mismatch` ↔ 다른 SHA는 `conflict`). Negative에 적은 「이 결정이 선례로 인용될 것이다」가 그대로 일어났고, 그래서 ADR-026은 제약을 넓히지 않고 같은 다섯을 반복했다. 세 번째 자동 쓰기를 여는 요청이 오면 두 ADR의 제약 목록이 그 기준이다.

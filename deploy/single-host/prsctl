@@ -17,6 +17,8 @@
 #                       관리자 지정 역할(operator·release_manager·security_officer)
 #   ./prsctl mnumber attest | revoke | list
 #                       M 번호 운영자 확인서 — PR 근거가 끝내 없는 항목을 번호 없이 지나가게 한다 (CR-100)
+#   ./prsctl mnumber tags reconcile | status
+#                       정본 ↔ 원격 M 태그 대조 — 누락은 다시 만들고 다른 SHA는 보고만 한다 (CR-115)
 #   ./prsctl sequence reproject | status
 #                       머지 시퀀스를 PostgreSQL 정본에서 Elasticsearch로 다시 비춘다 — 재채번이 아니다 (CR-113)
 #
@@ -743,12 +745,21 @@ cmd_role() {
 #   prsctl mnumber attest --repository-id <id> --base-branch <이름> --seq-epoch <에폭> --reason "<사유>" [--through-seq <서수>] [--grace-hours <시간>]
 #   prsctl mnumber revoke --id <확인서 ID> --reason "<사유>"
 #   prsctl mnumber list [--repository-id <id>] [--all]
+#   prsctl mnumber tags reconcile --repository <owner/name> --base-branch <이름> [--dry-run]
+#   prsctl mnumber tags status    --repository <owner/name> --base-branch <이름>
+#     (CR-115) 원격 `M-<코드>-*` 태그와 정본을 대조한다. worker-annotate 이미지로 한 번 실행한다 — 태그 전용
+#     App 자격(`GHE_TAG_*`)이 그 컨테이너에만 있다. dry-run은 원격을 읽기만 하고 아무것도 쓰지 않는다.
 cmd_mnumber() {
   require_env
   local actor
   actor="$(printf '%s' "${SUDO_USER:-$(id -un)}" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-64)"
   [ -n "$actor" ] || die "호스트 사용자 이름을 알 수 없다 — 감사 기록의 행위 주체 없이 확인서를 만들지 않는다"
   local status=0
+  if [ "${1:-}" = "tags" ]; then
+    shift
+    compose run --rm --no-deps -T worker-annotate node dist/mnumber-tag-cli.js "$@" --actor "$actor" || status=$?
+    return "$status"
+  fi
   compose run --rm --no-deps -T worker-sequence node dist/mnumber-attest-cli.js "$@" --actor "$actor" || status=$?
   return "$status"
 }

@@ -181,12 +181,13 @@ export type {
 } from './sequence-projection.js';
 /** M 번호 색인 반영·관측 (WP-074 / FR-SEQ-008, CR-079). */
 export {
+  applyMergeNumberToCommitDocument,
   applyMergeNumberToDocument,
   clearMergeNumbersBelowEpoch,
   readMergeNumberProjection,
   readMergeNumberProjectionInternal,
 } from './merge-number.js';
-export type { MergeNumberDocOutcome, MergeNumberDocUpdate, MergeNumberProjection } from './merge-number.js';
+export type { MergeNumberCommitDocUpdate, MergeNumberDocOutcome, MergeNumberDocUpdate, MergeNumberProjection } from './merge-number.js';
 export type { ApplySequenceResult, UpdateByQueryTally } from './sequence.js';
 
 export { applyMappings, dropEntityIndices, switchAliasesForTests } from './bootstrap.js';

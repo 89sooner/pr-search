@@ -32,7 +32,7 @@ const REPOSITORY: RepositoryRow = {
   last_reconcile_missing_count: null,
   annotate_enabled: true,
   annotate_blocked_at: null,
-  annotate_blocked_reason: null,
+  annotate_blocked_reason: null, tag_enabled: true, tag_blocked_at: null, tag_blocked_reason: null,
 };
 
 const PR: EnrichedPullRequest = {

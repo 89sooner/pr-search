@@ -13,11 +13,17 @@ data:
   GHE_BASE_URL: https://ghe.example.com
 
   # PR 제목 M 넘버 표기 (WP-075 / JOB-SEQ-005). **기본은 꺼짐이다** — 이 제품이
-  # 사람의 지시 없이 GHE를 고치는 유일한 경로이므로, 값을 켜고 표기 전용 App
+  # 사람의 지시 없이 GHE를 고치는 경로(CR-115 이전에는 유일했다)이므로, 값을 켜고 표기 전용 App
   # 자격을 채운 배포에서만 쓰기가 시작된다. 켜 놓고 자격이 없으면 그 파드는
   # 기동을 거부한다. `MNUMBER_ENABLED`(채번)와 **다른 값이다**: 번호는 보되
   # 제목은 아직 건드리지 않는 형상이 정상이며 사내 반입의 첫 단계가 그것이다.
   MNUMBER_ANNOTATE_ENABLED: 'false'
+
+  # M 번호 lightweight 태그 (WP-100 / JOB-SEQ-007, CR-115). **기본은 꺼짐이다** — 두 번째
+  # 자동 GHE 쓰기이며 표기와 **다른 값이다**: 제목은 표기하되 태그는 아직 만들지 않는 형상이
+  # 정상이다. 켜기 전에 태그 전용 App의 시크릿(`tag-secret.example.yaml`)과 `M-*` ruleset을 준비한다
+  # (RUNBOOK 7.F). 켜 놓고 자격이 없으면 `pipeline-worker-annotate` 파드가 기동을 거부한다.
+  MNUMBER_TAG_ENABLED: 'false'
 
   # 게이트웨이 (인프라 3장: graceful shutdown 30초)
   INGEST_GATEWAY_PORT: '3001'

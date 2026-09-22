@@ -1,6 +1,8 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.23 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.24 | 갱신일: 2026-09-22
+
+CR-115 / FR-SEQ-012 운영: 확정된 M 번호를 원격 저장소의 lightweight 태그(`refs/tags/M-<코드>-<번호>`)로 만드는 `tag` 역할(JOB-SEQ-007, ADR-026)이 더해진다. **새 파드·새 컨테이너가 아니다** — 단일 호스트의 `worker-annotate`(`PIPELINE_WORKER_ROLES=annotate,tag`)와 k8s의 `pipeline-worker-annotate` 파드에 표기 역할과 함께 뜨며, 태그 전용 App 자격(`.env`의 `GHE_TAG_APP_ID`·`GHE_TAG_PRIVATE_KEY`·`GHE_TAG_INSTALLATIONS`, k8s `prs-tag-secrets`)은 그 단위만 받는다. 전역 스위치 `MNUMBER_TAG_ENABLED`의 기본은 꺼짐이고, 켜 놓고 자격이 비면 그 단위가 기동을 거부한다. 마이그레이션 035(`merge_sequence` 태그 결과 열, `repository.tag_enabled`·`tag_blocked_*`, `sequence_work`의 `tag` kind, 잡 `mnumber_tag_reconcile`)가 더해지며 새 DB·새 Redis·새 볼륨은 없다. 아웃바운드는 기존 GHE REST 허용 목록 안이다(`GET /git/ref/tags/…`·`GET /git/matching-refs/tags/…`·`POST /git/refs`). 운영 명령은 `prsctl mnumber tags reconcile [--dry-run] | status`이며(8장), 켜는 절차·ruleset·충돌 처리는 `deploy/single-host/RUNBOOK.md` 7.F가 소유한다.
 
 CR-112 / FR-INT-001 운영: PIPE 연동은 **기본 꺼짐**이며 켜면 search-api 프로세스가 두 번째 포트(private 리스너, mTLS 필수)를 듣는다(ADR-025). 새 서비스·새 DB·새 Redis·새 워커는 없고 마이그레이션 033(추가 전용 표 다섯)만 더해진다. 켜는 변수는 `PIPE_SEARCH_INTEGRATION_ENABLED=true`와 `…_HOST`·`…_PORT`·`…_TLS_KEY_FILE`·`…_TLS_CERT_FILE`·`…_TLS_CLIENT_CA_FILE`·`…_POLICY_FILE`이며, 하나라도 없거나 틀리면 search-api가 기동하지 않는다. 기본 배포(`deploy/single-host/compose.yml`, `deploy/k8s/`)는 바꾸지 않았다 — private 포트를 여는 compose override·HAProxy L4 passthrough·정책 파일·환경 변수의 **예시**와 키 교체·긴급 회수·binding 운영·보존 정리·롤백 절차는 [배포와 롤백](../../handoff/pipe-search-integration/v1/DEPLOYMENT_AND_ROLLBACK.md)이 소유한다. 운영 명령은 `node dist/pipe-integration-cli.js`(`bindings`·`credentials`·`purge`, 기본 dry-run)이며 `prsctl` 하위 명령은 아직 없다.
 
@@ -80,7 +82,8 @@ CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하
 | `pipeline-worker:reconcile` | 조정 스캔 | 저장소 수 | 1 / 1 | **1** | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:batch` | 배치 잡 (JOB-ING-006 재색인 · JOB-ING-007 아웃박스 재적재) | 고정 | **1 / 1** | **1** | 하트비트 | 이전 이미지 재배포 |
 | `pipeline-worker:authz` | 권한 캐시 무효화 (JOB-AUTH-001) | `prs:permission` 적체 | **1 / 4** | **1** | 하트비트 | 이전 이미지 재배포 |
-| `pipeline-worker:annotate` | PR 제목 M 넘버 표기 (JOB-SEQ-005) — **GHE 쓰기 자격을 가진 유일한 단위** | 고정 | **1 / 1** | **1** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:annotate` | PR 제목 M 넘버 표기 (JOB-SEQ-005) — **GHE 쓰기 자격을 가진 유일한 파드**(표기·태그 두 역할, CR-115) | 고정 | **1 / 1** | **1** | 하트비트 | 이전 이미지 재배포 |
+| `pipeline-worker:tag` | M 번호 lightweight 태그 생성·대조 (JOB-SEQ-007) — **별도 파드가 아니다.** `annotate` 파드에 `PIPELINE_WORKER_ROLES=annotate,tag`로 함께 뜨며 태그 전용 App 자격(`prs-tag-secrets`)은 그 파드만 받는다 | 고정 | **1 / 1** (annotate와 같은 파드) | **1** | 하트비트 | 이전 이미지 재배포 |
 | `filebeat` | 원본 아카이브 적재 | `ingest-gateway` 파드 수를 따른다 (사이드카) | 게이트웨이와 동일 | **1** (사이드카) | Filebeat 자체 | 설정 롤백 |
 | `gh-executor` | 사용자 요청 GitHub 작업 실행 (CR-005 · CR-086) | 대기 중 실행 수 | 2 / 8 | **선택 프로파일** `github-operations` — 기본 꺼짐, `.env`의 `GH_OPERATIONS_ENABLED=true`면 `prsctl`이 1개를 세운다. 켜도 운영자가 현재 정의를 운영 승인(A-006)하기 전에는 새 실행이 시작되지 않는다(CR-090) | GET /healthz (gh 버전·manifest 대조 포함, CR-090부터 `registry.lastPassedAt`. 꺼진 상태는 `execution: disabled`를 밝히고 백킹 서비스를 묻지 않는다) | 이전 이미지 재배포 |
 
@@ -93,6 +96,8 @@ CR-079: Profile A sequence는 기존 RW mirror-data에서 freshness를 수행하
 **상한 1은 이제 락이 함께 지킨다** (`CR-085` / `DEV-629` resolved). 값만으로 지키면 사람이 올리는 순간 사라지므로, 같은 정본 DB를 보는 프로세스 중 `annotate:runner` advisory 세션 락을 쥔 하나만 쓴다. 락을 얻지 못한 프로세스는 표기 회차만 건너뛰고 나머지 역할은 그대로 돈다. **보장 범위를 넘겨 읽지 않는다**: 서로 다른 DB를 쓰는 두 배포가 같은 GHE를 고치는 것은 막지 못하고, GHE가 fencing token을 검증하지 않으므로 네트워크 분할에서의 exactly-once도 아니다. 그래서 쓰기 직전마다 **락 커넥션으로** 정본을 다시 묻고, 그 질의가 실패하면 요청을 보내지 않는다.
 
 **켜기 전에 읽기 전용으로 먼저 본다.** `annotate-preview-cli`가 대상 저장소의 확정 M 번호 수, 아직 표기하지 않은 수, 다음 회차가 실제로 집을 행 수, 전역·저장소 정책과 차단 상태, 그리고 **확인하지 못한 것**을 함께 낸다. 워커 이미지 안에서 도는 이유는 전역 스위치와 표기 전용 자격이 그 환경에만 있기 때문이다 — 조회 서비스에서 같은 이름의 변수를 읽으면 「그 값이 워커에도 같다」는 가정이 필요하고, 그 가정이 틀리면 사전 점검이 거짓을 말한다. **출력은 승인 토큰이 아니라 측정 시각의 사진이다**: 실제 쓰기 때 잡은 정본을 다시 읽고 현재 상태로 판정한다.
+
+**`tag` 역할은 `annotate`와 같은 파드에 뜬다** (CR-115 / WP-100, `FR-SEQ-012` AC-6, ADR-026). 둘 다 GHE 쓰기 역할이고 「쓰기 자격을 조회 역할과 나눈다」는 원칙이 같으므로 쓰기 자격을 받는 단위를 하나로 유지한다 — 새 파드를 세우면 자격을 받는 표면이 둘이 된다. 다만 서로의 자격은 다른 시크릿(`prs-tag-secrets` / `prs-annotate-secrets`)과 다른 compose 앵커(`x-tag-env` / `x-annotate-env`)가 가른다 — 태그의 `contents:write`는 표기의 `pull_requests:write`보다 넓어 한 키의 유출이 두 반경을 함께 열어서는 안 되기 때문이다(보안 문서 13.5절, `THR-061`). 실행자 중복은 durable work(`sequence_work`의 `tag`)의 lease가 막으므로 `annotate:runner` 같은 advisory 락을 새로 만들지 않았다 — 파드가 둘이어도 같은 work를 동시에 집지 못한다. 쓰기 간격은 프로세스당 게이트(하한 1초)라 파드 수만큼 GHE 변경 요청이 늘므로 상한 1은 그대로 둔다. 켜기 전의 읽기 전용 점검은 `prsctl mnumber tags reconcile … --dry-run`이다 — 원격 태그 목록을 읽어 정본과 대조한 요약만 내고 PostgreSQL·작업 큐·감사에 아무것도 쓰지 않으며, 태그 전용 자격만 있으면 전역 스위치가 꺼진 채로도 돈다. **`MNUMBER_TAG_ENABLED=false`(기본)면 역할이 떠도 GHE에 아무것도 쓰지 않는다** — 채번 트랜잭션이 남긴 `tag` work는 `ready`로 쌓였다가 켜는 순간 처리된다.
 
 **`gh-executor`는 Profile A의 기본 형상에 세우지 않되, 선택 프로파일로 담는다** (CR-059 → CR-086). 첫 사내 반입 대상이 read-only Search/Investigation Plane이라는 `CR-059`의 결정은 그대로다 — `GH_OPERATIONS_ENABLED=false`(기본)면 컨테이너가 생기지 않는다. 다만 `REL-007`이 착수되어 이미지는 번들에 담고(`build-bundle.sh`의 `APP_TARGETS`), `prsctl`이 `.env`의 그 값을 읽어 `--profile github-operations`를 붙인다. 켜고 끄는 자리가 `.env` 하나이므로 **search-api만 켜지고 실행기가 없는 형상**(요청이 영원히 `queued`)은 `prsctl`로는 만들어지지 않으며, `prsctl health`가 그 어긋남을 판정한다. `smoke-images.sh` 6절이 실제 이미지로 고정 gh·해시·꺼진 기동·켜짐 거부를 본다.
 
@@ -290,6 +295,9 @@ deploy/single-host/prsctl role list | grant <login|user_id> <역할> | revoke <l
 deploy/single-host/prsctl mnumber attest | revoke | list
 #                                 # M 번호 운영자 확인서 — PR 근거가 끝내 없는 항목과 프로파일 밖 항목을 번호 없이 지나가게 한다.
 #                                 # pipeline-worker 이미지로 한 번 실행하고 확인서·감사·채번 회차 요청을 한 트랜잭션에 남긴다 — CR-100 (WP-088)
+deploy/single-host/prsctl mnumber tags reconcile --repository <owner/name> --base-branch <이름> [--dry-run] | status --repository … --base-branch …
+#                                 # 정본 ↔ 원격 M 태그 대조 — 누락은 durable work로 다시 만들고 다른 SHA를 가리키는 태그는 보고만 한다, 옮기지 않는다. --dry-run은 원격만 읽는다.
+#                                 # worker-annotate 이미지로 한 번 실행하고(태그 전용 App 자격이 그 컨테이너에만 있다) 잡(mnumber_tag_reconcile)·감사(job.run)를 남긴다 — CR-115 (WP-100, RB-28)
 deploy/single-host/prsctl sequence reproject --repository <owner/name> --base-branch <이름> --expected-epoch <에폭> [--alias …] [--dry-run] | status --repository … --base-branch …
 #                                 # 머지 시퀀스를 PostgreSQL 정본에서 Elasticsearch로 다시 비춘다 — 재채번이 아니며 에폭·서수·M 번호를 바꾸지 않는다.
 #                                 # --dry-run은 PostgreSQL·Elasticsearch·작업 큐·감사에 아무것도 쓰지 않는다. worker-sequence 이미지로 한 번 실행하고

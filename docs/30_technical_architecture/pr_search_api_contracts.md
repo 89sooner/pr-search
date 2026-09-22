@@ -1,5 +1,7 @@
 # PR Search API 계약
 
+> CR-115 / FR-SEQ-012 (2026-09-22): 새 경로는 없다. API-ADM-002의 일반 잡 생성 목록에 `mnumber_tag_reconcile`(JOB-SEQ-007 — 정본 ↔ 원격 `M-*` 태그 대조; 누락은 durable work로 재생성, 다른 SHA를 가리키는 태그는 보고만, 옮기거나 지우지 않는다)이 더해지고, API-ADM-001 `PATCH`에 저장소별 해제 `tag_enabled`(기본 `true`)가 더해진다. 커밋 색인 문서에 M 값 세 필드가 실려 `kind:commit`의 `mnum:`이 성립하지만, 커밋 hit 응답에 그 값을 싣는 것은 이번 판에 없다(DEV-742). 감사 `merge_number.tag`의 `result_code` 어휘(`created`·`observed`)는 보안 문서 13.5절이 소유한다.
+
 ## CR-112 — PIPE 연동 private 경로 (API-INT-001~014)
 
 공통 접두 `/internal/integrations/pipe/v1`. 이 경로들은 **공개 리스너에 없고**, search-api 안의 private 리스너(mTLS 필수, 기본 꺼짐, ADR-025)에만 등록된다. 모든 요청은 client 인증서로 먼저 client를 정하고, 조회와 `/context`는 `Authorization: Bearer <검색 grant>`를 더 요구한다. 응답은 모두 `Cache-Control: private, no-store`이며 `Set-Cookie`가 없고, 쿠키가 실린 요청은 400이다. **정확한 query·응답 스키마의 정본은 handoff의 OpenAPI(`pipe-integration-v1.openapi.yaml`)와 `operation-map.json`이다** — 아래 표는 목록이다. 경로 목록의 코드 정본은 `apps/search-api/src/integrations/pipe/operations.ts`의 `INTEGRATION_OPERATIONS`이며, 계약 시험이 셋의 일치를 대조한다. 제안 계약 PSI-1.0과 다른 자리는 [CONTRACT_DIFF](../../handoff/pipe-search-integration/v1/CONTRACT_DIFF.md)가 소유한다.
@@ -42,7 +44,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.41 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.42 | 갱신일: 2026-09-22
 
 ## 1. 목적
 
@@ -2483,6 +2485,8 @@ ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 →
 
 **`annotate_enabled`는 PR 제목 M 넘버 표기의 저장소별 해제 스위치다** (`FR-SEQ-009` AC-6, WP-075 / CR-084). 기본값은 `true`이며 끄면 그 저장소는 **채번은 계속하고 표기만 멈춘다** — M 넘버 자체는 `API-SEQ-007`로 여전히 얻을 수 있다. `THR-046`이 실제로 일어났을 때(틀린 값이 계속 쓰일 때) 가장 먼저 쓰는 대응이며, 저장소 단위이므로 문제가 확인된 저장소만 끄고 나머지는 계속된다. **전역 스위치가 따로 있다** — 이 값이 `true`여도 배포의 `MNUMBER_ANNOTATE_ENABLED`가 꺼져 있으면 아무것도 쓰지 않는다. **이 값은 운영자만 바꾼다**: 표기 잡이 권한 오류로 저장소를 멈출 때는 `annotate_blocked_at`을 따로 남기고 이 값을 건드리지 않는다.
 
+**`tag_enabled`는 M 번호 lightweight 태그의 저장소별 해제 스위치다** (`FR-SEQ-012` AC-9, WP-100 / CR-115). 기본값은 `true`이며 끄면 그 저장소는 **채번·표기는 계속하고 태그만 만들지 않는다** — 이미 만든 태그는 그대로다(옮기지도 지우지도 않는다). `THR-061`이 실제로 일어났을 때 추가 피해를 막는 즉시 대응이다. **전역 스위치가 따로 있다** — `MNUMBER_TAG_ENABLED`(기본 꺼짐)가 꺼져 있으면 이 값이 `true`여도 아무것도 쓰지 않는다. 태그 잡이 권한 오류(변경 요청의 403·404)로 저장소를 멈출 때는 `tag_blocked_at`을 따로 남기고 이 값을 건드리지 않으며, 그 차단은 이 API가 아니라 실제 생성 성공 또는 운영자의 대조 실행(`mnumber_tag_reconcile`)이 푼다. 표기의 `annotate_resume` 같은 별도 재개 플래그는 없다.
+
 응답 200: **`POST`와 같은 모양이다** — 갱신된 저장소 객체를 펼치고 `sequence_job_ids`를 곁들인다. 다른 모양으로 내면 두 경로를 함께 쓰는 화면이 응답마다 다르게 읽어야 한다. **새로 대상이 된 브랜치에만 채번 잡이 생긴다**: 목록에서 빠진 브랜치의 기존 시퀀스는 지우지 않는다 (AC-12) — 그 커밋들의 서수는 이미 인용된 값이다.
 
 **이 변경의 감사는 `repository.update` 하나다** (CR-054의 규율). 그 결과로 생긴 채번 잡을 `job.run`으로 함께 기록하지 않는다 — 사용자가 누른 것은 설정 변경 하나이고, 같은 행위를 두 번 세면 감사 로그에서 실제 실행 횟수를 알 수 없다. 운영자가 `A-003`에서 직접 채번을 실행한 경우만 `job.run`이다.
@@ -2556,6 +2560,7 @@ ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 →
 | `reconcile` | JOB-ING-005 조정 스캔 즉시 실행 (CR-055) | `all` — **서버가 정한다** | 없다 |
 | `sequence_assign` | JOB-SEQ-001 시퀀스 채번 (CR-055) | `owner/repo@{기준 브랜치}` — **서버가 조립한다** | `repository`, `base_branch` |
 | `sequence_reproject` | JOB-SEQ-006 시퀀스 재투영 (CR-113) — **재채번이 아니다** | `owner/repo@{기준 브랜치}` — **서버가 조립한다** | `repository`, `base_branch`, `expected_epoch`(양의 정수, 필수), `aliases`(선택 — `prs-pull-requests`·`prs-commits`의 비지 않은 부분집합, 기본 둘 다) |
+| `mnumber_tag_reconcile` | JOB-SEQ-007 M 번호 태그 대조 (CR-115) — **태그를 옮기거나 지우지 않는다** | `owner/repo@{기준 브랜치}` — **서버가 조립한다** | `repository`, `base_branch` |
 
 `link_rebuild`가 열려 있어야 하는 이유는 그것이 **PostgreSQL 정본에서 `prs-links`를 복구하는 유일한 경로**이기 때문이다 (ADR-004).
 
@@ -2566,6 +2571,8 @@ ADR-007 규칙 5). 처리 순서는 **질의 파싱 → 공간 지목 판정 →
 **`sequence_assign`의 `target`은 서버가 조립한다.** 요청은 `repository`(`owner/repo`)와 `base_branch`를 주고, 서버가 저장소 등록 여부와 그 브랜치가 `sequence_branches`에 있는지를 확인한 뒤 공간 식별자를 만든다. 클라이언트가 `target` 문자열을 직접 보내면 서로 다른 공간이 같은 문자열로 충돌하거나 등록되지 않은 브랜치가 큐에 들어간다. 러너가 행을 다시 파싱하지 않도록 **`progress`의 초기값에 `repository_id`와 `base_branch`를 함께 싣는다** — 잡 행은 enqueue 순간부터 실행에 필요한 것이 갖춰져 있어야 한다.
 
 **`sequence_reproject`는 정본에서 색인으로만 흐른다** (CR-113 / FR-SEQ-001 AC-8). 서버는 저장소 등록·채번 대상 브랜치·시퀀스 공간 존재를 확인하고, `expected_epoch`가 현재 에폭과 다르면 `400 INVALID_PARAMETER`에 `detail: { expected_epoch, current_epoch }`를 실어 거절한다 — force-push 직후 운영자가 모르는 새 에폭에 재투영하지 않게 하는 확인서(`prsctl mnumber attest`)와 같은 규율이다. `dry_run: true`는 이 경로가 받지 않는다(`400`) — 잡 행 자체가 쓰기이며 읽기 전용 점검은 `prsctl sequence reproject --dry-run`이 한다. 만들어진 잡의 `progress`에는 입력(`expected_epoch`·`aliases`·`repository_id`·`base_branch`)이 실리고, 러너가 durable `project(full)` work를 예약한 뒤 `work_key`·`requested_generation`·`projection`(`scheduled`→`running`→`completed`|`in_progress`|`partial`|`obsolete`|`detached`)·`work_state`·`cursor_seq`·`counts`·`pending_documents`·`parked_documents`를 비춘다. 잡은 sweep과 그것이 넘긴 문서 단위 work가 모두 끝났을 때만 `completed`이고(완료는 「존재하는 target 문서마다 서수가 실렸다」는 뜻이다 — 아직 만들어지지 않은 커밋 문서 `awaiting_creation`은 보강이 만들 때 채워지며 dry-run이 `skip_awaiting_creation`으로 센다), 끝내 만들어지지 않은 문서가 있거나 상한(30분) 안에 끝나지 않으면 `failed`에 사유(`projection_partial`·`projection_incomplete`)를 적는다 — durable work는 계속 돈다. `allowed_actions`는 `cancel`뿐이다(`reconcile`과 같은 이유 — 멈춰 이어 갈 지점이 없다). 감사는 다른 잡과 같은 `job.run`(`target: sequence_reproject:{공간}`, `created`|`JOB_CONFLICT`)이며, CLI 경로도 같은 액션을 `prsctl:<사용자>`로 남긴다. 이 잡은 Git을 읽지 않고 `merge_sequence`·`sequence_space`에 쓰지 않는다.
+
+**`mnumber_tag_reconcile`은 원격을 읽고 정본의 태그 결과 열만 쓴다** (CR-115 / FR-SEQ-012 AC-10). 서버는 저장소 등록·채번 대상 브랜치·시퀀스 공간 존재를 확인하고, `dry_run: true`는 받지 않는다(`400`) — 잡 행 자체가 쓰기이며 읽기 전용 점검은 `prsctl mnumber tags reconcile --dry-run`이 한다. 만들어진 잡의 `progress`에는 입력(`repository_id`·`base_branch`)과 요청 시각의 에폭(`seq_epoch_at_request`)이 실리고, `tag` 역할의 러너가 현재 에폭의 번호 행 전부와 원격 `refs/tags/M-<코드>-*` 목록을 대조한 요약을 남긴다 — `db_numbered`·`remote_refs`·`remote_truncated`(원격 목록이 상한 200페이지에서 잘렸다 — `unexpected`는 부분 집계)·`ok`·`missing`·`enqueued`·`reopened`(`conflict`였는데 원격에 없어 다시 연 행)·`unblocked`(권한 차단을 풀었는가)·`conflict`·`unexpected`와 예시 각 20건. `missing`은 durable `tag` work로 재요청되며(두 번째 생성 구현이 없다), `conflict`(다른 SHA·annotated)는 정본에 기록하고 보고만, `unexpected`(원격에만 있는 `M-*`)는 보고만 한다. **충돌은 잡의 실패가 아니라 보고다** — 잡은 `completed`로 끝나고 요약에 `conflict`가 남으며, 태그를 옮기는 것은 사람의 결정이다(RUNBOOK 7.F). 시퀀스 브랜치를 둘 이상 추적하는 저장소·`reassigning` 공간·원격 목록 실패는 `failed`에 사유(`multiple_sequence_branches`·`space_reassigning`·`remote_list_failed`)를 적는다. `allowed_actions`는 `cancel`뿐이다(`sequence_reproject`와 같은 이유). 감사는 다른 잡과 같은 `job.run`(`target: mnumber_tag_reconcile:{공간}`, `created`|`JOB_CONFLICT`)이며 CLI 경로도 같은 액션을 `prsctl:<사용자>`로 남긴다. 이 잡이 만든 태그의 감사(`merge_number.tag`)는 work가 남긴다. 이 잡은 `merge_number`·`merge_seq`·에폭에 쓰지 않는다.
 
 **두 번째 채번 실행 구조를 만들지 않는다.** 이 경로의 러너와 `prs:sequence` 이벤트 소비자는 같은 `assignSequence`에 모인다. `CR-034`(DEV-180)가 `sequence_assign` 잡 행을 한 번 거절했던 근거는 "그 유형을 집는 러너가 없다"였고, `CR-055`가 그 러너를 세워 전제를 없앤다. **조정 스캔이 누락 공간을 복구할 때는 계속 이벤트로 보낸다** — 그 경로는 공간마다 멱등이고 활성 잡 제약에 걸리지 않아야 하며, 잡 행으로 바꾸면 `DEV-180`이 적어 둔 자물쇠가 그대로 돌아온다.
 

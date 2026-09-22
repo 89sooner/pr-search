@@ -55,8 +55,11 @@ spec:
         - name: pipeline-worker
           image: prs/pipeline-worker:latest
           env:
+            # GHE 쓰기 역할 둘(표기 `annotate`, 태그 `tag`)을 한 파드에 둔다 (CR-115 / ADR-026).
+            # 둘 다 조회 역할과 자격을 나눈다는 원칙은 같고, 서로의 자격은 다른 시크릿이 가른다.
+            # `tag` 역할의 실행자 중복은 durable work의 lease가 막는다.
             - name: PIPELINE_WORKER_ROLES
-              value: annotate
+              value: annotate,tag
             # **공용 값 하나만 골라 받는다.** `envFrom`으로 `prs-secrets`를 받으면
             # 같은 시크릿의 `GHE_APP_PRIVATE_KEY`가 함께 온다.
             - name: DATABASE_URL
@@ -65,6 +68,11 @@ spec:
             - name: MNUMBER_ANNOTATE_ENABLED
               valueFrom:
                 configMapKeyRef: { name: prs-config, key: MNUMBER_ANNOTATE_ENABLED, optional: true }
+            # 기본값은 꺼짐이다 (WP-100 / FR-SEQ-012 AC-6). 이 manifest를 적용하는 것만으로는
+            # 원격 저장소에 태그가 생기지 않는다.
+            - name: MNUMBER_TAG_ENABLED
+              valueFrom:
+                configMapKeyRef: { name: prs-config, key: MNUMBER_TAG_ENABLED, optional: true }
           ports:
             - name: http
               containerPort: 3003
@@ -72,6 +80,10 @@ spec:
             - configMapRef: { name: prs-config }
             # 표기 전용 자격만 있는 시크릿이다. 조회 App의 키는 여기 없다.
             - secretRef: { name: prs-annotate-secrets }
+            # 태그 전용 App의 자격 (CR-115). 표기 시크릿과도 나눈다 — ref 생성(`Contents: write`)은
+            # 제목 갱신보다 넓은 권한이라 한 시크릿의 유출이 두 반경을 함께 열지 않게 한다.
+            # 이 시크릿을 참조하는 manifest는 이 파일뿐이다.
+            - secretRef: { name: prs-tag-secrets, optional: true }
           readinessProbe:
             httpGet: { path: /healthz, port: http }
             initialDelaySeconds: 3

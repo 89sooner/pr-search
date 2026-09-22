@@ -59,6 +59,14 @@ export interface RepositoryRow {
    */
   readonly annotate_blocked_at: Date | null;
   readonly annotate_blocked_reason: string | null;
+  /**
+   * 확정된 M 번호를 원격 lightweight 태그로 굳힐 대상인가 (WP-100 / FR-SEQ-012 AC-9, 마이그레이션 035).
+   * 운영자가 적어 낸 값이며 오류로 바뀌지 않는다 — 그것은 `tag_blocked_at`이 따로 기록한다.
+   */
+  readonly tag_enabled: boolean;
+  /** 태그 잡이 GHE 권한 오류(403·404)를 받아 스스로 멈춘 시각과 사유. 운영자 정책과 섞지 않는다. */
+  readonly tag_blocked_at: Date | null;
+  readonly tag_blocked_reason: string | null;
 }
 
 /**
@@ -220,6 +228,8 @@ export interface RepositorySettings {
   readonly mirror_enabled?: boolean;
   /** FR-SEQ-009 AC-6. 운영자가 저장소별로 표기를 해제한다 (WP-075). */
   readonly annotate_enabled?: boolean;
+  /** FR-SEQ-012 AC-9. 운영자가 저장소별로 태그 생성을 해제한다 (WP-100). */
+  readonly tag_enabled?: boolean;
 }
 
 /**
@@ -237,7 +247,8 @@ export async function updateRepositorySettings(
     `UPDATE repository
         SET sequence_branches = COALESCE($2, sequence_branches),
             mirror_enabled    = COALESCE($3, mirror_enabled),
-            annotate_enabled  = COALESCE($4, annotate_enabled)
+            annotate_enabled  = COALESCE($4, annotate_enabled),
+            tag_enabled       = COALESCE($5, tag_enabled)
       WHERE repository_id = $1
       RETURNING *`,
     [
@@ -245,9 +256,33 @@ export async function updateRepositorySettings(
       settings.sequence_branches === undefined ? null : [...settings.sequence_branches],
       settings.mirror_enabled ?? null,
       settings.annotate_enabled ?? null,
+      settings.tag_enabled ?? null,
     ],
   );
   return result.rows[0];
+}
+
+/**
+ * 태그 잡이 이 저장소에서 스스로 멈춘 사실을 남긴다 (WP-100 / FR-SEQ-012 예외 처리).
+ * `blockAnnotation`과 같은 규율이다 — `tag_enabled`(운영자 정책)는 건드리지 않는다.
+ */
+export async function blockTagging(db: Queryable, repositoryId: number, reason: string): Promise<void> {
+  await db.query(
+    `UPDATE repository
+        SET tag_blocked_at = now(), tag_blocked_reason = $2
+      WHERE repository_id = $1`,
+    [repositoryId, reason.slice(0, 200)],
+  );
+}
+
+/** 태그 차단을 푼다. 실제 생성이 성공했을 때 부른다 — 조회 성공은 쓰기 권한의 증거가 아니다. */
+export async function clearTagBlock(db: Queryable, repositoryId: number): Promise<void> {
+  await db.query(
+    `UPDATE repository
+        SET tag_blocked_at = NULL, tag_blocked_reason = NULL
+      WHERE repository_id = $1 AND tag_blocked_at IS NOT NULL`,
+    [repositoryId],
+  );
 }
 
 /**

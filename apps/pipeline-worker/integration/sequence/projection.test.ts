@@ -25,7 +25,7 @@ import type { EventBus } from '@prs/bus';
 import { MirrorCommitGraph, MirrorSync, type CommitGraph } from '@prs/github';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { EVENT_NAMES, type IngestionEnriched } from '@prs/domain';
+import { EVENT_NAMES, commitDocId, type IngestionEnriched } from '@prs/domain';
 import {
   jobRepo,
   mergeSequenceRepo,
@@ -52,6 +52,7 @@ import { migratedPool, truncate } from '../../../../packages/db/integration/help
 import { enrichCommit, type CommitEnrichDeps } from '../../src/commit-enrich.js';
 import { buildUpsertRequests } from '../../src/documents.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
+import { materializeMergeNumber } from '../../src/mnumber.js';
 import { REINDEX_TYPE, runReindexJob, verifyBeforeCutover } from '../../src/reindex.js';
 import { verifySequenceProjection } from '../../src/sequence-projection.js';
 import { prepareAndAssignSequence, repairSequence, type SequenceDeps } from '../../src/sequence.js';
@@ -518,6 +519,60 @@ describe('재색인이 새 인덱스에 시퀀스를 복원한다 (FR-ING-008 AC
       expect(await canonicalSnapshot()).toEqual(before);
       const replay = (job?.progress as { sequence_replay?: { spaces: Record<string, unknown>[] } }).sequence_replay;
       expect(replay?.spaces[0]).toMatchObject({ repository_id: REPOSITORY_ID, base_branch: BRANCH, seq_epoch: 1, settled: 6, unsettled: 0 });
+    } finally {
+      await restoreAlias(COMMIT_ALIAS, sourceIndex);
+    }
+  });
+
+  it('**`prs-commits` 재색인도 M 값 재투영 의도를 남긴다** — commits-only 재색인 뒤 커밋 문서의 M 값이 영영 비지 않는다 (CR-115 / FR-SEQ-012 AC-7)', async () => {
+    for (const [pr, sha] of origin.squash) await projectPullRequest(pr, sha, 1_000);
+    await assign();
+    for (const sha of origin.chain) {
+      await enrichCommit(enrichDeps(), repository, {
+        commitSha: sha,
+        firstParent: true,
+        pullRequestNumber: [...origin.squash.entries()].find(([, one]) => one === sha)?.[0] ?? null,
+        baseBranch: BRANCH,
+      });
+    }
+    await drainWork();
+    // 정본에 번호가 있는 것처럼 둔다 — 재색인의 재투영 의도는 번호 행마다 하나다. 값은 PR 번호를 그대로 쓴다(유일하면 된다).
+    for (const [pr, sha] of origin.squash) {
+      await pool.query(
+        // 같은 값이라도 자리를 나눈다 — 한 파라미터를 INT 열과 BIGINT 열에 함께 쓰면 pg가 형을 정하지 못한다.
+        'UPDATE merge_sequence SET pull_request_number = $3, merge_number = $4 WHERE repository_id = $1 AND base_branch = $2 AND commit_sha = $5',
+        [REPOSITORY_ID, BRANCH, pr, pr, sha],
+      );
+    }
+    await pool.query(`DELETE FROM sequence_work WHERE repository_id = $1 AND kind = 'materialize'`, [REPOSITORY_ID]);
+
+    const { jobId, sourceIndex } = await enqueueReindex(COMMIT_ALIAS);
+    try {
+      const row = await jobRepo.findJobById(pool, jobId);
+      if (row === undefined) throw new Error('잡을 찾지 못했다');
+      await runReindexJob({ pool, es, refresh: true, mergeNumberEnabled: true }, row);
+      expect((await jobRepo.findJobById(pool, jobId))?.state).toBe('completed');
+      const works = await sequenceWorkRepo.listWorkForSpace(pool, REPOSITORY_ID, BRANCH, ['materialize']);
+      expect(works.map((one) => (one.payload as { pr_number: number }).pr_number).sort((a, b) => a - b)).toEqual([...origin.squash.keys()].sort((a, b) => a - b));
+      expect(works.every((one) => (one.payload as { trigger_kind?: string }).trigger_kind === 'reindex')).toBe(true);
+
+      /*
+       * 의도가 실제로 실행되는지까지 본다 — 재구축이 만든 커밋 문서가 `role: merge_commit`·`base_branch`를
+       * 갖지 않으면 AC-7 가드가 영영 거절하고, 그것은 work 목록만 봐서는 드러나지 않는다(독립 검토가
+       * 던진 질문). 실제 보강·재구축이 만든 문서에 대해 `materialize`를 한 번 돌려 M 값이 실리는지 잰다.
+       */
+      const [first] = works;
+      if (first === undefined) throw new Error('materialize work가 없다');
+      const prNumber = (first.payload as { pr_number: number }).pr_number;
+      const sha = origin.squash.get(prNumber);
+      if (sha === undefined) throw new Error('픽스처에 없는 PR이다');
+      expect(await materializeMergeNumber({ pool, es }, first)).toBe('done');
+      const commitDoc = await es.get<{ role?: string; base_branch?: string; merge_number?: number; merge_number_epoch?: number; merge_number_state?: string }>({
+        index: COMMIT_ALIAS,
+        id: commitDocId(REPOSITORY_ID, sha),
+        routing: String(REPOSITORY_ID),
+      });
+      expect(commitDoc._source).toMatchObject({ role: 'merge_commit', base_branch: BRANCH, merge_number: prNumber, merge_number_epoch: first.seq_epoch, merge_number_state: 'assigned' });
     } finally {
       await restoreAlias(COMMIT_ALIAS, sourceIndex);
     }

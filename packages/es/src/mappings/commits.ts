@@ -80,6 +80,16 @@ export const COMMIT_MAPPING: estypes.MappingTypeMapping = {
     merge_seq: { type: 'long' },
     seq_epoch: { type: 'integer' },
     sequence_space: { type: 'keyword' },
+    /**
+     * M 번호 (WP-100 / CR-115, FR-SEQ-012 AC-7). **`role: merge_commit` 문서에만** 실린다 —
+     * 직접 푸시·원본 커밋은 번호를 받지 않는다(FR-SEQ-008 AC-1). PR 문서와 같은 소유자
+     * 규칙이다: 투영의 `params.doc`에 싣지 않고 `merge-number.ts`만 쓰며, 값은 정수이고
+     * 표기 문자열은 API가 현재 저장소 이름으로 만든다(OD-009). `merge_number_reason`은
+     * 커밋에 없다 — pending의 사유는 PR 문서가 말한다.
+     */
+    merge_number: { type: 'long' },
+    merge_number_epoch: { type: 'integer' },
+    merge_number_state: { type: 'keyword' },
 
     changed_paths: {
       type: 'text',

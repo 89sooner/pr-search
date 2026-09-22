@@ -29,7 +29,13 @@ type Queryable = Pool | PoolClient;
  * `project`는 정본 시퀀스를 색인에 다시 비추는 의도다 (CR-113 / FR-SEQ-001 AC-7). M 기능과
  * 무관하게 러너가 집으며, payload의 `scope`(`tail`·`full`·`doc`)가 범위를 가른다.
  */
-export type SequenceWorkKind = 'refresh' | 'reconcile' | 'materialize' | 'announce' | 'project';
+/**
+ * `tag`는 확정된 M 번호를 원격 GHE의 lightweight 태그로 굳히라는 의도다 (CR-115 / FR-SEQ-012 AC-2).
+ * PR당 한 행(`materialize`와 같은 키 규칙)이며 **`tag` 역할만 집는다** — GHE 쓰기 자격이 그
+ * 역할에만 있다. 채번 트랜잭션이 기능 스위치와 무관하게 남기므로, 꺼진 배포에서는 `ready`로
+ * 쌓였다가 켜는 순간 backlog가 처리된다.
+ */
+export type SequenceWorkKind = 'refresh' | 'reconcile' | 'materialize' | 'announce' | 'project' | 'tag';
 export type SequenceWorkState = 'ready' | 'leased' | 'retry' | 'parked' | 'done' | 'obsolete';
 
 export interface SequenceWorkRow {

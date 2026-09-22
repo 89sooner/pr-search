@@ -672,6 +672,13 @@ async function rebuildAlias(deps: ReindexDeps, alias: EntityAlias, jobId: number
       case 'prs-commits':
         await rebuildCommits(deps, repository, tally);
         await replayFor(repository, 'commit');
+        /*
+         * 커밋 문서도 M 값을 갖는다 (CR-115 / FR-SEQ-012 AC-7). 재구축이 만든 merge_commit 문서에는
+         * 그 값이 없으므로 PR 재색인과 같은 의도를 남긴다 — `materialize`가 PR·커밋 문서 둘 다 쓴다.
+         * 이것이 없으면 commits-only 재색인 뒤 `kind:commit mnum:`이 조용히 0건이 된다(사내 pilot.17이
+         * `merge_seq`에서 겪은 것과 같은 모양).
+         */
+        await requestMergeNumberMaterialize(deps, repository);
         break;
       case 'prs-releases':
         await rebuildReleases(deps, repository, tally);

@@ -41,7 +41,7 @@ import {
   type RepositoryRow,
   type SequenceWorkRow,
 } from '@prs/db';
-import { applyMergeNumberToDocument, clearMergeNumbersBelowEpoch, readMergeNumberProjectionInternal } from '@prs/es';
+import { applyMergeNumberToCommitDocument, applyMergeNumberToDocument, clearMergeNumbersBelowEpoch, readMergeNumberProjectionInternal } from '@prs/es';
 import type { MergeNumberBlockReason } from '@prs/domain';
 import type { WorkerMetrics } from './metrics.js';
 import { applyAttestation } from './mnumber-attestation.js';
@@ -312,6 +312,7 @@ export async function reconcileMergeNumbers(
       return { kind: 'retry', reason: 'epoch_moved' };
     }
 
+    const shaBySeq = new Map(rows.map((row) => [row.merge_seq, row.commit_sha]));
     for (const assignment of plan.assignments) {
       await sequenceWorkRepo.requestWork(client, {
         kind: 'materialize',
@@ -320,6 +321,26 @@ export async function reconcileMergeNumbers(
         seqEpoch: epoch,
         keyExtra: [assignment.prNumber],
         payload: { pr_number: assignment.prNumber, merge_number: assignment.mergeNumber, merge_seq: assignment.mergeSeq },
+      });
+      /*
+       * 원격 lightweight 태그 의도 (CR-115 / FR-SEQ-012 AC-2). 번호·checkpoint와 **같은 트랜잭션**에
+       * 남긴다 — 하나라도 실패하면 셋 다 없다(AC-11의 규율 그대로). 기능 스위치를 여기서 보지
+       * 않는다: 이 역할은 `MNUMBER_TAG_ENABLED`를 모르며, 꺼진 배포에서는 행이 `ready`로 남았다가
+       * `tag` 역할이 켜지는 순간 backlog가 처리된다. payload는 힌트다 — 실행자는 정본을 다시 읽는다.
+       */
+      await sequenceWorkRepo.requestWork(client, {
+        kind: 'tag',
+        repositoryId,
+        baseBranch,
+        seqEpoch: epoch,
+        keyExtra: [assignment.prNumber],
+        payload: {
+          pr_number: assignment.prNumber,
+          merge_number: assignment.mergeNumber,
+          merge_seq: assignment.mergeSeq,
+          commit_sha: shaBySeq.get(assignment.mergeSeq) ?? null,
+          trigger_kind: 'assignment',
+        },
       });
     }
     if (plan.assignments.length > 0) {
@@ -443,7 +464,7 @@ async function recordAssignmentSamples(
   }
 }
 
-export type MaterializeOutcome = 'done' | 'obsolete' | 'retry' | 'document_missing';
+export type MaterializeOutcome = 'done' | 'obsolete' | 'retry' | 'document_missing' | 'commit_document_missing';
 
 /**
  * PR 문서 하나에 현재 정본의 M 상태를 비춘다 (`materialize` work).
@@ -452,7 +473,8 @@ export type MaterializeOutcome = 'done' | 'obsolete' | 'retry' | 'document_missi
  * 올랐으면 이 work는 무효이고, 새 에폭의 회차가 새 work를 만든다.
  */
 export async function materializeMergeNumber(
-  deps: MergeNumberDeps,
+  // 정본과 색인만 쓴다 — 버스·자격·증거는 필요 없다. 시험이 실제 ES에 대해 이 함수만 부를 수 있게 좁힌다 (CR-115).
+  deps: Pick<MergeNumberDeps, 'pool' | 'es' | 'log'>,
   work: Pick<SequenceWorkRow, 'repository_id' | 'base_branch' | 'seq_epoch' | 'payload'>,
 ): Promise<MaterializeOutcome> {
   const prNumber = Number((work.payload as { pr_number?: unknown }).pr_number);
@@ -482,9 +504,36 @@ export async function materializeMergeNumber(
       targets,
     ),
   );
-  if (outcome === 'updated' || outcome === 'noop') return 'done';
+  const log = deps.log ?? ((): void => undefined);
   if (outcome === 'document_missing') return 'document_missing';
-  (deps.log ?? ((): void => undefined))({ level: 'warn', message: 'PR 문서의 저장소·브랜치·머지 커밋이 정본과 달라 M 값을 쓰지 않았다 — 투영이 따라잡은 뒤 다시 본다', repository_id: work.repository_id, pr_number: prNumber, reason: 'mnumber_guard_rejected' });
+  if (outcome === 'guard_rejected') {
+    log({ level: 'warn', message: 'PR 문서의 저장소·브랜치·머지 커밋이 정본과 달라 M 값을 쓰지 않았다 — 투영이 따라잡은 뒤 다시 본다', repository_id: work.repository_id, pr_number: prNumber, reason: 'mnumber_guard_rejected' });
+    return 'retry';
+  }
+
+  /*
+   * 머지 커밋 문서에도 같은 값을 비춘다 (CR-115 / FR-SEQ-012 AC-7). PR 문서가 끝난 뒤에 쓰는
+   * 이유는 두 문서의 결과를 한 work가 함께 책임지되, PR 문서가 아직 없으면(위 `document_missing`)
+   * 어차피 다시 오기 때문이다. 커밋 문서가 아직 없으면(보강 전) 백오프로 다시 본다 — 보강이
+   * 문서를 만들며 이 work를 다시 요청하기도 한다(`commit-enrich.ts`).
+   */
+  const commitOutcome = await withReindexWrite(deps.pool, (targets) =>
+    applyMergeNumberToCommitDocument(
+      deps.es,
+      {
+        repositoryId: work.repository_id,
+        commitSha: row.commit_sha,
+        baseBranch: work.base_branch,
+        mergeNumber: row.merge_number ?? 0,
+        mergeNumberEpoch: space.seq_epoch,
+        state: row.merge_number === null ? 'pending' : 'assigned',
+      },
+      targets,
+    ),
+  );
+  if (commitOutcome === 'updated' || commitOutcome === 'noop') return 'done';
+  if (commitOutcome === 'document_missing') return 'commit_document_missing';
+  log({ level: 'warn', message: '머지 커밋 문서의 저장소·브랜치·역할이 정본과 달라 M 값을 쓰지 않았다 — 보강이 따라잡은 뒤 다시 본다', repository_id: work.repository_id, pr_number: prNumber, commit_sha: row.commit_sha, reason: 'mnumber_commit_guard_rejected' });
   return 'retry';
 }
 

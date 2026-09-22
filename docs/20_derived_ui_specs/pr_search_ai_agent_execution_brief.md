@@ -1,6 +1,8 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.15 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.16 | 갱신일: 2026-09-22
+
+CR-115 / WP-100: 원격 `M-*` 태그를 만드는 경로는 **하나**다 — `apps/pipeline-worker/src/mnumber-tag.ts`의 `materializeTag`가 durable `tag` work를 집어 `@prs/github-tag`로 `POST /git/refs` 하나를 보낸다. 대조(`mnumber-tag-reconcile.ts`)는 두 번째 생성 구현을 갖지 않고 `missing`을 같은 work로 다시 요청한다. 태그를 옮기거나 지우는 메서드를 클라이언트에 더하지 않는다 — 「옮기지 않는다」는 코드 경로의 부재이며 회귀 시험이 잠근다. 자격은 `GHE_TAG_*`에서만 읽고(`resolveTagConfig`), 조회용·표기용 App 변수를 이 경로에서 읽지 않는다. 쓰기 직전에 정본을 다시 묻는다(`isTagTargetCurrent`) — 태그는 되돌릴 수 없다. 감사(`merge_number.tag`)는 실제로 ref를 만든 경우와 결과 불명 뒤 관측한 경우만 남기며 이미 있어 호출하지 않은 회차는 남기지 않는다. 커밋 문서의 M 세 필드는 PR 문서와 같은 소유자(`materialize`)만 쓰고 투영의 `params.doc`에 싣지 않는다. 시퀀스 브랜치가 둘 이상인 저장소는 만들지 않는다(OD-015). 실행·시험·한계는 원장 WP-100을 읽는다.
 
 CR-114 / WP-099: 검색창의 M 번호 문자열 해석은 **정본에서** 한다 — 판별은 `packages/query/src/identifier.ts`(`@prs/domain`의 `parseMergeNumber` 재사용, 정규식을 따로 적지 않는다), 조회는 `apps/search-api/src/resolve/service.ts`의 `lookupMergeNumberCandidates`(코드 → 활성 저장소 → 접근 범위 → 추적 브랜치의 현재 에폭 `merge_sequence`, 한 REPEATABLE READ 스냅숏). 색인의 `merge_number`나 M 표시 문자열로 찾는 두 번째 경로를 만들지 않는다. `mnum:` 단일 값은 파서가 닫힌 범위로 옮기므로 질의 빌더·지목 판정·커서 지문에 단일 값 분기를 두지 않는다. `base:` 생략은 `resolveMergeNumberRangeEpoch` 한 곳이 저장소의 추적 브랜치가 하나일 때만 묶고, 둘 이상이면 브랜치 목록과 함께 거절한다 — 서버가 고르지 않는다. `seq:`의 규칙은 그대로다. PIPE handoff의 OpenAPI·예시·manifest는 `contract.test.ts`가 대조하므로 handoff를 고친 뒤 `tools/generate-manifest.mjs`를 다시 돌린다. 실행·시험·한계는 원장 WP-099를 읽는다.
 

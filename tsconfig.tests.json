@@ -32,6 +32,9 @@
       "@prs/github": [
         "./packages/github/src/index.ts"
       ],
+      "@prs/github-tag": [
+        "./packages/github-tag/src/index.ts"
+      ],
       "@prs/bus": [
         "./packages/bus/src/index.ts"
       ],
