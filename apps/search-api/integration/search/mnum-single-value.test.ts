@@ -55,6 +55,7 @@ let sessionId: string;
 interface SearchBody {
   readonly total?: { value: number; relation: string };
   readonly items?: { pr_number?: number; merge_seq: number | null }[];
+  readonly relaxation_hints?: { remove: string; would_yield: number }[];
   readonly error?: { code: string; message: string; detail?: Record<string, unknown> };
   readonly correlation_id: string;
 }
@@ -316,5 +317,38 @@ describe('base: 생략 — 추적 브랜치가 하나뿐이면 그 브랜치다'
     const { status, body } = await get('repo:cr114s/ghost mnum:15');
     expect(status).toBe(404);
     expect(body.error?.code).toBe('NOT_FOUND');
+  });
+});
+
+describe('완화 제안은 `mnum:`이 남은 채로 `base:`를 빼는 후보를 내지 않는다 (독립 재검토의 관찰)', () => {
+  /*
+   * 재검토가 「`base:`를 뺀 후보는 `repository_only`라 판정을 통과하고, 브랜치가 둘인 저장소에서는
+   * 실행 시 400이 되는 함정이 될 수 있다」고 봤다. 실제로는 제안되지 않는다 — 후보 질의도 본 조회가
+   * 묶은 브랜치를 `base_branch` 항으로 그대로 받으므로(`mergeNumberBaseBranch`) 건수가 원 질의와
+   * 같은 0이고, 0건 제안은 버린다. 이 시험은 그 성질을 잠근다 — 두 가드 중 하나가 사라지면 함정이
+   * 나타난다.
+   */
+  it('브랜치가 둘인 저장소 — `base:`를 뺀 후보는 같은 브랜치 항이 붙어 건수가 같으므로 제안되지 않는다', async () => {
+    const { body } = await get('repo:cr114s/dual base:main mnum:15 label:ghost-nobody');
+    expect(body.total?.value).toBe(0);
+    const removals = (body.relaxation_hints ?? []).map((hint) => hint.remove);
+    expect(removals.some((one) => one.startsWith('base:'))).toBe(false);
+    expect(removals.some((one) => one.startsWith('repo:'))).toBe(false);
+    // 라벨을 빼면 실제로 나온다 — 제안이 살아 있다는 것까지 확인한다.
+    expect((body.relaxation_hints ?? []).find((hint) => hint.remove === 'label:ghost-nobody')?.would_yield).toBe(1);
+  });
+
+  it('브랜치가 하나인 저장소 — 같은 이유로 `base:` 제안이 없다', async () => {
+    const { body } = await get('repo:cr114s/single base:main mnum:15 label:ghost-nobody');
+    expect(body.total?.value).toBe(0);
+    const removals = (body.relaxation_hints ?? []).map((hint) => hint.remove);
+    expect(removals.some((one) => one.startsWith('base:'))).toBe(false);
+    expect((body.relaxation_hints ?? []).find((hint) => hint.remove === 'label:ghost-nobody')?.would_yield).toBe(1);
+  });
+
+  it('`base:`를 적지 않은 질의의 다른 후보는 그대로 제안한다 — 서버가 이미 유일한 브랜치로 묶었다', async () => {
+    const { body } = await get('repo:cr114s/single mnum:15 label:ghost-nobody');
+    expect(body.total?.value).toBe(0);
+    expect((body.relaxation_hints ?? []).find((hint) => hint.remove === 'label:ghost-nobody')?.would_yield).toBe(1);
   });
 });
