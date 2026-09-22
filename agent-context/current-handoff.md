@@ -1,37 +1,40 @@
-# Current Handoff — 2026-09-19 PR Search 12차 (CR-111 완료·병합)
+# Current Handoff — 2026-09-23 PR Search 16차 (CR-116 구현·독립 리뷰, 병합 전)
 
 ## Start here
 
-`origin/main`의 최신 커밋은 `b6d9443`(CR-111 스쿼시 병합)다 — 머리는 `git log origin/main --oneline -5`로 읽는다. 11차가 남긴 새 작업 지시는 없었고, 12차는 사용자가 새로 지시한 Search 화면 UI 간소화(CR-111)를 구현·독립 리뷰·병합까지 마쳤다. 다음 세션에 남은 새 작업 지시는 없다 — 아래 "Open boundary"가 전부다.
+`origin/main`의 최신 커밋은 `83d30fb`(CR-115 PR #226 병합분)이고, 16차는 그 위에서 **CR-116 / WP-101**을 구현했다 — 커밋 문서의 `pull_request_numbers`가 합집합이라 과거 PR 번호가 영영 남던 결함이다. 브랜치는 `feature/cr116-pr-links`, worktree는 `/home/roqkf/pr-search-wt/cr116-pr-links`. **병합은 사용자 지시 뒤**다 — PR은 [#228](https://github.com/89sooner/pr-search/pull/228)이다.
+
+머리는 늘 실측한다: `git log origin/main --oneline -5`, `gh pr list --state open`.
 
 ## Delivered
 
-- CR-111 / WP-096 (PR #216 → `b6d9443`): Search 화면 좌측 사이드바를 저장소 목록/Branch 섹션/독립 path 폼에서 콤보박스 2개(Find Repository·Base branch)+Files & folders 트리로 재구성. 필터 패널을 기본 collapsed로, PR/M/날짜/머지순서 range 8필드를 유형 선택자 하나로 통합. SourceHistory의 Copy 버튼을 클릭 가능한 텍스트로 교체(`CopyText` 신설, `CopyButton` 불변). 사용자 후속 요청으로 필터 여백 축소·range 한 줄 배치·헤더 배너 제거·사이드바-결과 표 하단 정렬까지 3라운드에 걸쳐 다듬었다.
-- 구현은 조사용 서브에이전트 포크가 지시 범위(읽기 전용)를 넘어 스스로 진행한 것을 발견해, "미검토 PR"로 취급하고 독립 리뷰 2회(수동+`code-review`스킬)로 검증·수정하는 절차를 밟았다 — 상세 경위는 `agent-context/risks.md`의 "서브에이전트가 지시 범위를 넘어..." 절.
-- `deploy/single-host/compose.yml`에 `REGRESSION_FIXTURE_ENABLED`(CR-110 후속) 추가.
-- 상세 설계 결정은 `docs/00_governance/change_control.md`의 `CR-111`(및 `CR-110`의 후속 절)이 정본. 검증 기록은 원장 6.102장.
+- **CR-116 / WP-101** — 관계의 정본을 PostgreSQL로 옮기고(마이그레이션 036: `pull_request_commit_link`·`pull_request_link_observation`·`commit_link_state`), 커밋별 전용 투영기(`packages/es/src/commit-links.ts`)가 **그 커밋을 소유하는 PR 전부**를 세어 대입한다. 합집합 경로는 제거했고 `UpsertRequest.union`이 그 필드를 타입과 실행 시점 둘 다로 막는다.
+- **삭제 권한은 완전성 넷을 증명한 관측에만** 준다 — 커밋 조회 성공, 우리 상한 미달, 원격이 말한 커밋 수와 일치, 읽기 전후 head/base 동일. 셋째가 API 자체 상한(250)의 방어선이다.
+- 복구 경로 `prsctl links plan|apply|refetch|status`(RUNBOOK 7.G, RB-29). 기본 dry-run, `apply`는 투영 의도만 만들고 색인은 러너(JOB-REL-008)가 쓴다.
+- 함께 고친 기존 결함: 재색인이 열린 PR의 시험 병합 SHA를 머지 커밋으로 쓴 것(DEV-747), 실시간 투영이 백필 목록 끝점의 병합을 놓친 것(DEV-753), `containments`가 `pull_request_numbers[0]`을 그 커밋의 PR로 읽은 것(DEV-748).
+- 상세 설계 결정은 `docs/00_governance/change_control.md`의 `CR-116`이 정본. 검증 기록은 원장 6.107장.
 
 ## Verify before changing code
 
-1. `git status --short --branch`가 main에서 clean인지, `git log origin/main --oneline -5`로 다른 세션이 직접 커밋했는지 본다 — **12차 도중 실제로 사용자 본인이 메인 체크아웃에서 `.webprobe/*.png` 스크린샷을 직접 커밋·푸시한 적이 있다(`8cfb465`)**. worktree에서 작업 중이라도 병합 직전에는 반드시 `git fetch origin main`으로 최신 상태를 확인하고 필요하면 rebase한다.
-2. 채번은 착수 직전에 다시 잰다: `for p in 'CR-[0-9]{3}' 'WP-[0-9]{3}' 'DEV-[0-9]{3}'; do grep -rohE "$p" docs/ | sort -u | tail -2; done` **그리고** `gh pr list --state open`. CR-111 착수 시점엔 열린 PR이 없어 `CR-111`/`WP-096`/`DEV-729`가 다음 빈 번호였다.
-3. 통합·회귀 시험은 워크트리별 격리 DB로 돌린다 — 다만 **공유 Elasticsearch 컨테이너(`prs-elasticsearch`)는 격리되지 않는다.** `test:integration`(특히 `packages/es/integration/sequence.test.ts`)을 돌리면 인덱스가 재생성돼 그 순간 다른 세션/브라우저가 보는 문서 개수가 바뀐다(ADR-004상 데이터 유실은 아님, `pnpm run es:reindex`로 복구). 돌리기 전에 다른 세션이 지금 그 데이터를 보고 있는지 확인한다.
-4. **`gh pr merge`/그 뒤의 `gh run list` 등 후속 조회가 Claude Code auto mode의 [Merge Without Review] 가드로 막힐 수 있다** — 11차에서는 `gh pr merge` 자체가 두 번 막혔고, 12차에서는 병합은 성공했는데 병합 **직후**의 `gh run list`(CI 재확인용 조회)가 막혔다. 즉 이 가드가 정확히 어느 호출에서 발동할지 예측할 수 없다 — 병합 관련 `gh` 호출 앞뒤로는 항상 사용자의 명시적 직전 지시를 확보해 두고, 막히면 우회하지 말고 사용자에게 상태를 보고한다.
-5. `gh pr checks --json name,bucket`/`gh pr checks --watch`가 이 gh 버전에서 조용히 실패할 수 있다(`unknown flag`). CI 폴링은 `gh run watch <run-id>`(run ID는 `gh pr checks <PR번호>` 출력의 URL에서 얻는다) 또는 `gh api repos/89sooner/pr-search/commits/<sha>/check-runs`를 쓴다. 12차에서는 `gh run watch`가 실시간 진행률까지 잘 보여줘 유용했다.
+1. **격리 인프라를 새로 세웠다** — `prs-cr116-postgres`(55445)·`prs-cr116-es`(59211)·`prs-cr116-redis`(56390), 시험 DB `prs_test_cr116`. 환경은 `/tmp/claude-1000/-home-roqkf-pr-search/<세션ID>/scratchpad/env.sh`에 있다. 공용 `prs_test`와 공용 `prs-elasticsearch`를 쓰지 않는다.
+   **ES 컨테이너는 `cluster.name`을 `prs-cr116-isolated`처럼 `isolated|test|ci`가 들어가게 띄워야 한다** — 그렇지 않으면 파괴적 시험 5파일(`sequence`·`merge-number-commit`·`projection`·`reproject-runner`·`sequence-projection-recovery`)이 **스스로 실행을 거부한다**(DEV-737). 기본값 `docker-cluster`로 띄웠다가 16차에서 실제로 밟았고, 그때 시험은 「실패 0건, 파일 5개 실패」라는 헷갈리는 모양으로 나온다.
+2. **통합 시험을 중간에 죽이면 공유 시험 DB에 찌꺼기가 남는다.** 16차에서 실제로 밟았다 — `job` 표에 남은 `sequence_reassign` 행 하나 때문에 `migrate.test.ts`의 전체 down이 옛 `job_type_chk`에 걸려 실패했다. 실패가 코드 탓인지 찌꺼기 탓인지 먼저 가린다.
+3. **새 마이그레이션은 파수꾼 시험 6파일을 함께 고친다** — `packages/db/integration/`의 `snapshot-merged-state`·`merge-number-schema`·`gh-schema`·`gh-registry-schema`·`gh-policy`·`mnumber-attestation-schema`. `migrateDown(pool, N)`의 **단계 수**와 버전 배열 둘 다다.
+4. **시험 중 소스를 고치면 그 실행의 결과는 섞인다.** vitest는 파일을 필요할 때 읽는다 — 고치기 전에 읽힌 파일과 뒤에 읽힌 파일이 다른 코드를 본다. 16차에서 13건 실패의 대부분이 이것이었다.
+5. 채번은 `docs/` grep과 `gh pr list --state open` 둘 다로 잰다.
 
 ## Open boundary
 
-- worktree들(`cr102-frontend-fixes`·`cr103-infinite-scroll`·`cr105-search-fix`·`cr106-range-search`·`cr106-record`, 그리고 이제 `cr111-search-simplify`도 병합 완료돼 정리 대상에 추가됨) 정리 — 사용자가 계속 "나중에"로 보류 중. 정리 전 스쿼시 병합 diff/patch 동등성 확인 필요, `git worktree remove`/`branch -D`는 [Git Destructive] 가드로 막힐 수 있음(우회 금지, 사용자에게 요청).
-- `pnpm run es:reindex` 실행 여부 — 12차에서 사용자에게 확인 요청했으나 이 handoff 작성 시점까지 답을 받지 못함.
-- `docs/00_governance/change_control.md`/`WP-096`/원장의 "병합 완료 후 별도 기록" 절(실제 커밋 `b6d9443`·PR #216·상태 done) — 병합 직후 CI 재확인이 [Merge Without Review]에 막혀, 이 문서 최종화 커밋도 사용자 확인 없이 진행하지 않고 보류함. **다음 세션이 가장 먼저 할 일 후보.**
-- `DEV-728`(open, e2e가 `RepositoryWorkspace`/`SourceHistory`에 전혀 도달 못함 — `playwright.config.ts`의 `PRS_LEGACY_SEARCH=1` 고정 탓)과 `DEV-729`(open, Range 필터 유형 전환 시 반쪽값이 다른 유형 제출을 막는 엣지 케이스) — 둘 다 저자/제품 판단 필요, 후속 CR 후보.
-- 사이드바-결과 표 하단 정렬(CR-111 3차 조정)은 CSS 공식으로만 확인했고, 실 데이터가 있는 환경에서 스크롤 상태로 재확인 필요.
-- 0.1.0-pilot.13/14 이후 사내 반입 확인 — 계속 NOT RUN(사내 운영자 작업, 독립 트랙).
-- 디자인 시스템 개선 트랙, REL-007 다음 판 순서 — 계속 미결.
+- **병합이 남았다** — PR #228을 만들었고 CI 결과는 원장 6.107장에 적는다. 병합은 사용자 지시 뒤다.
+- `DEV-752`(open) — 원본 목록에서 빠진 커밋의 `role: source_commit`이 그대로 남는다. 사내에서 오염된 커밋들은 보강이 준 `role: merge_commit`을 갖고 있어 화면에 드러나지 않는다. 후속 CR 후보.
+- `DEV-728`은 **해소된 것으로 보인다** — `playwright.config.ts`에 `workspace` 프로젝트가 생겼고(`PRS_LEGACY_SEARCH` 없이 뜬 서버), `workspace.*.spec.ts`가 실제 `RepositoryWorkspace`에 도달한다. 16차가 `workspace.linked-prs.spec.ts`를 그 위에 더했다. 원장의 `DEV-728` 상태를 확인해 닫을지 판단이 필요하다.
+- 사내 적용은 **NOT RUN**, 사내 배포 SHA는 **NOT VERIFIED**. 반입 뒤 할 일은 `agent-context/upstream-feedback.md`의 CR-116 상류 반영 주석 끝에 적혀 있다.
+- 기존 worktree 정리(cr102/103/105/106/111/113/114/115 계열) — 계속 사용자 보류 중. 여기에 `cr116-pr-links`도 병합 뒤 합류한다.
 
 ## References
 
-- https://github.com/89sooner/pr-search/pull/216 (MERGED, squash `b6d9443`)
-- CI: https://github.com/89sooner/pr-search/actions/runs/35450458507
-- 원장 `docs/40_delivery/pr_search_implementation_traceability.md` 6.102장; 변경 대장 CR-111, CR-110(compose.yml 후속).
-- Obsidian worklog: `dailywork/2026-09-18_Search-화면-사이드바·필터-UI-간소화-(CR-111).md`(같은 세션에서 병행 작성, 더 상세한 진행 과정·검증 로그는 여기).
+- 변경 대장 `docs/00_governance/change_control.md`의 `CR-116`(서사·표·cascade 세 자리).
+- 원장 `docs/40_delivery/pr_search_implementation_traceability.md` 6.107장, 5장 DEV-744~DEV-753.
+- 작업 꾸러미 `docs/40_delivery/pr_search_work_packages.md`의 `WP-101`.
+- 운영 절차 `deploy/single-host/RUNBOOK.md` 7.G, 관측성 RB-29.
+- 상류 답변 `agent-context/upstream-feedback.md` 넷째 항목.

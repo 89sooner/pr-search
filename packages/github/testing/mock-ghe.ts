@@ -13,6 +13,21 @@ import { createServer, type Server } from 'node:http';
 import { generateKeyPairSync } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 
+/**
+ * `GET /pulls/{n}/commits`가 한 PR에 대해 돌려주는 최대 건수 (CR-116).
+ *
+ * **GitHub API 자체의 상한**이다. 우리 클라이언트의 `MAX_PR_COMMITS`와 값이 같지만
+ * 같은 것이 아니다 — 이쪽은 원격이 자르는 지점이고, 그쪽은 우리가 더 받지 않기로
+ * 한 지점이다. 한쪽에서 다른 쪽을 가져다 쓰면 둘 중 하나가 움직인 날 나머지가
+ * 조용히 따라 움직인다.
+ *
+ * 이 상한이 위험한 까닭은 **잘렸다는 표식을 남기지 않는다**는 데 있다. 400 커밋
+ * PR의 마지막 페이지는 `per_page`보다 짧게 와서 `Link`의 `rel="next"`가 없고,
+ * 그래서 `getAllPaged`의 `truncated`는 거짓이 된다. 응답만으로는 정확히 250 커밋인
+ * PR과 구분되지 않는다 — 가르는 유일한 재료가 PR 상세의 `commits`다.
+ */
+export const GITHUB_PR_COMMITS_API_LIMIT = 250;
+
 export interface RateLimitPlan {
   readonly limit: number;
   /** 요청마다 순서대로 적용할 잔여 값. 다 쓰면 마지막 값을 유지한다. */
@@ -51,6 +66,18 @@ export interface MockGheOptions {
     readonly files?: number;
     readonly reviews?: number;
   };
+  /**
+   * 커밋 목록 끝점이 실제 GitHub처럼 `GITHUB_PR_COMMITS_API_LIMIT`에서 스스로
+   * 자른다 (CR-116). PR 상세의 `commits`는 그래도 **전체 수**를 말하므로, 켜면
+   * "목록은 250건인데 PR은 400건이라고 한다"는 실제 상황이 그대로 만들어진다.
+   *
+   * **기본으로 켜 두지 않은 까닭**이 있다. 우리 클라이언트의 `MAX_PR_COMMITS`
+   * 절삭 판정은 250건을 **넘겨** 받아 봐야 검증되는데, 원격이 먼저 자르면 그런
+   * 응답은 영영 오지 않는다. 그래서 이 목은 두 역할을 겸한다 — 켜면 GitHub을
+   * 그대로 흉내 내고, 끄면 우리 상한을 시험할 수 있는 "250건을 넘겨 주는 서버"가
+   * 된다. 끈 쪽은 실제로는 오지 않는 응답이라는 뜻이다.
+   */
+  readonly capCommitListAtApiLimit?: boolean;
   /** 특정 자원만 실패시킨다. 부분 보강 시험용. */
   readonly failures?: readonly ResourceFailure[];
 }
@@ -161,6 +188,19 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
   let dataRequestCount = 0;
 
   const commits = makeCommits(options.resources?.commits ?? 0);
+  /**
+   * PR 상세가 말하는 커밋 수.
+   *
+   * 목록이 상한에서 잘려도 이 값은 **전체**를 말한다. 실제 GitHub이 그렇고, 그
+   * 어긋남이 "목록이 전부인가"를 알 수 있는 유일한 근거다. `resources.commits`를
+   * 주지 않았으면 아래 기본 목록이 내보내는 1건이 곧 전체다.
+   */
+  const commitsTotal = commits.length > 0 ? commits.length : 1;
+  /** 목록 끝점이 실제로 내보내는 커밋. 켜져 있으면 GitHub처럼 상한에서 자른다. */
+  const servedCommits =
+    options.capCommitListAtApiLimit === true
+      ? commits.slice(0, GITHUB_PR_COMMITS_API_LIMIT)
+      : commits;
   const files = makeFiles(options.resources?.files ?? 0);
   const reviews = makeReviews(options.resources?.reviews ?? 0);
   const failuresLeft = new Map<MockResource, number>();
@@ -248,7 +288,7 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
         return;
       }
       if (commits.length > 0) {
-        send(200, paginate(commits, url), rateHeaders);
+        send(200, paginate(servedCommits, url), rateHeaders);
         return;
       }
       send(200, page > 1 ? [] : [{ sha: 'aaa1', parents: [{ sha: 'bbb2' }], commit: { message: 'c1' } }], rateHeaders);
@@ -306,7 +346,9 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
         send(status, { message: status === 404 ? 'Not Found' : 'pull request unavailable' }, rateHeaders);
         return;
       }
-      send(200, PR, rateHeaders);
+      // 커밋 수는 목록이 아니라 **PR 상세**가 말한다. 목록이 API 상한에서 잘려도
+      // 이 값은 전체를 말하므로, 둘을 맞대 보는 것이 잘림을 아는 유일한 방법이다.
+      send(200, { ...PR, commits: commitsTotal }, rateHeaders);
       return;
     }
     if (/\/repos\/[^/]+\/[^/]+$/.test(url.pathname)) {

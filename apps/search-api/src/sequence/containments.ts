@@ -26,6 +26,15 @@ import type { Pool, ReleaseRow, RepositoryRow } from '@prs/db';
 import { applyMandatoryScopeFilter, search, type AccessScope } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
 
+/**
+ * 커밋 하나에 연결될 수 있는 PR 후보의 상한 (CR-116).
+ *
+ * N:M이 현실에서 한둘이라는 것은 관찰이지 계약이 아니다. 상한이 없으면 오염된
+ * 문서 하나가 수백 번의 채번 조회를 부른다 — 이 결함이 만든 커밋 하나에 PR 번호가
+ * 110개 붙어 있었다는 것이 바로 그 실측이다.
+ */
+const MAX_LINKED_CANDIDATES = 8;
+
 export interface ContainmentDeps {
   readonly pool: Pool;
   readonly es: Client;
@@ -308,11 +317,43 @@ export async function containmentForCommit(
     return { kind: 'not_found', message: `알 수 없는 커밋이다: ${sha.slice(0, 12)}` };
   }
 
-  const prNumber = source.pull_request_numbers?.[0];
-  if (prNumber === undefined) return unsequenced(sha, null);
+  /*
+   * **배열의 첫 원소를 "그 PR"로 읽지 않는다** (CR-116 / DEV-748).
+   *
+   * 전에는 `pull_request_numbers[0]`이었다. 합집합 스크립트의 `HashSet` 순서는
+   * 비결정적이라 그 값은 사실 아무 PR이었고, CR-116이 배열을 오름차순으로 고정한
+   * 뒤에는 **가장 작은 번호**가 된다. 둘 다 이 자리가 묻는 것이 아니다 — 여기서
+   * 필요한 것은 "이 커밋이 대상 브랜치에 실린 지점"이고, 그것은 이 커밋을 담은
+   * PR들 중 **가장 먼저 머지된** PR의 서수다.
+   *
+   * 후보를 전부 풀어 서수가 가장 작은 것을 고른다. 후보 수는 N:M의 현실에서 한둘이며
+   * 상한을 두어 폭주를 막는다. 아직 채번되지 않은 후보는 판정 재료가 아니지만,
+   * **전부 미채번이면 그 사실을 그대로 답한다** — 첫 후보를 답으로 쓰면 "미머지"가
+   * 조용히 다른 PR의 이야기가 된다.
+   */
+  const candidates = [...new Set(source.pull_request_numbers ?? [])].sort((a, b) => a - b).slice(0, MAX_LINKED_CANDIDATES);
+  if (candidates.length === 0) return unsequenced(sha, null);
 
-  const result = await containmentForPullRequest(deps, repository, prNumber);
-  if (result.kind !== 'ok') return result;
+  let best: { readonly result: Extract<ContainmentResult, { kind: 'ok' }>; readonly prNumber: number } | undefined;
+  let firstFailure: ContainmentResult | undefined;
+  for (const candidate of candidates) {
+    const result = await containmentForPullRequest(deps, repository, candidate);
+    if (result.kind !== 'ok') {
+      firstFailure ??= result;
+      continue;
+    }
+    if (result.mergeSeq === null) {
+      firstFailure ??= result;
+      continue;
+    }
+    if (best === undefined || result.mergeSeq < (best.result.mergeSeq ?? Number.MAX_SAFE_INTEGER)) {
+      best = { result, prNumber: candidate };
+    }
+  }
+  if (best === undefined) {
+    // 채번된 후보가 하나도 없다. 첫 후보의 답(대개 미머지·미채번)을 그대로 낸다.
+    return firstFailure ?? unsequenced(sha, candidates[0] ?? null);
+  }
   // 대상은 커밋이다 — 조회의 SHA를 유지하되 판정 근거(머지 커밋 서수)는 그대로 싣는다.
-  return { ...result, pullRequestNumber: prNumber };
+  return { ...best.result, pullRequestNumber: best.prNumber };
 }

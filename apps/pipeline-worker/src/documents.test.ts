@@ -53,6 +53,8 @@ const PR: EnrichedPullRequest = {
   head_sha: 'b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e',
   base_ref: 'main',
   base_sha: 'c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e',
+  // 원격이 말한 커밋 수. 아래 고정물의 원본 목록 길이와 같다 (CR-116).
+  commits_count: 1,
 };
 
 function enriched(overrides: Partial<IngestionEnriched> = {}): IngestionEnriched {
@@ -73,6 +75,7 @@ function enriched(overrides: Partial<IngestionEnriched> = {}): IngestionEnriched
       { id: 3, state: 'PENDING', reviewer: 'carol', submitted_at: null },
     ],
     source_commits_truncated: false,
+    source_commits_complete: true,
     files_truncated: false,
     enrichment_pending: false,
     enrichment_errors: [],
@@ -296,11 +299,19 @@ describe('커밋 문서 (ENT-CORE-003)', () => {
     expect(merge?.doc['commit_sha']).toBe('a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5');
   });
 
-  it('PR 번호를 누적 필드로 싣는다 (CR-011, DEV-019)', () => {
+  it('PR 번호를 **아예 싣지 않는다** — 관계는 전용 투영기의 것이다 (CR-116, DEV-745)', () => {
+    /*
+     * CR-011은 이 자리에 `union: { pull_request_numbers: [1234] }`를 두었다. 대입이
+     * 다른 PR의 번호를 지우기 때문이었는데, 합집합은 **한 번 더해진 번호를 영영
+     * 빼지 못한다.** 둘 다 틀렸다 — 이 필드는 한 PR의 투영이 결정할 수 있는 값이
+     * 아니고, 그 커밋을 소유하는 PR 전부를 아는 정본만이 결정할 수 있다.
+     */
     for (const request of buildCommitDocuments(source())) {
-      expect(request.union?.['pull_request_numbers']).toEqual([1234]);
-      // 대입하면 다른 PR의 번호를 지운다. 상태 필드에 있으면 안 된다.
       expect(request.doc).not.toHaveProperty('pull_request_numbers');
+      expect(request.union?.['pull_request_numbers']).toBeUndefined();
+      expect(request.createOnly).not.toHaveProperty('pull_request_numbers');
+      // 세대도 관계 투영기의 것이다. 투영이 초기값을 넣으면 첫 관계 쓰기가 충돌로 보인다.
+      expect(request.doc).not.toHaveProperty('pr_links_generation');
     }
   });
 
@@ -325,10 +336,28 @@ describe('커밋 문서 (ENT-CORE-003)', () => {
   });
 
   it('머지되지 않은 PR은 머지 커밋 문서를 만들지 않는다', () => {
-    const open: EnrichedPullRequest = { ...PR, merged: false };
+    /*
+     * **병합 신호를 전부 지워야 미병합이다** (CR-101 / CR-116). `merged: false`만
+     * 두고 `merged_at`을 남기면 그것은 미병합이 아니라 **웹훅이 `merged`를 빠뜨린
+     * 병합**이다 — `derivePullRequestState`가 정한 뜻이 그렇고, 문서의 `state`도
+     * 그렇게 나간다. 고정물이 그 둘을 섞으면 시험이 제품의 정의와 다른 것을 잰다.
+     */
+    const open: EnrichedPullRequest = { ...PR, merged: false, merged_at: null, state: 'open' };
     const requests = buildCommitDocuments(source(enriched({ pull_request: open })));
     expect(requests).toHaveLength(1);
     expect(requests[0]?.doc['role']).toBe('source_commit');
+  });
+
+  it('목록 끝점 모양(`merged`는 없고 `merged_at`만)도 머지 커밋 문서를 만든다 (CR-116, DEV-753)', () => {
+    /*
+     * 백필의 `GET /pulls`는 `merged`를 주지 않는다. 그 모양에서 머지 커밋 문서를
+     * 만들지 않으면 **정본은 병합 근거를 세우는데 그 문서가 없어** 관계 투영기가
+     * `document_missing`으로 재시도하다 보류된다 — 두 판정이 갈라진 자리다.
+     */
+    const fromList: EnrichedPullRequest = { ...PR, merged: false, state: 'closed' };
+    const requests = buildCommitDocuments(source(enriched({ pull_request: fromList })));
+    expect(requests).toHaveLength(2);
+    expect(requests.some((request) => request.doc['role'] === 'merge_commit')).toBe(true);
   });
 
   it('커밋 메시지·작성자를 지어내지 않는다', () => {

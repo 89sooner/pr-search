@@ -49,6 +49,19 @@ export interface PullRequestSummary {
   readonly merged_at: string | null;
   readonly head: { readonly ref: string; readonly sha: string };
   readonly base: { readonly ref: string; readonly sha: string };
+  /**
+   * PR이 담은 커밋 수 (CR-116 / DEV-744).
+   *
+   * **`GET /pulls/{n}/commits`의 완전성을 판정하는 유일한 재료다.** 그 끝점은
+   * GitHub 자체가 250건에서 자르고, 잘린 응답의 마지막 페이지는 `per_page`보다
+   * 짧아 `Link`의 `rel="next"`도 없다 — `getAllPaged`의 `truncated`는
+   * **거짓**이 된다. 400 커밋 PR과 정확히 250 커밋 PR이 둘 다 "250건, 절삭 없음"으로
+   * 보이므로, 이 수와 대조하지 않으면 **읽지 못한 150건을 부재로 읽는다.**
+   *
+   * GHE 버전에 따라 빠질 수 있어 선택으로 둔다. 빠졌으면 완전성을 주장하지
+   * 않는다 — 없는 값을 지어내 완전하다고 적는 쪽이 훨씬 나쁘다.
+   */
+  readonly commits?: number;
 }
 
 export interface CommitSummary {

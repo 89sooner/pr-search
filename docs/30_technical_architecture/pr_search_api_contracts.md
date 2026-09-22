@@ -1,5 +1,7 @@
 # PR Search API 계약
 
+> CR-116 / FR-SRCH-002 AC-6 (2026-09-23): **계약의 모양은 한 자리도 바뀌지 않는다** — 새 경로도, 새 필드도, 새 오류 코드도 없다. 바뀐 것은 커밋이 내는 `pull_request_numbers`가 **무엇인가**다. 그 배열은 「언젠가 한 번 포함됐던 모든 PR」의 합집합이 아니라 채택된 최신 관측에 근거한 **현재 유효한 연결**이며, PR의 원본 커밋 목록에서 빠진 커밋에서는 그 번호가 사라진다. 영향받는 응답은 API-SRCH-002(SHA → PR), API-SRCH-001 후보의 `pull_request_numbers`, API-SRC-002(`/history`)의 행별 값이고, 연동 경로(API-INT-007·010·012)는 같은 실행 함수를 부르므로 같다. 빈 배열은 「검증한 범위에서 연결이 0개」라는 사실의 진술이고 조회 실패와 구분된다 — `/history`는 후자를 `pull_requests_unavailable`로 계속 가른다.
+
 > CR-115 / FR-SEQ-012 (2026-09-22): 새 경로는 없다. API-ADM-002의 일반 잡 생성 목록에 `mnumber_tag_reconcile`(JOB-SEQ-007 — 정본 ↔ 원격 `M-*` 태그 대조; 누락은 durable work로 재생성, 다른 SHA를 가리키는 태그는 보고만, 옮기거나 지우지 않는다)이 더해지고, API-ADM-001 `PATCH`에 저장소별 해제 `tag_enabled`(기본 `true`)가 더해진다. 커밋 색인 문서에 M 값 세 필드가 실려 `kind:commit`의 `mnum:`이 성립하지만, 커밋 hit 응답에 그 값을 싣는 것은 이번 판에 없다(DEV-742). 감사 `merge_number.tag`의 `result_code` 어휘(`created`·`observed`)는 보안 문서 13.5절이 소유한다.
 
 ## CR-112 — PIPE 연동 private 경로 (API-INT-001~014)
@@ -38,13 +40,13 @@
 | ID | GET 경로 | 입력 | 출력 |
 | --- | --- | --- | --- |
 | API-SRC-001 | `/tree` | 선택 ref(브랜치 또는40자SHA), 하위 조회 시 tree_sha/revision/path | 고정 revision, ref, 파일/폴더 entries(path/name/sha/kind/size), truncated |
-| API-SRC-002 | `/history` | ref, path, page(1~1000) | 고정 revision, 경로 커밋50개(행별 `pull_request_numbers`: 배열=확정/`null`=미확정, CR-107), `pull_requests_unavailable`(조회 실패·미배선 시), next_page |
+| API-SRC-002 | `/history` | ref, path, page(1~1000) | 고정 revision, 경로 커밋50개(행별 `pull_request_numbers`: 배열=확정/`null`=미확정, CR-107 — 배열의 뜻은 **현재 유효한 연결**이다, CR-116), `pull_requests_unavailable`(조회 실패·미배선 시), next_page |
 | API-SRC-003 | `/file` | revision(40자SHA), 파일 path | status(text/missing/binary/too_large/unsupported), text/null, size, sha, reason |
 | API-SRC-004 | `/diff` | pr 또는 commit 중 하나, page(1~30) | base/head, commit, files100개(path/previous_path/status/additions/deletions), next_page, truncated, 관련 PR |
 
-`/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
+`/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. **그 배열이 무엇인지는 CR-116이 정정한다 — 계약의 모양은 그대로다.** 배열은 「언젠가 한 번 그 커밋을 포함했던 모든 PR」이 아니라 채택된 최신 관측에 근거한 **현재 유효한 연결**이며, PR이 rebase되어 원본 커밋 목록에서 빠진 커밋에서는 그 번호가 사라진다(같은 커밋의 다른 PR 연결과 실제 병합 근거는 남는다). 그래서 이 열의 값은 세 가지 다른 사실을 계속 가른다 — **빈 배열**은 「검증한 범위에서 이 커밋에 연결된 PR이 0개」라는 사실의 진술이고, **`null`**은 「아직 확정하지 못했다」이며, **`pull_requests_unavailable: true`**는 「조회 자체를 하지 못했다」다. 앞의 둘을 합치거나 빈 배열을 필드 부재로 바꾸면 이 구분이 사라진다. 연결의 제거는 그 PR의 커밋 목록이 원격의 전부임을 증명한 관측에만 허용되므로, 증명하지 못한 동안에는 옛 번호가 남아 있을 수 있고 그 사실은 응답이 아니라 운영 경로(RB-29)가 답한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.42 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.43 | 갱신일: 2026-09-23
 
 ## 1. 목적
 

@@ -22,6 +22,7 @@ import {
 } from '@prs/bus';
 import { EVENT_NAMES, type IngestionEnriched, type IngestionProjected } from '@prs/domain';
 import { handleEnrichedEvent, type ProjectDeps } from '../../src/project.js';
+import { runCommitLinkOnce } from '../../src/commit-links.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
 
@@ -58,6 +59,11 @@ afterAll(async () => {
 beforeEach(async () => {
   await pool.query('TRUNCATE raw_event');
   await pool.query('TRUNCATE dead_letter');
+  // 관계 정본도 함께 비운다 (CR-116). 앞 시험이 남긴 세대가 다음 시험의 판정에 끼면
+  // 시험이 제품이 아니라 앞 시험의 흔적을 잰다.
+  await pool.query('TRUNCATE commit_link_state');
+  await pool.query('TRUNCATE pull_request_commit_link');
+  await pool.query('TRUNCATE pull_request_link_observation');
   await pool.query('TRUNCATE repository CASCADE');
   await redis.flushdb();
   await es.deleteByQuery({
@@ -113,6 +119,7 @@ const BASE_PR: NonNullable<IngestionEnriched['pull_request']> = {
   head_sha: 'b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e',
   base_ref: 'main',
   base_sha: 'c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e',
+  commits_count: null,
 };
 
 function enrichedPayload(overrides: Partial<IngestionEnriched> = {}): IngestionEnriched {
@@ -126,6 +133,7 @@ function enrichedPayload(overrides: Partial<IngestionEnriched> = {}): IngestionE
     changed_files: [{ filename: 'src/pay.ts', additions: 10, deletions: 2, status: 'modified' }],
     reviews: [{ id: 1, state: 'APPROVED', reviewer: 'alice', submitted_at: '2026-08-19T09:30:00.000Z' }],
     source_commits_truncated: false,
+    source_commits_complete: true,
     files_truncated: false,
     enrichment_pending: false,
     enrichment_errors: [],
@@ -210,10 +218,20 @@ describe('투영 워커 (WP-008 DoD)', () => {
 
     const merge = await getDoc('prs-commits', `${String(REPOSITORY_ID)}:${MERGE_SHA}`);
     expect(merge?.['role']).toBe('merge_commit');
-    expect(merge?.['pull_request_numbers']).toEqual([PR_NUMBER]);
+    /*
+     * **투영은 관계를 쓰지 않는다** (CR-116). 역할·범위·버전까지가 투영의 몫이고,
+     * `pull_request_numbers`는 정본을 읽는 전용 투영기가 대입한다. 여기서 값이
+     * 보이면 두 소유자가 같은 필드를 쓰고 있다는 뜻이다.
+     */
+    expect(merge?.['pull_request_numbers']).toBeUndefined();
 
     const src = await getDoc('prs-commits', `${String(REPOSITORY_ID)}:${SOURCE_SHA}`);
     expect(src?.['role']).toBe('source_commit');
+
+    // 러너가 돌고 나서야 관계가 선다. 정본이 아는 것을 그대로 비춘다.
+    await settleLinks();
+    expect((await getDoc('prs-commits', `${String(REPOSITORY_ID)}:${MERGE_SHA}`))?.['pull_request_numbers']).toEqual([PR_NUMBER]);
+    expect((await getDoc('prs-commits', `${String(REPOSITORY_ID)}:${SOURCE_SHA}`))?.['pull_request_numbers']).toEqual([PR_NUMBER]);
   });
 
   it('DoD 1: 오래된 `document_version` 갱신이 새 상태를 덮어쓰지 않는다 (AC-1)', async () => {
@@ -361,7 +379,21 @@ describe('투영 워커 (WP-008 DoD)', () => {
     expect(row?.processed_at).toBeNull();
   });
 
-  it('DoD 7: 커밋이 두 PR에 속해도 `pull_request_numbers`가 합집합으로 남는다 (CR-011)', async () => {
+  /**
+   * 관계를 색인에 비출 때까지 러너를 돌린다 (CR-116 / WP-101).
+   *
+   * 투영은 더 이상 `pull_request_numbers`를 쓰지 않는다 — 정본은 PostgreSQL이고
+   * 전용 투영기가 대입한다. 그래서 이 시험들은 투영 뒤에 러너를 한 번 흘린다.
+   */
+  async function settleLinks(): Promise<void> {
+    for (let round = 0; round < 20; round += 1) {
+      const cycle = await runCommitLinkOnce({ pool, es, metrics: createWorkerMetrics(), withWrite: (run) => run({ shadows: {} }), repositoryId: REPOSITORY_ID });
+      if (cycle.claimed === 0) break;
+    }
+    await es.indices.refresh({ index: 'prs-commits' });
+  }
+
+  it('DoD 7: 커밋이 두 PR에 속해도 두 번호가 함께 남는다 (CR-011 → CR-116)', async () => {
     const first = new Date('2026-08-20T12:00:00.000Z');
     const second = new Date('2026-08-20T13:00:00.000Z');
     await insertRaw('delivery-pr-1', first);
@@ -380,11 +412,18 @@ describe('투영 워커 (WP-008 DoD)', () => {
       ),
     );
 
+    /*
+     * **합집합이 아니라 전체 집합의 대입이다** (CR-116). 두 PR이 같은 커밋을 담으면
+     * 정본이 둘을 알고, 투영기가 그 둘을 한 번에 쓴다. 한 PR의 번호로 배열을 덮으면
+     * 여기서 하나가 사라진다 — 그것이 이 시험이 잡는 것이고, 대입으로 바꿨다고
+     * N:M을 잃지 않았음을 건다.
+     */
+    await settleLinks();
     const commit = await getDoc('prs-commits', `${String(REPOSITORY_ID)}:${SOURCE_SHA}`);
     expect([...(commit?.['pull_request_numbers'] as number[])].sort((a, b) => a - b)).toEqual([1234, 5678]);
   });
 
-  it('DoD 7: 오래된 이벤트도 자기 PR 번호는 등록한다 (합집합은 버전과 무관하다)', async () => {
+  it('DoD 7: 오래된 이벤트도 **자기 PR의** 소속은 등록한다 — 버전 가드는 PR별이다 (CR-116)', async () => {
     const later = new Date('2026-08-20T13:00:00.000Z');
     const earlier = new Date('2026-08-20T12:00:00.000Z');
     await insertRaw('delivery-late', later);
@@ -397,6 +436,12 @@ describe('투영 워커 (WP-008 DoD)', () => {
     );
     await handleEnrichedEvent(deps, delivered(enrichedPayload({ delivery_id: 'delivery-early' })));
 
+    /*
+     * 버전 가드는 **그 PR의 관측**에만 선다 (CR-116). 다른 PR의 이벤트가 더 이르다는
+     * 이유로 자기 소속을 등록하지 못하면 FR-SRCH-002가 한쪽을 조용히 잃는다 —
+     * CR-011이 합집합으로 막으려던 것이 바로 그것이고, 지금은 PR별 소유권이 막는다.
+     */
+    await settleLinks();
     const commit = await getDoc('prs-commits', `${String(REPOSITORY_ID)}:${SOURCE_SHA}`);
     expect([...(commit?.['pull_request_numbers'] as number[])].sort((a, b) => a - b)).toEqual([1234, 5678]);
   });

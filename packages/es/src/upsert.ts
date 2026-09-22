@@ -62,8 +62,16 @@ export interface UpsertRequest {
   readonly routing: string;
   /** 상태 필드. `document_version`이 반드시 있어야 조건부 비교가 성립한다. */
   readonly doc: Readonly<Record<string, unknown>> & { readonly document_version: number };
-  /** 누적 필드. 버전과 무관하게 합집합한다. */
-  readonly union?: Readonly<Record<string, readonly unknown[]>>;
+  /**
+   * 누적 필드. 버전과 무관하게 합집합한다.
+   *
+   * **`pull_request_numbers`는 여기 들어올 수 없다** (CR-116 / WP-101). 타입이 그것을
+   * 막는 이유는, 합집합의 결함이 문서로만 금지되면 언젠가 새 쓰기 경로가 다시 그
+   * 이름을 적기 때문이다. 관계는 `commit-links.ts`의 전용 투영기가 대입한다.
+   */
+  readonly union?: Readonly<Record<string, readonly unknown[]>> & {
+    readonly pull_request_numbers?: never;
+  };
   /**
    * 생성 시점에만 쓰는 필드.
    *
@@ -176,7 +184,25 @@ function toArrays(union: UpsertRequest['union']): Record<string, unknown[]> {
   return out;
 }
 
+/**
+ * 합집합에 관계를 실을 수 없다 (CR-116 / WP-101).
+ *
+ * 타입이 이미 막지만 **타입은 컴파일된 뒤 사라진다.** 스냅숏에서 되읽은 객체나
+ * `as`로 넓힌 값처럼 검사를 통과해 들어오는 경로가 실재하고, 그렇게 들어온
+ * 합집합 한 번이 CR-011 시절의 결함을 그대로 되살린다. 조용히 무시하지 않고
+ * 던지는 이유는, 무시하면 그 이벤트의 관계가 **어디에도** 반영되지 않은 채
+ * 정상으로 보이기 때문이다.
+ */
+function assertNoRelationUnion(request: UpsertRequest): void {
+  if (request.union !== undefined && 'pull_request_numbers' in request.union) {
+    throw new Error(
+      `pull_request_numbers는 합집합 필드가 아니다 (CR-116) — 관계는 applyCommitLinks가 대입한다: ${request.id}`,
+    );
+  }
+}
+
 function scriptBody(request: UpsertRequest): Record<string, unknown> {
+  assertNoRelationUnion(request);
   return {
     script: {
       lang: 'painless',

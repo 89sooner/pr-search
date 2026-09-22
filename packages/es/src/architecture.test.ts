@@ -87,6 +87,19 @@ const UNSCOPED_ALLOWLIST: readonly {
       '넣으면 이 사유를 그대로 물려받고 검사기가 침묵한다 (DEV-265가 links.ts에서 배운 것).',
   },
   {
+    file: 'apps/pipeline-worker/src/link-repair.ts',
+    kind: 'no_requester',
+    why:
+      'CR-116 PR 연결 전체 대조·복구 (WP-101, FR-SRCH-002 AC-6). 방아쇠가 운영자의 ' +
+      '`prsctl links` 명령이라 **요청자가 없다** — 호스트에서 한 번 실행되는 배치이고, ' +
+      '어떤 HTTP 요청도 이 경로에 닿지 않는다. 읽는 필드는 `commit_sha`와 ' +
+      '`pull_request_numbers` 둘뿐이다: 제목·본문·작성자·변경 경로를 읽지 않으므로 ' +
+      '범위를 넘어 볼 내용 자체가 없다. 질의는 `repository_id` 단일 term으로 좁혀지며 ' +
+      '그 저장소는 운영자가 인자로 지목한 것이다. 결과는 바뀔 건수와 표본 SHA로만 나가고 ' +
+      '응답 본문이 되지 않는다. 이 파일에 **사용자 대면 조회를 넣지 않는다** — 넣으면 이 사유를 ' +
+      '그대로 물려받고 검사기가 침묵한다 (DEV-265가 links.ts에서 배운 것).',
+  },
+  {
     file: 'packages/es/src/sequence-projection.ts',
     kind: 'no_requester',
     why:

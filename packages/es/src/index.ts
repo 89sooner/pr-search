@@ -144,6 +144,9 @@ export {
 export type { SortKey, SortOrder } from './sort.js';
 
 export { CONDITIONAL_UPSERT_SCRIPT, bulkUpsert, classifyFailure, upsertOne } from './upsert.js';
+// 커밋 문서의 PR 연결 투영 (CR-116 / WP-101). 이 필드의 유일한 쓰기 경로다.
+export { applyCommitLinks, applyCommitLinksToIndex, normalizeLinkNumbers } from './commit-links.js';
+export type { CommitLinkOutcome, CommitLinkState, CommitLinkUpdate } from './commit-links.js';
 export type { BulkItemOutcome, BulkUpsertResult, UpsertRequest } from './upsert.js';
 
 export {

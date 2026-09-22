@@ -200,7 +200,13 @@ export function commitCreateFields(
   return {
     ...scopeFields(repository),
     document_version: Date.parse(fact.committedAt),
-    ...(extra.pullRequestNumber === null ? {} : { pull_request_numbers: [extra.pullRequestNumber] }),
+    /*
+     * `pull_request_numbers`를 **생성 시점에도 쓰지 않는다** (CR-116 / WP-101).
+     *
+     * 생성 시점 초기화도 관계를 쓰는 일이다. 세대 없이 `[n]`이 들어가면 그 값은
+     * 어느 정본에서도 나오지 않았으면서 관계 투영기의 `conflict` 판정에 걸린다.
+     * 새 인덱스를 정본에서 재구축할 때 특히 그렇다 — 관계는 관계 투영기가 채운다.
+     */
     ...(extra.baseBranch === undefined ? {} : { base_branch: extra.baseBranch }),
     enrichment_pending: false,
     link_summary: { has_revert: false, is_reverted: false, has_cherry_pick: false },

@@ -84,6 +84,7 @@ import { TagClient, resolveTagConfig, tagConfigFailure } from '@prs/github-tag';
 import { startTagSweeper, startTagWorkRunner, type TagDeps, type TagLogFields, type TagSweeper, type TagWorkRunner } from './mnumber-tag.js';
 import { startTagReconcileRunner, type TagReconcileRunner } from './mnumber-tag-reconcile.js';
 import { startSequenceWorkRunner, type SequenceWorkRunner } from './sequence-work-runner.js';
+import { startCommitLinkRunner, type CommitLinkRunner } from './commit-links.js';
 import { startSequenceMetadataCleanup, type MetadataCleanup } from './sequence-metadata-cleanup.js';
 import { statSync } from 'node:fs';
 import {
@@ -156,6 +157,7 @@ let commitEnrichSweeper: CommitEnrichSweeper | undefined;
 let sequenceSubscription: Subscription | undefined;
 /** WP-074: durable work 러너·M 힌트 구독·관측 루프. sequence 역할이 세운다. */
 let sequenceWorkRunner: SequenceWorkRunner | undefined;
+let commitLinkRunner: CommitLinkRunner | undefined;
 let mnumberHintSubscription: Subscription | undefined;
 let mnumberObserver: { stop(): Promise<void> } | undefined;
 /** WP-074: 운영 메타데이터 정리. batch 역할이 세운다. */
@@ -375,6 +377,28 @@ if (roles.includes('project')) {
     metrics,
     log: (fields) => {
       process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-ING-008', ...fields })}\n`);
+    },
+  });
+
+  /*
+   * JOB-REL-008 커밋 관계 투영 (WP-101 / CR-116, FR-SRCH-002 AC-6).
+   *
+   * **투영 역할이 소유한다** — 커밋 문서를 만드는 쪽이 그 문서의 관계도 맞춘다.
+   * 새 역할을 만들지 않는 것은 재색인 워커가 `batch`에 얹힌 것과 같은 규율이다.
+   *
+   * **M 기능 스위치를 보지 않는다.** 관계는 M이 꺼진 배포에서도 정확해야 하고,
+   * FR-SRCH-002는 M과 무관하다. 여기 스위치를 두면 M을 끈 배포에서 잘못된 PR
+   * 번호가 영원히 남는다 (CR-116이 고치는 바로 그 상태다).
+   *
+   * 쓰기는 재색인 울타리를 지난다 — 전환 중에도 shadow 인덱스가 관계를 함께 받는다.
+   */
+  commitLinkRunner = startCommitLinkRunner({
+    pool,
+    es: esClient,
+    metrics,
+    withWrite: (run) => withReindexWrite(pool, run),
+    log: (fields) => {
+      process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, job: 'JOB-REL-008', ...fields })}\n`);
     },
   });
 }
@@ -1341,6 +1365,8 @@ const shutdown = (): void => {
        * 미완료로 남은 lease는 만료 뒤 다른 프로세스가 회수한다 (상세 설계 10절).
        */
       await sequenceWorkRunner?.stop();
+      // 새 claim을 멈추고 진행 중 회차를 끝낸다. lease는 만료 뒤 다른 프로세스가 회수한다.
+      await commitLinkRunner?.stop();
       await mnumberObserver?.stop();
       await mnumberHintSubscription?.close();
       await sequenceMetadataCleanup?.stop();

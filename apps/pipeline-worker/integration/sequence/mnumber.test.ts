@@ -609,7 +609,26 @@ describe('durable 러너와 materialize/announce (T04b 일부)', () => {
           },
         },
       ],
-      { repositoryId: REPOSITORY_ID, prNumber: 27, source: 'webhook' },
+      {
+        repositoryId: REPOSITORY_ID,
+        prNumber: 27,
+        source: 'webhook',
+        linkObservation: {
+          observedVersion: 20,
+          sourceShas: [],
+          mergeSha: origin.squash.get(27) as string,
+          commitsComplete: true,
+          pullRequestAuthoritative: true,
+          commitsErrorKind: null,
+          apiCommitCount: null,
+          sourceCommitsTruncated: false,
+          headSha: null,
+          baseSha: null,
+          baseBranch: BRANCH,
+          prState: 'merged',
+          reason: null,
+        },
+      },
     );
 
     const after = (await sequenceWorkRepo.listWorkForSpace(pool, REPOSITORY_ID, BRANCH))
@@ -642,7 +661,41 @@ describe('durable 러너와 materialize/announce (T04b 일부)', () => {
       merged_at: origin.mergedAt.get(25) as string,
     };
     const request = { alias: 'prs-pull-requests' as const, id: `pr:${String(REPOSITORY_ID)}:25`, routing: String(REPOSITORY_ID), doc: document };
-    await recordProjectionSnapshot(pool, [request], { repositoryId: REPOSITORY_ID, prNumber: 25, source: 'webhook' });
+    const linkObservationFor = (documentVersion: number): {
+      observedVersion: number;
+      sourceShas: readonly string[];
+      mergeSha: string;
+      commitsComplete: boolean;
+      pullRequestAuthoritative: boolean;
+      commitsErrorKind: null;
+      apiCommitCount: null;
+      sourceCommitsTruncated: boolean;
+      headSha: null;
+      baseSha: null;
+      baseBranch: string;
+      prState: string;
+      reason: null;
+    } => ({
+      observedVersion: documentVersion,
+      sourceShas: [],
+      mergeSha: origin.squash.get(25) as string,
+      commitsComplete: true,
+      pullRequestAuthoritative: true,
+      commitsErrorKind: null,
+      apiCommitCount: null,
+      sourceCommitsTruncated: false,
+      headSha: null,
+      baseSha: null,
+      baseBranch: BRANCH,
+      prState: 'merged',
+      reason: null,
+    });
+    await recordProjectionSnapshot(pool, [request], {
+      repositoryId: REPOSITORY_ID,
+      prNumber: 25,
+      source: 'webhook',
+      linkObservation: linkObservationFor(20),
+    });
     const afterFirst = (await sequenceWorkRepo.listWorkForSpace(pool, REPOSITORY_ID, BRANCH))
       .find((one) => one.kind === 'reconcile')?.requested_generation ?? 0;
 
@@ -650,7 +703,12 @@ describe('durable 러너와 materialize/announce (T04b 일부)', () => {
     await recordProjectionSnapshot(
       pool,
       [{ ...request, doc: { ...document, document_version: 5 } }],
-      { repositoryId: REPOSITORY_ID, prNumber: 25, source: 'webhook' },
+      {
+        repositoryId: REPOSITORY_ID,
+        prNumber: 25,
+        source: 'webhook',
+        linkObservation: linkObservationFor(5),
+      },
     );
     const afterSecond = (await sequenceWorkRepo.listWorkForSpace(pool, REPOSITORY_ID, BRANCH))
       .find((one) => one.kind === 'reconcile')?.requested_generation ?? 0;

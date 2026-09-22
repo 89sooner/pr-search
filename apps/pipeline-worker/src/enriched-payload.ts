@@ -84,6 +84,11 @@ function parsePullRequest(value: unknown): EnrichedPullRequest | null {
     head_sha: headSha,
     base_ref: baseRef,
     base_sha: baseSha,
+    // 0은 사실이므로 `?? null`이 아니라 타입 검사로 가른다 (CR-116).
+    commits_count:
+      typeof pr['commits_count'] === 'number' && Number.isSafeInteger(pr['commits_count']) && pr['commits_count'] >= 0
+        ? pr['commits_count']
+        : null,
   };
 }
 
@@ -171,6 +176,12 @@ export function parseEnriched(payload: unknown): EnrichedParse {
       changed_files: parseChangedFiles(root['changed_files']),
       reviews: parseReviews(root['reviews']),
       source_commits_truncated: root['source_commits_truncated'] === true,
+      /*
+       * **없으면 거짓이다** (CR-116). 이 필드를 싣지 않던 배포가 남긴 이벤트가
+       * 늦게 도착하면 그 관측에는 완전성 근거가 없고, 근거 없는 관측에 삭제
+       * 권한을 주지 않는다. 추가는 그대로 된다.
+       */
+      source_commits_complete: root['source_commits_complete'] === true,
       files_truncated: root['files_truncated'] === true,
       enrichment_pending: root['enrichment_pending'] === true,
       enrichment_errors: parseErrors(root['enrichment_errors']),
@@ -205,5 +216,8 @@ export function toEnrichedPullRequest(fresh: PullRequestSummary): EnrichedPullRe
     head_sha: fresh.head.sha,
     base_ref: fresh.base.ref,
     base_sha: fresh.base.sha,
+    // 원격이 주지 않으면 `null`이다 (CR-116). 목록 길이로 대신 채우지 않는다 —
+    // 그러면 대조가 언제나 성립해 완전성 판정이 무의미해진다.
+    commits_count: typeof fresh.commits === 'number' && Number.isSafeInteger(fresh.commits) && fresh.commits >= 0 ? fresh.commits : null,
   };
 }

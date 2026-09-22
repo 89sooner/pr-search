@@ -898,6 +898,64 @@ describe('사내 반입 운반이 GitHub Release와 같은 말을 한다 (WP-072
   });
 });
 
+describe('커밋 PR 연결 투영이 실제로 돈다 (WP-101 / CR-116)', () => {
+  /*
+   * **주석에 규칙을 적어 두는 것은 위반이 아니다** (`packages/es/src/architecture.test.ts`가
+   * 같은 이유로 같은 일을 한다). 금지된 모양을 **설명하는 주석**까지 위반으로 잡으면,
+   * 이 검사는 다음 사람에게 「설명을 쓰지 마라」를 가르친다.
+   */
+  const stripComments = (source: string): string =>
+    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const readCode = (path: string): string => stripComments(read(path));
+
+  const RUNNER = readCode('apps/pipeline-worker/src/commit-links.ts');
+  const ENTRY = read('apps/pipeline-worker/src/index.ts');
+  const COMMAND = read('apps/pipeline-worker/src/link-repair-command.ts');
+  const PROJECTOR = readCode('packages/es/src/commit-links.ts');
+
+  /*
+   * **관계는 M 기능과 무관하다** (FR-SRCH-002 AC-6). 러너를 M 스위치 뒤에 두면
+   * M을 끈 배포에서 잘못된 PR 번호가 영원히 남는다 — 이 CR이 고치려던 바로 그
+   * 상태가 스위치 하나로 되돌아온다.
+   */
+  it('관계 투영 러너가 기동 경로에 있고 M 스위치에 묶이지 않는다', () => {
+    expect(ENTRY).toContain('startCommitLinkRunner({');
+    expect(RUNNER).not.toContain('mergeNumberEnabled');
+    expect(RUNNER).not.toContain('mnumber');
+  });
+
+  /*
+   * **집는 자가 없는 잡 유형을 만들지 않는다** (DEV-178·DEV-180). 이 잡에는 비동기
+   * 러너가 없고 명령 자신이 집는다 — 큐에 넣고 끝내면 아무도 집지 않는 행이 남는다.
+   */
+  it('복구 잡을 만든 명령이 그 잡을 직접 집고 조건부로 닫는다', () => {
+    expect(COMMAND).toContain("enqueueJob(deps.pool, LINK_REPAIR_JOB");
+    expect(COMMAND).toContain('claimNextJob(deps.pool, LINK_REPAIR_JOB, 1)');
+    expect(COMMAND).toContain('finishJobIfRunning(');
+    expect(COMMAND).not.toMatch(/jobRepo\.finishJob\(/);
+  });
+
+  /*
+   * **합집합이 되살아나는 경로를 막는다** (DEV-745). 문서로만 금지하면 언젠가 새
+   * 쓰기 경로가 다시 그 이름을 적는다 — 타입이 막고 실행 시점 가드가 한 번 더 막는다.
+   */
+  it('투영과 커밋 보강이 관계 필드를 쓰지 않는다', () => {
+    expect(readCode('apps/pipeline-worker/src/documents.ts')).not.toMatch(/union:\s*\{\s*pull_request_numbers/);
+    expect(readCode('apps/pipeline-worker/src/commit-enrich.ts')).not.toContain('pull_request_numbers: [');
+    expect(read('packages/es/src/upsert.ts')).toContain('assertNoRelationUnion(');
+  });
+
+  /*
+   * **관계 쓰기가 다른 소유자의 필드를 덮지 않는다** (데이터 모델 5장 필드 소유권).
+   * 한 줄이라도 섞이면 시퀀스·M 번호가 관계 갱신마다 조용히 되돌아간다.
+   */
+  it('관계 투영기가 시퀀스·M·역할 필드를 건드리지 않는다', () => {
+    for (const field of ['merge_seq', 'merge_number', 'seq_epoch', 'role', 'base_branch', 'document_version']) {
+      expect(PROJECTOR).not.toContain(`ctx._source.${field} =`);
+    }
+  });
+});
+
 describe('수동 실행이 실제로 러너에 닿는다 (WP-040 / CR-055)', () => {
   const RECONCILE = read('apps/pipeline-worker/src/reconcile.ts');
   const ASSIGN = read('apps/pipeline-worker/src/sequence-assign-runner.ts');

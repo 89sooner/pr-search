@@ -24,7 +24,7 @@ import { runSequenceWorkOnce } from '../../src/sequence-work-runner.js';
 import { runSequenceReprojectCommand } from '../../src/sequence-reproject-command.js';
 import { REPROJECT_JOB, runReprojectJob } from '../../src/sequence-reproject-runner.js';
 import { runRepairJob } from '../../src/sequence-repair-runner.js';
-import { recordProjectionSnapshot } from '../../src/snapshot.js';
+import { linkObservationOf, recordProjectionSnapshot } from '../../src/snapshot.js';
 import { makeTempDir, removeDir } from './fixture.js';
 import { createSquashFixture, type SquashFixture } from './squash-fixture.js';
 
@@ -123,11 +123,13 @@ function enrichedFor(prNumber: number, mergeSha: string): IngestionEnriched {
       head_sha: 'b'.repeat(40),
       base_ref: BRANCH,
       base_sha: 'c'.repeat(40),
+      commits_count: 0,
     },
     source_commit_shas: [],
     changed_files: [],
     reviews: [],
     source_commits_truncated: false,
+    source_commits_complete: true,
     files_truncated: false,
     enrichment_pending: false,
     enrichment_errors: [],
@@ -137,7 +139,12 @@ function enrichedFor(prNumber: number, mergeSha: string): IngestionEnriched {
 
 async function projectPullRequest(prNumber: number, mergeSha: string): Promise<void> {
   const requests = buildUpsertRequests({ enriched: enrichedFor(prNumber, mergeSha), repository, documentVersion: 1_000, indexedAt: new Date(), authorTeams: { kind: 'unknown' } });
-  await recordProjectionSnapshot(pool, requests, { repositoryId: REPOSITORY_ID, prNumber, source: 'webhook' });
+  await recordProjectionSnapshot(pool, requests, {
+    repositoryId: REPOSITORY_ID,
+    prNumber,
+    source: 'webhook',
+    linkObservation: linkObservationOf(enrichedFor(prNumber, mergeSha), 1_000),
+  });
   await withReindexWrite(pool, async (targets) => {
     const result = await bulkUpsert(es, requests, targets);
     if (result.outcomes.some((one) => one.kind !== 'ok')) throw new Error('PR 투영 실패');

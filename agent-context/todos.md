@@ -2633,3 +2633,12 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [ ] `DEV-728`(`playwright.config.ts`의 `PRS_LEGACY_SEARCH=1` 고정으로 e2e가 `RepositoryWorkspace`/`SourceHistory`에 전혀 도달 못함) 해소를 위한 별도 CR 검토.
 - [ ] 사이드바-결과 표 하단 정렬(CR-111 3차 조정)을 실 데이터가 있는 환경에서 스크롤 상태로 재확인.
 - [ ] worktree `cr111-search-simplify`도 병합 완료됐으니 기존 정리 대기 목록(cr102/103/105/106 계열)에 합류 — 여전히 사용자가 "나중에"로 보류 중.
+
+## CR-116 뒤 남은 것 (16차, 2026-09-23)
+
+- [ ] PR #228 병합 — 생성까지 끝냈다. 필수 리뷰·CI 통과 뒤, 병합은 사용자 지시 뒤다.
+- [ ] `DEV-752`(open) — 원본 목록에서 빠진 커밋의 `role: source_commit`이 그대로 남는다. 관계 투영기가 `role`도 소유할지 제품 판단이 필요하다. 사내에서 오염된 커밋들은 보강이 준 `role: merge_commit`을 갖고 있어 화면에 드러나지 않는다.
+- [ ] `DEV-728`의 상태 확인 — `playwright.config.ts`에 `workspace` 프로젝트가 이미 있고 `workspace.*.spec.ts`가 실제 `RepositoryWorkspace`에 도달한다(16차가 `workspace.linked-prs.spec.ts`를 그 위에 더했다). 원장에 아직 `open`이면 닫을지 판단한다.
+- [ ] 사내 반입 뒤 CR-116 절차 실행 — `./prsctl upgrade`(036) → `links status` → `refetch` → `plan` → `apply` → 화면 확인. **모든 워커가 새 빌드가 된 뒤에** `apply`를 돌린다(구버전은 여전히 합집합을 쓴다). 결과는 `agent-context/upstream-feedback.md`의 CR-116 주석 아래에 적는다.
+- [ ] 격리 컨테이너 `prs-cr116-postgres`·`prs-cr116-es`·`prs-cr116-redis` 정리 — 병합 뒤. 다른 세션이 쓰지 않는지 먼저 확인한다.
+- [ ] worktree `cr116-pr-links`도 병합 뒤 기존 정리 대기 목록에 합류.

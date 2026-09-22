@@ -255,12 +255,20 @@ async function enrichTarget(
 
   // --- PR 본문 ---
   let pullRequest: EnrichedPullRequest | null = target.webhookPullRequest;
+  /**
+   * PR 본문을 **원격에서 직접** 읽었는가 (CR-116).
+   *
+   * 웹훅 payload는 발생 시점의 사본이고 재전송이면 몇 분 전 것일 수도 있다.
+   * 그것으로 커밋 목록의 완전성을 판정하면 **낡은 head를 현재로 착각한다.**
+   */
+  let pullRequestFromApi = false;
   try {
     const fresh = await deps.client.getPullRequest(ref, target.prNumber, { priority: 'realtime' });
     // API 응답이 웹훅보다 새롭다. 웹훅은 발생 시점의 스냅숏이고 재전송이면
     // 몇 분 전 것일 수도 있다. 그래서 겹치는 필드는 API 값을 그대로 쓴다.
     // 매핑은 백필과 공유한다 — 두 경로가 각자 옮기면 언젠가 어긋난다 (CR-022).
     pullRequest = toEnrichedPullRequest(fresh);
+    pullRequestFromApi = true;
   } catch (error) {
     if (isNotFound(error)) {
       // 삭제된 PR이다. 다시 물어봐도 없다 (비동기 5.2). 재시도 없이 종료한다.
@@ -272,14 +280,58 @@ async function enrichTarget(
   // --- 원본 커밋 ---
   let sourceCommitShas: readonly string[] = [];
   let sourceCommitsTruncated = false;
+  let commitsFetched = false;
   try {
     const page = await deps.client.listPullRequestCommitsPaged(ref, target.prNumber, {
       priority: 'realtime',
     });
     sourceCommitShas = page.items.map((commit) => commit.sha);
     sourceCommitsTruncated = page.truncated;
+    commitsFetched = true;
   } catch (error) {
     failures.push(describeFailure('commits', error));
+  }
+
+  /*
+   * --- 관계 관측의 완전성 (CR-116 / FR-ING-004 AC-6, DEV-744) ---
+   *
+   * 이 값이 **커밋에서 PR 번호를 지울 권한**이다. 목록에 없다는 사실이 소속이
+   * 아니라는 뜻이 되려면 그 목록이 원격의 전부여야 하고, 그것을 증명하는 조건은
+   * 다음 넷이며 하나라도 무너지면 삭제 권한이 없다.
+   *
+   * 1. 커밋 조회가 성공했다. 실패로 나온 `[]`는 **빈 목록이 아니라 모름이다.**
+   * 2. 우리 상한(`MAX_PR_COMMITS`)에 걸리지 않았다.
+   * 3. 원격이 말한 커밋 수와 읽은 수가 같다. **이것이 API 자체 상한의 방어선이다** —
+   *    `GET /pulls/{n}/commits`는 250건에서 GitHub이 자르고 그 응답에는
+   *    `rel="next"`가 없어 `truncated`가 거짓이 된다. 이 대조가 없으면 400 커밋
+   *    PR이 "250건이 전부"로 읽히고, **읽지 못한 150건에서 PR 번호가 지워진다.**
+   * 4. 목록을 읽기 **전후로** head/base가 같다. 조회 도중 rebase가 끼면 앞 절반은
+   *    옛 체인이고 뒤 절반은 새 체인이라 어느 쪽의 전부도 아니다.
+   *
+   * 4번의 재확인은 **완전성을 주장할 수 있을 때만** 나간다 — 어차피 삭제 권한이
+   * 없는 관측에 왕복을 더 쓰지 않는다.
+   */
+  let sourceCommitsComplete = false;
+  if (
+    commitsFetched &&
+    !sourceCommitsTruncated &&
+    pullRequestFromApi &&
+    pullRequest !== null &&
+    pullRequest.commits_count !== null &&
+    pullRequest.commits_count === sourceCommitShas.length
+  ) {
+    try {
+      const after = toEnrichedPullRequest(
+        await deps.client.getPullRequest(ref, target.prNumber, { priority: 'realtime' }),
+      );
+      sourceCommitsComplete =
+        after.head_sha === pullRequest.head_sha && after.base_sha === pullRequest.base_sha;
+    } catch {
+      // 재확인이 실패하면 완전하다고 **주장하지 않는다.** 보강 자체는 실패가
+      // 아니므로 `failures`에 넣지 않는다 — 부분 문서는 그대로 진행하고,
+      // 잃는 것은 이번 회차의 삭제 권한뿐이다.
+      sourceCommitsComplete = false;
+    }
   }
 
   // --- 변경 파일 ---
@@ -360,6 +412,7 @@ async function enrichTarget(
     changed_files: changedFiles,
     reviews,
     source_commits_truncated: sourceCommitsTruncated,
+    source_commits_complete: sourceCommitsComplete,
     files_truncated: filesTruncated,
     enrichment_pending: enrichmentPending,
     enrichment_errors: failures.map((failure) => failure.error),

@@ -18,12 +18,22 @@ const REQUEST: UpsertRequest = {
   createOnly: { links_pending: true },
 };
 
+/**
+ * 합집합 기구 자체는 남아 있다 (CR-116 / WP-101).
+ *
+ * 다만 **운영에서 이 자리를 쓰는 필드는 현재 하나도 없다.** `pull_request_numbers`가
+ * 유일한 사용처였고 그것은 전용 투영기로 옮겼다. 그래서 여기 키는 기구를 시험하기
+ * 위한 가상의 이름이며, 진짜 필드 이름을 쓰면 그 필드가 합집합 대상이라는 잘못된
+ * 신호를 남긴다.
+ */
+const UNION_FIELD = 'spec_only_union_field';
+
 const COMMIT: UpsertRequest = {
   alias: 'prs-commits',
   id: '4021:abcd',
   routing: '4021',
   doc: { document_version: 100, commit_sha: 'abcd' },
-  union: { pull_request_numbers: [1234] },
+  union: { [UNION_FIELD]: [1234] },
 };
 
 function fakeClient(response: unknown): { client: Client; bulk: ReturnType<typeof vi.fn> } {
@@ -50,8 +60,24 @@ describe('벌크 요청 모양 (AC-2)', () => {
 
     const body = (bulk.mock.calls[0]?.[0]?.operations as { script: { params: Record<string, unknown> } }[])[1];
     expect(body?.script.params['doc']).toMatchObject({ document_version: 100 });
-    expect(body?.script.params['union']).toEqual({ pull_request_numbers: [1234] });
+    expect(body?.script.params['union']).toEqual({ [UNION_FIELD]: [1234] });
     expect(body?.script).toMatchObject({ source: CONDITIONAL_UPSERT_SCRIPT, lang: 'painless' });
+  });
+
+  it('관계를 합집합으로 실으면 던진다 (CR-116, DEV-745)', async () => {
+    const { client, bulk } = fakeClient({ items: [{ update: { status: 200, result: 'updated' } }] });
+    /*
+     * 타입은 이것을 막지만 타입은 실행 시점에 없다. `as`로 넓혀 들어오는 경로가
+     * 실재하므로 실행 시점 가드가 그 자리를 지킨다 — 합집합 한 번이면
+     * `pull_request_numbers`는 다시 "빠지지 않는 필드"가 된다.
+     */
+    const smuggled = {
+      ...COMMIT,
+      union: { pull_request_numbers: [1234] },
+    } as unknown as UpsertRequest;
+
+    await expect(bulkUpsert(client, [smuggled], SERVING_ONLY)).rejects.toThrow('pull_request_numbers');
+    expect(bulk).not.toHaveBeenCalled();
   });
 
   it('생성 시 본문에는 누적 필드와 생성 전용 필드가 함께 들어간다', async () => {
@@ -63,7 +89,7 @@ describe('벌크 요청 모양 (AC-2)', () => {
     expect(body?.upsert).toMatchObject({
       document_version: 100,
       commit_sha: 'abcd',
-      pull_request_numbers: [1234],
+      [UNION_FIELD]: [1234],
       link_summary: { has_revert: false },
     });
   });

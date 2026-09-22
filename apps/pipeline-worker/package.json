@@ -27,6 +27,7 @@
     "prs-measure-sequence-latency": "./dist/measure-cli.js",
     "prs-annotate-preview": "./dist/annotate-preview-cli.js",
     "prs-mnumber-attest": "./dist/mnumber-attest-cli.js",
-    "prs-sequence-reproject": "./dist/sequence-reproject-cli.js"
+    "prs-sequence-reproject": "./dist/sequence-reproject-cli.js",
+    "prs-links": "./dist/link-repair-cli.js"
   }
 }

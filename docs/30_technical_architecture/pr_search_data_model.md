@@ -1,6 +1,6 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.30 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.31 | 갱신일: 2026-09-23
 
 CR-115 / FR-SEQ-012: M 번호 lightweight 태그의 결과를 마이그레이션 035(추가 전용)로 정본에 얹는다 — `merge_sequence`에 태그 결과 다섯 열(`tag_state`·`tagged_at`·`tag_attempt_id`·`tag_result_reason`·`tag_found_sha`), `repository`에 운영자 정책 `tag_enabled`와 실행 중 차단 `tag_blocked_at`·`tag_blocked_reason`, `sequence_work.kind`에 `tag`, `job.type`에 `mnumber_tag_reconcile`. 표기(025·027)와 같은 규율이라 별도 표를 만들지 않는다 — 태그는 번호의 파생 쓰기이고 그 결과는 번호 행의 속성이다. Elasticsearch에는 `prs-commits`의 `role: merge_commit` 문서에 M 값 세 필드(`merge_number`·`merge_number_epoch`·`merge_number_state`)가 더해지며(AC-7), 소유자는 PR 문서와 같은 `materialize` durable work다(5장). 원격 태그 자체는 정본이 아니다 — GHE의 ref이며 정본은 언제나 `merge_sequence`다. ADR-004에 영향이 없다.
 
@@ -35,7 +35,10 @@ CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025�
 | --- | --- | --- | --- | --- | --- | --- |
 | ENT-CORE-001 | Repository | 수집 대상 저장소 등록과 정책 | `repository_id`, `owner`, `name`, `org_id`, `visibility`, `sequence_branches[]`, `mirror_enabled`, `status`, **`annotate_enabled`**, **`tag_enabled`** | PostgreSQL | registry | FR-ING-009, **FR-SEQ-009 AC-6**, **FR-SEQ-012 AC-9** |
 | ENT-CORE-002 | PullRequest | PR 검색 문서 | `pr_number`, `title`, `body`, `author`, `state`(투영이 파생하는 `open`·`closed`·`merged` — 병합 신호가 있으면 `merged`, CR-101), `merged_at`, `merge_commit_sha`, `merge_seq`, `merge_number`, `link_summary` | Elasticsearch | projection | FR-SRCH-003, FR-SRCH-006, FR-SEQ-008 |
-| ENT-CORE-003 | Commit | 커밋 검색 문서 | `commit_sha`, `message`, `author`, `role`, `merge_seq`, `merge_number`(`role: merge_commit` 문서만, CR-115), `patch_id`, `changed_paths[]` | Elasticsearch | projection | FR-SRCH-002, FR-SRCH-004, FR-SEQ-012 AC-7 |
+| ENT-CORE-003 | Commit | 커밋 검색 문서 | `commit_sha`, `message`, `author`, `role`, `merge_seq`, `merge_number`(`role: merge_commit` 문서만, CR-115), `pull_request_numbers`(정본은 ENT-CORE-009, 전용 투영기가 대입 — CR-116), `pr_links_generation`, `pr_links_state`, `patch_id`, `changed_paths[]` | Elasticsearch | projection | FR-SRCH-002, FR-SRCH-004, FR-SEQ-012 AC-7 |
+| ENT-CORE-009 | PullRequestCommitLink | PR↔커밋 관계 정본 (CR-116) | `repository_id`, `pr_number`, `commit_sha`, `evidence`(`source`·`merge`), `observed_version` | PostgreSQL | projection | FR-SRCH-002 AC-6 |
+| ENT-CORE-010 | PullRequestLinkObservation | 관계 관측의 신뢰도 — **삭제 권한** (CR-116) | `commits_complete`, `commits_error_kind`, `api_commit_count`, `fetched_count`, `head_sha`, `base_sha`, `verification_state` | PostgreSQL | projection | FR-SRCH-002 AC-6, FR-ING-004 AC-6 |
+| ENT-CORE-011 | CommitLinkState | 커밋별 관계 투영 의도와 진행 (CR-116) | `generation`, `projected_generation`, `projected_numbers[]`, `state`, `lease_*`, `conflict_at` | PostgreSQL | projection | FR-SRCH-002 AC-6, FR-ING-008 AC-9 |
 | ENT-CORE-004 | Team | 팀 정보와 집계 그룹 단위 | `team_id`, `slug`, `org_id`, `member_ids[]` | PostgreSQL | registry | FR-AUTH-002, FR-STAT-001 |
 | ENT-CORE-005 | User | 사용자와 접근 범위 | `user_id`, `login`, `email`, `roles[]`, `access_scope_version` | PostgreSQL | auth | FR-AUTH-001, FR-AUTH-003 |
 | ENT-CORE-006 | SavedSearch | 저장된 질의 | `saved_search_id`, `name`, `query`, `visibility`, `owner_user_id`, `team_id`(대상 팀, `visibility='team'`일 때만), `seq_epoch`(`seq:` 조건이 딛고 선 에폭, CR-051) | PostgreSQL | search | FR-SRCH-010 |
@@ -149,6 +152,58 @@ CREATE INDEX dead_letter_repo_idx  ON dead_letter (repository_id, created_at DES
 **`resolved`는 종료 상태다 (CR-012, DEV-023).** 재처리는 원본을 파이프라인에 다시 넣는 비동기 작업이라 API가 성공을 알 수 없다. 대신 투영이 `raw_event.processed_at`을 찍는 자리에서 그 전달의 열린 행을 닫는다 — 그 시점이 "이 이벤트가 끝까지 갔다"는 유일한 증거다. 닫지 않으면 성공한 행이 `reprocessing`으로 영영 남아 경보 임계를 잠식한다. 행을 지우지 않는 이유는 보존 정책(9장)이 이 표를 90일 보관 대상으로 두었기 때문이다 — 무엇이 왜 실패했다가 언제 풀렸는지가 운영 기록이다.
 
 `raw_event`의 `queued_at`/`processed_at`이 아웃박스 역할을 한다. Redis 유실 시 `queued_at IS NOT NULL AND processed_at IS NULL`이면서 일정 시간이 지난 행을 재적재한다 (ADR-002 follow-up, `JOB-ING-007`).
+
+#### `pull_request_commit_link`·`pull_request_link_observation`·`commit_link_state` — PR↔커밋 관계 정본 (CR-116, 마이그레이션 036)
+
+커밋 문서의 `pull_request_numbers`는 **색인에만 존재하던 관계**였다. 합집합이라 한 번 더해진 번호를 빼지 못했고(CR-011, DEV-019), 그것을 고치려면 "이 커밋을 실제로 소유하는 PR 전부"를 말할 수 있는 정본이 필요하다. `pull_request_snapshot.document`로는 안 된다 — 그 문서는 **최신 스냅숏 하나**라 갱신이 지워야 할 옛 SHA를 그 순간 덮어쓴다. 어떤 데이터도 검색 인덱스에만 존재해서는 안 된다는 ADR-004가 이 표들을 요구한다.
+
+```sql
+-- ENT-CORE-009. 근거가 키에 있어 원본 목록에서 빠져도 실제 병합 근거는 남는다.
+CREATE TABLE pull_request_commit_link (
+  repository_id    BIGINT      NOT NULL,
+  pr_number        INT         NOT NULL,
+  commit_sha       TEXT        NOT NULL,
+  evidence         TEXT        NOT NULL,   -- 'source' | 'merge'
+  observed_version BIGINT      NOT NULL,
+  PRIMARY KEY (repository_id, pr_number, commit_sha, evidence)
+);
+
+-- ENT-CORE-010. `commits_complete`가 **삭제 권한**이다.
+CREATE TABLE pull_request_link_observation (
+  repository_id            BIGINT      NOT NULL,
+  pr_number                INT         NOT NULL,
+  observed_version         BIGINT      NOT NULL,
+  head_sha                 TEXT, base_sha TEXT, base_branch TEXT, pr_state TEXT,
+  commits_complete         BOOLEAN     NOT NULL,
+  commits_error_kind       TEXT,
+  api_commit_count         INT,
+  fetched_count            INT         NOT NULL,
+  source_commits_truncated BOOLEAN     NOT NULL,
+  verification_state       TEXT        NOT NULL,  -- verified | unverified | conflict | pending_refetch
+  refetch_requested_at     TIMESTAMPTZ, refetch_attempts INT NOT NULL DEFAULT 0,
+  last_verified_at         TIMESTAMPTZ, last_reason TEXT,
+  PRIMARY KEY (repository_id, pr_number)
+);
+
+-- ENT-CORE-011. 관계 전용 세대와 tombstone. 행을 지우지 않는다.
+CREATE TABLE commit_link_state (
+  repository_id        BIGINT      NOT NULL,
+  commit_sha           TEXT        NOT NULL,
+  generation           BIGINT      NOT NULL DEFAULT 1,
+  projected_generation BIGINT      NOT NULL DEFAULT 0,
+  projected_numbers    INT[],
+  state                TEXT        NOT NULL DEFAULT 'ready',
+  available_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  lease_until          TIMESTAMPTZ, lease_token UUID,
+  attempt_count        INT         NOT NULL DEFAULT 0,
+  last_reason          TEXT, conflict_at TIMESTAMPTZ,
+  PRIMARY KEY (repository_id, commit_sha)
+);
+```
+
+**`sequence_work`를 쓰지 않는 이유.** 그 표의 키는 `(repository_id, base_branch, seq_epoch)`다. 관계의 정체성은 base 브랜치에도 에폭에도 속하지 않는다 — PR이 base를 바꾸거나 force-push로 에폭이 올라도 **PR N이 커밋 C를 소유한다는 사실은 그대로다.** 더미 브랜치와 에폭을 넣어 M 작업처럼 위장하면 에폭이 오르는 날 관계 작업이 통째로 `obsolete`가 된다.
+
+**036의 seed는 소급해서 `verified`로 만들지 않는다.** 기존 스냅숏에는 완전성 근거가 없다 — `enrichment_pending`은 네 구성 요소 중 하나라도 실패하면 참이라 커밋 조회 실패와 리뷰 조회 실패를 가르지 못한다. 그래서 관계 행은 만들되 관측은 전부 `unverified`이고, 지울 후보는 복구 경로(`prsctl links refetch`)가 PR 상세를 다시 읽어 확정한다. `commit_link_state`는 **이미 반영된 것**으로 seed한다(`projected_generation = generation`) — 그래야 마이그레이션이 저장소 전체의 색인 쓰기를 예약하지 않으면서도 재색인 replay가 모든 연결 커밋을 볼 수 있다.
 
 #### `pull_request_snapshot` — 백필·조정의 정본 (CR-034, DEV-184)
 
@@ -1132,6 +1187,10 @@ ALTER TABLE gh_capability_snapshot
 
       "role":              { "type": "keyword" },
       "pull_request_numbers": { "type": "integer" },
+      // 관계 전용 세대와 상태 (CR-116). 소유자는 `commit-links.ts`의 전용 투영기이고
+      // `params.doc`에도 `params.union`에도 실리지 않는다. 5장 「관계 필드」 참고.
+      "pr_links_generation": { "type": "long" },
+      "pr_links_state":      { "type": "keyword" },
 
       "base_branch":       { "type": "keyword" },
       "merge_seq":         { "type": "long" },
@@ -1282,7 +1341,7 @@ ALTER TABLE gh_capability_snapshot
 | SequenceSpace → MergeSequence | 1:N | 강함 | PostgreSQL PK |
 | MergeSequence → PullRequest | 1:0..1 | 최종적 | 투영 워커 |
 | PullRequest → Commit | 1:N (머지 커밋 1 + 원본 N) | 최종적 | 보강 워커 |
-| Commit → PullRequest | N:M (통상 N:1) | 최종적 | 보강 워커, `pull_request_numbers` 배열 |
+| Commit → PullRequest | N:M (통상 N:1) | 최종적 | 정본 `pull_request_commit_link`(ENT-CORE-009), 색인 투영은 `applyCommitLinks` (CR-116) |
 | Release → Commit | 시퀀스 비교로 계산 | 계산 | 조회 시점 |
 | Link.from / Link.to | N:M | 최종적, `resolved` 플래그 | 링크 워커 |
 | PostgreSQL merge_sequence → ES merge_seq | 1:1 | 최종적 | 정합성 감시 잡 |
@@ -1300,7 +1359,14 @@ ALTER TABLE gh_capability_snapshot
 
 **AC-5가 코드가 아니라 수의 대소로 성립한다.** 백필에 별도의 "덮어쓰지 않기" 분기를 두지 않는다 — 낮은 버전을 들고 오면 이미 있는 조건부 업서트가 저절로 거절한다. 분기를 두면 그 분기가 틀렸을 때 조용히 덮어쓴다.
 
-**누적 필드는 버전 비교에서 제외한다 (CR-011, DEV-019).** `commit.pull_request_numbers`는 N:M이라 단순 대입하면 나중 이벤트가 앞 PR 번호를 지운다 — 커밋 하나가 두 PR에 속하는 경우 FR-SRCH-002(SHA → PR)가 조용히 한쪽을 잃는다. 집합 소속은 단조 증가하고 순서에 무관하므로, `params.union`에 실린 필드는 **버전 비교와 무관하게 항상 합집합**한다. 상태 필드(`state`, `merged_at`, …)만 버전 비교의 대상이다.
+**관계 필드는 합집합이 아니라 전용 투영기의 대입이다 (CR-116 / WP-101, FR-SRCH-002 AC-6).** 이 문단은 CR-011(DEV-019)의 「누적 필드는 버전 비교에서 제외한다」를 **대체한다.** 그 결정의 전제는 「집합 소속은 단조 증가한다」였는데, 그것이 사실이 아니었다 — PR이 rebase되면 원본 커밋 목록이 줄고 그 커밋은 더 이상 그 PR의 것이 아니다. 합집합에는 빼는 경로가 없어 한 번 더해진 번호가 영영 남았다(사내 pilot.17: PR 279개, 커밋 3,481건). 단순 대입도 답이 아니다 — 한 PR의 투영이 전체 배열을 쓰면 같은 커밋의 다른 PR 연결이 사라진다. 그래서 `commit.pull_request_numbers`의 소유자는 **커밋별 전용 투영기**(`packages/es/src/commit-links.ts`의 `applyCommitLinks`)이고, 그 입력은 PostgreSQL의 `pull_request_commit_link`가 계산한 **전체 집합**이다. `params.union`에는 이 필드를 실을 수 없다 — 타입이 막고 실행 시점 가드가 한 번 더 막는다. 합집합 기구 자체는 남아 있으나 현재 그 자리를 쓰는 운영 필드는 하나도 없다.
+
+**관계에는 관계 전용 세대가 있다 (CR-116).** 커밋 문서의 `document_version`은 **웹훅 수신 시각**이다. 커밋 하나가 여러 PR에 속하므로 그 값으로 관계 수정 권한을 판정하면 **다른 PR의 이벤트 시각이 이 PR의 관계를 막거나 통과시킨다.** `pr_links_generation`이 그 자리를 대신한다: 관계가 바뀐 커밋만 세대가 오르고, 색인의 세대가 더 높으면 쓰기를 거절하며(`stale`), 같은 세대에 같은 집합이면 멱등이고, 같은 세대에 **다른 집합**이면 덮어쓰지 않고 충돌로 기록한다 — 구버전 합집합 writer가 아직 도는지를 그것으로 안다. 마지막 연결을 지운 뒤에도 세대와 빈 배열이 남는다(tombstone). `pr_links_state`는 그 집합이 검증된 관측에서 나왔는지(`verified`)를 말하며, **지금 연결된 PR들의 관측이 전부 확정인가**라는 좁은 뜻이다 — 「이 커밋에 다른 PR이 더 있을 수 있는가」를 답하지 않는다.
+
+**빈 배열은 사실이고 필드 삭제가 아니다 (CR-116).** 검증한 정본과 수집 범위에서 연결이 0개이면 `[]`를 `_source`에 대입한다. 필드를 지우면 「아직 모름」과 구분되지 않고 `exists` 질의가 둘을 같게 본다. 합집합에 `[]`를 넘겨도 기존 원소는 빠지지 않으므로 전용 대입만이 이 일을 할 수 있다.
+
+**삭제에는 완전성 근거가 필요하다 (CR-116 / FR-ING-004 AC-6).** 「목록에 없다」가 「속하지 않는다」를 뜻하려면 그 목록이 원격의 전부여야 한다. `pull_request_link_observation.commits_complete`가 그 판정이고, 거짓이면 그 관측은 관계를 더할 수는 있어도 뺄 수 없다. 특히 `GET /pulls/{n}/commits`는 GitHub이 250건에서 자르면서 `rel="next"`를 남기지 않아 우리 쪽 절삭 표식이 거짓이 된다 — **원격이 말한 커밋 수와의 대조가 유일한 방어선이다.**
+
 
 **시퀀스 필드의 소유자는 문서 단위 투영기다 (CR-113).** `merge_seq`·`seq_epoch`·`sequence_space`는 `packages/es/src/sequence-projection.ts`의 `projectSequenceToDocuments`만 쓴다(에폭 상향만 `applyEpochBump`의 `update_by_query`가 먼저 올리고 full sweep이 문서마다 확인한다). 값의 정본은 `merge_sequence`·`sequence_space`이고, "어느 문서에"의 정본은 `pull_request_snapshot`(`merge_commit_sha`·`base_branch`)과 `commit_snapshot`이다 — `merge_sequence.pull_request_number`는 대응의 근거로 쓰지 않는다. 커밋 문서는 SHA당 하나라 두 시퀀스 공간이 같은 문서를 두고 다툴 수 있다: 문서가 단 `base_branch`의 공간이 현재 에폭에 그 SHA를 갖고 있으면 그 공간의 값을 지키고, 없으면 쓰는 공간이 가져간다. PR 문서의 `base_branch`는 PR의 사실이라 투영이 바꾸지 않는다. 구 에폭 작업은 문서의 더 높은 `seq_epoch`를 덮지 못한다. `document_version`은 건드리지 않는다.
 
@@ -1354,7 +1420,12 @@ boolean changed = fresh;
 if (fresh) {
   for (e in params.doc.entrySet()) { ctx._source[e.getKey()] = e.getValue(); }
 }
-// 누적 필드는 버전과 무관하게 합집합한다. 오래된 이벤트도 자기 소속은 더한다.
+// 누적 필드는 버전과 무관하게 합집합한다.
+//
+// **운영에서 이 자리를 쓰는 필드는 현재 하나도 없다** (CR-116). `pull_request_numbers`가
+// 유일한 사용처였고 전용 투영기로 옮겼다 — 합집합에는 빼는 경로가 없어 rebase로 빠진
+// 커밋에 PR 번호가 영영 남았기 때문이다. 기구는 남겨 두되 그 필드는 타입과 실행 시점
+// 가드가 함께 막는다.
 for (e in params.union.entrySet()) {
   def current = ctx._source[e.getKey()];
   def merged = new HashSet();
@@ -1368,10 +1439,30 @@ if (!changed) { ctx.op = 'noop'; }
 
 ```json
 {
-  "script": { "source": "...", "params": { "doc": { "...": "..." }, "union": { "pull_request_numbers": [1234] } } },
+  "script": { "source": "...", "params": { "doc": { "...": "..." }, "union": {} } },
   "upsert": { "...": "..." }
 }
 ```
+
+관계는 **별도 스크립트**가 쓴다 (CR-116). 커밋 메타데이터의 `document_version`이 아니라
+`pr_links_generation`으로 순서를 가리며, 값은 정본이 계산한 전체 집합이다.
+
+```painless
+def cur = ctx._source.pr_links_generation;
+if (cur != null && cur > params.generation) { ctx.op = "noop"; return; }   // 오래된 쓰기는 거절
+boolean same = cur != null && cur == params.generation
+  && ctx._source.pr_links_state == params.state
+  && ctx._source.pull_request_numbers != null
+  && ctx._source.pull_request_numbers.size() == params.numbers.size()
+  && ctx._source.pull_request_numbers.containsAll(params.numbers);
+if (same) { ctx.op = "noop"; return; }                                     // 같은 세대·같은 집합은 멱등
+ctx._source.pull_request_numbers = params.numbers;                         // 빈 배열도 그대로 대입한다
+ctx._source.pr_links_generation = params.generation;
+ctx._source.pr_links_state = params.state;
+```
+
+같은 세대에 **다른 집합**이 이미 있으면 이 스크립트에 닿기 전에 호출부가 멈추고 충돌로
+기록한다 — 덮어쓰면 우리가 쓰지 않은 쓰기가 있었다는 증거가 사라진다.
 
 ## 6. 인덱스 및 조회 패턴
 

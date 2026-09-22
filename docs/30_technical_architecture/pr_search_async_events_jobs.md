@@ -1,6 +1,6 @@
 # PR Search 비동기 작업 및 이벤트
 
-> 상태: review | 버전: v0.16 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.17 | 갱신일: 2026-09-23
 
 CR-115 / FR-SEQ-012: JOB-SEQ-007(M 번호 lightweight 태그)이 더해진다 — 채번 트랜잭션이 PR마다 남기는 durable `sequence_work` `tag`를 **`tag` 역할만** 집어 원격 GHE에 `refs/tags/M-<코드>-<번호>`를 만든다(ADR-026). 이벤트를 소비하지 않는다 — 방아쇠는 정본 트랜잭션의 durable 의도이고, 일 1회 잔여 스윕이 유실·실패·CR-115 이전 채번분을 되살리며, 운영자 잡 `mnumber_tag_reconcile`이 정본 ↔ 원격을 대조해 누락을 같은 work로 재요청한다. 재시도는 요청이 아니라 판단 전체(정본 재확인 → 조회 → 판정 → 쓰기 직전 재확인 → 쓰기 하나)를 다시 지나며, 같은 이름의 태그가 다른 것을 가리키면 `conflict`로 보고만 한다. `materialize` work는 이제 PR 문서와 `prs-commits`의 `merge_commit` 문서 둘 다에 M 값을 쓴다(AC-7). 지표는 `mnumber_tag_total{result}`·`mnumber_tag_conflict_total`·`sequence_work_total{kind="tag"}`이며, 10장에 빠져 있던 표기 지표 두 행도 함께 메웠다(DEV-743).
 
@@ -67,6 +67,7 @@ CR-079 / ADR-023: JOB-SEQ-004는 sequence 역할의 durable poll과 기존 Event
 | JOB-ING-009 | 실패 대기열 재처리 | 수동 (API-ADM-003) | ops (WP-009) → batch (WP-019 이후) | 이벤트별 누적 | 10분 | EVT-JOB-001 (batch 이후) | FR-ING-007 |
 | JOB-ING-010 | 정본 스냅숏 부트스트랩 | 조정 스캔이 예약 (JOB-ING-005) / 수동 | **`reconcile` 역할** (CR-037, DEV-194) | 항목별 3회, 잡 전체는 재개 | 없음 (중단·재개) | EVT-JOB-001 | ADR-004 follow-up |
 | EVT-REL-001 | `release.refresh_requested` | ingest-gateway, sequence(재채번 후) | release | `prs:release` | `{ repository_id, correlation_id }` — **태그 이름·SHA를 싣지 않는다**: 정본은 미러의 refs/tags 스냅숏이고(DEV-143), 이벤트는 "이 저장소의 태그가 바뀌었으니 다시 봐라"라는 신호일 뿐이다. payload를 신뢰하면 이벤트 순서 역전이 스냅숏을 되돌린다 | 파티션 `repository_id`, 저장소당 직렬 |
+| JOB-REL-008 | **커밋 PR 연결 투영** (CR-116) | 관계 정본이 바뀐 커밋마다 남는 durable 의도 (`commit_link_state`) — 실시간 투영·백필·조정·복구·재색인이 모두 같은 자리에 남긴다 | **`project` 역할** (커밋 문서를 만드는 쪽이 그 문서의 관계도 맞춘다) | 항목별 5회 뒤 `parked`, 행은 지우지 않는다 | 120초 lease | - | FR-SRCH-002 AC-6 |
 | JOB-SEQ-001 | 시퀀스 증분 채번 | `push` 웹훅 → 게이트웨이가 `prs:sequence`에 발행 (CR-025, DEV-116) / 백필 완료 / **수동 (API-ADM-002, `type: sequence_assign`, CR-055)** | sequence | 락 실패는 `defer`, 그 밖은 5회 지수 백오프 | 10분 | EVT-SEQ-001 | FR-SEQ-001, FR-ADMIN-002 AC-1 |
 | JOB-SEQ-002 | 시퀀스 재채번 | 재작성 감지(자동) / 수동 (API-ADM-007 → `sequence_reassign` 잡) | `sequence` 역할 — 자동은 버스 소비자, **수동은 `startSequenceRepairRunner`가 잡을 claim한다** (CR-034, DEV-178) | 없음 (실패 시 `stale`) | 60분 | EVT-SEQ-002, EVT-JOB-001 | FR-SEQ-005, FR-ADMIN-003 AC-4 |
 | JOB-SEQ-003 | 시퀀스 정합성 점검 | 수동 / 스케줄 (일 1회, 표본) | **`sequence` 역할** | 3회 | 30분 | EVT-JOB-001 | FR-ADMIN-003 |
@@ -418,7 +419,7 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 | 별칭 | 정본 |
 | --- | --- |
 | `prs-pull-requests` | `pull_request_snapshot` + 현재 저장소·파생 상태 + **시퀀스 replay** (CR-113) |
-| `prs-commits` | `commit_snapshot` + 시퀀스·저장소 상태 + **시퀀스 replay** (CR-113) |
+| `prs-commits` | `commit_snapshot` + `pull_request_snapshot`(PR 유래 커밋 문서) + 시퀀스·저장소 상태 + **시퀀스 replay** (CR-113) + **PR 연결 replay** (CR-116, 정본은 `pull_request_commit_link`) |
 | `prs-links` | 정본 엔티티에서 **재파생**한다 (JOB-REL-006의 경로를 그대로 쓴다) |
 | `prs-releases` | `release` 표 |
 
@@ -429,6 +430,14 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 #### 시퀀스는 replay로 복원한다 (CR-113 / FR-ING-008 AC-8)
 
 스냅숏에는 서수가 없다 — 투영이 `merge_seq`를 `params.doc`에 싣지 않는 것이 옳기 때문이다(데이터 모델 5장 필드 소유권). 그래서 재구축만으로는 새 인덱스가 확정된 서수를 하나도 모른 채 서고, 옛 주석의 「채번 반영은 재구축 뒤에 돈다」는 전제는 성립하지 않았다(다음 채번은 head 이후만 번호를 매긴다 — DEV-597의 반증, 사내 pilot.17 보고). 이제 `rebuildAlias`가 저장소마다 PR·커밋 재구축 **직후** 그 저장소의 모든 시퀀스 공간을 현재 정본으로 다시 비춘다(`replaySequenceForRepository` → 정본 해석 → 문서 단위 투영기, 울타리 안이라 서비스 별칭과 shadow에 함께 닿는다). 판정은 **target(shadow) 결과**로 한다 — 옛 활성 인덱스에 대한 완료는 새 인덱스의 완료가 아니다. 공간마다 `{repository_id, base_branch, seq_epoch, head_seq, pages, settled, unsettled, skipped}`를 `job.progress.sequence_replay`에 남겨 중단 뒤 어디까지 갔는지 읽을 수 있고, 전환 울타리 안에서 그 에폭을 정본과 대조한다. 기존 M `materialize` 재예약(DEV-597)은 그대로다. `mergeNumberEnabled`와 무관하다.
+
+#### PR 연결은 replay로 복원한다 (CR-116 / FR-ING-008 AC-9)
+
+스냅숏에는 관계가 **문장 하나로** 있지만(`source_commit_shas`) 그것은 최신 상태일 뿐이고, 커밋 문서의 `pull_request_numbers`는 CR-116부터 `params.doc`에도 `params.union`에도 실리지 않는다. 그래서 재구축만으로는 **새 인덱스의 모든 커밋이 연결 없이 선다** — FR-SRCH-002가 그 커밋들에 대해 「속한 PR 없음」으로 답한다는 뜻이고, 전환 뒤에야 드러난다. 시퀀스가 겪은 것(DEV-597)과 같은 모양이다.
+
+`rebuildCommits`가 문서·역할 재구축 **직후** 그 저장소의 관계 정본(`pull_request_commit_link` ∪ `commit_link_state`)을 훑어 **대상 인덱스에 직접** 비춘다. 별칭으로 쓰지 않는 이유는, 서비스 인덱스에 남은 충돌 하나가 아직 비어 있는 새 인덱스의 그 커밋을 영영 비우게 만들기 때문이다(DEV-750) — 서비스 인덱스의 충돌은 복구 명령이 세대를 올려 푸는 일이다. 세대가 밀렸는지도 묻지 않는다: `projected_generation`은 **옛 인덱스에 대한 사실**이라 새 대상의 완료로 재사용하면 이미 비춘 것으로 착각한다.
+
+연결이 0개인 커밋은 `[]`로, 완전성이 확정되지 않은 연결은 `pr_links_state: partial`과 함께 복원한다. 정본이 연결을 말하는데 대상에 문서가 없으면 **실패한다** — 조용히 넘기면 전환 뒤 그 커밋의 SHA → PR이 사라진다. 재구축 자체는 GHE를 읽지 않는다: 원격 전수조회에 의존하는 순간 이 제품은 rate limit 안에 갇히고, 그것이 ADR-004가 막으려는 상태다.
 
 #### 전환 전 검증 (DEV-297, CR-113이 한 항목을 더했다)
 
@@ -441,6 +450,7 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 - 별칭별 기대 정본 커버리지가 맞는다
 - 대표 질의가 새 인덱스에서 성립한다
 - 잡이 여전히 `running`이다 — 취소·실패로 바뀌지 않았다
+- **PR 연결이 정본과 같다 (CR-116)** — 정본이 아는 커밋마다 대상 인덱스를 `mget`으로 읽어 `pull_request_numbers`를 **양방향으로** 대조한다. 정본에 있는데 색인에 없는 번호(누락)와 색인에 있는데 정본에 없는 번호(**잉여**)가 둘 다 전환을 막는 사유다 — 누락만 보는 검증은 합집합 시절이 남긴 잘못된 번호를 새 인덱스로 그대로 통과시킨다. 정본이 빈 집합을 말하는데 색인에 필드가 없으면 그것은 「같다」가 아니라 「아직 모름」이며 재구축이 그 커밋을 비추지 못한 것이다
 - **시퀀스 투영이 끝났다 (CR-113)** — PR·커밋 별칭에서 먼저 `progress.sequence_replay`의 공간 집합이 정본의 공간 집합(채번된 적 있는 모든 `(저장소, 브랜치)`)을 덮는지 본다 — 재구축이 replay를 실제로 지났다는 증거이며, 이것 없이 아래 문서별 대조만 두면 대조가 불일치를 인라인으로 고치면서 빠진 replay를 가려 준다. 검증 전에 새로 채번된 공간이 생기면(재색인 중 등록·첫 push) 전환하지 않고 실패하며 다시 실행한다. 그다음 정본(현재 시퀀스·스냅숏)으로 계산한 대상 문서 집합을 target 인덱스에서 `mget`으로 읽어 `merge_seq`·`seq_epoch`·`sequence_space`가 문서마다 정본과 같은지, 그리고 공간마다 대표 서수 범위(마지막 1,000개)의 실제 정렬이 정본 순서와 같은지 본다. 전체 PR 수·전체 `merge_sequence` 행 수의 일치는 기준이 아니다 — 미병합·직접 푸시·미수집·연결 미확정은 대상이 아니다. 불일치가 있으면 한 번 더 비추고 다시 읽으며, 그래도 남으면(문서 자체가 없거나 쓰기 실패) 전환하지 않는다. 전환 울타리 안에서 replay가 기록한 에폭이 움직였으면 `sequence_epoch_moved`로 실패하고 옮기지 않는다. 전환 직후 모든 공간에 durable `full` sweep을 남겨 검증과 전환 사이의 변경도 수렴시킨다. **`prs-commits` 재구축 뒤에도 `requestMergeNumberMaterialize`를 남긴다** (CR-115 / FR-SEQ-012 AC-7) — 재구축이 만든 `merge_commit` 문서에는 M 값이 없으므로 PR 재색인과 같은 재투영 의도를 남겨 `materialize`가 PR·커밋 문서 둘 다 다시 쓴다. 이것이 없으면 commits-only 재색인 뒤 `kind:commit`의 `mnum:`이 조용히 0건이 된다
 
 #### 실패·취소 처분 (DEV-298)
