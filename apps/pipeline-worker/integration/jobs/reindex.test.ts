@@ -714,6 +714,25 @@ describe('R1 레지스트리 소유 필드는 현재 값으로 덮는다 (PR #52
         base_branch: 'main',
       },
     });
+    /*
+     * 관계 정본도 함께 심는다 (CR-116 / WP-101).
+     *
+     * 재구축은 문서와 역할을 `pull_request_snapshot`에서 만들지만, `pull_request_numbers`는
+     * CR-116부터 **관계 정본**(`pull_request_commit_link`)이 소유한다. 운영에서는
+     * 마이그레이션 036의 seed와 실시간 채택이 그 표를 채우므로, 시험도 같은 두 정본을
+     * 갖춰야 재구축이 무엇에서 복원하는지를 제대로 잰다 — 스냅숏만 두고 연결을 기대하면
+     * **투영이 관계를 쓰지 않는다는 사실**을 시험이 놓친다.
+     */
+    await pool.query(
+      `INSERT INTO pull_request_commit_link (repository_id, pr_number, commit_sha, evidence, observed_version)
+       VALUES ($1, 502, $2, 'source', 2000) ON CONFLICT DO NOTHING`,
+      [REPOSITORY_ID, source],
+    );
+    await pool.query(
+      `INSERT INTO commit_link_state (repository_id, commit_sha, generation, projected_generation, state)
+       VALUES ($1, $2, 1, 1, 'done') ON CONFLICT DO NOTHING`,
+      [REPOSITORY_ID, source],
+    );
 
     const outcome = await reindexRepo.enqueueReindex(
       pool,
@@ -746,6 +765,7 @@ describe('R1 레지스트리 소유 필드는 현재 값으로 덮는다 (PR #52
 
     expect(doc, 'PR 원본 커밋 문서가 재구축에서 빠졌다').toBeDefined();
     expect(doc?.['role']).toBe('source_commit');
+    // 관계는 replay가 정본에서 비춘다 (CR-116). 이것이 없으면 새 인덱스가 연결 0건으로 전환된다.
     expect(doc?.['pull_request_numbers']).toEqual([502]);
 
     // `prs-commits` 별칭을 원래 자리로 되돌린다 — 다른 시험 파일이 쓰는 별칭이다.

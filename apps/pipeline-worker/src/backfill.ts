@@ -25,7 +25,7 @@ import { bulkUpsert } from '@prs/es';
 import { withReindexWrite } from '@prs/db';
 import { buildUpsertRequests } from './documents.js';
 import { resolveAuthorTeam, syncOrgTeamsIfStale, type AuthorTeamDeps } from './author-teams.js';
-import { recordProjectionSnapshot } from './snapshot.js';
+import { linkObservationOf, recordProjectionSnapshot } from './snapshot.js';
 import { toEnrichedPullRequest } from './enriched-payload.js';
 import { describeFailedItems, retryFailedItems } from './index-retry.js';
 import {
@@ -359,6 +359,12 @@ export async function projectOne(
       repositoryId: repository.repository_id,
       prNumber: summary.number,
       source: deps.snapshotSource ?? 'backfill',
+      /*
+       * 백필도 같은 경로를 지난다 (CR-116 / WP-101). 다만 목록 끝점에는 커밋 수가
+       * 없어 대개 `commitsComplete: false`이고, 그러면 **관계를 더하기만 하고
+       * 지우지는 않는다.** 백필이 조용히 정상 연결을 지우는 일이 없다.
+       */
+      linkObservation: linkObservationOf(enriched, documentVersion),
     });
 
     if (deps.snapshotOnly === true) {
@@ -432,10 +438,12 @@ async function enrichForBackfill(
   let reviews: IngestionEnriched['reviews'] = [];
   const errors: EnrichmentError[] = [];
 
+  let commitsFetched = false;
   try {
     const commits = await deps.client.listPullRequestCommitsPaged(ref, summary.number, opts);
     sourceCommitShas = commits.items.map((commit) => commit.sha);
     sourceCommitsTruncated = commits.truncated;
+    commitsFetched = true;
   } catch (error) {
     errors.push(failure('commits', error));
   }
@@ -465,17 +473,32 @@ async function enrichForBackfill(
     errors.push(failure('reviews', error));
   }
 
+  const prDocument = toEnrichedPullRequest(summary);
+
   return {
     // 결정론적 합성 ID (CR-022, DEV-100).
     delivery_id: backfillDeliveryId(repository.repository_id, summary.number),
     repository_id: repository.repository_id,
     entity_kind: 'pull_request',
     pr_number: summary.number,
-    pull_request: toEnrichedPullRequest(summary),
+    pull_request: prDocument,
     source_commit_shas: sourceCommitShas,
     changed_files: changedFiles,
     reviews,
     source_commits_truncated: sourceCommitsTruncated,
+    /*
+     * 백필의 완전성 판정 (CR-116 / DEV-744).
+     *
+     * 실시간과 **같은 규칙**이되 재료가 다르다. 백필의 `summary`는 목록 끝점에서
+     * 오고 그 응답에는 `commits` 수가 없다 — 그래서 대개 거짓이 된다. 그것이
+     * 맞다. 백필은 **관계를 추가할 근거이지 지울 근거가 아니다.** 지우려면 PR
+     * 상세를 따로 읽어야 하고, 그 일은 복구 경로가 필요한 PR에만 한다.
+     */
+    source_commits_complete:
+      commitsFetched &&
+      !sourceCommitsTruncated &&
+      prDocument.commits_count !== null &&
+      prDocument.commits_count === sourceCommitShas.length,
     files_truncated: filesTruncated,
     enrichment_pending: errors.length > 0,
     enrichment_errors: errors,

@@ -73,7 +73,28 @@ export const COMMIT_MAPPING: estypes.MappingTypeMapping = {
 
     // merge_commit | source_commit | direct_push (FR-SRCH-002 AC-1~AC-3)
     role: { type: 'keyword' },
+    /**
+     * 이 커밋을 소유하는 PR 전부 (FR-SRCH-002 AC-5·AC-6).
+     *
+     * **소유자는 관계 투영기다** (CR-116 / WP-101). `merge_seq`·`merge_number`와 같은
+     * 규율으로, 투영의 `params.doc`에도 `params.union`에도 싣지 않고 `commit-links.ts`만
+     * 쓴다. 값은 PostgreSQL의 `pull_request_commit_link`가 정본이며 중복 없이 오름차순이다.
+     *
+     * **빈 배열은 사실이다** — 검증된 범위에서 연결이 0개라는 진술이며, 필드의 부재(아직
+     * 모름)와 다르다. 그래서 0개가 되어도 필드를 지우지 않는다.
+     */
     pull_request_numbers: { type: 'integer' },
+    /**
+     * 관계 전용 세대 (CR-116).
+     *
+     * 커밋 메타데이터의 `document_version`과 **분리한다.** 그 값은 웹훅 수신 시각이라,
+     * 커밋 하나가 여러 PR에 속하는 자리에서 **다른 PR의 이벤트 시각으로 이 관계의 수정
+     * 권한이 판정된다.** 오래된 쓰기를 거절하고 같은 세대의 다른 집합을 충돌로 잡는 것이
+     * 이 필드의 일이다.
+     */
+    pr_links_generation: { type: 'long' },
+    /** `verified`(검증된 범위의 전부) · `partial`(완전성 근거 없음). CR-116. */
+    pr_links_state: { type: 'keyword' },
 
     // PR 문서와 같은 모양이다. 전문 검색이 두 인덱스를 함께 돈다 (DEV-054).
     base_branch: { type: 'keyword', fields: SEARCHABLE_KEYWORD_FIELDS },

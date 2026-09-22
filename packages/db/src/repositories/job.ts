@@ -24,6 +24,13 @@ export type JobType =
   | 'snapshot_bootstrap'
   /** 운영자의 수동 시퀀스 재투영 (JOB-SEQ-006). 재채번이 아니다. 마이그레이션 034 (CR-113). */
   | 'sequence_reproject'
+  /**
+   * 운영자의 PR 연결 전체 대조·복구 (`prsctl links apply`). 마이그레이션 036 (CR-116).
+   *
+   * **재색인이 아니다** — 인덱스를 만들지도 전환하지도 않고 서수·M 번호·에폭·head·태그를
+   * 건드리지 않는다. 바꾸는 것은 커밋 문서의 `pull_request_numbers`와 그 세대뿐이다.
+   */
+  | 'pr_link_repair'
   /** 정본 ↔ 원격 `M-*` 태그 대조 (JOB-SEQ-007). 누락은 work로 재생성, 불일치는 보고만. 마이그레이션 035 (CR-115). */
   | 'mnumber_tag_reconcile';
 

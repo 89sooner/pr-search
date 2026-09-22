@@ -118,6 +118,13 @@ export interface EnrichedPullRequest {
   readonly head_sha: string;
   readonly base_ref: string;
   readonly base_sha: string;
+  /**
+   * 원격이 말한 커밋 수 (CR-116 / DEV-744).
+   *
+   * 모르면 `null`이다. `source_commit_shas`의 길이와 **다른 사실**이며, 둘을
+   * 대조해야만 원본 커밋 목록이 완전한지 알 수 있다.
+   */
+  readonly commits_count: number | null;
 }
 
 /** 변경 파일 한 건. 경로와 라인 수만 싣는다 — patch 본문은 싣지 않는다. */
@@ -158,6 +165,19 @@ export interface IngestionEnriched {
   readonly reviews: readonly EnrichedReview[];
   /** 커밋이 상한을 넘어 절삭됐다 (FR-SRCH-003 AC-4). */
   readonly source_commits_truncated: boolean;
+  /**
+   * `source_commit_shas`가 **그 PR의 전부인가** (CR-116 / FR-ING-004 AC-6).
+   *
+   * `source_commits_truncated`의 반대말이 아니다. 절삭은 *우리 상한*에 걸린
+   * 것이고 이 값은 **읽은 목록이 원격의 전부임을 증명했는가**를 말한다. 셋이
+   * 모두 성립할 때만 참이다 — 커밋 조회가 성공했고, 우리 상한에 걸리지 않았고,
+   * 읽은 수가 원격이 말한 수와 같다.
+   *
+   * **거짓일 때 관계를 삭제하지 않는다** (CR-116). 목록에 없다는 사실이 곧
+   * 소속이 아니라는 뜻이 되려면 그 목록이 전부여야 하기 때문이다. 거짓이면
+   * 추가만 하고, 제거는 다음 완전한 관측까지 미룬다.
+   */
+  readonly source_commits_complete: boolean;
   /** 파일이 상한을 넘어 절삭됐다 (FR-ING-004 AC-4). */
   readonly files_truncated: boolean;
   /** 부분 결과다. 투영은 이 표식을 문서에 그대로 옮긴다 (FR-ING-004 AC-3). */

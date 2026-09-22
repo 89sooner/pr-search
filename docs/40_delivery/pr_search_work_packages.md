@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.62 | 갱신일: 2026-09-22
+> 상태: review | 버전: v2.63 | 갱신일: 2026-09-23
+
+## WP-101 커밋 PR 연결의 정본화와 전용 투영기 (CR-116)
+
+- 요구사항: `FR-SRCH-002` AC-6(신설), `FR-ING-004` AC-6(신설), `FR-ING-008` AC-9(신설). 설계 ADR-004 Amendment(새 ADR 번호를 쓰지 않는다 — CR-113과 같은 결함 계열이다), 잡 JOB-REL-008, 데이터 ENT-CORE-009(`pull_request_commit_link` — 근거 `source`·`merge`가 키에 있어 원본 목록에서 빠져도 실제 병합 근거는 남는다)·ENT-CORE-010(`pull_request_link_observation` — `commits_complete`가 **삭제 권한**이고 `verification_state`는 `verified`·`unverified`·`conflict`·`pending_refetch`)·ENT-CORE-011(`commit_link_state` — 관계 전용 generation·lease·tombstone, 마이그레이션 036), 경보·런북 RB-29, RUNBOOK 7.G. 선행: WP-008(투영 워커와 버전 조건부 업서트 — 이 WP가 그 합집합 규칙을 대체한다), WP-035(무중단 재색인 — 관계 복원이 그 경로에 붙는다), WP-098(문서 단위 투영·재색인 replay).
+- 범위: (1) 마이그레이션 036과 `@prs/db` — 관계 정본 `pull_request_commit_link`, 관측 신뢰도 `pull_request_link_observation`, 커밋별 투영 의도 `commit_link_state`, `job.type`에 `pr_link_repair`, `packages/db/src/repositories/pr-commit-link.ts`(`adoptLinkObservation`·`bumpCommitLinkGenerations`·`listLinkedPullRequestNumbers`·claim/complete/release·`listPullRequestsNeedingRefetch`). 기존 스냅숏에서 관계를 seed하되 관측은 전부 `unverified`다 — 근거 없는 목록에 삭제 권한을 소급해 주지 않는다. (2) `packages/domain` — `EnrichedPullRequest.commits_count`(원격이 말한 커밋 수), `IngestionEnriched.source_commits_complete`. (3) `apps/pipeline-worker` — `enrich.ts`가 완전성 넷(커밋 조회 성공·우리 상한 미달·원격이 말한 커밋 수와 일치·읽기 전후 head/base 동일)을 판정하고, `snapshot.ts`의 관계 채택·세대 올림·투영 의도가 스냅숏과 **같은 트랜잭션**이며 머지 게이트 **앞**에 있어 열린 PR도 처리하고, `commit-links.ts`가 관계 투영 러너(JOB-REL-008, `project` 역할, M 스위치와 무관)로 정본을 실행 시점에 읽어 대입하며, `reindex.ts`가 `replayCommitLinks`로 **대상 인덱스에 직접** 복원하고 전환 전 검증이 누락과 **잉여**를 양방향으로 대조하고, `link-repair.ts`와 `link-repair-command.ts`·`link-repair-cli.ts`가 복구 경로 `prsctl links plan|apply|refetch|status`를 준다(기본 dry-run, `apply`는 투영 의도만 만든다). (4) `packages/es` — 전용 투영기 `applyCommitLinks`(세대 가드·충돌 판정·`[]` 대입), 커밋 매핑에 `pr_links_generation`·`pr_links_state`, `UpsertRequest.union`에서 `pull_request_numbers`를 타입과 실행 시점 둘 다로 금지. 합집합 경로는 투영(`documents.ts`)과 커밋 보강 생성 시점(`commit-enrich.ts`)에서 제거한다. `documents.ts`의 머지 커밋 역할 판정은 `derivePullRequestState`로 통일한다 — 백필 목록 끝점은 `merged` 필드를 주지 않아 병합된 PR의 머지 커밋 문서가 만들어지지 않았고, 정본이 말하는 연결을 받을 문서가 없었다(DEV-753). (5) `apps/search-api` — `containments.ts`가 `pull_request_numbers[0]`(비결정적 순서) 대신 후보 중 `merge_seq`가 가장 작은 PR을 고른다. (6) 목 GHE가 PR 상세에 `commits`를 싣고 API 자체 상한을 흉내 낸다. (7) 문서 연쇄 전부와 RUNBOOK 7.G, `agent-context/upstream-feedback.md` 넷째 항목의 상류 반영 주석.
+- 제외: 운영 서버 변경, 공용 인덱스 삭제, 사내 배포·적용, 새 Release 발행, 보호 규칙 우회. `role` 필드의 소유권 이전(DEV-752, open — 원본 목록에서 빠진 커밋의 `role: source_commit`은 그대로 남는다). 커밋 hit DTO의 관계 상태 노출. **재색인이 GHE 전수조회에 의존하게 만드는 것**(재구축은 원격을 읽지 않는다). `refetch`는 **확정되지 않은 PR 전부**를 읽으므로 마이그레이션 직후에는 그 저장소의 거의 모든 PR이 대상이다 — `--pr`(계획이 알려 주는 `blockingPullRequests`)와 `--limit`으로 좁히는 것이 운영 절차다. `merge_seq`·`merge_number`·`seq_epoch`·head·권한 정보·원격 M 태그 — 관계 대입은 관계 재발견이 아니므로 읽지도 바꾸지도 않는다.
+- 완료 기준: 대표 시험은 **현 코드에서 먼저 실패해야 한다** — 같은 시험 파일을 `git stash`로 되돌린 `83d30fb` 위에서 돌려 `expect([521])` 자리에 `[521, 2355]`가 오는 것을 본 뒤에 새 코드의 통과를 믿는다. 단위 — 합집합 금지 가드, 문서 생성기. 통합(격리 PG·ES·Redis) — `apps/pipeline-worker/integration/worker/commit-links.test.ts`, `worker/link-repair.test.ts`, `worker/link-refetch.test.ts`, `jobs/link-reindex.test.ts`, `worker/enrich.test.ts`, `packages/db/integration/migrate.test.ts`가 다음을 덮는다: 목록 축소 시 해당 PR만 제거·다른 PR 보존, 늦은 옛 이벤트 부활 금지, 동시 add/remove, 같은 버전 같은 집합/다른 집합, commits 실패와 리뷰 실패 구분, 250 경계와 400 커밋, 열린 PR의 시험 병합 SHA, `[]`와 필드 부재, PG 커밋 직후 종료, lease 만료 수렴, 전체 대조, dry-run 무변경, apply 직전 가드, 반복 멱등, 재색인 replay, 전환 전 양방향 검증, 036 왕복. 회귀 — 잡↔러너 쌍(`regression/runtime-reachability.test.ts`의 CR-116 절). 변이 — 버전 가드·완전성 게이트·세대 가드·머지 게이트·커밋 수 대조를 각각 지워 시험이 죽는 것을 본다. typecheck·lint·lint:deps·단위·통합·회귀·build 통과, 문서 검증기 기준선과 오류·경고 목록 동일. 독립 리뷰가 정상 N:M 삭제, 불완전 근거, 과거 add 부활, 동시성, bootstrap/reindex, 기존 시퀀스·태그 기능 회귀를 본다.
+- 상태: in_progress — PR #228(브랜치 `feature/cr116-pr-links`)(PR 전). 진행 정본은 원장 6.107장이다.
 
 ## WP-100 확정된 M 번호의 원격 lightweight 태그 (CR-115)
 
@@ -154,6 +162,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
+| WP-101 | 커밋 PR 연결의 정본화와 전용 투영기 | 신뢰성 결함 수정 (CR-116) | WP-008, WP-035, WP-098 | in_progress — PR #228(브랜치 `feature/cr116-pr-links`), 원장 6.107장; 병합은 사용자 지시 뒤 |
 | WP-100 | 확정된 M 번호의 원격 lightweight 태그 | 기능 누락 보완 (CR-115) | WP-074, WP-075, WP-098, WP-099 | in_progress — PR #226(브랜치 `feature/cr115-mnumber-tags`, CR-114 PR #225 위에 stacked), 원장 6.106장; 병합은 사용자 지시 뒤, CR-114 다음 |
 | WP-099 | 검색창 M 번호 문자열 해석과 `mnum:` 단일 값 | 기능 누락 보완 (CR-114) | WP-014, WP-074, WP-092 | in_progress — 브랜치 `feature/cr114-mnumber-search`, 원장 6.105장; 병합은 사용자 지시 뒤 |
 | WP-098 | 머지 시퀀스의 Elasticsearch 투영 수렴 | 신뢰성 결함 수정 (CR-113) | WP-021, WP-022, WP-028, WP-035, WP-074 | done — 원장 6.104장; main `a6ea00d`(PR #223), 사내 배포 SHA NOT VERIFIED·내부망 적용 NOT RUN |
@@ -459,7 +468,7 @@
   - PR·커밋 문서 생성 (필드 화이트리스트 적용 — 소스 코드 유입 차단)
   - 결정론적 문서 ID: `{repository_id}:{pr_number}`, `{repository_id}:{commit_sha}`
   - `document_version` 조건부 스크립트 업서트 (데이터 모델 5장). 버전 출처는 **웹훅 수신 시각**이다 — 보강 시각을 쓰면 순서가 바뀐 두 웹훅 중 늦게 보강된 쪽이 이긴다
-  - 누적 필드(`pull_request_numbers`)는 버전과 무관하게 합집합 (CR-011, DEV-019)
+  - 누적 필드(`pull_request_numbers`)는 버전과 무관하게 합집합 (CR-011, DEV-019) — **CR-116이 대체한다**: 합집합에는 한 번 더해진 번호를 빼는 경로가 없어, rebase로 원본 커밋 목록에서 빠진 커밋에도 그 PR 번호가 영영 남았다. 관계의 정본은 PostgreSQL(ENT-CORE-009~011)이고 커밋별 전용 투영기(`applyCommitLinks`)가 전체 집합을 대입한다. `UpsertRequest.union`은 이 필드를 더 이상 받지 않는다 (WP-101, DEV-745)
   - 투영이 소유하지 않는 필드(`merge_seq`·`link_summary`·`links_pending`·`release_tags`)는 생성 시 `upsert` 본문에만 초깃값으로 둔다 — `params.doc`에 넣으면 투영이 돌 때마다 다른 워커의 결과를 되돌린다
   - 미등록 저장소 이벤트는 투영하지 않고 ack한다 (FR-ING-009 AC-4, CR-011 DEV-020). 실패가 아니므로 실패 대기열로 보내지 않는다
   - 사전 계산 필드: `lead_time_seconds`, `first_review_wait_seconds`, `changed_files_count`, `additions`, `deletions`
@@ -480,7 +489,7 @@
   - [ ] 벌크 부분 실패 항목이 개별 재시도된다 (AC-3)
   - [ ] 수신부터 검색 반영까지 p95 10초 이하다 (AC-5) — 개발 데이터셋 기준
   - [ ] 매핑에 없는 필드를 넣으려 하면 색인이 거부되고 DLQ로 간다 (THR-010)
-  - [ ] 커밋이 두 PR에 속해도 `pull_request_numbers`가 합집합으로 남는다 (FR-SRCH-002, CR-011)
+  - [ ] 커밋이 두 PR에 속해도 `pull_request_numbers`가 합집합으로 남는다 (FR-SRCH-002, CR-011) — **CR-116이 대체한다**: 두 PR 소속은 그대로 보존하되 합집합이 아니라 정본이 아는 **현재 유효한 연결**의 대입이다. 한 PR의 목록에서 빠지면 그 번호는 사라지고 다른 PR의 연결과 실제 병합 근거는 남는다 (FR-SRCH-002 AC-6, WP-101)
   - [ ] 미등록 저장소 이벤트는 문서를 만들지 않고 실패로도 세지 않는다 (FR-ING-009 AC-4)
 - 검증 방법: `pnpm test:integration worker/project`
 - 기록: 원장 WP-008 상태, FR-ING-005 매핑

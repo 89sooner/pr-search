@@ -348,7 +348,15 @@ export function buildCommitDocuments(source: ProjectionSource): readonly UpsertR
     const normalized = sha.toLowerCase();
     if (normalized !== '') roles.set(normalized, 'source_commit');
   }
-  const mergeSha = pr?.merged === true ? pr.merge_commit_sha : null;
+  /*
+   * **병합 판정은 파생 상태를 쓴다** (CR-116 / DEV-753, CR-101의 `derivePullRequestState`).
+   *
+   * `pr.merged`만 보면 백필의 목록 끝점(`GET /pulls`)이 그 필드를 주지 않아 **병합된 PR의
+   * 머지 커밋 문서가 만들어지지 않는다.** 그런데 관계 채택은 같은 PR에 `merge` 근거를
+   * 세우므로, 정본은 연결을 말하는데 그 문서가 없어 관계 투영기가 `document_missing`으로
+   * 재시도하다 보류된다. PR 문서의 `state`·관계 채택·재색인이 모두 같은 판정을 쓴다.
+   */
+  const mergeSha = pr !== null && derivePullRequestState(pr) === 'merged' ? pr.merge_commit_sha : null;
   if (mergeSha !== null && mergeSha !== undefined && mergeSha !== '') {
     roles.set(mergeSha.toLowerCase(), 'merge_commit');
   }
@@ -418,9 +426,18 @@ export function buildProjectedCommitDocument(input: ProjectedCommitInput): Upser
     id: commitDocId(input.repository.repository_id, input.commitSha),
     routing: String(input.repository.repository_id),
     doc: doc as Fields & { document_version: number },
-    // 커밋 하나가 여러 PR에 속할 수 있다 (데이터 모델 5장의 N:M). 대입하면
-    // 나중 이벤트가 앞 PR 번호를 지운다 (CR-011, DEV-019).
-    union: { pull_request_numbers: [input.pullRequestNumber] },
+    /*
+     * **`pull_request_numbers`를 여기서 쓰지 않는다** (CR-116 / WP-101, DEV-745).
+     *
+     * 전에는 `union: { pull_request_numbers: [prNumber] }`였다. 합집합은 N:M에서 다른
+     * PR의 번호를 지키려던 선택이었지만(CR-011, DEV-019), **한 번 더해진 번호를 영영
+     * 빼지 못한다.** PR이 rebase되어 원본 목록에서 빠진 커밋에 그 번호가 남았다.
+     *
+     * 대입으로 바꾸는 것만으로도 안 된다 — 한 PR의 `[prNumber]`로 전체 배열을 덮으면
+     * 같은 커밋의 다른 PR 연결이 사라진다. 그래서 이 필드의 소유자는 **커밋별 전용
+     * 투영기**이고(`@prs/es`의 `applyCommitLinks`), 그 입력은 PostgreSQL의 관계
+     * 정본이다. 여기서는 역할·범위·버전만 쓴다.
+     */
     createOnly: {
       link_summary: { has_revert: false, is_reverted: false, has_cherry_pick: false },
     },

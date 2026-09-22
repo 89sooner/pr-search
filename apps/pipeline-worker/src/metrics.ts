@@ -111,6 +111,26 @@ export interface WorkerMetrics {
   readonly measurementMissing: Counter;
   /** durable work 처리 결과. 라벨: `kind`·`outcome`. */
   readonly sequenceWorkTotal: Counter;
+  /**
+   * 커밋 관계 투영 회차 (CR-116 / WP-101). 라벨: `outcome`.
+   *
+   * **`sequenceWorkTotal`과 섞지 않는다.** 같은 라벨에 넣으면 관계의 정체가
+   * 시퀀스 대시보드에 묻히고, `conflict`처럼 관계에만 있는 결과가 경보 규칙에
+   * 걸리지 않는다.
+   */
+  readonly commitLinkProjectionTotal: Counter;
+  /**
+   * 같은 세대에 다른 집합이 색인에 있던 수 (CR-116). **라벨이 없다.**
+   *
+   * **구버전 합집합 writer의 조기 경보다.** 롤링 업데이트 중 옛 워커가 남아
+   * 있으면 이 수가 오른다.
+   *
+   * 저장소를 라벨에 넣지 않는 것은 `mnumber_tag_conflict_total`(CR-115)과 같은
+   * 판단이다 — 경보는 「0이 아닌가」만 물으므로 축이 필요 없고, **어느 커밋이었는지는
+   * 로그와 `commit_link_state.conflict_at`이 답한다.** 라벨을 두면 저장소 수만큼
+   * 시계열이 생기고 그 비용이 경보의 값을 넘는다.
+   */
+  readonly commitLinkConflictTotal: Counter;
   /** 목록 대조에서 ES 값이 정본과 달랐던 수 (상세 설계 8절). 라벨: `field`. */
   readonly mnumberProjectionStale: Counter;
   /**
@@ -203,6 +223,8 @@ export function createWorkerMetrics(): WorkerMetrics {
   const mnumberAttestedTotal = new Counter('mnumber_attested_total', '운영자 확인서로 번호 없이 지나간 항목 수');
   const measurementMissing = new Counter('measurement_missing_total', '남기지 못한 지연 표본 수');
   const sequenceWorkTotal = new Counter('sequence_work_total', 'durable work 처리 결과');
+  const commitLinkProjectionTotal = new Counter('commit_link_projection_total', '커밋 관계 투영 회차 (CR-116)');
+  const commitLinkConflictTotal = new Counter('commit_link_conflict_total', '같은 세대에 다른 관계 집합이 색인에 있던 수 (CR-116)');
   const mnumberProjectionStale = new Counter('mnumber_projection_stale_total', '정본과 다른 색인 M 값 수');
   const mnumberAnnotateTotal = new Counter('mnumber_annotate_total', 'PR 제목 표기 회차 (JOB-SEQ-005)');
   const mnumberAnnotateMismatchTotal = new Counter(
@@ -243,6 +265,8 @@ export function createWorkerMetrics(): WorkerMetrics {
     mnumberOrderMismatchTotal,
     mnumberAttestedTotal,
     measurementMissing,
+    commitLinkProjectionTotal,
+    commitLinkConflictTotal,
     sequenceWorkTotal,
     mnumberProjectionStale,
     mnumberAnnotateTotal,
@@ -274,6 +298,8 @@ export function createWorkerMetrics(): WorkerMetrics {
         mnumberAnnotateMismatchTotal,
         mnumberTagTotal,
         mnumberTagConflictTotal,
+        commitLinkProjectionTotal,
+        commitLinkConflictTotal,
         sequenceWorkTotal,
         releaseRefreshed,
         releaseRefreshFailed,

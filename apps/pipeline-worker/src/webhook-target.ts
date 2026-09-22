@@ -70,6 +70,11 @@ function asBoolean(value: unknown): boolean {
   return value === true;
 }
 
+/** 0도 사실이다 — 커밋이 0건인 PR은 실재한다 (CR-116). `asPositiveInteger`와 다르다. */
+function asNonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
 /** 라벨 배열에서 이름만 꺼낸다. 모양이 다른 원소는 조용히 버린다 — 라벨 하나가
  *  이상하다고 PR 전체를 실패로 만들 이유는 없다. */
 function asLabelNames(value: unknown): readonly string[] {
@@ -127,6 +132,9 @@ export function normalizePullRequest(value: unknown): EnrichedPullRequest | unde
     head_sha: headSha,
     base_ref: baseRef,
     base_sha: baseSha,
+    // 웹훅 payload의 `commits`도 같은 규칙으로 읽는다 (CR-116). 없으면 `null`이고,
+    // 그때 관계 관측은 완전하다고 주장하지 않는다.
+    commits_count: asNonNegativeInteger(pr['commits']) ?? null,
   };
 }
 

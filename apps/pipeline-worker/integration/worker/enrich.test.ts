@@ -32,7 +32,13 @@ import {
   RequestScheduler,
   TokenPool,
 } from '@prs/github';
-import { generateTestKeyPair, startMockGhe, type MockGhe, type MockGheOptions } from '../../../../packages/github/testing/mock-ghe.js';
+import {
+  GITHUB_PR_COMMITS_API_LIMIT,
+  generateTestKeyPair,
+  startMockGhe,
+  type MockGhe,
+  type MockGheOptions,
+} from '../../../../packages/github/testing/mock-ghe.js';
 import { handleIngestEvent, startEnrichWorker, type EnrichDeps } from '../../src/enrich.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
 import { createTestRedis, migratedPool } from '../helpers.js';
@@ -311,6 +317,76 @@ describe('절삭 (FR-ING-004 AC-4, FR-SRCH-003 AC-4)', () => {
     expect(published?.files_truncated).toBe(false);
     expect(published?.source_commit_shas).toHaveLength(250);
     expect(published?.source_commits_truncated).toBe(false);
+  });
+});
+
+/*
+ * `source_commits_complete`는 **커밋에서 PR 번호를 지울 권한**이다. 목록에 없다는
+ * 사실이 "그 PR 소속이 아니다"라는 뜻이 되려면 그 목록이 원격의 전부여야 한다.
+ * 그래서 이 판정에서 거짓을 참으로 읽는 실수는 되돌릴 수 없는 삭제가 된다.
+ */
+describe('관계 관측의 완전성 (CR-116 / FR-ING-004 AC-6, DEV-744)', () => {
+  it('커밋이 정확히 250건이면 완전하다고 말한다 — 삭제 권한이 서는 자리다', async () => {
+    const deps = await buildDeps({
+      resources: { commits: GITHUB_PR_COMMITS_API_LIMIT },
+      capCommitListAtApiLimit: true,
+    });
+    await insertRaw();
+
+    const published = (await handleIngestEvent(deps, delivered())).published;
+
+    expect(published?.source_commit_shas).toHaveLength(GITHUB_PR_COMMITS_API_LIMIT);
+    expect(published?.source_commits_truncated).toBe(false);
+    expect(published?.pull_request?.commits_count).toBe(GITHUB_PR_COMMITS_API_LIMIT);
+    expect(published?.source_commits_complete).toBe(true);
+  });
+
+  it('400 커밋 PR은 절삭 표식이 없어도 완전하지 않다 — API가 말없이 250건에서 자른다', async () => {
+    const deps = await buildDeps({ resources: { commits: 400 }, capCommitListAtApiLimit: true });
+    await insertRaw();
+
+    const published = (await handleIngestEvent(deps, delivered())).published;
+
+    // 겉으로는 아무 문제가 없다. 응답은 200이고, 마지막 페이지가 `per_page`보다
+    // 짧아 `rel="next"`도 없으니 우리 쪽에 잘렸다는 표식이 하나도 없다 — 바로 위
+    // 250 커밋 PR과 **구분되지 않는 모습**이다.
+    expect(published?.source_commit_shas).toHaveLength(GITHUB_PR_COMMITS_API_LIMIT);
+    expect(published?.source_commits_truncated).toBe(false);
+    expect(published?.enrichment_pending).toBe(false);
+    expect(await deadLetters()).toHaveLength(0);
+
+    // 둘을 가르는 것은 커밋 수 대조 하나뿐이다. 그것이 없으면 읽지 못한 150건이
+    // "이 PR 소속이 아니다"로 읽혀 그 커밋들에서 PR 번호가 지워진다.
+    expect(published?.pull_request?.commits_count).toBe(400);
+    expect(published?.source_commits_complete).toBe(false);
+  });
+
+  it('커밋 조회가 실패하면 빈 목록을 부재로 읽지 않는다', async () => {
+    // 실패로 나온 `[]`는 "커밋이 없다"가 아니라 **모른다**이다. 둘을 같게 다루면
+    // 한 번의 403이 그 PR의 커밋 링크를 전부 지운다.
+    const deps = await buildDeps({ failures: [{ resource: 'commits', status: 403 }] });
+    await insertRaw();
+
+    const published = (await handleIngestEvent(deps, delivered())).published;
+
+    expect(published?.source_commit_shas).toEqual([]);
+    expect(published?.source_commits_complete).toBe(false);
+    expect(published?.enrichment_errors).toMatchObject([{ component: 'commits', kind: 'auth' }]);
+  });
+
+  it('리뷰 조회만 실패한 것은 커밋 목록의 완전성과 무관하다', async () => {
+    // 완전성은 **커밋 목록 하나**에 대한 판정이다. 보강이 부분 실패했다는 이유만으로
+    // 권한을 거두면, 리뷰 API가 자주 흔들리는 저장소에서는 커밋 링크가 영영
+    // 정리되지 않는다.
+    const deps = await buildDeps({ failures: [{ resource: 'reviews', status: 403 }] });
+    await insertRaw();
+
+    const published = (await handleIngestEvent(deps, delivered())).published;
+
+    expect(published?.enrichment_pending).toBe(true);
+    expect(published?.reviews).toEqual([]);
+    expect(published?.enrichment_errors).toMatchObject([{ component: 'reviews', kind: 'auth' }]);
+    expect(published?.source_commits_complete).toBe(true);
   });
 });
 

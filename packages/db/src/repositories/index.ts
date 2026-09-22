@@ -4,6 +4,7 @@ export * as authRepo from './auth.js';
 export * as deadLetterRepo from './dead-letter.js';
 export * as integrityRepo from './integrity.js';
 export * as prSnapshotRepo from './pr-snapshot.js';
+export * as prCommitLinkRepo from './pr-commit-link.js';
 export * as jobRepo from './job.js';
 /** 무중단 재색인 잡 상태 (WP-035 / JOB-ING-006). */
 export * as reindexRepo from './reindex.js';

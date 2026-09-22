@@ -1,12 +1,14 @@
 # PR Search 백엔드 아키텍처
 
+> CR-116 / FR-SRCH-002 AC-6 / ADR-004 Amendment: PR↔커밋 관계의 정본은 PostgreSQL이다 — `packages/db/src/repositories/pr-commit-link.ts`가 `pull_request_commit_link`·`pull_request_link_observation`·`commit_link_state`(마이그레이션 036)를 읽고 쓴다. 관계 채택·세대 올림·투영 의도는 `apps/pipeline-worker/src/snapshot.ts`가 스냅숏과 **같은 트랜잭션**에서, 머지 게이트 **앞에서** 남긴다(열린 PR도 처리한다). 색인 쓰기는 커밋별 전용 투영기 하나뿐이다 — `packages/es/src/commit-links.ts`의 `applyCommitLinks`(세대 가드·충돌 판정·`[]` 대입)를 `apps/pipeline-worker/src/commit-links.ts`의 관계 투영 러너(JOB-REL-008, `project` 역할)가 실행 시점에 정본을 다시 읽어 부른다. `packages/es/src/upsert.ts`의 `params.union`은 `pull_request_numbers`를 타입과 실행 시점 둘 다로 막고, `apps/pipeline-worker/src/documents.ts`·`commit-enrich.ts`는 그 필드를 더 이상 싣지 않는다. 재색인(`reindex.ts`)은 `replayCommitLinks`로 대상 인덱스에 직접 복원하고, 복구 경로는 `link-repair.ts`·`link-repair-command.ts`·`link-repair-cli.ts`(`prsctl links plan|apply|refetch|status`)다. `apps/search-api/src/sequence/containments.ts`는 후보 중 `merge_seq`가 가장 작은 PR을 고른다 — 배열의 첫 원소를 「그 커밋의 PR」로 읽지 않는다.
+
 > CR-115 / FR-SEQ-012 / ADR-026: 원격 `M-*` 태그를 만드는 경로는 `apps/pipeline-worker/src/mnumber-tag.ts`(`materializeTag` — durable `tag` work 하나를 정본 재확인 → `GET ref` → 순수 판정 → 쓰기 간격 → 쓰기 직전 재확인 → `POST /git/refs` 하나 → 정본 기록 → 실제 생성만 감사로 끝낸다)와 `@prs/github-tag`(설정·판정·클라이언트 — 이동·삭제 메서드 없음) 둘이다. 채번 트랜잭션(`mnumber.ts`)이 PR마다 `tag` 의도를 번호·checkpoint와 같은 트랜잭션에 남기고, `tag` 역할(`annotate`와 같은 컨테이너, 자격은 `GHE_TAG_*`만)만 그것을 집는다. 대조(`mnumber-tag-reconcile.ts`)는 `missing`을 같은 work로 재요청하며 두 번째 생성 구현을 갖지 않는다. `materialize` work는 PR 문서와 `prs-commits`의 `merge_commit` 문서 둘 다에 M 값을 쓴다(`packages/es/src/merge-number.ts`의 `applyMergeNumberToCommitDocument`, AC-7).
 
 > CR-112 / FR-INT-001 / ADR-025: `apps/search-api/src/integrations/pipe/`가 PIPE 연동 모듈이다 — `config`(기본 꺼짐, 켜면 전부 요구), `transport-auth`(실제 TLS 상태), `assertion`(`jose` 서명 + 계약 정책), `replay-store`(Redis `SET NX EX`), `identity-binding`(binding·정본 사용자·GHE 현재 숫자 ID), `grant-store`(형식·수명·판정 순서), `read-context`(사용자 범위 ∩ 허용 목록), `routes`(고정 operation만), `server`(private 리스너), `runtime`(공개 서버와 같은 `serverDeps`로 조립), `command`(운영 CLI), `audit`(이벤트·지표). 기존 조회 10종은 route 본문을 실행 함수(`executeSearch`·`executeResolve`·`executePullRequestDetail`·`executeCommitDetail`·`executeRepositories`·`executeSource`·`executeMergeNumberResolve`)로 꺼내 일반 route와 연동 route가 공유하며, 두 경로의 차이는 주체·접근 범위를 주는 `ReadInvocation`(`apps/search-api/src/auth/read-invocation.ts`)뿐이다. 일반 route의 인증·해석기 호출은 이전과 같다.
 
 > CR-097 / FR-SRC-001~004: sourceRoutes는 인증 → 기존 ScopeService/resolveRepository → GitHubSourceReader 순서다. GitHubClient의 기존 전송·rate-limit 경계를 공유하는 별도 읽기 어댑터이며 source DTO를 수집/색인 DTO에 추가하지 않는다. 비재귀 트리·Contents·경로별 commits·PR files/merge-base를 요청 시 조회한다. 파일256KiB/4,000라인·디렉터리5,000항목·Diff100항목×30페이지 상한, 전체SHA 검증, PR 조회 전후 ref 확인을 강제한다.
 
-> 상태: review | 버전: v0.16 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.17 | 갱신일: 2026-09-23
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 
@@ -291,7 +293,7 @@ async function search(rawQuery: string, opts: SearchOptions, ctx: RequestContext
 
 7번은 **WP-014 범위 밖이다** (CR-017, DEV-065). 릴리스 태그의 패턴이 어디에도 정의되어 있지 않고 `prs-releases`도 비어 있다(WP-024). 패턴을 추측해 넣으면 `v1`·`build-2` 같은 문자열이 릴리스로 오분류되어 전문 검색으로 가야 할 질의가 0건이 된다. 릴리스를 색인하는 WP-024가 패턴을 정의할 때까지 태그처럼 보이는 문자열은 8번으로 간다.
 
-**커밋 상세는 커밋 문서가 가진 것만 낸다** (CR-017, DEV-060). 커밋 문서는 SHA·역할·소속 PR 번호·대상 브랜치만 갖는다 — `EVT-ING-002`가 커밋에 대해 SHA만 나르기 때문이다. SHA → PR 역추적(FR-SRCH-002)의 AC-4가 요구하는 PR 번호·제목·작성자·리뷰어·머지 시각은 **PR 문서를 조인해** 채운다(데이터 모델 6장의 `prs-commits` → `pull_request_numbers` → `prs-pull-requests` 경로). 커밋 자체의 메시지·작성자·부모 SHA는 미러 기반 보강(WP-020)이 채운다.
+**커밋 상세는 커밋 문서가 가진 것만 낸다** (CR-017, DEV-060). 커밋 문서는 SHA·역할·소속 PR 번호·대상 브랜치만 갖는다 — `EVT-ING-002`가 커밋에 대해 SHA만 나르기 때문이다. SHA → PR 역추적(FR-SRCH-002)의 AC-4가 요구하는 PR 번호·제목·작성자·리뷰어·머지 시각은 **PR 문서를 조인해** 채운다(데이터 모델 6장의 `prs-commits` → `pull_request_numbers` → `prs-pull-requests` 경로). 커밋 자체의 메시지·작성자·부모 SHA는 미러 기반 보강(WP-020)이 채운다. **그 조인 경로는 그대로이고, 바뀐 것은 조인의 출발점이 어디서 오는가다 (CR-116).** `pull_request_numbers`의 정본은 이제 PostgreSQL의 `pull_request_commit_link`(ENT-CORE-009)이며, 커밋 문서의 배열은 커밋별 전용 투영기가 그 정본의 전체 집합을 대입한 파생이다 — 조회 경로가 읽는 값은 합집합으로 누적된 목록이 아니라 현재 유효한 연결이고, 그래서 rebase로 빠진 PR 번호가 조인에 섞이지 않는다.
 
 ## 5. 동기/비동기 경계
 

@@ -57,7 +57,7 @@ import { REINDEX_TYPE, runReindexJob, verifyBeforeCutover } from '../../src/rein
 import { verifySequenceProjection } from '../../src/sequence-projection.js';
 import { prepareAndAssignSequence, repairSequence, type SequenceDeps } from '../../src/sequence.js';
 import { runSequenceWorkOnce } from '../../src/sequence-work-runner.js';
-import { recordProjectionSnapshot } from '../../src/snapshot.js';
+import { linkObservationOf, recordProjectionSnapshot } from '../../src/snapshot.js';
 import { makeTempDir, removeDir, run } from './fixture.js';
 import { createSquashFixture, type SquashFixture } from './squash-fixture.js';
 
@@ -156,11 +156,13 @@ function enrichedFor(prNumber: number, mergeSha: string | null, sourceShas: read
       head_sha: 'b'.repeat(40),
       base_ref: BRANCH,
       base_sha: 'c'.repeat(40),
+      commits_count: sourceShas.length,
     },
     source_commit_shas: [...sourceShas],
     changed_files: [],
     reviews: [],
     source_commits_truncated: false,
+    source_commits_complete: true,
     files_truncated: false,
     enrichment_pending: false,
     enrichment_errors: [],
@@ -181,7 +183,12 @@ async function projectPullRequest(prNumber: number, mergeSha: string | null, doc
     indexedAt: new Date(),
     authorTeams: { kind: 'unknown' },
   });
-  await recordProjectionSnapshot(pool, requests, { repositoryId: REPOSITORY_ID, prNumber, source: 'webhook' });
+  await recordProjectionSnapshot(pool, requests, {
+    repositoryId: REPOSITORY_ID,
+    prNumber,
+    source: 'webhook',
+    linkObservation: linkObservationOf(enrichedFor(prNumber, mergeSha), documentVersion),
+  });
   await withReindexWrite(pool, async (targets) => {
     const result = await bulkUpsert(es, requests, targets);
     const rejected = result.outcomes.filter((one) => one.kind !== 'ok');

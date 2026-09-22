@@ -39,6 +39,16 @@ export function mirrorSyncLockKey(repositoryId: number): string {
 }
 
 /** 시퀀스 공간 하나에 대응하는 락 키 문자열. */
+/**
+ * PR↔커밋 관계 채택 락 (CR-116 / WP-101).
+ *
+ * `sequenceLockKey`와 나눈다 — 관계의 정체성은 base 브랜치에도 에폭에도 속하지
+ * 않고, 채번을 기다리게 할 이유도 없다.
+ */
+export function pullRequestLinkLockKey(repositoryId: number, prNumber: number): string {
+  return `prs:pr-link:${String(repositoryId)}:${String(prNumber)}`;
+}
+
 export function sequenceLockKey(repositoryId: number, baseBranch: string): string {
   return `seq:${String(repositoryId)}:${baseBranch}`;
 }

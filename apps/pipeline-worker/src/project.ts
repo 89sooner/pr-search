@@ -49,7 +49,7 @@ import { withReindexWrite } from '@prs/db';
 import type { Client } from '@elastic/elasticsearch';
 import { buildUpsertRequests } from './documents.js';
 import { resolveAuthorTeam } from './author-teams.js';
-import { recordProjectionSnapshot } from './snapshot.js';
+import { linkObservationOf, recordProjectionSnapshot } from './snapshot.js';
 import { parseEnriched } from './enriched-payload.js';
 import { defaultSleep, retryFailedItems } from './index-retry.js';
 import type { WorkerMetrics } from './metrics.js';
@@ -227,11 +227,14 @@ async function projectDocuments(
     enriched.pull_request?.author,
   );
 
+  // AC-1. 웹훅 수신 시각이 사실의 순서다. 관계 채택도 **같은 값**을 쓴다 (CR-116) —
+  // 두 정본이 다른 기준으로 신선함을 판정하면 한쪽만 이기는 순간이 생긴다.
+  const documentVersion = row.received_at.getTime();
+
   const requests = buildUpsertRequests({
     enriched,
     repository,
-    // AC-1. 웹훅 수신 시각이 사실의 순서다.
-    documentVersion: row.received_at.getTime(),
+    documentVersion,
     indexedAt,
     authorTeams,
   });
@@ -245,6 +248,9 @@ async function projectDocuments(
     repositoryId: repository.repository_id,
     prNumber: enriched.pr_number,
     source: 'webhook',
+    // 관계 채택도 같은 트랜잭션이다 (CR-116 / WP-101). 재료는 보강 결과이지
+    // 문서가 아니다 — 문서에는 구성 요소별 실패가 남지 않는다.
+    linkObservation: linkObservationOf(enriched, documentVersion),
   });
 
   /*

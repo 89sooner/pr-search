@@ -40,6 +40,7 @@
 import {
   commitSnapshotRepo,
   jobRepo,
+  prCommitLinkRepo,
   mergeSequenceRepo,
   prSnapshotRepo,
   releaseRepo,
@@ -55,6 +56,7 @@ import {
   type RepositoryRow,
 } from '@prs/db';
 import {
+  applyCommitLinksToIndex,
   bulkUpsert,
   createVersionedIndex,
   deleteRetiredIndex,
@@ -381,6 +383,8 @@ async function rebuildCommits(
   deps: ReindexDeps,
   repository: RepositoryRow,
   tally: RebuildTally,
+  /** 이번 재구축의 대상 인덱스. 관계 replay가 별칭이 아니라 이것을 직접 쓴다 (CR-116). */
+  targetIndex: string,
 ): Promise<void> {
   const repositoryId = Number(repository.repository_id);
   const indexedAt = nowOf(deps).toISOString();
@@ -458,6 +462,78 @@ async function rebuildCommits(
   }
 
   await rebuildProjectedCommits(deps, repository, tally, indexedAt);
+  await replayCommitLinks(deps, repository, tally, targetIndex);
+}
+
+/**
+ * PR 연결을 **정본에서** 다시 비춘다 (CR-116 / WP-101, FR-ING-008 AC-9).
+ *
+ * ## 왜 필요한가
+ *
+ * `rebuildProjectedCommits`는 역할·범위·버전만 쓴다. 관계는 CR-116부터 전용
+ * 투영기의 것이고 `params.union`에 실리지 않으므로, **이 단계가 없으면 새 인덱스의
+ * 모든 커밋이 `pull_request_numbers` 없이 시작한다.** FR-SRCH-002가 그 커밋들에
+ * 대해 "속한 PR 없음"으로 답한다는 뜻이다. 전에는 합집합이 그 구멍을 우연히
+ * 메웠지만, 그것도 웹훅이 다시 와야 채워지는 것이었다 (상류 요청 4).
+ *
+ * ## 세대를 묻지 않는다
+ *
+ * `projected_generation`은 **옛 인덱스에 대한 사실**이다. 그 값을 새 대상의 완료로
+ * 재사용하면 이미 비춘 것으로 착각해 새 인덱스가 빈 채로 전환된다. 그래서 러너와
+ * 달리 여기서는 모든 행을 비추고 `projected_generation`을 **건드리지 않는다** —
+ * 그 열은 서비스 별칭에 대한 진행이고, 재색인의 진행은 잡이 따로 적는다.
+ *
+ * ## 빈 집합과 미확정도 그대로 옮긴다
+ *
+ * 연결이 0개인 커밋에는 `[]`가 대입된다. 그것이 "검증한 범위에서 연결 없음"이라는
+ * 사실이고, 필드를 비워 두면 "아직 모름"이 되어 뜻이 바뀐다.
+ */
+async function replayCommitLinks(
+  deps: ReindexDeps,
+  repository: RepositoryRow,
+  tally: RebuildTally,
+  targetIndex: string,
+): Promise<void> {
+  const repositoryId = Number(repository.repository_id);
+  let after = '';
+
+  for (;;) {
+    const rows = await prCommitLinkRepo.listCommitLinkStatesAfter(deps.pool, repositoryId, after, REINDEX_BATCH);
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      const numbers = row.pr_numbers ?? [];
+      /*
+       * **대상 인덱스를 직접 지목한다.** 별칭으로 쓰면 서비스 인덱스의 상태가
+       * 판정에 끼어들어, 거기 남은 충돌 하나가 새 인덱스의 그 커밋을 영영 비우게
+       * 만든다 (DEV-750). 서비스 인덱스는 러너와 복구 명령이 맡는다.
+       */
+      const outcome = await applyCommitLinksToIndex(
+        deps.es,
+        {
+          repositoryId,
+          commitSha: row.commit_sha,
+          numbers,
+          generation: Number(row.generation),
+          state: Number(row.unverified) === 0 ? 'verified' : 'partial',
+        },
+        targetIndex,
+      );
+      /*
+       * 문서가 없고 연결도 없으면 비출 것이 없다. 문서가 없는데 연결이 있으면
+       * **재구축이 그 커밋 문서를 만들지 못했다**는 뜻이므로 조용히 넘기지 않는다 —
+       * 그대로 두면 전환 뒤에 그 커밋의 SHA → PR이 사라진다.
+       */
+      if (outcome === 'document_missing' && numbers.length > 0) {
+        throw new Error(`commit_link_replay_document_missing: ${row.commit_sha}`);
+      }
+      tally.scanned += 1;
+      if (outcome === 'updated') tally.written += 1;
+      after = row.commit_sha;
+    }
+
+    if (rows.length < REINDEX_BATCH) break;
+  }
 }
 
 /**
@@ -502,7 +578,16 @@ async function rebuildProjectedCommits(
           roles.set(raw.toLowerCase(), 'source_commit');
         }
       }
-      const mergeSha = document['merge_commit_sha'];
+      /*
+       * **병합된 PR의 머지 커밋만 머지 커밋이다** (CR-116 / DEV-747, FR-SRCH-002 AC-1).
+       *
+       * 실시간 투영(`buildCommitDocuments`)은 `merged === true`를 확인해 왔는데 여기에는
+       * 그 확인이 없었다. GitHub은 **열린 PR에도** `merge_commit_sha`를 준다 — 시험 병합으로
+       * 만든 임시 커밋이다. 그래서 재색인이 지날 때마다 아직 병합되지 않은 PR이
+       * 커밋 하나를 "병합했다"고 주장하는 문서가 만들어졌고, 그 역할은 실시간
+       * 경로가 만든 문서와 **달랐다.**
+       */
+      const mergeSha = document['state'] === 'merged' ? document['merge_commit_sha'] : null;
       if (typeof mergeSha === 'string' && mergeSha !== '') roles.set(mergeSha.toLowerCase(), 'merge_commit');
 
       for (const [sha, role] of roles) {
@@ -644,6 +729,13 @@ async function requestMergeNumberMaterialize(deps: ReindexDeps, repository: Repo
 /** 별칭 하나의 정본 재구축. 별칭마다 정본이 다르다 (비동기 3.5장). */
 async function rebuildAlias(deps: ReindexDeps, alias: EntityAlias, jobId: number): Promise<RebuildTally> {
   const tally: RebuildTally = { scanned: 0, written: 0, documentIds: new Set() };
+  /*
+   * 대상 인덱스 이름은 잡이 갖고 있다. 여기서 다시 해석하지 않는다 — 그 사이에
+   * 전환이 일어나면 두 값이 갈라지고, 관계 replay가 엉뚱한 인덱스에 쓴다.
+   */
+  const job = await reindexRepo.findReindexJob(deps.pool, jobId);
+  const targetIndex = job?.progress.target_index;
+  if (targetIndex === undefined || targetIndex === '') throw new Error('대상 인덱스를 알 수 없다');
   const repositories = await allRepositories(deps.pool);
   const replay: { spaces: ReplaySpaceRecord[]; repositories_done: number } = { spaces: [], repositories_done: 0 };
   /*
@@ -670,7 +762,7 @@ async function rebuildAlias(deps: ReindexDeps, alias: EntityAlias, jobId: number
         await requestMergeNumberMaterialize(deps, repository);
         break;
       case 'prs-commits':
-        await rebuildCommits(deps, repository, tally);
+        await rebuildCommits(deps, repository, tally, targetIndex);
         await replayFor(repository, 'commit');
         /*
          * 커밋 문서도 M 값을 갖는다 (CR-115 / FR-SEQ-012 AC-7). 재구축이 만든 merge_commit 문서에는
@@ -781,6 +873,29 @@ export async function verifyBeforeCutover(
     }
   }
 
+  /*
+   * 9. PR 연결 (CR-116 / FR-ING-008 AC-9) — 대상 인덱스의 `pull_request_numbers`가
+   *    정본과 문서마다 같다. **양방향으로 본다**: 정본에 있는데 색인에 없는 번호
+   *    (누락)와, 색인에 있는데 정본에 없는 번호(잉여)가 둘 다 결함이다. 누락만 보면
+   *    이 CR이 고치려는 오염이 새 인덱스로 그대로 넘어간 채 전환을 통과한다.
+   */
+  if (alias === 'prs-commits') {
+    try {
+      const links = await verifyCommitLinkProjection(deps, target);
+      reasons.push(...links.reasons);
+      logOf(deps)({
+        level: links.reasons.length === 0 ? 'info' : 'error',
+        message: '전환 전 PR 연결 검증',
+        job_id: jobId,
+        alias,
+        target_index: target,
+        detail: `checked=${String(links.checked)} missing=${String(links.missing)} extra=${String(links.extra)}`,
+      });
+    } catch (error) {
+      reasons.push(`PR 연결 검증 실패: ${String(error).slice(0, 200)}`);
+    }
+  }
+
   logOf(deps)({
     level: 'info',
     message: '전환 전 검증',
@@ -793,6 +908,83 @@ export async function verifyBeforeCutover(
   });
 
   return { ok: reasons.length === 0, reasons };
+}
+
+/**
+ * 대상 인덱스의 PR 연결을 정본과 맞댄다 (CR-116 / WP-101, FR-ING-008 AC-9).
+ *
+ * **양방향이다.** 정본에만 있는 번호는 누락이고 색인에만 있는 번호는 잉여이며,
+ * 둘 다 전환을 막는다. 누락만 보는 검증은 "합집합이 남긴 잘못된 번호"를 새
+ * 인덱스로 그대로 통과시킨다 — 이 CR이 고치려는 바로 그 상태다.
+ *
+ * `[]`와 필드 부재를 구분한다. 정본이 빈 집합을 말하는데 색인의 필드가 없으면
+ * 그것은 "같다"가 아니라 "아직 모름"이며, 재구축이 그 커밋을 비추지 못한 것이다.
+ */
+async function verifyCommitLinkProjection(
+  deps: ReindexDeps,
+  targetIndex: string,
+): Promise<{ readonly checked: number; readonly missing: number; readonly extra: number; readonly reasons: readonly string[] }> {
+  const reasons: string[] = [];
+  let checked = 0;
+  let missing = 0;
+  let extra = 0;
+
+  for (const repository of await allRepositories(deps.pool)) {
+    const repositoryId = Number(repository.repository_id);
+    let after = '';
+    for (;;) {
+      const rows = await prCommitLinkRepo.listCommitLinkStatesAfter(deps.pool, repositoryId, after, REINDEX_BATCH);
+      if (rows.length === 0) break;
+      const ids = rows.map((row) => commitDocId(repositoryId, row.commit_sha));
+      const found = await deps.es.mget<{ pull_request_numbers?: readonly number[] }>({
+        index: targetIndex,
+        ids,
+        routing: String(repositoryId),
+        _source: ['pull_request_numbers'],
+      });
+      const byId = new Map<string, readonly number[] | undefined>();
+      for (const doc of found.docs) {
+        const hit = doc as { _id?: string; found?: boolean; _source?: { pull_request_numbers?: readonly number[] } };
+        if (hit._id === undefined) continue;
+        byId.set(hit._id, hit.found === true ? hit._source?.pull_request_numbers ?? undefined : undefined);
+      }
+
+      for (const row of rows) {
+        after = row.commit_sha;
+        checked += 1;
+        const expected = [...new Set(row.pr_numbers ?? [])].sort((a, b) => a - b);
+        const actual = byId.get(commitDocId(repositoryId, row.commit_sha));
+        if (actual === undefined) {
+          /*
+           * 문서가 없거나 필드가 없다. 정본이 연결을 말하고 있으면 **누락**이다.
+           *
+           * 정본이 빈 집합이면 막지 않는다 (독립 검토 지적 B). 연결이 0개가 된 커밋의
+           * tombstone은 상태 표에 남지만, 그 커밋이 어느 스냅숏의 원본 목록에도 없고
+           * first-parent 체인에도 없으면 **재구축이 문서를 만들 재료가 없다.**
+           * `replayCommitLinks`가 그 경우를 통과시키므로 여기서 막으면 replay가 용인한
+           * 상태를 verify가 거부해 전환이 영영 되지 않는다. 없는 문서에 「연결 0개」를
+           * 적을 자리도 없다 — 없는 것과 0은 그 커밋에 대해 같은 결론이다.
+           */
+          if (expected.length > 0) {
+            missing += expected.length;
+            if (reasons.length < 10) reasons.push(`PR 연결 누락: ${row.commit_sha.slice(0, 12)} 기대=[${expected.join(',')}] 색인=없음`);
+          }
+          continue;
+        }
+        const indexed = [...new Set(actual)].sort((a, b) => a - b);
+        const missingHere = expected.filter((n) => !indexed.includes(n));
+        const extraHere = indexed.filter((n) => !expected.includes(n));
+        missing += missingHere.length;
+        extra += extraHere.length;
+        if ((missingHere.length > 0 || extraHere.length > 0) && reasons.length < 10) {
+          reasons.push(`PR 연결 불일치: ${row.commit_sha.slice(0, 12)} 누락=[${missingHere.join(',')}] 잉여=[${extraHere.join(',')}]`);
+        }
+      }
+      if (rows.length < REINDEX_BATCH) break;
+    }
+  }
+
+  return { checked, missing, extra, reasons };
 }
 
 /* ------------------------------------------------------------------------- */

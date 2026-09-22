@@ -15,11 +15,63 @@
  * 상태로 남는다.
  */
 
-import { prSnapshotRepo, sequenceProjectionRepo, sequenceSpaceRepo, sequenceWorkRepo, withTransaction } from '@prs/db';
+import {
+  prCommitLinkRepo,
+  prSnapshotRepo,
+  sequenceProjectionRepo,
+  sequenceSpaceRepo,
+  sequenceWorkRepo,
+  withTransaction,
+} from '@prs/db';
 import type { Pool } from '@prs/db';
 import type { SnapshotSource } from '@prs/db';
+import { derivePullRequestState, type IngestionEnriched } from '@prs/domain';
 import type { UpsertRequest } from '@prs/es';
 import { docWorkRequest } from './sequence-projection.js';
+
+/**
+ * 보강 결과에서 관계 관측을 만든다 (CR-116 / WP-101).
+ *
+ * **여기서 만든다.** 문서에서 되읽으면 두 가지를 잃는다 — 문서에는
+ * `enrichment_errors`가 없어 "커밋 조회가 실패했다"와 "리뷰만 실패했다"가 같아
+ * 보이고, PR 본문을 원격에서 직접 읽었는지도 알 수 없다. 둘 다 **삭제 권한의
+ * 재료**라 잃으면 안 된다.
+ */
+export function linkObservationOf(
+  enriched: IngestionEnriched,
+  documentVersion: number,
+): Omit<Parameters<typeof prCommitLinkRepo.adoptLinkObservation>[1], 'repositoryId' | 'prNumber'> {
+  const pr = enriched.pull_request;
+  const commitsError = enriched.enrichment_errors.find((error) => error.component === 'commits');
+  const prError = enriched.enrichment_errors.find((error) => error.component === 'pull_request');
+  return {
+    observedVersion: documentVersion,
+    sourceShas: enriched.source_commit_shas,
+    /*
+     * **병합된 PR의 머지 커밋만 실제 병합 근거다** (FR-SRCH-002 AC-1).
+     *
+     * GitHub은 열린 PR에도 `merge_commit_sha`를 준다 — 시험 병합으로 만든 임시
+     * 커밋이다. 그것을 병합으로 적으면 아직 병합되지 않은 PR이 커밋 하나를
+     * "병합했다"고 주장한다.
+     */
+    mergeSha: pr !== null && derivePullRequestState(pr) === 'merged' ? pr.merge_commit_sha : null,
+    commitsComplete: enriched.source_commits_complete,
+    /*
+     * PR 본문을 원격에서 직접 읽었는가. 보강 실패 목록에 `pull_request`가 없으면
+     * API 응답이 이겼다는 뜻이다 (`enrich.ts`). 웹훅 사본만 있는 경우에는
+     * `merge` 근거를 **지우지 않는다.**
+     */
+    pullRequestAuthoritative: prError === undefined && pr !== null,
+    commitsErrorKind: commitsError === undefined ? null : `${commitsError.component}:${commitsError.kind}`,
+    apiCommitCount: pr?.commits_count ?? null,
+    sourceCommitsTruncated: enriched.source_commits_truncated,
+    headSha: pr?.head_sha ?? null,
+    baseSha: pr?.base_sha ?? null,
+    baseBranch: pr?.base_ref ?? null,
+    prState: pr === null ? null : derivePullRequestState(pr),
+    reason: commitsError === undefined ? null : `commits_${commitsError.kind}`,
+  };
+}
 
 /**
  * PR 문서 하나를 골라 정본에 남긴다. 커밋 문서는 대상이 아니다.
@@ -44,7 +96,22 @@ import { docWorkRequest } from './sequence-projection.js';
 export async function recordProjectionSnapshot(
   pool: Pool,
   requests: readonly UpsertRequest[],
-  options: { readonly repositoryId: number; readonly prNumber: number; readonly source: SnapshotSource },
+  options: {
+    readonly repositoryId: number;
+    readonly prNumber: number;
+    readonly source: SnapshotSource;
+    /**
+     * 이 PR의 관계 관측 (CR-116 / WP-101).
+     *
+     * **선택 항목이 아니다.** 기본값을 두면 호출부가 빠뜨렸을 때 그 사실이
+     * 드러나지 않고, 그 경로만 관계를 갱신하지 않는 상태가 조용히 남는다.
+     * `linkObservationOf`가 보강 결과에서 만든다.
+     */
+    readonly linkObservation: Omit<
+      Parameters<typeof prCommitLinkRepo.adoptLinkObservation>[1],
+      'repositoryId' | 'prNumber'
+    >;
+  },
 ): Promise<void> {
   const pullRequest = requests.find((request) => request.alias === 'prs-pull-requests');
   if (pullRequest === undefined) return;
@@ -57,6 +124,30 @@ export async function recordProjectionSnapshot(
       source: options.source,
       document: pullRequest.doc,
     });
+
+    /*
+     * ## 관계 채택은 **머지 여부보다 먼저** 한다 (CR-116 / WP-101, FR-SRCH-002 AC-6)
+     *
+     * 아래의 `state !== 'merged'` 조기 반환 뒤에 두면 **열린 PR의 관계가 통째로
+     * 빠진다.** 사내에서 잘못된 번호를 남긴 #2355가 바로 열린 PR이었다 — 그 경로가
+     * 갱신되지 않으면 이 CR이 고치려는 결함이 그대로 남는다.
+     *
+     * 스냅숏이 낮은 버전이라 무시됐어도(`!updated`) 건너뛰지 않는다. 채택은
+     * **자기 버전 가드**를 따로 가지며, 마이그레이션이 seed한 관측처럼 관계 쪽만
+     * 뒤처진 경우가 실재한다. 오래된 관측은 거기서 `stale`로 접힌다.
+     *
+     * 관계 변경과 재투영 의도가 **같은 트랜잭션**이다. 색인 쓰기가 실패하거나
+     * 직후에 프로세스가 죽어도 제거의 근거와 할 일이 PostgreSQL에 남는다.
+     */
+    const adoption = await prCommitLinkRepo.adoptLinkObservation(client, {
+      repositoryId: options.repositoryId,
+      prNumber: options.prNumber,
+      ...options.linkObservation,
+    });
+    if (adoption.affected.length > 0) {
+      await prCommitLinkRepo.bumpCommitLinkGenerations(client, options.repositoryId, adoption.affected);
+    }
+
     if (!updated) return;
 
     const doc = pullRequest.doc as { readonly state?: unknown; readonly base_branch?: unknown };
