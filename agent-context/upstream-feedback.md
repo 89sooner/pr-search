@@ -191,3 +191,64 @@ DB `merge_sequence`와 원격 `refs/tags/M-*` 정합성 검사 기능 필요:
    - `git diff M-1900-2010..M-1900-2130`, `git log M-1900-2010..M-1900-2130`
    - `git checkout M-1900-2010`, `git log --oneline --decorate`
    - lightweight tag를 포함한 `git describe --tags`
+
+---
+
+## `pull_request_numbers` union semantics로 과거 PR 번호가 커밋에 영구히 남는다 (설계 갭)
+
+발견: 0.1.0-pilot.17 사내 운영 (2026-09-22)
+관련: FR-SRCH-002 / `packages/es/src/upsert.ts` / `apps/pipeline-worker/src/documents.ts` / `apps/pipeline-worker/src/enrich.ts`
+
+### 현상
+
+commit history 페이지에서 거의 모든 커밋에 아직 open 상태인 PR #2355가 "Linked PRs"로 표시된다. 실제 머지된 PR 번호와 함께 #2355가 항상 2개씩 보인다.
+
+### 근본 원인: union 필드는 추가만 하고 빼지 않는다
+
+`pull_request_numbers`는 ES upsert에서 `union` 필드로 동작한다 (`upsert.ts:43-50`). `HashSet`으로 중복만 제거하고 합집합만 수행한다 — 한 번 추가된 PR 번호는 영영 빠지지 않는다.
+
+PR 투영 파이프라인 (`documents.ts:341-372`, `enrich.ts:276-279`):
+
+1. PR 이벤트(synchronize 등)가 올 때마다 GHE API `GET /pulls/{n}/commits`로 `source_commit_shas`를 가져온다.
+2. `buildCommitDocuments`가 `source_commit_shas`의 각 커밋에 `union: { pull_request_numbers: [prNumber] }`를 기록한다.
+3. 이후 PR이 rebase되어 `source_commit_shas`가 줄어들어도, 과거에 기록된 PR 번호는 빠지지 않는다.
+
+### 발생 조건
+
+PR이 base 브랜치의 과거 커밋 위에 있을 때(생성 시점의 base가 현재보다 과거):
+
+1. PR 생성 시 `source_commit_shas`에 base..head 사이의 커밋이 포함됨
+2. 이 커밋들은 dev 브랜치 first-parent 체인 위에 있는 일반 머지 커밋들
+3. PR이 rebase되어 base가 최신으로 당겨지면 `source_commit_shas`가 줄어듦
+4. 하지만 과거에 union으로 기록된 PR 번호는 빠지지 않음
+
+실제 사례: PR #2355는 8번의 synchronize 이벤트가 발생했고, 과거 base가 `2d8aa30a` (9월 17일 커밋)일 때의 `source_commit_shas`에 dev 체인의 커밋 110개가 포함되었다. 이후 base가 `e3ee2f90` (9월 22일 커밋)로 당겨지면서 `source_commit_shas`가 2개로 줄었지만, 110개 커밋에 #2355가 영구히 남았다.
+
+### 영향 규모 (사내 서버)
+
+| 항목                 | 값                                                                       |
+| -------------------- | ------------------------------------------------------------------------ |
+| 영향받은 PR          | 279개                                                                    |
+| 잘못 연결된 커밋     | 3,481개 (1차) + 660개 (웹훅 재발생분)                                    |
+| 주요 PR              | #983 (250개), #1528 (251개), #1384 (229개), #2272 (174개), #1091 (191개) |
+| 모든 저장소에서 영향 | repo 1877 (smp1900), 119 (admin), 399 (pipe)                             |
+
+### 사내 임시 조치
+
+`scripts/cleanup-stale-pr-links.mjs` 스크립트로 정리:
+
+1. 모든 PR 문서에서 현재 `source_commit_shas` + `merge_commit_sha`를 읽어 유효 SHA 집합 구성
+2. 모든 커밋 문서에서 `pull_request_numbers`를 읽어 유효 SHA 집합에 없는 PR 번호 식별
+3. ES `update_by_query`로 해당 PR 번호를 `pull_request_numbers` 배열에서 제거
+
+스크립트는 dry-run 기본, `--apply`로 실행, `--repo`로 특정 저장소 필터링 지원. 그러나 웹훅이 계속 들어오면 synchronize 이벤트로 union이 다시 추가되므로 일시적 해결이다.
+
+### 요청
+
+1. 투영 전 old `source_commit_shas`를 읽고 빠진 커밋에서 PR 번호 제거 — PR 투영 워커가 PR 문서를 갱신하기 전에 기존 `source_commit_shas`를 읽고, 새 목록에서 빠진 커밋을 계산하여, 그 커밋에서 PR 번호를 제거하는 `update_by_query`를 먼저 실행한 후 기존 union 투영을 진행한다. union은 그대로 두되, 투영 전에 "정리" 단계를 추가하는 것이다. 이것이 가장 안전한 접근이다 — 기존 구조와 union semantics를 유지하면서 빠진 커밋만 정확히 제거한다.
+
+2. 또는 `source_commit_shas`를 stateful 대입으로 변경 — `pull_request_numbers`를 union이 아닌 매 투영마다 전체 목록을 대입하는 stateful 필드로 변경. 단, N:M 관계에서 다른 PR의 번호를 덮어쓰지 않도록, 커밋 문서에 `pull_request_numbers`를 "이 PR이 기여한 번호"와 "다른 PR이 기여한 번호"로 분리하거나, PR 번호별로 개별 업데이트해야 한다. 복잡도가 높다.
+
+3. `pull_request_numbers`에서 빈 배열을 허용하고 빈 배열을 빈 배열로 명시적 대입 — 현재 `pull_request_numbers`가 빈 배열이 되면 ES에서 필드 자체가 사라지는 데 (`cleanup-stale-pr-links.mjs`의 painless 스크립트에서 `remove` 처리), 이것이 정상 동작인지 확인 필요. 빈 배열을 명시적으로 저장할 수 있다면, "이 PR에 속하는 커밋이 0개"와 "아직 모름"을 구분할 수 있다.
+
+4. 재색인 시 `pull_request_numbers` 재투영 경로 추가 — 현재 재색인은 `merge_seq`뿐 아니라 `pull_request_numbers`도 재투영하지 않는다. 재색인 후에도 모든 커밋의 `pull_request_numbers`가 빈 상태로 시작하며, PR 투영 이벤트가 다시 들어와야 채워진다. `merge_number`의 `requestMergeNumberMaterialize`와 같은 재투영 단계가 `pull_request_numbers`에도 필요하다.
