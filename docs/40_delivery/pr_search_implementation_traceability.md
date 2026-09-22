@@ -4,7 +4,7 @@
 
 ## CR-115 / WP-100 — 확정된 M 번호의 원격 lightweight 태그 (2026-09-22)
 
-사용자 지시(2026-09-22)로 사내 `0.1.0-pilot.17` 확정 요건(`agent-context/upstream-feedback.md` — M 번호를 `git rev-parse M-1900-1450`·`git log M-a..M-b`처럼 Git revision으로 쓰기 위해 머지 커밋에 lightweight 태그를 원격으로 만들 것, durable·멱등·force-update 금지·커밋 문서 M 투영·대조)을 기능 누락으로 보완했다. 기준은 CR-114 브랜치 `feature/cr114-mnumber-search`의 `7f980be`(main `13074f8` 위 CR-114 두 커밋)이며 이 브랜치는 그 위에 stacked다. 워크트리 `/home/roqkf/pr-search-wt/cr115-mnumber-tags`(브랜치 `feature/cr115-mnumber-tags`). 구현·검증은 6.106장, 편차는 DEV-740~743, 제품 결정은 OD-015, 설계는 ADR-026(+ADR-022 Amendment)이다. **이 제품이 스스로 하는 두 번째 GHE 쓰기**이며 전역 스위치 `MNUMBER_TAG_ENABLED`의 기본값은 꺼짐이다 — 이 변경을 받는 것만으로는 원격 저장소에 아무 태그도 생기지 않는다.
+사용자 지시(2026-09-22)로 사내 `0.1.0-pilot.17` 확정 요건(`agent-context/upstream-feedback.md` — M 번호를 `git rev-parse M-1900-1450`·`git log M-a..M-b`처럼 Git revision으로 쓰기 위해 머지 커밋에 lightweight 태그를 원격으로 만들 것, durable·멱등·force-update 금지·커밋 문서 M 투영·대조)을 기능 누락으로 보완했다. 기준은 CR-114 브랜치 `feature/cr114-mnumber-search`의 `7f980be`(main `13074f8` 위 CR-114 두 커밋)이며 이 브랜치는 그 위에 stacked로 시작했다. CR-114가 PR #225로 main `9782ba9`에 squash 병합된 뒤(2026-09-22 22:59 KST) 세 커밋을 `rebase --onto origin/main`으로 다시 올렸고 PR #226의 base를 `main`으로 옮겼다 — 코드 트리는 6.106장이 검증한 head(`b4c8799`)와 같으며 차이는 main이 그 사이 받은 `agent-context/upstream-feedback.md`의 네 번째 항목(`1cd7c08`)뿐이다(`git diff --stat`으로 실측). 워크트리 `/home/roqkf/pr-search-wt/cr115-mnumber-tags`(브랜치 `feature/cr115-mnumber-tags`). 구현·검증은 6.106장, 편차는 DEV-740~743, 제품 결정은 OD-015, 설계는 ADR-026(+ADR-022 Amendment)이다. **이 제품이 스스로 하는 두 번째 GHE 쓰기**이며 전역 스위치 `MNUMBER_TAG_ENABLED`의 기본값은 꺼짐이다 — 이 변경을 받는 것만으로는 원격 저장소에 아무 태그도 생기지 않는다.
 
 ## CR-114 / WP-099 — 검색창 M 번호 문자열 해석과 `mnum:` 단일 값 (2026-09-22)
 
@@ -232,7 +232,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-100 | 확정된 M 번호의 원격 lightweight 태그 | 기능 누락 보완 (CR-115) | in_progress | 에이전트 | PR #226 (브랜치 `feature/cr115-mnumber-tags`, CR-114 PR #225 위에 stacked, head `b4c8799`) | 6.106장 — 전량 통과, 변이 13종 죽음, 독립 리뷰 지적 3건 수정, PR CI success | 기본 꺼짐. 병합은 사용자 지시 뒤(CR-114 다음). 사내 배포 SHA NOT VERIFIED, 내부망 적용·사내 GHE ruleset NOT RUN |
+| WP-100 | 확정된 M 번호의 원격 lightweight 태그 | 기능 누락 보완 (CR-115) | in_progress | 에이전트 | PR #226 (브랜치 `feature/cr115-mnumber-tags`, base `main` — CR-114 병합 `9782ba9` 뒤 rebase; 검증 head `b4c8799`, rebase 뒤 코드 트리 동일) | 6.106장 — 전량 통과, 변이 13종 죽음, 독립 리뷰 지적 3건 수정, PR CI success | 기본 꺼짐. 병합은 사용자 지시 뒤(CR-114 다음). 사내 배포 SHA NOT VERIFIED, 내부망 적용·사내 GHE ruleset NOT RUN |
 | WP-099 | 검색창 M 번호 문자열 해석과 `mnum:` 단일 값 | 기능 누락 보완 (CR-114) | in_progress | 에이전트 | 브랜치 `feature/cr114-mnumber-search` (PR 전) | 6.105장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-098 | 머지 시퀀스의 Elasticsearch 투영 수렴 | 신뢰성 결함 수정 (CR-113) | done | 에이전트 | main `a6ea00d` / PR #223 (브랜치 head `36f0444`, squash) | 6.104장 — 현 코드에서 실패하던 8건이 통과하고 변이 10종에 죽는다; 독립 리뷰 2건 수정; 재투영 잡·CLI·API·Search API 정렬·RepositoryWorkspace e2e 통과; PR CI·main CI success | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-097 | PIPE 서버 위임 검색 수신부 | 서버 간 연동 (CR-112) | done | 에이전트 | main `e7b4cb4` / PR #220 (브랜치 커밋 `28a3c21`, squash) | 6.103장 — 최종 실행 typecheck·lint(기준선 1건은 병합 전 설정으로 해소, 오류 0)·lint:deps·단위 3,204·build·통합 2,052·회귀 509 통과, 독립 보안 검토 차단·높음 0. PR CI run `35568796745` verify·integration success | 기본 꺼짐. 사내 CA·운영 HAProxy·실제 GHE를 거친 검증은 NOT_RUN. 발견 편차 DEV-730·DEV-731·DEV-732(원본 경로, 기록만) |
