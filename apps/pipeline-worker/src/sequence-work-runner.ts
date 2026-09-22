@@ -176,12 +176,14 @@ async function runOne(deps: WorkRunnerDeps, row: SequenceWorkRow): Promise<strin
               return finish('obsolete', { state: 'obsolete', delayMs: 0, reason: result.reason ?? 'epoch_moved' });
             case 'document_missing':
               /*
-               * 정본은 문서가 있어야 한다고 하는데 색인에 없다. 투영·보강이 만들 때까지 다시 본다 —
-               * 반복 실패 상한을 넘으면 `parked`로 5분마다 재검사하되 **완료로 닫지 않는다.** 새
-               * 스냅숏·보강이 오면 `requestWork`가 즉시 다시 깨운다.
+               * 정본은 문서가 있어야 한다고 하는데 색인에 없다. 투영·보강이 만들 때까지 백오프로 다시
+               * 본다. 반복 실패 상한을 넘으면 `parked`로 둔다 — **완료로 닫지 않는다.** `parked`는
+               * 러너가 스스로 집지 않는 대기 상태이고(`claimDueWork`는 `ready`·`retry`만 집는다),
+               * 새 스냅숏·커밋 보강·공간 full sweep이 같은 키를 다시 요청하면 `requestWork`가 `ready`로
+               * 되돌려 즉시 다시 돈다. 운영자는 `prsctl sequence status`·재투영 잡의 `parked_documents`로 본다.
                */
               if (row.attempt_count >= MAX_RETRIES) {
-                log({ level: 'warn', message: '문서가 오래 만들어지지 않는다 — 5분마다 다시 본다', work_key: row.work_key, attempt: row.attempt_count, reason: 'document_missing' });
+                log({ level: 'warn', message: '문서가 오래 만들어지지 않는다 — parked로 두고 새 스냅숏·보강·sweep의 재요청을 기다린다', work_key: row.work_key, attempt: row.attempt_count, reason: 'document_missing' });
                 return finish('parked', { state: 'parked', delayMs: WORK_PARK_MS, reason: 'document_missing' });
               }
               return retryLater('document_missing', 'document_missing');
