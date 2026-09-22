@@ -167,7 +167,13 @@ export async function reconcileTags(
      * 명시적으로 실행하는 것이라 표기의 `annotate_resume`과 같은 「명시적 재개」다. 권한이 여전히
      * 없으면 첫 POST가 다시 차단한다.
      */
+    /*
+     * 목록이 상한에서 잘렸으면(`truncated`) 「원격에 없음」을 확인한 것이 아니라 부분 목록에서 안 보였을
+     * 뿐이다 — 재개도 재요청도 하지 않고 `remote_truncated`로 보고만 한다(독립 검토 지적 3). 상한은
+     * `MNUMBER_TAG_LIST_MAX_PAGES`로 올린다.
+     */
     for (const one of missing) {
+      if (remote.truncated) break;
       if (one.tagState !== 'conflict') continue;
       await mergeSequenceRepo.clearTagState(deps.pool, { repositoryId: repository.repository_id, baseBranch, seqEpoch: space.seq_epoch, mergeSeq: one.mergeSeq }, 'reconcile_missing');
       reopened += 1;
@@ -177,7 +183,7 @@ export async function reconcileTags(
       unblocked = true;
     }
   }
-  if (!options.dryRun && missing.length > 0) {
+  if (!options.dryRun && !remote.truncated && missing.length > 0) {
     // 생성은 durable work 경로 하나다 — 대조가 두 번째 생성 구현을 갖지 않는다.
     for (let start = 0; start < missing.length; start += PAGE) {
       const slice = missing.slice(start, start + PAGE);

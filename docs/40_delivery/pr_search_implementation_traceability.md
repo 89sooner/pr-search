@@ -8500,9 +8500,13 @@ QA 체크리스트에 **계층 표**를 만들어 다음 WP가 같은 자리를 
 
 **정본.** 원격 태그는 정본이 아니다 — 정본은 `merge_sequence`이고 태그는 그 파생 쓰기의 결과(`tag_state`·`tag_found_sha`)다. 태그 실패는 `merge_number`를 되돌리지 않는다(AC-5). 커밋 문서의 M 값은 PostgreSQL에서 재구축된다(ADR-004 유지).
 
-**검증:** (전량 검증 뒤 이 자리에 기록한다 — 워크트리 head·시각·건수·변이·문서 검증기.)
+**시험 격리 결함을 잡았다.** `tag` work는 저장소가 아니라 kind로 claim되므로 `mnumber.test.ts`가 `ready`로 남긴 `tag` work 넷이 `mnumber-tag.test.ts`의 러너 시험에 섞여 `claimed`가 1이 아니라 4로 나왔다(파일 순서에 따라 나타나는 결함 — `d1caba6`의 전량 실행은 순서가 달라 통과했다). `mnumber-tag.test.ts`의 `beforeEach`가 kind `tag` 전체를 비우고, 「`sequence` 역할 러너는 `tag`를 집지 않는다」 시험은 표를 자기 work 하나로 비운 뒤 M 기능이 꺼진 형상과 켜진 형상 둘 다에서 `claimed === 0`을 단언한다(통합 시험 파일은 `fileParallelism: false`로 순차다).
 
-**독립 리뷰:** (검토 뒤 기록한다.)
+**변이 확인 (cp 백업·cp 복원·바이트 비교, 통과 건수 0이면 미실행으로 판정):** 태그 `POST`를 보내지 않음 → `mnumber-tag.test.ts` 13건 실패 · 커밋 문서 역할 가드 제거 → `merge-number-commit.test.ts` 1건 실패 · `sequence` 러너 kinds에 `tag` 추가(M 켜진 목록·꺼진 목록 각각) → 1건씩 실패 · 다른 SHA를 `already_done`으로 판정 → 4건 실패 · 쓰기 직전 `isTagTargetCurrent` 제거 → **처음에는 살아남았다**(그 창을 재는 시험이 없었다) → 「조회와 쓰기 사이에 에폭이 오르면 만들지 않는다」 시험을 더한 뒤 1건 실패 · 대조의 `conflict` 재개 제거 → 2건 실패 · `prs-commits` 재색인 뒤 재투영 의도 제거 → `projection.test.ts` 1건 실패. 8종 모두 죽는다.
+
+**검증:** (전량 검증 뒤 이 자리에 기록한다 — 워크트리 head·시각·건수·문서 검증기.)
+
+**독립 리뷰:** 첫 검토자(`deep-reasoner`)는 사용량 한도로 보고 없이 끊겼고, 끊기기 전 두 질문을 남겼다 — (1) `sequence` 역할 러너가 `tag`를 무조건 제외하는가, (2) 재구축된 커밋 문서가 실제로 `base_branch`를 갖는가(없으면 AC-7 가드가 영영 거절한다). 둘 다 이 세션이 닫았다: (1) `sequence-work-runner.ts`의 `kinds`는 `mnumber === null`이면 `['refresh','project']`, 아니면 `['refresh','project','reconcile','materialize','announce']`로 어느 쪽에도 `tag`가 없고 위 변이 둘이 그것을 잠근다. (2) 커밋 문서는 `buildProjectedCommitDocument`(재구축)와 `enrichCommit`(보강)이 `role`·`base_branch`를 함께 싣는다 — `projection.test.ts`의 commits-only 재색인 시험이 재구축 직후 실제 ES 문서에 `materializeMergeNumber`를 돌려 `role: merge_commit`·`base_branch`·M 세 필드가 실리는 것을 단언한다(`materializeMergeNumber`의 deps를 `pool`·`es`·`log`로 좁혔다). 두 번째 검토자의 결과는 아래에 잇는다.
 
 **발견 편차:** DEV-740(범위 공백 — 이 CR로 해소), DEV-741(커밋 문서 M 값 — 해소), DEV-742(커밋 hit·화면 배지의 M 노출 — open, 별도 승인), DEV-743(표기 지표 문서 누락 — 해소). 제품 결정 OD-015(open, 권고안: 저장소별 태그 대상 브랜치 설정).
 

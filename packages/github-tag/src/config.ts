@@ -26,6 +26,8 @@ export const DEFAULT_TAG_SWEEP_LIMIT = 500;
 export const DEFAULT_TAG_BLOCK_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
 /** 한 work 시도 안의 전체 요청 횟수 상한(첫 시도 + 재시도 넷). 일시 실패에만 쓴다. */
 export const TAG_MAX_ATTEMPTS = 5;
+/** 대조가 읽는 원격 목록 페이지 수의 기본값 (2만 태그). `MNUMBER_TAG_LIST_MAX_PAGES`로 올린다. */
+export const DEFAULT_TAG_LIST_MAX_PAGES = 200;
 /**
  * 변경 요청 사이의 최소 간격 — 공식 문서의 하한(변경 요청 사이 최소 1초, 직렬)이다.
  * 표기와 같은 근거이며 설정으로도 이 아래로 내릴 수 없다.
@@ -47,6 +49,11 @@ export interface TagConfig {
   readonly tokenRefreshLeadMs: number;
   readonly sweepIntervalMs: number;
   readonly sweepLimit: number;
+  /**
+   * 대조가 원격 `M-<코드>-*` 목록에서 읽는 최대 페이지 수(페이지당 100건). 넘으면 부분 열거로 보고하고
+   * 재개·재요청을 하지 않는다 — 현재 에폭의 M 태그가 그보다 많은 저장소는 이 값을 올린다.
+   */
+  readonly listMaxPages: number;
   readonly blockCooldownMs: number;
   /** 실제로 쓴 뒤 다음 쓰기까지의 간격. 하한은 1초다. */
   readonly writeSpacingMs: number;
@@ -103,6 +110,7 @@ export function resolveTagConfig(env: GitHubEnv = process.env): TagConfig {
       30 * DEFAULT_TAG_BLOCK_COOLDOWN_MS,
     ),
     writeSpacingMs: readBoundedInt(env, 'MNUMBER_TAG_WRITE_SPACING_MS', MIN_TAG_WRITE_SPACING_MS, MIN_TAG_WRITE_SPACING_MS, 60_000),
+    listMaxPages: readBoundedInt(env, 'MNUMBER_TAG_LIST_MAX_PAGES', DEFAULT_TAG_LIST_MAX_PAGES, 1, 10_000),
   };
 }
 

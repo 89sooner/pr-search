@@ -190,7 +190,9 @@ async function attemptOnce(
   if (!slept) return { kind: 'deferred' };
 
   // 4. 쓰기 바로 앞에서 정본을 한 번 더 묻는다. 태그는 되돌릴 수 없다.
-  if (!(await mergeSequenceRepo.isTagTargetCurrent(deps.pool, key, target.merge_number, expected.sha))) {
+  const now = deps.now ?? ((): Date => new Date());
+  const blockedBefore = new Date(now().getTime() - deps.config.blockCooldownMs);
+  if (!(await mergeSequenceRepo.isTagTargetCurrent(deps.pool, key, target.merge_number, expected.sha, { blockedBefore }))) {
     return { kind: 'superseded' };
   }
   if (context.deadline.expired()) return { kind: 'deferred' };
@@ -280,21 +282,28 @@ export async function materializeTag(
     }
     const expected = { name: resolved.name, sha: resolved.sha };
     const attemptId = randomUUID();
-    const recovering = target.tag_state === 'unknown';
+    /*
+     * 「결과를 모르는 요청 뒤의 관측」은 앞선 work가 `unknown`으로 남긴 행만이 아니다 (AC-6, 독립 검토
+     * 지적 2). 이 work 안에서도 POST가 5xx·시한 초과로 끝나 재시도했다면 다음 시도의 「이미 있다」는
+     * 멱등 통과가 아니라 관측이다 — 우리가 만들었을 수 있는 ref가 감사 없이 끝나면 감사 건수가
+     * 「원격에 태그가 생긴 횟수」를 말하지 않게 된다.
+     */
+    let sentUnknown = target.tag_state === 'unknown';
 
     for (let attempt = 1; attempt <= TAG_MAX_ATTEMPTS; attempt += 1) {
       const outcome = await attemptOnce(deps, target, expected, ctx);
       switch (outcome.kind) {
         case 'done': {
+          const observed = !outcome.wrote && sentUnknown;
           if (outcome.wrote) {
             await repositoryRepo.clearTagBlock(deps.pool, target.repository_id);
             await recordTagAudit(deps, target, expected.name, ctx.correlationId, 'created');
-          } else if (recovering) {
+          } else if (observed) {
             await recordTagAudit(deps, target, expected.name, ctx.correlationId, 'observed');
           }
-          await mergeSequenceRepo.markTagState(deps.pool, key, 'done', { attemptId, reason: outcome.wrote ? 'created' : recovering ? 'observed_after_unknown' : 'already_present' });
+          await mergeSequenceRepo.markTagState(deps.pool, key, 'done', { attemptId, reason: outcome.wrote ? 'created' : observed ? 'observed_after_unknown' : 'already_present' });
           log({ level: 'info', message: outcome.wrote ? '태그를 만들었다' : '태그가 이미 있다', repository_id: target.repository_id, repository: `${target.owner}/${target.name}`, tag: expected.name, sha: expected.sha, wrote: outcome.wrote });
-          return { result: outcome.wrote ? 'created' : recovering ? 'observed_after_unknown' : 'already_done' };
+          return { result: outcome.wrote ? 'created' : observed ? 'observed_after_unknown' : 'already_done' };
         }
         case 'conflict': {
           await mergeSequenceRepo.markTagState(deps.pool, key, 'conflict', { attemptId, reason: outcome.objectType === 'tag' ? 'annotated_tag' : 'different_sha', foundSha: outcome.foundSha });
@@ -333,6 +342,8 @@ export async function materializeTag(
             }
             return { result: 'deferred' };
           }
+          // 보냈는데 답을 못 받았다 — 다음 시도가 「이미 있다」를 보면 그것은 관측이다.
+          if (outcome.outcomeUnknown) sentUnknown = true;
           const lastAttempt = attempt === TAG_MAX_ATTEMPTS;
           if (!lastAttempt) {
             const slept = await ctx.deadline.sleep(RETRY_BASE_MS * 2 ** (attempt - 1), sleep);

@@ -108,7 +108,7 @@ export interface TagClientOptions {
 const API_VERSION = '2022-11-28';
 /** `matching-refs` 한 페이지. 공식 문서의 상한이다. */
 const LIST_PAGE_SIZE = 100;
-/** 한 접두의 태그 목록에서 읽는 최대 페이지 수. 이 위는 대조가 「부분 열거」로 보고한다. */
+/** 한 접두의 태그 목록에서 읽는 최대 페이지 수의 기본값(`MNUMBER_TAG_LIST_MAX_PAGES`). 이 위는 대조가 「부분 열거」로 보고하고 재개·재요청을 하지 않는다. */
 export const LIST_MAX_PAGES = 200;
 
 interface RefPayload {
@@ -195,7 +195,7 @@ export class TagClient {
   ): Promise<{ readonly refs: readonly RemoteTagRef[]; readonly truncated: boolean }> {
     const base = `/repos/${encodeURIComponent(ref.owner)}/${encodeURIComponent(ref.repo)}/git/matching-refs/tags/${encodeURIComponent(prefix)}`;
     const refs: RemoteTagRef[] = [];
-    for (let page = 1; page <= LIST_MAX_PAGES; page += 1) {
+    for (let page = 1; page <= this.#config.listMaxPages; page += 1) {
       const outcome = await this.#request<RefPayload[]>('GET', ref, `${base}?per_page=${String(LIST_PAGE_SIZE)}&page=${String(page)}`, undefined, options, {
         notFoundIsMissing: false,
       });

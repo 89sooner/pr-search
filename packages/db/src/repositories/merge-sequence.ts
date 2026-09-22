@@ -1241,6 +1241,12 @@ export async function isTagTargetCurrent(
   key: { readonly repositoryId: number; readonly baseBranch: string; readonly seqEpoch: number; readonly mergeSeq: number },
   mergeNumber: number,
   commitSha: string,
+  /**
+   * 저장소 정책·차단·추적 브랜치도 함께 다시 본다 (FR-SEQ-012 AC-4, 독립 검토 지적 1). `blockedBefore`는
+   * 권한 차단을 다시 볼 기준 시각이다 — 그보다 새 차단(조회 사이에 다른 실행자가 건 것)이면 만들지 않고,
+   * 쿨다운을 지난 옛 차단은 진입 게이트와 같이 통과시킨다.
+   */
+  options: { readonly blockedBefore: Date },
 ): Promise<boolean> {
   const result = await db.query<{ ok: boolean }>(
     `SELECT true AS ok
@@ -1249,10 +1255,14 @@ export async function isTagTargetCurrent(
          ON sp.repository_id = ms.repository_id
         AND sp.base_branch   = ms.base_branch
         AND sp.seq_epoch     = ms.seq_epoch
+       JOIN repository r ON r.repository_id = ms.repository_id
       WHERE ms.repository_id = $1 AND ms.base_branch = $2 AND ms.seq_epoch = $3 AND ms.merge_seq = $4
         AND ms.merge_number = $5 AND lower(ms.commit_sha) = lower($6)
-        AND sp.state <> 'reassigning'`,
-    [key.repositoryId, key.baseBranch, key.seqEpoch, key.mergeSeq, mergeNumber, commitSha],
+        AND sp.state <> 'reassigning'
+        AND r.status = 'active' AND r.tag_enabled
+        AND (r.tag_blocked_at IS NULL OR r.tag_blocked_at < $7)
+        AND coalesce(array_length(r.sequence_branches, 1), 0) = 1`,
+    [key.repositoryId, key.baseBranch, key.seqEpoch, key.mergeSeq, mergeNumber, commitSha, options.blockedBefore],
   );
   return result.rows.length > 0;
 }

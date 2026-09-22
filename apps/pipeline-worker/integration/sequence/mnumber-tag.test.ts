@@ -274,6 +274,44 @@ describe('AC-3·AC-8: 다른 것을 가리키는 태그는 절대 옮기지 않�
     expect(await tagRow(5)).toMatchObject({ tag_state: null });
     expect(await audits()).toEqual([]);
   });
+
+  it('**쓰기 직전 재확인은 저장소 정책도 다시 본다** — 조회와 쓰기 사이에 운영자가 끄면 만들지 않는다 (AC-4, 독립 검토 지적 1)', async () => {
+    const ghe = await startMock({
+      knownShas: [SHA_A],
+      onRequest: async (request) => {
+        if (request.method === 'GET' && request.path.includes('/git/ref/tags/')) {
+          await repositoryRepo.updateRepositorySettings(pool, REPOSITORY_ID, { tag_enabled: false });
+        }
+      },
+    });
+    await seedNumberedRow({ mergeSeq: 5, prNumber: 77, mergeNumber: 1, sha: SHA_A });
+    const outcome = await materializeTag(depsFor(ghe), await requestTagWork(77));
+    expect(outcome.result).toBe('superseded');
+    expect(ghe.requests.filter((one) => one.method === 'POST' && one.path.endsWith('/git/refs'))).toHaveLength(0);
+    expect(ghe.refs().has('M-1900-1')).toBe(false);
+  });
+
+  it('**쓰기 직전 재확인은 그 사이 걸린 권한 차단도 본다** — 쿨다운을 지난 옛 차단은 진입 게이트처럼 통과시킨다', async () => {
+    const ghe = await startMock({
+      knownShas: [SHA_A],
+      onRequest: async (request) => {
+        if (request.method === 'GET' && request.path.includes('/git/ref/tags/')) {
+          // 다른 실행자가 방금 403을 받아 차단을 걸었다.
+          await repositoryRepo.blockTagging(pool, REPOSITORY_ID, '403 by another runner');
+        }
+      },
+    });
+    await seedNumberedRow({ mergeSeq: 5, prNumber: 77, mergeNumber: 1, sha: SHA_A });
+    expect((await materializeTag(depsFor(ghe), await requestTagWork(77))).result).toBe('superseded');
+    expect(ghe.refs().has('M-1900-1')).toBe(false);
+
+    // 쿨다운(시험 설정 60초)을 지난 옛 차단은 막지 않는다 — 진입 게이트와 같은 판정이다.
+    await pool.query(`UPDATE repository SET tag_blocked_at = now() - interval '2 minutes' WHERE repository_id = $1`, [REPOSITORY_ID]);
+    const ghe2 = await startMock({ knownShas: [SHA_A] });
+    expect((await materializeTag(depsFor(ghe2), await requestTagWork(77))).result).toBe('created');
+    expect((await repositoryRepo.findRepositoryById(pool, REPOSITORY_ID))?.tag_blocked_at).toBeNull();
+    await ghe2.close();
+  });
 });
 
 describe('실패 경로 — 권한·한도·미확정·SHA 없음', () => {
@@ -302,10 +340,11 @@ describe('실패 경로 — 권한·한도·미확정·SHA 없음', () => {
     expect(await tagRow(5)).toMatchObject({ tag_state: null });
   });
 
-  it('**시한 초과 뒤에는 같은 work 안에서 원격을 다시 읽는다** — 서버가 처리했으면 호출 없이 끝난다', async () => {
+  it('**시한 초과 뒤에는 같은 work 안에서 원격을 다시 읽는다** — 서버가 처리했으면 호출 없이 끝내되 관측으로 남긴다', async () => {
     /*
      * 첫 POST는 1.5초 뒤에야 답하므로 클라이언트(시한 1초)가 끊는다. 재시도는 요청이 아니라 판단
-     * 전체를 다시 지나므로 두 번째 시도의 GET이 서버가 만든 ref를 보고 `already_done`으로 끝낸다 —
+     * 전체를 다시 지나므로 두 번째 시도의 GET이 서버가 만든 ref를 보고 호출 없이 끝낸다 — 결과를
+     * 모른 채 보낸 요청 뒤이므로 멱등 통과가 아니라 관측(`observed`)이다(AC-6, 독립 검토 지적 2).
      * 목은 scripted 응답에서 ref를 만들지 않으므로 그 사실을 시험이 대신 만든다.
      */
     const ghe = await startMock({
@@ -316,9 +355,10 @@ describe('실패 경로 — 권한·한도·미확정·SHA 없음', () => {
     });
     await seedNumberedRow({ mergeSeq: 5, prNumber: 77, mergeNumber: 1450, sha: SHA_A });
     const outcome = await materializeTag(depsFor(ghe), await requestTagWork(77));
-    expect(outcome.result).toBe('already_done');
+    expect(outcome.result).toBe('observed_after_unknown');
     expect(ghe.requests.filter((one) => one.method === 'POST' && one.path.endsWith('/git/refs'))).toHaveLength(1);
-    expect(await tagRow(5)).toMatchObject({ tag_state: 'done', tag_result_reason: 'already_present' });
+    expect(await tagRow(5)).toMatchObject({ tag_state: 'done', tag_result_reason: 'observed_after_unknown' });
+    expect(await audits()).toEqual([{ action: 'merge_number.tag', target: `${OWNER}/${NAME}:refs/tags/M-1900-1450`, result_code: 'observed' }]);
   }, 15_000);
 
   it('**시도를 다 써도 결과를 모르면 `unknown`으로 남고, 다음 work가 원격을 읽어 호출 없이 끝낸다**', async () => {
@@ -337,6 +377,26 @@ describe('실패 경로 — 권한·한도·미확정·SHA 없음', () => {
     expect(await tagRow(5)).toMatchObject({ tag_state: 'done', tag_result_reason: 'observed_after_unknown' });
     expect(await audits()).toEqual([{ action: 'merge_number.tag', target: `${OWNER}/${NAME}:refs/tags/M-1900-1450`, result_code: 'observed' }]);
   }, 15_000);
+
+  it('**같은 work 안에서 결과를 모른 채 보낸 요청 뒤의 「이미 있다」는 관측이다** — 감사 `observed`를 남긴다 (AC-6, 독립 검토 지적 2)', async () => {
+    /*
+     * 첫 POST는 게이트웨이 뒤에서 서버가 처리했지만 502로 끝났다. 시도가 남아 있으므로 같은 work의 두 번째
+     * 시도가 GET으로 그 태그를 본다 — 앞선 work가 `unknown`으로 남긴 행이 아니어도 이것은 관측이며,
+     * 감사 없이 `already_present`로 끝나면 우리가 만든 ref가 감사에 없다.
+     */
+    const ghe = await startMock({
+      postScript: [{ status: 502, body: { message: 'bad gateway' } }],
+      onRequest: (request, control) => {
+        if (request.method === 'POST' && request.path.endsWith('/git/refs')) control.setRef('M-1900-1450', { sha: SHA_A, type: 'commit' });
+      },
+    });
+    await seedNumberedRow({ mergeSeq: 5, prNumber: 77, mergeNumber: 1450, sha: SHA_A });
+    const outcome = await materializeTag(depsFor(ghe), await requestTagWork(77));
+    expect(outcome.result).toBe('observed_after_unknown');
+    expect(ghe.requests.filter((one) => one.method === 'POST' && one.path.endsWith('/git/refs'))).toHaveLength(1);
+    expect(await tagRow(5)).toMatchObject({ tag_state: 'done', tag_result_reason: 'observed_after_unknown' });
+    expect(await audits()).toEqual([{ action: 'merge_number.tag', target: `${OWNER}/${NAME}:refs/tags/M-1900-1450`, result_code: 'observed' }]);
+  });
 
   it('원격에 없는 SHA는 `unprocessable`이다 — 태그 이름을 다른 커밋에 붙이지 않는다', async () => {
     const ghe = await startMock({ knownShas: [SHA_B] });
@@ -549,6 +609,29 @@ describe('AC-10: 정본 ↔ 원격 대조', () => {
     const round = await runTagWorkOnce(depsFor(ghe));
     expect(round.outcomes).toEqual({ created: 1 });
     expect(ghe.refs().get('M-1900-1')).toEqual({ sha: SHA_A, type: 'commit' });
+  });
+
+  it('**원격 목록이 잘렸으면 「없음」을 확인한 것이 아니다** — 재개도 재요청도 하지 않고 부분 열거로 보고한다 (AC-10, 독립 검토 지적 3)', async () => {
+    // 페이지 상한 1(100건). `M-1900-2`는 101번째라 목록 밖이고, 정본은 그 행을 `conflict`로 갖고 있다.
+    const initialRefs: Record<string, { sha: string; type: 'commit' }> = {};
+    for (let index = 0; index < 100; index += 1) initialRefs[`M-1900-${String(1000 + index)}`] = { sha: 'f'.repeat(40), type: 'commit' };
+    initialRefs['M-1900-2'] = { sha: 'd'.repeat(40), type: 'commit' };
+    const ghe = await startMock({ initialRefs, knownShas: [SHA_A, SHA_B, SHA_C] });
+    await seedNumberedRow({ mergeSeq: 2, prNumber: 72, mergeNumber: 2, sha: SHA_B, tagState: 'conflict' });
+    await pool.query('UPDATE merge_sequence SET tag_found_sha = $3 WHERE repository_id = $1 AND merge_seq = $2', [REPOSITORY_ID, 2, 'd'.repeat(40)]);
+    await seedNumberedRow({ mergeSeq: 3, prNumber: 73, mergeNumber: 3, sha: SHA_C });
+
+    const repository = (await repositoryRepo.findRepositoryById(pool, REPOSITORY_ID))!;
+    const client = depsFor(ghe, { MNUMBER_TAG_LIST_MAX_PAGES: '1' }).client;
+    const outcome = await reconcileTags({ pool, client }, { repository, baseBranch: BRANCH }, { dryRun: false });
+    expect(outcome.kind).toBe('summary');
+    if (outcome.kind !== 'summary') return;
+    expect(outcome.summary).toMatchObject({ remote_truncated: true, remote_refs: 100, missing: 2, enqueued: 0, reopened: 0 });
+    expect(await tagRow(2)).toMatchObject({ tag_state: 'conflict', tag_found_sha: 'd'.repeat(40) });
+    expect(await sequenceWorkRepo.listWorkForSpace(pool, REPOSITORY_ID, BRANCH, ['tag'])).toEqual([]);
+    // 상한을 올리면 같은 목록이 온전히 읽히고 판정이 제자리를 찾는다.
+    const full = await reconcileTags({ pool, client: depsFor(ghe).client }, { repository, baseBranch: BRANCH }, { dryRun: true });
+    expect(full).toMatchObject({ kind: 'summary', summary: { remote_truncated: false, remote_refs: 101, missing: 1, conflict: 1 } });
   });
 
   it('시퀀스 브랜치가 둘인 저장소는 대조하지 않는다 (OD-015)', async () => {
