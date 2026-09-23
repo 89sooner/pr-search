@@ -1,6 +1,25 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.104 | 갱신일: 2026-09-23
+> 상태: review | 버전: v6.105 | 갱신일: 2026-09-23
+
+## 0.1.0-pilot.18 발행 — CR-112~116 다섯 건 누적 (2026-09-23)
+
+사용자 지시로 `origin/main` HEAD `6132dc9`(CR-114·CR-115·CR-116 병합 기록, PR #227) 기준으로 발행했다. main CI(`gh api repos/89sooner/pr-search/actions/runs?branch=main`로 커밋별 조회)가 `6132dc9`까지 전부 success임을 확인한 뒤 착수했다. pilot.16(`5f0d7e0`) 이후 main에 쌓인 커밋 17개를 처음 담는다. CR-112(PIPE 서버 위임 검색 수신부, WP-097): `e7b4cb4`(#220), 병합 기록 `767eb2e`(#221), 6.103장 보완 `2c3004f`(#222). CR-113(머지 시퀀스 ES 투영 수렴, WP-098): `a6ea00d`(#223), 병합 기록 `ec9b4a6`(#224). CR-114(검색창 M 번호 문자열 해석과 `mnum:` 단일 값, WP-099): `9782ba9`(#225). CR-115(확정 M 번호의 원격 lightweight 태그, WP-100): `83d30fb`(#226). CR-116(커밋 PR 연결 정본화와 전용 투영기, WP-101): `f9cda82`(#228). 그리고 이 세 CR의 병합 기록을 한 PR로 묶은 `6132dc9`(#227)까지 포함한다. 그 외 `c73ed9f`("Refactor code structure...", CR·WP 참조는 없으나 main CI green을 확인했으므로 포함)와 `52cf27f`·`a4d80a0`·`1cd7c08`·`aeb2b8e`·`13074f8`·`364f0fb`, 그리고 pilot.16 자체의 기록 커밋인 `da0ed9b`도 함께 담긴다.
+
+버전 문자열은 사용자 지시로 `0.1.0-pilot.17`을 건너뛰고 `0.1.0-pilot.18`로 정했다. 공식 GitHub 태그와 릴리스는 pilot.16까지만 존재했으나, `agent-context/upstream-feedback.md`와 change_control.md, 원장 전반에서 "사내 pilot.17"이 CR-114·CR-115·CR-116을 촉발한 특정 비공식 내부 빌드를 가리키는 라벨로 이미 여러 차례 쓰였다. 같은 번호를 고쳐진 공식 릴리스에 다시 쓰면 문서상 서로 다른 두 산출물이 같은 이름을 갖게 되므로, immutable releases 아래에서 나중에 되돌릴 수 없는 이 이름을 발행 전에 사용자가 직접 결정했다.
+
+발행에 앞서 pipeline-worker 이미지를 같은 워크트리에서 먼저 타깃 빌드했다(`docker build --target pipeline-worker`). CR-115·CR-116이 새로 추가한 운영 CLI 둘, 곧 `dist/mnumber-tag-cli.js`(`prsctl mnumber tags`)와 `dist/link-repair-cli.js`(`prsctl links`)를 `docker run --network none`으로 무인자·`--help` 호출해 확인한 것이다. 둘 다 DB·네트워크 접속 전에 종료 코드 2와 사용법을 냈다. `smoke-images.sh`는 pipeline-worker에 대해 `git --version`만 확인하고 이 둘은 검사하지 않으므로 별도로 확인했으며, 같은 워크트리라 캐시를 공유해 발행 빌드의 해당 이미지 ID(`sha256:845a02b976688aa8e1476104386f459a9ed943d5372b96efd75625494caa36c4`)와 동일하다.
+
+다른 세션과 공유하는 checkout 대신, `6132dc9`에 고정한 별도 detached worktree(`/home/roqkf/pr-search-wt/release18`)에서 만들었다.
+
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.18
+- 태그: `6132dc914903412159261715956e21a7c352ff34`(manifest `branch`는 `HEAD`다. 분리된 워크트리에서 만들었기 때문이며 pilot.8·13·14·16과 같다.)
+- 자산: `pr-search-0.1.0-pilot.18-offline.tar.gz`, 1,166,478,272 bytes
+- 별도 채널 전달 SHA-256: `f8a29f961511b00069744b5f9771fa19eef99ad37d44a71a70c2f3ed09383d2b`
+- 로컬 checksum이 GitHub asset digest·크기·state(uploaded)와 일치했고, immutable releases가 켜져 있어 발행 뒤 자산과 태그가 잠긴다. 발행 전 초안 자산 대조(로그 `[09:01:48] 초안 자산 대조 (발행 전)`)와 발행 후 재확인(로그 `[09:01:49] 발행 확인`)을 모두 통과했다. 발행이 끝난 뒤에도 `git ls-remote --tags`, `gh api releases/tags`, 로컬 `sha256sum`, `git bundle verify`(소스 계보 번들이 `6132dc9` 하나를 담은 완전한 히스토리임을 확인)로 독립적으로 재대조했다.
+- tar 재적재 뒤 smoke를 통과했다(로그 484~526줄, ✓ 20건). web(기동과 `/healthz` 200, SSR 10종 200, API 프록시 401, 해시 외부 모듈 `pg-71df57fbe79e18ab` 해석, 손 조치 흔적 없음, 인증·쿠키 허용거부 구성 9종, 로그 500~509줄), pipeline-worker(git 2.54.0), gh-executor(gh 2.97.0 고정 바이너리 해시, 비루트·읽기 전용 기동, 봉인 키 없으면 거부), search-api(관리자 역할 CLI가 DB 접속 전 종료 코드 2를 낸다)를 확인했다.
+- 문서 정합성: CR-112~116 다섯 건 모두 `6132dc9`(PR #227)로 이미 closed·done 처리됐으므로, 이번 갱신에서 별도로 정정할 스냅숏 어긋남은 없다.
+- 사내 실제 GHE 데이터 및 재반입 검증은 NOT RUN이다.
 
 ## CR-116 / WP-101 — 커밋에 남는 과거 PR 번호: 관계 정본과 전용 투영기 (2026-09-23, main `f9cda82` 병합)
 
