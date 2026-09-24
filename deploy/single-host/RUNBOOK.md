@@ -1332,6 +1332,8 @@ App에 허용되는가)을 고친 뒤 대조를 dry-run 없이 실행하면 즉�
   이것만은 러너가 아니라 `apply`가 색인에 쓴다 — 관계 러너는 `role`을 비추지 않는다. `source_commit`인
   문서만 바꾸는 단방향 쓰기이고 반복 실행은 멱등이다. **`--pr`로 좁힌 실행은 이 대조를 하지 않는다**
   (역할은 커밋 단위라 저장소 전체를 본다) — `--pr` 없이 한 번 돌린다.
+- **배포 주의는 위 절과 같다.** 구버전 워커는 체인 규칙 없이 관계를 비추고 dev 체인 커밋의 `role`을
+  다시 `source_commit`으로 덮는다. 모든 워커가 새 빌드가 된 것을 `./prsctl lineage`로 확인한 뒤에 `apply`한다.
 - 반입 뒤 순서: `./prsctl upgrade` → 저장소마다 `./prsctl links plan --repository <owner/name>`으로 두
   줄의 건수를 본다 → `./prsctl links apply --repository <owner/name>` → `./prsctl links status`로 수렴
   확인 → 화면에서 문제의 커밋(`ebc781d`)을 열어 「Linked PRs」에 그 커밋을 올린 PR 하나만 남았는지,
@@ -1344,7 +1346,7 @@ App에 허용되는가)을 고친 뒤 대조를 dry-run 없이 실행하면 즉�
 
 | 증상 | 확인 |
 | --- | --- |
-| 커밋에 이미 머지된 PR이 아닌 번호가 붙어 있다 | `./prsctl links plan --repository …`로 정본과 색인을 맞대어 본다. `지울 간선`이 있으면 7.G의 순서를 밟는다. `근거 없어 보류`가 크면 `links refetch`가 먼저다 — 목록에 없다는 사실이 소속이 아니라는 뜻이 되려면 그 목록이 원격의 전부여야 한다 |
+| 커밋에 이미 머지된 PR이 아닌 번호가 붙어 있다 | `./prsctl links plan --repository …`로 정본과 색인을 맞대어 본다. `지울 간선`이 있으면 7.G의 순서를 밟는다. `근거 없어 보류`가 크면 `links refetch`가 먼저다 — 목록에 없다는 사실이 소속이 아니라는 뜻이 되려면 그 목록이 원격의 전부여야 한다. `그중 dev 체인 커밋에서 빠질 간선`(CR-117 — 피처 브랜치가 `git merge dev`로 받아 온 dev 커밋의 번호)은 근거가 PostgreSQL의 `merge_sequence`라 `refetch` 없이 지워진다 |
 | 정리했는데 잘못된 번호가 다시 생긴다 | 구버전 워커가 아직 돈다. 지표 `commit_link_conflict_total`과 `./prsctl lineage`로 확인한다. 옛 이미지가 남아 있으면 합집합 writer가 살아 있고, 새 세대 가드는 그것을 막지 못한다 (7.G 머리) |
 | `M-…` 태그가 안 생긴다 | `./prsctl mnumber tags status --repository … --base-branch …`로 `tag_state` 집계·차단·`tag` work 상태를 본다. `MNUMBER_TAG_ENABLED`(기본 꺼짐) → 세 자격 → 저장소 `tag_enabled` → ruleset(생성이 App에 허용되는가) → 시퀀스 브랜치 수(둘 이상이면 OD-015) 순으로 확인한다. 과거 채번분은 대조를 dry-run 없이 한 번 실행해야 바로 채워진다 (7.F) |
 | 한 저장소의 표기가 계속 실패하고, **다른 저장소의 표기도 함께 늦어진다** | 로그에 `시간 예산이 다해 이번 회차를 멈춘다`가 반복되는지 본다. 이벤트는 순서 보장을 위해 파티션마다 하나씩 전달되므로, 지속 실패하는 저장소의 이벤트가 같은 파티션의 다른 저장소를 막는다(`DEV-647`). **표기가 영영 빠지지는 않는다** — 일일 잔여 스윕이 하루 안에 메운다. 급하면 실패하는 저장소의 `annotate_enabled`를 잠시 꺼서 그 이벤트를 흘려보낸다 |
