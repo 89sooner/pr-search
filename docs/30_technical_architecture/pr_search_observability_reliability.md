@@ -1,6 +1,8 @@
 # PR Search 관측성 및 신뢰성
 
-> 상태: review | 버전: v0.11 | 갱신일: 2026-09-24
+> 상태: review | 버전: v0.12 | 갱신일: 2026-09-25
+
+CR-119 / FR-ING-008 AC-10: 새 지표·경보·런북 번호는 없다. `commit_enrich_total{result}`에 값 하나(`document_missing` — 문서가 없고 만들 근거도 없어 메타데이터를 반영하지 못한 회차)가 더해진다. 전에는 그 회차가 `noop`에 섞였고, `noop`은 이제 「값이 이미 같음」만 뜻한다. 재색인 로그는 두 줄을 더한다 — `원본 커밋 메타데이터 반영`(저장소마다 `applied`·`without_document`)과 `전환 전 커밋 문서 검증`(`expected`·`missing`·`metadata_checked`·`metadata_mismatched`). 전환 전 검증의 사유는 잡의 `error`에 남으며, 사내 수동 전환 뒤의 확인·재구축 절차는 RUNBOOK 7.H다.
 
 CR-117 / FR-SRCH-002 AC-7: 새 지표·경보·런북은 없다. RB-29의 절차가 세 군데 달라진다 — `prsctl links plan`이 체인 규칙으로 빠지는 간선(「그중 dev 체인 커밋에서 빠질 간선」)과 PR 투영이 `source_commit`으로 덮은 체인 커밋 역할(「역할이 source_commit으로 덮인 체인 커밋」)을 따로 세고, 체인 규칙 몫은 근거가 PostgreSQL의 `merge_sequence`라 `refetch` 없이 관측 확정과 무관하게 지우며, `--pr` 없이 돌린 `apply`가 덮인 역할만은 색인에 직접 되돌린다(`source_commit`일 때만 바꾸는 단방향·멱등 쓰기). 배포 주의는 CR-116과 같다: 구버전 워커는 체인 규칙 없이 관계를 비추고 역할을 다시 덮으므로, 모든 워커가 새 빌드가 된 뒤에 복구한다.
 

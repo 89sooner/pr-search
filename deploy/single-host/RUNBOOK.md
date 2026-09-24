@@ -1351,10 +1351,107 @@ App에 허용되는가)을 고친 뒤 대조를 dry-run 없이 실행하면 즉�
   의도 한 문장만 더해졌다 — 새로 체인에 오르거나 강제 푸시로 체인에서 빠진 커밋의 연결이 저절로 다시
   계산된다.
 
+### 7.H prs-commits 재색인 — 사내 수동 전환 확인과 재구축 (WP-103 / FR-ING-008 AC-10, `CR-119`)
+
+`0.1.0-pilot.18`에서 prs-commits v3→v4 재색인이 전환 전 검증에서 실패했고, 사내는 v4로 **손으로**
+전환했다. 그 전환은 이 저장소에서 검증하지 않았다(**NOT VERIFIED**). 원인은 두 겹이었다 — 재구축이
+문서를 만들 근거가 없는 커밋까지 기대 건수에 넣었고(그래서 검증이 막혔다), 그 뒤에 숨어 **PR 원본
+커밋 문서의 메시지·작성자·변경 경로가 새 인덱스에서 비었다**(검증이 건수만 봐서 드러나지 않았다).
+`CR-119`부터는 재구축이 문서를 만든 뒤 메타데이터를 채우고, 검증이 필수 문서와 값을 하나하나
+대조하며, 관측이 불완전해 남은 PR 연결의 커밋도 복원한다.
+
+**손으로 전환한 v4에는 두 가지가 빠져 있을 수 있다.** 화면이 열린다는 것으로 영향이 없다고 판단하지
+않는다.
+
+- **실패부터 전환 사이의 쓰기.** 재색인 잡이 `failed`가 되는 순간 shadow(v4) 이중 쓰기가 멈춘다
+  (DEV-298). 실패와 수동 전환 사이에 들어온 PR·커밋·채번은 v3에만 있다.
+- **원본 커밋 메타데이터.** 그 재구축은 `CR-119` 이전 코드였으므로 v4의 `role: source_commit` 문서에는
+  메시지·작성자가 비어 있을 가능성이 높다(DEV-760). v3가 이전 재색인으로 만들어졌다면 v3도 같다.
+
+옛 인덱스는 자동으로 지워지지 않는다 — 보관 정리는 `completed` 잡의 원본 인덱스만 본다. 아래
+명령은 이미 있는 것만 쓴다.
+
+1. **어느 형상이 떠 있는가.** `./prsctl lineage`로 배포 SHA와 모든 워커 이미지가 같은 판인지 본다.
+   이 절의 코드(`CR-119` 이후)가 아니면 5번의 재구축이 같은 누락을 다시 만든다 — 업그레이드가 먼저다.
+
+2. **별칭과 구체 인덱스를 적어 둔다.** 별칭이 가리키는 인덱스, 남아 있는 버전, 각 UUID·문서 수·생성
+   시각이다.
+
+   ```bash
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T elasticsearch \
+     curl -fsS 'http://localhost:9200/_alias/prs-commits?pretty'
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T elasticsearch \
+     curl -fsS 'http://localhost:9200/_cat/indices/prs-commits-*?v&h=index,uuid,docs.count,creation.date.string'
+   ```
+
+3. **재색인 잡의 기록을 맞춘다.** 실패 시각·사유와 수동 전환 시각이다. 운영 화면 `/ops/jobs`의 Index
+   status 또는 `GET /api/v1/admin/reindex`가 최근 잡을 보여 준다. 정본에서 직접 읽으려면:
+
+   ```bash
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T postgres \
+     psql -U prs -d prs -c "SELECT job_id, state, finished_at, left(error, 300) AS error, progress->>'phase' AS phase, progress->>'source_index' AS source, progress->>'target_index' AS target, progress->>'switched_at' AS switched_at FROM job WHERE type = 'reindex' AND target = 'prs-commits' ORDER BY job_id DESC LIMIT 5"
+   ```
+
+4. **서비스 중인 인덱스를 표본으로 대조한다.** 정본에 메타데이터가 있는 체인 밖 커밋(보강이 끝난
+   원본 커밋)을 몇 개 골라, 서비스 문서에 메시지·작성자가 있는지 본다. 비어 있으면 DEV-760의 누락이다.
+
+   ```bash
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T postgres \
+     psql -U prs -d prs -c "SELECT s.repository_id, s.commit_sha FROM commit_snapshot s WHERE NOT EXISTS (SELECT 1 FROM merge_sequence m WHERE m.repository_id = s.repository_id AND m.commit_sha = s.commit_sha) ORDER BY s.committed_at DESC LIMIT 5"
+   # 문서 ID = <repository_id>:<commit_sha>, routing = repository_id
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T elasticsearch \
+     curl -fsS 'http://localhost:9200/prs-commits/_doc/<repository_id>:<commit_sha>?routing=<repository_id>&_source=role,message,author,changed_paths'
+   ```
+
+   PR 연결은 `./prsctl links status --repository <owner/name>`(7.G), 머지 시퀀스는
+   `./prsctl sequence status --repository <owner/name> --base-branch <branch>`(7.E)로 본다. 간선
+   (prs-links)은 이 절의 범위가 아니다.
+
+5. **수정된 빌드에서 새 인덱스를 정본으로 다시 만든다.** 운영 콘솔 `/ops/jobs`의 재색인(A-003)에서
+   `prs-commits`를 실행하거나, `prsctl restore`가 쓰는 것과 같은 CLI로 잡을 만든다. CLI는 잡을 만들
+   뿐이고 실행은 `batch` 역할의 러너가 한다.
+
+   ```bash
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml --profile setup \
+     run --rm reindex node dist/reindex-cli.js --alias prs-commits
+   ```
+
+   잡은 `worker-batch`가 돌린다. 검증 단계는 그 로그의 「정본 재구축 완료」에서 「전환 전 검증」까지다 —
+   `docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml logs -t worker-batch`로
+   두 줄의 시각을 적어 둔다. `CR-119`의 검증은 필수 문서를 하나하나 읽으므로 전보다 오래 걸리고, 사내
+   규모에서는 아직 재지 않았다(NOT MEASURED).
+
+   잡이 `completed`가 되면 별칭은 새 인덱스로 옮겨졌고, 시퀀스 full sweep이 예약된다(CR-113). `failed`면
+   별칭은 그대로이고 사유가 잡의 `error`에 남는다 — `커밋 문서 누락 N건`·`커밋 메타데이터 불일치 N건`은
+   새 인덱스가 정본과 다르다는 뜻이고(수가 먼저 오고 표본이 최대 열 개 뒤따르지만, 잡의 `error`는
+   500자에서 잘리므로 표본은 앞의 몇 개만 보일 수 있다), `대상 인덱스가 바뀌었다`는 도중에 대상이
+   지워졌다는 뜻이다. `commit_link_replay_document_missing`이 보이면 그 커밋의 관계를 정본에서 확인한다
+   (`./prsctl links status --repository <owner/name>`) — `CR-119` 이후 코드에서는 주인 PR 스냅숏이 있는
+   연결이면 생기지 않는다.
+
+6. **새 검색 요청으로 확인한다.** 4번에서 고른 원본 커밋의 SHA로 검색해 커밋 상세의 메시지·작성자·변경
+   경로가 보이는지, 4번의 문서 조회가 새 인덱스에서 값을 돌려주는지 본다.
+
+7. **옛 인덱스는 확인이 끝난 뒤에 정리한다.** 5번의 잡이 `completed`면 그 잡의 원본 인덱스(손으로 전환한
+   v4)는 7일 보관 뒤 정리 스윕이 지운다. 수동 전환 이전의 v3는 어느 잡의 보관 대상도 아니어서 남는다 —
+   새 인덱스가 서비스되고 6번을 확인한 뒤에만 손으로 지운다.
+
+**하지 않는 것.** 실패한 잡을 `completed`로 바꾸지 않는다 — 보관 정리가 그 잡의 원본 인덱스를 지운다.
+별칭을 확인 없이 v3로 되돌리지 않는다 — v3는 실패 이후의 쓰기는 받았지만 같은 메타데이터 누락을 이전
+재색인에서 물려받았을 수 있다. 서비스 인덱스를 직접 고치지 않는다 — 정본은 PostgreSQL이다(ADR-004).
+
+**`links apply`(7.G)와 역할이 다르다.** `links apply`는 서비스 중인 인덱스의 PR 연결 번호와 덮인 체인
+역할을 정본에 맞춰 고치는 명령이고, 메타데이터·시퀀스·빠진 문서를 다시 만들지 않는다. 이 절의 재구축은
+새 인덱스를 PostgreSQL에서 통째로 다시 만들며 PR 연결도 같은 정의로 복원한다(CR-116·CR-117의 replay).
+하나로 다른 하나를 대신했다고 적지 않는다.
+
 ## 8. 문제 해결
 
 | 증상 | 확인 |
 | --- | --- |
+| prs-commits 재색인이 `커밋 문서 누락`·`커밋 메타데이터 불일치`로 실패한다 | 새 인덱스가 정본과 다르다는 뜻이며 별칭은 그대로다. 잡 `error`의 수와 표본을 7.H와 함께 본다. 모든 워커가 새 빌드인지(`./prsctl lineage`)부터 확인한다 |
+| prs-commits 재색인이 `대상 인덱스가 바뀌었다`로 실패한다 | 재색인 도중 대상 인덱스가 지워졌다(쓰기가 같은 이름을 동적 매핑으로 다시 만들었다). 별칭은 그대로다. 다시 실행하면 다음 버전 번호로 새로 만든다 |
+| 손으로 전환한 prs-commits에서 원본 커밋의 메시지·작성자가 비어 있다 | `CR-119` 이전 재구축의 누락이다(DEV-760). 7.H의 순서로 새 빌드에서 재색인한다 — `links apply`로는 채워지지 않는다 |
 | 커밋에 이미 머지된 PR이 아닌 번호가 붙어 있다 | `./prsctl links plan --repository …`로 정본과 색인을 맞대어 본다. `지울 간선`이 있으면 7.G의 순서를 밟는다. `근거 없어 보류`가 크면 `links refetch`가 먼저다 — 목록에 없다는 사실이 소속이 아니라는 뜻이 되려면 그 목록이 원격의 전부여야 한다. `그중 dev 체인 커밋에서 빠질 간선`(CR-117 — 피처 브랜치가 `git merge dev`로 받아 온 dev 커밋의 번호)은 근거가 PostgreSQL의 `merge_sequence`라 `refetch` 없이 지워진다 |
 | 정리했는데 잘못된 번호가 다시 생긴다 | 구버전 워커가 아직 돈다. 지표 `commit_link_conflict_total`과 `./prsctl lineage`로 확인한다. 옛 이미지가 남아 있으면 합집합 writer가 살아 있고, 새 세대 가드는 그것을 막지 못한다 (7.G 머리) |
 | `M-…` 태그가 안 생긴다 | `./prsctl mnumber tags status --repository … --base-branch …`로 `tag_state` 집계·차단·`tag` work 상태를 본다. `MNUMBER_TAG_ENABLED`(기본 꺼짐) → 세 자격 → 저장소 `tag_enabled` → ruleset(생성이 App에 허용되는가) → 시퀀스 브랜치 수(둘 이상이면 OD-015) 순으로 확인한다. 과거 채번분은 대조를 dry-run 없이 한 번 실행해야 바로 채워진다 (7.F) |
