@@ -8642,3 +8642,75 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **병합:** 독립 검토 지적 4건을 수정하고 계획 보고(`blockingPullRequests`)까지 더한 head `b20d861`을 PR #228(base `main`)으로 올렸다. 그 head의 CI(run 35760961156)는 verify·integration 모두 success이고, 그 직전 `49c5b49`(코드·문서 전량)의 CI(run 35759802933)도 마찬가지다 — 두 커밋의 차이는 CI 기록 세 줄뿐이라 코드 트리가 같다. 첫 push `96a3bc0`의 run 35759017065은 PR 번호를 문서에 반영하고 계획 보고를 고친 뒤 force-push하면서 `cancel-in-progress`로 취소됐다(**취소된 실행을 근거로 쓰지 않는다**). 사용자 지시서(2026-09-23)가 「필수 리뷰·CI를 통과한 정상 main 병합」을 명시 승인했고, `main`에는 브랜치 보호 규칙이 없어(`gh api .../branches/main/protection` → 404) CI만이 게이트다. 병합 직전 `gh pr view`가 `mergeStateStatus: CLEAN`·`mergeable: MERGEABLE`임을 확인하고 squash 병합했다 — 병합 커밋 `f9cda82`, main CI(run 35762117662)도 verify·integration 모두 success다. 문서 검증기는 병합 전 기준선(`main 83d30fb`)과 오류 3·경고 12로 목록까지 완전히 동일했다.
 
 **한계:** 원본 목록에서 빠진 커밋의 `role: source_commit`은 그대로 남는다(DEV-752). 관계 삭제가 완전한 관측을 기다리므로, GHE를 다시 읽지 못하는 동안에는 잘못된 번호가 남아 있을 수 있다 — 그 사실은 `blocked`로 보고되고, **어느 PR을 다시 읽어야 하는지**는 계획의 `blockingPullRequests`가 `--pr …` 형태로 알려 준다. **재구축은 원격을 읽지 않지만 `refetch`는 읽는다** — 036 직후에는 모든 관측이 `unverified`라 좁히지 않으면 그 저장소의 거의 모든 PR이 대상이고, PR당 세 번의 GHE 호출이 든다. `--pr`과 `--limit`으로 나눠 도는 것이 운영 절차다(RUNBOOK 7.G). `refetch`는 PostgreSQL의 관계·관측을 바꾸지만 `apply`와 달리 `job`·감사 기록을 남기지 않는다 — 읽기 전용 조회의 결과를 정본에 반영하는 경로라 그렇게 두었고, 운영자가 그 회차를 되짚을 근거는 관측 행의 `last_verified_at`·`refetch_attempts`·`last_reason`뿐이다. 감사가 필요해지면 별도 CR로 연다.
+
+### 6.108 원본 커밋은 그 PR이 새로 가져온 커밋: 추적 브랜치 체인 규칙 (CR-117 / WP-102, DEV-754~DEV-757)
+
+기준 main은 `ea59bb6`이고 워크트리는 `/home/roqkf/pr-search-wt/cr117-source-commits`(브랜치 `feature/cr117-source-commits`)다. 착수는 `5c52aa2`에서 했고, 작업 중 main에 올라온 사용자의 `agent-context/upstream-feedback.md` 정리 커밋 `ea59bb6` 위로 rebase했다. 그 커밋은 그 파일 하나만 바꿨고(커밋 메시지는 코드 수정처럼 쓰였지만 diff에 코드가 없다), 이 브랜치의 코드 diff(`apps`·`packages`·`regression`·`handoff`·`deploy`)는 rebase 전후 sha256이 `b19e5cad…`로 같다. 충돌한 그 파일은 main 쪽을 그대로 채택하고 첫 항목의 상류 반영 주석만 다시 얹었다. 격리 인프라는 이 CR 전용이다 — `prs-cr117-postgres`(55447)·`prs-cr117-es`(59213, `cluster.name=prs-cr117-isolated`)·`prs-cr117-redis`(56392), 시험 DB `prs_test_cr117`. 사내 배포 SHA는 NOT VERIFIED, 내부망 적용은 NOT RUN이다.
+
+**무엇이 결함이었나.** 요구사항의 공백 하나와 그 위의 구현 결함 하나다. (1) 용어집의 「원본 커밋」이 두 문장(「머지 이전 PR head 브랜치에 있던 커밋」·「Squash 후 target 브랜치에는 존재하지 않는다」)으로 갈려 있었고, 구현은 앞 문장을 GitHub `GET /pulls/{n}/commits` 목록 전체로 읽었다. GitHub은 PR의 기준점 쪽에 없는 커밋을 PR 커밋으로 돌려주므로, 기준점이 옛 시점에 머문 PR의 피처 브랜치가 `git merge dev`를 하면 그 사이 dev에 오른 다른 PR의 squash 커밋이 목록에 섞인다. CR-116의 완전성 조건 넷은 그 목록이 원격의 전부라는 것만 증명하므로 이 연결을 **정상으로 확정**했다 — 사내 `ebc781d`(PR #1671의 squash 커밋)에 #983·#1855가 붙은 모양이다(DEV-754). (2) PR 투영(`buildCommitDocuments`)과 재색인(`rebuildProjectedCommits`)이 목록의 모든 SHA에 `role: source_commit` 문서를 써서, 조건부 업서트가 더 늦은 PR 이벤트의 버전으로 체인이 정한 `merge_commit`을 덮었다(DEV-755). 그래서 CR-116 기록(DEV-752)의 「사내 오염 커밋은 보강이 준 `merge_commit`을 갖고 있다」는 진술은 이 경로에서 성립하지 않는다 — 변이 M4(투영의 체인 건너뛰기 제거)가 그 덮어쓰기를 되살려 대표 시험을 죽인다.
+
+**결정.** 사용자 결정 `OD-016`: 원본 커밋은 그 PR이 새로 가져온 커밋이고, 저장소가 추적하는 브랜치의 현재 에폭 first-parent 체인에 이미 오른 커밋은 그 커밋을 체인에 올린 PR에만 속한다. 사내 GHE 정책(dev와 피처 브랜치뿐, main·승격 PR 없음, squash-only)을 전제로 확인받았다. 기각한 기준(「PR의 base 브랜치에 이미 있는 커밋만 뺀다」)과 대가(PR 화면의 원본 커밋 수가 GitHub Commits 탭과 달라진다)는 OD-016에 적었다. 상류 요청 1(투영 전 필터)은 목적만 받아들여 **읽는 자리**에 두었고, 요청 2(`compareCommits(base, head)`)는 채택하지 않았다.
+
+**동작.** (1) 원시 관측은 지우지 않는다 — `pull_request_commit_link`의 `source` 행과 관측 완전성·삭제 권한은 GitHub 목록 그대로이고 CR-116의 규율이 그 위에서 유지된다. (2) 관계를 읽는 모든 질의가 유효 연결 술어 하나(`EFFECTIVE_LINK_SQL`)를 지난다 — 관계 투영(JOB-REL-008)의 러너 읽기, 재색인 replay·전환 전 검증, 복구 대조의 단건·배치·전체 열거, 미확정 계수. 체인은 `repository.sequence_branches`에 지금 있는 브랜치의 현재 에폭이다(추적을 끈 브랜치의 공간 행은 남아 있어도 보지 않는다). 체인 행의 PR이 `NULL`이면 다른 PR의 `source` 근거는 연결이 아니고, 같은 PR이면(fast-forward) 연결이다. `merge` 근거는 규칙과 무관하다. (3) 체인 소속이 바뀌는 세 자리(채번 `prepareAndAssignSequence`, 강제 푸시 재채번, 복구 재채번 `repairSequence`)가 같은 트랜잭션에서 `requeueChainChangedCommitLinks`로 영향 커밋의 관계 세대를 올린다. 재채번은 옛 에폭과 새 에폭의 `(sha, pr)` 대칭차를 쓰며, `source` 근거가 있는 커밋만 오르므로 평시 채번에는 쓰기가 없다. (4) PR 투영(실시간 `project.ts`·백필 `backfill.ts`가 `chainShasOf`로 같은 재료를 채운다)과 재색인은 체인 SHA에 원본 커밋 문서를 쓰지 않는다. (5) PR 상세가 이미 읽는 커밋 문서의 `pull_request_numbers`로 원본 커밋을 거르고 `source_commits_excluded`를 싣는다. 모름(문서나 필드가 없음)은 빼지 않는다. 웹은 C-018과 두 작업 공간 상세 창에서 같은 안내를 보인다. (6) 복구 명령은 체인 규칙으로 빠지는 번호를 관측 확정과 무관하게 지우고, `--pr` 없이 돌린 `apply`가 덮인 역할을 `restoreChainCommitRole`(단방향·멱등)로 되돌린다. 역할은 병합 근거나 PR 대응이 있으면 `merge_commit`, 없으면 `direct_push`다.
+
+**시험 (실측):**
+
+- 통합 `apps/pipeline-worker/integration/sequence/chain-links.test.ts` 9건 통과 — main 체인은 실제 git 이력(squash 픽스처: `R ── A(#21) ── D(직접 푸시) ── B(#25) ── C(#27) ── E(#29)`)이고, `git merge dev`를 한 #983의 GitHub 목록은 그 체인의 A·D·B를 피처 쪽 커밋(F1·F2·merge 커밋 M·F3, 가짜 SHA)과 섞은 모양으로 흉내 낸다. 채번은 실제 `prepareAndAssignSequence`(미러 fetch → first-parent 채번), 투영은 실제 `handleEnrichedEvent`, 관계 색인은 실제 러너로 돈다. 머지 커밋에는 그 커밋을 올린 PR만 남고 역할도 덮이지 않는다, 원시 관측은 그대로 남는다, 미확정 PR 하나가 체인 규칙으로 빠져도 그 커밋을 `partial`로 만들지 않는다, fast-forward로 자기 커밋을 체인에 올린 PR은 그 커밋을 원본 커밋으로 유지한다, 채번이 늦었으면 체인에 오르는 순간 다시 계산된다(정상 채번), 강제 푸시로 체인에서 빠진 커밋은 다시 그 PR들의 원본 커밋이 된다(재채번), 복구 재채번이 체인을 바로잡으면 다시 계산된다(복구), 관측이 미확정이어도 체인 규칙 번호를 지우고 덮인 역할을 되돌린다(직접 푸시는 `[]`·`direct_push`, 반복 멱등), `--pr`로 좁힌 실행은 역할 대조를 하지 않는다.
+- 통합 `apps/pipeline-worker/integration/jobs/link-reindex.test.ts` +1건 — 재색인이 체인 커밋을 올린 PR만으로 복원하고 역할을 덮지 않으며 전환 전 검증(누락·잉여 양방향)을 통과해 전환까지 간다. 버전은 운영과 같은 크기(웹훅 수신 시각이 커밋 시각보다 뒤)로 심었다.
+- 단위 `apps/pipeline-worker/src/documents.test.ts` +2건(체인 SHA에는 원본 커밋 문서를 만들지 않는다, 자기 머지 커밋은 체인 집합에 있어도 남는다), `apps/search-api/src/resolve/detail.test.ts` +3건(제외와 뺀 뒤 총계, 모름은 빼지 않는다, 절삭된 목록), `apps/web/lib/pr-detail.test.ts` +4건(제외 수, 안내 문구 셋).
+- 기존 시험 셋은 새 필수 필드 `chainShas` 때문에 고쳤다(`projection.test.ts`·`reproject-runner.test.ts`는 운영과 같은 `chainShasOf`를 쓰고, `documents.test.ts`의 기본값은 빈 집합이다). 시험을 쓰는 중에 결함 하나가 드러나 고쳤다: 채번이 PR 문서보다 먼저 돌면 체인 행의 PR 대응이 `NULL`로 남는데(DEV-207 — 모름이지 PR 없음이 아니다), 역할 되돌리기가 그 커밋을 `direct_push`로 만들었다. 병합 근거(`listCommitsWithMergeEvidence`)를 함께 보도록 고쳤고 변이 M10이 그 자리를 잠근다.
+
+**먼저 실패를 봤는가.** 새 시험은 새 API(`chainShasOf`·`readCommitLinkSets` 등)를 import하므로 기준선 코드 위에서는 컴파일부터 실패해 증거가 되지 못한다. 대신 옛 동작을 재현하는 변이로 확인했다 — M1(술어를 참으로 무력화)과 M4(투영의 체인 건너뛰기 제거)가 대표 시험을 죽인다(아래 변이 로그의 시험 이름).
+
+**변이 확인 (rebase 뒤 head에서 다시 실측).** 17종을 다른 시험과 겹치지 않게 단독으로 돌렸고 모두 시험을 죽였다. 스크립트는 변이마다 대상 파일이 커밋 상태인지 확인하고, 치환 대상 수가 기대와 다르면 멈추며, `git checkout`으로 되돌린 뒤 작업 트리 전체가 깨끗한지 확인한다(`원복 확인: 작업 트리 깨끗함`). 이전 세션의 실행(16종, 뒤에 M17)도 같은 결과였지만 M17의 로그 파일이 없어서 이번에 전부 다시 돌리고 죽은 시험의 이름까지 남겼다.
+
+| 변이 | 결과와 죽인 시험 |
+| --- | --- |
+| M1 술어 전체 무력화 | chain-links 7건 실패 — 대표 시험 「머지 커밋에는 그 커밋을 올린 PR만 남는다」, 원시 관측 보존, `partial` 계수, 늦은 채번 재계산 등 |
+| M2 fast-forward 보존절 제거 | 1건 — fast-forward로 자기 커밋을 체인에 올린 PR |
+| M3 미확정 계수의 술어 제거 | 1건 — 미확정 PR 하나가 체인 규칙으로 빠지면 `partial`을 만들지 않는다 |
+| M4 투영의 체인 건너뛰기 제거 | 1건 — 대표 시험 |
+| M5 정상 채번의 재투영 의도 제거 | 1건 — 채번이 늦었으면 체인에 오르는 순간 다시 계산된다 |
+| M6 강제 푸시 재채번의 재투영 의도 제거 | 1건 — 강제 푸시로 체인에서 빠진 커밋 |
+| M17 복구 재채번의 재투영 의도 제거 | 1건 — 복구 재채번 |
+| M7 계획의 체인 분류 제거 · M8 실행의 체인 분류 제거 · M9 역할 되돌리기 방향 뒤집기 · M10 역할 판정의 병합 근거 제거 | 각 1건 — 관측이 미확정이어도 체인 규칙 번호를 지우고 덮인 역할을 되돌린다 |
+| M11 재색인의 체인 건너뛰기 제거 · M12 재색인 replay의 술어 제거 | 각 1건 — 재색인이 체인 커밋을 올린 PR만으로 복원하고 역할을 덮지 않는다 |
+| M13 PR 상세 필터 제거 · M14 조인이 연결 PR을 읽지 않음 | 각 2건 — 연결 PR에 이 PR이 없는 커밋은 뺀다, 절삭된 목록 |
+| M15 PR 상세 총계를 원시 길이로 | 1건 — 연결 PR에 이 PR이 없는 커밋은 뺀다(뺀 뒤 총계) |
+| M16 투영 단위 시험(체인 건너뛰기) | 1건 — `documents.test.ts`의 체인 커밋 건너뛰기 |
+
+**재색인 경로 확인.** `rebuildProjectedCommits`가 체인 SHA를 건너뛰므로, 보강 전(`commit_snapshot` 없음) 체인 커밋은 다른 PR의 원본 목록 덕에 생기던 문서를 새 인덱스에서 잃는다. 이것이 재색인에 새 실패 경로를 만드는지 코드로 따라가 확인했다. (1) 그 커밋의 유효 연결이 `[]`이면 `replayCommitLinks`는 `document_missing`을 실패로 세지 않고(`numbers.length > 0`일 때만 던진다), `verifyCommitLinkProjection`도 기대 연결이 `[]`이면 문서 부재를 막지 않는다(CR-116 독립 검토 지적 B의 규칙). (2) 유효 연결이 남는 체인 커밋은 병합 근거가 있거나 체인 행의 PR이 그 PR인 경우뿐이다. 체인 행의 PR 대응은 그 PR의 머지 커밋이 그 SHA라는 뜻이므로, 그 PR 스냅숏이 `merged`이면 `rebuildProjectedCommits`의 머지 커밋 갈래(체인 필터가 없다)가 문서를 만든다. 그래서 새 실패 경로는 없다. 재구축 기대 건수(`tally.documentIds`)는 건너뛴 SHA를 세지 않으므로 함께 줄어 전환 전 문서 수 검증과도 어긋나지 않는다. 같은 반입의 prs-commits verify 과대 계산(문서를 만들지 않은 체인 밖 스냅숏 행까지 기대 건수에 세는 결함)은 이 CR의 범위 밖이며, 이 변경은 그것을 키우지도 줄이지도 않는다.
+
+**독립 검토 (`deep-reasoner`).** 게이트가 모두 초록인 head에서, 코드를 읽기만 하는 검토를 받았다(시험·인프라 조작 금지, 도구 30회). 상급 지적은 없었고, 다섯 초점 영역(N:M 보존, 체인 판정의 경계, 재색인 전환 검증, 복구의 삭제 근거, PSI 계약) 모두 근거와 함께 「결함 없음」 판정을 받았다. 위 「재색인 경로 확인」의 판단도 검토자가 따로 확인했고, PSI manifest의 sha256 세 개를 LF 정규화로 실측해 일치를 확인했다. 지적 넷과 관찰 하나는 다음과 같이 처리했다. **코드는 바꾸지 않았다.**
+
+- **지적 F1 (중, 운영)** — 배포만으로는 이미 색인에 있는 오염이 바뀌지 않는다. PR 상세의 제외 판정도 커밋 문서의 연결을 재료로 쓰므로, 재투영 전에는 #983이 여전히 207건을 보인다. 동작은 설계대로이고(복구가 그 경로다) RUNBOOK 7.G·상류 주석·RB-29가 이미 저장소마다 `apply`를 절차로 적고 있었다. 검토자의 요점(두 화면 모두 `apply` 뒤에야 바뀐다)을 RUNBOOK 7.G와 상류 주석에 「반입마다 저장소별로 한 번 꼭」으로 못박았다. 검토자는 보고 사례를 따라가 `apply`가 `ebc781d`를 `[1671]`·`merge_commit`으로 고친다는 것도 확인했다.
+- **지적 F2 (하)** — 추적 브랜치를 빼거나 다시 넣으면 판정이 바뀌는데 재투영 의도가 남지 않는다. DEV-756으로 등록하고 SRS 예외 칸·데이터 모델·RUNBOOK 7.G에 한계와 운영 조치를 적었다. 코드로 고치지 않은 이유: 사내 프로파일은 dev 단일 추적이고, 다중 시퀀스 브랜치 운영은 OD-015로 열려 있으며, 설정 변경 경로가 단독 UPDATE라 같은 트랜잭션에 의도를 남기려면 그 경로의 구조를 바꿔야 한다.
+- **지적 F3 (하)** — 역할 판정이 두 갈래다. 코드로 확인했다: `commit-enrich.ts`의 역할 계산과 `rebuildCommits`는 체인 행의 PR 대응만 보고, `chainRoleOf`는 병합 근거도 본다. DEV-757로 등록했다. 대응이 채워지면 두 규칙이 수렴하고 `apply`의 값이 정본에 비추어 더 옳으므로 판정은 그대로 두었다.
+- **지적 F4 (정보)** — 투영 시점의 `chainShas`와 실행 시점의 관계 투영기가 다른 순간을 보는 경합에서, 연결은 채번의 재투영 의도로 저절로 아물지만 잘못 쓰인 역할은 뒤따르는 커밋 보강이나 `apply`가 있어야 아문다. `documents.ts`의 주석이 이미 그 비대칭을 적고 있어 그대로 두었다.
+- **관찰** — `apps/search-api/src/sequence/anchors.ts`의 머지 커밋 제안(`suggestMergeCommit`)은 유효 술어를 거치지 않고 PR 문서의 원시 `source_commit_shas`를 읽는 유일한 SHA → PR 경로다. squash-only에서는 체인 밖 원본 커밋이 한 PR의 목록에만 있고, 제안한 커밋이 현재 체인에 있는지 `findPointByCommit`으로 다시 확인하므로 안전하다. merge commit 프로파일에서는 틀린 앵커를 제안할 수 있으나 SRS 예외 칸의 한계 안이다.
+
+검토자가 확인하지 못했다고 밝힌 것은 세 가지다: 실행 검증(제약대로 시험과 EXPLAIN을 돌리지 않았으므로 인덱스 판단은 스키마 추론이다), `prs-links` 간선 빌더 본문(이 CR의 범위 밖), 시험 파일 감사. 실행 쪽은 위 변이와 아래 전 계층 실행 결과가 덮는다.
+
+**전 계층 실행 결과 (실측).** Node 22(`.nvmrc`)와 위 격리 인프라에서 rebase 뒤 head에서 돌렸다.
+
+| 검사 | 결과 |
+| --- | --- |
+| `pnpm typecheck` | 통과 |
+| `pnpm lint` | 통과 (경고 0) — 이 CR이 바꾼 TypeScript 25개 파일이 모두 검사 대상임을 따로 확인했다 |
+| `pnpm run lint:deps` | 통과 — 패키지 17개, 위반 0건 |
+| `pnpm run test` (단위) | 181개 파일 통과·1개 skip, 3,284건 통과·1건 skip, 실패 0 (skip은 CR-116 기록에도 있던 것) |
+| `pnpm run test:integration` | 143개 파일 2,223건 전부 통과 · 실패 0 · skip 0 (격리 ES `cluster.name=prs-cr117-isolated`, 8분 48초) |
+| `pnpm run test:regression` | 11개 파일 519건 전부 통과 |
+| `pnpm build` | 통과 (웹 production 빌드 포함) |
+| `pnpm run test:e2e` | 209건 통과 |
+| `pnpm run test:a11y` | 24개 파일 466건 통과 |
+| `pnpm run test:contrast` | 18쌍 확인, 실패 0 |
+| 문서 검증기 `validate_srs_prd_env.py` | 기준선(`main ea59bb6`)과 **동일** — 기본 모드 오류 3·경고 12, `--strict` 오류 6·경고 12, 해석되지 않는 경로 참조 전체 목록(18건)까지 차이 0 |
+
+**PR과 병합.** 이 기록을 담은 브랜치를 PR로 올린 뒤, PR 번호와 그 head의 CI 결과를 이 단락에 적는다. 병합은 사용자에게 먼저 묻는다 — CR-116과 달리 이번 지시에는 병합 승인이 없다.
+
+**운영에서 알아야 할 것.** 반입 뒤 저장소마다 `./prsctl links plan` → `apply`(`--pr` 없이) → `status`를 한 번 꼭 돌린다. 배포만으로는 이미 색인에 있는 번호와 PR 상세의 원본 커밋 목록이 바뀌지 않는다. 체인 규칙 몫에는 `refetch`가 필요 없다(근거가 PostgreSQL의 `merge_sequence`다). 구버전 워커가 남아 있으면 체인 규칙 없이 관계를 비추고 역할을 다시 덮으므로, 모든 워커가 새 빌드가 된 뒤에 `apply`한다. 추적 브랜치 목록을 바꾼 뒤에도 `apply`를 한 번 돌린다(DEV-756). 절차는 RUNBOOK 7.G와 RB-29다. **사내 적용은 NOT RUN이며 사내 배포 SHA는 NOT VERIFIED다.**
+
+**발견 편차:** DEV-754(「원본 커밋」 정의가 두 문장으로 갈려 구현이 GitHub 목록 전체를 원본 커밋으로 읽음 — 해소), DEV-755(PR 투영·재색인이 체인 커밋의 역할을 덮음 — 해소), DEV-756(추적 브랜치 목록 변경 때 재투영 의도가 없음 — **open**, 독립 검토 발견), DEV-757(역할 판정 규칙이 두 갈래 — **open**, 독립 검토 발견). DEV-752는 체인 커밋 몫이 해소되어 체인 밖 커밋의 `source_commit`만 남는다.
+
+**한계:** 체인 판정은 first-parent 체인만 본다 — merge commit 방식 병합이 섞이면 두 번째 부모 쪽으로 대상 브랜치에 들어온 커밋은 걸러지지 않는다(squash-only 사내 프로파일에서는 생기지 않는다). 시퀀스 공간이 없는 브랜치로 향하는 PR은 판정 재료가 없어 GitHub 목록을 그대로 쓴다. 체인 행의 PR 대응이 뒤늦게 채워져도(`NULL` → P) 다시 계산하지 않는다 — 다른 PR의 제외 판정은 바뀌지 않고, fast-forward로 자기 커밋을 올린 PR의 연결만 다음 관계 변경 때 반영된다. PR 화면의 원본 커밋 수는 GitHub Commits 탭과 다르고(보고 사례 #983: 207 → 5), 절삭된 목록의 제외 수는 앞 250건 안에서 센 값이다. PR 상세의 제외 판정은 투영이 수렴한 커밋 문서의 연결을 재료로 쓰므로, 관계 러너가 밀려 있는 동안에는 옛 목록이 보일 수 있다. 제외 안내의 렌더링은 단위 시험(문구)과 화면 QA(QA-W002-30)가 덮고 e2e는 더하지 않았다.
