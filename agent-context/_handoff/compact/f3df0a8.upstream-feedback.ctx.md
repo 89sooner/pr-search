@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f3df0a8 src=agent-context/upstream-feedback.md
-@kv sha256=03d99c6ff87906bf3045a88ba9b1a9a75515e68aee948ecc0c89d16b8b6da1e1 bytes=10607 lines=84 title=Upstream-Feedback
+@kv sha256=884bd66ff09bb37166da9f9eef2f336664186f3a25efb2db849fa31b27a6490a bytes=13042 lines=86 title=Upstream-Feedback
 @sig agent-context/upstream-feedback.md;handoff/pipe-search-integration/v1/CONTRACT_DIFF.md;/prsctl;owner/name;apps/pipeline-worker/src/enrich.ts;apps/pipeline-worker/src/documents.ts;pulls/983/commits;apps/pipeline-worker/src/reindex.ts;packages/es/src/links.ts;Upstream;Feedback;source_commit_shas;SRCH;PostgreSQL;pull_request_commit_link;merge_sequence;merge_commit_sha;commit_sha;JOB;REL;SQL;EFFECTIVE_LINK_SQL;source_commit;DEV
 @h1 Upstream Feedback
 @h2 git merge dev로 인해 source_commit_shas가 dev 체인 커밋으로 오염된다 (설계 갭, 미해결)
@@ -27,6 +27,7 @@
 @b 또는 GHE API GET /pulls/{n}/commits 대신 base...head 범위 계산 — git merge dev로 feature 브랜치에 가져온 dev 체인 커밋을 제외하고 PR 고유 커밋만 추출한다. compareCommits(base, head)로 범위를 계산하면 dev 체인 커밋이 제외될 수 있다.
 @p ---
 @h2 prs-commits 재색인 verify가 false positive다 (설계 갭, 미해결)
+@path 상류 반영 (CR-119 / WP-103, FR-ING-008 AC-10, 2026-09-25) — 원인 분석을 정정했고 두 요청은 그대로 받지 않았다. 대신 기대 집합과 메타데이터 복원을 함께 고쳤다. 집계는 Set이라 「중복 집계」가 아니었고, 문제 커밋은 「직접 push」가 아니라 체인 밖 커밋이다(직접 push는 체인 커밋이라 문서를 만든다). 「ES _count와 비교」는 이미 하고 있었다 — 틀린 것은 기대 건수였다. 재구축이 commit_snapshot의 모든 행을 쓰기 결과와 무관하게 기대 문서로 셌고, 체인 밖이면서 어느 PR 스냅숏에도 없는 커밋(rebase로 PR에서 빠진 옛 커밋)은 문서를 만들 근거가 없어 새 인덱스에 영영 생기지 않았다. 더 큰 문제가 그 뒤에 숨어 있었다: 같은 스캔이 원본 커밋의 메타데이터를 문서 생성보다 먼저 보내, 재구축한 인덱스의 role: source_commit 문서는 메시지·작성자·변경 경로 없이 섰다(검증이 건수만 봐서 드러나지 않았다). 요청 1(「createWith 없는 커밋을 집계에서 제외」)은 원본 커밋 문서까지 기대에서 빼 그 누락을 숨기므로 받지 않았고, 요청 2(「_count와 비교」)는 이미 하고 있다. 이제 재구축은 문서를 만든 뒤 메타데이터를 채우고, 관측이 불완전해 남은 PR 연결의 커밋도 복원하며(그 연결이 있으면 전에는 관계 replay가 재색인을 막았다), 전환 전 검증은 정본과 생성 정책에서 계산한 필수 문서 ID의 존재와 메타데이터 값을 대조하고, 준비 단계의 대상 인덱스 UUID가 전환 시점과 같은지도 본다. main e94cb4f에 병합됐다(PR #235, 2026-09-25 — PR CI run 36054225382와 main CI run 36055350099 모두 success). 사내 수동 v4 전환은 검증하지 않았다(NOT VERIFIED): 잡이 실패한 순간부터 v4 이중 쓰기가 멈췄으므로 실패~수동 전환 사이의 쓰기가 v4에 없을 수 있고, v4의 원본 커밋 문서에는 메시지·작성자가 비어 있을 가능성이 높다. 반입 뒤 RUNBOOK 7.H의 순서(형상·별칭·UUID·잡 기록 확인 → 원본 커밋 표본 대조 → 새 빌드에서 prs-commits 재색인 → 새 검색으로 확인, 옛 인덱스는 확인 뒤 정리)를 밟고 결과를 이 항목 아래에 적어 달라. 사내 적용은 NOT RUN이다.
 @p 발견: 0.1.0-pilot.18 사내 운영 (2026-09-23)
 @path 관련: apps/pipeline-worker/src/reindex.ts:694
 @h3 현상
