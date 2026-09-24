@@ -380,7 +380,15 @@ export async function enrichCommit(
     (deps.now ?? ((): Date => new Date()))(),
   );
 
-  deps.metrics.commitEnrichTotal.inc({ source: graph.kind, result: result.result });
+  /*
+   * 라벨 값 `noop`은 「이미 같음」의 뜻으로 그대로 둔다 — 기존 관측이 그 이름으로 센다. 전에는
+   * 문서가 없어 반영하지 못한 회차도 `noop`에 섞였는데, 그것은 이제 `document_missing`으로 따로
+   * 보인다 (CR-119).
+   */
+  deps.metrics.commitEnrichTotal.inc({
+    source: graph.kind,
+    result: result.result === 'already_equal' ? 'noop' : result.result,
+  });
   if (result.result === 'created') {
     log({
       level: 'info',

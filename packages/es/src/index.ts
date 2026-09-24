@@ -277,6 +277,7 @@ export {
   type ChainRoleRestore,
   type ChainRoleRestoreResult,
   type CommitMetadataFields,
+  type CommitMetadataOutcome,
   type CommitMetadataResult,
   type CommitMetadataUpsert,
 } from './commit-metadata.js';

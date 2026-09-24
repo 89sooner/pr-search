@@ -44,6 +44,15 @@ export interface ReindexProgress {
   readonly source_index: string;
   /** 새로 만든 shadow 인덱스. 전환 뒤에는 서비스 인덱스다. */
   readonly target_index: string;
+  /**
+   * 준비 단계에서 확인한 대상 인덱스의 UUID (CR-119).
+   *
+   * 이름만으로는 같은 인덱스인지 알 수 없다. 대상이 도중에 지워지면 Elasticsearch는 다음
+   * 쓰기(`update`·`index`)에서 **같은 이름의 새 인덱스를 동적 매핑으로 자동 생성**한다
+   * (`action.auto_create_index` 기본값). 그러면 검증과 전환이 우리가 채운 인덱스가 아닌 것을
+   * 보게 된다 — 전환 전 검증과 전환 울타리가 이 값과 대조한다.
+   */
+  readonly target_uuid?: string;
   readonly documents_scanned?: number;
   readonly documents_written?: number;
   /** 알려진 실패 수. 0이 아니면 전환하지 않는다. */

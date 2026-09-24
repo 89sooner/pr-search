@@ -65,3 +65,47 @@ export function createTestRedis(): Redis {
  * 앱마다 다시 쓰면 한 곳이 빠진 날 CI가 그 파일에서만 깨진다.
  */
 export { clearMergeSequence } from '../../../packages/db/integration/helpers.js';
+
+/**
+ * 문서를 만들 근거 없이 **관계만 남은 커밋**의 관계 정본을 지운다 (CR-119, DEV-763).
+ *
+ * 재색인은 등록된 저장소 **전부**를 다시 만든다 — 시험이 자기 저장소만 심어도 판정은 DB
+ * 전체를 본다. 다른 시험 파일이 PR 스냅숏은 지우고(또는 `truncate`하고) 관계 행은 남기면,
+ * 관계 replay가 그 커밋을 「재구축이 문서를 만들지 못했다」로 읽고 잡을 실패로 만든다
+ * (CR-116의 fail closed). 운영에서는 PR 스냅숏을 지우지 않으므로 생기지 않는 모양이고, 어느
+ * 파일 뒤에 도느냐에 따라 재색인 시험이 갈리는 원인이었다(전량 실측: `mnumber`·`assign`·
+ * `author-teams`·`link-refetch`·`snapshot-bootstrap` 시험 뒤에 남는다).
+ *
+ * 근거는 재구축의 생성 정책과 같다: 스냅숏과 체인 행이 함께 있는 커밋, PR 스냅숏의 원본 목록에
+ * 있는 커밋, 병합된 PR의 머지 커밋. 셋 다 아닌 커밋의 관계 행만 지운다 — 재색인 시험이 판정 전에
+ * 세우는 전제이지 제품 동작을 바꾸는 것이 아니다.
+ */
+export async function removeOrphanCommitLinks(pool: Pool): Promise<number> {
+  const orphans = `
+    SELECT c.repository_id, c.commit_sha
+      FROM commit_link_state c
+      JOIN repository r ON r.repository_id = c.repository_id
+     WHERE NOT EXISTS (SELECT 1 FROM commit_snapshot s
+                         JOIN merge_sequence m ON m.repository_id = s.repository_id AND m.commit_sha = s.commit_sha
+                        WHERE s.repository_id = c.repository_id AND s.commit_sha = c.commit_sha)
+       AND NOT EXISTS (SELECT 1 FROM pull_request_snapshot p
+                        WHERE p.repository_id = c.repository_id
+                          AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(
+                                        CASE WHEN jsonb_typeof(p.document -> 'source_commit_shas') = 'array'
+                                             THEN p.document -> 'source_commit_shas' ELSE '[]'::jsonb END) AS sha
+                                       WHERE lower(sha) = c.commit_sha))
+       AND NOT EXISTS (SELECT 1 FROM pull_request_snapshot p
+                        WHERE p.repository_id = c.repository_id
+                          AND p.document ->> 'state' = 'merged'
+                          AND lower(p.document ->> 'merge_commit_sha') = c.commit_sha)`;
+  // 관계 행을 먼저 지운다 — 고아 판정의 열거가 `commit_link_state`에서 나오기 때문이다.
+  const links = await pool.query(
+    `DELETE FROM pull_request_commit_link t USING (${orphans}) o
+      WHERE t.repository_id = o.repository_id AND t.commit_sha = o.commit_sha`,
+  );
+  const states = await pool.query(
+    `DELETE FROM commit_link_state t USING (${orphans}) o
+      WHERE t.repository_id = o.repository_id AND t.commit_sha = o.commit_sha`,
+  );
+  return (links.rowCount ?? 0) + (states.rowCount ?? 0);
+}

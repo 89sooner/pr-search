@@ -67,6 +67,9 @@ import {
   switchAlias,
   upsertCommitMetadata,
   upsertReleaseDocuments,
+  type CommitMetadataFields,
+  type CommitMetadataOutcome,
+  type CommitMetadataResult,
   type EntityAlias,
   type UpsertRequest,
   type VersionedIndexSchema,
@@ -378,6 +381,21 @@ async function rebuildPullRequests(
  * 서수(`merge_seq`·`seq_epoch`)는 여기서 싣지 않는다. 채번 반영은
  * `applySequenceToDocuments`가 소유하고 그 경로가 재구축 뒤에 돈다 —
  * 같은 값을 두 곳에서 쓰면 어느 쪽이 정본인지 사라진다.
+ *
+ * ## 순서: 문서를 먼저 만들고 메타데이터를 그 뒤에 (CR-119 / FR-ING-008 AC-10)
+ *
+ * ```
+ * 체인 패스        체인 커밋 — 문서 생성과 메타데이터를 한 번에(`createWith`)
+ * PR 유래 패스     PR 스냅숏의 원본 커밋·병합 PR의 머지 커밋 문서를 만든다
+ * 원본 커밋 패스   체인 밖 커밋에 메타데이터를 반영한다 — 이제 문서가 있다
+ * 관계 replay      PR 연결을 정본에서 비춘다 (CR-116)
+ * ```
+ *
+ * 전에는 한 번의 스냅숏 스캔이 체인 밖 커밋에도 메타데이터를 **PR 유래 문서보다 먼저** 보냈다.
+ * 새 인덱스에는 그 문서가 아직 없어 값이 404로 사라졌고, 뒤이어 만들어진 원본 커밋 문서는
+ * 메시지·작성자 없이 섰다. 그리고 그 행들이 결과와 무관하게 기대 문서 ID에 들어가, 생성 근거가
+ * 없는 행(체인에도 없고 어느 PR 스냅숏에도 없는 커밋)이 있으면 전환 전 검증이 영영 통과하지
+ * 못했다(사내 pilot.18 보고).
  */
 async function rebuildCommits(
   deps: ReindexDeps,
@@ -400,32 +418,27 @@ async function rebuildCommits(
     if (rows.length === 0) break;
 
     for (const row of rows) {
+      after = row.commit_sha;
+      tally.scanned += 1;
       const sha = row.commit_sha.toLowerCase();
       const points = await mergeSequenceRepo.findByCommitSha(deps.pool, repositoryId, sha);
       const point = points[0];
 
-      const fact: CommitFactSource = {
-        parentShas: row.parent_shas,
-        message: row.message,
-        author: row.author,
-        committer: row.committer,
-        authoredAt: row.authored_at.toISOString(),
-        committedAt: row.committed_at.toISOString(),
-        changedPaths: row.changed_paths,
-        changedPathsTruncated: row.changed_paths_truncated,
-        patchId: row.patch_id,
-        patchIdUnavailable: row.patch_id_unavailable,
-        /*
-         * **first-parent 체인에 있을 때만 역할을 싣는다** (DEV-207). 체인 밖 커밋의
-         * 역할은 우리가 판정하지 않았고, 판정하지 않은 것을 문서에 적으면 그것이
-         * 거짓말이 된다.
-         */
-        ...(point === undefined
-          ? {}
-          : { role: point.pull_request_number === null ? 'direct_push' : 'merge_commit' }),
-      };
+      /*
+       * **체인 밖 커밋은 여기서 쓰지 않는다** (CR-119). 그 문서는 PR 투영이 만들고, 메타데이터는
+       * 문서가 생긴 뒤 `rebuildSourceCommitMetadata`가 반영한다. 여기서 먼저 보내면 대상
+       * 인덱스에서 `document_missing`이 되어 값이 사라진다.
+       */
+      if (point === undefined) continue;
 
-      await withReindexWrite(deps.pool, (targets) =>
+      /*
+       * **first-parent 체인에 있을 때만 역할을 싣는다** (DEV-207). 체인 밖 커밋의
+       * 역할은 우리가 판정하지 않았고, 판정하지 않은 것을 문서에 적으면 그것이
+       * 거짓말이 된다.
+       */
+      const fact = commitFactOf(row, point.pull_request_number === null ? 'direct_push' : 'merge_commit');
+
+      const result = await withReindexWrite(deps.pool, (targets) =>
         upsertCommitMetadata(
           deps.es,
           {
@@ -435,34 +448,146 @@ async function rebuildCommits(
             fields: commitMetadataFields(fact),
             /*
              * 체인에 있는 커밋만 만든다 — 접근 범위를 확신할 수 있는 자리이기
-             * 때문이다 (DEV-213, fail closed). 체인 밖 커밋은 PR 투영이 만든
-             * 문서를 갱신하기만 한다.
+             * 때문이다 (DEV-213, fail closed).
              */
-            ...(point === undefined
-              ? {}
-              : {
-                  createWith: commitCreateFields(repository, fact, {
-                    pullRequestNumber: point.pull_request_number,
-                    baseBranch: point.base_branch,
-                    indexedAt,
-                  }),
-                }),
+            createWith: commitCreateFields(repository, fact, {
+              pullRequestNumber: point.pull_request_number,
+              baseBranch: point.base_branch,
+              indexedAt,
+            }),
           },
           targets,
         ),
       );
+      // `createWith`가 있으므로 대상에 문서가 없을 수 없다. 있으면 그것은 결함이다.
+      if (targetOutcomeOf(result, sha) === 'document_missing') {
+        throw new Error(`commit_rebuild_chain_document_missing: ${sha}`);
+      }
 
-      tally.scanned += 1;
       tally.written += 1;
       tally.documentIds.add(commitDocId(repositoryId, sha));
-      after = sha;
     }
 
     if (rows.length < REINDEX_BATCH) break;
   }
 
   await rebuildProjectedCommits(deps, repository, tally, indexedAt);
+  await rebuildSourceCommitMetadata(deps, repository, tally);
   await replayCommitLinks(deps, repository, tally, targetIndex);
+}
+
+/**
+ * 스냅숏 행 하나를 커밋 사실로 옮긴다. 체인 패스와 원본 커밋 패스, 전환 전 검증이
+ * **같은 함수**를 쓴다 — 셋이 다른 값을 만들면 검증이 재구축과 다른 것을 기대한다.
+ */
+function commitFactOf(
+  row: commitSnapshotRepo.CommitSnapshotRow,
+  role?: 'direct_push' | 'merge_commit',
+): CommitFactSource {
+  return {
+    parentShas: row.parent_shas,
+    message: row.message,
+    author: row.author,
+    committer: row.committer,
+    authoredAt: row.authored_at.toISOString(),
+    committedAt: row.committed_at.toISOString(),
+    changedPaths: row.changed_paths,
+    changedPathsTruncated: row.changed_paths_truncated,
+    patchId: row.patch_id,
+    patchIdUnavailable: row.patch_id_unavailable,
+    ...(role === undefined ? {} : { role }),
+  };
+}
+
+/**
+ * 재구축의 쓰기가 **대상 인덱스**에 닿았는지 본다 (CR-119).
+ *
+ * 재구축은 `withReindexWrite`를 지나 서비스와 대상에 함께 쓴다. 서비스 쪽 결과는 새 인덱스에
+ * 대해 아무것도 말하지 않으므로 판정은 대상 결과로만 한다. 대상이 없으면 잡이 더는 이중 쓰기
+ * 중이 아니라는 뜻이고(취소·실패), 대상 쓰기가 던졌으면 그 실패는 울타리가 이미 기록해 잡이
+ * 실패했다. 둘 다 재구축을 이어 갈 이유가 없다.
+ */
+function targetOutcomeOf(result: CommitMetadataResult, sha: string): CommitMetadataOutcome {
+  if (result.shadow === undefined) throw new Error(`reindex_target_not_writable: ${sha}`);
+  if (result.shadow === 'failed') throw new Error(`reindex_target_write_failed: ${sha}`);
+  return result.shadow;
+}
+
+/**
+ * 체인 밖 커밋 문서에 정본 메타데이터를 반영한다 (CR-119 / FR-ING-008 AC-10).
+ *
+ * ## 왜 PR 유래 문서를 만든 **뒤**인가
+ *
+ * 체인 밖 커밋(PR의 원본 커밋)의 문서는 PR 투영만 만든다 — 보강 경로는 접근 범위를 확신할 수
+ * 없어 만들지 않는다(DEV-213). 그러니 메타데이터는 문서가 생긴 뒤에만 반영된다. 평시에는
+ * 보강 방아쇠(`EVT-ING-003`)가 투영 뒤에 오므로 순서가 저절로 맞지만, 재구축은 그 순서를 스스로
+ * 지켜야 한다.
+ *
+ * ## 문서가 없으면 만들지 않는다
+ *
+ * 체인에도 없고 어느 PR 스냅숏의 원본 목록에도 없는 커밋(rebase·force-push로 PR에서 빠진 옛
+ * 커밋)은 생성 근거가 없다. 결과는 `document_missing`이고 **실패가 아니다** — 기대 집합에도
+ * 없다(`verifyCommitDocuments`). 스냅숏은 지우지 않는다: 정본은 사실의 기록이고, 그 커밋이 다시
+ * PR에 들어오면 이 값이 쓰인다.
+ */
+async function rebuildSourceCommitMetadata(
+  deps: ReindexDeps,
+  repository: RepositoryRow,
+  tally: RebuildTally,
+): Promise<void> {
+  const repositoryId = Number(repository.repository_id);
+  let after = '';
+  let applied = 0;
+  let withoutDocument = 0;
+
+  for (;;) {
+    const rows = await commitSnapshotRepo.listCommitSnapshotsAfter(deps.pool, repositoryId, after, REINDEX_BATCH);
+    if (rows.length === 0) break;
+    // 체인 패스와 같은 술어다 — 거기서 이미 만들고 채웠다.
+    const onChain = await mergeSequenceRepo.findShasWithSequence(
+      deps.pool,
+      repositoryId,
+      rows.map((row) => row.commit_sha),
+    );
+
+    for (const row of rows) {
+      after = row.commit_sha;
+      const sha = row.commit_sha.toLowerCase();
+      if (onChain.has(sha)) continue;
+
+      const result = await withReindexWrite(deps.pool, (targets) =>
+        upsertCommitMetadata(
+          deps.es,
+          {
+            repositoryId,
+            commitSha: sha,
+            docId: commitDocId(repositoryId, sha),
+            fields: commitMetadataFields(commitFactOf(row)),
+          },
+          targets,
+        ),
+      );
+      const outcome = targetOutcomeOf(result, sha);
+      if (outcome === 'document_missing') {
+        withoutDocument += 1;
+        continue;
+      }
+      // `createWith` 없이 문서가 생겼다면 근거 없는 생성이다. 조용히 넘기지 않는다.
+      if (outcome === 'created') throw new Error(`commit_metadata_created_without_basis: ${sha}`);
+      applied += 1;
+      tally.written += 1;
+      tally.documentIds.add(commitDocId(repositoryId, sha));
+    }
+
+    if (rows.length < REINDEX_BATCH) break;
+  }
+
+  logOf(deps)({
+    level: 'info',
+    message: '원본 커밋 메타데이터 반영',
+    phase: 'backfill',
+    detail: `repository_id=${String(repositoryId)} applied=${String(applied)} without_document=${String(withoutDocument)}`,
+  });
 }
 
 /**
@@ -537,6 +662,65 @@ async function replayCommitLinks(
 }
 
 /**
+ * PR 스냅숏 한 페이지의 원본 커밋 가운데 **현재 체인에 오른 것** (CR-117 / FR-SRCH-002 AC-7).
+ *
+ * 피처 브랜치가 `git merge dev`로 받아 온 dev 체인 커밋이 스냅숏의 원본 목록에 섞여 있다.
+ * 그 문서는 체인 패스가 체인에서 정한 역할로 이미 만들었고, 원본 커밋 문서로 다시 쓰면 조건부
+ * 업서트가 더 큰 버전(웹훅 수신 시각)으로 그 역할을 덮는다 — 실시간 투영(`buildCommitDocuments`)이
+ * 건너뛰는 것과 같은 규칙이다. 페이지 하나에 한 번만 묻는다.
+ */
+async function chainLandersOf(
+  deps: ReindexDeps,
+  repositoryId: number,
+  rows: readonly prSnapshotRepo.PullRequestSnapshotRow[],
+): Promise<ReadonlySet<string>> {
+  const pageSources: string[] = [];
+  for (const row of rows) {
+    const listed = row.document['source_commit_shas'];
+    if (!Array.isArray(listed)) continue;
+    for (const raw of listed) if (typeof raw === 'string' && raw !== '') pageSources.push(raw.toLowerCase());
+  }
+  return new Set((await mergeSequenceRepo.findCurrentChainLanders(deps.pool, repositoryId, pageSources)).keys());
+}
+
+/**
+ * PR 스냅숏 하나가 만드는 커밋 문서와 그 역할.
+ *
+ * **재구축과 전환 전 검증이 같은 함수를 쓴다** (CR-119). 검증이 기대 집합을 따로 세면 두
+ * 규칙이 갈라지는 날 검증이 재구축과 다른 문서를 기대한다 — 그러면 그 검증은 불변식을 지키는
+ * 대신 지키는 척한다.
+ *
+ * 머지 커밋이 원본 목록에도 있으면 머지 커밋이 이긴다 — 투영과 같은 규칙이다.
+ */
+function projectedCommitRoles(
+  document: Readonly<Record<string, unknown>>,
+  chain: ReadonlySet<string>,
+): ReadonlyMap<string, 'source_commit' | 'merge_commit'> {
+  const roles = new Map<string, 'source_commit' | 'merge_commit'>();
+  const sources = document['source_commit_shas'];
+  if (Array.isArray(sources)) {
+    for (const raw of sources) {
+      if (typeof raw !== 'string' || raw === '') continue;
+      const sha = raw.toLowerCase();
+      if (chain.has(sha)) continue;
+      roles.set(sha, 'source_commit');
+    }
+  }
+  /*
+   * **병합된 PR의 머지 커밋만 머지 커밋이다** (CR-116 / DEV-747, FR-SRCH-002 AC-1).
+   *
+   * 실시간 투영(`buildCommitDocuments`)은 `merged === true`를 확인해 왔는데 여기에는
+   * 그 확인이 없었다. GitHub은 **열린 PR에도** `merge_commit_sha`를 준다 — 시험 병합으로
+   * 만든 임시 커밋이다. 그래서 재색인이 지날 때마다 아직 병합되지 않은 PR이
+   * 커밋 하나를 "병합했다"고 주장하는 문서가 만들어졌고, 그 역할은 실시간
+   * 경로가 만든 문서와 **달랐다.**
+   */
+  const mergeSha = document['state'] === 'merged' ? document['merge_commit_sha'] : null;
+  if (typeof mergeSha === 'string' && mergeSha !== '') roles.set(mergeSha.toLowerCase(), 'merge_commit');
+  return roles;
+}
+
+/**
  * PR 유래 커밋 문서를 정본에서 다시 만든다 (PR #52 리뷰 P1).
  *
  * `commit_snapshot`은 **first-parent 체인만** 덮는다 — 보강 대상이
@@ -560,21 +744,7 @@ async function rebuildProjectedCommits(
     const rows = await prSnapshotRepo.listSnapshotsAfter(deps.pool, repositoryId, after, REINDEX_BATCH);
     if (rows.length === 0) break;
 
-    /*
-     * **체인 커밋은 원본 커밋 문서로 다시 만들지 않는다** (CR-117 / FR-SRCH-002 AC-7).
-     *
-     * 피처 브랜치가 `git merge dev`로 받아 온 dev 체인 커밋이 스냅숏의 원본 목록에 섞여 있다.
-     * 그 문서는 위 `rebuildCommits`가 체인에서 정한 역할로 이미 만들었고, 여기서 `source_commit`으로
-     * 쓰면 조건부 업서트가 더 큰 버전(웹훅 수신 시각)으로 그 역할을 덮는다 — 실시간 투영
-     * (`buildCommitDocuments`)이 건너뛰는 것과 같은 규칙이다. 페이지 하나에 한 번만 묻는다.
-     */
-    const pageSources: string[] = [];
-    for (const row of rows) {
-      const listed = row.document['source_commit_shas'];
-      if (!Array.isArray(listed)) continue;
-      for (const raw of listed) if (typeof raw === 'string' && raw !== '') pageSources.push(raw.toLowerCase());
-    }
-    const chain = new Set((await mergeSequenceRepo.findCurrentChainLanders(deps.pool, repositoryId, pageSources)).keys());
+    const chain = await chainLandersOf(deps, repositoryId, rows);
 
     const requests: UpsertRequest[] = [];
     for (const row of rows) {
@@ -585,30 +755,7 @@ async function rebuildProjectedCommits(
       // 버전의 정본은 본문이 아니라 열이다 (위와 같은 이유).
       const documentVersion = Number(row.document_version);
 
-      // 머지 커밋이 원본 목록에도 있으면 머지 커밋이 이긴다 — 투영과 같은 규칙이다.
-      const roles = new Map<string, 'source_commit' | 'merge_commit'>();
-      const sources = document['source_commit_shas'];
-      if (Array.isArray(sources)) {
-        for (const raw of sources) {
-          if (typeof raw !== 'string' || raw === '') continue;
-          const sha = raw.toLowerCase();
-          if (chain.has(sha)) continue;
-          roles.set(sha, 'source_commit');
-        }
-      }
-      /*
-       * **병합된 PR의 머지 커밋만 머지 커밋이다** (CR-116 / DEV-747, FR-SRCH-002 AC-1).
-       *
-       * 실시간 투영(`buildCommitDocuments`)은 `merged === true`를 확인해 왔는데 여기에는
-       * 그 확인이 없었다. GitHub은 **열린 PR에도** `merge_commit_sha`를 준다 — 시험 병합으로
-       * 만든 임시 커밋이다. 그래서 재색인이 지날 때마다 아직 병합되지 않은 PR이
-       * 커밋 하나를 "병합했다"고 주장하는 문서가 만들어졌고, 그 역할은 실시간
-       * 경로가 만든 문서와 **달랐다.**
-       */
-      const mergeSha = document['state'] === 'merged' ? document['merge_commit_sha'] : null;
-      if (typeof mergeSha === 'string' && mergeSha !== '') roles.set(mergeSha.toLowerCase(), 'merge_commit');
-
-      for (const [sha, role] of roles) {
+      for (const [sha, role] of projectedCommitRoles(document, chain)) {
         requests.push(
           buildProjectedCommitDocument({
             repository,
@@ -816,6 +963,10 @@ export interface VerifyOutcome {
  *
  * **`source_count == target_count` 하나로 판정하지 않는다** — 같은 수의 다른
  * 문서가 가능하다. 그래서 건수와 함께 매핑·대표 질의·잡 상태를 본다.
+ *
+ * @param expectedDocuments PR·릴리스는 재구축이 쓴 서로 다른 문서 수다. **커밋은 이 값을 쓰지
+ *   않는다** — 기대 집합을 정본과 생성 정책에서 문서 ID로 다시 계산한다(CR-119, 5번 항목).
+ *   간선은 셀 수 없어 `null`이다.
  */
 export async function verifyBeforeCutover(
   deps: ReindexDeps,
@@ -847,6 +998,13 @@ export async function verifyBeforeCutover(
   }
 
   /*
+   * 4-b. 준비 단계에서 만든 **그** 인덱스다 (CR-119). 이름만 같은 다른 인덱스 — 도중에 지워진 뒤
+   *      쓰기가 동적 매핑으로 자동 생성한 것 — 이면 나머지 항목을 모두 통과해도 전환하지 않는다.
+   */
+  const replaced = await targetReplaced(deps.es, target, job.progress.target_uuid);
+  if (replaced !== null) reasons.push(`대상 인덱스가 바뀌었다: ${replaced}`);
+
+  /*
    * 5. 커버리지 — **재구축이 쓴 서로 다른 문서 수**와 대조한다 (PR #52 리뷰 P1).
    *
    * 처리한 *source* 수와 대조하면 안 된다. 간선은 source 하나가 0개에서 여러
@@ -855,11 +1013,39 @@ export async function verifyBeforeCutover(
    *
    * `null`은 "이 재구축이 쓴 문서 수를 셀 수 없다"는 뜻이며 그때는 이 항목을
    * 판정하지 않는다 — 셀 수 없는 것을 센 척하지 않는다. 나머지 여섯 항목은 그대로다.
+   *
+   * **커밋은 기대를 재구축의 쓰기에서 세지 않는다** (CR-119 / FR-ING-008 AC-10). 쓰기로 센 값은
+   * 만들지 못한 문서를 넣기도 하고(사내 pilot.18: 생성 근거 없는 스냅숏 행이 기대 건수에 들어가
+   * 전환이 영영 막혔다), 써야 했는데 쓰지 않은 문서를 빼기도 한다 — 기대가 자기 자신을 따라간다.
+   * 커밋의 기대 집합은 정본과 생성 정책에서 문서 ID로 계산하고, 건수 비교에 더해 **ID마다 존재와
+   * 알려진 메타데이터 값**을 대조한다. 개수만 맞춘 대상(필요한 문서 하나가 빠지고 무관한 문서
+   * 하나가 더해진 인덱스)은 건수로는 통과하지만 ID 대조에서 막힌다.
    */
+  let expected = expectedDocuments;
+  if (alias === 'prs-commits') {
+    try {
+      const commits = await verifyCommitDocuments(deps, target);
+      expected = commits.expected;
+      reasons.push(...commits.reasons);
+      logOf(deps)({
+        level: commits.reasons.length === 0 ? 'info' : 'error',
+        message: '전환 전 커밋 문서 검증',
+        job_id: jobId,
+        alias,
+        target_index: target,
+        detail:
+          `expected=${String(commits.expected)} missing=${String(commits.missing)} ` +
+          `metadata_checked=${String(commits.metadataChecked)} metadata_mismatched=${String(commits.metadataMismatched)}`,
+      });
+    } catch (error) {
+      // 셀 수 없게 됐다고 통과시키지 않는다 — 판정하지 못한 것은 막는다.
+      reasons.push(`커밋 문서 검증 실패: ${String(error).slice(0, 200)}`);
+    }
+  }
   const targetCount = await deps.es.count({ index: target });
   const sourceCount = await deps.es.count({ index: source });
-  if (expectedDocuments !== null && targetCount.count < expectedDocuments) {
-    reasons.push(`커버리지 부족: 재구축 ${String(expectedDocuments)} > 대상 ${String(targetCount.count)}`);
+  if (expected !== null && targetCount.count < expected) {
+    reasons.push(`커버리지 부족: 기대 ${String(expected)} > 대상 ${String(targetCount.count)}`);
   }
 
   // 6. 대표 질의가 새 인덱스에서 성립한다.
@@ -922,10 +1108,232 @@ export async function verifyBeforeCutover(
     target_index: target,
     detail:
       `source=${String(sourceCount.count)} target=${String(targetCount.count)} ` +
-      `expected=${expectedDocuments === null ? '(셀 수 없음)' : String(expectedDocuments)}`,
+      `expected=${expected === null ? '(셀 수 없음)' : String(expected)}`,
   });
 
   return { ok: reasons.length === 0, reasons };
+}
+
+/** 인덱스의 UUID. 인덱스가 없으면 `undefined`다 (CR-119). */
+async function indexUuidOf(es: Client, index: string): Promise<string | undefined> {
+  const response = (await es.indices.getSettings(
+    { index, name: 'index.uuid', flat_settings: true },
+    { ignore: [404] },
+  )) as Record<string, { readonly settings?: Readonly<Record<string, unknown>> } | undefined>;
+  const uuid = response[index]?.settings?.['index.uuid'];
+  return typeof uuid === 'string' ? uuid : undefined;
+}
+
+/**
+ * 대상이 준비 단계의 그 인덱스가 아니면 사유를, 같으면 `null`을 돌려준다 (CR-119).
+ *
+ * UUID를 남기지 않은 잡(이 변경 전에 준비된 잡)은 대조할 것이 없어 `null`이다 — 나머지 검증
+ * 항목은 그대로 선다.
+ */
+async function targetReplaced(es: Client, target: string, recorded: string | undefined): Promise<string | null> {
+  if (recorded === undefined) return null;
+  const now = await indexUuidOf(es, target);
+  return now === recorded ? null : `target_index_replaced:${target}:${recorded}->${now ?? 'absent'}`;
+}
+
+/** 커밋 문서 대조 결과 (CR-119 / FR-ING-008 AC-10). */
+interface CommitDocumentVerdict {
+  /** 정본과 생성 정책이 말하는 필수 문서 수. */
+  readonly expected: number;
+  readonly missing: number;
+  readonly metadataChecked: number;
+  readonly metadataMismatched: number;
+  readonly reasons: readonly string[];
+}
+
+/** 사유 표본 상한. 전부 싣지 않는다 — 수는 요약 사유가 따로 말한다. */
+const COMMIT_REASON_SAMPLES = 10;
+
+/**
+ * 대상 인덱스의 커밋 문서를 정본과 맞댄다 (CR-119 / FR-ING-008 AC-10).
+ *
+ * ## 기대 집합은 재구축의 생성 정책 그대로다
+ *
+ * - **체인 커밋**: 스냅숏 행 가운데 `merge_sequence`에 행이 있는 것 — 체인 패스가
+ *   `createWith`로 만든다(`findShasWithSequence`는 그 술어 그대로다).
+ * - **PR 유래 커밋**: PR 스냅숏의 원본 커밋(현재 체인 커밋 제외)과 병합된 PR의 머지 커밋 —
+ *   PR 유래 패스가 만든다(`projectedCommitRoles`를 함께 쓴다). 스냅숏이 아직 없어도(미수집)
+ *   문서는 있어야 한다.
+ * - 그 밖의 스냅숏 행은 **생성 근거가 없어** 기대하지 않는다.
+ *
+ * 재구축의 쓰기 결과를 쓰지 않고 **지금의 정본을 다시 읽는다** — 무엇을 썼는지가 아니라 무엇이
+ * 있어야 하는지를 묻는다.
+ *
+ * ## 메타데이터는 값으로 대조한다
+ *
+ * 스냅숏이 있는 문서는 부모·메시지·작성자·커미터·두 시각·변경 경로·절삭 여부·patch-id가 정본과
+ * 같아야 한다. **값이 `null`인 것과 필드가 없는 것은 다르다** — 정본이 `null`이면 그 필드가 `null`로
+ * 있어야 한다. 스냅숏이 없는 문서는 대조하지 않는다 — 정본에 없는 값을 기대하지 않는다. 역할은
+ * 대조하지 않는다 — 판정 규칙이 두 갈래이고(DEV-757) 이 검증의 몫이 아니다.
+ */
+async function verifyCommitDocuments(deps: ReindexDeps, targetIndex: string): Promise<CommitDocumentVerdict> {
+  const samples: string[] = [];
+  let expected = 0;
+  let missing = 0;
+  let metadataChecked = 0;
+  let metadataMismatched = 0;
+  const note = (reason: string): void => {
+    if (samples.length < COMMIT_REASON_SAMPLES) samples.push(reason);
+  };
+
+  for (const repository of await allRepositories(deps.pool)) {
+    const repositoryId = Number(repository.repository_id);
+
+    // 1. PR 유래 기대 문서 — PR 유래 패스와 같은 규칙.
+    const projected = new Set<string>();
+    let afterPr = 0;
+    for (;;) {
+      const rows = await prSnapshotRepo.listSnapshotsAfter(deps.pool, repositoryId, afterPr, REINDEX_BATCH);
+      if (rows.length === 0) break;
+      const chain = await chainLandersOf(deps, repositoryId, rows);
+      for (const row of rows) for (const sha of projectedCommitRoles(row.document, chain).keys()) projected.add(sha);
+      afterPr = rows[rows.length - 1]?.pr_number ?? afterPr;
+      if (rows.length < REINDEX_BATCH) break;
+    }
+
+    // 2. 스냅숏이 있는 기대 문서 — 존재와 값.
+    const withSnapshot = new Set<string>();
+    let after = '';
+    for (;;) {
+      const rows = await commitSnapshotRepo.listCommitSnapshotsAfter(deps.pool, repositoryId, after, REINDEX_BATCH);
+      if (rows.length === 0) break;
+      const onChain = await mergeSequenceRepo.findShasWithSequence(
+        deps.pool,
+        repositoryId,
+        rows.map((row) => row.commit_sha),
+      );
+      const wanted = rows.filter((row) => {
+        const sha = row.commit_sha.toLowerCase();
+        return onChain.has(sha) || projected.has(sha);
+      });
+      const found = await readCommitDocuments(
+        deps,
+        targetIndex,
+        repositoryId,
+        wanted.map((row) => row.commit_sha.toLowerCase()),
+      );
+      for (const row of wanted) {
+        const sha = row.commit_sha.toLowerCase();
+        withSnapshot.add(sha);
+        expected += 1;
+        const doc = found.get(sha);
+        if (doc === undefined) {
+          missing += 1;
+          note(`커밋 문서 누락: ${sha.slice(0, 12)} (저장소 ${String(repositoryId)})`);
+          continue;
+        }
+        metadataChecked += 1;
+        const wrong = metadataMismatches(commitMetadataFields(commitFactOf(row)), doc);
+        if (wrong.length > 0) {
+          metadataMismatched += 1;
+          note(`커밋 메타데이터 불일치: ${sha.slice(0, 12)} [${wrong.join(',')}]`);
+        }
+      }
+      after = rows[rows.length - 1]?.commit_sha ?? after;
+      if (rows.length < REINDEX_BATCH) break;
+    }
+
+    // 3. 스냅숏이 없는 PR 유래 문서 — 존재만 본다.
+    const rest = [...projected].filter((sha) => !withSnapshot.has(sha)).sort();
+    for (let offset = 0; offset < rest.length; offset += REINDEX_BATCH) {
+      const page = rest.slice(offset, offset + REINDEX_BATCH);
+      const found = await readCommitDocuments(deps, targetIndex, repositoryId, page);
+      for (const sha of page) {
+        expected += 1;
+        if (found.has(sha)) continue;
+        missing += 1;
+        note(`커밋 문서 누락: ${sha.slice(0, 12)} (저장소 ${String(repositoryId)})`);
+      }
+    }
+  }
+
+  // 요약이 먼저다 — 잡 오류 칸은 잘리므로 수가 표본보다 앞에 있어야 한다.
+  const reasons: string[] = [];
+  if (missing > 0) reasons.push(`커밋 문서 누락 ${String(missing)}건 (기대 ${String(expected)})`);
+  if (metadataMismatched > 0) {
+    reasons.push(`커밋 메타데이터 불일치 ${String(metadataMismatched)}건 (대조 ${String(metadataChecked)})`);
+  }
+  reasons.push(...samples);
+  return { expected, missing, metadataChecked, metadataMismatched, reasons };
+}
+
+/**
+ * 대상 인덱스에서 커밋 문서를 ID로 읽는다. `_id`를 SHA로 되돌려 돌려준다.
+ *
+ * 라우팅은 저장소다 — 다른 샤드에 잘못 쓰인 문서는 여기서 없는 것으로 보이고, 그것이 옳다:
+ * 검색도 같은 라우팅으로 읽는다. 항목 단위 오류는 없음으로 읽지 않고 던진다.
+ */
+async function readCommitDocuments(
+  deps: ReindexDeps,
+  targetIndex: string,
+  repositoryId: number,
+  shas: readonly string[],
+): Promise<Map<string, Readonly<Record<string, unknown>>>> {
+  const found = new Map<string, Readonly<Record<string, unknown>>>();
+  if (shas.length === 0) return found;
+  const byId = new Map(shas.map((sha) => [commitDocId(repositoryId, sha), sha] as const));
+  const response = await deps.es.mget<Record<string, unknown>>({
+    index: targetIndex,
+    ids: [...byId.keys()],
+    routing: String(repositoryId),
+  });
+  for (const doc of response.docs) {
+    const hit = doc as { _id?: string; found?: boolean; _source?: Record<string, unknown>; error?: unknown };
+    if (hit.error !== undefined) {
+      throw new Error(`commit_document_read_failed: ${JSON.stringify(hit.error).slice(0, 200)}`);
+    }
+    const sha = hit._id === undefined ? undefined : byId.get(hit._id);
+    if (sha === undefined || hit.found !== true) continue;
+    found.set(sha, hit._source ?? {});
+  }
+  return found;
+}
+
+/**
+ * 문서가 정본 메타데이터와 다른 필드 이름들 (CR-119).
+ *
+ * 기대값은 재구축이 쓰는 값 그대로다(`commitMetadataFields`). 시각은 같은 순간인지로 본다 —
+ * 평시 보강은 그래프가 준 표기를, 재구축은 정본의 ISO 표기를 쓰므로 문자열이 다를 수 있다.
+ * `patch_id`는 스크립트 규칙을 따른다: 정본이 값을 알면 같은 값이고 사유 필드가 없어야 하며,
+ * 정본이 모르면 색인에도 값이 없어야 한다(정본에 없는 값을 색인이 알 수 없다).
+ */
+function metadataMismatches(
+  expected: CommitMetadataFields,
+  actual: Readonly<Record<string, unknown>>,
+): readonly string[] {
+  const wrong: string[] = [];
+  const has = (key: string): boolean => Object.prototype.hasOwnProperty.call(actual, key);
+  const sameList = (value: unknown, want: readonly string[]): boolean =>
+    Array.isArray(value) && value.length === want.length && value.every((one, index) => one === want[index]);
+  const sameInstant = (value: unknown, want: string): boolean =>
+    typeof value === 'string' && !Number.isNaN(Date.parse(want)) && Date.parse(value) === Date.parse(want);
+
+  if (!has('parent_shas') || !sameList(actual['parent_shas'], expected.parent_shas)) wrong.push('parent_shas');
+  if (!has('message') || actual['message'] !== expected.message) wrong.push('message');
+  // `null`도 값이다 — 필드가 있어야 하고 그 값이 `null`이어야 한다.
+  if (!has('author') || actual['author'] !== expected.author) wrong.push('author');
+  if (!has('committer') || actual['committer'] !== expected.committer) wrong.push('committer');
+  if (!has('authored_at') || !sameInstant(actual['authored_at'], expected.authored_at)) wrong.push('authored_at');
+  if (!has('committed_at') || !sameInstant(actual['committed_at'], expected.committed_at)) wrong.push('committed_at');
+  if (!has('changed_paths') || !sameList(actual['changed_paths'], expected.changed_paths)) wrong.push('changed_paths');
+  if (!has('changed_paths_truncated') || actual['changed_paths_truncated'] !== expected.changed_paths_truncated) {
+    wrong.push('changed_paths_truncated');
+  }
+  if (expected.patch_id !== undefined) {
+    if (actual['patch_id'] !== expected.patch_id) wrong.push('patch_id');
+    if (has('patch_id_unavailable')) wrong.push('patch_id_unavailable');
+  } else {
+    if (has('patch_id') && actual['patch_id'] !== null) wrong.push('patch_id');
+    if (expected.patch_id_unavailable !== undefined && actual['patch_id_unavailable'] !== expected.patch_id_unavailable) {
+      wrong.push('patch_id_unavailable');
+    }
+  }
+  return wrong;
 }
 
 /**
@@ -1044,7 +1452,18 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
     const schema = (deps.schemaFor ?? schemaOf)(alias);
     const exists = await deps.es.indices.exists({ index: target });
     if (!exists) await createVersionedIndex(deps.es, alias, versionOf(alias, target), schema);
-    log({ level: 'info', message: '대상 인덱스 준비', job_id: jobId, alias, phase: 'prepare', target_index: target });
+    /*
+     * 대상의 UUID를 남긴다 (CR-119). 이름이 같아도 같은 인덱스라는 보장이 없다 — 도중에 지워지면
+     * 다음 쓰기가 같은 이름의 인덱스를 동적 매핑으로 자동 생성한다. 검증과 전환이 이 값과 대조한다.
+     */
+    const targetUuid = await indexUuidOf(deps.es, target);
+    if (targetUuid === undefined) throw new Error(`대상 인덱스를 확인하지 못했다: ${target}`);
+    const recordedUuid = current.progress.target_uuid;
+    if (recordedUuid !== undefined && recordedUuid !== targetUuid) {
+      throw new Error(`target_index_replaced: ${target} ${recordedUuid} → ${targetUuid}`);
+    }
+    await advance(deps, jobId, { target_uuid: targetUuid });
+    log({ level: 'info', message: '대상 인덱스 준비', job_id: jobId, alias, phase: 'prepare', target_index: target, detail: `uuid=${targetUuid}` });
 
     /*
      * ---- dual_write: **활성화가 정본 스캔보다 먼저다.**
@@ -1084,10 +1503,15 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
     /* ---- verify */
     await advance(deps, jobId, { phase: 'verify' });
     /*
-     * 간선은 `rebuildRepository`가 처리한 source 수만 돌려주므로 문서 수를 셀 수
-     * 없다 — 그때는 커버리지를 판정하지 않고 나머지 여섯으로 건다.
+     * 재구축이 쓴 문서 수를 기대로 넘기는 것은 PR·릴리스뿐이다.
+     *
+     * - **커밋은 넘기지 않는다** (CR-119). 검증이 기대 집합을 정본과 생성 정책에서 문서 ID로 다시
+     *   계산하고 건수·존재·메타데이터를 함께 대조한다. 쓰기로 센 값은 만들지 못한 문서까지
+     *   세었다(사내 pilot.18).
+     * - 간선은 `rebuildRepository`가 처리한 source 수만 돌려주므로 문서 수를 셀 수
+     *   없다 — 그때는 커버리지를 판정하지 않고 나머지 여섯으로 건다.
      */
-    const expected = alias === 'prs-links' ? null : tally.documentIds.size;
+    const expected = alias === 'prs-pull-requests' || alias === 'prs-releases' ? tally.documentIds.size : null;
     const verdict = await verifyBeforeCutover(deps, jobId, expected);
     if (!verdict.ok) {
       const detail = verdict.reasons.join('; ');
@@ -1118,6 +1542,16 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
       const moved = await sequenceEpochsMoved(client, (latest.progress as Partial<ReindexProgress> & { sequence_replay?: SequenceReplayProgress }).sequence_replay);
       if (moved !== null) {
         cutoverAbortReason = moved;
+        return false;
+      }
+
+      /*
+       * 검증한 그 인덱스인가 (CR-119). 검증과 전환 사이에 대상이 지워지고 이중 쓰기가 같은 이름을
+       * 자동 생성했다면, 별칭은 빈 동적 매핑 인덱스로 옮겨 간다. 울타리 안이라 이 뒤로는 쓰기가 없다.
+       */
+      const replaced = await targetReplaced(deps.es, target, latest.progress.target_uuid);
+      if (replaced !== null) {
+        cutoverAbortReason = replaced;
         return false;
       }
 

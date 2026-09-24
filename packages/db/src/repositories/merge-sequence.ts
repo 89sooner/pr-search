@@ -135,6 +135,28 @@ export async function findByCommitSha(
   return result.rows;
 }
 
+/**
+ * `merge_sequence`에 행이 **하나라도** 있는 SHA (CR-119 / FR-ING-008 AC-10).
+ *
+ * 커밋 재구축이 체인 커밋 문서를 만드는 근거와 **같은 술어**다 — 재구축은 커밋마다
+ * `findByCommitSha(...)[0]`이 있으면 `createWith`로 문서를 만든다. 브랜치·에폭을 가리지 않는
+ * 것도 그대로다. 전환 전 검증이 기대 집합을 이 함수로 세므로, 둘이 갈라지면 검증이 재구축과
+ * 다른 문서를 기대하게 된다.
+ */
+export async function findShasWithSequence(
+  db: Queryable,
+  repositoryId: number,
+  commitShas: readonly string[],
+): Promise<ReadonlySet<string>> {
+  const shas = [...new Set(commitShas.map((sha) => sha.toLowerCase()))];
+  if (shas.length === 0) return new Set();
+  const result = await db.query<{ commit_sha: string }>(
+    'SELECT DISTINCT commit_sha FROM merge_sequence WHERE repository_id = $1 AND commit_sha = ANY($2::text[])',
+    [repositoryId, shas],
+  );
+  return new Set(result.rows.map((row) => row.commit_sha.toLowerCase()));
+}
+
 export async function findByPullRequest(
   db: Queryable,
   repositoryId: number,
