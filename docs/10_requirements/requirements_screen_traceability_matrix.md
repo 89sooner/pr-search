@@ -1,6 +1,10 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.18 | 갱신일: 2026-09-24
+> 상태: review | 버전: v1.19 | 갱신일: 2026-09-25
+
+| 추가 요구사항 (CR-119) | 화면 | 구현 단위 | 검증 |
+| --- | --- | --- | --- |
+| FR-ING-008 AC-10 (커밋 재구축의 기대 집합 · 문서 생성 뒤 메타데이터 · 보존된 연결의 커밋 · 필수 ID·값 대조 · 대상 인덱스 UUID) | A-003(재색인 잡 진행·전환 전 검증 — 사유가 잡 오류에 남는다) — 렌더링 변경 없음 | WP-103, `apps/pipeline-worker/src/reindex.ts`(`rebuildCommits`의 순서, `rebuildSourceCommitMetadata`, `projectedPageOf`·`projectedCommitRoles`를 재구축과 검증이 함께 씀, `verifyCommitDocuments`, `targetReplaced`), `packages/es/src/commit-metadata.ts`(결과 분류·대상 결과 분리·`null`과 부재), `packages/db/src/repositories/merge-sequence.ts`(`findShasWithSequence`)·`pr-commit-link.ts`(`listEffectiveSourceShas`)·`reindex.ts`(`target_uuid`) | 통합(`apps/pipeline-worker/integration/jobs/commit-reindex-completeness.test.ts` 13건, `packages/es/integration/commit-metadata.test.ts` 4건), 단위(`packages/es/src/commit-metadata.test.ts` 12건), 회귀(`regression/runtime-reachability.test.ts` +1건), 변이(원장 6.111장) |
 
 | 추가 요구사항 (CR-117) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |

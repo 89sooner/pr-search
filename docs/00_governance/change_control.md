@@ -10,6 +10,17 @@
 - 제외: 제품 코드, 이미 `until`을 쓰는 다른 `settle` 호출.
 - 설계·세부 정본: 원장 5장 DEV-765와 6.110장. 연쇄 기록은 5장 「CR-120 cascade」에 적는다.
 
+## CR-119 — prs-commits 재색인의 기대 집합과 메타데이터 복원: 필요한 문서와 값이 모두 있는 새 인덱스만 전환한다 (2026-09-25)
+
+- 유형: correction(설계 결함 — 재색인의 기대 건수가 쓰기 결과와 무관하게 세어졌고, 그 뒤에 원본 커밋 메타데이터 누락이 숨어 있었다). `FR-ING-008` AC-10 신설. **기존 FR의 요구사항 문장과 AC-1~AC-9는 바꾸지 않는다. 안정 ID 재번호화 0건.** 상태: **open** — 브랜치 `feature/commit-reindex-completeness`, worktree `/home/roqkf/pr-search-wt/commit-reindex`. 착수는 main `3d831a9`에서 했고 CR-118 병합과 그 병합 기록, CR-120 병합 뒤의 main `e181751` 위로 rebase했다(세 CR은 코드 파일이 겹치지 않는다).
+- 요청: 사용자 지시(2026-09-24, 18차 착수 지시의 작업 A) — `agent-context/upstream-feedback.md` 「prs-commits 재색인 verify가 false positive다」(사내 `0.1.0-pilot.18` 운영 보고, 2026-09-23). prs-commits v3→v4 재색인이 `verifyBeforeCutover`에서 실패했고 사내는 v4로 손으로 전환했다. 지시는 오류 메시지만 없애지 말고 필요한 커밋·메타데이터가 제대로 복원된 새 인덱스만 자동으로 전환되게 하라는 것이며, 기대 건수만 줄이는 수정은 승인하지 않는다.
+- 확인된 결함 경로(격리 인프라에서 재현): (1) `rebuildCommits`가 `commit_snapshot`의 모든 행을 쓰기 결과와 무관하게 기대 문서 ID(`tally.documentIds`)에 넣었다. 체인 밖 행은 `createWith`가 없어 새 인덱스에 문서를 만들지 않고, 그 404는 `commit-metadata.ts`에서 `noop`으로 삼켜졌다. 그 행이 어느 PR 스냅숏에도 없으면(rebase·force-push로 PR에서 빠진 옛 커밋) 새 인덱스에 문서가 영영 생기지 않아 `커버리지 부족: 재구축 N > 대상 N-k`로 전환이 막혔다 — 사내 보고와 같은 실패를 재현했다. (2) **숨은 결함**: 같은 스캔이 체인 밖 행의 메타데이터를 PR 유래 문서 생성(`rebuildProjectedCommits`)보다 **먼저** 보냈다. 새 인덱스에는 그 문서가 아직 없어 값이 사라졌고, 뒤이어 만들어진 원본 커밋 문서는 메시지·작성자·변경 경로 없이 섰다. 검증은 건수만 보아 이것을 통과시켰다 — 지금까지 전환까지 간 prs-commits 재색인은 모두 이 모양이었을 가능성이 높다. (3) 보강 스크립트가 필드 없음과 `null`을 같게 보아, 정본의 `author: null`이 필드 없는 문서에 쓰이지 않았다. (4) `update`는 지워진 대상 인덱스를 같은 이름·동적 매핑으로 **자동 생성**한다(`action.auto_create_index` 기본값) — 이름만 보는 검증과 전환은 그 인덱스를 받아들인다. (5) 관측이 불완전해(조회 실패·250건 절삭·읽는 동안 head/base 변경) 목록에서 빠진 커밋의 `source` 연결은 CR-116이 지우지 않고 남기는데, 재구축은 PR 스냅숏의 최신 목록만 보아 그 커밋 문서를 만들지 않았다. 관계 replay가 그 커밋을 「문서를 만들지 못했다」로 읽어 재색인을 실패시키고, 250건을 넘는 PR은 완전성을 영영 증명할 수 없어 `refetch`로도 풀리지 않는다.
+- 보고서와 다른 점: 기대 ID 집합은 Set이라 「중복 집계」가 아니었고, 문제 커밋은 「직접 push」가 아니라 체인 밖 커밋이다(직접 push는 체인 커밋이라 `createWith`로 만든다). 「ES `_count`와 비교」는 이미 하고 있었다 — 틀린 것은 기대 건수였다.
+- 범위: (a) `packages/es` — `upsertCommitMetadata`가 서비스와 재색인 대상의 결과를 따로 돌려준다(`created`·`updated`·`already_equal`·`document_missing`, 대상 쓰기 실패는 `failed`). 문서 없음(`document_missing_exception`)과 인덱스 없음을 가르고, 응답에 결과가 없으면 던진다. 스크립트는 필드 부재와 `null`을 구분한다. `restoreChainCommitRole`도 같은 404 규칙을 쓴다. (b) `apps/pipeline-worker` — 재구축 순서를 체인 패스 → PR 유래 패스 → 원본 커밋 메타데이터 패스 → 관계 replay로 바꾸고 판정은 대상 결과로 한다. PR 유래 패스의 근거에 PR의 유효한 `source` 연결을 더한다. 전환 전 검증이 커밋의 기대 집합을 정본과 생성 정책(재구축과 같은 함수)에서 문서 ID로 계산해 건수·존재·메타데이터 값을 대조한다. 준비 단계에 대상 인덱스 UUID를 남기고 검증과 전환 울타리에서 대조한다. 평시 보강 지표는 `commit_enrich_total{result="document_missing"}`을 새로 낸다. (c) `packages/db` — `findShasWithSequence`(체인 패스의 술어를 배치로), `listEffectiveSourceShas`(PR마다 유효한 `source` 연결), 재색인 진행 상태 `target_uuid`. (d) 시험 — 재색인 시험이 판정 전에 다른 파일이 남긴 주인 없는 관계 행을 지우고, `link-reindex`가 잡의 전환까지 본다.
+- 결정과 대가: 상류 요청(「`createWith` 없는 커밋을 집계에서 제외」 또는 「`_count`와 비교」)은 그대로 받지 않았다 — 앞의 것은 원본 커밋 문서까지 기대에서 빼 메타데이터 누락을 숨기고, 뒤의 것은 이미 하고 있다. 기대 집합은 쓰기 결과가 아니라 정본과 생성 정책에서 계산한다. 생성 근거 없는 스냅숏은 문서를 만들지 않고 지우지도 않는다. 보존된 `source` 연결을 생성 근거로 보는 것은 정본(CR-116)이 그 커밋이 아직 그 PR에 속한다고 말하고 서비스 인덱스에 그 문서가 있기 때문이며, 접근 범위는 그 PR의 저장소에서 온다(DEV-213의 fail closed와 충돌하지 않는다). 검증 비용이 늘어난다 — 전환 전에 저장소마다 스냅숏·PR 스냅숏을 한 번 더 읽고 기대 문서를 `mget`한다. 역할(`role`)은 대조하지 않는다(DEV-757, 판정 규칙이 두 갈래다).
+- 제외: prs-links 재색인(별도 CR — 18차 작업 B), 운영 서버 변경·사내 배포·사내 데이터 변경, Release 발행, 클러스터의 `action.auto_create_index` 변경(사내 공용 클러스터 설정이다 — UUID 대조로 막는다), `role` 판정 일원화(DEV-757), 원본 목록에서 빠진 체인 밖 커밋의 `source_commit` 잔여(DEV-752), 시퀀스·M 번호·에폭·head의 의미 변경, 관계 행을 남기는 다른 시험 파일들의 정리 방식(DEV-764 — 재색인 시험이 판정 전제로 막는다).
+- 설계·세부 정본: `FR-ING-008` AC-10, JOB-ING-006(비동기 3.5장), API-ADM-004 `progress.target_uuid`, RUNBOOK 7.H, WP-103, DEV-759~DEV-764. 연쇄 기록은 5장 「CR-119 cascade」에 적는다.
+
 ## CR-118 — main CI의 FLOW-002 뒤로가기 e2e 간헐 실패: 수화 전 두 번째 뒤로가기 (2026-09-24)
 
 - 유형: correction(검증 결함 — 시험의 대기 조건). 제품 코드·요구사항·계약·운영 문서는 바꾸지 않는다. 안정 ID 재번호화 0건. 상태: **closed** — main `0dd7734`(PR #232 squash 병합, 2026-09-25). 기준 main `3d831a9`, worktree `/home/roqkf/pr-search-wt/p0-flow003`(브랜치 `fix/flow003-back-hydration`). 병합 판정은 5장 「CR-118 cascade」.
@@ -242,6 +253,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | CR-120 | 2026-09-25 | correction | CR-118 기록 PR #233의 CI run 36020541832 integration 실패(`link-rebuild.test.ts` 되먹임 시험, `expected 5 to be 4`) | **실패를 시험의 대기 경합으로 가르고 고친다.** 루프 탐지 시험이 「300ms 조용함」만으로 판정해, 간선 소비자가 앞 신호를 처리하는 동안 두 소비자의 수가 어긋난 순간에 들어갔다. 두 소비자가 받은 신호 수가 같고 조용한 상태를 `until`로 기다리고, 신호가 실제로 났는지를 더 판정한다 | DEV-765 · DEV-346(같은 계열) | 변경 대장 · 원장 · 통합 시험 | open — 브랜치 `fix/link-rebuild-settle` |
+| CR-119 | 2026-09-25 | correction | 사용자 지시 2026-09-24(18차 작업 A) — 사내 pilot.18 운영 보고(prs-commits v3→v4 재색인이 전환 전 검증에서 실패, 사내 수동 전환) | **재색인의 기대 집합을 쓰기 결과가 아니라 정본과 생성 정책에서 문서 ID로 계산하고, 문서를 만든 뒤 메타데이터를 반영하며, 전환 전 검증이 필수 ID의 존재와 알려진 메타데이터 값을 대조한다.** 숨은 원본 커밋 메타데이터 누락, `null`·부재 혼동, 대상 인덱스 자동 생성, 보존된 `source` 연결 커밋의 문서 부재를 함께 고친다 | FR-ING-008 AC-10 · JOB-ING-006 · API-ADM-004 · WP-103 · DEV-759~764 | SRS · PRD · 매트릭스 · 비동기 · API 계약 · 관측성 · WP · 원장 · RUNBOOK | open — 브랜치 `feature/commit-reindex-completeness` |
 | CR-118 | 2026-09-24 | correction | 사용자 지시 2026-09-24(18차 P0) — main `3d831a9`의 CI run 36003771848 failure(verify `test:e2e` 209건 중 1건, `flow-003.spec.ts:176`) | **실패를 제품 결함과 시험 경합으로 실측해 가르고 시험의 대기를 고친다.** 첫 뒤로가기가 커밋 상세를 새 문서로 다시 불러온 뒤 수화 전에 두 번째 뒤로가기를 불러 App Router가 popstate를 놓친다. 두 번째 뒤로가기 전에 클라이언트 신호 `data-screen-state="ready"`를 기다리고, 세션 히스토리 항목을 판정하며, 근거가 틀렸던 15초 시한을 되돌린다 | DEV-758 · DEV-377·DEV-424·DEV-689·DEV-708(재진단) | 변경 대장 · 원장 · e2e 시험 | closed — main `0dd7734`(PR #232), 원장 6.109 |
 | CR-117 | 2026-09-24 | correction | 사용자 지시 2026-09-24 — 사내 pilot.18 운영 보고(`git merge dev`로 받아 온 dev 체인 커밋에 그 PR 번호가 붙음, `ebc781d` = [983, 1671, 1855]) | **원본 커밋을 「그 PR이 새로 가져온 커밋」으로 정의하고, 추적 브랜치의 현재 체인에 이미 오른 커밋은 그 커밋을 올린 PR에만 속하게 한다.** 원시 관측과 CR-116의 삭제 규율은 그대로 두고 연결을 읽는 모든 자리가 같은 술어를 쓴다. 체인이 바뀌면 관계를 다시 투영하고, PR 투영은 체인 커밋의 역할을 덮지 않으며, PR 상세도 같은 정의로 원본 커밋을 낸다 | FR-SRCH-002 AC-7 · FR-SRCH-003 AC-5 · OD-016 · JOB-REL-008 · RB-29 · WP-102 · DEV-754~757 · PSI D-22 | SRS · PRD · 용어집 · 매트릭스 · 화면 명세 · 실행 지시서 · 백엔드 · API 계약 · 데이터 모델 · 비동기 · 관측성 · PSI handoff · WP · 원장 · RUNBOOK | closed — main `65acf83`(PR #230), 원장 6.108; 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | CR-116 | 2026-09-23 | correction/reliability | 사용자 지시 2026-09-23 — 사내 pilot.17 운영 보고(커밋 3,481건에 과거 PR 번호가 영구히 남음) | **커밋 문서의 `pull_request_numbers`가 합집합이라 빠진 PR 번호를 지우지 못하던 결함을, 관계 정본을 PostgreSQL에 두고 커밋별 전용 투영기가 전체 집합을 대입하게 고친다.** 완전성 근거 없이는 지우지 않고, 관계 전용 generation으로 늦은 쓰기·충돌을 가르며, 재색인·전체 대조·복구 명령이 같은 정본을 쓴다 | FR-SRCH-002 AC-6 · FR-ING-004 AC-6 · FR-ING-008 AC-9 · ADR-004 Amendment · JOB-REL-008 · ENT-CORE-009 · ENT-CORE-010 · ENT-CORE-011 · RB-29 · WP-101 · DEV-744~753 | SRS · PRD · 용어집 · 매트릭스 · 실행 지시서 · 백엔드 · API 계약 · 데이터 모델 · 비동기 · 관측성 · ADR · WP · 원장 · RUNBOOK | closed — main `f9cda82`(PR #228), 원장 6.107; 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
@@ -2365,6 +2377,19 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - [x] 요구사항·파생 UI·기술 아키텍처·운영 문서: 해당 없음 — 제품 동작과 계약이 바뀌지 않는다.
 - [x] 전달: 원장 v6.108 → v6.109(머리 절, 5장 DEV-765, 6.110장).
 - [x] 코드·시험: `apps/pipeline-worker/integration/worker/link-rebuild.test.ts` — 원장 6.110장.
+- 상태: open — 병합 뒤 기록에서 닫는다.
+
+### CR-119 cascade — prs-commits 재색인의 기대 집합과 메타데이터 복원
+
+기준: CR-120 병합 뒤의 main `e181751` 위 worktree `/home/roqkf/pr-search-wt/commit-reindex`(브랜치 `feature/commit-reindex-completeness`). correction — 기존 FR 문장과 AC는 바꾸지 않고 AC를 하나 더한다. ID는 `docs/`와 원격 브랜치, 열린 PR을 실측해 정했다 — CR-119·WP-103·DEV-759~DEV-764. 새 ADR·ENT·JOB·RB 번호는 쓰지 않는다: 스키마 변경이 없고(재색인 진행 상태 JSON의 필드 하나), JOB-ING-006을 보완한다.
+
+- [x] 요구사항: SRS v2.44 → v2.45 — `FR-ING-008` AC-10 신설, 예외 칸에 대상 인덱스 자동 생성, v2.45 주석. PRD v1.22 → v1.23(제품 계약 문단). 용어집은 바꾸지 않는다(새 용어가 없다). 매트릭스 v1.18 → v1.19(CR-119 표 1행).
+- [x] 파생 UI: 해당 없음 — 화면이 바뀌지 않는다(A-003은 잡 사유를 그대로 보인다).
+- [x] 기술 아키텍처: 비동기 v0.18 → v0.19(머리 주석, 3.5장 「커밋 재구축의 순서와 기대 집합」, 전환 전 검증 두 항목, 실패 처분 한 행), API 계약 v0.44 → v0.45(머리 주석, API-ADM-004 `progress.target_uuid`), 관측성 v0.11 → v0.12(재색인 로그 두 줄, `commit_enrich_total{result}`의 `document_missing`). 데이터 모델은 바꾸지 않는다(스키마 변경 없음).
+- [x] 전달: 작업 패키지 v2.64 → v2.65(WP-103 절·상태 표), 원장 v6.109 → v6.110(머리 절, 3장 WP-103, 4장 FR-ING-008 AC-10, 5장 DEV-759~DEV-764, 6.111장). `deploy/single-host/RUNBOOK.md` 7.H(사내 수동 v4 전환 확인과 재구축)와 8장 세 행. `agent-context/upstream-feedback.md` 둘째 항목에 상류 반영 주석.
+- [x] 코드·시험: 원장 6.111장.
+- 문서 검증기: 원장 6.111장.
+- 독립 리뷰: 원장 6.111장 「독립 리뷰」.
 - 상태: open — 병합 뒤 기록에서 닫는다.
 
 ### CR-118 cascade — main CI의 FLOW-002 뒤로가기 e2e 간헐 실패: 수화 전 두 번째 뒤로가기

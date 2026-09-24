@@ -65,3 +65,27 @@ export function createTestRedis(): Redis {
  * 앱마다 다시 쓰면 한 곳이 빠진 날 CI가 그 파일에서만 깨진다.
  */
 export { clearMergeSequence } from '../../../packages/db/integration/helpers.js';
+
+/**
+ * **주인 PR 스냅숏이 없는 관계 행**을 지운다 (CR-119, DEV-764).
+ *
+ * 재색인은 등록된 저장소 **전부**를 다시 만든다 — 시험이 자기 저장소만 심어도 판정은 DB 전체를
+ * 본다. 재구축은 PR 스냅숏과 그 PR의 유효한 `source` 연결에서 원본 커밋 문서를 만드는데, 다른 시험
+ * 파일이 PR 스냅숏은 지우고(또는 `truncate`하고) 관계 행은 남기면 그 커밋에는 문서를 만들 근거가
+ * 없다. 관계 replay는 그것을 「재구축이 문서를 만들지 못했다」로 읽고 잡을 실패로 만든다(CR-116의
+ * fail closed) — 어느 파일 뒤에 도느냐에 따라 재색인 시험이 갈리는 원인이었다(전량 실측:
+ * `mnumber`·`assign`·`author-teams`·`link-refetch`·`snapshot-bootstrap` 시험 뒤에 남는다).
+ *
+ * 운영에는 이 모양이 없다 — PR 스냅숏을 지우는 경로가 없고, 관측이 불완전해 남은 `source` 연결은
+ * 주인 PR 스냅숏이 있으므로 재구축이 그 문서를 만든다(CR-119). 이것은 재색인 시험이 판정 전에
+ * 세우는 전제이지 제품 동작을 바꾸는 것이 아니다.
+ */
+export async function removeOrphanCommitLinks(pool: Pool): Promise<number> {
+  const result = await pool.query(
+    `DELETE FROM pull_request_commit_link l
+      WHERE EXISTS (SELECT 1 FROM repository r WHERE r.repository_id = l.repository_id)
+        AND NOT EXISTS (SELECT 1 FROM pull_request_snapshot p
+                         WHERE p.repository_id = l.repository_id AND p.pr_number = l.pr_number)`,
+  );
+  return result.rowCount ?? 0;
+}

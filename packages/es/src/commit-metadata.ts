@@ -37,6 +37,11 @@ const COMMITS_ALIAS = 'prs-commits';
  *
  * 값이 이미 같으면 `noop`이다 — 같은 SHA를 두 번 보강해도 문서가 바뀌지 않고,
  * 그것이 DoD("같은 SHA로 두 번 돌려도 문서가 동일하다")를 성립시킨다.
+ *
+ * **필드가 없는 것과 값이 `null`인 것은 다르다** (CR-119 / FR-ING-008 AC-10). 전에는 두 경우를
+ * 같다고 보아, 정본이 `author: null`이라고 말해도 필드가 없는 문서에는 아무것도 쓰지 않았다.
+ * 그러면 그 문서는 「작성자가 없다」가 아니라 「아직 모른다」로 남고, 전환 전 검증은 둘을 가를
+ * 수 없다. 이제 필드가 없으면 `null`이라도 대입한다. 두 번째 보강은 여전히 `noop`이다.
  */
 export const COMMIT_METADATA_SCRIPT = [
   'boolean changed = false;',
@@ -44,7 +49,7 @@ export const COMMIT_METADATA_SCRIPT = [
   '  def key = e.getKey();',
   '  def next = e.getValue();',
   '  def cur = ctx._source[key];',
-  '  boolean same = cur == null ? next == null : cur.equals(next);',
+  '  boolean same = ctx._source.containsKey(key) && (cur == null ? next == null : cur.equals(next));',
   '  if (!same) { ctx._source[key] = next; changed = true; }',
   '}',
   /*
@@ -100,8 +105,28 @@ export interface CommitMetadataUpsert {
   readonly createWith?: Readonly<Record<string, unknown>> & { readonly document_version: number };
 }
 
+/**
+ * 한 인덱스에 대한 메타데이터 쓰기의 결과 (CR-119 / FR-ING-008 AC-10).
+ *
+ * - `created` — 문서가 없어 `createWith`로 만들었다
+ * - `updated` — 값이 바뀌었다
+ * - `already_equal` — 값이 이미 같았다. 문서가 있고 그 값을 안다
+ * - `document_missing` — 문서가 없고 만들 근거(`createWith`)도 없었다. **값이 반영되지 않았다**
+ *
+ * 전에는 마지막 둘이 모두 `noop`이었다. 그래서 재색인이 "문서가 아직 없어 반영하지 못함"을
+ * "반영함"과 구별하지 못하고 그 문서를 기대 건수에 넣었다(사내 pilot.18 보고).
+ */
+export type CommitMetadataOutcome = 'created' | 'updated' | 'already_equal' | 'document_missing';
+
 export interface CommitMetadataResult {
-  readonly result: 'created' | 'updated' | 'noop';
+  /** 서비스 별칭에 대한 결과. */
+  readonly result: CommitMetadataOutcome;
+  /**
+   * 재색인 대상(shadow)에 대한 결과. **서비스 결과와 섞지 않는다** — 재색인은 이 값으로만
+   * 새 인덱스가 그 값을 받았는지 안다. shadow가 없으면 없고, shadow 쓰기가 던졌으면
+   * `failed`다(그 실패는 `recordShadowFailure`로 따로 기록되어 잡을 실패로 만든다).
+   */
+  readonly shadow?: CommitMetadataOutcome | 'failed';
 }
 
 /**
@@ -158,7 +183,7 @@ export async function upsertCommitMetadata(
       commit_sha: input.commitSha,
     };
   } else {
-    // 문서가 없으면 만들지 않고 조용히 넘어간다 — 접근 범위를 모르기 때문이다.
+    // 문서가 없으면 만들지 않는다 — 접근 범위를 모르기 때문이다. 결과는 `document_missing`이다.
     body['scripted_upsert'] = false;
   }
 
@@ -167,25 +192,24 @@ export async function upsertCommitMetadata(
   /*
    * shadow에도 같은 갱신을 보낸다 (WP-035, DEV-295).
    *
-   * **404를 실패로 세지 않는다.** `createWith`가 없는 회차는 문서를 만들지
-   * 않기로 한 것이고, 그 사실은 shadow에서도 그대로다 — 정본 스캔이 아직 그
-   * 커밋에 닿지 않았을 뿐이다. 실패로 세면 정상 진행이 전환을 막는다.
+   * **문서 없음은 실패가 아니라 결과다** (CR-119). `createWith`가 없는 회차는 문서를 만들지
+   * 않기로 한 것이고, 재색인 중이라면 정본 스캔이 아직 그 커밋 문서를 만들지 않았을 수 있다.
+   * 그것을 실패로 세면 정상 진행이 전환을 막고, 성공으로 세면 값이 새 인덱스에 없는데도
+   * 반영한 것처럼 된다 — 그래서 결과를 따로 돌려주고 재색인이 판정한다.
    */
   const shadow = targets.shadows[COMMITS_ALIAS];
-  if (shadow !== undefined) {
-    try {
-      await sendMetadata(client, shadow, input, body);
-    } catch (error) {
-      reportShadowFailure(targets, {
-        alias: COMMITS_ALIAS,
-        index: shadow,
-        operation: 'update',
-        reason: String(error),
-      });
-    }
+  if (shadow === undefined) return { result: served };
+  try {
+    return { result: served, shadow: await sendMetadata(client, shadow, input, body) };
+  } catch (error) {
+    reportShadowFailure(targets, {
+      alias: COMMITS_ALIAS,
+      index: shadow,
+      operation: 'update',
+      reason: String(error),
+    });
+    return { result: served, shadow: 'failed' };
   }
-
-  return served;
 }
 
 /** 한 인덱스에 메타데이터를 반영한다. 서비스와 shadow가 **같은 경로**를 쓴다. */
@@ -194,7 +218,8 @@ async function sendMetadata(
   index: string,
   input: CommitMetadataUpsert,
   body: Record<string, unknown>,
-): Promise<CommitMetadataResult> {
+): Promise<CommitMetadataOutcome> {
+  let result: unknown;
   try {
     const response = await client.update({
       index,
@@ -203,17 +228,51 @@ async function sendMetadata(
       retry_on_conflict: 3,
       ...body,
     });
-    return { result: (response.result as CommitMetadataResult['result']) ?? 'noop' };
+    result = response.result;
   } catch (error) {
-    // 만들 근거가 없는 문서는 없는 것이 맞다. 그 사실을 실패로 세지 않는다.
-    if (input.createWith === undefined && isNotFound(error)) return { result: 'noop' };
+    /*
+     * 만들 근거가 없는 문서는 없는 것이 맞다 — 그러나 「이미 같음」이 아니라 「없음」이다.
+     * **인덱스가 없는 404는 여기가 아니다** (`index_not_found_exception`): 쓰기 대상이 사라진
+     * 것이고, 그것을 문서 없음으로 삼키면 대상 인덱스 전체가 조용히 빈다.
+     */
+    if (input.createWith === undefined && isDocumentMissing(error)) return 'document_missing';
     throw error;
+  }
+  switch (result) {
+    case 'created':
+      return 'created';
+    case 'updated':
+      return 'updated';
+    case 'noop':
+      return 'already_equal';
+    default:
+      // 응답에 결과가 없거나 모르는 값이면 반영했는지 알 수 없다. 성공으로 세지 않는다.
+      throw new Error(`commit_metadata_unexpected_result: ${String(result)} (${index})`);
   }
 }
 
-function isNotFound(error: unknown): boolean {
-  const status = (error as { statusCode?: number; meta?: { statusCode?: number } });
-  return status.statusCode === 404 || status.meta?.statusCode === 404;
+/** Elasticsearch 오류 본문의 `error.type`. 모르면 `undefined`다. */
+export function esErrorTypeOf(error: unknown): string | undefined {
+  const holder = error as { meta?: { body?: unknown }; body?: unknown };
+  const body = holder.meta?.body ?? holder.body;
+  if (typeof body !== 'object' || body === null) return undefined;
+  const inner = (body as { error?: unknown }).error;
+  if (typeof inner !== 'object' || inner === null) return undefined;
+  const type = (inner as { type?: unknown }).type;
+  return typeof type === 'string' ? type : undefined;
+}
+
+function statusOf(error: unknown): number | undefined {
+  const holder = error as { statusCode?: number; meta?: { statusCode?: number } };
+  return holder.statusCode ?? holder.meta?.statusCode;
+}
+
+/**
+ * **문서가** 없는 404인가 (CR-119). 인덱스가 없는 404(`index_not_found_exception`)와 구별한다.
+ * 본문이 없는 404도 문서 없음으로 읽지 않는다 — 무엇이 없는지 모르는 것을 아는 척하지 않는다.
+ */
+function isDocumentMissing(error: unknown): boolean {
+  return statusOf(error) === 404 && esErrorTypeOf(error) === 'document_missing_exception';
 }
 
 /* ------------------------------------------------------------------------- */
@@ -295,7 +354,8 @@ async function sendRoleRestore(
     });
     return response.result === 'noop' ? 'noop' : 'restored';
   } catch (error) {
-    if (isNotFound(error)) return 'missing';
+    // 문서가 없는 것만 `missing`이다. 인덱스가 없는 404는 대상이 사라진 것이라 던진다 (CR-119).
+    if (isDocumentMissing(error)) return 'missing';
     throw error;
   }
 }

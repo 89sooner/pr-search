@@ -51,7 +51,7 @@ import {
   verifyBeforeCutover,
   type ReindexDeps,
 } from '../../src/reindex.js';
-import { migratedPool } from '../helpers.js';
+import { migratedPool, removeOrphanCommitLinks } from '../helpers.js';
 
 const ALIAS = 'prs-releases';
 /** PR 축 시험이 쓰는 별칭. 레지스트리 소유 필드의 정본성을 여기서 건다. */
@@ -192,6 +192,9 @@ beforeEach(async () => {
    * 별칭이 이 파일 안에서 옮겨 다니므로 **버전 인덱스 전부**를 훑는다.
    */
   await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
+  await deleteLinkCanonical();
+  // 재색인은 DB 전체를 본다 — 다른 파일이 남긴 근거 없는 관계 행이 판정을 막지 않게 한다 (CR-119, DEV-764).
+  await removeOrphanCommitLinks(pool);
 
   for (const alias of [ALIAS, PR_ALIAS]) {
     for (const version of await listIndexVersions(es, alias)) {
@@ -228,6 +231,7 @@ afterAll(async () => {
       await es.indices.delete({ index, ignore_unavailable: true });
     }
     await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
+    await deleteLinkCanonical();
     await pool.query('DELETE FROM release WHERE repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM job WHERE type = $1', [REINDEX_TYPE]);
   } finally {
@@ -235,6 +239,20 @@ afterAll(async () => {
     await pool.end();
   }
 });
+
+/**
+ * 이 저장소의 관계 정본을 지운다 (CR-119).
+ *
+ * PR 스냅숏만 지우고 관계 행을 남기면, 뒤에 도는 **다른 파일의** prs-commits 재색인이 이
+ * 저장소의 커밋을 만날 때 문서를 만들 근거(스냅숏)는 없는데 연결은 있는 상태가 된다. 관계
+ * replay는 그것을 「재구축이 문서를 만들지 못했다」로 읽고 잡을 실패로 만든다(CR-116) — 파일
+ * 실행 순서에 따라 남의 시험이 깨진다.
+ */
+async function deleteLinkCanonical(): Promise<void> {
+  await pool.query('DELETE FROM commit_link_state WHERE repository_id = $1', [REPOSITORY_ID]);
+  await pool.query('DELETE FROM pull_request_commit_link WHERE repository_id = $1', [REPOSITORY_ID]);
+  await pool.query('DELETE FROM pull_request_link_observation WHERE repository_id = $1', [REPOSITORY_ID]);
+}
 
 describe('T1 정상 재색인 — 정본에서 채우고 별칭을 원자적으로 옮긴다', () => {
   it('전환 뒤 별칭이 새 인덱스를 가리키고 옛 인덱스는 남는다', async () => {

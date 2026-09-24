@@ -1994,9 +1994,29 @@ describe('무중단 재색인의 도달성과 계약 (WP-035 / CR-045~047)', () 
      * 된다. 그리고 셀 수 없는 축은 `null`로 두어 **판정 자체를 하지 않는다.**
      */
     expect(REINDEX).toContain('tally.documentIds.add(');
-    expect(REINDEX).toContain("const expected = alias === 'prs-links' ? null : tally.documentIds.size;");
-    expect(REINDEX).toContain('if (expectedDocuments !== null && targetCount.count < expectedDocuments)');
+    expect(REINDEX).toContain(
+      "const expected = alias === 'prs-pull-requests' || alias === 'prs-releases' ? tally.documentIds.size : null;",
+    );
+    expect(REINDEX).toContain('if (expected !== null && targetCount.count < expected)');
     expect(REINDEX_CODE).not.toContain('verifyBeforeCutover(deps, jobId, tally.scanned)');
+  });
+
+  it('**커밋의 기대 집합은 쓰기 결과가 아니라 정본과 생성 정책에서 계산한다** (CR-119 / FR-ING-008 AC-10)', () => {
+    /*
+     * 재구축이 쓴 문서 수를 커밋의 기대로 쓰면, 생성 근거가 없는 스냅숏 행이 기대에 들어가 전환이
+     * 영영 막히고(사내 pilot.18), 반대로 써야 했는데 쓰지 않은 문서는 기대에서 빠진다. 검증이
+     * 정본에서 기대를 다시 세고, 그 수를 커버리지 판정에 쓰는지를 건다. `null`로 고정해 판정을
+     * 건너뛰면 이 검사가 잡는다.
+     */
+    const verify = REINDEX_CODE.slice(REINDEX_CODE.indexOf('export async function verifyBeforeCutover'));
+    expect(verify).toContain("if (alias === 'prs-commits') {");
+    expect(verify).toContain('const commits = await verifyCommitDocuments(deps, target);');
+    expect(verify).toContain('expected = commits.expected;');
+    // 판정하지 못했으면 막는다 — 셀 수 없게 됐다고 통과시키지 않는다.
+    expect(verify).toContain('reasons.push(`커밋 문서 검증 실패:');
+    // 생성 규칙은 재구축과 검증이 함께 쓴다 — 두 번째 규칙을 만들지 않는다.
+    expect(REINDEX_CODE.match(/projectedCommitRoles\(/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(REINDEX_CODE).toContain('mergeSequenceRepo.findShasWithSequence(');
   });
 
   it('**PR 원본 커밋도 정본에서 다시 만든다** (PR #52 리뷰 P1)', () => {

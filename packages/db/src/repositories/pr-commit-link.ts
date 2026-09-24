@@ -956,6 +956,43 @@ export async function listCommitLinkStatesAfter(
 }
 
 /**
+ * PR마다 지금 **유효한 `source` 연결**의 커밋 (CR-119 / FR-ING-008 AC-10).
+ *
+ * 재구축이 원본 커밋 문서를 만들 근거는 PR 스냅숏의 원본 목록만이 아니다. 관측이 불완전하면
+ * (조회 실패, 250건 절삭, 읽는 동안 head/base 변경) 목록에서 빠진 커밋의 `source` 행을 지우지
+ * 않고 남긴다(CR-116 — 「목록에 없다」가 「속하지 않는다」를 뜻하지 않는다). 그 커밋은 스냅숏의
+ * 최신 목록에는 없지만 정본은 여전히 그 PR에 속한다고 말하고, 서비스 인덱스에는 그 문서가 있다.
+ * 재구축이 그 문서를 만들지 않으면 관계 replay가 그 커밋을 「문서를 만들지 못했다」로 읽고
+ * 재색인이 실패한다 — 250건을 넘는 PR은 완전성을 영영 증명할 수 없어 그 실패가 풀리지 않는다.
+ *
+ * 값은 유효 연결 술어를 지난 것만 돌려준다 — 추적 브랜치 체인에 이미 오른 다른 PR의 커밋은
+ * 이 PR의 원본 커밋이 아니다(CR-117).
+ */
+export async function listEffectiveSourceShas(
+  db: Queryable,
+  repositoryId: number,
+  prNumbers: readonly number[],
+): Promise<ReadonlyMap<number, readonly string[]>> {
+  const out = new Map<number, string[]>();
+  const numbers = [...new Set(prNumbers)];
+  if (numbers.length === 0) return out;
+  const result = await db.query<{ pr_number: number; commit_sha: string }>(
+    `SELECT l.pr_number, l.commit_sha
+       FROM pull_request_commit_link l
+      WHERE l.repository_id = $1 AND l.pr_number = ANY($2::int[]) AND l.evidence = 'source'
+        AND ${EFFECTIVE_LINK_SQL}
+      ORDER BY l.pr_number, l.commit_sha`,
+    [repositoryId, numbers],
+  );
+  for (const row of result.rows) {
+    const list = out.get(Number(row.pr_number)) ?? [];
+    list.push(row.commit_sha.toLowerCase());
+    out.set(Number(row.pr_number), list);
+  }
+  return out;
+}
+
+/**
  * 관계가 있는 커밋에 투영 의도를 만든다 (복구·재색인 경로).
  *
  * 이미 있는 행의 세대는 **올리지 않는다** — 복구가 세대를 올리면 진행 중이던
