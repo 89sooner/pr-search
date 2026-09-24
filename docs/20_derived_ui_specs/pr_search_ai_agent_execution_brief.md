@@ -1,6 +1,8 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.16 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.17 | 갱신일: 2026-09-24
+
+CR-117 / WP-102: 커밋의 PR 연결을 **읽는** 질의는 모두 `packages/db/src/repositories/pr-commit-link.ts`의 유효 연결 술어 `EFFECTIVE_LINK_SQL`을 지난다 — 관계 투영(JOB-REL-008), 재색인 replay·전환 전 검증, 복구 대조, 미확정 계수가 한 문자열을 쓴다. `pull_request_commit_link`를 술어 없이 직접 세는 두 번째 질의를 만들지 않는다: 한 곳이라도 원시 행을 세면 커밋 화면과 PR 화면이 다른 답을 한다. 원시 관측(`source` 행)은 GitHub 목록 그대로 두고 쓰기 시점에 거르지 않는다. 체인이 움직이면 GHE를 다시 읽지 않고 재투영만으로 연결이 되살아나야 하기 때문이다. 체인 소속은 `mergeSequenceRepo.findCurrentChainLanders`가 술어와 같은 정의(`repository.sequence_branches`의 현재 에폭)로 답하며, 다른 체인 정의를 새로 쓰지 않는다. `merge_sequence`에 쓰는 트랜잭션(채번·강제 푸시 재채번·복구 재채번)은 커밋 전에 `requeueChainChangedCommitLinks`로 영향 커밋의 관계 재투영 의도를 남긴다. PR 유래 커밋 문서를 만드는 경로는 `ProjectionSource.chainShas`(비선택)를 채워 체인 커밋에 `role: source_commit` 문서를 쓰지 않는다. `role`을 색인에 직접 되돌리는 쓰기는 복구 `apply` 전용인 `restoreChainCommitRole`(`source_commit`일 때만 바꾸는 단방향) 하나뿐이다. PR 상세의 원본 커밋 필터는 커밋 문서의 `pull_request_numbers`를 재료로 하며, 모름(문서나 필드가 없음)은 빼지 않는다. M 번호 채번 경로(`mnumber.ts`)는 이 규칙과 무관하다.
 
 CR-115 / WP-100: 원격 `M-*` 태그를 만드는 경로는 **하나**다 — `apps/pipeline-worker/src/mnumber-tag.ts`의 `materializeTag`가 durable `tag` work를 집어 `@prs/github-tag`로 `POST /git/refs` 하나를 보낸다. 대조(`mnumber-tag-reconcile.ts`)는 두 번째 생성 구현을 갖지 않고 `missing`을 같은 work로 다시 요청한다. 태그를 옮기거나 지우는 메서드를 클라이언트에 더하지 않는다 — 「옮기지 않는다」는 코드 경로의 부재이며 회귀 시험이 잠근다. 자격은 `GHE_TAG_*`에서만 읽고(`resolveTagConfig`), 조회용·표기용 App 변수를 이 경로에서 읽지 않는다. 쓰기 직전에 정본을 다시 묻는다(`isTagTargetCurrent`) — 태그는 되돌릴 수 없다. 감사(`merge_number.tag`)는 실제로 ref를 만든 경우와 결과 불명 뒤 관측한 경우만 남기며 이미 있어 호출하지 않은 회차는 남기지 않는다. 커밋 문서의 M 세 필드는 PR 문서와 같은 소유자(`materialize`)만 쓰고 투영의 `params.doc`에 싣지 않는다. 시퀀스 브랜치가 둘 이상인 저장소는 만들지 않는다(OD-015). 실행·시험·한계는 원장 WP-100을 읽는다.
 
