@@ -200,7 +200,9 @@ async function wireBus(): Promise<{
  * 실제로 그렇게 실패했다(run 33073072697). 로컬에서는 늘 통과했다.
  *
  * 대기 시간을 늘려 가리지 않는다. **기대하는 상태를 직접 묻는다.**
- * 루프 탐지처럼 "아무 일도 더 일어나지 않는다"를 재는 곳은 `until` 없이 부른다.
+ * 루프 탐지도 마찬가지다 — 정적만 보면 한 소비자가 앞 신호를 처리하는 동안 다른 소비자가 이미
+ * 끝난 순간을 멈춤으로 읽는다(DEV-765). 두 소비자가 받은 신호 수가 같고 조용한 상태를 `until`로
+ * 묻고, 루프는 신호가 멎지 않아 시한(`until` 경로의 기본값 20초)에서 던지는 것으로 잡는다.
  */
 interface SettleOptions {
   readonly quietMs?: number;
@@ -398,16 +400,28 @@ describe('직접 푸시 종단과 전량 재파생 (WP-029 / CR-039)', () => {
         },
       });
 
-      // 루프가 있으면 `settle`이 던진다.
-      await settle(seen);
+      const count = (label: string): number => seen.filter((one) => one === label).length;
+      /*
+       * **두 소비자가 받은 신호 수가 같고 조용한 상태까지 기다린다** (CR-120, DEV-765).
+       *
+       * 정적만으로 빠져나오면 간선 소비자가 앞 신호의 색인을 쓰는 동안 300ms가 지나, 보강 쪽은
+       * 다섯을 받았는데 간선 쪽은 넷인 순간에 판정에 들어간다 — CI에서 `expected 5 to be 4`로
+       * 실패한 자리다(PR #233의 run 36020541832). 루프 탐지는 그대로다: 루프가 있으면 신호가
+       * 멎지 않아 시한(`until` 경로의 기본값 20초)에서 던지고, 유한한 되먹임이 있으면 아래 상한
+       * 판정이 잡는다. 아래 같은 수 판정은 이 조건이 먼저 보장한다 — 끝내 어긋나면 여기서 던진다.
+       */
+      await settle(seen, {
+        until: async () =>
+          count(`commit-enrich:${EVENT_NAMES.commitMetadataReady}`) === count(`link:${EVENT_NAMES.commitMetadataReady}`),
+      });
 
-      const ready = seen.filter((one) => one === `link:${EVENT_NAMES.commitMetadataReady}`).length;
-      const bounced = seen.filter(
-        (one) => one === `commit-enrich:${EVENT_NAMES.commitMetadataReady}`,
-      ).length;
+      const ready = count(`link:${EVENT_NAMES.commitMetadataReady}`);
+      const bounced = count(`commit-enrich:${EVENT_NAMES.commitMetadataReady}`);
 
       // 보강도 그 신호를 **받기는** 한다 — 같은 토픽이기 때문이다.
       expect(bounced).toBe(ready);
+      // 신호가 실제로 났다 — 아무것도 나지 않은 채 통과하지 않는다.
+      expect(ready).toBeGreaterThan(0);
       // 그러나 처리하지 않으므로 신호 수가 커밋 수를 넘지 않는다.
       expect(ready).toBeLessThanOrEqual(chain.length);
     } finally {

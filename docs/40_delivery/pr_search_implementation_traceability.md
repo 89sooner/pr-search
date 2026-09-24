@@ -1,6 +1,10 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.108 | 갱신일: 2026-09-25
+> 상태: review | 버전: v6.109 | 갱신일: 2026-09-25
+
+## CR-120 — link-rebuild 되먹임 시험의 정적 대기 경합 (2026-09-25)
+
+CR-118 병합 기록 PR #233(문서만 바꿈)의 CI integration 잡이 `apps/pipeline-worker/integration/worker/link-rebuild.test.ts`의 되먹임 시험 하나로 실패했다(`expected 5 to be 4`). 같은 코드가 main CI에서는 통과했다. **시험의 대기 문제다** — 루프 탐지 시험이 「300ms 조용함」만으로 판정해, 간선 소비자가 앞 신호를 처리하는 동안 두 소비자의 수가 어긋난 순간에 들어갔다. 지연을 넣은 진단 사본으로 같은 실패를 결정적으로 재현했고, 두 소비자가 받은 신호 수가 같고 조용한 상태를 기다리도록 고쳤다(DEV-765). 기록은 6.110장.
 
 ## CR-118 — main CI의 FLOW-002 뒤로가기 e2e 간헐 실패 분류와 시험 대기 정정 (2026-09-24, main `0dd7734` 병합)
 
@@ -489,6 +493,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | DEV-756 | 2026-09-24 | **추적 브랜치 목록을 바꾸면 체인 소속이 바뀌는데 관계 재투영 의도가 남지 않는다.** `EFFECTIVE_LINK_SQL`은 `repository.sequence_branches`에 지금 있는 브랜치의 현재 에폭만 체인으로 본다. 그런데 등록·설정 변경(`apps/search-api/src/ops/repositories.ts`)은 새로 더해진 브랜치의 채번만 요청한다(FR-ING-009 AC-12). 브랜치를 빼면 그 체인에만 있던 커밋에서 다른 PR의 `source` 근거가 다시 유효해지고, 예전에 추적하던 브랜치를 다시 넣으면 남아 있던 체인 행이 곧바로 다시 세어진다. 두 경우 모두 색인의 `pull_request_numbers`는 다음 관계 변경이나 `prsctl links apply` 전까지 옛 값에 머문다. 독립 검토가 찾았다 | FR-SRCH-002 AC-7 / WP-010 · WP-102 | 범위 공백 | CR-117 | open — 사내 프로파일(dev 단일 추적)에서는 생기지 않는다. SRS 예외 칸·데이터 모델·RUNBOOK 7.G에 한계와 운영 조치(`--pr` 없는 `links apply` 한 번)를 적었다. 설정 변경 경로는 단독 UPDATE라 같은 트랜잭션에 의도를 남기려면 그 경로의 구조를 바꿔야 하므로, 자동 재투영은 다중 시퀀스 브랜치 운영(OD-015)과 함께 별도 CR로 연다 (6.108장) |
 | DEV-757 | 2026-09-24 | **역할 판정 규칙이 두 갈래다.** 커밋 보강(`commit-enrich.ts`)과 재구축(`rebuildCommits`)은 체인 행의 PR 대응(`merge_sequence.pull_request_number`)만 보고 대응이 없으면 `direct_push`를 쓴다(DEV-207). CR-117의 역할 되돌리기(`link-repair.ts`의 `chainRoleOf`)는 병합 근거(`pull_request_commit_link`의 `merge` 행, CR-116)도 본다. 채번이 PR 문서보다 먼저 돌아 대응이 비어 있는 창에서, `apply`는 `merge_commit`으로 되돌리지만 그 뒤 커밋 보강이 다시 돌면 `direct_push`로 바꾼다. 재구축은 병합된 PR 스냅숏의 머지 커밋 갈래가 더 큰 버전으로 `merge_commit`을 써서 대개 수렴한다. 독립 검토가 찾았다 | FR-SRCH-002 AC-1·AC-3·AC-7 / WP-067 · WP-102 | 기존 결함(일관성) | CR-117 | open — 대응이 채워지면 두 규칙이 모두 `merge_commit`을 내므로 저절로 수렴한다. `apply`가 쓰는 값이 정본에 비추어 더 옳으므로 그 판정은 그대로 두었다. 판정을 한 함수로 모으는 일은 `role` 소유권(DEV-752 잔여)과 함께 별도 승인 대상이다 (6.108장) |
 | DEV-758 | 2026-09-24 | **`flow-003.spec.ts:176`(뒤로가기로 커밋 상세를 거쳐 검색으로 돌아온다)의 간헐 실패는 히스토리 경합도 RSC 지연도 아니었다 — 수화 전의 두 번째 뒤로가기였다.** PR 상세 링크가 진짜 `<a href>`라 첫 `goBack()`은 커밋 상세를 새 문서로 다시 불러오고(Playwright의 Chromium은 back-forward cache를 끈다), SSR HTML의 `commit-detail` 때문에 시험의 대기가 수화 전에 풀린다. 그 순간의 두 번째 `goBack()`(같은 문서 안의 popstate)을 App Router는 청취자를 수화 뒤에 붙이므로 놓치고, 수화의 `replaceState`가 `/search?q=` 항목을 커밋 URL로 덮는다. main `3d831a9`의 CI run 36003771848이 이것으로 실패했다. 과거 DEV-377·DEV-424·DEV-689·DEV-708의 진단을 정정한다 | FR-SRCH-001 · FLOW-002 / WP-016 · WP-018 | 기술 제약(시험 경합) | CR-118 | resolved (2026-09-24) — 시험이 두 번째 뒤로가기 전에 `data-screen-state="ready"`를 기다리고 세션 히스토리 항목을 판정한다. 부하 실측(작업자 4, 60회): 옛 대기 12회 실패 → 0회. 잔여: 실사용자가 수화가 끝나기 전에 두 번 누르는 경우(App Router 특성) — `linked-pr-link`의 「진짜 링크」 설계를 바꾸는 제품 변경이라 별도 승인 대상이다 (6.109장) |
+| DEV-765 | 2026-09-25 | **`link-rebuild.test.ts`의 되먹임 시험이 두 소비자의 수가 어긋난 순간에 판정했다.** 루프 탐지를 위해 `settle`을 `until` 없이 불러 「300ms 동안 새 전달 없음」으로 끝냈는데, 간선 소비자가 넷째 `commit.metadata_ready`의 색인을 쓰는 동안 300ms가 지나면 보강 소비자는 다섯을, 간선 소비자는 넷을 받은 순간에 `expect(bounced).toBe(ready)`에 들어간다. CR-118 기록 PR #233의 CI run 36020541832이 이것으로 실패했다(`expected 5 to be 4`). DEV-346과 같은 계열 — 그때 다른 시험들은 `until`을 얻었지만 이 시험은 「루프 탐지는 `until` 없이」라는 설명으로 남아 있었다 | FR-REL-003 · DEV-216 / WP-029 | 기술 제약(시험 경합) | CR-120 | resolved (2026-09-25) — 두 소비자가 받은 `commit.metadata_ready` 수가 같아질 때까지 `until`로 기다리고, 신호가 실제로 났는지(0보다 크다)를 더 판정한다. 루프 탐지는 시한과 커밋 수 상한으로 그대로다 (6.110장) |
 | DEV-753 | 2026-09-23 | **백필로 들어온 병합된 PR의 머지 커밋 문서가 만들어지지 않았다.** `documents.ts`의 `buildCommitDocuments`가 머지 커밋 역할을 `pr.merged === true`로만 판정하는데 백필의 목록 끝점(`GET /pulls`)은 그 필드를 주지 않고 `merged_at`만 준다. 그런데 관계 채택은 같은 PR에 `merge` 근거를 세우므로 **정본은 연결을 말하는데 그 문서가 없다** — 관계 투영기가 `document_missing`으로 재시도하다 보류된다. 독립 검토가 잡았다 | FR-SRCH-002 AC-6 · FR-ING-005 / WP-008 · WP-019 · WP-101 | 기존 결함 | CR-116 | resolved (2026-09-23) — `derivePullRequestState`(CR-101)로 통일했다. PR 문서의 `state`·관계 채택·재색인이 모두 같은 판정을 쓴다 (6.107장) |
 | DEV-719 | 2026-09-17 | SRS AC-3는 최종 PR 반환으로 한정하지만 실제 bisect는 PR 없는 직접 커밋도 반환·시험한다. 위 CR-102 분석 기록과 구현 계획 2장에 근거를 기록했다 | FR-SEQ-007 AC-3 / WP-042 | 문서 오류 | CR-102 | open — R0에서 커밋과 선택적 PR 연결로 요구사항 정정 후 cascade |
 | DEV-702 | 2026-09-16 | Conductor 전환에서 표의 48vh 높이 제한이 사라져 390px 화면의 첫 행 선택 후 미리보기가 25행 아래 뷰포트 밖에 남았다. 1440px에서는 재현되지 않았다 | FR-SRCH-008 · NFR-007 / WP-081 | 구현 결함 | CR-093 | resolved — `data-inspecting`의 48vh·overflow를 복원하고 390/1440 첫·끝 행 미리보기 가시성 회귀를 통과했다 |
@@ -8755,3 +8760,27 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **남는 것.** 실사용자도 back-forward cache 없이 새 문서로 돌아온 직후, 수화가 끝나기 전에 뒤로가기를 한 번 더 누르면 같은 일을 겪을 수 있다. App Router의 특성이며 이 제품의 이동 로직 결함은 아니다. `linked-pr-link`를 클라이언트 `<Link>`로 바꾸면 첫 뒤로가기도 같은 문서 안이 되어 창이 사라지지만, 가운데 클릭·새 탭을 위한 「진짜 링크」 설계(LinkedPrList)를 바꾸는 제품 변경이라 이 CR에서 하지 않았다(DEV-758 잔여).
 
 **병합 판정.** PR #232(base `main`, head `8aa1819`)의 CI(run 36015764324)는 verify·integration 모두 success다 — verify의 e2e가 고친 시험을 CI 러너에서 한 번 더 돌렸다. 독립 리뷰(읽기 전용)는 상·중 지적 0건이었고 하 지적 넷은 이렇게 처리했다: 부하 비교 「12 대 0」의 분해는 로그로 확인했다(실패 12건 모두 옛 대기 사본), 15초 → 5초 되돌리기는 PR CI와 main CI를 추가 증거로 삼았다, 히스토리 판정의 단발성은 바로 앞의 재시도형 URL 판정이 막아 두었으므로 그대로 두었다, 계측 322회의 분해는 커밋하지 않은 진단 spec이 근거임을 문서에 이미 적었다. 사용자 지시(18차 착수 지시 「필수 리뷰·CI 통과 후 정상 main 병합」)로 squash 병합했다 — main `0dd7734`(2026-09-25). 병합 커밋의 main CI(run 36017019576)는 verify·integration 모두 success다.
+
+### 6.110 link-rebuild 되먹임 시험의 정적 대기 경합 (2026-09-25, CR-120, DEV-765)
+
+기준은 CR-118 병합 기록 뒤의 main이고 worktree는 `/home/roqkf/pr-search-wt/link-rebuild-settle`(브랜치 `fix/link-rebuild-settle`)다.
+
+**관측.** CR-118 병합 기록 PR #233(변경 대장과 원장만 바꿈)의 CI run 36020541832에서 verify 잡은 success, integration 잡은 failure였다 — 143개 파일 가운데 `apps/pipeline-worker/integration/worker/link-rebuild.test.ts`의 「**되먹임이 없다** — 커밋 보강이 자기 신호를 되받아 다시 내지 않는다 (DEV-216)」 하나가 `AssertionError: expected 5 to be 4`로 실패했다. 같은 코드가 main `0dd7734`의 CI(run 36017019576)에서는 통과했다.
+
+**기제.** 그 시험은 실제 인메모리 버스에 두 소비자(보강 `commit-enrich`, 간선 `link`)를 붙이고 채번 이벤트 하나를 내보낸 뒤, 루프 탐지를 위해 `settle(seen)`을 `until` 없이 불러 「300ms 동안 새 전달 없음」으로 끝낸다. 보강 소비자는 커밋마다 `commit.metadata_ready`를 내고, 그 신호는 두 소비자 모두에게 간다. 간선 소비자는 신호마다 정본을 읽고 간선을 색인하므로 신호 하나에 시간이 걸린다. 간선 소비자가 넷째 신호를 처리하는 동안 300ms가 지나면, 보강 소비자는 다섯을 모두 받았는데 간선 소비자는 넷만 받은 순간에 `expect(bounced).toBe(ready)`에 들어간다 — CI의 `expected 5 to be 4`가 그 모양이다.
+
+**재현.** 같은 코드에서 그 시험만 CPU 부하(바쁜 루프 여덟 개)를 걸고 12회 돌렸을 때는 모두 통과했다 — 로컬의 ES 쓰기가 300ms보다 빠르다. 그래서 간선 소비자가 넷째 `commit.metadata_ready`를 받은 뒤 500ms 기다리게 한 진단 사본(커밋하지 않음)으로 기제를 결정적으로 보였다.
+
+| 실행 | 결과 |
+| --- | --- |
+| 진단 사본, 옛 대기(`settle(seen)`) | **실패** — `expected 5 to be 4` (CI와 같다) |
+| 진단 사본, 고친 대기(`until`: 두 소비자의 수가 같다) | 통과 |
+| `link-rebuild.test.ts` 전체(고친 판), 격리 PG·ES·Redis | 3회 모두 8건 통과 |
+| `pnpm typecheck`, `eslint` | 통과 |
+| 문서 검증기 `validate_srs_prd_env.py` | 기준선(`git archive` 전체 트리)과 **동일** — 경고·오류 전체 목록과 해석되지 않는 경로 참조 목록까지 차이 0 |
+
+**변경.** `apps/pipeline-worker/integration/worker/link-rebuild.test.ts` 한 파일. 되먹임 시험이 `settle`에 `until`(두 소비자가 받은 `commit.metadata_ready` 수가 같다)을 주고, 신호가 실제로 났는지(0보다 크다)를 더 판정한다. 두 판정(같은 수, 커밋 수 이하)은 그대로 남는다. 시한은 `until` 경로의 표준 상한(20초, DEV-346)을 쓴다 — 정상 경로의 대기는 그대로 300ms 정적이고, 멎지 않거나 두 수가 끝내 맞지 않을 때 실패하기까지의 시간만 6초에서 20초로 늘며 시험 시한 60초 안에 있다. 같은 수 판정은 이제 `until`이 먼저 보장하므로, 두 수가 끝내 어긋나면 그 판정이 아니라 `settle`의 시한에서 실패한다. 루프면 신호가 멎지 않아 시한에서 던지고, 유한한 되먹임은 커밋 수 상한이 잡는다. `settle`의 설명에서 「루프 탐지는 `until` 없이 부른다」를 사실에 맞게 고쳤다.
+
+**CR-118 기록 PR의 판정.** #233은 실패한 integration 잡만 한 번 재실행했다(attempt 2). 근거는 셋이다: 문서만 바꾼 PR이다, 같은 코드가 main CI에서 통과했다, 실패 모양이 위 경합과 같다. 녹색이 나올 때까지 반복하지 않았고, 원인은 이 CR로 고친다.
+
+**독립 리뷰(`deep-reasoner`, 읽기 전용, head `3a36b18` 기준):** 판정 **병합 가능** — 상·중 지적 0건. 확인한 것: 인메모리 버스가 모든 소비자 그룹에 같은 메시지를 넣고(`packages/bus/src/in-memory.ts`) 시험의 두 소비자가 서로 다른 그룹이라 정상 경로에서 두 수가 같아지므로 `until`은 반드시 성립한다, 루프 탐지(시한·커밋 수 상한)는 약화되지 않았다, skip과 근거 없는 시한 연장은 없다, `expected 5 to be 4`가 「보강 5 · 간선 4」의 렌더와 맞는다. 지적과 처분 — **[하, 수정]** 문서와 시험 주석이 「시한은 그대로」라고 했지만 `until`을 주면 `settle`의 상한이 6초에서 20초로 오른다. 또 「같은 신호를 다 받은 상태」는 과장이다 — `until`은 두 수가 같고 조용한지만 보고 모든 신호의 도착을 보지 않는다(보강이 방출 사이에 300ms 넘게 쉬면 k < N에서 성립해 통과하며, k > 0·k ≤ N이라 무해하다) → 위 「변경」과 변경 대장·시험 주석을 코드에 맞게 고쳤다(시험 코드는 바꾸지 않았다). **[하, 기록]** 핸들러가 실제로 던지는 극단 부하에서는 버스의 재시도가 핸들러를 다시 불러 수가 부풀 수 있고, 그때는 옛 코드의 빠른 `expected N to be M` 대신 20초 뒤 「기대한 상태에 이르지 못했다」로 실패한다 — 회귀는 아니며(옛 코드도 실패했다) 시한 메시지에 두 수를 싣는 것은 선택이라 하지 않았다. 같은 수 판정이 `until`과 겹쳐 동어반복이 된 것도 같은 이유로 그대로 두었다(비대칭은 시한 실패로 드러난다).

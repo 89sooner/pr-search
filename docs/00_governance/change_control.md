@@ -1,5 +1,15 @@
 # 변경 관리 대장
 
+## CR-120 — link-rebuild 되먹임 시험의 정적 대기 경합: 두 소비자가 같은 신호를 받은 상태를 기다린다 (2026-09-25)
+
+- 유형: correction(검증 결함 — 시험의 대기 조건). 제품 코드·요구사항·계약·운영 문서는 바꾸지 않는다. 안정 ID 재번호화 0건. 상태: **open** — 브랜치 `fix/link-rebuild-settle`, worktree `/home/roqkf/pr-search-wt/link-rebuild-settle`.
+- 발견: CR-118 병합 기록 PR #233(문서만 바꿈)의 CI run 36020541832에서 integration 잡이 실패했다 — `apps/pipeline-worker/integration/worker/link-rebuild.test.ts` 「**되먹임이 없다** — 커밋 보강이 자기 신호를 되받아 다시 내지 않는다 (DEV-216)」가 `expected 5 to be 4`였다. 같은 코드가 몇 분 전 main `0dd7734`의 CI(run 36017019576)에서는 통과했다. 사용자 지시(18차 착수 지시 4장)는 CI 실패를 근거 없이 flaky로 단정하지 말고 가르며, 필요한 수정은 작은 별도 CR/PR로 처리하라는 것이다.
+- 분류(실측, 원장 6.110장): **시험의 대기 문제다.** 그 시험은 루프 탐지를 위해 `settle(seen)`을 `until` 없이 불러 「300ms 동안 새 전달 없음」으로 끝낸다. 간선 소비자가 넷째 `commit.metadata_ready`의 색인을 쓰는 동안 300ms가 지나면, 보강 소비자는 다섯을 모두 받았는데 간선 소비자는 넷째를 처리하는 순간에 판정에 들어간다. 간선 소비자에 500ms 지연을 넣은 진단 사본에서 옛 대기는 CI와 같은 `expected 5 to be 4`로 실패했고 고친 대기는 통과했다. 로컬에서는 ES 쓰기가 빨라 CPU 부하를 걸어도 12회 모두 통과했다 — DEV-346이 기록한 「정적은 처리 끝이 아니다」와 같은 함정이다.
+- 범위: 그 시험이 `settle`에 `until`(두 소비자가 받은 `commit.metadata_ready` 수가 같다)을 주고, 신호가 실제로 났는지(0보다 크다)를 더 판정한다. `settle`의 설명을 사실에 맞게 고친다.
+- 결정과 대가: 기대값을 약화하지 않는다 — 두 판정(같은 수, 커밋 수 이하)은 그대로이고 0보다 크다는 판정을 더한다. 시한은 `until` 경로의 표준 상한(20초, DEV-346)을 쓴다 — 정상 경로의 대기는 그대로 300ms 정적이고, 멎지 않거나 두 수가 끝내 맞지 않을 때 실패하기까지의 시간만 6초에서 20초로 늘며 시험 시한 60초 안에 있다. 같은 수 판정은 이제 `until`이 먼저 보장하므로, 두 수가 끝내 어긋나면 그 판정이 아니라 `settle`의 시한에서 실패한다. 루프 탐지는 그대로다 — 루프면 신호가 멎지 않아 시한에서 던지고, 유한한 되먹임은 커밋 수 상한 판정이 잡는다. CR-118 기록 PR #233은 실패한 잡만 한 번 재실행해 판정했다(문서만 바꾼 PR이고, 같은 코드가 main CI에서 통과했으며, 실패 모양이 이 경합과 같다는 근거).
+- 제외: 제품 코드, 이미 `until`을 쓰는 다른 `settle` 호출.
+- 설계·세부 정본: 원장 5장 DEV-765와 6.110장. 연쇄 기록은 5장 「CR-120 cascade」에 적는다.
+
 ## CR-118 — main CI의 FLOW-002 뒤로가기 e2e 간헐 실패: 수화 전 두 번째 뒤로가기 (2026-09-24)
 
 - 유형: correction(검증 결함 — 시험의 대기 조건). 제품 코드·요구사항·계약·운영 문서는 바꾸지 않는다. 안정 ID 재번호화 0건. 상태: **closed** — main `0dd7734`(PR #232 squash 병합, 2026-09-25). 기준 main `3d831a9`, worktree `/home/roqkf/pr-search-wt/p0-flow003`(브랜치 `fix/flow003-back-hydration`). 병합 판정은 5장 「CR-118 cascade」.
@@ -231,6 +241,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| CR-120 | 2026-09-25 | correction | CR-118 기록 PR #233의 CI run 36020541832 integration 실패(`link-rebuild.test.ts` 되먹임 시험, `expected 5 to be 4`) | **실패를 시험의 대기 경합으로 가르고 고친다.** 루프 탐지 시험이 「300ms 조용함」만으로 판정해, 간선 소비자가 앞 신호를 처리하는 동안 두 소비자의 수가 어긋난 순간에 들어갔다. 두 소비자가 받은 신호 수가 같고 조용한 상태를 `until`로 기다리고, 신호가 실제로 났는지를 더 판정한다 | DEV-765 · DEV-346(같은 계열) | 변경 대장 · 원장 · 통합 시험 | open — 브랜치 `fix/link-rebuild-settle` |
 | CR-118 | 2026-09-24 | correction | 사용자 지시 2026-09-24(18차 P0) — main `3d831a9`의 CI run 36003771848 failure(verify `test:e2e` 209건 중 1건, `flow-003.spec.ts:176`) | **실패를 제품 결함과 시험 경합으로 실측해 가르고 시험의 대기를 고친다.** 첫 뒤로가기가 커밋 상세를 새 문서로 다시 불러온 뒤 수화 전에 두 번째 뒤로가기를 불러 App Router가 popstate를 놓친다. 두 번째 뒤로가기 전에 클라이언트 신호 `data-screen-state="ready"`를 기다리고, 세션 히스토리 항목을 판정하며, 근거가 틀렸던 15초 시한을 되돌린다 | DEV-758 · DEV-377·DEV-424·DEV-689·DEV-708(재진단) | 변경 대장 · 원장 · e2e 시험 | closed — main `0dd7734`(PR #232), 원장 6.109 |
 | CR-117 | 2026-09-24 | correction | 사용자 지시 2026-09-24 — 사내 pilot.18 운영 보고(`git merge dev`로 받아 온 dev 체인 커밋에 그 PR 번호가 붙음, `ebc781d` = [983, 1671, 1855]) | **원본 커밋을 「그 PR이 새로 가져온 커밋」으로 정의하고, 추적 브랜치의 현재 체인에 이미 오른 커밋은 그 커밋을 올린 PR에만 속하게 한다.** 원시 관측과 CR-116의 삭제 규율은 그대로 두고 연결을 읽는 모든 자리가 같은 술어를 쓴다. 체인이 바뀌면 관계를 다시 투영하고, PR 투영은 체인 커밋의 역할을 덮지 않으며, PR 상세도 같은 정의로 원본 커밋을 낸다 | FR-SRCH-002 AC-7 · FR-SRCH-003 AC-5 · OD-016 · JOB-REL-008 · RB-29 · WP-102 · DEV-754~757 · PSI D-22 | SRS · PRD · 용어집 · 매트릭스 · 화면 명세 · 실행 지시서 · 백엔드 · API 계약 · 데이터 모델 · 비동기 · 관측성 · PSI handoff · WP · 원장 · RUNBOOK | closed — main `65acf83`(PR #230), 원장 6.108; 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | CR-116 | 2026-09-23 | correction/reliability | 사용자 지시 2026-09-23 — 사내 pilot.17 운영 보고(커밋 3,481건에 과거 PR 번호가 영구히 남음) | **커밋 문서의 `pull_request_numbers`가 합집합이라 빠진 PR 번호를 지우지 못하던 결함을, 관계 정본을 PostgreSQL에 두고 커밋별 전용 투영기가 전체 집합을 대입하게 고친다.** 완전성 근거 없이는 지우지 않고, 관계 전용 generation으로 늦은 쓰기·충돌을 가르며, 재색인·전체 대조·복구 명령이 같은 정본을 쓴다 | FR-SRCH-002 AC-6 · FR-ING-004 AC-6 · FR-ING-008 AC-9 · ADR-004 Amendment · JOB-REL-008 · ENT-CORE-009 · ENT-CORE-010 · ENT-CORE-011 · RB-29 · WP-101 · DEV-744~753 | SRS · PRD · 용어집 · 매트릭스 · 실행 지시서 · 백엔드 · API 계약 · 데이터 모델 · 비동기 · 관측성 · ADR · WP · 원장 · RUNBOOK | closed — main `f9cda82`(PR #228), 원장 6.107; 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
@@ -2346,6 +2357,15 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - 상태: **closed**(2026-09-21). 운영 배포는 하지 않았고, 사내 CA·운영 HAProxy·실제 GHE를 거친 검증과 실제 사용자 매핑은 NOT_RUN이다 — 이 CR의 범위 밖이다.
 
 **병합 판정.** 구현·검증 보고 뒤 사용자 지시(2026-09-21 「origin/main에 병합」)로 진행했다. 저장소가 공개라 시험 전용 서명 비밀키를 커밋에서 빼고, main CI의 `verify`를 막던 lint 기준선 1건을 ESLint 설정으로 해소한 뒤(원장 6.103장 「병합 준비」) 커밋 `28a3c21`을 PR #220으로 올렸다. PR CI(run `35568796745`)는 verify·integration 모두 success다 — `verify`의 단계(typecheck·lint·lint:deps·test·build·test:a11y·test:contrast·test:e2e)에는 건너뛰는 조건이 없으므로 로컬에서 돌리지 않은 a11y·contrast·e2e도 이 실행이 확인했다. squash 병합 커밋은 `e7b4cb4`(15:43 KST)이고 트리가 `28a3c21`과 같다. 병합 커밋 `e7b4cb4`의 main CI(run `35569716267`)는 끝나기 전에 취소됐다 — 15:46에 사용자가 메인 체크아웃에서 입력 지시서 묶음을 따로 커밋해(`c73ed9f`) main과 병합한 `364f0fb`를 push했고, 워크플로의 `cancel-in-progress`가 앞 실행을 취소했다. `364f0fb`의 트리는 `e7b4cb4`와 같다(묶음 6개 파일이 PR #220에 든 것과 같은 내용이라 차이가 없다, tree `26f3f0fb…`). 그 커밋의 main CI(run `35569895232`)는 verify·integration 모두 success다 — #218부터 lint 단계에서 멈추던 main의 `verify`가 다시 끝까지 통과했다. 병합 기록은 별도 PR(브랜치 `docs/cr112-merge-record`)로 했다 — 작업 패키지 v2.57 → v2.58(WP-097 done), 원장 v6.98 → v6.99(머리 절, 3장, 4장, 6.103장 「병합」), handoff의 PIPE_INTEGRATION_HANDOFF·TEST_RESULTS·CONTRACT_DIFF·manifest 생성기와 다시 만든 manifest(계약 checksum `3c7fbe92…` 변동 없음). 문서 검증기는 이 기록 뒤에도 두 모드 모두 오류·경고 목록이 병합 시점과 같다. 릴리스·태그는 발행하지 않았다. closed.
+
+### CR-120 cascade — link-rebuild 되먹임 시험의 정적 대기 경합
+
+기준: CR-118 병합 기록 뒤의 main 위 worktree `/home/roqkf/pr-search-wt/link-rebuild-settle`(브랜치 `fix/link-rebuild-settle`). correction — 시험 파일 하나와 기록만 바꾼다. ID는 `docs/`와 원격 브랜치·열린 PR을 실측해 정했다 — CR-120·DEV-765. CR-119는 같은 세션의 작업 A가 브랜치에서 먼저 잡은 번호다.
+
+- [x] 요구사항·파생 UI·기술 아키텍처·운영 문서: 해당 없음 — 제품 동작과 계약이 바뀌지 않는다.
+- [x] 전달: 원장 v6.108 → v6.109(머리 절, 5장 DEV-765, 6.110장).
+- [x] 코드·시험: `apps/pipeline-worker/integration/worker/link-rebuild.test.ts` — 원장 6.110장.
+- 상태: open — 병합 뒤 기록에서 닫는다.
 
 ### CR-118 cascade — main CI의 FLOW-002 뒤로가기 e2e 간헐 실패: 수화 전 두 번째 뒤로가기
 
