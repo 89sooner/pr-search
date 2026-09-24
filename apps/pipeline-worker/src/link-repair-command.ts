@@ -12,7 +12,8 @@
  *
  * 인덱스를 만들지도 전환하지도 않는다. `merge_seq`·`merge_number`·`seq_epoch`·`head`·
  * 원격 M 태그를 건드리지 않는다. 이 명령이 바꾸는 것은 커밋 문서의
- * `pull_request_numbers`와 그 세대뿐이다.
+ * `pull_request_numbers`와 그 세대, 그리고 PR 투영이 `source_commit`으로 덮은 **체인 커밋의
+ * `role`**(CR-117 — 체인이 정한 값으로만, 단방향)뿐이다.
  *
  * ## `apply`는 `plan`을 다시 계산한다
  *
@@ -62,7 +63,9 @@ const USAGE = [
   'apply·refetch는 --actor(호스트 사용자 이름)가 필요하다. prsctl이 자동으로 넘긴다.',
   '',
   'plan은 PostgreSQL·Elasticsearch·작업 큐에 아무것도 쓰지 않는다. apply는 바뀔 커밋에',
-  '투영 의도만 만들고 색인은 러너가 쓴다. 서수·M 번호·에폭·head·태그는 바꾸지 않는다.',
+  '투영 의도만 만들고 PR 연결 색인은 러너가 쓴다. 예외 하나: --pr 없이 돌리면 역할이',
+  'source_commit으로 덮인 체인 커밋의 역할을 apply가 직접 되돌린다(CR-117).',
+  '서수·M 번호·에폭·head·태그는 바꾸지 않는다.',
 ];
 
 function parse(argv: readonly string[]): { command: string; repository?: string; prNumbers: number[]; limit?: number; actor?: string; bad?: string } {
@@ -132,6 +135,16 @@ function printPlan(deps: LinkCommandDeps, plan: LinkRepairPlan): void {
   deps.out(`훑은 커밋: ${String(plan.scanned)}`);
   // 고유 커밋 수와 간선 수는 **다른 값이다**. 커밋 하나에서 두 PR이 빠지면 커밋 1, 간선 2다.
   deps.out(`바뀔 커밋: ${String(plan.commitsChanged)} (더할 간선 ${String(plan.edgesAdded)} · 지울 간선 ${String(plan.edgesRemoved)})`);
+  /*
+   * 지울 간선 가운데 체인 규칙 몫 (CR-117). `git merge dev`로 받아 온 dev 체인 커밋에서 그 PR
+   * 번호가 빠지는 수이며, 관측 확정 여부와 무관하게 지운다.
+   */
+  deps.out(`  그중 dev 체인 커밋에서 빠질 간선: ${String(plan.edgesChainExcluded)} (커밋 ${String(plan.chainExcludedCommits)})`);
+  deps.out(
+    plan.roleMismatches === null
+      ? '역할이 source_commit으로 덮인 체인 커밋: --pr로 좁힌 실행이라 대조하지 않았다'
+      : `역할이 source_commit으로 덮인 체인 커밋: ${String(plan.roleMismatches)} (apply가 체인이 정한 역할로 되돌린다)`,
+  );
   deps.out(`그대로: ${String(plan.unchanged)}`);
   deps.out(`근거 없어 이번 실행에서 제외: ${String(plan.blocked)} (색인에 남는다는 보장은 아니다 — refetch로 근거를 먼저 세운다)`);
   deps.out(`대조 실패: ${String(plan.failed)}`);
@@ -153,7 +166,8 @@ function printPlan(deps: LinkCommandDeps, plan: LinkRepairPlan): void {
     for (const sample of plan.samples) {
       deps.out(
         `  ${sample.commitSha.slice(0, 12)} 색인=[${sample.indexed.join(',')}] 정본=[${sample.canonical.join(',')}]` +
-          ` 더함=[${sample.added.join(',')}] 지움=[${sample.removed.join(',')}] 보류=[${sample.withheld.join(',')}]`,
+          ` 더함=[${sample.added.join(',')}] 지움=[${sample.removed.join(',')}] 체인=[${sample.chainExcluded.join(',')}]` +
+          ` 보류=[${sample.withheld.join(',')}]`,
       );
     }
   }
@@ -237,7 +251,10 @@ export async function runLinkRepairCommand(
        */
       await jobRepo.finishJobIfRunning(deps.pool, jobId, 'completed');
       deps.out(`투영 의도: ${String(result.scheduled)}건 (이미 큐에 있던 것 ${String(result.skippedStale)}건, 근거 없어 보류 ${String(result.blocked)}건)`);
-      deps.out(`색인 쓰기는 관계 투영 러너가 한다. prsctl links status로 수렴을 확인한다. (job_id=${String(jobId)})`);
+      if (result.rolesRestored !== null) {
+        deps.out(`체인 커밋 역할 되돌림: ${String(result.rolesRestored)}건 (source_commit → 체인이 정한 역할)`);
+      }
+      deps.out(`PR 연결 색인 쓰기는 관계 투영 러너가 한다. prsctl links status로 수렴을 확인한다. (job_id=${String(jobId)})`);
       return 0;
     } catch (error) {
       await jobRepo.finishJobIfRunning(deps.pool, jobId, 'failed', String(error).slice(0, 500));

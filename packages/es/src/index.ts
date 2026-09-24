@@ -270,7 +270,12 @@ export type {
 
 export {
   COMMIT_METADATA_SCRIPT,
+  RESTORE_CHAIN_ROLE_SCRIPT,
+  restoreChainCommitRole,
   upsertCommitMetadata,
+  type ChainCommitRole,
+  type ChainRoleRestore,
+  type ChainRoleRestoreResult,
   type CommitMetadataFields,
   type CommitMetadataResult,
   type CommitMetadataUpsert,

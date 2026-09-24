@@ -24,7 +24,7 @@ import { runSequenceWorkOnce } from '../../src/sequence-work-runner.js';
 import { runSequenceReprojectCommand } from '../../src/sequence-reproject-command.js';
 import { REPROJECT_JOB, runReprojectJob } from '../../src/sequence-reproject-runner.js';
 import { runRepairJob } from '../../src/sequence-repair-runner.js';
-import { linkObservationOf, recordProjectionSnapshot } from '../../src/snapshot.js';
+import { chainShasOf, linkObservationOf, recordProjectionSnapshot } from '../../src/snapshot.js';
 import { makeTempDir, removeDir } from './fixture.js';
 import { createSquashFixture, type SquashFixture } from './squash-fixture.js';
 
@@ -138,7 +138,10 @@ function enrichedFor(prNumber: number, mergeSha: string): IngestionEnriched {
 }
 
 async function projectPullRequest(prNumber: number, mergeSha: string): Promise<void> {
-  const requests = buildUpsertRequests({ enriched: enrichedFor(prNumber, mergeSha), repository, documentVersion: 1_000, indexedAt: new Date(), authorTeams: { kind: 'unknown' } });
+  const enriched = enrichedFor(prNumber, mergeSha);
+  // 운영 투영과 같은 재료다 (CR-117). 체인 커밋에는 원본 커밋 문서를 쓰지 않는다.
+  const chainShas = await chainShasOf(pool, repository.repository_id, enriched.source_commit_shas);
+  const requests = buildUpsertRequests({ enriched, repository, documentVersion: 1_000, indexedAt: new Date(), authorTeams: { kind: 'unknown' }, chainShas });
   await recordProjectionSnapshot(pool, requests, {
     repositoryId: REPOSITORY_ID,
     prNumber,

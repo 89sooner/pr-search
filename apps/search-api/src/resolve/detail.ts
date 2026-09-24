@@ -321,7 +321,8 @@ async function loadSourceCommits(
     ),
     {
       size: shas.length,
-      _source: ['commit_sha', 'message', 'author', 'authored_at', 'committed_at'],
+      // 연결 PR은 원본 커밋 판정의 재료다 (CR-117 / FR-SRCH-003 AC-5). 같은 조회에서 함께 읽는다.
+      _source: ['commit_sha', 'message', 'author', 'authored_at', 'committed_at', 'pull_request_numbers'],
       ...(deps.timeoutMs === undefined ? {} : { timeout: `${String(deps.timeoutMs)}ms` }),
     },
   );
@@ -355,11 +356,33 @@ function sourceCommitItem(sha: string, source: CommitSource | undefined): Record
 }
 
 /**
+ * 이 PR이 **새로 가져온** 커밋인가 (CR-117 / FR-SRCH-003 AC-5, FR-SRCH-002 AC-7).
+ *
+ * 판정 재료는 커밋 문서의 연결 PR(`pull_request_numbers`)이다 — 관계 투영기가 유효 연결 술어로
+ * 대입한 값이라, 커밋 화면이 말하는 소속과 PR 화면이 말하는 원본 커밋이 **같은 정본**에서
+ * 나온다. 두 화면이 서로 다른 규칙을 쓰면 한쪽만 고쳐진 날 둘이 어긋난다.
+ *
+ * **모름은 빼지 않는다.** 문서가 없거나 그 필드가 없으면(아직 투영되지 않았다) 원본 커밋으로
+ * 둔다 — 새 커밋이 관계 투영보다 먼저 보이는 몇 초 동안 목록에서 사라지게 하지 않는다. 빼는
+ * 것은 연결이 **투영됐고 그 PR이 없을 때**뿐이다(`[]` 포함 — 검증한 범위에서 연결 없음).
+ */
+function isOwnSourceCommit(source: CommitSource | undefined, prNumber: number): boolean {
+  const numbers = source?.pull_request_numbers;
+  if (numbers === undefined || numbers === null) return true;
+  return numbers.includes(prNumber);
+}
+
+/**
  * PR 상세 (API-SRCH-003).
  *
  * `source_commits`는 객체 배열이며 **커밋 문서와 조인해 표시값을 채운다**
  * (CR-038, DEV-211). WP-067 이전에는 `commit_sha`만 있었고(CR-017, DEV-062),
  * 그래서 메타데이터를 채워도 화면에는 계속 SHA만 나왔다.
+ *
+ * **원본 커밋은 이 PR이 새로 가져온 커밋이다** (CR-117 / FR-SRCH-003 AC-5). PR 문서의
+ * `source_commit_shas`는 GitHub 목록 그대로(원시 관측)이며, 피처 브랜치가 `git merge dev`로
+ * 받아 온 dev 체인 커밋이 섞여 있다. 그 항목은 빼고 뺀 수를 `source_commits_excluded`로 싣는다 —
+ * 수가 GitHub Commits 탭과 다른 이유를 화면이 말할 수 있어야 한다.
  */
 export async function getPullRequestDetail(
   repository: string,
@@ -377,19 +400,27 @@ export async function getPullRequestDetail(
 
   const shas = pr.source_commit_shas ?? [];
   const truncated = pr.source_commits_truncated === true || shas.length > MAX_SOURCE_COMMITS;
-  const shown = shas.slice(0, MAX_SOURCE_COMMITS);
+  const listed = shas.slice(0, MAX_SOURCE_COMMITS);
   // 조회 **한 번**이다 (DEV-211). 250개를 하나씩 물으면 그 비용이 사용자에게 간다.
-  const commitMeta = await loadSourceCommits(pr.repository ?? repository, shown, scope, deps);
+  const commitMeta = await loadSourceCommits(pr.repository ?? repository, listed, scope, deps);
+  const ownNumber = pr.pr_number ?? prNumber;
+  // 이 PR이 새로 가져온 커밋만 남긴다 (CR-117 / FR-SRCH-003 AC-5).
+  const shown = listed.filter((sha) => isOwnSourceCommit(commitMeta.get(sha.toLowerCase()), ownNumber));
 
   const out: Record<string, unknown> = {
     repository: pr.repository ?? repository,
-    pr_number: pr.pr_number ?? prNumber,
+    pr_number: ownNumber,
     // 미머지 PR은 `null`이다 (FR-SRCH-003 AC-2). 키가 없으면 화면이 "아직 모른다"로 읽는다.
     merge_commit_sha: pr.merge_commit_sha ?? null,
     source_commits: shown.map((sha) => sourceCommitItem(sha, commitMeta.get(sha.toLowerCase()))),
     source_commits_truncated: truncated,
+    /*
+     * 뺀 수 (CR-117). **읽은 목록 안에서 센 값이다** — 절삭됐으면 앞 250건 안의 수이고 그
+     * 뒤는 모른다. 0이어도 싣는다: 「뺀 것이 없다」는 사실이지 모름이 아니다.
+     */
+    source_commits_excluded: listed.length - shown.length,
     ...sequence(pr),
-    url: `/pr/${pr.repository ?? repository}/${String(pr.pr_number ?? prNumber)}`,
+    url: `/pr/${pr.repository ?? repository}/${String(ownNumber)}`,
   };
 
   /*
@@ -399,8 +430,10 @@ export async function getPullRequestDetail(
    * 그 수를 나르지 않는다. 250을 총계로 내보내면 거짓이므로 키를 뺀다.
    * `source_commits_truncated: true`가 "더 있다"를 말하고, 얼마나 더 있는지는
    * 모른다고 두는 편이 틀린 수를 주는 것보다 낫다.
+   *
+   * 총계는 **뺀 뒤 남은 수**다 (CR-117). 원시 목록 길이를 두면 목록과 총계가 다른 것을 센다.
    */
-  if (!truncated) out['source_commits_total'] = shas.length;
+  if (!truncated) out['source_commits_total'] = shown.length;
 
   put(out, 'repository_id', pr.repository_id);
   put(out, 'title', pr.title);

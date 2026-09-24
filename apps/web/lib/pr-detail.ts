@@ -45,8 +45,13 @@ export interface PrDetailSource extends MergeNumberFields {
   readonly merge_commit_sha?: string | null;
   readonly source_commits?: readonly { readonly commit_sha: string }[];
   readonly source_commits_truncated?: boolean;
-  /** **절삭됐을 때 정확히 그때 빠진다** (CR-017 DEV-063). */
+  /** **절삭됐을 때 정확히 그때 빠진다** (CR-017 DEV-063). 뺀 뒤 남은 수다 (CR-117). */
   readonly source_commits_total?: number;
+  /**
+   * 원본 커밋에서 뺀 수 (CR-117 / FR-SRCH-003 AC-5). GitHub 목록에는 있었지만 이미 대상 브랜치에
+   * 있던 커밋이라 그 커밋을 올린 PR 소속이다. 절삭됐으면 읽은 목록 안에서 센 값이다.
+   */
+  readonly source_commits_excluded?: number;
   readonly merge_seq?: number | null;
   readonly seq_epoch?: number | null;
   readonly sequence_space?: string | null;
@@ -70,6 +75,11 @@ export interface CommitListModel {
   readonly totalCount: number | null;
   /** 보강이 끝나지 않아 원본 커밋이 비어 있는가 (FR-SRCH-003 예외 처리). */
   readonly enrichmentPending: boolean;
+  /**
+   * 원본 커밋에서 뺀 수 (CR-117 / FR-SRCH-003 AC-5). 키가 없는 옛 서버 응답은 0이다 — 그 서버는
+   * 빼지 않았으므로 참이다.
+   */
+  readonly excludedCount: number;
 }
 
 export function commitListModel(pr: PrDetailSource): CommitListModel {
@@ -88,7 +98,25 @@ export function commitListModel(pr: PrDetailSource): CommitListModel {
      */
     totalCount: truncated ? (pr.source_commits_total ?? null) : (pr.source_commits_total ?? commits.length),
     enrichmentPending: pr.enrichment_pending === true,
+    excludedCount: pr.source_commits_excluded ?? 0,
   };
+}
+
+/**
+ * 원본 커밋에서 뺀 커밋의 안내 문구 (CR-117 / FR-SRCH-003 AC-5). 뺀 것이 없으면 `null`이다.
+ *
+ * **왜 GitHub과 수가 다른지를 말한다.** 피처 브랜치가 대상 브랜치를 merge해 오면 그 커밋들이
+ * GitHub의 PR 커밋 목록에 섞이지만, 그 커밋들은 이미 대상 브랜치에 있었고 각각을 올린 PR의
+ * 것이다. 안내 없이 빼면 사용자는 커밋이 사라졌다고 읽는다. PR 상세(C-018)와 저장소 작업
+ * 공간이 같은 문구를 쓰도록 여기 하나만 둔다.
+ */
+export function excludedCommitsLabel(count: number, truncated: boolean): string | null {
+  if (!Number.isSafeInteger(count) || count <= 0) return null;
+  const head =
+    count === 1
+      ? '1 commit that was already on the base branch is not listed. It belongs to the pull request that merged it there.'
+      : `${String(count)} commits that were already on the base branch are not listed. Each belongs to the pull request that merged it there.`;
+  return truncated ? `${head} Only the listed commits were checked.` : head;
 }
 
 // ---------------------------------------------------------------- 타임라인

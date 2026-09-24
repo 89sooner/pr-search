@@ -23,11 +23,19 @@
  * `prs-commits`에 있는 PR 번호는 **검증 대상**이다. 정본에 없다고 곧바로 지우지
  * 않는다 — 그 번호를 만든 PR의 관측이 `verified`일 때만 지울 수 있고, 아니면
  * `blocked`로 보고한다. 스냅숏 부재·페이지 누락·권한 차단은 **삭제의 증거가 아니다.**
+ *
+ * ## 체인 규칙으로 빠지는 번호는 근거가 다르다 (CR-117 / FR-SRCH-002 AC-7)
+ *
+ * 피처 브랜치가 `git merge dev`로 받아 온 dev 체인 커밋의 번호는 원시 관측에 **있다** — GitHub이
+ * 그 PR의 커밋 목록에 실었기 때문이다. 그 번호를 빼는 근거는 「목록이 전부였다」가 아니라 「그
+ * 커밋은 이미 다른 PR로 체인에 올랐다」는 PostgreSQL의 사실이므로, 관측 확정 여부와 무관하게
+ * 지운다. 같은 이유로 PR 투영이 `source_commit`으로 덮은 체인 커밋의 역할도 여기서 되돌린다.
  */
 
 import type { Client } from '@elastic/elasticsearch';
-import { prCommitLinkRepo, withTransaction, type Pool, type RepositoryRow } from '@prs/db';
-import { derivePullRequestState } from '@prs/domain';
+import { mergeSequenceRepo, prCommitLinkRepo, withReindexWrite, withTransaction, type Pool, type RepositoryRow } from '@prs/db';
+import { commitDocId, derivePullRequestState } from '@prs/domain';
+import { restoreChainCommitRole, type ChainCommitRole } from '@prs/es';
 import type { GitHubClient } from '@prs/github';
 import { toEnrichedPullRequest } from './enriched-payload.js';
 
@@ -48,6 +56,11 @@ export interface LinkDifference {
   readonly canonical: readonly number[];
   readonly added: readonly number[];
   readonly removed: readonly number[];
+  /**
+   * `removed` 가운데 **체인 규칙**으로 빠지는 번호 (CR-117). 원시 관측에는 있지만 그 커밋이 이미
+   * 다른 PR로 체인에 올라 유효 연결이 아니다. 관측 확정 여부와 무관하게 지운다.
+   */
+  readonly chainExcluded: readonly number[];
   /** 지워야 하지만 근거가 없어 남겨 둔 번호. */
   readonly withheld: readonly number[];
 }
@@ -61,6 +74,17 @@ export interface LinkRepairPlan {
   /** 바뀔 **관계 간선** 수 (커밋×PR). */
   readonly edgesAdded: number;
   readonly edgesRemoved: number;
+  /**
+   * `edgesRemoved` 가운데 체인 규칙으로 빠지는 간선과 그 고유 커밋 수 (CR-117 / FR-SRCH-002 AC-7).
+   * `git merge dev`로 받아 온 dev 체인 커밋에서 그 PR 번호가 빠지는 몫이다.
+   */
+  readonly edgesChainExcluded: number;
+  readonly chainExcludedCommits: number;
+  /**
+   * 체인 위에 있는데 색인 역할이 `source_commit`인 커밋 수 (CR-117). `apply`가 체인이 정한 역할로
+   * 되돌린다. `--pr`로 좁힌 실행은 저장소 단위인 이 대조를 하지 않으며 그때 `null`이다.
+   */
+  readonly roleMismatches: number | null;
   readonly unchanged: number;
   /**
    * 삭제 후보가 있으나 그 PR의 관측이 확정이 아니라 **이 명령이 삭제로 예약하지 않은**
@@ -107,6 +131,58 @@ function sortedUnique(values: readonly number[]): number[] {
 }
 
 /**
+ * 체인 커밋의 역할. PR 대응이 있거나 **병합 근거**가 있으면 머지 커밋이고, 아니면 직접 푸시다.
+ *
+ * 체인 행만 보는 `rebuildCommits`·커밋 보강의 규칙에 병합 근거를 더한 것이다 — 채번이 PR 문서보다
+ * 먼저 돌면 체인 행의 PR이 `NULL`로 남는데(DEV-207), 그 커밋을 직접 푸시로 「되돌리면」 틀린 역할을
+ * 하나 더 만든다. 병합 근거는 그 커밋이 어느 PR의 머지 커밋이라는 정본의 사실이다.
+ */
+function chainRoleOf(landers: readonly (number | null)[], hasMergeEvidence: boolean): ChainCommitRole {
+  return hasMergeEvidence || landers.some((number) => number !== null) ? 'merge_commit' : 'direct_push';
+}
+
+/**
+ * 체인 위에 있는데 색인 역할이 `source_commit`인 커밋을 훑는다 (CR-117 / FR-SRCH-002 AC-7).
+ *
+ * PR 투영이 피처 브랜치의 원본 목록에 섞인 dev 체인 커밋을 `source_commit`으로 덮어 온 자리다.
+ * 색인에서 `source_commit` 문서를 페이지로 읽고, 페이지마다 **한 문장으로** 현재 체인 소속을
+ * 묻는다. 체인 밖 문서는 정상적인 원본 커밋이므로 건드리지 않는다.
+ */
+async function forEachChainRoleMismatch(
+  deps: LinkRepairDeps,
+  repositoryId: number,
+  visit: (commitSha: string, role: ChainCommitRole) => Promise<void>,
+): Promise<void> {
+  let after: readonly unknown[] | undefined;
+  for (;;) {
+    const response = await deps.es.search<ScannedCommit>({
+      index: COMMIT_ALIAS,
+      routing: String(repositoryId),
+      size: SCAN_PAGE,
+      _source: ['commit_sha'],
+      query: { bool: { filter: [{ term: { repository_id: repositoryId } }, { term: { role: 'source_commit' } }] } },
+      sort: [{ commit_sha: 'asc' }],
+      ...(after === undefined ? {} : { search_after: [...after] }),
+    });
+    const hits = response.hits.hits;
+    if (hits.length === 0) break;
+    const shas = hits
+      .map((hit) => hit._source?.commit_sha)
+      .filter((sha): sha is string => typeof sha === 'string' && sha !== '');
+    const landers = await mergeSequenceRepo.findCurrentChainLanders(deps.pool, repositoryId, shas);
+    const merged = await prCommitLinkRepo.listCommitsWithMergeEvidence(deps.pool, repositoryId, [...landers.keys()]);
+    for (const sha of shas) {
+      const key = sha.toLowerCase();
+      const onChain = landers.get(key);
+      if (onChain !== undefined) await visit(key, chainRoleOf(onChain, merged.has(key)));
+    }
+    const last = hits[hits.length - 1]?.sort;
+    if (last === undefined || hits.length < SCAN_PAGE) break;
+    after = last;
+  }
+}
+
+/**
  * 정본과 색인을 맞댄다. **아무 데도 쓰지 않는다.**
  *
  * 색인 쪽과 정본 쪽을 **양방향으로** 본다. 색인에만 있는 번호(지워야 할 것)와
@@ -129,6 +205,8 @@ export async function planLinkRepair(
   let commitsChanged = 0;
   let edgesAdded = 0;
   let edgesRemoved = 0;
+  let edgesChainExcluded = 0;
+  let chainExcludedCommits = 0;
   let unchanged = 0;
   let blocked = 0;
   let failed = 0;
@@ -145,7 +223,10 @@ export async function planLinkRepair(
   };
 
   const consider = async (sha: string, indexed: readonly number[]): Promise<void> => {
-    const canonicalNumbers = await prCommitLinkRepo.listLinkedPullRequestNumbers(deps.pool, repositoryId, sha);
+    // 유효 연결과 체인 규칙으로 빠진 번호를 **한 문장으로** 읽는다 (CR-117).
+    const sets = await prCommitLinkRepo.readCommitLinkSets(deps.pool, repositoryId, sha);
+    const canonicalNumbers = sets.effective;
+    const chainExcludedSet = new Set(sets.chainExcluded);
     const indexedSet = new Set(indexed);
     const canonicalSet = new Set(canonicalNumbers);
 
@@ -153,9 +234,17 @@ export async function planLinkRepair(
     const removalCandidates = indexed.filter((n) => !canonicalSet.has(n) && (prFilter === null || prFilter.has(n)));
 
     const removed: number[] = [];
+    const chainExcluded: number[] = [];
     const withheld: number[] = [];
     for (const number of removalCandidates) {
-      if (await isVerified(number)) removed.push(number);
+      /*
+       * 체인 규칙으로 빠지는 번호는 **관측 확정을 묻지 않는다** (CR-117). 그 번호는 원시 관측에
+       * 있고, 빼는 근거는 목록의 완전성이 아니라 체인 소속이다 — PostgreSQL이 이미 아는 사실이다.
+       */
+      if (chainExcludedSet.has(number)) {
+        removed.push(number);
+        chainExcluded.push(number);
+      } else if (await isVerified(number)) removed.push(number);
       else {
         withheld.push(number);
         blocking.add(number);
@@ -170,6 +259,8 @@ export async function planLinkRepair(
     commitsChanged += 1;
     edgesAdded += added.length;
     edgesRemoved += removed.length;
+    edgesChainExcluded += chainExcluded.length;
+    if (chainExcluded.length > 0) chainExcludedCommits += 1;
     if (withheld.length > 0) blocked += 1;
     if (samples.length < sampleLimit) {
       samples.push({
@@ -178,6 +269,7 @@ export async function planLinkRepair(
         canonical: canonicalNumbers,
         added: sortedUnique(added),
         removed: sortedUnique(removed),
+        chainExcluded: sortedUnique(chainExcluded),
         withheld: sortedUnique(withheld),
       });
     }
@@ -254,12 +346,28 @@ export async function planLinkRepair(
     if (rows.length < SCAN_PAGE) break;
   }
 
+  /*
+   * 3) 덮인 체인 커밋 역할 (CR-117). 역할은 PR 단위가 아니라 커밋 단위라 `--pr`로 좁힌 실행에서는
+   *    대조하지 않는다 — 좁혀 달라고 한 운영자에게 저장소 전체를 바꾸는 일을 끼워 넣지 않는다.
+   */
+  let roleMismatches: number | null = null;
+  if (prFilter === null) {
+    let count = 0;
+    await forEachChainRoleMismatch(deps, repositoryId, async () => {
+      count += 1;
+    });
+    roleMismatches = count;
+  }
+
   return {
     repository: `${repository.owner}/${repository.name}`,
     scanned,
     commitsChanged,
     edgesAdded,
     edgesRemoved,
+    edgesChainExcluded,
+    chainExcludedCommits,
+    roleMismatches,
     unchanged,
     blocked,
     failed,
@@ -275,6 +383,11 @@ export interface LinkRepairApplyResult {
   /** 이미 큐에 있어 다시 세우지 않은 커밋 수. */
   readonly skippedStale: number;
   readonly blocked: number;
+  /**
+   * 체인이 정한 역할로 되돌린 커밋 수 (CR-117). `--pr`로 좁힌 실행은 이 일을 하지 않으며 그때
+   * `null`이다. 되돌리는 사이 문서가 사라졌으면 세지 않는다.
+   */
+  readonly rolesRestored: number | null;
 }
 
 /**
@@ -307,7 +420,9 @@ export async function applyLinkRepair(
   const seen = new Set<string>();
 
   const check = async (sha: string, indexed: readonly number[]): Promise<void> => {
-    const canonical = await prCommitLinkRepo.listLinkedPullRequestNumbers(deps.pool, repositoryId, sha);
+    const sets = await prCommitLinkRepo.readCommitLinkSets(deps.pool, repositoryId, sha);
+    const canonical = sets.effective;
+    const chainExcludedSet = new Set(sets.chainExcluded);
     const indexedSet = new Set(indexed);
     const canonicalSet = new Set(canonical);
     const added = canonical.filter((n) => !indexedSet.has(n) && (prFilter === null || prFilter.has(n)));
@@ -316,6 +431,11 @@ export async function applyLinkRepair(
     let removable = 0;
     let withheld = 0;
     for (const number of removalCandidates) {
+      // 체인 규칙으로 빠지는 번호는 관측 확정을 묻지 않는다 — 계획과 같은 판정이다 (CR-117).
+      if (chainExcludedSet.has(number)) {
+        removable += 1;
+        continue;
+      }
       const observation = await prCommitLinkRepo.findLinkObservation(deps.pool, repositoryId, number);
       if (observation?.verification_state === 'verified') removable += 1;
       else withheld += 1;
@@ -375,7 +495,26 @@ export async function applyLinkRepair(
     skippedStale = queued.alreadyQueued;
   }
 
-  return { scheduled, skippedStale, blocked };
+  /*
+   * 덮인 체인 커밋 역할을 되돌린다 (CR-117 / FR-SRCH-002 AC-7). **이 명령이 색인에 직접 쓰는
+   * 유일한 자리다** — 관계 러너는 `role`을 비추지 않아 갈라질 두 번째 경로가 없고, 값은 체인
+   * 행에서 결정론적으로 나오며, 쓰기는 `source_commit`일 때만 바꾸는 단방향·멱등이다
+   * (`restoreChainCommitRole`). 재색인 울타리 안에서 쓴다 — 진행 중인 재색인의 shadow도 같은
+   * 값을 받는다. 계획처럼 `--pr`로 좁힌 실행에서는 하지 않는다.
+   */
+  let rolesRestored: number | null = null;
+  if (prFilter === null) {
+    let restored = 0;
+    await forEachChainRoleMismatch(deps, repositoryId, async (commitSha, role) => {
+      const outcome = await withReindexWrite(deps.pool, (targets) =>
+        restoreChainCommitRole(deps.es, { repositoryId, docId: commitDocId(repositoryId, commitSha), role }, targets),
+      );
+      if (outcome === 'restored') restored += 1;
+    });
+    rolesRestored = restored;
+  }
+
+  return { scheduled, skippedStale, blocked, rolesRestored };
 }
 
 /* ------------------------------------------------------------------------- */

@@ -25,7 +25,7 @@ import { bulkUpsert } from '@prs/es';
 import { withReindexWrite } from '@prs/db';
 import { buildUpsertRequests } from './documents.js';
 import { resolveAuthorTeam, syncOrgTeamsIfStale, type AuthorTeamDeps } from './author-teams.js';
-import { linkObservationOf, recordProjectionSnapshot } from './snapshot.js';
+import { chainShasOf, linkObservationOf, recordProjectionSnapshot } from './snapshot.js';
 import { toEnrichedPullRequest } from './enriched-payload.js';
 import { describeFailedItems, retryFailedItems } from './index-retry.js';
 import {
@@ -324,6 +324,8 @@ export async function projectOne(
       documentVersion,
       indexedAt: (deps.now ?? ((): Date => new Date()))(),
       authorTeams,
+      // 체인 커밋에는 원본 커밋 문서를 쓰지 않는다 (CR-117). 실시간 투영과 같은 함수다.
+      chainShas: await chainShasOf(deps.pool, repository.repository_id, enriched.source_commit_shas),
     });
 
     /*

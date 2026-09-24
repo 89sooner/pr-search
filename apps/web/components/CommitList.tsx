@@ -19,6 +19,7 @@ import type { ReactNode } from 'react';
 import { Badge, Button, Table } from './ui';
 import { shortSha } from '../lib/format';
 import type { CommitListModel } from '../lib/pr-detail';
+import { ExcludedCommitsNote } from './ExcludedCommitsNote';
 
 export interface CommitListProps extends CommitListModel {
   /** 보강 재조회. **자동 폴링을 하지 않는다** — 사용자가 누를 때만 (FLOW-002). */
@@ -43,10 +44,11 @@ export function CommitList({
   truncated,
   totalCount,
   enrichmentPending,
+  excludedCount,
   onRefetch,
   refetching,
 }: CommitListProps): ReactNode {
-  const model = { mergeCommitSha, sourceCommits, truncated, totalCount, enrichmentPending };
+  const model = { mergeCommitSha, sourceCommits, truncated, totalCount, enrichmentPending, excludedCount };
 
   return (
     <section aria-labelledby="commits-heading" data-testid="commit-list">
@@ -105,6 +107,8 @@ export function CommitList({
       ) : (
         <p data-testid="commit-count">{commitCountLabel(model)}</p>
       )}
+      {/* 대상 브랜치에 이미 있던 커밋을 뺐다면 그 사실을 말한다 (CR-117 / FR-SRCH-003 AC-5). */}
+      {enrichmentPending ? null : <ExcludedCommitsNote count={excludedCount} truncated={truncated} />}
     </section>
   );
 }

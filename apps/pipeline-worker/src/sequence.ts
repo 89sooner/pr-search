@@ -51,6 +51,7 @@ import {
   auditRepo,
   integrityRepo,
   mergeSequenceRepo,
+  prCommitLinkRepo,
   repositoryRepo,
   sequenceLatencyRepo,
   sequenceSpaceRepo,
@@ -256,6 +257,12 @@ export async function assignSequence(
         trigger_kind: 'sequence_assigned',
         ...(correlationId === '' ? {} : { correlation_id: correlationId }),
       }));
+      /*
+       * 새로 체인에 오른 커밋의 PR 연결을 다시 계산하게 한다 (CR-117 / FR-SRCH-002 AC-7). 다른 PR의
+       * 원본 목록이 이 커밋을 먼저 싣고 투영됐다면(채번이 늦은 경우) 그 연결은 이제 유효하지 않다.
+       * 원본 근거가 있는 커밋만 오르므로 평시에는 아무 행도 건드리지 않는다.
+       */
+      await prCommitLinkRepo.requeueChainChangedCommitLinks(client, repositoryId, applied.map((entry) => entry.sha));
     }
     await client.query('COMMIT');
 
@@ -497,6 +504,15 @@ export async function reassignSequence(
       trigger_kind: 'sequence_reassigned',
       ...(correlationId === '' ? {} : { correlation_id: correlationId }),
     }));
+    /*
+     * 체인에서 빠졌거나 새로 올랐거나 PR 대응이 바뀐 커밋의 연결을 다시 계산하게 한다 (CR-117 /
+     * FR-SRCH-002 AC-7). 강제 푸시로 체인에서 빠진 커밋은 다시 그 PR들의 원본 커밋이 될 수 있다.
+     */
+    await prCommitLinkRepo.requeueChainChangedCommitLinks(
+      client,
+      repositoryId,
+      await mergeSequenceRepo.listChangedCommitsBetweenEpochs(client, repositoryId, baseBranch, oldEpoch, newEpoch),
+    );
     await client.query('COMMIT');
 
     committed = {
@@ -1294,6 +1310,12 @@ export async function repairSequence(
       trigger_kind: 'sequence_repaired',
       ...(correlationId === '' ? {} : { correlation_id: correlationId }),
     }));
+    // 체인 소속이 바뀐 커밋의 연결을 다시 계산하게 한다 (CR-117). 강제 푸시 재채번과 같은 규칙이다.
+    await prCommitLinkRepo.requeueChainChangedCommitLinks(
+      client,
+      repositoryId,
+      await mergeSequenceRepo.listChangedCommitsBetweenEpochs(client, repositoryId, baseBranch, oldEpoch, newEpoch),
+    );
     await client.query('COMMIT');
 
     committed = {
