@@ -114,7 +114,7 @@ async function cleanCanonical(): Promise<void> {
 
 beforeEach(async () => {
   await cleanCanonical();
-  // 재색인은 DB 전체를 본다 — 다른 파일이 남긴 근거 없는 관계 행이 판정을 막지 않게 한다 (DEV-763).
+  // 재색인은 DB 전체를 본다 — 다른 파일이 남긴 근거 없는 관계 행이 판정을 막지 않게 한다 (DEV-764).
   await removeOrphanCommitLinks(pool);
   /*
    * **서비스 인덱스와 앞 시험의 버전 인덱스에 남은 이 저장소 문서를 지운다.** 남아 있으면

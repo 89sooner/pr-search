@@ -193,7 +193,7 @@ beforeEach(async () => {
    */
   await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
   await deleteLinkCanonical();
-  // 재색인은 DB 전체를 본다 — 다른 파일이 남긴 근거 없는 관계 행이 판정을 막지 않게 한다 (CR-119, DEV-763).
+  // 재색인은 DB 전체를 본다 — 다른 파일이 남긴 근거 없는 관계 행이 판정을 막지 않게 한다 (CR-119, DEV-764).
   await removeOrphanCommitLinks(pool);
 
   for (const alias of [ALIAS, PR_ALIAS]) {

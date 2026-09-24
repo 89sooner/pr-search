@@ -67,7 +67,7 @@ export function createTestRedis(): Redis {
 export { clearMergeSequence } from '../../../packages/db/integration/helpers.js';
 
 /**
- * **주인 PR 스냅숏이 없는 관계 행**을 지운다 (CR-119, DEV-763).
+ * **주인 PR 스냅숏이 없는 관계 행**을 지운다 (CR-119, DEV-764).
  *
  * 재색인은 등록된 저장소 **전부**를 다시 만든다 — 시험이 자기 저장소만 심어도 판정은 DB 전체를
  * 본다. 재구축은 PR 스냅숏과 그 PR의 유효한 `source` 연결에서 원본 커밋 문서를 만드는데, 다른 시험

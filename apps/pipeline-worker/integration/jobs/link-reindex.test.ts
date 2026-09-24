@@ -86,7 +86,7 @@ beforeEach(async () => {
   await pool.query('DELETE FROM pull_request_commit_link WHERE repository_id = $1', [REPOSITORY_ID]);
   await pool.query('DELETE FROM pull_request_link_observation WHERE repository_id = $1', [REPOSITORY_ID]);
   await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
-  // 재색인은 DB 전체를 본다 — 다른 파일이 남긴 근거 없는 관계 행이 판정을 막지 않게 한다 (CR-119, DEV-763).
+  // 재색인은 DB 전체를 본다 — 다른 파일이 남긴 근거 없는 관계 행이 판정을 막지 않게 한다 (CR-119, DEV-764).
   await removeOrphanCommitLinks(pool);
   // 체인 시험(CR-117)이 심은 시퀀스·커밋 정본. 다른 시험에 체인이 남으면 그 시험의 연결이 달라진다.
   await pool.query('DELETE FROM sequence_work WHERE repository_id = $1', [REPOSITORY_ID]);
