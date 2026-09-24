@@ -1392,12 +1392,15 @@ App에 허용되는가)을 고친 뒤 대조를 dry-run 없이 실행하면 즉�
      psql -U prs -d prs -c "SELECT job_id, state, finished_at, left(error, 300) AS error, progress->>'phase' AS phase, progress->>'source_index' AS source, progress->>'target_index' AS target, progress->>'switched_at' AS switched_at FROM job WHERE type = 'reindex' AND target = 'prs-commits' ORDER BY job_id DESC LIMIT 5"
    ```
 
-4. **서비스 중인 인덱스를 표본으로 대조한다.** 정본에 메타데이터가 있는 체인 밖 커밋(보강이 끝난
-   원본 커밋)을 몇 개 골라, 서비스 문서에 메시지·작성자가 있는지 본다. 비어 있으면 DEV-760의 누락이다.
+4. **서비스 중인 인덱스를 표본으로 대조한다.** PR 스냅숏의 원본 목록에 있는 체인 밖 커밋(보강이
+   끝나 정본에 메타데이터가 있는 원본 커밋)을 몇 개 골라, 서비스 문서에 메시지·작성자가 있는지 본다.
+   비어 있으면 DEV-760의 누락이다. 문서 조회가 `found: false`면 메타데이터가 아니라 **문서가** 없는
+   것이다 — 원본 목록에 있는 커밋이므로 문서가 있어야 하고, 5번의 재구축이 그것을 만든다. 원본
+   목록에 없는 체인 밖 커밋은 문서를 만들 근거가 없어 원래 문서가 없으므로(DEV-759) 표본으로 쓰지 않는다.
 
    ```bash
    docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T postgres \
-     psql -U prs -d prs -c "SELECT s.repository_id, s.commit_sha FROM commit_snapshot s WHERE NOT EXISTS (SELECT 1 FROM merge_sequence m WHERE m.repository_id = s.repository_id AND m.commit_sha = s.commit_sha) ORDER BY s.committed_at DESC LIMIT 5"
+     psql -U prs -d prs -c "SELECT s.repository_id, s.commit_sha FROM commit_snapshot s WHERE NOT EXISTS (SELECT 1 FROM merge_sequence m WHERE m.repository_id = s.repository_id AND m.commit_sha = s.commit_sha) AND EXISTS (SELECT 1 FROM pull_request_snapshot p WHERE p.repository_id = s.repository_id AND p.document -> 'source_commit_shas' ? s.commit_sha) ORDER BY s.committed_at DESC LIMIT 5"
    # 문서 ID = <repository_id>:<commit_sha>, routing = repository_id
    docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T elasticsearch \
      curl -fsS 'http://localhost:9200/prs-commits/_doc/<repository_id>:<commit_sha>?routing=<repository_id>&_source=role,message,author,changed_paths'
