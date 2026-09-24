@@ -2,7 +2,7 @@
 
 ## CR-120 — link-rebuild 되먹임 시험의 정적 대기 경합: 두 소비자가 같은 신호를 받은 상태를 기다린다 (2026-09-25)
 
-- 유형: correction(검증 결함 — 시험의 대기 조건). 제품 코드·요구사항·계약·운영 문서는 바꾸지 않는다. 안정 ID 재번호화 0건. 상태: **open** — 브랜치 `fix/link-rebuild-settle`, worktree `/home/roqkf/pr-search-wt/link-rebuild-settle`.
+- 유형: correction(검증 결함 — 시험의 대기 조건). 제품 코드·요구사항·계약·운영 문서는 바꾸지 않는다. 안정 ID 재번호화 0건. 상태: **closed** — main `e181751`(PR #234 squash 병합, 2026-09-25). worktree `/home/roqkf/pr-search-wt/link-rebuild-settle`(브랜치 `fix/link-rebuild-settle`).
 - 발견: CR-118 병합 기록 PR #233(문서만 바꿈)의 CI run 36020541832에서 integration 잡이 실패했다 — `apps/pipeline-worker/integration/worker/link-rebuild.test.ts` 「**되먹임이 없다** — 커밋 보강이 자기 신호를 되받아 다시 내지 않는다 (DEV-216)」가 `expected 5 to be 4`였다. 같은 코드가 몇 분 전 main `0dd7734`의 CI(run 36017019576)에서는 통과했다. 사용자 지시(18차 착수 지시 4장)는 CI 실패를 근거 없이 flaky로 단정하지 말고 가르며, 필요한 수정은 작은 별도 CR/PR로 처리하라는 것이다.
 - 분류(실측, 원장 6.110장): **시험의 대기 문제다.** 그 시험은 루프 탐지를 위해 `settle(seen)`을 `until` 없이 불러 「300ms 동안 새 전달 없음」으로 끝낸다. 간선 소비자가 넷째 `commit.metadata_ready`의 색인을 쓰는 동안 300ms가 지나면, 보강 소비자는 다섯을 모두 받았는데 간선 소비자는 넷째를 처리하는 순간에 판정에 들어간다. 간선 소비자에 500ms 지연을 넣은 진단 사본에서 옛 대기는 CI와 같은 `expected 5 to be 4`로 실패했고 고친 대기는 통과했다. 로컬에서는 ES 쓰기가 빨라 CPU 부하를 걸어도 12회 모두 통과했다 — DEV-346이 기록한 「정적은 처리 끝이 아니다」와 같은 함정이다.
 - 범위: 그 시험이 `settle`에 `until`(두 소비자가 받은 `commit.metadata_ready` 수가 같다)을 주고, 신호가 실제로 났는지(0보다 크다)를 더 판정한다. `settle`의 설명을 사실에 맞게 고친다.
@@ -12,7 +12,7 @@
 
 ## CR-119 — prs-commits 재색인의 기대 집합과 메타데이터 복원: 필요한 문서와 값이 모두 있는 새 인덱스만 전환한다 (2026-09-25)
 
-- 유형: correction(설계 결함 — 재색인의 기대 건수가 쓰기 결과와 무관하게 세어졌고, 그 뒤에 원본 커밋 메타데이터 누락이 숨어 있었다). `FR-ING-008` AC-10 신설. **기존 FR의 요구사항 문장과 AC-1~AC-9는 바꾸지 않는다. 안정 ID 재번호화 0건.** 상태: **open** — 브랜치 `feature/commit-reindex-completeness`, worktree `/home/roqkf/pr-search-wt/commit-reindex`. 착수는 main `3d831a9`에서 했고 CR-118 병합과 그 병합 기록, CR-120 병합 뒤의 main `e181751` 위로 rebase했다(세 CR은 코드 파일이 겹치지 않는다).
+- 유형: correction(설계 결함 — 재색인의 기대 건수가 쓰기 결과와 무관하게 세어졌고, 그 뒤에 원본 커밋 메타데이터 누락이 숨어 있었다). `FR-ING-008` AC-10 신설. **기존 FR의 요구사항 문장과 AC-1~AC-9는 바꾸지 않는다. 안정 ID 재번호화 0건.** 상태: **closed** — main `e94cb4f`(PR #235 squash 병합, 2026-09-25). worktree `/home/roqkf/pr-search-wt/commit-reindex`(브랜치 `feature/commit-reindex-completeness`). 착수는 main `3d831a9`에서 했고 CR-118 병합과 그 병합 기록, CR-120 병합 뒤의 main `e181751` 위로 rebase했다(세 CR은 코드 파일이 겹치지 않는다).
 - 요청: 사용자 지시(2026-09-24, 18차 착수 지시의 작업 A) — `agent-context/upstream-feedback.md` 「prs-commits 재색인 verify가 false positive다」(사내 `0.1.0-pilot.18` 운영 보고, 2026-09-23). prs-commits v3→v4 재색인이 `verifyBeforeCutover`에서 실패했고 사내는 v4로 손으로 전환했다. 지시는 오류 메시지만 없애지 말고 필요한 커밋·메타데이터가 제대로 복원된 새 인덱스만 자동으로 전환되게 하라는 것이며, 기대 건수만 줄이는 수정은 승인하지 않는다.
 - 확인된 결함 경로(격리 인프라에서 재현): (1) `rebuildCommits`가 `commit_snapshot`의 모든 행을 쓰기 결과와 무관하게 기대 문서 ID(`tally.documentIds`)에 넣었다. 체인 밖 행은 `createWith`가 없어 새 인덱스에 문서를 만들지 않고, 그 404는 `commit-metadata.ts`에서 `noop`으로 삼켜졌다. 그 행이 어느 PR 스냅숏에도 없으면(rebase·force-push로 PR에서 빠진 옛 커밋) 새 인덱스에 문서가 영영 생기지 않아 `커버리지 부족: 재구축 N > 대상 N-k`로 전환이 막혔다 — 사내 보고와 같은 실패를 재현했다. (2) **숨은 결함**: 같은 스캔이 체인 밖 행의 메타데이터를 PR 유래 문서 생성(`rebuildProjectedCommits`)보다 **먼저** 보냈다. 새 인덱스에는 그 문서가 아직 없어 값이 사라졌고, 뒤이어 만들어진 원본 커밋 문서는 메시지·작성자·변경 경로 없이 섰다. 검증은 건수만 보아 이것을 통과시켰다 — 지금까지 전환까지 간 prs-commits 재색인은 모두 이 모양이었을 가능성이 높다. (3) 보강 스크립트가 필드 없음과 `null`을 같게 보아, 정본의 `author: null`이 필드 없는 문서에 쓰이지 않았다. (4) `update`는 지워진 대상 인덱스를 같은 이름·동적 매핑으로 **자동 생성**한다(`action.auto_create_index` 기본값) — 이름만 보는 검증과 전환은 그 인덱스를 받아들인다. (5) 관측이 불완전해(조회 실패·250건 절삭·읽는 동안 head/base 변경) 목록에서 빠진 커밋의 `source` 연결은 CR-116이 지우지 않고 남기는데, 재구축은 PR 스냅숏의 최신 목록만 보아 그 커밋 문서를 만들지 않았다. 관계 replay가 그 커밋을 「문서를 만들지 못했다」로 읽어 재색인을 실패시키고, 250건을 넘는 PR은 완전성을 영영 증명할 수 없어 `refetch`로도 풀리지 않는다.
 - 보고서와 다른 점: 기대 ID 집합은 Set이라 「중복 집계」가 아니었고, 문제 커밋은 「직접 push」가 아니라 체인 밖 커밋이다(직접 push는 체인 커밋이라 `createWith`로 만든다). 「ES `_count`와 비교」는 이미 하고 있었다 — 틀린 것은 기대 건수였다.
@@ -252,8 +252,8 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| CR-120 | 2026-09-25 | correction | CR-118 기록 PR #233의 CI run 36020541832 integration 실패(`link-rebuild.test.ts` 되먹임 시험, `expected 5 to be 4`) | **실패를 시험의 대기 경합으로 가르고 고친다.** 루프 탐지 시험이 「300ms 조용함」만으로 판정해, 간선 소비자가 앞 신호를 처리하는 동안 두 소비자의 수가 어긋난 순간에 들어갔다. 두 소비자가 받은 신호 수가 같고 조용한 상태를 `until`로 기다리고, 신호가 실제로 났는지를 더 판정한다 | DEV-765 · DEV-346(같은 계열) | 변경 대장 · 원장 · 통합 시험 | open — 브랜치 `fix/link-rebuild-settle` |
-| CR-119 | 2026-09-25 | correction | 사용자 지시 2026-09-24(18차 작업 A) — 사내 pilot.18 운영 보고(prs-commits v3→v4 재색인이 전환 전 검증에서 실패, 사내 수동 전환) | **재색인의 기대 집합을 쓰기 결과가 아니라 정본과 생성 정책에서 문서 ID로 계산하고, 문서를 만든 뒤 메타데이터를 반영하며, 전환 전 검증이 필수 ID의 존재와 알려진 메타데이터 값을 대조한다.** 숨은 원본 커밋 메타데이터 누락, `null`·부재 혼동, 대상 인덱스 자동 생성, 보존된 `source` 연결 커밋의 문서 부재를 함께 고친다 | FR-ING-008 AC-10 · JOB-ING-006 · API-ADM-004 · WP-103 · DEV-759~764 | SRS · PRD · 매트릭스 · 비동기 · API 계약 · 관측성 · WP · 원장 · RUNBOOK | open — 브랜치 `feature/commit-reindex-completeness` |
+| CR-120 | 2026-09-25 | correction | CR-118 기록 PR #233의 CI run 36020541832 integration 실패(`link-rebuild.test.ts` 되먹임 시험, `expected 5 to be 4`) | **실패를 시험의 대기 경합으로 가르고 고친다.** 루프 탐지 시험이 「300ms 조용함」만으로 판정해, 간선 소비자가 앞 신호를 처리하는 동안 두 소비자의 수가 어긋난 순간에 들어갔다. 두 소비자가 받은 신호 수가 같고 조용한 상태를 `until`로 기다리고, 신호가 실제로 났는지를 더 판정한다 | DEV-765 · DEV-346(같은 계열) | 변경 대장 · 원장 · 통합 시험 | closed — main `e181751`(PR #234), 원장 6.110 |
+| CR-119 | 2026-09-25 | correction | 사용자 지시 2026-09-24(18차 작업 A) — 사내 pilot.18 운영 보고(prs-commits v3→v4 재색인이 전환 전 검증에서 실패, 사내 수동 전환) | **재색인의 기대 집합을 쓰기 결과가 아니라 정본과 생성 정책에서 문서 ID로 계산하고, 문서를 만든 뒤 메타데이터를 반영하며, 전환 전 검증이 필수 ID의 존재와 알려진 메타데이터 값을 대조한다.** 숨은 원본 커밋 메타데이터 누락, `null`·부재 혼동, 대상 인덱스 자동 생성, 보존된 `source` 연결 커밋의 문서 부재를 함께 고친다 | FR-ING-008 AC-10 · JOB-ING-006 · API-ADM-004 · WP-103 · DEV-759~764 | SRS · PRD · 매트릭스 · 비동기 · API 계약 · 관측성 · WP · 원장 · RUNBOOK | closed — main `e94cb4f`(PR #235), 원장 6.111 |
 | CR-118 | 2026-09-24 | correction | 사용자 지시 2026-09-24(18차 P0) — main `3d831a9`의 CI run 36003771848 failure(verify `test:e2e` 209건 중 1건, `flow-003.spec.ts:176`) | **실패를 제품 결함과 시험 경합으로 실측해 가르고 시험의 대기를 고친다.** 첫 뒤로가기가 커밋 상세를 새 문서로 다시 불러온 뒤 수화 전에 두 번째 뒤로가기를 불러 App Router가 popstate를 놓친다. 두 번째 뒤로가기 전에 클라이언트 신호 `data-screen-state="ready"`를 기다리고, 세션 히스토리 항목을 판정하며, 근거가 틀렸던 15초 시한을 되돌린다 | DEV-758 · DEV-377·DEV-424·DEV-689·DEV-708(재진단) | 변경 대장 · 원장 · e2e 시험 | closed — main `0dd7734`(PR #232), 원장 6.109 |
 | CR-117 | 2026-09-24 | correction | 사용자 지시 2026-09-24 — 사내 pilot.18 운영 보고(`git merge dev`로 받아 온 dev 체인 커밋에 그 PR 번호가 붙음, `ebc781d` = [983, 1671, 1855]) | **원본 커밋을 「그 PR이 새로 가져온 커밋」으로 정의하고, 추적 브랜치의 현재 체인에 이미 오른 커밋은 그 커밋을 올린 PR에만 속하게 한다.** 원시 관측과 CR-116의 삭제 규율은 그대로 두고 연결을 읽는 모든 자리가 같은 술어를 쓴다. 체인이 바뀌면 관계를 다시 투영하고, PR 투영은 체인 커밋의 역할을 덮지 않으며, PR 상세도 같은 정의로 원본 커밋을 낸다 | FR-SRCH-002 AC-7 · FR-SRCH-003 AC-5 · OD-016 · JOB-REL-008 · RB-29 · WP-102 · DEV-754~757 · PSI D-22 | SRS · PRD · 용어집 · 매트릭스 · 화면 명세 · 실행 지시서 · 백엔드 · API 계약 · 데이터 모델 · 비동기 · 관측성 · PSI handoff · WP · 원장 · RUNBOOK | closed — main `65acf83`(PR #230), 원장 6.108; 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | CR-116 | 2026-09-23 | correction/reliability | 사용자 지시 2026-09-23 — 사내 pilot.17 운영 보고(커밋 3,481건에 과거 PR 번호가 영구히 남음) | **커밋 문서의 `pull_request_numbers`가 합집합이라 빠진 PR 번호를 지우지 못하던 결함을, 관계 정본을 PostgreSQL에 두고 커밋별 전용 투영기가 전체 집합을 대입하게 고친다.** 완전성 근거 없이는 지우지 않고, 관계 전용 generation으로 늦은 쓰기·충돌을 가르며, 재색인·전체 대조·복구 명령이 같은 정본을 쓴다 | FR-SRCH-002 AC-6 · FR-ING-004 AC-6 · FR-ING-008 AC-9 · ADR-004 Amendment · JOB-REL-008 · ENT-CORE-009 · ENT-CORE-010 · ENT-CORE-011 · RB-29 · WP-101 · DEV-744~753 | SRS · PRD · 용어집 · 매트릭스 · 실행 지시서 · 백엔드 · API 계약 · 데이터 모델 · 비동기 · 관측성 · ADR · WP · 원장 · RUNBOOK | closed — main `f9cda82`(PR #228), 원장 6.107; 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
@@ -2377,7 +2377,9 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - [x] 요구사항·파생 UI·기술 아키텍처·운영 문서: 해당 없음 — 제품 동작과 계약이 바뀌지 않는다.
 - [x] 전달: 원장 v6.108 → v6.109(머리 절, 5장 DEV-765, 6.110장).
 - [x] 코드·시험: `apps/pipeline-worker/integration/worker/link-rebuild.test.ts` — 원장 6.110장.
-- 상태: open — 병합 뒤 기록에서 닫는다.
+- 상태: **closed**(2026-09-25).
+
+**병합 판정.** PR #234(base `main`, 최종 head `b20568e`)의 CI(run 36049010797)는 verify·integration 모두 success다(첫 head `3a36b18`의 run 36023662790도 success였다). 독립 리뷰(읽기 전용)는 상·중 지적 0건이었다. 하 지적 둘 가운데 문서의 「시한은 그대로」·「다 받은 상태」는 두 번째 커밋에서 코드에 맞게 고쳤고, 시한 메시지에 두 수를 싣는 것은 선택이라 하지 않았다(원장 6.110장). 사용자 승인(2026-09-25 「병합해도 됩니다」 — 18차 착수 지시의 병합 승인을 이어가기 세션에서 다시 받았다)으로 squash 병합했다 — main `e181751`(2026-09-25), 트리는 PR 최종 head와 같다. 병합 커밋의 main CI(run 36051845950)는 verify·integration 모두 success다.
 
 ### CR-119 cascade — prs-commits 재색인의 기대 집합과 메타데이터 복원
 
@@ -2390,7 +2392,9 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - [x] 코드·시험: 원장 6.111장.
 - 문서 검증기: 원장 6.111장.
 - 독립 리뷰: 원장 6.111장 「독립 리뷰」.
-- 상태: open — 병합 뒤 기록에서 닫는다.
+- 상태: **closed**(2026-09-25).
+
+**병합 판정.** PR #235(base `main`, head `d65928c`)의 CI(run 36054225382)는 verify·integration 모두 success다. 최종 트리(`601904e`)의 전 계층 게이트, 최종 코드의 변이 11종(모두 죽음), 코드·문서 독립 리뷰(둘 다 상·중 지적 0건)와 하 지적의 처분은 원장 6.111장에 있다. 같은 사용자 승인(2026-09-25)으로 squash 병합했다 — main `e94cb4f`(2026-09-25), 트리는 PR head와 같다. 병합 커밋의 main CI(run 36055350099)는 verify·integration 모두 success다. 사내 수동 v4 전환은 NOT VERIFIED이고 사내 적용은 NOT RUN이다(RUNBOOK 7.H).
 
 ### CR-118 cascade — main CI의 FLOW-002 뒤로가기 e2e 간헐 실패: 수화 전 두 번째 뒤로가기
 

@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.65 | 갱신일: 2026-09-25
+> 상태: review | 버전: v2.66 | 갱신일: 2026-09-25
 
 ## WP-103 prs-commits 재색인의 기대 집합과 메타데이터 복원 (CR-119)
 
@@ -8,7 +8,7 @@
 - 범위: (1) `packages/es/src/commit-metadata.ts` — `CommitMetadataOutcome`(`created`·`updated`·`already_equal`·`document_missing`)와 대상 결과(`shadow`, 실패는 `failed`) 분리, 문서 없음과 인덱스 없음의 404 구분(`isDocumentMissing`), 응답 결과 없음은 던짐, 스크립트의 `null`·부재 구분, `restoreChainCommitRole`도 같은 404 규칙. (2) `apps/pipeline-worker/src/reindex.ts` — 체인 패스는 체인 커밋만, PR 유래 패스 뒤 `rebuildSourceCommitMetadata`, 대상 결과 판정(`targetOutcomeOf`), PR 유래 근거에 유효한 `source` 연결(`projectedPageOf`), 생성 규칙 공유(`projectedCommitRoles`·`commitFactOf`), `verifyCommitDocuments`(기대 집합·존재·값), 준비 단계 UUID와 `targetReplaced`(검증·전환 울타리), 커밋 별칭은 재구축 쓰기 수를 기대로 넘기지 않음. (3) `packages/db` — `mergeSequenceRepo.findShasWithSequence`, `prCommitLinkRepo.listEffectiveSourceShas`, `ReindexProgress.target_uuid`. (4) `apps/pipeline-worker/src/commit-enrich.ts` — 지표 `commit_enrich_total{result}`에 `document_missing`(「이미 같음」은 기존 이름 `noop`). (5) 시험 — `removeOrphanCommitLinks`(재색인 시험의 전제), `link-reindex`의 잡 완료 판정, `reindex.test.ts`의 관계 정본 정리.
 - 제외: prs-links 재색인(별도 CR — 18차 작업 B), 사내 배포·사내 데이터 변경, Release 발행, 클러스터의 `action.auto_create_index` 변경, 역할 대조와 판정 일원화(DEV-757), 원본 목록에서 빠진 체인 밖 커밋의 `source_commit` 잔여(DEV-752), 시퀀스·M 번호·에폭·head의 의미 변경, 관계 행을 남기는 다른 시험 파일들의 정리 방식(DEV-764).
 - 완료 기준: 대표 시험은 **현 코드에서 먼저 실패해야 한다** — 같은 시험 파일을 수정 전 제품 코드 위에서 돌려 전부 실패하는 것을 본 뒤에 새 코드의 통과를 믿는다(첫 재현은 사내 보고와 같은 `커버리지 부족: 재구축 2 > 대상 1`). 통합(격리 PG·ES·Redis) — `commit-reindex-completeness.test.ts` 13건(생성 근거 없는 스냅숏과 옛 서비스 문서, 원본 커밋 메타데이터, 직접 푸시·머지 커밋·N:M·미수집, 관측이 불완전해 남은 연결, 실제 `null`, 개수만 맞춘 대상, 메타데이터 한 필드 누락, `null` 필드 부재, 문서 생성 전의 늦은 메타데이터, 중단 뒤 재시도, 검증 전·전환 전 대상 바꿔치기, 두 번째 재색인), `packages/es/integration/commit-metadata.test.ts` 4건(실제 클러스터의 두 404와 자동 생성). 단위 — `packages/es/src/commit-metadata.test.ts` 12건. 회귀 — `runtime-reachability.test.ts` +1건. 변이 — 원장 6.111장. 전 계층 게이트.
-- 상태: in_progress — 브랜치 `feature/commit-reindex-completeness`. 검증 기록은 원장 6.111장이다.
+- 상태: done — main `e94cb4f`(PR #235 squash 병합, 2026-09-25). 검증·병합 판정은 원장 6.111장이다.
 
 ## WP-102 원본 커밋은 그 PR이 새로 가져온 커밋 — 추적 브랜치 체인 규칙 (CR-117)
 
@@ -178,7 +178,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
-| WP-103 | prs-commits 재색인의 기대 집합과 메타데이터 복원 | 설계 결함 수정 (CR-119) | WP-035, WP-067, WP-098, WP-101, WP-102 | in_progress — 브랜치 `feature/commit-reindex-completeness`, 원장 6.111장 |
+| WP-103 | prs-commits 재색인의 기대 집합과 메타데이터 복원 | 설계 결함 수정 (CR-119) | WP-035, WP-067, WP-098, WP-101, WP-102 | done — main `e94cb4f`(PR #235), 원장 6.111장 |
 | WP-102 | 원본 커밋은 그 PR이 새로 가져온 커밋 — 추적 브랜치 체인 규칙 | 요구사항 공백 수정 (CR-117) | WP-101, WP-021, WP-022, WP-028, WP-017, WP-035 | done — main `65acf83`(PR #230), 원장 6.108장 |
 | WP-101 | 커밋 PR 연결의 정본화와 전용 투영기 | 신뢰성 결함 수정 (CR-116) | WP-008, WP-035, WP-098 | done — main `f9cda82`(PR #228), 원장 6.107장 |
 | WP-100 | 확정된 M 번호의 원격 lightweight 태그 | 기능 누락 보완 (CR-115) | WP-074, WP-075, WP-098, WP-099 | done — main `83d30fb`(PR #226), 원장 6.106장 |
