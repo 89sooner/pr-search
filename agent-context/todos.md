@@ -2643,3 +2643,14 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [ ] 사내 반입 뒤 CR-116 절차 실행 — `./prsctl upgrade`(036) → `links status` → `refetch` → `plan` → `apply` → 화면 확인. **모든 워커가 새 빌드가 된 뒤에** `apply`를 돌린다(구버전은 여전히 합집합을 쓴다). 결과는 `agent-context/upstream-feedback.md`의 CR-116 주석 아래에 적는다.
 - [ ] 격리 컨테이너 `prs-cr116-postgres`·`prs-cr116-es`·`prs-cr116-redis` 정리 — 병합 뒤. 다른 세션이 쓰지 않는지 먼저 확인한다.
 - [ ] worktree `cr116-pr-links`도 병합 뒤 기존 정리 대기 목록에 합류.
+
+## CR-117 뒤 남은 것 (17차, 2026-09-24)
+
+- [ ] **PR 병합** — 사용자 결정 대기(이번 지시에는 병합 승인이 없다). 병합 뒤 기록(CR-117 `closed`, WP-102 `done`, 원장 3·4장 상태)은 묻고 만든다.
+- [ ] **사내 반입 뒤 CR-117 절차** — `./prsctl upgrade` → 모든 워커가 새 빌드인지 `./prsctl lineage`로 확인 → 저장소마다 `./prsctl links plan --repository <owner/name>`(「그중 dev 체인 커밋에서 빠질 간선」·「역할이 source_commit으로 덮인 체인 커밋」 두 줄) → `./prsctl links apply --repository <owner/name>`(`--pr` 없이, **반입마다 한 번 꼭**) → `./prsctl links status` → 화면에서 `ebc781d`의 Linked PRs가 #1671 하나인지, PR #983 상세에 제외 안내가 나오는지. `refetch`는 필요 없다.
+- [ ] **같은 반입의 2번 보고 — prs-commits 재색인 verify 과대 계산(별도 CR).** 원인(17차 전반 분석, 코드로만 확인): `rebuildCommits`가 쓰기 결과와 무관하게 스냅숏 행마다 문서 ID를 기대 건수에 넣는다(`apps/pipeline-worker/src/reindex.ts`의 `tally.documentIds`). 체인 밖 스냅숏 행(PR 브랜치에 있다가 rebase·force-push로 PR에서 빠진 옛 커밋)은 `createWith`가 없어 새 인덱스에 문서를 만들지 않고, 404는 `packages/es/src/commit-metadata.ts`에서 조용히 noop이다. 보고서와 다른 점: 집계는 Set이라 「중복 집계」가 아니고, 문제 커밋은 「직접 push」가 아니다. 「ES `_count`와 비교」는 이미 그렇게 한다 — 틀린 것은 기대 건수다. **숨은 문제**: PR 브랜치 커밋도 커밋 보강 경로로 정본에 들어오는데(`commit-enrich.ts`), 재구축 때는 메타데이터 쓰기가 문서 생성보다 먼저라 새 인덱스에서 메시지·작성자가 비어 있을 가능성이 높다 — 기대 건수만 고치면 이것이 가려진다. **사내가 손으로 v4로 전환했다면 먼저 확인**: 잡이 failed가 된 뒤의 쓰기는 v4에 없다(이중 쓰기는 running 잡에만, `packages/db/src/repositories/reindex.ts`), 정상 전환 뒤 돌았을 시퀀스 full sweep도 돌지 않았다, v3는 자동 삭제되지 않는다(보관 정리는 completed 잡만).
+- [ ] **같은 반입의 3번 보고 — prs-links 재색인 shadow_write_failed(별도 CR).** 원인: 재구축 포트 → `resolveReferencesTo`(`apps/pipeline-worker/src/link.ts`) → 간선 부분 갱신(`packages/es/src/links.ts`)에서, 간선의 주인이 아직 처리되지 않았으면 shadow에 문서가 없어 `document_missing_exception`이 난다. `sendLinkBulk`는 shadow 쪽 오류를 모두 실패로 올리지만 같은 패키지의 커밋 메타데이터와 관계 요약은 shadow에 아직 없는 문서를 실패로 세지 않는다. 처리 순서 때문이라 참조가 얽힌 저장소에서는 매번 날 가능성이 높다. 요청 1(shadow의 문서 없음 무시)은 선례와 같고 안전해 보인다. 요청 2(`scripted_upsert: true`)는 접근 범위 필드 없는 간선 문서를 만들어 fail-closed(ADR-008, DEV-213)를 어기므로 받지 않는다. 이 경로를 끝까지 도는 통합 시험이 없다(`link-reindex.test.ts`는 이름과 달리 PR 연결 복원만 본다).
+- [ ] **사용자 답 대기 둘** — 사내 GHE dev 보호(force-push·삭제 금지, 직접 push 금지, squash-only, `M-*` 태그 ruleset)가 켜져 있는지, M 번호 채번 정체 경보(`mnumber_blocked_total`·`mnumber_blocked_since`는 있지만 경보 규칙이 없다)를 별도 CR로 더할지.
+- [ ] `DEV-756`(추적 브랜치 목록 변경 때 자동 재투영)·`DEV-757`(역할 판정 일원화) — 별도 CR 후보. `DEV-752`는 체인 밖 커밋의 `source_commit` 몫만 남았다.
+- [ ] 격리 컨테이너 `prs-cr117-postgres`·`prs-cr117-es`·`prs-cr117-redis` 정리 — 병합 뒤, 다른 세션이 쓰지 않는지 먼저 확인한다.
+- [ ] worktree `cr117-source-commits`도 병합 뒤 기존 정리 대기 목록에 합류한다.
