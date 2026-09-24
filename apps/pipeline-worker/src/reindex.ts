@@ -661,26 +661,46 @@ async function replayCommitLinks(
   }
 }
 
+/** PR 스냅숏 한 페이지가 만드는 커밋 문서의 재료 (CR-117·CR-119). */
+interface ProjectedPage {
+  /** 원본 커밋 후보 가운데 **현재 체인에 오른 것**. */
+  readonly chain: ReadonlySet<string>;
+  /** PR마다 지금 유효한 `source` 연결의 커밋 (CR-116 관계 정본). */
+  readonly linked: ReadonlyMap<number, readonly string[]>;
+}
+
 /**
- * PR 스냅숏 한 페이지의 원본 커밋 가운데 **현재 체인에 오른 것** (CR-117 / FR-SRCH-002 AC-7).
+ * PR 스냅숏 한 페이지의 재료를 한 번에 묻는다.
  *
- * 피처 브랜치가 `git merge dev`로 받아 온 dev 체인 커밋이 스냅숏의 원본 목록에 섞여 있다.
- * 그 문서는 체인 패스가 체인에서 정한 역할로 이미 만들었고, 원본 커밋 문서로 다시 쓰면 조건부
- * 업서트가 더 큰 버전(웹훅 수신 시각)으로 그 역할을 덮는다 — 실시간 투영(`buildCommitDocuments`)이
- * 건너뛰는 것과 같은 규칙이다. 페이지 하나에 한 번만 묻는다.
+ * **체인 커밋은 원본 커밋 문서로 만들지 않는다** (CR-117 / FR-SRCH-002 AC-7). 피처 브랜치가
+ * `git merge dev`로 받아 온 dev 체인 커밋이 원본 목록에 섞여 있다. 그 문서는 체인 패스가 체인에서
+ * 정한 역할로 이미 만들었고, 원본 커밋 문서로 다시 쓰면 조건부 업서트가 더 큰 버전(웹훅 수신
+ * 시각)으로 그 역할을 덮는다 — 실시간 투영(`buildCommitDocuments`)이 건너뛰는 것과 같은 규칙이다.
+ *
+ * **스냅숏의 목록만이 근거가 아니다** (CR-119 / FR-ING-008 AC-10). 관측이 불완전해 목록에서 빠진
+ * 커밋의 `source` 연결은 지워지지 않고 남는다(CR-116). 정본은 그 커밋이 여전히 이 PR에 속한다고
+ * 말하므로 그 문서도 만든다 — 만들지 않으면 관계 replay가 「문서를 만들지 못했다」로 재색인을
+ * 실패시키고, 250건을 넘는 PR은 완전성을 영영 증명할 수 없어 그 실패가 풀리지 않는다.
  */
-async function chainLandersOf(
+async function projectedPageOf(
   deps: ReindexDeps,
   repositoryId: number,
   rows: readonly prSnapshotRepo.PullRequestSnapshotRow[],
-): Promise<ReadonlySet<string>> {
-  const pageSources: string[] = [];
+): Promise<ProjectedPage> {
+  const linked = await prCommitLinkRepo.listEffectiveSourceShas(
+    deps.pool,
+    repositoryId,
+    rows.map((row) => row.pr_number),
+  );
+  const candidates: string[] = [];
   for (const row of rows) {
     const listed = row.document['source_commit_shas'];
     if (!Array.isArray(listed)) continue;
-    for (const raw of listed) if (typeof raw === 'string' && raw !== '') pageSources.push(raw.toLowerCase());
+    for (const raw of listed) if (typeof raw === 'string' && raw !== '') candidates.push(raw.toLowerCase());
   }
-  return new Set((await mergeSequenceRepo.findCurrentChainLanders(deps.pool, repositoryId, pageSources)).keys());
+  for (const shas of linked.values()) candidates.push(...shas);
+  const chain = new Set((await mergeSequenceRepo.findCurrentChainLanders(deps.pool, repositoryId, candidates)).keys());
+  return { chain, linked };
 }
 
 /**
@@ -690,21 +710,23 @@ async function chainLandersOf(
  * 규칙이 갈라지는 날 검증이 재구축과 다른 문서를 기대한다 — 그러면 그 검증은 불변식을 지키는
  * 대신 지키는 척한다.
  *
- * 머지 커밋이 원본 목록에도 있으면 머지 커밋이 이긴다 — 투영과 같은 규칙이다.
+ * 원본 커밋은 스냅숏의 목록과 유효한 `source` 연결의 합이다. 머지 커밋이 원본에도 있으면
+ * 머지 커밋이 이긴다 — 투영과 같은 규칙이다.
  */
 function projectedCommitRoles(
   document: Readonly<Record<string, unknown>>,
-  chain: ReadonlySet<string>,
+  prNumber: number,
+  page: ProjectedPage,
 ): ReadonlyMap<string, 'source_commit' | 'merge_commit'> {
   const roles = new Map<string, 'source_commit' | 'merge_commit'>();
   const sources = document['source_commit_shas'];
+  const candidates: string[] = [...(page.linked.get(prNumber) ?? [])];
   if (Array.isArray(sources)) {
-    for (const raw of sources) {
-      if (typeof raw !== 'string' || raw === '') continue;
-      const sha = raw.toLowerCase();
-      if (chain.has(sha)) continue;
-      roles.set(sha, 'source_commit');
-    }
+    for (const raw of sources) if (typeof raw === 'string' && raw !== '') candidates.push(raw.toLowerCase());
+  }
+  for (const sha of candidates) {
+    if (page.chain.has(sha)) continue;
+    roles.set(sha, 'source_commit');
   }
   /*
    * **병합된 PR의 머지 커밋만 머지 커밋이다** (CR-116 / DEV-747, FR-SRCH-002 AC-1).
@@ -744,7 +766,7 @@ async function rebuildProjectedCommits(
     const rows = await prSnapshotRepo.listSnapshotsAfter(deps.pool, repositoryId, after, REINDEX_BATCH);
     if (rows.length === 0) break;
 
-    const chain = await chainLandersOf(deps, repositoryId, rows);
+    const page = await projectedPageOf(deps, repositoryId, rows);
 
     const requests: UpsertRequest[] = [];
     for (const row of rows) {
@@ -755,7 +777,7 @@ async function rebuildProjectedCommits(
       // 버전의 정본은 본문이 아니라 열이다 (위와 같은 이유).
       const documentVersion = Number(row.document_version);
 
-      for (const [sha, role] of projectedCommitRoles(document, chain)) {
+      for (const [sha, role] of projectedCommitRoles(document, prNumber, page)) {
         requests.push(
           buildProjectedCommitDocument({
             repository,
@@ -1156,9 +1178,9 @@ const COMMIT_REASON_SAMPLES = 10;
  *
  * - **체인 커밋**: 스냅숏 행 가운데 `merge_sequence`에 행이 있는 것 — 체인 패스가
  *   `createWith`로 만든다(`findShasWithSequence`는 그 술어 그대로다).
- * - **PR 유래 커밋**: PR 스냅숏의 원본 커밋(현재 체인 커밋 제외)과 병합된 PR의 머지 커밋 —
- *   PR 유래 패스가 만든다(`projectedCommitRoles`를 함께 쓴다). 스냅숏이 아직 없어도(미수집)
- *   문서는 있어야 한다.
+ * - **PR 유래 커밋**: PR 스냅숏의 원본 커밋과 그 PR의 유효한 `source` 연결(현재 체인 커밋
+ *   제외), 병합된 PR의 머지 커밋 — PR 유래 패스가 만든다(`projectedCommitRoles`를 함께 쓴다).
+ *   스냅숏이 아직 없어도(미수집) 문서는 있어야 한다.
  * - 그 밖의 스냅숏 행은 **생성 근거가 없어** 기대하지 않는다.
  *
  * 재구축의 쓰기 결과를 쓰지 않고 **지금의 정본을 다시 읽는다** — 무엇을 썼는지가 아니라 무엇이
@@ -1190,8 +1212,8 @@ async function verifyCommitDocuments(deps: ReindexDeps, targetIndex: string): Pr
     for (;;) {
       const rows = await prSnapshotRepo.listSnapshotsAfter(deps.pool, repositoryId, afterPr, REINDEX_BATCH);
       if (rows.length === 0) break;
-      const chain = await chainLandersOf(deps, repositoryId, rows);
-      for (const row of rows) for (const sha of projectedCommitRoles(row.document, chain).keys()) projected.add(sha);
+      const page = await projectedPageOf(deps, repositoryId, rows);
+      for (const row of rows) for (const sha of projectedCommitRoles(row.document, row.pr_number, page).keys()) projected.add(sha);
       afterPr = rows[rows.length - 1]?.pr_number ?? afterPr;
       if (rows.length < REINDEX_BATCH) break;
     }

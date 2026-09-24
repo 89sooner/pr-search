@@ -441,6 +441,45 @@ describe('기대 집합은 정본과 생성 정책에서 나온다 (CR-119, FR-I
     expect(s3?.['pull_request_numbers']).toEqual([201]);
   }, 120_000);
 
+  it('**관측이 불완전해 남은 `source` 연결의 커밋도 문서를 복원한다** — 최신 목록에 없어도 정본은 그 PR에 속한다고 말한다 (CR-116)', async () => {
+    // 완전한 관측이 [S1, S2]를 채택했다.
+    await seedLinks(100, [SHA_S1, SHA_S2], null);
+    // 그 뒤 관측은 250건에서 잘려 불완전했고 목록에 S1만 있었다 — S2 연결은 지우지 못하고 남는다.
+    await withTransaction(pool, async (client) => {
+      const outcome = await prCommitLinkRepo.adoptLinkObservation(client, {
+        repositoryId: REPOSITORY_ID,
+        prNumber: 100,
+        observedVersion: 2_000,
+        sourceShas: [SHA_S1],
+        mergeSha: null,
+        commitsComplete: false,
+        pullRequestAuthoritative: true,
+        commitsErrorKind: null,
+        apiCommitCount: 251,
+        sourceCommitsTruncated: true,
+        headSha: null,
+        baseSha: null,
+        baseBranch: 'main',
+        prState: 'open',
+        reason: 'truncated',
+      });
+      expect(outcome.withheld).toEqual([SHA_S2]);
+    });
+    // PR 스냅숏은 최신 관측의 목록이다.
+    await seedPullRequest(100, { state: 'open', sources: [SHA_S1] });
+    await seedCommitSnapshot(SHA_S2);
+
+    const outcome = await enqueueAndRun();
+
+    // 전에는 관계 replay가 `commit_link_replay_document_missing`으로 재색인을 실패시켰다.
+    expect(outcome.error).toBeNull();
+    expect(outcome.state).toBe('completed');
+    const s2 = await docIn(outcome.targetIndex, SHA_S2);
+    expectMetadataOf(s2, SHA_S2);
+    expect(s2?.['role']).toBe('source_commit');
+    expect(s2?.['pull_request_numbers']).toEqual([100]);
+  }, 120_000);
+
   it('실제 `null` 메타데이터는 값으로 복원된다 — 필드 부재와 다르다', async () => {
     await seedPullRequest(100, { state: 'open', sources: [SHA_S1] });
     await seedCommitSnapshot(SHA_S1, { author: null, patchId: null, patchIdUnavailable: 'no_mirror' });
