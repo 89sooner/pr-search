@@ -1,10 +1,10 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.107 | 갱신일: 2026-09-24
+> 상태: review | 버전: v6.108 | 갱신일: 2026-09-25
 
-## CR-118 — main CI의 FLOW-002 뒤로가기 e2e 간헐 실패 분류와 시험 대기 정정 (2026-09-24)
+## CR-118 — main CI의 FLOW-002 뒤로가기 e2e 간헐 실패 분류와 시험 대기 정정 (2026-09-24, main `0dd7734` 병합)
 
-사용자 지시(2026-09-24, 18차 착수 P0)로 main `3d831a9`의 CI run 36003771848 실패(verify 잡의 `test:e2e` 209건 중 1건 — `apps/web/e2e/flow-003.spec.ts:176`)를 실측으로 분류했다. **시험의 대기 문제이며 제품의 이동 로직 결함이 아니다.** 첫 `goBack()`이 커밋 상세를 새 문서로 다시 불러오고(Playwright의 Chromium은 back-forward cache를 끈다), SSR HTML의 `commit-detail` 때문에 시험의 대기가 수화 전에 풀려, 두 번째 `goBack()`의 popstate를 App Router가 놓친다. 두 번째 뒤로가기 전에 `data-screen-state="ready"`를 기다리도록 고쳤다. 과거 DEV-377·DEV-424·DEV-689·DEV-708의 진단을 DEV-758로 정정한다. 기록은 6.109장.
+사용자 지시(2026-09-24, 18차 착수 P0)로 main `3d831a9`의 CI run 36003771848 실패(verify 잡의 `test:e2e` 209건 중 1건 — `apps/web/e2e/flow-003.spec.ts:176`)를 실측으로 분류했다. **시험의 대기 문제이며 제품의 이동 로직 결함이 아니다.** 첫 `goBack()`이 커밋 상세를 새 문서로 다시 불러오고(Playwright의 Chromium은 back-forward cache를 끈다), SSR HTML의 `commit-detail` 때문에 시험의 대기가 수화 전에 풀려, 두 번째 `goBack()`의 popstate를 App Router가 놓친다. 두 번째 뒤로가기 전에 `data-screen-state="ready"`를 기다리도록 고쳤다. 과거 DEV-377·DEV-424·DEV-689·DEV-708의 진단을 DEV-758로 정정한다. PR #232로 main `0dd7734`에 병합했고 병합 커밋의 main CI(run 36017019576)는 success다. 기록은 6.109장.
 
 ## CR-117 / WP-102 — 원본 커밋은 그 PR이 새로 가져온 커밋: 추적 브랜치 체인 규칙 (2026-09-24, main `65acf83` 병합)
 
@@ -8753,3 +8753,5 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 | 문서 검증기 `validate_srs_prd_env.py` | 기준선(`main 3d831a9`, `git archive` 전체 트리)과 **동일** — 기본 모드 오류 3·경고 12, `--strict` 오류 6·경고 12, 해석되지 않는 경로 참조 전체 목록(18건)까지 차이 0 |
 
 **남는 것.** 실사용자도 back-forward cache 없이 새 문서로 돌아온 직후, 수화가 끝나기 전에 뒤로가기를 한 번 더 누르면 같은 일을 겪을 수 있다. App Router의 특성이며 이 제품의 이동 로직 결함은 아니다. `linked-pr-link`를 클라이언트 `<Link>`로 바꾸면 첫 뒤로가기도 같은 문서 안이 되어 창이 사라지지만, 가운데 클릭·새 탭을 위한 「진짜 링크」 설계(LinkedPrList)를 바꾸는 제품 변경이라 이 CR에서 하지 않았다(DEV-758 잔여).
+
+**병합 판정.** PR #232(base `main`, head `8aa1819`)의 CI(run 36015764324)는 verify·integration 모두 success다 — verify의 e2e가 고친 시험을 CI 러너에서 한 번 더 돌렸다. 독립 리뷰(읽기 전용)는 상·중 지적 0건이었고 하 지적 넷은 이렇게 처리했다: 부하 비교 「12 대 0」의 분해는 로그로 확인했다(실패 12건 모두 옛 대기 사본), 15초 → 5초 되돌리기는 PR CI와 main CI를 추가 증거로 삼았다, 히스토리 판정의 단발성은 바로 앞의 재시도형 URL 판정이 막아 두었으므로 그대로 두었다, 계측 322회의 분해는 커밋하지 않은 진단 spec이 근거임을 문서에 이미 적었다. 사용자 지시(18차 착수 지시 「필수 리뷰·CI 통과 후 정상 main 병합」)로 squash 병합했다 — main `0dd7734`(2026-09-25). 병합 커밋의 main CI(run 36017019576)는 verify·integration 모두 success다.
