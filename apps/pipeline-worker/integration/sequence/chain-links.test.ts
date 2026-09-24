@@ -105,14 +105,17 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  /*
+   * **끝날 때도 지운다.** 재색인 시험(`jobs/link-reindex`)은 모든 저장소의 관계를 정본에서 다시
+   * 비추는데, 이 파일이 문서 없이 심어 둔 관계가 남으면 그 시험이 `document_missing`으로 실패한다.
+   * 파일 순서는 보장되지 않는다.
+   */
+  await cleanRepository();
   await es.close();
   await pool.end();
 });
 
-beforeEach(async () => {
-  /*
-   * **이 파일의 이름 공간만 정리한다.** 전역 삭제는 다른 통합 파일의 픽스처를 지운다.
-   */
+async function cleanRepository(): Promise<void> {
   for (const table of [
     'commit_link_state',
     'pull_request_commit_link',
@@ -135,6 +138,11 @@ beforeEach(async () => {
     refresh: true,
     conflicts: 'proceed',
   });
+}
+
+beforeEach(async () => {
+  // **이 파일의 이름 공간만 정리한다.** 전역 삭제는 다른 통합 파일의 픽스처를 지운다.
+  await cleanRepository();
 
   origin = await createSquashFixture();
   mirrorRoot = await makeTempDir('prs-chain-links-mirror-');
