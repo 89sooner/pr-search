@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.21 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.22 | 갱신일: 2026-09-24
 
 ## W-024 Regression 상태 (CR-109 / FR-REG-001)
 
@@ -111,6 +111,7 @@ CR-079 상태 우선순위: 기존 인증/outer epoch_stale 처리 → PR 대상
 | `epoch_stale` | 표시 중 에폭 변경 | 헤더 하단 경고 배너. **자동 재조회 금지** — 재조회는 사용자 클릭이다 (QA-W002-16, W-004와 같은 규칙) | 사용자 재조회 | FR-SEQ-005 |
 | `merge_number_pending` | PR은 머지됐으나 M 넘버가 아직 없음(`merge_seq` 미채번 또는 앞선 항목 미확정) | 헤더의 M 넘버 칸에 `pending` 배지, 잠정 번호 미표시 | 채번 후 자동 표시 | FR-SEQ-008 |
 | `truncated` | 원본 커밋 250건 초과 | 앞 250건과 전체 건수 표시 | GHE 링크 | FR-SRCH-003 |
+| `excluded_commits` (CR-117) | GitHub의 PR 커밋 목록에 있었지만 이미 대상 브랜치에 오른 커밋을 원본 커밋에서 뺐다(`source_commits_excluded` ≥ 1 — 피처 브랜치가 `git merge dev`로 받아 온 경우) | 커밋 목록 아래에 「이미 대상 브랜치에 있던 커밋 N개는 목록에 없다, 각각을 올린 PR 소속」 안내. 뺀 항목을 목록에 되살리지 않고, 수는 GitHub Commits 탭과 다를 수 있다 | - | FR-SRCH-003 AC-5, FR-SRCH-002 AC-7 |
 | `partial_failure` | 관계·릴리스 섹션만 실패 | 해당 섹션만 오류, 개요는 유지 | 섹션 재시도 | - |
 | `not_found` | 미존재 또는 접근 범위 밖 | 존재 여부 미노출, 검색 복귀 | W-001 | FR-AUTH-002 |
 | `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |

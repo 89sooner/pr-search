@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   commitListModel,
+  excludedCommitsLabel,
   gheePullRequestUrl,
   reviewerStates,
   searchBackHref,
@@ -88,6 +89,31 @@ describe('커밋 목록 (FR-SRCH-003, DEV-083)', () => {
     expect(model.enrichmentPending).toBe(true);
     // 머지 커밋은 그대로 표시된다 — 보강과 무관하다.
     expect(model.mergeCommitSha).toBe('a'.repeat(40));
+  });
+
+  it('원본 커밋에서 뺀 수를 나른다 — 키가 없는 옛 응답은 0이다 (CR-117 / FR-SRCH-003 AC-5)', () => {
+    expect(commitListModel({ ...MERGED, source_commits_excluded: 202 }).excludedCount).toBe(202);
+    expect(commitListModel(MERGED).excludedCount).toBe(0);
+  });
+});
+
+describe('뺀 원본 커밋 안내 (CR-117 / FR-SRCH-003 AC-5)', () => {
+  it('뺀 것이 없으면 안내하지 않는다', () => {
+    expect(excludedCommitsLabel(0, false)).toBeNull();
+    expect(excludedCommitsLabel(-1, false)).toBeNull();
+  });
+
+  it('**GitHub과 수가 다른 이유를 말한다** — 대상 브랜치에 이미 있던 커밋이며 각각을 올린 PR 소속이다', () => {
+    expect(excludedCommitsLabel(202, false)).toBe(
+      '202 commits that were already on the base branch are not listed. Each belongs to the pull request that merged it there.',
+    );
+    expect(excludedCommitsLabel(1, false)).toBe(
+      '1 commit that was already on the base branch is not listed. It belongs to the pull request that merged it there.',
+    );
+  });
+
+  it('절삭된 목록이면 읽은 범위 안에서 센 값임을 덧붙인다', () => {
+    expect(excludedCommitsLabel(3, true)).toMatch(/Only the listed commits were checked\.$/);
   });
 });
 

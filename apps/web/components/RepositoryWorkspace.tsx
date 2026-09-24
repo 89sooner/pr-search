@@ -19,11 +19,12 @@ import type { ResolutionCandidate } from './ResolutionCandidateList';
 import { serviceMessage } from '../lib/service-message';
 import { resolveUrl } from '../lib/search-fetch';
 import { MergeNumberBadge } from './MergeNumberBadge';
+import { ExcludedCommitsNote } from './ExcludedCommitsNote';
 import { splitSequenceSpace } from '../lib/merge-number';
 import { buildRepositoryQuery, buildShaRangeFilter, deriveInitialRangeType, repositoryLabelOptions, repositorySort, type RangeType, type RepositoryWorkspaceTab } from '../lib/repository-search';
 
 interface SearchData { items: ResultRow[]; total?: { value: number; relation: string }; next_cursor?: string | null; facets?: Record<string, { value: string; count: number }[]> }
-interface DetailData { body?: string; message?: string; changed_paths?: string[]; files_truncated?: boolean; changed_paths_truncated?: boolean; source_commits?: { commit_sha: string }[]; merge_commit_sha?: string | null; base_branch?: string; head_branch?: string }
+interface DetailData { body?: string; message?: string; changed_paths?: string[]; files_truncated?: boolean; changed_paths_truncated?: boolean; source_commits?: { commit_sha: string }[]; source_commits_truncated?: boolean; source_commits_excluded?: number; merge_commit_sha?: string | null; base_branch?: string; head_branch?: string }
 const TAB_NAMES = { search: "Search", history: "Commit history", open: "My open PRs", merged: "My merged PRs" } as const;
 type WorkspaceTab = RepositoryWorkspaceTab;
 /** CR-111: options for the consolidated Range filter selector. */
@@ -65,7 +66,9 @@ export function WorkspaceDetail({ row, gheBaseUrl, onPath }: { row: ResultRow; g
       </section><section><h3>Commit</h3><div className="repo-commit-list">
         {[...(detail.merge_commit_sha ? [{ commit_sha: detail.merge_commit_sha }] : []), ...(detail.source_commits ?? [])].map((commit, index) =>
           <button key={`${commit.commit_sha}-${index}`} type="button" title="Copy SHA" onClick={() => { void navigator.clipboard.writeText(commit.commit_sha).then(() => { setCopied("SHA copied."); }).catch(() => { setCopied("Unable to copy. Select and copy the SHA manually."); }); }}>{commit.commit_sha}</button>)}
-        <span role="status">{copied}</span></div></section></div>
+        <span role="status">{copied}</span></div>
+        {/* 대상 브랜치에 이미 있던 커밋을 뺐다면 그 사실을 말한다 (CR-117 / FR-SRCH-003 AC-5). */}
+        <ExcludedCommitsNote className="repo-muted" count={detail.source_commits_excluded ?? 0} truncated={detail.source_commits_truncated === true} /></section></div>
     </>}
   </div>;
 }

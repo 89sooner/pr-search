@@ -16,6 +16,7 @@
  */
 
 import {
+  mergeSequenceRepo,
   prCommitLinkRepo,
   prSnapshotRepo,
   sequenceProjectionRepo,
@@ -28,6 +29,23 @@ import type { SnapshotSource } from '@prs/db';
 import { derivePullRequestState, type IngestionEnriched } from '@prs/domain';
 import type { UpsertRequest } from '@prs/es';
 import { docWorkRequest } from './sequence-projection.js';
+
+/**
+ * 원본 커밋 목록 가운데 **추적 브랜치의 현재 체인에 이미 오른** SHA (CR-117 / FR-SRCH-002 AC-7).
+ *
+ * 실시간·백필 두 투영이 **같은 함수**로 `ProjectionSource.chainShas`를 채운다 — 한쪽만 채우면
+ * 그 경로만 체인 커밋의 역할을 `source_commit`으로 덮는다. 체인 정의는 관계 술어
+ * (`EFFECTIVE_LINK_SQL`)와 같다. 한 문장이며 원본 목록 길이와 무관하게 왕복은 한 번이다.
+ */
+export async function chainShasOf(
+  pool: Pool,
+  repositoryId: number,
+  sourceShas: readonly string[],
+): Promise<ReadonlySet<string>> {
+  if (sourceShas.length === 0) return new Set();
+  const landers = await mergeSequenceRepo.findCurrentChainLanders(pool, repositoryId, sourceShas);
+  return new Set(landers.keys());
+}
 
 /**
  * 보강 결과에서 관계 관측을 만든다 (CR-116 / WP-101).

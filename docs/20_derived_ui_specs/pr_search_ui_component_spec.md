@@ -1,6 +1,8 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.27 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.28 | 갱신일: 2026-09-24
+
+CR-117 / W-002 C-018 CommitList·작업 공간 상세 창: 원본 커밋은 그 PR이 새로 가져온 커밋이다(FR-SRCH-003 AC-5). 서버가 뺀 수(`source_commits_excluded`)가 1 이상이면 목록 아래에 **왜 GitHub Commits 탭과 수가 다른지**를 한 문장으로 말한다 — 「이미 대상 브랜치에 있던 커밋 N개는 목록에 없고, 각각을 그 브랜치에 올린 PR 소속이다」. 두 자리(C-018과 Repository Workspace·legacy 작업 공간의 상세 창)가 같은 문구 함수(`excludedCommitsLabel`)와 같은 컴포넌트(`ExcludedCommitsNote`)를 쓴다. 0이면 아무것도 그리지 않으며, 보강 미완료(`enrichment_pending`) 중에는 그리지 않는다.
 
 CR-115 / A-003: C-045 JobRunForm에 `mnumber_tag_reconcile`(표시명 "M-number tag reconcile (GHE tags)")이 추가된다 — 입력은 `sequence_assign`과 같은 저장소·base 브랜치 둘이며 새 컴포넌트·새 입력 유형은 없다. 폼은 「누락 태그는 다시 만들고 다른 SHA를 가리키는 태그는 보고만 한다」를 말하고, dry-run은 이 폼이 아니라 `prsctl mnumber tags reconcile --dry-run`이다.
 
@@ -208,11 +210,12 @@ Conductor의 `Status` 타입(`queued` / `running` / `waiting` / `success` / `par
 
 - 책임: 머지 커밋과 원본 커밋 목록을 구분 표시
 - 기반: Conductor `Table` + `Badge`
-- 필수 props: `mergeCommit: CommitSummary | null`, `sourceCommits: CommitSummary[]`, `truncated: boolean`, `totalCount: number | null`
-- 상태: `ready`, `enrichment_pending`, `truncated`
+- 필수 props: `mergeCommit: CommitSummary | null`, `sourceCommits: CommitSummary[]`, `truncated: boolean`, `totalCount: number | null`, `excludedCount: number`(CR-117)
+- 상태: `ready`, `enrichment_pending`, `truncated`, `excluded_commits`(CR-117)
 - 사용 규칙: 머지 커밋을 항상 첫 행에 두고 배지로 구분한다. 원본 커밋은 기본 접힘
 - **`totalCount: null`은 "250건 이상, 정확한 수를 모름"이다** (CR-020, DEV-083). 확정 총계와 **다른 문구로** 표시한다 — 절삭됐을 때 진짜 총계가 저장되어 있지 않다(CR-017 DEV-063). 가짜 숫자를 그리느니 모른다고 말한다
-- 관련 FR: FR-SRCH-003
+- **`excludedCount`가 1 이상이면 목록 아래에 제외 안내를 둔다** (CR-117 / FR-SRCH-003 AC-5). 원본 커밋에서 뺀 항목은 이미 대상 브랜치에 있던 커밋이며 각각을 올린 PR 소속이다 — 안내 없이 빼면 사용자는 커밋이 사라졌다고 읽는다. 절삭된 목록이면 「읽은 목록 안에서 센 값」임을 덧붙인다. 키가 없는 옛 서버 응답은 0으로 본다
+- 관련 FR: FR-SRCH-003 (AC-5 포함)
 
 ### C-019 NeighborSequenceList
 

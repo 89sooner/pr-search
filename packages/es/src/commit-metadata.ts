@@ -215,3 +215,87 @@ function isNotFound(error: unknown): boolean {
   const status = (error as { statusCode?: number; meta?: { statusCode?: number } });
   return status.statusCode === 404 || status.meta?.statusCode === 404;
 }
+
+/* ------------------------------------------------------------------------- */
+/* 체인 커밋의 역할 되돌리기 (CR-117 / FR-SRCH-002 AC-7, WP-102)               */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * **단방향이다.** 지금 역할이 `source_commit`일 때만 체인이 정한 역할로 바꾼다.
+ *
+ * 체인 커밋을 `source_commit`으로 덮은 것은 PR 투영이었다 — 피처 브랜치가 `git merge dev`로
+ * 받아 온 dev 체인 커밋을 그 PR의 원본 커밋으로 쓰면서, 조건부 업서트가 더 큰 버전(웹훅 수신
+ * 시각)으로 `role`을 대입했다. 반대 방향(`merge_commit` → `source_commit`)은 이 함수가 만들 수
+ * 없어야 한다. 다른 값이면 손대지 않는다 — 그 값은 체인 경로가 쓴 것이고 이 함수의 몫이 아니다.
+ */
+export const RESTORE_CHAIN_ROLE_SCRIPT = [
+  "if (ctx._source.role == 'source_commit') { ctx._source.role = params.role; }",
+  "else { ctx.op = 'noop'; }",
+].join('\n');
+
+export type ChainCommitRole = 'merge_commit' | 'direct_push';
+
+export interface ChainRoleRestore {
+  readonly repositoryId: number;
+  /** 문서 ID. `commitDocId`가 만든 값이다. */
+  readonly docId: string;
+  /** 체인 행에서 정한 역할. PR 대응이 있으면 `merge_commit`, 없으면 `direct_push`다. */
+  readonly role: ChainCommitRole;
+}
+
+export type ChainRoleRestoreResult = 'restored' | 'noop' | 'missing';
+
+/**
+ * 덮인 체인 커밋 역할을 되돌린다. **복구 명령(`prsctl links apply`)만 부른다.**
+ *
+ * `apply`는 원래 투영 의도만 만들고 색인에는 쓰지 않는다(CR-116). 이것은 그 규율의 예외이며
+ * 이유가 있다: 관계 러너는 `role`을 비추지 않으므로 그 러너와 갈라질 두 번째 경로가 생기지
+ * 않고, 쓰는 값은 체인 행에서 결정론적으로 나오며, 쓰기는 멱등이다(이미 되돌린 문서는
+ * `noop`). 문서를 **만들지 않는다** — 없으면 `missing`이며 실패가 아니다.
+ *
+ * shadow에도 같은 쓰기를 보낸다. 재색인 중 shadow에 그 문서가 아직 없으면 404이고, 그것은
+ * 정본 스캔이 아직 닿지 않았다는 뜻이라 실패로 세지 않는다(`updateLinkSummary`와 같다).
+ */
+export async function restoreChainCommitRole(
+  client: Client,
+  input: ChainRoleRestore,
+  targets: WriteTargets,
+): Promise<ChainRoleRestoreResult> {
+  const served = await sendRoleRestore(client, COMMITS_ALIAS, input);
+
+  const shadow = targets.shadows[COMMITS_ALIAS];
+  if (shadow !== undefined) {
+    try {
+      await sendRoleRestore(client, shadow, input);
+    } catch (error) {
+      reportShadowFailure(targets, {
+        alias: COMMITS_ALIAS,
+        index: shadow,
+        operation: 'update',
+        reason: String(error),
+      });
+    }
+  }
+
+  return served;
+}
+
+async function sendRoleRestore(
+  client: Client,
+  index: string,
+  input: ChainRoleRestore,
+): Promise<ChainRoleRestoreResult> {
+  try {
+    const response = await client.update({
+      index,
+      id: input.docId,
+      routing: String(input.repositoryId),
+      retry_on_conflict: 3,
+      script: { lang: 'painless', source: RESTORE_CHAIN_ROLE_SCRIPT, params: { role: input.role } },
+    });
+    return response.result === 'noop' ? 'noop' : 'restored';
+  } catch (error) {
+    if (isNotFound(error)) return 'missing';
+    throw error;
+  }
+}

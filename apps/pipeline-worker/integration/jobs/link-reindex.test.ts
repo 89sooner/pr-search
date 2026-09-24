@@ -16,7 +16,9 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  commitSnapshotRepo,
   jobRepo,
+  mergeSequenceRepo,
   prCommitLinkRepo,
   prSnapshotRepo,
   reindexRepo,
@@ -84,6 +86,11 @@ beforeEach(async () => {
   await pool.query('DELETE FROM pull_request_commit_link WHERE repository_id = $1', [REPOSITORY_ID]);
   await pool.query('DELETE FROM pull_request_link_observation WHERE repository_id = $1', [REPOSITORY_ID]);
   await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
+  // 체인 시험(CR-117)이 심은 시퀀스·커밋 정본. 다른 시험에 체인이 남으면 그 시험의 연결이 달라진다.
+  await pool.query('DELETE FROM sequence_work WHERE repository_id = $1', [REPOSITORY_ID]);
+  await pool.query('DELETE FROM merge_sequence WHERE repository_id = $1', [REPOSITORY_ID]);
+  await pool.query('DELETE FROM sequence_space WHERE repository_id = $1', [REPOSITORY_ID]);
+  await pool.query('DELETE FROM commit_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
   await pool.query("DELETE FROM job WHERE type = 'reindex'");
   /*
    * **서비스 인덱스의 잔재까지 지운다.** 앞 시험이 남긴 문서의 관계 세대가 남아
@@ -267,5 +274,114 @@ describe('재색인 관계 replay', () => {
     const verdict = await verifyBeforeCutover({ pool, es }, outcome.jobId, null);
     expect(verdict.ok).toBe(false);
     expect(verdict.reasons.some((reason) => reason.includes('잉여=[777]'))).toBe(true);
+  }, 120_000);
+
+  it('**체인 커밋은 올린 PR만으로 복원하고 역할을 덮지 않는다** — `git merge dev`로 받아 온 PR의 번호가 새 인덱스로 넘어가지 않는다 (CR-117)', async () => {
+    /*
+     * B는 PR 200이 main에 squash로 올린 커밋이다. PR 300의 피처 브랜치가 main을 merge해 와서
+     * 스냅숏의 원본 목록에 B가 섞여 있다(사내 보고의 `ebc781d` 모양). 버전은 운영과 같은 크기다 —
+     * 웹훅 수신 시각(PR 스냅숏)이 커밋 시각(체인 문서의 생성 버전)보다 뒤다.
+     */
+    const committedAt = new Date('2026-09-01T00:00:00Z');
+    await pool.query(
+      `INSERT INTO sequence_space (repository_id, base_branch, seq_epoch, head_sha, head_seq, state)
+       VALUES ($1, 'main', 1, $2, 1, 'ok')`,
+      [REPOSITORY_ID, SHA_B],
+    );
+    await mergeSequenceRepo.upsertMergeSequence(pool, {
+      repository_id: REPOSITORY_ID,
+      base_branch: 'main',
+      seq_epoch: 1,
+      merge_seq: 1,
+      commit_sha: SHA_B,
+      pull_request_number: 200,
+      committed_at: committedAt,
+    });
+    await commitSnapshotRepo.upsertCommitSnapshot(pool, {
+      repositoryId: REPOSITORY_ID,
+      commitSha: SHA_B,
+      parentShas: [],
+      message: 'B squash (#200)',
+      author: 'dev',
+      committer: 'dev',
+      authoredAt: committedAt,
+      committedAt,
+      changedPaths: ['b.txt'],
+      changedPathsTruncated: false,
+      patchId: null,
+      patchIdUnavailable: 'no_mirror',
+      metadataSource: 'api',
+    });
+    const mergedVersion = Date.parse('2026-09-01T00:10:00Z');
+    const laterVersion = Date.parse('2026-09-02T00:00:00Z');
+    await prSnapshotRepo.upsertPullRequestSnapshot(pool, {
+      repositoryId: REPOSITORY_ID,
+      prNumber: 200,
+      documentVersion: mergedVersion,
+      source: 'webhook',
+      document: {
+        document_version: mergedVersion,
+        repository_id: REPOSITORY_ID,
+        pr_number: 200,
+        state: 'merged',
+        merge_commit_sha: SHA_B,
+        base_branch: 'main',
+        source_commit_shas: [SHA_C],
+        enrichment_pending: false,
+      },
+    });
+    await prSnapshotRepo.upsertPullRequestSnapshot(pool, {
+      repositoryId: REPOSITORY_ID,
+      prNumber: 300,
+      documentVersion: laterVersion,
+      source: 'webhook',
+      document: {
+        document_version: laterVersion,
+        repository_id: REPOSITORY_ID,
+        pr_number: 300,
+        state: 'open',
+        base_branch: 'main',
+        source_commit_shas: [SHA_A, SHA_B],
+        enrichment_pending: false,
+      },
+    });
+    await withTransaction(pool, async (client) => {
+      for (const [prNumber, shas, mergeSha] of [
+        [200, [SHA_C], SHA_B],
+        [300, [SHA_A, SHA_B], null],
+      ] as const) {
+        await prCommitLinkRepo.adoptLinkObservation(client, {
+          repositoryId: REPOSITORY_ID,
+          prNumber,
+          observedVersion: 1_000,
+          sourceShas: shas,
+          mergeSha,
+          commitsComplete: true,
+          pullRequestAuthoritative: true,
+          commitsErrorKind: null,
+          apiCommitCount: shas.length,
+          sourceCommitsTruncated: false,
+          headSha: null,
+          baseSha: null,
+          baseBranch: 'main',
+          prState: mergeSha === null ? 'open' : 'merged',
+          reason: null,
+        });
+      }
+    });
+    await pool.query(
+      `INSERT INTO commit_link_state (repository_id, commit_sha, generation, projected_generation, state)
+       SELECT $1, sha, 1, 1, 'done' FROM unnest($2::text[]) AS sha ON CONFLICT DO NOTHING`,
+      [REPOSITORY_ID, [SHA_A, SHA_B, SHA_C]],
+    );
+
+    const target = await enqueueAndRun();
+
+    // 잡이 전환까지 갔다 — 전환 전 검증(누락·잉여 양방향)이 유효 연결 기준으로 통과했다는 뜻이다.
+    expect(await resolveServingIndex(es, ALIAS)).toBe(target);
+    expect(await linksIn(target, SHA_B)).toEqual([200]);
+    expect(await linksIn(target, SHA_A)).toEqual([300]);
+    const b = await es.get<{ role?: string }>({ index: target, id: commitDocId(REPOSITORY_ID, SHA_B), routing: String(REPOSITORY_ID) });
+    expect(b._source?.role).toBe('merge_commit');
   }, 120_000);
 });

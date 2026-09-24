@@ -204,6 +204,77 @@ export async function copySequencesUpTo(
   return result.rowCount ?? 0;
 }
 
+/**
+ * 주어진 커밋 가운데 **추적 브랜치의 현재 체인**에 있는 것과, 그 커밋을 체인에 올린 PR
+ * (CR-117 / FR-SRCH-002 AC-7).
+ *
+ * 관계 술어(`EFFECTIVE_LINK_SQL`)와 **같은 체인 정의**다 — 저장소가 지금 추적하는 브랜치
+ * (`repository.sequence_branches`)의 현재 에폭만 본다. 투영이 체인 커밋에 원본 커밋 문서를
+ * 쓰지 않으려고, 복구가 덮인 역할을 되돌리려고 읽는다. 값 배열의 `null`은 「직접 푸시이거나
+ * 아직 모름」이다 — 둘을 여기서 가르지 않는다.
+ *
+ * @returns 체인에 있는 SHA만 키로 갖는다. 없는 SHA는 체인 밖이다.
+ */
+export async function findCurrentChainLanders(
+  db: Queryable,
+  repositoryId: number,
+  commitShas: readonly string[],
+): Promise<ReadonlyMap<string, readonly (number | null)[]>> {
+  const shas = [...new Set(commitShas.map((sha) => sha.toLowerCase()))];
+  const out = new Map<string, (number | null)[]>();
+  if (shas.length === 0) return out;
+  const result = await db.query<{ commit_sha: string; pull_request_number: number | null }>(
+    `SELECT ms.commit_sha, ms.pull_request_number
+       FROM repository r
+       JOIN sequence_space ss
+         ON ss.repository_id = r.repository_id AND ss.base_branch = ANY (r.sequence_branches)
+       JOIN merge_sequence ms
+         ON ms.repository_id = ss.repository_id AND ms.base_branch = ss.base_branch AND ms.seq_epoch = ss.seq_epoch
+      WHERE r.repository_id = $1 AND ms.commit_sha = ANY($2::text[])`,
+    [repositoryId, shas],
+  );
+  for (const row of result.rows) {
+    const key = row.commit_sha.toLowerCase();
+    const list = out.get(key) ?? [];
+    list.push(row.pull_request_number);
+    out.set(key, list);
+  }
+  return out;
+}
+
+/**
+ * 두 에폭 사이에 체인 소속이나 PR 대응이 바뀐 커밋 (CR-117 / FR-SRCH-002 AC-7).
+ *
+ * `(commit_sha, pull_request_number)` 쌍의 **대칭차**다. 옛 에폭에만 있으면 체인에서 빠진 것이고,
+ * 새 에폭에만 있으면 새로 오른 것이며, 양쪽에 있어도 PR 대응이 다르면 바뀐 것이다. 재채번은
+ * 공통 조상까지를 복사하므로 그 구간은 여기 나타나지 않는다 — 다시 비출 필요가 없다.
+ * `EXCEPT`는 `NULL`을 같은 값으로 비교하므로 「대응 모름」끼리는 같다고 본다.
+ */
+export async function listChangedCommitsBetweenEpochs(
+  db: Queryable,
+  repositoryId: number,
+  baseBranch: string,
+  oldEpoch: number,
+  newEpoch: number,
+): Promise<string[]> {
+  const result = await db.query<{ commit_sha: string }>(
+    `WITH old_rows AS (
+       SELECT commit_sha, pull_request_number FROM merge_sequence
+        WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $3
+     ), new_rows AS (
+       SELECT commit_sha, pull_request_number FROM merge_sequence
+        WHERE repository_id = $1 AND base_branch = $2 AND seq_epoch = $4
+     )
+     SELECT DISTINCT commit_sha FROM (
+       (SELECT * FROM old_rows EXCEPT SELECT * FROM new_rows)
+       UNION ALL
+       (SELECT * FROM new_rows EXCEPT SELECT * FROM old_rows)
+     ) AS changed`,
+    [repositoryId, baseBranch, oldEpoch, newEpoch],
+  );
+  return result.rows.map((row) => row.commit_sha.toLowerCase());
+}
+
 /** 어긋난 지점 이후의 이전 에폭 행 수. EVT-SEQ-002의 `affected_count`다. */
 export async function countAbove(
   db: Queryable,

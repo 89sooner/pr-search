@@ -57,7 +57,7 @@ import { REINDEX_TYPE, runReindexJob, verifyBeforeCutover } from '../../src/rein
 import { verifySequenceProjection } from '../../src/sequence-projection.js';
 import { prepareAndAssignSequence, repairSequence, type SequenceDeps } from '../../src/sequence.js';
 import { runSequenceWorkOnce } from '../../src/sequence-work-runner.js';
-import { linkObservationOf, recordProjectionSnapshot } from '../../src/snapshot.js';
+import { chainShasOf, linkObservationOf, recordProjectionSnapshot } from '../../src/snapshot.js';
 import { makeTempDir, removeDir, run } from './fixture.js';
 import { createSquashFixture, type SquashFixture } from './squash-fixture.js';
 
@@ -176,12 +176,15 @@ function enrichedFor(prNumber: number, mergeSha: string | null, sourceShas: read
  * raw_event까지 세우지 않고 그 두 primitive만 쓴다.
  */
 async function projectPullRequest(prNumber: number, mergeSha: string | null, documentVersion: number): Promise<void> {
+  const enriched = enrichedFor(prNumber, mergeSha);
   const requests = buildUpsertRequests({
-    enriched: enrichedFor(prNumber, mergeSha),
+    enriched,
     repository,
     documentVersion,
     indexedAt: new Date(),
     authorTeams: { kind: 'unknown' },
+    // 운영 투영과 같은 재료다 (CR-117). 체인 커밋에는 원본 커밋 문서를 쓰지 않는다.
+    chainShas: await chainShasOf(pool, repository.repository_id, enriched.source_commit_shas),
   });
   await recordProjectionSnapshot(pool, requests, {
     repositoryId: REPOSITORY_ID,

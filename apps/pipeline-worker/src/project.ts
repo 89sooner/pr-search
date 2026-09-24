@@ -49,7 +49,7 @@ import { withReindexWrite } from '@prs/db';
 import type { Client } from '@elastic/elasticsearch';
 import { buildUpsertRequests } from './documents.js';
 import { resolveAuthorTeam } from './author-teams.js';
-import { linkObservationOf, recordProjectionSnapshot } from './snapshot.js';
+import { chainShasOf, linkObservationOf, recordProjectionSnapshot } from './snapshot.js';
 import { parseEnriched } from './enriched-payload.js';
 import { defaultSleep, retryFailedItems } from './index-retry.js';
 import type { WorkerMetrics } from './metrics.js';
@@ -231,12 +231,16 @@ async function projectDocuments(
   // 두 정본이 다른 기준으로 신선함을 판정하면 한쪽만 이기는 순간이 생긴다.
   const documentVersion = row.received_at.getTime();
 
+  // 체인 커밋에는 원본 커밋 문서를 쓰지 않는다 (CR-117 / FR-SRCH-002 AC-7). 백필과 같은 함수다.
+  const chainShas = await chainShasOf(deps.pool, repository.repository_id, enriched.source_commit_shas);
+
   const requests = buildUpsertRequests({
     enriched,
     repository,
     documentVersion,
     indexedAt,
     authorTeams,
+    chainShas,
   });
 
   /*

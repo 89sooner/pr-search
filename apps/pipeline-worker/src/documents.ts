@@ -67,6 +67,15 @@ export interface ProjectionSource {
    * 한 조직의 동기화 실패가 모든 문서를 모름으로 만든다.
    */
   readonly authorTeams: AuthorTeamResolution;
+  /**
+   * 이 PR의 원본 커밋 목록 가운데 **추적 브랜치의 현재 체인에 이미 오른** SHA (CR-117 /
+   * FR-SRCH-002 AC-7). 소문자 40자다.
+   *
+   * **선택 항목이 아니다** (`authorTeams`와 같은 이유). 부르는 쪽이
+   * `mergeSequenceRepo.findCurrentChainLanders`로 채운다. 빈 집합을 기본값으로 두면 호출부가
+   * 빠뜨렸을 때 체인 커밋의 역할이 다시 `source_commit`으로 덮이고, 그 사실은 화면에서야 드러난다.
+   */
+  readonly chainShas: ReadonlySet<string>;
 }
 
 type Fields = Record<string, unknown>;
@@ -346,7 +355,24 @@ export function buildCommitDocuments(source: ProjectionSource): readonly UpsertR
   const roles = new Map<string, ProjectedCommitRole>();
   for (const sha of enriched.source_commit_shas) {
     const normalized = sha.toLowerCase();
-    if (normalized !== '') roles.set(normalized, 'source_commit');
+    if (normalized === '') continue;
+    /*
+     * **체인 커밋은 원본 커밋 문서로 쓰지 않는다** (CR-117 / FR-SRCH-002 AC-7).
+     *
+     * 피처 브랜치가 `git merge dev`로 받아 온 dev 체인 커밋이 GitHub의 PR 커밋 목록에 섞여
+     * 온다. 그 SHA에 `role: source_commit` 문서를 쓰면 조건부 업서트가 더 큰 버전(이 PR의
+     * 웹훅 수신 시각)으로 체인이 정한 `merge_commit`·`direct_push`와 `base_branch`를 덮고,
+     * 커밋 보강은 체인 밖 경로에서 `role`을 싣지 않아 되돌리지 못한다. 그 문서는 체인 경로
+     * (커밋 보강·재구축)가 만들고 소유한다. 관계는 여기서 쓰지 않으므로(DEV-745) 이 건너뛰기가
+     * 연결을 잃게 하지 않는다 — 연결은 관계 투영기가 유효 연결 술어로 따로 계산한다.
+     *
+     * 이 집합과 관계 투영기의 술어는 서로 다른 순간을 본다. 그 사이에 채번이 끼면 원본 커밋
+     * 문서가 하나 생길 수 있다. 대개는 그 채번이 부른 커밋 보강(`COMMIT_METADATA_SCRIPT`)이
+     * 버전과 무관하게 역할을 다시 대입해 아물고, 보강보다 이 쓰기가 늦게 닿는 드문 순서는
+     * 복구 명령(`prsctl links apply`)의 역할 되돌리기가 잡는다.
+     */
+    if (source.chainShas.has(normalized)) continue;
+    roles.set(normalized, 'source_commit');
   }
   /*
    * **병합 판정은 파생 상태를 쓴다** (CR-116 / DEV-753, CR-101의 `derivePullRequestState`).

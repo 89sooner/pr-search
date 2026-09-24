@@ -560,6 +560,22 @@ async function rebuildProjectedCommits(
     const rows = await prSnapshotRepo.listSnapshotsAfter(deps.pool, repositoryId, after, REINDEX_BATCH);
     if (rows.length === 0) break;
 
+    /*
+     * **체인 커밋은 원본 커밋 문서로 다시 만들지 않는다** (CR-117 / FR-SRCH-002 AC-7).
+     *
+     * 피처 브랜치가 `git merge dev`로 받아 온 dev 체인 커밋이 스냅숏의 원본 목록에 섞여 있다.
+     * 그 문서는 위 `rebuildCommits`가 체인에서 정한 역할로 이미 만들었고, 여기서 `source_commit`으로
+     * 쓰면 조건부 업서트가 더 큰 버전(웹훅 수신 시각)으로 그 역할을 덮는다 — 실시간 투영
+     * (`buildCommitDocuments`)이 건너뛰는 것과 같은 규칙이다. 페이지 하나에 한 번만 묻는다.
+     */
+    const pageSources: string[] = [];
+    for (const row of rows) {
+      const listed = row.document['source_commit_shas'];
+      if (!Array.isArray(listed)) continue;
+      for (const raw of listed) if (typeof raw === 'string' && raw !== '') pageSources.push(raw.toLowerCase());
+    }
+    const chain = new Set((await mergeSequenceRepo.findCurrentChainLanders(deps.pool, repositoryId, pageSources)).keys());
+
     const requests: UpsertRequest[] = [];
     for (const row of rows) {
       const document = row.document;
@@ -575,7 +591,9 @@ async function rebuildProjectedCommits(
       if (Array.isArray(sources)) {
         for (const raw of sources) {
           if (typeof raw !== 'string' || raw === '') continue;
-          roles.set(raw.toLowerCase(), 'source_commit');
+          const sha = raw.toLowerCase();
+          if (chain.has(sha)) continue;
+          roles.set(sha, 'source_commit');
         }
       }
       /*

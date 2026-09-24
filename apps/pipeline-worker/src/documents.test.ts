@@ -87,6 +87,7 @@ function enriched(overrides: Partial<IngestionEnriched> = {}): IngestionEnriched
 function source(
   event: IngestionEnriched = enriched(),
   authorTeams: AuthorTeamResolution = { kind: 'unknown' },
+  chainShas: ReadonlySet<string> = new Set(),
 ): Parameters<typeof buildUpsertRequests>[0] {
   return {
     enriched: event,
@@ -98,6 +99,8 @@ function source(
      * 조용히 팀을 갖게 되면, 필드를 싣는 조건이 무엇인지 그 시험들이 흐린다.
      */
     authorTeams,
+    /** 기본값은 빈 집합이다 — 체인 규칙(CR-117)을 시험하지 않는 시험은 체인을 모른다. */
+    chainShas,
   };
 }
 
@@ -368,6 +371,31 @@ describe('커밋 문서 (ENT-CORE-003)', () => {
       expect(request.doc).not.toHaveProperty('author');
       expect(request.doc).not.toHaveProperty('parent_shas');
     }
+  });
+
+  it('**체인 커밋에는 원본 커밋 문서를 쓰지 않는다** — `git merge dev`로 받아 온 dev 커밋의 역할을 덮지 않는다 (CR-117, FR-SRCH-002 AC-7)', () => {
+    /*
+     * 피처 브랜치가 dev를 merge해 오면 dev 체인의 머지 커밋이 GitHub의 PR 커밋 목록에 섞인다.
+     * 그 SHA에 `role: source_commit`을 쓰면 조건부 업서트가 이 PR의 더 큰 버전으로 체인이 정한
+     * `merge_commit`을 덮는다. 그 문서는 체인 경로(커밋 보강·재구축)가 소유한다.
+     */
+    const own = 'dddd111122223333444455556666777788889999';
+    const chained = 'ebc781d0000000000000000000000000000000aa';
+    const requests = buildCommitDocuments(
+      source(enriched({ source_commit_shas: [own, chained.toUpperCase()] }), { kind: 'unknown' }, new Set([chained])),
+    );
+    const shas = requests.map((request) => request.doc['commit_sha']);
+    expect(shas).toContain(own);
+    expect(shas).not.toContain(chained);
+    // PR 자신의 머지 커밋은 체인 위에 있어도 그대로 쓴다 — 그 역할은 체인이 정한 것과 같다.
+    expect(requests.some((request) => request.doc['role'] === 'merge_commit')).toBe(true);
+  });
+
+  it('체인 집합은 원본 커밋에만 걸린다 — 자기 머지 커밋이 그 집합에 있어도 머지 커밋 문서는 남는다 (CR-117)', () => {
+    const mergeSha = (PR.merge_commit_sha ?? '').toLowerCase();
+    const requests = buildCommitDocuments(source(enriched(), { kind: 'unknown' }, new Set([mergeSha])));
+    const merge = requests.find((request) => request.doc['commit_sha'] === mergeSha);
+    expect(merge?.doc['role']).toBe('merge_commit');
   });
 });
 

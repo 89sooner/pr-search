@@ -2981,18 +2981,20 @@ components:
       type: object
       description: >-
         GET /api/v1/pull-requests/{repository}/{pr_number} 200 본문. 언제나 있는 키는 repository·pr_number·merge_commit_sha·
-        source_commits·source_commits_truncated·merge_seq·seq_epoch·sequence_space·url·correlation_id다. 나머지는 put()이
-        문서에 값이 있을 때만(undefined가 아닐 때만) 넣는다 — 키 없음은 보강 전이거나 알 수 없음이다. put()은 null을 거르지
-        않으므로 투영이 GitHub null을 쓰는 body·author·created_at·updated_at·merged_at·closed_at은 null일 수 있다.
-        source_commits_total은 절삭되지 않았을 때만 있다. M 다섯 키는 기능이 켜진 배포에서만 함께 붙는다.
-        (근거: apps/search-api/src/resolve/detail.ts:364-456, apps/search-api/src/resolve/routes.ts:347,
-        apps/pipeline-worker/src/documents.ts:267-289, packages/domain/src/events.ts:101-119)
+        source_commits·source_commits_truncated·source_commits_excluded·merge_seq·seq_epoch·sequence_space·url·correlation_id다.
+        나머지는 put()이 문서에 값이 있을 때만(undefined가 아닐 때만) 넣는다 — 키 없음은 보강 전이거나 알 수 없음이다.
+        put()은 null을 거르지 않으므로 투영이 GitHub null을 쓰는 body·author·created_at·updated_at·merged_at·closed_at은
+        null일 수 있다. source_commits_total은 절삭되지 않았을 때만 있다. M 다섯 키는 기능이 켜진 배포에서만 함께 붙는다.
+        CR-117부터 source_commits는 그 PR이 새로 가져온 원본 커밋만 담는다(D-22).
+        (근거: apps/search-api/src/resolve/detail.ts:387-489, apps/search-api/src/resolve/routes.ts:347,
+        apps/pipeline-worker/src/documents.ts:276-298, packages/domain/src/events.ts:101-119)
       required:
         - repository
         - pr_number
         - merge_commit_sha
         - source_commits
         - source_commits_truncated
+        - source_commits_excluded
         - merge_seq
         - seq_epoch
         - sequence_space
@@ -3012,23 +3014,34 @@ components:
           type: [string, 'null']
           description: >-
             PR 문서의 merge_commit_sha(없으면 null). 투영은 GitHub 값을 머지 여부로 거르지 않고 그대로 싣는다.
-            (근거: apps/search-api/src/resolve/detail.ts:388, apps/pipeline-worker/src/documents.ts:283,
+            (근거: apps/search-api/src/resolve/detail.ts:414, apps/pipeline-worker/src/documents.ts:292,
             apps/pipeline-worker/src/enriched-payload.ts:81)
         source_commits:
           type: array
           maxItems: 250
+          description: >-
+            그 PR이 새로 가져온 원본 커밋(CR-117, FR-SRCH-003 AC-5). GitHub의 PR 커밋 목록에서, 커밋 문서의
+            pull_request_numbers에 이 PR이 없는 항목(피처 브랜치가 대상 브랜치를 merge해 와서 섞인 커밋)을 뺀다.
+            연결이 아직 투영되지 않은 커밋은 빼지 않는다. 그래서 GitHub Commits 탭과 수가 다를 수 있다.
+            (근거: apps/search-api/src/resolve/detail.ts:369-376, :408)
           items:
             $ref: '#/components/schemas/SourceCommitItem'
         source_commits_truncated:
           type: boolean
           description: >-
-            문서가 절삭을 알리거나 SHA가 250개를 넘으면 true. (근거: apps/search-api/src/resolve/detail.ts:379)
+            문서가 절삭을 알리거나 SHA가 250개를 넘으면 true. (근거: apps/search-api/src/resolve/detail.ts:402)
+        source_commits_excluded:
+          type: integer
+          minimum: 0
+          description: >-
+            source_commits에서 뺀 수(CR-117, FR-SRCH-003 AC-5). 언제나 있고 0이어도 싣는다 — 「뺀 것이 없다」는
+            사실이다. 절삭됐으면 읽은 앞 250건 안에서 센 값이다. (근거: apps/search-api/src/resolve/detail.ts:421)
         source_commits_total:
           type: integer
           minimum: 0
           description: >-
-            source_commits_truncated가 false일 때만 있다(절삭된 총계는 저장되어 있지 않아 키를 뺀다).
-            (근거: apps/search-api/src/resolve/detail.ts:403)
+            source_commits_truncated가 false일 때만 있다(절삭된 총계는 저장되어 있지 않아 키를 뺀다). CR-117부터
+            source_commits에서 뺀 뒤 남은 수다. (근거: apps/search-api/src/resolve/detail.ts:436)
         merge_seq:
           type: [integer, 'null']
         seq_epoch:

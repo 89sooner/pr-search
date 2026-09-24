@@ -1,6 +1,12 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.17 | 갱신일: 2026-09-23
+> 상태: review | 버전: v1.18 | 갱신일: 2026-09-24
+
+| 추가 요구사항 (CR-117) | 화면 | 구현 단위 | 검증 |
+| --- | --- | --- | --- |
+| FR-SRCH-002 AC-7 (추적 브랜치 체인에 오른 커밋은 올린 PR에만 속한다 · 원시 관측 보존 · 체인 변경 시 재계산 · 체인 커밋 역할 보존) | W-003(커밋 상세의 연결 PR), W-001(`kind:commit` 결과), Repository Workspace History(CR-107)의 행별 PR 번호 — 렌더링 변경 없음, 값이 같은 정본에서 나온다 | WP-102, `packages/db/src/repositories/pr-commit-link.ts`(`EFFECTIVE_LINK_SQL` — 관계 읽기 전부와 미확정 계수가 쓰는 유효 연결 술어, `readCommitLinkSets`, `requeueChainChangedCommitLinks`, `listCommitsWithMergeEvidence`), `packages/db/src/repositories/merge-sequence.ts`(`findCurrentChainLanders`, `listChangedCommitsBetweenEpochs`), `apps/pipeline-worker/src/documents.ts`·`snapshot.ts`(`chainShas` — 체인 커밋에 원본 커밋 문서를 쓰지 않는다)·`project.ts`·`backfill.ts`, `apps/pipeline-worker/src/reindex.ts`(`rebuildProjectedCommits`가 체인 SHA를 건너뛴다), `apps/pipeline-worker/src/sequence.ts`(채번·강제 푸시 재채번·복구 재채번이 같은 트랜잭션에서 관계 재투영 의도를 남긴다) | 단위(`apps/pipeline-worker/src/documents.test.ts` — 체인 건너뛰기 2건), 통합(`apps/pipeline-worker/integration/sequence/chain-links.test.ts` 9건 — 실제 git 이력·실제 채번·실제 투영 경로의 `git merge dev` 모양·원시 관측 보존·미확정 계수·fast-forward 보존절·늦은 채번 재계산·강제 푸시 재채번·복구 재채번·오염 복구; `apps/pipeline-worker/integration/jobs/link-reindex.test.ts` +1건 — 재색인이 체인 커밋을 올린 PR만으로 복원하고 역할을 덮지 않는다) |
+| FR-SRCH-003 AC-5 (원본 커밋은 그 PR이 새로 가져온 커밋 · 제외 수 · 모름은 빼지 않는다) | W-002(PR 상세 C-018 커밋 목록의 제외 안내), Repository Workspace·legacy 작업 공간 상세 창의 커밋 목록 | WP-102, `apps/search-api/src/resolve/detail.ts`(`isOwnSourceCommit`, `source_commits_excluded`, 뺀 뒤의 `source_commits_total`), `apps/web/lib/pr-detail.ts`(`excludedCount`, `excludedCommitsLabel`), `apps/web/components/ExcludedCommitsNote.tsx`·`CommitList.tsx`·`RepositoryWorkspace.tsx`·`LegacyRepositoryWorkspace.tsx` | 단위(`apps/search-api/src/resolve/detail.test.ts` +3건 — 제외·모름 보존·절삭; `apps/web/lib/pr-detail.test.ts` +4건 — 제외 수·안내 문구) |
+| 복구 경로 (FR-SRCH-002 AC-7 운영 측면) | 없음 — 운영 CLI다. 실행 기록은 잡 `pr_link_repair`와 감사 `job.run`으로 남는다 | WP-102, `apps/pipeline-worker/src/link-repair.ts`(체인 규칙으로 빠지는 번호를 관측 확정과 무관하게 제거 대상으로 분류, 덮인 체인 커밋 역할을 병합 근거까지 보고 되돌림)·`link-repair-command.ts`(출력), `packages/es/src/commit-metadata.ts`(`restoreChainCommitRole` — `source_commit`일 때만 바꾸는 단방향 쓰기), `deploy/single-host/RUNBOOK.md` 7.G, RB-29 | 통합(`chain-links.test.ts` 복구 2건 — 관측이 미확정이어도 체인 규칙 번호를 지우고 역할을 되돌림, 직접 푸시는 `[]`·`direct_push`, 반복 멱등, `--pr` 실행은 역할 대조를 하지 않음) |
 
 | 추가 요구사항 (CR-116) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |

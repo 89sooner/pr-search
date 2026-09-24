@@ -1,6 +1,8 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.31 | 갱신일: 2026-09-23
+> 상태: review | 버전: v0.32 | 갱신일: 2026-09-24
+
+CR-117 / FR-SRCH-002 AC-7, FR-SRCH-003 AC-5: 스키마는 바뀌지 않는다 — 새 표·새 열·새 마이그레이션·새 색인 필드가 없다. 바뀐 것은 **관계 정본을 읽는 규칙**이다. `pull_request_commit_link`의 `source` 행은 GitHub 목록 그대로인 **원시 관측**이고, 읽는 자리는 **유효 연결**만 쓴다: 저장소가 지금 추적하는 브랜치(`repository.sequence_branches`)의 현재 에폭 `merge_sequence`에 그 커밋의 행이 있으면, 그 커밋은 그 행의 PR(`pull_request_number`)에만 속하므로 다른 PR의 `source` 행은 연결로 세지 않는다. `merge` 행은 이 규칙과 무관하다. 규칙은 SQL 술어 하나(`EFFECTIVE_LINK_SQL`, `packages/db/src/repositories/pr-commit-link.ts`)이며 관계 투영·재색인 replay·전환 전 검증·복구 대조·미확정 계수가 모두 그것을 쓴다. 체인 소속이 바뀌면(채번·강제 푸시 재채번·복구 재채번) 같은 트랜잭션이 영향 커밋의 `commit_link_state` 세대를 올린다. 탐색은 `sequence_space` → `merge_sequence`의 기존 `(repository_id, base_branch, seq_epoch, commit_sha)` 유일 인덱스를 탄다. Elasticsearch는 여전히 PostgreSQL만으로 재구축된다(ADR-004).
 
 CR-115 / FR-SEQ-012: M 번호 lightweight 태그의 결과를 마이그레이션 035(추가 전용)로 정본에 얹는다 — `merge_sequence`에 태그 결과 다섯 열(`tag_state`·`tagged_at`·`tag_attempt_id`·`tag_result_reason`·`tag_found_sha`), `repository`에 운영자 정책 `tag_enabled`와 실행 중 차단 `tag_blocked_at`·`tag_blocked_reason`, `sequence_work.kind`에 `tag`, `job.type`에 `mnumber_tag_reconcile`. 표기(025·027)와 같은 규율이라 별도 표를 만들지 않는다 — 태그는 번호의 파생 쓰기이고 그 결과는 번호 행의 속성이다. Elasticsearch에는 `prs-commits`의 `role: merge_commit` 문서에 M 값 세 필드(`merge_number`·`merge_number_epoch`·`merge_number_state`)가 더해지며(AC-7), 소유자는 PR 문서와 같은 `materialize` durable work다(5장). 원격 태그 자체는 정본이 아니다 — GHE의 ref이며 정본은 언제나 `merge_sequence`다. ADR-004에 영향이 없다.
 
@@ -1366,6 +1368,8 @@ ALTER TABLE gh_capability_snapshot
 **빈 배열은 사실이고 필드 삭제가 아니다 (CR-116).** 검증한 정본과 수집 범위에서 연결이 0개이면 `[]`를 `_source`에 대입한다. 필드를 지우면 「아직 모름」과 구분되지 않고 `exists` 질의가 둘을 같게 본다. 합집합에 `[]`를 넘겨도 기존 원소는 빠지지 않으므로 전용 대입만이 이 일을 할 수 있다.
 
 **삭제에는 완전성 근거가 필요하다 (CR-116 / FR-ING-004 AC-6).** 「목록에 없다」가 「속하지 않는다」를 뜻하려면 그 목록이 원격의 전부여야 한다. `pull_request_link_observation.commits_complete`가 그 판정이고, 거짓이면 그 관측은 관계를 더할 수는 있어도 뺄 수 없다. 특히 `GET /pulls/{n}/commits`는 GitHub이 250건에서 자르면서 `rel="next"`를 남기지 않아 우리 쪽 절삭 표식이 거짓이 된다 — **원격이 말한 커밋 수와의 대조가 유일한 방어선이다.**
+
+**원시 관측과 유효 연결은 다르다 (CR-117 / FR-SRCH-002 AC-7, OD-016).** 원본 커밋은 그 PR이 **새로 가져온** 커밋이다. 피처 브랜치가 대상 브랜치를 merge해 오면 GitHub의 PR 커밋 목록에 이미 그 브랜치에 오른 다른 PR의 머지 커밋이 섞이고, 그 목록은 완전해도(위 조건 넷을 모두 만족해도) 이 PR의 원본 커밋 목록이 아니다. 그래서 `source` 행은 **지우지 않고 읽을 때 거른다**: 추적 브랜치의 현재 체인에 그 커밋의 행이 있고 그 행의 PR이 이 PR이 아니면(`NULL` 포함) 연결이 아니다. 쓰기 시점에 거르지 않는 이유는 체인이 움직이기 때문이다 — 강제 푸시로 체인에서 빠진 커밋은 다시 그 PR의 원본 커밋이 되어야 하고, 원시 행이 남아 있으면 GHE를 다시 읽지 않고 재투영만으로 되살아난다. 한계: first-parent 체인만 보므로 merge commit 방식 병합이 섞이면 두 번째 부모 쪽으로 들어온 커밋은 걸러지지 않는다(squash-only 사내 프로파일에서는 생기지 않는다). 체인 행의 PR이 뒤늦게 채워져도(`NULL` → P) 다른 PR의 제외 판정은 바뀌지 않는다. fast-forward로 자기 커밋을 올린 PR만 예외이며 그 연결은 다음 관계 변경 때 반영된다. 운영자가 `repository.sequence_branches`를 바꾸면(빼거나 예전 브랜치를 다시 넣으면) 술어가 보는 체인이 곧바로 바뀌지만 등록·설정 변경 경로는 새 브랜치의 채번만 요청하고 관계 재투영 의도를 남기지 않는다(DEV-756) — `prsctl links apply`로 맞춘다. 역할 판정도 두 갈래다: 커밋 보강·재구축은 `merge_sequence`의 PR 대응만 보고(DEV-207), 복구의 역할 되돌리기는 병합 근거(`merge` 행)도 본다. 대응이 비어 있는 창에서는 둘이 다른 역할을 쓰고, 대응이 채워지면 둘 다 `merge_commit`으로 수렴한다(DEV-757).
 
 
 **시퀀스 필드의 소유자는 문서 단위 투영기다 (CR-113).** `merge_seq`·`seq_epoch`·`sequence_space`는 `packages/es/src/sequence-projection.ts`의 `projectSequenceToDocuments`만 쓴다(에폭 상향만 `applyEpochBump`의 `update_by_query`가 먼저 올리고 full sweep이 문서마다 확인한다). 값의 정본은 `merge_sequence`·`sequence_space`이고, "어느 문서에"의 정본은 `pull_request_snapshot`(`merge_commit_sha`·`base_branch`)과 `commit_snapshot`이다 — `merge_sequence.pull_request_number`는 대응의 근거로 쓰지 않는다. 커밋 문서는 SHA당 하나라 두 시퀀스 공간이 같은 문서를 두고 다툴 수 있다: 문서가 단 `base_branch`의 공간이 현재 에폭에 그 SHA를 갖고 있으면 그 공간의 값을 지키고, 없으면 쓰는 공간이 가져간다. PR 문서의 `base_branch`는 PR의 사실이라 투영이 바꾸지 않는다. 구 에폭 작업은 문서의 더 높은 `seq_epoch`를 덮지 못한다. `document_version`은 건드리지 않는다.

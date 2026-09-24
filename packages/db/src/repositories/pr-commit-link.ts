@@ -130,6 +130,44 @@ export interface AdoptionResult {
 
 const SHA = /^[0-9a-f]{40}$/;
 
+/**
+ * 링크 행 `l`의 커밋이 **추적 브랜치의 현재 체인**에 있는 행 (CR-117 / FR-SRCH-002 AC-7).
+ *
+ * 저장소가 **지금 추적하는** 브랜치(`repository.sequence_branches`)의 **현재 에폭**만 본다.
+ * 추적을 끈 브랜치의 공간 행은 지워지지 않고 남아 더는 갱신되지 않는다 — 그것으로 판정하면
+ * 낡은 체인이 살아 있는 연결을 가린다. 탐색은 `sequence_space` → `merge_sequence`의
+ * `(repository_id, base_branch, seq_epoch, commit_sha)` 유일 인덱스 순서다.
+ */
+const CHAIN_ROWS_OF_LINK = `
+  SELECT 1
+    FROM repository r
+    JOIN sequence_space ss
+      ON ss.repository_id = r.repository_id AND ss.base_branch = ANY (r.sequence_branches)
+    JOIN merge_sequence ms
+      ON ms.repository_id = ss.repository_id AND ms.base_branch = ss.base_branch AND ms.seq_epoch = ss.seq_epoch
+   WHERE r.repository_id = l.repository_id AND ms.commit_sha = l.commit_sha`;
+
+/**
+ * **유효 연결 술어** (CR-117 / FR-SRCH-002 AC-7, OD-016). `l`은 `pull_request_commit_link`의 별칭이다.
+ *
+ * 원본 커밋은 **그 PR이 새로 가져온 커밋**이다. 추적 브랜치의 현재 체인에 이미 오른 커밋은
+ * 그 커밋을 체인에 올린 PR에만 속하므로, 다른 PR의 `source` 근거는 연결로 세지 않는다 —
+ * 피처 브랜치가 `git merge dev`로 받아 온 dev 체인 커밋이 GitHub의 PR 커밋 목록에 섞여 오는
+ * 자리다. 체인 행의 PR이 `NULL`(직접 푸시이거나 아직 모름)이어도 어느 쪽이든 그 PR이 올린
+ * 것은 아니므로 뺀다. `= l.pr_number` 절은 fast-forward로 자기 커밋을 체인에 올린 PR을 위한
+ * 안전장치이고 squash-only에서는 발동하지 않는다. `merge` 근거는 이 규칙과 무관하다.
+ *
+ * **원시 관측은 지우지 않는다.** 이 술어는 읽는 자리에만 선다 — 체인이 바뀌면(강제 푸시로
+ * 체인에서 빠진 커밋) GitHub을 다시 읽지 않고 재투영만으로 연결이 되살아나야 하기 때문이다.
+ * 관계를 읽는 모든 질의가 이 문자열 하나를 쓴다. 한 곳이라도 원시 행을 직접 세면 두 화면이
+ * 다른 답을 한다.
+ */
+export const EFFECTIVE_LINK_SQL = `(
+  l.evidence = 'merge'
+  OR NOT EXISTS (${CHAIN_ROWS_OF_LINK})
+  OR EXISTS (${CHAIN_ROWS_OF_LINK} AND ms.pull_request_number = l.pr_number)
+)`;
+
 function normalizeShas(values: readonly string[]): string[] {
   const out = new Set<string>();
   for (const value of values) {
@@ -449,11 +487,11 @@ export async function bumpCommitLinkGenerations(
 }
 
 /**
- * 커밋 하나의 **현재 유효한 PR 번호 전부** (FR-SRCH-002).
+ * 커밋 하나의 **현재 유효한 PR 번호 전부** (FR-SRCH-002 AC-6·AC-7).
  *
- * 근거 종류를 묻지 않는다 — `source`든 `merge`든 소속은 소속이다. 중복을 접고
- * 오름차순으로 고정한다: 같은 관계가 늘 같은 배열이어야 투영이 바뀌지 않은
- * 문서를 멱등으로 접는다.
+ * 근거 종류를 묻지 않는다 — `source`든 `merge`든 소속은 소속이다. 다만 체인 규칙을
+ * 통과한 것만 센다(`EFFECTIVE_LINK_SQL`). 중복을 접고 오름차순으로 고정한다: 같은 관계가
+ * 늘 같은 배열이어야 투영이 바뀌지 않은 문서를 멱등으로 접는다.
  */
 export async function listLinkedPullRequestNumbers(
   db: Queryable,
@@ -463,15 +501,15 @@ export async function listLinkedPullRequestNumbers(
   const sha = normalizeSha(commitSha);
   if (sha === null) return [];
   const result = await db.query<{ pr_number: number }>(
-    `SELECT DISTINCT pr_number FROM pull_request_commit_link
-      WHERE repository_id = $1 AND commit_sha = $2
-      ORDER BY pr_number`,
+    `SELECT DISTINCT l.pr_number FROM pull_request_commit_link l
+      WHERE l.repository_id = $1 AND l.commit_sha = $2 AND ${EFFECTIVE_LINK_SQL}
+      ORDER BY l.pr_number`,
     [repositoryId, sha],
   );
   return result.rows.map((row) => row.pr_number);
 }
 
-/** 여러 커밋을 한 번에. 러너가 배치로 읽어 왕복을 줄인다. */
+/** 여러 커밋을 한 번에. 러너가 배치로 읽어 왕복을 줄인다. 규칙은 단건과 같다. */
 export async function listLinkedPullRequestNumbersBatch(
   db: Queryable,
   repositoryId: number,
@@ -482,13 +520,103 @@ export async function listLinkedPullRequestNumbersBatch(
   for (const sha of shas) out.set(sha, []);
   if (shas.length === 0) return out;
   const result = await db.query<{ commit_sha: string; pr_number: number }>(
-    `SELECT DISTINCT commit_sha, pr_number FROM pull_request_commit_link
-      WHERE repository_id = $1 AND commit_sha = ANY($2::text[])
-      ORDER BY commit_sha, pr_number`,
+    `SELECT DISTINCT l.commit_sha, l.pr_number FROM pull_request_commit_link l
+      WHERE l.repository_id = $1 AND l.commit_sha = ANY($2::text[]) AND ${EFFECTIVE_LINK_SQL}
+      ORDER BY l.commit_sha, l.pr_number`,
     [repositoryId, shas],
   );
   for (const row of result.rows) out.get(row.commit_sha)?.push(row.pr_number);
   return out;
+}
+
+/**
+ * 커밋 하나의 유효 연결과 **체인 규칙으로 빠진** 번호 (CR-117 / WP-102).
+ *
+ * 복구 대조가 쓴다. 색인에만 있는 번호를 지우려면 CR-116은 그 PR의 관측이 확정이어야 한다고
+ * 정했다 — 목록에 없다는 사실이 소속이 아님을 뜻하려면 목록이 전부여야 하기 때문이다. 체인
+ * 규칙으로 빠지는 번호는 근거가 다르다: 원시 관측에 **있지만** 그 커밋이 이미 다른 PR로 체인에
+ * 올랐다는 PostgreSQL의 사실이 근거이므로, 관측 확정 여부와 무관하게 뺄 수 있다. 두 경우를
+ * 가르려면 원시 번호와 유효 번호를 함께 읽어야 한다 — 한 문장이라 같은 스냅숏이다.
+ */
+export async function readCommitLinkSets(
+  db: Queryable,
+  repositoryId: number,
+  commitSha: string,
+): Promise<{ readonly effective: number[]; readonly chainExcluded: number[] }> {
+  const sha = normalizeSha(commitSha);
+  if (sha === null) return { effective: [], chainExcluded: [] };
+  const result = await db.query<{ effective: number[] | null; raw: number[] | null }>(
+    `SELECT (SELECT array_agg(DISTINCT l.pr_number ORDER BY l.pr_number)
+               FROM pull_request_commit_link l
+              WHERE l.repository_id = $1 AND l.commit_sha = $2 AND ${EFFECTIVE_LINK_SQL}) AS effective,
+            (SELECT array_agg(DISTINCT l.pr_number ORDER BY l.pr_number)
+               FROM pull_request_commit_link l
+              WHERE l.repository_id = $1 AND l.commit_sha = $2) AS raw`,
+    [repositoryId, sha],
+  );
+  const effective = result.rows[0]?.effective ?? [];
+  const kept = new Set(effective);
+  const chainExcluded = (result.rows[0]?.raw ?? []).filter((n) => !kept.has(n));
+  return { effective, chainExcluded };
+}
+
+/**
+ * 주어진 커밋 가운데 **병합 근거**(`merge`)가 있는 것 (CR-117 / WP-102).
+ *
+ * 체인 커밋의 역할을 되돌릴 때 쓴다. 체인 행의 PR 대응(`merge_sequence.pull_request_number`)은
+ * 채번이 PR 문서보다 먼저 돌면 `NULL`로 남는다(DEV-207 — 「모름」이지 「PR 없음」이 아니다). 그때
+ * 그 커밋을 직접 푸시로 되돌리면 틀린 역할을 하나 더 만든다. 병합 근거는 그 커밋이 어느 PR의
+ * 머지 커밋이라는 정본의 사실이므로 역할 판정에 함께 쓴다.
+ */
+export async function listCommitsWithMergeEvidence(
+  db: Queryable,
+  repositoryId: number,
+  commitShas: readonly string[],
+): Promise<ReadonlySet<string>> {
+  const shas = normalizeShas(commitShas);
+  if (shas.length === 0) return new Set();
+  const result = await db.query<{ commit_sha: string }>(
+    `SELECT DISTINCT commit_sha FROM pull_request_commit_link
+      WHERE repository_id = $1 AND evidence = 'merge' AND commit_sha = ANY($2::text[])`,
+    [repositoryId, shas],
+  );
+  return new Set(result.rows.map((row) => row.commit_sha));
+}
+
+/**
+ * 체인 소속이 바뀐 커밋의 관계를 다시 비추게 한다 (CR-117 / FR-SRCH-002 AC-7).
+ *
+ * **호출 측 트랜잭션 안에서 부른다** — 머지 시퀀스를 쓴 트랜잭션과 같아야 채번이 커밋되고
+ * 이 의도가 사라지는 창이 없다. 유효 연결은 체인 소속에 따라 바뀌므로, 새로 체인에 오른 커밋
+ * (정상 채번)과 체인에서 빠지거나 PR 대응이 바뀐 커밋(강제 푸시 재채번·복구 재채번)이 대상이다.
+ *
+ * `source` 근거가 있는 커밋만 올린다. 판정이 바뀔 수 있는 것은 그 근거뿐이고(`merge`는 규칙과
+ * 무관하다), 그러지 않으면 체인에 오르는 커밋마다 관계 상태 행이 생겨 투영 큐가 채번량만큼
+ * 불어난다. 세대 규칙은 `bumpCommitLinkGenerations`와 같다.
+ *
+ * @returns 세대가 오르거나 새로 만들어진 커밋 수.
+ */
+export async function requeueChainChangedCommitLinks(
+  client: PoolClient,
+  repositoryId: number,
+  commitShas: readonly string[],
+): Promise<number> {
+  const shas = normalizeShas(commitShas);
+  if (shas.length === 0) return 0;
+  const result = await client.query(
+    `INSERT INTO commit_link_state (repository_id, commit_sha, generation, projected_generation, state)
+     SELECT DISTINCT $1::bigint, l.commit_sha, 1::bigint, 0::bigint, 'ready'::text
+       FROM pull_request_commit_link l
+      WHERE l.repository_id = $1 AND l.evidence = 'source' AND l.commit_sha = ANY($2::text[])
+     ON CONFLICT (repository_id, commit_sha) DO UPDATE SET
+       generation    = commit_link_state.generation + 1,
+       state         = CASE WHEN commit_link_state.state = 'leased' THEN 'leased' ELSE 'ready' END,
+       available_at  = CASE WHEN commit_link_state.state = 'leased' THEN commit_link_state.available_at ELSE now() END,
+       attempt_count = CASE WHEN commit_link_state.state = 'leased' THEN commit_link_state.attempt_count ELSE 0 END,
+       updated_at    = clock_timestamp()`,
+    [repositoryId, shas],
+  );
+  return result.rowCount ?? 0;
 }
 
 export interface ClaimCommitLinkOptions {
@@ -664,7 +792,12 @@ export async function listPullRequestsNeedingRefetch(
   return result.rows;
 }
 
-/** 저장소의 관계를 커밋 순서로 열거한다. 전체 대조가 쓴다. */
+/**
+ * 저장소의 **유효** 관계를 커밋 순서로 열거한다. 전체 대조가 쓴다.
+ *
+ * 체인 규칙으로 전부 빠진 커밋은 열거되지 않는다 — 더할 번호가 없으므로 대조의 「정본에만
+ * 있는 커밋」 갈래에 올 이유가 없다. 색인에 그 번호가 남아 있으면 색인 쪽 훑기가 잡는다.
+ */
 export async function listCommitLinksAfter(
   db: Queryable,
   repositoryId: number,
@@ -672,11 +805,11 @@ export async function listCommitLinksAfter(
   limit: number,
 ): Promise<readonly { commit_sha: string; pr_numbers: number[] }[]> {
   const result = await db.query<{ commit_sha: string; pr_numbers: number[] }>(
-    `SELECT commit_sha, array_agg(DISTINCT pr_number ORDER BY pr_number) AS pr_numbers
-       FROM pull_request_commit_link
-      WHERE repository_id = $1 AND commit_sha > $2
-      GROUP BY commit_sha
-      ORDER BY commit_sha ASC
+    `SELECT l.commit_sha, array_agg(DISTINCT l.pr_number ORDER BY l.pr_number) AS pr_numbers
+       FROM pull_request_commit_link l
+      WHERE l.repository_id = $1 AND l.commit_sha > $2 AND ${EFFECTIVE_LINK_SQL}
+      GROUP BY l.commit_sha
+      ORDER BY l.commit_sha ASC
       LIMIT $3`,
     [repositoryId, afterSha, limit],
   );
@@ -725,6 +858,9 @@ export async function countPendingCommitLinks(
  * 다른 PR이 더 있을 수 있는가"를 말하지 않는다 — 그것을 답하려면 저장소의 모든
  * PR이 확정이어야 하고, 그 기준은 어떤 배포에서도 참이 되지 않는다. 한계를
  * 숨기지 않고 좁은 뜻으로 쓴다.
+ *
+ * **두 부분 질의가 같은 유효 연결 술어를 쓴다** (CR-117). 미확정 계수만 원시 행을 세면, 체인
+ * 규칙으로 빠진 미확정 PR 하나가 그 PR과 무관한 커밋을 `partial`로 만든다.
  */
 export async function readCommitLinkProjection(
   db: Queryable,
@@ -737,12 +873,14 @@ export async function readCommitLinkProjection(
     `SELECT c.generation,
             (SELECT array_agg(DISTINCT l.pr_number ORDER BY l.pr_number)
                FROM pull_request_commit_link l
-              WHERE l.repository_id = c.repository_id AND l.commit_sha = c.commit_sha) AS pr_numbers,
+              WHERE l.repository_id = c.repository_id AND l.commit_sha = c.commit_sha
+                AND ${EFFECTIVE_LINK_SQL}) AS pr_numbers,
             (SELECT count(*)::text
                FROM pull_request_commit_link l
                LEFT JOIN pull_request_link_observation o
                  ON o.repository_id = l.repository_id AND o.pr_number = l.pr_number
               WHERE l.repository_id = c.repository_id AND l.commit_sha = c.commit_sha
+                AND ${EFFECTIVE_LINK_SQL}
                 AND (o.verification_state IS NULL OR o.verification_state <> 'verified')) AS unverified
        FROM commit_link_state c
       WHERE c.repository_id = $1 AND c.commit_sha = $2`,
@@ -782,17 +920,24 @@ export async function listCommitLinkStatesAfter(
    * `bumpCommitLinkGenerations`가 언제나 행을 만들므로 이 갈래는 비정상이며, 그때는
    * 조용히 건너뛰는 것보다 1로 비추고 다음 변경에서 충돌로 드러나는 편이 낫다.
    */
+  /*
+   * 열거는 원시 행으로 하고 **값은 유효 연결로** 채운다 (CR-117). 체인 규칙으로 연결이 전부
+   * 빠진 커밋도 열거되어야 새 인덱스에 `[]`(검증한 범위에서 연결 없음)가 복원된다 — 열거에서
+   * 빠지면 그 문서는 필드 없음(아직 모름)으로 전환된다.
+   */
   const result = await db.query<{ commit_sha: string; generation: string; pr_numbers: number[] | null; unverified: string }>(
     `SELECT s.commit_sha,
             COALESCE(c.generation, 1) AS generation,
             (SELECT array_agg(DISTINCT l.pr_number ORDER BY l.pr_number)
                FROM pull_request_commit_link l
-              WHERE l.repository_id = $1 AND l.commit_sha = s.commit_sha) AS pr_numbers,
+              WHERE l.repository_id = $1 AND l.commit_sha = s.commit_sha
+                AND ${EFFECTIVE_LINK_SQL}) AS pr_numbers,
             (SELECT count(*)::text
                FROM pull_request_commit_link l
                LEFT JOIN pull_request_link_observation o
                  ON o.repository_id = l.repository_id AND o.pr_number = l.pr_number
               WHERE l.repository_id = $1 AND l.commit_sha = s.commit_sha
+                AND ${EFFECTIVE_LINK_SQL}
                 AND (o.verification_state IS NULL OR o.verification_state <> 'verified')) AS unverified
        FROM (
               SELECT commit_sha FROM commit_link_state
