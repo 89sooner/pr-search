@@ -22,11 +22,11 @@
     "pipe-integration-v1.openapi.yaml",
     "operation-map.json"
   ],
-  "contract_checksum": "c9a800d81a19566596ff9c4cae6a575da67ba0de36916e108bdb10b3e31abc34",
+  "contract_checksum": "967857d61a819cb8e019160d66e3058b3a3c878d26cc032aac246829e73229e1",
   "files": [
     {
       "path": "CONTRACT_DIFF.md",
-      "sha256": "ecc8fd793cdc325c5a97dda92b6eaa6f3c0797b52dd58e08b1d03bb87914f273",
+      "sha256": "cb8630fe91738364b51e2ae7f20e63ecc3e87e081fdfb2528f0af7da7199139e",
       "role": "guide — 제안 계약 PSI-1.0과 구현의 차이"
     },
     {
@@ -126,7 +126,7 @@
     },
     {
       "path": "examples/read.pull_request.200.json",
-      "sha256": "df5f3e6397218f449a3ffad13b026c7b1e38e947131de4711372594624746ced",
+      "sha256": "342644fc7058fd3db56de9c05a7e65e53d87944d1f73cc2505d55988ac676c25",
       "role": "fixture — 합성 wire 예시"
     },
     {
@@ -221,7 +221,7 @@
     },
     {
       "path": "pipe-integration-v1.openapi.yaml",
-      "sha256": "9491ce645d1f2f23a7215c6f707103caf239ed3571f0efe3908bf06faaec64b3",
+      "sha256": "eab7a83dd2c31445e47272bf2defda9ae59ba4a1d9a1f575c3897bf1c3afbc6b",
       "role": "contract — 경로·요청·응답·오류 스키마 (정본)"
     },
     {

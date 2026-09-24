@@ -1,5 +1,7 @@
 # PR Search API 계약
 
+> CR-117 / FR-SRCH-002 AC-7, FR-SRCH-003 AC-5 (2026-09-24): **원본 커밋은 그 PR이 새로 가져온 커밋이다.** 새 경로·새 오류 코드는 없고, API-SRCH-003에 **추가 필드 하나**(`source_commits_excluded`)가 생긴다. 추적 브랜치의 현재 체인에 이미 오른 커밋은 그 커밋을 올린 PR에만 속하므로, 피처 브랜치가 `git merge dev`로 받아 온 dev 커밋에서는 그 PR 번호가 빠진다 — API-SRCH-002(SHA → PR), API-SRCH-001 후보, API-SRC-002(`/history`)의 `pull_request_numbers`가 모두 같은 정의다. API-SRCH-003의 `source_commits`는 커밋의 연결 PR(투영이 수렴한 값)에 그 PR이 없는 항목을 빼고 뺀 수를 싣는다. `source_commits_total`은 뺀 뒤 남은 수다. 연동 경로(API-INT-007·009·010·012)는 같은 실행 함수를 부르므로 같다.
+>
 > CR-116 / FR-SRCH-002 AC-6 (2026-09-23): **계약의 모양은 한 자리도 바뀌지 않는다** — 새 경로도, 새 필드도, 새 오류 코드도 없다. 바뀐 것은 커밋이 내는 `pull_request_numbers`가 **무엇인가**다. 그 배열은 「언젠가 한 번 포함됐던 모든 PR」의 합집합이 아니라 채택된 최신 관측에 근거한 **현재 유효한 연결**이며, PR의 원본 커밋 목록에서 빠진 커밋에서는 그 번호가 사라진다. 영향받는 응답은 API-SRCH-002(SHA → PR), API-SRCH-001 후보의 `pull_request_numbers`, API-SRC-002(`/history`)의 행별 값이고, 연동 경로(API-INT-007·010·012)는 같은 실행 함수를 부르므로 같다. 빈 배열은 「검증한 범위에서 연결이 0개」라는 사실의 진술이고 조회 실패와 구분된다 — `/history`는 후자를 `pull_requests_unavailable`로 계속 가른다.
 
 > CR-115 / FR-SEQ-012 (2026-09-22): 새 경로는 없다. API-ADM-002의 일반 잡 생성 목록에 `mnumber_tag_reconcile`(JOB-SEQ-007 — 정본 ↔ 원격 `M-*` 태그 대조; 누락은 durable work로 재생성, 다른 SHA를 가리키는 태그는 보고만, 옮기거나 지우지 않는다)이 더해지고, API-ADM-001 `PATCH`에 저장소별 해제 `tag_enabled`(기본 `true`)가 더해진다. 커밋 색인 문서에 M 값 세 필드가 실려 `kind:commit`의 `mnum:`이 성립하지만, 커밋 hit 응답에 그 값을 싣는 것은 이번 판에 없다(DEV-742). 감사 `merge_number.tag`의 `result_code` 어휘(`created`·`observed`)는 보안 문서 13.5절이 소유한다.
@@ -332,6 +334,8 @@
 
 **`source_commits_total`은 절삭됐을 때 키를 넣지 않는다 (CR-017, DEV-063).** 절삭되지 않았으면 배열 길이가 곧 총계다. 250건에서 잘렸을 때의 진짜 총계는 **저장되어 있지 않으므로**(보강 payload가 나르지 않는다) 250을 총계로 내보내지 않는다 — `source_commits_truncated: true`가 "더 있다"를 말하고, 얼마나 더 있는지는 모른다고 두는 편이 틀린 수를 주는 것보다 낫다.
 
+**원본 커밋은 이 PR이 새로 가져온 커밋이다 (CR-117 / FR-SRCH-003 AC-5).** PR 문서의 `source_commit_shas`는 GitHub 목록 그대로(원시 관측)이고, 피처 브랜치가 대상 브랜치를 merge해 오면 이미 그 브랜치에 오른 다른 PR의 머지 커밋이 섞인다. 조인하는 커밋 문서의 `pull_request_numbers`에 이 PR이 **없으면** 그 항목을 빼고, 뺀 수를 `source_commits_excluded`로 싣는다(0이어도 싣는다 — 「뺀 것이 없다」는 사실이다). 연결이 아직 투영되지 않은 커밋(문서나 필드가 없다)은 모름이므로 빼지 않는다. `source_commits_total`은 뺀 뒤 남은 수이고, 절삭된 경우 `source_commits_excluded`는 앞 250건 안에서 센 값이다. 그래서 이 목록과 수는 GitHub Commits 탭과 다를 수 있다.
+
 응답 200:
 
 ```json
@@ -361,6 +365,7 @@
   ],
   "source_commits_total": 2,
   "source_commits_truncated": false,
+  "source_commits_excluded": 0,
   "merge_seq": 1342,
   "seq_epoch": 3,
   "sequence_space": "acme/payments@main",

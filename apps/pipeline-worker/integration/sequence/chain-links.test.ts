@@ -34,7 +34,7 @@ import { runCommitLinkOnce } from '../../src/commit-links.js';
 import { enrichCommit, type CommitEnrichDeps } from '../../src/commit-enrich.js';
 import { applyLinkRepair, planLinkRepair } from '../../src/link-repair.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
-import { prepareAndAssignSequence, type SequenceDeps } from '../../src/sequence.js';
+import { prepareAndAssignSequence, repairSequence, type SequenceDeps } from '../../src/sequence.js';
 import { migratedPool } from '../helpers.js';
 import { makeTempDir, removeDir, run } from './fixture.js';
 import { createSquashFixture, squashMerge, type SquashFixture } from './squash-fixture.js';
@@ -387,6 +387,27 @@ describe('체인 소속이 바뀌면 연결을 다시 계산한다 (FR-SRCH-002 
 
     // #983이 싣던 E는 이제 체인 밖이므로 #983의 원본 커밋이다. #29의 병합 근거는 그대로다.
     expect((await commitDoc(e))?.numbers).toEqual([29, 983]);
+  });
+
+  it('**복구 재채번**이 체인을 바로잡으면 그 커밋의 연결도 다시 계산된다 — 복구 경로', async () => {
+    expect(await assign()).toBe('assigned');
+    const e = squash(29);
+    // 저장된 서수 6이 실제 체인과 다른 커밋을 가리키게 한다 — 복구가 잡아야 할 불일치다.
+    await pool.query(
+      `UPDATE merge_sequence SET commit_sha = $3 WHERE repository_id = $1 AND base_branch = $2 AND commit_sha = $4`,
+      [REPOSITORY_ID, BRANCH, 'dead'.repeat(10), e],
+    );
+    await project({ prNumber: 29, sourceShas: [FB1], mergeSha: e });
+    await project({ prNumber: 983, sourceShas: [F1, e] });
+    await drainLinks();
+    // 저장된 체인에는 E가 없으므로 #983의 원본 목록에 있는 E는 아직 #983의 것이기도 하다.
+    expect((await commitDoc(e))?.numbers).toEqual([29, 983]);
+
+    const repaired = await repairSequence(sequenceDeps(), repository, BRANCH);
+    expect(repaired.kind).toBe('repaired');
+    await drainLinks();
+    // 복구가 E를 체인에 되돌렸다. 같은 트랜잭션이 E의 관계 투영 의도를 남겼다.
+    expect((await commitDoc(e))?.numbers).toEqual([29]);
   });
 });
 

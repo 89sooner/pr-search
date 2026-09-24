@@ -154,6 +154,19 @@ PSI-1.0 제안과 CR-112 구현 시점의 `read.resolve`는 커밋 SHA·PR 번�
 
 같은 코드를 가진 저장소가 여럿이거나 시퀀스 브랜치가 둘 이상이면 후보가 여럿입니다 — 원본과 같이 자동 이동을 결정하지 않습니다. `read.merge_numbers.resolve`(저장소·브랜치·에폭을 명시한 정확 해석)는 그대로이며, 두 경로의 답은 같은 정본에서 나옵니다. 예시는 `examples/read.resolve.200.merge-number.json`(합성)입니다.
 
+## D-22 원본 커밋은 그 PR이 새로 가져온 커밋이다 — `read.pull_request`에 키 하나 추가 (CR-117, 2026-09-24)
+
+피처 브랜치가 대상 브랜치(사내에서는 dev)를 `git merge`로 받아 오면, GitHub의 PR 커밋 목록에 이미 그 브랜치에 오른 다른 PR의 머지 커밋이 섞입니다. CR-117부터 pr-search는 그런 커밋을 **그 커밋을 대상 브랜치에 올린 PR에만** 속하게 합니다(FR-SRCH-002 AC-7, OD-016). 원본 응답이 바뀌었으므로 연동 응답도 같이 바뀝니다(연동은 같은 실행 함수를 부릅니다 — FR-INT-001 AC-5).
+
+| 자리 | 전 | 후 |
+|---|---|---|
+| `PullRequestDetailResponse.source_commits` | GitHub의 PR 커밋 목록 그대로(최대 250) | 그 PR이 **새로 가져온** 커밋만. 커밋 문서의 연결 PR에 이 PR이 없는 항목을 뺍니다. 연결이 아직 투영되지 않은 커밋은 빼지 않습니다 |
+| `PullRequestDetailResponse.source_commits_excluded` | 없음 | **추가, 언제나 있음.** 뺀 수(정수 ≥ 0). 0이어도 싣습니다. 절삭됐으면 읽은 앞 250건 안에서 센 값입니다 |
+| `PullRequestDetailResponse.source_commits_total` | 원시 목록 길이 | 뺀 뒤 남은 수. 절삭됐을 때 키가 없는 것은 그대로입니다 |
+| `CommitDetailResponse.pull_requests`·`ResolveCommitCandidate.pull_request_numbers`·`SourceHistoryCommit.pull_request_numbers` | 모양 그대로 | 값의 뜻이 같은 규칙을 따릅니다 — 대상 브랜치에 이미 오른 커밋에는 그 커밋을 올린 PR만 남습니다. 키·타입은 바뀌지 않습니다 |
+
+**PIPE에 필요한 조치.** `PullRequestDetailResponse`는 `additionalProperties: false`이므로, 이 스키마로 응답을 엄격하게 검증한다면 새 키를 받아들이도록 스키마를 갱신해야 합니다. 화면이 원본 커밋 수를 GitHub과 비교해 보여 준다면 `source_commits_excluded`로 차이의 이유를 안내하는 것을 권합니다 — pr-search 화면은 「이미 대상 브랜치에 있던 커밋 N개는 목록에 없고, 각각을 그 브랜치에 올린 PR 소속이다」라고 말합니다. 예시 `examples/read.pull_request.200.json`(captured)에 키를 더했습니다. `handoff/pipe-search-port`(2026-09-21 시점 고정 스냅숏)의 fixture에는 이 키가 없습니다.
+
 ## 확인하지 못한 것
 
 | 항목 | 상태 | 이유 |
