@@ -83,6 +83,27 @@ async function stubApi(page: Page, overrides: Record<string, unknown> = {}): Pro
   return calls;
 }
 
+/**
+ * 이 탭의 세션 히스토리 — 항목의 경로와 현재 위치 (CR-118, DEV-758).
+ *
+ * Chromium의 Navigation API로 읽는다. `history.length`는 수만 말해 주므로, 항목 하나가 덮였는지
+ * 하나가 더 쌓였는지를 가르지 못한다.
+ */
+async function sessionHistory(page: Page): Promise<{ readonly index: number; readonly entries: readonly string[] }> {
+  return page.evaluate(() => {
+    const navigation = (window as unknown as {
+      navigation: { entries(): readonly { url: string | null }[]; currentEntry: { index: number } | null };
+    }).navigation;
+    return {
+      index: navigation.currentEntry?.index ?? -1,
+      entries: navigation.entries().map((entry) => {
+        const url = new URL(entry.url ?? '', window.location.origin);
+        return `${url.pathname}${url.search}`;
+      }),
+    };
+  });
+}
+
 test.describe('딥링크가 선다', () => {
   test('`/commit/:owner/:repo/:sha`가 상세를 그린다', async ({ page }) => {
     await stubApi(page);
@@ -184,20 +205,25 @@ test.describe('FLOW-002 전 경로: SHA 입력 → 커밋 상세 → PR 상세',
     await expect(page.getByTestId('pr-detail')).toBeVisible();
 
     /*
-     * **URL을 먼저 기다린 뒤 다음 뒤로가기를 부른다** (DEV-424).
+     * **두 번째 뒤로가기는 커밋 상세가 수화된 뒤에 부른다** (CR-118, DEV-758).
      *
-     * 렌더 확인(`commit-detail`)만으로 다음 내비게이션을 시작하면 **첫
-     * 뒤로가기의 히스토리 전이가 아직 끝나지 않은 순간을 만난다** — 그때
-     * 두 번째 `goBack()`이 아무 일도 하지 않고 반환하고, 시험은 커밋 상세에
-     * 머문 URL을 보며 실패한다. CI 로그가 정확히 그 모양이었다:
-     * `9 × unexpected value ".../commit/acme/payments/...?from_q=..."`.
+     * `linked-pr-link`는 진짜 `<a href>`라 PR 상세는 새 문서로 열린다. Playwright의 Chromium은
+     * back-forward cache를 끈 채로 뜨므로 첫 `goBack()`은 커밋 상세를 **새 문서로 다시 불러온다.**
+     * 그 문서의 SSR HTML에 이미 `commit-detail`(`loading_initial`)이 있어서 URL 판정과
+     * `toBeVisible()`은 **수화 전에** 통과한다. 그 순간 부른 두 번째 `goBack()`은 같은 문서 안의
+     * popstate인데, App Router는 그 청취자를 수화 뒤 효과에서 붙이므로 이동을 놓친다. 이어지는
+     * 수화가 `history.replaceState`로 `/search?q=` 항목을 커밋 URL로 덮거나(아래 URL 판정 실패 —
+     * CI의 `9 × unexpected value ".../commit/acme/payments/...?from_q=..."`), URL은 맞는데 화면이
+     * 커밋 상세에 영원히 머문다(마지막 판정이 시한을 다 쓴다).
      *
-     * URL이 바뀐 것을 먼저 확인하면 그 경합이 사라진다. **렌더보다 히스토리가
-     * 먼저다** — 판정의 재료를 그 순서에 맞춘다.
+     * 그래서 **클라이언트에서만 생기는 신호** `data-screen-state="ready"`를 기다린다. 그 값은 수화 뒤
+     * 효과가 부른 조회의 응답에서만 서므로, 그때는 라우터의 popstate 청취자가 이미 붙어 있다.
+     * 과거 진단 — DEV-424 「히스토리 전이가 끝나지 않았다」, DEV-689 「RSC 왕복이 늦다」 — 은 이
+     * 기제를 보지 못했다. 로컬 부하 실측(작업자 4, 60회): 옛 대기 12회 실패, 이 대기 0회.
      */
     await page.goBack();
     await expect(page).toHaveURL(/\/commit\//);
-    await expect(page.getByTestId('commit-detail')).toBeVisible();
+    await expect(page.getByTestId('commit-detail')).toHaveAttribute('data-screen-state', 'ready');
     await page.goBack();
     /*
      * 자동 이동은 `push`라 히스토리가 쌓인다 — 뒤로가기 한 번으로 검색
@@ -212,13 +238,19 @@ test.describe('FLOW-002 전 경로: SHA 입력 → 커밋 상세 → PR 상세',
      */
     await expect(page).toHaveURL(/\/search/);
     /*
-     * **URL이 바뀐 뒤에도 앞 화면이 한동안 남는다 — 그 도착만 넉넉히 기다린다** (DEV-689).
-     * `/search`는 `force-dynamic`이라 뒤로가기의 RSC 왕복이 서버 부하만큼 늦고, 그동안
-     * `main`에는 커밋 상세가 그대로 서 있다(실패 시점 스냅숏). 전량 e2e를 기본 작업자로
-     * 돌리면 병렬 부하가 5초 기본값을 넘긴다. 판정할 계약은 「검색 화면과 원래 입력이
-     * 돌아온다」이지 5초가 아니다 — 다른 곳에 도착했다면 위의 URL 판정이 먼저 잡는다.
+     * **히스토리가 그대로다** (CR-118, DEV-758). 실패했을 때 원인이 메시지에서 바로 갈린다 —
+     * 자동 이동 push가 두 번 나갔다면 커밋 항목이 둘이고, 수화가 `/search?q=` 항목을 덮었다면
+     * 그 자리에 커밋 URL이 있다. 둘째 항목에 머물러야 한다.
      */
-    await expect(page.getByRole('searchbox')).toHaveValue(MERGE_SHA, { timeout: 15_000 });
+    expect(await sessionHistory(page)).toEqual({
+      index: 1,
+      entries: ['/search', `/search?q=${MERGE_SHA}`, `/commit/acme/payments/${MERGE_SHA}?from_q=${MERGE_SHA}`, '/pr/acme/payments/1234'],
+    });
+    /*
+     * 시한은 기본값이다. 옛 15초(DEV-689)는 위 기제로 화면이 영원히 멈추던 것을 「느리다」로
+     * 읽고 늘린 값이었다 — 늘린 시한은 실패를 15초 늦췄을 뿐이다.
+     */
+    await expect(page.getByRole('searchbox')).toHaveValue(MERGE_SHA);
   });
 
   test('**뒤로가기가 튕겨 나가지 않는다** (CR-021, DEV-097)', async ({ page }) => {
