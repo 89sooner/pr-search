@@ -1,8 +1,8 @@
-# Current Handoff — 2026-09-24 PR Search 17차 (CR-117 구현·검증·독립 리뷰 완료, PR 병합 대기)
+# Current Handoff — 2026-09-24 PR Search 17차 (CR-117 구현·검증·독립 리뷰·병합 완료)
 
 ## Start here
 
-`origin/main`의 최신 커밋은 `ea59bb6`(사용자가 사내 `agent-context/upstream-feedback.md` 사본으로 그 파일을 통째로 덮은 커밋 — 코드 변경 없음, 사내 `0.1.0-pilot.18` 보고 세 건만 남았다)이고, 17차는 그 위에서 **CR-117 / WP-102**를 구현했다. 피처 브랜치가 `git merge dev`로 받아 온 dev 체인 커밋에 그 PR 번호가 붙던 결함이다(사내 `ebc781d` = [983, 1671, 1855]). 사용자 결정 `OD-016`: **원본 커밋은 그 PR이 새로 가져온 커밋이고, 추적 브랜치의 현재 체인에 이미 오른 커밋은 그 커밋을 체인에 올린 PR에만 속한다.** 브랜치는 `feature/cr117-source-commits`, worktree는 `/home/roqkf/pr-search-wt/cr117-source-commits`. PR [#230](https://github.com/89sooner/pr-search/pull/230)을 열었고 **병합은 사용자 결정 대기다** — CR-116과 달리 이번 지시에는 병합 승인이 없다. CI 결과는 원장 6.108장 「PR과 병합」에 있다.
+17차 착수 기준 `origin/main`은 `ea59bb6`(사용자가 사내 `agent-context/upstream-feedback.md` 사본으로 그 파일을 통째로 덮은 커밋 — 코드 변경 없음, 사내 `0.1.0-pilot.18` 보고 세 건만 남았다)이었고, 17차는 그 위에서 **CR-117 / WP-102**를 구현했다. 피처 브랜치가 `git merge dev`로 받아 온 dev 체인 커밋에 그 PR 번호가 붙던 결함이다(사내 `ebc781d` = [983, 1671, 1855]). 사용자 결정 `OD-016`: **원본 커밋은 그 PR이 새로 가져온 커밋이고, 추적 브랜치의 현재 체인에 이미 오른 커밋은 그 커밋을 체인에 올린 PR에만 속한다.** 브랜치는 `feature/cr117-source-commits`, worktree는 `/home/roqkf/pr-search-wt/cr117-source-commits`. PR [#230](https://github.com/89sooner/pr-search/pull/230)은 구현 지시에 병합 승인이 없어 먼저 물었고, 사용자 지시(「origin/main에 병합해라」)로 **main `65acf83`에 squash 병합됐다**(2026-09-24). PR CI와 main CI(run 35993248300) 모두 success였다 — 원장 6.108장 「PR과 병합」.
 
 17차는 두 세션이다. 전반은 context-full로 끊겼고 전사는 `exports/202609241738_ing.md`(git 무시 대상)다. 후반이 그 전사와 전반의 scratchpad(`/tmp/claude-1000/-home-roqkf-pr-search/52ab5fdd-7f09-4287-ad4c-995bfb0cf58c/scratchpad` — 계획서, 변이 스크립트)를 읽고 이어서 rebase·게이트·독립 리뷰·기록·PR까지 했다.
 
@@ -27,12 +27,12 @@
 
 ## Open boundary
 
-- **PR 병합** — 사용자 결정 대기. 병합 뒤 기록(CR-117 `closed`·WP-102 `done`, 원장 3·4장 상태)은 묻고 만든다.
+- **병합 기록 PR** — CR-117 `closed`·WP-102 `done`과 원장 3·4장 상태를 사용자 지시로 브랜치 `docs/cr117-merge-record`에 올렸다. 원장 4장에 「병합 전」으로 남아 있던 CR-113~116의 매핑 행 11개도 같은 PR에서 병합 SHA로 바로잡았다. 그 PR의 병합은 사용자 결정이다.
 - **같은 반입의 나머지 두 보고는 미착수다** — prs-commits 재색인 verify 과대 계산, prs-links 재색인 shadow 부분 갱신 실패. 원인 분석과 요청 평가는 `agent-context/todos.md` 「CR-117 뒤 남은 것」에 있다. 사내가 prs-commits를 v4로 손으로 전환했다면 그 인덱스의 상태부터 확인해야 한다.
 - **사용자에게 받지 못한 답 둘** — 사내 GHE의 dev 보호 설정(force-push·삭제 금지, 직접 push 금지, squash-only, `M-*` 태그 ruleset)이 켜져 있는지, M 번호 채번 정체 경보(`mnumber_blocked_since` 기반 「N시간 이상 멈춤」)를 별도 CR로 더할지. 사용자는 17차 전반에 설명을 듣고 「이해했다」고만 했다.
 - `DEV-756`(open) — 추적 브랜치 목록을 바꾸면 체인 소속이 바뀌는데 재투영 의도가 남지 않는다. 운영 조치는 `links apply` 한 번. `DEV-757`(open) — 역할 판정 규칙이 두 갈래다(보강·재구축은 체인 행의 PR 대응만, 복구는 병합 근거도). `DEV-752`는 체인 밖 커밋 몫만 남았다.
 - 사내 적용은 **NOT RUN**, 사내 배포 SHA는 **NOT VERIFIED**. 반입 뒤 할 일은 RUNBOOK 7.G의 CR-117 절과 `agent-context/upstream-feedback.md` 첫 항목의 상류 반영 주석에 있다. **`ea59bb6`이 CR-113~116 주석(각 CR의 「반입 뒤 할 일」)을 지웠다** — 그 내용은 `git show 5c52aa2:agent-context/upstream-feedback.md`와 RUNBOOK 7.E·7.F·7.G에 남아 있다.
-- 기존 worktree 정리(cr102/103/105/106/111/113/114/115/116 계열) — 계속 사용자 보류 중. `cr117-source-commits`도 병합 뒤 합류한다. 격리 컨테이너 `prs-cr116-*`·`prs-cr117-*` 정리도 병합 뒤, 다른 세션이 쓰지 않는지 확인하고 한다.
+- 기존 worktree 정리(cr102/103/105/106/111/113/114/115/116 계열) — 계속 사용자 보류 중. `cr117-source-commits`도 합류한다 — 지금은 병합 기록 브랜치 `docs/cr117-merge-record`가 그 워크트리에 올라가 있으므로 기록 PR이 병합된 뒤에 정리한다. 격리 컨테이너 `prs-cr116-*`·`prs-cr117-*` 정리도 다른 세션이 쓰지 않는지 확인하고 한다.
 
 ## References
 
