@@ -1,7 +1,7 @@
 {
   "format": "agent-context-index:v1",
   "version": "1.2.0",
-  "generated": "2026-09-24T09:30:17+00:00",
+  "generated": "2026-09-24T09:41:55+00:00",
   "root": "/home/roqkf/pr-search-wt/cr117-source-commits",
   "source_dir": "agent-context",
   "output_dir": "agent-context/_handoff",
@@ -66,10 +66,10 @@
       "id": "f98c94b",
       "source_path": "agent-context/current-handoff.md",
       "compact_path": "agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md",
-      "sha256": "0d8e733b43b7ef4ffba179e5c8452dd57bc98e201e5fc821fea41b6ef6df6857",
-      "bytes": 7212,
+      "sha256": "98ea05cce0f48ed00b5decc974cc2bba7b3eb05edd194713fc49e0e202287fd8",
+      "bytes": 7254,
       "lines": 45,
-      "compact_bytes": 8100,
+      "compact_bytes": 8170,
       "headings": [
         "Current Handoff — 2026-09-24 PR Search 17차 (CR-117 구현·검증·독립 리뷰 완료, PR 병합 대기)",
         "Start here",
@@ -84,6 +84,7 @@
         "agent-context/upstream-feedback.md",
         "feature/cr117-source-commits",
         "home/roqkf/pr-search-wt/cr117-source-commits",
+        "github.com/89sooner/pr-search/pull/230",
         "exports/202609241738_ing.md",
         "tmp/claude-1000/-home-roqkf-pr-search/52ab5fdd-7f09-4287-ad4c-995bfb0cf58c/scratchpad",
         "packages/db/src/repositories/pr-commit-link.ts",
@@ -101,8 +102,7 @@
         "Start",
         "ea59bb6",
         "context",
-        "upstream",
-        "feedback"
+        "upstream"
       ],
       "priority": 18,
       "title": "Current-Handoff-2026-09-24-PR-Search-17차-CR-117-구현-검증-독립-리뷰-완료-PR-병합-대기"
@@ -441,10 +441,10 @@
       "id": "f3df0a8",
       "source_path": "agent-context/upstream-feedback.md",
       "compact_path": "agent-context/_handoff/compact/f3df0a8.upstream-feedback.ctx.md",
-      "sha256": "9191121efc3470ed41e7f714fd94061039883602735e7828231e939c48e7da38",
-      "bytes": 10593,
+      "sha256": "d9e35c20ae4598a2305b09c2c620721d30acac4ce1ca9f0b99c956fe0abdb212",
+      "bytes": 10602,
       "lines": 84,
-      "compact_bytes": 11006,
+      "compact_bytes": 11015,
       "headings": [
         "Upstream Feedback",
         "git merge dev로 인해 source_commit_shas가 dev 체인 커밋으로 오염된다 (설계 갭, 미해결)",

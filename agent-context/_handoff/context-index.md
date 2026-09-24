@@ -1,12 +1,12 @@
 # agent-context-index:v1
-generated=2026-09-24T09:30:17+00:00
+generated=2026-09-24T09:41:55+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=9
 legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd command;@path path-ref;@code code-fence;@sig retrieval-signals;@kv metadata
 
 ## read_order
-- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-09-24-PR-Search-17차-CR-117-구현-검증-독립-리뷰-완료-PR-병합-대기 sig=agent-context/current-handoff.md,origin/main,agent-context/upstream-feedback.md,feature/cr117-source-commits,home/roqkf/pr-search-wt/cr117-source-commits,exports/202609241738_ing.md,tmp/claude-1000/-home-roqkf-pr-search/52ab5fdd-7f09-4287-ad4c-995bfb0cf58c/scratchpad,packages/db/src/repositories/pr-commit-link.ts
+- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-09-24-PR-Search-17차-CR-117-구현-검증-독립-리뷰-완료-PR-병합-대기 sig=agent-context/current-handoff.md,origin/main,agent-context/upstream-feedback.md,feature/cr117-source-commits,home/roqkf/pr-search-wt/cr117-source-commits,github.com/89sooner/pr-search/pull/230,exports/202609241738_ing.md,tmp/claude-1000/-home-roqkf-pr-search/52ab5fdd-7f09-4287-ad4c-995bfb0cf58c/scratchpad
 - f73e2b0 p=25 src=agent-context/session-notes.md compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md title=Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료 sig=agent-context/session-notes.md,agent-context/upstream-feedback.md,origin/main,home/roqkf/pr-search,home/roqkf/design-system,Risks/gotchas,dailywork/2026-09-15_PR-Search-CR-092-pilot.7-,home/roqkf/pr-search/exports/pr-search-2026-09-15.md
 - f3c6d32 p=25 src=agent-context/session-summary.md compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md title=세션-요약-PR-Search-구현-2026-08-25-후반 sig=agent-context/session-summary.md,2919/2920,1847/1847,506/506,2930/2930,8/1865,agent-context/session-notes.md,docs/00_governance/change_control.md
 - f0b2764 p=28 src=agent-context/decisions.md compact=agent-context/_handoff/compact/f0b2764.decisions.ctx.md title=확정한-설계-결정과-이유 sig=agent-context/decisions.md,docs/00_governance/change_control.md,agent-context/session-notes.md,lib/redirect.ts,text/html,logout/route.ts,-qO/dev/null,HTTP/x.y
@@ -28,10 +28,10 @@ sig=agent-context/commands.md;agent-context/session-notes.md;repos/89sooner/pr-s
 ### f98c94b
 src=agent-context/current-handoff.md
 compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md
-sha256=0d8e733b43b7ef4ffba179e5c8452dd57bc98e201e5fc821fea41b6ef6df6857
-bytes=7212 compact_bytes=8100 lines=45 priority=18
+sha256=98ea05cce0f48ed00b5decc974cc2bba7b3eb05edd194713fc49e0e202287fd8
+bytes=7254 compact_bytes=8170 lines=45 priority=18
 heads=Current Handoff — 2026-09-24 PR Search 17차 (CR-117 구현·검증·독립 리뷰 완료, PR 병합 대기) > Start here > Delivered > Verify before changing code > Open boundary > References
-sig=agent-context/current-handoff.md;origin/main;agent-context/upstream-feedback.md;feature/cr117-source-commits;home/roqkf/pr-search-wt/cr117-source-commits;exports/202609241738_ing.md;tmp/claude-1000/-home-roqkf-pr-search/52ab5fdd-7f09-4287-ad4c-995bfb0cf58c/scratchpad;packages/db/src/repositories/pr-commit-link.ts;handoff/pipe-search-integration/v1/;docs/00_governance/change_control.md;tmp/claude-1000/-home-roqkf-pr-search/0d27507c-884e-4d77-8162-a5e8ed12b90a/scratchpad/env-cr117.sh;agent-context/todos.md;cr102/103/105/106/111/113/114/115/116;docs/40_delivery/pr_search_implementation_traceability.md;docs/40_delivery/pr_search_work_packages.md;deploy/single-host/RUNBOOK.md;Current;Handoff;Search;Start;ea59bb6;context;upstream;feedback
+sig=agent-context/current-handoff.md;origin/main;agent-context/upstream-feedback.md;feature/cr117-source-commits;home/roqkf/pr-search-wt/cr117-source-commits;github.com/89sooner/pr-search/pull/230;exports/202609241738_ing.md;tmp/claude-1000/-home-roqkf-pr-search/52ab5fdd-7f09-4287-ad4c-995bfb0cf58c/scratchpad;packages/db/src/repositories/pr-commit-link.ts;handoff/pipe-search-integration/v1/;docs/00_governance/change_control.md;tmp/claude-1000/-home-roqkf-pr-search/0d27507c-884e-4d77-8162-a5e8ed12b90a/scratchpad/env-cr117.sh;agent-context/todos.md;cr102/103/105/106/111/113/114/115/116;docs/40_delivery/pr_search_implementation_traceability.md;docs/40_delivery/pr_search_work_packages.md;deploy/single-host/RUNBOOK.md;Current;Handoff;Search;Start;ea59bb6;context;upstream
 
 ### f0b2764
 src=agent-context/decisions.md
@@ -84,8 +84,8 @@ sig=agent-context/todos.md;packages/es/src/query-builder.ts;Risks/gotchas;packag
 ### f3df0a8
 src=agent-context/upstream-feedback.md
 compact=agent-context/_handoff/compact/f3df0a8.upstream-feedback.ctx.md
-sha256=9191121efc3470ed41e7f714fd94061039883602735e7828231e939c48e7da38
-bytes=10593 compact_bytes=11006 lines=84 priority=40
+sha256=d9e35c20ae4598a2305b09c2c620721d30acac4ce1ca9f0b99c956fe0abdb212
+bytes=10602 compact_bytes=11015 lines=84 priority=40
 heads=Upstream Feedback > git merge dev로 인해 source_commit_shas가 dev 체인 커밋으로 오염된다 (설계 갭, 미해결) > 현상 > 근본 원인: git merge dev가 source_commit_shas에 dev 체인 커밋을 통째로 넣는다 > CR-116으로 해결되지 않는 이유 > 요청
 sig=agent-context/upstream-feedback.md;handoff/pipe-search-integration/v1/CONTRACT_DIFF.md;/prsctl;owner/name;feature/cr117-source-commits;apps/pipeline-worker/src/enrich.ts;apps/pipeline-worker/src/documents.ts;pulls/983/commits;apps/pipeline-worker/src/reindex.ts;packages/es/src/links.ts;Upstream;Feedback;source_commit_shas;SRCH;PostgreSQL;pull_request_commit_link;merge_sequence;merge_commit_sha;commit_sha;JOB;REL;SQL;EFFECTIVE_LINK_SQL;source_commit
 

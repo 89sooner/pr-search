@@ -2,7 +2,7 @@
 
 ## Start here
 
-`origin/main`의 최신 커밋은 `ea59bb6`(사용자가 사내 `agent-context/upstream-feedback.md` 사본으로 그 파일을 통째로 덮은 커밋 — 코드 변경 없음, 사내 `0.1.0-pilot.18` 보고 세 건만 남았다)이고, 17차는 그 위에서 **CR-117 / WP-102**를 구현했다. 피처 브랜치가 `git merge dev`로 받아 온 dev 체인 커밋에 그 PR 번호가 붙던 결함이다(사내 `ebc781d` = [983, 1671, 1855]). 사용자 결정 `OD-016`: **원본 커밋은 그 PR이 새로 가져온 커밋이고, 추적 브랜치의 현재 체인에 이미 오른 커밋은 그 커밋을 체인에 올린 PR에만 속한다.** 브랜치는 `feature/cr117-source-commits`, worktree는 `/home/roqkf/pr-search-wt/cr117-source-commits`. PR은 열었고 **병합은 사용자 결정 대기다** — CR-116과 달리 이번 지시에는 병합 승인이 없다. PR 번호와 CI 결과는 원장 6.108장 「PR과 병합」에 있다.
+`origin/main`의 최신 커밋은 `ea59bb6`(사용자가 사내 `agent-context/upstream-feedback.md` 사본으로 그 파일을 통째로 덮은 커밋 — 코드 변경 없음, 사내 `0.1.0-pilot.18` 보고 세 건만 남았다)이고, 17차는 그 위에서 **CR-117 / WP-102**를 구현했다. 피처 브랜치가 `git merge dev`로 받아 온 dev 체인 커밋에 그 PR 번호가 붙던 결함이다(사내 `ebc781d` = [983, 1671, 1855]). 사용자 결정 `OD-016`: **원본 커밋은 그 PR이 새로 가져온 커밋이고, 추적 브랜치의 현재 체인에 이미 오른 커밋은 그 커밋을 체인에 올린 PR에만 속한다.** 브랜치는 `feature/cr117-source-commits`, worktree는 `/home/roqkf/pr-search-wt/cr117-source-commits`. PR [#230](https://github.com/89sooner/pr-search/pull/230)을 열었고 **병합은 사용자 결정 대기다** — CR-116과 달리 이번 지시에는 병합 승인이 없다. CI 결과는 원장 6.108장 「PR과 병합」에 있다.
 
 17차는 두 세션이다. 전반은 context-full로 끊겼고 전사는 `exports/202609241738_ing.md`(git 무시 대상)다. 후반이 그 전사와 전반의 scratchpad(`/tmp/claude-1000/-home-roqkf-pr-search/52ab5fdd-7f09-4287-ad4c-995bfb0cf58c/scratchpad` — 계획서, 변이 스크립트)를 읽고 이어서 rebase·게이트·독립 리뷰·기록·PR까지 했다.
 
