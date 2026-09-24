@@ -3185,43 +3185,60 @@ gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '.check_runs[] | "
 
 ### Goal
 
-사용자 말로는 「203번 항목(CR-116)이 완전 해결된 게 맞나, 그리고 pilot.18 반입 뒤 새로 나온 세 건을 쉽게 설명해 달라」에서 시작했다. 1번(`git merge dev`로 dev 커밋에 다른 PR 번호가 붙음)을 먼저 하기로 했고, 사용자가 「정의 B(그 PR이 새로 가져온 커밋만)」를 골랐다. 사내 GHE 정책은 dev와 피처 브랜치뿐이고 main·승격 PR이 없으며 squash-only다.
+사용자 말로는 「203번 항목(CR-116)이 완전 해결된 게 맞나, 그리고 pilot.18 반입 뒤 새로 나온 세 건을 쉽게 설명해 달라」에서 시작했다. 1번(`git merge dev`로 dev 커밋에 다른 PR 번호가 붙음)을 먼저 하기로 했고, 사용자가 「정의 B(그 PR이 새로 가져온 커밋만)」를 골랐다. 사내 GHE 정책은 dev와 피처 브랜치뿐이고 main·승격 PR이 없으며 squash-only다. 마지막에 사용자는 「새 CR을 열어서 진행해야 되는 건 다음 세션에서 하자」고 했다.
+
+### Current state
+
+- **CR-117은 main에 들어갔다.** PR #230을 사용자 지시(「origin/main에 병합해라」)로 squash 병합 — main `65acf83`(부모 `ea59bb6`, 트리가 PR 최종 head `d70898f`와 같다). PR CI(run 35983177086)·main CI(run 35993248300) 모두 verify·integration success.
+- **병합 기록 PR #231은 열려 있고 병합 전이다**(브랜치 `docs/cr117-merge-record`, CI run 35994663595 success, `CLEAN`). CR-117 `closed`·WP-102 `done`, 원장 3·4장, 그리고 원장 4장에 「병합 전」으로 남아 있던 CR-113~116 행 11개 정정이 들어 있다. 이 인계 갱신도 같은 브랜치에 얹었다. 병합은 사용자 결정이다.
+- 같은 반입의 나머지 두 보고(prs-commits 재색인 verify 과대 계산, prs-links 재색인 shadow 부분 갱신 실패)는 **미착수**다. 다음 세션에서 새 CR로 연다.
+- 로컬 공유 checkout(`/home/roqkf/pr-search`)의 main은 아직 `ea59bb6`이다(당겨 오지 않았다). 워크트리 `/home/roqkf/pr-search-wt/cr117-source-commits`는 지금 `docs/cr117-merge-record` 브랜치다. 격리 컨테이너 `prs-cr117-postgres`(55447)·`prs-cr117-es`(59213)·`prs-cr117-redis`(56392)는 떠 있다.
+
+### Decisions
+
+- **OD-016 — 원본 커밋은 그 PR이 새로 가져온 커밋이다**(정의 B). 기각: 「GitHub 목록 전체」(지금 증상이 남는다), 「PR의 base 브랜치 기준」(추적하지 않는 base면 증상이 남고 머지 커밋 하나에 PR이 둘이 될 수 있다). 사내 프로파일에서는 두 기준의 결과가 같다.
+- **규칙은 읽는 자리에 둔다**(`EFFECTIVE_LINK_SQL` 하나). 원시 관측을 지우면 강제 푸시로 체인이 움직일 때 되살릴 근거가 없다. 상류 요청 1은 목적만, 요청 2(`compareCommits`)는 기각.
+- **독립 리뷰 지적은 코드 없이 닫았다.** F1은 「반입마다 `links apply` 필수」를 문서에 못박았고, F2는 DEV-756(추적 브랜치 목록 변경 시 재투영 없음 — 사내 dev 단일 추적에서는 생기지 않음, 설정 변경 경로가 단독 UPDATE라 고치려면 구조를 바꿔야 함), F3은 DEV-757(역할 판정 두 갈래 — 대응이 채워지면 수렴), F4는 수용했다. 처음에는 F2를 코드로 고치려 했으나 검토자 의견(사내 프로파일 밖, OD-015 영역, 트랜잭션 창)을 따랐다.
+- **`ea59bb6`(사용자의 `upstream-feedback.md` 통째 덮기)은 되살리지 않았다.** main 쪽을 채택하고 CR-117 주석만 얹었다. 지워진 CR-113~116 주석의 「반입 뒤 할 일」은 git 이력과 RUNBOOK 7.E~7.G에 남는다.
+- **나머지 두 보고는 사내 반입 없이 고칠 수 있다**(사용자 질문에 답함). 원인이 코드에 있어 재현 시험·수정·PR까지 외부에서 된다. 사내가 필요한 일은 반입 뒤 재색인 재실행과, 사내에서 손으로 v4로 전환했다면 그 인덱스 상태 확인뿐이다. 권고 순서는 prs-commits 먼저(숨은 메타데이터 누락 가능성, 범위가 더 큼) — 순서는 사용자가 아직 확정하지 않았다.
 
 ### 이번에 배운 것
 
-**GitHub 목록이 완전해도 원본 커밋 목록은 아니다.** CR-116의 완전성 조건 넷은 목록이 원격의 전부임을 증명할 뿐이고, 그 목록의 뜻(그 PR이 새로 가져온 커밋인가)은 증명하지 않는다. 기준점이 옛 시점에 머문 PR의 피처 브랜치가 `git merge dev`를 하면 dev 체인 커밋이 목록에 섞인다. 용어집 정의가 두 문장으로 갈려 있으면 코드는 어느 한쪽을 임의로 고른다 — OD로 먼저 정했다(`OD-016`).
+- **GitHub 목록이 완전해도 원본 커밋 목록은 아니다.** CR-116의 완전성 조건 넷은 목록이 원격의 전부임을 증명할 뿐 그 뜻은 증명하지 않는다. 용어집 정의가 두 문장으로 갈려 있으면 코드는 어느 한쪽을 임의로 고른다 — OD로 먼저 정한다.
+- **조건부 업서트는 역할까지 덮는다.** PR 투영이 원본 목록의 모든 SHA에 `role: source_commit`을 쓰면 더 늦은 버전이 체인의 `merge_commit`을 덮는다. CR-116 기록(DEV-752)의 「사내 오염 커밋은 `merge_commit`을 갖고 있다」는 이 경로에서 거짓이었다.
+- **문서 검증기의 요약 줄(「N more」)만 비교하면 새 경고를 놓친다.** 백틱 안의 경로 없는 파일 이름이 경고를 늘렸는데 `check_path_refs` 전체 목록을 비교해서야 찾았다.
+- **context-full로 끊긴 세션은 전사와 이전 scratchpad, 코드 diff 해시로 잇는다.** 해시로 rebase 전후 동일성을 증명해 이전 결과를 살렸지만, 로그가 없는 변이(M17)는 다시 돌렸다.
 
-**규칙은 쓰는 자리가 아니라 읽는 자리에 둔다.** 원시 관측을 지우면 체인이 움직일 때(강제 푸시) 되살릴 근거가 없다. 술어 하나(`EFFECTIVE_LINK_SQL`)를 모든 읽기가 공유하고, 체인이 바뀌는 트랜잭션이 재투영 의도를 남긴다. 한 곳이라도 원시 행을 직접 세면 커밋 화면과 PR 화면이 다른 답을 한다.
+### Changed files
 
-**조건부 업서트는 역할까지 덮는다.** PR 투영이 원본 목록의 모든 SHA에 `role: source_commit`을 쓰면 더 늦은 버전이 체인이 정한 `merge_commit`을 덮는다. CR-116 기록(DEV-752)의 「사내 오염 커밋은 `merge_commit`을 갖고 있다」는 이 경로에서 거짓이었다(DEV-755).
+- 코드(전반 세션): `packages/db/src/repositories/pr-commit-link.ts`·`merge-sequence.ts`, `packages/es/src/commit-metadata.ts`, `apps/pipeline-worker/src/{documents,snapshot,project,backfill,reindex,sequence,link-repair,link-repair-command}.ts`, `apps/search-api/src/resolve/detail.ts`, `apps/web/{lib/pr-detail.ts,components/ExcludedCommitsNote.tsx,CommitList.tsx,RepositoryWorkspace.tsx,LegacyRepositoryWorkspace.tsx}`, 새 통합 시험 `apps/pipeline-worker/integration/sequence/chain-links.test.ts`.
+- 문서: SRS v2.44, PRD, 용어집, 매트릭스, UI 명세 셋, 실행 지시서 v0.17, API 계약 v0.44, 데이터 모델, 비동기, 백엔드 v0.18, 관측성 v0.11(RB-29), 작업 패키지(WP-102), 원장(6.108장, DEV-754~757), 변경 대장(CR-117, 5장 cascade), RUNBOOK 7.G, PSI handoff D-22.
+- `agent-context/`: 상류 반영 주석(첫 항목), 인계 문서, 세션 노트, todos, `_handoff` 묶음.
 
-**사용자는 `upstream-feedback.md`를 main에서 통째로 덮는다.** 17차 도중 `ea59bb6`이 올라와 브랜치의 같은 파일과 충돌했다. main 쪽을 채택하고 주석만 다시 얹었다. 커밋 메시지는 코드 수정처럼 쓰였지만 diff는 그 파일 하나였다 — 메시지가 아니라 diff로 판단한다.
+### Commands
 
-**문서 검증기의 요약 줄만 비교하면 새 경고를 놓친다.** 백틱 안의 경로 없는 파일 이름(`` `upstream-feedback.md` ``, `` `CONTRACT_DIFF.md` ``)이 「해석되지 않는 경로」를 하나씩 늘렸는데, `--strict` 출력은 「N more」로만 보였다. `check_path_refs` 전체 목록을 기준선과 비교해 찾았다.
-
-**context-full로 끊긴 세션은 전사와 이전 scratchpad를 함께 읽는다.** 코드 diff 해시(`b19e5cad…`)로 rebase 전후 동일성을 증명해 이전 변이 결과를 살릴 수 있었지만, M17의 로그 파일이 없어서 17종을 전부 다시 돌렸다(이번에는 죽은 시험의 이름까지 남긴다).
-
-**변이 스크립트와 독립 리뷰를 겹치지 않는다.** 변이는 소스를 잠깐 바꾸므로 리뷰어가 그 순간 파일을 읽으면 엉뚱한 지적을 한다. 리뷰가 끝난 뒤 단독으로 돌렸다.
-
-### 실측으로 남긴 것
-
-- 게이트 전량 통과: typecheck, lint(경고 0, 바뀐 TS 25개 파일 모두 검사 대상), lint:deps, 단위 3,284건, 통합 143개 파일 2,223건(8분 48초), 회귀 519건, build, e2e 209건, a11y 466건, 대비 18쌍. 문서 검증기는 기준선(`main ea59bb6`)과 두 모드·경로 참조 전체 목록까지 같다.
-- 변이 17종이 모두 시험을 죽였다(원장 6.108장 표).
-- 독립 리뷰(`deep-reasoner`, 도구 30회): 상급 0건. F1(apply 필수를 문서에 못박음), F2(DEV-756), F3(DEV-757), F4(수용), 관찰(anchors.ts) — 코드는 바꾸지 않았다.
-- 재색인 경로: 체인 SHA 건너뛰기가 replay·전환 전 검증에 새 실패 경로를 만들지 않음을 코드로 확인했고 리뷰어도 확인했다.
+- 환경: `source /tmp/claude-1000/-home-roqkf-pr-search/0d27507c-884e-4d77-8162-a5e8ed12b90a/scratchpad/env-cr117.sh`(Node 22 경로 포함 — 셸 기본은 v20).
+- 게이트(모두 통과): `pnpm typecheck`, `pnpm lint`, `pnpm run lint:deps`, `pnpm run test`(3,284), `pnpm run test:integration`(2,223, 8분 48초), `pnpm run test:regression`(519), `pnpm build`, `pnpm run test:e2e`(209), `pnpm run test:a11y`(466), `pnpm run test:contrast`(18쌍).
+- 변이: `node <scratchpad>/mutate-cr117.mjs [M1 M4 …]` — 17종 모두 죽음, 죽은 시험 이름까지 남긴다(`mutate-all.log`).
+- 문서 검증기: `python3 ~/.claude/skills/build-srs-prd-env/scripts/validate_srs_prd_env.py --root <tree> [--strict]` — 기준선은 `git archive <sha> | tar -x`로 **전체 트리**를 풀어 만든다(`docs`만 풀면 `handoff/` 참조가 해석되지 않아 가짜 차이가 난다).
+- 실패했던 명령: `gh pr view --json headRefOid` — gh 2.4.0에 그 필드가 없어 종료 코드 1(`--json commits --jq '.commits[-1].oid'`를 쓴다).
 
 ### Next steps
 
-1. PR 병합 여부를 사용자에게 받는다. 병합하면 기록 PR(CR-117 `closed`, WP-102 `done`)은 묻고 만든다.
-2. 같은 반입의 나머지 두 보고를 별도 CR로 연다(`todos.md` 「CR-117 뒤 남은 것」에 원인과 요청 평가가 있다).
-3. 사용자 답 대기 둘(GHE dev 보호 설정, 채번 정체 경보)을 다시 묻는다.
+1. PR #231(병합 기록 + 이 인계)이 병합됐는지 `gh pr list --state open`·`git fetch`로 실측한다. 안 됐으면 사용자에게 묻는다.
+2. 새 CR을 연다 — 번호는 `docs/` grep과 열린 PR로 실측한다(CR-117 다음). 권고 순서는 prs-commits 재색인 verify 먼저, 순서는 착수 때 사용자에게 확인한다. 원인·요청 평가·재현 방향은 `agent-context/todos.md` 「CR-117 뒤 남은 것」에 있다.
+3. 사용자 답 대기 둘을 다시 묻는다: 사내 GHE dev 보호 설정, 채번 정체 경보 CR 여부.
 
 ### Risks/gotchas
 
-- 배포만으로는 이미 색인에 있는 오염이 바뀌지 않는다. 반입 뒤 저장소마다 `--pr` 없는 `links apply`가 꼭 필요하다(PR 상세의 제외 판정도 커밋 문서의 연결을 재료로 쓴다).
-- 셸 기본 Node는 v20이다. `env-cr117.sh`가 Node 22 경로를 앞에 둔다.
+- 배포만으로는 이미 색인에 있는 잘못된 번호가 바뀌지 않는다. 반입 뒤 저장소마다 `--pr` 없는 `links apply`가 꼭 필요하다.
+- 사용자는 `upstream-feedback.md`를 main에서 통째로 덮는다. 기능 브랜치가 같은 파일을 고치면 rebase 충돌이 난다.
+- 변이 스크립트는 소스를 잠깐 바꾸므로 리뷰어나 다른 시험과 겹치지 않게 단독으로 돌린다.
+- 문서에 해시를 적을 때는 pathspec에 문서(`deploy/single-host/RUNBOOK.md`)가 섞였는지 본다 — 17차는 그 때문에 6.108장에 설명을 보완했다.
+- `git switch -c <br> origin/main`은 새 브랜치가 `origin/main`을 추적하게 만든다. 곧바로 `git branch --unset-upstream`하고 push는 브랜치 이름을 명시한다.
 
 ### References
 
-- PR은 원장 6.108장 「PR과 병합」. 변경 대장 CR-117, DEV-754~757, OD-016, WP-102.
-- 17차 전반 전사 `exports/202609241738_ing.md`, 전반 scratchpad `52ab5fdd-…/scratchpad`, 후반 scratchpad `0d27507c-…/scratchpad`(게이트 로그, `mutate-all.log`).
+- PR #230(CR-117, main `65acf83`), PR #231(병합 기록, 열림). 변경 대장 CR-117, 원장 6.108장·DEV-754~757, OD-016, WP-102.
+- 17차 전반 전사 `exports/202609241738_ing.md`. 이 세션(후반) 전사는 `exports/202609242133.md`로 **pending /export**.
+- scratchpad: 전반 `/tmp/claude-1000/-home-roqkf-pr-search/52ab5fdd-7f09-4287-ad4c-995bfb0cf58c/scratchpad`, 후반 `/tmp/claude-1000/-home-roqkf-pr-search/0d27507c-884e-4d77-8162-a5e8ed12b90a/scratchpad`(게이트 로그, `mutate-all.log`, `env-cr117.sh`).
