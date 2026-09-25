@@ -177,4 +177,15 @@ describe('울타리의 미처리 분류 (withReindexWrite)', () => {
     const job = await reindexRepo.findReindexJob(pool, jobId);
     expect(job?.progress.failure_samples?.[0]).toContain('회수할 잡이 없다');
   });
+
+  it('**쓰는 사이 잡이 멈췄으면 대기열에 남기지 않는다** — 재개하면 prepare부터 다시 파생한다', async () => {
+    const jobId = await runningLinksJob('prs-links-v95');
+    await withReindexWrite(pool, async (targets) => {
+      // 일시정지는 재색인 울타리 밖의 잡 제어다 — 공유 울타리를 쥔 쓰기 도중에도 들어온다.
+      await pool.query("UPDATE job SET state = 'paused' WHERE job_id = $1", [jobId]);
+      targets.recordShadowPending?.(pending('prs-links-v95'));
+    });
+    expect(await reindexRepo.countLinkPending(pool, jobId)).toBe(0);
+    expect(await jobRepo.findJobState(pool, jobId)).toBe('paused');
+  });
 });

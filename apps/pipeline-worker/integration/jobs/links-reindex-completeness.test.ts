@@ -44,7 +44,7 @@ import {
   writeDerivedLinks,
 } from '@prs/es';
 import { runReindexJob, type LinkRebuildPort, type ReindexDeps, type ReindexLogFields } from '../../src/reindex.js';
-import { createLinkRebuildPort, deriveReferenceLinks, handleSourceReady, type LinkDeps } from '../../src/link.js';
+import { createLinkRebuildPort, deriveReferenceLinks, handleSourceReady, resolveReferencesTo, type LinkDeps } from '../../src/link.js';
 import { runLinkRepairCommand } from '../../src/link-repair-command.js';
 import { createWorkerMetrics } from '../../src/metrics.js';
 import { migratedPool } from '../helpers.js';
@@ -595,6 +595,29 @@ describe('실패는 실패로 남는다 (CR-121)', () => {
     expect(outcome.error ?? '').toContain('소유 source가 없는 간선 1건');
   }, 120_000);
 
+  it('**등록되지 않은 저장소가 소유한 간선이 대상에 있으면 막는다** — 저장소마다 세는 대조 밖의 간선이다', async () => {
+    await seedPullRequest(101, { body: 'Refs: #102' });
+    const enqueued = await enqueue();
+    const probe = beforeFirstEdgeRead(enqueued, async () => {
+      const [edge] = await edgesIn(enqueued.targetIndex);
+      // `beforeEach`가 두 번째 저장소의 등록을 지운다 — 그 저장소의 간선은 애초에 만들지 않는다(FR-ING-009 AC-4).
+      await es.index({
+        index: enqueued.targetIndex,
+        id: 'unregistered',
+        routing: String(OTHER_REPOSITORY_ID),
+        refresh: true,
+        document: { ...edge, link_id: 'unregistered', repository_id: OTHER_REPOSITORY_ID, from_id: pullRequestDocId(OTHER_REPOSITORY_ID, 1) },
+      });
+    });
+
+    const outcome = await run(enqueued, probe.client);
+
+    expect(probe.fired()).toBe(true);
+    expect(outcome.state).toBe('failed');
+    expect(outcome.error ?? '').toContain('소유 source가 없는 간선 1건');
+    expect(outcome.error ?? '').toContain('등록되지 않은 저장소의 간선 1건');
+  }, 120_000);
+
   it('**간선의 내용이 정본과 다르면 막는다** — 범위·근거·해결 상태까지 본다', async () => {
     await seedPullRequest(99, { body: 'Refs: #100' });
     const enqueued = await enqueue();
@@ -645,6 +668,26 @@ describe('실패는 실패로 남는다 (CR-121)', () => {
     // 끝난 잡의 대기열은 뜻이 없다.
     expect(await reindexRepo.countLinkPending(pool, enqueued.jobId)).toBe(0);
   }, 180_000);
+
+  it('**서비스 간선의 소유 source가 간선 ID와 맞지 않으면 부분 갱신하지 않고 던진다** — 엉뚱한 source를 회수하지 않는다', async () => {
+    await seedPullRequest(30, { body: 'Refs: #20' });
+    await deriveReferenceLinks(linkDeps(), repository, { kind: 'pull_request', id: '30' });
+    const [edge] = await edgesIn(LINKS_ALIAS);
+    // 색인이 손상돼 소유 source 필드가 간선 ID의 재료(`references:pull_request:<from_id>:<reference_key>`)와 다르다.
+    await es.index({
+      index: LINKS_ALIAS,
+      id: String(edge?.['link_id']),
+      routing: String(REPOSITORY_ID),
+      refresh: true,
+      document: { ...edge, from_id: pullRequestDocId(REPOSITORY_ID, 31) },
+    });
+    await seedPullRequest(20, { body: 'target' });
+    await indexPullRequest(20);
+
+    await expect(resolveReferencesTo(linkDeps(), repository, { kind: 'pull_request', id: '20' })).rejects.toThrow(
+      'reference_link_owner_mismatch',
+    );
+  }, 120_000);
 });
 
 describe('재개와 전환 경쟁 (CR-121)', () => {

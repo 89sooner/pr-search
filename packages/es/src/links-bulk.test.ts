@@ -117,6 +117,14 @@ describe('shadow 항목', () => {
     expect(failures).toHaveLength(1);
   });
 
+  it('상태가 404가 아닌 `document_missing_exception`은 미처리가 아니라 실패다 — 조건이 모두 맞아야 미처리다', async () => {
+    const { client } = fakeBulk([ok('update', 'a'), fail('update', 'a', 409, 'document_missing_exception')]);
+    const { targets: to, failures, pendings } = targets();
+    await resolveReferenceLinks(client, [update('a')], to);
+    expect(pendings).toEqual([]);
+    expect(failures).toHaveLength(1);
+  });
+
   it('429·5xx·스크립트 오류는 실패다 — 약하게 만들지 않는다', async () => {
     for (const [status, type] of [[429, 'es_rejected_execution_exception'], [500, 'internal'], [400, 'script_exception']] as const) {
       const { client } = fakeBulk([ok('update', 'a'), fail('update', 'a', status, type)]);
