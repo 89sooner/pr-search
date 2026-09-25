@@ -7,6 +7,7 @@
  * | `links apply` | 바뀔 커밋에 투영 의도를 만든다. 색인은 러너가 쓴다 | PostgreSQL 작업 큐 |
  * | `links refetch` | 완전성 근거가 없는 PR만 GHE에서 다시 읽는다 | PostgreSQL 관계·관측 |
  * | `links status` | 관계 통계와 밀린 투영, 충돌·보류 수를 보여 준다 | 읽기만 |
+ * | `links import-stacks` | 배포 전 서비스 인덱스의 `stacks_on` 간선을 스택 정본으로 **한 번** 옮긴다 (CR-121, OD-017) | PostgreSQL `pull_request_stack` |
  *
  * ## 복구는 재색인이 아니다
  *
@@ -27,6 +28,7 @@ import { auditRepo, jobRepo, repositoryRepo, prCommitLinkRepo, type Pool, type R
 import type { Client } from '@elastic/elasticsearch';
 import type { GitHubClient } from '@prs/github';
 import { applyLinkRepair, planLinkRepair, refetchLinkEvidence, type LinkRepairPlan } from './link-repair.js';
+import { importServingStacks } from './stack-import.js';
 
 export const LINK_REPAIR_JOB = 'pr_link_repair' as const;
 export const LINK_COMMAND_ACTOR_PREFIX = 'prsctl:';
@@ -59,26 +61,37 @@ const USAGE = [
   '  prsctl links apply   --repository <owner/name> [--pr <번호>]...',
   '  prsctl links refetch --repository <owner/name> [--pr <번호>]... [--limit <수>]',
   '  prsctl links status  --repository <owner/name>',
+  '  prsctl links import-stacks --repository <owner/name> [--dry-run]',
   '',
-  'apply·refetch는 --actor(호스트 사용자 이름)가 필요하다. prsctl이 자동으로 넘긴다.',
+  'apply·refetch·import-stacks는 --actor(호스트 사용자 이름)가 필요하다. prsctl이 자동으로 넘긴다.',
   '',
   'plan은 PostgreSQL·Elasticsearch·작업 큐에 아무것도 쓰지 않는다. apply는 바뀔 커밋에',
   '투영 의도만 만들고 PR 연결 색인은 러너가 쓴다. 예외 하나: --pr 없이 돌리면 역할이',
   'source_commit으로 덮인 체인 커밋의 역할을 apply가 직접 되돌린다(CR-117).',
   '서수·M 번호·에폭·head·태그는 바꾸지 않는다.',
+  '',
+  'import-stacks는 배포 전부터 서비스 인덱스에만 있던 스택 간선(해제 이력 포함)을 스택 정본으로',
+  '한 번 옮긴다. 이미 있는 관계는 덮지 않고, 서비스 인덱스는 바꾸지 않는다. 첫 prs-links 재색인',
+  '전에 저장소마다 돌린다 — 돌리지 않으면 재색인의 전환 전 검증이 막는다.',
 ];
 
-function parse(argv: readonly string[]): { command: string; repository?: string; prNumbers: number[]; limit?: number; actor?: string; bad?: string } {
+function parse(argv: readonly string[]): { command: string; repository?: string; prNumbers: number[]; limit?: number; actor?: string; dryRun?: true; bad?: string } {
   const prNumbers: number[] = [];
   let repository: string | undefined;
   let limit: number | undefined;
   let actor: string | undefined;
+  let dryRun = false;
   let command = '';
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === undefined) continue;
     if (!token.startsWith('--')) {
       if (command === '') command = token;
+      continue;
+    }
+    // 값이 없는 깃발은 하나뿐이다.
+    if (token === '--dry-run') {
+      dryRun = true;
       continue;
     }
     const value = argv[index + 1];
@@ -96,7 +109,14 @@ function parse(argv: readonly string[]): { command: string; repository?: string;
       limit = number;
     } else return { command, prNumbers, bad: `알 수 없는 옵션: ${token}` };
   }
-  return { command, ...(repository === undefined ? {} : { repository }), prNumbers, ...(limit === undefined ? {} : { limit }), ...(actor === undefined ? {} : { actor }) };
+  return {
+    command,
+    ...(repository === undefined ? {} : { repository }),
+    prNumbers,
+    ...(limit === undefined ? {} : { limit }),
+    ...(actor === undefined ? {} : { actor }),
+    ...(dryRun ? { dryRun: true as const } : {}),
+  };
 }
 
 /** 쓰는 명령의 행위 주체. 모양이 아니면 거절한다 — 감사 기록에 임의 문자열을 넣지 않는다. */
@@ -280,6 +300,53 @@ export async function runLinkRepairCommand(
       deps.out('불완전·실패 항목은 관계를 지우지 않는다. 사유는 pull_request_link_observation에 남는다.');
     }
     return 0;
+  }
+
+  if (parsed.command === 'import-stacks') {
+    const label = `${repository.owner}/${repository.name}`;
+    const print = (result: Awaited<ReturnType<typeof importServingStacks>>, dryRun: boolean): void => {
+      deps.out(`저장소: ${label}`);
+      deps.out(`서비스 stacks_on 간선: ${String(result.scanned)}`);
+      deps.out(
+        `${dryRun ? '넣을' : '넣은'} 행: ${String(result.inserted)} · 이미 있음: ${String(result.existing)} · 형식 오류로 두는 간선: ${String(result.invalid)}`,
+      );
+      if (dryRun) deps.out('--dry-run: 아무것도 쓰지 않았다.');
+    };
+    if (parsed.dryRun === true) {
+      print(await importServingStacks({ pool: deps.pool, es: deps.es }, repository, { dryRun: true }), true);
+      return 0;
+    }
+    const actor = resolveActor(deps);
+    if (actor === null) return 2;
+    const correlationId = randomUUID();
+    // `apply`와 같은 규율이다 — 잡 행과 감사 기록을 남기고, 같은 저장소의 복구와 겹치지 않는다.
+    const active = await jobRepo.findActiveJob(deps.pool, LINK_REPAIR_JOB, label);
+    if (active !== undefined) {
+      await auditRepo.recordAudit(deps.pool, { userId: actor, action: 'job.run', target: `${LINK_REPAIR_JOB}:${label}`, resultCode: 'JOB_CONFLICT', correlationId });
+      deps.err(`같은 저장소에 활성 복구 잡이 이미 있다: job_id=${String(active.job_id)} state=${active.state}.`);
+      return 1;
+    }
+    await jobRepo.enqueueJob(deps.pool, LINK_REPAIR_JOB, label, actor, {
+      repository_id: repository.repository_id,
+      operation: 'import_stacks',
+    });
+    const claimed = await jobRepo.claimNextJob(deps.pool, LINK_REPAIR_JOB, 1);
+    if (claimed === undefined) {
+      deps.err('복구 잡을 집지 못했다 — 다른 복구가 이미 돌고 있다.');
+      return 1;
+    }
+    const jobId = claimed.job_id;
+    await auditRepo.recordAudit(deps.pool, { userId: actor, action: 'job.run', target: `${LINK_REPAIR_JOB}:${label}`, resultCode: 'created', correlationId });
+    try {
+      const result = await importServingStacks({ pool: deps.pool, es: deps.es }, repository, { dryRun: false });
+      await jobRepo.finishJobIfRunning(deps.pool, jobId, 'completed');
+      print(result, false);
+      deps.out(`스택 간선은 이제 정본에서 파생된다. 다음 파생이 해제 상태를 색인에 맞춘다. (job_id=${String(jobId)})`);
+      return 0;
+    } catch (error) {
+      await jobRepo.finishJobIfRunning(deps.pool, jobId, 'failed', String(error).slice(0, 500));
+      throw error;
+    }
   }
 
   deps.err(`알 수 없는 명령: ${parsed.command}`);

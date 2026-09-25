@@ -1292,7 +1292,14 @@ describe('되돌림·체리픽·스택 파생의 도달성 (WP-030 / CR-041)', (
     expect(RELATIONS).toContain("linkType: 'reverts'");
     expect(RELATIONS).toContain("linkType: 'cherry_picks'");
     expect(RELATIONS).not.toContain("linkType: 'stacks_on'");
-    expect(RELATIONS).toContain('await setLinkDetached(');
+    /*
+     * **해제는 PostgreSQL 정본에서 온다** (CR-121, OD-017). 성립 집합에 행을 맞추고 그 하위 PR의 행 전부를
+     * 전체 쓰기한다 — 서비스 색인의 간선에 부분 갱신하던 옛 경로(`setLinkDetached`)는 재색인이 해제
+     * 이력을 되살리지 못하게 했다. 그 경로가 돌아오면 이 검사가 잡는다.
+     */
+    expect(RELATIONS).toContain('await prStackRepo.reconcileStacks(');
+    expect(RELATIONS).toContain('stackDocsFromRows(repository, reconciled.rows)');
+    expect(RELATIONS).not.toContain('setLinkDetached(');
   });
 
   it('**요약을 active 간선 집합에서 재계산한다** (DEV-241)', () => {

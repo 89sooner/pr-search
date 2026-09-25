@@ -36,7 +36,13 @@ import {
   releaseAdvisorySessionLock,
   releaseAdvisorySharedLock,
 } from './advisory-lock.js';
-import { findDualWriteShadows, recordShadowFailures, findActiveReindexRow } from './repositories/reindex.js';
+import {
+  findActiveReindexRow,
+  findDualWriteShadows,
+  recordLinkPending,
+  recordShadowFailures,
+  type LinkPendingInput,
+} from './repositories/reindex.js';
 
 /** shadow 쓰기 실패 하나. `@prs/es`의 `ShadowWriteFailure`와 구조가 같다. */
 export interface FenceShadowFailure {
@@ -44,6 +50,22 @@ export interface FenceShadowFailure {
   readonly index: string;
   readonly operation: string;
   readonly reason: string;
+}
+
+/**
+ * shadow에서 **부분 갱신의 대상 문서가 아직 없었던** 간선 하나 (CR-121 / FR-ING-008 AC-11).
+ * `@prs/es`의 `ShadowPendingWork`와 구조가 같다.
+ *
+ * 실패가 아니라 회수할 일이다 — 그 간선의 소유 source가 재구축에서 아직 처리되지 않았다. 새 문서를
+ * 여기서 만들지 않는다(근거·권한 필드가 없다). 소유 source를 정본에서 다시 파생해 회수한다.
+ */
+export interface FenceShadowPending {
+  readonly alias: string;
+  readonly index: string;
+  readonly repositoryId: number;
+  readonly sourceKind: 'pull_request' | 'commit';
+  readonly sourceId: string;
+  readonly linkId: string;
 }
 
 /**
@@ -55,6 +77,7 @@ export interface FenceShadowFailure {
 export interface ReindexWriteTargets {
   readonly shadows: Readonly<Record<string, string>>;
   readonly recordShadowFailure?: (failure: FenceShadowFailure) => void;
+  readonly recordShadowPending?: (pending: FenceShadowPending) => void;
 }
 
 /** 울타리를 얻지 못했을 때. 쓰기는 진행하지 않는다. */
@@ -75,7 +98,10 @@ export const FENCE_LOCK_TIMEOUT_MS = 30_000;
  * 2. 그 안에서 이중 쓰기 대상을 읽는다 (밖에서 읽으면 읽은 직후 활성화가 끼어든다)
  * 3. `run`이 두 인덱스 쓰기를 끝낸다
  * 4. shadow 실패가 있으면 **같은 구간 안에서** 잡을 `failed`로 만든다
- * 5. 울타리를 푼다
+ * 5. shadow 미처리가 있으면 **같은 구간 안에서** 잡의 대기열에 남긴다 (CR-121). 실행 중인
+ *    prs-links 재색인의 **바로 그** 대상 인덱스일 때만 미처리이고, 아니면 실패로 올린다 — 누구의
+ *    회수 책임인지 모르는 미처리는 조용히 사라지기 때문이다
+ * 6. 울타리를 푼다
  *
  * `run`이 던지면 그대로 전파한다 — 서비스 인덱스 쓰기 실패는 기존 오류 처리
  * 그대로이고, 재색인 때문에 달라지지 않는다 (DEV-298).
@@ -87,6 +113,7 @@ export async function withReindexWrite<T>(
   const key = reindexFenceKey();
   const client = await pool.connect();
   const failures: FenceShadowFailure[] = [];
+  const pendings: FenceShadowPending[] = [];
 
   try {
     const locked = await acquireAdvisorySharedLock(client, key, FENCE_LOCK_TIMEOUT_MS);
@@ -97,6 +124,7 @@ export async function withReindexWrite<T>(
       const targets: ReindexWriteTargets = {
         shadows,
         recordShadowFailure: (failure) => failures.push(failure),
+        recordShadowPending: (pending) => pendings.push(pending),
       };
 
       const result = await run(targets);
@@ -105,9 +133,11 @@ export async function withReindexWrite<T>(
        * 실패 기록이 울타리 안이어야 하는 이유 (DEV-308): 밖으로 밀면 그 사이에
        * 전환이 배타 락을 잡고 "알려진 실패 0"을 보고 별칭을 옮긴다.
        */
-      if (failures.length > 0) {
+      if (failures.length > 0 || pendings.length > 0) {
         const active = await findActiveReindexRow(client);
-        if (active !== undefined) await recordShadowFailures(client, active.job_id, failures);
+        const promoted = await recordPendings(client, active, pendings);
+        const all = [...failures, ...promoted];
+        if (active !== undefined && all.length > 0) await recordShadowFailures(client, active.job_id, all);
       }
 
       return result;
@@ -117,6 +147,49 @@ export async function withReindexWrite<T>(
   } finally {
     client.release();
   }
+}
+
+/**
+ * 미처리를 활성 잡의 대기열에 남긴다. 그 잡의 것이 아니면 실패로 돌려준다 (CR-121).
+ *
+ * 조건은 전부 참이어야 한다: 잡이 `running`이고, 별칭이 같고, 미처리가 난 인덱스가 그 잡의
+ * `target_index` 그대로다. 이름이 같은 다른 인덱스(도중에 지워졌다 자동 생성된 것)는 UUID 대조가
+ * 전환 전 검증과 울타리에서 막는다(CR-119).
+ */
+async function recordPendings(
+  client: PoolClient,
+  active: Awaited<ReturnType<typeof findActiveReindexRow>>,
+  pendings: readonly FenceShadowPending[],
+): Promise<readonly FenceShadowFailure[]> {
+  if (pendings.length === 0) return [];
+  const progress = (active?.progress ?? {}) as { readonly target_index?: unknown };
+  const accepted: LinkPendingInput[] = [];
+  const promoted: FenceShadowFailure[] = [];
+  for (const pending of pendings) {
+    const owned =
+      active !== undefined &&
+      active.state === 'running' &&
+      active.target === pending.alias &&
+      progress.target_index === pending.index;
+    if (owned) {
+      accepted.push({
+        repositoryId: pending.repositoryId,
+        sourceKind: pending.sourceKind,
+        sourceId: pending.sourceId,
+        reason: 'partial_update_document_missing',
+        sampleLinkId: pending.linkId,
+      });
+    } else {
+      promoted.push({
+        alias: pending.alias,
+        index: pending.index,
+        operation: 'bulk',
+        reason: `document_missing_exception (회수할 잡이 없다: ${pending.linkId})`,
+      });
+    }
+  }
+  if (active !== undefined && accepted.length > 0) await recordLinkPending(client, active.job_id, accepted);
+  return promoted;
 }
 
 /**

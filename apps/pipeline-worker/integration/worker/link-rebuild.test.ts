@@ -288,6 +288,8 @@ describe('직접 푸시 종단과 전량 재파생 (WP-029 / CR-039)', () => {
     await clearMergeSequence(pool, 'repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM commit_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [REPOSITORY_ID]);
+    // 스택의 정본 (CR-121).
+    await pool.query('DELETE FROM pull_request_stack WHERE repository_id = $1', [REPOSITORY_ID]);
     await pool.query('DELETE FROM repository WHERE repository_id = $1', [REPOSITORY_ID]);
     await repositoryRepo.upsertRepository(pool, {
       repository_id: REPOSITORY_ID,

@@ -3,13 +3,13 @@
  *
  * ## 왜 타입만으로 부족한가
  *
- * 원시체 열일곱이 `WriteTargets`를 **필수 인자**로 받으므로 타입이 "무엇에 쓰는지
+ * 원시체 열다섯이 `WriteTargets`를 **필수 인자**로 받으므로 타입이 "무엇에 쓰는지
  * 말하지 않은 호출"을 막는다. 그러나 타입이 막지 못하는 것이 둘 있다.
  *
  *   1. 운영 호출부가 `SERVING_ONLY`를 넘겨 재색인을 조용히 지나치는 것
  *   2. `@prs/es`에 **새 쓰기 원시체**가 생기고 아무도 그것을 목록에 더하지 않는 것
  *
- * 그래서 소스를 읽어 그 둘을 찾는다. 이 검사가 없으면 "열일곱 전부"는 계약 문서의
+ * 그래서 소스를 읽어 그 둘을 찾는다. 이 검사가 없으면 "열다섯 전부"는 계약 문서의
  * 문장일 뿐이고, 다음 쓰기 경로가 생기는 날 조용히 열여덟이 된다.
  */
 
@@ -50,7 +50,8 @@ function parameterListOf(source: string, at: number): string {
 }
 
 /**
- * 별칭에 쓰는 원시체 열일곱 (비동기 계약 3.5장의 표 그대로).
+ * 별칭에 쓰는 원시체 열다섯 (비동기 계약 3.5장의 표 그대로). CR-121이 부분 갱신 원시체 둘
+ * (`setLinkDetached`·`setLinkResolved`)을 없앴다 — 스택은 PG 정본의 전체 쓰기다.
  *
  * **이 목록이 계약과 같은지가 이 시험의 요지다.** 새 쓰기 경로가 생기면 여기에
  * 더해야 하고, 더하는 순간 그 경로가 `WriteTargets`를 받는지도 함께 걸린다.
@@ -72,12 +73,10 @@ const DUAL_WRITE_PATHS: readonly { readonly file: string; readonly fn: string }[
   { file: 'packages/es/src/links.ts', fn: 'updateLinkSummary' },
   { file: 'packages/es/src/links.ts', fn: 'writeDerivedLinks' },
   { file: 'packages/es/src/links.ts', fn: 'deleteStaleDerivedLinks' },
-  { file: 'packages/es/src/links.ts', fn: 'setLinkDetached' },
-  { file: 'packages/es/src/links.ts', fn: 'setLinkResolved' },
 ];
 
 /**
- * 운영에서 열일곱 중 하나를 부르는 파일.
+ * 운영에서 열다섯 중 하나를 부르는 파일.
  *
  * **각 파일은 `withReindexWrite`를 지나야 한다.** 목록을 늘리는 것은 곧 새 쓰기
  * 경로를 만드는 일이고, 그때 이 시험이 "울타리를 지나는가"를 함께 묻는다.
@@ -107,7 +106,7 @@ const TARGET_FORWARDING: readonly string[] = [
 ];
 
 describe('이중 쓰기 seam (WP-035 / DEV-295)', () => {
-  it('**별칭에 쓰는 원시체는 열일곱이며 전부 `WriteTargets`를 받는다**', () => {
+  it('**별칭에 쓰는 원시체는 열다섯이며 전부 `WriteTargets`를 받는다**', () => {
     const missing: string[] = [];
     for (const path of DUAL_WRITE_PATHS) {
       const source = read(path.file);
@@ -122,7 +121,7 @@ describe('이중 쓰기 seam (WP-035 / DEV-295)', () => {
       }
     }
     expect(missing, missing.join('\n')).toEqual([]);
-    expect(DUAL_WRITE_PATHS.length).toBe(17);
+    expect(DUAL_WRITE_PATHS.length).toBe(15);
   });
 
   it('**새 쓰기 원시체가 목록 밖에 생기면 걸린다**', () => {
