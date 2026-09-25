@@ -1,6 +1,8 @@
 # PR Search 비동기 작업 및 이벤트
 
-> 상태: review | 버전: v0.19 | 갱신일: 2026-09-25
+> 상태: review | 버전: v0.20 | 갱신일: 2026-09-25
+
+CR-121 / FR-ING-008 AC-11, FR-REL-006 AC-6: 새 잡·새 이벤트·새 역할은 없다. JOB-REL-004(스택)의 정본이 PostgreSQL `pull_request_stack`으로 옮겨 가고 간선은 그 행의 **전체 쓰기**로 나간다 — 부분 갱신 원시체 `setLinkDetached`·`setLinkResolved`를 없앴고(이중 쓰기 대상 열일곱 → 열다섯), 역방향 재평가는 서비스 색인 대신 정본 행에서 하위 PR을 찾는다. JOB-REL-006의 재파생이 불완전한 source를 돌려주고, JOB-ING-006의 prs-links 재색인은 부분 갱신의 문서 없음을 조건이 모두 맞을 때만 잡의 미처리로 남겨 전환 전에 소유 source를 다시 파생해 회수한다. 전환 전 검증은 재구축과 같은 계획으로 기대 간선을 계산해 대상과 간선마다 대조하고, 전환 울타리가 미처리를 다시 본다 — 3.5장 「간선 재구축의 미처리와 기대 간선」.
 
 CR-119 / FR-ING-008 AC-10: 새 잡·새 이벤트·새 역할은 없다. JOB-ING-006의 커밋 재구축 **순서**와 전환 전 검증의 **기대 집합**이 바뀐다 — 3.5장 「커밋 재구축의 순서와 기대 집합」. 재구축은 체인 패스 → PR 유래 패스 → 원본 커밋 메타데이터 패스 → 관계 replay로 돌고 대상 인덱스의 결과로 판정한다. PR 유래 패스의 근거에는 PR 스냅숏의 목록과 그 PR의 유효한 `source` 연결(관측이 불완전해 보존된 것 포함)이 함께 들어간다. 검증은 커밋의 기대 집합을 정본과 생성 정책에서 문서 ID로 계산해 존재와 메타데이터 값을 대조하고, 준비 단계의 대상 인덱스 UUID가 검증·전환 시점과 같은지 본다.
 
@@ -269,7 +271,7 @@ manifest·적용 순서·도달성 회귀를 통째로 늘리고, 파생의 입�
 `pull_request_snapshot.document`(`title`·`state`·`base_branch`·`head_branch`)와 `commit_snapshot`
 (`message`·`patch_id`·`committed_at`)이 유일한 파생 근거다. **Elasticsearch 현재 문서를 파생의 정본으로 읽지
 않는다.** 색인은 파생의 **출력**이며, 영향받는 source를 좁히는 **조회 보조**로만 쓸 수 있다 — 그렇게 좁힌 뒤에도
-최종 판정은 정본에서 다시 한다.
+최종 판정은 정본에서 다시 한다. **스택은 하나를 더 읽는다 (CR-121)** — `pull_request_stack`이 성립·해제의 정본이다. 해제 이력은 스냅숏에서 다시 계산할 수 없어서 정본이 따로 필요하다.
 
 #### 되돌림 (FR-REL-004)
 
@@ -313,6 +315,7 @@ manifest·적용 순서·도달성 회귀를 통째로 늘리고, 파생의 입�
   복구) `detached: false`로 되돌린다.
   **한 번도 성립한 적 없는 후보에는 간선을 만들지 않는다** — `detached: true`인 간선을 미리 만들면 "확인했고
   아니었다"가 아니라 "있었던 적 없는 관계"를 주장하게 된다.
+- **성립과 해제의 정본은 PostgreSQL `pull_request_stack`이다 (CR-121, OD-017).** 해제된 관계는 현재 스냅숏에서 다시 보이지 않으므로(상위 PR 병합·분기 변경) 그 사실을 색인에만 두면 재색인이 되살리지 못한다(ADR-004). 파생은 하위 PR 하나의 행을 한 트랜잭션에서 지금 성립하는 집합에 맞추고(`reconcileStacks` — 성립은 upsert, 그 밖의 기존 행은 해제, 행은 지우지 않음), 그 하위 PR의 **행 전부**를 `stacks_on` 간선으로 전체 쓰기한다. 해제 간선도 `detached: true`로 다시 쓴다 — 서비스 색인에서 후보를 찾아 `detached`만 부분 갱신하던 옛 경로는 재색인 중 새 인덱스에 간선이 없어 실패했다. 근거·시각은 성립해 있는 동안만 지금 값으로 쓰고, 해제되면 멈춘다. **역방향 재평가**(상위 PR 변경 → 하위 PR, DEV-232)는 정본 행에서 하위 PR을 찾는다. 배포 전부터 서비스 인덱스에만 있던 스택 간선은 `prsctl links import-stacks`가 한 번 옮긴다(RUNBOOK 7.I).
 - **깊이 상한 10, 순환 시 간선을 만들지 않고 지표로 기록한다** (AC-4·AC-5). 상한을 넘긴 탐색은 중단한다.
 
 #### 완전한 파생 집합 — 계열마다 수명이 다르다 (DEV-233·241)
@@ -323,7 +326,7 @@ manifest·적용 순서·도달성 회귀를 통째로 늘리고, 파생의 입�
 | --- | --- |
 | `reverts` | 제거한다 (본문이 근거이므로 근거가 사라지면 간선도 사라진다) |
 | `cherry_picks` | 제거한다 (후보 집합에서 빠지면 사라진다) |
-| `stacks_on` | **제거하지 않는다.** `detached: true`로 표시한다 |
+| `stacks_on` | **제거하지 않는다.** `detached: true`로 표시한다 — 정본 행(`pull_request_stack`)의 전체 쓰기다 (CR-121) |
 
 **실패한 회차는 어느 계열에서도 제거를 하지 않는다.** 부분 결과를 완전한 결과로 확정하면 멀쩡한 간선이 사라진다.
 
@@ -371,7 +374,7 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 | 8 | 취소·실패한 잡이 **뒤늦게 `completed`로 덮이지 않는다** | CR-037 DEV-197이 같은 모양을 이미 겪었다 |
 | 9 | 운영 쓰기 경로와 시험 전용 경로가 **다르지 않다** | CR-034가 배운 것 — 격리된 함수 시험은 "운영이 그것을 부른다"를 증명하지 않는다 |
 
-#### 이중 쓰기의 대상은 열일곱이다 (DEV-295, CR-113이 한 행을 바꿨다)
+#### 이중 쓰기의 대상은 열다섯이다 (DEV-295, CR-113이 한 행을 바꿨고 CR-121이 둘을 없앴다)
 
 계약이 "신규 이벤트 이중 쓰기"라고만 적으면 구현은 투영(`bulkUpsert`) 하나만 고치고 끝낸다. **별칭에 쓰는 경로를 전수로 적는다** — 하나라도 빠지면 그만큼 새 인덱스가 조용히 뒤처지고, 그 사실은 전환 뒤에야 드러난다.
 
@@ -383,7 +386,7 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 | `packages/es/src/sequence.ts` | `applyEpochBump` | update_by_query |
 | `packages/es/src/registry.ts` | `markRepositoryArchived` · `applyRepositoryTeams` | update_by_query |
 | `packages/es/src/releases.ts` | `pruneReleaseDocuments` · `applyReleaseTagsToDocuments` | delete_by_query · update_by_query |
-| `packages/es/src/links.ts` | `writeReferenceLinks` · `deleteStaleReferenceLinks` · `resolveReferenceLinks` · `updateLinkSummary` · `writeDerivedLinks` · `deleteStaleDerivedLinks` · `setLinkDetached` · `setLinkResolved` | bulk · delete_by_query · update |
+| `packages/es/src/links.ts` | `writeReferenceLinks` · `deleteStaleReferenceLinks` · `resolveReferenceLinks` · `updateLinkSummary` · `writeDerivedLinks` · `deleteStaleDerivedLinks` (CR-121이 `setLinkDetached`·`setLinkResolved`를 없앴다 — 스택은 정본 행의 전체 쓰기다) | bulk · delete_by_query · update |
 
 **삭제도 이중으로 한다.** `delete_by_query`가 빠지면 새 인덱스에 지워야 할 문서가 남아 두 인덱스가 갈라진다 — 그리고 그 차이는 건수 대조를 통과할 수도 있다(같은 수의 다른 문서).
 
@@ -424,7 +427,7 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 | --- | --- |
 | `prs-pull-requests` | `pull_request_snapshot` + 현재 저장소·파생 상태 + **시퀀스 replay** (CR-113) |
 | `prs-commits` | `commit_snapshot` + `pull_request_snapshot`(PR 유래 커밋 문서) + 시퀀스·저장소 상태 + **시퀀스 replay** (CR-113) + **PR 연결 replay** (CR-116, 정본은 `pull_request_commit_link`) |
-| `prs-links` | 정본 엔티티에서 **재파생**한다 (JOB-REL-006의 경로를 그대로 쓴다) |
+| `prs-links` | 정본 엔티티에서 **재파생**한다 (JOB-REL-006의 경로를 그대로 쓴다). 스택의 성립·해제는 `pull_request_stack` (CR-121) |
 | `prs-releases` | `release` 표 |
 
 **두 번째 문서 생성 알고리즘을 만들지 않는다.** 운영 투영·파생이 쓰는 빌더를 그대로 재사용한다 — 따로 만들면 재구축 결과와 평시 결과가 갈라지고, 그 차이는 전환 뒤에 드러난다.
@@ -462,6 +465,21 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 
 **기대 집합은 쓰기 결과가 아니라 정본과 생성 정책에서 계산한다.** 전환 전 검증이 PostgreSQL을 다시 읽어, 재구축과 **같은 함수**(`projectedPageOf`·`projectedCommitRoles`·`findShasWithSequence`)로 있어야 할 문서 ID를 정한다. 생성 근거 없는 스냅숏 행(체인에도 없고 어느 PR의 원본에도 없는 커밋)은 기대하지 않고 문서도 만들지 않으며 스냅숏도 지우지 않는다. 스냅숏이 있는 기대 문서는 메타데이터 값을 대조한다 — `null`은 값이고 필드 부재와 다르다. 보강 스크립트도 그 둘을 구분해 쓴다.
 
+#### 간선 재구축의 미처리와 기대 간선 (CR-121 / FR-ING-008 AC-11)
+
+재구축은 source를 PR 번호·SHA 순서로 다시 파생하는데(JOB-REL-006 경로), source 하나를 처리하면 그 source를 **대상**으로 삼는 다른 source의 참조 간선을 해결 상태로 부분 갱신한다(JOB-REL-005). 후보는 서비스 별칭에서 찾고 같은 갱신을 대상 인덱스에도 보내는데, 그 간선의 소유 source가 재구축에서 아직 처리되지 않았으면 대상 인덱스에는 문서가 없다(사내 pilot.18의 `shadow_write_failed`). 이것을 실패로 두면 순서만으로 재색인이 멈추고, 무시하면 간선이 빠진 채 전환하며, 부분 문서를 만들면 근거·접근 범위 필드 없는 간선이 생긴다. 그래서 **회수할 일**로 다룬다.
+
+| 단계 | 무엇을 | 어디에 |
+| --- | --- | --- |
+| 분류 | shadow의 부분 갱신(`update`)이 404 `document_missing_exception`이고, 응답의 `_index`가 그 shadow, `_id`가 요청한 간선이면 **미처리**다. 소유 source(`from_type`·`from_id`)를 싣고, 그 문서 ID의 저장소가 routing과 다르면 보내지 않는다. 그 밖의 shadow 오류(전체 쓰기의 모든 오류·인덱스 없음·429·5xx·매핑·스크립트 오류·항목 누락)는 기존대로 실패다 | `sendLinkBulk` |
+| 기록 | 울타리가 같은 구간 안에서, 실행 중인 prs-links 재색인의 **바로 그** 대상 인덱스(`progress.target_index`)에서 난 미처리만 그 잡의 대기열에 남긴다(같은 source가 다시 오면 세대가 오른다). 잡 상태는 바꾸지 않는다. 그 잡의 것이 아니거나 기록자가 없으면 실패로 올린다 — 누가 회수할지 모르는 미처리는 조용히 사라진다 | `withReindexWrite` → `reindex_link_pending` |
+| 불완전 파생 | 재구축이 파생을 끝내지 못한 source(`complete=false`)는 커서가 넘어가도 끝난 것이 아니다 — `derive_incomplete` 미처리로 남긴다. 정본에 없는 source(`absent`)는 만들 간선이 없으므로 넣지 않는다 | `createLinkRebuildPort().rebuildRepository` → `rebuildLinks` |
+| 회수 | 검증 전에, 울타리 밖에서 미처리를 키 순서로 끝까지 읽어 소유 source를 **최신 정본에서 다시 파생**한다(참조·관계 — 역방향 해결·재평가는 하지 않는다, 회수가 회수를 부르지 않게). 완결이면 **읽은 세대의 행만** 지우고, 정본에 source가 없으면 끝난 일로 지운다. 옛 서비스 간선을 옮기지도, 부분 갱신 값을 나중에 적용하지도 않는다. 라운드 상한 5, 넘으면 `link_pending_unrecovered`로 실패한다 | `recoverLinkPending` |
+
+**기대 간선은 재파생의 계획이다.** 처리한 source 수는 기대가 아니다 — source 하나가 간선을 0개도, 여럿도 만든다. 검증은 저장소마다 PR·커밋 스냅숏을 페이지로 읽어 재구축과 **같은 계획 함수**(`planSource` — 참조 추출·해석, 되돌림·체리픽, 스택 정본 행에 지금 성립하는 집합을 합친 결과)로 기대 간선 문서를 만들고, 대상에서 그 source들의 간선을 소유 저장소 routing으로 읽어 `link_id`마다 대조한다. 참조의 `resolved`는 **검증 시점에** 대상이 색인됐는지로 기대한다 — 대상이 없어 미해결인 간선은 정상이다. 검증은 **읽기만 한다** — 고치는 것은 검증 전의 회수이고, 검증이 쓰면 자기가 고친 것을 통과시킨다.
+
+**전환 울타리가 미처리를 다시 본다.** 검증과 전환 사이에도 울타리 밖의 부분 갱신이 새 미처리를 남길 수 있다(`DUAL_WRITE_PHASES`에 `verify`·`cutover`가 있어 그 사이 쓰기도 대상에 간다). 전환 울타리(배타) 안에서 그 잡의 미처리 수를 보고, 있으면 전환하지 않고 **울타리를 놓은 뒤** 회수하고 다시 검증한다(시도 상한 3). 울타리를 쥔 채 회수를 기다리지 않는다 — 회수의 쓰기가 공유 울타리를 기다려 교착이 된다. 상한을 넘으면 `link_pending_at_cutover`로 실패하고 별칭은 그대로다. 잡이 끝나면(완료·실패·취소) 그 잡의 대기열을 비운다. 멈춘 잡의 행은 재개 뒤 회수를 위해 남는다 — 재개는 준비 단계부터 다시 돈다.
+
 #### 전환 전 검증 (DEV-297, CR-113이 한 항목을 더했다)
 
 `source_count == target_count` 하나로 판정하지 않는다. **같은 수의 다른 문서**가 가능하다. 최소한 다음을 모두 확인한 뒤에만 별칭을 옮긴다.
@@ -477,6 +495,9 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 - **시퀀스 투영이 끝났다 (CR-113)** — PR·커밋 별칭에서 먼저 `progress.sequence_replay`의 공간 집합이 정본의 공간 집합(채번된 적 있는 모든 `(저장소, 브랜치)`)을 덮는지 본다 — 재구축이 replay를 실제로 지났다는 증거이며, 이것 없이 아래 문서별 대조만 두면 대조가 불일치를 인라인으로 고치면서 빠진 replay를 가려 준다. 검증 전에 새로 채번된 공간이 생기면(재색인 중 등록·첫 push) 전환하지 않고 실패하며 다시 실행한다. 그다음 정본(현재 시퀀스·스냅숏)으로 계산한 대상 문서 집합을 target 인덱스에서 `mget`으로 읽어 `merge_seq`·`seq_epoch`·`sequence_space`가 문서마다 정본과 같은지, 그리고 공간마다 대표 서수 범위(마지막 1,000개)의 실제 정렬이 정본 순서와 같은지 본다. 전체 PR 수·전체 `merge_sequence` 행 수의 일치는 기준이 아니다 — 미병합·직접 푸시·미수집·연결 미확정은 대상이 아니다. 불일치가 있으면 한 번 더 비추고 다시 읽으며, 그래도 남으면(문서 자체가 없거나 쓰기 실패) 전환하지 않는다. 전환 울타리 안에서 replay가 기록한 에폭이 움직였으면 `sequence_epoch_moved`로 실패하고 옮기지 않는다. 전환 직후 모든 공간에 durable `full` sweep을 남겨 검증과 전환 사이의 변경도 수렴시킨다. **`prs-commits` 재구축 뒤에도 `requestMergeNumberMaterialize`를 남긴다** (CR-115 / FR-SEQ-012 AC-7) — 재구축이 만든 `merge_commit` 문서에는 M 값이 없으므로 PR 재색인과 같은 재투영 의도를 남겨 `materialize`가 PR·커밋 문서 둘 다 다시 쓴다. 이것이 없으면 commits-only 재색인 뒤 `kind:commit`의 `mnum:`이 조용히 0건이 된다
 - **커밋 문서가 기대 집합과 같다 (CR-119)** — 커밋 별칭의 기대 건수는 재구축이 쓴 수가 아니라 정본과 생성 정책으로 계산한 필수 문서 수이고, 건수에 더해 필수 ID마다 존재를 `mget`으로 확인하며 스냅숏이 있는 문서의 메타데이터를 값으로 대조한다. 필요한 문서 하나가 빠지고 무관한 문서 하나가 더해진 대상은 건수로는 통과하지만 여기서 막힌다. 사유는 `커밋 문서 누락 N건`·`커밋 메타데이터 불일치 N건`과 표본 열 개다.
 - **대상 인덱스가 준비 단계의 그 인덱스다 (CR-119)** — 준비 단계에서 대상의 UUID를 진행 상태(`target_uuid`)에 남기고, 검증과 전환 울타리가 지금의 UUID와 대조한다. 대상이 도중에 지워지면 다음 쓰기가 같은 이름의 인덱스를 동적 매핑으로 자동 생성하므로(`action.auto_create_index` 기본값) 이름만으로는 가를 수 없다.
+- **간선이 기대 간선과 같다 (CR-121)** — prs-links 별칭은 위 「간선 재구축의 미처리와 기대 간선」의 대조를 한다. 기대했는데 없는 간선(누락), 정본의 source가 지금 만들지 않는데 있는 간선(잉여 — 사라진 참조의 옛 간선), 유형·범위 네 필드·끝점·근거·신뢰도·시각·해결 상태·해제 상태 가운데 하나라도 다른 간선(불일치), 소유 source가 정본에 없거나 등록되지 않은 저장소가 소유한 간선(고아), 계획하지 못한 source가 모두 전환을 막는 사유다. 사유는 `간선 누락 N건 (기대 M)`·`간선 불일치 N건`·`정본에 없는 간선 N건`·`소유 source가 없는 간선 N건`·`간선을 계획하지 못한 source N건`과 표본 열 개다. 간선 별칭의 커버리지 기대 건수는 이 계획의 간선 수다.
+- **미처리가 남지 않았다 (CR-121)** — 검증이 시작될 때 그 잡의 미처리가 남아 있으면 `회수되지 않은 간선 미처리 N건`으로 막는다. 검증과 전환 사이의 미처리는 전환 울타리가 다시 본다.
+- **서비스 인덱스의 스택 간선이 모두 정본에 있다 (CR-121, OD-017)** — 서비스 `prs-links`의 `stacks_on` 가운데 `pull_request_stack`에 없는 것이 있으면 `스택 정본에 없는 서비스 stacks_on 간선 N건 — prsctl links import-stacks를 먼저 돌린다`로 막는다. 배포 전 해제 이력을 옮기지 않은 채 전환하면 그 이력이 조용히 사라진다.
 
 #### 실패·취소 처분 (DEV-298)
 
@@ -488,10 +509,12 @@ FR-ING-008이 승인한 것은 **"새 인덱스 생성 → 정본에서 채우�
 | 전환 **전** 취소 | 별칭 전환 금지, 옛 인덱스 유지, shadow는 정리 대상 |
 | 전환 **후** 늦은 취소 | 이미 성공한 전환을 되돌리지 않는다. 러너가 `completed`를 뒤늦게 덮지 않도록 CAS로 종료한다 (`finishJobIfRunning` 선례) |
 | 대상 인덱스가 도중에 지워져 쓰기가 같은 이름으로 자동 생성함 (CR-119) | 검증 또는 전환 울타리가 UUID로 가려 **전환하지 않는다.** 잡은 `failed`, 기존 인덱스가 계속 서비스한다 |
+| shadow의 부분 갱신이 문서를 찾지 못함 (CR-121) | 실행 중인 prs-links 재색인의 바로 그 대상이고 조건이 모두 맞으면 **미처리**로 잡 대기열에 남기고, 전환 전에 소유 source를 다시 파생해 회수한다. 아니면 위 행과 같은 실패다. 회수가 5라운드 안에 수렴하지 않으면 잡은 `failed`, 기존 인덱스가 계속 서비스한다 |
+| 전환 울타리에서 미처리를 만남 (CR-121) | 전환하지 않고 울타리를 놓은 뒤 회수하고 다시 검증한다(시도 상한 3). 넘으면 잡은 `failed`, 별칭은 그대로다 |
 
 #### 보관 (DEV-299)
 
-전환 성공 뒤 옛 구체 인덱스를 **즉시 지우지 않는다.** 기본 보관은 **7일**이며(FR-ING-008 AC-4), 정본은 완료된 잡 행의 `progress`다(`source_index`·`switched_at`). 정리 스윕은 주입 가능한 시계로 시험한다. **현재 별칭이 가리키는 인덱스는 어떤 경우에도 지우지 않는다.** 실패·취소로 남은 shadow도 별칭에 붙지 않은 것을 확인한 뒤 유계 정리 대상으로 둔다.
+전환 성공 뒤 옛 구체 인덱스를 **즉시 지우지 않는다.** 기본 보관은 **7일**이며(FR-ING-008 AC-4), 정본은 완료된 잡 행의 `progress`다(`source_index`·`switched_at`). 정리 스윕은 주입 가능한 시계로 시험한다. **현재 별칭이 가리키는 인덱스는 어떤 경우에도 지우지 않는다.** 실패·취소로 남은 shadow도 별칭에 붙지 않은 것을 확인한 뒤 유계 정리 대상으로 둔다. 간선 재색인의 미처리 대기열(`reindex_link_pending`)은 잡이 끝나면(완료·실패·취소) 비운다 — 멈춘 잡의 행은 재개 뒤 회수를 위해 남긴다 (CR-121, DEV-772).
 
 #### 배포 (DEV-292)
 
@@ -717,7 +740,7 @@ JOB-MIR-002는 **`commit.metadata_ready`를 받아 `commit.metadata_ready`를 �
 | `patch_id_failure_total` | patch-id 계산 실패 수 | 증가 추세 시 경고 | FR-REL-005 |
 | `permission_cache_hit_ratio` | 권한 캐시 적중률 | 0.8 미만 시 경고 | FR-AUTH-003 AC-5 |
 | `link_pending_total` | 관계 파생 대기 문서 수 | 증가 추세 시 경고 | FR-REL-003 |
-| `link_relations_total` | 파생한 간선 수 (`link_type`·`confidence` 라벨: `reverts` \| `cherry_picks` \| `stacks_on`) | - | FR-REL-004~006 (CR-041) |
+| `link_relations_total` | 파생한 간선 수 (`link_type`·`confidence` 라벨: `reverts` \| `cherry_picks` \| `stacks_on`) | - | FR-REL-004~006 (CR-041). 해제된 스택 간선을 다시 쓴 것은 세지 않는다 (CR-121) |
 | `link_stack_cycle_total` | 순환이 감지되어 간선을 만들지 않은 횟수 (`repository` 라벨) | **0이 정상이며 양수는 조사 대상이다** | FR-REL-006 AC-5 (DEV-247) |
 
 ## 11. 사용자 가시 복구 경로
