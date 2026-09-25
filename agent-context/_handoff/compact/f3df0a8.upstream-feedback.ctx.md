@@ -1,6 +1,6 @@
 #hidden
 # aci:v1 id=f3df0a8 src=agent-context/upstream-feedback.md
-@kv sha256=884bd66ff09bb37166da9f9eef2f336664186f3a25efb2db849fa31b27a6490a bytes=13042 lines=86 title=Upstream-Feedback
+@kv sha256=d5127d57bf2c35da59dceb7784b3a1ff1d45bc04e0e11f8e83842e94128af860 bytes=15362 lines=88 title=Upstream-Feedback
 @sig agent-context/upstream-feedback.md;handoff/pipe-search-integration/v1/CONTRACT_DIFF.md;/prsctl;owner/name;apps/pipeline-worker/src/enrich.ts;apps/pipeline-worker/src/documents.ts;pulls/983/commits;apps/pipeline-worker/src/reindex.ts;packages/es/src/links.ts;Upstream;Feedback;source_commit_shas;SRCH;PostgreSQL;pull_request_commit_link;merge_sequence;merge_commit_sha;commit_sha;JOB;REL;SQL;EFFECTIVE_LINK_SQL;source_commit;DEV
 @h1 Upstream Feedback
 @h2 git merge dev로 인해 source_commit_shas가 dev 체인 커밋으로 오염된다 (설계 갭, 미해결)
@@ -40,6 +40,7 @@
 @p tally.documentIds에서 createWith가 없는 커밋(이미 ES에 존재하는 문서)은 ID 집계에서 제외하거나, verify 기준을 documentIds.size가 아닌 실제 ES _count와 비교하도록 변경.
 @p ---
 @h2 prs-links 재색인 shadow_write_failed (설계 갭, 미해결)
+@path 상류 반영 (CR-121 / WP-104, FR-ING-008 AC-11 · FR-REL-006 AC-6, OD-017, 2026-09-25) — 원인 분석을 정정했고 두 요청은 받지 않았다. 대신 부분 갱신의 경합을 회수할 수 있는 미처리로 다루고, 그 뒤에 숨은 해제 스택 이력의 손실을 함께 고쳤다. 실패한 연산은 upsert가 아니라 기존 간선의 부분 갱신(참조의 해결 상태, 스택의 해제 표식)이다. 재구축이 source를 차례로 다시 파생하는 동안 한 source를 처리하면 그 source를 대상으로 삼는 다른 source의 간선을 해결 상태로 고치는데, 그 간선의 소유 source가 아직 재구축되지 않았으면 새 인덱스에 문서가 없다. 요청 1(「document_missing_exception 무시」)은 간선이 빠진 새 인덱스를 전환하게 하고, 요청 2(「scripted_upsert: true로 생성」)는 근거·접근 범위 필드 없는 간선을 만들기 때문에 받지 않았다. 이제 그 경우만(실행 중인 재색인의 바로 그 대상, 부분 갱신, 문서 없음, 요청한 간선 ID와 소유 저장소 routing 일치) 잡에 영속 기록하는 미처리로 남기고, 전환 전에 소유 source를 PostgreSQL에서 다시 파생해 회수한다. 그 밖의 새 인덱스 쓰기 오류는 그대로 실패다. 전환 전 검증은 재구축과 같은 계획으로 기대 간선을 계산해 간선마다 대조한다(전에는 prs-links의 기대가 없어 간선을 보지 않았다). 더 큰 문제가 그 뒤에 숨어 있었다: 해제된 스택 간선은 색인에만 있어서, 재색인이 성공하면 새 인덱스에서 조용히 사라졌다. 사용자 결정(OD-017)으로 스택의 성립·해제를 PostgreSQL pull_request_stack에 남기고 간선은 그 기록에서 만든다. main df3d8ef에 병합됐다(PR #237, 2026-09-25 — PR CI run 36085206961와 main CI run 36100117388 모두 success). 반입 뒤에는 RUNBOOK 7.I의 순서(형상 확인 → 저장소마다 ./prsctl links import-stacks, 먼저 --dry-run → 새 빌드에서 prs-links 재색인 → 새 검색으로 확인, 옛 인덱스는 확인 뒤 정리)를 밟고 결과를 이 항목 아래에 적어 달라. 가져오기 없이 재색인하면 전환 전 검증이 막는다. 사내 적용은 NOT RUN이다.
 @p 발견: 0.1.0-pilot.18 사내 운영 (2026-09-23)
 @path 관련: packages/es/src/links.ts / apps/pipeline-worker/src/reindex.ts
 @h3 현상
