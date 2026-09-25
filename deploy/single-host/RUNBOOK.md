@@ -1500,7 +1500,7 @@ PostgreSQL(`pull_request_stack`)에 남긴다.
 
    잡은 `worker-batch`가 돌린다. 그 로그에서 `간선 미처리 회수`(`rederived`·`absent`·`rounds` — 재구축
    중 부분 갱신이 새 인덱스에서 간선을 찾지 못했거나 파생이 불완전해 다시 파생한 source 수)와
-   `전환 전 간선 검증`(`expected`·`missing`·`extra`·`mismatched`·`orphans`·`pending`·`unimported_stacks`)을
+   `전환 전 간선 검증`(`sources`·`expected`·`missing`·`extra`·`mismatched`·`orphans`·`unplannable`·`pending`·`unimported_stacks`)을
    보고, 있으면 경고 `전환 직전에 간선 미처리를 만났다 — 회수한 뒤 다시 검증한다`도 본다. `rederived`가
    0이 아닌 것은 정상이다 — 사내 보고의 실패가 바로 이 경로다. 검증은 모든 source의 기대 간선을 참조
    대상 조회까지 다시 계획하므로 재구축의 파생만큼 시간이 더 든다. 「정본 재구축 완료」와 「전환 전
@@ -1518,6 +1518,8 @@ PostgreSQL(`pull_request_stack`)에 남긴다.
    - `간선 누락`·`간선 불일치`·`정본에 없는 간선`·`소유 source가 없는 간선` — 새 인덱스가 정본의 계획과
      다르다. 검증 중에 들어온 변경과의 경주일 수 있으므로 한 번 다시 실행하고, 같은 사유가 되풀이되면
      표본을 기록해 보고한다.
+   - `간선을 계획하지 못한 source N건` — 그 source의 기대 간선을 계산하지 못했다(참조 추출 실패, 또는 계획
+     도중 정본이 사라짐). 코드에서 닿기 어려운 경로다 — 표본의 source를 기록해 보고한다.
    - `shadow_write_failed` — 미처리로 다룰 수 없는 새 인덱스 쓰기 오류다(전체 쓰기 실패·인덱스 없음·
      429·5xx 등). 클러스터 상태를 확인한 뒤 다시 실행한다.
 
