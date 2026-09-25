@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.66 | 갱신일: 2026-09-25
+> 상태: review | 버전: v2.67 | 갱신일: 2026-09-25
+
+## WP-104 prs-links 재색인의 부분 갱신 경합과 해제된 스택 이력 (CR-121)
+
+- 요구사항: `FR-ING-008` AC-11, `FR-REL-006` AC-6(신설), `OD-017`(resolved). 엔티티 ENT-REL-003(`pull_request_stack`), 잡 JOB-REL-004(스택 파생)·JOB-REL-006(재파생)·JOB-ING-006(재색인), 런북 RUNBOOK 7.I. 선행: WP-030·WP-031(관계 파생과 스택), WP-035(재색인 울타리·이중 쓰기), WP-103(재색인 검증의 틀).
+- 범위: (1) `packages/es/src/links.ts` — `sendLinkBulk`의 항목 판정(서비스 항목 누락·연산 불일치는 실패, shadow 부분 갱신의 문서 없음은 조건이 모두 맞을 때만 미처리, 그 밖은 실패), 소유 source와 routing 대조, `findReferenceTargets`의 항목 오류는 던짐, `setLinkDetached`·`setLinkResolved` 제거, `referenceLinkSource`·`derivedLinkSource` 공개(쓰기와 검증이 같은 변환). `write-targets.ts` — `ShadowPendingWork`·`reportShadowPending`(기록자가 없으면 실패). (2) `packages/db` — 마이그레이션 037(`pull_request_stack`, `reindex_link_pending`), `repositories/pr-stack.ts`(`reconcileStacks`·`mergeStackRows`·`listStacksOfChildren`·`listChildrenOf`·`importStacks`·`findExistingPairs`), `repositories/reindex.ts`(미처리 기록·키셋 페이지·세대 삭제·계수·정리), `reindex-fence.ts`(미처리 분류). 마이그레이션 파수꾼 여섯 파일의 단계 수와 버전 배열. (3) `apps/pipeline-worker` — `relations.ts`(정본 행의 전체 쓰기, `stackDocsFromRows`·`planRelationEdges`, 역방향 재평가), `link.ts`(`planReferenceLinks`, 소유 source 대조, 불완전 source, `createLinkRebuildPort`), `reindex.ts`(`LinkRebuildPort` 확장, 불완전 source의 미처리 기록, `recoverLinkPending`, `verifyLinkEdges`, 전환 울타리의 재확인과 재시도, 잡이 끝날 때 대기열 정리), `index.ts`(운영 배선이 같은 팩토리), `stack-import.ts`·`link-repair-command.ts`(`links import-stacks`). (4) ADR-008 우회 조회 허용 목록(`packages/es/src/architecture.test.ts`) — `stack-import.ts` 등재, `reindex.ts`의 사유 정정.
+- 제외: prs-commits 재색인(WP-103), 사내 배포·사내 데이터 변경(가져오기의 사내 실행 포함), Release 발행, 시퀀스·M 번호·에폭·head의 의미 변경, 참조 추출·해석 규칙과 스택 성립 조건의 변경, 검증 중 경주를 흡수하는 재확인.
+- 완료 기준: 대표 시험은 **현 코드에서 먼저 실패해야 한다** — 재현 두 사례(대상을 먼저·소유 source를 나중에 처리하면 사내 보고와 같은 `shadow_write_failed`, 해제된 스택 간선이 `completed` 재색인 뒤 새 인덱스에서 사라짐)가 수정 전 코드에서 실패하는 것을 본 뒤에 새 코드의 통과를 믿는다. 통합(격리 PG·ES·Redis) — `apps/pipeline-worker/integration/jobs/links-reindex-completeness.test.ts` 21건(두 처리 순서, source별 간선 0개·여러 개, 사라진 참조, 접두 SHA 모호화, 다른 저장소 참조의 범위·routing, 전체 쓰기 실패, 불완전 파생의 회수, 소유 source 불일치, 검증 직전의 누락·잉여·고아·미등록 저장소·불일치, 수렴하지 않는 회수, 재개, 검증 시점과 전환 직전의 미처리, 해제·retarget 스택, 가져오기 전 차단과 가져오기), `packages/db/integration/link-stack-state.test.ts` 10건(스택 정본 규칙, 대기열의 세대·페이지, 울타리 분류와 멈춘 잡). 단위 — `packages/es/src/links-bulk.test.ts` 14건. 바꾼 시험 — `relations.test.ts`(스택 해제의 쓰기 실패와 정본), `dual-write.test.ts`(원시체 열다섯), `link.test.ts`·`link-rebuild.test.ts`(스택 정본 정리), 회귀 `runtime-reachability.test.ts`(해제는 정본 행에서), 파수꾼 여섯. 변이 — 원장 6.112장. 전 계층 게이트.
+- 상태: in_progress — 브랜치 `feature/cr121-links-reindex`. 검증 기록은 원장 6.112장이다.
 
 ## WP-103 prs-commits 재색인의 기대 집합과 메타데이터 복원 (CR-119)
 
@@ -178,6 +186,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
+| WP-104 | prs-links 재색인의 부분 갱신 경합과 해제된 스택 이력 | 설계 결함 수정 (CR-121) | WP-030, WP-031, WP-035, WP-103 | in_progress — 브랜치 `feature/cr121-links-reindex`, 원장 6.112장 |
 | WP-103 | prs-commits 재색인의 기대 집합과 메타데이터 복원 | 설계 결함 수정 (CR-119) | WP-035, WP-067, WP-098, WP-101, WP-102 | done — main `e94cb4f`(PR #235), 원장 6.111장 |
 | WP-102 | 원본 커밋은 그 PR이 새로 가져온 커밋 — 추적 브랜치 체인 규칙 | 요구사항 공백 수정 (CR-117) | WP-101, WP-021, WP-022, WP-028, WP-017, WP-035 | done — main `65acf83`(PR #230), 원장 6.108장 |
 | WP-101 | 커밋 PR 연결의 정본화와 전용 투영기 | 신뢰성 결함 수정 (CR-116) | WP-008, WP-035, WP-098 | done — main `f9cda82`(PR #228), 원장 6.107장 |

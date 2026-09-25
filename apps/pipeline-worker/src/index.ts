@@ -88,13 +88,11 @@ import { startCommitLinkRunner, type CommitLinkRunner } from './commit-links.js'
 import { startSequenceMetadataCleanup, type MetadataCleanup } from './sequence-metadata-cleanup.js';
 import { statSync } from 'node:fs';
 import {
-  runReferenceRebuild,
+  createLinkRebuildPort,
   startLinkWorker,
   startReferenceRebuildRunner,
   type LinkDeps,
   type LinkLogFields,
-  type RebuildCursor,
-  type RebuildResult,
   type RebuildRunner,
 } from './link.js';
 import { applyRepositoryTeams, createEsClient } from '@prs/es';
@@ -215,19 +213,11 @@ if (roles.includes('batch')) {
      * 부르므로 두 역할이 같은 값에 다른 답을 낼 수 없다 (DEV-608).
      */
     mergeNumberEnabled: resolveMergeNumberEnabled(),
-    links: {
-      async rebuildRepository(repository) {
-        let cursor: RebuildCursor | undefined;
-        let processed = 0;
-        for (;;) {
-          const result: RebuildResult = await runReferenceRebuild(reindexLinkDeps, repository, cursor);
-          processed += result.processed;
-          cursor = result.cursor;
-          if (result.done) break;
-        }
-        return processed;
-      },
-    },
+    /*
+     * 간선 재구축 포트 (CR-121). 시험이 **같은 팩토리**를 부른다 — 여기서 객체를 새로 적으면 시험이 옮겨 적은
+     * 사본만 재게 된다.
+     */
+    links: createLinkRebuildPort(reindexLinkDeps),
   };
 
   reindexRunner = startReindexRunner(reindexDeps);

@@ -84,7 +84,26 @@ const UNSCOPED_ALLOWLIST: readonly {
       '둘 다 결과가 잡 진행률 로그로만 나가고 응답 본문이 되지 않는다. ' +
       '`source_count == target_count` 하나로 판정하지 않는 것이 이 검증의 요지이며(같은 수의 다른 문서), ' +
       '그래서 두 인덱스의 건수를 함께 본다. 이 파일에 **사용자 대면 조회를 넣지 않는다** — ' +
-      '넣으면 이 사유를 그대로 물려받고 검사기가 침묵한다 (DEV-265가 links.ts에서 배운 것).',
+      '넣으면 이 사유를 그대로 물려받고 검사기가 침묵한다 (DEV-265가 links.ts에서 배운 것). ' +
+      '**CR-121이 `search` 둘을 더했다** — 간선 대조(`readLinksFrom`)는 대상 shadow 인덱스에서 source들의 ' +
+      '간선 문서를 소유 저장소 routing과 `repository_id`·`from_id` 필터로 읽어 정본의 계획과 필드마다 맞대고, ' +
+      '스택 가져오기 확인(`countUnimportedStacks`)은 **서비스 별칭**에서 저장소 하나의 `stacks_on` 간선의 ' +
+      '`link_id`·`from_id`·`to_id`만 읽어 스택 정본과 맞댄다. 둘은 문서를 읽으므로 위의 「`size: 0`」에 해당하지 ' +
+      '않지만, 방아쇠가 같은 운영자 잡이고 결과는 전환 판정과 잡 사유의 건수·간선 ID 표본으로만 나가 ' +
+      '응답 본문이 되지 않는다.',
+  },
+  {
+    file: 'apps/pipeline-worker/src/stack-import.ts',
+    kind: 'no_requester',
+    why:
+      'CR-121 배포 전 스택 간선의 일회성 가져오기 (WP-104, FR-REL-006 AC-6, OD-017). 방아쇠가 운영자의 ' +
+      '`prsctl links import-stacks` 명령이라 **요청자가 없다** — 호스트에서 한 번 실행되는 배치이고, ' +
+      '어떤 HTTP 요청도 이 경로에 닿지 않는다. 서비스 `prs-links`에서 운영자가 인자로 지목한 저장소 하나의 ' +
+      '`stacks_on` 간선을 그 저장소의 routing과 `repository_id` 단일 term으로 읽으며, 읽는 필드는 끝점·근거·시각·' +
+      '해제 여부(`from_id`·`to_id`·`to_repository_id`·`repository_id`·`evidence`·`created_at`·`detached`)뿐이다. ' +
+      '결과는 스택 정본(`pull_request_stack`)과 건수 출력으로만 나가고 응답 본문이 되지 않는다. 이 파일에 ' +
+      '**사용자 대면 조회를 넣지 않는다** — 넣으면 이 사유를 그대로 물려받고 검사기가 침묵한다 ' +
+      '(DEV-265가 links.ts에서 배운 것).',
   },
   {
     file: 'apps/pipeline-worker/src/link-repair.ts',

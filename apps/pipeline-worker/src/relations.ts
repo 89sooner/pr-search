@@ -26,9 +26,24 @@
  * **`detached`**다 — FR-REL-006 AC-3이 "해제 상태로 표시"를 요구하며, 지우면
  * *그런 의존이 있었다*는 사실이 사라진다. 하나의 일반 추상으로 뭉치면 그 차이가
  * 조건문 속으로 숨는다.
+ *
+ * ## 스택의 정본은 PostgreSQL이다 (CR-121, OD-017)
+ *
+ * 해제된 스택은 현재 스냅숏에서 다시 보이지 않는다 — 상위 PR이 병합되거나 하위 PR이 retarget되면
+ * 성립 조건이 사라진다. 그 사실을 색인에만 두면 재색인이 되살리지 못하므로(ADR-004), 성립·해제를
+ * `pull_request_stack`에 남기고 간선은 그 행에서 **전체 쓰기**로 만든다. 부분 갱신이 없다.
  */
 
-import { commitSnapshotRepo, prSnapshotRepo, type CommitSnapshotRow, type PullRequestSnapshotRow, type RepositoryRow } from '@prs/db';
+import {
+  commitSnapshotRepo,
+  prSnapshotRepo,
+  prStackRepo,
+  type CommitSnapshotRow,
+  type PullRequestSnapshotRow,
+  type RepositoryRow,
+  type StackDesired,
+  type StackRow,
+} from '@prs/db';
 import {
   commitDocId,
   commitSubject,
@@ -44,8 +59,6 @@ import {
   LINKS_ALIAS,
   deleteStaleDerivedLinks,
   findLinksFrom,
-  findLinksTo,
-  setLinkDetached,
   summarizeRelations,
   updateLinkSummary,
   writeDerivedLinks,
@@ -355,7 +368,8 @@ async function planCherryPicks(
 /* ------------------------------------------------------------------------- */
 
 interface StackPlan {
-  readonly docs: readonly DerivedLinkDoc[];
+  /** 지금 성립하는 관계 — 정본 행(`pull_request_stack`)을 맞출 입력이다 (CR-121). */
+  readonly desired: readonly StackDesired[];
   readonly cycles: number;
 }
 
@@ -375,10 +389,8 @@ async function planStacks(
 ): Promise<StackPlan> {
   const repositoryId = Number(repository.repository_id);
   const base = field(self.document, 'base_branch');
-  if (base === '') return { docs: [], cycles: 0 };
+  if (base === '') return { desired: [], cycles: 0 };
 
-  const fromId = pullRequestDocId(repositoryId, self.pr_number);
-  const scope = scopeOf(repository);
   const createdAt = canonicalTime(self.document);
 
   const parents = await prSnapshotRepo.findOpenPullRequestsByHeadBranch(
@@ -388,7 +400,7 @@ async function planStacks(
     STACK_CANDIDATE_LIMIT,
   );
 
-  const docs: DerivedLinkDoc[] = [];
+  const desired: StackDesired[] = [];
   let cycles = 0;
 
   for (const parent of parents) {
@@ -398,24 +410,48 @@ async function planStacks(
       cycles += 1;
       continue;
     }
-    docs.push({
-      link_id: derivedLinkId('stacks_on', 'pull_request', fromId, 'pull_request', pullRequestDocId(repositoryId, parent.pr_number)),
+    desired.push({
+      parentPrNumber: parent.pr_number,
+      evidence: `base ${base} = head of #${String(parent.pr_number)}`,
+      edgeCreatedAt: createdAt,
+    });
+  }
+
+  return { desired, cycles };
+}
+
+/**
+ * 하위 PR의 스택 간선을 **정본 행에서** 만든다 (CR-121, OD-017).
+ *
+ * 평시 파생·재구축·전환 전 검증이 같은 함수를 쓴다 — 셋이 다른 문서를 만들면 검증이 재구축과 다른
+ * 것을 기대한다. `link_id`는 끝점으로 만들어지므로(DEV-238) 해제돼도 같은 문서다.
+ */
+export function stackDocsFromRows(repository: RepositoryRow, rows: readonly StackRow[]): DerivedLinkDoc[] {
+  const repositoryId = Number(repository.repository_id);
+  const scope = scopeOf(repository);
+  return rows.map((row) => {
+    const fromId = pullRequestDocId(repositoryId, row.child_pr_number);
+    const toId = pullRequestDocId(repositoryId, row.parent_pr_number);
+    return {
+      link_id: derivedLinkId('stacks_on', 'pull_request', fromId, 'pull_request', toId),
       link_type: 'stacks_on',
       scope,
       from_type: 'pull_request',
       from_id: fromId,
       to_type: 'pull_request',
-      to_id: pullRequestDocId(repositoryId, parent.pr_number),
+      to_id: toId,
       to_repository_id: repositoryId,
       confidence: 'derived',
-      evidence: `base ${base} = head of #${String(parent.pr_number)}`,
-      detached: false,
-      created_at: createdAt,
+      evidence: row.evidence,
+      detached: row.detached,
+      created_at: row.edge_created_at,
+      /*
+       * 대상은 정본 PR이다 — 병합·종료 뒤에도 PR 문서는 색인에 남는다. 그래서 해제된 간선도 해결 상태는
+       * 늘 참이고, 표에 따로 두지 않아도 재구축이 같은 값을 낸다.
+       */
       resolved: true,
-    });
-  }
-
-  return { docs, cycles };
+    };
+  });
 }
 
 /**
@@ -460,6 +496,72 @@ async function walkChain(
 /* 한 source의 관계 파생 전체                                                   */
 /* ------------------------------------------------------------------------- */
 
+/** 한 source의 관계 계획 — 쓰기 전의 재료다. 파생과 전환 전 검증이 함께 쓴다 (CR-121). */
+interface RelationPlanParts {
+  readonly revertDocs: readonly DerivedLinkDoc[];
+  readonly cherryDocs: readonly DerivedLinkDoc[];
+  /** PR source에만 있다. */
+  readonly stacks?: { readonly childPrNumber: number; readonly plan: StackPlan };
+}
+
+/**
+ * 정본에서 관계를 계획한다. 정본이 없으면 `undefined` — **실패가 아니다.** 보강이 아직 도달하지
+ * 않았을 뿐이고 그때가 오면 이벤트가 다시 온다. 이 함수는 아무것도 쓰지 않는다.
+ */
+async function planRelationParts(
+  deps: LinkDeps,
+  repository: RepositoryRow,
+  source: LinkSource,
+): Promise<RelationPlanParts | undefined> {
+  const repositoryId = Number(repository.repository_id);
+  if (source.kind === 'commit') {
+    const self = await commitSnapshotRepo.findCommitSnapshot(deps.pool, repositoryId, source.id);
+    if (self === undefined) return undefined;
+    const createdAt = self.committed_at.toISOString();
+    return {
+      revertDocs: (await planReverts(deps, repository, source, extractCommitReverts(self.message), createdAt)).docs,
+      cherryDocs: (await planCherryPicks(deps, repository, self)).docs,
+    };
+  }
+  const self = await prSnapshotRepo.findPullRequestSnapshot(deps.pool, repositoryId, Number(source.id));
+  if (self === undefined) return undefined;
+  const title = field(self.document, 'title');
+  const body = field(self.document, 'body');
+  const createdAt = canonicalTime(self.document);
+  /*
+   * 제목은 **접두 규칙**까지 본다 (AC-1의 세 번째 패턴). 본문은 인용문일 수 있어
+   * 접두 규칙을 적용하지 않는다.
+   */
+  const fromTitle = extractReverts(title, { isPullRequestTitle: true });
+  const fromBody = extractReverts(body);
+  return {
+    revertDocs: (await planReverts(deps, repository, source, [...fromTitle, ...fromBody], createdAt)).docs,
+    cherryDocs: [],
+    stacks: { childPrNumber: self.pr_number, plan: await planStacks(deps, repository, self) },
+  };
+}
+
+/**
+ * 한 source가 만들어야 하는 되돌림·체리픽·스택 간선을 **쓰기 없이** 계산한다 (CR-121, 전환 전 검증).
+ *
+ * 파생(`deriveRelations`)과 같은 계획 함수를 쓴다. 스택은 정본 행에 지금 성립하는 집합을 합친
+ * 결과다(`mergeStackRows` — `reconcileStacks`와 같은 규칙). 정본이 없으면 `undefined`다.
+ */
+export async function planRelationEdges(
+  deps: LinkDeps,
+  repository: RepositoryRow,
+  source: LinkSource,
+): Promise<readonly DerivedLinkDoc[] | undefined> {
+  const parts = await planRelationParts(deps, repository, source);
+  if (parts === undefined) return undefined;
+  if (parts.stacks === undefined) return [...parts.revertDocs, ...parts.cherryDocs];
+  const repositoryId = Number(repository.repository_id);
+  const child = parts.stacks.childPrNumber;
+  const existing = (await prStackRepo.listStacksOfChildren(deps.pool, repositoryId, [child])).get(child) ?? [];
+  const rows = prStackRepo.mergeStackRows(repositoryId, child, existing, parts.stacks.plan.desired);
+  return [...parts.revertDocs, ...parts.cherryDocs, ...stackDocsFromRows(repository, rows)];
+}
+
 /**
  * 한 source의 되돌림·체리픽·스택 간선을 **완전히** 다시 만든다.
  *
@@ -477,37 +579,31 @@ export async function deriveRelations(
   const docId = docIdOf(repositoryId, source);
   const refresh = deps.refresh === true;
 
-  let revertDocs: readonly DerivedLinkDoc[] = [];
-  let cherryDocs: readonly DerivedLinkDoc[] = [];
+  /*
+   * 정본이 없으면 **아무것도 확정하지 않는다.** 간선을 지우지도, 완결을 찍지도
+   * 않는다 — 보강이 아직 도달하지 않았을 뿐이고 그때가 오면 이벤트가 다시 온다.
+   */
+  const parts = await planRelationParts(deps, repository, source);
+  if (parts === undefined) return EMPTY;
+  const { revertDocs, cherryDocs } = parts;
   let stackDocs: readonly DerivedLinkDoc[] = [];
   let cycles = 0;
-
-  if (source.kind === 'commit') {
-    const self = await commitSnapshotRepo.findCommitSnapshot(deps.pool, repositoryId, source.id);
+  let detached = 0;
+  if (parts.stacks !== undefined) {
+    cycles = parts.stacks.plan.cycles;
     /*
-     * 정본이 없으면 **아무것도 확정하지 않는다.** 간선을 지우지도, 완결을 찍지도
-     * 않는다 — 보강이 아직 도달하지 않았을 뿐이고 그때가 오면 이벤트가 다시 온다.
+     * **정본 행을 먼저 맞추고, 그 하위 PR의 행 전부를 간선으로 쓴다** (CR-121, OD-017). 해제된 관계도
+     * `detached: true`로 전체 쓰기한다 — 서비스 색인에서 후보를 찾아 부분 갱신하던 옛 경로는 재색인 중
+     * 새 인덱스에 간선이 없어 실패했고, 해제 이력은 색인에만 남아 재구축이 되살리지 못했다.
      */
-    if (self === undefined) return EMPTY;
-    const createdAt = self.committed_at.toISOString();
-    revertDocs = (await planReverts(deps, repository, source, extractCommitReverts(self.message), createdAt)).docs;
-    cherryDocs = (await planCherryPicks(deps, repository, self)).docs;
-  } else {
-    const self = await prSnapshotRepo.findPullRequestSnapshot(deps.pool, repositoryId, Number(source.id));
-    if (self === undefined) return EMPTY;
-    const title = field(self.document, 'title');
-    const body = field(self.document, 'body');
-    const createdAt = canonicalTime(self.document);
-    /*
-     * 제목은 **접두 규칙**까지 본다 (AC-1의 세 번째 패턴). 본문은 인용문일 수 있어
-     * 접두 규칙을 적용하지 않는다.
-     */
-    const fromTitle = extractReverts(title, { isPullRequestTitle: true });
-    const fromBody = extractReverts(body);
-    revertDocs = (await planReverts(deps, repository, source, [...fromTitle, ...fromBody], createdAt)).docs;
-    const stacks = await planStacks(deps, repository, self);
-    stackDocs = stacks.docs;
-    cycles = stacks.cycles;
+    const reconciled = await prStackRepo.reconcileStacks(
+      deps.pool,
+      repositoryId,
+      parts.stacks.childPrNumber,
+      parts.stacks.plan.desired,
+    );
+    stackDocs = stackDocsFromRows(repository, reconciled.rows);
+    detached = reconciled.detachedNow;
   }
 
   if (cycles > 0) {
@@ -586,11 +682,6 @@ export async function deriveRelations(
     );
   }
 
-  let detached = 0;
-  if (source.kind === 'pull_request') {
-    detached = await reconcileStackDetachment(deps, repositoryId, docId, stackDocs, writeTargets);
-  }
-
   /*
    * ---- **양 끝점의 요약을 다시 계산한다** (PR #46 리뷰 P1).
    *
@@ -609,8 +700,8 @@ export async function deriveRelations(
   /*
    * **요약 질의 전에 색인을 새로 고친다** (PR #46 리뷰 P2).
    *
-   * 운영에서 `refresh`는 꺼져 있다. `setLinkDetached`의 bulk가 검색에 보이지 않는
-   * 상태에서 요약을 세면 **방금 해제한 마지막 스택 간선이 여전히 살아 있는 것으로
+   * 운영에서 `refresh`는 꺼져 있다. 해제 간선을 다시 쓴 bulk(`writeDerivedLinks`)가 검색에 보이지
+   * 않는 상태에서 요약을 세면 **방금 해제한 마지막 스택 간선이 여전히 살아 있는 것으로
    * 세어져** `has_stack: true`가 굳는다. 뒤따르는 자동 refresh는 요약을 다시
    * 계산해 주지 않는다.
    */
@@ -619,62 +710,20 @@ export async function deriveRelations(
     await refreshRelationSummary(deps, repositoryId, endpoint, docIdOf(repositoryId, endpoint), writeTargets);
   }
 
+  // 파생한 간선을 센다 — 해제된 스택은 다시 쓴 것이지 새로 파생한 것이 아니다.
   for (const doc of all) {
+    if (doc.detached === true) continue;
     deps.metrics.linkRelationsTotal.inc({ link_type: doc.link_type, confidence: doc.confidence }, 1);
   }
 
   return {
     reverts: revertDocs.length,
     cherryPicks: cherryDocs.length,
-    stacks: stackDocs.length,
+    stacks: parts.stacks?.plan.desired.length ?? 0,
     removed,
     detached,
     complete: true,
   };
-}
-
-/**
- * 더 이상 성립하지 않는 스택 간선을 `detached`로 바꾼다 (FR-REL-006 AC-3, DEV-238).
- *
- * **지우지 않는다.** 지우면 *그런 의존이 있었다*는 사실이 사라져 사후 조사가
- * 불가능해진다. 조건이 다시 성립하면 `false`로 되돌린다 — `writeDerivedLinks`가
- * `detached: false`로 통째 색인하므로 그쪽은 저절로 복구된다. 여기서 하는 것은
- * **원하는 집합에 없는 기존 간선**을 표시하는 일뿐이다.
- */
-async function reconcileStackDetachment(
-  deps: LinkDeps,
-  repositoryId: number,
-  fromId: string,
-  desired: readonly DerivedLinkDoc[],
-  writeTargets: WriteTargets,
-): Promise<number> {
-  const keep = new Set(desired.map((doc) => doc.link_id));
-  const existing = await findLinksFrom(deps.es, {
-    repositoryId,
-    fromType: 'pull_request',
-    fromId,
-    linkTypes: ['stacks_on'],
-  });
-  const stale = existing.filter((link) => !keep.has(link.link_id) && link.detached !== true);
-  if (stale.length === 0) return 0;
-
-  const result = await setLinkDetached(
-    deps.es,
-    stale.map((link) => ({ link_id: link.link_id, repository_id: repositoryId, detached: true })),
-    writeTargets,
-    { refresh: deps.refresh === true },
-  );
-  /*
-   * **부분 실패를 성공으로 세지 않는다** (PR #46 리뷰 P1).
-   *
-   * ES는 bulk를 200으로 돌려주면서 항목마다 오류를 담을 수 있다. 그것을 버리면
-   * 머지된 상위 PR에 대한 의존이 `active`로 남고 **아무도 다시 하지 않는다** —
-   * 이 저장소가 다섯 번 밟은 모양이다. 던져서 핸들러의 재시도 예산에 맡긴다.
-   */
-  if (result.failures.length > 0) {
-    throw new Error(`스택 해제 표시 실패: ${result.failures[0]?.reason ?? 'unknown'}`);
-  }
-  return stale.length;
 }
 
 /**
@@ -861,17 +910,11 @@ export async function reevaluateAffectedRelations(
      * **옛 head를 base로 삼던 child를 보지 못한다.** 그 child들의 `stacks_on`은
      * 조건이 깨졌는데도 `active`로 남는다.
      *
-     * 분기 값 대신 **이미 있는 간선**에서 찾는다 — 간선이 그때의 관계를 기억하고
-     * 있으므로 분기가 무엇으로 바뀌었든 정확하다.
+     * 분기 값 대신 **그때의 관계를 기억하는 정본 행**에서 찾는다 (CR-121) — 성립한 적 있는 관계만
+     * 행이 되므로 분기가 무엇으로 바뀌었든 정확하다. 전에는 서비스 색인의 간선으로 찾았다.
      */
-    const incoming = await findLinksTo(deps.es, {
-      repositoryId,
-      toType: 'pull_request',
-      toId: pullRequestDocId(repositoryId, Number(source.id)),
-      linkTypes: ['stacks_on'],
-    });
-    for (const link of incoming) {
-      addEndpoint(targets, repositoryId, 'pull_request', link.from_id);
+    for (const child of await prStackRepo.listChildrenOf(deps.pool, repositoryId, Number(source.id), AFFECTED_LIMIT)) {
+      add({ kind: 'pull_request', id: String(child) });
     }
   }
 

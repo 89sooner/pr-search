@@ -5,6 +5,9 @@ export * as deadLetterRepo from './dead-letter.js';
 export * as integrityRepo from './integrity.js';
 export * as prSnapshotRepo from './pr-snapshot.js';
 export * as prCommitLinkRepo from './pr-commit-link.js';
+/** 스택 관계의 정본 (WP-104 / CR-121, OD-017). */
+export * as prStackRepo from './pr-stack.js';
+export type { StackDesired, StackImport, StackOrigin, StackReconcileResult, StackRow } from './pr-stack.js';
 export * as jobRepo from './job.js';
 /** 무중단 재색인 잡 상태 (WP-035 / JOB-ING-006). */
 export * as reindexRepo from './reindex.js';
@@ -66,6 +69,9 @@ export type { CommitMetadataSource, CommitSnapshotInput, CommitSnapshotRow } fro
 export type { JobRow, JobState, JobType } from './job.js';
 export type {
   EnqueueReindexOutcome,
+  LinkPendingInput,
+  LinkPendingReason,
+  LinkPendingRow,
   ReindexIndexPort,
   ReindexJob,
   ReindexPhase,

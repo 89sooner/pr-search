@@ -193,32 +193,6 @@ async function prDoc(prNumber: number): Promise<Record<string, unknown>> {
   return response._source ?? {};
 }
 
-/**
- * `bulk`의 **개별 항목만** 실패시킨다.
- *
- * ES는 `bulk`를 200으로 돌려주면서 항목마다 오류를 담을 수 있고, 그 갈래를 놓치면
- * 실패가 성공으로 세어진다. 스프레드로 만들면 프로토타입 메서드가 사라지므로
- * 필요한 것만 **명시적으로 위임**한다.
- */
-function withUpdateItemFailure(inner: Client): Client {
-  return {
-    bulk: (params: { readonly operations?: readonly unknown[] }) => {
-      const ops = params.operations ?? [];
-      // `index` 연산(간선 쓰기)은 그대로 통과시키고 `update`(해제 표시)만 실패시킨다.
-      const isUpdate = ops.some((one) => typeof one === 'object' && one !== null && 'update' in one);
-      if (!isUpdate) return inner.bulk(params as never);
-      return Promise.resolve({ items: [{ update: { _id: 'x', status: 409, error: { type: 'conflict' } } }] });
-    },
-    msearch: (params: unknown) => inner.msearch(params as never),
-    search: (params: unknown) => inner.search(params as never),
-    update: (params: unknown) => inner.update(params as never),
-    get: (params: unknown) => inner.get(params as never),
-    index: (params: unknown) => inner.index(params as never),
-    deleteByQuery: (params: unknown) => inner.deleteByQuery(params as never),
-    indices: inner.indices,
-  } as unknown as Client;
-}
-
 /** 간선 쓰기(`index` 연산)만 항목 수준에서 실패시킨다. */
 function withIndexItemFailure(inner: Client): Client {
   return {
@@ -260,6 +234,8 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     for (const id of [REPOSITORY_ID, OTHER_ID]) {
       await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [id]);
       await pool.query('DELETE FROM commit_snapshot WHERE repository_id = $1', [id]);
+      // 스택의 정본 (CR-121). 남으면 다음 시험의 하위 PR이 앞 시험의 관계를 해제 간선으로 물려받는다.
+      await pool.query('DELETE FROM pull_request_stack WHERE repository_id = $1', [id]);
       await pool.query('DELETE FROM repository WHERE repository_id = $1', [id]);
     }
     for (const [id, name] of [
@@ -812,21 +788,35 @@ describe('되돌림·체리픽·스택 파생 (WP-030 / CR-041)', () => {
     expect(await links({ fromId: commitDocId(REPOSITORY_ID, reverter), linkType: 'reverts' })).toHaveLength(1);
   });
 
-  it('**스택 해제의 부분 실패를 성공으로 세지 않는다** (PR #46 리뷰 P1)', async () => {
+  it('**스택 해제의 쓰기 실패를 성공으로 세지 않는다** (PR #46 리뷰 P1 · CR-121)', async () => {
     await seedPullRequest({ number: 151, head: 'fp', base: 'main', state: 'open' });
     await seedPullRequest({ number: 152, head: 'fc', base: 'fp', state: 'open' });
     await deriveRelations(deps(), repository, prSource(152), SERVING_ONLY);
 
-    // 상위가 머지된다 → 해제해야 하는데 bulk 항목이 거부된다.
+    /*
+     * 상위가 머지된다 → 해제해야 하는데 간선 쓰기의 bulk 항목이 거부된다. 해제는 이제 부분 갱신이 아니라
+     * 정본 행(`pull_request_stack`)에서 나온 **전체 쓰기**다 (CR-121, OD-017) — 그 쓰기가 실패하면 던진다.
+     */
     await seedPullRequest({ number: 151, head: 'fp', base: 'main', state: 'merged' });
     await expect(
-      deriveRelations(deps({ es: withUpdateItemFailure(es) }), repository, prSource(152), SERVING_ONLY),
-    ).rejects.toThrow(/스택 해제/);
+      deriveRelations(deps({ es: withIndexItemFailure(es) }), repository, prSource(152), SERVING_ONLY),
+    ).rejects.toThrow(/관계 간선 쓰기 실패/);
+
+    // 정본에는 해제가 남는다 — 재시도(다음 파생)가 색인을 그 값에 맞춘다.
+    const row = await pool.query<{ detached: boolean }>(
+      'SELECT detached FROM pull_request_stack WHERE repository_id = $1 AND child_pr_number = 152 AND parent_pr_number = 151',
+      [REPOSITORY_ID],
+    );
+    expect(row.rows).toEqual([{ detached: true }]);
+    await deriveRelations(deps(), repository, prSource(152), SERVING_ONLY);
+    const after = await links({ fromId: pullRequestDocId(REPOSITORY_ID, 152), linkType: 'stacks_on' });
+    expect(after).toHaveLength(1);
+    expect(after[0]!['detached']).toBe(true);
   });
 
   it('**운영 설정(refresh 꺼짐)에서도 해제가 요약에 반영된다** (PR #46 리뷰 P2)', async () => {
     /*
-     * 운영에서 `refresh`는 꺼져 있다. `setLinkDetached`의 bulk가 검색에 보이지 않는
+     * 운영에서 `refresh`는 꺼져 있다. 해제 간선을 다시 쓴 bulk가 검색에 보이지 않는
      * 상태에서 요약을 세면 **방금 해제한 마지막 스택 간선이 여전히 살아 있는 것으로
      * 세어져** `has_stack: true`가 굳는다 — 뒤따르는 자동 refresh는 요약을 다시
      * 계산해 주지 않는다.

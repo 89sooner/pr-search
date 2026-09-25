@@ -651,7 +651,7 @@ describe('029 → 030 → 029 → 030 왕복 — 과거 행 보존과 승인 비
     const auditBefore = await count("audit_record WHERE action = 'gh_registry.approve'", []);
 
     // 030 위에 031(CR-100)이 쌓였다 — 030을 내리려면 함께 내린다. 목록으로 단언하므로 새 마이그레이션이 생기면 여기서 깨진다.
-    expect(await migrateDown(pool, 7)).toEqual(['036', '035', '034', '033', '032', '031', '030']);
+    expect(await migrateDown(pool, 8)).toEqual(['037', '036', '035', '034', '033', '032', '031', '030']);
     expect(await appliedVersions(pool)).not.toContain('030');
     const objects = await pool.query<{ policy: string | null; revision: string | null; fn: number }>(
       `SELECT to_regclass('gh_operations_policy')::text AS policy, to_regclass('gh_operations_policy_revision')::text AS revision,
@@ -670,7 +670,7 @@ describe('029 → 030 → 029 → 030 왕복 — 과거 행 보존과 승인 비
       [scope, definition.manifestHash, unique('legacy').replace(/[^A-Za-z0-9_-]/g, '_')],
     );
 
-    expect(await migrateUp(pool)).toEqual(['030', '031', '032', '033', '034', '035', '036']);
+    expect(await migrateUp(pool)).toEqual(['030', '031', '032', '033', '034', '035', '036', '037']);
     expect(await policyRepo.findPolicy(pool, scope)).toBeNull();
     expect(await count("audit_record WHERE action = 'gh_registry.approve'", [])).toBe(auditBefore);
     const legacyId = legacy.rows[0]?.execution_id ?? -1;

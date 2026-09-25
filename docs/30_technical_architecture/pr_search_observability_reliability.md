@@ -1,6 +1,8 @@
 # PR Search 관측성 및 신뢰성
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-09-25
+> 상태: review | 버전: v0.13 | 갱신일: 2026-09-25
+
+CR-121 / FR-ING-008 AC-11, FR-REL-006 AC-6: 새 지표·경보·런북 번호는 없다. 재색인 로그는 세 줄을 더한다 — `간선 미처리 회수`(`rederived`·`absent`·`rounds`), `전환 전 간선 검증`(`sources`·`expected`·`missing`·`extra`·`mismatched`·`orphans`·`unplannable`·`pending`·`unimported_stacks`), 경고 `전환 직전에 간선 미처리를 만났다 — 회수한 뒤 다시 검증한다`(`attempt`·`pending`). `link_relations_total`은 해제된 스택 간선을 다시 쓴 것을 세지 않는다 — 이제 해제 간선도 전체 쓰기로 나가지만 새로 파생한 간선이 아니다. 전환 전 검증의 사유는 잡의 `error`에 남으며, 배포 뒤의 스택 가져오기와 간선 재색인 확인 절차는 RUNBOOK 7.I다.
 
 CR-119 / FR-ING-008 AC-10: 새 지표·경보·런북 번호는 없다. `commit_enrich_total{result}`에 값 하나(`document_missing` — 문서가 없고 만들 근거도 없어 메타데이터를 반영하지 못한 회차)가 더해진다. 전에는 그 회차가 `noop`에 섞였고, `noop`은 이제 「값이 이미 같음」만 뜻한다. 재색인 로그는 두 줄을 더한다 — `원본 커밋 메타데이터 반영`(저장소마다 `applied`·`without_document`)과 `전환 전 커밋 문서 검증`(`expected`·`missing`·`metadata_checked`·`metadata_mismatched`). 전환 전 검증의 사유는 잡의 `error`에 남으며, 사내 수동 전환 뒤의 확인·재구축 절차는 RUNBOOK 7.H다.
 

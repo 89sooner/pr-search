@@ -43,6 +43,7 @@ import {
   prCommitLinkRepo,
   mergeSequenceRepo,
   prSnapshotRepo,
+  prStackRepo,
   releaseRepo,
   reindexRepo,
   repositoryRepo,
@@ -51,11 +52,13 @@ import {
   withReindexExclusive,
   withReindexWrite,
   type JobRow,
+  type LinkPendingRow,
   type Pool,
   type ReindexProgress,
   type RepositoryRow,
 } from '@prs/db';
 import {
+  LINKS_ALIAS,
   applyCommitLinksToIndex,
   bulkUpsert,
   createVersionedIndex,
@@ -140,9 +143,29 @@ export interface ReindexLogFields {
  * 전환하는 것보다 실패가 낫다.
  */
 export interface LinkRebuildPort {
-  /** 저장소 하나의 간선을 정본에서 다시 파생한다. @returns 처리한 source 수. */
-  rebuildRepository(repository: RepositoryRow): Promise<number>;
+  /**
+   * 저장소 하나의 간선을 정본에서 다시 파생한다. 처리한 source 수와 **완결되지 않은** source를 돌려준다
+   * (CR-121) — 커서가 넘어갔다고 그 source가 끝난 것은 아니다.
+   */
+  rebuildRepository(repository: RepositoryRow): Promise<{ readonly processed: number; readonly incomplete: readonly LinkSourceRef[] }>;
+  /** source 하나의 간선을 정본에서 다시 파생한다 — 미처리 회수 (CR-121). */
+  rederiveSource(repository: RepositoryRow, source: LinkSourceRef): Promise<'complete' | 'incomplete' | 'absent'>;
+  /** source 하나가 만들어야 하는 간선 문서를 **쓰기 없이** 계산한다 — 전환 전 검증 (CR-121). */
+  planSource(repository: RepositoryRow, source: LinkSourceRef): Promise<PlannedLinks>;
 }
+
+/** 간선 재구축의 source 하나. `link.ts`의 `LinkSource`와 구조가 같다. */
+export interface LinkSourceRef {
+  readonly kind: 'pull_request' | 'commit';
+  /** PR이면 번호(10진 문자열), 커밋이면 소문자 40자 SHA. */
+  readonly id: string;
+}
+
+/** source 하나의 기대 간선 (CR-121). `edges`는 쓰기가 싣는 문서 본문 그대로다. */
+export type PlannedLinks =
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'unplannable'; readonly reason: string }
+  | { readonly kind: 'planned'; readonly edges: readonly Readonly<Record<string, unknown>>[] };
 
 export interface ReindexDeps {
   readonly pool: Pool;
@@ -848,13 +871,91 @@ async function rebuildLinks(
   deps: ReindexDeps,
   repository: RepositoryRow,
   tally: RebuildTally,
+  jobId: number,
 ): Promise<void> {
   if (deps.links === undefined) {
     throw new Error('link_rebuild_port_missing');
   }
-  const processed = await deps.links.rebuildRepository(repository);
+  const { processed, incomplete } = await deps.links.rebuildRepository(repository);
   tally.scanned += processed;
   tally.written += processed;
+  /*
+   * **불완전한 source를 완결로 승격하지 않는다** (CR-121). 커서는 넘어갔지만 그 source의 간선은 끝나지
+   * 않았다 — 미처리로 남겨 전환 전 회수가 다시 파생한다. 회수하지 못하면 전환하지 않는다.
+   */
+  if (incomplete.length > 0) {
+    await reindexRepo.recordLinkPending(
+      deps.pool,
+      jobId,
+      incomplete.map((source) => ({
+        repositoryId: Number(repository.repository_id),
+        sourceKind: source.kind,
+        sourceId: source.id,
+        reason: 'derive_incomplete' as const,
+      })),
+    );
+  }
+}
+
+/** 회수 라운드 상한. 회수가 새 미처리를 만들 수 있어 수렴을 기다리되, 끝없이 돌지 않는다. */
+export const LINK_RECOVERY_ROUNDS = 5;
+/** 회수가 한 번에 읽는 미처리 수. 상한이 아니라 왕복 단위다 — 라운드마다 끝까지 넘긴다. */
+const LINK_RECOVERY_PAGE = 200;
+/** 전환 울타리에서 미처리를 만났을 때 회수·재검증을 다시 시도하는 횟수. */
+export const LINK_CUTOVER_ATTEMPTS = 3;
+
+interface LinkRecovery {
+  readonly rederived: number;
+  readonly absent: number;
+  readonly rounds: number;
+}
+
+/**
+ * prs-links 재색인의 미처리를 회수한다 (CR-121 / FR-ING-008 AC-11).
+ *
+ * 미처리는 둘이다: 간선의 부분 갱신이 새 인덱스에서 그 간선을 찾지 못했다(소유 source가 재구축에서
+ * 아직 처리되지 않았다), 또는 source의 파생이 불완전했다. 둘 다 **소유 source를 최신 정본에서 다시
+ * 파생**해 회수한다 — 옛 서비스 간선을 옮기지도, 부분 갱신 값을 나중에 적용하지도 않는다. 그 source의
+ * 간선만 다시 만들고(`rederiveSource`), 완결이면 **읽은 세대의 행만** 지운다: 회수하는 동안 같은 source에
+ * 새 미처리가 기록됐으면 행이 남아 다음 라운드가 다시 본다. 정본에 source가 없으면 만들 간선이 없으므로
+ * 끝난 일이다.
+ *
+ * 수렴하지 못하면 던진다 — 남은 행의 사유와 표본을 싣는다. 잡은 실패하고 별칭은 그대로다.
+ */
+async function recoverLinkPending(deps: ReindexDeps, jobId: number): Promise<LinkRecovery> {
+  const port = deps.links;
+  if (port === undefined) throw new Error('link_rebuild_port_missing');
+  let rederived = 0;
+  let absent = 0;
+  for (let round = 1; round <= LINK_RECOVERY_ROUNDS; round += 1) {
+    let after: LinkPendingRow | undefined;
+    let seen = 0;
+    for (;;) {
+      const rows = await reindexRepo.listLinkPending(deps.pool, jobId, LINK_RECOVERY_PAGE, after);
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        seen += 1;
+        const repository = await repositoryRepo.findRepositoryById(deps.pool, row.repository_id);
+        // 등록되지 않은 저장소의 간선은 애초에 만들지 않는다 (FR-ING-009 AC-4).
+        const outcome =
+          repository === undefined ? 'absent' : await port.rederiveSource(repository, { kind: row.source_kind, id: row.source_id });
+        if (outcome === 'incomplete') continue;
+        if (outcome === 'absent') absent += 1;
+        else rederived += 1;
+        await reindexRepo.deleteLinkPending(deps.pool, jobId, row);
+      }
+      after = rows[rows.length - 1];
+      if (rows.length < LINK_RECOVERY_PAGE) break;
+    }
+    if (seen === 0 || (await reindexRepo.countLinkPending(deps.pool, jobId)) === 0) {
+      return { rederived, absent, rounds: seen === 0 ? round - 1 : round };
+    }
+  }
+  const left = await reindexRepo.countLinkPending(deps.pool, jobId);
+  const samples = (await reindexRepo.listLinkPending(deps.pool, jobId, 5))
+    .map((row) => `${row.source_kind}:${row.source_id.slice(0, 12)}(${row.reason}${row.sample_link_id === null ? '' : ` ${row.sample_link_id.slice(0, 12)}`})`)
+    .join(', ');
+  throw new Error(`link_pending_unrecovered: ${String(left)}건 (${String(LINK_RECOVERY_ROUNDS)}라운드) — ${samples}`);
 }
 
 /**
@@ -963,7 +1064,7 @@ async function rebuildAlias(deps: ReindexDeps, alias: EntityAlias, jobId: number
         await rebuildReleases(deps, repository, tally);
         break;
       case 'prs-links':
-        await rebuildLinks(deps, repository, tally);
+        await rebuildLinks(deps, repository, tally, jobId);
         break;
     }
   }
@@ -1064,6 +1165,27 @@ export async function verifyBeforeCutover(
       reasons.push(`커밋 문서 검증 실패: ${String(error).slice(0, 200)}`);
     }
   }
+  if (alias === 'prs-links') {
+    try {
+      const links = await verifyLinkEdges(deps, jobId, target);
+      expected = links.expected;
+      reasons.push(...links.reasons);
+      logOf(deps)({
+        level: links.reasons.length === 0 ? 'info' : 'error',
+        message: '전환 전 간선 검증',
+        job_id: jobId,
+        alias,
+        target_index: target,
+        detail:
+          `sources=${String(links.sources)} expected=${String(links.expected)} missing=${String(links.missing)} ` +
+          `extra=${String(links.extra)} mismatched=${String(links.mismatched)} orphans=${String(links.orphans)} ` +
+          `unplannable=${String(links.unplannable)} pending=${String(links.pending)} unimported_stacks=${String(links.unimportedStacks)}`,
+      });
+    } catch (error) {
+      // 셀 수 없게 됐다고 통과시키지 않는다 — 판정하지 못한 것은 막는다.
+      reasons.push(`간선 검증 실패: ${String(error).slice(0, 200)}`);
+    }
+  }
   const targetCount = await deps.es.count({ index: target });
   const sourceCount = await deps.es.count({ index: source });
   if (expected !== null && targetCount.count < expected) {
@@ -1156,6 +1278,255 @@ async function targetReplaced(es: Client, target: string, recorded: string | und
   if (recorded === undefined) return null;
   const now = await indexUuidOf(es, target);
   return now === recorded ? null : `target_index_replaced:${target}:${recorded}->${now ?? 'absent'}`;
+}
+
+/** 간선 대조 결과 (CR-121 / FR-ING-008 AC-11). */
+interface LinkEdgeVerdict {
+  readonly sources: number;
+  /** 정본과 생성 정책이 말하는 간선 수. */
+  readonly expected: number;
+  readonly missing: number;
+  /** 정본의 source가 만들지 않는데 대상에 있는 간선 — 사라진 참조의 옛 간선이 되살아난 것이다. */
+  readonly extra: number;
+  readonly mismatched: number;
+  /** 소유 source가 정본에 없는 간선. */
+  readonly orphans: number;
+  readonly unplannable: number;
+  readonly pending: number;
+  /** 서비스 인덱스에만 있고 스택 정본에 없는 `stacks_on` 간선 — 가져오기 명령이 옮겨야 한다. */
+  readonly unimportedStacks: number;
+  readonly reasons: readonly string[];
+}
+
+/** 간선 대조가 한 번에 계획하는 source 수. */
+const LINK_VERIFY_PAGE = 200;
+/** 대상에서 간선을 읽는 한 페이지. */
+const LINK_READ_PAGE = 1000;
+
+/**
+ * 대상 인덱스의 간선을 정본과 맞댄다 (CR-121 / FR-ING-008 AC-11). **읽기만 한다.**
+ *
+ * ## 기대는 재파생이 만들기로 한 간선이다
+ *
+ * 처리한 source 수는 기대가 아니다 — source 하나가 간선을 0개도, 여럿도 만든다(PR #52 리뷰 P1). 저장소마다
+ * PR·커밋 스냅숏을 페이지로 읽어 **재구축과 같은 계획 함수**(`planSource`: 참조 추출·해석, 되돌림·체리픽,
+ * 스택 정본 행)로 기대 간선을 만들고, 대상에서 그 source들의 간선을 읽어 `link_id`마다 대조한다.
+ *
+ * - 누락: 기대했는데 대상에 없다.
+ * - 잉여: 대상에 있는데 그 source가 지금 만들지 않는다 — 정본에서 참조가 사라진 옛 간선이다. 되살리지 않는다.
+ * - 불일치: 유형·범위 네 필드·끝점·근거·신뢰도·시각·해결 상태·해제 상태 가운데 하나라도 다르다. 해결
+ *   상태의 기대값은 **지금** 대상이 색인됐는지로 정한다 — 대상이 없어 미해결인 간선은 정상이다.
+ * - 고아: 소유 source가 정본에 없는 간선(저장소별 총수와 대조로 센 수의 차이).
+ * - 미처리: 회수되지 않은 행이 남았다.
+ * - 가져오기: 서비스 인덱스의 `stacks_on`이 스택 정본에 없다 — 배포 전의 해제 이력을 옮기지 않은 채
+ *   전환하면 그 이력이 사라진다(OD-017). `prsctl links import-stacks`를 먼저 돌린다.
+ *
+ * 검증은 고치지 않는다 — 고치는 것은 전환 전의 회수이고, 검증이 쓰면 자기가 고친 것을 통과시킨다.
+ */
+async function verifyLinkEdges(deps: ReindexDeps, jobId: number, targetIndex: string): Promise<LinkEdgeVerdict> {
+  const port = deps.links;
+  if (port === undefined) throw new Error('link_rebuild_port_missing');
+  const samples: string[] = [];
+  const note = (reason: string): void => {
+    if (samples.length < COMMIT_REASON_SAMPLES) samples.push(reason);
+  };
+  const counts = { sources: 0, expected: 0, missing: 0, extra: 0, mismatched: 0, orphans: 0, unplannable: 0, unimportedStacks: 0 };
+  const pending = await reindexRepo.countLinkPending(deps.pool, jobId);
+  let accountedAll = 0;
+
+  for (const repository of await allRepositories(deps.pool)) {
+    const repositoryId = Number(repository.repository_id);
+    let accounted = 0;
+
+    const check = async (refs: readonly LinkSourceRef[]): Promise<void> => {
+      const planned = new Map<string, Readonly<Record<string, unknown>>>();
+      const fromIds: string[] = [];
+      for (const ref of refs) {
+        counts.sources += 1;
+        const plan = await port.planSource(repository, ref);
+        if (plan.kind === 'absent') continue;
+        if (plan.kind === 'unplannable') {
+          counts.unplannable += 1;
+          note(`간선 계획 불가: ${ref.kind}:${ref.id.slice(0, 12)} (${plan.reason.slice(0, 80)})`);
+          continue;
+        }
+        fromIds.push(ref.kind === 'pull_request' ? pullRequestDocId(repositoryId, Number(ref.id)) : commitDocId(repositoryId, ref.id));
+        for (const edge of plan.edges) planned.set(String(edge['link_id']), edge);
+      }
+      const actual = await readLinksFrom(deps.es, targetIndex, repositoryId, fromIds);
+      for (const [linkId, want] of planned) {
+        counts.expected += 1;
+        const got = actual.get(linkId);
+        if (got === undefined) {
+          counts.missing += 1;
+          note(`간선 누락: ${linkId.slice(0, 12)} (${String(want['link_type'])} ${String(want['from_id'])})`);
+          continue;
+        }
+        const wrong = linkFieldMismatches(want, got);
+        if (wrong.length > 0) {
+          counts.mismatched += 1;
+          note(`간선 불일치: ${linkId.slice(0, 12)} [${wrong.join(',')}]`);
+        }
+      }
+      for (const [linkId, got] of actual) {
+        if (planned.has(linkId)) continue;
+        counts.extra += 1;
+        note(`정본에 없는 간선: ${linkId.slice(0, 12)} (${String(got['link_type'])} ${String(got['from_id'])})`);
+      }
+      accounted += actual.size;
+    };
+
+    let afterPr = 0;
+    for (;;) {
+      const rows = await prSnapshotRepo.listSnapshotsAfter(deps.pool, repositoryId, afterPr, LINK_VERIFY_PAGE);
+      if (rows.length === 0) break;
+      await check(rows.map((row) => ({ kind: 'pull_request', id: String(row.pr_number) })));
+      afterPr = rows[rows.length - 1]?.pr_number ?? afterPr;
+      if (rows.length < LINK_VERIFY_PAGE) break;
+    }
+    let afterSha = '';
+    for (;;) {
+      const rows = await commitSnapshotRepo.listCommitSnapshotsAfter(deps.pool, repositoryId, afterSha, LINK_VERIFY_PAGE);
+      if (rows.length === 0) break;
+      await check(rows.map((row) => ({ kind: 'commit', id: row.commit_sha.toLowerCase() })));
+      afterSha = rows[rows.length - 1]?.commit_sha ?? afterSha;
+      if (rows.length < LINK_VERIFY_PAGE) break;
+    }
+
+    // 고아 — 이 저장소가 소유한 간선 가운데 정본 source에서 온 것이 아닌 것.
+    const total = (await deps.es.count({ index: targetIndex, query: { term: { repository_id: repositoryId } } })).count;
+    if (total > accounted) {
+      counts.orphans += total - accounted;
+      note(`소유 source가 정본에 없는 간선 ${String(total - accounted)}건 (저장소 ${String(repositoryId)})`);
+    }
+    accountedAll += total;
+
+    counts.unimportedStacks += await countUnimportedStacks(deps, repositoryId, note);
+  }
+
+  // 등록되지 않은 저장소가 소유한 간선도 고아다 (FR-ING-009 AC-4 — 애초에 만들지 않는다).
+  const grand = (await deps.es.count({ index: targetIndex })).count;
+  if (grand > accountedAll) {
+    counts.orphans += grand - accountedAll;
+    note(`등록되지 않은 저장소의 간선 ${String(grand - accountedAll)}건`);
+  }
+
+  // 요약이 먼저다 — 잡 오류 칸은 잘리므로 수가 표본보다 앞에 있어야 한다.
+  const reasons: string[] = [];
+  if (pending > 0) reasons.push(`회수되지 않은 간선 미처리 ${String(pending)}건`);
+  if (counts.missing > 0) reasons.push(`간선 누락 ${String(counts.missing)}건 (기대 ${String(counts.expected)})`);
+  if (counts.mismatched > 0) reasons.push(`간선 불일치 ${String(counts.mismatched)}건`);
+  if (counts.extra > 0) reasons.push(`정본에 없는 간선 ${String(counts.extra)}건`);
+  if (counts.orphans > 0) reasons.push(`소유 source가 없는 간선 ${String(counts.orphans)}건`);
+  if (counts.unplannable > 0) reasons.push(`간선을 계획하지 못한 source ${String(counts.unplannable)}건`);
+  if (counts.unimportedStacks > 0) {
+    reasons.push(`스택 정본에 없는 서비스 stacks_on 간선 ${String(counts.unimportedStacks)}건 — prsctl links import-stacks를 먼저 돌린다`);
+  }
+  if (reasons.length > 0) reasons.push(...samples);
+  return { ...counts, pending, reasons };
+}
+
+/**
+ * 대상 인덱스에서 source들의 간선을 읽는다. `link_id` → 문서 본문.
+ *
+ * 라우팅은 소유 저장소다 — 다른 샤드에 잘못 쓰인 간선은 없는 것으로 보이고, 그것이 옳다: 조회도 같은
+ * 라우팅으로 읽는다. 페이지는 `link_id` 정렬로 끝까지 넘긴다.
+ */
+async function readLinksFrom(
+  es: Client,
+  index: string,
+  repositoryId: number,
+  fromIds: readonly string[],
+): Promise<Map<string, Readonly<Record<string, unknown>>>> {
+  const found = new Map<string, Readonly<Record<string, unknown>>>();
+  if (fromIds.length === 0) return found;
+  let after: unknown[] | undefined;
+  for (;;) {
+    const response = await es.search<Record<string, unknown>>({
+      index,
+      routing: String(repositoryId),
+      size: LINK_READ_PAGE,
+      sort: [{ link_id: 'asc' }],
+      query: { bool: { filter: [{ term: { repository_id: repositoryId } }, { terms: { from_id: [...fromIds] } }] } },
+      ...(after === undefined ? {} : { search_after: after as never }),
+    });
+    const hits = response.hits.hits;
+    for (const hit of hits) {
+      if (hit._source === undefined || hit._id === undefined) continue;
+      found.set(hit._id, hit._source);
+    }
+    if (hits.length < LINK_READ_PAGE) return found;
+    const last = hits[hits.length - 1];
+    if (last?.sort === undefined) return found;
+    after = last.sort;
+  }
+}
+
+/** 두 간선 문서가 다른 필드 이름들. 필드가 한쪽에만 있는 것도 다르다 — 없는 것과 `false`는 다른 주장이다. */
+function linkFieldMismatches(
+  want: Readonly<Record<string, unknown>>,
+  got: Readonly<Record<string, unknown>>,
+): readonly string[] {
+  const keys = new Set([...Object.keys(want), ...Object.keys(got)]);
+  const wrong: string[] = [];
+  for (const key of [...keys].sort()) {
+    if (JSON.stringify(want[key]) !== JSON.stringify(got[key])) wrong.push(key);
+  }
+  return wrong;
+}
+
+/**
+ * 서비스 인덱스의 `stacks_on` 가운데 스택 정본에 없는 수 (OD-017, 가져오기 확인).
+ *
+ * 배포 전 해제 이력은 서비스 인덱스에만 있다. 그것을 옮기지 않은 채 새 인덱스로 전환하면 그 이력이
+ * 조용히 사라진다 — 그래서 막는다. 가져온 뒤로는 파생이 정본에 먼저 쓰므로 이 수는 0으로 머문다.
+ */
+async function countUnimportedStacks(deps: ReindexDeps, repositoryId: number, note: (reason: string) => void): Promise<number> {
+  const pairs: { child: number; parent: number; linkId: string }[] = [];
+  let after: unknown[] | undefined;
+  for (;;) {
+    const response = await deps.es.search<Record<string, unknown>>({
+      index: LINKS_ALIAS,
+      routing: String(repositoryId),
+      size: LINK_READ_PAGE,
+      _source: ['link_id', 'from_id', 'to_id'],
+      sort: [{ link_id: 'asc' }],
+      query: { bool: { filter: [{ term: { repository_id: repositoryId } }, { term: { link_type: 'stacks_on' } }] } },
+      ...(after === undefined ? {} : { search_after: after as never }),
+    });
+    const hits = response.hits.hits;
+    for (const hit of hits) {
+      const child = prNumberOf(repositoryId, hit._source?.['from_id']);
+      const parent = prNumberOf(repositoryId, hit._source?.['to_id']);
+      pairs.push({ child: child ?? -1, parent: parent ?? -1, linkId: hit._id ?? '' });
+    }
+    if (hits.length < LINK_READ_PAGE) break;
+    const last = hits[hits.length - 1];
+    if (last?.sort === undefined) break;
+    after = last.sort;
+  }
+  if (pairs.length === 0) return 0;
+  const existing = await prStackRepo.findExistingPairs(
+    deps.pool,
+    repositoryId,
+    pairs.filter((one) => one.child > 0 && one.parent > 0),
+  );
+  let missing = 0;
+  for (const one of pairs) {
+    if (existing.has(`${String(one.child)}:${String(one.parent)}`)) continue;
+    missing += 1;
+    note(`스택 정본에 없는 서비스 간선: ${one.linkId.slice(0, 12)} (저장소 ${String(repositoryId)})`);
+  }
+  return missing;
+}
+
+/** `{repository_id}:{pr}` 형식의 PR 문서 ID에서 번호. 형식이 다르면 `undefined`다. */
+function prNumberOf(repositoryId: number, docId: unknown): number | undefined {
+  if (typeof docId !== 'string') return undefined;
+  const prefix = `${String(repositoryId)}:`;
+  if (!docId.startsWith(prefix)) return undefined;
+  const key = docId.slice(prefix.length);
+  return /^\d+$/.test(key) ? Number(key) : undefined;
 }
 
 /** 커밋 문서 대조 결과 (CR-119 / FR-ING-008 AC-10). */
@@ -1506,6 +1877,23 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
     /* ---- backfill: PostgreSQL 정본에서 다시 만든다 (ADR-004). */
     await advance(deps, jobId, { phase: 'backfill' });
     const tally = await rebuildAlias(deps, alias, jobId);
+    /*
+     * **간선의 미처리를 먼저 회수한다** (CR-121). 재구축이 끝났다고 정본 스캔이 완결된 것이 아니다 —
+     * 부분 갱신이 새 인덱스에서 간선을 찾지 못했거나 파생이 불완전했던 source가 남아 있으면, 그것을
+     * 다시 파생하기 전에는 `scan_complete`가 아니다.
+     */
+    if (alias === 'prs-links') {
+      const recovery = await recoverLinkPending(deps, jobId);
+      log({
+        level: 'info',
+        message: '간선 미처리 회수',
+        job_id: jobId,
+        alias,
+        phase: 'backfill',
+        target_index: target,
+        detail: `rederived=${String(recovery.rederived)} absent=${String(recovery.absent)} rounds=${String(recovery.rounds)}`,
+      });
+    }
     await advance(deps, jobId, {
       documents_scanned: tally.scanned,
       documents_written: tally.written,
@@ -1522,95 +1910,134 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
       written: tally.written,
     });
 
-    /* ---- verify */
-    await advance(deps, jobId, { phase: 'verify' });
     /*
-     * 재구축이 쓴 문서 수를 기대로 넘기는 것은 PR·릴리스뿐이다.
-     *
-     * - **커밋은 넘기지 않는다** (CR-119). 검증이 기대 집합을 정본과 생성 정책에서 문서 ID로 다시
-     *   계산하고 건수·존재·메타데이터를 함께 대조한다. 쓰기로 센 값은 만들지 못한 문서까지
-     *   세었다(사내 pilot.18).
-     * - 간선은 `rebuildRepository`가 처리한 source 수만 돌려주므로 문서 수를 셀 수
-     *   없다 — 그때는 커버리지를 판정하지 않고 나머지 여섯으로 건다.
+     * ---- verify → cutover. prs-links는 전환 울타리에서 새 미처리를 만나면 회수 뒤 다시 검증한다 (CR-121).
      */
-    const expected = alias === 'prs-pull-requests' || alias === 'prs-releases' ? tally.documentIds.size : null;
-    const verdict = await verifyBeforeCutover(deps, jobId, expected);
-    if (!verdict.ok) {
-      const detail = verdict.reasons.join('; ');
-      log({ level: 'error', message: '전환 전 검증 실패 — 별칭을 옮기지 않는다', job_id: jobId, alias, reason: 'verify_failed', detail });
-      await jobRepo.finishJobIfRunning(deps.pool, jobId, 'failed', detail.slice(0, 500));
-      return;
-    }
-
-    /*
-     * ---- cutover: 배타 울타리 안에서 **한 번에** 옮긴다 (AC-3).
-     *
-     * 울타리가 "진행 중인 논리 쓰기가 하나도 없음"을 보장하므로, 옮긴 뒤에
-     * shadow가 뒤늦게 불완전해지는 경주가 없다 (DEV-308).
-     */
-    await advance(deps, jobId, { phase: 'cutover' });
+    let switched = false;
     let cutoverAbortReason: string | null = null;
-    const switched = await withReindexExclusive(deps.pool, async (client) => {
-      // 울타리를 잡은 지금 다시 본다 — 기다리는 동안 취소·실패가 들어왔을 수 있다.
-      const latest = await reindexRepo.findReindexJob(client, jobId);
-      if (latest === undefined || latest.state !== 'running') return false;
-      if ((latest.progress.failures ?? 0) > 0) return false;
-
+    for (let attempt = 1; ; attempt += 1) {
+      /* ---- verify */
+      await advance(deps, jobId, { phase: 'verify' });
       /*
-       * 시퀀스 에폭 대조 (CR-113). replay가 비춘 에폭과 지금 정본의 에폭이 다르면 그 사이에
-       * 재채번이 있었다 — 새 인덱스의 서수는 옛 에폭이다. 전환하지 않는다. 옮기지 않은
-       * 별칭은 그대로 서비스되고, 운영자가 다시 실행하면 새 에폭으로 replay한다.
+       * 재구축이 쓴 문서 수를 기대로 넘기는 것은 PR·릴리스뿐이다.
+       *
+       * - **커밋은 넘기지 않는다** (CR-119). 검증이 기대 집합을 정본과 생성 정책에서 문서 ID로 다시
+       *   계산하고 건수·존재·메타데이터를 함께 대조한다. 쓰기로 센 값은 만들지 못한 문서까지
+       *   세었다(사내 pilot.18).
+       * - **간선도 넘기지 않는다** (CR-121). 처리한 source 수는 간선 수가 아니다 — 검증이 재파생의
+       *   계획에서 기대 간선을 세고 `link_id`마다 대조한다.
        */
-      const moved = await sequenceEpochsMoved(client, (latest.progress as Partial<ReindexProgress> & { sequence_replay?: SequenceReplayProgress }).sequence_replay);
-      if (moved !== null) {
-        cutoverAbortReason = moved;
-        return false;
+      const expected = alias === 'prs-pull-requests' || alias === 'prs-releases' ? tally.documentIds.size : null;
+      const verdict = await verifyBeforeCutover(deps, jobId, expected);
+      if (!verdict.ok) {
+        const detail = verdict.reasons.join('; ');
+        log({ level: 'error', message: '전환 전 검증 실패 — 별칭을 옮기지 않는다', job_id: jobId, alias, reason: 'verify_failed', detail });
+        await jobRepo.finishJobIfRunning(deps.pool, jobId, 'failed', detail.slice(0, 500));
+        return;
       }
 
       /*
-       * 검증한 그 인덱스인가 (CR-119). 검증과 전환 사이에 대상이 지워지고 이중 쓰기가 같은 이름을
-       * 자동 생성했다면, 별칭은 빈 동적 매핑 인덱스로 옮겨 간다. 울타리 안이라 이 뒤로는 쓰기가 없다.
-       */
-      const replaced = await targetReplaced(deps.es, target, latest.progress.target_uuid);
-      if (replaced !== null) {
-        cutoverAbortReason = replaced;
-        return false;
-      }
-
-      await switchAlias(deps.es, alias, current.progress.source_index, target);
-
-      /*
-       * **여기서부터는 별칭이 이미 옮겨졌다** (PR #52 리뷰 P2).
+       * ---- cutover: 배타 울타리 안에서 **한 번에** 옮긴다 (AC-3).
        *
-       * 이 기록이 실패하면 새 인덱스가 서비스 중인데 `switched_at`이 비고, 옛
-       * 인덱스는 보관 대상에 오르지 않아 영원히 남는다. 그래서 몇 번 다시 쓰고,
-       * 그래도 안 되면 **전환이 일어났다는 사실을 오류 메시지에 실어** 던진다 —
-       * 조용히 "실패"로만 적으면 운영자가 별칭이 옮겨진 것을 모른다.
-       *
-       * 그리고 보관 스윕이 매 주기 `reconcileSwitchedJobs`로 같은 상태를 스스로
-       * 고친다 — 사람이 손대지 않아도 다음 주기에 아문다.
+       * 울타리가 "진행 중인 논리 쓰기가 하나도 없음"을 보장하므로, 옮긴 뒤에
+       * shadow가 뒤늦게 불완전해지는 경주가 없다 (DEV-308).
        */
-      let recorded = false;
-      let lastError: unknown;
-      for (let attempt = 1; attempt <= SWITCH_RECORD_ATTEMPTS && !recorded; attempt += 1) {
-        try {
-          await reindexRepo.patchReindexProgress(client, jobId, {
-            phase: 'retention',
-            switched_at: nowOf(deps).toISOString(),
-          });
-          recorded = true;
-        } catch (error) {
-          lastError = error;
+      await advance(deps, jobId, { phase: 'cutover' });
+      cutoverAbortReason = null;
+      let pendingAtCutover = 0;
+      switched = await withReindexExclusive(deps.pool, async (client) => {
+        // 울타리를 잡은 지금 다시 본다 — 기다리는 동안 취소·실패가 들어왔을 수 있다.
+        const latest = await reindexRepo.findReindexJob(client, jobId);
+        if (latest === undefined || latest.state !== 'running') return false;
+        if ((latest.progress.failures ?? 0) > 0) return false;
+
+        /*
+         * 검증과 전환 사이의 새 미처리 (CR-121). 울타리 밖에서 간선의 부분 갱신이 새 인덱스에서 간선을
+         * 찾지 못했을 수 있다 — 그 간선은 아직 회수되지 않았다. 전환하지 않고, 울타리를 놓은 뒤 회수한다.
+         */
+        if (alias === 'prs-links') {
+          pendingAtCutover = await reindexRepo.countLinkPending(client, jobId);
+          if (pendingAtCutover > 0) {
+            cutoverAbortReason = `link_pending_at_cutover: ${String(pendingAtCutover)}건`;
+            return false;
+          }
         }
+
+        /*
+         * 시퀀스 에폭 대조 (CR-113). replay가 비춘 에폭과 지금 정본의 에폭이 다르면 그 사이에
+         * 재채번이 있었다 — 새 인덱스의 서수는 옛 에폭이다. 전환하지 않는다. 옮기지 않은
+         * 별칭은 그대로 서비스되고, 운영자가 다시 실행하면 새 에폭으로 replay한다.
+         */
+        const moved = await sequenceEpochsMoved(client, (latest.progress as Partial<ReindexProgress> & { sequence_replay?: SequenceReplayProgress }).sequence_replay);
+        if (moved !== null) {
+          cutoverAbortReason = moved;
+          return false;
+        }
+
+        /*
+         * 검증한 그 인덱스인가 (CR-119). 검증과 전환 사이에 대상이 지워지고 이중 쓰기가 같은 이름을
+         * 자동 생성했다면, 별칭은 빈 동적 매핑 인덱스로 옮겨 간다. 울타리 안이라 이 뒤로는 쓰기가 없다.
+         */
+        const replaced = await targetReplaced(deps.es, target, latest.progress.target_uuid);
+        if (replaced !== null) {
+          cutoverAbortReason = replaced;
+          return false;
+        }
+
+        await switchAlias(deps.es, alias, current.progress.source_index, target);
+
+        /*
+         * **여기서부터는 별칭이 이미 옮겨졌다** (PR #52 리뷰 P2).
+         *
+         * 이 기록이 실패하면 새 인덱스가 서비스 중인데 `switched_at`이 비고, 옛
+         * 인덱스는 보관 대상에 오르지 않아 영원히 남는다. 그래서 몇 번 다시 쓰고,
+         * 그래도 안 되면 **전환이 일어났다는 사실을 오류 메시지에 실어** 던진다 —
+         * 조용히 "실패"로만 적으면 운영자가 별칭이 옮겨진 것을 모른다.
+         *
+         * 그리고 보관 스윕이 매 주기 `reconcileSwitchedJobs`로 같은 상태를 스스로
+         * 고친다 — 사람이 손대지 않아도 다음 주기에 아문다.
+         */
+        let recorded = false;
+        let lastError: unknown;
+        for (let attempt = 1; attempt <= SWITCH_RECORD_ATTEMPTS && !recorded; attempt += 1) {
+          try {
+            await reindexRepo.patchReindexProgress(client, jobId, {
+              phase: 'retention',
+              switched_at: nowOf(deps).toISOString(),
+            });
+            recorded = true;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        if (!recorded) {
+          throw new Error(
+            `alias_switched_but_unrecorded: ${alias} → ${target} (옛 인덱스 ${current.progress.source_index}는 ` +
+              `보관 스윕이 재대조로 회수한다): ${String(lastError)}`,
+          );
+        }
+        return true;
+      });
+
+      /*
+       * **울타리를 놓은 뒤에 회수하고 다시 검증한다** (CR-121). 울타리를 쥔 채 회수를 기다리면 회수의 쓰기가
+       * 공유 울타리를 기다려 교착이 된다. 새 쓰기와 경주하지 않는 이유: 회수는 울타리 밖에서 쓰고, 검증은
+       * 미처리 수를 다시 보며, 전환 울타리가 그 수를 한 번 더 본다. 시도 상한을 넘으면 명시적으로 실패한다.
+       */
+      if (!switched && pendingAtCutover > 0 && attempt < LINK_CUTOVER_ATTEMPTS) {
+        const recovery = await recoverLinkPending(deps, jobId);
+        log({
+          level: 'warn',
+          message: '전환 직전에 간선 미처리를 만났다 — 회수한 뒤 다시 검증한다',
+          job_id: jobId,
+          alias,
+          reason: 'link_pending_at_cutover',
+          detail: `attempt=${String(attempt)} pending=${String(pendingAtCutover)} rederived=${String(recovery.rederived)} absent=${String(recovery.absent)}`,
+        });
+        continue;
       }
-      if (!recorded) {
-        throw new Error(
-          `alias_switched_but_unrecorded: ${alias} → ${target} (옛 인덱스 ${current.progress.source_index}는 ` +
-            `보관 스윕이 재대조로 회수한다): ${String(lastError)}`,
-        );
-      }
-      return true;
-    });
+      break;
+    }
 
     if (!switched) {
       const reason = cutoverAbortReason ?? 'cutover_aborted';
@@ -1647,6 +2074,17 @@ export async function runReindexJob(deps: ReindexDeps, job: JobRow): Promise<voi
     const detail = String(error).slice(0, 500);
     log({ level: 'error', message: '재색인 실패 — 별칭은 그대로다', job_id: jobId, alias, reason: 'reindex_failed', detail });
     await jobRepo.finishJobIfRunning(deps.pool, jobId, 'failed', detail);
+  } finally {
+    /*
+     * 끝난 잡의 간선 미처리 대기열은 뜻이 없다 (CR-121). 멈춘(`paused`)·다시 큐에 든 잡은 재개 뒤에 회수해야
+     * 하므로 남긴다.
+     */
+    if (alias === 'prs-links') {
+      const state = await jobRepo.findJobState(deps.pool, jobId).catch(() => undefined);
+      if (state === 'completed' || state === 'failed' || state === 'cancelled') {
+        await reindexRepo.clearLinkPending(deps.pool, jobId).catch(() => undefined);
+      }
+    }
   }
 }
 

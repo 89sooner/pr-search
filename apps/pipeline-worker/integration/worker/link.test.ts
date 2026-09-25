@@ -217,6 +217,8 @@ describe('참조 간선 파생과 해결 (WP-029 / CR-039)', () => {
     for (const id of [REPOSITORY_ID, OTHER_ID]) {
       await pool.query('DELETE FROM pull_request_snapshot WHERE repository_id = $1', [id]);
       await pool.query('DELETE FROM commit_snapshot WHERE repository_id = $1', [id]);
+      // 스택의 정본 (CR-121). 남으면 다음 시험의 하위 PR이 앞 시험의 관계를 해제 간선으로 물려받는다.
+      await pool.query('DELETE FROM pull_request_stack WHERE repository_id = $1', [id]);
       await pool.query('DELETE FROM repository WHERE repository_id = $1', [id]);
     }
     await repositoryRepo.upsertRepository(pool, {

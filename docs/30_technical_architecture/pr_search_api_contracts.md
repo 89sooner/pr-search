@@ -1,5 +1,7 @@
 # PR Search API 계약
 
+> CR-121 / FR-ING-008 AC-11, FR-REL-006 AC-6 (2026-09-25): 새 HTTP 경로·새 오류 코드·응답 모양 변경은 없다. 간선 재색인이 전환 전 검증에서 실패하면 그 사유(`간선 누락 N건`·`간선 불일치 N건`·`정본에 없는 간선 N건`·`소유 source가 없는 간선 N건`·`회수되지 않은 간선 미처리 N건`·`스택 정본에 없는 서비스 stacks_on 간선 N건`, 회수가 수렴하지 않으면 `link_pending_unrecovered`, 전환 직전 미처리가 남으면 `link_pending_at_cutover`)가 잡의 `error`에 남는다. 미처리 대기열은 잡 행의 `progress`에 싣지 않는다 — 별도 표(`reindex_link_pending`)이고 잡이 끝나면 비운다. 운영자 명령 하나가 더해진다: `prsctl links import-stacks --repository <owner/name> [--dry-run]`(배포 전 서비스 스택 간선의 일회성 가져오기 — `links apply`와 같이 `pr_link_repair` 잡 행과 감사 `job.run`을 남긴다, RUNBOOK 7.I).
+>
 > CR-119 / FR-ING-008 AC-10 (2026-09-25): 새 경로·새 오류 코드·응답 모양 변경은 없다. 재색인 잡의 `progress`에 필드 하나(`target_uuid` — 준비 단계에서 확인한 대상 인덱스 UUID)가 더해진다. `GET /api/v1/admin/reindex`는 `progress`에서 정해진 키만 골라 내므로 그 응답은 바뀌지 않고, 잡 목록·상세(API-ADM-002)의 `progress`에는 보인다. 커밋 재색인이 전환 전 검증에서 실패하면 그 사유(`커밋 문서 누락 N건`·`커밋 메타데이터 불일치 N건`·`대상 인덱스가 바뀌었다`)가 잡의 `error`에 남는다.
 >
 > CR-117 / FR-SRCH-002 AC-7, FR-SRCH-003 AC-5 (2026-09-24): **원본 커밋은 그 PR이 새로 가져온 커밋이다.** 새 경로·새 오류 코드는 없고, API-SRCH-003에 **추가 필드 하나**(`source_commits_excluded`)가 생긴다. 추적 브랜치의 현재 체인에 이미 오른 커밋은 그 커밋을 올린 PR에만 속하므로, 피처 브랜치가 `git merge dev`로 받아 온 dev 커밋에서는 그 PR 번호가 빠진다 — API-SRCH-002(SHA → PR), API-SRCH-001 후보, API-SRC-002(`/history`)의 `pull_request_numbers`가 모두 같은 정의다. API-SRCH-003의 `source_commits`는 커밋의 연결 PR(투영이 수렴한 값)에 그 PR이 없는 항목을 빼고 뺀 수를 싣는다. `source_commits_total`은 뺀 뒤 남은 수다. 연동 경로(API-INT-007·009·010·012)는 같은 실행 함수를 부르므로 같다.
@@ -50,7 +52,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. **그 배열이 무엇인지는 CR-116이 정정한다 — 계약의 모양은 그대로다.** 배열은 「언젠가 한 번 그 커밋을 포함했던 모든 PR」이 아니라 채택된 최신 관측에 근거한 **현재 유효한 연결**이며, PR이 rebase되어 원본 커밋 목록에서 빠진 커밋에서는 그 번호가 사라진다(같은 커밋의 다른 PR 연결과 실제 병합 근거는 남는다). 그래서 이 열의 값은 세 가지 다른 사실을 계속 가른다 — **빈 배열**은 「검증한 범위에서 이 커밋에 연결된 PR이 0개」라는 사실의 진술이고, **`null`**은 「아직 확정하지 못했다」이며, **`pull_requests_unavailable: true`**는 「조회 자체를 하지 못했다」다. 앞의 둘을 합치거나 빈 배열을 필드 부재로 바꾸면 이 구분이 사라진다. 연결의 제거는 그 PR의 커밋 목록이 원격의 전부임을 증명한 관측에만 허용되므로, 증명하지 못한 동안에는 옛 번호가 남아 있을 수 있고 그 사실은 응답이 아니라 운영 경로(RB-29)가 답한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.45 | 갱신일: 2026-09-25
+> 상태: review | 버전: v0.46 | 갱신일: 2026-09-25
 
 ## 1. 목적
 

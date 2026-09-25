@@ -86,5 +86,6 @@ export {
   withReindexExclusive,
   withReindexWrite,
   type FenceShadowFailure,
+  type FenceShadowPending,
   type ReindexWriteTargets,
 } from './reindex-fence.js';

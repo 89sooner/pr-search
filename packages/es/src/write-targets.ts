@@ -31,6 +31,25 @@ export interface ShadowWriteFailure {
 }
 
 /**
+ * shadow에서 **부분 갱신의 대상 문서가 아직 없었던** 간선 하나 (CR-121 / FR-ING-008 AC-11).
+ *
+ * 실패도 성공도 아니다 — 회수할 일이다. 그 간선의 소유 source가 재구축에서 아직 처리되지
+ * 않았거나, 처리된 뒤에 부분 갱신이 도착했다. 여기서 문서를 만들지 않는다(근거·권한 필드가
+ * 없다). 울타리를 쥔 쪽이 재색인 잡의 대기열에 남기고, 잡이 소유 source를 정본에서 다시
+ * 파생해 회수한다.
+ */
+export interface ShadowPendingWork {
+  readonly alias: string;
+  readonly index: string;
+  /** 소유 source의 저장소 — 간선의 routing이다. */
+  readonly repositoryId: number;
+  readonly sourceKind: 'pull_request' | 'commit';
+  /** PR 번호(10진 문자열) 또는 소문자 40자 SHA. */
+  readonly sourceId: string;
+  readonly linkId: string;
+}
+
+/**
  * 이 논리 쓰기가 닿을 대상.
  *
  * 서비스 대상은 **언제나 안정 별칭 이름**이다 (FR-ING-008 AC-1). 구체 이름을
@@ -48,6 +67,8 @@ export interface WriteTargets {
    * 보고 잡을 `failed`로 만들어 전환을 막는다.
    */
   readonly recordShadowFailure?: (failure: ShadowWriteFailure) => void;
+  /** shadow 미처리를 여기에 모은다 (CR-121). 없으면 미처리는 실패로 올라간다. */
+  readonly recordShadowPending?: (pending: ShadowPendingWork) => void;
 }
 
 /** 재색인이 없을 때의 대상. 시험과 부트스트랩이 쓴다. */
@@ -67,6 +88,23 @@ export function writeIndicesOf(targets: WriteTargets, alias: string): readonly s
 /** shadow 실패를 기록한다. 기록자가 없으면 조용히 버리지 않고 아무 일도 하지 않는다. */
 export function reportShadowFailure(targets: WriteTargets, failure: ShadowWriteFailure): void {
   targets.recordShadowFailure?.(failure);
+}
+
+/**
+ * shadow 미처리를 기록한다. **기록자가 없으면 실패로 올린다** — 누가 회수할지 모르는 미처리는
+ * 조용히 사라지고, 그러면 새 인덱스에 간선이 빠진 채 전환된다 (fail closed).
+ */
+export function reportShadowPending(targets: WriteTargets, pending: ShadowPendingWork): void {
+  if (targets.recordShadowPending === undefined) {
+    reportShadowFailure(targets, {
+      alias: pending.alias,
+      index: pending.index,
+      operation: 'bulk',
+      reason: `document_missing_exception (미처리를 받을 기록자가 없다: ${pending.linkId})`,
+    });
+    return;
+  }
+  targets.recordShadowPending(pending);
 }
 
 /**

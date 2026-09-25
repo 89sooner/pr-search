@@ -1292,7 +1292,14 @@ describe('되돌림·체리픽·스택 파생의 도달성 (WP-030 / CR-041)', (
     expect(RELATIONS).toContain("linkType: 'reverts'");
     expect(RELATIONS).toContain("linkType: 'cherry_picks'");
     expect(RELATIONS).not.toContain("linkType: 'stacks_on'");
-    expect(RELATIONS).toContain('await setLinkDetached(');
+    /*
+     * **해제는 PostgreSQL 정본에서 온다** (CR-121, OD-017). 성립 집합에 행을 맞추고 그 하위 PR의 행 전부를
+     * 전체 쓰기한다 — 서비스 색인의 간선에 부분 갱신하던 옛 경로(`setLinkDetached`)는 재색인이 해제
+     * 이력을 되살리지 못하게 했다. 그 경로가 돌아오면 이 검사가 잡는다.
+     */
+    expect(RELATIONS).toContain('await prStackRepo.reconcileStacks(');
+    expect(RELATIONS).toContain('stackDocsFromRows(repository, reconciled.rows)');
+    expect(RELATIONS).not.toContain('setLinkDetached(');
   });
 
   it('**요약을 active 간선 집합에서 재계산한다** (DEV-241)', () => {
@@ -1345,7 +1352,11 @@ describe('되돌림·체리픽·스택 파생의 도달성 (WP-030 / CR-041)', (
 
   it('**부분 실패를 조용히 ack하지 않는다** (PR #46 리뷰 P1) — WP-030에는 pending 표식이 없다', () => {
     expect(RELATIONS).toContain('throw new Error(`관계 간선 쓰기 실패');
-    expect(RELATIONS).toContain('throw new Error(`스택 해제 표시 실패');
+    /*
+     * 스택 해제는 이제 따로 부분 갱신하지 않는다 (CR-121, OD-017) — 해제 간선도 정본 행에서 나와 같은 쓰기
+     * 묶음에 실리므로, 그 쓰기의 실패가 위의 던짐으로 간다.
+     */
+    expect(RELATIONS).toContain('const all = [...revertDocs, ...cherryDocs, ...stackDocs];');
   });
 
   it('**`links_pending`을 관계 파생이 덮지 않는다** (DEV-246, PR #46 리뷰 P1)', () => {
@@ -1363,9 +1374,11 @@ describe('되돌림·체리픽·스택 파생의 도달성 (WP-030 / CR-041)', (
     expect(plan).not.toContain('.filter((row) => isLater(self, row))');
   });
 
-  it('**retarget된 옛 child를 간선에서 찾는다** (PR #46 리뷰 P2)', () => {
+  it('**retarget된 옛 child를 스택 정본에서 찾는다** (PR #46 리뷰 P2 · CR-121)', () => {
     const reeval = RELATIONS.slice(RELATIONS.indexOf('export async function reevaluateAffectedRelations'));
-    expect(reeval).toContain('await findLinksTo(deps.es');
+    // 성립한 적 있는 관계는 정본 행으로 남는다 — 분기가 무엇으로 바뀌었든 옛 child를 찾는다. 전에는 서비스 색인의 간선으로 찾았다.
+    expect(reeval).toContain('await prStackRepo.listChildrenOf(deps.pool, repositoryId, Number(source.id), AFFECTED_LIMIT)');
+    expect(reeval).not.toContain('findLinksTo(deps.es');
   });
 
   it('**범위 요약이 되돌림 수를 같은 왕복에서 센다** (DEV-239) — N+1이 아니다', () => {
@@ -1960,10 +1973,13 @@ describe('무중단 재색인의 도달성과 계약 (WP-035 / CR-045~047)', () 
     const write = FENCE.slice(FENCE.indexOf('export async function withReindexWrite'));
     const body = write.slice(0, write.indexOf('export async function withReindexExclusive'));
     const run = body.indexOf('const result = await run(targets)');
-    const record = body.indexOf('recordShadowFailures(client, active.job_id, failures)');
+    // 간선 미처리(CR-121)도 같은 구간에서 대기열에 남기거나 실패로 올린다 — 밖으로 밀리면 전환이 그 미처리를 못 본다.
+    const pending = body.indexOf('await recordPendings(client, active, pendings)');
+    const record = body.indexOf('recordShadowFailures(client, active.job_id, all)');
     const release = body.indexOf('releaseAdvisorySharedLock(client, key)');
     expect(run).toBeGreaterThan(-1);
-    expect(record).toBeGreaterThan(run);
+    expect(pending).toBeGreaterThan(run);
+    expect(record).toBeGreaterThan(pending);
     expect(release).toBeGreaterThan(record);
   });
 

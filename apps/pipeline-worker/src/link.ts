@@ -55,8 +55,10 @@ import { commitSnapshotRepo, jobRepo, prSnapshotRepo, repositoryRepo, withReinde
 import type { Pool, RepositoryRow } from '@prs/db';
 import {
   deleteStaleReferenceLinks,
+  derivedLinkSource,
   findReferenceTargets,
   findReferencesTo,
+  referenceLinkSource,
   resolveReferenceLinks,
   updateLinkSummary,
   writeReferenceLinks,
@@ -67,8 +69,9 @@ import {
   type WriteTargets,
 } from '@prs/es';
 import type { Client } from '@elastic/elasticsearch';
-import { handleRelationsReady, type RelationOutcome } from './relations.js';
+import { deriveRelations, handleRelationsReady, planRelationEdges, type RelationOutcome } from './relations.js';
 import type { WorkerMetrics } from './metrics.js';
+import type { LinkRebuildPort, PlannedLinks } from './reindex.js';
 
 export const LINK_DERIVE_JOB = 'JOB-REL-001' as const;
 export const LINK_RESOLVE_JOB = 'JOB-REL-005' as const;
@@ -117,6 +120,11 @@ export interface DeriveOutcome {
   readonly removed: number;
   /** 이번 회차가 완전한 파생에 성공했는가. `false`면 `links_pending`이 남는다. */
   readonly complete: boolean;
+  /**
+   * 정본에 source가 없었다 (CR-121). 실패가 아니라 「만들 간선이 없다」이다 — 재색인의 회수가 이것과
+   * 불완전을 가른다: 없는 source의 미처리는 끝난 일이고, 불완전은 다시 할 일이다.
+   */
+  readonly absent?: true;
 }
 
 const EMPTY: DeriveOutcome = { references: 0, resolved: 0, removed: 0, complete: false };
@@ -220,30 +228,28 @@ function toLookup(key: string, repositoryId: number, target: ReferenceTarget): T
   }
 }
 
+/** 한 source의 참조 간선 계획 — 쓰기 전의 결과다. 파생과 전환 전 검증이 함께 쓴다 (CR-121). */
+export type ReferencePlan =
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'extract_failed'; readonly reason: string }
+  | { readonly kind: 'planned'; readonly docs: readonly ReferenceLinkDoc[]; readonly resolvedCount: number };
+
 /**
- * 한 source의 참조 간선을 **완전히** 다시 만든다 (JOB-REL-001).
+ * 정본에서 참조 간선을 **계획한다** — 아무것도 쓰지 않는다 (CR-121).
  *
- * 파생이 **해결까지 다시 시도한다.** 그러지 않으면 재파생이 이미 해결된 간선을
- * 미해결로 되돌린다 — 간선을 통째로 색인하기 때문이다.
+ * 추출·대상 해석·간선 문서까지가 여기다. 파생(`deriveReferenceLinks`)이 이 결과를 쓰고, 전환 전
+ * 검증이 이 결과를 새 인덱스와 맞댄다 — 같은 함수라 둘이 다른 간선을 말할 수 없다.
  */
-export async function deriveReferenceLinks(
+export async function planReferenceLinks(
   deps: LinkDeps,
   repository: RepositoryRow,
   source: LinkSource,
-): Promise<DeriveOutcome> {
-  const log = deps.log ?? ((): void => undefined);
+): Promise<ReferencePlan> {
   const repositoryId = Number(repository.repository_id);
   const docId = docIdOf(repositoryId, source);
 
   const canonical = await readSource(deps, repositoryId, source);
-  if (canonical === undefined) {
-    /*
-     * 정본이 없으면 **아무것도 확정하지 않는다.** 간선을 지우지도, 완결을 찍지도
-     * 않는다 — 여기서 "참조 0건"으로 확정하면 정본이 늦게 도착한 문서의 간선이
-     * 통째로 사라진다.
-     */
-    return EMPTY;
-  }
+  if (canonical === undefined) return { kind: 'absent' };
 
   let extracted: readonly ExtractedReference[];
   try {
@@ -252,19 +258,7 @@ export async function deriveReferenceLinks(
       gheHost: deps.gheHost ?? null,
     });
   } catch (error) {
-    /*
-     * 추출 실패는 색인을 막지 않는다 (FR-REL-003 예외 처리). **기존 간선도 지우지
-     * 않는다** — 부분 결과를 완전한 결과로 확정하면 멀쩡한 간선이 사라진다.
-     */
-    log({
-      level: 'warn',
-      message: '참조 추출 실패 — 기존 간선을 보존한다',
-      repository_id: repositoryId,
-      doc_id: docId,
-      reason: String(error).slice(0, 200),
-    });
-    await withReindexWrite(deps.pool, (targets) => markPending(deps, targets, source, repositoryId, docId));
-    return EMPTY;
+    return { kind: 'extract_failed', reason: String(error).slice(0, 200) };
   }
 
   // ---- 대상 해석. 등록되지 않은 저장소는 미해결이 정답이다.
@@ -296,6 +290,48 @@ export async function deriveReferenceLinks(
     created_at: canonical.canonicalAt,
     resolution: resolutions.get(reference.reference_key) ?? null,
   }));
+  return { kind: 'planned', docs, resolvedCount: resolutions.size };
+}
+
+/**
+ * 한 source의 참조 간선을 **완전히** 다시 만든다 (JOB-REL-001).
+ *
+ * 파생이 **해결까지 다시 시도한다.** 그러지 않으면 재파생이 이미 해결된 간선을
+ * 미해결로 되돌린다 — 간선을 통째로 색인하기 때문이다.
+ */
+export async function deriveReferenceLinks(
+  deps: LinkDeps,
+  repository: RepositoryRow,
+  source: LinkSource,
+): Promise<DeriveOutcome> {
+  const log = deps.log ?? ((): void => undefined);
+  const repositoryId = Number(repository.repository_id);
+  const docId = docIdOf(repositoryId, source);
+
+  const plan = await planReferenceLinks(deps, repository, source);
+  if (plan.kind === 'absent') {
+    /*
+     * 정본이 없으면 **아무것도 확정하지 않는다.** 간선을 지우지도, 완결을 찍지도
+     * 않는다 — 여기서 "참조 0건"으로 확정하면 정본이 늦게 도착한 문서의 간선이
+     * 통째로 사라진다.
+     */
+    return { ...EMPTY, absent: true };
+  }
+  if (plan.kind === 'extract_failed') {
+    /*
+     * 추출 실패는 색인을 막지 않는다 (FR-REL-003 예외 처리). **기존 간선도 지우지
+     * 않는다** — 부분 결과를 완전한 결과로 확정하면 멀쩡한 간선이 사라진다.
+     */
+    log({
+      level: 'warn',
+      message: '참조 추출 실패 — 기존 간선을 보존한다',
+      repository_id: repositoryId,
+      doc_id: docId,
+      reason: plan.reason,
+    });
+    await withReindexWrite(deps.pool, (targets) => markPending(deps, targets, source, repositoryId, docId));
+    return EMPTY;
+  }
 
   /*
    * 이 회차의 간선 쓰기 전체를 **한 울타리 안에서** 한다 (WP-035, DEV-296·308).
@@ -305,11 +341,11 @@ export async function deriveReferenceLinks(
    */
   return withReindexWrite(deps.pool, async (targets) =>
     writeDerivedReferenceSet(deps, targets, {
-      docs,
+      docs: plan.docs,
       source,
       repositoryId,
       docId,
-      resolvedCount: resolutions.size,
+      resolvedCount: plan.resolvedCount,
       log,
     }),
   );
@@ -481,9 +517,19 @@ export async function resolveReferencesTo(
   const updates: Array<{
     link_id: string;
     repository_id: number;
+    owner: { readonly sourceKind: LinkEndpointKind; readonly docId: string };
     resolution: ReferenceResolution | null;
   }> = [];
   for (const link of candidates) {
+    /*
+     * **소유 source와 간선 ID가 맞는지 본다** (CR-121). 부분 갱신이 재색인의 새 인덱스에서 간선을 찾지
+     * 못하면 회수할 대상은 그 소유 source다 — 그 source가 이 간선을 만든 것이 아니면 엉뚱한 source를
+     * 다시 파생하고 간선은 빠진 채 남는다. 어긋난 문서는 색인이 손상된 것이라 던진다.
+     */
+    if (referenceLinkId(link.from_type, link.from_id, link.reference_key) !== link.link_id) {
+      throw new Error(`reference_link_owner_mismatch: ${link.link_id} (${link.from_type} ${link.from_id})`);
+    }
+    const owner = { sourceKind: link.from_type, docId: link.from_id };
     if (prefixKeys.has(link.reference_key)) {
       /*
        * 접두는 **매번 다시 계산한다.** 유일하면 그 커밋으로, 모호하거나 사라졌으면
@@ -492,12 +538,12 @@ export async function resolveReferencesTo(
       const next = prefixResolutions.get(link.reference_key) ?? null;
       // 이미 미해결인데 여전히 해결되지 않으면 쓸 것이 없다.
       if (next === null && !link.resolved) continue;
-      updates.push({ link_id: link.link_id, repository_id: Number(link.repository_id), resolution: next });
+      updates.push({ link_id: link.link_id, repository_id: Number(link.repository_id), owner, resolution: next });
       continue;
     }
     // 정확한 키. 이미 해결됐으면 다시 쓸 이유가 없다 — 모호해질 수 없다.
     if (link.resolved) continue;
-    updates.push({ link_id: link.link_id, repository_id: Number(link.repository_id), resolution: direct });
+    updates.push({ link_id: link.link_id, repository_id: Number(link.repository_id), owner, resolution: direct });
   }
 
   const result = await withReindexWrite(deps.pool, (targets) =>
@@ -695,6 +741,11 @@ export interface RebuildResult {
   readonly processed: number;
   readonly cursor: RebuildCursor;
   readonly done: boolean;
+  /**
+   * 참조 파생이 완결되지 않은 source (CR-121). 커서는 넘어가지만 이 source들은 끝난 것이 아니다 —
+   * 재색인은 이것을 미처리로 남기고 전환 전에 다시 파생한다. 없는 source(`absent`)는 넣지 않는다.
+   */
+  readonly incomplete: readonly LinkSource[];
 }
 
 /**
@@ -723,19 +774,21 @@ export async function runReferenceRebuild(
   const repositoryId = Number(repository.repository_id);
   let processed = 0;
   let current = cursor;
+  const incomplete: LinkSource[] = [];
+  const track = async (source: LinkSource): Promise<void> => {
+    const outcome = await handleSourceReady(deps, repository, source);
+    if (!outcome.derived.complete && outcome.derived.absent !== true) incomplete.push(source);
+  };
 
   if (current.phase === 'pull_request') {
     const rows = await prSnapshotRepo.listSnapshotsAfter(deps.pool, repositoryId, current.pr, batch);
     for (const row of rows) {
-      await handleSourceReady(deps, repository, {
-        kind: 'pull_request',
-        id: String(row.pr_number),
-      });
+      await track({ kind: 'pull_request', id: String(row.pr_number) });
       processed += 1;
       current = { ...current, pr: row.pr_number };
     }
     if (rows.length < batch) current = { phase: 'commit', pr: current.pr, sha: '' };
-    return { processed, cursor: current, done: false };
+    return { processed, cursor: current, done: false, incomplete };
   }
 
   const rows = await commitSnapshotRepo.listCommitSnapshotsAfter(
@@ -745,11 +798,58 @@ export async function runReferenceRebuild(
     batch,
   );
   for (const row of rows) {
-    await handleSourceReady(deps, repository, { kind: 'commit', id: row.commit_sha });
+    await track({ kind: 'commit', id: row.commit_sha });
     processed += 1;
     current = { ...current, sha: row.commit_sha };
   }
-  return { processed, cursor: current, done: rows.length < batch };
+  return { processed, cursor: current, done: rows.length < batch, incomplete };
+}
+
+/**
+ * 재색인의 간선 재구축 포트 (DEV-295 · CR-121).
+ *
+ * **운영(`index.ts`)과 시험이 이 함수 하나를 쓴다.** 전에는 `index.ts`의 객체 리터럴이었고, 시험은
+ * 그것을 옮겨 적어 부를 수밖에 없었다 — 운영 배선이 바뀌어도 시험은 옛 사본을 재고 있었을 것이다.
+ *
+ * - `rebuildRepository` — JOB-REL-006과 같은 경로로 저장소 하나를 끝까지 돈다. 불완전한 source를 돌려준다.
+ * - `rederiveSource` — 미처리 회수. **그 source 자신의 간선만** 정본에서 다시 파생한다(참조·관계).
+ *   역방향 해결·재평가는 하지 않는다 — 그것이 새 부분 갱신을 만들고, 회수가 회수를 부르게 된다.
+ * - `planSource` — 전환 전 검증. 그 source가 만들어야 하는 간선 문서를 **쓰기 없이** 계산한다.
+ */
+export function createLinkRebuildPort(deps: LinkDeps): LinkRebuildPort {
+  return {
+    async rebuildRepository(repository) {
+      let cursor: RebuildCursor | undefined;
+      let processed = 0;
+      const incomplete: LinkSource[] = [];
+      for (;;) {
+        const result = await runReferenceRebuild(deps, repository, cursor);
+        processed += result.processed;
+        incomplete.push(...result.incomplete);
+        cursor = result.cursor;
+        if (result.done) break;
+      }
+      return { processed, incomplete };
+    },
+    async rederiveSource(repository, source) {
+      const derived = await deriveReferenceLinks(deps, repository, source);
+      if (derived.absent === true) return 'absent';
+      const relations = await withReindexWrite(deps.pool, (targets) => deriveRelations(deps, repository, source, targets));
+      return derived.complete && relations.complete ? 'complete' : 'incomplete';
+    },
+    async planSource(repository, source): Promise<PlannedLinks> {
+      const references = await planReferenceLinks(deps, repository, source);
+      if (references.kind === 'absent') return { kind: 'absent' };
+      if (references.kind === 'extract_failed') return { kind: 'unplannable', reason: references.reason };
+      const relations = await planRelationEdges(deps, repository, source);
+      // 참조 계획이 정본을 읽은 뒤 사라졌다 — 이 순간의 기대를 말할 수 없다.
+      if (relations === undefined) return { kind: 'unplannable', reason: 'source_vanished_during_plan' };
+      return {
+        kind: 'planned',
+        edges: [...references.docs.map(referenceLinkSource), ...relations.map(derivedLinkSource)],
+      };
+    },
+  };
 }
 
 export interface RebuildRunner {

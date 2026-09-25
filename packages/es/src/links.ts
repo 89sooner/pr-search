@@ -23,7 +23,7 @@
  */
 
 import type { Client, estypes } from '@elastic/elasticsearch';
-import { dualWrite, reportShadowFailure, type WriteTargets } from './write-targets.js';
+import { dualWrite, reportShadowFailure, reportShadowPending, type WriteTargets } from './write-targets.js';
 
 /** 간선 인덱스 별칭. */
 export const LINKS_ALIAS = 'prs-links';
@@ -77,7 +77,44 @@ export interface LinkWriteResult {
   readonly failures: readonly LinkWriteFailure[];
 }
 
-function toSource(doc: ReferenceLinkDoc): Record<string, unknown> {
+/**
+ * 부분 갱신 하나의 **소유 source** (CR-121 / FR-ING-008 AC-11).
+ *
+ * 부분 갱신은 이미 있는 간선의 해결 상태만 바꾼다. 재색인 중 새 인덱스에 그 간선이 아직 없으면
+ * 회수할 대상은 간선이 아니라 그것을 만드는 source다 — 그래서 갱신마다 소유 source를 싣는다.
+ */
+export interface LinkOwner {
+  readonly sourceKind: LinkEndpointKind;
+  /** 소유 source의 문서 ID `{repository_id}:{키}`. 접두가 routing 저장소와 같아야 한다. */
+  readonly docId: string;
+}
+
+/** bulk 연산 하나. `index`는 완전한 간선 생성, `update`는 기존 간선의 부분 갱신이다. */
+interface LinkBulkOp {
+  readonly kind: 'index' | 'update';
+  readonly linkId: string;
+  /** routing — 간선을 소유한 저장소. */
+  readonly repositoryId: number;
+  /** `update`에만 있다. */
+  readonly owner?: LinkOwner;
+  readonly body: Record<string, unknown>;
+}
+
+/** 소유 source의 문서 ID를 source로 되돌린다. 접두가 routing과 다르면 **잘못된 routing**이다. */
+function ownerSourceOf(op: LinkBulkOp): { readonly kind: LinkEndpointKind; readonly id: string } {
+  const owner = op.owner;
+  if (owner === undefined) throw new Error(`link_update_without_owner: ${op.linkId}`);
+  const prefix = `${String(op.repositoryId)}:`;
+  const key = owner.docId.startsWith(prefix) ? owner.docId.slice(prefix.length) : '';
+  if (key === '') throw new Error(`link_update_routing_mismatch: ${op.linkId} ${owner.docId} routing=${String(op.repositoryId)}`);
+  return { kind: owner.sourceKind, id: key };
+}
+
+/**
+ * 참조 간선 문서의 본문. 쓰기와 전환 전 검증(CR-121)이 **같은 변환**을 쓴다 — 둘이 다르면 검증이 쓰기와 다른
+ * 문서를 기대한다.
+ */
+export function referenceLinkSource(doc: ReferenceLinkDoc): Record<string, unknown> {
   const source: Record<string, unknown> = {
     link_id: doc.link_id,
     reference_key: doc.reference_key,
@@ -107,21 +144,48 @@ function toSource(doc: ReferenceLinkDoc): Record<string, unknown> {
 }
 
 /**
- * 간선 벌크 쓰기의 공통 경로 (WP-035, DEV-295).
+ * 간선 벌크 쓰기의 공통 경로 (WP-035, DEV-295 · CR-121).
  *
  * 서비스 항목 전량을 먼저 싣고 shadow를 그 뒤에 싣는다 — 응답 항목이 요청
- * 순서와 1:1이라 앞 `count`개가 서비스 결과다. **왕복은 한 번**이며, shadow
+ * 순서와 1:1이라 앞 `ops.length`개가 서비스 결과다. **왕복은 한 번**이며, shadow
  * 실패는 `LinkWriteResult`에 섞이지 않는다: 호출부의 재시도 예산과 완결 표식이
  * shadow 때문에 달라지면 안 되고(불변식 6), 그래도 잊혀서는 안 된다(불변식 7).
+ *
+ * ## 항목 판정 (CR-121)
+ *
+ * - **서비스 항목이 없거나 연산 종류가 다르면 실패다.** 전에는 항목이 없어도
+ *   `error`가 없다는 이유로 성공으로 셌다 — 쓰지 않은 간선을 쓴 것으로 보고했다.
+ * - **shadow 항목이 없으면 실패다**(기존 그대로).
+ * - **shadow의 부분 갱신이 문서를 찾지 못했으면 미처리다** — 조건이 전부 참일 때만:
+ *   `update`이고, 404 + `document_missing_exception`이고, 응답의 `_index`가 바로 그 shadow이고,
+ *   `_id`가 요청한 간선이다. 간선의 소유 source가 재구축에서 아직 처리되지 않은 정상 경로이며,
+ *   회수는 재색인 잡이 소유 source를 정본에서 다시 파생해 한다(`reportShadowPending`).
+ * - **그 밖의 shadow 오류는 전부 실패다** — 전체 쓰기(`index`)의 모든 오류, 인덱스 없음
+ *   (`index_not_found_exception`), 429·5xx, 매핑·스크립트 오류. 약하게 만들지 않는다.
  */
 async function sendLinkBulk(
   client: Client,
   targets: WriteTargets,
-  count: number,
-  build: (index: string) => unknown[],
+  ops: readonly LinkBulkOp[],
   refresh: boolean,
 ): Promise<LinkWriteResult> {
+  if (ops.length === 0) return { written: 0, failures: [] };
+  // routing과 소유 source가 어긋난 부분 갱신은 보내지 않는다 — 보내면 다른 샤드의 간선을 건드린다.
+  for (const op of ops) if (op.kind === 'update') ownerSourceOf(op);
+
   const shadow = targets.shadows[LINKS_ALIAS];
+  const build = (index: string): unknown[] =>
+    ops.flatMap((op) => [
+      {
+        [op.kind]: {
+          _index: index,
+          _id: op.linkId,
+          routing: String(op.repositoryId),
+          ...(op.kind === 'update' ? { retry_on_conflict: 3 } : {}),
+        },
+      },
+      op.body,
+    ]);
   const operations: unknown[] = [...build(LINKS_ALIAS)];
   if (shadow !== undefined) operations.push(...build(shadow));
 
@@ -131,28 +195,47 @@ async function sendLinkBulk(
   });
 
   const failures: LinkWriteFailure[] = [];
-  for (let offset = 0; offset < count; offset += 1) {
-    const item = response.items[offset];
-    const outcome = item?.index ?? item?.update;
-    if (outcome?.error === undefined || outcome.error === null) continue;
-    failures.push({ link_id: outcome._id ?? '', status: outcome.status ?? 0, reason: outcome.error.type });
-  }
+  ops.forEach((op, offset) => {
+    const outcome = response.items[offset]?.[op.kind];
+    if (outcome === undefined) {
+      failures.push({ link_id: op.linkId, status: 0, reason: 'bulk_response_item_missing' });
+      return;
+    }
+    if (outcome.error === undefined || outcome.error === null) return;
+    failures.push({ link_id: outcome._id ?? op.linkId, status: outcome.status ?? 0, reason: outcome.error.type });
+  });
 
   if (shadow !== undefined) {
-    for (let offset = 0; offset < count; offset += 1) {
-      const item = response.items[count + offset];
-      const outcome = item?.index ?? item?.update;
-      if (outcome !== undefined && (outcome.error === undefined || outcome.error === null)) continue;
-      reportShadowFailure(targets, {
-        alias: LINKS_ALIAS,
-        index: shadow,
-        operation: 'bulk',
-        reason: outcome?.error?.type ?? '벌크 응답에 대응 항목이 없다',
-      });
-    }
+    ops.forEach((op, offset) => {
+      const outcome = response.items[ops.length + offset]?.[op.kind];
+      if (outcome === undefined) {
+        reportShadowFailure(targets, { alias: LINKS_ALIAS, index: shadow, operation: 'bulk', reason: '벌크 응답에 대응 항목이 없다' });
+        return;
+      }
+      if (outcome.error === undefined || outcome.error === null) return;
+      const missing =
+        op.kind === 'update' &&
+        outcome.status === 404 &&
+        outcome.error.type === 'document_missing_exception' &&
+        outcome._index === shadow &&
+        outcome._id === op.linkId;
+      if (missing) {
+        const source = ownerSourceOf(op);
+        reportShadowPending(targets, {
+          alias: LINKS_ALIAS,
+          index: shadow,
+          repositoryId: op.repositoryId,
+          sourceKind: source.kind,
+          sourceId: source.id,
+          linkId: op.linkId,
+        });
+        return;
+      }
+      reportShadowFailure(targets, { alias: LINKS_ALIAS, index: shadow, operation: 'bulk', reason: outcome.error.type });
+    });
   }
 
-  return { written: count - failures.length, failures };
+  return { written: ops.length - failures.length, failures };
 }
 
 /** 참조 간선을 통째로 색인한다. 같은 `link_id`면 덮어쓴다 (멱등). */
@@ -162,22 +245,10 @@ export async function writeReferenceLinks(
   targets: WriteTargets,
   options: { readonly refresh?: boolean } = {},
 ): Promise<LinkWriteResult> {
-  if (docs.length === 0) return { written: 0, failures: [] };
-
   return sendLinkBulk(
     client,
     targets,
-    docs.length,
-    (index) => {
-      const operations: unknown[] = [];
-      for (const doc of docs) {
-        operations.push({
-          index: { _index: index, _id: doc.link_id, routing: String(doc.scope.repository_id) },
-        });
-        operations.push(toSource(doc));
-      }
-      return operations;
-    },
+    docs.map((doc): LinkBulkOp => ({ kind: 'index', linkId: doc.link_id, repositoryId: doc.scope.repository_id, body: referenceLinkSource(doc) })),
     options.refresh === true,
   );
 }
@@ -242,6 +313,9 @@ export interface ReferencingLink {
   readonly repository_id: number;
   readonly reference_key: string;
   readonly resolved: boolean;
+  /** 소유 source (CR-121). 부분 갱신이 그 source를 함께 싣는다. */
+  readonly from_type: LinkEndpointKind;
+  readonly from_id: string;
 }
 
 /** 한 페이지 크기. 상한이 아니라 왕복 단위다 — 호출이 끝까지 페이지를 넘긴다. */
@@ -308,7 +382,7 @@ export async function findReferencesTo(
     const response = await client.search<ReferencingLink>({
       index: LINKS_ALIAS,
       size,
-      _source: ['link_id', 'repository_id', 'reference_key', 'resolved'],
+      _source: ['link_id', 'repository_id', 'reference_key', 'resolved', 'from_type', 'from_id'],
       // 안정 정렬이 있어야 `search_after`가 항목을 건너뛰지 않는다.
       sort: [{ link_id: 'asc' }],
       ...(after === undefined ? {} : { search_after: after }),
@@ -355,43 +429,33 @@ export async function resolveReferenceLinks(
   updates: readonly {
     readonly link_id: string;
     readonly repository_id: number;
+    /** 이 간선을 만드는 source (CR-121). 새 인덱스에 간선이 아직 없으면 그 source를 회수한다. */
+    readonly owner: LinkOwner;
     readonly resolution: ReferenceResolution | null;
   }[],
   targets: WriteTargets,
   options: { readonly refresh?: boolean } = {},
 ): Promise<LinkWriteResult> {
-  if (updates.length === 0) return { written: 0, failures: [] };
-
   return sendLinkBulk(
     client,
     targets,
-    updates.length,
-    (index) => {
-      const operations: unknown[] = [];
-      for (const update of updates) {
-        operations.push({
-          update: {
-            _index: index,
-            _id: update.link_id,
-            routing: String(update.repository_id),
-            retry_on_conflict: 3,
-          },
-        });
-        operations.push(
-          update.resolution === null
-            ? { script: { lang: 'painless', source: UNRESOLVE_SCRIPT } }
-            : {
-                doc: {
-                  resolved: true,
-                  to_type: update.resolution.to_type,
-                  to_id: update.resolution.to_id,
-                  to_repository_id: update.resolution.to_repository_id,
-                },
+    updates.map((update): LinkBulkOp => ({
+      kind: 'update',
+      linkId: update.link_id,
+      repositoryId: update.repository_id,
+      owner: update.owner,
+      body:
+        update.resolution === null
+          ? { script: { lang: 'painless', source: UNRESOLVE_SCRIPT } }
+          : {
+              doc: {
+                resolved: true,
+                to_type: update.resolution.to_type,
+                to_id: update.resolution.to_id,
+                to_repository_id: update.resolution.to_repository_id,
               },
-        );
-      }
-      return operations;
-    },
+            },
+    })),
     options.refresh === true,
   );
 }
@@ -488,6 +552,18 @@ export async function findReferenceTargets(
 
   const byPr = new Map<string, string>();
   const byCommit = new Map<string, string>();
+
+  /*
+   * **항목 오류를 「대상 없음」으로 읽지 않는다** (CR-121). msearch는 요청 전체가 성공해도 항목
+   * 하나가 실패할 수 있다. 그것을 없음으로 읽으면 대상이 있는데도 간선이 미해결로 굳고, 그 판정을
+   * 다시 할 방아쇠가 없다(대상 색인은 보통 한 번뿐이다). 던져서 호출부의 재시도에 맡긴다.
+   */
+  response.responses.forEach((result) => {
+    if (!('hits' in result)) {
+      const reason = (result as { error?: { type?: string } }).error?.type ?? 'unknown';
+      throw new Error(`reference_target_lookup_failed: ${reason}`);
+    }
+  });
 
   response.responses.forEach((result, index) => {
     const shape = shapes[index];
@@ -732,7 +808,8 @@ export interface DerivedLinkDoc {
   readonly resolved: boolean;
 }
 
-function toDerivedSource(doc: DerivedLinkDoc): Record<string, unknown> {
+/** 파생 간선 문서의 본문. 쓰기와 전환 전 검증(CR-121)이 같은 변환을 쓴다. */
+export function derivedLinkSource(doc: DerivedLinkDoc): Record<string, unknown> {
   const source: Record<string, unknown> = {
     link_id: doc.link_id,
     repository_id: doc.scope.repository_id,
@@ -770,22 +847,10 @@ export async function writeDerivedLinks(
   targets: WriteTargets,
   options: { readonly refresh?: boolean } = {},
 ): Promise<LinkWriteResult> {
-  if (docs.length === 0) return { written: 0, failures: [] };
-
   return sendLinkBulk(
     client,
     targets,
-    docs.length,
-    (index) => {
-      const operations: unknown[] = [];
-      for (const doc of docs) {
-        operations.push({
-          index: { _index: index, _id: doc.link_id, routing: String(doc.scope.repository_id) },
-        });
-        operations.push(toDerivedSource(doc));
-      }
-      return operations;
-    },
+    docs.map((doc): LinkBulkOp => ({ kind: 'index', linkId: doc.link_id, repositoryId: doc.scope.repository_id, body: derivedLinkSource(doc) })),
     options.refresh === true,
   );
 }
@@ -951,80 +1016,16 @@ export async function findLinksTo(
   );
 }
 
-/**
- * `detached` 표식을 바꾼다 (FR-REL-006 AC-3, DEV-238).
+/*
+ * **파생 간선(되돌림·체리픽·스택)에는 부분 갱신 원시체가 없다** (CR-121, OD-017).
  *
- * 간선을 **지우지 않는다.** 지우면 "그런 의존이 있었다"는 사실이 사라져 사후
- * 조사가 불가능해진다. 조건이 다시 성립하면 `false`로 되돌린다.
+ * 전에는 `setLinkDetached`·`setLinkResolved`가 서비스 색인에서 찾은 간선에 `detached`·`resolved`만
+ * 부분 갱신했다. 재색인 중에는 그 간선이 새 인덱스에 아직 없어 실패했고(사내 pilot.18), 해제 이력은
+ * 색인에만 있어 재구축이 되살리지 못했다. 이제 스택의 성립·해제는 PostgreSQL(`pull_request_stack`)이
+ * 정본이고, 파생 간선은 `writeDerivedLinks`의 전체 쓰기로만 나간다. `setLinkResolved`는 운영 호출부가
+ * 없었다. 참조 간선의 해결만 `resolveReferenceLinks`의 부분 갱신으로 남고, 재색인 중 대상 문서가
+ * 없으면 `sendLinkBulk`가 미처리로 넘긴다.
  */
-export async function setLinkDetached(
-  client: Client,
-  updates: readonly { readonly link_id: string; readonly repository_id: number; readonly detached: boolean }[],
-  targets: WriteTargets,
-  options: { readonly refresh?: boolean } = {},
-): Promise<LinkWriteResult> {
-  if (updates.length === 0) return { written: 0, failures: [] };
-
-  return sendLinkBulk(
-    client,
-    targets,
-    updates.length,
-    (index) => {
-      const operations: unknown[] = [];
-      for (const update of updates) {
-        operations.push({
-          update: {
-            _index: index,
-            _id: update.link_id,
-            routing: String(update.repository_id),
-            retry_on_conflict: 3,
-          },
-        });
-        operations.push({ doc: { detached: update.detached } });
-      }
-      return operations;
-    },
-    options.refresh === true,
-  );
-}
-
-/**
- * 대상이 색인된 파생 간선의 `resolved`를 갱신한다.
- *
- * 되돌림 트레일러처럼 **끝점은 알지만 대상 문서가 아직 없는** 간선이 있다.
- * `link_id`가 끝점으로 만들어지므로 이것은 새 문서가 아니라 **같은 문서의 갱신**
- * 이다 — `references`가 `reference_key`로 얻는 성질을 이쪽은 끝점으로 얻는다.
- */
-export async function setLinkResolved(
-  client: Client,
-  updates: readonly { readonly link_id: string; readonly repository_id: number; readonly resolved: boolean }[],
-  targets: WriteTargets,
-  options: { readonly refresh?: boolean } = {},
-): Promise<LinkWriteResult> {
-  if (updates.length === 0) return { written: 0, failures: [] };
-
-  return sendLinkBulk(
-    client,
-    targets,
-    updates.length,
-    (index) => {
-      const operations: unknown[] = [];
-      for (const update of updates) {
-        operations.push({
-          update: {
-            _index: index,
-            _id: update.link_id,
-            routing: String(update.repository_id),
-            retry_on_conflict: 3,
-          },
-        });
-        operations.push({ doc: { resolved: update.resolved } });
-      }
-      return operations;
-    },
-    options.refresh === true,
-  );
-}
 
 /* ------------------------------------------------------------------------- */
 /* 관계 요약 재계산 (CR-041, DEV-241)                                          */

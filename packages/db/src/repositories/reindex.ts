@@ -9,6 +9,11 @@
  * 읽으면 된다. 표를 하나 더 만들면 잡 행과 그 표가 갈라질 수 있고, 갈라진
  * 순간 어느 쪽이 정본인지 아무도 모른다.
  *
+ * **예외 하나 — prs-links의 미처리 source 작업** (CR-121, `reindex_link_pending`). 잡의 수명·단계는
+ * 여전히 이 `job` 행이 정한다. 그 표는 상태가 아니라 **작업 대기열**이다: 간선의 부분 갱신이 새
+ * 인덱스에서 문서를 찾지 못한 소유 source들이고, 수가 정해지지 않는다. `progress`에 담으면 쓰기마다
+ * 잡 행이 통째로 커지고 다시 쓰인다. 행은 `job_id`에 묶여 회수되면 지워지고, 잡이 끝나면 비운다.
+ *
  * ## `job.state`를 늘리지 않는다
  *
  * 기존 여섯(`queued`·`running`·`paused`·`completed`·`failed`·`cancelled`)이
@@ -382,4 +387,99 @@ export async function markRetired(db: Queryable, jobId: number, at: Date): Promi
     jobId,
     at.toISOString(),
   ]);
+}
+
+
+/* ------------------------------------------------------------------------- */
+/* prs-links 재색인의 미처리 source 작업 (CR-121 / WP-104, FR-ING-008 AC-11)     */
+/* ------------------------------------------------------------------------- */
+
+export type LinkPendingReason = 'partial_update_document_missing' | 'derive_incomplete';
+
+export interface LinkPendingInput {
+  readonly repositoryId: number;
+  readonly sourceKind: 'pull_request' | 'commit';
+  readonly sourceId: string;
+  readonly reason: LinkPendingReason;
+  readonly sampleLinkId?: string;
+}
+
+export interface LinkPendingRow {
+  readonly repository_id: number;
+  readonly source_kind: 'pull_request' | 'commit';
+  readonly source_id: string;
+  readonly reason: LinkPendingReason;
+  readonly generation: number;
+  readonly sample_link_id: string | null;
+}
+
+/**
+ * 미처리 source 작업을 기록한다. 같은 source가 다시 오면 **세대를 올린다** — 회수가 읽은 뒤에
+ * 생긴 미처리를 회수가 함께 지우지 않게 하는 표식이다. 잡 상태는 바꾸지 않는다: 미처리는
+ * 실패가 아니라 전환 전에 끝내야 할 일이다.
+ */
+export async function recordLinkPending(db: Queryable, jobId: number, items: readonly LinkPendingInput[]): Promise<void> {
+  if (items.length === 0) return;
+  await db.query(
+    `INSERT INTO reindex_link_pending (job_id, repository_id, source_kind, source_id, reason, sample_link_id)
+     SELECT $1, r, k, s, w, l
+       FROM unnest($2::bigint[], $3::text[], $4::text[], $5::text[], $6::text[]) AS x(r, k, s, w, l)
+     ON CONFLICT (job_id, repository_id, source_kind, source_id) DO UPDATE
+        SET generation = reindex_link_pending.generation + 1,
+            reason = EXCLUDED.reason,
+            sample_link_id = COALESCE(EXCLUDED.sample_link_id, reindex_link_pending.sample_link_id),
+            recorded_at = clock_timestamp()`,
+    [
+      jobId,
+      items.map((one) => one.repositoryId),
+      items.map((one) => one.sourceKind),
+      items.map((one) => one.sourceId),
+      items.map((one) => one.reason),
+      items.map((one) => one.sampleLinkId ?? null),
+    ],
+  );
+}
+
+/** 미처리 작업을 키 순서로 한 페이지 읽는다. `after`가 있으면 그 키 다음부터다(키셋 페이지). */
+export async function listLinkPending(
+  db: Queryable,
+  jobId: number,
+  limit: number,
+  after?: Pick<LinkPendingRow, 'repository_id' | 'source_kind' | 'source_id'>,
+): Promise<readonly LinkPendingRow[]> {
+  const result = await db.query<LinkPendingRow>(
+    `SELECT repository_id, source_kind, source_id, reason, generation, sample_link_id
+       FROM reindex_link_pending
+      WHERE job_id = $1
+        AND ($3::bigint IS NULL OR (repository_id, source_kind, source_id) > ($3::bigint, $4::text, $5::text))
+      ORDER BY repository_id, source_kind, source_id
+      LIMIT $2`,
+    [jobId, limit, after?.repository_id ?? null, after?.source_kind ?? null, after?.source_id ?? null],
+  );
+  return result.rows.map((row) => ({ ...row, repository_id: Number(row.repository_id), generation: Number(row.generation) }));
+}
+
+/** 회수한 작업 하나를 지운다. **읽은 세대일 때만** 지운다 — 그 사이 다시 기록됐으면 남긴다. */
+export async function deleteLinkPending(
+  db: Queryable,
+  jobId: number,
+  row: Pick<LinkPendingRow, 'repository_id' | 'source_kind' | 'source_id' | 'generation'>,
+): Promise<boolean> {
+  const result = await db.query(
+    `DELETE FROM reindex_link_pending
+      WHERE job_id = $1 AND repository_id = $2 AND source_kind = $3 AND source_id = $4 AND generation = $5`,
+    [jobId, row.repository_id, row.source_kind, row.source_id, row.generation],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function countLinkPending(db: Queryable, jobId: number): Promise<number> {
+  const result = await db.query<{ count: string }>('SELECT count(*) AS count FROM reindex_link_pending WHERE job_id = $1', [jobId]);
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+/** 잡이 끝났을 때 그 잡의 미처리 작업을 비운다. 끝난 잡의 대기열은 뜻이 없다. */
+export async function clearLinkPending(db: Queryable, jobId: number): Promise<number> {
+  const result = await db.query('DELETE FROM reindex_link_pending WHERE job_id = $1', [jobId]);
+  return result.rowCount ?? 0;
 }

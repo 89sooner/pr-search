@@ -21,8 +21,9 @@
 #                       정본 ↔ 원격 M 태그 대조 — 누락은 다시 만들고 다른 SHA는 보고만 한다 (CR-115)
 #   ./prsctl sequence reproject | status
 #                       머지 시퀀스를 PostgreSQL 정본에서 Elasticsearch로 다시 비춘다 — 재채번이 아니다 (CR-113)
-#   ./prsctl links plan | apply | refetch | status
-#                       커밋의 PR 연결을 정본과 맞대어 본다(plan은 무변경) — 합집합이 남긴 과거 번호를 정리한다 (CR-116, 7.G)
+#   ./prsctl links plan | apply | refetch | status | import-stacks
+#                       커밋의 PR 연결을 정본과 맞대어 본다(plan은 무변경) — 합집합이 남긴 과거 번호를 정리한다 (CR-116, 7.G).
+#                       import-stacks는 배포 전 스택 간선을 스택 정본으로 한 번 옮긴다 (CR-121, 7.I)
 #
 # **fail-fast다.** checksum 불일치·이미지 부재·필수 환경 변수 부재·마이그레이션
 # 실패·health 실패를 성공으로 접지 않는다.

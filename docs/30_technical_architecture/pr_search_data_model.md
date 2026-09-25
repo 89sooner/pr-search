@@ -1,6 +1,8 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.32 | 갱신일: 2026-09-24
+> 상태: review | 버전: v0.33 | 갱신일: 2026-09-25
+
+CR-121 / FR-ING-008 AC-11, FR-REL-006 AC-6, OD-017: 마이그레이션 037이 표 둘을 더한다. **`pull_request_stack`(ENT-REL-003)은 스택 관계의 정본이다** — 성립 조건이 현재 스냅숏에서 사라진 뒤에도(상위 PR 병합·분기 변경) 「그런 의존이 있었다」는 사실(FR-REL-006 AC-3, DEV-238)을 PostgreSQL에 남긴다. 지금까지 그 사실은 Elasticsearch 간선에만 있어 ADR-004를 어겼고, prs-links 재색인이 성공하면 조용히 사라졌다. `stacks_on` 간선은 이제 이 표에서 파생한다. **`reindex_link_pending`은 엔티티가 아니라 재색인 잡의 작업 대기열이다** — 간선의 부분 갱신이 새 인덱스에서 간선을 찾지 못했거나 파생이 불완전했던 소유 source를 잡에 묶어 두고, 잡이 전환 전에 다시 파생해 비운다. 「재색인 상태 표를 늘리지 않는다」(DEV-299)의 예외다(DEV-772). 색인 필드는 바뀌지 않는다. Elasticsearch는 여전히 PostgreSQL만으로 재구축된다(ADR-004) — 이 CR로 스택의 해제 이력이 그 범위에 들어왔다.
 
 CR-117 / FR-SRCH-002 AC-7, FR-SRCH-003 AC-5: 스키마는 바뀌지 않는다 — 새 표·새 열·새 마이그레이션·새 색인 필드가 없다. 바뀐 것은 **관계 정본을 읽는 규칙**이다. `pull_request_commit_link`의 `source` 행은 GitHub 목록 그대로인 **원시 관측**이고, 읽는 자리는 **유효 연결**만 쓴다: 저장소가 지금 추적하는 브랜치(`repository.sequence_branches`)의 현재 에폭 `merge_sequence`에 그 커밋의 행이 있으면, 그 커밋은 그 행의 PR(`pull_request_number`)에만 속하므로 다른 PR의 `source` 행은 연결로 세지 않는다. `merge` 행은 이 규칙과 무관하다. 규칙은 SQL 술어 하나(`EFFECTIVE_LINK_SQL`, `packages/db/src/repositories/pr-commit-link.ts`)이며 관계 투영·재색인 replay·전환 전 검증·복구 대조·미확정 계수가 모두 그것을 쓴다. 체인 소속이 바뀌면(채번·강제 푸시 재채번·복구 재채번) 같은 트랜잭션이 영향 커밋의 `commit_link_state` 세대를 올린다. 탐색은 `sequence_space` → `merge_sequence`의 기존 `(repository_id, base_branch, seq_epoch, commit_sha)` 유일 인덱스를 탄다. Elasticsearch는 여전히 PostgreSQL만으로 재구축된다(ADR-004).
 
@@ -51,7 +53,8 @@ CR-079: 기존 merge_sequence의 M 값은 정본 속성으로 유지한다. 025�
 | ENT-SEQ-003 | SafeMarker | 안전 구간 표식 | `marker_id`, `repository_id`, `base_branch`, `seq_epoch`, `merge_seq`, `note`, `created_by` | PostgreSQL | sequence | FR-SEQ-006 |
 | ENT-SEQ-004 | BisectSession | 이분 탐색 상태 | `session_id`, `user_id`, `repository_id`, `base_branch`, `seq_epoch`, `good_seq`, `bad_seq` | PostgreSQL | sequence | FR-SEQ-007 |
 | ENT-REL-001 | Release | 릴리스 앵커 | `release_id`, `repository_id`, `tag_name`, `commit_sha`, `base_branch`, `seq_epoch`, `merge_seq`, `released_at`, `source` | **PostgreSQL (정본) + Elasticsearch (투영)** (CR-028, DEV-142) | release | FR-SEQ-004, FR-REL-002, FR-SEQ-003 AC-1 |
-| ENT-REL-002 | Link | 관계 간선 | `link_id`, `from_type`, `from_id`, `to_type`, `to_id`, `link_type`, `confidence`, `evidence`, `resolved` | Elasticsearch | link | FR-REL-003~008 |
+| ENT-REL-002 | Link | 관계 간선 | `link_id`, `from_type`, `from_id`, `to_type`, `to_id`, `link_type`, `confidence`, `evidence`, `resolved` | Elasticsearch (`stacks_on`의 성립·해제는 ENT-REL-003이 정본 — CR-121) | link | FR-REL-003~008 |
+| ENT-REL-003 | PullRequestStack | 스택 관계의 정본 — 성립·해제 이력 (CR-121) | `repository_id`, `child_pr_number`, `parent_pr_number`, `evidence`, `edge_created_at`, `detached`, `origin`(`derived`·`imported`) | PostgreSQL (정본) — `stacks_on` 간선(ENT-REL-002)의 파생 근거 | link | FR-REL-006 AC-3·AC-6 |
 | ENT-ING-001 | RawEvent | 원본 웹훅 이벤트 | `delivery_id`, `event_type`, `repository_id`, `received_at`, `payload`, `queued_at`, `processed_at` | PostgreSQL | ingestion | FR-ING-001, FR-ING-003 |
 | ENT-ING-002 | DeadLetter | 실패 이벤트 격리 | `dead_letter_id`, `delivery_id`, `stage`, `error`, `retry_count`, `state` | PostgreSQL | ingestion | FR-ING-007 |
 <!-- CR-010(DEV-013): 보강 결과 전용 테이블은 두지 않는다. EVT-ING-002가 투영에 필요한 것을 self-contained bounded 이벤트로 나른다. 원본이 필요하면 raw_event가 시스템 오브 레코드다 (ADR-004). -->
@@ -206,6 +209,60 @@ CREATE TABLE commit_link_state (
 **`sequence_work`를 쓰지 않는 이유.** 그 표의 키는 `(repository_id, base_branch, seq_epoch)`다. 관계의 정체성은 base 브랜치에도 에폭에도 속하지 않는다 — PR이 base를 바꾸거나 force-push로 에폭이 올라도 **PR N이 커밋 C를 소유한다는 사실은 그대로다.** 더미 브랜치와 에폭을 넣어 M 작업처럼 위장하면 에폭이 오르는 날 관계 작업이 통째로 `obsolete`가 된다.
 
 **036의 seed는 소급해서 `verified`로 만들지 않는다.** 기존 스냅숏에는 완전성 근거가 없다 — `enrichment_pending`은 네 구성 요소 중 하나라도 실패하면 참이라 커밋 조회 실패와 리뷰 조회 실패를 가르지 못한다. 그래서 관계 행은 만들되 관측은 전부 `unverified`이고, 지울 후보는 복구 경로(`prsctl links refetch`)가 PR 상세를 다시 읽어 확정한다. `commit_link_state`는 **이미 반영된 것**으로 seed한다(`projected_generation = generation`) — 그래야 마이그레이션이 저장소 전체의 색인 쓰기를 예약하지 않으면서도 재색인 replay가 모든 연결 커밋을 볼 수 있다.
+
+#### `pull_request_stack` — 스택 관계의 정본 (CR-121, 마이그레이션 037)
+
+스택 간선의 성립 조건은 「하위 PR의 base = 다른 **열린** PR의 head」다. 상위 PR이 병합되거나 두 PR의 분기가 바뀌면 현재 스냅숏에서 그 관계가 사라지는데, FR-REL-006 AC-3은 그때 간선을 지우지 말고 해제 상태로 표시하라고 요구한다(DEV-238). 그 사실은 지금까지 Elasticsearch 간선에만 있었고, 재색인은 PostgreSQL에서 그것을 다시 만들 수 없었다(ADR-004 공백 — 사내 pilot.18 보고를 따라가다 재현했다, DEV-767). 사용자 결정 OD-017로 성립과 해제를 이 표에 남기고, `stacks_on` 간선은 이 표의 행에서 파생한다.
+
+```sql
+-- ENT-REL-003. 성립한 적 있는 관계만 행이 된다. 행을 지우지 않는다.
+CREATE TABLE pull_request_stack (
+  repository_id    BIGINT      NOT NULL,
+  child_pr_number  INT         NOT NULL,
+  parent_pr_number INT         NOT NULL,
+  evidence         TEXT        NOT NULL,   -- 마지막으로 성립했을 때의 근거 "base X = head of #P"
+  edge_created_at  TEXT        NOT NULL,   -- 간선 문서의 created_at(하위 PR의 정본 시각)과 같은 문자열
+  detached         BOOLEAN     NOT NULL DEFAULT false,
+  origin           TEXT        NOT NULL,   -- derived | imported
+  first_seen_at    TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY (repository_id, child_pr_number, parent_pr_number),
+  CONSTRAINT pull_request_stack_pr_chk
+    CHECK (child_pr_number > 0 AND parent_pr_number > 0 AND child_pr_number <> parent_pr_number),
+  CONSTRAINT pull_request_stack_origin_chk CHECK (origin IN ('derived', 'imported'))
+);
+-- 역방향 재평가: 상위 PR이 바뀌면 그 위에 쌓였던 하위 PR을 찾는다.
+CREATE INDEX pull_request_stack_parent_idx ON pull_request_stack (repository_id, parent_pr_number);
+```
+
+- **규칙 셋.** (1) 성립한 적 있는 관계만 행이 된다 — 한 번도 성립하지 않은 후보에 해제 상태를 미리 두지 않는다(DEV-238). (2) 행을 지우지 않는다 — 성립하지 않게 되면 `detached = true`, 다시 성립하면 같은 행이 `false`로 돌아온다. (3) `evidence`·`edge_created_at`은 성립해 있는 동안만 파생할 때마다 지금 값으로 쓰고, 해제되면 그 값에서 멈춘다 — 그래서 같은 정본에서 평시 파생과 재구축이 같은 간선 문서를 낸다.
+- **하위 PR 하나의 행을 한 트랜잭션에서 맞춘다**(`reconcileStacks`) — 지금 성립하는 관계는 upsert하고 그 밖의 기존 행은 해제한다. 결과는 그 하위 PR의 행 전부이고, 간선은 그 행 전부를 전체 쓰기(`writeDerivedLinks`)로 낸다. 부분 갱신은 없다.
+- **역방향 재평가**(상위 PR의 병합·분기 변경 → 하위 PR)는 `pull_request_stack_parent_idx`로 하위 PR을 찾는다. 전에는 서비스 색인의 간선으로 찾았다.
+- **`origin = 'imported'`** 행은 배포 전부터 서비스 인덱스에만 있던 스택 간선을 일회성 명령(`prsctl links import-stacks`)이 옮긴 것이다. 가져오기는 이미 있는 행을 덮지 않는다(`ON CONFLICT DO NOTHING`). 가져온 관계가 다시 성립하면 파생 행(`derived`)이 된다.
+
+#### `reindex_link_pending` — prs-links 재색인의 미처리 source 작업 (CR-121, 마이그레이션 037)
+
+엔티티가 아니라 재색인 잡(JOB-ING-006)의 작업 대기열이다. 간선의 부분 갱신이 재색인의 새 인덱스에서 그 간선을 찾지 못했거나(`partial_update_document_missing` — 소유 source가 재구축에서 아직 처리되지 않았다), source 파생이 불완전했던(`derive_incomplete`) 소유 source를 잡에 묶어 둔다. 잡은 전환 전에 그 source를 최신 정본에서 다시 파생해 행을 비우고, 비우지 못하면 전환하지 않는다.
+
+```sql
+CREATE TABLE reindex_link_pending (
+  job_id         BIGINT      NOT NULL,
+  repository_id  BIGINT      NOT NULL,   -- 소유 source의 저장소 = 간선의 routing
+  source_kind    TEXT        NOT NULL,   -- pull_request | commit
+  source_id      TEXT        NOT NULL,   -- PR 번호(10진 문자열) 또는 소문자 40자 SHA
+  reason         TEXT        NOT NULL,   -- partial_update_document_missing | derive_incomplete
+  generation     INT         NOT NULL DEFAULT 1,
+  sample_link_id TEXT,                   -- 진단용: 마지막으로 문서를 찾지 못한 간선
+  recorded_at    TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY (job_id, repository_id, source_kind, source_id),
+  CONSTRAINT reindex_link_pending_kind_chk CHECK (source_kind IN ('pull_request', 'commit')),
+  CONSTRAINT reindex_link_pending_reason_chk
+    CHECK (reason IN ('partial_update_document_missing', 'derive_incomplete'))
+);
+```
+
+- **세대.** 같은 source가 다시 기록되면 `generation`이 오른다. 회수는 **읽은 세대의 행만** 지운다 — 회수하는 동안 새로 생긴 미처리를 함께 지우지 않는다.
+- **DEV-299의 예외(DEV-772).** 재색인의 상태는 `job` 행 하나가 정본이고 표를 늘리지 않는다는 원칙이 있다. 이 표는 상태가 아니라 크기가 정해지지 않는 작업 대기열이라, `progress`에 담으면 쓰기마다 잡 행이 통째로 커지고 다시 쓰인다. 잡의 수명과 단계는 여전히 `job` 행이 정한다. 잡이 끝나면(완료·실패·취소) 그 잡의 행을 지우고, 멈춘 잡의 행은 재개 뒤 회수를 위해 남긴다.
 
 #### `pull_request_snapshot` — 백필·조정의 정본 (CR-034, DEV-184)
 
@@ -1274,6 +1331,8 @@ ALTER TABLE gh_capability_snapshot
 - `co_changes` 간선도 저장하지 않는다. 조회 시점에 `changed_paths` 교집합으로 계산한다 (FR-REL-007). 미리 계산하면 PR 하나 추가에 O(N) 간선이 생긴다.
 
 즉 **실제 저장되는 간선은 `references`, `reverts`, `cherry_picks`, `stacks_on`, `contains`(릴리스↔커밋) 다섯 종류다.**
+
+**`stacks_on`의 정본은 ENT-REL-003이다 (CR-121, OD-017).** 스택 간선은 `pull_request_stack`의 행에서 전체 쓰기로 만들어지며 `detached`·`evidence`·`created_at`은 행의 값이다. 해제된 간선도 재색인이 PostgreSQL에서 다시 만든다 — 이 CR 전에는 해제 이력이 이 인덱스에만 있었다.
 
 ### 4.4 `prs-releases`
 
