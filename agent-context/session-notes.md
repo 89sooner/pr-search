@@ -3302,3 +3302,60 @@ gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '.check_runs[] | "
 
 - PR #232·#233(CR-118), #234(CR-120), #235(CR-119). 변경 대장 CR-118~120, 원장 6.109~6.111장·DEV-758~765, WP-103.
 - scratchpad: 첫 세션 `/tmp/claude-1000/-home-roqkf-pr-search/fb3dbfa9-f252-4a65-aa39-b7d31493105d/scratchpad`(게이트·변이·문서 검증 스크립트와 로그, P0 증거 `p0/`), 이어가기 세션 `/tmp/claude-1000/-home-roqkf-pr-search/2f4a2cbf-c20a-4d6d-8e5c-4e19f989db5b/scratchpad`(`b-design.md`, 병합 메시지, 문서 삽입 스크립트).
+
+## 18차 마감 (2026-09-25) — 작업 B = CR-121 / WP-104 병합
+
+### Goal
+
+18차 착수 지시의 마지막 단계 B(prs-links 재색인)를 재현·구현·검증·독립 리뷰·PR·병합·기록까지 끝낸다. 두 번째 세션도 context-full로 끊겼고(전사 `exports/202609250952_ing.md`), 세 번째 세션이 전사와 두 세션의 scratchpad로 이었다.
+
+### Current state
+
+- **main = `df3d8ef`**(CR-121, PR #237). 병합 커밋의 main CI(run 36100117388)는 verify·integration 모두 success다. 이 절을 싣는 기록 PR(브랜치 `docs/cr121-merge-record`)이 병합됐는지 먼저 실측한다.
+- 18차 지시서 범위(P0·A·B)가 모두 main에 있다. 사내 적용은 NOT RUN이다(RUNBOOK 7.I·7.H, CR-117의 `links apply`).
+
+### Decisions
+
+- **부분 갱신의 문서 없음은 조건이 모두 맞을 때만 미처리다** — `update`, 404 `document_missing_exception`, 응답의 `_index`가 그 shadow이고 `_id`가 요청한 간선, 소유 source의 저장소가 routing과 같음, 울타리 안에서 본 활성 잡이 `running`인 prs-links 재색인이고 그 `target_index`가 미처리가 난 인덱스. 그 밖은 실패다. 상류 요청 둘(문서 없음 무시, `scripted_upsert`로 생성)은 받지 않았다.
+- **회수는 소유 source를 최신 정본에서 다시 파생한다**(참조·관계, 역방향 해결·재평가는 하지 않는다). 미처리는 잡에 묶인 표 `reindex_link_pending`에 남는다 — DEV-299의 예외(DEV-772).
+- **검증은 읽기만 한다** — 이전 세션 advisor가 정했다. 고치는 것은 검증 전의 회수이고, 전환 울타리가 미처리를 다시 본 뒤 울타리를 놓고 회수·재검증한다(상한 3). 검증 중 들어온 변경과의 경주는 fail closed로 실패하고 다시 실행한다.
+- **스택의 정본은 PostgreSQL `pull_request_stack`이다**(OD-017, 사용자 결정). 배포 전 간선은 `prsctl links import-stacks`가 한 번 옮기고, 옮기지 않은 간선이 서비스에 남아 있으면 검증이 막는다.
+- **리뷰의 하·정보 지적은 운영 절차와 원장 「한계」로 처분했다** — 배포와 가져오기 사이의 역방향 재평가 공백(DEV-773, open), 형식 오류 스택 간선의 차단, 스냅숏 삭제 시 고아(운영 경로 없음), 검증 비용(NOT MEASURED).
+- **살아남은 변이 둘은 기록만 했다** — 울타리의 별칭 조건은 `target_index` 조건과 동치이고, 계획 불가 계수는 참조 추출에 예외 경로가 없어 닿지 않는다(advisor가 이 경로에는 시험을 늘리지 말라고 했다).
+
+### 이번에 배운 것
+
+- **대상 시험만 돌린 구현 커밋은 전량 게이트에서 셋이 걸렸다.** 새 표의 `prs_app` GRANT(`audit-grants`, DEV-517), `@prs/es` 밖 `es.search`의 ADR-008 허용 목록(`architecture.test.ts`), 코드 모양을 보는 회귀 문자열 검사(`runtime-reachability.test.ts`). GRANT 누락은 사내에서 `permission denied` 장애였을 것이다. 구현 커밋 전에 단위·통합(새 DB)·회귀 전량을 돌린다.
+- **파일 단위 허용 목록은 새 조회에 옛 사유를 물려준다.** `reindex.ts`의 사유(「`size: 0`이라 문서가 나오지 않는다」)는 CR-121의 두 조회로 거짓이 됐지만 검사는 통과했다. 사유를 사실대로 고쳤다.
+- **이전 세션의 advisor 결과는 세션 기록(jsonl)에서도 암호화돼 복구되지 않는다.** 이어가기 세션은 오리엔테이션 뒤 조언을 다시 받는다.
+- **변이 수는 로그에서 센다.** 중간 보고에서 「28종 가운데 23종」이라고 잘못 셌다(실제 32종·26종). 커밋 `1d8ff39`의 메시지에도 28이 남았지만 squash로 main에는 없다.
+- **이어가기 세션에서도 병합 승인은 PR마다 받는다.** 「스쿼시 병합해」는 PR #237 하나로 읽고, 기록 PR은 다시 물었다.
+
+### Changed files (CR-121)
+
+- 코드: `packages/es/src/{links,write-targets,index}.ts`, `packages/db/src/{reindex-fence,index}.ts`·`repositories/{pr-stack,reindex,index}.ts`, `packages/db/migrations/037_link_stack_state.{up,down}.sql`, `apps/pipeline-worker/src/{reindex,link,relations,stack-import,link-repair-command,index}.ts`.
+- 시험: 새 `apps/pipeline-worker/integration/jobs/links-reindex-completeness.test.ts`(21건)·`packages/db/integration/link-stack-state.test.ts`(10건)·`packages/es/src/links-bulk.test.ts`(14건), 바꾼 `relations.test.ts`·`link.test.ts`·`link-rebuild.test.ts`·`dual-write.test.ts`·`architecture.test.ts`·`regression/runtime-reachability.test.ts`, 마이그레이션 파수꾼 여섯.
+- 문서: SRS v2.46, PRD v1.24, 매트릭스 v1.20, 데이터 모델 v0.33, 비동기 v0.20, API 계약 v0.46, 관측성 v0.13, 백엔드 v0.19, WP v2.67(WP-104), 원장 v6.112(6.112장, DEV-766~773), 변경 대장, RUNBOOK 7.I·8장, `prsctl` 사용법 주석, 상류 주석.
+
+### Commands
+
+- 변이: `node <세 번째 세션 scratchpad>/mutate-b.mjs [BASE] [B1 …]` — 인자가 없으면 기준 실행과 전 변이. 원복은 `git checkout`이라 깨끗한 트리에서 단독으로 돌린다.
+- 문서 cascade: `docpatch-cr121.mjs`(`DRY=1`이면 기준점만 검사), 리뷰 반영 `docfix-cr121.mjs`, 병합 기록 `record-cr121.mjs`(환경 변수 여섯).
+- 병합: `gh pr merge <N> --squash -t "<제목> (#N)" -F <본문 파일>`(`--delete-branch` 금지). PR 본문 갱신은 `gh api -X PATCH repos/<o>/<r>/pulls/<N> -F body=@<파일>`. gh 2.4.0의 `pr view --json`에는 `headRefOid`가 없다 — `gh api repos/<o>/<r>/pulls/<N> --jq .head.sha`.
+
+### Next steps
+
+1. 기록 PR(CR-121)이 병합됐는지 실측한다.
+2. 사내(NOT RUN): 반입 뒤 RUNBOOK 7.I → 7.H → CR-117 `links apply`. 결과가 `upstream-feedback.md`에 오면 그에 따라 새 CR을 연다.
+3. 사용자 보류 항목은 사용자가 정할 때까지 열지 않는다.
+
+### Risks/gotchas
+
+- **DEV-773** — 배포와 가져오기 사이에 상위 PR이 병합되면 서비스 간선의 해제가 늦는다. 하위 PR이 다시 파생되거나 prs-links 재색인의 재구축이 고친다.
+- 형식이 맞지 않는 서비스 `stacks_on` 간선이 있으면 검증이 계속 막는다 — 운영 코드는 그런 간선을 만들지 않는다. 생기면 기록해 보고한다(7.I 3번).
+- 두 재색인의 검증 단계 시간은 사내 규모에서 재지 않았다. prs-links 검증은 모든 source의 기대 간선을 참조 대상 조회까지 다시 계획한다.
+
+### References
+
+- PR #237(CR-121). 변경 대장 CR-121, 원장 6.112장·DEV-766~773, WP-104, SRS FR-ING-008 AC-11·FR-REL-006 AC-6·OD-017, 데이터 모델 ENT-REL-003, RUNBOOK 7.I.
+- scratchpad: 세 번째 세션 `/tmp/claude-1000/-home-roqkf-pr-search/a44e4936-042b-443f-bf41-4bb5e76d5a4a/scratchpad`(변이 스크립트와 로그 `logs/mutate-b.log`, 문서 조각 `docs-b/`, 기록 스크립트), 첫 세션 `fb3dbfa9…/scratchpad`(게이트 `gates/b-code`·`b-code2`·`b-final`, 문서 검증 `docval/b-docs*`).
