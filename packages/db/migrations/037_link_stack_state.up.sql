@@ -76,3 +76,11 @@ CREATE TABLE reindex_link_pending (
   CONSTRAINT reindex_link_pending_reason_chk
     CHECK (reason IN ('partial_update_document_missing', 'derive_incomplete'))
 );
+
+-- ---------------------------------------------------------------- 권한
+-- 사내 배포의 워커는 prs_app으로 접속한다(통합 시험은 소유자 롤로 돌아 이것을 만나지 않는다, DEV-517).
+-- 스택 정본은 행을 지우지 않으므로 prs_app에 DELETE를 주지 않는다 — 규칙 2를 권한으로도 지킨다.
+-- 미처리 대기열은 회수와 잡 종료가 행을 지운다.
+GRANT SELECT, INSERT, UPDATE ON pull_request_stack TO prs_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON reindex_link_pending TO prs_app;
+GRANT ALL ON pull_request_stack, reindex_link_pending TO prs_admin;
