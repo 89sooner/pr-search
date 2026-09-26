@@ -3359,3 +3359,43 @@ gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '.check_runs[] | "
 
 - PR #237(CR-121). 변경 대장 CR-121, 원장 6.112장·DEV-766~773, WP-104, SRS FR-ING-008 AC-11·FR-REL-006 AC-6·OD-017, 데이터 모델 ENT-REL-003, RUNBOOK 7.I.
 - scratchpad: 세 번째 세션 `/tmp/claude-1000/-home-roqkf-pr-search/a44e4936-042b-443f-bf41-4bb5e76d5a4a/scratchpad`(변이 스크립트와 로그 `logs/mutate-b.log`, 문서 조각 `docs-b/`, 기록 스크립트), 첫 세션 `fb3dbfa9…/scratchpad`(게이트 `gates/b-code`·`b-code2`·`b-final`, 문서 검증 `docval/b-docs*`).
+
+## 19차 (2026-09-26) — 0.1.0-pilot.19 배포본 준비, 격리 업그레이드 리허설, CR-122·CR-123 병합
+
+### Goal
+
+사용자 지시(2026-09-26): 최신 main으로 새 오프라인 배포본을 준비하고 사전 검증한다. 기존 Release·파일을 덮어쓰지 않고, 사내·공용 서버 대신 격리 환경에 이전 버전(`0.1.0-pilot.18`) 상태를 만들어 업그레이드(새 버전 설치·DB 변경 → import-stacks dry-run → 실행 → prs-links 재색인 → prs-commits 재색인 → 저장소 전체 links apply)와 자료 복구를 확인한다. 빈 환경 새 설치로 대신하지 않는다. 데이터 손실·설치 실패가 나오면 CR 절차로 고친다. 커밋·PR·리뷰·CI 뒤 병합은 승인, Release 발행과 사내 적용은 하지 않는다.
+
+### Current state
+
+- **main = `646486e`**(CR-122·CR-123, PR #240). 병합 커밋의 main CI(run 36231534096)는 verify success, integration은 첫 시도에서 무관한 DEV-588 재발로 실패하고 실패한 잡만 다시 돌린 두 번째 시도에서 success. 이 절을 싣는 기록 PR(브랜치 `docs/cr122-cr123-pilot19-record`)이 병합됐는지 먼저 실측한다.
+- **최종 번들 `0.1.0-pilot.19`(발행 안 함)**: `/home/roqkf/pr-search-wt/release19final/deploy/single-host/bundle/pr-search-0.1.0-pilot.19-offline.tar.gz`, SHA-256 `68520f73…c9c5c9`, manifest 커밋 `646486e`. 원장 6.114장.
+- **업그레이드 검증**: R2(수정 후보 rc2)·R3(최종 번들) 모두 `VERIFIED (external, isolated)`. 사내 적용 NOT RUN.
+- 이 세션은 기록 PR #241을 올린 직후 context-full로 끊겼다(전사 `exports/202609262153_ing.md`, 286,052바이트, `.gitignore:24`가 무시한다). 이어가기 세션이 전사와 이 세션 scratchpad로 이었고, 끊기기 직전에 고친 원장·인계 보완(이미지 ID 실측, `mnum:7`이 돌려주는 머지 커밋 문서의 M)과 다시 만든 인계 팩(`agent-context/_handoff`)을 같은 PR에 더했다.
+
+### Decisions
+
+- **첫 후보는 리허설 후보로만 쓰고, RUNBOOK을 고친 뒤 main에서 최종 번들을 다시 만들었다** — `.dockerignore`가 `deploy/`를 빼지 않아 RUNBOOK 편집이 이미지 ID를 바꾼다. 중간 후보는 `-rc2` 버전 이름으로 만들어 `0.1.0-pilot.19`가 main 빌드만 가리키게 했다(첫 후보는 같은 이름이지만 폐기로 기록).
+- **재색인 순서를 바꿨다(7.J)** — 지시받은 순서(prs-links → prs-commits)는 손으로 전환한 prs-commits에 빠진 커밋을 가리키는 참조 때문에 prs-links 전환을 막았다(DEV-775). 코드를 고쳐도 순서가 그대로면 그 참조가 미해결로 굳으므로 prs-commits를 먼저 한다. 「가져오기는 첫 prs-links 재색인보다 먼저」는 그대로 지켰다.
+- **CI의 무관한 실패 둘은 원인을 가른 뒤 실패한 잡만 한 번 다시 돌렸다** — PR CI의 등록 요청 커서 시험(DEV-777, 새로 등록, 밀리초 절단), main CI의 조정 스캔 취소 시험(DEV-588 재발). 둘 다 이번 변경이 건드리지 않은 경로이고 고치지 않았다(범위 밖, 후속).
+- **범위 밖 발견은 기록만 했다** — DEV-776(단일 호스트 link·batch의 `GHE_BASE_URL` 미전달로 URL 참조 미추출), DEV-777. DEV-773은 절차로 좁힌 채 둔다.
+
+### 이번에 배운 것
+
+- **빈 설치가 아니라 이전 판 상태의 업그레이드가 결함을 찾았다.** 단위·통합·회귀 전량과 CI를 통과한 main에서 번들의 `prsctl links` 쓰기 명령이 전부 거절되고 있었고(DEV-774 — 시험이 `deps.actor`를 직접 넣어 CLI 배선을 지나쳤다), 재색인 순서와 해결 판정이 어긋났다(DEV-775).
+- **가짜 GHE로 사내 상태를 재현할 수 있다.** App 토큰·REST·OAuth·git smart HTTP(`upload-pack --stateless-rpc`, 워커 이미지에 `git-http-backend`가 없다)를 실제 git 저장소에서 계산하고, 서명한 웹훅으로 흘린다. M 번호는 저장소 이름에 숫자 묶음이 하나 있어야 하고 루트 커밋은 확인서(7.D)로 넘긴다. `commits/{sha}/pulls`는 PR이 없으면 `200 []`여야 한다. 세션은 가짜 OAuth 왕복 + `prsctl role grant`로 만든다. 웹 프록시 경로는 `/api/<rest>`(`v1` 없음). PR마다 `updated_at`을 올려야 투영이 새 문서로 받는다.
+- **볼륨 여섯의 스냅숏이 재검증을 싸게 만든다.** `prsctl backup`은 ES를 담지 않는데 이전 상태의 핵심(해제 스택 간선, 수동 전환 별칭, 실패 잔재 인덱스)은 ES에 있다.
+- **모니터의 완료 판정은 두 잡이 모두 보일 때만 한다.** check-runs 응답에 한 잡만 먼저 보이는 순간 「전부 완료」로 끝난 적이 있다.
+
+### Changed files (CR-122·CR-123)
+
+- 코드: `apps/pipeline-worker/src/link-repair-command.ts`(`resolveActor`), `apps/pipeline-worker/src/link.ts`(`resolveReferencesTo`), `packages/es/src/{links,index}.ts`(`isReferenceTargetIndexed`).
+- 시험: `links-reindex-completeness.test.ts`(+5건), `link.test.ts`(대역 셋의 `exists`), `packages/es/src/architecture.test.ts`(ADR-008 검사에 `exists`).
+- 문서: 변경 대장(CR-122·CR-123), 원장 v6.114(6.113장, DEV-774~776), 비동기 v0.21, RUNBOOK 3장·7장 표·7.G·7.I·7.J·8장. 기록 PR: 원장 v6.115(6.114장, DEV-777), 인계 파일.
+
+### Commands
+
+- 리허설: `<scratchpad>/rehearsal/rehearse.sh reset | prev <p18 deploy dir> <label> | upgrade <새 deploy dir> <version> <label> | restore <snapshot label> <p18 deploy dir>` — `prev`가 끝에 `snap/vol-<label>-pre`를 남긴다. 비교는 `node capture.mjs <label>`·`node compare.mjs <before> <after>`(업그레이드 전 기준은 `r2-pre`).
+- 번들: `<scratchpad>/build-rc.sh <worktree> <version>`(`--release` 없음, setsid nohup으로 돌렸다).
+- 게이트: `<scratchpad>/run-gates.sh <worktree> <label>`(새 DB `prs_test_s19_<label>`).
+- CI 재실행: `gh api -X POST repos/<o>/<r>/actions/runs/<id>/rerun-failed-jobs`.

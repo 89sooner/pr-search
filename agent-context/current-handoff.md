@@ -1,51 +1,39 @@
-# Current Handoff — 2026-09-25 PR Search 18차 마감 (P0·A·B 모두 main, 사내 적용 NOT RUN)
+# Current Handoff — 2026-09-26 PR Search 19차 (0.1.0-pilot.19 배포본 준비 · 격리 업그레이드 검증 완료 · 미발행 · 사내 적용 NOT RUN)
 
 ## Start here
 
-- **main은 `df3d8ef`다(이 인계를 싣는 기록 PR이 병합됐으면 그 커밋).** 18차 착수 지시(사용자, 2026-09-24)의 P0·A·B가 모두 main에 있다.
-  - P0 = **CR-118**(PR #232 → `0dd7734`, 기록 PR #233 → `9dd2644`): main CI의 FLOW-002 뒤로가기 e2e 실패는 시험의 대기 문제였다(DEV-758).
-  - **CR-120**(PR #234 → `e181751`): `link-rebuild.test.ts` 되먹임 시험의 정적 대기 경합(DEV-765).
-  - 작업 A = **CR-119 / WP-103**(PR #235 → `e94cb4f`, 기록 PR #236 → `ee72de7`): prs-commits 재색인의 기대 집합과 메타데이터 복원(FR-ING-008 AC-10, DEV-759~764).
-  - 작업 B = **CR-121 / WP-104**(PR #237 → `df3d8ef`): prs-links 재색인의 부분 갱신 경합과 해제된 스택 이력(FR-ING-008 AC-11, FR-REL-006 AC-6, OD-017, DEV-766~773). 병합 커밋의 main CI(run 36100117388)는 verify·integration 모두 success다.
-  - **병합 기록 PR**(CR-121, 브랜치 `docs/cr121-merge-record`)이 이 인계를 싣는다. 병합됐는지 먼저 실측한다.
-- **다음 할 일은 사내 적용이다(NOT RUN).** 저장소 밖의 일이라 에이전트가 하지 않는다. 반입 뒤 순서:
-  1. RUNBOOK 7.I — 배포 직후, 첫 간선 재색인 전에 저장소마다 `./prsctl links import-stacks --repository <owner/name>`(먼저 `--dry-run`)을 돌리고, 새 빌드에서 prs-links를 재색인한다. 가져오기 없이 재색인하면 전환 전 검증이 막는다.
-  2. RUNBOOK 7.H — 사내 수동 v4 전환을 확인하고(NOT VERIFIED) 새 빌드에서 prs-commits를 재색인한다.
-  3. CR-117 — 저장소마다 `links apply`(7.G).
-  결과는 사용자가 `agent-context/upstream-feedback.md`의 해당 항목 아래에 적는다.
-- **병합 승인은 세션마다, PR마다 다시 받는다.** 이 세션에서도 사용자가 「스쿼시 병합해」로 PR #237을 승인했고, 후속 기록 PR은 따로 물었다. 이전 세션 지시서의 승인은 이어가기 세션에서 인정되지 않는다(`[Merge Without Review]`).
+- **main은 `646486e`다(이 인계를 싣는 기록 PR이 병합됐으면 그 커밋).** 19차 지시(사용자, 2026-09-26)는 최신 main으로 새 오프라인 배포본을 준비하고, 사내·공용 서버 대신 격리 환경에 이전 버전(`0.1.0-pilot.18`) 상태를 만들어 업그레이드와 자료 복구를 확인하는 것이었다. **GitHub Release 발행과 사내 적용은 지시 범위 밖이다(하지 않았다).**
+  - **CR-122 / CR-123**(PR #240 → `646486e`): 리허설이 찾은 차단 둘. `prsctl links apply|refetch|import-stacks`가 번들에서 늘 `--actor가 필요하다`로 거절되던 CLI 배선(DEV-774), 해결 갱신이 색인되지 않은 대상에 정확한 참조를 붙여 prs-links 전환이 막히던 판정 불일치(DEV-775). RUNBOOK은 prs-links 재색인을 prs-commits 재색인 뒤로 옮기고 반입 순서를 **7.J**에 모았다.
+  - **기록 PR**(브랜치 `docs/cr122-cr123-pilot19-record`)이 이 인계와 원장 6.114장(최종 번들·R3)을 싣는다. 병합됐는지 먼저 실측한다.
+- **준비한 배포본(발행하지 않음)**: `0.1.0-pilot.19` — `/home/roqkf/pr-search-wt/release19final/deploy/single-host/bundle/pr-search-0.1.0-pilot.19-offline.tar.gz`, 1,166,854,139바이트, SHA-256 `68520f736f1cd31577aca680ae7f16d0a0a783a01943cd5e8ff87b8c80e9c5c9`. manifest 커밋 `646486e`, 마이그레이션 037, 이미지 ID는 원장 6.114장. **이 파일은 사내로 가져갈 정식 산출물이 아니라 검증된 후보다** — 정식 운반은 `build-bundle.sh 0.1.0-pilot.19 --release`의 발행본이며, 발행은 번들을 다시 묶으므로 아카이브 SHA-256이 달라진다. 같은 커밋을 이 머신의 캐시로 다시 빌드하면 이미지 ID가 같았으므로(실측, 원장 6.114장) 발행 뒤 manifest의 이미지 ID를 이 번들의 값과 대조한다.
+- **다음 할 일(사용자 결정)**: (1) Release `0.1.0-pilot.19` 발행 여부, (2) 사내 적용 — RUNBOOK 7.J 순서(업그레이드 전 잡 확인·백업 → 업그레이드 → 저장소 전부(보관 포함) `links import-stacks` dry-run → 실행 → prs-commits 재색인 → prs-links 재색인 → 저장소마다 `links plan`·`apply`·`status` → 화면 확인), (3) 후속 CR 후보 DEV-776·DEV-777·DEV-773.
+- **병합 승인은 PR 번호가 정해진 뒤 그 PR에 대해 이번 세션에서 받는다.** 19차도 PR #240은 CI 뒤 AskUserQuestion으로 승인받았다.
 
 머리는 늘 실측한다: `git fetch && git log origin/main --oneline -5`, `gh pr list --state open`.
 
-18차 전사는 셋이다. 첫 세션 `exports/202609250420_ing.md`, 두 번째 세션 `exports/202609250952_ing.md`는 모두 context-full로 끊겼다. 세 번째 세션의 전사는 마감 때 export한다 — 있는지와 크기를 먼저 본다.
+## Delivered (19차)
 
-## Delivered (18차)
-
-- **CR-118** — 첫 `goBack()`이 커밋 상세를 새 문서로 불러온 뒤 수화 전에 두 번째 `goBack()`을 부르면 App Router가 popstate를 놓친다. 두 번째 뒤로가기 전에 `data-screen-state="ready"`를 기다린다. 원장 6.109장.
-- **CR-120** — 두 소비자가 받은 `commit.metadata_ready` 수가 같고 조용해질 때까지 `until`로 기다린다. 원장 6.110장.
-- **CR-119** — 재구축 순서(체인 → PR 유래 → 원본 커밋 메타데이터 → 관계 replay), 대상 결과 판정, 보존된 `source` 연결의 커밋 복원, 전환 전 검증의 정본 기대 집합·필수 ID·메타데이터 값·대상 UUID 대조. RUNBOOK 7.H. 원장 6.111장.
-- **CR-121** — shadow 부분 갱신의 문서 없음은 조건이 모두 맞을 때만 잡의 미처리(`reindex_link_pending`)로 남기고, 전환 전에 소유 source를 최신 정본에서 다시 파생해 회수한다. 전환 전 검증은 재구축과 같은 계획으로 기대 간선을 계산해 간선마다 대조하고(읽기만 한다), 전환 울타리가 미처리를 다시 본다. 스택의 성립·해제는 `pull_request_stack`(마이그레이션 037)이 정본이고 간선은 그 행의 전체 쓰기다. 배포 전 간선은 `prsctl links import-stacks`가 한 번 옮긴다. 변이 32종(30종 사멸, 둘은 등가·도달 불가), 최종 트리 전 계층 게이트 통과, 코드 리뷰 두 번(상·중 0건)과 문서 리뷰(지적 넷 반영). RUNBOOK 7.I. 원장 6.112장.
+- **격리 업그레이드 리허설** — compose 프로젝트 `prs-upg`에 pilot.18(Release 자산과 digest 같은 로컬 아카이브 `f8a29f96…`)을 세우고, 시험 전용 가짜 GHE로 사내 보고 상태(두 재색인 실패, prs-commits 수동 전환, `git merge dev` 오염, 해제 스택, 보관 저장소, 강제 푸시로 빠진 커밋과 그 전체 SHA 참조)를 재현한 뒤 새 번들로 올렸다. R1(첫 후보 `7179794`, 탐색) → 차단 둘 발견 → 수정 → R2(수정 후보 `0.1.0-pilot.19-rc2`) → R3(최종 번들). **R2·R3 모두 `VERIFIED (external, isolated)`** — 과거 간선·정상 PR 번호·원본 커밋 메시지와 작성자·M 번호 정렬과 범위 검색 유지, 잘못 붙은 PR 번호 제거, 두 재색인 검증 통과·자동 전환. 원장 6.113(R1·R2·R2b)·6.114(최종 번들·R3).
+- 검증 단계 시간은 **격리 환경 측정값**(PR 20·커밋 문서 42·간선 35)이다 — 사내 실측이 아니다.
 
 ## Verify before changing code
 
-1. **격리 인프라** — `prs-s18-postgres`(127.0.0.1:55450)·`prs-s18-es`(127.0.0.1:59215, `cluster.name=prs-s18-isolated`, cluster UUID `KIT0FoQbSd-YsLkwrOgKiA`)·`prs-s18-redis`(127.0.0.1:56394). 환경 파일은 `/tmp/claude-1000/-home-roqkf-pr-search/fb3dbfa9-f252-4a65-aa39-b7d31493105d/scratchpad/env-s18.sh`(Node 22 경로 포함 — 셸 기본 Node는 v20). 전량 시험 DB는 `prs_test_s18a`(게이트 스크립트가 매번 새로 만든다), 부분 확인은 새로 만든 DB(`prs_test_s18d` 등)를 쓴다 — 이미 적용된 DB에는 고친 마이그레이션이 다시 돌지 않는다. 옛 `prs-cr117-*`는 사용자 지시로 보존한다.
-2. **스크립트** — 게이트 `run-gates.sh`·문서 검증 `docval.sh`는 첫 세션 scratchpad(`fb3dbfa9…`), 변이 `mutate-b.mjs`·문서 삽입 `docpatch-cr121.mjs`·병합 기록 `record-cr121.mjs`는 세 번째 세션 scratchpad(`a44e4936…`)에 있다. 변이는 단독으로 돌리고, 시험 중 소스를 고치면 그 실행은 증거가 아니다.
-3. **새 표·새 ES 조회·코드 경로 변경은 그림자 검사 셋에 걸린다** — `audit-grants`(새 표의 `prs_app` GRANT), `packages/es/src/architecture.test.ts`(ADR-008 우회 조회 허용 목록과 사유), `regression/runtime-reachability.test.ts`(소스 문자열 도달성). 구현 커밋 전에 단위·통합(새 DB)·회귀 전량을 돌린다 — B는 대상 시험만 돌려 셋을 놓쳤고, 037의 GRANT 누락은 사내에서 `permission denied` 장애였을 것이다.
-4. 사용자는 `agent-context/upstream-feedback.md`를 main에서 통째로 덮는다. diff로 판단하고 상류 반영 주석만 다시 얹는다.
+1. **격리 리허설 자원(이 세션이 만듦, 사용자 결정 전까지 보존)** — 컨테이너·볼륨·네트워크 `prs-upg*`(compose 프로젝트 `prs-upg`, 호스트 포트 127.0.0.1:13000·13001), 가짜 GHE 컨테이너 `prs-upg-fakeghe`(127.0.0.1:18080, 네트워크 `prs-upg-ghe`·`prs-upg_default`). 도구와 스냅숏은 이 세션 scratchpad `/tmp/claude-1000/-home-roqkf-pr-search/de378f8d-51e9-4d08-9e71-5f9671bafd91/scratchpad/rehearsal/`(`rehearse.sh reset|prev|upgrade|restore`, `fakeghe/`, `scenario.mjs`, `capture.mjs`·`compare.mjs`, `snap/vol-r2-pre/` 볼륨 스냅숏). **/tmp라 지워질 수 있다** — 계속 쓰려면 보관 위치를 사용자에게 묻는다. 시험 비밀값은 `rehearsal/secrets/`에만 있다.
+2. **시험 인프라** — `prs-s18-postgres`(55450)·`prs-s18-es`(59215, `cluster.name=prs-s18-isolated`)·`prs-s18-redis`(56394), 환경 파일은 18차 첫 세션 scratchpad의 `env-s18.sh`(Node 22). 19차는 DB `prs_test_s19_*`를 새로 만들어 썼다. 게이트 스크립트는 이 세션 scratchpad의 `run-gates.sh <worktree> <label>`.
+3. **새 표·새 ES 조회·코드 경로 변경은 그림자 검사 셋**(audit-grants, architecture 허용 목록 — 이제 `exists`도 본다, runtime-reachability)에 걸린다.
+4. 사용자는 `agent-context/upstream-feedback.md`를 main에서 통째로 덮는다. diff로 판단한다.
 
 ## Open boundary
 
-- 병합 기록 PR(CR-121) 병합 — 병합 전에 사용자에게 다시 묻는다.
-- 사내(NOT RUN): RUNBOOK 7.I(스택 가져오기 → prs-links 재색인), 7.H(수동 v4 전환 확인과 prs-commits 재색인), CR-117의 저장소마다 `links apply`. 사내 배포 SHA는 NOT VERIFIED다. 두 재색인의 검증 단계 시간은 NOT MEASURED다(7.H 5번·7.I 4번이 재게 한다).
-- **DEV-773(open)** — 배포와 스택 가져오기 사이에는 배포 전부터 성립해 있던 스택의 역방향 재평가가 그 관계를 찾지 못한다. 운영 절차(7.I 3번, 배포 직후 가져오기)로 좁혔다.
-- 사용자 보류: 사내 GHE dev 보호 설정(미확인), M 번호 채번 정체 경보 CR, DEV-756·DEV-757, 옛 worktree·격리 컨테이너 정리(`prs-cr117-*`, `prs-s18-*`).
-- DEV-758 잔여: `linked-pr-link`를 클라이언트 `<Link>`로 바꾸면 첫 뒤로가기의 창이 사라지지만 「진짜 링크」 설계를 바꾸는 제품 변경이라 CR 대상이다.
+- **발행·사내 적용(NOT RUN)** — 위 「다음 할 일」. 사내 배포 SHA NOT VERIFIED, 사내 규모 재색인 검증 시간 NOT MEASURED.
+- **DEV-773(open)** — 배포와 스택 가져오기 사이의 역방향 재평가 공백. 7.J 2번(배포 직후 가져오기)으로 좁혔다.
+- **DEV-776(open)** — 단일 호스트의 `worker-link`·`worker-batch`에 `GHE_BASE_URL`이 없어 GHE URL 참조가 추출되지 않는다(Kubernetes는 configMap으로 받는다). 고치면 URL 참조 간선이 새로 생기는 동작 변경 → 별도 CR.
+- **DEV-777(open)** — 등록 요청 대기열(API-ADM-009) 커서가 `created_at`을 밀리초로 잘라 같은 밀리초 요청이 다음 쪽에서 빠진다(PR #240 CI integration 첫 시도 실패의 원인). 감사 기록 커서(API-ADM-005)도 같은 모양으로 보이나 미검증 → 별도 CR.
+- **자원 정리(사용자 결정)** — 워크트리 `release19`(첫 후보 — 같은 버전 이름의 **폐기된 후보** 아카이브 `34894b20…`가 들어 있다, 쓰지 않는다), `release19rc2`(rc2 후보), `release19final`(최종 번들), `upgrade-blockers`(병합된 브랜치), `pilot19-record`, 격리 자원 `prs-upg*`·`prs-upg-fakeghe`, 옛 `prs-cr117-*`·`prs-s18-*`.
 
 ## References
 
-- 변경 대장 `docs/00_governance/change_control.md`의 CR-118~CR-121(서사·표·5장 cascade와 병합 판정).
-- 원장 `docs/40_delivery/pr_search_implementation_traceability.md` 6.109~6.112장, 5장 DEV-758~DEV-773.
-- 작업 꾸러미 `docs/40_delivery/pr_search_work_packages.md`의 WP-103·WP-104.
-- SRS `FR-ING-008` AC-10·AC-11, `FR-REL-006` AC-6, `OD-017`. 데이터 모델 ENT-REL-003. 운영 절차 `deploy/single-host/RUNBOOK.md` 7.H·7.I.
-- 상류 답변 `agent-context/upstream-feedback.md` 둘째(CR-119)·셋째(CR-121) 항목.
-- 세션 노트 `agent-context/session-notes.md` 「18차」·「18차 마감」, todos 「18차 뒤 남은 것」.
+- 변경 대장 `docs/00_governance/change_control.md`의 CR-122·CR-123(서사·표·5장 cascade와 병합 판정).
+- 원장 `docs/40_delivery/pr_search_implementation_traceability.md` 6.113·6.114장, 5장 DEV-774~DEV-777.
+- 운영 절차 `deploy/single-host/RUNBOOK.md` 3장 「업그레이드」, 7장 표, 7.G·7.H·7.I·**7.J**, 8장.
+- 세션 노트 `agent-context/session-notes.md` 「19차」, todos 「19차 뒤 남은 것」.

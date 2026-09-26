@@ -1,12 +1,12 @@
 # agent-context-index:v1
-generated=2026-09-25T05:59:07+00:00
+generated=2026-09-26T13:02:24+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=9
 legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd command;@path path-ref;@code code-fence;@sig retrieval-signals;@kv metadata
 
 ## read_order
-- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-09-25-PR-Search-18차-마감-P0-A-B-모두-main-사내-적용-NOT-RUN sig=agent-context/current-handoff.md,docs/cr121-merge-record,/prsctl,owner/name,agent-context/upstream-feedback.md,origin/main,exports/202609250420_ing.md,exports/202609250952_ing.md
+- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-09-26-PR-Search-19차-0.1.0-pilot.19-배포본-준비-격리-업그레이드-검증-완료-미발행-사내-적용-NOT-RUN sig=agent-context/current-handoff.md,docs/cr122-cr123-pilot19-record,home/roqkf/pr-search-wt/release19final/deploy/single-host/bundle/pr-search-0.1.0-pilot.19-offline.tar.gz,origin/main,tmp/claude-1000/-home-roqkf-pr-search/de378f8d-51e9-4d08-9e71-5f9671bafd91/scratchpad/rehearsal/,snap/vol-r2-pre/,rehearsal/secrets/,agent-context/upstream-feedback.md
 - f73e2b0 p=25 src=agent-context/session-notes.md compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md title=Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료 sig=agent-context/session-notes.md,agent-context/upstream-feedback.md,origin/main,home/roqkf/pr-search,home/roqkf/design-system,Risks/gotchas,dailywork/2026-09-15_PR-Search-CR-092-pilot.7-,home/roqkf/pr-search/exports/pr-search-2026-09-15.md
 - f3c6d32 p=25 src=agent-context/session-summary.md compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md title=세션-요약-PR-Search-구현-2026-08-25-후반 sig=agent-context/session-summary.md,2919/2920,1847/1847,506/506,2930/2930,8/1865,agent-context/session-notes.md,docs/00_governance/change_control.md
 - f0b2764 p=28 src=agent-context/decisions.md compact=agent-context/_handoff/compact/f0b2764.decisions.ctx.md title=확정한-설계-결정과-이유 sig=agent-context/decisions.md,docs/00_governance/change_control.md,agent-context/session-notes.md,lib/redirect.ts,text/html,logout/route.ts,-qO/dev/null,HTTP/x.y
@@ -28,10 +28,10 @@ sig=agent-context/commands.md;agent-context/session-notes.md;repos/89sooner/pr-s
 ### f98c94b
 src=agent-context/current-handoff.md
 compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md
-sha256=686c3a59e01e90b515cd1133f4424db8d0a103a4d9fe2910a55e05073c4b526f
-bytes=7454 compact_bytes=8120 lines=51 priority=18
-heads=Current Handoff — 2026-09-25 PR Search 18차 마감 (P0·A·B 모두 main, 사내 적용 NOT RUN) > Start here > Delivered (18차) > Verify before changing code > Open boundary > References
-sig=agent-context/current-handoff.md;docs/cr121-merge-record;/prsctl;owner/name;agent-context/upstream-feedback.md;origin/main;exports/202609250420_ing.md;exports/202609250952_ing.md;tmp/claude-1000/-home-roqkf-pr-search/fb3dbfa9-f252-4a65-aa39-b7d31493105d/scratchpad/env-s18.sh;packages/es/src/architecture.test.ts;regression/runtime-reachability.test.ts;docs/00_governance/change_control.md;docs/40_delivery/pr_search_implementation_traceability.md;docs/40_delivery/pr_search_work_packages.md;deploy/single-host/RUNBOOK.md;agent-context/session-notes.md;Current;Handoff;Search;NOT;RUN;Start;df3d8ef;FLOW
+sha256=39e835378c4a38a48c07df62e3085fbd0cf6c9a7da3e90ea94bf1a8a87c91ee6
+bytes=6891 compact_bytes=7136 lines=39 priority=18
+heads=Current Handoff — 2026-09-26 PR Search 19차 (0.1.0-pilot.19 배포본 준비 · 격리 업그레이드 검증 완료 · 미발행 · 사내 적용 NOT RUN) > Start here > Delivered (19차) > Verify before changing code > Open boundary > References
+sig=agent-context/current-handoff.md;docs/cr122-cr123-pilot19-record;home/roqkf/pr-search-wt/release19final/deploy/single-host/bundle/pr-search-0.1.0-pilot.19-offline.tar.gz;origin/main;tmp/claude-1000/-home-roqkf-pr-search/de378f8d-51e9-4d08-9e71-5f9671bafd91/scratchpad/rehearsal/;snap/vol-r2-pre/;rehearsal/secrets/;agent-context/upstream-feedback.md;docs/00_governance/change_control.md;docs/40_delivery/pr_search_implementation_traceability.md;deploy/single-host/RUNBOOK.md;agent-context/session-notes.md;Current;Handoff;Search;NOT;RUN;Start;GitHub;Release;refetch;CLI;DEV;commits
 
 ### f0b2764
 src=agent-context/decisions.md
@@ -60,8 +60,8 @@ sig=agent-context/risks.md;agent-context/session-notes.md;Risks/gotchas;/check-r
 ### f73e2b0
 src=agent-context/session-notes.md
 compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md
-sha256=77fb0f319706a75e8c5213ba1ddd6869d38503dbdbe8359af187f18b11350d76
-bytes=248634 compact_bytes=243977 lines=3361 priority=25
+sha256=e8d6d18e9e8fc549a48e25fb94dc242e89551a37c7efd3f6c534adac82a4e750
+bytes=254623 compact_bytes=249645 lines=3401 priority=25
 heads=Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료 > Session: 2026-09-15 (8차) — CR-092 사내 pilot.7 반입 피드백 일곱 건 (PR #194) > Goal > Current state > Decisions > Changed files
 sig=agent-context/session-notes.md;agent-context/upstream-feedback.md;origin/main;home/roqkf/pr-search;home/roqkf/design-system;Risks/gotchas;dailywork/2026-09-15_PR-Search-CR-092-pilot.7-;home/roqkf/pr-search/exports/pr-search-2026-09-15.md;home/roqkf/pr-search/exports/;logs/battery-;logs/images/;feature/rel007-result-contracts;docs/cr-089-merge-record;exports/202609141932.md;exports/202609142215.md;home/roqkf/pr-search-wt/contracts;exports/202609141338.md;exports/202609140756.md;docs/40_delivery/pr_search_implementation_traceability.md;agent-context/_handoff/;github.com/89sooner/pr-search/pull/185;exports/pr-search-2026-09-14.md;perf/signature-timing.perf.test.ts;classification/commands.ts
 
@@ -76,8 +76,8 @@ sig=agent-context/session-summary.md;2919/2920;1847/1847;506/506;2930/2930;8/186
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=398163173e890d80a4106412c7f193f5854cea76f2fd480c68a74a4b603ceffd
-bytes=229670 compact_bytes=186270 lines=2671 priority=30
+sha256=d8ba63e06571467c4500fb66a67742dde117b2ce2e4603f7b8fbdef9269695ea
+bytes=232019 compact_bytes=186270 lines=2685 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > 먼저 할 것 — 2026-09-17 10차에서 이어받을 것 (사용자 방향은 이미 확정, 다시 안 물어도 됨) > 이전 (8차 이하, 아래는 2026-09-15 시점 기준 — 이후 진행 여부 미확인, 착수 전 실제 상태 재확인) > 2026-09-15 (8차) — CR-092 뒤에 남은 것 > 이 세션이 이어서 할 것 > 피드백 반영 범위 (사용자에게 확인해 준 기준)
 sig=agent-context/todos.md;packages/es/src/query-builder.ts;Risks/gotchas;packages/query/src/keys.ts;CR/DEV/WP;packages/contracts/src/source.ts;feature/rel007-capability-registry;fix/main-ci-s0-flaky;feature/rel007-r0-pr-list;docs/cr-092-merge-record;ops/repositories;home/roqkf/design-system;api/v1/me;/prsctl;agent-context/upstream-feedback.md;home/roqkf/pr-search-wt/cr092;home/roqkf/pr-search-wt/cr092-record;fix/cr092-pilot7-feedback;docs/cr-091-merge-record;docs/pilot7-published;home/roqkf/pr-search-wt/cr091-auth;home/roqkf/pr-search-wt/cr091-record;fix/cr091-pilot6-auth-feedback;docs/cr-090-merge-record
 

@@ -2669,3 +2669,17 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [ ] **사내(NOT RUN)** — **CR-121 RUNBOOK 7.I**(배포 직후 저장소마다 `./prsctl links import-stacks`, 먼저 `--dry-run` → 새 빌드에서 prs-links 재색인, 검증 단계 시간 기록), CR-119 RUNBOOK 7.H(수동 v4 전환 확인, 새 빌드에서 prs-commits 재색인, 검증 단계 시간 기록), CR-117 저장소마다 `links apply`.
 - [ ] **DEV-773(open)** — 배포와 스택 가져오기 사이에는 배포 전부터 성립해 있던 스택의 역방향 재평가가 그 관계를 찾지 못한다. 운영 절차(7.I 3번, 배포 직후 가져오기)로 좁혔다. 코드로 없애려면 평시 파생이 가져오기 전의 서비스 간선을 그 자리에서 옮겨야 한다 — 필요해지면 새 CR로 연다.
 - [ ] **사용자 보류** — GHE dev 보호 설정(미확인), M 번호 채번 정체 경보 CR, DEV-756·757, 옛 worktree·격리 컨테이너 정리(`prs-cr117-*`와 18차의 `prs-s18-*` 포함).
+
+## 19차 뒤 남은 것 (2026-09-26)
+
+- [x] **CR-122·CR-123** — 격리 업그레이드 리허설이 찾은 차단 둘. main `646486e`(PR #240).
+- [x] **0.1.0-pilot.19 최종 번들(발행 안 함)** — main `646486e`에서 `--release` 없이 만들고 격리 R3로 업그레이드를 다시 확인했다(원장 6.114장).
+- [ ] **기록 PR** — 브랜치 `docs/cr122-cr123-pilot19-record`(이 절을 싣는다). 병합됐는지 먼저 실측한다.
+- [ ] **Release `0.1.0-pilot.19` 발행(사용자 결정)** — `build-bundle.sh 0.1.0-pilot.19 --release`(분리 세션, 전용 워크트리). 발행은 번들을 다시 묶으므로 아카이브 SHA-256이 달라진다(같은 커밋을 이 머신의 캐시로 다시 빌드하면 이미지 ID는 같았다 — 원장 6.114장). 발행 뒤 manifest의 이미지 ID를 원장 값과 대조하고, 사내에 전달할 SHA-256은 발행 실행의 출력에서 읽는다.
+- [ ] **사내 적용(NOT RUN)** — RUNBOOK 7.J 순서. 두 재색인의 검증 단계 시각을 적는다(사내 규모 NOT MEASURED). 결과는 사용자가 `agent-context/upstream-feedback.md`에 적는다.
+- [ ] **DEV-776(open)** — 단일 호스트 compose의 `worker-link`·`worker-batch`에 `GHE_BASE_URL`을 넘긴다(Kubernetes와 같게). URL 참조 간선이 새로 생기는 동작 변경이라 별도 CR.
+- [ ] **DEV-777(open)** — 등록 요청 대기열(API-ADM-009) 커서를 마이크로초로(저장된 검색 방식 — `to_char(... .US)` + `::timestamptz`). 감사 기록 커서(API-ADM-005)도 같은지 먼저 확인한다.
+- [ ] **DEV-588(open, 재발)** — 조정 스캔 취소 시험 경합이 main CI(run 36231534096 첫 시도)에서 다시 깨졌다. 고치려면 `enqueueManual()` 전에 `probe.onEnter`를 대입하거나 취소 조건을 잡 ID로 건다.
+- [ ] **DEV-773(open)** — 절차(7.J 2번)로 좁힌 채 후속.
+- [ ] **리허설 도구 보관(사용자 결정)** — 도구와 스냅숏은 이 세션 scratchpad(`/tmp`)에만 있다. 다음 반입에도 쓰려면 보관 위치를 정한다(저장소에 넣으려면 범위를 정하는 CR).
+- [ ] **자원 정리(사용자 결정)** — 워크트리 `release19`(폐기 후보)·`release19rc2`·`release19final`·`upgrade-blockers`·`pilot19-record`, 격리 자원 `prs-upg*`·`prs-upg-fakeghe`, 옛 `prs-cr117-*`·`prs-s18-*`.
