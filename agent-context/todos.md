@@ -2674,12 +2674,12 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 
 - [x] **CR-122·CR-123** — 격리 업그레이드 리허설이 찾은 차단 둘. main `646486e`(PR #240).
 - [x] **0.1.0-pilot.19 최종 번들(발행 안 함)** — main `646486e`에서 `--release` 없이 만들고 격리 R3로 업그레이드를 다시 확인했다(원장 6.114장).
-- [ ] **기록 PR** — 브랜치 `docs/cr122-cr123-pilot19-record`(이 절을 싣는다). 병합됐는지 먼저 실측한다.
-- [ ] **Release `0.1.0-pilot.19` 발행(사용자 결정)** — `build-bundle.sh 0.1.0-pilot.19 --release`(분리 세션, 전용 워크트리). 발행은 번들을 다시 묶으므로 아카이브 SHA-256이 달라진다(같은 커밋을 이 머신의 캐시로 다시 빌드하면 이미지 ID는 같았다 — 원장 6.114장). 발행 뒤 manifest의 이미지 ID를 원장 값과 대조하고, 사내에 전달할 SHA-256은 발행 실행의 출력에서 읽는다.
+- [x] **기록 PR #241** — main `85af93a`(2026-09-26 squash 병합, 병합 커밋의 main CI run 36244754106 verify·integration success).
+- [x] **Release `0.1.0-pilot.19` 발행** — 사용자 지시(2026-09-26). main `85af93a`, 22:51 KST, immutable, 자산 SHA-256 `cf0e0e54837c860166ec85cf5a30f87f98893be810de37910362524492e3d00e`(사내에 별도 채널로 전달). 이미지 7종 ID가 R3 검증값과 같다(원장 머리 절 「0.1.0-pilot.19 발행」).
 - [ ] **사내 적용(NOT RUN)** — RUNBOOK 7.J 순서. 두 재색인의 검증 단계 시각을 적는다(사내 규모 NOT MEASURED). 결과는 사용자가 `agent-context/upstream-feedback.md`에 적는다.
-- [ ] **DEV-776(open)** — 단일 호스트 compose의 `worker-link`·`worker-batch`에 `GHE_BASE_URL`을 넘긴다(Kubernetes와 같게). URL 참조 간선이 새로 생기는 동작 변경이라 별도 CR.
-- [ ] **DEV-777(open)** — 등록 요청 대기열(API-ADM-009) 커서를 마이크로초로(저장된 검색 방식 — `to_char(... .US)` + `::timestamptz`). 감사 기록 커서(API-ADM-005)도 같은지 먼저 확인한다.
+- [ ] **DEV-776(open)** — 단일 호스트 compose의 `worker-link`·`worker-batch`에 `GHE_BASE_URL`을 넘긴다(Kubernetes와 같게). URL 참조 간선이 새로 생기는 동작 변경이라 별도 CR. 사용자 판단(2026-09-26): 급하지 않아 지금은 진행하지 않는다.
+- [ ] **DEV-777(open)** — 등록 요청 대기열(API-ADM-009) 커서를 마이크로초로(저장된 검색 방식 — `to_char(... .US)` + `::timestamptz`). 감사 기록 커서(API-ADM-005)도 코드 판독으로는 같은 결함이다(`audit.ts`, 실행 확인 안 함). 사용자 판단(2026-09-26): 급하지 않아 지금은 진행하지 않는다.
 - [ ] **DEV-588(open, 재발)** — 조정 스캔 취소 시험 경합이 main CI(run 36231534096 첫 시도)에서 다시 깨졌다. 고치려면 `enqueueManual()` 전에 `probe.onEnter`를 대입하거나 취소 조건을 잡 ID로 건다.
-- [ ] **DEV-773(open)** — 절차(7.J 2번)로 좁힌 채 후속.
-- [ ] **리허설 도구 보관(사용자 결정)** — 도구와 스냅숏은 이 세션 scratchpad(`/tmp`)에만 있다. 다음 반입에도 쓰려면 보관 위치를 정한다(저장소에 넣으려면 범위를 정하는 CR).
-- [ ] **자원 정리(사용자 결정)** — 워크트리 `release19`(폐기 후보)·`release19rc2`·`release19final`·`upgrade-blockers`·`pilot19-record`, 격리 자원 `prs-upg*`·`prs-upg-fakeghe`, 옛 `prs-cr117-*`·`prs-s18-*`.
+- [ ] **DEV-773(open)** — 절차(7.J 2번)로 좁힌 채 후속. 사용자 판단(2026-09-26): 지금은 진행하지 않는다.
+- [x] **리허설 도구** — 사용자 결정(2026-09-26)으로 지웠다. 다음 배포본을 같은 방식으로 검증하려면 원장 6.113장을 따라 다시 만든다.
+- [x] **자원 정리** — 사용자 결정(2026-09-26)으로 19차 워크트리 다섯과 발행 워크트리 `release19pub`, 격리 자원 `prs-upg*`·`prs-upg-fakeghe`를 지웠다. 옛 `prs-cr117-*`·`prs-s18-*`와 이전 회차 워크트리는 그대로다.
