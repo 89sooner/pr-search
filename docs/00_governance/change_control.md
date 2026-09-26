@@ -1,5 +1,26 @@
 # 변경 관리 대장
 
+## CR-123 — 해결 갱신이 색인되지 않은 대상에 정확한 참조를 붙였다: 재구축과 전환 전 검증의 판정이 갈려 prs-links 전환이 막힌다 (2026-09-26)
+
+- 유형: correction(구현 결함 — FR-REL-003 AC-3과 어긋난 해결 갱신) + 운영 절차 순서 정정. **요구사항 문장과 AC는 바꾸지 않는다** — AC-3이 이미 「대상 개체가 아직 색인되지 않았으면 간선을 미해결로 둔다」고 정한다. 안정 ID 재번호화 0건. 상태: **open** — 브랜치 `fix/cr122-cr123-upgrade-blockers`(worktree `/home/roqkf/pr-search-wt/upgrade-blockers`), 기준 main `7179794`.
+- 요청: 사용자 지시(2026-09-26) — 최신 main으로 새 오프라인 배포본을 준비하고, 사내·공용 서버 대신 격리 환경에 이전 버전(`0.1.0-pilot.18`) 상태를 만든 뒤 업그레이드와 자료 복구를 검증한다. 실제 데이터 손실이나 설치 실패가 나오면 준비 완료로 처리하지 말고 CR·문서·검증 절차대로 고친다.
+- 발견(격리 리허설, 원장 6.113장): (1) 지시받은 순서대로 스택 가져오기 뒤 prs-links를 prs-commits보다 먼저 재색인하자 전환 전 검증이 `간선 불일치 1건 … [resolved,to_id,to_repository_id,to_type]`으로 실패했다. 그 간선은 손으로 전환한 prs-commits에 빠진 커밋(실패부터 수동 전환 사이에 병합된 PR의 머지 커밋)을 전체 SHA로 가리키는 참조였다 — 새 인덱스에는 해결로, 검증의 계획에는 미해결로 섰다. prs-commits를 먼저 재색인하자 같은 prs-links 재색인이 통과했다. (2) 순서를 고친 뒤에도, rebase로 PR에서 빠져 문서를 만들 근거가 없는 커밋(DEV-759)을 전체 SHA로 가리키는 PR을 더하자 prs-links 재색인이 같은 이유로 매번 실패했고, 그 재구축이 **서비스 인덱스의 그 간선까지** 문서 없는 커밋을 가리키는 해결 상태로 바꿔 놓았다.
+- 원인: 해결 갱신(`resolveReferencesTo`, JOB-REL-005)은 불린 대상이 곧 있다고 여겨 정확한 키(`pr:N`·`commit:<40자>`)를 그 대상에 붙였다. 평시에는 투영이 대상을 쓴 뒤에 불리므로 같은 답이지만, 재색인은 source를 정본 스냅숏에서 차례로 읽고 source마다 이 함수를 부른다. 파생과 전환 전 검증은 `planReferenceLinks`(`findReferenceTargets` — 서비스 별칭에 대상 문서가 있는가)로 판정하므로, 서비스 인덱스에 문서가 없는 대상에서 둘이 갈라진다. 재구축은 이중 쓰기로 서비스 인덱스에도 쓰므로 서비스 인덱스도 틀린 해결을 받는다.
+- 범위: (a) `packages/es` — `isReferenceTargetIndexed`(대상 문서 한 건의 실시간 존재 확인). (b) `apps/pipeline-worker` — `resolveReferencesTo`가 미해결인 정확한 키 후보가 있을 때만 대상 문서를 한 번 확인하고, 없으면 붙이지 않는다. 접두 키 경로(매번 유일성 재계산)는 그대로다. (c) `deploy/single-host/RUNBOOK.md` — 7.I 4번(prs-links 재색인)을 7.H 5번(prs-commits 재색인)이 `completed`된 뒤에 하도록 고치고, 이미 먼저 전환했다면 7.H 뒤에 한 번 더 돌리게 한다. 순서를 한곳에 모은 7.J를 더하고 3장·7장 표·8장을 맞춘다. (d) 비동기 문서의 JOB-REL-005 해결 규칙에 한 행. (e) `packages/es/src/architecture.test.ts` — ADR-008 우회 조회 검사가 `exists`도 잡는다(독립 리뷰 지적).
+- 결정과 대가: 재구축 호출부가 아니라 함수에서 고친다 — 평시 경로(문서 없이 보강 신호가 온 커밋)도 같은 규칙을 탄다. 존재 확인은 검색이 아니라 문서 ID·routing의 실시간 조회라 refresh 지연이 없고, 비용은 해결 갱신 한 번당 최대 한 번이다. **코드만으로는 순서 문제가 풀리지 않는다** — 고친 코드에서 prs-links를 먼저 재색인하면 검증은 통과하지만 손으로 전환한 인덱스에 빠진 커밋을 가리키는 참조가 미해결로 전환되고, 재색인은 이벤트를 내지 않아 prs-commits가 복원된 뒤에도 다시 해결되지 않는다. 그래서 절차의 순서를 함께 고친다. 대가: 업그레이드 전 서비스 인덱스에서 해결돼 있던 참조 가운데 대상 커밋의 문서가 CR-119 재구축으로 사라지는 것(생성 근거 없는 커밋)은 prs-links 재색인 뒤 미해결이 된다 — 대상 문서가 없으므로 AC-3에 맞는 상태이며, 간선과 근거 문장은 남는다.
+- 제외: 참조 추출 규칙, 접두 키 판정, 스택·되돌림 파생, CR-119의 문서 생성 정책, DEV-773, 단일 호스트 compose의 `GHE_BASE_URL` 배선(DEV-776, 후속), Release 발행과 사내 적용.
+- 설계·세부 정본: FR-REL-003 AC-3, JOB-REL-005(비동기 3장 「해결 규칙」), RUNBOOK 7.I·7.J, 원장 5장 DEV-775, 6.113장. 연쇄 기록은 5장 「CR-123 cascade」에 적는다.
+
+## CR-122 — `prsctl links`의 쓰는 명령이 행위 주체 인자를 읽지 못한다: 인자가 먼저다 (2026-09-26)
+
+- 유형: correction(구현 결함 — CLI 배선). 요구사항·계약·명령 문장은 바꾸지 않는다. 안정 ID 재번호화 0건. 상태: **open** — CR-123과 같은 브랜치.
+- 발견: CR-123과 같은 격리 리허설. pilot.18 상태에서 후보 번들(`7179794`)로 업그레이드한 뒤 RUNBOOK 7.I 3번의 `./prsctl links import-stacks --repository <owner/name>`가 dry-run은 통과하고 실제 실행은 `--actor가 필요하다 (호스트 사용자 이름). 행위 주체 없이 관계를 바꾸지 않는다.`로 거절됐다(저장소 셋 모두, 종료 코드 2). 사내에서 그대로 나면 스택을 가져올 수 없어 prs-links 재색인이 막히는 설치 실패다.
+- 원인: `link-repair-command.ts`의 `parse`는 `--actor`를 읽어 두지만 `resolveActor`는 `deps.actor`만 봤고, CLI 진입점(`link-repair-cli.ts`)은 `deps.actor`를 채우지 않는다. `prsctl`의 `cmd_links`는 `--actor <호스트 사용자>`를 인자 끝에 붙여 넘긴다. CR-116부터 같은 배선이라 **번들의 `prsctl links apply`·`refetch`(7.G)와 `import-stacks`(7.I)는 한 번도 실행될 수 없었다**(pilot.18 포함). 통합 시험은 `deps.actor`를 직접 넣어 이 틈을 지나쳤다.
+- 범위: `resolveActor`가 인자의 값을 먼저 쓰고 `deps.actor`는 대체값으로만 쓴다(`apply`·`refetch`·`import-stacks` 세 호출). 시험은 `deps.actor` 없이 인자로만 넘긴다 — 두 쓰는 명령의 잡·감사 행위 주체, `refetch`의 자격 검사 도달, 인자·주입이 모두 없을 때의 거절.
+- 결정과 대가: CLI 진입점이 아니라 명령에서 고친다 — 인자로 부르는 모든 호출자가 같은 경로를 탄다. 우선순위는 인자 > 주입이다. 다른 운영 CLI는 이미 인자에서 읽는다(`sequence-reproject-command.ts`의 `optionText(args, 'actor')`).
+- 제외: `prsctl`과 RUNBOOK의 명령 문장(이미 `--actor`를 넘긴다), Release 발행과 사내 적용.
+- 설계·세부 정본: 원장 5장 DEV-774, 6.113장. 연쇄 기록은 5장 「CR-122 cascade」에 적는다.
+
 ## CR-121 — prs-links 재색인의 부분 갱신 경합과 해제된 스택 이력: 필요한 간선이 올바른 내용·권한으로 모두 있는 새 인덱스만 전환한다 (2026-09-25)
 
 - 유형: correction(설계 결함 — 간선의 부분 갱신이 재색인의 새 인덱스에서 대상 간선을 찾지 못해 재색인이 실패했고, 같은 경로에서 해제된 스택 이력이 색인에만 있어 재색인이 그것을 조용히 잃었다). `FR-ING-008` AC-11과 `FR-REL-006` AC-6 신설, `OD-017`을 열고 같은 날 사용자 결정으로 닫는다. **기존 FR의 요구사항 문장과 AC 문장은 바꾸지 않는다. 안정 ID 재번호화 0건.** 상태: **closed** — main `df3d8ef`(PR #237 squash 병합, 2026-09-25). worktree `/home/roqkf/pr-search-wt/links-reindex`(브랜치 `feature/cr121-links-reindex`), 기준 main `ee72de7`(CR-119·CR-120 병합 기록 뒤).
@@ -263,6 +284,8 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| CR-123 | 2026-09-26 | correction | 사용자 지시 2026-09-26(새 배포본 준비와 사전 검증) — 격리 업그레이드 리허설에서 prs-links 재색인이 참조 간선의 `간선 불일치`로 두 번 실패(손으로 전환한 prs-commits에 빠진 커밋, 생성 근거 없는 커밋을 가리키는 전체 SHA 참조) | **해결 갱신이 정확한 키도 대상 문서가 서비스 색인에 있을 때만 붙인다(FR-REL-003 AC-3).** 재구축이 정본 스냅숏에서 읽은 문서 없는 대상에 해결을 붙여 새 인덱스·서비스 인덱스와 검증의 계획이 갈렸다. RUNBOOK은 prs-links 재색인을 prs-commits 재색인 뒤로 옮기고 반입 순서를 7.J에 모은다 | FR-REL-003 AC-3 · JOB-REL-005 · DEV-775 · DEV-776(범위 밖 기록) | 비동기 · 원장 · RUNBOOK | open — 브랜치 `fix/cr122-cr123-upgrade-blockers`, 원장 6.113 |
+| CR-122 | 2026-09-26 | correction | 같은 리허설 — `prsctl links import-stacks`의 실제 실행이 `--actor가 필요하다`로 거절(저장소 셋 모두) | **link-repair 명령이 인자 `--actor`를 먼저 쓰고 `deps.actor`는 대체값으로만 쓴다.** 파싱한 값을 버려 번들의 `prsctl links apply`·`refetch`·`import-stacks`가 CR-116부터 늘 거절됐다. 시험은 인자로만 넘긴다 | FR-SRCH-002 AC-6 · FR-REL-006 AC-6 · RB-29 · DEV-774 | 원장 · RUNBOOK | open — 같은 브랜치, 원장 6.113 |
 | CR-121 | 2026-09-25 | correction | 사용자 지시 2026-09-24(18차 작업 B) — 사내 pilot.18 운영 보고(prs-links v1 재색인이 shadow 쓰기의 `document_missing_exception`으로 실패, v1 계속 서비스) · 사용자 결정 2026-09-25(`OD-017`) | **prs-links 재색인에서 부분 갱신의 문서 없음은 조건이 모두 맞을 때만 미처리로 잡에 남기고 소유 source를 정본에서 다시 파생해 회수하며, 전환 전 검증이 기대 간선을 정본에서 계획해 간선마다 대조한다. 해제된 스택 이력은 PostgreSQL 정본(`pull_request_stack`)에 남기고 간선은 그 행에서 전체 쓰기로 낸다.** bulk 응답 누락의 성공 계수, msearch 항목 오류의 미해결 고착, 불완전 파생의 완결 승격을 함께 고친다 | FR-ING-008 AC-11 · FR-REL-006 AC-6 · OD-017 · ENT-REL-003 · JOB-REL-004 · JOB-REL-006 · JOB-ING-006 · WP-104 · DEV-766~773 | SRS · PRD · 매트릭스 · 데이터 모델 · 비동기 · API 계약 · 관측성 · 백엔드 · WP · 원장 · RUNBOOK · prsctl | closed — main `df3d8ef`(PR #237), 원장 6.112 |
 | CR-120 | 2026-09-25 | correction | CR-118 기록 PR #233의 CI run 36020541832 integration 실패(`link-rebuild.test.ts` 되먹임 시험, `expected 5 to be 4`) | **실패를 시험의 대기 경합으로 가르고 고친다.** 루프 탐지 시험이 「300ms 조용함」만으로 판정해, 간선 소비자가 앞 신호를 처리하는 동안 두 소비자의 수가 어긋난 순간에 들어갔다. 두 소비자가 받은 신호 수가 같고 조용한 상태를 `until`로 기다리고, 신호가 실제로 났는지를 더 판정한다 | DEV-765 · DEV-346(같은 계열) | 변경 대장 · 원장 · 통합 시험 | closed — main `e181751`(PR #234), 원장 6.110 |
 | CR-119 | 2026-09-25 | correction | 사용자 지시 2026-09-24(18차 작업 A) — 사내 pilot.18 운영 보고(prs-commits v3→v4 재색인이 전환 전 검증에서 실패, 사내 수동 전환) | **재색인의 기대 집합을 쓰기 결과가 아니라 정본과 생성 정책에서 문서 ID로 계산하고, 문서를 만든 뒤 메타데이터를 반영하며, 전환 전 검증이 필수 ID의 존재와 알려진 메타데이터 값을 대조한다.** 숨은 원본 커밋 메타데이터 누락, `null`·부재 혼동, 대상 인덱스 자동 생성, 보존된 `source` 연결 커밋의 문서 부재를 함께 고친다 | FR-ING-008 AC-10 · JOB-ING-006 · API-ADM-004 · WP-103 · DEV-759~764 | SRS · PRD · 매트릭스 · 비동기 · API 계약 · 관측성 · WP · 원장 · RUNBOOK | closed — main `e94cb4f`(PR #235), 원장 6.111 |
@@ -2381,6 +2404,26 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - 상태: **closed**(2026-09-21). 운영 배포는 하지 않았고, 사내 CA·운영 HAProxy·실제 GHE를 거친 검증과 실제 사용자 매핑은 NOT_RUN이다 — 이 CR의 범위 밖이다.
 
 **병합 판정.** 구현·검증 보고 뒤 사용자 지시(2026-09-21 「origin/main에 병합」)로 진행했다. 저장소가 공개라 시험 전용 서명 비밀키를 커밋에서 빼고, main CI의 `verify`를 막던 lint 기준선 1건을 ESLint 설정으로 해소한 뒤(원장 6.103장 「병합 준비」) 커밋 `28a3c21`을 PR #220으로 올렸다. PR CI(run `35568796745`)는 verify·integration 모두 success다 — `verify`의 단계(typecheck·lint·lint:deps·test·build·test:a11y·test:contrast·test:e2e)에는 건너뛰는 조건이 없으므로 로컬에서 돌리지 않은 a11y·contrast·e2e도 이 실행이 확인했다. squash 병합 커밋은 `e7b4cb4`(15:43 KST)이고 트리가 `28a3c21`과 같다. 병합 커밋 `e7b4cb4`의 main CI(run `35569716267`)는 끝나기 전에 취소됐다 — 15:46에 사용자가 메인 체크아웃에서 입력 지시서 묶음을 따로 커밋해(`c73ed9f`) main과 병합한 `364f0fb`를 push했고, 워크플로의 `cancel-in-progress`가 앞 실행을 취소했다. `364f0fb`의 트리는 `e7b4cb4`와 같다(묶음 6개 파일이 PR #220에 든 것과 같은 내용이라 차이가 없다, tree `26f3f0fb…`). 그 커밋의 main CI(run `35569895232`)는 verify·integration 모두 success다 — #218부터 lint 단계에서 멈추던 main의 `verify`가 다시 끝까지 통과했다. 병합 기록은 별도 PR(브랜치 `docs/cr112-merge-record`)로 했다 — 작업 패키지 v2.57 → v2.58(WP-097 done), 원장 v6.98 → v6.99(머리 절, 3장, 4장, 6.103장 「병합」), handoff의 PIPE_INTEGRATION_HANDOFF·TEST_RESULTS·CONTRACT_DIFF·manifest 생성기와 다시 만든 manifest(계약 checksum `3c7fbe92…` 변동 없음). 문서 검증기는 이 기록 뒤에도 두 모드 모두 오류·경고 목록이 병합 시점과 같다. 릴리스·태그는 발행하지 않았다. closed.
+
+### CR-123 cascade — 해결 갱신의 대상 색인 판정과 반입 순서
+
+기준: main `7179794` 위 worktree `/home/roqkf/pr-search-wt/upgrade-blockers`(브랜치 `fix/cr122-cr123-upgrade-blockers`). correction — 요구사항 문장은 바꾸지 않고 구현을 FR-REL-003 AC-3에 맞추며, 운영 절차의 순서를 고친다. ID는 `docs/`와 열린 PR(없음)을 실측해 정했다 — CR-122·CR-123·DEV-774~DEV-776. 새 ADR·JOB·EVT·RB 번호는 쓰지 않는다.
+
+- [x] 요구사항: 해당 없음 — FR-REL-003 AC-3이 이미 「대상이 아직 색인되지 않았으면 미해결」을 정한다. PRD·용어집·매트릭스도 바뀌지 않는다.
+- [x] 파생 UI: 해당 없음 — W-002는 간선의 `resolved`를 그대로 읽는다.
+- [x] 기술 아키텍처: 비동기 v0.20 → v0.21(3장 「해결 규칙」에 정확한 키의 대상 색인 조건 한 행).
+- [x] 전달: 원장 v6.113 → v6.114(머리 절, 4장 FR-REL-003·FR-ING-008 AC-11 행, 5장 DEV-775·DEV-776, 6.113장). `deploy/single-host/RUNBOOK.md` 3장 「업그레이드」 한 문단, 7장 표 한 행, 7.I 3·4번과 실패 표본 한 항목, 새 7.J, 8장 한 행.
+- [x] 코드·시험: 원장 6.113장.
+- 상태: **open**.
+
+### CR-122 cascade — `prsctl links`의 행위 주체 인자
+
+기준: CR-123과 같은 브랜치. correction — CLI 배선 하나와 시험.
+
+- [x] 요구사항·파생 UI·기술 아키텍처: 해당 없음 — 명령의 계약(`--actor`가 필요하다)은 그대로이고 그 값을 실제로 읽게 한다.
+- [x] 전달: 원장 v6.113 → v6.114(4장 FR-SRCH-002 AC-6 행, 5장 DEV-774, 6.113장). `deploy/single-host/RUNBOOK.md` 7.G 한 문단, 7.I 3번 한 줄, 8장 한 행.
+- [x] 코드·시험: 원장 6.113장.
+- 상태: **open**.
 
 ### CR-121 cascade — prs-links 재색인의 부분 갱신 경합과 해제된 스택 이력
 

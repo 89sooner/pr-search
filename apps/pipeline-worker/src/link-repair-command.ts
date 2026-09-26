@@ -44,7 +44,8 @@ export interface LinkCommandDeps {
   /** `refetch`에만 필요하다. 없으면 그 명령만 거절한다. */
   readonly client?: GitHubClient;
   /**
-   * 행위 주체. `prsctl`이 호스트 사용자 이름을 넘긴다.
+   * 행위 주체의 대체값. `prsctl`은 호스트 사용자 이름을 **인자 `--actor`로** 넘기며 그 값이 먼저다
+   * (CR-122 / DEV-774). 이 필드는 인자 없이 부르는 호출자가 주입할 때만 쓰인다.
    *
    * **이름 없이는 쓰는 명령을 실행하지 않는다** (`prsctl sequence`와 같은 규율). 잡의
    * `requested_by`와 감사 기록에 `prsctl:<사용자>`로 남는다. 읽기만 하는
@@ -119,9 +120,15 @@ function parse(argv: readonly string[]): { command: string; repository?: string;
   };
 }
 
-/** 쓰는 명령의 행위 주체. 모양이 아니면 거절한다 — 감사 기록에 임의 문자열을 넣지 않는다. */
-function resolveActor(deps: LinkCommandDeps): string | null {
-  const actor = deps.actor ?? '';
+/**
+ * 쓰는 명령의 행위 주체. 모양이 아니면 거절한다 — 감사 기록에 임의 문자열을 넣지 않는다.
+ *
+ * **인자가 먼저다** (CR-122 / DEV-774). `prsctl links`는 `--actor`를 인자 끝에 붙여 넘기는데, 처음 판은
+ * 파싱한 그 값을 버리고 `deps.actor`만 읽었다. CLI 진입점은 `deps.actor`를 채우지 않으므로 번들의
+ * `apply`·`refetch`·`import-stacks`는 늘 이 자리에서 거절됐고, 시험은 `deps.actor`를 직접 넣어 그 틈을 지나쳤다.
+ */
+function resolveActor(deps: LinkCommandDeps, fromArgs: string | undefined): string | null {
+  const actor = fromArgs ?? deps.actor ?? '';
   if (!ACTOR_PATTERN.test(actor)) {
     deps.err('--actor가 필요하다 (호스트 사용자 이름). 행위 주체 없이 관계를 바꾸지 않는다.');
     return null;
@@ -228,7 +235,7 @@ export async function runLinkRepairCommand(
   }
 
   if (parsed.command === 'apply') {
-    const actor = resolveActor(deps);
+    const actor = resolveActor(deps, parsed.actor);
     if (actor === null) return 2;
     const label = `${repository.owner}/${repository.name}`;
     const correlationId = randomUUID();
@@ -283,7 +290,7 @@ export async function runLinkRepairCommand(
   }
 
   if (parsed.command === 'refetch') {
-    if (resolveActor(deps) === null) return 2;
+    if (resolveActor(deps, parsed.actor) === null) return 2;
     if (deps.client === undefined) {
       deps.err('refetch에는 GHE 자격이 필요하다 — 이 프로세스에 설정되지 않았다');
       return 1;
@@ -316,7 +323,7 @@ export async function runLinkRepairCommand(
       print(await importServingStacks({ pool: deps.pool, es: deps.es }, repository, { dryRun: true }), true);
       return 0;
     }
-    const actor = resolveActor(deps);
+    const actor = resolveActor(deps, parsed.actor);
     if (actor === null) return 2;
     const correlationId = randomUUID();
     // `apply`와 같은 규율이다 — 잡 행과 감사 기록을 남기고, 같은 저장소의 복구와 겹치지 않는다.

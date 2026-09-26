@@ -429,6 +429,13 @@ $EDITOR .env          # PRS_VERSION을 새 값으로 — **load보다 먼저다*
 
 **마이그레이션이 먼저다.** 하위 호환이므로 옛 코드가 새 스키마 위에서 돈다(데이터 모델 7장). 롤백은 `.env`의 `PRS_VERSION`을 이전 값으로 되돌리고 `./prsctl upgrade`를 다시 실행한다 — **이전 이미지가 로컬에 남아 있어야 하므로 번들을 지우지 마라.**
 
+**`0.1.0-pilot.18`에서 올라오는 반입은 7.J의 순서를 따른다** (`CR-122`·`CR-123`). 스택 가져오기·두 재색인·`links apply`의 순서가 결과를 바꾼다. **`upgrade` 전에 도는 잡이 없는지 본다** — 컨테이너 교체가 그 잡을 처리하던 프로세스를 끊는다. 아래가 빈 결과여야 한다.
+
+```bash
+docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T postgres \
+  psql -U prs -d prs -c "SELECT job_id, type, target, state FROM job WHERE state IN ('queued','running','paused')"
+```
+
 **세션 인증과 관리 토큰 (`CR-091`).** `./prsctl load`·`install`·`upgrade`·`health`는 시작하기 전에 `AUTH_ENABLED=true`와 `ADMIN_API_TOKENS`가 함께 있는지 본다. 함께 있으면 **컨테이너를 바꾸기 전에** 멈춘다 — `search-api`가 그 조합으로는 기동하지 않기 때문이다(`DEV-048`). 파일럿을 `AUTH_ENABLED=false`에서 `true`로 옮기는 업그레이드라면 이전 `.env`의 토큰을 비우고, 운영자에게 `./prsctl role grant`로 `operator`를 준다(6장).
 
 **병합 상태 정정 (`CR-101`, 마이그레이션 032).** 032는 이미 저장된 PR 스냅숏에서 병합된 PR의 `state`를 `closed`에서 `merged`로 바로잡는다. Elasticsearch는 그 문서를 그대로 색인하므로 **`upgrade`가 끝난 뒤 운영 콘솔(`/ops`)에서 `prs-pull-requests`를 한 번 재색인한다.** 그 전까지는 Status=Merged·My merged PRs·PR 상세의 Merged 배지·M 번호 조회가 옛 문서를 보고 병합 PR을 놓친다. 재색인 뒤 들어오는 웹훅·백필 문서는 투영이 스스로 파생한다.
@@ -750,6 +757,7 @@ done
 | 채번 전 미러 fetch (`DEV-576`) — 수정 전 "옛 head를 읽고 새 커밋 없음" 재현과 수정 후 | `VERIFIED (external)` |
 | **직접 푸시의 영구 부재 확정** (`DEV-581`) → 운영자 확인서 (`CR-100`, 7.D) | **`VERIFIED (external)`** — 확인서로 지나가는 경로·유예·범위·철회·확정 근거 보존을 격리 DB 통합 시험 11건과 변이 2건으로 확인했다(원장 6.94장). 사내 실데이터 적용은 `NOT RUN — internal environment required` — 7.D 절차로 사내에서 실행한다. 이전 기록: **`NOT RUN — 근거 미확보`** — 공식 GHE 읽기 계약에 완결 증서가 없다. production 판정기는 그 상태를 `negative_evidence_unavailable`로 남기며, 그 결과 **첫 미확정 항목 뒤의 PR이 전부 대기할 수 있다.** 격리 시험이 direct 분기를 통과한 것은 이 조건을 닫지 않는다 |
 | 실제 사내 GHE에서의 M 채번·지연 (`measure:sequence-latency`) | `NOT RUN — internal environment required` — 아래 7.A 절차로 사내에서 잰다 |
+| `0.1.0-pilot.18` 운영 상태에서 이 판으로의 업그레이드 — 7.J 순서(스택 가져오기 → prs-commits 재색인 → prs-links 재색인 → `links apply`) | `VERIFIED (external, isolated)` (2026-09-26) — 격리 compose 프로젝트에 pilot.18 번들을 설치하고 가짜 GHE로 사내 보고와 같은 상태(해제된 스택 이력, `git merge dev`로 붙은 PR 번호, 손으로 전환한 prs-commits, 실패한 prs-links 재색인의 대상 인덱스, 보관된 저장소)를 만든 뒤 이 판으로 올렸다. 과거 간선·정상 PR 번호·원본 커밋의 메시지와 작성자·M 번호 정렬과 범위 검색이 유지되고, 잘못 붙은 PR 번호가 빠지고, 두 재색인이 검증을 지나 자동 전환했다. 그 과정에서 차단 둘(`CR-122`·`CR-123`)을 찾아 고쳤다. 기록과 검증 단계 시간(**격리 환경 값이며 사내 실측이 아니다**)은 원장 6.113장. **사내 실데이터 적용은 `NOT RUN`** |
 
 **외부에서 증명할 수 없는 것을 통과로 적지 않는다.** 사내 반입 뒤 이 표의 아래쪽을 실제로 실행하고 그 결과를 기록한다.
 
@@ -1241,6 +1249,11 @@ App에 허용되는가)을 고친 뒤 대조를 dry-run 없이 실행하면 즉�
 전에 `apply`를 돌리면 정리한 번호가 곧바로 다시 들어온다. 단일 호스트에서는 `./prsctl upgrade`가
 컨테이너를 교체하므로 겹침이 짧지만, 교체가 끝난 것을 확인한 뒤에 시작한다.
 
+**`0.1.0-pilot.19` 이전 판에서는 이 절의 `apply`·`refetch`가 돌지 않았다** (`DEV-774`). 번들의 CLI가
+`prsctl`이 붙여 넘기는 `--actor`를 읽지 못해 `--actor가 필요하다`로 거절했다 — pilot.18의 `links apply`는
+사내에서 한 번도 실행될 수 없었다. `CR-122`부터 인자로 받는다. 행위 주체가 필요 없는 `plan`·`status`는
+그때도 돌았다.
+
 1. **어느 형상이 떠 있는가.** `./prsctl lineage`로 배포 SHA를 읽고 이 절이 있는 판(`CR-116` 이후)인지
    확인한다. 이전 판이면 아래 명령이 없다 — 업그레이드가 먼저다.
 
@@ -1483,6 +1496,16 @@ PostgreSQL(`pull_request_stack`)에 남긴다.
    `pr_link_repair` 잡 행과 감사 기록(`job.run`)을 남기고, 같은 저장소의 다른 복구 잡이 돌고 있으면
    거절한다. 서비스 인덱스는 바꾸지 않는다.
 
+   **「저장소마다」에는 보관(archived)된 저장소도 들어간다.** 4번의 검증은 등록된 저장소 전부의 서비스
+   간선을 세고, 가져오기도 상태와 무관하게 저장소 행을 찾는다. 운영 화면의 목록이 아니라 정본에서 읽는다.
+
+   ```bash
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T postgres \
+     psql -U prs -d prs -c "SELECT owner||'/'||name AS repository, status FROM repository ORDER BY 1"
+   ```
+
+   `0.1.0-pilot.19` 이전 판의 이 명령은 dry-run만 돌고 실제 실행은 `--actor가 필요하다`로 거절됐다(`DEV-774`).
+
    배포와 가져오기 사이에 상위 PR이 병합된 스택은 서비스 간선이 해제로 바뀌지 않았을 수 있다
    (DEV-773). 가져오기는 그 값을 그대로 옮기고, 하위 PR이 다시 파생되거나(하위 PR 이벤트) 4번의
    재구축이 지금 성립 여부로 고친다. 그래서 이 단계는 배포 직후에 한다.
@@ -1491,12 +1514,20 @@ PostgreSQL(`pull_request_stack`)에 남긴다.
    간선이 있으면 4번의 검증이 그 간선 때문에 막힌다. 그 간선 문서를 조회해 기록하고 보고한다 — 서비스
    인덱스를 손으로 고치지 않는다.
 
-4. **수정된 빌드에서 새 인덱스를 정본으로 다시 만든다.** 7.H 5번과 같은 CLI에서 별칭만 바꾼다.
+4. **수정된 빌드에서 새 인덱스를 정본으로 다시 만든다 — 7.H 5번(prs-commits 재색인)이 `completed`된 뒤에**
+   (`CR-123`). 7.H 5번과 같은 CLI에서 별칭만 바꾼다.
 
    ```bash
    docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml --profile setup \
      run --rm reindex node dist/reindex-cli.js --alias prs-links
    ```
+
+   **순서가 결과를 바꾼다.** 재구축과 전환 전 검증은 참조의 대상이 **서비스 prs-commits·prs-pull-requests에
+   색인되어 있는가**로 해결을 판정한다(FR-REL-003 AC-3). 손으로 전환한 prs-commits에는 실패부터 전환 사이의
+   커밋이 빠져 있어, 그 커밋을 가리키는 참조가 새 인덱스에서 미해결로 선다. 재색인은 이벤트를 내지 않으므로
+   나중에 prs-commits가 복원돼도 그 참조는 다시 해결되지 않는다. 이미 7.H보다 먼저 전환했다면 7.H가 끝난 뒤
+   이 4번을 한 번 더 돌린다. `0.1.0-pilot.19` 이전 빌드는 이 경우 해결 갱신이 색인되지 않은 대상에도 해결을
+   붙여 검증이 `간선 불일치`로 막혔다(`DEV-775`) — 격리 리허설에서 드러났다.
 
    잡은 `worker-batch`가 돌린다. 그 로그에서 `간선 미처리 회수`(`rederived`·`absent`·`rounds` — 재구축
    중 부분 갱신이 새 인덱스에서 간선을 찾지 못했거나 파생이 불완전해 다시 파생한 source 수)와
@@ -1517,7 +1548,8 @@ PostgreSQL(`pull_request_stack`)에 남긴다.
      종류·ID·사유)을 기록하고 그 source의 정본(PR·커밋 스냅숏)을 확인한다.
    - `간선 누락`·`간선 불일치`·`정본에 없는 간선`·`소유 source가 없는 간선` — 새 인덱스가 정본의 계획과
      다르다. 검증 중에 들어온 변경과의 경주일 수 있으므로 한 번 다시 실행하고, 같은 사유가 되풀이되면
-     표본을 기록해 보고한다.
+     표본을 기록해 보고한다. 참조 간선의 `[resolved,to_id,to_repository_id,to_type]` 불일치가 되풀이되면
+     7.H를 먼저 끝냈는지, 이 판의 빌드인지(`./prsctl lineage`) 본다(위 「순서가 결과를 바꾼다」).
    - `간선을 계획하지 못한 source N건` — 그 source의 기대 간선을 계산하지 못했다(참조 추출 실패, 또는 계획
      도중 정본이 사라짐). 코드에서 닿기 어려운 경로다 — 표본의 source를 기록해 보고한다.
    - `shadow_write_failed` — 미처리로 다룰 수 없는 새 인덱스 쓰기 오류다(전체 쓰기 실패·인덱스 없음·
@@ -1541,10 +1573,47 @@ PostgreSQL(`pull_request_stack`)에 남긴다.
 (prs-links)을 건드리지 않는다. `links import-stacks`는 스택 간선의 이력을 정본으로 **한 번** 옮길 뿐
 색인을 고치지 않는다. 간선 인덱스를 정본과 맞추는 것은 4번의 재색인이다.
 
+### 7.J `0.1.0-pilot.18`에서 올라오는 반입 — 순서를 한곳에 (`CR-122`·`CR-123`)
+
+7.G·7.H·7.I는 각자 한 가지를 고치지만 서로의 전제가 된다. 사내 `0.1.0-pilot.18`(prs-commits 수동 전환,
+prs-links 재색인 실패, `git merge dev`로 붙은 PR 번호)에서 올라올 때는 아래 순서로 한 번에 밟는다. 격리
+환경에 같은 상태를 만들어 이 순서를 끝까지 돌렸다(원장 6.113장) — **사내에서 돌린 것이 아니다.**
+
+0. **업그레이드 전.** 도는 잡이 없는지(3장 「업그레이드」의 질의), 별칭마다 인덱스가 하나인지 본다.
+   `./prsctl backup`을 받는다.
+
+   ```bash
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T elasticsearch \
+     curl -fsS 'http://localhost:9200/_cat/aliases/prs-*?v&h=alias,index'
+   ```
+
+1. **업그레이드.** 3장 「업그레이드」 — 이전 `.env` 복사 → `PRS_VERSION` → `verify`·`load` → (사내 compose
+   수정 재적용) → `upgrade`. `./prsctl lineage`와 `docker compose … ps`로 모든 워커가 새 판인지 본다.
+2. **스택 가져오기 — 바로 다음에** (7.I 3번). 정본의 저장소 목록(보관 포함) 전부에 `links import-stacks
+   --dry-run` → 실행. 배포와 이 단계 사이를 비우지 않는다(`DEV-773`).
+3. **prs-commits 재색인** (7.H 5번) → 잡이 `completed`인지 본다. 원본 커밋의 메시지·작성자, 실패부터 수동
+   전환 사이의 커밋, 커밋의 PR 연결과 체인 커밋의 역할, 커밋의 M 투영이 정본에서 다시 선다.
+4. **prs-links 재색인** (7.I 4번) → 잡이 `completed`인지 본다. 3번 뒤라야 참조의 해결 상태가 맞는다.
+5. **PR 연결 확인** (7.G) — 저장소마다 `links plan` → `links apply` → `links status`. 3번의 재구축이 PR
+   연결과 역할을 이미 정본으로 다시 만들었으므로 `plan`은 보통 0건이다. `apply`는 확인과 기록(잡·감사)으로
+   저장소마다 한 번 돌린다 — 3번이 실패했다면 이 단계가 서비스 인덱스의 PR 번호를 바로잡는다. 3번보다 먼저
+   `apply`를 돌렸다면 손으로 전환한 인덱스에 문서가 없던 커밋은 `parked`(`last_reason`=`document_missing`)로
+   남는다. 3번이 그 문서를 PR 연결까지 정본으로 다시 만들므로 그 뒤 `plan`이 0건이면 끝난 것이고, 그 `parked`
+   수는 늘지 않는 한 남아도 된다(7.G 6번).
+6. **화면 확인.** 7.G 끝(커밋의 Linked PRs, PR 상세의 제외 안내), 7.H 6번(원본 커밋의 메시지·작성자),
+   7.I 5번(스택·해제 표시, 참조의 해결 상태), M 번호 정렬(`kind:pull_request repo:"<owner/name>" base:"dev"`를
+   `merge_seq` 오름차순)과 범위(`mnum:A..B`·`seq:A..B`).
+
+**바뀌는 것 하나.** rebase로 PR에서 빠진 옛 커밋은 3번 뒤 검색 문서가 없다(`CR-119`의 생성 정책 — 정본에는
+남는다). 그 커밋을 전체 SHA로 가리키던 참조는 4번 뒤 미해결이 된다. 대상 문서가 없으므로 FR-REL-003 AC-3에
+맞는 상태이며, 과거 기록이 사라진 것이 아니다 — 참조 간선과 근거 문장은 그대로 남는다.
+
 ## 8. 문제 해결
 
 | 증상 | 확인 |
 | --- | --- |
+| `prsctl links apply`·`refetch`·`import-stacks`가 `--actor가 필요하다`로 멈춘다 | `0.1.0-pilot.19` 이전 번들이다(`DEV-774`). 그 판의 CLI가 `prsctl`이 넘기는 행위 주체를 읽지 못했다. 이 판의 번들로 올린 뒤 같은 명령을 쓴다 — `plan`·`status`·`import-stacks --dry-run`은 이전 판에서도 돈다 |
+| prs-links 재색인이 참조 간선의 `간선 불일치 … [resolved,to_id,to_repository_id,to_type]`로 실패한다 | prs-commits가 손으로 전환된 인덱스인데 7.H보다 먼저 돌렸거나, `0.1.0-pilot.19` 이전 빌드다(`DEV-775`). 별칭은 그대로다. 7.H를 끝낸 뒤 다시 실행한다(7.J) |
 | prs-links 재색인이 `스택 정본에 없는 서비스 stacks_on 간선`으로 실패한다 | 배포 전 스택 간선을 정본으로 옮기지 않았다. 별칭은 그대로다. 7.I 3번(`./prsctl links import-stacks`, 먼저 `--dry-run`)을 저장소마다 돌리고 다시 실행한다 |
 | prs-links 재색인이 `link_pending_unrecovered`·`link_pending_at_cutover`·`회수되지 않은 간선 미처리`로 실패한다 | 재구축 중 부분 갱신이 새 인덱스에서 간선을 찾지 못한 source를 전환 전에 다 회수하지 못했다. 별칭은 그대로다. 쓰기가 드문 시간에 다시 실행하고, `link_pending_unrecovered`가 되풀이되면 사유의 source를 7.I 4번대로 확인한다 |
 | prs-links 재색인이 `간선 누락`·`간선 불일치`·`정본에 없는 간선`으로 실패한다 | 새 인덱스의 간선이 정본의 계획과 다르다. 검증 중에 들어온 변경과의 경주일 수 있어 한 번 다시 실행한다. 되풀이되면 모든 워커가 새 빌드인지(`./prsctl lineage`)부터 확인하고 표본을 보고한다 |

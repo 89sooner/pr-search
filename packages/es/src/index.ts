@@ -246,6 +246,7 @@ export {
   findLinksTo,
   findReferenceTargets,
   findReferencesTo,
+  isReferenceTargetIndexed,
   referenceLinkSource,
   resolveReferenceLinks,
   summarizeRelations,

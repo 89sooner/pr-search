@@ -58,6 +58,7 @@ import {
   derivedLinkSource,
   findReferenceTargets,
   findReferencesTo,
+  isReferenceTargetIndexed,
   referenceLinkSource,
   resolveReferenceLinks,
   updateLinkSummary,
@@ -459,6 +460,14 @@ async function markPending(
  * 매번 유일성을 다시 계산하고, 모호해졌으면 **해결을 되돌린다.**
  *
  * 정확한 키(`pr:N`·`commit:<40자>`)는 모호해질 수 없으므로 재평가하지 않는다.
+ *
+ * ## 정확한 키도 대상이 색인되어 있을 때만 붙인다 (CR-123 / DEV-775)
+ *
+ * 해결의 기준은 「대상이 색인되었는가」다(FR-REL-003 AC-3). 파생과 전환 전 검증은 그 기준으로 계획하는데,
+ * 이 함수는 불린 대상이 곧 있다고 여겨 정확한 키를 그대로 붙였다. 평시에는 투영이 대상을 쓴 뒤에 불리므로
+ * 같은 답이지만, 재색인은 source를 정본 스냅숏에서 차례로 읽는다 — 문서를 만들 근거가 없는 커밋(DEV-759)이나
+ * 손으로 전환한 인덱스에 빠진 커밋도 대상으로 온다. 그때 새 인덱스와 서비스 인덱스(이중 쓰기)에는 없는
+ * 문서를 가리키는 해결 간선이 서고, 검증의 계획은 미해결이라 전환이 매번 막혔다.
  */
 export async function resolveReferencesTo(
   deps: LinkDeps,
@@ -513,6 +522,14 @@ export async function resolveReferencesTo(
     to_id: docId,
     to_repository_id: repositoryId,
   };
+  /*
+   * 정확한 키를 붙일 후보가 있을 때만 대상 문서를 한 번 확인한다. 실시간 존재 확인이라 방금 투영된
+   * 대상도 보이고, 없으면 계획(`findReferenceTargets`)처럼 미해결로 둔다.
+   */
+  const needsDirect = candidates.some((link) => !prefixKeys.has(link.reference_key) && !link.resolved);
+  const targetIndexed = needsDirect
+    ? await isReferenceTargetIndexed(deps.es, { kind: target.kind, docId, repositoryId })
+    : false;
 
   const updates: Array<{
     link_id: string;
@@ -543,6 +560,8 @@ export async function resolveReferencesTo(
     }
     // 정확한 키. 이미 해결됐으면 다시 쓸 이유가 없다 — 모호해질 수 없다.
     if (link.resolved) continue;
+    // 대상 문서가 서비스 색인에 없으면 붙이지 않는다 — 파생·검증의 계획과 같은 판정이다.
+    if (!targetIndexed) continue;
     updates.push({ link_id: link.link_id, repository_id: Number(link.repository_id), owner, resolution: direct });
   }
 

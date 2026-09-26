@@ -860,3 +860,111 @@ describe('해제된 스택 간선 (FR-REL-006 AC-3·AC-6, DEV-238, OD-017)', () 
     expect((await edgesIn(enqueued.targetIndex)).filter((edge) => edge['link_type'] === 'stacks_on')).toEqual(legacy);
   }, 180_000);
 });
+
+describe('prsctl이 넘기는 행위 주체 인자 (CR-122 / DEV-774)', () => {
+  /*
+   * `prsctl links`는 호스트 사용자 이름을 인자 끝의 `--actor`로 넘긴다. 처음 판은 그 값을 파싱만 하고 버려
+   * 번들의 apply·refetch·import-stacks가 늘 「--actor가 필요하다」로 거절됐다 — 격리 업그레이드 리허설에서
+   * 드러났다. 위의 시험들은 `deps.actor`를 직접 넣어 그 틈을 지나쳤으므로, 여기서는 인자로만 넘긴다.
+   */
+  const slug = `${OWNER}/${NAME}`;
+  const collect = (out: string[]): { readonly pool: Pool; readonly es: Client; readonly out: (line: string) => void; readonly err: (line: string) => void } => ({
+    pool,
+    es,
+    out: (line) => out.push(line),
+    err: (line) => out.push(line),
+  });
+
+  it('**`deps.actor` 없이 인자 `--actor`만으로 import-stacks·apply가 실행되고 그 주체가 잡과 감사에 남는다**', async () => {
+    const actor = `cr122-${String(Date.now())}`;
+    const out: string[] = [];
+    expect(await runLinkRepairCommand(['import-stacks', '--repository', slug, '--actor', actor], collect(out))).toBe(0);
+    expect(await runLinkRepairCommand(['apply', '--repository', slug, '--actor', actor], collect(out))).toBe(0);
+    expect(out.join('\n')).not.toContain('--actor가 필요하다');
+
+    const jobs = await pool.query<{ requested_by: string; state: string }>(
+      "SELECT requested_by, state FROM job WHERE type = 'pr_link_repair' AND target = $1 ORDER BY job_id",
+      [slug],
+    );
+    expect(jobs.rows).toEqual([
+      { requested_by: `prsctl:${actor}`, state: 'completed' },
+      { requested_by: `prsctl:${actor}`, state: 'completed' },
+    ]);
+    const audits = await pool.query<{ result_code: string }>(
+      "SELECT result_code FROM audit_record WHERE action = 'job.run' AND user_id = $1 AND target = $2 ORDER BY audit_id",
+      [`prsctl:${actor}`, `pr_link_repair:${slug}`],
+    );
+    expect(audits.rows.map((row) => row.result_code)).toEqual(['created', 'created']);
+  }, 120_000);
+
+  it('**refetch도 인자의 주체로 자격 검사까지 간다** — 거절 사유가 행위 주체가 아니다', async () => {
+    const out: string[] = [];
+    expect(await runLinkRepairCommand(['refetch', '--repository', slug, '--actor', 'cr122-operator'], collect(out))).toBe(1);
+    expect(out.join('\n')).toContain('refetch에는 GHE 자격이 필요하다');
+    expect(out.join('\n')).not.toContain('--actor가 필요하다');
+  });
+
+  it('**인자도 주입도 없으면 여전히 거절하고 잡을 만들지 않는다**', async () => {
+    const out: string[] = [];
+    expect(await runLinkRepairCommand(['apply', '--repository', slug], collect(out))).toBe(2);
+    expect(out.join('\n')).toContain('--actor가 필요하다');
+    const jobs = await pool.query("SELECT 1 FROM job WHERE type = 'pr_link_repair' AND target = $1", [slug]);
+    expect(jobs.rowCount).toBe(0);
+  });
+});
+
+describe('서비스 색인에 없는 대상을 가리키는 정확한 참조 (CR-123 / DEV-775, FR-REL-003 AC-3)', () => {
+  /*
+   * 해결은 「대상이 색인되었는가」다. 파생·전환 전 검증은 그 기준으로 계획하는데 해결 갱신은 불린 대상이 곧
+   * 있다고 여겨, 재구축이 정본 스냅숏에서 읽은 커밋 — 문서를 만들 근거가 없는 커밋(DEV-759)이나 손으로 전환한
+   * 인덱스에 빠진 커밋 — 을 가리키는 전체 SHA 참조를 해결로 바꿨다. 새 인덱스와 검증의 계획이 갈려 전환이
+   * 매번 막혔고, 이중 쓰기로 서비스 인덱스에도 없는 문서를 가리키는 해결 간선이 섰다(격리 업그레이드 리허설).
+   */
+  const ORPHAN = '5e1f0a2b3c4d5e6f708192a3b4c5d6e7f8091a2b';
+  const LATE = '6f2e1b3c4d5e6f708192a3b4c5d6e7f8091a2b3c';
+
+  it('**문서가 사라진 커밋을 전체 SHA로 참조해도 재구축과 검증이 같은 판정을 내고 전환한다** — 새 인덱스의 간선은 미해결이다', async () => {
+    // rebase로 PR에서 빠진 옛 커밋이다. 정본에는 남고(`commit_snapshot`), 커밋 재구축(CR-119)은 문서를 만들 근거가 없다.
+    await seedCommit(ORPHAN, 'Draft audit model');
+    await seedPullRequest(140, { body: `Refs: ${ORPHAN}` });
+    await indexPullRequest(140);
+    // 업그레이드 전에는 그 커밋의 문서가 있어 서비스 간선이 해결돼 있었다.
+    await indexCommit(ORPHAN);
+    await deriveReferenceLinks(linkDeps(), repository, { kind: 'pull_request', id: '140' });
+    expect((await edgesIn(LINKS_ALIAS))[0]).toMatchObject({ reference_key: `commit:${ORPHAN}`, resolved: true });
+    // 커밋 재색인이 끝난 서비스 인덱스에는 그 문서가 없다.
+    await es.delete({ index: 'prs-commits', id: commitDocId(REPOSITORY_ID, ORPHAN), routing: String(REPOSITORY_ID), refresh: true });
+
+    const enqueued = await enqueue();
+    const outcome = await run(enqueued);
+
+    expect({ state: outcome.state, error: outcome.error }).toEqual({ state: 'completed', error: null });
+    expect(logDetail(outcome, '전환 전 간선 검증')).toContain('mismatched=0');
+    const edges = await edgesIn(enqueued.targetIndex);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({ from_id: pullRequestDocId(REPOSITORY_ID, 140), reference_key: `commit:${ORPHAN}`, resolved: false });
+    expect(edges[0]).not.toHaveProperty('to_id');
+  }, 120_000);
+
+  it('**평시 해결 갱신도 서비스 색인에 없는 대상에는 붙이지 않고, 색인된 뒤에는 붙인다**', async () => {
+    await seedCommit(LATE, 'Add pricing docs');
+    await seedPullRequest(150, { body: `Refs: ${LATE}` });
+    await indexPullRequest(150);
+    await deriveReferenceLinks(linkDeps(), repository, { kind: 'pull_request', id: '150' });
+    expect((await edgesIn(LINKS_ALIAS))[0]).toMatchObject({ reference_key: `commit:${LATE}`, resolved: false });
+
+    // 정본에는 있지만 문서가 아직 없다.
+    expect(await resolveReferencesTo(linkDeps(), repository, { kind: 'commit', id: LATE })).toBe(0);
+    expect((await edgesIn(LINKS_ALIAS))[0]).toMatchObject({ resolved: false });
+    expect((await edgesIn(LINKS_ALIAS))[0]).not.toHaveProperty('to_id');
+
+    await indexCommit(LATE);
+    expect(await resolveReferencesTo(linkDeps(), repository, { kind: 'commit', id: LATE })).toBe(1);
+    expect((await edgesIn(LINKS_ALIAS))[0]).toMatchObject({
+      resolved: true,
+      to_type: 'commit',
+      to_id: commitDocId(REPOSITORY_ID, LATE),
+      to_repository_id: REPOSITORY_ID,
+    });
+  }, 60_000);
+});
