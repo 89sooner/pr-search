@@ -609,6 +609,24 @@ export async function findReferenceTargets(
   return resolved;
 }
 
+/**
+ * 참조 대상 **한 건**이 서비스 별칭에 색인되어 있는가 (FR-REL-003 AC-3, CR-123 / DEV-775).
+ *
+ * 해결 갱신(JOB-REL-005)이 정확한 키를 대상에 붙이기 전에 부른다 — 파생·전환 전 검증이 쓰는
+ * `findReferenceTargets`와 같은 기준(「대상이 색인되었는가」)을 해결 갱신에도 건다. 문서 ID와 routing을
+ * 아는 한 건이라 검색이 아니라 실시간 존재 확인이며, 방금 투영된 대상도 refresh를 기다리지 않고 보인다.
+ */
+export async function isReferenceTargetIndexed(
+  client: Client,
+  target: { readonly kind: 'pull_request' | 'commit'; readonly docId: string; readonly repositoryId: number },
+): Promise<boolean> {
+  return client.exists({
+    index: target.kind === 'pull_request' ? 'prs-pull-requests' : 'prs-commits',
+    id: target.docId,
+    routing: String(target.repositoryId),
+  });
+}
+
 /* ------------------------------------------------------------------------- */
 /* 핫패스 비정규화 (`link_summary.reference_count`, `links_pending`)            */
 /* ------------------------------------------------------------------------- */
