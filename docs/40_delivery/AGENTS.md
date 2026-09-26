@@ -13,4 +13,4 @@ Delivery planning layer for PR Search. Documents here convert approved requireme
 - Every REL slice must be decomposed into WPs before handoff; every WP must reference at least one FR and define a checkable DoD.
 - Cross-functional dependencies must be explicit.
 - Release validation must include product, frontend, backend, API, data, infrastructure, security, accessibility, performance, observability, and rollback checks.
-- Once implementation starts, the traceability ledger is updated after every completed WP; doc/code conflicts become DEV entries linked to CRs.
+- The traceability ledger is updated after every completed WP; doc/code conflicts become DEV entries linked to CRs.

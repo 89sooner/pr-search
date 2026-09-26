@@ -16,7 +16,7 @@ The product restores that with three things:
 - **Bidirectional identifier resolution** — commit SHA → PR and PR → commits, with abbreviated-SHA prefix search (minimum 7 characters, ADR-012).
 - **Relationship edges** — precedes, contains, references, reverts, cherry-picks, stacks-on, co-changes. Every edge stores evidence text and a confidence tier (`exact` / `derived` / `heuristic`).
 
-Stack decisions are settled in ADR-001 through ADR-012 and are not re-litigated during implementation: TypeScript across every layer, Fastify services, Next.js App Router with the internal Conductor design system, PostgreSQL as the system of record, Elasticsearch as a fully rebuildable derived view, Redis Streams behind an `EventBus` port (Kafka is an adapter swap, not a rewrite), and Filebeat only for the immutable raw-event archive lane.
+Stack decisions are settled in the ADRs (`docs/30_technical_architecture/pr_search_architecture_decision_records.md`) and their approved amendments, and are not re-litigated during implementation: TypeScript across every layer, Fastify services, Next.js App Router with Radix Primitives and product-owned theme tokens (ADR-006 as amended by CR-096), PostgreSQL as the system of record, Elasticsearch as a fully rebuildable derived view, Redis Streams behind an `EventBus` port (Kafka is an adapter swap, not a rewrite), and Filebeat only for the immutable raw-event archive lane.
 
 Three invariants matter more than anything else when reviewing or writing docs here:
 

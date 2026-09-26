@@ -1,23 +1,6 @@
 # PR Search Execution Brief for AI Agent
 
-> 상태: review | 버전: v0.17 | 갱신일: 2026-09-24
-
-CR-117 / WP-102: 커밋의 PR 연결을 **읽는** 질의는 모두 `packages/db/src/repositories/pr-commit-link.ts`의 유효 연결 술어 `EFFECTIVE_LINK_SQL`을 지난다 — 관계 투영(JOB-REL-008), 재색인 replay·전환 전 검증, 복구 대조, 미확정 계수가 한 문자열을 쓴다. `pull_request_commit_link`를 술어 없이 직접 세는 두 번째 질의를 만들지 않는다: 한 곳이라도 원시 행을 세면 커밋 화면과 PR 화면이 다른 답을 한다. 원시 관측(`source` 행)은 GitHub 목록 그대로 두고 쓰기 시점에 거르지 않는다. 체인이 움직이면 GHE를 다시 읽지 않고 재투영만으로 연결이 되살아나야 하기 때문이다. 체인 소속은 `mergeSequenceRepo.findCurrentChainLanders`가 술어와 같은 정의(`repository.sequence_branches`의 현재 에폭)로 답하며, 다른 체인 정의를 새로 쓰지 않는다. `merge_sequence`에 쓰는 트랜잭션(채번·강제 푸시 재채번·복구 재채번)은 커밋 전에 `requeueChainChangedCommitLinks`로 영향 커밋의 관계 재투영 의도를 남긴다. PR 유래 커밋 문서를 만드는 경로는 `ProjectionSource.chainShas`(비선택)를 채워 체인 커밋에 `role: source_commit` 문서를 쓰지 않는다. `role`을 색인에 직접 되돌리는 쓰기는 복구 `apply` 전용인 `restoreChainCommitRole`(`source_commit`일 때만 바꾸는 단방향) 하나뿐이다. PR 상세의 원본 커밋 필터는 커밋 문서의 `pull_request_numbers`를 재료로 하며, 모름(문서나 필드가 없음)은 빼지 않는다. M 번호 채번 경로(`mnumber.ts`)는 이 규칙과 무관하다.
-
-CR-115 / WP-100: 원격 `M-*` 태그를 만드는 경로는 **하나**다 — `apps/pipeline-worker/src/mnumber-tag.ts`의 `materializeTag`가 durable `tag` work를 집어 `@prs/github-tag`로 `POST /git/refs` 하나를 보낸다. 대조(`mnumber-tag-reconcile.ts`)는 두 번째 생성 구현을 갖지 않고 `missing`을 같은 work로 다시 요청한다. 태그를 옮기거나 지우는 메서드를 클라이언트에 더하지 않는다 — 「옮기지 않는다」는 코드 경로의 부재이며 회귀 시험이 잠근다. 자격은 `GHE_TAG_*`에서만 읽고(`resolveTagConfig`), 조회용·표기용 App 변수를 이 경로에서 읽지 않는다. 쓰기 직전에 정본을 다시 묻는다(`isTagTargetCurrent`) — 태그는 되돌릴 수 없다. 감사(`merge_number.tag`)는 실제로 ref를 만든 경우와 결과 불명 뒤 관측한 경우만 남기며 이미 있어 호출하지 않은 회차는 남기지 않는다. 커밋 문서의 M 세 필드는 PR 문서와 같은 소유자(`materialize`)만 쓰고 투영의 `params.doc`에 싣지 않는다. 시퀀스 브랜치가 둘 이상인 저장소는 만들지 않는다(OD-015). 실행·시험·한계는 원장 WP-100을 읽는다.
-
-CR-114 / WP-099: 검색창의 M 번호 문자열 해석은 **정본에서** 한다 — 판별은 `packages/query/src/identifier.ts`(`@prs/domain`의 `parseMergeNumber` 재사용, 정규식을 따로 적지 않는다), 조회는 `apps/search-api/src/resolve/service.ts`의 `lookupMergeNumberCandidates`(코드 → 활성 저장소 → 접근 범위 → 추적 브랜치의 현재 에폭 `merge_sequence`, 한 REPEATABLE READ 스냅숏). 색인의 `merge_number`나 M 표시 문자열로 찾는 두 번째 경로를 만들지 않는다. `mnum:` 단일 값은 파서가 닫힌 범위로 옮기므로 질의 빌더·지목 판정·커서 지문에 단일 값 분기를 두지 않는다. `base:` 생략은 `resolveMergeNumberRangeEpoch` 한 곳이 저장소의 추적 브랜치가 하나일 때만 묶고, 둘 이상이면 브랜치 목록과 함께 거절한다 — 서버가 고르지 않는다. `seq:`의 규칙은 그대로다. PIPE handoff의 OpenAPI·예시·manifest는 `contract.test.ts`가 대조하므로 handoff를 고친 뒤 `tools/generate-manifest.mjs`를 다시 돌린다. 실행·시험·한계는 원장 WP-099를 읽는다.
-
-CR-113 / WP-098: 머지 시퀀스를 색인에 비추는 경로는 **하나**다 — 정본 해석은 `apps/pipeline-worker/src/sequence-projection.ts`, 문서 단위 쓰기는 `packages/es/src/sequence-projection.ts`. 채번·재채번·복구·늦은 PR 스냅숏·커밋 보강·재색인 replay·운영자 재투영이 모두 그 둘을 지나며, SHA 목록 `update_by_query`로 서수를 쓰는 두 번째 경로를 만들지 않는다(`applySequenceToDocuments`는 지워졌다). 색인 값이나 M 표시 문자열에서 서수를 추정하지 않고, 복구 코드가 `merge_sequence`·`sequence_space`에 쓰지 않는다. 새 쓰기 원시체는 `packages/es/src/dual-write.test.ts`의 목록과 비동기 계약 3.5장 표에 함께 올린다. 완료 판정은 문서별 결과(`updated`·`noop`·`document_missing`·`guard_rejected`·`stale_epoch`·`transient`)로 하며 `updated` 합계나 HTTP 200으로 하지 않는다. 시퀀스 복구 시험은 격리된 ES(`cluster.name`에 `isolated`)에서만 돌고 공용 `prs-elasticsearch`를 가리키면 `beforeAll`이 거부한다. 실행·시험·한계는 원장 WP-098을 읽는다.
-
-CR-112 / WP-097: PIPE 연동 수신부의 작업 지시서는 `../40_delivery/pipe-search-handoff-auth/01_PR_SEARCH_API_AUTH_CLAUDE_PROMPT.md`이고, 양쪽 공통 계약은 같은 디렉터리의 `00_SHARED_INTEGRATION_CONTRACT.md`(PSI-1.0 제안)다. 이 저장소가 동결한 계약과 PIPE 담당용 산출물은 저장소 최상위 `handoff/pipe-search-integration/v1/`에 있으며, 제안과 다른 자리는 그 안의 CONTRACT_DIFF가 소유한다. 연동을 고칠 때는 `apps/search-api/src/integrations/pipe/operations.ts`의 operation 목록·OpenAPI·operation map을 함께 바꾸고(계약 시험이 셋을 대조한다), 일반 `authenticateSession`에 연동 자격을 받는 분기를 넣지 않으며, 조회 로직을 연동 쪽에 복제하지 않고 공유 실행 함수를 고친다. 한쪽 저장소만 wire protocol을 바꾸지 않는다. 실행·시험·한계는 원장 WP-097을 읽는다.
-
-CR-109 / WP-095: 사용자 후속 지시서 `../40_delivery/regression_workbench/UIUX/CLAUDE_REGRESSION_UI_BRIEF.md`와 B Atlas를 따른다. FR-REG-001의 첫 fixture UI 수직은 사용자가 구현을 지시한 범위다. 이전 CR-102의 전체 backend 계획을 선행 gate로 확대하지 않는다. actual MDVP/영속 history/통계 모델은 후속. 실행·시험·한계는 원장 WP-095를 읽는다. 기존 Search/ranges·개인 인가·M 의미를 유지하며 mock은 명시적으로 격리한다.
-
-
-CR-102 Regression 후속: [구현 계획](../40_delivery/pr_search_regression_implementation_plan.md)의 현재 상태는 draft다. 연구 보고서만 읽고 SKIP/INCONCLUSIVE·artifact·MDVP·MTBF를 구현하지 않는다. R0의 OD-010·011 결정→SRS/traceability→UI/architecture→WP cascade와 handoff gate를 먼저 충족한다. 이후 배정된 WP의 선행·T01~T12를 읽고 기존 세션 잠금·epoch·소유권을 보존하며 구현 원장 3장과 FR→code/test 매핑을 갱신한다. 시험 실행은 외부 경계이며 M 번호 정의는 유지한다.
-
-CR-079 WP-074 재개: [실행서](../40_delivery/pr_search_wp074_execution.md) → [상세 설계](../30_technical_architecture/pr_search_wp074_design.md) → [측정 가이드](../40_delivery/pr_search_wp074_measurement_guide.md) 전문. 실제 source와 계약을 대조한 뒤 S0~S6/T01~T06으로 구현한다. 이 설계 작성은 실행 허가가 아니다. DEV-581을 fixture 성공으로 닫지 않고 외부 실행·사내 NOT RUN·WP-075 비활성을 분리한다. source별 파일 소유·검증 기록과 Agent-Initiated Decisions를 남긴다.
+> 상태: review | 버전: v0.18 | 갱신일: 2026-09-26
 
 ## 1. 목적
 
@@ -32,6 +15,26 @@ GitHub Enterprise의 PR·커밋을 웹훅으로 수집해 Elasticsearch에 색�
 1. **머지 시퀀스는 이벤트가 아니라 git first-parent 히스토리에서 나온다.** `git rev-list --first-parent --reverse <branch>`의 서수가 시퀀스 값이다. 이 값은 언제든 git과 대조 검증 가능해야 한다 (ADR-007).
 2. **권한 필터는 서버가 강제로 결합한다.** `applyMandatoryScopeFilter`를 거치지 않는 Elasticsearch 호출 경로를 만들지 않는다. 타입 시스템이 이를 강제한다 (ADR-008).
 3. **PostgreSQL이 진실이고 Elasticsearch는 파생 뷰다.** ES 인덱스는 언제든 PostgreSQL만으로 전량 재구성 가능해야 한다 (ADR-004).
+
+## 0.1 CR별 코드 경로 규칙
+
+최근 CR이 정한 코드 경로 규칙이다. 같은 대상을 다루는 문단이 이미 있으면 새 문단을 앞에 더하지 않고 그 문단을 고친다.
+
+CR-117 / WP-102: 커밋의 PR 연결을 **읽는** 질의는 모두 `packages/db/src/repositories/pr-commit-link.ts`의 유효 연결 술어 `EFFECTIVE_LINK_SQL`을 지난다 — 관계 투영(JOB-REL-008), 재색인 replay·전환 전 검증, 복구 대조, 미확정 계수가 한 문자열을 쓴다. `pull_request_commit_link`를 술어 없이 직접 세는 두 번째 질의를 만들지 않는다: 한 곳이라도 원시 행을 세면 커밋 화면과 PR 화면이 다른 답을 한다. 원시 관측(`source` 행)은 GitHub 목록 그대로 두고 쓰기 시점에 거르지 않는다. 체인이 움직이면 GHE를 다시 읽지 않고 재투영만으로 연결이 되살아나야 하기 때문이다. 체인 소속은 `mergeSequenceRepo.findCurrentChainLanders`가 술어와 같은 정의(`repository.sequence_branches`의 현재 에폭)로 답하며, 다른 체인 정의를 새로 쓰지 않는다. `merge_sequence`에 쓰는 트랜잭션(채번·강제 푸시 재채번·복구 재채번)은 커밋 전에 `requeueChainChangedCommitLinks`로 영향 커밋의 관계 재투영 의도를 남긴다. PR 유래 커밋 문서를 만드는 경로는 `ProjectionSource.chainShas`(비선택)를 채워 체인 커밋에 `role: source_commit` 문서를 쓰지 않는다. `role`을 색인에 직접 되돌리는 쓰기는 복구 `apply` 전용인 `restoreChainCommitRole`(`source_commit`일 때만 바꾸는 단방향) 하나뿐이다. PR 상세의 원본 커밋 필터는 커밋 문서의 `pull_request_numbers`를 재료로 하며, 모름(문서나 필드가 없음)은 빼지 않는다. M 번호 채번 경로(`mnumber.ts`)는 이 규칙과 무관하다.
+
+CR-115 / WP-100: 원격 `M-*` 태그를 만드는 경로는 **하나**다 — `apps/pipeline-worker/src/mnumber-tag.ts`의 `materializeTag`가 durable `tag` work를 집어 `@prs/github-tag`로 `POST /git/refs` 하나를 보낸다. 대조(`mnumber-tag-reconcile.ts`)는 두 번째 생성 구현을 갖지 않고 `missing`을 같은 work로 다시 요청한다. 태그를 옮기거나 지우는 메서드를 클라이언트에 더하지 않는다 — 「옮기지 않는다」는 코드 경로의 부재이며 회귀 시험이 잠근다. 자격은 `GHE_TAG_*`에서만 읽고(`resolveTagConfig`), 조회용·표기용 App 변수를 이 경로에서 읽지 않는다. 쓰기 직전에 정본을 다시 묻는다(`isTagTargetCurrent`) — 태그는 되돌릴 수 없다. 감사(`merge_number.tag`)는 실제로 ref를 만든 경우와 결과 불명 뒤 관측한 경우만 남기며 이미 있어 호출하지 않은 회차는 남기지 않는다. 커밋 문서의 M 세 필드는 PR 문서와 같은 소유자(`materialize`)만 쓰고 투영의 `params.doc`에 싣지 않는다. 시퀀스 브랜치가 둘 이상인 저장소는 만들지 않는다(OD-015). 실행·시험·한계는 원장 WP-100을 읽는다.
+
+CR-114 / WP-099: 검색창의 M 번호 문자열 해석은 **정본에서** 한다 — 판별은 `packages/query/src/identifier.ts`(`@prs/domain`의 `parseMergeNumber` 재사용, 정규식을 따로 적지 않는다), 조회는 `apps/search-api/src/resolve/service.ts`의 `lookupMergeNumberCandidates`(코드 → 활성 저장소 → 접근 범위 → 추적 브랜치의 현재 에폭 `merge_sequence`, 한 REPEATABLE READ 스냅숏). 색인의 `merge_number`나 M 표시 문자열로 찾는 두 번째 경로를 만들지 않는다. `mnum:` 단일 값은 파서가 닫힌 범위로 옮기므로 질의 빌더·지목 판정·커서 지문에 단일 값 분기를 두지 않는다. `base:` 생략은 `resolveMergeNumberRangeEpoch` 한 곳이 저장소의 추적 브랜치가 하나일 때만 묶고, 둘 이상이면 브랜치 목록과 함께 거절한다 — 서버가 고르지 않는다. `seq:`의 규칙은 그대로다. PIPE handoff의 OpenAPI·예시·manifest는 `contract.test.ts`가 대조하므로 handoff를 고친 뒤 `tools/generate-manifest.mjs`를 다시 돌린다. 실행·시험·한계는 원장 WP-099를 읽는다.
+
+CR-113 / WP-098: 머지 시퀀스를 색인에 비추는 경로는 **하나**다 — 정본 해석은 `apps/pipeline-worker/src/sequence-projection.ts`, 문서 단위 쓰기는 `packages/es/src/sequence-projection.ts`. 채번·재채번·복구·늦은 PR 스냅숏·커밋 보강·재색인 replay·운영자 재투영이 모두 그 둘을 지나며, SHA 목록 `update_by_query`로 서수를 쓰는 두 번째 경로를 만들지 않는다(`applySequenceToDocuments`는 지워졌다). 색인 값이나 M 표시 문자열에서 서수를 추정하지 않고, 복구 코드가 `merge_sequence`·`sequence_space`에 쓰지 않는다. 새 쓰기 원시체는 `packages/es/src/dual-write.test.ts`의 목록과 비동기 계약 3.5장 표에 함께 올린다. 완료 판정은 문서별 결과(`updated`·`noop`·`document_missing`·`guard_rejected`·`stale_epoch`·`transient`)로 하며 `updated` 합계나 HTTP 200으로 하지 않는다. 시퀀스 복구 시험은 격리된 ES(`cluster.name`에 `isolated`)에서만 돌고 공용 `prs-elasticsearch`를 가리키면 `beforeAll`이 거부한다. 실행·시험·한계는 원장 WP-098을 읽는다.
+
+CR-112 / WP-097: PIPE 연동 수신부의 작업 지시서는 `../40_delivery/pipe-search-handoff-auth/01_PR_SEARCH_API_AUTH_CLAUDE_PROMPT.md`이고, 양쪽 공통 계약은 같은 디렉터리의 `00_SHARED_INTEGRATION_CONTRACT.md`(PSI-1.0 제안)다. 이 저장소가 동결한 계약과 PIPE 담당용 산출물은 저장소 최상위 `handoff/pipe-search-integration/v1/`에 있으며, 제안과 다른 자리는 그 안의 CONTRACT_DIFF가 소유한다. 연동을 고칠 때는 `apps/search-api/src/integrations/pipe/operations.ts`의 operation 목록·OpenAPI·operation map을 함께 바꾸고(계약 시험이 셋을 대조한다), 일반 `authenticateSession`에 연동 자격을 받는 분기를 넣지 않으며, 조회 로직을 연동 쪽에 복제하지 않고 공유 실행 함수를 고친다. 한쪽 저장소만 wire protocol을 바꾸지 않는다. 실행·시험·한계는 원장 WP-097을 읽는다.
+
+CR-109 / WP-095: 사용자 후속 지시서 `../40_delivery/regression_workbench/UIUX/CLAUDE_REGRESSION_UI_BRIEF.md`와 B Atlas를 따른다. FR-REG-001의 첫 fixture UI 수직은 사용자가 구현을 지시한 범위다. 이전 CR-102의 전체 backend 계획을 선행 gate로 확대하지 않는다. actual MDVP/영속 history/통계 모델은 후속. 실행·시험·한계는 원장 WP-095를 읽는다. 기존 Search/ranges·개인 인가·M 의미를 유지하며 mock은 명시적으로 격리한다.
+
+CR-102 Regression 후속: [구현 계획](../40_delivery/pr_search_regression_implementation_plan.md)의 현재 상태는 draft다. 연구 보고서만 읽고 SKIP/INCONCLUSIVE·artifact·MDVP·MTBF를 구현하지 않는다. R0의 OD-010·011 결정→SRS/traceability→UI/architecture→WP cascade와 handoff gate를 먼저 충족한다. 이후 배정된 WP의 선행·T01~T12를 읽고 기존 세션 잠금·epoch·소유권을 보존하며 구현 원장 3장과 FR→code/test 매핑을 갱신한다. 시험 실행은 외부 경계이며 M 번호 정의는 유지한다.
+
+CR-079 WP-074 재개: [실행서](../40_delivery/pr_search_wp074_execution.md) → [상세 설계](../30_technical_architecture/pr_search_wp074_design.md) → [측정 가이드](../40_delivery/pr_search_wp074_measurement_guide.md) 전문. 실제 source와 계약을 대조한 뒤 S0~S6/T01~T06으로 구현한다. 이 설계 작성은 실행 허가가 아니다. DEV-581을 fixture 성공으로 닫지 않고 외부 실행·사내 NOT RUN·WP-075 비활성을 분리한다. source별 파일 소유·검증 기록과 Agent-Initiated Decisions를 남긴다.
 
 ## 2. 읽기 순서
 
@@ -80,7 +83,7 @@ GitHub Enterprise의 PR·커밋을 웹훅으로 수집해 Elasticsearch에 색�
 | Language | TypeScript (전 계층), Node 20+, pnpm 10+ | ADR-001 |
 | 모노레포 | pnpm 워크스페이스. `packages/{domain,query,contracts,es,db,github,bus}` + `apps/{ingest-gateway,pipeline-worker,search-api,web}` | ADR-001 |
 | Frontend | Next.js App Router. 브라우저는 Next.js 라우트 핸들러만 호출하고, 핸들러가 `search-api`로 프록시 | ADR-011 |
-| UI 프리미티브 | `@conductor-by-89soone/react` + `css` + `tokens`만. 다른 UI 라이브러리 금지. 리터럴 색상값 금지 | ADR-006 |
+| UI 프리미티브 | Radix 기반 제품 UI 계층(`apps/web/components/ui/`)과 시맨틱 토큰(`apps/web/app/ui.css`의 `--ui-*`). 다른 UI 라이브러리 금지. 리터럴 색상값 금지 | ADR-006 (CR-096 개정) |
 | Frontend 상태 | URL 질의 파라미터가 단일 진실. 전역 상태 라이브러리 미도입 | ADR-011 |
 | HTTP 서버 | Fastify (`ingest-gateway`, `search-api`) | ADR-001 |
 | 시스템 오브 레코드 | PostgreSQL 16 | ADR-004 |
@@ -156,7 +159,7 @@ WP 하나가 한 세션에 안 끝날 것 같으면, 쪼개지 말고 진행 상
 - 반개구간 `(from, to]` 규칙을 화면에 표시하지 않는 것
 - 관계 간선을 근거(`evidence`) 없이 저장하는 것
 - `heuristic` 신뢰도 관계를 근거 없이 표시하는 것
-- ADR-006 아이콘 자산 예외 이외의 UI 라이브러리를 추가하거나 리터럴 색상값을 쓰는 것
+- ADR-006(CR-096 개정)의 Radix 기반 UI 계층과 아이콘 자산 예외 이외의 UI 라이브러리를 추가하거나 리터럴 색상값을 쓰는 것
 - 오프셋 페이지네이션 파라미터를 API에 추가하는 것
 - 매핑 `dynamic: strict`를 완화하는 것
 - 조사 화면에 자동 폴링을 넣는 것 (A-001·A-003 운영 콘솔만 예외)
@@ -164,11 +167,7 @@ WP 하나가 한 세션에 안 끝날 것 같으면, 쪼개지 말고 진행 상
 
 ## 8. WP별 첫 세션 안내
 
-첫 세션은 **WP-001**이다. 다른 WP를 먼저 시작하지 않는다.
-
 WP-001은 코드를 거의 만들지 않는다. 워크스페이스와 CI가 서고, `pnpm lint:deps`가 역방향 의존을 실제로 잡아내는 것이 목표다. 이 검사가 없으면 나중에 `packages/domain`이 `apps/web`을 참조하는 사고가 조용히 생긴다.
-
-WP-001 완료 후 WP-002·WP-003·WP-005·WP-006은 병렬 착수 가능하다.
 
 ## 9. 제출 형식
 
@@ -197,7 +196,7 @@ REL-007부터 적용된다. REL-001~006을 먼저 닫는다.
 | 패키지 | `packages/gh-cli` 신규. 기존 `@prs/github`(REST)를 gh 래퍼로 바꾸지 않는다 | ADR-013 |
 | 위험도 | R0 즉시 / R1 미리보기 / R2 확인 + 대상 재조회 / R3 강한 확인 + 승인 | ADR-016 |
 | UI | `GenericCommandForm` 하나가 전 capability를 커버. 업무 화면은 그 위의 편의 레이어 | ADR-015 |
-| 마이그레이션 | 006부터 additive. 001~005는 수정하지 않는다 — 실제 번호는 `028`(실행)·`029`(레지스트리)·`030`(운영 정책)이며 기존 파일은 고치지 않는다 | 데이터 모델 3.5 |
+| 마이그레이션 | `028`(실행)·`029`(레지스트리)·`030`(운영 정책). 모두 additive이며 기존 마이그레이션 파일은 고치지 않는다 | 데이터 모델 3.5 |
 | 운영 정책 (CR-090) | 실행 허용 = 기능 켜짐 ∧ 현재 적재 정의의 운영 승인 ∧ 코드·manifest 실행 목록 ∧ 운영자 차단 없음 ∧ 레지스트리 판정 ∧ 사용자 권한. 판정식은 `@prs/gh-cli`의 `decideExecution` 하나이고 API 수락·실행기 claim·화면 표시가 같은 식을 부른다. 정책 표 쓰기는 마이그레이션 030의 SECURITY DEFINER 함수 하나다 | FR-GH-011 AC-6~AC-10, FR-GH-009 AC-8 |
 
 절대 하지 않는 것:
@@ -218,22 +217,17 @@ gh api로 정책 우회
 정책 표를 애플리케이션 롤(prs_app)로 직접 쓰기 — UPDATE 권한 부여 포함
 ```
 
-측정 기준값 (gh 2.97.0): command node 228개(실행 가능 leaf 196, 그룹 32), command 고유 flag 1,034개, positional placeholder 230개, `--json` 출력 지원 40개(`--json` flag를 가진 41개 중 `workflow run`은 입력 flag). 정본은 SRS 9.8절 실측 기준 표다(CR-089가 옛 값 261·41을 그 표에 맞췄다). 이 수치는 고정된 버전에서 측정한 값이며 버전이 바뀌면 manifest와 함께 갱신한다.
+측정 기준값 (gh 2.97.0): command node 228개(실행 가능 leaf 196, 그룹 32), command 고유 flag 1,034개, positional placeholder 230개, `--json` 출력 지원 40개(`--json` flag를 가진 41개 중 `workflow run`은 입력 flag). 정본은 SRS 9.8절 실측 기준 표다. 이 수치는 고정된 버전에서 측정한 값이며 버전이 바뀌면 manifest와 함께 갱신한다.
 
 
 ## WP-073 작업대 실행 규칙 (CR-067)
 
-기존 FR-SRCH-001·006~011, FR-SEQ-005, NFR-007 범위의 UI 품질 작업이다. 구현 상태는 WP 표/원장 3장·검증은 6.71장을 읽는다. Conductor·인가·URL/커서/에폭 계약을 보존하며 작업대 선택 요약에 새 API나 영구 저장을 더하지 않는다. 검증은 프로덕션 빌드로 실행하고 로컬 UI fixture와 사내 통합 검증을 구분한다.
+기존 FR-SRCH-001·006~011, FR-SEQ-005, NFR-007 범위의 UI 품질 작업이다. 구현 상태는 WP 표/원장 3장·검증은 6.71장을 읽는다. 인가·URL/커서/에폭 계약을 보존하며 작업대 선택 요약에 새 API나 영구 저장을 더하지 않는다. 검증은 프로덕션 빌드로 실행하고 로컬 UI fixture와 사내 통합 검증을 구분한다.
 
-## WP-074·WP-075 M 넘버 실행 규칙 (CR-077)
+## M 넘버 규칙 (CR-077, WP-074·WP-075)
 
-2026-09-10 P4 회고 회의가 결정한 M 넘버를 구현한다. 착수 전에 `srs_final.md`의 `FR-SEQ-008`·`FR-SEQ-009`와 ADR-007의 CR-077 Clarification, `ADR-022`를 먼저 읽는다. 지켜야 할 것 넷이다.
+M 넘버를 다루는 작업은 `srs_final.md`의 `FR-SEQ-008`·`FR-SEQ-009`와 ADR-007의 CR-077 Clarification, `ADR-022`를 먼저 읽는다. 지켜야 할 것 셋이다.
 
 1. **M 넘버는 새 시퀀스가 아니다.** `merge_seq`에서 PR 연결이 있는 항목만 골라 1부터 센 값이며, 별도 채번기를 만들면 두 값이 갈라진다. 회의 문구의 "merged_at 순서"는 정본이 아니라 대조 대상이다 — `merge_seq` 순서가 정본이고 불일치는 지표로만 남긴다.
-2. **WP-074는 `DEV-576`을 먼저 닫는다.** push 웹훅이 미러 fetch를 부르지 않아 `merge_seq`가 최대 6시간 늦게 붙는 상태이며, 그 위에서는 회의가 요구한 "거의 실시간"이 성립하지 않는다. 미러 fetch와 채번의 순서 보장이 이 WP의 실질적 난제다.
-3. **WP-075는 이 제품이 GHE에 쓰는 최초의 자동 경로다.** 쓰기 반경은 PR 제목 한 필드이며 본문·레이블·상태로 넓히지 않는다(본문 표기는 별도 애플리케이션 몫이다). 조회용 Data App 자격 증명으로는 쓰지 않으며, 그 분리를 시험이 단언해야 한다.
-4. **번호를 밀지 않는다.** 한 번 부여한 M 넘버는 어떤 경로로도 다른 항목으로 옮겨 가지 않는다. 앞선 항목의 PR 연결이 미확정이면 그 앞에서 멈추고 다음 회차가 이어받는다.
-
-## CR-093 / WP-081 실행 정정
-
-최신 Conductor의 Shell·W-001 적용 계약은 컴포넌트·토큰 명세와 ADR-006을 따른다. ResultTable 유지·아이콘 예외·선택/요청 보존을 원장 6.92장과 대조한다. WP-081 완료·발행을 선행 주장하지 말고 실제 검증·PR/main CI·릴리스 증거로 갱신한다. Recipe/R1/REL-007 확장은 이 작업에 포함하지 않는다.
+2. **WP-075는 이 제품이 GHE에 쓰는 최초의 자동 경로다.** 쓰기 반경은 PR 제목 한 필드이며 본문·레이블·상태로 넓히지 않는다(본문 표기는 별도 애플리케이션 몫이다). 조회용 Data App 자격 증명으로는 쓰지 않으며, 그 분리를 시험이 단언해야 한다.
+3. **번호를 밀지 않는다.** 한 번 부여한 M 넘버는 어떤 경로로도 다른 항목으로 옮겨 가지 않는다. 앞선 항목의 PR 연결이 미확정이면 그 앞에서 멈추고 다음 회차가 이어받는다.
