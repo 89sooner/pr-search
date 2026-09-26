@@ -141,6 +141,8 @@ function withBulkFailure(inner: Client): Client {
       Promise.resolve({ items: [{ index: { _id: 'x', status: 500, error: { type: 'internal' } } }] }),
     msearch: (params: unknown) => inner.msearch(params as never),
     search: (params: unknown) => inner.search(params as never),
+    // 해결 갱신이 대상 문서를 확인한다 (CR-123).
+    exists: (params: unknown) => inner.exists(params as never),
     update: (params: unknown) => inner.update(params as never),
     deleteByQuery: (params: unknown) => inner.deleteByQuery(params as never),
     indices: inner.indices,
@@ -159,6 +161,8 @@ function withUpdateItemFailure(inner: Client): Client {
       Promise.resolve({ items: [{ update: { _id: 'x', status: 409, error: { type: 'conflict' } } }] }),
     msearch: (params: unknown) => inner.msearch(params as never),
     search: (params: unknown) => inner.search(params as never),
+    // 해결 갱신이 대상 문서를 확인한다 (CR-123).
+    exists: (params: unknown) => inner.exists(params as never),
     update: (params: unknown) => inner.update(params as never),
     deleteByQuery: (params: unknown) => inner.deleteByQuery(params as never),
     indices: inner.indices,
@@ -802,6 +806,7 @@ describe('참조 간선 파생과 해결 (WP-029 / CR-039)', () => {
         es: {
           msearch: () => Promise.reject(new Error('es down')),
           search: () => Promise.reject(new Error('es down')),
+          exists: () => Promise.reject(new Error('es down')),
           bulk: () => Promise.reject(new Error('es down')),
           update: () => Promise.reject(new Error('es down')),
           deleteByQuery: () => Promise.reject(new Error('es down')),
