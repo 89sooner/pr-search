@@ -1,6 +1,23 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.115 | 갱신일: 2026-09-26
+> 상태: review | 버전: v6.116 | 갱신일: 2026-09-26
+
+## 0.1.0-pilot.19 발행 — CR-117~CR-123 누적 (2026-09-26)
+
+사용자 지시(2026-09-26 「19 릴리즈도 발행해」)로 `origin/main` HEAD `85af93a`(CR-122·CR-123 병합 기록과 배포본 준비 기록, PR #241) 기준으로 발행했다. `85af93a`의 main CI(run 36244754106)는 verify·integration 모두 첫 시도에 success였다. pilot.18(`6132dc9`) 이후 main에 쌓인 커밋 14개를 처음 담는다 — 코드 변경은 CR-117(`65acf83`)·CR-119(`e94cb4f`)·CR-121(`df3d8ef`)·CR-122·CR-123(`646486e`), 시험 수정은 CR-118(`0dd7734`)·CR-120(`e181751`), 나머지는 기록·문서(`5c52aa2`·`ea59bb6`·`3d831a9`·`9dd2644`·`ee72de7`·`2a51384`·`7179794`·`85af93a`)다. DB 변경은 마이그레이션 037 하나다.
+
+**검증한 번들과의 관계.** 격리 업그레이드 재검증(R3, 6.114장)은 `646486e`의 최종 번들(아카이브 `68520f73…`)로 했다. `85af93a`는 그 뒤 문서만 바뀌어(`git diff --stat 646486e 85af93a -- . ':(exclude)docs' ':(exclude)agent-context'`가 비어 있다) 이미지 빌드 컨텍스트가 같다. 발행 전에 발행할 워크트리에서 앱 이미지 7종을 임시 태그로 빌드해 R3에서 검증한 이미지 ID와 7종 모두 같음을 확인했고(임시 태그는 지웠다), 발행본 manifest의 이미지 ID도 7종 모두 같다 — web `d9ff0eac9848…`, search-api `775813c357fc…`, ingest-gateway `b28a7baf541d…`, pipeline-worker `b72e2e1f62cb…`, db `d05eb688ec25…`, es `41b232f4b76b…`, gh-executor `afcd10e20c8b…`. 아카이브 SHA-256이 후보와 다른 것은 번들을 다시 묶었기 때문이다(tar 항목에 묶은 시각이 들어간다, 6.114장).
+
+다른 세션과 공유하는 checkout 대신, `85af93a`에 고정한 별도 detached worktree(`/home/roqkf/pr-search-wt/release19pub`)에서 `build-bundle.sh 0.1.0-pilot.19 --release`를 분리 세션(`setsid nohup`)으로 돌렸다. 발행을 확인한 뒤 사용자 결정으로 그 워크트리를 지웠다.
+
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.19 (발행 2026-09-26 22:51:45 KST)
+- 태그: `85af93afeb7ecaee0201c03dcd3079a2c36322f3`
+- 자산: `pr-search-0.1.0-pilot.19-offline.tar.gz`, 1,166,873,222 bytes
+- 별도 채널 전달 SHA-256: `cf0e0e54837c860166ec85cf5a30f87f98893be810de37910362524492e3d00e`
+- 발행 전 초안 자산 대조(로그 `[22:51:44] 초안 자산 대조 (발행 전)`)와 발행 확인(`[22:51:45] 발행 확인`)을 통과했고, immutable releases가 켜져 있어 발행 뒤 자산과 태그가 잠긴다. 발행 뒤에는 `gh api releases/tags`(draft=false·immutable=true·target_commitish `85af93a`), 자산 API의 digest와 로컬 `sha256sum`, `git ls-remote --tags`(→ `85af93a`), manifest(`upstream.commit` `85af93a`, `contains_secrets: false`, 마이그레이션 037), 아카이브 사본의 `prsctl verify`(10개 파일 일치), 번들 안 RUNBOOK과 main의 RUNBOOK 대조로 독립적으로 재대조했다. 사내 취득 명령과 같은 `gh release download`로 받은 파일(2분 27초)도 크기·SHA-256이 같고, 그 안의 소스 계보 번들(`bundle_sha256` `2c547fd7…`)은 `git bundle verify`로 완전한 이력(ref `85af93a`)임을 확인했다. manifest `branch`는 `HEAD`다 — 분리된 워크트리에서 만들었기 때문이며 pilot.18과 같다.
+- tar 재적재 뒤 이미지 런타임 검사를 통과했다(로그 405~447줄, ✓ 20건). 적재한 web 이미지 ID, web(기동과 `/healthz` 200, SSR 화면 10종 200, API 프록시 401, 해시 외부 모듈 `pg-71df57fbe79e18ab` 해석, 손 조치 흔적 없음, 인증·쿠키 허용·거부 구성 9종), pipeline-worker(git 2.54.0), gh-executor(gh 2.97.0 고정 바이너리 해시, 비루트·읽기 전용 기동, 봉인 키 없으면 거부), search-api(관리자 역할 CLI가 DB 접속 전 종료 코드 2)를 확인했다.
+- 문서 정합성: CR-117~CR-123은 각 병합 기록(PR #231·#233·#236·#238·#241)으로 이미 closed·done 처리돼 있어, 이번 갱신에서 change_control.md·work_packages.md는 손대지 않았다(pilot.14·16·18 선례와 같은 이유).
+- 사내 실제 GHE 데이터 적용과 재반입 검증은 NOT RUN이다. 사내 적용 뒤 문제가 생기면 사용자가 `agent-context/upstream-feedback.md`로 보고한다.
 
 ## 0.1.0-pilot.19 배포본 준비 — 발행하지 않은 최종 번들과 격리 업그레이드 재검증 (2026-09-26)
 

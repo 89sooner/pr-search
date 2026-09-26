@@ -3372,6 +3372,7 @@ gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '.check_runs[] | "
 - **최종 번들 `0.1.0-pilot.19`(발행 안 함)**: `/home/roqkf/pr-search-wt/release19final/deploy/single-host/bundle/pr-search-0.1.0-pilot.19-offline.tar.gz`, SHA-256 `68520f73…c9c5c9`, manifest 커밋 `646486e`. 원장 6.114장.
 - **업그레이드 검증**: R2(수정 후보 rc2)·R3(최종 번들) 모두 `VERIFIED (external, isolated)`. 사내 적용 NOT RUN.
 - 이 세션은 기록 PR #241을 올린 직후 context-full로 끊겼다(전사 `exports/202609262153_ing.md`, 286,052바이트, `.gitignore:24`가 무시한다). 이어가기 세션이 전사와 이 세션 scratchpad로 이었고, 끊기기 직전에 고친 원장·인계 보완(이미지 ID 실측, `mnum:7`이 돌려주는 머지 커밋 문서의 M)과 다시 만든 인계 팩(`agent-context/_handoff`)을 같은 PR에 더했다.
+- **이어가기 세션의 마무리(사용자 결정, 2026-09-26)**: PR #241을 squash 병합했다(main `85af93a`, 병합 커밋의 main CI run 36244754106 success). 사용자 지시 「19 릴리즈도 발행해」로 Release `0.1.0-pilot.19`를 발행했다 — 전용 워크트리 `release19pub`(detached `85af93a`)에서 `build-bundle.sh --release`를 `setsid nohup`으로 돌렸고, 발행 전에 같은 워크트리의 앱 이미지 7종이 R3 검증값과 같음을 임시 태그 빌드로 확인했다. 자산 SHA-256 `cf0e0e54…3d00e`, immutable, 태그 → `85af93a`. 19차 워크트리·리허설 도구·격리 자원은 사용자 결정으로 지웠고, DEV-776·777·773은 급하지 않아 진행하지 않는다.
 
 ### Decisions
 
