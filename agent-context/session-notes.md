@@ -3371,6 +3371,7 @@ gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '.check_runs[] | "
 - **main = `646486e`**(CR-122·CR-123, PR #240). 병합 커밋의 main CI(run 36231534096)는 verify success, integration은 첫 시도에서 무관한 DEV-588 재발로 실패하고 실패한 잡만 다시 돌린 두 번째 시도에서 success. 이 절을 싣는 기록 PR(브랜치 `docs/cr122-cr123-pilot19-record`)이 병합됐는지 먼저 실측한다.
 - **최종 번들 `0.1.0-pilot.19`(발행 안 함)**: `/home/roqkf/pr-search-wt/release19final/deploy/single-host/bundle/pr-search-0.1.0-pilot.19-offline.tar.gz`, SHA-256 `68520f73…c9c5c9`, manifest 커밋 `646486e`. 원장 6.114장.
 - **업그레이드 검증**: R2(수정 후보 rc2)·R3(최종 번들) 모두 `VERIFIED (external, isolated)`. 사내 적용 NOT RUN.
+- 이 세션은 기록 PR #241을 올린 직후 context-full로 끊겼다(전사 `exports/202609262153_ing.md`, 286,052바이트, `.gitignore:24`가 무시한다). 이어가기 세션이 전사와 이 세션 scratchpad로 이었고, 끊기기 직전에 고친 원장·인계 보완(이미지 ID 실측, `mnum:7`이 돌려주는 머지 커밋 문서의 M)과 다시 만든 인계 팩(`agent-context/_handoff`)을 같은 PR에 더했다.
 
 ### Decisions
 

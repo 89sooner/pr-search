@@ -2675,7 +2675,7 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [x] **CR-122·CR-123** — 격리 업그레이드 리허설이 찾은 차단 둘. main `646486e`(PR #240).
 - [x] **0.1.0-pilot.19 최종 번들(발행 안 함)** — main `646486e`에서 `--release` 없이 만들고 격리 R3로 업그레이드를 다시 확인했다(원장 6.114장).
 - [ ] **기록 PR** — 브랜치 `docs/cr122-cr123-pilot19-record`(이 절을 싣는다). 병합됐는지 먼저 실측한다.
-- [ ] **Release `0.1.0-pilot.19` 발행(사용자 결정)** — `build-bundle.sh 0.1.0-pilot.19 --release`(분리 세션, 전용 워크트리). 발행은 다시 빌드하므로 아카이브 SHA-256이 달라진다 — 발행 뒤 manifest의 이미지 ID를 원장 6.114장 값과 대조하고, 사내에 전달할 SHA-256은 발행 실행의 출력에서 읽는다.
+- [ ] **Release `0.1.0-pilot.19` 발행(사용자 결정)** — `build-bundle.sh 0.1.0-pilot.19 --release`(분리 세션, 전용 워크트리). 발행은 번들을 다시 묶으므로 아카이브 SHA-256이 달라진다(같은 커밋을 이 머신의 캐시로 다시 빌드하면 이미지 ID는 같았다 — 원장 6.114장). 발행 뒤 manifest의 이미지 ID를 원장 값과 대조하고, 사내에 전달할 SHA-256은 발행 실행의 출력에서 읽는다.
 - [ ] **사내 적용(NOT RUN)** — RUNBOOK 7.J 순서. 두 재색인의 검증 단계 시각을 적는다(사내 규모 NOT MEASURED). 결과는 사용자가 `agent-context/upstream-feedback.md`에 적는다.
 - [ ] **DEV-776(open)** — 단일 호스트 compose의 `worker-link`·`worker-batch`에 `GHE_BASE_URL`을 넘긴다(Kubernetes와 같게). URL 참조 간선이 새로 생기는 동작 변경이라 별도 CR.
 - [ ] **DEV-777(open)** — 등록 요청 대기열(API-ADM-009) 커서를 마이크로초로(저장된 검색 방식 — `to_char(... .US)` + `::timestamptz`). 감사 기록 커서(API-ADM-005)도 같은지 먼저 확인한다.
