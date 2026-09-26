@@ -15,7 +15,7 @@ PR Search collects pull requests and commits from an internal GitHub Enterprise 
 
 Stack: TypeScript everywhere, PostgreSQL as the system of record, Elasticsearch as a rebuildable derived search view, and Radix Primitives with product-owned theme tokens for UI (CR-096 / ADR-006 amendment). Follow the settled ADRs and their approved amendments rather than re-deciding.
 
-This file states rules, not status. Do not read current state here — any snapshot written into an entry point goes stale the moment a work package lands (DEV-324, DEV-325). Read status from the source of truth at the current `HEAD`:
+This file states rules, not status. Do not read current state here — any snapshot written into an entry point goes stale the moment a work package lands. Read status from the source of truth at the current `HEAD`:
 
 - SRS status and version — the status header of `docs/10_requirements/srs_final.md`.
 - What is done and what is next — the status table in `docs/40_delivery/pr_search_work_packages.md`.
@@ -30,7 +30,7 @@ This file states rules, not status. Do not read current state here — any snaps
 | `docs/10_requirements/srs_final.md` | Final implementation baseline and highest-priority product truth |
 | `docs/00_governance/change_control.md` | Change requests (CR), gate log, cascade records |
 | `docs/40_delivery/pr_search_work_packages.md` | Agent-session-sized work packages (WP) derived from release slices |
-| `docs/40_delivery/pr_search_implementation_traceability.md` | Living docs-to-code ledger once implementation starts |
+| `docs/40_delivery/pr_search_implementation_traceability.md` | Living docs-to-code ledger |
 
 ## Subdirectories
 
@@ -50,12 +50,12 @@ This file states rules, not status. Do not read current state here — any snaps
 - Scope or baseline changes start with a CR entry in `docs/00_governance/change_control.md`, then cascade from `srs_final.md` downward in the order defined by `docs/README.md`.
 - Document status headers (`> 상태: draft | review | baseline`) are binding. Only the user authorizes `baseline`.
 - Keep IDs stable. Deprecate by marking; do not renumber.
-- Once code exists: tag commits/PRs/tests with FR/WP IDs, update the implementation traceability ledger after every work package, and route doc/code conflicts through DEV -> CR instead of silently changing behavior.
+- Tag commits/PRs/tests with FR/WP IDs, update the implementation traceability ledger after every work package, and route doc/code conflicts through DEV -> CR instead of silently changing behavior.
 - Preserve the repository language and document style.
 
 ## Testing Requirements
 
-This repository may be documentation-only. If no application source exists, validate with document checks:
+Application code is verified through the workspace scripts in the root `package.json`. Validate document changes with:
 
 ```bash
 rg "FR-[A-Z0-9]+-[0-9]+" docs/
@@ -66,4 +66,4 @@ rg "docs/.+\.md" docs/
 
 ## Dependencies
 
-None by default.
+Node 22 (`.nvmrc`) and pnpm 10 (`packageManager` in the root `package.json`, workspace in `pnpm-workspace.yaml`).
