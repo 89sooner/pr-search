@@ -1,6 +1,10 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.116 | 갱신일: 2026-09-26
+> 상태: review | 버전: v6.117 | 갱신일: 2026-09-27
+
+## CR-124 / WP-105 — 사내 GHE 전체 URL 참조: 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 (2026-09-27, 병합 전)
+
+사용자 지시(2026-09-27, 20차)로 DEV-776 → DEV-777 → DEV-773을 항목마다 별도 CR·WP·PR로 처리한다. 이 CR이 첫째다. 단일 호스트 compose의 `worker-link`·`worker-batch`가 `GHE_BASE_URL`을 받지 않았고, 워커는 비어 있는 값을 예시 호스트(`ghe.example.com`)로 채워 승인 호스트로 썼다 — 그래서 사내 GHE의 PR·커밋 전체 URL이 참조 0건으로 파생됐다. 두 역할에 주소 한 줄씩만 넘기고(App 자격은 넘기지 않는다), 승인 호스트는 새 해석 함수가 배포 설정에서만 읽으며 비면 URL 참조를 만들지 않는다. 격리 compose에서 수정 전 판의 0건을 재현하고, 수정 뒤 새 이벤트와 prs-links 재색인이 기존 자료에도 URL 참조를 만들어 전환 전 검증을 지나는 것을 확인했다. 지시서의 사내 주소는 사용자 결정으로 공개 저장소에 싣지 않고, 실제 값으로는 로컬 시험과 시험 전용 혼합 형상에서만 확인했다. 범위 밖 관찰은 DEV-778(파생의 대상 조회가 직전에 색인된 대상을 못 봄)·DEV-779(운영자 세션의 일시적 503, 원인 미확인)로 남긴다. 기록은 6.115장.
 
 ## 0.1.0-pilot.19 발행 — CR-117~CR-123 누적 (2026-09-26)
 
@@ -300,6 +304,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| WP-105 | 사내 GHE 전체 URL 참조 — 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 | 배포 편차 수정 (CR-124) | in_progress | 에이전트 | 브랜치 `fix/cr124-ghe-reference-host` (병합 전) | 6.115장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-104 | prs-links 재색인의 부분 갱신 경합과 해제된 스택 이력 | 설계 결함 수정 (CR-121) | done | 에이전트 | main `df3d8ef`(PR #237 squash 병합, 2026-09-25; head `6235bf7`) | 6.112장 | 사내 배포 SHA NOT VERIFIED, 가져오기·내부망 적용 NOT RUN |
 | WP-103 | prs-commits 재색인의 기대 집합과 메타데이터 복원 | 설계 결함 수정 (CR-119) | done | 에이전트 | main `e94cb4f`(PR #235 squash 병합, 2026-09-25; head `d65928c`) | 6.111장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-102 | 원본 커밋은 그 PR이 새로 가져온 커밋 — 추적 브랜치 체인 규칙 | 요구사항 공백 수정 (CR-117) | done | 에이전트 | main `65acf83`(PR #230 squash 병합, 2026-09-24; head `d70898f`) | 6.108장 — 전 계층 통과, 변이 17종 죽음, 독립 리뷰 상급 0건(지적 넷은 문서·DEV로 처리), PR CI·main CI success | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
@@ -405,6 +410,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
+| FR-REL-003 AC-1 · THR-036 (GHE PR·커밋 URL의 승인 호스트는 배포 설정 `GHE_BASE_URL`의 호스트 — 비면 URL 참조 없음, 평시 파생과 재색인이 같은 해석 함수, 단일 호스트의 `worker-link`·`worker-batch`는 주소만 받는다) | WP-105 | `deploy/single-host/compose.yml`(두 역할의 `GHE_BASE_URL`), `packages/github/src/config.ts`(`resolveReferenceHost`), `apps/pipeline-worker/src/index.ts`(`referenceHostFor` — link·batch 두 파생 경로와 기동 로그) | `packages/domain/src/link/reference.test.ts`(+11건), `packages/github/src/config.test.ts`(+7건), `regression/cr124-ghe-reference-host.test.ts`(6건, 실제 `docker compose config`), `apps/pipeline-worker/integration/worker/link.test.ts`(+5건) | **구현 — 병합 전 (CR-124, 6.115장)** |
 | FR-REL-003 AC-3 (정확한 키도 대상 문서가 서비스 색인에 있을 때만 해결 — 재구축·전환 전 검증과 같은 판정) | 없음 (CR-123) | `packages/es/src/links.ts`(`isReferenceTargetIndexed` — 대상 문서 한 건의 실시간 존재 확인), `apps/pipeline-worker/src/link.ts`(`resolveReferencesTo` — 미해결 정확한 키 후보가 있을 때만 확인) | `apps/pipeline-worker/integration/jobs/links-reindex-completeness.test.ts`(+2건 — 문서가 사라진 커밋 참조의 재색인 전환, 평시 해결 갱신의 색인 전·후), `apps/pipeline-worker/integration/worker/link.test.ts`(대역 셋의 `exists` 위임) | **완료 — main `646486e` (CR-123, 6.113장)** |
 | FR-SRCH-002 AC-6 · FR-REL-006 AC-6 (`prsctl links apply`·`refetch`·`import-stacks`가 인자 `--actor`로 행위 주체를 받는다) | 없음 (CR-122) | `apps/pipeline-worker/src/link-repair-command.ts`(`resolveActor` — 인자가 먼저, `deps.actor`는 대체값) | `links-reindex-completeness.test.ts`(+3건 — 인자만으로 실행·잡과 감사의 주체, refetch의 자격 검사 도달, 인자·주입 모두 없으면 거절) | **완료 — main `646486e` (CR-122, 6.113장)** |
 | FR-ING-008 AC-11 (간선 재구축의 미처리 기록·회수 · 불완전 파생 · 기대 간선 대조 · 전환 직전 재확인) | WP-104 | `packages/es/src/links.ts`(`sendLinkBulk`의 항목 판정·소유 source 대조, `findReferenceTargets`의 항목 오류, `referenceLinkSource`·`derivedLinkSource`), `packages/es/src/write-targets.ts`(`reportShadowPending`), `packages/db/src/reindex-fence.ts`(미처리 분류)·`repositories/reindex.ts`(`recordLinkPending`·`listLinkPending`·`deleteLinkPending`·`countLinkPending`·`clearLinkPending`), `apps/pipeline-worker/src/link.ts`(`planReferenceLinks`·`createLinkRebuildPort`·불완전 source·소유 source 대조), `apps/pipeline-worker/src/reindex.ts`(`rebuildLinks`의 미처리 기록, `recoverLinkPending`, `verifyLinkEdges`·`readLinksFrom`·`linkFieldMismatches`, 전환 울타리의 재확인과 재시도, 잡 종료 시 정리), `apps/pipeline-worker/src/index.ts`(운영 배선) | `apps/pipeline-worker/integration/jobs/links-reindex-completeness.test.ts`(21건), `packages/db/integration/link-stack-state.test.ts`(10건 중 대기열·울타리), `packages/es/src/links-bulk.test.ts`(14건), `packages/es/src/dual-write.test.ts`(원시체 열다섯) | **완료 — main `df3d8ef` (CR-121, 6.112장)** |
@@ -550,8 +556,10 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | DEV-773 | 2026-09-25 | **배포부터 스택 가져오기까지는 배포 전부터 성립해 있던 스택을 역방향 재평가가 찾지 못한다.** 역방향 재평가(상위 PR 변경 → 하위 PR)가 이제 `pull_request_stack`만 읽는데, 배포 전 관계는 가져오기 전에는 행이 없다. 그 사이 상위 PR이 병합되면 서비스 간선의 `detached`가 바뀌지 않고, 가져오기는 그 값을 그대로 옮긴다 | FR-REL-006 AC-3·AC-6 / WP-104 | 기술 제약 | CR-121 | open (운영 절차로 좁힘) — 하위 PR이 다시 파생되면(하위 PR 이벤트, 또는 prs-links 재색인의 재구축) 정본 행이 지금 성립 여부에 맞춰지고 간선이 고쳐진다. RUNBOOK 7.I는 배포 직후, 첫 간선 재색인 전에 가져오기를 돌리게 한다 (6.112장) |
 | DEV-774 | 2026-09-26 | **`prsctl links apply`·`refetch`·`import-stacks`가 번들에서 늘 거절됐다.** link-repair 명령의 `parse`는 `--actor`를 읽어 두지만 `resolveActor`는 `deps.actor`만 봤고, CLI 진입점(`link-repair-cli.ts`)은 그 값을 채우지 않는다. `prsctl`은 행위 주체를 인자로 넘긴다. CR-116(pilot.18)부터 같은 배선이라 사내에서 7.G의 `apply`·`refetch`는 실행될 수 없었고, 통합 시험은 `deps.actor`를 직접 넣어 지나쳤다. 격리 업그레이드 리허설의 RUNBOOK 7.I 3번에서 드러났다 | FR-SRCH-002 AC-6 · FR-REL-006 AC-6 / RB-29 | 구현 결함 | CR-122 | resolved — 인자가 먼저이고 주입은 대체값이다. 인자로만 넘기는 시험 3건(변이로 확인), 수정 후보 번들의 실제 `prsctl`로 가져오기·apply 실행 확인 (6.113장) |
 | DEV-775 | 2026-09-26 | **해결 갱신이 색인되지 않은 대상에 정확한 참조를 붙여, prs-links 재색인의 새 인덱스와 전환 전 검증이 갈렸다.** `resolveReferencesTo`는 불린 대상이 곧 있다고 여겨 `pr:N`·`commit:<40자>`를 붙였다. 재색인은 source를 정본 스냅숏에서 읽으므로 서비스 인덱스에 문서가 없는 커밋(생성 근거 없음 — DEV-759, 손으로 전환한 인덱스의 누락)에도 해결을 붙였고, 검증의 계획(`findReferenceTargets`)은 미해결이라 전환이 매번 막혔다. 재구축의 이중 쓰기로 서비스 인덱스에도 문서 없는 대상을 가리키는 해결이 들어갔다. 격리 업그레이드 리허설에서 두 사례로 재현했다 | FR-REL-003 AC-3 · FR-ING-008 AC-11 / JOB-REL-005 | 구현 결함 | CR-123 | resolved — 대상 문서의 실시간 존재 확인 뒤에만 붙인다. 코드만으로는 prs-links를 먼저 재색인하면 그 참조가 미해결로 굳으므로 RUNBOOK이 prs-links 재색인을 prs-commits 재색인 뒤로 옮겼다(7.I 4번·7.J) (6.113장) |
-| DEV-776 | 2026-09-26 | **단일 호스트 compose의 `worker-link`·`worker-batch`가 `GHE_BASE_URL`을 받지 않아 GHE URL 참조를 추출하지 못한다.** 두 역할은 `x-app-env`만 받아 `resolveGitHubConfig().baseUrl`이 기본값(`https://ghe.example.com`)이 되고, 참조 추출의 승인 호스트가 실제 GHE와 달라진다. Kubernetes 형상은 configMap으로 받는다(`deploy/k8s/pipeline-worker-link.yaml`의 THR-036 주석). 평시 파생과 재구축이 같은 설정이라 둘 사이의 불일치는 없다. 격리 리허설에서 가짜 GHE 호스트의 커밋 URL을 적은 PR이 참조 0건으로 파생돼 드러났다 | FR-REL-003 AC-1 / THR-036 | 배포 편차 | 없음(후속) | open — 이번 범위 밖이다. 고치면 다음 파생과 재색인부터 URL 참조 간선이 새로 생기는 동작 변경이라 별도 CR로 다룬다 (6.113장) |
+| DEV-776 | 2026-09-26 | **단일 호스트 compose의 `worker-link`·`worker-batch`가 `GHE_BASE_URL`을 받지 않아 GHE URL 참조를 추출하지 못한다.** 두 역할은 `x-app-env`만 받아 `resolveGitHubConfig().baseUrl`이 기본값(`https://ghe.example.com`)이 되고, 참조 추출의 승인 호스트가 실제 GHE와 달라진다. Kubernetes 형상은 configMap으로 받는다(`deploy/k8s/pipeline-worker-link.yaml`의 THR-036 주석). 평시 파생과 재구축이 같은 설정이라 둘 사이의 불일치는 없다. 격리 리허설에서 가짜 GHE 호스트의 커밋 URL을 적은 PR이 참조 0건으로 파생돼 드러났다 | FR-REL-003 AC-1 / THR-036 / WP-105 | 배포 편차 | CR-124 | **resolved (CR-124, 병합 전)** — 두 역할에 주소 한 줄씩(`*ghe-env` 제외), 승인 호스트는 `resolveReferenceHost`가 배포 설정에서만 읽고 비면 URL 참조를 만들지 않는다. 격리 compose에서 수정 전 0건 재현, 수정 뒤 새 이벤트·prs-links 재색인의 URL 참조와 전환 전 검증 통과를 확인했다. 기존 자료는 prs-links 재색인(RUNBOOK 7.K 5번)으로 반영한다 (6.115장) |
 | DEV-777 | 2026-09-26 | **운영자 등록 요청 대기열(API-ADM-009)의 커서가 `created_at`을 밀리초로 잘라 담아, 같은 밀리초에 들어온 요청이 다음 쪽에서 빠진다.** `created_at`은 `now()` 기본값의 마이크로초 열인데, 커서는 node-postgres가 돌려준 `Date`를 `toISOString()`(밀리초)으로 싣고 키셋 조건 `(created_at, request_id) < (커서)`가 그 잘린 값과 비교한다. 경계 행과 같은 밀리초의 더 이른 요청은 튜플 비교에서 커서보다 큰 값이 되어 둘째 쪽에서 사라진다. 저장된 검색(`saved-search.ts`)은 마이크로초 문자열과 `::timestamptz`로 이미 바르게 한다. PR #240의 CI integration 첫 시도가 `registration-request-lifecycle.test.ts`의 커서 시험 하나로 실패해 드러났다(`app.inject`로 연달아 만든 두 요청이 같은 밀리초에 들어간 경우). 감사 기록 커서(API-ADM-005, `audit.ts`의 `occurredAt: Date`)도 같은 모양으로 보이나 검증하지 않았다 | FR-ING-009 AC-11 / API-ADM-009 · API-ADM-005(미검증) | 구현 결함 | 없음(후속) | open — 이번 업그레이드 범위 밖이다. 판정 근거: 열 정밀도·`toISOString()`·튜플 비교를 코드와 SQL로 확인했고, 실패한 잡만 한 번 다시 돌려 통과했다 (6.113장 「게이트·병합 판정」, 6.114장) |
+| DEV-778 | 2026-09-27 | **참조 파생의 대상 조회가 직전에 색인된 대상을 보지 못해 간선이 미해결로 남는다.** 파생은 대상을 `findReferenceTargets`(`msearch` — 새로 고침 뒤에만 보이는 검색)로 찾고, 대상 쪽의 해결 갱신(`resolveReferencesTo`)은 대상이 색인될 때 한 번 돈다. 대상이 색인된 직후 새로 고침(운영 1초) 전에 참조하는 source가 파생되면, 파생은 대상을 못 보고 해결 갱신은 그 간선이 생기기 전에 이미 지나가 간선이 미해결로 남는다. 대상 쪽에 다음 이벤트가 오거나 prs-links 재색인·JOB-REL-006이 돌 때까지 그대로다. CR-124의 격리 검증에서 관찰했다 — 커밋 w3의 `pr:2`가 web#2 색인 1초 안에 파생돼 미해결로 남았고 재색인에서 해결됐다. 수정 전 판에서도 같은 모양이었다(web#1의 `x:acme/api:pr:1`) | FR-REL-003 AC-3 / JOB-REL-001·005 | 구현 결함 (기존) | 없음(후속) | open — CR-124 범위 밖이다. 정확한 키는 실시간 조회(문서 ID·routing의 `get`/`exists`)로 판정하면 창이 닫힌다. 그때까지는 prs-links 재색인이나 저장소의 JOB-REL-006이 바로잡는다 (6.115장) |
+| DEV-779 | 2026-09-27 | **운영자 세션의 첫 관계 조회가 503 `PERMISSION_UNAVAILABLE`이었는데 search-api 로그에 사유 줄이 없었다 — 원인 미확인.** CR-124의 격리 검증에서, 저장소 등록 전에 로그인하고 `me`를 부른 운영자 세션(그 사이 `prsctl role grant`와 업그레이드로 search-api 재생성)의 `GET /api/relations`가 503이었다. 그 요청 동안 가짜 GHE에는 그 사용자의 권한 조회가 없었고, RUNBOOK 2.C가 503 진단에 쓰라는 로그(「접근 범위를 조회하지 못했다」·「정본에 사용자 행이 없다」)도 없었다. 28초 뒤 같은 요청은 GHE 권한 조회 둘을 거쳐 200이었다 | FR-AUTH-002 / RUNBOOK 2.C | 관찰 (원인 미확인) | 없음(후속) | open — 재현하지 않았고 CR-124와 무관하다(참조 파생 밖의 인증 경로). 사내에서 같은 503을 보면 시각·사용자·요청 경로를 적어 보고한다 (6.115장) |
 | DEV-753 | 2026-09-23 | **백필로 들어온 병합된 PR의 머지 커밋 문서가 만들어지지 않았다.** `documents.ts`의 `buildCommitDocuments`가 머지 커밋 역할을 `pr.merged === true`로만 판정하는데 백필의 목록 끝점(`GET /pulls`)은 그 필드를 주지 않고 `merged_at`만 준다. 그런데 관계 채택은 같은 PR에 `merge` 근거를 세우므로 **정본은 연결을 말하는데 그 문서가 없다** — 관계 투영기가 `document_missing`으로 재시도하다 보류된다. 독립 검토가 잡았다 | FR-SRCH-002 AC-6 · FR-ING-005 / WP-008 · WP-019 · WP-101 | 기존 결함 | CR-116 | resolved (2026-09-23) — `derivePullRequestState`(CR-101)로 통일했다. PR 문서의 `state`·관계 채택·재색인이 모두 같은 판정을 쓴다 (6.107장) |
 | DEV-719 | 2026-09-17 | SRS AC-3는 최종 PR 반환으로 한정하지만 실제 bisect는 PR 없는 직접 커밋도 반환·시험한다. 위 CR-102 분석 기록과 구현 계획 2장에 근거를 기록했다 | FR-SEQ-007 AC-3 / WP-042 | 문서 오류 | CR-102 | open — R0에서 커밋과 선택적 PR 연결로 요구사항 정정 후 cascade |
 | DEV-702 | 2026-09-16 | Conductor 전환에서 표의 48vh 높이 제한이 사라져 390px 화면의 첫 행 선택 후 미리보기가 25행 아래 뷰포트 밖에 남았다. 1440px에서는 재현되지 않았다 | FR-SRCH-008 · NFR-007 / WP-081 | 구현 결함 | CR-093 | resolved — `data-inspecting`의 48vh·overflow를 복원하고 390/1440 첫·끝 행 미리보기 가시성 회귀를 통과했다 |
@@ -9022,3 +9030,58 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **게이트·CI·병합(PR #240).** PR #240의 게이트·CI·병합 판정은 6.113장 「게이트·병합 판정」에 있다. 이 번들의 커밋 `646486e`의 main CI(run 36231534096)는 verify success, integration은 첫 시도에서 무관한 DEV-588 재발로 실패하고 실패한 잡만 다시 돌린 두 번째 시도에서 success였다(DEV-588 재발, 이 병합과 무관).
 
 **사내에서 할 일(NOT RUN).** RUNBOOK 7.J 순서를 따른다 — 업그레이드 전 도는 잡 없음 확인과 `prsctl backup`, 업그레이드와 `prsctl lineage`, 정본의 저장소 목록(보관 포함) 전부에 `links import-stacks --dry-run` → 실행, prs-commits 재색인, prs-links 재색인, 저장소마다 `links plan`·`apply`·`status`, 화면 확인. 두 재색인의 「정본 재구축 완료」→「전환 전 검증」 시각을 적는다(사내 규모 NOT MEASURED). 결과는 사용자가 `agent-context/upstream-feedback.md`에 적는다.
+
+### 6.115 사내 GHE 전체 URL 참조 — 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 (2026-09-27, CR-124 / WP-105, DEV-776·DEV-778·DEV-779)
+
+기준 main은 `2f4606d`이고 worktree는 `/home/roqkf/pr-search-wt/cr124-ghe-ref-host`(브랜치 `fix/cr124-ghe-reference-host`)다. 사용자 지시(2026-09-27, 20차)는 DEV-776 → DEV-777 → DEV-773을 항목마다 별도 CR·WP·PR로 구현·검증·리뷰·병합하는 것이고, 이 장은 첫째 항목이다. 지시서가 준 사내 설정값(`GHE_BASE_URL`)은 외부에서 접속할 수 없는 사내 주소다. **사용자 결정(2026-09-27)으로 공개 저장소에는 그 값을 싣지 않는다** — 커밋한 시험은 구조가 같은 가상 호스트(`team.github.corp.example`, 네 단계 호스트)를 쓰고, 실제 값으로는 같은 시험과 격리 compose 검증을 로컬에서만 돌렸다. 사내 주소에는 접속·인증하지 않았다.
+
+**원인.** 두 겹이었다. (1) `deploy/single-host/compose.yml`의 `worker-link`·`worker-batch`는 `x-app-env`만 받아 `GHE_BASE_URL`이 없었다. 참조를 파생하는 자리는 이 둘뿐이다 — `link`의 평시 파생과 `batch`의 prs-links 재색인. (2) 워커는 승인 호스트를 `resolveGitHubConfig().baseUrl`에서 읽었고, 그 값은 비면 `https://ghe.example.com`으로 채워진다. 그래서 주소를 받지 못한 두 역할은 실제 GHE의 URL을 모두 거절하고 예시 호스트의 URL을 승인했다 — 코드 주석과 THR-036의 fail closed와 달랐다.
+
+**수정.** compose의 두 역할에 `GHE_BASE_URL: ${GHE_BASE_URL:?}` 한 줄씩(`*ghe-env` 제외). `packages/github`의 `resolveReferenceHost`는 `GHE_BASE_URL`에서 비교용 호스트(`host[:port]`, 소문자)만 읽고, 비었거나 해석되지 않으면 `null`이다(사용자 정보는 싣지 않는다). `apps/pipeline-worker/src/index.ts`의 두 파생 경로가 같은 `referenceHostFor(role)`로 읽고, 기동 로그에 `URL 참조 승인 호스트`(없으면 경고)를 남긴다. `resolveGitHubConfig`는 그대로 두었다 — 접속 설정의 대체값은 접속 실패로 곧바로 드러나지만 참조 추출은 조용히 틀리는 쪽이다.
+
+**시험 (실측, 격리 PostgreSQL `prs-s20-postgres`·Elasticsearch `prs-s20-es`(`cluster.name=prs-s20-isolated`)·Redis `prs-s20-redis`).**
+
+| 계층 | 파일 | 건수 | 확인하는 것 |
+| --- | --- | --- | --- |
+| 단위 | `packages/domain/src/link/reference.test.ts` | +11 (66) | PR 본문의 PR·커밋 전체 URL, 커밋 메시지 트레일러의 URL은 `derived`, 같은 저장소 URL은 `#N`·SHA와 같은 키, 축약 SHA URL, 끝 슬래시·산문 부호·대문자 호스트·기본 포트·조각·질의, 기존 `#123`·`org/repo#123`·SHA 참조는 호스트와 무관, 다른 호스트(URL 속 SHA도 잡지 않음), 유사 호스트 아홉(접미·접두·하위·상위 도메인·다른 TLD·하이픈·끝 점·키릴 문자·다른 포트), 사용자 정보·경로·질의에 숨긴 주소, `http://` 스킴(기존 동작 고정), 승인 호스트 없음 |
+| 단위 | `packages/github/src/config.test.ts` | +7 (20) | 호스트만 돌려줌, 끝 슬래시·경로·대문자·공백·기본 포트, 다른 포트, 스킴 없음, 사용자 정보 제외, 빈 값은 `null`(접속 설정은 여전히 예시 호스트), 해석 불가 |
+| 회귀 | `regression/cr124-ghe-reference-host.test.ts` | 6 | 실제 `docker compose config --format json` 렌더에서 두 역할이 `.env`의 주소를 그대로 받음, App 자격·설치 표·API 주소·웹훅 비밀·개인 키 표식을 받지 않음(대조군 `worker-enrich`는 받음), 렌더 값 → 해석 함수 → 참조 추출, 빈 주소면 렌더 실패, 진입점의 두 경로가 같은 해석 함수, Kubernetes 두 역할의 configMap |
+| 통합 | `apps/pipeline-worker/integration/worker/link.test.ts` | +5 (34) | 운영과 같은 해석 함수로 만든 승인 호스트에서 PR 본문의 URL 참조 둘(저장소를 건너뛴 PR, 같은 저장소 커밋)이 해결되고 접근 범위는 source의 것, 커밋 메시지의 URL 트레일러, 미해결 → 대상 색인 뒤 같은 간선 해결, 다른 호스트·유사 호스트는 간선 없음과 기존 텍스트 참조 유지, 주소가 없으면 URL 간선 없음 |
+
+결과: 커밋 형태(가상 호스트)로 단위 86·회귀 6·통합 34 통과. 같은 네 파일의 가상 호스트를 실제 사내 주소로 잠시 바꿔(로컬 전용 — 치환표로 바꾸고 백업으로 되돌렸다) 돌려도 단위 86·회귀 6·통합 34 통과였고, 되돌린 파일은 커밋과 바이트가 같다.
+
+**변이 (단독 실행, 매번 원복, 통과 건수 0이면 무효로 셈).**
+
+| 변이 | 결과 |
+| --- | --- |
+| M1 `worker-link`의 주소 줄 삭제(M2와 합치면 수정 전 compose와 같다) | 회귀 2건 실패 |
+| M2 `worker-batch`의 주소 줄 삭제 | 회귀 2건 실패 |
+| M3 `worker-link`에 `*ghe-env` 앵커를 통째로 | 회귀 1건 실패(자격 미전달) |
+| M4 link 호출부를 옛 `resolveGitHubConfig().baseUrl`로 | 회귀 1건 실패 |
+| M5 해석기가 빈 값을 예시 호스트로 채움 | 단위 1건 실패 |
+| M6 해석기가 사용자 정보까지 돌려줌 | 단위 1건 실패 |
+| M7 해석기가 늘 예시 호스트(수정 전 단일 호스트 워커와 같은 값) | 통합 4건 실패 |
+| M8 해석기가 빈 값을 예시 호스트로 채움(통합) | 통합 1건 실패 |
+
+**격리 compose 검증 (시험 전용 가짜 GHE).** compose 프로젝트 `prs-s20`(호스트에는 127.0.0.1:13100·13101만 발행, ES 힙 1g)를 `PRS_PROJECT`로 띄웠다. 가짜 GHE는 19차 리허설 도구(원장 6.113장)를 그 세션 전사에서 복원해 새로 만들었다 — App 토큰·REST·OAuth·git smart HTTP를 실제 git 저장소에서 계산해 답하고, 이번에 사용자별 저장소 권한을 더했다(scratchpad에만 있다). 저장소 둘(`acme/web` 91001, `acme/api` 91002, 추적 브랜치 `dev`), 사용자 넷(운영자 `opsadmin`, `alice`, `bob`, `acme/web`만 읽는 `mallory`). 수집은 서명한 웹훅, 로그인은 가짜 GHE OAuth 왕복이다. 시험 비밀값은 scratchpad에만 있다.
+
+| 단계 | 형상 | 결과 |
+| --- | --- | --- |
+| 수정 전 설치 | 로컬 `0.1.0-pilot.19` 이미지(발행본, 코드는 main과 같다) + main `2f4606d` 배포 정의, `prsctl install` | 렌더와 컨테이너 모두 두 역할에 `GHE_BASE_URL` 없음(개인 키도 없음). `worker-enrich`는 주소·자격 있음 |
+| 수정 전 파생 | web#1 본문(가짜 GHE 주소의 PR·커밋 URL, 아직 없는 PR의 URL, github.com, 유사 호스트, 사내 주소, 텍스트 참조), 커밋 w1 트레일러의 URL, api#2 본문의 URL | **URL 참조 0건** — web#1은 텍스트 참조 셋(`commit:<SHA>`·`pr:3`·`x:acme/api:pr:1`)만, api#2와 w1은 `pr:1`만 |
+| 업그레이드 | `s20-cr124` 이미지 + 작업 트리 배포 정의, `prsctl upgrade` — 이미지는 첫 중간 커밋에서 빌드했다. 그 커밋은 사내 주소가 든 시험을 담아 push하지 않았고, 그 뒤 바뀐 것은 시험의 호스트 문자열과 문서(`RUNBOOK.md`·`.env.example`)뿐이다 — 제품 코드와 `compose.yml`은 같다 | 렌더의 키 목록에 두 역할의 `GHE_BASE_URL` 하나만 더해졌다(`GHE_APP_*`·`GHE_INSTALLATIONS`·`GHE_API_URL` 없음). 컨테이너 안 값이 같고 개인 키가 없다. 기동 로그 `URL 참조 승인 호스트`·`fake-ghe:8080`(link·batch) |
+| 새 이벤트 | web#1 편집, web#2(늦게 생긴 대상), web#3(URL 본문·트레일러) | web#1에 URL 참조 셋이 생겼다 — `x:acme/api:pr:1`·`x:acme/api:commit:<SHA>` 해결, `pr:2`는 미해결이었다가 web#2가 열리자 같은 간선이 해결. github.com·유사 호스트·사내 주소(승인 호스트가 아니다)는 간선 없음. 커밋 w3의 URL 트레일러 둘은 `derived` |
+| 기존 자료 | prs-links 재색인(잡 7) | 편집하지 않은 api#2에 `x:acme/web:pr:1`(URL, 해결)이 생겼다. `전환 전 간선 검증 sources=12 expected=12 missing=0 extra=0 mismatched=0 orphans=0 unplannable=0 pending=0 unimported_stacks=0`, v1 → v2 자동 전환 |
+| 사내 주소 — 새 이벤트 (시험 전용 혼합 형상) | `.env`의 주소만 사내 값으로 바꾸고 `up -d --no-deps worker-link worker-batch` — 다른 역할은 가짜 GHE 설정을 유지 | 두 컨테이너의 값과 기동 로그가 사내 호스트, `worker-enrich`는 가짜 GHE 그대로. 새 PR web#4: 사내 주소의 PR·커밋 URL이 해결된 참조, 가짜 GHE 주소와 유사 호스트는 간선 없음, 커밋 w4의 사내 URL 트레일러는 같은 저장소라 `pr:3`으로 접힘 |
+| 사내 주소 — 기존 자료 | 가짜 주소 상태에서 만든 web#5(사내 URL만) → 사내 주소로 바꾼 뒤 prs-links 재색인(잡 8) | web#5에 사내 URL의 PR·커밋 참조 둘이 새로 생겼다(해결). api#2의 간선은 사내 주소 줄에서 다시 파생돼 `derived` → `heuristic`. 가짜 주소 URL만 있던 source는 간선이 사라졌다(승인 호스트가 바뀌었다). 검증 `sources=16 expected=14 missing=0`, v2 → v3 |
+| 연결 확인 | 혼합 형상의 두 컨테이너 | TCP 상대가 PostgreSQL·Redis·Elasticsearch뿐이고 연결 오류 로그 0건 — 두 역할은 GHE 클라이언트를 만들지 않는다(`index.ts`의 `batch`·`link` 블록) |
+| 원복 | 가짜 주소로 되돌려 두 역할 재생성 → prs-links 재색인(잡 9) | 검증 `sources=16 expected=16 missing=0`, v3 → v4 |
+| 사용자 API | `GET /api/relations?repository=acme/web&link_type=references&direction=outgoing&pr_number=1` | 운영자: 저장소를 건너뛴 대상(`acme/api#1`)의 제목·작성자까지 보인다. `mallory`: 같은 간선이 보이되 `acme/api`를 가리키는 두 간선은 `content_available:false`로 대상 내용이 가려진다(THR-034) |
+
+비밀을 찍지 않도록 렌더는 두 역할의 **키 목록과 주소 값만**, 컨테이너는 `printenv GHE_BASE_URL`과 개인 키의 **있음·없음만** 뽑았다. RUNBOOK 7.K의 확인 명령 셋(렌더 `awk`, `printenv`, 기동 로그 `grep`)도 이 배포에서 돌려 기대 출력을 확인했고, 두 역할에 앵커를 넣은 형상의 렌더에서도 다른 `GHE_` 키는 이름만 나오고 값은 가려진다는 것을 봤다.
+
+**관찰 (범위 밖).** DEV-778 — 커밋 w3의 `pr:2`가 web#2 색인 1초 안에 파생돼 미해결로 남았다가 재색인(잡 7)에서 해결됐다. 수정 전 판의 web#1 `x:acme/api:pr:1`도 같은 모양이었다. 파생의 대상 조회가 새로 고침 뒤에만 보이는 `msearch`이고 대상 쪽 해결 갱신은 대상 색인 때 한 번뿐이라 생기는 창이다(`packages/es/src/links.ts`의 `findReferenceTargets`). DEV-779 — 운영자 세션의 첫 관계 조회가 503 `PERMISSION_UNAVAILABLE`이었고 사유 로그가 없었으며 28초 뒤 200이었다. 원인은 확인하지 못했다.
+
+**독립 리뷰.** 코드(`deep-reasoner`, 읽기 전용, 첫 중간 커밋의 `git diff 2f4606d..HEAD` — 코드와 시험): 판정 **병합 가능** — 상·중 지적 0건. 확인한 것: `resolveReferenceHost`와 도메인의 `normalizeHost`·`fromUrl`이 같은 정규화(`new URL(...).host.toLowerCase()`)라 포트·대소문자·끝 슬래시·경로·사용자 정보·IDN·IPv6·스킴 없음에서 어긋나지 않는다. 유사 호스트는 정확 일치라 접두·접미 우회가 없고, 기동 로그에는 호스트만 남는다. 두 역할은 `*ghe-env`를 받지 않는다. 주소가 있을 때 승인 호스트는 전과 같고 빈 값일 때만 0건이 된다(Kubernetes는 configMap이 주소를 준다). `link-repair-cli.ts`는 참조를 파생하지 않고 `reindex-cli.ts`는 잡만 만든다. 단위 93·회귀(이 파일과 `runtime-reachability`) 459를 실제로 돌려 통과를 봤고, 회귀는 docker가 없으면 실패한다. 지적과 처분 — **[정보]** 빈 주소면 렌더가 실패한다는 회귀 시험은 수정 전에도 통과한다(다른 서비스가 이미 `:?`로 요구한다) — 두 줄의 필요성은 첫 시험이 증명하므로 그대로 둔다. **[정보]** 주석이 가리키는 RUNBOOK 7.K가 코드 커밋에 없었다 → 이 문서 커밋에서 더했다. **[정보]** GHE가 하위 경로에 배포되면 URL 참조가 해결되지 않는다(`URL_TARGET`은 호스트 바로 아래 경로만 본다) — 기존 동작이고 사내는 해당하지 않는다. 리뷰 뒤 사용자 결정으로 시험의 사내 주소를 가상 호스트로 바꿨고(시험 논리는 같다), 변이 8종을 가상 호스트 시험으로 다시 돌려 모두 죽는 것을 확인했다.
+
+**한계.** 실제 사내 GHE의 PR 본문·인증서·프록시·실데이터에서의 동작은 NOT RUN이다. 격리 검증의 사내 주소 확인은 두 역할만 그 주소로 다시 만든 시험 전용 혼합 형상이며, 사내에서는 모든 역할이 같은 주소를 받는다. 기존 자료의 URL 참조는 prs-links 재색인 전까지 생기지 않는다(이벤트가 오지 않으므로). 스킴은 비교하지 않는다 — 같은 호스트의 `http://` URL도 참조다.

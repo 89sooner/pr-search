@@ -1,5 +1,16 @@
 # 변경 관리 대장
 
+## CR-124 — 단일 호스트에서 참조를 파생하는 두 역할이 GHE 주소를 받지 않아 사내 GHE의 PR·커밋 URL 참조가 0건이었다: 주소만 넘기고 승인 호스트는 배포 설정에서만 읽는다 (2026-09-27)
+
+- 유형: correction(배포 편차 — FR-REL-003 AC-1·THR-036과 어긋난 단일 호스트 배선과 승인 호스트의 대체값). **요구사항 문장과 AC는 바꾸지 않는다** — AC-1이 이미 GHE PR·커밋 URL을 추출 대상으로 정하고, THR-036이 「URL 참조는 구성된 GHE 호스트만 인정한다」고 정한다. 안정 ID 재번호화 0건. 상태: **구현·검증 완료, 병합 대기**. worktree `/home/roqkf/pr-search-wt/cr124-ghe-ref-host`(브랜치 `fix/cr124-ghe-reference-host`), 기준 main `2f4606d`.
+- 요청: 사용자 지시(2026-09-27, 20차) — DEV-776 → DEV-777 → DEV-773 순서로 항목마다 별도 CR·WP·PR로 처리한다. 이 CR이 첫째다. 사내 GHE 전체 주소(지시서가 준 `GHE_BASE_URL` 값 — 공개 저장소에는 싣지 않는다, 2026-09-27 사용자 결정)로 적은 참조를 정상 인식하고, 기존 자료에는 prs-links 재색인으로 적용한다. 제품 코드에 호스트를 고정하지 않고 배포 설정에서 받으며, 두 역할에 `*ghe-env` 전체(App 개인 키 포함)를 넣지 않는다. 사내 주소에는 접속·인증하지 않고 문자열 시험과 가짜 GHE로 검증한다.
+- 발견: 19차 격리 리허설(원장 6.113장)에서 가짜 GHE 호스트의 커밋 URL을 적은 PR이 참조 0건으로 파생됐다(DEV-776).
+- 원인: 두 겹이다. (1) `deploy/single-host/compose.yml`의 `worker-link`·`worker-batch`는 `x-app-env`만 받아 `GHE_BASE_URL`이 없다. 참조를 파생하는 자리는 이 둘뿐이다 — `link`의 평시 파생(JOB-REL-001·005·006)과 `batch`의 prs-links 재색인(JOB-ING-006이 JOB-REL-006 경로를 부른다). Kubernetes 형상은 두 역할이 `prs-config` configMap으로 주소를 받아 성립했다. (2) 워커는 승인 호스트를 `resolveGitHubConfig().baseUrl`에서 읽었는데, 그 값은 비면 `https://ghe.example.com`으로 채워진다. 코드 주석(「구성이 없으면 URL 참조를 만들지 않는다」)과 THR-036의 fail closed가 실제 동작과 달랐다 — 주소를 받지 못한 두 역할은 실제 GHE의 URL을 모두 거절하고 쓰이지 않는 예시 호스트의 URL을 내부 대상으로 해석했다.
+- 범위: (a) `deploy/single-host/compose.yml` — 두 역할에 `GHE_BASE_URL: ${GHE_BASE_URL:?}` 한 줄씩 넣는다. `*ghe-env`는 넣지 않는다. (b) `packages/github` — `resolveReferenceHost(env)`: `GHE_BASE_URL`에서 비교에 쓰는 호스트(`host[:port]`, 소문자)만 읽고, 비었거나 해석되지 않으면 `null`을 돌려준다. 주소에 붙은 사용자 정보는 싣지 않는다. (c) `apps/pipeline-worker/src/index.ts` — 두 파생 경로가 같은 `referenceHostFor(role)`로 읽고, 기동 로그에 승인 호스트(없으면 경고)를 한 줄 남긴다. (d) `deploy/single-host/RUNBOOK.md` 새 7.K(주소 설정 확인과 기존 자료 반영)와 3장·5장 표·7장 표·8장, `.env.example`의 `GHE_BASE_URL` 주석. (e) 비동기 문서 3장 「해결 규칙」의 승인 호스트 행, 보안 문서 THR-036.
+- 결정과 대가: 호스트를 코드에 두지 않는다 — 사내 주소는 시험 문자열로만 쓴다. `resolveGitHubConfig`는 그대로 둔다. 접속 설정은 다른 역할이 `apiUrl` 조합에 쓰고, 그 대체값은 접속 실패로 곧바로 드러난다. 참조 추출은 조용히 틀리는 쪽이라 따로 읽는다. 스킴은 비교하지 않는다(같은 호스트의 `http://` URL도 참조다 — 기존 동작을 시험으로 고정했다). **동작 변경**: 주소를 받은 뒤의 파생과 prs-links 재색인부터 URL 참조 간선이 새로 생기고 문서의 `link_summary.reference_count`가 는다. 이벤트가 오지 않는 기존 자료는 바뀌지 않으므로 prs-links 재색인(7.I 4번)으로 반영한다. `GHE_BASE_URL`이 빈 배포는 이제 URL 참조가 0건이다 — 전에는 예시 호스트의 URL을 승인했다. 단일 호스트는 compose가 그 값 없이 렌더를 거부하므로 해당하지 않고, Kubernetes는 configMap에서 키를 지운 경우에만 해당한다.
+- 제외: 참조 추출 규칙(패턴·키·상한·제외 구간), 대상 해석·해결 규칙, Kubernetes 형상의 자격 배선(link 파드가 `prs-secrets`를 받는 것), 파생의 대상 조회가 직전에 색인된 대상을 보지 못하는 경합(DEV-778 — 격리 검증에서 관찰, 후속), Release 발행과 사내 적용.
+- 설계·세부 정본: FR-REL-003 AC-1, THR-036, JOB-REL-005(비동기 3장 「해결 규칙」), RUNBOOK 7.K, WP-105, 원장 5장 DEV-776·DEV-778, 6.115장. 연쇄 기록은 5장 「CR-124 cascade」에 적는다.
+
 ## CR-123 — 해결 갱신이 색인되지 않은 대상에 정확한 참조를 붙였다: 재구축과 전환 전 검증의 판정이 갈려 prs-links 전환이 막힌다 (2026-09-26)
 
 - 유형: correction(구현 결함 — FR-REL-003 AC-3과 어긋난 해결 갱신) + 운영 절차 순서 정정. **요구사항 문장과 AC는 바꾸지 않는다** — AC-3이 이미 「대상 개체가 아직 색인되지 않았으면 간선을 미해결로 둔다」고 정한다. 안정 ID 재번호화 0건. 상태: **closed** — main `646486e`(PR #240 squash 병합, 2026-09-26). worktree `/home/roqkf/pr-search-wt/upgrade-blockers`(브랜치 `fix/cr122-cr123-upgrade-blockers`), 기준 main `7179794`.
@@ -2404,6 +2415,17 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - 상태: **closed**(2026-09-21). 운영 배포는 하지 않았고, 사내 CA·운영 HAProxy·실제 GHE를 거친 검증과 실제 사용자 매핑은 NOT_RUN이다 — 이 CR의 범위 밖이다.
 
 **병합 판정.** 구현·검증 보고 뒤 사용자 지시(2026-09-21 「origin/main에 병합」)로 진행했다. 저장소가 공개라 시험 전용 서명 비밀키를 커밋에서 빼고, main CI의 `verify`를 막던 lint 기준선 1건을 ESLint 설정으로 해소한 뒤(원장 6.103장 「병합 준비」) 커밋 `28a3c21`을 PR #220으로 올렸다. PR CI(run `35568796745`)는 verify·integration 모두 success다 — `verify`의 단계(typecheck·lint·lint:deps·test·build·test:a11y·test:contrast·test:e2e)에는 건너뛰는 조건이 없으므로 로컬에서 돌리지 않은 a11y·contrast·e2e도 이 실행이 확인했다. squash 병합 커밋은 `e7b4cb4`(15:43 KST)이고 트리가 `28a3c21`과 같다. 병합 커밋 `e7b4cb4`의 main CI(run `35569716267`)는 끝나기 전에 취소됐다 — 15:46에 사용자가 메인 체크아웃에서 입력 지시서 묶음을 따로 커밋해(`c73ed9f`) main과 병합한 `364f0fb`를 push했고, 워크플로의 `cancel-in-progress`가 앞 실행을 취소했다. `364f0fb`의 트리는 `e7b4cb4`와 같다(묶음 6개 파일이 PR #220에 든 것과 같은 내용이라 차이가 없다, tree `26f3f0fb…`). 그 커밋의 main CI(run `35569895232`)는 verify·integration 모두 success다 — #218부터 lint 단계에서 멈추던 main의 `verify`가 다시 끝까지 통과했다. 병합 기록은 별도 PR(브랜치 `docs/cr112-merge-record`)로 했다 — 작업 패키지 v2.57 → v2.58(WP-097 done), 원장 v6.98 → v6.99(머리 절, 3장, 4장, 6.103장 「병합」), handoff의 PIPE_INTEGRATION_HANDOFF·TEST_RESULTS·CONTRACT_DIFF·manifest 생성기와 다시 만든 manifest(계약 checksum `3c7fbe92…` 변동 없음). 문서 검증기는 이 기록 뒤에도 두 모드 모두 오류·경고 목록이 병합 시점과 같다. 릴리스·태그는 발행하지 않았다. closed.
+
+### CR-124 cascade — 단일 호스트 참조 파생 두 역할의 GHE 주소와 승인 호스트
+
+기준: main `2f4606d` 위 worktree `/home/roqkf/pr-search-wt/cr124-ghe-ref-host`(브랜치 `fix/cr124-ghe-reference-host`). correction — 요구사항 문장은 바꾸지 않고 배포 배선과 승인 호스트의 대체값을 FR-REL-003 AC-1·THR-036에 맞춘다. ID는 `docs/`와 원격 브랜치, 열린 PR(없음)을 실측해 정했다 — CR-124·WP-105·DEV-778. 새 ADR·JOB·EVT·RB·THR 번호는 쓰지 않는다.
+
+- [x] 요구사항: 해당 없음 — FR-REL-003 AC-1이 이미 GHE PR·커밋 URL을 추출 대상으로 정한다. PRD·용어집·매트릭스도 바뀌지 않는다.
+- [x] 파생 UI: 해당 없음 — W-002·W-003은 간선을 그대로 읽는다.
+- [x] 기술 아키텍처: 보안 v1.15 → v1.16(머리 주석, THR-036 완화 칸), 비동기 v0.21 → v0.22(머리 주석, 3장 「해결 규칙」의 승인 호스트 행).
+- [x] 전달: 작업 패키지 v2.68 → v2.69(WP-105 절·상태 표), 원장 v6.116 → v6.117(머리 절, 3장 WP-105, 4장 FR-REL-003 AC-1, 5장 DEV-776 resolved·DEV-778, 6.115장). `deploy/single-host/RUNBOOK.md` 3장 「업그레이드」 한 문단, 5장 표 한 칸, 7장 표 한 행, 새 7.K, 8장 한 행. `deploy/single-host/.env.example`의 `GHE_BASE_URL` 주석.
+- [x] 코드·시험: 원장 6.115장.
+- 상태: 병합 대기.
 
 ### CR-123 cascade — 해결 갱신의 대상 색인 판정과 반입 순서
 

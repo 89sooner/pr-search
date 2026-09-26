@@ -11,6 +11,7 @@ import {
   parseInstallations,
   resolveGitHubConfig,
   resolveMirrorConfig,
+  resolveReferenceHost,
 } from './config.js';
 
 describe('parseInstallations', () => {
@@ -94,5 +95,52 @@ describe('환경 값이 비어 있을 때 기본값으로 되돌린다 (DEV-548)
     });
     expect(config.baseUrl).toBe('https://ghe.internal.example');
     expect(config.apiUrl).toBe('https://ghe.internal.example/api/v3');
+  });
+});
+
+/**
+ * URL 참조의 승인 호스트 (THR-036, CR-124 / DEV-776).
+ *
+ * 사내 주소를 대신하는 가상 호스트다. 실제 사내 주소는 공개 저장소에 싣지 않는다(2026-09-27 사용자 결정) —
+ * 구조(네 단계 호스트, 가운데 `github`)를 맞췄고, 실제 값으로는 같은 시험을 격리 환경에서 돌렸다(원장 6.115장). 접속하지 않는다.
+ */
+describe('resolveReferenceHost — 배포 설정의 GHE 주소에서 호스트만 읽는다', () => {
+  const CORP_GHE = 'https://team.github.corp.example';
+
+  it('사내 GHE 주소의 호스트를 돌려준다', () => {
+    expect(resolveReferenceHost({ GHE_BASE_URL: CORP_GHE })).toBe('team.github.corp.example');
+  });
+
+  it('끝의 슬래시·경로·대문자·앞뒤 공백·기본 포트는 호스트를 바꾸지 않는다', () => {
+    for (const value of [`${CORP_GHE}/`, `${CORP_GHE}/ghe/`, 'HTTPS://TEAM.GITHUB.CORP.EXAMPLE', `  ${CORP_GHE}  `, `${CORP_GHE}:443`]) {
+      expect(resolveReferenceHost({ GHE_BASE_URL: value }), value).toBe('team.github.corp.example');
+    }
+  });
+
+  it('기본이 아닌 포트는 호스트의 일부다 — 다른 포트의 URL을 같은 서버로 보지 않는다', () => {
+    expect(resolveReferenceHost({ GHE_BASE_URL: 'https://team.github.corp.example:8443' })).toBe('team.github.corp.example:8443');
+  });
+
+  it('스킴이 없으면 https로 읽는다', () => {
+    expect(resolveReferenceHost({ GHE_BASE_URL: 'team.github.corp.example' })).toBe('team.github.corp.example');
+  });
+
+  it('**주소에 붙은 사용자 정보는 돌려주지 않는다** — 로그에 남는 값이다', () => {
+    const host = resolveReferenceHost({ GHE_BASE_URL: 'https://someone:s3cret@team.github.corp.example' });
+    expect(host).toBe('team.github.corp.example');
+    expect(host).not.toContain('s3cret');
+  });
+
+  it('**비었으면 null이다 — 예시 호스트로 채우지 않는다** (fail closed, DEV-776)', () => {
+    expect(resolveReferenceHost({})).toBeNull();
+    expect(resolveReferenceHost({ GHE_BASE_URL: '' })).toBeNull();
+    expect(resolveReferenceHost({ GHE_BASE_URL: '   ' })).toBeNull();
+    // 접속 설정은 여전히 예시 호스트로 채운다 — 두 함수의 차이가 이 CR의 요점이다.
+    expect(resolveGitHubConfig({}).baseUrl).toBe('https://ghe.example.com');
+  });
+
+  it('해석되지 않는 값은 null이다', () => {
+    expect(resolveReferenceHost({ GHE_BASE_URL: 'https://' })).toBeNull();
+    expect(resolveReferenceHost({ GHE_BASE_URL: 'http://exa mple.com' })).toBeNull();
   });
 });
