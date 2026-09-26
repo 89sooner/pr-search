@@ -255,14 +255,17 @@ describe('DoD 9 / ADR-008: 우회 경로 부재', () => {
     ).toEqual([]);
   });
 
-  it('접근 범위 필드를 `msearch`·`count`·`mget`으로 우회하지 않는다', () => {
+  it('접근 범위 필드를 `msearch`·`count`·`mget`·`exists`로 우회하지 않는다', () => {
     // `search` 말고도 문서를 세거나 읽는 경로가 있다. 생기면 여기서 걸린다.
     //
     // `mget`을 더한 것은 CR-042다 (DEV-265). 관계 조회가 대상의 제목·작성자를
     // 붙일 때 **ID를 알고 있으므로** `mget`이 가장 짧은 길인데, 그것은 강제
     // 필터를 통째로 지나간다 — THR-034가 막으려는 바로 그 유출이다.
+    //
+    // `exists`를 더한 것은 CR-123이다. 문서 한 건의 존재 확인도 ID로 필터를 지나간다 —
+    // 해결 갱신의 대상 색인 판정(`links.ts`, 허용 목록의 사유 그대로)만 쓴다.
     const offences = scan(
-      /\b(?:client|es)\s*\.\s*(?:msearch|count|scroll|openPointInTime|mget)\s*[(<]/,
+      /\b(?:client|es)\s*\.\s*(?:msearch|count|scroll|openPointInTime|mget|exists)\s*[(<]/,
       [SEARCH_FACADE, ...UNSCOPED_FILES],
     );
 
