@@ -32,6 +32,11 @@
  * 해제된 스택은 현재 스냅숏에서 다시 보이지 않는다 — 상위 PR이 병합되거나 하위 PR이 retarget되면
  * 성립 조건이 사라진다. 그 사실을 색인에만 두면 재색인이 되살리지 못하므로(ADR-004), 성립·해제를
  * `pull_request_stack`에 남기고 간선은 그 행에서 **전체 쓰기**로 만든다. 부분 갱신이 없다.
+ *
+ * **업그레이드 직후의 전환기 보완 (CR-126, DEV-773).** CR-121 전 판의 스택은 색인에만 있다. 가져오기
+ * (`prsctl links import-stacks`) 전에는 이 모듈이 그 관계를 찾지도 해제하지도 못하므로, 이벤트 소비자
+ * (`LinkDeps.servingStackImport`)는 판정 직전에 **그 PR 하나의** 옛 간선을 가져오기와 같은 규칙으로 정본에
+ * 옮긴다. 색인을 판정 근거로 읽는 것이 아니다 — 옮긴 행이 정본이 되고, 판정은 지금 스냅숏으로 한다.
  */
 
 import {
@@ -69,6 +74,7 @@ import {
 } from '@prs/es';
 
 import type { LinkDeps, LinkSource } from './link.js';
+import { importServingStacks, type StackImportScope } from './stack-import.js';
 
 export const REVERT_JOB = 'JOB-REL-002' as const;
 export const CHERRY_JOB = 'JOB-REL-003' as const;
@@ -367,6 +373,33 @@ async function planCherryPicks(
 /* 스택 (JOB-REL-004 / FR-REL-006)                                             */
 /* ------------------------------------------------------------------------- */
 
+/**
+ * 서비스 인덱스에만 있는 스택 간선을 정본으로 옮긴다 — 업그레이드 직후의 전환기 보완 (CR-126, DEV-773).
+ *
+ * `deps.servingStackImport`를 켠 이벤트 소비자만 한다. 옮기기는 가져오기(`import-stacks`)와 같은 함수·같은
+ * 검증·같은 저장이다 — 이미 있는 행은 덮지 않는다. 조회가 실패하거나 일부만 읽히면 던진다: 「간선 없음」으로
+ * 넘어가면 해제해야 할 관계를 놓치고, 던지면 이벤트가 ack되지 않아 다시 온다.
+ */
+async function importLegacyStacks(deps: LinkDeps, repository: RepositoryRow, scope: StackImportScope): Promise<void> {
+  if (deps.servingStackImport !== true) return;
+  const result = await importServingStacks({ pool: deps.pool, es: deps.es }, repository, { dryRun: false, scope });
+  if (result.inserted === 0 && result.invalid === 0) return;
+  const log = deps.log ?? ((): void => undefined);
+  log({
+    // 형식이 맞지 않는 간선은 옮기지 못한다 — 그 관계는 재색인의 전환 전 검증이 계속 막는다.
+    level: result.invalid > 0 ? 'warn' : 'info',
+    message: '서비스 인덱스에만 있던 스택 간선을 정본으로 옮겼다 — 업그레이드 직후의 전환기 보완 (DEV-773)',
+    job: STACK_JOB,
+    repository_id: Number(repository.repository_id),
+    scope: 'childPrNumber' in scope ? 'child' : 'parent',
+    pr_number: 'childPrNumber' in scope ? scope.childPrNumber : scope.parentPrNumber,
+    scanned: result.scanned,
+    inserted: result.inserted,
+    existing: result.existing,
+    invalid: result.invalid,
+  });
+}
+
 interface StackPlan {
   /** 지금 성립하는 관계 — 정본 행(`pull_request_stack`)을 맞출 입력이다 (CR-121). */
   readonly desired: readonly StackDesired[];
@@ -595,7 +628,13 @@ export async function deriveRelations(
      * **정본 행을 먼저 맞추고, 그 하위 PR의 행 전부를 간선으로 쓴다** (CR-121, OD-017). 해제된 관계도
      * `detached: true`로 전체 쓰기한다 — 서비스 색인에서 후보를 찾아 부분 갱신하던 옛 경로는 재색인 중
      * 새 인덱스에 간선이 없어 실패했고, 해제 이력은 색인에만 남아 재구축이 되살리지 못했다.
+     *
+     * 판정 전에 이 하위 PR의 옛 스택 간선을 정본에 옮긴다 (CR-126, DEV-773 — 전환기 보완). CR-121 전 판의
+     * 관계는 색인에만 있어, 옮기지 않으면 아래 판정이 그 관계를 모른다 — 해제돼야 할 옛 간선이 다시 쓰이지
+     * 않고 `detached: false`로 남는다. 옮긴 뒤에는 지금 스냅숏으로 판정한다: 성립하면 파생 행이 되고(규칙 3),
+     * 성립하지 않으면 옛 근거·시각 그대로 해제된다.
      */
+    await importLegacyStacks(deps, repository, { childPrNumber: parts.stacks.childPrNumber });
     const reconciled = await prStackRepo.reconcileStacks(
       deps.pool,
       repositoryId,
@@ -912,7 +951,12 @@ export async function reevaluateAffectedRelations(
      *
      * 분기 값 대신 **그때의 관계를 기억하는 정본 행**에서 찾는다 (CR-121) — 성립한 적 있는 관계만
      * 행이 되므로 분기가 무엇으로 바뀌었든 정확하다. 전에는 서비스 색인의 간선으로 찾았다.
+     *
+     * 그 행이 아직 없을 수 있다 — CR-121 전 판의 관계는 색인에만 있다. 이 PR을 상위로 가리키는 옛 간선을
+     * 먼저 정본에 옮긴다 (CR-126, DEV-773 — 전환기 보완). 옮기지 않으면 head가 바뀐 뒤에는 위 조회로도
+     * 이 조회로도 하위 PR에 닿지 못한다.
      */
+    await importLegacyStacks(deps, repository, { parentPrNumber: Number(source.id) });
     for (const child of await prStackRepo.listChildrenOf(deps.pool, repositoryId, Number(source.id), AFFECTED_LIMIT)) {
       add({ kind: 'pull_request', id: String(child) });
     }

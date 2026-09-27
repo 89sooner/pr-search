@@ -7,7 +7,15 @@
  * (`pull_request_stack`)이고 간선은 그 표에서 파생하지만, **배포 전에 이미 해제된 관계**는 현재
  * 스냅숏에서 다시 보이지 않는다(상위 PR 병합·하위 PR retarget). 그것을 옮기지 않은 채 prs-links를
  * 재색인하면 그 이력이 새 인덱스에서 사라진다. 그래서 서비스 인덱스의 `stacks_on` 간선을 **한 번**
- * 표로 옮긴다 — ES에서 PG로 가는 유일한 경로이며, 사용자가 이 방향을 한 번만 허용했다(OD-017).
+ * 표로 옮긴다 — ES에서 PG로 가는 경로는 이 파일뿐이며, 사용자가 이 방향을 한 번만 허용했다(OD-017).
+ *
+ * ## 이벤트의 전환기 보완 (CR-126, DEV-773)
+ *
+ * 가져오기 전에는 정본만 보는 파생이 그 관계를 찾지도 해제하지도 못한다 — 상위 PR이 병합돼도 옛 간선이
+ * `detached: false`로 남고 요약의 `has_stack`이 굳는다. 그래서 링크 워커의 **이벤트 소비자**는 스택을
+ * 판정하기 직전에 **그 PR 하나의** 간선만(`scope`) 같은 검증·같은 저장으로 옮긴다(사용자 지시 2026-09-27,
+ * OD-017 보완). 방아쇠는 둘이지만 규칙은 여기 하나다. 저장소 전체의 이전은 여전히 이 명령의 일이고,
+ * 재색인은 옮기지 않은 간선이 남으면 전환하지 않는다(FR-REL-006 AC-6).
  *
  * ## 규칙
  *
@@ -15,11 +23,15 @@
  * - **형식이 맞는 간선만 옮긴다** — 문서 ID가 `{저장소}:{PR 번호}`이고, 두 끝이 같은 저장소이며,
  *   근거·시각이 문자열인 것. 나머지는 세기만 하고 버리지 않는다(서비스 인덱스는 그대로다).
  * - **아무것도 지우지 않는다.** 서비스 인덱스도, 표도.
+ * - **일부만 읽힌 결과로 옮기지 않는다** (CR-126) — 시간 초과나 샤드 실패가 있으면 던진다. 운영자 명령은
+ *   실패로 끝나고, 이벤트는 ack되지 않아 다시 전달된다. 일부를 「간선 없음」으로 읽으면 해제해야 할
+ *   관계를 놓친다.
  */
 
 import { prStackRepo, type Pool, type RepositoryRow, type StackImport } from '@prs/db';
+import { pullRequestDocId } from '@prs/domain';
 import { LINKS_ALIAS } from '@prs/es';
-import type { Client } from '@elastic/elasticsearch';
+import type { Client, estypes } from '@elastic/elasticsearch';
 
 export interface StackImportDeps {
   readonly pool: Pool;
@@ -36,6 +48,12 @@ export interface StackImportResult {
   /** 형식이 맞지 않아 옮기지 않은 간선. */
   readonly invalid: number;
 }
+
+/**
+ * 옮길 범위 (CR-126). 없으면 저장소 전체다 — 운영자 명령. 있으면 **PR 하나의 한쪽 끝**이다 — 이벤트의 전환기
+ * 보완. 하위 PR이면 그 PR에서 나가는 간선(`from_id`), 상위 PR이면 그 PR로 들어오는 간선(`to_id`)이다.
+ */
+export type StackImportScope = { readonly childPrNumber: number } | { readonly parentPrNumber: number };
 
 const READ_PAGE = 1000;
 const WRITE_BATCH = 500;
@@ -79,8 +97,35 @@ function toImport(repositoryId: number, doc: StoredStack): StackImport | undefin
   };
 }
 
-/** 서비스 인덱스의 한 저장소 `stacks_on` 간선을 끝까지 읽는다. */
-async function readServingStacks(es: Client, repositoryId: number): Promise<readonly StoredStack[]> {
+/**
+ * 일부만 읽힌 응답을 「간선 없음」으로 쓰지 않는다 (CR-126). 시간 초과나 샤드 실패가 있으면 던진다.
+ */
+function assertCompleteRead(response: estypes.SearchResponse<StoredStack>, repositoryId: number): void {
+  const failedShards = response._shards.failed;
+  if (response.timed_out || failedShards > 0) {
+    throw new Error(
+      `스택 간선 조회가 일부만 읽혔다 (저장소 ${String(repositoryId)}, 시간 초과 ${String(response.timed_out)}, 실패 샤드 ${String(failedShards)})`,
+    );
+  }
+}
+
+/** 서비스 인덱스의 한 저장소 `stacks_on` 간선을 끝까지 읽는다. `scope`가 있으면 PR 하나의 한쪽 끝만 읽는다. */
+async function readServingStacks(
+  es: Client,
+  repositoryId: number,
+  scope: StackImportScope | undefined,
+): Promise<readonly StoredStack[]> {
+  const filter: estypes.QueryDslQueryContainer[] = [
+    { term: { repository_id: repositoryId } },
+    { term: { link_type: 'stacks_on' } },
+  ];
+  if (scope !== undefined) {
+    filter.push(
+      'childPrNumber' in scope
+        ? { term: { from_id: pullRequestDocId(repositoryId, scope.childPrNumber) } }
+        : { term: { to_id: pullRequestDocId(repositoryId, scope.parentPrNumber) } },
+    );
+  }
   const out: StoredStack[] = [];
   let after: unknown[] | undefined;
   for (;;) {
@@ -90,9 +135,10 @@ async function readServingStacks(es: Client, repositoryId: number): Promise<read
       size: READ_PAGE,
       _source: ['from_id', 'to_id', 'to_repository_id', 'repository_id', 'evidence', 'created_at', 'detached'],
       sort: [{ link_id: 'asc' }],
-      query: { bool: { filter: [{ term: { repository_id: repositoryId } }, { term: { link_type: 'stacks_on' } }] } },
+      query: { bool: { filter } },
       ...(after === undefined ? {} : { search_after: after as never }),
     });
+    assertCompleteRead(response, repositoryId);
     const hits = response.hits.hits;
     for (const hit of hits) if (hit._source !== undefined) out.push(hit._source);
     if (hits.length < READ_PAGE) return out;
@@ -103,15 +149,16 @@ async function readServingStacks(es: Client, repositoryId: number): Promise<read
 }
 
 /**
- * 한 저장소의 서비스 `stacks_on` 간선을 스택 정본으로 옮긴다. `dryRun`이면 세기만 한다.
+ * 한 저장소의 서비스 `stacks_on` 간선을 스택 정본으로 옮긴다. `dryRun`이면 세기만 한다. `scope`가 있으면 PR
+ * 하나의 한쪽 끝만 옮긴다 — 이벤트의 전환기 보완이다(CR-126). 검증과 저장은 같다.
  */
 export async function importServingStacks(
   deps: StackImportDeps,
   repository: RepositoryRow,
-  options: { readonly dryRun: boolean },
+  options: { readonly dryRun: boolean; readonly scope?: StackImportScope },
 ): Promise<StackImportResult> {
   const repositoryId = Number(repository.repository_id);
-  const stored = await readServingStacks(deps.es, repositoryId);
+  const stored = await readServingStacks(deps.es, repositoryId, options.scope);
   const rows: StackImport[] = [];
   let invalid = 0;
   for (const doc of stored) {
