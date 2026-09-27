@@ -9069,7 +9069,7 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 | --- | --- | --- |
 | 수정 전 설치 | 로컬 `0.1.0-pilot.19` 이미지(발행본, 코드는 main과 같다) + main `2f4606d` 배포 정의, `prsctl install` | 렌더와 컨테이너 모두 두 역할에 `GHE_BASE_URL` 없음(개인 키도 없음). `worker-enrich`는 주소·자격 있음 |
 | 수정 전 파생 | web#1 본문(가짜 GHE 주소의 PR·커밋 URL, 아직 없는 PR의 URL, github.com, 유사 호스트, 사내 주소, 텍스트 참조), 커밋 w1 트레일러의 URL, api#2 본문의 URL | **URL 참조 0건** — web#1은 텍스트 참조 셋(`commit:<SHA>`·`pr:3`·`x:acme/api:pr:1`)만, api#2와 w1은 `pr:1`만 |
-| 업그레이드 | `s20-cr124` 이미지 + 작업 트리 배포 정의, `prsctl upgrade` — 이미지는 첫 중간 커밋에서 빌드했다. 그 커밋은 사내 주소가 든 시험을 담아 push하지 않았고, 그 뒤 바뀐 것은 시험의 호스트 문자열과 문서(`RUNBOOK.md`·`.env.example`)뿐이다 — 제품 코드와 `compose.yml`은 같다 | 렌더의 키 목록에 두 역할의 `GHE_BASE_URL` 하나만 더해졌다(`GHE_APP_*`·`GHE_INSTALLATIONS`·`GHE_API_URL` 없음). 컨테이너 안 값이 같고 개인 키가 없다. 기동 로그 `URL 참조 승인 호스트`·`fake-ghe:8080`(link·batch) |
+| 업그레이드 | `s20-cr124` 이미지 + 작업 트리 배포 정의, `prsctl upgrade` — 이미지는 첫 중간 커밋에서 빌드했다. 그 커밋은 사내 주소가 든 시험을 담아 push하지 않았고, 그 뒤 바뀐 것은 시험의 호스트 문자열과 문서(`deploy/single-host/RUNBOOK.md`·`deploy/single-host/.env.example`)뿐이다 — 제품 코드와 `compose.yml`은 같다 | 렌더의 키 목록에 두 역할의 `GHE_BASE_URL` 하나만 더해졌다(`GHE_APP_*`·`GHE_INSTALLATIONS`·`GHE_API_URL` 없음). 컨테이너 안 값이 같고 개인 키가 없다. 기동 로그 `URL 참조 승인 호스트`·`fake-ghe:8080`(link·batch) |
 | 새 이벤트 | web#1 편집, web#2(늦게 생긴 대상), web#3(URL 본문·트레일러) | web#1에 URL 참조 셋이 생겼다 — `x:acme/api:pr:1`·`x:acme/api:commit:<SHA>` 해결, `pr:2`는 미해결이었다가 web#2가 열리자 같은 간선이 해결. github.com·유사 호스트·사내 주소(승인 호스트가 아니다)는 간선 없음. 커밋 w3의 URL 트레일러 둘은 `derived` |
 | 기존 자료 | prs-links 재색인(잡 7) | 편집하지 않은 api#2에 `x:acme/web:pr:1`(URL, 해결)이 생겼다. `전환 전 간선 검증 sources=12 expected=12 missing=0 extra=0 mismatched=0 orphans=0 unplannable=0 pending=0 unimported_stacks=0`, v1 → v2 자동 전환 |
 | 사내 주소 — 새 이벤트 (시험 전용 혼합 형상) | `.env`의 주소만 사내 값으로 바꾸고 `up -d --no-deps worker-link worker-batch` — 다른 역할은 가짜 GHE 설정을 유지 | 두 컨테이너의 값과 기동 로그가 사내 호스트, `worker-enrich`는 가짜 GHE 그대로. 새 PR web#4: 사내 주소의 PR·커밋 URL이 해결된 참조, 가짜 GHE 주소와 유사 호스트는 간선 없음, 커밋 w4의 사내 URL 트레일러는 같은 저장소라 `pr:3`으로 접힘 |
@@ -9082,6 +9082,22 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 
 **관찰 (범위 밖).** DEV-778 — 커밋 w3의 `pr:2`가 web#2 색인 1초 안에 파생돼 미해결로 남았다가 재색인(잡 7)에서 해결됐다. 수정 전 판의 web#1 `x:acme/api:pr:1`도 같은 모양이었다. 파생의 대상 조회가 새로 고침 뒤에만 보이는 `msearch`이고 대상 쪽 해결 갱신은 대상 색인 때 한 번뿐이라 생기는 창이다(`packages/es/src/links.ts`의 `findReferenceTargets`). DEV-779 — 운영자 세션의 첫 관계 조회가 503 `PERMISSION_UNAVAILABLE`이었고 사유 로그가 없었으며 28초 뒤 200이었다. 원인은 확인하지 못했다.
 
-**독립 리뷰.** 코드(`deep-reasoner`, 읽기 전용, 첫 중간 커밋의 `git diff 2f4606d..HEAD` — 코드와 시험): 판정 **병합 가능** — 상·중 지적 0건. 확인한 것: `resolveReferenceHost`와 도메인의 `normalizeHost`·`fromUrl`이 같은 정규화(`new URL(...).host.toLowerCase()`)라 포트·대소문자·끝 슬래시·경로·사용자 정보·IDN·IPv6·스킴 없음에서 어긋나지 않는다. 유사 호스트는 정확 일치라 접두·접미 우회가 없고, 기동 로그에는 호스트만 남는다. 두 역할은 `*ghe-env`를 받지 않는다. 주소가 있을 때 승인 호스트는 전과 같고 빈 값일 때만 0건이 된다(Kubernetes는 configMap이 주소를 준다). `link-repair-cli.ts`는 참조를 파생하지 않고 `reindex-cli.ts`는 잡만 만든다. 단위 93·회귀(이 파일과 `runtime-reachability`) 459를 실제로 돌려 통과를 봤고, 회귀는 docker가 없으면 실패한다. 지적과 처분 — **[정보]** 빈 주소면 렌더가 실패한다는 회귀 시험은 수정 전에도 통과한다(다른 서비스가 이미 `:?`로 요구한다) — 두 줄의 필요성은 첫 시험이 증명하므로 그대로 둔다. **[정보]** 주석이 가리키는 RUNBOOK 7.K가 코드 커밋에 없었다 → 이 문서 커밋에서 더했다. **[정보]** GHE가 하위 경로에 배포되면 URL 참조가 해결되지 않는다(`URL_TARGET`은 호스트 바로 아래 경로만 본다) — 기존 동작이고 사내는 해당하지 않는다. 리뷰 뒤 사용자 결정으로 시험의 사내 주소를 가상 호스트로 바꿨고(시험 논리는 같다), 변이 8종을 가상 호스트 시험으로 다시 돌려 모두 죽는 것을 확인했다.
+**독립 리뷰.** 코드(`deep-reasoner`, 읽기 전용, 첫 중간 커밋의 `git diff 2f4606d..HEAD` — 코드와 시험): 판정 **병합 가능** — 상·중 지적 0건. 확인한 것: `resolveReferenceHost`와 도메인의 `normalizeHost`·`fromUrl`이 같은 정규화(`new URL(...).host.toLowerCase()`)라 포트·대소문자·끝 슬래시·경로·사용자 정보·IDN·IPv6·스킴 없음에서 어긋나지 않는다. 유사 호스트는 정확 일치라 접두·접미 우회가 없고, 기동 로그에는 호스트만 남는다. 두 역할은 `*ghe-env`를 받지 않는다. 주소가 있을 때 승인 호스트는 전과 같고 빈 값일 때만 0건이 된다(Kubernetes는 configMap이 주소를 준다). `link-repair-cli.ts`는 참조를 파생하지 않고 `reindex-cli.ts`는 잡만 만든다. 단위 93(`config`·`reference`·`packages/es/src/architecture.test.ts`)·회귀 459(이 파일과 `runtime-reachability`)를 실제로 돌려 통과를 봤고, 회귀는 docker가 없으면 실패한다. 지적과 처분 — **[정보]** 빈 주소면 렌더가 실패한다는 회귀 시험은 수정 전에도 통과한다(다른 서비스가 이미 `:?`로 요구한다) — 두 줄의 필요성은 첫 시험이 증명하므로 그대로 둔다. **[정보]** 주석이 가리키는 RUNBOOK 7.K가 코드 커밋에 없었다 → 이 문서 커밋에서 더했다. **[정보]** GHE가 하위 경로에 배포되면 URL 참조가 해결되지 않는다(`URL_TARGET`은 호스트 바로 아래 경로만 본다) — 기존 동작이고 사내는 해당하지 않는다. 리뷰 뒤 사용자 결정으로 시험의 사내 주소를 가상 호스트로 바꿨고(시험 논리는 같다), 변이 8종을 가상 호스트 시험으로 다시 돌려 모두 죽는 것을 확인했다. **문서(`deep-reasoner`, 읽기 전용, `0eb7dbf`의 문서 diff):** 판정 **수정 후 병합** — [중] 1건·[하] 1건·[정보] 2건. 확인한 것: 이 장의 잡 번호·인덱스 전환·검증 수치(12/12/0, 16/14/0, 16/16/0)와 간선 서사·기동 로그·렌더·컨테이너 값·사용자 API 응답이 scratchpad의 로그와 같다. 시험 총계(66·20·34·6)와 변이 대상이 실행기 정의와 같다. RUNBOOK 7.I 4번·7.J 2~4번 참조와 사내 안내(7.J 순서 유지, 7.J 4번이 URL 참조 반영을 겸함)가 모순 없다. 7.K 명령은 DB 비밀번호·App 개인 키를 찍지 않는다. 문서 버전이 cascade 기록과 같고, SRS·PRD를 바꾸지 않은 판단이 CLAUDE.md 규칙에 맞는다. 저장소에 사내 주소가 0건이고 사내 확인은 NOT RUN으로 남았다. 원장 3장 새 행은 8칸이다. 지적과 처분 — **[중, 수정]** RUNBOOK 7장 표에 더한 행이 표를 닫는 빈 줄 뒤에 놓여 표로 렌더되지 않았다 → 표의 마지막 행 바로 아래로 옮기고 그 뒤에 빈 줄을 두었다. **[하, 수정]** 변경 대장의 CR-124 제외·정본과 cascade가 DEV-779를 빠뜨렸다 → 세 자리에 더했다. **[정보, 수정]** 이 장의 「단위 93」에 측정 범위가 없었다 → 적었다. **[정보, 수정]** RUNBOOK 7.K의 경고 문구 인용이 코드보다 짧았다(끝의 `(THR-036)`) → 코드와 글자 그대로 맞췄다.
+
+**게이트.** 최종 코드 트리(`0eb7dbf`, 새 DB `prs_test_s20_cr124final`, Node 22)의 전 계층 게이트다. 실행 전후 추적 파일의 해시가 같다(실행 중 소스 변경 없음).
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` · `pnpm lint` · `pnpm run lint:deps` | 통과 (lint:deps 패키지 17개, 위반 0건) |
+| `pnpm run test` | 183 파일 통과·1 파일 skip, 3,328건 통과·1건 skip — skip은 실제 GHE 자격이 있을 때만 도는 기존 smoke(`packages/github/testing/smoke-real-ghe.test.ts`)이고 어디에도 접속하지 않았다 |
+| `pnpm build` | 통과 |
+| `pnpm run test:a11y` · `pnpm run test:contrast` | 466건 통과 · 18쌍 실패 0 |
+| `pnpm run test:e2e` | 209건 통과 |
+| `pnpm run test:integration` | 147 파일, 2,281건 통과 |
+| `pnpm run test:regression` | 12 파일, 526건 통과 |
+
+문서 리뷰 반영(RUNBOOK·변경 대장·원장만 바뀌었다) 뒤 문서를 읽는 회귀(`pnpm run test:regression`)와 문서 검증기를 다시 돌렸다 — 아래 「문서 검증기」와 같다.
+
+**문서 검증기.** `validate_srs_prd_env.py`를 기준선 `2f4606d`와 작업 트리에 똑같이 돌려 오류·경고 목록을 비교했다 — 기본·`--strict` 두 모드 모두 목록이 같고(새 오류·경고 0건), 경로 참조 18건도 같다.
 
 **한계.** 실제 사내 GHE의 PR 본문·인증서·프록시·실데이터에서의 동작은 NOT RUN이다. 격리 검증의 사내 주소 확인은 두 역할만 그 주소로 다시 만든 시험 전용 혼합 형상이며, 사내에서는 모든 역할이 같은 주소를 받는다. 기존 자료의 URL 참조는 prs-links 재색인 전까지 생기지 않는다(이벤트가 오지 않으므로). 스킴은 비교하지 않는다 — 같은 호스트의 `http://` URL도 참조다.
