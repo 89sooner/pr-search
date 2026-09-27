@@ -196,6 +196,14 @@ describe('드릴다운 (근거 목록으로)', () => {
     expect(qOf(bucketDrillDownHref('', '2026-09-21T00:00:00.000+09:00', 'week', null, KST))).toBe('merged:2026-09-21..2026-09-27@Asia/Seoul');
   });
 
+  it('시각으로 적은 적용 기간이면 그 안에 온전히 든 버킷만 달력 범위로 가고, 걸친 버킷은 링크가 없다', () => {
+    // KST 9/27 하루는 [09-26T15:00Z, 09-27T15:00Z)다. 적용 기간이 그 하루를 다 덮으면 링크, 반만 덮으면 없다.
+    const covering = { timezone: 'Asia/Seoul', appliedRange: { from: '2026-09-26T15:00:00Z', to: '2026-09-27T15:00:00Z' } } as const;
+    expect(qOf(bucketDrillDownHref('', '2026-09-27T00:00:00.000+09:00', 'day', null, covering))).toBe('merged:2026-09-27..2026-09-27@Asia/Seoul');
+    const partial = { timezone: 'Asia/Seoul', appliedRange: { from: '2026-09-27T00:00:00Z', to: '2026-09-28T00:00:00Z' } } as const;
+    expect(bucketDrillDownHref('', '2026-09-27T00:00:00.000+09:00', 'day', null, partial)).toBe(null);
+  });
+
   it('다른 시간대를 적은 대시보드는 그 시간대의 날짜로 간다', () => {
     const la = { timezone: 'America/Los_Angeles', appliedRange: null } as const;
     expect(qOf(bucketDrillDownHref('', '2026-09-27T00:00:00.000-07:00', 'day', null, la))).toBe('merged:2026-09-27..2026-09-27@America/Los_Angeles');

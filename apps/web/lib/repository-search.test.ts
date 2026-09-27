@@ -156,6 +156,12 @@ describe('CR-127: Merged date is a KST calendar range when picked, and a legacy 
     expect(kst).not.toBe(utc);
   });
 
+  it('a hand-edited tz cannot split into extra query terms; an unknown zone is rejected, not dropped', () => {
+    const query = buildRepositoryQuery({ serialized: 'from=2026-09-27&to=2026-09-27&tz=Asia%2FSeoul%20author%3Aeve', repository: 'acme/kst', tab: 'search', login: '' });
+    expect(query).not.toContain(' author:eve');
+    expect(() => parseQuery(query)).toThrow(/Unknown time zone/);
+  });
+
   it('labels: legacy dates say UTC, a picked or empty range says KST', () => {
     expect(WORKSPACE_DATE_TIME_ZONE).toBe('Asia/Seoul');
     expect(mergedDateZoneLabel(mergedDateZone({ from: '2026-09-27', to: '2026-09-27' }))).toBe('UTC');

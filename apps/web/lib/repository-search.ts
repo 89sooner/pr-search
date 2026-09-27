@@ -44,7 +44,8 @@ export function buildRepositoryQuery(input: { serialized: string; repository: st
   }
   if (input.tab === 'open' || input.tab === 'merged') filters.push(`author:${quote(input.login)}`, `is:${input.tab}`);
   // CR-127: `tz` names the calendar the two dates belong to. A URL without it is a pre-CR-127 link and keeps its UTC-day meaning.
-  const from = values.get('from'); const to = values.get('to'); const tz = values.get('tz');
+  // Whitespace is stripped so a hand-edited `tz` can never split into an extra free-text term; an unknown zone is then rejected by the parser, not dropped.
+  const from = values.get('from'); const to = values.get('to'); const tz = values.get('tz')?.replace(/\s+/g, '');
   if (from && to) filters.push(`merged:${from}..${to}${tz ? `@${tz}` : ''}`);
   const prFrom = values.get('pr_from'); const prTo = values.get('pr_to');
   if (prFrom && prTo) filters.push(`pr_number:${prFrom}..${prTo}`);

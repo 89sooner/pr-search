@@ -27,6 +27,7 @@ import {
   serializeQuery,
   hasSequenceRangeFilter,
   QueryParseError,
+  startOfZonedDay,
   zonedDate,
 } from '@prs/query';
 import { formatInTimeZone, timeZoneLabel } from './format';
@@ -388,6 +389,18 @@ export function bucketDrillDownHref(
     const last = interval === 'day' ? first : interval === 'week' ? addDays(first, 6) : endOfMonth(first);
     const applied = calendar.appliedRange;
     const bounded = applied !== null && DATE_ONLY.test(applied.from) && DATE_ONLY.test(applied.to);
+    /*
+     * 시각으로 적은 기간(URL을 손으로 고친 경우 — 화면의 달력은 날짜만 낸다)은 달력 날짜로 자를
+     * 수 없다. 버킷이 그 기간 안에 온전히 들어갈 때만 버킷의 달력 범위로 가고, 기간에 걸친 버킷은
+     * 링크를 만들지 않는다 — 걸친 버킷의 달력 범위는 버킷이 센 것보다 넓다.
+     */
+    if (applied !== null && !bounded) {
+      const fromMs = Date.parse(applied.from);
+      const toMs = Date.parse(applied.to);
+      const start = startOfZonedDay(first, timezone);
+      const end = startOfZonedDay(addDays(last, 1), timezone);
+      if (Number.isNaN(fromMs) || Number.isNaN(toMs) || start < fromMs || end - 1 > toMs) return null;
+    }
     const from = bounded && applied.from > first ? applied.from : first;
     const to = bounded && applied.to < last ? applied.to : last;
     if (from > to) return null;
