@@ -36,6 +36,44 @@ export class CursorInvalidError extends Error {
   }
 }
 
+/**
+ * 옛 판 커서가 `detail`로 싣는 사실. 응답 코드는 `CURSOR_INVALID` 그대로다.
+ *
+ * `interface`가 아니라 타입 별칭이다 — 오류 응답의 `detail`(`Record<string, unknown>`)에 그대로 들어가야 한다.
+ */
+export type CursorOutdatedDetail = {
+  readonly reason: 'cursor_version_outdated';
+  readonly issued_version: number;
+  readonly current_version: number;
+};
+
+/**
+ * 이 서버가 발급했던 **옛 판** 커서다 — 쓸 수 없지만, 훼손·만료와 다른 사실이다 (CR-125, DEV-777).
+ *
+ * 등록 요청 대기열과 감사 기록의 판 1 커서는 키셋 시각을 밀리초로 잘라 실었다. 그 값을 정확한 값처럼
+ * 이어 읽으면 경계와 같은 밀리초 안의 행이 빠진다 — 그래서 받지 않는다. **응답 코드는 바꾸지 않는다**
+ * (계약의 커서 오류 표: 모르는 스키마 버전은 `CURSOR_INVALID`) — 첫 페이지로 돌아가는 기존 처리가 그대로
+ * 맞고, 새 코드는 모든 커서 클라이언트를 다시 세게 만든다. 구분은 `detail`이 싣는다.
+ */
+export class CursorOutdatedError extends CursorInvalidError {
+  readonly detail: CursorOutdatedDetail;
+
+  constructor(issuedVersion: number, currentVersion: number) {
+    super(`옛 판 커서다(판 ${String(issuedVersion)}, 현재 ${String(currentVersion)}) — 첫 페이지부터 다시 조회한다`);
+    this.name = 'CursorOutdatedError';
+    this.detail = { reason: 'cursor_version_outdated', issued_version: issuedVersion, current_version: currentVersion };
+  }
+}
+
+/**
+ * 키셋 시각의 형식 — PostgreSQL이 준 마이크로초 UTC 문자열 그대로 (CR-125, DEV-777).
+ *
+ * `to_char(ts AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.USZ')`의 모양이다. JavaScript `Date`를 거치지
+ * 않는다 — `Date`는 밀리초라 같은 밀리초 안의 행이 키셋 비교에서 빠진다. 저장된 검색(`saved-search.ts`)과
+ * 같은 규율이다.
+ */
+export const KEYSET_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
+
 /** 커서 자체는 유효한데 현재 조건과 지문이 다르다. "조건이 바뀌었다"이다. */
 export class CursorQueryMismatchError extends Error {
   constructor(reason: string) {

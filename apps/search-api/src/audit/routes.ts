@@ -27,7 +27,7 @@ import type { ErrorResponse } from '@prs/contracts';
 import type { AuthContext } from '../auth/context.js';
 import { authenticateSession, principalId, requireRole } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
-import { CursorInvalidError, CursorQueryMismatchError, type CursorSigner } from '../cursor/envelope.js';
+import { CursorInvalidError, CursorOutdatedError, CursorQueryMismatchError, type CursorSigner } from '../cursor/envelope.js';
 import { recordAuditBestEffort, type AuditLog } from './recorder.js';
 import {
   computeAuditFingerprint,
@@ -196,8 +196,12 @@ export function registerAuditRoutes(app: FastifyInstance, options: AuditRouteOpt
           });
         }
         if (error instanceof CursorInvalidError) {
+          // 옛 판 커서는 같은 코드에 `detail`로 그 사실을 싣는다 — 화면이 첫 페이지 재조회를 따로 안내한다 (DEV-777).
           return fail(reply, 400, {
-            error: { code: 'CURSOR_INVALID', message: error.message },
+            error:
+              error instanceof CursorOutdatedError
+                ? { code: 'CURSOR_INVALID', message: error.message, detail: error.detail }
+                : { code: 'CURSOR_INVALID', message: error.message },
             correlation_id: correlationId,
           });
         }

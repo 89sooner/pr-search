@@ -19,6 +19,13 @@
  * `created_at` 하나로 자르면 같은 밀리초에 들어온 요청 무리를 페이지 경계가
  * 가를 때 **행이 빠지거나 겹친다.** 정렬 키를 그대로 담는다.
  *
+ * ## 왜 판 2인가 (CR-125, DEV-777)
+ *
+ * 판 1은 `created_at`을 JavaScript `Date`의 `toISOString()`(밀리초)으로 실었다. 열은 마이크로초라,
+ * 경계 행과 같은 밀리초 안의 더 이른 요청이 `(created_at, request_id) < (잘린 시각, ID)`에서 커서보다
+ * 큰 값이 되어 다음 쪽에서 사라졌다. 판 2는 PostgreSQL이 준 마이크로초 문자열을 **그대로** 싣고
+ * 그대로 되돌려 준다 — `Date`를 거치지 않는다. 판 1 커서는 이어 읽지 않고 옛 판으로 거절한다.
+ *
  * ## 왜 `status`로 정렬하지 않는가
  *
  * 목록의 기본 필터가 `status`이므로 "처리할 것을 먼저 본다"는 목적은 필터가
@@ -32,18 +39,23 @@ import type { registrationRequestRepo } from '@prs/db';
 import {
   CURSOR_TTL_MS,
   CursorInvalidError,
+  CursorOutdatedError,
   CursorQueryMismatchError,
+  KEYSET_TIME_PATTERN,
   assertNotExpired,
   decodeEnvelope,
   encodeEnvelope,
   type CursorSigner,
 } from '../cursor/envelope.js';
 
-export const REGISTRATION_REQUEST_CURSOR_VERSION = 1;
+export const REGISTRATION_REQUEST_CURSOR_VERSION = 2;
+
+/** 키셋 시각을 밀리초로 잘라 싣던 판. 받으면 옛 판으로 거절한다 (DEV-777). */
+const LEGACY_MILLISECOND_VERSION = 1;
 
 interface RequestCursorPayload {
   readonly v: number;
-  /** 키셋: `created_at` (ISO). */
+  /** 키셋: `created_at` — PostgreSQL의 마이크로초 UTC 문자열 그대로. */
   readonly t: string;
   /** 키셋: `request_id`. */
   readonly i: number;
@@ -87,7 +99,7 @@ export function encodeRequestCursor(
 ): string {
   const payload: RequestCursorPayload = {
     v: REGISTRATION_REQUEST_CURSOR_VERSION,
-    t: position.createdAt.toISOString(),
+    t: position.createdAt,
     i: position.requestId,
     q: fingerprint,
     x: nowMs + CURSOR_TTL_MS,
@@ -100,9 +112,11 @@ export function encodeRequestCursor(
  *
  * 검사 순서가 곧 오류의 뜻이다 — 형식·서명·버전·만료·키셋 형태는
  * `CURSOR_INVALID`, **지문은 `CURSOR_QUERY_MISMATCH`**. 둘을 섞으면 클라이언트가
- * "조건이 바뀌었으니 첫 페이지로"라는 정해진 처리를 하지 못한다.
+ * "조건이 바뀌었으니 첫 페이지로"라는 정해진 처리를 하지 못한다. 판 1은
+ * `CURSOR_INVALID`의 옛 판 갈래(`CursorOutdatedError`)다 — 잘린 시각을 정확한 값처럼 이어 읽지 않는다.
  *
  * @throws {CursorInvalidError}
+ * @throws {CursorOutdatedError}
  * @throws {CursorQueryMismatchError}
  */
 export function decodeRequestCursor(
@@ -113,6 +127,9 @@ export function decodeRequestCursor(
 ): RequestCursorPosition {
   const payload = decodeEnvelope(raw, signer) as Partial<RequestCursorPayload>;
 
+  if (payload.v === LEGACY_MILLISECOND_VERSION) {
+    throw new CursorOutdatedError(LEGACY_MILLISECOND_VERSION, REGISTRATION_REQUEST_CURSOR_VERSION);
+  }
   if (payload.v !== REGISTRATION_REQUEST_CURSOR_VERSION) {
     throw new CursorInvalidError(`모르는 커서 버전: ${String(payload.v)}`);
   }
@@ -121,10 +138,11 @@ export function decodeRequestCursor(
   if (typeof payload.t !== 'string' || payload.t === '') {
     throw new CursorInvalidError('키셋 시각이 없다');
   }
-  const createdAt = new Date(payload.t);
-  if (Number.isNaN(createdAt.getTime())) {
-    throw new CursorInvalidError('키셋 시각을 읽을 수 없다');
+  // `Date`로 읽지 않는다 — 형식만 확인하고 문자열을 그대로 키셋에 넘긴다.
+  if (!KEYSET_TIME_PATTERN.test(payload.t)) {
+    throw new CursorInvalidError('키셋 시각 형식이 마이크로초 UTC가 아니다');
   }
+  const createdAt = payload.t;
   if (typeof payload.i !== 'number' || !Number.isSafeInteger(payload.i) || payload.i <= 0) {
     throw new CursorInvalidError('키셋 식별자가 없다');
   }

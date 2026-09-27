@@ -73,7 +73,7 @@ import {
   toAdminRequestView,
   type RequestQueueDeps,
 } from './registration-requests.js';
-import { CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope.js';
+import { CursorInvalidError, CursorOutdatedError, CursorQueryMismatchError } from '../cursor/envelope.js';
 import { jobRepo, repositoryRepo } from '@prs/db';
 import {
   confirmationMatches,
@@ -1099,7 +1099,15 @@ function registerRequestQueueRoutes(
         return fail(reply, 400, 'CURSOR_QUERY_MISMATCH', error.message, correlationId);
       }
       if (error instanceof CursorInvalidError) {
-        return fail(reply, 400, 'CURSOR_INVALID', error.message, correlationId);
+        // 옛 판 커서는 같은 코드에 `detail`로 그 사실을 싣는다 — 화면이 첫 페이지 재조회를 따로 안내한다 (DEV-777).
+        return fail(
+          reply,
+          400,
+          'CURSOR_INVALID',
+          error.message,
+          correlationId,
+          error instanceof CursorOutdatedError ? error.detail : undefined,
+        );
       }
       throw error;
     }

@@ -1,5 +1,7 @@
 # PR Search API 계약
 
+> CR-125 / API-ADM-005·API-ADM-009 (2026-09-27): 새 경로·새 오류 코드·응답 항목 모양 변경은 없다. 두 운영 목록의 커서가 **판 2**가 된다 — 키셋 시각을 PostgreSQL의 마이크로초 UTC 문자열 그대로 싣고 되돌린다(판 1은 `toISOString()`의 밀리초라 경계와 같은 밀리초의 행이 다음 쪽에서 빠졌다, DEV-777). 판 1 커서는 이어 읽지 않고 `CURSOR_INVALID`로 거절하며 `error.detail`에 `{"reason":"cursor_version_outdated","issued_version":1,"current_version":2}`를 싣는다 — 화면은 이 사유로 첫 페이지 재조회를 따로 안내한다.
+
 > CR-121 / FR-ING-008 AC-11, FR-REL-006 AC-6 (2026-09-25): 새 HTTP 경로·새 오류 코드·응답 모양 변경은 없다. 간선 재색인이 전환 전 검증에서 실패하면 그 사유(`간선 누락 N건`·`간선 불일치 N건`·`정본에 없는 간선 N건`·`소유 source가 없는 간선 N건`·`회수되지 않은 간선 미처리 N건`·`스택 정본에 없는 서비스 stacks_on 간선 N건`, 회수가 수렴하지 않으면 `link_pending_unrecovered`, 전환 직전 미처리가 남으면 `link_pending_at_cutover`)가 잡의 `error`에 남는다. 미처리 대기열은 잡 행의 `progress`에 싣지 않는다 — 별도 표(`reindex_link_pending`)이고 잡이 끝나면 비운다. 운영자 명령 하나가 더해진다: `prsctl links import-stacks --repository <owner/name> [--dry-run]`(배포 전 서비스 스택 간선의 일회성 가져오기 — `links apply`와 같이 `pr_link_repair` 잡 행과 감사 `job.run`을 남긴다, RUNBOOK 7.I).
 >
 > CR-119 / FR-ING-008 AC-10 (2026-09-25): 새 경로·새 오류 코드·응답 모양 변경은 없다. 재색인 잡의 `progress`에 필드 하나(`target_uuid` — 준비 단계에서 확인한 대상 인덱스 UUID)가 더해진다. `GET /api/v1/admin/reindex`는 `progress`에서 정해진 키만 골라 내므로 그 응답은 바뀌지 않고, 잡 목록·상세(API-ADM-002)의 `progress`에는 보인다. 커밋 재색인이 전환 전 검증에서 실패하면 그 사유(`커밋 문서 누락 N건`·`커밋 메타데이터 불일치 N건`·`대상 인덱스가 바뀌었다`)가 잡의 `error`에 남는다.
@@ -52,7 +54,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. **그 배열이 무엇인지는 CR-116이 정정한다 — 계약의 모양은 그대로다.** 배열은 「언젠가 한 번 그 커밋을 포함했던 모든 PR」이 아니라 채택된 최신 관측에 근거한 **현재 유효한 연결**이며, PR이 rebase되어 원본 커밋 목록에서 빠진 커밋에서는 그 번호가 사라진다(같은 커밋의 다른 PR 연결과 실제 병합 근거는 남는다). 그래서 이 열의 값은 세 가지 다른 사실을 계속 가른다 — **빈 배열**은 「검증한 범위에서 이 커밋에 연결된 PR이 0개」라는 사실의 진술이고, **`null`**은 「아직 확정하지 못했다」이며, **`pull_requests_unavailable: true`**는 「조회 자체를 하지 못했다」다. 앞의 둘을 합치거나 빈 배열을 필드 부재로 바꾸면 이 구분이 사라진다. 연결의 제거는 그 PR의 커밋 목록이 원격의 전부임을 증명한 관측에만 허용되므로, 증명하지 못한 동안에는 옛 번호가 남아 있을 수 있고 그 사실은 응답이 아니라 운영 경로(RB-29)가 답한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.46 | 갱신일: 2026-09-25
+> 상태: review | 버전: v0.47 | 갱신일: 2026-09-27
 
 ## 1. 목적
 
@@ -856,7 +858,7 @@ ADR-010은 커서의 **재료**(정렬 키 값 + 질의 지문)와 **동률 처�
 
 | 항목 | 뜻 |
 | --- | --- |
-| `v` | 커서 스키마 버전. 모르는 버전은 `CURSOR_INVALID`다 |
+| `v` | 커서 스키마 버전. 모르는 버전은 `CURSOR_INVALID`다. 이 서버가 발급했던 **옛 판**은 같은 코드에 `detail.reason`으로 구분한다(API-ADM-005·API-ADM-009의 판 1, CR-125) |
 | `p` | Point In Time 식별자 (아래) |
 | `s` | `search_after`에 넘길 정렬 키 값 배열 |
 | `f` | 질의 지문 (아래) |
@@ -880,7 +882,7 @@ ADR-010은 커서의 **재료**(정렬 키 값 + 질의 지문)와 **동률 처�
 | 코드 | 뜻 | 화면 |
 | --- | --- | --- |
 | `CURSOR_QUERY_MISMATCH` | 커서 자체는 유효한데 현재 `q`·정렬·접근 범위와 지문이 다르다 | 현재 조건의 첫 페이지로 복귀 |
-| `CURSOR_INVALID` | 디코딩 실패, 서명 불일치, 모르는 스키마 버전, 만료, PIT 부재, 정렬 키 값 형식 오류 | 현재 조건의 첫 페이지로 복귀 |
+| `CURSOR_INVALID` | 디코딩 실패, 서명 불일치, 모르는 스키마 버전, 만료, PIT 부재, 정렬 키 값 형식 오류. 옛 판 커서는 `detail.reason = "cursor_version_outdated"`를 싣는다(CR-125) | 현재 조건의 첫 페이지로 복귀. 옛 판 사유면 「서비스가 바뀌어 위치를 더 쓸 수 없다」를 따로 안내한다 |
 
 둘 다 사용자를 첫 페이지로 되돌리지만 **같은 기술 원인인 척하지 않는다.** 하나는 "조건이 바뀌었다"이고 다른 하나는 "이 커서를 쓸 수 없다"이다. 자동 재시도 루프를 만들지 않는다.
 
@@ -3013,6 +3015,7 @@ POST /api/v1/admin/reindex
 - **정렬은 `occurred_at` 내림차순 + `audit_id` 내림차순이다.** 두 번째 키가 타이브레이커이며 없으면 전순서가 서지 않는다 — 감사는 초당 여러 건이 같은 밀리초에 들어오고, 페이지 경계가 그 무리를 가르면 기록이 빠지거나 겹친다. `API-ADM-008`이 같은 자리에서 배운 것과 같다
 - **PostgreSQL 키셋 순회이며 오프셋을 두지 않는다** (`ADR-010`). PIT은 쓰지 않는다 — 정본이 PostgreSQL이고 파티션 키가 `occurred_at`이라 기간을 함께 주면 파티션 가지치기가 된다. Elasticsearch를 거치지 않으므로 `search_after`도 아니다
 - **커서는 `(occurred_at, audit_id)`와 필터 지문을 함께 봉인한다.** 지문에는 `user_id`·`action`·`target`·`from`·`to`·`result_code`가 모두 들어간다. 조건을 바꾸고 옛 커서를 쓰면 `CURSOR_QUERY_MISMATCH`, 위조·만료·형식 오류는 `CURSOR_INVALID`다 — 기존 커서 계열과 같은 두 오류를 쓰며 **같은 봉투(base64url JSON + HMAC-SHA256)를 재사용하고 새 서명 키를 만들지 않는다**
+- **키셋 시각은 PostgreSQL의 마이크로초 UTC 문자열 그대로다** (커서 판 2, CR-125). `occurred_at`은 마이크로초 열이고, 판 1은 그것을 `toISOString()`(밀리초)으로 실어 경계 기록과 같은 밀리초 안의 더 이른 기록이 다음 쪽에서 빠졌다(DEV-777). 조회가 `to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.USZ')`를 함께 읽고, 커서는 그 문자열을 싣고, 다음 조회는 `::timestamptz`로 되돌려 비교한다 — JavaScript `Date`를 거치지 않는다. 응답 항목의 `occurred_at`은 표시용이라 그대로다. **판 1 커서는 이어 읽지 않는다** — `CURSOR_INVALID`이고 `error.detail`이 `{"reason":"cursor_version_outdated","issued_version":1,"current_version":2}`다
 - **이 조회 자체가 감사 대상이다** (`audit.view`, FR-AUTH-004 AC-8). **기록은 응답을 확정한 뒤에 남긴다** — 질의보다 먼저 넣으면 그 기록이 자기 응답의 첫 페이지에 나타나 같은 요청이 같은 답을 주지 않는다. 자기 자신은 다음 조회부터 보인다 (CR-054)
 - **갱신·삭제 엔드포인트를 두지 않는다** (AC-3). 감사 기록의 불변성은 UI에 버튼이 없는 것이 아니라 **DB 롤에 `UPDATE`/`DELETE` 권한이 없는 것**으로 지켜진다 (마이그레이션 005)
 
@@ -3050,6 +3053,7 @@ POST /api/v1/admin/reindex
 
 - **오프셋 파라미터를 두지 않는다** (공통 원칙 7, ADR-010). `API-ADM-001`·`API-ADM-003`이 오프셋으로 선 것은 그 시점의 부채이며(DEV-433) 새 자원이 그것을 따라가지 않는다.
 - **커서는 PostgreSQL 키셋이다.** 순회하는 것이 Elasticsearch 문서가 아니므로 PIT도 `search_after`도 뜻이 없다 — `API-ADM-005`(감사 기록)와 같은 형태이며 봉인 방식(base64url JSON + HMAC-SHA256)과 두 오류 코드를 공유한다.
+- **키셋 시각은 PostgreSQL의 마이크로초 UTC 문자열 그대로다** (커서 판 2, CR-125). 판 1은 `created_at`을 `toISOString()`(밀리초)으로 실어 같은 밀리초에 들어온 요청이 다음 쪽에서 빠졌다(DEV-777). `API-ADM-005`와 같은 방식으로 조회 → 커서 → 다음 조회까지 문자열을 그대로 쓰고, 판 1 커서는 `CURSOR_INVALID` + `detail.reason = "cursor_version_outdated"`로 거절한다. 응답 항목의 `created_at`은 표시용이라 그대로다.
 - 정렬은 `created_at DESC, request_id DESC`로 결정론적이다. **`status`로 정렬하지 않는다** — 목록의 기본 필터가 `pending`이므로 화면이 처리할 것을 먼저 보는 목적은 필터가 달성하고, 정렬 키에 상태를 넣으면 상태가 바뀌는 순간 그 행이 커서 순회 안에서 움직인다.
 - **커서 지문에 접근 범위를 넣지 않는다.** 이 목록은 저장소 권한이 답을 바꾸지 않는다 — 등록 검토 요청은 아직 등록되지 않은 저장소에 대한 것이고, 운영자가 처리해야 할 대기열이다. 넣으면 무관한 권한 변경이 순회를 끊는다 (`API-ADM-005`가 같은 이유로 넣지 않는다).
 - **`status` 필터를 바꾸면 이전 커서는 이어 쓸 수 없다.** 지문이 필터를 담으므로 `CURSOR_QUERY_MISMATCH`로 거절한다 — **`CURSOR_INVALID`가 아니다.** 오류 모델이 그 둘을 가른다: 커서 자체가 훼손·만료·서명 불일치인 경우가 `CURSOR_INVALID`이고, 커서는 멀쩡한데 조건이 달라진 경우가 `CURSOR_QUERY_MISMATCH`다. 코드를 섞으면 클라이언트가 "조건이 바뀌었으니 첫 페이지로"라는 정해진 처리를 하지 못한다 (PR #88 리뷰 P2). 조용히 새 필터로 이어 붙이면 건너뛴 행이 생긴다.

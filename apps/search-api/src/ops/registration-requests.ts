@@ -172,7 +172,8 @@ export async function listRequests(
   const nextCursor =
     rows.length > limit && last !== undefined
       ? encodeRequestCursor(
-          { createdAt: last.created_at, requestId: last.request_id },
+          // 키셋 시각은 PostgreSQL의 마이크로초 문자열 그대로다 — `Date`(밀리초)를 거치지 않는다 (DEV-777).
+          { createdAt: last.created_at_cursor, requestId: last.request_id },
           fingerprint,
           deps.cursorSigner,
           nowMs,

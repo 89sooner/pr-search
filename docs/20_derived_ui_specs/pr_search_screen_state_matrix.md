@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.22 | 갱신일: 2026-09-24
+> 상태: review | 버전: v0.23 | 갱신일: 2026-09-27
 
 ## W-024 Regression 상태 (CR-109 / FR-REG-001)
 
@@ -257,6 +257,7 @@ CR-079 상태 우선순위: 기존 인증/outer epoch_stale 처리 → PR 대상
 | `error_branch_limit` | 브랜치 10개 초과 | 상한 명시 | 브랜치 축소 | FR-ING-009 |
 | `operation_pending` | 등록·해제·요청 처리를 서버가 받는 중이거나 등록 후 백필이 진행 중 | 진행률. 확인이 필요한 조작은 확인 전에는 이 상태로 들어가지 않는다 | - | FR-ING-006, FR-ING-009 |
 | `requests_empty` | 처리할 등록 검토 요청이 없다 | `A-002-REQUESTS`만 빈 상태로 그리고 **나머지 섹션은 정상 동작한다** | - | FR-ING-009 AC-11 |
+| `requests_cursor_rejected` | 「Load more」의 커서가 거절됐다(`CURSOR_QUERY_MISMATCH`·`CURSOR_INVALID`, 옛 판 사유 포함) | **이미 받은 요청을 지우지 않고** 사유별 안내와 「First page」를 보인다. 거절된 위치에서 이어 읽지 않는다(「Load more」를 숨긴다). 첫 쪽 실패·권한 실패는 전과 같이 `A-002-REQUESTS` 오류다 (CR-125) | 첫 페이지 | FR-ING-009 AC-11 · API-ADM-009 |
 | `no_permission` / `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 
 ### A-003 인덱스·잡 운영
@@ -279,7 +280,7 @@ CR-079 상태 우선순위: 기존 인증/outer epoch_stale 처리 → PR 대상
 | `loading_initial` / `loading_more` / `ready` | - | 필터 + 목록 + 커서 페이저 | - | FR-AUTH-004 |
 | `empty_no_result` | 조건 결과 0건 | 필터 완화 제안 | 필터 변경 | FR-AUTH-004 |
 | `no_permission` | `security_officer` 아님 | 필요 역할 표시(HTTP 403). **문구에 `security_officer`를 그대로 적는다** — `operator`도 여기서 막히므로 "운영자 권한이 필요합니다"는 거짓이다 (CR-054, DEV-408) | - | NFR-006 |
-| `cursor_invalid` | 커서가 위조·만료되었거나 조건이 바뀐 뒤의 옛 커서 | 첫 페이지로 복귀하고 그 사실을 알린다. `CURSOR_INVALID`와 `CURSOR_QUERY_MISMATCH`를 **다른 문구로** 구분한다 — 하나는 "커서를 쓸 수 없다"이고 다른 하나는 "조건이 바뀌었다"이다 | 재조회 | API-ADM-005 |
+| `cursor_invalid` | 커서가 위조·만료되었거나 조건이 바뀐 뒤의 옛 커서 | 첫 페이지로 복귀하고 그 사실을 알린다. `CURSOR_INVALID`와 `CURSOR_QUERY_MISMATCH`를 **다른 문구로** 구분한다 — 하나는 "커서를 쓸 수 없다"이고 다른 하나는 "조건이 바뀌었다"이다. 옛 판 커서(`CURSOR_INVALID` + `detail.reason`)는 「서비스가 바뀌어 위치를 더 쓸 수 없다」로 한 번 더 구분한다 (CR-125) | 재조회 | API-ADM-005 |
 | `auth_expired` / `offline` | 공통 | 공통 규칙 | 공통 | - |
 
 ## 4. 상태 전이 규칙

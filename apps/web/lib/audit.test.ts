@@ -169,6 +169,23 @@ describe('커서 실패 갈래', () => {
     expect(readCursorFailure({ error: { code: 'INVALID_PARAMETER' } })).toBeNull();
     expect(readCursorFailure(null)).toBeNull();
   });
+
+  it('**옛 판 커서는 셋째 갈래로 읽는다** — 서버 코드는 `CURSOR_INVALID`이고 사유가 `detail`에 있다 (DEV-777)', () => {
+    expect(
+      readCursorFailure({
+        error: {
+          code: 'CURSOR_INVALID',
+          detail: { reason: 'cursor_version_outdated', issued_version: 1, current_version: 2 },
+        },
+      }),
+    ).toBe('CURSOR_OUTDATED');
+    // 사유가 없거나 다른 `CURSOR_INVALID`는 그대로다.
+    expect(readCursorFailure({ error: { code: 'CURSOR_INVALID', detail: { reason: 'other' } } })).toBe('CURSOR_INVALID');
+    // 조건 변경에 옛 판 사유가 붙어도 조건 변경이다 — 서버 코드가 먼저다.
+    expect(
+      readCursorFailure({ error: { code: 'CURSOR_QUERY_MISMATCH', detail: { reason: 'cursor_version_outdated' } } }),
+    ).toBe('CURSOR_QUERY_MISMATCH');
+  });
 });
 
 describe('상태 판정', () => {

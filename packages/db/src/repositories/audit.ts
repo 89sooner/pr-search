@@ -81,14 +81,24 @@ export interface AuditFilter {
  * 두 값을 함께 쓴다 — 감사는 초당 여러 건이 같은 밀리초에 들어오고,
  * `occurred_at` 하나로 자르면 그 무리를 페이지 경계가 가를 때 기록이 빠지거나
  * 겹친다 (`API-ADM-005`).
+ *
+ * `occurredAt`은 **마이크로초 UTC 문자열**이다(`AuditRecordPageRow.occurred_at_cursor`가 준 값 그대로).
+ * `Date`로 받지 않는다 — node-postgres가 `timestamptz`를 `Date`(밀리초)로 주므로, 그 값을 키셋에 쓰면
+ * 경계 기록과 같은 밀리초 안의 더 이른 기록이 다음 쪽에서 빠진다 (CR-125, DEV-777).
  */
 export interface AuditCursorPosition {
-  readonly occurredAt: Date;
+  readonly occurredAt: string;
   readonly auditId: number;
 }
 
+/** 한 페이지의 행. 표시용 `occurred_at`(`Date`)과 키셋용 문자열을 함께 싣는다. */
+export interface AuditRecordPageRow extends AuditRecordRow {
+  /** `occurred_at`의 마이크로초 UTC 문자열 — 다음 쪽 커서가 이 값을 그대로 싣는다. */
+  readonly occurred_at_cursor: string;
+}
+
 export interface AuditPage {
-  readonly items: readonly AuditRecordRow[];
+  readonly items: readonly AuditRecordPageRow[];
   /** 다음 페이지가 있으면 그 시작 직전 위치. 없으면 `null`. */
   readonly next: AuditCursorPosition | null;
 }
@@ -145,17 +155,19 @@ export async function listAuditRecordPage(
 
   if (after !== null) {
     // 행 값 비교. `(a, b) < (x, y)`는 두 키를 사전식으로 함께 보므로,
-    // 같은 `occurred_at` 안에서도 `audit_id`가 이어진다.
+    // 같은 `occurred_at` 안에서도 `audit_id`가 이어진다. `::timestamptz` 캐스팅이
+    // 문자열을 마이크로초까지 되돌린다 — 잘린 시각과 비교하면 같은 밀리초의 기록이 빠진다.
     params.push(after.occurredAt, after.auditId);
     parts.push(
-      `(occurred_at, audit_id) < ($${String(params.length - 1)}, $${String(params.length)})`,
+      `(occurred_at, audit_id) < ($${String(params.length - 1)}::timestamptz, $${String(params.length)})`,
     );
   }
 
   const where = parts.length === 0 ? '' : ` WHERE ${parts.join(' AND ')}`;
   params.push(size + 1);
-  const result = await db.query<AuditRecordRow>(
-    `SELECT * FROM audit_record${where} ORDER BY occurred_at DESC, audit_id DESC LIMIT $${String(params.length)}`,
+  const result = await db.query<AuditRecordPageRow>(
+    `SELECT *, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.USZ') AS occurred_at_cursor
+       FROM audit_record${where} ORDER BY occurred_at DESC, audit_id DESC LIMIT $${String(params.length)}`,
     params,
   );
 
@@ -166,6 +178,6 @@ export async function listAuditRecordPage(
   const last = items[items.length - 1];
   // `items`는 비어 있지 않다 — `rows.length > size >= 1`이기 때문이다.
   const next: AuditCursorPosition | null =
-    last === undefined ? null : { occurredAt: last.occurred_at, auditId: last.audit_id };
+    last === undefined ? null : { occurredAt: last.occurred_at_cursor, auditId: last.audit_id };
   return { items, next };
 }

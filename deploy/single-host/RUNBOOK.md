@@ -761,6 +761,7 @@ done
 | 실제 사내 GHE에서의 M 채번·지연 (`measure:sequence-latency`) | `NOT RUN — internal environment required` — 아래 7.A 절차로 사내에서 잰다 |
 | `0.1.0-pilot.18` 운영 상태에서 이 판으로의 업그레이드 — 7.J 순서(스택 가져오기 → prs-commits 재색인 → prs-links 재색인 → `links apply`) | `VERIFIED (external, isolated)` (2026-09-26) — 격리 compose 프로젝트에 pilot.18 번들을 설치하고 가짜 GHE로 사내 보고와 같은 상태(해제된 스택 이력, `git merge dev`로 붙은 PR 번호, 손으로 전환한 prs-commits, 실패한 prs-links 재색인의 대상 인덱스, 보관된 저장소)를 만든 뒤 이 판으로 올렸다. 과거 간선·정상 PR 번호·원본 커밋의 메시지와 작성자·M 번호 정렬과 범위 검색이 유지되고, 잘못 붙은 PR 번호가 빠지고, 두 재색인이 검증을 지나 자동 전환했다. 그 과정에서 차단 둘(`CR-122`·`CR-123`)을 찾아 고쳤다. 기록과 검증 단계 시간(**격리 환경 값이며 사내 실측이 아니다**)은 원장 6.113장. **사내 실데이터 적용은 `NOT RUN`** |
 | 사내 GHE 전체 URL 참조 (7.K, `CR-124`) — 두 역할의 주소 전달, 새 이벤트와 prs-links 재색인의 URL 참조, 다른 호스트·유사 호스트 거절 | `VERIFIED (external, isolated)` (2026-09-27) — 격리 compose에서 수정 전 판(URL 참조 0건)과 수정 뒤 판을 비교했고, 사내 주소 문자열은 두 역할만 그 주소로 다시 만든 시험 전용 형상에서 확인했다(원장 6.115장). 실제 사내 GHE·인증서·프록시·실데이터는 `NOT RUN — internal environment required` |
+| 운영 목록 두 개의 이어 보기 (`CR-125`) — 등록 검토 요청 대기열·감사 로그에서 같은 밀리초의 항목이 페이지 경계에 걸려도 빠지지 않음, 옛 판 커서 안내 | `VERIFIED (external, isolated)` (2026-09-27) — 격리 compose의 실제 관리자 화면(실제 Chromium)에서 수정 전 판의 누락(등록 요청 60건 중 58건, 감사 기록 120건 중 118건)과 수정 뒤 전량을 확인했고, 수정 전 판이 발급한 실제 커서를 새 서버에 보내 옛 판 안내를 확인했다(원장 6.116장). 사내 운영 화면은 `NOT RUN — internal environment required` |
 
 **외부에서 증명할 수 없는 것을 통과로 적지 않는다.** 사내 반입 뒤 이 표의 아래쪽을 실제로 실행하고 그 결과를 기록한다.
 
@@ -1687,6 +1688,7 @@ PR 본문·커밋 메시지에 사내 GHE의 **전체 URL**로 적은 참조(`ht
 
 | 증상 | 확인 |
 | --- | --- |
+| 운영 화면(등록 검토 요청·감사 로그)에 「This page position is from an earlier version」이 보인다 | 업그레이드 전에 받은 페이지 위치(커서 판 1)다(`CR-125`). 오류가 아니다 — 「First page」로 첫 페이지부터 다시 연다. 판 1은 같은 밀리초의 항목을 건너뛰었으므로 이어 읽지 않는다. 업그레이드 전에 열어 둔 창은 대신 「Unable to load registration review requests」를 보일 수 있다 — 새로고침한다 |
 | PR 본문의 사내 GHE URL이 관계 화면의 참조로 나오지 않는다 | 7.K 2·3번으로 두 역할이 주소를 받았는지 본다(`0.1.0-pilot.19`까지의 단일 호스트 번들은 받지 않았다, `DEV-776`). 주소가 맞는데 과거 PR에만 없으면 prs-links 재색인(7.K 5번)을 아직 돌리지 않은 것이다. URL의 호스트·포트가 `GHE_BASE_URL`과 다르면 의도대로 참조가 아니다 |
 | `prsctl links apply`·`refetch`·`import-stacks`가 `--actor가 필요하다`로 멈춘다 | `0.1.0-pilot.19` 이전 번들이다(`DEV-774`). 그 판의 CLI가 `prsctl`이 넘기는 행위 주체를 읽지 못했다. 이 판의 번들로 올린 뒤 같은 명령을 쓴다 — `plan`·`status`·`import-stacks --dry-run`은 이전 판에서도 돈다 |
 | prs-links 재색인이 참조 간선의 `간선 불일치 … [resolved,to_id,to_repository_id,to_type]`로 실패한다 | prs-commits가 손으로 전환된 인덱스인데 7.H보다 먼저 돌렸거나, `0.1.0-pilot.19` 이전 빌드다(`DEV-775`). 별칭은 그대로다. 7.H를 끝낸 뒤 다시 실행한다(7.J) |

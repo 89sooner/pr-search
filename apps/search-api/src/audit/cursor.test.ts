@@ -6,12 +6,19 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { createCursorSigner, CursorInvalidError, CursorQueryMismatchError } from '../cursor/envelope.js';
-import { computeAuditFingerprint, decodeAuditCursor, encodeAuditCursor } from './cursor.js';
+import {
+  createCursorSigner,
+  CursorInvalidError,
+  CursorOutdatedError,
+  CursorQueryMismatchError,
+  encodeEnvelope,
+} from '../cursor/envelope.js';
+import { AUDIT_CURSOR_VERSION, computeAuditFingerprint, decodeAuditCursor, encodeAuditCursor } from './cursor.js';
 
 const signer = createCursorSigner('0'.repeat(32));
 const NOW = Date.parse('2026-08-29T00:00:00.000Z');
-const POSITION = { occurredAt: new Date('2026-08-29T04:12:07.412Z'), auditId: 4210 };
+/** PostgreSQL이 주는 마이크로초 UTC 문자열 그대로다 (DEV-777). */
+const POSITION = { occurredAt: '2026-08-29T04:12:07.412345Z', auditId: 4210 };
 
 describe('왕복', () => {
   it('키셋 두 값을 그대로 되돌려준다', () => {
@@ -19,15 +26,65 @@ describe('왕복', () => {
     const cursor = encodeAuditCursor(POSITION, fp, signer, NOW);
     const back = decodeAuditCursor(cursor, fp, signer, NOW + 1000);
     expect(back.auditId).toBe(4210);
-    expect(back.occurredAt.toISOString()).toBe('2026-08-29T04:12:07.412Z');
+    expect(back.occurredAt).toBe('2026-08-29T04:12:07.412345Z');
   });
 
-  it('밀리초를 잃지 않는다 — 같은 초 안의 무리를 가르는 값이다', () => {
+  it('**마이크로초를 잃지 않는다** — 같은 밀리초 안의 무리를 가르는 값이다 (DEV-777)', () => {
     const fp = computeAuditFingerprint({});
-    const cursor = encodeAuditCursor(POSITION, fp, signer, NOW);
-    expect(decodeAuditCursor(cursor, fp, signer, NOW).occurredAt.getTime()).toBe(
-      POSITION.occurredAt.getTime(),
+    for (const occurredAt of ['2026-08-29T04:12:07.412000Z', '2026-08-29T04:12:07.412001Z', '2026-08-29T04:12:07.412999Z']) {
+      const cursor = encodeAuditCursor({ occurredAt, auditId: 1 }, fp, signer, NOW);
+      expect(decodeAuditCursor(cursor, fp, signer, NOW).occurredAt, occurredAt).toBe(occurredAt);
+    }
+  });
+});
+
+describe('옛 판 커서 (CR-125, DEV-777)', () => {
+  const legacy = (v: number, t: string): string =>
+    encodeEnvelope({ v, t, i: 4210, q: computeAuditFingerprint({}), x: NOW + 1000 }, signer);
+
+  it('밀리초로 잘린 판 1 커서는 이어 읽지 않고 옛 판 갈래로 거절한다', () => {
+    expect(AUDIT_CURSOR_VERSION).toBe(2);
+    const error = (() => {
+      try {
+        decodeAuditCursor(legacy(1, '2026-08-29T04:12:07.412Z'), computeAuditFingerprint({}), signer, NOW);
+      } catch (caught) {
+        return caught;
+      }
+      return undefined;
+    })();
+    expect(error).toBeInstanceOf(CursorOutdatedError);
+    // 응답 코드는 `CURSOR_INVALID` 그대로다 — 같은 갈래로 처리된다.
+    expect(error).toBeInstanceOf(CursorInvalidError);
+    expect((error as CursorOutdatedError).detail).toEqual({
+      reason: 'cursor_version_outdated',
+      issued_version: 1,
+      current_version: 2,
+    });
+  });
+
+  it('만료된 판 1도 옛 판 갈래다 — 판 판정이 만료보다 먼저다(어느 쪽이든 첫 페이지로 돌아간다)', () => {
+    const expired = encodeEnvelope(
+      { v: 1, t: '2026-08-29T04:12:07.412Z', i: 4210, q: computeAuditFingerprint({}), x: NOW - 1 },
+      signer,
     );
+    expect(() => decodeAuditCursor(expired, computeAuditFingerprint({}), signer, NOW)).toThrow(CursorOutdatedError);
+  });
+
+  it('모르는 판은 옛 판 갈래가 아니다', () => {
+    let caught: unknown;
+    try {
+      decodeAuditCursor(legacy(9, POSITION.occurredAt), computeAuditFingerprint({}), signer, NOW);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(CursorInvalidError);
+    expect(caught).not.toBeInstanceOf(CursorOutdatedError);
+  });
+
+  it('현재 판이라도 시각이 마이크로초 여섯 자리 UTC가 아니면 받지 않는다', () => {
+    for (const t of ['2026-08-29T04:12:07.412Z', '2026-08-29T04:12:07.4123456Z', '2026-08-29T04:12:07.412345', '2026-08-29 04:12:07.412345Z']) {
+      expect(() => decodeAuditCursor(legacy(2, t), computeAuditFingerprint({}), signer, NOW), t).toThrow(CursorInvalidError);
+    }
   });
 });
 
@@ -103,7 +160,7 @@ describe('쓸 수 없는 커서', () => {
    */
   it('위조된 커서는 지문이 맞아 보여도 `CURSOR_INVALID`다', () => {
     const fp = computeAuditFingerprint({});
-    const forged = `${Buffer.from(JSON.stringify({ v: 1, t: POSITION.occurredAt.toISOString(), i: 1, q: fp, x: NOW + 1000 })).toString('base64url')}.badsig`;
+    const forged = `${Buffer.from(JSON.stringify({ v: AUDIT_CURSOR_VERSION, t: POSITION.occurredAt, i: 1, q: fp, x: NOW + 1000 })).toString('base64url')}.badsig`;
     expect(() => decodeAuditCursor(forged, fp, signer, NOW)).toThrow(CursorInvalidError);
   });
 });
