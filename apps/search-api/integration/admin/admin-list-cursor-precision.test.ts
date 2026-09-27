@@ -174,13 +174,16 @@ async function seedRequests(): Promise<readonly string[]> {
       [REQUESTER, OWNER, `repo-${String(index).padStart(2, '0')}`, at],
     );
   }
-  const expected = await pool.query<{ request_id: string }>(
-    `SELECT request_id::text FROM repository_registration_request
+  // 출력 열 이름을 바꾼다 — `request_id::text`를 같은 이름으로 내면 `ORDER BY request_id`가 그 **문자열**
+  // 출력 열을 가리켜 '9'가 '10' 뒤로 간다(PostgreSQL은 이름이 겹치면 출력 열을 고른다). 새 DB에서 ID가
+  // 한 자리에서 두 자리로 넘어갈 때만 드러났다.
+  const expected = await pool.query<{ label: string }>(
+    `SELECT request_id::text AS label FROM repository_registration_request
       WHERE requested_by = $1 AND status = 'pending'
       ORDER BY created_at DESC, request_id DESC`,
     [REQUESTER],
   );
-  return expected.rows.map((row) => row.request_id);
+  return expected.rows.map((row) => row.label);
 }
 
 /* ------------------------------------------------------------------------- */
