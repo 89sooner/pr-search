@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.70 | 갱신일: 2026-09-27
+> 상태: review | 버전: v2.71 | 갱신일: 2026-09-27
+
+## WP-106 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 (CR-125)
+
+- 요구사항: `FR-ING-009` AC-11·`FR-AUTH-004`(문장 변경 없음). 계약 API-ADM-005·API-ADM-009(커서 판 2와 옛 판 사유), 화면 C-016·A-002·A-004. 선행: WP-032(커서 봉투), WP-033(저장된 검색 — 마이크로초 문자열 방식의 선례), WP-039(감사 기록과 A-004), WP-040(A-002 운영 콘솔).
+- 범위: (1) `packages/db/src/repositories/registration-request.ts`·`audit.ts` — 페이지 조회의 키셋 문자열 열(`created_at_cursor`·`occurred_at_cursor`, `to_char(... 'US')`), 위치 타입의 시각은 문자열, 키셋은 `::timestamptz`. (2) `apps/search-api` — `cursor/envelope.ts`(`CursorOutdatedError`, `KEYSET_TIME_PATTERN`), 두 코덱의 판 2(`ops/registration-request-cursor.ts`·`audit/cursor.ts`), 두 경로의 옛 판 `detail`(`ops/routes.ts`·`audit/routes.ts`), 다음 위치(`ops/registration-requests.ts`). (3) `apps/web` — `lib/cursor-failure.ts`(판정·문구), `CursorPager`·`lib/audit.ts`·`AuditView`, `OpsRepositoriesView`의 커서 거절 처리. (4) 문서 — API 계약, 화면 명세, RUNBOOK 7장 표·8장.
+- 제외: 다른 커서 계열(검색·저장된 검색·범위·저장소 개요), 응답 항목의 표시용 시각, DB 시각·감사 기록의 변경, 새 오류 코드, Release 발행, 사내 적용.
+- 완료 기준: 대표 문제는 **수정 전 코드에서 먼저 재현한다** — 실제 PostgreSQL에 SQL로 넣은 마이크로초 시각(같은 밀리초 안의 차이, 완전히 같은 시각)으로 두 목록을 페이지 크기 1·2·3으로 끝까지 읽으면 행이 빠진다. 수정 뒤 두 목록 모두 모든 항목이 정렬 순서대로 정확히 한 번 나오고, 커서 시각이 PostgreSQL 값과 글자 그대로 같으며, 옛 판·만료·형식·조건 변경·권한이 각자의 갈래로 답한다. 격리 compose의 실제 관리자 화면(실제 Chromium)에서 수정 전 누락과 수정 뒤 전량을 확인하고, 수정 전 판이 발급한 실제 판 1 커서를 새 서버에 보내 옛 판 사유와 화면 안내를 확인한다. 통합 — `admin-list-cursor-precision.test.ts` 17건(서버 연결은 비UTC 세션). 단위 — 등록 요청 커서 10건(새 파일), 감사 커서 +4건(두 건 정정, 15건), 화면 판정 7건(새 파일)·감사 lib +1건(26건). e2e — `audit.spec.ts` +1건, `ops-request-queue.spec.ts` 2건(새 파일). 변이 15종(등가 1종). 전 계층 게이트.
+- 상태: 구현·검증 완료, 병합 대기 — 원장 6.116장.
 
 ## WP-105 사내 GHE 전체 URL 참조 — 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 (CR-124)
 
@@ -194,6 +202,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
+| WP-106 | 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 | 구현 결함 수정 (CR-125) | WP-032, WP-033, WP-039, WP-040 | in_progress — 구현·검증 완료, 병합 대기(원장 6.116장) |
 | WP-105 | 사내 GHE 전체 URL 참조 — 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 | 배포 편차 수정 (CR-124) | WP-029, WP-070, WP-104 | done — main `81b147b`(PR #243), 원장 6.115장 |
 | WP-104 | prs-links 재색인의 부분 갱신 경합과 해제된 스택 이력 | 설계 결함 수정 (CR-121) | WP-030, WP-031, WP-035, WP-103 | done — main `df3d8ef`(PR #237), 원장 6.112장 |
 | WP-103 | prs-commits 재색인의 기대 집합과 메타데이터 복원 | 설계 결함 수정 (CR-119) | WP-035, WP-067, WP-098, WP-101, WP-102 | done — main `e94cb4f`(PR #235), 원장 6.111장 |

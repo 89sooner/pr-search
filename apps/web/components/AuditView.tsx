@@ -24,6 +24,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Button } from './ui';
 import { AuditRecordTable } from './AuditRecordTable';
 import { CursorPager } from './CursorPager';
+import { CURSOR_FAILURE_TEXT } from '../lib/cursor-failure';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import {
@@ -277,12 +278,16 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
           title={
             state.cursorFailure === 'CURSOR_QUERY_MISMATCH'
               ? "Filters have changed"
-              : "This page position is no longer available"
+              : state.cursorFailure === 'CURSOR_OUTDATED'
+                ? CURSOR_FAILURE_TEXT.CURSOR_OUTDATED.title
+                : "This page position is no longer available"
           }
           impact={
             state.cursorFailure === 'CURSOR_QUERY_MISMATCH'
               ? "Changing filters invalidates the previous page position. Start again from the first page."
-              : "The page position has expired or is invalid. Start again from the first page."
+              : state.cursorFailure === 'CURSOR_OUTDATED'
+                ? CURSOR_FAILURE_TEXT.CURSOR_OUTDATED.impact
+                : "The page position has expired or is invalid. Start again from the first page."
           }
         />
       ) : null}

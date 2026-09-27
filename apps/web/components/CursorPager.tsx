@@ -25,9 +25,14 @@
 
 import type { ReactNode } from 'react';
 import { Banner, Button, Spinner } from './ui';
+import { CURSOR_FAILURE_TEXT, toCursorFailure, type CursorFailure } from '../lib/cursor-failure';
 
-/** 커서 실패의 갈래. 서버 오류 코드를 그대로 쓴다 — 화면이 코드를 재해석하지 않는다. */
-export type CursorFailure = 'CURSOR_QUERY_MISMATCH' | 'CURSOR_INVALID';
+/**
+ * 커서 실패의 갈래와 판정은 `lib/cursor-failure.ts`에 있다 — 순수 함수라 단위 시험이 닿는다.
+ * 서버 오류 코드를 그대로 쓰되, `CURSOR_INVALID`의 옛 판 사유만 따로 안내한다 (CR-125, DEV-777).
+ * 기존 화면이 이 파일에서 들여오므로 그대로 다시 내보낸다.
+ */
+export { toCursorFailure, type CursorFailure };
 
 export interface CursorPagerProps {
   /** 다음 페이지 커서. `null`이면 마지막 페이지다 (AC-1). */
@@ -49,16 +54,7 @@ export interface CursorPagerProps {
   readonly failure?: CursorFailure | null;
 }
 
-const FAILURE_TEXT: Readonly<Record<CursorFailure, { title: string; impact: string }>> = {
-  CURSOR_QUERY_MISMATCH: {
-    title: "Filters changed; pagination cannot continue",
-    impact: "Search filters or permissions have changed. Start again from the first page.",
-  },
-  CURSOR_INVALID: {
-    title: "Pagination is unavailable",
-    impact: "Pagination information has expired or is invalid. Start again from the first page.",
-  },
-};
+const FAILURE_TEXT = CURSOR_FAILURE_TEXT;
 
 export function CursorPager({
   nextCursor,
@@ -125,8 +121,3 @@ export function CursorPager({
   );
 }
 
-/** 응답 오류 코드가 커서 실패인가. 화면 여럿이 같은 판정을 쓴다. */
-export function toCursorFailure(code: string | undefined): CursorFailure | null {
-  if (code === 'CURSOR_QUERY_MISMATCH' || code === 'CURSOR_INVALID') return code;
-  return null;
-}

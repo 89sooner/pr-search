@@ -68,6 +68,8 @@ const PAGE_TWO: readonly Row[] = [
 interface MockConfig {
   /** 403이면 권한 없음 경로를 탄다. */
   readonly status?: number;
+  /** 다음 쪽 요청에 옛 판 커서 거절(`CURSOR_INVALID` + `detail.reason`)을 돌려준다 (DEV-777). */
+  readonly outdatedNextPage?: boolean;
   /** 서버가 실제로 받은 질의 문자열을 모은다. */
   readonly seen?: string[];
 }
@@ -89,6 +91,20 @@ async function installRoutes(page: Page, config: MockConfig = {}): Promise<void>
     }
 
     const cursor = url.searchParams.get('cursor');
+    if (cursor !== null && config.outdatedNextPage === true) {
+      return route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: {
+            code: 'CURSOR_INVALID',
+            message: '옛 판 커서다',
+            detail: { reason: 'cursor_version_outdated', issued_version: 1, current_version: 2 },
+          },
+          correlation_id: 'c-outdated',
+        }),
+      });
+    }
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -175,6 +191,22 @@ test.describe('A-004 감사 로그', () => {
     // 두 페이지가 쌓인다.
     await expect(page.getByTestId('audit-row')).toHaveCount(3);
     await expect(page.getByText('audit_record_2025_07')).toBeVisible();
+  });
+
+  test('**옛 판 커서는 이어 읽지 않고 첫 페이지 재조회를 안내한다** — 앞 페이지는 그대로다 (DEV-777)', async ({ page }) => {
+    await installRoutes(page, { outdatedNextPage: true });
+    await page.goto('/ops/audit');
+    await expect(page.getByTestId('audit-row')).toHaveCount(2);
+
+    await page.getByTestId('cursor-next').click();
+    await expect(page.getByTestId('cursor-failure')).toHaveAttribute('data-cursor-failure', 'CURSOR_OUTDATED');
+    await expect(page.getByText('This page position is from an earlier version').first()).toBeVisible();
+    // 이미 받은 기록을 지우지 않는다 — 잘린 위치에서 이어 받지도 않는다.
+    await expect(page.getByTestId('audit-row')).toHaveCount(2);
+
+    await page.getByTestId('cursor-first').click();
+    await expect(page.getByTestId('cursor-failure')).toHaveCount(0);
+    await expect(page.getByTestId('audit-row')).toHaveCount(2);
   });
 
   test('403이면 **필요 역할을 그대로 적는다** — "결과 없음"이 아니다', async ({ page }) => {

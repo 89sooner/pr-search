@@ -1,6 +1,10 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.118 | 갱신일: 2026-09-27
+> 상태: review | 버전: v6.119 | 갱신일: 2026-09-27
+
+## CR-125 / WP-106 — 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 (2026-09-27, 병합 전)
+
+20차 둘째 항목(DEV-777). 등록 검토 요청 대기열(API-ADM-009)과 감사 기록(API-ADM-005)의 커서가 키셋 시각을 JavaScript `Date`의 `toISOString()`(밀리초)으로 실어, 경계 행과 같은 밀리초 안의 더 이른 행이 다음 쪽에서 빠졌다. 감사 기록은 코드 판독으로만 짐작되던 것을 이번에 실제 PostgreSQL에서 처음 재현했다. 조회가 PostgreSQL의 마이크로초 UTC 문자열을 함께 읽고 커서(판 2)가 그 문자열을 그대로 싣고 되돌려 `::timestamptz`로 비교한다 — 저장된 검색과 같은 방식이다. 판 1 커서는 이어 읽지 않고 `CURSOR_INVALID`에 옛 판 사유를 실어 거절하며, 화면은 그 사유로 첫 페이지 재조회를 안내한다. 격리 compose의 실제 관리자 화면에서 수정 전 누락(60건 중 58건, 120건 중 118건)과 수정 뒤 전량(정렬 순서 그대로 한 번씩)을 확인했다. 기록은 6.116장.
 
 ## CR-124 / WP-105 — 사내 GHE 전체 URL 참조: 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 (2026-09-27, main `81b147b` 병합)
 
@@ -304,6 +308,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| WP-106 | 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 | 구현 결함 수정 (CR-125) | in_progress | 에이전트 | 브랜치 `fix/cr125-admin-list-cursor` (병합 전) | 6.116장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-105 | 사내 GHE 전체 URL 참조 — 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 | 배포 편차 수정 (CR-124) | done | 에이전트 | main `81b147b`(PR #243 squash 병합, 2026-09-27; head `5e32287`) | 6.115장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-104 | prs-links 재색인의 부분 갱신 경합과 해제된 스택 이력 | 설계 결함 수정 (CR-121) | done | 에이전트 | main `df3d8ef`(PR #237 squash 병합, 2026-09-25; head `6235bf7`) | 6.112장 | 사내 배포 SHA NOT VERIFIED, 가져오기·내부망 적용 NOT RUN |
 | WP-103 | prs-commits 재색인의 기대 집합과 메타데이터 복원 | 설계 결함 수정 (CR-119) | done | 에이전트 | main `e94cb4f`(PR #235 squash 병합, 2026-09-25; head `d65928c`) | 6.111장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
@@ -410,6 +415,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
+| FR-ING-009 AC-11 · FR-AUTH-004 (API-ADM-009·API-ADM-005의 키셋 순회 — 키셋 시각은 PostgreSQL의 마이크로초 문자열 그대로, 커서 판 2, 판 1은 `CURSOR_INVALID` + 옛 판 사유, 화면의 첫 페이지 재조회 안내) | WP-106 | `packages/db/src/repositories/{registration-request,audit}.ts`(키셋 문자열 열·`::timestamptz`), `apps/search-api/src/cursor/envelope.ts`(`CursorOutdatedError`·`KEYSET_TIME_PATTERN`), `apps/search-api/src/{ops/registration-request-cursor,audit/cursor}.ts`(판 2), `apps/search-api/src/{ops,audit}/routes.ts`(옛 판 `detail`), `apps/web/lib/cursor-failure.ts`, `apps/web/components/{OpsRepositoriesView,AuditView,CursorPager}.tsx` | `apps/search-api/integration/admin/admin-list-cursor-precision.test.ts`(17건), `apps/search-api/src/ops/registration-request-cursor.test.ts`(10건), `apps/search-api/src/audit/cursor.test.ts`(+4건), `apps/web/lib/cursor-failure.test.ts`(7건), `apps/web/lib/audit.test.ts`(+1건), `apps/web/e2e/{audit,ops-request-queue}.spec.ts`(+1·2건) | **구현 — 병합 전 (CR-125, 6.116장)** |
 | FR-REL-003 AC-1 · THR-036 (GHE PR·커밋 URL의 승인 호스트는 배포 설정 `GHE_BASE_URL`의 호스트 — 비면 URL 참조 없음, 평시 파생과 재색인이 같은 해석 함수, 단일 호스트의 `worker-link`·`worker-batch`는 주소만 받는다) | WP-105 | `deploy/single-host/compose.yml`(두 역할의 `GHE_BASE_URL`), `packages/github/src/config.ts`(`resolveReferenceHost`), `apps/pipeline-worker/src/index.ts`(`referenceHostFor` — link·batch 두 파생 경로와 기동 로그) | `packages/domain/src/link/reference.test.ts`(+11건), `packages/github/src/config.test.ts`(+7건), `regression/cr124-ghe-reference-host.test.ts`(6건, 실제 `docker compose config`), `apps/pipeline-worker/integration/worker/link.test.ts`(+5건) | **완료 — main `81b147b` (CR-124, 6.115장)** |
 | FR-REL-003 AC-3 (정확한 키도 대상 문서가 서비스 색인에 있을 때만 해결 — 재구축·전환 전 검증과 같은 판정) | 없음 (CR-123) | `packages/es/src/links.ts`(`isReferenceTargetIndexed` — 대상 문서 한 건의 실시간 존재 확인), `apps/pipeline-worker/src/link.ts`(`resolveReferencesTo` — 미해결 정확한 키 후보가 있을 때만 확인) | `apps/pipeline-worker/integration/jobs/links-reindex-completeness.test.ts`(+2건 — 문서가 사라진 커밋 참조의 재색인 전환, 평시 해결 갱신의 색인 전·후), `apps/pipeline-worker/integration/worker/link.test.ts`(대역 셋의 `exists` 위임) | **완료 — main `646486e` (CR-123, 6.113장)** |
 | FR-SRCH-002 AC-6 · FR-REL-006 AC-6 (`prsctl links apply`·`refetch`·`import-stacks`가 인자 `--actor`로 행위 주체를 받는다) | 없음 (CR-122) | `apps/pipeline-worker/src/link-repair-command.ts`(`resolveActor` — 인자가 먼저, `deps.actor`는 대체값) | `links-reindex-completeness.test.ts`(+3건 — 인자만으로 실행·잡과 감사의 주체, refetch의 자격 검사 도달, 인자·주입 모두 없으면 거절) | **완료 — main `646486e` (CR-122, 6.113장)** |
@@ -557,7 +563,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | DEV-774 | 2026-09-26 | **`prsctl links apply`·`refetch`·`import-stacks`가 번들에서 늘 거절됐다.** link-repair 명령의 `parse`는 `--actor`를 읽어 두지만 `resolveActor`는 `deps.actor`만 봤고, CLI 진입점(`link-repair-cli.ts`)은 그 값을 채우지 않는다. `prsctl`은 행위 주체를 인자로 넘긴다. CR-116(pilot.18)부터 같은 배선이라 사내에서 7.G의 `apply`·`refetch`는 실행될 수 없었고, 통합 시험은 `deps.actor`를 직접 넣어 지나쳤다. 격리 업그레이드 리허설의 RUNBOOK 7.I 3번에서 드러났다 | FR-SRCH-002 AC-6 · FR-REL-006 AC-6 / RB-29 | 구현 결함 | CR-122 | resolved — 인자가 먼저이고 주입은 대체값이다. 인자로만 넘기는 시험 3건(변이로 확인), 수정 후보 번들의 실제 `prsctl`로 가져오기·apply 실행 확인 (6.113장) |
 | DEV-775 | 2026-09-26 | **해결 갱신이 색인되지 않은 대상에 정확한 참조를 붙여, prs-links 재색인의 새 인덱스와 전환 전 검증이 갈렸다.** `resolveReferencesTo`는 불린 대상이 곧 있다고 여겨 `pr:N`·`commit:<40자>`를 붙였다. 재색인은 source를 정본 스냅숏에서 읽으므로 서비스 인덱스에 문서가 없는 커밋(생성 근거 없음 — DEV-759, 손으로 전환한 인덱스의 누락)에도 해결을 붙였고, 검증의 계획(`findReferenceTargets`)은 미해결이라 전환이 매번 막혔다. 재구축의 이중 쓰기로 서비스 인덱스에도 문서 없는 대상을 가리키는 해결이 들어갔다. 격리 업그레이드 리허설에서 두 사례로 재현했다 | FR-REL-003 AC-3 · FR-ING-008 AC-11 / JOB-REL-005 | 구현 결함 | CR-123 | resolved — 대상 문서의 실시간 존재 확인 뒤에만 붙인다. 코드만으로는 prs-links를 먼저 재색인하면 그 참조가 미해결로 굳으므로 RUNBOOK이 prs-links 재색인을 prs-commits 재색인 뒤로 옮겼다(7.I 4번·7.J) (6.113장) |
 | DEV-776 | 2026-09-26 | **단일 호스트 compose의 `worker-link`·`worker-batch`가 `GHE_BASE_URL`을 받지 않아 GHE URL 참조를 추출하지 못한다.** 두 역할은 `x-app-env`만 받아 `resolveGitHubConfig().baseUrl`이 기본값(`https://ghe.example.com`)이 되고, 참조 추출의 승인 호스트가 실제 GHE와 달라진다. Kubernetes 형상은 configMap으로 받는다(`deploy/k8s/pipeline-worker-link.yaml`의 THR-036 주석). 평시 파생과 재구축이 같은 설정이라 둘 사이의 불일치는 없다. 격리 리허설에서 가짜 GHE 호스트의 커밋 URL을 적은 PR이 참조 0건으로 파생돼 드러났다 | FR-REL-003 AC-1 / THR-036 / WP-105 | 배포 편차 | CR-124 | **resolved (CR-124, main `81b147b`)** — 두 역할에 주소 한 줄씩(`*ghe-env` 제외), 승인 호스트는 `resolveReferenceHost`가 배포 설정에서만 읽고 비면 URL 참조를 만들지 않는다. 격리 compose에서 수정 전 0건 재현, 수정 뒤 새 이벤트·prs-links 재색인의 URL 참조와 전환 전 검증 통과를 확인했다. 기존 자료는 prs-links 재색인(RUNBOOK 7.K 5번)으로 반영한다 (6.115장) |
-| DEV-777 | 2026-09-26 | **운영자 등록 요청 대기열(API-ADM-009)의 커서가 `created_at`을 밀리초로 잘라 담아, 같은 밀리초에 들어온 요청이 다음 쪽에서 빠진다.** `created_at`은 `now()` 기본값의 마이크로초 열인데, 커서는 node-postgres가 돌려준 `Date`를 `toISOString()`(밀리초)으로 싣고 키셋 조건 `(created_at, request_id) < (커서)`가 그 잘린 값과 비교한다. 경계 행과 같은 밀리초의 더 이른 요청은 튜플 비교에서 커서보다 큰 값이 되어 둘째 쪽에서 사라진다. 저장된 검색(`saved-search.ts`)은 마이크로초 문자열과 `::timestamptz`로 이미 바르게 한다. PR #240의 CI integration 첫 시도가 `registration-request-lifecycle.test.ts`의 커서 시험 하나로 실패해 드러났다(`app.inject`로 연달아 만든 두 요청이 같은 밀리초에 들어간 경우). 감사 기록 커서(API-ADM-005, `audit.ts`의 `occurredAt: Date`)도 같은 모양으로 보이나 검증하지 않았다 | FR-ING-009 AC-11 / API-ADM-009 · API-ADM-005(미검증) | 구현 결함 | 없음(후속) | open — 이번 업그레이드 범위 밖이다. 판정 근거: 열 정밀도·`toISOString()`·튜플 비교를 코드와 SQL로 확인했고, 실패한 잡만 한 번 다시 돌려 통과했다 (6.113장 「게이트·병합 판정」, 6.114장) |
+| DEV-777 | 2026-09-26 | **운영자 등록 요청 대기열(API-ADM-009)의 커서가 `created_at`을 밀리초로 잘라 담아, 같은 밀리초에 들어온 요청이 다음 쪽에서 빠진다.** `created_at`은 `now()` 기본값의 마이크로초 열인데, 커서는 node-postgres가 돌려준 `Date`를 `toISOString()`(밀리초)으로 싣고 키셋 조건 `(created_at, request_id) < (커서)`가 그 잘린 값과 비교한다. 경계 행과 같은 밀리초의 더 이른 요청은 튜플 비교에서 커서보다 큰 값이 되어 둘째 쪽에서 사라진다. 저장된 검색(`saved-search.ts`)은 마이크로초 문자열과 `::timestamptz`로 이미 바르게 한다. PR #240의 CI integration 첫 시도가 `registration-request-lifecycle.test.ts`의 커서 시험 하나로 실패해 드러났다(`app.inject`로 연달아 만든 두 요청이 같은 밀리초에 들어간 경우). **감사 기록 커서(API-ADM-005)도 같은 결함이었다** — 발견 때는 코드 판독뿐이었고, CR-125가 실제 PostgreSQL에서 재현했다(SQL로 넣은 마이크로초 시각, 페이지 크기 1·2·3에서 두 목록 모두 누락) | FR-ING-009 AC-11 · FR-AUTH-004 / API-ADM-009 · API-ADM-005 / WP-106 | 구현 결함 | CR-125 | **resolved (CR-125, 병합 전)** — 조회가 마이크로초 UTC 문자열을 함께 읽고, 커서 판 2가 그 문자열을 그대로 싣고 되돌려 `::timestamptz`로 비교한다. 판 1은 `CURSOR_INVALID` + `detail.reason = cursor_version_outdated`로 거절하고 화면이 첫 페이지 재조회를 안내한다. 격리 PostgreSQL 통합 시험과 격리 compose의 실제 관리자 화면에서 모든 항목이 정확히 한 번 나옴을 확인했다 (6.116장) |
 | DEV-778 | 2026-09-27 | **참조 파생의 대상 조회가 직전에 색인된 대상을 보지 못해 간선이 미해결로 남는다.** 파생은 대상을 `findReferenceTargets`(`msearch` — 새로 고침 뒤에만 보이는 검색)로 찾고, 대상 쪽의 해결 갱신(`resolveReferencesTo`)은 대상이 색인될 때 한 번 돈다. 대상이 색인된 직후 새로 고침(운영 1초) 전에 참조하는 source가 파생되면, 파생은 대상을 못 보고 해결 갱신은 그 간선이 생기기 전에 이미 지나가 간선이 미해결로 남는다. 대상 쪽에 다음 이벤트가 오거나 prs-links 재색인·JOB-REL-006이 돌 때까지 그대로다. CR-124의 격리 검증에서 관찰했다 — 커밋 w3의 `pr:2`가 web#2 색인 1초 안에 파생돼 미해결로 남았고 재색인에서 해결됐다. 수정 전 판에서도 같은 모양이었다(web#1의 `x:acme/api:pr:1`) | FR-REL-003 AC-3 / JOB-REL-001·005 | 구현 결함 (기존) | 없음(후속) | open — CR-124 범위 밖이다. 정확한 키는 실시간 조회(문서 ID·routing의 `get`/`exists`)로 판정하면 창이 닫힌다. 그때까지는 prs-links 재색인이나 저장소의 JOB-REL-006이 바로잡는다 (6.115장) |
 | DEV-779 | 2026-09-27 | **운영자 세션의 첫 관계 조회가 503 `PERMISSION_UNAVAILABLE`이었는데 search-api 로그에 사유 줄이 없었다 — 원인 미확인.** CR-124의 격리 검증에서, 저장소 등록 전에 로그인하고 `me`를 부른 운영자 세션(그 사이 `prsctl role grant`와 업그레이드로 search-api 재생성)의 `GET /api/relations`가 503이었다. 그 요청 동안 가짜 GHE에는 그 사용자의 권한 조회가 없었고, RUNBOOK 2.C가 503 진단에 쓰라는 로그(「접근 범위를 조회하지 못했다」·「정본에 사용자 행이 없다」)도 없었다. 28초 뒤 같은 요청은 GHE 권한 조회 둘을 거쳐 200이었다 | FR-AUTH-002 / RUNBOOK 2.C | 관찰 (원인 미확인) | 없음(후속) | open — 재현하지 않았고 CR-124와 무관하다(참조 파생 밖의 인증 경로). 사내에서 같은 503을 보면 시각·사용자·요청 경로를 적어 보고한다 (6.115장) |
 | DEV-753 | 2026-09-23 | **백필로 들어온 병합된 PR의 머지 커밋 문서가 만들어지지 않았다.** `documents.ts`의 `buildCommitDocuments`가 머지 커밋 역할을 `pr.merged === true`로만 판정하는데 백필의 목록 끝점(`GET /pulls`)은 그 필드를 주지 않고 `merged_at`만 준다. 그런데 관계 채택은 같은 PR에 `merge` 근거를 세우므로 **정본은 연결을 말하는데 그 문서가 없다** — 관계 투영기가 `document_missing`으로 재시도하다 보류된다. 독립 검토가 잡았다 | FR-SRCH-002 AC-6 · FR-ING-005 / WP-008 · WP-019 · WP-101 | 기존 결함 | CR-116 | resolved (2026-09-23) — `derivePullRequestState`(CR-101)로 통일했다. PR 문서의 `state`·관계 채택·재색인이 모두 같은 판정을 쓴다 (6.107장) |
@@ -9103,3 +9109,57 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **병합.** PR #243(base `main`, 최종 head `5e32287`)의 CI(run 36281351535)는 verify·integration 모두 첫 시도에 success였다. 사용자 승인(2026-09-27, 이 세션에서 PR #243에 대해 받았다)으로 squash 병합했다 — main `81b147b`, 트리는 PR head와 같다(`dabf4b50…`). 병합 커밋의 main CI(run 36281947573)는 verify·integration 모두 첫 시도에 success다. 이 기록은 20차의 다음 항목(DEV-777)을 고치는 PR에 첫 커밋으로 실었다.
 
 **한계.** 실제 사내 GHE의 PR 본문·인증서·프록시·실데이터에서의 동작은 NOT RUN이다. 격리 검증의 사내 주소 확인은 두 역할만 그 주소로 다시 만든 시험 전용 혼합 형상이며, 사내에서는 모든 역할이 같은 주소를 받는다. 기존 자료의 URL 참조는 prs-links 재색인 전까지 생기지 않는다(이벤트가 오지 않으므로). 스킴은 비교하지 않는다 — 같은 호스트의 `http://` URL도 참조다.
+
+### 6.116 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 (2026-09-27, CR-125 / WP-106, DEV-777)
+
+기준 main은 `81b147b`(CR-124 병합)이고 worktree는 `/home/roqkf/pr-search-wt/cr125-admin-cursor`(브랜치 `fix/cr125-admin-list-cursor`)다. 사용자 지시(2026-09-27, 20차)의 둘째 항목이다. 이 PR의 첫 커밋은 CR-124의 병합 기록이다(6.115장 「병합」).
+
+**재현 (수정 전 코드, 격리 PostgreSQL `prs-s20-postgres`).** 새 통합 시험 `apps/search-api/integration/admin/admin-list-cursor-precision.test.ts`가 두 목록에 같은 10행을 SQL로 넣는다 — `10:00:00.124000`, `.123999`, `.123500` 두 행(시각이 완전히 같다), `.123001`, `.123000`, `.122999`, `.000001`, `09:59:59.999999` 두 행. 기대 순서는 PostgreSQL의 `ORDER BY 시각 DESC, ID DESC`에서 읽는다(시험이 순서를 다시 계산하지 않는다). 수정 전 코드에서 페이지 크기 1·2·3으로 끝까지 읽은 여섯 시험이 모두 실패했다 — 등록 요청 limit=1은 10건 중 5건(`[1, 2, 7, 8, 10]`), limit=2·3은 6건, 감사 기록도 같은 모양이었다. 한 쪽으로 끝나는 기본 크기와 커서 보호(조건 변경·훼손)·권한 시험은 통과했다. 마이크로초 왕복·옛 판 커서 시험도 수정 전 코드에서 실패했다(판 1이 현재 판이었고 시각이 밀리초였다). **감사 기록의 결함은 이것이 첫 실행 재현이다** — DEV-777 발견 때는 코드 판독뿐이었다.
+
+**원인.** 두 목록의 행은 node-postgres가 `timestamptz`를 `Date`(밀리초)로 준 값을 썼고, 커서(판 1)가 그 값을 `toISOString()`으로 실었다. 키셋 `(시각, ID) < (잘린 시각, ID)`에서 경계 행과 같은 밀리초의 더 이른 행이 커서보다 큰 값이 되어 다음 쪽에서 사라졌다. 감사 기록 커서의 단위 시험은 「밀리초를 잃지 않는다」를 기준으로 삼아 그 설계를 고정하고 있었다(이번에 마이크로초 기준으로 고쳤다).
+
+**수정.** (1) `packages/db` — 두 페이지 조회가 `to_char(... AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.USZ')`의 키셋 문자열 열(`created_at_cursor`·`occurred_at_cursor`)을 함께 읽고, 위치 타입의 시각은 그 문자열이며, 키셋은 `$n::timestamptz`로 비교한다. 표시용 `Date` 필드와 응답 항목의 시각은 그대로다. (2) `apps/search-api` — 두 코덱이 판 2로 문자열을 그대로 싣고 되돌리며 형식만 확인한다(`KEYSET_TIME_PATTERN`, `Date`로 읽지 않는다). 판 1은 서명 검사 뒤·만료 검사 앞에서 `CursorOutdatedError`로 거절하고, 두 경로가 `CURSOR_INVALID`에 `detail = {reason: "cursor_version_outdated", issued_version: 1, current_version: 2}`를 싣는다 — 새 오류 코드를 만들지 않았다. (3) `apps/web` — 판정을 `lib/cursor-failure.ts`로 모으고(`CURSOR_OUTDATED`는 서버 코드가 아니라 `detail`에서 읽는 화면 갈래), 감사 화면과 `CursorPager`가 그 문구를 쓰며, 등록 요청 대기열은 다음 쪽 커서가 거절되면 쌓인 항목을 지우지 않고 사유와 「First page」를 보인다.
+
+**시험 (실측, 격리 PostgreSQL·Redis).**
+
+| 계층 | 파일 | 건수 | 확인하는 것 |
+| --- | --- | --- | --- |
+| 통합 | `apps/search-api/integration/admin/admin-list-cursor-precision.test.ts` | 17 (새 파일) | **서버 연결은 UTC가 아닌 세션 시간대(`Asia/Seoul`)로 연다** — 키셋 문자열의 `AT TIME ZONE 'UTC'`를 잠근다(독립 리뷰 지적). 두 목록을 페이지 크기 1·2·3·기본으로 끝까지 읽으면 PostgreSQL 순서 그대로 정확히 한 번씩, 페이지 수, 첫 쪽 마지막 행의 커서 시각이 PostgreSQL의 `to_char` 값과 글자 그대로 같음, 판 1 커서는 `CURSOR_INVALID` + 옛 판 `detail`이고 항목 없음(두 목록), 만료는 옛 판 사유 없는 `CURSOR_INVALID`, 형식이 여섯 자리가 아니면 거절, 조건 변경·훼손의 기존 갈래, 운영자·보안 담당자 권한과 401 |
+| 단위 | `apps/search-api/src/ops/registration-request-cursor.test.ts` | 10 (새 파일) | 글자 그대로 왕복, 같은 밀리초의 마이크로초 차이, 판 1은 옛 판 갈래(지문이 달라도, 만료됐어도 먼저), 모르는 판은 옛 판이 아님, 형식, 조건 변경·만료·위조 |
+| 단위 | `apps/search-api/src/audit/cursor.test.ts` | +4, 2건 정정 (15) | 같은 내용. 「밀리초를 잃지 않는다」를 마이크로초 기준으로 고쳤다 |
+| 단위 | `apps/web/lib/cursor-failure.test.ts` | 7 (새 파일) | 서버 코드 둘은 그대로, `CURSOR_INVALID` + 옛 판 사유만 셋째 갈래, 다른 사유·다른 코드·모양이 다른 본문, 문구 |
+| 단위 | `apps/web/lib/audit.test.ts` | +1 (26) | 감사 화면의 판정이 옛 판 사유를 읽고 조건 변경을 덮지 않음 |
+| e2e | `apps/web/e2e/audit.spec.ts`, `apps/web/e2e/ops-request-queue.spec.ts` | +1, 2 (새 파일) | 감사: 옛 판 거절 뒤 앞 페이지를 지우지 않고 안내·「First page」. 대기열: 「Load more」가 이어 붙이고 마지막 쪽에서 사라짐, 옛 판 거절 뒤 쌓인 항목 유지·안내·「First page」로 첫 쪽 복귀 |
+
+**변이 (단독 실행, 매번 원복, 통과 건수 0이면 무효로 셈).**
+
+| 변이 | 결과 |
+| --- | --- |
+| S1 등록 요청 키셋의 `::timestamptz` 캐스팅 제거 | **살아남음 — 등가**다. 매개변수 형식을 주지 않으면 PostgreSQL이 행 비교 문맥에서 `timestamptz`로 추론한다. 저장된 검색과 같은 방어로 둔다 |
+| S2 등록 요청 다음 위치를 `Date`의 `toISOString()`으로 | 통합 5건 실패 |
+| S3 감사 기록 다음 위치를 `Date`의 `toISOString()`으로 | 통합 5건 실패 |
+| S4 키셋 시각 형식을 밀리초까지 허용 | 단위 2건 실패 |
+| S5 등록 요청 판 1을 옛 판으로 가르지 않음 | 단위 2건 실패 |
+| S6 감사 기록 판 1을 옛 판으로 가르지 않음 | 단위 1건 실패 |
+| S7 운영 경로가 옛 판 `detail`을 싣지 않음 | 통합 1건 실패 |
+| S8 감사 경로가 옛 판 `detail`을 싣지 않음 | 통합 1건 실패 |
+| S9 화면 판정이 옛 판 사유를 무시 | 단위 3건 실패 |
+| S10 등록 요청 키셋을 `Date`로 되돌림(수정 전과 같은 비교) | 통합 3건 실패 |
+| W1 대기열이 커서 실패를 일반 실패로(수정 전 화면 동작, 웹 다시 빌드) | e2e 1건 실패 |
+| S11 등록 요청 키셋 문자열에서 `AT TIME ZONE 'UTC'` 제거 | 통합 4건 실패 — 독립 리뷰가 UTC 세션에서는 살아남는 것을 찾았고, 서버 연결을 비UTC 세션으로 바꾼 뒤 죽는다 |
+| S12 감사 기록 키셋 문자열에서 `AT TIME ZONE 'UTC'` 제거 | 통합 4건 실패 — 같은 경위 |
+| S13 등록 요청: 만료 검사를 판 판정 앞으로 | 단위 1건 실패 |
+| S14 감사 기록: 만료 검사를 판 판정 앞으로 | 단위 1건 실패 |
+
+**실제 관리자 화면 (격리 compose + 실제 Chromium).** 6.115장의 compose 프로젝트 `prs-s20`에 SQL로 등록 검토 요청 60건(4건씩 같은 밀리초의 마이크로초 000·300·600·900, 15무리)과 감사 기록 120건(3건씩 300·600·900, 40무리)을 넣었다 — 화면이 쓰는 기본 페이지(25·50)의 경계가 무리 안에 떨어진다. 로그인은 가짜 GHE OAuth 왕복으로 받은 실제 세션(`opsadmin`, 지정 역할 `operator`·`security_officer`)이고, 브라우저가 「Load more」·「Next page」를 끝까지 눌러 화면의 행을 모아 PostgreSQL 순서와 대조했다.
+
+| 판 | 등록 검토 요청 (60) | 감사 기록 (120) |
+| --- | --- | --- |
+| 수정 전 — `s20-cr124` 이미지(이 두 목록의 코드는 main과 같다) | **58건** — `r034`·`r033` 누락. 첫 커서가 `…09:00:00.108Z`로 잘려 같은 밀리초의 `.108600`·`.108300`을 건넜다 | **118건** — 두 건 누락 |
+| 수정 뒤 — `s20-cr125` 이미지(`74eddf4`에서 빌드, `prsctl upgrade`) | 60건, 정렬 순서 그대로 한 번씩. 커서는 `…108900Z`처럼 마이크로초를 싣는다 | 120건, 정렬 순서 그대로 한 번씩, 마지막 쪽 표시 |
+
+**옛 판 커서 — 실제 서버와 실제 화면.** 업그레이드 전에 수정 전 판이 발급한 실제 판 1 커서 둘(등록 요청 `{"v":1,"t":"2026-09-26T09:00:00.108Z",…}`, 감사 `…09:10:00.123Z`)을 업그레이드 뒤 새 서버에 보내자 둘 다 400 `CURSOR_INVALID`, `detail = {reason: "cursor_version_outdated", issued_version: 1, current_version: 2}`, 항목 없음이었다. 새 화면에서 「Load more」 요청의 커서만 그 실제 판 1 커서로 바꿔(Playwright 경로 가로채기 — 서버와 화면은 실제다) 누르자 대기열이 받은 25건을 지우지 않고 「This page position is from an earlier version」과 「First page」를 보였고 「Load more」는 숨겨졌다(캡처로 확인). 업그레이드 전에 연 창(옛 번들)은 이 안내를 모른다 — 일반 오류 배너를 보이고, 새로고침하면 새 화면이다(RUNBOOK 8장).
+
+**독립 리뷰.** 코드(`deep-reasoner`, 읽기 전용, `git diff 62cbf3c..74eddf4` — 서버·화면 두 커밋): 판정 **병합 가능** — [중] 1건(시험 사각), [정보] 4건. 확인한 것: `to_char(... AT TIME ZONE 'UTC', …US"Z")`가 `.000000`·`.000001`·`.999999`·초 경계·일광 절약 창·비UTC 세션을 포함한 일곱 값에서 `::timestamptz`로 완전히 왕복하고, 키셋이 경계 행 자체는 빼고 같은 밀리초의 더 이른 행은 넣어 `ORDER BY`와 같은 순서다. 감사 기록 질의는 월 파티션마다 `occurred_at, audit_id` 인덱스의 Index Cond로 행 비교를 그대로 쓴다(`EXPLAIN`). 서명 검증이 JSON 해석보다 먼저라 서명 안 된 바이트로 옛 판 갈래를 만들 수 없고, 형식 → 서명 → 판 → 만료 → 키셋 형태 → 지문 순서가 유지된다. 두 경로가 코드는 `CURSOR_INVALID` 그대로 `detail`만 싣고 Fastify 직렬화가 그것을 지우지 않는다(통합 시험이 확인). 새 키셋 열은 응답에 새지 않는다(두 응답 변환이 허용 목록). `listAuditRecords`의 다른 호출자는 행 전체를 비교하지 않는다. 다른 커서 화면은 바뀌지 않는다. 대기열의 새 분기는 첫 쪽 실패·권한·커서 아닌 400을 커서 실패로 삼지 않고, 「First page」는 효과 의존성으로 첫 쪽을 다시 부른다. S1(캐스팅 제거) 등가 판단이 옳다 — 드라이버가 매개변수를 형식 없이 보내 PostgreSQL이 열에서 추론하므로, 명시 캐스팅은 방어로 두는 것이 맞다. 지적과 처분 — **[중, 수정]** `AT TIME ZONE 'UTC'`를 지워도 통합 시험이 죽지 않았다: 시험 DB 세션이 UTC라 그 절이 무의미했다(비UTC 세션에서는 지역 벽시계에 `Z`를 붙인 거짓 UTC가 실려 행이 빠지거나 겹친다) → 시험 서버의 연결을 `-c timezone=Asia/Seoul`로 열고 적용 여부를 단언했다. 두 저장소에서 그 절을 지우는 변이(S11·S12)가 이제 각각 통합 4건을 죽인다. **[정보, 시험 추가]** 만료된 판 1도 옛 판으로 답한다(판 판정이 만료보다 먼저) — 설계 의도이며 시험이 없었다 → 두 코덱에 한 건씩 더했고, 만료 검사를 앞으로 옮기는 변이(S13·S14)가 죽는다. **[정보]** 형식 정규식은 달력 범위를 보지 않는다 — 서버가 서명한 값만 닿고 실제 해석은 `::timestamptz`라 악용 경로가 없다. **[정보]** `apps/search-api/src/audit/cursor.ts`는 지문 구분자가 NUL 바이트라 git이 이진으로 본다(기존·의도) — 편집 전후 NUL 1개가 그대로임을 확인했다. **[정보]** 리뷰 시점에 문서가 없었다 — 뒤 커밋에서 더했다.
+
+**한계.** 사내 운영 화면은 NOT RUN이다. 응답 항목의 표시용 시각(`created_at`·`occurred_at`)은 그대로 밀리초 ISO다 — 화면 표시에는 충분하고 커서는 따로 싣는다. 업그레이드 전에 연 창은 옛 판 안내 대신 일반 오류를 보인다(새로고침으로 풀린다).

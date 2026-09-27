@@ -27,6 +27,7 @@ import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { requestPrefill, type RegistrationRequestView } from '../lib/ops-repositories';
 import { formatTimestamp } from '../lib/format';
+import { CURSOR_FAILURE_TEXT, readCursorFailureBody, type CursorFailure } from '../lib/cursor-failure';
 
 const REPOSITORIES_URL = '/api/admin/repositories';
 const REQUESTS_URL = '/api/admin/repository-registration-requests';
@@ -54,6 +55,8 @@ export function OpsRepositoriesView(): ReactNode {
   const [repositoriesFailed, setRepositoriesFailed] = useState(false);
   const [requests, setRequests] = useState<RequestsState>(NO_REQUESTS);
   const [requestsFailed, setRequestsFailed] = useState(false);
+  /** 다음 쪽 커서가 거절된 갈래. 쌓인 항목은 그대로 두고 첫 페이지로 돌아가게 한다 (CR-125). */
+  const [requestsCursorFailure, setRequestsCursorFailure] = useState<CursorFailure | null>(null);
   const [denied, setDenied] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -75,7 +78,8 @@ export function OpsRepositoriesView(): ReactNode {
     void (async () => {
       setLoading(true);
       try {
-        const cursorParam = requests.cursor === null ? '' : `?cursor=${encodeURIComponent(requests.cursor)}`;
+        const requestsCursor = requests.cursor;
+        const cursorParam = requestsCursor === null ? '' : `?cursor=${encodeURIComponent(requestsCursor)}`;
         const [repoResponse, requestResponse] = await Promise.all([
           fetch(REPOSITORIES_URL, { signal: controller.signal, cache: 'no-store' }),
           fetch(`${REQUESTS_URL}${cursorParam}`, { signal: controller.signal, cache: 'no-store' }),
@@ -105,8 +109,22 @@ export function OpsRepositoriesView(): ReactNode {
             cursor: current.cursor,
           }));
           setRequestsFailed(false);
+          setRequestsCursorFailure(null);
         } else {
-          setRequestsFailed(true);
+          /*
+           * **다음 쪽의 커서가 거절되면 쌓인 항목을 지우지 않는다** (CR-125, DEV-777). 무엇이 일어났는지
+           * 말하고 첫 페이지로 돌아가는 버튼을 준다 — 업그레이드 전에 열어 둔 화면의 판 1 커서는 옛 판
+           * 사유로 거절된다. 첫 쪽의 실패와 커서가 아닌 실패는 전과 같다.
+           */
+          const failure =
+            requestsCursor !== null && requestResponse.status === 400
+              ? readCursorFailureBody(await requestResponse.json().catch(() => null))
+              : null;
+          if (failure !== null) {
+            setRequestsCursorFailure(failure);
+          } else {
+            setRequestsFailed(true);
+          }
         }
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -345,17 +363,41 @@ export function OpsRepositoriesView(): ReactNode {
             impact="The repository list and registration form remain available."
           />
         ) : (
-          <RegistrationRequestQueue
-            requests={requests.items}
-            onPrefill={onPrefill}
-            onDismiss={onDismiss}
-            nextCursor={requests.nextCursor}
-            onLoadMore={(cursor) => {
-              setRequests((current) => ({ ...current, cursor }));
-            }}
-            submitting={submitting}
-            loading={loading}
-          />
+          <>
+            {requestsCursorFailure === null ? null : (
+              <div data-testid="request-cursor-failure" data-cursor-failure={requestsCursorFailure}>
+                <ErrorBanner
+                  tone="warning"
+                  title={CURSOR_FAILURE_TEXT[requestsCursorFailure].title}
+                  impact={CURSOR_FAILURE_TEXT[requestsCursorFailure].impact}
+                  action={
+                    <Button
+                      variant="secondary"
+                      data-testid="request-first-page"
+                      onClick={() => {
+                        setRequestsCursorFailure(null);
+                        setRequests(NO_REQUESTS);
+                      }}
+                    >
+                      First page
+                    </Button>
+                  }
+                />
+              </div>
+            )}
+            <RegistrationRequestQueue
+              requests={requests.items}
+              onPrefill={onPrefill}
+              onDismiss={onDismiss}
+              // 커서가 거절된 동안에는 이어 읽지 않는다 — 첫 페이지로 돌아가는 것만 남긴다.
+              nextCursor={requestsCursorFailure === null ? requests.nextCursor : null}
+              onLoadMore={(cursor) => {
+                setRequests((current) => ({ ...current, cursor }));
+              }}
+              submitting={submitting}
+              loading={loading}
+            />
+          </>
         )}
       </Panel>
     </div>

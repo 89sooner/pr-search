@@ -1,5 +1,17 @@
 # 변경 관리 대장
 
+## CR-125 — 운영 목록 두 개의 커서가 키셋 시각을 밀리초로 잘라 같은 밀리초의 행이 다음 쪽에서 빠졌다: 조회부터 커서 해석·다음 조회까지 마이크로초 문자열을 그대로 쓰고, 옛 판 커서는 이어 읽지 않는다 (2026-09-27)
+
+- 유형: correction(구현 결함 — API-ADM-005·API-ADM-009의 키셋 순회가 계약의 「페이지 경계가 무리를 갈라도 빠지거나 겹치지 않는다」를 지키지 못했다). **요구사항 문장과 AC는 바꾸지 않는다** — SRS는 두 목록의 커서를 따로 정하지 않고, API 계약이 정렬·타이브레이커·두 오류 코드를 정한다. 계약에 더하는 것은 커서 판 2(키셋 시각 = 마이크로초 문자열)와 옛 판 커서의 `detail.reason` 하나다. 새 오류 코드·새 경로·응답 항목 모양 변경은 없다. 안정 ID 재번호화 0건. 상태: **구현·검증 완료, 병합 대기**. worktree `/home/roqkf/pr-search-wt/cr125-admin-cursor`(브랜치 `fix/cr125-admin-list-cursor`), 기준 main `81b147b`.
+- 요청: 사용자 지시(2026-09-27, 20차)의 둘째 항목(DEV-777). 등록 요청 대기열과 감사 기록 목록을 같은 CR에서 처리한다. 감사 기록은 실행 재현이 없었으므로 실제 PostgreSQL에서 먼저 재현한다. DB 조회부터 커서 생성·해석·다음 조회까지 마이크로초를 유지하고 저장된 검색의 UTC 문자열 방식을 재사용하며, 커서 시각을 `Date`와 `toISOString()`으로 왕복시키지 않는다. 정렬·비교·서명·만료·필터 확인·운영자 권한은 유지하고 DB 시각을 반올림하거나 감사 기록을 고치지 않는다. 정밀도를 잃은 옛 커서는 새 판과 구분하고 첫 페이지 재조회를 안내한다.
+- 발견: DEV-777 — PR #240의 CI integration 첫 시도가 `registration-request-lifecycle.test.ts`의 커서 시험 하나로 실패해 드러났다(연달아 만든 두 요청이 같은 밀리초에 들어간 경우). 감사 기록은 코드 판독으로만 같은 모양이라고 적혀 있었다.
+- 재현(격리 PostgreSQL, 수정 전 코드): SQL로 넣은 10행(같은 밀리초 안의 마이크로초 차이 넷, 완전히 같은 시각 두 쌍, 앞뒤 밀리초·초 경계)을 페이지 크기 1·2·3으로 끝까지 읽으면 **두 목록 모두** 행이 빠졌다(등록 요청 limit=1은 10건 중 5건). 한 쪽으로 끝나는 기본 크기와 커서 보호·권한은 통과했다. 격리 compose의 실제 관리자 화면에서도 수정 전 판이 등록 요청 60건 중 58건, 감사 기록 120건 중 118건만 보였다(원장 6.116장).
+- 원인: 두 목록의 행은 node-postgres가 `timestamptz`를 `Date`(밀리초)로 준 값을 썼고, 커서(판 1)가 그 값을 `toISOString()`으로 실었다. 키셋 `(시각, ID) < (잘린 시각, ID)`에서 경계 행과 같은 밀리초의 더 이른 행이 커서보다 큰 값이 되어 다음 쪽에서 사라졌다. 감사 기록 커서의 단위 시험은 「밀리초를 잃지 않는다」를 기준으로 삼아 그 설계를 고정하고 있었다. 저장된 검색은 이미 마이크로초 문자열과 `::timestamptz`로 바르게 한다.
+- 범위: (a) `packages/db` — 두 페이지 조회가 `to_char(... AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.USZ')`의 키셋 문자열 열(`created_at_cursor`·`occurred_at_cursor`)을 함께 읽고(표시용 `Date` 필드는 그대로), 위치 타입의 시각이 그 문자열이며, 키셋은 `$n::timestamptz`로 비교한다. (b) `apps/search-api` — 두 커서 코덱을 판 2로 올려 문자열을 그대로 싣고 되돌리며 형식만 확인한다(`KEYSET_TIME_PATTERN`). 판 1은 `CursorOutdatedError`(`CursorInvalidError`의 한 갈래)로 거절하고, 두 경로가 `CURSOR_INVALID`에 `detail = {reason: 'cursor_version_outdated', issued_version: 1, current_version: 2}`를 싣는다. (c) `apps/web` — 커서 실패 판정을 `lib/cursor-failure.ts`로 모으고 옛 판 사유를 셋째 갈래로 안내한다. 감사 화면은 그 문구를 쓰고, 등록 요청 대기열은 다음 쪽 커서가 거절되면 쌓인 항목을 지우지 않고 안내와 「First page」 버튼을 보인다(전에는 대기열 전체를 일반 오류 배너로 바꿔 첫 페이지로 돌아갈 방법이 없었다). (d) API 계약, 화면 명세(C-016·A-002·A-004 상태·QA), RUNBOOK 7장 표·8장.
+- 결정과 대가: **새 오류 코드를 만들지 않는다** — 계약의 커서 오류 표가 모르는 스키마 버전을 `CURSOR_INVALID`로 정하고, 첫 페이지로 돌아가는 기존 처리가 옛 커서에도 그대로 맞으며, 새 코드는 공유 오류 카탈로그와 모든 커서 클라이언트를 다시 세게 만든다. 구분은 `detail.reason`이 싣고 화면이 읽는다(화면 갈래 `CURSOR_OUTDATED`는 서버 코드가 아니다). 판 1은 만료 전이어도 받지 않는다 — 잘린 시각을 정확한 값처럼 이어 읽을 방법이 없다. 판 판정은 서명 검사 뒤, 만료 검사 앞이다. 봉투의 공통 필드(`v`·`x`·서명)와 지문 재료는 바꾸지 않는다. `::timestamptz` 캐스팅은 변이로 보면 등가다(PostgreSQL이 비교 문맥에서 매개변수 형식을 추론한다) — 저장된 검색과 같은 방어로 둔다. 대가: 업그레이드 전에 연 운영 화면(옛 번들)에서 업그레이드 뒤 「다음」을 누르면 옛 화면은 일반 오류 배너를 보인다 — 새로고침하면 새 화면이 첫 페이지부터 새 커서를 쓴다.
+- 제외: 다른 커서 계열(검색·저장된 검색·범위·저장소 개요 — 문자열·숫자·`search_after`라 같은 결함이 없음을 확인했다), 응답 항목의 표시용 시각(`created_at`·`occurred_at`은 그대로 밀리초 ISO), DB 시각·감사 기록의 변경, Release 발행과 사내 적용.
+- 설계·세부 정본: API 계약 API-ADM-005·API-ADM-009와 공통 커서 오류 표, 화면 명세 C-016·A-002·A-004, WP-106, 원장 5장 DEV-777, 6.116장. 연쇄 기록은 5장 「CR-125 cascade」에 적는다.
+
 ## CR-124 — 단일 호스트에서 참조를 파생하는 두 역할이 GHE 주소를 받지 않아 사내 GHE의 PR·커밋 URL 참조가 0건이었다: 주소만 넘기고 승인 호스트는 배포 설정에서만 읽는다 (2026-09-27)
 
 - 유형: correction(배포 편차 — FR-REL-003 AC-1·THR-036과 어긋난 단일 호스트 배선과 승인 호스트의 대체값). **요구사항 문장과 AC는 바꾸지 않는다** — AC-1이 이미 GHE PR·커밋 URL을 추출 대상으로 정하고, THR-036이 「URL 참조는 구성된 GHE 호스트만 인정한다」고 정한다. 안정 ID 재번호화 0건. 상태: **closed** — main `81b147b`(PR #243 squash 병합, 2026-09-27). worktree `/home/roqkf/pr-search-wt/cr124-ghe-ref-host`(브랜치 `fix/cr124-ghe-reference-host`), 기준 main `2f4606d`.
@@ -2415,6 +2427,17 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - 상태: **closed**(2026-09-21). 운영 배포는 하지 않았고, 사내 CA·운영 HAProxy·실제 GHE를 거친 검증과 실제 사용자 매핑은 NOT_RUN이다 — 이 CR의 범위 밖이다.
 
 **병합 판정.** 구현·검증 보고 뒤 사용자 지시(2026-09-21 「origin/main에 병합」)로 진행했다. 저장소가 공개라 시험 전용 서명 비밀키를 커밋에서 빼고, main CI의 `verify`를 막던 lint 기준선 1건을 ESLint 설정으로 해소한 뒤(원장 6.103장 「병합 준비」) 커밋 `28a3c21`을 PR #220으로 올렸다. PR CI(run `35568796745`)는 verify·integration 모두 success다 — `verify`의 단계(typecheck·lint·lint:deps·test·build·test:a11y·test:contrast·test:e2e)에는 건너뛰는 조건이 없으므로 로컬에서 돌리지 않은 a11y·contrast·e2e도 이 실행이 확인했다. squash 병합 커밋은 `e7b4cb4`(15:43 KST)이고 트리가 `28a3c21`과 같다. 병합 커밋 `e7b4cb4`의 main CI(run `35569716267`)는 끝나기 전에 취소됐다 — 15:46에 사용자가 메인 체크아웃에서 입력 지시서 묶음을 따로 커밋해(`c73ed9f`) main과 병합한 `364f0fb`를 push했고, 워크플로의 `cancel-in-progress`가 앞 실행을 취소했다. `364f0fb`의 트리는 `e7b4cb4`와 같다(묶음 6개 파일이 PR #220에 든 것과 같은 내용이라 차이가 없다, tree `26f3f0fb…`). 그 커밋의 main CI(run `35569895232`)는 verify·integration 모두 success다 — #218부터 lint 단계에서 멈추던 main의 `verify`가 다시 끝까지 통과했다. 병합 기록은 별도 PR(브랜치 `docs/cr112-merge-record`)로 했다 — 작업 패키지 v2.57 → v2.58(WP-097 done), 원장 v6.98 → v6.99(머리 절, 3장, 4장, 6.103장 「병합」), handoff의 PIPE_INTEGRATION_HANDOFF·TEST_RESULTS·CONTRACT_DIFF·manifest 생성기와 다시 만든 manifest(계약 checksum `3c7fbe92…` 변동 없음). 문서 검증기는 이 기록 뒤에도 두 모드 모두 오류·경고 목록이 병합 시점과 같다. 릴리스·태그는 발행하지 않았다. closed.
+
+### CR-125 cascade — 운영 목록 두 개의 커서 마이크로초와 옛 판 커서
+
+기준: main `81b147b` 위 worktree `/home/roqkf/pr-search-wt/cr125-admin-cursor`(브랜치 `fix/cr125-admin-list-cursor`). correction — 요구사항 문장은 바꾸지 않고 구현을 API 계약의 순회 약속에 맞추며, 계약에 커서 판 2와 옛 판 사유를 더한다. ID는 `docs/`와 원격 브랜치, 열린 PR(없음)을 실측해 정했다 — CR-125·WP-106. 새 ADR·ENT·JOB·EVT·RB 번호와 새 DEV는 쓰지 않는다(DEV-777을 닫는다).
+
+- [x] 요구사항: 해당 없음 — SRS는 두 목록의 커서를 따로 정하지 않는다(FR-ING-009 AC-11은 처리 상태, FR-AUTH-004는 감사 대상과 권한). PRD·용어집·매트릭스도 바뀌지 않는다.
+- [x] 파생 UI: 컴포넌트 명세 v0.28 → v0.29(C-016 커서 오류의 셋째 갈래), 상태 매트릭스 v0.22 → v0.23(A-002 `requests_cursor_rejected`, A-004 `cursor_invalid`의 옛 판 문구), QA 점검표 v0.28 → v0.29(QA-A004-09 정밀화, QA-A002-12 신설).
+- [x] 기술 아키텍처: API 계약 v0.46 → v0.47(머리 주석, 공통 커서 표의 `v`·`CURSOR_INVALID` 행, API-ADM-005·API-ADM-009의 커서 항목).
+- [x] 전달: 작업 패키지 v2.70 → v2.71(WP-106 절·상태 표), 원장 v6.118 → v6.119(머리 절, 3장 WP-106, 4장 두 행, 5장 DEV-777 resolved, 6.116장). `deploy/single-host/RUNBOOK.md` 7장 표 한 행, 8장 한 행.
+- [x] 코드·시험: 원장 6.116장.
+- 상태: 병합 대기.
 
 ### CR-124 cascade — 단일 호스트 참조 파생 두 역할의 GHE 주소와 승인 호스트
 

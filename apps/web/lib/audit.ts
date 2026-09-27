@@ -22,6 +22,7 @@
  * 클라이언트 번들이 필요한 것은 액션 이름 목록 하나뿐이고, 진입점을 쓰면
  * 그 나머지가 함께 실린다. `nav.ts`가 `@prs/authz/roles`를 쓰는 것과 같다.
  */
+import { readCursorFailureBody, type CursorFailure } from './cursor-failure';
 import { SELECTABLE_AUDIT_ACTIONS } from '@prs/domain/audit';
 
 /**
@@ -165,15 +166,16 @@ export function toAuditPage(body: unknown): AuditPageView {
   return { items, nextCursor: readNullable(record['next_cursor']) };
 }
 
-/** 커서 실패의 두 갈래. 사용자에게 다른 문구를 보인다. */
-export type AuditCursorFailure = 'CURSOR_INVALID' | 'CURSOR_QUERY_MISMATCH';
+/**
+ * 커서 실패의 갈래. 사용자에게 다른 문구를 보인다.
+ *
+ * 옛 판 커서(`CURSOR_INVALID` + `detail.reason`)는 셋째 갈래로 읽는다 (CR-125, DEV-777) — 판정은 다른
+ * 목록 화면과 같은 `lib/cursor-failure.ts`의 것이다.
+ */
+export type AuditCursorFailure = CursorFailure;
 
 export function readCursorFailure(body: unknown): AuditCursorFailure | null {
-  if (typeof body !== 'object' || body === null) return null;
-  const error = (body as Record<string, unknown>)['error'];
-  if (typeof error !== 'object' || error === null) return null;
-  const code = (error as Record<string, unknown>)['code'];
-  return code === 'CURSOR_INVALID' || code === 'CURSOR_QUERY_MISMATCH' ? code : null;
+  return readCursorFailureBody(body);
 }
 
 /**

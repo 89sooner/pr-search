@@ -109,10 +109,23 @@ export interface RegistrationRequestFilter {
   readonly requestedBy?: string;
 }
 
-/** 키셋 위치. 정렬 키를 그대로 담는다. */
+/**
+ * 키셋 위치. 정렬 키를 그대로 담는다.
+ *
+ * `createdAt`은 **마이크로초 UTC 문자열**이다(`RegistrationRequestPageRow.created_at_cursor`가 준 값 그대로).
+ * `Date`로 받지 않는다 — node-postgres가 `timestamptz`를 `Date`(밀리초)로 주므로, 그 값을 키셋에 쓰면
+ * 경계 행과 같은 밀리초 안의 더 이른 요청이 다음 쪽에서 빠진다 (CR-125, DEV-777). 저장된 검색
+ * (`saved-search.ts`)과 같은 규율이다.
+ */
 export interface RegistrationRequestPosition {
-  readonly createdAt: Date;
+  readonly createdAt: string;
   readonly requestId: number;
+}
+
+/** 대기열 한 페이지의 행. 표시용 `created_at`(`Date`)과 키셋용 문자열을 함께 싣는다. */
+export interface RegistrationRequestPageRow extends RegistrationRequestRow {
+  /** `created_at`의 마이크로초 UTC 문자열 — 다음 쪽 커서가 이 값을 그대로 싣는다. */
+  readonly created_at_cursor: string;
 }
 
 /**
@@ -124,6 +137,7 @@ export interface RegistrationRequestPosition {
  *
  * `created_at` 하나로 자르지 않는다 — 같은 밀리초에 들어온 요청이 페이지
  * 경계에 걸리면 빠지거나 겹친다. 두 키를 함께 비교한다 (`API-ADM-005` 선례).
+ * 비교하는 시각도 잘리지 않아야 한다 — 키셋 시각은 문자열로 받아 `::timestamptz`로 되돌린다.
  *
  * @param limit 호출부가 `limit + 1`을 주어 다음 페이지 유무를 판정한다.
  */
@@ -132,7 +146,7 @@ export async function listRequestPage(
   filter: RegistrationRequestFilter,
   limit: number,
   after?: RegistrationRequestPosition,
-): Promise<readonly RegistrationRequestRow[]> {
+): Promise<readonly RegistrationRequestPageRow[]> {
   const conditions: string[] = [];
   const params: unknown[] = [];
   const bind = (value: unknown): string => {
@@ -145,12 +159,14 @@ export async function listRequestPage(
   if (filter.name !== undefined) conditions.push(`repository_name = ${bind(filter.name)}`);
   if (filter.requestedBy !== undefined) conditions.push(`requested_by = ${bind(filter.requestedBy)}`);
   if (after !== undefined) {
-    conditions.push(`(created_at, request_id) < (${bind(after.createdAt)}, ${bind(after.requestId)})`);
+    // `::timestamptz` 캐스팅이 문자열을 마이크로초까지 되돌린다.
+    conditions.push(`(created_at, request_id) < (${bind(after.createdAt)}::timestamptz, ${bind(after.requestId)})`);
   }
 
   const where = conditions.length === 0 ? '' : `WHERE ${conditions.join(' AND ')}`;
-  const result = await db.query<RegistrationRequestRow>(
-    `SELECT * FROM repository_registration_request
+  const result = await db.query<RegistrationRequestPageRow>(
+    `SELECT *, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.USZ') AS created_at_cursor
+       FROM repository_registration_request
       ${where}
       ORDER BY created_at DESC, request_id DESC
       LIMIT ${bind(limit)}`,
