@@ -1,6 +1,8 @@
 # PR Search 데이터 모델
 
-> 상태: review | 버전: v0.33 | 갱신일: 2026-09-25
+> 상태: review | 버전: v0.34 | 갱신일: 2026-09-27
+
+CR-126 / FR-REL-006 AC-6 (DEV-773): 새 표·새 열·마이그레이션은 없다. `pull_request_stack`에 `origin = 'imported'` 행을 만드는 방아쇠가 하나 는다 — 링크 워커의 이벤트 소비자가 판정 직전에 그 PR 하나의 옛 스택 간선을 가져오기와 같은 규칙으로 옮긴다.
 
 CR-121 / FR-ING-008 AC-11, FR-REL-006 AC-6, OD-017: 마이그레이션 037이 표 둘을 더한다. **`pull_request_stack`(ENT-REL-003)은 스택 관계의 정본이다** — 성립 조건이 현재 스냅숏에서 사라진 뒤에도(상위 PR 병합·분기 변경) 「그런 의존이 있었다」는 사실(FR-REL-006 AC-3, DEV-238)을 PostgreSQL에 남긴다. 지금까지 그 사실은 Elasticsearch 간선에만 있어 ADR-004를 어겼고, prs-links 재색인이 성공하면 조용히 사라졌다. `stacks_on` 간선은 이제 이 표에서 파생한다. **`reindex_link_pending`은 엔티티가 아니라 재색인 잡의 작업 대기열이다** — 간선의 부분 갱신이 새 인덱스에서 간선을 찾지 못했거나 파생이 불완전했던 소유 source를 잡에 묶어 두고, 잡이 전환 전에 다시 파생해 비운다. 「재색인 상태 표를 늘리지 않는다」(DEV-299)의 예외다(DEV-772). 색인 필드는 바뀌지 않는다. Elasticsearch는 여전히 PostgreSQL만으로 재구축된다(ADR-004) — 이 CR로 스택의 해제 이력이 그 범위에 들어왔다.
 
@@ -238,7 +240,7 @@ CREATE INDEX pull_request_stack_parent_idx ON pull_request_stack (repository_id,
 - **규칙 셋.** (1) 성립한 적 있는 관계만 행이 된다 — 한 번도 성립하지 않은 후보에 해제 상태를 미리 두지 않는다(DEV-238). (2) 행을 지우지 않는다 — 성립하지 않게 되면 `detached = true`, 다시 성립하면 같은 행이 `false`로 돌아온다. (3) `evidence`·`edge_created_at`은 성립해 있는 동안만 파생할 때마다 지금 값으로 쓰고, 해제되면 그 값에서 멈춘다 — 그래서 같은 정본에서 평시 파생과 재구축이 같은 간선 문서를 낸다.
 - **하위 PR 하나의 행을 한 트랜잭션에서 맞춘다**(`reconcileStacks`) — 지금 성립하는 관계는 upsert하고 그 밖의 기존 행은 해제한다. 결과는 그 하위 PR의 행 전부이고, 간선은 그 행 전부를 전체 쓰기(`writeDerivedLinks`)로 낸다. 부분 갱신은 없다.
 - **역방향 재평가**(상위 PR의 병합·분기 변경 → 하위 PR)는 `pull_request_stack_parent_idx`로 하위 PR을 찾는다. 전에는 서비스 색인의 간선으로 찾았다.
-- **`origin = 'imported'`** 행은 배포 전부터 서비스 인덱스에만 있던 스택 간선을 일회성 명령(`prsctl links import-stacks`)이 옮긴 것이다. 가져오기는 이미 있는 행을 덮지 않는다(`ON CONFLICT DO NOTHING`). 가져온 관계가 다시 성립하면 파생 행(`derived`)이 된다.
+- **`origin = 'imported'`** 행은 배포 전부터 서비스 인덱스에만 있던 스택 간선을 일회성 명령(`prsctl links import-stacks`)이 옮긴 것이다. 가져오기 전에 PR 이벤트를 받으면 링크 워커의 이벤트 소비자가 그 PR 하나의 옛 간선을 같은 규칙으로 먼저 옮긴 것일 수도 있다(CR-126, DEV-773 — 전환기 보완). 가져오기는 이미 있는 행을 덮지 않는다(`ON CONFLICT DO NOTHING`). 가져온 관계가 다시 성립하면 파생 행(`derived`)이 된다.
 
 #### `reindex_link_pending` — prs-links 재색인의 미처리 source 작업 (CR-121, 마이그레이션 037)
 

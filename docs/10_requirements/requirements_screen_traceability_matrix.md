@@ -1,11 +1,11 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.20 | 갱신일: 2026-09-25
+> 상태: review | 버전: v1.21 | 갱신일: 2026-09-27
 
 | 추가 요구사항 (CR-121) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |
 | FR-ING-008 AC-11 (간선 재구축의 미처리 기록·회수 · 불완전 파생 · 기대 간선 대조 · 전환 직전 재확인) | A-003(재색인 잡 진행·전환 전 검증 — 사유가 잡 오류에 남는다) — 렌더링 변경 없음 | WP-104, `packages/es/src/links.ts`(`sendLinkBulk`의 항목 판정, `findReferenceTargets`의 항목 오류), `packages/es/src/write-targets.ts`(`reportShadowPending`), `packages/db/src/reindex-fence.ts`(미처리 분류)·`repositories/reindex.ts`(`reindex_link_pending`), `apps/pipeline-worker/src/link.ts`(`createLinkRebuildPort`·`planReferenceLinks`·불완전 source·소유 source 대조), `apps/pipeline-worker/src/reindex.ts`(`recoverLinkPending`·`verifyLinkEdges`·전환 울타리의 재확인), `apps/pipeline-worker/src/index.ts`(운영 배선) | 통합(`apps/pipeline-worker/integration/jobs/links-reindex-completeness.test.ts` 21건, `packages/db/integration/link-stack-state.test.ts` 10건), 단위(`packages/es/src/links-bulk.test.ts` 14건), 변이(원장 6.112장) |
-| FR-REL-006 AC-6 (스택 정본 · 해제 이력 보존 · 일회성 가져오기) | W-002(관계 — 해제 표시는 간선의 `detached`를 그대로 읽는다) — 렌더링 변경 없음 | WP-104, 마이그레이션 037 `pull_request_stack`(ENT-REL-003), `packages/db/src/repositories/pr-stack.ts`, `apps/pipeline-worker/src/relations.ts`(정본 행의 전체 쓰기, 역방향 재평가), `apps/pipeline-worker/src/stack-import.ts`·`link-repair-command.ts`(`prsctl links import-stacks`) | 통합(`links-reindex-completeness.test.ts`의 해제·retarget·가져오기 사례, `link-stack-state.test.ts`, `apps/pipeline-worker/integration/worker/relations.test.ts`), 변이(원장 6.112장) |
+| FR-REL-006 AC-6 (스택 정본 · 해제 이력 보존 · 일회성 가져오기 · 가져오기 전 이벤트의 전환기 보완(CR-126)) | W-002(관계 — 해제 표시는 간선의 `detached`를 그대로 읽는다) — 렌더링 변경 없음 | WP-104, 마이그레이션 037 `pull_request_stack`(ENT-REL-003), `packages/db/src/repositories/pr-stack.ts`, `apps/pipeline-worker/src/relations.ts`(정본 행의 전체 쓰기, 역방향 재평가), `apps/pipeline-worker/src/stack-import.ts`·`link-repair-command.ts`(`prsctl links import-stacks`). WP-107 — `relations.ts`의 판정 전 옮기기(하위·상위 범위), `stack-import.ts`의 범위·일부 읽기 판정, `index.ts`(이벤트 소비자만) | 통합(`links-reindex-completeness.test.ts`의 해제·retarget·가져오기 사례, `link-stack-state.test.ts`, `apps/pipeline-worker/integration/worker/relations.test.ts`, `apps/pipeline-worker/integration/worker/stack-upgrade-transition.test.ts`), 단위(`apps/pipeline-worker/src/stack-import.test.ts`), 회귀(`regression/cr126-stack-transition-wiring.test.ts`), 변이(원장 6.112장·6.117장) |
 
 | 추가 요구사항 (CR-119) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |

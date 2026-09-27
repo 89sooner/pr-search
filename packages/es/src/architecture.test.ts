@@ -96,12 +96,14 @@ const UNSCOPED_ALLOWLIST: readonly {
     file: 'apps/pipeline-worker/src/stack-import.ts',
     kind: 'no_requester',
     why:
-      'CR-121 배포 전 스택 간선의 일회성 가져오기 (WP-104, FR-REL-006 AC-6, OD-017). 방아쇠가 운영자의 ' +
-      '`prsctl links import-stacks` 명령이라 **요청자가 없다** — 호스트에서 한 번 실행되는 배치이고, ' +
-      '어떤 HTTP 요청도 이 경로에 닿지 않는다. 서비스 `prs-links`에서 운영자가 인자로 지목한 저장소 하나의 ' +
-      '`stacks_on` 간선을 그 저장소의 routing과 `repository_id` 단일 term으로 읽으며, 읽는 필드는 끝점·근거·시각·' +
+      'CR-121 배포 전 스택 간선의 일회성 가져오기 (WP-104, FR-REL-006 AC-6, OD-017)와 업그레이드 직후 이벤트의 ' +
+      '전환기 보완 (WP-107 / CR-126, DEV-773). 방아쇠는 둘이고 **둘 다 요청자가 없다** — 운영자의 ' +
+      '`prsctl links import-stacks` 명령(호스트에서 한 번 실행되는 배치)과 링크 워커의 이벤트 소비자(스트림에서 ' +
+      '받은 정본 변경 이벤트)다. 어떤 HTTP 요청도 이 경로에 닿지 않는다. 서비스 `prs-links`에서 저장소 하나의 ' +
+      '`stacks_on` 간선을 그 저장소의 routing과 `repository_id` 단일 term으로 읽고, 이벤트 경로는 거기에 PR 하나의 ' +
+      '끝점 term(`from_id` 또는 `to_id`) 하나를 더해 좁힌다. 읽는 필드는 끝점·근거·시각·' +
       '해제 여부(`from_id`·`to_id`·`to_repository_id`·`repository_id`·`evidence`·`created_at`·`detached`)뿐이다. ' +
-      '결과는 스택 정본(`pull_request_stack`)과 건수 출력으로만 나가고 응답 본문이 되지 않는다. 이 파일에 ' +
+      '결과는 스택 정본(`pull_request_stack`)과 건수 출력·로그로만 나가고 응답 본문이 되지 않는다. 이 파일에 ' +
       '**사용자 대면 조회를 넣지 않는다** — 넣으면 이 사유를 그대로 물려받고 검사기가 침묵한다 ' +
       '(DEV-265가 links.ts에서 배운 것).',
   },

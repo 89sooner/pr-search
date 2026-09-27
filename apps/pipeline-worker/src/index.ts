@@ -1085,7 +1085,11 @@ if (roles.includes('link')) {
     },
   };
 
-  linkSubscription = await startLinkWorker(linkDeps);
+  /*
+   * **이벤트 소비자만** 서비스 인덱스에만 있는 옛 스택 간선을 판정 전에 정본으로 옮긴다 (CR-126, DEV-773 —
+   * 업그레이드 직후의 전환기 보완). 그 PR 하나의 간선만 옮기므로 이벤트마다 저장소 전체를 훑지 않는다.
+   */
+  linkSubscription = await startLinkWorker({ ...linkDeps, servingStackImport: true });
 
   /*
    * JOB-REL-006 전량 재파생 (DEV-221).
@@ -1093,6 +1097,9 @@ if (roles.includes('link')) {
    * Redis stream backlog는 마이그레이션 보장이 아니다 — retention이 정본이 아니고,
    * WP-029 이전의 직접 푸시 커밋에는 애초에 `EVT-ING-003`이 없었다. 이 러너가
    * 없으면 배포 뒤 "새 이벤트부터만 관계가 생긴다"가 운영 구멍으로 남는다.
+   *
+   * 스택의 전환기 보완은 **켜지 않는다** (CR-126) — 저장소 전체의 이전은 `prsctl links import-stacks`의
+   * 일이고, 재색인은 옮기지 않은 간선이 남으면 전환하지 않는다(FR-REL-006 AC-6).
    */
   referenceRebuildRunner = startReferenceRebuildRunner(linkDeps);
 }

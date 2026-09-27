@@ -1,10 +1,14 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.119 | 갱신일: 2026-09-27
+> 상태: review | 버전: v6.121 | 갱신일: 2026-09-27
 
-## CR-125 / WP-106 — 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 (2026-09-27, 병합 전)
+## CR-126 / WP-107 — 업그레이드 직후 옛 스택 관계의 전환기 보완 (2026-09-27, 병합 전)
 
-20차 둘째 항목(DEV-777). 등록 검토 요청 대기열(API-ADM-009)과 감사 기록(API-ADM-005)의 커서가 키셋 시각을 JavaScript `Date`의 `toISOString()`(밀리초)으로 실어, 경계 행과 같은 밀리초 안의 더 이른 행이 다음 쪽에서 빠졌다. 감사 기록은 코드 판독으로만 짐작되던 것을 이번에 실제 PostgreSQL에서 처음 재현했다. 조회가 PostgreSQL의 마이크로초 UTC 문자열을 함께 읽고 커서(판 2)가 그 문자열을 그대로 싣고 되돌려 `::timestamptz`로 비교한다 — 저장된 검색과 같은 방식이다. 판 1 커서는 이어 읽지 않고 `CURSOR_INVALID`에 옛 판 사유를 실어 거절하며, 화면은 그 사유로 첫 페이지 재조회를 안내한다. 격리 compose의 실제 관리자 화면에서 수정 전 누락(60건 중 58건, 120건 중 118건)과 수정 뒤 전량(정렬 순서 그대로 한 번씩)을 확인했다. 기록은 6.116장.
+20차 셋째 항목(DEV-773). CR-121 전 판의 스택은 서비스 인덱스에만 있어, 배포와 `prsctl links import-stacks` 사이에는 정본만 보는 파생이 상위 PR 병합·종료·head 변경이나 하위 PR retarget을 해제에 반영하지 못했다. 링크 워커의 이벤트 소비자가 스택을 판정하기 직전에 그 PR 하나의 옛 간선을 가져오기와 같은 검증·같은 저장(이미 있는 행은 덮지 않는다)으로 옮기고, 지금 스냅숏으로 판정한다. JOB-REL-006 재파생과 재색인은 옮기지 않으므로 전체 이전은 여전히 가져오기이고, 옮기지 않은 해제 이력이 남으면 재색인은 전환하지 않는다. 격리 compose에서 실제 `0.1.0-pilot.18`의 옛 간선으로 수정 전(`0.1.0-pilot.19`)과 수정 뒤를 같은 스냅숏에서 비교했다. 기록은 6.117장.
+
+## CR-125 / WP-106 — 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 (2026-09-27, main `3dd6d8c` 병합)
+
+20차 둘째 항목(DEV-777). 등록 검토 요청 대기열(API-ADM-009)과 감사 기록(API-ADM-005)의 커서가 키셋 시각을 JavaScript `Date`의 `toISOString()`(밀리초)으로 실어, 경계 행과 같은 밀리초 안의 더 이른 행이 다음 쪽에서 빠졌다. 감사 기록은 코드 판독으로만 짐작되던 것을 이번에 실제 PostgreSQL에서 처음 재현했다. 조회가 PostgreSQL의 마이크로초 UTC 문자열을 함께 읽고 커서(판 2)가 그 문자열을 그대로 싣고 되돌려 `::timestamptz`로 비교한다 — 저장된 검색과 같은 방식이다. 판 1 커서는 이어 읽지 않고 `CURSOR_INVALID`에 옛 판 사유를 실어 거절하며, 화면은 그 사유로 첫 페이지 재조회를 안내한다. 격리 compose의 실제 관리자 화면에서 수정 전 누락(60건 중 58건, 120건 중 118건)과 수정 뒤 전량(정렬 순서 그대로 한 번씩)을 확인했다. PR #244로 main `3dd6d8c`에 병합했고 병합 커밋의 main CI(run 36289156333)는 success다. 기록은 6.116장.
 
 ## CR-124 / WP-105 — 사내 GHE 전체 URL 참조: 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 (2026-09-27, main `81b147b` 병합)
 
@@ -308,7 +312,8 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-106 | 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 | 구현 결함 수정 (CR-125) | in_progress | 에이전트 | 브랜치 `fix/cr125-admin-list-cursor` (병합 전) | 6.116장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
+| WP-107 | 업그레이드 직후 옛 스택 관계의 전환기 보완 | 구현 결함 수정 (CR-126) | in_progress | 에이전트 | 브랜치 `fix/cr126-stack-upgrade-reeval` (병합 전) | 6.117장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
+| WP-106 | 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 | 구현 결함 수정 (CR-125) | done | 에이전트 | main `3dd6d8c`(PR #244 squash 병합, 2026-09-27; head `02cdc5c`) | 6.116장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-105 | 사내 GHE 전체 URL 참조 — 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 | 배포 편차 수정 (CR-124) | done | 에이전트 | main `81b147b`(PR #243 squash 병합, 2026-09-27; head `5e32287`) | 6.115장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-104 | prs-links 재색인의 부분 갱신 경합과 해제된 스택 이력 | 설계 결함 수정 (CR-121) | done | 에이전트 | main `df3d8ef`(PR #237 squash 병합, 2026-09-25; head `6235bf7`) | 6.112장 | 사내 배포 SHA NOT VERIFIED, 가져오기·내부망 적용 NOT RUN |
 | WP-103 | prs-commits 재색인의 기대 집합과 메타데이터 복원 | 설계 결함 수정 (CR-119) | done | 에이전트 | main `e94cb4f`(PR #235 squash 병합, 2026-09-25; head `d65928c`) | 6.111장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
@@ -415,7 +420,8 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
-| FR-ING-009 AC-11 · FR-AUTH-004 (API-ADM-009·API-ADM-005의 키셋 순회 — 키셋 시각은 PostgreSQL의 마이크로초 문자열 그대로, 커서 판 2, 판 1은 `CURSOR_INVALID` + 옛 판 사유, 화면의 첫 페이지 재조회 안내) | WP-106 | `packages/db/src/repositories/{registration-request,audit}.ts`(키셋 문자열 열·`::timestamptz`), `apps/search-api/src/cursor/envelope.ts`(`CursorOutdatedError`·`KEYSET_TIME_PATTERN`), `apps/search-api/src/{ops/registration-request-cursor,audit/cursor}.ts`(판 2), `apps/search-api/src/{ops,audit}/routes.ts`(옛 판 `detail`), `apps/web/lib/cursor-failure.ts`, `apps/web/components/{OpsRepositoriesView,AuditView,CursorPager}.tsx` | `apps/search-api/integration/admin/admin-list-cursor-precision.test.ts`(17건), `apps/search-api/src/ops/registration-request-cursor.test.ts`(10건), `apps/search-api/src/audit/cursor.test.ts`(+4건), `apps/web/lib/cursor-failure.test.ts`(7건), `apps/web/lib/audit.test.ts`(+1건), `apps/web/e2e/{audit,ops-request-queue}.spec.ts`(+1·2건) | **구현 — 병합 전 (CR-125, 6.116장)** |
+| FR-REL-006 AC-3 · AC-6 (업그레이드 직후 가져오기 전의 전환기 보완 — 이벤트 소비자가 스택 판정 직전에 그 PR 하나의 옛 간선을 가져오기와 같은 검증·같은 저장으로 옮긴다, 하위·상위 범위, 일부 읽기는 실패, JOB-REL-006·재색인은 옮기지 않는다) | WP-107 | `apps/pipeline-worker/src/stack-import.ts`(범위·일부 읽기 판정), `apps/pipeline-worker/src/relations.ts`(`importLegacyStacks` — `reconcileStacks`·`listChildrenOf` 앞), `apps/pipeline-worker/src/link.ts`(`LinkDeps.servingStackImport`), `apps/pipeline-worker/src/index.ts`(이벤트 소비자만) | `apps/pipeline-worker/integration/worker/stack-upgrade-transition.test.ts`(15건), `apps/pipeline-worker/src/stack-import.test.ts`(8건), `regression/cr126-stack-transition-wiring.test.ts`(4건) | **구현 — 병합 전 (CR-126, 6.117장)** |
+| FR-ING-009 AC-11 · FR-AUTH-004 (API-ADM-009·API-ADM-005의 키셋 순회 — 키셋 시각은 PostgreSQL의 마이크로초 문자열 그대로, 커서 판 2, 판 1은 `CURSOR_INVALID` + 옛 판 사유, 화면의 첫 페이지 재조회 안내) | WP-106 | `packages/db/src/repositories/{registration-request,audit}.ts`(키셋 문자열 열·`::timestamptz`), `apps/search-api/src/cursor/envelope.ts`(`CursorOutdatedError`·`KEYSET_TIME_PATTERN`), `apps/search-api/src/{ops/registration-request-cursor,audit/cursor}.ts`(판 2), `apps/search-api/src/{ops,audit}/routes.ts`(옛 판 `detail`), `apps/web/lib/cursor-failure.ts`, `apps/web/components/{OpsRepositoriesView,AuditView,CursorPager}.tsx` | `apps/search-api/integration/admin/admin-list-cursor-precision.test.ts`(17건), `apps/search-api/src/ops/registration-request-cursor.test.ts`(10건), `apps/search-api/src/audit/cursor.test.ts`(+4건), `apps/web/lib/cursor-failure.test.ts`(7건), `apps/web/lib/audit.test.ts`(+1건), `apps/web/e2e/{audit,ops-request-queue}.spec.ts`(+1·2건) | **완료 — main `3dd6d8c` (CR-125, 6.116장)** |
 | FR-REL-003 AC-1 · THR-036 (GHE PR·커밋 URL의 승인 호스트는 배포 설정 `GHE_BASE_URL`의 호스트 — 비면 URL 참조 없음, 평시 파생과 재색인이 같은 해석 함수, 단일 호스트의 `worker-link`·`worker-batch`는 주소만 받는다) | WP-105 | `deploy/single-host/compose.yml`(두 역할의 `GHE_BASE_URL`), `packages/github/src/config.ts`(`resolveReferenceHost`), `apps/pipeline-worker/src/index.ts`(`referenceHostFor` — link·batch 두 파생 경로와 기동 로그) | `packages/domain/src/link/reference.test.ts`(+11건), `packages/github/src/config.test.ts`(+7건), `regression/cr124-ghe-reference-host.test.ts`(6건, 실제 `docker compose config`), `apps/pipeline-worker/integration/worker/link.test.ts`(+5건) | **완료 — main `81b147b` (CR-124, 6.115장)** |
 | FR-REL-003 AC-3 (정확한 키도 대상 문서가 서비스 색인에 있을 때만 해결 — 재구축·전환 전 검증과 같은 판정) | 없음 (CR-123) | `packages/es/src/links.ts`(`isReferenceTargetIndexed` — 대상 문서 한 건의 실시간 존재 확인), `apps/pipeline-worker/src/link.ts`(`resolveReferencesTo` — 미해결 정확한 키 후보가 있을 때만 확인) | `apps/pipeline-worker/integration/jobs/links-reindex-completeness.test.ts`(+2건 — 문서가 사라진 커밋 참조의 재색인 전환, 평시 해결 갱신의 색인 전·후), `apps/pipeline-worker/integration/worker/link.test.ts`(대역 셋의 `exists` 위임) | **완료 — main `646486e` (CR-123, 6.113장)** |
 | FR-SRCH-002 AC-6 · FR-REL-006 AC-6 (`prsctl links apply`·`refetch`·`import-stacks`가 인자 `--actor`로 행위 주체를 받는다) | 없음 (CR-122) | `apps/pipeline-worker/src/link-repair-command.ts`(`resolveActor` — 인자가 먼저, `deps.actor`는 대체값) | `links-reindex-completeness.test.ts`(+3건 — 인자만으로 실행·잡과 감사의 주체, refetch의 자격 검사 도달, 인자·주입 모두 없으면 거절) | **완료 — main `646486e` (CR-122, 6.113장)** |
@@ -559,11 +565,11 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | DEV-770 | 2026-09-25 | **`runReferenceRebuild`가 파생이 불완전한 source를 끝난 것으로 다뤘다.** `handleSourceReady`의 `complete=false`를 보지 않고 커서를 넘겨, 쓰기 실패로 끝나지 못한 source가 재색인의 정본 스캔에서 완결로 승격됐다 | FR-ING-008 AC-11 / WP-035 · WP-104 | 기존 결함 | CR-121 | resolved (2026-09-25) — 불완전한 source를 `derive_incomplete` 미처리로 남기고 전환 전에 회수한다. 회수하지 못하면 전환하지 않는다 (6.112장) |
 | DEV-771 | 2026-09-25 | **prs-links의 전환 전 검증이 간선을 대조하지 않았다.** 재구축 포트가 처리한 source 수만 돌려주어 기대 건수가 없었고(`expectedDocuments=null`), 검증은 간선의 존재도 내용도 보지 않았다. 처리한 source 수로 바꿀 수도 없다 — source 하나가 간선을 0개도 여럿도 만든다 | FR-ING-008 AC-11 / WP-035 · WP-104 | 범위 공백 | CR-121 | resolved (2026-09-25) — 검증이 재구축과 같은 계획 함수로 기대 간선을 계산해 `link_id`마다 대조한다(누락·잉여·필드 불일치·고아·남은 미처리·계획 불가·가져오지 않은 스택). 검증은 읽기만 한다 (6.112장) |
 | DEV-772 | 2026-09-25 | **재색인 잡의 미처리 source 작업을 새 표(`reindex_link_pending`)에 둔다 — DEV-299(재색인 상태 표를 늘리지 않는다)의 예외.** 미처리를 메모리에 두면 잡이 멈췄다 재개될 때 잃고, 잡 행의 `progress`에 담으면 크기가 정해지지 않는 목록 때문에 쓰기마다 잡 행이 통째로 커지고 다시 쓰인다 | FR-ING-008 AC-11 / WP-035 · WP-104 | 기술 제약 | CR-121 | resolved (2026-09-25) — 예외로 정했다. 잡의 수명과 단계는 여전히 `job` 행이 정하고, 대기열 행은 `job_id`에 묶여 세대로 회수되며, 잡이 끝나면 비운다. 멈춘 잡의 행은 재개 뒤 회수를 위해 남긴다 (6.112장) |
-| DEV-773 | 2026-09-25 | **배포부터 스택 가져오기까지는 배포 전부터 성립해 있던 스택을 역방향 재평가가 찾지 못한다.** 역방향 재평가(상위 PR 변경 → 하위 PR)가 이제 `pull_request_stack`만 읽는데, 배포 전 관계는 가져오기 전에는 행이 없다. 그 사이 상위 PR이 병합되면 서비스 간선의 `detached`가 바뀌지 않고, 가져오기는 그 값을 그대로 옮긴다 | FR-REL-006 AC-3·AC-6 / WP-104 | 기술 제약 | CR-121 | open (운영 절차로 좁힘) — 하위 PR이 다시 파생되면(하위 PR 이벤트, 또는 prs-links 재색인의 재구축) 정본 행이 지금 성립 여부에 맞춰지고 간선이 고쳐진다. RUNBOOK 7.I는 배포 직후, 첫 간선 재색인 전에 가져오기를 돌리게 한다 (6.112장) |
+| DEV-773 | 2026-09-25 | **배포부터 스택 가져오기까지는 배포 전부터 성립해 있던 스택을 역방향 재평가가 찾지 못한다.** 역방향 재평가(상위 PR 변경 → 하위 PR)가 이제 `pull_request_stack`만 읽는데, 배포 전 관계는 가져오기 전에는 행이 없다. 그 사이 상위 PR이 병합되면 서비스 간선의 `detached`가 바뀌지 않고, 가져오기는 그 값을 그대로 옮긴다 | FR-REL-006 AC-3·AC-6 / WP-104 · WP-107 | 기술 제약 | CR-121 · CR-126 | **resolved (CR-126, 병합 전)** — 링크 워커의 이벤트 소비자가 스택을 판정하기 직전에 그 PR 하나의 옛 간선을 가져오기와 같은 검증·같은 저장으로 옮긴다(하위 PR은 나가는 간선, 역방향 재평가의 상위 PR은 들어오는 간선). 격리 compose에서 실제 `0.1.0-pilot.18`의 옛 간선으로, 가져오기 없이 상위 PR 병합·종료·head 변경과 하위 PR retarget이 해제에 반영되고 옮기지 않은 해제 이력은 여전히 재색인을 막음을 확인했다. 저장소 전체의 이전은 여전히 `import-stacks`다 (6.112장·6.117장) |
 | DEV-774 | 2026-09-26 | **`prsctl links apply`·`refetch`·`import-stacks`가 번들에서 늘 거절됐다.** link-repair 명령의 `parse`는 `--actor`를 읽어 두지만 `resolveActor`는 `deps.actor`만 봤고, CLI 진입점(`link-repair-cli.ts`)은 그 값을 채우지 않는다. `prsctl`은 행위 주체를 인자로 넘긴다. CR-116(pilot.18)부터 같은 배선이라 사내에서 7.G의 `apply`·`refetch`는 실행될 수 없었고, 통합 시험은 `deps.actor`를 직접 넣어 지나쳤다. 격리 업그레이드 리허설의 RUNBOOK 7.I 3번에서 드러났다 | FR-SRCH-002 AC-6 · FR-REL-006 AC-6 / RB-29 | 구현 결함 | CR-122 | resolved — 인자가 먼저이고 주입은 대체값이다. 인자로만 넘기는 시험 3건(변이로 확인), 수정 후보 번들의 실제 `prsctl`로 가져오기·apply 실행 확인 (6.113장) |
 | DEV-775 | 2026-09-26 | **해결 갱신이 색인되지 않은 대상에 정확한 참조를 붙여, prs-links 재색인의 새 인덱스와 전환 전 검증이 갈렸다.** `resolveReferencesTo`는 불린 대상이 곧 있다고 여겨 `pr:N`·`commit:<40자>`를 붙였다. 재색인은 source를 정본 스냅숏에서 읽으므로 서비스 인덱스에 문서가 없는 커밋(생성 근거 없음 — DEV-759, 손으로 전환한 인덱스의 누락)에도 해결을 붙였고, 검증의 계획(`findReferenceTargets`)은 미해결이라 전환이 매번 막혔다. 재구축의 이중 쓰기로 서비스 인덱스에도 문서 없는 대상을 가리키는 해결이 들어갔다. 격리 업그레이드 리허설에서 두 사례로 재현했다 | FR-REL-003 AC-3 · FR-ING-008 AC-11 / JOB-REL-005 | 구현 결함 | CR-123 | resolved — 대상 문서의 실시간 존재 확인 뒤에만 붙인다. 코드만으로는 prs-links를 먼저 재색인하면 그 참조가 미해결로 굳으므로 RUNBOOK이 prs-links 재색인을 prs-commits 재색인 뒤로 옮겼다(7.I 4번·7.J) (6.113장) |
 | DEV-776 | 2026-09-26 | **단일 호스트 compose의 `worker-link`·`worker-batch`가 `GHE_BASE_URL`을 받지 않아 GHE URL 참조를 추출하지 못한다.** 두 역할은 `x-app-env`만 받아 `resolveGitHubConfig().baseUrl`이 기본값(`https://ghe.example.com`)이 되고, 참조 추출의 승인 호스트가 실제 GHE와 달라진다. Kubernetes 형상은 configMap으로 받는다(`deploy/k8s/pipeline-worker-link.yaml`의 THR-036 주석). 평시 파생과 재구축이 같은 설정이라 둘 사이의 불일치는 없다. 격리 리허설에서 가짜 GHE 호스트의 커밋 URL을 적은 PR이 참조 0건으로 파생돼 드러났다 | FR-REL-003 AC-1 / THR-036 / WP-105 | 배포 편차 | CR-124 | **resolved (CR-124, main `81b147b`)** — 두 역할에 주소 한 줄씩(`*ghe-env` 제외), 승인 호스트는 `resolveReferenceHost`가 배포 설정에서만 읽고 비면 URL 참조를 만들지 않는다. 격리 compose에서 수정 전 0건 재현, 수정 뒤 새 이벤트·prs-links 재색인의 URL 참조와 전환 전 검증 통과를 확인했다. 기존 자료는 prs-links 재색인(RUNBOOK 7.K 5번)으로 반영한다 (6.115장) |
-| DEV-777 | 2026-09-26 | **운영자 등록 요청 대기열(API-ADM-009)의 커서가 `created_at`을 밀리초로 잘라 담아, 같은 밀리초에 들어온 요청이 다음 쪽에서 빠진다.** `created_at`은 `now()` 기본값의 마이크로초 열인데, 커서는 node-postgres가 돌려준 `Date`를 `toISOString()`(밀리초)으로 싣고 키셋 조건 `(created_at, request_id) < (커서)`가 그 잘린 값과 비교한다. 경계 행과 같은 밀리초의 더 이른 요청은 튜플 비교에서 커서보다 큰 값이 되어 둘째 쪽에서 사라진다. 저장된 검색(`saved-search.ts`)은 마이크로초 문자열과 `::timestamptz`로 이미 바르게 한다. PR #240의 CI integration 첫 시도가 `registration-request-lifecycle.test.ts`의 커서 시험 하나로 실패해 드러났다(`app.inject`로 연달아 만든 두 요청이 같은 밀리초에 들어간 경우). **감사 기록 커서(API-ADM-005)도 같은 결함이었다** — 발견 때는 코드 판독뿐이었고, CR-125가 실제 PostgreSQL에서 재현했다(SQL로 넣은 마이크로초 시각, 페이지 크기 1·2·3에서 두 목록 모두 누락) | FR-ING-009 AC-11 · FR-AUTH-004 / API-ADM-009 · API-ADM-005 / WP-106 | 구현 결함 | CR-125 | **resolved (CR-125, 병합 전)** — 조회가 마이크로초 UTC 문자열을 함께 읽고, 커서 판 2가 그 문자열을 그대로 싣고 되돌려 `::timestamptz`로 비교한다. 판 1은 `CURSOR_INVALID` + `detail.reason = cursor_version_outdated`로 거절하고 화면이 첫 페이지 재조회를 안내한다. 격리 PostgreSQL 통합 시험과 격리 compose의 실제 관리자 화면에서 모든 항목이 정확히 한 번 나옴을 확인했다 (6.116장) |
+| DEV-777 | 2026-09-26 | **운영자 등록 요청 대기열(API-ADM-009)의 커서가 `created_at`을 밀리초로 잘라 담아, 같은 밀리초에 들어온 요청이 다음 쪽에서 빠진다.** `created_at`은 `now()` 기본값의 마이크로초 열인데, 커서는 node-postgres가 돌려준 `Date`를 `toISOString()`(밀리초)으로 싣고 키셋 조건 `(created_at, request_id) < (커서)`가 그 잘린 값과 비교한다. 경계 행과 같은 밀리초의 더 이른 요청은 튜플 비교에서 커서보다 큰 값이 되어 둘째 쪽에서 사라진다. 저장된 검색(`saved-search.ts`)은 마이크로초 문자열과 `::timestamptz`로 이미 바르게 한다. PR #240의 CI integration 첫 시도가 `registration-request-lifecycle.test.ts`의 커서 시험 하나로 실패해 드러났다(`app.inject`로 연달아 만든 두 요청이 같은 밀리초에 들어간 경우). **감사 기록 커서(API-ADM-005)도 같은 결함이었다** — 발견 때는 코드 판독뿐이었고, CR-125가 실제 PostgreSQL에서 재현했다(SQL로 넣은 마이크로초 시각, 페이지 크기 1·2·3에서 두 목록 모두 누락) | FR-ING-009 AC-11 · FR-AUTH-004 / API-ADM-009 · API-ADM-005 / WP-106 | 구현 결함 | CR-125 | **resolved (CR-125, main `3dd6d8c`)** — 조회가 마이크로초 UTC 문자열을 함께 읽고, 커서 판 2가 그 문자열을 그대로 싣고 되돌려 `::timestamptz`로 비교한다. 판 1은 `CURSOR_INVALID` + `detail.reason = cursor_version_outdated`로 거절하고 화면이 첫 페이지 재조회를 안내한다. 격리 PostgreSQL 통합 시험과 격리 compose의 실제 관리자 화면에서 모든 항목이 정확히 한 번 나옴을 확인했다 (6.116장) |
 | DEV-778 | 2026-09-27 | **참조 파생의 대상 조회가 직전에 색인된 대상을 보지 못해 간선이 미해결로 남는다.** 파생은 대상을 `findReferenceTargets`(`msearch` — 새로 고침 뒤에만 보이는 검색)로 찾고, 대상 쪽의 해결 갱신(`resolveReferencesTo`)은 대상이 색인될 때 한 번 돈다. 대상이 색인된 직후 새로 고침(운영 1초) 전에 참조하는 source가 파생되면, 파생은 대상을 못 보고 해결 갱신은 그 간선이 생기기 전에 이미 지나가 간선이 미해결로 남는다. 대상 쪽에 다음 이벤트가 오거나 prs-links 재색인·JOB-REL-006이 돌 때까지 그대로다. CR-124의 격리 검증에서 관찰했다 — 커밋 w3의 `pr:2`가 web#2 색인 1초 안에 파생돼 미해결로 남았고 재색인에서 해결됐다. 수정 전 판에서도 같은 모양이었다(web#1의 `x:acme/api:pr:1`) | FR-REL-003 AC-3 / JOB-REL-001·005 | 구현 결함 (기존) | 없음(후속) | open — CR-124 범위 밖이다. 정확한 키는 실시간 조회(문서 ID·routing의 `get`/`exists`)로 판정하면 창이 닫힌다. 그때까지는 prs-links 재색인이나 저장소의 JOB-REL-006이 바로잡는다 (6.115장) |
 | DEV-779 | 2026-09-27 | **운영자 세션의 첫 관계 조회가 503 `PERMISSION_UNAVAILABLE`이었는데 search-api 로그에 사유 줄이 없었다 — 원인 미확인.** CR-124의 격리 검증에서, 저장소 등록 전에 로그인하고 `me`를 부른 운영자 세션(그 사이 `prsctl role grant`와 업그레이드로 search-api 재생성)의 `GET /api/relations`가 503이었다. 그 요청 동안 가짜 GHE에는 그 사용자의 권한 조회가 없었고, RUNBOOK 2.C가 503 진단에 쓰라는 로그(「접근 범위를 조회하지 못했다」·「정본에 사용자 행이 없다」)도 없었다. 28초 뒤 같은 요청은 GHE 권한 조회 둘을 거쳐 200이었다 | FR-AUTH-002 / RUNBOOK 2.C | 관찰 (원인 미확인) | 없음(후속) | open — 재현하지 않았고 CR-124와 무관하다(참조 파생 밖의 인증 경로). 사내에서 같은 503을 보면 시각·사용자·요청 경로를 적어 보고한다 (6.115장) |
 | DEV-753 | 2026-09-23 | **백필로 들어온 병합된 PR의 머지 커밋 문서가 만들어지지 않았다.** `documents.ts`의 `buildCommitDocuments`가 머지 커밋 역할을 `pr.merged === true`로만 판정하는데 백필의 목록 끝점(`GET /pulls`)은 그 필드를 주지 않고 `merged_at`만 준다. 그런데 관계 채택은 같은 PR에 `merge` 근거를 세우므로 **정본은 연결을 말하는데 그 문서가 없다** — 관계 투영기가 `document_missing`으로 재시도하다 보류된다. 독립 검토가 잡았다 | FR-SRCH-002 AC-6 · FR-ING-005 / WP-008 · WP-019 · WP-101 | 기존 결함 | CR-116 | resolved (2026-09-23) — `derivePullRequestState`(CR-101)로 통일했다. PR 문서의 `state`·관계 채택·재색인이 모두 같은 판정을 쓴다 (6.107장) |
@@ -9179,3 +9185,75 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **문서 검증기.** `validate_srs_prd_env.py`를 기준선 `62cbf3c`(CR-124 병합 기록)와 작업 트리에 똑같이 돌려 오류·경고 목록을 비교했다 — 기본·`--strict` 두 모드 모두 목록이 같고(새 오류·경고 0건), 경로 참조 18건도 같다.
 
 **한계.** 사내 운영 화면은 NOT RUN이다. 응답 항목의 표시용 시각(`created_at`·`occurred_at`)은 그대로 밀리초 ISO다 — 화면 표시에는 충분하고 커서는 따로 싣는다. 업그레이드 전에 연 창은 옛 판 안내 대신 일반 오류를 보인다(새로고침으로 풀린다).
+
+**병합.** PR #244(base `main`, 최종 head `02cdc5c`)의 CI(run 36287560428)는 verify·integration 모두 첫 시도에 success였다. 사용자 승인(2026-09-27, 이 세션에서 PR #244에 대해 받았다)으로 squash 병합했다 — main `3dd6d8c`, 트리는 PR head와 같다(`812720f9…`). 병합 커밋의 main CI(run 36289156333)는 verify·integration 모두 첫 시도에 success다. 이 기록은 20차의 다음 항목(DEV-773)을 고치는 PR에 첫 커밋으로 실었다.
+
+### 6.117 업그레이드 직후 옛 스택 관계의 전환기 보완 (2026-09-27, CR-126 / WP-107, DEV-773)
+
+기준 main은 `3dd6d8c`(CR-125 병합)이고 worktree는 `/home/roqkf/pr-search-wt/cr126-stack-reeval`(브랜치 `fix/cr126-stack-upgrade-reeval`)다. 사용자 지시(2026-09-27, 20차)의 셋째 항목이다. 이 PR의 첫 커밋은 CR-125의 병합 기록이다(6.116장 「병합」).
+
+**재현 (수정 전 코드).** 새 통합 시험 `apps/pipeline-worker/integration/worker/stack-upgrade-transition.test.ts`는 CR-121 전 판이 남긴 모양 그대로 스택 간선을 서비스 인덱스에만 쓰고(정본 행 없음, 근거·시각은 지금 스냅숏과 다른 값) 이벤트를 흘린다. 수정 전 코드에서 15건 중 11건이 실패했다 — 상위 PR 병합·종료·head 변경, 하위 PR retarget, 이미 해제된 이력, 멱등, 끊김 뒤 재전달, 조회 실패 셋, 조회 범위. 통과한 넷은 수정 전에도 성립해야 하는 규칙(성립 중인 관계는 지금 값의 파생 행, 정본 우선, 이벤트 외 경로는 옮기지 않음)과, 순서에 따라 결과가 갈리는 동시 실행이다(scratchpad의 `r20/logs/773-repro-prefix.log`).
+
+**원인.** 파생은 정본 행만 맞춘다(`reconcileStacks`). 정본에 없는 옛 간선은 해제로 다시 쓰이지도 지워지지도 않는다 — 스택은 제거 대상 계열이 아니다. 역방향 재평가는 지금의 `base = head`와 정본(`listChildrenOf`)으로만 하위 PR을 찾으므로, 상위 PR의 head가 바뀌면 정본이 빈 동안 하위 PR에 닿지 못한다.
+
+**수정.** (1) `stack-import.ts` — 가져오기가 범위(`childPrNumber`는 나가는 간선 `from_id`, `parentPrNumber`는 들어오는 간선 `to_id`)를 받고, 쪽마다 `timed_out`·`_shards.failed`를 봐서 일부만 읽혔으면 던진다. 읽기를 다 마친 뒤에 옮기므로 앞쪽만 옮기는 일도 없다. 검증(`toImport`)과 저장(`importStacks`, `ON CONFLICT DO NOTHING`)은 그대로 쓴다. (2) `relations.ts` — `importLegacyStacks`가 `deps.servingStackImport`를 켠 경우에만 옮기고, 넣었거나 형식 오류가 있을 때 로그를 한 줄 남긴다. 하위 범위는 `deriveRelations`의 `reconcileStacks` 직전, 상위 범위는 `reevaluateAffectedRelations`의 `listChildrenOf` 직전이다. (3) `link.ts`의 `LinkDeps.servingStackImport`(기본 끔), `index.ts`의 `startLinkWorker({ ...linkDeps, servingStackImport: true })` — JOB-REL-006 러너(`startReferenceRebuildRunner(linkDeps)`)와 재색인(`reindexLinkDeps`)은 끈다. (4) ADR-008 허용 목록의 `stack-import.ts` 사유를 두 방아쇠와 끝점 term으로 고쳤다.
+
+**시험 (실측, 격리 PostgreSQL·Elasticsearch).**
+
+| 계층 | 파일 | 건수 | 확인하는 것 |
+| --- | --- | --- | --- |
+| 통합 | `apps/pipeline-worker/integration/worker/stack-upgrade-transition.test.ts` | 15 (새 파일) | 상위 PR 병합·종료·head 변경 — 하위 PR 이벤트 없이 해제되고, 옛 근거·시각이 정본(`imported`)과 간선에 남으며, 문서 ID가 옛 문서와 같고, `has_stack`이 풀린다. 하위 PR retarget — 옛 관계는 옛 값으로 해제되고 새 관계는 파생된다. 이미 해제된 이력은 지워지지 않고 정본으로 옮겨진다. 옮긴 관계가 아직 성립하면 CR-121 규칙 3대로 지금 근거·시각의 파생 행이 된다. 정본의 관계는 옛 간선 값으로 덮이지 않는다. `import-stacks`와 동시에 돌려도(세 번) 결과가 같다. 같은 이벤트를 다시 처리해도 정본(`updated_at` 포함)과 간선이 그대로다. 옮긴 뒤 해제 판정 전에 끊겨도 재전달하면 해제된다. 조회 실패·시간 초과·샤드 실패는 던지고 정본과 간선을 건드리지 않으며, 회복 뒤 해제된다. 조회는 routing·`repository_id`·끝점 term으로 좁혀진다. 이벤트 외 deps는 옮기지 않는다 |
+| 단위 | `apps/pipeline-worker/src/stack-import.test.ts` | 8 (새 파일) | 범위 없음·하위·상위의 조회 모양, 여러 쪽 끝까지 읽기, 시간 초과·샤드 실패, 둘째 쪽의 일부 읽기에서 첫 쪽도 옮기지 않음, 범위가 있어도 같은 검증 |
+| 회귀 | `regression/cr126-stack-transition-wiring.test.ts` | 4 (새 파일) | 이벤트 소비자만 켜고, JOB-REL-006은 공유 deps로 서며, 진입점에서 한 번만 켜고(재색인 deps에 없음), 기본값은 끔이다 |
+
+스택·관계·재색인·가져오기를 다루는 기존 통합 다섯 파일(`relations`·`link`·`link-rebuild`·`links-reindex-completeness`·`link-stack-state`) 116건도, 새 시험을 먼저 돌린 같은 DB·ES에서 통과했다.
+
+**발견 (시험 격리).** 새 시험의 첫 판은 마지막 사례가 남긴 정본 행 없는 옛 간선과 저장소 행을 치우지 않았다. 같은 DB·ES에서 저장소 전체를 재색인하는 `links-reindex-completeness.test.ts`가 그것을 「옮기지 않은 간선」으로 세어 13건이 실패했다 — 제품 결함이 아니라 시험의 뒷정리 누락이다. 새 시험이 끝날 때 자기 저장소의 PG 행과 ES 문서를 지우게 했고, 새 시험을 먼저 돌린 뒤 같은 DB·ES에서 다섯 파일을 돌려 통과를 봤다(CI의 파일 순서와 무관하게 한다).
+
+**변이 (단독 실행, 매번 원복, 통과 건수 0이면 무효로 셈).** 커밋 `ecd2a4f`에서 12종을 돌려 모두 시험을 죽였다(scratchpad의 `r20/logs/773-mutations.log`).
+
+| 변이 | 결과 |
+| --- | --- |
+| M1 하위 범위 옮기기 제거 | 통합 2건 실패 |
+| M2 상위 범위 옮기기 제거 | 통합 1건 실패(상위 head 변경) |
+| M3 설정 확인 제거 — 모든 파생이 옮긴다 | 통합 1건 실패 |
+| M4a·M4b 일부 읽기 판정 무력화 | 단위 3건, 통합 2건 실패 |
+| M5a·M5b 범위 무시 — 저장소 전체를 읽는다 | 단위 2건, 통합 4건 실패 |
+| M6 옮기기가 이미 있는 행을 덮는다 | 통합 1건 실패 |
+| M7 하위 경로가 반대 방향(들어오는 간선)을 옮긴다 | 통합 2건 실패 |
+| M8 이벤트 소비자에 켜지 않는다 | 회귀 2건 실패 |
+| M9 JOB-REL-006 재파생에도 켠다 | 회귀 2건 실패 |
+| M10 첫 쪽만 일부 읽기를 판정한다 | 단위 1건 실패 |
+
+**격리 compose 검증 (실제 옛 판, 시험 전용 가짜 GHE).** compose 프로젝트 `prs-s20`에 `0.1.0-pilot.18`(로컬 이미지 — pipeline-worker `845a02b97668…`은 발행 기록과 같다)을 그 판의 배포 정의로 설치하고, 저장소 둘(`acme/stk1` 93001, `acme/stk2` 93002)에 상위·하위 PR 쌍 여덟을 웹훅으로 만들었다. 저장소마다 넷째 쌍은 그 판에서 상위 PR을 병합해 해제 이력으로 두었다. 그 판에는 스택 정본 표가 없어 간선 여덟이 서비스 인덱스에만 있다. 이 상태를 볼륨·세계 스냅숏으로 떠서 수정 전(`0.1.0-pilot.19`)과 수정 뒤(`s20-cr126` — `ecd2a4f`에서 빌드)를 같은 출발점에서 올렸다. 업그레이드는 RUNBOOK 3장대로 했고 **가져오기는 돌리지 않았다.** 이벤트마다 링크 워커의 처리 완료 로그(`참조 간선 파생`)를 기다린 뒤 상태를 기록했다.
+
+| 단계 | 수정 전 (`0.1.0-pilot.19`) | 수정 뒤 (`s20-cr126`) |
+| --- | --- | --- |
+| stk1 상위 #1 병합·#3 종료·#5 head 변경(하위 PR에는 이벤트 없음), stk2 하위 #2 retarget | 옛 간선 넷이 모두 `detached: false`, 정본 행 0, `has_stack`은 그대로 `true` | 넷 모두 `detached: true` — 근거·시각은 옛 판의 값 그대로이고, 문서 ID가 옛 문서와 같아 하위 PR마다 문서 1건이다. 정본에 `imported` 행, `has_stack` 풀림. 링크 워커 로그에 상위 범위 셋·하위 범위 하나의 옮김이 남았다 |
+| stk1 #8 편집(옛 판에서 이미 해제된 이력) | 간선은 해제 그대로, 정본 행 없음 | 간선 그대로, 정본에 해제 행(`imported`) |
+| worker-link를 멈춘 동안 stk2 상위 #3 종료 → 재시작 | — | 재시작 뒤 그 이벤트가 처리되어 #4→#3이 해제됐다 |
+| prs-links 재색인 (가져오기 전) | 실패 — `스택 정본에 없는 서비스 stacks_on 간선 6건`, 별칭 그대로 | 실패 — 1건(손대지 않은 stk2 #8→#7 해제 이력), 별칭 그대로. 보호가 유지된다 |
+| `links import-stacks` (dry-run 뒤 실행) | — | stk1 넣은 행 0·이미 있음 4, stk2 넣은 행 1·이미 있음 3 |
+| prs-links 재색인 (가져오기 뒤) | — | 완료 — `expected=11 missing=0 … unimported_stacks=0`, `prs-links-v3`로 전환. 전환 앞뒤로 간선(해제 상태·근거·시각·문서 ID)·정본 행·`has_stack`이 같다 |
+
+첫 실행에서는 stk2의 손대지 않은 쌍이 아직 성립 중이라 재색인의 재구축이 그 관계를 지금 스냅숏으로 파생했고, 그래서 보호가 시험되지 않았다(CR-121의 기존 동작). 두 번째 실행에서 옛 판에서 해제된 쌍을 더해 위 결과를 얻었다. 두 실행의 기록은 scratchpad의 `r20/logs/773-run1/`과 `r20/logs/773-*.txt`·`773-*.json`이다. 스냅숏을 복원한 뒤 가짜 GHE의 바인드 마운트가 지운 옛 디렉터리를 가리켜 미러 동기화가 실패한 일은 도구 문제라 컨테이너 재시작으로 고쳤다.
+
+**독립 리뷰.** 코드(`deep-reasoner`, 읽기 전용, `git diff f2332f7..ecd2a4f`): 판정 **병합 가능** — 상·중 0건, [하] 3건. 확인한 것: 옮기기와 판정의 순서, 규칙 3과의 상호작용, 요약 재계산의 끝점, `link_id`가 끝점에서 나온다는 전제, `import-stacks`와의 동시 실행·같은 하위 PR의 이중 이벤트·상위와 하위 이벤트의 겹침이 멱등하게 수렴함, 지시서의 안전 조건 여덟, 허용 목록 사유, `runtime-reachability`. 단위 8·통합 15·회귀 457(이 CR의 배선 회귀와 `runtime-reachability`)·허용 목록 7을 실제로 돌렸고 변이 로그의 12/12를 확인했다. 지적과 처분 — **[하, 유지]** 전환기 보완을 끄는 조건이 없어 이전이 끝난 뒤에도 PR 이벤트마다 좁힌 조회가 는다 — 정확성 위험은 없고 조회는 한 샤드다. CR-126 대가 (1)로 적고 끄는 조건은 후속 판단으로 남긴다. **[하, 유지]** 이미 다 옮겨진 경우에는 로그가 없다 — 넣었거나 형식 오류가 있을 때만 남긴다. **[하, 유지]** `_shards.successful < total`을 따로 보지 않는다 — 실패 샤드는 `failed`로 잡히고, `_shards`가 없으면 던진다. **[정보, 문서 반영]** 재시도 예산을 넘겨 버려진 이벤트의 회복에는 운영자 단계(가져오기 뒤 재색인)가 낀다 → CR-126 대가 (2), RUNBOOK 7.I 3번·8장에 적었다. **[정보]** JOB-REL-006에 켜지 않는 판단에 동의한다. **[확인하지 못함 → 확인]** 실제 옛 판 문서와의 호환 — 위 격리 검증에서 문서 ID가 같고 하위 PR마다 문서 1건임을 확인했다. **문서(`deep-reasoner`, 읽기 전용, `git diff ecd2a4f..5531209`):** 판정 **병합 가능** — [상]·[중] 0건, [하] 1건·[정보] 3건. 확인한 것: 새 시험 건수(통합 15 = 단독 10 + 펼침 5, 단위 8, 회귀 4)와 수정 전 11건 실패의 목록, 변이 12종의 파일별 실패 수, 격리 검증 수치(가져오기 전 재색인의 미이전 6건·1건, 그 1건이 stk2 #8→#7임, 가져오기 결과, 전환 뒤 검증 수치), 수정 뒤 간선의 옛 근거·시각과 문서 ID가 로그·덤프와 같다. RUNBOOK의 로그 확인 문구가 코드의 메시지와 같고 비밀을 찍지 않는다. SRS는 baseline을 유지한 채 CR 등록 뒤에 판 기록·AC-6 한 문장·`OD-017` 보완만 더했고(원래 결정 문장은 바이트 그대로), 기각 대안 (1)과의 구분이 분명하다. 문서 판 여섯이 cascade와 같고, 「이벤트 소비자만·JOB-REL-006과 재색인은 옮기지 않음·재색인 검증 유지」가 아홉 곳에서 모순 없다. 새 표 행의 칸 수가 표마다 맞고 RUNBOOK 7.I의 코드 블록이 목록 들여쓰기 안에 있다. 저장소에 사내 주소가 0건이다. 지적과 처분 — **[하, 유지]** DEV-773을 병합 전에 「resolved (CR-126, 병합 전)」로 적었다 — CR-125의 DEV-777과 같은 선례이고, 병합 기록에서 원장 3장·머리 절과 함께 병합 SHA로 바꾼다. **[정보]** `OD-017`의 원래 문장에서 바뀐 것은 이음표 하나뿐이다. **[정보]** 기각 대안 (1)과의 구분이 분명하다. **[정보]** 백엔드 문서에는 판 머리가 없어 판을 올리지 않은 것이 맞다.
+
+**게이트.** 코드와 문서를 모두 담은 트리(`5531209`, 새 DB `prs_test_s20_cr126final`, Node 22)의 전 계층 게이트다. 실행 전후 추적 파일의 해시가 같다(실행 중 소스 변경 없음).
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` · `pnpm lint` · `pnpm run lint:deps` | 통과 (lint:deps 패키지 17개, 위반 0건) |
+| `pnpm run test` | 186 파일 통과·1 파일 skip, 3,358건 통과·1건 skip — skip은 실제 GHE 자격이 있을 때만 도는 기존 smoke(`packages/github/testing/smoke-real-ghe.test.ts`)이고 어디에도 접속하지 않았다 |
+| `pnpm build` | 통과 |
+| `pnpm run test:a11y` · `pnpm run test:contrast` | 466건 통과 · 18쌍 실패 0 |
+| `pnpm run test:e2e` | 212건 통과 |
+| `pnpm run test:integration` | 149 파일, 2,313건 통과 |
+| `pnpm run test:regression` | 13 파일, 530건 통과 |
+
+문서 리뷰 반영(원장만 바뀌었다) 뒤 문서를 읽는 회귀(`pnpm run test:regression`)와 문서 검증기를 다시 돌렸다 — 아래 「문서 검증기」와 같다.
+
+**문서 검증기.** `validate_srs_prd_env.py`를 기준선 `f2332f7`(CR-125 병합 기록)과 작업 트리에 똑같이 돌려 오류·경고 목록을 비교했다 — 기본·`--strict` 두 모드 모두 목록이 같고(새 오류·경고 0건), 경로 참조 18건도 같다.
+
+**한계.** 사내 실데이터·실제 GHE·인증서·프록시는 NOT RUN이다. 저장소 전체의 과거 이력 이전은 여전히 `prsctl links import-stacks`다 — 이벤트를 받지 않은 관계, 특히 배포 전에 이미 해제된 이력은 이 보완이 옮기지 않는다(재색인이 막는다). 전환기 보완은 이전이 끝난 뒤에도 켜져 있다(대가 (1)). 재시도 예산을 넘기는 서비스 인덱스 장애로 버려진 이벤트의 관계는 가져오기 뒤 재색인까지 남는다(대가 (2)).
