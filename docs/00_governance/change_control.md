@@ -1,5 +1,17 @@
 # 변경 관리 대장
 
+## CR-126 — 업그레이드 직후 PostgreSQL에 없는 옛 스택 관계를 이벤트가 판정 전에 정본으로 옮겨, 상위 PR의 변화와 하위 PR의 retarget이 가져오기 없이 해제 표시에 반영된다 (2026-09-27)
+
+- 유형: correction(구현 결함 — 업그레이드와 가져오기 사이에 FR-REL-006 AC-3 「상위 PR이 머지되어 대상 브랜치가 바뀌면 간선을 해제 상태로 표시한다」를 지키지 못했다) + 요구사항 보완(FR-REL-006 AC-6에 전환기 보완 한 문장, `OD-017`에 날짜 붙은 보완 — 원래 결정 문장은 바꾸지 않는다). 새 FR·새 화면·새 API 계약·새 표·새 마이그레이션은 없다. 안정 ID 재번호화 0건. 상태: **구현·검증 완료, 병합 대기**. worktree `/home/roqkf/pr-search-wt/cr126-stack-reeval`(브랜치 `fix/cr126-stack-upgrade-reeval`), 기준 main `3dd6d8c`.
+- 요청: 사용자 지시(2026-09-27, 20차)의 셋째 항목(DEV-773). 상위 PR이 바뀌었을 때 운영자가 `import-stacks`나 재색인을 돌리지 않아도 해당 스택의 표시가 올바르게 갱신돼야 한다. PG에는 없고 서비스 ES에만 남은 스택 관계를 재현하고, `stack-import.ts`의 검증과 `pr-stack.ts`의 멱등 저장을 재사용해 필요한 기존 관계를 먼저 PG에 보존한 뒤 지금 PR 스냅숏으로 유지·해제를 판단하며, DB의 판단 결과로 간선 전체와 화면 요약을 갱신한다. 상위 PR의 변화로 하위 PR을 찾는 경로와 하위 PR 자체를 다시 처리하는 경로를 모두 확인한다. 안전 조건: PG의 최신 관계를 오래된 ES 값으로 덮지 않는다, 근거·시각·해제 이력을 지우지 않는다, 이벤트마다 모든 저장소를 훑지 않는다, 조회 실패나 일부 읽기를 「관계 없음」으로 처리하지 않는다, 실패한 작업을 다시 처리할 수 있게 남긴다, 전환기 보완일 뿐 평상시 원본을 ES로 되돌리지 않는다, M 번호·시퀀스·에폭·원격 태그는 바꾸지 않는다. 기존 import 명령과 미이전 이력을 보호하는 재색인 검증은 유지하며, 이것을 전체 과거 이력의 이전 완료로 보지 않는다.
+- 발견: DEV-773 — CR-121이 남긴 공백이다(`OD-017`의 대가 「배포와 가져오기 사이에는 배포 전부터 성립해 있던 스택의 역방향 재평가가 그 관계를 찾지 못한다」).
+- 재현(수정 전 코드): 새 통합 시험 15건 중 11건이 실패했다(실제 PostgreSQL·Elasticsearch, 서비스 인덱스에만 쓴 옛 간선). 격리 compose에서 실제 `0.1.0-pilot.18`이 만든 스택을 두고 `0.1.0-pilot.19`로 올린 뒤 가져오기 없이 상위 PR 병합·종료·head 변경과 하위 PR retarget을 흘리자, 옛 간선이 모두 `detached: false`·`has_stack: true`로 남고 정본 행은 0건이었다(원장 6.117장).
+- 원인: 파생은 정본 행만 맞춘다(`reconcileStacks`) — 정본에 없는 옛 간선은 해제로 다시 쓰이지도 지워지지도 않는다(스택은 제거 대상 계열이 아니다). 역방향 재평가는 지금의 `base = head`와 정본(`listChildrenOf`)으로만 하위 PR을 찾으므로, 상위 PR의 head가 바뀌면 정본이 빈 동안 하위 PR에 닿지 못한다.
+- 범위: (a) `apps/pipeline-worker/src/stack-import.ts` — 가져오기에 범위(하위 PR이면 그 PR에서 나가는 간선 `from_id`, 상위 PR이면 그 PR로 들어오는 간선 `to_id`)를 더하고, 서비스 인덱스 조회가 일부만 읽히면(시간 초과·샤드 실패) 던진다. 운영자 명령도 부분 결과를 조용히 옮기지 않고 실패로 끝난다(동작 변경). (b) `apps/pipeline-worker/src/relations.ts` — 스택을 판정하기 직전(`deriveRelations`의 `reconcileStacks` 앞)에 하위 범위를, 역방향 재평가가 정본으로 하위 PR을 찾기 직전(`listChildrenOf` 앞)에 상위 범위를 같은 검증·같은 저장(`importStacks`, `ON CONFLICT DO NOTHING`)으로 옮기고, 옮긴 건수를 로그에 남긴다. (c) `apps/pipeline-worker/src/link.ts`·`index.ts` — `LinkDeps.servingStackImport`(기본 끔)를 이벤트 소비자(`startLinkWorker`)에만 켠다. JOB-REL-006 재파생과 재색인(`batch`)은 끈다. (d) ADR-008 허용 목록의 `stack-import.ts` 사유(방아쇠 둘, 끝점 term). (e) 문서 — SRS(FR-REL-006 AC-6, `OD-017` 보완), 매트릭스, 비동기·백엔드·데이터 모델, WP-107, 원장, RUNBOOK 7.I·7장 표·8장.
+- 결정과 대가: **이벤트 소비자에만 켠다** — JOB-REL-006 재파생에 켜면 저장소 전체를 옮기는 두 번째 이전 경로가 되고, 재색인에 켜면 전환 전 검증(옮기지 않은 스택 간선이 남으면 전환하지 않는다)이 제 뜻을 잃는다. 전체 이전은 여전히 `prsctl links import-stacks`다. 옮기기는 판정의 근거가 아니다 — 옮긴 행이 정본이 되고 판정은 지금 스냅숏으로 한다. 옮긴 관계가 아직 성립하면 CR-121 규칙 3대로 지금 근거·시각의 파생 행이 되고, 성립하지 않으면 옛 근거·시각 그대로 해제된다. 대가는 셋이다. (1) PR 이벤트마다 좁힌 서비스 인덱스 조회가 둘, 역방향 재평가로 다시 파생되는 하위 PR마다 하나 는다(routing과 끝점 term으로 한 샤드). 이전이 끝난 뒤에도 켜져 있다 — 끄는 조건은 후속 판단으로 남긴다. (2) 재시도 예산(5회, 약 31초)을 넘기는 서비스 인덱스 장애로 이벤트가 버려지면(`dead_letter`), 그 PR의 옛 스택은 다음 이벤트나 가져오기 뒤 재색인(RUNBOOK 7.I 3·4번)까지 남는다 — 재색인은 옮기지 않은 해제 이력이 남으면 전환하지 않으므로 조용히 굳지 않는다. (3) ES에서 PG로 가는 방아쇠가 둘이 된다(운영자 명령, 이벤트 소비자) — 규칙은 `stack-import.ts` 하나다.
+- 제외: 저장소 전체의 자동 이전, JOB-REL-006·재색인의 옮기기, 전환기 보완을 끄는 설정과 조건, M 번호·시퀀스·에폭·원격 태그, Release 발행과 사내 적용.
+- 설계·세부 정본: SRS FR-REL-006 AC-6·`OD-017`, 비동기 JOB-REL-004 스택 절, 데이터 모델 ENT-REL-003, WP-107, 원장 5장 DEV-773, 6.117장. 연쇄 기록은 5장 「CR-126 cascade」에 적는다.
+
 ## CR-125 — 운영 목록 두 개의 커서가 키셋 시각을 밀리초로 잘라 같은 밀리초의 행이 다음 쪽에서 빠졌다: 조회부터 커서 해석·다음 조회까지 마이크로초 문자열을 그대로 쓰고, 옛 판 커서는 이어 읽지 않는다 (2026-09-27)
 
 - 유형: correction(구현 결함 — API-ADM-005·API-ADM-009의 키셋 순회가 계약의 「페이지 경계가 무리를 갈라도 빠지거나 겹치지 않는다」를 지키지 못했다). **요구사항 문장과 AC는 바꾸지 않는다** — SRS는 두 목록의 커서를 따로 정하지 않고, API 계약이 정렬·타이브레이커·두 오류 코드를 정한다. 계약에 더하는 것은 커서 판 2(키셋 시각 = 마이크로초 문자열)와 옛 판 커서의 `detail.reason` 하나다. 새 오류 코드·새 경로·응답 항목 모양 변경은 없다. 안정 ID 재번호화 0건. 상태: **closed** — main `3dd6d8c`(PR #244 squash 병합, 2026-09-27). worktree `/home/roqkf/pr-search-wt/cr125-admin-cursor`(브랜치 `fix/cr125-admin-list-cursor`), 기준 main `81b147b`.
@@ -2427,6 +2439,17 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - 상태: **closed**(2026-09-21). 운영 배포는 하지 않았고, 사내 CA·운영 HAProxy·실제 GHE를 거친 검증과 실제 사용자 매핑은 NOT_RUN이다 — 이 CR의 범위 밖이다.
 
 **병합 판정.** 구현·검증 보고 뒤 사용자 지시(2026-09-21 「origin/main에 병합」)로 진행했다. 저장소가 공개라 시험 전용 서명 비밀키를 커밋에서 빼고, main CI의 `verify`를 막던 lint 기준선 1건을 ESLint 설정으로 해소한 뒤(원장 6.103장 「병합 준비」) 커밋 `28a3c21`을 PR #220으로 올렸다. PR CI(run `35568796745`)는 verify·integration 모두 success다 — `verify`의 단계(typecheck·lint·lint:deps·test·build·test:a11y·test:contrast·test:e2e)에는 건너뛰는 조건이 없으므로 로컬에서 돌리지 않은 a11y·contrast·e2e도 이 실행이 확인했다. squash 병합 커밋은 `e7b4cb4`(15:43 KST)이고 트리가 `28a3c21`과 같다. 병합 커밋 `e7b4cb4`의 main CI(run `35569716267`)는 끝나기 전에 취소됐다 — 15:46에 사용자가 메인 체크아웃에서 입력 지시서 묶음을 따로 커밋해(`c73ed9f`) main과 병합한 `364f0fb`를 push했고, 워크플로의 `cancel-in-progress`가 앞 실행을 취소했다. `364f0fb`의 트리는 `e7b4cb4`와 같다(묶음 6개 파일이 PR #220에 든 것과 같은 내용이라 차이가 없다, tree `26f3f0fb…`). 그 커밋의 main CI(run `35569895232`)는 verify·integration 모두 success다 — #218부터 lint 단계에서 멈추던 main의 `verify`가 다시 끝까지 통과했다. 병합 기록은 별도 PR(브랜치 `docs/cr112-merge-record`)로 했다 — 작업 패키지 v2.57 → v2.58(WP-097 done), 원장 v6.98 → v6.99(머리 절, 3장, 4장, 6.103장 「병합」), handoff의 PIPE_INTEGRATION_HANDOFF·TEST_RESULTS·CONTRACT_DIFF·manifest 생성기와 다시 만든 manifest(계약 checksum `3c7fbe92…` 변동 없음). 문서 검증기는 이 기록 뒤에도 두 모드 모두 오류·경고 목록이 병합 시점과 같다. 릴리스·태그는 발행하지 않았다. closed.
+
+### CR-126 cascade — 업그레이드 직후 옛 스택 관계의 전환기 보완
+
+기준: main `3dd6d8c` 위 worktree `/home/roqkf/pr-search-wt/cr126-stack-reeval`(브랜치 `fix/cr126-stack-upgrade-reeval`). correction + 요구사항 보완 — `FR-REL-006` AC-6에 전환기 보완 한 문장을 더하고 `OD-017`에 날짜 붙은 보완을 단다(원래 결정 문장은 바꾸지 않는다). ID는 `docs/`와 원격 브랜치, 열린 PR(없음)을 실측해 정했다 — CR-126·WP-107. 새 ADR·ENT·JOB·EVT·RB·DEV 번호는 쓰지 않는다(DEV-773을 닫는다).
+
+- [x] 요구사항: SRS v2.46 → v2.47(머리 판 기록, `FR-REL-006` AC-6 한 문장, `OD-017` 보완). PRD·용어집은 바뀌지 않는다. 매트릭스 v1.20 → v1.21(`FR-REL-006` AC-6 행의 구현 단위·검증).
+- [x] 파생 UI: 해당 없음 — W-002는 간선의 `detached`와 요약을 그대로 읽는다.
+- [x] 기술 아키텍처: 비동기 v0.22 → v0.23(머리 주석, JOB-REL-004 스택 절), 데이터 모델 v0.33 → v0.34(머리 주석, ENT-REL-003의 `origin = 'imported'`), 백엔드(머리 주석).
+- [x] 전달: 작업 패키지 v2.72 → v2.73(WP-107 절·상태 표), 원장 v6.120 → v6.121(머리 절, 3장 WP-107, 4장 FR-REL-006 AC-6, 5장 DEV-773 resolved, 6.117장). `deploy/single-host/RUNBOOK.md` 7.I 3번의 DEV-773 문단과 가져오기의 일부 읽기 실패, 7장 표 한 행, 8장 한 행.
+- [x] 코드·시험: 원장 6.117장.
+- 상태: 병합 대기.
 
 ### CR-125 cascade — 운영 목록 두 개의 커서 마이크로초와 옛 판 커서
 
