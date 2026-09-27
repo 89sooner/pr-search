@@ -1,6 +1,8 @@
 # PR Search 화면 플로우 명세서
 
-> 상태: review | 버전: v0.12 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.13 | 갱신일: 2026-09-27
+
+CR-127 / FR-SRCH-005 AC-11·FR-STAT-002 AC-7·FR-AUTH-004 AC-9: 날짜 조건은 새로고침·공유 URL·뒤로가기·저장된 검색에서 **같은 구간으로 복원된다** — 시간대가 URL(`tz`, `timezone`)이나 질의(`@Asia/Seoul`)에 명시돼 있고, 시간대 없는 옛 날짜 조건은 UTC 하루로 그대로 실행된다. 통계 버킷을 누르면 같은 시간대의 같은 날짜 범위 질의로 W-001에 간다. 조건이 바뀌면 이전 결과와 페이지 커서를 버린다.
 
 CR-109 / FR-REG-001 / W-024: 날짜/유형→MDVP 결과→비교 PASS suggestion→Start bisect에서 context 확인→local session→판정/재시험→archive/재방문. Atlas/Inbox/Pulse 전환은 URL view만 바꾸고 session을 생성하지 않는다. timeline point/표 행은 같은 Radix sheet를 열며 닫을 때 원래 point/버튼에 focus를 돌린다. fixture queue 확인에는 canonical SHA/digest/context를 표시하고 외부 호출0이다. 실 MDVP 미구성 경로는 real repository/branch를 직접 입력한 뒤 기존 API-SEQ-005 세션 복원으로만 연결한다.
 
@@ -36,19 +38,19 @@ CR-079 M 인용 흐름: 기존 /search에서 m_repository·m_base_branch·m_seq_
 | 경로 | 화면 | 파라미터 |
 | --- | --- | --- |
 | `/` | W-001 | - |
-| `/search` | W-001 | `q`, `sort`, `order`, `cursor`, `tab` |
+| `/search` | W-001 | `q`, `sort`, `order`, `cursor`, `tab` — Repository workspace는 `repository`, `base`, `author`, `label`, `state`, `path`, `pr_from`·`pr_to`, `mnum_from`·`mnum_to`, `from`·`to`(머지 날짜, 양끝 포함), `tz`(그 날짜의 시간대 — 새로 고른 범위는 `Asia/Seoul`, 없으면 UTC 날짜, CR-127) |
 | `/pr/:owner/:repo/:number` | W-002 | `section` (앵커 스크롤) |
 | `/commit/:owner/:repo/:sha` | W-003 | - |
 | `/ranges` | W-004 | `repo`, `branch`, `from`, `to`, `q`(WP-032에서 붙는다), `epoch` |
 | `/releases` | W-005 | `repo`, `branch`(선택 필터, 없으면 저장소 전체) — 셸이 소유한 경로다 (CR-030, DEV-157). 선택은 URL에 담지 않는다 |
-| `/analytics` | W-006 | `q`, `from`, `to`, `interval`, `groupBy`, `tz` |
+| `/analytics` | W-006 | `q`, `from`, `to`(날짜, 요청 시간대의 달력 날짜 — CR-127), `interval`, `group_by`, `timezone`(기본 `Asia/Seoul`이면 생략), `seq_epoch` |
 | `/graph` | W-007 | `type`, `repo`, `id`, `depth`, `linkTypes` |
 | `/saved-searches` | W-008 | - |
 | `/repositories` | W-009 | - |
 | `/ops/pipeline` | A-001 | - |
 | `/ops/repositories` | A-002 | - |
 | `/ops/jobs` | A-003 | `type`, `jobId` |
-| `/ops/audit` | A-004 | `user`, `action`, `from`, `to`, `cursor` |
+| `/ops/audit` | A-004 | `user_id`, `action`, `target`, `from`, `to`(ISO-8601, 화면은 `+09:00`을 붙인다 — `from` 이상 `to` 미만, CR-127), `result_code` |
 
 딥링크 예외 처리:
 

@@ -1,6 +1,6 @@
 # PR Search 시스템 아키텍처
 
-> 상태: review | 버전: v0.5 | 갱신일: 2026-09-11
+> 상태: review | 버전: v0.6 | 갱신일: 2026-09-27
 
 CR-079 / ADR-023: WP-074의 런타임은 sequence 역할의 freshness→채번→증거→M→materialize와 기존 EventBus다. raw_event/snapshot/번호 트랜잭션의 durable intent가 마지막 이벤트 복구를 보장한다. 새 범용 orchestrator는 없다. [상세 설계](pr_search_wp074_design.md) 4~8절이 정본이며 GHE 읽기 App과 기존 권한 경계를 유지한다.
 
@@ -207,7 +207,7 @@ Elasticsearch 질의 빌더 → search_after 커서, index.sort 활용, 라우�
 | 권한 강제 | `search-api`의 질의 빌더 단일 지점 | 모든 조회 경로가 이 한 함수를 통과한다. 우회 경로를 만들지 않는다 |
 | 멱등성 | 게이트웨이(`delivery_id`), 워커(문서 ID + 버전) | 두 계층 모두에서 보장한다 |
 | 상관 ID | 게이트웨이에서 생성, 큐·로그·감사·응답으로 전파 | 하나의 웹훅이 만든 모든 작업을 한 ID로 추적 |
-| 시각 | 저장은 UTC, 표시는 요청 시간대(기본 `Asia/Seoul`) | 집계 버킷 경계는 요청 시간대로 계산 (FR-STAT-002 AC-2) |
+| 시각 | 저장·API·커서·내보내기는 UTC, 화면 표시는 `Asia/Seoul`(KST) 고정 (CR-127, NFR-007) | 집계 버킷 경계는 요청 시간대로 계산 (FR-STAT-002 AC-2). 날짜 조건의 시간대는 질의(`@<시간대>`)나 요청 필드(`timezone`)에 명시하며 서버·브라우저의 기본 시간대로 해석하지 않는다 (FR-SRCH-005 AC-11) |
 | 오류 모델 | 공통 오류 DTO(사유 코드 + 메시지 + 상관 ID) | 사유 코드는 API 계약 문서에 열거 |
 | 설정 | ConfigMap + Secret. 재배포 없이 반영되는 항목은 명시 | 큐 동시성, 백필 상한, 보존 기간 등 |
 | 소스 코드 미저장 | 투영 단계에서 필드 화이트리스트 적용 | diff 본문·파일 내용 필드를 애초에 매핑하지 않는다 (NFR-005) |

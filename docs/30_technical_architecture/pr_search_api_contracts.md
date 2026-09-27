@@ -1,5 +1,7 @@
 # PR Search API 계약
 
+> CR-127 / FR-SRCH-005 AC-11, FR-STAT-002 AC-7, FR-AUTH-004 AC-9 (2026-09-27): 새 경로·새 오류 코드는 없다. **질의 문법을 넓힌다** — `merged`·`created`의 날짜만 적은 범위 끝에 `@<IANA 시간대>`를 붙이면 그 시간대의 달력 날짜 범위이며 `[시작일의 첫 순간, 종료일 다음 날의 첫 순간)`의 UTC 구간(`gte`·`lt`)으로 조회한다. 전에 성립하던 질의는 모두 같은 뜻이다(시간대 없는 날짜 끝은 UTC 날짜, 양끝 포함). `parsed`의 시각 범위 항목에 `timezone`이 붙을 수 있다. API-STAT-002는 날짜만 적은 `from`·`to`를 요청 시간대의 달력 날짜로 걸러 `applied_range`에 날짜로 돌려주고, 모르는 `timezone`을 400(`field: timezone`)으로 거절한다. API-ADM-005의 `from`·`to`는 오프셋을 그대로, 오프셋 없는 값을 UTC로 읽으며 없는 날짜·역전을 400으로 거절한다. 응답과 내보내기의 시각은 그대로 UTC다 — 화면이 `Asia/Seoul`로 그린다.
+>
 > CR-125 / API-ADM-005·API-ADM-009 (2026-09-27): 새 경로·새 오류 코드·응답 항목 모양 변경은 없다. 두 운영 목록의 커서가 **판 2**가 된다 — 키셋 시각을 PostgreSQL의 마이크로초 UTC 문자열 그대로 싣고 되돌린다(판 1은 `toISOString()`의 밀리초라 경계와 같은 밀리초의 행이 다음 쪽에서 빠졌다, DEV-777). 판 1 커서는 이어 읽지 않고 `CURSOR_INVALID`로 거절하며 `error.detail`에 `{"reason":"cursor_version_outdated","issued_version":1,"current_version":2}`를 싣는다 — 화면은 이 사유로 첫 페이지 재조회를 따로 안내한다.
 
 > CR-121 / FR-ING-008 AC-11, FR-REL-006 AC-6 (2026-09-25): 새 HTTP 경로·새 오류 코드·응답 모양 변경은 없다. 간선 재색인이 전환 전 검증에서 실패하면 그 사유(`간선 누락 N건`·`간선 불일치 N건`·`정본에 없는 간선 N건`·`소유 source가 없는 간선 N건`·`회수되지 않은 간선 미처리 N건`·`스택 정본에 없는 서비스 stacks_on 간선 N건`, 회수가 수렴하지 않으면 `link_pending_unrecovered`, 전환 직전 미처리가 남으면 `link_pending_at_cutover`)가 잡의 `error`에 남는다. 미처리 대기열은 잡 행의 `progress`에 싣지 않는다 — 별도 표(`reindex_link_pending`)이고 잡이 끝나면 비운다. 운영자 명령 하나가 더해진다: `prsctl links import-stacks --repository <owner/name> [--dry-run]`(배포 전 서비스 스택 간선의 일회성 가져오기 — `links apply`와 같이 `pr_link_repair` 잡 행과 감사 `job.run`을 남긴다, RUNBOOK 7.I).
@@ -69,7 +71,7 @@
 5. 경로·필드 네이밍은 `../10_requirements/glossary.md`를 따른다. 축약 금지(`sha` 아닌 `commit_sha`).
 6. 모든 응답에 `correlation_id`를 포함한다.
 7. 페이지네이션은 커서 전용이다. 오프셋 파라미터를 제공하지 않는다 (ADR-010).
-8. 시각은 ISO-8601 UTC 문자열이다. 표시 시간대 변환은 클라이언트 책임이며, 집계 버킷만 예외로 요청 시간대를 받는다.
+8. 시각은 ISO-8601 UTC 문자열이다. 표시 시간대 변환은 클라이언트 책임이며(화면은 `Asia/Seoul`로 그린다 — CR-127), 집계 버킷만 예외로 요청 시간대를 받는다. 날짜 조건의 시간대는 질의 문법(`@<시간대>`, API-SRCH-004)이나 요청 필드(`timezone`, API-STAT-002)에 **명시한다** — 서버나 브라우저의 기본 시간대로 해석하지 않는다.
 
 기본 경로: `/api/v1`
 
@@ -437,7 +439,8 @@
 | --- | --- | --- |
 | 동등 | `key:value` | 같은 키 반복은 OR, 다른 키는 AND (AC-5) |
 | 부정 | `-key:value` | 범위에도 붙는다 (AC-6) |
-| 범위 | `key:a..b` | **`seq`·`merged`·`created`·`changed_files`·`changed_lines` 다섯 키만** (DEV-037 / CR-056 DEV-451). 양끝이 모두 있어야 한다. **범위 형태로만 성립하며 스칼라는 400이다** (DEV-364). `changed_files`·`changed_lines`는 시퀀스 공간을 지목할 필요가 없다 — 변경 규모는 저장소를 건너 비교해도 뜻이 유지된다 |
+| 범위 | `key:a..b` | **`seq`·`merged`·`created`·`changed_files`·`changed_lines` 다섯 키만** (DEV-037 / CR-056 DEV-451). 양끝이 모두 있어야 한다. **범위 형태로만 성립하며 스칼라는 400이다** (DEV-364). `changed_files`·`changed_lines`는 시퀀스 공간을 지목할 필요가 없다 — 변경 규모는 저장소를 건너 비교해도 뜻이 유지된다. `merged`·`created`의 끝은 날짜(`YYYY-MM-DD`) 또는 날짜와 시각(오프셋 `Z`·`±hh:mm` 선택, 밀리초까지)이다. 날짜만 적은 끝은 **UTC 날짜**이고 양끝을 포함한다(`gte` 그날 00:00Z, `lte` 그날 끝). 오프셋 없는 시각은 UTC다 |
+| 달력 날짜 범위 (CR-127) | `key:a..b@<시간대>` | **`merged`·`created`만**, 양끝이 모두 날짜일 때만. `<시간대>`는 IANA 이름(`Asia/Seoul`)이며 서버가 검증하고 정규 표기로 돌려준다. 양끝 날짜를 포함하며 `{gte: 시작일의 첫 순간, lt: 종료일 다음 날의 첫 순간}`(UTC ISO)으로 조회한다 — `merged:2026-09-27..2026-09-27@Asia/Seoul`은 `2026-09-26T15:00:00.000Z` 이상 `2026-09-27T15:00:00.000Z` 미만이다. 첫 순간은 그 지역 날짜가 시작되는 순간(서머타임 공백은 전환 순간, 겹침은 앞 순간)이며 Elasticsearch 일 버킷 키와 같다. 시각·오프셋을 적은 끝, 없는 날짜, 역전, 모르는 시간대는 `QUERY_SYNTAX_ERROR`(400)다. 부정(`-merged:…@Asia/Seoul`)은 같은 구간을 뺀다 |
 | 인용 | `key:"두 낱말"` | `"`와 `\`는 `\`로 escape한다 |
 | 전문 검색어 | 키 없는 남은 문자열 | 공백 하나로 이어 붙인다 |
 
@@ -461,8 +464,8 @@
 | `base` | `base_branch` | |
 | `head` | `head_branch` | PR에만 있다 |
 | `state` | `state` | GitHub이 준 값 그대로 |
-| `merged` | `merged_at` 범위 | |
-| `created` | `created_at` 범위 | |
+| `merged` | `merged_at` 범위 | 날짜만 적은 끝은 UTC 날짜. `@<시간대>`면 그 시간대의 달력 날짜(`gte`·`lt`, CR-127) |
+| `created` | `created_at` 범위 | `merged`와 같다 |
 | `seq` | `merge_seq` 범위 | |
 | `changed_files` | `changed_files_count` 범위 | 분포 드릴다운의 재료 (CR-056). 값이 없는 문서는 범위 조건에 걸리지 않는다 — 그것이 `unknown`이 질의를 갖지 않는 이유다 |
 | `changed_lines` | `changed_lines` 범위 | 같음. 사전 계산된 합을 보며 조회 시점에 더하지 않는다 |
@@ -868,7 +871,7 @@ ADR-010은 커서의 **재료**(정렬 키 값 + 질의 지문)와 **동률 처�
 
 **지문 `f`는 결과 집합의 정체성이다.** 다음을 정규화해 해시한다.
 
-- 정규화한 질의 문자열
+- 정규화한 질의 문자열 — 달력 날짜 범위의 `@<시간대>`가 그 안에 있으므로 같은 날짜라도 시간대가 다르거나 없으면 다른 지문이다(CR-127)
 - 정렬 키와 정렬 방향
 - **유효 접근 범위**(배열을 정렬한 뒤) 와 `access_scope_version`
 - **`seq:` 질의의 유효 시퀀스 에폭** (CR-051). `seq:`가 없으면 이 재료가 없다 — `null`이나 `0` 같은 대체값을 쓰지 않는다
@@ -2114,8 +2117,8 @@ POST /api/v1/analytics/groups
 POST /api/v1/analytics/time-series
 {
   "query": "org:acme",
-  "from": "2026-07-01T00:00:00Z",
-  "to": "2026-08-01T00:00:00Z",
+  "from": "2026-07-01",
+  "to": "2026-07-31",
   "interval": "day",
   "timezone": "Asia/Seoul",
   "group_by": "team",
@@ -2129,8 +2132,8 @@ POST /api/v1/analytics/time-series
 {
   "interval": "day",
   "timezone": "Asia/Seoul",
-  "applied_range": { "from": "2026-07-01T00:00:00Z", "to": "2026-08-01T00:00:00Z" },
-  "buckets": ["2026-07-01", "2026-07-02", "2026-07-03"],
+  "applied_range": { "from": "2026-07-01", "to": "2026-07-31" },
+  "buckets": ["2026-07-01T00:00:00.000+09:00", "2026-07-02T00:00:00.000+09:00", "2026-07-03T00:00:00.000+09:00"],
   "series": [
     { "key": "payments-core", "values": [14, 9, 0] },
     { "key": "session",       "values": [6, 11, 3] }
@@ -2143,7 +2146,11 @@ POST /api/v1/analytics/time-series
 - **집계 대상은 `prs-pull-requests` 단독이고 버킷 기준 시각은 `merged_at`이다** (FR-STAT-002 AC-6, CR-053). 커밋 문서에는 그 필드가 없다
 - `interval`: `hour` | `day` | `week` | `month`. 버킷 400개 초과 시 `TOO_MANY_BUCKETS` (400)
 - `timezone` 기본값은 `Asia/Seoul`이며 **버킷 경계를 그 시간대에서 계산한다** (FR-STAT-002 AC-2). UTC로 나눈 뒤 이름만 바꾸지 않는다 — 날짜 경계가 다른 지역에서 하루가 어긋난다
-- `from`·`to` 미지정 시 최근 30일이며 `applied_range`에 실제 적용 구간을 명시한다
+- **`from`·`to`가 날짜(`YYYY-MM-DD`)이면 `timezone`의 달력 날짜다** (FR-STAT-002 AC-7, CR-127). 모집단은 `merged:<from>..<to>@<timezone>`(양끝 날짜 포함, `gte`·`lt`)이고, `extended_bounds`는 같은 계산의 `from`·`to` 첫 순간(UTC ISO)이라 요청하지 않은 날의 버킷이 생기지 않는다. 한쪽만 주면 다른 쪽은 `to` = 그 시간대의 오늘, `from` = `to` − 29일이다. 없는 날짜·역전은 `INVALID_PARAMETER`(400, `field`)다
+- `from`·`to` 미지정 시 **`timezone`의 오늘을 포함한 30일**(달력 날짜)이며 `applied_range`에 날짜로 명시한다 (CR-127 — 전에는 지금부터 30일 전까지의 순간이었다)
+- `from`·`to`가 시각(오프셋 포함 ISO-8601)이면 기존 뜻 그대로다 — 모집단은 `merged:<from>..<to>`(양끝 순간 포함)이고 `applied_range`는 받은 값이다
+- `timezone`은 IANA 이름이며 모르는 이름은 `INVALID_PARAMETER`(400, `field: timezone`)다. 검색 클러스터를 부르지 않는다 (CR-127)
+- `buckets`는 Elasticsearch의 `key_as_string`(요청 시간대로 그린 버킷 시작 순간)이다. 화면은 이것을 그 시간대의 날짜·시각으로 그리고, 일·주·월 버킷의 드릴다운은 `merged:<버킷 첫날>..<버킷 끝날>@<timezone>`을 `applied_range`와 겹친 만큼 쓴다. 시간 버킷은 그 한 시간의 순간 범위다
 - 데이터 없는 버킷도 0으로 채워 반환한다 (AC-4)
 - `group_by` 지정 시 계열 최대 20개 (AC-5). 그룹 선택 규칙과 다중값 의미는 `API-STAT-001`과 같다
 - 질의에 `seq:` 범위가 있으면 요청에 `seq_epoch`이 필요하다 (아래 공통 규칙)
@@ -2982,7 +2989,7 @@ POST /api/v1/admin/reindex
 | `user_id` | 아니오 | 행위자 정확 일치 |
 | `action` | 아니오 | `action` 정확 일치. **정본 표에 없는 과거 값도 받는다** (FR-AUTH-004 AC-7) |
 | `target` | 아니오 | 대상 식별자 정확 일치 |
-| `from`, `to` | 아니오 | `occurred_at` 범위. ISO-8601. `from` 이상 `to` 미만 |
+| `from`, `to` | 아니오 | `occurred_at` 범위. ISO-8601 날짜 또는 날짜와 시각(초·밀리초 선택). `from` 이상 `to` 미만. **오프셋(`Z`·`±hh:mm`)이 있으면 그 순간, 없으면 UTC**(서버 기본 시간대로 읽지 않는다 — CR-127, FR-AUTH-004 AC-9). 날짜만 적으면 그날 00:00Z다. 화면(A-004)은 KST 벽시계에 `+09:00`을 붙여 보낸다. 없는 날짜·시각과 `from` > `to`는 400 `INVALID_PARAMETER`(`field`)다. 지문에는 해석한 순간(`toISOString()`)이 들어가므로 같은 순간을 다른 오프셋으로 적어도 같은 조건이다 |
 | `result_code` | 아니오 | 결과 코드 정확 일치 |
 | `limit` | 아니오 | 기본 50, 최대 100 |
 | `cursor` | 아니오 | 다음 페이지 |
@@ -3140,7 +3147,7 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 ## 5. DTO 표준
 
 - ID는 안정 정규 ID를 사용한다. PR은 `{repository}#{pr_number}`, 커밋은 `{repository}@{commit_sha}`, 노드는 `{kind}:{repository_id}:{id}`.
-- 시각은 ISO-8601 UTC 문자열(`2026-08-19T05:02:11Z`)이다.
+- 시각은 ISO-8601 UTC 문자열(`2026-08-19T05:02:11Z`)이다. 화면이 `Asia/Seoul`로 표시해도(CR-127) API 값·내보내기(CSV·JSON)·커서의 시각은 UTC 그대로다.
 - 기간은 초 단위 정수이며 필드명에 `_seconds` 접미사를 붙인다.
 - enum은 문서화된 값만 허용한다. 알 수 없는 값을 받으면 400이다.
 - optional(필드 부재)과 nullable(값이 `null`)을 구분한다. `merge_commit_sha`는 미머지 PR에서 `null`이지 부재가 아니다.

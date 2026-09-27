@@ -1,5 +1,7 @@
 # PR Search 백엔드 아키텍처
 
+> CR-127 / FR-SRCH-005 AC-11·FR-STAT-002 AC-7·FR-AUTH-004 AC-9: `packages/query/src/calendar.ts`가 시간대 검증·정규화, 그 지역 날짜의 첫 순간, 날짜 더하기를 갖는다. 파서는 `merged`·`created`의 날짜 범위 끝 `@<시간대>`를 AST `timezone`으로 싣고 `packages/es/src/query-builder.ts`의 `rangeClause`가 `{gte, lt}` UTC 순간으로 옮긴다(시간대 없는 범위는 그대로 `gte`/`lte`). `apps/search-api/src/analytics/routes.ts`는 날짜만 적은 시계열 기간을 그 문법으로 모집단에 더하고 `extended_bounds`·기본 기간·`timezone` 검증을 같은 모듈로 한다. `apps/search-api/src/audit/routes.ts`의 기간 해석은 오프셋 없는 값을 UTC로 읽는다(서버 기본 시간대에 기대지 않는다). 아래 「달력 날짜 범위의 계층 경계」 문단이 정본이다.
+>
 > CR-126 / FR-REL-006 AC-6 / OD-017 보완 (DEV-773): `apps/pipeline-worker/src/stack-import.ts`의 가져오기가 범위(PR 하나의 한쪽 끝)를 받고, 일부만 읽힌 서비스 인덱스 조회를 실패로 돌린다. `relations.ts`는 스택 판정 직전(`reconcileStacks` 앞)과 역방향 재평가의 정본 조회 직전(`listChildrenOf` 앞)에 그 범위를 옮긴다 — `LinkDeps.servingStackImport`를 켠 이벤트 소비자(`index.ts`의 `startLinkWorker`)만 한다. JOB-REL-006 러너와 재색인 deps는 끈다. ADR-008 허용 목록의 `stack-import.ts` 사유가 두 방아쇠와 끝점 term을 덮도록 고쳐진다.
 >
 > CR-121 / FR-ING-008 AC-11, FR-REL-006 AC-6 / OD-017: 스택 관계의 정본은 PostgreSQL이다 — `packages/db/src/repositories/pr-stack.ts`가 `pull_request_stack`(마이그레이션 037)을 소유하고, `apps/pipeline-worker/src/relations.ts`는 하위 PR의 행을 먼저 맞춘 뒤 그 행 전부를 간선으로 전체 쓰기한다. 역방향 재평가도 그 표에서 하위 PR을 찾는다. `packages/es`에서 부분 갱신 원시체 `setLinkDetached`·`setLinkResolved`가 사라졌고, `sendLinkBulk`는 shadow 부분 갱신의 문서 없음(조건 전부 일치)을 **미처리**로 넘긴다 — 울타리(`packages/db/src/reindex-fence.ts`)가 실행 중인 prs-links 재색인의 그 대상일 때만 `reindex_link_pending`에 남긴다. 재구축 포트는 `link.ts`의 `createLinkRebuildPort` 하나를 운영 배선(`index.ts`)과 시험이 함께 쓴다. 배포 전 스택 간선의 가져오기는 `stack-import.ts`(`prsctl links import-stacks`)다. ADR-008 우회 조회 허용 목록(`packages/es/src/architecture.test.ts`)에 `stack-import.ts`가 `no_requester`로 더해지고, `reindex.ts`의 사유가 간선 대조·스택 가져오기 확인 조회를 덮도록 고쳐진다.
@@ -14,7 +16,7 @@
 
 > CR-097 / FR-SRC-001~004: sourceRoutes는 인증 → 기존 ScopeService/resolveRepository → GitHubSourceReader 순서다. GitHubClient의 기존 전송·rate-limit 경계를 공유하는 별도 읽기 어댑터이며 source DTO를 수집/색인 DTO에 추가하지 않는다. 비재귀 트리·Contents·경로별 commits·PR files/merge-base를 요청 시 조회한다. 파일256KiB/4,000라인·디렉터리5,000항목·Diff100항목×30페이지 상한, 전체SHA 검증, PR 조회 전후 ref 확인을 강제한다.
 
-> 상태: review | 버전: v0.19 | 갱신일: 2026-09-25
+> 상태: review | 버전: v0.20 | 갱신일: 2026-09-27
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 
@@ -356,6 +358,8 @@ Redis 캐시 조회 (TTL 5분)
 접근 저장소가 500개를 넘으면 `scope_kind: 'org_team'`으로 전환해 `org_id` + `visibility` + `allowed_team_ids` 조건으로 치환한다 (AC-6).
 
 **시퀀스 인용 바인딩의 계층 경계** (CR-051). `seq:`가 어느 공간을 요구하는지 판정하는 것은 **순수 함수**이며 `@prs/query`가 갖는다 — AST에서 `seq` 범위 조건과 부정 아닌 `repo`·`base` 값을 세는 일이라 데이터베이스도 Elasticsearch도 알 필요가 없고, **같은 코드를 브라우저가 쓴다** (ADR-001). 그 공간이 실재하는지, 이 사용자가 볼 수 있는지, 현재 에폭이 얼마인지는 `search-api`가 판정하며 `API-SEQ-001`이 쓰는 것과 **같은 해석 경로**를 재사용한다 — 두 번째 해석 경로를 만들면 한쪽만 접근 통제가 넓어지는 날 아무 오류도 나지 않는다. `@prs/es`는 **확정된 에폭을 받아 질의 필터에 넣는 일까지만** 한다: 여기서 PostgreSQL을 읽게 하면 패키지 의존 방향이 뒤집힌다.
+
+**달력 날짜 범위의 계층 경계** (CR-127). 시간대 이름의 검증·정규화와 「그 지역 날짜가 시작되는 첫 순간」 계산은 **순수 함수**이며 `@prs/query`(`calendar.ts`)가 갖는다 — 파서가 `merged:<날짜>..<날짜>@<시간대>`를 검증할 때, `@prs/es`의 질의 변환이 `{gte, lt}` UTC 순간을 만들 때, 화면이 시각을 KST로 그리고 통계 버킷을 날짜로 바꿀 때 **같은 코드**를 쓴다. 두 번째 계산 경로를 두면 표시의 하루와 검색의 하루가 조용히 갈린다. 통계 시계열(`search-api`)은 날짜만 적은 기간을 같은 문법의 질의 조건으로 모집단에 더하고, 버킷 경계(`extended_bounds`)도 같은 함수로 만든다. 시간대 규칙표는 런타임의 `Intl`(ICU)이며 Elasticsearch(Java)의 버킷 계산과 같은 IANA 자료를 쓴다 — 서머타임으로 자정이 없는 날·두 번인 날의 첫 순간이 두 계산에서 같음을 실측했다(원장 6.118장).
 
 ### 6.2 쓰기 액션
 

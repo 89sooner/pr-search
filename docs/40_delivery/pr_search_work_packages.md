@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.74 | 갱신일: 2026-09-27
+> 상태: review | 버전: v2.75 | 갱신일: 2026-09-27
+
+## WP-108 한국 시간 표시와 KST 달력 날짜 검색 (CR-127)
+
+- 요구사항: NFR-007 「시각 표시 기준」, SRS 11장 12번, `FR-SRCH-005` AC-11, `FR-SRCH-006` AC-1 보완, `FR-STAT-002` AC-7, `FR-AUTH-004` AC-9, `OD-018`(열기만). 선행: WP-011(질의 문법), WP-013(검색 질의 변환), WP-015(화면 공통 표시), WP-037·WP-038(통계 시계열·드릴다운), WP-039(감사 기록), WP-087·WP-096(작업 공간 달력·Range filter).
+- 범위: (1) `packages/query` — `calendar.ts`(시간대 검증·정규화, 그 지역 날짜의 첫 순간, 날짜 더하기, UTC 반열림 구간), `parse.ts`·`ast.ts`·`serialize.ts`의 `@<시간대>`와 역전 검사의 시간대 독립. (2) `packages/es/src/query-builder.ts` — 시간대가 있는 범위의 `gte`/`lt`. (3) `apps/search-api` — 통계 시계열의 달력 기간·기본 기간·`extended_bounds`·시간대 검증(`analytics/routes.ts`·`aggregations.ts`), 감사 기록 기간 해석(`audit/routes.ts`). (4) `apps/web` — `lib/format.ts`(KST)·`components/TimeText.tsx`, 우회하던 표시 자리 전부, `DatePicker`(KST 오늘·시간대 무관 격자), 작업 공간 Merged date(`tz`·라벨·요약·옛 URL 구분, legacy 작업 공간 포함), 질의 칩, 통계(달력 입력·버킷 이름·드릴다운), 감사 기록(KST 입력 ↔ `+09:00`). (5) 시험 — 단위(TZ 셋), 통합(실제 PostgreSQL·Elasticsearch·search-api), E2E(브라우저 시간대 셋), a11y. (6) 문서 — CR-127 cascade.
+- 제외: 개인별 시간대 설정(`OD-018`), 시각 단위의 시간대 문법, 날짜 필터가 없던 화면의 새 필터, API 원본·CSV·JSON 내보내기의 시각 형식, 저장된 검색의 자동 변환, 재색인·마이그레이션, 정기 작업 일정, PIPE 포팅 인계(PD-004), M 번호·시퀀스·에폭·PR 연결, Release 발행, 사내 적용.
+- 완료 기준: 대표 불일치를 **수정 전 코드에서 먼저 재현한다** — KST 자정 앞뒤 경계 문서에서 날짜 검색이 UTC 하루를 내고, 통계 시계열이 요청하지 않은 날의 버킷을 만들며, 월 버킷 드릴다운이 하루를 더하거나 빼고, 감사 기록 기간이 프로세스 시간대마다 다른 기록을 내며, 같은 순간이 화면·브라우저마다 다른 날짜로 보인다. 수정 뒤에는 한국 날짜 하루 검색이 시작일 00:00 KST 이상·다음 날 00:00 KST 미만이고(월말·연말·윤년 포함), 통계 버킷 수와 그 버킷의 드릴다운 검색 수가 같으며, 시간대 없는 옛 날짜 조건·URL·저장 검색은 UTC 하루 그대로다. 브라우저 시간대 UTC·Asia/Seoul·America/Los_Angeles에서 화면 시각과 날짜 필터 요청이 같다. CR-125의 마이크로초 커서와 페이지 누락·중복 방지 시험이 그대로 통과한다. 실제 PostgreSQL·Elasticsearch·API와 실제 브라우저를 거친 격리 검증에서 시험 전후 원본 시각·정렬·M 번호·시퀀스가 바뀌지 않는다. 전 계층 게이트, 변이, 독립 리뷰, CI.
+- 상태: in_progress — worktree `/home/roqkf/pr-search-wt/kst-time`(브랜치 `feature/kst-time`), 기준 main `a1dbedb`. 검증 기록은 원장 6.118장이다.
 
 ## WP-107 업그레이드 직후 옛 스택 관계의 전환기 보완 (CR-126)
 
@@ -210,6 +218,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
+| WP-108 | 한국 시간 표시와 KST 달력 날짜 검색 | 요구사항 변경 (CR-127) | WP-011, WP-013, WP-015, WP-037, WP-038, WP-039, WP-087, WP-096 | in_progress — worktree `kst-time`, 원장 6.118장 |
 | WP-107 | 업그레이드 직후 옛 스택 관계의 전환기 보완 | 구현 결함 수정 (CR-126) | WP-029, WP-030, WP-104 | done — main `7684bd3`(PR #245), 원장 6.117장 |
 | WP-106 | 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 | 구현 결함 수정 (CR-125) | WP-032, WP-033, WP-039, WP-040 | done — main `3dd6d8c`(PR #244), 원장 6.116장 |
 | WP-105 | 사내 GHE 전체 URL 참조 — 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 | 배포 편차 수정 (CR-124) | WP-029, WP-070, WP-104 | done — main `81b147b`(PR #243), 원장 6.115장 |

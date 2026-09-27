@@ -1,6 +1,8 @@
 # PR Search 와이어프레임 사양서
 
-> 상태: review | 버전: v0.28 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.29 | 갱신일: 2026-09-27
+
+> CR-127 / NFR-007·FR-SRCH-005 AC-11·FR-STAT-002 AC-7·FR-AUTH-004 AC-9: 모든 화면의 시각은 **한국 시간**(`YYYY-MM-DD HH:mm KST`, 날짜만은 KST 날짜)이고 원본 UTC는 툴팁이다. 안내 문단을 늘리지 않고 시간대 표지를 값 또는 열 제목에 짧게 붙인다. W-001 Range filter의 Merged date는 `Merged from (KST)`·`Merged to (KST)` 두 달력이며 새로 고른 범위는 URL `from`·`to`·`tz=Asia/Seoul`로 복원된다. `tz` 없는 옛 URL은 `(UTC)` 라벨로 구분해 그대로 실행한다. 접힌 필터 구조와 영문 UI는 그대로다. W-006의 Start·End는 같은 달력이고 버킷 이름·범위 열은 대시보드 시간대(기본 KST)로 적는다. A-004의 Start·End는 `(KST)` 라벨의 날짜·시각 입력이다. 개인별 시간대 설정은 두지 않는다(`OD-018`).
 
 > CR-111 / W-001: 좌측 사이드바를 「Find Repository」 compact `FieldSelect` 콤보박스(저장소 목록·pagination은 드롭다운 안 sentinel 옵션으로 접는다) + 「Base branch」 셀렉트 + `Files & folders` 트리 순으로 재배치하고, 트리가 사이드바의 남은 flex 공간을 전부 차지하게 한다. 독립된 「Find files and paths」 입력·「View path history」 버튼과 사이드바 하단 안내 문단은 제거한다(Files & folders 트리 자체와 트리 내부 필터는 유지). 필터 폼의 Owner/Repository/Base branch 중복 필드를 제거하고(사이드바 선택값을 그대로 질의에 사용), CR-106의 PR 번호·M 번호·머지 시각·머지 순서 range 네 종류를 하나의 range 유형 선택자 + From/To 두 칸으로 통합한다(유형을 바꿔도 다른 유형의 값은 지우지 않는다). Status·`q`·Author·Label과 통합된 range 선택자를 포함한 필터 조건 전체는 기본 collapsed인 `Collapsible` 하나로 묶고, Search/Reset 버튼은 접힘과 무관하게 항상 노출한다. 접힘/펼침은 필터·URL 상태를 바꾸지 않는다(`FR-SRCH-006`~`009` 원칙과 동일). `SourceHistory`의 SHA·연결 PR 번호(CR-107) 복사는 별도 Copy 버튼 없이 표시 텍스트 자체가 클릭 대상이다. 질의 semantics·URL 파라미터·CR-106/CR-107 API 계약은 바꾸지 않는다.
 
@@ -460,13 +462,13 @@ PR 1건의 전체 맥락 — 커밋 집합, 시퀀스 위치, 선행·후행, �
 
 - 좌측 내비게이션 "통계"
 - W-001 집계 탭의 "대시보드에서 보기"
-- 딥링크 `/analytics?q=&from=&to=&interval=&groupBy=`
+- 딥링크 `/analytics?q=&from=&to=&interval=&group_by=&timezone=` — `from`·`to`는 날짜(`YYYY-MM-DD`)이고 `timezone`이 기본(`Asia/Seoul`)이면 생략한다. 날짜는 그 시간대의 달력 날짜다(FR-STAT-002 AC-7, CR-127)
 
 ### 섹션 정의
 
 | 섹션 | 내용 | 관련 FR |
 | --- | --- | --- |
-| `W-006-CONTROLS` 조건 바 | 기간, 버킷 간격(시간/일/주/월), 시간대, 그룹 키, 질의 문자열 | FR-STAT-001, FR-STAT-002 |
+| `W-006-CONTROLS` 조건 바 | 기간(Start·End 달력 — 오늘은 대시보드 시간대의 날짜), 버킷 간격(시간/일/주/월), 시간대, 그룹 키, 질의 문자열 | FR-STAT-001, FR-STAT-002 |
 | `W-006-TIMESERIES` 시계열 | 머지 PR 수 시계열, 그룹별 최대 20계열 | FR-STAT-002 |
 | `W-006-GROUPS` 그룹 집계 | 그룹별 건수·변경 규모 합계·리드타임 중앙값 테이블, 정렬 가능 | FR-STAT-001 |
 | `W-006-LEADTIME` 리드타임 분포 | p50/p75/p90/p95/p99 카드와 그룹별 비교 | FR-STAT-003 |
@@ -819,7 +821,7 @@ PR 1건의 전체 맥락 — 커밋 집합, 시퀀스 위치, 선행·후행, �
 
 | 섹션 | 내용 | 관련 FR |
 | --- | --- | --- |
-| `A-004-FILTERS` 필터 | 사용자, 행위 유형, 대상, 기간, 결과 코드 | FR-AUTH-004 |
+| `A-004-FILTERS` 필터 | 사용자, 행위 유형, 대상, 기간(`Start (KST)`·`End (KST)` — `from` 이상 `to` 미만, `+09:00`으로 보낸다), 결과 코드 | FR-AUTH-004 |
 | `A-004-LIST` 기록 목록 | 시각, 사용자, 행위, 대상, 질의 문자열, 결과 코드, 상관 ID | FR-AUTH-004 |
 
 ### 주요 컴포넌트
