@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.69 | 갱신일: 2026-09-27
+> 상태: review | 버전: v2.70 | 갱신일: 2026-09-27
 
 ## WP-105 사내 GHE 전체 URL 참조 — 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 (CR-124)
 
@@ -8,7 +8,7 @@
 - 범위: (1) `deploy/single-host/compose.yml` — `worker-link`·`worker-batch`에 `GHE_BASE_URL: ${GHE_BASE_URL:?}` 한 줄씩(`*ghe-env`는 넣지 않는다). (2) `packages/github/src/config.ts` — `resolveReferenceHost`(비면 `null`, 호스트만). (3) `apps/pipeline-worker/src/index.ts` — 두 파생 경로의 `referenceHostFor`와 승인 호스트 기동 로그. (4) RUNBOOK 7.K와 3장·5장 표·7장 표·8장, `.env.example`의 `GHE_BASE_URL` 주석.
 - 제외: 참조 추출·해석 규칙, Kubernetes 형상의 자격 배선, 파생의 대상 조회가 직전에 색인된 대상을 보지 못하는 경합(DEV-778), Release 발행, 사내 적용.
 - 완료 기준: 대표 문제는 **수정 전 코드에서 먼저 재현한다** — 격리 compose 프로젝트(수정 전 `0.1.0-pilot.19` 이미지와 main 배포 정의)에서 두 역할의 compose 렌더와 컨테이너에 주소가 없고, PR 본문·커밋 메시지의 GHE PR·커밋 URL이 참조 0건으로 파생된다. 수정 뒤에는 같은 자료에서 새 이벤트가 URL 참조를 만들고, 기존 자료는 prs-links 재색인이 URL 참조를 만들어 전환 전 검증을 지난다. 사내 주소 문자열은 단위·회귀·통합 시험과, 두 역할만 그 주소로 다시 만든 시험 전용 혼합 형상으로 확인한다(사내 접속 없음). 단위 — `reference.test.ts` +11건, `config.test.ts` +7건. 회귀 — `cr124-ghe-reference-host.test.ts` 6건(실제 `docker compose config`). 통합 — `link.test.ts` +5건. 변이 8종. 전 계층 게이트.
-- 상태: 구현·검증 완료, 병합 대기 — 원장 6.115장.
+- 상태: done — main `81b147b`(PR #243 squash 병합, 2026-09-27). 검증·병합 판정은 원장 6.115장이다.
 
 ## WP-104 prs-links 재색인의 부분 갱신 경합과 해제된 스택 이력 (CR-121)
 
@@ -194,7 +194,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
-| WP-105 | 사내 GHE 전체 URL 참조 — 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 | 배포 편차 수정 (CR-124) | WP-029, WP-070, WP-104 | in_progress — 구현·검증 완료, 병합 대기(원장 6.115장) |
+| WP-105 | 사내 GHE 전체 URL 참조 — 단일 호스트에서 참조를 파생하는 두 역할의 GHE 주소 | 배포 편차 수정 (CR-124) | WP-029, WP-070, WP-104 | done — main `81b147b`(PR #243), 원장 6.115장 |
 | WP-104 | prs-links 재색인의 부분 갱신 경합과 해제된 스택 이력 | 설계 결함 수정 (CR-121) | WP-030, WP-031, WP-035, WP-103 | done — main `df3d8ef`(PR #237), 원장 6.112장 |
 | WP-103 | prs-commits 재색인의 기대 집합과 메타데이터 복원 | 설계 결함 수정 (CR-119) | WP-035, WP-067, WP-098, WP-101, WP-102 | done — main `e94cb4f`(PR #235), 원장 6.111장 |
 | WP-102 | 원본 커밋은 그 PR이 새로 가져온 커밋 — 추적 브랜치 체인 규칙 | 요구사항 공백 수정 (CR-117) | WP-101, WP-021, WP-022, WP-028, WP-017, WP-035 | done — main `65acf83`(PR #230), 원장 6.108장 |
