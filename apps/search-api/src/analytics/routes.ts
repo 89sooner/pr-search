@@ -39,11 +39,10 @@ import {
 } from './aggregations.js';
 import { AggregationTimedOutError, executeAggregation } from './execute.js';
 import { prepareAnalyticsQuery, type PrepareOutcome } from './prepare.js';
+import { isRangeFailure, resolveTimeSeriesRange } from './range.js';
 import {
   ANALYTICS_BUDGET_MS,
   DEFAULT_PERCENTILES,
-  DEFAULT_RANGE_DAYS,
-  DEFAULT_TIMEZONE,
   GROUP_KEYS,
   MAX_BUCKETS,
   MAX_GROUPS,
@@ -350,6 +349,17 @@ function bucketCount(from: string, to: string, interval: Interval): number {
   return Math.floor(span / INTERVAL_MS[interval]) + 1;
 }
 
+/**
+ * 달력 기간의 버킷 수 어림 (CR-127). 길이는 `[첫 순간, 끝 다음 날 첫 순간)`이다.
+ *
+ * 주·월 버킷은 기간의 앞뒤가 버킷 중간에 걸릴 수 있어 하나를 더한다 — 상한 판정은
+ * 넘치게 세는 쪽이 안전하다(위 주석처럼 월은 30일 어림이다).
+ */
+function calendarBucketCount(spanMs: number, interval: Interval): number {
+  const buckets = Math.ceil(spanMs / INTERVAL_MS[interval]);
+  return interval === 'week' || interval === 'month' ? buckets + 1 : buckets;
+}
+
 function readGroupBy(body: Record<string, unknown>): GroupKey | null | 'invalid' {
   const raw = body['group_by'];
   if (raw === undefined || raw === null || raw === '') return null;
@@ -452,24 +462,19 @@ export function registerAnalyticsRoutes(app: FastifyInstance, options: Analytics
     }
 
     /*
-     * 기간 미지정 시 최근 30일이며 **응답에 적용 구간을 명시한다**
-     * (FR-STAT-002 예외/실패 처리). 기본값을 말하지 않으면 사용자가 자기가
-     * 묻지 않은 구간의 답을 자기 구간의 답으로 읽는다.
+     * 기간 미지정 시 요청 시간대의 오늘을 포함한 30일이며 **응답에 적용 구간을 명시한다**
+     * (FR-STAT-002 예외/실패 처리·AC-7). 기본값을 말하지 않으면 사용자가 자기가
+     * 묻지 않은 구간의 답을 자기 구간의 답으로 읽는다. 날짜만 적은 기간은 요청
+     * 시간대의 달력 날짜이고, 시각을 적은 기간은 기존 뜻 그대로다(`range.ts`).
+     * 시간대 이름도 여기서 검증한다 — 모르는 이름을 검색 클러스터에 넘기면 400이 아니라
+     * 알 수 없는 실패가 된다.
      */
-    const now = Date.now();
-    const to = typeof body['to'] === 'string' ? body['to'] : new Date(now).toISOString();
-    const from =
-      typeof body['from'] === 'string'
-        ? body['from']
-        : new Date(now - DEFAULT_RANGE_DAYS * 86_400_000).toISOString();
-    if (Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) {
-      return invalid(reply, correlationId, 'from', '기간은 ISO 8601 시각이어야 합니다.');
-    }
-    if (Date.parse(from) > Date.parse(to)) {
-      return invalid(reply, correlationId, 'from', '기간이 뒤집혔습니다.');
-    }
-
-    const timezone = typeof body['timezone'] === 'string' ? body['timezone'] : DEFAULT_TIMEZONE;
+    const resolved = resolveTimeSeriesRange(
+      { from: body['from'], to: body['to'], timezone: body['timezone'] },
+      Date.now(),
+    );
+    if (isRangeFailure(resolved)) return invalid(reply, correlationId, resolved.field, resolved.message);
+    const { timezone } = resolved;
 
     /*
      * **요청 구간을 모집단에 넣는다** (PR #76 리뷰 P1).
@@ -477,11 +482,14 @@ export function registerAnalyticsRoutes(app: FastifyInstance, options: Analytics
      * 질의 문자열에 `merged:` 범위를 더해 파서를 그대로 지나게 한다 — 별도
      * 경로를 만들면 `total`이 세는 것과 버킷이 담는 것이 달라진다. 사용자가
      * 이미 `merged:`를 줬으면 두 범위가 AND로 결합해 교집합이 되며, 그것이
-     * "이 구간 안에서"라는 요청의 뜻과 같다.
+     * "이 구간 안에서"라는 요청의 뜻과 같다. 날짜 기간은 `@<시간대>`를 달아 버킷과
+     * 같은 달력으로 거른다 (CR-127).
      */
-    const rangeQuery = `${readString(body, 'query')} merged:${from}..${to}`.trim();
+    const rangeQuery = `${readString(body, 'query')} ${resolved.rangeFilter}`.trim();
 
-    const buckets = bucketCount(from, to, interval);
+    const buckets = resolved.kind === 'calendar'
+      ? calendarBucketCount(resolved.spanMs, interval)
+      : bucketCount(resolved.boundsMin, resolved.boundsMax, interval);
     if (buckets > MAX_BUCKETS) {
       return fail(reply, 400, {
         error: {
@@ -500,14 +508,14 @@ export function registerAnalyticsRoutes(app: FastifyInstance, options: Analytics
       const outcome = await executeAggregation(options.es, {
         target: handled.prepared.target,
         scoped: handled.prepared.scoped,
-        aggs: buildTimeSeriesAggs({ interval, timezone, from, to, groupBy }),
+        aggs: buildTimeSeriesAggs({ interval, timezone, from: resolved.boundsMin, to: resolved.boundsMax, groupBy }),
       });
       const series = toTimeSeriesOutcome(outcome.aggregations, groupBy);
 
       return reply.send({
         interval,
         timezone,
-        applied_range: { from, to },
+        applied_range: { from: resolved.appliedFrom, to: resolved.appliedTo },
         total: outcome.total,
         buckets: series.buckets,
         series: series.series,

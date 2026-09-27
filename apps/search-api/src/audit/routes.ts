@@ -24,6 +24,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { auditRepo, type Pool } from '@prs/db';
 import type { ErrorResponse } from '@prs/contracts';
+import { isCalendarDate } from '@prs/query';
 import type { AuthContext } from '../auth/context.js';
 import { authenticateSession, principalId, requireRole } from '../auth/principal.js';
 import { sendAuthError, toAuthError } from '../auth/errors.js';
@@ -81,10 +82,33 @@ function readText(raw: unknown): string | null | undefined {
   return raw;
 }
 
+/**
+ * 기간 끝의 모양 (FR-AUTH-004 AC-9, CR-127): ISO-8601 날짜, 또는 날짜와 시각(초·밀리초
+ * 선택)에 오프셋(`Z`·`±hh:mm`) 선택.
+ */
+const INSTANT = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+
+/**
+ * 기간 끝을 순간으로 읽는다.
+ *
+ * **오프셋이 없으면 UTC다** — `new Date(raw)`에 그대로 넘기면 서버 프로세스의 기본
+ * 시간대로 읽혀 같은 요청이 실행 환경마다 다른 기록을 냈다(DEV-782). 컨테이너 배포는
+ * UTC였으므로 이것은 그 동작을 명시한 것이다. 화면(A-004)은 한국 벽시계에 `+09:00`을
+ * 붙여 보낸다. 없는 날짜·시각(`2025-02-29`, `24:30`)은 `Date`가 다음 날로 넘기므로
+ * 따로 거른다.
+ */
 function readInstant(raw: unknown): Date | null | undefined {
   if (raw === undefined) return undefined;
   if (typeof raw !== 'string' || raw === '') return null;
-  const parsed = new Date(raw);
+  const match = INSTANT.exec(raw);
+  if (match === null) return null;
+  const [, date = '', hour, minute, second, zone] = match;
+  if (!isCalendarDate(date)) return null;
+  if (hour !== undefined && (Number(hour) > 23 || Number(minute) > 59 || (second !== undefined && Number(second) > 59))) {
+    return null;
+  }
+  const iso = hour === undefined ? `${date}T00:00:00Z` : zone === undefined ? `${raw}Z` : raw;
+  const parsed = new Date(iso);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
@@ -112,7 +136,9 @@ function toItem(row: auditRepo.AuditRecordRow): AuditItem {
 /** 요청에서 필터를 읽는다. 형식 오류는 `null`을 담아 돌려준다. */
 function parseFilter(
   query: Record<string, unknown>,
-): { readonly ok: true; readonly filter: AuditFilterInput } | { readonly ok: false; readonly field: string } {
+):
+  | { readonly ok: true; readonly filter: AuditFilterInput }
+  | { readonly ok: false; readonly field: string; readonly message?: string } {
   const userId = readText(query['user_id']);
   if (userId === null) return { ok: false, field: 'user_id' };
   const action = readText(query['action']);
@@ -125,6 +151,10 @@ function parseFilter(
   if (from === null) return { ok: false, field: 'from' };
   const to = readInstant(query['to']);
   if (to === null) return { ok: false, field: 'to' };
+  // 역전된 기간은 빈 목록이 아니라 입력 오류다 (CR-127). 같은 순간이면 빈 구간이며 허용한다.
+  if (from !== undefined && to !== undefined && from.getTime() > to.getTime()) {
+    return { ok: false, field: 'from', message: "'from'이 'to'보다 늦습니다" };
+  }
 
   return {
     ok: true,
@@ -168,7 +198,7 @@ export function registerAuditRoutes(app: FastifyInstance, options: AuditRouteOpt
 
     const parsed = parseFilter(query);
     if (!parsed.ok) {
-      return invalid(reply, correlationId, parsed.field, `'${parsed.field}' 값을 읽을 수 없습니다`);
+      return invalid(reply, correlationId, parsed.field, parsed.message ?? `'${parsed.field}' 값을 읽을 수 없습니다`);
     }
     const filter = parsed.filter;
 

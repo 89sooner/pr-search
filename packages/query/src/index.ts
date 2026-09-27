@@ -76,3 +76,16 @@ export type {
 
 export { MIN_TEXT_LENGTH, countCodePoints, parseQuery } from './parse.js';
 export { addEquality, intersectNumericRange, replaceEquality, serializeQuery } from './serialize.js';
+
+export {
+  addDays,
+  calendarRangeToUtc,
+  canonicalTimeZone,
+  endOfMonth,
+  isCalendarDate,
+  startOfZonedDay,
+  todayIn,
+  zonedDate,
+  zonedParts,
+} from './calendar.js';
+export type { ZonedParts } from './calendar.js';

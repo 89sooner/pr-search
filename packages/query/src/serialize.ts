@@ -41,7 +41,10 @@ function renderFilter(filter: QueryFilter): string[] {
   const prefix = filter.op === 'not_eq' || filter.op === 'not_range' ? '-' : '';
 
   if (isRangeFilter(filter)) {
-    return [`${prefix}${filter.key}:${String(filter.from)}..${String(filter.to)}`];
+    // 달력 날짜 범위의 시간대를 잃으면 같은 날짜가 UTC 하루로 바뀐다 (CR-127) — 커서 지문·
+    // 저장된 검색·완화 힌트·통계 모집단이 모두 이 문자열을 쓴다.
+    const zone = 'timezone' in filter && filter.timezone !== undefined ? `@${filter.timezone}` : '';
+    return [`${prefix}${filter.key}:${String(filter.from)}..${String(filter.to)}${zone}`];
   }
   // 같은 키의 값 하나하나가 토큰이다. 다시 파싱하면 한 노드로 모인다 (AC-5).
   return filter.values.map((value) => `${prefix}${filter.key}:${renderValue(value)}`);
