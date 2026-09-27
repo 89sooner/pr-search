@@ -3400,3 +3400,59 @@ gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '.check_runs[] | "
 - 번들: `<scratchpad>/build-rc.sh <worktree> <version>`(`--release` 없음, setsid nohup으로 돌렸다).
 - 게이트: `<scratchpad>/run-gates.sh <worktree> <label>`(새 DB `prs_test_s19_<label>`).
 - CI 재실행: `gh api -X POST repos/<o>/<r>/actions/runs/<id>/rerun-failed-jobs`.
+
+## 20차 (2026-09-27) — DEV-776·DEV-777·DEV-773 = CR-124·CR-125·CR-126 병합
+
+### Goal
+
+사용자 지시(2026-09-27): 최신 main에서 DEV-776 → DEV-777 → DEV-773 순서로, 항목마다 별도 CR·WP·PR로 구현·검증·리뷰·병합한다. 목표는 셋이다 — 사내 GHE 전체 주소로 적은 참조를 인식한다, 관리자 목록을 여러 페이지로 읽어도 항목이 빠지지 않는다, 업그레이드 직후에도 기존 PR 스택의 해제 표시가 자동으로 맞춰진다. 실제 사내 적용과 새 Release 발행은 하지 않고, 외부 격리 검증을 사내 검증으로 표현하지 않는다.
+
+### Current state
+
+- **main = `7684bd3`**(CR-126, PR #245)과 이 마감 기록 PR. 세 PR 모두 PR CI와 병합 커밋의 main CI가 첫 시도에 success였다(main run 36281947573·36289156333·36311212601).
+- 첫 세션(`fb6e416b…`)이 CR-124 병합과 CR-125 구현·리뷰까지 하고 context-full로 끊겼다(전사 `exports/202609271040_ing.md`). 이어가기 세션(`e8250df0…`)이 전사와 그 scratchpad(`r20/` 도구, 게이트·변이 스크립트)로 CR-125를 마감·병합하고 CR-126을 진행했다.
+- 사내 적용 NOT RUN, 새 번들·Release 없음.
+
+### Decisions
+
+- **공개 저장소에 사내 GHE 주소를 싣지 않는다**(사용자 결정) — 가상 호스트로 시험하고 실제 값은 로컬에서만 돌렸다.
+- **CR-125: 새 오류 코드를 만들지 않는다** — `CURSOR_INVALID` + `detail.reason`으로 옛 판을 구분한다. 판 판정은 서명 뒤·만료 앞이다.
+- **CR-126: 전환기 보완은 이벤트 소비자에만 켠다** — JOB-REL-006 재파생에 켜면 저장소 전체를 옮기는 두 번째 이전 경로가 되고, 재색인에 켜면 전환 전 검증이 제 뜻을 잃는다. `OD-017`은 원래 결정 문장을 고치지 않고 날짜 붙은 보완을 달았다(SRS v2.47).
+- 전환기 보완을 끄는 조건, DEV-778·DEV-779는 후속 판단으로 남겼다.
+
+### 이번에 배운 것
+
+- **이어가기에서는 jsonl의 마지막 `tool_use`/`tool_result`로 끊긴 지점을 찾는다** — 이번에는 마지막 명령(수정 전 코드에서 재현 재실행)이 끝까지 돌았고 출력이 로그에 있었다.
+- **원장이 push하지 않는 중간 커밋의 SHA를 인용하면 push 뒤에는 따라갈 수 없다** — 「push하지 않은 중간 커밋, 그 뒤 제품 코드는 같다」로 실측해 고친다(CR-124·CR-125).
+- **게이트 라벨을 재사용하면 첫 실행의 실패 로그가 지워진다** — 새 라벨로 돌린다.
+- **새 통합 시험이 정본 행 없는 옛 간선을 남기면, 저장소 전체를 재색인하는 다른 통합 시험이 그것을 세어 실패한다** — 시험은 끝날 때 자기 저장소를 치운다.
+- **격리 compose의 재색인 보호 확인은 「이미 해제된」 옛 이력으로 해야 한다** — 성립 중인 관계는 재구축이 지금 스냅숏으로 파생해 검증을 통과시킨다(첫 실행에서 밟았다).
+- **스냅숏 복원으로 호스트의 git 디렉터리를 지우고 다시 만들면, 실행 중인 가짜 GHE의 바인드 마운트가 옛 디렉터리를 가리킨다** — 컨테이너를 재시작한다.
+- **pilot.18에는 `GET /api/v1/me`가 없다** — 로그인 뒤 사용자 행은 `GET /api/admin/reindex` 같은 인증 요청으로 만든다(DEV-613).
+
+### Changed files
+
+- CR-124: `deploy/single-host/compose.yml`, `packages/github/src/config.ts`(`resolveReferenceHost`), `apps/pipeline-worker/src/index.ts`(`referenceHostFor`), 시험 넷(가상 호스트), 문서(CR-124, 보안·비동기, WP-105, 원장 6.115, RUNBOOK 7.K, `.env.example`).
+- CR-125: `packages/db/src/repositories/{registration-request,audit}.ts`, `apps/search-api/src/cursor/envelope.ts`·두 코덱·두 경로, `apps/web/lib/cursor-failure.ts`·화면 셋, 시험(통합 17·단위·e2e), 문서(API 계약, 화면 명세 셋, WP-106, 원장 6.116, RUNBOOK).
+- CR-126: `apps/pipeline-worker/src/{stack-import,relations,link,index}.ts`, `packages/es/src/architecture.test.ts`, 시험(통합 15·단위 8·회귀 4), 문서(SRS v2.47, 매트릭스, 비동기·백엔드·데이터 모델, WP-107, 원장 6.117, RUNBOOK 7.I·7장 표·8장).
+
+### Commands
+
+- 게이트: `<scratchpad>/run-gates.sh <worktree> <label>`(새 DB `prs_test_s20_<label>`, `setsid nohup`으로 분리).
+- 변이: `<scratchpad>/mut12x/mutate.py <spec.json>`(바이트 백업과 원복, 통과 0이면 NOT-RUN).
+- 격리: `<scratchpad>/r20/run776.sh …`, `r20/run773.sh down | p18-install | p18-scenario | snapshot <l> | restore <l> | upgrade <p19|fix> | events <t> | restart-case | reindex <t> | import-stacks | dump <l>`, 한 번에 `r20/run773-all.sh`.
+- 문서 검증: `<scratchpad>/docval.sh <worktree> <base> <label>`.
+
+### Next steps
+
+1. 사용자: 20차 격리 자원·워크트리 정리 여부(current-handoff 「Verify before changing code」 1·2번).
+2. 사용자: 20차 변경을 담은 다음 배포본과 사내 적용 여부 — 적용 순서는 current-handoff 「다음 할 일」 (1).
+3. 후속 후보(사용자 판단): CR-126 전환기 보완을 끄는 조건, DEV-778, DEV-779, DEV-588.
+
+### Risks/gotchas
+
+- current-handoff 「Open boundary」와 같다. 특히 CR-126은 저장소 전체의 이력 이전이 아니다 — 이벤트를 받지 않은 관계는 여전히 `import-stacks`가 옮긴다.
+
+### References
+
+- PR #243·#244·#245와 마감 기록 PR, 변경 대장 CR-124~CR-126, 원장 6.115~6.117장.
