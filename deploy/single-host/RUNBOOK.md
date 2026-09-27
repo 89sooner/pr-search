@@ -436,6 +436,8 @@ docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-
   psql -U prs -d prs -c "SELECT job_id, type, target, state FROM job WHERE state IN ('queued','running','paused')"
 ```
 
+**사내 GHE URL 참조 (`CR-124`).** 이 판부터 `worker-link`·`worker-batch`가 `GHE_BASE_URL`을 받는다. `load` 뒤 사내 수정(CA 마운트)을 새 `compose.yml`에 다시 얹을 때 **옛 파일로 덮지 않는다** — 덮으면 이 두 줄이 사라져 URL 참조가 다시 0건이 된다. `upgrade` 전에 7.K 2번으로 두 역할의 값을 보고, 과거 자료의 반영은 7.K 5번(prs-links 재색인)을 따른다.
+
 **세션 인증과 관리 토큰 (`CR-091`).** `./prsctl load`·`install`·`upgrade`·`health`는 시작하기 전에 `AUTH_ENABLED=true`와 `ADMIN_API_TOKENS`가 함께 있는지 본다. 함께 있으면 **컨테이너를 바꾸기 전에** 멈춘다 — `search-api`가 그 조합으로는 기동하지 않기 때문이다(`DEV-048`). 파일럿을 `AUTH_ENABLED=false`에서 `true`로 옮기는 업그레이드라면 이전 `.env`의 토큰을 비우고, 운영자에게 `./prsctl role grant`로 `operator`를 준다(6장).
 
 **병합 상태 정정 (`CR-101`, 마이그레이션 032).** 032는 이미 저장된 PR 스냅숏에서 병합된 PR의 `state`를 `closed`에서 `merged`로 바로잡는다. Elasticsearch는 그 문서를 그대로 색인하므로 **`upgrade`가 끝난 뒤 운영 콘솔(`/ops`)에서 `prs-pull-requests`를 한 번 재색인한다.** 그 전까지는 Status=Merged·My merged PRs·PR 상세의 Merged 배지·M 번호 조회가 옛 문서를 보고 병합 PR을 놓친다. 재색인 뒤 들어오는 웹훅·백필 문서는 투영이 스스로 파생한다.
@@ -526,7 +528,7 @@ git merge vendor/upstream        # 충돌은 여기서 푼다
 | 무엇 | 등급 | 번들이 덮는가 | 비고 |
 | --- | --- | --- | --- |
 | `.env` | A | **아니다** — 애초에 번들에 없다 | 값 목록은 2.B. `WEB_PORT`·`AUTH_ENABLED`·`SESSION_COOKIE_SECURE`·`GHE_API_URL`·`NODE_EXTRA_CA_CERTS`·`ADMIN_DATABASE_URL`이 기본값과 달랐다 |
-| `compose.yml`의 CA 마운트 | A | **덮는다** — 추적되는 파일이다 | 일곱 자리(anchor + 서비스 6). 6장 「anchor는 얕게 합쳐진다」. `prsctl load` 완료 후 `upgrade` 전에 재적용한다 — `load`가 내부에서 `verify`를 재실행하므로 그 전 수정은 checksum 불일치로 거부된다 (`DEV-571`) |
+| `compose.yml`의 CA 마운트 | A | **덮는다** — 추적되는 파일이다 | 일곱 자리(anchor + 서비스 6). 6장 「anchor는 얕게 합쳐진다」. `prsctl load` 완료 후 `upgrade` 전에 재적용한다 — `load`가 내부에서 `verify`를 재실행하므로 그 전 수정은 checksum 불일치로 거부된다 (`DEV-571`). **재적용은 새 파일에 얹는 것이다** — 옛 `compose.yml`로 덮으면 새 판이 더한 줄(예: `CR-124`의 `worker-link`·`worker-batch` `GHE_BASE_URL`)이 사라진다(7.K 2번으로 확인) |
 | `prs_retention` 롤 | — | 해당 없음(DB 상태) | **더 이상 형상이 아니다** (`DEV-556`). `install`·`upgrade`·`restore`가 `ADMIN_DATABASE_URL`을 읽어 만든다 — 그 값만 `.env`에 있으면 된다 |
 | 웹훅 경유 경로 | B | 해당 없음(다른 저장소) | 어느 서비스의 어느 경로인지 적어 둔다. 2.C 「GHE가 서버에 닿지 못할 때」 |
 | GHE 조직 웹훅 등록 | — | 해당 없음(GHE에 영속) | 서버를 다시 세워도 남는다. 주소가 바뀌면 그때 고친다 |
@@ -758,6 +760,7 @@ done
 | **직접 푸시의 영구 부재 확정** (`DEV-581`) → 운영자 확인서 (`CR-100`, 7.D) | **`VERIFIED (external)`** — 확인서로 지나가는 경로·유예·범위·철회·확정 근거 보존을 격리 DB 통합 시험 11건과 변이 2건으로 확인했다(원장 6.94장). 사내 실데이터 적용은 `NOT RUN — internal environment required` — 7.D 절차로 사내에서 실행한다. 이전 기록: **`NOT RUN — 근거 미확보`** — 공식 GHE 읽기 계약에 완결 증서가 없다. production 판정기는 그 상태를 `negative_evidence_unavailable`로 남기며, 그 결과 **첫 미확정 항목 뒤의 PR이 전부 대기할 수 있다.** 격리 시험이 direct 분기를 통과한 것은 이 조건을 닫지 않는다 |
 | 실제 사내 GHE에서의 M 채번·지연 (`measure:sequence-latency`) | `NOT RUN — internal environment required` — 아래 7.A 절차로 사내에서 잰다 |
 | `0.1.0-pilot.18` 운영 상태에서 이 판으로의 업그레이드 — 7.J 순서(스택 가져오기 → prs-commits 재색인 → prs-links 재색인 → `links apply`) | `VERIFIED (external, isolated)` (2026-09-26) — 격리 compose 프로젝트에 pilot.18 번들을 설치하고 가짜 GHE로 사내 보고와 같은 상태(해제된 스택 이력, `git merge dev`로 붙은 PR 번호, 손으로 전환한 prs-commits, 실패한 prs-links 재색인의 대상 인덱스, 보관된 저장소)를 만든 뒤 이 판으로 올렸다. 과거 간선·정상 PR 번호·원본 커밋의 메시지와 작성자·M 번호 정렬과 범위 검색이 유지되고, 잘못 붙은 PR 번호가 빠지고, 두 재색인이 검증을 지나 자동 전환했다. 그 과정에서 차단 둘(`CR-122`·`CR-123`)을 찾아 고쳤다. 기록과 검증 단계 시간(**격리 환경 값이며 사내 실측이 아니다**)은 원장 6.113장. **사내 실데이터 적용은 `NOT RUN`** |
+| 사내 GHE 전체 URL 참조 (7.K, `CR-124`) — 두 역할의 주소 전달, 새 이벤트와 prs-links 재색인의 URL 참조, 다른 호스트·유사 호스트 거절 | `VERIFIED (external, isolated)` (2026-09-27) — 격리 compose에서 수정 전 판(URL 참조 0건)과 수정 뒤 판을 비교했고, 사내 주소 문자열은 두 역할만 그 주소로 다시 만든 시험 전용 형상에서 확인했다(원장 6.115장). 실제 사내 GHE·인증서·프록시·실데이터는 `NOT RUN — internal environment required` |
 
 **외부에서 증명할 수 없는 것을 통과로 적지 않는다.** 사내 반입 뒤 이 표의 아래쪽을 실제로 실행하고 그 결과를 기록한다.
 
@@ -1608,10 +1611,83 @@ prs-links 재색인 실패, `git merge dev`로 붙은 PR 번호)에서 올라올
 남는다). 그 커밋을 전체 SHA로 가리키던 참조는 4번 뒤 미해결이 된다. 대상 문서가 없으므로 FR-REL-003 AC-3에
 맞는 상태이며, 과거 기록이 사라진 것이 아니다 — 참조 간선과 근거 문장은 그대로 남는다.
 
+### 7.K 사내 GHE 주소로 적은 참조 — 주소 설정 확인과 기존 자료 반영 (WP-105 / FR-REL-003 AC-1 · THR-036, `CR-124`)
+
+PR 본문·커밋 메시지에 사내 GHE의 **전체 URL**로 적은 참조(`https://<사내 GHE 주소>/<owner>/<repo>/pull/<번호>`,
+`…/commit/<SHA>`)는 `.env`의 `GHE_BASE_URL`과 **호스트가 같을 때만** 참조가 된다(THR-036). `#123`·`owner/repo#123`·SHA
+참조는 이 설정과 무관하다. **이 판 이전의 단일 호스트 배포에서는 URL 참조가 한 건도 생기지 않았다** — 참조를 파생하는 두
+역할(`worker-link`의 평시 파생, `worker-batch`의 prs-links 재색인)이 이 주소를 받지 않았다(`DEV-776`). 이 판부터 두 역할이
+주소 **하나만** 받는다. App 자격(`GHE_APP_*`)은 받지 않는다 — 두 역할은 GHE에 접속하지 않는다.
+
+**비밀을 찍지 않는다.** 아래 명령은 주소와 키 이름만 보여 준다. `docker compose config`를 그대로 출력하면 DB 비밀번호와 App
+개인 키가 화면과 터미널 기록에 남는다.
+
+1. **`.env`의 주소.** 사내 GHE의 웹 주소여야 한다(수집·로그인이 쓰는 값과 같다). 끝의 `/`나 대소문자는 상관없다. 주소에
+   포트를 적었다면 참조 URL의 포트도 같아야 한다.
+
+   ```bash
+   grep '^GHE_BASE_URL=' deploy/single-host/.env
+   ```
+
+2. **compose가 두 역할에 넘기는 값 — `upgrade` 전에.** 3장 「업그레이드」에서 사내 수정(CA 마운트)을 새 `compose.yml`에 다시
+   얹은 뒤, `upgrade`를 부르기 전에 본다. **옛 `compose.yml`을 복사해 덮으면 이 두 줄이 사라진다** — 새 파일에 사내 수정만
+   다시 얹는다.
+
+   ```bash
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml config \
+     | awk '/^  [a-z][a-z0-9-]*:$/ { s = ($1 == "worker-link:" || $1 == "worker-batch:") ? $1 : "" }
+            s != "" && /^ +GHE_/ { if ($1 == "GHE_BASE_URL:") print s, $1, $2; else print s, $1, "(값 생략)" }'
+   ```
+
+   기대 출력은 두 줄이다 — `worker-batch: GHE_BASE_URL: <사내 GHE 주소>`와 `worker-link: GHE_BASE_URL: <사내 GHE 주소>`.
+   줄이 없으면 사내 수정을 얹으며 그 줄을 지운 것이다. `GHE_APP_PRIVATE_KEY` 같은 다른 `GHE_` 키가 보이면(값은 생략된다)
+   두 역할에 `*ghe-env` 앵커를 넣은 것이다 — 되돌린다.
+
+3. **컨테이너 안의 값과 기동 로그 — `upgrade` 뒤에.**
+
+   ```bash
+   for s in worker-link worker-batch; do
+     printf '%s ' "$s"
+     docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml exec -T "$s" printenv GHE_BASE_URL
+   done
+   docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml logs worker-link worker-batch | grep 'URL 참조'
+   ```
+
+   로그는 역할마다 `"message":"URL 참조 승인 호스트","reference_host":"<사내 GHE 호스트>"` 한 줄이다(호스트만 적고 자격은
+   적지 않는다). `GHE_BASE_URL이 없다 — URL 참조를 추출하지 않는다 (THR-036)`가 보이면 그 역할이 주소를 받지 못한 것이다 — 2번으로
+   돌아간다. `restart`는 `.env`를 다시 읽지 않는다 — 값을 고쳤으면 `./prsctl upgrade`로 컨테이너를 다시 만든다.
+
+4. **새 이벤트부터는 저절로 반영된다.** 주소를 받은 뒤 들어오는 PR 생성·편집·push의 파생이 URL 참조를 만든다. 대상 PR·커밋이
+   아직 색인되지 않았으면 미해결로 남았다가 대상이 색인되면 해결된다(FR-REL-003 AC-3). 다른 호스트(github.com 등), 사내 주소를
+   흉내 낸 호스트(`<사내 GHE 호스트>.evil.example`, `evil-<사내 GHE 호스트>`, 포트가 다른 주소), 주소를 사용자 정보·경로·질의에
+   숨긴 URL은 참조가 되지 않는다.
+
+5. **기존 자료는 prs-links 재색인으로 반영한다.** 이벤트가 오지 않는 과거 PR·커밋은 바뀌지 않는다. 7.I 4번의 명령으로
+   prs-links를 한 번 재색인한다. 재구축이 정본(PostgreSQL)의 본문에서 참조를 다시 뽑으므로 과거 본문의 URL 참조가 새 인덱스에
+   생기고, 전환 전 검증이 같은 규칙으로 대조한다(`전환 전 간선 검증`의 `expected`가 URL 참조 수만큼 는다).
+   - **`0.1.0-pilot.18`에서 올라오는 사내는 7.J 순서 그대로다.** 7.J 4번(prs-links 재색인)이 이것을 겸하므로 따로 돌리지 않는다.
+     이력 이전(7.J 2번, 스택 가져오기)과 prs-commits 재색인(7.J 3번)이 먼저다 — 순서를 바꾸면 7.I 4번의 「순서가 결과를
+     바꾼다」가 그대로 적용된다.
+   - **7.J를 이미 마친 배포라면** 이 판으로 올린 뒤 prs-links 재색인만 한 번 더 돌린다.
+
+6. **화면으로 확인한다.** 사내 GHE 전체 URL을 본문에 적은 PR을 열어 관계 화면(W-002)의 참조에 그 대상이 보이는지 본다.
+   다른 저장소를 가리키는 참조는 그 저장소를 읽을 수 있는 사용자에게만 대상의 제목·작성자가 보이고, 읽을 수 없는 사용자에게는
+   참조 표현만 보인다(THR-034).
+
+**하지 않는 것.** `*ghe-env` 앵커를 `worker-link`·`worker-batch`에 넣지 않는다 — App 개인 키가 GHE에 접속하지 않는 역할로
+간다. 사내 주소를 제품 코드나 이미지에 넣지 않는다 — `.env`가 유일한 출처다. 서비스 인덱스를 손으로 고치지 않는다 — 기존
+자료의 반영은 재색인이 한다.
+
+**외부에서 확인한 것과 남은 것.** 격리 compose 프로젝트와 시험 전용 가짜 GHE로, 수정 전 판에서 URL 참조가 0건인 것과 수정
+뒤 새 이벤트·재색인이 URL 참조를 만드는 것을 확인했다. 사내 주소 문자열은 두 역할만 그 주소로 다시 만든 시험 전용 형상에서
+확인했다(두 역할은 GHE에 접속하지 않으므로 사내에 연결하지 않았다, 원장 6.115장). 실제 사내 GHE의 PR 본문·인증서·프록시·
+실데이터에서의 동작은 `NOT RUN — internal environment required`다.
+
 ## 8. 문제 해결
 
 | 증상 | 확인 |
 | --- | --- |
+| PR 본문의 사내 GHE URL이 관계 화면의 참조로 나오지 않는다 | 7.K 2·3번으로 두 역할이 주소를 받았는지 본다(`0.1.0-pilot.19`까지의 단일 호스트 번들은 받지 않았다, `DEV-776`). 주소가 맞는데 과거 PR에만 없으면 prs-links 재색인(7.K 5번)을 아직 돌리지 않은 것이다. URL의 호스트·포트가 `GHE_BASE_URL`과 다르면 의도대로 참조가 아니다 |
 | `prsctl links apply`·`refetch`·`import-stacks`가 `--actor가 필요하다`로 멈춘다 | `0.1.0-pilot.19` 이전 번들이다(`DEV-774`). 그 판의 CLI가 `prsctl`이 넘기는 행위 주체를 읽지 못했다. 이 판의 번들로 올린 뒤 같은 명령을 쓴다 — `plan`·`status`·`import-stacks --dry-run`은 이전 판에서도 돈다 |
 | prs-links 재색인이 참조 간선의 `간선 불일치 … [resolved,to_id,to_repository_id,to_type]`로 실패한다 | prs-commits가 손으로 전환된 인덱스인데 7.H보다 먼저 돌렸거나, `0.1.0-pilot.19` 이전 빌드다(`DEV-775`). 별칭은 그대로다. 7.H를 끝낸 뒤 다시 실행한다(7.J) |
 | prs-links 재색인이 `스택 정본에 없는 서비스 stacks_on 간선`으로 실패한다 | 배포 전 스택 간선을 정본으로 옮기지 않았다. 별칭은 그대로다. 7.I 3번(`./prsctl links import-stacks`, 먼저 `--dry-run`)을 저장소마다 돌리고 다시 실행한다 |

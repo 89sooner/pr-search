@@ -339,3 +339,107 @@ describe('산문 속 URL (PR #44 리뷰 P2)', () => {
     expect(keys('https://github.com/acme/b/pull/77.')).toEqual([]);
   });
 });
+
+/**
+ * 사내 GHE 전체 URL (CR-124 / DEV-776).
+ *
+ * 사내 주소를 대신하는 가상 호스트다. 실제 사내 주소는 공개 저장소에 싣지 않는다(2026-09-27 사용자 결정) —
+ * 구조(네 단계 호스트, 가운데 `github`)를 맞췄고, 실제 값으로는 같은 시험을 격리 환경에서 돌렸다(원장 6.115장). 승인 호스트는 배포 설정의
+ * `GHE_BASE_URL`에서 `resolveReferenceHost`(`packages/github`)가 읽은 값이며 코드에 두지 않는다.
+ */
+describe('사내 GHE 전체 URL (CR-124 / DEV-776)', () => {
+  const CORP_GHE = 'team.github.corp.example';
+  const k = (text: string, gheHost: string | null = CORP_GHE): readonly string[] => keys(text, { gheHost });
+
+  it('PR 본문의 사내 PR·커밋 전체 URL', () => {
+    expect(k(`See https://${CORP_GHE}/acme/b/pull/123 and https://${CORP_GHE}/acme/b/commit/${FULL}`)).toEqual([
+      'x:acme/b:pr:123',
+      `x:acme/b:commit:${FULL}`,
+    ]);
+  });
+
+  it('커밋 메시지의 트레일러에 적은 사내 URL은 derived다', () => {
+    const refs = extractReferences(`fix: 경계 처리\n\nRefs: https://${CORP_GHE}/acme/b/pull/7`, {
+      sourceRepo: SOURCE,
+      gheHost: CORP_GHE,
+    });
+    expect(refs.map((r) => [r.reference_key, r.confidence])).toEqual([['x:acme/b:pr:7', 'derived']]);
+  });
+
+  it('같은 저장소의 사내 URL은 `#N`·SHA와 같은 키로 접힌다 — 간선이 둘이 되지 않는다', () => {
+    expect(k(`#20 https://${CORP_GHE}/acme/a/pull/20`)).toEqual(['pr:20']);
+    expect(k(`${FULL} https://${CORP_GHE}/acme/a/commit/${FULL}`)).toEqual([`commit:${FULL}`]);
+  });
+
+  it('축약 SHA 커밋 URL은 접두 참조다', () => {
+    expect(k(`https://${CORP_GHE}/acme/b/commit/abcdef1`)).toEqual(['x:acme/b:commit-prefix:abcdef1']);
+  });
+
+  it('끝 슬래시·산문 부호·대문자 호스트·기본 포트·조각·질의는 같은 참조다', () => {
+    for (const url of [
+      `https://${CORP_GHE}/acme/b/pull/123/`,
+      `https://${CORP_GHE}/acme/b/pull/123.`,
+      `https://TEAM.GITHUB.CORP.EXAMPLE/acme/b/pull/123`,
+      `https://${CORP_GHE}:443/acme/b/pull/123`,
+      `https://${CORP_GHE}/acme/b/pull/123#issuecomment-1`,
+      `https://${CORP_GHE}/acme/b/pull/123?w=1`,
+    ]) {
+      expect(k(`see ${url}`), url).toEqual(['x:acme/b:pr:123']);
+    }
+  });
+
+  it('기존 `#123`·`org/repo#123`·SHA 참조는 호스트 설정과 무관하게 그대로다', () => {
+    const text = `#123 acme/b#124 ${FULL} abcdef1`;
+    const expected = ['pr:123', 'x:acme/b:pr:124', `commit:${FULL}`, 'commit-prefix:abcdef1'];
+    expect(k(text)).toEqual(expected);
+    expect(k(text, null)).toEqual(expected);
+  });
+
+  it('다른 호스트의 URL은 참조가 아니다 — URL 안의 SHA도 따로 잡지 않는다 (THR-036)', () => {
+    for (const url of [
+      'https://github.com/acme/b/pull/1',
+      `https://github.com/acme/b/commit/${FULL}`,
+      'https://ghe.example.com/acme/b/pull/1',
+      `https://${HOST}/acme/b/pull/1`,
+    ]) {
+      expect(k(url), url).toEqual([]);
+    }
+  });
+
+  it('사내 주소를 흉내 낸 유사 호스트는 참조가 아니다', () => {
+    for (const host of [
+      `${CORP_GHE}.evil.example`,
+      `evil-${CORP_GHE}`,
+      `x.${CORP_GHE}`,
+      'github.corp.example',
+      'team.github.corp.test',
+      'team-github.corp.example',
+      // 끝 점(FQDN 표기)은 다른 문자열이다 — 같은 서버일 수 있어도 인정하지 않는다(fail closed).
+      `${CORP_GHE}.`,
+      // 키릴 문자 а(U+0430) — URL이 퓨니코드로 바꾸므로 다른 호스트다.
+      'te\u0430m.github.corp.example',
+      // 기본이 아닌 포트는 다른 서버다.
+      `${CORP_GHE}:8443`,
+    ]) {
+      expect(k(`https://${host}/acme/b/pull/1`), host).toEqual([]);
+    }
+  });
+
+  it('사내 주소를 사용자 정보·경로·질의에 숨긴 URL은 참조가 아니다', () => {
+    for (const url of [
+      `https://${CORP_GHE}@evil.example/acme/b/pull/1`,
+      `https://evil.example/${CORP_GHE}/acme/b/pull/1`,
+      `https://evil.example/r?to=https://${CORP_GHE}/acme/b/pull/1`,
+    ]) {
+      expect(k(url), url).toEqual([]);
+    }
+  });
+
+  it('스킴은 보지 않는다 — 같은 호스트의 http URL도 참조다 (기존 동작 고정)', () => {
+    expect(k(`http://${CORP_GHE}/acme/b/pull/5`)).toEqual(['x:acme/b:pr:5']);
+  });
+
+  it('승인 호스트가 없으면 사내 URL도 참조가 아니다 (fail closed)', () => {
+    expect(k(`https://${CORP_GHE}/acme/b/pull/123 https://${CORP_GHE}/acme/b/commit/${FULL}`, null)).toEqual([]);
+  });
+});

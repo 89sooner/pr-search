@@ -13,6 +13,7 @@ export type { SourceGitCommit, SourceRestCommit, SourceRestFile, SourceContent, 
 
 export {
   resolveGitHubConfig,
+  resolveReferenceHost,
   hasAppCredentials,
   parseInstallations,
   QUARANTINE_THRESHOLD,

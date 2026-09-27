@@ -33,6 +33,7 @@ import {
   resolveReferencesTo,
   type LinkDeps,
 } from '../../src/link.js';
+import { resolveReferenceHost } from '@prs/github';
 import { createWorkerMetrics } from '../../src/metrics.js';
 import { migratedPool } from '../helpers.js';
 
@@ -897,4 +898,131 @@ describe('참조 간선 파생과 해결 (WP-029 / CR-039)', () => {
       expect((( await prDoc(1))['link_summary'] as Record<string, unknown>)['reference_count']).toBe(100);
     });
   });
+  /* --------------------------------------------------------------------- */
+
+  /**
+   * 사내 GHE 전체 URL (CR-124 / DEV-776).
+   *
+   * 승인 호스트는 **운영 워커와 같은 함수**(`resolveReferenceHost`)로 배포 설정 값에서 읽는다.
+   * 시험의 주소는 사내 주소를 대신하는 가상 호스트다. 실제 사내 주소는 공개 저장소에 싣지 않는다(2026-09-27 사용자 결정) —
+   * 구조(네 단계 호스트, 가운데 `github`)를 맞췄고, 실제 값으로는 같은 시험을 격리 환경에서 돌렸다(원장 6.115장).
+   * link 역할은 GHE에 연결하지 않는다.
+   */
+  describe('사내 GHE 전체 URL (CR-124 / DEV-776)', () => {
+    const CORP_GHE_BASE = 'https://team.github.corp.example';
+    const CORP_GHE = 'team.github.corp.example';
+    const corpGhe = (): LinkDeps => deps({ gheHost: resolveReferenceHost({ GHE_BASE_URL: CORP_GHE_BASE }) });
+
+    it('PR 본문의 사내 PR·커밋 URL이 간선이 되고, 색인된 대상이면 해결된다 — 저장소를 건너뛰는 URL 포함', async () => {
+      await registerOther();
+      await indexPullRequest(20, OTHER_ID);
+      await indexCommit(FULL_A);
+      await indexPullRequest(1);
+      await seedPullRequestSnapshot(1, {
+        body: [
+          `원인: https://${CORP_GHE}/${OWNER}/${OTHER_NAME}/pull/20`,
+          `수정: https://${CORP_GHE}/${OWNER}/${NAME}/commit/${FULL_A}`,
+        ].join('\n'),
+      });
+
+      const outcome = await deriveReferenceLinks(corpGhe(), repository, { kind: 'pull_request', id: '1' });
+
+      expect(outcome.complete).toBe(true);
+      expect(outcome.references).toBe(2);
+      const links = await linksOf(pullRequestDocId(REPOSITORY_ID, 1));
+      const byKey = new Map(links.map((link) => [link['reference_key'], link]));
+      expect([...byKey.keys()].sort()).toEqual([`commit:${FULL_A}`, `x:${OWNER}/${OTHER_NAME}:pr:20`].sort());
+      const cross = byKey.get(`x:${OWNER}/${OTHER_NAME}:pr:20`)!;
+      expect(cross['resolved']).toBe(true);
+      expect(cross['to_id']).toBe(pullRequestDocId(OTHER_ID, 20));
+      expect(cross['to_repository_id']).toBe(OTHER_ID);
+      const commit = byKey.get(`commit:${FULL_A}`)!;
+      expect(commit['resolved']).toBe(true);
+      expect(commit['to_id']).toBe(commitDocId(REPOSITORY_ID, FULL_A));
+      // 접근 범위는 source 저장소의 것이다 (THR-034) — URL로 가리켜도 대상 저장소의 팀이 새지 않는다.
+      for (const link of links) {
+        expect(link['repository_id']).toBe(REPOSITORY_ID);
+        expect(link['allowed_team_ids']).toEqual([TEAM]);
+      }
+      expect((( await prDoc(1))['link_summary'] as Record<string, unknown>)['reference_count']).toBe(2);
+    });
+
+    it('커밋 메시지의 사내 URL 트레일러가 derived 간선이 된다', async () => {
+      await commitSnapshotRepo.upsertCommitSnapshot(pool, {
+        repositoryId: REPOSITORY_ID,
+        commitSha: FULL_B,
+        parentShas: [],
+        message: `hotfix\n\nRefs: https://${CORP_GHE}/${OWNER}/${NAME}/pull/42`,
+        author: 'dev',
+        committer: 'dev',
+        authoredAt: new Date('2026-08-01T00:00:00Z'),
+        committedAt: new Date('2026-08-01T00:00:00Z'),
+        changedPaths: [],
+        changedPathsTruncated: false,
+        patchId: null,
+        patchIdUnavailable: 'no_mirror',
+        metadataSource: 'api',
+      });
+      await indexCommit(FULL_B);
+
+      await deriveReferenceLinks(corpGhe(), repository, { kind: 'commit', id: FULL_B });
+
+      const links = await linksOf(commitDocId(REPOSITORY_ID, FULL_B));
+      expect(links.map((link) => [link['reference_key'], link['confidence'], link['from_type']])).toEqual([
+        ['pr:42', 'derived', 'commit'],
+      ]);
+    });
+
+    it('대상이 아직 없으면 미해결로 남고, 대상이 색인되면 같은 간선이 해결된다 (AC-3)', async () => {
+      await indexPullRequest(1);
+      await seedPullRequestSnapshot(1, { body: `https://${CORP_GHE}/${OWNER}/${NAME}/pull/999` });
+
+      await deriveReferenceLinks(corpGhe(), repository, { kind: 'pull_request', id: '1' });
+      const before = await linksOf(pullRequestDocId(REPOSITORY_ID, 1));
+      expect(before.map((link) => [link['reference_key'], link['resolved']])).toEqual([['pr:999', false]]);
+
+      await indexPullRequest(999);
+      await seedPullRequestSnapshot(999, { body: '' });
+      await handleSourceReady(corpGhe(), repository, { kind: 'pull_request', id: '999' });
+
+      const after = await linksOf(pullRequestDocId(REPOSITORY_ID, 1));
+      expect(after).toHaveLength(1);
+      expect(after[0]?.['_id']).toBe(before[0]?.['_id']);
+      expect(after[0]?.['resolved']).toBe(true);
+      expect(after[0]?.['to_id']).toBe(pullRequestDocId(REPOSITORY_ID, 999));
+    });
+
+    it('다른 호스트·유사 호스트의 URL은 간선이 되지 않고, 기존 `#N`·`org/repo#N`·SHA 참조는 그대로다', async () => {
+      await indexPullRequest(1);
+      await seedPullRequestSnapshot(1, {
+        body: [
+          'https://github.com/acme/other/pull/5',
+          `https://${CORP_GHE}.evil.example/${OWNER}/${NAME}/pull/6`,
+          `https://evil-${CORP_GHE}/${OWNER}/${NAME}/pull/7`,
+          `https://${CORP_GHE}@evil.example/${OWNER}/${NAME}/pull/8`,
+          `#10 ${OWNER}/${OTHER_NAME}#11 ${FULL_B}`,
+        ].join('\n'),
+      });
+
+      await deriveReferenceLinks(corpGhe(), repository, { kind: 'pull_request', id: '1' });
+
+      const keys = (await linksOf(pullRequestDocId(REPOSITORY_ID, 1))).map((link) => link['reference_key']).sort();
+      expect(keys).toEqual([`commit:${FULL_B}`, 'pr:10', `x:${OWNER}/${OTHER_NAME}:pr:11`].sort());
+    });
+
+    it('**주소가 없으면(`GHE_BASE_URL` 미설정) 사내 URL은 간선이 되지 않는다** — 예시 호스트를 승인하지도 않는다', async () => {
+      const unset = resolveReferenceHost({});
+      expect(unset).toBeNull();
+      await indexPullRequest(1);
+      await seedPullRequestSnapshot(1, {
+        body: `https://${CORP_GHE}/${OWNER}/${NAME}/pull/5 https://ghe.example.com/${OWNER}/${NAME}/pull/6 #7`,
+      });
+
+      await deriveReferenceLinks(deps({ gheHost: unset }), repository, { kind: 'pull_request', id: '1' });
+
+      const keys = (await linksOf(pullRequestDocId(REPOSITORY_ID, 1))).map((link) => link['reference_key']);
+      expect(keys).toEqual(['pr:7']);
+    });
+  });
+
 });

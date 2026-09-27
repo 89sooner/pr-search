@@ -27,6 +27,7 @@ import {
   hasAppCredentials,
   parseInstallations,
   resolveGitHubConfig,
+  resolveReferenceHost,
   MirrorSync,
   MirrorCommitGraph,
   ApiCommitGraph,
@@ -133,6 +134,26 @@ function resolveBackfillConcurrency(): number {
   return parsed;
 }
 
+/**
+ * URL 참조의 승인 호스트 (THR-036 / FR-REL-003 AC-1, CR-124).
+ *
+ * 참조를 파생하는 두 자리 — `link` 역할의 평시 파생과 `batch` 역할의 prs-links 재색인 — 가 **같은
+ * 함수로** 읽는다. 둘이 다른 값을 보면 재색인이 평시와 다른 간선을 만든다. `GHE_BASE_URL`이 없으면
+ * URL 참조를 만들지 않는다(DEV-776 전에는 예시 호스트를 승인했다).
+ *
+ * 기동 로그에 **호스트만** 남긴다 — 운영자가 `docker compose logs worker-link`로 주소 설정이 이
+ * 역할에 닿았는지 본다(RUNBOOK 7.K). 자격 증명은 이 역할에 오지 않는다.
+ */
+function referenceHostFor(role: 'link' | 'batch'): string | null {
+  const host = resolveReferenceHost();
+  const entry =
+    host === null
+      ? { service: SERVICE_NAME, level: 'warn', role, message: 'GHE_BASE_URL이 없다 — URL 참조를 추출하지 않는다 (THR-036)' }
+      : { service: SERVICE_NAME, level: 'info', role, message: 'URL 참조 승인 호스트', reference_host: host };
+  process.stdout.write(`${JSON.stringify(entry)}\n`);
+  return host;
+}
+
 const metrics = createWorkerMetrics();
 const server = buildServer({ metrics });
 server.listen(port, '0.0.0.0', () => {
@@ -192,7 +213,8 @@ if (roles.includes('batch')) {
     es: reindexEs,
     bus,
     metrics,
-    gheHost: resolveGitHubConfig().baseUrl,
+    // 평시 파생(`link`)과 같은 승인 호스트여야 한다 — 다르면 재색인이 다른 간선을 만든다 (CR-124).
+    gheHost: referenceHostFor('batch'),
     log: (entry) => { reindexLog({ ...entry }); },
   };
 
@@ -1054,9 +1076,10 @@ if (roles.includes('link')) {
     /*
      * URL 참조는 **승인된 GHE 호스트만** 인정한다 (THR-036). 구성이 없으면
      * URL 참조를 만들지 않는다 — 검증할 근거가 없는 상태에서 외부가 심은
-     * 문자열을 내부 대상으로 해석하지 않는다.
+     * 문자열을 내부 대상으로 해석하지 않는다. `resolveGitHubConfig().baseUrl`은
+     * 비면 예시 호스트로 채워지므로 쓰지 않는다 (CR-124, DEV-776).
      */
-    gheHost: resolveGitHubConfig().baseUrl,
+    gheHost: referenceHostFor('link'),
     log: (entry: LinkLogFields) => {
       process.stdout.write(`${JSON.stringify({ service: SERVICE_NAME, ...entry })}\n`);
     },

@@ -92,6 +92,30 @@ export function resolveGitHubConfig(env: GitHubEnv = process.env): GitHubAppConf
   };
 }
 
+/**
+ * URL 참조를 인정할 GHE 호스트 (THR-036 / FR-REL-003 AC-1, CR-124).
+ *
+ * **`resolveGitHubConfig().baseUrl`을 쓰지 않는다.** 그 값은 `GHE_BASE_URL`이 비면
+ * `https://ghe.example.com`으로 채워진다. 접속 설정에서는 그 대체값이 곧바로 연결 실패로
+ * 드러나지만, 참조 추출에서는 **조용히 다른 호스트를 승인한다** — 실제 GHE의 URL은 거절하고
+ * 쓰이지 않는 예시 호스트의 URL은 내부 대상으로 해석한다. 단일 호스트의 link·batch 역할이
+ * 이 값을 받지 않아 사내 GHE의 PR·커밋 URL이 참조 0건으로 파생됐다(DEV-776).
+ *
+ * 비었거나 해석되지 않으면 `null`이다 — URL 참조를 만들지 않는다(fail closed). 돌려주는 것은
+ * 비교에 쓰는 호스트(`host[:port]`, 소문자)뿐이며, 주소에 사용자 정보가 붙어 있어도 싣지 않는다.
+ * 호스트를 코드에 두지 않는다 — 배포 설정이 유일한 출처다.
+ */
+export function resolveReferenceHost(env: GitHubEnv = process.env): string | null {
+  const raw = (env['GHE_BASE_URL'] ?? '').trim();
+  if (raw === '') return null;
+  try {
+    const host = new URL(raw.includes('://') ? raw : `https://${raw}`).host.toLowerCase();
+    return host === '' ? null : host;
+  } catch {
+    return null;
+  }
+}
+
 export function hasAppCredentials(config: GitHubAppConfig): boolean {
   return config.appId !== '' && config.privateKey !== '';
 }
