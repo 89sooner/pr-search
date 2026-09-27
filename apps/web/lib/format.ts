@@ -6,6 +6,8 @@
  * 그린 문자열과 클라이언트가 그린 문자열이 다르면 하이드레이션이 깨진다.
  */
 
+import { zonedParts } from '@prs/query';
+
 /**
  * SHA 축약 길이 (12자).
  *
@@ -89,22 +91,140 @@ export function formatDuration(seconds: number | null | undefined): string {
 }
 
 /**
- * ISO 시각을 표시용으로.
+ * 표시 시간대 (CR-127, NFR-007 「시각 표시 기준」).
  *
- * **UTC로 고정한다.** 사용자의 시간대로 그리면 서버 렌더와 클라이언트 렌더가
- * 달라져 하이드레이션이 깨지고, 두 사람이 같은 화면을 보며 다른 시각을 읽는다.
- * 조사 도구에서 그것은 사고의 원인이 된다.
+ * **고정 시간대 하나를 명시한다.** 사용자의 PC나 서버의 기본 시간대로 그리면 서버
+ * 렌더와 클라이언트 렌더가 달라져 하이드레이션이 깨지고, 두 사람이 같은 화면을 보며
+ * 다른 시각을 읽는다 — 조사 도구에서 그것은 사고의 원인이 된다. 그래서 전에는 UTC로
+ * 고정했고, 이제 사용자가 읽는 한국 시간으로 고정한다. 개인별 설정은 없다(`OD-018`).
  */
-export function formatTimestamp(iso: string | null | undefined): string {
-  if (iso === null || iso === undefined || iso === '') return '—';
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return '—';
+export const DISPLAY_TIME_ZONE = 'Asia/Seoul';
+/** 값·열 제목에 붙이는 짧은 표지. */
+export const DISPLAY_TIME_ZONE_LABEL = 'KST';
+/**
+ * 읽지 못한 시각(미확인). **`—`와 다르다** — `—`는 값이 없다는 사실(머지되지 않은 PR의
+ * 머지 시각)이고, 이것은 값이 있는데 읽을 수 없다는 뜻이다.
+ */
+export const UNKNOWN_TIME = 'Unknown';
+const ABSENT_TIME = '—';
 
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return (
-    `${String(at.getUTCFullYear())}-${pad(at.getUTCMonth() + 1)}-${pad(at.getUTCDate())} ` +
-    `${pad(at.getUTCHours())}:${pad(at.getUTCMinutes())} UTC`
-  );
+const OFFSET_SUFFIX = /(Z|[+-]\d{2}:?\d{2})$/i;
+const DATE_TIME_WITHOUT_OFFSET = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+
+type Instant = { readonly kind: 'absent' } | { readonly kind: 'invalid' } | { readonly kind: 'ok'; readonly ms: number };
+
+/**
+ * 표시할 값을 순간으로. **오프셋 없는 시각은 UTC로 읽는다** — API의 시각은 UTC이고,
+ * `Date.parse`에 그대로 넘기면 브라우저 시간대로 읽혀 화면이 브라우저마다 달라진다.
+ */
+function toInstant(value: string | null | undefined): Instant {
+  if (value === null || value === undefined || value === '') return { kind: 'absent' };
+  const normalized = DATE_TIME_WITHOUT_OFFSET.test(value) ? `${value.replace(' ', 'T')}Z` : value;
+  const ms = Date.parse(normalized);
+  return Number.isNaN(ms) ? { kind: 'invalid' } : { kind: 'ok', ms };
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function ymd(ms: number, timeZone: string): string {
+  const p = zonedParts(ms, timeZone);
+  return `${String(p.year).padStart(4, '0')}-${pad2(p.month)}-${pad2(p.day)}`;
+}
+
+function hm(ms: number, timeZone: string, seconds: boolean): string {
+  const p = zonedParts(ms, timeZone);
+  return `${pad2(p.hour)}:${pad2(p.minute)}${seconds ? `:${pad2(p.second)}` : ''}`;
+}
+
+/**
+ * ISO 시각을 표시용으로 — `2026-09-27 12:00 KST`.
+ *
+ * `Intl`의 숫자 부분만 이어 붙인다(`@prs/query`의 `zonedParts`). `format()`의 문자열은
+ * ICU 판마다 구두점과 공백이 달라 서버와 브라우저가 다른 글자를 낼 수 있다. 날짜 필터의
+ * 하루 경계도 같은 함수에서 나오므로, 화면에서 9월 27일로 보이는 순간은 9월 27일 검색에
+ * 들어간다(FR-SRCH-005 AC-11).
+ *
+ * 값이 없으면 `—`, 읽지 못하면 `Unknown`이다. 부재를 달리 적는 자리(`Never run` 등)는
+ * 부르는 쪽이 먼저 가른다.
+ */
+export function formatTimestamp(iso: string | null | undefined, options: { readonly seconds?: boolean } = {}): string {
+  const at = toInstant(iso);
+  if (at.kind === 'absent') return ABSENT_TIME;
+  if (at.kind === 'invalid') return UNKNOWN_TIME;
+  return `${ymd(at.ms, DISPLAY_TIME_ZONE)} ${hm(at.ms, DISPLAY_TIME_ZONE, options.seconds === true)} ${DISPLAY_TIME_ZONE_LABEL}`;
+}
+
+/**
+ * ISO 시각의 **KST 날짜**만 — `2026-09-27`.
+ *
+ * 날짜만 그리는 열은 열 제목에 `(KST)`를 붙인다. 열 제목이 없는 자리(문장 속)는
+ * `{ label: true }`로 값에 붙인다.
+ */
+export function formatDate(iso: string | null | undefined, options: { readonly label?: boolean } = {}): string {
+  const at = toInstant(iso);
+  if (at.kind === 'absent') return ABSENT_TIME;
+  if (at.kind === 'invalid') return UNKNOWN_TIME;
+  const date = ymd(at.ms, DISPLAY_TIME_ZONE);
+  return options.label === true ? `${date} ${DISPLAY_TIME_ZONE_LABEL}` : date;
+}
+
+/** KST 월·일·시각 — `09-27 12:00`. 좁은 축 이름(Regression 통합 시각)이 쓴다. 표지는 부르는 쪽이 붙인다. */
+export function formatMonthDayTime(iso: string | null | undefined): string {
+  const at = toInstant(iso);
+  if (at.kind === 'absent') return ABSENT_TIME;
+  if (at.kind === 'invalid') return UNKNOWN_TIME;
+  return `${ymd(at.ms, DISPLAY_TIME_ZONE).slice(5)} ${hm(at.ms, DISPLAY_TIME_ZONE, false)}`;
+}
+
+/** KST 시각만 — `12:00`. 날짜를 따로 보이는 자리(Regression 실행 카드)가 쓴다. */
+export function formatTimeOfDay(iso: string | null | undefined): string {
+  const at = toInstant(iso);
+  if (at.kind === 'absent') return ABSENT_TIME;
+  if (at.kind === 'invalid') return UNKNOWN_TIME;
+  return hm(at.ms, DISPLAY_TIME_ZONE, false);
+}
+
+/**
+ * 원본 UTC 값 — 툴팁(`title`)에 쓴다. 읽지 못하면 `undefined`다.
+ *
+ * `Z`로 끝나는 값은 **받은 그대로** 보인다(마이크로초를 `Date`로 잘라 내지 않는다).
+ * 다른 오프셋이면 같은 순간의 UTC로 옮긴다.
+ */
+export function formatUtcTitle(iso: string | null | undefined): string | undefined {
+  const at = toInstant(iso);
+  if (at.kind !== 'ok' || iso === null || iso === undefined) return undefined;
+  const utc = /Z$/i.test(iso) ? iso : new Date(at.ms).toISOString();
+  return `${utc} (UTC)`;
+}
+
+/** 시간대 표지 — `Asia/Seoul`은 `KST`, 나머지는 이름 그대로. */
+export function timeZoneLabel(timeZone: string): string {
+  return timeZone === DISPLAY_TIME_ZONE ? DISPLAY_TIME_ZONE_LABEL : timeZone;
+}
+
+/**
+ * 다른 시간대로 그린다 — 통계 대시보드의 버킷 이름처럼 **그 화면이 시간대를 명시한** 자리만
+ * 쓴다(FR-STAT-002 AC-2). 나머지 화면은 `formatTimestamp`다.
+ */
+export function formatInTimeZone(
+  iso: string | null | undefined,
+  timeZone: string,
+  precision: 'minute' | 'date' | 'month',
+): string {
+  const at = toInstant(iso);
+  if (at.kind === 'absent') return ABSENT_TIME;
+  if (at.kind === 'invalid') return UNKNOWN_TIME;
+  const date = ymd(at.ms, timeZone);
+  if (precision === 'month') return date.slice(0, 7);
+  if (precision === 'date') return date;
+  return `${date} ${hm(at.ms, timeZone, false)}`;
+}
+
+/** 오프셋이 붙은 값인가 — 순간을 이미 정했는지 가를 때 쓴다. */
+export function hasExplicitOffset(value: string): boolean {
+  return OFFSET_SUFFIX.test(value) && !/^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 /** `owner/repo` → 표시용. 지금은 그대로지만 자를 자리를 한 곳에 둔다. */

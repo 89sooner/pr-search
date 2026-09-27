@@ -6,14 +6,22 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { calendarRangeToUtc } from '@prs/query';
 import {
+  DISPLAY_TIME_ZONE,
   SHORT_SHA_LENGTH,
+  UNKNOWN_TIME,
+  formatDate,
   formatDuration,
+  formatInTimeZone,
   formatRepository,
   formatSequence,
   formatSequenceRef,
+  formatTimeOfDay,
   formatTimestamp,
+  formatUtcTitle,
   shortSha,
+  timeZoneLabel,
 } from './format';
 
 const SHA = 'a3f9c21b4e8d7f0c1a2b3c4d5e6f708192a3b4c5';
@@ -112,24 +120,84 @@ describe('기간 표기', () => {
   });
 });
 
-describe('시각 표기', () => {
-  it('**UTC로 고정한다** — 실행 시간대와 무관하다', () => {
-    // 사용자의 시간대로 그리면 서버 렌더와 클라이언트 렌더가 달라진다.
-    expect(formatTimestamp('2026-08-19T05:02:11Z')).toBe('2026-08-19 05:02 UTC');
+describe('시각 표기 (CR-127, NFR-007 「시각 표시 기준」)', () => {
+  /*
+   * 이 묶음은 **실행하는 쪽의 시간대와 무관해야 한다** — `TZ=UTC`·`Asia/Seoul`·
+   * `America/Los_Angeles`로 모두 돌린다. 서버(컨테이너 UTC)와 브라우저(어디든)가 같은
+   * 문자열을 내야 하이드레이션이 깨지지 않고 두 사람이 같은 시각을 읽는다.
+   */
+  it('`Asia/Seoul`로 고정한다 — API 원본 `2026-09-27T03:00:00Z`는 `2026-09-27 12:00 KST`다', () => {
+    expect(DISPLAY_TIME_ZONE).toBe('Asia/Seoul');
+    expect(formatTimestamp('2026-09-27T03:00:00Z')).toBe('2026-09-27 12:00 KST');
   });
 
-  it('오프셋이 붙은 입력도 UTC로 옮긴다', () => {
-    expect(formatTimestamp('2026-08-19T14:02:11+09:00')).toBe('2026-08-19 05:02 UTC');
+  it('KST 자정 앞뒤는 날짜가 갈린다', () => {
+    expect(formatTimestamp('2026-09-26T14:59:59Z')).toBe('2026-09-26 23:59 KST');
+    expect(formatTimestamp('2026-09-26T15:00:00Z')).toBe('2026-09-27 00:00 KST');
+  });
+
+  it('자정은 `24`가 아니라 `00`이다', () => {
+    expect(formatTimestamp('2026-09-26T15:00:00Z')).toContain(' 00:00 ');
+  });
+
+  it('오프셋이 붙은 입력도 같은 순간의 KST다 — 보정을 두 번 하지 않는다', () => {
+    expect(formatTimestamp('2026-09-27T12:00:00+09:00')).toBe('2026-09-27 12:00 KST');
+    expect(formatTimestamp('2026-09-26T20:00:00-07:00')).toBe('2026-09-27 12:00 KST');
+  });
+
+  it('오프셋 없는 시각은 UTC로 읽는다 — 브라우저 시간대를 타지 않는다', () => {
+    expect(formatTimestamp('2026-09-27T03:00:00')).toBe('2026-09-27 12:00 KST');
+  });
+
+  it('필요한 자리는 초까지', () => {
+    expect(formatTimestamp('2026-09-27T03:04:05.678Z', { seconds: true })).toBe('2026-09-27 12:04:05 KST');
   });
 
   it('한 자리 월·일·시를 0으로 채운다', () => {
-    expect(formatTimestamp('2026-01-02T03:04:05Z')).toBe('2026-01-02 03:04 UTC');
+    expect(formatTimestamp('2026-01-01T18:04:05Z')).toBe('2026-01-02 03:04 KST');
   });
 
-  it('없거나 깨진 값은 `—`다', () => {
+  it('값이 없으면 `—`, 읽지 못하면 `Unknown`(미확인)이다', () => {
     expect(formatTimestamp(null)).toBe('—');
+    expect(formatTimestamp(undefined)).toBe('—');
     expect(formatTimestamp('')).toBe('—');
-    expect(formatTimestamp('not-a-date')).toBe('—');
+    expect(formatTimestamp('not-a-date')).toBe(UNKNOWN_TIME);
+    expect(UNKNOWN_TIME).toBe('Unknown');
+  });
+
+  it('날짜만은 KST 날짜다 — 열 제목이 없는 자리는 표지를 붙인다', () => {
+    expect(formatDate('2026-09-26T15:00:00Z')).toBe('2026-09-27');
+    expect(formatDate('2026-09-26T14:59:59.999Z')).toBe('2026-09-26');
+    expect(formatDate('2026-09-26T15:00:00Z', { label: true })).toBe('2026-09-27 KST');
+    expect(formatDate(null)).toBe('—');
+    expect(formatDate('garbage')).toBe('Unknown');
+  });
+
+  it('시각만', () => {
+    expect(formatTimeOfDay('2026-09-27T03:04:59Z')).toBe('12:04');
+  });
+
+  it('툴팁은 원본 UTC다 — `Z` 값은 받은 그대로(마이크로초 보존), 다른 오프셋은 UTC로 옮긴다', () => {
+    expect(formatUtcTitle('2026-09-27T03:00:00.123456Z')).toBe('2026-09-27T03:00:00.123456Z (UTC)');
+    expect(formatUtcTitle('2026-09-27T12:00:00+09:00')).toBe('2026-09-27T03:00:00.000Z (UTC)');
+    expect(formatUtcTitle(null)).toBeUndefined();
+    expect(formatUtcTitle('garbage')).toBeUndefined();
+  });
+
+  it('화면의 KST 날짜와 날짜 검색의 하루가 같은 경계에서 갈린다 (FR-SRCH-005 AC-11)', () => {
+    const { gte, lt } = calendarRangeToUtc('2026-09-27', '2026-09-27', DISPLAY_TIME_ZONE);
+    expect(formatDate(gte)).toBe('2026-09-27');
+    expect(formatDate(new Date(Date.parse(lt) - 1).toISOString())).toBe('2026-09-27');
+    expect(formatDate(lt)).toBe('2026-09-28');
+  });
+
+  it('대시보드 시간대로 그리는 자리 — 버킷 이름', () => {
+    expect(formatInTimeZone('2026-09-27T00:00:00.000+09:00', 'Asia/Seoul', 'date')).toBe('2026-09-27');
+    expect(formatInTimeZone('2026-09-27T13:00:00.000+09:00', 'Asia/Seoul', 'minute')).toBe('2026-09-27 13:00');
+    expect(formatInTimeZone('2026-09-01T00:00:00.000+09:00', 'Asia/Seoul', 'month')).toBe('2026-09');
+    expect(formatInTimeZone('2026-09-27T00:00:00.000-07:00', 'America/Los_Angeles', 'date')).toBe('2026-09-27');
+    expect(timeZoneLabel('Asia/Seoul')).toBe('KST');
+    expect(timeZoneLabel('America/Los_Angeles')).toBe('America/Los_Angeles');
   });
 });
 

@@ -9,7 +9,8 @@
  * `@prs/query`의 왕복이 보장되므로 AST를 고치는 쪽이 항상 옳다 (ADR-001).
  */
 
-import { isNegated, isRangeFilter, type QueryAst, type QueryFilter } from '@prs/query';
+import { isNegated, isRangeFilter, isTemporalRangeKey, type QueryAst, type QueryFilter } from '@prs/query';
+import { hasExplicitOffset, timeZoneLabel } from './format';
 
 /** 칩 하나. 화면이 그리는 데 필요한 것만 담는다. */
 export interface QueryChip {
@@ -24,7 +25,19 @@ export interface QueryChip {
 }
 
 function valueOf(filter: QueryFilter): string {
-  if (isRangeFilter(filter)) return `${String(filter.from)}..${String(filter.to)}`;
+  if (isRangeFilter(filter)) {
+    const range = `${String(filter.from)}..${String(filter.to)}`;
+    if (!isTemporalRangeKey(filter.key)) return range;
+    /*
+     * CR-127: 시각 범위는 **어느 달력인지 말한다.** 같은 `2026-09-27..2026-09-27`이라도
+     * `@Asia/Seoul`이면 한국 날짜 하루이고, 시간대가 없으면 UTC 하루다 — 칩이 둘을 같은
+     * 글자로 보이면 옛 URL·저장 검색의 조건을 새 KST 조건으로 잘못 읽는다. 오프셋을 적은
+     * 순간 범위는 이미 순간이 정해졌으므로 표지를 붙이지 않는다.
+     */
+    if ('timezone' in filter && filter.timezone !== undefined) return `${range} ${timeZoneLabel(filter.timezone)}`;
+    const reliesOnUtc = [filter.from, filter.to].some((bound) => !hasExplicitOffset(String(bound)));
+    return reliesOnUtc ? `${range} UTC` : range;
+  }
   return filter.values.join(', ');
 }
 

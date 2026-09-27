@@ -15,10 +15,10 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Badge, Field, Table, TextArea } from './ui';
-import { formatTimestamp } from '../lib/format';
 import { newIdempotencyKey } from '../lib/gh';
 import { shortHash } from '../lib/gh-registry';
 import { POLICY_ACTION_LABEL, POLICY_CHANGES_URL, POLICY_REASON_MAX, POLICY_URL, describePolicyError, reasonProblem, type PolicyErrorView, type PolicyRevisionView, type PolicyStatusView } from '../lib/gh-policy';
+import { TimeText } from './TimeText';
 
 export type PolicyLoad =
   | { readonly kind: 'loading' }
@@ -153,7 +153,7 @@ export function PolicyHistoryTable({ revisions, testId }: { readonly revisions: 
             </td>
             <td>{revision.actor}</td>
             <td>{revision.reason}</td>
-            <td>{formatTimestamp(revision.created_at)}</td>
+            <td><TimeText value={revision.created_at} /></td>
           </tr>
         ))}
       </tbody>

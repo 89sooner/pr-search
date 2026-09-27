@@ -10,7 +10,7 @@ import { GitPullRequest, GitMerge, History, Search, ArrowDown, ArrowUp, ChevronD
 import { WorkbenchIcon } from './WorkbenchIcon';
 import type { RepositoryOverview } from '../lib/repository-overview';
 import type { ResultRow } from './ResultTable';
-import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 import { SourceTree } from './source/SourceTree';
 import { SourceHistory } from './source/SourceHistory';
 import { DiffModal, TimeLapseModal, SourceActions, type DiffTarget } from './source/SourceDialogs';
@@ -21,7 +21,7 @@ import { resolveUrl } from '../lib/search-fetch';
 import { MergeNumberBadge } from './MergeNumberBadge';
 import { ExcludedCommitsNote } from './ExcludedCommitsNote';
 import { splitSequenceSpace } from '../lib/merge-number';
-import { buildRepositoryQuery, buildShaRangeFilter, deriveInitialRangeType, repositoryLabelOptions, repositorySort, type RangeType, type RepositoryWorkspaceTab } from '../lib/repository-search';
+import { WORKSPACE_DATE_TIME_ZONE, buildRepositoryQuery, buildShaRangeFilter, deriveInitialRangeType, mergedDateZone, mergedDateZoneLabel, repositoryLabelOptions, repositorySort, type RangeType, type RepositoryWorkspaceTab } from '../lib/repository-search';
 
 interface SearchData { items: ResultRow[]; total?: { value: number; relation: string }; next_cursor?: string | null; facets?: Record<string, { value: string; count: number }[]> }
 interface DetailData { body?: string; message?: string; changed_paths?: string[]; files_truncated?: boolean; changed_paths_truncated?: boolean; source_commits?: { commit_sha: string }[]; source_commits_truncated?: boolean; source_commits_excluded?: number; merge_commit_sha?: string | null; base_branch?: string; head_branch?: string }
@@ -227,10 +227,12 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
     // seqRange is resolved against a specific repository@base; once either changes it's stale even though the state hasn't been cleared (matches the staleness check `buildRepositoryQuery` already applies before emitting `seq:`).
     seq: Boolean(seqRange && seqRange.space === `${repository}@${draft['base'] ?? ''}`) || Boolean(shaFrom && shaTo),
   };
+  // CR-127: which calendar the Merged date draft is in -- a pre-CR-127 URL's dates stay UTC days and say so.
+  const dateZoneLabel = mergedDateZoneLabel(mergedDateZone(draft));
   const activeRangeSummaries = [
     rangeActive.pr ? `PR ${draft['pr_from']}–${draft['pr_to']}` : null,
     rangeActive.mnum ? `M ${draft['mnum_from']}–${draft['mnum_to']}` : null,
-    rangeActive.date ? `Merged ${draft['from']}–${draft['to']}` : null,
+    rangeActive.date ? `Merged ${draft['from']}–${draft['to']} ${dateZoneLabel}` : null,
     rangeActive.seq ? (seqRange ? 'Merge order set' : 'Merge order pending') : null,
   ].filter((summary): summary is string => summary !== null);
   const activeFilterCount = [draft['q'], tab === 'search' ? draft['author'] : '', draft['label'], tab === 'search' ? draft['state'] : ''].filter(Boolean).length + Object.values(rangeActive).filter(Boolean).length;
@@ -249,7 +251,9 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
    */
   const commitFilters = (): void => {
     const base = draft['base'] ?? '';
-    navigate(Object.fromEntries(['q', 'author', 'label', 'state', 'from', 'to', 'path', 'base', 'pr_from', 'pr_to', 'mnum_from', 'mnum_to'].map(key => [key, (key === 'mnum_from' || key === 'mnum_to') && !base ? '' : draft[key] ?? ''])));
+    // CR-127: `tz` travels with the dates -- kept only while a date range is set, so a cleared range leaves no stray calendar in the URL.
+    const dated = Boolean(draft['from'] || draft['to']);
+    navigate(Object.fromEntries(['q', 'author', 'label', 'state', 'from', 'to', 'tz', 'path', 'base', 'pr_from', 'pr_to', 'mnum_from', 'mnum_to'].map(key => [key, (key === 'mnum_from' || key === 'mnum_to') && !base ? '' : key === 'tz' && !dated ? '' : draft[key] ?? ''])));
   };
   /*
    * CR-106: SHA range is a client-side transform, not a query key -- resolve both commits before
@@ -361,7 +365,8 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
                       <FieldSelect label="Range filter" value={rangeType} onChange={value => { setRangeType(value as RangeType); }} options={RANGE_TYPE_OPTIONS} />
                       {rangeType === 'pr' ? <div className="repo-range-fields">{field('pr_from', "PR number from", 'e.g. 1842', 'number', '1')}{field('pr_to', "PR number to", 'e.g. 2044', 'number', '1')}</div> : null}
                       {rangeType === 'mnum' ? <div className="repo-range-fields">{field('mnum_from', "M number from", 'Number only, e.g. 42', 'number', '1', !repository || !draft['base'] ? "Select a repository and base branch to filter by M number." : undefined)}{field('mnum_to', "M number to", 'Number only, e.g. 980', 'number', '1', !repository || !draft['base'] ? "Select a repository and base branch to filter by M number." : undefined)}</div> : null}
-                      {rangeType === 'date' ? <div className="repo-range-fields"><DatePicker label="Merged after" value={draft['from'] ?? ''} onChange={from => { setDraft(current => ({ ...current, from })); }} /><DatePicker label="Merged before" value={draft['to'] ?? ''} onChange={to => { setDraft(current => ({ ...current, to })); }} /></div> : null}
+                      {/* CR-127: both ends are included, so the labels say from/to. Picking a date makes the range a KST calendar range (URL `tz`). */}
+                      {rangeType === 'date' ? <div className="repo-range-fields"><DatePicker label={`Merged from (${dateZoneLabel})`} value={draft['from'] ?? ''} onChange={from => { setDraft(current => ({ ...current, from, tz: WORKSPACE_DATE_TIME_ZONE })); }} /><DatePicker label={`Merged to (${dateZoneLabel})`} value={draft['to'] ?? ''} onChange={to => { setDraft(current => ({ ...current, to, tz: WORKSPACE_DATE_TIME_ZONE })); }} /></div> : null}
                       {rangeType === 'seq' ? <div className="repo-range-fields">
                         <label className="repo-field"><span>Merge order: from commit</span><input value={shaFrom} disabled={!repository || !draft['base']} title={!repository || !draft['base'] ? "Select a repository and base branch to search a merge-order range." : undefined} placeholder="7+ character SHA" onChange={event => { setShaFrom(event.target.value); }} /></label>
                         <label className="repo-field"><span>Merge order: to commit</span><input value={shaTo} disabled={!repository || !draft['base']} title={!repository || !draft['base'] ? "Select a repository and base branch to search a merge-order range." : undefined} placeholder="7+ character SHA" onChange={event => { setShaTo(event.target.value); }} /></label>
@@ -371,7 +376,7 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
                   </div>
                 </Collapsible.Content>
               </Collapsible.Root>
-              <div className="repo-filter-footer repo-filter-footer--compact"><Button type="submit" disabled={!repository || loading || resolving}><Search size={15} />{resolving ? "Resolving…" : loading ? "Searching…" : "Search"}<kbd>↵</kbd></Button><Button type="button" variant="secondary" onClick={() => { setShaFrom(''); setShaTo(''); setSeqRange(undefined); setRangeType('pr'); navigate({ q: '', author: '', label: '', state: '', from: '', to: '', path: '', base: '', pr_from: '', pr_to: '', mnum_from: '', mnum_to: '' }); }}>Reset</Button><span className="reader-key-hint"><Command size={13} /> K <span>Quick search</span></span></div>
+              <div className="repo-filter-footer repo-filter-footer--compact"><Button type="submit" disabled={!repository || loading || resolving}><Search size={15} />{resolving ? "Resolving…" : loading ? "Searching…" : "Search"}<kbd>↵</kbd></Button><Button type="button" variant="secondary" onClick={() => { setShaFrom(''); setShaTo(''); setSeqRange(undefined); setRangeType('pr'); navigate({ q: '', author: '', label: '', state: '', from: '', to: '', tz: '', path: '', base: '', pr_from: '', pr_to: '', mnum_from: '', mnum_to: '' }); }}>Reset</Button><span className="reader-key-hint"><Command size={13} /> K <span>Quick search</span></span></div>
             </form>
             <div className="repo-results-heading"><span><GitPullRequest size={17} /> {tab === 'history' ? "Commit" : 'Pull requests'} <strong>{loading ? "Loading…" : loadedKey === requestKey && data?.total ? `${data.total.value.toLocaleString("en-US")}${data.total.relation === 'gte' ? '+' : ''} items` : ''}</strong></span><div><span>{sort === 'pr_number' ? "PR" : sort === 'merge_seq' ? "M number" : "Merged at"} {order === 'desc' ? "Descending" : "Ascending"}</span><Button variant="ghost" aria-label="Refresh search" disabled={loading} onClick={() => { setCursor(null); setNonce(n => n + 1); }}><WorkbenchIcon name="refresh" /></Button></div></div>
             {unauthorized ? <p role="alert">Your session has expired. <a href={`${loginPath}?return_to=${encodeURIComponent(`/search?${serialized}`)}`}>Sign in again</a></p> : null}
@@ -393,7 +398,7 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
                     <Table.Cell><span className="repo-mnumber"><MergeNumberBadge fields={row} context={{ kind: row.kind, repository: splitSequenceSpace(row.sequence_space)?.repository ?? row.repository, baseBranch: splitSequenceSpace(row.sequence_space)?.baseBranch ?? null }} /></span></Table.Cell>
                     <Table.Cell><button type="button" className="repo-title-button" onClick={() => { setExpanded(expanded === id ? null : id); }}>{row.title ?? (row.kind === 'commit' ? name : 'Untitled pull request')}</button><small>{row.sequence_space ?? row.repository}</small></Table.Cell>
                     <Table.Cell><span className="reader-author"><span className="reader-avatar">{(row.author ?? '?').slice(0, 2).toUpperCase()}</span>{row.author ?? '—'}</span></Table.Cell><Table.Cell><span className="reader-state" data-state={row.state ?? 'unknown'}>{row.state === 'merged' ? <GitMerge size={13} /> : <GitPullRequest size={13} />}{row.state === 'merged' ? "Merged" : row.state === 'open' ? "Open" : row.state === 'closed' ? "Closed" : '—'}</span></Table.Cell>
-                    <Table.Cell><time dateTime={row.merged_at ?? undefined}>{formatTimestamp(row.merged_at)}</time></Table.Cell><Table.Cell><span className="prs-diff-added">{row.additions === null ? '—' : `+${row.additions}`}</span> <span className="repo-deletions">{row.deletions === null ? '' : `−${row.deletions}`}</span></Table.Cell>
+                    <Table.Cell><TimeText value={row.merged_at} /></Table.Cell><Table.Cell><span className="prs-diff-added">{row.additions === null ? '—' : `+${row.additions}`}</span> <span className="repo-deletions">{row.deletions === null ? '' : `−${row.deletions}`}</span></Table.Cell>
                     <Table.Cell><button type="button" className="repo-expand" aria-expanded={expanded === id} aria-label={`${name} Details`} onClick={() => { setExpanded(expanded === id ? null : id); }}><WorkbenchIcon name="chevron" /></button></Table.Cell>
                   </Table.Row>{expanded === id ? <Table.Row><Table.Cell colSpan={8}><WorkspaceDetail row={row} {...(gheBaseUrl ? { gheBaseUrl } : {})} onPath={(path, revision) => { navigate({ path, tab: 'history', path_kind: 'file', source_ref: revision ?? '' }); }} /></Table.Cell></Table.Row> : null}</Fragment>;
                 })}

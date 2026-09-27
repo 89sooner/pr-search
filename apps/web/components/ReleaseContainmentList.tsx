@@ -17,7 +17,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Badge, Button, Panel, Table } from './ui';
 import { judgeContainment, type ContainmentState, type ContainmentSource } from '../lib/containment';
-import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 
 export interface ReleaseContainmentListProps {
   readonly state: ContainmentState;
@@ -68,7 +68,7 @@ export function ReleaseContainmentList({ state }: ReleaseContainmentListProps): 
         {state.releases.map((release) => (
           <Table.Row key={release.tagName} data-testid="release-row">
             <Table.Cell>{release.tagName}</Table.Cell>
-            <Table.Cell>{formatTimestamp(release.releasedAt)}</Table.Cell>
+            <Table.Cell><TimeText value={release.releasedAt} /></Table.Cell>
             <Table.Cell>{release.baseBranch}</Table.Cell>
             <Table.Cell>{release.mergeSeq === null ? '—' : `#${String(release.mergeSeq)}`}</Table.Cell>
           </Table.Row>

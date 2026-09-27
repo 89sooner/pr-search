@@ -4,6 +4,23 @@ const quote = (value: string): string => JSON.stringify(value);
 /** CR-111: which range editor the consolidated Range filter selector shows. */
 export type RangeType = 'pr' | 'mnum' | 'date' | 'seq';
 
+/** CR-127: a newly picked Merged date range is a Korean calendar range, persisted as URL `tz`. */
+export const WORKSPACE_DATE_TIME_ZONE = 'Asia/Seoul';
+
+/**
+ * CR-127: the calendar a Merged date draft is in. Dates without `tz` come from a pre-CR-127 URL and stay UTC days
+ * (shown as such); an empty range is KST because that is what picking a date will make it.
+ */
+export function mergedDateZone(draft: Readonly<Record<string, string | undefined>>): string {
+  if (draft['tz']) return draft['tz'];
+  return draft['from'] || draft['to'] ? 'UTC' : WORKSPACE_DATE_TIME_ZONE;
+}
+
+/** CR-127: short label for a Merged date calendar — `KST` for Asia/Seoul, else the zone name. */
+export function mergedDateZoneLabel(zone: string): string {
+  return zone === WORKSPACE_DATE_TIME_ZONE ? 'KST' : zone;
+}
+
 /**
  * Which range type a freshly loaded page should show, from whichever URL-persisted range already
  * has a value. SHA/merge-order isn't URL-persisted (CR-106: it needs a live re-resolve), so it can't
@@ -26,8 +43,9 @@ export function buildRepositoryQuery(input: { serialized: string; repository: st
     filters.push(key === 'state' ? `is:${value}` : `${key}:${quote(value)}`);
   }
   if (input.tab === 'open' || input.tab === 'merged') filters.push(`author:${quote(input.login)}`, `is:${input.tab}`);
-  const from = values.get('from'); const to = values.get('to');
-  if (from && to) filters.push(`merged:${from}..${to}`);
+  // CR-127: `tz` names the calendar the two dates belong to. A URL without it is a pre-CR-127 link and keeps its UTC-day meaning.
+  const from = values.get('from'); const to = values.get('to'); const tz = values.get('tz');
+  if (from && to) filters.push(`merged:${from}..${to}${tz ? `@${tz}` : ''}`);
   const prFrom = values.get('pr_from'); const prTo = values.get('pr_to');
   if (prFrom && prTo) filters.push(`pr_number:${prFrom}..${prTo}`);
   const mnumFrom = values.get('mnum_from'); const mnumTo = values.get('mnum_to');

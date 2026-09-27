@@ -1,5 +1,6 @@
 'use client';
 import type { KeyboardEvent, ReactNode } from 'react';
+import { formatMonthDayTime, formatTimestamp } from '../../lib/format';
 import { observedVerdict, revisionLabel, type Integration, type Investigation, type Run, type Snapshot } from '../../lib/regression/model';
 
 function moveFocus(event: KeyboardEvent<SVGGElement>): void {
@@ -24,7 +25,7 @@ export function RegressionTimeline({data,run,pass,session,points,next,zoom,onPoi
       {points.filter((_,i)=>i%Math.max(1,Math.ceil(points.length/7))===0||i===points.length-1).map(p=><g key={p.seq}>
         <line x1={x(p.seq)} y1={46} x2={x(p.seq)} y2={310} className="rg-grid-line"/>
         <text x={x(p.seq)} y={24} textAnchor="middle" className="rg-map-label">{p.m===null?`S-${p.seq}`:`M-${p.m}`}</text>
-        <text x={x(p.seq)} y={328} textAnchor="middle" className="rg-map-small">{p.integratedAt.slice(5,16).replace('T',' ')} KST</text>
+        <text x={x(p.seq)} y={328} textAnchor="middle" className="rg-map-small">{formatMonthDayTime(p.integratedAt)} KST</text>
       </g>)}
       <text x={16} y={85} className="rg-lane-label">{data.scope.branch.toUpperCase()}</text><text x={16} y={101} className="rg-map-small">first-parent</text>
       {[90,...Object.values(lanes)].map(y=><line key={y} x1={left} y1={y} x2={width-right} y2={y} className="rg-base-line"/>)}
@@ -37,9 +38,9 @@ export function RegressionTimeline({data,run,pass,session,points,next,zoom,onPoi
           strokeDasharray={p.artifact?undefined:'2 1'} transform={p.pr===null?`rotate(45 ${x(p.seq)} 90)`:undefined}/>
       </g>;})}
       {marks.map(r=><g key={r.id} className={`rg-map-node rg-verdict-${r.status.toLowerCase()}`} role="button" tabIndex={0} data-map-point
-        aria-label={`${r.id} ${r.title} ${r.status}, completed ${r.completedAt}`} onClick={()=>onRun(r)}
+        aria-label={`${r.id} ${r.title} ${r.status}, completed ${formatTimestamp(r.completedAt)}`} onClick={()=>onRun(r)}
         onKeyDown={e=>{moveFocus(e);if(e.key==='Enter'||e.key===' '){e.preventDefault();onRun(r);}}}>
-        <title>{r.id} · {r.status} · completed {r.completedAt}</title>
+        <title>{r.id} · {r.status} · completed {formatTimestamp(r.completedAt)}</title>
         <rect x={x(r.seq??0)-13} y={lanes[r.type]-16} width={26} height={32} className="rg-node-hit" rx={5}/>
         <circle cx={x(r.seq??0)} cy={lanes[r.type]} r={r.id===run.id?11:9} fill="var(--ui-surface-raised)" stroke="currentColor" strokeWidth={r.id===run.id?2.5:1.5} strokeDasharray={r.status==='INCONCLUSIVE'?'3 2':undefined}/>
         <text x={x(r.seq??0)} y={lanes[r.type]+4} textAnchor="middle" className="rg-map-symbol">{r.status==='PASS'?'✓':r.status==='FAIL'?'×':'Ⅱ'}</text>

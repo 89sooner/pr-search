@@ -31,9 +31,11 @@ import {
   ACTION_OPTIONS,
   EMPTY_FILTER,
   buildAuditRequestUrl,
+  fromAuditDraft,
   readAuditFilter,
   readCursorFailure,
   resolveAuditState,
+  toAuditDraft,
   toAuditPage,
   writeAuditFilter,
   type AuditCursorFailure,
@@ -107,7 +109,8 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
   const [applied, setApplied] = useState<AuditFilterState>(() =>
     readAuditFilter(new URLSearchParams(initialSearch)),
   );
-  const [draft, setDraft] = useState<AuditFilterState>(applied);
+  // CR-127: 입력칸은 KST 벽시계를 보이고, 적용할 때 `+09:00`을 붙인다.
+  const [draft, setDraft] = useState<AuditFilterState>(() => toAuditDraft(applied));
   const [state, setState] = useState<ListState>(FIRST_PAGE);
   const [loading, setLoading] = useState(true);
 
@@ -158,11 +161,12 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
   }, [applied, state.cursor, state.nonce]);
 
   const apply = useCallback(() => {
-    setApplied(draft);
+    const next = fromAuditDraft(draft);
+    setApplied(next);
     setState((current) => ({ ...FIRST_PAGE, nonce: current.nonce + 1 }));
     // URL을 조건과 맞춘다. 딥링크가 이 화면의 재현 경로다.
     if (typeof window !== 'undefined') {
-      const search = writeAuditFilter(draft).toString();
+      const search = writeAuditFilter(next).toString();
       window.history.replaceState(null, '', search === '' ? window.location.pathname : `?${search}`);
     }
   }, [draft]);
@@ -240,7 +244,7 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
         />
         <Field
           id="audit-from"
-          label="Start"
+          label="Start (KST)"
           type="datetime-local"
           value={draft.from}
           onChange={(next) => {
@@ -249,7 +253,7 @@ export function AuditView({ initialSearch = '' }: AuditViewProps): ReactNode {
         />
         <Field
           id="audit-to"
-          label="End"
+          label="End (KST)"
           type="datetime-local"
           value={draft.to}
           onChange={(next) => {

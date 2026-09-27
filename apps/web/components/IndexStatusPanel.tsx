@@ -33,6 +33,7 @@ import {
   type IndexStatusView,
 } from '../lib/ops-jobs';
 import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 
 function Unavailable(): ReactNode {
   return (
@@ -51,7 +52,7 @@ function ReindexCell({ row }: { readonly row: AliasStatusView }): ReactNode {
         Job {row.active_reindex.job_id}
         {row.active_reindex.target_index === null ? '' : ` → ${row.active_reindex.target_index}`}
         {dual && row.active_reindex.dual_write_since !== null
-          ? ` (${formatTimestamp(row.active_reindex.dual_write_since)}since)`
+          ? ` (since ${formatTimestamp(row.active_reindex.dual_write_since)})`
           : ''}
       </span>
     );
@@ -96,7 +97,7 @@ export function IndexStatusPanel({ status, failed = false }: IndexStatusPanelPro
   return (
     <Panel data-testid="index-status-panel" data-state={dualWriting ? 'reindex_dual_write' : 'ready'}>
       <h3>Index status</h3>
-      <p data-testid="index-generated-at">Checked at {formatTimestamp(status.generated_at)}</p>
+      <p data-testid="index-generated-at">Checked at <TimeText value={status.generated_at} /></p>
 
       {status.unavailable.length > 0 ? (
         <p data-testid="index-partial-unavailable" role="status">

@@ -24,6 +24,8 @@
  */
 import { readCursorFailureBody, type CursorFailure } from './cursor-failure';
 import { SELECTABLE_AUDIT_ACTIONS } from '@prs/domain/audit';
+import { zonedParts } from '@prs/query';
+import { DISPLAY_TIME_ZONE } from './format';
 
 /**
  * 프록시 경로.
@@ -104,6 +106,45 @@ export function writeAuditFilter(filter: AuditFilterState): URLSearchParams {
   put(AUDIT_PARAM.to, filter.to);
   put(AUDIT_PARAM.resultCode, filter.resultCode);
   return params;
+}
+
+/*
+ * CR-127 (FR-AUTH-004 AC-9): 기간 입력은 **한국 시간 벽시계**다. 입력칸(`datetime-local`)은
+ * 시간대를 모르므로, 화면이 `+09:00`을 붙여 순간을 정한다 — 브라우저 시간대와 무관하게 같은
+ * 요청이 된다. 서버는 오프셋을 그대로 읽고, 오프셋 없는 옛 URL 값은 UTC로 읽는다. 입력칸에
+ * 채울 때는 같은 순간의 KST 벽시계로 옮기므로 옛 URL을 다시 적용해도 같은 순간이다.
+ */
+/** 화면이 보내는 오프셋. 감사 기록 보존 기간(1년) 안의 `Asia/Seoul`은 늘 +09:00이다. */
+export const AUDIT_INPUT_OFFSET = '+09:00';
+
+const WIRE_INSTANT = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}:\d{2})(:\d{2}(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+
+/** URL·요청의 기간 값을 입력칸의 KST 벽시계(`YYYY-MM-DDTHH:mm`)로. 읽지 못하면 빈 값이다. */
+export function toKstWallClock(value: string): string {
+  const match = WIRE_INSTANT.exec(value);
+  if (match === null) return '';
+  const [, date, time, seconds = '', zone] = match;
+  const iso = time === undefined ? `${date ?? ''}T00:00:00Z` : `${date ?? ''}T${time}${seconds}${zone ?? 'Z'}`;
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return '';
+  const p = zonedParts(at, DISPLAY_TIME_ZONE);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${String(p.year).padStart(4, '0')}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+}
+
+/** 입력칸의 KST 벽시계를 요청 값으로 — `2026-09-27T00:00` → `2026-09-27T00:00+09:00`. */
+export function fromKstWallClock(wall: string): string {
+  return wall === '' ? '' : `${wall}${AUDIT_INPUT_OFFSET}`;
+}
+
+/** 적용된 필터 → 입력칸 초안(기간은 KST 벽시계). */
+export function toAuditDraft(filter: AuditFilterState): AuditFilterState {
+  return { ...filter, from: toKstWallClock(filter.from), to: toKstWallClock(filter.to) };
+}
+
+/** 입력칸 초안 → 적용할 필터(기간은 `+09:00` ISO). */
+export function fromAuditDraft(draft: AuditFilterState): AuditFilterState {
+  return { ...draft, from: fromKstWallClock(draft.from), to: fromKstWallClock(draft.to) };
 }
 
 /** 조회 URL. 커서가 있으면 함께 싣는다. */

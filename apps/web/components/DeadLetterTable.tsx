@@ -21,7 +21,7 @@
 import { useState, type ReactNode } from 'react';
 import { Badge, Button, Checkbox, Dialog, Table } from './ui';
 import { BULK_REPROCESS_CONFIRM_THRESHOLD, needsBulkReconfirm } from '../lib/ops-jobs';
-import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 
 export interface DeadLetterItemView {
   readonly dead_letter_id: number;
@@ -129,7 +129,7 @@ export function DeadLetterTable({
               <td data-testid="dead-letter-error">{item.error}</td>
               <td data-testid="dead-letter-retry">{item.retry_count}</td>
               <td>{item.reprocess_count}</td>
-              <td>{formatTimestamp(item.updated_at)}</td>
+              <td><TimeText value={item.updated_at} /></td>
               <td>
                 {onOpenPayload === undefined ? (
                   '—'

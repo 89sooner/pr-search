@@ -20,11 +20,16 @@
  */
 
 import {
+  addDays,
+  canonicalTimeZone,
+  endOfMonth,
   parseQuery,
   serializeQuery,
   hasSequenceRangeFilter,
   QueryParseError,
+  zonedDate,
 } from '@prs/query';
+import { formatInTimeZone, timeZoneLabel } from './format';
 
 // ---------------------------------------------------------------------------
 // URL 상태
@@ -75,7 +80,10 @@ export interface AnalyticsUrlState {
   /** `null`이면 그룹 없는 전체 집계다. */
   readonly groupBy: GroupKey | null;
   readonly interval: Interval;
-  /** ISO 시각. `null`이면 서버가 최근 30일을 적용하고 `applied_range`로 알린다. */
+  /**
+   * 날짜(`YYYY-MM-DD`) — 대시보드 시간대(`timezone`)의 달력 날짜다(FR-STAT-002 AC-7, CR-127).
+   * `null`이면 서버가 그 시간대의 오늘을 포함한 30일을 적용하고 `applied_range`로 알린다.
+   */
   readonly from: string | null;
   readonly to: string | null;
   readonly timezone: string;
@@ -326,26 +334,65 @@ export function drillDownHref(drillDownQuery: string | null, seqEpoch: string | 
   return `/search?${params.toString()}`;
 }
 
+/** 시계열 응답이 말한 달력 — 버킷을 나눈 시간대와 실제로 적용된 기간 (CR-127). */
+export interface BucketCalendar {
+  /** 응답의 `timezone`(서버가 정규화한 값). */
+  readonly timezone: string;
+  /** 응답의 `applied_range`. 날짜 기간이면 버킷 링크를 그 안으로 자른다. */
+  readonly appliedRange: { readonly from: string; readonly to: string } | null;
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 버킷 키(요청 시간대로 그린 시작 순간)를 그 시간대의 날짜로. 날짜만 온 키는 그대로다. */
+function bucketDate(bucketKey: string, timezone: string): string | null {
+  if (DATE_ONLY.test(bucketKey)) return bucketKey;
+  const at = Date.parse(bucketKey);
+  return Number.isNaN(at) ? null : zonedDate(at, timezone);
+}
+
 /**
  * 시계열 버킷의 드릴다운. 서버가 문자열을 주지 않아 클라이언트가 **기간만** 만든다
  * (DEV-396). 그룹 인코딩을 재조립하는 것이 아니라 `merged:` 범위 하나를 더한다.
  *
- * 버킷 `[start, start+interval)`을 파서로 붙인다 — 문자열을 손으로 잇지 않고 AST로
- * 왕복해 사용자가 친 질의와 같은 문법을 쓴다(ADR-001).
+ * **일·주·월 버킷은 대시보드 시간대의 달력 날짜 범위다** (FR-STAT-002 AC-7, CR-127) —
+ * `merged:<버킷 첫날>..<버킷 끝날>@<시간대>`. 서버가 버킷과 같은 달력으로 모집단을
+ * 거르므로 버킷의 수와 이 검색의 수가 같다. 기간의 앞뒤가 주·월 버킷 중간에 걸리면
+ * 적용 기간과 겹친 만큼만 간다. 전에는 버킷 시작 순간에 UTC 달을 더하고 1ms를 빼서
+ * 끝을 만들었는데, KST 9월 버킷이 10월 1일 하루를 더 가져갔다(DEV-781).
+ *
+ * **시간 버킷은 순간 범위 그대로다** — 달력 범위가 아니고, 한 시간은 어느 시간대에서나
+ * 같은 순간 사이다. 반열림 버킷을 양끝 포함 순간 범위로 옮기려고 끝을 다음 버킷 직전
+ * (-1ms)으로 둔다(PR #80 리뷰 P2) — 밀리초 정밀도의 `merged_at`에서 정확하다.
+ *
+ * 파서로 왕복해 사용자가 친 질의와 같은 문법을 쓴다(ADR-001).
  */
 export function bucketDrillDownHref(
   baseQuery: string,
   bucketStartIso: string,
   interval: Interval,
   seqEpoch: string | null,
+  calendar: BucketCalendar,
 ): string | null {
-  const start = new Date(bucketStartIso);
-  if (Number.isNaN(start.getTime())) return null;
-  // 히스토그램 버킷은 `[start, nextStart)` 반열림인데 `merged:` 범위는 `lte`로 양끝을
-  // 포함한다(query-builder.ts). 상한을 nextStart 직전(-1ms)으로 두어 다음 버킷의
-  // 경계 문서를 겹쳐 세지 않는다 (PR #80 리뷰 P2).
-  const end = new Date(addInterval(start, interval).getTime() - 1);
-  const range = `merged:${start.toISOString()}..${end.toISOString()}`;
+  let range: string;
+  if (interval === 'hour') {
+    const start = new Date(bucketStartIso);
+    if (Number.isNaN(start.getTime())) return null;
+    const end = new Date(start.getTime() + 3_600_000 - 1);
+    range = `merged:${start.toISOString()}..${end.toISOString()}`;
+  } else {
+    const timezone = canonicalTimeZone(calendar.timezone);
+    if (timezone === null) return null;
+    const first = bucketDate(bucketStartIso, timezone);
+    if (first === null) return null;
+    const last = interval === 'day' ? first : interval === 'week' ? addDays(first, 6) : endOfMonth(first);
+    const applied = calendar.appliedRange;
+    const bounded = applied !== null && DATE_ONLY.test(applied.from) && DATE_ONLY.test(applied.to);
+    const from = bounded && applied.from > first ? applied.from : first;
+    const to = bounded && applied.to < last ? applied.to : last;
+    if (from > to) return null;
+    range = `merged:${from}..${to}@${timezone}`;
+  }
   const q = baseQuery.trim() === '' ? range : `${baseQuery.trim()} ${range}`;
 
   // 파서 왕복으로 문법을 정규화한다. 실패하면 링크를 만들지 않는다.
@@ -363,24 +410,20 @@ export function bucketDrillDownHref(
   return `/search?${params.toString()}`;
 }
 
-function addInterval(date: Date, interval: Interval): Date {
-  const next = new Date(date.getTime());
-  switch (interval) {
-    case 'hour':
-      next.setUTCHours(next.getUTCHours() + 1);
-      return next;
-    case 'day':
-      next.setUTCDate(next.getUTCDate() + 1);
-      return next;
-    case 'week':
-      next.setUTCDate(next.getUTCDate() + 7);
-      return next;
-    case 'month':
-      next.setUTCMonth(next.getUTCMonth() + 1);
-      return next;
-    default:
-      return next;
-  }
+/**
+ * 버킷 이름 — 대시보드 시간대의 날짜·시각 (CR-127). 시간 버킷은 `YYYY-MM-DD HH:mm`,
+ * 일·주 버킷은 `YYYY-MM-DD`(주는 그 주의 첫날), 월 버킷은 `YYYY-MM`이다. 날짜만 온
+ * 키(시험 픽스처)는 그대로 둔다.
+ */
+export function bucketLabelFor(interval: Interval, timezone: string): (bucketKey: string) => string {
+  const zone = canonicalTimeZone(timezone) ?? DEFAULT_TIMEZONE;
+  const precision = interval === 'hour' ? 'minute' : interval === 'month' ? 'month' : 'date';
+  return (bucketKey) => (DATE_ONLY.test(bucketKey) ? (precision === 'month' ? bucketKey.slice(0, 7) : bucketKey) : formatInTimeZone(bucketKey, zone, precision));
+}
+
+/** 버킷 열 제목 — `Range (KST)`처럼 시간대를 적는다. */
+export function bucketHeadingFor(timezone: string): string {
+  return `Range (${timeZoneLabel(canonicalTimeZone(timezone) ?? DEFAULT_TIMEZONE)})`;
 }
 
 function hasSeqRange(q: string): boolean {

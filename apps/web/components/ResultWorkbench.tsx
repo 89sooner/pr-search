@@ -28,9 +28,9 @@ import { ResultTable, resultIdentity, resultName, type ResultTableProps } from '
 import { SequenceBadge } from './SequenceBadge';
 import { RelationBadgeGroup } from './RelationBadgeGroup';
 import { WorkbenchIcon } from './WorkbenchIcon';
-import { formatTimestamp } from '../lib/format';
 import { withFromQuery } from '../lib/query-url';
 import { summaryBadges } from '../lib/relations';
+import { TimeText } from './TimeText';
 
 /** 미리보기 폭의 기본값(%). `WorkbenchLayout`이 25~60으로 묶는다. 세션 상태이며 URL에 싣지 않는다. */
 const DEFAULT_INSPECTOR_WIDTH = 38;
@@ -94,7 +94,7 @@ export function ResultWorkbench(props: ResultTableProps & { readonly fromQuery: 
           </div>
           <dl className="prs-preview-facts">
             <div><dt>Author</dt><dd>{selected.author ?? '—'}</dd></div>
-            <div><dt>Merged at</dt><dd>{formatTimestamp(selected.merged_at)}</dd></div>
+            <div><dt>Merged at</dt><dd><TimeText value={selected.merged_at} /></dd></div>
             <div>
               <dt>Sequence · space</dt>
               <dd>

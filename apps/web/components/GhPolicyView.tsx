@@ -17,8 +17,8 @@ import { Badge, Button, Dialog, Panel } from './ui';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { PolicyHistoryTable, ReasonField, usePolicyStatus, usePolicySubmit } from './GhPolicyShared';
-import { formatTimestamp } from '../lib/format';
 import { GATE_TEXT, capabilityChangeBody, gateText, reasonProblem } from '../lib/gh-policy';
+import { TimeText } from './TimeText';
 
 interface Pending {
   readonly capabilityId: string;
@@ -96,7 +96,7 @@ export function GhPolicyView({ canChange }: { readonly canChange: boolean }): Re
   return (
     <div data-testid="gh-policy" data-state="ready">
       <p data-testid="gh-policy-scope">
-        Deployment scope <code>{status.scope}</code> · Policy revision {status.policy.revision} · Last change {status.policy.updated_by ?? '—'} ({formatTimestamp(status.policy.updated_at)})
+        Deployment scope <code>{status.scope}</code> · Policy revision {status.policy.revision} · Last change {status.policy.updated_by ?? '—'} (<TimeText value={status.policy.updated_at} />)
       </p>
       <p data-testid="gh-policy-limits">
         Execution policy (A-005) currently supports blocking and resuming enabled commands. Risk overrides, approval policy editing, endpoints, and extension allowlists are not available. Policy can restrict enabled commands but cannot enable additional commands.

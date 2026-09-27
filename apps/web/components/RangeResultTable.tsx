@@ -19,8 +19,8 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Badge, Table } from './ui';
 import type { RangeItemView } from '../lib/range';
-import { formatTimestamp } from '../lib/format';
 import { MergeNumberBadge } from './MergeNumberBadge';
+import { TimeText } from './TimeText';
 
 export interface RangeResultTableProps {
   readonly repository: string;
@@ -89,7 +89,7 @@ export function RangeResultTable({ repository, baseBranch, items, missingInIndex
                 )}
               </Table.Cell>
               <Table.Cell>{item.author ?? '—'}</Table.Cell>
-              <Table.Cell>{item.mergedAt === null ? '—' : formatTimestamp(item.mergedAt)}</Table.Cell>
+              <Table.Cell>{item.mergedAt === null ? '—' : <TimeText value={item.mergedAt} />}</Table.Cell>
               <Table.Cell>
                 {item.additions === null && item.deletions === null
                   ? '—'

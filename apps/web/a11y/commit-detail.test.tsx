@@ -225,7 +225,10 @@ describe('소속 PR (QA-W003-04·05, DEV-093)', () => {
     expect(row.getByText('feat: 결제 재시도')).toBeInTheDocument();
     expect(row.getByText('kim')).toBeInTheDocument();
     expect(row.getByText('lee, park')).toBeInTheDocument();
-    expect(row.getByText('2026-08-19T05:02:11Z')).toBeInTheDocument();
+    // CR-127: 머지 시각은 KST로 보이고 원본 UTC는 툴팁과 dateTime에 남는다.
+    const merged = row.getByText('2026-08-19 14:02 KST');
+    expect(merged).toHaveAttribute('dateTime', '2026-08-19T05:02:11Z');
+    expect(merged).toHaveAttribute('title', '2026-08-19T05:02:11Z (UTC)');
   });
 
   it('PR 링크가 **진짜 링크**다 — W-002로 간다', async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseQuery } from '@prs/query';
-import { buildRepositoryQuery, buildShaRangeFilter, deriveInitialRangeType, repositoryLabelOptions, repositorySort, type SeqRangeCandidate } from './repository-search';
+import { WORKSPACE_DATE_TIME_ZONE, buildRepositoryQuery, buildShaRangeFilter, deriveInitialRangeType, mergedDateZone, mergedDateZoneLabel, repositoryLabelOptions, repositorySort, type SeqRangeCandidate } from './repository-search';
 
 describe('repository workspace search contract', () => {
   it('uses canonical merged state and preserves selectable filters', () => {
@@ -134,5 +134,33 @@ describe('initial Range filter type from the URL (CR-111)', () => {
     // No signal to read even if the raw query text happens to contain `seq:`; this mirrors the pre-existing
     // behavior where reloading a page never restores the resolved SHA range either.
     expect(deriveInitialRangeType('q=seq%3A120..980')).toBe('pr');
+  });
+});
+
+describe('CR-127: Merged date is a KST calendar range when picked, and a legacy UTC range otherwise', () => {
+  it('a range carrying tz=Asia/Seoul becomes merged:<from>..<to>@Asia/Seoul and parses', () => {
+    const query = buildRepositoryQuery({ serialized: 'from=2026-09-27&to=2026-09-27&tz=Asia%2FSeoul', repository: 'acme/kst', tab: 'search', login: '' });
+    expect(query).toContain('merged:2026-09-27..2026-09-27@Asia/Seoul');
+    expect(parseQuery(query).filters).toContainEqual({ key: 'merged', op: 'range', from: '2026-09-27', to: '2026-09-27', timezone: 'Asia/Seoul' });
+  });
+
+  it('a pre-CR-127 URL (from/to without tz) keeps its UTC-day query unchanged', () => {
+    const query = buildRepositoryQuery({ serialized: 'from=2026-09-27&to=2026-09-27', repository: 'acme/kst', tab: 'search', login: '' });
+    expect(query).toContain('merged:2026-09-27..2026-09-27');
+    expect(query).not.toContain('@');
+  });
+
+  it('the calendar zone travels in the request key: same dates, different tz, different query', () => {
+    const kst = buildRepositoryQuery({ serialized: 'from=2026-09-27&to=2026-09-27&tz=Asia%2FSeoul', repository: 'acme/kst', tab: 'search', login: '' });
+    const utc = buildRepositoryQuery({ serialized: 'from=2026-09-27&to=2026-09-27', repository: 'acme/kst', tab: 'search', login: '' });
+    expect(kst).not.toBe(utc);
+  });
+
+  it('labels: legacy dates say UTC, a picked or empty range says KST', () => {
+    expect(WORKSPACE_DATE_TIME_ZONE).toBe('Asia/Seoul');
+    expect(mergedDateZoneLabel(mergedDateZone({ from: '2026-09-27', to: '2026-09-27' }))).toBe('UTC');
+    expect(mergedDateZoneLabel(mergedDateZone({ from: '2026-09-27', to: '2026-09-27', tz: 'Asia/Seoul' }))).toBe('KST');
+    expect(mergedDateZoneLabel(mergedDateZone({}))).toBe('KST');
+    expect(mergedDateZoneLabel(mergedDateZone({ from: '2026-09-27', to: '2026-09-27', tz: 'UTC' }))).toBe('UTC');
   });
 });

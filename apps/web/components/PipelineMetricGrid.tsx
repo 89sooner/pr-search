@@ -24,7 +24,7 @@ import type { ReactNode } from 'react';
 import { Card, CardGrid } from './ui';
 import { UNAVAILABLE_LABEL, formatCount } from '../lib/ops-jobs';
 import { hasHiddenSlowRepositories, isUnavailable, type PipelineStatusView } from '../lib/ops-pipeline';
-import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 
 function Unavailable(): ReactNode {
   return (
@@ -128,7 +128,7 @@ export function PipelineMetricGrid({
   return (
     <div data-testid="pipeline-metric-grid" data-state={stale ? 'stale' : 'ready'}>
       <p data-testid="pipeline-updated-at">
-        Last updated {formatTimestamp(updatedAt ?? metrics.generated_at)}
+        Last updated <TimeText value={updatedAt ?? metrics.generated_at} />
         {stale ? "— More than 30 seconds have elapsed. Values below reflect that snapshot." : ''}
       </p>
 

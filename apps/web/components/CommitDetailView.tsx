@@ -21,6 +21,7 @@ import { EntityHeader } from './EntityHeader';
 import { SourceActions } from './source/SourceDialogs';
 import { ErrorBanner } from './ErrorBanner';
 import { LinkedPrList } from './LinkedPrList';
+import { TimeText } from './TimeText';
 import { RelationSection } from './RelationSection';
 
 
@@ -276,7 +277,7 @@ export function CommitDetailView({
             <dt>Author</dt>
             <dd>{commit.author ?? '—'}</dd>
             <dt>Authored at</dt>
-            <dd>{commit.authored_at ?? '—'}</dd>
+            <dd><TimeText value={commit.authored_at} absent="—" /></dd>
           </dl>
         </Panel>
       ) : (

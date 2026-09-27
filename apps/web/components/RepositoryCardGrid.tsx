@@ -23,7 +23,6 @@
 import type { ReactNode } from 'react';
 import { Badge, Button, Card, CardGrid, Meter } from './ui';
 import { SequenceSpaceStatusList } from './SequenceSpaceStatusList';
-import { formatTimestamp } from '../lib/format';
 import {
   ARCHIVED_NOTE,
   REGISTRATION_LABEL,
@@ -35,6 +34,7 @@ import {
   valueKind,
   type RepositoryOverview,
 } from '../lib/repository-overview';
+import { TimeText } from './TimeText';
 
 /** 조회 실패·기록 없음·값 셋을 같은 자리에서 가른다. */
 function AxisValue({
@@ -109,7 +109,7 @@ export function RepositoryCardGrid({ repositories, onRetry }: RepositoryCardGrid
                   axis="last_ingested_at"
                   value={item.last_ingested_at}
                   absent="No ingestion records yet"
-                  render={() => formatTimestamp(item.last_ingested_at as string)}
+                  render={() => <TimeText value={item.last_ingested_at as string} />}
                 />
               </dd>
 
@@ -152,7 +152,7 @@ export function RepositoryCardGrid({ repositories, onRetry }: RepositoryCardGrid
                 {reconciliationSummary(item)}
                 {item.reconciliation.last_completed_at === null ||
                 isAxisUnavailable(item, 'reconciliation') ? null : (
-                  <> ({formatTimestamp(item.reconciliation.last_completed_at)})</>
+                  <> (<TimeText value={item.reconciliation.last_completed_at} />)</>
                 )}
               </dd>
             </dl>

@@ -41,7 +41,7 @@ import {
   type PipelineStatusView,
 } from '../lib/ops-pipeline';
 import type { JobView } from '../lib/ops-jobs';
-import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 
 const STATUS_URL = '/api/admin/pipeline-status';
 const DEAD_LETTER_URL = '/api/admin/dead-letters';
@@ -374,7 +374,7 @@ export function OpsPipelineView({ roles, authEnabled = true }: OpsPipelineViewPr
               <li key={item.delivery_id} data-testid="archive-row">
                 <p>
                   {item.delivery_id} · {item.event_type}
-                  {item.action === null ? '' : `.${item.action}`} · {formatTimestamp(item.received_at)}
+                  {item.action === null ? '' : `.${item.action}`} · <TimeText value={item.received_at} />
                 </p>
                 {/*
                   **`payload`는 기본으로 접혀 있다** (THR-044). 펼치는 것이
