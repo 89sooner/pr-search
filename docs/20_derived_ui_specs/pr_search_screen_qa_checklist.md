@@ -1,6 +1,12 @@
 # PR Search 화면 QA 체크리스트
 
-> 상태: review | 버전: v0.31 | 갱신일: 2026-09-28
+> 상태: review | 버전: v0.32 | 갱신일: 2026-09-29
+
+## CR-129 처리되지 않은 오류의 공통 처리 (API 계약 6장, 백엔드 8장)
+
+| ID | 확인 항목 | 검증 |
+| --- | --- | --- |
+| QA-W001-67 | 검색이 서버 오류(500 `INTERNAL_ERROR`)로 끝나면 Repository workspace의 결과 오류가 「Unable to load search results. (INTERNAL_ERROR) Reference ID: <UUID>」이고, 그 UUID는 응답 본문의 `correlation_id`이자 search-api 진단 로그(`http.unhandled_error`)의 `correlation_id`다. 오류 문구에 내부 예외 이름·원격 응답·검색어가 없다. 입력 오류(400)에는 참조 ID가 붙지 않는다 | 실제 search-api에 Elasticsearch 고장을 주입한 화면 확인(원장 6.120장), `apps/web/lib/service-message.test.ts` |
 
 ## CR-128 0건 검색의 완화 후보와 `kind:` (FR-SRCH-006 AC-3·예외/실패 처리)
 

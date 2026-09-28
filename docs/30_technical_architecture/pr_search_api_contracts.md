@@ -1,5 +1,7 @@
 # PR Search API 계약
 
+> CR-129 / 공통 오류 (2026-09-29): 새 경로는 없다. 오류 코드 `UNSUPPORTED_MEDIA_TYPE`(415) 하나를 6장에 더한다. **공개 API가 경로에서 처리하지 못한 예외**는 이제 6장의 오류 봉투다 — 500 `INTERNAL_ERROR`와 고정 문구, `correlation_id`. 전에는 Fastify 기본 본문(`statusCode`·`error`·`message`, 내부 문구 포함)이었고 `correlation_id`가 없었으며, Elasticsearch가 질의를 거절한 예외는 그 `statusCode`(400)로 나갔다(DEV-786). 본문을 읽지 못한 요청은 400 `INVALID_PARAMETER`·413 `PAYLOAD_TOO_LARGE`·415 `UNSUPPORTED_MEDIA_TYPE`, 없는 경로는 404 `NOT_FOUND` 봉투다. 경로가 이미 처리하던 오류 응답은 그대로다. PIPE 연동(API-INT-001~014)은 같은 분류를 쓴다 — 서버 오류가 `INVALID_REQUEST`(400)로 나가던 결함을 고쳐 `INTERNAL_ERROR`(500)다(DEV-789, CONTRACT_DIFF D-24).
+>
 > CR-128 / FR-SRCH-006 AC-3 (2026-09-28): 새 경로·새 오류 코드는 없다. API-SRCH-004(와 같은 실행을 쓰는 API-INT-006)의 0건 응답이 **완화 후보를 후보마다 본 조회와 같은 규칙으로 다시 해석해 센다** — `kind:`는 요청 경로의 원래 대상에서 다시 적용하고(유형 조건을 뺀 후보는 다른 유형도 센다), 남은 유형이 없는 후보는 조회하지 않는다. 전에는 `kind:`와 다른 필터를 함께 쓴 0건 질의가 후보를 만들다 500이었다(DEV-783). 0건 응답에 선택 키 `relaxation_hints_incomplete: true`(세지 못한 후보가 있을 때만)가 더해진다. 추천 계산의 실패는 본 조회의 200을 바꾸지 않는다. 모순된 `kind:`의 0건도 후보를 센다(전에는 계산하지 않은 `[]`).
 >
 > CR-127 / FR-SRCH-005 AC-11, FR-STAT-002 AC-7, FR-AUTH-004 AC-9 (2026-09-27): 새 경로·새 오류 코드는 없다. **질의 문법을 넓힌다** — `merged`·`created`의 날짜만 적은 범위 끝에 `@<IANA 시간대>`를 붙이면 그 시간대의 달력 날짜 범위이며 `[시작일의 첫 순간, 종료일 다음 날의 첫 순간)`의 UTC 구간(`gte`·`lt`)으로 조회한다. 전에 성립하던 질의는 모두 같은 뜻이다(시간대 없는 날짜 끝은 UTC 날짜, 양끝 포함). `parsed`의 시각 범위 항목에 `timezone`이 붙을 수 있다. 같은 질의 문법을 쓰는 PIPE 위임 검색(API-INT-006)과 저장된 검색(API-SRCH-005)·내보내기(API-SRCH-006)·통계(API-STAT-001~004)도 이 표지를 같은 뜻으로 받는다. API-STAT-002는 날짜만 적은 `from`·`to`를 요청 시간대의 달력 날짜로 걸러 `applied_range`에 날짜로 돌려주고, 모르는 `timezone`을 400(`field: timezone`)으로 거절한다. API-ADM-005의 `from`·`to`는 오프셋을 그대로, 오프셋 없는 값을 UTC로 읽으며 없는 날짜·역전을 400으로 거절한다. 응답과 내보내기의 시각은 그대로 UTC다 — 화면이 `Asia/Seoul`로 그린다.
@@ -58,7 +60,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. **그 배열이 무엇인지는 CR-116이 정정한다 — 계약의 모양은 그대로다.** 배열은 「언젠가 한 번 그 커밋을 포함했던 모든 PR」이 아니라 채택된 최신 관측에 근거한 **현재 유효한 연결**이며, PR이 rebase되어 원본 커밋 목록에서 빠진 커밋에서는 그 번호가 사라진다(같은 커밋의 다른 PR 연결과 실제 병합 근거는 남는다). 그래서 이 열의 값은 세 가지 다른 사실을 계속 가른다 — **빈 배열**은 「검증한 범위에서 이 커밋에 연결된 PR이 0개」라는 사실의 진술이고, **`null`**은 「아직 확정하지 못했다」이며, **`pull_requests_unavailable: true`**는 「조회 자체를 하지 못했다」다. 앞의 둘을 합치거나 빈 배열을 필드 부재로 바꾸면 이 구분이 사라진다. 연결의 제거는 그 PR의 커밋 목록이 원격의 전부임을 증명한 관측에만 허용되므로, 증명하지 못한 동안에는 옛 번호가 남아 있을 수 있고 그 사실은 응답이 아니라 운영 경로(RB-29)가 답한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.49 | 갱신일: 2026-09-28
+> 상태: review | 버전: v0.50 | 갱신일: 2026-09-29
 
 ## 1. 목적
 
@@ -3210,6 +3212,13 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 }
 ```
 
+**공통 처리 (CR-129).** 경로가 계약 코드로 답하지 못한 실패는 서버의 공통 처리가 이 봉투로 답한다.
+
+- **처리하지 못한 예외** — 500 `INTERNAL_ERROR`와 고정 문구. 예외의 문구·이름·스택·원격 응답은 응답에 싣지 않는다. 예외가 `statusCode` 속성을 가져도(Elasticsearch `ResponseError`는 거절 상태를 게터로 준다) 그 상태를 쓰지 않는다 — 그것은 서버가 만든 요청이 거절된 것이지 사용자의 입력 오류가 아니다.
+- **본문을 읽지 못한 요청** — 깨진 JSON·빈 JSON 본문·길이 불일치·URL 형식은 400 `INVALID_PARAMETER`, 본문 1MiB 초과는 413 `PAYLOAD_TOO_LARGE`, JSON이 아닌 본문 형식은 415 `UNSUPPORTED_MEDIA_TYPE`이다. 경로 핸들러에 닿기 전에 거절하므로 인증보다 먼저다.
+- **없는 경로** — 404 `NOT_FOUND`.
+- **`correlation_id`** — 서버가 요청마다 만든 UUID다. 앞단이 보낸 `X-Correlation-Id`를 요청 식별자로 받지 않는다. 서버는 같은 ID로 진단 로그 한 줄을 남긴다(관측성 3.1 「처리되지 않은 오류 진단 로그」) — 문의에는 이 값을 쓴다.
+
 | Error Code | HTTP | 의미 | 사용자 조치 |
 | --- | --- | --- | --- |
 | `SOURCE_CHANGED` | 409 | 분석 중 PR head/base 이동 | 비교를 닫고 다시 열기 |
@@ -3246,7 +3255,8 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 | `SAVED_SEARCH_LIMIT` | 409 | 저장 100건 초과 | 기존 항목 삭제 |
 | `SAVED_SEARCH_NAME_CONFLICT` | 409 | 같은 이름의 내 저장 검색이 이미 있음 (CR-049) | 이름 변경 |
 | `SAVED_SEARCH_QUERY_INVALID` | 409 | 저장된 질의가 현재 문법에서 무효인데 실행을 요청 (CR-049). `detail.reason`이 `epoch_stale`·`sequence_unbound`를 가른다 (CR-051) | 질의 수정 또는 에폭 재연결(저장자) |
-| `PAYLOAD_TOO_LARGE` | 413 | 웹훅 25MB 초과 | (GHE 측) |
+| `PAYLOAD_TOO_LARGE` | 413 | 웹훅 25MB 초과, 조회 API 요청 본문 1MiB 초과 (CR-129) | (GHE 측) / 본문 축소 |
+| `UNSUPPORTED_MEDIA_TYPE` | 415 | JSON이 아닌 요청 본문 형식 (CR-129) | `Content-Type: application/json`으로 요청 |
 | `PERMISSION_UNAVAILABLE` | 503 | 접근 범위 조회 실패 | 잠시 후 재시도 |
 | `SEARCH_TIMEOUT` | 504 | 검색 3초 초과 | 조건 추가 |
 | `AGGREGATION_TIMEOUT` | 504 | 집계 5초 초과 | 기간 축소 |
