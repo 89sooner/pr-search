@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.76 | 갱신일: 2026-09-28
+> 상태: review | 버전: v2.77 | 갱신일: 2026-09-28
+
+## WP-109 0건 검색의 완화 후보와 `kind:` 재해석 (CR-128)
+
+- 요구사항: `FR-SRCH-006` AC-3·예외/실패 처리(보완). 선행: WP-013(검색 질의 변환·완화 후보), WP-016(W-001 화면), WP-037(`kind:`의 대상 좁히기, DEV-392), WP-097(PIPE 연동 검색).
+- 범위: (1) `apps/search-api/src/search/relaxation.ts` — 후보마다 `resolveSearchTarget(후보, 요청 경로의 원래 대상)`, 남은 유형이 없는 후보는 보내지 않음, 보낸 후보와 응답의 짝짓기, 갈래 오류·샤드 실패·시간 초과의 「세지 못함」, 갈래 예산·왕복 상한·재시도 0. (2) `service.ts` — 원래 대상 전달, 모순된 `kind:`의 0건에서도 후보, 추천 단계 격리와 진단 로그(접근 범위 실패는 올린다). (3) `routes.ts` — `relaxation_hints_incomplete`, correlation ID 전달. (4) `packages/es/src/search.ts` — `multiSearch` 전송 옵션. (5) `apps/search-api/src/{index,runtime}.ts` — 검색 진단 로그. (6) `apps/web/components/SearchView.tsx` — `would_yield`, 불완전 안내. (7) PIPE 인계 — OpenAPI·`CONTRACT_DIFF.md` D-23·합성 예시·manifest. (8) 시험 — 단위, 통합(실제 PostgreSQL·Elasticsearch·search-api·mTLS PIPE), a11y. (9) 문서 — CR-128 cascade.
+- 제외: 공개 서버의 처리되지 않은 오류 본문(DEV-786), Repository workspace의 후보 표시(DEV-787), 구간 조회의 `kind:`(DEV-788), `path:`의 부분 문자열 검색·analyzer 변경, 원본 데이터 변경·재색인, proxy·grant 설정, 사내 PIPE BFF, Release 발행, 사내 적용.
+- 완료 기준: 대표 실패를 **수정 전 코드에서 먼저 재현한다** — `kind:` + 다른 필터 + 결과 0건이 공개 경로 500·PIPE 500 `INTERNAL_ERROR`이고, `path:` 없이도, `kind:commit`·부정 `kind:`에서도 같으며, 결과가 있으면 성공하고, 모순된 `kind:`는 계산하지 않은 `[]`다. 새 회귀 시험은 수정 전 코드에서 실패한다. 수정 뒤에는 0건이 200·`total` 0·빈 `items`·`null` 커서이고, 후보마다 그 필터를 빼고 다시 검색한 건수가 `would_yield`와 같으며(`kind:`를 빼면 다른 유형이 들어오는 사례 포함), 긍정·부정·복수 값·모순 조건, 접근 범위(범위 밖 문서만 맞는 후보는 나오지 않는다), `seq:`·`mnum:`·`pr_number:`의 지목 규칙과 KST 날짜, 패싯 켜기·끄기, 일반 세션·PIPE grant가 맞는다. 추천 계산의 실패(msearch 실패·상한 초과·갈래 오류·샤드 실패·시간 초과)는 200·0건과 `relaxation_hints_incomplete`, correlation ID가 든 진단 로그이고, 본 조회·접근 범위 오류는 전과 같다. 실제 화면(Repository workspace·레거시 검색 화면)을 실제 search-api·Elasticsearch로 확인한다. 전 계층 게이트, 변이, 독립 리뷰, CI.
+- 상태: in progress — worktree `/home/roqkf/pr-search-wt/kind-relaxation`(브랜치 `fix/search-kind-relaxation`), 기준 main `d2d894d`.
 
 ## WP-108 한국 시간 표시와 KST 달력 날짜 검색 (CR-127)
 
@@ -218,6 +226,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
+| WP-109 | 0건 검색의 완화 후보와 `kind:` 재해석 | 구현 결함 수정 + 요구사항 보완 (CR-128) | WP-013, WP-016, WP-037, WP-097 | in progress — 원장 6.119장 |
 | WP-108 | 한국 시간 표시와 KST 달력 날짜 검색 | 요구사항 변경 (CR-127) | WP-011, WP-013, WP-015, WP-037, WP-038, WP-039, WP-087, WP-096 | done — main `2272f56`(PR #247), 원장 6.118장 |
 | WP-107 | 업그레이드 직후 옛 스택 관계의 전환기 보완 | 구현 결함 수정 (CR-126) | WP-029, WP-030, WP-104 | done — main `7684bd3`(PR #245), 원장 6.117장 |
 | WP-106 | 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 | 구현 결함 수정 (CR-125) | WP-032, WP-033, WP-039, WP-040 | done — main `3dd6d8c`(PR #244), 원장 6.116장 |

@@ -1,6 +1,14 @@
 # PR Search 화면 QA 체크리스트
 
-> 상태: review | 버전: v0.30 | 갱신일: 2026-09-27
+> 상태: review | 버전: v0.31 | 갱신일: 2026-09-28
+
+## CR-128 0건 검색의 완화 후보와 `kind:` (FR-SRCH-006 AC-3·예외/실패 처리)
+
+| ID | 확인 항목 | 검증 |
+| --- | --- | --- |
+| QA-W001-64 | `kind:`와 다른 필터를 함께 쓴 검색이 0건이면 오류 배너가 아니라 결과 0건 상태다. Repository workspace는 「No matching changes」를, 레거시 검색 화면은 `empty_no_result`와 후보 목록을 그린다 | 실제 search-api·Elasticsearch를 거친 브라우저 확인, 통합 |
+| QA-W001-65 | 후보 목록의 건수가 숫자로 보이고(`<필터> removed: N items`), 그 필터를 빼고 다시 검색한 건수와 같다. `kind:`를 빼는 후보는 다른 유형(커밋·PR)의 문서까지 센 건수다 | 통합(후보마다 다시 검색해 대조)·컴포넌트 |
+| QA-W001-66 | 서버가 후보를 다 세지 못했으면(`relaxation_hints_incomplete`) 목록이 비었을 때 「Filter suggestions could not be calculated for this search.」, 일부만 셌을 때 「Some filter suggestions could not be calculated.」가 보이고, 빈 목록을 「제안 없음」으로 그리지 않는다 | 컴포넌트(a11y) |
 
 ## CR-127 한국 시간 표시와 달력 날짜 검색 (NFR-007·FR-SRCH-005 AC-11·FR-STAT-002 AC-7·FR-AUTH-004 AC-9)
 

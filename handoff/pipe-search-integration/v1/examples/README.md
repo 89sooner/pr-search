@@ -36,6 +36,7 @@
 | 연동 계층 입력 거절 | `read.search.400.invalid-request` (중복 query key) |
 | 채번 전 M 번호 | `read.merge_numbers.resolve.409.no-sequence` — 원본 봉투 |
 | source 부분 결과 | `read.source.tree.200.truncated`, `read.source.history.200.pull-requests-unavailable` (합성) |
+| 0건 검색의 완화 후보를 다 세지 못함 | `read.search.200.relaxation-incomplete` (합성, CR-128 — 빈 목록 + `relaxation_hints_incomplete: true`는 「제안 없음」이 아니다) |
 
 ## 읽는 법
 

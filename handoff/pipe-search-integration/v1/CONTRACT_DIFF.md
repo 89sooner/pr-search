@@ -167,6 +167,20 @@ PSI-1.0 제안과 CR-112 구현 시점의 `read.resolve`는 커밋 SHA·PR 번�
 
 **PIPE에 필요한 조치.** `PullRequestDetailResponse`는 `additionalProperties: false`이므로, 이 스키마로 응답을 엄격하게 검증한다면 새 키를 받아들이도록 스키마를 갱신해야 합니다. 화면이 원본 커밋 수를 GitHub과 비교해 보여 준다면 `source_commits_excluded`로 차이의 이유를 안내하는 것을 권합니다 — pr-search 화면은 「이미 대상 브랜치에 있던 커밋 N개는 목록에 없고, 각각을 그 브랜치에 올린 PR 소속이다」라고 말합니다. 예시 `examples/read.pull_request.200.json`(captured)에 키를 더했습니다. `handoff/pipe-search-port`(2026-09-21 시점 고정 스냅숏)의 fixture에는 이 키가 없습니다.
 
+## D-23 0건 검색의 완화 후보 — `kind:`가 든 0건이 500이 아니고, 세지 못한 후보를 밝힌다 (CR-128, 2026-09-28)
+
+`kind:`와 다른 필터를 함께 쓴 검색은 결과가 0건일 때마다 완화 후보를 만들다 **500 `INTERNAL_ERROR`**로 끝났습니다(`retryable: false`). 원본 경로도 500이었습니다(DEV-783). 이 표의 오류 대응(`INTERNAL_ERROR` → 503 `SEARCH_AUTH_UNAVAILABLE`)을 따르는 BFF에서는 503으로 보였을 것입니다. CR-128부터 이 질의는 원본과 같은 200 · `total` 0 · 빈 `items` · `next_cursor: null`과 정확한 후보를 받습니다. 연동은 같은 실행 함수를 부르므로 원본과 같이 바뀝니다(FR-INT-001 AC-5).
+
+| 자리 | 전 | 후 |
+|---|---|---|
+| `kind:` + 다른 필터 + 0건 | 500 `INTERNAL_ERROR` | 200. 후보마다 `kind:`를 원래 대상(PR·커밋)에서 다시 적용해 센다 — `kind:pull_request`를 빼는 후보는 그 조건의 커밋도 셉니다 |
+| 모순된 `kind:`(`kind:pull_request -kind:pull_request …`)의 0건 | 200, `relaxation_hints: []`(계산하지 않았다) | 200, 후보를 센다. 연동 범위가 빈 사용자는 다른 검색처럼 503 `PERMISSION_UNAVAILABLE`(원본 봉투) |
+| `SearchResponse.relaxation_hints_incomplete` | 없음 | **추가, 선택.** 0건이고 세지 못한 후보가 있을 때만 `true`로 나타납니다(`false`로는 나오지 않습니다). 목록의 `would_yield`는 모두 정확하고, 키가 있으면 빠진 후보가 있을 수 있습니다. **목록이 비었는데 이 키가 있으면 「추천을 계산하지 못했다」이지 「뺄 필터가 없다」가 아닙니다** |
+
+추천 계산이 실패해도 본 조회의 200은 바뀌지 않습니다 — 후보 계산은 갈래마다 1.5초, 왕복 3초 상한이고 재시도하지 않습니다. 본 조회·접근 범위·입력의 실패는 전과 같은 코드입니다.
+
+**PIPE에 필요한 조치.** `SearchResponse`는 `additionalProperties: false`이므로, 이 스키마로 응답을 엄격하게 검증한다면 새 키를 받아들이도록 스키마를 갱신해야 합니다. 화면이 후보를 보여 준다면 이 키가 있을 때 빈 목록을 「제안 없음」으로 그리지 말고 「제안을 계산하지 못함」으로 구분하는 것을 권합니다. 전에 `kind:` 0건 검색이 503 `SEARCH_AUTH_UNAVAILABLE`로 보였다면 이 변경 뒤에는 200 0건으로 바뀝니다 — 재시도·빈 결과로 대신하던 처리가 있으면 걷어 내십시오. 예시 `examples/read.search.200.relaxation-incomplete.json`(합성)을 더했습니다. `handoff/pipe-search-port`(2026-09-21 시점 고정 스냅숏)의 fixture에는 이 키가 없습니다.
+
 ## 확인하지 못한 것
 
 | 항목 | 상태 | 이유 |

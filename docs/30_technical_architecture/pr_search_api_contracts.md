@@ -1,5 +1,7 @@
 # PR Search API 계약
 
+> CR-128 / FR-SRCH-006 AC-3 (2026-09-28): 새 경로·새 오류 코드는 없다. API-SRCH-004(와 같은 실행을 쓰는 API-INT-006)의 0건 응답이 **완화 후보를 후보마다 본 조회와 같은 규칙으로 다시 해석해 센다** — `kind:`는 요청 경로의 원래 대상에서 다시 적용하고(유형 조건을 뺀 후보는 다른 유형도 센다), 남은 유형이 없는 후보는 조회하지 않는다. 전에는 `kind:`와 다른 필터를 함께 쓴 0건 질의가 후보를 만들다 500이었다(DEV-783). 0건 응답에 선택 키 `relaxation_hints_incomplete: true`(세지 못한 후보가 있을 때만)가 더해진다. 추천 계산의 실패는 본 조회의 200을 바꾸지 않는다. 모순된 `kind:`의 0건도 후보를 센다(전에는 계산하지 않은 `[]`).
+>
 > CR-127 / FR-SRCH-005 AC-11, FR-STAT-002 AC-7, FR-AUTH-004 AC-9 (2026-09-27): 새 경로·새 오류 코드는 없다. **질의 문법을 넓힌다** — `merged`·`created`의 날짜만 적은 범위 끝에 `@<IANA 시간대>`를 붙이면 그 시간대의 달력 날짜 범위이며 `[시작일의 첫 순간, 종료일 다음 날의 첫 순간)`의 UTC 구간(`gte`·`lt`)으로 조회한다. 전에 성립하던 질의는 모두 같은 뜻이다(시간대 없는 날짜 끝은 UTC 날짜, 양끝 포함). `parsed`의 시각 범위 항목에 `timezone`이 붙을 수 있다. 같은 질의 문법을 쓰는 PIPE 위임 검색(API-INT-006)과 저장된 검색(API-SRCH-005)·내보내기(API-SRCH-006)·통계(API-STAT-001~004)도 이 표지를 같은 뜻으로 받는다. API-STAT-002는 날짜만 적은 `from`·`to`를 요청 시간대의 달력 날짜로 걸러 `applied_range`에 날짜로 돌려주고, 모르는 `timezone`을 400(`field: timezone`)으로 거절한다. API-ADM-005의 `from`·`to`는 오프셋을 그대로, 오프셋 없는 값을 UTC로 읽으며 없는 날짜·역전을 400으로 거절한다. 응답과 내보내기의 시각은 그대로 UTC다 — 화면이 `Asia/Seoul`로 그린다.
 >
 > CR-125 / API-ADM-005·API-ADM-009 (2026-09-27): 새 경로·새 오류 코드·응답 항목 모양 변경은 없다. 두 운영 목록의 커서가 **판 2**가 된다 — 키셋 시각을 PostgreSQL의 마이크로초 UTC 문자열 그대로 싣고 되돌린다(판 1은 `toISOString()`의 밀리초라 경계와 같은 밀리초의 행이 다음 쪽에서 빠졌다, DEV-777). 판 1 커서는 이어 읽지 않고 `CURSOR_INVALID`로 거절하며 `error.detail`에 `{"reason":"cursor_version_outdated","issued_version":1,"current_version":2}`를 싣는다 — 화면은 이 사유로 첫 페이지 재조회를 따로 안내한다.
@@ -56,7 +58,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. **그 배열이 무엇인지는 CR-116이 정정한다 — 계약의 모양은 그대로다.** 배열은 「언젠가 한 번 그 커밋을 포함했던 모든 PR」이 아니라 채택된 최신 관측에 근거한 **현재 유효한 연결**이며, PR이 rebase되어 원본 커밋 목록에서 빠진 커밋에서는 그 번호가 사라진다(같은 커밋의 다른 PR 연결과 실제 병합 근거는 남는다). 그래서 이 열의 값은 세 가지 다른 사실을 계속 가른다 — **빈 배열**은 「검증한 범위에서 이 커밋에 연결된 PR이 0개」라는 사실의 진술이고, **`null`**은 「아직 확정하지 못했다」이며, **`pull_requests_unavailable: true`**는 「조회 자체를 하지 못했다」다. 앞의 둘을 합치거나 빈 배열을 필드 부재로 바꾸면 이 구분이 사라진다. 연결의 제거는 그 PR의 커밋 목록이 원격의 전부임을 증명한 관측에만 허용되므로, 증명하지 못한 동안에는 옛 번호가 남아 있을 수 있고 그 사실은 응답이 아니라 운영 경로(RB-29)가 답한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.48 | 갱신일: 2026-09-28
+> 상태: review | 버전: v0.49 | 갱신일: 2026-09-28
 
 ## 1. 목적
 
@@ -490,6 +492,17 @@
 
 **`relaxation_hints`는 `msearch` 한 번이다 (CR-016, DEV-055).** 필터마다 질의를 따로 던지면 NFR-001의 예산을 필터 수만큼 쓴다. 후보는 **상한 8개**이며, 넘으면 `relaxation_hints_truncated: true`로 잘랐다는 사실을 남긴다. 0건일 때만 계산하므로 정상 경로의 지연에 영향이 없다.
 
+**완화 후보를 세는 규칙 (CR-128, FR-SRCH-006 AC-3).** 후보는 질의의 앞 8개 필터 각각을 하나씩 뺀 질의다. 뺀 뒤 `seq:`·`mnum:`·`pr_number:`의 지목 규칙을 어기는 후보(400이 될 질의)는 세지 않는다. 남은 후보마다 **본 조회와 같은 순서**를 다시 밟는다.
+
+1. **검색 대상 해석** — `kind:`를 **요청 경로가 허용한 원래 대상**(`/search`와 API-INT-006은 `prs-pull-requests`·`prs-commits`)에서 다시 적용한다. 본 조회가 `kind:`로 좁힌 대상을 쓰지 않는다 — `kind:pull_request`를 빼는 후보는 그 조건의 커밋도 센다. 원래 대상 밖으로 넓히지 않는다.
+2. **남은 유형이 없으면 조회하지 않는다** — 그 후보의 결과는 0건이며 목록에 싣지 않는다. 빈 인덱스 목록을 Elasticsearch에 넘기면 전체를 검색하기 때문이다.
+3. **`kind:`를 걷어 낸 질의로 조립하고 강제 접근 범위를 결합한다** — `seq:`·`mnum:`이 남은 후보는 본 조회가 확정한 같은 에폭(과 `mnum:`의 기준 브랜치)으로 센다.
+4. **건수만 센다** — `size: 0`, `track_total_hits: true`, 갈래마다 시간 예산 `timeout: 1500ms`. 왕복 전체는 3초 상한이고 재시도하지 않는다.
+
+`kind:`끼리 모순되어(`kind:pull_request -kind:pull_request author:kim`) 본 조회를 실행하지 않은 0건도 후보를 센다 — 본 조회는 여전히 하지 않는다. 원본 질의(`query`·`parsed`)와 커서 지문은 후보 계산과 무관하게 그대로다.
+
+**`relaxation_hints_incomplete: true` — 세지 못한 후보가 있다 (CR-128).** 0건 응답에서만, 세지 못한 후보가 하나라도 있을 때만 나타난다(`false`로는 나오지 않는다). 세지 못함은 msearch 자체의 실패·왕복 상한 초과, 갈래의 오류·샤드 실패·`timed_out`, 후보 조립의 실패다. 그 후보의 건수는 싣지 않는다 — 부분 집계를 정확한 건수로 보이지 않는다. 그래서 `relaxation_hints`의 건수는 언제나 정확하고, 이 키가 있으면 목록에 빠진 후보가 있을 수 있다. **목록이 비었는데 이 키가 있으면 「추천을 계산하지 못했다」이지 「뺄 필터가 없다」가 아니다.** 추천 계산의 실패는 본 조회의 200을 바꾸지 않는다. 본 조회·접근 범위 확인·입력의 실패는 전과 같은 오류다(접근 범위 확인 실패는 후보 계산 중에 나도 503 `PERMISSION_UNAVAILABLE`이다). 서버는 진단 로그 `search.relaxation_incomplete`(단계 `compute`·`msearch`·`branch`, 오류 이름, 센 후보 수, 세지 못한 수, `correlation_id`)를 남긴다 — 질의 문자열과 Elasticsearch 오류 본문은 싣지 않는다.
+
 응답 200:
 
 ```json
@@ -599,6 +612,37 @@
   "relaxation_hints": [
     { "remove": "author:nobody", "would_yield": 62 }
   ],
+  "next_cursor": null,
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+응답 200 (`kind:`가 든 0건, CR-128 — 유형 조건을 뺀 후보는 같은 조건의 커밋을 센다. 커밋 문서에 없는 필드(`is:`·`label:` 등)가 남은 후보에서는 커밋이 매치되지 않는다):
+
+```json
+{
+  "query": "kind:pull_request path:src/pay author:lee",
+  "total": { "value": 0, "relation": "eq" },
+  "items": [],
+  "relaxation_hints": [
+    { "remove": "author:lee", "would_yield": 12 },
+    { "remove": "path:src/pay", "would_yield": 5 },
+    { "remove": "kind:pull_request", "would_yield": 3 }
+  ],
+  "next_cursor": null,
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
+
+응답 200 (후보를 세지 못함, CR-128 — 빈 목록이 「뺄 필터가 없다」가 아니다):
+
+```json
+{
+  "query": "kind:pull_request author:nobody label:backend",
+  "total": { "value": 0, "relation": "eq" },
+  "items": [],
+  "relaxation_hints": [],
+  "relaxation_hints_incomplete": true,
   "next_cursor": null,
   "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
 }

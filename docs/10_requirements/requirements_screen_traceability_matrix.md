@@ -1,6 +1,10 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.22 | 갱신일: 2026-09-27
+> 상태: review | 버전: v1.23 | 갱신일: 2026-09-28
+
+| 추가 요구사항 (CR-128) | 화면 | 구현 단위 | 검증 |
+| --- | --- | --- | --- |
+| FR-SRCH-006 AC-3 보완 (후보마다 `kind:`를 요청 경로의 원래 대상에서 다시 해석 · 남은 유형이 없는 후보는 0건 · 모순된 `kind:`의 0건도 후보 · 세지 못한 후보의 불완전 표시) · 예외/실패 처리 (추천 계산 실패의 격리) | W-001(레거시 검색 화면의 `empty_no_result` — 후보 건수 `would_yield`, 불완전 안내. Repository workspace는 0건을 「No matching changes」로 그린다 — 후보 표시는 DEV-787) | WP-109, `apps/search-api/src/search/{relaxation,service,routes}.ts`, `packages/es/src/search.ts`(`multiSearch` 전송 옵션), `apps/search-api/src/{index,runtime}.ts`(검색 진단 로그), `apps/web/components/SearchView.tsx` | `apps/search-api/src/search/{relaxation,service}.test.ts`, `packages/es/src/search.test.ts`, 통합 `search/relaxation-kind.test.ts`·`search/list.test.ts`·`integrations/pipe/{parity,openapi}.test.ts`, `apps/web/a11y/search.test.tsx`, 원장 6.119장 |
 
 | 추가 요구사항 (CR-127) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |
