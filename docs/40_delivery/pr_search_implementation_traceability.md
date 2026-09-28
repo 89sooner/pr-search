@@ -9571,3 +9571,45 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **한계.** 사내 적용 NOT RUN(새 Release 발행과 사내 적용은 범위 밖이다). 경로가 스스로 처리한 오류의 `correlation_id`는 세션 조회 밖의 경로에서 여전히 경로가 만든 값이고, 요청 로그가 없어 어느 기록과도 잇지 않는다(관측성 3.1). web 프록시는 응답 헤더의 ID를 자기 값으로 덮고(DEV-790) 502를 기록하지 않는다(DEV-791). 레거시 화면은 서버의 한국어 문구를 그대로 보인다.
 
 **병합.** PR #253(base `main`, 최종 head `7a0f427`)의 CI(run 36471339749)는 verify·integration 모두 첫 시도에 success였다. 사용자 승인(2026-09-29, 이 세션에서 PR #253에 대해 받았다 — 같은 질문에서 병합 기록을 다음 기능 PR의 첫 커밋에 싣는 방식도 받았다)으로 squash 병합했다 — main `e581b52`, 트리는 PR head와 같다(`ffc5027…`). 병합 커밋의 main CI(run 36493639859)는 verify·integration 모두 첫 시도에 success다. 이 기록은 CR-130 PR의 첫 커밋에 실었다. 사내 적용은 NOT RUN이다.
+
+### 6.121 구간 조회의 `kind:` 거절 (2026-09-29, CR-130 / WP-111, DEV-788)
+
+**요청.** 23차 사용자 지시(2026-09-29) 2번. 구간 조회(`/api/v1/sequence-ranges`)의 `q`에 `kind:`·`-kind:`가 있으면 `INVALID_PARAMETER`와 「구간 조회에서 지원하지 않는 조건」 안내로 거절한다. 원래 신원·권한 검사 순서를 지키고, 불필요한 Elasticsearch 조회나 `buildQuery` 예외까지 가지 않는다. 조건을 지우거나 0건으로 위장하지 않고, 일반 검색의 `kind:`와 구간의 기존 동작을 유지하며, UI가 스스로 그 조건을 넣는 경로도 확인한다.
+
+**재현 (수정 전 main `e581b52`, 격리 PostgreSQL `prs-b8-postgres`, `range.test.ts` 하네스 — 실제 PostgreSQL과 받은 질의를 기록하는 Elasticsearch 대역).** 새 시험 7건 중 `kind:` 네 모양(`kind:commit`, `kind:pull_request author:kim`, `-kind:commit`, `author:kim -kind:pull_request`)이 **500 `INTERNAL_ERROR`**로 실패했다 — CR-129의 공통 처리가 봉투를 만들었을 뿐 원인은 `runRange` → `buildQuery`의 `KindFilterNotAppliedError`다. 세션 없음 401, 범위 밖 저장소 404, `kind:` 없는 구간 200은 원래대로 통과했다.
+
+**UI 경로 확인.** 구간 화면(W-004)에는 자유 질의 입력칸이 없다 — `rangeQuery`는 URL의 `q`로 시작하고 패싯 토글(`addEquality`, 축은 `RANGE_FACET_FIELDS` = 작성자·팀·라벨·경로)로만 바뀐다. `/ranges` 링크를 만드는 `lib/neighbors.ts`·`lib/release.ts`(비교·미발행 구간)는 `q`를 싣지 않는다. **화면이 스스로 `kind:`를 넣는 경로는 없다** — 손으로 고친 URL이나 공유 링크로만 들어온다. 사용자 `q`가 `runRange`에 닿는 곳은 이 경로뿐이다(릴리스 비교 API-SEQ-003은 `ast: null`).
+
+**수정.** (1) `apps/search-api/src/sequence/routes.ts` — `enter()`(세션·접근 범위·시퀀스 공간) 뒤, 에폭·`guardRange`·`runRange` 전에 `ast.filters`에 `kind` 노드가 있으면 400 `INVALID_PARAMETER`(`message` 「구간 조회에서 지원하지 않는 조건입니다: 'kind'」, `detail`: `field`·`key`·`reason: kind_not_supported_in_range`·`supported_keys`)다. 파서가 같은 키를 한 노드로 모으고 AST는 평면이라 `kind` 키 하나로 긍정·부정을 모두 잡는다(`buildQuery`의 가드와 같은 조건). 구간이 받는 키 `RANGE_QUERY_KEYS`(`mnum`·`pr_number`·`kind` 제외)를 CR-106의 거절도 쓴다. (2) `apps/web/components/RangesView.tsx` — `rangeFailureMessage`가 이 사유를 「Range queries do not support the kind: filter. Remove kind: from the range query and search again.」로 바꾼다(C-005 배너 제목 `Request failed (INVALID_PARAMETER)`). (3) 문서 — SRS v2.50(`FR-SEQ-002` AC-9, `OD-019`), 매트릭스 v1.24, API 계약 v0.51, 화면 상태 v0.26, QA v0.33(QA-W004-31), WP-111, RUNBOOK 8장 한 행.
+
+**시험 (실측).** `range.test.ts` 새 7건 — `kind:` 네 모양이 400 `INVALID_PARAMETER`·사유·`supported_keys`(작성자 포함, `kind`·`mnum`·`pr_number` 제외)이고 Elasticsearch 대역이 한 번도 불리지 않는다(`msearch`·단일 조회 모두 빈 목록), 세션 없는 `kind:` 401, 범위 밖 저장소의 `kind:` 404, `author:kim` 구간 200(반개구간·요약·다음 커서). 수정 전 4건 실패 → 수정 뒤 46건 모두 통과. `a11y/ranges.test.tsx` 새 1건(영어 안내와 코드, 한국어 원문 미표시).
+
+**변이 (커밋한 트리 `79b2856`에서 하나씩, 매번 바이트 원복).** 5종 모두 시험을 죽였다 — 거절 제거, 거절을 인증 앞으로 옮김(`kind:` 네 모양의 코드와 401·404 두 건까지 6건 실패), `supported_keys`에 `kind` 잔존, 긍정 `kind:`만 거절, 화면의 일반 문구.
+
+**실제 화면 (실제 Chromium → `next start` 웹 프록시 → 빌드된 search-api → 격리 PostgreSQL·Elasticsearch).** 가짜는 GHE 권한 조회와 로그인뿐이다. 가상 저장소 `cr129/payments`의 `merge_sequence` 세 행(서수 1 PR #1, 2 PR #4, 3 직접 푸시 커밋)과 색인 문서로, 수정 전(`e581b52`로 빌드)과 수정 뒤를 같은 URL로 열고 Load를 눌렀다.
+
+| URL의 `q` | 수정 전 | 수정 뒤 |
+| --- | --- | --- |
+| 없음 | 200, 에폭 1, `(1, 3]`, 항목 [서수 2 PR #4, 서수 3 커밋], 요약 PR 1·커밋 2, `next_cursor: null` | 같음 |
+| `kind:commit` | 500 `INTERNAL_ERROR`, 배너 「Request failed (INTERNAL_ERROR) Unable to load results.」 | 400 `INVALID_PARAMETER` `kind_not_supported_in_range`, 배너 「Request failed (INVALID_PARAMETER) Range queries do not support the kind: filter. Remove kind: from the range query and search again.」 |
+| `-kind:pull_request author:lee` | 500 (같은 배너) | 400 (같은 안내) |
+| `author:lee` | 200, 항목 [서수 2 PR #4], 요약 PR 1·커밋 1 | 같음 |
+
+**독립 리뷰.** 코드·문서(`deep-reasoner`, 읽기 전용, `git diff e581b52..HEAD`, 도구 23회): **병합 가능** — 요구 여섯 가지를 모두 코드로 확인했다. 사용자 `q`로 `buildQuery`에 `resolveSearchTarget` 없이 AST를 넘기는 호출자는 `runRange`뿐이고, AST가 평면 배열이라 라우트의 조건이 `buildQuery`의 가드와 정확히 같으며, 문서의 사실 주장(정본의 서수, CR-106 거절의 키 목록, PIPE operation 아님)이 코드와 맞는다. [정보] 3건 — 같은 「이 화면 미지원 키」인데 `mnum:`·`pr_number:`는 인증 전 `QUERY_SYNTAX_ERROR`, `kind:`는 인증 뒤 `INVALID_PARAMETER`다(의도 — 결정 (1)·(2)), 구간의 `supported_keys`에 `repo`·`base`가 남는다(이 CR 전부터, 영향 없음), 병합 기록 커밋의 표기(이 세션 지시대로 적었다).
+
+**게이트.** 코드와 문서를 담은 트리(`db0922f`, 새 DB `prs_test_cr130_final`, 격리 ES `prs-b8-isolated`, Node 22.23.3)의 전 계층 게이트다. 실행 전후 추적 파일 해시와 `git status`가 같다.
+
+| 단계 | 결과 |
+| --- | --- |
+| build · typecheck · lint · lint:deps | 모두 성공 |
+| 단위 | 3,520건 통과, 1건 건너뜀(실제 GHE smoke) |
+| a11y · 대비 | 471건 · 실패 0 |
+| E2E | 224건 통과 |
+| 통합 | 2,402건 통과 |
+| 회귀 | 531건 통과 |
+
+**문서 검증기.** 기준선 `e581b52`와 최종 트리의 오류·경고 목록이 기본·`--strict` 두 모드 모두 같다.
+
+**한계.** 사내 적용 NOT RUN. 유형으로 좁히는 구간은 지원하지 않는다(`OD-019`). 문법 오류 응답의 `supported_keys`는 파서 전체 목록 그대로다.
+
+**병합.** 이 기록을 담은 PR의 CI와 병합 커밋의 main CI는 다음 기능 PR의 첫 커밋이 적는다(23차 결정).
