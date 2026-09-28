@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.80 | 갱신일: 2026-09-29
+> 상태: review | 버전: v2.81 | 갱신일: 2026-09-29
+
+## WP-111 구간 조회의 `kind:` 거절 (CR-130)
+
+- 요구사항: `FR-SEQ-002` AC-9(보완), `OD-019`(열기만). 선행: WP-023(구간 조회), WP-110(공통 오류 처리 — 수정 전에는 이 500이 그 봉투로 나갔다).
+- 범위: (1) `apps/search-api/src/sequence/routes.ts` — `enter()` 뒤·조회 전의 `kind:`·`-kind:` 400 `INVALID_PARAMETER` 거절과 구간의 키 목록(`RANGE_QUERY_KEYS`). (2) `apps/web/components/RangesView.tsx` — 거절 사유를 알리는 영어 안내. (3) 시험 — `range.test.ts`(실제 PostgreSQL·ES 대역), `a11y/ranges.test.tsx`. (4) 문서 — SRS·매트릭스·API 계약·화면 상태·QA·RUNBOOK.
+- 제외: 유형으로 좁히는 구간 조회(`OD-019`), 문법 오류 응답의 `supported_keys`, 일반 검색의 `kind:`, Release 발행, 사내 적용.
+- 완료 기준: 대표 실패를 **수정 전 코드에서 먼저 재현한다** — `kind:` 네 모양이 500이고, 세션 없음 401·범위 밖 404·`kind:` 없는 구간 200은 원래대로다. 수정 뒤에는 `kind:` 네 모양이 400 `INVALID_PARAMETER` `kind_not_supported_in_range`이고 Elasticsearch 대역이 한 번도 불리지 않으며, 401·404의 순서와 정상 구간의 결과·요약·에폭·커서가 그대로다. 실제 web → API → 데이터로 구간 화면이 거절을 알리고 정상 구간을 그대로 보인다. 변이로 새 시험이 대상을 거는지 확인하고, Node 22 전 계층 게이트와 독립 리뷰를 통과한다.
+- 상태: in_progress — 브랜치 `fix/cr130-range-kind`. 검증은 원장 6.121장이다.
 
 ## WP-110 처리되지 않은 오류의 공통 처리 (CR-129)
 
@@ -234,6 +242,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
+| WP-111 | 구간 조회의 `kind:` 거절 | 구현 결함 수정 + 요구사항 보완 (CR-130) | WP-023, WP-110 | in_progress — 브랜치 `fix/cr130-range-kind`, 원장 6.121장 |
 | WP-110 | 처리되지 않은 오류의 공통 처리 | 구현 결함 수정 (CR-129) | WP-013, WP-015, WP-097, WP-109 | done — main `e581b52`(PR #253), 원장 6.120장 |
 | WP-109 | 0건 검색의 완화 후보와 `kind:` 재해석 | 구현 결함 수정 + 요구사항 보완 (CR-128) | WP-013, WP-016, WP-037, WP-097 | done — main `d602890`(PR #251), 원장 6.119장 |
 | WP-108 | 한국 시간 표시와 KST 달력 날짜 검색 | 요구사항 변경 (CR-127) | WP-011, WP-013, WP-015, WP-037, WP-038, WP-039, WP-087, WP-096 | done — main `2272f56`(PR #247), 원장 6.118장 |

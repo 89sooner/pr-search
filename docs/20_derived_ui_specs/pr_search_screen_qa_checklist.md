@@ -1,6 +1,12 @@
 # PR Search 화면 QA 체크리스트
 
-> 상태: review | 버전: v0.32 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.33 | 갱신일: 2026-09-29
+
+## CR-130 구간 조회의 `kind:` (FR-SEQ-002 AC-9)
+
+| ID | 확인 항목 | 검증 |
+| --- | --- | --- |
+| QA-W004-31 | URL의 `q`에 `kind:commit`이나 `-kind:pull_request`가 있는 구간을 Load하면 결과 대신 「Request failed (INVALID_PARAMETER)」 배너와 「Range queries do not support the kind: filter …」가 보이고, 응답은 400 `kind_not_supported_in_range`다. 같은 구간을 `kind:` 없이(또는 `author:`로) Load하면 전과 같은 결과·요약·에폭이다. 세션이 없으면 401이다 | 실제 화면(원장 6.121장), `apps/search-api/integration/sequence/range.test.ts`, `apps/web/a11y/ranges.test.tsx` |
 
 ## CR-129 처리되지 않은 오류의 공통 처리 (API 계약 6장, 백엔드 8장)
 
