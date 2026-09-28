@@ -34,7 +34,7 @@ import {
   requestStatusLabel,
   type RegistrationRequestView,
 } from '../lib/ops-repositories';
-import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 
 const STATUS_TONE: Readonly<Record<string, 'neutral' | 'info' | 'success' | 'warning'>> = {
   pending: 'warning',
@@ -113,12 +113,12 @@ export function RegistrationRequestQueue({
               <tr key={request.request_id} data-testid="request-row" data-status={request.status}>
                 <td data-testid="request-repository">{request.repository}</td>
                 <td>{request.requested_by}</td>
-                <td>{formatTimestamp(request.created_at)}</td>
+                <td><TimeText value={request.created_at} /></td>
                 <td>
                   <Badge tone={STATUS_TONE[request.status] ?? 'neutral'}>{requestStatusLabel(request.status)}</Badge>
                 </td>
                 <td data-testid="request-resolved-by">{request.resolved_by ?? <Absent />}</td>
-                <td>{request.resolved_at === null ? <Absent /> : formatTimestamp(request.resolved_at)}</td>
+                <td>{request.resolved_at === null ? <Absent /> : <TimeText value={request.resolved_at} />}</td>
                 <td data-testid="request-note">{request.resolution_note ?? <Absent />}</td>
                 <td data-testid="request-actions">
                   {/*

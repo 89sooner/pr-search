@@ -239,7 +239,8 @@ export function buildTimeSeriesAggs(input: {
       field: 'merged_at',
       calendar_interval: CALENDAR_INTERVAL[input.interval],
       time_zone: input.timezone,
-      // 데이터 없는 구간도 0으로 채운다 (AC-4). 경계는 요청 구간 그대로다.
+      // 데이터 없는 구간도 0으로 채운다 (AC-4). 경계는 요청 구간의 처음과 끝 순간이다 —
+      // 날짜 기간이면 모집단과 같은 달력 계산에서 온 UTC 순간이다(CR-127, `range.ts`).
       min_doc_count: 0,
       extended_bounds: { min: input.from, max: input.to },
     },

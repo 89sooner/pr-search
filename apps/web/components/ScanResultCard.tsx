@@ -21,6 +21,7 @@ import { Button, Card } from './ui';
 import { JobStatusBadge } from './JobStatusBadge';
 import { formatCount, progressView, type JobView } from '../lib/ops-jobs';
 import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 
 /** 최근 조정 결과. `API-ADM-006`이 저장소 개요와 같은 값을 준다. */
 export interface ScanResultView {
@@ -60,7 +61,7 @@ export function ScanResultCard({
         <dl data-testid="scan-result">
           <div>
             <dt>Last scan</dt>
-            <dd>{formatTimestamp(result.last_scanned_at)}</dd>
+            <dd><TimeText value={result.last_scanned_at} /></dd>
           </div>
           <div>
             <dt>Missing items found</dt>

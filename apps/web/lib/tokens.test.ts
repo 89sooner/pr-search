@@ -29,9 +29,21 @@ describe('AST를 칩으로', () => {
     expect(chips[0]?.value).toBe('1200..1350');
   });
 
-  it('시각 범위도 사용자가 친 문자열 그대로다 (AC-3)', () => {
-    const chips = toChips(ast('merged:2026-08-10..2026-08-19'));
-    expect(chips[0]?.value).toBe('2026-08-10..2026-08-19');
+  it('시각 범위도 사용자가 친 문자열 그대로이고, 어느 달력인지 표지를 붙인다 (AC-3, CR-127)', () => {
+    // 시간대 없는 날짜 범위는 UTC 하루다 — 새 KST 조건과 같은 글자로 보이면 옛 조건을 잘못 읽는다.
+    expect(toChips(ast('merged:2026-08-10..2026-08-19'))[0]?.value).toBe('2026-08-10..2026-08-19 UTC');
+    expect(toChips(ast('merged:2026-09-27..2026-09-27@Asia/Seoul'))[0]?.value).toBe('2026-09-27..2026-09-27 KST');
+    expect(toChips(ast('created:2026-09-27..2026-09-27@America/Los_Angeles'))[0]?.value).toBe('2026-09-27..2026-09-27 America/Los_Angeles');
+    // 오프셋 없는 시각도 UTC로 조회된다. 오프셋을 적은 순간 범위는 표지가 필요 없다.
+    expect(toChips(ast('merged:2026-09-27T09:00..2026-09-27T18:00'))[0]?.value).toBe('2026-09-27T09:00..2026-09-27T18:00 UTC');
+    expect(toChips(ast('merged:2026-09-27T09:00+09:00..2026-09-27T18:00+09:00'))[0]?.value).toBe('2026-09-27T09:00+09:00..2026-09-27T18:00+09:00');
+  });
+
+  it('시간대가 붙은 칩을 지우면 그 조건만 빠진다 — AST 색인으로 지운다 (CR-127)', () => {
+    const parsed = ast('repo:acme/kst merged:2026-09-27..2026-09-27@Asia/Seoul');
+    const chips = toChips(parsed);
+    expect(chips[1]?.removeLabel).toBe('Remove filter merged:2026-09-27..2026-09-27 KST');
+    expect(removeChip(parsed, 1).filters).toEqual([{ key: 'repo', op: 'eq', values: ['acme/kst'] }]);
   });
 
   it('부정 조건을 표시한다 (AC-6)', () => {

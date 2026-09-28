@@ -147,6 +147,34 @@ describe('범위 (DEV-037)', () => {
   });
 });
 
+describe('달력 날짜 범위 (CR-127, FR-SRCH-005 AC-11)', () => {
+  it('UTC 구간을 여기서 확정한다 — 시작일 첫 순간 이상(`gte`), 종료일 다음 날 첫 순간 미만(`lt`)', () => {
+    expect(filtersOf('merged:2026-09-27..2026-09-27@Asia/Seoul')).toEqual([
+      { range: { merged_at: { gte: '2026-09-26T15:00:00.000Z', lt: '2026-09-27T15:00:00.000Z' } } },
+    ]);
+    expect(filtersOf('created:2024-02-29..2024-02-29@Asia/Seoul')).toEqual([
+      { range: { created_at: { gte: '2024-02-28T15:00:00.000Z', lt: '2024-02-29T15:00:00.000Z' } } },
+    ]);
+  });
+
+  it('`lte`도 `time_zone`도 쓰지 않는다 — 끝을 23:59:59나 1ms 빼기로 흉내 내지 않는다', () => {
+    const [clause] = filtersOf('merged:2026-09-01..2026-09-30@Asia/Seoul') as [{ range: { merged_at: Record<string, unknown> } }];
+    expect(Object.keys(clause.range.merged_at).sort()).toEqual(['gte', 'lt']);
+  });
+
+  it('부정은 같은 구간을 뺀다', () => {
+    expect(mustNotOf('-merged:2026-09-27..2026-09-27@Asia/Seoul')).toEqual([
+      { range: { merged_at: { gte: '2026-09-26T15:00:00.000Z', lt: '2026-09-27T15:00:00.000Z' } } },
+    ]);
+  });
+
+  it('시간대 없는 옛 날짜 범위는 그대로 `gte`/`lte`다 — UTC 날짜의 뜻을 바꾸지 않는다', () => {
+    expect(filtersOf('merged:2026-09-27..2026-09-27')).toEqual([
+      { range: { merged_at: { gte: '2026-09-27', lte: '2026-09-27' } } },
+    ]);
+  });
+});
+
 describe('시퀀스 에폭 결합 (CR-051, DEV-361)', () => {
   it('**`seq:` 범위가 있는데 에폭이 없으면 던진다** — 조용히 넓게 답하지 않는다', () => {
     /*

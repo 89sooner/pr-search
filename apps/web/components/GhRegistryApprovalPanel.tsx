@@ -16,9 +16,9 @@ import { useState, type ReactNode } from 'react';
 import { Badge, Button, Dialog, Panel, Table } from './ui';
 import { ErrorBanner } from './ErrorBanner';
 import { PolicyHistoryTable, ReasonField, usePolicyStatus, usePolicySubmit } from './GhPolicyShared';
-import { formatTimestamp } from '../lib/format';
 import { shortHash } from '../lib/gh-registry';
 import { approvalBody, approvalReasonText, approvalState, formatDurationMs, notOpenedLines, reasonProblem, revokeBody, type PolicyStatusView } from '../lib/gh-policy';
+import { TimeText } from './TimeText';
 
 const STATE_TEXT: Readonly<Record<ReturnType<typeof approvalState>, { readonly label: string; readonly tone: 'success' | 'warning' | 'danger' }>> = {
   approved: { label: "Current definition approved", tone: 'success' },
@@ -259,7 +259,7 @@ function DefinitionTable({ status }: { readonly status: PolicyStatusView }): Rea
               </td>
               <td>#{approval.snapshot_id}</td>
               <td>
-                {approval.approved_by} · {formatTimestamp(approval.approved_at)}
+                {approval.approved_by} · <TimeText value={approval.approved_at} />
               </td>
             </>
           )}
@@ -279,13 +279,13 @@ function EvidenceSummary({ status }: { readonly status: PolicyStatusView }): Rea
     <dl data-testid="gh-approval-evidence" data-status={evidence.status}>
       <dt>Latest runner check</dt>
       <dd>
-        #{evidence.verification_id} · {formatTimestamp(evidence.checked_at)} · {evidence.trigger} · {evidence.status}
+        #{evidence.verification_id} · <TimeText value={evidence.checked_at} /> · {evidence.trigger} · {evidence.status}
       </dd>
       <dt>Report version</dt>
       <dd>{preview.report_version ?? '—'}</dd>
       <dt>Evidence expiration</dt>
       <dd>
-        {preview.evidence_expires_at === null ? '—' : formatTimestamp(preview.evidence_expires_at)}
+        {preview.evidence_expires_at === null ? '—' : <TimeText value={preview.evidence_expires_at} />}
         {preview.evidence_max_age_ms === null ? null : `(check interval + worst-case check duration = ${formatDurationMs(preview.evidence_max_age_ms)})`}
       </dd>
     </dl>
@@ -308,7 +308,7 @@ function ApprovalPreview({ status }: { readonly status: PolicyStatusView }): Rea
         </dd>
         <dt>Evidence record</dt>
         <dd data-testid="gh-approval-preview-evidence">
-          Runner check #{preview.verification_id ?? '—'} · {formatTimestamp(preview.evidence?.checked_at)} · Report {preview.report_version ?? '—'} ·{' '}
+          Runner check #{preview.verification_id ?? '—'} · <TimeText value={preview.evidence?.checked_at} /> · Report {preview.report_version ?? '—'} ·{' '}
           <code title={preview.report_hash ?? undefined}>{shortHash(preview.report_hash)}</code>
         </dd>
       </dl>

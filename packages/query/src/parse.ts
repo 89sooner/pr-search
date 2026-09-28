@@ -14,6 +14,7 @@
  */
 
 import type { EqualityFilter, QueryAst, QueryFilter, RangeFilter } from './ast.js';
+import { canonicalTimeZone } from './calendar.js';
 import { QueryParseError, rangeOnlyKey, syntaxError, unsupportedKey } from './errors.js';
 import {
   ENUMERATED_VALUES,
@@ -87,6 +88,71 @@ function checkTemporalBound(raw: string, token: RawToken): string {
 }
 
 /**
+ * 시각 끝을 비교용 순간으로 (역전 검사 전용).
+ *
+ * **오프셋 없는 시각은 UTC로 읽는다** — Elasticsearch가 그렇게 조회하기 때문이다.
+ * `Date.parse`에 그대로 넘기면 실행하는 쪽의 시간대로 읽혀, 같은 질의가 브라우저에서는
+ * 「뒤집혔다」로 거절되고 서버에서는 통과했다(CR-127).
+ */
+function instantOf(bound: string): number {
+  if (DATE_ONLY.test(bound)) return Date.parse(bound);
+  const normalized = bound.replace(' ', 'T');
+  return Date.parse(/(Z|[+-]\d{2}:?\d{2})$/.test(normalized) ? normalized : `${normalized}Z`);
+}
+
+/** 달력 날짜 범위의 시간대 표지 (CR-127). */
+const TIME_ZONE_MARK = '@';
+
+/**
+ * `<날짜>..<날짜>@<시간대>`를 가른다 (FR-SRCH-005 AC-11). 표지가 없으면 `null`이다.
+ *
+ * **양끝이 날짜일 때만 받는다.** 시각이나 `Z`·`+09:00`을 적은 끝은 이미 순간을
+ * 정했으므로 시간대를 한 번 더 적용하지 않는다 — 그런 조합은 거절한다. 시간대 이름은
+ * 런타임이 검증하고 정규 표기로 바꾼다.
+ */
+function splitTimeZone(from: string, to: string, token: RawToken): { from: string; to: string; timezone: string } | null {
+  if (from.includes(TIME_ZONE_MARK)) {
+    throw syntaxError(
+      `The time zone goes after the range: '${token.value}' (for example: 2026-09-27..2026-09-27@Asia/Seoul)`,
+      token.raw,
+      token.start,
+      token.end,
+    );
+  }
+  const mark = to.indexOf(TIME_ZONE_MARK);
+  if (mark === -1) return null;
+  const high = to.slice(0, mark);
+  const zone = to.slice(mark + TIME_ZONE_MARK.length);
+  if (high === '') {
+    throw syntaxError(
+      `Both range bounds are required: '${token.value}' (for example: 2026-09-27..2026-09-27@Asia/Seoul)`,
+      token.raw,
+      token.start,
+      token.end,
+    );
+  }
+  if (!DATE_ONLY.test(from) || !DATE_ONLY.test(high)) {
+    throw syntaxError(
+      `A time zone applies to calendar dates only: '${token.value}' (for example: 2026-09-27..2026-09-27@Asia/Seoul)`,
+      token.raw,
+      token.start,
+      token.end,
+    );
+  }
+  checkTemporalBound(from, token);
+  checkTemporalBound(high, token);
+  const timezone = canonicalTimeZone(zone);
+  if (timezone === null) {
+    throw syntaxError(`Unknown time zone: '${zone}' (for example: Asia/Seoul)`, token.raw, token.start, token.end);
+  }
+  // 둘 다 `YYYY-MM-DD`이므로 문자열 순서가 날짜 순서다.
+  if (from > high) {
+    throw syntaxError(`Range bounds are reversed: '${token.value}'`, token.raw, token.start, token.end);
+  }
+  return { from, to: high, timezone };
+}
+
+/**
  * 범위 토큰을 필터로 옮긴다.
  *
  * 양끝이 모두 있어야 한다. 열린 범위(`seq:1200..`)는 요구되지 않았으므로
@@ -131,9 +197,11 @@ function toRangeFilter(key: QueryKey, token: RawToken): RangeFilter {
     return { key, op, from: low, to: high };
   }
   if (isTemporalRangeKey(key)) {
+    const zoned = splitTimeZone(from, to, token);
+    if (zoned !== null) return { key, op, from: zoned.from, to: zoned.to, timezone: zoned.timezone };
     const low = checkTemporalBound(from, token);
     const high = checkTemporalBound(to, token);
-    if (Date.parse(low) > Date.parse(high)) {
+    if (instantOf(low) > instantOf(high)) {
       throw syntaxError(`Range bounds are reversed: '${token.value}'`, token.raw, token.start, token.end);
     }
     return { key, op, from: low, to: high };

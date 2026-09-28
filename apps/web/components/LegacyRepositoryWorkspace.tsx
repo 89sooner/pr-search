@@ -8,14 +8,14 @@ import { DatePicker } from './reader/primitives';
 import { WorkbenchIcon } from './WorkbenchIcon';
 import type { RepositoryOverview } from '../lib/repository-overview';
 import type { ResultRow } from './ResultTable';
-import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 import { SourceTree } from './source/SourceTree';
 import { SourceHistory } from './source/SourceHistory';
 import { SourceActions, DiffModal, TimeLapseModal, type DiffTarget } from './source/SourceDialogs';
 import { detectIdentifier, parseQuery } from '@prs/query';
 import type { ResolutionCandidate } from './ResolutionCandidateList';
 import { serviceMessage } from '../lib/service-message';
-import { buildRepositoryQuery, repositorySort, type RepositoryWorkspaceTab } from '../lib/repository-search';
+import { WORKSPACE_DATE_TIME_ZONE, buildRepositoryQuery, mergedDateZone, mergedDateZoneLabel, repositorySort, type RepositoryWorkspaceTab } from '../lib/repository-search';
 import { ExcludedCommitsNote } from './ExcludedCommitsNote';
 
 interface SearchData { items: ResultRow[]; total?: { value: number; relation: string }; next_cursor?: string | null }
@@ -196,15 +196,15 @@ export function LegacyRepositoryWorkspace({ login = '', loginPath, gheBaseUrl }:
         <Tabs.List aria-label="Browse by">{Object.entries(TAB_NAMES).map(([value, label]) => <Tabs.Trigger key={value} value={value}>{label}</Tabs.Trigger>)}</Tabs.List>
         {Object.keys(TAB_NAMES).map(value => <Tabs.Content key={value} value={value}>
           {value === tab && tab === 'history' ? <SourceHistory repository={repository} path={params.get('path') ?? ''} kind={params.get('path_kind') ?? 'file'} revision={params.get('source_ref') ?? ''} branch={params.get('base') ?? ''} /> : value === tab ? <>
-            <form className="repo-filter-form" onSubmit={event => { event.preventDefault(); navigate(Object.fromEntries(['q', 'author', 'label', 'state', 'from', 'to', 'path', 'base'].map(key => [key, draft[key] ?? '']))); }}>
+            <form className="repo-filter-form" onSubmit={event => { event.preventDefault(); const dated = Boolean(draft['from'] || draft['to']); navigate(Object.fromEntries(['q', 'author', 'label', 'state', 'from', 'to', 'tz', 'path', 'base'].map(key => [key, key === 'tz' && !dated ? '' : draft[key] ?? '']))); }}>
               <div className="repo-query-row">{field('q', "Search query", "Search titles, descriptions, or filters…")}<Button type="submit" disabled={!repository}><WorkbenchIcon name="search" /> Search</Button></div>
               <div className="repo-filter-grid">
                 {tab === 'open' || tab === 'merged' ? <label className="repo-field"><span>Author</span><input value={login} readOnly /></label> : field('author', "Author", "GitHub username")}
                 {field('label', "Label", "All labels")}
                 <label className="repo-field"><span>Status</span><select value={tab === 'open' || tab === 'merged' ? tab : draft['state'] ?? ''} disabled={tab !== 'search'} onChange={event => { setDraft(current => ({ ...current, state: event.target.value })); }}><option value="">All</option><option value="open">Open</option><option value="merged">Merged</option><option value="closed">Closed</option></select></label>
-                <DatePicker label="Merged after" value={draft['from'] ?? ''} onChange={from => { setDraft(current => ({ ...current, from })); }} /><DatePicker label="Merged before" value={draft['to'] ?? ''} onChange={to => { setDraft(current => ({ ...current, to })); }} />
+                {/* CR-127: same calendar rule as RepositoryWorkspace -- picking a date makes a KST range (URL `tz`); a pre-CR-127 URL stays UTC and says so. */}<DatePicker label={`Merged from (${mergedDateZoneLabel(mergedDateZone(draft))})`} value={draft['from'] ?? ''} onChange={from => { setDraft(current => ({ ...current, from, tz: WORKSPACE_DATE_TIME_ZONE })); }} /><DatePicker label={`Merged to (${mergedDateZoneLabel(mergedDateZone(draft))})`} value={draft['to'] ?? ''} onChange={to => { setDraft(current => ({ ...current, to, tz: WORKSPACE_DATE_TIME_ZONE })); }} />
               </div>
-              <div className="repo-filter-footer"><span>Combine filters to find the changes you need.</span><Button type="button" variant="ghost" size="sm" onClick={() => { navigate({ q: '', author: '', label: '', state: '', from: '', to: '', path: '', base: '' }); }}>Reset filters</Button></div>
+              <div className="repo-filter-footer"><span>Combine filters to find the changes you need.</span><Button type="button" variant="ghost" size="sm" onClick={() => { navigate({ q: '', author: '', label: '', state: '', from: '', to: '', tz: '', path: '', base: '' }); }}>Reset filters</Button></div>
             </form>
             <div className="repo-results-heading"><span><WorkbenchIcon name="pr" /> {TAB_NAMES[tab]} <strong>{loading ? "Loading…" : loadedKey === requestKey && data?.total ? `${data.total.value.toLocaleString("en-US")}${data.total.relation === 'gte' ? '+' : ''} items` : ''}</strong></span><span>Merge order is scoped to a repository and branch</span></div>
             {unauthorized ? <p role="alert">Your session has expired. <a href={`${loginPath}?return_to=${encodeURIComponent(`/search?${serialized}`)}`}>Sign in again</a></p> : null}
@@ -223,7 +223,7 @@ export function LegacyRepositoryWorkspace({ login = '', loginPath, gheBaseUrl }:
                     <Table.Cell><span className="repo-sequence" title={row.sequence_space ?? ''}>{row.merge_seq ?? '—'}</span></Table.Cell>
                     <Table.Cell><button type="button" className="repo-title-button" onClick={() => { setExpanded(expanded === id ? null : id); }}><span className="repo-pr-number">{name}</span>{row.title ?? name}</button><small>{row.sequence_space ?? row.repository}</small></Table.Cell>
                     <Table.Cell>{row.author ?? '—'}</Table.Cell><Table.Cell><span className="prs-result-state" data-state={row.state ?? 'unknown'}>{row.state === 'merged' ? "Merged" : row.state === 'open' ? "Open" : row.state === 'closed' ? "Closed" : '—'}</span></Table.Cell>
-                    <Table.Cell><time dateTime={row.merged_at ?? undefined}>{formatTimestamp(row.merged_at)}</time></Table.Cell><Table.Cell><span className="prs-diff-added">{row.additions === null ? '—' : `+${row.additions}`}</span> <span className="repo-deletions">{row.deletions === null ? '' : `−${row.deletions}`}</span></Table.Cell>
+                    <Table.Cell><TimeText value={row.merged_at} /></Table.Cell><Table.Cell><span className="prs-diff-added">{row.additions === null ? '—' : `+${row.additions}`}</span> <span className="repo-deletions">{row.deletions === null ? '' : `−${row.deletions}`}</span></Table.Cell>
                   </Table.Row>{expanded === id ? <Table.Row><Table.Cell colSpan={7}><LegacyWorkspaceDetail row={row} {...(gheBaseUrl ? { gheBaseUrl } : {})} onPath={(path, revision) => { navigate({ path, tab: 'history', path_kind: 'file', source_ref: revision ?? '' }); }} /></Table.Cell></Table.Row> : null}</Fragment>;
                 })}
               </Table.Body></Table>

@@ -21,8 +21,8 @@ import { Badge, Button, Panel, Table } from './ui';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { GhExecutionPanel } from './GhExecutionPanel';
-import { formatTimestamp } from '../lib/format';
 import { describeApiError, encodePrefill, isTerminal, loginPathOf, stateLabel, type ExecutionListResponse, type ExecutionView } from '../lib/gh';
+import { TimeText } from './TimeText';
 
 const EXECUTIONS_URL = '/api/gh/executions';
 const PAGE_SIZE = 50;
@@ -288,8 +288,8 @@ export function GhHistoryView({ canSeeAll }: GhHistoryViewProps): ReactNode {
                   <td>
                     <Badge tone={item.state === 'succeeded' ? 'accent' : isTerminal(item.state) ? 'warning' : 'info'}>{stateLabel(item.state)}</Badge>
                   </td>
-                  <td>{formatTimestamp(item.requested_at)}</td>
-                  <td>{formatTimestamp(item.finished_at)}</td>
+                  <td><TimeText value={item.requested_at} /></td>
+                  <td><TimeText value={item.finished_at} /></td>
                   <td>
                     {item.invocation === undefined ? null : (
                       <Link href={`/gh?prefill=${encodePrefill(item.invocation)}`} data-testid="gh-history-rerun">

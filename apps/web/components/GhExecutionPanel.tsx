@@ -14,9 +14,9 @@
 
 import type { ReactNode } from 'react';
 import { Badge, Button, Table } from './ui';
-import { formatTimestamp } from '../lib/format';
 import { describeError, isTerminal, resultKind, stateLabel, type ExecutionView, type PrRowView } from '../lib/gh';
 import { SafeGhOutputViewer } from './SafeGhOutputViewer';
+import { TimeText } from './TimeText';
 
 const STATE_TONE: Readonly<Record<string, 'neutral' | 'info' | 'accent' | 'warning' | 'danger'>> = {
   queued: 'info',
@@ -77,7 +77,7 @@ function PrRows({ rows, possiblyMore }: { readonly rows: readonly PrRowView[]; r
                 {row.headRefName ?? ''}
                 {row.baseRefName === null ? '' : ` → ${row.baseRefName}`}
               </td>
-              <td>{formatTimestamp(row.updatedAt)}</td>
+              <td><TimeText value={row.updatedAt} /></td>
             </tr>
           ))}
         </tbody>
@@ -140,11 +140,11 @@ export function GhExecutionPanel({ execution, onCancel, cancelling = false }: Gh
 
       <dl className="prs-gh-execution-meta">
         <dt>Requested</dt>
-        <dd>{formatTimestamp(execution.requested_at)}</dd>
+        <dd><TimeText value={execution.requested_at} /></dd>
         <dt>Start</dt>
-        <dd>{formatTimestamp(execution.started_at)}</dd>
+        <dd><TimeText value={execution.started_at} /></dd>
         <dt>Finished</dt>
-        <dd>{formatTimestamp(execution.finished_at)}</dd>
+        <dd><TimeText value={execution.finished_at} /></dd>
         <dt>Exit code</dt>
         <dd data-testid="gh-exit-code">{execution.exit_code === null ? '-' : String(execution.exit_code)}</dd>
       </dl>

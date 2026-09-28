@@ -18,6 +18,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { Badge, Button, Dialog, Table } from './ui';
+import { TimeText } from './TimeText';
 import {
   describeSequenceReference,
   rowActions,
@@ -42,11 +43,6 @@ export interface SavedSearchListProps {
   readonly testIdPrefix: string;
 }
 
-function formatTime(value: string | null): string {
-  if (value === null) return "Never run";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString("en-US");
-}
 
 /**
  * 질의 칸.
@@ -144,7 +140,8 @@ export function SavedSearchList({
                 </td>
                 <td data-testid={`${rowId}-visibility`}>{visibilityLabel(item)}</td>
                 <td>{item.is_owner ? "Me" : item.owner.login}</td>
-                <td>{formatTime(item.last_run_at)}</td>
+                {/* CR-127: KST with seconds (the old toLocaleString showed seconds too), original UTC in the tooltip. */}
+                <td><TimeText value={item.last_run_at} seconds absent="Never run" /></td>
                 <td>
                   <Button
                     onClick={() => {

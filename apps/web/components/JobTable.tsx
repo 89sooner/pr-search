@@ -27,7 +27,7 @@ import type { ReactNode } from 'react';
 import { Button, Meter, Table } from './ui';
 import { JobStatusBadge } from './JobStatusBadge';
 import { controlLabel, jobControls, progressView, type JobControl, type JobView } from '../lib/ops-jobs';
-import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 
 /** 값이 없음을 그리는 한 자리. 여러 칸이 같은 모양을 쓴다. */
 function Absent(): ReactNode {
@@ -42,7 +42,7 @@ function Progress({ job }: { readonly job: JobView }): ReactNode {
   const view = progressView(job);
 
   if (view.waitingUntil !== null) {
-    return <span data-testid="job-progress-waiting">Waiting for rate limit reset — {formatTimestamp(view.waitingUntil)}</span>;
+    return <span data-testid="job-progress-waiting">Waiting for rate limit reset — <TimeText value={view.waitingUntil} /></span>;
   }
 
   if (view.done === null) return <Absent />;
@@ -109,8 +109,8 @@ export function JobTable({ jobs, onAction, pendingJobId = null }: JobTableProps)
               <td>
                 <Progress job={job} />
               </td>
-              <td>{job.started_at === null ? <Absent /> : formatTimestamp(job.started_at)}</td>
-              <td>{job.finished_at === null ? <Absent /> : formatTimestamp(job.finished_at)}</td>
+              <td>{job.started_at === null ? <Absent /> : <TimeText value={job.started_at} />}</td>
+              <td>{job.finished_at === null ? <Absent /> : <TimeText value={job.finished_at} />}</td>
               <td>{job.requested_by}</td>
               <td data-testid="job-controls">
                 {/*

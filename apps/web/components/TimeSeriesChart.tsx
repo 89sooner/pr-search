@@ -37,6 +37,8 @@ export interface TimeSeriesChartProps {
   readonly bucketHrefFor: (bucketIso: string) => string | null;
   /** 사람이 읽는 버킷 라벨. 기본은 ISO를 그대로 쓴다. */
   readonly bucketLabel?: (bucketIso: string) => string;
+  /** 버킷 열 제목 — 버킷을 나눈 시간대를 적는다(`Range (KST)`, CR-127). */
+  readonly bucketHeading?: string;
 }
 
 const MAX_SERIES = 20;
@@ -63,6 +65,7 @@ export function TimeSeriesChart({
   truncated = false,
   bucketHrefFor,
   bucketLabel = (iso) => iso,
+  bucketHeading = 'Range',
 }: TimeSeriesChartProps): ReactNode {
   const max = series.reduce((acc, row) => Math.max(acc, ...row.values), 0);
   const summary = `${String(series.length)} series, ${String(buckets.length)} buckets, maximum ${max.toLocaleString("en-US")}`;
@@ -125,7 +128,7 @@ export function TimeSeriesChart({
             <caption>Series values by bucket</caption>
             <thead>
               <tr>
-                <th scope="col">Range</th>
+                <th scope="col">{bucketHeading}</th>
                 {series.map((row) => (
                   <th key={row.key} scope="col">
                     {row.key}

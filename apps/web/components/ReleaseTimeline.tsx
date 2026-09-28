@@ -18,7 +18,7 @@
 import type { ReactNode } from 'react';
 import { Badge, Button, Checkbox, Table } from './ui';
 import { isSelectable, previousLabel, type ReleaseRowView } from '../lib/release';
-import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 
 /** 비교는 두 지점 사이다 — 셋을 고를 수 있으면 무엇과 무엇인지 물어야 한다. */
 export const MAX_SELECTION = 2;
@@ -119,7 +119,7 @@ export function ReleaseTimeline({
                     </Badge>
                   )}
                 </Table.Cell>
-                <Table.Cell>{formatTimestamp(release.releasedAt)}</Table.Cell>
+                <Table.Cell><TimeText value={release.releasedAt} /></Table.Cell>
                 <Table.Cell>
                   {release.mergeSeq === null ? (
                     <Badge tone="neutral" data-testid="release-no-seq">

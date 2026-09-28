@@ -1,6 +1,13 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.21 | 갱신일: 2026-09-27
+> 상태: review | 버전: v1.22 | 갱신일: 2026-09-27
+
+| 추가 요구사항 (CR-127) | 화면 | 구현 단위 | 검증 |
+| --- | --- | --- | --- |
+| NFR-007 「시각 표시 기준」 · SRS 11장 12번 (표시는 `Asia/Seoul`, 원본·API·커서는 UTC) | 전 화면 — W-001(결과 표·미리보기·Commit history·Time-lapse), W-002·W-003(상세·타임라인·연결 PR·이웃·릴리스), W-004(범위·안전 구간 표식), W-005(릴리스), W-006(버킷 이름), W-007(저장된 검색), W-009(저장소 개요), A-001~A-006·GitHub Operations·Regression | WP-108, `apps/web/lib/format.ts`(`formatTimestamp`·`formatDate`·`utcTitle`), `apps/web/components/TimeText.tsx`, 우회하던 자리(`SourceHistory`·`SourceDialogs`·`SavedSearchList`·`SafeMarkerCard`·`GhRegistryView`·`CommitDetailView`·`LinkedPrList`·`TimeSeriesChart`·`regression/*`) | `apps/web/lib/format.test.ts`(TZ=UTC·Asia/Seoul·America/Los_Angeles), a11y, E2E `workspace.kst-dates.spec.ts`(브라우저 시간대 셋), 원장 6.118장 격리 compose + 실제 브라우저 |
+| FR-SRCH-005 AC-11 (달력 날짜 범위 `@<시간대>` · 반열림 UTC 구간 · 옛 날짜 조건 보존) · FR-SRCH-006 AC-1 보완 | W-001(Merged date 필터 `tz=Asia/Seoul`, 옛 URL은 UTC 구분, 질의 칩 `KST`/`UTC`) · W-007(저장된 검색은 질의 그대로) | WP-108, `packages/query/src/{calendar,parse,ast,serialize}.ts`, `packages/es/src/query-builder.ts`(`gte`/`lt`), `apps/web/lib/{repository-search,tokens}.ts`, `apps/web/components/{RepositoryWorkspace,LegacyRepositoryWorkspace}.tsx`, `apps/web/components/reader/primitives.tsx`(`DatePicker` KST 오늘) | `packages/query/src/{calendar,parse,serialize}.test.ts`, `packages/es/src/query-builder.test.ts`, 통합 `search/kst-calendar-range.test.ts`, E2E, 원장 6.118장 |
+| FR-STAT-002 AC-7 (날짜만 적은 기간 = 요청 시간대의 달력 날짜 · 기본 30일 · 시간대 검증 · 드릴다운) | W-006(Start·End 달력, 버킷 이름, 드릴다운 → W-001) | WP-108, `apps/search-api/src/analytics/{routes,aggregations}.ts`, `apps/web/lib/analytics.ts`(`bucketDrillDownHref`), `apps/web/components/{AnalyticsView,TimeSeriesChart}.tsx` | 통합 `search/kst-calendar-range.test.ts`, `apps/web/lib/analytics.test.ts`, 원장 6.118장 |
+| FR-AUTH-004 AC-9 (감사 기록 기간: 오프셋 그대로, 없으면 UTC, 역전·없는 날짜 400) | A-004(Start·End를 KST 벽시계로 받아 `+09:00`) | WP-108, `apps/search-api/src/audit/routes.ts`, `apps/web/lib/audit.ts`, `apps/web/components/AuditView.tsx` | 통합 `audit/audit-period-timezone.test.ts`, `apps/web/lib/audit.test.ts`, 원장 6.118장 |
 
 | 추가 요구사항 (CR-121) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |

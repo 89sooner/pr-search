@@ -26,8 +26,8 @@ import {
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { requestPrefill, type RegistrationRequestView } from '../lib/ops-repositories';
-import { formatTimestamp } from '../lib/format';
 import { CURSOR_FAILURE_TEXT, readCursorFailureBody, type CursorFailure } from '../lib/cursor-failure';
+import { TimeText } from './TimeText';
 
 const REPOSITORIES_URL = '/api/admin/repositories';
 const REQUESTS_URL = '/api/admin/repository-registration-requests';
@@ -313,7 +313,7 @@ export function OpsRepositoriesView(): ReactNode {
                   <td>{row.status}</td>
                   <td>{row.sequence_branches.length === 0 ? '—' : row.sequence_branches.join(', ')}</td>
                   <td>{row.mirror_enabled ? "Enabled" : "Disabled"}</td>
-                  <td>{formatTimestamp(row.registered_at ?? null)}</td>
+                  <td><TimeText value={row.registered_at ?? null} /></td>
                   <td>
                     <Button
                       variant="secondary"

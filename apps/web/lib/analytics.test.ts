@@ -18,6 +18,8 @@ import {
   resolvePanelState,
   drillDownHref,
   bucketDrillDownHref,
+  bucketHeadingFor,
+  bucketLabelFor,
   readPercentileValues,
   EMPTY_ANALYTICS_STATE,
   type AnalyticsUrlState,
@@ -93,8 +95,9 @@ describe('요청 본문', () => {
     expect(req['timezone']).toBe('UTC');
     expect(req['metric']).toBe('count');
     expect('from' in req).toBe(false);
-    const dated = buildTimeSeriesRequest({ ...BASE, from: '2026-07-01T00:00:00Z', to: '2026-08-01T00:00:00Z' });
-    expect(dated['from']).toBe('2026-07-01T00:00:00Z');
+    const dated = buildTimeSeriesRequest({ ...BASE, from: '2026-07-01', to: '2026-07-31' });
+    expect(dated['from']).toBe('2026-07-01');
+    expect(dated['to']).toBe('2026-07-31');
   });
 });
 
@@ -171,22 +174,63 @@ describe('드릴다운 (근거 목록으로)', () => {
     expect(drillDownHref('seq:1200..1350', 'abc')).toContain('seq_epoch=abc');
   });
 
-  it('DEV-396: 시계열 버킷은 클라이언트가 기간 범위를 만든다 (일 간격)', () => {
-    const href = bucketDrillDownHref('org:acme', '2026-07-01T00:00:00.000Z', 'day', null);
-    expect(href).not.toBe(null);
-    // 하루 뒤까지의 merged: 범위를 포함한다.
-    expect(href).toContain('merged');
-    // 배타 상한: 다음 버킷 시작 직전(-1ms)
-    expect(decodeURIComponent(href ?? '')).toContain('2026-07-01T23:59:59.999Z');
+  const KST = { timezone: 'Asia/Seoul', appliedRange: null } as const;
+  const qOf = (href: string | null): string => new URLSearchParams((href ?? '').split('?')[1] ?? '').get('q') ?? '';
+
+  it('DEV-396·CR-127: 일 버킷은 그 시간대의 한국 날짜 하루다 — 끝을 1ms 빼서 만들지 않는다', () => {
+    const href = bucketDrillDownHref('org:acme', '2026-09-27T00:00:00.000+09:00', 'day', null, KST);
+    expect(qOf(href)).toBe('org:acme merged:2026-09-27..2026-09-27@Asia/Seoul');
   });
 
-  it('DEV-396: 월 간격은 한 달 뒤로 경계를 잡는다', () => {
-    const href = bucketDrillDownHref('', '2026-01-15T00:00:00.000Z', 'month', null);
-    expect(decodeURIComponent(href ?? '')).toContain('2026-02-14T23:59:59.999Z');
+  it('DEV-781: KST 월 버킷은 그 달 1일부터 말일까지다 — UTC 달 더하기로 하루를 더하거나 빼지 않는다', () => {
+    expect(qOf(bucketDrillDownHref('', '2026-09-01T00:00:00.000+09:00', 'month', null, KST))).toBe('merged:2026-09-01..2026-09-30@Asia/Seoul');
+    expect(qOf(bucketDrillDownHref('', '2026-10-01T00:00:00.000+09:00', 'month', null, KST))).toBe('merged:2026-10-01..2026-10-31@Asia/Seoul');
+    expect(qOf(bucketDrillDownHref('', '2026-02-01T00:00:00.000+09:00', 'month', null, KST))).toBe('merged:2026-02-01..2026-02-28@Asia/Seoul');
+    expect(qOf(bucketDrillDownHref('', '2024-02-01T00:00:00.000+09:00', 'month', null, KST))).toBe('merged:2024-02-01..2024-02-29@Asia/Seoul');
   });
 
-  it('잘못된 버킷 시각은 링크를 만들지 않는다', () => {
-    expect(bucketDrillDownHref('org:acme', 'not-a-date', 'day', null)).toBe(null);
+  it('주 버킷은 그 주의 첫날부터 7일이고, 적용 기간과 겹친 만큼만 간다', () => {
+    // 2026-09-21은 월요일이다. 적용 기간이 수요일(9/23)에 시작하면 그 앞은 버킷에 없었다.
+    const calendar = { timezone: 'Asia/Seoul', appliedRange: { from: '2026-09-23', to: '2026-09-25' } } as const;
+    expect(qOf(bucketDrillDownHref('', '2026-09-21T00:00:00.000+09:00', 'week', null, calendar))).toBe('merged:2026-09-23..2026-09-25@Asia/Seoul');
+    expect(qOf(bucketDrillDownHref('', '2026-09-21T00:00:00.000+09:00', 'week', null, KST))).toBe('merged:2026-09-21..2026-09-27@Asia/Seoul');
+  });
+
+  it('시각으로 적은 적용 기간이면 그 안에 온전히 든 버킷만 달력 범위로 가고, 걸친 버킷은 링크가 없다', () => {
+    // KST 9/27 하루는 [09-26T15:00Z, 09-27T15:00Z)다. 적용 기간이 그 하루를 다 덮으면 링크, 반만 덮으면 없다.
+    const covering = { timezone: 'Asia/Seoul', appliedRange: { from: '2026-09-26T15:00:00Z', to: '2026-09-27T15:00:00Z' } } as const;
+    expect(qOf(bucketDrillDownHref('', '2026-09-27T00:00:00.000+09:00', 'day', null, covering))).toBe('merged:2026-09-27..2026-09-27@Asia/Seoul');
+    const partial = { timezone: 'Asia/Seoul', appliedRange: { from: '2026-09-27T00:00:00Z', to: '2026-09-28T00:00:00Z' } } as const;
+    expect(bucketDrillDownHref('', '2026-09-27T00:00:00.000+09:00', 'day', null, partial)).toBe(null);
+  });
+
+  it('오프셋 없는 시각형 적용 기간은 UTC로 읽는다 — 브라우저 시간대가 달라도 같은 링크다 (CR-127)', () => {
+    // UTC로 읽으면 KST 9/27 하루를 정확히 덮는다. 서울·LA 시간대로 읽으면 걸친 기간이 되어 링크가 사라진다.
+    const naive = { timezone: 'Asia/Seoul', appliedRange: { from: '2026-09-26T15:00:00', to: '2026-09-27T14:59:59.999' } } as const;
+    expect(qOf(bucketDrillDownHref('', '2026-09-27T00:00:00.000+09:00', 'day', null, naive))).toBe('merged:2026-09-27..2026-09-27@Asia/Seoul');
+  });
+
+  it('다른 시간대를 적은 대시보드는 그 시간대의 날짜로 간다', () => {
+    const la = { timezone: 'America/Los_Angeles', appliedRange: null } as const;
+    expect(qOf(bucketDrillDownHref('', '2026-09-27T00:00:00.000-07:00', 'day', null, la))).toBe('merged:2026-09-27..2026-09-27@America/Los_Angeles');
+  });
+
+  it('시간 버킷은 그 한 시간의 순간 범위 그대로다', () => {
+    expect(qOf(bucketDrillDownHref('', '2026-09-27T13:00:00.000+09:00', 'hour', null, KST))).toBe('merged:2026-09-27T04:00:00.000Z..2026-09-27T04:59:59.999Z');
+  });
+
+  it('잘못된 버킷 시각·시간대는 링크를 만들지 않는다', () => {
+    expect(bucketDrillDownHref('org:acme', 'not-a-date', 'day', null, KST)).toBe(null);
+    expect(bucketDrillDownHref('org:acme', '2026-09-27T00:00:00.000+09:00', 'day', null, { timezone: 'Mars/Olympus', appliedRange: null })).toBe(null);
+  });
+
+  it('CR-127: 버킷 이름과 열 제목은 대시보드 시간대로 적는다', () => {
+    expect(bucketLabelFor('day', 'Asia/Seoul')('2026-09-27T00:00:00.000+09:00')).toBe('2026-09-27');
+    expect(bucketLabelFor('hour', 'Asia/Seoul')('2026-09-27T13:00:00.000+09:00')).toBe('2026-09-27 13:00');
+    expect(bucketLabelFor('month', 'Asia/Seoul')('2026-09-01T00:00:00.000+09:00')).toBe('2026-09');
+    expect(bucketLabelFor('day', 'Asia/Seoul')('2026-07-01')).toBe('2026-07-01');
+    expect(bucketHeadingFor('Asia/Seoul')).toBe('Range (KST)');
+    expect(bucketHeadingFor('UTC')).toBe('Range (UTC)');
   });
 });
 

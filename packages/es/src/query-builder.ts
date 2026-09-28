@@ -19,6 +19,7 @@
 
 import type { estypes } from "@elastic/elasticsearch";
 import {
+  calendarRangeToUtc,
   hasMergeNumberRangeFilter,
   hasSequenceRangeFilter,
   isRangeFilter,
@@ -409,7 +410,19 @@ function rangeClause(filter: QueryFilter): estypes.QueryDslQueryContainer | null
   if (!isRangeFilter(filter)) return null;
   const field = RANGE_FIELDS[filter.key];
   if (field === undefined) return null;
-  // 양끝을 모두 포함한다 — `seq:1280..1342`는 1280과 1342를 포함한다.
+  /*
+   * 달력 날짜 범위 (CR-127, FR-SRCH-005 AC-11). **UTC 구간을 여기서 확정한다** —
+   * `[시작일의 첫 순간, 종료일 다음 날의 첫 순간)`을 순간 두 개로 보내고 끝은 `lt`다.
+   * Elasticsearch의 `time_zone`에 해석을 맡기지 않는 것은, 같은 계산(`@prs/query`)이
+   * 화면의 날짜 표시와 통계 버킷 경계도 만들기 때문이다 — 계산이 한 곳이어야 「화면의
+   * 9월 27일」과 「검색의 9월 27일」이 갈리지 않는다.
+   */
+  if ("timezone" in filter && filter.timezone !== undefined) {
+    const { gte, lt } = calendarRangeToUtc(filter.from, filter.to, filter.timezone);
+    return { range: { [field]: { gte, lt } } };
+  }
+  // 양끝을 모두 포함한다 — `seq:1280..1342`는 1280과 1342를 포함한다. 시간대 없는
+  // 날짜 끝은 Elasticsearch가 UTC 날짜로 읽고 `lte`를 그날 끝으로 올린다(기존 뜻).
   return { range: { [field]: { gte: filter.from, lte: filter.to } } };
 }
 

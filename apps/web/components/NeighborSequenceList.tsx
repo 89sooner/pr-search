@@ -31,7 +31,7 @@ import {
   type NeighborsView,
   type NoSequenceReason,
 } from '../lib/neighbors';
-import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 
 export interface NeighborSequenceListProps {
   readonly neighbors: readonly NeighborRowView[];
@@ -116,7 +116,7 @@ export function NeighborSequenceList({
                 )}
               </Table.Cell>
               <Table.Cell>{row.author ?? '—'}</Table.Cell>
-              <Table.Cell>{formatTimestamp(row.mergedAt)}</Table.Cell>
+              <Table.Cell><TimeText value={row.mergedAt} /></Table.Cell>
             </Table.Row>
           ))}
         </Table.Body>

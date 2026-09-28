@@ -135,3 +135,18 @@ describe('화면이 AST를 고치는 경우', () => {
     expect(parseQuery(serializeQuery(withLabel))).toEqual(withLabel);
   });
 });
+
+describe('CR-127: 달력 날짜 범위의 왕복', () => {
+  it.each([
+    'merged:2026-09-27..2026-09-27@Asia/Seoul',
+    '-merged:2026-09-27..2026-09-27@Asia/Seoul',
+    'repo:acme/kst created:2024-02-29..2024-03-01@UTC 결제',
+    'merged:2026-09-27..2026-09-27',
+  ])('%s', (input) => {
+    expect(serializeQuery(parseQuery(input))).toBe(input);
+  });
+
+  it('정규화한 시간대로 직렬화한다 — 같은 조건은 같은 문자열(커서 지문)이다', () => {
+    expect(serializeQuery(parseQuery('merged:2026-09-27..2026-09-27@asia/seoul'))).toBe('merged:2026-09-27..2026-09-27@Asia/Seoul');
+  });
+});

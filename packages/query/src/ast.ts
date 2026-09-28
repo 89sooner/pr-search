@@ -50,6 +50,14 @@ export interface TemporalRangeFilter {
   readonly op: 'range' | 'not_range';
   readonly from: string;
   readonly to: string;
+  /**
+   * 달력 날짜 범위의 시간대 (CR-127, FR-SRCH-005 AC-11). 정규 표기의 IANA 이름이다.
+   *
+   * **있으면 양끝이 날짜이고 그 시간대의 달력 날짜 범위다** — `[시작일의 첫 순간,
+   * 종료일 다음 날의 첫 순간)`. **없으면 기존 뜻 그대로다**(날짜만 적은 끝은 UTC 날짜,
+   * 양끝 포함). 옛 질의를 다시 해석하지 않으려고 기본값을 두지 않는다.
+   */
+  readonly timezone?: string;
 }
 
 export type RangeFilter = NumericRangeFilter | TemporalRangeFilter;

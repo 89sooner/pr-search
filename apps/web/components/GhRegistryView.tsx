@@ -2,6 +2,7 @@
 
 import { dimensionLabel, dimensionNote, gateDetail, gateLabel } from '../lib/gh-presentation';
 import { serviceMessage } from '../lib/service-message';
+import { formatTimestamp } from '../lib/format';
 
 /**
  * A-006 gh capability·버전 레지스트리 (WP-078 / FR-GH-001 AC-5·AC-6, FR-GH-011 AC-2·AC-3, NFR-009, QA-GH-32, CR-088).
@@ -98,10 +99,9 @@ async function loadJson<T>(url: string, signal: AbortSignal): Promise<Loaded<T>>
   return { kind: 'ok', body: body as T };
 }
 
+/** CR-127: KST with seconds, as before (24h) — no browser locale or time zone. */
 function formatTime(iso: string | null): string {
-  if (iso === null) return '—';
-  const at = new Date(iso);
-  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString("en-US", { hour12: false });
+  return iso === null ? '—' : formatTimestamp(iso, { seconds: true });
 }
 
 function StatusBadge({ status }: { readonly status: string }): ReactNode {

@@ -552,3 +552,65 @@ describe('문법 오류', () => {
     expect(parseQuery('"fix: 결제 오류"').text).toBe('fix: 결제 오류');
   });
 });
+
+describe('CR-127: 달력 날짜 범위 `@<시간대>` (FR-SRCH-005 AC-11)', () => {
+  it('양끝이 날짜이면 시간대를 붙일 수 있고, AST가 정규 표기의 시간대를 싣는다', () => {
+    expect(parseQuery('merged:2026-09-27..2026-09-27@Asia/Seoul').filters).toEqual([
+      { key: 'merged', op: 'range', from: '2026-09-27', to: '2026-09-27', timezone: 'Asia/Seoul' },
+    ]);
+    expect(parseQuery('created:2026-09-01..2026-09-30@UTC').filters).toEqual([
+      { key: 'created', op: 'range', from: '2026-09-01', to: '2026-09-30', timezone: 'UTC' },
+    ]);
+  });
+
+  it('시간대 이름을 정규화한다 — 서버가 권위다', () => {
+    expect(parseQuery('merged:2026-09-27..2026-09-27@asia/seoul').filters[0]).toMatchObject({ timezone: 'Asia/Seoul' });
+  });
+
+  it('부정도 같은 구간이다', () => {
+    expect(parseQuery('-merged:2026-09-27..2026-09-27@Asia/Seoul').filters).toEqual([
+      { key: 'merged', op: 'not_range', from: '2026-09-27', to: '2026-09-27', timezone: 'Asia/Seoul' },
+    ]);
+  });
+
+  it('시간대 없는 옛 날짜 범위는 그대로다 — `timezone` 자리도 만들지 않는다', () => {
+    const [filter] = parseQuery('merged:2026-09-27..2026-09-27').filters;
+    expect(filter).toEqual({ key: 'merged', op: 'range', from: '2026-09-27', to: '2026-09-27' });
+    expect(filter !== undefined && 'timezone' in filter).toBe(false);
+  });
+
+  it.each([
+    ['시각 끝', 'merged:2026-09-27T00:00..2026-09-27T23:59@Asia/Seoul', 'calendar dates only'],
+    ['오프셋 끝', 'merged:2026-09-27T00:00+09:00..2026-09-28T00:00+09:00@Asia/Seoul', 'calendar dates only'],
+    ['한쪽만 시각', 'merged:2026-09-27..2026-09-27T12:00@Asia/Seoul', 'calendar dates only'],
+    ['모르는 시간대', 'merged:2026-09-27..2026-09-27@Mars/Olympus', 'Unknown time zone'],
+    ['오프셋을 시간대로', 'merged:2026-09-27..2026-09-27@+09:00', 'Unknown time zone'],
+    ['빈 시간대', 'merged:2026-09-27..2026-09-27@', 'Unknown time zone'],
+    ['시간대가 앞 끝에', 'merged:2026-09-27@Asia/Seoul..2026-09-28', 'goes after the range'],
+    ['끝이 비었다', 'merged:2026-09-27..@Asia/Seoul', 'Both range bounds are required'],
+    ['없는 날짜', 'merged:2025-02-29..2025-02-29@Asia/Seoul', 'Invalid calendar date'],
+    ['역전', 'merged:2026-09-28..2026-09-27@Asia/Seoul', 'reversed'],
+  ])('%s는 거절한다', (_label, input, message) => {
+    const error = reject(input);
+    expect(error.code).toBe('QUERY_SYNTAX_ERROR');
+    expect(error.message).toContain(message);
+    expect(error.detail.offset_start).toBe(0);
+  });
+
+  it('범위 키가 아니면 `@`는 리터럴이다', () => {
+    expect(parseQuery('path:src/a@b').filters).toEqual([{ key: 'path', op: 'eq', values: ['src/a@b'] }]);
+  });
+});
+
+describe('CR-127: 옛 시각 범위의 역전 검사는 실행하는 쪽의 시간대를 타지 않는다', () => {
+  it('오프셋 없는 시각은 UTC로 비교한다 — 날짜 끝(UTC 자정)보다 늦으면 역전이 아니다', () => {
+    // 전에는 `Date.parse`가 오프셋 없는 시각을 브라우저 시간대로 읽어, KST 브라우저에서만
+    // 이 질의를 「뒤집혔다」로 거절했다. 서버(UTC)는 통과시켰다.
+    expect(parseQuery('merged:2026-09-27..2026-09-27T05:00').filters[0]).toMatchObject({ from: '2026-09-27', to: '2026-09-27T05:00' });
+  });
+
+  it('진짜 역전은 여전히 거절한다', () => {
+    expect(reject('merged:2026-09-27T05:00..2026-09-27T04:59').message).toContain('reversed');
+    expect(reject('merged:2026-09-27T00:00:00+09:00..2026-09-26T14:59:59Z').message).toContain('reversed');
+  });
+});

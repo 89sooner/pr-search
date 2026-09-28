@@ -2346,6 +2346,7 @@ describe('집계 API의 도달성과 계약 (WP-037 / CR-053)', () => {
   const PREPARE = read('apps/search-api/src/analytics/prepare.ts');
   const EXECUTE = read('apps/search-api/src/analytics/execute.ts');
   const AGGREGATIONS = read('apps/search-api/src/analytics/aggregations.ts');
+  const RANGE = read('apps/search-api/src/analytics/range.ts');
   const TYPES = read('apps/search-api/src/analytics/types.ts');
 
   it('**운영 서버가 집계 라우트를 실제로 등록한다**', () => {
@@ -2439,7 +2440,12 @@ describe('집계 API의 도달성과 계약 (WP-037 / CR-053)', () => {
 
   it('**시계열이 요청 구간을 모집단에 넣는다** (PR #76 리뷰 P1)', () => {
     // `extended_bounds`는 빈 버킷을 더할 뿐 범위 밖 문서를 빼지 않는다.
-    expect(ROUTES).toContain('merged:${from}..${to}');
+    expect(ROUTES).toContain('${resolved.rangeFilter}');
+    // 날짜 기간은 버킷과 같은 달력(요청 시간대)으로 거른다 (CR-127, DEV-781). 시각 기간은 기존 뜻 그대로다.
+    expect(RANGE).toContain('merged:${appliedFrom}..${appliedTo}@${timezone}');
+    expect(RANGE).toContain('merged:${appliedFrom}..${appliedTo}`');
+    // 버킷 경계도 같은 계산에서 온다 — 문자열 날짜를 Elasticsearch가 따로 해석하게 두지 않는다.
+    expect(ROUTES).toContain('from: resolved.boundsMin, to: resolved.boundsMax');
   });
 
   it('**리드타임은 머지된 PR로 한정한다** (FR-STAT-003 AC-2, PR #76 리뷰 P1)', () => {

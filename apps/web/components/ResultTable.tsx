@@ -36,7 +36,8 @@ import { commonSpace } from '../lib/sequence';
 import { MergeNumberBadge } from './MergeNumberBadge';
 import { splitSequenceSpace, type MergeNumberFields } from '../lib/merge-number';
 import { WorkbenchIcon } from './WorkbenchIcon';
-import { shortSha, formatTimestamp } from '../lib/format';
+import { shortSha } from '../lib/format';
+import { TimeText } from './TimeText';
 import { withFromQuery } from '../lib/query-url';
 
 /**
@@ -244,7 +245,7 @@ export function ResultTable({
               </Table.Cell>
               <Table.Cell><span className="prs-cell-truncate" title={row.author ?? undefined}>{row.author ?? '—'}</span></Table.Cell>
               <Table.Cell><span className="prs-result-state" data-state={row.state ?? 'unknown'}>{row.state === 'merged' ? "Merged" : row.state === 'open' ? "Open" : row.state === 'closed' ? "Closed" : row.state ?? '—'}</span></Table.Cell>
-              <Table.Cell><time className="prs-timestamp" dateTime={row.merged_at ?? undefined} title={row.merged_at ?? undefined}>{formatTimestamp(row.merged_at)}</time></Table.Cell>
+              <Table.Cell><TimeText className="prs-timestamp" value={row.merged_at} /></Table.Cell>
               <Table.Cell numeric>{row.changed_files_count ?? '—'}</Table.Cell>
               <Table.Cell numeric><span className="prs-diff-added">{row.additions === null ? '—' : `+${row.additions}`}</span></Table.Cell>
               <Table.Cell><RelationBadgeGroup summary={row.link_summary ?? null} /></Table.Cell>

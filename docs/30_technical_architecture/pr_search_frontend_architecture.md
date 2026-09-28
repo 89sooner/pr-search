@@ -1,6 +1,8 @@
 # PR Search 프론트엔드 아키텍처
 
-> 상태: review | 버전: v0.16 | 갱신일: 2026-09-18
+> 상태: review | 버전: v0.17 | 갱신일: 2026-09-27
+
+CR-127 / NFR-007·FR-SRCH-005 AC-11·FR-STAT-002 AC-7·FR-AUTH-004 AC-9: **표시 시간대는 `lib/format.ts`의 상수 `DISPLAY_TIME_ZONE = 'Asia/Seoul'` 하나다.** 시각을 그리는 모든 컴포넌트는 `formatTimestamp`·`formatDate`·`TimeText`를 쓰고, 이 함수들은 `@prs/query`의 시간대 계산(`zonedParts` — `Intl.DateTimeFormat#formatToParts`의 숫자 부분, `hourCycle: 'h23'`)을 쓴다. 날짜 필터의 하루 경계(`startOfZonedDay`)와 표시가 **같은 함수**에서 나오므로 「화면의 9월 27일」과 「검색의 9월 27일」이 갈리지 않는다. 서버 렌더와 브라우저 렌더가 같은 문자열을 내며(시간대를 명시하므로 프로세스·브라우저 기본값을 읽지 않는다) 표시 문자열은 API 값·커서·URL로 되돌아가지 않는다. 날짜 조건의 시간대는 URL(`tz`, `timezone`)이나 질의 문자열(`@Asia/Seoul`)에 **명시적으로** 남는다 — Repository workspace의 `buildRepositoryQuery`가 `from`·`to`·`tz`로 `merged:<from>..<to>@<tz>`를 만들고, `tz` 없는 옛 URL은 시간대 없는 UTC 조건으로 만든다. 요청 키(`requestKey`)가 그 질의 문자열이므로 시간대가 바뀌면 결과와 커서가 초기화된다. `DatePicker`는 `timeZone`의 오늘을 쓰고 격자를 UTC 자정 값으로 계산한다. 통계 드릴다운(`bucketDrillDownHref`)은 버킷 시작 순간을 대시보드 시간대의 날짜로 바꿔 달력 범위를 만든다. 감사 기록 화면은 KST 벽시계 입력 ↔ `+09:00` ISO 값을 `lib/audit.ts`에서 변환하고 URL은 `URLSearchParams`로만 만든다(`+`가 공백으로 풀리지 않게). 개인별 표시 시간대(사용자 컨텍스트의 「표시 시간대」)는 두지 않는다(`OD-018`).
 
 CR-109 / FR-REG-001 / W-024: `/regression`은 기존 GuardedPage(reader)와 Suspense 경계를 사용하고 항상 route/nav에 존재한다. provider 미구성은 화면의 explicit empty state이며 public build flag로 경로를 제거하지 않는다. `REGRESSION_FIXTURE_ENABLED=1`만 server-side synthetic fixture opt-in이다. URL은 view/repo/branch/epoch/run/date/type, 로컬 UI는 display filter/page/dialog/zoom, fixture session은 canonical scope+run key로 구분한다. 합성 fixture는 사용자 B HTML의 JSON만 추출해 typed adapter로 변환했다. 브라우저 저장은 명시적 fixture namespace이며 Web Locks 아래 read/version/write, stale version은 거절하고 archive는 삭제하지 않는다. Storage/lock 미지원은 읽기 전용이다. 실제 MDVP DTO나 인증정보를 추측하지 않는다. 기존 C-029 API 요청을 `lib/bisect-client.ts`로 공용화해 실제 scope 입력 시 저장된 세션 복원·good/bad를 지원한다. 이 API의 영속 관측 아카이브는 아직 없다.
 
@@ -71,7 +73,7 @@ CR-079: 기존 W-001/002/004의 실제 렌더 경로와 API DTO를 [상세 설�
 | **클라이언트 상태** | React state | 섹션 펼침, 행 선택, 드로어 열림, 비교 대상 선택 | URL에 넣지 않는다(공유해도 의미가 없는 상태) |
 | **폼 초안 상태** | React state | 앵커 입력 중 값, 저장된 검색 편집, 저장소 등록 폼 | 제출 전까지 서버에 보내지 않는다 |
 | **세션 상태** | HttpOnly 쿠키 | 인증 세션 | 클라이언트 JavaScript가 읽지 않는다 |
-| **사용자 컨텍스트** | 서버 컴포넌트 props | 역할, 접근 범위 요약, 표시 시간대 | 레이아웃에서 1회 조회해 하위로 전달. **역할은 화면 관문이 `/me`에서 받는다** (CR-091, DEV-695) — 세션 레코드의 역할은 로그인 때의 IdP·팀 절반뿐이라 관리자 지정(`operator` 등)이 없다. `/me`가 실패하면 세션의 역할로 그린다 |
+| **사용자 컨텍스트** | 서버 컴포넌트 props | 역할, 접근 범위 요약 (표시 시간대는 사용자 컨텍스트가 아니라 `Asia/Seoul` 상수다 — CR-127, `OD-018`) | 레이아웃에서 1회 조회해 하위로 전달. **역할은 화면 관문이 `/me`에서 받는다** (CR-091, DEV-695) — 세션 레코드의 역할은 로그인 때의 IdP·팀 절반뿐이라 관리자 지정(`operator` 등)이 없다. `/me`가 실패하면 세션의 역할로 그린다 |
 
 **URL 상태가 단일 진실이라는 규칙이 중요하다.** 이 제품의 핵심 사용 방식은 조사 결과를 티켓·메신저에 링크로 붙여 공유하는 것이다. 필터 상태를 컴포넌트 안에만 두면 링크가 재현되지 않아 제품 가치가 절반으로 준다.
 

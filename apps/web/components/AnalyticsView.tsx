@@ -26,6 +26,7 @@ import Link from 'next/link';
 import { Banner, Panel, Spinner } from './ui';
 import { PercentileCardRow } from './PercentileCardRow';
 import { AggregationPanel, type AggregationGroup } from './AggregationPanel';
+import { DatePicker } from './reader/primitives';
 import {
   readAnalyticsState,
   writeAnalyticsState,
@@ -36,6 +37,8 @@ import {
   resolvePanelState,
   drillDownHref,
   bucketDrillDownHref,
+  bucketHeadingFor,
+  bucketLabelFor,
   readPercentileValues,
   GROUP_KEYS,
   INTERVALS,
@@ -181,10 +184,6 @@ export function AnalyticsView({ loginPath }: AnalyticsViewProps): ReactNode {
   );
 
   const hrefFor = useCallback((q: string) => drillDownHref(q, state.seqEpoch), [state.seqEpoch]);
-  const bucketHrefFor = useCallback(
-    (iso: string) => bucketDrillDownHref(state.q, iso, state.interval, state.seqEpoch),
-    [state.q, state.interval, state.seqEpoch],
-  );
 
   return (
     <div className="prs-analytics">
@@ -195,7 +194,7 @@ export function AnalyticsView({ loginPath }: AnalyticsViewProps): ReactNode {
       </p>
 
       <GroupsSlot state={state} loginPath={loginPath} hrefFor={hrefFor} />
-      <TimeSeriesSlot state={state} loginPath={loginPath} bucketHrefFor={bucketHrefFor} />
+      <TimeSeriesSlot state={state} loginPath={loginPath} />
       <PercentilesSlot
         state={state}
         loginPath={loginPath}
@@ -270,26 +269,26 @@ function AnalyticsControls({
           ))}
         </select>
       </label>
-      <label>
-        Start
-        <input
-          type="date"
-          value={state.from ?? ''}
-          onChange={(event) => {
-            onChange({ from: event.target.value === '' ? null : event.target.value });
-          }}
-        />
-      </label>
-      <label>
-        End
-        <input
-          type="date"
-          value={state.to ?? ''}
-          onChange={(event) => {
-            onChange({ to: event.target.value === '' ? null : event.target.value });
-          }}
-        />
-      </label>
+      {/*
+        CR-127: 날짜는 대시보드 시간대의 달력 날짜다(FR-STAT-002 AC-7). 브라우저 기본 달력은
+        「오늘」을 브라우저 시간대로 잡으므로 제품 달력을 쓴다 — 오늘도 그 시간대의 날짜다.
+      */}
+      <DatePicker
+        label="Start"
+        value={state.from ?? ''}
+        timeZone={state.timezone}
+        onChange={(from) => {
+          onChange({ from: from === '' ? null : from });
+        }}
+      />
+      <DatePicker
+        label="End"
+        value={state.to ?? ''}
+        timeZone={state.timezone}
+        onChange={(to) => {
+          onChange({ to: to === '' ? null : to });
+        }}
+      />
       <label>
         Time zone
         <input
@@ -345,16 +344,24 @@ function GroupsSlot({
 function TimeSeriesSlot({
   state,
   loginPath,
-  bucketHrefFor,
 }: {
   readonly state: AnalyticsUrlState;
   readonly loginPath: string;
-  readonly bucketHrefFor: (iso: string) => string | null;
 }): ReactNode {
   const result = usePanel('time-series', buildTimeSeriesRequest(state));
   const buckets = (result.body?.['buckets'] as readonly string[] | undefined) ?? [];
   const series = (result.body?.['series'] as readonly { key: string; values: readonly number[] }[] | undefined) ?? [];
   const panel = resolvePanelState({ ...result, loginPath, isEmpty: !result.loading && result.status === 200 && buckets.length === 0 });
+  /*
+   * CR-127: 버킷을 나눈 달력은 **응답이 말한다** — 서버가 정규화한 `timezone`과 실제로 적용한
+   * `applied_range`(기간을 비우면 그 시간대의 오늘을 포함한 30일). 버킷 링크와 이름이 그 달력을
+   * 써야 버킷의 수와 링크한 검색의 수가 같다.
+   */
+  const timezone = typeof result.body?.['timezone'] === 'string' ? result.body['timezone'] : state.timezone;
+  const applied = result.body?.['applied_range'] as { from?: unknown; to?: unknown } | undefined;
+  const appliedRange = typeof applied?.from === 'string' && typeof applied.to === 'string' ? { from: applied.from, to: applied.to } : null;
+  const bucketHrefFor = (iso: string): string | null =>
+    bucketDrillDownHref(state.q, iso, state.interval, state.seqEpoch, { timezone, appliedRange });
 
   if (!isRenderable(panel)) return <Panel as="section" aria-label="Time series"><PanelStatus state={panel} /></Panel>;
   return (
@@ -363,6 +370,8 @@ function TimeSeriesSlot({
       series={series}
       truncated={result.body?.['truncated'] === true}
       bucketHrefFor={bucketHrefFor}
+      bucketLabel={bucketLabelFor(state.interval, timezone)}
+      bucketHeading={bucketHeadingFor(timezone)}
     />
   );
 }

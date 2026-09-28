@@ -27,7 +27,7 @@
 import type { ReactNode } from 'react';
 import { Table } from './ui';
 import type { AuditRecordView } from '../lib/audit';
-import { formatTimestamp } from '../lib/format';
+import { TimeText } from './TimeText';
 
 export interface AuditRecordTableProps {
   readonly items: readonly AuditRecordView[];
@@ -60,7 +60,7 @@ export function AuditRecordTable({ items }: AuditRecordTableProps): ReactNode {
       <tbody>
         {items.map((row) => (
           <tr key={`${row.correlationId}:${row.occurredAt}:${row.action}`} data-testid="audit-row">
-            <td>{formatTimestamp(row.occurredAt)}</td>
+            <td><TimeText value={row.occurredAt} /></td>
             <td>{row.userId}</td>
             <td data-testid="audit-action">{row.action}</td>
             <td data-testid="audit-target">{row.target ?? <Absent />}</td>

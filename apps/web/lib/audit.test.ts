@@ -19,6 +19,7 @@ import {
   writeAuditFilter,
   type AuditFilterState,
 } from './audit';
+import { AUDIT_INPUT_OFFSET, fromAuditDraft, fromKstWallClock, toAuditDraft, toKstWallClock } from './audit';
 
 const FILLED: AuditFilterState = {
   userId: 'alice',
@@ -228,5 +229,37 @@ describe('상태 판정', () => {
 
   it('그 밖의 4xx·5xx는 `error`다', () => {
     expect(resolveAuditState({ ...base, items: [], status: 500 })).toBe('error');
+  });
+});
+
+describe('CR-127: 기간 입력은 KST 벽시계이고 +09:00을 붙여 보낸다 (FR-AUTH-004 AC-9)', () => {
+  it('입력칸 값에 +09:00을 붙인다 — 브라우저 시간대와 무관하게 같은 요청이다', () => {
+    expect(AUDIT_INPUT_OFFSET).toBe('+09:00');
+    expect(fromKstWallClock('2026-09-27T00:00')).toBe('2026-09-27T00:00+09:00');
+    expect(fromKstWallClock('')).toBe('');
+  });
+
+  it('URL 값을 같은 순간의 KST 벽시계로 채운다 — 옛 URL(오프셋 없음 = UTC)도 순간을 지킨다', () => {
+    expect(toKstWallClock('2026-09-27T00:00+09:00')).toBe('2026-09-27T00:00');
+    expect(toKstWallClock('2026-09-26T15:00:00Z')).toBe('2026-09-27T00:00');
+    expect(toKstWallClock('2026-08-01T00:00')).toBe('2026-08-01T09:00');
+    expect(toKstWallClock('2026-08-01')).toBe('2026-08-01T09:00');
+    expect(toKstWallClock('yesterday')).toBe('');
+    expect(toKstWallClock('')).toBe('');
+  });
+
+  it('옛 URL을 입력칸으로 읽고 그대로 다시 적용하면 같은 순간이다', () => {
+    const legacy = { ...FILLED, from: '2026-08-01T00:00', to: '2026-08-29T00:00' };
+    const reapplied = fromAuditDraft(toAuditDraft(legacy));
+    expect(reapplied.from).toBe('2026-08-01T09:00+09:00');
+    expect(Date.parse(reapplied.from)).toBe(Date.parse('2026-08-01T00:00Z'));
+    expect(Date.parse(reapplied.to)).toBe(Date.parse('2026-08-29T00:00Z'));
+    expect(reapplied.userId).toBe(legacy.userId);
+  });
+
+  it('요청 URL은 +를 %2B로 싣는다 — 공백으로 풀리지 않는다', () => {
+    const url = buildAuditRequestUrl({ ...FILLED, from: '2026-09-27T00:00+09:00' }, null);
+    expect(url).toContain('from=2026-09-27T00%3A00%2B09%3A00');
+    expect(new URLSearchParams(url.split('?')[1] ?? '').get('from')).toBe('2026-09-27T00:00+09:00');
   });
 });

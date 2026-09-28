@@ -22,6 +22,7 @@
 
 import type { ReactNode } from 'react';
 import { Badge, Button, Panel, Table } from './ui';
+import { TimeText } from './TimeText';
 import type { LinkedPrState, LinkedPullRequest } from '../lib/commit-detail';
 
 export interface LinkedPrListProps {
@@ -115,7 +116,7 @@ export function LinkedPrList({
                   {pr.merged_at === undefined ? (
                     <span data-testid="not-merged">Not merged</span>
                   ) : (
-                    <time dateTime={pr.merged_at}>{pr.merged_at}</time>
+                    <TimeText value={pr.merged_at} />
                   )}
                 </Table.Cell>
               </Table.Row>

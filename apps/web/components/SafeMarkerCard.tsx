@@ -20,6 +20,7 @@
 
 import { useId, useState, type ReactNode } from 'react';
 import { Badge, Button, Card, TextArea } from './ui';
+import { TimeText } from './TimeText';
 import {
   MARKER_NOTE_LIMIT,
   markerBlockedReason,
@@ -38,11 +39,6 @@ export interface SafeMarkerCardProps {
   readonly onSubmit: (note: string | null) => Promise<MarkerSubmitOutcome>;
 }
 
-function formatTime(iso: string): string {
-  // 표시 시간대 변환은 클라이언트 책임이다 (API 계약 공통 원칙 8).
-  const at = new Date(iso);
-  return Number.isNaN(at.getTime()) ? iso : at.toLocaleString();
-}
 
 export function SafeMarkerCard({
   marker,
@@ -102,7 +98,8 @@ export function SafeMarkerCard({
           <dt>Registered by</dt>
           <dd data-testid="safe-marker-author">{marker.created_by}</dd>
           <dt>Registered at</dt>
-          <dd data-testid="safe-marker-time">{formatTime(marker.created_at)}</dd>
+          {/* CR-127: 표시 시간대 변환은 클라이언트 책임이고(API 계약 공통 원칙 8) 그 시간대는 KST로 고정한다 — 브라우저 로케일·시간대를 타지 않는다. */}
+          <dd data-testid="safe-marker-time"><TimeText value={marker.created_at} seconds /></dd>
           <dt>Epoch</dt>
           <dd data-testid="safe-marker-epoch">{marker.seq_epoch}</dd>
           <dt>Note</dt>
