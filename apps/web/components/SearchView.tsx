@@ -58,12 +58,25 @@ import { hasPendingMergeNumber, readMergeNumberEntry } from '../lib/merge-number
 
 const SEARCH_PATH = '/search';
 
+/**
+ * 0건일 때 서버가 준 완화 후보 하나 (API-SRCH-004, FR-SRCH-006 AC-3).
+ *
+ * **건수 키는 `would_yield`다** (CR-128, DEV-784) — WP-016부터 이 화면은 `total`을 읽어
+ * 건수를 그리지 못했고, 모킹한 응답도 같은 키를 써서 시험이 그 어긋남을 보지 못했다.
+ */
+interface RelaxationHintRow {
+  readonly remove: string;
+  readonly would_yield: number;
+}
+
 /** `/search` 응답 중 화면이 쓰는 부분. 서버가 더 보내도 무시한다. */
 interface SearchResponse extends FacetSource {
   readonly total?: { readonly value: number; readonly relation: string };
   readonly sort?: SortState;
   readonly items?: readonly ResultRow[];
-  readonly relaxation_hints?: readonly { readonly remove: string; readonly total: number }[];
+  readonly relaxation_hints?: readonly RelaxationHintRow[];
+  /** 세지 못한 후보가 있다 (CR-128). 참일 때만 온다. */
+  readonly relaxation_hints_incomplete?: boolean;
   readonly unresolved_names?: readonly { readonly key: string; readonly value: string }[];
   readonly next_cursor?: string | null;
   /**
@@ -781,6 +794,7 @@ export function SearchView({ loginPath, gheBaseUrl }: SearchViewProps): ReactNod
           sort={sort}
           onSortChange={onSortChange}
           relaxationHints={outcome.search?.relaxation_hints ?? null}
+          relaxationIncomplete={outcome.search?.relaxation_hints_incomplete === true}
           fromQuery={state.q}
           loginPath={loginPath}
         />
@@ -850,7 +864,9 @@ interface ScreenBodyProps {
   readonly candidates: readonly ResolutionCandidate[] | null;
   readonly sort: SortState;
   readonly onSortChange: (field: string) => void;
-  readonly relaxationHints: readonly { readonly remove: string; readonly total: number }[] | null;
+  readonly relaxationHints: readonly RelaxationHintRow[] | null;
+  /** 서버가 후보를 다 세지 못했다 (CR-128). */
+  readonly relaxationIncomplete: boolean;
   readonly fromQuery: string;
   readonly loginPath: string;
 }
@@ -868,6 +884,7 @@ function ScreenBody({
   sort,
   onSortChange,
   relaxationHints,
+  relaxationIncomplete,
   fromQuery,
   loginPath,
 }: ScreenBodyProps): ReactNode {
@@ -963,11 +980,22 @@ function ScreenBody({
             <ul data-testid="relaxation-hints">
               {relaxationHints.map((hint) => (
                 <li key={hint.remove}>
-                  <code className="ui-mono">{hint.remove}</code> removed: {hint.total} items
+                  <code className="ui-mono">{hint.remove}</code> removed: {hint.would_yield} items
                 </li>
               ))}
             </ul>
           )}
+          {/*
+           * 서버가 후보를 다 세지 못했다 (CR-128). 목록이 비었을 때 그것을 「뺄 조건이
+           * 없다」로 그리지 않는다 — 계산하지 않은 것을 없는 것으로 표현하지 않는다.
+           */}
+          {relaxationIncomplete ? (
+            <p data-testid="relaxation-hints-incomplete">
+              {relaxationHints === null || relaxationHints.length === 0
+                ? 'Filter suggestions could not be calculated for this search.'
+                : 'Some filter suggestions could not be calculated.'}
+            </p>
+          ) : null}
         </div>
       );
 

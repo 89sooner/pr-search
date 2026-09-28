@@ -57,6 +57,9 @@ describe('PSI-F01 10개 조회 operation parity (허용 목록 ⊇ 사용자 범
     ['search 정렬', '/api/v1/search?q=&sort=merged_at&order=asc&size=2', '/read/search?q=&sort=merged_at&order=asc&size=2', 200],
     ['search 문법 오류', '/api/v1/search?q=nokey%3Avalue', '/read/search?q=nokey%3Avalue', 400],
     ['search 정렬 키 오류', '/api/v1/search?q=&sort=bogus', '/read/search?q=&sort=bogus', 400],
+    // CR-128: `kind:` + 다른 필터 + 0건. 전에는 두 경로 모두 500이었다(연동은 INTERNAL_ERROR).
+    ['search kind: 0건과 완화 후보', '/api/v1/search?q=kind%3Apull_request%20author%3Anobody', '/read/search?q=kind%3Apull_request%20author%3Anobody', 200],
+    ['search 모순된 kind: 0건', '/api/v1/search?q=kind%3Apull_request%20-kind%3Apull_request%20author%3Aalice-psi', '/read/search?q=kind%3Apull_request%20-kind%3Apull_request%20author%3Aalice-psi', 200],
     ['resolve SHA 접두', `/api/v1/resolve?q=${SHA.slice(0, 7)}`, `/read/resolve?q=${SHA.slice(0, 7)}`, 200],
     ['resolve PR', `/api/v1/resolve?q=${encodeURIComponent('acme/payments#1')}`, `/read/resolve?q=${encodeURIComponent('acme/payments#1')}`, 200],
     // query 값의 뜻은 원본 그대로다 — 형식이 틀린 저장소 힌트는 두 경로 모두 조용히 버리고 범위 안에서 해석한다.
@@ -79,6 +82,18 @@ describe('PSI-F01 10개 조회 operation parity (허용 목록 ⊇ 사용자 범
   ] as const)('%s', async (_label, publicUrl, readPath, status) => {
     const result = await parity(publicUrl, readPath);
     if (status !== undefined) expect(result.status).toBe(status);
+  });
+
+  it('**PIPE grant의 `kind:` 0건도 정확한 후보를 받는다** — 사용자 범위 ∩ 허용 목록으로 센다 (CR-128)', async () => {
+    const response = await h.get('/read/search?q=kind%3Apull_request%20author%3Anobody', grantA);
+    expect(response.status).toBe(200);
+    const body = response.json<{ total: unknown; items: unknown[]; next_cursor: unknown; relaxation_hints: unknown }>();
+    expect(body.total).toEqual({ value: 0, relation: 'eq' });
+    expect(body.items).toEqual([]);
+    expect(body.next_cursor).toBeNull();
+    // A의 범위(payments·billing)의 PR 셋. `other/secret`의 PR은 허용 목록에 있어도 사용자 범위 밖이라 세지 않는다.
+    expect(body.relaxation_hints).toEqual([{ remove: 'author:nobody', would_yield: 3 }]);
+    expect(body).not.toHaveProperty('relaxation_hints_incomplete');
   });
 });
 

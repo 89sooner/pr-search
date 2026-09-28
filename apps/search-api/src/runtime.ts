@@ -24,6 +24,7 @@ import type { AuthContext } from './auth/context.js';
 import type { RegistryDeps } from './ops/repositories.js';
 import type { IntegrityDeps } from './ops/sequence-integrity.js';
 import type { ReindexDeps } from './ops/reindex.js';
+import type { SearchDiagnostic } from './search/service.js';
 import { indexStatsPort, reindexIndexPort } from '@prs/es';
 import { authRepo } from '@prs/db';
 import { MIN_CURSOR_KEY_LENGTH, createCursorSigner } from './cursor/envelope.js';
@@ -49,6 +50,11 @@ export interface SearchDepsLike {
     readonly teamIds: ReadonlyMap<string, readonly number[]>;
   }>;
   readonly timeoutMs?: number;
+  /**
+   * 검색의 진단 로그 (CR-128). 아래 `search`·`sequence` 의존과 PIPE 연동의 검색 실행이 모두
+   * 이 객체를 펼쳐 받으므로, 여기 하나를 달면 두 경로가 같은 로그를 쓴다.
+   */
+  readonly log?: (entry: SearchDiagnostic) => void;
 }
 
 export interface RuntimeParts {

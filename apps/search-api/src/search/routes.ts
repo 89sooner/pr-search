@@ -543,6 +543,8 @@ export async function executeSearch(
         mergeNumberEpoch,
         mergeNumberBaseBranch,
         ...(principal.cursorBinding === undefined ? {} : { cursorBinding: principal.cursorBinding }),
+        // 진단 로그만 쓴다 — 추천을 다 세지 못한 요청을 이 응답과 잇는다 (CR-128).
+        correlationId,
       },
       deps,
     );
@@ -566,6 +568,12 @@ export async function executeSearch(
         ? {
             relaxation_hints: result.relaxation.hints,
             ...(result.relaxation.truncated ? { relaxation_hints_truncated: true } : {}),
+            /*
+             * 세지 못한 후보가 있다 (CR-128). 참일 때만 싣는다 — 목록의 건수는 정확하지만
+             * 빠진 후보가 있을 수 있고, 목록이 비었으면 「뺄 조건이 없다」가 아니라
+             * 「계산하지 못했다」다.
+             */
+            ...(result.relaxation.incomplete ? { relaxation_hints_incomplete: true } : {}),
           }
         : {}),
       // 레지스트리에서 못 찾은 이름. 조용히 0건을 내지 않는다 (CR-016, DEV-052).

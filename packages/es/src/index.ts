@@ -81,7 +81,7 @@ export {
   search,
   searchWithPit,
 } from './search.js';
-export type { ScopedSearchOptions, ScopedSearchRequest, SearchTarget } from './search.js';
+export type { MultiSearchTransport, ScopedSearchOptions, ScopedSearchRequest, SearchTarget } from './search.js';
 
 export {
   HIGHLIGHT_CLOSE,

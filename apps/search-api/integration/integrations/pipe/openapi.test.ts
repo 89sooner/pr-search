@@ -116,6 +116,8 @@ describe('PSI-F01 실제 응답이 OpenAPI 스키마에 맞는다', () => {
     ['read.search', '/read/search?q=nokey%3Avalue'],
     ['read.search', '/read/search?q=&cursor=not-a-cursor'],
     ['read.search', `/read/search?q=${encodeURIComponent('repo:"acme/payments" base:main seq:1..2')}&seq_epoch=2`],
+    // CR-128: `kind:`가 든 0건 — 완화 후보가 붙는 200. 전에는 500 INTERNAL_ERROR였다.
+    ['read.search', `/read/search?q=${encodeURIComponent('kind:pull_request author:nobody')}&facets=true`],
     ['read.resolve', `/read/resolve?q=${SHA.slice(0, 7)}`],
     ['read.resolve', `/read/resolve?q=${encodeURIComponent('acme/payments#1')}`],
     ['read.resolve', '/read/resolve?q=abc12'],

@@ -138,6 +138,20 @@ export interface ScopedSearchRequest {
 }
 
 /**
+ * `msearch` 왕복 한 번에 거는 전송 옵션 (CR-128).
+ *
+ * 0건 검색의 완화 후보처럼 **본 조회가 끝난 뒤에 붙는 부가 정보**를 세는 호출이 쓴다.
+ * 클라이언트 기본값(재시도 3회, 요청 30초)대로 두면 부가 정보 하나가 응답을 수십 초
+ * 붙잡는다. 넘기지 않으면 클라이언트 기본값 그대로다 — 다른 호출부의 동작은 바뀌지 않는다.
+ */
+export interface MultiSearchTransport {
+  /** 왕복 전체의 상한(ms). 넘기면 클라이언트가 `TimeoutError`로 던진다. */
+  readonly requestTimeout?: number;
+  /** 재시도 횟수. `0`이면 한 번만 보낸다. */
+  readonly maxRetries?: number;
+}
+
+/**
  * 여러 질의를 한 번의 왕복으로 보낸다.
  *
  * 0건일 때의 완화 후보 산출이 이것을 쓴다 (CR-016, DEV-055). 필터마다 질의를
@@ -149,6 +163,7 @@ export interface ScopedSearchRequest {
 export async function multiSearch<TDocument>(
   client: Client,
   requests: readonly ScopedSearchRequest[],
+  transport?: MultiSearchTransport,
 ): Promise<estypes.MsearchResponse<TDocument>> {
   const searches: estypes.MsearchRequestItem[] = [];
 
@@ -167,5 +182,7 @@ export async function multiSearch<TDocument>(
     searches.push({ ...body, query: request.query } as estypes.MsearchRequestItem);
   }
 
-  return client.msearch<TDocument>({ searches });
+  return transport === undefined
+    ? client.msearch<TDocument>({ searches })
+    : client.msearch<TDocument>({ searches }, { ...transport });
 }

@@ -12,6 +12,7 @@
  */
 
 import {
+  AccessScopeUnavailableError,
   applyMandatoryScopeFilter,
   assertNoShardFailures,
   buildHighlight,
@@ -43,7 +44,13 @@ import {
   type FacetOutcome,
   type TeamSlugResolver,
 } from './facets.js';
-import { computeRelaxationHints, NO_RELAXATION, type RelaxationResult } from './relaxation.js';
+import {
+  MAX_RELAXATION_HINTS,
+  NO_RELAXATION,
+  computeRelaxationHints,
+  type RelaxationFailure,
+  type RelaxationResult,
+} from './relaxation.js';
 import { resolveMergeNumberFields, type MergeNumberInput } from '../sequence/merge-number-batch.js';
 import type { Pool } from '@prs/db';
 
@@ -280,7 +287,31 @@ export interface SearchDeps {
    */
   readonly mergeNumbers?: { readonly pool: Pool; readonly enabled: boolean };
   readonly now?: () => number;
+  /**
+   * 진단 로그 (CR-128). 0건 검색의 완화 후보를 다 세지 못했을 때 한 줄을 남긴다.
+   *
+   * 없으면 남기지 않을 뿐 응답은 같다. 공개 경로와 PIPE 연동이 **같은 검색 의존 객체**에서
+   * 이 값을 받는다(`index.ts`) — 한쪽에만 달면 다른 쪽의 실패가 보이지 않는다.
+   */
+  readonly log?: (entry: SearchDiagnostic) => void;
 }
+
+/**
+ * 검색의 진단 로그 한 줄 (CR-128).
+ *
+ * **질의 문자열과 Elasticsearch 오류 본문을 싣지 않는다** — 둘 다 저장소·경로·사람 이름을
+ * 실어 나를 수 있다. 무엇을 물었는지는 같은 correlation ID의 검색 감사 기록이 답한다.
+ */
+export type SearchDiagnostic = {
+  readonly level: 'warn' | 'error';
+  readonly message: string;
+  readonly event: 'search.relaxation_incomplete';
+  readonly stage: RelaxationFailure['stage'];
+  readonly reason: string;
+  readonly counted: number;
+  readonly failed: number;
+  readonly correlation_id: string | null;
+};
 
 export interface SearchRequest {
   readonly ast: QueryAst;
@@ -331,6 +362,11 @@ export interface SearchRequest {
    * client와 canonical 사용자를 넣는다.
    */
   readonly cursorBinding?: string;
+  /**
+   * 요청의 correlation ID (CR-128). **진단 로그에만 쓴다** — 지문의 재료가 아니며 응답에는
+   * 라우트가 따로 싣는다.
+   */
+  readonly correlationId?: string;
 }
 
 /**
@@ -359,7 +395,11 @@ export interface SearchRequest {
  * @throws {CursorQueryMismatchError} 커서가 현재 조건과 다르면.
  */
 export async function runSearch(request: SearchRequest, deps: SearchDeps): Promise<SearchResult> {
-  const base = deps.target ?? SEARCH_TARGET;
+  /*
+   * 요청 경로가 허용한 원래 대상. 본 조회는 여기서 `kind:`로 좁히고, 완화 후보는 후보마다
+   * 여기서 다시 좁힌다 (CR-128) — 좁힌 대상을 후보에 넘기지 않는다.
+   */
+  const baseTarget = toAliases(deps.target ?? SEARCH_TARGET);
   /*
    * `kind:` 필터는 절이 아니라 **검색 대상**이 된다 (CR-053, DEV-383).
    *
@@ -367,19 +407,25 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
    * 같은 질의다. 조회하지 않고 빈 결과를 낸다. **빈 인덱스 목록을 넘기면
    * Elasticsearch가 전체를 검색하므로** 그 길을 타입이 막는다.
    */
-  const { target, ast } = resolveSearchTarget(request.ast, toAliases(base));
+  const { target, ast } = resolveSearchTarget(request.ast, baseTarget);
   const now = (deps.now ?? Date.now)();
 
   if (target === null) {
     /*
      * 남은 유형이 없다. Elasticsearch를 부르지 않고 빈 결과를 낸다 — 인덱스를
      * 좁히다 아무것도 남지 않은 것은 **오류가 아니라 결과가 없다는 사실**이다.
+     *
+     * **완화 후보는 센다** (CR-128, FR-SRCH-006 AC-3). 모순된 `kind:` 하나를 빼면 결과가
+     * 생길 수 있다. 전에는 계산하지 않은 `[]`를 내 「뺄 조건이 없다」로 읽혔다.
      */
+    const relaxation = await relaxationOf(request, deps, baseTarget, () =>
+      deps.resolveNames(collectNames(request.ast)),
+    );
     return {
       total: { value: 0, relation: 'eq' },
       sort: { field: request.sortKey, order: request.order },
       items: [],
-      relaxation: NO_RELAXATION,
+      relaxation,
       unresolved: [],
       nextCursor: null,
       facets: null,
@@ -503,17 +549,7 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
 
   // 0건일 때만 완화 후보를 센다 (FR-SRCH-006 AC-3).
   const relaxation =
-    value === 0
-      ? await computeRelaxationHints(request.ast, {
-          es: deps.es,
-          target,
-          scope: request.scope,
-          resolution,
-          sequenceEpoch: request.sequenceEpoch,
-          mergeNumberEpoch: request.mergeNumberEpoch,
-          mergeNumberBaseBranch: request.mergeNumberBaseBranch,
-        })
-      : NO_RELAXATION;
+    value === 0 ? await relaxationOf(request, deps, baseTarget, () => Promise.resolve(resolution)) : NO_RELAXATION;
 
   return {
     total: { value, relation },
@@ -524,4 +560,65 @@ export async function runSearch(request: SearchRequest, deps: SearchDeps): Promi
     nextCursor,
     facets,
   };
+}
+
+function errorName(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
+/**
+ * 0건 검색의 완화 후보 (FR-SRCH-006 AC-3, CR-128).
+ *
+ * **넘기는 것은 원본 AST와 원래 대상이다.** 후보마다 `kind:`를 원래 대상에서 다시 해석하는
+ * 것은 `computeRelaxationHints`가 한다 — 본 조회가 걷어 낸 AST나 좁힌 대상을 넘기면 유형
+ * 조건을 빼는 후보를 잃거나 잘못 센다(DEV-783).
+ *
+ * **이 단계의 실패는 본 조회를 실패로 바꾸지 않는다.** 목록(0건)은 이미 확정됐다. 세지 못한
+ * 후보가 있으면 `incomplete`로 답하고 진단 로그를 남긴다 — 후보 조립의 결함도 여기서 멈춘다.
+ * **접근 범위 확인 실패만은 그대로 올린다**: 인가 실패를 200으로 바꾸지 않는다(본 조회와 같은
+ * 범위를 쓰므로 목록을 만든 뒤에는 나지 않는다 — `kind:`가 모순되어 본 조회를 건너뛴 0건에서만
+ * 여기서 처음 드러난다).
+ */
+async function relaxationOf(
+  request: SearchRequest,
+  deps: SearchDeps,
+  baseTarget: readonly EntityAlias[],
+  resolve: () => Promise<NameResolution>,
+): Promise<RelaxationResult> {
+  let result: RelaxationResult;
+  try {
+    result = await computeRelaxationHints(request.ast, {
+      es: deps.es,
+      baseTarget,
+      scope: request.scope,
+      resolution: await resolve(),
+      sequenceEpoch: request.sequenceEpoch,
+      mergeNumberEpoch: request.mergeNumberEpoch,
+      mergeNumberBaseBranch: request.mergeNumberBaseBranch,
+    });
+  } catch (error) {
+    if (error instanceof AccessScopeUnavailableError) throw error;
+    const considered = Math.min(request.ast.filters.length, MAX_RELAXATION_HINTS);
+    result = {
+      hints: [],
+      truncated: request.ast.filters.length > MAX_RELAXATION_HINTS,
+      incomplete: true,
+      failure: { stage: 'compute', reason: errorName(error), counted: 0, failed: considered },
+    };
+  }
+
+  if (result.failure !== undefined) {
+    deps.log?.({
+      // 조립 단계의 실패는 규칙의 결함이다. 통신·시간 초과·갈래 실패는 운영 상태다.
+      level: result.failure.stage === 'compute' ? 'error' : 'warn',
+      message: '0건 검색의 완화 후보를 다 세지 못했다 — 응답은 relaxation_hints_incomplete로 알린다 (CR-128)',
+      event: 'search.relaxation_incomplete',
+      stage: result.failure.stage,
+      reason: result.failure.reason,
+      counted: result.failure.counted,
+      failed: result.failure.failed,
+      correlation_id: request.correlationId ?? null,
+    });
+  }
+  return result;
 }
