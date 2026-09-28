@@ -1,6 +1,6 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.125 | 갱신일: 2026-09-28
+> 상태: review | 버전: v6.126 | 갱신일: 2026-09-28
 
 ## 0.1.0-pilot.20 발행 — CR-124~CR-127 누적 (2026-09-28)
 
@@ -33,7 +33,9 @@ pilot.19에서 올라오는 경로는 따로 돌리지 않았다 — 두 판 사
 - 별도 채널 전달 SHA-256: `6fdc2e783f8b6beafe8e433ae678fd4df2b4fd527ed7b988835ebd8d9829789c`
 - 발행 전 초안 자산 대조(로그 `[11:37:59] 초안 자산 대조 (발행 전)`)와 발행 확인(`[11:38:00] 발행 확인`)을 통과했고, immutable releases가 켜져 있어 발행 뒤 자산과 태그가 잠긴다. 발행 뒤에는 `gh api releases/tags`(draft=false·immutable=true·target_commitish `73be84f`), 자산 API의 digest와 로컬 `sha256sum`, 태그(→ `73be84f`), manifest(`upstream.commit` `73be84f`, `contains_secrets: false`)로 독립적으로 재대조했다. 사내 취득 명령과 같은 `gh release download`로 받은 파일(2분 21초)도 크기·SHA-256이 같고, 그 사본의 `prsctl verify`는 10개 파일이 일치하며, 번들 안 RUNBOOK은 main의 RUNBOOK과 바이트 단위로 같다. 소스 계보 번들(`bundle_sha256` `06536182…8c07`)은 `git bundle verify`로 완전한 이력(ref `73be84f`)임을 확인했다. tar 재적재 뒤 이미지 런타임 검사 ✓ 20건을 통과했다.
 - 문서 정합성: CR-124~CR-127은 각 병합 기록(PR #246·#248 등)으로 이미 closed·done 처리돼 있어, 이번 갱신에서 change_control.md·work_packages.md는 손대지 않았다(pilot.14·16·18·19 선례와 같은 이유). RUNBOOK도 발행 번들과 같게 두려고 바꾸지 않았다.
-- 사내 실제 GHE 데이터 적용과 재반입 검증은 NOT RUN이다. pilot.18에서 올라올 때는 RUNBOOK 7.J(스택 가져오기 → prs-commits 재색인 → prs-links 재색인 → `links` 확인)와 7.K(두 역할의 주소, 기존 자료의 URL 참조는 7.J 4번의 재색인이 겸한다)를 따르고, 업그레이드 전에 사용자에게 화면 시각의 9시간 차이(KST 표시)와 옛 날짜 조건이 UTC로 남는다는 것을 알린다(RUNBOOK 8장 첫 세 행). 사내 적용 뒤 문제가 생기면 사용자가 `agent-context/upstream-feedback.md`로 보고한다.
+- 사내 실제 GHE 데이터 적용과 재반입 검증은 발행 시점에 NOT RUN이었다(적용은 아래 「사내 적용」). pilot.18에서 올라올 때는 RUNBOOK 7.J(스택 가져오기 → prs-commits 재색인 → prs-links 재색인 → `links` 확인)와 7.K(두 역할의 주소, 기존 자료의 URL 참조는 7.J 4번의 재색인이 겸한다)를 따르고, 업그레이드 전에 사용자에게 화면 시각의 9시간 차이(KST 표시)와 옛 날짜 조건이 UTC로 남는다는 것을 알린다(RUNBOOK 8장 첫 세 행). 사내 적용 뒤 문제가 생기면 사용자가 `agent-context/upstream-feedback.md`로 보고한다.
+
+**사내 적용 (2026-09-28, 사용자 보고).** 사용자가 같은 날 「사내 릴리즈 20 업그레이드 완료했다. 모두 정상이다」라고 알렸다. 사내가 따른 절차서는 `docs/40_delivery/pr-search-pilot20-import-procedure.md`다 — RUNBOOK 3장·7.G~7.K·8장을 실행 순서로 이은 안내서로, 에이전트가 `artifacts/`에 쓰고 사용자가 옮겨 커밋했다(`3ec96bf`, 그 커밋의 main CI run 36378914382 success). 판별은 `./prsctl lineage`(번들 manifest만 출력)가 아니라 컨테이너 이미지 태그와 `schema_migration`의 `max(version)`으로 하고, 본문은 pilot.18 → pilot.20(7.J), 부록은 pilot.19와 pilot.16·사내 pilot.17(리허설 없음)이다. 올라오기 전 판, 7.J 단계별 출력(스택 가져오기·두 재색인·`links plan`), 재색인 소요 시간, 사내 배포 SHA(공식 번들이면 `73be84f`)는 받지 않았다. 그래서 이 적용은 **사용자 보고로 기록하며 `VERIFIED (internal)`로 올리지 않는다.** 사내 규모의 재색인 소요 시간은 여전히 NOT MEASURED다. 다음 배포본의 격리 업그레이드 리허설은 이 판(7.J를 마친 pilot.20 상태)에서 시작한다.
 
 ## CR-127 / WP-108 — 한국 시간 표시와 KST 달력 날짜 검색 (2026-09-28, main `2272f56` 병합)
 
