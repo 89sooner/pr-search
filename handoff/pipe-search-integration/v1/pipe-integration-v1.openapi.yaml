@@ -2045,11 +2045,12 @@ components:
       description: >-
         정상 검색 결과. query·parsed·total·sort·items·next_cursor·correlation_id는 언제나 있다. 나머지는 조건부다 —
         sequence_context와 epoch_stale(false)은 seq: 공간이 바인딩됐을 때만 함께, relaxation_hints는 total.value가 0일
-        때만(여기에 필터가 8개를 넘으면 relaxation_hints_truncated: true), unresolved_names는 레지스트리에서 못 찾은
-        이름이 있을 때만, facets·facets_omitted·facets_status는 facets=true를 요청했을 때만 셋이 함께 나타난다. 단
-        kind: 필터가 서로 상쇄되어 검색 대상이 없어지면 ES를 부르지 않으므로 facets=true여도 세 키가 빠지고
-        relaxation_hints는 [] 이다.
-        (근거: apps/search-api/src/search/routes.ts:524-549, apps/search-api/src/search/service.ts:365-379,
+        때만(여기에 필터가 8개를 넘으면 relaxation_hints_truncated: true, 세지 못한 후보가 있으면
+        relaxation_hints_incomplete: true), unresolved_names는 레지스트리에서 못 찾은 이름이 있을 때만,
+        facets·facets_omitted·facets_status는 facets=true를 요청했을 때만 셋이 함께 나타난다. 단 kind: 필터가 서로
+        상쇄되어 검색 대상이 없어지면 본 조회를 하지 않으므로 facets=true여도 세 키가 빠진다 — relaxation_hints는
+        그래도 센다(CR-128, 전에는 계산하지 않은 []).
+        (근거: apps/search-api/src/search/routes.ts:555-586, apps/search-api/src/search/service.ts:397-433,
         apps/search-api/src/search/facets.ts:260-267)
       required: [query, parsed, total, sort, items, next_cursor, correlation_id]
       additionalProperties: false
@@ -2057,7 +2058,7 @@ components:
         query:
           type: string
           description: >-
-            요청 q 원문(다듬지 않는다). q가 문자열이 아니었으면 ''. (근거: apps/search-api/src/search/routes.ts:400)
+            요청 q 원문(다듬지 않는다). q가 문자열이 아니었으면 ''. (근거: apps/search-api/src/search/routes.ts:426, apps/search-api/src/search/routes.ts:556)
         parsed:
           $ref: '#/components/schemas/QueryAst'
         sequence_context:
@@ -2074,8 +2075,8 @@ components:
           type: array
           maxItems: 200
           description: >-
-            한 페이지(size개, 최대 200). PR과 커밋이 한 목록에 섞인다. (근거: apps/search-api/src/search/service.ts:51,
-            apps/search-api/src/search/service.ts:453-462)
+            한 페이지(size개, 최대 200). PR과 커밋이 한 목록에 섞인다. (근거: apps/search-api/src/search/service.ts:58,
+            apps/search-api/src/search/service.ts:509-512)
           items:
             $ref: '#/components/schemas/SearchItem'
         relaxation_hints:
@@ -2083,20 +2084,32 @@ components:
           maxItems: 8
           description: >-
             total.value가 0일 때만 있다(0건이 아니면 키가 없다). 필터가 2개 미만이거나 뺄 수 있는 후보가 없으면 빈 배열이다.
-            would_yield 내림차순. (근거: apps/search-api/src/search/routes.ts:536-541, apps/search-api/src/search/relaxation.ts:91-155)
+            would_yield 내림차순. 후보마다 kind:를 원래 대상(PR·커밋)에서 다시 적용하고 강제 접근 범위를 결합해 센다 —
+            kind:를 빼는 후보는 다른 유형의 문서도 센다(CR-128). would_yield는 언제나 정확한 건수다. 빈 배열이어도
+            relaxation_hints_incomplete가 있으면 「뺄 필터가 없다」가 아니다.
+            (근거: apps/search-api/src/search/routes.ts:567-578, apps/search-api/src/search/relaxation.ts:195-307)
           items:
             $ref: '#/components/schemas/RelaxationHint'
         relaxation_hints_truncated:
           const: true
           description: >-
             relaxation_hints가 있고 질의 필터가 8개를 넘어 후보를 앞 8개만 셌을 때만 true로 나타난다. false로는 나오지 않는다.
-            (근거: apps/search-api/src/search/routes.ts:539, apps/search-api/src/search/relaxation.ts:93)
+            (근거: apps/search-api/src/search/routes.ts:570, apps/search-api/src/search/relaxation.ts:201)
+        relaxation_hints_incomplete:
+          const: true
+          description: >-
+            relaxation_hints가 있고 세지 못한 후보가 하나라도 있을 때만 true로 나타난다(CR-128). false로는 나오지 않는다.
+            세지 못함은 msearch 실패·왕복 상한 초과, 갈래의 오류·샤드 실패·시간 초과, 후보 조립 실패, 모순된 kind:의 0건에서
+            후보를 위해 처음 부르는 이름 해석(org:·team: 레지스트리)의 실패다. 그 후보의 건수는
+            싣지 않는다 — relaxation_hints의 건수는 정확하지만 빠진 후보가 있을 수 있고, 목록이 비었으면 「추천을 계산하지
+            못했다」이다. 추천 계산의 실패는 본 조회의 200을 바꾸지 않는다.
+            (근거: apps/search-api/src/search/routes.ts:571-576, apps/search-api/src/search/service.ts:569-648)
         unresolved_names:
           type: array
           minItems: 1
           description: >-
             레지스트리에서 찾지 못한 org·team·author_team 이름. 비어 있으면 키가 없다.
-            (근거: apps/search-api/src/search/routes.ts:543)
+            (근거: apps/search-api/src/search/routes.ts:580)
           items:
             $ref: '#/components/schemas/UnresolvedName'
         facets:
@@ -2112,13 +2125,14 @@ components:
           type: [string, 'null']
           description: >-
             마지막 페이지에서 null(키는 언제나 있다). size+1건을 읽어 다음 페이지 유무를 판정한다.
-            (근거: apps/search-api/src/search/routes.ts:547, apps/search-api/src/search/service.ts:454-474)
+            (근거: apps/search-api/src/search/routes.ts:584, apps/search-api/src/search/service.ts:526-532)
         correlation_id:
           $ref: '#/components/schemas/CorrelationId'
       dependentRequired:
         sequence_context: [epoch_stale]
         epoch_stale: [sequence_context]
         relaxation_hints_truncated: [relaxation_hints]
+        relaxation_hints_incomplete: [relaxation_hints]
         facets: [facets_omitted, facets_status]
         facets_omitted: [facets, facets_status]
         facets_status: [facets, facets_omitted]
@@ -2136,6 +2150,7 @@ components:
           anyOf:
             - required: [relaxation_hints]
             - required: [relaxation_hints_truncated]
+            - required: [relaxation_hints_incomplete]
 
     SearchEpochStaleResponse:
       type: object

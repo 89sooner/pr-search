@@ -1615,6 +1615,23 @@ describe('경로가 실재하는지', () => {
     expect(read('apps/search-api/src/ops/repositories.ts')).toContain('await syncRepositoryTeams(');
   });
 
+  /*
+   * **0건 검색의 추천 실패가 운영 로그에 남는다** (CR-128, DEV-785).
+   *
+   * 진단 로그는 `index.ts`의 검색 의존 객체 하나에서 공개 경로와 PIPE 연동으로 퍼진다(`runtime.ts`가 그 객체를
+   * 펼쳐 `search`를 만들고, PIPE는 그 `search`로 실행을 만든다). 그 한 줄이 빠지면 응답은 같고 로그만 조용히
+   * 사라진다 — 어떤 기능 시험도 그것을 보지 못한다.
+   */
+  it('검색 의존 객체가 진단 로그를 갖고, 그 객체가 두 경로로 간다 (CR-128)', () => {
+    const start = API_INDEX.indexOf('const searchDeps = {');
+    expect(start).toBeGreaterThan(0);
+    const searchDeps = API_INDEX.slice(start, API_INDEX.indexOf('\n};', start));
+    expect(searchDeps).toContain('log: (entry: SearchDiagnostic)');
+    expect(API_INDEX).toContain('{ auth, searchDeps }');
+    expect(API_RUNTIME).toMatch(/search: \{\s*\.\.\.parts\.searchDeps,/);
+    expect(read('apps/search-api/src/integrations/pipe/runtime.ts')).toContain('search: searchExecution({ ...search, loginPath, mergeNumberEnabled }),');
+  });
+
   it('팀 변경이 색인에 소급 적용된다 (DEV-187)', () => {
     expect(WORKER_INDEX).toContain('refreshRepositoryTeams:');
     expect(WORKER_INDEX).toContain('applyRepositoryTeams(');

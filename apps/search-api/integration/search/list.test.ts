@@ -54,6 +54,7 @@ interface SearchBody {
   readonly next_cursor: string | null;
   readonly relaxation_hints?: { remove: string; would_yield: number }[];
   readonly relaxation_hints_truncated?: boolean;
+  readonly relaxation_hints_incomplete?: boolean;
   readonly unresolved_names?: { key: string; value: string }[];
   readonly parsed: unknown;
   readonly correlation_id: string;
@@ -456,6 +457,29 @@ describe('DoD 3: 0건일 때 완화 후보 (AC-3)', () => {
     expect(body.total.value).toBe(0);
     expect(body.items).toEqual([]);
     expect(body.relaxation_hints).toEqual([{ remove: 'author:nobody', would_yield: 3 }]);
+  });
+
+  it('**`kind:`와 다른 필터를 함께 쓴 0건도 200과 후보다** (CR-128, DEV-783)', async () => {
+    // 전에는 후보를 만들다 `KindFilterNotAppliedError`로 500이었다. 운영 기본 화면은 모든 검색에 `kind:`를 붙인다.
+    const { status, body } = await get('q=kind%3Apull_request+author%3Anobody');
+
+    expect(status).toBe(200);
+    expect(body.total.value).toBe(0);
+    expect(body.items).toEqual([]);
+    expect(body.next_cursor).toBeNull();
+    // 범위 안의 PR 넷 (`pr-hidden`은 범위 밖).
+    expect(body.relaxation_hints).toEqual([{ remove: 'author:nobody', would_yield: 4 }]);
+    expect(body.relaxation_hints_incomplete).toBeUndefined();
+  });
+
+  it('`kind:`를 빼는 후보는 다른 유형의 문서까지 센다 (CR-128)', async () => {
+    const { body } = await get('q=kind%3Acommit+author%3Alee');
+    expect(body.relaxation_hints).toEqual([
+      // lee의 PR 둘 — 커밋으로 좁힌 대상에서 셌다면 0이라 빠졌을 후보다
+      { remove: 'kind:commit', would_yield: 2 },
+      // 범위 안의 커밋 하나
+      { remove: 'author:lee', would_yield: 1 },
+    ]);
   });
 
   it('많이 나오는 후보가 먼저 온다', async () => {

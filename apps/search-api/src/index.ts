@@ -16,6 +16,7 @@ import { authRepo, repositoryRepo } from '@prs/db';
 import { resolveSearchApiConfig } from './config.js';
 import { createAuthContext, createAuthMetrics, type AuthContext, type AuthRedis } from './auth/context.js';
 import { SEARCH_TIMEOUT_MS } from './search/routes.js';
+import type { SearchDiagnostic } from './search/service.js';
 import { createGheLookup } from './ops/ghe-lookup.js';
 import type { RegistryDeps } from './ops/repositories.js';
 import { buildServer, SERVICE_NAME } from './server.js';
@@ -165,6 +166,13 @@ const searchDeps = {
     teamIds: await authRepo.resolveTeamIds(pool, names.teams),
   }),
   timeoutMs: SEARCH_TIMEOUT_MS,
+  /*
+   * 검색의 진단 로그 (CR-128). 공개 경로와 PIPE 연동이 **이 객체 하나**에서 받는다 —
+   * 0건 검색의 완화 후보를 다 세지 못한 요청을 단계·오류 이름·correlation ID로 남긴다.
+   */
+  log: (entry: SearchDiagnostic) => {
+    log({ ...entry });
+  },
 };
 
 /*

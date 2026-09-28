@@ -8,10 +8,10 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import type { Client } from '@elastic/elasticsearch';
-import { PartialSearchError } from '@prs/es';
+import { errors, type Client } from '@elastic/elasticsearch';
+import { AccessScopeUnavailableError, PartialSearchError } from '@prs/es';
 import { parseQuery } from '@prs/query';
-import { DEFAULT_SIZE, MAX_SIZE, clampSize, parseOrder, runSearch } from './service.js';
+import { DEFAULT_SIZE, MAX_SIZE, clampSize, parseOrder, runSearch, type SearchDiagnostic } from './service.js';
 import { createCursorSigner } from '../cursor/envelope.js';
 
 const SCOPE = {
@@ -197,5 +197,122 @@ describe('PIT을 응답이 준 값으로 잇는다 (PR #57 리뷰 P1)', () => {
 
     expect(result.nextCursor).toBeNull();
     expect(closed).toEqual([ROTATED]);
+  });
+});
+
+/*
+ * 추천 단계의 격리 (CR-128 / FR-SRCH-006 예외/실패 처리, DEV-785).
+ *
+ * 건수·후보의 정답은 통합 시험(`integration/search/relaxation-kind.test.ts`)이 실제 ES로 본다. 여기서
+ * 거는 것은 **호출 자리**다 — 추천이 실패해도 결과(0건)를 버리지 않는가, 인가 실패는 그대로 올리는가,
+ * 진단 로그에 요청의 correlation ID가 실리는가.
+ */
+describe('0건 검색의 완화 후보 — 추천 단계의 실패를 격리한다 (CR-128)', () => {
+  function withLog(): { log: (entry: SearchDiagnostic) => void; entries: SearchDiagnostic[] } {
+    const entries: SearchDiagnostic[] = [];
+    return { log: (entry) => entries.push(entry), entries };
+  }
+
+  it('msearch가 실패해도 0건 결과를 그대로 주고, 세지 못했다고 밝힌다', async () => {
+    const { client } = clientWith(0);
+    (client as unknown as { msearch: ReturnType<typeof vi.fn> }).msearch.mockRejectedValue(
+      new errors.ConnectionError('down'),
+    );
+    const { log, entries } = withLog();
+
+    const result = await runSearch(
+      { ...request('kind:pull_request author:kim'), correlationId: 'corr-msearch' },
+      { es: client, ...DEPS, log },
+    );
+
+    expect(result.total).toEqual({ value: 0, relation: 'eq' });
+    expect(result.relaxation).toMatchObject({ hints: [], incomplete: true });
+    expect(entries).toEqual([
+      expect.objectContaining({
+        level: 'warn',
+        event: 'search.relaxation_incomplete',
+        stage: 'msearch',
+        reason: 'ConnectionError',
+        correlation_id: 'corr-msearch',
+      }),
+    ]);
+  });
+
+  it('**모순된 `kind:`의 이름 해석이 실패해도 0건을 주고, 의존 장애는 `resolve`·warn으로 남긴다** (CR-128 독립 리뷰)', async () => {
+    const { client, search } = clientWith(0);
+    const { log, entries } = withLog();
+
+    const result = await runSearch(
+      { ...request('kind:pull_request -kind:pull_request org:acme'), correlationId: 'corr-resolve' },
+      {
+        es: client,
+        ...DEPS,
+        resolveNames: () => Promise.reject(new Error('registry down')),
+        log,
+      },
+    );
+
+    // 본 조회는 하지 않는다 — 대상이 없다. 이름 해석은 후보 계산만을 위해 여기서 처음 불린다.
+    expect(search).not.toHaveBeenCalled();
+    expect(result.total).toEqual({ value: 0, relation: 'eq' });
+    expect(result.relaxation).toMatchObject({ hints: [], incomplete: true });
+    // 레지스트리의 일시 장애는 조립 규칙의 결함(`compute`·error)이 아니다 — 오경보를 만들지 않는다.
+    expect(entries).toEqual([
+      expect.objectContaining({ level: 'warn', stage: 'resolve', reason: 'Error', correlation_id: 'corr-resolve' }),
+    ]);
+  });
+
+  it('**후보 조립의 결함은 `compute`·error로 남긴다** — 격리하되 결함으로 보이게 한다', async () => {
+    const { client, search } = clientWith(0);
+    const { log, entries } = withLog();
+
+    // `seq:`가 남은 후보에 에폭이 없다 — 라우트가 에폭을 확정하지 않은 조립 결함을 흉내 낸다.
+    const result = await runSearch(
+      { ...request('kind:pull_request -kind:pull_request repo:acme/a base:main seq:1..2 author:kim'), correlationId: 'corr-compute' },
+      { es: client, ...DEPS, log },
+    );
+
+    expect(search).not.toHaveBeenCalled();
+    expect(result.relaxation).toMatchObject({ hints: [], incomplete: true });
+    expect(entries).toEqual([
+      expect.objectContaining({
+        level: 'error',
+        stage: 'compute',
+        reason: 'SequenceEpochRequiredError',
+        correlation_id: 'corr-compute',
+      }),
+    ]);
+  });
+
+  it('**접근 범위 확인 실패는 격리하지 않는다** — 인가 실패를 200으로 바꾸지 않는다', async () => {
+    const { client } = clientWith(0);
+
+    await expect(
+      runSearch(
+        {
+          ...request('kind:pull_request -kind:pull_request author:kim'),
+          scope: { kind: 'explicit', repositoryIds: [] },
+        },
+        { es: client, ...DEPS },
+      ),
+    ).rejects.toThrow(AccessScopeUnavailableError);
+  });
+
+  it('다 세면 로그를 남기지 않는다', async () => {
+    const { client } = clientWith(0);
+    (client as unknown as { msearch: ReturnType<typeof vi.fn> }).msearch.mockResolvedValue({
+      responses: [0, 0].map(() => ({
+        took: 1,
+        timed_out: false,
+        _shards: { total: 1, successful: 1, skipped: 0, failed: 0 },
+        hits: { total: { value: 0, relation: 'eq' }, hits: [] },
+      })),
+    });
+    const { log, entries } = withLog();
+
+    const result = await runSearch(request('kind:pull_request author:kim'), { es: client, ...DEPS, log });
+
+    expect(result.relaxation).toEqual({ hints: [], truncated: false, incomplete: false });
+    expect(entries).toEqual([]);
   });
 });

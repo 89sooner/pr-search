@@ -1,6 +1,10 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.126 | 갱신일: 2026-09-28
+> 상태: review | 버전: v6.127 | 갱신일: 2026-09-28
+
+## CR-128 / WP-109 — 0건 검색의 완화 후보와 `kind:` 재해석 (2026-09-28, 병합 전)
+
+22차 사용자 지시(2026-09-28, DEV-783~788). 사내 `0.1.0-pilot.20`에서 `kind:`와 다른 필터를 함께 쓴 검색이 500/503으로 실패한다는 보고를 격리 환경에서 재현했다. 실패는 모두 **본 조회가 0건을 센 뒤** 완화 후보를 만들다 났다 — 후보를 `kind:`를 걷어 내지 않은 원래 AST와 좁힌 대상으로 만들어 `buildQuery`의 가드가 던졌다(DEV-783). `path:`·저장소 이름과 무관하고, 운영 기본 화면은 모든 검색에 `kind:`를 붙이므로 그 화면의 0건 검색이 전부 실패했다. 후보마다 `kind:`를 요청 경로의 원래 대상에서 다시 해석해 세고, 모순된 `kind:`의 0건도 후보를 세며, 추천 계산의 실패는 본 조회의 200을 바꾸지 않고 `relaxation_hints_incomplete`와 진단 로그로 밝힌다(DEV-785). 레거시 화면은 후보 건수(`would_yield`)를 읽는다(DEV-784). 기록은 6.119장.
 
 ## 0.1.0-pilot.20 발행 — CR-124~CR-127 누적 (2026-09-28)
 
@@ -351,6 +355,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| WP-109 | 0건 검색의 완화 후보와 `kind:` 재해석 | 구현 결함 수정 + 요구사항 보완 (CR-128) | in_progress | 에이전트 | 브랜치 `fix/search-kind-relaxation`(구현·검증 완료, 병합 대기) | 6.119장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-108 | 한국 시간 표시와 KST 달력 날짜 검색 | 요구사항 변경 (CR-127) | done | 에이전트 | main `2272f56`(PR #247 squash 병합, 2026-09-28; head `de4007c`) | 6.118장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-107 | 업그레이드 직후 옛 스택 관계의 전환기 보완 | 구현 결함 수정 (CR-126) | done | 에이전트 | main `7684bd3`(PR #245 squash 병합, 2026-09-27; head `73398ff`) | 6.117장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-106 | 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 | 구현 결함 수정 (CR-125) | done | 에이전트 | main `3dd6d8c`(PR #244 squash 병합, 2026-09-27; head `02cdc5c`) | 6.116장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
@@ -460,6 +465,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
+| FR-SRCH-006 AC-3 · 예외/실패 처리 (후보마다 `kind:`를 원래 대상에서 다시 해석, 남은 유형이 없는 후보는 0건, 모순된 `kind:`의 0건도 후보, `relaxation_hints_incomplete`, 추천 단계 격리와 진단 로그) | WP-109 | `apps/search-api/src/search/{relaxation,service,routes}.ts`, `packages/es/src/search.ts`(`multiSearch` 전송 옵션), `apps/search-api/src/{index,runtime}.ts`, `apps/web/components/SearchView.tsx`, PIPE 인계 OpenAPI `SearchResponse` | 단위 `search/{relaxation,service}.test.ts`·`packages/es/src/search.test.ts`, 통합 `search/relaxation-kind.test.ts`·`search/list.test.ts`·`integrations/pipe/{parity,openapi}.test.ts`, a11y `search.test.tsx` | 구현 — 병합 전 (CR-128, 6.119장) |
 | NFR-007 「시각 표시 기준」 · SRS 11장 12번 (표시 `Asia/Seoul`, 원본·API·커서 UTC, 원본 UTC 툴팁, 읽지 못한 값 `Unknown`) | WP-108 | `apps/web/lib/format.ts`, `apps/web/components/TimeText.tsx`, 표시 자리 전부(6.118장 목록), `packages/query/src/calendar.ts`(`zonedParts`) | `apps/web/lib/format.test.ts`(TZ 셋), a11y, E2E | **완료 — main `2272f56` (CR-127, 6.118장)** |
 | FR-SRCH-005 AC-11 · FR-SRCH-006 AC-1 (달력 날짜 범위 `@<시간대>`, `gte`/`lt` UTC 구간, 옛 날짜 조건 보존, 작업 공간 `tz`, 칩 `KST`/`UTC`) | WP-108 | `packages/query/src/{calendar,parse,ast,serialize}.ts`, `packages/es/src/query-builder.ts`, `apps/web/lib/{repository-search,tokens}.ts`, `apps/web/components/{RepositoryWorkspace,LegacyRepositoryWorkspace}.tsx`, `apps/web/components/reader/primitives.tsx` | 단위, 통합 `search/kst-calendar-range.test.ts`, E2E | **완료 — main `2272f56` (CR-127, 6.118장)** |
 | FR-STAT-002 AC-7 (날짜 기간 = 요청 시간대 달력 날짜, 기본 30일, 시간대 검증, 버킷 드릴다운) | WP-108 | `apps/search-api/src/analytics/{routes,aggregations}.ts`, `apps/web/lib/analytics.ts`, `apps/web/components/{AnalyticsView,TimeSeriesChart}.tsx` | 통합 `search/kst-calendar-range.test.ts`, `apps/web/lib/analytics.test.ts` | **완료 — main `2272f56` (CR-127, 6.118장)** |
@@ -619,6 +625,12 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | DEV-780 | 2026-09-27 | **화면의 시각이 문서가 정한 표시 시간대와 달랐고, 화면마다도 달랐다.** 시스템 아키텍처는 「저장은 UTC, 표시는 요청 시간대(기본 `Asia/Seoul`)」, API 계약 공통 원칙 8은 「표시 시간대 변환은 클라이언트 책임」이라 적었는데 `apps/web/lib/format.ts`는 UTC로 고정했다(`YYYY-MM-DD HH:mm UTC`). 그것을 우회한 자리는 브라우저 시간대를 탔다 — Commit history의 날짜는 `toLocaleDateString`, 저장된 검색·안전 구간 표식·gh 레지스트리는 `toLocaleString`. 원본 ISO를 그대로 보인 자리(커밋 상세 Authored at, 연결 PR의 머지 시각, 통계 버킷 이름)도 있었다. 같은 순간 `2026-09-26T15:00:00Z`가 결과 표에서 `2026-09-26 15:00 UTC`, Commit history에서 브라우저에 따라 `Sep 26`/`Sep 27`로 보였다 | NFR-007 / WP-015·WP-108 | 구현 결함 (기존) | CR-127 | **resolved (CR-127, main `2272f56`)** — 표시 시간대를 `lib/format.ts`의 `DISPLAY_TIME_ZONE = 'Asia/Seoul'` 하나로 정하고 시각을 그리는 자리를 모두 공통 함수(`formatTimestamp`·`formatDate`·`TimeText`)로 옮겼다. 원본 UTC는 툴팁이다. 브라우저 시간대 UTC·Asia/Seoul·America/Los_Angeles에서 같은 표시를 E2E와 격리 compose로 확인했다 (6.118장) |
 | DEV-781 | 2026-09-27 | **통계 시계열의 모집단 기간과 드릴다운이 버킷과 다른 시간대였다.** 버킷은 요청 시간대(기본 Asia/Seoul)로 나누면서 날짜만 적은 기간은 `merged:${from}..${to}`(UTC 날짜)로 걸러, `from=2026-09-26&to=2026-09-28`이 KST 9/26 새벽의 PR을 잃고 요청하지 않은 9/29 버킷을 만들었다(`[1, 3, 2, 1]`, 정답 `[2, 3, 2]`). 기본 기간은 「지금부터 30일 전까지의 순간」이라 첫 버킷이 반쪽이었다. 드릴다운은 `nextStart - 1ms`와 UTC 달 더하기(`setUTCMonth`)로 끝을 만들어 KST 9월 버킷이 10/1 하루를 더하고 10월 버킷이 10/31을 잃었다. 시간대 이름을 검증하지 않아 모르는 이름이 400이 아니었다 | FR-STAT-002 AC-2·AC-6 / WP-037·WP-038·WP-108 | 구현 결함 (기존) | CR-127 | **resolved (CR-127, main `2272f56`)** — 날짜만 적은 기간을 요청 시간대의 달력 날짜로 걸러(`merged:<from>..<to>@<시간대>`) 버킷 경계와 같은 계산을 쓰고, 기본 기간을 그 시간대의 오늘을 포함한 30일로, 모르는 시간대를 400으로 했다. 일·주·월 버킷의 드릴다운은 그 버킷의 달력 날짜 범위(적용 기간과 겹친 만큼)다. 버킷 수와 같은 날짜의 검색 수가 같음을 실제 Elasticsearch로 확인했다. 문서 리뷰 뒤 시각형 기간의 오프셋 없는 시각도 판정·버킷 채움·드릴다운 판정이 모두 UTC다(`b0ba276`) (6.118장) |
 | DEV-782 | 2026-09-27 | **감사 기록 기간이 서버 프로세스의 기본 시간대에 기댔다.** `apps/search-api/src/audit/routes.ts`가 `new Date(raw)`로 `from`·`to`를 읽어, 화면(A-004)의 `datetime-local` 값처럼 오프셋 없는 값은 프로세스 시간대로 해석됐다 — 컨테이너(UTC)에서는 UTC였지만 같은 요청이 TZ=Asia/Seoul에서 9시간 앞의 기록을 냈다. 화면은 그 값을 한국 벽시계인지 UTC인지 말하지 않았다. 역전된 기간과 없는 날짜(`2025-02-29` → 3월 1일로 넘김)를 200으로 받았다 | FR-AUTH-004 / WP-039·WP-108 | 구현 결함 (기존) | CR-127 | **resolved (CR-127, main `2272f56`)** — 기간을 ISO-8601 날짜 또는 날짜와 시각으로만 받아 오프셋은 그대로, 오프셋 없는 값은 UTC로 읽고, 없는 날짜·시각과 역전된 기간을 400으로 거절한다. 화면은 KST 벽시계에 `+09:00`을 붙여 보낸다. 프로세스 시간대 셋에서 같은 기록을 확인했다 (6.118장) |
+| DEV-783 | 2026-09-28 | **`kind:`와 다른 필터를 함께 쓴 검색이 결과 0건일 때마다 500이었다 — 완화 후보를 `kind:`를 걷어 내지 않은 원래 AST로 만들었다.** `runSearch`는 본 조회에 `resolveSearchTarget`이 `kind:`를 걷어 낸 AST와 좁힌 대상을 쓰면서, 0건이면 `computeRelaxationHints`에 원래 `request.ast`와 **좁힌 대상**을 넘겼다. 후보는 필터 하나만 뺀 AST라 `kind:`가 남았고 `buildQuery`의 가드(`KindFilterNotAppliedError`, DEV-392)가 던졌다 — 공개 경로는 Fastify 기본 500(본문 `message`에 가드 문구), PIPE는 500 `INTERNAL_ERROR`(인계 문서의 오류 표대로 BFF가 503 `SEARCH_AUTH_UNAVAILABLE`로 옮긴다)였다. 운영 기본 화면(Repository workspace)은 모든 검색에 `kind:`와 `repo:`를 붙이므로(`lib/repository-search.ts`) 그 화면의 0건 검색이 전부 「Unable to load search results.」였다. 가드만 피했다면 둘째 결함이 드러났을 것이다 — 좁힌 대상으로 세면 `kind:`를 빼는 후보가 새로 들어오는 다른 유형을 세지 못한다. 모순된 `kind:`(`kind:pull_request -kind:pull_request …`)의 0건은 후보를 계산하지 않은 `[]`로 「뺄 조건이 없다」고 답했다. 사내 `0.1.0-pilot.20` 운영 보고(제공 표본 74건 중 3건)의 「path가 있으면 `resolveSearchTarget`이 kind를 제거하지 못한다」·「path 조합에만」·「일반 검색에는 영향 없음」은 재현과 다르다 — `resolveSearchTarget`은 올바르게 걷어 냈고, `path:`·저장소 이름과 무관하며, 공개 검색·PIPE·작업 공간이 같은 `executeSearch` → `runSearch`를 쓴다 | FR-SRCH-006 AC-3 / WP-013·WP-037·WP-109 | 구현 결함 (기존) | CR-128 | resolved (CR-128, 병합 전) — 후보마다 `resolveSearchTarget(후보, 요청 경로의 원래 대상)`으로 대상을 다시 정하고 걷어 낸 AST로 조립하며, 남은 유형이 없는 후보는 보내지 않는다. 모순된 `kind:`의 0건도 후보를 센다. 가드는 그대로다 (6.119장) |
+| DEV-784 | 2026-09-28 | **레거시 검색 화면이 완화 후보의 건수를 읽지 못했다.** API 계약(API-SRCH-004)과 서버는 후보를 `{remove, would_yield}`로 보내는데 `SearchView.tsx`는 WP-016부터 `total`을 읽어 「`author:x` removed:  items」처럼 건수가 비었다. 컴포넌트 시험(`a11y/search.test.tsx`)의 대역도 같은 `total`을 써서 화면과 대역이 함께 틀린 채 통과했다 | FR-SRCH-006 AC-3 / WP-016·WP-109 | 구현 결함 (기존) | CR-128 | resolved (CR-128, 병합 전) — 화면이 `would_yield`를 읽고, 대역을 계약의 모양으로 고쳤다 (6.119장) |
+| DEV-785 | 2026-09-28 | **완화 후보 계산의 실패가 격리되지 않았고, 세지 못한 후보가 「후보 없음」과 구분되지 않았다.** `computeRelaxationHints`는 msearch가 던지면(통신 오류·요청 거절) 그대로 올려 본 조회가 끝난 0건 검색 전체를 500으로 만들었다. 갈래 오류는 조용히 건너뛰었고, 샤드 실패·`timed_out` 갈래의 부분 건수는 정확한 건수처럼 실었다. 그래서 빈 목록이 「뺄 조건이 없다」인지 「계산하지 못했다」인지 응답이 말하지 못했다. 전송은 클라이언트 기본값(재시도 3회, 요청 30초)이었다 | FR-SRCH-006 AC-3·예외/실패 처리 / WP-013·WP-109 | 구현 결함 (기존) | CR-128 | resolved (CR-128, 병합 전) — 추천 단계의 실패는 `relaxation_hints_incomplete: true`와 진단 로그(단계·오류 이름·후보 수·correlation ID)로 답하고 본 조회의 200을 바꾸지 않는다. 세지 못한 갈래의 건수는 싣지 않는다. 갈래마다 1.5초, 왕복 3초, 재시도 0. 접근 범위 확인 실패는 격리하지 않는다 (6.119장) |
+| DEV-786 | 2026-09-28 | **공개 search-api의 처리되지 않은 오류는 Fastify 기본 500 본문이고, correlation ID도 서버 로그도 없다.** 공개 서버는 `Fastify({ logger: false })`에 오류 처리기를 두지 않아 처리되지 않은 예외가 `{"statusCode":500,"error":"Internal Server Error","message":<예외 문구>}`로 나간다 — API 계약의 오류 봉투(`error.code`·`correlation_id`)가 아니고, 내부 문구가 응답에 실리며, 로그에 아무것도 남지 않는다. DEV-783의 사내 보고가 가드 문구를 원인으로 읽은 본문이 이것이다. PIPE 연동 리스너는 오류 처리기가 있어 `INTERNAL_ERROR`와 오류 이름만 남긴 로그(correlation ID 포함)를 낸다 | API 계약 공통 오류 형식 / WP-013 | 관찰 (기존) | 없음(후속) | open — CR-128 범위 밖이다(재현에서 관찰만 했다). 공개 서버에 PIPE와 같은 오류 처리기(고정 문구·`correlation_id`·이름만 남기는 로그)를 두는 것은 후속 CR 후보다 |
+| DEV-787 | 2026-09-28 | **운영 기본 화면(Repository workspace)은 결과 0건에서 완화 후보를 그리지 않는다.** 상태 매트릭스 W-001 `empty_no_result`는 「제거하면 결과가 생기는 필터 목록」을 요구하는데, `/search`의 기본인 `RepositoryWorkspace`는 「No matching changes / Adjust your query or filters and search again.」만 보인다(목록은 레거시 `SearchView`만 그린다). 이 화면은 `kind:`·`repo:`를 스스로 붙이므로 서버의 후보에 사용자가 적지 않은 조건(「`kind:pull_request`를 빼면 커밋 N건」)이 섞인다 — 그대로 보이면 누를 수 없는 제안이 된다 | FR-SRCH-006 AC-3 / W-001 Repository workspace(CR-099·CR-111, WP-087·WP-096) | 범위 공백 | 없음(후속) | open — CR-128은 이 화면의 0건이 오류 없이 「No matching changes」로 나오는 데까지다. 후보를 화면 조작(경로·작성자·라벨·상태·범위)에 대응시키고 화면이 붙인 조건을 거르는 설계가 필요하다 |
+| DEV-788 | 2026-09-28 | **구간 조회(`/api/v1/sequence-ranges`, W-004)의 `q`에 `kind:`가 있으면 결과와 무관하게 500이다.** `runRange`가 `q`의 AST를 `resolveSearchTarget` 없이 `buildQuery`에 넘겨 같은 가드(`KindFilterNotAppliedError`)가 던진다. W-004 화면은 `kind:`를 스스로 붙이지 않으므로 사용자가 구간 질의 칸에 직접 적을 때만 난다. CR-128의 재현에서 함께 확인했다(`q=kind:commit`·`kind:pull_request author:kim` → 500, `author:kim` → 200) | FR-SEQ-002 / W-004 · WP-023 | 관찰 (기존) | 없음(후속) | open — CR-128 범위 밖이다. 구간이 `kind:`로 좁히는 것을 지원할지, CR-106이 `mnum:`·`pr_number:`에 한 것처럼 지원하지 않는 키로 400 거절할지는 제품 결정이다 |
 | DEV-753 | 2026-09-23 | **백필로 들어온 병합된 PR의 머지 커밋 문서가 만들어지지 않았다.** `documents.ts`의 `buildCommitDocuments`가 머지 커밋 역할을 `pr.merged === true`로만 판정하는데 백필의 목록 끝점(`GET /pulls`)은 그 필드를 주지 않고 `merged_at`만 준다. 그런데 관계 채택은 같은 PR에 `merge` 근거를 세우므로 **정본은 연결을 말하는데 그 문서가 없다** — 관계 투영기가 `document_missing`으로 재시도하다 보류된다. 독립 검토가 잡았다 | FR-SRCH-002 AC-6 · FR-ING-005 / WP-008 · WP-019 · WP-101 | 기존 결함 | CR-116 | resolved (2026-09-23) — `derivePullRequestState`(CR-101)로 통일했다. PR 문서의 `state`·관계 채택·재색인이 모두 같은 판정을 쓴다 (6.107장) |
 | DEV-719 | 2026-09-17 | SRS AC-3는 최종 PR 반환으로 한정하지만 실제 bisect는 PR 없는 직접 커밋도 반환·시험한다. 위 CR-102 분석 기록과 구현 계획 2장에 근거를 기록했다 | FR-SEQ-007 AC-3 / WP-042 | 문서 오류 | CR-102 | open — R0에서 커밋과 선택적 PR 연결로 요구사항 정정 후 cascade |
 | DEV-702 | 2026-09-16 | Conductor 전환에서 표의 48vh 높이 제한이 사라져 390px 화면의 첫 행 선택 후 미리보기가 25행 아래 뷰포트 밖에 남았다. 1440px에서는 재현되지 않았다 | FR-SRCH-008 · NFR-007 / WP-081 | 구현 결함 | CR-093 | resolved — `data-inspecting`의 48vh·overflow를 복원하고 390/1440 첫·끝 행 미리보기 가시성 회귀를 통과했다 |
@@ -9402,3 +9414,99 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **한계.** 사내 실데이터·실제 GHE·인증서·프록시는 NOT RUN이다. 감사 기록의 기간 입력은 브라우저 기본 `datetime-local`이라 그 달력이 강조하는 「오늘」은 브라우저 시간대다(보내는 값은 `+09:00`이라 요청은 같다). Regression 화면(합성 픽스처 데모)의 결과 날짜 필터도 기본 날짜 입력이다. W-004 범위 조사의 시각 앵커는 순간(ISO-8601)이며 이번 달력 규칙 밖이다 — 날짜만 적으면 UTC 자정이고, 한국 시각은 `+09:00`을 붙여 적는다. 시간 버킷 드릴다운은 옛 순간 범위다. 통계의 시각형 기간에 날짜만 적은 끝이 섞이면(API 직접 호출) 그 끝의 버킷 채움 구간은 옛 경로 그대로 Elasticsearch가 집계 시간대로 읽는다 — 모집단은 UTC 날짜다. 개인별 표시 시간대는 없다(`OD-018`). PIPE 포팅 인계(`handoff/pipe-search-port`)의 PD-004(UTC 고정)는 고치지 않았다 — PIPE 쪽이 판단한다.
 
 **병합.** PR #247(base `main`, 최종 head `de4007c`)의 CI(run 36365536926)는 verify·integration 모두 첫 시도에 success였다. 사용자 승인(2026-09-28, 이 세션에서 PR #247에 대해 받았다)으로 squash 병합했다 — main `2272f56`, 트리는 PR head와 같다(`d2ae7ce7…`). 병합 커밋의 main CI(run 36366292588)는 verify·integration 모두 첫 시도에 success다. 이 기록과 21차 인계(current-handoff·session-notes·todos·`_handoff` 묶음)는 21차 마감 기록 PR에 실었다.
+
+### 6.119 0건 검색의 완화 후보와 `kind:` 재해석 (2026-09-28, CR-128 / WP-109, DEV-783~DEV-788)
+
+**요청.** 22차 사용자 지시(2026-09-28). 사내 `0.1.0-pilot.20`에서 `kind:`와 다른 필터를 함께 쓴 검색이 500/503으로 실패한다는 운영 보고(제공 표본 74건 중 3건)를 점검하고 고친다. 목표는 「결과가 없어도 정상 0건을 보이고 조건 변경 추천도 정확하게 제공한다」이며, 오류만 숨기거나 조건을 지워 성공시키지 않는다. 보고의 「path가 있으면 `resolveSearchTarget`이 kind를 제거하지 못한다」는 확정 원인으로 쓰지 않고 재현으로 가린다. 보고 원문은 저장소에 없어, `agent-context/upstream-feedback.md`에 지시서가 전한 요지로 새 항목을 만들었다(사용자 결정, 원문이 아님을 적었다).
+
+**재현 (수정 전 코드 `d2d894d`, 격리 PostgreSQL·Elasticsearch·Redis — 컨테이너 `prs-kr-*`, ES `cluster.name=prs-kr-isolated`).** 실제 Fastify 서버의 Elasticsearch 클라이언트 앞에 호출을 기록하는 대역을 끼우고, 처리되지 않은 오류의 이름과 스택을 `onError` 훅으로 모아 가상 저장소(`acme/payments`·`acme/billing`, 범위 밖 `other/secret`)로 질의 13개를 보냈다.
+
+| 질의 | 본 조회가 센 건수 | 결과 |
+| --- | --- | --- |
+| `kind:pull_request path:src/pay author:kim is:merged` | 1 | 200 |
+| `kind:pull_request path:src/pay author:kim is:open` | 0 | **500** — `runSearch` → `computeRelaxationHints` → `buildQuery` → `KindFilterNotAppliedError`. 후보를 세는 msearch는 나가지 않았다 |
+| `path:src/pay author:nobody` · `author:nobody label:backend` (`kind:` 없음) | 0 | 200, 후보 있음 |
+| `kind:pull_request author:nobody label:backend` · `kind:pull_request author:nobody` · `kind:pull_request repo:acme/payments author:nobody` (`path:` 없음) | 0 | **500** (같은 스택) |
+| `kind:commit path:src/pay author:nobody` · `kind:commit label:backend` | 0 | **500** |
+| `-kind:commit author:nobody` (부정) | 0 | **500** |
+| `kind:commit author:kim` · `kind:pull_request author:kim` | 1 · 2 | 200 |
+| `kind:pull_request -kind:pull_request author:kim` (모순) | 조회하지 않음 | 200, `relaxation_hints: []` — 계산하지 않고 「뺄 조건이 없다」로 답했다 |
+
+공개 경로의 500은 Fastify 기본 본문(`{"statusCode":500,"error":"Internal Server Error","message":"kind: 필터는 resolveSearchTarget으로 검색 대상을 좁혀 적용한다 (CR-053)"}`)이고 `correlation_id`가 없으며 서버 로그도 없다(DEV-786). 127.0.0.1의 실제 mTLS PIPE 리스너에서는 같은 질의가 500 `INTERNAL_ERROR`(`retryable: false`)와 로그 「PIPE 연동 요청 처리 중 예기치 못한 오류 (KindFilterNotAppliedError)」(correlation ID 포함)였다 — 인계 문서의 오류 표가 BFF에 이 코드를 503 `SEARCH_AUTH_UNAVAILABLE`로 옮기라고 정하므로 사내의 503은 그 변환으로 본다. 구간 조회(`/api/v1/sequence-ranges`)는 `q=kind:commit`만으로 결과와 무관하게 500이었다(DEV-788, 범위 밖). 새 통합 시험 `relaxation-kind.test.ts`를 `d2d894d`를 가리키는 임시 작업 트리에 복사해 돌리면 24건 중 20건이 실패한다 — 통과한 4건은 원래 동작을 거는 것이다(결과가 있는 `kind:` 질의, `kind:` 없는 0건, 본 조회의 실패는 500, 결과가 있으면 추천을 세지 않는다).
+
+**원인.** `runSearch`가 본 조회에는 `resolveSearchTarget`이 `kind:`를 걷어 낸 AST와 좁힌 대상을 쓰면서, 0건일 때 `computeRelaxationHints`에는 **원래** `request.ast`와 **좁힌** 대상을 넘겼다. 후보는 필터 하나만 뺀 AST라 `kind:`가 남아 DEV-392의 가드가 던졌다. 걷어 낸 AST를 넘기는 것만으로도 틀린다 — `kind:`를 빼는 후보가 목록에서 사라지고, 좁힌 대상으로 세면 유형 조건을 뺐을 때 새로 들어오는 다른 유형을 세지 못한다. `resolveSearchTarget`은 올바르게 걷어 냈다. 조건은 `kind:` + 다른 필터 하나 이상 + 결과 0건이며 `path:`·저장소 이름과 무관하다. 운영 기본 화면(Repository workspace)은 모든 검색에 `kind:`와 `repo:`를 붙이므로(`lib/repository-search.ts`) 그 화면의 0건 검색이 전부 실패했다.
+
+**수정.** (1) `relaxation.ts` — 후보마다 `resolveSearchTarget(후보, 요청 경로의 원래 대상)`으로 대상과 걷어 낸 AST를 얻는다. 대상이 없는 후보는 보내지 않고 0건으로 본다. 나머지를 `kind:`를 걷어 낸 AST로 조립해 강제 접근 범위와 본 조회의 에폭(`seq:`·`mnum:`·기준 브랜치)을 결합하고 msearch 한 번으로 센다. 응답은 **보낸 후보의 목록**과 짝짓는다. 갈래 오류·샤드 실패·`timed_out`·하한 건수(`gte`)·응답 누락은 「세지 못함」이며 건수를 싣지 않는다. 갈래마다 `timeout: 1500ms`, 왕복 `requestTimeout: 3000`, `maxRetries: 0`. 왕복 실패는 던지지 않고 `incomplete`와 진단 재료(`failure`)로 답한다. 후보 조립의 결함과 접근 범위 오류는 던진다. (2) `service.ts` — 원래 대상을 넘기고, 모순된 `kind:`로 본 조회를 건너뛴 0건에서도 후보를 센다(그때만 이름 해석을 부른다). `relaxationOf`가 추천 단계를 격리한다 — `AccessScopeUnavailableError`만 올리고 그 밖의 실패는 `incomplete`로 바꾸며, `failure`가 있으면 진단 로그 `search.relaxation_incomplete`(단계·오류 이름·보낸 후보 수·세지 못한 수·correlation ID)를 남긴다. 이름 해석의 실패는 `resolve`, 후보 조립의 실패는 `compute`로 가르고 `compute`만 `error`, 그 밖은 `warn`이다(독립 코드 리뷰 반영). 질의 문자열과 Elasticsearch 오류 본문은 싣지 않는다. (3) `routes.ts` — 0건 응답에 `relaxation_hints_incomplete: true`(참일 때만)를 싣고 correlation ID를 서비스에 넘긴다. (4) `packages/es/src/search.ts` — `multiSearch`의 선택 셋째 인자 `MultiSearchTransport`(`requestTimeout`·`maxRetries`). 넘기지 않으면 전과 같은 호출이다(`sequence/range.ts`는 그대로). (5) `index.ts`·`runtime.ts` — 검색 의존 객체 하나에 진단 로그를 달아 공개 경로와 PIPE 연동이 같은 로그를 쓴다. (6) `SearchView.tsx` — 후보 건수를 `would_yield`로 읽고(DEV-784), 불완전하면 목록이 비었을 때 「Filter suggestions could not be calculated for this search.」, 일부만 셌을 때 「Some filter suggestions could not be calculated.」를 그린다. (7) PIPE 인계 — OpenAPI `SearchResponse`에 `relaxation_hints_incomplete`(`const: true`, `dependentRequired`, 0건이 아니면 금지), [CONTRACT_DIFF](../../handoff/pipe-search-integration/v1/CONTRACT_DIFF.md) D-23, 합성 예시 `read.search.200.relaxation-incomplete.json`, manifest(계약 checksum `967857d6…` → `5bc60722…`). `KindFilterNotAppliedError` 가드, `path:`의 경로 접두 의미, 후보 상한 8개, 원본 AST·커서 지문은 그대로다.
+
+**시험 (실측, 격리 서비스 `prs-kr-*`).**
+
+| 계층 | 파일 | 건수 | 확인하는 것 |
+| --- | --- | --- | --- |
+| 통합 | `apps/search-api/integration/search/relaxation-kind.test.ts` | 24 (새 파일, 수정 전 20건 실패) | 보고의 질의 모양(결과 있음·0건), `path:` 없는 `kind:`, `kind:` 없는 0건. **후보마다 그 필터를 빼고 다시 검색한 건수가 `would_yield`와 같다**(`expectHintsReproduce`). `kind:`를 빼면 커밋·PR이 새로 들어오는 사례, `kind:commit`, 부정 `-kind:commit`, 같은 키 복수 값, 모순 `kind:` 둘(보낸 갈래 수 포함), 볼 수 있는 저장소가 없는 사용자의 모순 질의 503, 범위 밖 문서만 맞는 후보(좁은 범위 `[]`, 넓은 범위 1건), `seq:`(저장소·브랜치 후보 없음, `kind:`를 빼면 그 구간의 커밋), `pr_number:`, `mnum:`, KST 달력 날짜(한국 날짜 8/19의 PR 둘), 패싯 켜기·끄기, 고장 주입(msearch 통신 실패·상한 초과·갈래 오류·샤드 실패·`timed_out`)의 200·`incomplete`·진단 로그의 correlation ID·질의 문자열 없음, 본 조회 실패는 500 그대로, 결과가 있으면 msearch 없음 |
+| 통합 | `apps/search-api/integration/search/list.test.ts` | +2 | `kind:pull_request author:nobody`의 200·후보, `kind:commit author:lee`에서 `kind:`를 빼면 PR 둘 |
+| 통합 | `apps/search-api/integration/integrations/pipe/parity.test.ts` | +3 | `kind:` 0건·모순 `kind:`의 공개·연동 본문 일치, PIPE grant의 후보가 사용자 범위 ∩ 허용 목록으로 센 3건 |
+| 통합 | `apps/search-api/integration/integrations/pipe/openapi.test.ts` | +1 | `kind:` 0건(패싯 포함)의 실제 응답이 OpenAPI 스키마에 맞는다 |
+| 단위 | `apps/search-api/src/search/relaxation.test.ts` | 13 (새 파일) | 후보별 대상(원래 대상·좁힌 대상), 본문에 `kind` 없음, 원래 대상 밖으로 넓히지 않음, 대상 없는 후보를 보내지 않고 보낸 후보와 짝짓기, 후보마다 접근 범위, msearch 한 번·갈래 예산·왕복 상한·재시도 0, 세지 못한 갈래 다섯 모양, 왕복 실패 둘, 조립 결함은 던진다 |
+| 단위 | `apps/search-api/src/search/service.test.ts` | +5 | msearch 실패의 격리와 `warn` 로그, 모순 `kind:`의 이름 해석 실패는 `resolve`·`warn`(리뷰 지적을 재현한 시험 — 고치기 전 코드에서 실패했다), 조립 결함은 `compute`·`error`, 접근 범위 실패는 올린다, 다 세면 로그 없음 |
+| 단위 | `packages/es/src/search.test.ts` | +1 | 전송 옵션은 넘겼을 때만 둘째 인자로 간다 |
+| a11y | `apps/web/a11y/search.test.tsx` | +2, 1건 보강 | 대역을 계약 모양(`would_yield`)으로 — `author:kim removed: 12 items`, 불완전 두 문구, axe 위반 0 |
+| 회귀 | `regression/runtime-reachability.test.ts` | +1 | 진단 로그가 `index.ts`의 검색 의존 객체에 있고 그 객체가 공개 경로와 PIPE로 간다 |
+
+**변이 (커밋한 트리 `d90445e`에서 하나씩, 매번 `cp` 백업으로 바이트 원복·해시 대조).** 17종 모두 시험을 죽였다. 리뷰 반영분 M18은 손으로 돌렸다. 결과마다 통과·실패 건수를 파싱해 시험이 실제로 돌았는지 확인했다.
+
+| 변이 | 결과 |
+| --- | --- |
+| M1 완화 계산에 좁힌 대상을 넘긴다 | 통합 5건 실패 |
+| M2 후보를 `kind:`를 걷어 내지 않은 AST로 조립한다 | 단위 7건, 통합 20건 실패 |
+| M3 대상이 없는 후보를 원래 대상 전체로 센다 | 단위 1건, 통합 2건 실패 |
+| M4 샤드 실패 갈래를 정확한 건수로 싣는다 | 단위 1건, 통합 1건 실패 |
+| M5 시간 초과 갈래를 정확한 건수로 싣는다 | 단위 1건, 통합 1건 실패 |
+| M6 왕복을 재시도한다(`maxRetries: 3`) | 단위 1건 실패 |
+| M7 msearch 실패를 던진다 | 단위 3건, 통합 2건 실패 |
+| M8 접근 범위 실패도 격리한다 | 단위 1건, 통합 1건 실패 |
+| M9 모순된 `kind:`의 0건에서 후보를 세지 않는다 | 단위 1건, 통합 2건 실패 |
+| M10 응답에 `relaxation_hints_incomplete`를 싣지 않는다 | 통합 5건 실패 |
+| M11 correlation ID를 서비스에 넘기지 않는다 | 통합 5건 실패 |
+| M12 화면이 `total`을 읽는다 | a11y 2건 실패 |
+| M13 화면이 불완전 안내를 그리지 않는다 | a11y 2건 실패 |
+| M14 후보에 강제 접근 범위 대신 넓은 범위를 건다 | 단위 2건, 통합 14건 실패 |
+| M15 갈래에 시간 예산을 걸지 않는다 | 단위 1건 실패 |
+| M16 검색 의존에서 진단 로그를 뺀다 | 회귀 1건 실패 |
+| M17 추천 실패를 로그로 남기지 않는다 | 단위 2건, 통합 5건 실패 |
+| M18 이름 해석의 실패를 `compute`로 기록한다(리뷰 반영분, 손으로) | 단위 1건 실패 |
+
+**실제 화면 (실제 Chromium → `next start` 웹 프록시 → 빌드된 search-api → 격리 PostgreSQL·Elasticsearch).** 가짜는 둘뿐이다: GHE 권한 조회(사용자 → 저장소 ID)와 로그인(Redis에 만든 세션). 웹은 `AUTH_ENABLED=true`, 가상 GHE OAuth 값, `ALLOW_INSECURE_COOKIES=true`로 띄웠다. 수정 전(`d2d894d`로 빌드), 수정 뒤, 수정 뒤에 msearch만 실패시킨 고장 주입 판을 같은 자료(가상 저장소 `cr128/payments`·`cr128/billing`, 범위 밖 `cr128/secret`)로 비교했다.
+
+| 화면·조건 | 수정 전 | 수정 뒤 | 수정 뒤 + msearch 실패 |
+| --- | --- | --- | --- |
+| 작업 공간 PR 탭, 경로 `src/pay/fix.ts`(요청 `kind:pull_request repo:"cr128/payments" path:"src/pay/fix.ts"`, `facets=true`) | `/api/search` 500, 「Unable to load search results.」와 Reload first page | 200·0건, 「Pull requests 0 items」·「No matching changes」. 응답 후보 `path:src/pay/fix.ts` 3건·`kind:pull_request` 1건 | 200·0건·`relaxation_hints_incomplete`, 「No matching changes」 |
+| 작업 공간 My open PRs(요청 `… author:"screen-kim" is:open`) | 500, 같은 오류 | 200·0건, 「No matching changes」. 후보 `author:screen-kim` 1건 | 같은 0건 화면 |
+| 작업 공간 PR 탭, 경로 `src/pay`(결과 있음, 대조) | 200, 2건 | 200, 2건 | 200, 2건 |
+| 레거시 `kind:pull_request path:src/pay/fix.ts author:lee` | 500, 「Unable to load results」 | 「No matching results」와 `path:src/pay/fix.ts removed: 2 items`·`kind:pull_request removed: 1 items` | 「Filter suggestions could not be calculated for this search.」 |
+| 레거시 모순 `kind:pull_request -kind:pull_request author:lee` | 200, 후보 목록 없음(계산하지 않은 `[]`) | `kind:pull_request removed: 2 items`·`-kind:pull_request removed: 2 items` | 같은 불완전 안내 |
+
+고장 주입 판의 search-api 로그에는 요청마다 `{"event":"search.relaxation_incomplete","stage":"msearch","reason":"ConnectionError","counted":N,"failed":N,"correlation_id":…}` 한 줄이 남았고 질의 문자열은 없었다. 콘솔 오류와 4xx는 모두 이 실행기에 붙이지 않은 source 조회(`/api/source/…`)의 404다. 작업 공간의 Commit history 탭은 검색이 아니라 source 이력을 부르므로 이 결함의 경로가 아니다.
+
+**발견.** (1) 운영 기본 화면이 모든 검색에 `kind:`·`repo:`를 붙인다 — 보고가 「path 조합」으로 본 것은 경로 트리 선택이 0건을 만들기 쉬워서로 보인다. My open PRs 탭도 로그인 사용자의 열린 PR이 없으면 같은 500이었다(My merged PRs 탭은 같은 질의 모양이라 확인하지 않았다). (2) 레거시 화면과 그 컴포넌트 시험의 대역이 함께 `total`을 읽어 건수가 비었다(DEV-784). (3) 공개 서버의 처리되지 않은 오류 본문(DEV-786)과 작업 공간의 후보 미표시(DEV-787), 구간 조회의 `kind:`(DEV-788)는 범위 밖 관찰로 남겼다. (4) 볼 수 있는 저장소가 없는 사용자의 모순 `kind:` 질의는 전에 200(빈 목록)이었고 이제 다른 검색과 같이 503 `PERMISSION_UNAVAILABLE`이다 — 후보도 강제 접근 범위를 결합하기 때문이며 FR-AUTH-002 AC-3에 맞춘 결정이다(CR-128 결정 (3)).
+
+**독립 리뷰.** 코드(`deep-reasoner`, 읽기 전용, `git diff d2d894d..d90445e -- apps packages regression`, 도구 28회): **병합 가능** — 지시서의 조건 열 가지(가드 유지, 원래 대상에서의 재해석과 넓히지 않음, 대상 없는 후보, 응답 짝짓기, 원본 AST·지문 불변, 상한 8·msearch 한 번·재시도 0, 추천 실패만 격리, 후보의 접근 범위, 지목 규칙·KST, `executeSearch` 공유 경로)를 모두 코드로 확인했고, 두 경로 모두 응답 스키마가 없어 새 키가 조용히 잘리지 않는다는 것도 봤다. [하] 1건 — 모순된 `kind:`의 0건에서 후보를 위해 처음 부르는 이름 해석의 일시 장애가 조립 결함(`compute`·`error`)으로 기록돼 오경보가 될 수 있다. 반영했다: 지적을 재현하는 단위 시험이 고치기 전 코드에서 실패함을 본 뒤 `resolve`·`warn`으로 갈랐다(M18). 문서(`deep-reasoner`, 읽기 전용, `git diff d2d894d..8e2bfd9 -- docs handoff agent-context`, 도구 17회): **병합 가능** — [하] 2건, [정보] 2건. (1) 변경 대장 범위 (e)에 `runtime.ts`가 빠졌다 → 고쳤다. (2) OpenAPI `SearchResponse`의 일부 근거 줄 번호가 이 CR 전부터 어긋나 있었다 → 이 CR의 줄 이동과 함께 모두 실제 줄로 맞췄다. (3) [정보] SRS 예외/실패 처리의 「본 조회가 성공한 뒤」가 모순된 `kind:`의 0건(본 조회를 하지 않는다)을 담지 못한다 → 「본 조회의 결과(0건)가 확정된 뒤」로 다듬었다(SRS 판 기록의 같은 구절도). (4) [정보] DEV-783~785의 「resolved (병합 전)」 → CR-127(DEV-780~782)과 같은 관례라 유지했다. 문서 리뷰어가 확인한 것: 시간 예산 숫자의 일치, OpenAPI의 `const: true`·`dependentRequired`·0건이 아닐 때 금지, 이 CR이 고친 근거 줄, 코드 주장 다섯, BFF 503 설명의 근거, DEV 귀속(DEV-392·DEV-383), 합성 예시의 스키마 적합, manifest 해시, 판 번호, ID, upstream-feedback의 원문 없음 표기, 공개 저장소 식별자 없음.
+
+**게이트.** 리뷰 반영까지 담은 코드 트리(`24810ee`, 새 DB `prs_test_kr3`, 비운 격리 Elasticsearch `prs-kr-isolated`, Node 22)의 전 계층 게이트다. 실행 전후 추적 파일 내용의 해시와 `git status`가 같다(실행 중 소스 변경 없음). 그 앞 트리(`d90445e`)에서도 단위·a11y·통합·회귀·빌드·E2E를 모두 통과했지만 리뷰 수정 앞이라 이 표로 대신한다.
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` · `pnpm lint` · `pnpm run lint:deps` | 통과 (lint:deps 패키지 17개, 위반 0건) |
+| `pnpm run test` | 189 파일 통과·1 파일 skip, 3,489건 통과·1건 skip — skip은 실제 GHE 자격이 있을 때만 도는 기존 smoke(`packages/github/testing/smoke-real-ghe.test.ts`)이고 어디에도 접속하지 않았다 |
+| `pnpm run test:a11y` · `pnpm run test:contrast` | 24 파일, 470건 통과 · 18쌍 실패 0 |
+| `pnpm build` | 통과 |
+| `pnpm run test:e2e` | 224건 통과 |
+| `pnpm run test:integration` | 152 파일, 2,386건 통과 |
+| `pnpm run test:regression` | 13 파일, 531건 통과 |
+
+이 뒤의 기록 커밋은 원장 6.119장만 바뀌었으므로 원장을 읽는 회귀 시험(`ledger-canonical-table`)과 문서 검증기를 다시 돌렸다.
+
+**문서 검증기.** `validate_srs_prd_env.py`를 기준선 `d2d894d`와 최종 트리에 똑같이 돌려 오류·경고 목록을 비교했다 — 기본·`--strict` 두 모드 모두 목록이 같다(새 오류·경고 0건, 자리표시 개수도 같다). 경로 검사 함수의 전체 목록(생략 없이 18건)도 같다. 처음 비교에서는 인계 파일 이름을 백틱으로만 적은 자리가 경로 경고 넷(변경 대장 둘·원장 하나·작업 패키지 하나)을 늘려, 기존 문서처럼 상대 경로 링크로 고쳤다.
+
+**한계.** 사내 실데이터·사내 PIPE BFF·보고된 요청의 정규화된 `q`·권한 범위·correlation ID 대조는 NOT RUN이다(사내 접속 없음). 외부 재현 성공은 사내 재검증이 아니다 — 새 빌드를 사내에 적용한 뒤 `agent-context/upstream-feedback.md` 새 항목의 네 가지를 다시 조회한다. 3/74는 제공 표본의 관찰값이며 전체 장애율을 추정하지 않았다. 추천 계산은 0건 검색에서만 돌고, 최악의 경우 갈래 예산 1.5초·왕복 상한 3초만큼 0건 응답이 늦어질 수 있다. 작업 공간은 후보를 그리지 않는다(DEV-787). 공개 서버의 다른 처리되지 않은 오류는 여전히 Fastify 기본 본문이다(DEV-786).
+
+**병합.** (기록 예정)

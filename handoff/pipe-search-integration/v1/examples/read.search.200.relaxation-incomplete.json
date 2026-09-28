@@ -1,0 +1,58 @@
+{
+  "operation": "read.search",
+  "title": "0건 — 완화 후보를 다 세지 못함 (CR-128)",
+  "captured": false,
+  "note": "실제 응답을 바탕으로 만든 합성 예시다. kind: 필터가 든 0건 검색은 CR-128부터 200과 완화 후보를 받는다. 후보를 세는 msearch가 실패하면 목록은 비지만 relaxation_hints_incomplete가 true다 — 「뺄 필터가 없다」가 아니라 「추천을 계산하지 못했다」다. 본 조회의 200·0건은 그대로다. 같은 모양은 통합 시험 integration/search/relaxation-kind.test.ts가 고장 주입으로 확인한다.",
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/search?q=kind%3Apull_request%20author%3Anobody",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000025"
+    },
+    "body": {
+      "query": "kind:pull_request author:nobody",
+      "parsed": {
+        "filters": [
+          {
+            "key": "kind",
+            "op": "eq",
+            "values": [
+              "pull_request"
+            ]
+          },
+          {
+            "key": "author",
+            "op": "eq",
+            "values": [
+              "nobody"
+            ]
+          }
+        ],
+        "text": null
+      },
+      "total": {
+        "value": 0,
+        "relation": "eq"
+      },
+      "sort": {
+        "field": "merge_seq",
+        "order": "desc"
+      },
+      "items": [],
+      "relaxation_hints": [],
+      "relaxation_hints_incomplete": true,
+      "next_cursor": null,
+      "correlation_id": "00000000-0000-4000-8000-000000000025"
+    }
+  }
+}

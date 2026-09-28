@@ -89,4 +89,20 @@ describe('multiSearch 전송 모양 (DEV-141)', () => {
       timeout: '3000ms',
     });
   });
+
+  it('전송 옵션은 넘겼을 때만 두 번째 인자로 간다 (CR-128) — 다른 호출부는 클라이언트 기본값 그대로다', async () => {
+    const calls: unknown[][] = [];
+    const client = {
+      msearch: (...args: unknown[]) => {
+        calls.push(args);
+        return Promise.resolve({ responses: [] });
+      },
+    } as unknown as Client;
+
+    await multiSearch(client, [{ target: 'prs-commits', query: SCOPED }]);
+    await multiSearch(client, [{ target: 'prs-commits', query: SCOPED }], { requestTimeout: 3000, maxRetries: 0 });
+
+    expect(calls[0]).toHaveLength(1);
+    expect(calls[1]?.[1]).toEqual({ requestTimeout: 3000, maxRetries: 0 });
+  });
 });

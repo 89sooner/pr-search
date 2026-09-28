@@ -185,10 +185,14 @@ describe('상태 매트릭스 W-001 — 모든 상태가 그려진다', () => {
   });
 
   it('`empty_no_result` — 완화 후보를 함께 준다 (QA-W001-11)', async () => {
+    /*
+     * 후보의 건수 키는 API 계약(API-SRCH-004)의 `would_yield`다 (CR-128, DEV-784).
+     * 전에는 이 대역과 화면이 함께 `total`을 써서, 실제 응답에서는 건수가 비는데도 통과했다.
+     */
     stubFetch({
       total: { value: 0, relation: 'eq' },
       items: [],
-      relaxation_hints: [{ remove: 'author:kim', total: 12 }],
+      relaxation_hints: [{ remove: 'author:kim', would_yield: 12 }],
       next_cursor: null,
     });
     params.current = new URLSearchParams('q=repo:acme/a author:kim');
@@ -198,9 +202,51 @@ describe('상태 매트릭스 W-001 — 모든 상태가 그려진다', () => {
       expect(stateOf()).toBe('empty_no_result');
     });
     const hints = screen.getByTestId('relaxation-hints');
-    expect(hints).toHaveTextContent('author:kim');
-    expect(hints).toHaveTextContent('12');
+    expect(hints).toHaveTextContent('author:kim removed: 12 items');
+    // 다 셌으면 불완전 안내가 없다.
+    expect(screen.queryByTestId('relaxation-hints-incomplete')).toBeNull();
     expect(describeViolations(await violations(container))).toBe('');
+  });
+
+  it('**후보를 세지 못했으면 「없음」이 아니라 「계산하지 못했다」다** (CR-128, QA-W001-66)', async () => {
+    stubFetch({
+      total: { value: 0, relation: 'eq' },
+      items: [],
+      relaxation_hints: [],
+      relaxation_hints_incomplete: true,
+      next_cursor: null,
+    });
+    params.current = new URLSearchParams('q=kind:pull_request author:nobody');
+    const { container } = view();
+
+    await waitFor(() => {
+      expect(stateOf()).toBe('empty_no_result');
+    });
+    expect(screen.queryByTestId('relaxation-hints')).toBeNull();
+    expect(screen.getByTestId('relaxation-hints-incomplete')).toHaveTextContent(
+      'Filter suggestions could not be calculated for this search.',
+    );
+    expect(describeViolations(await violations(container))).toBe('');
+  });
+
+  it('일부만 셌으면 센 후보와 함께 빠진 것이 있다고 알린다 (CR-128, QA-W001-66)', async () => {
+    stubFetch({
+      total: { value: 0, relation: 'eq' },
+      items: [],
+      relaxation_hints: [{ remove: 'kind:pull_request', would_yield: 3 }],
+      relaxation_hints_incomplete: true,
+      next_cursor: null,
+    });
+    params.current = new URLSearchParams('q=kind:pull_request author:lee path:src/pay');
+    view();
+
+    await waitFor(() => {
+      expect(stateOf()).toBe('empty_no_result');
+    });
+    expect(screen.getByTestId('relaxation-hints')).toHaveTextContent('kind:pull_request removed: 3 items');
+    expect(screen.getByTestId('relaxation-hints-incomplete')).toHaveTextContent(
+      'Some filter suggestions could not be calculated.',
+    );
   });
 
   it('**제출한 뒤 후보 1건이면 상세로 이동한다** (FLOW-001 4단계, CR-021 DEV-097)', async () => {
