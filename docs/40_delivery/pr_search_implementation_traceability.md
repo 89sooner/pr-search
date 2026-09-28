@@ -1,6 +1,39 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.124 | 갱신일: 2026-09-28
+> 상태: review | 버전: v6.125 | 갱신일: 2026-09-28
+
+## 0.1.0-pilot.20 발행 — CR-124~CR-127 누적 (2026-09-28)
+
+사용자 지시(2026-09-28 「모든 정리가 완료되면 origin/main을 최신으로 하고 새로운 릴리즈를 발행해라」)로 `origin/main` HEAD `73be84f`(CR-127 병합 기록, PR #248) 기준으로 발행했다. `73be84f`의 main CI(run 36367972084)는 verify·integration 모두 첫 시도에 success였다. pilot.19(`85af93a`) 이후 main에 쌓인 커밋 7개를 처음 담는다 — 코드 변경은 CR-124(`81b147b`)·CR-125(`3dd6d8c`)·CR-126(`7684bd3`)·CR-127(`2272f56`), 나머지는 기록(`2f4606d`·`a1dbedb`·`73be84f`)이다. 새 마이그레이션은 없다(037 그대로). 배포 정의는 `compose.yml`(`worker-link`·`worker-batch`의 `GHE_BASE_URL`, CR-124), `.env.example`, RUNBOOK이 바뀌었다.
+
+**발행 전 격리 업그레이드 리허설.** 새 배포본은 이전 판 상태의 격리 업그레이드로 검증한다는 사용자 지시(2026-09-26)대로, 발행할 커밋(`73be84f`)으로 후보 `0.1.0-pilot.20-rc1`을 먼저 만들었다(발행하지 않음, 아카이브 SHA-256 `28d83625…91a4`). 기준 판은 사내 운영 판으로 보고된 `0.1.0-pilot.18`(`agent-context/upstream-feedback.md`, 2026-09-23)이다 — 20차 격리 도구와 pilot.18 상태 스냅숏(`vol-773-p18b`: `acme/stk1`·`acme/stk2`, 서비스 인덱스에만 있는 스택 간선과 이미 해제된 이력)을 복원하고, 시험 전용 가짜 GHE에 접속했다(사내 접속 없음). 업그레이드 전에 이번 판이 바꾸는 것의 표본을 심었다 — 가짜 GHE 전체 URL을 적은 PR 본문(CR-124), pilot.18이 발급한 감사 기록 커서(CR-125), 시간대 없는 날짜 조건의 저장된 검색(CR-127). 그 뒤 후보 아카이브를 사내처럼 풀어 RUNBOOK 3장과 7.J·7.K를 **실제 번들의 `prsctl`로** 밟았다.
+
+| 단계·확인 | 결과 |
+| --- | --- |
+| 업그레이드(3장: `.env` 복사 → `PRS_VERSION` → `verify`·`load` → `upgrade`) | 번들 checksum 10개 일치, 전 서비스 정상, 계보 `0.1.0-pilot.20-rc1`·`73be84f`·마이그레이션 037 |
+| 7.K 2번(`upgrade` 전)·3번(뒤) | 두 역할에 `GHE_BASE_URL`이 넘어가고, 컨테이너 값과 기동 로그 「URL 참조 승인 호스트」가 두 역할 모두 있다 |
+| 7.J 2번 스택 가져오기 | `--dry-run` 저장소마다 4건 → 실행 8행(잡 7·8) |
+| 7.J 3·4번 재색인 | prs-commits `v2 → v3`(잡 9), prs-links `v1 → v2`(잡 10) 모두 전환 전 검증을 지나 `completed` |
+| 7.J 5번 PR 연결 | `links plan` 변경 0건(그대로 9·9), `apply` 기록(잡 11·12), `status` 밀린 투영 없음 |
+| CR-125 | pilot.18이 발급한 판 1 커서 → 400 `CURSOR_INVALID`, `detail.reason` `cursor_version_outdated`(발급 판 1, 현재 판 2). 새 커서의 둘째 쪽은 200 |
+| CR-127 | 옛 날짜 조건의 저장된 검색이 글자·결과 그대로(`merged:2026-09-21..2026-09-21` → #7), `@Asia/Seoul` 하루 검색 200, 통계 기본 기간 `2026-08-30..2026-09-28`(30일, KST 오늘 포함). 실제 Chromium, 브라우저 시간대 UTC·Asia/Seoul·America/Los_Angeles에서 결과 표(`2026-09-21 10:57 KST`, 툴팁 원본 UTC)·옛 URL(`(UTC)` 라벨, 시간대 없는 요청)·새 URL(`(KST)` 라벨, `@Asia/Seoul` 요청)·PR 상세가 셋 모두 같고 하이드레이션 오류 0 |
+| CR-124 | pilot.18에서 넣은 가짜 GHE 전체 URL이 재색인 전에는 참조가 아니었고, prs-links 재색인 뒤 참조(해결)가 됐다. 업그레이드 뒤의 새 이벤트는 재색인 없이 참조를 만든다 |
+| 원본 자료(업그레이드 전·후 스냅숏) | PostgreSQL `pull_request_snapshot`·`merge_sequence`와 Elasticsearch PR 문서(머지·생성 시각, 서수, 에폭, M 번호, 상태)가 두 저장소 모두 같다. 간선은 CR-124의 URL 참조 1건만 늘었다. 커밋 문서는 순간 값과 모든 필드가 같고 `committed_at` 표기만 초에서 밀리초(`…Z` → `….000Z`)로 바뀌었다 — 7.J 3번 재색인이 문서를 정본에서 다시 쓴 결과이며 CR-119부터 있던 동작이다 |
+| 잡 | 전부 `completed`, 실패 0건 |
+
+pilot.19에서 올라오는 경로는 따로 돌리지 않았다 — 두 판 사이에 마이그레이션이 없고, 업그레이드와 7.K는 위 경로에 포함된다. 도구와 기록은 이 세션 scratchpad의 `rel20/`(`r20/run20.sh`·`p20.mjs`·`b20.mjs`·`logs20/`)이다.
+
+**검증한 번들과의 관계.** 후보와 발행본은 같은 커밋(`73be84f`)이고, 번들 스크립트는 버전을 이미지 태그에만 쓴다. 발행 전에 발행할 워크트리에서 앱 이미지 7종을 임시 태그로 다시 빌드해 리허설한 후보의 이미지 ID와 7종 모두 같음을 확인했고, 발행본 manifest의 이미지 ID도 7종 모두 같다 — web `7476c882a636…`, search-api `40aa78116079…`, ingest-gateway `37b838725ca4…`, pipeline-worker `72f71c810c49…`, db `3cf240387832…`, es `c51727d01743…`, gh-executor `afb1ef1d18e3…`. 아카이브 SHA-256이 후보와 다른 것은 번들을 다시 묶었기 때문이다.
+
+다른 세션과 공유하는 checkout 대신, `73be84f`에 고정한 별도 detached worktree(`/home/roqkf/pr-search-wt/release20`)에서 `build-bundle.sh 0.1.0-pilot.20 --release`를 분리 세션(`setsid nohup`)으로 돌렸다.
+
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.20 (발행 2026-09-28 11:38:00 KST, Latest)
+- 태그: `73be84ffd45d753873c6973edadbb1fe0472de45`
+- 자산: `pr-search-0.1.0-pilot.20-offline.tar.gz`, 1,167,710,031 bytes
+- 별도 채널 전달 SHA-256: `6fdc2e783f8b6beafe8e433ae678fd4df2b4fd527ed7b988835ebd8d9829789c`
+- 발행 전 초안 자산 대조(로그 `[11:37:59] 초안 자산 대조 (발행 전)`)와 발행 확인(`[11:38:00] 발행 확인`)을 통과했고, immutable releases가 켜져 있어 발행 뒤 자산과 태그가 잠긴다. 발행 뒤에는 `gh api releases/tags`(draft=false·immutable=true·target_commitish `73be84f`), 자산 API의 digest와 로컬 `sha256sum`, 태그(→ `73be84f`), manifest(`upstream.commit` `73be84f`, `contains_secrets: false`)로 독립적으로 재대조했다. 사내 취득 명령과 같은 `gh release download`로 받은 파일(2분 21초)도 크기·SHA-256이 같고, 그 사본의 `prsctl verify`는 10개 파일이 일치하며, 번들 안 RUNBOOK은 main의 RUNBOOK과 바이트 단위로 같다. 소스 계보 번들(`bundle_sha256` `06536182…8c07`)은 `git bundle verify`로 완전한 이력(ref `73be84f`)임을 확인했다. tar 재적재 뒤 이미지 런타임 검사 ✓ 20건을 통과했다.
+- 문서 정합성: CR-124~CR-127은 각 병합 기록(PR #246·#248 등)으로 이미 closed·done 처리돼 있어, 이번 갱신에서 change_control.md·work_packages.md는 손대지 않았다(pilot.14·16·18·19 선례와 같은 이유). RUNBOOK도 발행 번들과 같게 두려고 바꾸지 않았다.
+- 사내 실제 GHE 데이터 적용과 재반입 검증은 NOT RUN이다. pilot.18에서 올라올 때는 RUNBOOK 7.J(스택 가져오기 → prs-commits 재색인 → prs-links 재색인 → `links` 확인)와 7.K(두 역할의 주소, 기존 자료의 URL 참조는 7.J 4번의 재색인이 겸한다)를 따르고, 업그레이드 전에 사용자에게 화면 시각의 9시간 차이(KST 표시)와 옛 날짜 조건이 UTC로 남는다는 것을 알린다(RUNBOOK 8장 첫 세 행). 사내 적용 뒤 문제가 생기면 사용자가 `agent-context/upstream-feedback.md`로 보고한다.
 
 ## CR-127 / WP-108 — 한국 시간 표시와 KST 달력 날짜 검색 (2026-09-28, main `2272f56` 병합)
 

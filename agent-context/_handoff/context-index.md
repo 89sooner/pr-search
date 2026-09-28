@@ -1,12 +1,12 @@
 # agent-context-index:v1
-generated=2026-09-28T01:44:59+00:00
+generated=2026-09-28T03:11:18+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=9
 legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd command;@path path-ref;@code code-fence;@sig retrieval-signals;@kv metadata
 
 ## read_order
-- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-09-28-PR-Search-21차-CR-127-한국-시간-표시-KST-달력-날짜-검색-병합-사내-적용-NOT-RUN-새-Release-없음 sig=agent-context/current-handoff.md,docs/cr127-merge-record-s21,Asia/Seoul,apps/web/lib/format.ts,packages/query/src/calendar.ts,origin/main,America/Los_Angeles,acme/kst
+- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-09-28-PR-Search-21차-CR-127-한국-시간-표시-KST-달력-날짜-검색-병합-0.1.0-pilot.20-발행-사내-적용-NOT-RUN sig=agent-context/current-handoff.md,docs/pilot20-release-record,origin/main,Asia/Seoul,apps/web/lib/format.ts,packages/query/src/calendar.ts,github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.20,89sooner/pr-search
 - f73e2b0 p=25 src=agent-context/session-notes.md compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md title=Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료 sig=agent-context/session-notes.md,agent-context/upstream-feedback.md,origin/main,home/roqkf/pr-search,home/roqkf/design-system,Risks/gotchas,dailywork/2026-09-15_PR-Search-CR-092-pilot.7-,home/roqkf/pr-search/exports/pr-search-2026-09-15.md
 - f3c6d32 p=25 src=agent-context/session-summary.md compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md title=세션-요약-PR-Search-구현-2026-08-25-후반 sig=agent-context/session-summary.md,2919/2920,1847/1847,506/506,2930/2930,8/1865,agent-context/session-notes.md,docs/00_governance/change_control.md
 - f0b2764 p=28 src=agent-context/decisions.md compact=agent-context/_handoff/compact/f0b2764.decisions.ctx.md title=확정한-설계-결정과-이유 sig=agent-context/decisions.md,docs/00_governance/change_control.md,agent-context/session-notes.md,lib/redirect.ts,text/html,logout/route.ts,-qO/dev/null,HTTP/x.y
@@ -28,10 +28,10 @@ sig=agent-context/commands.md;agent-context/session-notes.md;repos/89sooner/pr-s
 ### f98c94b
 src=agent-context/current-handoff.md
 compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md
-sha256=3ddd93bb0931a99718dca12675ce5bdf01ef1ce9a235f8fda9deb3eac725acaf
-bytes=7358 compact_bytes=7744 lines=37 priority=18
-heads=Current Handoff — 2026-09-28 PR Search 21차 (CR-127 한국 시간 표시·KST 달력 날짜 검색 병합 · 사내 적용 NOT RUN · 새 Release 없음) > Start here > Delivered (21차) > Verify before changing code > Open boundary > References
-sig=agent-context/current-handoff.md;docs/cr127-merge-record-s21;Asia/Seoul;apps/web/lib/format.ts;packages/query/src/calendar.ts;origin/main;America/Los_Angeles;acme/kst;feature/kst-time;scratchpad/wt-mut;scratchpad/hostmap.py;agent-context/upstream-feedback.md;docs/00_governance/change_control.md;docs/40_delivery/pr_search_implementation_traceability.md;deploy/single-host/RUNBOOK.md;agent-context/session-notes.md;Current;Handoff;Search;KST;NOT;RUN;Release;Start
+sha256=ca0bafa2029775c71ca9bc229cc658b717e56514d46dd66167587529c0f5adb6
+bytes=8900 compact_bytes=9371 lines=38 priority=18
+heads=Current Handoff — 2026-09-28 PR Search 21차 (CR-127 한국 시간 표시·KST 달력 날짜 검색 병합 · 0.1.0-pilot.20 발행 · 사내 적용 NOT RUN) > Start here > Delivered (21차) > Verify before changing code > Open boundary > References
+sig=agent-context/current-handoff.md;docs/pilot20-release-record;origin/main;Asia/Seoul;apps/web/lib/format.ts;packages/query/src/calendar.ts;github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.20;89sooner/pr-search;acme/stk1;scratchpad/rel20/;r20/run20.sh;deploy/single-host/bundle/;scratchpad/hostmap.py;America/Los_Angeles;agent-context/upstream-feedback.md;docs/40_delivery/pr_search_implementation_traceability.md;docs/00_governance/change_control.md;deploy/single-host/RUNBOOK.md;agent-context/session-notes.md;Current;Handoff;Search;KST;NOT
 
 ### f0b2764
 src=agent-context/decisions.md
@@ -60,8 +60,8 @@ sig=agent-context/risks.md;agent-context/session-notes.md;Risks/gotchas;/check-r
 ### f73e2b0
 src=agent-context/session-notes.md
 compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md
-sha256=bf364b8968848d186ccde66e89a544c9934d3b334410b986a7348cf0a373dfa2
-bytes=268640 compact_bytes=263481 lines=3518 priority=25
+sha256=4baca4bbfa538256dcf1f9d44c3936471fbf97c15973b9ba7b57eaa328ac941c
+bytes=270811 compact_bytes=265620 lines=3525 priority=25
 heads=Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료 > Session: 2026-09-15 (8차) — CR-092 사내 pilot.7 반입 피드백 일곱 건 (PR #194) > Goal > Current state > Decisions > Changed files
 sig=agent-context/session-notes.md;agent-context/upstream-feedback.md;origin/main;home/roqkf/pr-search;home/roqkf/design-system;Risks/gotchas;dailywork/2026-09-15_PR-Search-CR-092-pilot.7-;home/roqkf/pr-search/exports/pr-search-2026-09-15.md;home/roqkf/pr-search/exports/;logs/battery-;logs/images/;feature/rel007-result-contracts;docs/cr-089-merge-record;exports/202609141932.md;exports/202609142215.md;home/roqkf/pr-search-wt/contracts;exports/202609141338.md;exports/202609140756.md;docs/40_delivery/pr_search_implementation_traceability.md;agent-context/_handoff/;github.com/89sooner/pr-search/pull/185;exports/pr-search-2026-09-14.md;perf/signature-timing.perf.test.ts;classification/commands.ts
 
@@ -76,8 +76,8 @@ sig=agent-context/session-summary.md;2919/2920;1847/1847;506/506;2930/2930;8/186
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=1e4147a787b95aa517c3acd16c8c8237efeed4fc2694728be01836dc79c30067
-bytes=234984 compact_bytes=186270 lines=2706 priority=30
+sha256=5be0890f4c182b773b1ec8beffb4a42feaa3eaaecf0cb010c00a8e31fd956427
+bytes=235477 compact_bytes=186270 lines=2708 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > 먼저 할 것 — 2026-09-17 10차에서 이어받을 것 (사용자 방향은 이미 확정, 다시 안 물어도 됨) > 이전 (8차 이하, 아래는 2026-09-15 시점 기준 — 이후 진행 여부 미확인, 착수 전 실제 상태 재확인) > 2026-09-15 (8차) — CR-092 뒤에 남은 것 > 이 세션이 이어서 할 것 > 피드백 반영 범위 (사용자에게 확인해 준 기준)
 sig=agent-context/todos.md;packages/es/src/query-builder.ts;Risks/gotchas;packages/query/src/keys.ts;CR/DEV/WP;packages/contracts/src/source.ts;feature/rel007-capability-registry;fix/main-ci-s0-flaky;feature/rel007-r0-pr-list;docs/cr-092-merge-record;ops/repositories;home/roqkf/design-system;api/v1/me;/prsctl;agent-context/upstream-feedback.md;home/roqkf/pr-search-wt/cr092;home/roqkf/pr-search-wt/cr092-record;fix/cr092-pilot7-feedback;docs/cr-091-merge-record;docs/pilot7-published;home/roqkf/pr-search-wt/cr091-auth;home/roqkf/pr-search-wt/cr091-record;fix/cr091-pilot6-auth-feedback;docs/cr-090-merge-record
 
