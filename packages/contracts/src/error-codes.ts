@@ -91,8 +91,10 @@ export const ERROR_CODES = [
   'SAVED_SEARCH_NAME_CONFLICT',
   /** 저장된 질의가 현재 문법에서 무효인데 실행을 요청 (사용자 조치: 질의 수정(저장자)) — HTTP 409 */
   'SAVED_SEARCH_QUERY_INVALID',
-  /** 웹훅 25MB 초과 (사용자 조치: (GHE 측)) — HTTP 413 */
+  /** 요청 본문이 너무 큼 — 웹훅 25MB·조회 API 본문 상한 초과 (사용자 조치: 본문 축소 / (GHE 측)) — HTTP 413 */
   'PAYLOAD_TOO_LARGE',
+  /** 지원하지 않는 요청 본문 형식 — CR-129 (사용자 조치: `Content-Type: application/json`으로 요청) — HTTP 415 */
+  'UNSUPPORTED_MEDIA_TYPE',
   /** 접근 범위 조회 실패 (사용자 조치: 잠시 후 재시도) — HTTP 503 */
   'PERMISSION_UNAVAILABLE',
   /** 검색 3초 초과 (사용자 조치: 조건 추가) — HTTP 504 */
@@ -201,6 +203,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   SAVED_SEARCH_NAME_CONFLICT: 409,
   SAVED_SEARCH_QUERY_INVALID: 409,
   PAYLOAD_TOO_LARGE: 413,
+  UNSUPPORTED_MEDIA_TYPE: 415,
   PERMISSION_UNAVAILABLE: 503,
   SEARCH_TIMEOUT: 504,
   AGGREGATION_TIMEOUT: 504,

@@ -16,7 +16,7 @@ import { SourceHistory } from './source/SourceHistory';
 import { DiffModal, TimeLapseModal, SourceActions, type DiffTarget } from './source/SourceDialogs';
 import { detectIdentifier, parseQuery } from '@prs/query';
 import type { ResolutionCandidate } from './ResolutionCandidateList';
-import { serviceMessage } from '../lib/service-message';
+import { serviceFailureMessage, serviceMessage } from '../lib/service-message';
 import { resolveUrl } from '../lib/search-fetch';
 import { MergeNumberBadge } from './MergeNumberBadge';
 import { ExcludedCommitsNote } from './ExcludedCommitsNote';
@@ -176,7 +176,7 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
       .then(async response => {
         if (response.status === 401) setUnauthorized(true);
         const body = await response.json() as SearchData & { error?: { message?: string; code?: string }; candidates?: ResolutionCandidate[]; truncated?: boolean; epoch_stale?: boolean };
-        if (!response.ok) throw new Error(serviceMessage(body.error?.message, "Unable to load search results.", body.error?.code));
+        if (!response.ok) throw new Error(serviceFailureMessage(body, "Unable to load search results.", response.status));
         if (body.epoch_stale) throw new Error("The sequence epoch changed. Check your filters and try again.");
         if (identifier) return { items: (body.candidates ?? []).map(candidate => ({ ...candidate, title: candidate.display_name, author: candidate.author ?? null, state: candidate.state ?? null, merged_at: null, changed_files_count: null, additions: null, deletions: null })), total: { value: body.candidates?.length ?? 0, relation: body.truncated ? 'gte' : 'eq' } };
         return body;

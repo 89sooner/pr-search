@@ -33,13 +33,10 @@ export const integrationRequestTotal = new Counter(
   'PIPE 연동 요청 건수. 라벨 operation, outcome(ok 또는 오류 코드)',
 );
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_TARGET = /^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/;
 
-/** PIPE가 보낸 `X-Correlation-Id`. UUID가 아니면 버린다 — 임의 문자열을 기록 식별자로 쓰지 않는다. */
-export function upstreamCorrelationId(header: string | string[] | undefined): string | null {
-  return typeof header === 'string' && UUID.test(header) ? header.toLowerCase() : null;
-}
+/** PIPE가 보낸 `X-Correlation-Id`. UUID가 아니면 버린다 — 공개 리스너의 진단 기록과 같은 규칙이다 (CR-129). */
+export { upstreamCorrelationId } from '../../http/unhandled-errors.js';
 
 /** 대상 저장소 표기. 형식이 맞지 않으면 남기지 않는다. */
 export function safeTarget(repository: unknown): string | null {
