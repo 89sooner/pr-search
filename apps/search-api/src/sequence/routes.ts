@@ -61,6 +61,14 @@ import {
 import { MERGE_NUMBER_RESOLVE_PATH, resolveMergeNumber } from './merge-numbers.js';
 
 export const SEQUENCE_RANGE_PATH = '/api/v1/sequence-ranges';
+
+/**
+ * 구간 조회(W-004)가 받는 질의 키 (CR-106·CR-130).
+ *
+ * `@prs/query`의 키 목록은 `/search` 전체의 문법이다. `mnum:`·`pr_number:`(CR-106)와 `kind:`(CR-130)는 이 화면이
+ * 승인받지 않은 조건이라 빼고 안내한다.
+ */
+const RANGE_QUERY_KEYS: readonly string[] = QUERY_KEYS.filter((key) => key !== 'mnum' && key !== 'pr_number' && key !== 'kind');
 export const SEQUENCE_ANCHOR_PATH = '/api/v1/sequence-anchors/resolve';
 export const CONTAINMENT_PATH = '/api/v1/containments';
 export const SEQUENCE_SPACES_PATH = '/api/v1/sequence-spaces';
@@ -592,7 +600,7 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
             detail: {
               token: rejected,
               reason: 'range_key_not_supported_here',
-              supported_keys: QUERY_KEYS.filter((key) => key !== 'mnum' && key !== 'pr_number'),
+              supported_keys: RANGE_QUERY_KEYS,
             },
           },
           correlation_id: correlationId,
@@ -604,6 +612,34 @@ export function registerSequenceRoutes(app: FastifyInstance, options: SequenceRo
       const entered = await enter(request, reply, correlationId, query['repository'], query['base_branch']);
       if (entered === null) return reply;
       const { space, scope } = entered;
+
+      /*
+       * `kind:`·`-kind:`는 구간 조회가 지원하지 않는 조건이다 (FR-SEQ-002 AC-9, CR-130 / DEV-788).
+       *
+       * 구간의 멤버십은 PostgreSQL 정본(`merge_sequence`)이 PR과 커밋을 함께 정하고, `runRange`는 `q`의 AST를
+       * `resolveSearchTarget` 없이 `buildQuery`에 넘긴다 — 그대로 두면 가드(`KindFilterNotAppliedError`)가 결과와
+       * 무관하게 처리되지 않은 500을 낸다. 유형으로 좁히는 구간 조회는 승인된 기능이 아니므로(OD-019) 조건을
+       * 조용히 지우거나 0건으로 위장하지 않고 설명 있는 400으로 거절한다.
+       *
+       * **신원·권한 확인 뒤, 조회 전이다.** 문법 오류(위)와 달리 이 조건은 파서가 받아들인 질의라, 전에는 세션 없는
+       * 요청이 401, 범위 밖 저장소가 404로 먼저 끝났다 — 그 순서를 바꾸지 않는다. 구간 검사(PostgreSQL 건수)와
+       * Elasticsearch 조회는 부르지 않는다.
+       */
+      if (ast !== null && ast.filters.some((filter) => filter.key === 'kind')) {
+        return fail(reply, 400, {
+          error: {
+            code: 'INVALID_PARAMETER',
+            message: "구간 조회에서 지원하지 않는 조건입니다: 'kind'",
+            detail: {
+              field: 'q',
+              key: 'kind',
+              reason: 'kind_not_supported_in_range',
+              supported_keys: RANGE_QUERY_KEYS,
+            },
+          },
+          correlation_id: correlationId,
+        });
+      }
 
       /*
        * 인용이 딛고 선 에폭이 다르면 **구간을 실행하지 않는다** (ADR-007).
