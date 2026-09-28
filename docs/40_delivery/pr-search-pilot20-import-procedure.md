@@ -44,7 +44,7 @@ pilot.18에서 올라온다면 pilot.19를 거치지 않고 바로 pilot.20으�
 ### 이 순서를 어디까지 검증했나
 
 - 격리 환경에서 두 번 끝까지 돌렸습니다. 한 번은 pilot.19를 준비할 때 사내 보고와 같은 상태(두 재색인 실패, prs-commits 수동 전환)에서 돌렸고(원장 6.113장), 다른 한 번은 pilot.20 발행 전에 pilot.18 상태 스냅숏에서 후보 번들 `0.1.0-pilot.20-rc1`로 돌렸습니다(원장 머리 절 「0.1.0-pilot.20 발행」). 발행본의 앱 이미지 7종은 그 후보와 ID가 같습니다.
-- 사내에서는 돌리지 않았습니다. 사내 규모의 재색인 시간과 실제 GHE·인증서·프록시에서의 동작은 확인하지 않았습니다(NOT RUN).
+- 사내에서는 돌리지 않았습니다. 사내 규모의 재색인 시간과 실제 GHE·인증서·프록시에서의 동작은 확인하지 않았습니다(NOT RUN). 롤백 경로도 리허설하지 않았습니다.
 
 ---
 
@@ -91,7 +91,7 @@ prsdc exec -T postgres psql -U prs -d prs -tAc "SELECT max(version) FROM schema_
 
 ```bash
 prsdc exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/aliases/prs-*?v&h=alias,index'
-prsdc exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/indices/prs-*?v&h=index,docs.count,creation.date.string&s=index'
+prsdc exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/indices/prs-*?v&h=index,uuid,docs.count,creation.date.string&s=index'
 prsdc exec -T postgres psql -U prs -d prs -c "SELECT job_id, target, state, finished_at, left(error, 200) AS error FROM job WHERE type = 'reindex' ORDER BY job_id DESC LIMIT 6"
 ```
 
@@ -141,7 +141,7 @@ sha256sum pr-search-0.1.0-pilot.20-offline.tar.gz
 | `sha256sum` | `6fdc2e783f8b6beafe8e433ae678fd4df2b4fd527ed7b988835ebd8d9829789c` |
 | API의 `digest` | `sha256:6fdc2e783f8b6beafe8e433ae678fd4df2b4fd527ed7b988835ebd8d9829789c` |
 
-RUNBOOK은 SHA-256을 릴리스와 별개의 채널로 받으라고 합니다. 위 값은 발행 직후 원장에 기록한 값이므로 이 문서를 그 채널로 씁니다. 프록시 환경이면 `curl`과 `gh`가 `HTTPS_PROXY`를 읽습니다. 자산 주소가 `release-assets.githubusercontent.com`으로 리디렉션되므로 그 호스트도 열려 있어야 합니다.
+RUNBOOK은 SHA-256을 릴리스와 별개의 채널로 받으라고 합니다. 위 값은 발행 직후 원장에 기록한 값과 같습니다. 다만 이 문서도 릴리스와 같은 저장소에 있어 별개의 채널이 되지 못하므로, 반입 요청서처럼 저장소 밖의 경로로 전달받은 값과도 대조합니다. 프록시 환경이면 `curl`과 `gh`가 `HTTPS_PROXY`를 읽습니다. 자산 주소가 `release-assets.githubusercontent.com`으로 리디렉션되므로 그 호스트도 열려 있어야 합니다.
 
 풀고 검증합니다.
 
@@ -312,25 +312,30 @@ for repo in "${REPOS[@]}"; do echo "== $repo"; ./prsctl links import-stacks --re
 
 ```bash
 cd "$NEW"
+# 1단계에 기록한 옛 failed 잡과 헷갈리지 않도록, 지금까지의 마지막 잡 번호를 먼저 잰다
+BEFORE=$(prsdc exec -T postgres psql -U prs -d prs -tAc "SELECT coalesce(max(job_id), 0) FROM job WHERE type = 'reindex'")
+echo "BEFORE=$BEFORE"
 prsdc --profile setup run --rm reindex node dist/reindex-cli.js --alias prs-commits
 ```
 
-이 명령은 잡을 만들고 바로 끝나며, 실제 실행은 `worker-batch`가 합니다. 끝날 때까지 봅니다.
+이 명령은 잡을 만들고 바로 끝나며, 실제 실행은 `worker-batch`가 합니다. `BEFORE`보다 번호가 큰 잡만 보면서 끝날 때까지 기다립니다.
 
 ```bash
 while :; do
   printf '%s  ' "$(date +%T)"
   prsdc exec -T postgres psql -U prs -d prs -tAc \
-    "SELECT 'job '||job_id||'  '||target||'  '||state||'  '||coalesce(progress->>'phase','') FROM job WHERE type = 'reindex' ORDER BY job_id DESC LIMIT 1"
+    "SELECT coalesce((SELECT 'job '||job_id||'  '||target||'  '||state||'  '||coalesce(progress->>'phase','') FROM job WHERE type = 'reindex' AND job_id > $BEFORE ORDER BY job_id DESC LIMIT 1), '새 잡이 없다: 재색인 명령의 출력을 본다')"
   sleep 60
 done
 # completed나 failed가 보이면 Ctrl-C로 멈춘다
 ```
 
+「새 잡이 없다」가 이어지면 재색인 명령이 잡을 만들지 못한 것입니다. 다른 재색인이 돌고 있는지, 그 명령이 무엇을 출력했는지 봅니다.
+
 끝나면 결과를 기록합니다.
 
 ```bash
-prsdc exec -T postgres psql -U prs -d prs -c "SELECT job_id, target, state, finished_at, progress->>'source_index' AS source_index, progress->>'target_index' AS target_index, left(error, 500) AS error FROM job WHERE type = 'reindex' ORDER BY job_id DESC LIMIT 1"
+prsdc exec -T postgres psql -U prs -d prs -c "SELECT job_id, target, state, finished_at, progress->>'source_index' AS source_index, progress->>'target_index' AS target_index, left(error, 500) AS error FROM job WHERE type = 'reindex' AND job_id > $BEFORE ORDER BY job_id DESC LIMIT 1"
 prsdc exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/aliases/prs-commits?v&h=alias,index'
 prsdc logs -t worker-batch | grep -E '정본 재구축 완료|전환 전 검증'
 ```
@@ -349,13 +354,15 @@ prsdc logs -t worker-batch | grep -E '정본 재구축 완료|전환 전 검증'
 
 ```bash
 cd "$NEW"
+BEFORE=$(prsdc exec -T postgres psql -U prs -d prs -tAc "SELECT coalesce(max(job_id), 0) FROM job WHERE type = 'reindex'")
+echo "BEFORE=$BEFORE"
 prsdc --profile setup run --rm reindex node dist/reindex-cli.js --alias prs-links
 ```
 
-7단계와 같은 루프로 끝날 때까지 보고, 결과를 기록합니다.
+새로 잰 `BEFORE`로 7단계와 같은 루프를 돌려 끝날 때까지 보고, 결과를 기록합니다.
 
 ```bash
-prsdc exec -T postgres psql -U prs -d prs -c "SELECT job_id, target, state, finished_at, progress->>'source_index' AS source_index, progress->>'target_index' AS target_index, left(error, 500) AS error FROM job WHERE type = 'reindex' ORDER BY job_id DESC LIMIT 1"
+prsdc exec -T postgres psql -U prs -d prs -c "SELECT job_id, target, state, finished_at, progress->>'source_index' AS source_index, progress->>'target_index' AS target_index, left(error, 500) AS error FROM job WHERE type = 'reindex' AND job_id > $BEFORE ORDER BY job_id DESC LIMIT 1"
 prsdc exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/aliases/prs-links?v&h=alias,index'
 prsdc logs -t worker-batch | grep -E '정본 재구축 완료|간선 미처리 회수|전환 전 간선 검증|전환 직전에 간선 미처리'
 ```
@@ -428,7 +435,7 @@ done
 
 ```bash
 prsdc exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/aliases/prs-*?v&h=alias,index'
-prsdc exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/indices/prs-*?v&h=index,docs.count,creation.date.string&s=index'
+prsdc exec -T elasticsearch curl -fsS 'http://localhost:9200/_cat/indices/prs-*?v&h=index,uuid,docs.count,creation.date.string&s=index'
 # 위 별칭 목록에 없는 인덱스를 1단계의 기록과 맞춰 본 뒤, 하나씩 이름 전체로 지운다(와일드카드 금지)
 prsdc exec -T elasticsearch curl -fsS -X DELETE 'http://localhost:9200/<지울 인덱스 이름>'
 ```
@@ -439,7 +446,7 @@ prsdc exec -T elasticsearch curl -fsS -X DELETE 'http://localhost:9200/<지울 �
 
 ## 롤백
 
-업그레이드 뒤 서비스가 서지 않는 등 되돌려야 할 때만 합니다.
+업그레이드 뒤 서비스가 서지 않는 등 되돌려야 할 때만 합니다. **이 롤백 경로는 두 리허설 어디에도 들어 있지 않았습니다(NOT RUN).** 아래는 RUNBOOK 3장의 일반 절차와 하위 호환 원칙에 근거합니다.
 
 ```bash
 cd "$OLD"                  # 옛 .env의 PRS_VERSION은 옛 판 그대로다
@@ -447,7 +454,7 @@ grep '^PRS_VERSION=' .env
 ./prsctl upgrade
 ```
 
-- 마이그레이션은 하위 호환이라 옛 코드가 037이 적용된 스키마 위에서 돕니다. 옛 이미지가 로컬에 남아 있어야 합니다.
+- RUNBOOK 3장에 따르면 마이그레이션은 하위 호환이어서 옛 코드가 037이 적용된 스키마 위에서 돕니다. 옛 이미지가 로컬에 남아 있어야 합니다.
 - pilot.18 워커는 CR-117의 체인 규칙을 모릅니다. 되돌린 동안 들어온 이벤트는 `git merge dev`로 받아 온 PR 번호를 커밋에 다시 붙이고, 스택은 정본 없이 색인에만 씁니다. 다시 pilot.20으로 올릴 때는 6~9단계를 다시 밟습니다.
 - 되돌리면 화면 시각도 UTC 표시로 돌아가므로 사용자에게 다시 알립니다.
 - GitHub 작업을 켠 배포는 7.C 「롤백할 때」를 먼저 읽습니다.
@@ -475,13 +482,13 @@ grep '^PRS_VERSION=' .env
 pilot.19에서 7.J를 이미 끝냈는지에 따라 남은 단계가 갈립니다.
 
 ```bash
-# 037이 적용된 시각(= pilot.19로 올린 시각)과, 그 뒤의 재색인·연결 복구 잡
-prsdc exec -T postgres psql -U prs -d prs -c "SELECT version, applied_at FROM schema_migration WHERE version = '037'"
-prsdc exec -T postgres psql -U prs -d prs -c "SELECT job_id, type, target, state, finished_at FROM job WHERE type IN ('reindex','pr_link_repair') ORDER BY job_id DESC LIMIT 12"
+# 037이 적용된 시각(= pilot.19로 올린 시각)과 그 뒤의 재색인·연결 복구 잡. 시각은 모두 UTC로 뽑아 비교한다
+prsdc exec -T postgres psql -U prs -d prs -c "SELECT version, applied_at AT TIME ZONE 'UTC' AS applied_utc FROM schema_migration WHERE version = '037'"
+prsdc exec -T postgres psql -U prs -d prs -c "SELECT job_id, type, target, state, finished_at AT TIME ZONE 'UTC' AS finished_utc FROM job WHERE type IN ('reindex','pr_link_repair') ORDER BY job_id DESC LIMIT 12"
 ```
 
 - 037 적용 뒤에 저장소마다의 `pr_link_repair` 잡(가져오기·`apply`)과 prs-commits·prs-links 재색인이 모두 `completed`로 있으면 7.J를 끝낸 것입니다. 이때는 6·7·9단계를 건너뛰고 8단계(prs-links 재색인)만 pilot.20에서 한 번 돌립니다. 과거 자료의 사내 GHE URL 참조가 이 재색인으로 생깁니다(7.K 5번). 10단계에서는 URL 참조와 KST 표시를 봅니다.
-- 이미 pilot.20이라면, 마지막으로 `completed`된 prs-links 재색인이 pilot.20으로 올린 뒤의 것인지 봅니다. 그 잡의 `finished_at`이 아래 컨테이너 생성 시각보다 뒤면 8단계도 끝난 것이므로 10·11단계만 남습니다.
+- 이미 pilot.20이라면, 마지막으로 `completed`된 prs-links 재색인이 pilot.20으로 올린 뒤의 것인지 봅니다. 그 잡의 `finished_utc`가 아래 컨테이너 생성 시각(UTC로 출력된다)보다 뒤면 8단계도 끝난 것이므로 10·11단계만 남습니다.
 
   ```bash
   docker inspect -f '{{.Created}}' $(docker ps -q --filter label=com.docker.compose.project=pr-search --filter label=com.docker.compose.service=worker-batch)
@@ -497,7 +504,7 @@ prsdc exec -T postgres psql -U prs -d prs -c "SELECT job_id, type, target, state
 
 본문과 다른 점만 적습니다.
 
-- 5단계의 `upgrade`가 마이그레이션 다섯 개를 적용합니다. 033(PIPE 연동), 034(머지 시퀀스 투영), 035(M 번호 태그), 036(커밋 PR 연결 정본), 037(스택 정본)입니다. 036은 기존 PR 스냅숏으로 연결 정본을 채우되 관측을 모두 `unverified`로 둡니다.
+- pilot.16(`032`)에서 올라오면 5단계의 `upgrade`가 마이그레이션 다섯 개를 적용합니다. 033(PIPE 연동), 034(머지 시퀀스 투영), 035(M 번호 태그), 036(커밋 PR 연결 정본), 037(스택 정본)입니다. 사내 빌드는 1단계에서 본 `max(version)`의 다음 번호부터 적용되므로 수가 다릅니다. 036은 기존 PR 스냅숏으로 연결 정본을 채우되 관측을 모두 `unverified`로 둡니다.
 - `.env`에는 `MNUMBER_TAG_*`·`GHE_TAG_*` 키 열 개가 새로 생겼습니다. 태그 기능(`MNUMBER_TAG_ENABLED`)은 기본으로 꺼져 있고 나머지 조정값은 기본값으로 시작하므로(7.F 3번), M 번호 태그를 켤 생각이 없으면 넣지 않아도 됩니다.
 - `compose.yml`은 pilot.16과 비교해 `x-tag-env` 앵커와 `worker-annotate`의 `PIPELINE_WORKER_ROLES: annotate,tag`도 다릅니다. 5-2의 패치는 pilot.16 원본(`5f0d7e0e5f2a0f492d56ffb0c39ddd7a618f42a6`)과 비교해 뽑고, 사내 pilot.17이면 그 빌드의 원본 파일과 비교합니다.
 - 6~8단계는 본문과 같습니다.
