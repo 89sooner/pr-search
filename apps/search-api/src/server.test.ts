@@ -123,6 +123,24 @@ describe(`${SERVICE_NAME} 처리되지 않은 오류의 공통 처리 (CR-129 / 
     }
   });
 
+  it('정상 JSON 본문은 단계 훅을 지나 경로에 그대로 닿는다', async () => {
+    const { app, entries } = serverWithLog();
+    app.post('/api/v1/echo', async (request) => ({ body: request.body as unknown }));
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/v1/echo',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify({ anchors: ['v1.2.0', 'abc1234'], nested: { n: 1 } }),
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ body: { anchors: ['v1.2.0', 'abc1234'], nested: { n: 1 } } });
+      expect(entries.filter((entry) => typeof entry['event'] === 'string')).toHaveLength(0);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('경로가 직접 보낸 4xx·5xx 응답은 바꾸지 않는다', async () => {
     const { app, entries } = serverWithLog();
     app.get('/api/v1/handled', async (_request, reply) =>
