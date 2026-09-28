@@ -14,6 +14,8 @@ import { addDays, canonicalTimeZone, isCalendarDate, startOfZonedDay, todayIn } 
 import { DEFAULT_RANGE_DAYS, DEFAULT_TIMEZONE } from './types.js';
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+/** 오프셋 없는 날짜와 시각. */
+const DATE_TIME_WITHOUT_OFFSET = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
 
 export interface TimeSeriesRange {
   /** `calendar`는 날짜만 적은 기간(또는 기본값), `instant`는 시각을 적은 옛 기간이다. */
@@ -47,6 +49,16 @@ function optionalString(raw: unknown): string | undefined {
   return typeof raw === 'string' ? raw : undefined;
 }
 
+/**
+ * 시각형 기간의 끝을 UTC 순간 표기로 (CR-127). **오프셋 없는 시각은 UTC다** — 모집단의 범위
+ * 질의가 그렇게 거른다. `Date.parse`에 그대로 넘기면 서버 프로세스의 기본 시간대로 읽히고,
+ * `extended_bounds`에 그대로 넘기면 Elasticsearch가 집계의 `time_zone`으로 읽어 버킷을 채우는
+ * 구간이 모집단과 어긋난다(격리 Elasticsearch 8.19 실측, 원장 6.118장). 오프셋이 있으면 받은 그대로다.
+ */
+function utcInstant(value: string): string {
+  return DATE_TIME_WITHOUT_OFFSET.test(value) ? `${value.replace(' ', 'T')}Z` : value;
+}
+
 export function resolveTimeSeriesRange(
   input: { readonly from: unknown; readonly to: unknown; readonly timezone: unknown },
   nowMs: number,
@@ -62,13 +74,16 @@ export function resolveTimeSeriesRange(
   const calendar = (from === undefined || DATE_ONLY.test(from)) && (to === undefined || DATE_ONLY.test(to));
 
   if (!calendar) {
-    // 시각을 적은 기간 — 기존 뜻 그대로(양끝 순간 포함, 기본값은 지금부터 30일 전까지).
+    // 시각을 적은 기간 — 기존 뜻 그대로(양끝 순간 포함, 기본값은 지금부터 30일 전까지). 응답의
+    // 적용 기간과 모집단 조건은 받은 값이고, 판정·버킷 수 어림·버킷 경계는 UTC로 읽은 순간이다.
     const appliedTo = to ?? new Date(nowMs).toISOString();
     const appliedFrom = from ?? new Date(nowMs - DEFAULT_RANGE_DAYS * 86_400_000).toISOString();
-    if (Number.isNaN(Date.parse(appliedFrom)) || Number.isNaN(Date.parse(appliedTo))) {
+    const fromInstant = utcInstant(appliedFrom);
+    const toInstant = utcInstant(appliedTo);
+    if (Number.isNaN(Date.parse(fromInstant)) || Number.isNaN(Date.parse(toInstant))) {
       return { field: 'from', message: '기간은 ISO 8601 시각이어야 합니다.' };
     }
-    if (Date.parse(appliedFrom) > Date.parse(appliedTo)) {
+    if (Date.parse(fromInstant) > Date.parse(toInstant)) {
       return { field: 'from', message: '기간이 뒤집혔습니다.' };
     }
     return {
@@ -77,9 +92,9 @@ export function resolveTimeSeriesRange(
       appliedFrom,
       appliedTo,
       rangeFilter: `merged:${appliedFrom}..${appliedTo}`,
-      boundsMin: appliedFrom,
-      boundsMax: appliedTo,
-      spanMs: Date.parse(appliedTo) - Date.parse(appliedFrom),
+      boundsMin: fromInstant,
+      boundsMax: toInstant,
+      spanMs: Date.parse(toInstant) - Date.parse(fromInstant),
     };
   }
 

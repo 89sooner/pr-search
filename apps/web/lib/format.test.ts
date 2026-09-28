@@ -20,6 +20,7 @@ import {
   formatTimeOfDay,
   formatTimestamp,
   formatUtcTitle,
+  instantMs,
   shortSha,
   timeZoneLabel,
 } from './format';
@@ -182,6 +183,14 @@ describe('시각 표기 (CR-127, NFR-007 「시각 표시 기준」)', () => {
     expect(formatUtcTitle('2026-09-27T12:00:00+09:00')).toBe('2026-09-27T03:00:00.000Z (UTC)');
     expect(formatUtcTitle(null)).toBeUndefined();
     expect(formatUtcTitle('garbage')).toBeUndefined();
+  });
+
+  it('판정용 순간도 같은 해석이다 — 오프셋 없는 시각은 UTC, 없거나 깨진 값은 NaN', () => {
+    expect(instantMs('2026-09-27T03:00:00')).toBe(Date.parse('2026-09-27T03:00:00Z'));
+    expect(instantMs('2026-09-27T12:00:00+09:00')).toBe(Date.parse('2026-09-27T03:00:00Z'));
+    expect(instantMs('2026-09-27')).toBe(Date.parse('2026-09-27T00:00:00Z'));
+    expect(instantMs(null)).toBeNaN();
+    expect(instantMs('garbage')).toBeNaN();
   });
 
   it('화면의 KST 날짜와 날짜 검색의 하루가 같은 경계에서 갈린다 (FR-SRCH-005 AC-11)', () => {

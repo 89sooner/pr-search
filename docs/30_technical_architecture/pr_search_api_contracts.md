@@ -2148,9 +2148,9 @@ POST /api/v1/analytics/time-series
 - `timezone` 기본값은 `Asia/Seoul`이며 **버킷 경계를 그 시간대에서 계산한다** (FR-STAT-002 AC-2). UTC로 나눈 뒤 이름만 바꾸지 않는다 — 날짜 경계가 다른 지역에서 하루가 어긋난다
 - **`from`·`to`가 날짜(`YYYY-MM-DD`)이면 `timezone`의 달력 날짜다** (FR-STAT-002 AC-7, CR-127). 모집단은 `merged:<from>..<to>@<timezone>`(양끝 날짜 포함, `gte`·`lt`)이고, `extended_bounds`는 같은 계산의 `from`·`to` 첫 순간(UTC ISO)이라 요청하지 않은 날의 버킷이 생기지 않는다. 한쪽만 주면 다른 쪽은 `to` = 그 시간대의 오늘, `from` = `to` − 29일이다. 없는 날짜·역전은 `INVALID_PARAMETER`(400, `field`)다
 - `from`·`to` 미지정 시 **`timezone`의 오늘을 포함한 30일**(달력 날짜)이며 `applied_range`에 날짜로 명시한다 (CR-127 — 전에는 지금부터 30일 전까지의 순간이었다)
-- `from`·`to`가 시각(오프셋 포함 ISO-8601)이면 기존 뜻 그대로다 — 모집단은 `merged:<from>..<to>`(양끝 순간 포함)이고 `applied_range`는 받은 값이다
+- `from`·`to`가 시각(ISO-8601 날짜와 시각)이면 기존 뜻 그대로다 — 모집단은 `merged:<from>..<to>`(양끝 순간 포함)이고 `applied_range`는 받은 값이다. **오프셋 없는 시각은 UTC다** — 모집단·`extended_bounds`·버킷 수 어림이 같은 순간을 쓰며 서버의 기본 시간대에 맡기지 않는다(CR-127, FR-AUTH-004 AC-9와 같은 규칙)
 - `timezone`은 IANA 이름이며 모르는 이름은 `INVALID_PARAMETER`(400, `field: timezone`)다. 검색 클러스터를 부르지 않는다 (CR-127)
-- `buckets`는 Elasticsearch의 `key_as_string`(요청 시간대로 그린 버킷 시작 순간)이다. 화면은 이것을 그 시간대의 날짜·시각으로 그리고, 일·주·월 버킷의 드릴다운은 `merged:<버킷 첫날>..<버킷 끝날>@<timezone>`을 `applied_range`와 겹친 만큼 쓴다. 시간 버킷은 그 한 시간의 순간 범위다
+- `buckets`는 Elasticsearch의 `key_as_string`(요청 시간대로 그린 버킷 시작 순간)이다. 화면은 이것을 그 시간대의 날짜·시각으로 그리고, 일·주·월 버킷의 드릴다운은 `merged:<버킷 첫날>..<버킷 끝날>@<timezone>`을 `applied_range`와 겹친 만큼 쓴다(`applied_range`가 시각이면 그 안에 온전히 든 버킷만 링크하고 걸친 버킷은 링크하지 않는다 — 시각을 달력 날짜로 자를 수 없다). 시간 버킷은 그 한 시간의 순간 범위다
 - 데이터 없는 버킷도 0으로 채워 반환한다 (AC-4)
 - `group_by` 지정 시 계열 최대 20개 (AC-5). 그룹 선택 규칙과 다중값 의미는 `API-STAT-001`과 같다
 - 질의에 `seq:` 범위가 있으면 요청에 `seq_epoch`이 필요하다 (아래 공통 규칙)

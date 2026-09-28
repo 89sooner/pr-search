@@ -204,6 +204,12 @@ describe('드릴다운 (근거 목록으로)', () => {
     expect(bucketDrillDownHref('', '2026-09-27T00:00:00.000+09:00', 'day', null, partial)).toBe(null);
   });
 
+  it('오프셋 없는 시각형 적용 기간은 UTC로 읽는다 — 브라우저 시간대가 달라도 같은 링크다 (CR-127)', () => {
+    // UTC로 읽으면 KST 9/27 하루를 정확히 덮는다. 서울·LA 시간대로 읽으면 걸친 기간이 되어 링크가 사라진다.
+    const naive = { timezone: 'Asia/Seoul', appliedRange: { from: '2026-09-26T15:00:00', to: '2026-09-27T14:59:59.999' } } as const;
+    expect(qOf(bucketDrillDownHref('', '2026-09-27T00:00:00.000+09:00', 'day', null, naive))).toBe('merged:2026-09-27..2026-09-27@Asia/Seoul');
+  });
+
   it('다른 시간대를 적은 대시보드는 그 시간대의 날짜로 간다', () => {
     const la = { timezone: 'America/Los_Angeles', appliedRange: null } as const;
     expect(qOf(bucketDrillDownHref('', '2026-09-27T00:00:00.000-07:00', 'day', null, la))).toBe('merged:2026-09-27..2026-09-27@America/Los_Angeles');

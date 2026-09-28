@@ -124,6 +124,16 @@ function toInstant(value: string | null | undefined): Instant {
   return Number.isNaN(ms) ? { kind: 'invalid' } : { kind: 'ok', ms };
 }
 
+/**
+ * 시각 문자열을 epoch 밀리초로 — 표시와 같은 해석(오프셋 없는 시각은 UTC)이다. 값이 없거나
+ * 읽지 못하면 `NaN`이다. 날짜 필터의 판정(통계 드릴다운 등)이 브라우저 시간대를 타지 않게
+ * 한다 (CR-127).
+ */
+export function instantMs(value: string | null | undefined): number {
+  const at = toInstant(value);
+  return at.kind === 'ok' ? at.ms : Number.NaN;
+}
+
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }
