@@ -2676,7 +2676,7 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [x] **0.1.0-pilot.19 최종 번들(발행 안 함)** — main `646486e`에서 `--release` 없이 만들고 격리 R3로 업그레이드를 다시 확인했다(원장 6.114장).
 - [x] **기록 PR #241** — main `85af93a`(2026-09-26 squash 병합, 병합 커밋의 main CI run 36244754106 verify·integration success).
 - [x] **Release `0.1.0-pilot.19` 발행** — 사용자 지시(2026-09-26). main `85af93a`, 22:51 KST, immutable, 자산 SHA-256 `cf0e0e54837c860166ec85cf5a30f87f98893be810de37910362524492e3d00e`(사내에 별도 채널로 전달). 이미지 7종 ID가 R3 검증값과 같다(원장 머리 절 「0.1.0-pilot.19 발행」).
-- [ ] **사내 적용(NOT RUN)** — RUNBOOK 7.J 순서. 두 재색인의 검증 단계 시각을 적는다(사내 규모 NOT MEASURED). 결과는 사용자가 `agent-context/upstream-feedback.md`에 적는다.
+- [x] **사내 적용** — 2026-09-28 사내가 19차 변경을 담은 `0.1.0-pilot.20`으로 올렸다(사용자 보고 「모두 정상」, 21차 참조). 두 재색인의 검증 단계 시각은 받지 않았다(사내 규모 NOT MEASURED).
 - [ ] **DEV-776(open)** — 단일 호스트 compose의 `worker-link`·`worker-batch`에 `GHE_BASE_URL`을 넘긴다(Kubernetes와 같게). URL 참조 간선이 새로 생기는 동작 변경이라 별도 CR. 사용자 판단(2026-09-26): 급하지 않아 지금은 진행하지 않는다.
 - [ ] **DEV-777(open)** — 등록 요청 대기열(API-ADM-009) 커서를 마이크로초로(저장된 검색 방식 — `to_char(... .US)` + `::timestamptz`). 감사 기록 커서(API-ADM-005)도 코드 판독으로는 같은 결함이다(`audit.ts`, 실행 확인 안 함). 사용자 판단(2026-09-26): 급하지 않아 지금은 진행하지 않는다.
 - [ ] **DEV-588(open, 재발)** — 조정 스캔 취소 시험 경합이 main CI(run 36231534096 첫 시도)에서 다시 깨졌다. 고치려면 `enqueueManual()` 전에 `probe.onEnter`를 대입하거나 취소 조건을 잡 ID로 건다.
@@ -2689,7 +2689,7 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [x] **DEV-776 → CR-124** — main `81b147b`(PR #243). 단일 호스트 두 역할의 `GHE_BASE_URL`, 승인 호스트는 배포 설정에서만.
 - [x] **DEV-777 → CR-125** — main `3dd6d8c`(PR #244). 두 운영 목록의 커서 마이크로초와 옛 판 커서 안내.
 - [x] **DEV-773 → CR-126** — main `7684bd3`(PR #245, 병합 커밋의 main CI run 36311212601 success). 업그레이드 직후 이벤트의 전환기 보완.
-- [ ] **사내 적용(NOT RUN)** — 20차 변경을 담은 번들은 아직 없다. 적용할 때 RUNBOOK 7.K 2·3번(두 역할의 주소)·5번(prs-links 재색인), 이력 이전이 필요하면 7.J 순서.
+- [x] **사내 적용** — 20차 변경은 `0.1.0-pilot.20`에 담겨 2026-09-28 사내에 적용됐다(사용자 보고, 21차 참조).
 - [ ] **CR-126 전환기 보완을 끄는 조건(후속 판단)** — 이전이 끝난 뒤에도 PR 이벤트마다 좁힌 조회가 는다.
 - [ ] **DEV-778(open)** — 파생의 대상 조회가 직전에 색인된 대상을 못 봐 미해결 참조가 다음 이벤트까지 남는다(`packages/es/src/links.ts`의 `findReferenceTargets`).
 - [ ] **DEV-779(open)** — 운영자 세션의 첫 관계 조회가 일시적 503 `PERMISSION_UNAVAILABLE`, 사유 로그 없음, 원인 미확인.
@@ -2700,9 +2700,12 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 
 - [x] **CR-127 한국 시간 표시와 KST 달력 날짜 검색** — main `2272f56`(PR #247, 병합 커밋의 main CI run 36366292588 success). 화면 시각 KST·원본 UTC 툴팁, `merged:`/`created:`의 `@<시간대>` 달력 날짜 범위, 통계·감사 기간.
 - [x] **Release `0.1.0-pilot.20`** — 2026-09-28 발행(태그 → `73be84f`, 자산 SHA-256 `6fdc2e78…789c`, immutable). 발행 전 pilot.18 상태 격리 업그레이드 리허설(후보 rc1)을 통과했고, 이미지 7종 ID가 후보와 같다. 원장 머리 절 「0.1.0-pilot.20 발행」.
-- [ ] **사내 적용(NOT RUN)** — `0.1.0-pilot.20`에 20차·21차 변경이 담겼다(새 마이그레이션 없음). pilot.18에서 올라오면 RUNBOOK 7.J·7.K를 따르고, 업그레이드 전에 사용자에게 알린다 — 화면 시각이 9시간 달라 보이고, 옛 URL·저장된 검색의 날짜 조건은 UTC로 남는다. RUNBOOK 7장 CR-127 행·8장 첫 세 행.
+- [x] **사내 적용** — 2026-09-28 사용자 보고 「사내 릴리즈 20 업그레이드 완료했다. 모두 정상이다」. 절차서 `docs/40_delivery/pr-search-pilot20-import-procedure.md`. 시작 판·7.J 단계별 출력·재색인 시간·배포 SHA는 받지 않았다(원장에는 사용자 보고로만 기록, 사내 규모 재색인 시간 NOT MEASURED).
 - [ ] **`OD-018`(open)** — 개인별 표시 시간대. 권고는 열지 않는 것이다.
 - [ ] **DEV-779(open)** — 이번 격리 검증에서 같은 모양을 관찰했다(저장소 0개일 때 로그인한 세션의 검색이 약 5분 동안 사유 줄 없이 503).
 - [ ] **DEV-778·DEV-588(open)**, **CR-126 전환기 보완을 끄는 조건** — 20차에서 넘어왔다.
 - [x] **21차 CR-127 검증 자원 정리** — `prs-s21-*`·이미지 `s21-*`·워크트리 `kst-time`·`s21-record`·`wt-mut`을 사용자 결정으로 지웠다(2026-09-28).
-- [ ] **발행 리허설 자원 정리(사용자 결정)** — `prs-s20` compose(멈춤)·`prs-s20-fakeghe`(멈춤)·볼륨 `prs-s20_*`·이미지 `prs/*:0.1.0-pilot.20-rc1`·`prs/*:0.1.0-pilot.20`·워크트리 `release20`·`pilot20-record`.
+- [x] **발행 리허설 자원 정리** — 사용자 결정(2026-09-28)으로 `prs-s20` compose·`prs-s20-fakeghe`·볼륨 `prs-s20_*`·후보 이미지 태그 `prs/*:0.1.0-pilot.20-rc1`·워크트리 `release20`·`pilot20-record`·내려받은 사본을 지웠다(2026-09-28 실측). 발행본 이미지 태그 `prs/*:0.1.0-pilot.20`은 롤백·재검증용으로 남겼다.
+
+- [ ] **RUNBOOK 정정 후보(다음 판, CR)** — 2장의 비공개 저장소·읽기 토큰 전제(저장소는 공개라 토큰 없이 받는다), 7.E·7.G~7.I의 `./prsctl lineage`로 배포 SHA 읽기(번들 manifest만 출력한다 — 실행 중인 판은 이미지 태그와 `schema_migration`의 `max(version)`으로 본다). 번들 RUNBOOK과 같게 두려고 이번에는 고치지 않았다.
+- [ ] **다음 배포본의 리허설 기준 판** — pilot.20 상태(7.J를 마친 뒤)에서 시작한다. 20차 도구 사본(`cd1ac937…/scratchpad/rel20/r20/`)을 재사용하되 pilot.18 스냅숏 대신 pilot.20 상태를 새로 만든다.
