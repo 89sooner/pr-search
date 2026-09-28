@@ -355,7 +355,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-109 | 0건 검색의 완화 후보와 `kind:` 재해석 | 구현 결함 수정 + 요구사항 보완 (CR-128) | in_progress | 에이전트 | 브랜치 `fix/search-kind-relaxation`(병합 전) | 6.119장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
+| WP-109 | 0건 검색의 완화 후보와 `kind:` 재해석 | 구현 결함 수정 + 요구사항 보완 (CR-128) | in_progress | 에이전트 | 브랜치 `fix/search-kind-relaxation`(구현·검증 완료, 병합 대기) | 6.119장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-108 | 한국 시간 표시와 KST 달력 날짜 검색 | 요구사항 변경 (CR-127) | done | 에이전트 | main `2272f56`(PR #247 squash 병합, 2026-09-28; head `de4007c`) | 6.118장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-107 | 업그레이드 직후 옛 스택 관계의 전환기 보완 | 구현 결함 수정 (CR-126) | done | 에이전트 | main `7684bd3`(PR #245 squash 병합, 2026-09-27; head `73398ff`) | 6.117장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
 | WP-106 | 운영 목록 두 개의 커서 마이크로초와 옛 판 커서 | 구현 결함 수정 (CR-125) | done | 에이전트 | main `3dd6d8c`(PR #244 squash 병합, 2026-09-27; head `02cdc5c`) | 6.116장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
@@ -9491,7 +9491,19 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 
 **독립 리뷰.** 코드(`deep-reasoner`, 읽기 전용, `git diff d2d894d..d90445e -- apps packages regression`, 도구 28회): **병합 가능** — 지시서의 조건 열 가지(가드 유지, 원래 대상에서의 재해석과 넓히지 않음, 대상 없는 후보, 응답 짝짓기, 원본 AST·지문 불변, 상한 8·msearch 한 번·재시도 0, 추천 실패만 격리, 후보의 접근 범위, 지목 규칙·KST, `executeSearch` 공유 경로)를 모두 코드로 확인했고, 두 경로 모두 응답 스키마가 없어 새 키가 조용히 잘리지 않는다는 것도 봤다. [하] 1건 — 모순된 `kind:`의 0건에서 후보를 위해 처음 부르는 이름 해석의 일시 장애가 조립 결함(`compute`·`error`)으로 기록돼 오경보가 될 수 있다. 반영했다: 지적을 재현하는 단위 시험이 고치기 전 코드에서 실패함을 본 뒤 `resolve`·`warn`으로 갈랐다(M18). 문서(`deep-reasoner`, 읽기 전용, `git diff d2d894d..8e2bfd9 -- docs handoff agent-context`, 도구 17회): **병합 가능** — [하] 2건, [정보] 2건. (1) 변경 대장 범위 (e)에 `runtime.ts`가 빠졌다 → 고쳤다. (2) OpenAPI `SearchResponse`의 일부 근거 줄 번호가 이 CR 전부터 어긋나 있었다 → 이 CR의 줄 이동과 함께 모두 실제 줄로 맞췄다. (3) [정보] SRS 예외/실패 처리의 「본 조회가 성공한 뒤」가 모순된 `kind:`의 0건(본 조회를 하지 않는다)을 담지 못한다 → 「본 조회의 결과(0건)가 확정된 뒤」로 다듬었다(SRS 판 기록의 같은 구절도). (4) [정보] DEV-783~785의 「resolved (병합 전)」 → CR-127(DEV-780~782)과 같은 관례라 유지했다. 문서 리뷰어가 확인한 것: 시간 예산 숫자의 일치, OpenAPI의 `const: true`·`dependentRequired`·0건이 아닐 때 금지, 이 CR이 고친 근거 줄, 코드 주장 다섯, BFF 503 설명의 근거, DEV 귀속(DEV-392·DEV-383), 합성 예시의 스키마 적합, manifest 해시, 판 번호, ID, upstream-feedback의 원문 없음 표기, 공개 저장소 식별자 없음.
 
-**게이트.** (기록 예정)
+**게이트.** 리뷰 반영까지 담은 코드 트리(`24810ee`, 새 DB `prs_test_kr3`, 비운 격리 Elasticsearch `prs-kr-isolated`, Node 22)의 전 계층 게이트다. 실행 전후 추적 파일 내용의 해시와 `git status`가 같다(실행 중 소스 변경 없음). 그 앞 트리(`d90445e`)에서도 단위·a11y·통합·회귀·빌드·E2E를 모두 통과했지만 리뷰 수정 앞이라 이 표로 대신한다.
+
+| 명령 | 결과 |
+| --- | --- |
+| `pnpm typecheck` · `pnpm lint` · `pnpm run lint:deps` | 통과 (lint:deps 패키지 17개, 위반 0건) |
+| `pnpm run test` | 189 파일 통과·1 파일 skip, 3,489건 통과·1건 skip — skip은 실제 GHE 자격이 있을 때만 도는 기존 smoke(`packages/github/testing/smoke-real-ghe.test.ts`)이고 어디에도 접속하지 않았다 |
+| `pnpm run test:a11y` · `pnpm run test:contrast` | 24 파일, 470건 통과 · 18쌍 실패 0 |
+| `pnpm build` | 통과 |
+| `pnpm run test:e2e` | 224건 통과 |
+| `pnpm run test:integration` | 152 파일, 2,386건 통과 |
+| `pnpm run test:regression` | 13 파일, 531건 통과 |
+
+이 뒤의 기록 커밋은 원장 6.119장만 바뀌었으므로 원장을 읽는 회귀 시험(`ledger-canonical-table`)과 문서 검증기를 다시 돌렸다.
 
 **문서 검증기.** `validate_srs_prd_env.py`를 기준선 `d2d894d`와 최종 트리에 똑같이 돌려 오류·경고 목록을 비교했다 — 기본·`--strict` 두 모드 모두 목록이 같다(새 오류·경고 0건, 자리표시 개수도 같다). 경로 검사 함수의 전체 목록(생략 없이 18건)도 같다. 처음 비교에서는 인계 파일 이름을 백틱으로만 적은 자리가 경로 경고 넷(변경 대장 둘·원장 하나·작업 패키지 하나)을 늘려, 기존 문서처럼 상대 경로 링크로 고쳤다.
 
