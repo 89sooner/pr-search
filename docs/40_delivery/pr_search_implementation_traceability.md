@@ -470,7 +470,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
-| API 계약 원칙 6·6장 오류 모델, 백엔드 8장 「예상치 못한 예외」 (처리하지 못한 예외의 500 `INTERNAL_ERROR` 봉투와 같은 ID의 진단 로그, Fastify 본문 오류 400·413·415, 없는 경로 404, PIPE와 같은 분류) | WP-110 | `apps/search-api/src/http/unhandled-errors.ts`, `apps/search-api/src/server.ts`, `apps/search-api/src/auth/read-invocation.ts`, `apps/search-api/src/integrations/pipe/{routes,audit}.ts`, `packages/contracts/src/error-codes.ts`, `apps/web/lib/service-message.ts`, `apps/web/components/RepositoryWorkspace.tsx` | `apps/search-api/src/http/unhandled-errors.test.ts`, `apps/search-api/src/server.test.ts`, `apps/search-api/src/auth/read-invocation.test.ts`, `apps/search-api/integration/errors/unhandled.test.ts`, `apps/web/lib/service-message.test.ts` | implemented |
+| NFR-005 「시크릿 노출」·NFR-008, API 계약 원칙 6·6장 오류 모델, 백엔드 8장 「예상치 못한 예외」 (처리하지 못한 예외의 500 `INTERNAL_ERROR` 봉투와 같은 ID의 진단 로그, Fastify 본문 오류 400·413·415, 없는 경로 404, PIPE와 같은 분류) | WP-110 | `apps/search-api/src/http/unhandled-errors.ts`, `apps/search-api/src/server.ts`, `apps/search-api/src/auth/read-invocation.ts`, `apps/search-api/src/integrations/pipe/{routes,audit}.ts`, `packages/contracts/src/error-codes.ts`, `apps/web/lib/service-message.ts`, `apps/web/components/RepositoryWorkspace.tsx` | `apps/search-api/src/http/unhandled-errors.test.ts`, `apps/search-api/src/server.test.ts`, `apps/search-api/src/auth/read-invocation.test.ts`, `apps/search-api/integration/errors/unhandled.test.ts`, `apps/web/lib/service-message.test.ts` | implemented |
 | FR-SRCH-006 AC-3 · 예외/실패 처리 (후보마다 `kind:`를 원래 대상에서 다시 해석, 남은 유형이 없는 후보는 0건, 모순된 `kind:`의 0건도 후보, `relaxation_hints_incomplete`, 추천 단계 격리와 진단 로그) | WP-109 | `apps/search-api/src/search/{relaxation,service,routes}.ts`, `packages/es/src/search.ts`(`multiSearch` 전송 옵션), `apps/search-api/src/{index,runtime}.ts`, `apps/web/components/SearchView.tsx`, PIPE 인계 OpenAPI `SearchResponse` | 단위 `search/{relaxation,service}.test.ts`·`packages/es/src/search.test.ts`, 통합 `search/relaxation-kind.test.ts`·`search/list.test.ts`·`integrations/pipe/{parity,openapi}.test.ts`, a11y `search.test.tsx` | **완료 — main `d602890` (CR-128, 6.119장)** |
 | NFR-007 「시각 표시 기준」 · SRS 11장 12번 (표시 `Asia/Seoul`, 원본·API·커서 UTC, 원본 UTC 툴팁, 읽지 못한 값 `Unknown`) | WP-108 | `apps/web/lib/format.ts`, `apps/web/components/TimeText.tsx`, 표시 자리 전부(6.118장 목록), `packages/query/src/calendar.ts`(`zonedParts`) | `apps/web/lib/format.test.ts`(TZ 셋), a11y, E2E | **완료 — main `2272f56` (CR-127, 6.118장)** |
 | FR-SRCH-005 AC-11 · FR-SRCH-006 AC-1 (달력 날짜 범위 `@<시간대>`, `gte`/`lt` UTC 구간, 옛 날짜 조건 보존, 작업 공간 `tz`, 칩 `KST`/`UTC`) | WP-108 | `packages/query/src/{calendar,parse,ast,serialize}.ts`, `packages/es/src/query-builder.ts`, `apps/web/lib/{repository-search,tokens}.ts`, `apps/web/components/{RepositoryWorkspace,LegacyRepositoryWorkspace}.tsx`, `apps/web/components/reader/primitives.tsx` | 단위, 통합 `search/kst-calendar-range.test.ts`, E2E | **완료 — main `2272f56` (CR-127, 6.118장)** |
@@ -9519,3 +9519,49 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **한계.** 사내 실데이터·사내 PIPE BFF·보고된 요청의 정규화된 `q`·권한 범위·correlation ID 대조는 NOT RUN이다(사내 접속 없음). 외부 재현 성공은 사내 재검증이 아니다 — 새 빌드를 사내에 적용한 뒤 `agent-context/upstream-feedback.md` 새 항목의 네 가지를 다시 조회한다. 3/74는 제공 표본의 관찰값이며 전체 장애율을 추정하지 않았다. 추천 계산은 0건 검색에서만 돌고, 최악의 경우 갈래 예산 1.5초·왕복 상한 3초만큼 0건 응답이 늦어질 수 있다. 작업 공간은 후보를 그리지 않는다(DEV-787). 공개 서버의 다른 처리되지 않은 오류는 여전히 Fastify 기본 본문이다(DEV-786).
 
 **병합.** PR #251(base `main`, 최종 head `434959e`)의 CI(run 36426166182)는 verify·integration 모두 첫 시도에 success였다. 사용자 승인(2026-09-29, 이 세션에서 PR #251에 대해 받았다 — 같은 질문에서 이 기록 PR의 생성·CI·병합과 22차 자원을 모두 남기는 결정도 받았다)으로 squash 병합했다 — main `d602890`, 트리는 PR head와 같다(`05301005…`). 병합 커밋의 main CI(run 36456023880)는 verify·integration 모두 첫 시도에 success다. 이 기록과 22차 인계(current-handoff·session-notes·todos·`_handoff` 묶음)는 병합 기록 PR에 실었다. 사내 적용은 NOT RUN이다.
+
+### 6.120 처리되지 않은 오류의 공통 처리 (2026-09-29, CR-129 / WP-110, DEV-786·DEV-789~DEV-791)
+
+**요청.** 23차 사용자 지시(2026-09-29) 1번. 일반 search-api의 처리되지 않은 오류에 공통 처리를 더한다 — 사용자에게는 고정된 오류 코드·안내와 correlation ID를, 서버 기록에는 같은 ID로 오류 종류와 실패 단계를 남긴다. 내부 스택·원격 응답·토큰·쿠키·소스 본문을 드러내지 않고, 검색 감사와 진단 로그를 구분하며, 진단 로그에 검색어를 싣지 않는다. 이미 처리하던 응답과 CR-128의 추천 계산 격리를 유지하고, PIPE의 안전한 공통 로직은 쓰되 일반 API에 PIPE 인증을 끼워 넣지 않는다.
+
+**재현 (수정 전 코드 `3f1c4c0`, 격리 PostgreSQL·Elasticsearch·Redis — 컨테이너 `prs-b8-*`, ES `cluster.name=prs-b8-isolated`).** PIPE 통합 하네스(실제 공개 Fastify 서버와 127.0.0.1의 실제 mTLS PIPE 리스너)에 조회 경로 Elasticsearch 클라이언트의 `search`·`msearch`만 고장 내는 스위치를 더하고, 새 통합 시험 `apps/search-api/integration/errors/unhandled.test.ts`(9건)를 수정 전 트리에 복사해 돌렸다 — **6건 실패**, 3건 통과(원래 동작을 거는 것: 추천 계산 실패의 200, 문법 400·세션 없음 401·범위 확인 실패 503, PIPE 입력 오류 400). 실패의 모양은 넷이다. (1) Elasticsearch의 질의 거절(`ResponseError`, 상태 400)이 공개 경로에서 **HTTP 400**, 본문 `{"statusCode":400,"error":"Bad Request","message":"search_phase_execution_exception"}` — Fastify 기본 처리기가 예외의 `statusCode` 게터를 응답 상태로 썼고 오류 유형이 문구로 실렸다. (2) 연결 실패·`TypeError`는 500과 같은 기본 본문이었고 `correlation_id`·로그가 없었다. (3) 없는 경로 404와 본문 오류(깨진 JSON 400·XML 415·1.1MB 413)도 기본 본문이었다. (4) PIPE는 같은 거절을 `INVALID_REQUEST`(400, `retryable: false`)로 답하고 기록하지 않았다(DEV-789).
+
+**원인.** 공개 서버는 `Fastify({ logger: false })`에 오류 처리기와 없는 경로 처리기를 두지 않았다. 경로마다 `randomUUID()`로 만든 correlation ID는 경로가 처리한 오류에만 실렸다. PIPE의 `toPsiError`는 `statusCode` 속성이 4xx인 예외를 모두 입력 오류로 옮겼다.
+
+**수정.** (1) `apps/search-api/src/http/unhandled-errors.ts`(새 파일) — `frameworkClientError`(`FST_` 코드 + 4xx만 클라이언트 오류), `classifyError`(오류 이름·종류 `elasticsearch`·`postgres`·`redis`·`github`·`network`·`application`, 허용 목록을 지난 코드 — ES 상태와 오류 유형, SQLSTATE, Node errno, GHE 분류와 상태), `stackFrames`(머리 `String(error)`를 떼어 낸 나머지의 `at` 줄 최대 5개, 줄마다 240자), 수명 주기 단계 훅(`request`·`parsing`·`validation`·`handler`·`serialization`, 콜백형이라 본문 스트림을 건드리지 않는다), 진단 기록 `http.unhandled_error`(`error`)·`http.client_error`(`warn`, 호출 위치 없음), 기록 실패 격리(`writeSafely` — 한 줄을 만드는 일과 쓰는 일 모두), 공개 리스너 처리기(500 `INTERNAL_ERROR`·400 `INVALID_PARAMETER`·413 `PAYLOAD_TOO_LARGE`·415 `UNSUPPORTED_MEDIA_TYPE`·404 `NOT_FOUND`, 코드별 고정 문구)와 없는 경로 처리기(기록하지 않는다). (2) `server.ts` — `genReqId: () => randomUUID()`·`requestIdHeader: false`, 경로보다 먼저 공통 처리 등록, `ServerDeps.log`가 추가 필드를 받는다. (3) `auth/read-invocation.ts` — `sessionInvocation`의 correlation ID는 `request.id`. (4) PIPE `routes.ts`의 `toPsiError`가 `frameworkClientError`를 쓰고, `audit.ts`는 `upstreamCorrelationId`를 공통 모듈에서 다시 내보낸다 — 봉투·고정 문구·로그 문구·인증은 그대로다. (5) `packages/contracts` — `UNSUPPORTED_MEDIA_TYPE`(415). (6) web — `lib/service-message.ts`의 `serviceFailureMessage`(5xx이고 `correlation_id`가 UUID일 때만 `Reference ID: <id>`), Repository workspace 검색 결과 오류가 그것을 쓴다. (7) PIPE 통합 하네스 — `faults.searchError`·`msearchError`(조회 경로 ES 클라이언트의 Proxy, 메서드를 원래 객체에 묶는다)와 공개 서버 로그 수집 `publicLogs`. (8) 문서·인계 — API 계약 v0.50, 백엔드 v0.21, 관측성 v0.14, 화면 상태 v0.25, QA v0.32(QA-W001-67), WP-110, [CONTRACT_DIFF](../../handoff/pipe-search-integration/v1/CONTRACT_DIFF.md) D-24(manifest 재생성, 계약 checksum `5bc60722…` 불변), RUNBOOK 8장 한 행.
+
+**시험 (실측, 격리 서비스 `prs-b8-*`).** 단위: `http/unhandled-errors.test.ts` 20건(분류의 경계 — ES `ResponseError` 게터 400은 클라이언트 오류가 아니다, 종류·허용 코드, 문구에 넣은 가짜 호출 위치·비밀·검색어가 기록에 없다, 생성 뒤 문구가 바뀐 스택은 싣지 않는다, 앞단 ID는 UUID일 때만, 기록 실패 격리), `server.test.ts` 새 7건(처리하지 못한 예외의 봉투와 같은 ID의 기록, 요청마다 다른 UUID와 위조 `request-id`·`x-correlation-id` 불수용, 없는 경로 404, 본문 오류 400·415·413과 `parsing` 단계, 정상 JSON 본문이 단계 훅을 지나 그대로 닿는다, 경로가 직접 보낸 응답은 그대로, 기록 수단이 던져도 500 봉투), `auth/read-invocation.test.ts` 1건, web `service-message.test.ts` 새 3건. 통합: `integration/errors/unhandled.test.ts` 9건 — 수정 전 6건 실패, 수정 뒤 모두 통과(공개 경로의 ES 거절·연결 실패·`TypeError` 500과 같은 ID 기록·검색어 부재, 추천 계산 실패의 200, 이미 처리하던 400·401·503, 404·본문 오류 봉투, PIPE의 ES 거절 `INTERNAL_ERROR`와 기록, PIPE 입력 오류 400).
+
+**변이 (커밋한 트리 `97ee77e`에서 하나씩, 매번 `cp` 백업으로 바이트 원복).** 12종 모두 시험을 죽였다 — 처리기 미등록, `FST_` 조건 제거, 스택 머리 미제거, 기록에 URL 추가, 세션 조회의 별도 ID, PIPE의 `statusCode` 분류 복원, 415의 400 강등, 없는 경로 처리기 제거, 기록 실패 미격리, 4xx에도 참조 ID, 참조 ID 누락, ES 오류 유형 허용 목록 제거. 결과마다 통과·실패 건수를 파싱해 시험이 실제로 돌았는지 확인했다(처음 판정기는 `Failed Tests` 줄을 요약으로 잘못 읽어 12종 모두 「아무것도 돌지 않음」으로 멈췄고, 요약 줄만 읽도록 고친 뒤 다시 돌렸다). 리뷰 반영 커밋(`a0b3dc5`)에서는 본문 스트림을 다른 내용으로 바꾸는 변이와 `done`을 부르지 않는 변이가 새 시험을 죽였다. `done(null, null)` 변이는 살아남았는데, Fastify가 `null`이면 원래 스트림을 그대로 읽으므로 손상이 아니었다(변이의 모양 문제).
+
+**실제 화면 (실제 Chromium → `next start` 웹 프록시 → 빌드된 search-api → 격리 PostgreSQL·Elasticsearch).** 가짜는 둘뿐이다: GHE 권한 조회와 로그인(Redis에 만든 세션). 실행기가 조회 경로 ES 클라이언트를 감싸 **질의에 표지가 있을 때만** 고장 낸다 — `cr129fault`가 든 `search`는 질의 거절(`ResponseError` 400, 원인 문구에 가짜 비밀), `cr129msfault`가 든 `msearch`는 통신 실패. 수정 전(`3f1c4c0`으로 빌드)과 수정 뒤를 같은 자료(가상 저장소 `cr129/payments`·`cr129/billing`, 범위 밖 `cr129/secret`)로 비교했다.
+
+| 경우 | 수정 전 | 수정 뒤 |
+| --- | --- | --- |
+| W1 작업 공간 — ES가 본 조회를 거절 | 400, Fastify 기본 본문(`correlation_id` 없음, 오류 유형 문구), 화면 「Unable to load search results.」, 로그 없음 | 500 `INTERNAL_ERROR`·고정 문구·`correlation_id`, 화면 「Unable to load search results. (INTERNAL_ERROR) Reference ID: 96de4d25-…」, 같은 ID의 `http.unhandled_error` 한 줄 |
+| W2 작업 공간 — 정상 조회 | 200, 3행 | 같음 |
+| W3 작업 공간 — 0건 + 추천 계산 실패 | 200, `relaxation_hints_incomplete: true`, 「No matching changes」 | 같음. 추천 진단 로그 `search.relaxation_incomplete`의 ID가 응답의 `correlation_id`와 같다 |
+| L1 레거시 — ES가 본 조회를 거절 | 400 기본 본문, 배너 「Unable to load results」, 참조 ID 없음 | 500 봉투, C-005 배너에 「Include this value when contacting support: 9e7541d1-…」 |
+
+수정 뒤 로그에서 화면의 두 ID로 한 줄씩 찾았다 — `route: /api/v1/search`, `stage: handler`, `error_kind: elasticsearch`, `error_code: 400:search_phase_execution_exception`, 호출 위치(`searchWithPit` → `runSearch` → `executeSearch`), `upstream_correlation_id`는 브라우저가 받은 프록시 헤더 값이다(DEV-790). 로그 전체에 질의 표지(`cr129fault`·`cr129msfault`)와 원인 문구가 한 번도 나오지 않는다. 수정 전 로그에는 이 오류들의 줄이 없었다. 레거시 화면은 서버의 한국어 고정 문구를 그대로 보인다 — 「서버 문구를 그대로 보여 준다」는 기존 a11y 시험이 정한 동작이라 바꾸지 않았다. 작업 공간은 `serviceMessage` 규칙대로 영어 안내와 코드를 보인다.
+
+**독립 리뷰.** 코드(`deep-reasoner`, 읽기 전용, `git diff 3f1c4c0..HEAD -- apps packages`, 도구 16회): **병합 가능** — 요구 일곱 가지를 모두 코드로 확인했다(공개 코드에 경로 밖으로 `statusCode`를 싣고 던지는 자리가 없어 기존 4xx는 모두 `FST_` 오류뿐이라는 근거 포함). [하] 1건 — 새 `preParsing` 훅 뒤에 정상 JSON 본문이 닿는지 거는 단정이 없다 → 시험을 더하고 위 변이 둘로 확인했다. [정보] 5건: 헤더를 보낸 뒤의 오류에 `reply.sent` 가드가 없다(스트림 전송 뒤 오류는 Fastify가 스스로 처리하고 우리 경로에 hijack 전 raw 쓰기가 없어 두지 않았다), 웹은 한국어 문구 대신 영어 안내와 코드를 그린다, 하네스 Proxy는 동일성 비교에 기대는 코드가 없어 다른 시험과 같다, 계약 6장 표와 코드 시험의 결합, 의존 경계 규칙 위반 없음. 문서(`deep-reasoner`, 읽기 전용, 도구 12회): **병합 가능(조건부)** — [중] 이 6.120장이 아직 없었다 → 이 장. [하] 2건 — 결정 (2)의 `randomUUID()` 문장이 세션 조회 변경과 모순되게 읽혔다 → 「그 밖의 경로」로 한정했다. 계약 6장 불릿 제목에 URL이 빠졌다 → 「요청 본문·URL」. 리뷰어가 확인한 것: 코드와 문서의 사실 대조(단계 다섯·종류 여섯·로그 필드·상태 코드), 판 번호 일곱, 새 ID가 기준선에 없음, 표 렌더, manifest 해시, 오류 코드 표 파서, SRS 불변.
+
+**게이트.** 코드와 1차 문서를 담은 트리(`387ff43`, 새 DB `prs_test_cr129_final`, 격리 ES `prs-b8-isolated`, Node 22.23.3)의 전 계층 게이트다. 실행 전후 추적 파일 해시와 `git status`가 같다(실행 중 변경 없음).
+
+| 단계 | 결과 |
+| --- | --- |
+| build · typecheck · lint · lint:deps | 모두 성공 |
+| 단위 | 191파일 3,519건 통과, 1건 건너뜀(실제 GHE smoke — 자격이 없으면 건너뛰는 기존 시험) |
+| a11y · 대비 | 24파일 470건 · 18쌍 실패 0 |
+| E2E | 224건 통과 |
+| 통합 | 153파일 2,395건 통과 |
+| 회귀 | 13파일 531건 통과 |
+
+그 뒤 리뷰 반영으로 단위 시험 하나(`server.test.ts`)와 문서만 바뀌었다 — 그 트리에서 새 시험 파일 넷(34건)과 문서 검증기를 다시 돌렸다.
+
+**문서 검증기.** `validate_srs_prd_env.py`를 기준선 `3f1c4c0`과 최종 트리에 똑같이 돌렸다. 처음 비교에서 경고 하나가 늘었다(「WP-110 has no requirement (FR/NFR) reference」) — WP-110·원장 4장·변경 대장 표에 NFR-005 「시크릿 노출」·NFR-008을 적어 없앴고, 기본·`--strict` 두 모드 모두 목록이 같다.
+
+**한계.** 사내 적용 NOT RUN(새 Release 발행과 사내 적용은 범위 밖이다). 경로가 스스로 처리한 오류의 `correlation_id`는 세션 조회 밖의 경로에서 여전히 경로가 만든 값이고, 요청 로그가 없어 어느 기록과도 잇지 않는다(관측성 3.1). web 프록시는 응답 헤더의 ID를 자기 값으로 덮고(DEV-790) 502를 기록하지 않는다(DEV-791). 레거시 화면은 서버의 한국어 문구를 그대로 보인다.
+
+**병합.** 이 기록을 담은 PR의 CI와 병합 커밋의 main CI는 다음 기능 PR의 첫 커밋이 적는다(23차는 기능마다 병합 기록을 다음 PR에 싣는다).

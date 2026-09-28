@@ -3215,7 +3215,7 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 **공통 처리 (CR-129).** 경로가 계약 코드로 답하지 못한 실패는 서버의 공통 처리가 이 봉투로 답한다.
 
 - **처리하지 못한 예외** — 500 `INTERNAL_ERROR`와 고정 문구. 예외의 문구·이름·스택·원격 응답은 응답에 싣지 않는다. 예외가 `statusCode` 속성을 가져도(Elasticsearch `ResponseError`는 거절 상태를 게터로 준다) 그 상태를 쓰지 않는다 — 그것은 서버가 만든 요청이 거절된 것이지 사용자의 입력 오류가 아니다.
-- **본문을 읽지 못한 요청** — 깨진 JSON·빈 JSON 본문·길이 불일치·URL 형식은 400 `INVALID_PARAMETER`, 본문 1MiB 초과는 413 `PAYLOAD_TOO_LARGE`, JSON이 아닌 본문 형식은 415 `UNSUPPORTED_MEDIA_TYPE`이다. 경로 핸들러에 닿기 전에 거절하므로 인증보다 먼저다.
+- **요청 본문·URL을 읽지 못한 요청** — 깨진 JSON·빈 JSON 본문·길이 불일치·URL 형식은 400 `INVALID_PARAMETER`, 본문 1MiB 초과는 413 `PAYLOAD_TOO_LARGE`, JSON이 아닌 본문 형식은 415 `UNSUPPORTED_MEDIA_TYPE`이다. 경로 핸들러에 닿기 전에 거절하므로 인증보다 먼저다.
 - **없는 경로** — 404 `NOT_FOUND`.
 - **`correlation_id`** — 서버가 요청마다 만든 UUID다. 앞단이 보낸 `X-Correlation-Id`를 요청 식별자로 받지 않는다. 서버는 같은 ID로 진단 로그 한 줄을 남긴다(관측성 3.1 「처리되지 않은 오류 진단 로그」) — 문의에는 이 값을 쓴다.
 

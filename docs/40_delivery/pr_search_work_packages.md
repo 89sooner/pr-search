@@ -4,7 +4,7 @@
 
 ## WP-110 처리되지 않은 오류의 공통 처리 (CR-129)
 
-- 요구사항: API 계약 2장 원칙 6·6장 오류 모델, 백엔드 아키텍처 8장 「예상치 못한 예외」, 관측성 3.1(보완). 선행: WP-013(검색 API), WP-015(web 프록시), WP-097(PIPE 수신부), WP-109(추천 계산 격리).
+- 요구사항: NFR-005 「시크릿 노출」(응답·로그에 토큰/시크릿 0건), NFR-008(운영성), API 계약 2장 원칙 6·6장 오류 모델, 백엔드 아키텍처 8장 「예상치 못한 예외」, 관측성 3.1(보완). 선행: WP-013(검색 API), WP-015(web 프록시), WP-097(PIPE 수신부), WP-109(추천 계산 격리).
 - 범위: (1) `apps/search-api/src/http/unhandled-errors.ts` — 공통 분류(`FST_` + 4xx만 클라이언트 오류, 오류 종류·허용 코드·호출 위치), 수명 주기 단계 훅, 진단 로그 한 줄과 기록 실패 격리, 공개 리스너 처리기와 없는 경로 처리기. (2) `server.ts` — `genReqId`·`requestIdHeader: false`, 경로보다 먼저 등록. (3) `auth/read-invocation.ts` — 세션 조회의 correlation ID는 `request.id`. (4) PIPE `routes.ts`·`audit.ts` — 같은 분류와 앞단 ID 규칙. (5) `packages/contracts` — `UNSUPPORTED_MEDIA_TYPE`. (6) web — `serviceFailureMessage`, 작업 공간 검색 결과 오류의 `Reference ID`. (7) PIPE 통합 하네스의 Elasticsearch 고장 주입과 공개 서버 로그 수집. (8) 문서·인계 — API 계약·백엔드·관측성·화면 상태·QA·CONTRACT_DIFF D-24·RUNBOOK 8장.
 - 제외: web 프록시의 헤더 덮어쓰기(DEV-790)와 502 무기록(DEV-791), 경로마다의 `randomUUID()` 정리, 요청 로그 구현, PIPE 로그 문구 확장, 그 밖의 화면 오류 문구, Release 발행, 사내 적용.
 - 완료 기준: 대표 실패를 **수정 전 코드에서 먼저 재현한다** — 조회 경로의 Elasticsearch 고장으로 공개 경로가 Fastify 기본 본문(질의 거절은 400)을 내고 `correlation_id`가 없으며, PIPE는 같은 거절을 `INVALID_REQUEST`로 답한다. 수정 뒤에는 처리하지 못한 예외가 500 `INTERNAL_ERROR`·고정 문구·UUID `correlation_id`이고, 같은 ID의 진단 로그가 경로 패턴·단계·오류 종류·코드·호출 위치를 담으며, 응답과 로그 어디에도 검색어·원인 문구·원격 주소가 없다. 이미 처리하던 응답(문법 400·401·503, 추천 계산 실패의 200)은 그대로다. 실제 web → search-api → 격리 데이터로 화면의 `Reference ID`와 로그의 ID가 같다. 변이로 새 시험이 대상을 거는지 확인하고, Node 22 전 계층 게이트와 독립 리뷰를 통과한다.
