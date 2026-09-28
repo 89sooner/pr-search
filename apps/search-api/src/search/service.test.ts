@@ -238,12 +238,12 @@ describe('0건 검색의 완화 후보 — 추천 단계의 실패를 격리한�
     ]);
   });
 
-  it('**모순된 `kind:`의 후보 조립이 실패해도 0건을 주고, 조립 결함은 error로 남긴다**', async () => {
+  it('**모순된 `kind:`의 이름 해석이 실패해도 0건을 주고, 의존 장애는 `resolve`·warn으로 남긴다** (CR-128 독립 리뷰)', async () => {
     const { client, search } = clientWith(0);
     const { log, entries } = withLog();
 
     const result = await runSearch(
-      { ...request('kind:pull_request -kind:pull_request org:acme'), correlationId: 'corr-compute' },
+      { ...request('kind:pull_request -kind:pull_request org:acme'), correlationId: 'corr-resolve' },
       {
         es: client,
         ...DEPS,
@@ -252,12 +252,35 @@ describe('0건 검색의 완화 후보 — 추천 단계의 실패를 격리한�
       },
     );
 
-    // 본 조회는 하지 않는다 — 대상이 없다.
+    // 본 조회는 하지 않는다 — 대상이 없다. 이름 해석은 후보 계산만을 위해 여기서 처음 불린다.
     expect(search).not.toHaveBeenCalled();
     expect(result.total).toEqual({ value: 0, relation: 'eq' });
     expect(result.relaxation).toMatchObject({ hints: [], incomplete: true });
+    // 레지스트리의 일시 장애는 조립 규칙의 결함(`compute`·error)이 아니다 — 오경보를 만들지 않는다.
     expect(entries).toEqual([
-      expect.objectContaining({ level: 'error', stage: 'compute', reason: 'Error', correlation_id: 'corr-compute' }),
+      expect.objectContaining({ level: 'warn', stage: 'resolve', reason: 'Error', correlation_id: 'corr-resolve' }),
+    ]);
+  });
+
+  it('**후보 조립의 결함은 `compute`·error로 남긴다** — 격리하되 결함으로 보이게 한다', async () => {
+    const { client, search } = clientWith(0);
+    const { log, entries } = withLog();
+
+    // `seq:`가 남은 후보에 에폭이 없다 — 라우트가 에폭을 확정하지 않은 조립 결함을 흉내 낸다.
+    const result = await runSearch(
+      { ...request('kind:pull_request -kind:pull_request repo:acme/a base:main seq:1..2 author:kim'), correlationId: 'corr-compute' },
+      { es: client, ...DEPS, log },
+    );
+
+    expect(search).not.toHaveBeenCalled();
+    expect(result.relaxation).toMatchObject({ hints: [], incomplete: true });
+    expect(entries).toEqual([
+      expect.objectContaining({
+        level: 'error',
+        stage: 'compute',
+        reason: 'SequenceEpochRequiredError',
+        correlation_id: 'corr-compute',
+      }),
     ]);
   });
 

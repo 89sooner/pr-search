@@ -22,7 +22,7 @@
     "pipe-integration-v1.openapi.yaml",
     "operation-map.json"
   ],
-  "contract_checksum": "987d77fe850424833c8f60b71b3f45c82993bfd8c7799fc5a81fcd72bf7418a9",
+  "contract_checksum": "5bc607221ee392756e08bd97a937cc84556664b2ad51505223e86cf9088e5667",
   "files": [
     {
       "path": "CONTRACT_DIFF.md",
@@ -226,7 +226,7 @@
     },
     {
       "path": "pipe-integration-v1.openapi.yaml",
-      "sha256": "875db13575b83b47f52d6eed977c5c412cbcff3d9f9ee02e6ad826287cf7f3a9",
+      "sha256": "da17f720645071d3b38656ffbb635ccf8736e3b832cc19d0d6e646bed3d658bd",
       "role": "contract — 경로·요청·응답·오류 스키마 (정본)"
     },
     {

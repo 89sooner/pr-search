@@ -578,6 +578,10 @@ function errorName(error: unknown): string {
  * **접근 범위 확인 실패만은 그대로 올린다**: 인가 실패를 200으로 바꾸지 않는다(본 조회와 같은
  * 범위를 쓰므로 목록을 만든 뒤에는 나지 않는다 — `kind:`가 모순되어 본 조회를 건너뛴 0건에서만
  * 여기서 처음 드러난다).
+ *
+ * **이름 해석의 실패는 따로 가른다** (CR-128 독립 리뷰). 모순된 `kind:`의 0건에서는 레지스트리를
+ * 후보 계산만을 위해 여기서 처음 부른다. 그 일시 장애는 조립 규칙의 결함이 아니므로 `compute`·error가
+ * 아니라 `resolve`·warn으로 남긴다 — 운영 로그의 error가 결함만을 가리키게 한다.
  */
 async function relaxationOf(
   request: SearchRequest,
@@ -585,31 +589,51 @@ async function relaxationOf(
   baseTarget: readonly EntityAlias[],
   resolve: () => Promise<NameResolution>,
 ): Promise<RelaxationResult> {
+  let resolution: NameResolution;
+  try {
+    resolution = await resolve();
+  } catch (error) {
+    return reported(request, deps, uncounted(request, 'resolve', error));
+  }
+
   let result: RelaxationResult;
   try {
     result = await computeRelaxationHints(request.ast, {
       es: deps.es,
       baseTarget,
       scope: request.scope,
-      resolution: await resolve(),
+      resolution,
       sequenceEpoch: request.sequenceEpoch,
       mergeNumberEpoch: request.mergeNumberEpoch,
       mergeNumberBaseBranch: request.mergeNumberBaseBranch,
     });
   } catch (error) {
     if (error instanceof AccessScopeUnavailableError) throw error;
-    const considered = Math.min(request.ast.filters.length, MAX_RELAXATION_HINTS);
-    result = {
-      hints: [],
-      truncated: request.ast.filters.length > MAX_RELAXATION_HINTS,
-      incomplete: true,
-      failure: { stage: 'compute', reason: errorName(error), counted: 0, failed: considered },
-    };
+    result = uncounted(request, 'compute', error);
   }
+  return reported(request, deps, result);
+}
 
+/** 후보를 하나도 세지 못한 결과. 목록은 비지만 「뺄 조건이 없다」가 아니다. */
+function uncounted(request: SearchRequest, stage: 'resolve' | 'compute', error: unknown): RelaxationResult {
+  return {
+    hints: [],
+    truncated: request.ast.filters.length > MAX_RELAXATION_HINTS,
+    incomplete: true,
+    failure: {
+      stage,
+      reason: errorName(error),
+      counted: 0,
+      failed: Math.min(request.ast.filters.length, MAX_RELAXATION_HINTS),
+    },
+  };
+}
+
+/** 세지 못한 후보가 있으면 진단 로그 한 줄을 남기고 결과를 그대로 돌려준다. */
+function reported(request: SearchRequest, deps: SearchDeps, result: RelaxationResult): RelaxationResult {
   if (result.failure !== undefined) {
     deps.log?.({
-      // 조립 단계의 실패는 규칙의 결함이다. 통신·시간 초과·갈래 실패는 운영 상태다.
+      // 조립 단계의 실패는 규칙의 결함이다. 이름 해석·통신·시간 초과·갈래 실패는 운영 상태다.
       level: result.failure.stage === 'compute' ? 'error' : 'warn',
       message: '0건 검색의 완화 후보를 다 세지 못했다 — 응답은 relaxation_hints_incomplete로 알린다 (CR-128)',
       event: 'search.relaxation_incomplete',

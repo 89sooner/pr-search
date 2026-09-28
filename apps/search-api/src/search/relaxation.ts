@@ -84,8 +84,11 @@ export interface RelaxationHint {
  * Elasticsearch 오류 본문을 담지 않는다: 둘 다 저장소·경로 이름을 실어 나를 수 있다.
  */
 export interface RelaxationFailure {
-  /** `compute`: 후보 조립(호출부가 잡는다), `msearch`: 왕복 전체, `branch`: 갈래 일부. */
-  readonly stage: 'compute' | 'msearch' | 'branch';
+  /**
+   * `resolve`: 이름 해석(호출부가 잡는다 — 모순된 `kind:`의 0건에서만 후보 계산을 위해 처음 부른다),
+   * `compute`: 후보 조립(호출부가 잡는다), `msearch`: 왕복 전체, `branch`: 갈래 일부.
+   */
+  readonly stage: 'resolve' | 'compute' | 'msearch' | 'branch';
   /** 오류 이름이나 갈래의 사유(`timed_out`·`shard_failures`·Elasticsearch 오류 유형). */
   readonly reason: string;
   /** Elasticsearch에 보낸 후보 수. */

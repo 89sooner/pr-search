@@ -501,7 +501,7 @@
 
 `kind:`끼리 모순되어(`kind:pull_request -kind:pull_request author:kim`) 본 조회를 실행하지 않은 0건도 후보를 센다 — 본 조회는 여전히 하지 않는다. 원본 질의(`query`·`parsed`)와 커서 지문은 후보 계산과 무관하게 그대로다.
 
-**`relaxation_hints_incomplete: true` — 세지 못한 후보가 있다 (CR-128).** 0건 응답에서만, 세지 못한 후보가 하나라도 있을 때만 나타난다(`false`로는 나오지 않는다). 세지 못함은 msearch 자체의 실패·왕복 상한 초과, 갈래의 오류·샤드 실패·`timed_out`, 후보 조립의 실패다. 그 후보의 건수는 싣지 않는다 — 부분 집계를 정확한 건수로 보이지 않는다. 그래서 `relaxation_hints`의 건수는 언제나 정확하고, 이 키가 있으면 목록에 빠진 후보가 있을 수 있다. **목록이 비었는데 이 키가 있으면 「추천을 계산하지 못했다」이지 「뺄 필터가 없다」가 아니다.** 추천 계산의 실패는 본 조회의 200을 바꾸지 않는다. 본 조회·접근 범위 확인·입력의 실패는 전과 같은 오류다(접근 범위 확인 실패는 후보 계산 중에 나도 503 `PERMISSION_UNAVAILABLE`이다). 서버는 진단 로그 `search.relaxation_incomplete`(단계 `compute`·`msearch`·`branch`, 오류 이름, 센 후보 수, 세지 못한 수, `correlation_id`)를 남긴다 — 질의 문자열과 Elasticsearch 오류 본문은 싣지 않는다.
+**`relaxation_hints_incomplete: true` — 세지 못한 후보가 있다 (CR-128).** 0건 응답에서만, 세지 못한 후보가 하나라도 있을 때만 나타난다(`false`로는 나오지 않는다). 세지 못함은 msearch 자체의 실패·왕복 상한 초과, 갈래의 오류·샤드 실패·`timed_out`, 후보 조립의 실패, 그리고 모순된 `kind:`의 0건에서 후보를 위해 처음 부르는 이름 해석(`org:`·`team:` 레지스트리)의 실패다. 그 후보의 건수는 싣지 않는다 — 부분 집계를 정확한 건수로 보이지 않는다. 그래서 `relaxation_hints`의 건수는 언제나 정확하고, 이 키가 있으면 목록에 빠진 후보가 있을 수 있다. **목록이 비었는데 이 키가 있으면 「추천을 계산하지 못했다」이지 「뺄 필터가 없다」가 아니다.** 추천 계산의 실패는 본 조회의 200을 바꾸지 않는다. 본 조회·접근 범위 확인·입력의 실패는 전과 같은 오류다(접근 범위 확인 실패는 후보 계산 중에 나도 503 `PERMISSION_UNAVAILABLE`이다). 서버는 진단 로그 `search.relaxation_incomplete`(단계 `resolve`·`compute`·`msearch`·`branch`, 오류 이름, 센 후보 수, 세지 못한 수, `correlation_id`)를 남긴다 — 조립 결함(`compute`)만 `error`이고 나머지는 운영 상태라 `warn`이다. 질의 문자열과 Elasticsearch 오류 본문은 싣지 않는다.
 
 응답 200:
 

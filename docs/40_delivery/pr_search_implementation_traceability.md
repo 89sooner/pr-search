@@ -9436,7 +9436,7 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 
 **원인.** `runSearch`가 본 조회에는 `resolveSearchTarget`이 `kind:`를 걷어 낸 AST와 좁힌 대상을 쓰면서, 0건일 때 `computeRelaxationHints`에는 **원래** `request.ast`와 **좁힌** 대상을 넘겼다. 후보는 필터 하나만 뺀 AST라 `kind:`가 남아 DEV-392의 가드가 던졌다. 걷어 낸 AST를 넘기는 것만으로도 틀린다 — `kind:`를 빼는 후보가 목록에서 사라지고, 좁힌 대상으로 세면 유형 조건을 뺐을 때 새로 들어오는 다른 유형을 세지 못한다. `resolveSearchTarget`은 올바르게 걷어 냈다. 조건은 `kind:` + 다른 필터 하나 이상 + 결과 0건이며 `path:`·저장소 이름과 무관하다. 운영 기본 화면(Repository workspace)은 모든 검색에 `kind:`와 `repo:`를 붙이므로(`lib/repository-search.ts`) 그 화면의 0건 검색이 전부 실패했다.
 
-**수정.** (1) `relaxation.ts` — 후보마다 `resolveSearchTarget(후보, 요청 경로의 원래 대상)`으로 대상과 걷어 낸 AST를 얻는다. 대상이 없는 후보는 보내지 않고 0건으로 본다. 나머지를 `kind:`를 걷어 낸 AST로 조립해 강제 접근 범위와 본 조회의 에폭(`seq:`·`mnum:`·기준 브랜치)을 결합하고 msearch 한 번으로 센다. 응답은 **보낸 후보의 목록**과 짝짓는다. 갈래 오류·샤드 실패·`timed_out`·하한 건수(`gte`)·응답 누락은 「세지 못함」이며 건수를 싣지 않는다. 갈래마다 `timeout: 1500ms`, 왕복 `requestTimeout: 3000`, `maxRetries: 0`. 왕복 실패는 던지지 않고 `incomplete`와 진단 재료(`failure`)로 답한다. 후보 조립의 결함과 접근 범위 오류는 던진다. (2) `service.ts` — 원래 대상을 넘기고, 모순된 `kind:`로 본 조회를 건너뛴 0건에서도 후보를 센다(그때만 이름 해석을 부른다). `relaxationOf`가 추천 단계를 격리한다 — `AccessScopeUnavailableError`만 올리고 그 밖의 실패는 `incomplete`로 바꾸며, `failure`가 있으면 진단 로그 `search.relaxation_incomplete`(단계·오류 이름·보낸 후보 수·세지 못한 수·correlation ID, 조립 결함은 `error`, 그 밖은 `warn`)를 남긴다. 질의 문자열과 Elasticsearch 오류 본문은 싣지 않는다. (3) `routes.ts` — 0건 응답에 `relaxation_hints_incomplete: true`(참일 때만)를 싣고 correlation ID를 서비스에 넘긴다. (4) `packages/es/src/search.ts` — `multiSearch`의 선택 셋째 인자 `MultiSearchTransport`(`requestTimeout`·`maxRetries`). 넘기지 않으면 전과 같은 호출이다(`sequence/range.ts`는 그대로). (5) `index.ts`·`runtime.ts` — 검색 의존 객체 하나에 진단 로그를 달아 공개 경로와 PIPE 연동이 같은 로그를 쓴다. (6) `SearchView.tsx` — 후보 건수를 `would_yield`로 읽고(DEV-784), 불완전하면 목록이 비었을 때 「Filter suggestions could not be calculated for this search.」, 일부만 셌을 때 「Some filter suggestions could not be calculated.」를 그린다. (7) PIPE 인계 — OpenAPI `SearchResponse`에 `relaxation_hints_incomplete`(`const: true`, `dependentRequired`, 0건이 아니면 금지), [CONTRACT_DIFF](../../handoff/pipe-search-integration/v1/CONTRACT_DIFF.md) D-23, 합성 예시 `read.search.200.relaxation-incomplete.json`, manifest(계약 checksum `967857d6…` → `987d77fe…`). `KindFilterNotAppliedError` 가드, `path:`의 경로 접두 의미, 후보 상한 8개, 원본 AST·커서 지문은 그대로다.
+**수정.** (1) `relaxation.ts` — 후보마다 `resolveSearchTarget(후보, 요청 경로의 원래 대상)`으로 대상과 걷어 낸 AST를 얻는다. 대상이 없는 후보는 보내지 않고 0건으로 본다. 나머지를 `kind:`를 걷어 낸 AST로 조립해 강제 접근 범위와 본 조회의 에폭(`seq:`·`mnum:`·기준 브랜치)을 결합하고 msearch 한 번으로 센다. 응답은 **보낸 후보의 목록**과 짝짓는다. 갈래 오류·샤드 실패·`timed_out`·하한 건수(`gte`)·응답 누락은 「세지 못함」이며 건수를 싣지 않는다. 갈래마다 `timeout: 1500ms`, 왕복 `requestTimeout: 3000`, `maxRetries: 0`. 왕복 실패는 던지지 않고 `incomplete`와 진단 재료(`failure`)로 답한다. 후보 조립의 결함과 접근 범위 오류는 던진다. (2) `service.ts` — 원래 대상을 넘기고, 모순된 `kind:`로 본 조회를 건너뛴 0건에서도 후보를 센다(그때만 이름 해석을 부른다). `relaxationOf`가 추천 단계를 격리한다 — `AccessScopeUnavailableError`만 올리고 그 밖의 실패는 `incomplete`로 바꾸며, `failure`가 있으면 진단 로그 `search.relaxation_incomplete`(단계·오류 이름·보낸 후보 수·세지 못한 수·correlation ID)를 남긴다. 이름 해석의 실패는 `resolve`, 후보 조립의 실패는 `compute`로 가르고 `compute`만 `error`, 그 밖은 `warn`이다(독립 코드 리뷰 반영). 질의 문자열과 Elasticsearch 오류 본문은 싣지 않는다. (3) `routes.ts` — 0건 응답에 `relaxation_hints_incomplete: true`(참일 때만)를 싣고 correlation ID를 서비스에 넘긴다. (4) `packages/es/src/search.ts` — `multiSearch`의 선택 셋째 인자 `MultiSearchTransport`(`requestTimeout`·`maxRetries`). 넘기지 않으면 전과 같은 호출이다(`sequence/range.ts`는 그대로). (5) `index.ts`·`runtime.ts` — 검색 의존 객체 하나에 진단 로그를 달아 공개 경로와 PIPE 연동이 같은 로그를 쓴다. (6) `SearchView.tsx` — 후보 건수를 `would_yield`로 읽고(DEV-784), 불완전하면 목록이 비었을 때 「Filter suggestions could not be calculated for this search.」, 일부만 셌을 때 「Some filter suggestions could not be calculated.」를 그린다. (7) PIPE 인계 — OpenAPI `SearchResponse`에 `relaxation_hints_incomplete`(`const: true`, `dependentRequired`, 0건이 아니면 금지), [CONTRACT_DIFF](../../handoff/pipe-search-integration/v1/CONTRACT_DIFF.md) D-23, 합성 예시 `read.search.200.relaxation-incomplete.json`, manifest(계약 checksum `967857d6…` → `5bc60722…`). `KindFilterNotAppliedError` 가드, `path:`의 경로 접두 의미, 후보 상한 8개, 원본 AST·커서 지문은 그대로다.
 
 **시험 (실측, 격리 서비스 `prs-kr-*`).**
 
@@ -9447,12 +9447,12 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 | 통합 | `apps/search-api/integration/integrations/pipe/parity.test.ts` | +3 | `kind:` 0건·모순 `kind:`의 공개·연동 본문 일치, PIPE grant의 후보가 사용자 범위 ∩ 허용 목록으로 센 3건 |
 | 통합 | `apps/search-api/integration/integrations/pipe/openapi.test.ts` | +1 | `kind:` 0건(패싯 포함)의 실제 응답이 OpenAPI 스키마에 맞는다 |
 | 단위 | `apps/search-api/src/search/relaxation.test.ts` | 13 (새 파일) | 후보별 대상(원래 대상·좁힌 대상), 본문에 `kind` 없음, 원래 대상 밖으로 넓히지 않음, 대상 없는 후보를 보내지 않고 보낸 후보와 짝짓기, 후보마다 접근 범위, msearch 한 번·갈래 예산·왕복 상한·재시도 0, 세지 못한 갈래 다섯 모양, 왕복 실패 둘, 조립 결함은 던진다 |
-| 단위 | `apps/search-api/src/search/service.test.ts` | +4 | msearch 실패의 격리와 `warn` 로그, 모순 `kind:`의 조립 실패는 `error` 로그, 접근 범위 실패는 올린다, 다 세면 로그 없음 |
+| 단위 | `apps/search-api/src/search/service.test.ts` | +5 | msearch 실패의 격리와 `warn` 로그, 모순 `kind:`의 이름 해석 실패는 `resolve`·`warn`(리뷰 지적을 재현한 시험 — 고치기 전 코드에서 실패했다), 조립 결함은 `compute`·`error`, 접근 범위 실패는 올린다, 다 세면 로그 없음 |
 | 단위 | `packages/es/src/search.test.ts` | +1 | 전송 옵션은 넘겼을 때만 둘째 인자로 간다 |
 | a11y | `apps/web/a11y/search.test.tsx` | +2, 1건 보강 | 대역을 계약 모양(`would_yield`)으로 — `author:kim removed: 12 items`, 불완전 두 문구, axe 위반 0 |
 | 회귀 | `regression/runtime-reachability.test.ts` | +1 | 진단 로그가 `index.ts`의 검색 의존 객체에 있고 그 객체가 공개 경로와 PIPE로 간다 |
 
-**변이 (커밋한 트리 `d90445e`에서 하나씩, 매번 `cp` 백업으로 바이트 원복·해시 대조).** 17종 모두 시험을 죽였다. 결과마다 통과·실패 건수를 파싱해 시험이 실제로 돌았는지 확인했다.
+**변이 (커밋한 트리 `d90445e`에서 하나씩, 매번 `cp` 백업으로 바이트 원복·해시 대조).** 17종 모두 시험을 죽였다. 리뷰 반영분 M18은 손으로 돌렸다. 결과마다 통과·실패 건수를 파싱해 시험이 실제로 돌았는지 확인했다.
 
 | 변이 | 결과 |
 | --- | --- |
@@ -9473,6 +9473,7 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 | M15 갈래에 시간 예산을 걸지 않는다 | 단위 1건 실패 |
 | M16 검색 의존에서 진단 로그를 뺀다 | 회귀 1건 실패 |
 | M17 추천 실패를 로그로 남기지 않는다 | 단위 2건, 통합 5건 실패 |
+| M18 이름 해석의 실패를 `compute`로 기록한다(리뷰 반영분, 손으로) | 단위 1건 실패 |
 
 **실제 화면 (실제 Chromium → `next start` 웹 프록시 → 빌드된 search-api → 격리 PostgreSQL·Elasticsearch).** 가짜는 둘뿐이다: GHE 권한 조회(사용자 → 저장소 ID)와 로그인(Redis에 만든 세션). 웹은 `AUTH_ENABLED=true`, 가상 GHE OAuth 값, `ALLOW_INSECURE_COOKIES=true`로 띄웠다. 수정 전(`d2d894d`로 빌드), 수정 뒤, 수정 뒤에 msearch만 실패시킨 고장 주입 판을 같은 자료(가상 저장소 `cr128/payments`·`cr128/billing`, 범위 밖 `cr128/secret`)로 비교했다.
 
@@ -9488,7 +9489,7 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 
 **발견.** (1) 운영 기본 화면이 모든 검색에 `kind:`·`repo:`를 붙인다 — 보고가 「path 조합」으로 본 것은 경로 트리 선택이 0건을 만들기 쉬워서로 보인다. My open PRs 탭도 로그인 사용자의 열린 PR이 없으면 같은 500이었다(My merged PRs 탭은 같은 질의 모양이라 확인하지 않았다). (2) 레거시 화면과 그 컴포넌트 시험의 대역이 함께 `total`을 읽어 건수가 비었다(DEV-784). (3) 공개 서버의 처리되지 않은 오류 본문(DEV-786)과 작업 공간의 후보 미표시(DEV-787), 구간 조회의 `kind:`(DEV-788)는 범위 밖 관찰로 남겼다. (4) 볼 수 있는 저장소가 없는 사용자의 모순 `kind:` 질의는 전에 200(빈 목록)이었고 이제 다른 검색과 같이 503 `PERMISSION_UNAVAILABLE`이다 — 후보도 강제 접근 범위를 결합하기 때문이며 FR-AUTH-002 AC-3에 맞춘 결정이다(CR-128 결정 (3)).
 
-**독립 리뷰.** (기록 예정)
+**독립 리뷰.** 코드(`deep-reasoner`, 읽기 전용, `git diff d2d894d..d90445e -- apps packages regression`, 도구 28회): **병합 가능** — 지시서의 조건 열 가지(가드 유지, 원래 대상에서의 재해석과 넓히지 않음, 대상 없는 후보, 응답 짝짓기, 원본 AST·지문 불변, 상한 8·msearch 한 번·재시도 0, 추천 실패만 격리, 후보의 접근 범위, 지목 규칙·KST, `executeSearch` 공유 경로)를 모두 코드로 확인했고, 두 경로 모두 응답 스키마가 없어 새 키가 조용히 잘리지 않는다는 것도 봤다. [하] 1건 — 모순된 `kind:`의 0건에서 후보를 위해 처음 부르는 이름 해석의 일시 장애가 조립 결함(`compute`·`error`)으로 기록돼 오경보가 될 수 있다. 반영했다: 지적을 재현하는 단위 시험이 고치기 전 코드에서 실패함을 본 뒤 `resolve`·`warn`으로 갈랐다(M18). 문서(`deep-reasoner`, 읽기 전용, `git diff d2d894d..8e2bfd9 -- docs handoff agent-context`, 도구 17회): **병합 가능** — [하] 2건, [정보] 2건. (1) 변경 대장 범위 (e)에 `runtime.ts`가 빠졌다 → 고쳤다. (2) OpenAPI `SearchResponse`의 일부 근거 줄 번호가 이 CR 전부터 어긋나 있었다 → 이 CR의 줄 이동과 함께 모두 실제 줄로 맞췄다. (3) [정보] SRS 예외/실패 처리의 「본 조회가 성공한 뒤」가 모순된 `kind:`의 0건(본 조회를 하지 않는다)을 담지 못한다 → 「본 조회의 결과(0건)가 확정된 뒤」로 다듬었다(SRS 판 기록의 같은 구절도). (4) [정보] DEV-783~785의 「resolved (병합 전)」 → CR-127(DEV-780~782)과 같은 관례라 유지했다. 문서 리뷰어가 확인한 것: 시간 예산 숫자의 일치, OpenAPI의 `const: true`·`dependentRequired`·0건이 아닐 때 금지, 이 CR이 고친 근거 줄, 코드 주장 다섯, BFF 503 설명의 근거, DEV 귀속(DEV-392·DEV-383), 합성 예시의 스키마 적합, manifest 해시, 판 번호, ID, upstream-feedback의 원문 없음 표기, 공개 저장소 식별자 없음.
 
 **게이트.** (기록 예정)
 
