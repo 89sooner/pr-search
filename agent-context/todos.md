@@ -2694,4 +2694,13 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [ ] **DEV-778(open)** — 파생의 대상 조회가 직전에 색인된 대상을 못 봐 미해결 참조가 다음 이벤트까지 남는다(`packages/es/src/links.ts`의 `findReferenceTargets`).
 - [ ] **DEV-779(open)** — 운영자 세션의 첫 관계 조회가 일시적 503 `PERMISSION_UNAVAILABLE`, 사유 로그 없음, 원인 미확인.
 - [ ] **DEV-588(open, 재발)** — 조정 스캔 취소 시험 경합.
-- [ ] **자원 정리(사용자 결정)** — `prs-s20` compose·`prs-s20-fakeghe`·`prs-s20-{postgres,es,redis}`·이미지 `s20-cr12[4-6]`·워크트리 `cr124-ghe-ref-host`·`cr125-admin-cursor`·`cr126-stack-reeval`·`s20-record`·`wt-777-prefix`.
+- [x] **자원 정리(사용자 결정)** — `prs-s20` compose·`prs-s20-fakeghe`·`prs-s20-{postgres,es,redis}`·이미지 `s20-cr12[4-6]`·워크트리 `cr124-ghe-ref-host`·`cr125-admin-cursor`·`cr126-stack-reeval`·`s20-record`·`wt-777-prefix`. 2026-09-28 확인: 모두 정리돼 있었다.
+
+## 21차 뒤 남은 것 (2026-09-28)
+
+- [x] **CR-127 한국 시간 표시와 KST 달력 날짜 검색** — main `2272f56`(PR #247, 병합 커밋의 main CI run 36366292588 success). 화면 시각 KST·원본 UTC 툴팁, `merged:`/`created:`의 `@<시간대>` 달력 날짜 범위, 통계·감사 기간.
+- [ ] **사내 적용(NOT RUN)** — 20차·21차 변경을 담은 번들은 아직 없다. 21차는 업그레이드만(마이그레이션·재색인 없음)이고 사용자 공지가 필요하다 — 화면 시각이 9시간 달라 보이고, 옛 URL·저장된 검색의 날짜 조건은 UTC로 남는다. RUNBOOK 7장 CR-127 행·8장 첫 세 행.
+- [ ] **`OD-018`(open)** — 개인별 표시 시간대. 권고는 열지 않는 것이다.
+- [ ] **DEV-779(open)** — 이번 격리 검증에서 같은 모양을 관찰했다(저장소 0개일 때 로그인한 세션의 검색이 약 5분 동안 사유 줄 없이 503).
+- [ ] **DEV-778·DEV-588(open)**, **CR-126 전환기 보완을 끄는 조건** — 20차에서 넘어왔다.
+- [ ] **자원 정리(사용자 결정)** — `prs-s21` compose(멈춤)·`prs-s21-fakeghe`(멈춤)·`prs-s21-{postgres,es,redis}`(실행 중)·이미지 `prs/*:s21-base`·`prs/*:s21-kst`·워크트리 `kst-time`·`s21-record`·`0cb4b81e…/scratchpad/wt-mut`.

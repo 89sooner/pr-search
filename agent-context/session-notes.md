@@ -3456,3 +3456,63 @@ gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '.check_runs[] | "
 ### References
 
 - PR #243·#244·#245와 마감 기록 PR, 변경 대장 CR-124~CR-126, 원장 6.115~6.117장.
+
+## 21차 (2026-09-27~28) — CR-127 한국 시간 표시와 KST 달력 날짜 검색 병합
+
+### Goal
+
+사용자 지시(2026-09-27): 최신 main에서 화면 시간 표시와 날짜 검색을 KST 기준으로 통일한다 — 원본은 UTC로 보관하고 사용자는 한국 시간으로 보고 검색한다. 화면 표시만 바꾸지 않고 날짜 필터와 통계까지 일치시키며, 기존 UTC 질의·URL·저장 검색의 뜻, CR-125의 마이크로초 커서, M 번호·시퀀스·에폭·PR 연결은 바꾸지 않는다. 완료 기준: 화면에서 9월 27일로 보이는 항목은 한국 시간 9월 27일을 검색했을 때 같은 기준으로 조회된다. 별도 CR·WP로 커밋·PR·리뷰·CI·병합·기록까지 하고, 새 Release·사내 적용은 하지 않는다.
+
+### Current state
+
+- **main = `2272f56`**(CR-127, PR #247)과 이 마감 기록 PR. PR CI(run 36365536926)와 병합 커밋의 main CI(run 36366292588)가 첫 시도에 success였다.
+- 첫 세션(`0cb4b81e…`)이 조사·설계·문서·수정 전 재현 시험·구현·첫 게이트·코드 리뷰·변이·격리 compose 수정 전후 검증까지 하고, 원장 6.118장 초안을 scratchpad에 쓰던 중 context-full로 끊겼다(전사 `exports/202609280846_ing.md`). 이어가기 세션(`cd1ac937…`)이 전사·jsonl·scratchpad로 상태를 복원해 기록을 마감하고, 최종 게이트·문서 리뷰·그 반영(`b0ba276`)·PR·병합을 했다.
+- 사내 적용 NOT RUN, 새 번들·Release 없음.
+
+### Decisions
+
+- **시간대를 질의 문자열 안에 싣는다(`@<시간대>`)** — 목록·총계·패싯·완화 힌트·통계·내보내기·저장된 검색·커서 지문이 모두 `q`에서 조건을 읽으므로, 별도 파라미터로 두면 그 경로를 하나씩 넓혀야 하고 하나라도 빠지면 조용히 다른 조건이 된다. 저장된 검색 표는 바꾸지 않는다.
+- **시간대 없는 옛 날짜 조건은 UTC 하루 그대로** — 저장된 검색·공유 URL을 조용히 다시 해석하지 않고 칩 `UTC`·필드 `(UTC)`로 구분한다. 작업 공간은 날짜를 새로 고르는 순간 KST 조건이 된다.
+- **반열림 `[첫 순간, 다음 날 첫 순간)`을 Elasticsearch `gte`/`lt`로 보내고 UTC 구간을 여기서 확정한다** — Elasticsearch `time_zone`에 맡기지 않는다. 표시의 하루·검색의 하루·통계 버킷 경계가 같은 계산(`@prs/query`의 `calendar.ts`)에서 나온다. 서머타임 공백·겹침의 「첫 순간」은 Elasticsearch 일 버킷 키로 실측해 맞췄다.
+- **통계의 날짜 기간은 요청 시간대의 달력 날짜, 기본 30일은 그 시간대의 오늘 포함** — 기본(Asia/Seoul) 통계 링크의 모집단 경계가 UTC 날짜에서 KST 날짜로 9시간 옮겨진 것은 이 CR의 대가로 명시했다.
+- **감사 기록 기간은 순간 범위(`from` 이상 `to` 미만)를 유지하고 오프셋 없는 값은 UTC로 읽는다** — 화면은 KST 벽시계에 `+09:00`을 붙인다.
+- **문서 리뷰 뒤: 통계 시각형 기간의 오프셋 없는 시각도 UTC**(서버 판정·버킷 수 어림·`extended_bounds`, 화면 드릴다운 판정) — 리뷰 수정 `4621183`의 링크 판정이 브라우저 시간대를 타게 된 것이 결정적 근거였다. 400으로 거절하는 안은 옛 200을 깨므로 기각했다. 응답의 `applied_range`와 모집단 조건은 받은 값 그대로다.
+- `OD-018`(개인별 표시 시간대)은 열고 권고는 「열지 않는다」. 격리 compose는 게이트를 다시 돌리기 전에 사용자 결정으로 멈췄다(지우지 않았다).
+
+### 이번에 배운 것
+
+- **변이 목록을 `|`로 나누는 스크립트는 `||`가 든 앵커를 조용히 쪼갠다** — 시험 칸이 깨져 아무것도 돌지 않았는데 M19는 직전 변이의 로그를 읽어 「1 failed」(거짓 죽음)로 보였다. 결과 줄에 `rc=0`인데 실패 수가 있거나 `[`가 여럿이면 무효 실행이다(메모리 `mutate-before-trusting-a-test`에 보탰다).
+- **시간대가 걸린 변이는 UTC에서 살아남을 수 있다**(M22) — 단위·a11y를 세 시간대에서 돌린다.
+- **Elasticsearch 8.19는 오프셋 없는 `extended_bounds`를 집계 `time_zone`으로 읽고, 같은 문자열의 범위 질의는 UTC로 읽는다** — 격리 ES의 임시 인덱스로 실측했다. 날짜만 적은 끝도 `extended_bounds`에서는 집계 시간대다.
+- **문서 검증기의 미해결 표지 검출은 「미정」이라는 낱말 자체를 센다** — 기록 문장에 그 낱말을 쓰지 않는다(「자리표시」로 적었다).
+- **API 계약의 판 머리는 59행에 있다** — 머리 주석만 더하고 판 번호를 올리지 않기 쉽다(이번 문서 커밋에서 빠뜨려 기록 커밋에서 올렸다).
+- **시험 자료를 실제 시각보다 뒤에 머지하면 투영이 받지 않는다** — 경계 자료는 과거 시각으로 만든다.
+- **이 gh 판(2.4.0)의 `gh pr view --json`에는 `headRefOid`가 없다** — head SHA는 `gh api repos/<o>/<r>/pulls/<n> --jq .head.sha`로 읽는다.
+
+### Changed files
+
+- 문서: CR-127, SRS v2.48, PRD v1.25, 용어집 v0.20, 매트릭스 v1.22, 와이어프레임 v0.29, 화면 흐름 v0.13, 컴포넌트 v0.30, QA v0.30, API 계약 v0.48, 프런트엔드 v0.17, 시스템 v0.6, 백엔드 v0.20, WP-108, 원장 6.118장·DEV-779~782, RUNBOOK 7장 한 행·8장 세 행.
+- 코드: `packages/query/src/{calendar,parse,ast,serialize,index}.ts`, `packages/es/src/query-builder.ts`, `apps/search-api/src/analytics/{range,routes,aggregations}.ts`, `apps/search-api/src/audit/routes.ts`, `apps/web/lib/{format,analytics,audit,repository-search,tokens}.ts`, `apps/web/components/TimeText.tsx`, 시각을 그리는 컴포넌트 전부, `reader/primitives.tsx`(DatePicker), 작업 공간 둘, 통계·감사 화면.
+- 시험: 통합 `search/kst-calendar-range.test.ts`(31)·`audit/audit-period-timezone.test.ts`(12), 단위 `calendar.test.ts`(40)·`analytics/range.test.ts`(19) 등, E2E `workspace.kst-dates.spec.ts`(12, 브라우저 시간대 셋).
+
+### Commands
+
+- 게이트: `cd1ac937…/scratchpad/run-gates.sh <worktree> <label>`(새 DB `prs_test_s21_<label>`, 단위·a11y를 셸 기본·UTC·LA로, `setsid nohup`으로 분리).
+- 변이: `0cb4b81e…/scratchpad/mutate.sh <wt-mut> <ids>` — `|`가 든 앵커는 손으로 돌린다(바이트 백업과 원복).
+- 격리: `0cb4b81e…/scratchpad/r21/run127.sh build <sha> <tag> | fake-up | base-install | scenario | snap <label> | api <label> | upgrade | down`, 브라우저 `r21/browser127.mjs <label>`, 스냅숏 비교 `r21/cmpsnap.mjs`.
+- 문서 검증: `validate_srs_prd_env.py --root <dir> [--strict]`를 기준선의 `git archive` 사본과 작업 트리에 돌려 목록을 비교한다.
+- 기록 편집: `cd1ac937…/scratchpad/rec/apply*.mjs`(기준 문자열이 한 번 맞을 때만 쓰고 개행을 보존한다).
+
+### Next steps
+
+1. 사용자: 21차 격리 자원·워크트리 정리 여부(current-handoff 「Verify before changing code」 1·2번).
+2. 사용자: 20차·21차 변경을 담은 다음 배포본과 사내 적용 여부 — 21차는 업그레이드만이고, 사용자 공지(화면 시각 9시간 차이, 옛 날짜 조건은 UTC)가 필요하다.
+3. 후속 후보(사용자 판단): DEV-778, DEV-779, DEV-588, CR-126 전환기 보완을 끄는 조건, `OD-018`.
+
+### Risks/gotchas
+
+- current-handoff 「Open boundary」와 같다. 특히 옛 URL·저장된 검색의 날짜 조건은 UTC 하루라, 같은 날짜의 새 KST 검색과 결과가 다를 수 있다 — 칩의 `UTC`가 그 차이를 알린다.
+
+### References
+
+- PR #247과 마감 기록 PR, 변경 대장 CR-127, 원장 6.118장.
