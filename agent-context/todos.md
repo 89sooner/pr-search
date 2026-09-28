@@ -2709,3 +2709,12 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 
 - [ ] **RUNBOOK 정정 후보(다음 판, CR)** — 2장의 비공개 저장소·읽기 토큰 전제(저장소는 공개라 토큰 없이 받는다), 7.E·7.G~7.I의 `./prsctl lineage`로 배포 SHA 읽기(번들 manifest만 출력한다 — 실행 중인 판은 이미지 태그와 `schema_migration`의 `max(version)`으로 본다). 번들 RUNBOOK과 같게 두려고 이번에는 고치지 않았다.
 - [ ] **다음 배포본의 리허설 기준 판** — pilot.20 상태(7.J를 마친 뒤)에서 시작한다. 20차 도구 사본(`cd1ac937…/scratchpad/rel20/r20/`)을 재사용하되 pilot.18 스냅숏 대신 pilot.20 상태를 새로 만든다.
+
+## 22차 뒤 남은 것 (2026-09-29)
+
+- [x] **CR-128 0건 검색의 완화 후보와 `kind:` 재해석** — main `d602890`(PR #251, 병합 커밋의 main CI run 36456023880 success). `kind:` + 다른 필터 + 0건의 500 해소, 후보마다 원래 대상에서 재해석, 모순 `kind:`의 후보, `relaxation_hints_incomplete`, 레거시 화면의 `would_yield`.
+- [ ] **사내 재조회(CR-128)** — 다음 배포본을 사내에 적용한 뒤 `agent-context/upstream-feedback.md` 새 항목의 네 가지를 조회해 그 아래에 적는다. 사내 적용·사내 PIPE BFF 확인은 NOT RUN이다.
+- [ ] **DEV-786(open)** — 공개 search-api의 처리되지 않은 오류가 Fastify 기본 본문(내부 문구, correlation ID·로그 없음)이다. PIPE와 같은 오류 처리기를 두는 후속 CR 후보.
+- [ ] **DEV-787(open)** — Repository workspace가 0건에서 완화 후보를 그리지 않는다. 화면이 붙인 `kind:`·`repo:`를 거르고 후보를 화면 조작에 대응시키는 설계가 필요하다.
+- [ ] **DEV-788(open)** — 구간 조회(`/api/v1/sequence-ranges`) `q`의 `kind:`가 결과와 무관하게 500이다. 지원(대상 좁히기)할지 400으로 거절할지 제품 결정.
+- [ ] **22차 자원 정리** — 사용자가 2026-09-29에 「모두 남겨 둠」을 골랐다. 컨테이너 `prs-kr-postgres`·`prs-kr-redis`·`prs-kr-es`, 워크트리 `kind-relaxation`·`cr128-record`·scratchpad `prefix`(main 저장소 목록에 등록).
