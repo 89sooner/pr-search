@@ -26,7 +26,7 @@
   "files": [
     {
       "path": "CONTRACT_DIFF.md",
-      "sha256": "ea90110a1057050be62019dd74ab475e8518f7231e82212d9a0da683e7be0271",
+      "sha256": "5a0b2dd4cc0b7ccb6b24324cb8cb702973ccbbb92bd8d81968f24bfa4c59f161",
       "role": "guide — 제안 계약 PSI-1.0과 구현의 차이"
     },
     {

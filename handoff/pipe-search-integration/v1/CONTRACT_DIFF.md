@@ -181,6 +181,21 @@ PSI-1.0 제안과 CR-112 구현 시점의 `read.resolve`는 커밋 SHA·PR 번�
 
 **PIPE에 필요한 조치.** `SearchResponse`는 `additionalProperties: false`이므로, 이 스키마로 응답을 엄격하게 검증한다면 새 키를 받아들이도록 스키마를 갱신해야 합니다. 화면이 후보를 보여 준다면 이 키가 있을 때 빈 목록을 「제안 없음」으로 그리지 말고 「제안을 계산하지 못함」으로 구분하는 것을 권합니다. 전에 `kind:` 0건 검색이 503 `SEARCH_AUTH_UNAVAILABLE`로 보였다면 이 변경 뒤에는 200 0건으로 바뀝니다 — 재시도·빈 결과로 대신하던 처리가 있으면 걷어 내십시오. 예시 `examples/read.search.200.relaxation-incomplete.json`(합성)을 더했습니다. `handoff/pipe-search-port`(2026-09-21 시점 고정 스냅숏)의 fixture에는 이 키가 없습니다.
 
+## D-24 서버 오류는 `INTERNAL_ERROR`다 — `statusCode`가 4xx인 서버 예외를 `INVALID_REQUEST`로 분류하던 결함 (CR-129, 2026-09-29)
+
+연동 리스너의 오류 처리기는 경로가 처리하지 못한 예외 가운데 `statusCode` 속성이 4xx인 것을 모두 **`INVALID_REQUEST`**(400, `retryable: false`)로 답했습니다. Elasticsearch 클라이언트의 `ResponseError`는 거절 상태를 `statusCode`로 내놓으므로, 서버가 조립한 질의를 Elasticsearch가 거절하면 PIPE에게는 입력 오류로 보였고 서버 로그도 남지 않았습니다(DEV-789). CR-129부터 입력 오류로 답하는 것은 **요청 본문·URL을 읽지 못한 경우**(본문 형식·크기·JSON·URL)뿐이고, 그 밖의 처리하지 못한 예외는 `INTERNAL_ERROR`(500, `retryable: false`)이며 서버가 correlation ID와 함께 기록합니다. 공개 `/api/v1/*`도 같은 분류를 씁니다.
+
+| 자리 | 전 | 후 |
+|---|---|---|
+| 서버 예외 중 `statusCode`가 4xx인 것(예: Elasticsearch의 질의 거절) | 400 `INVALID_REQUEST`, 기록 없음 | 500 `INTERNAL_ERROR`, 서버 로그에 오류 이름과 correlation ID |
+| 본문 1MiB 초과 · JSON이 아닌 본문 형식 | 413 `PAYLOAD_TOO_LARGE` · 415 `UNSUPPORTED_MEDIA_TYPE` | 같음 |
+| 그 밖의 요청 읽기 오류(깨진 JSON 등) | 400 `INVALID_REQUEST` | 같음 |
+| 원본 조회의 입력 오류(질의 문법·커서 등) | 원본 본문 그대로(예: 400 `QUERY_SYNTAX_ERROR`) | 같음 |
+
+오류 코드·봉투·고정 문구·OpenAPI·operation map은 바뀌지 않습니다(계약 checksum 불변).
+
+**PIPE에 필요한 조치.** 없습니다. 이 표의 오류 대응(`INTERNAL_ERROR` → 503 `SEARCH_AUTH_UNAVAILABLE`)을 따르는 BFF에서는 이 경우가 사용자의 입력 오류가 아니라 일시 장애로 보입니다. 사용자에게 보인 오류를 조사할 때는 응답의 `correlation_id`를 pr-search 운영자에게 전달합니다.
+
 ## 확인하지 못한 것
 
 | 항목 | 상태 | 이유 |

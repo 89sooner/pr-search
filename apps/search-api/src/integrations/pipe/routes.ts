@@ -46,6 +46,7 @@ import {
   type IntegrationOperation,
 } from './operations.js';
 import { parseStrictQuery, strictPlainParam, strictRepositoryParam } from './query.js';
+import { frameworkClientError } from '../../http/unhandled-errors.js';
 import { integrationInvocation, resolveEffectiveScope } from './read-context.js';
 import { consumeAssertion, type ReplayRedis } from './replay-store.js';
 import { authenticateTransport, type VerifiedTransport } from './transport-auth.js';
@@ -147,19 +148,23 @@ function eventTypeOf(state: RequestState, status: number): IntegrationEventType 
   return 'read';
 }
 
-/** 오류를 연동 봉투로. 알 수 없는 오류의 메시지는 응답에도 로그에도 싣지 않는다. */
+/**
+ * 오류를 연동 봉투로. 알 수 없는 오류의 메시지는 응답에도 로그에도 싣지 않는다.
+ *
+ * **클라이언트 오류는 Fastify가 요청을 읽다 낸 것뿐이다** (CR-129, 공개 리스너와 같은 분류). 전에는 `statusCode`
+ * 속성이 4xx인 예외를 모두 `INVALID_REQUEST`로 옮겨, Elasticsearch `ResponseError`(게터가 400)처럼 서버가 잘못
+ * 조립한 질의가 PIPE의 입력 오류로 나가고 기록도 남지 않았다(DEV-789).
+ */
 function toPsiError(error: unknown): PsiError {
   if (error instanceof PsiError) return error;
   if (error instanceof ScopeUnavailableError || error instanceof AccessScopeUnavailableError) {
     return new PsiError('PERMISSION_UNAVAILABLE', 'scope_unavailable');
   }
-  const fields = isRecord(error) ? error : {};
-  const code = typeof fields['code'] === 'string' ? fields['code'] : '';
-  const statusCode = typeof fields['statusCode'] === 'number' ? fields['statusCode'] : 0;
-  if (code === 'FST_ERR_CTP_BODY_TOO_LARGE') return new PsiError('PAYLOAD_TOO_LARGE', 'body_too_large');
-  if (code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE') return new PsiError('UNSUPPORTED_MEDIA_TYPE', 'media_type');
-  if (statusCode >= 400 && statusCode < 500) return new PsiError('INVALID_REQUEST', code === '' ? 'client_error' : code.toLowerCase().slice(0, 48));
-  return new PsiError('INTERNAL_ERROR', 'unexpected');
+  const client = frameworkClientError(error);
+  if (client === null) return new PsiError('INTERNAL_ERROR', 'unexpected');
+  if (client.code === 'FST_ERR_CTP_BODY_TOO_LARGE') return new PsiError('PAYLOAD_TOO_LARGE', 'body_too_large');
+  if (client.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE') return new PsiError('UNSUPPORTED_MEDIA_TYPE', 'media_type');
+  return new PsiError('INVALID_REQUEST', client.code.toLowerCase().slice(0, 48));
 }
 
 /** 연동 고유 거절(인증·자격)인가. 원본 조회의 오류와 이벤트 종류를 가른다. */

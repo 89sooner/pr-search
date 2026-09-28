@@ -1,5 +1,7 @@
 # PR Search 백엔드 아키텍처
 
+> CR-129 / DEV-786: 8장 「예상치 못한 예외」 행을 공개 리스너가 처음으로 지킨다. `apps/search-api/src/http/unhandled-errors.ts`가 공통 분류(`FST_` 코드 + 4xx만 클라이언트 오류, 오류 종류와 허용 코드, 호출 위치), 수명 주기 단계 훅, 진단 로그 한 줄을 갖고, `buildServer`가 경로보다 먼저 등록한다. correlation ID는 `request.id`(서버가 만든 UUID)다. PIPE 리스너는 같은 분류를 쓰고 봉투·인증은 그대로다.
+>
 > CR-127 / FR-SRCH-005 AC-11·FR-STAT-002 AC-7·FR-AUTH-004 AC-9: `packages/query/src/calendar.ts`가 시간대 검증·정규화, 그 지역 날짜의 첫 순간, 날짜 더하기를 갖는다. 파서는 `merged`·`created`의 날짜 범위 끝 `@<시간대>`를 AST `timezone`으로 싣고 `packages/es/src/query-builder.ts`의 `rangeClause`가 `{gte, lt}` UTC 순간으로 옮긴다(시간대 없는 범위는 그대로 `gte`/`lte`). `apps/search-api/src/analytics/routes.ts`는 날짜만 적은 시계열 기간을 그 문법으로 모집단에 더하고 `extended_bounds`·기본 기간·`timezone` 검증을 같은 모듈로 한다. `apps/search-api/src/audit/routes.ts`의 기간 해석은 오프셋 없는 값을 UTC로 읽는다(서버 기본 시간대에 기대지 않는다). 아래 「달력 날짜 범위의 계층 경계」 문단이 정본이다.
 >
 > CR-126 / FR-REL-006 AC-6 / OD-017 보완 (DEV-773): `apps/pipeline-worker/src/stack-import.ts`의 가져오기가 범위(PR 하나의 한쪽 끝)를 받고, 일부만 읽힌 서비스 인덱스 조회를 실패로 돌린다. `relations.ts`는 스택 판정 직전(`reconcileStacks` 앞)과 역방향 재평가의 정본 조회 직전(`listChildrenOf` 앞)에 그 범위를 옮긴다 — `LinkDeps.servingStackImport`를 켠 이벤트 소비자(`index.ts`의 `startLinkWorker`)만 한다. JOB-REL-006 러너와 재색인 deps는 끈다. ADR-008 허용 목록의 `stack-import.ts` 사유가 두 방아쇠와 끝점 term을 덮도록 고쳐진다.
@@ -16,7 +18,7 @@
 
 > CR-097 / FR-SRC-001~004: sourceRoutes는 인증 → 기존 ScopeService/resolveRepository → GitHubSourceReader 순서다. GitHubClient의 기존 전송·rate-limit 경계를 공유하는 별도 읽기 어댑터이며 source DTO를 수집/색인 DTO에 추가하지 않는다. 비재귀 트리·Contents·경로별 commits·PR files/merge-base를 요청 시 조회한다. 파일256KiB/4,000라인·디렉터리5,000항목·Diff100항목×30페이지 상한, 전체SHA 검증, PR 조회 전후 ref 확인을 강제한다.
 
-> 상태: review | 버전: v0.20 | 갱신일: 2026-09-27
+> 상태: review | 버전: v0.21 | 갱신일: 2026-09-29
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 
@@ -424,7 +426,7 @@ Redis 캐시 조회 (TTL 5분)
 | 시퀀스 채번 실패 | 공간 `stale`, 기존 값 보존, 재시도 예약 | 시퀀스 경고 배너 |
 | 잡 중복 요청 | 409 + 실행 중 잡 ID | 기존 잡 확인 유도 |
 | 재처리 3회 실패 | 이벤트 `held` 상태, 자동 재처리 제외 | 운영자 개입 요청 |
-| 예상치 못한 예외 | 500 + 상관 ID, 스택은 로그만 | 상관 ID 표시 |
+| 예상치 못한 예외 | 500 `INTERNAL_ERROR` + 상관 ID(`request.id`). 원인 문구·스택은 응답에 싣지 않고, 진단 로그에 경로 패턴·단계·오류 종류·허용 코드·호출 위치만 남긴다 (CR-129) | 상관 ID 표시 (C-005 배너, 작업 공간은 `Reference ID`) |
 
 **절대 하지 않는 것**: 권한 확인 실패 시 부분 결과 반환, 보강 실패 시 문서 미색인, 시퀀스 채번 실패 시 기존 시퀀스 삭제, 재채번 중 부분 상태로 남기기.
 

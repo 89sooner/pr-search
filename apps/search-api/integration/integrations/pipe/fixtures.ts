@@ -253,6 +253,12 @@ export interface Faults {
   replayDown: boolean;
   directoryDown: boolean;
   scopeDown: boolean;
+  /**
+   * 조회 경로가 쓰는 Elasticsearch 클라이언트의 `search`·`msearch`가 던질 예외 (CR-129). `null`이면 실제로 부른다.
+   * 처리되지 않은 오류의 공통 처리를 실제 서버 경로로 보려고 둔다.
+   */
+  searchError: unknown;
+  msearchError: unknown;
 }
 
 export interface Replica {
@@ -283,6 +289,8 @@ export interface Harness {
   /** 사용자 → 조직·팀 표현 재료. 500개를 넘는 범위를 흉내 낼 때 쓴다. */
   readonly orgScopes: Map<string, { orgIds: number[]; visibilities: string[] }>;
   readonly logs: Record<string, unknown>[];
+  /** 공개 서버(`buildServer`)의 운영 로그 (CR-129). */
+  readonly publicLogs: Record<string, unknown>[];
   now(): number;
   signAssertion(input: SignInput): Promise<string>;
   exchange(assertion: string, options?: CallOptions): Promise<TlsResponse>;
@@ -327,6 +335,31 @@ function authRedis(client: Redis): AuthRedis {
     del: (...keys) => client.del(...keys),
     scan: (cursor, m, pattern, c, n) => client.scan(cursor, m, pattern, c, n),
   };
+}
+
+/**
+ * 조회 경로에 넘기는 Elasticsearch 클라이언트 (CR-129). `faults`의 예외가 있으면 그 메서드가 던지고, 없으면
+ * 실제 클라이언트에 그대로 맡긴다 — 메서드는 원래 객체에 묶어 `this`가 바뀌지 않게 한다.
+ */
+function faultyEs(es: Client, faults: Faults): Client {
+  return new Proxy(es, {
+    get(target, property) {
+      if (property === 'search' && faults.searchError !== null) {
+        const error = faults.searchError;
+        return async () => {
+          throw error;
+        };
+      }
+      if (property === 'msearch' && faults.msearchError !== null) {
+        const error = faults.msearchError;
+        return async () => {
+          throw error;
+        };
+      }
+      const value: unknown = Reflect.get(target, property, target);
+      return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+    },
+  });
 }
 
 /** 연동 표를 비운다 — **외래 키 순서대로**. 다른 시험 파일의 `DELETE FROM app_user`가 막히지 않게 한다. */
@@ -442,7 +475,9 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
     [USER_B.login, USER_B.gheId],
     [OPERATOR.login, OPERATOR.gheId],
   ]);
-  const faults: Faults = { replayDown: false, directoryDown: false, scopeDown: false };
+  const faults: Faults = { replayDown: false, directoryDown: false, scopeDown: false, searchError: null, msearchError: null };
+  const publicLogs: Record<string, unknown>[] = [];
+  const servedEs = faultyEs(es, faults);
   const sourceCalls: string[] = [];
   const scopeFetches: string[] = [];
   const orgScopes = new Map<string, { orgIds: number[]; visibilities: string[] }>();
@@ -515,14 +550,19 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
     return {
       config,
       auth,
-      search: { pool: replicaPool, es, cursorSigner: TEST_CURSOR_SIGNER, resolveNames },
-      repositories: { pool: replicaPool, es, cursorSigner: TEST_CURSOR_SIGNER },
-      sequence: { pool: replicaPool, es, cursorSigner: TEST_CURSOR_SIGNER, resolveNames },
-      source: { pool: replicaPool, reader: () => reader, es },
+      search: { pool: replicaPool, es: servedEs, cursorSigner: TEST_CURSOR_SIGNER, resolveNames },
+      repositories: { pool: replicaPool, es: servedEs, cursorSigner: TEST_CURSOR_SIGNER },
+      sequence: { pool: replicaPool, es: servedEs, cursorSigner: TEST_CURSOR_SIGNER, resolveNames },
+      source: { pool: replicaPool, reader: () => reader, es: servedEs },
     };
   };
 
-  const publicDeps = buildDeps(pool, redis);
+  const publicDeps: ServerDeps = {
+    ...buildDeps(pool, redis),
+    log: (entry) => {
+      publicLogs.push({ ...entry });
+    },
+  };
   const publicApp = buildServer(publicDeps);
   await publicApp.ready();
 
@@ -576,6 +616,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
     scopeFetches,
     orgScopes,
     logs,
+    publicLogs,
     now,
     async signAssertion(input: SignInput) {
       const user = input.user ?? USER_A;

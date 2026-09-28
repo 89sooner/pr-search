@@ -10,6 +10,7 @@
  * 둘을 함께 두면 토큰이 역할 검사를 우회하는 문이 된다.
  */
 
+import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { HealthResponse } from '@prs/contracts';
 import { resolveSearchApiConfig, type SearchApiConfig } from './config.js';
@@ -27,6 +28,7 @@ import { registerAuditRoutes, type AuditRouteOptions } from './audit/routes.js';
 import { registerRepositoryRoutes, type RepositoryRouteOptions } from './repositories/routes.js';
 import { registerGhRoutes, type GhRouteOptions } from './gh/routes.js';
 import { registerSourceRoutes, type SourceRouteOptions } from './source/routes.js';
+import { registerPublicErrorHandling } from './http/unhandled-errors.js';
 import type { SavedSearchDeps } from './saved-search/service.js';
 import { authRepo, repositoryRepo, type Pool } from '@prs/db';
 import type { SearchDeps } from './search/service.js';
@@ -199,13 +201,28 @@ export interface ServerDeps {
    * 때만 이것을 만든다. 없으면 경로를 달지 않고 그 사실을 로그로 말한다.
    */
   readonly gh?: Omit<GhRouteOptions, 'auth' | 'loginPath'>;
-  readonly log?: (entry: { readonly level: string; readonly message: string }) => void;
+  /**
+   * 운영 로그 한 줄. 처리되지 않은 오류의 진단 기록(CR-129)은 `level`·`message` 밖의 필드를 더 싣는다.
+   */
+  readonly log?: (entry: { readonly level: string; readonly message: string } & Readonly<Record<string, unknown>>) => void;
 }
 
 export function buildServer(deps: ServerDeps = {}): FastifyInstance {
-  const app = Fastify({ logger: false });
+  /*
+   * correlation ID는 서버가 요청마다 만든 UUID(`request.id`)다 (CR-129 / DEV-786). 앞단 헤더를 요청 식별자로
+   * 받지 않는다 — 공통 오류 처리와 세션 조회 경로가 이 값 하나로 응답과 진단 기록을 잇는다.
+   */
+  const app = Fastify({ logger: false, genReqId: () => randomUUID(), requestIdHeader: false });
   const config = deps.config ?? resolveSearchApiConfig();
   const log = deps.log ?? ((): void => undefined);
+
+  /*
+   * 처리되지 않은 오류의 공통 처리 (CR-129 / DEV-786). **경로보다 먼저** 등록한다 — 수명 주기 단계 훅이
+   * 모든 경로에 걸려야 한다. 경로가 스스로 처리한 오류(입력·권한·미존재·속도 제한·일시 장애)는 그대로다.
+   */
+  registerPublicErrorHandling(app, (entry) => {
+    log(entry);
+  });
 
   /**
    * 인프라 3장이 정의한 헬스체크 경로 — **ES·PG 연결까지 확인한다** (CR-059, DEV-495).

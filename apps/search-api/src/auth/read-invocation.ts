@@ -20,7 +20,6 @@
  * `identify`가 등록되지 않으므로 그 경로로 grant가 통하는 길이 없다.
  */
 
-import { randomUUID } from 'node:crypto';
 import type { AccessScope, CachedScope } from '@prs/authz';
 import type { FastifyRequest } from 'fastify';
 import type { AuthContext } from './context.js';
@@ -53,10 +52,15 @@ export interface ReadInvocation {
   identify(): Promise<ReadPrincipal>;
 }
 
-/** 일반 `/api/v1/*` 조회. 세션 쿠키만 읽는다. */
+/**
+ * 일반 `/api/v1/*` 조회. 세션 쿠키만 읽는다.
+ *
+ * correlation ID는 요청의 `request.id`다 (CR-129) — 공개 서버가 요청마다 만든 UUID이므로, 이 조회가 처리하지
+ * 못한 오류를 공통 오류 처리가 같은 ID로 답하고 기록한다.
+ */
 export function sessionInvocation(request: FastifyRequest, auth: AuthContext): ReadInvocation {
   return {
-    correlationId: randomUUID(),
+    correlationId: request.id,
     identify: async () => {
       const { userId } = await authenticateSession(request, auth.sessions);
       return {

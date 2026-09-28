@@ -1,6 +1,8 @@
 # PR Search 관측성 및 신뢰성
 
-> 상태: review | 버전: v0.13 | 갱신일: 2026-09-25
+> 상태: review | 버전: v0.14 | 갱신일: 2026-09-29
+
+CR-129 / DEV-786: 새 지표·경보·런북 번호는 없다. 공개 search-api가 처리하지 못한 오류를 로그 한 줄로 남긴다 — `http.unhandled_error`(`error`)·`http.client_error`(`warn`). 3.1 표의 행이다. RUNBOOK 8장에 참조 ID로 찾는 행을 더했다.
 
 CR-121 / FR-ING-008 AC-11, FR-REL-006 AC-6: 새 지표·경보·런북 번호는 없다. 재색인 로그는 세 줄을 더한다 — `간선 미처리 회수`(`rederived`·`absent`·`rounds`), `전환 전 간선 검증`(`sources`·`expected`·`missing`·`extra`·`mismatched`·`orphans`·`unplannable`·`pending`·`unimported_stacks`), 경고 `전환 직전에 간선 미처리를 만났다 — 회수한 뒤 다시 검증한다`(`attempt`·`pending`). `link_relations_total`은 해제된 스택 간선을 다시 쓴 것을 세지 않는다 — 이제 해제 간선도 전체 쓰기로 나가지만 새로 파생한 간선이 아니다. 전환 전 검증의 사유는 잡의 `error`에 남으며, 배포 뒤의 스택 가져오기와 간선 재색인 확인 절차는 RUNBOOK 7.I다.
 
@@ -62,6 +64,7 @@ SLO, SLI, 로그, 메트릭, 트레이스, 알림, 대시보드, 런북, 장애 
 | 로그 유형 | 내용 | 보존 |
 | --- | --- | --- |
 | 요청 로그 | 경로, 상태 코드, 지연, 사용자 ID, 상관 ID. **질의 문자열 포함, 응답 본문 제외** | 30일 |
+| 처리되지 않은 오류 진단 로그 (CR-129) | `event`(`http.unhandled_error`·`http.client_error`), `correlation_id`(응답의 값), `upstream_correlation_id`(web 프록시가 보낸 값, UUID일 때만), `method`, `route`(경로 **패턴**), `stage`(`request`·`parsing`·`validation`·`handler`·`serialization`), `status`, `error_name`, `error_kind`(`elasticsearch`·`postgres`·`redis`·`github`·`network`·`application`), `error_code`(허용 목록 — Elasticsearch 상태와 오류 유형, SQLSTATE, Node errno, GHE 분류와 상태), `frames`(호출 위치 최대 5줄). **오류 문구·요청 URL(질의 문자열)·헤더·본문 제외** | 30일 |
 | 잡 로그 | 잡 ID, 유형, 대상, 단계, 진행률, 오류 | 30일 |
 | 파이프라인 로그 | 전달 식별자, 단계, 저장소, 소요, 재시도 횟수 | 30일 |
 | 시퀀스 로그 | 시퀀스 공간, 에폭, 채번 범위, 재작성 감지 여부 | 1년 (조사 근거) |
@@ -69,6 +72,8 @@ SLO, SLI, 로그, 메트릭, 트레이스, 알림, 대시보드, 런북, 장애 
 | 프런트엔드 이벤트 | LCP·INP·CLS, 라우트, 오류 경계 발동 | 30일 |
 
 로그 금지 항목: 토큰, 시크릿, 세션 쿠키, PR 본문 전문, 응답 본문. 배포 게이트의 로그 스캔이 이를 검사한다 (NFR-005).
+
+**진단 로그는 요청 로그가 아니다 (CR-129).** 요청 로그는 질의 문자열을 싣지만 처리되지 않은 오류의 진단 로그는 싣지 않는다 — 두 기록을 섞지 않는다. 무엇을 물었는지는 검색 감사 기록(`audit_record`)이 같은 correlation ID로 답한다(조회가 끝난 검색에 한해). 공개 search-api에는 아직 요청 로그가 없다(`logger: false`).
 
 **시퀀스 로그만 1년 보존한다.** 재채번이 발생했을 때 "언제, 어떤 이유로, 어느 범위가 바뀌었는가"를 나중에 추적할 수 있어야 하기 때문이다.
 
