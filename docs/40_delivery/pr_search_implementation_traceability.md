@@ -9681,3 +9681,68 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **한계.** 사내 적용 NOT RUN. 통합 전량의 간헐 실패(DEV-792)는 원인을 확인하지 않았다. 같은 키의 범위를 입력과 자유 텍스트 양쪽에 두면 두 후보 모두 버튼이 아니다(과보수). 서버 후보 상한(앞쪽 필터 8개)에서 작업 공간이 두 자리를 쓰며, 넘치면 안내만 보인다. 레거시 화면은 전처럼 누를 수 없는 목록이다.
 
 **병합.** PR #255(base `main`, 최종 head `e3e9981`)의 CI(run 36509746966)는 verify·integration 모두 첫 시도에 success였다. 사용자 승인(2026-09-29, 그 세션에서 PR #255에 대해 받았다)으로 squash 병합했다 — main `c33ea25`, 트리는 PR head와 같다(`25703b8…`). 병합 커밋의 main CI(run 36511458664)는 verify·integration 모두 첫 시도에 success다. 이 기록은 CR-132 PR의 첫 커밋에 실었다. 사내 적용은 NOT RUN이다.
+
+### 6.123 Diff·Time-lapse·파일 트리의 총량 제한 해소 (2026-09-29, CR-132 / WP-113, DEV-793~795)
+
+**요청.** 23차 사용자 지시(2026-09-29) 4번. 큰 파일과 오래된 이력을 끝까지 조사한다 — 자체 크기·줄 수·목록 수 때문에 나머지를 영원히 못 보는 제한을 없애되 동시 요청·메모리·단일 요청 기한은 유지하고, 한 번에 읽는 양·끝까지 볼 수 있는 총량·GitHub 자체 제한을 가른다. 완료 기준: 기존 제한을 넘는 파일·폴더·커밋을 실제로 열고 끝부분까지 접근할 수 있으며, 분석 실패를 빈 Diff나 「변경 없음」으로 표시하지 않는다.
+
+**제한의 분류(수정 전 main `c33ea25`).** 조사 기준은 `inv/B-limits.md`(읽기 전용 조사, 파일:줄 인용)다.
+
+| 제한 | 값 | 분류 | CR-132 뒤 |
+| --- | --- | --- | --- |
+| 파일 미리보기 | 256KiB·4,000줄(`SOURCE_MAX_BYTES`·`SOURCE_MAX_LINES`) | 총량 — 넘으면 이어 볼 수단이 없다 | `offset` 창(1 MiB)으로 끝까지. 예전 호출은 그대로 |
+| 디렉터리 목록 | 5,000개(`SOURCE_MAX_ENTRIES`, 정렬 전에 자름) | 총량 | 정렬한 목록의 5,000개 페이지, `next_offset` |
+| History | 50개 × 1,000페이지 | 총량(1,001번째는 400 — DEV-794) | 페이지 상한 없음 |
+| Diff 변경 파일 목록 | 100개 × 30페이지 | **GitHub 한계**(PR·커밋 파일 목록 3,000개) | 그대로 + 3,000개 도달 시 트리 비교 목록(`listing=tree`)으로 끝까지 |
+| 관련 PR | 5개 | 총량 | `related=all`로 전부 |
+| Time-lapse 리비전 | 첫 History 페이지(50개, History 밖에서 연 경우) | 총량 | 모달 안 「Load older revisions」(고정 SHA) |
+| Time-lapse 분석 | 30개 창, 3개씩 요청 | 총량 | 30/100/300/로드한 전체, Worker·진행률·취소 |
+| 줄 비교 예산 | jsdiff 150ms·5,000편집, 넘으면 비교·분석 전체 포기 | 보호였지만 대체 경로가 없었다 | Worker의 정확한 diff(2초·5만 줄) → 넘으면 patience 근사 정렬(원문·줄 단위 변경 보존, 알림) |
+| 단어 강조 | 줄 4,000자·8ms | 보호(원문 보존) | 그대로, 보이는 행만 계산 |
+| 렌더링 | 모든 행을 DOM에 | 비용 곡선 | 2,000행을 넘으면 보이는 부분만(21px 행) |
+| 한 요청 | GHE 호출마다 10초·동시 8, 요청 기한·취소 전파 없음 | 보호 공백 | 요청 기한 120초, 연결 끊김 → 슬롯 대기·GHE 호출까지 중단, 원시 읽기 동시 2, 원시 창 호출 기한 = 10초 + 바이트 ÷ 1 MiB/s |
+
+**원천 한계(제품 상한이 아니다)와 확인하지 못한 것.** (1) GitHub Contents·Blobs API는 100MB를 넘는 파일을 주지 않는다 → `too_large`와 그 사유. (2) GitHub REST는 바이트 범위를 받지 않는다 → 창마다 파일 앞부분을 다시 받는다. 큰 파일 전체를 읽는 전송량은 창 수의 제곱에 비례하고, 뒤쪽 창의 호출 기한은 받을 바이트에 비례해 늘며 요청 기한 120초가 상한이다(1 MiB/s 이상의 GHE에서 100MB 안쪽 창은 닿는다). 서버 캐시로 줄이는 우회는 NFR-005 때문에 만들지 않았다. (3) PR·커밋의 변경 파일 목록은 3,000개가 GitHub 한계이고, 트리 비교 목록은 줄 수와 이름 변경을 모른다. (4) **실제 GHES에서 확인하지 못했다**: 30번째 페이지의 다음 링크 유무(DEV-793), 1MB 초과 파일에 대한 기본 미디어 타입 Contents 응답(DEV-795 — 대역은 GitHub의 옛 403을 흉내 냈다), 비재귀 트리의 절삭, 거대 PR의 merge-base `compare` 시간 초과, 깊은 History 페이지의 링크 형식. 모두 GHE 대역(`packages/github/testing/mock-source.ts`)의 문서 기반 가정 위에서 검증했다.
+
+**수정.** (1) `packages/github` — `transport.ts`: 요청별 `accept`·`signal`·`timeoutMs`, `#request`/`#send` 분리(`get`·`getPage`의 오류·한도 처리 그대로), `getRawWindow`(앞에서부터 받아 offset 전을 버리고 창을 채우면 스트림을 끊는다, 읽기마다 신호와 경합), 원시 읽기 별도 스케줄러(`RAW_READ_CONCURRENCY` 2), 호출 기한 몫 `RAW_MIN_BYTES_PER_MS`. `scheduler.ts`: 대기 중 취소하면 줄에서 뺀다. `source-reader.ts`: 모든 호출에 `signal`, `contentObject`(object 미디어 타입)·`blobWindow`(Git Blobs raw)·`pullRequestsForCommitPage`. (2) `apps/search-api/src/source` — `service.ts`: `sourceFileWindow`, `sourceTree`의 `offset` 페이지, `sourceTreeComparison`, `related=all`, `SourceRangeError`. `tree-diff.ts`(새 파일): `walkTreeDiff`. `routes.ts`: 새 파라미터 검증(인증·범위 확인 뒤), 요청 기한·연결 끊김·감사 `CANCELLED`, History 상한 제거. (3) `@prs/contracts` — 선택 키와 `additions`·`deletions` nullable. (4) `apps/web` — `lib/source-client.ts`(`loadFileText`), `lib/source-compute.ts`(diff·계보, 새 파일), `lib/source-jobs.ts`·`source-worker.ts`·`source-compute-client.ts`, `components/source/hooks.ts`(파일·diff·분석 상태, 가상 스크롤), `SourceDialogs.tsx`(다시 썼다), `SourceTree.tsx`·`SourceHistory.tsx`·`api.ts`, `app/api/[...path]/route.ts`(취소 전달), CSS. (5) PIPE — 허용 목록, OpenAPI, operation map, 예시 셋, manifest, D-25. (6) GHE 대역 `mock-source.ts`와 `mock-ghe.ts`의 `source` 선택 사항.
+
+**시험 (실측).** 단위: `transport.test.ts` 10건(원시 창·eof·창을 채운 마지막 조각의 남은 바이트·기한 몫·동시 상한·줄 대기 취소·본문 읽기 중 취소), `scheduler.test.ts` 새 3건, `source-limits.test.ts` 22건(창·UTF-8 경계·BOM·NUL·LFS·100MB·offset 거절·크기로 끝 판정·디렉터리 페이지·트리 비교·관련 PR 전량·History 상한·파라미터 검증·기한·정상 완료·연결 끊김과 감사), `tree-diff.test.ts` 45건, `source.test.ts`(신호 전달), 웹 `source-compute.test.ts` 18건·`source-jobs.test.ts` 9건·`a11y/source-limits.test.tsx` 7건. 통합: `integration/source/source-limits.test.ts` 11건(실제 `GitHubTransport` → GHE 대역 HTTP, 조각 100,003바이트 — 5MB·20만 줄과 2.5MB 한 줄을 끝까지, 창이 blob의 나머지를 받지 않음, binary·LFS·링크·서브모듈, 12,375개 디렉터리, 3,603개 변경, History 1,001·1,002페이지, 관련 PR 7개, 사용자 끊김과 요청 기한이 GHE 전송까지 끊음), PIPE `openapi.test.ts`에 새 파라미터 요청 6건. **수정 전 실패**: 같은 통합 11건을 `c33ea25`에서 돌리면 10건 실패(보존 시험 1건 통과), 웹 a11y 7건은 7건 모두 실패, `source-jobs.test.ts`는 대상 모듈이 없어 가져오기에서 실패했다.
+
+**변이.** 서버 17종·웹 12종, 29종. 27종이 죽었다(`W01` 창 반복의 전진 가드 제거는 시험 작업자가 메모리 부족으로 죽어 요약 줄이 없었다 — 실패로 센다). `W04`(뒤 창만 비텍스트인 파일을 텍스트로 넘김)는 처음에 살아남았다 — 시험이 「첫 창부터 비텍스트」만 만들고 있었다. 뒤 창만 비텍스트인 경우를 시험에 더해(`eb64659`) 죽였다. `S08`(응답을 마친 뒤의 `close`도 취소로 봄)은 **동등 변이**다 — 정상 완료 때는 `finally`가 응답의 `close` 이벤트보다 먼저 수신기를 떼므로 가드가 없어도 관찰 가능한 차이가 없다(가드는 방어로 남긴다). 자동 시험이 없는 웹 프록시의 취소 전달(`signal: request.signal`)은 실제 화면으로 변이했다: 신호를 뺀 빌드에서 사용자가 취소한 뒤에도 search-api가 창을 끝까지 읽어 GHE 원시 전송이 2,097,152바이트까지 갔고, 수정 판은 1,179,648바이트에서 끊겼다.
+
+**실제 화면 (수정 뒤, 실제 Chromium → `next start` 웹 프록시 → 빌드된 search-api와 실제 `GitHubTransport` → GHE 대역 HTTP, 격리 PostgreSQL·Redis·Elasticsearch).** 실행기는 `launch132.mjs`(대역 저장소 넷: 5MB·20만 줄 파일, 12,375개 디렉터리, 3,603개 변경 커밋·PR, 160개 리비전 파일 — 90번째는 binary)다.
+
+| 시나리오 | 수정 전 `c33ea25` | 수정 뒤 |
+| --- | --- | --- |
+| S1 5MB·20만 줄 파일 Time-lapse 보기 | 503 「The configured GitHub App requires repository Contents read permission.」(DEV-795, 대역의 403 가정) | 창 6개로 2.6초에 로드, 끝까지 스크롤해 마지막 줄 `199998 … 마지막 줄을 바꿨다`가 DOM에 있다(보이는 71행만 렌더) |
+| S2 같은 파일 두 리비전 Diff | 같은 503 | 0.6초, 「3 changed rows」, 끝의 변경이 보인다. **실제 Worker 1개 생성**(Turbopack worker 청크 `0d4cvkwrvzltp.js`). 「Show all lines」에서 20만 행을 가상 스크롤로 끝까지 — 마지막 행 `200000 199999 …`(68행만 렌더, 스크롤 높이 4,200,068px) |
+| S3 12,375개 디렉터리 | 5,000개에서 멈춤, 「Directory listing is partial.」, 마지막 항목 없음 | 「Show more entries (5,000 of 12,375)」 → 「(10,000 of 12,375)」, 12,375개 모두, 마지막 `entry-12344.c` 보임 |
+| S4 3,603개 변경 커밋 Diff | 30페이지 3,000개에서 끝, **절삭 표시 없음**(DEV-793), 마지막 파일 없음 | 3,000개에서 한계 안내 → 「Load the complete list」 → 트리 비교 4페이지 3,603개, 삭제 파일·마지막 파일 있음 |
+| S5 160개 리비전 Time-lapse | 50개(50/50), 「Load older commits in History…」 안내, 30개 분석, 더 읽는 버튼 없음 | 「Load older revisions」 3번으로 160개(「All 160 revisions of this path are loaded.」), 범위 All, 분석 시작 → Cancel(「The line analysis was cancelled.」) → 재시작 → 「159 revisions analyzed. 1 revision was skipped because it is not text (…: Binary files cannot be displayed as text.)」, 1행 1개·2행 21개 관측 버전, 분석마다 Worker 생성(2개) |
+| S6 느린 GHE(조각 40ms)에서 파일 로딩 취소 | — | 「Loading revision… 1024.0 KB of 5.3 MB」에서 Cancel → 「Loading was cancelled.」, 진행 중이던 GHE 원시 전송이 1,179,648바이트에서 끊김(`closedEarly`, `finished: false`), Retry로 끝까지 로드 |
+
+위 표는 코드 리뷰 반영 전 빌드의 결과다. 리뷰 반영(원시 창 결함 수정 `c43a8dc` 등)을 담은 최종 빌드(`40ed60a`)로 S1~S6을 다시 돌려 같은 결과를 얻었다(S1 2.8초·창 6개, S2 Worker 1개, S3 12,375개, S4 3,603개, S5 159개 분석·1개 건너뜀, S6 1,179,648바이트에서 끊김·Retry 완료, 콘솔 오류 0건, source 호출 262회 실패 0건). 첫 빌드의 콘솔 오류 0건, 실패한 source 호출 0건(265회). 가상 스크롤 상태에서 줄 번호를 누르고 ↓를 120번 누르면 포커스가 「Inspect line 121」에 있다. 이 화면 확인에서 결함 하나를 찾아 고쳤다(`7ad3310`): 이전 리비전을 모두 읽은 뒤에도 비활성 「Load older revisions」와 「더 있다」 안내가 남았다.
+
+**게이트 첫 실행.** 문서 cascade까지 담은 트리(`f5529dc`, 새 DB `prs_test_cr132_final`)의 첫 실행은 두 단계가 실패했다. (1) a11y 1건 — `a11y/source-limits.test.tsx`의 3,000개 목록 시험이 30초 제한을 넘었다(단독 실행에서는 통과). 3,000개 파일 버튼이 있는 화면에서 역할 질의가 폴링마다 모든 접근성 이름을 다시 계산했고, 게이트가 통합 전량을 함께 돌리는 부하에서 느려졌다 — 그 시험의 버튼 질의를 텍스트 질의로 바꾸고 제한을 90초로 늘렸다. (2) 통합 2,419건 중 1건 — `apps/pipeline-worker/integration/reconcile/manual-run.test.ts`의 다중 저장소 취소 시험(DEV-796). 이 변경과 닿지 않는 경로이고 그 파일만 새 DB로 세 번 돌리면 9건 모두 통과했다. 나머지 단계(build·typecheck·lint·lint:deps·단위·대비·E2E·회귀)는 통과했다. 이어 문서 리뷰 반영(D-25·OpenAPI의 DEV-793 단서, OpenAPI 근거 줄 번호)과 코드 리뷰 반영을 더한 최종 트리로 전량을 다시 돌렸다.
+
+**게이트.** 최종 트리(`40ed60a`, 새 DB `prs_test_cr132_final2`, 격리 ES `prs-b8-isolated`, Node 22.23.3)의 전 계층 게이트다(아래 수치는 적용 스크립트가 게이트 로그에서 옮겼다). 실행 전후 추적 파일 해시(`d2b9fe27656de6d5`)와 `git status`가 같다.
+
+이 실행의 E2E는 한 번 다시 돌렸다. 게이트 도중 시스템 메모리가 바닥나(여유 약 0.6GB, 스왑 4GB 소진 — IDE의 TypeScript 서버 등 이 작업 밖의 프로세스가 대부분을 썼다) 첫 E2E가 224건 중 1건 실패했다 — `e2e/flow-007.spec.ts`의 「4단계: 100건 초과는 확인을 두 번 거쳐야 나간다」가 클릭 대기 30초를 넘겼고 실행이 평소(약 50초)보다 긴 93초였다. 수집 지연 대응 화면이라 이 변경과 닿지 않고 첫 게이트(`f5529dc`)에서는 통과했다. 메모리가 회복된 뒤 같은 트리·같은 빌드로 E2E만 다시 돌리자 224건 모두 46초에 통과했다 — 아래 표의 E2E는 그 재실행이다.
+
+| 단계 | 결과 |
+| --- | --- |
+| build · typecheck · lint · lint:deps | 모두 성공 |
+| 단위 | 3,649건 통과, 1건 건너뜀(실제 GHE smoke) · 파일 197개(1개 건너뜀) |
+| a11y | 484건 통과(파일 25개) |
+| 대비 | 18쌍 · 실패 0 |
+| E2E | 224건 통과(메모리 회복 뒤 재실행 — 위 문단) |
+| 통합 | 2,419건 통과(파일 154개) |
+| 회귀 | 531건 통과(파일 13개) |
+
+**문서 검증기.** 기준선 `c33ea25`와 최종 트리의 오류·경고 목록이 기본(15건)·`--strict`(18건) 두 모드 모두 같다.
+
+**독립 리뷰.** 두 리뷰 모두 `deep-reasoner`, 읽기 전용, 게이트가 도는 동안 파일을 고치지 않는 조건이다. (1) **코드**(`git diff c33ea25..HEAD`, 도구 24회): **병합 불가 → 반영 후 해소.** [상] 1건 — `getRawWindow`는 창을 채운 뒤 한 번 더 읽어 `done`이면 본문 끝으로 봤는데, 창을 채운 조각에 창 뒤의 바이트가 남아 있고 그 조각이 스트림의 마지막이면 남은 바이트를 버리고 `eof: true`가 됐다 → 1MB를 넘는 파일이 잘린 채 완전한 텍스트로 보일 수 있었다. GHE 대역의 64KiB 조각은 1MiB 창과 맞물려 단위·통합 어느 시험도 이 경우를 만들지 못했다. 재현 시험(한 조각 `abcdef`, 창 5 → `eof: false`)이 수정 전 코드에서 실패하는 것을 먼저 보고 고쳤다(`c43a8dc`): 창을 채운 조각에 남은 바이트가 있으면 추가 읽기 없이 끊고, 서비스는 파일의 끝을 GitHub가 준 크기로 판정하며 본문이 크기보다 먼저 끝나면 잘린 파일을 내지 않고 실패한다(그 시험도 수정 전 판정에서 실패했다). 통합 대역의 조각 크기도 창과 맞물리지 않는 100,003바이트로 바꿨다(`40ed60a`). [하] 1건 — Time-lapse에서 줄 이력의 이벤트로 가상 스크롤 밖의 먼 줄로 가면 포커스가 빗나갔다 → 수정 전 판처럼 먼 이동은 스크롤만, 화살표 이동은 그 행이 DOM에 들어온 뒤 포커스(`d7bbe03`). [정보] 4건 — 줄 비교 단계에 백분율 진행률이 없다(한계로 적었다), 메모리 상한 「약 600MB」는 줄 노드만 센 값이다(문서 표현을 고쳤다), `related=all`은 페이지 상한 없이 요청 기한 안에서 끝까지 읽는다(의도), 스케줄러의 슬롯 인계 경합은 악용할 수 없다고 판단했다. SourceDialogs 전면 재작성의 회귀(드래그·전체화면·Swap·Find·변경 이동·접기·rename·관련 PR·파일 쌍 모드·줄 끝 문구)는 없다고 확인했다. (2) **문서·계약**(도구 28회): **병합 가능.** [중] 1건 — 예전 `read.source.diff`의 `truncated`가 3,000개 경계에서 서지 않는다는 사실(DEV-793)이 D-25와 OpenAPI 설명에 없었다 → D-25 「PIPE에 필요한 조치」와 `SourceComparison` 설명에 단서를 더했다. [하] 1건 — OpenAPI의 「(근거: …)」 줄 번호가 이 변경으로 어긋났다 → 주석 블록 [6]과 source 스키마의 근거를 현재 줄로 고치고, 낡은 `page 1..1000` 문장과 새 파라미터 설명을 바로잡았다(계약 checksum `3b24950…`로 재생성). [정보] 2건(100MB = 104,857,600바이트 표기, AC-5의 축약 표현)은 고치지 않았다. UI 문구·상수·판 올림·manifest 해시·공개 저장소 점검은 일치했다.
+
+**한계.** 사내 적용 NOT RUN. 실제 GHES에서의 원천 동작은 위 「확인하지 못한 것」이다. 파라미터 없는 예전 호출(PIPE v1)의 상한과 DEV-795는 그대로다. 트리 비교 목록은 줄 수·이름 변경이 없다. 변경 파일 목록은 읽은 항목을 모두 그린다(가상 스크롤 없음 — 수만 개를 읽으면 대화 상자가 느려질 수 있다). 큰 파일을 끝까지 읽는 전송량은 창 수의 제곱에 비례한다. 한 분석의 계보가 1억 5천만 셀(줄 노드만 약 600MB, 바뀐 줄의 텍스트는 따로 든다)을 넘으면 더 작은 범위를 고르라고 멈춘다. 줄 비교 단계에는 백분율 진행률이 없다 — 「Comparing lines…」와 Cancel이며, 정확한 계산은 2초 예산 안에서 끝나거나 근사로 넘어간다(파일 로딩에는 바이트 진행률이 있다). `related=all`은 페이지 상한 없이 요청 기한 120초 안에서 연결 PR을 끝까지 읽는다.
+
+**병합.** 이 기록을 담은 PR의 CI와 병합 커밋의 main CI는 다음 기능 PR의 첫 커밋이 적는다(23차 결정).
