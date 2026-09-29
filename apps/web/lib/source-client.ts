@@ -8,7 +8,7 @@
 import type { SourceFile } from '@prs/contracts';
 import { serviceMessage } from './service-message';
 
-export type SourceOperation = 'tree' | 'history' | 'file' | 'diff';
+export type SourceOperation = 'tree' | 'history' | 'file' | 'diff' | 'paths';
 
 export function sourceUrl(repository: string, operation: SourceOperation, query: Record<string, string | number | undefined>): string {
   const params = new URLSearchParams();

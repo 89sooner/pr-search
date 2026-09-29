@@ -153,9 +153,9 @@ describe('CR-111: Branch 헤딩 제거, path 폼 제거, Files & folders가 사�
     expect(screen.queryByPlaceholderText('src/components/…')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /View path history/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Every change, with its context/)).not.toBeInTheDocument();
-    // Files & folders 트리 자체(및 트리 내부 필터)는 남아 있다.
+    // Files & folders 트리 자체(및 트리 내부 검색 — CR-133부터 고정 revision의 전체 경로 검색)는 남아 있다.
     expect(screen.getByText('Files & folders')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Filter root entries…')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Search files in this revision…')).toBeInTheDocument();
   });
 });
 
