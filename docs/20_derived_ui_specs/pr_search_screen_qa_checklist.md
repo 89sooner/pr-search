@@ -100,7 +100,7 @@
 | QA-W001-79 | 결과를 누르거나 ↓·Enter로 고르면 같은 revision의 그 파일이 선택되어 History·Time-lapse·Diff로 이어지고, 검색을 지우면(Esc 포함) 트리가 그 파일을 선택한 채 돌아온다(CR-133) | a11y·Chromium |
 | QA-W001-80 | 목록을 다 읽기 전·취소·실패에는 「No files in this revision match」를 쓰지 않는다 — 진행·Cancel·Continue listing(마지막 경로 뒤부터)·Retry(CR-133) | 단위·a11y·Chromium |
 | QA-W001-81 | 재귀 목록이 잘린 큰 저장소를 하위 트리를 걸어 끝까지 읽고, 키 입력으로 목록을 다시 읽지 않으며, 다른 revision이 되면 다시 읽는다(CR-133) | 단위·통합·a11y·Chromium |
-| QA-W001-82 | 범위 밖 저장소의 경로 목록은 GHE를 부르지 않는 동일 404이고, `/paths`는 `revision`·`after`만 받으며 PIPE에는 없다(404). 감사는 페이지마다 `revision`·`after`만 남긴다(CR-133) | 단위·통합 |
+| QA-W001-82 | 범위 밖 저장소의 경로 목록은 GHE를 부르지 않는 동일 404이고, `/paths`는 `revision`·`after`만 받으며 PIPE에는 없다(404). 감사는 페이지마다 `revision`·`after`와 관측 revision만 남긴다(CR-133) | 단위·통합 |
 
 > CR-096 확인: 전체 Conductor 런타임 의존성 없음, 제품 고정 문구 영어, 저장소 원문은 보존, 모든 헤더 및 로그아웃 화면에 테마 버튼, 선호도 저장·새로고침·교차 탭·시스템 기본값·저장 차단 처리, Radix 포털 테마 일치, 입력 label/required, Escape·포커스 복귀, 모바일 탐색 drawer. 가상 데이터 Chromium 확인과 실 GHE/OIDC 검증을 구분한다.
 
