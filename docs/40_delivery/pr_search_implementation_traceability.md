@@ -9753,3 +9753,51 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **한계.** 사내 적용 NOT RUN. 실제 GHES에서의 원천 동작은 위 「확인하지 못한 것」이다. 파라미터 없는 예전 호출(PIPE v1)의 상한과 DEV-795는 그대로다. 트리 비교 목록은 줄 수·이름 변경이 없다. 변경 파일 목록은 읽은 항목을 모두 그린다(가상 스크롤 없음 — 수만 개를 읽으면 대화 상자가 느려질 수 있다). 큰 파일을 끝까지 읽는 전송량은 창 수의 제곱에 비례한다. 한 분석의 계보가 1억 5천만 셀(줄 노드만 약 600MB, 바뀐 줄의 텍스트는 따로 든다)을 넘으면 더 작은 범위를 고르라고 멈춘다. 줄 비교 단계에는 백분율 진행률이 없다 — 「Comparing lines…」와 Cancel이며, 정확한 계산은 2초 예산 안에서 끝나거나 근사로 넘어간다(파일 로딩에는 바이트 진행률이 있다). `related=all`은 페이지 상한 없이 요청 기한 120초 안에서 연결 PR을 끝까지 읽는다.
 
 **병합.** PR #256(base `main`, 최종 head `8502a39`, 첫 커밋은 CR-131 병합 기록)의 CI(run 36525706921)는 verify·integration 모두 첫 시도에 success다(앞 head `c9d6233`의 run 36525314118은 새 push로 cancelled). 전 계층 게이트, 변이 확인, 실제 화면(수정 전·수정 뒤, Worker의 실제 계산), 독립 리뷰(코드 [상] 1건·[하] 1건과 문서 [중] 1건·[하] 1건은 고쳤다)는 원장 6.123장에 있다. 사용자 승인(2026-09-29, 그 세션에서 PR #256에 대해 받았다)으로 squash 병합했다 — main `aa29c5c`, 트리는 PR head와 같다(`2b560ae…`). 병합 커밋의 main CI(run 36527797668)는 verify·integration 모두 첫 시도에 success다. 이 기록은 CR-133 PR의 첫 커밋이다. 사내 적용은 NOT RUN이다.
+
+### 6.124 Files & folders의 하위 파일명 검색 (2026-09-29, CR-133 / WP-114, DEV-797)
+
+**요청.** 23차 사용자 지시(2026-09-29) 5번. 루트 항목의 이름만 거르던 입력을 선택 저장소·고정 revision의 전체 경로 검색으로 바꾼다 — 열지 않은 폴더의 파일과 한 번도 PR에서 바뀌지 않은 파일도 찾고, 같은 이름·같은 blob도 경로마다 따로 보이며, 선택하면 같은 revision의 그 파일이 History·Diff·Time-lapse로 이어진다. 재귀 tree가 잘리면 하위 tree를 계속 읽고 전부 읽기 전에는 「결과 없음」이라 하지 않는다. 디바운스·취소·진행, 입력마다 전체 조회를 무제한 시작하지 않음, 권한 없는 파일명·경로·개수 비노출. 완료 기준: 깊은 하위 파일과 동일 이름의 여러 파일을 모두 찾고, 선택한 결과가 실제 코드 조회까지 정확히 이어진다.
+
+**수정 전(main `aa29c5c`).** 트리 안의 입력은 이미 읽은 루트 항목의 이름만 걸렀다(`SourceTree.tsx`의 `entry.name.toLowerCase().includes(find)`). 고정 revision의 전체 경로를 읽는 조회가 없었다.
+
+**수정.** (1) `packages/github` — `source-reader.ts`: `treeRecursive`(`recursive: 1`, 호출 기한을 받는다)와 `get`의 `timeoutMs` 전달. (2) `apps/search-api/src/source` — `service.ts`: `sourcePaths`, `recursiveListing`(잘림·`timeout`·`server`면 걷기, 호출자 신호가 끊겼거나 그 밖의 오류면 그대로 올림), 상수 `SOURCE_PATHS_WALK_PAGE` 5,000·`SOURCE_PATHS_WALK_TREE_CALLS` 100·`SOURCE_PATHS_RECURSIVE_TIMEOUT_MS` 45,000. `tree-diff.ts`: `entries`(잎의 항목)·`maxTreeCalls`(잎을 낸 페이지만 멈춘다). `routes.ts`: `paths` 분기(`revision`·`after`만 받음), 시험용 `pathsRecursiveTimeoutMs`. (3) `@prs/contracts` — `SourcePaths`·`SourcePathEntry`. (4) `apps/web` — `lib/source-paths.ts`(새 파일: `loadPaths`·`matchPaths`·`PathList`), `lib/source-client.ts`(`paths`), `components/source/SourceTree.tsx`(검색 입력·결과·`usePathListing`·키보드), `app/source-workspace.css`. (5) GHE 대역 `mock-source.ts` — 재귀 트리(전위 순서의 루트 기준 전체 경로), `recursiveLimit`(넘으면 앞부분과 `truncated`), `recursiveDelayMs`.
+
+**시험 (실측).** 단위: `source-paths.test.ts` 12건(재귀 한 번·경로 순서·서브모듈 제외·링크, 잘림 → 걷기 페이지와 상한, `timeout`·5xx 대체, 요청 기한·취소와 그 밖의 오류는 그대로, 이어 읽기, `incomplete`, 트리 비교 항목 모양 보존, 경로의 엄격한 키·접근 순서·감사), `tree-diff.test.ts` 새 4건(상한), `source-reader.test.ts` 새 1건, 웹 `lib/source-paths.test.ts` 10건, `a11y/source-tree-search.test.tsx` 8건(리뷰 반영 2건 포함 — 실패 뒤 다시 검색하면 이어 읽기, 선택 뒤 검색을 지우면 트리가 그 파일까지 열려 선택됨. 작업 공간 시험의 입력 문구 1곳을 바꿨다). 통합: `integration/source/source-paths.test.ts` 5건 — 실제 `GitHubTransport` → GHE 대역 HTTP로 한 번도 PR에 오르지 않은 파일·아홉 단계 깊이의 파일·같은 이름 셋을 한 응답으로, 재귀 목록 100항목 상한의 디렉터리 400개 저장소를 페이지로 끝까지(페이지마다 디렉터리 호출 100번 이하, 재귀 요청은 첫 페이지만), 재귀 응답 2초 지연·기한 300ms에서 걷기로 끝까지, 범위 밖 동일 404와 GHE 호출 0회, 감사는 페이지마다 한 행. PIPE `readonly.test.ts`에 `/read/source/…/paths` 404. **수정 전 실패**: 같은 통합 5건을 `aa29c5c`에서 돌리면 4건 실패(경로가 없어 404, 범위 밖 404 보존 시험 1건은 통과), 웹 a11y는 첫 판 6건이 모두 실패했다(검색 입력이 없다 — 리뷰 반영으로 더한 2건도 같은 입력을 쓴다).
+
+**변이.** 서버 13종·웹 14종, 27종 모두 죽었다 — 걷기 상한 제거, 잎 없는 페이지에도 상한, 잘린 재귀 목록 신뢰, 모든 오류에 대체, 취소에도 대체, 재귀 호출 기한 누락, Git 순서 그대로, 서브모듈을 파일로, 링크 종류 소실, 아무 키나 받음, 걷기 상한 전달 누락, 이어 읽기에서 재귀 재시도, `treeRecursive`의 `recursive` 누락 / 이름 우선 없음, 대소문자 구별, 첫 페이지만 읽기, 전진 검사 누락, 다른 revision 페이지 수락, 변경마다 다시 읽기, 목록 중 「No files … match」, 취소가 요청을 멈추지 않음, 이어 읽기가 처음부터, revision이 바뀌어도 목록 유지, 선택을 브랜치로, 결과 상한 없음, GitHub 절삭 안내 누락, 키보드로 결과에 못 감. 리뷰 반영 뒤 웹 2종(실패 뒤 다시 검색해도 잇지 않음, 선택 경로의 조상 폴더를 열지 않음)을 더해 29종 모두 죽었다. 변이마다 원본 바이트를 되돌렸고 해시가 같았다.
+
+**실제 화면 (수정 뒤, 실제 Chromium → `next start` 웹 프록시 → 빌드된 search-api와 실제 `GitHubTransport` → GHE 대역 HTTP 둘, 격리 PostgreSQL·Redis·Elasticsearch).** 실행기는 `launch133.mjs`다. 대역 저장소는 셋이다: `tree`(같은 이름 셋·아홉 단계 깊이·링크·서브모듈·넓은 `app/`, PR #7은 한 파일만 바꿨다), `huge`(파일 60,001개), `walk`(디렉터리 3,000개 — 재귀 목록이 1,000항목에서 잘리고 재귀 응답이 3초 늦다). 수정 전 판은 같은 실행기·같은 자료다.
+
+| 시나리오 | 수정 전 `aa29c5c` | 수정 뒤 |
+| --- | --- | --- |
+| S1 `tree`에서 `config.h`·`leaf`·`CONFIG`·`src/b` | 보이는 트리 항목 0개(루트 이름 필터) | 「3 matches」(src/a·src/b·tests의 `config.h` 각각), 「1 match」(`deep/l1/…/l8/leaf.c`), 「3 matches」, 「1 match」(`src/b/config.h`). 각 0.6~0.7초(디바운스 250ms 포함) |
+| S2 결과 선택 → History·Time-lapse·Diff | — | URL `path=src/b/config.h`·`path_kind=file`·`source_ref`=트리가 고정한 SHA(`0dc4b1d…`)·`tab=history`. History 커밋 2개, Time-lapse 「Revision 2 of 2」에 `#define B 2`, 커밋 Diff 「src/b/config.h modified +2 −2」·「2 changed rows」. 검색을 지우면 트리가 `src/b/config.h`를 선택한 채 돌아왔다 |
+| S3 `huge`(파일 60,001개)에서 `needle` | 0개 | 「1 match」 0.7초. `/paths` 한 번 117ms·2,460,182바이트. 이어서 `f99`·`m42`·`pkg/m599/f0`는 마지막 키 뒤 308~314ms에 「600 matches · showing the first 200, …」·「1,000 matches · …」·「10 matches」(목록을 다시 읽지 않았다) |
+| S4 `walk`(재귀 목록 잘림)에서 `config.h`, 취소와 이어 읽기 | 0개 | 「Listing files… 0 paths」에서 Cancel → 「Listing stopped after 0 paths · 0 matches so far, so the results may be incomplete.」, 감사 `CANCELLED` → Continue listing → 31페이지·4.9초(재귀 지연 3초 포함)에 「4 matches」(d0100·d1500·d2999·`zz/deep/a/b/c`). 도중에 「No files … match」가 없었다. 재귀 요청 2번(취소분 포함)·비재귀 트리 요청 3,066번, 감사 32행(`CANCELLED` 1·`OK` 31) |
+| S5 키보드 | — | ↓로 첫 결과(`src/a/config.h`), ↓·Enter로 `src/b/config.h` 선택, Esc로 검색을 지우고 입력으로 돌아옴, 트리가 보인다 |
+
+콘솔 오류 0건, 실패한 source 호출 0건(48회). 첫 실행에서 화면 스크립트의 결함 둘(디바운스 전의 앞 검색어 상태를 읽음, History의 Diff 버튼 이름)을 고쳐 다시 돌렸다 — 위 표는 고친 스크립트의 결과다.
+
+위 표는 리뷰 반영 전 빌드(`6587869`)의 결과다. 리뷰 반영(`9dc32ff`)을 담은 최종 빌드(`fe01e34`)로 S1~S5를 다시 돌려 같은 결과를 얻었다 — S1 네 검색어가 같은 결과로 0.6~0.7초, S2 같은 URL·History 커밋 2개·「Revision 2 of 2」·「+2 −2」와 검색을 지운 뒤 트리의 선택 `src/b/config.h`, S3 `/paths` 한 번 110ms·2,460,182바이트와 마지막 키 뒤 308~311ms, S4 취소 감사 `CANCELLED` → 31페이지·5.0초에 「4 matches」(도중 「No files … match」 없음), S5 같은 키보드 결과. 콘솔 오류 0건, 실패한 source 호출 0건(48회).
+
+**게이트 첫 실행.** 문서 cascade까지 담은 트리(`e580a57`, 새 DB `prs_test_cr133_final`)의 첫 실행은 통합 한 단계만 실패했다 — 2,425건 중 1건, `apps/pipeline-worker/integration/reconcile/manual-run.test.ts`의 「저장소 여럿 중 첫 번째에서 취소하면 나머지를 돌지 않는다」가 기대 `cancelled`, 실제 `completed`였다(DEV-796의 두 번째 관찰). 이 브랜치는 `apps/pipeline-worker`·`packages/db`·`packages/bus`를 바꾸지 않았고, 그 파일만 새 DB로 세 번 돌리면 9건 모두 통과했다. 나머지 단계(build·typecheck·lint·lint:deps·단위 3,676건·a11y 490건·대비·E2E 224건·회귀 531건)는 통과했다. 이어 두 리뷰의 반영(`9dc32ff`·`fe01e34`)을 더한 최종 트리로 전량을 다시 돌렸다.
+
+**게이트.** 최종 트리(`fe01e34`, 새 DB `prs_test_cr133_final2`, 격리 ES `prs-b8-isolated`, Node 22.23.3)의 전 계층 게이트다(아래 수치는 적용 스크립트가 게이트 로그에서 옮겼다). 실행 전후 추적 파일 해시(`cc8ecbb42280600a`)와 `git status`가 같다.
+
+| 단계 | 결과 |
+| --- | --- |
+| build · typecheck · lint · lint:deps | 모두 성공 |
+| 단위 | 3,676건 통과, 1건 건너뜀 · 파일 199개(1개 건너뜀) — 건너뛴 1건은 실제 GHE smoke |
+| a11y | 492건 통과 · 파일 26개 |
+| 대비 | 18쌍 · 실패 0 |
+| E2E | 224건 통과 |
+| 통합 | 2,425건 통과 · 파일 155개 |
+| 회귀 | 531건 통과 · 파일 13개 |
+
+**문서 검증기.** 기준선 `aa29c5c`와 최종 트리의 오류·경고 목록이 기본(15건)·`--strict`(18건) 두 모드 모두 같다.
+
+**독립 리뷰.** 두 리뷰 모두 `deep-reasoner`, 읽기 전용, 게이트가 도는 동안 파일을 고치지 않는 조건이다. (1) **코드**(`git diff aa29c5c..6587869 -- apps packages`, 도구 22회): **병합 가능.** [상]·[중] 없음. [하] 2건 — (a) 목록 읽기가 오류로 끝난 뒤 검색을 지웠다가 새로 검색하면 이전 오류 알림이 새 검색어에 그대로 붙었다 → 검색이 다시 시작되면 마지막 경로 뒤부터 한 번 이어 읽게 고쳤다(`9dc32ff`, 새 a11y 시험이 변이로 죽는 것을 봤다). 취소는 그대로 남는다. (b) 걷기 이어 읽기 페이지마다 `reader.commit(revision)`을 한 번 더 부른다 → 고치지 않았다. 한 페이지의 디렉터리 호출 100번에 비해 1회이고, 루트 tree SHA를 입력으로 받으면 API 표면이 늘어난다. [정보] 2건 — 재귀 트리 응답(최대 7MB·10만 항목)이 이 서비스의 단일 요청 최대 할당이라는 점(아래 한계에 적었다), 서브모듈만 지난 걷기 페이지는 `paths`가 비고 `next_after`가 전진한다는 점(계약 주석에 적었다). `walkTreeDiff` 상한의 전진·순서 보장, 대체 조건의 분류(호출자 신호를 먼저 보고 재시도는 없다), 검사 순서와 감사, `usePathListing`의 경합(키 변경·취소·StrictMode 이중 실행), `matchPaths`·`loadPaths`, 시험의 실효성, 공개 저장소 점검은 문제없다고 확인했다. (2) **문서·계약**(도구 25회): **병합 가능.** [상]·[중] 없음. [하] 1건 — QA-W001-79 「검색을 지우면 트리가 그 파일을 선택한 채 돌아온다」를 자동 시험이 걸지 않았다 → 선택 상태를 드는 부모를 두고 조상 폴더가 열리며 그 파일이 선택되는 a11y 시험을 더했다(`9dc32ff`, 변이로 죽는 것을 봤다. 실제 화면 S2도 같은 결과였다). [정보] 4건 중 셋을 반영했다 — 감사 query에는 관측 revision도 들어간다(API 계약·보안·QA-W001-82 문구를 코드에 맞췄다, `fe01e34`), 백엔드 CR-097 주석의 「비재귀 트리」에 트리 탐색 한정 단서를 더했다, 화면 상태의 진행 문구는 동적 문자열의 부분 인용이라 그대로 두었다. 나머지 하나는 커밋 메타데이터에 관한 것이라 범위 밖이다. 수치·UI 문구·ID·판 올림·DEV-797·PIPE 비노출 판단·CR-132 병합 기록의 사실은 코드·실측과 일치했다. 리뷰 뒤의 수정(`9dc32ff`·`fe01e34`)은 다시 리뷰받지 않았다 — 대신 새 시험 둘이 변이로 죽는 것을 봤고, 최종 게이트와 실제 화면 재확인에 포함했다.
+
+**한계.** 사내 적용 NOT RUN. 실제 GHES에서 확인하지 못한 것: 큰 저장소에서 `recursive=1`의 응답 시간과 잘림 형태(대역은 GitHub 문서의 규칙 — 전위 순서의 앞부분과 `truncated` — 를 흉내 냈다). 재귀 트리 항목의 `path`가 루트 기준 전체 경로라는 점은 공개 GitHub 응답으로 확인했다. 목록은 브라우저 메모리에만 있다 — 10만 경로면 수십 MB다. 서버에서는 재귀 트리 응답(최대 7MB·10만 항목)이 source 조회 한 요청이 드는 가장 큰 메모리다(상한은 GitHub의 재귀 한계·공용 동시 슬롯·요청 기한). 걷기로 이어 읽는 페이지마다 커밋을 한 번 더 읽는다(코드 리뷰 [하], 고치지 않았다). 결과는 파일·링크만이고 폴더는 결과가 아니다(폴더 이름에 걸리면 그 아래 파일이 나온다). 결과는 200개까지 그린다. 트리 비교 목록(`listing=tree`)의 트리 호출 상한은 DEV-797로 남긴다.
+
+**병합.** 이 기록을 담은 PR의 CI와 병합 커밋의 main CI는 다음 기능 PR의 첫 커밋이 적는다(23차 결정).

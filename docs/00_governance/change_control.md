@@ -2534,7 +2534,7 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - [x] 기술 아키텍처: API 계약 v0.52 → v0.53(머리 메모, API-SRC-005 행, 「CR-133 경로 목록」 문단), 백엔드 v0.22 → v0.23·프런트엔드 v0.19 → v0.20·보안 v1.17 → v1.18(머리 주석).
 - [x] 전달: 작업 패키지 v2.86 → v2.87(WP-114 절·상태 표), 원장 v6.136 → v6.137(머리 절, 3장 WP-114, 4장, 5장 DEV-797 관찰). RUNBOOK 8장 한 행.
 - [x] 인계: PIPE 계약은 바뀌지 않는다 — 8항을 검토한 결과 PIPE에 보이는 API 변경이 없다(결정 (5), D-26 없음).
-- [ ] 코드·시험: 원장 6.124장(게이트 뒤).
+- [x] 코드·시험: 원장 6.124장.
 - [ ] 병합과 CR 종료 — 다음 기능 PR의 첫 커밋이 적는다(23차 결정).
 
 ### CR-132 cascade — Diff·Time-lapse·파일 트리의 총량 제한 해소
