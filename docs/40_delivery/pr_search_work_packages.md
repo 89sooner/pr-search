@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.91 | 갱신일: 2026-09-29
+> 상태: review | 버전: v2.93 | 갱신일: 2026-09-29
+
+## WP-117 PIPE 연동 인증 간소화 검토서 (CR-136)
+
+- 요구사항: 없음(검토, 구현 없음). 대상은 `FR-INT-001`(PIPE 연동)과 ADR-025의 현재 인증 구조다. 선행: WP-097(PIPE 연동, CR-112).
+- 범위: 검토서 한 파일(`docs/30_technical_architecture/pr_search_pipe_auth_simplification_review.md` — 현재 다섯 층, 요청 하나의 흐름, 안 1~4, 비교표, 권고·전제·위험·승인 대기, 확인하지 못한 것), `docs/README.md`의 진입점 한 줄.
+- 제외: 인증 코드·운영 설정·계약·SRS·ADR·마이그레이션의 변경, 임시 인증 해제 스위치, 권고의 구현, 사내 CA·HAProxy·IdP·GHES의 확인, Release 발행, 사내 적용.
+- 완료 기준: 지시서 7항의 항목(다섯 층의 설명, 네 안 각각의 없어지는 설정·여전히 필요한 설정·양쪽 변경·사용자 추적·저장소 권한·회수·재생 공격·토큰 탈취·인증서 결속 grant의 대체·이전과 되돌리기, 권고 하나와 승인 대기)을 모두 다루고, 인용한 `경로:줄`이 실제와 맞으며, 독립 문서 리뷰를 통과한다. 「TLS 옵션 두 개만 끄면 된다」와 「내부망이므로 누구나 모든 자료를 읽어도 된다」를 전제로 삼지 않는다.
+- 상태: in_progress — 브랜치 `docs/cr136-auth-review`. 기록은 원장 6.127장이다.
 
 ## WP-116 PIPE용 GraphQL blame (CR-135)
 
@@ -8,7 +16,7 @@
 - 범위: (1) `packages/github` — 설정 `graphqlUrl`(`GHE_GRAPHQL_URL`, 비면 `deriveGraphqlUrl`), 전송 `postGraphql`(조회 문서만, GraphQL 동시 상한 2, 한도 헤더를 REST 토큰 상태와 분리, 재시도 없음), `source-blame.ts`(고정 query `SOURCE_BLAME_QUERY`, 분류 순서, `SourceBlameUnsupportedError`), 리더의 `blame`, GHE 대역 `POST /api/graphql`(mock-source 이력의 blame 계산, 오류 주입, 요청 기록). (2) `apps/search-api` — 설정 `SOURCE_BLAME_ENABLED`, `executeSource`의 `blame`(게이트·키 검사·오류 대응), `sourceBlame`, `index.ts`의 `graphqlUrl` 배선, `@prs/contracts`의 `SourceBlame`·`SourceBlameRange`와 오류 코드 `SOURCE_BLAME_UNSUPPORTED`(501). (3) PIPE — operation `read.source.blame`과 capability `source_blame:read`(게이트가 켜졌을 때만), handoff OpenAPI·operation map·예시·manifest·D-26, 계약·적합성·통합 시험(`blame-disabled.test.ts`). (4) 시험 — 단위(설정·전송·분류·경로·게이트), GHE 대역 위 실제 전송 통합, 회귀(POST 한 곳·배선 가드), 변이. (5) 문서·배포 — SRS·PRD·용어집·매트릭스·ADR·API 계약·백엔드·보안·인프라·관측성·PIPE 공유 계약 00·BFF 지시서 02, RUNBOOK 7.L·8장, `.env.example`, compose의 search-api 두 줄.
 - 제외: 웹 화면, Time-lapse·Diff의 변경, 줄 범위·페이지 인자, blame 결과의 저장·캐시, 작성자 이메일, 사내 GHES를 거친 검증, PIPE BFF 구현·배포(별도 저장소), 23차 7번(mTLS·인증 간소화 검토서), Release 발행, 사내 적용.
 - 완료 기준: 수정 전 코드에서 새 시험이 실패하는 것을 먼저 본다. 수정 뒤에는 PIPE 통합 하네스(127.0.0.1의 실제 mTLS 리스너, 실제 assertion·grant 교환)에 blame을 청해, grant 판정·접근 범위 → search-api 조회 → 실제 `GitHubTransport` → GHE 대역 `/api/graphql`까지 거쳐 줄 구간별 귀속 커밋을 받는다(`blame-real-path.test.ts`). 같은 경로에서 범위 밖 404(GraphQL 호출 0), 미지원 501, 권한 503, 한도 429(`Retry-After`), 일부 결과 502를 각각 확인하고, 게이트가 꺼진 배포의 404(capability·operation 없음, GHE 호출 0)는 `blame-disabled.test.ts`가 확인한다. 기존 Time-lapse는 그대로 동작한다. 새 시험은 변이로 죽는 것을 본다. 빌드 산출물을 배포 환경 변수로 띄운 확인은 이 WP에 넣지 않는다 — 환경 변수에서 전송까지의 배선은 설정·runtime 단위 시험과 회귀 문자열 가드가 조각으로 건다.
-- 상태: in_progress — 브랜치 `feature/cr135-pipe-blame`. 검증은 원장 6.126장이다.
+- 상태: done — main `311fdb0`(PR #259 squash 병합, 2026-09-29). 검증·병합 판정은 원장 6.126장이다.
 
 ## WP-115 수동 대조 취소 시험의 대기 기준 (CR-134)
 
@@ -282,7 +290,8 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
-| WP-116 | PIPE용 GraphQL blame | 범위 추가 (CR-135) | WP-085, WP-097, WP-113 | in_progress — 브랜치 `feature/cr135-pipe-blame`, 원장 6.126장 |
+| WP-117 | PIPE 연동 인증 간소화 검토서 | 검토 (CR-136) | WP-097 | in_progress — 브랜치 `docs/cr136-auth-review`, 원장 6.127장 |
+| WP-116 | PIPE용 GraphQL blame | 범위 추가 (CR-135) | WP-085, WP-097, WP-113 | done — main `311fdb0`(PR #259), 원장 6.126장 |
 | WP-115 | 수동 대조 취소 시험의 대기 기준 | correction (CR-134) | WP-040, WP-059 | done — main `a02a145`(PR #258), 원장 6.125장 |
 | WP-114 | Files & folders의 하위 파일명 검색 | 요구사항 변경 (CR-133) | WP-085, WP-113 | done — main `2e94b71`(PR #257), 원장 6.124장 |
 | WP-113 | Diff·Time-lapse·파일 트리의 총량 제한 해소 | 요구사항 변경 + correction (CR-132) | WP-085, WP-097, WP-110 | done — main `aa29c5c`(PR #256), 원장 6.123장 |

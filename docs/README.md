@@ -29,6 +29,8 @@ WP-074 상세 설계의 진입점(CR-079): [설계 계약](30_technical_architec
 
 PIPE 연동 수신부의 진입점(CR-112): [작업 지시서](40_delivery/pipe-search-handoff-auth/01_PR_SEARCH_API_AUTH_CLAUDE_PROMPT.md), [공통 계약 PSI-1.0 제안](40_delivery/pipe-search-handoff-auth/00_SHARED_INTEGRATION_CONTRACT.md), [수용 시험](40_delivery/pipe-search-handoff-auth/03_SECURITY_AND_CONTRACT_ACCEPTANCE.md) → 이 저장소가 동결한 계약과 PIPE 담당용 산출물 [PIPE_INTEGRATION_HANDOFF](../handoff/pipe-search-integration/v1/PIPE_INTEGRATION_HANDOFF.md). 기본 꺼짐이며, 인수인계 자료의 작성은 운영 활성화를 뜻하지 않는다.
 
+PIPE 연동 인증 간소화 검토서(CR-136, 구현 없음): [검토서](30_technical_architecture/pr_search_pipe_auth_simplification_review.md) — 현재 인증 다섯 층을 코드·DB·배포·계약과 대조하고 네 안을 비교해 안 1(현재 구조 유지, 인증서 관리만 자동화)을 권고한다. 권고의 채택과 구현은 승인 대기다.
+
 ## 1. 목적
 
 Regression: [연구 01](40_delivery/regression_workbench/deep-research-report_01.md) → [후속 설계 02](40_delivery/regression_workbench/deep-research-report_02.md) → [UI 구현 지시서](40_delivery/regression_workbench/UIUX/CLAUDE_REGRESSION_UI_BRIEF.md) / [B Atlas](40_delivery/regression_workbench/UIUX/regression-B-atlas.html). 기존 [R0a 구현 계획](40_delivery/pr_search_regression_implementation_plan.md)은 영속 backend 후속이다. CR-109/FR-REG-001은 사용자 지정 B Atlas의 첫 UI 수직을 별도로 승인했으며 WP-095가 구현을 추적한다. 연구 자체와 명시적 UI 승인 범위를 구분한다.
