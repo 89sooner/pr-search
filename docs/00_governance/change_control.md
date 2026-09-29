@@ -1,5 +1,16 @@
 # 변경 관리 대장
 
+## CR-131 — Repository workspace의 결과 0건 화면이 서버가 센 조건 변경 추천을 버튼으로 보이고, 누르면 그 조건만 지워 다시 검색한다 (2026-09-29)
+
+- 유형: 범위 공백 보완(DEV-787 — 화면 상태 W-001 `empty_no_result`의 「제거하면 결과가 생기는 필터 목록」을 운영 기본 화면(Repository workspace, CR-099·CR-111)이 그리지 않았다). `FR-SRCH-006` AC-3은 서버가 후보 목록을 돌려주는 것까지이고 이미 성립한다 — SRS·PRD·API 계약은 바뀌지 않는다. 새 화면·API·오류 코드·표는 없다. 누르면 조건을 지우는 동작은 파생 UI(화면 상태·컴포넌트·와이어프레임·QA)에 적는다. 안정 ID 재번호화 0건. 상태: **open** — worktree `/home/roqkf/pr-search-wt/cr131-workspace-relaxation`(브랜치 `fix/cr131-workspace-relaxation`), 기준 main `5850232`.
+- 요청: 사용자 지시(2026-09-29, 23차) 3번. RepositoryWorkspace의 0건 화면에 서버가 계산한 추천을 표시한다(예: 「작성자 조건 제거 · 12건」). 숫자는 서버의 `would_yield`를 쓴다. 누르면 해당 조건만 제거하고 URL·필터 입력·결과·커서를 함께 갱신하며, 문자열 전체 치환으로 비슷한 다른 조건까지 지우지 않는다. 화면이 자동으로 붙이는 `kind`·`repo`와 탭의 고정 조건 등 그 화면에서 안전하게 제거할 수 없는 추천은 실행 가능한 버튼처럼 보이지 않는다. 경로 제거는 파일 트리 선택도 맞추고, 날짜·M 번호·서수 범위는 관련 입력과 에폭 상태를 함께 처리한다. 추천 계산이 불완전하면 짧게 알리고 정상 0건 화면을 유지한다. 접힌 필터·고정 레이아웃·무한스크롤·기존 영문 UI를 유지한다. 완료 기준: 추천을 눌러 다시 검색하면 고정된 자료와 권한에서 실제 결과 건수가 추천 건수와 같다.
+- 발견(수정 전 main `5850232`): 같은 자료로 0건 시나리오 11개를 실제 화면에서 열자 서버는 모든 시나리오에 후보(또는 불완전 표시)를 돌려줬지만 작업 공간은 「No matching changes / Adjust your query or filters and search again.」만 그렸다 — 후보 버튼 0개, 불완전 안내도 없었다. 레거시 화면(`SearchView`)만 후보를 목록으로 그린다(누를 수 없다).
+- 원인: CR-099·CR-111이 운영 기본 화면을 새로 만들면서 W-001 `empty_no_result`의 후보 목록을 옮기지 않았다. 이 화면은 `kind:`·`repo:`와 탭 조건을 스스로 붙이고 여러 입력(필터·트리·자유 텍스트·범위·SHA 범위)을 한 질의로 조립하므로, 서버 후보를 그대로 보이면 누를 수 없는 제안이나 다른 조건까지 지우는 버튼이 된다.
+- 범위: (a) `apps/web/lib/workspace-relaxation.ts`(새 파일) — 후보의 `remove`를 파싱해 노드 하나를 얻고, 그 노드에 값을 보탠 곳을 찾아 지울 URL 파라미터·SHA 범위 상태를 계획한다. 자유 텍스트는 AST에서 같은 키·연산자 노드만 빼고 `serializeQuery`로 다시 적는다. 계획을 URL 상태 사본에 적용하고 작업 공간의 질의 조립기(`buildRepositoryQuery`)로 다시 만든 AST가 「원래 AST − 그 노드」와 같을 때만, 그리고 지목 검사(`seq:`·`mnum:`·`pr_number:`)를 지날 때만 실행 가능이다. (b) `apps/web/components/WorkspaceRelaxationHints.tsx`(새 파일) — 버튼과 안내. (c) `RepositoryWorkspace.tsx` — 응답의 세 키를 읽고, 누르면 SHA 범위 상태·입력을 비우고 `navigate`로 URL을 바꾼다(요청 키가 바뀌어 커서를 버리고 첫 페이지부터 다시 부른다). (d) `repository-workspace.css` — 버튼 줄. (e) 시험 — 모듈 단위 17건, 작업 공간 컴포넌트 6건.
+- 결정과 대가: (1) **버튼은 자기 대조를 지난 후보뿐이다** — 서버가 이미 지목을 깨는 후보를 건너뛰지만(CR-051·CR-106), 화면은 여러 입력을 한 질의로 조립하므로 서버가 모르는 결합(예: `base`를 빼면 SHA 서수 범위도 빠진다)이 있다. 대조가 실패하면 조용히 숨긴다. 대가: 드물게 서버가 센 후보가 화면에서 보이지 않을 수 있다(건수를 지킬 수 없는 버튼보다 낫다). (2) **화면·탭이 붙인 조건은 숨긴다** — 「`kind:pull_request`를 빼면 커밋 N건」은 이 화면의 PR 목록으로 옮길 수 없다. 버튼이 아닌 문장으로도 싣지 않는다. (3) **M 번호 범위가 있는 동안 `base` 제거는 버튼이 아니다** — 서버 규칙으로는 저장소만 지목한 `mnum:`이 유효할 수 있지만(`repository_only`), 이 화면은 CR-106 정정대로 M 번호에 base를 요구한다(입력 비활성, 제출 때 범위 삭제). (4) 자유 텍스트를 다시 적으면 인용·순서가 정규형으로 바뀔 수 있다 — 뜻(AST)은 그 조건만 빠진다. (5) `base` 제거는 `navigate`의 기존 규칙대로 트리 선택(`path_kind`·`source_ref`)도 지운다 — 트리는 브랜치마다 다르다. (6) 서버 후보 상한(앞쪽 필터 8개)에서 작업 공간이 `kind:`·`repo:`로 두 자리를 쓴다 — 넘치면 `relaxation_hints_truncated` 안내를 보인다.
+- 제외: 레거시 화면의 후보 표시(그대로 목록), 서버 후보 계산(CR-128), 서버 후보 상한, 새 Release 발행과 사내 적용.
+- 설계·세부 정본: 화면 상태 W-001 `empty_no_result`, 컴포넌트 명세·와이어프레임·프런트엔드 머리 주석, QA-W001-68~71, 매트릭스 CR-131 표, WP-112, 원장 5장 DEV-787, 6.122장. 연쇄 기록은 5장 「CR-131 cascade」에 적는다.
+
 ## CR-130 — 구간 조회의 질의에 `kind:`가 있으면 결과와 무관하게 500이던 것을 설명 있는 400으로 거절한다: 유형으로 좁히는 구간은 별도 제품 기능으로 남긴다 (2026-09-29)
 
 - 유형: correction(구현 결함 — `/api/v1/sequence-ranges`의 `q`에 `kind:`가 있으면 처리되지 않은 500이었다(DEV-788)) + 요구사항 보완(`FR-SEQ-002` AC-9 — 구간 질의가 `kind:`를 지원하지 않는다는 것과 그 거절의 모양, `OD-019` — 유형으로 좁히는 구간을 지원할 것인가). 새 화면·API 경로·오류 코드·표·마이그레이션은 없다. 안정 ID 재번호화 0건. 상태: **closed** — main `5850232`(PR #254 squash 병합, 2026-09-29). worktree `/home/roqkf/pr-search-wt/cr130-range-kind`(브랜치 `fix/cr130-range-kind`), 기준 main `e581b52`.
@@ -364,6 +375,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| CR-131 | 2026-09-29 | 범위 공백 보완 | 사용자 지시 2026-09-29(23차) 3번 — DEV-787 | **운영 기본 화면(Repository workspace)이 결과 0건에서 서버가 센 조건 변경 추천을 그리지 않았다.** 추천을 「Remove <조건> · <would_yield> results」 버튼으로 보이고, 누르면 그 조건에 값을 보탠 입력만 지우고 다시 검색한다. 화면·탭이 붙인 조건과 지우면 다른 조건까지 바뀌는 후보는 버튼이 아니다(적용한 상태로 질의를 다시 조립해 대조). 불완전·상한 잘림은 짧게 알린다 | FR-SRCH-006 AC-3 · W-001 `empty_no_result` · WP-112 · DEV-787 | 매트릭스 · 화면 상태 · 컴포넌트 · 와이어프레임 · 프런트엔드 · QA 체크리스트 · WP · 원장 | open — 브랜치 `fix/cr131-workspace-relaxation` |
 | CR-130 | 2026-09-29 | correction + 요구사항 보완 | 사용자 지시 2026-09-29(23차) 2번 — DEV-788 | **구간 조회의 `q`에 `kind:`·`-kind:`가 있으면 결과와 무관하게 500이었다.** 신원·권한 확인 뒤, 조회 전에 400 `INVALID_PARAMETER`(`kind_not_supported_in_range`)로 거절하고 화면은 무엇을 빼야 하는지 알린다. 조건을 지우거나 0건으로 위장하지 않는다. 유형으로 좁히는 구간은 `OD-019`로 남긴다 | FR-SEQ-002 AC-9 · OD-019 · API-SEQ-001 · W-004 · WP-111 · DEV-788 | SRS · 매트릭스 · 화면 상태 · QA 체크리스트 · API 계약 · RUNBOOK · WP · 원장 | closed — main `5850232`(PR #254), 원장 6.121 |
 | CR-129 | 2026-09-29 | correction | 사용자 지시 2026-09-29(23차) 1번 — DEV-786 | **공개 search-api가 처리하지 못한 예외를 Fastify 기본 본문(내부 문구, `correlation_id` 없음, 기록 없음)으로 답했고, Elasticsearch의 질의 거절(`statusCode` 게터 400)은 입력 오류 400으로 나갔다.** 공통 처리가 500 `INTERNAL_ERROR`·고정 문구·`correlation_id`(`request.id`)로 답하고 같은 ID로 오류 종류와 실패 단계를 기록한다. 클라이언트 오류는 Fastify 본문 오류(400·413·415)와 없는 경로(404)뿐이다. PIPE 연동도 같은 분류를 쓴다(DEV-789) | NFR-005 · NFR-008 · API 계약 원칙 6·6장 · 백엔드 8장 · API-INT 공통 오류 · WP-110 · DEV-786·DEV-789~791 | API 계약 · 백엔드 아키텍처 · 관측성 · 화면 상태 · QA 체크리스트 · PIPE 인계(CONTRACT_DIFF D-24) · RUNBOOK · WP · 원장 | closed — main `e581b52`(PR #253), 원장 6.120 |
 | CR-128 | 2026-09-28 | correction + 요구사항 보완 | 사용자 지시 2026-09-28(22차) — 사내 `0.1.0-pilot.20`에서 `kind:`와 다른 필터를 함께 쓴 검색이 500/503으로 실패 | **결과가 0건이면 완화 후보를 세다 `KindFilterNotAppliedError`로 500이 났다** — 후보에 걷어 내지 않은 원래 AST와 좁힌 대상을 넘겼다. 후보마다 `kind:`를 요청 경로의 원래 대상에서 다시 해석하고, 남은 유형이 없는 후보는 0건으로 보며, 세지 못한 후보가 있으면 `relaxation_hints_incomplete: true`로 밝힌다. 추천 계산의 실패는 본 조회 결과를 실패로 바꾸지 않는다. 레거시 화면은 후보 건수(`would_yield`)를 읽는다 | FR-SRCH-006 AC-3 · API-SRCH-004 · API-INT-006 · WP-109 · DEV-783~788 | SRS · 매트릭스 · 화면 상태 · QA 체크리스트 · API 계약 · PIPE 인계(OpenAPI·CONTRACT_DIFF D-23) · WP · 원장 | closed — main `d602890`(PR #251), 원장 6.119 |
@@ -2488,6 +2500,18 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - 상태: **closed**(2026-09-21). 운영 배포는 하지 않았고, 사내 CA·운영 HAProxy·실제 GHE를 거친 검증과 실제 사용자 매핑은 NOT_RUN이다 — 이 CR의 범위 밖이다.
 
 **병합 판정.** 구현·검증 보고 뒤 사용자 지시(2026-09-21 「origin/main에 병합」)로 진행했다. 저장소가 공개라 시험 전용 서명 비밀키를 커밋에서 빼고, main CI의 `verify`를 막던 lint 기준선 1건을 ESLint 설정으로 해소한 뒤(원장 6.103장 「병합 준비」) 커밋 `28a3c21`을 PR #220으로 올렸다. PR CI(run `35568796745`)는 verify·integration 모두 success다 — `verify`의 단계(typecheck·lint·lint:deps·test·build·test:a11y·test:contrast·test:e2e)에는 건너뛰는 조건이 없으므로 로컬에서 돌리지 않은 a11y·contrast·e2e도 이 실행이 확인했다. squash 병합 커밋은 `e7b4cb4`(15:43 KST)이고 트리가 `28a3c21`과 같다. 병합 커밋 `e7b4cb4`의 main CI(run `35569716267`)는 끝나기 전에 취소됐다 — 15:46에 사용자가 메인 체크아웃에서 입력 지시서 묶음을 따로 커밋해(`c73ed9f`) main과 병합한 `364f0fb`를 push했고, 워크플로의 `cancel-in-progress`가 앞 실행을 취소했다. `364f0fb`의 트리는 `e7b4cb4`와 같다(묶음 6개 파일이 PR #220에 든 것과 같은 내용이라 차이가 없다, tree `26f3f0fb…`). 그 커밋의 main CI(run `35569895232`)는 verify·integration 모두 success다 — #218부터 lint 단계에서 멈추던 main의 `verify`가 다시 끝까지 통과했다. 병합 기록은 별도 PR(브랜치 `docs/cr112-merge-record`)로 했다 — 작업 패키지 v2.57 → v2.58(WP-097 done), 원장 v6.98 → v6.99(머리 절, 3장, 4장, 6.103장 「병합」), handoff의 PIPE_INTEGRATION_HANDOFF·TEST_RESULTS·CONTRACT_DIFF·manifest 생성기와 다시 만든 manifest(계약 checksum `3c7fbe92…` 변동 없음). 문서 검증기는 이 기록 뒤에도 두 모드 모두 오류·경고 목록이 병합 시점과 같다. 릴리스·태그는 발행하지 않았다. closed.
+
+### CR-131 cascade — 작업 공간의 조건 변경 추천
+
+기준: main `5850232` 위 worktree `/home/roqkf/pr-search-wt/cr131-workspace-relaxation`(브랜치 `fix/cr131-workspace-relaxation`). 범위 공백 보완 — 요구 문장(FR-SRCH-006 AC-3, W-001 `empty_no_result`)을 운영 기본 화면이 지키지 못했다. ID는 `docs/`·`handoff/`·`agent-context/`와 열린 PR(없음)을 실측해 정했다 — CR-131·WP-112·QA-W001-68~71. 새 DEV·ADR·ENT·JOB·EVT·RB·OD·C 번호는 쓰지 않는다(DEV-787을 닫는다).
+
+- [x] 요구사항: SRS·PRD·용어집은 바뀌지 않는다(AC-3은 서버 목록까지다). 매트릭스 v1.24 → v1.25(CR-131 표).
+- [x] 파생 UI: 화면 상태 v0.26 → v0.27(W-001 `empty_no_result`), 컴포넌트 명세 v0.30 → v0.31·와이어프레임 v0.29 → v0.30(머리 주석), QA 체크리스트 v0.33 → v0.34(QA-W001-68~71).
+- [x] 기술 아키텍처: 프런트엔드 v0.17 → v0.18(머리 주석 — 계획과 자기 대조). API 계약은 바뀌지 않는다(응답 키는 CR-128·CR-016 그대로).
+- [x] 전달: 작업 패키지 v2.82 → v2.83(WP-112 절·상태 표), 원장 v6.132 → v6.133(머리 절, 3장 WP-112, 4장, 5장 DEV-787 resolved, 6.122장).
+- [x] 인계: PIPE 계약은 바뀌지 않는다(화면만의 변경이다).
+- [x] 코드·시험: 원장 6.122장.
+- [ ] 병합과 CR 종료 — 다음 기능 PR의 첫 커밋이 적는다(23차 결정).
 
 ### CR-130 cascade — 구간 조회의 `kind:` 거절
 

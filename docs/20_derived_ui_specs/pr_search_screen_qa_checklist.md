@@ -1,6 +1,15 @@
 # PR Search 화면 QA 체크리스트
 
-> 상태: review | 버전: v0.33 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.34 | 갱신일: 2026-09-29
+
+## CR-131 작업 공간의 조건 변경 추천 (FR-SRCH-006 AC-3, W-001 `empty_no_result`)
+
+| ID | 확인 항목 | 검증 |
+| --- | --- | --- |
+| QA-W001-68 | 결과 0건의 Repository workspace에 「Results if you remove one filter:」와 「Remove <조건> · <N> results」 버튼이 보이고, 버튼을 누르면 다시 검색한 실제 건수(결과 머리의 `N items`)가 버튼의 N과 같다 — 작성자 입력, 파일 트리에서 고른 경로, KST 날짜 범위, PR·M 번호 범위, 자유 텍스트의 조건, 입력과 자유 텍스트가 합쳐진 조건, SHA로 정한 서수 범위 | 실제 화면(원장 6.122장), `lib/workspace-relaxation.test.ts` |
+| QA-W001-69 | `kind:`·`repo:`를 빼는 후보, My open/merged PRs 탭의 로그인 작성자·상태 후보, 지우면 다른 조건까지 바뀌는 후보는 버튼으로 보이지 않는다 | 실제 화면, `a11y/repository-workspace.test.tsx` |
+| QA-W001-70 | 누른 뒤 그 조건만 사라진다 — 경로는 트리 선택(`path_kind`·`source_ref`)도 풀리고, 날짜는 `tz`도 지워지며, 서수 범위는 SHA 입력이 비고, 자유 텍스트는 같은 키·연산자 조건만 빠지고 검색어와 다른 연산자 조건(`-label:wip` 등)은 남는다. 정렬·저장소·다른 필터는 그대로다 | 실제 화면, `a11y/repository-workspace.test.tsx`, `lib/workspace-relaxation.test.ts` |
+| QA-W001-71 | 추천 계산이 불완전하면 짧은 안내가 붙고 「No matching changes」 화면은 그대로다. 필터 패널은 접힌 채이고 결과가 있는 검색의 무한스크롤은 전과 같다 | 실제 화면, `a11y/repository-workspace.test.tsx`, E2E 전량 |
 
 ## CR-130 구간 조회의 `kind:` (FR-SEQ-002 AC-9)
 

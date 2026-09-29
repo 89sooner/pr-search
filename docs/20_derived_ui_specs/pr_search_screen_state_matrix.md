@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.26 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.27 | 갱신일: 2026-09-29
 
 ## W-024 Regression 상태 (CR-109 / FR-REG-001)
 
@@ -74,7 +74,7 @@ CR-079 상태 우선순위: 기존 인증/outer epoch_stale 처리 → PR 대상
 | `ready` | 결과 1건 이상 | 결과 테이블 + 패싯 | - | FR-SRCH-006 |
 | `merge_number_pending` | 결과 행 중 PR 항목에 M 넘버가 아직 없음(`merge_seq` 미채번 또는 앞선 항목의 PR 연결 미확정) | 해당 행 M 넘버 칸에 `pending` 배지, 잠정 번호 미표시 | 채번 후 자동 표시 | FR-SEQ-008 |
 | `ambiguous` | 해석 후보 2건 이상 | 후보 카드 목록, 자동 이동 금지 | 후보 선택 | FR-SRCH-001 |
-| `empty_no_result` | 결과 0건 | 원인 후보 3종과 제거 시 결과가 생기는 필터 목록. 목록의 건수는 응답의 `would_yield`다. **서버가 후보를 다 세지 못했으면(`relaxation_hints_incomplete`) 그 사실을 밝힌다** — 목록이 비었으면 「제안을 계산하지 못했다」로 그리고 「뺄 조건이 없다」로 그리지 않는다(CR-128). `kind:`가 든 0건도 오류가 아니라 이 상태다 | 필터 완화 / W-009 | FR-SRCH-006 |
+| `empty_no_result` | 결과 0건 | 원인 후보 3종과 제거 시 결과가 생기는 필터 목록. 목록의 건수는 응답의 `would_yield`다. **서버가 후보를 다 세지 못했으면(`relaxation_hints_incomplete`) 그 사실을 밝힌다** — 목록이 비었으면 「제안을 계산하지 못했다」로 그리고 「뺄 조건이 없다」로 그리지 않는다(CR-128). `kind:`가 든 0건도 오류가 아니라 이 상태다. **Repository workspace(CR-131)**: 서버가 센 후보(`remove`, `would_yield`)를 「Remove <조건> · <would_yield> results」 버튼으로 보인다. 누르면 그 조건에 값을 보탠 곳(필터 입력, 파일 트리 선택 `path`·`path_kind`·`source_ref`, 자유 텍스트 안의 같은 키·연산자 조건, 날짜 범위와 `tz`, PR·M 번호 범위, SHA로 정한 서수 범위)만 지우고 첫 페이지부터 다시 검색한다. 화면이 스스로 붙인 `kind:`·`repo:`, My open/merged PRs 탭의 로그인 작성자·상태, 지우면 다른 조건까지 바뀌거나 지목이 깨지는 후보(서수·M 번호 범위가 남는 `base` 제거 등)는 버튼으로 보이지 않는다 — 화면은 적용한 URL 상태로 질의를 다시 조립해 「원래 조건에서 그 조건만 뺀 것」과 같을 때만 버튼을 만든다. 계산이 불완전하면(`relaxation_hints_incomplete`) 「Some filter suggestions could not be calculated.」(목록이 비었으면 「Filter suggestions could not be calculated for this search.」), 앞쪽 필터만 셌으면(`relaxation_hints_truncated`) 「Only the first filters of this search were checked for suggestions.」를 덧붙이고 0건 화면은 그대로 둔다. 필터 패널은 접힌 채다 | 필터 완화 / W-009 | FR-SRCH-006 |
 | `error_query_syntax` | 미지원 키·파싱 실패 | 입력창의 오류 구간 강조와 지원 키 목록 | 질의 수정 | FR-SRCH-005 |
 | `error_sequence_space_required` | `seq:` 범위 조건인데 부정 아닌 `repo:`·`base:`가 없거나 서로 다른 값이 여럿 (`INVALID_PARAMETER`) | 입력 바 아래에 무엇이 부족한지 적는다. **질의를 자동으로 고치지 않는다** — 어느 저장소를 뜻했는지는 사용자만 안다 | `repo:`·`base:` 추가 | FR-SRCH-005 AC-7 |
 | `epoch_stale` | 요청한 `seq_epoch`이 그 공간의 현재 에폭과 다름 (`epoch_stale: true`) | **목록·요약·패싯을 그리지 않는다.** 시퀀스 인용 배너에 공간·요청 에폭·현재 에폭과 "히스토리가 재작성되어 같은 서수가 다른 커밋을 가리킬 수 있습니다"를 적는다. 빈 결과로 그리면 "구간이 비었다"로 읽힌다. **저장 버튼도 막는다** — 본 적 없는 세대를 저장할 수는 없다 | 「현재 에폭으로 다시 조회」 **명시적 클릭**. 자동 이동 금지 | FR-SEQ-005 AC-4 |
