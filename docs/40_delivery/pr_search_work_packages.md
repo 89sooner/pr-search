@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.87 | 갱신일: 2026-09-29
+> 상태: review | 버전: v2.89 | 갱신일: 2026-09-29
+
+## WP-115 수동 대조 취소 시험의 대기 기준 (CR-134)
+
+- 요구사항: 없음(시험 결함 DEV-796). 대상 시험은 `FR-ADMIN-002`의 중단 계약(「취소가 스캔을 실제로 멈춘다」)을 검증한다. 선행: WP-040 계열(수동 대조 잡), WP-059 계열 시험.
+- 범위: `apps/pipeline-worker/integration/reconcile/manual-run.test.ts` — 냉시작 스윕이 끝나기를 기다리는 기준을 스윕과 같은 질의로 센 활성 저장소 수로 바꾸고 주석을 고친다.
+- 제외: 제품 코드, 잔재를 남기는 통합 파일의 정리(DEV-799), 부하 시험 p95의 CI 변동(DEV-798), Release 발행, 사내 적용.
+- 완료 기준: 잔재 활성 저장소를 넣은 격리 DB에서 수정 전 시험이 CI와 같은 모양으로 실패하는 것을 먼저 보고, 수정 뒤에는 같은 DB와 깨끗한 DB에서 통과한다. 통합 전량을 새 DB로 돌려 통과하고, 병합 커밋의 main CI integration이 초록이다.
+- 상태: in_progress — 브랜치 `fix/cr134-dev796-manual-run`. 검증은 원장 6.125장이다.
 
 ## WP-114 Files & folders의 하위 파일명 검색 (CR-133)
 
@@ -8,7 +16,7 @@
 - 범위: (1) `packages/github` — 리더의 `treeRecursive`(`recursive=1`, 호출 기한 전달). (2) `apps/search-api/src/source` — `sourcePaths`(재귀 한 번 → 잘림·기한 초과·5xx면 걷기), `walkTreeDiff`의 `entries`·`maxTreeCalls`, `/paths` 경로(엄격한 키, 감사). (3) `@prs/contracts` — `SourcePaths`·`SourcePathEntry`. (4) `apps/web` — `lib/source-paths.ts`(목록 읽기·거르기), `components/source/SourceTree.tsx`(검색 입력·결과·진행·취소·이어 읽기·키보드), CSS. (5) 시험 — 단위(서비스·경로·걷기 상한·리더·웹 모듈), GHE 대역(`recursive`·`recursiveLimit`·`recursiveDelayMs`) 위 실제 전송 통합, PIPE 비노출(`readonly.test.ts`), a11y. (6) 문서 — SRS·용어집·매트릭스·화면 상태·흐름·컴포넌트·와이어프레임·QA·API 계약·백엔드·프런트엔드·보안·RUNBOOK.
 - 제외: PIPE 연동(`/read/source/{repository}/paths` 없음, FR-INT-001 목록 밖), 경로 목록의 서버·브라우저 저장, 폴더만의 결과, 본문 검색, rename 추적, `listing=tree`의 트리 호출 상한(DEV-797), Release 발행, 사내 적용.
 - 완료 기준: 수정 전 코드에서 같은 GHE 대역·자료로 루트 이름 필터가 깊은 파일·같은 이름 파일을 찾지 못하는 것을 실제 화면으로 먼저 본다. 수정 뒤에는 실제 web → 웹 프록시 → search-api(실제 GitHubTransport) → GHE 대역에서 깊은 파일과 같은 이름 파일 셋을 각각 찾고, 결과를 누르면 고정 revision의 History·Time-lapse·Diff로 이어지며, 재귀 목록이 잘린 저장소를 끝까지 읽고(취소·이어 읽기 포함), 6만 경로 목록에서 응답과 입력 반응을 잰다. 다 읽기 전에는 「결과 없음」을 말하지 않는다. 새 시험은 변이로 죽는 것을 본다.
-- 상태: in_progress — 브랜치 `feature/cr133-file-search`. 검증은 원장 6.124장이다.
+- 상태: done — main `2e94b71`(PR #257 squash 병합, 2026-09-29). 검증·병합 판정은 원장 6.124장이다.
 
 ## WP-113 Diff·Time-lapse·파일 트리의 총량 제한 해소 (CR-132)
 
@@ -266,7 +274,8 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
-| WP-114 | Files & folders의 하위 파일명 검색 | 요구사항 변경 (CR-133) | WP-085, WP-113 | in_progress — 브랜치 `feature/cr133-file-search`, 원장 6.124장 |
+| WP-115 | 수동 대조 취소 시험의 대기 기준 | correction (CR-134) | WP-040, WP-059 | in_progress — 브랜치 `fix/cr134-dev796-manual-run`, 원장 6.125장 |
+| WP-114 | Files & folders의 하위 파일명 검색 | 요구사항 변경 (CR-133) | WP-085, WP-113 | done — main `2e94b71`(PR #257), 원장 6.124장 |
 | WP-113 | Diff·Time-lapse·파일 트리의 총량 제한 해소 | 요구사항 변경 + correction (CR-132) | WP-085, WP-097, WP-110 | done — main `aa29c5c`(PR #256), 원장 6.123장 |
 | WP-112 | 작업 공간의 조건 변경 추천 | 범위 공백 보완 (CR-131) | WP-087, WP-096, WP-109 | done — main `c33ea25`(PR #255), 원장 6.122장 |
 | WP-111 | 구간 조회의 `kind:` 거절 | 구현 결함 수정 + 요구사항 보완 (CR-130) | WP-023, WP-110 | done — main `5850232`(PR #254), 원장 6.121장 |
