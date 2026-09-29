@@ -1,10 +1,10 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.137 | 갱신일: 2026-09-29
+> 상태: review | 버전: v6.138 | 갱신일: 2026-09-29
 
-## CR-133 / WP-114 — Files & folders의 하위 파일명 검색 (2026-09-29, 병합 전)
+## CR-133 / WP-114 — Files & folders의 하위 파일명 검색 (2026-09-29, main `2e94b71` 병합)
 
-23차 사용자 지시(2026-09-29) 5번. Files & folders의 입력은 루트 항목의 이름만 걸러, 펼치지 않은 폴더의 파일과 같은 이름의 다른 파일을 찾을 수 없었다. 이제 검색을 시작하면 트리가 고정한 revision의 파일 경로 목록(API-SRC-005, 본문 없음)을 한 번 읽어 메모리에서 대소문자 무시 부분 문자열로 거른다. 재귀 트리가 잘리거나 늦으면 하위 트리를 걸어 끝까지 읽고, 다 읽기 전에는 「결과 없음」이라 하지 않는다. 결과를 누르면 같은 revision의 그 파일이 History·Diff·Time-lapse로 이어진다. PIPE에는 싣지 않는다. DEV-797(CR-132 트리 비교 목록의 트리 호출 상한 없음, 관찰)을 연다. 기록은 6.124장.
+23차 사용자 지시(2026-09-29) 5번. Files & folders의 입력은 루트 항목의 이름만 걸러, 펼치지 않은 폴더의 파일과 같은 이름의 다른 파일을 찾을 수 없었다. 이제 검색을 시작하면 트리가 고정한 revision의 파일 경로 목록(API-SRC-005, 본문 없음)을 한 번 읽어 메모리에서 대소문자 무시 부분 문자열로 거른다. 재귀 트리가 잘리거나 늦으면 하위 트리를 걸어 끝까지 읽고, 다 읽기 전에는 「결과 없음」이라 하지 않는다. 결과를 누르면 같은 revision의 그 파일이 History·Diff·Time-lapse로 이어진다. PIPE에는 싣지 않는다. DEV-797(CR-132 트리 비교 목록의 트리 호출 상한 없음, 관찰)을 연다. PR #257로 main `2e94b71`에 병합했다 — 병합 커밋의 main CI(run 36540037060)는 이 변경과 닿지 않는 간헐 실패 시험(DEV-796·DEV-798) 때문에 integration이 빨갛다(6.124장 「병합」). 기록은 6.124장.
 
 ## CR-132 / WP-113 — Diff·Time-lapse·파일 트리의 총량 제한 해소 (2026-09-29, main `aa29c5c` 병합)
 
@@ -375,7 +375,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-114 | Files & folders의 하위 파일명 검색 | 요구사항 변경 (CR-133) | in_progress | 에이전트 | 브랜치 `feature/cr133-file-search` (병합 전) | 6.124장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
+| WP-114 | Files & folders의 하위 파일명 검색 | 요구사항 변경 (CR-133) | done | 에이전트 | main `2e94b71`(PR #257 squash 병합, 2026-09-29; head `37cca26`) | 6.124장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-113 | Diff·Time-lapse·파일 트리의 총량 제한 해소 | 요구사항 변경 + correction (CR-132) | done | 에이전트 | main `aa29c5c`(PR #256 squash 병합, 2026-09-29; head `8502a39`) | 6.123장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-112 | 작업 공간의 조건 변경 추천 | 범위 공백 보완 (CR-131) | done | 에이전트 | main `c33ea25`(PR #255 squash 병합, 2026-09-29; head `e3e9981`) | 6.122장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-111 | 구간 조회의 `kind:` 거절 | 구현 결함 수정 + 요구사항 보완 (CR-130) | done | 에이전트 | main `5850232`(PR #254 squash 병합, 2026-09-29; head `44a51c7`) | 6.121장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
@@ -490,7 +490,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
-| FR-SRC-001 AC-2·AC-5 (Files & folders 검색 — 고정 revision의 모든 파일 경로, 재귀 한 번·잘리거나 늦으면 걷기, 대소문자 무시 부분 문자열, 경로마다 하나, 선택 → History·Diff·Time-lapse, 다 읽기 전 「결과 없음」 금지, 취소·이어 읽기, 범위 밖 비노출) | WP-114 | `packages/github/src/source-reader.ts`, `apps/search-api/src/source/{service,routes,tree-diff}.ts`, `packages/contracts/src/source.ts`, `apps/web/lib/source-paths.ts`, `apps/web/components/source/SourceTree.tsx`, `apps/web/app/source-workspace.css` | `apps/search-api/src/source/{source-paths,tree-diff}.test.ts`, `packages/github/src/source-reader.test.ts`, `apps/search-api/integration/source/source-paths.test.ts`, PIPE `readonly.test.ts`(404), `apps/web/lib/source-paths.test.ts`, `apps/web/a11y/source-tree-search.test.tsx` | implemented |
+| FR-SRC-001 AC-2·AC-5 (Files & folders 검색 — 고정 revision의 모든 파일 경로, 재귀 한 번·잘리거나 늦으면 걷기, 대소문자 무시 부분 문자열, 경로마다 하나, 선택 → History·Diff·Time-lapse, 다 읽기 전 「결과 없음」 금지, 취소·이어 읽기, 범위 밖 비노출) | WP-114 | `packages/github/src/source-reader.ts`, `apps/search-api/src/source/{service,routes,tree-diff}.ts`, `packages/contracts/src/source.ts`, `apps/web/lib/source-paths.ts`, `apps/web/components/source/SourceTree.tsx`, `apps/web/app/source-workspace.css` | `apps/search-api/src/source/{source-paths,tree-diff}.test.ts`, `packages/github/src/source-reader.test.ts`, `apps/search-api/integration/source/source-paths.test.ts`, PIPE `readonly.test.ts`(404), `apps/web/lib/source-paths.test.ts`, `apps/web/a11y/source-tree-search.test.tsx` | **완료 — main `2e94b71` (CR-133, 6.124장)** |
 | FR-SRC-001 AC-4 · FR-SRC-002 AC-2 · FR-SRC-003 AC-4·AC-5 · FR-SRC-004 AC-2 (이어 읽기 — 파일 창·디렉터리 페이지·트리 비교 목록·관련 PR 전량·History 상한 해제, Worker 계산과 근사 대체, 가상 스크롤, 모달 안 더 읽기·분석 범위, 요청 기한·취소 전파) | WP-113 | `packages/github/src/{transport,scheduler,source-reader}.ts`, `apps/search-api/src/source/{service,routes,tree-diff}.ts`, `apps/web/lib/{source-client,source-compute,source-jobs,source-worker,source-compute-client}.ts`, `apps/web/components/source/{hooks.ts,SourceDialogs.tsx,SourceTree.tsx,SourceHistory.tsx,api.ts}`, `apps/web/app/api/[...path]/route.ts` | `packages/github/src/{transport,scheduler}.test.ts`, `apps/search-api/src/source/{source-limits,tree-diff,source}.test.ts`, `apps/search-api/integration/source/source-limits.test.ts`, `apps/web/lib/{source-compute,source-jobs}.test.ts`, `apps/web/a11y/source-limits.test.tsx`, PIPE `contract.test.ts`·`openapi.test.ts` | **완료 — main `aa29c5c` (CR-132, 6.123장)** |
 | FR-SRCH-006 AC-3 · W-001 `empty_no_result` (운영 기본 화면의 후보 버튼과 `would_yield`, 누르면 그 조건만 제거, 화면·탭 조건과 대조 실패 후보 제외, 불완전·상한 잘림 안내) | WP-112 | `apps/web/lib/workspace-relaxation.ts`, `apps/web/components/WorkspaceRelaxationHints.tsx`, `apps/web/components/RepositoryWorkspace.tsx`, `apps/web/app/repository-workspace.css` | `apps/web/lib/workspace-relaxation.test.ts`, `apps/web/a11y/repository-workspace.test.tsx` | **완료 — main `c33ea25` (CR-131, 6.122장)** |
 | FR-SEQ-002 AC-9 (구간 질의의 `kind:`·`-kind:`를 신원·권한 확인 뒤, 조회 전에 400 `INVALID_PARAMETER` `kind_not_supported_in_range`로 거절, 구간의 키 목록) | WP-111 | `apps/search-api/src/sequence/routes.ts`, `apps/web/components/RangesView.tsx` | `apps/search-api/integration/sequence/range.test.ts`, `apps/web/a11y/ranges.test.tsx` | **완료 — main `5850232` (CR-130, 6.121장)** |
@@ -9800,4 +9800,4 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 
 **한계.** 사내 적용 NOT RUN. 실제 GHES에서 확인하지 못한 것: 큰 저장소에서 `recursive=1`의 응답 시간과 잘림 형태(대역은 GitHub 문서의 규칙 — 전위 순서의 앞부분과 `truncated` — 를 흉내 냈다). 재귀 트리 항목의 `path`가 루트 기준 전체 경로라는 점은 공개 GitHub 응답으로 확인했다. 목록은 브라우저 메모리에만 있다 — 10만 경로면 수십 MB다. 서버에서는 재귀 트리 응답(최대 7MB·10만 항목)이 source 조회 한 요청이 드는 가장 큰 메모리다(상한은 GitHub의 재귀 한계·공용 동시 슬롯·요청 기한). 걷기로 이어 읽는 페이지마다 커밋을 한 번 더 읽는다(코드 리뷰 [하], 고치지 않았다). 결과는 파일·링크만이고 폴더는 결과가 아니다(폴더 이름에 걸리면 그 아래 파일이 나온다). 결과는 200개까지 그린다. 트리 비교 목록(`listing=tree`)의 트리 호출 상한은 DEV-797로 남긴다.
 
-**병합.** 이 기록을 담은 PR의 CI와 병합 커밋의 main CI는 다음 기능 PR의 첫 커밋이 적는다(23차 결정).
+**병합.** PR #257(base `main`, 최종 head `37cca26`, 첫 커밋은 CR-132 병합 기록)의 CI(run 36538806858)는 verify·integration 모두 첫 시도에 success다. 전 계층 게이트, 변이 확인, 실제 화면(수정 전·수정 뒤, 리뷰 반영 뒤 최종 빌드 재확인), 독립 리뷰(코드 [하] 1건·문서 [하] 1건은 고쳤고, 코드 [하] 1건은 이유를 적고 그대로 두었다)는 원장 6.124장에 있다. 사용자 승인(2026-09-29, 그 세션에서 PR #257에 대해 받았다)으로 squash 병합했다 — main `2e94b71`, 트리는 PR head와 같다(`1f15edb…`). 병합 커밋의 main CI(run 36540037060)는 verify는 success였지만 integration이 두 번 실패했다 — 첫 시도는 DEV-796의 그 시험 한 건(2,425건 중), 실패한 job만 다시 돌린 두 번째 시도는 그 시험과 수신 게이트웨이 부하 시험(p95 363ms > 300ms, DEV-798) 두 건이었다. 두 시험 모두 CR-133이 바꾸지 않은 코드를 보고, 같은 트리의 PR CI(run 36538806858)는 success였다. DEV-796은 CR-134(이 기록을 첫 커밋으로 싣는 PR)가 고친다. 이 기록은 CR-134 PR의 첫 커밋이다. 사내 적용은 NOT RUN이다.
