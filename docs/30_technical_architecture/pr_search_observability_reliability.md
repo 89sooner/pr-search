@@ -1,6 +1,8 @@
 # PR Search 관측성 및 신뢰성
 
-> 상태: review | 버전: v0.14 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.15 | 갱신일: 2026-09-29
+
+CR-135 / FR-SRC-005: 새 지표·경보·런북 번호는 없다. blame 요청은 감사 `entity.view`의 `source:blame:<저장소>` 행과 결과 코드(`OK`·`SOURCE_BLAME_UNSUPPORTED`·`SOURCE_PERMISSION_REQUIRED`·`SOURCE_RATE_LIMITED`·`SOURCE_UNAVAILABLE`·`NOT_FOUND`·`CANCELLED`)로 가른다 — 원격 오류 문구는 로그에 남지 않는다. GraphQL 한도 헤더는 REST 토큰 상태에 넣지 않으므로 REST 한도 소진(RB-13)의 판단에 섞이지 않는다. 증상별 확인은 RUNBOOK 8장의 세 행이다.
 
 CR-129 / DEV-786: 새 지표·경보·런북 번호는 없다. 공개 search-api가 처리하지 못한 오류를 로그 한 줄로 남긴다 — `http.unhandled_error`(`error`)·`http.client_error`(`warn`). 3.1 표의 행이다. RUNBOOK 8장에 참조 ID로 찾는 행을 더했다.
 

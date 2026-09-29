@@ -1,6 +1,10 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.140 | 갱신일: 2026-09-29
+> 상태: review | 버전: v6.141 | 갱신일: 2026-09-29
+
+## CR-135 / WP-116 — PIPE용 GraphQL blame (2026-09-29, 병합 전)
+
+23차 사용자 지시(2026-09-29) 6번. PIPE가 선택한 파일·리비전의 blame을 받을 조회가 없었고, 줄의 출처에 가장 가까운 Time-lapse는 인접 리비전 비교로 추정한 관측 라인 이력이다. 이제 GitHub GraphQL `Commit.blame`을 서버 소유 고정 query 하나로 묻는 별도 조회가 있다 — 세션 API-SRC-006과 PIPE API-INT-015(`read.source.blame`). 줄 구간마다 GitHub가 계산한 귀속 커밋(SHA·메시지 첫 줄·작성자 이름과 계정·시각)을 GitHub 순서 그대로 주고, GitHub가 주지 않은 이름·계정은 `null`이며, 본문은 같은 revision의 file API가 준다. 기본 꺼짐(`SOURCE_BLAME_ENABLED`)이고 꺼진 배포의 PIPE 발급·`/context`는 이전과 같아 `PSI-1.0`을 유지한다(D-26). 권한·범위 확인이 GHE보다 먼저이고, 조회 문서만 POST하며, GraphQL 한도는 REST 토큰 상태와 나눈다. 미지원 501(새 코드 `SOURCE_BLAME_UNSUPPORTED`)·권한 503·한도 429·일시 장애 502를 가르고 추정 결과로 대신하지 않는다. 웹 화면은 없고 Time-lapse·Diff는 바뀌지 않았다. 사내 GHES의 blame 지원·권한은 확인하지 못했다(대역으로만 검증). 기록은 6.126장.
 
 ## CR-134 / WP-115 — 수동 대조 취소 시험의 대기 기준 (2026-09-29, main `a02a145` 병합)
 
@@ -379,6 +383,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| WP-116 | PIPE용 GraphQL blame | 범위 추가 (CR-135) | in_progress | 에이전트 | 브랜치 `feature/cr135-pipe-blame` (병합 전) | 6.126장 | 사내 적용 NOT RUN — 사내 GHES의 blame 지원·권한은 확인하지 못했다(대역으로만 검증). 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-115 | 수동 대조 취소 시험의 대기 기준 | correction (CR-134) | done | 에이전트 | main `a02a145`(PR #258 squash 병합, 2026-09-29; head `9f171c8`) | 6.125장 | 사내 적용 NOT RUN — 시험만 고쳤다 |
 | WP-114 | Files & folders의 하위 파일명 검색 | 요구사항 변경 (CR-133) | done | 에이전트 | main `2e94b71`(PR #257 squash 병합, 2026-09-29; head `37cca26`) | 6.124장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-113 | Diff·Time-lapse·파일 트리의 총량 제한 해소 | 요구사항 변경 + correction (CR-132) | done | 에이전트 | main `aa29c5c`(PR #256 squash 병합, 2026-09-29; head `8502a39`) | 6.123장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
@@ -495,6 +500,8 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
+| FR-SRC-005 (선택 리비전의 파일 blame — 기능 게이트 기본 꺼짐, 권한·범위 먼저, 서버 소유 고정 query·조회 문서만 POST, GraphQL 한도 분리, 분류 순서 고정, GitHub 순서 그대로·없는 작성자 `null`, 미지원 501·권한 503·한도 429·일시 장애 502, 본문 없음) | WP-116 | `packages/github/src/{config,transport,source-blame,source-reader,index}.ts`, `packages/github/testing/{mock-ghe,mock-source}.ts`(GHE 대역 GraphQL), `apps/search-api/src/{config,index,runtime}.ts`, `apps/search-api/src/source/{routes,service}.ts`, `packages/contracts/src/{source,error-codes}.ts` | `packages/github/src/{config,transport,source-blame}.test.ts`, `packages/github/testing/source-blame.test.ts`, `apps/search-api/src/source/source-blame.test.ts`, `apps/search-api/src/{config,runtime}.test.ts`, `apps/search-api/integration/source/source-blame.test.ts`, `regression/runtime-reachability.test.ts` | implemented |
+| FR-INT-001 AC-5 (고정 조회 11종 — `read.source.blame`(API-INT-015)과 capability `source_blame:read`는 게이트가 켜졌을 때만, 꺼진 배포의 발급·`/context`는 CR-135 전과 같다) | WP-116 | `apps/search-api/src/integrations/pipe/{operations,routes}.ts`, 공유 실행 `executeSource`(`apps/search-api/src/source/routes.ts`), `handoff/pipe-search-integration/v1/*`(D-26) | `apps/search-api/integration/integrations/pipe/blame-disabled.test.ts`, `apps/search-api/src/integrations/pipe/contract.test.ts`, `apps/search-api/integration/integrations/pipe/{readonly,parity,openapi}.test.ts` | implemented |
 | FR-SRC-001 AC-2·AC-5 (Files & folders 검색 — 고정 revision의 모든 파일 경로, 재귀 한 번·잘리거나 늦으면 걷기, 대소문자 무시 부분 문자열, 경로마다 하나, 선택 → History·Diff·Time-lapse, 다 읽기 전 「결과 없음」 금지, 취소·이어 읽기, 범위 밖 비노출) | WP-114 | `packages/github/src/source-reader.ts`, `apps/search-api/src/source/{service,routes,tree-diff}.ts`, `packages/contracts/src/source.ts`, `apps/web/lib/source-paths.ts`, `apps/web/components/source/SourceTree.tsx`, `apps/web/app/source-workspace.css` | `apps/search-api/src/source/{source-paths,tree-diff}.test.ts`, `packages/github/src/source-reader.test.ts`, `apps/search-api/integration/source/source-paths.test.ts`, PIPE `readonly.test.ts`(404), `apps/web/lib/source-paths.test.ts`, `apps/web/a11y/source-tree-search.test.tsx` | **완료 — main `2e94b71` (CR-133, 6.124장)** |
 | FR-SRC-001 AC-4 · FR-SRC-002 AC-2 · FR-SRC-003 AC-4·AC-5 · FR-SRC-004 AC-2 (이어 읽기 — 파일 창·디렉터리 페이지·트리 비교 목록·관련 PR 전량·History 상한 해제, Worker 계산과 근사 대체, 가상 스크롤, 모달 안 더 읽기·분석 범위, 요청 기한·취소 전파) | WP-113 | `packages/github/src/{transport,scheduler,source-reader}.ts`, `apps/search-api/src/source/{service,routes,tree-diff}.ts`, `apps/web/lib/{source-client,source-compute,source-jobs,source-worker,source-compute-client}.ts`, `apps/web/components/source/{hooks.ts,SourceDialogs.tsx,SourceTree.tsx,SourceHistory.tsx,api.ts}`, `apps/web/app/api/[...path]/route.ts` | `packages/github/src/{transport,scheduler}.test.ts`, `apps/search-api/src/source/{source-limits,tree-diff,source}.test.ts`, `apps/search-api/integration/source/source-limits.test.ts`, `apps/web/lib/{source-compute,source-jobs}.test.ts`, `apps/web/a11y/source-limits.test.tsx`, PIPE `contract.test.ts`·`openapi.test.ts` | **완료 — main `aa29c5c` (CR-132, 6.123장)** |
 | FR-SRCH-006 AC-3 · W-001 `empty_no_result` (운영 기본 화면의 후보 버튼과 `would_yield`, 누르면 그 조건만 제거, 화면·탭 조건과 대조 실패 후보 제외, 불완전·상한 잘림 안내) | WP-112 | `apps/web/lib/workspace-relaxation.ts`, `apps/web/components/WorkspaceRelaxationHints.tsx`, `apps/web/components/RepositoryWorkspace.tsx`, `apps/web/app/repository-workspace.css` | `apps/web/lib/workspace-relaxation.test.ts`, `apps/web/a11y/repository-workspace.test.tsx` | **완료 — main `c33ea25` (CR-131, 6.122장)** |

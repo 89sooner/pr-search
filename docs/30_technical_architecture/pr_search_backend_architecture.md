@@ -22,7 +22,9 @@
 
 > CR-133 / FR-SRC-001 AC-5: 위의 「비재귀 트리」는 트리 탐색의 규칙이다. 검색의 경로 목록(`sourcePaths`, API-SRC-005)은 루트 트리를 `recursive=1`로 한 번 읽고(`GitHubSourceReader.treeRecursive`, 호출 기한 `SOURCE_PATHS_RECURSIVE_TIMEOUT_MS` 45초 — 최대 7MB 응답), 잘렸거나 그 호출만 기한을 넘기거나 5xx면 `walkTreeDiff`(빈 기준 트리, `entries: true`)로 걷는다. 걷기 한 페이지는 경로 5,000개(`SOURCE_PATHS_WALK_PAGE`) 또는 디렉터리 호출 100번(`SOURCE_PATHS_WALK_TREE_CALLS` — `maxTreeCalls`, 잎을 낸 페이지만 멈춘다)에서 끝난다. 요청 기한·사용자 취소는 CR-132의 한 신호를 그대로 쓰고 걷기로 넘기지 않는다. 경로 목록은 서버에 캐시하지 않는다. 트리 비교(`listing=tree`)에는 호출 상한을 걸지 않았다(DEV-797).
 
-> 상태: review | 버전: v0.23 | 갱신일: 2026-09-29
+> CR-135 / FR-SRC-005 / ADR-027: blame(API-SRC-006, PIPE `read.source.blame`)은 `executeSource`의 여섯째 operation이다(`SOURCE_OPERATIONS`의 `blame`). 순서는 신원 → 기능 게이트(`SourceRouteOptions.blameEnabled` ← `SOURCE_BLAME_ENABLED`, 꺼지면 404 `feature_disabled`이고 리더·GHE를 부르지 않는다) → 저장소 형식 → 범위 → 등록 404 → 키 검사(`path`·`revision`만) → `sourceBlame`(`apps/search-api/src/source/service.ts`) → `GitHubSourceReader.blame` → `readSourceBlame`(`packages/github/src/source-blame.ts`)이다. PIPE 연동은 `buildServerDeps`가 만든 같은 `source` 실행 객체를 받아 같은 게이트 값을 본다. 조회용 Data App 자격의 **유일한 GraphQL 호출**이며 전송은 `GitHubTransport.postGraphql`(조회 문서만, REST와 같은 토큰 lease·401 무효화·호출자 신호, 호출 기한 `SOURCE_BLAME_TIMEOUT_MS` 30초, GraphQL 동시 상한 `GRAPHQL_CONCURRENCY` 2)이다. 한도 헤더는 REST 토큰 상태에 넣지 않고 재시도·재호출 차단이 없다. 주소는 `resolveGitHubConfig().graphqlUrl`(`GHE_GRAPHQL_URL`, 비면 `deriveGraphqlUrl`)이고 `apps/search-api/src/index.ts`가 전송에 넘긴다(회귀 도달성 가드가 그 배선을 건다). 오류는 `SourceBlameUnsupportedError` → 501, `GitHubApiError`의 종류 → 404·429·503, 그 밖은 502다(API 계약 「CR-135 blame」). 결과는 캐시하지 않는다.
+
+> 상태: review | 버전: v0.24 | 갱신일: 2026-09-29
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 
@@ -390,7 +392,7 @@ Redis 캐시 조회 (TTL 5분)
 
 `author_team_ids`는 접근 통제가 아니라 **집계의 축**이다. `allowed_team_ids`가 "이 저장소를 볼 수 있는 팀"인 것과 달리 이것은 "PR 작성자가 속한 팀"이며, 둘을 한 필드로 합치면 **접근 권한을 성과로 읽게 된다** (CR-053, DEV-382).
 
-**답은 사용자 단위이고 조회는 조직 단위다** (DEV-482). GHE REST에는 임의 사용자의 팀 목록을 주는 엔드포인트가 없고 이 저장소는 GraphQL을 쓰지 않는다. 그러므로 `GET /orgs/{org}/teams`로 조직의 팀을 읽고 팀마다 `GET /orgs/{org}/teams/{slug}/members`로 구성원을 읽어 `login → team_ids`를 만든다. **비용이 조직당 팀 수이고 작성자 수와 무관하다** — 작성자마다 팀 수만큼 소속을 묻는 방식은 `작성자 × 팀`이라 PR이 늘수록 선형으로 늘어난다.
+**답은 사용자 단위이고 조회는 조직 단위다** (DEV-482). GHE REST에는 임의 사용자의 팀 목록을 주는 엔드포인트가 없고 이 저장소는 GraphQL을 쓰지 않는다(예외는 source blame의 고정 query 한 조회뿐이다 — ADR-027, CR-135). 그러므로 `GET /orgs/{org}/teams`로 조직의 팀을 읽고 팀마다 `GET /orgs/{org}/teams/{slug}/members`로 구성원을 읽어 `login → team_ids`를 만든다. **비용이 조직당 팀 수이고 작성자 수와 무관하다** — 작성자마다 팀 수만큼 소속을 묻는 방식은 `작성자 × 팀`이라 PR이 늘수록 선형으로 늘어난다.
 
 **로컬 미러는 `team_member`가 아니다** (DEV-482). 그 표는 `app_user`를 참조해 **PR Search에 로그인한 적 있는 사용자만** 담으며, 그것이 무효화가 그 표를 읽는 뜻이다. 작성자 소속은 마이그레이션 021의 `team_membership`에 담는다.
 

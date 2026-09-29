@@ -53,7 +53,7 @@ PIPE는 검색 데이터 정본·M 번호 발급·repository 권한 계산을 �
 
 새 BFF prefix는 공통 계약 기준 `/api/pr-search/v1`다. 사용자는 PIPE 서버에만 요청한다. 브라우저에서 pr-search private 주소/서비스 assertion/grant/mTLS private key를 알아야 하는 구조를 만들지 않는다.
 
-고정 API: `/context`, `/repositories`, `/search`, `/resolve`, `/merge-numbers/resolve`, PR 상세, commit 상세, source tree/history/diff/file, 그리고 현재 문맥을 종료하는 `POST /disconnect`.
+고정 API: `/context`, `/repositories`, `/search`, `/resolve`, `/merge-numbers/resolve`, PR 상세, commit 상세, source tree/history/diff/file, 선택 source blame(CR-135 — exchange·`/context`의 capabilities에 `source_blame:read`가 있을 때만 부르고, 없으면 그 기능을 보이지 않는다. pr-search의 404 `feature_disabled`는 「이 배포에서 꺼짐」이다), 그리고 현재 문맥을 종료하는 `POST /disconnect`.
 
 원본 데이터 GET은 허용된 것만 구현한다. `proxy?url=...`, catch-all `<path:any>` HTTP 전달, 사용자가 upstream URL을 지정하는 경로는 금지한다. 이름만 같은 GET 관리자·로그·trigger endpoint도 허용하지 않는다.
 

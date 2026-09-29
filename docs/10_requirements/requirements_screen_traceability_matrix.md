@@ -1,6 +1,11 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.27 | 갱신일: 2026-09-29
+> 상태: review | 버전: v1.28 | 갱신일: 2026-09-29
+
+| 추가 요구사항 (CR-135) | 화면 | 구현 단위 | 검증 |
+| --- | --- | --- | --- |
+| FR-SRC-005 (선택 리비전의 파일 blame — 기능 게이트 기본 꺼짐, 권한 먼저, 서버 소유 고정 query·조회 문서만, GitHub 순서 그대로, 없는 작성자를 지어내지 않음, 미지원 501·권한 503·한도 429·일시 장애 502, Time-lapse와 구분, 본문은 file API) | 없음 — 웹 화면 없음(PIPE용, API-SRC-006·API-INT-015). W-001 Time-lapse·Diff는 바뀌지 않는다 | WP-116 | test(`packages/github`의 `source-blame.test.ts`·`transport.test.ts`·`config.test.ts`·GHE 대역 `testing/source-blame.test.ts`, search-api 단위 `source-blame.test.ts`·통합 `integration/source/source-blame.test.ts`, 회귀 `runtime-reachability.test.ts`) · 실제 경로(원장 6.126장) |
+| FR-INT-001 AC-5 (고정 조회 11종 — `read.source.blame`과 capability `source_blame:read`는 게이트가 켜졌을 때만, 꺼진 배포의 발급·`/context`는 이전과 같다) | 없음 — 서버 간 API(API-INT-015) | WP-116 | test(PIPE 통합 `blame-disabled.test.ts`, 계약·적합성 시험) · PIPE 인계 D-26 |
 
 | 추가 요구사항 (CR-133) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |
@@ -88,6 +93,7 @@
 | FR-SRC-002 | W-001 | SourceHistory | API-SRC-002 | source.test.ts, verify-source-workspace.mjs, history-pull-requests.test.ts |
 | FR-SRC-003 | W-001, W-002, W-003 | DiffModal | API-SRC-003, API-SRC-004 | source-analysis.test.ts, source.test.ts, 브라우저 |
 | FR-SRC-004 | W-001, W-002, W-003 | TimeLapseModal | API-SRC-002~004 | source-analysis.test.ts, 브라우저 |
+| FR-SRC-005 | 없음 (웹 화면 없음 — PIPE용, CR-135) | 없음 | API-SRC-006, API-INT-015 | source-blame.test.ts(packages/github·search-api 단위·통합), blame-disabled.test.ts(PIPE 통합) |
 
 > CR-096 / WP-084: NFR-007의 키보드·라벨·대비·반응형 확인은 전체 기존 화면에 적용한다. W-001의 template 배치를 유지하고 분석·운영·상세·저장된 검색은 같은 Radix 프리미티브/테마를 공유한다. 신규 화면 ID와 API는 없다. 영어 UI 및 테마 저장 검증은 구현 추적 원장의 CR-096 기록을 따른다.
 

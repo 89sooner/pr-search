@@ -1698,10 +1698,55 @@ PR 본문·커밋 메시지에 사내 GHE의 **전체 URL**로 적은 참조(`ht
 확인했다(두 역할은 GHE에 접속하지 않으므로 사내에 연결하지 않았다, 원장 6.115장). 실제 사내 GHE의 PR 본문·인증서·프록시·
 실데이터에서의 동작은 `NOT RUN — internal environment required`다.
 
+### 7.L source blame 켜기 — PIPE용 GraphQL blame (WP-116 / FR-SRC-005, `CR-135`)
+
+선택한 리비전의 파일에서 줄 구간마다 그 줄을 마지막으로 바꾼 커밋을 GitHub GraphQL(`Commit.blame`)에게
+물어 그대로 준다 — 세션 API `GET /api/v1/source/{repository}/blame`과 PIPE `read.source.blame`. 웹 화면은
+없고, Time-lapse(인접 리비전 비교의 추정)·Diff는 이 설정과 무관하다. **기본 꺼짐이다.** 꺼져 있으면 두
+경로가 404(`feature_disabled`)이고 GHE를 부르지 않으며, PIPE에 capability `source_blame:read`를 알리지 않는다.
+
+**이 판은 실제 GHES에서 확인하지 못했다.** 사내 GHES가 GraphQL `Commit.blame`을 주는지, 조회용 GHE
+App(`GHE_APP_*`)에 어떤 권한이 필요한지(Contents 읽기로 추정)는 대역으로만 검증했다. 아래 3번이 그 확인이다.
+
+1. **`.env`에서 켠다.**
+
+   ```bash
+   SOURCE_BLAME_ENABLED=true
+   ```
+
+   `true`·`false`·빈 값만 받는다 — 그 밖의 값이면 search-api가 기동하지 않는다. `GHE_GRAPHQL_URL`은 보통
+   비워 둔다. 비우면 `GHE_API_URL`(비면 `<GHE_BASE_URL>/api/v3`)의 `/api/v3`를 `/api/graphql`로 바꾼 주소를
+   쓴다(`/api/v3/graphql`이 아니다).
+
+2. **새 `compose.yml`의 search-api에 두 줄이 있는지 본다 — `upgrade` 전에.** 사내 수정(CA 마운트)을 새
+   파일에 얹을 때 옛 `compose.yml`로 덮으면 이 두 줄이 사라져 켜도 꺼진 채다. 있으면 `./prsctl upgrade`로
+   다시 올린다.
+
+   ```bash
+   grep -n 'SOURCE_BLAME_ENABLED\|GHE_GRAPHQL_URL' deploy/single-host/compose.yml
+   ```
+
+3. **한 파일로 확인한다.** 로그인한 브라우저에서
+   `<서비스 주소>/api/source/<owner>%2F<name>/blame?path=<파일 경로>&revision=<40자 커밋 SHA>`를 연다(웹
+   프록시가 search-api로 넘긴다). 결과로 가른다.
+   - 200과 `ranges` — 켜졌다. PIPE의 exchange·`/context` 응답의 capabilities에 `source_blame:read`가 보인다.
+   - 501 `SOURCE_BLAME_UNSUPPORTED` — 이 GHES가 blame을 주지 않는다. `SOURCE_BLAME_ENABLED=false`로 되돌린다.
+   - 503 `SOURCE_PERMISSION_REQUIRED` — GHE가 조회용 App의 GraphQL 호출을 거절했다. App 권한과 그 저장소
+     설치를 본다.
+   - 502 `SOURCE_UNAVAILABLE`이 계속된다 — `GHE_GRAPHQL_URL`을 채웠다면 같은 GHE의 `/api/graphql`인지
+     본다(주소가 틀리면 GHE가 2xx가 아닌 응답을 주고 502가 된다). 비웠다면 GHE의 일시 장애이거나 큰 파일이
+     호출 기한(30초)을 넘긴 것이다.
+   - 404 `feature_disabled` — 아직 꺼져 있다(8장).
+
+4. **되돌리기.** `SOURCE_BLAME_ENABLED=false`로 두고 `./prsctl upgrade`. 저장한 자료가 없어 치울 것이 없다.
+
 ## 8. 문제 해결
 
 | 증상 | 확인 |
 | --- | --- |
+| blame(API의 `/source/…/blame`·PIPE `read.source.blame`)이 404이고 본문 `detail.reason`이 `feature_disabled`다 | 꺼져 있다 — 기본값이다(`CR-135`). 켜려면 7.L. 켰는데도 그렇다면 search-api가 그 값을 받지 않았다: 새 `compose.yml`의 search-api 블록에 `SOURCE_BLAME_ENABLED` 줄이 있는지(7.L 2번), `.env`의 값이 정확히 `true`인지 본다. 꺼진 동안 PIPE에는 capability `source_blame:read`가 없다 |
+| blame이 501 `SOURCE_BLAME_UNSUPPORTED`(「This GitHub Enterprise Server does not provide blame through its API.」)다 | 사내 GHES의 GraphQL 스키마에 `Commit.blame`이 없다(`CR-135`). 일시 장애가 아니라 다시 불러도 같다. GHES 판을 확인하고, 지원하지 않으면 `SOURCE_BLAME_ENABLED=false`로 되돌린다(7.L). Time-lapse·Diff는 영향이 없다 |
+| blame이 503 `SOURCE_PERMISSION_REQUIRED`다 | GHE가 조회용 App의 GraphQL 호출을 401·403·`FORBIDDEN`으로 거절했다(`CR-135`). App 권한과 그 저장소 설치를 본다 — blame에 필요한 권한은 실제 GHES에서 확인하지 못했다(Contents 읽기로 추정). 같은 저장소의 파일·History 조회도 503이면 조회 App 권한 전반의 문제다. 원격 오류 문구는 search-api 로그에 남기지 않는다 |
 | 구간 화면(Ranges)이 「Range queries do not support the kind: filter」로 결과를 그리지 않는다 | 링크나 손으로 고친 URL의 `q`에 `kind:`가 있다(`CR-130`). 구간은 PR과 커밋을 정본 서수로 함께 보인다 — URL에서 `kind:`를 빼고 다시 Load한다. 유형으로 좁힌 구간은 지원하지 않는다(`OD-019`). 이 판 이전 빌드는 같은 URL이 500이었다 |
 | source 화면(Diff·Time-lapse·파일 보기)이 「Source data could not be loaded from GitHub in time. Please retry.」로 끝난다 | 한 source 요청의 기한 120초를 넘었다(`CR-132`). 큰 파일의 뒤쪽 창은 GitHub가 바이트 범위를 주지 않아 앞부분을 다시 받는다 — GHE와 search-api 사이가 느리면(1 MiB/s 미만) 100MB에 가까운 파일의 마지막 창이 기한을 넘을 수 있다. Retry는 그 창부터 다시 읽는다. 여러 사용자가 큰 파일을 동시에 열면 원시 읽기는 프로세스당 2개씩 줄을 선다(다른 GitHub 조회는 막지 않는다). 계속되면 `docker compose logs search-api`의 GHE 응답 시간과 GHE 쪽 부하를 본다 |
 | 감사 로그에 `source:*` 행의 결과가 `CANCELLED`다 | 오류가 아니다(`CR-132`). 사용자가 로딩 중 Cancel을 누르거나 창을 닫아 연결을 끊었고, search-api가 그 요청의 GHE 호출을 멈췄다. 같은 사용자의 바로 뒤 행이 Retry다 |
