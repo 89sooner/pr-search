@@ -106,15 +106,17 @@ describe('CR-132 FR-SRC-003 Diff reads whole files and never fails on the old bu
     const { calls } = stubApi({ changes, treeListing, pageSize: 3_000 });
     const user = userEvent.setup();
     render(<DiffModal target={{ repository: REPO, commit: HEAD }} onClose={() => undefined} />);
-    await user.click(await screen.findByRole('button', { name: 'Load the complete list' }, { timeout: 10_000 }));
-    await user.click(await screen.findByRole('button', { name: 'More files' }));
+    // Text queries, not role queries: with 3,000 file buttons jsdom recomputes every accessible name on each role poll,
+    // which alone took ~30 s when the gate ran the integration suite alongside.
+    await user.click(await screen.findByText('Load the complete list', undefined, { timeout: 20_000 }));
+    await user.click(await screen.findByText('More files'));
     expect(await screen.findByText('pkg/zz-beyond.c')).toBeInTheDocument();
     expect(screen.getByText(/Line counts and renames are not available here/)).toBeInTheDocument();
     const listingCall = calls.find((call) => call.includes('listing=tree'))!;
     expect(new URL(listingCall, 'http://localhost').searchParams.get('head')).toBe(HEAD);
     expect(new URL(listingCall, 'http://localhost').searchParams.get('base')).toBe(BASE);
     expect(screen.getAllByText('+— −—').length).toBeGreaterThan(0);
-  }, 30_000);
+  }, 90_000);
 
   it('FR-SRC-003 Diff with a pending load can be cancelled and retried, and never claims "no differences"', async () => {
     stubApi({ files: { [`${BASE}:a.c`]: 'a\n', [`${HEAD}:a.c`]: 'b\n' } });
