@@ -234,11 +234,15 @@ export function TimeLapseModal({ repository, path, revision, initialCommits, nex
   const trace = useTrace(); const [range, setRange] = useState<AnalysisRange>('30');
   const [line, setLine] = useState<number | null>(null); const [needle, setNeedle] = useState('');
   const codePane = useRef<HTMLDivElement>(null);
+  /** The line the keyboard moved to — only keyboard moves take focus; other jumps (line history, revision change) only scroll. */
+  const keyboardLine = useRef<number | null>(null);
   const content = useMemo(() => (file.file?.status === 'text' ? rawLines(file.file.text ?? '').map(displayLine) : []), [file.file]);
   const lineHeight = useCallback(() => LINE_HEIGHT, []);
   const offsets = useOffsets(content.length, lineHeight);
   const windowed = useVirtualWindow(codePane, offsets);
-  useEffect(() => { if (line !== null && !file.loading) { scrollToRow(codePane.current, offsets, line); codePane.current?.querySelector<HTMLElement>(`[data-source-line="${line}"] button`)?.focus({ preventScroll: true }); } }, [line, file.loading, selected?.sha, offsets]);
+  useEffect(() => { if (line !== null && !file.loading) scrollToRow(codePane.current, offsets, line); }, [line, file.loading, selected?.sha, offsets]);
+  // A keyboard move lands one line away, inside the rendered slice; focus it once it is in the DOM.
+  useEffect(() => { if (line !== null && keyboardLine.current === line) { const button = codePane.current?.querySelector<HTMLElement>(`[data-source-line="${line}"] button`); if (button) { button.focus({ preventScroll: true }); keyboardLine.current = null; } } }, [line, windowed.start, windowed.end]);
   function analyze() {
     if (currentIndex < 0) return;
     const span = range === 'all' ? currentIndex + 1 : Number(range);
@@ -254,7 +258,7 @@ export function TimeLapseModal({ repository, path, revision, initialCommits, nex
   const rendered: ReactNode[] = [];
   for (let i = windowed.start; i < windowed.end; i++) {
     const text = content[i]!;
-    rendered.push(<tr key={i} data-source-line={i} {...(windowed.virtual ? { 'aria-rowindex': i + 2 } : {})} className={`${line === i ? 'source-selected-line' : ''} source-heat-${heat(i)}`}><td className="source-line-number"><button type="button" aria-label={`Inspect line ${i + 1}`} aria-pressed={line === i} tabIndex={line === i || (line === null && i === windowed.start) ? 0 : -1} onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setLine(Math.max(0, Math.min(content.length - 1, i + (event.key === 'ArrowDown' ? 1 : -1)))); } }} onClick={() => { setLine(i); }}>{i + 1}</button></td><td onClick={() => { setLine(i); }}><code>{highlight(text, needle)}</code></td></tr>);
+    rendered.push(<tr key={i} data-source-line={i} {...(windowed.virtual ? { 'aria-rowindex': i + 2 } : {})} className={`${line === i ? 'source-selected-line' : ''} source-heat-${heat(i)}`}><td className="source-line-number"><button type="button" aria-label={`Inspect line ${i + 1}`} aria-pressed={line === i} tabIndex={line === i || (line === null && i === windowed.start) ? 0 : -1} onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); const next = Math.max(0, Math.min(content.length - 1, i + (event.key === 'ArrowDown' ? 1 : -1))); keyboardLine.current = next; setLine(next); } }} onClick={() => { setLine(i); }}>{i + 1}</button></td><td onClick={() => { setLine(i); }}><code>{highlight(text, needle)}</code></td></tr>);
   }
   return <ModalFrame title={path} subtitle={`${repository} · Revision-aware file history`} badge="TIME-LAPSE" onClose={onClose}>
     <div className="source-time-toolbar"><Button variant="ghost" aria-label="Previous file revision" disabled={currentIndex <= 0} onClick={() => { setLine(null); select(currentIndex - 1); }}><ChevronLeft size={17} /></Button><Slider.Root aria-label="File revision" min={0} max={Math.max(1, commits.length - 1)} step={1} value={[Math.max(0, currentIndex)]} disabled={commits.length < 2} onValueChange={values => { setLine(null); select(values[0] ?? 0); }} className="source-slider"><Slider.Track><Slider.Range /></Slider.Track><Slider.Thumb aria-label="File revision" aria-valuetext={selected ? `Revision ${currentIndex + 1} of ${commits.length}: ${selected.sha.slice(0, 9)}` : 'No revisions'} /></Slider.Root><Button variant="ghost" aria-label="Next file revision" disabled={currentIndex >= commits.length - 1} onClick={() => { setLine(null); select(currentIndex + 1); }}><ChevronRight size={17} /></Button><span>{Math.max(0, currentIndex + 1)} / {commits.length}</span>
