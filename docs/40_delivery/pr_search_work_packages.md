@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.89 | 갱신일: 2026-09-29
+> 상태: review | 버전: v2.90 | 갱신일: 2026-09-29
 
 ## WP-115 수동 대조 취소 시험의 대기 기준 (CR-134)
 
@@ -8,7 +8,7 @@
 - 범위: `apps/pipeline-worker/integration/reconcile/manual-run.test.ts` — 냉시작 스윕이 끝나기를 기다리는 기준을 스윕과 같은 질의로 센 활성 저장소 수로 바꾸고 주석을 고친다.
 - 제외: 제품 코드, 잔재를 남기는 통합 파일의 정리(DEV-799), 부하 시험 p95의 CI 변동(DEV-798), Release 발행, 사내 적용.
 - 완료 기준: 잔재 활성 저장소를 넣은 격리 DB에서 수정 전 시험이 CI와 같은 모양으로 실패하는 것을 먼저 보고, 수정 뒤에는 같은 DB와 깨끗한 DB에서 통과한다. 통합 전량을 새 DB로 돌려 통과하고, 병합 커밋의 main CI integration이 초록이다.
-- 상태: in_progress — 브랜치 `fix/cr134-dev796-manual-run`. 검증은 원장 6.125장이다.
+- 상태: done — main `a02a145`(PR #258 squash 병합, 2026-09-29). 검증·병합 판정은 원장 6.125장이다.
 
 ## WP-114 Files & folders의 하위 파일명 검색 (CR-133)
 
@@ -274,7 +274,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
-| WP-115 | 수동 대조 취소 시험의 대기 기준 | correction (CR-134) | WP-040, WP-059 | in_progress — 브랜치 `fix/cr134-dev796-manual-run`, 원장 6.125장 |
+| WP-115 | 수동 대조 취소 시험의 대기 기준 | correction (CR-134) | WP-040, WP-059 | done — main `a02a145`(PR #258), 원장 6.125장 |
 | WP-114 | Files & folders의 하위 파일명 검색 | 요구사항 변경 (CR-133) | WP-085, WP-113 | done — main `2e94b71`(PR #257), 원장 6.124장 |
 | WP-113 | Diff·Time-lapse·파일 트리의 총량 제한 해소 | 요구사항 변경 + correction (CR-132) | WP-085, WP-097, WP-110 | done — main `aa29c5c`(PR #256), 원장 6.123장 |
 | WP-112 | 작업 공간의 조건 변경 추천 | 범위 공백 보완 (CR-131) | WP-087, WP-096, WP-109 | done — main `c33ea25`(PR #255), 원장 6.122장 |
