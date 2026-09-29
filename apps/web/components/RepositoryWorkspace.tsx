@@ -23,7 +23,7 @@ import { ExcludedCommitsNote } from './ExcludedCommitsNote';
 import { WorkspaceRelaxationHints } from './WorkspaceRelaxationHints';
 import type { RelaxationHint } from '../lib/workspace-relaxation';
 import { splitSequenceSpace } from '../lib/merge-number';
-import { WORKSPACE_DATE_TIME_ZONE, buildRepositoryQuery, buildShaRangeFilter, deriveInitialRangeType, mergedDateZone, mergedDateZoneLabel, repositoryLabelOptions, repositorySort, type RangeType, type RepositoryWorkspaceTab } from '../lib/repository-search';
+import { WORKSPACE_DATE_TIME_ZONE, buildRepositoryQuery, buildShaRangeFilter, isIdentifierSearch, deriveInitialRangeType, mergedDateZone, mergedDateZoneLabel, repositoryLabelOptions, repositorySort, type RangeType, type RepositoryWorkspaceTab } from '../lib/repository-search';
 
 interface SearchData { items: ResultRow[]; total?: { value: number; relation: string }; next_cursor?: string | null; facets?: Record<string, { value: string; count: number }[]>; relaxation_hints?: RelaxationHint[]; relaxation_hints_incomplete?: boolean; relaxation_hints_truncated?: boolean }
 interface DetailData { body?: string; message?: string; changed_paths?: string[]; files_truncated?: boolean; changed_paths_truncated?: boolean; source_commits?: { commit_sha: string }[]; source_commits_truncated?: boolean; source_commits_excluded?: number; merge_commit_sha?: string | null; base_branch?: string; head_branch?: string }
@@ -169,9 +169,8 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
     const search = new URLSearchParams({ q: query, sort, order, size: '50', facets: continuation ? 'false' : 'true' });
     if (continuation) search.set('cursor', continuation);
     const raw = currentParams.get('q')?.trim() ?? '';
-    const detected = detectIdentifier(raw, gheBaseUrl ? { gheBaseUrl } : {});
     // CR-114: an M number string (`M-1900-1450`) is an identifier too -- the server resolves it against the canonical merge_sequence rows of every in-scope repository with that code.
-    const identifier = raw !== '' && detected.interpretations.some(item => item.kind === 'commit' || item.kind === 'pull_request' || item.kind === 'merge_number');
+    const identifier = isIdentifierSearch(raw, gheBaseUrl);
     if (!identifier) { try { parseQuery(query); } catch (reason) { setError(reason instanceof Error ? reason.message : "Check your search filters."); setLoading(false); return; } }
     const target = identifier ? resolveUrl(raw.startsWith('#') ? `${repository}${raw}` : raw) : `/api/search?${search.toString()}`;
     void fetch(target, { signal: controller.signal, cache: 'no-store' })
@@ -411,7 +410,7 @@ export function RepositoryWorkspace({ login = '', loginPath, gheBaseUrl }: { log
                 })}
               </Table.Body></Table>
             {!loading && !error && !rows.length ? <div className="repo-empty"><WorkbenchIcon name="search" /><h2>{repository ? "No matching changes" : "No repositories to display"}</h2><p>{repository ? "Adjust your query or filters and search again." : "PRs will appear when an accessible ingested repository is available."}</p>
-              {repository && loadedKey === requestKey ? <WorkspaceRelaxationHints hints={data?.relaxation_hints} incomplete={data?.relaxation_hints_incomplete === true} truncated={data?.relaxation_hints_truncated === true} context={{ serialized, repository, tab, login, ...(seqRange ? { seqRange } : {}) }} onApply={applyHint} /> : null}</div> : null}
+              {repository && loadedKey === requestKey ? <WorkspaceRelaxationHints hints={data?.relaxation_hints} incomplete={data?.relaxation_hints_incomplete === true} truncated={data?.relaxation_hints_truncated === true} context={{ serialized, repository, tab, login, ...(seqRange ? { seqRange } : {}), ...(gheBaseUrl ? { gheBaseUrl } : {}) }} onApply={applyHint} /> : null}</div> : null}
             {nextCursor ? <div className="repo-load-more"><div ref={sentinelRef} aria-hidden="true">{loading ? <Spinner label="Loading more" /> : null}</div><span aria-live="polite">{rows.length.toLocaleString("en-US")} shown</span></div> : null}
             </div>
           </> : null}

@@ -24,7 +24,7 @@ import {
   type QueryAst,
   type QueryFilter,
 } from '@prs/query';
-import { buildRepositoryQuery, type RepositoryWorkspaceTab } from './repository-search';
+import { buildRepositoryQuery, isIdentifierSearch, type RepositoryWorkspaceTab } from './repository-search';
 
 export interface RelaxationHint {
   readonly remove: string;
@@ -39,6 +39,8 @@ export interface WorkspaceHintContext {
   readonly login: string;
   /** The merge-order range resolved from two commit SHAs (component state, not URL). */
   readonly seqRange?: { readonly space: string; readonly range: string };
+  /** The GHE URL prefix the workspace uses to recognise pasted PR/commit URLs as identifiers. */
+  readonly gheBaseUrl?: string;
 }
 
 export type WorkspaceHintPlan =
@@ -154,7 +156,7 @@ export function planWorkspaceHint(hint: RelaxationHint, context: WorkspaceHintCo
   // Set by the workspace itself: which documents it lists and which repository is open.
   if (node.key === 'kind' || node.key === 'repo') return { kind: 'fixed', hint, reason: 'view' };
   // Set by My open PRs / My merged PRs: they are that tab's definition, not a filter the user added.
-  if ((context.tab === 'open' || context.tab === 'merged') && (node.key === 'author' || node.key === 'is')) {
+  if ((context.tab === 'open' || context.tab === 'merged') && node.op === 'eq' && (node.key === 'author' || node.key === 'is')) {
     return { kind: 'fixed', hint, reason: 'tab' };
   }
 
@@ -189,6 +191,9 @@ export function planWorkspaceHint(hint: RelaxationHint, context: WorkspaceHintCo
     if (value) next.set(param, value);
     else next.delete(param);
   }
+  // A free-text box left with only an identifier (`12345`, `abc1234f`, `M-1900-1450`) is looked up, not searched — the
+  // result would not be the suggested count (independent review).
+  if (isIdentifierSearch(next.get('q') ?? '', context.gheBaseUrl)) return { kind: 'fixed', hint, reason: 'unsafe' };
   const rebuilt = rebuild(context, next.toString(), clearSeqRange);
   const expected = current.filters.filter((filter) => !sameNode(filter, node));
   if (rebuilt === null || signature(rebuilt.filters, rebuilt.text) !== signature(expected, current.text)) {

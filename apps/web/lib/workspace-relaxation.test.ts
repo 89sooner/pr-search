@@ -118,6 +118,20 @@ describe('planWorkspaceHint — a suggestion becomes a button only when this scr
     expect(plan).toMatchObject({ kind: 'fixed', reason: 'unsafe' });
   });
 
+  it('a removal that leaves only an identifier in the free-text box would switch to identifier lookup, so it is not a button (independent review)', () => {
+    for (const q of ['label:backend 12345', 'label:backend abc1234f', 'label:backend #123', 'is:merged M-1900-1450']) {
+      const remove = q.split(' ')[0]!;
+      expect(planWorkspaceHint({ remove, would_yield: 7 }, ctx({ q }))).toMatchObject({ kind: 'fixed', reason: 'unsafe' });
+    }
+    // Keywords that are not identifiers still work.
+    expect(action(planWorkspaceHint({ remove: 'label:backend', would_yield: 7 }, ctx({ q: 'label:backend retry' }))).changes).toEqual({ q: 'retry' });
+  });
+
+  it('on My PRs tabs only the tab\'s own author and state are fixed — a typed negated author is removable (independent review)', () => {
+    const plan = action(planWorkspaceHint({ remove: '-author:bot', would_yield: 4 }, ctx({ q: '-author:bot' }, { tab: 'open' })));
+    expect(plan.changes).toEqual({ q: '' });
+  });
+
   it('never throws on odd input', () => {
     expect(() => planWorkspaceHint({ remove: '"', would_yield: 1 }, ctx({}))).not.toThrow();
     expect(() => planWorkspaceHint({ remove: 'author:lee', would_yield: 1 }, { ...ctx({}), serialized: 'q=%22' })).not.toThrow();

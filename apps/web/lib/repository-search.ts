@@ -1,5 +1,18 @@
+import { detectIdentifier } from '@prs/query';
+
 export type RepositoryWorkspaceTab = 'search' | 'history' | 'open' | 'merged';
 const quote = (value: string): string => JSON.stringify(value);
+
+/**
+ * Whether the free-text box is only an identifier, which the workspace looks up instead of searching (CR-114: an M number
+ * string such as `M-1900-1450` counts too). CR-131: the filter-suggestion planner uses the same rule — a removal that
+ * leaves only an identifier behind would switch to identifier lookup, and its count would not be the suggested one.
+ */
+export function isIdentifierSearch(raw: string, gheBaseUrl?: string): boolean {
+  const text = raw.trim();
+  if (text === '') return false;
+  return detectIdentifier(text, gheBaseUrl ? { gheBaseUrl } : {}).interpretations.some(item => item.kind === 'commit' || item.kind === 'pull_request' || item.kind === 'merge_number');
+}
 
 /** CR-111: which range editor the consolidated Range filter selector shows. */
 export type RangeType = 'pr' | 'mnum' | 'date' | 'seq';
