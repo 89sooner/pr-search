@@ -1,5 +1,16 @@
 # 변경 관리 대장
 
+## CR-134 — 수동 대조 취소 시험이 실제 활성 저장소 수만큼 냉시작 스윕을 기다린다: 공유 DB의 잔재 저장소 때문에 간헐 실패하던 시험 결함 (2026-09-29)
+
+- 유형: correction(시험 결함, DEV-796). 제품 코드·요구사항·계약·문서의 동작 서술은 바뀌지 않는다. 새 FR·NFR·API·ENT·JOB·오류 코드는 없다. 안정 ID 재번호화 0건. 상태: **open** — worktree `/home/roqkf/pr-search-wt/cr134-dev796`(브랜치 `fix/cr134-dev796-manual-run`), 기준 main `2e94b71`.
+- 요청: 사용자 결정(2026-09-29, 23차 진행 중). CR-133 병합 커밋의 main CI(run 36540037060)가 integration에서 두 번 연속 빨갛자 「작은 PR로 먼저 고침」을 골랐다. D(PIPE blame)는 그 뒤 CR-135로 잇는다.
+- 발견: `apps/pipeline-worker/integration/reconcile/manual-run.test.ts`의 「저장소 여럿 중 첫 번째에서 취소하면 나머지를 돌지 않는다」가 통합 전량에서만 가끔 기대 `cancelled`, 실제 `completed`로 실패했다 — CR-132 게이트, CR-133 첫 게이트, CR-133 병합 커밋 main CI의 두 시도. 그 파일만 돌리면 늘 통과했다(DEV-796).
+- 원인: 시험 결함이다. 러너의 첫 회차는 냉시작 스윕을 돌고 그 스윕은 **DB의 활성 저장소 전부**를 도는데, 시험은 진입이 넷(자기 저장소 수)에 닿으면 기다림을 풀고 계수를 0으로 되돌린 뒤 잡을 넣었다. 통합 전량은 DB를 나눠 쓰고 앞선 파일이 활성 저장소를 남기므로, 기다림이 냉시작 도중에 풀렸다. 잡을 넣는 동안(`await`) 냉시작이 저장소 하나에 더 들어가 `entries`가 1을 넘었고, 수동 스윕의 첫 진입에서 `entries === 1`이 끝내 참이 되지 않아 취소가 나가지 않았다 — 수동 스윕이 끝까지 돌아 `completed`였다. 제품의 취소 경로는 옳다: 취소는 저장소 진입 안에서 커밋되고, `finishJobIfRunning`은 `running`인 잡만 끝내 `cancelled`를 덮지 않는다.
+- 범위: 시험 한 곳 — 스윕과 같은 질의(`repositoryRepo.listRepositories(pool, { status: 'active' })`)로 센 활성 저장소 수만큼의 진입을 기다린다. 주석 둘을 고쳤다.
+- 결정과 대가: (1) 비파괴 수정을 골랐다 — 이 파일에서 `repository`를 비우는 대안은 다른 시험의 자료를 지우고 스위트 위생 문제를 가린다. (2) 잔재를 남기는 다른 통합 파일은 고치지 않았다(DEV-799 관찰). (3) 같은 main CI의 두 번째 시도에서 함께 실패한 수신 게이트웨이 부하 시험(p95)은 이 CR 밖이다(DEV-798 관찰).
+- 제외: 잔재를 남기는 통합 파일들의 정리(DEV-799), 부하 시험 p95의 CI 변동(DEV-798), 제품 코드, D(CR-135).
+- 설계·세부 정본: 원장 5장 DEV-796 resolved·DEV-798·DEV-799 관찰, 6.125장, WP-115. 연쇄 기록은 5장 「CR-134 cascade」에 적는다.
+
 ## CR-133 — Files & folders의 검색이 고정 revision의 모든 파일 경로에서 찾는다: 열지 않은 폴더와 같은 이름의 파일까지 (2026-09-29)
 
 - 유형: 요구사항 변경(`FR-SRC-001` AC-2 — 「하위 트리는 펼칠 때 읽는다」를 트리 탐색에 한정한다, AC-5 — 트리 안의 검색을 신설한다). 새 API 경로 하나(API-SRC-005 `GET /api/v1/source/{repository}/paths`, 세션 조회)와 계약 타입 `SourcePaths`·`SourcePathEntry`. 새 FR·NFR·ENT·JOB·오류 코드는 없다. PIPE 계약은 바뀌지 않는다(D-26 없음 — 아래 결정 (5)). 안정 ID 재번호화 0건. 상태: **closed** — main `2e94b71`(PR #257 squash 병합, 2026-09-29). worktree `/home/roqkf/pr-search-wt/cr133-file-search`(브랜치 `feature/cr133-file-search`), 기준 main `aa29c5c`.
@@ -397,6 +408,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| CR-134 | 2026-09-29 | correction | 사용자 결정 2026-09-29(23차 진행 중) — DEV-796 | **수동 대조 취소 시험이 통합 전량에서만 가끔 `completed`로 실패해 CR-133 병합 커밋의 main CI가 두 번 빨갰다.** 냉시작 스윕이 DB의 활성 저장소 전부를 도는데 시험은 자기 저장소 넷에서 기다림을 풀었다(공유 DB의 잔재 저장소). 스윕과 같은 질의로 센 활성 저장소 수만큼 기다린다 — 시험 한 곳 | DEV-796 · DEV-798 · DEV-799 · WP-115 | WP · 원장 | open — 브랜치 `fix/cr134-dev796-manual-run` |
 | CR-133 | 2026-09-29 | 요구사항 변경 | 사용자 지시 2026-09-29(23차) 5번 | **Files & folders의 입력이 루트 항목의 이름만 걸러 열지 않은 폴더의 파일과 같은 이름의 다른 파일을 찾지 못했다.** 고정 revision의 파일 경로 목록(API-SRC-005, 재귀 한 번·잘리거나 늦으면 하위 트리 걷기)을 한 번 읽어 메모리에서 거르고, 결과를 누르면 같은 revision의 그 파일로 이어진다. 다 읽기 전 「결과 없음」 금지, 진행·취소·이어 읽기 | FR-SRC-001 AC-2·AC-5 · API-SRC-005 · WP-114 · DEV-797 | SRS · 용어집 · 매트릭스 · 화면 상태 · 흐름 · 컴포넌트 · 와이어프레임 · QA 체크리스트 · API 계약 · 백엔드 · 프런트엔드 · 보안 · WP · 원장 · RUNBOOK | closed — main `2e94b71`(PR #257), 원장 6.124 |
 | CR-132 | 2026-09-29 | 요구사항 변경 + correction | 사용자 지시 2026-09-29(23차) 4번 — DEV-793·DEV-794 | **Diff·Time-lapse·파일 트리가 자체 총량 상한 때문에 큰 파일·큰 디렉터리·3,000개를 넘는 변경·오래된 이력의 뒤를 영원히 못 봤다.** 새 파라미터를 보낼 때만 켜지는 이어 읽기(파일 1 MiB 창, 디렉터리 5,000개 페이지, 고정 SHA의 트리 비교 목록, 관련 PR 전량)와 History 페이지 상한 해제, Worker 계산·근사 대체·가상 스크롤·모달 안 더 읽기·분석 범위 선택, 한 요청의 기한 120초와 취소 3구간 전파 | FR-SRC-001~004 · API-SRC-001~004 · API-INT-011~014 · WP-113 · DEV-793~796 | SRS · 용어집 · 매트릭스 · 화면 상태 · QA 체크리스트 · API 계약 · 백엔드 · 프런트엔드 · 보안 · WP · 원장 · RUNBOOK · PIPE 인계(D-25) | closed — main `aa29c5c`(PR #256), 원장 6.123 |
 | CR-131 | 2026-09-29 | 범위 공백 보완 | 사용자 지시 2026-09-29(23차) 3번 — DEV-787 | **운영 기본 화면(Repository workspace)이 결과 0건에서 서버가 센 조건 변경 추천을 그리지 않았다.** 추천을 「Remove <조건> · <would_yield> results」 버튼으로 보이고, 누르면 그 조건에 값을 보탠 입력만 지우고 다시 검색한다. 화면·탭이 붙인 조건과 지우면 다른 조건까지 바뀌는 후보는 버튼이 아니다(적용한 상태로 질의를 다시 조립해 대조). 불완전·상한 잘림은 짧게 알린다 | FR-SRCH-006 AC-3 · W-001 `empty_no_result` · WP-112 · DEV-787 | 매트릭스 · 화면 상태 · 컴포넌트 · 와이어프레임 · 프런트엔드 · QA 체크리스트 · WP · 원장 | closed — main `c33ea25`(PR #255), 원장 6.122 |
@@ -2524,6 +2536,16 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - 상태: **closed**(2026-09-21). 운영 배포는 하지 않았고, 사내 CA·운영 HAProxy·실제 GHE를 거친 검증과 실제 사용자 매핑은 NOT_RUN이다 — 이 CR의 범위 밖이다.
 
 **병합 판정.** 구현·검증 보고 뒤 사용자 지시(2026-09-21 「origin/main에 병합」)로 진행했다. 저장소가 공개라 시험 전용 서명 비밀키를 커밋에서 빼고, main CI의 `verify`를 막던 lint 기준선 1건을 ESLint 설정으로 해소한 뒤(원장 6.103장 「병합 준비」) 커밋 `28a3c21`을 PR #220으로 올렸다. PR CI(run `35568796745`)는 verify·integration 모두 success다 — `verify`의 단계(typecheck·lint·lint:deps·test·build·test:a11y·test:contrast·test:e2e)에는 건너뛰는 조건이 없으므로 로컬에서 돌리지 않은 a11y·contrast·e2e도 이 실행이 확인했다. squash 병합 커밋은 `e7b4cb4`(15:43 KST)이고 트리가 `28a3c21`과 같다. 병합 커밋 `e7b4cb4`의 main CI(run `35569716267`)는 끝나기 전에 취소됐다 — 15:46에 사용자가 메인 체크아웃에서 입력 지시서 묶음을 따로 커밋해(`c73ed9f`) main과 병합한 `364f0fb`를 push했고, 워크플로의 `cancel-in-progress`가 앞 실행을 취소했다. `364f0fb`의 트리는 `e7b4cb4`와 같다(묶음 6개 파일이 PR #220에 든 것과 같은 내용이라 차이가 없다, tree `26f3f0fb…`). 그 커밋의 main CI(run `35569895232`)는 verify·integration 모두 success다 — #218부터 lint 단계에서 멈추던 main의 `verify`가 다시 끝까지 통과했다. 병합 기록은 별도 PR(브랜치 `docs/cr112-merge-record`)로 했다 — 작업 패키지 v2.57 → v2.58(WP-097 done), 원장 v6.98 → v6.99(머리 절, 3장, 4장, 6.103장 「병합」), handoff의 PIPE_INTEGRATION_HANDOFF·TEST_RESULTS·CONTRACT_DIFF·manifest 생성기와 다시 만든 manifest(계약 checksum `3c7fbe92…` 변동 없음). 문서 검증기는 이 기록 뒤에도 두 모드 모두 오류·경고 목록이 병합 시점과 같다. 릴리스·태그는 발행하지 않았다. closed.
+
+### CR-134 cascade — 수동 대조 취소 시험의 대기 기준
+
+기준: main `2e94b71` 위 worktree `/home/roqkf/pr-search-wt/cr134-dev796`(브랜치 `fix/cr134-dev796-manual-run`). correction(시험 결함). ID는 `docs/`·`handoff/`·`agent-context/`와 열린 PR(없음)을 실측해 정했다 — CR-134·WP-115·DEV-798·DEV-799. 새 FR·ADR·ENT·JOB·EVT·RB·OD·QA 번호는 쓰지 않는다.
+
+- [x] 요구사항·파생 UI·기술 아키텍처: 바뀌지 않는다(시험만 고쳤다).
+- [x] 전달: 작업 패키지 v2.88 → v2.89(WP-115 절·상태 표), 원장 v6.138 → v6.139(머리 절, 3장 WP-115, 5장 DEV-796 resolved·DEV-798·799 관찰).
+- [x] 인계: PIPE 계약은 바뀌지 않는다.
+- [ ] 코드·시험: 원장 6.125장(게이트 뒤).
+- [ ] 병합과 CR 종료 — 다음 기능 PR의 첫 커밋이 적는다(23차 결정).
 
 ### CR-133 cascade — Files & folders의 하위 파일명 검색
 
