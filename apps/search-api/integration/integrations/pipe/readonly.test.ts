@@ -115,6 +115,8 @@ describe('PSI-D03 명시되지 않은 method·경로', () => {
     ['GET', '/read/'],
     ['GET', '/read/search/extra'],
     ['GET', '/read/source/acme%2Fpayments/blame'],
+    // CR-133: Files & folders 검색의 경로 목록(API-SRC-005)은 세션 조회만이다 — PIPE 연동 목록(FR-INT-001) 밖이다.
+    ['GET', '/read/source/acme%2Fpayments/paths'],
   ])('%s %s 는 404 — prefix proxy·HEAD fallback이 없다', async (method, path) => {
     const grant = await h.grantFor(USER_A, { contextId: 'ctx-d03-methods-0001' });
     const response = await h.get(path, grant, { method });

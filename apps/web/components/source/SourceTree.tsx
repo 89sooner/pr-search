@@ -1,7 +1,8 @@
 'use client';
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronDown, ChevronRight, FileCode, Folder, FolderOpen, GitBranch, RefreshCw, Search } from 'lucide-react';
 import type { SourceEntry, SourceTree as TreeData } from '@prs/contracts';
+import { EMPTY_PATH_LIST, appendPaths, loadPaths, matchPaths, type PathList } from '../../lib/source-paths';
 import { fetchSource, sourceUrl, useSource } from './api';
 
 export interface PathSelection { path: string; kind: 'file' | 'directory'; revision: string }
@@ -50,26 +51,101 @@ function Node({ entry, revision, repository, selectedPath, onSelect }: Omit<Tree
     </ul> : null}
   </li>;
 }
+/** How long typing pauses before a search runs (CR-133). */
+const SEARCH_DEBOUNCE_MS = 250;
+/** At most this many matches are drawn; typing more narrows the list. */
+export const SEARCH_RESULT_LIMIT = 200;
+const count = (value: number) => value.toLocaleString('en-US');
+const matchesText = (value: number) => `${count(value)} ${value === 1 ? 'match' : 'matches'}`;
+
+interface Listing { key: string; list: PathList; next: string | null; started: boolean; loading: boolean; done: boolean; cancelled: boolean; error: string; incomplete: boolean }
+const idle = (key: string): Listing => ({ key, list: EMPTY_PATH_LIST, next: null, started: false, loading: false, done: false, cancelled: false, error: '', incomplete: false });
+/**
+ * CR-133: every file path of the pinned revision, read once when a search starts (`active`) and kept in memory while the
+ * revision stays. Typing filters it locally; only Cancel, another revision or leaving the page stops the reading.
+ */
+function usePathListing(repository: string, revision: string | null, active: boolean) {
+  const key = revision ? `${repository}@${revision}` : '';
+  const [state, setState] = useState<Listing>(() => idle(key));
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => { controller.current?.abort(); }, [key]);
+  const current = state.key === key ? state : idle(key);
+  const read = useCallback((after: string | null) => {
+    if (!revision) return;
+    controller.current?.abort(); const abort = new AbortController(); controller.current = abort;
+    const update = (change: (value: Listing) => Partial<Listing>) => { setState(value => { const base = value.key === key ? value : idle(key); return { ...base, ...change(base) }; }); };
+    update(() => ({ started: true, loading: true, done: false, error: '', cancelled: false }));
+    loadPaths(repository, revision, { signal: abort.signal, after, onPage: page => {
+      if (!abort.signal.aborted) update(value => ({ list: appendPaths(value.list, page.paths), next: page.next_after, incomplete: value.incomplete || page.incomplete, done: page.next_after === null, loading: page.next_after !== null }));
+    } }).catch((error: unknown) => { if (!abort.signal.aborted) update(() => ({ loading: false, error: error instanceof Error ? error.message : 'Unable to list the files in this revision.' })); });
+  }, [repository, revision, key]);
+  useEffect(() => { if (active && revision && !current.started) read(null); }, [active, revision, current.started, read]);
+  // A search that starts again after a failed listing (the box was cleared, then typed into) retries once from where the
+  // listing stopped, rather than showing the old failure against the new query. A cancel stays until Continue listing.
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (active && !wasActive.current && current.error !== '' && !current.loading) read(current.next);
+    wasActive.current = active;
+  }, [active, current.error, current.loading, current.next, read]);
+  return {
+    ...current,
+    resume: () => { read(current.next); },
+    cancel: () => { controller.current?.abort(); setState(value => (value.key === key ? { ...value, loading: false, cancelled: true } : value)); },
+  };
+}
+
 export function SourceTree(props: TreeProps) {
   const root = useSource<TreeData>(props.repository ? sourceUrl(props.repository, 'tree', { ref: props.branch, offset: 0 }) : null);
   const more = useMoreEntries(props.repository, root.data);
-  const [find, setFind] = useState(''); const tree = useRef<HTMLUListElement>(null);
-  useEffect(() => { setFind(''); }, [props.repository, props.branch]);
+  const [find, setFind] = useState(''); const [query, setQuery] = useState('');
+  const tree = useRef<HTMLUListElement>(null); const input = useRef<HTMLInputElement>(null); const results = useRef<HTMLUListElement>(null);
+  useEffect(() => { setFind(''); setQuery(''); }, [props.repository, props.branch]);
+  // CR-133: the search runs once typing pauses; clearing the box shows the tree at once.
+  useEffect(() => { const next = find.trim(); const timer = setTimeout(() => { setQuery(next); }, next === '' ? 0 : SEARCH_DEBOUNCE_MS); return () => { clearTimeout(timer); }; }, [find]);
+  const revision = root.data?.revision ?? null;
+  const searching = query !== '' && revision !== null;
+  const listing = usePathListing(props.repository, revision, searching);
+  const found = useMemo(() => matchPaths(listing.list, query, SEARCH_RESULT_LIMIT), [listing.list, query]);
   function move(event: KeyboardEvent<HTMLUListElement>) {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     const items = Array.from(tree.current?.querySelectorAll<HTMLElement>('[role="treeitem"]') ?? []);
     const index = items.indexOf(document.activeElement as HTMLElement); if (!items.length) return;
     event.preventDefault(); const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : Math.max(0, Math.min(items.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))); items[next]?.focus();
   }
+  const resultButtons = () => Array.from(results.current?.querySelectorAll<HTMLButtonElement>('button.source-search-result') ?? []);
+  function clearSearch() { setFind(''); input.current?.focus(); }
+  function moveResults(event: KeyboardEvent<HTMLUListElement>) {
+    if (event.key === 'Escape') { event.preventDefault(); clearSearch(); return; }
+    const buttons = resultButtons();
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || !buttons.length) return;
+    event.preventDefault(); const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === 'ArrowUp' && index <= 0) { input.current?.focus(); return; }
+    buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : Math.max(0, Math.min(buttons.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)))]?.focus();
+  }
+  const listed = listing.list.entries.length;
+  // Never "no files match" before the whole list has been read (CR-133): while listing, after a cancel or an error the
+  // count says how far the search got.
+  const status = listing.error ? <div role="alert" className="source-search-status">{listing.error}<button type="button" onClick={listing.resume}>Retry</button></div>
+    : listing.cancelled ? <p role="status" className="source-search-status">Listing stopped after {count(listed)} paths · {matchesText(found.total)} so far, so the results may be incomplete.<button type="button" onClick={listing.resume}>Continue listing</button></p>
+    : !listing.done ? <p role="status" className="source-search-status">Listing files… {count(listed)} paths{listed > 0 ? ` · ${matchesText(found.total)} so far` : ''}<button type="button" onClick={listing.cancel}>Cancel</button></p>
+    : found.total === 0 ? <p role="status" className="source-search-status">No files in this revision match &quot;{query}&quot;.</p>
+    : <p role="status" className="source-search-status">{matchesText(found.total)}{found.total > found.matches.length ? ` · showing the first ${count(found.matches.length)}, type more to narrow the list` : ''}</p>;
   return <section className="source-tree" aria-label="Repository files">
     <header><strong>Files & folders</strong><button type="button" aria-label="Refresh file tree" disabled={root.loading} onClick={root.reload}><RefreshCw size={13} /></button></header>
     {root.data ? <p className="source-tree-ref"><GitBranch size={12} />{root.data.ref.slice(0, 35)}<code title={root.data.revision}>{root.data.revision.slice(0, 7)}</code></p> : null}
-    <label className="source-tree-find"><Search size={13} /><span className="ui-sr-only">Filter root entries</span><input placeholder="Filter root entries…" value={find} onChange={event => { setFind(event.target.value); }} /></label>
+    <label className="source-tree-find"><Search size={13} /><span className="ui-sr-only">Search files in this revision</span><input ref={input} placeholder="Search files in this revision…" value={find} onChange={event => { setFind(event.target.value); }}
+      onKeyDown={event => { if (event.key === 'Escape' && find !== '') { event.preventDefault(); clearSearch(); } else if (event.key === 'ArrowDown' && searching) { const first = resultButtons()[0]; if (first) { event.preventDefault(); first.focus(); } } }} /></label>
     {root.loading ? <p role="status" className="source-tree-note">Loading repository tree…</p> : root.error ? <div role="alert" className="source-tree-note">{root.error}<button type="button" onClick={root.reload}>Retry</button></div> : null}
-    {root.data ? <><button type="button" className="source-tree-root" onClick={() => { props.onSelect({ path: '', kind: 'directory', revision: root.data!.revision }); }}><FolderOpen size={14} />/ <span>All changes</span></button>
-      <ul ref={tree} role="tree" aria-label="Files and folders" tabIndex={0} onKeyDown={move}>
-        {[...root.data.entries, ...more.entries].filter(entry => entry.name.toLowerCase().includes(find.toLowerCase())).map(entry => <Node key={`${root.data!.revision}:${entry.path}`} entry={entry} revision={root.data!.revision} repository={props.repository} selectedPath={props.selectedPath} onSelect={props.onSelect} />)}
+    {searching ? <>{status}{listing.incomplete ? <p className="source-search-status">GitHub returned a partial listing for a directory, so some files may be missing.</p> : null}
+      <ul ref={results} className="source-search-results" aria-label="Matching files" onKeyDown={moveResults}>
+        {found.matches.map(match => <li key={match.entry.path}><button type="button" className="source-search-result" title={match.entry.path} aria-current={props.selectedPath === match.entry.path ? 'true' : undefined}
+          onClick={() => { props.onSelect({ path: match.entry.path, kind: 'file', revision: revision! }); }}><FileCode size={14} /><span><strong>{match.name}</strong><small>{match.parent === '' ? '/' : match.parent}</small></span>{match.entry.kind === 'symlink' ? <small className="source-search-kind">link</small> : null}</button></li>)}
+      </ul></> : null}
+    {root.data ? <><button type="button" className="source-tree-root" hidden={searching} onClick={() => { props.onSelect({ path: '', kind: 'directory', revision: root.data!.revision }); }}><FolderOpen size={14} />/ <span>All changes</span></button>
+      {/* CR-133: the tree stays mounted while searching so its open folders are kept for when the search is cleared. */}
+      <ul ref={tree} role="tree" aria-label="Files and folders" tabIndex={0} onKeyDown={move} hidden={searching}>
+        {[...root.data.entries, ...more.entries].map(entry => <Node key={`${root.data!.revision}:${entry.path}`} entry={entry} revision={root.data!.revision} repository={props.repository} selectedPath={props.selectedPath} onSelect={props.onSelect} />)}
         <MoreEntries more={more} />
-      </ul>{root.data.truncated ? <p className="source-tree-note">GitHub returned a partial listing for this directory.</p> : null}</> : null}
+      </ul>{root.data.truncated && !searching ? <p className="source-tree-note">GitHub returned a partial listing for this directory.</p> : null}</> : null}
   </section>;
 }

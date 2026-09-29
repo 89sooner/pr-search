@@ -1,10 +1,12 @@
 # PR Search 화면 플로우 명세서
 
-> 상태: review | 버전: v0.13 | 갱신일: 2026-09-27
+> 상태: review | 버전: v0.14 | 갱신일: 2026-09-29
 
 CR-127 / FR-SRCH-005 AC-11·FR-STAT-002 AC-7·FR-AUTH-004 AC-9: 날짜 조건은 새로고침·공유 URL·뒤로가기·저장된 검색에서 **같은 구간으로 복원된다** — 시간대가 URL(`tz`, `timezone`)이나 질의(`@Asia/Seoul`)에 명시돼 있고, 시간대 없는 옛 날짜 조건은 UTC 하루로 그대로 실행된다. 통계 버킷을 누르면 같은 시간대의 같은 날짜 범위 질의로 W-001에 간다. 조건이 바뀌면 이전 결과와 페이지 커서를 버린다.
 
 CR-109 / FR-REG-001 / W-024: 날짜/유형→MDVP 결과→비교 PASS suggestion→Start bisect에서 context 확인→local session→판정/재시험→archive/재방문. Atlas/Inbox/Pulse 전환은 URL view만 바꾸고 session을 생성하지 않는다. timeline point/표 행은 같은 Radix sheet를 열며 닫을 때 원래 point/버튼에 focus를 돌린다. fixture queue 확인에는 canonical SHA/digest/context를 표시하고 외부 호출0이다. 실 MDVP 미구성 경로는 real repository/branch를 직접 입력한 뒤 기존 API-SEQ-005 세션 복원으로만 연결한다.
+
+> CR-133 / FR-SRC-001 AC-5: 트리 검색의 결과를 누르는 것은 트리에서 그 파일을 누르는 것과 같다 — URL의 `path`·`path_kind=file`·`source_ref`(트리가 고정한 SHA)·`tab=history`가 바뀌고 History·Diff·Time-lapse로 이어진다. 입력에서 ↓로 결과에 들어가 ↑↓·Home·End로 옮기고 Enter로 고르며, Esc는 검색을 지우고 입력으로 돌아간다(입력·결과 목록 안에서만 — 전역 단축키와 겹치지 않는다).
 
 > CR-097 / FR-SRC-001~004: 트리 선택은 URL path/path_kind/source_ref와 History 탭에 반영한다. History 파일 리비전 두 개 → Compare selected, 커밋 행 → Diff, 파일 → Time-lapse. Diff 안에서 Time-lapse를 열면 Escape는 최상단 모달만 닫는다. Ctrl/⌘+D는 활성 결과의 Diff, T는 선택 파일 Time-lapse이며 입력 필드와 열린 모달에서는 전역 단축키를 실행하지 않는다.
 

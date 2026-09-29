@@ -1,6 +1,6 @@
 # PR Search 화면 QA 체크리스트
 
-> 상태: review | 버전: v0.35 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.36 | 갱신일: 2026-09-29
 
 ## CR-131 작업 공간의 조건 변경 추천 (FR-SRCH-006 AC-3, W-001 `empty_no_result`)
 
@@ -52,7 +52,7 @@
 | --- | --- | --- |
 | QA-W001-51 | 「Browse repositories」 헤딩·검색창·전체 목록이 사라지고 현재 저장소를 보이는 「Find Repository」 콤보박스 하나만 남으며, 저장소가 많아도 사이드바 높이를 소비하지 않는다. 드롭다운 안 sentinel 옵션으로 다음 페이지를 이어 받아도 선택된 저장소 표시가 바뀌지 않는다 | 단위·Chromium |
 | QA-W001-52 | 「Branch」 섹션 헤딩 없이 「Base branch」 드롭다운만 남고, 선택 동작·저장소 전환 시 M 번호 range 초기화 규칙(CR-106)은 그대로다 | 브라우저 |
-| QA-W001-53 | 독립된 「Find files and paths」 입력·「View path history」 버튼이 사라지고, `Files & folders` 트리(및 트리 내부 필터)는 그대로 동작하며 사이드바에서 가장 큰 높이를 차지한다. 사이드바 하단 안내 문단은 완전히 제거됐다(요소 자체가 없음, CSS 숨김이 아님) | Chromium·DOM |
+| QA-W001-53 | 독립된 「Find files and paths」 입력·「View path history」 버튼이 사라지고, `Files & folders` 트리(및 트리 내부 검색 — CR-133부터 고정 revision의 파일 경로 검색)는 그대로 동작하며 사이드바에서 가장 큰 높이를 차지한다. 사이드바 하단 안내 문단은 완전히 제거됐다(요소 자체가 없음, CSS 숨김이 아님) | Chromium·DOM |
 | QA-W001-54 | 필터 폼의 Owner/Repository/Base branch 읽기 전용 필드가 사라져도 검색 질의는 사이드바에서 선택한 repository/base 값을 그대로 사용한다 | 단위·브라우저 |
 | QA-W001-55 | Filters 토글이 최초 진입 시 collapsed이고, 하나의 토글로 전체 상세 필터가 열리고 닫힌다. 접었다 다시 열어도, 그리고 URL을 새로고침해도 입력값이 그대로 복원된다. 필터가 접혀 있어도 `⌘K`/`Ctrl+G`가 여전히 검색어 입력에 포커스를 옮긴다(자동으로 펼쳐진다) | a11y·Chromium |
 | QA-W001-56 | Range filter 선택자에서 PR number/M number/Merged date/Merge order 중 고른 유형의 From/To만 보이고, 유형을 바꿔도 다른 유형에 이미 입력한 값이 사라지지 않는다. 네 유형 모두 기존과 동일한 질의 결과(`pr_number:`/`mnum:`/`merged:`/클라이언트 `seq:` 변환)를 낸다 | 단위·브라우저 |
@@ -96,6 +96,11 @@
 | QA-W001-75 | Time-lapse가 모달 안에서 고정 SHA로 이전 리비전을 더 읽고, 30개를 넘는 범위를 작업 스레드에서 진행률·취소와 함께 분석하며, 비텍스트 리비전은 건너뛰고 이유를 밝힌다(CR-132) | 단위·a11y·Chromium |
 | QA-W001-76 | 정확한 비교가 예산을 넘으면 근사 정렬로 계속하고 알린다 — 계산 실패·취소를 「No differences」나 빈 Diff로 그리지 않는다(CR-132) | 단위·a11y |
 | QA-W001-77 | 사용자가 취소하거나 화면을 닫으면 웹 프록시·search-api·GHE 호출까지 멈추고 감사에 `CANCELLED`가 남는다(CR-132) | 단위·통합·Chromium |
+| QA-W001-78 | Files & folders 검색이 열지 않은 폴더의 깊은 파일과 같은 이름의 파일들을 경로마다 따로 찾고, 대소문자가 다른 입력과 경로 입력(`src/b`)도 찾는다(CR-133) | 단위·a11y·Chromium |
+| QA-W001-79 | 결과를 누르거나 ↓·Enter로 고르면 같은 revision의 그 파일이 선택되어 History·Time-lapse·Diff로 이어지고, 검색을 지우면(Esc 포함) 트리가 그 파일을 선택한 채 돌아온다(CR-133) | a11y·Chromium |
+| QA-W001-80 | 목록을 다 읽기 전·취소·실패에는 「No files in this revision match」를 쓰지 않는다 — 진행·Cancel·Continue listing(마지막 경로 뒤부터)·Retry(CR-133) | 단위·a11y·Chromium |
+| QA-W001-81 | 재귀 목록이 잘린 큰 저장소를 하위 트리를 걸어 끝까지 읽고, 키 입력으로 목록을 다시 읽지 않으며, 다른 revision이 되면 다시 읽는다(CR-133) | 단위·통합·a11y·Chromium |
+| QA-W001-82 | 범위 밖 저장소의 경로 목록은 GHE를 부르지 않는 동일 404이고, `/paths`는 `revision`·`after`만 받으며 PIPE에는 없다(404). 감사는 페이지마다 `revision`·`after`와 관측 revision만 남긴다(CR-133) | 단위·통합 |
 
 > CR-096 확인: 전체 Conductor 런타임 의존성 없음, 제품 고정 문구 영어, 저장소 원문은 보존, 모든 헤더 및 로그아웃 화면에 테마 버튼, 선호도 저장·새로고침·교차 탭·시스템 기본값·저장 차단 처리, Radix 포털 테마 일치, 입력 label/required, Escape·포커스 복귀, 모바일 탐색 drawer. 가상 데이터 Chromium 확인과 실 GHE/OIDC 검증을 구분한다.
 

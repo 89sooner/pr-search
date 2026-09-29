@@ -1,10 +1,12 @@
 # PR Search 와이어프레임 사양서
 
-> 상태: review | 버전: v0.30 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.31 | 갱신일: 2026-09-29
 
 > CR-131 / W-001: Repository workspace의 「No matching changes」 아래에 「Results if you remove one filter:」 한 줄과 가운데 정렬로 줄바꿈되는 보조 버튼 줄(「Remove author: lee · 12 results」)을 둔다. 결과 열의 고정 폭 안에서 줄바꿈하고, 필터 패널을 펼치지 않는다. 불완전·상한 잘림 안내는 버튼 줄 아래 한 줄이다.
 
 > CR-127 / NFR-007·FR-SRCH-005 AC-11·FR-STAT-002 AC-7·FR-AUTH-004 AC-9: 모든 화면의 시각은 **한국 시간**(`YYYY-MM-DD HH:mm KST`, 날짜만은 KST 날짜)이고 원본 UTC는 툴팁이다. 안내 문단을 늘리지 않고 시간대 표지를 값 또는 열 제목에 짧게 붙인다. W-001 Range filter의 Merged date는 `Merged from (KST)`·`Merged to (KST)` 두 달력이며 새로 고른 범위는 URL `from`·`to`·`tz=Asia/Seoul`로 복원된다. `tz` 없는 옛 URL은 `(UTC)` 라벨로 구분해 그대로 실행한다. 접힌 필터 구조와 영문 UI는 그대로다. W-006의 Start·End는 같은 달력이고 버킷 이름·범위 열은 대시보드 시간대(기본 KST)로 적는다. A-004의 Start·End는 `(KST)` 라벨의 날짜·시각 입력이다. 개인별 시간대 설정은 두지 않는다(`OD-018`).
+
+> CR-133 / W-001: Files & folders의 입력 자리는 그대로이고 문구가 「Search files in this revision…」이다. 검색 중에는 트리 대신 결과 목록(파일 이름과 상위 경로 두 줄)이 사이드바의 남은 높이를 쓰고, 상태 한 줄이 입력 아래에 붙는다. 아래 CR-111의 「트리 내부 필터」는 이 검색으로 바뀌었다.
 
 > CR-111 / W-001: 좌측 사이드바를 「Find Repository」 compact `FieldSelect` 콤보박스(저장소 목록·pagination은 드롭다운 안 sentinel 옵션으로 접는다) + 「Base branch」 셀렉트 + `Files & folders` 트리 순으로 재배치하고, 트리가 사이드바의 남은 flex 공간을 전부 차지하게 한다. 독립된 「Find files and paths」 입력·「View path history」 버튼과 사이드바 하단 안내 문단은 제거한다(Files & folders 트리 자체와 트리 내부 필터는 유지). 필터 폼의 Owner/Repository/Base branch 중복 필드를 제거하고(사이드바 선택값을 그대로 질의에 사용), CR-106의 PR 번호·M 번호·머지 시각·머지 순서 range 네 종류를 하나의 range 유형 선택자 + From/To 두 칸으로 통합한다(유형을 바꿔도 다른 유형의 값은 지우지 않는다). Status·`q`·Author·Label과 통합된 range 선택자를 포함한 필터 조건 전체는 기본 collapsed인 `Collapsible` 하나로 묶고, Search/Reset 버튼은 접힘과 무관하게 항상 노출한다. 접힘/펼침은 필터·URL 상태를 바꾸지 않는다(`FR-SRCH-006`~`009` 원칙과 동일). `SourceHistory`의 SHA·연결 PR 번호(CR-107) 복사는 별도 Copy 버튼 없이 표시 텍스트 자체가 클릭 대상이다. 질의 semantics·URL 파라미터·CR-106/CR-107 API 계약은 바꾸지 않는다.
 

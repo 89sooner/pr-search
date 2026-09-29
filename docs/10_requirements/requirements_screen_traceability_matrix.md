@@ -1,6 +1,11 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.26 | 갱신일: 2026-09-29
+> 상태: review | 버전: v1.27 | 갱신일: 2026-09-29
+
+| 추가 요구사항 (CR-133) | 화면 | 구현 단위 | 검증 |
+| --- | --- | --- | --- |
+| FR-SRC-001 AC-2 (트리 탐색은 펼칠 때 읽고, 검색은 같은 SHA의 파일 경로 목록을 읽는다) | W-001 Files & folders | WP-114 | test(`source-paths.test.ts` 단위·통합) · QA-W001-81 |
+| FR-SRC-001 AC-5 (고정 revision의 모든 파일 경로 검색 — 대소문자 무시 부분 문자열, 경로마다 하나, 선택 → History·Diff·Time-lapse, 다 읽기 전 「결과 없음」 금지, 진행·취소·이어 읽기, 범위 밖 비노출) | W-001 Files & folders(「Search files in this revision…」) | WP-114 | test(`source-paths` 서버·웹 단위, 통합, `a11y/source-tree-search.test.tsx`, PIPE `readonly.test.ts` 404) · 실제 화면(깊은 파일·같은 이름 셋, 6만 경로, 잘린 목록 31페이지) · QA-W001-78~82 |
 
 | 추가 요구사항 (CR-132) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |
@@ -79,7 +84,7 @@
 
 | 추가 요구사항 (CR-097) | 화면 | 컴포넌트 | API | 검증 |
 | --- | --- | --- | --- | --- |
-| FR-SRC-001 | W-001 | SourceTree | API-SRC-001 | source.test.ts, verify-source-workspace.mjs |
+| FR-SRC-001 | W-001 | SourceTree | API-SRC-001, API-SRC-005 | source.test.ts, source-paths.test.ts, source-tree-search.test.tsx, verify-source-workspace.mjs |
 | FR-SRC-002 | W-001 | SourceHistory | API-SRC-002 | source.test.ts, verify-source-workspace.mjs, history-pull-requests.test.ts |
 | FR-SRC-003 | W-001, W-002, W-003 | DiffModal | API-SRC-003, API-SRC-004 | source-analysis.test.ts, source.test.ts, 브라우저 |
 | FR-SRC-004 | W-001, W-002, W-003 | TimeLapseModal | API-SRC-002~004 | source-analysis.test.ts, 브라우저 |
