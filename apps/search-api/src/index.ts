@@ -57,6 +57,8 @@ function buildGitHub():
   const client = new GitHubClient(
     new GitHubTransport({
       apiUrl: githubConfig.apiUrl,
+      // blame(CR-135)의 GraphQL 주소 — GHES는 `/api/graphql`이다(`/api/v3/graphql`이 아니다).
+      graphqlUrl: githubConfig.graphqlUrl,
       requestTimeoutMs: githubConfig.requestTimeoutMs,
       pool: tokenPool,
       scheduler: new RequestScheduler({ maxConcurrent: githubConfig.maxConcurrentRequests }),

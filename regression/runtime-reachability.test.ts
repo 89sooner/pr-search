@@ -1616,6 +1616,15 @@ describe('경로가 실재하는지', () => {
   });
 
   /*
+   * **blame의 GraphQL 주소가 운영 전송에 실제로 닿는다** (CR-135). 배선이 빠지면 전송에
+   * `graphqlUrl`이 없어 모든 blame이 일반 502로 답하고, 대역을 쓰는 시험은 전송을 직접
+   * 만들므로 그 사실을 보지 못한다.
+   */
+  it('search-api 전송이 설정의 GraphQL 주소를 받는다 (CR-135)', () => {
+    expect(API_INDEX).toContain('graphqlUrl: githubConfig.graphqlUrl,');
+  });
+
+  /*
    * **0건 검색의 추천 실패가 운영 로그에 남는다** (CR-128, DEV-785).
    *
    * 진단 로그는 `index.ts`의 검색 의존 객체 하나에서 공개 경로와 PIPE 연동으로 퍼진다(`runtime.ts`가 그 객체를

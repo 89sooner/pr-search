@@ -1,4 +1,4 @@
-import { GitHubApiError, type GitHubSourceReader } from '@prs/github';
+import { GitHubApiError, SourceBlameUnsupportedError, type GitHubSourceReader } from '@prs/github';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { Pool } from '@prs/db';
 import type { ErrorCode } from '@prs/contracts';
@@ -9,7 +9,7 @@ import { sessionInvocation, type ReadInvocation } from '../auth/read-invocation.
 import { sendAuthError, toAuthError } from '../auth/errors.js';
 import { resolveRepository } from '../sequence/space.js';
 import { recordAuditBestEffort } from '../audit/recorder.js';
-import { FULL_SHA, SourceRangeError, SourceSnapshotChanged, sourceComparison, sourceFile, sourceFileWindow, sourceHistory, sourcePaths, sourceTree, sourceTreeComparison, validPath, validRef } from './service.js';
+import { FULL_SHA, SourceRangeError, SourceSnapshotChanged, sourceBlame, sourceComparison, sourceFile, sourceFileWindow, sourceHistory, sourcePaths, sourceTree, sourceTreeComparison, validPath, validRef } from './service.js';
 
 /**
  * 한 source 요청의 기한 (CR-132). 슬롯 대기와 여러 GitHub 호출을 모두 덮는다 — 원시 창 읽기의 호출 기한도 이 안이다.
@@ -24,12 +24,16 @@ const COMPARISON_KEYS = ['listing', 'after', 'base', 'head', 'related'] as const
 /**
  * `es`는 선택이다 (CR-107) — 없으면 History의 PR 연결 배치 조회를 건너뛴다. `deadlineMs`는 시험용이다(기본 `SOURCE_REQUEST_DEADLINE_MS`).
  * `pathsRecursiveTimeoutMs`도 시험용이다(기본 `SOURCE_PATHS_RECURSIVE_TIMEOUT_MS`, CR-133).
+ * `blameEnabled`는 blame 기능 게이트다 (CR-135, `SOURCE_BLAME_ENABLED`) — 없거나 `false`면 blame이 404 `feature_disabled`다.
  */
-export interface SourceRouteOptions { pool: Pool; reader: () => GitHubSourceReader; auth: AuthContext; loginPath: string; es?: Client; deadlineMs?: number; pathsRecursiveTimeoutMs?: number }
+export interface SourceRouteOptions { pool: Pool; reader: () => GitHubSourceReader; auth: AuthContext; loginPath: string; es?: Client; deadlineMs?: number; pathsRecursiveTimeoutMs?: number; blameEnabled?: boolean }
 /** source 조회의 실행 재료 (CR-112). 일반 경로와 PIPE 연동 경로가 같은 값을 넘긴다. 세션 컨텍스트는 없다. */
 export type SourceExecution = Omit<SourceRouteOptions, 'auth'>;
-/** `paths`(CR-133, API-SRC-005)는 일반 조회만이다 — PIPE 연동 경로(`integrations/pipe/routes.ts`)는 따로 고정한 목록이라 싣지 않는다. */
-export const SOURCE_OPERATIONS = ['tree', 'history', 'file', 'diff', 'paths'] as const;
+/**
+ * `paths`(CR-133, API-SRC-005)는 일반 조회만이다 — PIPE 연동 경로(`integrations/pipe/routes.ts`)는 따로 고정한 목록이라 싣지 않는다.
+ * `blame`(CR-135, API-SRC-006)은 게이트가 꺼져 있어도 경로를 등록한다 — 없는 경로(Fastify 404)가 아니라 `feature_disabled`로 답한다.
+ */
+export const SOURCE_OPERATIONS = ['tree', 'history', 'file', 'diff', 'paths', 'blame'] as const;
 export type SourceOperation = (typeof SOURCE_OPERATIONS)[number];
 export function registerSourceRoutes(app: FastifyInstance, options: SourceRouteOptions): void {
   const { auth, ...execution } = options;
@@ -51,7 +55,8 @@ export async function executeSource(operation: SourceOperation, repository: stri
   reply.header('cache-control', 'private, no-store').header('pragma', 'no-cache').header('x-content-type-options', 'nosniff');
   const { correlationId } = invocation;
   let resultCode = 'SOURCE_UNAVAILABLE'; let observedRevision: unknown = null;
-  const fail = (status: number, code: ErrorCode, message: string) => { resultCode = code; return reply.code(status).send({ error: { code, message }, correlation_id: correlationId }); };
+  // `detail`은 넘길 때만 싣는다 — 넘기지 않는 오류의 봉투는 예전과 한 글자도 다르지 않다.
+  const fail = (status: number, code: ErrorCode, message: string, detail?: Readonly<Record<string, unknown>>) => { resultCode = code; return reply.code(status).send({ error: { code, message, ...(detail === undefined ? {} : { detail }) }, correlation_id: correlationId }); };
   let userId: string | undefined;
   const controller = new AbortController();
   const deadline = setTimeout(() => { controller.abort(new DOMException('Source request deadline exceeded', 'TimeoutError')); }, options.deadlineMs ?? SOURCE_REQUEST_DEADLINE_MS);
@@ -61,6 +66,9 @@ export async function executeSource(operation: SourceOperation, repository: stri
   const call = { signal: controller.signal };
   try {
     const principal = await invocation.identify(); userId = principal.userId;
+    // CR-135: blame이 꺼진 배포는 신원 확인 바로 뒤에 답한다 — 저장소 형식·범위·파라미터를 보기 전이고 GHE를 부르지 않는다.
+    // M 번호(API-SEQ-007)와 같은 봉투다: 「없음」과 「켜지 않음」을 `detail.reason`으로 가른다.
+    if (operation === 'blame' && options.blameEnabled !== true) return fail(404, 'NOT_FOUND', 'Blame is not enabled on this deployment.', { reason: 'feature_disabled' });
     if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) return fail(400, 'INVALID_PARAMETER', 'Repository must use owner/name format.');
     const [owner, name] = repository.split('/') as [string, string];
     if ([owner, name].some(part => part === '.' || part === '..')) return fail(400, 'INVALID_PARAMETER', 'Invalid repository name.');
@@ -89,6 +97,12 @@ export async function executeSource(operation: SourceOperation, repository: stri
       const after = typeof query['after'] === 'string' ? query['after'] : undefined;
       if (!FULL_SHA.test(revision) || (after !== undefined && (after === '' || after.length > MAX_CURSOR || after.includes('\u0000')))) return fail(400, 'INVALID_PARAMETER', 'A file list needs a full revision SHA and an optional path cursor.');
       result = await sourcePaths(reader, repo, { revision, after: after ?? null, ...(options.pathsRecursiveTimeoutMs !== undefined ? { recursiveTimeoutMs: options.pathsRecursiveTimeoutMs } : {}) }, call);
+    } else if (operation === 'blame') {
+      // CR-135: blame은 파일 경로와 고정 revision만 받는다. 줄 범위·페이지 인자는 없다(GitHub의 `Blame.ranges`에 first/after가
+      // 없다). 맞지 않는 키는 조용히 버리지 않고 거절한다.
+      if (Object.keys(query).some(key => key !== 'path' && key !== 'revision')) return fail(400, 'INVALID_PARAMETER', 'A blame accepts only path and revision.');
+      if (!FULL_SHA.test(revision) || path === '') return fail(400, 'INVALID_PARAMETER', 'A blame needs a file path and a full revision SHA.');
+      result = await sourceBlame(reader, repo, { revision, path }, call);
     } else if (operation === 'tree') {
       if (path && !treeSha) return fail(400, 'INVALID_PARAMETER', 'Expanding a directory requires its tree SHA and revision.');
       result = await sourceTree(reader, repo, { ref, path, ...(treeSha ? { treeSha, revision } : {}), ...(offset !== undefined ? { offset } : {}) }, call);
@@ -127,6 +141,8 @@ export async function executeSource(operation: SourceOperation, repository: stri
     const authError = toAuthError(error, { correlationId, loginPath: options.loginPath });
     if (authError) { resultCode = authError.body.error.code; return sendAuthError(reply, authError); }
     if (error instanceof AccessScopeUnavailableError) return fail(503, 'PERMISSION_UNAVAILABLE', 'Repository access could not be verified.');
+    // CR-135: 이 GHES의 GraphQL에 `Commit.blame`이 없다. 일시 장애(502)·권한 부족(503)과 가른다 — 다시 불러도 같다.
+    if (error instanceof SourceBlameUnsupportedError) return fail(501, 'SOURCE_BLAME_UNSUPPORTED', 'This GitHub Enterprise Server does not provide blame through its API.');
     if (error instanceof GitHubApiError) {
       if (error.kind === 'not_found') return fail(404, 'NOT_FOUND', 'The requested repository object was not found.');
       if (error.kind === 'rate_limited' || error.kind === 'secondary_rate_limited') { if (error.retryAt) reply.header('retry-after', Math.max(1, Math.ceil((error.retryAt.getTime() - Date.now()) / 1000))); return fail(429, 'SOURCE_RATE_LIMITED', 'GitHub is rate limited. Try again later.'); }

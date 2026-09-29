@@ -70,6 +70,15 @@ describe('buildServerDeps — 운영이 무엇을 넘기는가', () => {
     expect(deps.source?.es).toBe(es);
   });
 
+  it('CR-135 FR-SRC-005 source의 blame 게이트는 설정(SOURCE_BLAME_ENABLED)을 따른다 — 없으면 꺼짐(false)이다', () => {
+    const auth = {} as unknown as RuntimeParts['auth'];
+    const withFlag = (sourceBlameEnabled: boolean | undefined) =>
+      buildServerDeps(parts({ github: GITHUB, auth, config: { ...CONFIG, ...(sourceBlameEnabled === undefined ? {} : { sourceBlameEnabled }) } as SearchApiConfig })).source?.blameEnabled;
+    expect(withFlag(true)).toBe(true);
+    expect(withFlag(false)).toBe(false);
+    expect(withFlag(undefined)).toBe(false);
+  });
+
   it('GHE가 없으면 넘기지 않는다', () => {
     expect(buildServerDeps(parts()).integrity).toBeUndefined();
   });

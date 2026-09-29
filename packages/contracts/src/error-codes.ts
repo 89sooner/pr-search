@@ -13,6 +13,11 @@ export const ERROR_CODES = [
   'SOURCE_RATE_LIMITED',
   'SOURCE_PERMISSION_REQUIRED',
   'SOURCE_UNAVAILABLE',
+  /**
+   * 이 GHES의 GraphQL 스키마에 `Commit.blame`이 없다 — 일시 장애·권한 부족이 아니며 다시 불러도 같다 (사용자 조치: 운영자에게
+   * GHES의 blame 지원 확인 요청) — HTTP 501 (CR-135, FR-SRC-005)
+   */
+  'SOURCE_BLAME_UNSUPPORTED',
   /** 질의 파싱 실패 (사용자 조치: 오류 구간 수정) — HTTP 400 */
   'QUERY_SYNTAX_ERROR',
   /** hex 접두 7자 미만 (사용자 조치: 더 긴 SHA 입력) — HTTP 400 */
@@ -172,6 +177,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   SOURCE_RATE_LIMITED: 429,
   SOURCE_PERMISSION_REQUIRED: 503,
   SOURCE_UNAVAILABLE: 502,
+  SOURCE_BLAME_UNSUPPORTED: 501,
   QUERY_SYNTAX_ERROR: 400,
   SHA_PREFIX_TOO_SHORT: 400,
   QUERY_TOO_SHORT: 400,

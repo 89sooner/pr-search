@@ -3246,6 +3246,7 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 | `SOURCE_RATE_LIMITED` | 429 | GHE 조회 한도 | Retry-After 이후 재시도 |
 | `SOURCE_PERMISSION_REQUIRED` | 503 | Data App의 Contents read 권한 미비 | 운영자에게 앱 권한 확인 요청 |
 | `SOURCE_UNAVAILABLE` | 502 | GHE 소스 조회 실패 | 재시도 |
+| `SOURCE_BLAME_UNSUPPORTED` | 501 | 이 GHES의 GraphQL 스키마에 `Commit.blame`이 없음 (CR-135, API-SRC-006) | 운영자에게 GHES의 blame 지원 확인 요청 |
 | `QUERY_SYNTAX_ERROR` | 400 | 질의 파싱 실패 | 오류 구간 수정 |
 | `SHA_PREFIX_TOO_SHORT` | 400 | hex 접두 7자 미만 | 더 긴 SHA 입력 |
 | `QUERY_TOO_SHORT` | 400 | 검색어 1자 | 2자 이상 입력 |
