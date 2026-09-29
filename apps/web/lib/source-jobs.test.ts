@@ -5,7 +5,7 @@ import { ROW_CHANGE, lineEvents } from './source-compute';
 import { TRACE_MAX_CELLS, displayLine, rawLines, runDiffJob, runTraceJob } from './source-jobs';
 
 /** A fake `/api/source/.../file` that serves each (revision, path) in windows of `window` characters. */
-function fileServer(files: Record<string, { text?: string; status?: string; reason?: string }>, window = 10) {
+function fileServer(files: Record<string, { text?: string; status?: string; reason?: string; binaryFrom?: number }>, window = 10) {
   const calls: string[] = [];
   const fetchImpl = vi.fn(async (input: string, init?: RequestInit) => {
     calls.push(input);
@@ -15,6 +15,8 @@ function fileServer(files: Record<string, { text?: string; status?: string; reas
     const file = files[key];
     const offset = Number(url.searchParams.get('offset') ?? '0');
     if (file === undefined) return new Response(JSON.stringify({ status: 'missing', text: null, size: null, sha: null, reason: 'This path is not available at this revision.', offset, next_offset: null }), { status: 200 });
+    // A NUL past the first window: the server answers that window (and only that one) as binary.
+    if (file.binaryFrom !== undefined && offset >= file.binaryFrom) return new Response(JSON.stringify({ status: 'binary', text: null, size: (file.text ?? '').length, sha: 'b'.repeat(40), reason: 'Binary files cannot be displayed as text.', offset, next_offset: null }), { status: 200 });
     if (file.status !== undefined && file.status !== 'text') return new Response(JSON.stringify({ status: file.status, text: null, size: 9, sha: 'b'.repeat(40), reason: file.reason ?? null, offset, next_offset: null }), { status: 200 });
     const text = file.text ?? '';
     const next = offset + window < text.length ? offset + window : null;
@@ -40,6 +42,9 @@ describe('CR-132 FR-SRC-003 loadFileText — a file is read to its end, window b
     fileServer({ 'r1:bin': { status: 'binary', reason: 'Binary files cannot be displayed as text.' } });
     expect(await loadFileText('acme/payments', 'bin', 'r1', { signal: new AbortController().signal })).toMatchObject({ status: 'binary', text: null });
     expect((await loadFileText('acme/payments', 'gone', 'r1', { signal: new AbortController().signal })).status).toBe('missing');
+    // First window is text, the third is not: the result is binary, not the first two windows passed off as the file.
+    fileServer({ 'r1:late.bin': { text: 'aaaaaaaaaabbbbbbbbbbcccccccccc', binaryFrom: 20 } }, 10);
+    expect(await loadFileText('acme/payments', 'late.bin', 'r1', { signal: new AbortController().signal })).toMatchObject({ status: 'binary', text: null, reason: 'Binary files cannot be displayed as text.' });
   });
   it('FR-SRC-003 a server that does not move forward is an error, not an endless loop', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'text', text: 'x', size: 10, sha: null, reason: null, offset: 0, next_offset: 0 }), { status: 200 })));
