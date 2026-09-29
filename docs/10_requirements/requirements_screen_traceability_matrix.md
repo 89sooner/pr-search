@@ -1,6 +1,13 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.25 | 갱신일: 2026-09-29
+> 상태: review | 버전: v1.26 | 갱신일: 2026-09-29
+
+| 추가 요구사항 (CR-132) | 화면 | 구현 단위 | 검증 |
+| --- | --- | --- | --- |
+| FR-SRC-001 AC-4 (정렬된 5,000개 페이지로 디렉터리를 끝까지, 트리 SHA 고정, GHE 절삭만 표시) | W-001 Files & folders(「Show more entries (x of y)」) | WP-113 | test(`source-limits.test.ts` 단위·통합, `a11y/source-limits.test.tsx`) · 실제 화면(12,375개) · QA-W001-73 |
+| FR-SRC-002 AC-2 (History 페이지 상한 없음) | W-001 History(「Load older commits」) | WP-113 | test(통합 — 50,100개 커밋의 1,001·1,002번째 페이지) |
+| FR-SRC-003 AC-4·AC-5 (1 MiB 창으로 끝까지, 100MB·비텍스트만 제한, 근사 정렬 대체, 3,000개 뒤 트리 비교 목록) | W-001 Diff 모달(로딩 진행률·Cancel·「Load the complete list」·근사 안내·가상 스크롤) | WP-113 | test(단위·통합·`source-compute`·`source-jobs`·a11y) · 실제 화면(5MB·20만 줄, 3,603개 변경) · QA-W001-72·74·76·77 |
+| FR-SRC-004 AC-2 (분석 범위 선택, 작업 스레드·진행률·취소, 모달 안 이전 리비전, 비텍스트 리비전 건너뛰기) | W-001 Time-lapse 모달 | WP-113 | test(`source-jobs`, a11y) · 실제 화면(160개 리비전, 취소·재시작) · QA-W001-75 |
 
 | 추가 요구사항 (CR-131) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |

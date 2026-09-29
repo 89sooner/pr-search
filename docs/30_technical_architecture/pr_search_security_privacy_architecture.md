@@ -1,6 +1,6 @@
 # PR Search 보안 및 개인정보 아키텍처
 
-> 상태: review | 버전: v1.16 | 갱신일: 2026-09-27
+> 상태: review | 버전: v1.17 | 갱신일: 2026-09-29
 
 > CR-124 / FR-REL-003 AC-1: URL 참조의 승인 호스트는 배포 설정 `GHE_BASE_URL`의 호스트이며 코드에 두지 않는다(THR-036). 비어 있으면 URL 참조를 만들지 않는다 — 전에는 접속 설정의 대체값(`ghe.example.com`)을 승인했다. 단일 호스트에서 참조를 파생하는 두 역할(`worker-link`·`worker-batch`)은 이 주소 **하나만** 받고 Data App 자격을 받지 않는다 — 두 역할은 GHE에 접속하지 않는다.
 
@@ -11,6 +11,8 @@
 > CR-098 / FR-AUTH-002: GHE collaborator permission의 read 이상 호환 집합은 `read`·`write`·`writer`와 REST 내부 이름 `pull`·`triage`·`push`·`maintain`·`admin`을 수용한다. `none`·빈 값·미지 이름은 계속 기본 거부한다. 화면 메뉴 필터는 API 권한 검사를 대체하지 않으며 reader의 Workspace 바로가기는 operator에게만 렌더링한다.
 
 > CR-097: FR-SRC-001~004는 소스 코드의 **일시적 열람**을 허용한다. 모든 source GET은 세션과 기존 저장소 범위를 확인한 뒤 Data App의 read-only GitHubSourceReader를 호출한다. 미등록/범위 밖은 동일404이며 관리자 토큰 우회는 없다. ref/SHA/path/page를 검증하고 임의 호스트·download_url·파일시스템 경로를 따르지 않는다. 본문은 PG/ES/Redis/미러/로그에 저장하지 않는다. 응답 no-store, 감사는 경로·SHA·결과만. UTF8/크기/라인 한도와 안전한 React 텍스트 렌더링을 사용한다. 기존 MIRROR_ALLOW_BLOB_FETCH 설정을 변경하지 않는다.
+
+> CR-132: 이어 읽기도 같은 경계 안이다. 큰 파일의 창은 같은 Contents 메타가 준 blob SHA로 Git Blobs API의 원시 본문을 읽는다 — `download_url`·임의 호스트를 따르지 않고, 받은 바이트는 그 요청 안에서만 산다(서버 캐시·PG·ES·Redis·로그 저장 없음, NFR-005). 창 경계 offset은 검증한다(파일 끝·문자 가운데 거절). 트리 비교의 커서(`after`)는 비교에만 쓰고 GitHub 경로로 보내지 않는다. 감사는 이어 읽기 위치·비교 대상 SHA만 더하며 연결 끊김은 `CANCELLED`로 남는다. 브라우저에서는 본문이 Worker와 화면 메모리에만 있고 지속 저장소에 넣지 않는다.
 
 CR-079: WP-074는 기존 읽기 Data App만 사용한다. 신규 증거 proof의 허용 필드는 [설계](pr_search_wp074_design.md) 6절, 측정 read-only role·세션 파일·비식별 출력은 측정 가이드가 정본이다. 새 제목 쓰기 App, OIDC 정책 변경, 익명 조회, fixture를 production 직접 확정에 넣는 경로는 만들지 않는다. 기존 auth gate와 범위 밖=미등록 404를 유지한다.
 
