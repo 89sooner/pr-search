@@ -2559,7 +2559,7 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - [x] 전달: 작업 패키지 v2.90 → v2.91(WP-116 절·상태 표), 원장 v6.140 → v6.141(머리 절, 3장 WP-116, 4장 FR-SRC-005·FR-INT-001). PIPE 공유 계약 00·BFF 지시서 02(판 머리가 없다 — CR-135 주석과 blame 선택 문장). RUNBOOK 7.L·8장 세 행, `.env.example`의 두 값, compose의 search-api 두 줄.
 - [x] 인계: PIPE `handoff/pipe-search-integration/v1/CONTRACT_DIFF.md` D-26, OpenAPI·operation map·예시·manifest, 적합성 시험.
 - 문서 검증기(`validate_srs_prd_env.py`): 기준선(main과 같은 문서)과 오류·경고 목록이 두 모드 모두 같다 — 기본 오류 3·경고 12, `--strict` 오류 6·경고 12. 이 CR의 문서 편집이 만든 새 오류·경고는 0이다. 커버리지는 FR 74가 매트릭스·아키텍처·WP에 모두 있고(100%), API 71·ADR 26·WP 115다.
-- [ ] 코드·시험: 원장 6.126장(게이트 뒤).
+- [x] 코드·시험: 원장 6.126장.
 - [ ] 병합과 CR 종료 — 다음 기능 PR의 첫 커밋이 적는다(23차 결정).
 
 ### CR-134 cascade — 수동 대조 취소 시험의 대기 기준
