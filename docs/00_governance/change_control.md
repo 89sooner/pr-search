@@ -2,7 +2,7 @@
 
 ## CR-131 — Repository workspace의 결과 0건 화면이 서버가 센 조건 변경 추천을 버튼으로 보이고, 누르면 그 조건만 지워 다시 검색한다 (2026-09-29)
 
-- 유형: 범위 공백 보완(DEV-787 — 화면 상태 W-001 `empty_no_result`의 「제거하면 결과가 생기는 필터 목록」을 운영 기본 화면(Repository workspace, CR-099·CR-111)이 그리지 않았다). `FR-SRCH-006` AC-3은 서버가 후보 목록을 돌려주는 것까지이고 이미 성립한다 — SRS·PRD·API 계약은 바뀌지 않는다. 새 화면·API·오류 코드·표는 없다. 누르면 조건을 지우는 동작은 파생 UI(화면 상태·컴포넌트·와이어프레임·QA)에 적는다. 안정 ID 재번호화 0건. 상태: **open** — worktree `/home/roqkf/pr-search-wt/cr131-workspace-relaxation`(브랜치 `fix/cr131-workspace-relaxation`), 기준 main `5850232`.
+- 유형: 범위 공백 보완(DEV-787 — 화면 상태 W-001 `empty_no_result`의 「제거하면 결과가 생기는 필터 목록」을 운영 기본 화면(Repository workspace, CR-099·CR-111)이 그리지 않았다). `FR-SRCH-006` AC-3은 서버가 후보 목록을 돌려주는 것까지이고 이미 성립한다 — SRS·PRD·API 계약은 바뀌지 않는다. 새 화면·API·오류 코드·표는 없다. 누르면 조건을 지우는 동작은 파생 UI(화면 상태·컴포넌트·와이어프레임·QA)에 적는다. 안정 ID 재번호화 0건. 상태: **closed** — main `c33ea25`(PR #255 squash 병합, 2026-09-29). worktree `/home/roqkf/pr-search-wt/cr131-workspace-relaxation`(브랜치 `fix/cr131-workspace-relaxation`), 기준 main `5850232`.
 - 요청: 사용자 지시(2026-09-29, 23차) 3번. RepositoryWorkspace의 0건 화면에 서버가 계산한 추천을 표시한다(예: 「작성자 조건 제거 · 12건」). 숫자는 서버의 `would_yield`를 쓴다. 누르면 해당 조건만 제거하고 URL·필터 입력·결과·커서를 함께 갱신하며, 문자열 전체 치환으로 비슷한 다른 조건까지 지우지 않는다. 화면이 자동으로 붙이는 `kind`·`repo`와 탭의 고정 조건 등 그 화면에서 안전하게 제거할 수 없는 추천은 실행 가능한 버튼처럼 보이지 않는다. 경로 제거는 파일 트리 선택도 맞추고, 날짜·M 번호·서수 범위는 관련 입력과 에폭 상태를 함께 처리한다. 추천 계산이 불완전하면 짧게 알리고 정상 0건 화면을 유지한다. 접힌 필터·고정 레이아웃·무한스크롤·기존 영문 UI를 유지한다. 완료 기준: 추천을 눌러 다시 검색하면 고정된 자료와 권한에서 실제 결과 건수가 추천 건수와 같다.
 - 발견(수정 전 main `5850232`): 같은 자료로 0건 시나리오 11개를 실제 화면에서 열자 서버는 모든 시나리오에 후보(또는 불완전 표시)를 돌려줬지만 작업 공간은 「No matching changes / Adjust your query or filters and search again.」만 그렸다 — 후보 버튼 0개, 불완전 안내도 없었다. 레거시 화면(`SearchView`)만 후보를 목록으로 그린다(누를 수 없다).
 - 원인: CR-099·CR-111이 운영 기본 화면을 새로 만들면서 W-001 `empty_no_result`의 후보 목록을 옮기지 않았다. 이 화면은 `kind:`·`repo:`와 탭 조건을 스스로 붙이고 여러 입력(필터·트리·자유 텍스트·범위·SHA 범위)을 한 질의로 조립하므로, 서버 후보를 그대로 보이면 누를 수 없는 제안이나 다른 조건까지 지우는 버튼이 된다.
@@ -375,7 +375,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| CR-131 | 2026-09-29 | 범위 공백 보완 | 사용자 지시 2026-09-29(23차) 3번 — DEV-787 | **운영 기본 화면(Repository workspace)이 결과 0건에서 서버가 센 조건 변경 추천을 그리지 않았다.** 추천을 「Remove <조건> · <would_yield> results」 버튼으로 보이고, 누르면 그 조건에 값을 보탠 입력만 지우고 다시 검색한다. 화면·탭이 붙인 조건과 지우면 다른 조건까지 바뀌는 후보는 버튼이 아니다(적용한 상태로 질의를 다시 조립해 대조). 불완전·상한 잘림은 짧게 알린다 | FR-SRCH-006 AC-3 · W-001 `empty_no_result` · WP-112 · DEV-787 | 매트릭스 · 화면 상태 · 컴포넌트 · 와이어프레임 · 프런트엔드 · QA 체크리스트 · WP · 원장 | open — 브랜치 `fix/cr131-workspace-relaxation` |
+| CR-131 | 2026-09-29 | 범위 공백 보완 | 사용자 지시 2026-09-29(23차) 3번 — DEV-787 | **운영 기본 화면(Repository workspace)이 결과 0건에서 서버가 센 조건 변경 추천을 그리지 않았다.** 추천을 「Remove <조건> · <would_yield> results」 버튼으로 보이고, 누르면 그 조건에 값을 보탠 입력만 지우고 다시 검색한다. 화면·탭이 붙인 조건과 지우면 다른 조건까지 바뀌는 후보는 버튼이 아니다(적용한 상태로 질의를 다시 조립해 대조). 불완전·상한 잘림은 짧게 알린다 | FR-SRCH-006 AC-3 · W-001 `empty_no_result` · WP-112 · DEV-787 | 매트릭스 · 화면 상태 · 컴포넌트 · 와이어프레임 · 프런트엔드 · QA 체크리스트 · WP · 원장 | closed — main `c33ea25`(PR #255), 원장 6.122 |
 | CR-130 | 2026-09-29 | correction + 요구사항 보완 | 사용자 지시 2026-09-29(23차) 2번 — DEV-788 | **구간 조회의 `q`에 `kind:`·`-kind:`가 있으면 결과와 무관하게 500이었다.** 신원·권한 확인 뒤, 조회 전에 400 `INVALID_PARAMETER`(`kind_not_supported_in_range`)로 거절하고 화면은 무엇을 빼야 하는지 알린다. 조건을 지우거나 0건으로 위장하지 않는다. 유형으로 좁히는 구간은 `OD-019`로 남긴다 | FR-SEQ-002 AC-9 · OD-019 · API-SEQ-001 · W-004 · WP-111 · DEV-788 | SRS · 매트릭스 · 화면 상태 · QA 체크리스트 · API 계약 · RUNBOOK · WP · 원장 | closed — main `5850232`(PR #254), 원장 6.121 |
 | CR-129 | 2026-09-29 | correction | 사용자 지시 2026-09-29(23차) 1번 — DEV-786 | **공개 search-api가 처리하지 못한 예외를 Fastify 기본 본문(내부 문구, `correlation_id` 없음, 기록 없음)으로 답했고, Elasticsearch의 질의 거절(`statusCode` 게터 400)은 입력 오류 400으로 나갔다.** 공통 처리가 500 `INTERNAL_ERROR`·고정 문구·`correlation_id`(`request.id`)로 답하고 같은 ID로 오류 종류와 실패 단계를 기록한다. 클라이언트 오류는 Fastify 본문 오류(400·413·415)와 없는 경로(404)뿐이다. PIPE 연동도 같은 분류를 쓴다(DEV-789) | NFR-005 · NFR-008 · API 계약 원칙 6·6장 · 백엔드 8장 · API-INT 공통 오류 · WP-110 · DEV-786·DEV-789~791 | API 계약 · 백엔드 아키텍처 · 관측성 · 화면 상태 · QA 체크리스트 · PIPE 인계(CONTRACT_DIFF D-24) · RUNBOOK · WP · 원장 | closed — main `e581b52`(PR #253), 원장 6.120 |
 | CR-128 | 2026-09-28 | correction + 요구사항 보완 | 사용자 지시 2026-09-28(22차) — 사내 `0.1.0-pilot.20`에서 `kind:`와 다른 필터를 함께 쓴 검색이 500/503으로 실패 | **결과가 0건이면 완화 후보를 세다 `KindFilterNotAppliedError`로 500이 났다** — 후보에 걷어 내지 않은 원래 AST와 좁힌 대상을 넘겼다. 후보마다 `kind:`를 요청 경로의 원래 대상에서 다시 해석하고, 남은 유형이 없는 후보는 0건으로 보며, 세지 못한 후보가 있으면 `relaxation_hints_incomplete: true`로 밝힌다. 추천 계산의 실패는 본 조회 결과를 실패로 바꾸지 않는다. 레거시 화면은 후보 건수(`would_yield`)를 읽는다 | FR-SRCH-006 AC-3 · API-SRCH-004 · API-INT-006 · WP-109 · DEV-783~788 | SRS · 매트릭스 · 화면 상태 · QA 체크리스트 · API 계약 · PIPE 인계(OpenAPI·CONTRACT_DIFF D-23) · WP · 원장 | closed — main `d602890`(PR #251), 원장 6.119 |
@@ -2511,7 +2511,9 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - [x] 전달: 작업 패키지 v2.82 → v2.83(WP-112 절·상태 표), 원장 v6.132 → v6.133(머리 절, 3장 WP-112, 4장, 5장 DEV-787 resolved·DEV-792 관찰, 6.122장).
 - [x] 인계: PIPE 계약은 바뀌지 않는다(화면만의 변경이다).
 - [x] 코드·시험: 원장 6.122장.
-- [ ] 병합과 CR 종료 — 다음 기능 PR의 첫 커밋이 적는다(23차 결정).
+- 상태: **closed**(2026-09-29).
+
+**병합 판정.** PR #255(base `main`, 최종 head `e3e9981`, 첫 커밋은 CR-130 병합 기록)의 CI(run 36509746966)는 verify·integration 모두 첫 시도에 success다. 전 계층 게이트, 변이 확인, 실제 화면(수정 전·수정 뒤), 독립 리뷰([중] 1건·[하] 1건은 고쳤다)는 원장 6.122장에 있다. 사용자 승인(2026-09-29, 그 세션에서 PR #255에 대해 받았다)으로 squash 병합했다 — main `c33ea25`, 트리는 PR head와 같다(`25703b8…`). 병합 커밋의 main CI(run 36511458664)는 verify·integration 모두 첫 시도에 success다. 이 기록은 CR-132 PR의 첫 커밋이다. 사내 적용은 NOT RUN이다.
 
 ### CR-130 cascade — 구간 조회의 `kind:` 거절
 
