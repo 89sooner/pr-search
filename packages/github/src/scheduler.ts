@@ -43,9 +43,12 @@ export class RequestScheduler {
    *
    * 실시간 요청은 언제나 백필보다 먼저 슬롯을 받는다. 같은 우선순위 안에서는
    * 먼저 온 것이 먼저다 — 그래야 백필이 굶더라도 순서는 예측 가능하다.
+   *
+   * `signal`이 슬롯을 받기 전에 끊기면 줄에서 빠지고 그 사유로 거절한다 (CR-132) — 화면을 닫은 사용자의 요청이
+   * 슬롯을 받아 GitHub를 부르지 않게 한다. 슬롯을 받은 뒤의 취소는 작업이 스스로 본다.
    */
-  async run<T>(priority: RequestPriority, task: () => Promise<T>): Promise<T> {
-    await this.#acquire(priority);
+  async run<T>(priority: RequestPriority, task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    await this.#acquire(priority, signal);
     try {
       return await task();
     } finally {
@@ -53,15 +56,33 @@ export class RequestScheduler {
     }
   }
 
-  async #acquire(priority: RequestPriority): Promise<void> {
+  async #acquire(priority: RequestPriority, signal: AbortSignal | undefined): Promise<void> {
+    signal?.throwIfAborted();
     if (this.#inFlight < this.#maxConcurrent && this.queued === 0) {
       this.#inFlight += 1;
       return;
     }
     this.#sequence += 1;
     const enqueuedAt = this.#sequence;
-    await new Promise<void>((resolve) => {
-      this.#queues[priority].push({ priority, enqueuedAt, resolve });
+    await new Promise<void>((resolve, reject) => {
+      const queue = this.#queues[priority];
+      const onAbort = (): void => {
+        const index = queue.indexOf(waiter);
+        // 이미 슬롯을 넘겨받았으면(줄에 없으면) 거절하지 않는다 — 슬롯은 작업이 돌고 돌려준다.
+        if (index === -1) return;
+        queue.splice(index, 1);
+        reject(signal?.reason);
+      };
+      const waiter: Waiter = {
+        priority,
+        enqueuedAt,
+        resolve: () => {
+          signal?.removeEventListener('abort', onAbort);
+          resolve();
+        },
+      };
+      queue.push(waiter);
+      signal?.addEventListener('abort', onAbort, { once: true });
     });
     this.#inFlight += 1;
   }
