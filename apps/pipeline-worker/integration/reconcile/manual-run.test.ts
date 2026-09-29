@@ -254,7 +254,15 @@ describe('**취소가 스캔을 실제로 멈춘다** (PR #89 리뷰 P1)', () =>
        * 되돌리고 잡을 넣는다. 그러면 세는 것이 수동 스윕의 진입뿐이다.
        */
       sweeper = startReconcileSweeper(deps(), { intervalMs: 60 * 60 * 1000, pollMs: 10 });
-      await until(async () => probe.entries >= 4 && probe.active === 0);
+      /*
+       * **냉시작 스윕은 이 시험의 넷이 아니라 DB의 활성 저장소 전부를 돈다** (DEV-796).
+       * 통합 전량은 DB를 나눠 쓰고, 앞선 파일이 활성 저장소를 남길 수 있다. 넷에서 기다림을
+       * 풀면 냉시작이 남은 저장소를 도는 동안 계수를 되돌리게 되고, 잡을 넣는 사이의 진입이
+       * `entries`를 1 너머로 밀어 취소가 나가지 않는다 — 수동 스윕이 끝까지 돌아 `completed`다.
+       * 그래서 스윕과 같은 질의로 센 활성 저장소 수만큼의 진입을 기다린다.
+       */
+      const activeCount = (await repositoryRepo.listRepositories(pool, { status: 'active' })).length;
+      await until(async () => probe.entries >= activeCount && probe.active === 0);
       probe.entries = 0;
       probe.peak = 0;
 
@@ -267,8 +275,8 @@ describe('**취소가 스캔을 실제로 멈춘다** (PR #89 리뷰 P1)', () =>
 
       expect(await stateOf(jobId)).toBe('cancelled');
       /*
-       * **남은 저장소를 돌지 않았다.** 이 저장소들은 이 시험이 만든 것이고
-       * 활성 저장소가 넷이므로, 멈추지 않았다면 진입이 넷이 된다.
+       * **남은 저장소를 돌지 않았다.** 활성 저장소는 이 시험의 넷을 포함해 넷 이상이므로,
+       * 멈추지 않았다면 진입이 넷 이상이 된다.
        */
       expect(probe.entries).toBeLessThan(4);
     } finally {
