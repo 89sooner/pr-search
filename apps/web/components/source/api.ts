@@ -1,17 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { serviceMessage } from '../../lib/service-message';
+import { fetchSource } from '../../lib/source-client';
 
-export function sourceUrl(repository: string, operation: 'tree' | 'history' | 'file' | 'diff', query: Record<string, string | number | undefined>): string {
-  const params = new URLSearchParams(); for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== '') params.set(key, String(value));
-  return `/api/source/${encodeURIComponent(repository)}/${operation}?${params}`;
-}
-export async function fetchSource<T>(url: string, signal: AbortSignal): Promise<T> {
-  const response = await fetch(url, { signal, cache: 'no-store' });
-  const body = await response.json() as T & { error?: { message?: string; code?: string } };
-  if (!response.ok) throw new Error(response.status === 401 ? 'Your session expired. Sign in again to continue.' : serviceMessage(body.error?.message, response.status === 404 ? 'Source browsing is unavailable for this repository or revision.' : 'Unable to load source. Try again.', body.error?.code));
-  return body;
-}
+// CR-132: the reads live in lib/source-client so the analysis worker uses the same code.
+export { fetchSource, sourceUrl } from '../../lib/source-client';
 export function useSource<T>(url: string | null, delay = 0) {
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<{ key: string | null; data: T | null; error: string; loading: boolean }>({ key: null, data: null, error: '', loading: false });
