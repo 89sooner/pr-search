@@ -9,7 +9,7 @@
 
 export const PACKAGE_NAME = '@prs/github' as const;
 export { GitHubSourceReader } from './source-reader.js';
-export type { SourceGitCommit, SourceRestCommit, SourceRestFile, SourceContent, SourceGitTree, SourcePr } from './source-reader.js';
+export type { SourceCallOptions, SourceGitCommit, SourceRestCommit, SourceRestFile, SourceContent, SourceGitTree, SourcePr } from './source-reader.js';
 
 export {
   resolveGitHubConfig,
@@ -86,8 +86,8 @@ export type { RequestPriority, SchedulerOptions } from './scheduler.js';
  */
 export { DeadlineExceededError, PassDeadline, WriteGate } from './pacing.js';
 
-export { GitHubTransport, parseNextPage } from './transport.js';
-export type { PagedResult, PageResponse, RequestOptions, TransportEvent, TransportOptions } from './transport.js';
+export { GitHubTransport, parseNextPage, RAW_MIN_BYTES_PER_MS, RAW_READ_CONCURRENCY } from './transport.js';
+export type { PagedResult, PageResponse, RawWindow, RequestOptions, TransportEvent, TransportOptions } from './transport.js';
 
 export { GitHubClient, MAX_CHANGED_FILES, MAX_PR_COMMITS, resolveVisibility, toPullRequestEvidence } from './client.js';
 export type {

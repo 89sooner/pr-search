@@ -16,7 +16,7 @@ function HistoryBody({ repository, path, kind, revision, branch }: { repository:
   const response = useSource<HistoryData>(repository ? sourceUrl(repository, 'history', { path, ref: pinned || branch, page }) : null);
   const [selected, setSelected] = useState<string[]>([]); const [diff, setDiff] = useState<DiffTarget | null>(null); const [time, setTime] = useState(false);
   const [active, setActive] = useState<string | null>(null);
-  useEffect(() => { if (response.data) { setPinned(response.data.revision); setCommits(previous => page === 1 ? response.data!.commits : [...previous, ...response.data!.commits].filter((item, index, all) => all.findIndex(other => other.sha === item.sha) === index)); } }, [response.data, page]);
+  useEffect(() => { if (response.data) { setPinned(response.data.revision); setCommits(previous => { if (page === 1) return response.data!.commits; const seen = new Set(previous.map(item => item.sha)); return [...previous, ...response.data!.commits.filter(item => !seen.has(item.sha))]; }); } }, [response.data, page]);
   const isFile = Boolean(path) && kind !== 'directory';
   return <section className="source-history" aria-label="Path history" onKeyDown={event => {
     if ((event.target as HTMLElement).closest('input,textarea,select,[role="dialog"]')) return;
@@ -33,6 +33,6 @@ function HistoryBody({ repository, path, kind, revision, branch }: { repository:
     {!response.loading && !response.error && !commits.length ? <div className="source-empty"><History size={28} /><h2>No history for this path</h2><p>Choose another path or branch in the repository tree.</p></div> : null}
     {response.data?.next_page ? <div className="source-load-more"><Button variant="secondary" disabled={response.loading} onClick={() => { setPage(response.data!.next_page!); }}>Load older commits</Button></div> : null}
     {diff ? <DiffModal target={diff} onClose={() => { setDiff(null); }} /> : null}
-    {time ? <TimeLapseModal repository={repository} path={path} revision={pinned || branch} initialCommits={commits} moreAvailable={Boolean(response.data?.next_page)} onClose={() => { setTime(false); }} /> : null}
+    {time ? <TimeLapseModal repository={repository} path={path} revision={pinned || branch} initialCommits={commits} nextPage={response.data?.next_page ?? null} onClose={() => { setTime(false); }} /> : null}
   </section>;
 }

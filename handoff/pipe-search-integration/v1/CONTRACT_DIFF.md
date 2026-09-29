@@ -196,6 +196,25 @@ PSI-1.0 제안과 CR-112 구현 시점의 `read.resolve`는 커밋 SHA·PR 번�
 
 **PIPE에 필요한 조치.** 없습니다. 이 표의 오류 대응(`INTERNAL_ERROR` → 503 `SEARCH_AUTH_UNAVAILABLE`)을 따르는 BFF에서는 이 경우가 사용자의 입력 오류가 아니라 일시 장애로 보입니다. 사용자에게 보인 오류를 조사할 때는 응답의 `correlation_id`를 pr-search 운영자에게 전달합니다.
 
+## D-25 source 조회의 총량 제한을 이어 읽기로 — `offset`·`listing=tree`·`related=all`, History 페이지 상한 해제 (CR-132, 2026-09-29)
+
+pr-search 화면은 256KiB·4,000줄을 넘는 파일, 5,000개를 넘는 디렉터리, GitHub 목록 상한(3,000개)을 넘는 변경, 50,000번째 뒤의 경로 이력을 끝까지 보지 못했습니다. CR-132부터 원본 source API가 이어 읽기를 지원하고, 연동은 같은 실행 함수를 부르므로(FR-INT-001 AC-5) 같은 파라미터를 허용 목록에 더했습니다. **새 동작은 새 파라미터를 보낼 때만 켜집니다** — 보내지 않는 호출의 응답 모양과 값은 전과 같습니다. 예외는 둘입니다: History의 1,001번째 이후 페이지는 400이 아니라 200이고, 한 요청에 기한(120초)이 생겼습니다.
+
+| 자리 | 전 | 후 |
+|---|---|---|
+| `read.source.file`의 `offset` | 없음(`query_unknown_parameter`) | 선택. 보내면 본문의 한 창(최대 1 MiB)과 `offset`·`next_offset`(끝이면 `null`). 창은 줄바꿈 뒤, 줄이 창보다 길면 UTF-8 문자 경계에서 끊깁니다. 크기 상한은 GitHub API의 100MB뿐이며(넘으면 `too_large`), `size`·`sha`는 파일 전체의 크기와 blob SHA입니다. 파일 끝을 넘거나 문자 가운데를 가리키는 offset은 원본의 400 `INVALID_PARAMETER` |
+| `read.source.tree`의 `offset` | 없음 | 선택. 보내면 정렬한 목록(디렉터리 먼저, 이름 순)의 5,000개 페이지와 `tree_sha`·`offset`·`next_offset`·`total`. `truncated`는 GitHub가 목록을 잘랐을 때뿐입니다 |
+| `read.source.diff`의 `listing=tree`(`head` 필수, `base`·`after` 선택) | 없음 | 선택. 두 커밋의 트리를 직접 비교한 목록을 1,000개씩 주고 `listing: "tree"`·`next_after`를 싣습니다. `additions`·`deletions`·`previous_path`는 `null`, `pull_requests`는 빈 배열, `pull_requests_unavailable`은 `false`입니다. `pr`·`commit`·`page`·`related`와 섞으면 400 |
+| `read.source.diff`의 `related=all` | 없음 | 선택. commit 모드의 연결 PR을 다섯 개에서 자르지 않습니다 |
+| `read.source.history`의 `page` | 1~1000(1,001부터 400) | 1 이상. 1,000번째 페이지가 알린 `next_page: 1001`을 이제 읽을 수 있습니다 |
+| `SourceChange.additions`·`deletions` | `integer` | `integer` 또는 `null`(`listing=tree`에서만 `null`) |
+| `SourceComparison.pull_requests` | `maxItems: 5` | 상한 없음(`related=all`일 때만 5개를 넘습니다) |
+| 한 요청의 기한 | 없음 | 120초(`request_deadline_ms`). 넘으면 원본의 502 `SOURCE_UNAVAILABLE`입니다. PIPE가 연결을 끊으면 pr-search의 GHE 호출도 멈춥니다 |
+
+operation map의 `query_keys`와 `limits`(`tree_page_entries`·`tree_listing_page`·`window_bytes`·`blob_bytes_max`·`request_deadline_ms` 추가, History의 `page_max` 삭제)가 바뀌었으므로 계약 checksum이 바뀝니다. `protocol_version`은 `PSI-1.0` 그대로입니다 — D-21~D-23과 같이 선택 입력과 선택 응답 키를 더한 변경이고, History는 거절하던 요청을 받아들이는 완화입니다.
+
+**PIPE에 필요한 조치.** 새 파라미터를 보내지 않으면 응답은 전과 같습니다. 다만 예전 `read.source.diff`의 `truncated`로 목록의 완전성을 판단하고 있다면 주의하십시오 — GitHub는 변경 파일을 3,000개까지만 나열하고 그 페이지(30번째)에서 다음 링크를 주지 않으므로, 3,000개에서 잘린 목록도 `truncated: false`·`next_page: null`일 수 있습니다(DEV-793, 실제 GHES는 확인하지 못했습니다). 완전한 목록이 필요하면 30번째 페이지가 가득 찼는지(파일이 3,000개에 닿았는지)로 감지해 `listing=tree`로 이어 읽으십시오. 새 동작을 쓰려면 (1) `SourceTree`·`SourceFile`·`SourceComparison`·`SourceChange`를 엄격하게 검증하는 경우 새 키와 `null` 줄 수를 받도록 스키마를 갱신하고, (2) 창·페이지를 이어 읽을 때 앞 응답의 `revision`·`tree_sha`·`head`·`base`를 그대로 넘겨 다른 리비전과 섞이지 않게 하십시오. 합성 예시 `examples/read.source.file.200.window.json`·`read.source.tree.200.page.json`·`read.source.diff.200.tree-listing.json`을 더했습니다.
+
 ## 확인하지 못한 것
 
 | 항목 | 상태 | 이유 |

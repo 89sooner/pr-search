@@ -22,11 +22,11 @@
     "pipe-integration-v1.openapi.yaml",
     "operation-map.json"
   ],
-  "contract_checksum": "5bc607221ee392756e08bd97a937cc84556664b2ad51505223e86cf9088e5667",
+  "contract_checksum": "3b249508b0b2f593676b0b2e70349dbecf7f4ddf95cd6e87385bfb95ee5bdfe4",
   "files": [
     {
       "path": "CONTRACT_DIFF.md",
-      "sha256": "5a0b2dd4cc0b7ccb6b24324cb8cb702973ccbbb92bd8d81968f24bfa4c59f161",
+      "sha256": "909e5015a04ddb597a5e187930b27f25a294d2f203566183233b5ed1d18b955e",
       "role": "guide — 제안 계약 PSI-1.0과 구현의 차이"
     },
     {
@@ -195,8 +195,18 @@
       "role": "fixture — 합성 wire 예시"
     },
     {
+      "path": "examples/read.source.diff.200.tree-listing.json",
+      "sha256": "e4f5434bb1a4558deccd1ea02695edcdb3d02107f2311defa593c3f8a0aed764",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
       "path": "examples/read.source.file.200.json",
       "sha256": "f21cbdd5052b58d45a232b234ebc38322196fc79dcbaa286de935239d7a9d310",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.source.file.200.window.json",
+      "sha256": "697378c9a719832858f4ff20283588ecaa9a61a6cf7038b09ffb549d804a07ec",
       "role": "fixture — 합성 wire 예시"
     },
     {
@@ -215,18 +225,23 @@
       "role": "fixture — 합성 wire 예시"
     },
     {
+      "path": "examples/read.source.tree.200.page.json",
+      "sha256": "78f416746480a66438b6935613cb0e458814da5f64759e20403d0d329aa79896",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
       "path": "examples/read.source.tree.200.truncated.json",
       "sha256": "c06ab563d7c83b3b8187e98ce756d1e86c0e78e86106aea5bbc25805ea20ae4c",
       "role": "fixture — 합성 wire 예시"
     },
     {
       "path": "operation-map.json",
-      "sha256": "77da06fa6abb73359a20e83672d0074867bbd2608f53c842cdd19edd9dc24158",
+      "sha256": "45467f9b536cc7a7363df13976f5224ed332e1c128ebdf1334dd4bea497c6bf1",
       "role": "contract — operation ↔ 원본 조회·query key·상한·오류 코드 (정본)"
     },
     {
       "path": "pipe-integration-v1.openapi.yaml",
-      "sha256": "da17f720645071d3b38656ffbb635ccf8736e3b832cc19d0d6e646bed3d658bd",
+      "sha256": "2648ccc0fb12c79558f4f441f96e64064456b05e555ffa74b0ad44b57d8e9c78",
       "role": "contract — 경로·요청·응답·오류 스키마 (정본)"
     },
     {

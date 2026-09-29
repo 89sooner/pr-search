@@ -1,6 +1,6 @@
 # PR Search 화면 QA 체크리스트
 
-> 상태: review | 버전: v0.34 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.35 | 갱신일: 2026-09-29
 
 ## CR-131 작업 공간의 조건 변경 추천 (FR-SRCH-006 AC-3, W-001 `empty_no_result`)
 
@@ -90,6 +90,12 @@
 | QA-W001-43 | light/dark·키보드·모달 중첩/닫기·모바일·새 화면 axe 검사를 통과한다 | Chromium |
 | QA-W001-44 | 인증·저장소 범위가 GHE 호출보다 앞서고 응답 no-store·본문 비감사가 유지된다 | Source API |
 | QA-W001-50 | History 행이 연결 PR 번호를 표시·복사하고, 미확정·확정된 연결 없음·조회 불가를 서로 다르게 안내한다(CR-107) | 단위·통합·Chromium |
+| QA-W001-72 | 256KiB·4,000줄을 넘는 파일을 창으로 끝까지 읽어 Time-lapse 보기와 Diff에서 마지막 줄까지 보이고(가상 스크롤), 로딩 진행률·Cancel·Retry가 동작한다(CR-132) | 단위·통합·a11y·Chromium |
+| QA-W001-73 | 5,000개를 넘는 디렉터리를 「Show more entries」로 끝까지 연다 — 다음 페이지는 같은 트리 SHA다(CR-132) | 단위·통합·a11y·Chromium |
+| QA-W001-74 | 변경 파일이 3,000개에 닿으면 한계를 알리고 「Load the complete list」가 고정한 base·head의 트리 비교 목록을 끝까지 잇는다(줄 수 「—」)(CR-132) | 단위·통합·a11y·Chromium |
+| QA-W001-75 | Time-lapse가 모달 안에서 고정 SHA로 이전 리비전을 더 읽고, 30개를 넘는 범위를 작업 스레드에서 진행률·취소와 함께 분석하며, 비텍스트 리비전은 건너뛰고 이유를 밝힌다(CR-132) | 단위·a11y·Chromium |
+| QA-W001-76 | 정확한 비교가 예산을 넘으면 근사 정렬로 계속하고 알린다 — 계산 실패·취소를 「No differences」나 빈 Diff로 그리지 않는다(CR-132) | 단위·a11y |
+| QA-W001-77 | 사용자가 취소하거나 화면을 닫으면 웹 프록시·search-api·GHE 호출까지 멈추고 감사에 `CANCELLED`가 남는다(CR-132) | 단위·통합·Chromium |
 
 > CR-096 확인: 전체 Conductor 런타임 의존성 없음, 제품 고정 문구 영어, 저장소 원문은 보존, 모든 헤더 및 로그아웃 화면에 테마 버튼, 선호도 저장·새로고침·교차 탭·시스템 기본값·저장 차단 처리, Radix 포털 테마 일치, 입력 label/required, Escape·포커스 복귀, 모바일 탐색 drawer. 가상 데이터 Chromium 확인과 실 GHE/OIDC 검증을 구분한다.
 

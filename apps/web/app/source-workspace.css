@@ -131,3 +131,11 @@
 .source-line-disclaimer { border-top:1px solid var(--ui-border-subtle); padding-top:14px !important; margin-top:18px; }
 @media(max-width:1000px) { .source-time-layout { grid-template-columns:190px minmax(0,1fr); } .source-line-history { grid-column:1/-1; max-height:190px; border-top:1px solid var(--ui-border-default); } .source-diff-layout { grid-template-columns:190px minmax(0,1fr); } .source-time-toolbar { flex-wrap:wrap; } }
 @media(max-width:650px) { .source-modal.ui-dialog { width:100vw; height:100dvh; border-radius:0; translate:0 0 !important; } .source-modal-header { padding:12px; gap:8px; } .source-modal-header h2 { font-size:12px; } .source-mode-badge { display:none; } .source-diff-layout { display:flex; flex-direction:column; } .source-changed-files { max-height:150px; flex:none; border-bottom:1px solid var(--ui-border-default); } .source-diff-pane { flex:1; } .source-time-layout { display:flex; flex-direction:column; } .source-revisions { display:flex; gap:6px; max-height:150px; flex:none; } .source-revisions h3 { display:none; } .source-revisions button { min-width:180px; width:180px; } .source-time-code { flex:1; min-height:200px; } .source-line-history { max-height:180px; flex:none; } .source-history-header { padding:18px; } .source-history-header h1 { font-size:17px; } .source-find { margin-left:0; } }
+/* CR-132: long tables render only the rows near the viewport; every row keeps the one-line height the scroll math uses. */
+.source-virtual .source-context-expand { height:21px; padding:0 7px; line-height:21px; }
+.source-virtual-pad td { padding:0; border:0; }
+.source-list-limit { margin:12px 8px 0; padding:10px; border:1px solid var(--ui-border-default); border-radius:5px; background:var(--ui-surface-raised); color:var(--ui-text-secondary); font-size:11px; line-height:1.6; display:grid; gap:8px; }
+.source-list-limit p { margin:0; }
+.source-analysis-range select { padding:5px 8px; border:1px solid var(--ui-border-default); border-radius:5px; background:var(--ui-surface-raised); color:var(--ui-text-primary); font-size:11px; }
+.source-tree-more { border:0; background:none; padding:0; color:var(--ui-accent); font:inherit; cursor:pointer; text-align:left; }
+.source-tree-more:disabled { color:var(--ui-text-muted); cursor:default; }

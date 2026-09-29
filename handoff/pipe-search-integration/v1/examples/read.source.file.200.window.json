@@ -1,0 +1,35 @@
+{
+  "operation": "read.source.file",
+  "title": "큰 파일의 마지막 창 (CR-132)",
+  "captured": false,
+  "note": "합성 예시다. offset을 보내면 본문의 한 창(최대 1 MiB)과 다음 창의 바이트 위치(next_offset)를 받는다. 이 예시는 2 MiB를 조금 넘는 파일의 마지막 창이라 next_offset이 null이다. size·sha는 파일 전체의 크기와 blob SHA다. 같은 흐름은 통합 시험 integration/source/source-limits.test.ts가 가짜 GHE 위에서 끝까지 읽어 원문과 대조한다.",
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/file?path=src%2Fpay%2Fgenerated.c&revision=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&offset=2097152",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000026"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "path": "src/pay/generated.c",
+      "status": "text",
+      "text": "retry(3);\nreturn 0;\n",
+      "size": 2097172,
+      "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "reason": null,
+      "offset": 2097152,
+      "next_offset": null
+    }
+  }
+}

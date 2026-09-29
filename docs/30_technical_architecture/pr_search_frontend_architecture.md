@@ -1,6 +1,6 @@
 # PR Search 프론트엔드 아키텍처
 
-> 상태: review | 버전: v0.18 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.19 | 갱신일: 2026-09-29
 
 CR-131 / FR-SRCH-006 AC-3: 작업 공간의 0건 추천은 `lib/workspace-relaxation.ts`가 계획한다 — 후보의 `remove`를 파싱한 노드 하나를 두고, 그 노드에 값을 보탠 URL 파라미터·자유 텍스트 조건·SHA 서수 범위를 지우는 계획을 URL 상태 사본에 적용한 뒤 `buildRepositoryQuery`로 다시 조립한 AST가 「원래 AST − 그 노드」와 같고 지목 검사를 지날 때만 버튼(`WorkspaceRelaxationHints`)이 된다. 적용은 `RepositoryWorkspace`의 `navigate`와 SHA 범위 상태 초기화이고, 요청 키가 바뀌므로 커서를 버리고 첫 페이지부터 다시 부른다.
 
@@ -11,6 +11,8 @@ CR-109 / FR-REG-001 / W-024: `/regression`은 기존 GuardedPage(reader)와 Susp
 > CR-099: RepositoryWorkspace의 쿼리·기본 정렬·Label option 조립은 `lib/repository-search.ts`가 소유한다. 첫 페이지는 facets=true로 Label 후보를 받고 커서 페이지는 false로 호출하되 이전 facets를 유지한다. DatePicker는 기존 Radix Popover와 제품 토큰을 사용한다. 표의 PR 링크는 구성된 GHE base URL로 직접 열고 M number는 목록 DTO의 additive `merge_number*` 필드만 읽어 행별 조회를 만들지 않는다.
 
 > CR-097 / FR-SRC-001~004: components/source의 SourceTree·SourceHistory·SourceDialogs를 일반/기존 workspace와 PR·커밋 상세가 공유한다. useSource는 no-store·AbortController·선택 키로 응답을 격리한다. Diff는 jsdiff의 시간/편집량 한도 안에서 계산하며 Time-lapse는 Radix Slider, 최대30개 리비전·동시3개 요청의 명시적 분석을 사용한다. line alignment는 추정임을 표시한다. 소스는 React 텍스트로 렌더하고 지속 브라우저 저장소에 넣지 않는다.
+
+> CR-132 / FR-SRC-001~004: 파일은 `lib/source-client.ts`의 `loadFileText`가 창(`offset` → `next_offset`)을 끝까지 잇는다(뒤 창이 비텍스트면 파일 전체가 비텍스트다). 줄 diff와 Time-lapse 계보는 모듈 Worker(`lib/source-worker.ts`, `new Worker(new URL(…, import.meta.url), { type: "module" })`)에서 돌고 작업마다 새 Worker를 만들어 끝·취소 때 `terminate`한다. Worker가 없거나 시작하지 못하면 같은 함수(`lib/source-jobs.ts`)를 주 스레드에서 돌린다. 계산은 `lib/source-compute.ts` — 정확한 diff(jsdiff `diffArrays`, 2초·5만 줄)가 예산을 넘으면 patience 근사 정렬로 계속하고 결과는 `Int32Array` 행(종류·앞 줄·뒤 줄)이다. 계보는 노드 배열(부모·리비전·줄·종류·깊이)과 리비전별 줄 노드 `Int32Array`이며 Worker가 리비전을 직접 읽어 앞 리비전의 줄만 든다(한 분석 1억 5천만 셀 상한). 2,000행을 넘는 표는 21px 행 높이로 보이는 부분만 그린다(`components/source/hooks.ts`). 요청·계산은 모두 `AbortController`에 묶여 새 대상·닫기·Cancel에서 멈추고, 웹 프록시는 브라우저의 끊김(`request.signal`)을 search-api 요청에 전한다.
 
 > CR-096: 전체 웹 번들에서 Conductor 의존성을 제거한다. `components/ui/index.tsx`가 Radix와 시맨틱 HTML의 타입 있는 경계를 소유하고 화면은 기존 API·상태 로직을 유지한다. ThemeProvider는 html data-theme, localStorage `pr-search-theme`, 시스템 기본값, 다른 탭 변경을 동기화한다. 서버 안전 고정 bootstrap은 초기 색상 깜빡임을 줄인다. 사용자가 제공하는 문장을 변환하는 런타임 DOM 번역은 사용하지 않는다.
 

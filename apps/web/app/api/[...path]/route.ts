@@ -98,6 +98,8 @@ async function proxy(request: NextRequest, segments: readonly string[]): Promise
       // 리다이렉트를 따라가지 않는다 — 백엔드가 우리를 다른 곳으로 보낼 이유가 없다.
       redirect: 'manual',
       cache: 'no-store',
+      // 브라우저가 요청을 끊으면 search-api 요청도 끊는다 (CR-132) — search-api가 그 GHE 호출을 멈춘다.
+      signal: request.signal,
     });
   } catch {
     /*

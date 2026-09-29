@@ -91,7 +91,7 @@ export const INTEGRATION_OPERATIONS: readonly IntegrationOperation[] = [
     method: 'GET',
     path: '/read/source/:repository/tree',
     auth: 'mtls+grant',
-    queryKeys: ['ref', 'path', 'revision', 'tree_sha'],
+    queryKeys: ['ref', 'path', 'revision', 'tree_sha', 'offset'],
     original: { apiId: 'API-SRC-001', method: 'GET', path: '/api/v1/source/:repository/tree' },
   },
   {
@@ -109,7 +109,7 @@ export const INTEGRATION_OPERATIONS: readonly IntegrationOperation[] = [
     method: 'GET',
     path: '/read/source/:repository/diff',
     auth: 'mtls+grant',
-    queryKeys: ['pr', 'commit', 'page'],
+    queryKeys: ['pr', 'commit', 'page', 'related', 'listing', 'head', 'base', 'after'],
     original: { apiId: 'API-SRC-004', method: 'GET', path: '/api/v1/source/:repository/diff' },
   },
   {
@@ -118,7 +118,7 @@ export const INTEGRATION_OPERATIONS: readonly IntegrationOperation[] = [
     method: 'GET',
     path: '/read/source/:repository/file',
     auth: 'mtls+grant',
-    queryKeys: ['path', 'revision'],
+    queryKeys: ['path', 'revision', 'offset'],
     original: { apiId: 'API-SRC-003', method: 'GET', path: '/api/v1/source/:repository/file' },
   },
 ];

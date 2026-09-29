@@ -87,3 +87,51 @@ describe('DoD 4: 실시간 요청이 백필보다 먼저 슬롯을 받는다', (
     await expect(scheduler.run('realtime', async () => 'ok')).resolves.toBe('ok');
   });
 });
+
+describe('CR-132 FR-SRC-003: 슬롯을 기다리는 호출은 취소되면 줄에서 빠진다', () => {
+  it('이미 끊긴 신호는 슬롯을 잡지 않고 그 사유로 거절한다', async () => {
+    const scheduler = new RequestScheduler({ maxConcurrent: 1 });
+    const controller = new AbortController();
+    controller.abort(new Error('closed'));
+    let ran = false;
+    await expect(scheduler.run('realtime', async () => { ran = true; }, controller.signal)).rejects.toThrow('closed');
+    expect(ran).toBe(false);
+    expect(scheduler.inFlight).toBe(0);
+    expect(scheduler.queued).toBe(0);
+  });
+
+  it('기다리다 끊기면 줄에서 빠지고, 뒤의 호출은 순서대로 슬롯을 받는다', async () => {
+    const scheduler = new RequestScheduler({ maxConcurrent: 1 });
+    const blocker = deferred();
+    const order: string[] = [];
+    const held = scheduler.run('realtime', async () => { await blocker.promise; });
+    await new Promise((r) => setTimeout(r, 5));
+    const controller = new AbortController();
+    const cancelled = scheduler.run('realtime', async () => { order.push('cancelled'); }, controller.signal);
+    const after = scheduler.run('realtime', async () => { order.push('after'); });
+    expect(scheduler.queued).toBe(2);
+    controller.abort(new Error('user left'));
+    await expect(cancelled).rejects.toThrow('user left');
+    expect(scheduler.queued).toBe(1);
+    blocker.resolve();
+    await Promise.all([held, after]);
+    expect(order).toEqual(['after']);
+    expect(scheduler.inFlight).toBe(0);
+  });
+
+  it('슬롯을 넘겨받은 뒤의 취소는 거절하지 않는다 — 작업이 돌고 슬롯을 돌려준다', async () => {
+    const scheduler = new RequestScheduler({ maxConcurrent: 1 });
+    const blocker = deferred();
+    const held = scheduler.run('realtime', async () => { await blocker.promise; });
+    await new Promise((r) => setTimeout(r, 5));
+    const controller = new AbortController();
+    const waiting = scheduler.run('realtime', async () => {
+      controller.abort(new Error('late'));
+      return 'ran';
+    }, controller.signal);
+    blocker.resolve();
+    await held;
+    await expect(waiting).resolves.toBe('ran');
+    expect(scheduler.inFlight).toBe(0);
+  });
+});

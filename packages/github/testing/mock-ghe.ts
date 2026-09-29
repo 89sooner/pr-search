@@ -12,6 +12,7 @@
 import { createServer, type Server } from 'node:http';
 import { generateKeyPairSync } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
+import { handleMockSource, type MockRawRead, type MockSourceOptions, type MockSourceRepository } from './mock-source.js';
 
 /**
  * `GET /pulls/{n}/commits`가 한 PR에 대해 돌려주는 최대 건수 (CR-116).
@@ -80,6 +81,11 @@ export interface MockGheOptions {
   readonly capCommitListAtApiLimit?: boolean;
   /** 특정 자원만 실패시킨다. 부분 보강 시험용. */
   readonly failures?: readonly ResourceFailure[];
+  /**
+   * source 조회용 저장소 (CR-132, `mock-source.ts`). 주면 그 저장소의 경로를 Git 객체 저장소로 답한다 — 다른 경로와
+   * 기존 시험의 응답은 그대로다.
+   */
+  readonly source?: MockSourceOptions & { readonly repositories: readonly MockSourceRepository[] };
 }
 
 export type MockResource = 'pull_request' | 'commits' | 'files' | 'reviews';
@@ -95,6 +101,8 @@ export interface ReceivedRequest {
   readonly method: string;
   readonly path: string;
   readonly authorization: string | undefined;
+  /** 요청의 `Accept` (CR-132 — 원시·object 미디어 타입을 확인한다). */
+  readonly accept?: string | undefined;
 }
 
 export interface MockGhe {
@@ -104,6 +112,8 @@ export interface MockGhe {
   readonly tokenIssueCount: () => number;
   /** 지금까지 발급한 토큰 값. redaction 시험에서 "이 값이 로그에 없는가"를 본다. */
   readonly issuedTokens: () => readonly string[];
+  /** 원시 본문 응답마다 보낸 바이트와 받는 쪽이 끊었는지 (CR-132). */
+  readonly rawReads: () => readonly MockRawRead[];
   close(): Promise<void>;
 }
 
@@ -186,6 +196,7 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
   let secondaryLeft = options.secondaryLimitTimes ?? 0;
   let unauthorizedLeft = options.unauthorizedTimes ?? 0;
   let dataRequestCount = 0;
+  const rawReads: MockRawRead[] = [];
 
   const commits = makeCommits(options.resources?.commits ?? 0);
   /**
@@ -223,6 +234,7 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
       method: request.method ?? 'GET',
       path,
       authorization: request.headers.authorization,
+      accept: request.headers.accept,
     });
 
     const send = (status: number, body: unknown, headers: Record<string, string> = {}): void => {
@@ -277,6 +289,9 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
       send(403, { message: 'API rate limit exceeded' }, rateHeaders);
       return;
     }
+
+    // --- source 저장소 (CR-132) ---
+    if (options.source !== undefined && handleMockSource(options.source.repositories, request, response, options.source, rawReads, rateHeaders)) return;
 
     // --- 데이터 엔드포인트 ---
     const url = new URL(path, 'http://localhost');
@@ -381,6 +396,7 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
     requests,
     tokenIssueCount: () => tokenIssueCount,
     issuedTokens: () => issuedTokens,
+    rawReads: () => rawReads,
     close: async (): Promise<void> => {
       await new Promise<void>((resolve) => {
         server.closeAllConnections();

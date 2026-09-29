@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.83 | 갱신일: 2026-09-29
+> 상태: review | 버전: v2.85 | 갱신일: 2026-09-29
+
+## WP-113 Diff·Time-lapse·파일 트리의 총량 제한 해소 (CR-132)
+
+- 요구사항: `FR-SRC-001` AC-4, `FR-SRC-002` AC-2, `FR-SRC-003` AC-4·AC-5, `FR-SRC-004` AC-2(변경), `API-SRC-001`~`004`·`API-INT-011`~`014`(선택 입력·키). 선행: WP-085(source 조사, CR-097), WP-097(PIPE 연동), WP-110(공통 오류 처리).
+- 범위: (1) `packages/github` — 전송의 요청별 `accept`·`signal`·`timeoutMs`, `getRawWindow`, 원시 읽기 동시 상한, 스케줄러 대기 취소, 리더의 object 메타·blob 창·연결 PR 페이지. (2) `apps/search-api/src/source` — `file`·`tree`의 `offset`, `diff`의 `listing=tree`(`tree-diff.ts`)·`related=all`, History 페이지 상한 제거, 요청 기한·연결 끊김·감사. (3) `apps/web` — `lib/source-client`·`source-compute`·`source-jobs`·`source-worker`·`source-compute-client`, `components/source/hooks.ts`·`SourceDialogs`·`SourceTree`·`SourceHistory`·`api.ts`, 웹 프록시의 취소 전달, CSS. (4) PIPE — 허용 목록·OpenAPI·operation map·예시·manifest·D-25. (5) 시험 — 단위(전송·스케줄러·service·경로·트리 비교·계산·작업), GHE 대역(`mock-source.ts`) 위 실제 전송 통합, PIPE 적합성, a11y. (6) 문서 — SRS·용어집·매트릭스·화면 상태·QA·API 계약·백엔드·프런트엔드·보안·RUNBOOK.
+- 제외: 파라미터 없는 예전 호출의 상한, 트리 비교의 줄 수·이름 변경, 100MB 초과·바이트 범위(GitHub 한계), 하위 파일명 검색(기능 C), GraphQL blame(기능 D), Release 발행, 사내 적용.
+- 완료 기준: 수정 전 코드에서 같은 GHE 대역·자료로 큰 파일·큰 디렉터리·3,000개 초과 변경·160 리비전 Time-lapse가 막히는 것을 실제 화면으로 먼저 본다. 수정 뒤에는 실제 web → 웹 프록시 → search-api(실제 GitHubTransport) → GHE 대역에서 5MB·20만 줄 파일의 마지막 줄, 12,375개 디렉터리의 마지막 항목, 3,603개 변경의 마지막 파일에 닿고, 160개 리비전을 모두 읽어 분석하며, 취소가 GHE 전송까지 끊고 재시작이 끝까지 간다. Diff 계산에 실제 Worker가 생긴다. 분석 실패·취소를 「변경 없음」으로 그리지 않는다. 새 시험은 변이로 죽는 것을 본다.
+- 상태: in_progress — 브랜치 `feature/cr132-source-limits`. 검증은 원장 6.123장이다.
 
 ## WP-112 작업 공간의 조건 변경 추천 (CR-131)
 
@@ -8,7 +16,7 @@
 - 범위: (1) `apps/web/lib/workspace-relaxation.ts` — 후보를 화면 조작으로 옮기는 계획과 자기 대조(다시 조립한 AST = 원래 AST − 그 노드, 지목 검사). (2) `apps/web/components/WorkspaceRelaxationHints.tsx` — 버튼과 불완전·상한 잘림 안내. (3) `RepositoryWorkspace.tsx`·`repository-workspace.css` — 응답의 세 키, 적용(`navigate`·SHA 범위 상태), 버튼 줄. (4) 시험 — 모듈 단위, 작업 공간 컴포넌트(a11y). (5) 문서 — 매트릭스·화면 상태·컴포넌트·와이어프레임·프런트엔드·QA.
 - 제외: 레거시 화면의 후보 표시, 서버 후보 계산·상한, Release 발행, 사내 적용.
 - 완료 기준: 수정 전 코드에서 서버가 후보를 돌려주는데 작업 공간이 그리지 않음을 실제 화면으로 먼저 본다. 수정 뒤에는 실제 web → search-api → 격리 데이터에서 후보 버튼을 하나씩 눌러 다시 검색한 실제 건수가 버튼의 `would_yield`와 모두 같고, 그 조건만 URL·입력·트리 선택·SHA 범위에서 사라지며, 화면·탭 조건은 버튼이 아니고, 불완전하면 안내가 붙는다. 변이로 새 시험이 대상을 거는지 확인하고, Node 22 전 계층 게이트와 독립 리뷰를 통과한다.
-- 상태: in_progress — 브랜치 `fix/cr131-workspace-relaxation`. 검증은 원장 6.122장이다.
+- 상태: done — main `c33ea25`(PR #255 squash 병합, 2026-09-29). 검증·병합 판정은 원장 6.122장이다.
 
 ## WP-111 구간 조회의 `kind:` 거절 (CR-130)
 
@@ -250,7 +258,8 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
-| WP-112 | 작업 공간의 조건 변경 추천 | 범위 공백 보완 (CR-131) | WP-087, WP-096, WP-109 | in_progress — 브랜치 `fix/cr131-workspace-relaxation`, 원장 6.122장 |
+| WP-113 | Diff·Time-lapse·파일 트리의 총량 제한 해소 | 요구사항 변경 + correction (CR-132) | WP-085, WP-097, WP-110 | in_progress — 브랜치 `feature/cr132-source-limits`, 원장 6.123장 |
+| WP-112 | 작업 공간의 조건 변경 추천 | 범위 공백 보완 (CR-131) | WP-087, WP-096, WP-109 | done — main `c33ea25`(PR #255), 원장 6.122장 |
 | WP-111 | 구간 조회의 `kind:` 거절 | 구현 결함 수정 + 요구사항 보완 (CR-130) | WP-023, WP-110 | done — main `5850232`(PR #254), 원장 6.121장 |
 | WP-110 | 처리되지 않은 오류의 공통 처리 | 구현 결함 수정 (CR-129) | WP-013, WP-015, WP-097, WP-109 | done — main `e581b52`(PR #253), 원장 6.120장 |
 | WP-109 | 0건 검색의 완화 후보와 `kind:` 재해석 | 구현 결함 수정 + 요구사항 보완 (CR-128) | WP-013, WP-016, WP-037, WP-097 | done — main `d602890`(PR #251), 원장 6.119장 |
