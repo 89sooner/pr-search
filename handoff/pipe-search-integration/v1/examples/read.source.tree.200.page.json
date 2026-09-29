@@ -1,0 +1,50 @@
+{
+  "operation": "read.source.tree",
+  "title": "큰 디렉터리의 둘째 페이지 (CR-132)",
+  "captured": false,
+  "note": "합성 예시다. offset을 보내면 정렬한 목록(디렉터리 먼저, 이름 순)의 5,000개 페이지를 받는다. 다음 페이지는 응답의 revision·tree_sha와 next_offset으로 청하며, truncated는 GitHub가 목록을 잘랐을 때뿐이다. 이 예시는 5,002개 디렉터리의 마지막 페이지다.",
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/tree?revision=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&tree_sha=cccccccccccccccccccccccccccccccccccccccc&path=vendor&offset=5000",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000027"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "path": "vendor",
+      "entries": [
+        {
+          "path": "vendor/zlib.c",
+          "name": "zlib.c",
+          "sha": "dddddddddddddddddddddddddddddddddddddddd",
+          "kind": "file",
+          "size": 120
+        },
+        {
+          "path": "vendor/zstd.c",
+          "name": "zstd.c",
+          "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "kind": "file",
+          "size": 98
+        }
+      ],
+      "truncated": false,
+      "tree_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "offset": 5000,
+      "next_offset": null,
+      "total": 5002
+    }
+  }
+}

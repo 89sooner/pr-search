@@ -487,7 +487,9 @@ paths:
         path: /api/v1/source/{repository}/tree
       tags: [read]
       summary: source 트리 (원본 API-SRC-001 실행)
-      description: 접근 범위를 확인한 뒤에만 GHE를 부른다. 5000 항목 상한이며 넘으면 `truncated`가 참이다. 범위 밖·미등록은 404다.
+      description: >-
+        접근 범위를 확인한 뒤에만 GHE를 부른다. 범위 밖·미등록은 404다. `offset`을 보내지 않으면 예전처럼 앞 5000 항목에서 자르고
+        넘으면 `truncated`가 참이다. `offset`을 보내면(CR-132) 정렬한 목록의 5000개 페이지이며 `next_offset`으로 끝까지 읽는다.
       parameters:
         - $ref: '#/components/parameters/UpstreamCorrelationId'
         - $ref: '#/components/parameters/Repository'
@@ -498,6 +500,15 @@ paths:
           in: query
           required: false
           description: 하위 트리의 40자 hex. `revision`과 함께 있어야 한다. `path`가 있으면 필수다.
+          schema:
+            type: string
+        - name: offset
+          in: query
+          required: false
+          description: >-
+            CR-132. 음이 아닌 정수(앞자리 0 금지). 보내면 정렬한 목록(디렉터리 먼저, 이름 순)의 [offset, offset+5000) 페이지이고 응답에
+            `tree_sha`·`offset`·`next_offset`·`total`이 있다. 다음 페이지는 응답의 `revision`·`tree_sha`와 `next_offset`으로 청한다.
+            목록 끝을 넘는 offset은 400이다.
           schema:
             type: string
       responses:
@@ -529,7 +540,7 @@ paths:
         - name: page
           in: query
           required: false
-          description: 1~1000, 기본 1. 빈 값·정수 아님은 400.
+          description: 1 이상, 기본 1. 빈 값·정수 아님은 400. CR-132 전에는 1000이 상한이었다(50,000번째 커밋 뒤를 못 읽었다).
           schema:
             type: string
       responses:
@@ -552,7 +563,11 @@ paths:
         path: /api/v1/source/{repository}/diff
       tags: [read]
       summary: 변경 비교 (원본 API-SRC-004 실행)
-      description: '`pr`과 `commit` 중 정확히 하나. 페이지마다 파일 100개, 30페이지까지. PR 비교는 merge-base 기준이며 조회 전후 base/head가 움직이면 원본의 `SOURCE_CHANGED` 409다.'
+      description: >-
+        `pr`과 `commit` 중 정확히 하나. 페이지마다 파일 100개, 30페이지까지(GitHub의 3000개 상한). PR 비교는 merge-base 기준이며 조회
+        전후 base/head가 움직이면 원본의 `SOURCE_CHANGED` 409다. CR-132: `related=all`은 연결 PR을 다섯 개에서 자르지 않는다.
+        `listing=tree`는 `pr`·`commit` 대신 고정한 `head`·`base`의 트리를 직접 비교한 목록이다(3000개를 넘는 변경을 끝까지,
+        줄 수·이름 변경 없음).
       parameters:
         - $ref: '#/components/parameters/UpstreamCorrelationId'
         - $ref: '#/components/parameters/Repository'
@@ -572,6 +587,39 @@ paths:
           in: query
           required: false
           description: 1~30, 기본 1.
+          schema:
+            type: string
+        - name: related
+          in: query
+          required: false
+          description: CR-132. `all`만 받는다. commit 모드의 연결 PR을 다섯 개에서 자르지 않고 모두 준다(GitHub 페이지를 끝까지 읽는다).
+          schema:
+            type: string
+        - name: listing
+          in: query
+          required: false
+          description: >-
+            CR-132. `tree`만 받는다. `head`(필수)와 `base`(선택, 없으면 빈 트리)의 트리를 직접 비교한 변경 목록이다 — 페이지마다
+            1000개, `next_after`로 이어 읽는다. `pr`·`commit`·`page`·`related`와 함께 쓰면 400이다. `additions`·`deletions`·
+            `previous_path`는 null, `pull_requests`는 늘 빈 배열이다(관련 PR은 일반 비교 응답의 것).
+          schema:
+            type: string
+        - name: head
+          in: query
+          required: false
+          description: '`listing=tree`에서만. 40자 hex 커밋 SHA — 일반 비교 응답의 `head`를 그대로 넘긴다.'
+          schema:
+            type: string
+        - name: base
+          in: query
+          required: false
+          description: '`listing=tree`에서만. 40자 hex 커밋 SHA — 일반 비교 응답의 `base`. 없으면 빈 트리와 비교한다(루트 커밋).'
+          schema:
+            type: string
+        - name: after
+          in: query
+          required: false
+          description: '`listing=tree`에서만. 직전 응답의 `next_after`(경로). 비어 있지 않고 4096자 이하.'
           schema:
             type: string
       responses:
@@ -594,7 +642,10 @@ paths:
         path: /api/v1/source/{repository}/file
       tags: [read]
       summary: 특정 리비전의 파일 (원본 API-SRC-003 실행)
-      description: '256KiB·4000줄·UTF-8 한도. 넘으면 200 `status: too_large`다. 없는 path는 revision이 실제로 있을 때만 `missing`이다.'
+      description: >-
+        `offset`을 보내지 않으면 256KiB·4000줄·UTF-8 한도이고 넘으면 200 `status: too_large`다. `offset`을 보내면(CR-132) 본문의 한
+        창(최대 1 MiB)이고 `next_offset`으로 끝까지 이어 읽는다 — 크기 상한은 GitHub API의 100MB뿐이다. 없는 path는 revision이
+        실제로 있을 때만 `missing`이다.
       parameters:
         - $ref: '#/components/parameters/UpstreamCorrelationId'
         - $ref: '#/components/parameters/Repository'
@@ -608,6 +659,14 @@ paths:
           in: query
           required: true
           description: 40자 hex 커밋 SHA.
+          schema:
+            type: string
+        - name: offset
+          in: query
+          required: false
+          description: >-
+            CR-132. 음이 아닌 정수(앞자리 0 금지), 바이트 위치. 0부터 시작하고 이어서는 직전 응답의 `next_offset`을 넘긴다. 창은 줄바꿈
+            뒤(줄이 창보다 길면 UTF-8 문자 경계)에서 끊긴다. 파일 끝을 넘거나 문자 가운데를 가리키면 400이다.
           schema:
             type: string
       responses:
@@ -3427,7 +3486,9 @@ components:
       description: >-
         GET /api/v1/source/{repository}/tree 200 본문(correlation_id 없음). ref는 요청 ref, 없으면 기본 브랜치 이름이고
         tree_sha로 하위 디렉터리를 펼칠 때는 요청 ref 또는 revision이다. revision은 고정된 40자 커밋 SHA다. entries는 최대
-        5000개이며 디렉터리 먼저, 이름 순이다. GitHub가 잘랐거나 5000개를 넘으면 truncated true.
+        5000개이며 디렉터리 먼저, 이름 순이다. offset을 보내지 않으면 GitHub가 잘랐거나 5000개를 넘을 때 truncated true다.
+        offset을 보내면(CR-132) 정렬한 목록의 한 페이지이고 tree_sha·offset·next_offset·total이 있으며 truncated는 GitHub가
+        목록을 잘랐을 때뿐이다.
         (근거: packages/contracts/src/source.ts:3, apps/search-api/src/source/service.ts:20-35)
       required: [repository, ref, revision, path, entries, truncated]
       additionalProperties: false
@@ -3450,6 +3511,22 @@ components:
             $ref: '#/components/schemas/SourceEntry'
         truncated:
           type: boolean
+        tree_sha:
+          type: string
+          pattern: '^[0-9a-fA-F]{40}$'
+          description: CR-132 — offset을 보낸 요청에만. 나열한 디렉터리의 트리 SHA(다음 페이지를 이것으로 청한다).
+        offset:
+          type: integer
+          minimum: 0
+          description: CR-132 — offset을 보낸 요청에만. 이 페이지의 시작 위치.
+        next_offset:
+          type: [integer, 'null']
+          minimum: 0
+          description: CR-132 — offset을 보낸 요청에만. 다음 페이지의 offset, 끝이면 null.
+        total:
+          type: integer
+          minimum: 0
+          description: CR-132 — offset을 보낸 요청에만. 이 디렉터리의 전체 항목 수.
 
     SourceEntry:
       type: object
@@ -3554,8 +3631,9 @@ components:
       description: >-
         GET /api/v1/source/{repository}/file 200 본문(correlation_id 없음). 미리보기를 못 해도 200이며 status와 reason이 그
         이유를 말한다. status가 text일 때만 text가 문자열이고 reason이 null이다. 그 밖(missing·binary·too_large·unsupported)은
-        text가 null이고 reason이 영어 문장이다. missing은 그 revision에 경로가 없을 때이며 size·sha도 null이다. 크기 상한
-        256 KiB·4000줄.
+        text가 null이고 reason이 영어 문장이다. missing은 그 revision에 경로가 없을 때이며 size·sha도 null이다. offset을 보내지
+        않으면 크기 상한 256 KiB·4000줄이다. offset을 보내면(CR-132) text는 본문의 한 창(최대 1 MiB)이고 offset·next_offset이
+        있으며, size·sha는 파일 전체의 크기와 blob SHA다. 그때 too_large는 GitHub API의 100MB 한계뿐이다.
         (근거: packages/contracts/src/source.ts:8, apps/search-api/src/source/service.ts:8-9, apps/search-api/src/source/service.ts:104-124)
       required: [repository, revision, path, status, text, size, sha, reason]
       additionalProperties: false
@@ -3578,6 +3656,14 @@ components:
           type: [string, 'null']
         reason:
           type: [string, 'null']
+        offset:
+          type: integer
+          minimum: 0
+          description: CR-132 — offset을 보낸 요청에만. 이 창의 시작 바이트.
+        next_offset:
+          type: [integer, 'null']
+          minimum: 0
+          description: CR-132 — offset을 보낸 요청에만. 다음 창의 시작 바이트, 끝이거나 text가 아니면 null.
       if:
         properties:
           status:
@@ -3599,9 +3685,10 @@ components:
       type: object
       description: >-
         GET /api/v1/source/{repository}/diff 200 본문(correlation_id 없음). pr 모드는 merge-base..head, commit 모드는 첫 부모..
-        커밋(부모가 없으면 base null)이다. pull_requests는 pr 모드면 그 PR 하나, commit 모드면 연결 PR 최대 5개다.
-        pull_requests_unavailable은 계약 타입에서는 선택이지만 코드는 언제나 싣는다(pr 모드는 언제나 false). page 30에서
-        멈추며 더 있으면 next_page null에 truncated true.
+        커밋(부모가 없으면 base null)이다. pull_requests는 pr 모드면 그 PR 하나, commit 모드면 연결 PR 최대 5개다(related=all이면
+        전부, CR-132). pull_requests_unavailable은 계약 타입에서는 선택이지만 코드는 언제나 싣는다(pr 모드는 언제나 false). page
+        30에서 멈추며 더 있으면 next_page null에 truncated true. listing=tree(CR-132)는 두 트리를 직접 비교한 목록이다 — listing·
+        next_after가 있고, truncated는 GitHub가 디렉터리 목록을 잘랐다는 뜻, pull_requests는 빈 배열이다.
         (근거: packages/contracts/src/source.ts:9-11, apps/search-api/src/source/service.ts:125-150)
       required: [repository, base, head, commit, files, next_page, truncated, pull_requests, pull_requests_unavailable]
       additionalProperties: false
@@ -3626,17 +3713,24 @@ components:
           type: boolean
         pull_requests:
           type: array
-          maxItems: 5
           items:
             $ref: '#/components/schemas/SourcePullRequest'
         pull_requests_unavailable:
           type: boolean
+        listing:
+          type: string
+          const: tree
+          description: CR-132 — listing=tree 응답에만.
+        next_after:
+          type: [string, 'null']
+          description: CR-132 — listing=tree 응답에만. 다음 페이지의 after(경로), 끝이면 null.
 
     SourceChange:
       type: object
       description: >-
         변경 파일 하나. status는 GitHub 파일 status 원문이다(코드가 값을 제한하지 않는다). previous_path는 GitHub가
-        previous_filename을 줄 때만 문자열이다.
+        previous_filename을 줄 때만 문자열이다. listing=tree(CR-132)에서는 status가 added·removed·modified이고
+        previous_path·additions·deletions가 null이다(트리 비교는 줄 수와 이름 변경을 모른다).
         (근거: packages/contracts/src/source.ts:9, apps/search-api/src/source/service.ts:148,
         packages/github/src/source-reader.ts:7)
       required: [path, previous_path, status, additions, deletions]
@@ -3649,9 +3743,9 @@ components:
         status:
           type: string
         additions:
-          type: integer
+          type: [integer, 'null']
         deletions:
-          type: integer
+          type: [integer, 'null']
 
     SourcePullRequest:
       type: object

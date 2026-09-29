@@ -239,11 +239,13 @@
       "method": "GET",
       "path": "/internal/integrations/pipe/v1/read/source/{repository}/tree",
       "auth": "mtls+grant",
-      "query_keys": ["ref", "path", "revision", "tree_sha"],
+      "query_keys": ["ref", "path", "revision", "tree_sha", "offset"],
       "original": { "api_id": "API-SRC-001", "method": "GET", "path": "/api/v1/source/{repository}/tree" },
       "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
       "limits": {
-        "entries_max": 5000
+        "entries_max": 5000,
+        "tree_page_entries": 5000,
+        "request_deadline_ms": 120000
       },
       "integration_error_codes": [
         "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
@@ -264,7 +266,7 @@
       "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
       "limits": {
         "commits_per_page": 50,
-        "page_max": 1000
+        "request_deadline_ms": 120000
       },
       "integration_error_codes": [
         "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
@@ -280,12 +282,14 @@
       "method": "GET",
       "path": "/internal/integrations/pipe/v1/read/source/{repository}/diff",
       "auth": "mtls+grant",
-      "query_keys": ["pr", "commit", "page"],
+      "query_keys": ["pr", "commit", "page", "related", "listing", "head", "base", "after"],
       "original": { "api_id": "API-SRC-004", "method": "GET", "path": "/api/v1/source/{repository}/diff" },
       "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
       "limits": {
         "files_per_page": 100,
-        "page_max": 30
+        "page_max": 30,
+        "tree_listing_page": 1000,
+        "request_deadline_ms": 120000
       },
       "integration_error_codes": [
         "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
@@ -301,12 +305,15 @@
       "method": "GET",
       "path": "/internal/integrations/pipe/v1/read/source/{repository}/file",
       "auth": "mtls+grant",
-      "query_keys": ["path", "revision"],
+      "query_keys": ["path", "revision", "offset"],
       "original": { "api_id": "API-SRC-003", "method": "GET", "path": "/api/v1/source/{repository}/file" },
       "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
       "limits": {
         "file_bytes_max": 262144,
-        "file_lines_max": 4000
+        "file_lines_max": 4000,
+        "window_bytes": 1048576,
+        "blob_bytes_max": 104857600,
+        "request_deadline_ms": 120000
       },
       "integration_error_codes": [
         "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",

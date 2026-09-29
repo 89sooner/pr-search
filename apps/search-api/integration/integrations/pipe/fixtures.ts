@@ -515,9 +515,12 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
         if (method === 'commit') return { sha: SHA, tree: { sha: 'c'.repeat(40) }, parents: [], message: 'm', author: { name: 'a' } };
         if (method === 'tree') return { tree: [{ path: 'README.md', type: 'blob', mode: '100644', sha: SHA, size: 5 }] };
         if (method === 'content') return { type: 'file', size: 6, sha: SHA, encoding: 'base64', content: Buffer.from('hello\n').toString('base64') };
+        // CR-132: offset을 보낸 파일 읽기의 메타(object 미디어 타입). 1MB 이하라 본문이 함께 온다.
+        if (method === 'contentObject') return { type: 'file', size: 6, sha: SHA, encoding: 'base64', content: Buffer.from('hello\n').toString('base64') };
         if (method === 'history') return { body: [{ sha: SHA, parents: [], commit: { message: 'm', author: { name: 'A', date: '2026-08-19T04:00:00Z' }, committer: { date: '2026-08-19T04:00:00Z' } } }], nextPage: null };
         if (method === 'changes') return { body: [{ filename: 'src/pay/retry.ts', status: 'modified', additions: 3, deletions: 1 }], nextPage: null };
         if (method === 'pullRequestsForCommit') return [{ number: 1, title: '결제 재시도', body: null }];
+        if (method === 'pullRequestsForCommitPage') return { body: [{ number: 1, title: '결제 재시도', body: null }], nextPage: null };
         return {};
       },
     },

@@ -20,7 +20,8 @@ import { DEFAULT_RESOLVE_LIMIT } from '../../resolve/service.js';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from '../../repositories/overview.js';
 import { SEARCH_TIMEOUT_MS } from '../../search/routes.js';
 import { DEFAULT_SIZE, MAX_SIZE, TRACK_TOTAL_HITS } from '../../search/service.js';
-import { SOURCE_MAX_BYTES, SOURCE_MAX_ENTRIES, SOURCE_MAX_LINES } from '../../source/service.js';
+import { GITHUB_BLOB_MAX_BYTES, SOURCE_MAX_BYTES, SOURCE_MAX_ENTRIES, SOURCE_MAX_LINES, SOURCE_TREE_DIFF_PAGE, SOURCE_TREE_PAGE_ENTRIES, SOURCE_WINDOW_BYTES } from '../../source/service.js';
+import { SOURCE_REQUEST_DEADLINE_MS } from '../../source/routes.js';
 import { CLOCK_SKEW_SECONDS, MAX_ASSERTION_LENGTH, MAX_ASSERTION_TTL_SECONDS } from './assertion.js';
 import { PROTOCOL_VERSION, PSI_ERRORS, PSI_ERROR_CODES } from './errors.js';
 import { EXPIRED_DIAGNOSTIC_WINDOW_SECONDS, GRANT_TOKEN_PREFIX, GRANT_TTL_SECONDS } from './grant-store.js';
@@ -319,6 +320,12 @@ describe('operation-map.json이 코드와 같다', () => {
     entries_max: SOURCE_MAX_ENTRIES,
     file_bytes_max: SOURCE_MAX_BYTES,
     file_lines_max: SOURCE_MAX_LINES,
+    // CR-132: 이어 읽기의 한 번 양·원천 한계·한 요청의 기한.
+    tree_page_entries: SOURCE_TREE_PAGE_ENTRIES,
+    tree_listing_page: SOURCE_TREE_DIFF_PAGE,
+    window_bytes: SOURCE_WINDOW_BYTES,
+    blob_bytes_max: GITHUB_BLOB_MAX_BYTES,
+    request_deadline_ms: SOURCE_REQUEST_DEADLINE_MS,
   };
   const OPERATION_LIMITS: Record<string, Record<string, number>> = {
     'read.repositories': { limit_default: DEFAULT_PAGE_SIZE, limit_max: MAX_PAGE_SIZE },

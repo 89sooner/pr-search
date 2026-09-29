@@ -255,7 +255,7 @@ export async function sourceTreeComparison(reader: GitHubSourceReader, ref: Repo
       return { entries: listing.tree.map(item => ({ name: item.path, type: kind(item.type), mode: item.mode, sha: item.sha })), truncated: listing.truncated === true };
     },
   }, baseTree, headCommit.tree.sha, { after: input.after, limit: SOURCE_TREE_DIFF_PAGE, ...(options.signal ? { signal: options.signal } : {}) });
-  return { repository: `${ref.owner}/${ref.repo}`, base: input.base, head: input.head, commit: gitCommit(headCommit), pull_requests: [],
+  return { repository: `${ref.owner}/${ref.repo}`, base: input.base, head: input.head, commit: gitCommit(headCommit), pull_requests: [], pull_requests_unavailable: false,
     files: page.changes.map(change => ({ path: change.path, previous_path: null, status: change.status, additions: null, deletions: null })),
     next_page: null, truncated: page.incomplete, listing: 'tree', next_after: page.after };
 }

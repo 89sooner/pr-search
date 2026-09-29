@@ -132,6 +132,13 @@ describe('PSI-F01 실제 응답이 OpenAPI 스키마에 맞는다', () => {
     ['read.source.diff', `/read/source/acme%2Fpayments/diff?commit=${SHA}`],
     ['read.source.file', `/read/source/acme%2Fpayments/file?path=src%2Fpay%2Fretry.ts&revision=${SHA}`],
     ['read.source.file', `/read/source/acme%2Fpayments/file?path=..%2Fsecret&revision=${SHA}`],
+    // CR-132: 새 파라미터를 보낸 응답도 엄격 스키마에 맞는다(선택 키·null 줄 수), 잘못 섞으면 원본 400 봉투다.
+    ['read.source.tree', '/read/source/acme%2Fpayments/tree?offset=0'],
+    ['read.source.file', `/read/source/acme%2Fpayments/file?path=src%2Fpay%2Fretry.ts&revision=${SHA}&offset=0`],
+    ['read.source.diff', `/read/source/acme%2Fpayments/diff?listing=tree&head=${SHA}`],
+    ['read.source.diff', `/read/source/acme%2Fpayments/diff?commit=${SHA}&related=all`],
+    ['read.source.diff', `/read/source/acme%2Fpayments/diff?listing=tree&pr=1`],
+    ['read.source.history', '/read/source/acme%2Fpayments/history?page=1001'],
     ['read.search', '/read/search?q=a&q=b'],
     ['read.search', '/read/search?q=&unknown=1'],
     ['read.pull_request', '/read/pull-requests/acme%252Fpayments/1'],

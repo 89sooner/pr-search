@@ -189,7 +189,8 @@ describe('CR-132 FR-SRC-004 변경 목록 — 트리 비교와 관련 PR 전량'
     };
     const reader = methods as unknown as GitHubSourceReader;
     const first = await sourceTreeComparison(reader, repo, { base: PARENT, head: SHA, after: null });
-    expect(first).toMatchObject({ listing: 'tree', base: PARENT, head: SHA, pull_requests: [], next_page: null, truncated: false });
+    // 일반 비교 응답처럼 pull_requests_unavailable을 언제나 싣는다(PIPE 스키마의 필수 키).
+    expect(first).toMatchObject({ listing: 'tree', base: PARENT, head: SHA, pull_requests: [], pull_requests_unavailable: false, next_page: null, truncated: false });
     expect(first.files).toHaveLength(SOURCE_TREE_DIFF_PAGE);
     expect(first.files[0]).toEqual({ path: 'dir/n0000', previous_path: null, status: 'added', additions: null, deletions: null });
     const second = await sourceTreeComparison(reader, repo, { base: PARENT, head: SHA, after: first.next_after! });

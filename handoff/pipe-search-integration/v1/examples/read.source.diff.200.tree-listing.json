@@ -1,0 +1,59 @@
+{
+  "operation": "read.source.diff",
+  "title": "3,000개를 넘는 변경의 트리 비교 목록 (CR-132)",
+  "captured": false,
+  "note": "합성 예시다. GitHub의 PR·커밋 파일 목록은 3,000개가 원천 상한이다. listing=tree는 일반 비교 응답의 head·base를 그대로 받아 두 트리를 직접 비교한 목록을 페이지마다 1,000개씩 준다(next_after로 이어 읽음). 줄 수와 이름 변경은 알 수 없어 additions·deletions·previous_path가 null이고, 관련 PR은 일반 비교 응답의 것이므로 pull_requests는 비어 있다.",
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/diff?listing=tree&head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&base=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&after=pkg%2Fm07%2Ff0420.c",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000028"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "commit": {
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "parents": [
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        "message": "import vendor tree",
+        "author": "kim",
+        "date": "2026-09-29T00:00:00Z"
+      },
+      "files": [
+        {
+          "path": "pkg/m07/f0421.c",
+          "previous_path": null,
+          "status": "added",
+          "additions": null,
+          "deletions": null
+        },
+        {
+          "path": "pkg/m07/f0422.c",
+          "previous_path": null,
+          "status": "removed",
+          "additions": null,
+          "deletions": null
+        }
+      ],
+      "next_page": null,
+      "truncated": false,
+      "pull_requests": [],
+      "pull_requests_unavailable": false,
+      "listing": "tree",
+      "next_after": "pkg/m07/f0422.c"
+    }
+  }
+}
