@@ -2544,7 +2544,7 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - [x] 요구사항·파생 UI·기술 아키텍처: 바뀌지 않는다(시험만 고쳤다).
 - [x] 전달: 작업 패키지 v2.88 → v2.89(WP-115 절·상태 표), 원장 v6.138 → v6.139(머리 절, 3장 WP-115, 5장 DEV-796 resolved·DEV-798·799 관찰).
 - [x] 인계: PIPE 계약은 바뀌지 않는다.
-- [ ] 코드·시험: 원장 6.125장(게이트 뒤).
+- [x] 코드·시험: 원장 6.125장.
 - [ ] 병합과 CR 종료 — 다음 기능 PR의 첫 커밋이 적는다(23차 결정).
 
 ### CR-133 cascade — Files & folders의 하위 파일명 검색
