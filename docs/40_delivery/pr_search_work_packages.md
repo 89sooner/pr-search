@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.81 | 갱신일: 2026-09-29
+> 상태: review | 버전: v2.83 | 갱신일: 2026-09-29
+
+## WP-112 작업 공간의 조건 변경 추천 (CR-131)
+
+- 요구사항: `FR-SRCH-006` AC-3, 화면 상태 W-001 `empty_no_result`(운영 기본 화면의 범위 공백). 선행: WP-087·WP-096(Repository workspace, CR-099·CR-111), WP-109(서버 후보 계산, CR-128).
+- 범위: (1) `apps/web/lib/workspace-relaxation.ts` — 후보를 화면 조작으로 옮기는 계획과 자기 대조(다시 조립한 AST = 원래 AST − 그 노드, 지목 검사). (2) `apps/web/components/WorkspaceRelaxationHints.tsx` — 버튼과 불완전·상한 잘림 안내. (3) `RepositoryWorkspace.tsx`·`repository-workspace.css` — 응답의 세 키, 적용(`navigate`·SHA 범위 상태), 버튼 줄. (4) 시험 — 모듈 단위, 작업 공간 컴포넌트(a11y). (5) 문서 — 매트릭스·화면 상태·컴포넌트·와이어프레임·프런트엔드·QA.
+- 제외: 레거시 화면의 후보 표시, 서버 후보 계산·상한, Release 발행, 사내 적용.
+- 완료 기준: 수정 전 코드에서 서버가 후보를 돌려주는데 작업 공간이 그리지 않음을 실제 화면으로 먼저 본다. 수정 뒤에는 실제 web → search-api → 격리 데이터에서 후보 버튼을 하나씩 눌러 다시 검색한 실제 건수가 버튼의 `would_yield`와 모두 같고, 그 조건만 URL·입력·트리 선택·SHA 범위에서 사라지며, 화면·탭 조건은 버튼이 아니고, 불완전하면 안내가 붙는다. 변이로 새 시험이 대상을 거는지 확인하고, Node 22 전 계층 게이트와 독립 리뷰를 통과한다.
+- 상태: in_progress — 브랜치 `fix/cr131-workspace-relaxation`. 검증은 원장 6.122장이다.
 
 ## WP-111 구간 조회의 `kind:` 거절 (CR-130)
 
@@ -8,7 +16,7 @@
 - 범위: (1) `apps/search-api/src/sequence/routes.ts` — `enter()` 뒤·조회 전의 `kind:`·`-kind:` 400 `INVALID_PARAMETER` 거절과 구간의 키 목록(`RANGE_QUERY_KEYS`). (2) `apps/web/components/RangesView.tsx` — 거절 사유를 알리는 영어 안내. (3) 시험 — `range.test.ts`(실제 PostgreSQL·ES 대역), `a11y/ranges.test.tsx`. (4) 문서 — SRS·매트릭스·API 계약·화면 상태·QA·RUNBOOK.
 - 제외: 유형으로 좁히는 구간 조회(`OD-019`), 문법 오류 응답의 `supported_keys`, 일반 검색의 `kind:`, Release 발행, 사내 적용.
 - 완료 기준: 대표 실패를 **수정 전 코드에서 먼저 재현한다** — `kind:` 네 모양이 500이고, 세션 없음 401·범위 밖 404·`kind:` 없는 구간 200은 원래대로다. 수정 뒤에는 `kind:` 네 모양이 400 `INVALID_PARAMETER` `kind_not_supported_in_range`이고 Elasticsearch 대역이 한 번도 불리지 않으며, 401·404의 순서와 정상 구간의 결과·요약·에폭·커서가 그대로다. 실제 web → API → 데이터로 구간 화면이 거절을 알리고 정상 구간을 그대로 보인다. 변이로 새 시험이 대상을 거는지 확인하고, Node 22 전 계층 게이트와 독립 리뷰를 통과한다.
-- 상태: in_progress — 브랜치 `fix/cr130-range-kind`. 검증은 원장 6.121장이다.
+- 상태: done — main `5850232`(PR #254 squash 병합, 2026-09-29). 검증·병합 판정은 원장 6.121장이다.
 
 ## WP-110 처리되지 않은 오류의 공통 처리 (CR-129)
 
@@ -242,7 +250,8 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
-| WP-111 | 구간 조회의 `kind:` 거절 | 구현 결함 수정 + 요구사항 보완 (CR-130) | WP-023, WP-110 | in_progress — 브랜치 `fix/cr130-range-kind`, 원장 6.121장 |
+| WP-112 | 작업 공간의 조건 변경 추천 | 범위 공백 보완 (CR-131) | WP-087, WP-096, WP-109 | in_progress — 브랜치 `fix/cr131-workspace-relaxation`, 원장 6.122장 |
+| WP-111 | 구간 조회의 `kind:` 거절 | 구현 결함 수정 + 요구사항 보완 (CR-130) | WP-023, WP-110 | done — main `5850232`(PR #254), 원장 6.121장 |
 | WP-110 | 처리되지 않은 오류의 공통 처리 | 구현 결함 수정 (CR-129) | WP-013, WP-015, WP-097, WP-109 | done — main `e581b52`(PR #253), 원장 6.120장 |
 | WP-109 | 0건 검색의 완화 후보와 `kind:` 재해석 | 구현 결함 수정 + 요구사항 보완 (CR-128) | WP-013, WP-016, WP-037, WP-097 | done — main `d602890`(PR #251), 원장 6.119장 |
 | WP-108 | 한국 시간 표시와 KST 달력 날짜 검색 | 요구사항 변경 (CR-127) | WP-011, WP-013, WP-015, WP-037, WP-038, WP-039, WP-087, WP-096 | done — main `2272f56`(PR #247), 원장 6.118장 |

@@ -53,7 +53,7 @@ const PAGE_1 = [repo('acme/payments'), repo('acme/billing')];
 const PAGE_2 = [repo('acme/search')];
 
 /** URL을 보고 갈라 응답한다 -- 저장소 목록·검색·source tree 세 계통을 각각 고정 값으로 답한다. */
-function stubFetch(options: { repoCursor?: string | null } = {}): { calls: string[] } {
+function stubFetch(options: { repoCursor?: string | null; search?: unknown } = {}): { calls: string[] } {
   const calls: string[] = [];
   vi.stubGlobal('fetch', (url: string) => {
     calls.push(url);
@@ -63,7 +63,7 @@ function stubFetch(options: { repoCursor?: string | null } = {}): { calls: strin
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response);
     }
     if (url.startsWith('/api/search')) {
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ items: [] }) } as Response);
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(options.search ?? { items: [] }) } as Response);
     }
     if (url.startsWith('/api/source/')) {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ entries: [], truncated: false, ref: 'main', revision: 'a1b2c3d' }) } as Response);
@@ -313,5 +313,90 @@ describe('CR-111: 콤보박스의 typeahead 입력이 전역 단축키로 새지
     await userEvent.keyboard('t');
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+/*
+ * CR-131 / DEV-787: 결과 0건의 조건 변경 추천. 서버가 센 `would_yield`를 버튼에 싣고, 누르면 그 조건만 URL에서 지운다.
+ * 작업 공간이 스스로 붙인 `kind:`·`repo:`와 탭 고정 조건(My PRs의 로그인 작성자·상태)은 버튼으로 보이지 않는다.
+ */
+describe('CR-131: 결과 0건의 조건 변경 추천', () => {
+  const EMPTY = { items: [], total: { value: 0, relation: 'eq' }, next_cursor: null };
+
+  it('실행할 수 있는 추천만 건수와 함께 버튼으로 보이고, 불완전하면 짧게 알린다', async () => {
+    params.current = new URLSearchParams('repository=acme%2Fpayments&author=lee&label=backend');
+    stubFetch({
+      search: {
+        ...EMPTY,
+        relaxation_hints: [
+          { remove: 'kind:pull_request', would_yield: 40 },
+          { remove: 'author:lee', would_yield: 12 },
+          { remove: 'label:backend', would_yield: 5 },
+        ],
+        relaxation_hints_incomplete: true,
+      },
+    });
+    const { container } = view();
+    expect(await screen.findByRole('button', { name: 'Remove author: lee · 12 results' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove label: backend · 5 results' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /kind/ })).not.toBeInTheDocument();
+    expect(screen.getByText('No matching changes')).toBeInTheDocument();
+    expect(screen.getByTestId('workspace-relaxation-incomplete')).toHaveTextContent('Some filter suggestions could not be calculated.');
+    // 필터 패널은 접힌 채다.
+    expect(screen.getByRole('button', { name: /^Filters/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(describeViolations(await violations(container))).toBe('');
+  });
+
+  it('누르면 그 조건만 지우고 나머지 URL 조건은 그대로다', async () => {
+    params.current = new URLSearchParams('repository=acme%2Fpayments&author=lee&label=backend&sort=merged_at');
+    stubFetch({ search: { ...EMPTY, relaxation_hints: [{ remove: 'author:lee', would_yield: 12 }] } });
+    view();
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove author: lee · 12 results' }));
+    await waitFor(() => { expect(replaced.length).toBeGreaterThan(0); });
+    const next = new URLSearchParams(replaced.at(-1)!.split('?')[1]);
+    expect(next.get('author')).toBeNull();
+    expect(next.get('label')).toBe('backend');
+    expect(next.get('sort')).toBe('merged_at');
+    expect(next.get('repository')).toBe('acme/payments');
+  });
+
+  it('경로 추천은 파일 트리 선택(path_kind·source_ref)까지 지운다', async () => {
+    params.current = new URLSearchParams('repository=acme%2Fpayments&path=src%2Fpay&path_kind=directory&source_ref=abc1234');
+    stubFetch({ search: { ...EMPTY, relaxation_hints: [{ remove: 'path:src/pay', would_yield: 7 }] } });
+    view();
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove path: src/pay · 7 results' }));
+    await waitFor(() => { expect(replaced.length).toBeGreaterThan(0); });
+    const next = new URLSearchParams(replaced.at(-1)!.split('?')[1]);
+    expect(next.get('path')).toBeNull();
+    expect(next.get('path_kind')).toBeNull();
+    expect(next.get('source_ref')).toBeNull();
+  });
+
+  it('자유 텍스트에 적은 조건은 그 조건만 지우고 검색어와 다른 연산자의 조건은 남긴다', async () => {
+    params.current = new URLSearchParams('repository=acme%2Fpayments&q=label%3Abackend+-label%3Awip+retry');
+    stubFetch({ search: { ...EMPTY, relaxation_hints: [{ remove: 'label:backend', would_yield: 4 }] } });
+    view();
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove label: backend · 4 results' }));
+    await waitFor(() => { expect(replaced.length).toBeGreaterThan(0); });
+    const next = new URLSearchParams(replaced.at(-1)!.split('?')[1]);
+    expect(next.get('q')).toBe('-label:wip retry');
+  });
+
+  it('My open PRs 탭의 로그인 작성자·상태 추천은 버튼이 아니고, 셀 수 없었으면 그렇게 말한다', async () => {
+    params.current = new URLSearchParams('repository=acme%2Fpayments&tab=open');
+    stubFetch({
+      search: { ...EMPTY, relaxation_hints: [{ remove: 'author:kim', would_yield: 9 }, { remove: 'is:open', would_yield: 30 }], relaxation_hints_incomplete: true },
+    });
+    render(<RepositoryWorkspace login="kim" loginPath="/auth/login" />);
+    expect(await screen.findByTestId('workspace-relaxation-incomplete')).toHaveTextContent('Filter suggestions could not be calculated for this search.');
+    expect(screen.queryByRole('button', { name: /Remove/ })).not.toBeInTheDocument();
+  });
+
+  it('추천이 없고 계산도 끝났으면 기존 0건 화면 그대로다', async () => {
+    params.current = new URLSearchParams('repository=acme%2Fpayments&author=lee');
+    stubFetch({ search: { ...EMPTY, relaxation_hints: [] } });
+    view();
+    expect(await screen.findByText('No matching changes')).toBeInTheDocument();
+    expect(screen.queryByTestId('workspace-relaxation')).not.toBeInTheDocument();
   });
 });

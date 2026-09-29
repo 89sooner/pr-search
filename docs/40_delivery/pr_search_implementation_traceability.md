@@ -1,10 +1,14 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.131 | 갱신일: 2026-09-29
+> 상태: review | 버전: v6.133 | 갱신일: 2026-09-29
 
-## CR-130 / WP-111 — 구간 조회의 `kind:` 거절 (2026-09-29, 병합 전)
+## CR-131 / WP-112 — 작업 공간의 조건 변경 추천 (2026-09-29, 병합 전)
 
-23차 사용자 지시(2026-09-29) 2번(DEV-788). 구간 조회(`/api/v1/sequence-ranges`)의 `q`에 `kind:`가 있으면 결과와 무관하게 500이었다. 이제 신원·권한 확인 뒤, 조회 전에 400 `INVALID_PARAMETER`(`kind_not_supported_in_range`)로 거절하고 구간 화면은 무엇을 빼야 하는지 알린다. 조건을 지우거나 0건으로 위장하지 않는다. 유형으로 좁히는 구간은 `OD-019`로 남겼다. 기록은 6.121장.
+23차 사용자 지시(2026-09-29) 3번(DEV-787). 운영 기본 화면(Repository workspace)은 결과 0건에서 서버가 센 후보를 그리지 않았다. 이제 「Remove <조건> · <would_yield> results」 버튼을 보이고, 누르면 그 조건에 값을 보탠 입력만 지워 다시 검색한다. 화면·탭이 붙인 조건과 지우면 다른 조건까지 바뀌는 후보는 버튼이 아니다 — 적용한 상태로 질의를 다시 조립해 대조한다. 실제 화면에서 버튼 13개를 모두 눌러 다시 검색한 건수가 버튼의 건수와 같았다. 기록은 6.122장.
+
+## CR-130 / WP-111 — 구간 조회의 `kind:` 거절 (2026-09-29, main `5850232` 병합)
+
+23차 사용자 지시(2026-09-29) 2번(DEV-788). 구간 조회(`/api/v1/sequence-ranges`)의 `q`에 `kind:`가 있으면 결과와 무관하게 500이었다. 이제 신원·권한 확인 뒤, 조회 전에 400 `INVALID_PARAMETER`(`kind_not_supported_in_range`)로 거절하고 구간 화면은 무엇을 빼야 하는지 알린다. 조건을 지우거나 0건으로 위장하지 않는다. 유형으로 좁히는 구간은 `OD-019`로 남겼다. PR #254로 main `5850232`에 병합했고 병합 커밋의 main CI(run 36504424674)는 success다. 기록은 6.121장.
 
 ## CR-129 / WP-110 — 처리되지 않은 오류의 공통 처리 (2026-09-29, main `e581b52` 병합)
 
@@ -363,7 +367,8 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WP-111 | 구간 조회의 `kind:` 거절 | 구현 결함 수정 + 요구사항 보완 (CR-130) | in_progress | 에이전트 | 브랜치 `fix/cr130-range-kind` (병합 전) | 6.121장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
+| WP-112 | 작업 공간의 조건 변경 추천 | 범위 공백 보완 (CR-131) | in_progress | 에이전트 | 브랜치 `fix/cr131-workspace-relaxation` (병합 전) | 6.122장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
+| WP-111 | 구간 조회의 `kind:` 거절 | 구현 결함 수정 + 요구사항 보완 (CR-130) | done | 에이전트 | main `5850232`(PR #254 squash 병합, 2026-09-29; head `44a51c7`) | 6.121장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-110 | 처리되지 않은 오류의 공통 처리 | 구현 결함 수정 (CR-129) | done | 에이전트 | main `e581b52`(PR #253 squash 병합, 2026-09-29; head `7a0f427`) | 6.120장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-109 | 0건 검색의 완화 후보와 `kind:` 재해석 | 구현 결함 수정 + 요구사항 보완 (CR-128) | done | 에이전트 | main `d602890`(PR #251 squash 병합, 2026-09-29; head `434959e`) | 6.119장 | 사내 적용 NOT RUN — 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-108 | 한국 시간 표시와 KST 달력 날짜 검색 | 요구사항 변경 (CR-127) | done | 에이전트 | main `2272f56`(PR #247 squash 병합, 2026-09-28; head `de4007c`) | 6.118장 | 사내 배포 SHA NOT VERIFIED, 내부망 적용 NOT RUN |
@@ -475,7 +480,8 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
-| FR-SEQ-002 AC-9 (구간 질의의 `kind:`·`-kind:`를 신원·권한 확인 뒤, 조회 전에 400 `INVALID_PARAMETER` `kind_not_supported_in_range`로 거절, 구간의 키 목록) | WP-111 | `apps/search-api/src/sequence/routes.ts`, `apps/web/components/RangesView.tsx` | `apps/search-api/integration/sequence/range.test.ts`, `apps/web/a11y/ranges.test.tsx` | implemented |
+| FR-SRCH-006 AC-3 · W-001 `empty_no_result` (운영 기본 화면의 후보 버튼과 `would_yield`, 누르면 그 조건만 제거, 화면·탭 조건과 대조 실패 후보 제외, 불완전·상한 잘림 안내) | WP-112 | `apps/web/lib/workspace-relaxation.ts`, `apps/web/components/WorkspaceRelaxationHints.tsx`, `apps/web/components/RepositoryWorkspace.tsx`, `apps/web/app/repository-workspace.css` | `apps/web/lib/workspace-relaxation.test.ts`, `apps/web/a11y/repository-workspace.test.tsx` | implemented |
+| FR-SEQ-002 AC-9 (구간 질의의 `kind:`·`-kind:`를 신원·권한 확인 뒤, 조회 전에 400 `INVALID_PARAMETER` `kind_not_supported_in_range`로 거절, 구간의 키 목록) | WP-111 | `apps/search-api/src/sequence/routes.ts`, `apps/web/components/RangesView.tsx` | `apps/search-api/integration/sequence/range.test.ts`, `apps/web/a11y/ranges.test.tsx` | **완료 — main `5850232` (CR-130, 6.121장)** |
 | NFR-005 「시크릿 노출」·NFR-008, API 계약 원칙 6·6장 오류 모델, 백엔드 8장 「예상치 못한 예외」 (처리하지 못한 예외의 500 `INTERNAL_ERROR` 봉투와 같은 ID의 진단 로그, Fastify 본문 오류 400·413·415, 없는 경로 404, PIPE와 같은 분류) | WP-110 | `apps/search-api/src/http/unhandled-errors.ts`, `apps/search-api/src/server.ts`, `apps/search-api/src/auth/read-invocation.ts`, `apps/search-api/src/integrations/pipe/{routes,audit}.ts`, `packages/contracts/src/error-codes.ts`, `apps/web/lib/service-message.ts`, `apps/web/components/RepositoryWorkspace.tsx` | `apps/search-api/src/http/unhandled-errors.test.ts`, `apps/search-api/src/server.test.ts`, `apps/search-api/src/auth/read-invocation.test.ts`, `apps/search-api/integration/errors/unhandled.test.ts`, `apps/web/lib/service-message.test.ts` | **완료 — main `e581b52` (CR-129, 6.120장)** |
 | FR-SRCH-006 AC-3 · 예외/실패 처리 (후보마다 `kind:`를 원래 대상에서 다시 해석, 남은 유형이 없는 후보는 0건, 모순된 `kind:`의 0건도 후보, `relaxation_hints_incomplete`, 추천 단계 격리와 진단 로그) | WP-109 | `apps/search-api/src/search/{relaxation,service,routes}.ts`, `packages/es/src/search.ts`(`multiSearch` 전송 옵션), `apps/search-api/src/{index,runtime}.ts`, `apps/web/components/SearchView.tsx`, PIPE 인계 OpenAPI `SearchResponse` | 단위 `search/{relaxation,service}.test.ts`·`packages/es/src/search.test.ts`, 통합 `search/relaxation-kind.test.ts`·`search/list.test.ts`·`integrations/pipe/{parity,openapi}.test.ts`, a11y `search.test.tsx` | **완료 — main `d602890` (CR-128, 6.119장)** |
 | NFR-007 「시각 표시 기준」 · SRS 11장 12번 (표시 `Asia/Seoul`, 원본·API·커서 UTC, 원본 UTC 툴팁, 읽지 못한 값 `Unknown`) | WP-108 | `apps/web/lib/format.ts`, `apps/web/components/TimeText.tsx`, 표시 자리 전부(6.118장 목록), `packages/query/src/calendar.ts`(`zonedParts`) | `apps/web/lib/format.test.ts`(TZ 셋), a11y, E2E | **완료 — main `2272f56` (CR-127, 6.118장)** |
@@ -641,11 +647,12 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | DEV-784 | 2026-09-28 | **레거시 검색 화면이 완화 후보의 건수를 읽지 못했다.** API 계약(API-SRCH-004)과 서버는 후보를 `{remove, would_yield}`로 보내는데 `SearchView.tsx`는 WP-016부터 `total`을 읽어 「`author:x` removed:  items」처럼 건수가 비었다. 컴포넌트 시험(`a11y/search.test.tsx`)의 대역도 같은 `total`을 써서 화면과 대역이 함께 틀린 채 통과했다 | FR-SRCH-006 AC-3 / WP-016·WP-109 | 구현 결함 (기존) | CR-128 | **resolved (CR-128, main `d602890`)** — 화면이 `would_yield`를 읽고, 대역을 계약의 모양으로 고쳤다 (6.119장) |
 | DEV-785 | 2026-09-28 | **완화 후보 계산의 실패가 격리되지 않았고, 세지 못한 후보가 「후보 없음」과 구분되지 않았다.** `computeRelaxationHints`는 msearch가 던지면(통신 오류·요청 거절) 그대로 올려 본 조회가 끝난 0건 검색 전체를 500으로 만들었다. 갈래 오류는 조용히 건너뛰었고, 샤드 실패·`timed_out` 갈래의 부분 건수는 정확한 건수처럼 실었다. 그래서 빈 목록이 「뺄 조건이 없다」인지 「계산하지 못했다」인지 응답이 말하지 못했다. 전송은 클라이언트 기본값(재시도 3회, 요청 30초)이었다 | FR-SRCH-006 AC-3·예외/실패 처리 / WP-013·WP-109 | 구현 결함 (기존) | CR-128 | **resolved (CR-128, main `d602890`)** — 추천 단계의 실패는 `relaxation_hints_incomplete: true`와 진단 로그(단계·오류 이름·후보 수·correlation ID)로 답하고 본 조회의 200을 바꾸지 않는다. 세지 못한 갈래의 건수는 싣지 않는다. 갈래마다 1.5초, 왕복 3초, 재시도 0. 접근 범위 확인 실패는 격리하지 않는다 (6.119장) |
 | DEV-786 | 2026-09-28 | **공개 search-api의 처리되지 않은 오류는 Fastify 기본 500 본문이고, correlation ID도 서버 로그도 없다.** 공개 서버는 `Fastify({ logger: false })`에 오류 처리기를 두지 않아 처리되지 않은 예외가 `{"statusCode":500,"error":"Internal Server Error","message":<예외 문구>}`로 나간다 — API 계약의 오류 봉투(`error.code`·`correlation_id`)가 아니고, 내부 문구가 응답에 실리며, 로그에 아무것도 남지 않는다. DEV-783의 사내 보고가 가드 문구를 원인으로 읽은 본문이 이것이다. PIPE 연동 리스너는 오류 처리기가 있어 `INTERNAL_ERROR`와 오류 이름만 남긴 로그(correlation ID 포함)를 낸다 | API 계약 공통 오류 형식 / WP-013 | 관찰 (기존) | CR-129 | **resolved (CR-129, main `e581b52`)** — 공통 처리가 500 `INTERNAL_ERROR`·고정 문구·`correlation_id`(`request.id`)로 답하고 같은 ID로 경로 패턴·단계·오류 종류·허용 코드·호출 위치를 기록한다. Fastify 본문 오류는 400·413·415, 없는 경로는 404 봉투다. Elasticsearch 질의 거절이 400으로 나가던 것도 이 결함이었다 (6.120장) |
-| DEV-787 | 2026-09-28 | **운영 기본 화면(Repository workspace)은 결과 0건에서 완화 후보를 그리지 않는다.** 상태 매트릭스 W-001 `empty_no_result`는 「제거하면 결과가 생기는 필터 목록」을 요구하는데, `/search`의 기본인 `RepositoryWorkspace`는 「No matching changes / Adjust your query or filters and search again.」만 보인다(목록은 레거시 `SearchView`만 그린다). 이 화면은 `kind:`·`repo:`를 스스로 붙이므로 서버의 후보에 사용자가 적지 않은 조건(「`kind:pull_request`를 빼면 커밋 N건」)이 섞인다 — 그대로 보이면 누를 수 없는 제안이 된다 | FR-SRCH-006 AC-3 / W-001 Repository workspace(CR-099·CR-111, WP-087·WP-096) | 범위 공백 | 없음(후속) | open — CR-128은 이 화면의 0건이 오류 없이 「No matching changes」로 나오는 데까지다. 후보를 화면 조작(경로·작성자·라벨·상태·범위)에 대응시키고 화면이 붙인 조건을 거르는 설계가 필요하다 |
-| DEV-788 | 2026-09-28 | **구간 조회(`/api/v1/sequence-ranges`, W-004)의 `q`에 `kind:`가 있으면 결과와 무관하게 500이다.** `runRange`가 `q`의 AST를 `resolveSearchTarget` 없이 `buildQuery`에 넘겨 같은 가드(`KindFilterNotAppliedError`)가 던진다. W-004 화면은 `kind:`를 스스로 붙이지 않으므로 사용자가 구간 질의 칸에 직접 적을 때만 난다. CR-128의 재현에서 함께 확인했다(`q=kind:commit`·`kind:pull_request author:kim` → 500, `author:kim` → 200) | FR-SEQ-002 / W-004 · WP-023 | 관찰 (기존) | CR-130 | **resolved (CR-130, 병합 전)** — 사용자 결정(2026-09-29, 23차)으로 거절한다. 신원·권한 확인 뒤, 조회 전에 400 `INVALID_PARAMETER`(`kind_not_supported_in_range`)이고 구간 화면은 무엇을 빼야 하는지 알린다. 유형으로 좁히는 구간은 `OD-019` (6.121장) |
+| DEV-787 | 2026-09-28 | **운영 기본 화면(Repository workspace)은 결과 0건에서 완화 후보를 그리지 않는다.** 상태 매트릭스 W-001 `empty_no_result`는 「제거하면 결과가 생기는 필터 목록」을 요구하는데, `/search`의 기본인 `RepositoryWorkspace`는 「No matching changes / Adjust your query or filters and search again.」만 보인다(목록은 레거시 `SearchView`만 그린다). 이 화면은 `kind:`·`repo:`를 스스로 붙이므로 서버의 후보에 사용자가 적지 않은 조건(「`kind:pull_request`를 빼면 커밋 N건」)이 섞인다 — 그대로 보이면 누를 수 없는 제안이 된다 | FR-SRCH-006 AC-3 / W-001 Repository workspace(CR-099·CR-111, WP-087·WP-096) | 범위 공백 | CR-131 | **resolved (CR-131, 병합 전)** — 후보를 「Remove <조건> · <would_yield> results」 버튼으로 보이고, 누르면 그 조건에 값을 보탠 입력만 지워 다시 검색한다. 화면·탭 조건과 지우면 다른 조건까지 바뀌는 후보는 버튼이 아니다(적용한 상태로 질의를 다시 조립해 대조) (6.122장) |
+| DEV-788 | 2026-09-28 | **구간 조회(`/api/v1/sequence-ranges`, W-004)의 `q`에 `kind:`가 있으면 결과와 무관하게 500이다.** `runRange`가 `q`의 AST를 `resolveSearchTarget` 없이 `buildQuery`에 넘겨 같은 가드(`KindFilterNotAppliedError`)가 던진다. W-004 화면은 `kind:`를 스스로 붙이지 않으므로 사용자가 구간 질의 칸에 직접 적을 때만 난다. CR-128의 재현에서 함께 확인했다(`q=kind:commit`·`kind:pull_request author:kim` → 500, `author:kim` → 200) | FR-SEQ-002 / W-004 · WP-023 | 관찰 (기존) | CR-130 | **resolved (CR-130, main `5850232`)** — 사용자 결정(2026-09-29, 23차)으로 거절한다. 신원·권한 확인 뒤, 조회 전에 400 `INVALID_PARAMETER`(`kind_not_supported_in_range`)이고 구간 화면은 무엇을 빼야 하는지 알린다. 유형으로 좁히는 구간은 `OD-019` (6.121장) |
 | DEV-789 | 2026-09-29 | **PIPE 연동이 서버 오류를 입력 오류로 분류했다.** `toPsiError`가 `statusCode` 속성이 4xx인 예외를 모두 `INVALID_REQUEST`(400, `retryable: false`)로 옮겼다. Elasticsearch `ResponseError`는 거절 상태를 `statusCode` 게터로 내놓으므로, 서버가 잘못 조립한 질의가 PIPE에게 입력 오류로 보였고 `INTERNAL_ERROR`만 기록하는 처리기라 로그도 남지 않았다 | 공통 계약 8장 오류 표 / WP-097 | 구현 결함 (기존) | CR-129 | **resolved (CR-129, main `e581b52`)** — 클라이언트 오류는 Fastify가 요청을 읽다 낸 오류(`FST_` + 4xx)뿐이다. 공개 리스너와 같은 `frameworkClientError`를 쓴다. [CONTRACT_DIFF](../../handoff/pipe-search-integration/v1/CONTRACT_DIFF.md) D-24 (6.120장) |
 | DEV-790 | 2026-09-29 | **web 프록시가 search-api 응답의 `X-Correlation-Id`를 자기 값으로 덮는다.** 프록시는 요청마다 자기 ID를 만들어 search-api로 보내고 응답 헤더를 추릴 때 그 값을 다시 쓴다(`apps/web/lib/proxy.ts`의 `buildResponseHeaders`). search-api는 그 헤더를 요청 식별자로 받지 않으므로(CR-129 결정 (2)) 브라우저가 보는 헤더와 본문 `correlation_id`가 다른 값이다. 주석은 「search-api가 응답에 같은 값을 돌려준다」고 적었다 | 프런트엔드 10장 / WP-015 | 관찰 (기존) | 없음(후속) | open — CR-129 범위 밖이다. 진단 로그는 프록시의 ID를 `upstream_correlation_id`로 남겨 두 값을 잇는다. 사용자에게 보이는 것은 본문의 `correlation_id`다(C-005 배너·`Reference ID`) |
 | DEV-791 | 2026-09-29 | **web 프록시가 search-api에 닿지 못한 502를 기록하지 않는다.** `app/api/[...path]/route.ts`는 502 `UPSTREAM_UNAVAILABLE`에 자기 correlation ID를 싣고 주석에 「상관 ID로 로그에서 찾는다」고 적었지만 로그를 남기지 않는다 | 프런트엔드 10장·관측성 3.1 / WP-015 | 관찰 (기존) | 없음(후속) | open — CR-129 범위 밖이다(공개 search-api의 처리되지 않은 오류만 고쳤다) |
+| DEV-792 | 2026-09-29 | **통합 시험 전량에서 `cancel-race.test.ts`의 backfill 두 건이 간헐적으로 자기 잡을 집지 못한다.** CR-131 최종 게이트(`cfcd31f`, 새 DB)의 통합 전량에서 「backfill 잡을 집지 못했다」로 2건이 실패했다. 같은 트리에서 그 파일만 새 DB로 세 번 돌리면 24건 모두 통과했고, 전량을 새 DB로 다시 돌리면 2,402건 모두 통과했다. 파일은 순차 실행(`fileParallelism: false`)이고 실행 끝의 잡 표는 통과한 실행과 같은 모양이라 원인을 좁히지 못했다. 6.52.5장이 고친 모양(다른 시험이 남긴 `queued` 잡)과 증상이 같다 | 운영 잡 A-003 / WP-059 계열 시험 | 관찰 (시험 안정성) | 없음(후속) | open — 원인 미확인. 앞선 파일의 늦은 비동기 작업이 잡을 만들거나 집는지 확인할 후속 후보다 (6.122장) |
 | DEV-753 | 2026-09-23 | **백필로 들어온 병합된 PR의 머지 커밋 문서가 만들어지지 않았다.** `documents.ts`의 `buildCommitDocuments`가 머지 커밋 역할을 `pr.merged === true`로만 판정하는데 백필의 목록 끝점(`GET /pulls`)은 그 필드를 주지 않고 `merged_at`만 준다. 그런데 관계 채택은 같은 PR에 `merge` 근거를 세우므로 **정본은 연결을 말하는데 그 문서가 없다** — 관계 투영기가 `document_missing`으로 재시도하다 보류된다. 독립 검토가 잡았다 | FR-SRCH-002 AC-6 · FR-ING-005 / WP-008 · WP-019 · WP-101 | 기존 결함 | CR-116 | resolved (2026-09-23) — `derivePullRequestState`(CR-101)로 통일했다. PR 문서의 `state`·관계 채택·재색인이 모두 같은 판정을 쓴다 (6.107장) |
 | DEV-719 | 2026-09-17 | SRS AC-3는 최종 PR 반환으로 한정하지만 실제 bisect는 PR 없는 직접 커밋도 반환·시험한다. 위 CR-102 분석 기록과 구현 계획 2장에 근거를 기록했다 | FR-SEQ-007 AC-3 / WP-042 | 문서 오류 | CR-102 | open — R0에서 커밋과 선택적 PR 연결로 요구사항 정정 후 cascade |
 | DEV-702 | 2026-09-16 | Conductor 전환에서 표의 48vh 높이 제한이 사라져 390px 화면의 첫 행 선택 후 미리보기가 25행 아래 뷰포트 밖에 남았다. 1440px에서는 재현되지 않았다 | FR-SRCH-008 · NFR-007 / WP-081 | 구현 결함 | CR-093 | resolved — `data-inspecting`의 48vh·overflow를 복원하고 390/1440 첫·끝 행 미리보기 가시성 회귀를 통과했다 |
@@ -9611,5 +9618,56 @@ CI run은 **head `49c5b49`의 것**이며 그 head가 이 CR의 코드·문서 �
 **문서 검증기.** 기준선 `e581b52`와 최종 트리의 오류·경고 목록이 기본·`--strict` 두 모드 모두 같다.
 
 **한계.** 사내 적용 NOT RUN. 유형으로 좁히는 구간은 지원하지 않는다(`OD-019`). 문법 오류 응답의 `supported_keys`는 파서 전체 목록 그대로다.
+
+**병합.** PR #254(base `main`, 최종 head `44a51c7`)의 CI(run 36496639605)는 verify·integration 모두 첫 시도에 success였다. 사용자 승인(2026-09-29, 이 세션에서 PR #254에 대해 받았다)으로 squash 병합했다 — main `5850232`, 트리는 PR head와 같다(`f87406b…`). 병합 커밋의 main CI(run 36504424674)는 verify·integration 모두 첫 시도에 success다. 이 기록은 CR-131 PR의 첫 커밋에 실었다. 사내 적용은 NOT RUN이다.
+
+### 6.122 작업 공간의 조건 변경 추천 (2026-09-29, CR-131 / WP-112, DEV-787)
+
+**요청.** 23차 사용자 지시(2026-09-29) 3번. RepositoryWorkspace의 0건 화면에 서버가 계산한 추천을 보이고(숫자는 `would_yield`), 누르면 그 조건만 지워 URL·필터 입력·결과·커서를 함께 갱신한다. 문자열 전체 치환으로 비슷한 다른 조건까지 지우지 않고, 화면이 붙인 `kind`·`repo`와 탭 고정 조건처럼 안전하게 지울 수 없는 추천은 버튼으로 보이지 않는다. 경로는 파일 트리 선택까지, 날짜·M 번호·서수 범위는 관련 입력과 상태까지 처리한다. 불완전하면 짧게 알리고 0건 화면을 유지하며, 접힌 필터·고정 레이아웃·무한스크롤·영문 UI를 유지한다. 완료 기준: 추천을 눌러 다시 검색한 실제 건수가 추천 건수와 같다.
+
+**재현 (수정 전 main `5850232`, 실제 Chromium → `next start` 웹 프록시 → 빌드된 search-api → 격리 PostgreSQL·Elasticsearch).** 실행기는 CR-129의 것에 가짜 source 리더(작은 저장소 트리 `src/pay/*`·`web/*`)와 구간 정본 세 행을 더했다. 가짜는 GHE 권한 조회·로그인·GHE source 응답뿐이다. 0건 시나리오 11개(작성자 입력, 트리에서 고른 경로 + 작성자, KST 날짜 범위, PR 번호 범위, M 번호 범위, 자유 텍스트의 조건, 입력과 자유 텍스트가 한 노드, SHA 서수 범위 + 작성자, My open PRs 탭, 추천 계산 실패, 유형만 다르면 결과가 있는 경로)에서 서버는 모두 후보(또는 `relaxation_hints_incomplete`)를 돌려줬지만 작업 공간은 버튼 0개였고 불완전 안내도 없었다.
+
+**수정.** (1) `apps/web/lib/workspace-relaxation.ts`(새 파일) — `planWorkspaceHint`가 후보의 `remove`를 파싱한 노드 하나를 두고, 동등 조건은 그 연산자가 `eq`일 때 입력 파라미터(`base`·`author`·`label`·`path`(+`path_kind`·`source_ref`)·`state`)를, 범위는 `range`일 때 범위 파라미터(`from`·`to`·`tz`, `pr_from`·`pr_to`, `mnum_from`·`mnum_to`)를, 서수 범위는 SHA 상태를 지우는 계획을 세운다. 자유 텍스트는 AST에서 같은 키·연산자 노드만 빼고 `serializeQuery`로 다시 적는다. 계획을 URL 상태 사본에 적용해 `buildRepositoryQuery`로 다시 조립한 AST가 「원래 AST − 그 노드」(정렬한 값·시간대까지 비교)와 같고, 지목 검사를 지나며, 남은 자유 텍스트가 식별자꼴이 아닐 때만 `action`이다. `kind`·`repo`는 `view`, My PRs 탭의 `author`·`is` 동등 조건은 `tab`, M 번호 범위가 남는 `base` 제거는 `unsafe`다. (2) `apps/web/components/WorkspaceRelaxationHints.tsx`(새 파일) — 「Results if you remove one filter:」와 「Remove <조건> · <N> result(s)」 버튼, 불완전·상한 잘림 안내. (3) `RepositoryWorkspace.tsx` — 응답의 세 키, `applyHint`(SHA 범위 상태·입력 비움 → `navigate`), 식별자 판정을 `isIdentifierSearch`로 공용화. (4) `lib/repository-search.ts` — `isIdentifierSearch`. (5) `repository-workspace.css` — 버튼 줄. (6) 문서 — 매트릭스 v1.25, 화면 상태 v0.27, 컴포넌트 v0.31·와이어프레임 v0.30·프런트엔드 v0.18, QA v0.34(QA-W001-68~71), WP-112. SRS·API 계약은 바뀌지 않는다.
+
+**시험 (실측).** `lib/workspace-relaxation.test.ts` 19건 — 출처별 계획(입력·트리·자유 텍스트·범위·SHA 범위), 두 곳이 합쳐진 노드, 다른 연산자 조건의 보존, 화면·탭 고정, 맞지 않거나 노드가 하나가 아닌 후보, M 번호가 남는 `base`, 서수 범위가 빠지는 `base`, 식별자꼴만 남는 자유 텍스트 네 모양(독립 리뷰), 탭의 부정 작성자(독립 리뷰), 이상한 입력. `a11y/repository-workspace.test.tsx` 새 6건 — 버튼과 건수·불완전 안내·접힌 필터·axe 0건, 누르면 그 조건만 빠진 URL, 경로의 트리 선택 해제, 자유 텍스트의 같은 조건만 제거, My open PRs 탭, 추천 없음.
+
+**변이.** 커밋 `e46da7b`에서 12종 — 11종이 죽었다(자유 텍스트 미재작성, 연산자 무시, `kind`·`repo` 버튼화, `tz` 잔존, 트리 선택 잔존, SHA 범위 미해제, 자기 대조 제거, 비실행 계획 렌더, M 번호 `base` 규칙 제거, 추천 무시, 불완전 안내 누락). 탭 고정 규칙을 뺀 변이는 a11y 시험에서 살아남았다 — 자기 대조가 그 후보도 `unsafe`로 숨기기 때문이며(두 겹 방어), 같은 변이를 단위 시험으로 돌리면 죽는다(`reason: 'tab'`). 리뷰 수정 커밋 `cfcd31f`에서 2종(식별자꼴 판정 제거, 탭 규칙의 연산자 무시) — 모두 죽었다.
+
+**실제 화면 (수정 뒤).** 같은 실행기에 시나리오 둘을 더했다 — S12(자유 텍스트 `label:frontend 777`, 빼면 `777`만 남는다)와 S13(식별자 검색 `#1` 대조). 리뷰 반영 뒤 트리를 다시 빌드해 돌린 결과다.
+
+| 시나리오 | 버튼 (건수 = `would_yield`) | 누른 뒤 실제 건수 · 남은 URL 조건 |
+| --- | --- | --- |
+| S1 작성자 입력 + 라벨 | Remove author: nobody · 3 results | 3 · `label` |
+| S2 트리에서 고른 경로 + 작성자 | Remove path: src/pay/fix.ts · 2 results (`kind:` 후보는 숨김) | 2 · `author` — `path`·`path_kind`·`source_ref`가 빠지고 트리 선택이 풀림 |
+| S3 KST 날짜 범위 + 라벨 | Remove merged date: 2026-08-01–2026-08-10 KST · 3 results | 3 · `label` — `from`·`to`·`tz` 빠짐 |
+| S4 PR 번호 범위 + 라벨 | Remove PR numbers: 100–200 · 3 results | 3 · `label` |
+| S5 M 번호 범위 + 라벨(base main) | Remove M numbers: 50–60 · 3 results | 3 · `base`·`label` |
+| S6 작성자 입력 + 자유 텍스트 `label:frontend` | Remove label: frontend · 2 results · Remove author: kim · 1 result | 2 · `author` / 1 · `q=label:frontend` |
+| S7 작성자 입력 + 자유 텍스트 `author:nobody2 label:frontend` | Remove label: frontend · 2 results · Remove author: kim, nobody2 · 1 result | 2 · `author`·`q=author:nobody2` / 1 · `q=label:frontend` |
+| S8 SHA 서수 범위(2..3) + 작성자 | Remove merge order: 2–3 · 2 results · Remove author: kim · 1 result | 2 · `base`·`author`(SHA 입력 비움) / 1 · `base`(SHA 범위 유지) |
+| S9 My open PRs | 없음(탭 고정 조건) | — |
+| S10 추천 계산 실패 | 없음, 「Filter suggestions could not be calculated for this search.」 | 0건 화면 유지 |
+| S11 유형만 다르면 결과가 있는 경로 | Remove path: src/pay/fix.ts · 4 results (`kind:` 후보는 숨김) | 4 · 조건 없음 |
+| S12 빼면 자유 텍스트가 `777`만 남음 | 없음(서버 후보 `label:frontend` 1건은 있음) | — |
+| S13 식별자 검색 `#1` 대조 | — | 식별자 해석 1 item(그대로) |
+
+**버튼 12개를 모두 하나씩 눌러 다시 검색한 실제 건수가 버튼의 건수와 12개 모두 같았다.** 누른 뒤에도 필터 패널은 접힌 채였다(S8은 시나리오가 SHA 입력을 위해 스스로 연 상태를 유지). 첫 실행(리뷰 반영 전 빌드)은 버튼 13개가 모두 같았는데, 둘째 실행에서 자료에 PR #5(「hotfix 777」)를 더해 시나리오의 후보 구성이 바뀌었다 — 두 수를 합치지 않는다. 수정 전 판(`5850232`)은 같은 13개 시나리오를 열면 버튼이 하나도 없다(첫 11개로 확인).
+
+**독립 리뷰.** 코드·문서(`deep-reasoner`, 읽기 전용, `git diff 5850232..HEAD`, 도구 22회): **병합 불가 → 반영 후 해소.** [중] 1건 — 자유 텍스트에서 조건을 빼면 식별자꼴만 남아 식별자 해석으로 가고 건수가 달라진다(`label:backend 12345` 등). 지적을 재현하는 단위 시험이 고치기 전 코드에서 실패함을 본 뒤, 식별자 판정을 공용화해 계획기가 같은 규칙으로 걸렀다. [하] 2건 — (1) 탭 고정 규칙이 연산자를 보지 않아 적어 넣은 부정 작성자를 숨겼다 → 같은 방식으로 재현 후 고쳤다. (2) 같은 키의 범위를 입력과 자유 텍스트 양쪽에 두면 둘 다 버튼이 아니다 → 안전한 쪽의 한계로 CR 제외에 적었다. [정보] — 같은 범위 노드가 둘이면 서버의 0건 후보 억제가 유일한 방어선이다, 누른 뒤 빈 상태가 사라지며 포커스가 본문으로 간다(Reset과 같은 동작), 한 값짜리 M 번호가 「1450–1450」으로 보인다, React 키는 서버 후보가 서로 다른 노드라 실무상 유일하다. 리뷰어가 확인한 것: 텍스트 왕복의 안정성, 같은 키·연산자 제거가 과하지 않다는 근거(서버가 한 노드로 접는다), 시간대 포함 비교, 오래된 후보 차단(`loadedKey === requestKey`), 문서가 코드와 맞음, SRS 불변 틀, CR-130 병합 기록, 공개 저장소 식별자 없음.
+
+**게이트.** 리뷰 반영까지 담은 코드 트리(`cfcd31f`, 새 DB `prs_test_cr131_final2`, 격리 ES `prs-b8-isolated`, Node 22.23.3)의 전 계층 게이트다(아래 수치는 적용 스크립트가 게이트 요약에서 옮긴다). 실행 전후 추적 파일 해시와 `git status`가 같다. 그 앞 트리(`2a7e38c`)에서도 전 계층 게이트가 모두 통과했다(단위 3,537·a11y 477·E2E 224·통합 2,402·회귀 531).
+
+| 단계 | 결과 |
+| --- | --- |
+| build · typecheck · lint · lint:deps | 모두 성공 |
+| 단위 | 3,539건 통과, 1건 건너뜀(실제 GHE smoke) |
+| a11y · 대비 | 477건 · 실패 0 |
+| E2E | 224건 통과 |
+| 통합 | 첫 실행: 2,402건 중 2건 실패 — `apps/pipeline-worker/integration/jobs/cancel-race.test.ts`의 backfill 두 건(「backfill 잡을 집지 못했다」). 이 변경(웹 코드)과 닿지 않는 경로다. 그 파일만 새 DB에서 세 번 돌리면 24건 모두 통과했고, **같은 트리를 새 DB(`prs_test_cr131_rerun`)로 전량 다시 돌리면 153파일 2,402건 모두 통과**했다. 간헐적인 잡 선점 간섭으로 보고 DEV-792(관찰)로 남긴다 |
+| 회귀 | 531건 통과 |
+
+**문서 검증기.** 기준선 `5850232`와 최종 트리의 오류·경고 목록이 기본·`--strict` 두 모드 모두 같다.
+
+**한계.** 사내 적용 NOT RUN. 통합 전량의 간헐 실패(DEV-792)는 원인을 확인하지 않았다. 같은 키의 범위를 입력과 자유 텍스트 양쪽에 두면 두 후보 모두 버튼이 아니다(과보수). 서버 후보 상한(앞쪽 필터 8개)에서 작업 공간이 두 자리를 쓰며, 넘치면 안내만 보인다. 레거시 화면은 전처럼 누를 수 없는 목록이다.
 
 **병합.** 이 기록을 담은 PR의 CI와 병합 커밋의 main CI는 다음 기능 PR의 첫 커밋이 적는다(23차 결정).

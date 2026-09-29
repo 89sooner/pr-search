@@ -162,6 +162,11 @@
 .repo-empty { padding: 64px 24px; text-align: center; color: var(--ui-text-muted); }
 .repo-empty h2 { color: var(--ui-text-secondary); font-size: 17px; margin: 16px 0 10px; }
 .repo-empty p { font-size: 13px; }
+/* CR-131: filter suggestions under the empty state -- buttons wrap inside the fixed results column. */
+.repo-relaxation { margin: 18px auto 0; max-width: 620px; }
+.repo-relaxation-heading { margin: 0 0 10px; color: var(--ui-text-secondary); }
+.repo-relaxation ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.repo-relaxation-note { margin: 10px 0 0; }
 .repo-error { padding: 16px 24px; color: var(--ui-status-danger); }
 .repo-load-more { display: flex; justify-content: center; align-items: center; gap: 16px; padding: 22px; font-size: 12px; color: var(--ui-text-muted); }
 /*

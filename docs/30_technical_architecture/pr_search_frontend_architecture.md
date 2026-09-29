@@ -1,6 +1,8 @@
 # PR Search 프론트엔드 아키텍처
 
-> 상태: review | 버전: v0.17 | 갱신일: 2026-09-27
+> 상태: review | 버전: v0.18 | 갱신일: 2026-09-29
+
+CR-131 / FR-SRCH-006 AC-3: 작업 공간의 0건 추천은 `lib/workspace-relaxation.ts`가 계획한다 — 후보의 `remove`를 파싱한 노드 하나를 두고, 그 노드에 값을 보탠 URL 파라미터·자유 텍스트 조건·SHA 서수 범위를 지우는 계획을 URL 상태 사본에 적용한 뒤 `buildRepositoryQuery`로 다시 조립한 AST가 「원래 AST − 그 노드」와 같고 지목 검사를 지날 때만 버튼(`WorkspaceRelaxationHints`)이 된다. 적용은 `RepositoryWorkspace`의 `navigate`와 SHA 범위 상태 초기화이고, 요청 키가 바뀌므로 커서를 버리고 첫 페이지부터 다시 부른다.
 
 CR-127 / NFR-007·FR-SRCH-005 AC-11·FR-STAT-002 AC-7·FR-AUTH-004 AC-9: **표시 시간대는 `lib/format.ts`의 상수 `DISPLAY_TIME_ZONE = 'Asia/Seoul'` 하나다.** 시각을 그리는 모든 컴포넌트는 `formatTimestamp`·`formatDate`·`TimeText`를 쓰고, 이 함수들은 `@prs/query`의 시간대 계산(`zonedParts` — `Intl.DateTimeFormat#formatToParts`의 숫자 부분, `hourCycle: 'h23'`)을 쓴다. 날짜 필터의 하루 경계(`startOfZonedDay`)와 표시가 **같은 함수**에서 나오므로 「화면의 9월 27일」과 「검색의 9월 27일」이 갈리지 않는다. 서버 렌더와 브라우저 렌더가 같은 문자열을 내며(시간대를 명시하므로 프로세스·브라우저 기본값을 읽지 않는다) 표시 문자열은 API 값·커서·URL로 되돌아가지 않는다. 날짜 조건의 시간대는 URL(`tz`, `timezone`)이나 질의 문자열(`@Asia/Seoul`)에 **명시적으로** 남는다 — Repository workspace의 `buildRepositoryQuery`가 `from`·`to`·`tz`로 `merged:<from>..<to>@<tz>`를 만들고, `tz` 없는 옛 URL은 시간대 없는 UTC 조건으로 만든다. 요청 키(`requestKey`)가 그 질의 문자열이므로 시간대가 바뀌면 결과와 커서가 초기화된다. `DatePicker`는 `timeZone`의 오늘을 쓰고 격자를 UTC 자정 값으로 계산한다. 통계 드릴다운(`bucketDrillDownHref`)은 버킷 시작 순간을 대시보드 시간대의 날짜로 바꿔 달력 범위를 만든다. 감사 기록 화면은 KST 벽시계 입력 ↔ `+09:00` ISO 값을 `lib/audit.ts`에서 변환하고 URL은 `URLSearchParams`로만 만든다(`+`가 공백으로 풀리지 않게). 개인별 표시 시간대(사용자 컨텍스트의 「표시 시간대」)는 두지 않는다(`OD-018`).
 
