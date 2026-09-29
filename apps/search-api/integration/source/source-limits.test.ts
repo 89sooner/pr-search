@@ -117,7 +117,8 @@ beforeAll(async () => {
   redis = createTestRedis();
   repos = { files: files(), wide: wide(), massive: massive(), deep: deep() };
   const repositories = Object.values(repos);
-  ghe = await startMockGhe({ source: { repositories, rawChunkBytes: 64 * 1024, rawDelayMs: 1 } });
+  // 조각 크기를 창(1 MiB)과 맞물리지 않게 잡는다 — 창이 조각 가운데에서 끝나고 그 조각이 마지막인 경우를 실제 전송 위에서도 만든다.
+  ghe = await startMockGhe({ source: { repositories, rawChunkBytes: 100_003, rawDelayMs: 1 } });
   // 느린 GHE — 5MB를 64KiB씩 40ms 간격으로 흘린다(3초 남짓). 전송 도중의 취소·기한을 만든다.
   slowGhe = await startMockGhe({ source: { repositories: [repos.files], rawChunkBytes: 64 * 1024, rawDelayMs: 40 } });
 
