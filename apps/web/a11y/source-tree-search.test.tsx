@@ -8,6 +8,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SourcePathEntry } from '@prs/contracts';
 
@@ -28,7 +29,13 @@ const PATHS: SourcePathEntry[] = [
 ];
 
 interface Api { paths?: SourcePathEntry[]; pageSize?: number; incomplete?: boolean; holdAfterFirst?: boolean; failOnce?: string }
-/** Records every URL. Root tree: folders `src`, `tests`, `deep` and `README.md`. `/paths`: `pageSize` paths per page. */
+/** Directory listings of the fake tree, by path ('' = root). */
+const DIRECTORIES: Record<string, readonly (readonly [string, string])[]> = {
+  '': [['deep', 'directory'], ['src', 'directory'], ['tests', 'directory'], ['README.md', 'file']],
+  src: [['a', 'directory'], ['b', 'directory'], ['link', 'symlink']],
+  'src/b': [['config.h', 'file']],
+};
+/** Records every URL. Tree: `DIRECTORIES` (other folders are empty). `/paths`: `pageSize` paths per page. */
 function stubApi(api: Api) {
   const calls: string[] = [];
   const state = { revision: HEAD, held: [] as (() => void)[], aborted: 0, failOnce: api.failOnce };
@@ -38,11 +45,9 @@ function stubApi(api: Api) {
     const op = url.pathname.split('/').at(-1);
     const query = url.searchParams;
     if (op === 'tree') {
-      const entries = query.get('path') ? [] : [
-        { path: 'deep', name: 'deep', sha: TREE, kind: 'directory', size: null }, { path: 'src', name: 'src', sha: TREE, kind: 'directory', size: null },
-        { path: 'tests', name: 'tests', sha: TREE, kind: 'directory', size: null }, { path: 'README.md', name: 'README.md', sha: TREE, kind: 'file', size: 10 },
-      ];
-      return ok({ repository: REPO, ref: 'main', revision: state.revision, path: query.get('path') ?? '', entries, truncated: false, tree_sha: TREE, offset: 0, next_offset: null, total: entries.length });
+      const at = query.get('path') ?? '';
+      const entries = (DIRECTORIES[at] ?? []).map(([name, kind]) => ({ path: at === '' ? name : `${at}/${name}`, name, sha: TREE, kind, size: kind === 'file' ? 10 : null }));
+      return ok({ repository: REPO, ref: 'main', revision: state.revision, path: at, entries, truncated: false, tree_sha: TREE, offset: 0, next_offset: null, total: entries.length });
     }
     if (op === 'paths') {
       const all = api.paths ?? PATHS;
@@ -193,5 +198,42 @@ describe('CR-133 FR-SRC-001 Files & folders searches every path of the pinned re
     await user.click(within(alert).getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('3 matches')).toBeInTheDocument();
     expect(pathCalls().map((params) => params.get('after'))).toEqual([null, 'src/a/config.h', 'src/a/config.h', 'src/link']);
+  });
+
+  it('FR-SRC-001 a new search after a failed listing continues it once instead of showing the old failure', async () => {
+    const { pathCalls } = stubApi({ pageSize: 3, failOnce: 'src/a/config.h' });
+    const user = userEvent.setup();
+    view();
+    await screen.findByRole('treeitem', { name: 'src' });
+    await user.type(searchBox(), 'config');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Source data could not be loaded from GitHub. Please retry.');
+    await user.clear(searchBox());
+    await user.type(searchBox(), 'main');
+    expect(await screen.findByText('1 match')).toBeInTheDocument();
+    expect(results()[0]).toHaveAttribute('title', 'src/a/main.c');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(pathCalls().map((params) => params.get('after'))).toEqual([null, 'src/a/config.h', 'src/a/config.h', 'src/link']);
+  });
+
+  it('FR-SRC-001 after a result is chosen, clearing the search shows the tree opened down to that file and selected', async () => {
+    stubApi({});
+    const user = userEvent.setup();
+    // The workspace keeps the selection (URL `path`); here a small parent does the same.
+    function Workspace() {
+      const [selected, setSelected] = useState('');
+      return <SourceTree repository={REPO} branch="main" selectedPath={selected} onSelect={(selection) => { setSelected(selection.path); }} />;
+    }
+    render(<Workspace />);
+    await screen.findByRole('treeitem', { name: 'src' });
+    await user.type(searchBox(), 'config.h');
+    await screen.findByText('3 matches');
+    await user.click(results()[1]!);
+    expect(results()[1]).toHaveAttribute('aria-current', 'true');
+    await user.keyboard('{Escape}');
+    expect(searchBox()).toHaveValue('');
+    const item = await screen.findByRole('treeitem', { name: 'config.h', selected: true });
+    expect(item).toHaveAttribute('data-path', 'src/b/config.h');
+    expect(screen.getByRole('treeitem', { name: 'src' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('treeitem', { name: 'b' })).toHaveAttribute('aria-expanded', 'true');
   });
 });

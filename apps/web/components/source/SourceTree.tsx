@@ -80,6 +80,13 @@ function usePathListing(repository: string, revision: string | null, active: boo
     } }).catch((error: unknown) => { if (!abort.signal.aborted) update(() => ({ loading: false, error: error instanceof Error ? error.message : 'Unable to list the files in this revision.' })); });
   }, [repository, revision, key]);
   useEffect(() => { if (active && revision && !current.started) read(null); }, [active, revision, current.started, read]);
+  // A search that starts again after a failed listing (the box was cleared, then typed into) retries once from where the
+  // listing stopped, rather than showing the old failure against the new query. A cancel stays until Continue listing.
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (active && !wasActive.current && current.error !== '' && !current.loading) read(current.next);
+    wasActive.current = active;
+  }, [active, current.error, current.loading, current.next, read]);
   return {
     ...current,
     resume: () => { read(current.next); },

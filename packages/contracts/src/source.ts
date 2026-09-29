@@ -16,8 +16,9 @@ export interface SourceChange { path: string; previous_path: string | null; stat
 export interface SourcePullRequest { number: number; title: string; body: string | null }
 /**
  * 고정 revision의 파일 경로 목록 (CR-133, API-SRC-005 — Files & folders 검색). 본문은 없다. 잎만 싣는다(파일·심볼릭 링크,
- * 서브모듈과 디렉터리는 뺀다). `next_after`가 있으면 그 경로 뒤를 이어 읽는다. `incomplete`는 GitHub가 디렉터리 목록을
- * 잘라 빠진 경로가 있을 수 있다는 뜻이다.
+ * 서브모듈과 디렉터리는 뺀다). `next_after`가 있으면 그 경로 뒤를 이어 읽는다 — `paths`가 적거나 비어도 끝이 아니다(걷기
+ * 페이지는 디렉터리 수로도 끝나고, 서브모듈만 지난 페이지는 `paths`가 비고 `next_after`가 그 서브모듈 경로다). 끝은
+ * `next_after: null`뿐이다. `incomplete`는 GitHub가 디렉터리 목록을 잘라 빠진 경로가 있을 수 있다는 뜻이다.
  */
 export interface SourcePathEntry { path: string; kind: 'file' | 'symlink' }
 export interface SourcePaths { repository: string; revision: string; paths: SourcePathEntry[]; next_after: string | null; incomplete: boolean }
