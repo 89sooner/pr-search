@@ -1,8 +1,8 @@
 import { GitHubApiError, type GitHubSourceReader, type RepoRef, type SourceCallOptions, type SourceContent, type SourceGitCommit, type SourceGitTree, type SourceRestCommit } from '@prs/github';
-import type { SourceComparison, SourceEntry, SourceFile, SourceHistory, SourceTree } from '@prs/contracts';
+import type { SourceComparison, SourceEntry, SourceFile, SourceHistory, SourcePathEntry, SourcePaths, SourceTree } from '@prs/contracts';
 import type { Client } from '@elastic/elasticsearch';
 import { applyMandatoryScopeFilter, assertNoShardFailures, search, type AccessScope } from '@prs/es';
-import { walkTreeDiff, type TreeDiffEntry } from './tree-diff.js';
+import { compareTreePaths, walkTreeDiff, type TreeDiffEntry } from './tree-diff.js';
 
 const COMMIT_ALIAS = 'prs-commits' as const;
 
@@ -16,6 +16,19 @@ export const SOURCE_MAX_ENTRIES = 5000;
 export const SOURCE_WINDOW_BYTES = 1024 * 1024;
 export const SOURCE_TREE_PAGE_ENTRIES = 5000;
 export const SOURCE_TREE_DIFF_PAGE = 1000;
+/** 재귀 목록이 잘렸을 때 비재귀 걷기로 한 번에 내는 경로 수 (CR-133). 재귀가 성공하면 한 응답에 전부다(GitHub의 재귀 한계가 상한). */
+export const SOURCE_PATHS_WALK_PAGE = 5000;
+/**
+ * 걷기 한 페이지가 읽는 디렉터리 수의 상한 (CR-133). 호출당 500ms인 느린 GHE에서도 한 페이지가 요청 기한(120초) 안에
+ * 끝나게 한다 — 첫 페이지는 재귀 시도(`SOURCE_PATHS_RECURSIVE_TIMEOUT_MS`)와 기한을 나눠 쓴다. 잎을 하나도 못 낸 페이지에는
+ * 걸지 않는다(`walkTreeDiff`).
+ */
+export const SOURCE_PATHS_WALK_TREE_CALLS = 100;
+/**
+ * 재귀 트리 한 번의 호출 기한 (CR-133). 응답이 최대 7MB라 기본 호출 기한(10초)으로는 느린 GHE에서 영영 받지 못할 수 있다.
+ * 이 기한을 넘기면 걷기로 넘어간다 — 요청 기한 120초의 나머지가 걷기 몫이다.
+ */
+export const SOURCE_PATHS_RECURSIVE_TIMEOUT_MS = 45_000;
 /** GitHub Contents·Blobs API가 본문을 주는 최대 크기 — 제품 상한이 아니라 원천 한계다 (CR-132). */
 export const GITHUB_BLOB_MAX_BYTES = 100 * 1024 * 1024;
 export const FULL_SHA = /^[a-f0-9]{40}$/i;
@@ -261,4 +274,57 @@ export async function sourceTreeComparison(reader: GitHubSourceReader, ref: Repo
   return { repository: `${ref.owner}/${ref.repo}`, base: input.base, head: input.head, commit: gitCommit(headCommit), pull_requests: [], pull_requests_unavailable: false,
     files: page.changes.map(change => ({ path: change.path, previous_path: null, status: change.status, additions: null, deletions: null })),
     next_page: null, truncated: page.incomplete, listing: 'tree', next_after: page.after };
+}
+
+/**
+ * 재귀 트리 한 번 (CR-133). 잘리지 않은 목록이면 그 목록, 걷기로 넘어가야 하면 `null`이다: GitHub가 목록을 잘랐거나, 이
+ * 호출만 제 기한을 넘겼거나(`timeout`), GitHub가 5xx로 답했다(`server`). GHE가 정말 멈췄으면 걷기의 첫 호출도 실패한다.
+ * 요청 전체의 기한·사용자 취소(호출자 신호)와 그 밖의 오류는 그대로 올린다.
+ */
+async function recursiveListing(reader: GitHubSourceReader, ref: RepoRef, root: string, timeoutMs: number, options: SourceCallOptions): Promise<SourceGitTree | null> {
+  try {
+    const listing = await reader.treeRecursive(ref, root, { ...options, timeoutMs });
+    return listing.truncated === true ? null : listing;
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    if (error instanceof GitHubApiError && (error.kind === 'timeout' || error.kind === 'server')) return null;
+    throw error;
+  }
+}
+/** 트리 항목 → 검색 결과 항목. 서브모듈(`commit`)과 디렉터리는 선택할 파일이 아니므로 `null`이다. */
+function pathEntry(path: string, type: string, mode: string): SourcePathEntry | null {
+  if (type !== 'blob') return null;
+  return { path, kind: mode === '120000' ? 'symlink' : 'file' };
+}
+/**
+ * 고정 revision의 파일 경로 목록 (CR-133, API-SRC-005).
+ *
+ * 첫 페이지는 재귀 트리 한 번으로 끝나는 것이 보통이다 — 잘리지 않았으면 전부를 경로 순서(`compareTreePaths`)로 한 응답에
+ * 싣고 `next_after`는 `null`이다. GitHub가 재귀 목록을 잘랐거나(10만 항목·7MB) 재귀 호출이 제시간에 끝나지 않았거나 GitHub가
+ * 5xx로 답하면 비재귀로 하위 트리를 걷는다(`walkTreeDiff`의 빈 기준 트리 = 모든 잎이 added) — 같은 경로 순서의 페이지와
+ * `next_after`. 한 페이지는 경로 5,000개 또는 디렉터리 100개에서 멈추므로 작은 페이지도 정상이다. 이어 읽기(`after`)는 늘
+ * 걷기다. 본문은 읽지 않고 저장하지 않는다(경로 문자열만, NFR-005).
+ *
+ * `recursiveTimeoutMs`·`walkTreeCalls`는 시험용이다(기본 `SOURCE_PATHS_RECURSIVE_TIMEOUT_MS`·`SOURCE_PATHS_WALK_TREE_CALLS`).
+ */
+export async function sourcePaths(reader: GitHubSourceReader, ref: RepoRef, input: { revision: string; after: string | null; recursiveTimeoutMs?: number; walkTreeCalls?: number }, options: SourceCallOptions = {}): Promise<SourcePaths> {
+  const root = (await reader.commit(ref, input.revision, options)).tree.sha;
+  const head = { repository: `${ref.owner}/${ref.repo}`, revision: input.revision };
+  if (input.after === null) {
+    const listing = await recursiveListing(reader, ref, root, input.recursiveTimeoutMs ?? SOURCE_PATHS_RECURSIVE_TIMEOUT_MS, options);
+    if (listing !== null) {
+      const paths = listing.tree.flatMap((item) => { const entry = pathEntry(item.path, item.type, item.mode); return entry === null ? [] : [entry]; })
+        .sort((a, b) => compareTreePaths(a.path, b.path));
+      return { ...head, paths, next_after: null, incomplete: false };
+    }
+  }
+  const kind = (type: string): TreeDiffEntry['type'] => (type === 'tree' ? 'tree' : type === 'commit' ? 'commit' : 'blob');
+  const page = await walkTreeDiff({
+    tree: async (sha, signal) => {
+      const listing = await reader.tree(ref, sha, signal ? { signal } : {});
+      return { entries: listing.tree.map(item => ({ name: item.path, type: kind(item.type), mode: item.mode, sha: item.sha })), truncated: listing.truncated === true };
+    },
+  }, null, root, { after: input.after, limit: SOURCE_PATHS_WALK_PAGE, maxTreeCalls: input.walkTreeCalls ?? SOURCE_PATHS_WALK_TREE_CALLS, entries: true, ...(options.signal ? { signal: options.signal } : {}) });
+  const paths = page.changes.flatMap((change) => { const entry = change.entry === undefined ? null : pathEntry(change.path, change.entry.type, change.entry.mode); return entry === null ? [] : [entry]; });
+  return { ...head, paths, next_after: page.after, incomplete: page.incomplete };
 }

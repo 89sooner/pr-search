@@ -55,6 +55,13 @@ export interface MockSourceOptions {
   readonly rawChunkBytes?: number;
   /** 조각 사이의 지연(ms). 취소 시험에서 전송 도중을 만든다. 기본 0. */
   readonly rawDelayMs?: number;
+  /**
+   * 재귀 트리(`recursive`)가 주는 최대 항목 수 (CR-133). 넘으면 GitHub처럼 앞부분만 주고 `truncated: true`다(GitHub의 실제
+   * 한계는 10만 항목·7MB). 기본은 제한 없음.
+   */
+  readonly recursiveLimit?: number;
+  /** 재귀 트리 응답을 늦추는 시간(ms) (CR-133). 호출 기한을 넘긴 재귀 목록이 걷기로 넘어가는지 본다. 기본 0. */
+  readonly recursiveDelayMs?: number;
 }
 
 export interface MockRawRead { readonly path: string; bytesSent: number; closedEarly: boolean; finished: boolean }
@@ -255,7 +262,27 @@ export function handleMockSource(
   if (found !== null) {
     const entries = repo.trees.get(found[1] ?? '');
     if (entries === undefined) return notFound();
-    return send(200, { sha: found[1], truncated: false, tree: entries.map((entry) => ({ path: entry.name, mode: entry.mode, type: entry.type, sha: entry.sha, ...(entry.size === undefined ? {} : { size: entry.size }) })) });
+    const item = (entry: TreeEntry, path: string) => ({ path, mode: entry.mode, type: entry.type, sha: entry.sha, ...(entry.size === undefined ? {} : { size: entry.size }) });
+    if (url.searchParams.has('recursive')) {
+      // GitHub의 재귀 목록: 루트 기준 전체 경로, 디렉터리 항목도 싣는다(전위 순서). 값과 무관하게 파라미터가 있으면 재귀다.
+      const all: ReturnType<typeof item>[] = [];
+      const walk = (list: readonly TreeEntry[], prefix: string): void => {
+        for (const entry of list) {
+          const path = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
+          all.push(item(entry, path));
+          if (entry.type === 'tree') walk(repo.trees.get(entry.sha) ?? [], path);
+        }
+      };
+      walk(entries, '');
+      const limit = options.recursiveLimit ?? Number.POSITIVE_INFINITY;
+      const body = { sha: found[1], truncated: all.length > limit, tree: all.slice(0, limit) };
+      const delay = options.recursiveDelayMs ?? 0;
+      if (delay <= 0) return send(200, body);
+      // 호출자가 기한으로 끊었으면 쓰지 않는다.
+      setTimeout(() => { if (!response.destroyed) send(200, body); }, delay);
+      return true;
+    }
+    return send(200, { sha: found[1], truncated: false, tree: entries.map((entry) => item(entry, entry.name)) });
   }
   found = /^\/git\/blobs\/([0-9a-f]{40})$/.exec(rest);
   if (found !== null) {

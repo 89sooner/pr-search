@@ -9,7 +9,7 @@ import { sessionInvocation, type ReadInvocation } from '../auth/read-invocation.
 import { sendAuthError, toAuthError } from '../auth/errors.js';
 import { resolveRepository } from '../sequence/space.js';
 import { recordAuditBestEffort } from '../audit/recorder.js';
-import { FULL_SHA, SourceRangeError, SourceSnapshotChanged, sourceComparison, sourceFile, sourceFileWindow, sourceHistory, sourceTree, sourceTreeComparison, validPath, validRef } from './service.js';
+import { FULL_SHA, SourceRangeError, SourceSnapshotChanged, sourceComparison, sourceFile, sourceFileWindow, sourceHistory, sourcePaths, sourceTree, sourceTreeComparison, validPath, validRef } from './service.js';
 
 /**
  * 한 source 요청의 기한 (CR-132). 슬롯 대기와 여러 GitHub 호출을 모두 덮는다 — 원시 창 읽기의 호출 기한도 이 안이다.
@@ -21,11 +21,15 @@ const OFFSET = /^(0|[1-9][0-9]{0,15})$/;
 const MAX_CURSOR = 4096;
 const COMPARISON_KEYS = ['listing', 'after', 'base', 'head', 'related'] as const;
 
-/** `es`는 선택이다 (CR-107) — 없으면 History의 PR 연결 배치 조회를 건너뛴다. `deadlineMs`는 시험용이다(기본 `SOURCE_REQUEST_DEADLINE_MS`). */
-export interface SourceRouteOptions { pool: Pool; reader: () => GitHubSourceReader; auth: AuthContext; loginPath: string; es?: Client; deadlineMs?: number }
+/**
+ * `es`는 선택이다 (CR-107) — 없으면 History의 PR 연결 배치 조회를 건너뛴다. `deadlineMs`는 시험용이다(기본 `SOURCE_REQUEST_DEADLINE_MS`).
+ * `pathsRecursiveTimeoutMs`도 시험용이다(기본 `SOURCE_PATHS_RECURSIVE_TIMEOUT_MS`, CR-133).
+ */
+export interface SourceRouteOptions { pool: Pool; reader: () => GitHubSourceReader; auth: AuthContext; loginPath: string; es?: Client; deadlineMs?: number; pathsRecursiveTimeoutMs?: number }
 /** source 조회의 실행 재료 (CR-112). 일반 경로와 PIPE 연동 경로가 같은 값을 넘긴다. 세션 컨텍스트는 없다. */
 export type SourceExecution = Omit<SourceRouteOptions, 'auth'>;
-export const SOURCE_OPERATIONS = ['tree', 'history', 'file', 'diff'] as const;
+/** `paths`(CR-133, API-SRC-005)는 일반 조회만이다 — PIPE 연동 경로(`integrations/pipe/routes.ts`)는 따로 고정한 목록이라 싣지 않는다. */
+export const SOURCE_OPERATIONS = ['tree', 'history', 'file', 'diff', 'paths'] as const;
 export type SourceOperation = (typeof SOURCE_OPERATIONS)[number];
 export function registerSourceRoutes(app: FastifyInstance, options: SourceRouteOptions): void {
   const { auth, ...execution } = options;
@@ -75,10 +79,17 @@ export async function executeSource(operation: SourceOperation, repository: stri
     if (offsetText !== undefined && (operation === 'history' || operation === 'diff')) return fail(400, 'INVALID_PARAMETER', 'Offset applies only to tree and file reads.');
     if (offsetText !== undefined && (!OFFSET.test(offsetText) || !Number.isSafeInteger(Number(offsetText)))) return fail(400, 'INVALID_PARAMETER', 'Offset must be a non-negative integer.');
     const offset = offsetText === undefined ? undefined : Number(offsetText);
-    if (operation !== 'diff' && COMPARISON_KEYS.some(key => query[key] !== undefined)) return fail(400, 'INVALID_PARAMETER', 'Comparison parameters apply only to diff.');
+    // `paths`는 자기 분기에서 키를 모두 검사한다 (CR-133 — 이어 읽기의 `after`는 받는다).
+    if (operation !== 'diff' && operation !== 'paths' && COMPARISON_KEYS.some(key => query[key] !== undefined)) return fail(400, 'INVALID_PARAMETER', 'Comparison parameters apply only to diff.');
     const reader = options.reader(); const repo = { owner, repo: name };
     let result: unknown;
-    if (operation === 'tree') {
+    if (operation === 'paths') {
+      // CR-133: 경로 목록은 고정 revision과 이어 읽기 `after`만 받는다. 맞지 않는 키는 조용히 버리지 않고 거절한다.
+      if (Object.keys(query).some(key => key !== 'revision' && key !== 'after')) return fail(400, 'INVALID_PARAMETER', 'A file list accepts only revision and after.');
+      const after = typeof query['after'] === 'string' ? query['after'] : undefined;
+      if (!FULL_SHA.test(revision) || (after !== undefined && (after === '' || after.length > MAX_CURSOR || after.includes('\u0000')))) return fail(400, 'INVALID_PARAMETER', 'A file list needs a full revision SHA and an optional path cursor.');
+      result = await sourcePaths(reader, repo, { revision, after: after ?? null, ...(options.pathsRecursiveTimeoutMs !== undefined ? { recursiveTimeoutMs: options.pathsRecursiveTimeoutMs } : {}) }, call);
+    } else if (operation === 'tree') {
       if (path && !treeSha) return fail(400, 'INVALID_PARAMETER', 'Expanding a directory requires its tree SHA and revision.');
       result = await sourceTree(reader, repo, { ref, path, ...(treeSha ? { treeSha, revision } : {}), ...(offset !== undefined ? { offset } : {}) }, call);
     } else if (operation === 'history') result = await sourceHistory(reader, repo, { ref, path, page }, options.es ? { es: options.es, scope } : undefined, call);

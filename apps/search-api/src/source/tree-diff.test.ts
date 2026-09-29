@@ -738,3 +738,57 @@ describe('CR-132 FR-SRC-004 walkTreeDiff on a synthetic repository of 4,000 file
     }
   });
 });
+
+describe('CR-133 FR-SRC-001 walkTreeDiff tree-call budget', () => {
+  /** 파일 하나짜리 디렉터리 N개와 깊은 파일 하나 — 작은 디렉터리가 많은 저장소를 빈 기준 트리로 걷는다(파일 목록). */
+  function manyDirectories(count: number) {
+    const spec: Record<string, string> = { 'a/b/c/d/e/deep.txt': 'deep', 'z.txt': 'z' };
+    for (let index = 0; index < count; index += 1) spec[`d${String(index).padStart(3, '0')}/f`] = `content ${index}`;
+    return repo(null, snapshot(spec));
+  }
+  async function budgetPages(provider: TreeDiffProvider, headRoot: string, maxTreeCalls: number): Promise<TreeDiffPage[]> {
+    const pages: TreeDiffPage[] = [];
+    let after: string | null = null;
+    do {
+      const page: TreeDiffPage = await walkTreeDiff(provider, null, headRoot, { after, limit: 5000, maxTreeCalls });
+      pages.push(page);
+      after = page.after;
+    } while (after !== null && pages.length <= 10_000);
+    return pages;
+  }
+
+  it('stops a page at the budget once it has emitted a leaf, and hands back the last emitted path', async () => {
+    const { store, provider, headRoot } = manyDirectories(250);
+    const page = await walkTreeDiff(provider, null, headRoot, { after: null, limit: 5000, maxTreeCalls: 100 });
+    expect(page.treeCalls).toBe(100);
+    expect(store.calls).toHaveLength(100);
+    expect(page.after).not.toBeNull();
+    expect(page.after).toBe(page.changes.at(-1)!.path);
+  });
+
+  it('joins the budgeted pages into every leaf exactly once, in tree order', async () => {
+    const { provider, headRoot, reference } = manyDirectories(250);
+    const pages = await budgetPages(provider, headRoot, 100);
+    expect(pages.flatMap(page => page.changes)).toEqual(reference);
+    expect(pages.length).toBeGreaterThanOrEqual(3);
+    expect(pages.every(page => page.treeCalls <= 100)).toBe(true);
+  });
+
+  it('still emits at least one leaf per page with a budget of 1, even when the first leaf is five directories deep', async () => {
+    const { provider, headRoot, reference } = manyDirectories(3);
+    const pages = await budgetPages(provider, headRoot, 1);
+    expect(pages[0]!.changes).toEqual([{ path: 'a/b/c/d/e/deep.txt', status: 'added' }]);
+    expect(pages.flatMap(page => page.changes)).toEqual(reference);
+    expect(pages.every(page => page.changes.length >= 1)).toBe(true);
+  });
+
+  it('leaves pages without a budget as before and rejects a budget that is not a positive integer', async () => {
+    const { provider, headRoot, reference } = manyDirectories(250);
+    const page = await walkTreeDiff(provider, null, headRoot, { after: null, limit: 5000 });
+    expect(page.changes).toEqual(reference);
+    expect(page.after).toBeNull();
+    for (const maxTreeCalls of [0, -1, 1.5]) {
+      await expect(walkTreeDiff(provider, null, headRoot, { after: null, limit: 10, maxTreeCalls })).rejects.toThrow(RangeError);
+    }
+  });
+});

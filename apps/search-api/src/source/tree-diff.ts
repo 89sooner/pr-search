@@ -8,16 +8,20 @@
  * - 순서: `compareTreePaths`(경로 조각 단위). 조상이 자손보다 앞선다.
  * - 이어 읽기: `after`(직전 페이지의 마지막 경로)보다 뒤의 변경만 내보낸다.
  * - 가지치기: SHA·종류·모드가 같은 항목과, 커서 앞에 통째로 놓인 하위 트리는 가져오지 않는다.
+ * - 트리 호출 상한(`maxTreeCalls`, CR-133): 한 페이지가 이만큼 디렉터리를 읽었고 잎을 하나라도 냈으면 거기서 멈춘다.
+ *   잎을 하나도 못 냈으면 상한을 넘어서라도 계속 읽는다 — 깊이 우선이라 첫 잎은 트리 깊이만큼의 호출 안에 나오므로
+ *   페이지마다 전진한다. 작은 디렉터리가 많은 트리에서도 한 페이지가 요청 기한 안에 끝나게 한다.
  */
 
-export interface TreeDiffEntry { readonly name: string; readonly type: 'blob' | 'tree' | 'commit'; readonly mode: string; readonly sha: string }
+export interface TreeDiffEntry { readonly name: string; readonly type: 'blob' | 'tree' | 'commit'; readonly mode: string; readonly sha: string; readonly size?: number }
 export interface TreeDiffListing { readonly entries: readonly TreeDiffEntry[]; readonly truncated: boolean }
 /** Reads one directory (non-recursive). Called with a tree SHA. */
 export interface TreeDiffProvider { tree(sha: string, signal?: AbortSignal): Promise<TreeDiffListing> }
-export interface TreeDiffChange { readonly path: string; readonly status: 'added' | 'removed' | 'modified' }
+/** `entry`는 `entries: true`로 걸었을 때만 있다 (CR-133) — 잎이 있는 쪽의 항목(removed면 기준, 그 밖은 대상)이다. */
+export interface TreeDiffChange { readonly path: string; readonly status: 'added' | 'removed' | 'modified'; readonly entry?: TreeDiffEntry }
 export interface TreeDiffPage {
   readonly changes: readonly TreeDiffChange[];
-  /** Last emitted path when more changes follow; null when the diff is complete. */
+  /** Last emitted path when more changes follow (or the tree-call budget ran out); null when the diff is complete. */
   readonly after: string | null;
   /** True when any directory listing on the walked path came back truncated from GitHub — the list may miss entries. */
   readonly incomplete: boolean;
@@ -72,10 +76,12 @@ export async function walkTreeDiff(
   provider: TreeDiffProvider,
   baseTree: string | null, // null = empty tree (e.g. root commit)
   headTree: string,
-  options: { readonly after: string | null; readonly limit: number; readonly signal?: AbortSignal },
+  options: { readonly after: string | null; readonly limit: number; readonly signal?: AbortSignal; readonly entries?: boolean; readonly maxTreeCalls?: number },
 ): Promise<TreeDiffPage> {
   const { after, limit, signal } = options;
   if (!Number.isInteger(limit) || limit < 1) throw new RangeError(`Tree diff limit must be a positive integer: ${limit}`);
+  const { maxTreeCalls } = options;
+  if (maxTreeCalls !== undefined && (!Number.isInteger(maxTreeCalls) || maxTreeCalls < 1)) throw new RangeError(`Tree call budget must be a positive integer: ${maxTreeCalls}`);
   const changes: TreeDiffChange[] = [];
   let incomplete = false;
   let treeCalls = 0;
@@ -94,6 +100,8 @@ export async function walkTreeDiff(
   // true면 한도 뒤의 변경 하나를 더 찾아서 멈췄다 (그 변경은 담지 않는다).
   const walk = async (prefix: string, baseSha: string | null, headSha: string | null): Promise<boolean> => {
     if (baseSha === headSha) return false; // 같은 트리 SHA면 내용도 같다
+    // 상한에 닿았고 이 페이지가 잎을 냈다 — 이 하위 트리는 다음 페이지가 마지막 경로 뒤에서 잇는다.
+    if (maxTreeCalls !== undefined && treeCalls >= maxTreeCalls && changes.length > 0) return true;
     const [base, head] = await Promise.all([list(baseSha), list(headSha)]);
     const names = [...new Set([...base.keys(), ...head.keys()])].sort(compareNames);
     for (const name of names) {
@@ -113,7 +121,8 @@ export async function walkTreeDiff(
       const status = emit ? leafStatus(baseEntry, headEntry) : null;
       if (status !== null) {
         if (changes.length === limit) return true;
-        changes.push({ path, status });
+        const leaf = status === 'removed' ? baseEntry : headEntry;
+        changes.push(options.entries === true && leaf !== undefined ? { path, status, entry: leaf } : { path, status });
       }
       const baseChild = subtree(baseEntry);
       const headChild = subtree(headEntry);
