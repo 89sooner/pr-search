@@ -3785,8 +3785,21 @@ describe('표기 쓰기 자격이 조회 경로로 새지 않는다 (WP-075 / CR
   it('조회 전송 계층에 쓰기 메서드가 없다', () => {
     // `GitHubTransport`는 GET 계열만 갖는다. PATCH가 여기 생기면 조회 토큰으로
     // 쓰기가 가능한 경로가 만들어진다.
+    //
+    // CR-135: 예외는 GraphQL **조회** 하나다. POST는 `#sendGraphql` 한 곳에만 있고 그것을
+    // 부르는 곳은 `postGraphql`뿐이며, `postGraphql`은 토큰을 빌리기 전에 mutation·subscription
+    // 문서를 거절한다(`isQueryDocument` — `transport.test.ts`가 고정한다). 본문은 서버의 고정 query다.
     const transport = read('packages/github/src/transport.ts');
-    expect(transport).not.toMatch(/method:\s*'(PATCH|POST|PUT|DELETE)'/);
+    expect(transport).not.toMatch(/method:\s*'(PATCH|PUT|DELETE)'/);
+    expect(transport.match(/method:\s*'POST'/g) ?? []).toHaveLength(1);
+    const sendGraphql = transport.indexOf('async #sendGraphql(');
+    const post = transport.search(/method:\s*'POST'/);
+    expect(sendGraphql).toBeGreaterThan(-1);
+    expect(post > sendGraphql && post < transport.indexOf('\n  async ', sendGraphql + 1)).toBe(true);
+    expect(transport.match(/this\.#sendGraphql\(/g) ?? []).toHaveLength(1);
+    const postGraphql = transport.slice(transport.indexOf('async postGraphql('), sendGraphql);
+    expect(postGraphql).toContain('isQueryDocument(options.query)');
+    expect(postGraphql).toContain('this.#sendGraphql(');
     const client = read('packages/github/src/client.ts');
     expect(client).not.toContain('updateTitle');
   });

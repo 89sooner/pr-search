@@ -9,10 +9,11 @@
  * WP-007 보강 워커도 같은 서버를 쓴다.
  */
 
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { generateKeyPairSync } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
-import { handleMockSource, type MockRawRead, type MockSourceOptions, type MockSourceRepository } from './mock-source.js';
+import { SOURCE_BLAME_QUERY } from '../src/source-blame.js';
+import { handleMockSource, mockBlame, type MockRawRead, type MockSourceOptions, type MockSourceRepository } from './mock-source.js';
 
 /**
  * `GET /pulls/{n}/commits`가 한 PR에 대해 돌려주는 최대 건수 (CR-116).
@@ -86,6 +87,49 @@ export interface MockGheOptions {
    * 기존 시험의 응답은 그대로다.
    */
   readonly source?: MockSourceOptions & { readonly repositories: readonly MockSourceRepository[] };
+  /**
+   * GraphQL 끝점 `POST /api/graphql` (CR-135). 고정 blame query(`SOURCE_BLAME_QUERY`)만 알아보고, `source.repositories`의
+   * 이력에서 blame을 계산해 답한다. REST 쪽 옵션(`rateLimit`·`unauthorizedTimes`·`secondaryLimitTimes`)은 GraphQL에
+   * 걸리지 않는다 — GraphQL의 실패는 이 옵션으로만 만든다.
+   */
+  readonly graphql?: MockGraphqlOptions;
+}
+
+/**
+ * GraphQL 실패 흉내 (CR-135). 설정하면 **모든** GraphQL 요청에 적용된다.
+ *
+ * - `unauthorized`: 401. `secondary_429`·`secondary_403`: 부 한도 문구 + `retry-after: 30`. `server_502`: GitHub가 10초를
+ *   넘긴 조회를 끊을 때의 502.
+ * - `rate_limited`: 200 + `errors[].type: RATE_LIMITED` + `x-ratelimit-remaining: 0`(회복 시각은 `rateHeaders.reset`, 없으면
+ *   한 시간 뒤). `secondary_200`: 200 + 부 한도 문구, `retry-after` 없음.
+ * - `forbidden`·`not_found`: 200 + `data.repository: null` + 그 오류(`path: ['repository']`).
+ * - `partial`: 계산한 blame에서 첫 구간의 `author.user`를 비우고 그 경로의 일반 오류를 함께 준다 — `data`와 `errors`가 같이 온다.
+ */
+export type MockGraphqlFailure =
+  | 'rate_limited'
+  | 'secondary_200'
+  | 'secondary_403'
+  | 'secondary_429'
+  | 'forbidden'
+  | 'not_found'
+  | 'partial'
+  | 'server_502'
+  | 'unauthorized';
+
+export interface MockGraphqlOptions {
+  /** 기본 `compute`(이력에서 계산). `unsupported`는 `Commit.blame`이 없는 스키마의 검증 오류(`undefinedField`)를 준다. */
+  readonly blame?: 'compute' | 'unsupported';
+  readonly failure?: MockGraphqlFailure;
+  /** 응답 전 지연(ms). 호출 기한·취소 시험용. */
+  readonly delayMs?: number;
+  /** GraphQL 한도 헤더. 주면 성공 응답을 포함한 모든 GraphQL 응답에 붙인다(`x-ratelimit-resource: graphql`). */
+  readonly rateHeaders?: { readonly remaining: number; readonly reset: number };
+}
+
+/** 받은 GraphQL 요청 (CR-135). `fixedQuery`는 문서가 `SOURCE_BLAME_QUERY`와 같았는가다. */
+export interface MockGraphqlRequest {
+  readonly variables: Readonly<Record<string, unknown>> | null;
+  readonly fixedQuery: boolean;
 }
 
 export type MockResource = 'pull_request' | 'commits' | 'files' | 'reviews';
@@ -107,7 +151,11 @@ export interface ReceivedRequest {
 
 export interface MockGhe {
   readonly apiUrl: string;
+  /** GHES 모양의 GraphQL 끝점 — REST 루트(`/api/v3`)의 형제인 `/api/graphql`이다 (CR-135). */
+  readonly graphqlUrl: string;
   readonly requests: ReceivedRequest[];
+  /** 받은 GraphQL 요청 (CR-135). 토큰 발급·REST 요청은 싣지 않는다. */
+  readonly graphqlRequests: MockGraphqlRequest[];
   /** 설치 토큰 발급 횟수. */
   readonly tokenIssueCount: () => number;
   /** 지금까지 발급한 토큰 값. redaction 시험에서 "이 값이 로그에 없는가"를 본다. */
@@ -189,8 +237,180 @@ function makeReviews(count: number): {
   }));
 }
 
+const GRAPHQL_DOCS = 'https://docs.github.com/graphql';
+const SECONDARY_LIMIT_MESSAGE =
+  'You have exceeded a secondary rate limit. Please wait a few minutes before you try again. If you reach out to GitHub Support for help, please include the request ID 0000:1111:2222:3333.';
+const GRAPHQL_FAILURE_MESSAGE =
+  'Something went wrong while executing your query. This may be the result of a timeout, or it could be a GitHub bug. Please include `0000:1111:2222:3333` when reporting this issue.';
+
+type GraphqlReply = (status: number, body: unknown, headers?: Record<string, string>) => void;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** GraphQL 한도 헤더 다섯 (CR-135). GitHub는 GraphQL 응답마다 이 모양으로 준다. */
+function graphqlRateHeaders(remaining: number, reset: number): Record<string, string> {
+  return {
+    'x-ratelimit-limit': '5000',
+    'x-ratelimit-remaining': String(remaining),
+    'x-ratelimit-used': String(5000 - remaining),
+    'x-ratelimit-reset': String(reset),
+    'x-ratelimit-resource': 'graphql',
+  };
+}
+
+function readRequestBody(request: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk: Buffer) => chunks.push(chunk));
+    request.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    request.on('error', reject);
+  });
+}
+
+/**
+ * `POST /api/graphql` 한 건 (CR-135). GitHub의 순서를 따른다 — 인증·한도가 먼저, 그다음 문서 검증, 그다음 실행이다.
+ * 고정 query가 아니면 실행하지 않는다.
+ */
+function answerGraphql(
+  raw: string,
+  options: MockGraphqlOptions,
+  repositories: readonly MockSourceRepository[],
+  received: MockGraphqlRequest[],
+  reply: GraphqlReply,
+): void {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = undefined;
+  }
+  const document = isRecord(parsed) && typeof parsed['query'] === 'string' ? parsed['query'] : undefined;
+  const variables = isRecord(parsed) && isRecord(parsed['variables']) ? parsed['variables'] : null;
+  received.push({ variables, fixedQuery: document === SOURCE_BLAME_QUERY });
+  if (document === undefined) {
+    reply(400, { message: 'Problems parsing JSON', documentation_url: GRAPHQL_DOCS });
+    return;
+  }
+
+  switch (options.failure) {
+    case 'unauthorized':
+      reply(401, { message: 'Bad credentials', documentation_url: GRAPHQL_DOCS });
+      return;
+    case 'secondary_429':
+      reply(429, { message: SECONDARY_LIMIT_MESSAGE, documentation_url: GRAPHQL_DOCS }, { 'retry-after': '30' });
+      return;
+    case 'secondary_403':
+      reply(403, { message: SECONDARY_LIMIT_MESSAGE, documentation_url: GRAPHQL_DOCS }, { 'retry-after': '30' });
+      return;
+    case 'server_502':
+      reply(502, { data: null, errors: [{ message: GRAPHQL_FAILURE_MESSAGE }] });
+      return;
+    case 'rate_limited': {
+      // 주 한도: 상태는 200이고 잔여 0과 RATE_LIMITED 오류가 온다(GitHub GraphQL 문서).
+      const reset = options.rateHeaders?.reset ?? Math.floor(Date.now() / 1000) + 3600;
+      reply(200, { data: null, errors: [{ type: 'RATE_LIMITED', message: 'API rate limit already exceeded for installation ID 42.' }] }, graphqlRateHeaders(0, reset));
+      return;
+    }
+    case 'secondary_200':
+      reply(200, { data: null, errors: [{ message: SECONDARY_LIMIT_MESSAGE }] });
+      return;
+    default:
+      break;
+  }
+
+  if (document !== SOURCE_BLAME_QUERY) {
+    reply(200, { errors: [{ message: 'Mock GHE executes only SOURCE_BLAME_QUERY', locations: [{ line: 1, column: 1 }], extensions: { code: 'mockUnknownDocument' } }] });
+    return;
+  }
+  if (options.blame === 'unsupported') {
+    // 스키마에 없는 필드는 정적 검증에서 걸린다 — 실행 전이라 `data`가 없다.
+    reply(200, {
+      errors: [{
+        path: ['query SourceBlame', 'repository', 'object', '... on Commit', 'blame'],
+        extensions: { code: 'undefinedField', typeName: 'Commit', fieldName: 'blame' },
+        locations: [{ line: 6, column: 9 }],
+        message: "Field 'blame' doesn't exist on type 'Commit'",
+      }],
+    });
+    return;
+  }
+  const owner = variables?.['owner'];
+  const name = variables?.['name'];
+  const revision = variables?.['revision'];
+  const path = variables?.['path'];
+  if (typeof owner !== 'string' || typeof name !== 'string' || typeof revision !== 'string' || typeof path !== 'string') {
+    reply(200, { errors: [{ extensions: { value: null, problems: [{ path: [], explanation: 'Expected value to not be null' }] }, locations: [{ line: 1, column: 19 }], message: 'Variable of type String! was provided invalid value' }] });
+    return;
+  }
+  const repositoryNotFound = {
+    data: { repository: null },
+    errors: [{ type: 'NOT_FOUND', path: ['repository'], locations: [{ line: 2, column: 3 }], message: `Could not resolve to a Repository with the name '${owner}/${name}'.` }],
+  };
+  if (options.failure === 'forbidden') {
+    reply(200, {
+      data: { repository: null },
+      errors: [{ type: 'FORBIDDEN', path: ['repository'], extensions: { saml_failure: false }, locations: [{ line: 2, column: 3 }], message: 'Resource not accessible by integration' }],
+    });
+    return;
+  }
+  if (options.failure === 'not_found') {
+    reply(200, repositoryNotFound);
+    return;
+  }
+  const repo = repositories.find((one) => one.owner === owner && one.repo === name);
+  if (repo === undefined) {
+    reply(200, repositoryNotFound);
+    return;
+  }
+  const result = mockBlame(repo, revision, path);
+  if (result.kind === 'no_object') {
+    // 없는 oid는 오류 없이 `object: null`이다.
+    reply(200, { data: { repository: { object: null } } });
+    return;
+  }
+  if (result.kind === 'not_commit') {
+    reply(200, { data: { repository: { object: { __typename: result.typename } } } });
+    return;
+  }
+  if (result.kind === 'no_file') {
+    // `blame(path:)`은 `Blame!`(non-null)이라, 그 오류는 가장 가까운 nullable 조상인 `object`를 비운다(GraphQL의 null 전파).
+    reply(200, {
+      data: { repository: { object: null } },
+      errors: [{ type: 'NOT_FOUND', path: ['repository', 'object', 'blame'], locations: [{ line: 6, column: 9 }], message: `Could not resolve file for path '${path}'.` }],
+    });
+    return;
+  }
+  const ranges = result.ranges.map((range) => ({
+    startingLine: range.startingLine,
+    endingLine: range.endingLine,
+    age: range.age,
+    commit: {
+      oid: range.commit.sha,
+      messageHeadline: range.commit.message.split('\n')[0] ?? '',
+      authoredDate: range.commit.date,
+      committedDate: range.commit.date,
+      author: { name: range.commit.author, user: range.commit.login === null ? null : { login: range.commit.login } },
+    },
+  }));
+  const data = { repository: { object: { __typename: 'Commit', oid: result.oid, blame: { ranges } } } };
+  if (options.failure === 'partial') {
+    // 일부 결과: 한 필드의 해석이 실패하면 그 nullable 필드만 비고 나머지 `data`는 그대로 온다.
+    const first = ranges[0];
+    if (first !== undefined) first.commit.author.user = null;
+    reply(200, {
+      data,
+      errors: [{ message: GRAPHQL_FAILURE_MESSAGE, path: ['repository', 'object', 'blame', 'ranges', 0, 'commit', 'author', 'user'], locations: [{ line: 18, column: 17 }] }],
+    });
+    return;
+  }
+  reply(200, { data });
+}
+
 export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGhe> {
   const requests: ReceivedRequest[] = [];
+  const graphqlRequests: MockGraphqlRequest[] = [];
   const issuedTokens: string[] = [];
   let tokenIssueCount = 0;
   let secondaryLeft = options.secondaryLimitTimes ?? 0;
@@ -249,6 +469,35 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
       issuedTokens.push(token);
       const ttl = options.tokenTtlMs ?? 60 * 60 * 1000;
       send(201, { token, expires_at: new Date(Date.now() + ttl).toISOString() });
+      return;
+    }
+
+    // --- GraphQL (CR-135) ---
+    // REST 한도 장치보다 먼저 가른다. GraphQL은 한도 버킷이 다르고, REST 요청 순번(`dataRequestCount`)을 밀면 안 된다.
+    if (new URL(path, 'http://localhost').pathname === '/api/graphql') {
+      if (request.method !== 'POST') {
+        send(404, { message: 'Not Found' });
+        return;
+      }
+      const graphql = options.graphql ?? {};
+      const base = graphql.rateHeaders === undefined ? {} : graphqlRateHeaders(graphql.rateHeaders.remaining, graphql.rateHeaders.reset);
+      let closed = false;
+      response.on('close', () => {
+        closed = true;
+      });
+      const reply: GraphqlReply = (status, body, headers = {}) => {
+        // 호출자가 기한으로 끊었으면 쓰지 않는다.
+        const write = (): void => {
+          if (!closed && !response.destroyed) send(status, body, { ...base, ...headers });
+        };
+        const delay = graphql.delayMs ?? 0;
+        if (delay > 0) setTimeout(write, delay);
+        else write();
+      };
+      void readRequestBody(request).then(
+        (raw) => answerGraphql(raw, graphql, options.source?.repositories ?? [], graphqlRequests, reply),
+        () => undefined,
+      );
       return;
     }
 
@@ -393,7 +642,9 @@ export async function startMockGhe(options: MockGheOptions = {}): Promise<MockGh
 
   return {
     apiUrl: `http://127.0.0.1:${String(address.port)}/api/v3`,
+    graphqlUrl: `http://127.0.0.1:${String(address.port)}/api/graphql`,
     requests,
+    graphqlRequests,
     tokenIssueCount: () => tokenIssueCount,
     issuedTokens: () => issuedTokens,
     rawReads: () => rawReads,

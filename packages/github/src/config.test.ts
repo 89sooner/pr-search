@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_MIRROR_ROOT,
+  deriveGraphqlUrl,
   parseInstallations,
   resolveGitHubConfig,
   resolveMirrorConfig,
@@ -142,5 +143,68 @@ describe('resolveReferenceHost — 배포 설정의 GHE 주소에서 호스트�
   it('해석되지 않는 값은 null이다', () => {
     expect(resolveReferenceHost({ GHE_BASE_URL: 'https://' })).toBeNull();
     expect(resolveReferenceHost({ GHE_BASE_URL: 'http://exa mple.com' })).toBeNull();
+  });
+});
+
+/**
+ * GraphQL 끝점 (CR-135). GHES의 GraphQL은 REST 루트(`/api/v3`)의 **형제**인 `/api/graphql`이다 — `/api/v3/graphql`은
+ * 없는 경로라, 도출을 틀리면 blame이 사내에서 전부 404(`client`)로 끝난다.
+ */
+describe('CR-135 FR-SRC-005 GraphQL 끝점 — GHE_GRAPHQL_URL과 도출', () => {
+  it('GHES 기본값은 /api/graphql이다 — /api/v3/graphql이 아니다', () => {
+    expect(resolveGitHubConfig({ GHE_BASE_URL: 'https://ghe.internal.example' }).graphqlUrl).toBe('https://ghe.internal.example/api/graphql');
+    expect(resolveGitHubConfig({}).graphqlUrl).toBe('https://ghe.example.com/api/graphql');
+    expect(resolveGitHubConfig({ GHE_BASE_URL: 'https://ghe.internal.example/' }).graphqlUrl).not.toContain('/api/v3');
+  });
+
+  it('GHE_API_URL을 바꾸면 그 루트에서 도출한다 — /api/v3로 끝나면 꼬리만 바꾸고, 아니면 루트 아래에 붙인다', () => {
+    expect(resolveGitHubConfig({ GHE_BASE_URL: 'https://ghe.internal.example', GHE_API_URL: 'https://proxy.internal.example/ghe/api/v3/' }).graphqlUrl)
+      .toBe('https://proxy.internal.example/ghe/api/graphql');
+    expect(resolveGitHubConfig({ GHE_API_URL: 'https://proxy.internal.example/github' }).graphqlUrl).toBe('https://proxy.internal.example/github/graphql');
+    // 꼬리가 아닌 자리의 `/api/v3`는 바꾸지 않는다.
+    expect(deriveGraphqlUrl('https://ghe.internal.example/api/v3/proxy')).toBe('https://ghe.internal.example/api/v3/proxy/graphql');
+  });
+
+  it('github.com 모양(REST 루트가 api.github.com)이면 https://api.github.com/graphql이다', () => {
+    expect(resolveGitHubConfig({ GHE_API_URL: 'https://api.github.com' }).graphqlUrl).toBe('https://api.github.com/graphql');
+    expect(deriveGraphqlUrl('https://api.github.com')).toBe('https://api.github.com/graphql');
+  });
+
+  it.each(['', '   '])('GHE_GRAPHQL_URL이 %o면 도출한다 — 빈 값은 미설정이다 (DEV-548)', (blank) => {
+    expect(resolveGitHubConfig({ GHE_BASE_URL: 'https://ghe.internal.example', GHE_GRAPHQL_URL: blank }).graphqlUrl).toBe('https://ghe.internal.example/api/graphql');
+  });
+
+  it('명시한 값은 그대로 쓴다 — 끝의 슬래시만 떼고 REST 루트와 무관하다', () => {
+    const config = resolveGitHubConfig({
+      GHE_BASE_URL: 'https://ghe.internal.example',
+      GHE_API_URL: 'https://ghe.internal.example/api/v3',
+      GHE_GRAPHQL_URL: ' https://gql.internal.example/custom/graphql/ ',
+    });
+    expect(config.graphqlUrl).toBe('https://gql.internal.example/custom/graphql');
+    expect(config.apiUrl).toBe('https://ghe.internal.example/api/v3');
+    expect(resolveGitHubConfig({ GHE_GRAPHQL_URL: 'http://127.0.0.1:8080/api/graphql' }).graphqlUrl).toBe('http://127.0.0.1:8080/api/graphql');
+  });
+
+  it('잘못된 명시 값은 기동 시점에 던진다 — http(s)가 아니거나, URL이 아니거나, query·fragment가 붙었다', () => {
+    for (const value of [
+      'ftp://ghe.internal.example/api/graphql',
+      'ghe.internal.example/api/graphql',
+      'not a url',
+      'https://ghe.internal.example/api/graphql?token=abc',
+      'https://ghe.internal.example/api/graphql?',
+      'https://ghe.internal.example/api/graphql#frag',
+    ]) {
+      expect(() => resolveGitHubConfig({ GHE_GRAPHQL_URL: value }), value).toThrow(/GHE_GRAPHQL_URL/);
+    }
+  });
+
+  it('오류 메시지에 설정 값을 싣지 않는다 — 주소에 자격 증명이 붙어 있을 수 있다', () => {
+    const value = 'ftp://someone:s3cret@ghe.internal.example/api/graphql';
+    expect(() => resolveGitHubConfig({ GHE_GRAPHQL_URL: value })).toThrow(/GHE_GRAPHQL_URL/);
+    try {
+      resolveGitHubConfig({ GHE_GRAPHQL_URL: value });
+    } catch (error) {
+      expect((error as Error).message).not.toContain('s3cret');
+    }
   });
 });

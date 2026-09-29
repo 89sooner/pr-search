@@ -5,11 +5,12 @@
  * 끝나는지 본다. 실제 HTTP 서버에서의 동작은 통합 시험(`apps/search-api/integration/source/`)이 본다.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GitHubApiError } from './errors.js';
 import { RequestScheduler } from './scheduler.js';
-import type { TokenPool } from './token-pool.js';
-import { GitHubTransport, RAW_MIN_BYTES_PER_MS, RAW_READ_CONCURRENCY } from './transport.js';
+import { TokenPool } from './token-pool.js';
+import type { InstallationTokenProvider } from './token-provider.js';
+import { GitHubTransport, GRAPHQL_CONCURRENCY, RAW_MIN_BYTES_PER_MS, RAW_READ_CONCURRENCY, type TransportEvent, type TransportOptions } from './transport.js';
 
 const fakePool = {
   availableAt: () => undefined,
@@ -211,5 +212,239 @@ describe('CR-132 FR-SRC-003 원시 읽기의 동시 상한과 취소', () => {
     const fetchImpl = (async () => new Response('[1,2]', { status: 200, headers: { link: '<http://ghe.invalid/api/v3/x?page=3>; rel="next"', 'x-github-request-id': 'r1' } })) as unknown as typeof fetch;
     const page = await transport(fetchImpl).getPage<number[]>({ org: 'acme', path: '/x' });
     expect(page).toEqual({ body: [1, 2], status: 200, nextPage: 3, requestId: 'r1' });
+  });
+});
+
+/**
+ * GraphQL 전송 (CR-135). REST와 같은 토큰·기한·취소를 쓰되, GraphQL 한도를 REST 토큰 상태에 섞지 않고 HTTP 상태를 분류하지
+ * 않은 채 돌려주는지 본다. 분류는 `source-blame.test.ts`가 본다.
+ */
+describe('CR-135 FR-SRC-005 GraphQL 전송 (postGraphql)', () => {
+  const GRAPHQL_URL = 'http://ghe.invalid/api/graphql';
+  const QUERY = 'query Probe($owner: String!) { repository(owner: $owner, name: "app") { id } }';
+  const NOW = new Date('2026-09-29T12:00:00.000Z');
+  const call = { org: 'acme', query: QUERY, variables: { owner: 'acme' } };
+
+  function graphqlTransport(fetchImpl: typeof fetch, extra: Partial<TransportOptions> = {}): GitHubTransport {
+    return new GitHubTransport({
+      apiUrl: 'http://ghe.invalid/api/v3',
+      graphqlUrl: GRAPHQL_URL,
+      requestTimeoutMs: 10_000,
+      pool: fakePool,
+      scheduler: new RequestScheduler({ maxConcurrent: 8 }),
+      now: () => NOW,
+      fetchImpl,
+      ...extra,
+    });
+  }
+  /** 실제 `TokenPool`(가짜 발급기) — 한도 상태가 섞이는지를 풀에서 직접 잰다. */
+  function realPool(): TokenPool {
+    const provider = {
+      getToken: async () => ({ token: 'ghs_test', expiresAt: new Date(Date.now() + 3_600_000) }),
+      invalidate: () => undefined,
+    } as unknown as InstallationTokenProvider;
+    return new TokenPool(provider, { installations: [{ org: 'acme', installationId: 7 }], quarantineThreshold: 0.1, now: () => NOW });
+  }
+  /** `init.signal`이 끊길 때까지 응답하지 않는 fetch. 끊기면 그 사유로 거절한다(실제 fetch와 같다). */
+  const hanging = (calls: string[] = []) => (async (url: string, init: RequestInit) => {
+    calls.push(url);
+    return new Promise<Response>((_resolve, reject) => {
+      const signal = init.signal;
+      if (signal?.aborted) reject(signal.reason);
+      else signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+  }) as unknown as typeof fetch;
+
+  it('POST JSON 한 건 — graphqlUrl에 Bearer 설치 토큰·content-type·accept·API 버전을 싣고 문서와 변수는 본문에만 둔다', async () => {
+    let seen: { url: string; init: RequestInit } | undefined;
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      seen = { url, init };
+      return new Response('{"data":{"repository":{"id":"R_1"}}}', { status: 200, headers: { 'x-ratelimit-remaining': '4999', 'x-ratelimit-reset': '1790000000' } });
+    }) as unknown as typeof fetch;
+    const response = await graphqlTransport(fetchImpl).postGraphql(call);
+    expect(seen?.url).toBe(GRAPHQL_URL);
+    expect(seen?.init.method).toBe('POST');
+    const headers = new Headers(seen?.init.headers);
+    expect(headers.get('authorization')).toBe('Bearer ghs_test');
+    expect(headers.get('content-type')).toBe('application/json');
+    expect(headers.get('accept')).toBe('application/vnd.github+json');
+    expect(headers.get('x-github-api-version')).toBe('2022-11-28');
+    expect(JSON.parse(String(seen?.init.body))).toEqual({ query: QUERY, variables: { owner: 'acme' } });
+    expect(seen?.url).not.toContain('ghs_');
+    expect(response).toEqual({
+      status: 200,
+      body: { data: { repository: { id: 'R_1' } } },
+      rateLimit: { remaining: 4999, reset: new Date(1_790_000_000_000), retryAfter: null, observedAt: NOW },
+    });
+  });
+
+  it('어떤 HTTP 상태든 던지지 않고 상태·본문·한도 헤더를 돌려준다 — JSON이 아닌 본문은 null이다', async () => {
+    const cases: [number, string, Record<string, string>, unknown][] = [
+      [401, '{"message":"Bad credentials"}', {}, { message: 'Bad credentials' }],
+      [403, '{"message":"You have exceeded a secondary rate limit"}', { 'retry-after': '30' }, { message: 'You have exceeded a secondary rate limit' }],
+      [429, '', { 'retry-after': '45' }, null],
+      [502, '<html>Bad Gateway</html>', {}, null],
+      [200, '{"errors":[{"type":"RATE_LIMITED"}]}', { 'x-ratelimit-remaining': '0' }, { errors: [{ type: 'RATE_LIMITED' }] }],
+    ];
+    for (const [status, text, headers, body] of cases) {
+      const fetchImpl = (async () => new Response(text === '' ? null : text, { status, headers })) as unknown as typeof fetch;
+      const response = await graphqlTransport(fetchImpl).postGraphql(call);
+      expect(response.status, String(status)).toBe(status);
+      expect(response.body, String(status)).toEqual(body);
+      const retryAfter = headers['retry-after'];
+      expect(response.rateLimit.retryAfter, String(status)).toEqual(retryAfter === undefined ? null : new Date(NOW.getTime() + Number(retryAfter) * 1000));
+    }
+  });
+
+  it('401이면 그 설치 토큰을 무효화한다(REST와 같다) — 다른 상태에서는 무효화하지 않는다', async () => {
+    const invalidate = vi.fn();
+    const pool = { ...fakePool, lease: fakePool.lease.bind(fakePool), invalidate } as unknown as TokenPool;
+    const respond = (status: number) => (async () => new Response('{}', { status })) as unknown as typeof fetch;
+    await graphqlTransport(respond(200), { pool }).postGraphql(call);
+    await graphqlTransport(respond(403), { pool }).postGraphql(call);
+    expect(invalidate).not.toHaveBeenCalled();
+    await expect(graphqlTransport(respond(401), { pool }).postGraphql(call)).resolves.toMatchObject({ status: 401 });
+    expect(invalidate).toHaveBeenCalledWith(1);
+  });
+
+  it('GraphQL 한도 헤더를 REST 토큰 상태에 넣지 않고, REST 격리도 보지 않는다 — 버킷이 다르다', async () => {
+    const pool = realPool();
+    const reset = String(Math.floor(NOW.getTime() / 1000) + 900);
+    const graphqlCalls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      if (url === GRAPHQL_URL) {
+        graphqlCalls.push(url);
+        // 잔여 0인 성공과 429를 차례로 받는다.
+        return graphqlCalls.length === 1
+          ? new Response('{"data":{}}', { status: 200, headers: { 'x-ratelimit-limit': '5000', 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': reset } })
+          : new Response('{}', { status: 429, headers: { 'retry-after': '120' } });
+      }
+      return new Response('{}', { status: 200, headers: { 'x-ratelimit-limit': '5000', 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': reset } });
+    }) as unknown as typeof fetch;
+    const client = graphqlTransport(fetchImpl, { pool });
+    await client.postGraphql(call);
+    await client.postGraphql(call);
+    expect(pool.isAvailable('acme')).toBe(true);
+    expect(pool.availableAt('acme')).toBeUndefined();
+    expect(pool.remainingByInstallation().size).toBe(0);
+    // 반대 방향: REST가 토큰을 격리해도 GraphQL은 나간다.
+    await client.get({ org: 'acme', path: '/repos/acme/app' });
+    expect(pool.isAvailable('acme')).toBe(false);
+    await expect(client.get({ org: 'acme', path: '/repos/acme/app' })).rejects.toMatchObject({ kind: 'rate_limited' });
+    await expect(client.postGraphql(call)).resolves.toMatchObject({ status: 429 });
+    expect(graphqlCalls).toHaveLength(3);
+  });
+
+  it(`GraphQL은 ${String(GRAPHQL_CONCURRENCY)}개까지만 동시에 돌고, 그동안 REST 조회는 공용 슬롯에서 계속 나간다`, async () => {
+    expect(GRAPHQL_CONCURRENCY).toBe(2);
+    const started: string[] = [];
+    const releases: (() => void)[] = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      if (url !== GRAPHQL_URL) return new Response('{"ok":true}', { status: 200 });
+      started.push(String(JSON.parse(String(init.body)).variables.n));
+      await new Promise<void>((resolve) => { releases.push(resolve); });
+      return new Response('{"data":{}}', { status: 200 });
+    }) as unknown as typeof fetch;
+    const client = graphqlTransport(fetchImpl);
+    const calls = [1, 2, 3].map((n) => client.postGraphql({ ...call, variables: { n } }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(started).toEqual(['1', '2']);
+    await expect(client.get({ org: 'acme', path: '/json' })).resolves.toEqual({ ok: true });
+    releases.shift()?.();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(started).toEqual(['1', '2', '3']);
+    for (const release of releases.splice(0)) release();
+    await new Promise((r) => setTimeout(r, 20));
+    for (const release of releases.splice(0)) release();
+    await Promise.all(calls);
+  });
+
+  it('공용 슬롯이 다 차 있으면 GraphQL도 기다린다 — 별도 전송 줄이 아니라 공용 스케줄러를 쓴다', async () => {
+    const order: string[] = [];
+    const releases: (() => void)[] = [];
+    const fetchImpl = (async (url: string) => {
+      order.push(url === GRAPHQL_URL ? 'graphql' : 'rest');
+      if (url !== GRAPHQL_URL) await new Promise<void>((resolve) => { releases.push(resolve); });
+      return new Response('{}', { status: 200 });
+    }) as unknown as typeof fetch;
+    const client = graphqlTransport(fetchImpl, { scheduler: new RequestScheduler({ maxConcurrent: 1 }) });
+    const rest = client.get({ org: 'acme', path: '/slow' });
+    await new Promise((r) => setTimeout(r, 10));
+    const graphql = client.postGraphql(call);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(order).toEqual(['rest']);
+    releases.shift()?.();
+    await rest;
+    await graphql;
+    expect(order).toEqual(['rest', 'graphql']);
+  });
+
+  it('호출자가 취소하면 부르기 전·줄에서 기다리는 중·전송 중 모두 REST와 같은 GitHubApiError 모양이다', async () => {
+    // 부르기 전
+    const aborted = new AbortController();
+    aborted.abort();
+    const never = vi.fn();
+    await expect(graphqlTransport(never as unknown as typeof fetch).postGraphql({ ...call, signal: aborted.signal })).rejects.toMatchObject({ name: 'GitHubApiError', kind: 'network' });
+    expect(never).not.toHaveBeenCalled();
+
+    // GraphQL 줄에서 기다리는 중 — 앞의 둘이 상한을 채웠다.
+    const calls: string[] = [];
+    const client = graphqlTransport(hanging(calls));
+    const holders = [new AbortController(), new AbortController()];
+    const held = holders.map((holder) => client.postGraphql({ ...call, signal: holder.signal }).catch((error: unknown) => error));
+    await new Promise((r) => setTimeout(r, 10));
+    const waiting = new AbortController();
+    const third = client.postGraphql({ ...call, signal: waiting.signal });
+    waiting.abort(new DOMException('deadline', 'TimeoutError'));
+    await expect(third).rejects.toMatchObject({ name: 'GitHubApiError', kind: 'timeout' });
+    expect(calls).toHaveLength(2);
+
+    // 전송 중 — 사용자 취소는 network, 요청 기한은 timeout.
+    holders[0]?.abort();
+    holders[1]?.abort(new DOMException('deadline', 'TimeoutError'));
+    const [first, second] = await Promise.all(held);
+    expect(first).toBeInstanceOf(GitHubApiError);
+    expect((first as GitHubApiError).kind).toBe('network');
+    expect((second as GitHubApiError).kind).toBe('timeout');
+  });
+
+  it('호출 기한이 지나면 timeout이다 — timeoutMs를 주지 않으면 전송의 기본 기한이다', async () => {
+    await expect(graphqlTransport(hanging()).postGraphql({ ...call, timeoutMs: 30 })).rejects.toMatchObject({ name: 'GitHubApiError', kind: 'timeout' });
+    await expect(graphqlTransport(hanging(), { requestTimeoutMs: 30 }).postGraphql(call)).rejects.toMatchObject({ name: 'GitHubApiError', kind: 'timeout' });
+    // 연결 오류는 network다.
+    const refused = (async () => { throw new TypeError('fetch failed'); }) as unknown as typeof fetch;
+    await expect(graphqlTransport(refused).postGraphql(call)).rejects.toMatchObject({ name: 'GitHubApiError', kind: 'network' });
+  });
+
+  it('graphqlUrl이 없거나 조회가 아닌 문서면 토큰을 빌리거나 부르기 전에 던진다', async () => {
+    const fetchImpl = vi.fn();
+    const lease = vi.fn();
+    const pool = { ...fakePool, lease } as unknown as TokenPool;
+    const bare = new GitHubTransport({ apiUrl: 'http://ghe.invalid/api/v3', requestTimeoutMs: 1_000, pool, scheduler: new RequestScheduler({ maxConcurrent: 1 }), fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(bare.postGraphql(call)).rejects.toThrow(/graphqlUrl/);
+    const client = graphqlTransport(fetchImpl as unknown as typeof fetch, { pool });
+    for (const query of [
+      'mutation { addStar(input: {starrableId: "R_1"}) { clientMutationId } }',
+      '# 주석\n  mutation Do { deleteRef(input: {refId: "x"}) { clientMutationId } }',
+      'subscription { issueUpdated { id } }',
+      'query A { viewer { login } } mutation B { addStar(input: {starrableId: "R_1"}) { clientMutationId } }',
+      'fragment F on User { login }',
+    ]) {
+      await expect(client.postGraphql({ ...call, query }), query).rejects.toThrow(/mutation·subscription/);
+    }
+    // 괄호로 시작하는 익명 조회는 받는다.
+    fetchImpl.mockResolvedValueOnce(new Response('{"data":{}}', { status: 200 }));
+    lease.mockResolvedValueOnce({ installationId: 1, token: { token: 'ghs_test', expiresAt: new Date(Date.now() + 3_600_000) } });
+    await expect(client.postGraphql({ ...call, query: '{ viewer { login } }' })).resolves.toMatchObject({ status: 200 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(lease).toHaveBeenCalledTimes(1);
+  });
+
+  it('onResponse는 /graphql 경로와 GraphQL 잔여를 싣고 토큰은 싣지 않는다', async () => {
+    const events: TransportEvent[] = [];
+    const fetchImpl = (async () => new Response('{}', { status: 200, headers: { 'x-ratelimit-remaining': '17' } })) as unknown as typeof fetch;
+    await graphqlTransport(fetchImpl, { onResponse: (event) => events.push(event) }).postGraphql(call);
+    expect(events).toEqual([expect.objectContaining({ org: 'acme', installationId: 1, path: '/graphql', status: 200, remaining: 17, priority: 'realtime' })]);
+    expect(JSON.stringify(events)).not.toContain('ghs_');
   });
 });

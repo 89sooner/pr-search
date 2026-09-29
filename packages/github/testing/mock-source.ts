@@ -16,6 +16,11 @@ export type MockFileContent = string | Buffer | { readonly submodule: string } |
 export interface MockSourceCommitInput {
   readonly message: string;
   readonly author?: string;
+  /**
+   * 작성자의 GHE 로그인 (CR-135). 기본은 `author`와 같다. `null`이면 작성자 이메일과 맞는 계정이 없는 커밋이다 —
+   * GitHub는 REST의 `author`와 GraphQL의 `author.user`를 `null`로 준다.
+   */
+  readonly login?: string | null;
   /** 앞 커밋에 대한 변경. 값이 `null`이면 그 경로를 지운다. */
   readonly changes: Readonly<Record<string, MockFileContent | null>>;
 }
@@ -33,7 +38,7 @@ export interface MockSourceInput {
 }
 
 interface TreeEntry { readonly name: string; readonly mode: string; readonly type: 'blob' | 'tree' | 'commit'; readonly sha: string; readonly size?: number }
-interface CommitObject { readonly sha: string; readonly tree: string; readonly parents: readonly string[]; readonly message: string; readonly author: string; readonly date: string }
+interface CommitObject { readonly sha: string; readonly tree: string; readonly parents: readonly string[]; readonly message: string; readonly author: string; readonly login: string | null; readonly date: string }
 
 export interface MockSourceRepository {
   readonly owner: string;
@@ -141,7 +146,7 @@ export function buildMockSource(input: MockSourceInput): MockSourceRepository {
     const author = commit.author ?? 'dev';
     const text = [`tree ${tree}`, ...parents.map((parent) => `parent ${parent}`), `author ${author} <${author}@example.invalid> ${String(Date.parse(date) / 1000)} +0000`, `committer ${author} <${author}@example.invalid> ${String(Date.parse(date) / 1000)} +0000`, '', commit.message, ''].join('\n');
     const sha = gitHash('commit', Buffer.from(text, 'utf8'));
-    commits.set(sha, { sha, tree, parents, message: commit.message, author, date });
+    commits.set(sha, { sha, tree, parents, message: commit.message, author, login: commit.login === undefined ? author : commit.login, date });
     commitShas.push(sha);
     snapshots.push(files);
     previous = files;
@@ -206,7 +211,110 @@ function changedFiles(repo: MockSourceRepository, baseTree: string | null, headT
 }
 
 function restCommit(commit: CommitObject) {
-  return { sha: commit.sha, parents: commit.parents.map((sha) => ({ sha })), author: { login: commit.author }, commit: { message: commit.message, author: { name: commit.author, date: commit.date }, committer: { date: commit.date } } };
+  return { sha: commit.sha, parents: commit.parents.map((sha) => ({ sha })), author: commit.login === null ? null : { login: commit.login }, commit: { message: commit.message, author: { name: commit.author, date: commit.date }, committer: { date: commit.date } } };
+}
+
+/** blame의 한 구간 (CR-135). 줄 번호는 1부터다. */
+export interface MockBlameRange { readonly startingLine: number; readonly endingLine: number; readonly age: number; readonly commit: CommitObject }
+export type MockBlameResult =
+  | { readonly kind: 'no_object' }
+  | { readonly kind: 'not_commit'; readonly typename: 'Tree' | 'Blob' }
+  | { readonly kind: 'no_file' }
+  | { readonly kind: 'ok'; readonly oid: string; readonly ranges: readonly MockBlameRange[] };
+
+interface BlameLine { readonly text: string; readonly commit: CommitObject }
+
+function splitLines(bytes: Buffer | undefined): string[] {
+  if (bytes === undefined || bytes.length === 0) return [];
+  const lines = bytes.toString('utf8').split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  return lines;
+}
+
+/**
+ * 앞 본문의 귀속을 새 본문에 옮긴다 (CR-135). 앞뒤 공통 줄을 먼저 떼고 가운데만 LCS로 맞춘다 — 맞은 줄은 앞 귀속을
+ * 물려받고, 새 줄·바뀐 줄은 `commit`의 것이다.
+ */
+function carryAttribution(previous: readonly BlameLine[], texts: readonly string[], commit: CommitObject): BlameLine[] {
+  const same = (line: BlameLine | undefined, text: string | undefined): boolean => line !== undefined && line.text === text;
+  let head = 0;
+  while (head < previous.length && head < texts.length && same(previous[head], texts[head])) head += 1;
+  let tail = 0;
+  while (tail < previous.length - head && tail < texts.length - head && same(previous[previous.length - 1 - tail], texts[texts.length - 1 - tail])) tail += 1;
+  const before = previous.slice(head, previous.length - tail);
+  const after = texts.slice(head, texts.length - tail);
+  // lcs[i][j] = before[i..]와 after[j..]의 최장 공통 부분열 길이
+  const lcs = Array.from({ length: before.length + 1 }, () => new Array<number>(after.length + 1).fill(0));
+  const at = (i: number, j: number): number => lcs[i]?.[j] ?? 0;
+  for (let i = before.length - 1; i >= 0; i -= 1) {
+    for (let j = after.length - 1; j >= 0; j -= 1) {
+      const row = lcs[i];
+      if (row !== undefined) row[j] = same(before[i], after[j]) ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
+    }
+  }
+  const middle: BlameLine[] = [];
+  let i = 0;
+  let j = 0;
+  while (j < after.length) {
+    const kept = before[i];
+    const text = after[j] ?? '';
+    if (kept !== undefined && kept.text === text) { middle.push(kept); i += 1; j += 1; }
+    else if (kept !== undefined && at(i + 1, j) >= at(i, j + 1)) i += 1;
+    else { middle.push({ text, commit }); j += 1; }
+  }
+  return [...previous.slice(0, head), ...middle, ...previous.slice(previous.length - tail)];
+}
+
+/**
+ * 한 리비전의 파일 blame을 이력에서 계산한다 (CR-135, GHE 대역의 `Commit.blame`).
+ *
+ * 첫 부모를 따라 오래된 커밋부터 보며, 그 경로의 blob이 바뀐 커밋마다 앞 본문과 줄을 LCS로 맞춘다. 파일이 지워졌다 다시
+ * 생기면 귀속을 새로 시작하고, 이름 바꾸기는 따라가지 않는다. 같은 커밋이 이어지는 줄은 한 구간으로 묶고, age는 구간에
+ * 나오는 커밋 가운데 가장 새것 1 ~ 가장 오래된 것 10으로 고르게 매긴다(GitHub의 분위 계산을 흉내 내지 않는다).
+ */
+export function mockBlame(repo: MockSourceRepository, revision: string, path: string): MockBlameResult {
+  const target = repo.commits.get(revision);
+  if (target === undefined) {
+    if (repo.trees.has(revision)) return { kind: 'not_commit', typename: 'Tree' };
+    if (repo.blobs.has(revision)) return { kind: 'not_commit', typename: 'Blob' };
+    return { kind: 'no_object' };
+  }
+  const blobOf = (commit: CommitObject): string | undefined => {
+    const entry = lookup(repo, commit.tree, path);
+    return entry !== undefined && entry !== null && entry.type === 'blob' ? entry.sha : undefined;
+  };
+  if (blobOf(target) === undefined) return { kind: 'no_file' };
+
+  const chain: CommitObject[] = [];
+  for (let commit: CommitObject | undefined = target; commit !== undefined;) {
+    chain.unshift(commit);
+    const parent: string | undefined = commit.parents[0];
+    commit = parent === undefined ? undefined : repo.commits.get(parent);
+  }
+  let lines: BlameLine[] = [];
+  let previousBlob: string | undefined;
+  for (const commit of chain) {
+    const blob = blobOf(commit);
+    if (blob === previousBlob) continue;
+    previousBlob = blob;
+    lines = blob === undefined ? [] : carryAttribution(lines, splitLines(repo.blobs.get(blob)), commit);
+  }
+
+  const groups: { startingLine: number; endingLine: number; commit: CommitObject }[] = [];
+  lines.forEach((line, index) => {
+    const last = groups.at(-1);
+    if (last !== undefined && last.commit === line.commit) last.endingLine = index + 1;
+    else groups.push({ startingLine: index + 1, endingLine: index + 1, commit: line.commit });
+  });
+  const order = new Map(chain.map((commit, index) => [commit.sha, index] as const));
+  const positions = groups.map((group) => order.get(group.commit.sha) ?? 0);
+  const newest = Math.max(0, ...positions);
+  const span = newest - Math.min(newest, ...positions);
+  const ranges = groups.map((group, index) => ({
+    ...group,
+    age: span === 0 ? 1 : 1 + Math.round((9 * (newest - (positions[index] ?? newest))) / span),
+  }));
+  return { kind: 'ok', oid: target.sha, ranges };
 }
 
 /**

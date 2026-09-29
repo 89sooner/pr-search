@@ -1,4 +1,5 @@
 import type { RepoRef } from './client.js';
+import { readSourceBlame, type SourceBlame, type SourceBlameOptions } from './source-blame.js';
 import type { GitHubTransport, PageResponse, RawWindow } from './transport.js';
 
 /** Read-only, request-scoped source APIs; callers must authorize the repository first. */
@@ -53,4 +54,9 @@ export class GitHubSourceReader {
   pullRequestsForCommitPage(ref: RepoRef, sha: string, page: number, options: SourceCallOptions = {}): Promise<PageResponse<SourcePr[]>> {
     return this.transport.getPage({ org: ref.owner, path: `${this.prefix(ref)}/commits/${sha}/pulls`, priority: 'realtime', query: { page, per_page: 100 }, ...this.signal(options) });
   }
+  /**
+   * 한 리비전의 파일 blame (CR-135, FR-SRC-005). REST가 아니라 GraphQL `Commit.blame` 하나를 서버 소유 고정 query로 묻는다 —
+   * 분류와 결과 모양은 `readSourceBlame`을 본다. 호출 기한 기본은 `SOURCE_BLAME_TIMEOUT_MS`다.
+   */
+  blame(ref: RepoRef, revision: string, path: string, options: SourceBlameOptions = {}): Promise<SourceBlame> { return readSourceBlame(this.transport, ref, { revision, path }, options); }
 }
