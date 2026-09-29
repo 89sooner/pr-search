@@ -3813,6 +3813,32 @@ describe('표기 쓰기 자격이 조회 경로로 새지 않는다 (WP-075 / CR
     expect(client).not.toContain('updateTitle');
   });
 
+  it('GraphQL을 부르는 제품 코드는 blame 한 곳이고 서버 소유 고정 query만 싣는다 (CR-135)', () => {
+    // 쓰기가 없다는 것만으로는 「프록시가 없다」가 지켜지지 않는다. 호출자의 조회 문서를 그대로 넘기는 읽기 전용
+    // GraphQL 통로가 생기면 App 토큰이 볼 수 있는 모든 저장소를 「사용자 범위 ∩ client 허용 목록」 밖에서 읽게 된다.
+    const files: string[] = [];
+    const visit = (dir: string): void => {
+      for (const entry of readdirSync(`${root}${dir}`, { withFileTypes: true })) {
+        if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) continue;
+        const relative = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) visit(relative);
+        else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) files.push(relative);
+      }
+    };
+    visit('packages');
+    visit('apps');
+    expect(files.filter((file) => read(file).includes('.postGraphql('))).toEqual(['packages/github/src/source-blame.ts']);
+    const blame = read('packages/github/src/source-blame.ts');
+    expect(blame.split('.postGraphql(')).toHaveLength(2);
+    const start = blame.indexOf('.postGraphql(');
+    expect(blame.slice(start, blame.indexOf('});', start))).toMatch(/\bquery: SOURCE_BLAME_QUERY,/);
+    // 고정 query는 치환이 없는 문자열 상수다.
+    const head = 'export const SOURCE_BLAME_QUERY = `';
+    const constant = blame.slice(blame.indexOf(head) + head.length, blame.indexOf('`;', blame.indexOf(head)));
+    expect(constant).toMatch(/^query SourceBlame\(/);
+    expect(constant).not.toContain('${');
+  });
+
   it('표기 클라이언트가 조회 App의 변수를 읽지 않는다', () => {
     const config = read('packages/github-annotate/src/config.ts');
     for (const key of DATA_APP_SECRET_KEYS) {

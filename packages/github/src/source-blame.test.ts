@@ -72,6 +72,28 @@ function kindOf(result: SourceBlame | Error): { kind: string; retryAt?: number }
 const after = (seconds: number): number => NOW.getTime() + seconds * 1000;
 
 describe('CR-135 FR-SRC-005 blame 성공', () => {
+  it('revision은 소문자로 보내고, 응답의 revision은 요청 문자열이 아니라 GitHub가 준 oid다', async () => {
+    const githubOid = 'b'.repeat(40);
+    const sent: unknown[] = [];
+    const fetchImpl = (async (_url: unknown, init?: { body?: unknown }) => {
+      sent.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ data: blameData([range(1, 1, C1)], { oid: githubOid }) }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const transport = new GitHubTransport({
+      apiUrl: 'http://ghe.invalid/api/v3',
+      graphqlUrl: 'http://ghe.invalid/api/graphql',
+      requestTimeoutMs: 5_000,
+      pool: fakePool,
+      scheduler: new RequestScheduler({ maxConcurrent: 4 }),
+      now: () => NOW,
+      fetchImpl,
+    });
+    const result = await readSourceBlame(transport, REF, { revision: 'C'.repeat(40), path: PATH });
+    expect(sent).toHaveLength(1);
+    expect((sent[0] as { variables: { revision: string } }).variables.revision).toBe('c'.repeat(40));
+    expect(result.revision).toBe(githubOid);
+  });
+
   it('GitHub 순서대로 구간을 옮기고, revision은 GitHub가 확인한 oid다', async () => {
     expect(await blame(200, { data: GOOD })).toEqual({
       revision: REVISION,
@@ -218,13 +240,14 @@ describe('CR-135 FR-SRC-005 blame 분류 (b) 200 본문의 errors — data가 �
 });
 
 describe('CR-135 FR-SRC-005 blame 분류 (c) 오류 없이 data가 모자라다', () => {
-  it('repository·object가 null이면 not_found다', async () => {
+  it('repository·object가 null이거나 object가 커밋이 아니면(tree·blob·tag) not_found다 — 다시 불러도 같다', async () => {
     expect(kindOf(await blame(200, { data: { repository: null } }))).toEqual({ kind: 'not_found' });
     expect(kindOf(await blame(200, { data: { repository: { object: null } } }))).toEqual({ kind: 'not_found' });
+    expect(kindOf(await blame(200, { data: { repository: { object: { __typename: 'Tree' } } } }))).toEqual({ kind: 'not_found' });
+    expect(kindOf(await blame(200, { data: { repository: { object: { __typename: 'Blob' } } } }))).toEqual({ kind: 'not_found' });
   });
 
   it.each([
-    ['커밋이 아닌 객체', { data: { repository: { object: { __typename: 'Tree' } } } }],
     ['blame null', { data: blameData([], { blame: null }) }],
     ['blame 없음', { data: { repository: { object: { __typename: 'Commit', oid: REVISION } } } }],
     ['object.oid 없음', { data: blameData([], { oid: undefined }) }],

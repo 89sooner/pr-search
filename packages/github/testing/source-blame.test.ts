@@ -99,6 +99,8 @@ describe('CR-135 FR-SRC-005 GHE 대역의 blame 계산 (실제 HTTP)', () => {
     const { reader } = await build();
     const result = await reader.blame(REF, sha(1), 'src/pay.ts');
     expect(result.revision).toBe(sha(1));
+    // 대문자로 청해도 소문자로 보낸다 — 대역은 대소문자를 가려 찾으므로, 그대로 보내면 없는 리비전이 된다.
+    await expect(reader.blame(REF, sha(1).toUpperCase(), 'src/pay.ts')).resolves.toMatchObject({ revision: sha(1) });
     expect(result.ranges.map((range) => [range.startLine, range.endLine, range.commit.sha, range.age])).toEqual([
       [1, 1, sha(0), 10],
       [2, 2, sha(1), 1],
@@ -106,14 +108,14 @@ describe('CR-135 FR-SRC-005 GHE 대역의 blame 계산 (실제 HTTP)', () => {
     ]);
   });
 
-  it('빈 파일은 빈 ranges이고, 없는 경로·없는 리비전은 not_found, 커밋이 아닌 객체는 server다', async () => {
+  it('빈 파일은 빈 ranges이고, 없는 경로·없는 리비전·커밋이 아닌 객체는 not_found다', async () => {
     const { reader } = await build();
     await expect(reader.blame(REF, HEAD, 'empty.txt')).resolves.toEqual({ revision: HEAD, path: 'empty.txt', ranges: [] });
     expect(await failure(reader.blame(REF, HEAD, 'src/nope.ts'))).toMatchObject({ name: 'GitHubApiError', kind: 'not_found' });
     expect(await failure(reader.blame(REF, 'f'.repeat(40), 'src/pay.ts'))).toMatchObject({ name: 'GitHubApiError', kind: 'not_found' });
     expect(await failure(reader.blame({ owner: 'acme', repo: 'nope' }, HEAD, 'src/pay.ts'))).toMatchObject({ name: 'GitHubApiError', kind: 'not_found' });
     const tree = REPO.commits.get(HEAD)?.tree ?? '';
-    expect(await failure(reader.blame(REF, tree, 'src/pay.ts'))).toMatchObject({ name: 'GitHubApiError', kind: 'server' });
+    expect(await failure(reader.blame(REF, tree, 'src/pay.ts'))).toMatchObject({ name: 'GitHubApiError', kind: 'not_found' });
   });
 
   it('요청 — 고정 query 한 건에 변수 넷, 토큰은 Authorization 헤더로만 간다. GET /api/graphql은 404다', async () => {

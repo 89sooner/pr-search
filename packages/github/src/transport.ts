@@ -516,6 +516,9 @@ function callerAborted(signal: AbortSignal): GitHubApiError {
  * 문서를 해석하지 않고 보수적으로 거절한다 — 이 경로에는 서버 소유 고정 query만 오므로 잃는 것이 없다.
  */
 function isQueryDocument(query: string): boolean {
+  // 한계: `#`부터 줄 끝까지를 문자열 리터럴 안에서도 지운다 — 같은 줄의 `"#"` 뒤에 숨긴 연산은 이 검사를 지난다. 그런
+  // 문서는 다중 연산이라 `operationName`(보내지 않는다) 없이는 GitHub가 실행하지 않고, 운영 호출자는 서버 소유 상수
+  // 하나뿐이다(회귀 `runtime-reachability.test.ts`가 고정한다).
   const code = query.replace(/#[^\r\n]*/g, '');
   return /^\s*(query\b|\{)/.test(code) && !/\b(mutation|subscription)\b/.test(code);
 }

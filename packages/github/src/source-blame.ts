@@ -122,7 +122,9 @@ export async function readSourceBlame(
   const response = await transport.postGraphql({
     org: ref.owner,
     query: SOURCE_BLAME_QUERY,
-    variables: { owner: ref.owner, name: ref.repo, revision: target.revision, path: target.path },
+    // GitObjectID는 소문자 hex로 보낸다 — GHES가 대문자를 받는지 확인하지 못했고(대역은 대소문자를 가린다), 받지 않으면
+    // 영구적인 입력 오류가 502(다시 시도)로 나간다. 응답의 `revision`은 GitHub가 준 `oid`다.
+    variables: { owner: ref.owner, name: ref.repo, revision: target.revision.toLowerCase(), path: target.path },
     priority: 'realtime',
     timeoutMs: options.timeoutMs ?? SOURCE_BLAME_TIMEOUT_MS,
     ...(options.signal ? { signal: options.signal } : {}),
@@ -186,7 +188,8 @@ function classifyBlameResponse(response: GraphqlResponse, path: string): SourceB
   const object = repository['object'];
   if (object === null) throw new GitHubApiError('not_found', 'GitHub GraphQL이 리비전을 찾지 못했다', { status });
   if (!isRecord(object)) throw malformed(status, 'object의 모양이 다르다');
-  if (object['__typename'] !== 'Commit') throw malformed(status, '리비전이 커밋이 아니다');
+  // 커밋이 아닌 객체(tree·blob·tag)의 SHA는 없는 리비전과 같다 — 다시 불러도 같으므로 502(다시 시도)로 답하지 않는다.
+  if (object['__typename'] !== 'Commit') throw new GitHubApiError('not_found', 'GitHub GraphQL의 리비전이 커밋이 아니다', { status });
   const oid = object['oid'];
   if (typeof oid !== 'string' || !isFullSha(oid)) throw malformed(status, '커밋 SHA가 없다');
   const blame = object['blame'];
