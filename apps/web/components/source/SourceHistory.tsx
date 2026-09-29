@@ -33,6 +33,6 @@ function HistoryBody({ repository, path, kind, revision, branch }: { repository:
     {!response.loading && !response.error && !commits.length ? <div className="source-empty"><History size={28} /><h2>No history for this path</h2><p>Choose another path or branch in the repository tree.</p></div> : null}
     {response.data?.next_page ? <div className="source-load-more"><Button variant="secondary" disabled={response.loading} onClick={() => { setPage(response.data!.next_page!); }}>Load older commits</Button></div> : null}
     {diff ? <DiffModal target={diff} onClose={() => { setDiff(null); }} /> : null}
-    {time ? <TimeLapseModal repository={repository} path={path} revision={pinned || branch} initialCommits={commits} moreAvailable={Boolean(response.data?.next_page)} nextPage={response.data?.next_page ?? null} onClose={() => { setTime(false); }} /> : null}
+    {time ? <TimeLapseModal repository={repository} path={path} revision={pinned || branch} initialCommits={commits} nextPage={response.data?.next_page ?? null} onClose={() => { setTime(false); }} /> : null}
   </section>;
 }

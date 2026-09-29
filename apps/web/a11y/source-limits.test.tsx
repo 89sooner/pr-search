@@ -140,6 +140,9 @@ describe('CR-132 FR-SRC-004 Time-lapse reaches older revisions and analyzes more
     const { container } = render(<TimeLapseModal repository={REPO} path="app.c" revision="main" onClose={() => undefined} />);
     await user.click(await screen.findByRole('button', { name: 'Load older revisions' }, { timeout: 5000 }));
     await waitFor(() => { expect(screen.getByText('45 / 45')).toBeInTheDocument(); });
+    // Everything is loaded: no disabled "Load older revisions" left behind, and the caption says so.
+    expect(screen.queryByRole('button', { name: 'Load older revisions' })).not.toBeInTheDocument();
+    expect(screen.getByText('All 45 revisions of this path are loaded.')).toBeInTheDocument();
     const olderCall = calls.find((call) => call.includes('/history?') && call.includes('page=2'))!;
     expect(new URL(olderCall, 'http://localhost').searchParams.get('ref')).toBe(HEAD);
     await screen.findByText('stable');
